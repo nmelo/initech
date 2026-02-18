@@ -39,7 +39,6 @@ func TestRun_CreatesDirectories(t *testing.T) {
 		"super/.claude",
 		"eng1",
 		"eng1/.claude",
-		"eng1/src",
 		"qa1",
 		"qa1/.claude",
 		"qa1/playbooks",

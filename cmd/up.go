@@ -3,10 +3,10 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 
 	"github.com/nmelo/initech/internal/config"
-	iexec "github.com/nmelo/initech/internal/exec"
 	"github.com/spf13/cobra"
 )
 
@@ -48,9 +48,15 @@ func runUp(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("tmuxinator config not found at %s. Run 'initech init' first", tmuxYAML)
 	}
 
-	runner := &iexec.DefaultRunner{}
-	_, err = runner.Run("tmuxinator", "start", p.Name)
-	if err != nil {
+	// tmuxinator needs the real terminal (stdin/stdout/stderr) to create
+	// tmux sessions. Using exec.Runner's CombinedOutput() would capture
+	// the terminal and cause "not a terminal" errors.
+	tmux := exec.Command("tmuxinator", "start", p.Name)
+	tmux.Stdin = os.Stdin
+	tmux.Stdout = os.Stdout
+	tmux.Stderr = os.Stderr
+
+	if err := tmux.Run(); err != nil {
 		return fmt.Errorf("tmuxinator start: %w", err)
 	}
 

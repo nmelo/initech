@@ -131,13 +131,9 @@ func Run(p *config.Project, opts Options) ([]string, error) {
 			created = append(created, roleName+"/CLAUDE.md")
 		}
 
-		// Optional directories based on role catalog
-		if def.NeedsSrc {
-			srcDir := filepath.Join(roleDir, "src")
-			if err := os.MkdirAll(srcDir, 0755); err != nil {
-				return nil, fmt.Errorf("create %s/src/: %w", roleName, err)
-			}
-		}
+		// NeedsSrc directories are created by git submodule add, not scaffold.
+		// Creating them here would cause submodule add to fail with
+		// "already exists and is not a valid git repo".
 
 		if def.NeedsPlaybooks {
 			pbDir := filepath.Join(roleDir, "playbooks")
