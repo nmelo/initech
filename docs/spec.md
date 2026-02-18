@@ -729,6 +729,11 @@ Every project follows this skeleton:
   .gitmodules             # Maps agent dirs to code repos
   CLAUDE.md               # Project-wide protocols, architecture, commands
   AGENTS.md               # Quick reference: bd commands, landing-the-plane checklist
+  docs/
+    prd.md                # Why: problem statement, users, success criteria, journeys
+    spec.md               # What: requirements, behaviors, acceptance criteria
+    systemdesign.md       # How: architecture, packages, data structures, build order
+    roadmap.md            # When/Who: phases, milestones, success gates, agent allocation
   super/                  # Coordinator agent directory
   eng1/                   # Engineer agent directory
   eng2/                   # Engineer agent directory
@@ -800,7 +805,7 @@ The root CLAUDE.md is the project-wide operating manual. It contains:
 
 1. **Project identity** - what this is, who's involved, key context
 2. **Folder structure** - which agent dirs exist, what they contain
-3. **Key reference documents** - architecture, PRDs, specs (with paths)
+3. **Project documents** - links to docs/prd.md, docs/spec.md, docs/systemdesign.md, docs/roadmap.md with the four-document table (why/what/how/when-who)
 4. **Issue tracking protocol** - bd commands, status workflow, bead quality rules
 5. **Communication protocols** - gn/ga/gp usage, dispatch patterns
 6. **Tech stack specifics** - build commands, test commands, deployment targets
@@ -818,7 +823,34 @@ A quick-reference cheatsheet at the project root. Contains:
 
 Kept short (1-5KB) so agents can scan it fast.
 
-### 4.8 What Initech Must Do for Bootstrap
+### 4.8 Project Documents (docs/)
+
+Every project gets a `docs/` directory with four structured documents. Each captures a different concern, has a hard cap of 5000 lines, and is a living single-file document updated throughout the project lifecycle.
+
+| Document | Question it answers | Contents |
+|----------|-------------------|----------|
+| `prd.md` | **Why** does this exist? | Problem statement, user identity, success criteria, non-goals, user journeys, risks, scope boundaries |
+| `spec.md` | **What** does this do? | Requirements, behaviors, discovered patterns, acceptance criteria |
+| `systemdesign.md` | **How** does this work? | Architecture, packages, data structures, interfaces, build order, testing strategy |
+| `roadmap.md` | **When/Who** does what get built? | Phases, milestones, success gates, agent allocation, dependency graph |
+
+**Rules (apply to all four):**
+- Hard cap: 5000 lines. Forces compact writing. If a section would push past the limit, compress or cut something less important first.
+- Essential detail only. Expand on demand, not preemptively.
+- Living documents. Updated as discovery proceeds and implementation reveals new constraints.
+- Single file each. One place to look per concern.
+
+**Document ownership by role:**
+- **pm** owns `prd.md`. Writes problem statement, success criteria, user journeys.
+- **arch** owns `systemdesign.md`. Writes architecture, package design, interface boundaries.
+- **super** owns `spec.md` and `roadmap.md`. Orchestrates discovery (spec) and sequencing (roadmap).
+- All roles read all documents. The owner writes; others contribute through beads and review.
+
+**Scaffolded content:** `initech init` generates each document with pre-structured section headers and writing guidance. The headers provide the skeleton; agents fill in project-specific content during the discovery and design phase. The scaffolded documents are not blank files and not filled-in files. They are structured prompts that tell the agent exactly what goes in each section.
+
+**Phase 0 convention:** The scaffolded `roadmap.md` starts with a pre-written "Phase 0: Discovery and Design" that sequences document creation as the first work. This means `initech up` immediately gives super a plan: fill in the four documents before writing code. Every project starts the same way.
+
+### 4.9 What Initech Must Do for Bootstrap
 
 `initech init` must:
 
@@ -826,9 +858,10 @@ Kept short (1-5KB) so agents can scan it fast.
 2. **Initialize beads** - `.beads/` directory, config with project prefix.
 3. **Create agent directories** - one per role in the project config, each with role-appropriate CLAUDE.md from templates.
 4. **Set up git submodules** - for each role that needs source access, add a submodule pointing to the code repo(s).
-5. **Create tmuxinator config** - main session YAML + optional grid YAML, written to `~/.config/tmuxinator/`.
-6. **Set up .claude/ configs** - local settings for MCP servers and permissions per agent.
-7. **Initial commit** - stage coordination files, commit.
+5. **Scaffold project documents** - create `docs/` with `prd.md`, `spec.md`, `systemdesign.md`, `roadmap.md` from document templates.
+6. **Create tmuxinator config** - main session YAML + optional grid YAML, written to `~/.config/tmuxinator/`.
+7. **Set up .claude/ configs** - local settings for MCP servers and permissions per agent.
+8. **Initial commit** - stage coordination files, commit.
 
 The user provides: project name, code repo URL(s), which roles to include, and any project-specific env vars.
 

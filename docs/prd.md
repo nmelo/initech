@@ -98,7 +98,56 @@ Things initech explicitly does not do:
 
 ## 5. User Journeys
 
-### 5.1 Start a New Project
+### 5.1 Install and Onboard
+
+Nelson just wiped his machine, or a colleague wants to try the multi-agent pattern for the first time. They need to go from nothing to a working initech installation with all prerequisites satisfied.
+
+```
+$ brew tap nmelo/tap && brew install initech
+$ initech version
+initech v0.1.0 (darwin/arm64)
+
+$ initech doctor
+
+Checking prerequisites...
+
+  tmux          3.4     /opt/homebrew/bin/tmux          ok
+  tmuxinator    3.1.1   /opt/homebrew/bin/tmuxinator    ok
+  claude        1.0.8   /Users/nelson/.claude/bin/claude ok
+  git           2.43.0  /usr/bin/git                    ok
+  bd            0.5.2   /opt/homebrew/bin/bd             ok
+  gn            0.3.1   /opt/homebrew/bin/gn             ok
+  gp            0.3.1   /opt/homebrew/bin/gp             ok
+  gm            0.3.1   /opt/homebrew/bin/gm             ok
+
+All prerequisites satisfied. Run 'initech init' in a project directory to get started.
+```
+
+If something is missing, doctor says exactly what and how to fix it:
+
+```
+$ initech doctor
+
+Checking prerequisites...
+
+  tmux          3.4     /opt/homebrew/bin/tmux          ok
+  tmuxinator    -       -                               MISSING
+  claude        1.0.8   /Users/nelson/.claude/bin/claude ok
+  git           2.43.0  /usr/bin/git                    ok
+  bd            -       -                               MISSING
+  gn            0.3.1   /opt/homebrew/bin/gn             ok
+  gp            0.3.1   /opt/homebrew/bin/gp             ok
+  gm            -       -                               MISSING
+
+2 issues found:
+
+  tmuxinator: gem install tmuxinator
+  bd, gm:     brew tap nmelo/tap && brew install bd gm
+```
+
+Doctor is also the first thing to run when something breaks mid-session. "Why is my agent not starting?" becomes "run initech doctor" instead of debugging PATH issues manually.
+
+### 5.2 Start a New Project
 
 Nelson has a new project idea. He wants to spin up a multi-agent team.
 
@@ -116,6 +165,10 @@ Created:
   .gitignore
   CLAUDE.md
   AGENTS.md
+  docs/prd.md
+  docs/spec.md
+  docs/systemdesign.md
+  docs/roadmap.md
   super/CLAUDE.md
   pm/CLAUDE.md
   arch/CLAUDE.md
@@ -132,7 +185,7 @@ Ready. Run 'initech up' to start.
 
 Nelson reviews the generated CLAUDE.md files, makes project-specific tweaks (tech stack details, specific build commands, domain context), then starts.
 
-### 5.2 Start the Day
+### 5.3 Start the Day
 
 ```
 $ cd ~/Desktop/Projects/newproject
@@ -154,26 +207,26 @@ $ initech standup
 - np-a1f.7: Integration tests
 ```
 
-### 5.3 Check on the Team
+### 5.4 Check on the Team
 
 ```
 $ initech status
 
-Session: newproject (running, 9 agents)
+Session: newproject (running, 9 agents, 14.2 GB total)
 
-  Role      Claude  Bead                              Status
-  super     yes     -                                 -
-  pm        yes     -                                 idle
-  arch      yes     -                                 idle
-  eng1      yes     np-a1f.5 (API endpoints)          in_progress
-  eng2      yes     np-a1f.6 (Client SDK)             in_progress
-  qa1       yes     np-a1f.4 (Data model)             in_qa
-  qa2       no      -                                 agent down
-  sec       yes     -                                 idle
-  shipper   yes     -                                 idle
+  Role      Claude  Bead                              Status          Mem
+  super     yes     -                                 -            1.3 GB
+  pm        yes     -                                 idle         1.1 GB
+  arch      yes     -                                 idle         1.4 GB
+  eng1      yes     np-a1f.5 (API endpoints)          in_progress  2.1 GB
+  eng2      yes     np-a1f.6 (Client SDK)             in_progress  1.9 GB
+  qa1       yes     np-a1f.4 (Data model)             in_qa        1.8 GB
+  qa2       no      -                                 agent down        -
+  sec       yes     -                                 idle         1.2 GB
+  shipper   yes     -                                 idle         1.4 GB
 ```
 
-### 5.4 Fix a Stuck Agent
+### 5.5 Fix a Stuck Agent
 
 ```
 $ initech restart qa2
@@ -184,7 +237,61 @@ Restarted qa2 in session 'newproject'.
 Dispatched: "[from initech] Restarted. Resume np-a1f.4."
 ```
 
-### 5.5 End the Day
+### 5.6 Slim the Roster
+
+Nelson is deep in implementation. The architect finished the system design two phases ago, security hasn't been needed since the threat model review, and the PM is idle between grooming cycles. Meanwhile, eng1, eng2, and qa1 are burning through memory with active Claude sessions, and Nelson has cobalt running in another tmux session. His machine is feeling it.
+
+```
+$ initech status
+
+Session: newproject (running, 9 agents, 14.2 GB total)
+
+  Role      Claude  Bead                              Status          Mem
+  super     yes     -                                 -            1.3 GB
+  pm        yes     -                                 idle         1.1 GB
+  arch      yes     -                                 idle         1.4 GB
+  eng1      yes     np-a1f.5 (API endpoints)          in_progress  2.1 GB
+  eng2      yes     np-a1f.6 (Client SDK)             in_progress  1.9 GB
+  qa1       yes     np-a1f.4 (Data model)             in_qa        1.8 GB
+  qa2       no      -                                 agent down        -
+  sec       yes     -                                 idle         1.2 GB
+  shipper   yes     -                                 idle         1.4 GB
+
+$ initech stop arch sec pm
+Stopped arch in session 'newproject'.
+Stopped sec in session 'newproject'.
+Stopped pm in session 'newproject'.
+
+$ initech status
+
+Session: newproject (running, 6 agents, 3 stopped, 10.5 GB total)
+
+  Role      Claude  Bead                              Status          Mem
+  super     yes     -                                 -            1.3 GB
+  pm        -       -                                 stopped           -
+  arch      -       -                                 stopped           -
+  eng1      yes     np-a1f.5 (API endpoints)          in_progress  2.1 GB
+  eng2      yes     np-a1f.6 (Client SDK)             in_progress  1.9 GB
+  qa1       yes     np-a1f.4 (Data model)             in_qa        1.8 GB
+  qa2       no      -                                 agent down        -
+  sec       -       -                                 stopped           -
+  shipper   yes     -                                 idle         1.4 GB
+```
+
+Two weeks later, it's release time. Nelson brings back the shipper (already running) and needs security for a final review.
+
+```
+$ initech start sec
+Started sec in session 'newproject'.
+
+$ initech start sec --bead np-a1f.12
+Started sec in session 'newproject'.
+Dispatched: "[from initech] Security review for np-a1f.12."
+```
+
+The roster flexes with the work. Agents that aren't earning their memory get benched until they're needed.
+
+### 5.7 End the Day
 
 ```
 $ initech down
@@ -230,10 +337,13 @@ The design assumes one human driving the session. Multi-user or multi-machine sc
 
 ### 7.1 MVP Scope (Build This)
 
+- `initech doctor` - prerequisite check with fix instructions
 - `initech init` - interactive and config-driven project bootstrap
 - `initech up` - start tmux session
 - `initech down` - stop with safety warnings
 - `initech status` - agent and bead status table
+- `initech stop <role...>` - stop individual agents to free memory
+- `initech start <role...>` - bring stopped agents back with optional bead dispatch
 - `initech restart <role>` - kill and restart agent
 - `initech standup` - morning standup from beads
 - Role templates for all 11 well-known roles

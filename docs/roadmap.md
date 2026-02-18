@@ -8,6 +8,22 @@ Beads handles the tactical layer (what's ready, who's assigned, what's blocked).
 
 ## 1. Phases
 
+### Phase 0: Discovery and Design
+
+**Goal:** All four project documents (PRD, spec, system design, roadmap) are written and reviewed before a line of code is written. The team has a shared understanding of what to build, why, how, and in what order.
+
+**Work:**
+1. PM writes `docs/prd.md` (problem statement, users, success criteria, user journeys, scope)
+2. Super orchestrates spec discovery: survey existing projects, extract patterns, write `docs/spec.md`
+3. Arch writes `docs/systemdesign.md` (architecture, packages, interfaces, build order)
+4. Super writes `docs/roadmap.md` Phase 1+ (milestones, gates, agent allocation)
+
+**Success gate:** Nelson reviews all four documents. The team can answer: what are we building, why, how, and what ships first? Documents are committed to the coordination repo.
+
+**Beads:** Create one epic for Phase 0. Four beads: Write PRD, Write Spec, Write System Design, Write Roadmap. PM and Arch can work in parallel once the problem statement is clear.
+
+**Note:** Phase 0 is scaffolded into every new project's `docs/roadmap.md` by `initech init`. This is the standard starting process for all initech projects.
+
 ### Phase 1: Foundation
 
 **Goal:** `initech init` + `initech up` work end-to-end. A user can bootstrap a project and start a tmux session with agents from a single config file.
@@ -87,6 +103,7 @@ Plus: root CLAUDE.md template, AGENTS.md template, .gitignore template, Makefile
 ## 2. Milestone Summary
 
 ```
+Phase 0: Discovery      project documents written            [every project starts here]
 Phase 1: Foundation     initech init + up work              [must ship first]
 Phase 2: Visibility     status + down work                  [after Phase 1]
 Phase 3: Operations     restart + standup work              [after Phase 2]
@@ -97,14 +114,14 @@ Phase 5: Distribution   brew install works                   [after Phase 3]
 ### Dependency Graph
 
 ```
-Phase 1 (Foundation)
-   |
-   +---> Phase 2 (Visibility) ---> Phase 3 (Operations) ---> Phase 5 (Distribution)
-   |
-   +---> Phase 4 (Content) [parallel track]
+Phase 0 (Discovery) ---> Phase 1 (Foundation)
+                            |
+                            +---> Phase 2 (Visibility) ---> Phase 3 (Operations) ---> Phase 5 (Distribution)
+                            |
+                            +---> Phase 4 (Content) [parallel track]
 ```
 
-Phase 4 is the only parallelizable track. It's pure content work (writing CLAUDE.md templates) with no architectural risk. An agent can work on templates while other agents build the command infrastructure.
+Phase 0 is the universal starting point for every initech project. It produces the four documents that constrain all subsequent work. Phase 4 is the only parallelizable track after Phase 1. It's pure content work (writing CLAUDE.md templates) with no architectural risk.
 
 ---
 
@@ -112,14 +129,14 @@ Phase 4 is the only parallelizable track. It's pure content work (writing CLAUDE
 
 How work maps to roles in initech's own multi-agent development:
 
-| Role | Phase 1 | Phase 2 | Phase 3 | Phase 4 | Phase 5 |
-|------|---------|---------|---------|---------|---------|
-| super | Coordinate all | Coordinate all | Coordinate all | Review templates | Coordinate release |
-| eng1 | exec, config, roles packages | tmux package, status cmd | restart cmd | - | goreleaser |
-| eng2 | scaffold, git, tmuxinator packages | down cmd | standup cmd | - | homebrew formula |
-| qa1 | Test init + up flow | Test status + down | Test restart + standup | Validate templates | Test install flow |
-| pm | Review spec, write beads | Write beads | Write beads | Write/review templates | Write README |
-| arch | Review system design, ADRs | - | - | Review template architecture | - |
+| Role | Phase 0 | Phase 1 | Phase 2 | Phase 3 | Phase 4 | Phase 5 |
+|------|---------|---------|---------|---------|---------|---------|
+| super | Spec, roadmap | Coordinate all | Coordinate all | Coordinate all | Review templates | Coordinate release |
+| eng1 | - | exec, config, roles | tmux, status cmd | restart cmd | - | goreleaser |
+| eng2 | - | scaffold, git, tmuxinator | down cmd | standup cmd | - | homebrew formula |
+| qa1 | - | Test init + up | Test status + down | Test restart + standup | Validate templates | Test install flow |
+| pm | PRD | Write beads | Write beads | Write beads | Write/review templates | Write README |
+| arch | System design | Review ADRs | - | - | Review template arch | - |
 
 **Key constraint:** eng1 and eng2 work on different packages within the same phase. The package boundaries are designed for this: no shared state, no overlapping files.
 

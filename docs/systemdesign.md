@@ -79,7 +79,7 @@ type Runner interface {
 
 **`internal/config`** - Owns the `initech.yaml` schema. Reads, writes, validates. Exposes types. Does not know about files on disk, tmux, or git.
 
-**`internal/scaffold`** - Owns directory and file creation. Given a config, creates the project tree. Idempotent: checks `os.Stat()` before writing. Does not know about git, tmux, or beads.
+**`internal/scaffold`** - Owns directory and file creation. Given a config, creates the project tree including `docs/` with all four project document templates. Idempotent: checks `os.Stat()` before writing. Does not know about git, tmux, or beads.
 
 **`internal/tmuxinator`** - Owns tmuxinator YAML generation. Given a config, produces session YAML and grid YAML as `[]byte`. Does not know about scaffold, git, or tmux runtime.
 
@@ -339,6 +339,177 @@ Each role template follows the structure from spec section 2.4:
 
 Templates are 100-200 lines each. They provide the skeleton. Project-specific detail gets added over time as the project evolves.
 
+### 3.5 Document Templates
+
+Four inline string constants for the project documents. Same pattern as role templates: Go string constants with `{{variable}}` substitution.
+
+```go
+// internal/roles/doctemplates.go
+
+const PRDTemplate = `# {{project_name}} PRD
+
+The "why" companion to spec.md (the what) and systemdesign.md (the how). Hard cap: 5000 lines.
+
+---
+
+## 1. Problem Statement
+
+### 1.1 The Problem
+<!-- What pain exists today? Who feels it? Why hasn't it been solved? -->
+
+### 1.2 Why Now
+<!-- What changed to make this the right time? -->
+
+---
+
+## 2. User
+
+### 2.1 Primary User
+<!-- Who is this for? Technical proficiency, domain, environment. -->
+
+### 2.2 Secondary Users (Future)
+<!-- Who might use this later? Not a priority for MVP. -->
+
+---
+
+## 3. Success Criteria
+
+### 3.1 Core Success
+<!-- 3-5 concrete conditions that define "this worked." -->
+
+### 3.2 Measurable Checks
+<!-- Observable, testable validation criteria. -->
+
+---
+
+## 4. Non-Goals
+<!-- Things this project explicitly does not do. -->
+
+---
+
+## 5. User Journeys
+<!-- Step-by-step scenarios showing actual CLI usage or interaction. -->
+
+---
+
+## 6. Risks
+<!-- What could go wrong? Mitigation for each. -->
+
+---
+
+## 7. Scope Boundaries
+
+### 7.1 MVP Scope (Build This)
+### 7.2 Post-MVP (Build Later, If Needed)
+### 7.3 Never Build
+`
+
+const SpecTemplate = `# {{project_name}} Spec
+
+Single source of truth for what {{project_name}} does. Hard cap: 5000 lines.
+
+---
+
+## 1. Core Model
+<!-- What is the fundamental abstraction? How does the system work at the highest level? -->
+
+---
+
+## 2. Components
+<!-- What are the major pieces? What does each one do? -->
+
+---
+
+## 3. Behaviors
+<!-- What does the system do in response to user actions? Input -> Output for each. -->
+
+---
+
+## 4. Data Model
+<!-- What data exists? Where does it live? What format? -->
+
+---
+
+## 5. Constraints
+<!-- Hard limits, invariants, things that must always be true. -->
+`
+
+const SystemDesignTemplate = `# {{project_name}} System Design
+
+The "how" companion to spec.md (the "what"). Hard cap: 5000 lines.
+
+---
+
+## 1. Module Structure
+<!-- Package layout, dependency graph, interface boundaries. -->
+
+---
+
+## 2. Data Structures
+<!-- Key types, config format, storage format. -->
+
+---
+
+## 3. Core Algorithms
+<!-- Non-obvious logic. Template rendering, state machines, coordination. -->
+
+---
+
+## 4. Command Implementations
+<!-- For each command: flow, inputs, outputs, error cases. -->
+
+---
+
+## 5. Testing Strategy
+<!-- What gets tested, how, what the test boundaries are. -->
+
+---
+
+## 6. Build Order
+<!-- What to build first, dependency chain, parallelizable work. -->
+`
+
+const RoadmapTemplate = `# {{project_name}} Roadmap
+
+Strategic sequencing: milestones, phases, success gates. Hard cap: 5000 lines.
+
+Beads handles the tactical layer (what's ready, who's assigned, what's blocked). This document captures the strategic layer.
+
+---
+
+## 1. Phases
+
+### Phase 0: Discovery and Design
+
+**Goal:** All four project documents are written and reviewed. The team has a shared understanding of what to build, why, how, and in what order.
+
+**Work:**
+1. PM writes prd.md (problem, users, success criteria, journeys)
+2. Super orchestrates spec discovery (survey existing patterns, define behaviors)
+3. Arch writes systemdesign.md (architecture, packages, interfaces, build order)
+4. Super writes roadmap.md phases 1+ (milestones, gates, agent allocation)
+
+**Success gate:** Nelson reviews all four documents. Team can answer: what are we building, why, how, and what ships first?
+
+**Beads:** Create one epic for Phase 0. Four beads: Write PRD, Write Spec, Write System Design, Write Roadmap. PM and Arch can work in parallel once the problem statement is clear.
+
+### Phase 1: [First Milestone]
+
+**Goal:**
+**Packages to build:**
+**Success gate:**
+**Beads:**
+
+---
+
+## 2. Milestone Summary
+## 3. Agent Allocation
+## 4. Risk Gates
+`
+```
+
+Document templates are 30-60 lines each. The HTML comments inside each section serve as writing prompts that agents replace with actual content. The `roadmap.md` template is the only one with pre-filled content (Phase 0) because the discovery sequence is the same for every project.
+
 ---
 
 ## 4. Command Implementations
@@ -379,11 +550,18 @@ Bootstrap a new project.
 
 9. Write root `AGENTS.md` from agents template.
 
-10. Generate and write tmuxinator configs to `~/.config/tmuxinator/`.
+10. Scaffold project documents:
+    - Create `docs/` directory
+    - Write `docs/prd.md` from PRDTemplate
+    - Write `docs/spec.md` from SpecTemplate
+    - Write `docs/systemdesign.md` from SystemDesignTemplate
+    - Write `docs/roadmap.md` from RoadmapTemplate
 
-11. Initial commit: `git add -A && git commit -m "initech: bootstrap <project>"`
+11. Generate and write tmuxinator configs to `~/.config/tmuxinator/`.
 
-12. Print summary.
+12. Initial commit: `git add -A && git commit -m "initech: bootstrap <project>"`
+
+13. Print summary.
 
 **Idempotency:** Every file write checks `os.Stat()` first. Existing files are not overwritten unless `--force` is passed.
 
