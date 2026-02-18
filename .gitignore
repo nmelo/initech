@@ -1,0 +1,12 @@
+# Build output
+initech
+*.exe
+
+# Beads runtime (JSONL is tracked, DB is not)
+.beads/beads.db
+.beads/beads.db-wal
+.beads/beads.db-shm
+.beads/daemon*.log*
+
+# OS artifacts
+.DS_Store
