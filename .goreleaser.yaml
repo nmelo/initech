@@ -1,0 +1,40 @@
+version: 2
+
+project_name: initech
+
+builds:
+  - binary: initech
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w -X github.com/nmelo/initech/cmd.Version={{.Version}}
+
+archives:
+  - formats:
+      - tar.gz
+    name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
+
+checksum:
+  name_template: checksums.txt
+
+release:
+  draft: false
+  prerelease: auto
+
+homebrew_casks:
+  - repository:
+      owner: nmelo
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    directory: Formula
+    homepage: https://github.com/nmelo/initech
+    description: Bootstrap and manage multi-agent development projects
+    license: MIT
+    binaries:
+      - initech
