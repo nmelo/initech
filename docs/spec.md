@@ -51,7 +51,7 @@ windows:
 
 **Key observations:**
 - One pane per window (no splits). Each window = one agent.
-- `claude --continue` resumes prior conversation state.
+- `claude --continue` resumes prior conversation state. If no prior conversation exists (first run or cleared state), `--continue` fails with "No conversation found." The startup command must handle this gracefully with a fallback: `(claude --continue [flags] || claude [flags])`.
 - Some roles get `--dangerously-skip-permissions`, others don't (see 1.5).
 - `on_project_first_start` guard prevents duplicate sessions.
 - `pre_window` sets env vars (BEADS_DIR) available to all windows.
@@ -948,10 +948,14 @@ When an agent crashes, hangs, or gets stuck:
 tmux kill-window -t <session>:<agent>
 tmux new-window -t <session> -n <agent>
 tmux send-keys -t <session>:<agent> \
-  "cd ~/Desktop/Projects/<project>/<agent> && claude --continue" Enter
+  "cd ~/Desktop/Projects/<project>/<agent> && (claude --continue [flags] || claude [flags])" Enter
 sleep 5
 gn -w <agent> "[from super] Restarted. Resume <bead-id>: <context>"
 ```
+
+The startup command tries `--continue` first to resume prior conversation state. If no conversation exists (first run, cleared state, or new agent), it falls back to a fresh `claude` session. This fallback is required because `claude --continue` exits immediately with "No conversation found" when there's no prior state.
+
+The new-window + send-keys pattern (rather than passing the command to new-window directly) keeps the shell alive as a safety net. If claude exits for any reason, the shell stays and the window doesn't disappear.
 
 The 5-second sleep gives Claude time to initialize and read CLAUDE.md before receiving the dispatch.
 

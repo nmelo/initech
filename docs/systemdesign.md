@@ -632,7 +632,7 @@ Kill and restart a specific agent.
 4. tmux kill-window -t <project>:<role>
 5. tmux new-window -t <project> -n <role>
 6. Build startup command from config/catalog (dir, permission flag)
-7. tmux send-keys -t <project>:<role> "cd <dir> && claude --continue [flags]" Enter
+7. tmux send-keys -t <project>:<role> "cd <dir> && (claude --continue [flags] || claude [flags])" Enter
 8. sleep 5
 9. If --bead <id>: gn -w <role> "[from initech] Restarted. Resume <id>."
 10. Print: "Restarted <role>."
@@ -687,7 +687,7 @@ type TmuxinatorConfig struct {
 **Generation rules:**
 - `pre_window` built from `cfg.Env` (one `export K=V` per line)
 - `startup_window` is the first role in the list (convention: super)
-- Each window gets one pane with `cd <dir> && claude --continue [--dangerously-skip-permissions]`
+- Each window gets one pane with `cd <dir> && (claude --continue [flags] || claude [flags])` to handle first-run gracefully
 - Permission flag comes from the role catalog
 - `on_project_first_start` includes the duplicate session guard
 
