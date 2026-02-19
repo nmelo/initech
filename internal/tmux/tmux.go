@@ -184,6 +184,17 @@ func NewWindow(runner iexec.Runner, session, window string) error {
 	return nil
 }
 
+// NewWindowWithCmd creates a new window and immediately runs a shell command
+// in it. This avoids the race condition between new-window and send-keys
+// where the window isn't addressable by name yet when send-keys fires.
+func NewWindowWithCmd(runner iexec.Runner, session, window, shellCmd string) error {
+	_, err := runner.Run("tmux", "new-window", "-t", session, "-n", window, shellCmd)
+	if err != nil {
+		return fmt.Errorf("new window %s: %w", window, err)
+	}
+	return nil
+}
+
 // SendKeys sends text to a tmux target (session:window format).
 // The text is sent in literal mode (-l) to handle special characters,
 // followed by Enter.

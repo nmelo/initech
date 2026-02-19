@@ -63,18 +63,28 @@ func runStart(cmd *cobra.Command, args []string) error {
 	}
 
 	for _, roleName := range args {
-		// Create new window
+		// Create new window, wait for shell to be ready, then send the
+		// startup command via send-keys. We don't pass the command to
+		// new-window directly because tmux closes the window when that
+		// command exits (e.g., if claude fails to start).
 		if err := tmux.NewWindow(runner, p.Name, roleName); err != nil {
 			fmt.Fprintf(out, "Warning: could not start %s: %v\n", roleName, err)
 			continue
 		}
 
-		// Build and send startup command
+		// Brief pause for the shell to initialize in the new window
+		time.Sleep(500 * time.Millisecond)
+
 		def := roles.LookupRole(roleName)
-		startupCmd := fmt.Sprintf("cd %s/%s && claude --continue", p.Root, roleName)
+		startupCmd := fmt.Sprintf("cd %s/%s && (claude --continue", p.Root, roleName)
 		if def.Permission == roles.Autonomous {
 			startupCmd += " --dangerously-skip-permissions"
 		}
+		startupCmd += " || claude"
+		if def.Permission == roles.Autonomous {
+			startupCmd += " --dangerously-skip-permissions"
+		}
+		startupCmd += ")"
 
 		target := p.Name + ":" + roleName
 		if err := tmux.SendKeys(runner, target, startupCmd); err != nil {
