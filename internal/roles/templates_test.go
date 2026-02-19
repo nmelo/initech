@@ -74,6 +74,50 @@ func TestQATemplate_Renders(t *testing.T) {
 	}
 }
 
+func TestAllRoleTemplates_Render(t *testing.T) {
+	vars := RenderVars{
+		ProjectName: "testproject",
+		ProjectRoot: "/home/user/testproject",
+	}
+
+	tests := []struct {
+		name     string
+		template string
+		contains string // at least one role-specific string to verify identity
+	}{
+		{"PM", PMTemplate, "Product Manager"},
+		{"Arch", ArchTemplate, "Architect"},
+		{"Sec", SecTemplate, "Security"},
+		{"Shipper", ShipperTemplate, "Shipper"},
+		{"PMM", PMMTemplate, "Product Marketing"},
+		{"Writer", WriterTemplate, "Technical Writer"},
+		{"Ops", OpsTemplate, "Operations"},
+		{"Growth", GrowthTemplate, "Growth Engineer"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			out := Render(tt.template, vars)
+
+			if strings.Contains(out, "{{project_name}}") {
+				t.Errorf("%s: project_name not substituted", tt.name)
+			}
+			if !strings.Contains(out, "testproject") {
+				t.Errorf("%s: project name missing", tt.name)
+			}
+			if !strings.Contains(out, tt.contains) {
+				t.Errorf("%s: missing identity string %q", tt.name, tt.contains)
+			}
+			// All templates should have these core sections
+			for _, section := range []string{"Identity", "Communication"} {
+				if !strings.Contains(out, section) {
+					t.Errorf("%s: missing section %q", tt.name, section)
+				}
+			}
+		})
+	}
+}
+
 func TestDocTemplates_Render(t *testing.T) {
 	vars := RenderVars{ProjectName: "myapp"}
 

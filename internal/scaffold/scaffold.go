@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/nmelo/initech/internal/config"
 	"github.com/nmelo/initech/internal/roles"
@@ -147,14 +148,36 @@ func Run(p *config.Project, opts Options) ([]string, error) {
 }
 
 // templateForRole returns the appropriate CLAUDE.md template for a role.
-// Falls back to EngTemplate for roles without a specific template.
+// Matches against known role prefixes (eng1, eng2 both match eng).
+// Falls back to EngTemplate for unknown roles.
 func templateForRole(name string) string {
-	switch {
-	case name == "super":
+	switch name {
+	case "super":
 		return roles.SuperTemplate
-	case name == "qa1" || name == "qa2":
-		return roles.QATemplate
+	case "pm":
+		return roles.PMTemplate
+	case "arch":
+		return roles.ArchTemplate
+	case "sec":
+		return roles.SecTemplate
+	case "shipper":
+		return roles.ShipperTemplate
+	case "pmm":
+		return roles.PMMTemplate
+	case "writer":
+		return roles.WriterTemplate
+	case "ops":
+		return roles.OpsTemplate
+	case "growth":
+		return roles.GrowthTemplate
 	default:
+		// Numbered variants: eng1->Eng, qa1->QA, qa2->QA, qa3->QA
+		if strings.HasPrefix(name, "qa") {
+			return roles.QATemplate
+		}
+		if strings.HasPrefix(name, "eng") {
+			return roles.EngTemplate
+		}
 		return roles.EngTemplate
 	}
 }
