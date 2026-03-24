@@ -3,11 +3,16 @@
 package tui
 
 import (
+	"bufio"
+	"encoding/json"
 	"image/color"
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"strings"
 	"sync"
+	"time"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
@@ -16,16 +21,37 @@ import (
 	"github.com/gdamore/tcell/v2"
 )
 
+// ActivityState describes what an agent is doing based on JSONL session tailing.
+type ActivityState int
+
+const (
+	StateRunning ActivityState = iota // Claude is processing.
+	StateIdle                         // Waiting for input.
+)
+
+// String returns a human-readable label for the state.
+func (s ActivityState) String() string {
+	switch s {
+	case StateRunning:
+		return "running"
+	case StateIdle:
+		return "idle"
+	}
+	return "unknown"
+}
+
 // Pane represents a terminal pane backed by a PTY process.
 // It uses a SafeEmulator from charmbracelet/x/vt for terminal emulation.
 type Pane struct {
-	name string
-	ptmx *os.File
-	cmd  *exec.Cmd
-	emu  *vt.SafeEmulator
-	mu   sync.Mutex
-	alive bool
-	region Region
+	name      string
+	ptmx      *os.File
+	cmd       *exec.Cmd
+	emu       *vt.SafeEmulator
+	mu        sync.Mutex
+	alive     bool
+	activity  ActivityState // Current state from JSONL tailing.
+	jsonlDir  string        // Directory to search for session JSONL files.
+	region    Region
 }
 
 // Region defines a rectangular area on screen (outer bounds including border).
@@ -33,7 +59,7 @@ type Region struct {
 	X, Y, W, H int
 }
 
-// InnerSize returns the usable terminal area (full width, minus 1 row for title bar).
+// InnerSize returns the renderable content area (full width, minus 1 row for title bar).
 func (r Region) InnerSize() (cols, rows int) {
 	cols = r.W
 	rows = r.H - 1
@@ -46,6 +72,7 @@ func (r Region) InnerSize() (cols, rows int) {
 	return
 }
 
+
 // PaneConfig describes how to launch a pane's process.
 type PaneConfig struct {
 	Name    string   // Display name (role name).
@@ -56,17 +83,20 @@ type PaneConfig struct {
 
 // NewPane creates a terminal pane running the configured command (or $SHELL).
 func NewPane(cfg PaneConfig, rows, cols int) (*Pane, error) {
-	argv := cfg.Command
-	if len(argv) == 0 {
+	emu := vt.NewSafeEmulator(cols, rows)
+
+	var cmd *exec.Cmd
+	if len(cfg.Command) == 0 {
+		// No command: run an interactive login shell.
 		shell := os.Getenv("SHELL")
 		if shell == "" {
 			shell = "/bin/bash"
 		}
-		argv = []string{shell, "-l"}
+		cmd = exec.Command(shell, "-l")
+	} else {
+		// Run the command directly, no shell wrapper.
+		cmd = exec.Command(cfg.Command[0], cfg.Command[1:]...)
 	}
-
-	emu := vt.NewSafeEmulator(cols, rows)
-	cmd := exec.Command(argv[0], argv[1:]...)
 	cmd.Env = append(os.Environ(), "TERM=xterm-256color")
 	cmd.Env = append(cmd.Env, cfg.Env...)
 	if cfg.Dir != "" {
@@ -81,12 +111,28 @@ func NewPane(cfg PaneConfig, rows, cols int) (*Pane, error) {
 		return nil, err
 	}
 
+	// Determine the JSONL session directory for this pane.
+	// Standard Claude: ~/.claude/projects/<encoded-cwd>/
+	// CCS: $CLAUDE_CONFIG_DIR/projects/<encoded-cwd>/
+	jsonlDir := ""
+	if cfg.Dir != "" {
+		encodedCwd := encodePathForClaude(cfg.Dir)
+		configDir := os.Getenv("CLAUDE_CONFIG_DIR")
+		if configDir == "" {
+			home, _ := os.UserHomeDir()
+			configDir = filepath.Join(home, ".claude")
+		}
+		jsonlDir = filepath.Join(configDir, "projects", encodedCwd)
+	}
+
 	p := &Pane{
-		name:  cfg.Name,
-		ptmx:  ptmx,
-		cmd:   cmd,
-		emu:   emu,
-		alive: true,
+		name:     cfg.Name,
+		ptmx:     ptmx,
+		cmd:      cmd,
+		emu:      emu,
+		alive:    true,
+		activity: StateIdle,
+		jsonlDir: jsonlDir,
 	}
 
 	// Read PTY output and feed the emulator.
@@ -94,6 +140,11 @@ func NewPane(cfg PaneConfig, rows, cols int) (*Pane, error) {
 
 	// Read emulator responses (DSR, DA) and write them back to the PTY.
 	go p.responseLoop()
+
+	// Watch JSONL session files for activity state.
+	if jsonlDir != "" {
+		go p.watchJSONL()
+	}
 
 	return p, nil
 }
@@ -108,6 +159,7 @@ func (p *Pane) readLoop() {
 		if err != nil {
 			p.mu.Lock()
 			p.alive = false
+			p.activity = StateIdle
 			p.mu.Unlock()
 			return
 		}
@@ -145,8 +197,15 @@ func (p *Pane) Resize(rows, cols int) {
 	})
 }
 
+// Selection describes a text selection range in pane-local content coordinates.
+type Selection struct {
+	Active         bool
+	StartX, StartY int
+	EndX, EndY     int
+}
+
 // Render draws the pane's title bar and terminal content onto the tcell screen.
-func (p *Pane) Render(s tcell.Screen, focused bool) {
+func (p *Pane) Render(s tcell.Screen, focused bool, sel Selection) {
 	r := p.region
 	if r.W < 1 || r.H < 2 {
 		return
@@ -190,8 +249,38 @@ func (p *Pane) Render(s tcell.Screen, focused bool) {
 		}
 	}
 
-	// Cursor.
-	if focused {
+	// Selection highlight (yellow background, black text).
+	if sel.Active {
+		r0, c0, r1, c1 := sel.StartY, sel.StartX, sel.EndY, sel.EndX
+		if r0 > r1 || (r0 == r1 && c0 > c1) {
+			r0, c0, r1, c1 = r1, c1, r0, c0
+		}
+		selStyle := tcell.StyleDefault.Background(tcell.ColorYellow).Foreground(tcell.ColorBlack)
+		for row := r0; row <= r1 && row < innerRows; row++ {
+			sc := 0
+			ec := innerCols
+			if row == r0 {
+				sc = c0
+			}
+			if row == r1 {
+				ec = c1 + 1
+			}
+			if ec > innerCols {
+				ec = innerCols
+			}
+			for col := sc; col < ec; col++ {
+				cell := p.emu.CellAt(col, row)
+				ch := ' '
+				if cell != nil && cell.Content != "" {
+					ch = []rune(cell.Content)[0]
+				}
+				s.SetContent(r.X+col, r.Y+1+row, ch, nil, selStyle)
+			}
+		}
+	}
+
+	// Cursor (skip if selection is active to avoid visual conflict).
+	if focused && !sel.Active {
 		pos := p.emu.CursorPosition()
 		if pos.X < innerCols && pos.Y < innerRows {
 			cx := r.X + pos.X
@@ -209,6 +298,142 @@ func (p *Pane) IsAlive() bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.alive
+}
+
+// Activity returns the current activity state based on JSONL session tailing.
+func (p *Pane) Activity() ActivityState {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.activity
+}
+
+// watchJSONL polls for the newest session JSONL file in the pane's project
+// directory and tails the last line to determine activity state.
+func (p *Pane) watchJSONL() {
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+
+	var lastFile string
+	var lastSize int64
+
+	for {
+		<-ticker.C
+
+		p.mu.Lock()
+		alive := p.alive
+		p.mu.Unlock()
+		if !alive {
+			return
+		}
+
+		// Find the most recently modified .jsonl file in the session dir.
+		file := newestJSONL(p.jsonlDir)
+		if file == "" {
+			continue // No session file yet, stay in starting state.
+		}
+
+		// Check if file changed.
+		info, err := os.Stat(file)
+		if err != nil {
+			continue
+		}
+		size := info.Size()
+		if file == lastFile && size == lastSize {
+			continue // No change.
+		}
+		lastFile = file
+		lastSize = size
+
+		// Read the last line.
+		lastType := lastJSONLType(file)
+		if lastType == "" {
+			continue
+		}
+
+		p.mu.Lock()
+		switch lastType {
+		case "last-prompt":
+			p.activity = StateIdle
+		case "user", "assistant", "progress":
+			p.activity = StateRunning
+		}
+		p.mu.Unlock()
+	}
+}
+
+// newestJSONL finds the most recently modified .jsonl file in dir (non-recursive,
+// excludes subdirectories like subagents/).
+func newestJSONL(dir string) string {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return ""
+	}
+	var newest string
+	var newestTime time.Time
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".jsonl") {
+			continue
+		}
+		info, err := e.Info()
+		if err != nil {
+			continue
+		}
+		if info.ModTime().After(newestTime) {
+			newestTime = info.ModTime()
+			newest = filepath.Join(dir, e.Name())
+		}
+	}
+	return newest
+}
+
+// lastJSONLType reads the last line of a JSONL file and returns its "type" field.
+func lastJSONLType(path string) string {
+	f, err := os.Open(path)
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+
+	// Seek near end and scan for last complete line.
+	info, err := f.Stat()
+	if err != nil {
+		return ""
+	}
+	size := info.Size()
+
+	// Read the last 8KB (should be more than enough for the last JSONL entry).
+	readSize := int64(8192)
+	if readSize > size {
+		readSize = size
+	}
+	f.Seek(size-readSize, 0)
+
+	var lastLine string
+	scanner := bufio.NewScanner(f)
+	scanner.Buffer(make([]byte, 64*1024), 64*1024)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.TrimSpace(line) != "" {
+			lastLine = line
+		}
+	}
+	if lastLine == "" {
+		return ""
+	}
+
+	var entry struct {
+		Type string `json:"type"`
+	}
+	if json.Unmarshal([]byte(lastLine), &entry) != nil {
+		return ""
+	}
+	return entry.Type
+}
+
+// encodePathForClaude converts an absolute path to Claude's directory encoding
+// (slashes replaced with dashes, e.g. /Users/foo/bar -> -Users-foo-bar).
+func encodePathForClaude(path string) string {
+	return strings.ReplaceAll(path, string(filepath.Separator), "-")
 }
 
 // Close terminates the PTY and kills the process.

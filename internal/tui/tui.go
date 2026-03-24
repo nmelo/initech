@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"os/exec"
 	"strconv"
 	"strings"
 	"time"
@@ -44,6 +45,14 @@ type TUI struct {
 	cmdActive bool
 	cmdBuf    []rune
 	cmdError  string // Shown briefly after a bad command.
+
+	// Mouse selection state.
+	selActive bool
+	selPane   int // Index of the pane being selected in.
+	selStartX int // Start position in pane-local content coordinates.
+	selStartY int
+	selEndX   int // Current end position.
+	selEndY   int
 }
 
 // Config controls what agents the TUI launches.
@@ -160,17 +169,121 @@ func (t *TUI) handleMouse(ev *tcell.EventMouse) {
 	if t.cmdActive {
 		return
 	}
-	if ev.Buttons()&tcell.Button1 == 0 {
+	mx, my := ev.Position()
+
+	switch {
+	case ev.Buttons()&tcell.Button1 != 0 && !t.selActive:
+		// Button1 press: start selection and focus the pane.
+		for i, p := range t.panes {
+			r := p.region
+			if mx >= r.X && mx < r.X+r.W && my >= r.Y && my < r.Y+r.H {
+				t.focused = i
+				// Convert to pane-local content coordinates (below title bar).
+				lx := mx - r.X
+				ly := my - r.Y - 1 // -1 for title bar
+				if ly < 0 {
+					ly = 0
+				}
+				t.selActive = true
+				t.selPane = i
+				t.selStartX = lx
+				t.selStartY = ly
+				t.selEndX = lx
+				t.selEndY = ly
+				return
+			}
+		}
+
+	case ev.Buttons()&tcell.Button1 != 0 && t.selActive:
+		// Drag: update selection end.
+		if t.selPane < len(t.panes) {
+			r := t.panes[t.selPane].region
+			lx := mx - r.X
+			ly := my - r.Y - 1
+			cols, rows := r.InnerSize()
+			if lx < 0 {
+				lx = 0
+			}
+			if lx >= cols {
+				lx = cols - 1
+			}
+			if ly < 0 {
+				ly = 0
+			}
+			if ly >= rows {
+				ly = rows - 1
+			}
+			t.selEndX = lx
+			t.selEndY = ly
+		}
+
+	case ev.Buttons() == tcell.ButtonNone && t.selActive:
+		// Release: copy selection to clipboard and clear.
+		t.copySelection()
+		t.selActive = false
+	}
+}
+
+// copySelection extracts selected text from the pane's emulator and copies to clipboard.
+func (t *TUI) copySelection() {
+	if t.selPane >= len(t.panes) {
 		return
 	}
-	mx, my := ev.Position()
-	for i, p := range t.panes {
-		r := p.region
-		if mx >= r.X && mx < r.X+r.W && my >= r.Y && my < r.Y+r.H {
-			t.focused = i
-			return
+	p := t.panes[t.selPane]
+
+	// Normalize selection bounds (start may be after end).
+	r0, c0, r1, c1 := t.selStartY, t.selStartX, t.selEndY, t.selEndX
+	if r0 > r1 || (r0 == r1 && c0 > c1) {
+		r0, c0, r1, c1 = r1, c1, r0, c0
+	}
+
+	cols, rows := p.region.InnerSize()
+	if r1 >= rows {
+		r1 = rows - 1
+	}
+
+	var buf strings.Builder
+	for row := r0; row <= r1; row++ {
+		startCol := 0
+		endCol := cols
+		if row == r0 {
+			startCol = c0
+		}
+		if row == r1 {
+			endCol = c1 + 1
+		}
+		if endCol > cols {
+			endCol = cols
+		}
+
+		// Collect characters from the emulator.
+		var line strings.Builder
+		for col := startCol; col < endCol; col++ {
+			cell := p.emu.CellAt(col, row)
+			if cell != nil && cell.Content != "" {
+				line.WriteString(cell.Content)
+			} else {
+				line.WriteByte(' ')
+			}
+		}
+
+		// Trim trailing spaces per line.
+		text := strings.TrimRight(line.String(), " ")
+		buf.WriteString(text)
+		if row < r1 {
+			buf.WriteByte('\n')
 		}
 	}
+
+	text := buf.String()
+	if text == "" {
+		return
+	}
+
+	// Copy to macOS clipboard via pbcopy.
+	cmd := exec.Command("pbcopy")
+	cmd.Stdin = strings.NewReader(text)
+	cmd.Run()
 }
 
 func (t *TUI) handleKey(ev *tcell.EventKey) bool {
@@ -537,13 +650,15 @@ func (t *TUI) render() {
 
 	if t.zoomed || t.layout == LayoutFocus {
 		if t.focused >= 0 && t.focused < len(t.panes) {
-			t.panes[t.focused].Render(s, true)
+			sel := t.selectionFor(t.focused)
+			t.panes[t.focused].Render(s, true, sel)
 		}
 	} else {
 		regions := t.calcRegions(t.screenSize())
 		for i, p := range t.panes {
 			if i < len(regions) {
-				p.Render(s, i == t.focused)
+				sel := t.selectionFor(i)
+				p.Render(s, i == t.focused, sel)
 			}
 		}
 		// Draw thin black vertical dividers between columns.
@@ -566,6 +681,18 @@ func (t *TUI) render() {
 
 func (t *TUI) screenSize() (int, int) {
 	return t.screen.Size()
+}
+
+// selectionFor returns the selection state for a given pane index.
+func (t *TUI) selectionFor(paneIdx int) Selection {
+	if !t.selActive || t.selPane != paneIdx {
+		return Selection{}
+	}
+	return Selection{
+		Active: true,
+		StartX: t.selStartX, StartY: t.selStartY,
+		EndX: t.selEndX, EndY: t.selEndY,
+	}
 }
 
 // renderGridDividers draws thin black vertical lines between pane columns.
@@ -671,18 +798,14 @@ func (t *TUI) renderOverlay() {
 	agents := make([]AgentInfo, len(t.panes))
 	maxNameLen := 0
 	for i, p := range t.panes {
-		agents[i] = AgentInfo{Name: p.name}
-		if p.IsAlive() {
-			agents[i].Status = "active"
-		} else {
-			agents[i].Status = "dead"
-		}
+		state := p.Activity()
+		agents[i] = AgentInfo{Name: p.name, Status: state.String()}
 		if len(p.name) > maxNameLen {
 			maxNameLen = len(p.name)
 		}
 	}
 
-	statusMaxLen := 6 // "active"
+	statusMaxLen := 8 // "thinking"
 	panelW := 4 + maxNameLen + 1 + statusMaxLen + 2
 	panelH := len(agents) + 2
 
@@ -729,14 +852,19 @@ func (t *TUI) renderOverlay() {
 			s.SetContent(x, row, ' ', nil, bgStyle)
 		}
 
-		// Status dot.
+		// Status dot (color per activity state).
 		dot := '\u25cf'
-		dotStyle := bgStyle.Foreground(tcell.ColorGreen)
-		if a.Status != "active" {
+		var dotColor tcell.Color
+		switch a.Status {
+		case "running":
+			dotColor = tcell.ColorGreen
+		case "idle":
 			dot = '\u25cb'
-			dotStyle = bgStyle.Foreground(tcell.ColorGray)
+			dotColor = tcell.ColorGray
+		default:
+			dotColor = tcell.ColorGray
 		}
-		s.SetContent(px+2, row, dot, nil, dotStyle)
+		s.SetContent(px+2, row, dot, nil, bgStyle.Foreground(dotColor))
 
 		// Name.
 		nameStyle := bgStyle.Foreground(tcell.ColorWhite)
