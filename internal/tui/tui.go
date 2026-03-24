@@ -1,0 +1,772 @@
+package tui
+
+import (
+	"fmt"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/gdamore/tcell/v2"
+)
+
+// LayoutMode determines how panes are arranged on screen.
+type LayoutMode int
+
+const (
+	LayoutFocus LayoutMode = iota // Single pane, full screen.
+	LayoutGrid                    // Arbitrary NxM grid.
+	Layout2Col                    // Main pane left, stacked right.
+)
+
+// AgentInfo describes an agent for the status overlay.
+type AgentInfo struct {
+	Name   string
+	Status string // "active", "idle", "stopped", "dead"
+}
+
+// TUI is the main terminal multiplexer. It owns the tcell screen,
+// a set of terminal panes, and handles input routing, layout, and rendering.
+type TUI struct {
+	screen  tcell.Screen
+	panes   []*Pane
+	focused int
+	layout  LayoutMode
+	gridCols int // Used when layout == LayoutGrid.
+	gridRows int
+	zoomed  bool // When true, focused pane is full screen regardless of layout.
+	overlay bool
+	agents  []string
+
+	// Tracked screen dimensions for detecting resize.
+	lastW, lastH int
+
+	// Command modal state.
+	cmdActive bool
+	cmdBuf    []rune
+	cmdError  string // Shown briefly after a bad command.
+}
+
+// Config controls what agents the TUI launches.
+type Config struct {
+	Agents []PaneConfig // One entry per agent pane.
+}
+
+// DefaultConfig returns a config with standard shell-only agents.
+func DefaultConfig() Config {
+	names := []string{"super", "eng1", "eng2", "qa1"}
+	agents := make([]PaneConfig, len(names))
+	for i, n := range names {
+		agents[i] = PaneConfig{Name: n}
+	}
+	return Config{Agents: agents}
+}
+
+// Run starts the TUI event loop. Blocks until the user quits.
+func Run(cfg Config) error {
+	screen, err := tcell.NewScreen()
+	if err != nil {
+		return fmt.Errorf("create screen: %w", err)
+	}
+	if err := screen.Init(); err != nil {
+		return fmt.Errorf("init screen: %w", err)
+	}
+	screen.EnableMouse()
+	screen.EnablePaste()
+	defer screen.Fini()
+
+	n := len(cfg.Agents)
+	gridCols, gridRows := autoGrid(n)
+
+	// Extract agent names for layout calculations.
+	agentNames := make([]string, n)
+	for i, a := range cfg.Agents {
+		agentNames[i] = a.Name
+	}
+
+	t := &TUI{
+		screen:   screen,
+		layout:   LayoutGrid,
+		gridCols: gridCols,
+		gridRows: gridRows,
+		overlay:  true,
+		agents:   agentNames,
+	}
+
+	// Calculate initial layout.
+	w, h := screen.Size()
+	regions := t.calcRegions(w, h)
+
+	// Create panes.
+	for i, acfg := range cfg.Agents {
+		r := regions[i%len(regions)]
+		cols, rows := r.InnerSize()
+		p, err := NewPane(acfg, rows, cols)
+		if err != nil {
+			for _, existing := range t.panes {
+				existing.Close()
+			}
+			return fmt.Errorf("create pane %q: %w", acfg.Name, err)
+		}
+		p.region = r
+		t.panes = append(t.panes, p)
+	}
+	defer func() {
+		for _, p := range t.panes {
+			p.Close()
+		}
+	}()
+
+	// Poll tcell events in a goroutine.
+	eventCh := make(chan tcell.Event, 64)
+	go func() {
+		for {
+			ev := screen.PollEvent()
+			if ev == nil {
+				return
+			}
+			eventCh <- ev
+		}
+	}()
+
+	// Render at ~30 fps.
+	ticker := time.NewTicker(33 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case ev := <-eventCh:
+			if t.handleEvent(ev) {
+				return nil
+			}
+		case <-ticker.C:
+			t.render()
+		}
+	}
+}
+
+func (t *TUI) handleEvent(ev tcell.Event) bool {
+	switch ev := ev.(type) {
+	case *tcell.EventKey:
+		return t.handleKey(ev)
+	case *tcell.EventMouse:
+		t.handleMouse(ev)
+	case *tcell.EventResize:
+		t.handleResize()
+	}
+	return false
+}
+
+func (t *TUI) handleMouse(ev *tcell.EventMouse) {
+	if t.cmdActive {
+		return
+	}
+	if ev.Buttons()&tcell.Button1 == 0 {
+		return
+	}
+	mx, my := ev.Position()
+	for i, p := range t.panes {
+		r := p.region
+		if mx >= r.X && mx < r.X+r.W && my >= r.Y && my < r.Y+r.H {
+			t.focused = i
+			return
+		}
+	}
+}
+
+func (t *TUI) handleKey(ev *tcell.EventKey) bool {
+	// Command modal intercepts all input when active.
+	if t.cmdActive {
+		return t.handleCmdKey(ev)
+	}
+
+	// Clear any lingering error message on next keypress.
+	t.cmdError = ""
+
+	// Backtick opens the command modal.
+	if ev.Key() == tcell.KeyRune && ev.Rune() == '`' && ev.Modifiers() == 0 {
+		t.cmdActive = true
+		t.cmdBuf = t.cmdBuf[:0]
+		t.cmdError = ""
+		return false
+	}
+
+	// Alt-key combos are TUI shortcuts.
+	if ev.Modifiers()&tcell.ModAlt != 0 {
+		switch ev.Key() {
+		case tcell.KeyLeft:
+			t.cycleFocus(-1)
+			return false
+		case tcell.KeyRight:
+			t.cycleFocus(1)
+			return false
+		case tcell.KeyUp:
+			t.cycleFocus(-1)
+			return false
+		case tcell.KeyDown:
+			t.cycleFocus(1)
+			return false
+		case tcell.KeyRune:
+			switch ev.Rune() {
+			case '1':
+				t.layout = LayoutFocus
+				t.zoomed = false
+				t.relayout()
+				return false
+			case '2':
+				t.setGrid(2, 2)
+				return false
+			case '3':
+				t.setGrid(3, 3)
+				return false
+			case '4':
+				t.layout = Layout2Col
+				t.zoomed = false
+				t.relayout()
+				return false
+			case 's':
+				t.overlay = !t.overlay
+				return false
+			case 'z':
+				t.zoomed = !t.zoomed
+				t.relayout()
+				return false
+			case 'q':
+				return true
+			}
+		}
+	}
+
+	// Everything else goes to the focused pane.
+	if t.focused >= 0 && t.focused < len(t.panes) {
+		t.panes[t.focused].SendKey(ev)
+	}
+	return false
+}
+
+// handleCmdKey processes key events while the command modal is open.
+func (t *TUI) handleCmdKey(ev *tcell.EventKey) bool {
+	switch ev.Key() {
+	case tcell.KeyEscape:
+		t.cmdActive = false
+		t.cmdBuf = t.cmdBuf[:0]
+		return false
+	case tcell.KeyEnter:
+		cmd := strings.TrimSpace(string(t.cmdBuf))
+		t.cmdActive = false
+		t.cmdBuf = t.cmdBuf[:0]
+		return t.execCmd(cmd)
+	case tcell.KeyBackspace, tcell.KeyBackspace2:
+		if len(t.cmdBuf) > 0 {
+			t.cmdBuf = t.cmdBuf[:len(t.cmdBuf)-1]
+		}
+		return false
+	case tcell.KeyRune:
+		// Backtick while empty closes the modal.
+		if ev.Rune() == '`' && len(t.cmdBuf) == 0 {
+			t.cmdActive = false
+			return false
+		}
+		t.cmdBuf = append(t.cmdBuf, ev.Rune())
+		return false
+	}
+	return false
+}
+
+// execCmd parses and executes a command string. Returns true if the TUI should quit.
+func (t *TUI) execCmd(cmd string) bool {
+	if cmd == "" {
+		return false
+	}
+
+	parts := strings.Fields(cmd)
+	switch parts[0] {
+	case "grid":
+		if len(parts) < 2 {
+			// No argument: auto-calculate optimal grid.
+			c, r := autoGrid(len(t.panes))
+			t.setGrid(c, r)
+			return false
+		}
+		cols, rows, ok := parseGrid(parts[1], len(t.panes))
+		if !ok {
+			t.cmdError = fmt.Sprintf("invalid grid %q, use CxR or just C (e.g. 3x3, 4)", parts[1])
+			return false
+		}
+		t.setGrid(cols, rows)
+
+	case "focus":
+		if len(parts) < 2 {
+			// No argument: switch to focus mode on current pane.
+			t.layout = LayoutFocus
+			t.zoomed = false
+			t.relayout()
+			return false
+		}
+		name := parts[1]
+		for i, p := range t.panes {
+			if p.name == name {
+				t.focused = i
+				t.layout = LayoutFocus
+				t.zoomed = false
+				t.relayout()
+				return false
+			}
+		}
+		t.cmdError = fmt.Sprintf("unknown agent %q", name)
+
+	case "zoom":
+		t.zoomed = !t.zoomed
+		t.relayout()
+
+	case "panel":
+		t.overlay = !t.overlay
+
+	case "main":
+		t.layout = Layout2Col
+		t.zoomed = false
+		t.relayout()
+
+	case "quit", "q":
+		return true
+
+	default:
+		t.cmdError = fmt.Sprintf("unknown command %q", parts[0])
+	}
+	return false
+}
+
+// parseGrid parses "CxR" or just "C" (auto-calculating rows from numPanes).
+func parseGrid(s string, numPanes int) (cols, rows int, ok bool) {
+	s = strings.ToLower(s)
+	if strings.Contains(s, "x") {
+		parts := strings.SplitN(s, "x", 2)
+		if len(parts) != 2 {
+			return 0, 0, false
+		}
+		c, err1 := strconv.Atoi(parts[0])
+		r, err2 := strconv.Atoi(parts[1])
+		if err1 != nil || err2 != nil || c < 1 || r < 1 || c > 10 || r > 10 {
+			return 0, 0, false
+		}
+		return c, r, true
+	}
+	// Just a column count; auto-calculate rows.
+	c, err := strconv.Atoi(s)
+	if err != nil || c < 1 || c > 10 {
+		return 0, 0, false
+	}
+	r := (numPanes + c - 1) / c
+	return c, r, true
+}
+
+func (t *TUI) setGrid(cols, rows int) {
+	t.layout = LayoutGrid
+	t.gridCols = cols
+	t.gridRows = rows
+	t.zoomed = false
+	t.relayout()
+}
+
+func (t *TUI) handleResize() {
+	t.screen.Sync()
+	t.relayout()
+}
+
+func (t *TUI) cycleFocus(delta int) {
+	if len(t.panes) == 0 {
+		return
+	}
+	t.focused = (t.focused + delta + len(t.panes)) % len(t.panes)
+}
+
+func (t *TUI) relayout() {
+	w, h := t.screen.Size()
+	regions := t.calcRegions(w, h)
+	for i, p := range t.panes {
+		r := regions[i%len(regions)]
+		p.region = r
+		cols, rows := r.InnerSize()
+		p.Resize(rows, cols)
+	}
+}
+
+// calcRegions computes pane regions for the current layout.
+// Regions are calculated for exactly len(t.agents) panes, filling the screen.
+// The last row may have fewer columns and those panes expand to fill the width.
+func (t *TUI) calcRegions(screenW, screenH int) []Region {
+	n := len(t.agents)
+	if n == 0 {
+		return nil
+	}
+
+	if t.zoomed || t.layout == LayoutFocus {
+		return []Region{{X: 0, Y: 0, W: screenW, H: screenH}}
+	}
+
+	switch t.layout {
+	case LayoutGrid:
+		return calcPaneGrid(t.gridCols, t.gridRows, n, screenW, screenH)
+	case Layout2Col:
+		return calcMainVertical(n, screenW, screenH)
+	default:
+		return calcPaneGrid(t.gridCols, t.gridRows, n, screenW, screenH)
+	}
+}
+
+// autoGrid picks grid dimensions that minimize waste for n panes.
+func autoGrid(n int) (cols, rows int) {
+	switch {
+	case n <= 1:
+		return 1, 1
+	case n <= 2:
+		return 2, 1
+	case n <= 4:
+		return 2, 2
+	case n <= 6:
+		return 3, 2
+	case n <= 8:
+		return 4, 2
+	case n <= 9:
+		return 3, 3
+	case n <= 12:
+		return 4, 3
+	default:
+		cols = 4
+		rows = (n + cols - 1) / cols
+		return
+	}
+}
+
+// calcPaneGrid generates exactly numPanes regions arranged in a grid.
+// Full rows have gridCols columns. The last row gets the remaining panes,
+// and those panes expand to fill the full width.
+func calcPaneGrid(gridCols, gridRows, numPanes, screenW, screenH int) []Region {
+	if numPanes <= 0 {
+		return nil
+	}
+
+	// Number of rows actually needed.
+	rows := (numPanes + gridCols - 1) / gridCols
+	if rows > gridRows {
+		rows = gridRows
+	}
+
+	// Row heights: divide screen evenly.
+	cellH := screenH / rows
+	extraH := screenH - cellH*rows
+
+	regions := make([]Region, 0, numPanes)
+	y := 0
+	placed := 0
+	for r := 0; r < rows && placed < numPanes; r++ {
+		h := cellH
+		if r < extraH {
+			h++
+		}
+
+		// How many panes in this row?
+		colsThisRow := gridCols
+		remaining := numPanes - placed
+		if remaining < gridCols {
+			colsThisRow = remaining
+		}
+
+		// Column widths for this row.
+		cellW := screenW / colsThisRow
+		extraW := screenW - cellW*colsThisRow
+
+		x := 0
+		for c := 0; c < colsThisRow; c++ {
+			w := cellW
+			if c < extraW {
+				w++
+			}
+			regions = append(regions, Region{X: x, Y: y, W: w, H: h})
+			x += w
+			placed++
+		}
+		y += h
+	}
+	return regions
+}
+
+// calcMainVertical creates a layout with a large pane on the left
+// and stacked panes on the right.
+func calcMainVertical(n, screenW, screenH int) []Region {
+	if n <= 1 {
+		return []Region{{X: 0, Y: 0, W: screenW, H: screenH}}
+	}
+
+	leftW := screenW * 60 / 100
+	rightW := screenW - leftW
+	rightCount := n - 1
+	if rightCount < 1 {
+		rightCount = 1
+	}
+
+	regions := make([]Region, 0, n)
+	regions = append(regions, Region{X: 0, Y: 0, W: leftW, H: screenH})
+
+	cellH := screenH / rightCount
+	extraH := screenH - cellH*rightCount
+	y := 0
+	for i := 0; i < rightCount; i++ {
+		h := cellH
+		if i < extraH {
+			h++
+		}
+		regions = append(regions, Region{X: leftW, Y: y, W: rightW, H: h})
+		y += h
+	}
+	return regions
+}
+
+// render draws all visible panes, the overlay, and the command modal.
+func (t *TUI) render() {
+	s := t.screen
+
+	// Detect dimension changes (font resize, window resize).
+	w, h := s.Size()
+	if w != t.lastW || h != t.lastH {
+		t.lastW = w
+		t.lastH = h
+		t.relayout()
+	}
+
+	s.Clear()
+
+	if t.zoomed || t.layout == LayoutFocus {
+		if t.focused >= 0 && t.focused < len(t.panes) {
+			t.panes[t.focused].Render(s, true)
+		}
+	} else {
+		regions := t.calcRegions(t.screenSize())
+		for i, p := range t.panes {
+			if i < len(regions) {
+				p.Render(s, i == t.focused)
+			}
+		}
+		// Draw thin black vertical dividers between columns.
+		t.renderGridDividers(regions)
+	}
+
+	if t.overlay {
+		t.renderOverlay()
+	}
+
+	// Command modal or error message at the bottom.
+	if t.cmdActive {
+		t.renderCmdLine()
+	} else if t.cmdError != "" {
+		t.renderCmdError()
+	}
+
+	s.Show()
+}
+
+func (t *TUI) screenSize() (int, int) {
+	return t.screen.Size()
+}
+
+// renderGridDividers draws thin black vertical lines between pane columns.
+// Each row may have different column boundaries, so dividers are drawn per-row.
+func (t *TUI) renderGridDividers(regions []Region) {
+	if len(regions) < 2 {
+		return
+	}
+	s := t.screen
+	divStyle := tcell.StyleDefault.Foreground(tcell.ColorBlack)
+
+	// Group regions by row (same Y value).
+	type rowInfo struct {
+		y, h int
+		xs   []int // X positions > 0 (column boundaries within this row)
+	}
+	rowMap := make(map[int]*rowInfo)
+	for _, r := range regions {
+		ri, ok := rowMap[r.Y]
+		if !ok {
+			ri = &rowInfo{y: r.Y, h: r.H}
+			rowMap[r.Y] = ri
+		}
+		if r.X > 0 {
+			ri.xs = append(ri.xs, r.X)
+		}
+	}
+
+	for _, ri := range rowMap {
+		for _, x := range ri.xs {
+			for y := ri.y; y < ri.y+ri.h; y++ {
+				s.SetContent(x-1, y, '\u2502', nil, divStyle)
+			}
+		}
+	}
+}
+
+// renderCmdLine draws the command input bar at the bottom of the screen.
+func (t *TUI) renderCmdLine() {
+	s := t.screen
+	sw, sh := s.Size()
+	y := sh - 1
+
+	// Background for the entire line.
+	bgStyle := tcell.StyleDefault.Background(tcell.ColorDarkSlateGray)
+	for x := 0; x < sw; x++ {
+		s.SetContent(x, y, ' ', nil, bgStyle)
+	}
+
+	// Prompt.
+	promptStyle := bgStyle.Foreground(tcell.ColorYellow).Bold(true)
+	s.SetContent(0, y, '>', nil, promptStyle)
+	s.SetContent(1, y, ' ', nil, bgStyle)
+
+	// Input text.
+	textStyle := bgStyle.Foreground(tcell.ColorWhite)
+	for i, ch := range t.cmdBuf {
+		if 2+i < sw {
+			s.SetContent(2+i, y, ch, nil, textStyle)
+		}
+	}
+
+	// Cursor.
+	cursorPos := 2 + len(t.cmdBuf)
+	if cursorPos < sw {
+		cursorStyle := tcell.StyleDefault.Background(tcell.ColorWhite).Foreground(tcell.ColorBlack)
+		s.SetContent(cursorPos, y, ' ', nil, cursorStyle)
+	}
+
+	// Hint text on the right.
+	hint := "Enter:run  Esc:cancel"
+	hintStyle := bgStyle.Foreground(tcell.ColorGray)
+	hintStart := sw - len(hint) - 1
+	if hintStart > cursorPos+2 {
+		for i, ch := range hint {
+			s.SetContent(hintStart+i, y, ch, nil, hintStyle)
+		}
+	}
+}
+
+// renderCmdError draws an error message at the bottom of the screen.
+func (t *TUI) renderCmdError() {
+	s := t.screen
+	sw, sh := s.Size()
+	y := sh - 1
+
+	errStyle := tcell.StyleDefault.Background(tcell.ColorDarkRed).Foreground(tcell.ColorWhite)
+	for x := 0; x < sw; x++ {
+		s.SetContent(x, y, ' ', nil, errStyle)
+	}
+	msg := " " + t.cmdError
+	for i, ch := range msg {
+		if i < sw {
+			s.SetContent(i, y, ch, nil, errStyle)
+		}
+	}
+}
+
+// renderOverlay draws the floating agent status panel.
+func (t *TUI) renderOverlay() {
+	s := t.screen
+
+	agents := make([]AgentInfo, len(t.panes))
+	maxNameLen := 0
+	for i, p := range t.panes {
+		agents[i] = AgentInfo{Name: p.name}
+		if p.IsAlive() {
+			agents[i].Status = "active"
+		} else {
+			agents[i].Status = "dead"
+		}
+		if len(p.name) > maxNameLen {
+			maxNameLen = len(p.name)
+		}
+	}
+
+	statusMaxLen := 6 // "active"
+	panelW := 4 + maxNameLen + 1 + statusMaxLen + 2
+	panelH := len(agents) + 2
+
+	sw, sh := s.Size()
+	px := sw - panelW - 1
+	py := 1
+	if px < 0 {
+		px = 0
+	}
+	if px+panelW > sw {
+		panelW = sw - px
+	}
+	if py+panelH > sh {
+		panelH = sh - py
+	}
+	if panelW < 10 || panelH < 3 {
+		return
+	}
+
+	bgStyle := tcell.StyleDefault.Background(tcell.ColorDarkBlue)
+	borderStyle := tcell.StyleDefault.Foreground(tcell.ColorWhite).Background(tcell.ColorDarkBlue)
+
+	// Top border with title.
+	s.SetContent(px, py, '\u250c', nil, borderStyle)
+	title := " Agents "
+	for i := 1; i < panelW-1; i++ {
+		ch := '\u2500'
+		if i-1 < len(title) {
+			ch = rune(title[i-1])
+		}
+		s.SetContent(px+i, py, ch, nil, borderStyle)
+	}
+	s.SetContent(px+panelW-1, py, '\u2510', nil, borderStyle)
+
+	// Agent rows.
+	for i, a := range agents {
+		if i+2 >= panelH {
+			break
+		}
+		row := py + 1 + i
+
+		s.SetContent(px, row, '\u2502', nil, borderStyle)
+		for x := px + 1; x < px+panelW-1; x++ {
+			s.SetContent(x, row, ' ', nil, bgStyle)
+		}
+
+		// Status dot.
+		dot := '\u25cf'
+		dotStyle := bgStyle.Foreground(tcell.ColorGreen)
+		if a.Status != "active" {
+			dot = '\u25cb'
+			dotStyle = bgStyle.Foreground(tcell.ColorGray)
+		}
+		s.SetContent(px+2, row, dot, nil, dotStyle)
+
+		// Name.
+		nameStyle := bgStyle.Foreground(tcell.ColorWhite)
+		if i == t.focused {
+			nameStyle = bgStyle.Foreground(tcell.ColorYellow).Bold(true)
+		}
+		for j, ch := range a.Name {
+			if px+4+j < px+panelW-1 {
+				s.SetContent(px+4+j, row, ch, nil, nameStyle)
+			}
+		}
+
+		// Status text.
+		statusStyle := bgStyle.Foreground(tcell.ColorSilver)
+		statusCol := px + 4 + maxNameLen + 1
+		for j, ch := range a.Status {
+			if statusCol+j < px+panelW-1 {
+				s.SetContent(statusCol+j, row, ch, nil, statusStyle)
+			}
+		}
+
+		s.SetContent(px+panelW-1, row, '\u2502', nil, borderStyle)
+	}
+
+	// Bottom border.
+	botRow := py + panelH - 1
+	s.SetContent(px, botRow, '\u2514', nil, borderStyle)
+	for i := 1; i < panelW-1; i++ {
+		s.SetContent(px+i, botRow, '\u2500', nil, borderStyle)
+	}
+	s.SetContent(px+panelW-1, botRow, '\u2518', nil, borderStyle)
+
+}
