@@ -1,0 +1,15 @@
+project: initech
+root: /Users/nmelo/Desktop/projects/initech
+repos:
+    - url: github.com:nmelo/initech.git
+      name: initech
+beads:
+    prefix: ini
+roles:
+    - super
+    - pm
+    - eng1
+    - eng2
+    - qa1
+    - qa2
+    - shipper
