@@ -44,15 +44,18 @@ func (s ActivityState) String() string {
 // Pane represents a terminal pane backed by a PTY process.
 // It uses a SafeEmulator from charmbracelet/x/vt for terminal emulation.
 type Pane struct {
-	name      string
-	ptmx      *os.File
-	cmd       *exec.Cmd
-	emu       *vt.SafeEmulator
-	mu        sync.Mutex
-	alive     bool
-	activity  ActivityState // Current state from JSONL tailing.
-	jsonlDir  string        // Directory to search for session JSONL files.
-	region    Region
+	name          string
+	ptmx          *os.File
+	cmd           *exec.Cmd
+	emu           *vt.SafeEmulator
+	mu            sync.Mutex
+	alive         bool
+	activity      ActivityState // Current state from JSONL tailing.
+	lastJsonlType string       // Last JSONL entry type seen.
+	lastJsonlTime time.Time    // When we last saw a file change.
+	jsonlDir      string       // Directory to search for session JSONL files.
+	sessionDesc   string       // Session description extracted from cursor row.
+	region        Region
 }
 
 // Region defines a rectangular area on screen (outer bounds including border).
@@ -236,7 +239,7 @@ func (p *Pane) Render(s tcell.Screen, focused bool, sel Selection) {
 		s.SetContent(x, r.Y, '\u2500', nil, fillStyle)
 	}
 
-	// Pane name.
+	// Pane name + session description.
 	title := " " + p.name + " "
 	if !p.IsAlive() {
 		title = " " + p.name + " [dead] "
@@ -245,6 +248,18 @@ func (p *Pane) Render(s tcell.Screen, focused bool, sel Selection) {
 	for i, ch := range title {
 		if r.X+1+i < r.X+r.W {
 			s.SetContent(r.X+1+i, r.Y, ch, nil, titleStyle)
+		}
+	}
+	// Session description after the name badge.
+	desc := p.SessionDesc()
+	if desc != "" {
+		descStr := " (" + desc + ") "
+		descStyle := fillStyle.Foreground(tcell.ColorGray)
+		startCol := r.X + 1 + len([]rune(title)) + 1
+		for i, ch := range descStr {
+			if startCol+i < r.X+r.W {
+				s.SetContent(startCol+i, r.Y, ch, nil, descStyle)
+			}
 		}
 	}
 
@@ -257,9 +272,16 @@ func (p *Pane) Render(s tcell.Screen, focused bool, sel Selection) {
 	renderOffset := 0 // screen rows to skip before rendering emulator row 0
 	startRow := 0     // first emulator row to render
 	if !p.emu.IsAltScreen() {
-		// Find the last non-empty row in the emulator.
+		// Anchor content to the bottom. Scan up to 1 row BEFORE the cursor
+		// for the content extent. The cursor row often has Claude's session
+		// description which we extract for the title bar instead.
+		pos := p.emu.CursorPosition()
+		scanEnd := pos.Y - 1
+		if scanEnd < 0 {
+			scanEnd = 0
+		}
 		lastContent := 0
-		for row := emuRows - 1; row >= 0; row-- {
+		for row := scanEnd; row >= 0; row-- {
 			empty := true
 			for col := 0; col < innerCols; col++ {
 				cell := p.emu.CellAt(col, row)
@@ -278,6 +300,22 @@ func (p *Pane) Render(s tcell.Screen, focused bool, sel Selection) {
 			renderOffset = innerRows - contentEnd
 		} else if contentEnd > innerRows {
 			startRow = contentEnd - innerRows
+		}
+
+		// Extract the cursor row text as the session description.
+		if pos.Y < emuRows {
+			var desc strings.Builder
+			for col := 0; col < innerCols; col++ {
+				cell := p.emu.CellAt(col, pos.Y)
+				if cell != nil && cell.Content != "" {
+					desc.WriteString(cell.Content)
+				} else {
+					desc.WriteByte(' ')
+				}
+			}
+			p.mu.Lock()
+			p.sessionDesc = strings.TrimSpace(desc.String())
+			p.mu.Unlock()
 		}
 	}
 	for row := 0; row < innerRows; row++ {
@@ -344,6 +382,13 @@ func (p *Pane) IsAlive() bool {
 	return p.alive
 }
 
+// SessionDesc returns the session description extracted from Claude's cursor row.
+func (p *Pane) SessionDesc() string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.sessionDesc
+}
+
 // Activity returns the current activity state based on JSONL session tailing.
 func (p *Pane) Activity() ActivityState {
 	p.mu.Lock()
@@ -382,24 +427,37 @@ func (p *Pane) watchJSONL() {
 			continue
 		}
 		size := info.Size()
-		if file == lastFile && size == lastSize {
-			continue // No change.
-		}
-		lastFile = file
-		lastSize = size
+		fileChanged := file != lastFile || size != lastSize
 
-		// Read the last line.
-		lastType := lastJSONLType(file)
-		if lastType == "" {
-			continue
+		if fileChanged {
+			lastFile = file
+			lastSize = size
+
+			lastType := lastJSONLType(file)
+			if lastType != "" {
+				p.mu.Lock()
+				p.lastJsonlType = lastType
+				p.lastJsonlTime = time.Now()
+				p.mu.Unlock()
+			}
 		}
 
+		// Update activity state (runs every tick, even without file changes,
+		// so the assistant→idle timeout works).
 		p.mu.Lock()
-		switch lastType {
-		case "last-prompt":
-			p.activity = StateIdle
-		case "user", "assistant", "progress":
+		switch p.lastJsonlType {
+		case "user", "progress":
 			p.activity = StateRunning
+		case "assistant":
+			// Assistant entry: running if recent, idle if stale (5s).
+			if time.Since(p.lastJsonlTime) > 5*time.Second {
+				p.activity = StateIdle
+			} else {
+				p.activity = StateRunning
+			}
+		default:
+			// last-prompt, system, agent-color, agent-name, etc. = idle.
+			p.activity = StateIdle
 		}
 		p.mu.Unlock()
 	}
