@@ -65,10 +65,15 @@ func runTUI(cmd *cobra.Command, args []string) error {
 	for _, roleName := range proj.Roles {
 		def := roles.LookupRole(roleName)
 
-		// Build claude command.
-		argv := []string{"claude", "--continue"}
-		if def.Permission == roles.Autonomous {
-			argv = append(argv, "--dangerously-skip-permissions")
+		// Build agent command. INITECH_MOCK_AGENT overrides for testing.
+		var argv []string
+		if mock := os.Getenv("INITECH_MOCK_AGENT"); mock != "" {
+			argv = []string{mock}
+		} else {
+			argv = []string{"claude"}
+			if def.Permission == roles.Autonomous {
+				argv = append(argv, "--dangerously-skip-permissions")
+			}
 		}
 
 		// Working directory: <root>/<role>/

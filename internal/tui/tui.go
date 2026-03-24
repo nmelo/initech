@@ -41,6 +41,7 @@ type TUI struct {
 	// Tracked screen dimensions for detecting resize.
 	lastW, lastH int
 
+
 	// Command modal state.
 	cmdActive bool
 	cmdBuf    []rune
@@ -92,6 +93,10 @@ func Run(cfg Config) error {
 		agentNames[i] = a.Name
 	}
 
+	// Pre-read screen dimensions so the first render doesn't trigger a
+	// spurious relayout (which would resize PTYs during Claude's init).
+	initW, initH := screen.Size()
+
 	t := &TUI{
 		screen:   screen,
 		layout:   LayoutGrid,
@@ -99,6 +104,8 @@ func Run(cfg Config) error {
 		gridRows: gridRows,
 		overlay:  true,
 		agents:   agentNames,
+		lastW:    initW,
+		lastH:    initH,
 	}
 
 	// Calculate initial layout.

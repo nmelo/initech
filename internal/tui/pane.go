@@ -5,6 +5,7 @@ package tui
 import (
 	"bufio"
 	"encoding/json"
+	"fmt"
 	"image/color"
 	"io"
 	"os"
@@ -85,19 +86,27 @@ type PaneConfig struct {
 func NewPane(cfg PaneConfig, rows, cols int) (*Pane, error) {
 	emu := vt.NewSafeEmulator(cols, rows)
 
+	shell := os.Getenv("SHELL")
+	if shell == "" {
+		shell = "/bin/bash"
+	}
+
 	var cmd *exec.Cmd
 	if len(cfg.Command) == 0 {
 		// No command: run an interactive login shell.
-		shell := os.Getenv("SHELL")
-		if shell == "" {
-			shell = "/bin/bash"
-		}
 		cmd = exec.Command(shell, "-l")
 	} else {
-		// Run the command directly, no shell wrapper.
-		cmd = exec.Command(cfg.Command[0], cfg.Command[1:]...)
+		// Run via login shell + exec so the terminal gets proper stty
+		// initialization before Claude starts (Claude depends on a
+		// shell-initialized PTY for correct terminal size detection).
+		cmdStr := strings.Join(cfg.Command, " ")
+		cmd = exec.Command(shell, "-l", "-c", "exec "+cmdStr)
 	}
-	cmd.Env = append(os.Environ(), "TERM=xterm-256color")
+	cmd.Env = append(os.Environ(),
+		"TERM=xterm-256color",
+		fmt.Sprintf("LINES=%d", rows),
+		fmt.Sprintf("COLUMNS=%d", cols),
+	)
 	cmd.Env = append(cmd.Env, cfg.Env...)
 	if cfg.Dir != "" {
 		cmd.Dir = cfg.Dir
@@ -240,10 +249,44 @@ func (p *Pane) Render(s tcell.Screen, focused bool, sel Selection) {
 	}
 
 	// Terminal content (starts at Y+1, fills full width).
+	// When not in alt screen mode, push content to the bottom of the pane
+	// (Claude Code uses inline mode and renders from the top, leaving
+	// empty rows below the cursor).
 	innerCols, innerRows := r.InnerSize()
+	emuRows := p.emu.Height()
+	renderOffset := 0 // screen rows to skip before rendering emulator row 0
+	startRow := 0     // first emulator row to render
+	if !p.emu.IsAltScreen() {
+		// Find the last non-empty row in the emulator.
+		lastContent := 0
+		for row := emuRows - 1; row >= 0; row-- {
+			empty := true
+			for col := 0; col < innerCols; col++ {
+				cell := p.emu.CellAt(col, row)
+				if cell != nil && cell.Content != "" && cell.Content != " " {
+					empty = false
+					break
+				}
+			}
+			if !empty {
+				lastContent = row
+				break
+			}
+		}
+		contentEnd := lastContent + 1
+		if contentEnd < innerRows {
+			renderOffset = innerRows - contentEnd
+		} else if contentEnd > innerRows {
+			startRow = contentEnd - innerRows
+		}
+	}
 	for row := 0; row < innerRows; row++ {
+		emuRow := startRow + (row - renderOffset)
+		if emuRow < 0 || emuRow >= emuRows {
+			continue
+		}
 		for col := 0; col < innerCols; col++ {
-			cell := p.emu.CellAt(col, row)
+			cell := p.emu.CellAt(col, emuRow)
 			ch, style := uvCellToTcell(cell)
 			s.SetContent(r.X+col, r.Y+1+row, ch, nil, style)
 		}
@@ -282,9 +325,10 @@ func (p *Pane) Render(s tcell.Screen, focused bool, sel Selection) {
 	// Cursor (skip if selection is active to avoid visual conflict).
 	if focused && !sel.Active {
 		pos := p.emu.CursorPosition()
-		if pos.X < innerCols && pos.Y < innerRows {
+		visRow := pos.Y - startRow + renderOffset
+		if pos.X >= 0 && pos.X < innerCols && visRow >= 0 && visRow < innerRows {
 			cx := r.X + pos.X
-			cy := r.Y + 1 + pos.Y
+			cy := r.Y + 1 + visRow
 			cell := p.emu.CellAt(pos.X, pos.Y)
 			ch, _ := uvCellToTcell(cell)
 			cursorStyle := tcell.StyleDefault.Background(tcell.ColorWhite).Foreground(tcell.ColorBlack)
@@ -310,7 +354,7 @@ func (p *Pane) Activity() ActivityState {
 // watchJSONL polls for the newest session JSONL file in the pane's project
 // directory and tails the last line to determine activity state.
 func (p *Pane) watchJSONL() {
-	ticker := time.NewTicker(2 * time.Second)
+	ticker := time.NewTicker(500 * time.Millisecond)
 	defer ticker.Stop()
 
 	var lastFile string
