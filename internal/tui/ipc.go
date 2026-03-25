@@ -83,6 +83,14 @@ func (t *TUI) handleIPCConn(conn net.Conn) {
 		t.handleIPCPeek(conn, req)
 	case "list":
 		t.handleIPCList(conn)
+	case "stop":
+		t.handleIPCStop(conn, req)
+	case "start":
+		t.handleIPCStart(conn, req)
+	case "restart":
+		t.handleIPCRestart(conn, req)
+	case "quit":
+		t.handleIPCQuit(conn)
 	default:
 		writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("unknown action %q", req.Action)})
 	}
@@ -246,6 +254,98 @@ func hasStuckInput(p *Pane) bool {
 		return false // No prompt visible, Claude is generating.
 	}
 	return lastPromptContent != ""
+}
+
+func (t *TUI) handleIPCStop(conn net.Conn, req IPCRequest) {
+	if req.Target == "" {
+		writeIPCResponse(conn, IPCResponse{Error: "target is required"})
+		return
+	}
+	pane := t.findPane(req.Target)
+	if pane == nil {
+		writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("pane %q not found", req.Target)})
+		return
+	}
+	if !pane.IsAlive() {
+		writeIPCResponse(conn, IPCResponse{OK: true, Data: "already stopped"})
+		return
+	}
+	pane.Close()
+	writeIPCResponse(conn, IPCResponse{OK: true})
+}
+
+func (t *TUI) handleIPCStart(conn net.Conn, req IPCRequest) {
+	if req.Target == "" {
+		writeIPCResponse(conn, IPCResponse{Error: "target is required"})
+		return
+	}
+	idx := -1
+	for i, p := range t.panes {
+		if p.name == req.Target {
+			idx = i
+			break
+		}
+	}
+	if idx < 0 {
+		writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("pane %q not found", req.Target)})
+		return
+	}
+	old := t.panes[idx]
+	if old.IsAlive() {
+		writeIPCResponse(conn, IPCResponse{OK: true, Data: "already running"})
+		return
+	}
+	cols, rows := old.emu.Width(), old.emu.Height()
+	np, err := NewPane(old.cfg, rows, cols)
+	if err != nil {
+		writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("start failed: %v", err)})
+		return
+	}
+	np.region = old.region
+	t.panes[idx] = np
+	t.applyLayout()
+	writeIPCResponse(conn, IPCResponse{OK: true})
+}
+
+func (t *TUI) handleIPCRestart(conn net.Conn, req IPCRequest) {
+	if req.Target == "" {
+		writeIPCResponse(conn, IPCResponse{Error: "target is required"})
+		return
+	}
+	idx := -1
+	for i, p := range t.panes {
+		if p.name == req.Target {
+			idx = i
+			break
+		}
+	}
+	if idx < 0 {
+		writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("pane %q not found", req.Target)})
+		return
+	}
+	old := t.panes[idx]
+	cols, rows := old.emu.Width(), old.emu.Height()
+	old.Close()
+	np, err := NewPane(old.cfg, rows, cols)
+	if err != nil {
+		writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("restart failed: %v", err)})
+		return
+	}
+	np.region = old.region
+	t.panes[idx] = np
+	t.applyLayout()
+	writeIPCResponse(conn, IPCResponse{OK: true})
+}
+
+// quitCh is used by handleIPCQuit to signal the event loop to exit.
+// Set by Run() before starting the IPC server.
+var quitCh chan struct{}
+
+func (t *TUI) handleIPCQuit(conn net.Conn) {
+	writeIPCResponse(conn, IPCResponse{OK: true})
+	if quitCh != nil {
+		close(quitCh)
+	}
 }
 
 func writeIPCResponse(conn net.Conn, resp IPCResponse) {

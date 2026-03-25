@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/nmelo/initech/internal/config"
 	"github.com/nmelo/initech/internal/tui"
 	"github.com/spf13/cobra"
 )
@@ -51,13 +52,19 @@ func runSend(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// ipcCall sends a request to the TUI's IPC socket and returns the response.
+// ipcCall sends a request to the TUI's IPC socket (from INITECH_SOCKET env)
+// and returns the response.
 func ipcCall(req tui.IPCRequest) (*tui.IPCResponse, error) {
 	sockPath := os.Getenv("INITECH_SOCKET")
 	if sockPath == "" {
 		return nil, fmt.Errorf("INITECH_SOCKET not set (are you running inside initech TUI?)")
 	}
+	return ipcCallSocket(sockPath, req)
+}
 
+// ipcCallSocket sends a request to the TUI's IPC socket at the given path.
+// Used by commands that run outside the TUI and derive the socket path from config.
+func ipcCallSocket(sockPath string, req tui.IPCRequest) (*tui.IPCResponse, error) {
 	conn, err := net.Dial("unix", sockPath)
 	if err != nil {
 		return nil, fmt.Errorf("connect to TUI: %w", err)
@@ -78,4 +85,26 @@ func ipcCall(req tui.IPCRequest) (*tui.IPCResponse, error) {
 		return nil, fmt.Errorf("invalid response: %w", err)
 	}
 	return &resp, nil
+}
+
+// discoverSocket finds the IPC socket path for the current project.
+// Returns the socket path and project config, or an error.
+func discoverSocket() (string, *config.Project, error) {
+	wd, err := os.Getwd()
+	if err != nil {
+		return "", nil, fmt.Errorf("get working directory: %w", err)
+	}
+	cfgPath, err := config.Discover(wd)
+	if err != nil {
+		return "", nil, fmt.Errorf("no initech.yaml found. Run 'initech init' first")
+	}
+	p, err := config.Load(cfgPath)
+	if err != nil {
+		return "", nil, fmt.Errorf("load config: %w", err)
+	}
+	sockPath := tui.SocketPath(p.Name)
+	if _, err := os.Stat(sockPath); os.IsNotExist(err) {
+		return "", nil, fmt.Errorf("session '%s' is not running. Use 'initech' to start", p.Name)
+	}
+	return sockPath, p, nil
 }

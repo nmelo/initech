@@ -177,6 +177,9 @@ func Run(cfg Config) error {
 		projectRoot: cfg.ProjectRoot,
 	}
 
+	// Initialize quit channel for IPC quit action.
+	quitCh = make(chan struct{})
+
 	// Start IPC socket server for inter-agent messaging.
 	sockPath := SocketPath(cfg.ProjectName)
 	if err := t.startIPC(sockPath); err != nil {
@@ -240,6 +243,8 @@ func Run(cfg Config) error {
 			}
 		case <-ticker.C:
 			t.render()
+		case <-quitCh:
+			return nil
 		}
 	}
 }
