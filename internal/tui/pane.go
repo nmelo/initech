@@ -651,6 +651,8 @@ func newestJSONL(dir string) string {
 }
 
 // lastJSONLType reads the last line of a JSONL file and returns its "type" field.
+// Reads backward from the end in progressively larger chunks to handle
+// large JSONL entries (e.g., tool-use results > 8KB).
 func lastJSONLType(path string) string {
 	f, err := os.Open(path)
 	if err != nil {
@@ -658,40 +660,48 @@ func lastJSONLType(path string) string {
 	}
 	defer f.Close()
 
-	// Seek near end and scan for last complete line.
 	info, err := f.Stat()
 	if err != nil {
 		return ""
 	}
 	size := info.Size()
-
-	// Read the last 8KB (should be more than enough for the last JSONL entry).
-	readSize := int64(8192)
-	if readSize > size {
-		readSize = size
+	if size == 0 {
+		return ""
 	}
-	f.Seek(size-readSize, 0)
 
-	var lastLine string
-	scanner := bufio.NewScanner(f)
-	scanner.Buffer(make([]byte, 64*1024), 64*1024)
-	for scanner.Scan() {
-		line := scanner.Text()
-		if strings.TrimSpace(line) != "" {
-			lastLine = line
+	// Try progressively larger windows from the end.
+	for _, windowSize := range []int64{8192, 32768, 131072} {
+		readSize := windowSize
+		if readSize > size {
+			readSize = size
+		}
+		f.Seek(size-readSize, 0)
+
+		var lastLine string
+		scanner := bufio.NewScanner(f)
+		scanner.Buffer(make([]byte, 256*1024), 256*1024)
+		for scanner.Scan() {
+			line := scanner.Text()
+			if strings.TrimSpace(line) != "" {
+				lastLine = line
+			}
+		}
+		if lastLine == "" {
+			continue
+		}
+
+		var entry struct {
+			Type string `json:"type"`
+		}
+		if json.Unmarshal([]byte(lastLine), &entry) == nil && entry.Type != "" {
+			return entry.Type
+		}
+		// The last line didn't parse (truncated mid-entry). Try a larger window.
+		if readSize >= size {
+			break // Already read the whole file, nothing more to try.
 		}
 	}
-	if lastLine == "" {
-		return ""
-	}
-
-	var entry struct {
-		Type string `json:"type"`
-	}
-	if json.Unmarshal([]byte(lastLine), &entry) != nil {
-		return ""
-	}
-	return entry.Type
+	return ""
 }
 
 // encodePathForClaude converts an absolute path to Claude's directory encoding
