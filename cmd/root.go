@@ -17,7 +17,10 @@ var rootCmd = &cobra.Command{
 	Short: "Bootstrap and manage multi-agent development projects",
 	Long: `Initech captures local software development patterns into a reproducible,
 bootstrappable system. It manages tmux sessions where each window is an
-autonomous Claude Code agent with a defined role.`,
+autonomous Claude Code agent with a defined role.
+
+Running initech with no subcommand launches the TUI.`,
+	RunE: runTUI,
 }
 
 // Execute runs the root command.
