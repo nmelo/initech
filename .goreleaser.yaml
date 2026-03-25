@@ -30,7 +30,7 @@ release:
   draft: false
   prerelease: auto
 
-homebrew_casks:
+brews:
   - repository:
       owner: nmelo
       name: homebrew-tap
@@ -39,5 +39,7 @@ homebrew_casks:
     homepage: https://github.com/nmelo/initech
     description: Bootstrap and manage multi-agent development projects
     license: MIT
-    binaries:
-      - initech
+    install: |
+      bin.install "initech"
+    test: |
+      system "#{bin}/initech", "version"
