@@ -1,8 +1,10 @@
 # initech
 
-A Go CLI that bootstraps and manages multi-agent development projects. Each project runs as a tmux session where every window is an autonomous Claude Code agent with a defined role.
+A TUI-based multi-agent orchestrator for Claude Code. Manages PTY-based agent panes, IPC messaging, and session lifecycle for running multiple Claude Code agents in parallel.
 
 Named after the company from Office Space.
+
+![initech TUI](screenshot.png)
 
 ## Install
 
