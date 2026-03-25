@@ -697,14 +697,14 @@ func (t *TUI) render() {
 	if t.zoomed || t.layout == LayoutFocus {
 		if t.focused >= 0 && t.focused < len(t.panes) {
 			sel := t.selectionFor(t.focused)
-			t.panes[t.focused].Render(s, true, sel)
+			t.panes[t.focused].Render(s, true, sel, false)
 		}
 	} else {
 		regions := t.calcRegions(t.screenSize())
 		for i, p := range t.panes {
 			if i < len(regions) {
 				sel := t.selectionFor(i)
-				p.Render(s, i == t.focused, sel)
+				p.Render(s, i == t.focused, sel, true)
 			}
 		}
 		// Draw thin black vertical dividers between columns.
