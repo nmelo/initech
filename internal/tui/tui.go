@@ -21,8 +21,9 @@ const (
 
 // AgentInfo describes an agent for the status overlay.
 type AgentInfo struct {
-	Name   string
-	Status string // "active", "idle", "stopped", "dead"
+	Name    string
+	Status  string // "running", "idle"
+	Visible bool
 }
 
 // TUI is the main terminal multiplexer. It owns the tcell screen,
@@ -813,17 +814,27 @@ func (t *TUI) selectionFor(paneIdx int) Selection {
 	}
 }
 
-// renderFocusBorder draws DodgerBlue vertical borders on the focused pane.
-// Called after renderGridDividers so the border isn't overwritten by dividers.
+// renderFocusBorder highlights the focused pane's left and right edges.
+// Instead of drawing U+2502 (which overwrites content like the prompt character),
+// it tints the background of existing cells to DodgerBlue, preserving their content.
+// Called after renderGridDividers so the tint isn't overwritten by dividers.
 func (t *TUI) renderFocusBorder() {
 	if t.focused < 0 || t.focused >= len(t.panes) {
 		return
 	}
-	r := t.panes[t.focused].region
-	borderStyle := tcell.StyleDefault.Foreground(tcell.ColorDodgerBlue)
+	p := t.panes[t.focused]
+	if !p.Visible() {
+		return
+	}
+	r := p.region
+	s := t.screen
 	for y := r.Y + 1; y < r.Y+r.H; y++ {
-		t.screen.SetContent(r.X, y, '\u2502', nil, borderStyle)
-		t.screen.SetContent(r.X+r.W-1, y, '\u2502', nil, borderStyle)
+		// Left edge: preserve content, tint background.
+		mainc, combc, style, _ := s.GetContent(r.X, y)
+		s.SetContent(r.X, y, mainc, combc, style.Background(tcell.ColorDodgerBlue))
+		// Right edge.
+		mainc, combc, style, _ = s.GetContent(r.X+r.W-1, y)
+		s.SetContent(r.X+r.W-1, y, mainc, combc, style.Background(tcell.ColorDodgerBlue))
 	}
 }
 
@@ -929,17 +940,29 @@ func (t *TUI) renderOverlay() {
 
 	agents := make([]AgentInfo, len(t.panes))
 	maxNameLen := 0
+	hiddenCount := 0
 	for i, p := range t.panes {
 		state := p.Activity()
-		agents[i] = AgentInfo{Name: p.name, Status: state.String()}
-		if len(p.name) > maxNameLen {
-			maxNameLen = len(p.name)
+		vis := p.Visible()
+		agents[i] = AgentInfo{Name: p.name, Status: state.String(), Visible: vis}
+		nameLen := len(p.name)
+		if !vis {
+			nameLen += 4 // " [h]"
+			hiddenCount++
+		}
+		if nameLen > maxNameLen {
+			maxNameLen = nameLen
 		}
 	}
 
 	statusMaxLen := 8 // "thinking"
 	panelW := 4 + maxNameLen + 1 + statusMaxLen + 2
+	// Extra row for summary line when there are hidden panes.
+	summaryRow := hiddenCount > 0
 	panelH := len(agents) + 2
+	if summaryRow {
+		panelH++
+	}
 
 	sw, sh := s.Size()
 	px := sw - panelW - 1
@@ -998,19 +1021,36 @@ func (t *TUI) renderOverlay() {
 		}
 		s.SetContent(px+2, row, dot, nil, bgStyle.Foreground(dotColor))
 
-		// Name.
+		// Name (dimmed for hidden panes).
 		nameStyle := bgStyle.Foreground(tcell.ColorWhite)
 		if i == t.focused {
 			nameStyle = bgStyle.Foreground(tcell.ColorYellow).Bold(true)
+		} else if !a.Visible {
+			nameStyle = bgStyle.Foreground(tcell.ColorDarkGray)
 		}
-		for j, ch := range a.Name {
-			if px+4+j < px+panelW-1 {
-				s.SetContent(px+4+j, row, ch, nil, nameStyle)
+		col := px + 4
+		for _, ch := range a.Name {
+			if col < px+panelW-1 {
+				s.SetContent(col, row, ch, nil, nameStyle)
+			}
+			col++
+		}
+		// Hidden marker.
+		if !a.Visible {
+			markerStyle := bgStyle.Foreground(tcell.ColorDarkGray)
+			for _, ch := range " [h]" {
+				if col < px+panelW-1 {
+					s.SetContent(col, row, ch, nil, markerStyle)
+				}
+				col++
 			}
 		}
 
 		// Status text.
 		statusStyle := bgStyle.Foreground(tcell.ColorSilver)
+		if !a.Visible {
+			statusStyle = bgStyle.Foreground(tcell.ColorDarkGray)
+		}
 		statusCol := px + 4 + maxNameLen + 1
 		for j, ch := range a.Status {
 			if statusCol+j < px+panelW-1 {
@@ -1021,6 +1061,26 @@ func (t *TUI) renderOverlay() {
 		s.SetContent(px+panelW-1, row, '\u2502', nil, borderStyle)
 	}
 
+	// Summary line (only when hidden panes exist).
+	if summaryRow {
+		sumRow := py + 1 + len(agents)
+		if sumRow+1 < py+panelH {
+			s.SetContent(px, sumRow, '\u2502', nil, borderStyle)
+			for x := px + 1; x < px+panelW-1; x++ {
+				s.SetContent(x, sumRow, ' ', nil, bgStyle)
+			}
+			visCount := len(agents) - hiddenCount
+			summary := fmt.Sprintf(" %d visible, %d hidden", visCount, hiddenCount)
+			sumStyle := bgStyle.Foreground(tcell.ColorSilver)
+			for j, ch := range summary {
+				if px+1+j < px+panelW-1 {
+					s.SetContent(px+1+j, sumRow, ch, nil, sumStyle)
+				}
+			}
+			s.SetContent(px+panelW-1, sumRow, '\u2502', nil, borderStyle)
+		}
+	}
+
 	// Bottom border.
 	botRow := py + panelH - 1
 	s.SetContent(px, botRow, '\u2514', nil, borderStyle)
@@ -1028,5 +1088,4 @@ func (t *TUI) renderOverlay() {
 		s.SetContent(px+i, botRow, '\u2500', nil, borderStyle)
 	}
 	s.SetContent(px+panelW-1, botRow, '\u2518', nil, borderStyle)
-
 }
