@@ -70,8 +70,13 @@ func runTUI(cmd *cobra.Command, args []string) error {
 		if mock := os.Getenv("INITECH_MOCK_AGENT"); mock != "" {
 			argv = []string{mock}
 		} else {
-			argv = []string{"claude"}
-			// Per-role claude_args override global, which overrides catalog default.
+			// Base command: claude_command or default ["claude"].
+			if len(proj.ClaudeCommand) > 0 {
+				argv = append(argv, proj.ClaudeCommand...)
+			} else {
+				argv = []string{"claude"}
+			}
+			// Args: per-role override > global > catalog default.
 			if ov, ok := proj.RoleOverrides[roleName]; ok && ov.ClaudeArgs != nil {
 				argv = append(argv, ov.ClaudeArgs...)
 			} else if len(proj.ClaudeArgs) > 0 {

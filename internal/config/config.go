@@ -27,6 +27,7 @@ type Project struct {
 	Beads         BeadsConfig             `yaml:"beads,omitempty"`
 	Roles         []string                `yaml:"roles"`
 	Grid          []string                `yaml:"grid,omitempty"`
+	ClaudeCommand []string                `yaml:"claude_command,omitempty"`
 	ClaudeArgs    []string                `yaml:"claude_args,omitempty"`
 	RoleOverrides map[string]RoleOverride `yaml:"role_overrides,omitempty"`
 }
