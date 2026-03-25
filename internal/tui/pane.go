@@ -297,46 +297,14 @@ func (p *Pane) Render(s tcell.Screen, focused bool, sel Selection) {
 	}
 
 	// These variables are used by both the live rendering and cursor logic below.
-	renderOffset := 0 // screen rows to skip before rendering emulator row 0
-	startRow := 0     // first emulator row to render
+	startRow, renderOffset := p.contentOffset()
 
 	if p.scrollOffset == 0 {
 		// Live mode: anchor content to the bottom of the pane.
-		// Claude Code uses inline mode and renders from the top, leaving
-		// empty rows below the cursor.
 		if !p.emu.IsAltScreen() {
-			// Anchor content to the bottom. Scan up to 1 row BEFORE the cursor
-			// for the content extent. The cursor row often has Claude's session
-			// description which we extract for the title bar instead.
-			pos := p.emu.CursorPosition()
-			scanEnd := pos.Y - 1
-			if scanEnd < 0 {
-				scanEnd = 0
-			}
-			lastContent := 0
-			for row := scanEnd; row >= 0; row-- {
-				empty := true
-				for col := 0; col < innerCols; col++ {
-					cell := p.emu.CellAt(col, row)
-					if cell != nil && cell.Content != "" && cell.Content != " " {
-						empty = false
-						break
-					}
-				}
-				if !empty {
-					lastContent = row
-					break
-				}
-			}
-			contentEnd := lastContent + 1
-			if contentEnd < innerRows {
-				renderOffset = innerRows - contentEnd
-			} else if contentEnd > innerRows {
-				startRow = contentEnd - innerRows
-			}
-
 			// Extract the cursor row text as the session description.
 			// Only update if non-empty (resizes temporarily clear the cursor row).
+			pos := p.emu.CursorPosition()
 			if pos.Y < emuRows {
 				var desc strings.Builder
 				for col := 0; col < innerCols; col++ {
@@ -380,6 +348,10 @@ func (p *Pane) Render(s tcell.Screen, focused bool, sel Selection) {
 			}
 			selStyle := tcell.StyleDefault.Background(tcell.ColorYellow).Foreground(tcell.ColorBlack)
 			for row := r0; row <= r1 && row < innerRows; row++ {
+				emuRow := startRow + (row - renderOffset)
+				if emuRow < 0 || emuRow >= emuRows {
+					continue
+				}
 				sc := 0
 				ec := innerCols
 				if row == r0 {
@@ -392,7 +364,7 @@ func (p *Pane) Render(s tcell.Screen, focused bool, sel Selection) {
 					ec = innerCols
 				}
 				for col := sc; col < ec; col++ {
-					cell := p.emu.CellAt(col, row)
+					cell := p.emu.CellAt(col, emuRow)
 					ch := ' '
 					if cell != nil && cell.Content != "" {
 						ch = []rune(cell.Content)[0]
@@ -417,6 +389,46 @@ func (p *Pane) Render(s tcell.Screen, focused bool, sel Selection) {
 		}
 	}
 
+}
+
+// contentOffset computes the mapping from screen-local content rows to
+// emulator rows for bottom-anchored (non-alt-screen) content. In alt-screen
+// mode or scrollback mode, the mapping is identity (both return 0).
+//
+// Usage: emuRow = startRow + (screenRow - renderOffset)
+func (p *Pane) contentOffset() (startRow, renderOffset int) {
+	if p.scrollOffset > 0 || p.emu.IsAltScreen() {
+		return 0, 0
+	}
+
+	innerCols, innerRows := p.region.InnerSize()
+	pos := p.emu.CursorPosition()
+	scanEnd := pos.Y - 1
+	if scanEnd < 0 {
+		scanEnd = 0
+	}
+	lastContent := 0
+	for row := scanEnd; row >= 0; row-- {
+		empty := true
+		for col := 0; col < innerCols; col++ {
+			cell := p.emu.CellAt(col, row)
+			if cell != nil && cell.Content != "" && cell.Content != " " {
+				empty = false
+				break
+			}
+		}
+		if !empty {
+			lastContent = row
+			break
+		}
+	}
+	contentEnd := lastContent + 1
+	if contentEnd < innerRows {
+		renderOffset = innerRows - contentEnd
+	} else if contentEnd > innerRows {
+		startRow = contentEnd - innerRows
+	}
+	return
 }
 
 // IsAlive returns whether the pane's shell process is still running.

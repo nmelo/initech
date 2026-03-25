@@ -279,8 +279,18 @@ func (t *TUI) copySelection() {
 		r1 = rows - 1
 	}
 
+	// Translate screen-local rows to emulator rows. In non-alt-screen mode
+	// content is bottom-anchored, so screen row 0 may not be emulator row 0.
+	startRow, renderOffset := p.contentOffset()
+	emuRows := p.emu.Height()
+
 	var buf strings.Builder
 	for row := r0; row <= r1; row++ {
+		emuRow := startRow + (row - renderOffset)
+		if emuRow < 0 || emuRow >= emuRows {
+			continue
+		}
+
 		startCol := 0
 		endCol := cols
 		if row == r0 {
@@ -296,7 +306,7 @@ func (t *TUI) copySelection() {
 		// Collect characters from the emulator.
 		var line strings.Builder
 		for col := startCol; col < endCol; col++ {
-			cell := p.emu.CellAt(col, row)
+			cell := p.emu.CellAt(col, emuRow)
 			if cell != nil && cell.Content != "" {
 				line.WriteString(cell.Content)
 			} else {
