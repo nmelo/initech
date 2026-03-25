@@ -51,6 +51,7 @@ type Pane struct {
 	emu           *vt.SafeEmulator
 	mu            sync.Mutex
 	alive         bool
+	visible       bool          // Whether this pane is shown in the layout. Hidden panes keep running.
 	activity      ActivityState // Current state from JSONL tailing.
 	lastJsonlType string       // Last JSONL entry type seen.
 	lastJsonlTime time.Time    // When we last saw a file change.
@@ -146,6 +147,7 @@ func NewPane(cfg PaneConfig, rows, cols int) (*Pane, error) {
 		cmd:      cmd,
 		emu:      emu,
 		alive:    true,
+		visible:  true,
 		activity: StateIdle,
 		jsonlDir: jsonlDir,
 	}
@@ -422,6 +424,22 @@ func (p *Pane) IsAlive() bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.alive
+}
+
+// Visible returns whether the pane is included in the current layout.
+// Hidden panes keep their emulator running at their last visible size.
+func (p *Pane) Visible() bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.visible
+}
+
+// SetVisible controls whether the pane appears in the layout.
+// Hiding a pane does not stop its process or resize its emulator.
+func (p *Pane) SetVisible(v bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.visible = v
 }
 
 // SessionDesc returns the session description extracted from Claude's cursor row.
