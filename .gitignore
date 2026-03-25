@@ -2,6 +2,7 @@
 initech
 initech-tui
 *.exe
+dist/
 
 # OS artifacts
 .DS_Store
