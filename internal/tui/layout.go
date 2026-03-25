@@ -51,6 +51,7 @@ type RenderPlan struct {
 type PaneRender struct {
 	Pane    *Pane
 	Region  Region
+	Index   int  // 1-based pane number (position in full pane list).
 	Focused bool // Receives keyboard input.
 	Dimmed  bool // Render with reduced contrast.
 }
@@ -69,6 +70,12 @@ func computeLayout(state LayoutState, panes []*Pane, screenW, screenH int) Rende
 	plan := RenderPlan{ScreenW: screenW, ScreenH: screenH}
 	if len(panes) == 0 || screenW < 1 || screenH < 1 {
 		return plan
+	}
+
+	// Build pane index map (1-based, from position in full pane list).
+	paneIndex := make(map[string]int, len(panes))
+	for i, p := range panes {
+		paneIndex[p.name] = i + 1
 	}
 
 	// 1. Filter visible panes (preserve order).
@@ -109,6 +116,7 @@ func computeLayout(state LayoutState, panes []*Pane, screenW, screenH int) Rende
 				plan.Panes = append(plan.Panes, PaneRender{
 					Pane:    p,
 					Region:  regions[0],
+					Index:   paneIndex[p.name],
 					Focused: true,
 					Dimmed:  false,
 				})
@@ -137,6 +145,7 @@ func computeLayout(state LayoutState, panes []*Pane, screenW, screenH int) Rende
 		plan.Panes = append(plan.Panes, PaneRender{
 			Pane:    p,
 			Region:  regions[i],
+			Index:   paneIndex[p.name],
 			Focused: p.name == focus,
 			Dimmed:  p.name != focus,
 		})

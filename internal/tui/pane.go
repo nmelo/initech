@@ -235,9 +235,10 @@ func (c *clampedScreen) SetContent(x, y int, ch rune, comb []rune, style tcell.S
 }
 
 // Render draws the pane's bottom ribbon and terminal content onto the tcell screen.
-// When dimmed is true, foreground colors are reduced to ~40% brightness.
+// When dimmed is true, foreground colors are reduced to ~70% brightness.
+// The index parameter is the 1-based pane number shown in the ribbon badge.
 // All writes are clamped to the pane's region to prevent bleed-through.
-func (p *Pane) Render(screen tcell.Screen, focused bool, dimmed bool, sel Selection) {
+func (p *Pane) Render(screen tcell.Screen, focused bool, dimmed bool, index int, sel Selection) {
 	r := p.region
 	if r.W < 1 || r.H < 2 {
 		return
@@ -251,11 +252,6 @@ func (p *Pane) Render(screen tcell.Screen, focused bool, dimmed bool, sel Select
 	// render as the same dark gray as the default background.
 	trueBlack := tcell.NewRGBColor(0, 0, 0)
 	ribbonY := r.Y + r.H - 1
-	nameFg := tcell.ColorGray
-	if focused {
-		nameFg = tcell.ColorDodgerBlue
-	}
-	titleStyle := tcell.StyleDefault.Background(trueBlack).Foreground(nameFg).Bold(true)
 
 	// Fill ribbon row with solid black background.
 	blackStyle := tcell.StyleDefault.Background(trueBlack)
@@ -263,13 +259,21 @@ func (p *Pane) Render(screen tcell.Screen, focused bool, dimmed bool, sel Select
 		s.SetContent(x, ribbonY, ' ', nil, blackStyle)
 	}
 
-	// Pane name badge.
-	title := " " + p.name + " "
+	// Badge style: focused = white on DodgerBlue box, unfocused = gray on true black.
+	var titleStyle tcell.Style
+	if focused {
+		titleStyle = tcell.StyleDefault.Background(tcell.ColorDodgerBlue).Foreground(tcell.ColorWhite).Bold(true)
+	} else {
+		titleStyle = tcell.StyleDefault.Background(trueBlack).Foreground(tcell.ColorGray).Bold(true)
+	}
+
+	// Pane badge: "N name" with status indicators.
+	title := fmt.Sprintf(" %d %s ", index, p.name)
 	if !p.IsAlive() {
-		title = " " + p.name + " [dead] "
+		title = fmt.Sprintf(" %d %s [dead] ", index, p.name)
 		titleStyle = tcell.StyleDefault.Background(trueBlack).Foreground(tcell.ColorRed).Bold(true)
 	} else if p.scrollOffset > 0 {
-		title = fmt.Sprintf(" %s [+%d] ", p.name, p.scrollOffset)
+		title = fmt.Sprintf(" %d %s [+%d] ", index, p.name, p.scrollOffset)
 		titleStyle = tcell.StyleDefault.Background(trueBlack).Foreground(tcell.ColorYellow).Bold(true)
 	}
 	for i, ch := range title {

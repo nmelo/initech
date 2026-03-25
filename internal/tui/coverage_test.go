@@ -1131,9 +1131,9 @@ func TestRenderTooSmallRegion(t *testing.T) {
 	emu := vt.NewSafeEmulator(10, 5)
 	p := &Pane{name: "tiny", emu: emu, alive: true, visible: true, region: Region{0, 0, 0, 1}}
 	// W < 1 or H < 2 should return immediately.
-	p.Render(s, false, false, Selection{})
+	p.Render(s, false, false, 1, Selection{})
 	p.region = Region{0, 0, 10, 1} // H < 2
-	p.Render(s, false, false, Selection{})
+	p.Render(s, false, false, 1, Selection{})
 }
 
 func TestRenderAltScreen(t *testing.T) {

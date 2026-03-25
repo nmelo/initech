@@ -981,7 +981,7 @@ func (t *TUI) render() {
 	// Draw panes from the render plan. No visibility checks needed.
 	for _, pr := range t.plan.Panes {
 		sel := t.selectionForPane(pr.Pane)
-		pr.Pane.Render(s, pr.Focused, pr.Dimmed, sel)
+		pr.Pane.Render(s, pr.Focused, pr.Dimmed, pr.Index, sel)
 	}
 
 	// Draw dividers from the render plan.
