@@ -579,7 +579,7 @@ func (t *TUI) handleKey(ev *tcell.EventKey) bool {
 // handleCmdKey processes key events while the command modal is open.
 func (t *TUI) handleCmdKey(ev *tcell.EventKey) bool {
 	switch ev.Key() {
-	case tcell.KeyEscape:
+	case tcell.KeyEscape, tcell.KeyCtrlC:
 		t.cmdActive = false
 		t.cmdBuf = t.cmdBuf[:0]
 		return false
@@ -1152,7 +1152,7 @@ func (t *TUI) refreshTopData() {
 // handleTopKey handles input while the top modal is active.
 func (t *TUI) handleTopKey(ev *tcell.EventKey) bool {
 	switch ev.Key() {
-	case tcell.KeyEscape:
+	case tcell.KeyEscape, tcell.KeyCtrlC:
 		t.topActive = false
 		return false
 	case tcell.KeyUp:
