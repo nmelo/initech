@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -45,6 +46,12 @@ type TUI struct {
 	cmdActive bool
 	cmdBuf    []rune
 	cmdError  string // Shown briefly after a bad command.
+
+	// Activity monitor (top) modal state.
+	topActive    bool
+	topSelected  int
+	topData      []topEntry
+	topCacheTime time.Time
 
 	// Mouse selection state.
 	selActive bool
@@ -482,6 +489,11 @@ func (t *TUI) copySelection() {
 }
 
 func (t *TUI) handleKey(ev *tcell.EventKey) bool {
+	// Top modal intercepts all input when active.
+	if t.topActive {
+		return t.handleTopKey(ev)
+	}
+
 	// Command modal intercepts all input when active.
 	if t.cmdActive {
 		return t.handleCmdKey(ev)
@@ -755,6 +767,11 @@ func (t *TUI) execCmd(cmd string) bool {
 			t.cmdError = fmt.Sprintf("restart failed: %v", err)
 		}
 
+	case "top", "ps":
+		t.topActive = true
+		t.topSelected = 0
+		t.topCacheTime = time.Time{} // Force fresh data.
+
 	case "quit", "q":
 		return true
 
@@ -954,6 +971,13 @@ func (t *TUI) render() {
 
 	s.Clear()
 
+	if t.topActive {
+		// Full-screen activity monitor replaces pane rendering.
+		t.renderTop()
+		s.Show()
+		return
+	}
+
 	// Draw panes from the render plan. No visibility checks needed.
 	for _, pr := range t.plan.Panes {
 		sel := t.selectionForPane(pr.Pane)
@@ -1072,6 +1096,273 @@ func (t *TUI) renderCmdError() {
 		if i < sw {
 			s.SetContent(i, y, ch, nil, errStyle)
 		}
+	}
+}
+
+// ── Activity monitor (top) modal ─────────────────────────────────────
+
+// topEntry holds process info for one pane.
+type topEntry struct {
+	Name    string
+	PID     int
+	Comm    string // Process name from ps.
+	Command string // Launch command from config.
+	RSS     int64  // Resident memory in KB.
+	Status  string // running, idle, dead, hidden.
+}
+
+// refreshTopData queries ps for each pane and caches the result.
+func (t *TUI) refreshTopData() {
+	if time.Since(t.topCacheTime) < 2*time.Second && len(t.topData) > 0 {
+		return
+	}
+	entries := make([]topEntry, len(t.panes))
+	for i, p := range t.panes {
+		e := topEntry{
+			Name:    p.name,
+			Command: strings.Join(p.cfg.Command, " "),
+			Status:  p.Activity().String(),
+		}
+		if t.layoutState.Hidden[p.name] {
+			e.Status += " [hidden]"
+		}
+		if p.cmd != nil && p.cmd.Process != nil {
+			e.PID = p.cmd.Process.Pid
+			// Query ps for RSS and process name.
+			out, err := exec.Command("ps", "-o", "rss=,comm=", "-p",
+				fmt.Sprintf("%d", e.PID)).Output()
+			if err == nil {
+				fields := strings.Fields(strings.TrimSpace(string(out)))
+				if len(fields) >= 1 {
+					if rss, err := strconv.ParseInt(fields[0], 10, 64); err == nil {
+						e.RSS = rss
+					}
+				}
+				if len(fields) >= 2 {
+					e.Comm = filepath.Base(fields[1])
+				}
+			}
+		}
+		entries[i] = e
+	}
+	t.topData = entries
+	t.topCacheTime = time.Now()
+}
+
+// handleTopKey handles input while the top modal is active.
+func (t *TUI) handleTopKey(ev *tcell.EventKey) bool {
+	switch ev.Key() {
+	case tcell.KeyEscape:
+		t.topActive = false
+		return false
+	case tcell.KeyUp:
+		if t.topSelected > 0 {
+			t.topSelected--
+		}
+		return false
+	case tcell.KeyDown:
+		if t.topSelected < len(t.panes)-1 {
+			t.topSelected++
+		}
+		return false
+	case tcell.KeyRune:
+		switch ev.Rune() {
+		case '`':
+			t.topActive = false
+			return false
+		case 'r':
+			if t.topSelected >= 0 && t.topSelected < len(t.panes) {
+				p := t.panes[t.topSelected]
+				idx := t.topSelected
+				r := p.region
+				cols, rows := r.InnerSize()
+				p.Close()
+				np, err := NewPane(p.cfg, rows, cols)
+				if err == nil {
+					np.region = r
+					t.panes[idx] = np
+					t.applyLayout()
+				}
+				t.topCacheTime = time.Time{} // Force refresh.
+			}
+			return false
+		case 'k':
+			if t.topSelected >= 0 && t.topSelected < len(t.panes) {
+				p := t.panes[t.topSelected]
+				if p.cmd != nil && p.cmd.Process != nil {
+					p.cmd.Process.Kill()
+				}
+				t.topCacheTime = time.Time{}
+			}
+			return false
+		case 'h':
+			if t.topSelected >= 0 && t.topSelected < len(t.panes) {
+				name := t.panes[t.topSelected].name
+				if t.layoutState.Hidden[name] {
+					delete(t.layoutState.Hidden, name)
+				} else {
+					if t.visibleCountFromState() > 1 {
+						if t.layoutState.Hidden == nil {
+							t.layoutState.Hidden = make(map[string]bool)
+						}
+						t.layoutState.Hidden[name] = true
+					}
+				}
+				t.autoRecalcGrid()
+				t.topCacheTime = time.Time{}
+			}
+			return false
+		case 'q':
+			t.topActive = false
+			return false
+		}
+	}
+	return false
+}
+
+// renderTop draws the full-screen activity monitor table.
+func (t *TUI) renderTop() {
+	t.refreshTopData()
+	s := t.screen
+	sw, sh := s.Size()
+
+	headerStyle := tcell.StyleDefault.Bold(true).Foreground(tcell.ColorWhite)
+	normalStyle := tcell.StyleDefault.Foreground(tcell.ColorSilver)
+	selectedStyle := tcell.StyleDefault.Background(tcell.ColorDarkBlue).Foreground(tcell.ColorWhite)
+	totalStyle := tcell.StyleDefault.Foreground(tcell.ColorYellow).Bold(true)
+	helpStyle := tcell.StyleDefault.Foreground(tcell.ColorGray)
+
+	// Column widths.
+	nameW := 10
+	pidW := 8
+	commW := 12
+	rssW := 10
+	statusW := 16
+	cmdW := sw - nameW - pidW - commW - rssW - statusW - 6 // 6 for spacing
+	if cmdW < 10 {
+		cmdW = 10
+	}
+
+	// Header row.
+	y := 1
+	drawRow := func(row int, style tcell.Style, name, pid, comm, cmd, rss, status string) {
+		x := 1
+		drawField(s, x, row, nameW, name, style)
+		x += nameW + 1
+		drawField(s, x, row, pidW, pid, style)
+		x += pidW + 1
+		drawField(s, x, row, commW, comm, style)
+		x += commW + 1
+		drawField(s, x, row, cmdW, cmd, style)
+		x += cmdW + 1
+		drawField(s, x, row, rssW, rss, style)
+		x += rssW + 1
+		drawField(s, x, row, statusW, status, style)
+	}
+
+	// Title.
+	title := " initech top "
+	titleStyle := tcell.StyleDefault.Background(tcell.ColorDodgerBlue).Foreground(tcell.ColorBlack).Bold(true)
+	for i, ch := range title {
+		if 1+i < sw {
+			s.SetContent(1+i, 0, ch, nil, titleStyle)
+		}
+	}
+
+	drawRow(y, headerStyle, "AGENT", "PID", "PROCESS", "COMMAND", "RSS", "STATUS")
+	y++
+	// Separator.
+	for x := 1; x < sw-1; x++ {
+		s.SetContent(x, y, '\u2500', nil, tcell.StyleDefault.Foreground(tcell.ColorGray))
+	}
+	y++
+
+	var totalRSS int64
+	for i, e := range t.topData {
+		style := normalStyle
+		if i == t.topSelected {
+			style = selectedStyle
+		}
+
+		pid := "-"
+		if e.PID > 0 {
+			pid = fmt.Sprintf("%d", e.PID)
+		}
+		comm := e.Comm
+		if comm == "" {
+			comm = "-"
+		}
+		cmd := e.Command
+		if cmd == "" {
+			cmd = "-"
+		}
+		rss := "-"
+		if e.RSS > 0 {
+			totalRSS += e.RSS
+			if e.RSS > 1048576 {
+				rss = fmt.Sprintf("%.1f GB", float64(e.RSS)/1048576)
+			} else if e.RSS > 1024 {
+				rss = fmt.Sprintf("%.0f MB", float64(e.RSS)/1024)
+			} else {
+				rss = fmt.Sprintf("%d KB", e.RSS)
+			}
+		}
+		status := e.Status
+		if status == "" {
+			status = "-"
+		}
+
+		drawRow(y, style, e.Name, pid, comm, cmd, rss, status)
+		y++
+		if y >= sh-3 {
+			break
+		}
+	}
+
+	// Total row.
+	y++
+	totalStr := "-"
+	if totalRSS > 0 {
+		if totalRSS > 1048576 {
+			totalStr = fmt.Sprintf("%.1f GB", float64(totalRSS)/1048576)
+		} else {
+			totalStr = fmt.Sprintf("%.0f MB", float64(totalRSS)/1024)
+		}
+	}
+	alive := 0
+	dead := 0
+	for _, e := range t.topData {
+		if e.PID > 0 {
+			alive++
+		} else {
+			dead++
+		}
+	}
+	summary := fmt.Sprintf("Total: %s (%d alive, %d dead)", totalStr, alive, dead)
+	for i, ch := range summary {
+		if 1+i < sw {
+			s.SetContent(1+i, y, ch, nil, totalStyle)
+		}
+	}
+
+	// Help line at bottom.
+	help := "  [r]estart  [k]ill  [h]ide/show  [q/Esc] close"
+	for i, ch := range help {
+		if 1+i < sw {
+			s.SetContent(1+i, sh-1, ch, nil, helpStyle)
+		}
+	}
+}
+
+// drawField writes a string into a fixed-width column, truncating if needed.
+func drawField(s tcell.Screen, x, y, width int, text string, style tcell.Style) {
+	runes := []rune(text)
+	if len(runes) > width {
+		runes = runes[:width-1]
+		runes = append(runes, '\u2026') // ellipsis
+	}
+	for i, ch := range runes {
+		s.SetContent(x+i, y, ch, nil, style)
 	}
 }
 
