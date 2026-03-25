@@ -53,7 +53,7 @@ type RoleOverride struct {
 	ClaudeArgs []string `yaml:"claude_args,omitempty"`
 }
 
-// Load reads and parses an initech.yaml file from the given path.
+// Load reads, parses, and validates an initech.yaml file from the given path.
 // It expands ~ in the root field to the user's home directory.
 func Load(path string) (*Project, error) {
 	data, err := os.ReadFile(path)
@@ -67,6 +67,10 @@ func Load(path string) (*Project, error) {
 	}
 
 	p.Root = expandHome(p.Root)
+
+	if err := Validate(&p); err != nil {
+		return nil, fmt.Errorf("invalid config: %w", err)
+	}
 
 	return &p, nil
 }
