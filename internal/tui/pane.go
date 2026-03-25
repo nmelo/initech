@@ -513,11 +513,11 @@ func (p *Pane) contentOffset() (startRow, renderOffset int) {
 		}
 	}
 	contentEnd := lastContent + 1
-	if contentEnd < innerRows {
-		renderOffset = innerRows - contentEnd
-	} else if contentEnd > innerRows {
+	if contentEnd > innerRows {
+		// Content overflows the pane: scroll to show the bottom.
 		startRow = contentEnd - innerRows
 	}
+	// When content fits within the pane, render from the top (no offset).
 	return
 }
 
