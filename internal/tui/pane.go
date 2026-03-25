@@ -220,9 +220,7 @@ type Selection struct {
 }
 
 // Render draws the pane's title bar and terminal content onto the tcell screen.
-// When showBorder is true the focused pane gets DodgerBlue vertical lines on
-// its left and right edges (overlaying the outermost content columns).
-func (p *Pane) Render(s tcell.Screen, focused bool, sel Selection, showBorder bool) {
+func (p *Pane) Render(s tcell.Screen, focused bool, sel Selection) {
 	r := p.region
 	if r.W < 1 || r.H < 2 {
 		return
@@ -417,14 +415,6 @@ func (p *Pane) Render(s tcell.Screen, focused bool, sel Selection, showBorder bo
 		}
 	}
 
-	// Side borders for focused pane (overlay outermost content columns).
-	if showBorder && focused {
-		borderStyle := tcell.StyleDefault.Foreground(tcell.ColorDodgerBlue)
-		for y := r.Y + 1; y < r.Y+r.H; y++ {
-			s.SetContent(r.X, y, '\u2502', nil, borderStyle)
-			s.SetContent(r.X+r.W-1, y, '\u2502', nil, borderStyle)
-		}
-	}
 }
 
 // IsAlive returns whether the pane's shell process is still running.

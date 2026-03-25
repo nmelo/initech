@@ -719,18 +719,20 @@ func (t *TUI) render() {
 	if t.zoomed || t.layout == LayoutFocus {
 		if t.focused >= 0 && t.focused < len(t.panes) {
 			sel := t.selectionFor(t.focused)
-			t.panes[t.focused].Render(s, true, sel, false)
+			t.panes[t.focused].Render(s, true, sel)
 		}
 	} else {
 		regions := t.calcRegions(t.screenSize())
 		for i, p := range t.panes {
 			if i < len(regions) {
 				sel := t.selectionFor(i)
-				p.Render(s, i == t.focused, sel, true)
+				p.Render(s, i == t.focused, sel)
 			}
 		}
 		// Draw thin black vertical dividers between columns.
 		t.renderGridDividers(regions)
+		// Draw focused pane borders AFTER dividers so they aren't overwritten.
+		t.renderFocusBorder()
 	}
 
 	if t.overlay {
@@ -760,6 +762,20 @@ func (t *TUI) selectionFor(paneIdx int) Selection {
 		Active: true,
 		StartX: t.selStartX, StartY: t.selStartY,
 		EndX: t.selEndX, EndY: t.selEndY,
+	}
+}
+
+// renderFocusBorder draws DodgerBlue vertical borders on the focused pane.
+// Called after renderGridDividers so the border isn't overwritten by dividers.
+func (t *TUI) renderFocusBorder() {
+	if t.focused < 0 || t.focused >= len(t.panes) {
+		return
+	}
+	r := t.panes[t.focused].region
+	borderStyle := tcell.StyleDefault.Foreground(tcell.ColorDodgerBlue)
+	for y := r.Y + 1; y < r.Y+r.H; y++ {
+		t.screen.SetContent(r.X, y, '\u2502', nil, borderStyle)
+		t.screen.SetContent(r.X+r.W-1, y, '\u2502', nil, borderStyle)
 	}
 }
 
