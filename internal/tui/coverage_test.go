@@ -924,18 +924,19 @@ func TestRenderPaneScrollbackMode(t *testing.T) {
 	tui.layoutState.Overlay = false
 	tui.render()
 
-	// Title bar should show scroll indicator.
+	// Bottom ribbon should show scroll indicator.
 	r := p.region
+	ribbonY := r.Y + r.H - 1
 	found := false
 	for x := r.X; x < r.X+r.W; x++ {
-		mainc, _, _, _ := s.GetContent(x, r.Y)
+		mainc, _, _, _ := s.GetContent(x, ribbonY)
 		if mainc == '+' {
 			found = true
 			break
 		}
 	}
 	if !found {
-		t.Error("scrollback mode should show +N in title bar")
+		t.Error("scrollback mode should show +N in bottom ribbon")
 	}
 }
 

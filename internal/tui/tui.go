@@ -264,9 +264,9 @@ func (t *TUI) handleMouse(ev *tcell.EventMouse) {
 			if mx >= r.X && mx < r.X+r.W && my >= r.Y && my < r.Y+r.H {
 				t.layoutState.Focused = p.name
 				t.applyLayout()
-				// Convert to pane-local content coordinates (below title bar).
+				// Convert to pane-local content coordinates.
 				lx := mx - r.X
-				ly := my - r.Y - 1 // -1 for title bar
+				ly := my - r.Y
 				if ly < 0 {
 					ly = 0
 				}
@@ -288,7 +288,7 @@ func (t *TUI) handleMouse(ev *tcell.EventMouse) {
 			p := t.panes[t.selPane]
 			r := p.region
 			lx := mx - r.X
-			ly := my - r.Y - 1
+			ly := my - r.Y
 			cols, rows := r.InnerSize()
 			if lx < 0 {
 				lx = 0
@@ -313,7 +313,7 @@ func (t *TUI) handleMouse(ev *tcell.EventMouse) {
 			p := t.panes[t.selPane]
 			r := p.region
 			lx := mx - r.X
-			ly := my - r.Y - 1
+			ly := my - r.Y
 			if ly < 0 {
 				ly = 0
 			}
@@ -402,7 +402,7 @@ func (t *TUI) forwardMouseToFocused(mx, my int, button uv.MouseButton, isMotion,
 		return
 	}
 	lx := mx - r.X
-	ly := my - r.Y - 1
+	ly := my - r.Y
 	if ly < 0 {
 		ly = 0
 	}

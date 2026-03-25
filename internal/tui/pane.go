@@ -66,7 +66,7 @@ type Region struct {
 	X, Y, W, H int
 }
 
-// InnerSize returns the renderable content area (full width, minus 1 row for title bar).
+// InnerSize returns the renderable content area (full width, minus 1 row for bottom ribbon).
 func (r Region) InnerSize() (cols, rows int) {
 	cols = r.W
 	rows = r.H - 1
@@ -221,7 +221,7 @@ type Selection struct {
 	EndX, EndY     int
 }
 
-// Render draws the pane's title bar and terminal content onto the tcell screen.
+// Render draws the pane's bottom ribbon and terminal content onto the tcell screen.
 // When dimmed is true, foreground colors are reduced to ~40% brightness.
 func (p *Pane) Render(s tcell.Screen, focused bool, dimmed bool, sel Selection) {
 	r := p.region
@@ -229,8 +229,8 @@ func (p *Pane) Render(s tcell.Screen, focused bool, dimmed bool, sel Selection) 
 		return
 	}
 
-	// Title bar (1 row at the top of the region).
-	titleBg := tcell.ColorBlack
+	// Bottom ribbon (1 row at the bottom of the region).
+	ribbonY := r.Y + r.H - 1
 	nameBg := tcell.ColorGray
 	nameFg := tcell.ColorBlack
 	if focused {
@@ -242,14 +242,14 @@ func (p *Pane) Render(s tcell.Screen, focused bool, dimmed bool, sel Selection) 
 	if dimmed {
 		fillColor = tcell.ColorDarkSlateGray
 	}
-	fillStyle := tcell.StyleDefault.Background(titleBg).Foreground(fillColor)
+	fillStyle := tcell.StyleDefault.Background(tcell.ColorBlack).Foreground(fillColor)
 
-	// Fill title bar with horizontal line.
+	// Fill ribbon with horizontal line.
 	for x := r.X; x < r.X+r.W; x++ {
-		s.SetContent(x, r.Y, '\u2500', nil, fillStyle)
+		s.SetContent(x, ribbonY, '\u2500', nil, fillStyle)
 	}
 
-	// Pane name + session description.
+	// Pane name + status indicators.
 	title := " " + p.name + " "
 	if !p.IsAlive() {
 		title = " " + p.name + " [dead] "
@@ -260,7 +260,7 @@ func (p *Pane) Render(s tcell.Screen, focused bool, dimmed bool, sel Selection) 
 	}
 	for i, ch := range title {
 		if r.X+1+i < r.X+r.W {
-			s.SetContent(r.X+1+i, r.Y, ch, nil, titleStyle)
+			s.SetContent(r.X+1+i, ribbonY, ch, nil, titleStyle)
 		}
 	}
 
@@ -299,7 +299,7 @@ func (p *Pane) Render(s tcell.Screen, focused bool, dimmed bool, sel Selection) 
 				if dimmed {
 					style = dimStyle(style)
 				}
-				s.SetContent(r.X+col, r.Y+1+row, ch, nil, style)
+				s.SetContent(r.X+col, r.Y+row, ch, nil, style)
 			}
 		}
 	}
@@ -387,7 +387,7 @@ func (p *Pane) Render(s tcell.Screen, focused bool, dimmed bool, sel Selection) 
 					if dimmed {
 						st = dimStyle(st)
 					}
-					s.SetContent(r.X+col, r.Y+1+row, cells[col].ch, nil, st)
+					s.SetContent(r.X+col, r.Y+row, cells[col].ch, nil, st)
 				}
 			} else {
 				// Normal row: render directly.
@@ -397,7 +397,7 @@ func (p *Pane) Render(s tcell.Screen, focused bool, dimmed bool, sel Selection) 
 					if dimmed {
 						style = dimStyle(style)
 					}
-					s.SetContent(r.X+col, r.Y+1+row, ch, nil, style)
+					s.SetContent(r.X+col, r.Y+row, ch, nil, style)
 				}
 			}
 		}
@@ -434,7 +434,7 @@ func (p *Pane) Render(s tcell.Screen, focused bool, dimmed bool, sel Selection) 
 					if cell != nil && cell.Content != "" {
 						ch = []rune(cell.Content)[0]
 					}
-					s.SetContent(r.X+col, r.Y+1+row, ch, nil, selStyle)
+					s.SetContent(r.X+col, r.Y+row, ch, nil, selStyle)
 				}
 			}
 		}
@@ -445,7 +445,7 @@ func (p *Pane) Render(s tcell.Screen, focused bool, dimmed bool, sel Selection) 
 			visRow := pos.Y - startRow + renderOffset
 			if pos.X >= 0 && pos.X < innerCols && visRow >= 0 && visRow < innerRows {
 				cx := r.X + pos.X
-				cy := r.Y + 1 + visRow
+				cy := r.Y + visRow
 				cell := p.emu.CellAt(pos.X, pos.Y)
 				ch, _ := uvCellToTcell(cell)
 				cursorStyle := tcell.StyleDefault.Background(tcell.ColorWhite).Foreground(tcell.ColorBlack)
