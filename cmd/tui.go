@@ -71,7 +71,12 @@ func runTUI(cmd *cobra.Command, args []string) error {
 			argv = []string{mock}
 		} else {
 			argv = []string{"claude"}
-			if def.Permission == roles.Autonomous {
+			// Per-role claude_args override global, which overrides catalog default.
+			if ov, ok := proj.RoleOverrides[roleName]; ok && ov.ClaudeArgs != nil {
+				argv = append(argv, ov.ClaudeArgs...)
+			} else if len(proj.ClaudeArgs) > 0 {
+				argv = append(argv, proj.ClaudeArgs...)
+			} else if def.Permission == roles.Autonomous {
 				argv = append(argv, "--dangerously-skip-permissions")
 			}
 		}

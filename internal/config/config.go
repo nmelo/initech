@@ -27,6 +27,7 @@ type Project struct {
 	Beads         BeadsConfig             `yaml:"beads,omitempty"`
 	Roles         []string                `yaml:"roles"`
 	Grid          []string                `yaml:"grid,omitempty"`
+	ClaudeArgs    []string                `yaml:"claude_args,omitempty"`
 	RoleOverrides map[string]RoleOverride `yaml:"role_overrides,omitempty"`
 }
 
@@ -43,11 +44,12 @@ type BeadsConfig struct {
 
 // RoleOverride lets a project customize per-role settings beyond catalog defaults.
 type RoleOverride struct {
-	TechStack string `yaml:"tech_stack,omitempty"`
-	BuildCmd  string `yaml:"build_cmd,omitempty"`
-	TestCmd   string `yaml:"test_cmd,omitempty"`
-	Dir       string `yaml:"dir,omitempty"`
-	RepoName  string `yaml:"repo_name,omitempty"`
+	TechStack  string   `yaml:"tech_stack,omitempty"`
+	BuildCmd   string   `yaml:"build_cmd,omitempty"`
+	TestCmd    string   `yaml:"test_cmd,omitempty"`
+	Dir        string   `yaml:"dir,omitempty"`
+	RepoName   string   `yaml:"repo_name,omitempty"`
+	ClaudeArgs []string `yaml:"claude_args,omitempty"`
 }
 
 // Load reads and parses an initech.yaml file from the given path.
