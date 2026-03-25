@@ -1239,6 +1239,10 @@ func (t *TUI) renderTop() {
 	t.refreshTopData()
 	s := t.screen
 	sw, sh := s.Size()
+	if sw < 40 || sh < 5 {
+		drawField(s, 0, 0, sw, "Terminal too narrow for top", tcell.StyleDefault.Foreground(tcell.ColorRed))
+		return
+	}
 
 	headerStyle := tcell.StyleDefault.Bold(true).Foreground(tcell.ColorWhite)
 	normalStyle := tcell.StyleDefault.Foreground(tcell.ColorSilver)
@@ -1370,6 +1374,9 @@ func (t *TUI) renderTop() {
 
 // drawField writes a string into a fixed-width column, truncating if needed.
 func drawField(s tcell.Screen, x, y, width int, text string, style tcell.Style) {
+	if width <= 0 {
+		return
+	}
 	runes := []rune(text)
 	if len(runes) > width {
 		runes = runes[:width-1]
