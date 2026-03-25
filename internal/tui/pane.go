@@ -234,9 +234,10 @@ func (p *Pane) Render(s tcell.Screen, focused bool, sel Selection) {
 	titleStyle := tcell.StyleDefault.Background(nameBg).Foreground(nameFg).Bold(true)
 	fillStyle := tcell.StyleDefault.Background(titleBg).Foreground(tcell.ColorDarkCyan)
 
-	// Fill title bar background.
+	// Fill title bar with lower one-eighth block for a thin line with
+	// visual padding above (simulates sub-cell spacing between panes).
 	for x := r.X; x < r.X+r.W; x++ {
-		s.SetContent(x, r.Y, '\u2500', nil, fillStyle)
+		s.SetContent(x, r.Y, '\u2581', nil, fillStyle)
 	}
 
 	// Pane name + session description.
