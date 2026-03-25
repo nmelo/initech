@@ -54,12 +54,14 @@ type TUI struct {
 	topCacheTime time.Time
 
 	// Mouse selection state.
-	selActive bool
-	selPane   int // Index of the pane being selected in.
-	selStartX int // Start position in pane-local content coordinates.
-	selStartY int
-	selEndX   int // Current end position.
-	selEndY   int
+	selActive       bool
+	selPane         int // Index of the pane being selected in.
+	selStartX       int // Start position in pane-local content coordinates.
+	selStartY       int
+	selEndX         int // Current end position.
+	selEndY         int
+	selStartRow     int // contentOffset snapshot at mouse-down.
+	selRenderOffset int
 }
 
 // applyLayout recomputes the render plan from the current layout state
@@ -279,12 +281,17 @@ func (t *TUI) handleMouse(ev *tcell.EventMouse) {
 				}
 				// Forward click to emulator (no-op if mouse reporting is off).
 				t.forwardMouseEvent(p, lx, ly, uv.MouseLeft, false, false, ev.Modifiers())
+				// Snapshot contentOffset so copy uses the same mapping
+				// regardless of content reflow during the drag.
+				sr, ro := p.contentOffset()
 				t.selActive = true
 				t.selPane = i
 				t.selStartX = lx
 				t.selStartY = ly
 				t.selEndX = lx
 				t.selEndY = ly
+				t.selStartRow = sr
+				t.selRenderOffset = ro
 				return
 			}
 		}
@@ -434,9 +441,11 @@ func (t *TUI) copySelection() {
 		r1 = rows - 1
 	}
 
-	// Translate screen-local rows to emulator rows. In non-alt-screen mode
-	// content is bottom-anchored, so screen row 0 may not be emulator row 0.
-	startRow, renderOffset := p.contentOffset()
+	// Use the contentOffset snapshot from mouse-down time, not the current
+	// offset. This prevents content reflow during the drag from shifting
+	// the copied text.
+	startRow := t.selStartRow
+	renderOffset := t.selRenderOffset
 	emuRows := p.emu.Height()
 
 	var buf strings.Builder
