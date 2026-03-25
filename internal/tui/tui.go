@@ -486,6 +486,74 @@ func (t *TUI) execCmd(cmd string) bool {
 		t.zoomed = false
 		t.relayout()
 
+	case "show":
+		if len(parts) < 2 {
+			t.cmdError = "usage: show <name> or show all"
+			return false
+		}
+		if parts[1] == "all" {
+			for _, p := range t.panes {
+				p.SetVisible(true)
+			}
+			t.recalcGrid()
+			return false
+		}
+		p := t.findPaneByName(parts[1])
+		if p == nil {
+			t.cmdError = fmt.Sprintf("unknown agent %q", parts[1])
+			return false
+		}
+		p.SetVisible(true)
+		t.recalcGrid()
+
+	case "hide":
+		if len(parts) < 2 {
+			t.cmdError = "usage: hide <name>"
+			return false
+		}
+		if parts[1] == "all" {
+			t.cmdError = "cannot hide all panes"
+			return false
+		}
+		p := t.findPaneByName(parts[1])
+		if p == nil {
+			t.cmdError = fmt.Sprintf("unknown agent %q", parts[1])
+			return false
+		}
+		if !p.Visible() {
+			return false // Already hidden, no-op.
+		}
+		if t.visibleCount() <= 1 {
+			t.cmdError = "cannot hide last visible pane"
+			return false
+		}
+		p.SetVisible(false)
+		t.ensureFocusVisible()
+		t.recalcGrid()
+
+	case "view":
+		if len(parts) < 2 {
+			t.cmdError = "usage: view <name1> [name2] ..."
+			return false
+		}
+		// Validate all names first.
+		for _, name := range parts[1:] {
+			if t.findPaneByName(name) == nil {
+				t.cmdError = fmt.Sprintf("unknown agent %q", name)
+				return false
+			}
+		}
+		// Build the target set.
+		show := make(map[string]bool, len(parts)-1)
+		for _, name := range parts[1:] {
+			show[name] = true
+		}
+		for _, p := range t.panes {
+			p.SetVisible(show[p.name])
+		}
+		t.ensureFocusVisible()
+		t.recalcGrid()
+
 	case "restart", "r":
 		if err := t.restartFocused(); err != nil {
 			t.cmdError = fmt.Sprintf("restart failed: %v", err)
@@ -522,6 +590,40 @@ func parseGrid(s string, numPanes int) (cols, rows int, ok bool) {
 	}
 	r := (numPanes + c - 1) / c
 	return c, r, true
+}
+
+// findPaneByName returns the pane with the given name, or nil.
+func (t *TUI) findPaneByName(name string) *Pane {
+	for _, p := range t.panes {
+		if p.name == name {
+			return p
+		}
+	}
+	return nil
+}
+
+// ensureFocusVisible moves focus to the first visible pane if the
+// currently focused pane is hidden.
+func (t *TUI) ensureFocusVisible() {
+	if t.focused >= 0 && t.focused < len(t.panes) && t.panes[t.focused].Visible() {
+		return
+	}
+	for i, p := range t.panes {
+		if p.Visible() {
+			t.focused = i
+			return
+		}
+	}
+}
+
+// recalcGrid updates grid dimensions for the current visible count and relayouts.
+func (t *TUI) recalcGrid() {
+	if t.layout == LayoutGrid {
+		t.gridCols, t.gridRows = autoGrid(t.visibleCount())
+	}
+	if t.screen != nil {
+		t.relayout()
+	}
 }
 
 func (t *TUI) setGrid(cols, rows int) {
