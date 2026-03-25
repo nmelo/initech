@@ -262,7 +262,7 @@ func (p *Pane) Render(screen tcell.Screen, focused bool, dimmed bool, index int,
 	// Badge style: focused = white on DodgerBlue box, unfocused = gray on true black.
 	var titleStyle tcell.Style
 	if focused {
-		titleStyle = tcell.StyleDefault.Background(tcell.ColorDodgerBlue).Foreground(tcell.ColorWhite).Bold(true)
+		titleStyle = tcell.StyleDefault.Background(tcell.ColorDodgerBlue).Foreground(tcell.ColorBlack).Bold(true)
 	} else {
 		titleStyle = tcell.StyleDefault.Background(trueBlack).Foreground(tcell.ColorGray).Bold(true)
 	}
