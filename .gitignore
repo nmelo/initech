@@ -1,15 +1,21 @@
 # Build output
 initech
+initech-tui
 *.exe
-
-# Beads runtime (JSONL is tracked, DB is not)
-.beads/beads.db
-.beads/beads.db-wal
-.beads/beads.db-shm
-.beads/daemon*.log*
 
 # OS artifacts
 .DS_Store
 
-# bv (beads viewer) local config and caches
-.bv/
+# Workspace files (live in initech-workspace repo)
+.beads/
+eng1/
+eng2/
+pm/
+qa1/
+qa2/
+shipper/
+super/
+docs/
+initech.yaml
+AGENTS.md
+ARCHITECTURE.md
