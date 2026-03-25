@@ -488,10 +488,10 @@ func (p *Pane) watchJSONL() {
 		// so the assistant→idle timeout works).
 		p.mu.Lock()
 		switch p.lastJsonlType {
-		case "user", "progress":
-			p.activity = StateRunning
-		case "assistant":
-			// Assistant entry: running if recent, idle if stale (5s).
+		case "user", "progress", "assistant":
+			// Running if the JSONL file was recently updated, idle if stale.
+			// Without this timeout, a pane whose last entry is "user" or
+			// "progress" stays stuck in running state forever.
 			if time.Since(p.lastJsonlTime) > 5*time.Second {
 				p.activity = StateIdle
 			} else {
