@@ -150,6 +150,9 @@ func NewPane(cfg PaneConfig, rows, cols int) (*Pane, error) {
 	// Read PTY output and feed the emulator.
 	go p.readLoop()
 
+	// Read emulator responses (DSR, DA) and write them back to the PTY.
+	go p.responseLoop()
+
 	// Watch JSONL session files for activity state.
 	if jsonlDir != "" {
 		go p.watchJSONL()
@@ -175,6 +178,20 @@ func (p *Pane) readLoop() {
 	}
 }
 
+// responseLoop reads encoded sequences from the emulator (responses to
+// DSR, DA, SendKey, etc.) and writes them to the PTY.
+func (p *Pane) responseLoop() {
+	buf := make([]byte, 256)
+	for {
+		n, err := p.emu.Read(buf)
+		if n > 0 {
+			p.ptmx.Write(buf[:n])
+		}
+		if err != nil {
+			return
+		}
+	}
+}
 
 // SendKey translates a tcell key event into a charmbracelet KeyPressEvent
 // and sends it through the emulator, which encodes it for the PTY.
