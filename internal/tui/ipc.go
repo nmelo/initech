@@ -155,13 +155,11 @@ func (t *TUI) handleIPCPeek(conn net.Conn, req IPCRequest) {
 	// Use emulator dimensions, not region.InnerSize(), because hidden
 	// panes have stale regions that return (1,0).
 	cols := pane.emu.Width()
-	rows := pane.emu.Height()
-	if req.Lines > 0 && req.Lines < rows {
-		rows = req.Lines
-	}
+	emuRows := pane.emu.Height()
 
-	var buf strings.Builder
-	for row := 0; row < rows; row++ {
+	// Extract all rows from the emulator as text.
+	lines := make([]string, emuRows)
+	for row := 0; row < emuRows; row++ {
 		var line strings.Builder
 		for col := 0; col < cols; col++ {
 			cell := pane.emu.CellAt(col, row)
@@ -171,7 +169,27 @@ func (t *TUI) handleIPCPeek(conn net.Conn, req IPCRequest) {
 				line.WriteByte(' ')
 			}
 		}
-		buf.WriteString(strings.TrimRight(line.String(), " "))
+		lines[row] = strings.TrimRight(line.String(), " ")
+	}
+
+	// Strip trailing blank lines to find actual content end.
+	// In non-alt-screen mode, content grows from the top and the bottom
+	// of the buffer is blank. In alt-screen mode (vim, less), the full
+	// buffer is typically populated.
+	contentEnd := emuRows
+	for contentEnd > 0 && lines[contentEnd-1] == "" {
+		contentEnd--
+	}
+	lines = lines[:contentEnd]
+
+	// If caller requested N lines, return the last N.
+	if req.Lines > 0 && req.Lines < len(lines) {
+		lines = lines[len(lines)-req.Lines:]
+	}
+
+	var buf strings.Builder
+	for _, line := range lines {
+		buf.WriteString(line)
 		buf.WriteByte('\n')
 	}
 
