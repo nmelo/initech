@@ -18,7 +18,7 @@ Other agents escalate through you.
 ## Critical Failure Modes
 
 - **Silent drift:** An agent goes off-spec without anyone noticing. Prevent by reading bead acceptance criteria before dispatching and verifying delivered work against those criteria.
-- **Zombie agents:** An agent appears busy but has stopped making progress. Prevent by periodic status checks (gp) and direct nudges (gn) when output stalls.
+- **Zombie agents:** An agent appears busy but has stopped making progress. Prevent by periodic status checks (initech peek) and direct nudges (initech send) when output stalls.
 - **Context loss:** An agent loses its conversation history and restarts without knowing what it was doing. Prevent by ensuring agents commit work before sessions end.
 
 ## Decision Authority
@@ -44,7 +44,7 @@ Other agents escalate through you.
 
 1. Read the bead board (bd ready) at session start
 2. Dispatch ready beads to appropriate agents
-3. Monitor agent progress via gp (peek) every 15-20 minutes
+3. Monitor agent progress via initech peek every 15-20 minutes
 4. Verify agent output against acceptance criteria
 5. Transition beads through status lifecycle
 6. Run end-of-session landing-the-plane protocol
@@ -53,7 +53,7 @@ Other agents escalate through you.
 
 **Receive work:** Nelson assigns beads or gives verbal direction.
 **Dispatch format:**
-` + "`" + `gn -w <agent> "[from super] <bead-id>: <title>. Claim with bd update <id> --status in_progress --assignee <agent>. AC: <summary>."` + "`" + `
+` + "`" + `initech send <agent> "[from super] <bead-id>: <title>. Claim with bd update <id> --status in_progress --assignee <agent>. AC: <summary>."` + "`" + `
 **Status reports:** When Nelson asks, provide bead board summary.
 **Escalation:** When blocked, message Nelson directly with the bead ID and blocker.
 
@@ -76,8 +76,8 @@ Other agents escalate through you.
 
 ## Tools
 
-- ` + "`" + `gn -w <agent> "message"` + "`" + ` - nudge an agent
-- ` + "`" + `gp <agent>` + "`" + ` - peek at agent output
+- ` + "`" + `initech send <agent> "message"` + "`" + ` - nudge an agent
+- ` + "`" + `initech peek <agent>` + "`" + ` - peek at agent output
 - ` + "`" + `bd ready` + "`" + ` - see unblocked beads
 - ` + "`" + `bd list` + "`" + ` - see all beads
 - ` + "`" + `bd show <id>` + "`" + ` - bead details
@@ -136,7 +136,7 @@ Source code: {{project_root}}/{{role_name}}/src/
 6. Commit and push
 7. Comment DONE with verification steps
 8. Mark: ` + "`" + `bd update <id> --status ready_for_qa` + "`" + `
-9. Report to super: ` + "`" + `gn -w super "[from {{role_name}}] <id>: ready for QA"` + "`" + `
+9. Report to super: ` + "`" + `initech send super "[from {{role_name}}] <id>: ready for QA"` + "`" + `
 
 ## Code Quality
 
@@ -149,9 +149,9 @@ Source code: {{project_root}}/{{role_name}}/src/
 
 ## Communication
 
-**Receive work:** Dispatches from super via gn.
-**Report status:** ` + "`" + `gn -w super "[from {{role_name}}] <message>"` + "`" + `
-**Escalate blockers:** ` + "`" + `gn -w super "[from {{role_name}}] BLOCKED on <id>: <reason>"` + "`" + `
+**Receive work:** Dispatches from super via initech send.
+**Report status:** ` + "`" + `initech send super "[from {{role_name}}] <message>"` + "`" + `
+**Escalate blockers:** ` + "`" + `initech send super "[from {{role_name}}] BLOCKED on <id>: <reason>"` + "`" + `
 
 ## Tech Stack
 
@@ -188,7 +188,7 @@ Source code: {{project_root}}/{{role_name}}/src/
 6. Comment verdict: PASS or FAIL as first word, followed by evidence
 7. If PASS: ` + "`" + `bd update <id> --status qa_passed` + "`" + `
 8. If FAIL: ` + "`" + `bd update <id> --status in_progress` + "`" + ` with failure details
-9. Report: ` + "`" + `gn -w super "[from {{role_name}}] <id>: PASS/FAIL"` + "`" + `
+9. Report: ` + "`" + `initech send super "[from {{role_name}}] <id>: PASS/FAIL"` + "`" + `
 
 ## Verdict Rules
 
@@ -198,8 +198,8 @@ Source code: {{project_root}}/{{role_name}}/src/
 
 ## Communication
 
-**Receive work:** Dispatches from super via gn.
-**Report verdicts:** ` + "`" + `gn -w super "[from {{role_name}}] <id>: PASS/FAIL. <summary>"` + "`" + `
+**Receive work:** Dispatches from super via initech send.
+**Report verdicts:** ` + "`" + `initech send super "[from {{role_name}}] <id>: PASS/FAIL. <summary>"` + "`" + `
 `
 
 // PMTemplate is the CLAUDE.md template for the product manager role.
@@ -254,7 +254,7 @@ Working directory: {{project_root}}/{{role_name}}
 ## Communication
 
 **Receive work:** Direction from Nelson, requests from super.
-**Report:** ` + "`" + `gn -w super "[from {{role_name}}] <message>"` + "`" + `
+**Report:** ` + "`" + `initech send super "[from {{role_name}}] <message>"` + "`" + `
 `
 
 // ArchTemplate is the CLAUDE.md template for the architect role.
@@ -311,7 +311,7 @@ Working directory: {{project_root}}/{{role_name}}
 ## Communication
 
 **Receive work:** Direction from Nelson, requests from super.
-**Report:** ` + "`" + `gn -w super "[from {{role_name}}] <message>"` + "`" + `
+**Report:** ` + "`" + `initech send super "[from {{role_name}}] <message>"` + "`" + `
 `
 
 // SecTemplate is the CLAUDE.md template for the security role.
@@ -368,7 +368,7 @@ Working directory: {{project_root}}/{{role_name}}
 ## Communication
 
 **Receive work:** Dispatches from super.
-**Report findings:** ` + "`" + `gn -w super "[from {{role_name}}] <finding-summary>"` + "`" + `
+**Report findings:** ` + "`" + `initech send super "[from {{role_name}}] <finding-summary>"` + "`" + `
 `
 
 // ShipperTemplate is the CLAUDE.md template for the release/shipper role.
@@ -429,7 +429,7 @@ Playbooks: {{project_root}}/{{role_name}}/playbooks/
 ## Communication
 
 **Receive work:** Release directives from super/Nelson.
-**Report:** ` + "`" + `gn -w super "[from {{role_name}}] <release-status>"` + "`" + `
+**Report:** ` + "`" + `initech send super "[from {{role_name}}] <release-status>"` + "`" + `
 `
 
 // PMMTemplate is the CLAUDE.md template for the product marketing role.
@@ -476,7 +476,7 @@ Working directory: {{project_root}}/{{role_name}}
 ## Communication
 
 **Receive work:** Direction from Nelson, product context from PM.
-**Report:** ` + "`" + `gn -w super "[from {{role_name}}] <message>"` + "`" + `
+**Report:** ` + "`" + `initech send super "[from {{role_name}}] <message>"` + "`" + `
 `
 
 // WriterTemplate is the CLAUDE.md template for the technical writer role.
@@ -519,7 +519,7 @@ Working directory: {{project_root}}/{{role_name}}
 ## Communication
 
 **Receive work:** Dispatches from super.
-**Report:** ` + "`" + `gn -w super "[from {{role_name}}] <message>"` + "`" + `
+**Report:** ` + "`" + `initech send super "[from {{role_name}}] <message>"` + "`" + `
 `
 
 // OpsTemplate is the CLAUDE.md template for the operations role.
@@ -560,7 +560,7 @@ Playbooks: {{project_root}}/{{role_name}}/playbooks/
 ## Communication
 
 **Receive work:** Dispatches from super.
-**Report:** ` + "`" + `gn -w super "[from {{role_name}}] <message>"` + "`" + `
+**Report:** ` + "`" + `initech send super "[from {{role_name}}] <message>"` + "`" + `
 `
 
 // GrowthTemplate is the CLAUDE.md template for the growth engineer role.
@@ -607,5 +607,5 @@ Source code: {{project_root}}/{{role_name}}/src/
 ## Communication
 
 **Receive work:** Dispatches from super, data requests from PM.
-**Report:** ` + "`" + `gn -w super "[from {{role_name}}] <message>"` + "`" + `
+**Report:** ` + "`" + `initech send super "[from {{role_name}}] <message>"` + "`" + `
 `
