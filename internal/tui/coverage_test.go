@@ -671,20 +671,6 @@ func TestRenderOverlayOnScreen(t *testing.T) {
 	}
 }
 
-func TestRenderFocusBorderOnScreen(t *testing.T) {
-	tui, s := newTestTUIWithScreen("a", "b")
-	tui.focused = 0
-	tui.overlay = false
-	tui.render()
-
-	// Check that the focused pane's left edge column has DodgerBlue background.
-	r := tui.panes[0].region
-	_, _, style, _ := s.GetContent(r.X, r.Y+1)
-	_, bg, _ := style.Decompose()
-	if bg != tcell.ColorDodgerBlue {
-		t.Errorf("focus border bg = %v, want DodgerBlue", bg)
-	}
-}
 
 func TestRenderGridDividersOnScreen(t *testing.T) {
 	tui, s := newTestTUIWithScreen("a", "b")
@@ -1108,23 +1094,6 @@ func TestRenderWithCursor(t *testing.T) {
 	tui.render() // Should draw cursor.
 }
 
-func TestRenderFocusBorderHiddenFocused(t *testing.T) {
-	tui, _ := newTestTUIWithScreen("a", "b")
-	tui.relayout()
-	tui.focused = 0
-	tui.panes[0].SetVisible(false)
-	// renderFocusBorder should skip hidden focused pane.
-	tui.renderFocusBorder()
-}
-
-func TestRenderFocusBorderOutOfRange(t *testing.T) {
-	tui, _ := newTestTUIWithScreen("a")
-	tui.focused = -1
-	tui.renderFocusBorder() // Should not panic.
-
-	tui.focused = 99
-	tui.renderFocusBorder() // Should not panic.
-}
 
 // ---------------------------------------------------------------------------
 // contentOffset with content heavier than pane

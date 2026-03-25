@@ -972,8 +972,6 @@ func (t *TUI) render() {
 		}
 		// Draw thin black vertical dividers between columns.
 		t.renderGridDividers(regions)
-		// Draw focused pane borders AFTER dividers so they aren't overwritten.
-		t.renderFocusBorder()
 	}
 
 	if t.overlay {
@@ -1006,29 +1004,6 @@ func (t *TUI) selectionFor(paneIdx int) Selection {
 	}
 }
 
-// renderFocusBorder highlights the focused pane's left and right edges.
-// Instead of drawing U+2502 (which overwrites content like the prompt character),
-// it tints the background of existing cells to DodgerBlue, preserving their content.
-// Called after renderGridDividers so the tint isn't overwritten by dividers.
-func (t *TUI) renderFocusBorder() {
-	if t.focused < 0 || t.focused >= len(t.panes) {
-		return
-	}
-	p := t.panes[t.focused]
-	if !p.Visible() {
-		return
-	}
-	r := p.region
-	s := t.screen
-	for y := r.Y + 1; y < r.Y+r.H; y++ {
-		// Left edge: preserve content, tint background.
-		mainc, combc, style, _ := s.GetContent(r.X, y)
-		s.SetContent(r.X, y, mainc, combc, style.Background(tcell.ColorDodgerBlue))
-		// Right edge.
-		mainc, combc, style, _ = s.GetContent(r.X+r.W-1, y)
-		s.SetContent(r.X+r.W-1, y, mainc, combc, style.Background(tcell.ColorDodgerBlue))
-	}
-}
 
 // renderGridDividers draws thin black vertical lines between pane columns.
 // Each row may have different column boundaries, so dividers are drawn per-row.
