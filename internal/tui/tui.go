@@ -58,7 +58,8 @@ type TUI struct {
 
 // Config controls what agents the TUI launches.
 type Config struct {
-	Agents []PaneConfig // One entry per agent pane.
+	Agents      []PaneConfig // One entry per agent pane.
+	ProjectName string       // Used for socket path.
 }
 
 // DefaultConfig returns a config with standard shell-only agents.
@@ -108,9 +109,20 @@ func Run(cfg Config) error {
 		lastH:    initH,
 	}
 
+	// Start IPC socket server for inter-agent messaging.
+	sockPath := SocketPath(cfg.ProjectName)
+	if err := t.startIPC(sockPath); err != nil {
+		return fmt.Errorf("start IPC: %w", err)
+	}
+
 	// Calculate initial layout.
 	w, h := screen.Size()
 	regions := t.calcRegions(w, h)
+
+	// Inject the socket path into every agent's environment.
+	for i := range cfg.Agents {
+		cfg.Agents[i].Env = append(cfg.Agents[i].Env, "INITECH_SOCKET="+sockPath)
+	}
 
 	// Create panes.
 	for i, acfg := range cfg.Agents {

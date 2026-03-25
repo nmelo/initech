@@ -106,5 +106,8 @@ func runTUI(cmd *cobra.Command, args []string) error {
 		})
 	}
 
-	return tui.Run(tui.Config{Agents: agents})
+	return tui.Run(tui.Config{
+		Agents:      agents,
+		ProjectName: proj.Name,
+	})
 }
