@@ -36,7 +36,7 @@ mkdir myproject && cd myproject
 initech init
 
 # Launch the TUI with all agent panes
-initech tui
+initech
 
 # Send a message to an agent
 initech send eng1 "check the failing test in config/"
@@ -65,8 +65,8 @@ initech peek eng1 -n 50
 
 | Command | What it does |
 |---------|-------------|
+| `initech` | Launch the TUI terminal multiplexer with all agent panes |
 | `initech init` | Bootstrap project: config, directories, role CLAUDE.md files, beads, docs |
-| `initech tui` | Launch the TUI terminal multiplexer with all agent panes |
 | `initech send <role> <text>` | Send a message to an agent's pane via IPC |
 | `initech peek <role>` | Read an agent's terminal output via IPC |
 | `initech status` | Agent table: activity state, bead assignments, memory |
@@ -76,7 +76,6 @@ initech peek eng1 -n 50
 | `initech down` | Graceful shutdown with uncommitted-work warnings |
 | `initech standup` | Morning standup: shipped, in-progress, next up (from beads) |
 | `initech doctor` | Check prerequisites with versions and fix instructions |
-| `initech up` | Start tmux session (legacy, requires tmux + tmuxinator) |
 
 ## What `initech init` Creates
 

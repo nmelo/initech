@@ -50,7 +50,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	}
 
 	if !tmux.SessionExists(runner, p.Name) {
-		fmt.Fprintf(out, "Session '%s' is not running. Use 'initech up' to start.\n", p.Name)
+		fmt.Fprintf(out, "Session '%s' is not running. Use 'initech' to start.\n", p.Name)
 		return nil
 	}
 

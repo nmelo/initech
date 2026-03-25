@@ -167,7 +167,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 	if gridYAML != nil {
 		fmt.Fprintf(out, "  ~/.config/tmuxinator/%s-grid.yml\n", p.Name)
 	}
-	fmt.Fprintf(out, "\nReady. Run 'initech up' to start.\n")
+	fmt.Fprintf(out, "\nReady. Run 'initech' to start.\n")
 
 	return nil
 }

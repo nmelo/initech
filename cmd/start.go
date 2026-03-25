@@ -48,7 +48,7 @@ func runStart(cmd *cobra.Command, args []string) error {
 	}
 
 	if !tmux.SessionExists(runner, p.Name) {
-		return fmt.Errorf("session '%s' is not running. Use 'initech up' first", p.Name)
+		return fmt.Errorf("session '%s' is not running. Use 'initech' first", p.Name)
 	}
 
 	// Validate all roles exist in config
