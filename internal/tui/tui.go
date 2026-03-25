@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/gdamore/tcell/v2"
 )
 
@@ -185,7 +186,7 @@ func (t *TUI) handleMouse(ev *tcell.EventMouse) {
 
 	switch {
 	case ev.Buttons()&tcell.Button1 != 0 && !t.selActive:
-		// Button1 press: start selection and focus the pane.
+		// Button1 press: forward to pane and start TUI selection.
 		for i, p := range t.panes {
 			if !p.Visible() {
 				continue
@@ -199,6 +200,8 @@ func (t *TUI) handleMouse(ev *tcell.EventMouse) {
 				if ly < 0 {
 					ly = 0
 				}
+				// Forward click to emulator (no-op if mouse reporting is off).
+				t.forwardMouseEvent(p, lx, ly, uv.MouseLeft, false, false, ev.Modifiers())
 				t.selActive = true
 				t.selPane = i
 				t.selStartX = lx
@@ -210,9 +213,10 @@ func (t *TUI) handleMouse(ev *tcell.EventMouse) {
 		}
 
 	case ev.Buttons()&tcell.Button1 != 0 && t.selActive:
-		// Drag: update selection end.
+		// Drag: update selection end and forward motion.
 		if t.selPane < len(t.panes) {
-			r := t.panes[t.selPane].region
+			p := t.panes[t.selPane]
+			r := p.region
 			lx := mx - r.X
 			ly := my - r.Y - 1
 			cols, rows := r.InnerSize()
@@ -228,14 +232,33 @@ func (t *TUI) handleMouse(ev *tcell.EventMouse) {
 			if ly >= rows {
 				ly = rows - 1
 			}
+			t.forwardMouseEvent(p, lx, ly, uv.MouseLeft, true, false, ev.Modifiers())
 			t.selEndX = lx
 			t.selEndY = ly
 		}
 
 	case ev.Buttons() == tcell.ButtonNone && t.selActive:
-		// Release: copy selection to clipboard and clear.
+		// Release: forward to pane, copy selection, and clear.
+		if t.selPane < len(t.panes) {
+			p := t.panes[t.selPane]
+			r := p.region
+			lx := mx - r.X
+			ly := my - r.Y - 1
+			if ly < 0 {
+				ly = 0
+			}
+			t.forwardMouseEvent(p, lx, ly, uv.MouseNone, false, true, ev.Modifiers())
+		}
 		t.copySelection()
 		t.selActive = false
+
+	case ev.Buttons()&tcell.Button2 != 0:
+		// Middle click: forward to focused pane only.
+		t.forwardMouseToFocused(mx, my, uv.MouseMiddle, false, false, ev.Modifiers())
+
+	case ev.Buttons()&tcell.Button3 != 0:
+		// Right click: forward to focused pane only.
+		t.forwardMouseToFocused(mx, my, uv.MouseRight, false, false, ev.Modifiers())
 
 	case ev.Buttons()&tcell.WheelUp != 0:
 		// Scroll back into history for the pane under cursor.
@@ -259,6 +282,61 @@ func (t *TUI) handleMouse(ev *tcell.EventMouse) {
 			}
 		}
 	}
+}
+
+// forwardMouseEvent translates pane-local content coordinates to emulator
+// coordinates and sends the mouse event. The emulator silently drops the
+// event if the child hasn't enabled mouse reporting.
+func (t *TUI) forwardMouseEvent(p *Pane, lx, ly int, button uv.MouseButton, isMotion, isRelease bool, mods tcell.ModMask) {
+	startRow, renderOffset := p.contentOffset()
+	emuY := startRow + (ly - renderOffset)
+	emuX := lx
+	if emuY < 0 {
+		emuY = 0
+	}
+	if emuX < 0 {
+		emuX = 0
+	}
+
+	var mod uv.KeyMod
+	if mods&tcell.ModShift != 0 {
+		mod |= uv.ModShift
+	}
+	if mods&tcell.ModAlt != 0 {
+		mod |= uv.ModAlt
+	}
+	if mods&tcell.ModCtrl != 0 {
+		mod |= uv.ModCtrl
+	}
+
+	m := uv.Mouse{X: emuX, Y: emuY, Button: button, Mod: mod}
+	switch {
+	case isRelease:
+		p.ForwardMouse(uv.MouseReleaseEvent(m))
+	case isMotion:
+		p.ForwardMouse(uv.MouseMotionEvent(m))
+	default:
+		p.ForwardMouse(uv.MouseClickEvent(m))
+	}
+}
+
+// forwardMouseToFocused forwards a mouse event to the focused pane if the
+// click is within its region.
+func (t *TUI) forwardMouseToFocused(mx, my int, button uv.MouseButton, isMotion, isRelease bool, mods tcell.ModMask) {
+	if t.focused < 0 || t.focused >= len(t.panes) {
+		return
+	}
+	p := t.panes[t.focused]
+	r := p.region
+	if mx < r.X || mx >= r.X+r.W || my < r.Y || my >= r.Y+r.H {
+		return
+	}
+	lx := mx - r.X
+	ly := my - r.Y - 1
+	if ly < 0 {
+		ly = 0
+	}
+	t.forwardMouseEvent(p, lx, ly, button, isMotion, isRelease, mods)
 }
 
 // copySelection extracts selected text from the pane's emulator and copies to clipboard.

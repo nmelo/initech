@@ -391,6 +391,13 @@ func (p *Pane) Render(s tcell.Screen, focused bool, sel Selection) {
 
 }
 
+// ForwardMouse sends a mouse event to the emulator with pane-local content
+// coordinates translated to emulator coordinates. The emulator silently
+// drops the event if the child process hasn't enabled mouse reporting.
+func (p *Pane) ForwardMouse(ev uv.MouseEvent) {
+	p.emu.SendMouse(ev)
+}
+
 // contentOffset computes the mapping from screen-local content rows to
 // emulator rows for bottom-anchored (non-alt-screen) content. In alt-screen
 // mode or scrollback mode, the mapping is identity (both return 0).
