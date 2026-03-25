@@ -56,6 +56,7 @@ type Pane struct {
 	lastJsonlTime time.Time    // When we last saw a file change.
 	jsonlDir      string       // Directory to search for session JSONL files.
 	sessionDesc   string       // Session description extracted from cursor row.
+	scrollOffset  int          // Rows scrolled back from live view (0 = live).
 	region        Region
 }
 
@@ -248,6 +249,9 @@ func (p *Pane) Render(s tcell.Screen, focused bool, sel Selection, showBorder bo
 	if !p.IsAlive() {
 		title = " " + p.name + " [dead] "
 		titleStyle = tcell.StyleDefault.Background(tcell.ColorDarkRed).Foreground(tcell.ColorBlack).Bold(true)
+	} else if p.scrollOffset > 0 {
+		title = fmt.Sprintf(" %s [+%d] ", p.name, p.scrollOffset)
+		titleStyle = tcell.StyleDefault.Background(tcell.ColorYellow).Foreground(tcell.ColorBlack).Bold(true)
 	}
 	for i, ch := range title {
 		if r.X+1+i < r.X+r.W {
@@ -256,119 +260,160 @@ func (p *Pane) Render(s tcell.Screen, focused bool, sel Selection, showBorder bo
 	}
 
 	// Terminal content (starts at Y+1, fills full width).
-	// When not in alt screen mode, push content to the bottom of the pane
-	// (Claude Code uses inline mode and renders from the top, leaving
-	// empty rows below the cursor).
 	innerCols, innerRows := r.InnerSize()
 	emuRows := p.emu.Height()
+
+	if p.scrollOffset > 0 {
+		// Scrollback mode: render from the combined scrollback + screen buffer.
+		scrollbackLen := p.emu.ScrollbackLen()
+		totalVirtual := scrollbackLen + emuRows
+
+		// The bottom of the view window (exclusive).
+		viewBottom := totalVirtual - p.scrollOffset
+		if viewBottom < 0 {
+			viewBottom = 0
+		}
+		viewTop := viewBottom - innerRows
+		if viewTop < 0 {
+			viewTop = 0
+		}
+
+		for row := 0; row < innerRows; row++ {
+			vRow := viewTop + row
+			if vRow >= viewBottom {
+				continue
+			}
+			for col := 0; col < innerCols; col++ {
+				var cell *uv.Cell
+				if vRow < scrollbackLen {
+					cell = p.emu.ScrollbackCellAt(col, vRow)
+				} else {
+					cell = p.emu.CellAt(col, vRow-scrollbackLen)
+				}
+				ch, style := uvCellToTcell(cell)
+				s.SetContent(r.X+col, r.Y+1+row, ch, nil, style)
+			}
+		}
+	}
+
+	// These variables are used by both the live rendering and cursor logic below.
 	renderOffset := 0 // screen rows to skip before rendering emulator row 0
 	startRow := 0     // first emulator row to render
-	if !p.emu.IsAltScreen() {
-		// Anchor content to the bottom. Scan up to 1 row BEFORE the cursor
-		// for the content extent. The cursor row often has Claude's session
-		// description which we extract for the title bar instead.
-		pos := p.emu.CursorPosition()
-		scanEnd := pos.Y - 1
-		if scanEnd < 0 {
-			scanEnd = 0
-		}
-		lastContent := 0
-		for row := scanEnd; row >= 0; row-- {
-			empty := true
-			for col := 0; col < innerCols; col++ {
-				cell := p.emu.CellAt(col, row)
-				if cell != nil && cell.Content != "" && cell.Content != " " {
-					empty = false
+
+	if p.scrollOffset == 0 {
+		// Live mode: anchor content to the bottom of the pane.
+		// Claude Code uses inline mode and renders from the top, leaving
+		// empty rows below the cursor.
+		if !p.emu.IsAltScreen() {
+			// Anchor content to the bottom. Scan up to 1 row BEFORE the cursor
+			// for the content extent. The cursor row often has Claude's session
+			// description which we extract for the title bar instead.
+			pos := p.emu.CursorPosition()
+			scanEnd := pos.Y - 1
+			if scanEnd < 0 {
+				scanEnd = 0
+			}
+			lastContent := 0
+			for row := scanEnd; row >= 0; row-- {
+				empty := true
+				for col := 0; col < innerCols; col++ {
+					cell := p.emu.CellAt(col, row)
+					if cell != nil && cell.Content != "" && cell.Content != " " {
+						empty = false
+						break
+					}
+				}
+				if !empty {
+					lastContent = row
 					break
 				}
 			}
-			if !empty {
-				lastContent = row
-				break
+			contentEnd := lastContent + 1
+			if contentEnd < innerRows {
+				renderOffset = innerRows - contentEnd
+			} else if contentEnd > innerRows {
+				startRow = contentEnd - innerRows
+			}
+
+			// Extract the cursor row text as the session description.
+			// Only update if non-empty (resizes temporarily clear the cursor row).
+			if pos.Y < emuRows {
+				var desc strings.Builder
+				for col := 0; col < innerCols; col++ {
+					cell := p.emu.CellAt(col, pos.Y)
+					if cell != nil && cell.Content != "" {
+						desc.WriteString(cell.Content)
+					} else {
+						desc.WriteByte(' ')
+					}
+				}
+				trimmed := strings.TrimSpace(desc.String())
+				// Only use as description if it looks like real text, not
+				// Claude's status bar (which contains │ separators).
+				if trimmed != "" && !strings.Contains(trimmed, "\u2502") {
+					p.mu.Lock()
+					p.sessionDesc = trimmed
+					p.mu.Unlock()
+				}
 			}
 		}
-		contentEnd := lastContent + 1
-		if contentEnd < innerRows {
-			renderOffset = innerRows - contentEnd
-		} else if contentEnd > innerRows {
-			startRow = contentEnd - innerRows
-		}
-
-		// Extract the cursor row text as the session description.
-		// Only update if non-empty (resizes temporarily clear the cursor row).
-		if pos.Y < emuRows {
-			var desc strings.Builder
+		for row := 0; row < innerRows; row++ {
+			emuRow := startRow + (row - renderOffset)
+			if emuRow < 0 || emuRow >= emuRows {
+				continue
+			}
 			for col := 0; col < innerCols; col++ {
-				cell := p.emu.CellAt(col, pos.Y)
-				if cell != nil && cell.Content != "" {
-					desc.WriteString(cell.Content)
-				} else {
-					desc.WriteByte(' ')
-				}
-			}
-			trimmed := strings.TrimSpace(desc.String())
-			// Only use as description if it looks like real text, not
-			// Claude's status bar (which contains │ separators).
-			if trimmed != "" && !strings.Contains(trimmed, "\u2502") {
-				p.mu.Lock()
-				p.sessionDesc = trimmed
-				p.mu.Unlock()
-			}
-		}
-	}
-	for row := 0; row < innerRows; row++ {
-		emuRow := startRow + (row - renderOffset)
-		if emuRow < 0 || emuRow >= emuRows {
-			continue
-		}
-		for col := 0; col < innerCols; col++ {
-			cell := p.emu.CellAt(col, emuRow)
-			ch, style := uvCellToTcell(cell)
-			s.SetContent(r.X+col, r.Y+1+row, ch, nil, style)
-		}
-	}
-
-	// Selection highlight (yellow background, black text).
-	if sel.Active {
-		r0, c0, r1, c1 := sel.StartY, sel.StartX, sel.EndY, sel.EndX
-		if r0 > r1 || (r0 == r1 && c0 > c1) {
-			r0, c0, r1, c1 = r1, c1, r0, c0
-		}
-		selStyle := tcell.StyleDefault.Background(tcell.ColorYellow).Foreground(tcell.ColorBlack)
-		for row := r0; row <= r1 && row < innerRows; row++ {
-			sc := 0
-			ec := innerCols
-			if row == r0 {
-				sc = c0
-			}
-			if row == r1 {
-				ec = c1 + 1
-			}
-			if ec > innerCols {
-				ec = innerCols
-			}
-			for col := sc; col < ec; col++ {
-				cell := p.emu.CellAt(col, row)
-				ch := ' '
-				if cell != nil && cell.Content != "" {
-					ch = []rune(cell.Content)[0]
-				}
-				s.SetContent(r.X+col, r.Y+1+row, ch, nil, selStyle)
+				cell := p.emu.CellAt(col, emuRow)
+				ch, style := uvCellToTcell(cell)
+				s.SetContent(r.X+col, r.Y+1+row, ch, nil, style)
 			}
 		}
 	}
 
-	// Cursor (skip if selection is active to avoid visual conflict).
-	if focused && !sel.Active {
-		pos := p.emu.CursorPosition()
-		visRow := pos.Y - startRow + renderOffset
-		if pos.X >= 0 && pos.X < innerCols && visRow >= 0 && visRow < innerRows {
-			cx := r.X + pos.X
-			cy := r.Y + 1 + visRow
-			cell := p.emu.CellAt(pos.X, pos.Y)
-			ch, _ := uvCellToTcell(cell)
-			cursorStyle := tcell.StyleDefault.Background(tcell.ColorWhite).Foreground(tcell.ColorBlack)
-			s.SetContent(cx, cy, ch, nil, cursorStyle)
+	// Selection and cursor are only drawn in live mode (not scrollback).
+	if p.scrollOffset == 0 {
+		// Selection highlight (yellow background, black text).
+		if sel.Active {
+			r0, c0, r1, c1 := sel.StartY, sel.StartX, sel.EndY, sel.EndX
+			if r0 > r1 || (r0 == r1 && c0 > c1) {
+				r0, c0, r1, c1 = r1, c1, r0, c0
+			}
+			selStyle := tcell.StyleDefault.Background(tcell.ColorYellow).Foreground(tcell.ColorBlack)
+			for row := r0; row <= r1 && row < innerRows; row++ {
+				sc := 0
+				ec := innerCols
+				if row == r0 {
+					sc = c0
+				}
+				if row == r1 {
+					ec = c1 + 1
+				}
+				if ec > innerCols {
+					ec = innerCols
+				}
+				for col := sc; col < ec; col++ {
+					cell := p.emu.CellAt(col, row)
+					ch := ' '
+					if cell != nil && cell.Content != "" {
+						ch = []rune(cell.Content)[0]
+					}
+					s.SetContent(r.X+col, r.Y+1+row, ch, nil, selStyle)
+				}
+			}
+		}
+
+		// Cursor (skip if selection is active to avoid visual conflict).
+		if focused && !sel.Active {
+			pos := p.emu.CursorPosition()
+			visRow := pos.Y - startRow + renderOffset
+			if pos.X >= 0 && pos.X < innerCols && visRow >= 0 && visRow < innerRows {
+				cx := r.X + pos.X
+				cy := r.Y + 1 + visRow
+				cell := p.emu.CellAt(pos.X, pos.Y)
+				ch, _ := uvCellToTcell(cell)
+				cursorStyle := tcell.StyleDefault.Background(tcell.ColorWhite).Foreground(tcell.ColorBlack)
+				s.SetContent(cx, cy, ch, nil, cursorStyle)
+			}
 		}
 	}
 
@@ -543,6 +588,29 @@ func lastJSONLType(path string) string {
 // (slashes replaced with dashes, e.g. /Users/foo/bar -> -Users-foo-bar).
 func encodePathForClaude(path string) string {
 	return strings.ReplaceAll(path, string(filepath.Separator), "-")
+}
+
+// ScrollUp moves the viewport up (into scrollback history) by n rows.
+func (p *Pane) ScrollUp(n int) {
+	maxOffset := p.emu.ScrollbackLen()
+	p.scrollOffset += n
+	if p.scrollOffset > maxOffset {
+		p.scrollOffset = maxOffset
+	}
+}
+
+// ScrollDown moves the viewport down (toward live output) by n rows.
+// When scrollOffset reaches 0, the pane returns to live view.
+func (p *Pane) ScrollDown(n int) {
+	p.scrollOffset -= n
+	if p.scrollOffset < 0 {
+		p.scrollOffset = 0
+	}
+}
+
+// InScrollback returns true when the pane is viewing scrollback history.
+func (p *Pane) InScrollback() bool {
+	return p.scrollOffset > 0
 }
 
 // Close terminates the PTY and kills the process.

@@ -240,6 +240,28 @@ func (t *TUI) handleMouse(ev *tcell.EventMouse) {
 		// Release: copy selection to clipboard and clear.
 		t.copySelection()
 		t.selActive = false
+
+	case ev.Buttons()&tcell.WheelUp != 0:
+		// Scroll back into history for the pane under cursor.
+		for i, p := range t.panes {
+			r := p.region
+			if mx >= r.X && mx < r.X+r.W && my >= r.Y && my < r.Y+r.H {
+				t.focused = i
+				p.ScrollUp(3)
+				return
+			}
+		}
+
+	case ev.Buttons()&tcell.WheelDown != 0:
+		// Scroll toward live view for the pane under cursor.
+		for i, p := range t.panes {
+			r := p.region
+			if mx >= r.X && mx < r.X+r.W && my >= r.Y && my < r.Y+r.H {
+				t.focused = i
+				p.ScrollDown(3)
+				return
+			}
+		}
 	}
 }
 
