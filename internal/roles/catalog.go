@@ -61,3 +61,21 @@ func LookupRole(name string) RoleDef {
 		Permission: Autonomous,
 	}
 }
+
+// ResolveClaudeArgs returns the claude flags for a role using the priority
+// chain: per-role override > global > catalog default. When no config
+// overrides are set, Autonomous roles get ["--dangerously-skip-permissions"]
+// and Supervised roles get an empty slice.
+func ResolveClaudeArgs(roleName string, globalArgs []string, roleArgs []string) []string {
+	if roleArgs != nil {
+		return roleArgs
+	}
+	if len(globalArgs) > 0 {
+		return globalArgs
+	}
+	def := LookupRole(roleName)
+	if def.Permission == Autonomous {
+		return []string{"--dangerously-skip-permissions"}
+	}
+	return nil
+}

@@ -111,3 +111,75 @@ func TestLookupRole_Unknown(t *testing.T) {
 		t.Error("unknown role should not need makefile")
 	}
 }
+
+func TestResolveClaudeArgs(t *testing.T) {
+	tests := []struct {
+		name       string
+		role       string
+		globalArgs []string
+		roleArgs   []string
+		want       []string
+	}{
+		{
+			name: "autonomous role with no config uses skip-permissions",
+			role: "eng1",
+			want: []string{"--dangerously-skip-permissions"},
+		},
+		{
+			name: "supervised role with no config returns nil",
+			role: "super",
+			want: nil,
+		},
+		{
+			name:       "global args override catalog default",
+			role:       "eng1",
+			globalArgs: []string{"--model", "opus"},
+			want:       []string{"--model", "opus"},
+		},
+		{
+			name:       "global args apply to supervised roles too",
+			role:       "super",
+			globalArgs: []string{"--verbose"},
+			want:       []string{"--verbose"},
+		},
+		{
+			name:       "per-role args override global args",
+			role:       "eng1",
+			globalArgs: []string{"--model", "opus"},
+			roleArgs:   []string{"--model", "sonnet", "--dangerously-skip-permissions"},
+			want:       []string{"--model", "sonnet", "--dangerously-skip-permissions"},
+		},
+		{
+			name:     "per-role empty slice overrides catalog default",
+			role:     "eng1",
+			roleArgs: []string{},
+			want:     []string{},
+		},
+		{
+			name: "unknown role defaults to autonomous",
+			role: "custom-role",
+			want: []string{"--dangerously-skip-permissions"},
+		},
+		{
+			name:     "per-role nil falls through to global",
+			role:     "eng1",
+			globalArgs: []string{"--continue"},
+			roleArgs: nil,
+			want:     []string{"--continue"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := ResolveClaudeArgs(tt.role, tt.globalArgs, tt.roleArgs)
+			if len(got) != len(tt.want) {
+				t.Fatalf("got %v, want %v", got, tt.want)
+			}
+			for i := range got {
+				if got[i] != tt.want[i] {
+					t.Errorf("arg[%d] = %q, want %q", i, got[i], tt.want[i])
+				}
+			}
+		})
+	}
+}

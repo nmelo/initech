@@ -209,6 +209,46 @@ func TestValidate_OverrideNotInRoles(t *testing.T) {
 	}
 }
 
+func TestLoad_ClaudeArgs(t *testing.T) {
+	dir := t.TempDir()
+	yaml := `project: test
+root: /tmp/test
+roles:
+  - super
+  - eng1
+claude_args:
+  - "--model"
+  - "opus"
+role_overrides:
+  eng1:
+    claude_args:
+      - "--dangerously-skip-permissions"
+      - "--model"
+      - "sonnet"
+`
+	path := writeConfig(t, dir, yaml)
+
+	p, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	if len(p.ClaudeArgs) != 2 || p.ClaudeArgs[0] != "--model" || p.ClaudeArgs[1] != "opus" {
+		t.Errorf("ClaudeArgs = %v, want [--model opus]", p.ClaudeArgs)
+	}
+
+	ov, ok := p.RoleOverrides["eng1"]
+	if !ok {
+		t.Fatal("missing eng1 override")
+	}
+	if len(ov.ClaudeArgs) != 3 {
+		t.Fatalf("eng1 ClaudeArgs = %v, want 3 args", ov.ClaudeArgs)
+	}
+	if ov.ClaudeArgs[0] != "--dangerously-skip-permissions" {
+		t.Errorf("eng1 ClaudeArgs[0] = %q", ov.ClaudeArgs[0])
+	}
+}
+
 func TestWrite(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "initech.yaml")

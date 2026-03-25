@@ -63,8 +63,6 @@ func runTUI(cmd *cobra.Command, args []string) error {
 
 	agents := make([]tui.PaneConfig, 0, len(proj.Roles))
 	for _, roleName := range proj.Roles {
-		def := roles.LookupRole(roleName)
-
 		// Build agent command. INITECH_MOCK_AGENT overrides for testing.
 		var argv []string
 		if mock := os.Getenv("INITECH_MOCK_AGENT"); mock != "" {
@@ -77,12 +75,12 @@ func runTUI(cmd *cobra.Command, args []string) error {
 				argv = []string{"claude"}
 			}
 			// Args: per-role override > global > catalog default.
-			if ov, ok := proj.RoleOverrides[roleName]; ok && ov.ClaudeArgs != nil {
-				argv = append(argv, ov.ClaudeArgs...)
-			} else if len(proj.ClaudeArgs) > 0 {
-				argv = append(argv, proj.ClaudeArgs...)
-			} else if def.Permission == roles.Autonomous {
-				argv = append(argv, "--dangerously-skip-permissions")
+			var roleArgs []string
+			if ov, ok := proj.RoleOverrides[roleName]; ok {
+				roleArgs = ov.ClaudeArgs
+			}
+			if args := roles.ResolveClaudeArgs(roleName, proj.ClaudeArgs, roleArgs); len(args) > 0 {
+				argv = append(argv, args...)
 			}
 		}
 
