@@ -247,15 +247,18 @@ func (p *Pane) Render(screen tcell.Screen, focused bool, dimmed bool, sel Select
 	s := &clampedScreen{Screen: screen, r: r}
 
 	// Bottom ribbon (1 row at the bottom of the region).
+	// Use true black (#000000) not palette ColorBlack, which terminals often
+	// render as the same dark gray as the default background.
+	trueBlack := tcell.NewRGBColor(0, 0, 0)
 	ribbonY := r.Y + r.H - 1
 	nameFg := tcell.ColorGray
 	if focused {
 		nameFg = tcell.ColorDodgerBlue
 	}
-	titleStyle := tcell.StyleDefault.Background(tcell.ColorBlack).Foreground(nameFg).Bold(true)
+	titleStyle := tcell.StyleDefault.Background(trueBlack).Foreground(nameFg).Bold(true)
 
 	// Fill ribbon row with solid black background.
-	blackStyle := tcell.StyleDefault.Background(tcell.ColorBlack)
+	blackStyle := tcell.StyleDefault.Background(trueBlack)
 	for x := r.X; x < r.X+r.W; x++ {
 		s.SetContent(x, ribbonY, ' ', nil, blackStyle)
 	}
@@ -264,10 +267,10 @@ func (p *Pane) Render(screen tcell.Screen, focused bool, dimmed bool, sel Select
 	title := " " + p.name + " "
 	if !p.IsAlive() {
 		title = " " + p.name + " [dead] "
-		titleStyle = tcell.StyleDefault.Background(tcell.ColorBlack).Foreground(tcell.ColorRed).Bold(true)
+		titleStyle = tcell.StyleDefault.Background(trueBlack).Foreground(tcell.ColorRed).Bold(true)
 	} else if p.scrollOffset > 0 {
 		title = fmt.Sprintf(" %s [+%d] ", p.name, p.scrollOffset)
-		titleStyle = tcell.StyleDefault.Background(tcell.ColorBlack).Foreground(tcell.ColorYellow).Bold(true)
+		titleStyle = tcell.StyleDefault.Background(trueBlack).Foreground(tcell.ColorYellow).Bold(true)
 	}
 	for i, ch := range title {
 		if r.X+1+i < r.X+r.W {
