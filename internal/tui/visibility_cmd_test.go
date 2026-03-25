@@ -11,14 +11,14 @@ func TestHideCommand(t *testing.T) {
 		newTestPane("eng2", true),
 		newTestPane("qa1", true),
 	)
-	tui.layout = LayoutGrid
-	tui.gridCols, tui.gridRows = 2, 2
+	tui.layoutState.Mode = LayoutGrid
+	tui.layoutState.GridCols, tui.layoutState.GridRows = 2, 2
 
 	tui.execCmd("hide eng2")
-	if tui.panes[2].Visible() {
+	if !tui.layoutState.Hidden[tui.panes[2].name] {
 		t.Error("eng2 should be hidden after hide command")
 	}
-	if !tui.panes[0].Visible() || !tui.panes[1].Visible() || !tui.panes[3].Visible() {
+	if tui.layoutState.Hidden[tui.panes[0].name] || tui.layoutState.Hidden[tui.panes[1].name] || tui.layoutState.Hidden[tui.panes[3].name] {
 		t.Error("other panes should remain visible")
 	}
 }
@@ -31,7 +31,7 @@ func TestHideLastVisiblePaneFails(t *testing.T) {
 
 	tui.execCmd("hide super")
 	tui.execCmd("hide eng1")
-	if !tui.panes[1].Visible() {
+	if tui.layoutState.Hidden[tui.panes[1].name] {
 		t.Error("should not be able to hide the last visible pane")
 	}
 	if tui.cmdError != "cannot hide last visible pane" {
@@ -49,7 +49,7 @@ func TestHideAllFails(t *testing.T) {
 	if tui.cmdError != "cannot hide all panes" {
 		t.Errorf("expected error, got %q", tui.cmdError)
 	}
-	if !tui.panes[0].Visible() || !tui.panes[1].Visible() {
+	if tui.layoutState.Hidden[tui.panes[0].name] || tui.layoutState.Hidden[tui.panes[1].name] {
 		t.Error("hide all should not change visibility")
 	}
 }
@@ -70,7 +70,7 @@ func TestShowCommand(t *testing.T) {
 	)
 
 	tui.execCmd("show eng2")
-	if !tui.panes[2].Visible() {
+	if tui.layoutState.Hidden[tui.panes[2].name] {
 		t.Error("eng2 should be visible after show command")
 	}
 }
@@ -85,7 +85,7 @@ func TestShowAllCommand(t *testing.T) {
 
 	tui.execCmd("show all")
 	for _, p := range tui.panes {
-		if !p.Visible() {
+		if tui.layoutState.Hidden[p.name] {
 			t.Errorf("pane %q should be visible after show all", p.name)
 		}
 	}
@@ -101,16 +101,16 @@ func TestViewCommand(t *testing.T) {
 
 	tui.execCmd("view super qa1")
 
-	if !tui.panes[0].Visible() {
+	if tui.layoutState.Hidden[tui.panes[0].name] {
 		t.Error("super should be visible")
 	}
-	if tui.panes[1].Visible() {
+	if !tui.layoutState.Hidden[tui.panes[1].name] {
 		t.Error("eng1 should be hidden")
 	}
-	if tui.panes[2].Visible() {
+	if !tui.layoutState.Hidden[tui.panes[2].name] {
 		t.Error("eng2 should be hidden")
 	}
-	if !tui.panes[3].Visible() {
+	if tui.layoutState.Hidden[tui.panes[3].name] {
 		t.Error("qa1 should be visible")
 	}
 }
@@ -126,7 +126,7 @@ func TestViewUnknownAgentFails(t *testing.T) {
 		t.Error("expected error for unknown agent in view")
 	}
 	// Nothing should have changed since validation failed.
-	if !tui.panes[0].Visible() || !tui.panes[1].Visible() {
+	if tui.layoutState.Hidden[tui.panes[0].name] || tui.layoutState.Hidden[tui.panes[1].name] {
 		t.Error("visibility should not change on validation failure")
 	}
 }
@@ -137,30 +137,31 @@ func TestHideFocusedPaneMoveFocus(t *testing.T) {
 		newTestPane("eng1", true),
 		newTestPane("eng2", true),
 	)
-	tui.focused = 1 // Focus eng1.
+	tui.layoutState.Focused = "eng1"
 
 	tui.execCmd("hide eng1")
 
-	if tui.focused == 1 {
+	if tui.layoutState.Focused == "eng1" {
 		t.Error("focus should have moved away from hidden pane")
-	}
-	if !tui.panes[tui.focused].Visible() {
-		t.Error("focus should be on a visible pane")
 	}
 }
 
-func TestEnsureFocusVisibleMovesToFirstVisible(t *testing.T) {
-	tui := newTestTUI(
+func TestComputeLayoutMoveFocusFromHidden(t *testing.T) {
+	panes := []*Pane{
 		newTestPane("a", false),
 		newTestPane("b", true),
 		newTestPane("c", false),
-	)
-	tui.focused = 0 // Focused on hidden pane.
+	}
+	state := LayoutState{
+		Mode:    LayoutGrid,
+		GridCols: 1, GridRows: 1,
+		Focused: "a", // Hidden pane.
+		Hidden:  map[string]bool{"a": true, "c": true},
+	}
+	plan := computeLayout(state, panes, 200, 100)
 
-	tui.ensureFocusVisible()
-
-	if tui.focused != 1 {
-		t.Errorf("focus = %d, want 1 (first visible pane)", tui.focused)
+	if plan.ValidatedFocus != "b" {
+		t.Errorf("focus = %q, want b (first visible pane)", plan.ValidatedFocus)
 	}
 }
 

@@ -222,7 +222,8 @@ type Selection struct {
 }
 
 // Render draws the pane's title bar and terminal content onto the tcell screen.
-func (p *Pane) Render(s tcell.Screen, focused bool, sel Selection) {
+// The dimmed flag is reserved for future focus-dimming (currently unused).
+func (p *Pane) Render(s tcell.Screen, focused bool, dimmed bool, sel Selection) {
 	r := p.region
 	if r.W < 1 || r.H < 2 {
 		return

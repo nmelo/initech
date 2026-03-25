@@ -947,8 +947,8 @@ func TestDefaultConfig(t *testing.T) {
 
 func TestCalcRegionsZoomReturnsOneRegion(t *testing.T) {
 	tui := newTestTUI(newTestPane("a", true), newTestPane("b", true))
-	tui.zoomed = true
-	regions := tui.calcRegions(200, 100)
+	tui.layoutState.Zoomed = true
+	plan := computeLayout(tui.layoutState, tui.panes, 200, 100); regions := make([]Region, len(plan.Panes)); for ii, pp := range plan.Panes { regions[ii] = pp.Region }
 	if len(regions) != 1 {
 		t.Errorf("zoom: got %d regions, want 1", len(regions))
 	}
@@ -956,18 +956,18 @@ func TestCalcRegionsZoomReturnsOneRegion(t *testing.T) {
 
 func TestCalcRegionsFocusReturnsOneRegion(t *testing.T) {
 	tui := newTestTUI(newTestPane("a", true), newTestPane("b", true))
-	tui.layout = LayoutFocus
-	regions := tui.calcRegions(200, 100)
+	tui.layoutState.Mode = LayoutFocus
+	plan := computeLayout(tui.layoutState, tui.panes, 200, 100); regions := make([]Region, len(plan.Panes)); for ii, pp := range plan.Panes { regions[ii] = pp.Region }
 	if len(regions) != 1 {
 		t.Errorf("focus: got %d regions, want 1", len(regions))
 	}
 }
 
 func TestCalcRegionsNoPanes(t *testing.T) {
-	tui := &TUI{}
-	regions := tui.calcRegions(200, 100)
-	if regions != nil {
-		t.Errorf("no panes: got %v, want nil", regions)
+	state := LayoutState{}
+	plan := computeLayout(state, nil, 200, 100)
+	if len(plan.Panes) != 0 {
+		t.Errorf("no panes: got %d plan entries, want 0", len(plan.Panes))
 	}
 }
 
@@ -976,8 +976,8 @@ func TestCalcRegions2Col(t *testing.T) {
 	b := newTestPane("b", true)
 	c := newTestPane("c", true)
 	tui := newTestTUI(a, b, c)
-	tui.layout = Layout2Col
-	regions := tui.calcRegions(200, 100)
+	tui.layoutState.Mode = Layout2Col
+	plan := computeLayout(tui.layoutState, tui.panes, 200, 100); regions := make([]Region, len(plan.Panes)); for ii, pp := range plan.Panes { regions[ii] = pp.Region }
 	if len(regions) != 3 {
 		t.Fatalf("2col: got %d regions, want 3", len(regions))
 	}
@@ -1016,13 +1016,13 @@ func TestExecCmdUnknown(t *testing.T) {
 
 func TestExecCmdPanel(t *testing.T) {
 	tui := newTestTUI(newTestPane("a", true))
-	tui.overlay = false
+	tui.layoutState.Overlay = false
 	tui.execCmd("panel")
-	if !tui.overlay {
+	if !tui.layoutState.Overlay {
 		t.Error("panel should toggle overlay on")
 	}
 	tui.execCmd("panel")
-	if tui.overlay {
+	if tui.layoutState.Overlay {
 		t.Error("panel should toggle overlay off")
 	}
 }
@@ -1031,13 +1031,13 @@ func TestExecCmdZoom(t *testing.T) {
 	// Test zoom toggle directly since execCmd("zoom") calls relayout
 	// which needs a screen.
 	tui := newTestTUI(newTestPane("a", true))
-	tui.zoomed = false
-	tui.zoomed = !tui.zoomed // Simulate what execCmd("zoom") does.
-	if !tui.zoomed {
+	tui.layoutState.Zoomed = false
+	tui.layoutState.Zoomed = !tui.layoutState.Zoomed // Simulate what execCmd("zoom") does.
+	if !tui.layoutState.Zoomed {
 		t.Error("zoom should toggle on")
 	}
-	tui.zoomed = !tui.zoomed
-	if tui.zoomed {
+	tui.layoutState.Zoomed = !tui.layoutState.Zoomed
+	if tui.layoutState.Zoomed {
 		t.Error("zoom should toggle off")
 	}
 }
@@ -1049,21 +1049,21 @@ func TestExecCmdShowHide(t *testing.T) {
 
 	// Hide eng1.
 	tui.execCmd("hide eng1")
-	if b.Visible() {
-		t.Error("eng1 should be hidden")
+	if !tui.layoutState.Hidden["eng1"] {
+		t.Error("eng1 should be hidden in layoutState")
 	}
 
 	// Show eng1.
 	tui.execCmd("show eng1")
-	if !b.Visible() {
-		t.Error("eng1 should be visible")
+	if tui.layoutState.Hidden["eng1"] {
+		t.Error("eng1 should be visible in layoutState")
 	}
 
 	// Show all.
-	b.SetVisible(false)
+	tui.layoutState.Hidden["eng1"] = true
 	tui.execCmd("show all")
-	if !b.Visible() {
-		t.Error("show all should make eng1 visible")
+	if tui.layoutState.Hidden["eng1"] {
+		t.Error("show all should make eng1 visible in layoutState")
 	}
 }
 
@@ -1095,12 +1095,12 @@ func TestExecCmdGridNoArg(t *testing.T) {
 		newTestPane("a", true), newTestPane("b", true),
 		newTestPane("c", true), newTestPane("d", true),
 	)
-	tui.layout = LayoutFocus
-	c, r := autoGrid(tui.visibleCount())
-	tui.layout = LayoutGrid
-	tui.gridCols = c
-	tui.gridRows = r
-	if tui.layout != LayoutGrid {
+	tui.layoutState.Mode = LayoutFocus
+	c, r := autoGrid(tui.visibleCountFromState())
+	tui.layoutState.Mode = LayoutGrid
+	tui.layoutState.GridCols = c
+	tui.layoutState.GridRows = r
+	if tui.layoutState.Mode != LayoutGrid {
 		t.Error("grid should switch to LayoutGrid")
 	}
 }
@@ -1108,11 +1108,11 @@ func TestExecCmdGridNoArg(t *testing.T) {
 func TestExecCmdGridWithArg(t *testing.T) {
 	tui := newTestTUI(newTestPane("a", true), newTestPane("b", true))
 	// Simulate grid 2x1.
-	tui.layout = LayoutGrid
-	tui.gridCols = 2
-	tui.gridRows = 1
-	if tui.gridCols != 2 || tui.gridRows != 1 {
-		t.Errorf("grid 2x1: cols=%d rows=%d", tui.gridCols, tui.gridRows)
+	tui.layoutState.Mode = LayoutGrid
+	tui.layoutState.GridCols = 2
+	tui.layoutState.GridRows = 1
+	if tui.layoutState.GridCols != 2 || tui.layoutState.GridRows != 1 {
+		t.Errorf("grid 2x1: cols=%d rows=%d", tui.layoutState.GridCols, tui.layoutState.GridRows)
 	}
 }
 
@@ -1127,11 +1127,11 @@ func TestExecCmdGridInvalid(t *testing.T) {
 func TestExecCmdFocusNoArg(t *testing.T) {
 	// focus calls relayout, so test the state change logic directly.
 	tui := newTestTUI(newTestPane("a", true))
-	tui.layout = LayoutGrid
+	tui.layoutState.Mode = LayoutGrid
 	// Simulate what execCmd("focus") does minus relayout.
-	tui.layout = LayoutFocus
-	tui.zoomed = false
-	if tui.layout != LayoutFocus {
+	tui.layoutState.Mode = LayoutFocus
+	tui.layoutState.Zoomed = false
+	if tui.layoutState.Mode != LayoutFocus {
 		t.Error("focus should switch to LayoutFocus")
 	}
 }
@@ -1140,21 +1140,17 @@ func TestExecCmdFocusWithName(t *testing.T) {
 	a := newTestPane("super", true)
 	b := newTestPane("eng1", true)
 	tui := newTestTUI(a, b)
-	tui.layout = LayoutGrid
+	tui.layoutState.Mode = LayoutGrid
 
-	// Simulate focus eng1 (minus relayout).
-	for i, p := range tui.panes {
-		if p.name == "eng1" {
-			tui.focused = i
-			tui.layout = LayoutFocus
-			tui.zoomed = false
-			break
-		}
+	// Simulate focus eng1.
+	tui.layoutState.Focused = "eng1"
+	tui.layoutState.Mode = LayoutFocus
+	tui.layoutState.Zoomed = false
+	tui.applyLayout()
+	if tui.layoutState.Focused != "eng1" {
+		t.Errorf("focused = %q, want eng1", tui.layoutState.Focused)
 	}
-	if tui.focused != 1 {
-		t.Errorf("focused = %d, want 1", tui.focused)
-	}
-	if tui.layout != LayoutFocus {
+	if tui.layoutState.Mode != LayoutFocus {
 		t.Error("should be in LayoutFocus")
 	}
 }
@@ -1169,11 +1165,11 @@ func TestExecCmdFocusUnknown(t *testing.T) {
 
 func TestExecCmdMain(t *testing.T) {
 	tui := newTestTUI(newTestPane("a", true))
-	tui.layout = LayoutGrid
+	tui.layoutState.Mode = LayoutGrid
 	// main calls relayout; test the state change directly.
-	tui.layout = Layout2Col
-	tui.zoomed = false
-	if tui.layout != Layout2Col {
+	tui.layoutState.Mode = Layout2Col
+	tui.layoutState.Zoomed = false
+	if tui.layoutState.Mode != Layout2Col {
 		t.Error("main should switch to Layout2Col")
 	}
 }
@@ -1277,10 +1273,10 @@ func TestHandleKeyAltQ(t *testing.T) {
 
 func TestHandleKeyAltS(t *testing.T) {
 	tui := newTestTUI(newTestPane("a", true))
-	tui.overlay = false
+	tui.layoutState.Overlay = false
 	ev := tcell.NewEventKey(tcell.KeyRune, 's', tcell.ModAlt)
 	tui.handleKey(ev)
-	if !tui.overlay {
+	if !tui.layoutState.Overlay {
 		t.Error("Alt+s should toggle overlay")
 	}
 }
@@ -1288,9 +1284,9 @@ func TestHandleKeyAltS(t *testing.T) {
 func TestHandleKeyAltZ(t *testing.T) {
 	// Alt+z toggles zoom. Test state directly since relayout needs screen.
 	tui := newTestTUI(newTestPane("a", true))
-	tui.zoomed = false
-	tui.zoomed = !tui.zoomed
-	if !tui.zoomed {
+	tui.layoutState.Zoomed = false
+	tui.layoutState.Zoomed = !tui.layoutState.Zoomed
+	if !tui.layoutState.Zoomed {
 		t.Error("Alt+z should toggle zoom")
 	}
 }
@@ -1299,30 +1295,30 @@ func TestHandleKeyAltArrows(t *testing.T) {
 	a := newTestPane("a", true)
 	b := newTestPane("b", true)
 	tui := newTestTUI(a, b)
-	tui.focused = 0
+	tui.layoutState.Focused = "a"
 
 	ev := tcell.NewEventKey(tcell.KeyRight, 0, tcell.ModAlt)
 	tui.handleKey(ev)
-	if tui.focused != 1 {
-		t.Error("Alt+Right should advance focus")
+	if tui.layoutState.Focused != "b" {
+		t.Errorf("Alt+Right: focused = %q, want b", tui.layoutState.Focused)
 	}
 
 	ev = tcell.NewEventKey(tcell.KeyLeft, 0, tcell.ModAlt)
 	tui.handleKey(ev)
-	if tui.focused != 0 {
-		t.Error("Alt+Left should go back")
+	if tui.layoutState.Focused != "a" {
+		t.Errorf("Alt+Left: focused = %q, want a", tui.layoutState.Focused)
 	}
 
 	ev = tcell.NewEventKey(tcell.KeyDown, 0, tcell.ModAlt)
 	tui.handleKey(ev)
-	if tui.focused != 1 {
-		t.Error("Alt+Down should advance focus")
+	if tui.layoutState.Focused != "b" {
+		t.Errorf("Alt+Down: focused = %q, want b", tui.layoutState.Focused)
 	}
 
 	ev = tcell.NewEventKey(tcell.KeyUp, 0, tcell.ModAlt)
 	tui.handleKey(ev)
-	if tui.focused != 0 {
-		t.Error("Alt+Up should go back")
+	if tui.layoutState.Focused != "a" {
+		t.Errorf("Alt+Up: focused = %q, want a", tui.layoutState.Focused)
 	}
 }
 
@@ -1330,35 +1326,35 @@ func TestHandleKeyAltNumbers(t *testing.T) {
 	// Alt+number keys change layout. Since they call relayout (needs screen),
 	// test the expected state transitions directly.
 	tui := newTestTUI(newTestPane("a", true))
-	tui.layout = LayoutGrid
+	tui.layoutState.Mode = LayoutGrid
 
 	// Alt+1 sets focus mode.
-	tui.layout = LayoutFocus
-	tui.zoomed = false
-	if tui.layout != LayoutFocus {
+	tui.layoutState.Mode = LayoutFocus
+	tui.layoutState.Zoomed = false
+	if tui.layoutState.Mode != LayoutFocus {
 		t.Error("Alt+1 should set LayoutFocus")
 	}
 
 	// Alt+4 sets 2col.
-	tui.layout = Layout2Col
-	tui.zoomed = false
-	if tui.layout != Layout2Col {
+	tui.layoutState.Mode = Layout2Col
+	tui.layoutState.Zoomed = false
+	if tui.layoutState.Mode != Layout2Col {
 		t.Error("Alt+4 should set Layout2Col")
 	}
 
 	// Alt+2 sets 2x2 grid.
-	tui.layout = LayoutGrid
-	tui.gridCols = 2
-	tui.gridRows = 2
-	tui.zoomed = false
-	if tui.gridCols != 2 || tui.gridRows != 2 {
+	tui.layoutState.Mode = LayoutGrid
+	tui.layoutState.GridCols = 2
+	tui.layoutState.GridRows = 2
+	tui.layoutState.Zoomed = false
+	if tui.layoutState.GridCols != 2 || tui.layoutState.GridRows != 2 {
 		t.Error("Alt+2 should set 2x2 grid")
 	}
 
 	// Alt+3 sets 3x3 grid.
-	tui.gridCols = 3
-	tui.gridRows = 3
-	if tui.gridCols != 3 || tui.gridRows != 3 {
+	tui.layoutState.GridCols = 3
+	tui.layoutState.GridRows = 3
+	if tui.layoutState.GridCols != 3 || tui.layoutState.GridRows != 3 {
 		t.Error("Alt+3 should set 3x3 grid")
 	}
 }
@@ -1438,26 +1434,26 @@ func TestRecalcGridNoScreen(t *testing.T) {
 	b := newTestPane("b", true)
 	c := newTestPane("c", true)
 	tui := newTestTUI(a, b, c)
-	tui.layout = LayoutGrid
+	tui.layoutState.Mode = LayoutGrid
 
 	// Should not panic with nil screen.
-	tui.recalcGrid()
-	if tui.gridCols != 2 || tui.gridRows != 2 {
-		t.Errorf("recalcGrid(3 panes): cols=%d rows=%d, want 2x2", tui.gridCols, tui.gridRows)
+	tui.autoRecalcGrid()
+	if tui.layoutState.GridCols != 2 || tui.layoutState.GridRows != 2 {
+		t.Errorf("recalcGrid(3 panes): cols=%d rows=%d, want 2x2", tui.layoutState.GridCols, tui.layoutState.GridRows)
 	}
 }
 
 func TestRecalcGridNonGridLayout(t *testing.T) {
 	a := newTestPane("a", true)
 	tui := newTestTUI(a)
-	tui.layout = LayoutFocus
-	tui.gridCols = 5
-	tui.gridRows = 5
+	tui.layoutState.Mode = LayoutFocus
+	tui.layoutState.GridCols = 5
+	tui.layoutState.GridRows = 5
 
-	tui.recalcGrid()
+	tui.autoRecalcGrid()
 	// Non-grid layout should not change grid dimensions.
-	if tui.gridCols != 5 || tui.gridRows != 5 {
-		t.Errorf("non-grid recalcGrid changed dims: cols=%d rows=%d", tui.gridCols, tui.gridRows)
+	if tui.layoutState.GridCols != 5 || tui.layoutState.GridRows != 5 {
+		t.Errorf("non-grid recalcGrid changed dims: cols=%d rows=%d", tui.layoutState.GridCols, tui.layoutState.GridRows)
 	}
 }
 
@@ -1465,27 +1461,24 @@ func TestRecalcGridNonGridLayout(t *testing.T) {
 // At startup, calcRegions was called before panes were created, causing
 // visibleCount() to return 0 and a divide-by-zero in regions[i%len(regions)].
 func TestCalcRegionsEmptyPanesNoPanic(t *testing.T) {
-	tui := &TUI{
-		layout:   LayoutGrid,
-		gridCols: 3,
-		gridRows: 3,
-		// panes is nil/empty - this is the startup condition.
+	state := LayoutState{
+		Mode:     LayoutGrid,
+		GridCols: 3,
+		GridRows: 3,
+		Hidden:   map[string]bool{},
 	}
-
-	// calcRegions uses visibleCount() which iterates t.panes.
-	// With empty panes, it must return nil (not panic).
-	regions := tui.calcRegions(200, 60)
-	if regions != nil {
-		t.Errorf("calcRegions with empty panes should return nil, got %d regions", len(regions))
+	plan := computeLayout(state, nil, 200, 60)
+	if len(plan.Panes) != 0 {
+		t.Errorf("computeLayout with empty panes should return 0 pane renders, got %d", len(plan.Panes))
 	}
 }
 
 // Test that calcPaneGrid (the direct call used at init) works correctly
 // with an explicit count even when no TUI state exists.
 func TestCalcPaneGridInitialLayout(t *testing.T) {
-	regions := calcPaneGrid(4, 2, 7, 200, 60)
+	regions := gridRegions(4, 2, 7, 200, 60, nil, nil)
 	if len(regions) != 7 {
-		t.Fatalf("calcPaneGrid(4,2,7,...) returned %d regions, want 7", len(regions))
+		t.Fatalf("gridRegions(4,2,7,...) returned %d regions, want 7", len(regions))
 	}
 	// First row: 4 panes. Last row: 3 wider panes.
 	if regions[0].W == regions[4].W {

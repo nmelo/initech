@@ -30,18 +30,13 @@ type AgentInfo struct {
 // TUI is the main terminal multiplexer. It owns the tcell screen,
 // a set of terminal panes, and handles input routing, layout, and rendering.
 type TUI struct {
-	screen  tcell.Screen
-	panes   []*Pane
-	focused int
-	layout  LayoutMode
-	gridCols int // Used when layout == LayoutGrid.
-	gridRows int
-	zoomed  bool // When true, focused pane is full screen regardless of layout.
-	overlay bool
+	screen      tcell.Screen
+	panes       []*Pane
+	layoutState LayoutState // Single source of truth for layout intent.
+	plan        RenderPlan  // Current frame's render instructions.
 
 	// Tracked screen dimensions for detecting resize.
 	lastW, lastH int
-
 
 	// Command modal state.
 	cmdActive bool
@@ -55,6 +50,47 @@ type TUI struct {
 	selStartY int
 	selEndX   int // Current end position.
 	selEndY   int
+}
+
+// applyLayout recomputes the render plan from the current layout state
+// and resizes panes whose regions changed.
+func (t *TUI) applyLayout() {
+	var w, h int
+	if t.screen != nil {
+		w, h = t.screen.Size()
+	} else {
+		w, h = 200, 60 // Fallback for tests without a screen.
+	}
+	t.plan = computeLayout(t.layoutState, t.panes, w, h)
+
+	// Write validated focus back to layoutState so it stays consistent.
+	if t.plan.ValidatedFocus != "" {
+		t.layoutState.Focused = t.plan.ValidatedFocus
+	}
+
+	// Resize panes whose regions changed (skip if no screen, e.g. in tests).
+	if t.screen == nil {
+		return
+	}
+	for _, pr := range t.plan.Panes {
+		old := pr.Pane.region
+		if old != pr.Region {
+			pr.Pane.region = pr.Region
+			cols, rows := pr.Region.InnerSize()
+			pr.Pane.Resize(rows, cols)
+		}
+	}
+}
+
+// focusedPane returns the currently focused pane, or nil.
+func (t *TUI) focusedPane() *Pane {
+	name := t.layoutState.Focused
+	for _, p := range t.panes {
+		if p.name == name {
+			return p
+		}
+	}
+	return nil
 }
 
 // Config controls what agents the TUI launches.
@@ -86,21 +122,18 @@ func Run(cfg Config) error {
 	screen.EnablePaste()
 	defer screen.Fini()
 
-	n := len(cfg.Agents)
-	gridCols, gridRows := autoGrid(n)
+	// Build layout state from config.
+	agentNames := make([]string, len(cfg.Agents))
+	for i, a := range cfg.Agents {
+		agentNames[i] = a.Name
+	}
 
-	// Pre-read screen dimensions so the first render doesn't trigger a
-	// spurious relayout (which would resize PTYs during Claude's init).
 	initW, initH := screen.Size()
-
 	t := &TUI{
-		screen:   screen,
-		layout:   LayoutGrid,
-		gridCols: gridCols,
-		gridRows: gridRows,
-		overlay:  true,
-		lastW:    initW,
-		lastH:    initH,
+		screen:      screen,
+		layoutState: DefaultLayoutState(agentNames),
+		lastW:       initW,
+		lastH:       initH,
 	}
 
 	// Start IPC socket server for inter-agent messaging.
@@ -109,11 +142,10 @@ func Run(cfg Config) error {
 		return fmt.Errorf("start IPC: %w", err)
 	}
 
-	// Calculate initial layout. Use calcPaneGrid directly because t.panes
-	// is still empty (visibleCount would return 0 and calcRegions would
-	// return nil, causing a divide-by-zero panic).
-	w, h := screen.Size()
-	regions := calcPaneGrid(gridCols, gridRows, len(cfg.Agents), w, h)
+	// Compute initial regions for pane creation.
+	ls := t.layoutState
+	regions := gridRegions(ls.GridCols, ls.GridRows, len(cfg.Agents),
+		initW, initH, ls.ColWeights, ls.RowWeights)
 
 	// Inject the socket path into every agent's environment.
 	for i := range cfg.Agents {
@@ -134,6 +166,9 @@ func Run(cfg Config) error {
 		p.region = r
 		t.panes = append(t.panes, p)
 	}
+
+	// Now that panes exist, compute the full render plan.
+	t.applyLayout()
 	defer func() {
 		for _, p := range t.panes {
 			p.Close()
@@ -190,12 +225,13 @@ func (t *TUI) handleMouse(ev *tcell.EventMouse) {
 	case ev.Buttons()&tcell.Button1 != 0 && !t.selActive:
 		// Button1 press: forward to pane and start TUI selection.
 		for i, p := range t.panes {
-			if !p.Visible() {
+			if t.layoutState.Hidden[p.name] {
 				continue
 			}
 			r := p.region
 			if mx >= r.X && mx < r.X+r.W && my >= r.Y && my < r.Y+r.H {
-				t.focused = i
+				t.layoutState.Focused = p.name
+				t.applyLayout()
 				// Convert to pane-local content coordinates (below title bar).
 				lx := mx - r.X
 				ly := my - r.Y - 1 // -1 for title bar
@@ -264,10 +300,10 @@ func (t *TUI) handleMouse(ev *tcell.EventMouse) {
 
 	case ev.Buttons()&tcell.WheelUp != 0:
 		// Scroll back into history for the pane under cursor.
-		for i, p := range t.panes {
+		for _, p := range t.panes {
 			r := p.region
 			if mx >= r.X && mx < r.X+r.W && my >= r.Y && my < r.Y+r.H {
-				t.focused = i
+				t.layoutState.Focused = p.name
 				p.ScrollUp(3)
 				return
 			}
@@ -275,10 +311,10 @@ func (t *TUI) handleMouse(ev *tcell.EventMouse) {
 
 	case ev.Buttons()&tcell.WheelDown != 0:
 		// Scroll toward live view for the pane under cursor.
-		for i, p := range t.panes {
+		for _, p := range t.panes {
 			r := p.region
 			if mx >= r.X && mx < r.X+r.W && my >= r.Y && my < r.Y+r.H {
-				t.focused = i
+				t.layoutState.Focused = p.name
 				p.ScrollDown(3)
 				return
 			}
@@ -325,10 +361,10 @@ func (t *TUI) forwardMouseEvent(p *Pane, lx, ly int, button uv.MouseButton, isMo
 // forwardMouseToFocused forwards a mouse event to the focused pane if the
 // click is within its region.
 func (t *TUI) forwardMouseToFocused(mx, my int, button uv.MouseButton, isMotion, isRelease bool, mods tcell.ModMask) {
-	if t.focused < 0 || t.focused >= len(t.panes) {
+	p := t.focusedPane()
+	if p == nil {
 		return
 	}
-	p := t.panes[t.focused]
 	r := p.region
 	if mx < r.X || mx >= r.X+r.W || my < r.Y || my >= r.Y+r.H {
 		return
@@ -448,27 +484,35 @@ func (t *TUI) handleKey(ev *tcell.EventKey) bool {
 		case tcell.KeyRune:
 			switch ev.Rune() {
 			case '1':
-				t.layout = LayoutFocus
-				t.zoomed = false
-				t.relayout()
+				t.layoutState.Mode = LayoutFocus
+				t.layoutState.Zoomed = false
+				t.applyLayout()
 				return false
 			case '2':
-				t.setGrid(2, 2)
+				t.layoutState.Mode = LayoutGrid
+				t.layoutState.GridCols = 2
+				t.layoutState.GridRows = 2
+				t.layoutState.Zoomed = false
+				t.applyLayout()
 				return false
 			case '3':
-				t.setGrid(3, 3)
+				t.layoutState.Mode = LayoutGrid
+				t.layoutState.GridCols = 3
+				t.layoutState.GridRows = 3
+				t.layoutState.Zoomed = false
+				t.applyLayout()
 				return false
 			case '4':
-				t.layout = Layout2Col
-				t.zoomed = false
-				t.relayout()
+				t.layoutState.Mode = Layout2Col
+				t.layoutState.Zoomed = false
+				t.applyLayout()
 				return false
 			case 's':
-				t.overlay = !t.overlay
+				t.layoutState.Overlay = !t.layoutState.Overlay
 				return false
 			case 'z':
-				t.zoomed = !t.zoomed
-				t.relayout()
+				t.layoutState.Zoomed = !t.layoutState.Zoomed
+				t.applyLayout()
 				return false
 			case 'q':
 				return true
@@ -477,8 +521,8 @@ func (t *TUI) handleKey(ev *tcell.EventKey) bool {
 	}
 
 	// Everything else goes to the focused pane.
-	if t.focused >= 0 && t.focused < len(t.panes) {
-		t.panes[t.focused].SendKey(ev)
+	if fp := t.focusedPane(); fp != nil {
+		fp.SendKey(ev)
 	}
 	return false
 }
@@ -522,49 +566,55 @@ func (t *TUI) execCmd(cmd string) bool {
 	switch parts[0] {
 	case "grid":
 		if len(parts) < 2 {
-			// No argument: auto-calculate optimal grid.
-			c, r := autoGrid(t.visibleCount())
-			t.setGrid(c, r)
+			visCount := t.visibleCountFromState()
+			c, r := autoGrid(visCount)
+			t.layoutState.Mode = LayoutGrid
+			t.layoutState.GridCols = c
+			t.layoutState.GridRows = r
+			t.layoutState.Zoomed = false
+			t.applyLayout()
 			return false
 		}
-		cols, rows, ok := parseGrid(parts[1], t.visibleCount())
+		visCount := t.visibleCountFromState()
+		cols, rows, ok := parseGrid(parts[1], visCount)
 		if !ok {
 			t.cmdError = fmt.Sprintf("invalid grid %q, use CxR or just C (e.g. 3x3, 4)", parts[1])
 			return false
 		}
-		t.setGrid(cols, rows)
+		t.layoutState.Mode = LayoutGrid
+		t.layoutState.GridCols = cols
+		t.layoutState.GridRows = rows
+		t.layoutState.Zoomed = false
+		t.applyLayout()
 
 	case "focus":
 		if len(parts) < 2 {
-			// No argument: switch to focus mode on current pane.
-			t.layout = LayoutFocus
-			t.zoomed = false
-			t.relayout()
+			t.layoutState.Mode = LayoutFocus
+			t.layoutState.Zoomed = false
+			t.applyLayout()
 			return false
 		}
 		name := parts[1]
-		for i, p := range t.panes {
-			if p.name == name {
-				t.focused = i
-				t.layout = LayoutFocus
-				t.zoomed = false
-				t.relayout()
-				return false
-			}
+		if t.findPaneByName(name) == nil {
+			t.cmdError = fmt.Sprintf("unknown agent %q", name)
+			return false
 		}
-		t.cmdError = fmt.Sprintf("unknown agent %q", name)
+		t.layoutState.Focused = name
+		t.layoutState.Mode = LayoutFocus
+		t.layoutState.Zoomed = false
+		t.applyLayout()
 
 	case "zoom":
-		t.zoomed = !t.zoomed
-		t.relayout()
+		t.layoutState.Zoomed = !t.layoutState.Zoomed
+		t.applyLayout()
 
 	case "panel":
-		t.overlay = !t.overlay
+		t.layoutState.Overlay = !t.layoutState.Overlay
 
 	case "main":
-		t.layout = Layout2Col
-		t.zoomed = false
-		t.relayout()
+		t.layoutState.Mode = Layout2Col
+		t.layoutState.Zoomed = false
+		t.applyLayout()
 
 	case "show":
 		if len(parts) < 2 {
@@ -572,19 +622,16 @@ func (t *TUI) execCmd(cmd string) bool {
 			return false
 		}
 		if parts[1] == "all" {
-			for _, p := range t.panes {
-				p.SetVisible(true)
-			}
-			t.recalcGrid()
+			t.layoutState.Hidden = make(map[string]bool)
+			t.autoRecalcGrid()
 			return false
 		}
-		p := t.findPaneByName(parts[1])
-		if p == nil {
+		if t.findPaneByName(parts[1]) == nil {
 			t.cmdError = fmt.Sprintf("unknown agent %q", parts[1])
 			return false
 		}
-		p.SetVisible(true)
-		t.recalcGrid()
+		delete(t.layoutState.Hidden, parts[1])
+		t.autoRecalcGrid()
 
 	case "hide":
 		if len(parts) < 2 {
@@ -595,44 +642,46 @@ func (t *TUI) execCmd(cmd string) bool {
 			t.cmdError = "cannot hide all panes"
 			return false
 		}
-		p := t.findPaneByName(parts[1])
-		if p == nil {
+		if t.findPaneByName(parts[1]) == nil {
 			t.cmdError = fmt.Sprintf("unknown agent %q", parts[1])
 			return false
 		}
-		if !p.Visible() {
-			return false // Already hidden, no-op.
+		if t.layoutState.Hidden[parts[1]] {
+			return false // Already hidden.
 		}
-		if t.visibleCount() <= 1 {
+		if t.visibleCountFromState() <= 1 {
 			t.cmdError = "cannot hide last visible pane"
 			return false
 		}
-		p.SetVisible(false)
-		t.ensureFocusVisible()
-		t.recalcGrid()
+		if t.layoutState.Hidden == nil {
+			t.layoutState.Hidden = make(map[string]bool)
+		}
+		t.layoutState.Hidden[parts[1]] = true
+		t.autoRecalcGrid()
 
 	case "view":
 		if len(parts) < 2 {
 			t.cmdError = "usage: view <name1> [name2] ..."
 			return false
 		}
-		// Validate all names first.
 		for _, name := range parts[1:] {
 			if t.findPaneByName(name) == nil {
 				t.cmdError = fmt.Sprintf("unknown agent %q", name)
 				return false
 			}
 		}
-		// Build the target set.
 		show := make(map[string]bool, len(parts)-1)
 		for _, name := range parts[1:] {
 			show[name] = true
 		}
+		hidden := make(map[string]bool)
 		for _, p := range t.panes {
-			p.SetVisible(show[p.name])
+			if !show[p.name] {
+				hidden[p.name] = true
+			}
 		}
-		t.ensureFocusVisible()
-		t.recalcGrid()
+		t.layoutState.Hidden = hidden
+		t.autoRecalcGrid()
 
 	case "restart", "r":
 		if err := t.restartFocused(); err != nil {
@@ -682,41 +731,31 @@ func (t *TUI) findPaneByName(name string) *Pane {
 	return nil
 }
 
-// ensureFocusVisible moves focus to the first visible pane if the
-// currently focused pane is hidden.
-func (t *TUI) ensureFocusVisible() {
-	if t.focused >= 0 && t.focused < len(t.panes) && t.panes[t.focused].Visible() {
-		return
-	}
-	for i, p := range t.panes {
-		if p.Visible() {
-			t.focused = i
-			return
+// visibleCountFromState returns the number of visible panes based on layoutState.
+func (t *TUI) visibleCountFromState() int {
+	n := 0
+	for _, p := range t.panes {
+		if !t.layoutState.Hidden[p.name] {
+			n++
 		}
 	}
+	return n
 }
 
-// recalcGrid updates grid dimensions for the current visible count and relayouts.
-func (t *TUI) recalcGrid() {
-	if t.layout == LayoutGrid {
-		t.gridCols, t.gridRows = autoGrid(t.visibleCount())
+// autoRecalcGrid recalculates grid dimensions for the current visible count
+// and applies the layout.
+func (t *TUI) autoRecalcGrid() {
+	if t.layoutState.Mode == LayoutGrid {
+		c, r := autoGrid(t.visibleCountFromState())
+		t.layoutState.GridCols = c
+		t.layoutState.GridRows = r
 	}
-	if t.screen != nil {
-		t.relayout()
-	}
-}
-
-func (t *TUI) setGrid(cols, rows int) {
-	t.layout = LayoutGrid
-	t.gridCols = cols
-	t.gridRows = rows
-	t.zoomed = false
-	t.relayout()
+	t.applyLayout()
 }
 
 func (t *TUI) handleResize() {
 	t.screen.Sync()
-	t.relayout()
+	t.applyLayout()
 }
 
 func (t *TUI) cycleFocus(delta int) {
@@ -724,114 +763,57 @@ func (t *TUI) cycleFocus(delta int) {
 	if n == 0 {
 		return
 	}
+	// Find current focused index.
+	cur := 0
+	for i, p := range t.panes {
+		if p.name == t.layoutState.Focused {
+			cur = i
+			break
+		}
+	}
 	// Skip hidden panes. Try every pane at most once.
-	next := t.focused
+	next := cur
 	for i := 0; i < n; i++ {
 		next = (next + delta + n) % n
-		if t.panes[next].Visible() {
-			t.focused = next
+		if !t.layoutState.Hidden[t.panes[next].name] {
+			t.layoutState.Focused = t.panes[next].name
+			t.applyLayout()
 			return
 		}
 	}
 }
 
-// visiblePanes returns only the panes that are currently shown in the layout.
-func (t *TUI) visiblePanes() []*Pane {
-	vis := make([]*Pane, 0, len(t.panes))
-	for _, p := range t.panes {
-		if p.Visible() {
-			vis = append(vis, p)
-		}
-	}
-	return vis
-}
-
-// allPanes returns every pane regardless of visibility.
-func (t *TUI) allPanes() []*Pane {
-	return t.panes
-}
-
-// visibleCount returns the number of visible panes.
-func (t *TUI) visibleCount() int {
-	n := 0
-	for _, p := range t.panes {
-		if p.Visible() {
-			n++
-		}
-	}
-	return n
-}
-
-// paneIndex returns the index of a pane in t.panes, or -1 if not found.
-func (t *TUI) paneIndex(p *Pane) int {
-	for i, pp := range t.panes {
-		if pp == p {
-			return i
-		}
-	}
-	return -1
-}
 
 // restartFocused kills the focused pane's process and starts a new one.
 func (t *TUI) restartFocused() error {
-	if t.focused < 0 || t.focused >= len(t.panes) {
+	fp := t.focusedPane()
+	if fp == nil {
 		return fmt.Errorf("no pane focused")
 	}
-	old := t.panes[t.focused]
-	r := old.region
+	idx := -1
+	for i, p := range t.panes {
+		if p == fp {
+			idx = i
+			break
+		}
+	}
+	if idx < 0 {
+		return fmt.Errorf("focused pane not found")
+	}
+	r := fp.region
 	cols, rows := r.InnerSize()
+	fp.Close()
 
-	// Kill the old process.
-	old.Close()
-
-	// Create a new pane with the same config and region.
-	p, err := NewPane(old.cfg, rows, cols)
+	p, err := NewPane(fp.cfg, rows, cols)
 	if err != nil {
 		return err
 	}
 	p.region = r
-	t.panes[t.focused] = p
+	t.panes[idx] = p
+	t.applyLayout()
 	return nil
 }
 
-func (t *TUI) relayout() {
-	w, h := t.screen.Size()
-	regions := t.calcRegions(w, h)
-	// Only visible panes get new regions and resizes.
-	// Hidden panes keep their emulator running at their last visible size.
-	vis := t.visiblePanes()
-	for i, p := range vis {
-		if i < len(regions) {
-			r := regions[i]
-			p.region = r
-			cols, rows := r.InnerSize()
-			p.Resize(rows, cols)
-		}
-	}
-}
-
-// calcRegions computes pane regions for the current layout.
-// Regions are calculated for visible panes only, filling the screen.
-// The last row may have fewer columns and those panes expand to fill the width.
-func (t *TUI) calcRegions(screenW, screenH int) []Region {
-	n := t.visibleCount()
-	if n == 0 {
-		return nil
-	}
-
-	if t.zoomed || t.layout == LayoutFocus {
-		return []Region{{X: 0, Y: 0, W: screenW, H: screenH}}
-	}
-
-	switch t.layout {
-	case LayoutGrid:
-		return calcPaneGrid(t.gridCols, t.gridRows, n, screenW, screenH)
-	case Layout2Col:
-		return calcMainVertical(n, screenW, screenH)
-	default:
-		return calcPaneGrid(t.gridCols, t.gridRows, n, screenW, screenH)
-	}
-}
 
 // autoGrid picks grid dimensions that minimize waste for n panes.
 func autoGrid(n int) (cols, rows int) {
@@ -858,57 +840,6 @@ func autoGrid(n int) (cols, rows int) {
 }
 
 // calcPaneGrid generates exactly numPanes regions arranged in a grid.
-// Full rows have gridCols columns. The last row gets the remaining panes,
-// and those panes expand to fill the full width.
-func calcPaneGrid(gridCols, gridRows, numPanes, screenW, screenH int) []Region {
-	if numPanes <= 0 {
-		return nil
-	}
-
-	// Number of rows actually needed.
-	rows := (numPanes + gridCols - 1) / gridCols
-	if rows > gridRows {
-		rows = gridRows
-	}
-
-	// Row heights: divide screen evenly.
-	cellH := screenH / rows
-	extraH := screenH - cellH*rows
-
-	regions := make([]Region, 0, numPanes)
-	y := 0
-	placed := 0
-	for r := 0; r < rows && placed < numPanes; r++ {
-		h := cellH
-		if r < extraH {
-			h++
-		}
-
-		// How many panes in this row?
-		colsThisRow := gridCols
-		remaining := numPanes - placed
-		if remaining < gridCols {
-			colsThisRow = remaining
-		}
-
-		// Column widths for this row.
-		cellW := screenW / colsThisRow
-		extraW := screenW - cellW*colsThisRow
-
-		x := 0
-		for c := 0; c < colsThisRow; c++ {
-			w := cellW
-			if c < extraW {
-				w++
-			}
-			regions = append(regions, Region{X: x, Y: y, W: w, H: h})
-			x += w
-			placed++
-		}
-		y += h
-	}
-	return regions
-}
 
 // calcMainVertical creates a layout with a large pane on the left
 // and stacked panes on the right.
@@ -942,6 +873,7 @@ func calcMainVertical(n, screenW, screenH int) []Region {
 }
 
 // render draws all visible panes, the overlay, and the command modal.
+// It consumes the pre-computed RenderPlan without making layout decisions.
 func (t *TUI) render() {
 	s := t.screen
 
@@ -950,31 +882,28 @@ func (t *TUI) render() {
 	if w != t.lastW || h != t.lastH {
 		t.lastW = w
 		t.lastH = h
-		t.relayout()
+		t.applyLayout()
 	}
 
 	s.Clear()
 
-	if t.zoomed || t.layout == LayoutFocus {
-		if t.focused >= 0 && t.focused < len(t.panes) && t.panes[t.focused].Visible() {
-			sel := t.selectionFor(t.focused)
-			t.panes[t.focused].Render(s, true, sel)
-		}
-	} else {
-		vis := t.visiblePanes()
-		regions := t.calcRegions(t.screenSize())
-		for i, p := range vis {
-			if i < len(regions) {
-				idx := t.paneIndex(p)
-				sel := t.selectionFor(idx)
-				p.Render(s, idx == t.focused, sel)
-			}
-		}
-		// Draw thin black vertical dividers between columns.
-		t.renderGridDividers(regions)
+	// Draw panes from the render plan. No visibility checks needed.
+	for _, pr := range t.plan.Panes {
+		sel := t.selectionForPane(pr.Pane)
+		pr.Pane.Render(s, pr.Focused, pr.Dimmed, sel)
 	}
 
-	if t.overlay {
+	// Draw dividers from the render plan.
+	divStyle := tcell.StyleDefault.Foreground(tcell.ColorBlack)
+	for _, d := range t.plan.Dividers {
+		if d.Vertical {
+			for y := d.Y; y < d.Y+d.Len; y++ {
+				s.SetContent(d.X, y, '\u2502', nil, divStyle)
+			}
+		}
+	}
+
+	if t.layoutState.Overlay {
 		t.renderOverlay()
 	}
 
@@ -988,9 +917,6 @@ func (t *TUI) render() {
 	s.Show()
 }
 
-func (t *TUI) screenSize() (int, int) {
-	return t.screen.Size()
-}
 
 // selectionFor returns the selection state for a given pane index.
 func (t *TUI) selectionFor(paneIdx int) Selection {
@@ -1004,41 +930,22 @@ func (t *TUI) selectionFor(paneIdx int) Selection {
 	}
 }
 
-
-// renderGridDividers draws thin black vertical lines between pane columns.
-// Each row may have different column boundaries, so dividers are drawn per-row.
-func (t *TUI) renderGridDividers(regions []Region) {
-	if len(regions) < 2 {
-		return
+// selectionForPane returns the selection state for a given pane.
+func (t *TUI) selectionForPane(p *Pane) Selection {
+	if !t.selActive {
+		return Selection{}
 	}
-	s := t.screen
-	divStyle := tcell.StyleDefault.Foreground(tcell.ColorBlack)
-
-	// Group regions by row (same Y value).
-	type rowInfo struct {
-		y, h int
-		xs   []int // X positions > 0 (column boundaries within this row)
-	}
-	rowMap := make(map[int]*rowInfo)
-	for _, r := range regions {
-		ri, ok := rowMap[r.Y]
-		if !ok {
-			ri = &rowInfo{y: r.Y, h: r.H}
-			rowMap[r.Y] = ri
-		}
-		if r.X > 0 {
-			ri.xs = append(ri.xs, r.X)
+	if t.selPane >= 0 && t.selPane < len(t.panes) && t.panes[t.selPane] == p {
+		return Selection{
+			Active: true,
+			StartX: t.selStartX, StartY: t.selStartY,
+			EndX: t.selEndX, EndY: t.selEndY,
 		}
 	}
-
-	for _, ri := range rowMap {
-		for _, x := range ri.xs {
-			for y := ri.y; y < ri.y+ri.h; y++ {
-				s.SetContent(x-1, y, '\u2502', nil, divStyle)
-			}
-		}
-	}
+	return Selection{}
 }
+
+
 
 // renderCmdLine draws the command input bar at the bottom of the screen.
 func (t *TUI) renderCmdLine() {
@@ -1110,7 +1017,7 @@ func (t *TUI) renderOverlay() {
 	hiddenCount := 0
 	for i, p := range t.panes {
 		state := p.Activity()
-		vis := p.Visible()
+		vis := !t.layoutState.Hidden[p.name]
 		agents[i] = AgentInfo{Name: p.name, Status: state.String(), Visible: vis}
 		nameLen := len(p.name)
 		if !vis {
@@ -1190,7 +1097,7 @@ func (t *TUI) renderOverlay() {
 
 		// Name (dimmed for hidden panes).
 		nameStyle := bgStyle.Foreground(tcell.ColorWhite)
-		if i == t.focused {
+		if a.Name == t.layoutState.Focused {
 			nameStyle = bgStyle.Foreground(tcell.ColorYellow).Bold(true)
 		} else if !a.Visible {
 			nameStyle = bgStyle.Foreground(tcell.ColorDarkGray)
