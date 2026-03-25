@@ -1147,8 +1147,8 @@ func (t *TUI) refreshTopData() {
 		if t.layoutState.Hidden[p.name] {
 			e.Status += " [hidden]"
 		}
-		if p.cmd != nil && p.cmd.Process != nil {
-			e.PID = p.cmd.Process.Pid
+		if p.pid > 0 {
+			e.PID = p.pid
 			// Query ps for RSS and process name.
 			out, err := exec.Command("ps", "-o", "rss=,comm=", "-p",
 				fmt.Sprintf("%d", e.PID)).Output()

@@ -366,7 +366,10 @@ func TestHandleIPCList(t *testing.T) {
 	a := newEmuPane("super", 80, 24)
 	b := newEmuPane("eng1", 80, 24)
 	b.SetVisible(false)
-	tui := &TUI{panes: []*Pane{a, b}}
+	tui := &TUI{
+		panes:       []*Pane{a, b},
+		layoutState: LayoutState{Hidden: map[string]bool{"eng1": true}},
+	}
 
 	server, client := net.Pipe()
 	defer server.Close()

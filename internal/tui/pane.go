@@ -48,8 +48,10 @@ type Pane struct {
 	name          string
 	ptmx          *os.File
 	cmd           *exec.Cmd
+	pid           int              // Cached PID from process start (avoids race with restart).
 	emu           *vt.SafeEmulator
 	mu            sync.Mutex
+	sendMu        sync.Mutex       // Serializes IPC send operations to prevent keystroke interleaving.
 	alive         bool
 	visible       bool          // Whether this pane is shown in the layout. Hidden panes keep running.
 	activity      ActivityState // Current state from JSONL tailing.
@@ -140,11 +142,18 @@ func NewPane(cfg PaneConfig, rows, cols int) (*Pane, error) {
 		jsonlDir = filepath.Join(configDir, "projects", encodedCwd)
 	}
 
+	// Cache PID at creation time so it can be read without locking cmd.Process.
+	pid := 0
+	if cmd.Process != nil {
+		pid = cmd.Process.Pid
+	}
+
 	p := &Pane{
 		cfg:      cfg,
 		name:     cfg.Name,
 		ptmx:     ptmx,
 		cmd:      cmd,
+		pid:      pid,
 		emu:      emu,
 		alive:    true,
 		visible:  true,

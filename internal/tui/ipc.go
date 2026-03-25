@@ -68,6 +68,9 @@ func (t *TUI) startIPC(socketPath string) (cleanup func(), err error) {
 func (t *TUI) handleIPCConn(conn net.Conn) {
 	defer conn.Close()
 
+	// Prevent goroutine leak from clients that connect but never send data.
+	conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+
 	scanner := bufio.NewScanner(conn)
 	if !scanner.Scan() {
 		return
@@ -111,6 +114,10 @@ func (t *TUI) handleIPCSend(conn net.Conn, req IPCRequest) {
 		return
 	}
 
+	// Serialize sends to this pane so concurrent callers don't interleave keystrokes.
+	pane.sendMu.Lock()
+	defer pane.sendMu.Unlock()
+
 	// Stash any pending user input with Ctrl+S before injecting text.
 	// This prevents corruption when the agent has a partially typed message.
 	pane.emu.SendKey(uv.KeyPressEvent(uv.Key{Code: 's', Mod: uv.ModCtrl}))
@@ -124,15 +131,15 @@ func (t *TUI) handleIPCSend(conn net.Conn, req IPCRequest) {
 
 	if req.Enter {
 		// Brief pause to let text settle before sending Enter.
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(50 * time.Millisecond)
 		pane.emu.SendKey(uv.KeyPressEvent(uv.Key{Code: uv.KeyEnter}))
 
 		// Poll for stuck input (paste dialog or text still at prompt).
 		// Claude Code's paste detection fires for fast input, so the first
 		// Enter may confirm the paste reference rather than submitting.
-		// Retry Enter every 500ms for up to 5s, matching gastools behavior.
+		// Check immediately, then retry every 100ms for up to 1s.
 		for range 10 {
-			time.Sleep(500 * time.Millisecond)
+			time.Sleep(100 * time.Millisecond)
 			if !hasStuckInput(pane) {
 				break
 			}
@@ -212,7 +219,7 @@ func (t *TUI) handleIPCList(conn net.Conn) {
 			Name:     p.name,
 			Activity: p.Activity().String(),
 			Alive:    p.IsAlive(),
-			Visible:  p.Visible(),
+			Visible:  !t.layoutState.Hidden[p.name],
 		}
 	}
 	data, _ := json.Marshal(panes)
