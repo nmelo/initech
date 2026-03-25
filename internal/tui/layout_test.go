@@ -400,9 +400,9 @@ func TestDimColorReducesBrightness(t *testing.T) {
 	bright := tcell.NewRGBColor(255, 255, 255)
 	dim := dimColor(bright)
 	r, g, b := dim.RGB()
-	// 255 * 4/10 = 102
-	if r != 102 || g != 102 || b != 102 {
-		t.Errorf("dimColor(white) = (%d,%d,%d), want (102,102,102)", r, g, b)
+	// 255 * 7/10 = 178
+	if r != 178 || g != 178 || b != 178 {
+		t.Errorf("dimColor(white) = (%d,%d,%d), want (178,178,178)", r, g, b)
 	}
 }
 

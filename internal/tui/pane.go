@@ -717,7 +717,7 @@ func (p *Pane) Close() {
 
 
 // dimStyle reduces the foreground brightness of a tcell.Style for focus dimming.
-// Colors are scaled to ~40% brightness. Default fg becomes dark gray.
+// Colors are scaled to ~70% brightness. Default fg becomes dark gray.
 func dimStyle(style tcell.Style) tcell.Style {
 	fg, bg, attrs := style.Decompose()
 	return tcell.StyleDefault.
@@ -726,14 +726,14 @@ func dimStyle(style tcell.Style) tcell.Style {
 		Attributes(attrs)
 }
 
-// dimColor reduces a tcell.Color to ~40% brightness.
+// dimColor reduces a tcell.Color to ~70% brightness.
 func dimColor(c tcell.Color) tcell.Color {
 	if c == tcell.ColorDefault {
 		return tcell.ColorDimGray
 	}
 	// For any color, extract RGB and scale down.
 	r, g, b := c.RGB()
-	return tcell.NewRGBColor(int32(r)*4/10, int32(g)*4/10, int32(b)*4/10)
+	return tcell.NewRGBColor(int32(r)*7/10, int32(g)*7/10, int32(b)*7/10)
 }
 
 // uvCellToTcell converts a charmbracelet ultraviolet Cell to a rune + tcell.Style.
