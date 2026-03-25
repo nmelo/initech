@@ -34,8 +34,8 @@ func TestHideLastVisiblePaneFails(t *testing.T) {
 	if tui.layoutState.Hidden[tui.panes[1].name] {
 		t.Error("should not be able to hide the last visible pane")
 	}
-	if tui.cmdError != "cannot hide last visible pane" {
-		t.Errorf("expected error message, got %q", tui.cmdError)
+	if tui.cmd.error != "cannot hide last visible pane" {
+		t.Errorf("expected error message, got %q", tui.cmd.error)
 	}
 }
 
@@ -46,8 +46,8 @@ func TestHideAllFails(t *testing.T) {
 	)
 
 	tui.execCmd("hide all")
-	if tui.cmdError != "cannot hide all panes" {
-		t.Errorf("expected error, got %q", tui.cmdError)
+	if tui.cmd.error != "cannot hide all panes" {
+		t.Errorf("expected error, got %q", tui.cmd.error)
 	}
 	if tui.layoutState.Hidden[tui.panes[0].name] || tui.layoutState.Hidden[tui.panes[1].name] {
 		t.Error("hide all should not change visibility")
@@ -57,7 +57,7 @@ func TestHideAllFails(t *testing.T) {
 func TestHideUnknownAgent(t *testing.T) {
 	tui := newTestTUI(newTestPane("super", true))
 	tui.execCmd("hide nonexistent")
-	if tui.cmdError == "" {
+	if tui.cmd.error == "" {
 		t.Error("expected error for unknown agent")
 	}
 }
@@ -122,7 +122,7 @@ func TestViewUnknownAgentFails(t *testing.T) {
 	)
 
 	tui.execCmd("view super bogus")
-	if tui.cmdError == "" {
+	if tui.cmd.error == "" {
 		t.Error("expected error for unknown agent in view")
 	}
 	// Nothing should have changed since validation failed.
@@ -182,7 +182,7 @@ func TestFindPaneByName(t *testing.T) {
 func TestShowNoArgError(t *testing.T) {
 	tui := newTestTUI(newTestPane("a", true))
 	tui.execCmd("show")
-	if tui.cmdError == "" {
+	if tui.cmd.error == "" {
 		t.Error("show with no arg should produce error")
 	}
 }
@@ -190,7 +190,7 @@ func TestShowNoArgError(t *testing.T) {
 func TestHideNoArgError(t *testing.T) {
 	tui := newTestTUI(newTestPane("a", true))
 	tui.execCmd("hide")
-	if tui.cmdError == "" {
+	if tui.cmd.error == "" {
 		t.Error("hide with no arg should produce error")
 	}
 }
@@ -198,7 +198,7 @@ func TestHideNoArgError(t *testing.T) {
 func TestViewNoArgError(t *testing.T) {
 	tui := newTestTUI(newTestPane("a", true))
 	tui.execCmd("view")
-	if tui.cmdError == "" {
+	if tui.cmd.error == "" {
 		t.Error("view with no arg should produce error")
 	}
 }

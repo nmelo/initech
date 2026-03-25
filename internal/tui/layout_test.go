@@ -725,15 +725,15 @@ func TestLayoutResetNoFile(t *testing.T) {
 	tui.projectRoot = root
 
 	tui.execCmd("layout reset")
-	if tui.cmdError != "" {
-		t.Errorf("unexpected error: %q", tui.cmdError)
+	if tui.cmd.error != "" {
+		t.Errorf("unexpected error: %q", tui.cmd.error)
 	}
 }
 
 func TestLayoutUnknownSubcommand(t *testing.T) {
 	tui := newTestTUI(newTestPane("super", true))
 	tui.execCmd("layout foo")
-	if tui.cmdError == "" {
+	if tui.cmd.error == "" {
 		t.Error("expected error for unknown layout subcommand")
 	}
 }
@@ -741,7 +741,7 @@ func TestLayoutUnknownSubcommand(t *testing.T) {
 func TestLayoutNoSubcommand(t *testing.T) {
 	tui := newTestTUI(newTestPane("super", true))
 	tui.execCmd("layout")
-	if tui.cmdError == "" {
+	if tui.cmd.error == "" {
 		t.Error("expected error for layout with no subcommand")
 	}
 }

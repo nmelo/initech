@@ -901,10 +901,12 @@ func TestCalcMainVertical(t *testing.T) {
 
 func TestSelectionFor(t *testing.T) {
 	tui := &TUI{
-		selActive: true,
-		selPane:   1,
-		selStartX: 5, selStartY: 10,
-		selEndX: 15, selEndY: 12,
+		sel: mouseSelection{
+			active: true,
+			pane:   1,
+			startX: 5, startY: 10,
+			endX: 15, endY: 12,
+		},
 	}
 
 	// Matching pane index.
@@ -923,10 +925,10 @@ func TestSelectionFor(t *testing.T) {
 	}
 
 	// Inactive selection.
-	tui.selActive = false
+	tui.sel.active = false
 	sel = tui.selectionFor(1)
 	if sel.Active {
-		t.Error("should be inactive when selActive=false")
+		t.Error("should be inactive when sel.active=false")
 	}
 }
 
@@ -1014,8 +1016,8 @@ func TestExecCmdQuitShort(t *testing.T) {
 func TestExecCmdUnknown(t *testing.T) {
 	tui := newTestTUI()
 	tui.execCmd("notacmd")
-	if !strings.Contains(tui.cmdError, "unknown command") {
-		t.Errorf("cmdError = %q, want 'unknown command'", tui.cmdError)
+	if !strings.Contains(tui.cmd.error, "unknown command") {
+		t.Errorf("cmdError = %q, want 'unknown command'", tui.cmd.error)
 	}
 }
 
@@ -1079,8 +1081,8 @@ func TestExecCmdHideLastPane(t *testing.T) {
 	if !a.Visible() {
 		t.Error("should not hide last visible pane")
 	}
-	if !strings.Contains(tui.cmdError, "cannot hide last") {
-		t.Errorf("cmdError = %q, want 'cannot hide last'", tui.cmdError)
+	if !strings.Contains(tui.cmd.error, "cannot hide last") {
+		t.Errorf("cmdError = %q, want 'cannot hide last'", tui.cmd.error)
 	}
 }
 
@@ -1089,8 +1091,8 @@ func TestExecCmdHideAlreadyHidden(t *testing.T) {
 	b := newTestPane("eng1", false)
 	tui := newTestTUI(a, b)
 	tui.execCmd("hide eng1") // Already hidden, should be no-op.
-	if tui.cmdError != "" {
-		t.Errorf("hide already-hidden should not error: %q", tui.cmdError)
+	if tui.cmd.error != "" {
+		t.Errorf("hide already-hidden should not error: %q", tui.cmd.error)
 	}
 }
 
@@ -1124,8 +1126,8 @@ func TestExecCmdGridWithArg(t *testing.T) {
 func TestExecCmdGridInvalid(t *testing.T) {
 	tui := newTestTUI(newTestPane("a", true))
 	tui.execCmd("grid abc")
-	if !strings.Contains(tui.cmdError, "invalid grid") {
-		t.Errorf("cmdError = %q", tui.cmdError)
+	if !strings.Contains(tui.cmd.error, "invalid grid") {
+		t.Errorf("cmdError = %q", tui.cmd.error)
 	}
 }
 
@@ -1163,8 +1165,8 @@ func TestExecCmdFocusWithName(t *testing.T) {
 func TestExecCmdFocusUnknown(t *testing.T) {
 	tui := newTestTUI(newTestPane("a", true))
 	tui.execCmd("focus ghost")
-	if !strings.Contains(tui.cmdError, "unknown agent") {
-		t.Errorf("cmdError = %q", tui.cmdError)
+	if !strings.Contains(tui.cmd.error, "unknown agent") {
+		t.Errorf("cmdError = %q", tui.cmd.error)
 	}
 }
 
@@ -1183,75 +1185,75 @@ func TestExecCmdMain(t *testing.T) {
 
 func TestHandleCmdKeyEscape(t *testing.T) {
 	tui := newTestTUI(newTestPane("a", true))
-	tui.cmdActive = true
-	tui.cmdBuf = []rune("partial")
+	tui.cmd.active = true
+	tui.cmd.buf = []rune("partial")
 
 	ev := tcell.NewEventKey(tcell.KeyEscape, 0, 0)
 	tui.handleCmdKey(ev)
-	if tui.cmdActive {
+	if tui.cmd.active {
 		t.Error("Escape should close cmd modal")
 	}
-	if len(tui.cmdBuf) != 0 {
+	if len(tui.cmd.buf) != 0 {
 		t.Error("Escape should clear cmdBuf")
 	}
 }
 
 func TestHandleCmdKeyBackspace(t *testing.T) {
 	tui := newTestTUI()
-	tui.cmdBuf = []rune("abc")
+	tui.cmd.buf = []rune("abc")
 
 	ev := tcell.NewEventKey(tcell.KeyBackspace2, 0, 0)
 	tui.handleCmdKey(ev)
-	if string(tui.cmdBuf) != "ab" {
-		t.Errorf("cmdBuf = %q, want 'ab'", string(tui.cmdBuf))
+	if string(tui.cmd.buf) != "ab" {
+		t.Errorf("cmdBuf = %q, want 'ab'", string(tui.cmd.buf))
 	}
 }
 
 func TestHandleCmdKeyBackspaceEmpty(t *testing.T) {
 	tui := newTestTUI()
-	tui.cmdBuf = []rune{}
+	tui.cmd.buf = []rune{}
 
 	ev := tcell.NewEventKey(tcell.KeyBackspace2, 0, 0)
 	tui.handleCmdKey(ev) // Should not panic.
-	if len(tui.cmdBuf) != 0 {
+	if len(tui.cmd.buf) != 0 {
 		t.Error("should stay empty")
 	}
 }
 
 func TestHandleCmdKeyRune(t *testing.T) {
 	tui := newTestTUI()
-	tui.cmdBuf = []rune("he")
+	tui.cmd.buf = []rune("he")
 
 	ev := tcell.NewEventKey(tcell.KeyRune, 'l', 0)
 	tui.handleCmdKey(ev)
-	if string(tui.cmdBuf) != "hel" {
-		t.Errorf("cmdBuf = %q, want 'hel'", string(tui.cmdBuf))
+	if string(tui.cmd.buf) != "hel" {
+		t.Errorf("cmdBuf = %q, want 'hel'", string(tui.cmd.buf))
 	}
 }
 
 func TestHandleCmdKeyBacktickEmpty(t *testing.T) {
 	tui := newTestTUI()
-	tui.cmdActive = true
-	tui.cmdBuf = []rune{}
+	tui.cmd.active = true
+	tui.cmd.buf = []rune{}
 
 	ev := tcell.NewEventKey(tcell.KeyRune, '`', 0)
 	tui.handleCmdKey(ev)
-	if tui.cmdActive {
+	if tui.cmd.active {
 		t.Error("backtick on empty should close modal")
 	}
 }
 
 func TestHandleCmdKeyEnter(t *testing.T) {
 	tui := newTestTUI()
-	tui.cmdActive = true
-	tui.cmdBuf = []rune("quit")
+	tui.cmd.active = true
+	tui.cmd.buf = []rune("quit")
 
 	ev := tcell.NewEventKey(tcell.KeyEnter, 0, 0)
 	quit := tui.handleCmdKey(ev)
 	if !quit {
 		t.Error("Enter on 'quit' should return true")
 	}
-	if tui.cmdActive {
+	if tui.cmd.active {
 		t.Error("Enter should close modal")
 	}
 }
@@ -1262,7 +1264,7 @@ func TestHandleKeyBacktickOpensModal(t *testing.T) {
 	tui := newTestTUI(newTestPane("a", true))
 	ev := tcell.NewEventKey(tcell.KeyRune, '`', 0)
 	tui.handleKey(ev)
-	if !tui.cmdActive {
+	if !tui.cmd.active {
 		t.Error("backtick should open command modal")
 	}
 }
@@ -1366,12 +1368,12 @@ func TestHandleKeyAltNumbers(t *testing.T) {
 
 func TestHandleKeyClearsError(t *testing.T) {
 	tui := newTestTUI(newEmuPane("a", 80, 24))
-	tui.cmdError = "some old error"
+	tui.cmd.error = "some old error"
 
 	ev := tcell.NewEventKey(tcell.KeyRune, 'x', 0)
 	tui.handleKey(ev)
-	if tui.cmdError != "" {
-		t.Errorf("keypress should clear cmdError, got %q", tui.cmdError)
+	if tui.cmd.error != "" {
+		t.Errorf("keypress should clear cmdError, got %q", tui.cmd.error)
 	}
 }
 
@@ -1386,7 +1388,7 @@ func TestHandleEventRouting(t *testing.T) {
 	if quit {
 		t.Error("backtick should not quit")
 	}
-	if !tui.cmdActive {
+	if !tui.cmd.active {
 		t.Error("backtick should open cmd modal via handleEvent")
 	}
 }

@@ -180,7 +180,7 @@ func TestExecCmdGrid(t *testing.T) {
 
 	// Grid with invalid arg.
 	tui.execCmd("grid abc")
-	if tui.cmdError == "" {
+	if tui.cmd.error == "" {
 		t.Error("invalid grid should produce error")
 	}
 }
@@ -206,7 +206,7 @@ func TestExecCmdFocus(t *testing.T) {
 
 	// Focus unknown.
 	tui.execCmd("focus bogus")
-	if tui.cmdError == "" {
+	if tui.cmd.error == "" {
 		t.Error("focus unknown should produce error")
 	}
 }
@@ -259,7 +259,7 @@ func TestExecCmdQuitAndAlias(t *testing.T) {
 func TestExecCmdUnknownEng2(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("a")
 	tui.execCmd("gibberish")
-	if tui.cmdError == "" {
+	if tui.cmd.error == "" {
 		t.Error("unknown command should set error")
 	}
 }
@@ -277,16 +277,16 @@ func TestExecCmdEmptyString(t *testing.T) {
 
 func TestHandleCmdKeyEscapeE2(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("a")
-	tui.cmdActive = true
-	tui.cmdBuf = []rune("partial")
+	tui.cmd.active = true
+	tui.cmd.buf = []rune("partial")
 
 	ev := tcell.NewEventKey(tcell.KeyEscape, 0, tcell.ModNone)
 	tui.handleCmdKey(ev)
 
-	if tui.cmdActive {
+	if tui.cmd.active {
 		t.Error("Escape should deactivate command modal")
 	}
-	if len(tui.cmdBuf) != 0 {
+	if len(tui.cmd.buf) != 0 {
 		t.Error("Escape should clear command buffer")
 	}
 }
@@ -294,13 +294,13 @@ func TestHandleCmdKeyEscapeE2(t *testing.T) {
 func TestHandleCmdKeyEnterE2(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("a")
 	tui.layoutState.Overlay = true // Starts on.
-	tui.cmdActive = true
-	tui.cmdBuf = []rune("panel")
+	tui.cmd.active = true
+	tui.cmd.buf = []rune("panel")
 
 	ev := tcell.NewEventKey(tcell.KeyEnter, 0, tcell.ModNone)
 	tui.handleCmdKey(ev)
 
-	if tui.cmdActive {
+	if tui.cmd.active {
 		t.Error("Enter should deactivate command modal")
 	}
 	// "panel" toggles overlay: true -> false.
@@ -311,69 +311,69 @@ func TestHandleCmdKeyEnterE2(t *testing.T) {
 
 func TestHandleCmdKeyBackspaceE2(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("a")
-	tui.cmdActive = true
-	tui.cmdBuf = []rune("abc")
+	tui.cmd.active = true
+	tui.cmd.buf = []rune("abc")
 
 	ev := tcell.NewEventKey(tcell.KeyBackspace2, 0, tcell.ModNone)
 	tui.handleCmdKey(ev)
 
-	if string(tui.cmdBuf) != "ab" {
-		t.Errorf("cmdBuf = %q, want %q", string(tui.cmdBuf), "ab")
+	if string(tui.cmd.buf) != "ab" {
+		t.Errorf("cmdBuf = %q, want %q", string(tui.cmd.buf), "ab")
 	}
 }
 
 func TestHandleCmdKeyBackspaceEmptyE2(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("a")
-	tui.cmdActive = true
-	tui.cmdBuf = tui.cmdBuf[:0]
+	tui.cmd.active = true
+	tui.cmd.buf = tui.cmd.buf[:0]
 
 	ev := tcell.NewEventKey(tcell.KeyBackspace2, 0, tcell.ModNone)
 	tui.handleCmdKey(ev)
 
-	if len(tui.cmdBuf) != 0 {
+	if len(tui.cmd.buf) != 0 {
 		t.Error("backspace on empty buffer should remain empty")
 	}
 }
 
 func TestHandleCmdKeyRuneE2(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("a")
-	tui.cmdActive = true
-	tui.cmdBuf = tui.cmdBuf[:0]
+	tui.cmd.active = true
+	tui.cmd.buf = tui.cmd.buf[:0]
 
 	ev := tcell.NewEventKey(tcell.KeyRune, 'x', tcell.ModNone)
 	tui.handleCmdKey(ev)
 
-	if string(tui.cmdBuf) != "x" {
-		t.Errorf("cmdBuf = %q, want %q", string(tui.cmdBuf), "x")
+	if string(tui.cmd.buf) != "x" {
+		t.Errorf("cmdBuf = %q, want %q", string(tui.cmd.buf), "x")
 	}
 }
 
 func TestHandleCmdKeyBacktickClosesEmpty(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("a")
-	tui.cmdActive = true
-	tui.cmdBuf = tui.cmdBuf[:0]
+	tui.cmd.active = true
+	tui.cmd.buf = tui.cmd.buf[:0]
 
 	ev := tcell.NewEventKey(tcell.KeyRune, '`', tcell.ModNone)
 	tui.handleCmdKey(ev)
 
-	if tui.cmdActive {
+	if tui.cmd.active {
 		t.Error("backtick on empty buffer should close modal")
 	}
 }
 
 func TestHandleCmdKeyBacktickAppendsWhenNonEmpty(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("a")
-	tui.cmdActive = true
-	tui.cmdBuf = []rune("a")
+	tui.cmd.active = true
+	tui.cmd.buf = []rune("a")
 
 	ev := tcell.NewEventKey(tcell.KeyRune, '`', tcell.ModNone)
 	tui.handleCmdKey(ev)
 
-	if !tui.cmdActive {
+	if !tui.cmd.active {
 		t.Error("backtick on non-empty buffer should not close modal")
 	}
-	if string(tui.cmdBuf) != "a`" {
-		t.Errorf("cmdBuf = %q, want %q", string(tui.cmdBuf), "a`")
+	if string(tui.cmd.buf) != "a`" {
+		t.Errorf("cmdBuf = %q, want %q", string(tui.cmd.buf), "a`")
 	}
 }
 
@@ -385,7 +385,7 @@ func TestHandleKeyBacktickOpensModalE2(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("a")
 	ev := tcell.NewEventKey(tcell.KeyRune, '`', tcell.ModNone)
 	tui.handleKey(ev)
-	if !tui.cmdActive {
+	if !tui.cmd.active {
 		t.Error("backtick should open command modal")
 	}
 }
@@ -481,18 +481,18 @@ func TestHandleKeyCycleFocus(t *testing.T) {
 
 func TestHandleKeyClearsErrorE2(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("a")
-	tui.cmdError = "some error"
+	tui.cmd.error = "some error"
 	ev := tcell.NewEventKey(tcell.KeyRune, 'x', tcell.ModNone)
 	tui.handleKey(ev)
-	if tui.cmdError != "" {
+	if tui.cmd.error != "" {
 		t.Error("keypress should clear cmdError")
 	}
 }
 
 func TestHandleKeyCmdActiveForwards(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("a")
-	tui.cmdActive = true
-	tui.cmdBuf = tui.cmdBuf[:0]
+	tui.cmd.active = true
+	tui.cmd.buf = tui.cmd.buf[:0]
 
 	// Escape should close modal (handled by handleCmdKey).
 	ev := tcell.NewEventKey(tcell.KeyEscape, 0, tcell.ModNone)
@@ -500,7 +500,7 @@ func TestHandleKeyCmdActiveForwards(t *testing.T) {
 	if quit {
 		t.Error("Escape in cmd modal should not quit")
 	}
-	if tui.cmdActive {
+	if tui.cmd.active {
 		t.Error("Escape should have closed modal")
 	}
 }
@@ -558,12 +558,12 @@ func TestUvCellToTcellAttributes(t *testing.T) {
 
 func TestSelectionForPane(t *testing.T) {
 	tui := newTestTUI(newTestPane("a", true), newTestPane("b", true))
-	tui.selActive = true
-	tui.selPane = 0
-	tui.selStartX = 1
-	tui.selStartY = 2
-	tui.selEndX = 3
-	tui.selEndY = 4
+	tui.sel.active = true
+	tui.sel.pane = 0
+	tui.sel.startX = 1
+	tui.sel.startY = 2
+	tui.sel.endX = 3
+	tui.sel.endY = 4
 
 	// Matching pane.
 	sel := tui.selectionFor(0)
@@ -578,7 +578,7 @@ func TestSelectionForPane(t *testing.T) {
 	}
 
 	// No active selection.
-	tui.selActive = false
+	tui.sel.active = false
 	sel = tui.selectionFor(0)
 	if sel.Active {
 		t.Error("selectionFor with no active selection should return inactive")
@@ -689,8 +689,8 @@ func TestRenderGridDividersOnScreen(t *testing.T) {
 
 func TestRenderCmdLineOnScreen(t *testing.T) {
 	tui, s := newTestTUIWithScreen("a")
-	tui.cmdActive = true
-	tui.cmdBuf = []rune("test")
+	tui.cmd.active = true
+	tui.cmd.buf = []rune("test")
 	tui.layoutState.Overlay = false
 	tui.render()
 
@@ -704,8 +704,8 @@ func TestRenderCmdLineOnScreen(t *testing.T) {
 
 func TestRenderCmdErrorOnScreen(t *testing.T) {
 	tui, s := newTestTUIWithScreen("a")
-	tui.cmdActive = false
-	tui.cmdError = "bad command"
+	tui.cmd.active = false
+	tui.cmd.error = "bad command"
 	tui.layoutState.Overlay = false
 	tui.render()
 
@@ -785,11 +785,11 @@ func TestHandleMouseButton1StartSelection(t *testing.T) {
 	ev := tcell.NewEventMouse(r.X+5, r.Y+5, tcell.Button1, tcell.ModNone)
 	tui.handleMouse(ev)
 
-	if !tui.selActive {
+	if !tui.sel.active {
 		t.Error("Button1 press should start selection")
 	}
-	if tui.selPane != 0 {
-		t.Errorf("selPane = %d, want 0", tui.selPane)
+	if tui.sel.pane != 0 {
+		t.Errorf("selPane = %d, want 0", tui.sel.pane)
 	}
 	if tui.layoutState.Focused != "a" {
 		t.Errorf("focused = %q, want a", tui.layoutState.Focused)
@@ -809,8 +809,8 @@ func TestHandleMouseDragUpdatesSelection(t *testing.T) {
 	ev = tcell.NewEventMouse(r.X+10, r.Y+5, tcell.Button1, tcell.ModNone)
 	tui.handleMouse(ev)
 
-	if tui.selEndX != 10 {
-		t.Errorf("selEndX = %d, want 10", tui.selEndX)
+	if tui.sel.endX != 10 {
+		t.Errorf("selEndX = %d, want 10", tui.sel.endX)
 	}
 }
 
@@ -822,14 +822,14 @@ func TestHandleMouseReleaseClearsSelection(t *testing.T) {
 	// Start selection.
 	ev := tcell.NewEventMouse(r.X+1, r.Y+2, tcell.Button1, tcell.ModNone)
 	tui.handleMouse(ev)
-	if !tui.selActive {
+	if !tui.sel.active {
 		t.Fatal("selection should be active after click")
 	}
 
 	// Release.
 	ev = tcell.NewEventMouse(r.X+5, r.Y+3, tcell.ButtonNone, tcell.ModNone)
 	tui.handleMouse(ev)
-	if tui.selActive {
+	if tui.sel.active {
 		t.Error("selection should be cleared after release")
 	}
 }
@@ -867,11 +867,11 @@ func TestHandleMouseWheelDown(t *testing.T) {
 
 func TestHandleMouseIgnoredDuringCmd(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("a")
-	tui.cmdActive = true
+	tui.cmd.active = true
 	r := tui.panes[0].region
 	ev := tcell.NewEventMouse(r.X+1, r.Y+1, tcell.Button1, tcell.ModNone)
 	tui.handleMouse(ev)
-	if tui.selActive {
+	if tui.sel.active {
 		t.Error("mouse should be ignored when command modal is active")
 	}
 }
@@ -902,7 +902,7 @@ func TestHandleMouseHiddenPaneSkipped(t *testing.T) {
 	ev := tcell.NewEventMouse(r.X+5, r.Y+5, tcell.Button1, tcell.ModNone)
 	tui.handleMouse(ev)
 	// Click should not start selection on hidden pane.
-	if tui.selActive && tui.selPane == 0 {
+	if tui.sel.active && tui.sel.pane == 0 {
 		t.Error("should not select hidden pane")
 	}
 }
@@ -980,17 +980,17 @@ func TestCopySelectionExtractsText(t *testing.T) {
 	p := tui.panes[0]
 	p.emu.Write([]byte("Hello World\r\n"))
 
-	tui.selPane = 0
-	tui.selStartX = 0
-	tui.selStartY = 0
-	tui.selEndX = 4
-	tui.selEndY = 0
+	tui.sel.pane = 0
+	tui.sel.startX = 0
+	tui.sel.startY = 0
+	tui.sel.endX = 4
+	tui.sel.endY = 0
 	tui.copySelection()
 }
 
 func TestCopySelectionOutOfRange(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("a")
-	tui.selPane = 99
+	tui.sel.pane = 99
 	tui.copySelection()
 }
 
@@ -1000,11 +1000,11 @@ func TestCopySelectionReversed(t *testing.T) {
 	p := tui.panes[0]
 	p.emu.Write([]byte("ABCDEF\r\n"))
 
-	tui.selPane = 0
-	tui.selStartX = 5
-	tui.selStartY = 0
-	tui.selEndX = 0
-	tui.selEndY = 0
+	tui.sel.pane = 0
+	tui.sel.startX = 5
+	tui.sel.startY = 0
+	tui.sel.endX = 0
+	tui.sel.endY = 0
 	tui.copySelection()
 }
 
@@ -1014,11 +1014,11 @@ func TestCopySelectionMultiLine(t *testing.T) {
 	p := tui.panes[0]
 	p.emu.Write([]byte("Line1\r\nLine2\r\nLine3\r\n"))
 
-	tui.selPane = 0
-	tui.selStartX = 0
-	tui.selStartY = 0
-	tui.selEndX = 4
-	tui.selEndY = 2
+	tui.sel.pane = 0
+	tui.sel.startX = 0
+	tui.sel.startY = 0
+	tui.sel.endX = 4
+	tui.sel.endY = 2
 	tui.copySelection()
 }
 
@@ -1027,11 +1027,11 @@ func TestCopySelectionEmptyContent(t *testing.T) {
 	tui.applyLayout()
 	// No content written - emulator is empty.
 
-	tui.selPane = 0
-	tui.selStartX = 0
-	tui.selStartY = 0
-	tui.selEndX = 5
-	tui.selEndY = 0
+	tui.sel.pane = 0
+	tui.sel.startX = 0
+	tui.sel.startY = 0
+	tui.sel.endX = 5
+	tui.sel.endY = 0
 	tui.copySelection() // text="" -> early return
 }
 
@@ -1041,11 +1041,11 @@ func TestCopySelectionExceedsPaneRows(t *testing.T) {
 	p := tui.panes[0]
 	p.emu.Write([]byte("X\r\n"))
 
-	tui.selPane = 0
-	tui.selStartX = 0
-	tui.selStartY = 0
-	tui.selEndX = 0
-	tui.selEndY = 999 // Beyond pane rows, should be clamped.
+	tui.sel.pane = 0
+	tui.sel.startX = 0
+	tui.sel.startY = 0
+	tui.sel.endX = 0
+	tui.sel.endY = 999 // Beyond pane rows, should be clamped.
 	tui.copySelection()
 }
 
@@ -1055,11 +1055,11 @@ func TestCopySelectionEndColBeyondWidth(t *testing.T) {
 	p := tui.panes[0]
 	p.emu.Write([]byte("test\r\n"))
 
-	tui.selPane = 0
-	tui.selStartX = 0
-	tui.selStartY = 0
-	tui.selEndX = 999 // Beyond cols, should be clamped.
-	tui.selEndY = 0
+	tui.sel.pane = 0
+	tui.sel.startX = 0
+	tui.sel.startY = 0
+	tui.sel.endX = 999 // Beyond cols, should be clamped.
+	tui.sel.endY = 0
 	tui.copySelection()
 }
 
@@ -1073,12 +1073,12 @@ func TestRenderWithSelectionHighlight(t *testing.T) {
 	tui.layoutState.Overlay = false
 	tui.panes[0].emu.Write([]byte("Some content\r\n"))
 
-	tui.selActive = true
-	tui.selPane = 0
-	tui.selStartX = 0
-	tui.selStartY = 0
-	tui.selEndX = 5
-	tui.selEndY = 0
+	tui.sel.active = true
+	tui.sel.pane = 0
+	tui.sel.startX = 0
+	tui.sel.startY = 0
+	tui.sel.endX = 5
+	tui.sel.endY = 0
 	tui.render() // Should draw selection highlight.
 }
 
@@ -1087,7 +1087,7 @@ func TestRenderWithCursor(t *testing.T) {
 	tui.applyLayout()
 	tui.layoutState.Focused = "a"
 	tui.layoutState.Overlay = false
-	tui.selActive = false
+	tui.sel.active = false
 	tui.panes[0].emu.Write([]byte("cursor test\r\n"))
 	tui.render() // Should draw cursor.
 }
@@ -1205,7 +1205,7 @@ func TestHandleMouseDragClampNegative(t *testing.T) {
 	ev = tcell.NewEventMouse(r.X-10, r.Y-10, tcell.Button1, tcell.ModNone)
 	tui.handleMouse(ev)
 
-	if tui.selEndX < 0 || tui.selEndY < 0 {
+	if tui.sel.endX < 0 || tui.sel.endY < 0 {
 		t.Error("selection coordinates should be clamped to >= 0")
 	}
 }
@@ -1224,7 +1224,7 @@ func TestHandleMouseDragClampBeyondPane(t *testing.T) {
 	tui.handleMouse(ev)
 
 	cols, rows := r.InnerSize()
-	if tui.selEndX >= cols || tui.selEndY >= rows {
+	if tui.sel.endX >= cols || tui.sel.endY >= rows {
 		t.Error("selection coordinates should be clamped to pane bounds")
 	}
 }

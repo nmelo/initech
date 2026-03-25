@@ -28,6 +28,33 @@ type AgentInfo struct {
 	Visible bool
 }
 
+// cmdModal holds command modal state.
+type cmdModal struct {
+	active bool
+	buf    []rune
+	error  string // Shown briefly after a bad command.
+}
+
+// topModal holds activity monitor (top) modal state.
+type topModal struct {
+	active    bool
+	selected  int
+	data      []topEntry
+	cacheTime time.Time
+}
+
+// mouseSelection holds mouse text selection state.
+type mouseSelection struct {
+	active       bool
+	pane         int // Index of the pane being selected in.
+	startX       int // Start position in pane-local content coordinates.
+	startY       int
+	endX         int // Current end position.
+	endY         int
+	startRow     int // contentOffset snapshot at mouse-down.
+	renderOffset int
+}
+
 // TUI is the main terminal multiplexer. It owns the tcell screen,
 // a set of terminal panes, and handles input routing, layout, and rendering.
 type TUI struct {
@@ -42,26 +69,9 @@ type TUI struct {
 	// Project root for .initech/layout.yaml persistence. Empty disables auto-save.
 	projectRoot string
 
-	// Command modal state.
-	cmdActive bool
-	cmdBuf    []rune
-	cmdError  string // Shown briefly after a bad command.
-
-	// Activity monitor (top) modal state.
-	topActive    bool
-	topSelected  int
-	topData      []topEntry
-	topCacheTime time.Time
-
-	// Mouse selection state.
-	selActive       bool
-	selPane         int // Index of the pane being selected in.
-	selStartX       int // Start position in pane-local content coordinates.
-	selStartY       int
-	selEndX         int // Current end position.
-	selEndY         int
-	selStartRow     int // contentOffset snapshot at mouse-down.
-	selRenderOffset int
+	cmd cmdModal      // Command input bar.
+	top topModal      // Activity monitor overlay.
+	sel mouseSelection // Mouse text selection.
 }
 
 // applyLayout recomputes the render plan from the current layout state
@@ -264,13 +274,13 @@ func (t *TUI) handleEvent(ev tcell.Event) bool {
 }
 
 func (t *TUI) handleMouse(ev *tcell.EventMouse) {
-	if t.cmdActive {
+	if t.cmd.active {
 		return
 	}
 	mx, my := ev.Position()
 
 	switch {
-	case ev.Buttons()&tcell.Button1 != 0 && !t.selActive:
+	case ev.Buttons()&tcell.Button1 != 0 && !t.sel.active:
 		// Button1 press: forward to pane and start TUI selection.
 		for i, p := range t.panes {
 			if t.layoutState.Hidden[p.name] {
@@ -291,22 +301,22 @@ func (t *TUI) handleMouse(ev *tcell.EventMouse) {
 				// Snapshot contentOffset so copy uses the same mapping
 				// regardless of content reflow during the drag.
 				sr, ro := p.contentOffset()
-				t.selActive = true
-				t.selPane = i
-				t.selStartX = lx
-				t.selStartY = ly
-				t.selEndX = lx
-				t.selEndY = ly
-				t.selStartRow = sr
-				t.selRenderOffset = ro
+				t.sel.active = true
+				t.sel.pane = i
+				t.sel.startX = lx
+				t.sel.startY = ly
+				t.sel.endX = lx
+				t.sel.endY = ly
+				t.sel.startRow = sr
+				t.sel.renderOffset = ro
 				return
 			}
 		}
 
-	case ev.Buttons()&tcell.Button1 != 0 && t.selActive:
+	case ev.Buttons()&tcell.Button1 != 0 && t.sel.active:
 		// Drag: update selection end and forward motion.
-		if t.selPane < len(t.panes) {
-			p := t.panes[t.selPane]
+		if t.sel.pane < len(t.panes) {
+			p := t.panes[t.sel.pane]
 			r := p.region
 			lx := mx - r.X
 			ly := my - r.Y
@@ -324,14 +334,14 @@ func (t *TUI) handleMouse(ev *tcell.EventMouse) {
 				ly = rows - 1
 			}
 			t.forwardMouseEvent(p, lx, ly, uv.MouseLeft, true, false, ev.Modifiers())
-			t.selEndX = lx
-			t.selEndY = ly
+			t.sel.endX = lx
+			t.sel.endY = ly
 		}
 
-	case ev.Buttons() == tcell.ButtonNone && t.selActive:
+	case ev.Buttons() == tcell.ButtonNone && t.sel.active:
 		// Release: forward to pane, copy selection, and clear.
-		if t.selPane < len(t.panes) {
-			p := t.panes[t.selPane]
+		if t.sel.pane < len(t.panes) {
+			p := t.panes[t.sel.pane]
 			r := p.region
 			lx := mx - r.X
 			ly := my - r.Y
@@ -341,7 +351,7 @@ func (t *TUI) handleMouse(ev *tcell.EventMouse) {
 			t.forwardMouseEvent(p, lx, ly, uv.MouseNone, false, true, ev.Modifiers())
 		}
 		t.copySelection()
-		t.selActive = false
+		t.sel.active = false
 
 	case ev.Buttons()&tcell.Button2 != 0:
 		// Middle click: forward to focused pane only.
@@ -438,13 +448,13 @@ func (t *TUI) forwardMouseToFocused(mx, my int, button uv.MouseButton, isMotion,
 
 // copySelection extracts selected text from the pane's emulator and copies to clipboard.
 func (t *TUI) copySelection() {
-	if t.selPane >= len(t.panes) {
+	if t.sel.pane >= len(t.panes) {
 		return
 	}
-	p := t.panes[t.selPane]
+	p := t.panes[t.sel.pane]
 
 	// Normalize selection bounds (start may be after end).
-	r0, c0, r1, c1 := t.selStartY, t.selStartX, t.selEndY, t.selEndX
+	r0, c0, r1, c1 := t.sel.startY, t.sel.startX, t.sel.endY, t.sel.endX
 	if r0 > r1 || (r0 == r1 && c0 > c1) {
 		r0, c0, r1, c1 = r1, c1, r0, c0
 	}
@@ -457,8 +467,8 @@ func (t *TUI) copySelection() {
 	// Use the contentOffset snapshot from mouse-down time, not the current
 	// offset. This prevents content reflow during the drag from shifting
 	// the copied text.
-	startRow := t.selStartRow
-	renderOffset := t.selRenderOffset
+	startRow := t.sel.startRow
+	renderOffset := t.sel.renderOffset
 	emuRows := p.emu.Height()
 
 	var buf strings.Builder
@@ -512,23 +522,23 @@ func (t *TUI) copySelection() {
 
 func (t *TUI) handleKey(ev *tcell.EventKey) bool {
 	// Top modal intercepts all input when active.
-	if t.topActive {
+	if t.top.active {
 		return t.handleTopKey(ev)
 	}
 
 	// Command modal intercepts all input when active.
-	if t.cmdActive {
+	if t.cmd.active {
 		return t.handleCmdKey(ev)
 	}
 
 	// Clear any lingering error message on next keypress.
-	t.cmdError = ""
+	t.cmd.error = ""
 
 	// Backtick opens the command modal.
 	if ev.Key() == tcell.KeyRune && ev.Rune() == '`' && ev.Modifiers() == 0 {
-		t.cmdActive = true
-		t.cmdBuf = t.cmdBuf[:0]
-		t.cmdError = ""
+		t.cmd.active = true
+		t.cmd.buf = t.cmd.buf[:0]
+		t.cmd.error = ""
 		return false
 	}
 
@@ -602,26 +612,26 @@ func (t *TUI) handleKey(ev *tcell.EventKey) bool {
 func (t *TUI) handleCmdKey(ev *tcell.EventKey) bool {
 	switch ev.Key() {
 	case tcell.KeyEscape, tcell.KeyCtrlC:
-		t.cmdActive = false
-		t.cmdBuf = t.cmdBuf[:0]
+		t.cmd.active = false
+		t.cmd.buf = t.cmd.buf[:0]
 		return false
 	case tcell.KeyEnter:
-		cmd := strings.TrimSpace(string(t.cmdBuf))
-		t.cmdActive = false
-		t.cmdBuf = t.cmdBuf[:0]
+		cmd := strings.TrimSpace(string(t.cmd.buf))
+		t.cmd.active = false
+		t.cmd.buf = t.cmd.buf[:0]
 		return t.execCmd(cmd)
 	case tcell.KeyBackspace, tcell.KeyBackspace2:
-		if len(t.cmdBuf) > 0 {
-			t.cmdBuf = t.cmdBuf[:len(t.cmdBuf)-1]
+		if len(t.cmd.buf) > 0 {
+			t.cmd.buf = t.cmd.buf[:len(t.cmd.buf)-1]
 		}
 		return false
 	case tcell.KeyRune:
 		// Backtick while empty closes the modal.
-		if ev.Rune() == '`' && len(t.cmdBuf) == 0 {
-			t.cmdActive = false
+		if ev.Rune() == '`' && len(t.cmd.buf) == 0 {
+			t.cmd.active = false
 			return false
 		}
-		t.cmdBuf = append(t.cmdBuf, ev.Rune())
+		t.cmd.buf = append(t.cmd.buf, ev.Rune())
 		return false
 	}
 	return false
@@ -650,7 +660,7 @@ func (t *TUI) execCmd(cmd string) bool {
 		visCount := t.visibleCountFromState()
 		cols, rows, ok := parseGrid(parts[1], visCount)
 		if !ok {
-			t.cmdError = fmt.Sprintf("invalid grid %q, use CxR or just C (e.g. 3x3, 4)", parts[1])
+			t.cmd.error = fmt.Sprintf("invalid grid %q, use CxR or just C (e.g. 3x3, 4)", parts[1])
 			return false
 		}
 		t.layoutState.Mode = LayoutGrid
@@ -670,7 +680,7 @@ func (t *TUI) execCmd(cmd string) bool {
 		}
 		name := parts[1]
 		if t.findPaneByName(name) == nil {
-			t.cmdError = fmt.Sprintf("unknown agent %q", name)
+			t.cmd.error = fmt.Sprintf("unknown agent %q", name)
 			return false
 		}
 		t.layoutState.Focused = name
@@ -695,7 +705,7 @@ func (t *TUI) execCmd(cmd string) bool {
 
 	case "show":
 		if len(parts) < 2 {
-			t.cmdError = "usage: show <name> or show all"
+			t.cmd.error = "usage: show <name> or show all"
 			return false
 		}
 		if parts[1] == "all" {
@@ -705,7 +715,7 @@ func (t *TUI) execCmd(cmd string) bool {
 			return false
 		}
 		if t.findPaneByName(parts[1]) == nil {
-			t.cmdError = fmt.Sprintf("unknown agent %q", parts[1])
+			t.cmd.error = fmt.Sprintf("unknown agent %q", parts[1])
 			return false
 		}
 		delete(t.layoutState.Hidden, parts[1])
@@ -714,22 +724,22 @@ func (t *TUI) execCmd(cmd string) bool {
 
 	case "hide":
 		if len(parts) < 2 {
-			t.cmdError = "usage: hide <name>"
+			t.cmd.error = "usage: hide <name>"
 			return false
 		}
 		if parts[1] == "all" {
-			t.cmdError = "cannot hide all panes"
+			t.cmd.error = "cannot hide all panes"
 			return false
 		}
 		if t.findPaneByName(parts[1]) == nil {
-			t.cmdError = fmt.Sprintf("unknown agent %q", parts[1])
+			t.cmd.error = fmt.Sprintf("unknown agent %q", parts[1])
 			return false
 		}
 		if t.layoutState.Hidden[parts[1]] {
 			return false // Already hidden.
 		}
 		if t.visibleCountFromState() <= 1 {
-			t.cmdError = "cannot hide last visible pane"
+			t.cmd.error = "cannot hide last visible pane"
 			return false
 		}
 		if t.layoutState.Hidden == nil {
@@ -741,12 +751,12 @@ func (t *TUI) execCmd(cmd string) bool {
 
 	case "view":
 		if len(parts) < 2 {
-			t.cmdError = "usage: view <name1> [name2] ..."
+			t.cmd.error = "usage: view <name1> [name2] ..."
 			return false
 		}
 		for _, name := range parts[1:] {
 			if t.findPaneByName(name) == nil {
-				t.cmdError = fmt.Sprintf("unknown agent %q", name)
+				t.cmd.error = fmt.Sprintf("unknown agent %q", name)
 				return false
 			}
 		}
@@ -766,7 +776,7 @@ func (t *TUI) execCmd(cmd string) bool {
 
 	case "layout":
 		if len(parts) < 2 {
-			t.cmdError = "usage: layout reset"
+			t.cmd.error = "usage: layout reset"
 			return false
 		}
 		switch parts[1] {
@@ -781,24 +791,24 @@ func (t *TUI) execCmd(cmd string) bool {
 			t.layoutState = DefaultLayoutState(names)
 			t.applyLayout()
 		default:
-			t.cmdError = fmt.Sprintf("unknown layout subcommand %q", parts[1])
+			t.cmd.error = fmt.Sprintf("unknown layout subcommand %q", parts[1])
 		}
 
 	case "restart", "r":
 		if err := t.restartFocused(); err != nil {
-			t.cmdError = fmt.Sprintf("restart failed: %v", err)
+			t.cmd.error = fmt.Sprintf("restart failed: %v", err)
 		}
 
 	case "top", "ps":
-		t.topActive = true
-		t.topSelected = 0
-		t.topCacheTime = time.Time{} // Force fresh data.
+		t.top.active = true
+		t.top.selected = 0
+		t.top.cacheTime = time.Time{} // Force fresh data.
 
 	case "quit", "q":
 		return true
 
 	default:
-		t.cmdError = fmt.Sprintf("unknown command %q", parts[0])
+		t.cmd.error = fmt.Sprintf("unknown command %q", parts[0])
 	}
 	return false
 }
@@ -992,7 +1002,7 @@ func (t *TUI) render() {
 
 	s.Clear()
 
-	if t.topActive {
+	if t.top.active {
 		// Full-screen activity monitor replaces pane rendering.
 		t.renderTop()
 		s.Show()
@@ -1020,9 +1030,9 @@ func (t *TUI) render() {
 	}
 
 	// Command modal or error message at the bottom.
-	if t.cmdActive {
+	if t.cmd.active {
 		t.renderCmdLine()
-	} else if t.cmdError != "" {
+	} else if t.cmd.error != "" {
 		t.renderCmdError()
 	}
 
@@ -1032,26 +1042,26 @@ func (t *TUI) render() {
 
 // selectionFor returns the selection state for a given pane index.
 func (t *TUI) selectionFor(paneIdx int) Selection {
-	if !t.selActive || t.selPane != paneIdx {
+	if !t.sel.active || t.sel.pane != paneIdx {
 		return Selection{}
 	}
 	return Selection{
 		Active: true,
-		StartX: t.selStartX, StartY: t.selStartY,
-		EndX: t.selEndX, EndY: t.selEndY,
+		StartX: t.sel.startX, StartY: t.sel.startY,
+		EndX: t.sel.endX, EndY: t.sel.endY,
 	}
 }
 
 // selectionForPane returns the selection state for a given pane.
 func (t *TUI) selectionForPane(p *Pane) Selection {
-	if !t.selActive {
+	if !t.sel.active {
 		return Selection{}
 	}
-	if t.selPane >= 0 && t.selPane < len(t.panes) && t.panes[t.selPane] == p {
+	if t.sel.pane >= 0 && t.sel.pane < len(t.panes) && t.panes[t.sel.pane] == p {
 		return Selection{
 			Active: true,
-			StartX: t.selStartX, StartY: t.selStartY,
-			EndX: t.selEndX, EndY: t.selEndY,
+			StartX: t.sel.startX, StartY: t.sel.startY,
+			EndX: t.sel.endX, EndY: t.sel.endY,
 		}
 	}
 	return Selection{}
@@ -1078,14 +1088,14 @@ func (t *TUI) renderCmdLine() {
 
 	// Input text.
 	textStyle := bgStyle.Foreground(tcell.ColorWhite)
-	for i, ch := range t.cmdBuf {
+	for i, ch := range t.cmd.buf {
 		if 2+i < sw {
 			s.SetContent(2+i, y, ch, nil, textStyle)
 		}
 	}
 
 	// Cursor.
-	cursorPos := 2 + len(t.cmdBuf)
+	cursorPos := 2 + len(t.cmd.buf)
 	if cursorPos < sw {
 		cursorStyle := tcell.StyleDefault.Background(tcell.ColorWhite).Foreground(tcell.ColorBlack)
 		s.SetContent(cursorPos, y, ' ', nil, cursorStyle)
@@ -1112,7 +1122,7 @@ func (t *TUI) renderCmdError() {
 	for x := 0; x < sw; x++ {
 		s.SetContent(x, y, ' ', nil, errStyle)
 	}
-	msg := " " + t.cmdError
+	msg := " " + t.cmd.error
 	for i, ch := range msg {
 		if i < sw {
 			s.SetContent(i, y, ch, nil, errStyle)
@@ -1134,7 +1144,7 @@ type topEntry struct {
 
 // refreshTopData queries ps for each pane and caches the result.
 func (t *TUI) refreshTopData() {
-	if time.Since(t.topCacheTime) < 2*time.Second && len(t.topData) > 0 {
+	if time.Since(t.top.cacheTime) < 2*time.Second && len(t.top.data) > 0 {
 		return
 	}
 	entries := make([]topEntry, len(t.panes))
@@ -1166,35 +1176,35 @@ func (t *TUI) refreshTopData() {
 		}
 		entries[i] = e
 	}
-	t.topData = entries
-	t.topCacheTime = time.Now()
+	t.top.data = entries
+	t.top.cacheTime = time.Now()
 }
 
 // handleTopKey handles input while the top modal is active.
 func (t *TUI) handleTopKey(ev *tcell.EventKey) bool {
 	switch ev.Key() {
 	case tcell.KeyEscape, tcell.KeyCtrlC:
-		t.topActive = false
+		t.top.active = false
 		return false
 	case tcell.KeyUp:
-		if t.topSelected > 0 {
-			t.topSelected--
+		if t.top.selected > 0 {
+			t.top.selected--
 		}
 		return false
 	case tcell.KeyDown:
-		if t.topSelected < len(t.panes)-1 {
-			t.topSelected++
+		if t.top.selected < len(t.panes)-1 {
+			t.top.selected++
 		}
 		return false
 	case tcell.KeyRune:
 		switch ev.Rune() {
 		case '`':
-			t.topActive = false
+			t.top.active = false
 			return false
 		case 'r':
-			if t.topSelected >= 0 && t.topSelected < len(t.panes) {
-				p := t.panes[t.topSelected]
-				idx := t.topSelected
+			if t.top.selected >= 0 && t.top.selected < len(t.panes) {
+				p := t.panes[t.top.selected]
+				idx := t.top.selected
 				// Use emulator dimensions, not stale region (hidden panes
 				// have regions from when they were last visible).
 				cols := p.emu.Width()
@@ -1205,21 +1215,21 @@ func (t *TUI) handleTopKey(ev *tcell.EventKey) bool {
 					t.panes[idx] = np
 					t.applyLayout() // Assigns correct region.
 				}
-				t.topCacheTime = time.Time{} // Force refresh.
+				t.top.cacheTime = time.Time{} // Force refresh.
 			}
 			return false
 		case 'k':
-			if t.topSelected >= 0 && t.topSelected < len(t.panes) {
-				p := t.panes[t.topSelected]
+			if t.top.selected >= 0 && t.top.selected < len(t.panes) {
+				p := t.panes[t.top.selected]
 				if p.cmd != nil && p.cmd.Process != nil {
 					p.cmd.Process.Kill()
 				}
-				t.topCacheTime = time.Time{}
+				t.top.cacheTime = time.Time{}
 			}
 			return false
 		case 'h':
-			if t.topSelected >= 0 && t.topSelected < len(t.panes) {
-				name := t.panes[t.topSelected].name
+			if t.top.selected >= 0 && t.top.selected < len(t.panes) {
+				name := t.panes[t.top.selected].name
 				if t.layoutState.Hidden[name] {
 					delete(t.layoutState.Hidden, name)
 				} else {
@@ -1231,11 +1241,11 @@ func (t *TUI) handleTopKey(ev *tcell.EventKey) bool {
 					}
 				}
 				t.autoRecalcGrid()
-				t.topCacheTime = time.Time{}
+				t.top.cacheTime = time.Time{}
 			}
 			return false
 		case 'q':
-			t.topActive = false
+			t.top.active = false
 			return false
 		}
 	}
@@ -1304,9 +1314,9 @@ func (t *TUI) renderTop() {
 	y++
 
 	var totalRSS int64
-	for i, e := range t.topData {
+	for i, e := range t.top.data {
 		style := normalStyle
-		if i == t.topSelected {
+		if i == t.top.selected {
 			style = selectedStyle
 		}
 
@@ -1357,7 +1367,7 @@ func (t *TUI) renderTop() {
 	}
 	alive := 0
 	dead := 0
-	for _, e := range t.topData {
+	for _, e := range t.top.data {
 		if e.PID > 0 {
 			alive++
 		} else {
