@@ -182,9 +182,11 @@ func Run(cfg Config) error {
 
 	// Start IPC socket server for inter-agent messaging.
 	sockPath := SocketPath(cfg.ProjectName)
-	if err := t.startIPC(sockPath); err != nil {
+	ipcCleanup, err := t.startIPC(sockPath)
+	if err != nil {
 		return fmt.Errorf("start IPC: %w", err)
 	}
+	defer ipcCleanup()
 
 	// Compute initial regions for pane creation.
 	ls := t.layoutState

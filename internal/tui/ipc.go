@@ -35,21 +35,20 @@ func SocketPath(projectName string) string {
 }
 
 // startIPC launches the Unix domain socket server in a goroutine.
-func (t *TUI) startIPC(socketPath string) error {
+// Returns a cleanup function that closes the listener and removes the socket.
+func (t *TUI) startIPC(socketPath string) (cleanup func(), err error) {
 	// Clean up stale socket.
 	os.Remove(socketPath)
 
 	ln, err := net.Listen("unix", socketPath)
 	if err != nil {
-		return fmt.Errorf("listen on %s: %w", socketPath, err)
+		return nil, fmt.Errorf("listen on %s: %w", socketPath, err)
 	}
 
 	// Make socket world-writable so all agents can connect.
 	os.Chmod(socketPath, 0777)
 
 	go func() {
-		defer ln.Close()
-		defer os.Remove(socketPath)
 		for {
 			conn, err := ln.Accept()
 			if err != nil {
@@ -59,7 +58,11 @@ func (t *TUI) startIPC(socketPath string) error {
 		}
 	}()
 
-	return nil
+	cleanup = func() {
+		ln.Close()
+		os.Remove(socketPath)
+	}
+	return cleanup, nil
 }
 
 func (t *TUI) handleIPCConn(conn net.Conn) {

@@ -625,9 +625,11 @@ func TestIPCRoundTrip(t *testing.T) {
 	tui := &TUI{panes: []*Pane{p}}
 
 	sockPath := filepath.Join(t.TempDir(), "test.sock")
-	if err := tui.startIPC(sockPath); err != nil {
+	cleanup, err := tui.startIPC(sockPath)
+	if err != nil {
 		t.Fatalf("startIPC: %v", err)
 	}
+	defer cleanup()
 
 	// Connect and send a list request.
 	conn, err := net.Dial("unix", sockPath)
