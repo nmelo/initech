@@ -333,56 +333,72 @@ func (p *Pane) Render(s tcell.Screen, focused bool, dimmed bool, sel Selection) 
 				}
 			}
 		}
+		// Determine status bar zone for CUF bleed-through fix.
+		// Only apply the fix near the cursor (last 4 rows of content).
+		pos := p.emu.CursorPosition()
+		statusZoneStart := pos.Y - 4
+		if statusZoneStart < 0 {
+			statusZoneStart = 0
+		}
+
 		for row := 0; row < innerRows; row++ {
 			emuRow := startRow + (row - renderOffset)
 			if emuRow < 0 || emuRow >= emuRows {
 				continue
 			}
-			// Detect and fix CUF bleed-through: Claude Code uses cursor-forward
-			// (ESC[1C) to skip cells when rewriting its status bar, leaving
-			// stale content from previous renders. The signature is default-fg
-			// non-space characters sandwiched BETWEEN colored-fg characters.
-			// We clear those stale cells to spaces.
-			type cellInfo struct {
-				ch      rune
-				style   tcell.Style
-				colored bool // cell has explicit fg color
-				blank   bool // cell is space with default style
-			}
-			cells := make([]cellInfo, innerCols)
-			for col := 0; col < innerCols; col++ {
-				cell := p.emu.CellAt(col, emuRow)
-				ch, style := uvCellToTcell(cell)
-				colored := cell != nil && cell.Style.Fg != nil
-				cells[col] = cellInfo{ch, style, colored, ch == ' ' && !colored}
-			}
-			// Find stale cells: default-fg, non-space, with a colored cell
-			// within 2 positions on either side.
-			for col := 0; col < innerCols; col++ {
-				if !cells[col].colored && cells[col].ch != ' ' {
-					nearColored := false
-					for d := 1; d <= 2; d++ {
-						if col-d >= 0 && cells[col-d].colored {
-							nearColored = true
-							break
+
+			// In the status bar zone, fix CUF bleed-through: Claude Code
+			// uses cursor-forward (ESC[1C) to skip cells when rewriting
+			// its status bar, leaving stale content in gaps.
+			if emuRow >= statusZoneStart && emuRow <= pos.Y {
+				type cellInfo struct {
+					ch      rune
+					style   tcell.Style
+					colored bool
+				}
+				cells := make([]cellInfo, innerCols)
+				for col := 0; col < innerCols; col++ {
+					cell := p.emu.CellAt(col, emuRow)
+					ch, style := uvCellToTcell(cell)
+					colored := cell != nil && cell.Style.Fg != nil
+					cells[col] = cellInfo{ch, style, colored}
+				}
+				for col := 0; col < innerCols; col++ {
+					if !cells[col].colored && cells[col].ch != ' ' {
+						nearColored := false
+						for d := 1; d <= 2; d++ {
+							if col-d >= 0 && cells[col-d].colored {
+								nearColored = true
+								break
+							}
+							if col+d < innerCols && cells[col+d].colored {
+								nearColored = true
+								break
+							}
 						}
-						if col+d < innerCols && cells[col+d].colored {
-							nearColored = true
-							break
+						if nearColored {
+							cells[col].ch = ' '
+							cells[col].style = tcell.StyleDefault
 						}
 					}
-					if nearColored {
-						cells[col].ch = ' '
-						cells[col].style = tcell.StyleDefault
+				}
+				for col := 0; col < innerCols; col++ {
+					st := cells[col].style
+					if dimmed {
+						st = dimStyle(st)
 					}
+					s.SetContent(r.X+col, r.Y+1+row, cells[col].ch, nil, st)
 				}
-			}
-			for col := 0; col < innerCols; col++ {
-				st := cells[col].style
-				if dimmed {
-					st = dimStyle(st)
+			} else {
+				// Normal row: render directly.
+				for col := 0; col < innerCols; col++ {
+					cell := p.emu.CellAt(col, emuRow)
+					ch, style := uvCellToTcell(cell)
+					if dimmed {
+						style = dimStyle(style)
+					}
+					s.SetContent(r.X+col, r.Y+1+row, ch, nil, style)
 				}
-				s.SetContent(r.X+col, r.Y+1+row, cells[col].ch, nil, st)
 			}
 		}
 	}
