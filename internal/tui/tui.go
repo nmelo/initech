@@ -446,6 +446,11 @@ func (t *TUI) execCmd(cmd string) bool {
 		t.zoomed = false
 		t.relayout()
 
+	case "restart", "r":
+		if err := t.restartFocused(); err != nil {
+			t.cmdError = fmt.Sprintf("restart failed: %v", err)
+		}
+
 	case "quit", "q":
 		return true
 
@@ -497,6 +502,28 @@ func (t *TUI) cycleFocus(delta int) {
 		return
 	}
 	t.focused = (t.focused + delta + len(t.panes)) % len(t.panes)
+}
+
+// restartFocused kills the focused pane's process and starts a new one.
+func (t *TUI) restartFocused() error {
+	if t.focused < 0 || t.focused >= len(t.panes) {
+		return fmt.Errorf("no pane focused")
+	}
+	old := t.panes[t.focused]
+	r := old.region
+	cols, rows := r.InnerSize()
+
+	// Kill the old process.
+	old.Close()
+
+	// Create a new pane with the same config and region.
+	p, err := NewPane(old.cfg, rows, cols)
+	if err != nil {
+		return err
+	}
+	p.region = r
+	t.panes[t.focused] = p
+	return nil
 }
 
 func (t *TUI) relayout() {

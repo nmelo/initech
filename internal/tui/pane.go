@@ -44,6 +44,7 @@ func (s ActivityState) String() string {
 // Pane represents a terminal pane backed by a PTY process.
 // It uses a SafeEmulator from charmbracelet/x/vt for terminal emulation.
 type Pane struct {
+	cfg           PaneConfig // Original config for restart.
 	name          string
 	ptmx          *os.File
 	cmd           *exec.Cmd
@@ -138,6 +139,7 @@ func NewPane(cfg PaneConfig, rows, cols int) (*Pane, error) {
 	}
 
 	p := &Pane{
+		cfg:      cfg,
 		name:     cfg.Name,
 		ptmx:     ptmx,
 		cmd:      cmd,
