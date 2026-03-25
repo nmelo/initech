@@ -904,15 +904,14 @@ func (t *TUI) restartFocused() error {
 	if idx < 0 {
 		return fmt.Errorf("focused pane not found")
 	}
-	r := fp.region
-	cols, rows := r.InnerSize()
+	cols := fp.emu.Width()
+	rows := fp.emu.Height()
 	fp.Close()
 
 	p, err := NewPane(fp.cfg, rows, cols)
 	if err != nil {
 		return err
 	}
-	p.region = r
 	t.panes[idx] = p
 	t.applyLayout()
 	return nil
@@ -1194,14 +1193,15 @@ func (t *TUI) handleTopKey(ev *tcell.EventKey) bool {
 			if t.topSelected >= 0 && t.topSelected < len(t.panes) {
 				p := t.panes[t.topSelected]
 				idx := t.topSelected
-				r := p.region
-				cols, rows := r.InnerSize()
+				// Use emulator dimensions, not stale region (hidden panes
+				// have regions from when they were last visible).
+				cols := p.emu.Width()
+				rows := p.emu.Height()
 				p.Close()
 				np, err := NewPane(p.cfg, rows, cols)
 				if err == nil {
-					np.region = r
 					t.panes[idx] = np
-					t.applyLayout()
+					t.applyLayout() // Assigns correct region.
 				}
 				t.topCacheTime = time.Time{} // Force refresh.
 			}
