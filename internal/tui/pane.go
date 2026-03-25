@@ -250,18 +250,6 @@ func (p *Pane) Render(s tcell.Screen, focused bool, sel Selection) {
 			s.SetContent(r.X+1+i, r.Y, ch, nil, titleStyle)
 		}
 	}
-	// Session description after the name badge.
-	desc := p.SessionDesc()
-	if desc != "" {
-		descStr := " (" + desc + ") "
-		descStyle := fillStyle.Foreground(tcell.ColorGray)
-		startCol := r.X + 1 + len([]rune(title)) + 1
-		for i, ch := range descStr {
-			if startCol+i < r.X+r.W {
-				s.SetContent(startCol+i, r.Y, ch, nil, descStyle)
-			}
-		}
-	}
 
 	// Terminal content (starts at Y+1, fills full width).
 	// When not in alt screen mode, push content to the bottom of the pane
