@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
@@ -114,6 +115,18 @@ func (t *TUI) handleIPCSend(conn net.Conn, req IPCRequest) {
 		// Brief pause to let text settle before sending Enter.
 		time.Sleep(100 * time.Millisecond)
 		pane.emu.SendKey(uv.KeyPressEvent(uv.Key{Code: uv.KeyEnter}))
+
+		// Poll for stuck input (paste dialog or text still at prompt).
+		// Claude Code's paste detection fires for fast input, so the first
+		// Enter may confirm the paste reference rather than submitting.
+		// Retry Enter every 500ms for up to 5s, matching gastools behavior.
+		for range 10 {
+			time.Sleep(500 * time.Millisecond)
+			if !hasStuckInput(pane) {
+				break
+			}
+			pane.emu.SendKey(uv.KeyPressEvent(uv.Key{Code: uv.KeyEnter}))
+		}
 	}
 
 	writeIPCResponse(conn, IPCResponse{OK: true})
@@ -184,6 +197,55 @@ func (t *TUI) findPane(name string) *Pane {
 		}
 	}
 	return nil
+}
+
+// pasteIndicatorRe matches Claude Code's paste reference placeholder.
+var pasteIndicatorRe = regexp.MustCompile(`\[Pasted text #\d+[^\]]*\]`)
+
+// hasStuckInput reads the pane's emulator cells to detect whether the sent
+// message is stuck in the input box. Two cases:
+//
+//  1. Paste indicator: "[Pasted text #N]" visible near the prompt.
+//  2. Text at prompt: the last line containing the ❯ prompt character
+//     has non-whitespace content after it.
+//
+// Returns false when no prompt is visible (Claude is generating) or
+// the prompt is empty (message submitted successfully).
+func hasStuckInput(p *Pane) bool {
+	cols := p.emu.Width()
+	rows := p.emu.Height()
+
+	var lastPromptContent string
+	promptFound := false
+
+	for row := 0; row < rows; row++ {
+		var line strings.Builder
+		for col := 0; col < cols; col++ {
+			cell := p.emu.CellAt(col, row)
+			if cell != nil && cell.Content != "" {
+				line.WriteString(cell.Content)
+			} else {
+				line.WriteByte(' ')
+			}
+		}
+		text := line.String()
+
+		// Case 1: paste indicator anywhere.
+		if pasteIndicatorRe.MatchString(text) {
+			return true
+		}
+
+		// Track the last line with a ❯ prompt character.
+		if idx := strings.LastIndex(text, "\u276f"); idx >= 0 {
+			lastPromptContent = strings.TrimSpace(text[idx+len("\u276f"):])
+			promptFound = true
+		}
+	}
+
+	if !promptFound {
+		return false // No prompt visible, Claude is generating.
+	}
+	return lastPromptContent != ""
 }
 
 func writeIPCResponse(conn net.Conn, resp IPCResponse) {
