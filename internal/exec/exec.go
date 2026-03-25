@@ -1,11 +1,11 @@
 // Package exec wraps os/exec with consistent error handling for external
-// command execution. Every initech package that shells out to tmux, git, bd,
-// or tmuxinator uses the Runner interface from this package instead of calling
+// command execution. Every initech package that shells out to git, bd,
+// or other tools uses the Runner interface from this package instead of calling
 // os/exec directly.
 //
 // This indirection is the primary testing seam for the entire project. Tests
 // swap in a fake Runner to verify command invocations without requiring real
-// tmux, git, or bd installations. The DefaultRunner implementation shells out
+// git or bd installations. The DefaultRunner implementation shells out
 // to real binaries via os/exec.
 //
 // All methods return combined stdout+stderr output as a trimmed string.

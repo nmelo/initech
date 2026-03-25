@@ -742,8 +742,13 @@ func (p *Pane) InScrollback() bool {
 	return p.scrollOffset > 0
 }
 
-// Close terminates the PTY and kills the process.
+// Close terminates the PTY, kills the process, and signals goroutines to exit.
 func (p *Pane) Close() {
+	// Signal watchJSONL and readLoop to exit.
+	p.mu.Lock()
+	p.alive = false
+	p.mu.Unlock()
+
 	p.emu.Close()
 	p.ptmx.Close()
 	if p.cmd.Process != nil {

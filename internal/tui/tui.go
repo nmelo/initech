@@ -288,8 +288,10 @@ func (t *TUI) handleMouse(ev *tcell.EventMouse) {
 			}
 			r := p.region
 			if mx >= r.X && mx < r.X+r.W && my >= r.Y && my < r.Y+r.H {
-				t.layoutState.Focused = p.name
-				t.applyLayout()
+				if t.layoutState.Focused != p.name {
+					t.layoutState.Focused = p.name
+					t.applyLayout()
+				}
 				// Convert to pane-local content coordinates.
 				lx := mx - r.X
 				ly := my - r.Y
@@ -764,6 +766,17 @@ func (t *TUI) execCmd(cmd string) bool {
 		for _, name := range parts[1:] {
 			show[name] = true
 		}
+		// Check that at least one pane will be visible.
+		visCount := 0
+		for _, p := range t.panes {
+			if show[p.name] {
+				visCount++
+			}
+		}
+		if visCount == 0 {
+			t.cmd.error = "view must include at least one valid pane"
+			return false
+		}
 		hidden := make(map[string]bool)
 		for _, p := range t.panes {
 			if !show[p.name] {
@@ -834,6 +847,9 @@ func parseGrid(s string, numPanes int) (cols, rows int, ok bool) {
 		return 0, 0, false
 	}
 	r := (numPanes + c - 1) / c
+	if r < 1 {
+		r = 1
+	}
 	return c, r, true
 }
 

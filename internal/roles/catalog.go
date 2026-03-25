@@ -6,7 +6,7 @@
 // defaults. This lets users define custom roles (e.g., "designer", "dba")
 // without modifying initech's source code.
 //
-// This package does not know about files on disk, config parsing, or tmux.
+// This package does not know about files on disk, config parsing, or the TUI.
 package roles
 
 // PermissionTier controls whether an agent runs with --dangerously-skip-permissions.
@@ -22,7 +22,7 @@ const (
 	Autonomous
 )
 
-// RoleDef describes a role's metadata that drives scaffold and tmuxinator generation.
+// RoleDef describes a role's metadata that drives scaffold and TUI configuration.
 type RoleDef struct {
 	Name           string
 	Permission     PermissionTier

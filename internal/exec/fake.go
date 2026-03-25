@@ -7,7 +7,7 @@ import "strings"
 // Output and Err values.
 //
 // Not used in production. Exists so packages like git, scaffold, and
-// tmuxinator can test their command invocations without shelling out.
+// other tools can test their command invocations without shelling out.
 type FakeRunner struct {
 	// Calls records each invocation as "dir|name arg1 arg2".
 	// Dir is empty string when Run (not RunInDir) was used.

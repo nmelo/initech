@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -161,7 +162,7 @@ func computeLayout(state LayoutState, panes []*Pane, screenW, screenH int) Rende
 // If colWeights or rowWeights are nil, sizing is uniform.
 func gridRegions(cols, rows, numPanes, screenW, screenH int,
 	colWeights, rowWeights []int) []Region {
-	if numPanes <= 0 {
+	if numPanes <= 0 || cols <= 0 || rows <= 0 {
 		return nil
 	}
 
@@ -341,6 +342,7 @@ func SaveLayout(projectRoot string, state LayoutState) error {
 			pl.Hidden = append(pl.Hidden, name)
 		}
 	}
+	sort.Strings(pl.Hidden)
 
 	dir := layoutDir(projectRoot)
 	if err := os.MkdirAll(dir, 0755); err != nil {
