@@ -315,7 +315,9 @@ func (p *Pane) Render(s tcell.Screen, focused bool, sel Selection) {
 				}
 			}
 			trimmed := strings.TrimSpace(desc.String())
-			if trimmed != "" {
+			// Only use as description if it looks like real text, not
+			// Claude's status bar (which contains │ separators).
+			if trimmed != "" && !strings.Contains(trimmed, "\u2502") {
 				p.mu.Lock()
 				p.sessionDesc = trimmed
 				p.mu.Unlock()
