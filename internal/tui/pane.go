@@ -303,6 +303,7 @@ func (p *Pane) Render(s tcell.Screen, focused bool, sel Selection) {
 		}
 
 		// Extract the cursor row text as the session description.
+		// Only update if non-empty (resizes temporarily clear the cursor row).
 		if pos.Y < emuRows {
 			var desc strings.Builder
 			for col := 0; col < innerCols; col++ {
@@ -313,9 +314,12 @@ func (p *Pane) Render(s tcell.Screen, focused bool, sel Selection) {
 					desc.WriteByte(' ')
 				}
 			}
-			p.mu.Lock()
-			p.sessionDesc = strings.TrimSpace(desc.String())
-			p.mu.Unlock()
+			trimmed := strings.TrimSpace(desc.String())
+			if trimmed != "" {
+				p.mu.Lock()
+				p.sessionDesc = trimmed
+				p.mu.Unlock()
+			}
 		}
 	}
 	for row := 0; row < innerRows; row++ {
