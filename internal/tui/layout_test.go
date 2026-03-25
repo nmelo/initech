@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/x/vt"
+	"github.com/gdamore/tcell/v2"
 )
 
 // testPane creates a minimal Pane for layout testing (no PTY or process).
@@ -381,5 +382,42 @@ func TestDefaultLayoutState(t *testing.T) {
 	}
 	if len(state.Hidden) != 0 {
 		t.Errorf("hidden = %v, want empty", state.Hidden)
+	}
+}
+
+// --- dimStyle / dimColor tests ---
+
+func TestDimColorDefault(t *testing.T) {
+	c := dimColor(tcell.ColorDefault)
+	if c == tcell.ColorDefault {
+		t.Error("dimColor should not return default for default input")
+	}
+}
+
+func TestDimColorReducesBrightness(t *testing.T) {
+	bright := tcell.NewRGBColor(255, 255, 255)
+	dim := dimColor(bright)
+	r, g, b := dim.RGB()
+	// 255 * 4/10 = 102
+	if r != 102 || g != 102 || b != 102 {
+		t.Errorf("dimColor(white) = (%d,%d,%d), want (102,102,102)", r, g, b)
+	}
+}
+
+func TestDimStylePreservesBackground(t *testing.T) {
+	s := tcell.StyleDefault.
+		Foreground(tcell.NewRGBColor(200, 200, 200)).
+		Background(tcell.NewRGBColor(50, 50, 50)).
+		Bold(true)
+	d := dimStyle(s)
+	_, bg, attrs := d.Decompose()
+	// Background should be unchanged.
+	bgr, bgg, bgb := bg.RGB()
+	if bgr != 50 || bgg != 50 || bgb != 50 {
+		t.Errorf("dimStyle changed bg: (%d,%d,%d)", bgr, bgg, bgb)
+	}
+	// Bold should be preserved.
+	if attrs&tcell.AttrBold == 0 {
+		t.Error("dimStyle should preserve Bold attribute")
 	}
 }

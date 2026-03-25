@@ -222,7 +222,7 @@ type Selection struct {
 }
 
 // Render draws the pane's title bar and terminal content onto the tcell screen.
-// The dimmed flag is reserved for future focus-dimming (currently unused).
+// When dimmed is true, foreground colors are reduced to ~40% brightness.
 func (p *Pane) Render(s tcell.Screen, focused bool, dimmed bool, sel Selection) {
 	r := p.region
 	if r.W < 1 || r.H < 2 {
@@ -238,7 +238,11 @@ func (p *Pane) Render(s tcell.Screen, focused bool, dimmed bool, sel Selection) 
 		nameFg = tcell.ColorBlack
 	}
 	titleStyle := tcell.StyleDefault.Background(nameBg).Foreground(nameFg).Bold(true)
-	fillStyle := tcell.StyleDefault.Background(titleBg).Foreground(tcell.ColorDarkCyan)
+	fillColor := tcell.ColorDarkCyan
+	if dimmed {
+		fillColor = tcell.ColorDarkSlateGray
+	}
+	fillStyle := tcell.StyleDefault.Background(titleBg).Foreground(fillColor)
 
 	// Fill title bar with horizontal line.
 	for x := r.X; x < r.X+r.W; x++ {
@@ -292,6 +296,9 @@ func (p *Pane) Render(s tcell.Screen, focused bool, dimmed bool, sel Selection) 
 					cell = p.emu.CellAt(col, vRow-scrollbackLen)
 				}
 				ch, style := uvCellToTcell(cell)
+				if dimmed {
+					style = dimStyle(style)
+				}
 				s.SetContent(r.X+col, r.Y+1+row, ch, nil, style)
 			}
 		}
@@ -371,7 +378,11 @@ func (p *Pane) Render(s tcell.Screen, focused bool, dimmed bool, sel Selection) 
 				}
 			}
 			for col := 0; col < innerCols; col++ {
-				s.SetContent(r.X+col, r.Y+1+row, cells[col].ch, nil, cells[col].style)
+				st := cells[col].style
+				if dimmed {
+					st = dimStyle(st)
+				}
+				s.SetContent(r.X+col, r.Y+1+row, cells[col].ch, nil, st)
 			}
 		}
 	}
@@ -688,6 +699,26 @@ func (p *Pane) Close() {
 	p.cmd.Wait()
 }
 
+
+// dimStyle reduces the foreground brightness of a tcell.Style for focus dimming.
+// Colors are scaled to ~40% brightness. Default fg becomes dark gray.
+func dimStyle(style tcell.Style) tcell.Style {
+	fg, bg, attrs := style.Decompose()
+	return tcell.StyleDefault.
+		Foreground(dimColor(fg)).
+		Background(bg).
+		Attributes(attrs)
+}
+
+// dimColor reduces a tcell.Color to ~40% brightness.
+func dimColor(c tcell.Color) tcell.Color {
+	if c == tcell.ColorDefault {
+		return tcell.ColorDimGray
+	}
+	// For any color, extract RGB and scale down.
+	r, g, b := c.RGB()
+	return tcell.NewRGBColor(int32(r)*4/10, int32(g)*4/10, int32(b)*4/10)
+}
 
 // uvCellToTcell converts a charmbracelet ultraviolet Cell to a rune + tcell.Style.
 func uvCellToTcell(cell *uv.Cell) (rune, tcell.Style) {
