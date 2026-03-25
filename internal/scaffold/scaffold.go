@@ -241,6 +241,9 @@ bin/
 .beads/beads.db-shm
 .beads/daemon*.log*
 
+# Initech runtime state (machine-specific layout, not shared)
+.initech/
+
 # Local agent config
 */.mcp.json
 

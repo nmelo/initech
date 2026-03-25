@@ -1,8 +1,20 @@
 // layout.go contains the rendering architecture: LayoutState captures layout
 // intent, computeLayout produces a RenderPlan, and the render loop consumes
 // the plan without making layout decisions.
+//
+// It also contains layout persistence: SaveLayout/LoadLayout/DeleteLayout
+// serialize the persistent subset of LayoutState to .initech/layout.yaml.
 
 package tui
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+
+	"gopkg.in/yaml.v3"
+)
 
 // LayoutState captures the complete layout intent. It is the single authority
 // on what the screen should look like. Trivially serializable to YAML for
@@ -284,5 +296,165 @@ func DefaultLayoutState(paneNames []string) LayoutState {
 		Focused:  focused,
 		Hidden:   make(map[string]bool),
 		Overlay:  true,
+	}
+}
+
+// ── Layout Persistence ──────────────────────────────────────────────
+
+// PersistentLayout is the subset of LayoutState that survives sessions.
+// Focused pane is deliberately excluded (momentary choice, not a preference).
+// Overlay and weights are excluded (not layout-changing from the user's perspective).
+type PersistentLayout struct {
+	Grid   string   `yaml:"grid"`             // e.g. "3x2"
+	Hidden []string `yaml:"hidden,omitempty"` // Role names of hidden panes.
+	Mode   string   `yaml:"mode"`             // "grid", "focus", "main"
+}
+
+// layoutDir returns the .initech directory path under projectRoot.
+func layoutDir(projectRoot string) string {
+	return filepath.Join(projectRoot, ".initech")
+}
+
+// layoutPath returns the full path to .initech/layout.yaml.
+func layoutPath(projectRoot string) string {
+	return filepath.Join(layoutDir(projectRoot), "layout.yaml")
+}
+
+// SaveLayout writes the layout state to .initech/layout.yaml using atomic write
+// (temp file + rename) to prevent corruption. Creates .initech/ if it doesn't exist.
+func SaveLayout(projectRoot string, state LayoutState) error {
+	pl := PersistentLayout{
+		Grid:   fmt.Sprintf("%dx%d", state.GridCols, state.GridRows),
+		Mode:   layoutModeToString(state.Mode),
+	}
+	for name, hidden := range state.Hidden {
+		if hidden {
+			pl.Hidden = append(pl.Hidden, name)
+		}
+	}
+
+	dir := layoutDir(projectRoot)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("create .initech/: %w", err)
+	}
+
+	data, err := yaml.Marshal(&pl)
+	if err != nil {
+		return fmt.Errorf("marshal layout: %w", err)
+	}
+
+	// Atomic write: write to temp file, then rename.
+	tmp := layoutPath(projectRoot) + ".tmp"
+	if err := os.WriteFile(tmp, data, 0644); err != nil {
+		return fmt.Errorf("write temp layout: %w", err)
+	}
+	if err := os.Rename(tmp, layoutPath(projectRoot)); err != nil {
+		os.Remove(tmp)
+		return fmt.Errorf("rename layout: %w", err)
+	}
+	return nil
+}
+
+// LoadLayout reads .initech/layout.yaml and merges it into a LayoutState,
+// filtering stale pane references. Returns false if the file doesn't exist,
+// is empty, contains invalid YAML, or would result in all panes hidden.
+func LoadLayout(projectRoot string, paneNames []string) (LayoutState, bool) {
+	data, err := os.ReadFile(layoutPath(projectRoot))
+	if err != nil {
+		return LayoutState{}, false
+	}
+	if len(strings.TrimSpace(string(data))) == 0 {
+		return LayoutState{}, false
+	}
+
+	var pl PersistentLayout
+	if err := yaml.Unmarshal(data, &pl); err != nil {
+		return LayoutState{}, false
+	}
+
+	// Parse grid dimensions.
+	cols, rows, ok := parseGrid(pl.Grid, len(paneNames))
+	if !ok {
+		return LayoutState{}, false
+	}
+
+	// Build known pane set for filtering stale references.
+	known := make(map[string]bool, len(paneNames))
+	for _, name := range paneNames {
+		known[name] = true
+	}
+
+	// Filter hidden list to only known panes.
+	hidden := make(map[string]bool)
+	for _, name := range pl.Hidden {
+		if known[name] {
+			hidden[name] = true
+		}
+	}
+
+	// Edge case: all panes hidden -> nonsensical, fall back to defaults.
+	if len(hidden) >= len(paneNames) {
+		return LayoutState{}, false
+	}
+
+	// Determine visible count for grid auto-recalc.
+	visCount := len(paneNames) - len(hidden)
+	mode := stringToLayoutMode(pl.Mode)
+
+	// If grid can't hold visible panes, auto-recalculate.
+	if cols*rows < visCount {
+		cols, rows = autoGrid(visCount)
+	}
+
+	focused := ""
+	if len(paneNames) > 0 {
+		focused = paneNames[0]
+	}
+
+	return LayoutState{
+		Mode:     mode,
+		GridCols: cols,
+		GridRows: rows,
+		Focused:  focused,
+		Hidden:   hidden,
+		Overlay:  true, // Always start with overlay visible.
+	}, true
+}
+
+// DeleteLayout removes .initech/layout.yaml. Returns nil if the file
+// doesn't exist (idempotent).
+func DeleteLayout(projectRoot string) error {
+	err := os.Remove(layoutPath(projectRoot))
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
+}
+
+// layoutModeToString converts a LayoutMode to its YAML string.
+func layoutModeToString(m LayoutMode) string {
+	switch m {
+	case LayoutFocus:
+		return "focus"
+	case LayoutGrid:
+		return "grid"
+	case Layout2Col:
+		return "main"
+	default:
+		return "grid"
+	}
+}
+
+// stringToLayoutMode converts a YAML string to a LayoutMode.
+func stringToLayoutMode(s string) LayoutMode {
+	switch s {
+	case "focus":
+		return LayoutFocus
+	case "grid":
+		return LayoutGrid
+	case "main":
+		return Layout2Col
+	default:
+		return LayoutGrid
 	}
 }

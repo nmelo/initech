@@ -38,6 +38,9 @@ type TUI struct {
 	// Tracked screen dimensions for detecting resize.
 	lastW, lastH int
 
+	// Project root for .initech/layout.yaml persistence. Empty disables auto-save.
+	projectRoot string
+
 	// Command modal state.
 	cmdActive bool
 	cmdBuf    []rune
@@ -82,6 +85,15 @@ func (t *TUI) applyLayout() {
 	}
 }
 
+// saveLayoutIfConfigured persists the current layout to disk.
+// No-op if projectRoot is empty. Errors are silently ignored.
+func (t *TUI) saveLayoutIfConfigured() {
+	if t.projectRoot == "" {
+		return
+	}
+	SaveLayout(t.projectRoot, t.layoutState)
+}
+
 // focusedPane returns the currently focused pane, or nil.
 func (t *TUI) focusedPane() *Pane {
 	name := t.layoutState.Focused
@@ -97,6 +109,8 @@ func (t *TUI) focusedPane() *Pane {
 type Config struct {
 	Agents      []PaneConfig // One entry per agent pane.
 	ProjectName string       // Used for socket path.
+	ProjectRoot string       // Project root for .initech/ layout persistence.
+	ResetLayout bool         // Ignore saved layout and start with defaults.
 }
 
 // DefaultConfig returns a config with standard shell-only agents.
@@ -128,12 +142,30 @@ func Run(cfg Config) error {
 		agentNames[i] = a.Name
 	}
 
+	// Delete saved layout when --reset-layout is requested.
+	if cfg.ResetLayout && cfg.ProjectRoot != "" {
+		DeleteLayout(cfg.ProjectRoot)
+	}
+
+	// Restore saved layout if available, otherwise use defaults.
+	var layoutState LayoutState
+	if !cfg.ResetLayout && cfg.ProjectRoot != "" {
+		if saved, ok := LoadLayout(cfg.ProjectRoot, agentNames); ok {
+			layoutState = saved
+		} else {
+			layoutState = DefaultLayoutState(agentNames)
+		}
+	} else {
+		layoutState = DefaultLayoutState(agentNames)
+	}
+
 	initW, initH := screen.Size()
 	t := &TUI{
 		screen:      screen,
-		layoutState: DefaultLayoutState(agentNames),
+		layoutState: layoutState,
 		lastW:       initW,
 		lastH:       initH,
+		projectRoot: cfg.ProjectRoot,
 	}
 
 	// Start IPC socket server for inter-agent messaging.
@@ -487,6 +519,7 @@ func (t *TUI) handleKey(ev *tcell.EventKey) bool {
 				t.layoutState.Mode = LayoutFocus
 				t.layoutState.Zoomed = false
 				t.applyLayout()
+				t.saveLayoutIfConfigured()
 				return false
 			case '2':
 				t.layoutState.Mode = LayoutGrid
@@ -494,6 +527,7 @@ func (t *TUI) handleKey(ev *tcell.EventKey) bool {
 				t.layoutState.GridRows = 2
 				t.layoutState.Zoomed = false
 				t.applyLayout()
+				t.saveLayoutIfConfigured()
 				return false
 			case '3':
 				t.layoutState.Mode = LayoutGrid
@@ -501,11 +535,13 @@ func (t *TUI) handleKey(ev *tcell.EventKey) bool {
 				t.layoutState.GridRows = 3
 				t.layoutState.Zoomed = false
 				t.applyLayout()
+				t.saveLayoutIfConfigured()
 				return false
 			case '4':
 				t.layoutState.Mode = Layout2Col
 				t.layoutState.Zoomed = false
 				t.applyLayout()
+				t.saveLayoutIfConfigured()
 				return false
 			case 's':
 				t.layoutState.Overlay = !t.layoutState.Overlay
@@ -513,6 +549,7 @@ func (t *TUI) handleKey(ev *tcell.EventKey) bool {
 			case 'z':
 				t.layoutState.Zoomed = !t.layoutState.Zoomed
 				t.applyLayout()
+				t.saveLayoutIfConfigured()
 				return false
 			case 'q':
 				return true
@@ -573,6 +610,7 @@ func (t *TUI) execCmd(cmd string) bool {
 			t.layoutState.GridRows = r
 			t.layoutState.Zoomed = false
 			t.applyLayout()
+			t.saveLayoutIfConfigured()
 			return false
 		}
 		visCount := t.visibleCountFromState()
@@ -586,12 +624,14 @@ func (t *TUI) execCmd(cmd string) bool {
 		t.layoutState.GridRows = rows
 		t.layoutState.Zoomed = false
 		t.applyLayout()
+		t.saveLayoutIfConfigured()
 
 	case "focus":
 		if len(parts) < 2 {
 			t.layoutState.Mode = LayoutFocus
 			t.layoutState.Zoomed = false
 			t.applyLayout()
+			t.saveLayoutIfConfigured()
 			return false
 		}
 		name := parts[1]
@@ -603,10 +643,12 @@ func (t *TUI) execCmd(cmd string) bool {
 		t.layoutState.Mode = LayoutFocus
 		t.layoutState.Zoomed = false
 		t.applyLayout()
+		t.saveLayoutIfConfigured()
 
 	case "zoom":
 		t.layoutState.Zoomed = !t.layoutState.Zoomed
 		t.applyLayout()
+		t.saveLayoutIfConfigured()
 
 	case "panel":
 		t.layoutState.Overlay = !t.layoutState.Overlay
@@ -615,6 +657,7 @@ func (t *TUI) execCmd(cmd string) bool {
 		t.layoutState.Mode = Layout2Col
 		t.layoutState.Zoomed = false
 		t.applyLayout()
+		t.saveLayoutIfConfigured()
 
 	case "show":
 		if len(parts) < 2 {
@@ -624,6 +667,7 @@ func (t *TUI) execCmd(cmd string) bool {
 		if parts[1] == "all" {
 			t.layoutState.Hidden = make(map[string]bool)
 			t.autoRecalcGrid()
+			t.saveLayoutIfConfigured()
 			return false
 		}
 		if t.findPaneByName(parts[1]) == nil {
@@ -632,6 +676,7 @@ func (t *TUI) execCmd(cmd string) bool {
 		}
 		delete(t.layoutState.Hidden, parts[1])
 		t.autoRecalcGrid()
+		t.saveLayoutIfConfigured()
 
 	case "hide":
 		if len(parts) < 2 {
@@ -658,6 +703,7 @@ func (t *TUI) execCmd(cmd string) bool {
 		}
 		t.layoutState.Hidden[parts[1]] = true
 		t.autoRecalcGrid()
+		t.saveLayoutIfConfigured()
 
 	case "view":
 		if len(parts) < 2 {
@@ -682,6 +728,27 @@ func (t *TUI) execCmd(cmd string) bool {
 		}
 		t.layoutState.Hidden = hidden
 		t.autoRecalcGrid()
+		t.saveLayoutIfConfigured()
+
+	case "layout":
+		if len(parts) < 2 {
+			t.cmdError = "usage: layout reset"
+			return false
+		}
+		switch parts[1] {
+		case "reset":
+			if t.projectRoot != "" {
+				DeleteLayout(t.projectRoot)
+			}
+			names := make([]string, len(t.panes))
+			for i, p := range t.panes {
+				names[i] = p.name
+			}
+			t.layoutState = DefaultLayoutState(names)
+			t.applyLayout()
+		default:
+			t.cmdError = fmt.Sprintf("unknown layout subcommand %q", parts[1])
+		}
 
 	case "restart", "r":
 		if err := t.restartFocused(); err != nil {

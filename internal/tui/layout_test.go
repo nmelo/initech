@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/charmbracelet/x/vt"
@@ -419,5 +421,519 @@ func TestDimStylePreservesBackground(t *testing.T) {
 	// Bold should be preserved.
 	if attrs&tcell.AttrBold == 0 {
 		t.Error("dimStyle should preserve Bold attribute")
+	}
+}
+
+// ── Layout Persistence Tests ────────────────────────────────────────
+
+func TestSaveLoadLayout(t *testing.T) {
+	root := t.TempDir()
+	state := LayoutState{
+		Mode:     LayoutGrid,
+		GridCols: 3,
+		GridRows: 2,
+		Hidden:   map[string]bool{"arch": true, "sec": true},
+		Focused:  "super",
+		Overlay:  true,
+	}
+
+	if err := SaveLayout(root, state); err != nil {
+		t.Fatalf("SaveLayout: %v", err)
+	}
+
+	got, ok := LoadLayout(root, []string{"super", "eng1", "arch", "sec"})
+	if !ok {
+		t.Fatal("LoadLayout returned false")
+	}
+	if got.GridCols != 3 || got.GridRows != 2 {
+		t.Errorf("grid = %dx%d, want 3x2", got.GridCols, got.GridRows)
+	}
+	if got.Mode != LayoutGrid {
+		t.Errorf("mode = %d, want LayoutGrid", got.Mode)
+	}
+	if !got.Hidden["arch"] || !got.Hidden["sec"] {
+		t.Errorf("hidden = %v, want arch+sec", got.Hidden)
+	}
+	// Focused pane is NOT persisted; should default to first pane name.
+	if got.Focused != "super" {
+		t.Errorf("focused = %q, want super (first pane)", got.Focused)
+	}
+}
+
+func TestSaveLayoutCreatesDir(t *testing.T) {
+	root := t.TempDir()
+	state := LayoutState{Mode: LayoutGrid, GridCols: 2, GridRows: 1}
+
+	if err := SaveLayout(root, state); err != nil {
+		t.Fatalf("SaveLayout: %v", err)
+	}
+
+	info, err := os.Stat(filepath.Join(root, ".initech"))
+	if err != nil {
+		t.Fatalf(".initech dir not created: %v", err)
+	}
+	if !info.IsDir() {
+		t.Error(".initech is not a directory")
+	}
+}
+
+func TestSaveLayoutAtomicNoTempFile(t *testing.T) {
+	root := t.TempDir()
+	state := LayoutState{Mode: LayoutGrid, GridCols: 2, GridRows: 2}
+
+	if err := SaveLayout(root, state); err != nil {
+		t.Fatalf("SaveLayout: %v", err)
+	}
+
+	tmp := layoutPath(root) + ".tmp"
+	if _, err := os.Stat(tmp); !os.IsNotExist(err) {
+		t.Errorf("temp file should not exist after save")
+	}
+}
+
+func TestLoadLayoutNoFile(t *testing.T) {
+	root := t.TempDir()
+	_, ok := LoadLayout(root, []string{"super"})
+	if ok {
+		t.Error("LoadLayout should return false when file doesn't exist")
+	}
+}
+
+func TestLoadLayoutEmptyFile(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, ".initech")
+	os.MkdirAll(dir, 0755)
+	os.WriteFile(filepath.Join(dir, "layout.yaml"), []byte(""), 0644)
+
+	_, ok := LoadLayout(root, []string{"super"})
+	if ok {
+		t.Error("LoadLayout should return false for empty file")
+	}
+}
+
+func TestLoadLayoutInvalidYAML(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, ".initech")
+	os.MkdirAll(dir, 0755)
+	os.WriteFile(filepath.Join(dir, "layout.yaml"), []byte("grid: [unterminated"), 0644)
+
+	_, ok := LoadLayout(root, []string{"super"})
+	if ok {
+		t.Error("LoadLayout should return false for invalid YAML")
+	}
+}
+
+func TestLoadLayoutWhitespaceOnly(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, ".initech")
+	os.MkdirAll(dir, 0755)
+	os.WriteFile(filepath.Join(dir, "layout.yaml"), []byte("   \n\n  "), 0644)
+
+	_, ok := LoadLayout(root, []string{"super"})
+	if ok {
+		t.Error("LoadLayout should return false for whitespace-only file")
+	}
+}
+
+func TestLoadLayoutStaleReference(t *testing.T) {
+	root := t.TempDir()
+	state := LayoutState{
+		Mode:     LayoutGrid,
+		GridCols: 2,
+		GridRows: 1,
+		Hidden:   map[string]bool{"arch": true, "sec": true},
+	}
+	SaveLayout(root, state)
+
+	// Load with only "super" and "eng1" -- arch and sec don't exist.
+	got, ok := LoadLayout(root, []string{"super", "eng1"})
+	if !ok {
+		t.Fatal("LoadLayout should succeed with stale references")
+	}
+	if len(got.Hidden) != 0 {
+		t.Errorf("stale refs should be dropped, got hidden = %v", got.Hidden)
+	}
+}
+
+func TestLoadLayoutAllHiddenFallback(t *testing.T) {
+	root := t.TempDir()
+	state := LayoutState{
+		Mode:     LayoutGrid,
+		GridCols: 2,
+		GridRows: 1,
+		Hidden:   map[string]bool{"super": true, "eng1": true},
+	}
+	SaveLayout(root, state)
+
+	_, ok := LoadLayout(root, []string{"super", "eng1"})
+	if ok {
+		t.Error("LoadLayout should return false when all panes would be hidden")
+	}
+}
+
+func TestLoadLayoutGridTooSmall(t *testing.T) {
+	root := t.TempDir()
+	state := LayoutState{
+		Mode:     LayoutGrid,
+		GridCols: 1,
+		GridRows: 1,
+		Hidden:   map[string]bool{},
+	}
+	SaveLayout(root, state)
+
+	got, ok := LoadLayout(root, []string{"a", "b", "c", "d"})
+	if !ok {
+		t.Fatal("LoadLayout should succeed with undersized grid")
+	}
+	// Grid should auto-recalculate since 1x1 < 4 panes.
+	if got.GridCols*got.GridRows < 4 {
+		t.Errorf("grid %dx%d cannot hold 4 panes", got.GridCols, got.GridRows)
+	}
+}
+
+func TestDeleteLayout(t *testing.T) {
+	root := t.TempDir()
+	SaveLayout(root, LayoutState{Mode: LayoutGrid, GridCols: 2, GridRows: 2})
+
+	if err := DeleteLayout(root); err != nil {
+		t.Fatalf("DeleteLayout: %v", err)
+	}
+	_, ok := LoadLayout(root, []string{"super"})
+	if ok {
+		t.Error("layout should be gone after delete")
+	}
+}
+
+func TestDeleteLayoutIdempotent(t *testing.T) {
+	root := t.TempDir()
+	if err := DeleteLayout(root); err != nil {
+		t.Fatalf("DeleteLayout on nonexistent should not error: %v", err)
+	}
+}
+
+// ── Mode conversion tests ───────────────────────────────────────────
+
+func TestLayoutModeToString(t *testing.T) {
+	tests := []struct {
+		mode LayoutMode
+		want string
+	}{
+		{LayoutFocus, "focus"},
+		{LayoutGrid, "grid"},
+		{Layout2Col, "main"},
+		{LayoutMode(99), "grid"},
+	}
+	for _, tt := range tests {
+		if got := layoutModeToString(tt.mode); got != tt.want {
+			t.Errorf("layoutModeToString(%d) = %q, want %q", tt.mode, got, tt.want)
+		}
+	}
+}
+
+func TestStringToLayoutMode(t *testing.T) {
+	tests := []struct {
+		s    string
+		want LayoutMode
+	}{
+		{"focus", LayoutFocus},
+		{"grid", LayoutGrid},
+		{"main", Layout2Col},
+		{"unknown", LayoutGrid},
+		{"", LayoutGrid},
+	}
+	for _, tt := range tests {
+		if got := stringToLayoutMode(tt.s); got != tt.want {
+			t.Errorf("stringToLayoutMode(%q) = %d, want %d", tt.s, got, tt.want)
+		}
+	}
+}
+
+// ── saveLayoutIfConfigured ──────────────────────────────────────────
+
+func TestSaveLayoutIfConfiguredNoRoot(t *testing.T) {
+	tui := newTestTUI(newTestPane("super", true))
+	tui.projectRoot = ""
+	// Should be a no-op, not panic.
+	tui.saveLayoutIfConfigured()
+}
+
+func TestSaveLayoutIfConfiguredWritesFile(t *testing.T) {
+	root := t.TempDir()
+	tui := newTestTUI(
+		newTestPane("super", true),
+		newTestPane("eng1", false),
+	)
+	tui.projectRoot = root
+
+	tui.saveLayoutIfConfigured()
+
+	got, ok := LoadLayout(root, []string{"super", "eng1"})
+	if !ok {
+		t.Fatal("expected layout file to exist after save")
+	}
+	if !got.Hidden["eng1"] {
+		t.Errorf("eng1 should be hidden in saved layout")
+	}
+}
+
+// ── Layout reset command ────────────────────────────────────────────
+
+func TestLayoutResetCommand(t *testing.T) {
+	root := t.TempDir()
+	SaveLayout(root, LayoutState{
+		Mode:     LayoutGrid,
+		GridCols: 3,
+		GridRows: 2,
+		Hidden:   map[string]bool{"eng1": true},
+	})
+
+	tui := newTestTUI(
+		newTestPane("super", true),
+		newTestPane("eng1", false),
+		newTestPane("eng2", true),
+		newTestPane("qa1", true),
+	)
+	tui.projectRoot = root
+
+	tui.execCmd("layout reset")
+
+	// File should be deleted.
+	_, ok := LoadLayout(root, []string{"super", "eng1", "eng2", "qa1"})
+	if ok {
+		t.Error("layout.yaml should be deleted after layout reset")
+	}
+
+	// All panes should be visible (no hidden entries).
+	if len(tui.layoutState.Hidden) != 0 {
+		t.Errorf("hidden = %v, want empty after reset", tui.layoutState.Hidden)
+	}
+
+	// Grid should be auto-recalculated for 4 panes.
+	expectedCols, expectedRows := autoGrid(4)
+	if tui.layoutState.GridCols != expectedCols || tui.layoutState.GridRows != expectedRows {
+		t.Errorf("grid = %dx%d, want %dx%d",
+			tui.layoutState.GridCols, tui.layoutState.GridRows, expectedCols, expectedRows)
+	}
+}
+
+func TestLayoutResetNoFile(t *testing.T) {
+	root := t.TempDir()
+	tui := newTestTUI(
+		newTestPane("super", true),
+		newTestPane("eng1", true),
+	)
+	tui.projectRoot = root
+
+	tui.execCmd("layout reset")
+	if tui.cmdError != "" {
+		t.Errorf("unexpected error: %q", tui.cmdError)
+	}
+}
+
+func TestLayoutUnknownSubcommand(t *testing.T) {
+	tui := newTestTUI(newTestPane("super", true))
+	tui.execCmd("layout foo")
+	if tui.cmdError == "" {
+		t.Error("expected error for unknown layout subcommand")
+	}
+}
+
+func TestLayoutNoSubcommand(t *testing.T) {
+	tui := newTestTUI(newTestPane("super", true))
+	tui.execCmd("layout")
+	if tui.cmdError == "" {
+		t.Error("expected error for layout with no subcommand")
+	}
+}
+
+// ── Integration: commands trigger save ──────────────────────────────
+
+func TestGridCommandSavesLayout(t *testing.T) {
+	root := t.TempDir()
+	tui := newTestTUI(
+		newTestPane("super", true),
+		newTestPane("eng1", true),
+		newTestPane("eng2", true),
+		newTestPane("qa1", true),
+	)
+	tui.projectRoot = root
+
+	tui.execCmd("grid 3x2")
+
+	got, ok := LoadLayout(root, []string{"super", "eng1", "eng2", "qa1"})
+	if !ok {
+		t.Fatal("layout should be saved after grid command")
+	}
+	if got.GridCols != 3 || got.GridRows != 2 {
+		t.Errorf("saved grid = %dx%d, want 3x2", got.GridCols, got.GridRows)
+	}
+}
+
+func TestHideCommandSavesLayout(t *testing.T) {
+	root := t.TempDir()
+	tui := newTestTUI(
+		newTestPane("super", true),
+		newTestPane("eng1", true),
+		newTestPane("eng2", true),
+	)
+	tui.projectRoot = root
+
+	tui.execCmd("hide eng2")
+
+	got, ok := LoadLayout(root, []string{"super", "eng1", "eng2"})
+	if !ok {
+		t.Fatal("layout should be saved after hide command")
+	}
+	if !got.Hidden["eng2"] {
+		t.Errorf("eng2 should be hidden in saved layout")
+	}
+}
+
+func TestShowCommandSavesLayout(t *testing.T) {
+	root := t.TempDir()
+	tui := newTestTUI(
+		newTestPane("super", true),
+		newTestPane("eng1", false),
+	)
+	tui.projectRoot = root
+
+	tui.execCmd("show eng1")
+
+	got, ok := LoadLayout(root, []string{"super", "eng1"})
+	if !ok {
+		t.Fatal("layout should be saved after show command")
+	}
+	if len(got.Hidden) != 0 {
+		t.Errorf("saved hidden = %v, want empty", got.Hidden)
+	}
+}
+
+func TestFocusCommandSavesLayout(t *testing.T) {
+	root := t.TempDir()
+	tui := newTestTUI(
+		newTestPane("super", true),
+		newTestPane("eng1", true),
+	)
+	tui.projectRoot = root
+
+	tui.execCmd("focus")
+
+	got, ok := LoadLayout(root, []string{"super", "eng1"})
+	if !ok {
+		t.Fatal("layout should be saved after focus command")
+	}
+	if got.Mode != LayoutFocus {
+		t.Errorf("saved mode = %d, want LayoutFocus", got.Mode)
+	}
+}
+
+func TestMainCommandSavesLayout(t *testing.T) {
+	root := t.TempDir()
+	tui := newTestTUI(
+		newTestPane("super", true),
+		newTestPane("eng1", true),
+	)
+	tui.projectRoot = root
+
+	tui.execCmd("main")
+
+	got, ok := LoadLayout(root, []string{"super", "eng1"})
+	if !ok {
+		t.Fatal("layout should be saved after main command")
+	}
+	if got.Mode != Layout2Col {
+		t.Errorf("saved mode = %d, want Layout2Col", got.Mode)
+	}
+}
+
+func TestViewCommandSavesLayout(t *testing.T) {
+	root := t.TempDir()
+	tui := newTestTUI(
+		newTestPane("super", true),
+		newTestPane("eng1", true),
+		newTestPane("eng2", true),
+	)
+	tui.projectRoot = root
+
+	tui.execCmd("view super eng1")
+
+	got, ok := LoadLayout(root, []string{"super", "eng1", "eng2"})
+	if !ok {
+		t.Fatal("layout should be saved after view command")
+	}
+	if !got.Hidden["eng2"] {
+		t.Errorf("eng2 should be hidden in saved layout")
+	}
+}
+
+func TestShowAllCommandSavesLayout(t *testing.T) {
+	root := t.TempDir()
+	tui := newTestTUI(
+		newTestPane("super", true),
+		newTestPane("eng1", false),
+		newTestPane("eng2", false),
+	)
+	tui.projectRoot = root
+
+	tui.execCmd("show all")
+
+	got, ok := LoadLayout(root, []string{"super", "eng1", "eng2"})
+	if !ok {
+		t.Fatal("layout should be saved after show all command")
+	}
+	if len(got.Hidden) != 0 {
+		t.Errorf("saved hidden = %v, want empty", got.Hidden)
+	}
+}
+
+func TestZoomCommandSavesLayout(t *testing.T) {
+	root := t.TempDir()
+	tui := newTestTUI(
+		newTestPane("super", true),
+		newTestPane("eng1", true),
+	)
+	tui.projectRoot = root
+
+	tui.execCmd("zoom")
+
+	_, ok := LoadLayout(root, []string{"super", "eng1"})
+	if !ok {
+		t.Fatal("layout should be saved after zoom command")
+	}
+}
+
+// ── LoadLayout mode persistence ─────────────────────────────────────
+
+func TestLoadLayoutFocusMode(t *testing.T) {
+	root := t.TempDir()
+	SaveLayout(root, LayoutState{
+		Mode:     LayoutFocus,
+		GridCols: 2,
+		GridRows: 1,
+	})
+
+	got, ok := LoadLayout(root, []string{"super", "eng1"})
+	if !ok {
+		t.Fatal("LoadLayout returned false")
+	}
+	if got.Mode != LayoutFocus {
+		t.Errorf("mode = %d, want LayoutFocus", got.Mode)
+	}
+}
+
+func TestLoadLayoutMainMode(t *testing.T) {
+	root := t.TempDir()
+	SaveLayout(root, LayoutState{
+		Mode:     Layout2Col,
+		GridCols: 2,
+		GridRows: 1,
+	})
+
+	got, ok := LoadLayout(root, []string{"super", "eng1"})
+	if !ok {
+		t.Fatal("LoadLayout returned false")
+	}
+	if got.Mode != Layout2Col {
+		t.Errorf("mode = %d, want Layout2Col", got.Mode)
 	}
 }

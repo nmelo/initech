@@ -37,11 +37,15 @@ Commands (via ` + "`" + ` modal):
   zoom             Toggle zoom
   panel            Toggle agent overlay
   main             Main + stacked layout
+  layout reset     Reset layout to auto-calculated defaults
   quit             Exit`,
 	RunE: runTUI,
 }
 
+var resetLayout bool
+
 func init() {
+	tuiCmd.Flags().BoolVar(&resetLayout, "reset-layout", false, "Ignore saved layout and start with auto-calculated defaults")
 	rootCmd.AddCommand(tuiCmd)
 }
 
@@ -107,5 +111,7 @@ func runTUI(cmd *cobra.Command, args []string) error {
 	return tui.Run(tui.Config{
 		Agents:      agents,
 		ProjectName: proj.Name,
+		ProjectRoot: proj.Root,
+		ResetLayout: resetLayout,
 	})
 }
