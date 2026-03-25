@@ -89,21 +89,15 @@ type PaneConfig struct {
 func NewPane(cfg PaneConfig, rows, cols int) (*Pane, error) {
 	emu := vt.NewSafeEmulator(cols, rows)
 
-	shell := os.Getenv("SHELL")
-	if shell == "" {
-		shell = "/bin/bash"
-	}
-
 	var cmd *exec.Cmd
 	if len(cfg.Command) == 0 {
-		// No command: run an interactive login shell.
+		shell := os.Getenv("SHELL")
+		if shell == "" {
+			shell = "/bin/bash"
+		}
 		cmd = exec.Command(shell, "-l")
 	} else {
-		// Run via login shell + exec so the terminal gets proper stty
-		// initialization before Claude starts (Claude depends on a
-		// shell-initialized PTY for correct terminal size detection).
-		cmdStr := strings.Join(cfg.Command, " ")
-		cmd = exec.Command(shell, "-l", "-c", "exec "+cmdStr)
+		cmd = exec.Command(cfg.Command[0], cfg.Command[1:]...)
 	}
 	cmd.Env = append(os.Environ(),
 		"TERM=xterm-256color",
