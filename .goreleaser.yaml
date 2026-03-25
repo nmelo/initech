@@ -24,6 +24,9 @@ checksum:
   name_template: checksums.txt
 
 release:
+  github:
+    owner: nmelo
+    name: initech
   draft: false
   prerelease: auto
 
