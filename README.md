@@ -1,6 +1,6 @@
 # initech
 
-A TUI-based multi-agent orchestrator for Claude Code. Manages PTY-based agent panes, IPC messaging, and session lifecycle for running multiple Claude Code agents in parallel.
+A terminal multiplexer and orchestrator for multi-agent Claude Code sessions. Each agent gets its own PTY-backed pane with VT100 emulation, activity detection, and IPC messaging. Replaces tmux with a purpose-built TUI that understands agent state.
 
 Named after the company from Office Space.
 
@@ -22,11 +22,11 @@ make build
 
 ## Prerequisites
 
-```bash
-initech doctor
-```
+- [Claude Code](https://docs.anthropic.com/en/docs/claude-code) CLI
+- [git](https://git-scm.com/)
+- [beads](https://github.com/nmelo/beads) (`bd`) for issue tracking (optional)
 
-Checks for: tmux, tmuxinator, claude, git, bd, gn, gp, gm.
+Run `initech doctor` to verify.
 
 ## Quick Start
 
@@ -35,36 +35,54 @@ Checks for: tmux, tmuxinator, claude, git, bd, gn, gp, gm.
 mkdir myproject && cd myproject
 initech init
 
-# Start the session (opens tmux with all agents)
-initech up
+# Launch the TUI with all agent panes
+initech tui
 
-# Check on the team
-initech status
+# Send a message to an agent
+initech send eng1 "check the failing test in config/"
 
-# Stop when done
-initech down
+# Read an agent's terminal output
+initech peek eng1 -n 50
 ```
+
+### TUI Controls
+
+| Key | Action |
+|-----|--------|
+| `` ` `` (backtick) | Open command modal |
+| Alt+Left/Right | Navigate between panes |
+| Alt+1 | Focus mode (single pane) |
+| Alt+2 | 2x2 grid |
+| Alt+3 | 3x3 grid |
+| Alt+4 | Main + stacked layout |
+| Alt+z | Zoom/unzoom focused pane |
+| Alt+s | Toggle agent status overlay |
+| Alt+q | Quit |
+| Mouse click | Focus pane |
+| Mouse drag | Select text (copies to clipboard) |
 
 ## Commands
 
 | Command | What it does |
 |---------|-------------|
-| `initech init` | Bootstrap project: config, directories, role CLAUDE.md files, tmuxinator, beads, docs |
-| `initech up` | Start tmux session with all agents |
-| `initech status` | Agent table: Claude detection, bead assignments, memory per agent |
+| `initech init` | Bootstrap project: config, directories, role CLAUDE.md files, beads, docs |
+| `initech tui` | Launch the TUI terminal multiplexer with all agent panes |
+| `initech send <role> <text>` | Send a message to an agent's pane via IPC |
+| `initech peek <role>` | Read an agent's terminal output via IPC |
+| `initech status` | Agent table: activity state, bead assignments, memory |
 | `initech stop <role...>` | Kill individual agents to free memory |
 | `initech start <role...>` | Bring stopped agents back (optional `--bead` dispatch) |
 | `initech restart <role>` | Kill + restart agent (optional `--bead` dispatch) |
 | `initech down` | Graceful shutdown with uncommitted-work warnings |
 | `initech standup` | Morning standup: shipped, in-progress, next up (from beads) |
-| `initech doctor` | Check all prerequisites with versions and fix instructions |
-| `initech version` | Print version |
+| `initech doctor` | Check prerequisites with versions and fix instructions |
+| `initech up` | Start tmux session (legacy, requires tmux + tmuxinator) |
 
 ## What `initech init` Creates
 
 ```
 myproject/
-  initech.yaml              # Project config
+  initech.yaml              # Project config (roles, claude args, overrides)
   .beads/                   # Issue tracker (bd)
   .gitignore
   CLAUDE.md                 # Project-wide operating manual
@@ -103,12 +121,20 @@ myproject/
 
 Unknown role names are valid and get sensible defaults (Autonomous, no src).
 
+## Architecture
+
+The TUI owns the runtime: PTY allocation, terminal emulation (charmbracelet/x/vt), screen rendering (tcell), layout, activity detection (Claude's JSONL session logs), and IPC (Unix domain socket).
+
+Agents communicate via `initech send` and `initech peek`, which connect to the TUI's socket at `/tmp/initech-<project>.sock`. Messages are delivered as keystrokes through the emulator, with delivery confirmation.
+
 ## Dependencies
 
-- [tmux](https://github.com/tmux/tmux) + [tmuxinator](https://github.com/tmuxinator/tmuxinator) for session management
+- [Go](https://go.dev/) 1.25+ (build only)
 - [Claude Code](https://docs.anthropic.com/en/docs/claude-code) CLI for agents
-- [beads](https://github.com/nmelo/beads) (`bd`) for issue tracking
-- [gastools](https://github.com/nmelo/gastools) (`gn`, `gp`, `gm`) for agent communication
+- [beads](https://github.com/nmelo/beads) (`bd`) for issue tracking (optional, degrades gracefully)
+- [git](https://git-scm.com/) for submodule management
+
+Runtime libraries (bundled): [cobra](https://github.com/spf13/cobra), [yaml.v3](https://pkg.go.dev/gopkg.in/yaml.v3), [charmbracelet/x/vt](https://github.com/charmbracelet/x), [tcell](https://github.com/gdamore/tcell), [creack/pty](https://github.com/creack/pty).
 
 ## License
 
