@@ -248,32 +248,20 @@ func (p *Pane) Render(screen tcell.Screen, focused bool, dimmed bool, sel Select
 
 	// Bottom ribbon (1 row at the bottom of the region).
 	ribbonY := r.Y + r.H - 1
-	nameBg := tcell.ColorGray
-	nameFg := tcell.ColorBlack
+	nameFg := tcell.ColorGray
 	if focused {
-		nameBg = tcell.ColorDodgerBlue
-		nameFg = tcell.ColorBlack
+		nameFg = tcell.ColorDodgerBlue
 	}
-	titleStyle := tcell.StyleDefault.Background(nameBg).Foreground(nameFg).Bold(true)
-	fillColor := tcell.ColorDarkCyan
-	if dimmed {
-		fillColor = tcell.ColorDarkSlateGray
-	}
-	fillStyle := tcell.StyleDefault.Background(tcell.ColorBlack).Foreground(fillColor)
+	titleStyle := tcell.StyleDefault.Background(tcell.ColorBlack).Foreground(nameFg).Bold(true)
 
-	// Fill ribbon with horizontal line.
-	for x := r.X; x < r.X+r.W; x++ {
-		s.SetContent(x, ribbonY, '\u2500', nil, fillStyle)
-	}
-
-	// Pane name + status indicators.
+	// Pane name badge only (no horizontal line fill).
 	title := " " + p.name + " "
 	if !p.IsAlive() {
 		title = " " + p.name + " [dead] "
-		titleStyle = tcell.StyleDefault.Background(tcell.ColorDarkRed).Foreground(tcell.ColorBlack).Bold(true)
+		titleStyle = tcell.StyleDefault.Background(tcell.ColorBlack).Foreground(tcell.ColorRed).Bold(true)
 	} else if p.scrollOffset > 0 {
 		title = fmt.Sprintf(" %s [+%d] ", p.name, p.scrollOffset)
-		titleStyle = tcell.StyleDefault.Background(tcell.ColorYellow).Foreground(tcell.ColorBlack).Bold(true)
+		titleStyle = tcell.StyleDefault.Background(tcell.ColorBlack).Foreground(tcell.ColorYellow).Bold(true)
 	}
 	for i, ch := range title {
 		if r.X+1+i < r.X+r.W {
