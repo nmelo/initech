@@ -221,13 +221,30 @@ type Selection struct {
 	EndX, EndY     int
 }
 
+// clampedScreen wraps tcell.Screen and clips all SetContent calls to a region.
+// Prevents pane content from ever rendering outside its assigned area.
+type clampedScreen struct {
+	tcell.Screen
+	r Region
+}
+
+func (c *clampedScreen) SetContent(x, y int, ch rune, comb []rune, style tcell.Style) {
+	if x >= c.r.X && x < c.r.X+c.r.W && y >= c.r.Y && y < c.r.Y+c.r.H {
+		c.Screen.SetContent(x, y, ch, comb, style)
+	}
+}
+
 // Render draws the pane's bottom ribbon and terminal content onto the tcell screen.
 // When dimmed is true, foreground colors are reduced to ~40% brightness.
-func (p *Pane) Render(s tcell.Screen, focused bool, dimmed bool, sel Selection) {
+// All writes are clamped to the pane's region to prevent bleed-through.
+func (p *Pane) Render(screen tcell.Screen, focused bool, dimmed bool, sel Selection) {
 	r := p.region
 	if r.W < 1 || r.H < 2 {
 		return
 	}
+
+	// Clamp all writes to the pane's region.
+	s := &clampedScreen{Screen: screen, r: r}
 
 	// Bottom ribbon (1 row at the bottom of the region).
 	ribbonY := r.Y + r.H - 1
