@@ -131,14 +131,16 @@ func (t *TUI) handleIPCPeek(conn net.Conn, req IPCRequest) {
 		return
 	}
 
-	cols, rows := pane.region.InnerSize()
+	// Use emulator dimensions, not region.InnerSize(), because hidden
+	// panes have stale regions that return (1,0).
+	cols := pane.emu.Width()
+	rows := pane.emu.Height()
 	if req.Lines > 0 && req.Lines < rows {
 		rows = req.Lines
 	}
 
 	var buf strings.Builder
-	emuRows := pane.emu.Height()
-	for row := 0; row < rows && row < emuRows; row++ {
+	for row := 0; row < rows; row++ {
 		var line strings.Builder
 		for col := 0; col < cols; col++ {
 			cell := pane.emu.CellAt(col, row)
@@ -160,6 +162,7 @@ func (t *TUI) handleIPCList(conn net.Conn) {
 		Name     string `json:"name"`
 		Activity string `json:"activity"`
 		Alive    bool   `json:"alive"`
+		Visible  bool   `json:"visible"`
 	}
 	panes := make([]paneInfo, len(t.panes))
 	for i, p := range t.panes {
@@ -167,6 +170,7 @@ func (t *TUI) handleIPCList(conn net.Conn) {
 			Name:     p.name,
 			Activity: p.Activity().String(),
 			Alive:    p.IsAlive(),
+			Visible:  p.Visible(),
 		}
 	}
 	data, _ := json.Marshal(panes)
