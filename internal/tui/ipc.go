@@ -7,6 +7,9 @@ import (
 	"net"
 	"os"
 	"strings"
+	"time"
+
+	uv "github.com/charmbracelet/ultraviolet"
 )
 
 // IPCRequest is the JSON structure sent by CLI commands to the TUI socket.
@@ -96,15 +99,16 @@ func (t *TUI) handleIPCSend(conn net.Conn, req IPCRequest) {
 		return
 	}
 
-	text := req.Text
-	if req.Enter {
-		text += "\n"
+	// Send each character as a key event through the emulator,
+	// same path as real keypresses from the TUI.
+	for _, r := range req.Text {
+		pane.emu.SendKey(uv.KeyPressEvent(uv.Key{Code: r, Text: string(r)}))
 	}
 
-	_, err := pane.ptmx.Write([]byte(text))
-	if err != nil {
-		writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("write failed: %v", err)})
-		return
+	if req.Enter {
+		// Brief pause to let text settle before sending Enter.
+		time.Sleep(100 * time.Millisecond)
+		pane.emu.SendKey(uv.KeyPressEvent(uv.Key{Code: uv.KeyEnter}))
 	}
 
 	writeIPCResponse(conn, IPCResponse{OK: true})
