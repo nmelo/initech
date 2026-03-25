@@ -223,8 +223,8 @@ func renderRootCLAUDE(p *config.Project) string {
 	content += "```\n\n"
 	content += "## Communication\n\n"
 	content += "```bash\n"
-	content += "gn -w <agent> \"message\"   # Nudge an agent\n"
-	content += "gp <agent>                # Peek at agent output\n"
+	content += "initech send <agent> \"message\"   # Send message to an agent\n"
+	content += "initech peek <agent>              # Read agent terminal output\n"
 	content += "```\n"
 	return content
 }
@@ -274,7 +274,7 @@ bd list                               # See all beads
 ## Communication
 
 ` + "```" + `bash
-gn -w <agent> "message"    # Nudge an agent
-gp <agent>                 # Peek at agent output
+initech send <agent> "message"    # Send message to an agent
+initech peek <agent>              # Read agent terminal output
 ` + "```" + `
 `
