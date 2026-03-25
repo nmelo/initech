@@ -109,9 +109,11 @@ func Run(cfg Config) error {
 		return fmt.Errorf("start IPC: %w", err)
 	}
 
-	// Calculate initial layout.
+	// Calculate initial layout. Use calcPaneGrid directly because t.panes
+	// is still empty (visibleCount would return 0 and calcRegions would
+	// return nil, causing a divide-by-zero panic).
 	w, h := screen.Size()
-	regions := t.calcRegions(w, h)
+	regions := calcPaneGrid(gridCols, gridRows, len(cfg.Agents), w, h)
 
 	// Inject the socket path into every agent's environment.
 	for i := range cfg.Agents {

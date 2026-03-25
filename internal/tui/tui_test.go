@@ -1460,3 +1460,35 @@ func TestRecalcGridNonGridLayout(t *testing.T) {
 		t.Errorf("non-grid recalcGrid changed dims: cols=%d rows=%d", tui.gridCols, tui.gridRows)
 	}
 }
+
+// Regression test: calcRegions must not panic when t.panes is empty.
+// At startup, calcRegions was called before panes were created, causing
+// visibleCount() to return 0 and a divide-by-zero in regions[i%len(regions)].
+func TestCalcRegionsEmptyPanesNoPanic(t *testing.T) {
+	tui := &TUI{
+		layout:   LayoutGrid,
+		gridCols: 3,
+		gridRows: 3,
+		// panes is nil/empty - this is the startup condition.
+	}
+
+	// calcRegions uses visibleCount() which iterates t.panes.
+	// With empty panes, it must return nil (not panic).
+	regions := tui.calcRegions(200, 60)
+	if regions != nil {
+		t.Errorf("calcRegions with empty panes should return nil, got %d regions", len(regions))
+	}
+}
+
+// Test that calcPaneGrid (the direct call used at init) works correctly
+// with an explicit count even when no TUI state exists.
+func TestCalcPaneGridInitialLayout(t *testing.T) {
+	regions := calcPaneGrid(4, 2, 7, 200, 60)
+	if len(regions) != 7 {
+		t.Fatalf("calcPaneGrid(4,2,7,...) returned %d regions, want 7", len(regions))
+	}
+	// First row: 4 panes. Last row: 3 wider panes.
+	if regions[0].W == regions[4].W {
+		t.Error("last row panes should be wider than first row (fewer panes)")
+	}
+}
