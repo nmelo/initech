@@ -352,6 +352,9 @@ func (t *TUI) handleMouse(ev *tcell.EventMouse) {
 	case ev.Buttons()&tcell.WheelUp != 0:
 		// Scroll back into history for the pane under cursor.
 		for _, p := range t.panes {
+			if t.layoutState.Hidden[p.name] {
+				continue
+			}
 			r := p.region
 			if mx >= r.X && mx < r.X+r.W && my >= r.Y && my < r.Y+r.H {
 				t.layoutState.Focused = p.name
@@ -363,6 +366,9 @@ func (t *TUI) handleMouse(ev *tcell.EventMouse) {
 	case ev.Buttons()&tcell.WheelDown != 0:
 		// Scroll toward live view for the pane under cursor.
 		for _, p := range t.panes {
+			if t.layoutState.Hidden[p.name] {
+				continue
+			}
 			r := p.region
 			if mx >= r.X && mx < r.X+r.W && my >= r.Y && my < r.Y+r.H {
 				t.layoutState.Focused = p.name
