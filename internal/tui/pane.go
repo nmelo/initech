@@ -254,7 +254,13 @@ func (p *Pane) Render(screen tcell.Screen, focused bool, dimmed bool, sel Select
 	}
 	titleStyle := tcell.StyleDefault.Background(tcell.ColorBlack).Foreground(nameFg).Bold(true)
 
-	// Pane name badge only (no horizontal line fill).
+	// Fill ribbon row with solid black background.
+	blackStyle := tcell.StyleDefault.Background(tcell.ColorBlack)
+	for x := r.X; x < r.X+r.W; x++ {
+		s.SetContent(x, ribbonY, ' ', nil, blackStyle)
+	}
+
+	// Pane name badge.
 	title := " " + p.name + " "
 	if !p.IsAlive() {
 		title = " " + p.name + " [dead] "
