@@ -59,6 +59,8 @@ type Pane struct {
 	lastJsonlTime time.Time    // When we last saw a file change.
 	jsonlDir      string       // Directory to search for session JSONL files.
 	sessionDesc   string       // Session description extracted from cursor row.
+	beadID        string       // Current bead ID (e.g., "ini-bhk.3"). Empty = no bead.
+	beadTitle     string       // Bead title for top modal display.
 	scrollOffset  int          // Rows scrolled back from live view (0 = live).
 	region        Region
 }
@@ -276,7 +278,7 @@ func (p *Pane) Render(screen tcell.Screen, focused bool, dimmed bool, index int,
 		titleStyle = tcell.StyleDefault.Background(trueBlack).Foreground(tcell.ColorGray).Bold(true)
 	}
 
-	// Pane badge: "N name" with status indicators.
+	// Pane badge: "N name" with optional bead ID and status indicators.
 	title := fmt.Sprintf(" %d %s ", index, p.name)
 	if !p.IsAlive() {
 		title = fmt.Sprintf(" %d %s [dead] ", index, p.name)
@@ -285,9 +287,23 @@ func (p *Pane) Render(screen tcell.Screen, focused bool, dimmed bool, index int,
 		title = fmt.Sprintf(" %d %s [+%d] ", index, p.name, p.scrollOffset)
 		titleStyle = tcell.StyleDefault.Background(trueBlack).Foreground(tcell.ColorYellow).Bold(true)
 	}
-	for i, ch := range title {
-		if r.X+1+i < r.X+r.W {
-			s.SetContent(r.X+1+i, ribbonY, ch, nil, titleStyle)
+	col := r.X + 1
+	for _, ch := range title {
+		if col < r.X+r.W {
+			s.SetContent(col, ribbonY, ch, nil, titleStyle)
+			col++
+		}
+	}
+	// Append bead ID in dark cyan after the name badge.
+	bead := p.BeadID()
+	if bead != "" {
+		beadStr := "| " + bead + " "
+		beadStyle := tcell.StyleDefault.Background(trueBlack).Foreground(tcell.ColorDarkCyan)
+		for _, ch := range beadStr {
+			if col < r.X+r.W {
+				s.SetContent(col, ribbonY, ch, nil, beadStyle)
+				col++
+			}
 		}
 	}
 
@@ -558,6 +574,21 @@ func (p *Pane) SessionDesc() string {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.sessionDesc
+}
+
+// BeadID returns the currently assigned bead ID, or empty string.
+func (p *Pane) BeadID() string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.beadID
+}
+
+// SetBead sets the current bead ID and title.
+func (p *Pane) SetBead(id, title string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.beadID = id
+	p.beadTitle = title
 }
 
 // Activity returns the current activity state based on JSONL session tailing.

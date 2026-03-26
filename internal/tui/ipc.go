@@ -37,7 +37,13 @@ func SocketPath(projectName string) string {
 // startIPC launches the Unix domain socket server in a goroutine.
 // Returns a cleanup function that closes the listener and removes the socket.
 func (t *TUI) startIPC(socketPath string) (cleanup func(), err error) {
-	// Clean up stale socket.
+	// Check for an existing active instance.
+	conn, dialErr := net.DialTimeout("unix", socketPath, 500*time.Millisecond)
+	if dialErr == nil {
+		conn.Close()
+		return nil, fmt.Errorf("session already running (socket %s is active). Use 'initech down' to stop it first", socketPath)
+	}
+	// Stale socket from a crashed instance; safe to remove.
 	os.Remove(socketPath)
 
 	ln, err := net.Listen("unix", socketPath)
@@ -95,6 +101,8 @@ func (t *TUI) handleIPCConn(conn net.Conn) {
 		t.handleIPCStart(conn, req)
 	case "restart":
 		t.handleIPCRestart(conn, req)
+	case "bead":
+		t.handleIPCBead(conn, req)
 	case "quit":
 		t.handleIPCQuit(conn)
 	default:
@@ -224,6 +232,21 @@ func (t *TUI) handleIPCList(conn net.Conn) {
 	}
 	data, _ := json.Marshal(panes)
 	writeIPCResponse(conn, IPCResponse{OK: true, Data: string(data)})
+}
+
+func (t *TUI) handleIPCBead(conn net.Conn, req IPCRequest) {
+	if req.Target == "" {
+		writeIPCResponse(conn, IPCResponse{Error: "target is required (set INITECH_AGENT or use --agent)"})
+		return
+	}
+	pane := t.findPane(req.Target)
+	if pane == nil {
+		writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("pane %q not found", req.Target)})
+		return
+	}
+	// req.Text = bead ID (empty string to clear).
+	pane.SetBead(req.Text, "")
+	writeIPCResponse(conn, IPCResponse{OK: true})
 }
 
 func (t *TUI) findPane(name string) *Pane {

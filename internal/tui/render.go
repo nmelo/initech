@@ -180,9 +180,13 @@ func (t *TUI) renderOverlay() {
 	maxNameLen := 0
 	hiddenCount := 0
 	for i, p := range t.panes {
-		state := p.Activity()
 		vis := !t.layoutState.Hidden[p.name]
-		agents[i] = AgentInfo{Name: p.name, Status: state.String(), Visible: vis}
+		// Show bead ID instead of activity status when a bead is assigned.
+		status := p.Activity().String()
+		if bead := p.BeadID(); bead != "" {
+			status = bead
+		}
+		agents[i] = AgentInfo{Name: p.name, Status: status, Visible: vis}
 		nameLen := len(p.name)
 		if !vis {
 			nameLen += 4 // " [h]"

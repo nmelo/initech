@@ -198,9 +198,12 @@ func Run(cfg Config) error {
 	regions := gridRegions(ls.GridCols, ls.GridRows, len(cfg.Agents),
 		initW, initH, ls.ColWeights, ls.RowWeights)
 
-	// Inject the socket path into every agent's environment.
+	// Inject the socket path and agent name into every agent's environment.
 	for i := range cfg.Agents {
-		cfg.Agents[i].Env = append(cfg.Agents[i].Env, "INITECH_SOCKET="+sockPath)
+		cfg.Agents[i].Env = append(cfg.Agents[i].Env,
+			"INITECH_SOCKET="+sockPath,
+			"INITECH_AGENT="+cfg.Agents[i].Name,
+		)
 	}
 
 	// Create panes.

@@ -130,13 +130,15 @@ Source code: {{project_root}}/{{role_name}}/src/
 
 1. Receive bead dispatch from super
 2. Claim: ` + "`" + `bd update <id> --status in_progress --assignee {{role_name}}` + "`" + `
-3. Comment your PLAN on the bead before writing code
-4. Implement to spec with tests
-5. Run all tests: ` + "`" + `{{test_cmd}}` + "`" + `
-6. Commit and push
-7. Comment DONE with verification steps
-8. Mark: ` + "`" + `bd update <id> --status ready_for_qa` + "`" + `
-9. Report to super: ` + "`" + `initech send super "[from {{role_name}}] <id>: ready for QA"` + "`" + `
+3. Report bead: ` + "`" + `initech bead <id>` + "`" + `
+4. Comment your PLAN on the bead before writing code
+5. Implement to spec with tests
+6. Run all tests: ` + "`" + `{{test_cmd}}` + "`" + `
+7. Commit and push
+8. Comment DONE with verification steps
+9. Mark: ` + "`" + `bd update <id> --status ready_for_qa` + "`" + `
+10. Clear bead: ` + "`" + `initech bead --clear` + "`" + `
+11. Report to super: ` + "`" + `initech send super "[from {{role_name}}] <id>: ready for QA"` + "`" + `
 
 ## Code Quality
 
@@ -182,13 +184,15 @@ Source code: {{project_root}}/{{role_name}}/src/
 
 1. Receive bead for QA from super
 2. Claim: ` + "`" + `bd update <id> --status in_qa --assignee {{role_name}}` + "`" + `
-3. Read the bead acceptance criteria carefully
-4. Pull latest code and build
-5. Test each acceptance criterion independently
-6. Comment verdict: PASS or FAIL as first word, followed by evidence
-7. If PASS: ` + "`" + `bd update <id> --status qa_passed` + "`" + `
-8. If FAIL: ` + "`" + `bd update <id> --status in_progress` + "`" + ` with failure details
-9. Report: ` + "`" + `initech send super "[from {{role_name}}] <id>: PASS/FAIL"` + "`" + `
+3. Report bead: ` + "`" + `initech bead <id>` + "`" + `
+4. Read the bead acceptance criteria carefully
+5. Pull latest code and build
+6. Test each acceptance criterion independently
+7. Comment verdict: PASS or FAIL as first word, followed by evidence
+8. If PASS: ` + "`" + `bd update <id> --status qa_passed` + "`" + `
+9. If FAIL: ` + "`" + `bd update <id> --status in_progress` + "`" + ` with failure details
+10. Clear bead: ` + "`" + `initech bead --clear` + "`" + `
+11. Report: ` + "`" + `initech send super "[from {{role_name}}] <id>: PASS/FAIL"` + "`" + `
 
 ## Verdict Rules
 
