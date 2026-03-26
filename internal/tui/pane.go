@@ -254,6 +254,22 @@ func (p *Pane) SendKey(ev *tcell.EventKey) {
 	p.emu.SendKey(kpe)
 }
 
+// SendPaste writes a bracketed paste marker to the PTY.
+// On start=true it writes \x1b[200~ (paste start); on start=false it writes
+// \x1b[201~ (paste end). The child process uses these delimiters to
+// distinguish pasted content from typed keystrokes.
+// No-op if the PTY is not open.
+func (p *Pane) SendPaste(start bool) {
+	if p.ptmx == nil {
+		return
+	}
+	if start {
+		p.ptmx.Write([]byte("\x1b[200~")) //nolint:errcheck
+	} else {
+		p.ptmx.Write([]byte("\x1b[201~")) //nolint:errcheck
+	}
+}
+
 // Resize updates the emulator and PTY dimensions.
 func (p *Pane) Resize(rows, cols int) {
 	p.emu.Resize(cols, rows)

@@ -388,6 +388,10 @@ func (t *TUI) handleEvent(ev tcell.Event) bool {
 		t.handleMouse(ev)
 	case *tcell.EventResize:
 		t.handleResize()
+	case *tcell.EventPaste:
+		if p := t.focusedPane(); p != nil {
+			p.SendPaste(ev.Start())
+		}
 	}
 	return false
 }
