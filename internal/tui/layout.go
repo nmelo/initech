@@ -345,7 +345,7 @@ func SaveLayout(projectRoot string, state LayoutState) error {
 	sort.Strings(pl.Hidden)
 
 	dir := layoutDir(projectRoot)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0700); err != nil {
 		return fmt.Errorf("create .initech/: %w", err)
 	}
 
@@ -356,7 +356,7 @@ func SaveLayout(projectRoot string, state LayoutState) error {
 
 	// Atomic write: write to temp file, then rename.
 	tmp := layoutPath(projectRoot) + ".tmp"
-	if err := os.WriteFile(tmp, data, 0644); err != nil {
+	if err := os.WriteFile(tmp, data, 0600); err != nil {
 		return fmt.Errorf("write temp layout: %w", err)
 	}
 	if err := os.Rename(tmp, layoutPath(projectRoot)); err != nil {

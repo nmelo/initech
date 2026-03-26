@@ -36,12 +36,12 @@ func InitLogger(projectRoot string, level slog.Level) func() {
 	}
 
 	dir := filepath.Join(projectRoot, ".initech")
-	os.MkdirAll(dir, 0755)
+	os.MkdirAll(dir, 0700)
 
 	logPath := filepath.Join(dir, logFileName)
 	rotateIfNeeded(logPath)
 
-	f, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+	f, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
 	if err != nil {
 		// Can't open log file. Use a discard logger so callers don't nil-check.
 		appLogger.mu.Lock()

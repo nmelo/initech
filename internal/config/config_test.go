@@ -183,6 +183,45 @@ func TestValidate_DuplicateRole(t *testing.T) {
 	}
 }
 
+func TestValidate_EmptyRoleName(t *testing.T) {
+	p := &Project{Name: "test", Root: "/tmp", Roles: []string{""}}
+	if err := Validate(p); err == nil {
+		t.Error("expected error for empty role name")
+	}
+}
+
+func TestValidate_RoleWithSlash(t *testing.T) {
+	cases := []string{
+		"../../etc",
+		"../sibling",
+		"/absolute",
+		"sub/dir",
+		"a\\b",
+	}
+	for _, r := range cases {
+		p := &Project{Name: "test", Root: "/tmp", Roles: []string{r}}
+		if err := Validate(p); err == nil {
+			t.Errorf("expected error for role name %q containing path separator", r)
+		}
+	}
+}
+
+func TestValidate_RoleWithDotDot(t *testing.T) {
+	p := &Project{Name: "test", Root: "/tmp", Roles: []string{"..hidden"}}
+	if err := Validate(p); err == nil {
+		t.Error("expected error for role name containing '..'")
+	}
+}
+
+func TestValidate_ValidRoleNames(t *testing.T) {
+	// These should all pass.
+	valid := []string{"eng1", "super", "qa-1", "agent_2", "my.role"}
+	p := &Project{Name: "test", Root: "/tmp", Roles: valid}
+	if err := Validate(p); err != nil {
+		t.Errorf("unexpected error for valid role names: %v", err)
+	}
+}
+
 func TestValidate_GridNotInRoles(t *testing.T) {
 	p := &Project{
 		Name:  "test",

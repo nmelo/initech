@@ -373,10 +373,17 @@ func TestContentOffsetScrollback(t *testing.T) {
 // ── IPC: SocketPath ──────────────────────────────────────────────────
 
 func TestSocketPath(t *testing.T) {
-	got := SocketPath("myproject")
-	want := "/tmp/initech-myproject.sock"
+	// With a project root the socket lives in .initech/.
+	got := SocketPath("/home/user/proj", "myproject")
+	want := "/home/user/proj/.initech/initech.sock"
 	if got != want {
-		t.Errorf("SocketPath = %q, want %q", got, want)
+		t.Errorf("SocketPath with root = %q, want %q", got, want)
+	}
+
+	// With an empty root fall back to /tmp.
+	got2 := SocketPath("", "myproject")
+	if got2 != "/tmp/initech-myproject.sock" {
+		t.Errorf("SocketPath empty root = %q, want /tmp/initech-myproject.sock", got2)
 	}
 }
 

@@ -112,6 +112,12 @@ func Validate(p *Project) error {
 
 	roleSet := make(map[string]bool, len(p.Roles))
 	for _, r := range p.Roles {
+		if r == "" {
+			return fmt.Errorf("role name must not be empty")
+		}
+		if strings.ContainsAny(r, "/\\") || strings.Contains(r, "..") {
+			return fmt.Errorf("role name %q must not contain path separators or '..'", r)
+		}
 		if roleSet[r] {
 			return fmt.Errorf("duplicate role: %s", r)
 		}

@@ -31,10 +31,10 @@ func redirectStderr(projectRoot string) func() {
 		return func() {}
 	}
 	dir := filepath.Join(projectRoot, ".initech")
-	os.MkdirAll(dir, 0755)
+	os.MkdirAll(dir, 0700)
 	path := filepath.Join(dir, "stderr.log")
 
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
 	if err != nil {
 		return func() {}
 	}

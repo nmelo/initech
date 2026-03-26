@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -29,9 +30,15 @@ type IPCResponse struct {
 	Data  string `json:"data,omitempty"` // Pane content for peek, pane list for list.
 }
 
-// SocketPath returns the socket path for a project.
-func SocketPath(projectName string) string {
-	return fmt.Sprintf("/tmp/initech-%s.sock", projectName)
+// SocketPath returns the socket path for a project. The socket is placed
+// inside the project's .initech/ directory (not /tmp/) so it is scoped to the
+// project and not world-visible.
+func SocketPath(projectRoot, projectName string) string {
+	if projectRoot == "" {
+		// Fallback for callers that don't have a project root (e.g. tests).
+		return fmt.Sprintf("/tmp/initech-%s.sock", projectName)
+	}
+	return filepath.Join(projectRoot, ".initech", "initech.sock")
 }
 
 // startIPC launches the Unix domain socket server in a goroutine.
@@ -49,13 +56,16 @@ func (t *TUI) startIPC(socketPath string) (cleanup func(), err error) {
 		os.Remove(socketPath)
 	}
 
+	// Ensure the directory exists before binding the socket.
+	os.MkdirAll(filepath.Dir(socketPath), 0700)
+
 	ln, err := net.Listen("unix", socketPath)
 	if err != nil {
 		return nil, fmt.Errorf("listen on %s: %w", socketPath, err)
 	}
 
-	// Make socket world-writable so all agents can connect.
-	os.Chmod(socketPath, 0777)
+	// Restrict socket to owner-only. All agents run as the same user.
+	os.Chmod(socketPath, 0700)
 
 	t.safeGo(func() {
 		for {

@@ -277,7 +277,7 @@ func Run(cfg Config) error {
 	}
 
 	initW, initH := screen.Size()
-	sp := SocketPath(cfg.ProjectName)
+	sp := SocketPath(cfg.ProjectRoot, cfg.ProjectName)
 	t := &TUI{
 		screen:            screen,
 		layoutState:       layoutState,

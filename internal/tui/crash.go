@@ -55,9 +55,9 @@ func crashLog(projectRoot string, version string, panicVal any) string {
 	// Write to .initech/crash.log (best effort).
 	if projectRoot != "" {
 		dir := filepath.Join(projectRoot, ".initech")
-		os.MkdirAll(dir, 0755)
+		os.MkdirAll(dir, 0700)
 		path := filepath.Join(dir, "crash.log")
-		if f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644); err == nil {
+		if f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600); err == nil {
 			f.WriteString(report)
 			f.Close()
 		}

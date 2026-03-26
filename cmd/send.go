@@ -103,7 +103,7 @@ func discoverSocket() (string, *config.Project, error) {
 	if err != nil {
 		return "", nil, fmt.Errorf("load config: %w", err)
 	}
-	sockPath := tui.SocketPath(p.Name)
+	sockPath := tui.SocketPath(p.Root, p.Name)
 	// Probe the socket with a dial instead of stat. A stale socket file
 	// (from a crashed TUI) passes stat but fails to connect.
 	conn, dialErr := net.DialTimeout("unix", sockPath, 500*time.Millisecond)

@@ -28,10 +28,10 @@ func writePIDFile(projectRoot string) func() {
 		return func() {}
 	}
 	dir := filepath.Join(projectRoot, ".initech")
-	os.MkdirAll(dir, 0755)
+	os.MkdirAll(dir, 0700)
 	path := filepath.Join(dir, pidFileName)
 	content := fmt.Sprintf("%d\n", os.Getpid())
-	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+	if err := os.WriteFile(path, []byte(content), 0600); err != nil {
 		LogWarn("pid", "failed to write PID file", "path", path, "err", err)
 		return func() {}
 	}

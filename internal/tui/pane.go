@@ -130,16 +130,17 @@ func NewPane(cfg PaneConfig, rows, cols int) (*Pane, error) {
 		// --continue fails when no prior session exists (first launch,
 		// hot-added agent, deleted session). Build a shell fallback:
 		//   claude --continue ... || claude ...
-		// The shell must stay alive for "||", so we omit the "exec" prefix.
-		cmdStr := strings.Join(cfg.Command, " ")
-		fallbackStr := strings.Join(removeArg(cfg.Command, "--continue"), " ")
-		cmd = exec.Command(shell, "-l", "-c", cmdStr+" || "+fallbackStr)
+		// The "||" operator requires a shell, so we use sh -c here.
+		// Arguments are shell-quoted to prevent injection.
+		primary := shellQuoteArgs(cfg.Command)
+		fallback := shellQuoteArgs(removeArg(cfg.Command, "--continue"))
+		cmd = exec.Command(shell, "-l", "-c", primary+" || "+fallback)
 	} else {
-		// Run via login shell + exec so the terminal gets proper stty
-		// initialization before Claude starts (Claude depends on a
-		// shell-initialized PTY for correct terminal size detection).
-		cmdStr := strings.Join(cfg.Command, " ")
-		cmd = exec.Command(shell, "-l", "-c", "exec "+cmdStr)
+		// Execute directly without a shell. The login shell wrapper (shell -l)
+		// is still used to initialize the PTY environment (stty, $PATH, etc.)
+		// but exec replaces it with the target process, preventing shell injection.
+		quoted := shellQuoteArgs(cfg.Command)
+		cmd = exec.Command(shell, "-l", "-c", "exec "+quoted)
 	}
 	cmd.Env = append(os.Environ(),
 		"TERM=xterm-256color",
@@ -1021,6 +1022,20 @@ func encodePathForClaude(path string) string {
 }
 
 // containsArg returns true if flag appears exactly in args.
+// shellQuoteArgs shell-quotes each element of args and joins them with spaces.
+// Each argument is wrapped in single quotes with any embedded single-quote
+// characters escaped as '"'"', making the result safe to pass to sh -c.
+// This prevents shell injection when user-supplied values appear in args.
+func shellQuoteArgs(args []string) string {
+	quoted := make([]string, len(args))
+	for i, a := range args {
+		// Replace ' with '"'"' (end quote, literal single quote, reopen quote)
+		// then wrap the whole thing in single quotes.
+		quoted[i] = "'" + strings.ReplaceAll(a, "'", "'\"'\"'") + "'"
+	}
+	return strings.Join(quoted, " ")
+}
+
 func containsArg(args []string, flag string) bool {
 	for _, a := range args {
 		if a == flag {
