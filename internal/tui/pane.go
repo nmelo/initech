@@ -41,6 +41,20 @@ func (s ActivityState) String() string {
 	return "unknown"
 }
 
+// JournalEntry represents a parsed JSONL entry from a Claude Code session.
+type JournalEntry struct {
+	Type      string    // "user", "assistant", "progress", "system", "last-prompt", etc.
+	Content   string    // Text content (assistant message, tool output). Capped at 4KB.
+	ToolName  string    // For tool_use/tool_result: which tool was called.
+	ExitCode  int       // For Bash tool results: exit code if available.
+	Timestamp time.Time // When this entry was written.
+}
+
+const (
+	journalRingSize = 20   // Number of recent entries to keep per pane.
+	maxContentLen   = 4096 // Max content bytes per JournalEntry.
+)
+
 // Pane represents a terminal pane backed by a PTY process.
 // It uses a SafeEmulator from charmbracelet/x/vt for terminal emulation.
 type Pane struct {
@@ -57,6 +71,7 @@ type Pane struct {
 	activity      ActivityState // Current state from JSONL tailing.
 	lastJsonlType string       // Last JSONL entry type seen.
 	lastJsonlTime time.Time    // When we last saw a file change.
+	journal       []JournalEntry // Ring buffer of recent JSONL entries (cap journalRingSize).
 	jsonlDir      string       // Directory to search for session JSONL files.
 	sessionDesc   string       // Session description extracted from cursor row.
 	beadID        string       // Current bead ID (e.g., "ini-bhk.3"). Empty = no bead.
@@ -602,6 +617,15 @@ func (p *Pane) SetBead(id, title string) {
 	p.beadTitle = title
 }
 
+// RecentEntries returns a copy of the recent JSONL entries ring buffer.
+func (p *Pane) RecentEntries() []JournalEntry {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	cp := make([]JournalEntry, len(p.journal))
+	copy(cp, p.journal)
+	return cp
+}
+
 // Activity returns the current activity state based on JSONL session tailing.
 func (p *Pane) Activity() ActivityState {
 	p.mu.Lock()
@@ -610,13 +634,14 @@ func (p *Pane) Activity() ActivityState {
 }
 
 // watchJSONL polls for the newest session JSONL file in the pane's project
-// directory and tails the last line to determine activity state.
+// directory, reads new entries incrementally, and updates both the journal
+// ring buffer and the activity state.
 func (p *Pane) watchJSONL() {
 	ticker := time.NewTicker(500 * time.Millisecond)
 	defer ticker.Stop()
 
 	var lastFile string
-	var lastSize int64
+	var lastOffset int64
 
 	for {
 		<-ticker.C
@@ -631,48 +656,68 @@ func (p *Pane) watchJSONL() {
 		// Find the most recently modified .jsonl file in the session dir.
 		file := newestJSONL(p.jsonlDir)
 		if file == "" {
-			continue // No session file yet, stay in starting state.
+			continue
 		}
 
-		// Check if file changed.
+		// File rotation: new file -> reset offset.
+		if file != lastFile {
+			lastFile = file
+			lastOffset = 0
+		}
+
+		// Check file size. Truncation (size < offset) -> reset.
 		info, err := os.Stat(file)
 		if err != nil {
 			continue
 		}
 		size := info.Size()
-		fileChanged := file != lastFile || size != lastSize
-
-		if fileChanged {
-			lastFile = file
-			lastSize = size
-
-			lastType := lastJSONLType(file)
-			if lastType != "" {
-				p.mu.Lock()
-				p.lastJsonlType = lastType
-				p.lastJsonlTime = time.Now()
-				p.mu.Unlock()
-			}
+		if size < lastOffset {
+			lastOffset = 0
+		}
+		if size == lastOffset {
+			// No new data. Still update activity for timeout decay.
+			p.updateActivity()
+			continue
 		}
 
-		// Update activity state (runs every tick, even without file changes,
-		// so the assistant→idle timeout works).
-		p.mu.Lock()
-		switch p.lastJsonlType {
-		case "user", "progress", "assistant":
-			// Running if the JSONL file was recently updated, idle if stale.
-			// Without this timeout, a pane whose last entry is "user" or
-			// "progress" stays stuck in running state forever.
-			if time.Since(p.lastJsonlTime) > 5*time.Second {
-				p.activity = StateIdle
-			} else {
-				p.activity = StateRunning
+		// Read new entries from offset.
+		entries, newOffset := recentJSONLEntries(file, lastOffset)
+		lastOffset = newOffset
+
+		if len(entries) > 0 {
+			p.mu.Lock()
+			// Append to ring buffer.
+			for _, e := range entries {
+				if len(p.journal) >= journalRingSize {
+					p.journal = p.journal[1:]
+				}
+				p.journal = append(p.journal, e)
 			}
-		default:
-			// last-prompt, system, agent-color, agent-name, etc. = idle.
+			// Update last type/time from the newest entry.
+			last := entries[len(entries)-1]
+			p.lastJsonlType = last.Type
+			p.lastJsonlTime = time.Now()
+			p.mu.Unlock()
+		}
+
+		p.updateActivity()
+	}
+}
+
+// updateActivity derives the activity state from the last JSONL entry type
+// and the time since the last file change. Runs every tick for timeout decay.
+func (p *Pane) updateActivity() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	switch p.lastJsonlType {
+	case "user", "progress", "assistant":
+		if time.Since(p.lastJsonlTime) > 5*time.Second {
 			p.activity = StateIdle
+		} else {
+			p.activity = StateRunning
 		}
-		p.mu.Unlock()
+	default:
+		p.activity = StateIdle
 	}
 }
 
@@ -701,58 +746,118 @@ func newestJSONL(dir string) string {
 	return newest
 }
 
-// lastJSONLType reads the last line of a JSONL file and returns its "type" field.
-// Reads backward from the end in progressively larger chunks to handle
-// large JSONL entries (e.g., tool-use results > 8KB).
-func lastJSONLType(path string) string {
+// recentJSONLEntries reads new JSONL entries from the given file starting at
+// sinceOffset. Returns parsed entries and the new file offset. Handles partial
+// lines at the boundary by only consuming complete lines.
+func recentJSONLEntries(path string, sinceOffset int64) ([]JournalEntry, int64) {
 	f, err := os.Open(path)
 	if err != nil {
-		return ""
+		return nil, sinceOffset
 	}
 	defer f.Close()
 
-	info, err := f.Stat()
-	if err != nil {
-		return ""
-	}
-	size := info.Size()
-	if size == 0 {
-		return ""
+	if sinceOffset > 0 {
+		if _, err := f.Seek(sinceOffset, 0); err != nil {
+			return nil, sinceOffset
+		}
 	}
 
-	// Try progressively larger windows from the end.
-	for _, windowSize := range []int64{8192, 32768, 131072} {
-		readSize := windowSize
-		if readSize > size {
-			readSize = size
-		}
-		f.Seek(size-readSize, 0)
+	var entries []JournalEntry
+	scanner := bufio.NewScanner(f)
+	scanner.Buffer(make([]byte, 256*1024), 256*1024)
+	bytesRead := sinceOffset
 
-		var lastLine string
-		scanner := bufio.NewScanner(f)
-		scanner.Buffer(make([]byte, 256*1024), 256*1024)
-		for scanner.Scan() {
-			line := scanner.Text()
-			if strings.TrimSpace(line) != "" {
-				lastLine = line
-			}
-		}
-		if lastLine == "" {
+	for scanner.Scan() {
+		line := scanner.Text()
+		bytesRead += int64(len(scanner.Bytes())) + 1 // +1 for newline
+
+		if strings.TrimSpace(line) == "" {
 			continue
 		}
 
-		var entry struct {
-			Type string `json:"type"`
-		}
-		if json.Unmarshal([]byte(lastLine), &entry) == nil && entry.Type != "" {
-			return entry.Type
-		}
-		// The last line didn't parse (truncated mid-entry). Try a larger window.
-		if readSize >= size {
-			break // Already read the whole file, nothing more to try.
+		entry := parseJSONLEntry(line)
+		if entry.Type != "" {
+			entries = append(entries, entry)
 		}
 	}
-	return ""
+
+	return entries, bytesRead
+}
+
+// parseJSONLEntry parses a single JSONL line into a JournalEntry.
+// Extracts type, content, tool name, and exit code from the nested structure.
+func parseJSONLEntry(line string) JournalEntry {
+	var raw struct {
+		Type      string `json:"type"`
+		Timestamp string `json:"timestamp"`
+		Message   struct {
+			Content json.RawMessage `json:"content"`
+		} `json:"message"`
+	}
+	if json.Unmarshal([]byte(line), &raw) != nil {
+		return JournalEntry{}
+	}
+
+	entry := JournalEntry{Type: raw.Type}
+	if raw.Timestamp != "" {
+		entry.Timestamp, _ = time.Parse(time.RFC3339Nano, raw.Timestamp)
+	}
+
+	// Parse content array for assistant messages (text blocks, tool_use).
+	if len(raw.Message.Content) > 0 {
+		var blocks []struct {
+			Type  string `json:"type"`
+			Text  string `json:"text"`
+			Name  string `json:"name"`
+			Input struct {
+				Command string `json:"command"`
+			} `json:"input"`
+			Content []struct {
+				Type     string `json:"type"`
+				Text     string `json:"text"`
+				ExitCode *int   `json:"exit_code"`
+			} `json:"content"`
+		}
+		if json.Unmarshal(raw.Message.Content, &blocks) == nil {
+			for _, b := range blocks {
+				switch b.Type {
+				case "text":
+					entry.Content = truncateContent(b.Text)
+				case "tool_use":
+					entry.ToolName = b.Name
+					if b.Input.Command != "" {
+						entry.Content = truncateContent(b.Input.Command)
+					}
+				case "tool_result":
+					for _, c := range b.Content {
+						if c.Type == "text" {
+							entry.Content = truncateContent(c.Text)
+						}
+						if c.ExitCode != nil {
+							entry.ExitCode = *c.ExitCode
+						}
+					}
+				}
+			}
+		} else {
+			// Content might be a plain string (user messages).
+			var text string
+			if json.Unmarshal(raw.Message.Content, &text) == nil {
+				entry.Content = truncateContent(text)
+			}
+		}
+	}
+
+	return entry
+}
+
+// truncateContent caps a string at maxContentLen bytes to prevent memory bloat
+// in the ring buffer.
+func truncateContent(s string) string {
+	if len(s) > maxContentLen {
+		return s[:maxContentLen] + "...[truncated]"
+	}
+	return s
 }
 
 // encodePathForClaude converts an absolute path to Claude's directory encoding

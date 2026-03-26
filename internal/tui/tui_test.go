@@ -151,9 +151,9 @@ func TestNewestJSONL_BadDir(t *testing.T) {
 	}
 }
 
-// ── lastJSONLType ────────────────────────────────────────────────────
+// ── recentJSONLEntries ───────────────────────────────────────────────
 
-func TestLastJSONLType(t *testing.T) {
+func TestRecentJSONLEntries_LastType(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "session.jsonl")
 
@@ -171,16 +171,22 @@ func TestLastJSONLType(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			os.WriteFile(path, []byte(tt.content), 0644)
-			if got := lastJSONLType(path); got != tt.want {
+			entries, _ := recentJSONLEntries(path, 0)
+			got := ""
+			if len(entries) > 0 {
+				got = entries[len(entries)-1].Type
+			}
+			if got != tt.want {
 				t.Errorf("got %q, want %q", got, tt.want)
 			}
 		})
 	}
 }
 
-func TestLastJSONLType_MissingFile(t *testing.T) {
-	if got := lastJSONLType("/nonexistent/file.jsonl"); got != "" {
-		t.Errorf("missing file: got %q, want empty", got)
+func TestRecentJSONLEntries_MissingFile(t *testing.T) {
+	entries, offset := recentJSONLEntries("/nonexistent/file.jsonl", 0)
+	if len(entries) != 0 || offset != 0 {
+		t.Errorf("missing file: got %d entries offset %d, want 0/0", len(entries), offset)
 	}
 }
 
