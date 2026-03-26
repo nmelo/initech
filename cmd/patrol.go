@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/nmelo/initech/internal/color"
 	"github.com/nmelo/initech/internal/tui"
 	"github.com/spf13/cobra"
 )
@@ -35,6 +36,20 @@ func init() {
 	patrolCmd.Flags().BoolVar(&patrolActive, "active", false, "Skip idle agents with no content")
 	patrolCmd.Flags().StringArrayVar(&patrolAgents, "agent", nil, "Filter to specific agent(s)")
 	rootCmd.AddCommand(patrolCmd)
+}
+
+// patrolStatusColor applies color to agent activity strings in patrol headers.
+func patrolStatusColor(s string) string {
+	switch {
+	case s == "running":
+		return color.Green(s)
+	case strings.HasPrefix(s, "stalled"):
+		return color.Yellow(s)
+	case s == "dead":
+		return color.Red(s)
+	default:
+		return color.Dim(s)
+	}
 }
 
 func runPatrol(cmd *cobra.Command, args []string) error {
@@ -83,20 +98,21 @@ func runPatrol(cmd *cobra.Command, args []string) error {
 			continue
 		}
 
-		// Header line.
-		header := e.Name + " (" + e.Activity
+		// Header line: agent name blue+bold, status colored by severity, bead ID blue.
+		activityColored := patrolStatusColor(e.Activity)
+		headerInner := color.BlueBold(e.Name) + " (" + activityColored
 		if e.Bead != "" {
-			header += " | " + e.Bead
+			headerInner += " | " + color.Blue(e.Bead)
 		}
 		if !e.Alive {
-			header += " | dead"
+			headerInner += " | " + color.Red("dead")
 		}
-		header += ")"
-		fmt.Printf("=== %s ===\n", header)
+		headerInner += ")"
+		fmt.Printf("=== %s ===\n", headerInner)
 
-		// Content.
+		// Content: pass through raw (agent output may contain its own ANSI codes).
 		if content == "" {
-			fmt.Println("[no recent output]")
+			fmt.Println(color.Dim("[no recent output]"))
 		} else {
 			fmt.Println(content)
 		}

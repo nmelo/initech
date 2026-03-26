@@ -5,6 +5,7 @@ import (
 	"os/exec"
 	"strings"
 
+	"github.com/nmelo/initech/internal/color"
 	"github.com/spf13/cobra"
 )
 
@@ -67,7 +68,16 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 			version = "-"
 		}
 
-		fmt.Fprintf(out, "  %-14s %-8s %-40s %s\n", p.Name, version, path, status)
+		statusStr := color.Green(status)
+		if status == "MISSING" {
+			statusStr = color.RedBold(status)
+		}
+		fmt.Fprintf(out, "  %s %s %s %s\n",
+			color.Pad(color.Blue(p.Name), 14),
+			color.Pad(color.Dim(version), 8),
+			color.Pad(color.Dim(path), 40),
+			statusStr,
+		)
 	}
 
 	fmt.Fprintln(out)
@@ -83,7 +93,7 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 			hints[m.InstallHint] = append(hints[m.InstallHint], m.Name)
 		}
 
-		fmt.Fprintf(out, "%d issue(s) found:\n\n", len(missing))
+		fmt.Fprintf(out, "%s\n\n", color.YellowBold(fmt.Sprintf("%d issue(s) found:", len(missing))))
 		for _, hint := range hintOrder {
 			names := hints[hint]
 			fmt.Fprintf(out, "  %s: %s\n", strings.Join(names, ", "), hint)
@@ -94,7 +104,7 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("required prerequisites missing")
 		}
 	} else {
-		fmt.Fprintln(out, "All prerequisites satisfied. Run 'initech init' in a project directory to get started.")
+		fmt.Fprintln(out, color.GreenBold("All prerequisites satisfied.")+" Run 'initech init' in a project directory to get started.")
 	}
 
 	return nil

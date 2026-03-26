@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/nmelo/initech/internal/color"
 	"github.com/nmelo/initech/internal/config"
 	iexec "github.com/nmelo/initech/internal/exec"
 	"github.com/spf13/cobra"
@@ -58,7 +59,7 @@ func runStandup(cmd *cobra.Command, args []string) error {
 	today := time.Now().Format("2006-01-02")
 	yesterday := time.Now().AddDate(0, 0, -1).Format("2006-01-02")
 
-	fmt.Fprintf(out, "\n## %s Daily - %s\n", p.Name, today)
+	fmt.Fprintf(out, "\n%s Daily - %s\n", color.Bold("## "+p.Name), today)
 
 	// Recently shipped (closed since yesterday)
 	shipped := queryBeads(runner, "list", "--status", "closed", "--json")
@@ -70,7 +71,7 @@ func runStandup(cmd *cobra.Command, args []string) error {
 	}
 	_ = yesterday // used conceptually for "recent" framing
 
-	fmt.Fprintln(out, "\n### What's New")
+	fmt.Fprintln(out, "\n"+color.Bold("### What's New"))
 	if len(recentlyShipped) == 0 {
 		fmt.Fprintln(out, "- (none)")
 	} else {
@@ -79,7 +80,7 @@ func runStandup(cmd *cobra.Command, args []string) error {
 			limit = len(recentlyShipped)
 		}
 		for _, b := range recentlyShipped[:limit] {
-			fmt.Fprintf(out, "- %s: %s (shipped)\n", b.ID, b.Title)
+			fmt.Fprintf(out, "- %s: %s %s\n", color.Blue(b.ID), b.Title, color.Green("(shipped)"))
 		}
 		if len(recentlyShipped) > 10 {
 			fmt.Fprintf(out, "- ... and %d more\n", len(recentlyShipped)-10)
@@ -88,7 +89,7 @@ func runStandup(cmd *cobra.Command, args []string) error {
 
 	// In progress
 	active := queryBeads(runner, "list", "--status", "in_progress", "--json")
-	fmt.Fprintln(out, "\n### In Progress")
+	fmt.Fprintln(out, "\n"+color.Bold("### In Progress"))
 	if len(active) == 0 {
 		fmt.Fprintln(out, "- (none)")
 	} else {
@@ -97,13 +98,13 @@ func runStandup(cmd *cobra.Command, args []string) error {
 			if assignee == "" {
 				assignee = "unassigned"
 			}
-			fmt.Fprintf(out, "- %s: %s (%s)\n", b.ID, b.Title, assignee)
+			fmt.Fprintf(out, "- %s: %s (%s)\n", color.Blue(b.ID), b.Title, color.Blue(assignee))
 		}
 	}
 
 	// Next up (ready beads)
 	ready := queryBeads(runner, "ready", "--json")
-	fmt.Fprintln(out, "\n### Next Up")
+	fmt.Fprintln(out, "\n"+color.Bold("### Next Up"))
 	if len(ready) == 0 {
 		fmt.Fprintln(out, "- (none)")
 	} else {
@@ -112,7 +113,7 @@ func runStandup(cmd *cobra.Command, args []string) error {
 			limit = len(ready)
 		}
 		for _, b := range ready[:limit] {
-			fmt.Fprintf(out, "- %s: %s\n", b.ID, b.Title)
+			fmt.Fprintf(out, "- %s: %s\n", color.Blue(b.ID), b.Title)
 		}
 		if len(ready) > 5 {
 			fmt.Fprintf(out, "- ... and %d more ready\n", len(ready)-5)

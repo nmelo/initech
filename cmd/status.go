@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/nmelo/initech/internal/color"
 	iexec "github.com/nmelo/initech/internal/exec"
 	"github.com/nmelo/initech/internal/tui"
 	"github.com/spf13/cobra"
@@ -78,21 +79,28 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		header += fmt.Sprintf(", %d stopped", stopped)
 	}
 	header += ")"
-	fmt.Fprintf(out, "\n%s\n\n", header)
+	fmt.Fprintf(out, "\n%s\n\n", color.Bold(header))
 
-	fmt.Fprintf(out, "  %-10s %-8s %-38s %-16s\n", "Role", "Alive", "Bead", "Status")
+	// Header row: cyan, padded before coloring so alignment holds.
+	fmt.Fprintf(out, "  %s %s %s %s\n",
+		color.Pad(color.Cyan("Role"), 10),
+		color.Pad(color.Cyan("Alive"), 8),
+		color.Pad(color.Cyan("Bead"), 38),
+		color.Cyan("Status"),
+	)
+
 	for _, pi := range panes {
-		alive := "yes"
+		alive := color.Green("yes")
 		if !pi.Alive {
-			alive = "no"
+			alive = color.Red("no")
 		}
 		bead := "-"
-		status := pi.Activity
+		status := statusColor(pi.Activity)
 		if !pi.Alive {
-			status = "stopped"
+			status = statusColor("stopped")
 		}
 		if !pi.Visible {
-			status += " [hidden]"
+			status += " " + color.Dim("[hidden]")
 		}
 
 		if b, ok := beadMap[pi.Name]; ok {
@@ -100,17 +108,40 @@ func runStatus(cmd *cobra.Command, args []string) error {
 			if len(title) > 30 {
 				title = title[:27] + "..."
 			}
-			bead = fmt.Sprintf("%s (%s)", b.ID, title)
+			bead = fmt.Sprintf("%s %s", color.Blue(b.ID), color.Dim("("+title+")"))
 			if pi.Alive {
-				status = b.Status
+				status = statusColor(b.Status)
 			}
 		}
 
-		fmt.Fprintf(out, "  %-10s %-8s %-38s %-16s\n", pi.Name, alive, bead, status)
+		fmt.Fprintf(out, "  %s %s %s %s\n",
+			color.Pad(color.Blue(pi.Name), 10),
+			color.Pad(alive, 8),
+			color.Pad(bead, 38),
+			status,
+		)
 	}
 	fmt.Fprintln(out)
 
 	return nil
+}
+
+// statusColor applies a color to a bead/agent status string based on its value.
+func statusColor(s string) string {
+	switch {
+	case s == "running" || s == "in_progress" || s == "qa_passed":
+		return color.Green(s)
+	case s == "idle" || s == "stopped":
+		return color.Dim(s)
+	case strings.HasPrefix(s, "stalled"):
+		return color.Yellow(s)
+	case s == "dead":
+		return color.Red(s)
+	case s == "stuck":
+		return color.RedBold(s)
+	default:
+		return s
+	}
 }
 
 func getBeadAssignments(runner iexec.Runner) map[string]beadInfo {

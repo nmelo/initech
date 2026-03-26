@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/nmelo/initech/internal/color"
 	"github.com/nmelo/initech/internal/config"
 	"github.com/nmelo/initech/internal/roles"
 	"github.com/nmelo/initech/internal/tui"
@@ -19,6 +20,7 @@ var Version = "dev"
 var (
 	resetLayout bool
 	verbose     bool
+	noColor     bool
 )
 
 var rootCmd = &cobra.Command{
@@ -50,6 +52,12 @@ Commands (via ` + "`" + ` modal):
   main             Main + stacked layout
   layout reset     Reset layout to auto-calculated defaults
   quit             Exit`,
+	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+		if noColor {
+			color.SetEnabled(false)
+		}
+		return nil
+	},
 	RunE: runTUI,
 }
 
@@ -64,8 +72,63 @@ func Execute() {
 func init() {
 	rootCmd.Flags().BoolVar(&resetLayout, "reset-layout", false, "Ignore saved layout and start with auto-calculated defaults")
 	rootCmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Enable DEBUG-level logging to .initech/initech.log")
+	rootCmd.PersistentFlags().BoolVar(&noColor, "no-color", false, "Disable colored output")
+
+	// Register color functions as template functions so the usage template can
+	// apply color to evaluated template expressions like .Name.
+	cobra.AddTemplateFunc("cyanBold", color.CyanBold)
+	cobra.AddTemplateFunc("blue", color.Blue)
+
+	rootCmd.SetUsageTemplate(colorizedUsageTemplate)
 	rootCmd.AddCommand(versionCmd)
 }
+
+// colorizedUsageTemplate is a Cobra usage template that applies color to
+// section headers (cyan+bold) and subcommand names (blue). It is a modified
+// version of Cobra's built-in default template.
+const colorizedUsageTemplate = `{{cyanBold "Usage:"}}
+{{- if .Runnable}}
+  {{.UseLine}}
+{{end}}
+{{- if .HasAvailableSubCommands}}
+  {{.CommandPath}} [command]
+{{end}}
+{{- if gt (len .Aliases) 0}}
+
+{{cyanBold "Aliases:"}}
+  {{.NameAndAliases}}
+{{end}}
+{{- if .HasExample}}
+
+{{cyanBold "Examples:"}}
+{{.Example}}
+{{end}}
+{{- if .HasAvailableSubCommands}}
+
+{{cyanBold "Available Commands:"}}
+{{range .Commands}}{{if (or .IsAvailableCommand (eq .Name "help"))}}  {{.Name | printf "%-15s" | blue}}{{.Short}}
+{{end}}{{end}}
+{{- end}}
+{{- if .HasAvailableLocalFlags}}
+
+{{cyanBold "Flags:"}}
+{{.LocalFlags.FlagUsages | trimRightSpace}}
+{{end}}
+{{- if .HasAvailableInheritedFlags}}
+
+{{cyanBold "Global Flags:"}}
+{{.InheritedFlags.FlagUsages | trimRightSpace}}
+{{end}}
+{{- if .HasHelpSubCommands}}
+
+{{cyanBold "Additional help topics:"}}
+{{range .Commands}}{{if .IsAdditionalHelpTopicCommand}}  {{.CommandPath | rpad .CommandPath .CommandPathPadding}} {{.Short}}
+{{end}}{{end}}
+{{end}}
+{{- if .HasAvailableSubCommands}}
+
+Use "{{.CommandPath}} [command] --help" for more information about a command.
+{{end}}`
 
 var versionCmd = &cobra.Command{
 	Use:   "version",
