@@ -58,7 +58,8 @@ func TestQARunSelector_EmptyItemsReturnsNil(t *testing.T) {
 	}
 }
 
-// buildDisplayRows inserts a header whenever Group changes.
+// buildDisplayRows inserts a header whenever Group changes, and always
+// appends a rowCustomInput row at the end.
 func TestQABuildDisplayRows_GroupHeaderInsertion(t *testing.T) {
 	items := []SelectorItem{
 		{Name: "super", Group: "COORDINATORS"},
@@ -66,9 +67,9 @@ func TestQABuildDisplayRows_GroupHeaderInsertion(t *testing.T) {
 		{Name: "eng2", Group: "ENGINEERS"},
 	}
 	rows := buildDisplayRows(items)
-	// Expected: header(COORD), item(0), header(ENG), item(1), item(2) = 5
-	if len(rows) != 5 {
-		t.Fatalf("len(rows) = %d, want 5", len(rows))
+	// Expected: header(COORD), item(0), header(ENG), item(1), item(2), customInput = 6
+	if len(rows) != 6 {
+		t.Fatalf("len(rows) = %d, want 6 (5 content rows + 1 custom-input row)", len(rows))
 	}
 	if rows[0].kind != rowHeader || rows[0].group != "COORDINATORS" {
 		t.Errorf("rows[0] should be COORDINATORS header, got %+v", rows[0])
@@ -76,46 +77,56 @@ func TestQABuildDisplayRows_GroupHeaderInsertion(t *testing.T) {
 	if rows[2].kind != rowHeader || rows[2].group != "ENGINEERS" {
 		t.Errorf("rows[2] should be ENGINEERS header, got %+v", rows[2])
 	}
+	if rows[len(rows)-1].kind != rowCustomInput {
+		t.Errorf("last row should be rowCustomInput, got %+v", rows[len(rows)-1])
+	}
 }
 
-// Items with empty Group get no header row.
+// Items with empty Group get no header row, but still get the custom-input row.
 func TestQABuildDisplayRows_EmptyGroupNoHeader(t *testing.T) {
 	items := []SelectorItem{{Name: "a"}, {Name: "b"}}
 	rows := buildDisplayRows(items)
-	if len(rows) != 2 {
-		t.Fatalf("len(rows) = %d, want 2", len(rows))
+	// 2 item rows + 1 custom-input row = 3
+	if len(rows) != 3 {
+		t.Fatalf("len(rows) = %d, want 3 (2 items + 1 custom-input)", len(rows))
 	}
-	for _, r := range rows {
+	for _, r := range rows[:len(rows)-1] {
 		if r.kind == rowHeader {
 			t.Error("no header expected for empty Group")
 		}
 	}
 }
 
-// moveCursor wraps at both ends.
+// moveCursor routes through the custom row when wrapping at the ends.
+// last-item + forward → custom row; custom-row + backward → last item.
 func TestQAMoveCursor_Wrapping(t *testing.T) {
-	s := newTestSelector(3)
-	s.cursor = 2
-	moveCursor(s, 1) // forward wrap
-	if s.cursor != 0 {
-		t.Errorf("forward wrap: cursor = %d, want 0", s.cursor)
+	s := newTestSelector(3) // 3 items, cursor starts at 0
+	s.cursor = 2            // position at last item
+
+	moveCursor(s, 1) // from last item forward → enters custom row
+	if !s.onCustomRow {
+		t.Error("forward from last item should set onCustomRow=true")
 	}
-	moveCursor(s, -1) // backward wrap
+
+	moveCursor(s, -1) // from custom row backward → returns to last item
+	if s.onCustomRow {
+		t.Error("backward from custom row should clear onCustomRow")
+	}
 	if s.cursor != 2 {
-		t.Errorf("backward wrap: cursor = %d, want 2", s.cursor)
+		t.Errorf("backward from custom row: cursor = %d, want 2 (last item)", s.cursor)
 	}
 }
 
-// contentHeight enforces minimum of 1.
+// contentHeight enforces minimum of 1 and uses overhead of 9.
 func TestQAContentHeight_Minimum(t *testing.T) {
-	for _, h := range []int{1, 5, 8} {
+	for _, h := range []int{1, 5, 9} {
 		got := contentHeight(h)
 		if got < 1 {
 			t.Errorf("contentHeight(%d) = %d, want >= 1", h, got)
 		}
 	}
-	if got := contentHeight(24); got != 16 {
-		t.Errorf("contentHeight(24) = %d, want 16", got)
+	if got := contentHeight(24); got != 15 {
+		t.Errorf("contentHeight(24) = %d, want 15 (24-9)", got)
 	}
 }
 
