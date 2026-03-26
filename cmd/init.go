@@ -180,13 +180,24 @@ func interactiveSetup(wd string) (*config.Project, error) {
 	name := prompt(reader, "Project name", dirName)
 	root := prompt(reader, "Project root", wd)
 	repoURL := prompt(reader, "Code repo URL", "")
-	rolesStr := prompt(reader, "Roles", "super,pm,eng1,eng2,qa1,qa2,shipper")
-	prefix := prompt(reader, "Beads prefix", name[:min(3, len(name))])
 
-	roleList := strings.Split(rolesStr, ",")
-	for i := range roleList {
-		roleList[i] = strings.TrimSpace(roleList[i])
+	// Role selection: interactive checkbox UI. Loop until at least one role is
+	// chosen (Esc/Ctrl+C aborts the whole init).
+	items := buildSelectorItems()
+	var roleList []string
+	for {
+		selected, err := roles.RunSelector("Select agents for "+name, items)
+		if err != nil {
+			return nil, fmt.Errorf("role selection cancelled")
+		}
+		if len(selected) > 0 {
+			roleList = selected
+			break
+		}
+		fmt.Fprintln(os.Stderr, "Error: at least one role is required.")
 	}
+
+	prefix := prompt(reader, "Beads prefix", name[:min(3, len(name))])
 
 	p := &config.Project{
 		Name:  name,
@@ -201,6 +212,65 @@ func interactiveSetup(wd string) (*config.Project, error) {
 	}
 
 	return p, nil
+}
+
+// roleSpec defines the display properties of one role in the selector.
+type roleSpec struct {
+	name  string
+	group string
+	desc  string
+}
+
+// selectorOrder defines the grouped display order for the role selector.
+// Items appear in this order; group headers are inserted automatically when
+// the group field changes.
+var selectorOrder = []roleSpec{
+	{"super",   "COORDINATORS", "Coordinator/dispatcher"},
+	{"pm",      "PRODUCT",      "Product manager"},
+	{"pmm",     "PRODUCT",      "Product marketing manager"},
+	{"arch",    "PRODUCT",      "Architect"},
+	{"eng1",    "ENGINEERS",    "Engineer"},
+	{"eng2",    "ENGINEERS",    "Engineer"},
+	{"eng3",    "ENGINEERS",    "Engineer"},
+	{"qa1",     "QA",           "QA tester"},
+	{"qa2",     "QA",           "QA tester"},
+	{"shipper", "OPERATIONS",   "Release manager"},
+	{"sec",     "OPERATIONS",   "Security reviewer"},
+	{"ops",     "OPERATIONS",   "Operations/UX tester"},
+	{"writer",  "OPERATIONS",   "Technical writer"},
+	{"growth",  "OPERATIONS",   "Growth engineer"},
+}
+
+// standardPreset is the set of roles pre-checked in the selector by default.
+// Matches the current default team: 7 agents covering the full dev loop.
+var standardPreset = map[string]bool{
+	"super": true, "pm": true,
+	"eng1": true, "eng2": true,
+	"qa1": true, "qa2": true,
+	"shipper": true,
+}
+
+// buildSelectorItems constructs the []SelectorItem list for RunSelector from
+// the static role order, deriving Tags from the roles catalog.
+func buildSelectorItems() []roles.SelectorItem {
+	items := make([]roles.SelectorItem, len(selectorOrder))
+	for i, spec := range selectorOrder {
+		def := roles.LookupRole(spec.name)
+		tag := ""
+		if def.Permission == roles.Supervised {
+			tag = "supervised"
+		} else if def.NeedsSrc {
+			tag = "needs src"
+		}
+		items[i] = roles.SelectorItem{
+			Name:        spec.name,
+			Description: spec.desc,
+			Group:       spec.group,
+			Tag:         tag,
+			Checked:     standardPreset[spec.name],
+		}
+	}
+	return items
 }
 
 func prompt(reader *bufio.Reader, label, defaultVal string) string {
