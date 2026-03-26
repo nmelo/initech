@@ -195,6 +195,12 @@ func DefaultConfig() Config {
 
 // Run starts the TUI event loop. Blocks until the user quits.
 func Run(cfg Config) error {
+	// Redirect stderr to .initech/stderr.log BEFORE screen.Init() puts the
+	// terminal in raw mode. This captures cgo/native crash stack traces that
+	// would otherwise be lost in the garbled terminal buffer.
+	stderrCleanup := redirectStderr(cfg.ProjectRoot)
+	defer stderrCleanup()
+
 	screen, err := tcell.NewScreen()
 	if err != nil {
 		return fmt.Errorf("create screen: %w", err)
@@ -213,7 +219,21 @@ func Run(cfg Config) error {
 	}
 	logCleanup := InitLogger(cfg.ProjectRoot, logLevel)
 	defer logCleanup()
-	LogInfo("tui", "starting", "version", cfg.Version, "agents", len(cfg.Agents), "verbose", cfg.Verbose)
+
+	// Check for unclean exit from a previous run before logging the start
+	// message, so the warning appears immediately before the new-session header.
+	checkPreviousCrash(cfg.ProjectRoot)
+
+	LogInfo("tui", "starting", "version", cfg.Version, "pid", os.Getpid(), "agents", len(cfg.Agents), "verbose", cfg.Verbose)
+
+	// Write PID file. The deferred remove fires only on clean exits; an absent
+	// cleanup at startup means the previous run exited uncleanly.
+	pidCleanup := writePIDFile(cfg.ProjectRoot)
+	defer pidCleanup()
+
+	// Deferred exit log: fires on any return from Run() that is not os.Exit().
+	// Covers normal quit and error returns. Signals and panics log themselves.
+	defer LogInfo("tui", "exiting", "pid", os.Getpid())
 
 	// Panic recovery: restore terminal and write crash log before exiting.
 	defer func() {
@@ -225,6 +245,13 @@ func Run(cfg Config) error {
 			os.Exit(1)
 		}
 	}()
+
+	// Install OS signal handlers. Must happen after screen.Init() so we have
+	// a valid screen to Fini() on signal receipt. quitCh is created now so
+	// it can be passed to both the signal handler and the TUI struct below.
+	quitCh := make(chan struct{})
+	sigCleanup := installSignalHandlers(screen, quitCh)
+	defer sigCleanup()
 
 	// Build layout state from config.
 	agentNames := make([]string, len(cfg.Agents))
@@ -260,7 +287,7 @@ func Run(cfg Config) error {
 		version:           cfg.Version,
 		sockPath:          sp,
 		paneConfigBuilder: cfg.PaneConfigBuilder,
-		quitCh:            make(chan struct{}),
+		quitCh:            quitCh,
 		agentEvents:       make(chan AgentEvent, 64),
 	}
 
