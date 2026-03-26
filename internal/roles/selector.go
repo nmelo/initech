@@ -98,16 +98,19 @@ func RunSelector(title string, items []SelectorItem) ([]string, error) {
 
 	// Key events from a reader goroutine so the main loop can also select on
 	// resize signals.
-	keyCh := make(chan keyType, 4)
+	keyCh := make(chan keyPress, 4)
 	go func() {
 		defer close(keyCh)
 		for {
-			k, err := nextKey(tty)
+			kp, err := nextKey(tty)
 			if err != nil {
 				return
 			}
-			keyCh <- k
-			if k == keyEnter || k == keyEscape || k == keyCtrlC {
+			keyCh <- kp
+			// Stop on Escape/Ctrl+C. Do not stop on Enter: when the cursor
+			// is on the custom-role row, Enter adds a role rather than
+			// confirming, so RunSelector must continue.
+			if kp.kind == keyEscape || kp.kind == keyCtrlC {
 				return
 			}
 		}
@@ -129,19 +132,58 @@ func RunSelector(title string, items []SelectorItem) ([]string, error) {
 				fmt.Fprint(tty, sAnsiClearScr)
 				return nil, ErrCancelled
 			}
-			switch k {
+			// Any keypress clears the inline validation error.
+			s.customErr = ""
+
+			switch k.kind {
 			case keyUp:
 				moveCursor(s, -1)
 			case keyDown:
 				moveCursor(s, 1)
 			case keySpace:
-				s.items[s.cursor].Checked = !s.items[s.cursor].Checked
+				// Space toggles items. On the custom row it is ignored
+				// (role names must be single words; spaces are not allowed).
+				if !s.onCustomRow {
+					s.items[s.cursor].Checked = !s.items[s.cursor].Checked
+				}
 			case keyEnter:
-				fmt.Fprint(tty, sAnsiClearScr)
-				return selectedNames(s.items), nil
+				if s.onCustomRow && s.customInput != "" {
+					// Non-empty custom input: attempt to add the role.
+					if errMsg := addCustomRole(s, s.customInput); errMsg != "" {
+						s.customErr = errMsg
+					}
+					// Stay in the selector regardless of success/failure.
+				} else {
+					// Confirm selection (also handles empty custom input).
+					fmt.Fprint(tty, sAnsiClearScr)
+					return selectedNames(s.items), nil
+				}
 			case keyEscape, keyCtrlC:
 				fmt.Fprint(tty, sAnsiClearScr)
 				return nil, ErrCancelled
+			case keyBackspace:
+				if s.onCustomRow && len(s.customInput) > 0 {
+					runes := []rune(s.customInput)
+					s.customInput = string(runes[:len(runes)-1])
+				}
+			case keyChar:
+				if s.onCustomRow {
+					s.customInput += string(rune(k.ch))
+				} else {
+					// Preset hotkeys (only active when not on the custom row).
+					switch k.ch {
+					case 's':
+						applyPreset(s, "small")
+					case 'm':
+						applyPreset(s, "standard")
+					case 'f':
+						applyPreset(s, "full")
+					case 'a':
+						applyPreset(s, "all")
+					case 'n':
+						applyPreset(s, "none")
+					}
+				}
 			}
 		case <-sigwinch:
 			s.termW, s.termH, _ = term.GetSize(fd)
@@ -159,12 +201,14 @@ func RunSelector(title string, items []SelectorItem) ([]string, error) {
 
 // ── Display row model ─────────────────────────────────────────────────
 
-// displayRowKind differentiates group headers from selectable items.
+// displayRowKind differentiates group headers, selectable items, and the
+// custom role entry row.
 type displayRowKind int
 
 const (
-	rowHeader displayRowKind = iota
-	rowItem
+	rowHeader      displayRowKind = iota
+	rowItem                        // a selectable role item
+	rowCustomInput                 // the "Add custom role" entry at the bottom
 )
 
 // displayRow represents one visual line in the selector: a group header or a
@@ -180,15 +224,21 @@ type selectorState struct {
 	title  string
 	items  []SelectorItem
 	rows   []displayRow // flattened: group header rows interleaved with item rows
-	cursor int          // index into items[]; always a selectable item
+	cursor int          // index into items[]; ignored when onCustomRow
 	scroll int          // first visible display-row index
 	termW  int
 	termH  int
+
+	// Custom role entry state.
+	onCustomRow bool   // cursor is on the "Add custom role" row
+	customInput string // text being typed for the new role name
+	customErr   string // validation error shown next to the input
 }
 
 // buildDisplayRows produces a flat display-row list from items, inserting a
 // group header row whenever the Group field changes. Items with an empty Group
-// are emitted without a header.
+// are emitted without a header. A rowCustomInput row is always appended at
+// the end so the user can add custom roles.
 func buildDisplayRows(items []SelectorItem) []displayRow {
 	var rows []displayRow
 	var lastGroup string
@@ -201,6 +251,8 @@ func buildDisplayRows(items []SelectorItem) []displayRow {
 		}
 		rows = append(rows, displayRow{kind: rowItem, itemIdx: i})
 	}
+	// Always end with the custom role entry row.
+	rows = append(rows, displayRow{kind: rowCustomInput})
 	return rows
 }
 
@@ -218,31 +270,50 @@ func itemDisplayRow(rows []displayRow, itemIdx int) int {
 // contentHeight returns the number of scrollable content rows available for
 // the item list given the terminal height.
 //
-// Fixed overhead (8 rows):
+// Fixed overhead (9 rows):
 //
 //	row 0: title
 //	row 1: blank
-//	row 2: hint
-//	row 3: blank
-//	row 4: "^ more above" indicator (or blank)
-//	row N+5: "v more below" indicator (or blank)
-//	row N+6: blank
-//	row N+7: status
+//	row 2: keys hint
+//	row 3: presets hint
+//	row 4: blank
+//	row 5: "^ more above" indicator (or blank)
+//	row N+6: "v more below" indicator (or blank)
+//	row N+7: blank
+//	row N+8: status
 func contentHeight(termH int) int {
-	h := termH - 8
+	h := termH - 9
 	if h < 1 {
 		h = 1
 	}
 	return h
 }
 
-// moveCursor advances the cursor by delta positions (wrapping at the ends).
+// moveCursor advances the cursor by delta positions. The "Add custom role" row
+// sits between the last and first items in the circular navigation order:
+// last-item -> custom-row -> first-item (going forward) and vice versa.
 func moveCursor(s *selectorState, delta int) {
 	n := len(s.items)
 	if n == 0 {
 		return
 	}
-	s.cursor = ((s.cursor + delta) % n + n) % n
+	if s.onCustomRow {
+		// Leave the custom row.
+		s.onCustomRow = false
+		if delta > 0 {
+			s.cursor = 0 // wrap forward to first item
+		} else {
+			s.cursor = n - 1 // wrap backward to last item
+		}
+	} else if delta > 0 && s.cursor == n-1 {
+		// At last item, moving forward: enter custom row.
+		s.onCustomRow = true
+	} else if delta < 0 && s.cursor == 0 {
+		// At first item, moving backward: enter custom row.
+		s.onCustomRow = true
+	} else {
+		s.cursor = ((s.cursor + delta) % n + n) % n
+	}
 	scrollToCursor(s)
 }
 
@@ -250,7 +321,13 @@ func moveCursor(s *selectorState, delta int) {
 // the visible content window.
 func scrollToCursor(s *selectorState) {
 	visH := contentHeight(s.termH)
-	drIdx := itemDisplayRow(s.rows, s.cursor)
+	var drIdx int
+	if s.onCustomRow {
+		// The custom row is always the last display row.
+		drIdx = len(s.rows) - 1
+	} else {
+		drIdx = itemDisplayRow(s.rows, s.cursor)
+	}
 
 	if drIdx < s.scroll {
 		s.scroll = drIdx
@@ -289,10 +366,11 @@ func selectedNames(items []SelectorItem) []string {
 func renderSelector(w io.Writer, s *selectorState) {
 	termW := s.termW
 
-	// Header: title + blank + hint + blank.
+	// Header: title + blank + keys hint + presets hint + blank.
 	printSelLine(w, " "+s.title)
 	printSelLine(w, "")
 	printSelLine(w, "  Arrow keys: move    Space: toggle    Enter: confirm    Esc: cancel")
+	printSelLine(w, "  Presets: s=small m=standard f=full  a=all n=none")
 	printSelLine(w, "")
 
 	// Scroll indicator: above.
@@ -310,8 +388,13 @@ func renderSelector(w io.Writer, s *selectorState) {
 	}
 	visible := s.rows[s.scroll:end]
 	for _, dr := range visible {
-		isCursor := dr.kind == rowItem && dr.itemIdx == s.cursor
-		renderDisplayRow(w, dr, s.items, isCursor, termW)
+		var isCursor bool
+		if s.onCustomRow {
+			isCursor = dr.kind == rowCustomInput
+		} else {
+			isCursor = dr.kind == rowItem && dr.itemIdx == s.cursor
+		}
+		renderDisplayRow(w, dr, s, isCursor, termW)
 	}
 	// Pad remaining content rows with blank lines.
 	for i := len(visible); i < visH; i++ {
@@ -337,12 +420,14 @@ func renderSelector(w io.Writer, s *selectorState) {
 }
 
 // renderDisplayRow writes one display row to w.
-func renderDisplayRow(w io.Writer, dr displayRow, items []SelectorItem, cursor bool, termW int) {
+func renderDisplayRow(w io.Writer, dr displayRow, s *selectorState, cursor bool, termW int) {
 	switch dr.kind {
 	case rowHeader:
 		fmt.Fprintf(w, "%s  %s%s%s\r\n", sAnsiBold, dr.group, sAnsiReset, sAnsiClearEOL)
 	case rowItem:
-		renderItemRow(w, items[dr.itemIdx], cursor, termW)
+		renderItemRow(w, s.items[dr.itemIdx], cursor, termW)
+	case rowCustomInput:
+		renderCustomRow(w, s, cursor, termW)
 	}
 }
 
@@ -403,6 +488,23 @@ func renderItemRow(w io.Writer, item SelectorItem, cursor bool, termW int) {
 	fmt.Fprintf(w, "%s%s\r\n", out.String(), sAnsiClearEOL)
 }
 
+// renderCustomRow writes the "Add custom role" row to w.
+// When cursor is true, it shows the inline text input with a block cursor
+// and any validation error. When false, it renders as a dim affordance.
+func renderCustomRow(w io.Writer, s *selectorState, cursor bool, termW int) {
+	const prefix = "  [+] Add custom role"
+	if cursor {
+		line := prefix + " > " + s.customInput + "\u2588" // block cursor
+		if s.customErr != "" {
+			line += "   " + s.customErr
+		}
+		line = truncateSel(line, termW)
+		fmt.Fprintf(w, "%s%s%s%s\r\n", sAnsiReverse, line, sAnsiClearEOL, sAnsiReset)
+		return
+	}
+	fmt.Fprintf(w, "%s%s%s%s\r\n", sAnsiDim, prefix, sAnsiReset, sAnsiClearEOL)
+}
+
 // printSelLine writes a line with clear-to-EOL and CR+LF terminator.
 func printSelLine(w io.Writer, s string) {
 	fmt.Fprintf(w, "%s%s\r\n", s, sAnsiClearEOL)
@@ -429,52 +531,134 @@ func truncateSel(s string, n int) string {
 	return string(runes[:n])
 }
 
+// ── Presets and custom roles ──────────────────────────────────────────
+
+// presetSmall is the "small" preset: coordinator + one engineer + one QA.
+var presetSmall = map[string]bool{"super": true, "eng1": true, "qa1": true}
+
+// presetStandard is the "standard" preset: the typical 7-agent team.
+var presetStandard = map[string]bool{
+	"super": true, "pm": true,
+	"eng1": true, "eng2": true,
+	"qa1": true, "qa2": true,
+	"shipper": true,
+}
+
+// applyPreset sets Checked on items according to the named preset.
+// "small", "standard", and "full" only check catalog roles; custom items are
+// left unchecked. "all" checks everything; "none" clears everything.
+func applyPreset(s *selectorState, preset string) {
+	switch preset {
+	case "small":
+		for i := range s.items {
+			s.items[i].Checked = presetSmall[s.items[i].Name]
+		}
+	case "standard":
+		for i := range s.items {
+			s.items[i].Checked = presetStandard[s.items[i].Name]
+		}
+	case "full":
+		for i := range s.items {
+			_, inCatalog := Catalog[s.items[i].Name]
+			s.items[i].Checked = inCatalog
+		}
+	case "all":
+		for i := range s.items {
+			s.items[i].Checked = true
+		}
+	case "none":
+		for i := range s.items {
+			s.items[i].Checked = false
+		}
+	}
+}
+
+// addCustomRole validates name, appends a new SelectorItem with Group="CUSTOM"
+// and Checked=true, rebuilds the display rows, and moves the cursor to the new
+// item. Returns a non-empty error message if validation fails.
+func addCustomRole(s *selectorState, name string) string {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return ""
+	}
+	if strings.ContainsAny(name, " \t") {
+		return "role name must be a single word"
+	}
+	for _, it := range s.items {
+		if it.Name == name {
+			return name + " already in list."
+		}
+	}
+	s.items = append(s.items, SelectorItem{Name: name, Group: "CUSTOM", Checked: true})
+	s.rows = buildDisplayRows(s.items)
+	s.onCustomRow = false
+	s.cursor = len(s.items) - 1
+	s.customInput = ""
+	scrollToCursor(s)
+	return ""
+}
+
 // ── Key input ─────────────────────────────────────────────────────────
 
-// keyType represents a parsed keypress from the terminal.
+// keyType classifies a terminal keypress.
 type keyType int
 
 const (
-	keyUp    keyType = iota
+	keyUp       keyType = iota
 	keyDown
 	keySpace
 	keyEnter
 	keyEscape
 	keyCtrlC
 	keyOther
+	keyBackspace // 0x08 (BS) or 0x7F (DEL)
+	keyChar      // printable ASCII 0x21–0x7E; keyPress.ch has the byte
 )
 
+// keyPress is the result of parsing one terminal keypress. ch is populated
+// only when kind == keyChar.
+type keyPress struct {
+	kind keyType
+	ch   byte
+}
+
 // nextKey reads and parses one keypress from tty.
-func nextKey(tty *os.File) (keyType, error) {
+func nextKey(tty *os.File) (keyPress, error) {
 	b, err := readSelByte(tty)
 	if err != nil {
-		return keyOther, err
+		return keyPress{kind: keyOther}, err
 	}
 	switch b {
 	case 0x03: // Ctrl+C
-		return keyCtrlC, nil
+		return keyPress{kind: keyCtrlC}, nil
 	case '\r', '\n':
-		return keyEnter, nil
+		return keyPress{kind: keyEnter}, nil
 	case ' ':
-		return keySpace, nil
+		return keyPress{kind: keySpace}, nil
+	case 0x08, 0x7F: // Backspace / Delete
+		return keyPress{kind: keyBackspace}, nil
 	case 0x1B: // Esc or start of CSI escape sequence
 		b2, ok := tryReadSelByte(tty)
 		if !ok || b2 != '[' {
-			return keyEscape, nil
+			return keyPress{kind: keyEscape}, nil
 		}
 		b3, ok2 := tryReadSelByte(tty)
 		if !ok2 {
-			return keyEscape, nil
+			return keyPress{kind: keyEscape}, nil
 		}
 		switch b3 {
 		case 'A':
-			return keyUp, nil
+			return keyPress{kind: keyUp}, nil
 		case 'B':
-			return keyDown, nil
+			return keyPress{kind: keyDown}, nil
 		}
-		return keyOther, nil
+		return keyPress{kind: keyOther}, nil
 	}
-	return keyOther, nil
+	// Printable ASCII (excluding space, which is handled above).
+	if b >= 0x21 && b <= 0x7E {
+		return keyPress{kind: keyChar, ch: b}, nil
+	}
+	return keyPress{kind: keyOther}, nil
 }
 
 // readSelByte reads exactly one byte from f (blocking).
