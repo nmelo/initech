@@ -11,6 +11,11 @@ import (
 )
 
 func (t *TUI) handleKey(ev *tcell.EventKey) bool {
+	// Help modal intercepts all input when active.
+	if t.help.active {
+		return t.handleHelpKey(ev)
+	}
+
 	// Event log modal intercepts all input when active.
 	if t.eventLogM.active {
 		return t.handleEventLogKey(ev)
@@ -102,6 +107,38 @@ func (t *TUI) handleKey(ev *tcell.EventKey) bool {
 	// Everything else goes to the focused pane.
 	if fp := t.focusedPane(); fp != nil {
 		fp.SendKey(ev)
+	}
+	return false
+}
+
+// handleHelpKey processes key events while the help modal is open.
+func (t *TUI) handleHelpKey(ev *tcell.EventKey) bool {
+	switch ev.Key() {
+	case tcell.KeyEscape, tcell.KeyCtrlC:
+		t.help.active = false
+		return false
+	case tcell.KeyUp:
+		if t.help.scrollOffset > 0 {
+			t.help.scrollOffset--
+		}
+		return false
+	case tcell.KeyDown:
+		t.help.scrollOffset++
+		return false
+	case tcell.KeyRune:
+		switch ev.Rune() {
+		case '`', 'q':
+			t.help.active = false
+			return false
+		case 'j':
+			t.help.scrollOffset++
+			return false
+		case 'k':
+			if t.help.scrollOffset > 0 {
+				t.help.scrollOffset--
+			}
+			return false
+		}
 	}
 	return false
 }
@@ -588,6 +625,10 @@ func (t *TUI) execCmd(cmd string) bool {
 		t.cmd.error = ""
 		t.eventLogM.active = true
 		t.eventLogM.scrollOffset = 0 // Start at the bottom (latest events).
+
+	case "help", "?":
+		t.help.active = true
+		t.help.scrollOffset = 0
 
 	case "quit", "q":
 		t.cmd.pendingConfirm = "quit"

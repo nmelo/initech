@@ -90,6 +90,15 @@ func (t *TUI) handleAgentEvent(ev AgentEvent) {
 	if ev.Time.IsZero() {
 		ev.Time = time.Now()
 	}
+
+	// Clear idle-with-backlog indicator when an agent claims a bead.
+	// This gives immediate feedback without waiting for the next backlog check.
+	if ev.Type == EventBeadClaimed {
+		if p := t.findPaneByName(ev.Pane); p != nil {
+			p.ClearIdleWithBacklog()
+		}
+	}
+
 	ttl := notificationTTL
 	// Completion events persist longer since they're more actionable.
 	if ev.Type == EventBeadCompleted {

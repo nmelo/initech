@@ -39,7 +39,7 @@ func (t *TUI) watchBacklog(runner iexec.Runner) {
 		// Find idle agents with no bead.
 		idle := t.idleAgentsWithoutBead()
 
-		// Update dedup: clear any agent that is no longer idle or now has a bead.
+		// Update dedup: clear agents no longer idle or that now have a bead.
 		for name := range notified {
 			stillIdle := false
 			for _, n := range idle {
@@ -50,6 +50,10 @@ func (t *TUI) watchBacklog(runner iexec.Runner) {
 			}
 			if !stillIdle {
 				delete(notified, name)
+				// Revert overlay dot to gray immediately.
+				if p := t.findPaneByName(name); p != nil {
+					p.ClearIdleWithBacklog()
+				}
 			}
 		}
 
@@ -60,11 +64,20 @@ func (t *TUI) watchBacklog(runner iexec.Runner) {
 		// Query bd for ready work.
 		readyCount := queryBdReady(runner)
 		if readyCount == 0 {
+			// No ready work: ensure idle agents don't show yellow dot.
+			for _, name := range idle {
+				if p := t.findPaneByName(name); p != nil {
+					p.ClearIdleWithBacklog()
+				}
+			}
 			continue
 		}
 
-		// Emit one event per idle agent, skipping already-notified ones.
+		// Set overlay flag and emit one event per idle agent (deduped).
 		for _, name := range idle {
+			if p := t.findPaneByName(name); p != nil {
+				p.SetIdleWithBacklog(readyCount)
+			}
 			if notified[name] {
 				continue
 			}

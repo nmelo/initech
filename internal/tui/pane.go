@@ -78,11 +78,13 @@ type Pane struct {
 	sessionDesc   string       // Session description extracted from cursor row.
 	beadID        string       // Current bead ID (e.g., "ini-bhk.3"). Empty = no bead.
 	beadTitle     string       // Bead title for top modal display.
-	stallReported bool           // True after emitting stall event. Reset on new activity.
-	stuckReported bool           // True after emitting stuck event. Reset on success.
-	dedupEvents   *dedup           // Dedup state for emitted events.
-	scrollOffset  int              // Rows scrolled back from live view (0 = live).
-	region        Region
+	stallReported   bool           // True after emitting stall event. Reset on new activity.
+	stuckReported   bool           // True after emitting stuck event. Reset on success.
+	dedupEvents     *dedup           // Dedup state for emitted events.
+	scrollOffset    int              // Rows scrolled back from live view (0 = live).
+	idleWithBacklog bool             // True when idle and ready beads exist in the backlog.
+	backlogCount    int              // Number of ready beads at last idle-with-backlog detection.
+	region          Region
 }
 
 // Region defines a rectangular area on screen (outer bounds including border).
@@ -653,6 +655,36 @@ func (p *Pane) Activity() ActivityState {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.activity
+}
+
+// IdleWithBacklog returns true when the pane is idle and ready beads exist.
+func (p *Pane) IdleWithBacklog() bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.idleWithBacklog
+}
+
+// BacklogCount returns the number of ready beads at the last idle-with-backlog detection.
+func (p *Pane) BacklogCount() int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.backlogCount
+}
+
+// SetIdleWithBacklog marks the pane as idle with n ready beads in the backlog.
+func (p *Pane) SetIdleWithBacklog(n int) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.idleWithBacklog = true
+	p.backlogCount = n
+}
+
+// ClearIdleWithBacklog clears the idle-with-backlog indicator.
+func (p *Pane) ClearIdleWithBacklog() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.idleWithBacklog = false
+	p.backlogCount = 0
 }
 
 // watchJSONL polls for the newest session JSONL file in the pane's project

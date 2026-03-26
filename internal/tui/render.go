@@ -19,6 +19,13 @@ func (t *TUI) render() {
 
 	s.Clear()
 
+	if t.help.active {
+		// Full-screen help reference card replaces pane rendering.
+		t.renderHelp()
+		s.Show()
+		return
+	}
+
 	if t.eventLogM.active {
 		// Full-screen event log replaces pane rendering.
 		t.renderEventLog()
@@ -149,7 +156,7 @@ func (t *TUI) renderCmdLine() {
 	}
 
 	// Hint text on the right.
-	hint := "Enter:run  Esc:cancel"
+	hint := "Enter:run  Esc:cancel  ?:help"
 	hintStyle := bgStyle.Foreground(tcell.ColorGray)
 	hintStart := sw - len(hint) - 1
 	if hintStart > cursorPos+2 {
@@ -295,12 +302,22 @@ func (t *TUI) renderOverlay() {
 	for i, p := range t.panes {
 		vis := !t.layoutState.Hidden[p.name]
 		act := p.Activity()
-		// Show bead ID instead of activity string when a bead is assigned.
+		bead := p.BeadID()
+		// Build status text: prefer bead ID, then idle-with-backlog, then activity.
 		status := act.String()
-		if bead := p.BeadID(); bead != "" {
+		idleBacklog := false
+		backlogN := 0
+		if act == StateIdle && bead == "" {
+			idleBacklog = p.IdleWithBacklog()
+			backlogN = p.BacklogCount()
+			if idleBacklog {
+				status = fmt.Sprintf("idle (%d ready)", backlogN)
+			}
+		}
+		if bead != "" {
 			status = bead
 		}
-		agents[i] = AgentInfo{Name: p.name, Status: status, Activity: act, Visible: vis}
+		agents[i] = AgentInfo{Name: p.name, Status: status, Activity: act, Visible: vis, IdleWithBacklog: idleBacklog, BacklogCount: backlogN}
 		nameLen := len(p.name)
 		if !vis {
 			nameLen += 4 // " [h]"
@@ -376,7 +393,11 @@ func (t *TUI) renderOverlay() {
 			dotColor = tcell.ColorGreen
 		case StateIdle:
 			dot = '\u25cb'
-			dotColor = tcell.ColorGray
+			if a.IdleWithBacklog {
+				dotColor = tcell.ColorYellow
+			} else {
+				dotColor = tcell.ColorGray
+			}
 		default:
 			dotColor = tcell.ColorGray
 		}

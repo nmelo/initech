@@ -22,10 +22,12 @@ const (
 
 // AgentInfo describes an agent for the status overlay.
 type AgentInfo struct {
-	Name     string
-	Status   string        // Display text: activity string or bead ID.
-	Activity ActivityState // Actual activity state for dot color.
-	Visible  bool
+	Name            string
+	Status          string        // Display text: activity string or bead ID.
+	Activity        ActivityState // Actual activity state for dot color.
+	Visible         bool
+	IdleWithBacklog bool // True when idle with ready beads in the backlog.
+	BacklogCount    int  // Number of ready beads (when IdleWithBacklog is true).
 }
 
 // cmdModal holds command modal state.
@@ -56,6 +58,12 @@ type topModal struct {
 type eventLogModal struct {
 	active       bool
 	scrollOffset int // lines scrolled up from the bottom; 0 = at bottom (latest)
+}
+
+// helpModal holds help reference card state.
+type helpModal struct {
+	active       bool
+	scrollOffset int
 }
 
 // mouseSelection holds mouse text selection state.
@@ -95,6 +103,7 @@ type TUI struct {
 	cmd       cmdModal       // Command input bar.
 	top       topModal       // Activity monitor overlay.
 	eventLogM eventLogModal  // Event log history modal.
+	help      helpModal      // Help reference card modal.
 	sel       mouseSelection // Mouse text selection.
 	quitCh    chan struct{}   // Closed by IPC quit action to signal event loop exit.
 
