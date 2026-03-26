@@ -110,6 +110,8 @@ func (t *TUI) handleIPCConn(conn net.Conn) {
 		t.handleIPCRestart(conn, req)
 	case "bead":
 		t.handleIPCBead(conn, req)
+	case "patrol":
+		t.handleIPCPatrol(conn, req)
 	case "quit":
 		t.handleIPCQuit(conn)
 	default:
@@ -171,55 +173,81 @@ func (t *TUI) handleIPCPeek(conn net.Conn, req IPCRequest) {
 		writeIPCResponse(conn, IPCResponse{Error: "target is required"})
 		return
 	}
-
 	pane := t.findPane(req.Target)
 	if pane == nil {
 		writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("pane %q not found", req.Target)})
 		return
 	}
+	writeIPCResponse(conn, IPCResponse{OK: true, Data: peekContent(pane, req.Lines)})
+}
 
-	// Use emulator dimensions, not region.InnerSize(), because hidden
-	// panes have stale regions that return (1,0).
-	cols := pane.emu.Width()
-	emuRows := pane.emu.Height()
+func (t *TUI) handleIPCPatrol(conn net.Conn, req IPCRequest) {
+	lines := req.Lines
+	if lines <= 0 {
+		lines = 20
+	}
+	type patrolEntry struct {
+		Name     string `json:"name"`
+		Activity string `json:"activity"`
+		Bead     string `json:"bead,omitempty"`
+		Alive    bool   `json:"alive"`
+		Visible  bool   `json:"visible"`
+		Content  string `json:"content"`
+	}
+	result := make([]patrolEntry, len(t.panes))
+	for i, p := range t.panes {
+		result[i] = patrolEntry{
+			Name:     p.name,
+			Activity: p.Activity().String(),
+			Bead:     p.BeadID(),
+			Alive:    p.IsAlive(),
+			Visible:  !t.layoutState.Hidden[p.name],
+			Content:  peekContent(p, lines),
+		}
+	}
+	data, _ := json.Marshal(result)
+	writeIPCResponse(conn, IPCResponse{OK: true, Data: string(data)})
+}
 
-	// Extract all rows from the emulator as text.
-	lines := make([]string, emuRows)
+// peekContent extracts the last N lines of terminal content from a pane's
+// emulator. Returns the content as a string with newline-separated lines.
+// If lines <= 0, returns all non-blank content.
+func peekContent(p *Pane, lines int) string {
+	cols := p.emu.Width()
+	emuRows := p.emu.Height()
+
+	allLines := make([]string, emuRows)
 	for row := 0; row < emuRows; row++ {
 		var line strings.Builder
 		for col := 0; col < cols; col++ {
-			cell := pane.emu.CellAt(col, row)
+			cell := p.emu.CellAt(col, row)
 			if cell != nil && cell.Content != "" {
 				line.WriteString(cell.Content)
 			} else {
 				line.WriteByte(' ')
 			}
 		}
-		lines[row] = strings.TrimRight(line.String(), " ")
+		allLines[row] = strings.TrimRight(line.String(), " ")
 	}
 
-	// Strip trailing blank lines to find actual content end.
-	// In non-alt-screen mode, content grows from the top and the bottom
-	// of the buffer is blank. In alt-screen mode (vim, less), the full
-	// buffer is typically populated.
+	// Strip trailing blank lines.
 	contentEnd := emuRows
-	for contentEnd > 0 && lines[contentEnd-1] == "" {
+	for contentEnd > 0 && allLines[contentEnd-1] == "" {
 		contentEnd--
 	}
-	lines = lines[:contentEnd]
+	allLines = allLines[:contentEnd]
 
-	// If caller requested N lines, return the last N.
-	if req.Lines > 0 && req.Lines < len(lines) {
-		lines = lines[len(lines)-req.Lines:]
+	// Return last N lines.
+	if lines > 0 && lines < len(allLines) {
+		allLines = allLines[len(allLines)-lines:]
 	}
 
 	var buf strings.Builder
-	for _, line := range lines {
+	for _, line := range allLines {
 		buf.WriteString(line)
 		buf.WriteByte('\n')
 	}
-
-	writeIPCResponse(conn, IPCResponse{OK: true, Data: buf.String()})
+	return buf.String()
 }
 
 func (t *TUI) handleIPCList(conn net.Conn) {

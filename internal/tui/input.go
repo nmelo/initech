@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"os/exec"
 	"strconv"
 	"strings"
 	"time"
@@ -306,6 +307,33 @@ func (t *TUI) execCmd(cmd string) bool {
 	case "restart", "r":
 		if err := t.restartFocused(); err != nil {
 			t.cmd.error = fmt.Sprintf("restart failed: %v", err)
+		}
+
+	case "patrol":
+		// Build patrol output and copy to clipboard for easy pasting.
+		var buf strings.Builder
+		for _, p := range t.panes {
+			header := p.name + " (" + p.Activity().String()
+			if bead := p.BeadID(); bead != "" {
+				header += " | " + bead
+			}
+			header += ")"
+			buf.WriteString("=== " + header + " ===\n")
+			content := strings.TrimRight(peekContent(p, 20), "\n")
+			if content == "" {
+				buf.WriteString("[no recent output]\n")
+			} else {
+				buf.WriteString(content + "\n")
+			}
+			buf.WriteByte('\n')
+		}
+		// Copy to clipboard.
+		clip := exec.Command("pbcopy")
+		clip.Stdin = strings.NewReader(buf.String())
+		if err := clip.Run(); err == nil {
+			t.cmd.error = "patrol: copied to clipboard"
+		} else {
+			t.cmd.error = "patrol: " + err.Error()
 		}
 
 	case "top", "ps":
