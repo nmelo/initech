@@ -10,7 +10,6 @@ import (
 	"regexp"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	uv "github.com/charmbracelet/ultraviolet"
 )
@@ -106,8 +105,8 @@ func (t *TUI) handleIPCConn(conn net.Conn) {
 
 	switch req.Action {
 	case "send":
-		// injectText sleeps up to ~450ms for stuck-input polling; clear the
-		// read deadline so that window doesn't race with the initial 5s timeout.
+		// injectText holds sendMu for the duration of text delivery; clear the
+		// read deadline so it doesn't race with the initial 5s timeout.
 		// Other actions respond in microseconds and don't need the deadline cleared.
 		conn.SetReadDeadline(time.Time{})
 		t.handleIPCSend(conn, req)
@@ -156,22 +155,9 @@ func (t *TUI) handleIPCSend(conn net.Conn, req IPCRequest) {
 	writeIPCResponse(conn, IPCResponse{OK: true})
 }
 
-// pasteDialogThreshold is the message length (in runes) at or above which
-// Claude Code's paste detection is likely to fire. Characters injected via
-// SendKey all arrive within ~1ms, well under any typing-speed heuristic, so
-// any message this long will trigger the paste dialog.
-const pasteDialogThreshold = 50
-
 // injectText sends text into a pane's PTY via keystroke injection. Acquires
-// sendMu to serialize against concurrent sends. If enter is true, a newline is
-// appended with stuck-input polling to handle Claude Code's paste dialog.
-// Safe to call from any goroutine.
-//
-// For long messages (≥ pasteDialogThreshold runes) the initial sleep and retry
-// budget are extended to account for the async round-trip: Claude Code detects
-// the paste, renders the dialog, sends escape sequences back, and readLoop
-// writes them to the emulator before hasStuckInput can see an accurate display.
-// Short messages keep the 350ms worst-case sendMu hold time from ini-a1e.9.
+// sendMu to serialize against concurrent sends. If enter is true, a single
+// newline is appended. Safe to call from any goroutine.
 func (t *TUI) injectText(pane *Pane, text string, enter bool) {
 	// Serialize sends to this pane so concurrent callers don't interleave keystrokes.
 	pane.sendMu.Lock()
@@ -192,36 +178,10 @@ func (t *TUI) injectText(pane *Pane, text string, enter bool) {
 	}
 
 	if enter {
-		// Choose timing parameters based on message length (ini-4j5).
-		// Short messages: 50ms initial sleep, 3 retries at 100ms (~350ms max).
-		// Long messages:  150ms initial sleep, 8 retries at 150ms (~1350ms max).
-		// The extended budget gives the async display pipeline (readLoop) time
-		// to reflect Claude Code's paste-dialog state before hasStuckInput fires.
-		initSleep := 50 * time.Millisecond
-		retries := 3
-		retryInterval := 100 * time.Millisecond
-		if utf8.RuneCountInString(text) >= pasteDialogThreshold {
-			initSleep = 150 * time.Millisecond
-			retries = 8
-			retryInterval = 150 * time.Millisecond
-		}
-
-		time.Sleep(initSleep)
+		// Send exactly one Enter. If Claude Code's paste dialog absorbs it,
+		// the user can press Enter manually. One missed Enter is better than
+		// multiple unwanted ones that would submit restored pending input (ini-bd2).
 		pane.emu.SendKey(uv.KeyPressEvent(uv.Key{Code: uv.KeyEnter}))
-
-		// Poll for stuck input (paste dialog or text still at prompt).
-		// Claude Code's paste detection fires for fast input, so the first
-		// Enter may confirm the paste reference rather than submitting.
-		// sendMu is held for the full duration so concurrent sends don't inject
-		// text while a retry Enter is in flight (which would submit the wrong
-		// message). Bail early if the pane is killed (e.g., by a concurrent stop).
-		for range retries {
-			time.Sleep(retryInterval)
-			if !pane.IsAlive() || !hasStuckInput(pane) {
-				break
-			}
-			pane.emu.SendKey(uv.KeyPressEvent(uv.Key{Code: uv.KeyEnter}))
-		}
 	}
 }
 

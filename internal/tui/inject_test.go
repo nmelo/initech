@@ -4,7 +4,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-	"unicode/utf8"
 
 	"github.com/charmbracelet/x/vt"
 )
@@ -48,7 +47,7 @@ func TestInjectText_CtrlS_AlwaysSent(t *testing.T) {
 				readDone <- got
 			}()
 
-			// enter=false avoids the 50ms sleep and stuck-input retry loop.
+			// enter=false avoids sending Enter.
 			tui.injectText(p, "hi", false)
 
 			var got []byte
@@ -66,7 +65,7 @@ func TestInjectText_CtrlS_AlwaysSent(t *testing.T) {
 }
 
 // TestInjectText_TextDelivered verifies that the injected characters are
-// forwarded through the emulator. injectText now sends Ctrl+S (1 byte) before
+// forwarded through the emulator. injectText sends Ctrl+S (1 byte) before
 // the text payload; the goroutine drains all bytes so the pipe doesn't block.
 func TestInjectText_TextDelivered(t *testing.T) {
 	emu := vt.NewSafeEmulator(80, 24)
@@ -74,13 +73,12 @@ func TestInjectText_TextDelivered(t *testing.T) {
 		name:     "eng1",
 		emu:      emu,
 		alive:    true,
-		activity: StateIdle, // idle: Ctrl+S stash will be sent before the text
+		activity: StateIdle,
 	}
 	tui := &TUI{agentEvents: make(chan AgentEvent, 8)}
 
 	want := "ok"
-	// Ctrl+S (1 byte) + "ok" (2 bytes) = 3 bytes total. Read all of them so
-	// the pipe doesn't fill up and block injectText's SendKey calls.
+	// Ctrl+S (1 byte) + "ok" (2 bytes) = 3 bytes total.
 	const totalBytes = 3
 	readDone := make(chan []byte, 1)
 	go func() {
@@ -111,32 +109,19 @@ func TestInjectText_TextDelivered(t *testing.T) {
 	}
 }
 
-// TestPasteDialogThreshold verifies the threshold constant matches the value
-// chosen during ini-4j5 triage (50 runes — Claude Code's paste detection fires
-// for any message whose characters arrive faster than typing speed, which is
-// always the case for injectText).
-func TestPasteDialogThreshold(t *testing.T) {
-	if pasteDialogThreshold != 50 {
-		t.Errorf("pasteDialogThreshold = %d, want 50 (ini-4j5)", pasteDialogThreshold)
-	}
-}
-
-// TestInjectText_LongMessageAllCharsDelivered verifies that a message at the
-// paste-dialog threshold delivers every character to the emulator without
-// dropping any (ini-4j5 regression guard). injectText now sends Ctrl+S first,
-// so the goroutine drains 1 + len(msg) bytes to prevent blocking.
+// TestInjectText_LongMessageAllCharsDelivered verifies that a long message
+// delivers every character to the emulator without dropping any. injectText
+// sends Ctrl+S first, so the goroutine drains 1 + len(msg) bytes total.
 func TestInjectText_LongMessageAllCharsDelivered(t *testing.T) {
-	msg := strings.Repeat("x", pasteDialogThreshold) // exactly at threshold
-	if utf8.RuneCountInString(msg) < pasteDialogThreshold {
-		t.Fatal("test message too short — adjust construction")
-	}
+	const msgLen = 50
+	msg := strings.Repeat("x", msgLen)
 
 	emu := vt.NewSafeEmulator(80, 24)
 	p := &Pane{
 		name:     "eng1",
 		emu:      emu,
 		alive:    true,
-		activity: StateIdle, // idle: Ctrl+S prefix byte is sent before the text
+		activity: StateIdle,
 	}
 	tui := &TUI{agentEvents: make(chan AgentEvent, 8)}
 
@@ -156,7 +141,7 @@ func TestInjectText_LongMessageAllCharsDelivered(t *testing.T) {
 		readDone <- got
 	}()
 
-	// enter=false: skip Enter and retry loop so the test doesn't sleep.
+	// enter=false: skip Enter so the test doesn't need to drain an extra byte.
 	tui.injectText(p, msg, false)
 
 	var got []byte
@@ -169,48 +154,5 @@ func TestInjectText_LongMessageAllCharsDelivered(t *testing.T) {
 	// First byte is Ctrl+S; remaining bytes are the message.
 	if len(got) < totalBytes {
 		t.Errorf("got %d bytes, want %d (Ctrl+S + message) — some chars dropped", len(got), totalBytes)
-	}
-}
-
-// TestInjectText_DeadPaneShortCircuits verifies that injectText with enter=true
-// exits the retry loop early when the pane is dead, for both the short-message
-// path (3 retries at 100ms) and the long-message path (8 retries at 150ms).
-// Neither path should block for the full retry budget when alive=false.
-func TestInjectText_DeadPaneShortCircuits(t *testing.T) {
-	for _, tc := range []struct {
-		name string
-		msg  string
-	}{
-		{"short", "hi"},
-		{"long", strings.Repeat("a", pasteDialogThreshold)},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			emu := vt.NewSafeEmulator(80, 24)
-			// Drain emulator output so responseLoop-like goroutines don't block.
-			go func() {
-				buf := make([]byte, 256)
-				for {
-					if _, err := emu.Read(buf); err != nil {
-						return
-					}
-				}
-			}()
-
-			p := &Pane{name: "eng1", emu: emu, alive: false} // dead from the start
-			tui := &TUI{agentEvents: make(chan AgentEvent, 8)}
-
-			done := make(chan struct{})
-			go func() {
-				defer close(done)
-				tui.injectText(p, tc.msg, true)
-			}()
-
-			// Both paths must complete well within 2s (max would be 150+8*150=1350ms).
-			select {
-			case <-done:
-			case <-time.After(2 * time.Second):
-				t.Errorf("injectText(%s, enter=true) did not return after pane died", tc.name)
-			}
-		})
 	}
 }
