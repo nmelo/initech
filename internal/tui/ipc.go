@@ -156,8 +156,10 @@ func (t *TUI) handleIPCSend(conn net.Conn, req IPCRequest) {
 }
 
 // injectText sends text into a pane's PTY via keystroke injection. Acquires
-// sendMu to serialize against concurrent sends. If enter is true, a single
-// newline is appended. Safe to call from any goroutine.
+// sendMu to serialize against concurrent sends. If enter is true, sends Enter
+// with a smart single-retry that only fires when the prompt still holds our
+// injected content or a paste reference (ini-f0d). Safe to call from any
+// goroutine.
 func (t *TUI) injectText(pane *Pane, text string, enter bool) {
 	// Serialize sends to this pane so concurrent callers don't interleave keystrokes.
 	pane.sendMu.Lock()
@@ -178,11 +180,73 @@ func (t *TUI) injectText(pane *Pane, text string, enter bool) {
 	}
 
 	if enter {
-		// Send exactly one Enter. If Claude Code's paste dialog absorbs it,
-		// the user can press Enter manually. One missed Enter is better than
-		// multiple unwanted ones that would submit restored pending input (ini-bd2).
 		pane.emu.SendKey(uv.KeyPressEvent(uv.Key{Code: uv.KeyEnter}))
+
+		// Smart single-retry for paste dialog (ini-f0d): wait 200ms for the
+		// async display pipeline to reflect the result, then check if input is
+		// still stuck. If the stuck content looks like what we injected (raw text
+		// or "[Pasted text #N ...]"), send one more Enter. If the stuck content
+		// is something else (user's restored stashed input), do NOT retry.
+		time.Sleep(200 * time.Millisecond)
+		if pane.IsAlive() && hasStuckInput(pane) {
+			content := getPromptContent(pane)
+			if looksLikeInjectedText(content, text) {
+				pane.emu.SendKey(uv.KeyPressEvent(uv.Key{Code: uv.KeyEnter}))
+			}
+		}
 	}
+}
+
+// getPromptContent extracts the text visible after the last ❯ prompt character
+// in the pane's emulator. Returns the trimmed content, or empty string if no
+// prompt is visible.
+func getPromptContent(p *Pane) string {
+	cols := p.emu.Width()
+	rows := p.emu.Height()
+	var lastPromptContent string
+
+	for row := 0; row < rows; row++ {
+		var line strings.Builder
+		for col := 0; col < cols; col++ {
+			cell := p.emu.CellAt(col, row)
+			if cell != nil && cell.Content != "" {
+				line.WriteString(cell.Content)
+			} else {
+				line.WriteByte(' ')
+			}
+		}
+		text := line.String()
+		if idx := strings.LastIndex(text, "\u276f"); idx >= 0 {
+			lastPromptContent = strings.TrimSpace(text[idx+len("\u276f"):])
+		}
+	}
+	return lastPromptContent
+}
+
+// looksLikeInjectedText returns true if the prompt content matches the text we
+// just injected, either as a paste reference ("[Pasted text #N ...]"), an exact
+// match (short messages), or a prefix match (medium messages truncated by the
+// terminal width). Returns false for unrelated content such as the user's
+// restored stashed input, preventing an unwanted retry Enter from submitting it.
+func looksLikeInjectedText(promptContent, injectedText string) bool {
+	if promptContent == "" {
+		return false
+	}
+	// Paste reference: "[Pasted text #5 +1 lines]"
+	if pasteIndicatorRe.MatchString(promptContent) {
+		return true
+	}
+	// Exact match: short messages that fit entirely on the prompt line.
+	if promptContent == injectedText {
+		return true
+	}
+	// Prefix match: for messages longer than the terminal width, the prompt
+	// row shows only the first N characters. Check that the injected text
+	// starts with the visible prompt content.
+	if strings.HasPrefix(injectedText, promptContent) {
+		return true
+	}
+	return false
 }
 
 func (t *TUI) handleIPCPeek(conn net.Conn, req IPCRequest) {

@@ -141,7 +141,7 @@ func TestInjectText_LongMessageAllCharsDelivered(t *testing.T) {
 		readDone <- got
 	}()
 
-	// enter=false: skip Enter so the test doesn't need to drain an extra byte.
+	// enter=false: skip Enter so the test doesn't need to drain extra bytes.
 	tui.injectText(p, msg, false)
 
 	var got []byte
@@ -154,5 +154,113 @@ func TestInjectText_LongMessageAllCharsDelivered(t *testing.T) {
 	// First byte is Ctrl+S; remaining bytes are the message.
 	if len(got) < totalBytes {
 		t.Errorf("got %d bytes, want %d (Ctrl+S + message) — some chars dropped", len(got), totalBytes)
+	}
+}
+
+// --- Tests for getPromptContent (ini-f0d) ---
+
+// TestGetPromptContent_WithPrompt verifies getPromptContent extracts text after ❯.
+func TestGetPromptContent_WithPrompt(t *testing.T) {
+	emu := vt.NewSafeEmulator(80, 24)
+	// Write a prompt row with ❯ followed by text.
+	emu.Write([]byte("\033[10;1H\u276f some user input"))
+	got := getPromptContent(&Pane{emu: emu})
+	if got != "some user input" {
+		t.Errorf("getPromptContent = %q, want %q", got, "some user input")
+	}
+}
+
+// TestGetPromptContent_EmptyPrompt verifies getPromptContent returns empty for an empty prompt.
+func TestGetPromptContent_EmptyPrompt(t *testing.T) {
+	emu := vt.NewSafeEmulator(80, 24)
+	emu.Write([]byte("\033[10;1H\u276f "))
+	got := getPromptContent(&Pane{emu: emu})
+	if got != "" {
+		t.Errorf("getPromptContent = %q, want empty string", got)
+	}
+}
+
+// TestGetPromptContent_NoPrompt verifies getPromptContent returns empty when no ❯ is visible.
+func TestGetPromptContent_NoPrompt(t *testing.T) {
+	emu := vt.NewSafeEmulator(80, 24)
+	emu.Write([]byte("no prompt here"))
+	got := getPromptContent(&Pane{emu: emu})
+	if got != "" {
+		t.Errorf("getPromptContent = %q, want empty string", got)
+	}
+}
+
+// TestGetPromptContent_PasteReference verifies getPromptContent returns the paste reference.
+func TestGetPromptContent_PasteReference(t *testing.T) {
+	emu := vt.NewSafeEmulator(80, 24)
+	emu.Write([]byte("\033[10;1H\u276f [Pasted text #5 +1 lines]"))
+	got := getPromptContent(&Pane{emu: emu})
+	if got != "[Pasted text #5 +1 lines]" {
+		t.Errorf("getPromptContent = %q, want paste reference", got)
+	}
+}
+
+// --- Tests for looksLikeInjectedText (ini-f0d) ---
+
+func TestLooksLikeInjectedText_PasteReference(t *testing.T) {
+	if !looksLikeInjectedText("[Pasted text #5 +1 lines]", "long message") {
+		t.Error("should match paste reference")
+	}
+}
+
+func TestLooksLikeInjectedText_ExactMatch(t *testing.T) {
+	if !looksLikeInjectedText("hello world", "hello world") {
+		t.Error("should match exact injected text")
+	}
+}
+
+func TestLooksLikeInjectedText_PrefixMatch(t *testing.T) {
+	long := strings.Repeat("a", 200)
+	prefix := long[:80] // terminal-width truncation
+	if !looksLikeInjectedText(prefix, long) {
+		t.Error("should match prefix of long injected text")
+	}
+}
+
+func TestLooksLikeInjectedText_UserInput_NoMatch(t *testing.T) {
+	if looksLikeInjectedText("user was typing this", "totally different injected message") {
+		t.Error("should NOT match unrelated user input")
+	}
+}
+
+func TestLooksLikeInjectedText_Empty_NoMatch(t *testing.T) {
+	if looksLikeInjectedText("", "some text") {
+		t.Error("empty prompt content should not match")
+	}
+}
+
+// --- Test for smart retry path (ini-f0d) ---
+
+// TestInjectText_DeadPaneSkipsRetry verifies that injectText with enter=true
+// does not hang on the 200ms retry check when the pane is dead.
+func TestInjectText_DeadPaneSkipsRetry(t *testing.T) {
+	emu := vt.NewSafeEmulator(80, 24)
+	go func() {
+		buf := make([]byte, 256)
+		for {
+			if _, err := emu.Read(buf); err != nil {
+				return
+			}
+		}
+	}()
+
+	p := &Pane{name: "eng1", emu: emu, alive: false}
+	tui := &TUI{agentEvents: make(chan AgentEvent, 8)}
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		tui.injectText(p, "hi", true)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Error("injectText(dead pane, enter=true) did not return promptly")
 	}
 }
