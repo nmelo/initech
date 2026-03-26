@@ -77,7 +77,10 @@ type Pane struct {
 	sessionDesc   string       // Session description extracted from cursor row.
 	beadID        string       // Current bead ID (e.g., "ini-bhk.3"). Empty = no bead.
 	beadTitle     string       // Bead title for top modal display.
-	scrollOffset  int          // Rows scrolled back from live view (0 = live).
+	stallReported bool           // True after emitting stall event. Reset on new activity.
+	stuckReported bool           // True after emitting stuck event. Reset on success.
+	dedupEvents   *dedup           // Dedup state for emitted events.
+	scrollOffset  int              // Rows scrolled back from live view (0 = live).
 	region        Region
 }
 
@@ -167,16 +170,17 @@ func NewPane(cfg PaneConfig, rows, cols int) (*Pane, error) {
 	}
 
 	p := &Pane{
-		cfg:      cfg,
-		name:     cfg.Name,
-		ptmx:     ptmx,
-		cmd:      cmd,
-		pid:      pid,
-		emu:      emu,
-		alive:    true,
-		visible:  true,
-		activity: StateIdle,
-		jsonlDir: jsonlDir,
+		cfg:         cfg,
+		name:        cfg.Name,
+		ptmx:        ptmx,
+		cmd:         cmd,
+		pid:         pid,
+		emu:         emu,
+		alive:       true,
+		visible:     true,
+		activity:    StateIdle,
+		jsonlDir:    jsonlDir,
+		dedupEvents: newDedup(),
 	}
 
 	// Read PTY output and feed the emulator.
@@ -678,6 +682,7 @@ func (p *Pane) watchJSONL() {
 		if size == lastOffset {
 			// No new data. Still update activity for timeout decay.
 			p.updateActivity()
+			p.runDetectors(nil) // stall/stuck checks run every tick
 			continue
 		}
 
@@ -707,6 +712,7 @@ func (p *Pane) watchJSONL() {
 		}
 
 		p.updateActivity()
+		p.runDetectors(entries)
 	}
 }
 
@@ -744,6 +750,74 @@ func (p *Pane) updateActivity() {
 	default:
 		p.activity = StateIdle
 	}
+}
+
+// runDetectors runs all event detectors (completion, stall, stuck) and emits
+// discovered events to p.eventCh. newEntries contains entries read since the
+// last tick; pass nil when no new data arrived (stall/stuck still check every
+// tick). Safe to call from watchJSONL goroutine only.
+func (p *Pane) runDetectors(newEntries []JournalEntry) {
+	if p.eventCh == nil || p.dedupEvents == nil {
+		return
+	}
+
+	// Read protected fields atomically.
+	p.mu.Lock()
+	beadID := p.beadID
+	lastTime := p.lastJsonlTime
+	journal := make([]JournalEntry, len(p.journal))
+	copy(journal, p.journal)
+	stallReported := p.stallReported
+	stuckReported := p.stuckReported
+	p.mu.Unlock()
+
+	// Completion/claimed/failed detection on new entries only.
+	if len(newEntries) > 0 {
+		for _, ev := range detectCompletion(newEntries, p.name) {
+			if p.dedupEvents.shouldEmit(ev) {
+				EmitEvent(p.eventCh, ev)
+			}
+		}
+		// New activity clears the stall state so the next silence
+		// triggers a fresh stall notification rather than staying silent.
+		if stallReported {
+			p.mu.Lock()
+			p.stallReported = false
+			p.mu.Unlock()
+		}
+	}
+
+	// Stuck detection on full journal (every tick).
+	if ev := detectStuck(journal, p.name); ev != nil {
+		if !stuckReported {
+			p.mu.Lock()
+			p.stuckReported = true
+			p.mu.Unlock()
+			if p.dedupEvents.shouldEmit(*ev) {
+				EmitEvent(p.eventCh, *ev)
+			}
+		}
+	} else if stuckReported {
+		// Error loop cleared (success seen). Reset so next loop triggers again.
+		p.mu.Lock()
+		p.stuckReported = false
+		p.mu.Unlock()
+	}
+
+	// Stall detection (every tick).
+	if ev := detectStall(lastTime, beadID, p.name, DefaultStallThreshold); ev != nil {
+		if !stallReported {
+			p.mu.Lock()
+			p.stallReported = true
+			p.mu.Unlock()
+			if p.dedupEvents.shouldEmit(*ev) {
+				EmitEvent(p.eventCh, *ev)
+			}
+		}
+	}
+
+	// Periodically prune the dedup map to avoid unbounded growth.
+	p.dedupEvents.prune()
 }
 
 // newestJSONL finds the most recently modified .jsonl file in dir (non-recursive,
