@@ -432,8 +432,12 @@ func (p *Pane) Render(screen tcell.Screen, focused bool, dimmed bool, index int,
 
 			// In the status bar zone, fix CUF bleed-through: Claude Code
 			// uses cursor-forward (ESC[1C) to skip cells when rewriting
-			// its status bar, leaving stale content in gaps.
-			if emuRow >= statusZoneStart && emuRow <= pos.Y {
+			// its status bar, leaving stale content in gaps. Only apply
+			// the fix to rows that actually contain the status bar separator
+			// (│ U+2502). Input rows lack this character and must not be
+			// filtered, or typed text adjacent to autocomplete ghost text
+			// gets blanked (ini-cp3).
+			if emuRow >= statusZoneStart && emuRow <= pos.Y && rowContainsStatusBar(p.emu, emuRow, innerCols) {
 				type cellInfo struct {
 					ch      rune
 					style   tcell.Style
@@ -1071,6 +1075,24 @@ func dimColor(c tcell.Color) tcell.Color {
 	// For any color, extract RGB and scale down.
 	r, g, b := c.RGB()
 	return tcell.NewRGBColor(int32(r)*7/10, int32(g)*7/10, int32(b)*7/10)
+}
+
+// rowContainsStatusBar checks if an emulator row contains the vertical box
+// drawing character │ (U+2502), which is the definitive marker for Claude Code's
+// status bar. Used to restrict the CUF bleed-through heuristic to status bar
+// rows only, preventing it from blanking typed text on input rows.
+func rowContainsStatusBar(emu *vt.SafeEmulator, row, cols int) bool {
+	for col := 0; col < cols; col++ {
+		cell := emu.CellAt(col, row)
+		if cell != nil {
+			for _, r := range cell.Content {
+				if r == '\u2502' {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 // uvCellToTcell converts a charmbracelet ultraviolet Cell to a rune + tcell.Style.
