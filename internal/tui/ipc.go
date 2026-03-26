@@ -177,6 +177,14 @@ func (t *TUI) injectText(pane *Pane, text string, enter bool) {
 	pane.sendMu.Lock()
 	defer pane.sendMu.Unlock()
 
+	// Stash any partially typed input before injecting so that the incoming
+	// message doesn't corrupt text the user was composing (ini-gd0).
+	// Ctrl+S in Claude Code stashes the current input line and restores it
+	// after the next response. This was removed in ini-a1e.20 but that removal
+	// was incorrect — the stash/restore is essential to preserve pending input.
+	pane.emu.SendKey(uv.KeyPressEvent(uv.Key{Code: 's', Mod: uv.ModCtrl}))
+	time.Sleep(75 * time.Millisecond)
+
 	// Send each character as a key event through the emulator,
 	// same path as real keypresses from the TUI.
 	for _, r := range text {

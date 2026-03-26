@@ -9,76 +9,84 @@ import (
 	"github.com/charmbracelet/x/vt"
 )
 
-// TestInjectText_NoCtrlS verifies that injectText does not send Ctrl+S (0x13)
-// to the pane's emulator. Ctrl+S is Claude Code's "cancel current operation"
-// keybinding; sending it unconditionally before every injection was cancelling
-// super's active work (ini-a1e.20).
-//
-// The stuck-input retry loop in injectText already handles the paste dialog
-// without needing Ctrl+S, so removing it is a clean fix.
-func TestInjectText_NoCtrlS(t *testing.T) {
-	emu := vt.NewSafeEmulator(80, 24)
-	p := &Pane{
-		name:  "eng1",
-		emu:   emu,
-		alive: true,
-	}
-	tui := &TUI{agentEvents: make(chan AgentEvent, 8)}
-
-	// Collect the bytes that would be forwarded to the PTY via responseLoop.
-	// Two printable characters "hi" encode to exactly 2 bytes (0x68, 0x69).
-	readDone := make(chan []byte, 1)
-	go func() {
-		var got []byte
-		buf := make([]byte, 16)
-		for len(got) < 2 {
-			n, err := emu.Read(buf)
-			got = append(got, buf[:n]...)
-			if err != nil {
-				break
+// TestInjectText_CtrlS_AlwaysSent verifies that injectText sends Ctrl+S (0x13)
+// before the text payload regardless of pane activity state (ini-gd0).
+// Ctrl+S in Claude Code stashes the current input line and restores it after
+// the next response, protecting any text the user was composing. This applies
+// to both idle and running panes.
+func TestInjectText_CtrlS_AlwaysSent(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		activity ActivityState
+	}{
+		{"idle", StateIdle},
+		{"running", StateRunning},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			emu := vt.NewSafeEmulator(80, 24)
+			p := &Pane{
+				name:     "eng1",
+				emu:      emu,
+				alive:    true,
+				activity: tc.activity,
 			}
-		}
-		readDone <- got
-	}()
+			tui := &TUI{agentEvents: make(chan AgentEvent, 8)}
 
-	// enter=false avoids the 50ms sleep and the stuck-input retry loop.
-	tui.injectText(p, "hi", false)
+			// Collect enough bytes to see Ctrl+S (0x13) followed by the text.
+			// "hi" = 2 bytes; Ctrl+S + "hi" = 3 bytes minimum.
+			readDone := make(chan []byte, 1)
+			go func() {
+				var got []byte
+				buf := make([]byte, 16)
+				for len(got) < 3 {
+					n, err := emu.Read(buf)
+					got = append(got, buf[:n]...)
+					if err != nil {
+						break
+					}
+				}
+				readDone <- got
+			}()
 
-	var got []byte
-	select {
-	case got = <-readDone:
-	case <-time.After(500 * time.Millisecond):
-		t.Fatal("timed out waiting for emu response bytes")
-	}
+			// enter=false avoids the 50ms sleep and stuck-input retry loop.
+			tui.injectText(p, "hi", false)
 
-	for _, b := range got {
-		if b == 0x13 {
-			t.Errorf("injectText sent Ctrl+S (0x13) to pane — should have been removed (ini-a1e.20)")
-		}
-	}
-	// Sanity check: at least one printable byte was delivered.
-	if len(got) == 0 {
-		t.Error("injectText sent no bytes — text injection is broken")
+			var got []byte
+			select {
+			case got = <-readDone:
+			case <-time.After(500 * time.Millisecond):
+				t.Fatal("timed out waiting for emu response bytes")
+			}
+
+			if len(got) == 0 || got[0] != 0x13 {
+				t.Errorf("injectText (%s pane) did not send Ctrl+S (0x13) first — stash missing (ini-gd0); got %v", tc.name, got)
+			}
+		})
 	}
 }
 
 // TestInjectText_TextDelivered verifies that the injected characters are
-// forwarded through the emulator (no regression from removing Ctrl+S).
+// forwarded through the emulator. injectText now sends Ctrl+S (1 byte) before
+// the text payload; the goroutine drains all bytes so the pipe doesn't block.
 func TestInjectText_TextDelivered(t *testing.T) {
 	emu := vt.NewSafeEmulator(80, 24)
 	p := &Pane{
-		name:  "eng1",
-		emu:   emu,
-		alive: true,
+		name:     "eng1",
+		emu:      emu,
+		alive:    true,
+		activity: StateIdle, // idle: Ctrl+S stash will be sent before the text
 	}
 	tui := &TUI{agentEvents: make(chan AgentEvent, 8)}
 
 	want := "ok"
+	// Ctrl+S (1 byte) + "ok" (2 bytes) = 3 bytes total. Read all of them so
+	// the pipe doesn't fill up and block injectText's SendKey calls.
+	const totalBytes = 3
 	readDone := make(chan []byte, 1)
 	go func() {
 		var got []byte
 		buf := make([]byte, 16)
-		for len(got) < len(want) {
+		for len(got) < totalBytes {
 			n, err := emu.Read(buf)
 			got = append(got, buf[:n]...)
 			if err != nil {
@@ -97,8 +105,9 @@ func TestInjectText_TextDelivered(t *testing.T) {
 		t.Fatal("timed out waiting for injected text")
 	}
 
-	if string(got[:len(want)]) != want {
-		t.Errorf("injected text: got %q, want %q", got, want)
+	// First byte is Ctrl+S; text follows.
+	if len(got) < totalBytes || string(got[1:1+len(want)]) != want {
+		t.Errorf("injected text: got %q, want Ctrl+S prefix then %q", got, want)
 	}
 }
 
@@ -114,7 +123,8 @@ func TestPasteDialogThreshold(t *testing.T) {
 
 // TestInjectText_LongMessageAllCharsDelivered verifies that a message at the
 // paste-dialog threshold delivers every character to the emulator without
-// dropping any (ini-4j5 regression guard).
+// dropping any (ini-4j5 regression guard). injectText now sends Ctrl+S first,
+// so the goroutine drains 1 + len(msg) bytes to prevent blocking.
 func TestInjectText_LongMessageAllCharsDelivered(t *testing.T) {
 	msg := strings.Repeat("x", pasteDialogThreshold) // exactly at threshold
 	if utf8.RuneCountInString(msg) < pasteDialogThreshold {
@@ -122,14 +132,21 @@ func TestInjectText_LongMessageAllCharsDelivered(t *testing.T) {
 	}
 
 	emu := vt.NewSafeEmulator(80, 24)
-	p := &Pane{name: "eng1", emu: emu, alive: true}
+	p := &Pane{
+		name:     "eng1",
+		emu:      emu,
+		alive:    true,
+		activity: StateIdle, // idle: Ctrl+S prefix byte is sent before the text
+	}
 	tui := &TUI{agentEvents: make(chan AgentEvent, 8)}
 
+	// Ctrl+S (1 byte) + len(msg) text bytes. Must drain all to avoid blocking.
+	totalBytes := 1 + len(msg)
 	readDone := make(chan []byte, 1)
 	go func() {
 		var got []byte
 		buf := make([]byte, 256)
-		for len(got) < len(msg) {
+		for len(got) < totalBytes {
 			n, err := emu.Read(buf)
 			got = append(got, buf[:n]...)
 			if err != nil {
@@ -149,8 +166,9 @@ func TestInjectText_LongMessageAllCharsDelivered(t *testing.T) {
 		t.Fatal("timed out waiting for long message chars")
 	}
 
-	if len(got) < len(msg) {
-		t.Errorf("got %d bytes, want %d — some chars dropped", len(got), len(msg))
+	// First byte is Ctrl+S; remaining bytes are the message.
+	if len(got) < totalBytes {
+		t.Errorf("got %d bytes, want %d (Ctrl+S + message) — some chars dropped", len(got), totalBytes)
 	}
 }
 
