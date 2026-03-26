@@ -108,31 +108,232 @@ func (t *TUI) handleKey(ev *tcell.EventKey) bool {
 
 // handleCmdKey processes key events while the command modal is open.
 func (t *TUI) handleCmdKey(ev *tcell.EventKey) bool {
+	// Confirmation state: pending destructive command waiting for Enter.
+	if t.cmd.pendingConfirm != "" {
+		// Auto-expire if the operator walks away.
+		if time.Now().After(t.cmd.confirmExpiry) {
+			t.cmd.pendingConfirm = ""
+			t.cmd.confirmMsg = ""
+			t.cmd.active = false
+			return false
+		}
+		switch ev.Key() {
+		case tcell.KeyEnter:
+			return t.executeConfirmed()
+		case tcell.KeyEscape, tcell.KeyCtrlC:
+			t.cmd.pendingConfirm = ""
+			t.cmd.confirmMsg = ""
+			t.cmd.active = false
+			t.cmd.buf = t.cmd.buf[:0]
+			return false
+		default:
+			// Any other key cancels the confirmation.
+			t.cmd.pendingConfirm = ""
+			t.cmd.confirmMsg = ""
+			t.cmd.buf = t.cmd.buf[:0]
+			return false
+		}
+	}
+
 	switch ev.Key() {
 	case tcell.KeyEscape, tcell.KeyCtrlC:
 		t.cmd.active = false
 		t.cmd.buf = t.cmd.buf[:0]
+		t.cmd.tabBuf = ""
+		t.cmd.tabHint = ""
 		return false
 	case tcell.KeyEnter:
 		cmd := strings.TrimSpace(string(t.cmd.buf))
 		t.cmd.active = false
 		t.cmd.buf = t.cmd.buf[:0]
+		t.cmd.tabBuf = ""
+		t.cmd.tabHint = ""
 		return t.execCmd(cmd)
+	case tcell.KeyTab:
+		t.tabComplete()
+		return false
 	case tcell.KeyBackspace, tcell.KeyBackspace2:
 		if len(t.cmd.buf) > 0 {
 			t.cmd.buf = t.cmd.buf[:len(t.cmd.buf)-1]
 		}
+		t.cmd.tabBuf = ""
+		t.cmd.tabHint = ""
 		return false
 	case tcell.KeyRune:
 		// Backtick while empty closes the modal.
 		if ev.Rune() == '`' && len(t.cmd.buf) == 0 {
 			t.cmd.active = false
+			t.cmd.tabBuf = ""
+			t.cmd.tabHint = ""
 			return false
 		}
 		t.cmd.buf = append(t.cmd.buf, ev.Rune())
+		t.cmd.tabBuf = ""
+		t.cmd.tabHint = ""
 		return false
 	}
 	return false
+}
+
+// executeConfirmed executes a confirmed destructive command. Called after the
+// operator presses Enter a second time to confirm a pending destructive action.
+func (t *TUI) executeConfirmed() bool {
+	pending := t.cmd.pendingConfirm
+	t.cmd.pendingConfirm = ""
+	t.cmd.confirmMsg = ""
+	t.cmd.active = false
+	t.cmd.buf = t.cmd.buf[:0]
+
+	parts := strings.Fields(pending)
+	if len(parts) == 0 {
+		return false
+	}
+	switch parts[0] {
+	case "quit":
+		return true
+	case "remove", "rm":
+		if len(parts) >= 2 {
+			if err := t.removePane(parts[1]); err != nil {
+				t.cmd.error = "remove: " + err.Error()
+			}
+		}
+	case "restart":
+		if len(parts) >= 2 {
+			if err := t.restartByName(parts[1]); err != nil {
+				t.cmd.error = fmt.Sprintf("restart failed: %v", err)
+			}
+		}
+	}
+	return false
+}
+
+// tabComplete handles Tab keypresses in the command modal, completing agent
+// names in-place. Single match: complete + trailing space. Multiple matches:
+// complete to longest common prefix; second Tab shows all matches as a hint.
+func (t *TUI) tabComplete() {
+	buf := string(t.cmd.buf)
+	parts := strings.Fields(buf)
+	trailingSpace := len(buf) > 0 && buf[len(buf)-1] == ' '
+
+	if len(parts) == 0 {
+		return
+	}
+
+	cmd := parts[0]
+
+	// Only agent-name commands are tab-completed.
+	switch cmd {
+	case "focus", "hide", "show", "view", "remove", "rm", "restart", "r":
+		// Fall through to completion logic.
+	default:
+		return
+	}
+
+	// Determine the partial argument being completed.
+	var partial string
+	if trailingSpace {
+		partial = ""
+	} else if len(parts) > 1 {
+		partial = parts[len(parts)-1]
+	} else {
+		// Only the command is typed with no trailing space; nothing to complete yet.
+		return
+	}
+
+	candidates := t.completionCandidates(cmd)
+
+	var matches []string
+	for _, c := range candidates {
+		if strings.HasPrefix(c, partial) {
+			matches = append(matches, c)
+		}
+	}
+
+	if len(matches) == 0 {
+		return
+	}
+
+	// Build the prefix up to (but not including) the partial argument.
+	var argPrefix string
+	if trailingSpace {
+		argPrefix = buf
+	} else if len(parts) > 1 {
+		argPrefix = strings.Join(parts[:len(parts)-1], " ") + " "
+	}
+
+	if len(matches) == 1 {
+		// Unambiguous: complete with trailing space.
+		t.cmd.buf = []rune(argPrefix + matches[0] + " ")
+		t.cmd.tabBuf = ""
+		t.cmd.tabHint = ""
+		return
+	}
+
+	// Multiple matches: complete to longest common prefix.
+	lcp := longestCommonPrefix(matches)
+
+	if lcp != partial {
+		// Advance the partial to the LCP.
+		t.cmd.buf = []rune(argPrefix + lcp)
+		t.cmd.tabBuf = string(t.cmd.buf)
+		t.cmd.tabHint = ""
+		return
+	}
+
+	// LCP equals the partial: we're at maximum prefix. Show or refresh the hint.
+	t.cmd.tabBuf = buf
+	t.cmd.tabHint = strings.Join(matches, "  ")
+}
+
+// completionCandidates returns the agent names that are valid completions for
+// the given command keyword.
+func (t *TUI) completionCandidates(cmd string) []string {
+	switch cmd {
+	case "show":
+		// Hidden panes plus the special "all" keyword.
+		var names []string
+		for _, p := range t.panes {
+			if t.layoutState.Hidden[p.name] {
+				names = append(names, p.name)
+			}
+		}
+		names = append(names, "all")
+		return names
+	case "hide":
+		// Visible panes only.
+		var names []string
+		for _, p := range t.panes {
+			if !t.layoutState.Hidden[p.name] {
+				names = append(names, p.name)
+			}
+		}
+		return names
+	default:
+		// All pane names.
+		names := make([]string, len(t.panes))
+		for i, p := range t.panes {
+			names[i] = p.name
+		}
+		return names
+	}
+}
+
+// longestCommonPrefix returns the longest string that is a prefix of every
+// element in strs. Returns "" for an empty slice.
+func longestCommonPrefix(strs []string) string {
+	if len(strs) == 0 {
+		return ""
+	}
+	prefix := strs[0]
+	for _, s := range strs[1:] {
+		for !strings.HasPrefix(s, prefix) {
+			prefix = prefix[:len(prefix)-1]
+			if prefix == "" {
+				return ""
+			}
+		}
+	}
+	return prefix
 }
 
 // execCmd parses and executes a command string. Returns true if the TUI should quit.
@@ -310,8 +511,22 @@ func (t *TUI) execCmd(cmd string) bool {
 		}
 
 	case "restart", "r":
-		if err := t.restartFocused(); err != nil {
-			t.cmd.error = fmt.Sprintf("restart failed: %v", err)
+		if len(parts) >= 2 && parts[1] != "" {
+			// Named restart requires confirmation: operator must press Enter again.
+			name := parts[1]
+			if t.findPaneByName(name) == nil {
+				t.cmd.error = fmt.Sprintf("restart: unknown agent %q", name)
+				return false
+			}
+			t.cmd.pendingConfirm = "restart " + name
+			t.cmd.confirmMsg = fmt.Sprintf("Restart %s? Context window will be lost. Enter to confirm, Esc to cancel.", name)
+			t.cmd.confirmExpiry = time.Now().Add(3 * time.Second)
+			t.cmd.active = true
+		} else {
+			// No-arg restart: restart focused pane immediately (less dangerous).
+			if err := t.restartFocused(); err != nil {
+				t.cmd.error = fmt.Sprintf("restart failed: %v", err)
+			}
 		}
 
 	case "patrol":
@@ -359,10 +574,14 @@ func (t *TUI) execCmd(cmd string) bool {
 	case "remove", "rm":
 		if len(parts) < 2 || parts[1] == "" {
 			t.cmd.error = "usage: remove <name>"
-		} else if err := t.removePane(parts[1]); err != nil {
-			t.cmd.error = "remove: " + err.Error()
+		} else if t.findPaneByName(parts[1]) == nil {
+			t.cmd.error = fmt.Sprintf("remove: unknown agent %q", parts[1])
 		} else {
-			t.cmd.error = "removed " + parts[1]
+			name := parts[1]
+			t.cmd.pendingConfirm = "remove " + name
+			t.cmd.confirmMsg = fmt.Sprintf("Remove %s? This kills the process. Enter to confirm, Esc to cancel.", name)
+			t.cmd.confirmExpiry = time.Now().Add(3 * time.Second)
+			t.cmd.active = true
 		}
 
 	case "log", "events":
@@ -371,7 +590,10 @@ func (t *TUI) execCmd(cmd string) bool {
 		t.eventLogM.scrollOffset = 0 // Start at the bottom (latest events).
 
 	case "quit", "q":
-		return true
+		t.cmd.pendingConfirm = "quit"
+		t.cmd.confirmMsg = "Quit will stop all agents. Enter to confirm, Esc to cancel."
+		t.cmd.confirmExpiry = time.Now().Add(3 * time.Second)
+		t.cmd.active = true
 
 	default:
 		t.cmd.error = fmt.Sprintf("unknown command %q", parts[0])
@@ -475,6 +697,21 @@ func (t *TUI) restartFocused() error {
 	if fp == nil {
 		return fmt.Errorf("no pane focused")
 	}
+	return t.restartPane(fp)
+}
+
+// restartByName finds the named pane and restarts it.
+func (t *TUI) restartByName(name string) error {
+	p := t.findPaneByName(name)
+	if p == nil {
+		return fmt.Errorf("unknown agent %q", name)
+	}
+	return t.restartPane(p)
+}
+
+// restartPane kills the given pane's process and starts a new one at the same
+// index in the pane list.
+func (t *TUI) restartPane(fp *Pane) error {
 	idx := -1
 	for i, p := range t.panes {
 		if p == fp {
@@ -483,7 +720,7 @@ func (t *TUI) restartFocused() error {
 		}
 	}
 	if idx < 0 {
-		return fmt.Errorf("focused pane not found")
+		return fmt.Errorf("pane not found")
 	}
 	cols := fp.emu.Width()
 	rows := fp.emu.Height()

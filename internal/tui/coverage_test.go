@@ -248,11 +248,20 @@ func TestExecCmdMainLayout(t *testing.T) {
 
 func TestExecCmdQuitAndAlias(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("a")
-	if !tui.execCmd("quit") {
-		t.Error("quit should return true")
+	// quit now requires confirmation: first call sets pendingConfirm, does not quit.
+	if tui.execCmd("quit") {
+		t.Error("quit should not return true on first press; confirmation required")
 	}
-	if !tui.execCmd("q") {
-		t.Error("q should return true")
+	if tui.cmd.pendingConfirm != "quit" {
+		t.Errorf("pendingConfirm = %q, want %q", tui.cmd.pendingConfirm, "quit")
+	}
+	// Reset for next check.
+	tui.cmd.pendingConfirm = ""
+	if tui.execCmd("q") {
+		t.Error("q should not return true on first press; confirmation required")
+	}
+	if tui.cmd.pendingConfirm != "quit" {
+		t.Errorf("pendingConfirm = %q, want %q", tui.cmd.pendingConfirm, "quit")
 	}
 }
 

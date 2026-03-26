@@ -33,6 +33,15 @@ type cmdModal struct {
 	active bool
 	buf    []rune
 	error  string // Shown briefly after a bad command.
+
+	// Tab completion state.
+	tabBuf  string // Buffer content at last Tab press (double-Tab detection).
+	tabHint string // Completion hint line shown above the input bar; empty = no hint.
+
+	// Destructive command confirmation state.
+	pendingConfirm string    // Command waiting for Enter-to-confirm ("quit", "remove eng1", "restart eng2").
+	confirmExpiry  time.Time // When the confirmation prompt auto-expires.
+	confirmMsg     string    // Human-readable confirmation prompt text.
 }
 
 // topModal holds activity monitor (top) modal state.

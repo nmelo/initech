@@ -1062,15 +1062,23 @@ func TestExecCmdEmpty(t *testing.T) {
 
 func TestExecCmdQuit(t *testing.T) {
 	tui := newTestTUI()
-	if !tui.execCmd("quit") {
-		t.Error("quit should return true")
+	// quit now requires confirmation: first execCmd sets pendingConfirm, does not quit.
+	if tui.execCmd("quit") {
+		t.Error("quit should not return true on first press; confirmation required")
+	}
+	if tui.cmd.pendingConfirm != "quit" {
+		t.Errorf("pendingConfirm = %q, want %q", tui.cmd.pendingConfirm, "quit")
 	}
 }
 
 func TestExecCmdQuitShort(t *testing.T) {
 	tui := newTestTUI()
-	if !tui.execCmd("q") {
-		t.Error("q should return true")
+	// q now requires confirmation: first execCmd sets pendingConfirm, does not quit.
+	if tui.execCmd("q") {
+		t.Error("q should not return true on first press; confirmation required")
+	}
+	if tui.cmd.pendingConfirm != "quit" {
+		t.Errorf("pendingConfirm = %q, want %q", tui.cmd.pendingConfirm, "quit")
 	}
 }
 
@@ -1310,12 +1318,23 @@ func TestHandleCmdKeyEnter(t *testing.T) {
 	tui.cmd.buf = []rune("quit")
 
 	ev := tcell.NewEventKey(tcell.KeyEnter, 0, 0)
+	// First Enter: shows confirmation prompt, does not quit.
 	quit := tui.handleCmdKey(ev)
-	if !quit {
-		t.Error("Enter on 'quit' should return true")
+	if quit {
+		t.Error("first Enter on 'quit' should not return true; confirmation required")
 	}
-	if tui.cmd.active {
-		t.Error("Enter should close modal")
+	if tui.cmd.pendingConfirm != "quit" {
+		t.Errorf("pendingConfirm = %q, want %q", tui.cmd.pendingConfirm, "quit")
+	}
+	// Modal stays open for confirmation.
+	if !tui.cmd.active {
+		t.Error("modal should remain active while confirmation is pending")
+	}
+
+	// Second Enter: confirms and quits.
+	quit = tui.handleCmdKey(ev)
+	if !quit {
+		t.Error("second Enter on quit confirmation should return true")
 	}
 }
 

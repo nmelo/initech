@@ -99,10 +99,28 @@ func (t *TUI) selectionForPane(p *Pane) Selection {
 
 
 // renderCmdLine draws the command input bar at the bottom of the screen.
+// If a destructive command is pending confirmation, it renders a yellow
+// confirmation prompt instead of the normal input.
+// If tab completion matches are available, it renders a hint line one row above.
 func (t *TUI) renderCmdLine() {
 	s := t.screen
 	sw, sh := s.Size()
 	y := sh - 1
+
+	// Confirmation prompt: replace normal input with a yellow warning bar.
+	if t.cmd.pendingConfirm != "" {
+		confirmStyle := tcell.StyleDefault.Background(tcell.ColorOlive).Foreground(tcell.ColorWhite)
+		for x := 0; x < sw; x++ {
+			s.SetContent(x, y, ' ', nil, confirmStyle)
+		}
+		msg := []rune(" " + t.cmd.confirmMsg)
+		for i, ch := range msg {
+			if i < sw {
+				s.SetContent(i, y, ch, nil, confirmStyle)
+			}
+		}
+		return
+	}
 
 	// Background for the entire line.
 	bgStyle := tcell.StyleDefault.Background(tcell.ColorDarkSlateGray)
@@ -137,6 +155,21 @@ func (t *TUI) renderCmdLine() {
 	if hintStart > cursorPos+2 {
 		for i, ch := range hint {
 			s.SetContent(hintStart+i, y, ch, nil, hintStyle)
+		}
+	}
+
+	// Tab completion hint: draw a dimmed hint bar one row above the input.
+	if t.cmd.tabHint != "" && sh >= 2 {
+		hintY := sh - 2
+		tabHintStyle := tcell.StyleDefault.Background(tcell.ColorDarkSlateGray).Foreground(tcell.ColorGray)
+		for x := 0; x < sw; x++ {
+			s.SetContent(x, hintY, ' ', nil, tabHintStyle)
+		}
+		label := []rune("  " + t.cmd.tabHint)
+		for i, ch := range label {
+			if i < sw {
+				s.SetContent(i, hintY, ch, nil, tabHintStyle)
+			}
 		}
 	}
 }
