@@ -3,9 +3,11 @@ package tui
 import (
 	"fmt"
 	"os"
+	osexec "os/exec"
 	"time"
 
 	"github.com/gdamore/tcell/v2"
+	iexec "github.com/nmelo/initech/internal/exec"
 )
 
 // LayoutMode determines how panes are arranged on screen.
@@ -250,6 +252,11 @@ func Run(cfg Config) error {
 			p.Close()
 		}
 	}()
+
+	// Start idle-with-backlog detection if bd is available.
+	if _, err := osexec.LookPath("bd"); err == nil {
+		go t.watchBacklog(&iexec.DefaultRunner{})
+	}
 
 	// Poll tcell events in a goroutine.
 	eventCh := make(chan tcell.Event, 64)
