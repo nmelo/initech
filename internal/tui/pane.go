@@ -508,6 +508,25 @@ func (p *Pane) Render(screen tcell.Screen, focused bool, dimmed bool, index int,
 					}
 					s.SetContent(r.X+col, r.Y+row, cells[col].ch, nil, st)
 				}
+			} else if emuRow == pos.Y {
+				// Cursor (prompt) row: blank uncolored non-space cells to the
+				// right of the cursor position. These are stale cells left by
+				// CUF (cursor forward) that moved past them without erasing —
+				// e.g. "Claude Code" or the session name appearing as ghost
+				// text on the prompt line (ini-7md). Colored cells (autocomplete
+				// suggestions rendered with an explicit Fg color) are preserved.
+				for col := 0; col < innerCols; col++ {
+					cell := p.emu.CellAt(col, emuRow)
+					ch, style := uvCellToTcell(cell)
+					if col > pos.X && ch != ' ' && (cell == nil || cell.Style.Fg == nil) {
+						ch = ' '
+						style = tcell.StyleDefault
+					}
+					if dimmed {
+						style = dimStyle(style)
+					}
+					s.SetContent(r.X+col, r.Y+row, ch, nil, style)
+				}
 			} else {
 				// Normal row: render directly.
 				for col := 0; col < innerCols; col++ {
