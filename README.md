@@ -1,11 +1,11 @@
-<p align="center">
-  <img src="stapler.png" alt="I believe you have my stapler" width="300">
-</p>
-
 [![Go](https://img.shields.io/badge/Go-1.25-00ADD8?logo=go&logoColor=white)](https://go.dev)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Tests](https://img.shields.io/badge/tests-10%2C500_lines-brightgreen)](https://github.com/nmelo/initech)
 [![Homebrew](https://img.shields.io/badge/brew-nmelo%2Ftap-orange?logo=homebrew)](https://github.com/nmelo/homebrew-tap)
+
+<p align="center">
+  <img src="stapler.png" alt="I believe you have my stapler" width="300">
+</p>
 
 # initech
 
