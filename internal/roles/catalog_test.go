@@ -4,7 +4,7 @@ import "testing"
 
 func TestCatalogCompleteness(t *testing.T) {
 	expected := []string{
-		"super", "eng1", "eng2", "qa1", "qa2", "shipper",
+		"super", "eng1", "eng2", "eng3", "qa1", "qa2", "shipper",
 		"pm", "pmm", "arch", "sec", "writer", "ops", "growth",
 	}
 
@@ -28,7 +28,7 @@ func TestCatalogPermissionTiers(t *testing.T) {
 		}
 	}
 
-	autonomous := []string{"eng1", "eng2", "qa1", "qa2", "pm", "pmm", "arch", "sec", "writer", "ops", "growth"}
+	autonomous := []string{"eng1", "eng2", "eng3", "qa1", "qa2", "pm", "pmm", "arch", "sec", "writer", "ops", "growth"}
 	for _, name := range autonomous {
 		def := Catalog[name]
 		if def.Permission != Autonomous {
@@ -38,7 +38,7 @@ func TestCatalogPermissionTiers(t *testing.T) {
 }
 
 func TestCatalogNeedsSrc(t *testing.T) {
-	needsSrc := []string{"eng1", "eng2", "qa1", "qa2", "shipper", "growth"}
+	needsSrc := []string{"eng1", "eng2", "eng3", "qa1", "qa2", "shipper", "growth"}
 	for _, name := range needsSrc {
 		def := Catalog[name]
 		if !def.NeedsSrc {
@@ -66,7 +66,7 @@ func TestCatalogNeedsPlaybooks(t *testing.T) {
 }
 
 func TestCatalogNeedsMakefile(t *testing.T) {
-	needsMakefile := []string{"eng1", "eng2"}
+	needsMakefile := []string{"eng1", "eng2", "eng3"}
 	for _, name := range needsMakefile {
 		def := Catalog[name]
 		if !def.NeedsMakefile {
