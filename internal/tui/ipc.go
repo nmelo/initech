@@ -112,6 +112,10 @@ func (t *TUI) handleIPCConn(conn net.Conn) {
 		t.handleIPCBead(conn, req)
 	case "patrol":
 		t.handleIPCPatrol(conn, req)
+	case "add":
+		t.handleIPCAdd(conn, req)
+	case "remove":
+		t.handleIPCRemove(conn, req)
 	case "quit":
 		t.handleIPCQuit(conn)
 	default:
@@ -452,6 +456,136 @@ func (t *TUI) handleIPCRestart(conn net.Conn, req IPCRequest) {
 	t.panes[idx] = np
 	t.applyLayout()
 	writeIPCResponse(conn, IPCResponse{OK: true})
+}
+
+func (t *TUI) handleIPCAdd(conn net.Conn, req IPCRequest) {
+	if err := t.addPane(req.Target); err != nil {
+		writeIPCResponse(conn, IPCResponse{Error: err.Error()})
+		return
+	}
+	writeIPCResponse(conn, IPCResponse{OK: true})
+}
+
+func (t *TUI) handleIPCRemove(conn net.Conn, req IPCRequest) {
+	if err := t.removePane(req.Target); err != nil {
+		writeIPCResponse(conn, IPCResponse{Error: err.Error()})
+		return
+	}
+	writeIPCResponse(conn, IPCResponse{OK: true})
+}
+
+// addPane creates a new pane for the given role name and integrates it into
+// the running TUI. The workspace directory must already exist on disk.
+// Returns an error if the name is empty, already exists, or has no workspace.
+func (t *TUI) addPane(name string) error {
+	if name == "" {
+		return fmt.Errorf("name is required")
+	}
+	if t.findPane(name) != nil {
+		return fmt.Errorf("agent %q already exists", name)
+	}
+	if t.paneConfigBuilder == nil {
+		return fmt.Errorf("add not available: no config builder (was TUI started via 'initech up'?)")
+	}
+
+	cfg, err := t.paneConfigBuilder(name)
+	if err != nil {
+		return fmt.Errorf("build config for %q: %w", name, err)
+	}
+
+	// Verify the workspace directory exists.
+	if _, err := os.Stat(cfg.Dir); os.IsNotExist(err) {
+		return fmt.Errorf("workspace %s/ not found. Create it first (e.g. mkdir -p %s && cp <agent>/CLAUDE.md %s/)", name, cfg.Dir, cfg.Dir)
+	}
+
+	// Inject runtime env vars the TUI manages.
+	cfg.Env = append(cfg.Env,
+		"INITECH_SOCKET="+t.sockPath,
+		"INITECH_AGENT="+name,
+	)
+
+	// Temporary dimensions; applyLayout will resize to the correct region.
+	rows, cols := 24, 80
+	if t.screen != nil {
+		w, h := t.screen.Size()
+		cols, rows = w/2, h/2
+		if cols < 10 {
+			cols = 80
+		}
+		if rows < 4 {
+			rows = 24
+		}
+	}
+
+	p, err := NewPane(cfg, rows, cols)
+	if err != nil {
+		return fmt.Errorf("create pane %q: %w", name, err)
+	}
+	p.eventCh = t.agentEvents
+	t.panes = append(t.panes, p)
+
+	// Recalculate grid for the new visible pane count.
+	t.recalcGrid()
+	t.applyLayout()
+	t.saveLayoutIfConfigured()
+	return nil
+}
+
+// removePane kills the named pane and removes it from the running TUI.
+// The workspace directory is NOT deleted. Returns an error if the name is
+// empty, not found, or is the last pane (at least one must remain).
+func (t *TUI) removePane(name string) error {
+	if name == "" {
+		return fmt.Errorf("name is required")
+	}
+	idx := -1
+	for i, p := range t.panes {
+		if p.name == name {
+			idx = i
+			break
+		}
+	}
+	if idx < 0 {
+		return fmt.Errorf("agent %q not found", name)
+	}
+	if len(t.panes) == 1 {
+		return fmt.Errorf("cannot remove last agent")
+	}
+
+	p := t.panes[idx]
+	p.Close()
+
+	// Remove from slice without leaving gaps.
+	t.panes = append(t.panes[:idx], t.panes[idx+1:]...)
+
+	// Clean up layout state references.
+	if t.layoutState.Hidden != nil {
+		delete(t.layoutState.Hidden, name)
+	}
+	// If this was the focused pane, clear focus so applyLayout snaps to next visible.
+	if t.layoutState.Focused == name {
+		t.layoutState.Focused = ""
+	}
+
+	t.recalcGrid()
+	t.applyLayout()
+	t.saveLayoutIfConfigured()
+	return nil
+}
+
+// recalcGrid recomputes GridCols/GridRows from the current visible pane count
+// and switches to LayoutGrid mode. Called after add or remove.
+func (t *TUI) recalcGrid() {
+	visCount := 0
+	for _, p := range t.panes {
+		if t.layoutState.Hidden == nil || !t.layoutState.Hidden[p.name] {
+			visCount++
+		}
+	}
+	cols, rows := autoGrid(visCount)
+	t.layoutState.GridCols = cols
+	t.layoutState.GridRows = rows
+	t.layoutState.Mode = LayoutGrid
 }
 
 func (t *TUI) handleIPCQuit(conn net.Conn) {

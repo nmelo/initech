@@ -1038,12 +1038,18 @@ func (p *Pane) Close() {
 	p.alive = false
 	p.mu.Unlock()
 
-	p.emu.Close()
-	p.ptmx.Close()
-	if p.cmd.Process != nil {
-		p.cmd.Process.Kill()
+	if p.emu != nil {
+		p.emu.Close()
 	}
-	p.cmd.Wait()
+	if p.ptmx != nil {
+		p.ptmx.Close()
+	}
+	if p.cmd != nil {
+		if p.cmd.Process != nil {
+			p.cmd.Process.Kill()
+		}
+		p.cmd.Wait()
+	}
 }
 
 

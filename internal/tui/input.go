@@ -342,6 +342,24 @@ func (t *TUI) execCmd(cmd string) bool {
 		t.top.selected = 0
 		t.top.cacheTime = time.Time{} // Force fresh data.
 
+	case "add":
+		if len(parts) < 2 || parts[1] == "" {
+			t.cmd.error = "usage: add <name>"
+		} else if err := t.addPane(parts[1]); err != nil {
+			t.cmd.error = "add: " + err.Error()
+		} else {
+			t.cmd.error = "added " + parts[1]
+		}
+
+	case "remove", "rm":
+		if len(parts) < 2 || parts[1] == "" {
+			t.cmd.error = "usage: remove <name>"
+		} else if err := t.removePane(parts[1]); err != nil {
+			t.cmd.error = "remove: " + err.Error()
+		} else {
+			t.cmd.error = "removed " + parts[1]
+		}
+
 	case "quit", "q":
 		return true
 

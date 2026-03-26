@@ -90,52 +90,12 @@ func runTUI(cmd *cobra.Command, args []string) error {
 
 	agents := make([]tui.PaneConfig, 0, len(proj.Roles))
 	for _, roleName := range proj.Roles {
-		// Build agent command. INITECH_MOCK_AGENT overrides for testing.
-		var argv []string
-		if mock := os.Getenv("INITECH_MOCK_AGENT"); mock != "" {
-			argv = []string{mock}
-		} else {
-			// Base command: claude_command or default ["claude"].
-			if len(proj.ClaudeCommand) > 0 {
-				argv = append(argv, proj.ClaudeCommand...)
-			} else {
-				argv = []string{"claude"}
-			}
-			// Args: per-role override > global > catalog default.
-			var roleArgs []string
-			if ov, ok := proj.RoleOverrides[roleName]; ok {
-				roleArgs = ov.ClaudeArgs
-			}
-			if args := roles.ResolveClaudeArgs(roleName, proj.ClaudeArgs, roleArgs); len(args) > 0 {
-				argv = append(argv, args...)
-			}
-		}
-
-		// Working directory: <root>/<role>/
-		dir := filepath.Join(proj.Root, roleName)
-		if ov, ok := proj.RoleOverrides[roleName]; ok && ov.Dir != "" {
-			dir = ov.Dir
-		}
-
-		// Verify the role directory exists. Skip missing dirs with a warning
-		// so the TUI still starts for roles that are properly set up.
-		if _, err := os.Stat(dir); os.IsNotExist(err) {
-			fmt.Fprintf(os.Stderr, "Warning: role %q directory does not exist: %s. Skipping.\n", roleName, dir)
+		pcfg, err := buildAgentPaneConfig(roleName, proj)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "Warning:", err)
 			continue
 		}
-
-		// Environment.
-		var env []string
-		if proj.Beads.Prefix != "" {
-			env = append(env, fmt.Sprintf("BEADS_DIR=%s/.beads", proj.Root))
-		}
-
-		agents = append(agents, tui.PaneConfig{
-			Name:    roleName,
-			Command: argv,
-			Dir:     dir,
-			Env:     env,
-		})
+		agents = append(agents, pcfg)
 	}
 
 	if len(agents) == 0 {
@@ -148,5 +108,53 @@ func runTUI(cmd *cobra.Command, args []string) error {
 		ProjectRoot: proj.Root,
 		ResetLayout: resetLayout,
 		Version:     Version,
+		PaneConfigBuilder: func(name string) (tui.PaneConfig, error) {
+			return buildAgentPaneConfig(name, proj)
+		},
 	})
+}
+
+// buildAgentPaneConfig constructs a PaneConfig for the given role from the
+// project config. Returns an error if the workspace directory does not exist.
+// INITECH_SOCKET and INITECH_AGENT are NOT set here; the TUI injects them
+// at pane-creation time so they reflect the live socket path.
+func buildAgentPaneConfig(roleName string, proj *config.Project) (tui.PaneConfig, error) {
+	var argv []string
+	if mock := os.Getenv("INITECH_MOCK_AGENT"); mock != "" {
+		argv = []string{mock}
+	} else {
+		if len(proj.ClaudeCommand) > 0 {
+			argv = append(argv, proj.ClaudeCommand...)
+		} else {
+			argv = []string{"claude"}
+		}
+		var roleArgs []string
+		if ov, ok := proj.RoleOverrides[roleName]; ok {
+			roleArgs = ov.ClaudeArgs
+		}
+		if resolved := roles.ResolveClaudeArgs(roleName, proj.ClaudeArgs, roleArgs); len(resolved) > 0 {
+			argv = append(argv, resolved...)
+		}
+	}
+
+	dir := filepath.Join(proj.Root, roleName)
+	if ov, ok := proj.RoleOverrides[roleName]; ok && ov.Dir != "" {
+		dir = ov.Dir
+	}
+
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		return tui.PaneConfig{}, fmt.Errorf("role %q directory does not exist: %s", roleName, dir)
+	}
+
+	var env []string
+	if proj.Beads.Prefix != "" {
+		env = append(env, fmt.Sprintf("BEADS_DIR=%s/.beads", proj.Root))
+	}
+
+	return tui.PaneConfig{
+		Name:    roleName,
+		Command: argv,
+		Dir:     dir,
+		Env:     env,
+	}, nil
 }

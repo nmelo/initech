@@ -68,6 +68,14 @@ type TUI struct {
 	// Project root for .initech/layout.yaml persistence. Empty disables auto-save.
 	projectRoot string
 
+	// sockPath is the IPC socket this TUI is listening on. Used to inject
+	// INITECH_SOCKET into hot-added panes.
+	sockPath string
+
+	// paneConfigBuilder builds a PaneConfig for a new role at runtime.
+	// Set from Config.PaneConfigBuilder. Nil disables the add command.
+	paneConfigBuilder func(name string) (PaneConfig, error)
+
 	cmd    cmdModal        // Command input bar.
 	top    topModal        // Activity monitor overlay.
 	sel    mouseSelection  // Mouse text selection.
@@ -137,11 +145,12 @@ func (t *TUI) focusedPane() *Pane {
 
 // Config controls what agents the TUI launches.
 type Config struct {
-	Agents      []PaneConfig // One entry per agent pane.
-	ProjectName string       // Used for socket path.
-	ProjectRoot string       // Project root for .initech/ layout persistence.
-	ResetLayout bool         // Ignore saved layout and start with defaults.
-	Version     string       // Build version for crash reports.
+	Agents            []PaneConfig                    // One entry per agent pane.
+	ProjectName       string                          // Used for socket path.
+	ProjectRoot       string                          // Project root for .initech/ layout persistence.
+	ResetLayout       bool                            // Ignore saved layout and start with defaults.
+	Version           string                          // Build version for crash reports.
+	PaneConfigBuilder func(name string) (PaneConfig, error) // Optional factory for hot-add. Nil disables add command.
 }
 
 // DefaultConfig returns a config with standard shell-only agents.
@@ -201,19 +210,22 @@ func Run(cfg Config) error {
 	}
 
 	initW, initH := screen.Size()
+	sp := SocketPath(cfg.ProjectName)
 	t := &TUI{
-		screen:      screen,
-		layoutState: layoutState,
-		lastW:       initW,
-		lastH:       initH,
-		projectRoot: cfg.ProjectRoot,
-		version:     cfg.Version,
-		quitCh:      make(chan struct{}),
-		agentEvents: make(chan AgentEvent, 64),
+		screen:            screen,
+		layoutState:       layoutState,
+		lastW:             initW,
+		lastH:             initH,
+		projectRoot:       cfg.ProjectRoot,
+		version:           cfg.Version,
+		sockPath:          sp,
+		paneConfigBuilder: cfg.PaneConfigBuilder,
+		quitCh:            make(chan struct{}),
+		agentEvents:       make(chan AgentEvent, 64),
 	}
 
 	// Start IPC socket server for inter-agent messaging.
-	sockPath := SocketPath(cfg.ProjectName)
+	sockPath := sp
 	ipcCleanup, err := t.startIPC(sockPath)
 	if err != nil {
 		return fmt.Errorf("start IPC: %w", err)
