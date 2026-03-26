@@ -40,9 +40,9 @@ func TestBuildDisplayRows(t *testing.T) {
 		{Name: "eng2", Group: "ENGINEERS"},
 	}
 	rows := buildDisplayRows(items)
-	// Expected: header(COORDINATORS), item(0), header(ENGINEERS), item(1), item(2), customInput
-	if len(rows) != 6 {
-		t.Fatalf("len(rows) = %d, want 6", len(rows))
+	// Expected: header(COORDINATORS), item(0), header(ENGINEERS), item(1), item(2)
+	if len(rows) != 5 {
+		t.Fatalf("len(rows) = %d, want 5", len(rows))
 	}
 	if rows[0].kind != rowHeader || rows[0].group != "COORDINATORS" {
 		t.Errorf("rows[0] = %+v, want COORDINATORS header", rows[0])
@@ -59,9 +59,6 @@ func TestBuildDisplayRows(t *testing.T) {
 	if rows[4].kind != rowItem || rows[4].itemIdx != 2 {
 		t.Errorf("rows[4] = %+v, want item 2", rows[4])
 	}
-	if rows[5].kind != rowCustomInput {
-		t.Errorf("rows[5] = %+v, want rowCustomInput", rows[5])
-	}
 }
 
 func TestBuildDisplayRowsSameGroup(t *testing.T) {
@@ -70,15 +67,12 @@ func TestBuildDisplayRowsSameGroup(t *testing.T) {
 		{Name: "b", Group: "G"},
 	}
 	rows := buildDisplayRows(items)
-	// One header + two items + customInput = 4.
-	if len(rows) != 4 {
-		t.Fatalf("len(rows) = %d, want 4 (1 header + 2 items + customInput)", len(rows))
+	// One header + two items = 3.
+	if len(rows) != 3 {
+		t.Fatalf("len(rows) = %d, want 3 (1 header + 2 items)", len(rows))
 	}
 	if rows[0].kind != rowHeader {
 		t.Error("rows[0] should be a header")
-	}
-	if rows[3].kind != rowCustomInput {
-		t.Errorf("last row should be rowCustomInput, got %+v", rows[3])
 	}
 }
 
@@ -88,15 +82,12 @@ func TestBuildDisplayRowsNoGroup(t *testing.T) {
 		{Name: "b"},
 	}
 	rows := buildDisplayRows(items)
-	// Empty Group: no headers emitted. Two item rows + customInput = 3.
-	if len(rows) != 3 {
-		t.Fatalf("len(rows) = %d, want 3 (2 items + customInput)", len(rows))
+	// Empty Group: no headers emitted. Two item rows = 2.
+	if len(rows) != 2 {
+		t.Fatalf("len(rows) = %d, want 2 (2 items)", len(rows))
 	}
 	if rows[0].kind != rowItem || rows[1].kind != rowItem {
 		t.Error("first two rows should be item rows when Group is empty")
-	}
-	if rows[2].kind != rowCustomInput {
-		t.Errorf("last row should be rowCustomInput, got %+v", rows[2])
 	}
 }
 
@@ -107,12 +98,9 @@ func TestBuildDisplayRowsGroupTransition(t *testing.T) {
 		{Name: "c", Group: "G2"},
 	}
 	rows := buildDisplayRows(items)
-	// header(G1), item(0), header(G2), item(1), item(2), customInput = 6
-	if len(rows) != 6 {
-		t.Fatalf("len(rows) = %d, want 6", len(rows))
-	}
-	if rows[5].kind != rowCustomInput {
-		t.Errorf("last row should be rowCustomInput, got %+v", rows[5])
+	// header(G1), item(0), header(G2), item(1), item(2) = 5
+	if len(rows) != 5 {
+		t.Fatalf("len(rows) = %d, want 5", len(rows))
 	}
 }
 
@@ -148,14 +136,8 @@ func TestMoveCursorWrapForward(t *testing.T) {
 	s := newTestSelector(3)
 	s.cursor = 2
 	moveCursor(s, 1)
-	// Moving forward from the last item now goes to the custom row, not item 0.
-	if !s.onCustomRow {
-		t.Errorf("moving forward from last item should go to custom row")
-	}
-	// Another forward step from custom row wraps to item 0.
-	moveCursor(s, 1)
-	if s.onCustomRow || s.cursor != 0 {
-		t.Errorf("moving forward from custom row should go to item 0, got cursor=%d onCustomRow=%v", s.cursor, s.onCustomRow)
+	if s.cursor != 0 {
+		t.Errorf("moving forward from last item should wrap to 0, got %d", s.cursor)
 	}
 }
 
@@ -163,30 +145,20 @@ func TestMoveCursorWrapBackward(t *testing.T) {
 	s := newTestSelector(3)
 	s.cursor = 0
 	moveCursor(s, -1)
-	// Moving backward from the first item now goes to the custom row.
-	if !s.onCustomRow {
-		t.Errorf("moving backward from first item should go to custom row")
-	}
-	// Another backward step from custom row goes to the last item.
-	moveCursor(s, -1)
-	if s.onCustomRow || s.cursor != 2 {
-		t.Errorf("moving backward from custom row should go to last item, got cursor=%d onCustomRow=%v", s.cursor, s.onCustomRow)
+	if s.cursor != 2 {
+		t.Errorf("moving backward from first item should wrap to last, got %d", s.cursor)
 	}
 }
 
 func TestMoveCursorSingleItem(t *testing.T) {
 	s := newTestSelector(1)
-	moveCursor(s, 1) // item 0 -> custom row
-	if !s.onCustomRow {
-		t.Errorf("moving forward from only item should enter custom row")
+	moveCursor(s, 1)
+	if s.cursor != 0 {
+		t.Errorf("single item forward wrap should stay at 0, got %d", s.cursor)
 	}
-	moveCursor(s, -1) // custom row -> item 0
-	if s.onCustomRow || s.cursor != 0 {
-		t.Errorf("moving backward from custom row should return to item 0")
-	}
-	moveCursor(s, -1) // item 0 -> custom row (backward wrap)
-	if !s.onCustomRow {
-		t.Errorf("moving backward from first item should enter custom row")
+	moveCursor(s, -1)
+	if s.cursor != 0 {
+		t.Errorf("single item backward wrap should stay at 0, got %d", s.cursor)
 	}
 }
 
@@ -360,7 +332,6 @@ func TestRenderSelectorContainsExpectedContent(t *testing.T) {
 		"eng1",
 		"eng2",
 		"2 selected",
-		"Add custom role",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("render output missing %q", want)
@@ -488,6 +459,18 @@ func TestRenderSelectorStatusCount(t *testing.T) {
 	}
 }
 
+func TestRenderSelectorPresetHintInOutput(t *testing.T) {
+	s := newTestSelector(2)
+	var buf strings.Builder
+	renderSelector(&buf, s)
+	out := buf.String()
+	for _, want := range []string{"s=small", "m=standard", "f=full", "a=all", "n=none"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("renderSelector output missing preset hint %q", want)
+		}
+	}
+}
+
 // ── applyPreset ────────────────────────────────────────────────────────
 
 func TestApplyPresetSmall(t *testing.T) {
@@ -559,245 +542,6 @@ func TestApplyPresetNone(t *testing.T) {
 	for _, it := range s.items {
 		if it.Checked {
 			t.Errorf("'none' preset: %q should be unchecked", it.Name)
-		}
-	}
-}
-
-// ── moveCursor custom row ─────────────────────────────────────────────
-
-func TestMoveCursorToCustomRowOnDownFromLast(t *testing.T) {
-	s := newTestSelector(3)
-	s.cursor = 2 // last item
-	moveCursor(s, 1)
-	if !s.onCustomRow {
-		t.Error("moving down from last item should enter custom row")
-	}
-}
-
-func TestMoveCursorToCustomRowOnUpFromFirst(t *testing.T) {
-	s := newTestSelector(3)
-	s.cursor = 0
-	moveCursor(s, -1)
-	if !s.onCustomRow {
-		t.Error("moving up from first item should enter custom row")
-	}
-}
-
-func TestMoveCursorFromCustomRowDown(t *testing.T) {
-	s := newTestSelector(3)
-	s.onCustomRow = true
-	moveCursor(s, 1)
-	if s.onCustomRow || s.cursor != 0 {
-		t.Errorf("moving down from custom row should go to item 0, got cursor=%d onCustomRow=%v", s.cursor, s.onCustomRow)
-	}
-}
-
-func TestMoveCursorFromCustomRowUp(t *testing.T) {
-	s := newTestSelector(3)
-	s.onCustomRow = true
-	moveCursor(s, -1)
-	if s.onCustomRow || s.cursor != 2 {
-		t.Errorf("moving up from custom row should go to last item, got cursor=%d onCustomRow=%v", s.cursor, s.onCustomRow)
-	}
-}
-
-// ── scrollToCursor with onCustomRow ───────────────────────────────────
-
-func TestScrollToCursorOnCustomRow(t *testing.T) {
-	// With 20 items and a small terminal, the custom row may be off-screen.
-	// After scrollToCursor with onCustomRow=true, it should be visible.
-	s := newTestSelector(20)
-	s.termH = 15 // contentHeight = 6
-	s.onCustomRow = true
-	s.scroll = 0 // start at top
-	scrollToCursor(s)
-	visH := contentHeight(s.termH)
-	lastRowIdx := len(s.rows) - 1
-	if lastRowIdx < s.scroll || lastRowIdx >= s.scroll+visH {
-		t.Errorf("custom row (display idx %d) not visible in scroll window [%d, %d)",
-			lastRowIdx, s.scroll, s.scroll+visH)
-	}
-}
-
-// ── addCustomRole ─────────────────────────────────────────────────────
-
-func TestAddCustomRoleSuccess(t *testing.T) {
-	s := newTestSelector(2)
-	errMsg := addCustomRole(s, "infra")
-	if errMsg != "" {
-		t.Errorf("addCustomRole returned error %q, want empty", errMsg)
-	}
-	if len(s.items) != 3 {
-		t.Fatalf("items len = %d, want 3", len(s.items))
-	}
-	added := s.items[2]
-	if added.Name != "infra" {
-		t.Errorf("added item name = %q, want 'infra'", added.Name)
-	}
-	if added.Group != "CUSTOM" {
-		t.Errorf("added item group = %q, want 'CUSTOM'", added.Group)
-	}
-	if !added.Checked {
-		t.Error("added item should be checked")
-	}
-	// Cursor should be on the new item, not on the custom row.
-	if s.onCustomRow {
-		t.Error("after adding, cursor should not be on custom row")
-	}
-	if s.cursor != 2 {
-		t.Errorf("cursor = %d, want 2 (new item index)", s.cursor)
-	}
-	// customInput should be cleared.
-	if s.customInput != "" {
-		t.Errorf("customInput = %q, want empty after add", s.customInput)
-	}
-}
-
-func TestAddCustomRoleDuplicate(t *testing.T) {
-	s := newTestSelector(2)
-	s.items[0].Name = "eng1"
-	errMsg := addCustomRole(s, "eng1")
-	if errMsg == "" {
-		t.Error("expected error for duplicate role name, got empty")
-	}
-	if len(s.items) != 2 {
-		t.Errorf("items len = %d, want 2 (no item added on duplicate)", len(s.items))
-	}
-}
-
-func TestAddCustomRoleEmptyName(t *testing.T) {
-	s := newTestSelector(2)
-	errMsg := addCustomRole(s, "")
-	if errMsg != "" {
-		t.Errorf("addCustomRole with empty name should return empty, got %q", errMsg)
-	}
-	if len(s.items) != 2 {
-		t.Errorf("items len = %d, want 2 (nothing added for empty name)", len(s.items))
-	}
-}
-
-func TestAddCustomRoleWhitespaceOnly(t *testing.T) {
-	s := newTestSelector(2)
-	errMsg := addCustomRole(s, "   ")
-	// Trimmed to empty -> no item added, no error.
-	if errMsg != "" {
-		t.Errorf("whitespace-only name should return empty error, got %q", errMsg)
-	}
-	if len(s.items) != 2 {
-		t.Errorf("items len = %d, want 2", len(s.items))
-	}
-}
-
-func TestAddCustomRoleInvalidNames(t *testing.T) {
-	cases := []string{
-		"my role",     // space in middle
-		"eng 1",       // space
-		"../escape",   // path traversal
-		"eng/hack",    // path separator
-		"a\\b",        // backslash
-		"my.role",     // dot
-		"v1.0",        // dot in version
-	}
-	for _, name := range cases {
-		s := newTestSelector(2)
-		errMsg := addCustomRole(s, name)
-		if errMsg == "" {
-			t.Errorf("addCustomRole(%q) should return error, got empty", name)
-		}
-		if len(s.items) != 2 {
-			t.Errorf("addCustomRole(%q) should not add item on invalid name, len=%d", name, len(s.items))
-		}
-	}
-}
-
-func TestAddCustomRoleValidNames(t *testing.T) {
-	cases := []string{"my-custom-role", "test_2", "qa-lead", "eng1"}
-	for _, name := range cases {
-		s := newTestSelector(2)
-		errMsg := addCustomRole(s, name)
-		if errMsg != "" {
-			t.Errorf("addCustomRole(%q) returned unexpected error: %q", name, errMsg)
-		}
-		if len(s.items) != 3 {
-			t.Errorf("addCustomRole(%q) should add item, len=%d", name, len(s.items))
-		}
-	}
-}
-
-func TestAddCustomRoleRebuildsRows(t *testing.T) {
-	s := newTestSelector(2)
-	before := len(s.rows)
-	addCustomRole(s, "dba")
-	if len(s.rows) <= before {
-		t.Errorf("rows len should increase after add: before=%d after=%d", before, len(s.rows))
-	}
-}
-
-// ── renderCustomRow ────────────────────────────────────────────────────
-
-func TestRenderCustomRowCursor(t *testing.T) {
-	s := &selectorState{customInput: "infra"}
-	var buf strings.Builder
-	renderCustomRow(&buf, s, true, 80)
-	out := buf.String()
-	if !strings.Contains(out, "infra") {
-		t.Error("custom row with cursor should show the typed input")
-	}
-	if !strings.Contains(out, "Add custom role") {
-		t.Error("custom row should contain 'Add custom role'")
-	}
-}
-
-func TestRenderCustomRowNonCursor(t *testing.T) {
-	s := &selectorState{customInput: "shouldnotshow"}
-	var buf strings.Builder
-	renderCustomRow(&buf, s, false, 80)
-	out := buf.String()
-	if strings.Contains(out, "shouldnotshow") {
-		t.Error("non-cursor custom row should not show current input")
-	}
-	if !strings.Contains(out, "Add custom role") {
-		t.Error("non-cursor custom row should still show the affordance text")
-	}
-}
-
-func TestRenderCustomRowWithError(t *testing.T) {
-	s := &selectorState{customInput: "eng1", customErr: "eng1 already in list."}
-	var buf strings.Builder
-	renderCustomRow(&buf, s, true, 120)
-	out := buf.String()
-	if !strings.Contains(out, "already in list") {
-		t.Error("custom row should show validation error when cursor is on it")
-	}
-}
-
-// ── renderSelector custom row visible ────────────────────────────────
-
-func TestRenderSelectorCustomRowInOutput(t *testing.T) {
-	s := &selectorState{
-		title:  "test",
-		items:  []SelectorItem{{Name: "super"}},
-		cursor: 0,
-		termW:  80,
-		termH:  24,
-	}
-	s.rows = buildDisplayRows(s.items)
-
-	var buf strings.Builder
-	renderSelector(&buf, s)
-	if !strings.Contains(buf.String(), "Add custom role") {
-		t.Error("renderSelector output should contain 'Add custom role'")
-	}
-}
-
-func TestRenderSelectorPresetHintInOutput(t *testing.T) {
-	s := newTestSelector(2)
-	var buf strings.Builder
-	renderSelector(&buf, s)
-	out := buf.String()
-	for _, want := range []string{"s=small", "m=standard", "f=full", "a=all", "n=none"} {
-		if !strings.Contains(out, want) {
-			t.Errorf("renderSelector output missing preset hint %q", want)
 		}
 	}
 }
