@@ -1,0 +1,258 @@
+package tui
+
+import (
+	"os/exec"
+	"strings"
+
+	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/gdamore/tcell/v2"
+)
+
+func (t *TUI) handleMouse(ev *tcell.EventMouse) {
+	if t.cmd.active {
+		return
+	}
+	mx, my := ev.Position()
+
+	switch {
+	case ev.Buttons()&tcell.Button1 != 0 && !t.sel.active:
+		// Button1 press: forward to pane and start TUI selection.
+		for i, p := range t.panes {
+			if t.layoutState.Hidden[p.name] {
+				continue
+			}
+			r := p.region
+			if mx >= r.X && mx < r.X+r.W && my >= r.Y && my < r.Y+r.H {
+				if t.layoutState.Focused != p.name {
+					t.layoutState.Focused = p.name
+					t.applyLayout()
+				}
+				// Convert to pane-local content coordinates.
+				lx := mx - r.X
+				ly := my - r.Y
+				if ly < 0 {
+					ly = 0
+				}
+				// Forward click to emulator (no-op if mouse reporting is off).
+				t.forwardMouseEvent(p, lx, ly, uv.MouseLeft, false, false, ev.Modifiers())
+				// Snapshot contentOffset so copy uses the same mapping
+				// regardless of content reflow during the drag.
+				sr, ro := p.contentOffset()
+				t.sel.active = true
+				t.sel.pane = i
+				t.sel.startX = lx
+				t.sel.startY = ly
+				t.sel.endX = lx
+				t.sel.endY = ly
+				t.sel.startRow = sr
+				t.sel.renderOffset = ro
+				return
+			}
+		}
+
+	case ev.Buttons()&tcell.Button1 != 0 && t.sel.active:
+		// Drag: update selection end and forward motion.
+		if t.sel.pane < len(t.panes) {
+			p := t.panes[t.sel.pane]
+			r := p.region
+			lx := mx - r.X
+			ly := my - r.Y
+			cols, rows := r.InnerSize()
+			if lx < 0 {
+				lx = 0
+			}
+			if lx >= cols {
+				lx = cols - 1
+			}
+			if ly < 0 {
+				ly = 0
+			}
+			if ly >= rows {
+				ly = rows - 1
+			}
+			t.forwardMouseEvent(p, lx, ly, uv.MouseLeft, true, false, ev.Modifiers())
+			t.sel.endX = lx
+			t.sel.endY = ly
+		}
+
+	case ev.Buttons() == tcell.ButtonNone && t.sel.active:
+		// Release: forward to pane, copy selection, and clear.
+		if t.sel.pane < len(t.panes) {
+			p := t.panes[t.sel.pane]
+			r := p.region
+			lx := mx - r.X
+			ly := my - r.Y
+			if ly < 0 {
+				ly = 0
+			}
+			t.forwardMouseEvent(p, lx, ly, uv.MouseNone, false, true, ev.Modifiers())
+		}
+		t.copySelection()
+		t.sel.active = false
+
+	case ev.Buttons()&tcell.Button2 != 0:
+		// Middle click: forward to focused pane only.
+		t.forwardMouseToFocused(mx, my, uv.MouseMiddle, false, false, ev.Modifiers())
+
+	case ev.Buttons()&tcell.Button3 != 0:
+		// Right click: forward to focused pane only.
+		t.forwardMouseToFocused(mx, my, uv.MouseRight, false, false, ev.Modifiers())
+
+	case ev.Buttons()&tcell.WheelUp != 0:
+		// Scroll back into history for the pane under cursor.
+		for _, p := range t.panes {
+			if t.layoutState.Hidden[p.name] {
+				continue
+			}
+			r := p.region
+			if mx >= r.X && mx < r.X+r.W && my >= r.Y && my < r.Y+r.H {
+				t.layoutState.Focused = p.name
+				p.ScrollUp(3)
+				return
+			}
+		}
+
+	case ev.Buttons()&tcell.WheelDown != 0:
+		// Scroll toward live view for the pane under cursor.
+		for _, p := range t.panes {
+			if t.layoutState.Hidden[p.name] {
+				continue
+			}
+			r := p.region
+			if mx >= r.X && mx < r.X+r.W && my >= r.Y && my < r.Y+r.H {
+				t.layoutState.Focused = p.name
+				p.ScrollDown(3)
+				return
+			}
+		}
+	}
+}
+
+// forwardMouseEvent translates pane-local content coordinates to emulator
+// coordinates and sends the mouse event. The emulator silently drops the
+// event if the child hasn't enabled mouse reporting.
+func (t *TUI) forwardMouseEvent(p *Pane, lx, ly int, button uv.MouseButton, isMotion, isRelease bool, mods tcell.ModMask) {
+	startRow, renderOffset := p.contentOffset()
+	emuY := startRow + (ly - renderOffset)
+	emuX := lx
+	if emuY < 0 {
+		emuY = 0
+	}
+	if emuX < 0 {
+		emuX = 0
+	}
+
+	var mod uv.KeyMod
+	if mods&tcell.ModShift != 0 {
+		mod |= uv.ModShift
+	}
+	if mods&tcell.ModAlt != 0 {
+		mod |= uv.ModAlt
+	}
+	if mods&tcell.ModCtrl != 0 {
+		mod |= uv.ModCtrl
+	}
+
+	m := uv.Mouse{X: emuX, Y: emuY, Button: button, Mod: mod}
+	switch {
+	case isRelease:
+		p.ForwardMouse(uv.MouseReleaseEvent(m))
+	case isMotion:
+		p.ForwardMouse(uv.MouseMotionEvent(m))
+	default:
+		p.ForwardMouse(uv.MouseClickEvent(m))
+	}
+}
+
+// forwardMouseToFocused forwards a mouse event to the focused pane if the
+// click is within its region.
+func (t *TUI) forwardMouseToFocused(mx, my int, button uv.MouseButton, isMotion, isRelease bool, mods tcell.ModMask) {
+	p := t.focusedPane()
+	if p == nil {
+		return
+	}
+	r := p.region
+	if mx < r.X || mx >= r.X+r.W || my < r.Y || my >= r.Y+r.H {
+		return
+	}
+	lx := mx - r.X
+	ly := my - r.Y
+	if ly < 0 {
+		ly = 0
+	}
+	t.forwardMouseEvent(p, lx, ly, button, isMotion, isRelease, mods)
+}
+
+// copySelection extracts selected text from the pane's emulator and copies to clipboard.
+func (t *TUI) copySelection() {
+	if t.sel.pane >= len(t.panes) {
+		return
+	}
+	p := t.panes[t.sel.pane]
+
+	// Normalize selection bounds (start may be after end).
+	r0, c0, r1, c1 := t.sel.startY, t.sel.startX, t.sel.endY, t.sel.endX
+	if r0 > r1 || (r0 == r1 && c0 > c1) {
+		r0, c0, r1, c1 = r1, c1, r0, c0
+	}
+
+	cols, rows := p.region.InnerSize()
+	if r1 >= rows {
+		r1 = rows - 1
+	}
+
+	// Use the contentOffset snapshot from mouse-down time, not the current
+	// offset. This prevents content reflow during the drag from shifting
+	// the copied text.
+	startRow := t.sel.startRow
+	renderOffset := t.sel.renderOffset
+	emuRows := p.emu.Height()
+
+	var buf strings.Builder
+	for row := r0; row <= r1; row++ {
+		emuRow := startRow + (row - renderOffset)
+		if emuRow < 0 || emuRow >= emuRows {
+			continue
+		}
+
+		startCol := 0
+		endCol := cols
+		if row == r0 {
+			startCol = c0
+		}
+		if row == r1 {
+			endCol = c1 + 1
+		}
+		if endCol > cols {
+			endCol = cols
+		}
+
+		// Collect characters from the emulator.
+		var line strings.Builder
+		for col := startCol; col < endCol; col++ {
+			cell := p.emu.CellAt(col, emuRow)
+			if cell != nil && cell.Content != "" {
+				line.WriteString(cell.Content)
+			} else {
+				line.WriteByte(' ')
+			}
+		}
+
+		// Trim trailing spaces per line.
+		text := strings.TrimRight(line.String(), " ")
+		buf.WriteString(text)
+		if row < r1 {
+			buf.WriteByte('\n')
+		}
+	}
+
+	text := buf.String()
+	if text == "" {
+		return
+	}
+
+	// Copy to macOS clipboard via pbcopy.
+	cmd := exec.Command("pbcopy")
+	cmd.Stdin = strings.NewReader(text)
+	cmd.Run()
+}
