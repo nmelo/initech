@@ -103,8 +103,10 @@ func RunSelector(title string, items []SelectorItem) ([]string, error) {
 	defer signal.Stop(sigwinch)
 
 	// Key events from a reader goroutine so the main loop can also select on
-	// resize signals.
+	// resize signals. done is closed when RunSelector returns via Enter confirm
+	// so the goroutine can exit instead of blocking on a full keyCh (ini-a1e.18).
 	keyCh := make(chan keyPress, 4)
+	done := make(chan struct{})
 	go func() {
 		defer close(keyCh)
 		for {
@@ -112,7 +114,11 @@ func RunSelector(title string, items []SelectorItem) ([]string, error) {
 			if err != nil {
 				return
 			}
-			keyCh <- kp
+			select {
+			case keyCh <- kp:
+			case <-done:
+				return
+			}
 			// Stop on Escape/Ctrl+C. Do not stop on Enter: when the cursor
 			// is on the custom-role row, Enter adds a role rather than
 			// confirming, so RunSelector must continue.
@@ -161,6 +167,8 @@ func RunSelector(title string, items []SelectorItem) ([]string, error) {
 					// Stay in the selector regardless of success/failure.
 				} else {
 					// Confirm selection (also handles empty custom input).
+					// Signal the key goroutine to exit before returning.
+					close(done)
 					fmt.Fprint(tty, sAnsiClearScr)
 					return selectedNames(s.items), nil
 				}

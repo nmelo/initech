@@ -72,7 +72,6 @@ type Pane struct {
 	alive          bool
 	visible        bool           // Whether this pane is shown in the layout. Hidden panes keep running.
 	activity       ActivityState  // Current state: running when PTY bytes flowed recently, else idle.
-	prevActivity   ActivityState  // Activity state from the previous updateActivity call.
 	lastOutputTime time.Time      // Last time readLoop received bytes from the PTY.
 	lastIdleNotify time.Time      // Last time an EventAgentIdleWithBead was emitted.
 	journal        []JournalEntry // Ring buffer of recent JSONL entries (cap journalRingSize).
@@ -830,7 +829,6 @@ func (p *Pane) updateActivity() {
 	prev := p.activity
 	if !p.alive {
 		p.activity = StateDead
-		p.prevActivity = prev
 		return
 	}
 	if time.Since(p.lastOutputTime) < ptyIdleTimeout {
@@ -852,7 +850,6 @@ func (p *Pane) updateActivity() {
 		})
 	}
 
-	p.prevActivity = prev
 }
 
 // runDetectors runs all event detectors (completion, stall, stuck) and emits

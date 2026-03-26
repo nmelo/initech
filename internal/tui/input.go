@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"os/exec"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -590,14 +591,8 @@ func (t *TUI) execCmd(cmd string) bool {
 			}
 			buf.WriteByte('\n')
 		}
-		// Copy to clipboard.
-		clip := exec.Command("pbcopy")
-		clip.Stdin = strings.NewReader(buf.String())
-		if err := clip.Run(); err == nil {
-			t.cmd.error = "patrol: copied to clipboard"
-		} else {
-			t.cmd.error = "patrol: " + err.Error()
-		}
+		// Copy to clipboard (cross-platform).
+		t.cmd.error = copyToClipboard(buf.String())
 
 	case "top", "ps":
 		t.cmd.error = "" // Clear stale errors so they don't reappear on close.
@@ -794,4 +789,31 @@ func (t *TUI) restartPane(fp *Pane) error {
 	t.panes[idx] = p
 	t.applyLayout()
 	return nil
+}
+
+// copyToClipboard writes text to the system clipboard using the appropriate
+// tool for the current OS. Returns a status message suitable for t.cmd.error.
+// On macOS uses pbcopy; on Linux tries wl-copy (Wayland) then xclip (X11).
+// If no clipboard tool is available the copy is silently skipped and the
+// caller message indicates the text remains visible in the patrol view.
+func copyToClipboard(text string) string {
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "darwin":
+		cmd = exec.Command("pbcopy")
+	case "linux":
+		if _, err := exec.LookPath("wl-copy"); err == nil {
+			cmd = exec.Command("wl-copy")
+		} else if _, err := exec.LookPath("xclip"); err == nil {
+			cmd = exec.Command("xclip", "-selection", "clipboard")
+		}
+	}
+	if cmd == nil {
+		return "patrol: clipboard unavailable (no pbcopy/wl-copy/xclip found)"
+	}
+	cmd.Stdin = strings.NewReader(text)
+	if err := cmd.Run(); err != nil {
+		return "patrol: " + err.Error()
+	}
+	return "patrol: copied to clipboard"
 }

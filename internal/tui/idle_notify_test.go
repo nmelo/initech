@@ -31,7 +31,6 @@ func TestUpdateActivity_IdleWithBead_EdgeFires(t *testing.T) {
 		name:           "eng1",
 		alive:          true,
 		activity:       StateRunning,
-		prevActivity:   StateRunning,
 		beadID:         "ini-abc",
 		eventCh:        ch,
 		lastOutputTime: time.Now().Add(-5 * time.Second), // past idle threshold
@@ -63,7 +62,6 @@ func TestUpdateActivity_IdleWithBead_NoBead(t *testing.T) {
 		name:           "eng1",
 		alive:          true,
 		activity:       StateRunning,
-		prevActivity:   StateRunning,
 		beadID:         "", // no bead
 		eventCh:        ch,
 		lastOutputTime: time.Now().Add(-5 * time.Second),
@@ -87,7 +85,6 @@ func TestUpdateActivity_IdleWithBead_Cooldown(t *testing.T) {
 		name:           "eng1",
 		alive:          true,
 		activity:       StateRunning,
-		prevActivity:   StateRunning,
 		beadID:         "ini-abc",
 		eventCh:        ch,
 		lastOutputTime: time.Now().Add(-5 * time.Second),
@@ -112,7 +109,6 @@ func TestUpdateActivity_IdleWithBead_CooldownExpired(t *testing.T) {
 		name:           "eng1",
 		alive:          true,
 		activity:       StateRunning,
-		prevActivity:   StateRunning,
 		beadID:         "ini-abc",
 		eventCh:        ch,
 		lastOutputTime: time.Now().Add(-5 * time.Second),
@@ -141,7 +137,6 @@ func TestUpdateActivity_IdleWithBead_NoEdge(t *testing.T) {
 		name:           "eng1",
 		alive:          true,
 		activity:       StateIdle, // was already idle
-		prevActivity:   StateIdle,
 		beadID:         "ini-abc",
 		eventCh:        ch,
 		lastOutputTime: time.Now().Add(-5 * time.Second),
@@ -157,8 +152,8 @@ func TestUpdateActivity_IdleWithBead_NoEdge(t *testing.T) {
 	}
 }
 
-// TestUpdateActivity_IdleWithBead_PrevActivityTracked verifies prevActivity is
-// updated correctly so consecutive calls work as expected.
+// TestUpdateActivity_IdleWithBead_PrevActivityTracked verifies that consecutive
+// updateActivity calls correctly detect the running->idle edge.
 func TestUpdateActivity_IdleWithBead_PrevActivityTracked(t *testing.T) {
 	ch := makeEventCh()
 	p := &Pane{
@@ -174,9 +169,6 @@ func TestUpdateActivity_IdleWithBead_PrevActivityTracked(t *testing.T) {
 	p.updateActivity()
 	if p.activity != StateRunning {
 		t.Fatalf("expected StateRunning, got %v", p.activity)
-	}
-	if p.prevActivity != StateRunning {
-		t.Errorf("prevActivity should be StateRunning after first call, got %v", p.prevActivity)
 	}
 
 	// Simulate output stopping.
