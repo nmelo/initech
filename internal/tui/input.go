@@ -99,7 +99,14 @@ func (t *TUI) handleKey(ev *tcell.EventKey) bool {
 				t.saveLayoutIfConfigured()
 				return false
 			case 'q':
-				return true
+				// Open confirmation instead of quitting immediately.
+				// Alt+q is one key away from Alt+z and Alt+s; accidental
+				// presses must not silently kill all agents.
+				t.cmd.active = true
+				t.cmd.pendingConfirm = "quit"
+				t.cmd.confirmMsg = "Quit will stop all agents. Enter to confirm, Esc to cancel."
+				t.cmd.confirmExpiry = time.Now().Add(10 * time.Second)
+				return false
 			}
 		}
 	}
@@ -146,14 +153,9 @@ func (t *TUI) handleHelpKey(ev *tcell.EventKey) bool {
 // handleCmdKey processes key events while the command modal is open.
 func (t *TUI) handleCmdKey(ev *tcell.EventKey) bool {
 	// Confirmation state: pending destructive command waiting for Enter.
+	// Expiry is handled by pruneConfirmation() called on each render tick,
+	// not here, so pressing Enter at exactly the deadline still confirms.
 	if t.cmd.pendingConfirm != "" {
-		// Auto-expire if the operator walks away.
-		if time.Now().After(t.cmd.confirmExpiry) {
-			t.cmd.pendingConfirm = ""
-			t.cmd.confirmMsg = ""
-			t.cmd.active = false
-			return false
-		}
 		switch ev.Key() {
 		case tcell.KeyEnter:
 			return t.executeConfirmed()
@@ -557,7 +559,7 @@ func (t *TUI) execCmd(cmd string) bool {
 			}
 			t.cmd.pendingConfirm = "restart " + name
 			t.cmd.confirmMsg = fmt.Sprintf("Restart %s? Context window will be lost. Enter to confirm, Esc to cancel.", name)
-			t.cmd.confirmExpiry = time.Now().Add(3 * time.Second)
+			t.cmd.confirmExpiry = time.Now().Add(10 * time.Second)
 			t.cmd.active = true
 		} else {
 			// No-arg restart: restart focused pane immediately (less dangerous).
@@ -617,7 +619,7 @@ func (t *TUI) execCmd(cmd string) bool {
 			name := parts[1]
 			t.cmd.pendingConfirm = "remove " + name
 			t.cmd.confirmMsg = fmt.Sprintf("Remove %s? This kills the process. Enter to confirm, Esc to cancel.", name)
-			t.cmd.confirmExpiry = time.Now().Add(3 * time.Second)
+			t.cmd.confirmExpiry = time.Now().Add(10 * time.Second)
 			t.cmd.active = true
 		}
 
@@ -633,7 +635,7 @@ func (t *TUI) execCmd(cmd string) bool {
 	case "quit", "q":
 		t.cmd.pendingConfirm = "quit"
 		t.cmd.confirmMsg = "Quit will stop all agents. Enter to confirm, Esc to cancel."
-		t.cmd.confirmExpiry = time.Now().Add(3 * time.Second)
+		t.cmd.confirmExpiry = time.Now().Add(10 * time.Second)
 		t.cmd.active = true
 
 	default:
@@ -771,7 +773,12 @@ func (t *TUI) restartPane(fp *Pane) error {
 	if rows < 2 {
 		rows = 24
 	}
+	// Serialize with any in-flight IPC send before closing.
+	// Without this lock, handleIPCSend may be mid-sleep inside its retry loop
+	// (holding sendMu) while Close() tears down the PTY underneath it.
+	fp.sendMu.Lock()
 	fp.Close()
+	fp.sendMu.Unlock()
 
 	p, err := NewPane(fp.cfg, rows, cols)
 	if err != nil {

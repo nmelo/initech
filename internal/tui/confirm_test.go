@@ -73,21 +73,37 @@ func TestQuitCancelledWithEsc(t *testing.T) {
 	}
 }
 
-func TestQuitConfirmationExpires(t *testing.T) {
+func TestQuitConfirmationAutoCancelsViaPrune(t *testing.T) {
+	// ini-a1e.31: expiry is handled by pruneConfirmation() on each render
+	// tick, not inside handleCmdKey. This prevents auto-cancel racing with
+	// Enter pressed at exactly the deadline.
 	tui := newTestTUI(newTestPane("eng1", true))
 	tui.cmd.pendingConfirm = "quit"
 	tui.cmd.confirmExpiry = time.Now().Add(-1 * time.Second) // already expired
 	tui.cmd.active = true
 
-	quit := tui.handleCmdKey(tcell.NewEventKey(tcell.KeyEnter, 0, 0))
-	if quit {
-		t.Error("expired confirmation should not quit")
-	}
+	// pruneConfirmation() (called by the ticker) auto-cancels expired confirmations.
+	tui.pruneConfirmation()
 	if tui.cmd.pendingConfirm != "" {
-		t.Error("pendingConfirm should be cleared after expiry")
+		t.Error("pruneConfirmation should clear expired pendingConfirm")
 	}
 	if tui.cmd.active {
-		t.Error("modal should close after expiry")
+		t.Error("pruneConfirmation should deactivate modal on expiry")
+	}
+}
+
+func TestQuitConfirmationEnterAtDeadlineStillConfirms(t *testing.T) {
+	// ini-a1e.31: if the operator presses Enter at exactly the deadline,
+	// the key handler fires before the next prune tick, so Enter confirms.
+	tui := newTestTUI(newTestPane("eng1", true))
+	tui.cmd.pendingConfirm = "quit"
+	tui.cmd.confirmExpiry = time.Now().Add(-1 * time.Millisecond) // just expired
+	tui.cmd.active = true
+
+	// Key arrives before tick fires pruneConfirmation — pendingConfirm still set.
+	quit := tui.handleCmdKey(tcell.NewEventKey(tcell.KeyEnter, 0, 0))
+	if !quit {
+		t.Error("Enter at exactly the deadline should confirm (not race-cancel)")
 	}
 }
 

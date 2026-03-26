@@ -420,10 +420,14 @@ func TestHandleKeyAltZE2(t *testing.T) {
 }
 
 func TestHandleKeyAltQE2(t *testing.T) {
+	// ini-a1e.32: Alt-q now opens confirmation instead of quitting immediately.
 	tui, _ := newTestTUIWithScreen("a")
 	ev := tcell.NewEventKey(tcell.KeyRune, 'q', tcell.ModAlt)
-	if !tui.handleKey(ev) {
-		t.Error("Alt-q should return true (quit)")
+	if tui.handleKey(ev) {
+		t.Error("Alt-q should not quit immediately; confirmation required")
+	}
+	if tui.cmd.pendingConfirm != "quit" {
+		t.Errorf("pendingConfirm = %q, want %q", tui.cmd.pendingConfirm, "quit")
 	}
 }
 

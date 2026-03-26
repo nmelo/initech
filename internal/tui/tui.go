@@ -373,6 +373,7 @@ func Run(cfg Config) error {
 			t.handleAgentEvent(ae)
 		case <-ticker.C:
 			t.pruneNotifications()
+			t.pruneConfirmation()
 			t.render()
 		case <-t.quitCh:
 			return nil

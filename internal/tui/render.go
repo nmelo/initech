@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/gdamore/tcell/v2"
 )
@@ -126,7 +127,14 @@ func (t *TUI) renderCmdLine() {
 		for x := 0; x < sw; x++ {
 			s.SetContent(x, y, ' ', nil, confirmStyle)
 		}
-		msg := []rune(" " + t.cmd.confirmMsg)
+		// Append a live countdown so the operator knows how long they have.
+		remaining := time.Until(t.cmd.confirmExpiry)
+		secs := int(remaining.Seconds())
+		if secs < 0 {
+			secs = 0
+		}
+		countdown := fmt.Sprintf(" (%ds)", secs)
+		msg := []rune(" " + t.cmd.confirmMsg + countdown)
 		for i, ch := range msg {
 			if i < sw {
 				s.SetContent(i, y, ch, nil, confirmStyle)
@@ -405,6 +413,8 @@ func (t *TUI) renderOverlay() {
 			} else {
 				dotColor = tcell.ColorGray
 			}
+		case StateDead:
+			dotColor = tcell.ColorRed
 		default:
 			dotColor = tcell.ColorGray
 		}

@@ -85,7 +85,11 @@ func (t *TUI) handleTopKey(ev *tcell.EventKey) bool {
 				if rows < 2 {
 					rows = 24
 				}
+				// Serialize with any in-flight IPC send before closing (same
+			// pattern as handleIPCRestart in ipc.go).
+				p.sendMu.Lock()
 				p.Close()
+				p.sendMu.Unlock()
 				np, err := NewPane(p.cfg, rows, cols)
 				if err != nil {
 					t.cmd.error = fmt.Sprintf("restart %s: %v", p.name, err)
@@ -151,6 +155,7 @@ func (t *TUI) renderTop() {
 
 	headerStyle := tcell.StyleDefault.Bold(true).Foreground(tcell.ColorWhite)
 	normalStyle := tcell.StyleDefault.Foreground(tcell.ColorSilver)
+	deadStyle := tcell.StyleDefault.Foreground(tcell.ColorRed)
 	selectedStyle := tcell.StyleDefault.Background(tcell.ColorDarkBlue).Foreground(tcell.ColorWhite)
 	totalStyle := tcell.StyleDefault.Foreground(tcell.ColorYellow).Bold(true)
 	helpStyle := tcell.StyleDefault.Foreground(tcell.ColorGray)
@@ -203,6 +208,9 @@ func (t *TUI) renderTop() {
 	var totalRSS int64
 	for i, e := range t.top.data {
 		style := normalStyle
+		if e.Status == StateDead.String() || strings.HasPrefix(e.Status, StateDead.String()+" ") {
+			style = deadStyle
+		}
 		if i == t.top.selected {
 			style = selectedStyle
 		}

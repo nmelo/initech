@@ -95,6 +95,8 @@ func TestRender_UpdateActivity_StaleOutputYieldsIdle(t *testing.T) {
 
 // Dead pane (alive=false) must always render as idle regardless of lastOutputTime.
 func TestRender_UpdateActivity_DeadPaneIsIdle(t *testing.T) {
+	// ini-a1e.29: dead panes now show a red filled dot (StateDead),
+	// distinct from idle (gray hollow circle).
 	tui, s := newTestTUIWithScreen("eng1")
 	tui.layoutState.Overlay = true
 	tui.panes[0].alive = false
@@ -108,11 +110,11 @@ func TestRender_UpdateActivity_DeadPaneIsIdle(t *testing.T) {
 	dotY := 2
 
 	mainc, _, style, _ := s.GetContent(dotX, dotY)
-	if mainc != '\u25cb' {
-		t.Errorf("dead pane dot = %q (%U), want ○ (U+25CB)", mainc, mainc)
+	if mainc != '\u25cf' {
+		t.Errorf("dead pane dot = %q (%U), want ● (U+25CF, filled red dot)", mainc, mainc)
 	}
 	fg, _, _ := style.Decompose()
-	if fg != tcell.ColorGray {
-		t.Errorf("dead pane dot color = %v, want Gray", fg)
+	if fg != tcell.ColorRed {
+		t.Errorf("dead pane dot color = %v, want Red", fg)
 	}
 }

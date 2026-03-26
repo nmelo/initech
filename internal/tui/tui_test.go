@@ -1357,11 +1357,19 @@ func TestHandleKeyBacktickOpensModal(t *testing.T) {
 }
 
 func TestHandleKeyAltQ(t *testing.T) {
+	// Alt+q now opens a confirmation instead of quitting immediately
+	// (ini-a1e.32: accidental Alt+q must not silently kill all agents).
 	tui := newTestTUI(newTestPane("a", true))
 	ev := tcell.NewEventKey(tcell.KeyRune, 'q', tcell.ModAlt)
 	quit := tui.handleKey(ev)
-	if !quit {
-		t.Error("Alt+q should quit")
+	if quit {
+		t.Error("Alt+q should not quit immediately; confirmation required")
+	}
+	if tui.cmd.pendingConfirm != "quit" {
+		t.Errorf("Alt+q should set pendingConfirm='quit', got %q", tui.cmd.pendingConfirm)
+	}
+	if !tui.cmd.active {
+		t.Error("Alt+q should open the command modal with confirmation prompt")
 	}
 }
 

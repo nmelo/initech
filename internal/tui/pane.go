@@ -28,6 +28,7 @@ type ActivityState int
 const (
 	StateRunning ActivityState = iota // Claude is processing.
 	StateIdle                         // Waiting for input.
+	StateDead                         // Process has exited; pane is no longer alive.
 )
 
 // String returns a human-readable label for the state.
@@ -37,6 +38,8 @@ func (s ActivityState) String() string {
 		return "running"
 	case StateIdle:
 		return "idle"
+	case StateDead:
+		return "dead"
 	}
 	return "unknown"
 }
@@ -819,7 +822,7 @@ func (p *Pane) updateActivity() {
 
 	prev := p.activity
 	if !p.alive {
-		p.activity = StateIdle
+		p.activity = StateDead
 		p.prevActivity = prev
 		return
 	}

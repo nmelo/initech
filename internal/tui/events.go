@@ -203,6 +203,19 @@ func extractBeadID(cmd string) string {
 	return ""
 }
 
+// pruneConfirmation auto-cancels a pending destructive command confirmation
+// once its expiry time has passed. Called on each render tick so that the
+// confirmation disappears automatically if the operator walks away.
+// This keeps expiry logic out of the key handler: pressing Enter at exactly
+// the deadline still confirms because the key arrives before the tick fires.
+func (t *TUI) pruneConfirmation() {
+	if t.cmd.pendingConfirm != "" && time.Now().After(t.cmd.confirmExpiry) {
+		t.cmd.pendingConfirm = ""
+		t.cmd.confirmMsg = ""
+		t.cmd.active = false
+	}
+}
+
 // pruneNotifications removes expired notifications.
 func (t *TUI) pruneNotifications() {
 	now := time.Now()

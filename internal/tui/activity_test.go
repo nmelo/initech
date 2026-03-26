@@ -42,12 +42,14 @@ func TestUpdateActivity_IdleWhenNoOutputYet(t *testing.T) {
 }
 
 func TestUpdateActivity_IdleWhenDead(t *testing.T) {
+	// ini-a1e.29: dead panes show StateDead (red filled dot),
+	// distinct from StateIdle (gray hollow circle).
 	p := &Pane{alive: false}
-	// Even with a very recent lastOutputTime, dead pane must be idle.
+	// Even with a very recent lastOutputTime, dead pane must be StateDead.
 	p.lastOutputTime = time.Now()
 	p.updateActivity()
-	if p.activity != StateIdle {
-		t.Errorf("activity = %v for dead pane, want StateIdle", p.activity)
+	if p.activity != StateDead {
+		t.Errorf("activity = %v for dead pane, want StateDead", p.activity)
 	}
 }
 
