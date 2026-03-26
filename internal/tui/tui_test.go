@@ -111,6 +111,61 @@ func TestEncodePathForClaude(t *testing.T) {
 	}
 }
 
+// ── containsArg / removeArg ──────────────────────────────────────────
+
+func TestContainsArg(t *testing.T) {
+	args := []string{"claude", "--continue", "--dangerously-skip-permissions"}
+	if !containsArg(args, "--continue") {
+		t.Error("should find --continue")
+	}
+	if containsArg(args, "--resume") {
+		t.Error("should not find --resume")
+	}
+	if containsArg(nil, "--continue") {
+		t.Error("nil args should return false")
+	}
+}
+
+func TestRemoveArg(t *testing.T) {
+	args := []string{"claude", "--continue", "--dangerously-skip-permissions"}
+	got := removeArg(args, "--continue")
+	if len(got) != 2 || got[0] != "claude" || got[1] != "--dangerously-skip-permissions" {
+		t.Errorf("removeArg = %v, want [claude --dangerously-skip-permissions]", got)
+	}
+	// Original unmodified.
+	if len(args) != 3 {
+		t.Error("removeArg should not modify original slice")
+	}
+	// Removing absent flag returns full copy.
+	got2 := removeArg(args, "--resume")
+	if len(got2) != 3 {
+		t.Errorf("removeArg absent flag: got %d items, want 3", len(got2))
+	}
+}
+
+func TestNewPane_ContinueFallbackCommand(t *testing.T) {
+	// Verify the command string built for --continue includes the || fallback.
+	// We can't easily inspect the exec.Cmd args without launching a real pane,
+	// so test the building logic directly.
+	cmd := []string{"claude", "--continue", "--dangerously-skip-permissions"}
+	cmdStr := strings.Join(cmd, " ")
+	fallbackStr := strings.Join(removeArg(cmd, "--continue"), " ")
+	result := cmdStr + " || " + fallbackStr
+
+	want := "claude --continue --dangerously-skip-permissions || claude --dangerously-skip-permissions"
+	if result != want {
+		t.Errorf("fallback command = %q, want %q", result, want)
+	}
+}
+
+func TestNewPane_NoContinueNoFallback(t *testing.T) {
+	// Without --continue, no fallback needed.
+	cmd := []string{"claude", "--dangerously-skip-permissions"}
+	if containsArg(cmd, "--continue") {
+		t.Error("should not detect --continue in args without it")
+	}
+}
+
 // ── newestJSONL ──────────────────────────────────────────────────────
 
 func TestNewestJSONL(t *testing.T) {

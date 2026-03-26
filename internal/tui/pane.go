@@ -125,6 +125,14 @@ func NewPane(cfg PaneConfig, rows, cols int) (*Pane, error) {
 	if len(cfg.Command) == 0 {
 		// No command: run an interactive login shell.
 		cmd = exec.Command(shell, "-l")
+	} else if containsArg(cfg.Command, "--continue") {
+		// --continue fails when no prior session exists (first launch,
+		// hot-added agent, deleted session). Build a shell fallback:
+		//   claude --continue ... || claude ...
+		// The shell must stay alive for "||", so we omit the "exec" prefix.
+		cmdStr := strings.Join(cfg.Command, " ")
+		fallbackStr := strings.Join(removeArg(cfg.Command, "--continue"), " ")
+		cmd = exec.Command(shell, "-l", "-c", cmdStr+" || "+fallbackStr)
 	} else {
 		// Run via login shell + exec so the terminal gets proper stty
 		// initialization before Claude starts (Claude depends on a
@@ -977,6 +985,27 @@ func truncateContent(s string) string {
 // (slashes replaced with dashes, e.g. /Users/foo/bar -> -Users-foo-bar).
 func encodePathForClaude(path string) string {
 	return strings.ReplaceAll(path, string(filepath.Separator), "-")
+}
+
+// containsArg returns true if flag appears exactly in args.
+func containsArg(args []string, flag string) bool {
+	for _, a := range args {
+		if a == flag {
+			return true
+		}
+	}
+	return false
+}
+
+// removeArg returns a copy of args with all occurrences of flag removed.
+func removeArg(args []string, flag string) []string {
+	out := make([]string, 0, len(args))
+	for _, a := range args {
+		if a != flag {
+			out = append(out, a)
+		}
+	}
+	return out
 }
 
 // ScrollUp moves the viewport up (into scrollback history) by n rows.
