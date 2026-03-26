@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/gdamore/tcell/v2"
@@ -135,6 +136,7 @@ type Config struct {
 	ProjectName string       // Used for socket path.
 	ProjectRoot string       // Project root for .initech/ layout persistence.
 	ResetLayout bool         // Ignore saved layout and start with defaults.
+	Version     string       // Build version for crash reports.
 }
 
 // DefaultConfig returns a config with standard shell-only agents.
@@ -159,6 +161,16 @@ func Run(cfg Config) error {
 	screen.EnableMouse()
 	screen.EnablePaste()
 	defer screen.Fini()
+
+	// Panic recovery: restore terminal and write crash log before exiting.
+	defer func() {
+		if r := recover(); r != nil {
+			screen.Fini() // Restore terminal first (idempotent).
+			report := crashLog(cfg.ProjectRoot, cfg.Version, r)
+			fmt.Fprint(os.Stderr, report)
+			os.Exit(1)
+		}
+	}()
 
 	// Build layout state from config.
 	agentNames := make([]string, len(cfg.Agents))

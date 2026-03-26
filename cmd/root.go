@@ -147,5 +147,6 @@ func runTUI(cmd *cobra.Command, args []string) error {
 		ProjectName: proj.Name,
 		ProjectRoot: proj.Root,
 		ResetLayout: resetLayout,
+		Version:     Version,
 	})
 }
