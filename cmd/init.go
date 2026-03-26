@@ -181,9 +181,30 @@ func interactiveSetup(wd string) (*config.Project, error) {
 	root := prompt(reader, "Project root", wd)
 	repoURL := prompt(reader, "Code repo URL", "")
 
+	// Detect existing agent workspaces before showing the role selector, so the
+	// operator can adopt their existing directory structure without retyping names.
+	detected := detectWorkspaces(root)
+	useDetected := false
+	if len(detected) > 0 {
+		fmt.Printf("\nDetected existing agent workspaces:\n")
+		for _, d := range detected {
+			info := describeWorkspace(root, d)
+			fmt.Printf("  %-14s %s\n", d+"/", info)
+		}
+		answer := prompt(reader, "\nUse detected workspaces as starting selection? [Y/n]", "Y")
+		useDetected = strings.ToLower(answer) != "n"
+	}
+
+	// Build selector items: detected roles pre-checked, or Standard preset.
+	var items []roles.SelectorItem
+	if useDetected {
+		items = buildSelectorItemsFromDetected(detected)
+	} else {
+		items = buildSelectorItems()
+	}
+
 	// Role selection: interactive checkbox UI. Loop until at least one role is
 	// chosen (Esc/Ctrl+C aborts the whole init).
-	items := buildSelectorItems()
 	var roleList []string
 	for {
 		selected, err := roles.RunSelector("Select agents for "+name, items)
@@ -268,6 +289,97 @@ func buildSelectorItems() []roles.SelectorItem {
 			Group:       spec.group,
 			Tag:         tag,
 			Checked:     standardPreset[spec.name],
+		}
+	}
+	return items
+}
+
+// detectWorkspaces scans root for subdirectories that contain a CLAUDE.md file.
+// These are treated as existing agent workspaces. Hidden directories and known
+// non-agent directories (docs, dist, node_modules) are skipped.
+// os.ReadDir returns entries in lexicographic order, so the result is sorted.
+func detectWorkspaces(root string) []string {
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return nil
+	}
+	skip := map[string]bool{
+		"docs": true, "dist": true, "node_modules": true,
+	}
+	var found []string
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		name := e.Name()
+		if strings.HasPrefix(name, ".") || skip[name] {
+			continue
+		}
+		if _, err := os.Stat(filepath.Join(root, name, "CLAUDE.md")); err == nil {
+			found = append(found, name)
+		}
+	}
+	return found
+}
+
+// describeWorkspace returns a parenthetical tag string summarising the
+// contents of a detected workspace directory, e.g. "(CLAUDE.md, src/)".
+func describeWorkspace(root, name string) string {
+	tags := []string{"CLAUDE.md"}
+	if _, err := os.Stat(filepath.Join(root, name, "src")); err == nil {
+		tags = append(tags, "src/")
+	}
+	if _, err := os.Stat(filepath.Join(root, name, ".claude")); err == nil {
+		tags = append(tags, ".claude/")
+	}
+	return "(" + strings.Join(tags, ", ") + ")"
+}
+
+// catalogContains reports whether name is a known role in selectorOrder.
+func catalogContains(name string) bool {
+	for _, spec := range selectorOrder {
+		if spec.name == name {
+			return true
+		}
+	}
+	return false
+}
+
+// buildSelectorItemsFromDetected builds the selector item list like
+// buildSelectorItems, but pre-checks roles that were detected on disk instead
+// of using the Standard preset. Detected roles not in the catalog are appended
+// as CUSTOM group items with "(detected)" as their description.
+func buildSelectorItemsFromDetected(detected []string) []roles.SelectorItem {
+	detectedSet := make(map[string]bool, len(detected))
+	for _, d := range detected {
+		detectedSet[d] = true
+	}
+	items := make([]roles.SelectorItem, len(selectorOrder))
+	for i, spec := range selectorOrder {
+		def := roles.LookupRole(spec.name)
+		tag := ""
+		if def.Permission == roles.Supervised {
+			tag = "supervised"
+		} else if def.NeedsSrc {
+			tag = "needs src"
+		}
+		items[i] = roles.SelectorItem{
+			Name:        spec.name,
+			Description: spec.desc,
+			Group:       spec.group,
+			Tag:         tag,
+			Checked:     detectedSet[spec.name],
+		}
+	}
+	// Append detected roles that aren't in the catalog as CUSTOM group items.
+	for _, d := range detected {
+		if !catalogContains(d) {
+			items = append(items, roles.SelectorItem{
+				Name:        d,
+				Description: "(detected)",
+				Group:       "CUSTOM",
+				Checked:     true,
+			})
 		}
 	}
 	return items
