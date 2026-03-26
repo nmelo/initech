@@ -74,6 +74,7 @@ type Pane struct {
 	journal       []JournalEntry     // Ring buffer of recent JSONL entries (cap journalRingSize).
 	jsonlDir      string             // Directory to search for session JSONL files.
 	eventCh       chan<- AgentEvent  // Emits detected semantic events to the TUI. May be nil.
+	safeGo        func(func())     // Launches a goroutine with panic recovery. Set by TUI after creation.
 	sessionDesc   string       // Session description extracted from cursor row.
 	beadID        string       // Current bead ID (e.g., "ini-bhk.3"). Empty = no bead.
 	beadTitle     string       // Bead title for top modal display.
@@ -183,18 +184,22 @@ func NewPane(cfg PaneConfig, rows, cols int) (*Pane, error) {
 		dedupEvents: newDedup(),
 	}
 
-	// Read PTY output and feed the emulator.
-	go p.readLoop()
-
-	// Read emulator responses (DSR, DA) and write them back to the PTY.
-	go p.responseLoop()
-
-	// Watch JSONL session files for activity state.
-	if jsonlDir != "" {
-		go p.watchJSONL()
-	}
-
 	return p, nil
+}
+
+// Start launches the pane's background goroutines (PTY reader, response loop,
+// JSONL watcher). Must be called after safeGo and eventCh are wired. If safeGo
+// is nil, falls back to bare goroutine launches.
+func (p *Pane) Start() {
+	launch := p.safeGo
+	if launch == nil {
+		launch = func(fn func()) { go fn() }
+	}
+	launch(p.readLoop)
+	launch(p.responseLoop)
+	if p.jsonlDir != "" {
+		launch(p.watchJSONL)
+	}
 }
 
 func (p *Pane) readLoop() {

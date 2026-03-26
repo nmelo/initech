@@ -73,6 +73,9 @@ type TUI struct {
 	sel    mouseSelection  // Mouse text selection.
 	quitCh chan struct{}   // Closed by IPC quit action to signal event loop exit.
 
+	// Build version for crash reports.
+	version string
+
 	// Agent event system.
 	agentEvents   chan AgentEvent // Buffered channel for semantic events from detection modules.
 	notifications []notification // Active notifications for rendering.
@@ -204,6 +207,7 @@ func Run(cfg Config) error {
 		lastW:       initW,
 		lastH:       initH,
 		projectRoot: cfg.ProjectRoot,
+		version:     cfg.Version,
 		quitCh:      make(chan struct{}),
 		agentEvents: make(chan AgentEvent, 64),
 	}
@@ -242,6 +246,8 @@ func Run(cfg Config) error {
 		}
 		p.region = r
 		p.eventCh = t.agentEvents
+		p.safeGo = t.safeGo
+		p.Start()
 		t.panes = append(t.panes, p)
 	}
 
@@ -255,12 +261,12 @@ func Run(cfg Config) error {
 
 	// Start idle-with-backlog detection if bd is available.
 	if _, err := osexec.LookPath("bd"); err == nil {
-		go t.watchBacklog(&iexec.DefaultRunner{})
+		t.safeGo(func() { t.watchBacklog(&iexec.DefaultRunner{}) })
 	}
 
 	// Poll tcell events in a goroutine.
 	eventCh := make(chan tcell.Event, 64)
-	go func() {
+	t.safeGo(func() {
 		for {
 			ev := screen.PollEvent()
 			if ev == nil {
@@ -268,7 +274,7 @@ func Run(cfg Config) error {
 			}
 			eventCh <- ev
 		}
-	}()
+	})
 
 	// Render at ~30 fps.
 	ticker := time.NewTicker(33 * time.Millisecond)

@@ -57,15 +57,15 @@ func (t *TUI) startIPC(socketPath string) (cleanup func(), err error) {
 	// Make socket world-writable so all agents can connect.
 	os.Chmod(socketPath, 0777)
 
-	go func() {
+	t.safeGo(func() {
 		for {
 			conn, err := ln.Accept()
 			if err != nil {
 				return // Listener closed.
 			}
-			go t.handleIPCConn(conn)
+			t.safeGo(func() { t.handleIPCConn(conn) })
 		}
-	}()
+	})
 
 	cleanup = func() {
 		ln.Close()
@@ -404,6 +404,8 @@ func (t *TUI) handleIPCStart(conn net.Conn, req IPCRequest) {
 	}
 	np.region = old.region
 	np.eventCh = t.agentEvents
+	np.safeGo = t.safeGo
+	np.Start()
 	t.panes[idx] = np
 	t.applyLayout()
 	writeIPCResponse(conn, IPCResponse{OK: true})
@@ -445,6 +447,8 @@ func (t *TUI) handleIPCRestart(conn net.Conn, req IPCRequest) {
 	}
 	np.region = old.region
 	np.eventCh = t.agentEvents
+	np.safeGo = t.safeGo
+	np.Start()
 	t.panes[idx] = np
 	t.applyLayout()
 	writeIPCResponse(conn, IPCResponse{OK: true})
