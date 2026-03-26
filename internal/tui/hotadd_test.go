@@ -19,6 +19,7 @@ func TestAddPane_Success(t *testing.T) {
 		panes:       []*Pane{testPane("eng1"), testPane("eng2")},
 		layoutState: DefaultLayoutState([]string{"eng1", "eng2"}),
 		agentEvents: make(chan AgentEvent, 8),
+		quitCh:      make(chan struct{}),
 		sockPath:    "/tmp/test.sock",
 		paneConfigBuilder: func(name string) (PaneConfig, error) {
 			return PaneConfig{
@@ -40,6 +41,38 @@ func TestAddPane_Success(t *testing.T) {
 	}
 	// Clean up the PTY process.
 	tui.panes[2].Close()
+}
+
+// TestAddPane_SetsGoroutines verifies that addPane sets safeGo and calls Start()
+// so the new pane's PTY goroutines actually run. Before the ini-a1e.13 fix,
+// Start() was never called and the pane was a frozen black screen.
+func TestAddPane_SetsGoroutines(t *testing.T) {
+	dir := t.TempDir()
+	os.MkdirAll(filepath.Join(dir, "eng3"), 0755)
+
+	tui := &TUI{
+		panes:       []*Pane{testPane("eng1")},
+		layoutState: DefaultLayoutState([]string{"eng1"}),
+		agentEvents: make(chan AgentEvent, 8),
+		quitCh:      make(chan struct{}),
+		sockPath:    "/tmp/test.sock",
+		paneConfigBuilder: func(name string) (PaneConfig, error) {
+			return PaneConfig{Name: name, Dir: filepath.Join(dir, name)}, nil
+		},
+	}
+
+	if err := tui.addPane("eng3"); err != nil {
+		t.Fatalf("addPane: %v", err)
+	}
+	p := tui.panes[len(tui.panes)-1]
+	t.Cleanup(func() { p.Close() })
+
+	if p.safeGo == nil {
+		t.Error("addPane did not set safeGo on new pane")
+	}
+	if !p.IsAlive() {
+		t.Error("new pane is not alive — Start() may not have been called")
+	}
 }
 
 func TestAddPane_AlreadyExists(t *testing.T) {

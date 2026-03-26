@@ -160,11 +160,6 @@ func (t *TUI) injectText(pane *Pane, text string, enter bool) {
 	pane.sendMu.Lock()
 	defer pane.sendMu.Unlock()
 
-	// Stash any pending user input with Ctrl+S before injecting text.
-	// This prevents corruption when the agent has a partially typed message.
-	pane.emu.SendKey(uv.KeyPressEvent(uv.Key{Code: 's', Mod: uv.ModCtrl}))
-	time.Sleep(75 * time.Millisecond)
-
 	// Send each character as a key event through the emulator,
 	// same path as real keypresses from the TUI.
 	for _, r := range text {
@@ -546,6 +541,8 @@ func (t *TUI) addPane(name string) error {
 		return fmt.Errorf("create pane %q: %w", name, err)
 	}
 	p.eventCh = t.agentEvents
+	p.safeGo = t.safeGo
+	p.Start()
 	t.panes = append(t.panes, p)
 
 	// Recalculate grid for the new visible pane count.
