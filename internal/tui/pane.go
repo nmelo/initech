@@ -735,6 +735,14 @@ func (p *Pane) applyBeadDetection(entries []JournalEntry) {
 	}
 }
 
+// jsonlIdleTimeout is how long to wait after the last "running" JSONL entry
+// before declaring an agent idle. Claude regularly has gaps of 90-150s during
+// active work: long-running Bash tools (make test, git push) and extended LLM
+// generation both produce silence in the JSONL file. 5s caused false idles.
+// Terminal-idle entries (system, agent-color, last-prompt) bypass this timeout
+// and set idle immediately via the default case.
+const jsonlIdleTimeout = 120 * time.Second
+
 // updateActivity derives the activity state from the last JSONL entry type
 // and the time since the last file change. Runs every tick for timeout decay.
 func (p *Pane) updateActivity() {
@@ -742,12 +750,13 @@ func (p *Pane) updateActivity() {
 	defer p.mu.Unlock()
 	switch p.lastJsonlType {
 	case "user", "progress", "assistant":
-		if time.Since(p.lastJsonlTime) > 5*time.Second {
+		if time.Since(p.lastJsonlTime) > jsonlIdleTimeout {
 			p.activity = StateIdle
 		} else {
 			p.activity = StateRunning
 		}
 	default:
+		// system, agent-color, last-prompt, etc. = idle immediately.
 		p.activity = StateIdle
 	}
 }
