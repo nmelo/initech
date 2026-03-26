@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"encoding/json"
+	"net"
 	"strings"
 	"testing"
 )
@@ -76,6 +78,80 @@ func TestShellQuoteArgs_EscapeSequencePresent(t *testing.T) {
 	// The result must still preserve the original content as literal text.
 	if !strings.Contains(result, "INJECTED") {
 		t.Errorf("original content missing from quoted output: %q", result)
+	}
+}
+
+// TestHandleIPCBead_DELRejected verifies that bead IDs containing DEL (0x7F)
+// are rejected. The original check was ch < 0x20 which missed DEL.
+func TestHandleIPCBead_DELRejected(t *testing.T) {
+	quitCh := make(chan struct{})
+	tui := &TUI{
+		quitCh: quitCh,
+		ipcCh:  nil, // runOnMain executes inline
+		panes:  []*Pane{{name: "eng1"}},
+	}
+
+	c1, c2 := net.Pipe()
+	defer c1.Close()
+
+	// Read the response from c2 in a goroutine.
+	respCh := make(chan IPCResponse, 1)
+	go func() {
+		dec := json.NewDecoder(c2)
+		var resp IPCResponse
+		_ = dec.Decode(&resp)
+		respCh <- resp
+		c2.Close()
+	}()
+
+	req := IPCRequest{
+		Target: "eng1",
+		Text:   "ini-abc\x7f1", // contains DEL
+	}
+	tui.handleIPCBead(c1, req)
+	c1.Close()
+
+	resp := <-respCh
+	if resp.OK {
+		t.Error("expected error response for bead ID containing DEL, got OK")
+	}
+	if resp.Error == "" {
+		t.Error("expected non-empty error message for DEL in bead ID")
+	}
+}
+
+// TestHandleIPCBead_ControlCharRejected verifies that bead IDs containing
+// control characters below 0x20 are also rejected (existing behaviour).
+func TestHandleIPCBead_ControlCharRejected(t *testing.T) {
+	quitCh := make(chan struct{})
+	tui := &TUI{
+		quitCh: quitCh,
+		ipcCh:  nil,
+		panes:  []*Pane{{name: "eng1"}},
+	}
+
+	c1, c2 := net.Pipe()
+	defer c1.Close()
+
+	respCh := make(chan IPCResponse, 1)
+	go func() {
+		dec := json.NewDecoder(c2)
+		var resp IPCResponse
+		_ = dec.Decode(&resp)
+		respCh <- resp
+		c2.Close()
+	}()
+
+	req := IPCRequest{
+		Target: "eng1",
+		Text:   "ini-abc\x01", // contains SOH (0x01)
+	}
+	tui.handleIPCBead(c1, req)
+	c1.Close()
+
+	resp := <-respCh
+	if resp.OK {
+		t.Error("expected error response for bead ID containing control char, got OK")
 	}
 }
 

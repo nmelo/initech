@@ -20,6 +20,12 @@ import (
 var enabled = true
 
 func init() {
+	// Check --no-color before cobra parses flags so that cobra parse errors
+	// (printed before PersistentPreRunE runs) are also uncolored.
+	if hasNoColorArg(os.Args[1:]) {
+		enabled = false
+		return
+	}
 	if os.Getenv("NO_COLOR") != "" {
 		enabled = false
 		return
@@ -28,6 +34,17 @@ func init() {
 	if err != nil || fi.Mode()&os.ModeCharDevice == 0 {
 		enabled = false
 	}
+}
+
+// hasNoColorArg returns true if args contains the literal string "--no-color".
+// Extracted from init() to allow unit testing without restarting the process.
+func hasNoColorArg(args []string) bool {
+	for _, arg := range args {
+		if arg == "--no-color" {
+			return true
+		}
+	}
+	return false
 }
 
 // SetEnabled overrides the auto-detected color state. Call with false to honor

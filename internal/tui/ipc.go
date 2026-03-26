@@ -315,7 +315,7 @@ func (t *TUI) handleIPCBead(conn net.Conn, req IPCRequest) {
 		return
 	}
 	for _, ch := range req.Text {
-		if ch < 0x20 {
+		if ch < 0x20 || ch == 0x7F {
 			writeIPCResponse(conn, IPCResponse{Error: "bead ID contains control characters"})
 			return
 		}

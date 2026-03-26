@@ -256,11 +256,7 @@ func (t *TUI) renderTop() {
 	y++
 	totalStr := "-"
 	if totalRSS > 0 {
-		if totalRSS > 1048576 {
-			totalStr = fmt.Sprintf("%.1f GB", float64(totalRSS)/1048576)
-		} else {
-			totalStr = fmt.Sprintf("%.0f MB", float64(totalRSS)/1024)
-		}
+		totalStr = formatTotalRSS(totalRSS)
 	}
 	alive := 0
 	dead := 0
@@ -285,4 +281,17 @@ func (t *TUI) renderTop() {
 			s.SetContent(1+i, sh-1, ch, nil, helpStyle)
 		}
 	}
+}
+
+
+// formatTotalRSS formats a total RSS value in KB to a human-readable string.
+// Mirrors the per-entry RSS formatting tiers (GB / MB / KB) so small totals
+// display as "512 KB" rather than "0 MB".
+func formatTotalRSS(kb int64) string {
+	if kb > 1048576 {
+		return fmt.Sprintf("%.1f GB", float64(kb)/1048576)
+	} else if kb >= 1024 {
+		return fmt.Sprintf("%.0f MB", float64(kb)/1024)
+	}
+	return fmt.Sprintf("%d KB", kb)
 }
