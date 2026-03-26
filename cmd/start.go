@@ -25,6 +25,10 @@ func init() {
 }
 
 func runStart(cmd *cobra.Command, args []string) error {
+	if startBead != "" && len(args) > 1 {
+		return fmt.Errorf("--bead can only be used when starting a single agent")
+	}
+
 	sockPath, _, err := discoverSocket()
 	if err != nil {
 		return err

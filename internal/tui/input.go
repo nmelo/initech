@@ -77,6 +77,9 @@ func (t *TUI) handleKey(ev *tcell.EventKey) bool {
 				t.saveLayoutIfConfigured()
 				return false
 			case 's':
+				// Overlay toggle is deliberately not persisted. It's a
+				// lightweight view preference (like scrollback position),
+				// not a structural layout change. Always starts visible.
 				t.layoutState.Overlay = !t.layoutState.Overlay
 				return false
 			case 'z':
@@ -184,6 +187,7 @@ func (t *TUI) execCmd(cmd string) bool {
 		t.saveLayoutIfConfigured()
 
 	case "panel":
+		// Overlay toggle is deliberately not persisted (see Alt+s comment).
 		t.layoutState.Overlay = !t.layoutState.Overlay
 
 	case "main":
@@ -281,6 +285,11 @@ func (t *TUI) execCmd(cmd string) bool {
 		}
 		switch parts[1] {
 		case "reset":
+			// Delete the saved layout file and revert to defaults.
+			// We deliberately don't call saveLayoutIfConfigured() here:
+			// the intent is to remove persistence so the next startup
+			// auto-calculates from the role count. Re-saving would
+			// immediately recreate the file with default values.
 			if t.projectRoot != "" {
 				DeleteLayout(t.projectRoot)
 			}

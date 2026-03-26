@@ -253,6 +253,17 @@ func (t *TUI) handleIPCBead(conn net.Conn, req IPCRequest) {
 		return
 	}
 	// req.Text = bead ID (empty string to clear).
+	// Validate: max 64 chars, no control characters.
+	if len(req.Text) > 64 {
+		writeIPCResponse(conn, IPCResponse{Error: "bead ID too long (max 64 chars)"})
+		return
+	}
+	for _, ch := range req.Text {
+		if ch < 0x20 {
+			writeIPCResponse(conn, IPCResponse{Error: "bead ID contains control characters"})
+			return
+		}
+	}
 	pane.SetBead(req.Text, "")
 	writeIPCResponse(conn, IPCResponse{OK: true})
 }
@@ -389,6 +400,13 @@ func (t *TUI) handleIPCRestart(conn net.Conn, req IPCRequest) {
 	// Wait for any in-flight send to finish before closing.
 	old.sendMu.Lock()
 	cols, rows := old.emu.Width(), old.emu.Height()
+	// Dead panes may report zero dimensions. Use sensible defaults.
+	if cols < 10 {
+		cols = 80
+	}
+	if rows < 2 {
+		rows = 24
+	}
 	old.Close()
 	old.sendMu.Unlock()
 	np, err := NewPane(old.cfg, rows, cols)
