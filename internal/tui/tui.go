@@ -69,6 +69,10 @@ type TUI struct {
 	top    topModal        // Activity monitor overlay.
 	sel    mouseSelection  // Mouse text selection.
 	quitCh chan struct{}   // Closed by IPC quit action to signal event loop exit.
+
+	// Agent event system.
+	agentEvents   chan AgentEvent // Buffered channel for semantic events from detection modules.
+	notifications []notification // Active notifications for rendering.
 }
 
 // applyLayout recomputes the render plan from the current layout state
@@ -187,9 +191,8 @@ func Run(cfg Config) error {
 		lastH:       initH,
 		projectRoot: cfg.ProjectRoot,
 		quitCh:      make(chan struct{}),
+		agentEvents: make(chan AgentEvent, 64),
 	}
-
-	// Initialize quit channel (closed by IPC quit action).
 
 	// Start IPC socket server for inter-agent messaging.
 	sockPath := SocketPath(cfg.ProjectName)
@@ -257,7 +260,10 @@ func Run(cfg Config) error {
 			if t.handleEvent(ev) {
 				return nil
 			}
+		case ae := <-t.agentEvents:
+			t.handleAgentEvent(ae)
 		case <-ticker.C:
+			t.pruneNotifications()
 			t.render()
 		case <-t.quitCh:
 			return nil
