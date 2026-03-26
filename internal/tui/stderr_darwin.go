@@ -1,6 +1,6 @@
-//go:build !windows
+//go:build darwin
 
-// stderr_unix.go redirects os.Stderr (fd 2) to .initech/stderr.log at the
+// stderr_darwin.go redirects os.Stderr (fd 2) to .initech/stderr.log at the
 // OS file-descriptor level. This must happen before screen.Init() puts the
 // terminal into raw mode, so that cgo/native crash stack traces are written
 // to a file rather than into the garbled terminal buffer.
