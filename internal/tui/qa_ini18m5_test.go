@@ -150,11 +150,11 @@ func TestApplyBeadDetection_FailedCommandNoop(t *testing.T) {
 	}
 }
 
-// Edge case: bead ID with no dot (e.g. "ini-noid") is rejected by extractBeadID.
-func TestExtractBeadID_NoDotRejected(t *testing.T) {
+// Root-level bead IDs without a dot (e.g. "ini-noid") are now accepted by extractBeadID.
+func TestExtractBeadID_RootLevelAccepted(t *testing.T) {
 	id := extractBeadID("bd update ini-noid --claim")
-	if id != "" {
-		t.Errorf("ID without dot should be rejected, got %q", id)
+	if id != "ini-noid" {
+		t.Errorf("root-level bead ID without dot should be accepted, got %q", id)
 	}
 }
 

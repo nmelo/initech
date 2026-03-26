@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"os"
 	osexec "os/exec"
+	"sync"
 	"time"
 
 	"github.com/gdamore/tcell/v2"
@@ -105,7 +106,14 @@ type TUI struct {
 	eventLogM eventLogModal  // Event log history modal.
 	help      helpModal      // Help reference card modal.
 	sel       mouseSelection // Mouse text selection.
-	quitCh    chan struct{}   // Closed by IPC quit action to signal event loop exit.
+	quitCh   chan struct{} // Closed by IPC quit action to signal event loop exit.
+	quitOnce sync.Once   // Guards single close of quitCh; prevents concurrent-quit panics.
+
+	// ipcCh is the dispatch channel for IPC goroutines that need to access
+	// TUI state (t.panes, layoutState) safely from outside the main event loop.
+	// Nil in test contexts that don't set up the channel (runOnMain falls back
+	// to direct execution when nil).
+	ipcCh chan ipcAction
 
 	// Build version for crash reports.
 	version string
@@ -288,6 +296,7 @@ func Run(cfg Config) error {
 		sockPath:          sp,
 		paneConfigBuilder: cfg.PaneConfigBuilder,
 		quitCh:            quitCh,
+		ipcCh:             make(chan ipcAction, 32),
 		agentEvents:       make(chan AgentEvent, 64),
 	}
 
@@ -371,6 +380,11 @@ func Run(cfg Config) error {
 			}
 		case ae := <-t.agentEvents:
 			t.handleAgentEvent(ae)
+		case op := <-t.ipcCh:
+			// Execute IPC-dispatched closures on the main goroutine so they
+			// can safely access t.panes and other unsynchronised TUI state.
+			op.fn()
+			close(op.done)
 		case <-ticker.C:
 			t.pruneNotifications()
 			t.pruneConfirmation()

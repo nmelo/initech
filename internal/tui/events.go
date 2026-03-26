@@ -7,6 +7,7 @@ package tui
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -187,15 +188,20 @@ func detectBeadClaim(entries []JournalEntry) (beadID string, clear bool) {
 	return "", false
 }
 
+// beadIDRe matches a complete bead ID token. The dot-separated sub-bead index
+// is optional so that both root-level IDs ("ini-hli", "ini-csf") and sub-bead
+// IDs ("ini-a1e.14", "ini-q7x.1") are accepted. Anchored so the whole token
+// must match — "some-other-thing" is rejected because of the trailing suffix.
+var beadIDRe = regexp.MustCompile(`^[a-z]+-[a-z0-9]+(?:\.[0-9]+)?$`)
+
 // extractBeadID parses the bead ID from a bd update command string.
-// Expects a token that looks like a bead ID (contains a dot, e.g. "ini-18m.5").
+// Accepts both root-level IDs (e.g. "ini-hli") and sub-bead IDs (e.g. "ini-a1e.14").
 func extractBeadID(cmd string) string {
 	fields := strings.Fields(cmd)
 	for i, f := range fields {
 		if f == "update" && i+1 < len(fields) {
 			candidate := fields[i+1]
-			// Bead IDs contain a hyphen and a dot (e.g. "ini-18m.5", "ini-q7x.1").
-			if strings.Contains(candidate, "-") && strings.Contains(candidate, ".") {
+			if beadIDRe.MatchString(candidate) {
 				return candidate
 			}
 		}

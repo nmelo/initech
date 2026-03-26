@@ -178,8 +178,10 @@ func TestExtractBeadID(t *testing.T) {
 	}{
 		{"bd update ini-18m.5 --claim", "ini-18m.5"},
 		{"bd update ini-q7x.1 --status in_progress", "ini-q7x.1"},
-		{"bd update --status in_progress", ""},  // no ID before flags
-		{"bd update ini-noid --claim", ""},       // no dot in candidate
+		{"bd update ini-noid --claim", "ini-noid"},   // root-level ID (no dot) is accepted
+		{"bd update ini-r5u --claim", "ini-r5u"},     // another root-level ID
+		{"bd update --status in_progress", ""},       // no ID before flags
+		{"bd update abc.1 --claim", ""},              // no hyphen prefix
 		{"something else entirely", ""},
 	}
 	for _, tt := range tests {

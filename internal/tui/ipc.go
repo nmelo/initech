@@ -141,7 +141,11 @@ func (t *TUI) handleIPCSend(conn net.Conn, req IPCRequest) {
 		return
 	}
 
-	pane := t.findPane(req.Target)
+	var pane *Pane
+	if !t.runOnMain(func() { pane = t.findPane(req.Target) }) {
+		writeIPCResponse(conn, IPCResponse{Error: "TUI shutting down"})
+		return
+	}
 	if pane == nil {
 		writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("pane %q not found", req.Target)})
 		return
@@ -191,7 +195,11 @@ func (t *TUI) handleIPCPeek(conn net.Conn, req IPCRequest) {
 		writeIPCResponse(conn, IPCResponse{Error: "target is required"})
 		return
 	}
-	pane := t.findPane(req.Target)
+	var pane *Pane
+	if !t.runOnMain(func() { pane = t.findPane(req.Target) }) {
+		writeIPCResponse(conn, IPCResponse{Error: "TUI shutting down"})
+		return
+	}
 	if pane == nil {
 		writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("pane %q not found", req.Target)})
 		return
@@ -212,17 +220,20 @@ func (t *TUI) handleIPCPatrol(conn net.Conn, req IPCRequest) {
 		Visible  bool   `json:"visible"`
 		Content  string `json:"content"`
 	}
-	result := make([]patrolEntry, len(t.panes))
-	for i, p := range t.panes {
-		result[i] = patrolEntry{
-			Name:     p.name,
-			Activity: p.Activity().String(),
-			Bead:     p.BeadID(),
-			Alive:    p.IsAlive(),
-			Visible:  !t.layoutState.Hidden[p.name],
-			Content:  peekContent(p, lines),
+	var result []patrolEntry
+	t.runOnMain(func() {
+		result = make([]patrolEntry, len(t.panes))
+		for i, p := range t.panes {
+			result[i] = patrolEntry{
+				Name:     p.name,
+				Activity: p.Activity().String(),
+				Bead:     p.BeadID(),
+				Alive:    p.IsAlive(),
+				Visible:  !t.layoutState.Hidden[p.name],
+				Content:  peekContent(p, lines),
+			}
 		}
-	}
+	})
 	data, _ := json.Marshal(result)
 	writeIPCResponse(conn, IPCResponse{OK: true, Data: string(data)})
 }
@@ -275,15 +286,18 @@ func (t *TUI) handleIPCList(conn net.Conn) {
 		Alive    bool   `json:"alive"`
 		Visible  bool   `json:"visible"`
 	}
-	panes := make([]paneInfo, len(t.panes))
-	for i, p := range t.panes {
-		panes[i] = paneInfo{
-			Name:     p.name,
-			Activity: p.Activity().String(),
-			Alive:    p.IsAlive(),
-			Visible:  !t.layoutState.Hidden[p.name],
+	var panes []paneInfo
+	t.runOnMain(func() {
+		panes = make([]paneInfo, len(t.panes))
+		for i, p := range t.panes {
+			panes[i] = paneInfo{
+				Name:     p.name,
+				Activity: p.Activity().String(),
+				Alive:    p.IsAlive(),
+				Visible:  !t.layoutState.Hidden[p.name],
+			}
 		}
-	}
+	})
 	data, _ := json.Marshal(panes)
 	writeIPCResponse(conn, IPCResponse{OK: true, Data: string(data)})
 }
@@ -293,13 +307,7 @@ func (t *TUI) handleIPCBead(conn net.Conn, req IPCRequest) {
 		writeIPCResponse(conn, IPCResponse{Error: "target is required (set INITECH_AGENT or use --agent)"})
 		return
 	}
-	pane := t.findPane(req.Target)
-	if pane == nil {
-		writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("pane %q not found", req.Target)})
-		return
-	}
-	// req.Text = bead ID (empty string to clear).
-	// Validate: max 64 chars, no control characters.
+	// Validate bead ID text before touching TUI state.
 	if len(req.Text) > 64 {
 		writeIPCResponse(conn, IPCResponse{Error: "bead ID too long (max 64 chars)"})
 		return
@@ -309,6 +317,15 @@ func (t *TUI) handleIPCBead(conn net.Conn, req IPCRequest) {
 			writeIPCResponse(conn, IPCResponse{Error: "bead ID contains control characters"})
 			return
 		}
+	}
+	var pane *Pane
+	if !t.runOnMain(func() { pane = t.findPane(req.Target) }) {
+		writeIPCResponse(conn, IPCResponse{Error: "TUI shutting down"})
+		return
+	}
+	if pane == nil {
+		writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("pane %q not found", req.Target)})
+		return
 	}
 	pane.SetBead(req.Text, "")
 	writeIPCResponse(conn, IPCResponse{OK: true})
@@ -377,7 +394,11 @@ func (t *TUI) handleIPCStop(conn net.Conn, req IPCRequest) {
 		writeIPCResponse(conn, IPCResponse{Error: "target is required"})
 		return
 	}
-	pane := t.findPane(req.Target)
+	var pane *Pane
+	if !t.runOnMain(func() { pane = t.findPane(req.Target) }) {
+		writeIPCResponse(conn, IPCResponse{Error: "TUI shutting down"})
+		return
+	}
 	if pane == nil {
 		writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("pane %q not found", req.Target)})
 		return
@@ -398,22 +419,27 @@ func (t *TUI) handleIPCStart(conn net.Conn, req IPCRequest) {
 		writeIPCResponse(conn, IPCResponse{Error: "target is required"})
 		return
 	}
-	idx := -1
-	for i, p := range t.panes {
-		if p.name == req.Target {
-			idx = i
-			break
+	// Find the pane pointer and index on main to avoid races on t.panes.
+	var old *Pane
+	var oldIdx int
+	t.runOnMain(func() {
+		for i, p := range t.panes {
+			if p.name == req.Target {
+				old = p
+				oldIdx = i
+				return
+			}
 		}
-	}
-	if idx < 0 {
+	})
+	if old == nil {
 		writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("pane %q not found", req.Target)})
 		return
 	}
-	old := t.panes[idx]
 	if old.IsAlive() {
 		writeIPCResponse(conn, IPCResponse{OK: true, Data: "already running"})
 		return
 	}
+	// Create the new pane off-main (may fork/exec).
 	cols, rows := old.emu.Width(), old.emu.Height()
 	np, err := NewPane(old.cfg, rows, cols)
 	if err != nil {
@@ -424,9 +450,16 @@ func (t *TUI) handleIPCStart(conn net.Conn, req IPCRequest) {
 	np.region = old.region
 	np.eventCh = t.agentEvents
 	np.safeGo = t.safeGo
-	np.Start()
-	t.panes[idx] = np
-	t.applyLayout()
+	// Replace in t.panes on main; re-verify index is still valid.
+	t.runOnMain(func() {
+		if oldIdx < len(t.panes) && t.panes[oldIdx] == old {
+			np.Start()
+			t.panes[oldIdx] = np
+			t.applyLayout()
+		} else {
+			np.Close() // Index shifted; discard new pane.
+		}
+	})
 	LogInfo("pane", "started", "name", req.Target)
 	writeIPCResponse(conn, IPCResponse{OK: true})
 }
@@ -436,22 +469,26 @@ func (t *TUI) handleIPCRestart(conn net.Conn, req IPCRequest) {
 		writeIPCResponse(conn, IPCResponse{Error: "target is required"})
 		return
 	}
-	idx := -1
-	for i, p := range t.panes {
-		if p.name == req.Target {
-			idx = i
-			break
+	// Find the pane pointer and index on main to avoid races on t.panes.
+	var old *Pane
+	var oldIdx int
+	t.runOnMain(func() {
+		for i, p := range t.panes {
+			if p.name == req.Target {
+				old = p
+				oldIdx = i
+				return
+			}
 		}
-	}
-	if idx < 0 {
+	})
+	if old == nil {
 		writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("pane %q not found", req.Target)})
 		return
 	}
-	old := t.panes[idx]
-	// Wait for any in-flight send to finish before closing.
+	// Close the old pane off-main; sendMu serialises concurrent sends.
 	old.sendMu.Lock()
 	cols, rows := old.emu.Width(), old.emu.Height()
-	// Dead panes may report zero dimensions. Use sensible defaults.
+	// Dead panes may report zero dimensions; use sensible defaults.
 	if cols < 10 {
 		cols = 80
 	}
@@ -460,6 +497,7 @@ func (t *TUI) handleIPCRestart(conn net.Conn, req IPCRequest) {
 	}
 	old.Close()
 	old.sendMu.Unlock()
+	// Create new pane off-main (may fork/exec).
 	np, err := NewPane(old.cfg, rows, cols)
 	if err != nil {
 		LogError("pane", "restart failed", "name", req.Target, "err", err)
@@ -469,10 +507,17 @@ func (t *TUI) handleIPCRestart(conn net.Conn, req IPCRequest) {
 	np.region = old.region
 	np.eventCh = t.agentEvents
 	np.safeGo = t.safeGo
-	np.Start()
+	// Replace in t.panes on main; re-verify index is still valid.
+	t.runOnMain(func() {
+		if oldIdx < len(t.panes) && t.panes[oldIdx] == old {
+			np.Start()
+			t.panes[oldIdx] = np
+			t.applyLayout()
+		} else {
+			np.Close() // Index shifted; discard new pane.
+		}
+	})
 	LogInfo("pane", "restarted", "name", req.Target)
-	t.panes[idx] = np
-	t.applyLayout()
 	writeIPCResponse(conn, IPCResponse{OK: true})
 }
 
@@ -499,9 +544,17 @@ func (t *TUI) addPane(name string) error {
 	if name == "" {
 		return fmt.Errorf("name is required")
 	}
-	if t.findPane(name) != nil {
-		return fmt.Errorf("agent %q already exists", name)
+	// Check name uniqueness on main (reads t.panes).
+	var existsErr error
+	t.runOnMain(func() {
+		if t.findPane(name) != nil {
+			existsErr = fmt.Errorf("agent %q already exists", name)
+		}
+	})
+	if existsErr != nil {
+		return existsErr
 	}
+
 	if t.paneConfigBuilder == nil {
 		return fmt.Errorf("add not available: no config builder (was TUI started via 'initech up'?)")
 	}
@@ -535,6 +588,7 @@ func (t *TUI) addPane(name string) error {
 		}
 	}
 
+	// Create the pane off-main (may fork/exec).
 	p, err := NewPane(cfg, rows, cols)
 	if err != nil {
 		LogError("pane", "hot-add launch failed", "name", name, "err", err)
@@ -542,13 +596,25 @@ func (t *TUI) addPane(name string) error {
 	}
 	p.eventCh = t.agentEvents
 	p.safeGo = t.safeGo
-	p.Start()
-	t.panes = append(t.panes, p)
 
-	// Recalculate grid for the new visible pane count.
-	t.recalcGrid()
-	t.applyLayout()
-	t.saveLayoutIfConfigured()
+	// Append to t.panes on main; re-verify uniqueness in case of concurrent add.
+	var finalErr error
+	t.runOnMain(func() {
+		if t.findPane(name) != nil {
+			p.Close()
+			finalErr = fmt.Errorf("agent %q already exists (added concurrently)", name)
+			return
+		}
+		p.Start()
+		t.panes = append(t.panes, p)
+		// Recalculate grid for the new visible pane count.
+		t.recalcGrid()
+		t.applyLayout()
+		t.saveLayoutIfConfigured()
+	})
+	if finalErr != nil {
+		return finalErr
+	}
 	LogInfo("pane", "added", "name", name)
 	return nil
 }
@@ -560,38 +626,46 @@ func (t *TUI) removePane(name string) error {
 	if name == "" {
 		return fmt.Errorf("name is required")
 	}
-	idx := -1
-	for i, p := range t.panes {
-		if p.name == name {
-			idx = i
-			break
+	var removeErr error
+	t.runOnMain(func() {
+		idx := -1
+		for i, p := range t.panes {
+			if p.name == name {
+				idx = i
+				break
+			}
 		}
-	}
-	if idx < 0 {
-		return fmt.Errorf("agent %q not found", name)
-	}
-	if len(t.panes) == 1 {
-		return fmt.Errorf("cannot remove last agent")
-	}
+		if idx < 0 {
+			removeErr = fmt.Errorf("agent %q not found", name)
+			return
+		}
+		if len(t.panes) == 1 {
+			removeErr = fmt.Errorf("cannot remove last agent")
+			return
+		}
 
-	p := t.panes[idx]
-	p.Close()
+		p := t.panes[idx]
+		p.Close()
 
-	// Remove from slice without leaving gaps.
-	t.panes = append(t.panes[:idx], t.panes[idx+1:]...)
+		// Remove from slice without leaving gaps.
+		t.panes = append(t.panes[:idx], t.panes[idx+1:]...)
 
-	// Clean up layout state references.
-	if t.layoutState.Hidden != nil {
-		delete(t.layoutState.Hidden, name)
+		// Clean up layout state references.
+		if t.layoutState.Hidden != nil {
+			delete(t.layoutState.Hidden, name)
+		}
+		// If this was the focused pane, clear focus so applyLayout snaps to next visible.
+		if t.layoutState.Focused == name {
+			t.layoutState.Focused = ""
+		}
+
+		t.recalcGrid()
+		t.applyLayout()
+		t.saveLayoutIfConfigured()
+	})
+	if removeErr != nil {
+		return removeErr
 	}
-	// If this was the focused pane, clear focus so applyLayout snaps to next visible.
-	if t.layoutState.Focused == name {
-		t.layoutState.Focused = ""
-	}
-
-	t.recalcGrid()
-	t.applyLayout()
-	t.saveLayoutIfConfigured()
 	LogInfo("pane", "removed", "name", name)
 	return nil
 }
@@ -613,8 +687,43 @@ func (t *TUI) recalcGrid() {
 
 func (t *TUI) handleIPCQuit(conn net.Conn) {
 	writeIPCResponse(conn, IPCResponse{OK: true})
-	if t.quitCh != nil {
-		close(t.quitCh)
+	t.quitOnce.Do(func() { close(t.quitCh) })
+}
+
+// ipcAction is a closure dispatched to the TUI main event loop for safe
+// access to unsynchronised TUI state (primarily t.panes). IPC goroutines
+// must not read or write t.panes directly; all such access goes through
+// runOnMain to serialise with the render loop.
+type ipcAction struct {
+	fn   func()
+	done chan struct{}
+}
+
+// runOnMain dispatches fn to the TUI main event loop and blocks until it
+// executes. Returns false if the TUI is shutting down (quitCh was closed).
+// When ipcCh is nil (test contexts without a running event loop) fn is
+// executed directly on the calling goroutine.
+//
+// Two-phase select: first, race the send against quit; second, race the
+// completion signal against quit. This ensures quitCh always wins even when
+// ipcCh has buffer space.
+func (t *TUI) runOnMain(fn func()) bool {
+	if t.ipcCh == nil {
+		fn()
+		return true
+	}
+	op := ipcAction{fn: fn, done: make(chan struct{})}
+	select {
+	case t.ipcCh <- op:
+		// Op sent; wait for main loop to execute it.
+		select {
+		case <-op.done:
+			return true
+		case <-t.quitCh:
+			return false
+		}
+	case <-t.quitCh:
+		return false
 	}
 }
 

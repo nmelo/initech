@@ -79,6 +79,7 @@ type Pane struct {
 	jsonlDir      string             // Directory to search for session JSONL files.
 	eventCh       chan<- AgentEvent  // Emits detected semantic events to the TUI. May be nil.
 	safeGo        func(func())     // Launches a goroutine with panic recovery. Set by TUI after creation.
+	goWg          sync.WaitGroup  // Tracks goroutines launched by Start(). Wait in Close().
 	sessionDesc   string       // Session description extracted from cursor row.
 	beadID        string       // Current bead ID (e.g., "ini-bhk.3"). Empty = no bead.
 	beadTitle     string       // Bead title for top modal display.
@@ -210,10 +211,15 @@ func (p *Pane) Start() {
 	if launch == nil {
 		launch = func(fn func()) { go fn() }
 	}
-	launch(p.readLoop)
-	launch(p.responseLoop)
+	count := 2 // readLoop + responseLoop.
 	if p.jsonlDir != "" {
-		launch(p.watchJSONL)
+		count++
+	}
+	p.goWg.Add(count)
+	launch(func() { defer p.goWg.Done(); p.readLoop() })
+	launch(func() { defer p.goWg.Done(); p.responseLoop() })
+	if p.jsonlDir != "" {
+		launch(func() { defer p.goWg.Done(); p.watchJSONL() })
 	}
 }
 
@@ -1131,17 +1137,33 @@ func (p *Pane) Close() {
 	p.alive = false
 	p.mu.Unlock()
 
-	if p.emu != nil {
-		p.emu.Close()
-	}
+	// Close PTY first so readLoop's ptmx.Read() errors out immediately.
 	if p.ptmx != nil {
 		p.ptmx.Close()
+	}
+	// Close only the emulator's input pipe writer so responseLoop's blocking
+	// e.pr.Read() returns EOF and the goroutine exits. We must NOT call
+	// emu.Close() here because it writes e.closed=true which races with
+	// responseLoop's concurrent Read() that also checks e.closed. After
+	// goWg.Wait() confirms responseLoop has exited, it is safe to call
+	// emu.Close() without any concurrent reader.
+	if p.emu != nil {
+		if pw, ok := p.emu.InputPipe().(*io.PipeWriter); ok {
+			pw.CloseWithError(io.EOF)
+		}
 	}
 	if p.cmd != nil {
 		if p.cmd.Process != nil {
 			p.cmd.Process.Kill()
 		}
 		p.cmd.Wait()
+	}
+	// Wait for all goroutines started by Start() to exit before touching
+	// emu or ptmx fields, preventing data races detected by the race detector.
+	p.goWg.Wait()
+	// responseLoop has exited; safe to call emu.Close() now.
+	if p.emu != nil {
+		p.emu.Close()
 	}
 }
 
