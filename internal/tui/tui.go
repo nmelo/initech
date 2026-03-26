@@ -239,6 +239,7 @@ func Run(cfg Config) error {
 			return fmt.Errorf("create pane %q: %w", acfg.Name, err)
 		}
 		p.region = r
+		p.eventCh = t.agentEvents
 		t.panes = append(t.panes, p)
 	}
 

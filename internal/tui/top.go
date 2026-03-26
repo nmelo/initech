@@ -90,6 +90,7 @@ func (t *TUI) handleTopKey(ev *tcell.EventKey) bool {
 				if err != nil {
 					t.cmd.error = fmt.Sprintf("restart %s: %v", p.name, err)
 				} else {
+					np.eventCh = t.agentEvents
 					t.panes[idx] = np
 					t.applyLayout()
 				}

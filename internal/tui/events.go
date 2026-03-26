@@ -5,7 +5,10 @@
 
 package tui
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 // EventType classifies semantic events from agent activity detection.
 type EventType int
@@ -90,6 +93,60 @@ func (t *TUI) handleAgentEvent(ev AgentEvent) {
 	if len(t.notifications) > maxNotifications {
 		t.notifications = t.notifications[len(t.notifications)-maxNotifications:]
 	}
+}
+
+// detectBeadClaim scans a batch of new JSONL entries for bd state transitions.
+// Returns (beadID, false) when an agent claims a bead, or ("", true) when an
+// agent marks a bead ready_for_qa (clear the display). Returns ("", false) when
+// no relevant transition is found.
+//
+// Claim signals: tool_use Content contains "bd update" and "--claim" or
+// "--status in_progress". The bead ID is the first argument after "bd update".
+// Clear signals: Content contains "bd update" and "--status ready_for_qa".
+// Either signal is ignored when ExitCode != 0 (failed bd command).
+func detectBeadClaim(entries []JournalEntry) (beadID string, clear bool) {
+	for _, e := range entries {
+		if e.ExitCode != 0 {
+			continue
+		}
+		if e.ToolName != "Bash" {
+			continue
+		}
+		content := e.Content
+		if !strings.Contains(content, "bd update") {
+			continue
+		}
+		isClaim := strings.Contains(content, "--claim") ||
+			(strings.Contains(content, "--status in_progress") || strings.Contains(content, "--status=in_progress"))
+		isClear := strings.Contains(content, "--status ready_for_qa") || strings.Contains(content, "--status=ready_for_qa")
+
+		if isClear {
+			return "", true
+		}
+		if isClaim {
+			id := extractBeadID(content)
+			if id != "" {
+				return id, false
+			}
+		}
+	}
+	return "", false
+}
+
+// extractBeadID parses the bead ID from a bd update command string.
+// Expects a token that looks like a bead ID (contains a dot, e.g. "ini-18m.5").
+func extractBeadID(cmd string) string {
+	fields := strings.Fields(cmd)
+	for i, f := range fields {
+		if f == "update" && i+1 < len(fields) {
+			candidate := fields[i+1]
+			// Bead IDs contain a hyphen and a dot (e.g. "ini-18m.5", "ini-q7x.1").
+			if strings.Contains(candidate, "-") && strings.Contains(candidate, ".") {
+				return candidate
+			}
+		}
+	}
+	return ""
 }
 
 // pruneNotifications removes expired notifications.

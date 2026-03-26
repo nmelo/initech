@@ -471,6 +471,7 @@ func (t *TUI) restartFocused() error {
 	if err != nil {
 		return err
 	}
+	p.eventCh = t.agentEvents
 	t.panes[idx] = p
 	t.applyLayout()
 	return nil

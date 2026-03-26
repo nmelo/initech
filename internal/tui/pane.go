@@ -71,8 +71,9 @@ type Pane struct {
 	activity      ActivityState // Current state from JSONL tailing.
 	lastJsonlType string       // Last JSONL entry type seen.
 	lastJsonlTime time.Time    // When we last saw a file change.
-	journal       []JournalEntry // Ring buffer of recent JSONL entries (cap journalRingSize).
-	jsonlDir      string       // Directory to search for session JSONL files.
+	journal       []JournalEntry     // Ring buffer of recent JSONL entries (cap journalRingSize).
+	jsonlDir      string             // Directory to search for session JSONL files.
+	eventCh       chan<- AgentEvent  // Emits detected semantic events to the TUI. May be nil.
 	sessionDesc   string       // Session description extracted from cursor row.
 	beadID        string       // Current bead ID (e.g., "ini-bhk.3"). Empty = no bead.
 	beadTitle     string       // Bead title for top modal display.
@@ -698,9 +699,33 @@ func (p *Pane) watchJSONL() {
 			p.lastJsonlType = last.Type
 			p.lastJsonlTime = time.Now()
 			p.mu.Unlock()
+
+			// Bead auto-detection: check new entries for bd claim/clear signals.
+			if p.eventCh != nil {
+				p.applyBeadDetection(entries)
+			}
 		}
 
 		p.updateActivity()
+	}
+}
+
+// applyBeadDetection runs detectBeadClaim on new entries and applies the result:
+// sets or clears the pane's bead display and emits an event if appropriate.
+// Must be called outside p.mu (it acquires the lock internally via SetBead).
+func (p *Pane) applyBeadDetection(entries []JournalEntry) {
+	beadID, clear := detectBeadClaim(entries)
+	switch {
+	case clear:
+		p.SetBead("", "")
+	case beadID != "":
+		p.SetBead(beadID, "")
+		EmitEvent(p.eventCh, AgentEvent{
+			Type:   EventBeadClaimed,
+			Pane:   p.name,
+			BeadID: beadID,
+			Detail: p.name + " claimed " + beadID,
+		})
 	}
 }
 

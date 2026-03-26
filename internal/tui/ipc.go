@@ -403,6 +403,7 @@ func (t *TUI) handleIPCStart(conn net.Conn, req IPCRequest) {
 		return
 	}
 	np.region = old.region
+	np.eventCh = t.agentEvents
 	t.panes[idx] = np
 	t.applyLayout()
 	writeIPCResponse(conn, IPCResponse{OK: true})
@@ -443,6 +444,7 @@ func (t *TUI) handleIPCRestart(conn net.Conn, req IPCRequest) {
 		return
 	}
 	np.region = old.region
+	np.eventCh = t.agentEvents
 	t.panes[idx] = np
 	t.applyLayout()
 	writeIPCResponse(conn, IPCResponse{OK: true})
