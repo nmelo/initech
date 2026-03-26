@@ -117,6 +117,13 @@ func runTUI(cmd *cobra.Command, args []string) error {
 			dir = ov.Dir
 		}
 
+		// Verify the role directory exists. Skip missing dirs with a warning
+		// so the TUI still starts for roles that are properly set up.
+		if _, err := os.Stat(dir); os.IsNotExist(err) {
+			fmt.Fprintf(os.Stderr, "Warning: role %q directory does not exist: %s. Skipping.\n", roleName, dir)
+			continue
+		}
+
 		// Environment.
 		var env []string
 		if proj.Beads.Prefix != "" {
@@ -129,6 +136,10 @@ func runTUI(cmd *cobra.Command, args []string) error {
 			Dir:     dir,
 			Env:     env,
 		})
+	}
+
+	if len(agents) == 0 {
+		return fmt.Errorf("no valid role directories found. Run 'initech init' to create them")
 	}
 
 	return tui.Run(tui.Config{

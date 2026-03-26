@@ -91,6 +91,10 @@ func (t *TUI) handleIPCConn(conn net.Conn) {
 		return
 	}
 
+	// Clear the read deadline so handlers that sleep (e.g., handleIPCSend
+	// polling for stuck input) don't hit the original 5s timeout.
+	conn.SetReadDeadline(time.Time{})
+
 	switch req.Action {
 	case "send":
 		t.handleIPCSend(conn, req)
@@ -149,9 +153,10 @@ func (t *TUI) handleIPCSend(conn net.Conn, req IPCRequest) {
 		// Claude Code's paste detection fires for fast input, so the first
 		// Enter may confirm the paste reference rather than submitting.
 		// Check immediately, then retry every 100ms for up to 1s.
+		// Bail early if the pane is killed (e.g., by a concurrent stop).
 		for range 10 {
 			time.Sleep(100 * time.Millisecond)
-			if !hasStuckInput(pane) {
+			if !pane.IsAlive() || !hasStuckInput(pane) {
 				break
 			}
 			pane.emu.SendKey(uv.KeyPressEvent(uv.Key{Code: uv.KeyEnter}))
@@ -320,6 +325,9 @@ func (t *TUI) handleIPCStop(conn net.Conn, req IPCRequest) {
 		writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("pane %q not found", req.Target)})
 		return
 	}
+	// Wait for any in-flight send to finish before closing.
+	pane.sendMu.Lock()
+	defer pane.sendMu.Unlock()
 	if !pane.IsAlive() {
 		writeIPCResponse(conn, IPCResponse{OK: true, Data: "already stopped"})
 		return
@@ -378,8 +386,11 @@ func (t *TUI) handleIPCRestart(conn net.Conn, req IPCRequest) {
 		return
 	}
 	old := t.panes[idx]
+	// Wait for any in-flight send to finish before closing.
+	old.sendMu.Lock()
 	cols, rows := old.emu.Width(), old.emu.Height()
 	old.Close()
+	old.sendMu.Unlock()
 	np, err := NewPane(old.cfg, rows, cols)
 	if err != nil {
 		writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("restart failed: %v", err)})
@@ -391,14 +402,10 @@ func (t *TUI) handleIPCRestart(conn net.Conn, req IPCRequest) {
 	writeIPCResponse(conn, IPCResponse{OK: true})
 }
 
-// quitCh is used by handleIPCQuit to signal the event loop to exit.
-// Set by Run() before starting the IPC server.
-var quitCh chan struct{}
-
 func (t *TUI) handleIPCQuit(conn net.Conn) {
 	writeIPCResponse(conn, IPCResponse{OK: true})
-	if quitCh != nil {
-		close(quitCh)
+	if t.quitCh != nil {
+		close(t.quitCh)
 	}
 }
 

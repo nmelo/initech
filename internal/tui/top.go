@@ -124,6 +124,7 @@ func (t *TUI) handleTopKey(ev *tcell.EventKey) bool {
 					}
 				}
 				t.autoRecalcGrid()
+				t.saveLayoutIfConfigured()
 				t.top.cacheTime = time.Time{}
 			}
 			return false

@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/nmelo/initech/internal/config"
 	"github.com/nmelo/initech/internal/tui"
@@ -103,8 +104,12 @@ func discoverSocket() (string, *config.Project, error) {
 		return "", nil, fmt.Errorf("load config: %w", err)
 	}
 	sockPath := tui.SocketPath(p.Name)
-	if _, err := os.Stat(sockPath); os.IsNotExist(err) {
+	// Probe the socket with a dial instead of stat. A stale socket file
+	// (from a crashed TUI) passes stat but fails to connect.
+	conn, dialErr := net.DialTimeout("unix", sockPath, 500*time.Millisecond)
+	if dialErr != nil {
 		return "", nil, fmt.Errorf("session '%s' is not running. Use 'initech' to start", p.Name)
 	}
+	conn.Close()
 	return sockPath, p, nil
 }

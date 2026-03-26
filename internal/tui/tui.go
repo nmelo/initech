@@ -65,9 +65,10 @@ type TUI struct {
 	// Project root for .initech/layout.yaml persistence. Empty disables auto-save.
 	projectRoot string
 
-	cmd cmdModal      // Command input bar.
-	top topModal      // Activity monitor overlay.
-	sel mouseSelection // Mouse text selection.
+	cmd    cmdModal        // Command input bar.
+	top    topModal        // Activity monitor overlay.
+	sel    mouseSelection  // Mouse text selection.
+	quitCh chan struct{}   // Closed by IPC quit action to signal event loop exit.
 }
 
 // applyLayout recomputes the render plan from the current layout state
@@ -181,10 +182,10 @@ func Run(cfg Config) error {
 		lastW:       initW,
 		lastH:       initH,
 		projectRoot: cfg.ProjectRoot,
+		quitCh:      make(chan struct{}),
 	}
 
-	// Initialize quit channel for IPC quit action.
-	quitCh = make(chan struct{})
+	// Initialize quit channel (closed by IPC quit action).
 
 	// Start IPC socket server for inter-agent messaging.
 	sockPath := SocketPath(cfg.ProjectName)
@@ -254,7 +255,7 @@ func Run(cfg Config) error {
 			}
 		case <-ticker.C:
 			t.render()
-		case <-quitCh:
+		case <-t.quitCh:
 			return nil
 		}
 	}
