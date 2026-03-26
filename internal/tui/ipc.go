@@ -147,6 +147,15 @@ func (t *TUI) handleIPCSend(conn net.Conn, req IPCRequest) {
 		return
 	}
 
+	t.injectText(pane, req.Text, req.Enter)
+	writeIPCResponse(conn, IPCResponse{OK: true})
+}
+
+// injectText sends text into a pane's PTY via keystroke injection. Acquires
+// sendMu to serialize against concurrent sends. If enter is true, a newline is
+// appended with stuck-input polling to handle Claude Code's paste dialog.
+// Safe to call from any goroutine.
+func (t *TUI) injectText(pane *Pane, text string, enter bool) {
 	// Serialize sends to this pane so concurrent callers don't interleave keystrokes.
 	pane.sendMu.Lock()
 	defer pane.sendMu.Unlock()
@@ -158,11 +167,11 @@ func (t *TUI) handleIPCSend(conn net.Conn, req IPCRequest) {
 
 	// Send each character as a key event through the emulator,
 	// same path as real keypresses from the TUI.
-	for _, r := range req.Text {
+	for _, r := range text {
 		pane.emu.SendKey(uv.KeyPressEvent(uv.Key{Code: r, Text: string(r)}))
 	}
 
-	if req.Enter {
+	if enter {
 		// Brief pause to let text settle before sending Enter.
 		time.Sleep(50 * time.Millisecond)
 		pane.emu.SendKey(uv.KeyPressEvent(uv.Key{Code: uv.KeyEnter}))
@@ -180,8 +189,6 @@ func (t *TUI) handleIPCSend(conn net.Conn, req IPCRequest) {
 			pane.emu.SendKey(uv.KeyPressEvent(uv.Key{Code: uv.KeyEnter}))
 		}
 	}
-
-	writeIPCResponse(conn, IPCResponse{OK: true})
 }
 
 func (t *TUI) handleIPCPeek(conn net.Conn, req IPCRequest) {

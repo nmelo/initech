@@ -6,6 +6,7 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 	"time"
 )
@@ -20,6 +21,7 @@ const (
 	EventAgentStalled                   // No output for configurable threshold (warning).
 	EventAgentStuck                     // Extended inactivity or error loop detected.
 	EventAgentIdle                      // Agent returned to idle after work.
+	EventAgentIdleWithBead              // Agent went running->idle while holding a bead.
 )
 
 // String returns a human-readable label for the event type.
@@ -37,6 +39,8 @@ func (e EventType) String() string {
 		return "stuck"
 	case EventAgentIdle:
 		return "idle"
+	case EventAgentIdleWithBead:
+		return "idle-with-bead"
 	}
 	return "unknown"
 }
@@ -111,6 +115,15 @@ func (t *TUI) handleAgentEvent(ev AgentEvent) {
 	// Cap at maxNotifications. Drop oldest if over limit.
 	if len(t.notifications) > maxNotifications {
 		t.notifications = t.notifications[len(t.notifications)-maxNotifications:]
+	}
+
+	// When an agent goes idle while holding a bead, notify the super pane.
+	// Run in a goroutine to avoid blocking the render loop.
+	if ev.Type == EventAgentIdleWithBead {
+		if super := t.findPaneByName("super"); super != nil && super.IsAlive() {
+			msg := fmt.Sprintf("[from initech] %s is now idle (bead: %s). Check if work is complete.", ev.Pane, ev.BeadID)
+			t.safeGo(func() { t.injectText(super, msg, true) })
+		}
 	}
 
 	// Also append to the persistent event log.

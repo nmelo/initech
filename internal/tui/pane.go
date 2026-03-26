@@ -69,7 +69,9 @@ type Pane struct {
 	alive          bool
 	visible        bool           // Whether this pane is shown in the layout. Hidden panes keep running.
 	activity       ActivityState  // Current state: running when PTY bytes flowed recently, else idle.
+	prevActivity   ActivityState  // Activity state from the previous updateActivity call.
 	lastOutputTime time.Time      // Last time readLoop received bytes from the PTY.
+	lastIdleNotify time.Time      // Last time an EventAgentIdleWithBead was emitted.
 	journal        []JournalEntry // Ring buffer of recent JSONL entries (cap journalRingSize).
 	jsonlDir      string             // Directory to search for session JSONL files.
 	eventCh       chan<- AgentEvent  // Emits detected semantic events to the TUI. May be nil.
@@ -802,14 +804,23 @@ func (p *Pane) applyBeadDetection(entries []JournalEntry) {
 // means the agent is genuinely idle at the prompt.
 const ptyIdleTimeout = 2 * time.Second
 
+// idleNotifyCooldown is the minimum time between EventAgentIdleWithBead
+// emissions for a single pane. Prevents notification spam from burst output
+// patterns that straddle the idle threshold.
+const idleNotifyCooldown = 60 * time.Second
+
 // updateActivity derives activity state from PTY output recency.
-// Called per pane on every render tick. The check is a single timestamp
-// comparison under a mutex — negligible cost.
+// Called per pane on every render tick. Detects running->idle edge transitions
+// and emits EventAgentIdleWithBead when the pane holds a bead and the cooldown
+// has elapsed.
 func (p *Pane) updateActivity() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+
+	prev := p.activity
 	if !p.alive {
 		p.activity = StateIdle
+		p.prevActivity = prev
 		return
 	}
 	if time.Since(p.lastOutputTime) < ptyIdleTimeout {
@@ -817,6 +828,21 @@ func (p *Pane) updateActivity() {
 	} else {
 		p.activity = StateIdle
 	}
+
+	// Detect running->idle edge with a bead assigned and cooldown elapsed.
+	if prev == StateRunning && p.activity == StateIdle &&
+		p.beadID != "" && p.eventCh != nil &&
+		time.Since(p.lastIdleNotify) > idleNotifyCooldown {
+		p.lastIdleNotify = time.Now()
+		EmitEvent(p.eventCh, AgentEvent{
+			Type:   EventAgentIdleWithBead,
+			Pane:   p.name,
+			BeadID: p.beadID,
+			Detail: p.beadID,
+		})
+	}
+
+	p.prevActivity = prev
 }
 
 // runDetectors runs all event detectors (completion, stall, stuck) and emits
