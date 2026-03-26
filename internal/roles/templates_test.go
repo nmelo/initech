@@ -18,7 +18,7 @@ func TestSuperTemplate_Renders(t *testing.T) {
 
 	// Verify key sections exist
 	sections := []string{"Identity", "Critical Failure Modes", "Decision Authority",
-		"Responsibilities", "Communication", "Bead Lifecycle", "Project Documents", "Tools"}
+		"Dispatching Work", "Monitoring", "Communication", "Bead Lifecycle", "Project Documents", "Tools"}
 	for _, s := range sections {
 		if !strings.Contains(out, s) {
 			t.Errorf("missing section: %s", s)
