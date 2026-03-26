@@ -10,11 +10,17 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"regexp"
 	"strings"
 	"syscall"
 
 	"golang.org/x/term"
 )
+
+// selectorRoleNameRe mirrors the validation in config.Validate: only letters,
+// digits, hyphens, and underscores. This is enforced at input time in the
+// selector so a malformed name never reaches the config or filesystem.
+var selectorRoleNameRe = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
 
 // ANSI escape codes used by the selector UI.
 const (
@@ -581,8 +587,8 @@ func addCustomRole(s *selectorState, name string) string {
 	if name == "" {
 		return ""
 	}
-	if strings.ContainsAny(name, " \t") {
-		return "role name must be a single word"
+	if !selectorRoleNameRe.MatchString(name) {
+		return "role name must contain only letters, digits, hyphens, or underscores"
 	}
 	for _, it := range s.items {
 		if it.Name == name {

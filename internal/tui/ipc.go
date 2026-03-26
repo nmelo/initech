@@ -178,9 +178,11 @@ func (t *TUI) injectText(pane *Pane, text string, enter bool) {
 		// Poll for stuck input (paste dialog or text still at prompt).
 		// Claude Code's paste detection fires for fast input, so the first
 		// Enter may confirm the paste reference rather than submitting.
-		// Check immediately, then retry every 100ms for up to 1s.
+		// Retry 3 times at 100ms intervals (300ms max). sendMu is held for
+		// the full duration so concurrent sends don't inject text while a
+		// retry Enter is in flight (which would submit the wrong message).
 		// Bail early if the pane is killed (e.g., by a concurrent stop).
-		for range 10 {
+		for range 3 {
 			time.Sleep(100 * time.Millisecond)
 			if !pane.IsAlive() || !hasStuckInput(pane) {
 				break

@@ -688,6 +688,42 @@ func TestAddCustomRoleWhitespaceOnly(t *testing.T) {
 	}
 }
 
+func TestAddCustomRoleInvalidNames(t *testing.T) {
+	cases := []string{
+		"my role",     // space in middle
+		"eng 1",       // space
+		"../escape",   // path traversal
+		"eng/hack",    // path separator
+		"a\\b",        // backslash
+		"my.role",     // dot
+		"v1.0",        // dot in version
+	}
+	for _, name := range cases {
+		s := newTestSelector(2)
+		errMsg := addCustomRole(s, name)
+		if errMsg == "" {
+			t.Errorf("addCustomRole(%q) should return error, got empty", name)
+		}
+		if len(s.items) != 2 {
+			t.Errorf("addCustomRole(%q) should not add item on invalid name, len=%d", name, len(s.items))
+		}
+	}
+}
+
+func TestAddCustomRoleValidNames(t *testing.T) {
+	cases := []string{"my-custom-role", "test_2", "qa-lead", "eng1"}
+	for _, name := range cases {
+		s := newTestSelector(2)
+		errMsg := addCustomRole(s, name)
+		if errMsg != "" {
+			t.Errorf("addCustomRole(%q) returned unexpected error: %q", name, errMsg)
+		}
+		if len(s.items) != 3 {
+			t.Errorf("addCustomRole(%q) should add item, len=%d", name, len(s.items))
+		}
+	}
+}
+
 func TestAddCustomRoleRebuildsRows(t *testing.T) {
 	s := newTestSelector(2)
 	before := len(s.rows)

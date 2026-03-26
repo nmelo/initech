@@ -214,11 +214,31 @@ func TestValidate_RoleWithDotDot(t *testing.T) {
 }
 
 func TestValidate_ValidRoleNames(t *testing.T) {
-	// These should all pass.
-	valid := []string{"eng1", "super", "qa-1", "agent_2", "my.role"}
+	// These should all pass: letters, digits, hyphens, underscores only.
+	valid := []string{"eng1", "super", "qa-1", "agent_2", "qa-lead", "test_2"}
 	p := &Project{Name: "test", Root: "/tmp", Roles: valid}
 	if err := Validate(p); err != nil {
 		t.Errorf("unexpected error for valid role names: %v", err)
+	}
+}
+
+func TestValidate_RoleWithSpace(t *testing.T) {
+	cases := []string{"my role", "eng 1", " leading", "trailing "}
+	for _, r := range cases {
+		p := &Project{Name: "test", Root: "/tmp", Roles: []string{r}}
+		if err := Validate(p); err == nil {
+			t.Errorf("expected error for role name %q containing space", r)
+		}
+	}
+}
+
+func TestValidate_RoleWithDot(t *testing.T) {
+	cases := []string{"my.role", "ini-a1e.14", "v1.0"}
+	for _, r := range cases {
+		p := &Project{Name: "test", Root: "/tmp", Roles: []string{r}}
+		if err := Validate(p); err == nil {
+			t.Errorf("expected error for role name %q containing dot", r)
+		}
 	}
 }
 

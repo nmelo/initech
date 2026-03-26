@@ -13,10 +13,16 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"gopkg.in/yaml.v3"
 )
+
+// roleNameRe restricts role names to letters, digits, hyphens, and underscores.
+// Spaces, slashes, dots, and all other characters break IPC target parsing,
+// filesystem paths, and CLI argument splitting.
+var roleNameRe = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
 
 // Project is the top-level config read from initech.yaml.
 type Project struct {
@@ -115,8 +121,8 @@ func Validate(p *Project) error {
 		if r == "" {
 			return fmt.Errorf("role name must not be empty")
 		}
-		if strings.ContainsAny(r, "/\\") || strings.Contains(r, "..") {
-			return fmt.Errorf("role name %q must not contain path separators or '..'", r)
+		if !roleNameRe.MatchString(r) {
+			return fmt.Errorf("invalid role name %q: must contain only letters, digits, hyphens, or underscores", r)
 		}
 		if roleSet[r] {
 			return fmt.Errorf("duplicate role: %s", r)
