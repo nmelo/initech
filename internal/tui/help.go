@@ -36,6 +36,24 @@ var helpLines = []string{
 	"  quit (q)         Exit initech.",
 }
 
+// helpMaxOffset returns the maximum scroll offset for the help modal
+// (scrolled all the way to the bottom of content).
+func (t *TUI) helpMaxOffset() int {
+	if t.screen == nil {
+		return 0
+	}
+	_, sh := t.screen.Size()
+	contentRows := sh - 2
+	if contentRows < 1 {
+		contentRows = 1
+	}
+	max := len(helpLines) - contentRows
+	if max < 0 {
+		max = 0
+	}
+	return max
+}
+
 // renderHelp draws the full-screen help reference card.
 func (t *TUI) renderHelp() {
 	s := t.screen

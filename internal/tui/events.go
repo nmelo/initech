@@ -155,12 +155,23 @@ func (t *TUI) pruneEventLog() {
 // agent marks a bead ready_for_qa (clear the display). Returns ("", false) when
 // no relevant transition is found.
 //
-// Claim signals: tool_use Content contains "bd update" and "--claim" or
+// Only tool_result entries carry a meaningful ExitCode; tool_use entries
+// (inside assistant messages) always have ExitCode 0. Checking Type ensures
+// ExitCode-based filtering actually works (ini-a1e.2).
+//
+// The full entry list is scanned rather than returning on the first match so
+// that a claim appearing after a clear in the same batch is not dropped
+// (ini-a1e.5). The last matching signal wins.
+//
+// Claim signals: Content contains "bd update" and "--claim" or
 // "--status in_progress". The bead ID is the first argument after "bd update".
 // Clear signals: Content contains "bd update" and "--status ready_for_qa".
 // Either signal is ignored when ExitCode != 0 (failed bd command).
 func detectBeadClaim(entries []JournalEntry) (beadID string, clear bool) {
 	for _, e := range entries {
+		if e.Type != "tool_result" {
+			continue
+		}
 		if e.ExitCode != 0 {
 			continue
 		}
@@ -172,20 +183,20 @@ func detectBeadClaim(entries []JournalEntry) (beadID string, clear bool) {
 			continue
 		}
 		isClaim := strings.Contains(content, "--claim") ||
-			(strings.Contains(content, "--status in_progress") || strings.Contains(content, "--status=in_progress"))
+			strings.Contains(content, "--status in_progress") || strings.Contains(content, "--status=in_progress")
 		isClear := strings.Contains(content, "--status ready_for_qa") || strings.Contains(content, "--status=ready_for_qa")
 
 		if isClear {
-			return "", true
+			beadID, clear = "", true
 		}
 		if isClaim {
 			id := extractBeadID(content)
 			if id != "" {
-				return id, false
+				beadID, clear = id, false
 			}
 		}
 	}
-	return "", false
+	return beadID, clear
 }
 
 // beadIDRe matches a complete bead ID token. The dot-separated sub-bead index

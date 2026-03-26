@@ -53,7 +53,11 @@ func TestHelpKey_QCloses(t *testing.T) {
 }
 
 func TestHelpKey_ScrollDown(t *testing.T) {
-	tui := &TUI{help: helpModal{active: true, scrollOffset: 0}}
+	// Use a small screen (sh=5) so helpMaxOffset() > 0, enabling scroll.
+	s := tcell.NewSimulationScreen("")
+	s.Init()
+	s.SetSize(80, 5)
+	tui := &TUI{screen: s, help: helpModal{active: true, scrollOffset: 0}}
 	ev := tcell.NewEventKey(tcell.KeyRune, 'j', tcell.ModNone)
 	tui.handleHelpKey(ev)
 	if tui.help.scrollOffset != 1 {
@@ -94,6 +98,48 @@ func TestHelpInterceptsBeforeTopAndCmd(t *testing.T) {
 	}
 	if !tui.top.active {
 		t.Error("handleKey: top should remain active (help intercepted q)")
+	}
+}
+
+// TestHandleHelpKey_ScrollClamped verifies scrollOffset does not exceed
+// helpMaxOffset after repeated KeyDown presses (ini-a1e.12).
+func TestHandleHelpKey_ScrollClamped(t *testing.T) {
+	s := tcell.NewSimulationScreen("")
+	s.Init()
+	s.SetSize(80, 5) // sh=5: contentRows=3, max=len(helpLines)-3 (large positive)
+	tui := &TUI{screen: s, help: helpModal{active: true, scrollOffset: 0}}
+
+	maxOff := tui.helpMaxOffset()
+	if maxOff <= 0 {
+		t.Fatalf("helpMaxOffset() = %d, want > 0 for sh=5 screen", maxOff)
+	}
+
+	// Press j many more times than the max offset.
+	ev := tcell.NewEventKey(tcell.KeyRune, 'j', tcell.ModNone)
+	for i := 0; i < maxOff+10; i++ {
+		tui.handleHelpKey(ev)
+	}
+
+	if tui.help.scrollOffset > maxOff {
+		t.Errorf("scrollOffset = %d exceeds helpMaxOffset = %d (should be clamped)", tui.help.scrollOffset, maxOff)
+	}
+}
+
+// TestHandleHelpKey_KeyDownClamped verifies KeyDown also clamps at helpMaxOffset.
+func TestHandleHelpKey_KeyDownClamped(t *testing.T) {
+	s := tcell.NewSimulationScreen("")
+	s.Init()
+	s.SetSize(80, 5)
+	tui := &TUI{screen: s, help: helpModal{active: true, scrollOffset: 0}}
+	maxOff := tui.helpMaxOffset()
+
+	ev := tcell.NewEventKey(tcell.KeyDown, 0, tcell.ModNone)
+	for i := 0; i < maxOff+10; i++ {
+		tui.handleHelpKey(ev)
+	}
+
+	if tui.help.scrollOffset > maxOff {
+		t.Errorf("KeyDown: scrollOffset = %d exceeds helpMaxOffset = %d", tui.help.scrollOffset, maxOff)
 	}
 }
 

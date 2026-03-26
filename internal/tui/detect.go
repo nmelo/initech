@@ -147,7 +147,7 @@ func detectStuck(entries []JournalEntry, paneName string) *AgentEvent {
 	for i := len(entries) - 1; i >= 0; i-- {
 		e := entries[i]
 		if e.Type != "tool_result" {
-			continue // Skip non-tool entries (assistant, progress, etc.)
+			break // Non-tool entries (assistant, progress) end the consecutive streak (ini-a1e.3).
 		}
 		if e.ExitCode != 0 {
 			failures++

@@ -7,7 +7,7 @@ import "testing"
 // AC: --status=in_progress with equals sign (common CLI variant) triggers claim.
 func TestDetectBeadClaim_EqualSignInProgress(t *testing.T) {
 	entries := []JournalEntry{
-		{ToolName: "Bash", Content: "bd update ini-abc.1 --status=in_progress --assignee eng1", ExitCode: 0},
+		{Type: "tool_result", ToolName: "Bash", Content: "bd update ini-abc.1 --status=in_progress --assignee eng1", ExitCode: 0},
 	}
 	beadID, clear := detectBeadClaim(entries)
 	if beadID != "ini-abc.1" {
@@ -21,7 +21,7 @@ func TestDetectBeadClaim_EqualSignInProgress(t *testing.T) {
 // AC: --status=ready_for_qa with equals sign triggers clear.
 func TestDetectBeadClaim_EqualSignReadyForQA(t *testing.T) {
 	entries := []JournalEntry{
-		{ToolName: "Bash", Content: "bd update ini-abc.1 --status=ready_for_qa", ExitCode: 0},
+		{Type: "tool_result", ToolName: "Bash", Content: "bd update ini-abc.1 --status=ready_for_qa", ExitCode: 0},
 	}
 	beadID, clear := detectBeadClaim(entries)
 	if !clear {
@@ -35,7 +35,7 @@ func TestDetectBeadClaim_EqualSignReadyForQA(t *testing.T) {
 // AC: --status in_qa should not trigger (only in_progress and ready_for_qa are signals).
 func TestDetectBeadClaim_StatusInQAIgnored(t *testing.T) {
 	entries := []JournalEntry{
-		{ToolName: "Bash", Content: "bd update ini-abc.1 --status in_qa --assignee qa1", ExitCode: 0},
+		{Type: "tool_result", ToolName: "Bash", Content: "bd update ini-abc.1 --status in_qa --assignee qa1", ExitCode: 0},
 	}
 	beadID, clear := detectBeadClaim(entries)
 	if beadID != "" || clear {
@@ -46,7 +46,7 @@ func TestDetectBeadClaim_StatusInQAIgnored(t *testing.T) {
 // AC: --status closed should not trigger.
 func TestDetectBeadClaim_StatusClosedIgnored(t *testing.T) {
 	entries := []JournalEntry{
-		{ToolName: "Bash", Content: "bd update ini-abc.1 --status closed", ExitCode: 0},
+		{Type: "tool_result", ToolName: "Bash", Content: "bd update ini-abc.1 --status closed", ExitCode: 0},
 	}
 	beadID, clear := detectBeadClaim(entries)
 	if beadID != "" || clear {
@@ -57,7 +57,7 @@ func TestDetectBeadClaim_StatusClosedIgnored(t *testing.T) {
 // Edge case: "bd update" appears in middle of a multi-command string.
 func TestDetectBeadClaim_InlineCommand(t *testing.T) {
 	entries := []JournalEntry{
-		{ToolName: "Bash", Content: "echo 'done' && bd update ini-abc.1 --status in_progress", ExitCode: 0},
+		{Type: "tool_result", ToolName: "Bash", Content: "echo 'done' && bd update ini-abc.1 --status in_progress", ExitCode: 0},
 	}
 	// The string contains "bd update" so detectBeadClaim should find it.
 	// extractBeadID parses by fields; "&&" and "echo" will be before the bd token.
@@ -76,35 +76,36 @@ func TestDetectBeadClaim_InlineCommand(t *testing.T) {
 	}
 }
 
-// Edge case: first entry is clear, second is claim — first match wins (clear).
-func TestDetectBeadClaim_ClearBeforeClaimFirstWins(t *testing.T) {
+// Edge case: first entry is clear, second is claim — last signal wins (claim).
+// ini-a1e.5: the old early-return-on-clear would drop the subsequent claim.
+func TestDetectBeadClaim_ClearBeforeClaimLastWins(t *testing.T) {
 	entries := []JournalEntry{
-		{ToolName: "Bash", Content: "bd update ini-old.1 --status ready_for_qa", ExitCode: 0},
-		{ToolName: "Bash", Content: "bd update ini-new.1 --status in_progress --assignee eng1", ExitCode: 0},
+		{Type: "tool_result", ToolName: "Bash", Content: "bd update ini-old.1 --status ready_for_qa", ExitCode: 0},
+		{Type: "tool_result", ToolName: "Bash", Content: "bd update ini-new.1 --status in_progress --assignee eng1", ExitCode: 0},
 	}
 	beadID, clear := detectBeadClaim(entries)
-	// First match is clear; function returns immediately.
-	if !clear {
-		t.Error("clear should win when it appears first in batch")
+	// Last signal is claim; it should win.
+	if beadID != "ini-new.1" {
+		t.Errorf("claim (last entry) should win, got beadID=%q", beadID)
 	}
-	if beadID != "" {
-		t.Errorf("beadID should be empty when clear wins, got %q", beadID)
+	if clear {
+		t.Error("clear should be false when claim is the last signal")
 	}
 }
 
-// Edge case: first entry is claim, second is clear — claim wins (first match).
-func TestDetectBeadClaim_ClaimBeforeClearFirstWins(t *testing.T) {
+// Edge case: first entry is claim, second is clear — last signal wins (clear).
+func TestDetectBeadClaim_ClaimBeforeClearLastWins(t *testing.T) {
 	entries := []JournalEntry{
-		{ToolName: "Bash", Content: "bd update ini-new.1 --status in_progress --assignee eng1", ExitCode: 0},
-		{ToolName: "Bash", Content: "bd update ini-new.1 --status ready_for_qa", ExitCode: 0},
+		{Type: "tool_result", ToolName: "Bash", Content: "bd update ini-new.1 --status in_progress --assignee eng1", ExitCode: 0},
+		{Type: "tool_result", ToolName: "Bash", Content: "bd update ini-new.1 --status ready_for_qa", ExitCode: 0},
 	}
 	beadID, clear := detectBeadClaim(entries)
-	// First match is claim; function returns immediately.
-	if beadID != "ini-new.1" {
-		t.Errorf("claim should win when it appears first, got beadID=%q", beadID)
+	// Last signal is clear; it should win.
+	if !clear {
+		t.Error("clear (last entry) should win")
 	}
-	if clear {
-		t.Error("clear should be false when claim appears first")
+	if beadID != "" {
+		t.Errorf("beadID should be empty when clear is last signal, got %q", beadID)
 	}
 }
 
@@ -117,7 +118,7 @@ func TestIPCOverrideReplacesAutoDetectedBead(t *testing.T) {
 
 	// Simulate auto-detection setting a bead.
 	autoEntries := []JournalEntry{
-		{ToolName: "Bash", Content: "bd update ini-abc.1 --status in_progress", ExitCode: 0},
+		{Type: "tool_result", ToolName: "Bash", Content: "bd update ini-abc.1 --status in_progress", ExitCode: 0},
 	}
 	p.applyBeadDetection(autoEntries)
 	if p.BeadID() != "ini-abc.1" {
@@ -138,7 +139,7 @@ func TestApplyBeadDetection_FailedCommandNoop(t *testing.T) {
 	p.beadID = "ini-existing.1"
 
 	entries := []JournalEntry{
-		{ToolName: "Bash", Content: "bd update ini-18m.5 --status in_progress", ExitCode: 1},
+		{Type: "tool_result", ToolName: "Bash", Content: "bd update ini-18m.5 --status in_progress", ExitCode: 1},
 	}
 	p.applyBeadDetection(entries)
 
@@ -181,7 +182,7 @@ func TestApplyBeadDetection_EventDetailFormat(t *testing.T) {
 	p := &Pane{name: "eng2", eventCh: ch}
 
 	entries := []JournalEntry{
-		{ToolName: "Bash", Content: "bd update ini-xyz.9 --claim", ExitCode: 0},
+		{Type: "tool_result", ToolName: "Bash", Content: "bd update ini-xyz.9 --claim", ExitCode: 0},
 	}
 	p.applyBeadDetection(entries)
 
@@ -207,7 +208,7 @@ func TestApplyBeadDetection_NilEventChNoPanic(t *testing.T) {
 	p := &Pane{name: "eng1", eventCh: nil}
 
 	entries := []JournalEntry{
-		{ToolName: "Bash", Content: "bd update ini-abc.1 --claim", ExitCode: 0},
+		{Type: "tool_result", ToolName: "Bash", Content: "bd update ini-abc.1 --claim", ExitCode: 0},
 	}
 	// Should not panic even with nil channel.
 	p.applyBeadDetection(entries)
@@ -224,7 +225,7 @@ func TestApplyBeadDetection_ClearWithNoBead(t *testing.T) {
 	// beadID is empty by default.
 
 	entries := []JournalEntry{
-		{ToolName: "Bash", Content: "bd update ini-abc.1 --status ready_for_qa", ExitCode: 0},
+		{Type: "tool_result", ToolName: "Bash", Content: "bd update ini-abc.1 --status ready_for_qa", ExitCode: 0},
 	}
 	p.applyBeadDetection(entries)
 

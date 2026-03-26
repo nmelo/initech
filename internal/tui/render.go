@@ -199,6 +199,9 @@ func (t *TUI) renderCmdLine() {
 func (t *TUI) renderCmdError() {
 	s := t.screen
 	sw, sh := s.Size()
+	if sw < 5 {
+		return // Too narrow to render error without slice-bounds panic (ini-a1e.6).
+	}
 	y := sh - 1
 
 	errStyle := tcell.StyleDefault.Background(tcell.ColorDarkRed).Foreground(tcell.ColorWhite)

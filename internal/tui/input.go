@@ -130,7 +130,9 @@ func (t *TUI) handleHelpKey(ev *tcell.EventKey) bool {
 		}
 		return false
 	case tcell.KeyDown:
-		t.help.scrollOffset++
+		if t.help.scrollOffset < t.helpMaxOffset() {
+			t.help.scrollOffset++
+		}
 		return false
 	case tcell.KeyRune:
 		switch ev.Rune() {
@@ -138,7 +140,9 @@ func (t *TUI) handleHelpKey(ev *tcell.EventKey) bool {
 			t.help.active = false
 			return false
 		case 'j':
-			t.help.scrollOffset++
+			if t.help.scrollOffset < t.helpMaxOffset() {
+				t.help.scrollOffset++
+			}
 			return false
 		case 'k':
 			if t.help.scrollOffset > 0 {

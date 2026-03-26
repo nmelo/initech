@@ -82,9 +82,12 @@ func TestHelpLines_CommandsMatchExecCmd(t *testing.T) {
 	}
 }
 
-// KeyDown scrolls down (increases scrollOffset).
+// KeyDown scrolls down (increases scrollOffset) when below max.
 func TestHandleHelpKey_ArrowDownScrolls(t *testing.T) {
-	tui := &TUI{help: helpModal{active: true, scrollOffset: 0}}
+	s := tcell.NewSimulationScreen("")
+	s.Init()
+	s.SetSize(80, 5) // small screen so helpMaxOffset() > 0
+	tui := &TUI{screen: s, help: helpModal{active: true, scrollOffset: 0}}
 	tui.handleHelpKey(tcell.NewEventKey(tcell.KeyDown, 0, 0))
 	if tui.help.scrollOffset != 1 {
 		t.Errorf("Down: scrollOffset = %d, want 1", tui.help.scrollOffset)

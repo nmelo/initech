@@ -13,7 +13,7 @@ import (
 func TestDetectBeadClaim_Claim(t *testing.T) {
 	entries := []JournalEntry{
 		{
-			Type:     "assistant",
+			Type:     "tool_result",
 			ToolName: "Bash",
 			Content:  "bd update ini-18m.5 --status in_progress --assignee eng1",
 			ExitCode: 0,
@@ -31,7 +31,7 @@ func TestDetectBeadClaim_Claim(t *testing.T) {
 func TestDetectBeadClaim_ClaimFlag(t *testing.T) {
 	entries := []JournalEntry{
 		{
-			Type:     "assistant",
+			Type:     "tool_result",
 			ToolName: "Bash",
 			Content:  "bd update ini-q7x.1 --claim",
 			ExitCode: 0,
@@ -49,7 +49,7 @@ func TestDetectBeadClaim_ClaimFlag(t *testing.T) {
 func TestDetectBeadClaim_FailedExit(t *testing.T) {
 	entries := []JournalEntry{
 		{
-			Type:     "assistant",
+			Type:     "tool_result",
 			ToolName: "Bash",
 			Content:  "bd update ini-18m.5 --status in_progress --assignee eng1",
 			ExitCode: 1,
@@ -64,7 +64,7 @@ func TestDetectBeadClaim_FailedExit(t *testing.T) {
 func TestDetectBeadClaim_ReadyForQA(t *testing.T) {
 	entries := []JournalEntry{
 		{
-			Type:     "assistant",
+			Type:     "tool_result",
 			ToolName: "Bash",
 			Content:  "bd update ini-18m.5 --status ready_for_qa",
 			ExitCode: 0,
@@ -83,7 +83,7 @@ func TestDetectBeadClaim_OtherBdUpdate(t *testing.T) {
 	// bd update that changes priority - not a claim
 	entries := []JournalEntry{
 		{
-			Type:     "assistant",
+			Type:     "tool_result",
 			ToolName: "Bash",
 			Content:  "bd update ini-18m.5 --priority 1",
 			ExitCode: 0,
@@ -98,7 +98,7 @@ func TestDetectBeadClaim_OtherBdUpdate(t *testing.T) {
 func TestDetectBeadClaim_NonBashTool(t *testing.T) {
 	entries := []JournalEntry{
 		{
-			Type:     "assistant",
+			Type:     "tool_result",
 			ToolName: "Read",
 			Content:  "bd update ini-18m.5 --status in_progress",
 			ExitCode: 0,
@@ -112,12 +112,83 @@ func TestDetectBeadClaim_NonBashTool(t *testing.T) {
 
 func TestDetectBeadClaim_NoBdUpdate(t *testing.T) {
 	entries := []JournalEntry{
-		{ToolName: "Bash", Content: "git status", ExitCode: 0},
-		{ToolName: "Bash", Content: "make test", ExitCode: 0},
+		{Type: "tool_result", ToolName: "Bash", Content: "git status", ExitCode: 0},
+		{Type: "tool_result", ToolName: "Bash", Content: "make test", ExitCode: 0},
 	}
 	beadID, clear := detectBeadClaim(entries)
 	if beadID != "" || clear {
 		t.Errorf("unrelated commands should not trigger, got beadID=%q clear=%v", beadID, clear)
+	}
+}
+
+// TestDetectBeadClaim_ToolUseIgnored verifies that tool_use entries (assistant
+// messages) are ignored — ExitCode is always 0 on those; only tool_result
+// entries carry a meaningful ExitCode (ini-a1e.2).
+func TestDetectBeadClaim_ToolUseIgnored(t *testing.T) {
+	entries := []JournalEntry{
+		{
+			Type:     "assistant", // tool_use is inside assistant entries
+			ToolName: "Bash",
+			Content:  "bd update ini-18m.5 --status in_progress",
+			ExitCode: 0,
+		},
+	}
+	beadID, clear := detectBeadClaim(entries)
+	if beadID != "" || clear {
+		t.Errorf("assistant/tool_use entries should be ignored, got beadID=%q clear=%v", beadID, clear)
+	}
+}
+
+// TestDetectBeadClaim_ClaimAfterClear verifies that when a clear and a claim
+// both appear in the same batch (clear first, then claim), the claim wins
+// (ini-a1e.5). Previously the early return on isClear dropped the claim.
+func TestDetectBeadClaim_ClaimAfterClear(t *testing.T) {
+	entries := []JournalEntry{
+		{
+			Type:     "tool_result",
+			ToolName: "Bash",
+			Content:  "bd update ini-old.1 --status ready_for_qa",
+			ExitCode: 0,
+		},
+		{
+			Type:     "tool_result",
+			ToolName: "Bash",
+			Content:  "bd update ini-new.2 --status in_progress",
+			ExitCode: 0,
+		},
+	}
+	beadID, clear := detectBeadClaim(entries)
+	if beadID != "ini-new.2" {
+		t.Errorf("beadID = %q, want ini-new.2 (claim after clear should win)", beadID)
+	}
+	if clear {
+		t.Error("clear should be false when claim comes after clear in same batch")
+	}
+}
+
+// TestDetectBeadClaim_ClearAfterClaim verifies that when a claim appears first
+// followed by a clear in the same batch, the clear wins (last signal wins).
+func TestDetectBeadClaim_ClearAfterClaim(t *testing.T) {
+	entries := []JournalEntry{
+		{
+			Type:     "tool_result",
+			ToolName: "Bash",
+			Content:  "bd update ini-x.1 --status in_progress",
+			ExitCode: 0,
+		},
+		{
+			Type:     "tool_result",
+			ToolName: "Bash",
+			Content:  "bd update ini-x.1 --status ready_for_qa",
+			ExitCode: 0,
+		},
+	}
+	beadID, clear := detectBeadClaim(entries)
+	if !clear {
+		t.Error("clear should be true when clear comes after claim in same batch")
+	}
+	if beadID != "" {
+		t.Errorf("beadID should be empty on clear, got %q", beadID)
 	}
 }
 
@@ -127,7 +198,7 @@ func TestApplyBeadDetection_SetsBeadAndEmitsEvent(t *testing.T) {
 
 	entries := []JournalEntry{
 		{
-			Type:     "assistant",
+			Type:     "tool_result",
 			ToolName: "Bash",
 			Content:  "bd update ini-18m.5 --status in_progress --assignee eng1",
 			ExitCode: 0,
@@ -154,7 +225,7 @@ func TestApplyBeadDetection_ClearsBead(t *testing.T) {
 
 	entries := []JournalEntry{
 		{
-			Type:     "assistant",
+			Type:     "tool_result",
 			ToolName: "Bash",
 			Content:  "bd update ini-18m.5 --status ready_for_qa",
 			ExitCode: 0,
@@ -461,8 +532,10 @@ func TestDetectStuck_BelowThreshold(t *testing.T) {
 	}
 }
 
-func TestDetectStuck_NonToolEntriesSkipped(t *testing.T) {
-	// Non-tool_result entries don't break the streak but are skipped.
+func TestDetectStuck_NonToolEntriesBreakStreak(t *testing.T) {
+	// Non-tool_result entries break the consecutive streak (ini-a1e.3).
+	// Scanning backwards: [4]=failure, [3]=failure, [2]=progress → break.
+	// Only 2 consecutive failures at tail; below threshold.
 	entries := []JournalEntry{
 		{Type: "assistant", Content: "let me try again"},
 		{Type: "tool_result", ExitCode: 1, Content: "error"},
@@ -471,8 +544,26 @@ func TestDetectStuck_NonToolEntriesSkipped(t *testing.T) {
 		{Type: "tool_result", ExitCode: 1, Content: "error"},
 	}
 	ev := detectStuck(entries, "eng1")
+	if ev != nil {
+		t.Error("non-tool entry should break the streak — expected no stuck event, got one")
+	}
+}
+
+func TestDetectStuck_ThreeConsecutiveAtTail(t *testing.T) {
+	// Three back-to-back tool_result failures (no non-tool entries between them) triggers stuck.
+	entries := []JournalEntry{
+		{Type: "assistant", Content: "thinking"},
+		{Type: "tool_result", ExitCode: 0, Content: "ok"},
+		{Type: "tool_result", ExitCode: 1, Content: "error1"},
+		{Type: "tool_result", ExitCode: 1, Content: "error2"},
+		{Type: "tool_result", ExitCode: 1, Content: "error3"},
+	}
+	ev := detectStuck(entries, "eng1")
 	if ev == nil {
-		t.Fatal("expected stuck event (3 consecutive tool_result failures), got nil")
+		t.Fatal("expected stuck event for 3 consecutive failures at tail, got nil")
+	}
+	if ev.Type != EventAgentStuck {
+		t.Errorf("type = %v, want EventAgentStuck", ev.Type)
 	}
 }
 
