@@ -82,6 +82,10 @@ func (t *TUI) applyLayout() {
 	}
 	t.plan = computeLayout(t.layoutState, t.panes, w, h)
 
+	// Cancel any in-progress mouse selection. Layout changes invalidate
+	// the pane index and region the selection was tracking.
+	t.sel.active = false
+
 	// Write validated focus back to layoutState so it stays consistent.
 	if t.plan.ValidatedFocus != "" {
 		t.layoutState.Focused = t.plan.ValidatedFocus

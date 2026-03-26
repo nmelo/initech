@@ -139,11 +139,12 @@ func (t *TUI) renderCmdError() {
 	for x := 0; x < sw; x++ {
 		s.SetContent(x, y, ' ', nil, errStyle)
 	}
-	msg := " " + t.cmd.error
+	msg := []rune(" " + t.cmd.error)
+	if len(msg) > sw-1 {
+		msg = append(msg[:sw-4], '.', '.', '.')
+	}
 	for i, ch := range msg {
-		if i < sw {
-			s.SetContent(i, y, ch, nil, errStyle)
-		}
+		s.SetContent(i, y, ch, nil, errStyle)
 	}
 }
 

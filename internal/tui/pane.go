@@ -245,6 +245,13 @@ func (c *clampedScreen) SetContent(x, y int, ch rune, comb []rune, style tcell.S
 	}
 }
 
+func (c *clampedScreen) GetContent(x, y int) (rune, []rune, tcell.Style, int) {
+	if x >= c.r.X && x < c.r.X+c.r.W && y >= c.r.Y && y < c.r.Y+c.r.H {
+		return c.Screen.GetContent(x, y)
+	}
+	return ' ', nil, tcell.StyleDefault, 1
+}
+
 // Render draws the pane's bottom ribbon and terminal content onto the tcell screen.
 // When dimmed is true, foreground colors are reduced to ~70% brightness.
 // The index parameter is the 1-based pane number shown in the ribbon badge.
@@ -454,7 +461,11 @@ func (p *Pane) Render(screen tcell.Screen, focused bool, dimmed bool, index int,
 			if r0 > r1 || (r0 == r1 && c0 > c1) {
 				r0, c0, r1, c1 = r1, c1, r0, c0
 			}
-			selStyle := tcell.StyleDefault.Background(tcell.ColorYellow).Foreground(tcell.ColorBlack)
+			selBg := tcell.ColorYellow
+			if dimmed {
+				selBg = tcell.ColorOlive // Muted highlight for dimmed panes.
+			}
+			selStyle := tcell.StyleDefault.Background(selBg).Foreground(tcell.ColorBlack)
 			for row := r0; row <= r1 && row < innerRows; row++ {
 				emuRow := startRow + (row - renderOffset)
 				if emuRow < 0 || emuRow >= emuRows {

@@ -300,6 +300,7 @@ func (t *TUI) execCmd(cmd string) bool {
 		}
 
 	case "top", "ps":
+		t.cmd.error = "" // Clear stale errors so they don't reappear on close.
 		t.top.active = true
 		t.top.selected = 0
 		t.top.cacheTime = time.Time{} // Force fresh data.
