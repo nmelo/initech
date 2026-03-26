@@ -87,9 +87,11 @@ func (t *TUI) handleIPCConn(conn net.Conn) {
 
 	var req IPCRequest
 	if err := json.Unmarshal(scanner.Bytes(), &req); err != nil {
+		LogWarn("ipc", "invalid JSON from client", "err", err)
 		writeIPCResponse(conn, IPCResponse{Error: "invalid JSON"})
 		return
 	}
+	LogDebug("ipc", "request", "action", req.Action, "target", req.Target)
 
 	// Clear the read deadline so handlers that sleep (e.g., handleIPCSend
 	// polling for stuck input) don't hit the original 5s timeout.
@@ -403,6 +405,7 @@ func (t *TUI) handleIPCStart(conn net.Conn, req IPCRequest) {
 	cols, rows := old.emu.Width(), old.emu.Height()
 	np, err := NewPane(old.cfg, rows, cols)
 	if err != nil {
+		LogError("pane", "start failed", "name", req.Target, "err", err)
 		writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("start failed: %v", err)})
 		return
 	}
@@ -412,6 +415,7 @@ func (t *TUI) handleIPCStart(conn net.Conn, req IPCRequest) {
 	np.Start()
 	t.panes[idx] = np
 	t.applyLayout()
+	LogInfo("pane", "started", "name", req.Target)
 	writeIPCResponse(conn, IPCResponse{OK: true})
 }
 
@@ -446,6 +450,7 @@ func (t *TUI) handleIPCRestart(conn net.Conn, req IPCRequest) {
 	old.sendMu.Unlock()
 	np, err := NewPane(old.cfg, rows, cols)
 	if err != nil {
+		LogError("pane", "restart failed", "name", req.Target, "err", err)
 		writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("restart failed: %v", err)})
 		return
 	}
@@ -453,6 +458,7 @@ func (t *TUI) handleIPCRestart(conn net.Conn, req IPCRequest) {
 	np.eventCh = t.agentEvents
 	np.safeGo = t.safeGo
 	np.Start()
+	LogInfo("pane", "restarted", "name", req.Target)
 	t.panes[idx] = np
 	t.applyLayout()
 	writeIPCResponse(conn, IPCResponse{OK: true})
@@ -519,6 +525,7 @@ func (t *TUI) addPane(name string) error {
 
 	p, err := NewPane(cfg, rows, cols)
 	if err != nil {
+		LogError("pane", "hot-add launch failed", "name", name, "err", err)
 		return fmt.Errorf("create pane %q: %w", name, err)
 	}
 	p.eventCh = t.agentEvents
@@ -528,6 +535,7 @@ func (t *TUI) addPane(name string) error {
 	t.recalcGrid()
 	t.applyLayout()
 	t.saveLayoutIfConfigured()
+	LogInfo("pane", "added", "name", name)
 	return nil
 }
 
@@ -570,6 +578,7 @@ func (t *TUI) removePane(name string) error {
 	t.recalcGrid()
 	t.applyLayout()
 	t.saveLayoutIfConfigured()
+	LogInfo("pane", "removed", "name", name)
 	return nil
 }
 

@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	osexec "os/exec"
 	"time"
@@ -124,12 +125,14 @@ func (t *TUI) applyLayout() {
 }
 
 // saveLayoutIfConfigured persists the current layout to disk.
-// No-op if projectRoot is empty. Errors are silently ignored.
+// No-op if projectRoot is empty.
 func (t *TUI) saveLayoutIfConfigured() {
 	if t.projectRoot == "" {
 		return
 	}
-	SaveLayout(t.projectRoot, t.layoutState)
+	if err := SaveLayout(t.projectRoot, t.layoutState); err != nil {
+		LogWarn("layout", "save failed", "err", err)
+	}
 }
 
 // focusedPane returns the currently focused pane, or nil.
@@ -149,6 +152,7 @@ type Config struct {
 	ProjectName       string                          // Used for socket path.
 	ProjectRoot       string                          // Project root for .initech/ layout persistence.
 	ResetLayout       bool                            // Ignore saved layout and start with defaults.
+	Verbose           bool                            // Enable DEBUG-level logging (default: INFO).
 	Version           string                          // Build version for crash reports.
 	PaneConfigBuilder func(name string) (PaneConfig, error) // Optional factory for hot-add. Nil disables add command.
 }
@@ -176,9 +180,19 @@ func Run(cfg Config) error {
 	screen.EnablePaste()
 	defer screen.Fini()
 
+	// Initialize structured logging before anything else.
+	logLevel := slog.LevelInfo
+	if cfg.Verbose {
+		logLevel = slog.LevelDebug
+	}
+	logCleanup := InitLogger(cfg.ProjectRoot, logLevel)
+	defer logCleanup()
+	LogInfo("tui", "starting", "version", cfg.Version, "agents", len(cfg.Agents), "verbose", cfg.Verbose)
+
 	// Panic recovery: restore terminal and write crash log before exiting.
 	defer func() {
 		if r := recover(); r != nil {
+			LogError("tui", "panic", "value", fmt.Sprint(r))
 			screen.Fini() // Restore terminal first (idempotent).
 			report := crashLog(cfg.ProjectRoot, cfg.Version, r)
 			fmt.Fprint(os.Stderr, report)
@@ -228,8 +242,10 @@ func Run(cfg Config) error {
 	sockPath := sp
 	ipcCleanup, err := t.startIPC(sockPath)
 	if err != nil {
+		LogError("ipc", "socket bind failed", "path", sockPath, "err", err)
 		return fmt.Errorf("start IPC: %w", err)
 	}
+	LogInfo("ipc", "listening", "path", sockPath)
 	defer ipcCleanup()
 
 	// Compute initial regions for pane creation.
@@ -251,6 +267,7 @@ func Run(cfg Config) error {
 		cols, rows := r.InnerSize()
 		p, err := NewPane(acfg, rows, cols)
 		if err != nil {
+			LogError("pane", "launch failed", "name", acfg.Name, "err", err)
 			for _, existing := range t.panes {
 				existing.Close()
 			}
@@ -261,6 +278,7 @@ func Run(cfg Config) error {
 		p.safeGo = t.safeGo
 		p.Start()
 		t.panes = append(t.panes, p)
+		LogDebug("pane", "created", "name", acfg.Name, "dir", acfg.Dir)
 	}
 
 	// Now that panes exist, compute the full render plan.

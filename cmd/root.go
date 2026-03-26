@@ -16,7 +16,10 @@ import (
 // Version is set at build time via ldflags.
 var Version = "dev"
 
-var resetLayout bool
+var (
+	resetLayout bool
+	verbose     bool
+)
 
 var rootCmd = &cobra.Command{
 	Use:   "initech",
@@ -60,6 +63,7 @@ func Execute() {
 
 func init() {
 	rootCmd.Flags().BoolVar(&resetLayout, "reset-layout", false, "Ignore saved layout and start with auto-calculated defaults")
+	rootCmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Enable DEBUG-level logging to .initech/initech.log")
 	rootCmd.AddCommand(versionCmd)
 }
 
@@ -107,6 +111,7 @@ func runTUI(cmd *cobra.Command, args []string) error {
 		ProjectName: proj.Name,
 		ProjectRoot: proj.Root,
 		ResetLayout: resetLayout,
+		Verbose:     verbose,
 		Version:     Version,
 		PaneConfigBuilder: func(name string) (tui.PaneConfig, error) {
 			return buildAgentPaneConfig(name, proj)

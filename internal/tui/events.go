@@ -67,10 +67,11 @@ func EmitEvent(ch chan<- AgentEvent, ev AgentEvent) {
 	if ev.Time.IsZero() {
 		ev.Time = time.Now()
 	}
+	LogDebug("event", "emit", "type", ev.Type.String(), "pane", ev.Pane, "detail", ev.Detail)
 	select {
 	case ch <- ev:
 	default:
-		// Channel full. Drop the event rather than blocking the producer.
+		LogWarn("event", "channel full, dropped", "type", ev.Type.String(), "pane", ev.Pane)
 	}
 }
 
