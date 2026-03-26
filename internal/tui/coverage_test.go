@@ -983,6 +983,39 @@ func TestRenderOverlayWithHiddenPanes(t *testing.T) {
 	// Should not panic, and overlay should show all panes.
 }
 
+func TestRenderOverlayTitleShowsProjectName(t *testing.T) {
+	// ini-bfs: overlay title should show "Agents (name)" when projectName is set.
+	tui, s := newTestTUIWithScreen("eng1")
+	tui.projectName = "myproject"
+	tui.layoutState.Overlay = true
+	tui.render()
+
+	// Scan the screen for the project name characters.
+	sw, sh := s.Size()
+	found := false
+outer:
+	for y := 0; y < sh; y++ {
+		for x := 0; x < sw; x++ {
+			mainc, _, _, _ := s.GetContent(x, y)
+			if mainc == 'm' { // first char of "myproject"
+				found = true
+				break outer
+			}
+		}
+	}
+	if !found {
+		t.Error("overlay title should contain project name 'myproject'")
+	}
+}
+
+func TestRenderOverlayTitleFallsBackWithoutProjectName(t *testing.T) {
+	// When projectName is empty, title should still say "Agents" without crashing.
+	tui, _ := newTestTUIWithScreen("eng1")
+	tui.projectName = ""
+	tui.layoutState.Overlay = true
+	tui.render() // must not panic
+}
+
 // ---------------------------------------------------------------------------
 // copySelection
 // ---------------------------------------------------------------------------

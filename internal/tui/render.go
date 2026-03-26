@@ -382,6 +382,9 @@ func (t *TUI) renderOverlay() {
 	// Top border with title.
 	s.SetContent(px, py, '\u250c', nil, borderStyle)
 	title := " Agents "
+	if t.projectName != "" {
+		title = " Agents (" + t.projectName + ") "
+	}
 	for i := 1; i < panelW-1; i++ {
 		ch := '\u2500'
 		if i-1 < len(title) {

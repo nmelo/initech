@@ -93,6 +93,10 @@ type TUI struct {
 	// Project root for .initech/layout.yaml persistence. Empty disables auto-save.
 	projectRoot string
 
+	// projectName is shown in the overlay title ("Agents (initech)").
+	// Comes from initech.yaml's project field. Empty falls back to "Agents".
+	projectName string
+
 	// sockPath is the IPC socket this TUI is listening on. Used to inject
 	// INITECH_SOCKET into hot-added panes.
 	sockPath string
@@ -292,6 +296,7 @@ func Run(cfg Config) error {
 		lastW:             initW,
 		lastH:             initH,
 		projectRoot:       cfg.ProjectRoot,
+		projectName:       cfg.ProjectName,
 		version:           cfg.Version,
 		sockPath:          sp,
 		paneConfigBuilder: cfg.PaneConfigBuilder,
