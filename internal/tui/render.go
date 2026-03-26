@@ -17,6 +17,12 @@ func (t *TUI) render() {
 		t.applyLayout()
 	}
 
+	// Refresh activity state for all panes before rendering.
+	// updateActivity checks PTY output recency under a lock; cost is negligible.
+	for _, p := range t.panes {
+		p.updateActivity()
+	}
+
 	s.Clear()
 
 	if t.help.active {

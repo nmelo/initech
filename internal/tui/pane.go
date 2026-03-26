@@ -66,12 +66,11 @@ type Pane struct {
 	emu           *vt.SafeEmulator
 	mu            sync.Mutex
 	sendMu        sync.Mutex       // Serializes IPC send operations to prevent keystroke interleaving.
-	alive         bool
-	visible       bool          // Whether this pane is shown in the layout. Hidden panes keep running.
-	activity      ActivityState // Current state from JSONL tailing.
-	lastJsonlType string       // Last JSONL entry type seen.
-	lastJsonlTime time.Time    // When we last saw a file change.
-	journal       []JournalEntry     // Ring buffer of recent JSONL entries (cap journalRingSize).
+	alive          bool
+	visible        bool           // Whether this pane is shown in the layout. Hidden panes keep running.
+	activity       ActivityState  // Current state: running when PTY bytes flowed recently, else idle.
+	lastOutputTime time.Time      // Last time readLoop received bytes from the PTY.
+	journal        []JournalEntry // Ring buffer of recent JSONL entries (cap journalRingSize).
 	jsonlDir      string             // Directory to search for session JSONL files.
 	eventCh       chan<- AgentEvent  // Emits detected semantic events to the TUI. May be nil.
 	safeGo        func(func())     // Launches a goroutine with panic recovery. Set by TUI after creation.
@@ -217,6 +216,9 @@ func (p *Pane) readLoop() {
 	for {
 		n, err := p.ptmx.Read(buf)
 		if n > 0 {
+			p.mu.Lock()
+			p.lastOutputTime = time.Now()
+			p.mu.Unlock()
 			p.emu.Write(buf[:n])
 		}
 		if err != nil {
@@ -729,8 +731,6 @@ func (p *Pane) watchJSONL() {
 			lastOffset = 0
 		}
 		if size == lastOffset {
-			// No new data. Still update activity for timeout decay.
-			p.updateActivity()
 			p.runDetectors(nil) // stall/stuck checks run every tick
 			continue
 		}
@@ -748,10 +748,6 @@ func (p *Pane) watchJSONL() {
 				}
 				p.journal = append(p.journal, e)
 			}
-			// Update last type/time from the newest entry.
-			last := entries[len(entries)-1]
-			p.lastJsonlType = last.Type
-			p.lastJsonlTime = time.Now()
 			p.mu.Unlock()
 
 			// Bead auto-detection: check new entries for bd claim/clear signals.
@@ -760,7 +756,6 @@ func (p *Pane) watchJSONL() {
 			}
 		}
 
-		p.updateActivity()
 		p.runDetectors(entries)
 	}
 }
@@ -784,28 +779,25 @@ func (p *Pane) applyBeadDetection(entries []JournalEntry) {
 	}
 }
 
-// jsonlIdleTimeout is how long to wait after the last "running" JSONL entry
-// before declaring an agent idle. Claude regularly has gaps of 90-150s during
-// active work: long-running Bash tools (make test, git push) and extended LLM
-// generation both produce silence in the JSONL file. 5s caused false idles.
-// Terminal-idle entries (system, agent-color, last-prompt) bypass this timeout
-// and set idle immediately via the default case.
-const jsonlIdleTimeout = 120 * time.Second
+// ptyIdleTimeout is how long to wait after the last PTY byte before declaring
+// an agent idle. Claude Code's spinner runs at 10-30fps during all active
+// states (thinking, tool execution, generation). A 2-second gap in output
+// means the agent is genuinely idle at the prompt.
+const ptyIdleTimeout = 2 * time.Second
 
-// updateActivity derives the activity state from the last JSONL entry type
-// and the time since the last file change. Runs every tick for timeout decay.
+// updateActivity derives activity state from PTY output recency.
+// Called per pane on every render tick. The check is a single timestamp
+// comparison under a mutex — negligible cost.
 func (p *Pane) updateActivity() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	switch p.lastJsonlType {
-	case "user", "progress", "assistant":
-		if time.Since(p.lastJsonlTime) > jsonlIdleTimeout {
-			p.activity = StateIdle
-		} else {
-			p.activity = StateRunning
-		}
-	default:
-		// system, agent-color, last-prompt, etc. = idle immediately.
+	if !p.alive {
+		p.activity = StateIdle
+		return
+	}
+	if time.Since(p.lastOutputTime) < ptyIdleTimeout {
+		p.activity = StateRunning
+	} else {
 		p.activity = StateIdle
 	}
 }
@@ -822,12 +814,17 @@ func (p *Pane) runDetectors(newEntries []JournalEntry) {
 	// Read protected fields atomically.
 	p.mu.Lock()
 	beadID := p.beadID
-	lastTime := p.lastJsonlTime
 	journal := make([]JournalEntry, len(p.journal))
 	copy(journal, p.journal)
 	stallReported := p.stallReported
 	stuckReported := p.stuckReported
 	p.mu.Unlock()
+
+	// Derive last JSONL entry time from the ring buffer for stall detection.
+	var lastTime time.Time
+	if len(journal) > 0 {
+		lastTime = journal[len(journal)-1].Timestamp
+	}
 
 	// Completion/claimed/failed detection on new entries only.
 	if len(newEntries) > 0 {
