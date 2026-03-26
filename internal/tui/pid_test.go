@@ -96,6 +96,26 @@ func TestCheckPreviousCrash_LivePIDLeavesFile(t *testing.T) {
 	}
 }
 
+func TestCheckPreviousCrash_LiveNonInitechPIDRemovedAsReuse(t *testing.T) {
+	// ini-a1e.7: a live PID that belongs to a non-initech process should be
+	// treated as PID reuse after a crash, not as an active session.
+	// PID 1 (launchd on macOS, systemd/init on Linux) is always alive and
+	// will never be named "initech".
+	dir := t.TempDir()
+	initechDir := filepath.Join(dir, ".initech")
+	os.MkdirAll(initechDir, 0755)
+	pidPath := filepath.Join(initechDir, pidFileName)
+
+	os.WriteFile(pidPath, []byte(fmt.Sprintf("%d\n", 1)), 0644)
+
+	checkPreviousCrash(dir)
+
+	// PID 1 is alive but not initech — stale file should be removed.
+	if _, err := os.Stat(pidPath); !os.IsNotExist(err) {
+		t.Error("PID file for non-initech live process should be removed (PID reuse detected)")
+	}
+}
+
 func TestCheckPreviousCrash_InvalidPIDContentNoOp(t *testing.T) {
 	dir := t.TempDir()
 	initechDir := filepath.Join(dir, ".initech")

@@ -102,6 +102,40 @@ func TestRecentJSONLEntriesSkipMalformed(t *testing.T) {
 	}
 }
 
+func TestRecentJSONLEntriesCRLF(t *testing.T) {
+	// ini-a1e.11: CRLF line endings must not cause offset drift that leads to
+	// duplicate or skipped entries on subsequent incremental reads.
+	dir := t.TempDir()
+	path := filepath.Join(dir, "session.jsonl")
+
+	// Write CRLF-terminated lines.
+	f, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.WriteString("{\"type\":\"user\"}\r\n")
+	f.WriteString("{\"type\":\"assistant\"}\r\n")
+	f.Close()
+
+	_, offset := recentJSONLEntries(path, 0)
+
+	// Append one more CRLF line.
+	f, err = os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.WriteString("{\"type\":\"progress\"}\r\n")
+	f.Close()
+
+	entries, _ := recentJSONLEntries(path, offset)
+	if len(entries) != 1 {
+		t.Fatalf("CRLF incremental read: got %d entries, want 1 (offset drift causes duplicates or misses)", len(entries))
+	}
+	if entries[0].Type != "progress" {
+		t.Errorf("entry type = %q, want progress", entries[0].Type)
+	}
+}
+
 func TestTruncateContent(t *testing.T) {
 	short := "hello"
 	if got := truncateContent(short); got != "hello" {

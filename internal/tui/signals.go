@@ -11,10 +11,15 @@ package tui
 import (
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 
 	"github.com/gdamore/tcell/v2"
 )
+
+// exitFunc is called to exit the process when a fatal signal is received.
+// Overridable in tests to prevent actual process exit.
+var exitFunc = func(code int) { os.Exit(code) }
 
 // installSignalHandlers registers handlers for signals that terminate the
 // process. Each handler logs the signal name, restores the terminal via
@@ -40,6 +45,12 @@ func installSignalHandlers(screen tcell.Screen, quitCh chan struct{}) func() {
 		syscall.SIGINT,
 	)
 
+	// exitOnce ensures os.Exit(2) fires at most once. The cleanup function
+	// claims the Once first (via a no-op Do) to disarm the goroutine: if
+	// a signal arrives just as graceful shutdown begins, the goroutine's
+	// Do becomes a no-op and the deferred cleanup path runs normally.
+	var exitOnce sync.Once
+
 	go func() {
 		sig, ok := <-ch
 		if !ok {
@@ -51,11 +62,19 @@ func installSignalHandlers(screen tcell.Screen, quitCh chan struct{}) func() {
 		if screen != nil {
 			screen.Fini() // restore terminal to cooked mode
 		}
-		os.Exit(2)
+		exitOnce.Do(func() { exitFunc(2) })
 	}()
 
 	return func() {
 		signal.Stop(ch)
+		// Disarm: claim the Once so a concurrently-executing goroutine can't
+		// call os.Exit after we return.
+		exitOnce.Do(func() {})
+		// Drain any signals that arrived before Stop() could suppress them.
+		// signal.Stop guarantees no new signals, but buffered ones remain.
+		for len(ch) > 0 {
+			<-ch
+		}
 		close(ch)
 	}
 }

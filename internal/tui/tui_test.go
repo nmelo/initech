@@ -166,6 +166,23 @@ func TestNewPane_NoContinueNoFallback(t *testing.T) {
 	}
 }
 
+func TestNewPane_FallbackUsesShNotSHELL(t *testing.T) {
+	// ini-a1e.4: the --continue fallback must use /bin/sh, not $SHELL, because
+	// the || operator is POSIX syntax and fish/tcsh don't support it.
+	t.Setenv("SHELL", "/nonexistent/fish")
+	// /bin/true ignores all arguments and exits 0; it works as a stand-in
+	// for claude to test the command construction path.
+	p, err := NewPane(PaneConfig{Name: "test", Command: []string{"/bin/true", "--continue"}}, 24, 80)
+	if err != nil {
+		t.Fatalf("NewPane: %v", err)
+	}
+	defer p.Close()
+
+	if p.cmd.Path != "/bin/sh" {
+		t.Errorf("fallback cmd.Path = %q, want /bin/sh", p.cmd.Path)
+	}
+}
+
 // ── newestJSONL ──────────────────────────────────────────────────────
 
 func TestNewestJSONL(t *testing.T) {

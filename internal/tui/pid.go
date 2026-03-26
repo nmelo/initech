@@ -77,9 +77,31 @@ func checkPreviousCrash(projectRoot string) {
 		LogWarn("pid", "previous instance exited without clean shutdown", "pid", pid)
 		os.Remove(path)
 		querySystemLog(pid)
+		return
 	}
-	// If Signal(0) succeeds: process exists (stale PID reused by another process,
-	// or another initech instance still running). Leave the file alone.
+	// Signal(0) succeeded — a process with this PID exists. Verify it's
+	// actually initech: on high-churn systems (Linux 32-bit PID space), the
+	// original process could have died and an unrelated process reused the PID.
+	if pid == os.Getpid() {
+		return // Our own PID — we are initech, definitely alive.
+	}
+	if !isInitechProcess(pid) {
+		// PID belongs to a different process — initech crashed, PID was reused.
+		LogWarn("pid", "previous PID reused by unrelated process — treating as crash", "pid", pid)
+		os.Remove(path)
+		querySystemLog(pid)
+	}
+}
+
+// isInitechProcess returns true if the process with the given PID has a name
+// that contains "initech". Uses ps(1) which is available on macOS and Linux.
+// Returns false on any error (process gone between Signal(0) and ps check).
+func isInitechProcess(pid int) bool {
+	out, err := exec.Command("ps", "-o", "comm=", "-p", strconv.Itoa(pid)).Output()
+	if err != nil {
+		return false // Process exited between Signal(0) and ps check — treat as crash.
+	}
+	return strings.Contains(strings.ToLower(strings.TrimSpace(string(out))), "initech")
 }
 
 // querySystemLog queries the macOS unified log and DiagnosticReports for crash

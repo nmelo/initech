@@ -136,11 +136,12 @@ func NewPane(cfg PaneConfig, rows, cols int) (*Pane, error) {
 		// --continue fails when no prior session exists (first launch,
 		// hot-added agent, deleted session). Build a shell fallback:
 		//   claude --continue ... || claude ...
-		// The "||" operator requires a shell, so we use sh -c here.
-		// Arguments are shell-quoted to prevent injection.
+		// The "||" operator is POSIX sh syntax; using $SHELL here would fail
+		// for fish/tcsh users since those shells use different operators.
+		// /bin/sh is guaranteed POSIX-compliant on all Unix systems.
 		primary := shellQuoteArgs(cfg.Command)
 		fallback := shellQuoteArgs(removeArg(cfg.Command, "--continue"))
-		cmd = exec.Command(shell, "-l", "-c", primary+" || "+fallback)
+		cmd = exec.Command("/bin/sh", "-l", "-c", primary+" || "+fallback)
 	} else {
 		// Execute directly without a shell. The login shell wrapper (shell -l)
 		// is still used to initialize the PTY environment (stty, $PATH, etc.)
@@ -969,18 +970,28 @@ func recentJSONLEntries(path string, sinceOffset int64) ([]JournalEntry, int64) 
 	}
 
 	var entries []JournalEntry
-	scanner := bufio.NewScanner(f)
-	scanner.Buffer(make([]byte, 256*1024), 256*1024)
+	// Use ReadBytes instead of bufio.Scanner so we count the actual bytes
+	// consumed including the line terminator. Scanner adds a fixed +1 for the
+	// newline, which drifts on CRLF files (each line needs +2). ReadBytes
+	// returns the terminator as part of the slice, so len(lineBytes) is exact
+	// for both LF and CRLF files.
+	reader := bufio.NewReaderSize(f, 256*1024)
 	bytesRead := sinceOffset
 
-	for scanner.Scan() {
-		line := scanner.Text()
-		bytesRead += int64(len(scanner.Bytes())) + 1 // +1 for newline
-
+	for {
+		lineBytes, err := reader.ReadBytes('\n')
+		if err == io.EOF {
+			// Partial line at EOF — incomplete line, don't advance offset.
+			break
+		}
+		if err != nil {
+			break
+		}
+		bytesRead += int64(len(lineBytes))
+		line := strings.TrimRight(string(lineBytes), "\r\n")
 		if strings.TrimSpace(line) == "" {
 			continue
 		}
-
 		entry := parseJSONLEntry(line)
 		if entry.Type != "" {
 			entries = append(entries, entry)
