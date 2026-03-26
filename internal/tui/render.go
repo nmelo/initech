@@ -197,7 +197,12 @@ func (t *TUI) renderOverlay() {
 		}
 	}
 
-	statusMaxLen := 8 // "thinking"
+	statusMaxLen := 7 // minimum: "running"
+	for _, a := range agents {
+		if len(a.Status) > statusMaxLen {
+			statusMaxLen = len(a.Status)
+		}
+	}
 	panelW := 4 + maxNameLen + 1 + statusMaxLen + 2
 	// Extra row for summary line when there are hidden panes.
 	summaryRow := hiddenCount > 0
