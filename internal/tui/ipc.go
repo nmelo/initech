@@ -103,12 +103,12 @@ func (t *TUI) handleIPCConn(conn net.Conn) {
 	}
 	LogDebug("ipc", "request", "action", req.Action, "target", req.Target)
 
-	// Clear the read deadline so handlers that sleep (e.g., handleIPCSend
-	// polling for stuck input) don't hit the original 5s timeout.
-	conn.SetReadDeadline(time.Time{})
-
 	switch req.Action {
 	case "send":
+		// injectText sleeps up to ~450ms for stuck-input polling; clear the
+		// read deadline so that window doesn't race with the initial 5s timeout.
+		// Other actions respond in microseconds and don't need the deadline cleared.
+		conn.SetReadDeadline(time.Time{})
 		t.handleIPCSend(conn, req)
 	case "peek":
 		t.handleIPCPeek(conn, req)

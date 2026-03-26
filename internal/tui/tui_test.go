@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -702,6 +703,44 @@ func TestHandleIPCConnBadJSON(t *testing.T) {
 	}
 	if !strings.Contains(resp.Error, "invalid JSON") {
 		t.Errorf("error = %q, want 'invalid JSON'", resp.Error)
+	}
+}
+
+func TestHandleIPCConn_GoroutineExitsAfterNonSendResponse(t *testing.T) {
+	// ini-a1e.24: for non-send actions, handleIPCConn must exit after writing
+	// its response, even if the client holds the connection open indefinitely.
+	// Previously, the deadline was cleared for all actions; after the fix,
+	// only "send" clears it. This test verifies the goroutine exits promptly
+	// regardless of whether the client closes the connection.
+	p := newEmuPane("eng1", 80, 24)
+	tui := &TUI{panes: []*Pane{p}}
+
+	server, client := net.Pipe()
+	defer client.Close()
+
+	req, _ := json.Marshal(IPCRequest{Action: "list", Target: ""})
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		tui.handleIPCConn(server)
+	}()
+
+	client.Write(append(req, '\n'))
+
+	// Consume the full response line (JSON + trailing newline). writeIPCResponse
+	// makes two Write calls on net.Pipe(), so we need a scanner to read until
+	// the newline to unblock both writes before checking goroutine exit.
+	scanner := bufio.NewScanner(client)
+	scanner.Scan()
+
+	// Don't close the client — verify the goroutine exits anyway because
+	// handleIPCConn returns as soon as the handler finishes.
+	select {
+	case <-done:
+		// Good: goroutine exited even with the client connection held open.
+	case <-time.After(2 * time.Second):
+		t.Error("handleIPCConn goroutine should exit after non-send response even if client holds connection open")
 	}
 }
 
