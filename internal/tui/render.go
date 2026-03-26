@@ -19,6 +19,13 @@ func (t *TUI) render() {
 
 	s.Clear()
 
+	if t.eventLogM.active {
+		// Full-screen event log replaces pane rendering.
+		t.renderEventLog()
+		s.Show()
+		return
+	}
+
 	if t.top.active {
 		// Full-screen activity monitor replaces pane rendering.
 		t.renderTop()

@@ -43,6 +43,12 @@ type topModal struct {
 	cacheTime time.Time
 }
 
+// eventLogModal holds event log modal state.
+type eventLogModal struct {
+	active       bool
+	scrollOffset int // lines scrolled up from the bottom; 0 = at bottom (latest)
+}
+
 // mouseSelection holds mouse text selection state.
 type mouseSelection struct {
 	active       bool
@@ -77,10 +83,11 @@ type TUI struct {
 	// Set from Config.PaneConfigBuilder. Nil disables the add command.
 	paneConfigBuilder func(name string) (PaneConfig, error)
 
-	cmd    cmdModal        // Command input bar.
-	top    topModal        // Activity monitor overlay.
-	sel    mouseSelection  // Mouse text selection.
-	quitCh chan struct{}   // Closed by IPC quit action to signal event loop exit.
+	cmd       cmdModal       // Command input bar.
+	top       topModal       // Activity monitor overlay.
+	eventLogM eventLogModal  // Event log history modal.
+	sel       mouseSelection // Mouse text selection.
+	quitCh    chan struct{}   // Closed by IPC quit action to signal event loop exit.
 
 	// Build version for crash reports.
 	version string
@@ -88,6 +95,7 @@ type TUI struct {
 	// Agent event system.
 	agentEvents   chan AgentEvent // Buffered channel for semantic events from detection modules.
 	notifications []notification // Active notifications for rendering.
+	eventLog      []AgentEvent   // Persistent log of all events (last 100 or last 60 min).
 }
 
 // applyLayout recomputes the render plan from the current layout state

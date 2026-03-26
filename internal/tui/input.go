@@ -11,6 +11,11 @@ import (
 )
 
 func (t *TUI) handleKey(ev *tcell.EventKey) bool {
+	// Event log modal intercepts all input when active.
+	if t.eventLogM.active {
+		return t.handleEventLogKey(ev)
+	}
+
 	// Top modal intercepts all input when active.
 	if t.top.active {
 		return t.handleTopKey(ev)
@@ -359,6 +364,11 @@ func (t *TUI) execCmd(cmd string) bool {
 		} else {
 			t.cmd.error = "removed " + parts[1]
 		}
+
+	case "log", "events":
+		t.cmd.error = ""
+		t.eventLogM.active = true
+		t.eventLogM.scrollOffset = 0 // Start at the bottom (latest events).
 
 	case "quit", "q":
 		return true

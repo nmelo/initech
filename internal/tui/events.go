@@ -78,9 +78,18 @@ func EmitEvent(ch chan<- AgentEvent, ev AgentEvent) {
 // maxNotifications is the most toasts visible at once. Oldest are dropped.
 const maxNotifications = 5
 
+// maxEventLog is the maximum number of events retained in the history log.
+const maxEventLog = 100
+
+// eventLogRetention is how long events are kept in the history log.
+const eventLogRetention = 60 * time.Minute
+
 // handleAgentEvent processes a single agent event. Appends it to the
-// notification queue with an expiration time for rendering.
+// notification queue (for toasts) and the event log (for history).
 func (t *TUI) handleAgentEvent(ev AgentEvent) {
+	if ev.Time.IsZero() {
+		ev.Time = time.Now()
+	}
 	ttl := notificationTTL
 	// Completion events persist longer since they're more actionable.
 	if ev.Type == EventBeadCompleted {
@@ -93,6 +102,28 @@ func (t *TUI) handleAgentEvent(ev AgentEvent) {
 	// Cap at maxNotifications. Drop oldest if over limit.
 	if len(t.notifications) > maxNotifications {
 		t.notifications = t.notifications[len(t.notifications)-maxNotifications:]
+	}
+
+	// Also append to the persistent event log.
+	t.eventLog = append(t.eventLog, ev)
+	t.pruneEventLog()
+}
+
+// pruneEventLog removes events that are older than eventLogRetention or
+// exceed the maxEventLog cap. Oldest events are dropped first.
+func (t *TUI) pruneEventLog() {
+	cutoff := time.Now().Add(-eventLogRetention)
+	// Drop events beyond the cap first (from the front).
+	if len(t.eventLog) > maxEventLog {
+		t.eventLog = t.eventLog[len(t.eventLog)-maxEventLog:]
+	}
+	// Drop events older than the retention window.
+	start := 0
+	for start < len(t.eventLog) && t.eventLog[start].Time.Before(cutoff) {
+		start++
+	}
+	if start > 0 {
+		t.eventLog = t.eventLog[start:]
 	}
 }
 
