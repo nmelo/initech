@@ -21,6 +21,7 @@ func (t *TUI) refreshTopData() {
 		e := topEntry{
 			Name:    p.name,
 			Command: strings.Join(p.cfg.Command, " "),
+			Bead:    p.BeadID(),
 			Status:  p.Activity().String(),
 		}
 		if t.layoutState.Hidden[p.name] {
@@ -74,17 +75,25 @@ func (t *TUI) handleTopKey(ev *tcell.EventKey) bool {
 			if t.top.selected >= 0 && t.top.selected < len(t.panes) {
 				p := t.panes[t.top.selected]
 				idx := t.top.selected
-				// Use emulator dimensions, not stale region (hidden panes
-				// have regions from when they were last visible).
+				// Use emulator dimensions with fallback for dead panes
+				// that may report zero.
 				cols := p.emu.Width()
 				rows := p.emu.Height()
+				if cols < 10 {
+					cols = 80
+				}
+				if rows < 2 {
+					rows = 24
+				}
 				p.Close()
 				np, err := NewPane(p.cfg, rows, cols)
-				if err == nil {
+				if err != nil {
+					t.cmd.error = fmt.Sprintf("restart %s: %v", p.name, err)
+				} else {
 					t.panes[idx] = np
-					t.applyLayout() // Assigns correct region.
+					t.applyLayout()
 				}
-				t.top.cacheTime = time.Time{} // Force refresh.
+				t.top.cacheTime = time.Time{}
 			}
 			return false
 		case 'k':
@@ -93,6 +102,11 @@ func (t *TUI) handleTopKey(ev *tcell.EventKey) bool {
 				if p.cmd != nil && p.cmd.Process != nil {
 					p.cmd.Process.Kill()
 				}
+				// Mark dead immediately so overlay/top update without
+				// waiting for readLoop to detect the EOF.
+				p.mu.Lock()
+				p.alive = false
+				p.mu.Unlock()
 				t.top.cacheTime = time.Time{}
 			}
 			return false
@@ -139,21 +153,24 @@ func (t *TUI) renderTop() {
 
 	// Column widths.
 	nameW := 10
+	beadW := 14
 	pidW := 8
 	commW := 12
 	rssW := 10
 	statusW := 16
-	cmdW := sw - nameW - pidW - commW - rssW - statusW - 6 // 6 for spacing
+	cmdW := sw - nameW - beadW - pidW - commW - rssW - statusW - 7 // 7 for spacing
 	if cmdW < 10 {
 		cmdW = 10
 	}
 
 	// Header row.
 	y := 1
-	drawRow := func(row int, style tcell.Style, name, pid, comm, cmd, rss, status string) {
+	drawRow := func(row int, style tcell.Style, name, bead, pid, comm, cmd, rss, status string) {
 		x := 1
 		drawField(s, x, row, nameW, name, style)
 		x += nameW + 1
+		drawField(s, x, row, beadW, bead, style)
+		x += beadW + 1
 		drawField(s, x, row, pidW, pid, style)
 		x += pidW + 1
 		drawField(s, x, row, commW, comm, style)
@@ -174,7 +191,7 @@ func (t *TUI) renderTop() {
 		}
 	}
 
-	drawRow(y, headerStyle, "AGENT", "PID", "PROCESS", "COMMAND", "RSS", "STATUS")
+	drawRow(y, headerStyle, "AGENT", "BEAD", "PID", "PROCESS", "COMMAND", "RSS", "STATUS")
 	y++
 	// Separator.
 	for x := 1; x < sw-1; x++ {
@@ -217,7 +234,11 @@ func (t *TUI) renderTop() {
 			status = "-"
 		}
 
-		drawRow(y, style, e.Name, pid, comm, cmd, rss, status)
+		bead := e.Bead
+		if bead == "" {
+			bead = "-"
+		}
+		drawRow(y, style, e.Name, bead, pid, comm, cmd, rss, status)
 		y++
 		if y >= sh-3 {
 			break

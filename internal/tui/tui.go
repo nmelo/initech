@@ -18,9 +18,10 @@ const (
 
 // AgentInfo describes an agent for the status overlay.
 type AgentInfo struct {
-	Name    string
-	Status  string // "running", "idle"
-	Visible bool
+	Name     string
+	Status   string        // Display text: activity string or bead ID.
+	Activity ActivityState // Actual activity state for dot color.
+	Visible  bool
 }
 
 // cmdModal holds command modal state.

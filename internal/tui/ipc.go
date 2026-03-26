@@ -37,14 +37,17 @@ func SocketPath(projectName string) string {
 // startIPC launches the Unix domain socket server in a goroutine.
 // Returns a cleanup function that closes the listener and removes the socket.
 func (t *TUI) startIPC(socketPath string) (cleanup func(), err error) {
-	// Check for an existing active instance.
-	conn, dialErr := net.DialTimeout("unix", socketPath, 500*time.Millisecond)
-	if dialErr == nil {
-		conn.Close()
-		return nil, fmt.Errorf("session already running (socket %s is active). Use 'initech down' to stop it first", socketPath)
+	// Check for an existing active instance. Only dial if the socket file
+	// exists (avoids 500ms timeout on clean starts).
+	if _, statErr := os.Stat(socketPath); statErr == nil {
+		conn, dialErr := net.DialTimeout("unix", socketPath, 500*time.Millisecond)
+		if dialErr == nil {
+			conn.Close()
+			return nil, fmt.Errorf("session already running (socket %s is active). Use 'initech down' to stop it first", socketPath)
+		}
+		// Stale socket from a crashed instance; safe to remove.
+		os.Remove(socketPath)
 	}
-	// Stale socket from a crashed instance; safe to remove.
-	os.Remove(socketPath)
 
 	ln, err := net.Listen("unix", socketPath)
 	if err != nil {

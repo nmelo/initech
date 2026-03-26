@@ -421,6 +421,12 @@ func (t *TUI) restartFocused() error {
 	}
 	cols := fp.emu.Width()
 	rows := fp.emu.Height()
+	if cols < 10 {
+		cols = 80
+	}
+	if rows < 2 {
+		rows = 24
+	}
 	fp.Close()
 
 	p, err := NewPane(fp.cfg, rows, cols)

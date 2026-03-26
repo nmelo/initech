@@ -156,6 +156,7 @@ type topEntry struct {
 	Comm    string // Process name from ps.
 	Command string // Launch command from config.
 	RSS     int64  // Resident memory in KB.
+	Bead    string // Current bead ID (empty = none).
 	Status  string // running, idle, dead, hidden.
 }
 func drawField(s tcell.Screen, x, y, width int, text string, style tcell.Style) {
@@ -181,12 +182,13 @@ func (t *TUI) renderOverlay() {
 	hiddenCount := 0
 	for i, p := range t.panes {
 		vis := !t.layoutState.Hidden[p.name]
-		// Show bead ID instead of activity status when a bead is assigned.
-		status := p.Activity().String()
+		act := p.Activity()
+		// Show bead ID instead of activity string when a bead is assigned.
+		status := act.String()
 		if bead := p.BeadID(); bead != "" {
 			status = bead
 		}
-		agents[i] = AgentInfo{Name: p.name, Status: status, Visible: vis}
+		agents[i] = AgentInfo{Name: p.name, Status: status, Activity: act, Visible: vis}
 		nameLen := len(p.name)
 		if !vis {
 			nameLen += 4 // " [h]"
@@ -254,13 +256,13 @@ func (t *TUI) renderOverlay() {
 			s.SetContent(x, row, ' ', nil, bgStyle)
 		}
 
-		// Status dot (color per activity state).
+		// Status dot (color per actual activity state, not display text).
 		dot := '\u25cf'
 		var dotColor tcell.Color
-		switch a.Status {
-		case "running":
+		switch a.Activity {
+		case StateRunning:
 			dotColor = tcell.ColorGreen
-		case "idle":
+		case StateIdle:
 			dot = '\u25cb'
 			dotColor = tcell.ColorGray
 		default:
