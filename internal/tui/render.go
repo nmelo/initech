@@ -123,7 +123,7 @@ func (t *TUI) renderCmdLine() {
 
 	// Confirmation prompt: replace normal input with a yellow warning bar.
 	if t.cmd.pendingConfirm != "" {
-		confirmStyle := tcell.StyleDefault.Background(tcell.ColorOlive).Foreground(tcell.ColorWhite)
+		confirmStyle := tcell.StyleDefault.Background(tcell.NewRGBColor(0, 0, 0)).Foreground(tcell.ColorYellow).Bold(true)
 		for x := 0; x < sw; x++ {
 			s.SetContent(x, y, ' ', nil, confirmStyle)
 		}
