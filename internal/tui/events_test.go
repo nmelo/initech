@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"testing"
 	"time"
 )
@@ -72,6 +73,41 @@ func TestHandleAgentEventAppendsNotification(t *testing.T) {
 	}
 	if n.expires.Before(time.Now()) {
 		t.Error("notification should not already be expired")
+	}
+}
+
+func TestHandleAgentEventCapsAt5(t *testing.T) {
+	tui := &TUI{}
+	for i := 0; i < 8; i++ {
+		tui.handleAgentEvent(AgentEvent{
+			Type:   EventBeadClaimed,
+			Pane:   "eng1",
+			Detail: fmt.Sprintf("event %d", i),
+		})
+	}
+	if len(tui.notifications) != maxNotifications {
+		t.Errorf("notifications = %d, want %d", len(tui.notifications), maxNotifications)
+	}
+	// Oldest should have been dropped; newest should be event 7.
+	last := tui.notifications[len(tui.notifications)-1]
+	if last.event.Detail != "event 7" {
+		t.Errorf("last notification = %q, want 'event 7'", last.event.Detail)
+	}
+	first := tui.notifications[0]
+	if first.event.Detail != "event 3" {
+		t.Errorf("first notification = %q, want 'event 3'", first.event.Detail)
+	}
+}
+
+func TestHandleAgentEventCompletionLongerTTL(t *testing.T) {
+	tui := &TUI{}
+	tui.handleAgentEvent(AgentEvent{Type: EventBeadCompleted, Pane: "eng1"})
+	tui.handleAgentEvent(AgentEvent{Type: EventBeadClaimed, Pane: "eng2"})
+
+	completionTTL := tui.notifications[0].expires.Sub(time.Now())
+	claimedTTL := tui.notifications[1].expires.Sub(time.Now())
+	if completionTTL <= claimedTTL {
+		t.Errorf("completion TTL (%v) should be longer than claimed TTL (%v)", completionTTL, claimedTTL)
 	}
 }
 

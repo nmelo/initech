@@ -46,6 +46,11 @@ func (t *TUI) render() {
 		t.renderOverlay()
 	}
 
+	// Toast notifications (skip during command modal to avoid overlap).
+	if !t.cmd.active {
+		t.renderNotifications()
+	}
+
 	// Command modal or error message at the bottom.
 	if t.cmd.active {
 		t.renderCmdLine()
@@ -145,6 +150,72 @@ func (t *TUI) renderCmdError() {
 	}
 	for i, ch := range msg {
 		s.SetContent(i, y, ch, nil, errStyle)
+	}
+}
+
+// renderNotifications draws active toast notifications at the bottom-right,
+// stacking upward. Skipped during top modal or command modal.
+func (t *TUI) renderNotifications() {
+	if len(t.notifications) == 0 {
+		return
+	}
+	s := t.screen
+	sw, sh := s.Size()
+
+	// Too narrow to render toasts.
+	if sw < 30 {
+		return
+	}
+
+	// Stack from the bottom-right, above the command/error bar.
+	// Reserve 1 row at the bottom for the command bar.
+	baseY := sh - 2
+	maxW := 50
+	if maxW > sw-2 {
+		maxW = sw - 2
+	}
+
+	for i := len(t.notifications) - 1; i >= 0; i-- {
+		n := t.notifications[i]
+		row := baseY - (len(t.notifications) - 1 - i)
+		if row < 1 {
+			break // Off the top of the screen.
+		}
+
+		// Format: "[agent] detail"
+		text := fmt.Sprintf("[%s] %s", n.event.Pane, n.event.Detail)
+		runes := []rune(text)
+		if len(runes) > maxW-2 {
+			runes = append(runes[:maxW-3], '\u2026')
+		}
+		toastW := len(runes) + 2 // 1 char padding on each side.
+		x := sw - toastW - 1
+
+		// Background color by event type.
+		var style tcell.Style
+		switch n.event.Type {
+		case EventBeadCompleted:
+			style = tcell.StyleDefault.Background(tcell.ColorDarkGreen).Foreground(tcell.ColorBlack)
+		case EventBeadClaimed:
+			style = tcell.StyleDefault.Background(tcell.ColorDodgerBlue).Foreground(tcell.ColorWhite)
+		case EventBeadFailed, EventAgentStuck:
+			style = tcell.StyleDefault.Background(tcell.ColorDarkRed).Foreground(tcell.ColorWhite)
+		case EventAgentStalled:
+			style = tcell.StyleDefault.Background(tcell.ColorDarkOrange).Foreground(tcell.ColorBlack)
+		case EventAgentIdle:
+			style = tcell.StyleDefault.Background(tcell.ColorDimGray).Foreground(tcell.ColorWhite)
+		default:
+			style = tcell.StyleDefault.Background(tcell.ColorDimGray).Foreground(tcell.ColorWhite)
+		}
+
+		// Draw toast background.
+		for dx := 0; dx < toastW; dx++ {
+			s.SetContent(x+dx, row, ' ', nil, style)
+		}
+		// Draw text with 1-char left padding.
+		for j, ch := range runes {
+			s.SetContent(x+1+j, row, ch, nil, style)
+		}
 	}
 }
 

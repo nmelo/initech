@@ -71,13 +71,25 @@ func EmitEvent(ch chan<- AgentEvent, ev AgentEvent) {
 	}
 }
 
+// maxNotifications is the most toasts visible at once. Oldest are dropped.
+const maxNotifications = 5
+
 // handleAgentEvent processes a single agent event. Appends it to the
 // notification queue with an expiration time for rendering.
 func (t *TUI) handleAgentEvent(ev AgentEvent) {
+	ttl := notificationTTL
+	// Completion events persist longer since they're more actionable.
+	if ev.Type == EventBeadCompleted {
+		ttl = 12 * time.Second
+	}
 	t.notifications = append(t.notifications, notification{
 		event:   ev,
-		expires: time.Now().Add(notificationTTL),
+		expires: time.Now().Add(ttl),
 	})
+	// Cap at maxNotifications. Drop oldest if over limit.
+	if len(t.notifications) > maxNotifications {
+		t.notifications = t.notifications[len(t.notifications)-maxNotifications:]
+	}
 }
 
 // pruneNotifications removes expired notifications.
