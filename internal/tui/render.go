@@ -309,7 +309,8 @@ func (t *TUI) renderOverlay() {
 		vis := !t.layoutState.Hidden[p.name]
 		act := p.Activity()
 		bead := p.BeadID()
-		// Build status text: prefer bead ID, then idle-with-backlog, then activity.
+		// Build status: show idle-with-backlog hint when idle, then combine
+		// activity and bead ID as "running (ini-sx5)".
 		status := act.String()
 		idleBacklog := false
 		backlogN := 0
@@ -321,7 +322,7 @@ func (t *TUI) renderOverlay() {
 			}
 		}
 		if bead != "" {
-			status = bead
+			status = fmt.Sprintf("%s (%s)", act.String(), bead)
 		}
 		agents[i] = AgentInfo{Name: p.name, Status: status, Activity: act, Visible: vis, IdleWithBacklog: idleBacklog, BacklogCount: backlogN}
 		nameLen := len(p.name)
