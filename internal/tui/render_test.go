@@ -181,17 +181,17 @@ func TestApplyLayout_ReservesStatusBar(t *testing.T) {
 	}
 	tui.applyLayout()
 
-	// The single pane should fill height 39 (40 - 1 for status bar).
+	// The single pane should fill height 38 (40 - 2 for spacer + tip line).
 	if len(tui.plan.Panes) != 1 {
 		t.Fatalf("expected 1 pane in plan, got %d", len(tui.plan.Panes))
 	}
 	pr := tui.plan.Panes[0]
-	if pr.Region.H != 39 {
-		t.Errorf("pane height = %d, want 39 (screen 40 - 1 status bar)", pr.Region.H)
+	if pr.Region.H != 38 {
+		t.Errorf("pane height = %d, want 38 (screen 40 - 2 for spacer + tip)", pr.Region.H)
 	}
-	// Pane should not extend into the status bar row (row 39).
-	if pr.Region.Y+pr.Region.H > 39 {
-		t.Errorf("pane extends into status bar: Y=%d H=%d (bottom=%d)", pr.Region.Y, pr.Region.H, pr.Region.Y+pr.Region.H)
+	// Pane should not extend into the spacer/tip rows (rows 38-39).
+	if pr.Region.Y+pr.Region.H > 38 {
+		t.Errorf("pane extends into status area: Y=%d H=%d (bottom=%d)", pr.Region.Y, pr.Region.H, pr.Region.Y+pr.Region.H)
 	}
 }
 
