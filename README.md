@@ -254,7 +254,3 @@ Runtime:
 - [beads](https://github.com/nmelo/beads) (`bd`) for issue tracking (optional, degrades gracefully)
 
 Libraries (bundled): [cobra](https://github.com/spf13/cobra), [yaml.v3](https://pkg.go.dev/gopkg.in/yaml.v3), [charmbracelet/ultraviolet](https://github.com/charmbracelet/ultraviolet) + [x/vt](https://github.com/charmbracelet/x) (terminal emulation), [tcell](https://github.com/gdamore/tcell) (screen rendering), [creack/pty](https://github.com/creack/pty) (PTY allocation), [charmbracelet/x/ansi](https://github.com/charmbracelet/x) (CLI colors).
-
-## License
-
-MIT
