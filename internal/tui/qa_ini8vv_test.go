@@ -14,9 +14,9 @@ func TestHelpHintTextInCmdBar(t *testing.T) {
 	tui.cmd.active = true
 	tui.render()
 
-	// renderCmdLine places the hint right-aligned on the cmd row (sh-2).
+	// renderCmdLine places the hint right-aligned on the cmd row (sh-1).
 	sw, sh := s.Size()
-	hintRow := sh - 2
+	hintRow := sh - 1
 	var buf strings.Builder
 	for x := 0; x < sw; x++ {
 		c, _, _, _ := s.GetContent(x, hintRow)

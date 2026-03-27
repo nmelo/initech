@@ -164,7 +164,7 @@ func (t *TUI) rotateTip() {
 func (t *TUI) renderHints() {
 	s := t.screen
 	sw, sh := s.Size()
-	y := sh - 2
+	y := sh - 1
 
 	barStyle := tcell.StyleDefault.Background(tcell.NewRGBColor(30, 30, 30)).Foreground(tcell.ColorGray)
 	for x := 0; x < sw; x++ {
@@ -208,7 +208,7 @@ func (t *TUI) renderHints() {
 func (t *TUI) renderCmdLine() {
 	s := t.screen
 	sw, sh := s.Size()
-	y := sh - 2
+	y := sh - 1
 
 	// Confirmation prompt: replace normal input with a yellow warning bar.
 	if t.cmd.pendingConfirm != "" {
@@ -270,7 +270,7 @@ func (t *TUI) renderCmdLine() {
 
 	// Tab completion hint: draw a dimmed hint bar one row above the input.
 	if t.cmd.tabHint != "" && sh >= 3 {
-		hintY := sh - 3
+		hintY := sh - 2
 		tabHintStyle := tcell.StyleDefault.Background(tcell.ColorDarkSlateGray).Foreground(tcell.ColorGray)
 		for x := 0; x < sw; x++ {
 			s.SetContent(x, hintY, ' ', nil, tabHintStyle)
@@ -291,7 +291,7 @@ func (t *TUI) renderCmdError() {
 	if sw < 5 {
 		return // Too narrow to render error without slice-bounds panic (ini-a1e.6).
 	}
-	y := sh - 2
+	y := sh - 1
 
 	errStyle := tcell.StyleDefault.Background(tcell.ColorDarkRed).Foreground(tcell.ColorWhite)
 	for x := 0; x < sw; x++ {
