@@ -31,3 +31,42 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+
+      - name: Add AI changelog summary
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG=${GITHUB_REF#refs/tags/}
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          if [ -z "$PREV_TAG" ]; then
+            echo "No previous tag found, skipping AI summary"
+            exit 0
+          fi
+
+          COMMITS=$(git log --oneline "${PREV_TAG}..HEAD")
+          if [ -z "$COMMITS" ]; then
+            echo "No commits since ${PREV_TAG}, skipping AI summary"
+            exit 0
+          fi
+
+          SUMMARY=$(curl -sf https://api.anthropic.com/v1/messages \
+            -H "x-api-key: $ANTHROPIC_API_KEY" \
+            -H "anthropic-version: 2023-06-01" \
+            -H "content-type: application/json" \
+            -d "$(jq -n --arg commits "$COMMITS" '{
+              model: "claude-haiku-4-5-20251001",
+              max_tokens: 256,
+              messages: [{
+                role: "user",
+                content: ("Summarize these commits into a 2-3 sentence changelog blurb for a GitHub release. Be concise and focus on what changed for users, not implementation details.\n\nCommits:\n" + $commits)
+              }]
+            }')" 2>/dev/null | jq -r '.content[0].text // empty') || SUMMARY=""
+
+          if [ -z "$SUMMARY" ]; then
+            echo "AI summary unavailable, skipping"
+            exit 0
+          fi
+
+          EXISTING=$(gh release view "$TAG" --repo nmelo/initech --json body --jq '.body')
+          gh release edit "$TAG" --repo nmelo/initech --notes "$(printf '%s\n\n---\n\n%s' "$SUMMARY" "$EXISTING")"
