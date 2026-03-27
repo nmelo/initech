@@ -1,7 +1,7 @@
 VERSION ?= dev
 LDFLAGS := -s -w -X github.com/nmelo/initech/cmd.Version=$(VERSION)
 
-.PHONY: build test vet clean release check
+.PHONY: build test vet clean release check install-hooks
 
 build:
 	go build -ldflags "$(LDFLAGS)" -o initech .
@@ -19,3 +19,10 @@ check: vet test
 
 release:
 	goreleaser release --clean
+
+install-hooks:
+	@GIT_DIR=$$(git rev-parse --git-dir) && \
+	  mkdir -p "$$GIT_DIR/hooks" && \
+	  printf '#!/bin/sh\nmake check\n' > "$$GIT_DIR/hooks/pre-commit" && \
+	  chmod +x "$$GIT_DIR/hooks/pre-commit" && \
+	  echo "pre-commit hook installed at $$GIT_DIR/hooks/pre-commit"
