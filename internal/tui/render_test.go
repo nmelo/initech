@@ -200,8 +200,13 @@ func TestApplyLayout_ReservesStatusBar(t *testing.T) {
 func TestRotateTip_AdvancesAfterInterval(t *testing.T) {
 	tui := &TUI{tipRotateAt: time.Now().Add(-1 * time.Second)}
 	tui.rotateTip()
-	if tui.tipIndex != 1 {
-		t.Errorf("tipIndex = %d, want 1 after rotation", tui.tipIndex)
+	// Random index: just verify it's within bounds.
+	if tui.tipIndex < 0 || tui.tipIndex >= len(statusTips) {
+		t.Errorf("tipIndex = %d, out of bounds [0, %d)", tui.tipIndex, len(statusTips))
+	}
+	// Verify the timer was reset.
+	if tui.tipRotateAt.Before(time.Now()) {
+		t.Error("tipRotateAt should be in the future after rotation")
 	}
 }
 
@@ -213,14 +218,15 @@ func TestRotateTip_NoAdvanceBeforeInterval(t *testing.T) {
 	}
 }
 
-func TestRotateTip_Wraps(t *testing.T) {
-	tui := &TUI{
-		tipIndex:    len(statusTips) - 1,
-		tipRotateAt: time.Now().Add(-1 * time.Second),
-	}
-	tui.rotateTip()
-	if tui.tipIndex != 0 {
-		t.Errorf("tipIndex = %d, want 0 (should wrap)", tui.tipIndex)
+func TestRotateTip_StaysInBounds(t *testing.T) {
+	// Run many rotations; index must always be valid.
+	tui := &TUI{}
+	for i := 0; i < 100; i++ {
+		tui.tipRotateAt = time.Now().Add(-1 * time.Second)
+		tui.rotateTip()
+		if tui.tipIndex < 0 || tui.tipIndex >= len(statusTips) {
+			t.Fatalf("iteration %d: tipIndex = %d, out of bounds", i, tui.tipIndex)
+		}
 	}
 }
 

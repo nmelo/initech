@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"math/rand"
 	"time"
 
 	"github.com/gdamore/tcell/v2"
@@ -153,7 +154,7 @@ const tipRotationInterval = 2 * time.Minute
 // Called from the render tick.
 func (t *TUI) rotateTip() {
 	if time.Now().After(t.tipRotateAt) {
-		t.tipIndex = (t.tipIndex + 1) % len(statusTips)
+		t.tipIndex = rand.Intn(len(statusTips))
 		t.tipRotateAt = time.Now().Add(tipRotationInterval)
 	}
 }
