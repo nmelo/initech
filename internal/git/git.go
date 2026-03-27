@@ -2,8 +2,8 @@
 // It handles repo initialization, submodule management, and commits.
 //
 // All operations take an exec.Runner, making the package fully testable
-// without a real git installation. This package does not know about config,
-// tmux, or scaffold.
+// without a real git installation. This package does not know about config
+// or scaffold.
 package git
 
 import (

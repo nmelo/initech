@@ -6,8 +6,8 @@
 // force is true. This lets users safely re-run initech init without losing
 // their customizations.
 //
-// This package does not know about git, tmux, beads, or tmuxinator. It only
-// creates directories and writes files.
+// This package does not know about git or beads. It only creates directories
+// and writes files.
 package scaffold
 
 import (

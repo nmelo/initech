@@ -5,8 +5,8 @@
 // current directory, then walk upward to find initech.yaml (like .git
 // discovery). The first match wins.
 //
-// This package does not know about tmux, git, scaffold, or roles. It only
-// knows how to turn a YAML file into a validated Go struct.
+// This package does not know about git, scaffold, or roles. It only knows
+// how to turn a YAML file into a validated Go struct.
 package config
 
 import (
