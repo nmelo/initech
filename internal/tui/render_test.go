@@ -53,7 +53,7 @@ func TestRenderStatusBar_DefaultHints(t *testing.T) {
 
 	// Check that the bottom row contains hint text.
 	_, sh := s.Size()
-	y := sh - 1
+	y := sh - 2
 	var line string
 	for x := 0; x < 60; x++ {
 		ch, _, _, _ := s.GetContent(x, y)
@@ -94,7 +94,7 @@ func TestRenderStatusBar_Error(t *testing.T) {
 
 	// The bottom row should have a red background (error style).
 	_, sh := s.Size()
-	y := sh - 1
+	y := sh - 2
 	var line string
 	for x := 0; x < 20; x++ {
 		ch, _, _, _ := s.GetContent(x, y)
@@ -119,7 +119,7 @@ func TestRenderStatusBar_CmdActive(t *testing.T) {
 
 	// Should show the > prompt on the bottom row.
 	_, sh := s.Size()
-	y := sh - 1
+	y := sh - 2
 	ch, _, _, _ := s.GetContent(0, y)
 	if ch != '>' {
 		t.Errorf("command bar should show > prompt, got %q", string(ch))
@@ -238,7 +238,7 @@ func TestRenderHints_ShowsTipAndShortcuts(t *testing.T) {
 	tui.renderHints()
 
 	sw, sh := s.Size()
-	y := sh - 1
+	y := sh - 2
 	var line string
 	for x := 0; x < sw; x++ {
 		ch, _, _, _ := s.GetContent(x, y)
@@ -271,7 +271,7 @@ func TestRenderHints_TruncatesOnNarrowTerminal(t *testing.T) {
 
 	// Should not panic. Shortcuts should still be visible.
 	sw, sh := s.Size()
-	y := sh - 1
+	y := sh - 2
 	var line string
 	for x := 0; x < sw; x++ {
 		ch, _, _, _ := s.GetContent(x, y)

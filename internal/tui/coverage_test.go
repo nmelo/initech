@@ -708,8 +708,8 @@ func TestRenderCmdLineOnScreen(t *testing.T) {
 	tui.render()
 
 	_, sh := s.Size()
-	// Command line prompt '>' should appear at bottom.
-	mainc, _, _, _ := s.GetContent(0, sh-1)
+	// Command line prompt '>' should appear at sh-2.
+	mainc, _, _, _ := s.GetContent(0, sh-2)
 	if mainc != '>' {
 		t.Errorf("cmd prompt = %q, want '>'", mainc)
 	}
@@ -723,8 +723,8 @@ func TestRenderCmdErrorOnScreen(t *testing.T) {
 	tui.render()
 
 	_, sh := s.Size()
-	// Error text should appear at bottom row.
-	mainc, _, _, _ := s.GetContent(1, sh-1)
+	// Error text should appear at sh-2.
+	mainc, _, _, _ := s.GetContent(1, sh-2)
 	if mainc != 'b' {
 		t.Errorf("error first char = %q, want 'b'", mainc)
 	}

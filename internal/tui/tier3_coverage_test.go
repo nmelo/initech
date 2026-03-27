@@ -166,7 +166,7 @@ func TestRenderCmdLine_PromptAndInput(t *testing.T) {
 	tui.renderCmdLine()
 
 	_, sh := s.Size()
-	y := sh - 1
+	y := sh - 2 // status bar renders at sh-2
 	// First char should be '>'.
 	c, _, _, _ := s.GetContent(0, y)
 	if c != '>' {
@@ -198,7 +198,7 @@ func TestRenderCmdLine_ConfirmPrompt(t *testing.T) {
 	_, sh := s.Size()
 	var buf strings.Builder
 	for x := 0; x < 60; x++ {
-		c, _, _, _ := s.GetContent(x, sh-1)
+		c, _, _, _ := s.GetContent(x, sh-2)
 		buf.WriteRune(c)
 	}
 	row := buf.String()
@@ -217,7 +217,7 @@ func TestRenderCmdLine_HintText(t *testing.T) {
 	_, sh := s.Size()
 	var buf strings.Builder
 	for x := 40; x < 80; x++ {
-		c, _, _, _ := s.GetContent(x, sh-1)
+		c, _, _, _ := s.GetContent(x, sh-2)
 		buf.WriteRune(c)
 	}
 	if !strings.Contains(buf.String(), "?:help") {
@@ -236,10 +236,10 @@ func TestRenderCmdLine_TabHint(t *testing.T) {
 	tui.renderCmdLine()
 
 	_, sh := s.Size()
-	// Tab hint is drawn one row above the input (sh-2).
+	// Tab hint is drawn one row above the input (sh-3).
 	var buf strings.Builder
 	for x := 0; x < 40; x++ {
-		c, _, _, _ := s.GetContent(x, sh-2)
+		c, _, _, _ := s.GetContent(x, sh-3)
 		buf.WriteRune(c)
 	}
 	if !strings.Contains(buf.String(), "eng1  eng2  eng3") {
