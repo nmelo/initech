@@ -2,6 +2,22 @@ version: 2
 
 project_name: initech
 
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^qa:'
+      - '^docs:'
+      - '^test:'
+      - '^Merge'
+  groups:
+    - title: Features
+      regexp: '^feat'
+    - title: Bug Fixes
+      regexp: '^fix'
+    - title: Other
+      order: 999
+
 builds:
   - binary: initech
     env:
