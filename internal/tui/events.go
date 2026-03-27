@@ -239,6 +239,27 @@ func (t *TUI) pruneConfirmation() {
 	}
 }
 
+// errorDisplayTTL is how long an error message stays in the status bar.
+const errorDisplayTTL = 5 * time.Second
+
+// pruneError auto-clears cmd.error after errorDisplayTTL. On the first tick
+// where error is non-empty and errorExpiry is zero, the expiry is stamped.
+// Subsequent ticks clear the error once the expiry passes.
+func (t *TUI) pruneError() {
+	if t.cmd.error == "" {
+		t.cmd.errorExpiry = time.Time{}
+		return
+	}
+	if t.cmd.errorExpiry.IsZero() {
+		t.cmd.errorExpiry = time.Now().Add(errorDisplayTTL)
+		return
+	}
+	if time.Now().After(t.cmd.errorExpiry) {
+		t.cmd.error = ""
+		t.cmd.errorExpiry = time.Time{}
+	}
+}
+
 // pruneNotifications removes expired notifications.
 func (t *TUI) pruneNotifications() {
 	now := time.Now()

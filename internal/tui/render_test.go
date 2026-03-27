@@ -4,6 +4,7 @@ package tui
 import (
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/gdamore/tcell/v2"
 )
@@ -122,6 +123,44 @@ func TestRenderStatusBar_CmdActive(t *testing.T) {
 	ch, _, _, _ := s.GetContent(0, y)
 	if ch != '>' {
 		t.Errorf("command bar should show > prompt, got %q", string(ch))
+	}
+}
+
+// TestPruneError_StampsExpiry verifies that the first prune tick stamps the
+// expiry, and a subsequent tick after the TTL clears the error.
+func TestPruneError_StampsExpiry(t *testing.T) {
+	tui := &TUI{}
+	tui.cmd.error = "something broke"
+
+	// First tick: stamps expiry, doesn't clear.
+	tui.pruneError()
+	if tui.cmd.error == "" {
+		t.Fatal("error should not be cleared on first tick")
+	}
+	if tui.cmd.errorExpiry.IsZero() {
+		t.Fatal("errorExpiry should be stamped after first tick")
+	}
+
+	// Simulate expiry passing.
+	tui.cmd.errorExpiry = time.Now().Add(-1 * time.Second)
+	tui.pruneError()
+	if tui.cmd.error != "" {
+		t.Errorf("error should be cleared after expiry, got %q", tui.cmd.error)
+	}
+}
+
+// TestPruneError_ResetsOnClear verifies expiry resets when error is cleared
+// externally (e.g., by opening the command modal).
+func TestPruneError_ResetsOnClear(t *testing.T) {
+	tui := &TUI{}
+	tui.cmd.error = "old error"
+	tui.pruneError() // stamps expiry
+
+	// External clear.
+	tui.cmd.error = ""
+	tui.pruneError()
+	if !tui.cmd.errorExpiry.IsZero() {
+		t.Error("errorExpiry should reset when error is empty")
 	}
 }
 

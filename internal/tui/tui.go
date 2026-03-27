@@ -38,6 +38,12 @@ type cmdModal struct {
 	buf    []rune
 	error  string // Shown briefly after a bad command.
 
+	// Error auto-clear: when error is set, errorExpiry tracks when to clear it.
+	// Zero value means the expiry hasn't been stamped yet (stamped lazily on
+	// the first render tick after error is set, so callers don't need to
+	// remember to set it).
+	errorExpiry time.Time
+
 	// Tab completion state.
 	tabBuf  string // Buffer content at last Tab press (double-Tab detection).
 	tabHint string // Completion hint line shown above the input bar; empty = no hint.
@@ -423,6 +429,7 @@ func Run(cfg Config) error {
 		case <-ticker.C:
 			t.pruneNotifications()
 			t.pruneConfirmation()
+			t.pruneError()
 			t.render()
 		case <-t.quitCh:
 			return nil
