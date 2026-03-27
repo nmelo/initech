@@ -93,6 +93,7 @@ type Pane struct {
 	pinned          bool             // Pinned agents are never auto-suspended.
 	resumeGrace     time.Time        // Until this time, post-resume grace period is active.
 	resumeMu        sync.Mutex       // Serializes concurrent resume attempts for this pane.
+	kittEpoch       time.Time        // Reference time for KITT scanner animation phase.
 	region          Region
 }
 
@@ -203,6 +204,7 @@ func NewPane(cfg PaneConfig, rows, cols int) (*Pane, error) {
 		activity:    StateIdle,
 		jsonlDir:    jsonlDir,
 		dedupEvents: newDedup(),
+		kittEpoch:   time.Now(),
 	}
 
 	return p, nil

@@ -5,7 +5,9 @@ package tui
 import (
 	"fmt"
 	"image/color"
+	"math"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
@@ -322,6 +324,62 @@ func (p *Pane) Render(screen tcell.Screen, focused bool, dimmed bool, index int,
 		}
 	}
 
+	// Activity bar on the top edge of the pane (ini-lw0). Overlays row 0
+	// of the content area. Running panes get a KITT scanner sweep; all
+	// other states get a static dim line.
+	p.renderActivityBar(s, r)
+}
+
+// renderActivityBar draws a 1-row activity indicator on the top edge of the
+// pane. Running panes show a KITT scanner effect (gaussian brightness peak
+// sweeping left-right). All other states show a static dim horizontal line.
+func (p *Pane) renderActivityBar(s *clampedScreen, r Region) {
+	if r.W < 1 {
+		return
+	}
+	bg := tcell.NewRGBColor(24, 24, 24)
+	baseBrightness := int32(35)
+	baseColor := tcell.NewRGBColor(baseBrightness, baseBrightness, baseBrightness)
+	baseStyle := tcell.StyleDefault.Background(bg).Foreground(baseColor)
+	y := r.Y // top row of the pane
+
+	if p.Activity() != StateRunning {
+		// Static dim bar for idle/dead/suspended panes.
+		for x := r.X; x < r.X+r.W; x++ {
+			s.SetContent(x, y, '\u2500', nil, baseStyle)
+		}
+		return
+	}
+
+	// KITT scanner: gaussian brightness peak sweeping left-right.
+	// Cycle period: ~2.5 seconds. Position computed from wall clock.
+	w := r.W
+	cycle := (w - 1) * 2
+	if cycle <= 0 {
+		return
+	}
+	// 2.5s per full cycle at 33ms per tick = ~76 ticks.
+	// Use fractional position from time for smooth sub-cell movement.
+	elapsed := time.Since(p.kittEpoch).Seconds()
+	ticksPerCycle := 2.5
+	frac := math.Mod(elapsed, ticksPerCycle) / ticksPerCycle
+	rawPos := frac * float64(cycle)
+	pos := rawPos
+	if pos >= float64(w) {
+		pos = float64(cycle) - pos // bounce back
+	}
+
+	for dx := 0; dx < w; dx++ {
+		dist := float64(dx) - pos
+		// Gaussian falloff: ~3-5 cells wide bright segment.
+		brightness := 85.0 * math.Exp(-dist*dist*0.15)
+		if brightness < float64(baseBrightness) {
+			brightness = float64(baseBrightness)
+		}
+		b := int32(brightness)
+		c := tcell.NewRGBColor(b, b, b)
+		s.SetContent(r.X+dx, y, '\u2500', nil, tcell.StyleDefault.Background(bg).Foreground(c))
+	}
 }
 
 // dimStyle returns a dimmed version of a tcell.Style for unfocused panes.
