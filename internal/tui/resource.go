@@ -12,10 +12,20 @@ package tui
 import (
 	"fmt"
 	"os/exec"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
 )
+
+// resumeGraceDuration is how long after resume a pane is exempt from
+// auto-suspend. Prevents the idle detector from immediately re-suspending
+// an agent that hasn't had time to start working yet.
+const resumeGraceDuration = 2 * time.Minute
+
+// maxSuspendPerCycle caps how many agents can be suspended in a single
+// monitor tick. Prevents cascading suspension of many agents at once.
+const maxSuspendPerCycle = 2
 
 // ── Feature gate ────────────────────────────────────────────────────
 
@@ -66,18 +76,21 @@ func (t *TUI) startMemoryMonitor() {
 }
 
 // memoryMonitorLoop is the long-running goroutine body. It ticks every 10s
-// and polls each pane's RSS plus system available memory.
+// and polls each pane's RSS plus system available memory, then evaluates the
+// suspend policy.
 func (t *TUI) memoryMonitorLoop() {
 	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
 
 	// Do an initial poll immediately rather than waiting 10s.
 	t.pollAllRSS()
+	t.checkSuspendPolicy()
 
 	for {
 		select {
 		case <-ticker.C:
 			t.pollAllRSS()
+			t.checkSuspendPolicy()
 		case <-t.quitCh:
 			return
 		}
@@ -110,6 +123,134 @@ func (t *TUI) pollAllRSS() {
 	if avail, err := systemMemoryAvail(); err == nil {
 		t.systemMemAvail = avail
 	}
+}
+
+// suspendCandidate holds the data needed to rank and suspend an agent.
+type suspendCandidate struct {
+	pane           *Pane
+	lastOutputTime time.Time
+	rssKB          int64
+}
+
+// checkSuspendPolicy evaluates memory pressure and suspends LRU idle agents
+// if usage exceeds the configured threshold. Runs after each RSS poll.
+func (t *TUI) checkSuspendPolicy() {
+	total := t.systemMemTotal
+	avail := t.systemMemAvail
+	if total <= 0 || avail < 0 {
+		return // Can't compute pressure without valid memory stats.
+	}
+
+	threshold := t.PressureThreshold()
+
+	suspended := 0
+	for suspended < maxSuspendPerCycle {
+		// Recompute pressure each iteration (avail changes after suspend).
+		usedPct := int((total - avail) * 100 / total)
+		if usedPct <= threshold {
+			return // Below threshold, nothing to do.
+		}
+
+		// Build candidate list on the main goroutine.
+		var candidates []suspendCandidate
+		t.runOnMain(func() {
+			focused := t.layoutState.Focused
+			for _, p := range t.panes {
+				p.mu.Lock()
+				alive := p.alive
+				activity := p.activity
+				bead := p.beadID
+				pinned := p.pinned
+				name := p.name
+				lot := p.lastOutputTime
+				rss := p.memoryRSS
+				inGrace := time.Now().Before(p.resumeGrace)
+				p.mu.Unlock()
+
+				if !alive || activity == StateSuspended || activity == StateDead {
+					continue
+				}
+				if activity != StateIdle {
+					continue
+				}
+				if bead != "" {
+					continue // Never suspend agents with beads.
+				}
+				if pinned {
+					continue
+				}
+				if name == focused {
+					continue // Never suspend the focused agent.
+				}
+				if inGrace {
+					continue // Recently resumed, give it time.
+				}
+				candidates = append(candidates, suspendCandidate{
+					pane:           p,
+					lastOutputTime: lot,
+					rssKB:          rss,
+				})
+			}
+		})
+
+		if len(candidates) == 0 {
+			LogDebug("resource", "pressure high but no suspend candidates",
+				"used_pct", usedPct, "threshold", threshold)
+			return
+		}
+
+		// Sort by lastOutputTime ascending (oldest/most idle first).
+		sort.Slice(candidates, func(i, j int) bool {
+			return candidates[i].lastOutputTime.Before(candidates[j].lastOutputTime)
+		})
+
+		victim := candidates[0]
+		freedKB := victim.rssKB
+		victimName := victim.pane.name
+
+		// Suspend: close the pane process and mark as suspended.
+		// Must happen on the main goroutine since Close() touches TUI state.
+		t.runOnMain(func() {
+			victim.pane.sendMu.Lock()
+			victim.pane.Close()
+			victim.pane.sendMu.Unlock()
+			victim.pane.mu.Lock()
+			victim.pane.activity = StateSuspended
+			victim.pane.mu.Unlock()
+		})
+
+		// Update available memory estimate (actual poll happens next cycle).
+		avail += freedKB
+
+		idleDur := time.Since(victim.lastOutputTime).Truncate(time.Second)
+		detail := fmt.Sprintf("Suspended %s (idle %s, freed %s)",
+			victimName, idleDur, formatRSSHuman(freedKB))
+
+		LogInfo("resource", "agent suspended",
+			"agent", victimName,
+			"idle", idleDur,
+			"freed_kb", freedKB,
+			"used_pct", usedPct,
+			"threshold", threshold)
+
+		EmitEvent(t.agentEvents, AgentEvent{
+			Type:   EventAgentSuspended,
+			Pane:   victimName,
+			Detail: detail,
+		})
+
+		suspended++
+	}
+}
+
+// formatRSSHuman formats kilobytes into a human-readable string.
+func formatRSSHuman(kb int64) string {
+	if kb > 1048576 {
+		return fmt.Sprintf("%.1f GB", float64(kb)/1048576)
+	} else if kb > 1024 {
+		return fmt.Sprintf("%.0f MB", float64(kb)/1024)
+	}
+	return fmt.Sprintf("%d KB", kb)
 }
 
 // pollPaneRSS queries the RSS of a single process via ps. Returns the RSS in

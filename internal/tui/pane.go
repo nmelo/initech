@@ -29,7 +29,7 @@ const (
 	StateRunning   ActivityState = iota // Claude is processing.
 	StateIdle                           // Waiting for input.
 	StateDead                           // Process has exited; pane is no longer alive.
-	StateSuspended                      // Process stopped by auto-suspend policy; will resume on message.
+	StateSuspended                      // Auto-suspended by resource policy. Eligible for resume.
 )
 
 // String returns a human-readable label for the state.
@@ -94,6 +94,8 @@ type Pane struct {
 	memoryRSS       int64            // RSS in kilobytes, updated by memory monitor goroutine.
 	suspended       bool             // True when auto-suspend policy has stopped this pane.
 	messageQueue    []QueuedMessage  // Messages waiting for resume. Capped at maxMessageQueue.
+	pinned          bool             // Pinned agents are never auto-suspended.
+	resumeGrace     time.Time        // Until this time, post-resume grace period is active.
 	region          Region
 }
 
@@ -776,6 +778,50 @@ func (p *Pane) setMemoryRSS(kb int64) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.memoryRSS = kb
+}
+
+// IsPinned returns whether this pane is protected from auto-suspension.
+func (p *Pane) IsPinned() bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.pinned
+}
+
+// Pin marks this pane as protected from auto-suspension.
+func (p *Pane) Pin() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.pinned = true
+}
+
+// Unpin removes auto-suspension protection from this pane.
+func (p *Pane) Unpin() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.pinned = false
+}
+
+// LastOutputTime returns the last time PTY output was received.
+func (p *Pane) LastOutputTime() time.Time {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.lastOutputTime
+}
+
+// InResumeGrace returns true if the pane is within the post-resume grace
+// period. During this window the pane is exempt from auto-suspend and
+// idle-with-bead notifications.
+func (p *Pane) InResumeGrace() bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return time.Now().Before(p.resumeGrace)
+}
+
+// SetResumeGrace sets the post-resume grace period expiration.
+func (p *Pane) SetResumeGrace(until time.Time) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.resumeGrace = until
 }
 
 // watchJSONL polls for the newest session JSONL file in the pane's project

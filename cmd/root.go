@@ -187,7 +187,7 @@ func runTUI(cmd *cobra.Command, args []string) error {
 		Verbose:           verbose,
 		Version:           Version,
 		AutoSuspend:       enableAutoSuspend,
-		PressureThreshold: proj.Resource.EffectivePressureThreshold(),
+		PressureThreshold: proj.Resource.PressureThreshold,
 		PaneConfigBuilder: func(name string) (tui.PaneConfig, error) {
 			return buildAgentPaneConfig(name, proj)
 		},

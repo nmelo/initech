@@ -23,6 +23,7 @@ const (
 	EventAgentStuck                     // Extended inactivity or error loop detected.
 	EventAgentIdle                      // Agent returned to idle after work.
 	EventAgentIdleWithBead              // Agent went running->idle while holding a bead.
+	EventAgentSuspended                 // Agent auto-suspended by resource pressure policy.
 )
 
 // String returns a human-readable label for the event type.
@@ -42,6 +43,8 @@ func (e EventType) String() string {
 		return "idle"
 	case EventAgentIdleWithBead:
 		return "idle-with-bead"
+	case EventAgentSuspended:
+		return "suspended"
 	}
 	return "unknown"
 }

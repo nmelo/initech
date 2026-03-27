@@ -60,12 +60,13 @@ func TestPollPaneRSS_CurrentProcess(t *testing.T) {
 }
 
 func TestPollPaneRSS_DeadProcess(t *testing.T) {
-	// PID 99999999 should not exist.
 	rss := pollPaneRSS(99999999)
 	if rss != 0 {
 		t.Errorf("pollPaneRSS(dead) = %d, want 0", rss)
 	}
 }
+
+// --- Pane accessor tests ---
 
 func TestPaneMemoryRSS_DefaultZero(t *testing.T) {
 	p := &Pane{}
@@ -91,13 +92,58 @@ func TestPaneMemoryRSS_ResetToZero(t *testing.T) {
 	}
 }
 
+func TestPanePinned(t *testing.T) {
+	p := &Pane{}
+	if p.IsPinned() {
+		t.Error("new pane should not be pinned")
+	}
+	p.Pin()
+	if !p.IsPinned() {
+		t.Error("pane should be pinned after Pin()")
+	}
+	p.Unpin()
+	if p.IsPinned() {
+		t.Error("pane should not be pinned after Unpin()")
+	}
+}
+
+func TestPaneLastOutputTime(t *testing.T) {
+	p := &Pane{}
+	if !p.LastOutputTime().IsZero() {
+		t.Error("new pane should have zero LastOutputTime")
+	}
+	now := time.Now()
+	p.mu.Lock()
+	p.lastOutputTime = now
+	p.mu.Unlock()
+	if got := p.LastOutputTime(); !got.Equal(now) {
+		t.Errorf("LastOutputTime() = %v, want %v", got, now)
+	}
+}
+
+func TestPaneResumeGrace(t *testing.T) {
+	p := &Pane{}
+	if p.InResumeGrace() {
+		t.Error("new pane should not be in resume grace")
+	}
+	p.SetResumeGrace(time.Now().Add(1 * time.Hour))
+	if !p.InResumeGrace() {
+		t.Error("pane should be in resume grace after SetResumeGrace(future)")
+	}
+	p.SetResumeGrace(time.Now().Add(-1 * time.Second))
+	if p.InResumeGrace() {
+		t.Error("pane should not be in resume grace after SetResumeGrace(past)")
+	}
+}
+
+// --- System memory tests ---
+
 func TestSystemMemoryTotal(t *testing.T) {
 	total, err := systemMemoryTotal()
 	if err != nil {
 		t.Fatalf("systemMemoryTotal() error: %v", err)
 	}
-	// Any real machine should have at least 512 MB (524288 KB).
-	if total < 524288 {
+	if total < 524288 { // At least 512 MB
 		t.Errorf("systemMemoryTotal() = %d KB, suspiciously low", total)
 	}
 }
@@ -107,7 +153,6 @@ func TestSystemMemoryAvail(t *testing.T) {
 	if err != nil {
 		t.Fatalf("systemMemoryAvail() error: %v", err)
 	}
-	// Should have at least some available memory.
 	if avail <= 0 {
 		t.Errorf("systemMemoryAvail() = %d KB, want > 0", avail)
 	}
@@ -127,12 +172,10 @@ func TestSystemMemoryTotal_Accessor(t *testing.T) {
 	}
 }
 
+// --- pollAllRSS integration ---
+
 func TestPollAllRSS_Integration(t *testing.T) {
-	// Create a TUI with ipcCh=nil so runOnMain executes directly.
-	tui := &TUI{
-		quitCh: make(chan struct{}),
-	}
-	// Create a pane with the current process PID (no real PTY needed).
+	tui := &TUI{quitCh: make(chan struct{})}
 	p := &Pane{pid: os.Getpid()}
 	tui.panes = []*Pane{p}
 
@@ -146,10 +189,190 @@ func TestPollAllRSS_Integration(t *testing.T) {
 	}
 }
 
-func TestMonitorNotStartedWhenDisabled(t *testing.T) {
-	// Verify the gate: when autoSuspend is false, startMemoryMonitor
-	// should not be called (tested via the Run() integration path).
-	// This test just checks the boolean gate directly.
+// --- Suspend policy tests ---
+
+// newResourceTestTUI creates a TUI with the ipcCh=nil (runOnMain executes directly)
+// and configurable memory values for testing the suspend policy.
+func newResourceTestTUI(total, avail int64, threshold int) *TUI {
+	return &TUI{
+		systemMemTotal:    total,
+		systemMemAvail:    avail,
+		pressureThreshold: threshold,
+		autoSuspend:       true,
+		quitCh:            make(chan struct{}),
+		agentEvents:       make(chan AgentEvent, 64),
+	}
+}
+
+func newResourceTestPane(name string, alive bool, activity ActivityState, beadID string, lastOutput time.Time) *Pane {
+	return &Pane{
+		name:           name,
+		alive:          alive,
+		activity:       activity,
+		beadID:         beadID,
+		lastOutputTime: lastOutput,
+		memoryRSS:      500000, // 500 MB default
+	}
+}
+
+func TestSuspendPolicy_BelowThreshold(t *testing.T) {
+	// 70% used, threshold 80% -> no suspension.
+	tui := newResourceTestTUI(100000, 30000, 80)
+	p := newResourceTestPane("eng1", true, StateIdle, "", time.Now().Add(-10*time.Minute))
+	tui.panes = []*Pane{p}
+
+	tui.checkSuspendPolicy()
+
+	p.mu.Lock()
+	act := p.activity
+	p.mu.Unlock()
+	if act == StateSuspended {
+		t.Error("should not suspend when below threshold")
+	}
+}
+
+func TestSuspendPolicy_SuspendsLRUIdle(t *testing.T) {
+	// 90% used, threshold 80% -> should suspend the oldest idle agent.
+	tui := newResourceTestTUI(100000, 10000, 80)
+	older := newResourceTestPane("eng1", true, StateIdle, "", time.Now().Add(-30*time.Minute))
+	newer := newResourceTestPane("eng2", true, StateIdle, "", time.Now().Add(-5*time.Minute))
+	tui.panes = []*Pane{older, newer}
+
+	tui.checkSuspendPolicy()
+
+	older.mu.Lock()
+	olderAct := older.activity
+	older.mu.Unlock()
+	newer.mu.Lock()
+	newerAct := newer.activity
+	newer.mu.Unlock()
+
+	if olderAct != StateSuspended {
+		t.Errorf("older idle agent should be suspended, got %v", olderAct)
+	}
+	// Newer should NOT be suspended (avail increases after first suspend).
+	if newerAct == StateSuspended {
+		t.Error("newer idle agent should not be suspended (pressure relieved)")
+	}
+}
+
+func TestSuspendPolicy_NeverSuspendsWithBead(t *testing.T) {
+	// 95% used, but only agent has a bead -> no suspension.
+	tui := newResourceTestTUI(100000, 5000, 80)
+	p := newResourceTestPane("eng1", true, StateIdle, "ini-abc.1", time.Now().Add(-30*time.Minute))
+	tui.panes = []*Pane{p}
+
+	tui.checkSuspendPolicy()
+
+	p.mu.Lock()
+	act := p.activity
+	p.mu.Unlock()
+	if act == StateSuspended {
+		t.Error("should never suspend agent with bead")
+	}
+}
+
+func TestSuspendPolicy_NeverSuspendsPinned(t *testing.T) {
+	tui := newResourceTestTUI(100000, 5000, 80)
+	p := newResourceTestPane("eng1", true, StateIdle, "", time.Now().Add(-30*time.Minute))
+	p.pinned = true
+	tui.panes = []*Pane{p}
+
+	tui.checkSuspendPolicy()
+
+	p.mu.Lock()
+	act := p.activity
+	p.mu.Unlock()
+	if act == StateSuspended {
+		t.Error("should never suspend pinned agent")
+	}
+}
+
+func TestSuspendPolicy_NeverSuspendsFocused(t *testing.T) {
+	tui := newResourceTestTUI(100000, 5000, 80)
+	p := newResourceTestPane("eng1", true, StateIdle, "", time.Now().Add(-30*time.Minute))
+	tui.panes = []*Pane{p}
+	tui.layoutState.Focused = "eng1"
+
+	tui.checkSuspendPolicy()
+
+	p.mu.Lock()
+	act := p.activity
+	p.mu.Unlock()
+	if act == StateSuspended {
+		t.Error("should never suspend focused agent")
+	}
+}
+
+func TestSuspendPolicy_NeverSuspendsRunning(t *testing.T) {
+	tui := newResourceTestTUI(100000, 5000, 80)
+	p := newResourceTestPane("eng1", true, StateRunning, "", time.Now())
+	tui.panes = []*Pane{p}
+
+	tui.checkSuspendPolicy()
+
+	p.mu.Lock()
+	act := p.activity
+	p.mu.Unlock()
+	if act == StateSuspended {
+		t.Error("should never suspend running agent")
+	}
+}
+
+func TestSuspendPolicy_RespectsResumeGrace(t *testing.T) {
+	tui := newResourceTestTUI(100000, 5000, 80)
+	p := newResourceTestPane("eng1", true, StateIdle, "", time.Now().Add(-30*time.Minute))
+	p.resumeGrace = time.Now().Add(1 * time.Minute) // In grace period.
+	tui.panes = []*Pane{p}
+
+	tui.checkSuspendPolicy()
+
+	p.mu.Lock()
+	act := p.activity
+	p.mu.Unlock()
+	if act == StateSuspended {
+		t.Error("should not suspend agent in resume grace period")
+	}
+}
+
+func TestSuspendPolicy_MaxTwoPerCycle(t *testing.T) {
+	// Extreme pressure with 4 idle agents. Should suspend at most 2.
+	// Use very low avail and very high RSS so pressure stays high.
+	tui := newResourceTestTUI(100000, 1000, 80)
+	panes := make([]*Pane, 4)
+	for i := range panes {
+		panes[i] = newResourceTestPane(
+			"eng"+string(rune('1'+i)),
+			true, StateIdle, "",
+			time.Now().Add(-time.Duration(40-i*10)*time.Minute),
+		)
+		panes[i].memoryRSS = 100 // Tiny RSS so avail barely changes.
+	}
+	tui.panes = panes
+
+	tui.checkSuspendPolicy()
+
+	suspendedCount := 0
+	for _, p := range panes {
+		p.mu.Lock()
+		if p.activity == StateSuspended {
+			suspendedCount++
+		}
+		p.mu.Unlock()
+	}
+	if suspendedCount > maxSuspendPerCycle {
+		t.Errorf("suspended %d agents, max should be %d", suspendedCount, maxSuspendPerCycle)
+	}
+	if suspendedCount == 0 {
+		t.Error("should have suspended at least one agent under extreme pressure")
+	}
+}
+
+func TestSuspendPolicy_DisabledWhenGateOff(t *testing.T) {
+	// When autoSuspend is false, the monitor loop never starts.
+	// Even if checkSuspendPolicy were called directly, threshold defaults
+	// to 85 so it would still evaluate. The gate prevents the goroutine
+	// from launching in Run(). Test the gate separately.
 	tui := &TUI{autoSuspend: false}
 	if tui.ResourceEnabled() {
 		t.Error("resource should not be enabled when autoSuspend is false")
@@ -342,5 +565,144 @@ func TestHandleIPCSendBypassesQueueWhenNotSuspended(t *testing.T) {
 	// Queue should be empty — message was injected, not queued.
 	if p.QueueLen() != 0 {
 		t.Errorf("queue should be empty for non-suspended pane, got %d", p.QueueLen())
+	}
+}
+
+// ── Suspend policy tests ───────────────────────────────────────────
+
+func TestSuspendPolicy_ThresholdDefaultsTo85(t *testing.T) {
+	// pressureThreshold=0 (unset) should use default 85.
+	tui := newResourceTestTUI(100000, 14000, 0) // 86% used, default threshold 85
+	p := newResourceTestPane("eng1", true, StateIdle, "", time.Now().Add(-30*time.Minute))
+	tui.panes = []*Pane{p}
+
+	tui.checkSuspendPolicy()
+
+	p.mu.Lock()
+	act := p.activity
+	p.mu.Unlock()
+	if act != StateSuspended {
+		t.Error("threshold=0 should default to 85, and 86% usage should trigger suspend")
+	}
+}
+
+func TestSuspendPolicy_EmitsEvent(t *testing.T) {
+	tui := newResourceTestTUI(100000, 5000, 80)
+	p := newResourceTestPane("eng1", true, StateIdle, "", time.Now().Add(-30*time.Minute))
+	tui.panes = []*Pane{p}
+
+	tui.checkSuspendPolicy()
+
+	select {
+	case ev := <-tui.agentEvents:
+		if ev.Type != EventAgentSuspended {
+			t.Errorf("event type = %v, want EventAgentSuspended", ev.Type)
+		}
+		if ev.Pane != "eng1" {
+			t.Errorf("event pane = %q, want eng1", ev.Pane)
+		}
+	default:
+		t.Error("expected EventAgentSuspended to be emitted")
+	}
+}
+
+func TestSuspendPolicy_LRUOrdering(t *testing.T) {
+	// Three idle agents, only one should be suspended (the oldest).
+	// Set avail so only one suspension brings pressure below threshold.
+	// total=100000, avail=15000 -> 85% used. Threshold=80.
+	// After suspending one with 10000KB RSS: avail=25000 -> 75% used -> done.
+	tui := newResourceTestTUI(100000, 15000, 80)
+	oldest := newResourceTestPane("eng1", true, StateIdle, "", time.Now().Add(-60*time.Minute))
+	oldest.memoryRSS = 10000
+	middle := newResourceTestPane("eng2", true, StateIdle, "", time.Now().Add(-30*time.Minute))
+	middle.memoryRSS = 10000
+	newest := newResourceTestPane("eng3", true, StateIdle, "", time.Now().Add(-5*time.Minute))
+	newest.memoryRSS = 10000
+	tui.panes = []*Pane{newest, oldest, middle} // Scrambled order
+
+	tui.checkSuspendPolicy()
+
+	oldest.mu.Lock()
+	oldestAct := oldest.activity
+	oldest.mu.Unlock()
+	middle.mu.Lock()
+	middleAct := middle.activity
+	middle.mu.Unlock()
+	newest.mu.Lock()
+	newestAct := newest.activity
+	newest.mu.Unlock()
+
+	if oldestAct != StateSuspended {
+		t.Error("oldest idle agent should be suspended first")
+	}
+	if middleAct == StateSuspended {
+		t.Error("middle agent should not be suspended (pressure relieved)")
+	}
+	if newestAct == StateSuspended {
+		t.Error("newest agent should not be suspended")
+	}
+}
+
+func TestSuspendPolicy_SkipsDeadAndSuspended(t *testing.T) {
+	tui := newResourceTestTUI(100000, 5000, 80)
+	dead := newResourceTestPane("eng1", false, StateDead, "", time.Now().Add(-60*time.Minute))
+	suspended := newResourceTestPane("eng2", true, StateSuspended, "", time.Now().Add(-30*time.Minute))
+	idle := newResourceTestPane("eng3", true, StateIdle, "", time.Now().Add(-10*time.Minute))
+	tui.panes = []*Pane{dead, suspended, idle}
+
+	tui.checkSuspendPolicy()
+
+	dead.mu.Lock()
+	deadAct := dead.activity
+	dead.mu.Unlock()
+	suspended.mu.Lock()
+	suspAct := suspended.activity
+	suspended.mu.Unlock()
+	idle.mu.Lock()
+	idleAct := idle.activity
+	idle.mu.Unlock()
+
+	if deadAct != StateDead {
+		t.Error("dead pane should stay dead")
+	}
+	if suspAct != StateSuspended {
+		t.Error("already-suspended pane should stay suspended")
+	}
+	if idleAct != StateSuspended {
+		t.Error("idle pane should be suspended under pressure")
+	}
+}
+
+func TestSuspendPolicy_NoTotalMemory(t *testing.T) {
+	// systemMemTotal=0 means we couldn't query it. Policy should be a no-op.
+	tui := newResourceTestTUI(0, 5000, 80)
+	p := newResourceTestPane("eng1", true, StateIdle, "", time.Now().Add(-30*time.Minute))
+	tui.panes = []*Pane{p}
+
+	tui.checkSuspendPolicy()
+
+	p.mu.Lock()
+	act := p.activity
+	p.mu.Unlock()
+	if act == StateSuspended {
+		t.Error("should not suspend when total memory is unknown")
+	}
+}
+
+func TestFormatRSSHuman(t *testing.T) {
+	tests := []struct {
+		kb   int64
+		want string
+	}{
+		{500, "500 KB"},
+		{2048, "2 MB"},
+		{1048577, "1.0 GB"},
+		{2097152, "2.0 GB"},
+	}
+	for _, tt := range tests {
+		got := formatRSSHuman(tt.kb)
+		if got != tt.want {
+			t.Errorf("formatRSSHuman(%d) = %q, want %q", tt.kb, got, tt.want)
+		}
 	}
 }
