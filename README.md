@@ -7,7 +7,7 @@
 # initech
 
 <p align="center">
-  <img src="stapler.png" alt="I believe you have my stapler" width="300">
+  <img src="assets/stapler.png" alt="I believe you have my stapler" width="300">
 </p>
 
 A terminal multiplexer purpose-built for running multiple Claude Code agents simultaneously. Each agent gets its own PTY-backed pane with terminal emulation, activity detection, bead tracking, and reliable IPC messaging. Replaces tmux with a runtime that understands agent state, work assignments, and session lifecycle. 9,300 lines of Go, 10,500 lines of tests, 15 CLI commands, 11 role templates.
