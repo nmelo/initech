@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
@@ -29,18 +28,17 @@ func (t *TUI) refreshTopData() {
 		}
 		if p.pid > 0 {
 			e.PID = p.pid
-			// Query ps for RSS and process name.
-			out, err := exec.Command("ps", "-o", "rss=,comm=", "-p",
+			// Sum RSS across the entire process tree (shell -> node -> claude).
+			// The pane PID is the shell wrapper; the real Claude process is 2-3
+			// levels deep and holds the bulk of the memory (ini-ac4).
+			e.RSS = processTreeRSS(p.pid)
+			// Query process name from the direct PID (shell wrapper).
+			out, err := exec.Command("ps", "-o", "comm=", "-p",
 				fmt.Sprintf("%d", e.PID)).Output()
 			if err == nil {
-				fields := strings.Fields(strings.TrimSpace(string(out)))
-				if len(fields) >= 1 {
-					if rss, err := strconv.ParseInt(fields[0], 10, 64); err == nil {
-						e.RSS = rss
-					}
-				}
-				if len(fields) >= 2 {
-					e.Comm = filepath.Base(fields[1])
+				comm := strings.TrimSpace(string(out))
+				if comm != "" {
+					e.Comm = filepath.Base(comm)
 				}
 			}
 		}

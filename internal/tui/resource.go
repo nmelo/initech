@@ -253,21 +253,69 @@ func formatRSSHuman(kb int64) string {
 	return fmt.Sprintf("%d KB", kb)
 }
 
-// pollPaneRSS queries the RSS of a single process via ps. Returns the RSS in
-// kilobytes, or 0 if the PID is invalid or ps fails (process died).
+// pollPaneRSS returns the total RSS of a process and all its descendants in
+// kilobytes. This is necessary because the pane's stored PID is the shell
+// wrapper (/bin/sh), not the actual Claude process which is 2-3 levels deep:
+//   /bin/sh (2MB) -> node/ccs (75MB) -> claude (500-900MB)
+// Reading only the shell PID would report ~2MB instead of the real ~600-900MB.
 func pollPaneRSS(pid int) int64 {
+	return processTreeRSS(pid)
+}
+
+// processTreeRSS sums the RSS of a process and all its descendants by walking
+// the process tree via pgrep -P. Returns 0 if the PID is invalid or dead.
+func processTreeRSS(pid int) int64 {
 	if pid <= 0 {
 		return 0
 	}
-	out, err := exec.Command("ps", "-o", "rss=", "-p", fmt.Sprintf("%d", pid)).Output()
-	if err != nil {
-		return 0 // Process likely dead.
+
+	// Collect all PIDs in the tree (root + descendants).
+	pids := collectDescendants(pid)
+	pids = append(pids, pid)
+
+	// Query RSS for all PIDs in one ps call.
+	args := make([]string, 0, len(pids)*2+2)
+	args = append(args, "-o", "rss=")
+	for _, p := range pids {
+		args = append(args, "-p", fmt.Sprintf("%d", p))
 	}
-	rss, err := strconv.ParseInt(strings.TrimSpace(string(out)), 10, 64)
+	out, err := exec.Command("ps", args...).Output()
 	if err != nil {
 		return 0
 	}
-	return rss
+
+	var total int64
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if rss, err := strconv.ParseInt(line, 10, 64); err == nil {
+			total += rss
+		}
+	}
+	return total
+}
+
+// collectDescendants returns all descendant PIDs of the given process using
+// pgrep -P. Recurses to capture grandchildren (e.g., sh -> node -> claude).
+func collectDescendants(pid int) []int {
+	out, err := exec.Command("pgrep", "-P", fmt.Sprintf("%d", pid)).Output()
+	if err != nil {
+		return nil
+	}
+	var result []int
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if child, err := strconv.Atoi(line); err == nil {
+			result = append(result, child)
+			result = append(result, collectDescendants(child)...)
+		}
+	}
+	return result
 }
 
 // ── Message queue for suspended panes ───────────────────────────────
