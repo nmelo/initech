@@ -339,10 +339,15 @@ func Run(cfg Config) error {
 	LogInfo("ipc", "listening", "path", sockPath)
 	defer ipcCleanup()
 
-	// Compute initial regions for pane creation.
+	// Compute initial regions for pane creation. Reserve 1 row for the
+	// persistent status bar, matching what applyLayout will compute.
+	paneInitH := initH - 1
+	if paneInitH < 1 {
+		paneInitH = 1
+	}
 	ls := t.layoutState
 	regions := gridRegions(ls.GridCols, ls.GridRows, len(cfg.Agents),
-		initW, initH, ls.ColWeights, ls.RowWeights)
+		initW, paneInitH, ls.ColWeights, ls.RowWeights)
 
 	// Inject the socket path and agent name into every agent's environment.
 	for i := range cfg.Agents {
