@@ -22,6 +22,7 @@ func (p *Pane) watchJSONL() {
 
 	var lastFile string
 	var lastOffset int64
+	initialRead := true // First read of a file populates the journal but skips bead detection.
 
 	for {
 		<-ticker.C
@@ -39,10 +40,13 @@ func (p *Pane) watchJSONL() {
 			continue
 		}
 
-		// File rotation: new file -> reset offset.
+		// File rotation: new file -> reset offset. Mark as initial read
+		// so the first batch of entries doesn't trigger bead detection
+		// (prevents ghost beads from stale --continue session history).
 		if file != lastFile {
 			lastFile = file
 			lastOffset = 0
+			initialRead = true
 		}
 
 		// Check file size. Truncation (size < offset) -> reset.
@@ -74,13 +78,23 @@ func (p *Pane) watchJSONL() {
 			}
 			p.mu.Unlock()
 
-			// Bead auto-detection: check new entries for bd claim/clear signals.
-			if p.eventCh != nil {
+			// Bead auto-detection: only run on entries written AFTER the pane
+			// started watching. The initial read loads history from prior
+			// --continue sessions; those old bd update commands would set ghost
+			// bead IDs that no longer exist (ini-anv).
+			if p.eventCh != nil && !initialRead {
 				p.applyBeadDetection(entries)
 			}
 		}
 
-		p.runDetectors(entries)
+		if initialRead {
+			initialRead = false
+			// Still run detectors to initialize stall/stuck state, but entries
+			// from the initial read are not treated as "new" for detection.
+			p.runDetectors(nil)
+		} else {
+			p.runDetectors(entries)
+		}
 	}
 }
 
