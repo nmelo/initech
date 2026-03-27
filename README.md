@@ -1,6 +1,6 @@
 [![Go](https://img.shields.io/badge/Go-1.25-00ADD8?logo=go&logoColor=white)](https://go.dev)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Coverage](https://img.shields.io/badge/coverage-62.5%25-yellowgreen)](https://github.com/nmelo/initech)
+[![Coverage](https://img.shields.io/badge/coverage-65.3%25-yellowgreen)](https://github.com/nmelo/initech)
 [![Homebrew](https://img.shields.io/badge/brew-nmelo%2Ftap-orange?logo=homebrew)](https://github.com/nmelo/homebrew-tap)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/nmelo/initech)
 
