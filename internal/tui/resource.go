@@ -17,6 +17,8 @@ import (
 	"time"
 )
 
+// ── Feature gate ────────────────────────────────────────────────────
+
 // ResourceEnabled reports whether resource-aware auto-suspend is active for
 // this TUI instance. All resource management code should check this gate
 // before taking any action.
@@ -43,6 +45,8 @@ func (t *TUI) SystemMemoryAvailable() int64 {
 func (t *TUI) SystemMemoryTotal() int64 {
 	return t.systemMemTotal
 }
+
+// ── Memory monitor ──────────────────────────────────────────────────
 
 // startMemoryMonitor launches a goroutine that polls RSS per agent and system
 // available memory every 10 seconds. Only called when autoSuspend is true.
@@ -123,4 +127,57 @@ func pollPaneRSS(pid int) int64 {
 		return 0
 	}
 	return rss
+}
+
+// ── Message queue for suspended panes ───────────────────────────────
+
+// maxMessageQueue is the maximum number of messages buffered for a suspended
+// pane. When the queue is full, the oldest message is dropped to make room.
+const maxMessageQueue = 20
+
+// QueuedMessage is a message waiting to be delivered to a suspended pane.
+// On resume, the queue is drained in FIFO order via injectText.
+type QueuedMessage struct {
+	Text  string
+	Enter bool
+	Time  time.Time
+}
+
+// EnqueueMessage appends a message to the pane's queue. If the queue is at
+// capacity (maxMessageQueue), the oldest message is dropped. Returns true if
+// a message was dropped to make room.
+//
+// Caller must be on the main goroutine (via runOnMain).
+func (p *Pane) EnqueueMessage(text string, enter bool) bool {
+	dropped := false
+	if len(p.messageQueue) >= maxMessageQueue {
+		p.messageQueue = p.messageQueue[1:]
+		dropped = true
+	}
+	p.messageQueue = append(p.messageQueue, QueuedMessage{
+		Text:  text,
+		Enter: enter,
+		Time:  time.Now(),
+	})
+	return dropped
+}
+
+// DrainQueue returns all queued messages in FIFO order and clears the queue.
+// Called on resume to deliver buffered messages.
+//
+// Caller must be on the main goroutine (via runOnMain).
+func (p *Pane) DrainQueue() []QueuedMessage {
+	if len(p.messageQueue) == 0 {
+		return nil
+	}
+	msgs := p.messageQueue
+	p.messageQueue = nil
+	return msgs
+}
+
+// QueueLen returns the number of messages waiting in the queue.
+func (p *Pane) QueueLen() int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return len(p.messageQueue)
 }

@@ -142,12 +142,34 @@ func (t *TUI) handleIPCSend(conn net.Conn, req IPCRequest) {
 	}
 
 	var pane *Pane
-	if !t.runOnMain(func() { pane = t.findPane(req.Target) }) {
+	var queued bool
+	if !t.runOnMain(func() {
+		pane = t.findPane(req.Target)
+		if pane != nil && pane.suspended {
+			dropped := pane.EnqueueMessage(req.Text, req.Enter)
+			if dropped {
+				t.notifications = append(t.notifications, notification{
+					event: AgentEvent{
+						Type:   EventAgentStalled,
+						Pane:   pane.name,
+						Detail: "Message queue full, oldest message dropped.",
+						Time:   time.Now(),
+					},
+					expires: time.Now().Add(notificationTTL),
+				})
+			}
+			queued = true
+		}
+	}) {
 		writeIPCResponse(conn, IPCResponse{Error: "TUI shutting down"})
 		return
 	}
 	if pane == nil {
 		writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("pane %q not found", req.Target)})
+		return
+	}
+	if queued {
+		writeIPCResponse(conn, IPCResponse{OK: true, Data: `"queued (agent suspended, will deliver on resume)"`})
 		return
 	}
 

@@ -93,6 +93,7 @@ type Pane struct {
 	backlogCount    int              // Number of ready beads at last idle-with-backlog detection.
 	memoryRSS       int64            // RSS in kilobytes, updated by memory monitor goroutine.
 	suspended       bool             // True when auto-suspend policy has stopped this pane.
+	messageQueue    []QueuedMessage  // Messages waiting for resume. Capped at maxMessageQueue.
 	region          Region
 }
 
