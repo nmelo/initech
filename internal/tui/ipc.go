@@ -182,12 +182,17 @@ func (t *TUI) injectText(pane *Pane, text string, enter bool) {
 	if enter {
 		pane.emu.SendKey(uv.KeyPressEvent(uv.Key{Code: uv.KeyEnter}))
 
-		// Smart single-retry for paste dialog (ini-f0d): wait 200ms for the
-		// async display pipeline to reflect the result, then check if input is
-		// still stuck. If the stuck content looks like what we injected (raw text
-		// or "[Pasted text #N ...]"), send one more Enter. If the stuck content
-		// is something else (user's restored stashed input), do NOT retry.
-		time.Sleep(200 * time.Millisecond)
+		// Smart single-retry for paste dialog (ini-f0d): wait for the async
+		// display pipeline to reflect the result, then check if input is still
+		// stuck. 2s accounts for the round-trip: Claude Code detects the paste,
+		// renders the dialog, sends escape sequences back, and readLoop writes
+		// them to the emulator. If the stuck content looks like what we injected
+		// (raw text or "[Pasted text #N ...]"), send one more Enter. If the
+		// stuck content is something else (user's restored stashed input), do
+		// NOT retry. Skip entirely for dead panes.
+		if pane.IsAlive() {
+			time.Sleep(2 * time.Second)
+		}
 		if pane.IsAlive() && hasStuckInput(pane) {
 			content := getPromptContent(pane)
 			if looksLikeInjectedText(content, text) {
