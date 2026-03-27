@@ -122,6 +122,11 @@ type TUI struct {
 	// Build version for crash reports.
 	version string
 
+	// Resource management gate. When false, all resource management
+	// (memory monitor, auto-suspend policy) is dormant.
+	autoSuspend       bool
+	pressureThreshold int
+
 	// Agent event system.
 	agentEvents   chan AgentEvent // Buffered channel for semantic events from detection modules.
 	notifications []notification // Active notifications for rendering.
@@ -192,6 +197,8 @@ type Config struct {
 	ResetLayout       bool                            // Ignore saved layout and start with defaults.
 	Verbose           bool                            // Enable DEBUG-level logging (default: INFO).
 	Version           string                          // Build version for crash reports.
+	AutoSuspend       bool                            // Enable resource-aware auto-suspend/resume.
+	PressureThreshold int                             // RSS percentage threshold (0 uses default 85).
 	PaneConfigBuilder func(name string) (PaneConfig, error) // Optional factory for hot-add. Nil disables add command.
 }
 
@@ -300,6 +307,8 @@ func Run(cfg Config) error {
 		version:           cfg.Version,
 		sockPath:          sp,
 		paneConfigBuilder: cfg.PaneConfigBuilder,
+		autoSuspend:       cfg.AutoSuspend,
+		pressureThreshold: cfg.PressureThreshold,
 		quitCh:            quitCh,
 		ipcCh:             make(chan ipcAction, 32),
 		agentEvents:       make(chan AgentEvent, 64),

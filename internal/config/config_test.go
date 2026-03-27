@@ -308,6 +308,78 @@ role_overrides:
 	}
 }
 
+func TestLoad_ResourceConfig(t *testing.T) {
+	dir := t.TempDir()
+	yaml := `project: test
+root: /tmp/test
+roles:
+  - super
+resource:
+  auto_suspend: true
+  pressure_threshold: 70
+`
+	path := writeConfig(t, dir, yaml)
+
+	p, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	if !p.Resource.AutoSuspend {
+		t.Error("Resource.AutoSuspend should be true")
+	}
+	if p.Resource.PressureThreshold != 70 {
+		t.Errorf("Resource.PressureThreshold = %d, want 70", p.Resource.PressureThreshold)
+	}
+	if p.Resource.EffectivePressureThreshold() != 70 {
+		t.Errorf("EffectivePressureThreshold() = %d, want 70", p.Resource.EffectivePressureThreshold())
+	}
+}
+
+func TestLoad_ResourceConfig_Absent(t *testing.T) {
+	dir := t.TempDir()
+	path := writeConfig(t, dir, validYAML)
+
+	p, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	if p.Resource.AutoSuspend {
+		t.Error("Resource.AutoSuspend should be false when absent")
+	}
+	if p.Resource.PressureThreshold != 0 {
+		t.Errorf("Resource.PressureThreshold = %d, want 0 (unset)", p.Resource.PressureThreshold)
+	}
+	if p.Resource.EffectivePressureThreshold() != DefaultPressureThreshold {
+		t.Errorf("EffectivePressureThreshold() = %d, want %d", p.Resource.EffectivePressureThreshold(), DefaultPressureThreshold)
+	}
+}
+
+func TestLoad_ResourceConfig_AutoSuspendOnly(t *testing.T) {
+	dir := t.TempDir()
+	yaml := `project: test
+root: /tmp/test
+roles:
+  - super
+resource:
+  auto_suspend: true
+`
+	path := writeConfig(t, dir, yaml)
+
+	p, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	if !p.Resource.AutoSuspend {
+		t.Error("Resource.AutoSuspend should be true")
+	}
+	if p.Resource.EffectivePressureThreshold() != DefaultPressureThreshold {
+		t.Errorf("EffectivePressureThreshold() = %d, want %d", p.Resource.EffectivePressureThreshold(), DefaultPressureThreshold)
+	}
+}
+
 func TestWrite(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "initech.yaml")

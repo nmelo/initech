@@ -31,6 +31,7 @@ type Project struct {
 	Repos         []Repo                  `yaml:"repos,omitempty"`
 	Env           map[string]string       `yaml:"env,omitempty"`
 	Beads         BeadsConfig             `yaml:"beads,omitempty"`
+	Resource      ResourceConfig          `yaml:"resource,omitempty"`
 	Roles         []string                `yaml:"roles"`
 	Grid          []string                `yaml:"grid,omitempty"`
 	ClaudeCommand []string                `yaml:"claude_command,omitempty"`
@@ -47,6 +48,27 @@ type Repo struct {
 // BeadsConfig holds beads issue tracker settings.
 type BeadsConfig struct {
 	Prefix string `yaml:"prefix,omitempty"`
+}
+
+// ResourceConfig holds resource management settings. When AutoSuspend is true,
+// the TUI runs a memory monitor and can auto-suspend/resume agents under
+// memory pressure. When absent or false, all resource management is dormant.
+type ResourceConfig struct {
+	AutoSuspend       bool `yaml:"auto_suspend,omitempty"`
+	PressureThreshold int  `yaml:"pressure_threshold,omitempty"` // RSS percentage (0-100). Default: 85.
+}
+
+// DefaultPressureThreshold is the RSS percentage above which agents may be
+// auto-suspended. Used when PressureThreshold is zero (unset).
+const DefaultPressureThreshold = 85
+
+// EffectivePressureThreshold returns the pressure threshold to use, applying
+// the default when the configured value is zero.
+func (rc ResourceConfig) EffectivePressureThreshold() int {
+	if rc.PressureThreshold > 0 {
+		return rc.PressureThreshold
+	}
+	return DefaultPressureThreshold
 }
 
 // RoleOverride lets a project customize per-role settings beyond catalog defaults.

@@ -21,6 +21,7 @@ var (
 	resetLayout bool
 	verbose     bool
 	noColor     bool
+	autoSuspend bool
 )
 
 var rootCmd = &cobra.Command{
@@ -72,6 +73,7 @@ func Execute() {
 func init() {
 	rootCmd.Flags().BoolVar(&resetLayout, "reset-layout", false, "Ignore saved layout and start with auto-calculated defaults")
 	rootCmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Enable DEBUG-level logging to .initech/initech.log")
+	rootCmd.Flags().BoolVar(&autoSuspend, "auto-suspend", false, "Enable automatic agent suspension under memory pressure")
 	rootCmd.PersistentFlags().BoolVar(&noColor, "no-color", false, "Disable colored output")
 
 	// Register color functions as template functions so the usage template can
@@ -169,13 +171,23 @@ func runTUI(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("no valid role directories found. Run 'initech init' to create them")
 	}
 
+	// Resolve auto-suspend: CLI flag overrides config. If the flag was
+	// explicitly set on the command line, it wins. Otherwise, fall back to
+	// the config file value.
+	enableAutoSuspend := proj.Resource.AutoSuspend
+	if cmd.Flags().Changed("auto-suspend") {
+		enableAutoSuspend = autoSuspend
+	}
+
 	return tui.Run(tui.Config{
-		Agents:      agents,
-		ProjectName: proj.Name,
-		ProjectRoot: proj.Root,
-		ResetLayout: resetLayout,
-		Verbose:     verbose,
-		Version:     Version,
+		Agents:            agents,
+		ProjectName:       proj.Name,
+		ProjectRoot:       proj.Root,
+		ResetLayout:       resetLayout,
+		Verbose:           verbose,
+		Version:           Version,
+		AutoSuspend:       enableAutoSuspend,
+		PressureThreshold: proj.Resource.EffectivePressureThreshold(),
 		PaneConfigBuilder: func(name string) (tui.PaneConfig, error) {
 			return buildAgentPaneConfig(name, proj)
 		},
