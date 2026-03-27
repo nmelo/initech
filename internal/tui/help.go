@@ -3,7 +3,11 @@
 // Closed by pressing Esc, backtick, or q.
 package tui
 
-import "github.com/gdamore/tcell/v2"
+import (
+	"fmt"
+
+	"github.com/gdamore/tcell/v2"
+)
 
 // helpLines is the static help content. Update when commands change.
 var helpLines = []string{
@@ -70,6 +74,9 @@ func (t *TUI) renderHelp() {
 
 	// Title bar.
 	title := " initech help "
+	if t.version != "" {
+		title = fmt.Sprintf(" initech help (v%s) ", t.version)
+	}
 	for x := 0; x < sw; x++ {
 		s.SetContent(x, 0, ' ', nil, titleStyle)
 	}
