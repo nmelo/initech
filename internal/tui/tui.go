@@ -126,6 +126,8 @@ type TUI struct {
 	// (memory monitor, auto-suspend policy) is dormant.
 	autoSuspend       bool
 	pressureThreshold int
+	systemMemAvail    int64      // Available system RAM in KB, updated by memory monitor.
+	systemMemTotal    int64      // Total system RAM in KB, queried once at startup.
 
 	// Agent event system.
 	agentEvents   chan AgentEvent // Buffered channel for semantic events from detection modules.
@@ -368,6 +370,11 @@ func Run(cfg Config) error {
 	// Start idle-with-backlog detection if bd is available.
 	if _, err := osexec.LookPath("bd"); err == nil {
 		t.safeGo(func() { t.watchBacklog(&iexec.DefaultRunner{}) })
+	}
+
+	// Start memory monitor when auto-suspend is enabled.
+	if t.autoSuspend {
+		t.startMemoryMonitor()
 	}
 
 	// Poll tcell events in a goroutine.

@@ -88,6 +88,7 @@ type Pane struct {
 	scrollOffset    int              // Rows scrolled back from live view (0 = live).
 	idleWithBacklog bool             // True when idle and ready beads exist in the backlog.
 	backlogCount    int              // Number of ready beads at last idle-with-backlog detection.
+	memoryRSS       int64            // RSS in kilobytes, updated by memory monitor goroutine.
 	region          Region
 }
 
@@ -734,6 +735,22 @@ func (p *Pane) ClearIdleWithBacklog() {
 	defer p.mu.Unlock()
 	p.idleWithBacklog = false
 	p.backlogCount = 0
+}
+
+// MemoryRSS returns the pane's last polled RSS in kilobytes.
+// Returns 0 if the memory monitor has not yet polled or the process is dead.
+func (p *Pane) MemoryRSS() int64 {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.memoryRSS
+}
+
+// setMemoryRSS updates the pane's cached RSS value. Called by the memory
+// monitor goroutine.
+func (p *Pane) setMemoryRSS(kb int64) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.memoryRSS = kb
 }
 
 // watchJSONL polls for the newest session JSONL file in the pane's project
