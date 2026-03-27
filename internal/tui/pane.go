@@ -697,6 +697,21 @@ func (p *Pane) SetSuspended(v bool) {
 	p.suspended = v
 }
 
+// IsPinned reports whether the operator has pinned this pane to prevent
+// auto-suspension. Pinned panes are always kept running.
+func (p *Pane) IsPinned() bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.pinned
+}
+
+// SetPinned marks the pane as pinned (true) or unpinned (false).
+func (p *Pane) SetPinned(v bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.pinned = v
+}
+
 // SessionDesc returns the session description extracted from Claude's cursor row.
 func (p *Pane) SessionDesc() string {
 	p.mu.Lock()
@@ -779,27 +794,6 @@ func (p *Pane) setMemoryRSS(kb int64) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.memoryRSS = kb
-}
-
-// IsPinned returns whether this pane is protected from auto-suspension.
-func (p *Pane) IsPinned() bool {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	return p.pinned
-}
-
-// Pin marks this pane as protected from auto-suspension.
-func (p *Pane) Pin() {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	p.pinned = true
-}
-
-// Unpin removes auto-suspension protection from this pane.
-func (p *Pane) Unpin() {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	p.pinned = false
 }
 
 // LastOutputTime returns the last time PTY output was received.

@@ -117,6 +117,23 @@ func (t *TUI) handleTopKey(ev *tcell.EventKey) bool {
 				t.top.cacheTime = time.Time{}
 			}
 			return false
+		case 'p':
+			if t.top.selected >= 0 && t.top.selected < len(t.panes) {
+				name := t.panes[t.top.selected].name
+				if t.layoutState.Pinned == nil {
+					t.layoutState.Pinned = make(map[string]bool)
+				}
+				if t.layoutState.Pinned[name] {
+					delete(t.layoutState.Pinned, name)
+					t.panes[t.top.selected].SetPinned(false)
+				} else {
+					t.layoutState.Pinned[name] = true
+					t.panes[t.top.selected].SetPinned(true)
+				}
+				t.saveLayoutIfConfigured()
+				t.top.cacheTime = time.Time{} // refresh display
+			}
+			return false
 		case 'h':
 			if t.top.selected >= 0 && t.top.selected < len(t.panes) {
 				name := t.panes[t.top.selected].name

@@ -352,6 +352,24 @@ func (t *TUI) completionCandidates(cmd string) []string {
 			}
 		}
 		return names
+	case "pin":
+		// Unpinned panes only.
+		var names []string
+		for _, p := range t.panes {
+			if !t.layoutState.Pinned[p.name] {
+				names = append(names, p.name)
+			}
+		}
+		return names
+	case "unpin":
+		// Pinned panes only.
+		var names []string
+		for _, p := range t.panes {
+			if t.layoutState.Pinned[p.name] {
+				names = append(names, p.name)
+			}
+		}
+		return names
 	default:
 		// All pane names.
 		names := make([]string, len(t.panes))
@@ -491,6 +509,37 @@ func (t *TUI) execCmd(cmd string) bool {
 		}
 		t.layoutState.Hidden[parts[1]] = true
 		t.autoRecalcGrid()
+		t.saveLayoutIfConfigured()
+
+	case "pin":
+		if len(parts) < 2 {
+			t.cmd.error = "usage: pin <name>"
+			return false
+		}
+		p := t.findPaneByName(parts[1])
+		if p == nil {
+			t.cmd.error = fmt.Sprintf("unknown agent %q", parts[1])
+			return false
+		}
+		if t.layoutState.Pinned == nil {
+			t.layoutState.Pinned = make(map[string]bool)
+		}
+		t.layoutState.Pinned[parts[1]] = true
+		p.SetPinned(true)
+		t.saveLayoutIfConfigured()
+
+	case "unpin":
+		if len(parts) < 2 {
+			t.cmd.error = "usage: unpin <name>"
+			return false
+		}
+		p := t.findPaneByName(parts[1])
+		if p == nil {
+			t.cmd.error = fmt.Sprintf("unknown agent %q", parts[1])
+			return false
+		}
+		delete(t.layoutState.Pinned, parts[1])
+		p.SetPinned(false)
 		t.saveLayoutIfConfigured()
 
 	case "view":

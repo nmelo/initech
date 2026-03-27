@@ -29,6 +29,7 @@ type AgentInfo struct {
 	Visible         bool
 	IdleWithBacklog bool // True when idle with ready beads in the backlog.
 	BacklogCount    int  // Number of ready beads (when IdleWithBacklog is true).
+	Pinned          bool // True when operator has pinned this agent.
 }
 
 // cmdModal holds command modal state.
@@ -357,6 +358,13 @@ func Run(cfg Config) error {
 		p.Start()
 		t.panes = append(t.panes, p)
 		LogDebug("pane", "created", "name", acfg.Name, "dir", acfg.Dir)
+	}
+
+	// Sync pinned state from layout to panes.
+	for _, p := range t.panes {
+		if t.layoutState.Pinned[p.name] {
+			p.SetPinned(true)
+		}
 	}
 
 	// Now that panes exist, compute the full render plan.

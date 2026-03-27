@@ -27,6 +27,7 @@ type LayoutState struct {
 	Zoomed   bool            `yaml:"zoomed,omitempty"`
 	Focused  string          `yaml:"focused"`            // Pane name, not index.
 	Hidden   map[string]bool `yaml:"hidden,omitempty"`   // Pane names that are hidden.
+	Pinned   map[string]bool `yaml:"pinned,omitempty"`  // Pane names protected from auto-suspend.
 	Overlay  bool            `yaml:"overlay"`
 
 	// Per-column and per-row proportional sizing (future).
@@ -299,12 +300,20 @@ func DefaultLayoutState(paneNames []string) LayoutState {
 	if len(paneNames) > 0 {
 		focused = paneNames[0]
 	}
+	// Super is pinned by default (coordination hub, never auto-suspended).
+	pinned := make(map[string]bool)
+	for _, name := range paneNames {
+		if name == "super" {
+			pinned[name] = true
+		}
+	}
 	return LayoutState{
 		Mode:     LayoutGrid,
 		GridCols: cols,
 		GridRows: rows,
 		Focused:  focused,
 		Hidden:   make(map[string]bool),
+		Pinned:   pinned,
 		Overlay:  true,
 	}
 }
@@ -317,6 +326,7 @@ func DefaultLayoutState(paneNames []string) LayoutState {
 type PersistentLayout struct {
 	Grid   string   `yaml:"grid"`             // e.g. "3x2"
 	Hidden []string `yaml:"hidden,omitempty"` // Role names of hidden panes.
+	Pinned []string `yaml:"pinned,omitempty"` // Role names protected from auto-suspend.
 	Mode   string   `yaml:"mode"`             // "grid", "focus", "main"
 }
 
@@ -343,6 +353,12 @@ func SaveLayout(projectRoot string, state LayoutState) error {
 		}
 	}
 	sort.Strings(pl.Hidden)
+	for name, pinned := range state.Pinned {
+		if pinned {
+			pl.Pinned = append(pl.Pinned, name)
+		}
+	}
+	sort.Strings(pl.Pinned)
 
 	dir := layoutDir(projectRoot)
 	if err := os.MkdirAll(dir, 0700); err != nil {
@@ -403,6 +419,14 @@ func LoadLayout(projectRoot string, paneNames []string) (LayoutState, bool) {
 		}
 	}
 
+	// Filter pinned list to only known panes.
+	pinned := make(map[string]bool)
+	for _, name := range pl.Pinned {
+		if known[name] {
+			pinned[name] = true
+		}
+	}
+
 	// Edge case: all panes hidden -> nonsensical, fall back to defaults.
 	if len(hidden) >= len(paneNames) {
 		return LayoutState{}, false
@@ -428,6 +452,7 @@ func LoadLayout(projectRoot string, paneNames []string) (LayoutState, bool) {
 		GridRows: rows,
 		Focused:  focused,
 		Hidden:   hidden,
+		Pinned:   pinned,
 		Overlay:  true, // Always start with overlay visible.
 	}, true
 }

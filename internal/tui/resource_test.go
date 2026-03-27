@@ -97,13 +97,13 @@ func TestPanePinned(t *testing.T) {
 	if p.IsPinned() {
 		t.Error("new pane should not be pinned")
 	}
-	p.Pin()
+	p.SetPinned(true)
 	if !p.IsPinned() {
-		t.Error("pane should be pinned after Pin()")
+		t.Error("pane should be pinned after SetPinned(true)")
 	}
-	p.Unpin()
+	p.SetPinned(false)
 	if p.IsPinned() {
-		t.Error("pane should not be pinned after Unpin()")
+		t.Error("pane should not be pinned after SetPinned(false)")
 	}
 }
 
@@ -493,6 +493,82 @@ func TestEnqueueMessageTimestamp(t *testing.T) {
 	if p.messageQueue[0].Time.Before(before) || p.messageQueue[0].Time.After(after) {
 		t.Errorf("message timestamp %v not between %v and %v",
 			p.messageQueue[0].Time, before, after)
+	}
+}
+
+// ── Pin/unpin tests ─────────────────────────────────────────────────
+
+// TestPinnedAccessor verifies IsPinned/SetPinned on Pane.
+func TestPinnedAccessor(t *testing.T) {
+	p := &Pane{}
+	if p.IsPinned() {
+		t.Error("new pane should not be pinned")
+	}
+	p.SetPinned(true)
+	if !p.IsPinned() {
+		t.Error("pane should be pinned after SetPinned(true)")
+	}
+	p.SetPinned(false)
+	if p.IsPinned() {
+		t.Error("pane should not be pinned after SetPinned(false)")
+	}
+}
+
+// TestSuperPinnedByDefault verifies DefaultLayoutState pins "super".
+func TestSuperPinnedByDefault(t *testing.T) {
+	ls := DefaultLayoutState([]string{"super", "eng1", "eng2"})
+	if !ls.Pinned["super"] {
+		t.Error("super should be pinned by default")
+	}
+	if ls.Pinned["eng1"] {
+		t.Error("eng1 should not be pinned by default")
+	}
+}
+
+// TestPinPersistsInLayout verifies that SaveLayout/LoadLayout round-trip the
+// pinned set.
+func TestPinPersistsInLayout(t *testing.T) {
+	dir := t.TempDir()
+	initechDir := dir // SaveLayout expects the project root.
+
+	state := DefaultLayoutState([]string{"super", "eng1", "eng2"})
+	state.Pinned["eng1"] = true // pin eng1 too
+
+	if err := SaveLayout(initechDir, state); err != nil {
+		t.Fatalf("SaveLayout: %v", err)
+	}
+
+	loaded, ok := LoadLayout(initechDir, []string{"super", "eng1", "eng2"})
+	if !ok {
+		t.Fatal("LoadLayout returned false")
+	}
+	if !loaded.Pinned["super"] {
+		t.Error("super should be pinned after load")
+	}
+	if !loaded.Pinned["eng1"] {
+		t.Error("eng1 should be pinned after load")
+	}
+	if loaded.Pinned["eng2"] {
+		t.Error("eng2 should not be pinned after load")
+	}
+}
+
+// TestPinStaleRoleFilteredOnLoad verifies that pinned roles not in the current
+// pane list are dropped on load (stale references).
+func TestPinStaleRoleFilteredOnLoad(t *testing.T) {
+	dir := t.TempDir()
+
+	state := DefaultLayoutState([]string{"super", "eng1", "eng2"})
+	state.Pinned["eng2"] = true
+	SaveLayout(dir, state)
+
+	// Load with eng2 removed from the roster.
+	loaded, ok := LoadLayout(dir, []string{"super", "eng1"})
+	if !ok {
+		t.Fatal("LoadLayout returned false")
+	}
+	if loaded.Pinned["eng2"] {
+		t.Error("stale pinned role eng2 should be filtered out on load")
 	}
 }
 

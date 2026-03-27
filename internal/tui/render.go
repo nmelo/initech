@@ -335,8 +335,12 @@ func (t *TUI) renderOverlay() {
 		if bead != "" {
 			status = fmt.Sprintf("%s (%s)", act.String(), bead)
 		}
-		agents[i] = AgentInfo{Name: p.name, Status: status, Activity: act, Visible: vis, IdleWithBacklog: idleBacklog, BacklogCount: backlogN}
+		pin := t.layoutState.Pinned[p.name]
+		agents[i] = AgentInfo{Name: p.name, Status: status, Activity: act, Visible: vis, IdleWithBacklog: idleBacklog, BacklogCount: backlogN, Pinned: pin}
 		nameLen := len(p.name)
+		if pin {
+			nameLen += 4 // " [P]"
+		}
 		if !vis {
 			nameLen += 4 // " [h]"
 			hiddenCount++
@@ -442,6 +446,16 @@ func (t *TUI) renderOverlay() {
 				s.SetContent(col, row, ch, nil, nameStyle)
 			}
 			col++
+		}
+		// Pin marker.
+		if a.Pinned {
+			pinStyle := bgStyle.Foreground(tcell.ColorCornflowerBlue)
+			for _, ch := range " [P]" {
+				if col < px+panelW-1 {
+					s.SetContent(col, row, ch, nil, pinStyle)
+				}
+				col++
+			}
 		}
 		// Hidden marker.
 		if !a.Visible {
