@@ -407,288 +407,366 @@ func (t *TUI) execCmd(cmd string) bool {
 	parts := strings.Fields(cmd)
 	switch parts[0] {
 	case "grid":
-		if len(parts) < 2 {
-			visCount := t.visibleCountFromState()
-			c, r := autoGrid(visCount)
-			t.layoutState.Mode = LayoutGrid
-			t.layoutState.GridCols = c
-			t.layoutState.GridRows = r
-			t.layoutState.Zoomed = false
-			t.applyLayout()
-			t.saveLayoutIfConfigured()
-			return false
-		}
+		return t.cmdGrid(parts)
+	case "focus":
+		return t.cmdFocus(parts)
+	case "zoom":
+		return t.cmdZoom()
+	case "panel":
+		return t.cmdPanel()
+	case "main":
+		return t.cmdMain()
+	case "show":
+		return t.cmdShow(parts)
+	case "hide":
+		return t.cmdHide(parts)
+	case "pin":
+		return t.cmdPin(parts)
+	case "unpin":
+		return t.cmdUnpin(parts)
+	case "view":
+		return t.cmdView(parts)
+	case "layout":
+		return t.cmdLayout(parts)
+	case "restart", "r":
+		return t.cmdRestart(parts)
+	case "patrol":
+		return t.cmdPatrol()
+	case "top", "ps":
+		return t.cmdTop()
+	case "add":
+		return t.cmdAdd(parts)
+	case "remove", "rm":
+		return t.cmdRemove(parts)
+	case "log", "events":
+		return t.cmdLog()
+	case "help", "?":
+		return t.cmdHelp()
+	case "quit", "q":
+		return t.cmdQuit()
+	default:
+		t.cmd.error = fmt.Sprintf("unknown command %q", parts[0])
+	}
+	return false
+}
+
+// ── Command handlers ────────────────────────────────────────────────
+// Each handler corresponds to one command in the backtick modal.
+// They receive the already-split parts and return true only to quit.
+
+func (t *TUI) cmdGrid(parts []string) bool {
+	if len(parts) < 2 {
 		visCount := t.visibleCountFromState()
-		cols, rows, ok := parseGrid(parts[1], visCount)
-		if !ok {
-			t.cmd.error = fmt.Sprintf("invalid grid %q, use CxR or just C (e.g. 3x3, 4)", parts[1])
-			return false
-		}
+		c, r := autoGrid(visCount)
 		t.layoutState.Mode = LayoutGrid
-		t.layoutState.GridCols = cols
-		t.layoutState.GridRows = rows
+		t.layoutState.GridCols = c
+		t.layoutState.GridRows = r
 		t.layoutState.Zoomed = false
 		t.applyLayout()
 		t.saveLayoutIfConfigured()
+		return false
+	}
+	visCount := t.visibleCountFromState()
+	cols, rows, ok := parseGrid(parts[1], visCount)
+	if !ok {
+		t.cmd.error = fmt.Sprintf("invalid grid %q, use CxR or just C (e.g. 3x3, 4)", parts[1])
+		return false
+	}
+	t.layoutState.Mode = LayoutGrid
+	t.layoutState.GridCols = cols
+	t.layoutState.GridRows = rows
+	t.layoutState.Zoomed = false
+	t.applyLayout()
+	t.saveLayoutIfConfigured()
+	return false
+}
 
-	case "focus":
-		if len(parts) < 2 {
-			t.layoutState.Mode = LayoutFocus
-			t.layoutState.Zoomed = false
-			t.applyLayout()
-			t.saveLayoutIfConfigured()
-			return false
-		}
-		name := parts[1]
-		if t.findPaneByName(name) == nil {
-			t.cmd.error = fmt.Sprintf("unknown agent %q", name)
-			return false
-		}
-		t.layoutState.Focused = name
+func (t *TUI) cmdFocus(parts []string) bool {
+	if len(parts) < 2 {
 		t.layoutState.Mode = LayoutFocus
 		t.layoutState.Zoomed = false
 		t.applyLayout()
 		t.saveLayoutIfConfigured()
+		return false
+	}
+	name := parts[1]
+	if t.findPaneByName(name) == nil {
+		t.cmd.error = fmt.Sprintf("unknown agent %q", name)
+		return false
+	}
+	t.layoutState.Focused = name
+	t.layoutState.Mode = LayoutFocus
+	t.layoutState.Zoomed = false
+	t.applyLayout()
+	t.saveLayoutIfConfigured()
+	return false
+}
 
-	case "zoom":
-		t.layoutState.Zoomed = !t.layoutState.Zoomed
+func (t *TUI) cmdZoom() bool {
+	t.layoutState.Zoomed = !t.layoutState.Zoomed
+	t.applyLayout()
+	t.saveLayoutIfConfigured()
+	return false
+}
+
+func (t *TUI) cmdPanel() bool {
+	// Overlay toggle is deliberately not persisted (see Alt+s comment).
+	t.layoutState.Overlay = !t.layoutState.Overlay
+	return false
+}
+
+func (t *TUI) cmdMain() bool {
+	t.layoutState.Mode = Layout2Col
+	t.layoutState.Zoomed = false
+	t.applyLayout()
+	t.saveLayoutIfConfigured()
+	return false
+}
+
+func (t *TUI) cmdShow(parts []string) bool {
+	if len(parts) < 2 {
+		t.cmd.error = "usage: show <name> or show all"
+		return false
+	}
+	if parts[1] == "all" {
+		t.layoutState.Hidden = make(map[string]bool)
+		t.autoRecalcGrid()
+		t.saveLayoutIfConfigured()
+		return false
+	}
+	if t.findPaneByName(parts[1]) == nil {
+		t.cmd.error = fmt.Sprintf("unknown agent %q", parts[1])
+		return false
+	}
+	delete(t.layoutState.Hidden, parts[1])
+	t.autoRecalcGrid()
+	t.saveLayoutIfConfigured()
+	return false
+}
+
+func (t *TUI) cmdHide(parts []string) bool {
+	if len(parts) < 2 {
+		t.cmd.error = "usage: hide <name>"
+		return false
+	}
+	if parts[1] == "all" {
+		t.cmd.error = "cannot hide all panes"
+		return false
+	}
+	if t.findPaneByName(parts[1]) == nil {
+		t.cmd.error = fmt.Sprintf("unknown agent %q", parts[1])
+		return false
+	}
+	if t.layoutState.Hidden[parts[1]] {
+		return false // Already hidden.
+	}
+	if t.visibleCountFromState() <= 1 {
+		t.cmd.error = "cannot hide last visible pane"
+		return false
+	}
+	if t.layoutState.Hidden == nil {
+		t.layoutState.Hidden = make(map[string]bool)
+	}
+	t.layoutState.Hidden[parts[1]] = true
+	t.autoRecalcGrid()
+	t.saveLayoutIfConfigured()
+	return false
+}
+
+func (t *TUI) cmdPin(parts []string) bool {
+	if len(parts) < 2 {
+		t.cmd.error = "usage: pin <name>"
+		return false
+	}
+	p := t.findPaneByName(parts[1])
+	if p == nil {
+		t.cmd.error = fmt.Sprintf("unknown agent %q", parts[1])
+		return false
+	}
+	if t.layoutState.Pinned == nil {
+		t.layoutState.Pinned = make(map[string]bool)
+	}
+	t.layoutState.Pinned[parts[1]] = true
+	p.SetPinned(true)
+	t.saveLayoutIfConfigured()
+	return false
+}
+
+func (t *TUI) cmdUnpin(parts []string) bool {
+	if len(parts) < 2 {
+		t.cmd.error = "usage: unpin <name>"
+		return false
+	}
+	p := t.findPaneByName(parts[1])
+	if p == nil {
+		t.cmd.error = fmt.Sprintf("unknown agent %q", parts[1])
+		return false
+	}
+	delete(t.layoutState.Pinned, parts[1])
+	p.SetPinned(false)
+	t.saveLayoutIfConfigured()
+	return false
+}
+
+func (t *TUI) cmdView(parts []string) bool {
+	if len(parts) < 2 {
+		t.cmd.error = "usage: view <name1> [name2] ..."
+		return false
+	}
+	for _, name := range parts[1:] {
+		if t.findPaneByName(name) == nil {
+			t.cmd.error = fmt.Sprintf("unknown agent %q", name)
+			return false
+		}
+	}
+	show := make(map[string]bool, len(parts)-1)
+	for _, name := range parts[1:] {
+		show[name] = true
+	}
+	visCount := 0
+	for _, p := range t.panes {
+		if show[p.name] {
+			visCount++
+		}
+	}
+	if visCount == 0 {
+		t.cmd.error = "view must include at least one valid pane"
+		return false
+	}
+	hidden := make(map[string]bool)
+	for _, p := range t.panes {
+		if !show[p.name] {
+			hidden[p.name] = true
+		}
+	}
+	t.layoutState.Hidden = hidden
+	t.autoRecalcGrid()
+	t.saveLayoutIfConfigured()
+	return false
+}
+
+func (t *TUI) cmdLayout(parts []string) bool {
+	if len(parts) < 2 {
+		t.cmd.error = "usage: layout reset"
+		return false
+	}
+	switch parts[1] {
+	case "reset":
+		// Delete the saved layout file and revert to defaults.
+		// We deliberately don't call saveLayoutIfConfigured() here:
+		// the intent is to remove persistence so the next startup
+		// auto-calculates from the role count. Re-saving would
+		// immediately recreate the file with default values.
+		if t.projectRoot != "" {
+			DeleteLayout(t.projectRoot)
+		}
+		names := make([]string, len(t.panes))
+		for i, p := range t.panes {
+			names[i] = p.name
+		}
+		t.layoutState = DefaultLayoutState(names)
 		t.applyLayout()
-		t.saveLayoutIfConfigured()
+	default:
+		t.cmd.error = fmt.Sprintf("unknown layout subcommand %q", parts[1])
+	}
+	return false
+}
 
-	case "panel":
-		// Overlay toggle is deliberately not persisted (see Alt+s comment).
-		t.layoutState.Overlay = !t.layoutState.Overlay
-
-	case "main":
-		t.layoutState.Mode = Layout2Col
-		t.layoutState.Zoomed = false
-		t.applyLayout()
-		t.saveLayoutIfConfigured()
-
-	case "show":
-		if len(parts) < 2 {
-			t.cmd.error = "usage: show <name> or show all"
+func (t *TUI) cmdRestart(parts []string) bool {
+	if len(parts) >= 2 && parts[1] != "" {
+		// Named restart requires confirmation: operator must press Enter again.
+		name := parts[1]
+		if t.findPaneByName(name) == nil {
+			t.cmd.error = fmt.Sprintf("restart: unknown agent %q", name)
 			return false
 		}
-		if parts[1] == "all" {
-			t.layoutState.Hidden = make(map[string]bool)
-			t.autoRecalcGrid()
-			t.saveLayoutIfConfigured()
-			return false
-		}
-		if t.findPaneByName(parts[1]) == nil {
-			t.cmd.error = fmt.Sprintf("unknown agent %q", parts[1])
-			return false
-		}
-		delete(t.layoutState.Hidden, parts[1])
-		t.autoRecalcGrid()
-		t.saveLayoutIfConfigured()
-
-	case "hide":
-		if len(parts) < 2 {
-			t.cmd.error = "usage: hide <name>"
-			return false
-		}
-		if parts[1] == "all" {
-			t.cmd.error = "cannot hide all panes"
-			return false
-		}
-		if t.findPaneByName(parts[1]) == nil {
-			t.cmd.error = fmt.Sprintf("unknown agent %q", parts[1])
-			return false
-		}
-		if t.layoutState.Hidden[parts[1]] {
-			return false // Already hidden.
-		}
-		if t.visibleCountFromState() <= 1 {
-			t.cmd.error = "cannot hide last visible pane"
-			return false
-		}
-		if t.layoutState.Hidden == nil {
-			t.layoutState.Hidden = make(map[string]bool)
-		}
-		t.layoutState.Hidden[parts[1]] = true
-		t.autoRecalcGrid()
-		t.saveLayoutIfConfigured()
-
-	case "pin":
-		if len(parts) < 2 {
-			t.cmd.error = "usage: pin <name>"
-			return false
-		}
-		p := t.findPaneByName(parts[1])
-		if p == nil {
-			t.cmd.error = fmt.Sprintf("unknown agent %q", parts[1])
-			return false
-		}
-		if t.layoutState.Pinned == nil {
-			t.layoutState.Pinned = make(map[string]bool)
-		}
-		t.layoutState.Pinned[parts[1]] = true
-		p.SetPinned(true)
-		t.saveLayoutIfConfigured()
-
-	case "unpin":
-		if len(parts) < 2 {
-			t.cmd.error = "usage: unpin <name>"
-			return false
-		}
-		p := t.findPaneByName(parts[1])
-		if p == nil {
-			t.cmd.error = fmt.Sprintf("unknown agent %q", parts[1])
-			return false
-		}
-		delete(t.layoutState.Pinned, parts[1])
-		p.SetPinned(false)
-		t.saveLayoutIfConfigured()
-
-	case "view":
-		if len(parts) < 2 {
-			t.cmd.error = "usage: view <name1> [name2] ..."
-			return false
-		}
-		for _, name := range parts[1:] {
-			if t.findPaneByName(name) == nil {
-				t.cmd.error = fmt.Sprintf("unknown agent %q", name)
-				return false
-			}
-		}
-		show := make(map[string]bool, len(parts)-1)
-		for _, name := range parts[1:] {
-			show[name] = true
-		}
-		// Check that at least one pane will be visible.
-		visCount := 0
-		for _, p := range t.panes {
-			if show[p.name] {
-				visCount++
-			}
-		}
-		if visCount == 0 {
-			t.cmd.error = "view must include at least one valid pane"
-			return false
-		}
-		hidden := make(map[string]bool)
-		for _, p := range t.panes {
-			if !show[p.name] {
-				hidden[p.name] = true
-			}
-		}
-		t.layoutState.Hidden = hidden
-		t.autoRecalcGrid()
-		t.saveLayoutIfConfigured()
-
-	case "layout":
-		if len(parts) < 2 {
-			t.cmd.error = "usage: layout reset"
-			return false
-		}
-		switch parts[1] {
-		case "reset":
-			// Delete the saved layout file and revert to defaults.
-			// We deliberately don't call saveLayoutIfConfigured() here:
-			// the intent is to remove persistence so the next startup
-			// auto-calculates from the role count. Re-saving would
-			// immediately recreate the file with default values.
-			if t.projectRoot != "" {
-				DeleteLayout(t.projectRoot)
-			}
-			names := make([]string, len(t.panes))
-			for i, p := range t.panes {
-				names[i] = p.name
-			}
-			t.layoutState = DefaultLayoutState(names)
-			t.applyLayout()
-		default:
-			t.cmd.error = fmt.Sprintf("unknown layout subcommand %q", parts[1])
-		}
-
-	case "restart", "r":
-		if len(parts) >= 2 && parts[1] != "" {
-			// Named restart requires confirmation: operator must press Enter again.
-			name := parts[1]
-			if t.findPaneByName(name) == nil {
-				t.cmd.error = fmt.Sprintf("restart: unknown agent %q", name)
-				return false
-			}
-			t.cmd.pendingConfirm = "restart " + name
-			t.cmd.confirmMsg = fmt.Sprintf("Restart %s? Context window will be lost. Enter to confirm, Esc to cancel.", name)
-			t.cmd.confirmExpiry = time.Now().Add(10 * time.Second)
-			t.cmd.active = true
-		} else {
-			// No-arg restart: restart focused pane immediately (less dangerous).
-			if err := t.restartFocused(); err != nil {
-				t.cmd.error = fmt.Sprintf("restart failed: %v", err)
-			}
-		}
-
-	case "patrol":
-		// Build patrol output and copy to clipboard for easy pasting.
-		var buf strings.Builder
-		for _, p := range t.panes {
-			header := p.name + " (" + p.Activity().String()
-			if bead := p.BeadID(); bead != "" {
-				header += " | " + bead
-			}
-			header += ")"
-			buf.WriteString("=== " + header + " ===\n")
-			content := strings.TrimRight(peekContent(p, 20), "\n")
-			if content == "" {
-				buf.WriteString("[no recent output]\n")
-			} else {
-				buf.WriteString(content + "\n")
-			}
-			buf.WriteByte('\n')
-		}
-		// Copy to clipboard (cross-platform).
-		t.cmd.error = copyToClipboard(buf.String())
-
-	case "top", "ps":
-		t.cmd.error = "" // Clear stale errors so they don't reappear on close.
-		t.top.active = true
-		t.top.selected = 0
-		t.top.cacheTime = time.Time{} // Force fresh data.
-
-	case "add":
-		if len(parts) < 2 || parts[1] == "" {
-			t.cmd.error = "usage: add <name>"
-		} else if err := t.addPane(parts[1]); err != nil {
-			t.cmd.error = "add: " + err.Error()
-		} else {
-			t.cmd.error = "added " + parts[1]
-		}
-
-	case "remove", "rm":
-		if len(parts) < 2 || parts[1] == "" {
-			t.cmd.error = "usage: remove <name>"
-		} else if t.findPaneByName(parts[1]) == nil {
-			t.cmd.error = fmt.Sprintf("remove: unknown agent %q", parts[1])
-		} else {
-			name := parts[1]
-			t.cmd.pendingConfirm = "remove " + name
-			t.cmd.confirmMsg = fmt.Sprintf("Remove %s? This kills the process. Enter to confirm, Esc to cancel.", name)
-			t.cmd.confirmExpiry = time.Now().Add(10 * time.Second)
-			t.cmd.active = true
-		}
-
-	case "log", "events":
-		t.cmd.error = ""
-		t.eventLogM.active = true
-		t.eventLogM.scrollOffset = 0 // Start at the bottom (latest events).
-
-	case "help", "?":
-		t.help.active = true
-		t.help.scrollOffset = 0
-
-	case "quit", "q":
-		t.cmd.pendingConfirm = "quit"
-		t.cmd.confirmMsg = "Quit will stop all agents. Enter to confirm, Esc to cancel."
+		t.cmd.pendingConfirm = "restart " + name
+		t.cmd.confirmMsg = fmt.Sprintf("Restart %s? Context window will be lost. Enter to confirm, Esc to cancel.", name)
 		t.cmd.confirmExpiry = time.Now().Add(10 * time.Second)
 		t.cmd.active = true
-
-	default:
-		t.cmd.error = fmt.Sprintf("unknown command %q", parts[0])
+	} else {
+		// No-arg restart: restart focused pane immediately (less dangerous).
+		if err := t.restartFocused(); err != nil {
+			t.cmd.error = fmt.Sprintf("restart failed: %v", err)
+		}
 	}
+	return false
+}
+
+func (t *TUI) cmdPatrol() bool {
+	// Build patrol output and copy to clipboard for easy pasting.
+	var buf strings.Builder
+	for _, p := range t.panes {
+		header := p.name + " (" + p.Activity().String()
+		if bead := p.BeadID(); bead != "" {
+			header += " | " + bead
+		}
+		header += ")"
+		buf.WriteString("=== " + header + " ===\n")
+		content := strings.TrimRight(peekContent(p, 20), "\n")
+		if content == "" {
+			buf.WriteString("[no recent output]\n")
+		} else {
+			buf.WriteString(content + "\n")
+		}
+		buf.WriteByte('\n')
+	}
+	t.cmd.error = copyToClipboard(buf.String())
+	return false
+}
+
+func (t *TUI) cmdTop() bool {
+	t.cmd.error = "" // Clear stale errors so they don't reappear on close.
+	t.top.active = true
+	t.top.selected = 0
+	t.top.cacheTime = time.Time{} // Force fresh data.
+	return false
+}
+
+func (t *TUI) cmdAdd(parts []string) bool {
+	if len(parts) < 2 || parts[1] == "" {
+		t.cmd.error = "usage: add <name>"
+	} else if err := t.addPane(parts[1]); err != nil {
+		t.cmd.error = "add: " + err.Error()
+	} else {
+		t.cmd.error = "added " + parts[1]
+	}
+	return false
+}
+
+func (t *TUI) cmdRemove(parts []string) bool {
+	if len(parts) < 2 || parts[1] == "" {
+		t.cmd.error = "usage: remove <name>"
+	} else if t.findPaneByName(parts[1]) == nil {
+		t.cmd.error = fmt.Sprintf("remove: unknown agent %q", parts[1])
+	} else {
+		name := parts[1]
+		t.cmd.pendingConfirm = "remove " + name
+		t.cmd.confirmMsg = fmt.Sprintf("Remove %s? This kills the process. Enter to confirm, Esc to cancel.", name)
+		t.cmd.confirmExpiry = time.Now().Add(10 * time.Second)
+		t.cmd.active = true
+	}
+	return false
+}
+
+func (t *TUI) cmdLog() bool {
+	t.cmd.error = ""
+	t.eventLogM.active = true
+	t.eventLogM.scrollOffset = 0
+	return false
+}
+
+func (t *TUI) cmdHelp() bool {
+	t.help.active = true
+	t.help.scrollOffset = 0
+	return false
+}
+
+func (t *TUI) cmdQuit() bool {
+	t.cmd.pendingConfirm = "quit"
+	t.cmd.confirmMsg = "Quit will stop all agents. Enter to confirm, Esc to cancel."
+	t.cmd.confirmExpiry = time.Now().Add(10 * time.Second)
+	t.cmd.active = true
 	return false
 }
 
