@@ -72,12 +72,8 @@ func (t *TUI) render() {
 		t.renderNotifications()
 	}
 
-	// Command modal or error message at the bottom.
-	if t.cmd.active {
-		t.renderCmdLine()
-	} else if t.cmd.error != "" {
-		t.renderCmdError()
-	}
+	// Persistent status bar at the bottom of the screen.
+	t.renderStatusBar()
 
 	s.Show()
 }
@@ -111,6 +107,39 @@ func (t *TUI) selectionForPane(p *Pane) Selection {
 }
 
 
+
+// renderStatusBar draws the persistent 1-line bar at the bottom of the screen.
+// Content varies by state: confirmation prompt, command input, error message,
+// or default keyboard hints.
+func (t *TUI) renderStatusBar() {
+	if t.cmd.active {
+		t.renderCmdLine()
+	} else if t.cmd.error != "" {
+		t.renderCmdError()
+	} else {
+		t.renderHints()
+	}
+}
+
+// renderHints draws the default keyboard-hint bar when no modal or error
+// is active. Subtle dark background with dim hint text.
+func (t *TUI) renderHints() {
+	s := t.screen
+	sw, sh := s.Size()
+	y := sh - 1
+
+	barStyle := tcell.StyleDefault.Background(tcell.NewRGBColor(30, 30, 30)).Foreground(tcell.ColorGray)
+	for x := 0; x < sw; x++ {
+		s.SetContent(x, y, ' ', nil, barStyle)
+	}
+
+	hints := " `:commands   Alt+z:zoom   Alt+s:overlay   ?:help"
+	for i, ch := range hints {
+		if i < sw {
+			s.SetContent(i, y, ch, nil, barStyle)
+		}
+	}
+}
 
 // renderCmdLine draws the command input bar at the bottom of the screen.
 // If a destructive command is pending confirmation, it renders a yellow

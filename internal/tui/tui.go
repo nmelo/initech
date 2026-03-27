@@ -137,7 +137,8 @@ type TUI struct {
 }
 
 // applyLayout recomputes the render plan from the current layout state
-// and resizes panes whose regions changed.
+// and resizes panes whose regions changed. The bottom row is reserved
+// for the persistent status bar and excluded from pane layout.
 func (t *TUI) applyLayout() {
 	var w, h int
 	if t.screen != nil {
@@ -145,7 +146,12 @@ func (t *TUI) applyLayout() {
 	} else {
 		w, h = 200, 60 // Fallback for tests without a screen.
 	}
-	t.plan = computeLayout(t.layoutState, t.panes, w, h)
+	// Reserve 1 row for the persistent status bar.
+	paneH := h - 1
+	if paneH < 1 {
+		paneH = 1
+	}
+	t.plan = computeLayout(t.layoutState, t.panes, w, paneH)
 
 	// Cancel any in-progress mouse selection. Layout changes invalidate
 	// the pane index and region the selection was tracking.
