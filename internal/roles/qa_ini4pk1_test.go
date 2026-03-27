@@ -83,24 +83,24 @@ func TestQAMoveCursor_Wrapping(t *testing.T) {
 	}
 }
 
-// contentHeight enforces minimum of 1 and uses overhead of 9.
+// contentHeight enforces minimum of 1 and uses overhead of 10.
 func TestQAContentHeight_Minimum(t *testing.T) {
-	for _, h := range []int{1, 5, 9} {
+	for _, h := range []int{1, 5, 10} {
 		got := contentHeight(h)
 		if got < 1 {
 			t.Errorf("contentHeight(%d) = %d, want >= 1", h, got)
 		}
 	}
-	if got := contentHeight(24); got != 15 {
-		t.Errorf("contentHeight(24) = %d, want 15 (24-9)", got)
+	if got := contentHeight(24); got != 14 {
+		t.Errorf("contentHeight(24) = %d, want 14 (24-10)", got)
 	}
 }
 
 // scrollToCursor keeps cursor's display row within visible window.
 func TestQAScrollToCursor_KeepsCursorVisible(t *testing.T) {
 	s := newTestSelector(20)
-	s.termH = 15 // contentHeight = 7
-	for _, cursorIdx := range []int{0, 7, 15, 19} {
+	s.termH = 15 // contentHeight = 5
+	for _, cursorIdx := range []int{0, 4, 15, 19} {
 		s.cursor = cursorIdx
 		scrollToCursor(s)
 		visH := contentHeight(s.termH)

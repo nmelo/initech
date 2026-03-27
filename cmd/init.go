@@ -12,7 +12,6 @@ import (
 	"github.com/nmelo/initech/internal/git"
 	"github.com/nmelo/initech/internal/roles"
 	"github.com/nmelo/initech/internal/scaffold"
-	"github.com/nmelo/initech/internal/tmuxinator"
 	"github.com/spf13/cobra"
 )
 
@@ -21,8 +20,8 @@ var initForce bool
 var initCmd = &cobra.Command{
 	Use:   "init",
 	Short: "Bootstrap a new multi-agent project",
-	Long: `Creates the project directory structure, role CLAUDE.md files, tmuxinator
-config, project documents, and optionally initializes git and beads.
+	Long: `Creates the project directory structure, role CLAUDE.md files, project
+documents, and optionally initializes git and beads.
 
 If initech.yaml exists in the current directory, it is loaded. Otherwise,
 interactive prompts collect the project configuration.`,
@@ -123,36 +122,6 @@ func runInit(cmd *cobra.Command, args []string) error {
 		fmt.Fprintln(out, "Warning: bd not found, skipping beads initialization")
 	}
 
-	// Generate tmuxinator configs
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return fmt.Errorf("get home directory: %w", err)
-	}
-	tmuxDir := filepath.Join(home, ".config", "tmuxinator")
-	if err := os.MkdirAll(tmuxDir, 0755); err != nil {
-		return fmt.Errorf("create tmuxinator config dir: %w", err)
-	}
-
-	mainYAML, err := tmuxinator.Generate(p)
-	if err != nil {
-		return fmt.Errorf("generate tmuxinator config: %w", err)
-	}
-	mainPath := filepath.Join(tmuxDir, p.Name+".yml")
-	if err := os.WriteFile(mainPath, mainYAML, 0644); err != nil {
-		return fmt.Errorf("write tmuxinator config: %w", err)
-	}
-
-	gridYAML, err := tmuxinator.GenerateGrid(p)
-	if err != nil {
-		return fmt.Errorf("generate grid config: %w", err)
-	}
-	if gridYAML != nil {
-		gridPath := filepath.Join(tmuxDir, p.Name+"-grid.yml")
-		if err := os.WriteFile(gridPath, gridYAML, 0644); err != nil {
-			return fmt.Errorf("write grid config: %w", err)
-		}
-	}
-
 	// Initial commit
 	if err := git.CommitAll(runner, p.Root, "initech: bootstrap "+p.Name); err != nil {
 		fmt.Fprintf(out, "Warning: initial commit failed: %v\n", err)
@@ -163,11 +132,12 @@ func runInit(cmd *cobra.Command, args []string) error {
 	for _, c := range created {
 		fmt.Fprintf(out, "  %s\n", c)
 	}
-	fmt.Fprintf(out, "  ~/.config/tmuxinator/%s.yml\n", p.Name)
-	if gridYAML != nil {
-		fmt.Fprintf(out, "  ~/.config/tmuxinator/%s-grid.yml\n", p.Name)
-	}
 	fmt.Fprintf(out, "\nReady. Run 'initech' to start.\n")
+	fmt.Fprintln(out, "\nNext steps:")
+	fmt.Fprintln(out, "  1. Edit docs/prd.md (define your problem)")
+	fmt.Fprintln(out, "  2. Run 'bd create' to add your first task")
+	fmt.Fprintln(out, "  3. Run 'initech' to start your session")
+	fmt.Fprintln(out, "  4. Press backtick for commands, ? for help")
 
 	return nil
 }
@@ -207,7 +177,8 @@ func interactiveSetup(wd string) (*config.Project, error) {
 	// chosen (Esc/Ctrl+C aborts the whole init).
 	var roleList []string
 	for {
-		selected, err := roles.RunSelector("Select agents for "+name, items)
+		selected, err := roles.RunSelector("Select agents for "+name, items,
+			"Each agent runs Claude Code in its own terminal pane. Pick roles for your team.")
 		if err != nil {
 			return nil, fmt.Errorf("role selection cancelled")
 		}

@@ -165,16 +165,17 @@ func TestMoveCursorSingleItem(t *testing.T) {
 // ── contentHeight ─────────────────────────────────────────────────────
 
 func TestContentHeight(t *testing.T) {
-	// Overhead is now 9 rows (added preset hint line).
+	// Overhead is 10 rows (title, subtitle, blank, keys, presets, blank,
+	// scroll-above, scroll-below, blank, status).
 	tests := []struct {
 		termH int
 		want  int
 	}{
-		{24, 15},
-		{15, 6},
-		{10, 1},
-		{9, 1}, // minimum clamp (9-9=0, clamped to 1)
-		{5, 1}, // minimum clamp
+		{24, 14},
+		{15, 5},
+		{11, 1},
+		{10, 1}, // minimum clamp (10-10=0, clamped to 1)
+		{5, 1},  // minimum clamp
 	}
 	for _, tt := range tests {
 		got := contentHeight(tt.termH)
@@ -188,7 +189,7 @@ func TestContentHeight(t *testing.T) {
 
 func TestScrollToCursorBelowView(t *testing.T) {
 	s := newTestSelector(20)
-	s.termH = 15 // contentHeight = 7
+	s.termH = 15 // contentHeight = 5
 	s.cursor = 15
 	scrollToCursor(s)
 	visH := contentHeight(s.termH)
@@ -212,7 +213,7 @@ func TestScrollToCursorAboveView(t *testing.T) {
 
 func TestScrollToCursorAlreadyVisible(t *testing.T) {
 	s := newTestSelector(20)
-	s.termH = 24 // contentHeight = 16
+	s.termH = 24 // contentHeight = 14
 	s.cursor = 5
 	s.scroll = 0
 	scrollToCursor(s)
@@ -398,7 +399,7 @@ func TestRenderScrollIndicators(t *testing.T) {
 		cursor: 10,
 		scroll: 5,
 		termW:  80,
-		termH:  15, // contentHeight = 7
+		termH:  15, // contentHeight = 5
 	}
 	s.rows = buildDisplayRows(items)
 

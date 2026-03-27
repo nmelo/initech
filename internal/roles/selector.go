@@ -49,7 +49,7 @@ var ErrCancelled = errors.New("selection cancelled")
 //
 // The items slice is mutated in-place to reflect final checked state. If items
 // is empty, RunSelector returns immediately with a nil slice.
-func RunSelector(title string, items []SelectorItem) ([]string, error) {
+func RunSelector(title string, items []SelectorItem, subtitle ...string) ([]string, error) {
 	if len(items) == 0 {
 		return nil, nil
 	}
@@ -78,14 +78,19 @@ func RunSelector(title string, items []SelectorItem) ([]string, error) {
 		h = 24
 	}
 
+	sub := ""
+	if len(subtitle) > 0 {
+		sub = subtitle[0]
+	}
 	s := &selectorState{
-		title:  title,
-		items:  items,
-		rows:   buildDisplayRows(items),
-		cursor: 0,
-		scroll: 0,
-		termW:  w,
-		termH:  h,
+		title:    title,
+		subtitle: sub,
+		items:    items,
+		rows:     buildDisplayRows(items),
+		cursor:   0,
+		scroll:   0,
+		termW:    w,
+		termH:    h,
 	}
 	scrollToCursor(s)
 
@@ -200,13 +205,14 @@ type displayRow struct {
 
 // selectorState holds all mutable UI state for a running selector session.
 type selectorState struct {
-	title  string
-	items  []SelectorItem
-	rows   []displayRow // flattened: group header rows interleaved with item rows
-	cursor int          // index into items[]
-	scroll int          // first visible display-row index
-	termW  int
-	termH  int
+	title    string
+	subtitle string
+	items    []SelectorItem
+	rows     []displayRow // flattened: group header rows interleaved with item rows
+	cursor   int          // index into items[]
+	scroll   int          // first visible display-row index
+	termW    int
+	termH    int
 }
 
 // buildDisplayRows produces a flat display-row list from items, inserting a
@@ -241,19 +247,20 @@ func itemDisplayRow(rows []displayRow, itemIdx int) int {
 // contentHeight returns the number of scrollable content rows available for
 // the item list given the terminal height.
 //
-// Fixed overhead (9 rows):
+// Fixed overhead (10 rows):
 //
 //	row 0: title
-//	row 1: blank
-//	row 2: keys hint
-//	row 3: presets hint
-//	row 4: blank
-//	row 5: "^ more above" indicator (or blank)
-//	row N+6: "v more below" indicator (or blank)
-//	row N+7: blank
-//	row N+8: status
+//	row 1: subtitle (or blank)
+//	row 2: blank
+//	row 3: keys hint
+//	row 4: presets hint
+//	row 5: blank
+//	row 6: "^ more above" indicator (or blank)
+//	row N+7: "v more below" indicator (or blank)
+//	row N+8: blank
+//	row N+9: status
 func contentHeight(termH int) int {
-	h := termH - 9
+	h := termH - 10
 	if h < 1 {
 		h = 1
 	}
@@ -314,8 +321,11 @@ func selectedNames(items []SelectorItem) []string {
 func renderSelector(w io.Writer, s *selectorState) {
 	termW := s.termW
 
-	// Header: title + blank + keys hint + presets hint + blank.
+	// Header: title + subtitle + blank + keys hint + presets hint + blank.
 	printSelLine(w, " "+s.title)
+	if s.subtitle != "" {
+		printSelLine(w, " "+sAnsiDim+s.subtitle+sAnsiReset)
+	}
 	printSelLine(w, "")
 	printSelLine(w, "  Arrow keys: move    Space: toggle    Enter: confirm    Esc: cancel")
 	printSelLine(w, "  Presets: s=small m=standard f=full  a=all n=none")
