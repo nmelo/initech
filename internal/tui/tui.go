@@ -242,6 +242,7 @@ func Run(cfg Config) error {
 	if err := screen.Init(); err != nil {
 		return fmt.Errorf("init screen: %w", err)
 	}
+	screen.SetTitle(fmt.Sprintf("initech - %s", cfg.ProjectName))
 	screen.EnableMouse()
 	screen.EnablePaste()
 	defer screen.Fini()
