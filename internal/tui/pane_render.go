@@ -337,48 +337,38 @@ func (p *Pane) renderActivityBar(s *clampedScreen, r Region) {
 	if r.W < 1 {
 		return
 	}
-	baseBrightness := int32(35)
-	baseColor := tcell.NewRGBColor(baseBrightness, baseBrightness, baseBrightness)
-	baseStyle := tcell.StyleDefault.Foreground(baseColor)
-	y := r.Y // top row of the pane
+	const baseBrightness = 35.0
+	baseStyle := tcell.StyleDefault.Foreground(tcell.NewRGBColor(35, 35, 35))
+	y := r.Y
 
 	if p.Activity() != StateRunning {
-		// Static dim bar for idle/dead/suspended panes. Default background
-		// so it blends with the terminal rather than showing a distinct band.
 		for x := r.X; x < r.X+r.W; x++ {
 			s.SetContent(x, y, '\u2500', nil, baseStyle)
 		}
 		return
 	}
 
-	// KITT scanner: gaussian brightness peak sweeping left-right.
-	// Cycle period: ~2.5 seconds. Position computed from wall clock.
+	// KITT scanner: gaussian brightness peak sweeping left-right (~2.5s cycle).
 	w := r.W
 	cycle := (w - 1) * 2
 	if cycle <= 0 {
 		return
 	}
 	elapsed := time.Since(p.kittEpoch).Seconds()
-	ticksPerCycle := 2.5
-	frac := math.Mod(elapsed, ticksPerCycle) / ticksPerCycle
-	rawPos := frac * float64(cycle)
-	pos := rawPos
+	frac := math.Mod(elapsed, 2.5) / 2.5
+	pos := frac * float64(cycle)
 	if pos >= float64(w) {
-		pos = float64(cycle) - pos // bounce back
+		pos = float64(cycle) - pos
 	}
 
 	for dx := 0; dx < w; dx++ {
 		dist := float64(dx) - pos
-		// Gaussian falloff: ~3-5 cells wide bright segment.
 		brightness := 85.0 * math.Exp(-dist*dist*0.15)
-		if brightness < float64(baseBrightness) {
-			// Below base: render dim bar with default background so it
-			// blends with the terminal, no visible gray band.
+		if brightness < baseBrightness {
 			s.SetContent(r.X+dx, y, '\u2500', nil, baseStyle)
 		} else {
 			b := int32(brightness)
-			c := tcell.NewRGBColor(b, b, b)
-			s.SetContent(r.X+dx, y, '\u2500', nil, tcell.StyleDefault.Foreground(c))
+			s.SetContent(r.X+dx, y, '\u2500', nil, tcell.StyleDefault.Foreground(tcell.NewRGBColor(b, b, b)))
 		}
 	}
 }
