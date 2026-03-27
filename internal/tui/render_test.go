@@ -194,3 +194,104 @@ func TestApplyLayout_ReservesStatusBar(t *testing.T) {
 		t.Errorf("pane extends into status bar: Y=%d H=%d (bottom=%d)", pr.Region.Y, pr.Region.H, pr.Region.Y+pr.Region.H)
 	}
 }
+
+// ── Tip cycling tests ───────────────────────────────────────────────
+
+func TestRotateTip_AdvancesAfterInterval(t *testing.T) {
+	tui := &TUI{tipRotateAt: time.Now().Add(-1 * time.Second)}
+	tui.rotateTip()
+	if tui.tipIndex != 1 {
+		t.Errorf("tipIndex = %d, want 1 after rotation", tui.tipIndex)
+	}
+}
+
+func TestRotateTip_NoAdvanceBeforeInterval(t *testing.T) {
+	tui := &TUI{tipRotateAt: time.Now().Add(1 * time.Minute)}
+	tui.rotateTip()
+	if tui.tipIndex != 0 {
+		t.Errorf("tipIndex = %d, want 0 (no rotation yet)", tui.tipIndex)
+	}
+}
+
+func TestRotateTip_Wraps(t *testing.T) {
+	tui := &TUI{
+		tipIndex:    len(statusTips) - 1,
+		tipRotateAt: time.Now().Add(-1 * time.Second),
+	}
+	tui.rotateTip()
+	if tui.tipIndex != 0 {
+		t.Errorf("tipIndex = %d, want 0 (should wrap)", tui.tipIndex)
+	}
+}
+
+func TestRenderHints_ShowsTipAndShortcuts(t *testing.T) {
+	s := tcell.NewSimulationScreen("")
+	s.Init()
+	s.SetSize(120, 24)
+	tui := &TUI{screen: s, tipIndex: 0}
+	tui.renderHints()
+
+	sw, sh := s.Size()
+	y := sh - 1
+	var line string
+	for x := 0; x < sw; x++ {
+		ch, _, _, _ := s.GetContent(x, y)
+		line += string(ch)
+	}
+
+	// Should contain the first tip on the left.
+	if len(line) == 0 {
+		t.Fatal("status bar should have content")
+	}
+	// Should contain shortcuts on the right.
+	found := false
+	for _, kw := range []string{"zoom", "overlay", "help"} {
+		if containsStr(line, kw) {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("status bar should contain keyboard shortcuts, got: %q", line)
+	}
+}
+
+func TestRenderHints_TruncatesOnNarrowTerminal(t *testing.T) {
+	s := tcell.NewSimulationScreen("")
+	s.Init()
+	s.SetSize(55, 24) // narrow
+	tui := &TUI{screen: s, tipIndex: 0}
+	tui.renderHints()
+
+	// Should not panic. Shortcuts should still be visible.
+	sw, sh := s.Size()
+	y := sh - 1
+	var line string
+	for x := 0; x < sw; x++ {
+		ch, _, _, _ := s.GetContent(x, y)
+		line += string(ch)
+	}
+	if !containsStr(line, "help") {
+		t.Errorf("shortcuts should be visible even on narrow terminal, got: %q", line)
+	}
+}
+
+func TestStatusTips_NonEmpty(t *testing.T) {
+	if len(statusTips) == 0 {
+		t.Fatal("statusTips should not be empty")
+	}
+	for i, tip := range statusTips {
+		if tip == "" {
+			t.Errorf("statusTips[%d] is empty", i)
+		}
+	}
+}
+
+func containsStr(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
+}

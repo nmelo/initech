@@ -121,8 +121,45 @@ func (t *TUI) renderStatusBar() {
 	}
 }
 
-// renderHints draws the default keyboard-hint bar when no modal or error
-// is active. Subtle dark background with dim hint text.
+// statusTips are progressive hints shown in the status bar. They cycle
+// every tipRotationInterval, teaching one feature at a time.
+var statusTips = []string{
+	"Press ` (backtick) to open the command bar",
+	"Press ? for the full command reference",
+	"Try Alt+z to zoom the focused pane",
+	"Use Alt+Left/Right to switch panes",
+	"Alt+s toggles the agent status overlay",
+	"Alt+1 enters focus mode (one pane)",
+	"Try Alt+2 for a 2x2 grid layout",
+	"Type `grid 3x2` for a custom layout",
+	"Use `main` for a split layout",
+	"Drag to select text, auto-copies",
+	"Use `hide`/`show` to manage visible panes",
+	"Tab completes agent names in commands",
+	"Use `patrol` to peek all agents at once",
+	"Try `top` to see memory and PID per agent",
+	"Use `log` to see recent event history",
+	"Green dot = working, gray = idle",
+	"Yellow dot = idle with work waiting",
+	"`initech bead <id>` shows your task",
+	"Use `add`/`remove` to change the roster live",
+	"`initech doctor` checks project health",
+}
+
+// tipRotationInterval is how long each tip is displayed before cycling.
+const tipRotationInterval = 2 * time.Minute
+
+// rotateTip advances to the next tip if the rotation interval has elapsed.
+// Called from the render tick.
+func (t *TUI) rotateTip() {
+	if time.Now().After(t.tipRotateAt) {
+		t.tipIndex = (t.tipIndex + 1) % len(statusTips)
+		t.tipRotateAt = time.Now().Add(tipRotationInterval)
+	}
+}
+
+// renderHints draws the status bar with a cycling tip on the left and
+// keyboard shortcuts on the right. Subtle dark background with dim text.
 func (t *TUI) renderHints() {
 	s := t.screen
 	sw, sh := s.Size()
@@ -133,10 +170,32 @@ func (t *TUI) renderHints() {
 		s.SetContent(x, y, ' ', nil, barStyle)
 	}
 
-	hints := " `:commands   Alt+z:zoom   Alt+s:overlay   ?:help"
-	for i, ch := range hints {
-		if i < sw {
-			s.SetContent(i, y, ch, nil, barStyle)
+	// Right side: keyboard shortcuts (always visible, take priority).
+	shortcuts := "`:cmd  Alt+z:zoom  Alt+s:overlay  ?:help"
+	shortcutsStart := sw - len(shortcuts) - 1
+	if shortcutsStart < 0 {
+		shortcutsStart = 0
+	}
+	for i, ch := range shortcuts {
+		x := shortcutsStart + i
+		if x >= 0 && x < sw {
+			s.SetContent(x, y, ch, nil, barStyle)
+		}
+	}
+
+	// Left side: cycling tip. Truncate with ellipsis if it would overlap shortcuts.
+	tip := statusTips[t.tipIndex%len(statusTips)]
+	maxTipW := shortcutsStart - 3 // leave gap between tip and shortcuts
+	if maxTipW < 10 {
+		return // too narrow for a tip
+	}
+	tipRunes := []rune(tip)
+	if len(tipRunes) > maxTipW {
+		tipRunes = append(tipRunes[:maxTipW-1], '\u2026')
+	}
+	for i, ch := range tipRunes {
+		if 1+i < sw {
+			s.SetContent(1+i, y, ch, nil, barStyle)
 		}
 	}
 }

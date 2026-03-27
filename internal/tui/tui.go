@@ -136,6 +136,10 @@ type TUI struct {
 	systemMemAvail    int64      // Available system RAM in KB, updated by memory monitor.
 	systemMemTotal    int64      // Total system RAM in KB, queried once at startup.
 
+	// Status bar tip cycling.
+	tipIndex    int       // Current index into statusTips.
+	tipRotateAt time.Time // When the next tip rotation should happen.
+
 	// Agent event system.
 	agentEvents   chan AgentEvent // Buffered channel for semantic events from detection modules.
 	notifications []notification // Active notifications for rendering.
@@ -325,6 +329,7 @@ func Run(cfg Config) error {
 		paneConfigBuilder: cfg.PaneConfigBuilder,
 		autoSuspend:       cfg.AutoSuspend,
 		pressureThreshold: cfg.PressureThreshold,
+		tipRotateAt:       time.Now().Add(tipRotationInterval),
 		quitCh:            quitCh,
 		ipcCh:             make(chan ipcAction, 32),
 		agentEvents:       make(chan AgentEvent, 64),
@@ -436,6 +441,7 @@ func Run(cfg Config) error {
 			t.pruneNotifications()
 			t.pruneConfirmation()
 			t.pruneError()
+			t.rotateTip()
 			t.render()
 		case <-t.quitCh:
 			return nil
