@@ -421,6 +421,9 @@ func (t *TUI) renderOverlay() {
 			}
 		case StateDead:
 			dotColor = tcell.ColorRed
+		case StateSuspended:
+			dot = '\u25cb' // Hollow dot, same as idle but blue.
+			dotColor = tcell.ColorDodgerBlue
 		default:
 			dotColor = tcell.ColorGray
 		}

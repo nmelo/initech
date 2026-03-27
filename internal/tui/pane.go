@@ -26,9 +26,10 @@ import (
 type ActivityState int
 
 const (
-	StateRunning ActivityState = iota // Claude is processing.
-	StateIdle                         // Waiting for input.
-	StateDead                         // Process has exited; pane is no longer alive.
+	StateRunning   ActivityState = iota // Claude is processing.
+	StateIdle                           // Waiting for input.
+	StateDead                           // Process has exited; pane is no longer alive.
+	StateSuspended                      // Process stopped by auto-suspend policy; will resume on message.
 )
 
 // String returns a human-readable label for the state.
@@ -40,6 +41,8 @@ func (s ActivityState) String() string {
 		return "idle"
 	case StateDead:
 		return "dead"
+	case StateSuspended:
+		return "suspended"
 	}
 	return "unknown"
 }
@@ -89,6 +92,7 @@ type Pane struct {
 	idleWithBacklog bool             // True when idle and ready beads exist in the backlog.
 	backlogCount    int              // Number of ready beads at last idle-with-backlog detection.
 	memoryRSS       int64            // RSS in kilobytes, updated by memory monitor goroutine.
+	suspended       bool             // True when auto-suspend policy has stopped this pane.
 	region          Region
 }
 
@@ -353,7 +357,10 @@ func (p *Pane) Render(screen tcell.Screen, focused bool, dimmed bool, index int,
 
 	// Pane badge: "N name" with optional bead ID and status indicators.
 	title := fmt.Sprintf(" %d %s ", index, p.name)
-	if !p.IsAlive() {
+	if p.IsSuspended() {
+		title = fmt.Sprintf(" %d %s [susp] ", index, p.name)
+		titleStyle = tcell.StyleDefault.Background(trueBlack).Foreground(tcell.ColorDodgerBlue).Bold(true)
+	} else if !p.IsAlive() {
 		title = fmt.Sprintf(" %d %s [dead] ", index, p.name)
 		titleStyle = tcell.StyleDefault.Background(trueBlack).Foreground(tcell.ColorRed).Bold(true)
 	} else if p.scrollOffset > 0 {
@@ -669,6 +676,23 @@ func (p *Pane) SetVisible(v bool) {
 	p.visible = v
 }
 
+// IsSuspended returns whether the pane has been stopped by the auto-suspend
+// policy. A suspended pane is distinct from dead (crashed) and will
+// auto-resume when a message arrives.
+func (p *Pane) IsSuspended() bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.suspended
+}
+
+// SetSuspended marks the pane as suspended or resumed by the auto-suspend
+// policy.
+func (p *Pane) SetSuspended(v bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.suspended = v
+}
+
 // SessionDesc returns the session description extracted from Claude's cursor row.
 func (p *Pane) SessionDesc() string {
 	p.mu.Lock()
@@ -864,7 +888,11 @@ func (p *Pane) updateActivity() {
 
 	prev := p.activity
 	if !p.alive {
-		p.activity = StateDead
+		if p.suspended {
+			p.activity = StateSuspended
+		} else {
+			p.activity = StateDead
+		}
 		return
 	}
 	if time.Since(p.lastOutputTime) < ptyIdleTimeout {

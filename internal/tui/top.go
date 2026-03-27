@@ -156,6 +156,7 @@ func (t *TUI) renderTop() {
 	headerStyle := tcell.StyleDefault.Bold(true).Foreground(tcell.ColorWhite)
 	normalStyle := tcell.StyleDefault.Foreground(tcell.ColorSilver)
 	deadStyle := tcell.StyleDefault.Foreground(tcell.ColorRed)
+	suspendedStyle := tcell.StyleDefault.Foreground(tcell.ColorDodgerBlue)
 	selectedStyle := tcell.StyleDefault.Background(tcell.ColorDarkBlue).Foreground(tcell.ColorWhite)
 	totalStyle := tcell.StyleDefault.Foreground(tcell.ColorYellow).Bold(true)
 	helpStyle := tcell.StyleDefault.Foreground(tcell.ColorGray)
@@ -208,7 +209,9 @@ func (t *TUI) renderTop() {
 	var totalRSS int64
 	for i, e := range t.top.data {
 		style := normalStyle
-		if e.Status == StateDead.String() || strings.HasPrefix(e.Status, StateDead.String()+" ") {
+		if e.Status == StateSuspended.String() || strings.HasPrefix(e.Status, StateSuspended.String()+" ") {
+			style = suspendedStyle
+		} else if e.Status == StateDead.String() || strings.HasPrefix(e.Status, StateDead.String()+" ") {
 			style = deadStyle
 		}
 		if i == t.top.selected {
