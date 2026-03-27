@@ -96,6 +96,7 @@ type Pane struct {
 	messageQueue    []QueuedMessage  // Messages waiting for resume. Capped at maxMessageQueue.
 	pinned          bool             // Pinned agents are never auto-suspended.
 	resumeGrace     time.Time        // Until this time, post-resume grace period is active.
+	resumeMu        sync.Mutex       // Serializes concurrent resume attempts for this pane.
 	region          Region
 }
 

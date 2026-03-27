@@ -322,3 +322,137 @@ func (p *Pane) QueueLen() int {
 	defer p.mu.Unlock()
 	return len(p.messageQueue)
 }
+
+// ── Resume-on-message ───────────────────────────────────────────────
+
+// resumeTimeout is how long to wait for a resumed agent to initialize
+// before giving up.
+const resumeTimeout = 30 * time.Second
+
+// queueDrainInterval is the delay between delivering queued messages to a
+// resumed pane. Gives Claude time to process each message.
+const queueDrainInterval = 500 * time.Millisecond
+
+// resumePane respawns a suspended pane and drains its message queue.
+// Called from the IPC send handler when a message targets a suspended agent.
+// Blocks until the agent is initialized and all queued messages are delivered,
+// or returns an error if the respawn fails. On failure the message queue is
+// preserved for the next attempt.
+//
+// Concurrent calls for the same pane are serialized by pane.resumeMu: the
+// first caller performs the resume, subsequent callers re-check the suspended
+// state and find the pane already alive.
+func (t *TUI) resumePane(pane *Pane, senderName string) error {
+	pane.resumeMu.Lock()
+	defer pane.resumeMu.Unlock()
+
+	// Re-check: another concurrent sender may have already resumed this pane.
+	if !pane.IsSuspended() {
+		return nil
+	}
+
+	agentName := pane.name
+	LogInfo("resource", "resuming agent", "agent", agentName, "trigger", senderName)
+
+	// Get old dimensions with fallback for dead panes.
+	cols, rows := pane.emu.Width(), pane.emu.Height()
+	if cols < 10 {
+		cols = 80
+	}
+	if rows < 2 {
+		rows = 24
+	}
+
+	// Create new pane process off-main (may fork/exec).
+	np, err := NewPane(pane.cfg, rows, cols)
+	if err != nil {
+		LogError("resource", "resume failed", "agent", pane.name, "err", err)
+		return fmt.Errorf("resume %s: %w", pane.name, err)
+	}
+
+	// Replace the old pane in t.panes on the main goroutine.
+	var replaced bool
+	var msgs []QueuedMessage
+	t.runOnMain(func() {
+		for i, p := range t.panes {
+			if p == pane {
+				np.region = pane.region
+				np.eventCh = t.agentEvents
+				np.safeGo = t.safeGo
+				np.pinned = pane.pinned
+				np.beadID = pane.beadID
+				np.beadTitle = pane.beadTitle
+				np.Start()
+				t.panes[i] = np
+				t.applyLayout()
+				replaced = true
+
+				// Drain the queue from the old pane while on main.
+				msgs = pane.DrainQueue()
+				break
+			}
+		}
+	})
+
+	if !replaced {
+		np.Close()
+		return fmt.Errorf("resume %s: pane not found in list", pane.name)
+	}
+
+	// Set resume grace on the NEW pane to prevent immediate re-suspension.
+	np.SetResumeGrace(time.Now().Add(resumeGraceDuration))
+
+	// Wait for the agent to initialize: poll for PTY output activity.
+	if err := t.waitForInit(np); err != nil {
+		LogWarn("resource", "resume init timeout", "agent", np.name, "err", err)
+		// Agent started but may be slow. Continue with queue drain anyway
+		// since the process is alive even if Claude hasn't fully initialized.
+	}
+
+	// Deliver queued messages with gaps.
+	for _, msg := range msgs {
+		t.injectText(np, msg.Text, msg.Enter)
+		if len(msgs) > 1 {
+			time.Sleep(queueDrainInterval)
+		}
+	}
+
+	detail := fmt.Sprintf("Resumed %s (message from %s)", agentName, senderName)
+	if len(msgs) > 0 {
+		detail += fmt.Sprintf(", delivered %d queued", len(msgs))
+	}
+
+	LogInfo("resource", "agent resumed",
+		"agent", agentName,
+		"trigger", senderName,
+		"queued_msgs", len(msgs))
+
+	EmitEvent(t.agentEvents, AgentEvent{
+		Type:   EventAgentResumed,
+		Pane:   agentName,
+		Detail: detail,
+	})
+
+	return nil
+}
+
+// waitForInit polls a newly started pane for signs of initialization.
+// Returns nil when PTY output is detected, or an error after resumeTimeout.
+func (t *TUI) waitForInit(pane *Pane) error {
+	deadline := time.After(resumeTimeout)
+	tick := time.NewTicker(250 * time.Millisecond)
+	defer tick.Stop()
+
+	for {
+		select {
+		case <-tick.C:
+			if !pane.LastOutputTime().IsZero() {
+				return nil // Agent produced output, it's alive.
+			}
+		case <-deadline:
+			return fmt.Errorf("timeout waiting for %s to initialize", pane.name)
+		case <-t.quitCh:
+			return fmt.Errorf("TUI shutting down")
+		}
+	}
+}

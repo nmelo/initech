@@ -169,7 +169,13 @@ func (t *TUI) handleIPCSend(conn net.Conn, req IPCRequest) {
 		return
 	}
 	if queued {
-		writeIPCResponse(conn, IPCResponse{OK: true, Data: `"queued (agent suspended, will deliver on resume)"`})
+		// Trigger resume-on-message: respawn the agent and drain the queue.
+		// This blocks until the agent initializes and messages are delivered.
+		if err := t.resumePane(pane, "incoming message"); err != nil {
+			writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("resume failed: %v", err)})
+			return
+		}
+		writeIPCResponse(conn, IPCResponse{OK: true, Data: `"resumed and delivered"`})
 		return
 	}
 
