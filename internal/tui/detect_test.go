@@ -218,6 +218,90 @@ func TestApplyBeadDetection_SetsBeadAndEmitsEvent(t *testing.T) {
 	}
 }
 
+func TestApplyBeadDetection_IgnoresStaleEntries(t *testing.T) {
+	ch := make(chan AgentEvent, 4)
+	p := &Pane{
+		name:      "eng1",
+		eventCh:   ch,
+		startedAt: time.Now(),
+	}
+
+	// Entry from a prior session (timestamp before pane start).
+	staleEntries := []JournalEntry{
+		{
+			Type:      "tool_result",
+			ToolName:  "Bash",
+			Content:   "bd update ini-old.1 --status in_progress --assignee eng1",
+			ExitCode:  0,
+			Timestamp: p.startedAt.Add(-1 * time.Hour),
+		},
+	}
+	p.applyBeadDetection(staleEntries)
+
+	if p.BeadID() != "" {
+		t.Errorf("BeadID() = %q, want empty (stale entry should be ignored)", p.BeadID())
+	}
+	if len(ch) != 0 {
+		t.Errorf("expected no events from stale entries, got %d", len(ch))
+	}
+}
+
+func TestApplyBeadDetection_ProcessesCurrentEntries(t *testing.T) {
+	ch := make(chan AgentEvent, 4)
+	p := &Pane{
+		name:      "eng1",
+		eventCh:   ch,
+		startedAt: time.Now().Add(-5 * time.Minute),
+	}
+
+	// Entry from the current session (timestamp after pane start).
+	entries := []JournalEntry{
+		{
+			Type:      "tool_result",
+			ToolName:  "Bash",
+			Content:   "bd update ini-new.1 --status in_progress --assignee eng1",
+			ExitCode:  0,
+			Timestamp: time.Now(),
+		},
+	}
+	p.applyBeadDetection(entries)
+
+	if p.BeadID() != "ini-new.1" {
+		t.Errorf("BeadID() = %q, want ini-new.1", p.BeadID())
+	}
+}
+
+func TestApplyBeadDetection_MixedStaleAndCurrent(t *testing.T) {
+	ch := make(chan AgentEvent, 4)
+	p := &Pane{
+		name:      "eng1",
+		eventCh:   ch,
+		startedAt: time.Now().Add(-5 * time.Minute),
+	}
+
+	entries := []JournalEntry{
+		{
+			Type:      "tool_result",
+			ToolName:  "Bash",
+			Content:   "bd update ini-old.1 --status in_progress --assignee eng1",
+			ExitCode:  0,
+			Timestamp: p.startedAt.Add(-1 * time.Hour), // stale
+		},
+		{
+			Type:      "tool_result",
+			ToolName:  "Bash",
+			Content:   "bd update ini-cur.2 --status in_progress --assignee eng1",
+			ExitCode:  0,
+			Timestamp: time.Now(), // current
+		},
+	}
+	p.applyBeadDetection(entries)
+
+	if p.BeadID() != "ini-cur.2" {
+		t.Errorf("BeadID() = %q, want ini-cur.2 (stale ini-old.1 should be filtered)", p.BeadID())
+	}
+}
+
 func TestApplyBeadDetection_ClearsBead(t *testing.T) {
 	ch := make(chan AgentEvent, 4)
 	p := &Pane{name: "eng1", eventCh: ch}

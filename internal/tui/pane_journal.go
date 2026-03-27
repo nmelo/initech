@@ -84,11 +84,24 @@ func (p *Pane) watchJSONL() {
 	}
 }
 
-// applyBeadDetection runs detectBeadClaim on new entries and applies the result:
-// sets or clears the pane's bead display and emits an event if appropriate.
+// applyBeadDetection runs detectBeadClaim on entries from the current session
+// and applies the result: sets or clears the pane's bead display and emits
+// an event if appropriate. Entries older than the pane's startup time are
+// filtered out to prevent stale bead IDs from prior sessions (ini-6hz).
 // Must be called outside p.mu (it acquires the lock internally via SetBead).
 func (p *Pane) applyBeadDetection(entries []JournalEntry) {
-	beadID, clear := detectBeadClaim(entries)
+	// Filter to entries from this session only.
+	var current []JournalEntry
+	for _, e := range entries {
+		if !e.Timestamp.IsZero() && e.Timestamp.Before(p.startedAt) {
+			continue
+		}
+		current = append(current, e)
+	}
+	if len(current) == 0 {
+		return
+	}
+	beadID, clear := detectBeadClaim(current)
 	switch {
 	case clear:
 		p.SetBead("", "")

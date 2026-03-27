@@ -84,6 +84,7 @@ type Pane struct {
 	stallReported   bool           // True after emitting stall event. Reset on new activity.
 	stuckReported   bool           // True after emitting stuck event. Reset on success.
 	dedupEvents     *dedup           // Dedup state for emitted events.
+	startedAt       time.Time        // When this pane's process was started. Used to filter stale JSONL.
 	scrollOffset    int              // Rows scrolled back from live view (0 = live).
 	idleWithBacklog bool             // True when idle and ready beads exist in the backlog.
 	backlogCount    int              // Number of ready beads at last idle-with-backlog detection.
@@ -214,6 +215,8 @@ func NewPane(cfg PaneConfig, rows, cols int) (*Pane, error) {
 // JSONL watcher). Must be called after safeGo and eventCh are wired. If safeGo
 // is nil, falls back to bare goroutine launches.
 func (p *Pane) Start() {
+	p.startedAt = time.Now()
+
 	launch := p.safeGo
 	if launch == nil {
 		launch = func(fn func()) { go fn() }
