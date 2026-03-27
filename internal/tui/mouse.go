@@ -188,6 +188,12 @@ func (t *TUI) copySelection() {
 	if t.sel.pane >= len(t.panes) {
 		return
 	}
+	// Skip zero-width selections (plain clicks with no drag). Without this
+	// guard, every pane-focus click overwrites the system clipboard with the
+	// single character under the cursor (ini-o0j).
+	if t.sel.startX == t.sel.endX && t.sel.startY == t.sel.endY {
+		return
+	}
 	p := t.panes[t.sel.pane]
 
 	// Normalize selection bounds (start may be after end).
