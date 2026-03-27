@@ -151,7 +151,7 @@ Beads handles the tactical layer (what's ready, who's assigned, what's blocked).
 3. Arch writes docs/systemdesign.md (architecture, packages, interfaces, build order)
 4. Super writes docs/roadmap.md phases 1+ (milestones, gates, agent allocation)
 
-**Success gate:** Nelson reviews all four documents. Team can answer: what are we building, why, how, and what ships first?
+**Success gate:** The operator reviews all four documents. Team can answer: what are we building, why, how, and what ships first?
 
 **Beads:** Create one epic for Phase 0. Four beads: Write PRD, Write Spec, Write System Design, Write Roadmap.
 

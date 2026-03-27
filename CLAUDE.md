@@ -1,6 +1,6 @@
 # Initech
 
-A Go CLI tool that captures Nelson's local software development patterns into a reproducible, bootstrappable system. Named after the company from Office Space.
+A Go CLI tool that captures the operator's local software development patterns into a reproducible, bootstrappable system. Named after the company from Office Space.
 
 ## What This Is
 
