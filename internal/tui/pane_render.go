@@ -337,14 +337,14 @@ func (p *Pane) renderActivityBar(s *clampedScreen, r Region) {
 	if r.W < 1 {
 		return
 	}
-	bg := tcell.NewRGBColor(24, 24, 24)
 	baseBrightness := int32(35)
 	baseColor := tcell.NewRGBColor(baseBrightness, baseBrightness, baseBrightness)
-	baseStyle := tcell.StyleDefault.Background(bg).Foreground(baseColor)
+	baseStyle := tcell.StyleDefault.Foreground(baseColor)
 	y := r.Y // top row of the pane
 
 	if p.Activity() != StateRunning {
-		// Static dim bar for idle/dead/suspended panes.
+		// Static dim bar for idle/dead/suspended panes. Default background
+		// so it blends with the terminal rather than showing a distinct band.
 		for x := r.X; x < r.X+r.W; x++ {
 			s.SetContent(x, y, '\u2500', nil, baseStyle)
 		}
@@ -358,8 +358,6 @@ func (p *Pane) renderActivityBar(s *clampedScreen, r Region) {
 	if cycle <= 0 {
 		return
 	}
-	// 2.5s per full cycle at 33ms per tick = ~76 ticks.
-	// Use fractional position from time for smooth sub-cell movement.
 	elapsed := time.Since(p.kittEpoch).Seconds()
 	ticksPerCycle := 2.5
 	frac := math.Mod(elapsed, ticksPerCycle) / ticksPerCycle
@@ -374,11 +372,14 @@ func (p *Pane) renderActivityBar(s *clampedScreen, r Region) {
 		// Gaussian falloff: ~3-5 cells wide bright segment.
 		brightness := 85.0 * math.Exp(-dist*dist*0.15)
 		if brightness < float64(baseBrightness) {
-			brightness = float64(baseBrightness)
+			// Below base: render dim bar with default background so it
+			// blends with the terminal, no visible gray band.
+			s.SetContent(r.X+dx, y, '\u2500', nil, baseStyle)
+		} else {
+			b := int32(brightness)
+			c := tcell.NewRGBColor(b, b, b)
+			s.SetContent(r.X+dx, y, '\u2500', nil, tcell.StyleDefault.Foreground(c))
 		}
-		b := int32(brightness)
-		c := tcell.NewRGBColor(b, b, b)
-		s.SetContent(r.X+dx, y, '\u2500', nil, tcell.StyleDefault.Background(bg).Foreground(c))
 	}
 }
 
