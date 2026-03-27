@@ -156,8 +156,8 @@ func (t *TUI) applyLayout() {
 	} else {
 		w, h = 200, 60 // Fallback for tests without a screen.
 	}
-	// Reserve 1 row for the persistent status bar.
-	paneH := h - 1
+	// Reserve 2 rows at the bottom: separator space + status bar tip line.
+	paneH := h - 2
 	if paneH < 1 {
 		paneH = 1
 	}
@@ -345,9 +345,9 @@ func Run(cfg Config) error {
 	LogInfo("ipc", "listening", "path", sockPath)
 	defer ipcCleanup()
 
-	// Compute initial regions for pane creation. Reserve 1 row for the
-	// persistent status bar, matching what applyLayout will compute.
-	paneInitH := initH - 1
+	// Compute initial regions for pane creation. Reserve 2 rows for the
+	// status bar area, matching what applyLayout will compute.
+	paneInitH := initH - 2
 	if paneInitH < 1 {
 		paneInitH = 1
 	}
