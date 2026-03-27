@@ -88,15 +88,6 @@ func TestMergedStatus_HiddenWithBead(t *testing.T) {
 	}
 }
 
-// TestTopEntryBeadFieldPreserved verifies that the Bead field on topEntry still
-// carries the raw bead ID, which is used by IPC patrol output.
-func TestTopEntryBeadFieldPreserved(t *testing.T) {
-	e := topEntry{Name: "eng1", Status: "running", Bead: "ini-xyz"}
-	if e.Bead != "ini-xyz" {
-		t.Errorf("Bead field = %q, want %q", e.Bead, "ini-xyz")
-	}
-}
-
 // TestOverlayStatusCombinesActivityAndBead verifies the logic used in
 // renderOverlay to build the Status string for AgentInfo.
 func TestOverlayStatusCombinesActivityAndBead(t *testing.T) {

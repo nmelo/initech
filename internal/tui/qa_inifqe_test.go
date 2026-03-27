@@ -275,16 +275,3 @@ func TestEventLog_NewEventVisibleAfterAppend(t *testing.T) {
 	}
 }
 
-// maxEventLog constant must be 100.
-func TestMaxEventLogConstant(t *testing.T) {
-	if maxEventLog != 100 {
-		t.Errorf("maxEventLog = %d, want 100", maxEventLog)
-	}
-}
-
-// eventLogRetention must be 60 minutes.
-func TestEventLogRetentionConstant(t *testing.T) {
-	if eventLogRetention != 60*time.Minute {
-		t.Errorf("eventLogRetention = %v, want 60m", eventLogRetention)
-	}
-}

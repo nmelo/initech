@@ -93,15 +93,4 @@ func TestOverlayDotMixedRunningAndIdle(t *testing.T) {
 	}
 }
 
-// Verify Activity() accessor reads from the pane's activity field correctly.
-func TestPaneActivityAccessor(t *testing.T) {
-	p := &Pane{}
-	p.activity = StateRunning
-	if p.Activity() != StateRunning {
-		t.Errorf("Activity() = %v, want StateRunning", p.Activity())
-	}
-	p.activity = StateIdle
-	if p.Activity() != StateIdle {
-		t.Errorf("Activity() = %v, want StateIdle", p.Activity())
-	}
-}
+

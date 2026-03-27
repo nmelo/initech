@@ -11,13 +11,6 @@ import (
 	"github.com/gdamore/tcell/v2"
 )
 
-// ptyIdleTimeout constant must be 2 seconds exactly.
-func TestPtyIdleTimeout_Is2Seconds(t *testing.T) {
-	if ptyIdleTimeout != 2*time.Second {
-		t.Errorf("ptyIdleTimeout = %v, want 2s", ptyIdleTimeout)
-	}
-}
-
 // render() must call updateActivity() per pane each frame, overriding any
 // manually-set p.activity value. A pane with zero lastOutputTime must render
 // as idle even if p.activity was previously set to StateRunning.

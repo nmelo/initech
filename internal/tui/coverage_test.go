@@ -1020,93 +1020,39 @@ func TestRenderOverlayTitleFallsBackWithoutProjectName(t *testing.T) {
 // copySelection
 // ---------------------------------------------------------------------------
 
-func TestCopySelectionExtractsText(t *testing.T) {
-	tui, _ := newTestTUIWithScreen("a")
-	tui.applyLayout()
-	p := tui.panes[0]
-	p.emu.Write([]byte("Hello World\r\n"))
-
-	tui.sel.pane = 0
-	tui.sel.startX = 0
-	tui.sel.startY = 0
-	tui.sel.endX = 4
-	tui.sel.endY = 0
-	tui.copySelection()
-}
-
-func TestCopySelectionOutOfRange(t *testing.T) {
-	tui, _ := newTestTUIWithScreen("a")
-	tui.sel.pane = 99
-	tui.copySelection()
-}
-
-func TestCopySelectionReversed(t *testing.T) {
-	tui, _ := newTestTUIWithScreen("a")
-	tui.applyLayout()
-	p := tui.panes[0]
-	p.emu.Write([]byte("ABCDEF\r\n"))
-
-	tui.sel.pane = 0
-	tui.sel.startX = 5
-	tui.sel.startY = 0
-	tui.sel.endX = 0
-	tui.sel.endY = 0
-	tui.copySelection()
-}
-
-func TestCopySelectionMultiLine(t *testing.T) {
-	tui, _ := newTestTUIWithScreen("a")
-	tui.applyLayout()
-	p := tui.panes[0]
-	p.emu.Write([]byte("Line1\r\nLine2\r\nLine3\r\n"))
-
-	tui.sel.pane = 0
-	tui.sel.startX = 0
-	tui.sel.startY = 0
-	tui.sel.endX = 4
-	tui.sel.endY = 2
-	tui.copySelection()
-}
-
-func TestCopySelectionEmptyContent(t *testing.T) {
-	tui, _ := newTestTUIWithScreen("a")
-	tui.applyLayout()
-	// No content written - emulator is empty.
-
-	tui.sel.pane = 0
-	tui.sel.startX = 0
-	tui.sel.startY = 0
-	tui.sel.endX = 5
-	tui.sel.endY = 0
-	tui.copySelection() // text="" -> early return
-}
-
-func TestCopySelectionExceedsPaneRows(t *testing.T) {
-	tui, _ := newTestTUIWithScreen("a")
-	tui.applyLayout()
-	p := tui.panes[0]
-	p.emu.Write([]byte("X\r\n"))
-
-	tui.sel.pane = 0
-	tui.sel.startX = 0
-	tui.sel.startY = 0
-	tui.sel.endX = 0
-	tui.sel.endY = 999 // Beyond pane rows, should be clamped.
-	tui.copySelection()
-}
-
-func TestCopySelectionEndColBeyondWidth(t *testing.T) {
-	tui, _ := newTestTUIWithScreen("a")
-	tui.applyLayout()
-	p := tui.panes[0]
-	p.emu.Write([]byte("test\r\n"))
-
-	tui.sel.pane = 0
-	tui.sel.startX = 0
-	tui.sel.startY = 0
-	tui.sel.endX = 999 // Beyond cols, should be clamped.
-	tui.sel.endY = 0
-	tui.copySelection()
+func TestCopySelection_EdgeCases(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+		pane    int
+		startX  int
+		startY  int
+		endX    int
+		endY    int
+	}{
+		{"normal range", "Hello World\r\n", 0, 0, 0, 4, 0},
+		{"out of range pane", "", 99, 0, 0, 0, 0},
+		{"reversed coordinates", "ABCDEF\r\n", 0, 5, 0, 0, 0},
+		{"multi-line", "Line1\r\nLine2\r\nLine3\r\n", 0, 0, 0, 4, 2},
+		{"empty content", "", 0, 0, 0, 5, 0},
+		{"endY exceeds rows", "X\r\n", 0, 0, 0, 0, 999},
+		{"endX exceeds width", "test\r\n", 0, 0, 0, 999, 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tui, _ := newTestTUIWithScreen("a")
+			tui.applyLayout()
+			if tt.content != "" && tt.pane < len(tui.panes) {
+				tui.panes[tt.pane].emu.Write([]byte(tt.content))
+			}
+			tui.sel.pane = tt.pane
+			tui.sel.startX = tt.startX
+			tui.sel.startY = tt.startY
+			tui.sel.endX = tt.endX
+			tui.sel.endY = tt.endY
+			tui.copySelection() // Must not panic.
+		})
+	}
 }
 
 // ---------------------------------------------------------------------------

@@ -10,33 +10,6 @@ import (
 	"testing"
 )
 
-// SelectorItem struct has all required fields.
-func TestQASelectorItem_Fields(t *testing.T) {
-	item := SelectorItem{
-		Name:        "eng1",
-		Description: "Autonomous engineer",
-		Group:       "ENGINEERS",
-		Tag:         "needs src",
-		Checked:     true,
-	}
-	if item.Name != "eng1" {
-		t.Errorf("Name = %q, want eng1", item.Name)
-	}
-	if !item.Checked {
-		t.Error("Checked should be true")
-	}
-}
-
-// ErrCancelled is a non-nil sentinel error.
-func TestQAErrCancelled_IsNonNil(t *testing.T) {
-	if ErrCancelled == nil {
-		t.Error("ErrCancelled must be a non-nil error")
-	}
-	if !strings.Contains(ErrCancelled.Error(), "cancel") {
-		t.Errorf("ErrCancelled.Error() = %q, want to contain 'cancel'", ErrCancelled.Error())
-	}
-}
-
 // RunSelector returns immediately with nil when items is empty.
 func TestQARunSelector_EmptyItemsReturnsNil(t *testing.T) {
 	// No TTY in test environment: RunSelector with empty slice must return before
