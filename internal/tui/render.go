@@ -217,10 +217,14 @@ func (t *TUI) renderHints() {
 		}
 	}
 
-	// Layout from right: shortcuts, gap, battery, gap, quota, gap, tip.
-	rightW := len(shortcuts)
+	// Clock: rightmost element.
+	clock := time.Now().Format("15:04")
+
+	// Layout from right: clock, gap, shortcuts, gap, battery.
+	rightW := len(clock)
+	rightW += 2 + len(shortcuts) // gap + shortcuts
 	if battStr != "" {
-		rightW += len(battStr) + 2 // 2 for gap before shortcuts
+		rightW += len(battStr) + 2 // gap + battery
 	}
 	rightStart := sw - rightW - 1
 	if rightStart < 0 {
@@ -241,6 +245,15 @@ func (t *TUI) renderHints() {
 
 	// Draw shortcuts.
 	for _, ch := range shortcuts {
+		if x >= 0 && x < sw {
+			s.SetContent(x, y, ch, nil, barStyle)
+		}
+		x++
+	}
+
+	// Draw clock.
+	x += 2 // gap
+	for _, ch := range clock {
 		if x >= 0 && x < sw {
 			s.SetContent(x, y, ch, nil, barStyle)
 		}

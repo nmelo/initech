@@ -508,6 +508,28 @@ func TestRenderHints_QuotaColorRed(t *testing.T) {
 	_ = sh
 }
 
+// ── Clock rendering tests ───────────────────────────────────────────
+
+func TestRenderHints_ShowsClock(t *testing.T) {
+	s := tcell.NewSimulationScreen("")
+	s.Init()
+	s.SetSize(120, 24)
+	tui := &TUI{screen: s, batteryPercent: -1, quotaPercent: -1}
+	tui.renderHints()
+
+	sw, sh := s.Size()
+	y := sh - 1
+	var line string
+	for x := 0; x < sw; x++ {
+		ch, _, _, _ := s.GetContent(x, y)
+		line += string(ch)
+	}
+	now := time.Now().Format("15:04")
+	if !containsStr(line, now) {
+		t.Errorf("status bar should contain current time %q, got: %q", now, line)
+	}
+}
+
 func containsStr(s, substr string) bool {
 	for i := 0; i <= len(s)-len(substr); i++ {
 		if s[i:i+len(substr)] == substr {
