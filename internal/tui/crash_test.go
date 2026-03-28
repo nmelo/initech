@@ -63,7 +63,15 @@ func TestCrashLogNoProjectRoot(t *testing.T) {
 }
 
 func TestSafeGo_CatchesPanicAndWritesCrashLog(t *testing.T) {
-	dir := t.TempDir()
+	// Use os.MkdirTemp instead of t.TempDir() because crashLog writes to
+	// disk asynchronously after closing quitCh. t.TempDir()'s auto-cleanup
+	// races with that write, causing "directory not empty" failures in CI.
+	dir, err := os.MkdirTemp("", "initech-crash-test-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(dir)
+
 	quitCh := make(chan struct{})
 	tui := &TUI{
 		projectRoot: dir,
@@ -84,11 +92,14 @@ func TestSafeGo_CatchesPanicAndWritesCrashLog(t *testing.T) {
 		t.Fatal("quitCh was not closed after goroutine panic")
 	}
 
+	// Brief delay for crashLog file write to complete.
+	time.Sleep(50 * time.Millisecond)
+
 	// Verify crash log was written.
 	path := filepath.Join(dir, ".initech", "crash.log")
-	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("crash.log not written: %v", err)
+	data, readErr := os.ReadFile(path)
+	if readErr != nil {
+		t.Fatalf("crash.log not written: %v", readErr)
 	}
 	content := string(data)
 	if !strings.Contains(content, "test goroutine panic") {
@@ -126,7 +137,13 @@ func TestSafeGo_NormalFunctionRunsCleanly(t *testing.T) {
 }
 
 func TestSafeGo_DoubleCloseQuitChSafe(t *testing.T) {
-	dir := t.TempDir()
+	// Use os.MkdirTemp to avoid t.TempDir() cleanup racing with async crash log write.
+	dir, err := os.MkdirTemp("", "initech-crash-test-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(dir)
+
 	quitCh := make(chan struct{})
 	tui := &TUI{
 		projectRoot: dir,
@@ -148,6 +165,9 @@ func TestSafeGo_DoubleCloseQuitChSafe(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("safeGo goroutine did not complete after double-close scenario")
 	}
+
+	// Brief delay for crash log write to complete before cleanup.
+	time.Sleep(50 * time.Millisecond)
 }
 
 func TestPaneStart_UsesSafeGo(t *testing.T) {
