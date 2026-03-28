@@ -135,9 +135,18 @@ func (t *TUI) handleIPCConn(conn net.Conn) {
 	}
 }
 
+// maxSendTextLen is the maximum size of text accepted by the send IPC action.
+// Prevents a misbehaving client from injecting megabytes of keystroke data
+// that would freeze the TUI while processing rune-by-rune under sendMu.
+const maxSendTextLen = 64 * 1024 // 64 KB
+
 func (t *TUI) handleIPCSend(conn net.Conn, req IPCRequest) {
 	if req.Target == "" {
 		writeIPCResponse(conn, IPCResponse{Error: "target is required"})
+		return
+	}
+	if len(req.Text) > maxSendTextLen {
+		writeIPCResponse(conn, IPCResponse{Error: "text too large (max 64KB)"})
 		return
 	}
 
