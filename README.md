@@ -26,6 +26,9 @@ Running multiple Claude Code agents in tmux works for small teams but degrades i
 
 ```bash
 # Install
+curl -fsSL https://initech.sh/install.sh | bash
+
+# Or via Homebrew
 brew tap nmelo/tap && brew install initech
 
 # Check prerequisites
