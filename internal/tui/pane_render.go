@@ -8,6 +8,7 @@ import (
 	"math"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
@@ -402,7 +403,7 @@ func uvCellToTcell(cell *uv.Cell) (rune, tcell.Style) {
 		return ' ', tcell.StyleDefault
 	}
 
-	ch := []rune(cell.Content)[0]
+	ch, _ := utf8.DecodeRuneInString(cell.Content)
 	style := tcell.StyleDefault
 
 	// Foreground color.
