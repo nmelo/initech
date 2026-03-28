@@ -262,60 +262,50 @@ func pollPaneRSS(pid int) int64 {
 	return processTreeRSS(pid)
 }
 
-// processTreeRSS sums the RSS of a process and all its descendants by walking
-// the process tree via pgrep -P. Returns 0 if the PID is invalid or dead.
+// processTreeRSS sums the RSS of a process and all its descendants.
+// Uses a single `ps -eo pid,ppid,rss` call and builds the tree in memory,
+// replacing the previous recursive pgrep approach which forked 3+ processes
+// per pane per poll. Returns 0 if the PID is invalid or dead.
 func processTreeRSS(pid int) int64 {
 	if pid <= 0 {
 		return 0
 	}
 
-	// Collect all PIDs in the tree (root + descendants).
-	pids := collectDescendants(pid)
-	pids = append(pids, pid)
-
-	// Query RSS for all PIDs in one ps call.
-	args := make([]string, 0, len(pids)*2+2)
-	args = append(args, "-o", "rss=")
-	for _, p := range pids {
-		args = append(args, "-p", fmt.Sprintf("%d", p))
-	}
-	out, err := exec.Command("ps", args...).Output()
+	// Single syscall: get pid, ppid, rss for all processes.
+	out, err := exec.Command("ps", "-eo", "pid=,ppid=,rss=").Output()
 	if err != nil {
 		return 0
 	}
 
-	var total int64
-	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
+	// Parse into a parent-to-children map and a pid-to-rss map.
+	children := make(map[int][]int)
+	rssMap := make(map[int]int64)
+
+	for _, line := range strings.Split(string(out), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 3 {
 			continue
 		}
-		if rss, err := strconv.ParseInt(line, 10, 64); err == nil {
-			total += rss
+		p, err1 := strconv.Atoi(fields[0])
+		pp, err2 := strconv.Atoi(fields[1])
+		rss, err3 := strconv.ParseInt(fields[2], 10, 64)
+		if err1 != nil || err2 != nil || err3 != nil {
+			continue
 		}
+		children[pp] = append(children[pp], p)
+		rssMap[p] = rss
+	}
+
+	// Walk the tree from the root PID, summing RSS.
+	var total int64
+	stack := []int{pid}
+	for len(stack) > 0 {
+		cur := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		total += rssMap[cur]
+		stack = append(stack, children[cur]...)
 	}
 	return total
-}
-
-// collectDescendants returns all descendant PIDs of the given process using
-// pgrep -P. Recurses to capture grandchildren (e.g., sh -> node -> claude).
-func collectDescendants(pid int) []int {
-	out, err := exec.Command("pgrep", "-P", fmt.Sprintf("%d", pid)).Output()
-	if err != nil {
-		return nil
-	}
-	var result []int
-	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		if child, err := strconv.Atoi(line); err == nil {
-			result = append(result, child)
-			result = append(result, collectDescendants(child)...)
-		}
-	}
-	return result
 }
 
 // ── Message queue for suspended panes ───────────────────────────────
