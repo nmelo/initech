@@ -28,6 +28,11 @@ func (t *TUI) handleKey(ev *tcell.EventKey) bool {
 		return t.handleTopKey(ev)
 	}
 
+	// Reorder modal intercepts all input when active.
+	if t.reorder.active {
+		return t.handleReorderKey(ev)
+	}
+
 	// Command modal intercepts all input when active.
 	if t.cmd.active {
 		return t.handleCmdKey(ev)
@@ -572,6 +577,8 @@ func (t *TUI) execCmd(cmd string) bool {
 		return t.cmdRemove(parts)
 	case "log", "events":
 		return t.cmdLog()
+	case "order":
+		return t.cmdOrder()
 	case "help", "?":
 		return t.cmdHelp()
 	case "quit", "q":
@@ -955,6 +962,110 @@ func (t *TUI) cmdLog() bool {
 	t.cmd.error = ""
 	t.eventLogM.active = true
 	t.eventLogM.scrollOffset = 0
+	return false
+}
+
+func (t *TUI) cmdOrder() bool {
+	items := make([]string, len(t.panes))
+	for i, p := range t.panes {
+		items[i] = p.name
+	}
+	t.reorder = reorderModal{
+		active: true,
+		items:  items,
+		cursor: 0,
+	}
+	return false
+}
+
+// handleReorderKey handles input while the reorder modal is active.
+func (t *TUI) handleReorderKey(ev *tcell.EventKey) bool {
+	n := len(t.reorder.items)
+	if n == 0 {
+		t.reorder.active = false
+		return false
+	}
+
+	switch ev.Key() {
+	case tcell.KeyEscape, tcell.KeyCtrlC:
+		// Cancel: discard changes.
+		t.reorder.active = false
+		return false
+
+	case tcell.KeyEnter:
+		// Toggle pick/drop.
+		t.reorder.moving = !t.reorder.moving
+		return false
+
+	case tcell.KeyRune:
+		switch ev.Rune() {
+		case ' ':
+			// Confirm: apply the new order.
+			t.reorder.active = false
+			t.layoutState.Order = make([]string, len(t.reorder.items))
+			copy(t.layoutState.Order, t.reorder.items)
+			reorderPanes(t.panes, t.layoutState.Order)
+			t.applyLayout()
+			t.saveLayoutIfConfigured()
+			return false
+
+		case 'j':
+			if t.reorder.moving {
+				// Move picked item down.
+				if t.reorder.cursor < n-1 {
+					i := t.reorder.cursor
+					t.reorder.items[i], t.reorder.items[i+1] = t.reorder.items[i+1], t.reorder.items[i]
+					t.reorder.cursor++
+				}
+			} else {
+				// Move cursor down.
+				if t.reorder.cursor < n-1 {
+					t.reorder.cursor++
+				}
+			}
+			return false
+
+		case 'k':
+			if t.reorder.moving {
+				// Move picked item up.
+				if t.reorder.cursor > 0 {
+					i := t.reorder.cursor
+					t.reorder.items[i], t.reorder.items[i-1] = t.reorder.items[i-1], t.reorder.items[i]
+					t.reorder.cursor--
+				}
+			} else {
+				// Move cursor up.
+				if t.reorder.cursor > 0 {
+					t.reorder.cursor--
+				}
+			}
+			return false
+		}
+
+	case tcell.KeyDown:
+		if t.reorder.moving {
+			if t.reorder.cursor < n-1 {
+				i := t.reorder.cursor
+				t.reorder.items[i], t.reorder.items[i+1] = t.reorder.items[i+1], t.reorder.items[i]
+				t.reorder.cursor++
+			}
+		} else if t.reorder.cursor < n-1 {
+			t.reorder.cursor++
+		}
+		return false
+
+	case tcell.KeyUp:
+		if t.reorder.moving {
+			if t.reorder.cursor > 0 {
+				i := t.reorder.cursor
+				t.reorder.items[i], t.reorder.items[i-1] = t.reorder.items[i-1], t.reorder.items[i]
+				t.reorder.cursor--
+			}
+		} else if t.reorder.cursor > 0 {
+			t.reorder.cursor--
+		}
+		return false
+	}
 	return false
 }
 

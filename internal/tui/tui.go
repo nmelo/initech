@@ -77,6 +77,14 @@ type helpModal struct {
 	scrollOffset int
 }
 
+// reorderModal holds state for the pane reorder modal.
+type reorderModal struct {
+	active bool
+	items  []string // Pane names in the working order (copy of current).
+	cursor int      // Currently highlighted row.
+	moving bool     // True when an item is "picked up" and j/k moves it.
+}
+
 // mouseSelection holds mouse text selection state.
 type mouseSelection struct {
 	active       bool
@@ -119,6 +127,7 @@ type TUI struct {
 	top       topModal       // Activity monitor overlay.
 	eventLogM eventLogModal  // Event log history modal.
 	help      helpModal      // Help reference card modal.
+	reorder   reorderModal   // Agent reorder modal.
 	sel       mouseSelection // Mouse text selection.
 	quitCh   chan struct{} // Closed by IPC quit action to signal event loop exit.
 	quitOnce sync.Once   // Guards single close of quitCh; prevents concurrent-quit panics.

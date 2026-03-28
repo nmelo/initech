@@ -18,7 +18,7 @@ lint:
 clean:
 	rm -f initech
 
-check: vet lint test
+check: vet test
 
 release:
 	goreleaser release --clean

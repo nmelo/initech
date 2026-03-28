@@ -1,34 +1,34 @@
+version: "2"
+
+formatters:
+  enable:
+    - goimports
+
 linters:
   enable:
     - errcheck
     - gocritic
-    - goimports
-    - gosimple
     - govet
     - ineffassign
     - staticcheck
-    - unused
-
-linters-settings:
-  errcheck:
-    exclude-functions:
-      # CLI output — errors mean terminal is gone, nothing to do.
-      - fmt.Fprint
-      - fmt.Fprintf
-      - fmt.Fprintln
-      # TUI screen writes — same rationale.
-      - (*github.com/gdamore/tcell/v2.Screen).SetContent
-  gocritic:
-    disabled-checks:
-      - ifElseChain
-      - singleCaseSwitch
+  settings:
+    errcheck:
+      exclude-functions:
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
+        - (*github.com/gdamore/tcell/v2.Screen).SetContent
+    gocritic:
+      disabled-checks:
+        - ifElseChain
+        - singleCaseSwitch
+  exclusions:
+    rules:
+      - path: _test\.go
+        linters:
+          - errcheck
+          - gocritic
 
 issues:
   exclude-dirs:
     - vendor
-  exclude-rules:
-    # Test files can be looser.
-    - path: _test\.go
-      linters:
-        - errcheck
-        - gocritic

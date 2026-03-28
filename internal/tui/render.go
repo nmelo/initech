@@ -49,6 +49,12 @@ func (t *TUI) render() {
 		return
 	}
 
+	if t.reorder.active {
+		t.renderReorder()
+		s.Show()
+		return
+	}
+
 	// Draw panes from the render plan. No visibility checks needed.
 	for _, pr := range t.plan.Panes {
 		sel := t.selectionForPane(pr.Pane)
@@ -93,6 +99,84 @@ func (t *TUI) selectionForPane(p *Pane) Selection {
 		}
 	}
 	return Selection{}
+}
+
+// renderReorder draws the full-screen reorder modal.
+func (t *TUI) renderReorder() {
+	s := t.screen
+	sw, sh := s.Size()
+
+	titleStyle := tcell.StyleDefault.Background(tcell.ColorDodgerBlue).Foreground(tcell.ColorBlack).Bold(true)
+	normalStyle := tcell.StyleDefault.Foreground(tcell.ColorSilver)
+	cursorStyle := tcell.StyleDefault.Background(tcell.ColorDarkBlue).Foreground(tcell.ColorWhite)
+	movingStyle := tcell.StyleDefault.Background(tcell.ColorDodgerBlue).Foreground(tcell.ColorWhite).Bold(true)
+	dimStyle := tcell.StyleDefault.Foreground(tcell.ColorGray)
+	helpStyle := tcell.StyleDefault.Foreground(tcell.ColorGray)
+
+	// Title bar.
+	title := " Reorder agents "
+	for i, ch := range title {
+		if 1+i < sw {
+			s.SetContent(1+i, 0, ch, nil, titleStyle)
+		}
+	}
+
+	// Help text.
+	help := "  Enter: pick/drop   j/k: move   Space: confirm   Esc: cancel"
+	for i, ch := range help {
+		if i < sw {
+			s.SetContent(i, 2, ch, nil, helpStyle)
+		}
+	}
+
+	// Item list.
+	y := 4
+	for i, name := range t.reorder.items {
+		if y >= sh-1 {
+			break
+		}
+
+		style := normalStyle
+		marker := "  "
+		if i == t.reorder.cursor {
+			if t.reorder.moving {
+				style = movingStyle
+				marker = "> "
+			} else {
+				style = cursorStyle
+			}
+		}
+
+		// Tag for hidden/suspended panes.
+		tag := ""
+		if p := t.findPaneByName(name); p != nil {
+			if t.layoutState.Hidden[name] {
+				tag = " [h]"
+				if i != t.reorder.cursor {
+					style = dimStyle
+				}
+			}
+			if p.IsSuspended() {
+				tag = " [susp]"
+			}
+		}
+
+		line := fmt.Sprintf("%s%2d. %s%s", marker, i+1, name, tag)
+
+		// Fill the row background for cursor/moving rows.
+		if i == t.reorder.cursor {
+			for x := 0; x < sw; x++ {
+				s.SetContent(x, y, ' ', nil, style)
+			}
+		}
+
+		for j, ch := range line {
+			if 2+j < sw {
+				s.SetContent(2+j, y, ch, nil, style)
+			}
+		}
+		y++
+	}
 }
 
 // renderStatusBar draws the persistent 1-line bar at the bottom of the screen.
