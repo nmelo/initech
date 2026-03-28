@@ -36,8 +36,14 @@ func (t *TUI) watchBacklog(runner iexec.Runner) {
 		case <-ticker.C:
 		}
 
-		// Find idle agents with no bead.
-		idle := t.idleAgentsWithoutBead()
+		// Snapshot idle agents on the main goroutine to avoid racing
+		// with concurrent pane mutations (add/remove/restart).
+		var idle []string
+		if !t.runOnMain(func() {
+			idle = t.idleAgentsWithoutBead()
+		}) {
+			return // TUI shutting down.
+		}
 
 		// Update dedup: clear agents no longer idle or that now have a bead.
 		for name := range notified {
@@ -50,10 +56,11 @@ func (t *TUI) watchBacklog(runner iexec.Runner) {
 			}
 			if !stillIdle {
 				delete(notified, name)
-				// Revert overlay dot to gray immediately.
-				if p := t.findPaneByName(name); p != nil {
-					p.ClearIdleWithBacklog()
-				}
+				t.runOnMain(func() {
+					if p := t.findPaneByName(name); p != nil {
+						p.ClearIdleWithBacklog()
+					}
+				})
 			}
 		}
 
@@ -65,19 +72,25 @@ func (t *TUI) watchBacklog(runner iexec.Runner) {
 		readyCount := queryBdReady(runner)
 		if readyCount == 0 {
 			// No ready work: ensure idle agents don't show yellow dot.
-			for _, name := range idle {
-				if p := t.findPaneByName(name); p != nil {
-					p.ClearIdleWithBacklog()
+			t.runOnMain(func() {
+				for _, name := range idle {
+					if p := t.findPaneByName(name); p != nil {
+						p.ClearIdleWithBacklog()
+					}
 				}
-			}
+			})
 			continue
 		}
 
 		// Set overlay flag and emit one event per idle agent (deduped).
-		for _, name := range idle {
-			if p := t.findPaneByName(name); p != nil {
-				p.SetIdleWithBacklog(readyCount)
+		t.runOnMain(func() {
+			for _, name := range idle {
+				if p := t.findPaneByName(name); p != nil {
+					p.SetIdleWithBacklog(readyCount)
+				}
 			}
+		})
+		for _, name := range idle {
 			if notified[name] {
 				continue
 			}
