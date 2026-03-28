@@ -173,20 +173,59 @@ func (t *TUI) renderHints() {
 
 	// Right side: keyboard shortcuts (always visible, take priority).
 	shortcuts := "`:cmd  Alt+z:zoom  Alt+s:overlay  ?:help"
-	shortcutsStart := sw - len(shortcuts) - 1
-	if shortcutsStart < 0 {
-		shortcutsStart = 0
-	}
-	for i, ch := range shortcuts {
-		x := shortcutsStart + i
-		if x >= 0 && x < sw {
-			s.SetContent(x, y, ch, nil, barStyle)
+
+	// Battery indicator: placed between shortcuts and tip.
+	battStr := ""
+	var battStyle tcell.Style
+	if t.batteryPercent >= 0 {
+		if t.batteryCharging {
+			battStr = fmt.Sprintf("%d%% +", t.batteryPercent)
+			battStyle = barStyle.Foreground(tcell.ColorGreen)
+		} else if t.batteryPercent < 10 {
+			battStr = fmt.Sprintf("%d%%", t.batteryPercent)
+			battStyle = barStyle.Foreground(tcell.ColorRed)
+		} else if t.batteryPercent < 20 {
+			battStr = fmt.Sprintf("%d%%", t.batteryPercent)
+			battStyle = barStyle.Foreground(tcell.ColorYellow)
+		} else {
+			battStr = fmt.Sprintf("%d%%", t.batteryPercent)
+			battStyle = barStyle
 		}
 	}
 
-	// Left side: cycling tip. Truncate with ellipsis if it would overlap shortcuts.
+	// Layout from right: shortcuts, gap, battery.
+	rightW := len(shortcuts)
+	if battStr != "" {
+		rightW += len(battStr) + 2 // 2 for gap
+	}
+	rightStart := sw - rightW - 1
+	if rightStart < 0 {
+		rightStart = 0
+	}
+
+	// Draw battery.
+	x := rightStart
+	if battStr != "" {
+		for _, ch := range battStr {
+			if x >= 0 && x < sw {
+				s.SetContent(x, y, ch, nil, battStyle)
+			}
+			x++
+		}
+		x += 2 // gap
+	}
+
+	// Draw shortcuts.
+	for _, ch := range shortcuts {
+		if x >= 0 && x < sw {
+			s.SetContent(x, y, ch, nil, barStyle)
+		}
+		x++
+	}
+
+	// Left side: cycling tip. Truncate with ellipsis if it would overlap the right block.
 	tip := statusTips[t.tipIndex%len(statusTips)]
-	maxTipW := shortcutsStart - 3 // leave gap between tip and shortcuts
+	maxTipW := rightStart - 3 // leave gap between tip and right block
 	if maxTipW < 10 {
 		return // too narrow for a tip
 	}
@@ -199,6 +238,35 @@ func (t *TUI) renderHints() {
 			s.SetContent(1+i, y, ch, nil, barStyle)
 		}
 	}
+}
+
+// startBatteryPoller launches a goroutine that polls battery state every 60s.
+// If the first poll finds no battery, the goroutine exits immediately and
+// batteryPercent stays at -1 (nothing rendered in the status bar).
+func (t *TUI) startBatteryPoller() {
+	pct, charging, hasBattery := readBattery()
+	if !hasBattery {
+		return // Desktop or VM, no battery to monitor.
+	}
+	t.batteryPercent = pct
+	t.batteryCharging = charging
+
+	t.safeGo(func() {
+		ticker := time.NewTicker(60 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				pct, charging, has := readBattery()
+				if has {
+					t.batteryPercent = pct
+					t.batteryCharging = charging
+				}
+			case <-t.quitCh:
+				return
+			}
+		}
+	})
 }
 
 // renderCmdLine draws the command input bar at the bottom of the screen.

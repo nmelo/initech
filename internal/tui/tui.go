@@ -140,6 +140,10 @@ type TUI struct {
 	tipIndex    int       // Current index into statusTips.
 	tipRotateAt time.Time // When the next tip rotation should happen.
 
+	// Battery monitoring for status bar.
+	batteryPercent  int  // 0-100, or -1 if no battery detected.
+	batteryCharging bool // True when plugged in and charging.
+
 	// Agent event system.
 	agentEvents   chan AgentEvent // Buffered channel for semantic events from detection modules.
 	notifications []notification // Active notifications for rendering.
@@ -335,6 +339,7 @@ func Run(cfg Config) error {
 		autoSuspend:       cfg.AutoSuspend,
 		pressureThreshold: cfg.PressureThreshold,
 		tipRotateAt:       time.Now().Add(tipRotationInterval),
+		batteryPercent:    -1,
 		quitCh:            quitCh,
 		ipcCh:             make(chan ipcAction, 32),
 		agentEvents:       make(chan AgentEvent, 64),
@@ -417,6 +422,9 @@ func Run(cfg Config) error {
 	if t.autoSuspend {
 		t.startMemoryMonitor()
 	}
+
+	// Start battery polling for status bar display.
+	t.startBatteryPoller()
 
 	// Poll tcell events in a goroutine.
 	eventCh := make(chan tcell.Event, 64)

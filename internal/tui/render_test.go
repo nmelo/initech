@@ -293,6 +293,100 @@ func TestStatusTips_NonEmpty(t *testing.T) {
 	}
 }
 
+// ── Battery rendering tests ─────────────────────────────────────────
+
+func TestRenderHints_NoBattery(t *testing.T) {
+	s := tcell.NewSimulationScreen("")
+	s.Init()
+	s.SetSize(120, 24)
+	tui := &TUI{screen: s, batteryPercent: -1}
+	tui.renderHints()
+
+	sw, sh := s.Size()
+	y := sh - 1
+	var line string
+	for x := 0; x < sw; x++ {
+		ch, _, _, _ := s.GetContent(x, y)
+		line += string(ch)
+	}
+	// No battery string should appear.
+	if containsStr(line, "%") {
+		t.Errorf("no battery indicator expected, got: %q", line)
+	}
+}
+
+func TestRenderHints_BatteryDischarging(t *testing.T) {
+	s := tcell.NewSimulationScreen("")
+	s.Init()
+	s.SetSize(120, 24)
+	tui := &TUI{screen: s, batteryPercent: 67, batteryCharging: false}
+	tui.renderHints()
+
+	sw, sh := s.Size()
+	y := sh - 1
+	var line string
+	for x := 0; x < sw; x++ {
+		ch, _, _, _ := s.GetContent(x, y)
+		line += string(ch)
+	}
+	if !containsStr(line, "67%") {
+		t.Errorf("battery should show 67%%, got: %q", line)
+	}
+	if containsStr(line, "67% +") {
+		t.Error("discharging battery should not show charging indicator")
+	}
+}
+
+func TestRenderHints_BatteryCharging(t *testing.T) {
+	s := tcell.NewSimulationScreen("")
+	s.Init()
+	s.SetSize(120, 24)
+	tui := &TUI{screen: s, batteryPercent: 42, batteryCharging: true}
+	tui.renderHints()
+
+	sw, sh := s.Size()
+	y := sh - 1
+	var line string
+	for x := 0; x < sw; x++ {
+		ch, _, _, _ := s.GetContent(x, y)
+		line += string(ch)
+	}
+	if !containsStr(line, "42% +") {
+		t.Errorf("charging battery should show '42%% +', got: %q", line)
+	}
+}
+
+func TestRenderHints_BatteryLow(t *testing.T) {
+	s := tcell.NewSimulationScreen("")
+	s.Init()
+	s.SetSize(120, 24)
+	tui := &TUI{screen: s, batteryPercent: 8, batteryCharging: false}
+	tui.renderHints()
+
+	sw, sh := s.Size()
+	y := sh - 1
+	var line string
+	for x := 0; x < sw; x++ {
+		ch, _, _, _ := s.GetContent(x, y)
+		line += string(ch)
+	}
+	if !containsStr(line, "8%") {
+		t.Errorf("low battery should show 8%%, got: %q", line)
+	}
+}
+
+func TestReadBattery_Callable(t *testing.T) {
+	// Just verify readBattery doesn't panic. On macOS it may return real data
+	// or hasBattery=false on a desktop. On Linux CI it returns false.
+	pct, charging, has := readBattery()
+	if has {
+		if pct < 0 || pct > 100 {
+			t.Errorf("percent = %d, want 0-100", pct)
+		}
+		_ = charging
+	}
+}
+
 func containsStr(s, substr string) bool {
 	for i := 0; i <= len(s)-len(substr); i++ {
 		if s[i:i+len(substr)] == substr {
