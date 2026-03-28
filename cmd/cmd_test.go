@@ -208,12 +208,17 @@ func TestRunBead_NoClearNoArgs(t *testing.T) {
 func TestRunBead_AgentFromEnv(t *testing.T) {
 	os.Setenv("INITECH_AGENT", "eng2")
 	defer os.Unsetenv("INITECH_AGENT")
+	// Disconnect from any running TUI to prevent the test from sending a real
+	// IPC bead command (ini-6hz: this was the root cause of the ghost bead).
+	origSocket := os.Getenv("INITECH_SOCKET")
+	os.Setenv("INITECH_SOCKET", "/tmp/initech-test-nonexistent.sock")
+	defer os.Setenv("INITECH_SOCKET", origSocket)
 	beadAgent = ""
 	beadClear = false
-	// This will fail at ipcCall (no socket) but should get past the agent check.
-	err := runBead(beadCmd, []string{"ini-x.1"})
+	// This will fail at ipcCall (socket doesn't exist) but should get past the agent check.
+	err := runBead(beadCmd, []string{"ini-test.1"})
 	if err == nil {
-		t.Skip("unexpected success (TUI socket available?)")
+		t.Fatal("should fail with nonexistent socket")
 	}
 	// If it fails, it should be an IPC error, not an agent error.
 	if got := err.Error(); got == "no agent specified (set --agent or run inside a TUI pane where INITECH_AGENT is set)" {
