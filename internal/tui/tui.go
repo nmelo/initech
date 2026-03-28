@@ -48,6 +48,9 @@ type cmdModal struct {
 	tabBuf  string // Buffer content at last Tab press (double-Tab detection).
 	tabHint string // Completion hint line shown above the input bar; empty = no hint.
 
+	// Fuzzy command suggestions (shown while typing the command keyword).
+	suggestions []string // Top matches for the first word being typed; empty = no hint.
+
 	// Destructive command confirmation state.
 	pendingConfirm string    // Command waiting for Enter-to-confirm ("quit", "remove eng1", "restart eng2").
 	confirmExpiry  time.Time // When the confirmation prompt auto-expires.

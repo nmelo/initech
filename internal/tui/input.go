@@ -186,6 +186,7 @@ func (t *TUI) handleCmdKey(ev *tcell.EventKey) bool {
 		t.cmd.buf = t.cmd.buf[:0]
 		t.cmd.tabBuf = ""
 		t.cmd.tabHint = ""
+		t.cmd.suggestions = nil
 		return false
 	case tcell.KeyEnter:
 		cmd := strings.TrimSpace(string(t.cmd.buf))
@@ -193,9 +194,11 @@ func (t *TUI) handleCmdKey(ev *tcell.EventKey) bool {
 		t.cmd.buf = t.cmd.buf[:0]
 		t.cmd.tabBuf = ""
 		t.cmd.tabHint = ""
+		t.cmd.suggestions = nil
 		return t.execCmd(cmd)
 	case tcell.KeyTab:
 		t.tabComplete()
+		t.cmd.suggestions = nil
 		return false
 	case tcell.KeyBackspace, tcell.KeyBackspace2:
 		if len(t.cmd.buf) > 0 {
@@ -203,6 +206,7 @@ func (t *TUI) handleCmdKey(ev *tcell.EventKey) bool {
 		}
 		t.cmd.tabBuf = ""
 		t.cmd.tabHint = ""
+		t.updateSuggestions()
 		return false
 	case tcell.KeyRune:
 		// Backtick while empty closes the modal.
@@ -210,11 +214,13 @@ func (t *TUI) handleCmdKey(ev *tcell.EventKey) bool {
 			t.cmd.active = false
 			t.cmd.tabBuf = ""
 			t.cmd.tabHint = ""
+			t.cmd.suggestions = nil
 			return false
 		}
 		t.cmd.buf = append(t.cmd.buf, ev.Rune())
 		t.cmd.tabBuf = ""
 		t.cmd.tabHint = ""
+		t.updateSuggestions()
 		return false
 	}
 	return false
@@ -405,6 +411,121 @@ func longestCommonPrefix(strs []string) string {
 		}
 	}
 	return prefix
+}
+
+// commandNames lists all valid command keywords for fuzzy matching.
+var commandNames = []string{
+	"grid", "focus", "zoom", "panel", "main",
+	"show", "hide", "unhide", "view", "layout",
+	"restart", "patrol", "top", "add", "remove",
+	"log", "help", "quit", "pin", "unpin", "events",
+}
+
+// commandAliases maps short aliases to their canonical display form.
+var commandAliases = map[string]string{
+	"ps": "top (ps)",
+	"r":  "restart (r)",
+	"rm": "remove (rm)",
+	"?":  "help (?)",
+	"q":  "quit (q)",
+}
+
+// levenshtein returns the edit distance between two strings.
+func levenshtein(a, b string) int {
+	la, lb := len(a), len(b)
+	d := make([]int, lb+1)
+	for j := range d {
+		d[j] = j
+	}
+	for i := 1; i <= la; i++ {
+		prev := d[0]
+		d[0] = i
+		for j := 1; j <= lb; j++ {
+			old := d[j]
+			cost := 1
+			if a[i-1] == b[j-1] {
+				cost = 0
+			}
+			d[j] = min(d[j]+1, min(d[j-1]+1, prev+cost))
+			prev = old
+		}
+	}
+	return d[lb]
+}
+
+// updateSuggestions computes fuzzy command matches for the first word in the
+// command buffer. Called after every keystroke. Results stored in t.cmd.suggestions.
+func (t *TUI) updateSuggestions() {
+	t.cmd.suggestions = nil
+
+	buf := strings.TrimSpace(string(t.cmd.buf))
+	if buf == "" {
+		return
+	}
+
+	// Only suggest while typing the first word (command keyword).
+	// Once a space is typed, the user is on arguments; tab completion handles that.
+	parts := strings.Fields(buf)
+	if len(parts) > 1 || (len(buf) > 0 && buf[len(buf)-1] == ' ') {
+		return
+	}
+	typed := strings.ToLower(parts[0])
+
+	// Check exact match against commands and aliases.
+	for _, name := range commandNames {
+		if typed == name {
+			return // exact match, no suggestion needed
+		}
+	}
+	if _, ok := commandAliases[typed]; ok {
+		return
+	}
+
+	type match struct {
+		display  string
+		dist     int
+		isPrefix bool
+	}
+	var matches []match
+
+	// Match against command names.
+	for _, name := range commandNames {
+		if strings.HasPrefix(name, typed) {
+			matches = append(matches, match{name, 0, true})
+		} else if dist := levenshtein(typed, name); dist <= 2 {
+			matches = append(matches, match{name, dist, false})
+		}
+	}
+
+	// Match against aliases.
+	for alias, display := range commandAliases {
+		if strings.HasPrefix(alias, typed) {
+			matches = append(matches, match{display, 0, true})
+		} else if dist := levenshtein(typed, alias); dist <= 2 {
+			matches = append(matches, match{display, dist, false})
+		}
+	}
+
+	// Sort: prefix matches first, then by distance.
+	sort.Slice(matches, func(i, j int) bool {
+		if matches[i].isPrefix != matches[j].isPrefix {
+			return matches[i].isPrefix
+		}
+		return matches[i].dist < matches[j].dist
+	})
+
+	// Deduplicate and take top 3.
+	seen := make(map[string]bool)
+	for _, m := range matches {
+		if seen[m.display] {
+			continue
+		}
+		seen[m.display] = true
+		t.cmd.suggestions = append(t.cmd.suggestions, m.display)
+		if len(t.cmd.suggestions) >= 3 {
+			break
+		}
+	}
 }
 
 // execCmd parses and executes a command string. Returns true if the TUI should quit.

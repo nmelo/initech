@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"math/rand"
+	"strings"
 	"time"
 
 	"github.com/gdamore/tcell/v2"
@@ -336,14 +337,19 @@ func (t *TUI) renderCmdLine() {
 		}
 	}
 
-	// Tab completion hint: draw a dimmed hint bar one row above the input.
-	if t.cmd.tabHint != "" && sh >= 3 {
+	// Hint line one row above the input (shared by tab completion and fuzzy suggestions).
+	// Tab completion takes priority; fuzzy suggestions show when tab hint is empty.
+	hintText := t.cmd.tabHint
+	if hintText == "" && len(t.cmd.suggestions) > 0 {
+		hintText = strings.Join(t.cmd.suggestions, "  ")
+	}
+	if hintText != "" && sh >= 3 {
 		hintY := sh - 2
 		tabHintStyle := tcell.StyleDefault.Background(tcell.ColorDarkSlateGray).Foreground(tcell.ColorGray)
 		for x := 0; x < sw; x++ {
 			s.SetContent(x, hintY, ' ', nil, tabHintStyle)
 		}
-		label := []rune("  " + t.cmd.tabHint)
+		label := []rune("  " + hintText)
 		for i, ch := range label {
 			if i < sw {
 				s.SetContent(i, hintY, ch, nil, tabHintStyle)
