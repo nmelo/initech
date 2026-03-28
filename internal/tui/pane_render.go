@@ -152,10 +152,11 @@ func (p *Pane) Render(screen tcell.Screen, focused bool, dimmed bool, index int,
 
 	if p.scrollOffset == 0 {
 		// Live mode: anchor content to the bottom of the pane.
+		pos := p.emu.CursorPosition()
+
 		if !p.emu.IsAltScreen() {
 			// Extract the cursor row text as the session description.
 			// Only update if non-empty (resizes temporarily clear the cursor row).
-			pos := p.emu.CursorPosition()
 			if pos.Y < emuRows {
 				var desc strings.Builder
 				for col := 0; col < innerCols; col++ {
@@ -178,7 +179,6 @@ func (p *Pane) Render(screen tcell.Screen, focused bool, dimmed bool, index int,
 		}
 		// Determine status bar zone for CUF bleed-through fix.
 		// Only apply the fix near the cursor (last 4 rows of content).
-		pos := p.emu.CursorPosition()
 		statusZoneStart := pos.Y - 4
 		if statusZoneStart < 0 {
 			statusZoneStart = 0
@@ -190,52 +190,10 @@ func (p *Pane) Render(screen tcell.Screen, focused bool, dimmed bool, index int,
 				continue
 			}
 
-			// In the status bar zone, fix CUF bleed-through: Claude Code
-			// uses cursor-forward (ESC[1C) to skip cells when rewriting
-			// its status bar, leaving stale content in gaps. Only apply
-			// the fix to rows that actually contain the status bar separator
-			// (│ U+2502). Input rows lack this character and must not be
-			// filtered, or typed text adjacent to autocomplete ghost text
-			// gets blanked (ini-cp3).
+			// In the status bar zone, blank stale CUF bleed-through on
+			// rows that contain the status bar separator (ini-cp3).
 			if emuRow >= statusZoneStart && emuRow <= pos.Y && rowContainsStatusBar(p.emu, emuRow, innerCols) {
-				type cellInfo struct {
-					ch      rune
-					style   tcell.Style
-					colored bool
-				}
-				cells := make([]cellInfo, innerCols)
-				for col := 0; col < innerCols; col++ {
-					cell := p.emu.CellAt(col, emuRow)
-					ch, style := uvCellToTcell(cell)
-					colored := cell != nil && cell.Style.Fg != nil
-					cells[col] = cellInfo{ch, style, colored}
-				}
-				for col := 0; col < innerCols; col++ {
-					if !cells[col].colored && cells[col].ch != ' ' {
-						nearColored := false
-						for d := 1; d <= 2; d++ {
-							if col-d >= 0 && cells[col-d].colored {
-								nearColored = true
-								break
-							}
-							if col+d < innerCols && cells[col+d].colored {
-								nearColored = true
-								break
-							}
-						}
-						if nearColored {
-							cells[col].ch = ' '
-							cells[col].style = tcell.StyleDefault
-						}
-					}
-				}
-				for col := 0; col < innerCols; col++ {
-					st := cells[col].style
-					if dimmed {
-						st = dimStyle(st)
-					}
-					s.SetContent(r.X+col, r.Y+row, cells[col].ch, nil, st)
-				}
+				renderStatusBarRow(s, p.emu, r.X, r.Y+row, emuRow, innerCols, dimmed)
 			} else {
 				// Normal row: render directly.
 				for col := 0; col < innerCols; col++ {
@@ -351,6 +309,52 @@ func (p *Pane) renderActivityBar(s *clampedScreen, r Region) {
 			b := int32(brightness)
 			s.SetContent(r.X+dx, y, '\u2500', nil, tcell.StyleDefault.Foreground(tcell.NewRGBColor(b, b, b)))
 		}
+	}
+}
+
+// renderStatusBarRow renders a single emulator row with CUF bleed-through
+// suppression. Claude Code uses cursor-forward (ESC[1C) to skip cells when
+// rewriting its status bar, leaving stale uncolored text in the gaps. This
+// function blanks uncolored non-space characters that sit within 2 columns of
+// a colored character (the real status bar content has explicit Fg colors).
+func renderStatusBarRow(s *clampedScreen, emu *vt.SafeEmulator, screenX, screenY, emuRow, cols int, dimmed bool) {
+	type cellInfo struct {
+		ch      rune
+		style   tcell.Style
+		colored bool
+	}
+	cells := make([]cellInfo, cols)
+	for col := 0; col < cols; col++ {
+		cell := emu.CellAt(col, emuRow)
+		ch, style := uvCellToTcell(cell)
+		cells[col] = cellInfo{ch, style, cell != nil && cell.Style.Fg != nil}
+	}
+	// Blank uncolored non-space cells near colored cells (stale CUF artifacts).
+	for col := 0; col < cols; col++ {
+		if !cells[col].colored && cells[col].ch != ' ' {
+			nearColored := false
+			for d := 1; d <= 2; d++ {
+				if col-d >= 0 && cells[col-d].colored {
+					nearColored = true
+					break
+				}
+				if col+d < cols && cells[col+d].colored {
+					nearColored = true
+					break
+				}
+			}
+			if nearColored {
+				cells[col].ch = ' '
+				cells[col].style = tcell.StyleDefault
+			}
+		}
+	}
+	for col := 0; col < cols; col++ {
+		st := cells[col].style
+		if dimmed {
+			st = dimStyle(st)
+		}
+		s.SetContent(screenX+col, screenY, cells[col].ch, nil, st)
 	}
 }
 
