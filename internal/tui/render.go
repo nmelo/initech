@@ -111,15 +111,15 @@ func (t *TUI) renderStatusBar() {
 // statusTips are progressive hints shown in the status bar. They cycle
 // every tipRotationInterval, teaching one feature at a time.
 var statusTips = []string{
-	"Press ` (backtick) to open the command bar",
+	"Press backtick to open the command bar",
 	"Press ? for the full command reference",
 	"Try Alt+z to zoom the focused pane",
 	"Use Alt+Left/Right to switch panes",
 	"Alt+s toggles the agent status overlay",
 	"Alt+1 enters focus mode (one pane)",
 	"Try Alt+2 for a 2x2 grid layout",
-	"Type `grid 3x2` for a custom layout",
-	"Use `main` for a split layout",
+	"Type grid 3x2 for a custom layout",
+	"Use main for a split layout",
 	"Drag to select text, auto-copies",
 	"Use `show eng1, eng2` to reorder panes",
 	"Tab completes agent names in commands",
@@ -128,9 +128,9 @@ var statusTips = []string{
 	"Use `log` to see recent event history",
 	"Green dot = working, gray = idle",
 	"Yellow dot = idle with work waiting",
-	"`initech bead <id>` shows your task",
+	"Red dot = stuck or error loop detected",
 	"Use `add`/`remove` to change the roster live",
-	"`initech doctor` checks project health",
+	"Use pin <name> to protect agents from auto-suspend",
 }
 
 // tipRotationInterval is how long each tip is displayed before cycling.
