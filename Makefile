@@ -1,7 +1,7 @@
 VERSION ?= dev
 LDFLAGS := -s -w -X github.com/nmelo/initech/cmd.Version=$(VERSION)
 
-.PHONY: build test vet clean release check install-hooks
+.PHONY: build test vet lint clean release check install-hooks
 
 build:
 	go build -ldflags "$(LDFLAGS)" -o initech .
@@ -12,10 +12,13 @@ test:
 vet:
 	go vet ./...
 
+lint:
+	golangci-lint run ./...
+
 clean:
 	rm -f initech
 
-check: vet test
+check: vet lint test
 
 release:
 	goreleaser release --clean
