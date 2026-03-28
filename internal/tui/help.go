@@ -74,7 +74,7 @@ func (t *TUI) renderHelp() {
 	bodyStyle := tcell.StyleDefault.Foreground(tcell.ColorSilver)
 	helpStyle := tcell.StyleDefault.Foreground(tcell.ColorGray)
 
-	// Title bar.
+	// Title bar (centered).
 	title := " initech help "
 	if t.version != "" {
 		title = fmt.Sprintf(" initech help (v%s) ", t.version)
@@ -82,9 +82,13 @@ func (t *TUI) renderHelp() {
 	for x := 0; x < sw; x++ {
 		s.SetContent(x, 0, ' ', nil, titleStyle)
 	}
+	titleStart := (sw - len([]rune(title))) / 2
+	if titleStart < 0 {
+		titleStart = 0
+	}
 	for i, ch := range title {
-		if i < sw {
-			s.SetContent(i, 0, ch, nil, titleStyle)
+		if titleStart+i < sw {
+			s.SetContent(titleStart+i, 0, ch, nil, titleStyle)
 		}
 	}
 

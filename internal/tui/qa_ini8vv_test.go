@@ -35,9 +35,10 @@ func TestRenderHelp_RendersOnScreen(t *testing.T) {
 	tui := &TUI{screen: s, help: helpModal{active: true}}
 	tui.renderHelp()
 
-	// Title row should contain "initech help".
+	// Title row should contain "initech help" (centered).
+	sw, _ := s.Size()
 	var title strings.Builder
-	for x := 0; x < 30; x++ {
+	for x := 0; x < sw; x++ {
 		c, _, _, _ := s.GetContent(x, 0)
 		title.WriteRune(c)
 	}
@@ -155,10 +156,11 @@ func TestHelpModalPriorityInRender(t *testing.T) {
 		top:       topModal{active: true},
 		eventLogM: eventLogModal{active: true},
 	}
-	// If help takes priority, the title row should say "initech help".
+	// If help takes priority, the title row should say "initech help" (centered).
 	tui.render()
+	sw, _ := s.Size()
 	var title strings.Builder
-	for x := 0; x < 30; x++ {
+	for x := 0; x < sw; x++ {
 		c, _, _, _ := s.GetContent(x, 0)
 		title.WriteRune(c)
 	}

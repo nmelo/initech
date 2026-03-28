@@ -53,8 +53,9 @@ func TestRenderTop_TitleVisible(t *testing.T) {
 	})
 	tui.renderTop()
 
+	sw, _ := s.Size()
 	var buf strings.Builder
-	for x := 0; x < 20; x++ {
+	for x := 0; x < sw; x++ {
 		c, _, _, _ := s.GetContent(x, 0)
 		buf.WriteRune(c)
 	}

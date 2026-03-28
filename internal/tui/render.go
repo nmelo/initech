@@ -200,16 +200,33 @@ func (t *TUI) renderHints() {
 
 	// Clock: rightmost element.
 	clock := time.Now().Format("15:04")
+	sepStyle := barStyle.Foreground(tcell.NewRGBColor(70, 70, 70))
 
-	// Layout from right: clock, gap, shortcuts, gap, battery.
+	// Layout from right: clock, sep, shortcuts, sep, battery.
 	rightW := len(clock)
-	rightW += 2 + len(shortcuts) // gap + shortcuts
+	rightW += 3 + len(shortcuts) // " · " + shortcuts
 	if battStr != "" {
-		rightW += len(battStr) + 2 // gap + battery
+		rightW += len(battStr) + 3 // " · " + battery
 	}
 	rightStart := sw - rightW - 1
 	if rightStart < 0 {
 		rightStart = 0
+	}
+
+	// drawSep writes a dim middle dot separator at position x and returns the new x.
+	drawSep := func(x int) int {
+		if x >= 0 && x < sw {
+			s.SetContent(x, y, ' ', nil, barStyle)
+		}
+		x++
+		if x >= 0 && x < sw {
+			s.SetContent(x, y, '\u00b7', nil, sepStyle)
+		}
+		x++
+		if x >= 0 && x < sw {
+			s.SetContent(x, y, ' ', nil, barStyle)
+		}
+		return x + 1
 	}
 
 	// Draw battery.
@@ -221,7 +238,7 @@ func (t *TUI) renderHints() {
 			}
 			x++
 		}
-		x += 2 // gap
+		x = drawSep(x)
 	}
 
 	// Draw shortcuts.
@@ -233,7 +250,7 @@ func (t *TUI) renderHints() {
 	}
 
 	// Draw clock.
-	x += 2 // gap
+	x = drawSep(x)
 	for _, ch := range clock {
 		if x >= 0 && x < sw {
 			s.SetContent(x, y, ch, nil, barStyle)
@@ -251,10 +268,17 @@ func (t *TUI) renderHints() {
 		} else if t.quotaPercent >= 80 {
 			quotaStyle = barStyle.Foreground(tcell.ColorYellow)
 		}
-		qStart := rightStart - len(quotaText) - 2 // 2 chars gap before battery/shortcuts
+		qStart := rightStart - len(quotaText) - 3 // 3 chars for " · " separator
 		if qStart > 0 {
 			for i, ch := range quotaText {
 				s.SetContent(qStart+i, y, ch, nil, quotaStyle)
+			}
+			// Draw separator between quota and battery/shortcuts.
+			sepX := qStart + len(quotaText)
+			if sepX+2 < sw {
+				s.SetContent(sepX, y, ' ', nil, barStyle)
+				s.SetContent(sepX+1, y, '\u00b7', nil, sepStyle)
+				s.SetContent(sepX+2, y, ' ', nil, barStyle)
 			}
 			leftEdge = qStart
 		}
@@ -454,28 +478,37 @@ func (t *TUI) renderNotifications() {
 		toastW := len(runes) + 2 // 1 char padding on each side.
 		x := sw - toastW - 1
 
-		// Background color by event type.
+		// Colors by event type: gutter accent color + body style.
+		var gutterColor tcell.Color
 		var style tcell.Style
 		switch n.event.Type {
 		case EventBeadCompleted:
+			gutterColor = tcell.ColorGreen
 			style = tcell.StyleDefault.Background(tcell.ColorDarkGreen).Foreground(tcell.ColorBlack)
 		case EventBeadClaimed:
+			gutterColor = tcell.ColorDodgerBlue
 			style = tcell.StyleDefault.Background(tcell.ColorDodgerBlue).Foreground(tcell.ColorWhite)
 		case EventBeadFailed, EventAgentStuck:
+			gutterColor = tcell.ColorRed
 			style = tcell.StyleDefault.Background(tcell.ColorDarkRed).Foreground(tcell.ColorWhite)
 		case EventAgentStalled:
+			gutterColor = tcell.ColorOrange
 			style = tcell.StyleDefault.Background(tcell.ColorDarkOrange).Foreground(tcell.ColorBlack)
 		case EventAgentIdle:
+			gutterColor = tcell.ColorGray
 			style = tcell.StyleDefault.Background(tcell.ColorDimGray).Foreground(tcell.ColorWhite)
 		default:
+			gutterColor = tcell.ColorGray
 			style = tcell.StyleDefault.Background(tcell.ColorDimGray).Foreground(tcell.ColorWhite)
 		}
 
-		// Draw toast background.
-		for dx := 0; dx < toastW; dx++ {
+		// Draw toast: colored gutter block on left, then body.
+		gutterStyle := tcell.StyleDefault.Background(gutterColor).Foreground(gutterColor)
+		s.SetContent(x, row, '\u2588', nil, gutterStyle) // full block gutter
+		for dx := 1; dx < toastW; dx++ {
 			s.SetContent(x+dx, row, ' ', nil, style)
 		}
-		// Draw text with 1-char left padding.
+		// Draw text after the gutter (1-char left padding from body start).
 		for j, ch := range runes {
 			s.SetContent(x+1+j, row, ch, nil, style)
 		}
@@ -579,11 +612,12 @@ func (t *TUI) renderOverlay() {
 		return
 	}
 
-	bgStyle := tcell.StyleDefault.Background(tcell.ColorDarkBlue)
-	borderStyle := tcell.StyleDefault.Foreground(tcell.ColorWhite).Background(tcell.ColorDarkBlue)
+	overlayBg := tcell.NewRGBColor(20, 25, 40)
+	bgStyle := tcell.StyleDefault.Background(overlayBg)
+	borderStyle := tcell.StyleDefault.Foreground(tcell.ColorWhite).Background(overlayBg)
 
-	// Top border with title.
-	s.SetContent(px, py, '\u250c', nil, borderStyle)
+	// Top border with title (rounded corners).
+	s.SetContent(px, py, '\u256d', nil, borderStyle)
 	title := " Agents "
 	if t.projectName != "" {
 		title = " Agents (" + t.projectName + ") "
@@ -595,7 +629,7 @@ func (t *TUI) renderOverlay() {
 		}
 		s.SetContent(px+i, py, ch, nil, borderStyle)
 	}
-	s.SetContent(px+panelW-1, py, '\u2510', nil, borderStyle)
+	s.SetContent(px+panelW-1, py, '\u256e', nil, borderStyle)
 
 	// Agent rows.
 	for i, a := range agents {
@@ -704,9 +738,9 @@ func (t *TUI) renderOverlay() {
 
 	// Bottom border.
 	botRow := py + panelH - 1
-	s.SetContent(px, botRow, '\u2514', nil, borderStyle)
+	s.SetContent(px, botRow, '\u2570', nil, borderStyle)
 	for i := 1; i < panelW-1; i++ {
 		s.SetContent(px+i, botRow, '\u2500', nil, borderStyle)
 	}
-	s.SetContent(px+panelW-1, botRow, '\u2518', nil, borderStyle)
+	s.SetContent(px+panelW-1, botRow, '\u256f', nil, borderStyle)
 }
