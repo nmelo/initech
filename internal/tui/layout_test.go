@@ -797,11 +797,11 @@ func TestShowCommandSavesLayout(t *testing.T) {
 	)
 	tui.projectRoot = root
 
-	tui.execCmd("show eng1")
+	tui.execCmd("unhide eng1")
 
 	got, ok := LoadLayout(root, []string{"super", "eng1"})
 	if !ok {
-		t.Fatal("layout should be saved after show command")
+		t.Fatal("layout should be saved after unhide command")
 	}
 	if len(got.Hidden) != 0 {
 		t.Errorf("saved hidden = %v, want empty", got.Hidden)
@@ -875,11 +875,11 @@ func TestShowAllCommandSavesLayout(t *testing.T) {
 	)
 	tui.projectRoot = root
 
-	tui.execCmd("show all")
+	tui.execCmd("unhide all")
 
 	got, ok := LoadLayout(root, []string{"super", "eng1", "eng2"})
 	if !ok {
-		t.Fatal("layout should be saved after show all command")
+		t.Fatal("layout should be saved after unhide all command")
 	}
 	if len(got.Hidden) != 0 {
 		t.Errorf("saved hidden = %v, want empty", got.Hidden)

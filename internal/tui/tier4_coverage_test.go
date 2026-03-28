@@ -150,22 +150,66 @@ func TestExecCmd_Main(t *testing.T) {
 	}
 }
 
-func TestExecCmd_Show(t *testing.T) {
-	tui := cmdTestTUI("eng1", "eng2")
-	tui.layoutState.Hidden["eng2"] = true
-	tui.execCmd("show eng2")
-	if tui.layoutState.Hidden["eng2"] {
-		t.Error("show should unhide eng2")
+func TestExecCmd_ShowReorder(t *testing.T) {
+	tui := cmdTestTUI("a", "b", "c", "d")
+	tui.execCmd("show c, a")
+	if tui.panes[0].name != "c" || tui.panes[1].name != "a" {
+		t.Errorf("show reorder: got [%s, %s, ...], want [c, a, ...]", tui.panes[0].name, tui.panes[1].name)
+	}
+	if tui.panes[2].name != "b" || tui.panes[3].name != "d" {
+		t.Errorf("remaining order: got [..., %s, %s], want [..., b, d]", tui.panes[2].name, tui.panes[3].name)
 	}
 }
 
 func TestExecCmd_ShowAll(t *testing.T) {
+	tui := cmdTestTUI("c", "a", "b")
+	tui.execCmd("show all")
+	// show all resets to alphabetical.
+	if tui.panes[0].name != "a" || tui.panes[1].name != "b" || tui.panes[2].name != "c" {
+		t.Errorf("show all: got [%s, %s, %s], want [a, b, c]", tui.panes[0].name, tui.panes[1].name, tui.panes[2].name)
+	}
+}
+
+func TestExecCmd_ShowNoArgs(t *testing.T) {
+	tui := cmdTestTUI("eng1")
+	tui.execCmd("show")
+	if tui.cmd.error == "" {
+		t.Error("show with no args should set error")
+	}
+}
+
+func TestExecCmd_ShowUnknown(t *testing.T) {
+	tui := cmdTestTUI("eng1")
+	tui.execCmd("show nonexistent")
+	if tui.cmd.error == "" {
+		t.Error("show with unknown name should set error")
+	}
+}
+
+func TestExecCmd_ShowDeduplicate(t *testing.T) {
+	tui := cmdTestTUI("a", "b", "c")
+	tui.execCmd("show a, a, b")
+	if tui.panes[0].name != "a" || tui.panes[1].name != "b" || tui.panes[2].name != "c" {
+		t.Errorf("show dedup: got [%s, %s, %s], want [a, b, c]", tui.panes[0].name, tui.panes[1].name, tui.panes[2].name)
+	}
+}
+
+func TestExecCmd_Unhide(t *testing.T) {
+	tui := cmdTestTUI("eng1", "eng2")
+	tui.layoutState.Hidden["eng2"] = true
+	tui.execCmd("unhide eng2")
+	if tui.layoutState.Hidden["eng2"] {
+		t.Error("unhide should unhide eng2")
+	}
+}
+
+func TestExecCmd_UnhideAll(t *testing.T) {
 	tui := cmdTestTUI("eng1", "eng2")
 	tui.layoutState.Hidden["eng1"] = true
 	tui.layoutState.Hidden["eng2"] = true
-	tui.execCmd("show all")
+	tui.execCmd("unhide all")
 	if tui.layoutState.Hidden["eng1"] || tui.layoutState.Hidden["eng2"] {
-		t.Error("show all should unhide all panes")
+		t.Error("unhide all should unhide all panes")
 	}
 }
 

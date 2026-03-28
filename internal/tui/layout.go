@@ -28,6 +28,7 @@ type LayoutState struct {
 	Focused  string          `yaml:"focused"`            // Pane name, not index.
 	Hidden   map[string]bool `yaml:"hidden,omitempty"`   // Pane names that are hidden.
 	Pinned   map[string]bool `yaml:"pinned,omitempty"`  // Pane names protected from auto-suspend.
+	Order    []string        `yaml:"order,omitempty"`    // Pane names in display order (from show command).
 	Overlay  bool            `yaml:"overlay"`
 
 	// Per-column and per-row proportional sizing (future).
@@ -327,6 +328,7 @@ type PersistentLayout struct {
 	Grid   string   `yaml:"grid"`             // e.g. "3x2"
 	Hidden []string `yaml:"hidden,omitempty"` // Role names of hidden panes.
 	Pinned []string `yaml:"pinned,omitempty"` // Role names protected from auto-suspend.
+	Order  []string `yaml:"order,omitempty"`  // Pane display order (from show command).
 	Mode   string   `yaml:"mode"`             // "grid", "focus", "main"
 }
 
@@ -346,6 +348,7 @@ func SaveLayout(projectRoot string, state LayoutState) error {
 	pl := PersistentLayout{
 		Grid:   fmt.Sprintf("%dx%d", state.GridCols, state.GridRows),
 		Mode:   layoutModeToString(state.Mode),
+		Order:  state.Order,
 	}
 	for name, hidden := range state.Hidden {
 		if hidden {
@@ -446,6 +449,25 @@ func LoadLayout(projectRoot string, paneNames []string) (LayoutState, bool) {
 		focused = paneNames[0]
 	}
 
+	// Filter order to only known panes, preserving saved order.
+	// Unknown names (removed since last session) are dropped.
+	// New names (added since last session) are appended.
+	var order []string
+	if len(pl.Order) > 0 {
+		orderSet := make(map[string]bool)
+		for _, name := range pl.Order {
+			if known[name] {
+				order = append(order, name)
+				orderSet[name] = true
+			}
+		}
+		for _, name := range paneNames {
+			if !orderSet[name] {
+				order = append(order, name)
+			}
+		}
+	}
+
 	return LayoutState{
 		Mode:     mode,
 		GridCols: cols,
@@ -453,6 +475,7 @@ func LoadLayout(projectRoot string, paneNames []string) (LayoutState, bool) {
 		Focused:  focused,
 		Hidden:   hidden,
 		Pinned:   pinned,
+		Order:    order,
 		Overlay:  true, // Always start with overlay visible.
 	}, true
 }
@@ -465,6 +488,35 @@ func DeleteLayout(projectRoot string) error {
 		return err
 	}
 	return nil
+}
+
+// reorderPanes rearranges the panes slice to match the given order.
+// Names in order that don't match a pane are skipped. Panes not in order
+// are appended at the end in their current relative order.
+func reorderPanes(panes []*Pane, order []string) {
+	if len(order) == 0 {
+		return
+	}
+	byName := make(map[string]*Pane, len(panes))
+	for _, p := range panes {
+		byName[p.name] = p
+	}
+	placed := make(map[string]bool, len(order))
+	idx := 0
+	for _, name := range order {
+		if p, ok := byName[name]; ok && !placed[name] {
+			panes[idx] = p
+			placed[name] = true
+			idx++
+		}
+	}
+	for _, p := range byName {
+		if !placed[p.name] {
+			panes[idx] = p
+			placed[p.name] = true
+			idx++
+		}
+	}
 }
 
 // layoutModeToString converts a LayoutMode to its YAML string.

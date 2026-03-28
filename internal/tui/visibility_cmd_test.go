@@ -62,20 +62,20 @@ func TestHideUnknownAgent(t *testing.T) {
 	}
 }
 
-func TestShowCommand(t *testing.T) {
+func TestUnhideCommand(t *testing.T) {
 	tui := newTestTUI(
 		newTestPane("super", true),
 		newTestPane("eng1", true),
 		newTestPane("eng2", false),
 	)
 
-	tui.execCmd("show eng2")
-	if tui.layoutState.Hidden[tui.panes[2].name] {
-		t.Error("eng2 should be visible after show command")
+	tui.execCmd("unhide eng2")
+	if tui.layoutState.Hidden["eng2"] {
+		t.Error("eng2 should be visible after unhide command")
 	}
 }
 
-func TestShowAllCommand(t *testing.T) {
+func TestUnhideAllCommand(t *testing.T) {
 	tui := newTestTUI(
 		newTestPane("super", true),
 		newTestPane("eng1", false),
@@ -83,11 +83,28 @@ func TestShowAllCommand(t *testing.T) {
 		newTestPane("qa1", false),
 	)
 
-	tui.execCmd("show all")
+	tui.execCmd("unhide all")
 	for _, p := range tui.panes {
 		if tui.layoutState.Hidden[p.name] {
-			t.Errorf("pane %q should be visible after show all", p.name)
+			t.Errorf("pane %q should be visible after unhide all", p.name)
 		}
+	}
+}
+
+func TestShowReorder(t *testing.T) {
+	tui := newTestTUI(
+		newTestPane("super", true),
+		newTestPane("eng1", true),
+		newTestPane("eng2", true),
+	)
+
+	tui.execCmd("show eng2, eng1")
+	if tui.panes[0].name != "eng2" || tui.panes[1].name != "eng1" || tui.panes[2].name != "super" {
+		names := make([]string, len(tui.panes))
+		for i, p := range tui.panes {
+			names[i] = p.name
+		}
+		t.Errorf("show reorder: got %v, want [eng2 eng1 super]", names)
 	}
 }
 

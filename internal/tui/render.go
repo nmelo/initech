@@ -135,7 +135,7 @@ var statusTips = []string{
 	"Type `grid 3x2` for a custom layout",
 	"Use `main` for a split layout",
 	"Drag to select text, auto-copies",
-	"Use `hide`/`show` to manage visible panes",
+	"Use `show eng1, eng2` to reorder panes",
 	"Tab completes agent names in commands",
 	"Use `patrol` to peek all agents at once",
 	"Try `top` to see memory and PID per agent",

@@ -192,6 +192,11 @@ func (t *TUI) saveLayoutIfConfigured() {
 	if t.projectRoot == "" {
 		return
 	}
+	// Snapshot current pane order into layoutState before persisting.
+	t.layoutState.Order = make([]string, len(t.panes))
+	for i, p := range t.panes {
+		t.layoutState.Order[i] = p.name
+	}
 	if err := SaveLayout(t.projectRoot, t.layoutState); err != nil {
 		LogWarn("layout", "save failed", "err", err)
 	}
@@ -388,6 +393,11 @@ func Run(cfg Config) error {
 		if t.layoutState.Pinned[p.name] {
 			p.SetPinned(true)
 		}
+	}
+
+	// Apply saved pane order from layout.yaml (show command persistence).
+	if len(t.layoutState.Order) > 0 {
+		reorderPanes(t.panes, t.layoutState.Order)
 	}
 
 	// Now that panes exist, compute the full render plan.

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os/exec"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -267,7 +268,7 @@ func (t *TUI) tabComplete() {
 
 	// Only agent-name commands are tab-completed.
 	switch cmd {
-	case "focus", "hide", "show", "view", "remove", "rm", "restart", "r":
+	case "focus", "hide", "show", "unhide", "view", "remove", "rm", "restart", "r":
 		// Fall through to completion logic.
 	default:
 		return
@@ -334,6 +335,14 @@ func (t *TUI) tabComplete() {
 func (t *TUI) completionCandidates(cmd string) []string {
 	switch cmd {
 	case "show":
+		// All pane names + "all" (reorder applies to any pane).
+		names := make([]string, len(t.panes))
+		for i, p := range t.panes {
+			names[i] = p.name
+		}
+		names = append(names, "all")
+		return names
+	case "unhide":
 		// Hidden panes plus the special "all" keyword.
 		var names []string
 		for _, p := range t.panes {
@@ -418,6 +427,8 @@ func (t *TUI) execCmd(cmd string) bool {
 		return t.cmdMain()
 	case "show":
 		return t.cmdShow(parts)
+	case "unhide":
+		return t.cmdUnhide(parts)
 	case "hide":
 		return t.cmdHide(parts)
 	case "pin":
@@ -525,7 +536,77 @@ func (t *TUI) cmdMain() bool {
 
 func (t *TUI) cmdShow(parts []string) bool {
 	if len(parts) < 2 {
-		t.cmd.error = "usage: show <name> or show all"
+		t.cmd.error = "usage: show <name1> [name2] ..."
+		return false
+	}
+
+	// Parse names: handle both comma-separated and space-separated.
+	var names []string
+	for _, p := range parts[1:] {
+		for _, n := range strings.Split(p, ",") {
+			n = strings.TrimSpace(n)
+			if n != "" {
+				names = append(names, n)
+			}
+		}
+	}
+
+	if len(names) == 1 && names[0] == "all" {
+		sort.Slice(t.panes, func(i, j int) bool {
+			return t.panes[i].name < t.panes[j].name
+		})
+		t.applyLayout()
+		t.saveLayoutIfConfigured()
+		return false
+	}
+
+	// Deduplicate while preserving order.
+	seen := make(map[string]bool, len(names))
+	deduped := names[:0]
+	for _, n := range names {
+		if !seen[n] {
+			seen[n] = true
+			deduped = append(deduped, n)
+		}
+	}
+	names = deduped
+
+	// Validate all names exist.
+	for _, name := range names {
+		if t.findPaneByName(name) == nil {
+			t.cmd.error = fmt.Sprintf("unknown agent %q", name)
+			return false
+		}
+	}
+
+	// Build new order: named panes first, then remaining in current order.
+	namedSet := make(map[string]bool, len(names))
+	for _, n := range names {
+		namedSet[n] = true
+	}
+	var newOrder []*Pane
+	for _, name := range names {
+		for _, p := range t.panes {
+			if p.name == name {
+				newOrder = append(newOrder, p)
+				break
+			}
+		}
+	}
+	for _, p := range t.panes {
+		if !namedSet[p.name] {
+			newOrder = append(newOrder, p)
+		}
+	}
+	t.panes = newOrder
+	t.applyLayout()
+	t.saveLayoutIfConfigured()
+	return false
+}
+
+func (t *TUI) cmdUnhide(parts []string) bool {
+	if len(parts) < 2 {
+		t.cmd.error = "usage: unhide <name> or unhide all"
 		return false
 	}
 	if parts[1] == "all" {

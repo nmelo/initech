@@ -72,20 +72,20 @@ func TestCompletionCandidates_Default(t *testing.T) {
 
 func TestCompletionCandidates_Show(t *testing.T) {
 	tui := testTUIWithPanes("eng1", "eng2", "super")
-	tui.layoutState.Hidden["eng2"] = true
 	got := tui.completionCandidates("show")
+	// show completes ALL pane names + "all" (reorder, not visibility).
+	if len(got) != 4 {
+		t.Errorf("show candidates = %v, want 4 (3 panes + all)", got)
+	}
+}
+
+func TestCompletionCandidates_Unhide(t *testing.T) {
+	tui := testTUIWithPanes("eng1", "eng2", "super")
+	tui.layoutState.Hidden["eng2"] = true
+	got := tui.completionCandidates("unhide")
 	// Should include hidden panes + "all".
 	if len(got) != 2 {
-		t.Errorf("show candidates = %v, want [eng2, all]", got)
-	}
-	found := false
-	for _, c := range got {
-		if c == "eng2" {
-			found = true
-		}
-	}
-	if !found {
-		t.Errorf("show candidates should include hidden 'eng2': %v", got)
+		t.Errorf("unhide candidates = %v, want [eng2, all]", got)
 	}
 }
 

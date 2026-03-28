@@ -1181,7 +1181,7 @@ func TestExecCmdZoom(t *testing.T) {
 	}
 }
 
-func TestExecCmdShowHide(t *testing.T) {
+func TestExecCmdUnhideHide(t *testing.T) {
 	a := newTestPane("super", true)
 	b := newTestPane("eng1", true)
 	tui := newTestTUI(a, b)
@@ -1192,17 +1192,17 @@ func TestExecCmdShowHide(t *testing.T) {
 		t.Error("eng1 should be hidden in layoutState")
 	}
 
-	// Show eng1.
-	tui.execCmd("show eng1")
+	// Unhide eng1.
+	tui.execCmd("unhide eng1")
 	if tui.layoutState.Hidden["eng1"] {
 		t.Error("eng1 should be visible in layoutState")
 	}
 
-	// Show all.
+	// Unhide all.
 	tui.layoutState.Hidden["eng1"] = true
-	tui.execCmd("show all")
+	tui.execCmd("unhide all")
 	if tui.layoutState.Hidden["eng1"] {
-		t.Error("show all should make eng1 visible in layoutState")
+		t.Error("unhide all should make eng1 visible in layoutState")
 	}
 }
 
