@@ -160,6 +160,29 @@ func (t *TUI) rotateTip() {
 	}
 }
 
+// quotaPollInterval is how often the TUI scrapes quota from a pane.
+const quotaPollInterval = 30 * time.Second
+
+// pollQuota reads the Claude Code quota percentage from the first available
+// alive, non-suspended pane. Called on the render tick; only runs every 30s.
+func (t *TUI) pollQuota() {
+	if time.Now().Before(t.quotaPollAt) {
+		return
+	}
+	t.quotaPollAt = time.Now().Add(quotaPollInterval)
+
+	for _, p := range t.panes {
+		if !p.IsAlive() || p.IsSuspended() {
+			continue
+		}
+		if pct := p.ScrapeQuota(); pct >= 0 {
+			t.quotaPercent = pct
+			return
+		}
+	}
+	// No pane had quota data. Keep the last known value (stale > absent).
+}
+
 // renderHints draws the status bar with a cycling tip on the left and
 // keyboard shortcuts on the right. Subtle dark background with dim text.
 func (t *TUI) renderHints() {
@@ -194,10 +217,10 @@ func (t *TUI) renderHints() {
 		}
 	}
 
-	// Layout from right: shortcuts, gap, battery.
+	// Layout from right: shortcuts, gap, battery, gap, quota, gap, tip.
 	rightW := len(shortcuts)
 	if battStr != "" {
-		rightW += len(battStr) + 2 // 2 for gap
+		rightW += len(battStr) + 2 // 2 for gap before shortcuts
 	}
 	rightStart := sw - rightW - 1
 	if rightStart < 0 {
@@ -224,9 +247,28 @@ func (t *TUI) renderHints() {
 		x++
 	}
 
+	// Quota indicator: placed just left of battery (or shortcuts if no battery).
+	leftEdge := rightStart // where the right block starts; quota goes before this
+	if t.quotaPercent >= 0 {
+		quotaText := fmt.Sprintf("Q:%d%%", t.quotaPercent)
+		quotaStyle := barStyle // dim gray by default
+		if t.quotaPercent >= 95 {
+			quotaStyle = barStyle.Foreground(tcell.ColorRed)
+		} else if t.quotaPercent >= 80 {
+			quotaStyle = barStyle.Foreground(tcell.ColorYellow)
+		}
+		qStart := rightStart - len(quotaText) - 2 // 2 chars gap before battery/shortcuts
+		if qStart > 0 {
+			for i, ch := range quotaText {
+				s.SetContent(qStart+i, y, ch, nil, quotaStyle)
+			}
+			leftEdge = qStart
+		}
+	}
+
 	// Left side: cycling tip. Truncate with ellipsis if it would overlap the right block.
 	tip := statusTips[t.tipIndex%len(statusTips)]
-	maxTipW := rightStart - 3 // leave gap between tip and right block
+	maxTipW := leftEdge - 3 // leave gap between tip and quota/battery/shortcuts
 	if maxTipW < 10 {
 		return // too narrow for a tip
 	}
