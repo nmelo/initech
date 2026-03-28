@@ -579,22 +579,22 @@ func TestSelectionForPane(t *testing.T) {
 	tui.sel.endY = 4
 
 	// Matching pane.
-	sel := tui.selectionFor(0)
+	sel := tui.selectionForPane(tui.panes[0])
 	if !sel.Active || sel.StartX != 1 || sel.EndY != 4 {
-		t.Error("selectionFor matching pane should return active selection")
+		t.Error("selectionForPane matching pane should return active selection")
 	}
 
 	// Non-matching pane.
-	sel = tui.selectionFor(1)
+	sel = tui.selectionForPane(tui.panes[1])
 	if sel.Active {
-		t.Error("selectionFor non-matching pane should return inactive selection")
+		t.Error("selectionForPane non-matching pane should return inactive selection")
 	}
 
 	// No active selection.
 	tui.sel.active = false
-	sel = tui.selectionFor(0)
+	sel = tui.selectionForPane(tui.panes[0])
 	if sel.Active {
-		t.Error("selectionFor with no active selection should return inactive")
+		t.Error("selectionForPane with no active selection should return inactive")
 	}
 }
 

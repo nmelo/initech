@@ -1021,40 +1021,7 @@ func TestCalcMainVertical(t *testing.T) {
 	}
 }
 
-// ── selectionFor ─────────────────────────────────────────────────────
-
-func TestSelectionFor(t *testing.T) {
-	tui := &TUI{
-		sel: mouseSelection{
-			active: true,
-			pane:   1,
-			startX: 5, startY: 10,
-			endX: 15, endY: 12,
-		},
-	}
-
-	// Matching pane index.
-	sel := tui.selectionFor(1)
-	if !sel.Active {
-		t.Error("should be active for matching pane")
-	}
-	if sel.StartX != 5 || sel.StartY != 10 || sel.EndX != 15 || sel.EndY != 12 {
-		t.Errorf("selection coords wrong: %+v", sel)
-	}
-
-	// Non-matching pane index.
-	sel = tui.selectionFor(0)
-	if sel.Active {
-		t.Error("should be inactive for non-matching pane")
-	}
-
-	// Inactive selection.
-	tui.sel.active = false
-	sel = tui.selectionFor(1)
-	if sel.Active {
-		t.Error("should be inactive when sel.active=false")
-	}
-}
+// selectionForPane tests live in coverage_test.go.
 
 // ── DefaultConfig ────────────────────────────────────────────────────
 

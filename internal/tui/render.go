@@ -80,19 +80,6 @@ func (t *TUI) render() {
 	s.Show()
 }
 
-
-// selectionFor returns the selection state for a given pane index.
-func (t *TUI) selectionFor(paneIdx int) Selection {
-	if !t.sel.active || t.sel.pane != paneIdx {
-		return Selection{}
-	}
-	return Selection{
-		Active: true,
-		StartX: t.sel.startX, StartY: t.sel.startY,
-		EndX: t.sel.endX, EndY: t.sel.endY,
-	}
-}
-
 // selectionForPane returns the selection state for a given pane.
 func (t *TUI) selectionForPane(p *Pane) Selection {
 	if !t.sel.active {
@@ -107,8 +94,6 @@ func (t *TUI) selectionForPane(p *Pane) Selection {
 	}
 	return Selection{}
 }
-
-
 
 // renderStatusBar draws the persistent 1-line bar at the bottom of the screen.
 // Content varies by state: confirmation prompt, command input, error message,
@@ -200,20 +185,16 @@ func (t *TUI) renderHints() {
 
 	// Battery indicator: placed between shortcuts and tip.
 	battStr := ""
-	var battStyle tcell.Style
+	battStyle := barStyle
 	if t.batteryPercent >= 0 {
+		battStr = fmt.Sprintf("%d%%", t.batteryPercent)
 		if t.batteryCharging {
-			battStr = fmt.Sprintf("%d%% +", t.batteryPercent)
+			battStr += " +"
 			battStyle = barStyle.Foreground(tcell.ColorGreen)
 		} else if t.batteryPercent < 10 {
-			battStr = fmt.Sprintf("%d%%", t.batteryPercent)
 			battStyle = barStyle.Foreground(tcell.ColorRed)
 		} else if t.batteryPercent < 20 {
-			battStr = fmt.Sprintf("%d%%", t.batteryPercent)
 			battStyle = barStyle.Foreground(tcell.ColorYellow)
-		} else {
-			battStr = fmt.Sprintf("%d%%", t.batteryPercent)
-			battStyle = barStyle
 		}
 	}
 
