@@ -46,7 +46,7 @@ func (t *TUI) handleIPCStart(conn net.Conn, req IPCRequest) {
 	// Find the pane pointer and index on main to avoid races on t.panes.
 	var old *Pane
 	var oldIdx int
-	t.runOnMain(func() {
+	if !t.runOnMain(func() {
 		for i, p := range t.panes {
 			if p.name == req.Target {
 				old = p
@@ -54,7 +54,10 @@ func (t *TUI) handleIPCStart(conn net.Conn, req IPCRequest) {
 				return
 			}
 		}
-	})
+	}) {
+		writeIPCResponse(conn, IPCResponse{Error: "TUI shutting down"})
+		return
+	}
 	if old == nil {
 		writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("pane %q not found", req.Target)})
 		return
@@ -65,6 +68,13 @@ func (t *TUI) handleIPCStart(conn net.Conn, req IPCRequest) {
 	}
 	// Create the new pane off-main (may fork/exec).
 	cols, rows := old.emu.Width(), old.emu.Height()
+	// Dead panes may report zero dimensions; use sensible defaults.
+	if cols < 10 {
+		cols = 80
+	}
+	if rows < 2 {
+		rows = 24
+	}
 	np, err := NewPane(old.cfg, rows, cols)
 	if err != nil {
 		LogError("pane", "start failed", "name", req.Target, "err", err)
@@ -75,7 +85,7 @@ func (t *TUI) handleIPCStart(conn net.Conn, req IPCRequest) {
 	np.eventCh = t.agentEvents
 	np.safeGo = t.safeGo
 	// Replace in t.panes on main; re-verify index is still valid.
-	t.runOnMain(func() {
+	if !t.runOnMain(func() {
 		if oldIdx < len(t.panes) && t.panes[oldIdx] == old {
 			np.Start()
 			t.panes[oldIdx] = np
@@ -83,7 +93,9 @@ func (t *TUI) handleIPCStart(conn net.Conn, req IPCRequest) {
 		} else {
 			np.Close() // Index shifted; discard new pane.
 		}
-	})
+	}) {
+		np.Close() // TUI shutting down; clean up the new pane.
+	}
 	LogInfo("pane", "started", "name", req.Target)
 	writeIPCResponse(conn, IPCResponse{OK: true})
 }
@@ -96,7 +108,7 @@ func (t *TUI) handleIPCRestart(conn net.Conn, req IPCRequest) {
 	// Find the pane pointer and index on main to avoid races on t.panes.
 	var old *Pane
 	var oldIdx int
-	t.runOnMain(func() {
+	if !t.runOnMain(func() {
 		for i, p := range t.panes {
 			if p.name == req.Target {
 				old = p
@@ -104,7 +116,10 @@ func (t *TUI) handleIPCRestart(conn net.Conn, req IPCRequest) {
 				return
 			}
 		}
-	})
+	}) {
+		writeIPCResponse(conn, IPCResponse{Error: "TUI shutting down"})
+		return
+	}
 	if old == nil {
 		writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("pane %q not found", req.Target)})
 		return
@@ -132,7 +147,7 @@ func (t *TUI) handleIPCRestart(conn net.Conn, req IPCRequest) {
 	np.eventCh = t.agentEvents
 	np.safeGo = t.safeGo
 	// Replace in t.panes on main; re-verify index is still valid.
-	t.runOnMain(func() {
+	if !t.runOnMain(func() {
 		if oldIdx < len(t.panes) && t.panes[oldIdx] == old {
 			np.Start()
 			t.panes[oldIdx] = np
@@ -140,7 +155,9 @@ func (t *TUI) handleIPCRestart(conn net.Conn, req IPCRequest) {
 		} else {
 			np.Close() // Index shifted; discard new pane.
 		}
-	})
+	}) {
+		np.Close() // TUI shutting down; clean up the new pane.
+	}
 	LogInfo("pane", "restarted", "name", req.Target)
 	writeIPCResponse(conn, IPCResponse{OK: true})
 }
