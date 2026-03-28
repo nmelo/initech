@@ -318,17 +318,26 @@ func (p *Pane) renderActivityBar(s *clampedScreen, r Region) {
 // rewriting its status bar, leaving stale uncolored text in the gaps. This
 // function blanks uncolored non-space characters that sit within 2 columns of
 // a colored character (the real status bar content has explicit Fg colors).
+// cufCellInfo holds per-cell data for the CUF bleed-through heuristic.
+type cufCellInfo struct {
+	ch      rune
+	style   tcell.Style
+	colored bool
+}
+
+// cufCells is a reusable buffer for renderStatusBarRow, avoiding per-call
+// allocation. Grows to the widest pane and stays there.
+var cufCells []cufCellInfo
+
 func renderStatusBarRow(s *clampedScreen, emu *vt.SafeEmulator, screenX, screenY, emuRow, cols int, dimmed bool) {
-	type cellInfo struct {
-		ch      rune
-		style   tcell.Style
-		colored bool
+	if cap(cufCells) < cols {
+		cufCells = make([]cufCellInfo, cols*2)
 	}
-	cells := make([]cellInfo, cols)
+	cells := cufCells[:cols]
 	for col := 0; col < cols; col++ {
 		cell := emu.CellAt(col, emuRow)
 		ch, style := uvCellToTcell(cell)
-		cells[col] = cellInfo{ch, style, cell != nil && cell.Style.Fg != nil}
+		cells[col] = cufCellInfo{ch, style, cell != nil && cell.Style.Fg != nil}
 	}
 	// Blank uncolored non-space cells near colored cells (stale CUF artifacts).
 	for col := 0; col < cols; col++ {
