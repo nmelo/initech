@@ -357,6 +357,26 @@ func (d *Daemon) handleControlStream(ctrl net.Conn, scanner *bufio.Scanner) {
 			}
 			writeJSON(ctrl, ControlResp{OK: true})
 
+		case "forward_send":
+			// Received from a remote TUI: deliver to a local agent.
+			p := d.findPane(cmd.Target)
+			if p == nil {
+				writeJSON(ctrl, ControlResp{Error: fmt.Sprintf("agent %q not found", cmd.Target)})
+				continue
+			}
+			p.SendText(cmd.Text, cmd.Enter)
+			writeJSON(ctrl, ControlResp{OK: true})
+
+		case "peers_query":
+			agents := make([]string, len(d.panes))
+			for i, p := range d.panes {
+				agents[i] = p.Name()
+			}
+			peerName := d.project.PeerName
+			peers := []PeerInfo{{Name: peerName, Agents: agents}}
+			data, _ := json.Marshal(peers)
+			writeJSON(ctrl, ControlResp{OK: true, Data: string(data)})
+
 		default:
 			writeJSON(ctrl, ControlResp{Error: fmt.Sprintf("unknown action %q", cmd.Action)})
 		}

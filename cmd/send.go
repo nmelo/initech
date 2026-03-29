@@ -36,9 +36,17 @@ func runSend(cmd *cobra.Command, args []string) error {
 	target := args[0]
 	text := strings.Join(args[1:], " ")
 
+	// Parse host:agent format for cross-machine routing.
+	var host string
+	if idx := strings.Index(target, ":"); idx >= 0 {
+		host = target[:idx]
+		target = target[idx+1:]
+	}
+
 	req := tui.IPCRequest{
 		Action: "send",
 		Target: target,
+		Host:   host,
 		Text:   text,
 		Enter:  !sendNoEnter,
 	}

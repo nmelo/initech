@@ -16,8 +16,9 @@ import (
 
 // IPCRequest is the JSON structure sent by CLI commands to the TUI socket.
 type IPCRequest struct {
-	Action string `json:"action"` // "send", "peek", "list"
+	Action string `json:"action"` // "send", "peek", "list", "peers_query"
 	Target string `json:"target"` // Role name (for send/peek).
+	Host   string `json:"host"`   // Remote peer name (for cross-machine send). Empty = local.
 	Text   string `json:"text"`   // Text to inject (for send).
 	Lines  int    `json:"lines"`  // Number of lines to return (for peek, 0 = all).
 	Enter  bool   `json:"enter"`  // Append Enter after text (for send).
@@ -128,6 +129,8 @@ func (t *TUI) handleIPCConn(conn net.Conn) {
 		t.handleIPCAdd(conn, req)
 	case "remove":
 		t.handleIPCRemove(conn, req)
+	case "peers_query":
+		t.handleIPCPeers(conn)
 	case "quit":
 		t.handleIPCQuit(conn)
 	default:
@@ -148,6 +151,19 @@ func (t *TUI) handleIPCSend(conn net.Conn, req IPCRequest) {
 	if len(req.Text) > maxSendTextLen {
 		writeIPCResponse(conn, IPCResponse{Error: "text too large (max 64KB)"})
 		return
+	}
+
+	// Cross-machine routing: if Host is set, look up by host:agent.
+	// Empty host or host matching our own peer name resolves locally.
+	if req.Host != "" {
+		localPeerName := ""
+		if t.project != nil {
+			localPeerName = t.project.PeerName
+		}
+		if req.Host != localPeerName {
+			t.forwardSendToRemote(conn, req)
+			return
+		}
 	}
 
 	// Look up the pane. The suspended-pane path needs *Pane for EnqueueMessage
@@ -553,6 +569,66 @@ func (t *TUI) runOnMain(fn func()) bool {
 	case <-t.quitCh:
 		return false
 	}
+}
+
+// forwardSendToRemote routes a send request to a remote peer by finding the
+// RemotePane with matching Host() and calling SendText. The RemotePane's
+// SendText sends the command over the yamux control stream to the daemon.
+func (t *TUI) forwardSendToRemote(conn net.Conn, req IPCRequest) {
+	var target PaneView
+	t.runOnMain(func() {
+		for _, p := range t.panes {
+			if p.Host() == req.Host && p.Name() == req.Target {
+				target = p
+				return
+			}
+		}
+	})
+	if target == nil {
+		writeIPCResponse(conn, IPCResponse{
+			Error: fmt.Sprintf("agent %q not found on peer %q. Run 'initech peers' to see available targets.", req.Target, req.Host),
+		})
+		return
+	}
+	target.SendText(req.Text, req.Enter)
+	writeIPCResponse(conn, IPCResponse{OK: true})
+}
+
+// PeerInfo describes a peer and its agents for the peers_query response.
+type PeerInfo struct {
+	Name   string   `json:"name"`
+	Agents []string `json:"agents"`
+}
+
+// handleIPCPeers builds a peer table from local + remote panes and responds
+// with a JSON list of PeerInfo.
+func (t *TUI) handleIPCPeers(conn net.Conn) {
+	var peers []PeerInfo
+	t.runOnMain(func() {
+		// Group panes by host.
+		groups := make(map[string][]string)
+		localName := "local"
+		if t.project != nil && t.project.PeerName != "" {
+			localName = t.project.PeerName
+		}
+		for _, p := range t.panes {
+			host := p.Host()
+			if host == "" {
+				host = localName
+			}
+			groups[host] = append(groups[host], p.Name())
+		}
+		// Local peer first, then remotes in alphabetical order.
+		if agents, ok := groups[localName]; ok {
+			peers = append(peers, PeerInfo{Name: localName, Agents: agents})
+			delete(groups, localName)
+		}
+		for name, agents := range groups {
+			peers = append(peers, PeerInfo{Name: name, Agents: agents})
+		}
+	})
+	data, _ := json.Marshal(peers)
+	writeIPCResponse(conn, IPCResponse{OK: true, Data: string(data)})
 }
 
 func writeIPCResponse(conn net.Conn, resp IPCResponse) {

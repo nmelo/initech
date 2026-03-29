@@ -124,6 +124,10 @@ type TUI struct {
 	// Comes from initech.yaml's project field. Empty falls back to "Agents".
 	projectName string
 
+	// project holds the full config for cross-machine peer name lookup and
+	// remote connection routing. Nil when no config is loaded (tests).
+	project *config.Project
+
 	// sockPath is the IPC socket this TUI is listening on. Used to inject
 	// INITECH_SOCKET into hot-added panes.
 	sockPath string
@@ -369,6 +373,7 @@ func Run(cfg Config) error {
 		lastH:             initH,
 		projectRoot:       cfg.ProjectRoot,
 		projectName:       cfg.ProjectName,
+		project:           cfg.Project,
 		version:           cfg.Version,
 		sockPath:          sp,
 		paneConfigBuilder: cfg.PaneConfigBuilder,
