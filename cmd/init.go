@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/nmelo/initech/internal/color"
 	"github.com/nmelo/initech/internal/config"
 	iexec "github.com/nmelo/initech/internal/exec"
 	"github.com/nmelo/initech/internal/git"
@@ -52,7 +53,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return err
 		}
-		fmt.Fprintln(out, "Loaded existing initech.yaml")
+		fmt.Fprintln(out, color.Green("\u2713")+" Loaded existing "+color.Bold("initech.yaml"))
 	} else {
 		p, err = interactiveSetup(wd)
 		if err != nil {
@@ -61,7 +62,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 		if err := config.Write(cfgPath, p); err != nil {
 			return err
 		}
-		fmt.Fprintln(out, "Created initech.yaml")
+		fmt.Fprintln(out, color.Green("\u2713")+" Created "+color.Bold("initech.yaml"))
 	}
 
 	if err := config.Validate(p); err != nil {
@@ -70,16 +71,22 @@ func runInit(cmd *cobra.Command, args []string) error {
 
 	// Scaffold project tree
 	progress := func(msg string) {
-		fmt.Fprintf(out, "  %s\n", msg)
+		// Colorize: "Creating path/file" -> green checkmark + blue filename
+		if strings.HasPrefix(msg, "Creating ") {
+			path := strings.TrimPrefix(msg, "Creating ")
+			fmt.Fprintf(out, "  %s %s\n", color.Green("\u2713"), color.Blue(path))
+		} else {
+			fmt.Fprintf(out, "  %s\n", msg)
+		}
 	}
-	fmt.Fprintln(out, "\nScaffolding project...")
+	fmt.Fprintln(out, "\n"+color.CyanBold("Scaffolding project..."))
 	created, err := scaffold.Run(p, scaffold.Options{Force: initForce, Progress: progress})
 	if err != nil {
 		return fmt.Errorf("scaffold: %w", err)
 	}
 
 	// Initialize git
-	fmt.Fprintln(out, "  Initializing git repository...")
+	fmt.Fprintf(out, "  %s %s\n", color.Green("\u2713"), color.Dim("Initializing git repository"))
 	if err := git.Init(runner, p.Root); err != nil {
 		return fmt.Errorf("git init: %w", err)
 	}
@@ -104,7 +111,8 @@ func runInit(cmd *cobra.Command, args []string) error {
 		subPath := filepath.Join(roleName, "src")
 		gitRef := filepath.Join(p.Root, subPath, ".git")
 		if _, err := os.Stat(gitRef); err != nil {
-			fmt.Fprintf(out, "  Cloning repo into %s/src/... ", roleName)
+			label := fmt.Sprintf("Cloning repo into %s/src/", color.Blue(roleName))
+			fmt.Fprintf(out, "  %s... ", label)
 			done := make(chan struct{})
 			go func() {
 				spinner := []rune{'⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'}
@@ -114,7 +122,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 					case <-done:
 						return
 					default:
-						fmt.Fprintf(out, "\r  Cloning repo into %s/src/... %c", roleName, spinner[i%len(spinner)])
+						fmt.Fprintf(out, "\r  %s... %c", label, spinner[i%len(spinner)])
 						i++
 						time.Sleep(80 * time.Millisecond)
 					}
@@ -123,9 +131,9 @@ func runInit(cmd *cobra.Command, args []string) error {
 			cloneErr := git.AddSubmodule(runner, p.Root, repoURL, subPath)
 			close(done)
 			if cloneErr != nil {
-				fmt.Fprintf(out, "\r  Warning: git submodule add for %s failed: %v\n", roleName, cloneErr)
+				fmt.Fprintf(out, "\r  %s %s: %v\n", color.Red("\u2717"), color.Red("clone failed for "+roleName), cloneErr)
 			} else {
-				fmt.Fprintf(out, "\r  Cloning repo into %s/src/... done\n", roleName)
+				fmt.Fprintf(out, "\r  %s %s\n", color.Green("\u2713"), label)
 			}
 		}
 	}
@@ -133,41 +141,44 @@ func runInit(cmd *cobra.Command, args []string) error {
 	// Initialize beads (graceful degradation)
 	if _, err := runner.Run("which", "bd"); err == nil {
 		if _, err := os.Stat(filepath.Join(p.Root, ".beads")); err != nil {
-			fmt.Fprintln(out, "  Initializing beads issue tracker...")
 			if _, err := runner.RunInDir(p.Root, "bd", "init"); err != nil {
-				fmt.Fprintf(out, "  Warning: bd init failed: %v\n", err)
+				fmt.Fprintf(out, "  %s %s: %v\n", color.Yellow("!"), color.Yellow("bd init failed"), err)
 			} else {
 				if p.Beads.Prefix != "" {
 					runner.RunInDir(p.Root, "bd", "config", "set", "issue-prefix", p.Beads.Prefix)
 				}
+				fmt.Fprintf(out, "  %s %s\n", color.Green("\u2713"), color.Dim("Initialized beads"))
 			}
 		}
 	} else {
-		fmt.Fprintln(out, "  Skipping beads (bd not found)")
+		fmt.Fprintf(out, "  %s %s\n", color.Dim("-"), color.Dim("Skipping beads (bd not found)"))
 	}
 
 	// Initial commit
-	fmt.Fprintln(out, "  Creating initial commit...")
 	if err := git.CommitAll(runner, p.Root, "initech: bootstrap "+p.Name); err != nil {
-		fmt.Fprintf(out, "  Warning: initial commit failed: %v\n", err)
+		fmt.Fprintf(out, "  %s %s: %v\n", color.Yellow("!"), color.Yellow("initial commit failed"), err)
+	} else {
+		fmt.Fprintf(out, "  %s %s\n", color.Green("\u2713"), color.Dim("Initial commit"))
 	}
 
-	// Summary box. Inner width 48 fits the longest next-step line (46 chars + 2 padding).
+	// Summary box. Inner width 48 fits the longest next-step line.
+	// Uses color.Pad for alignment since ANSI escapes break %-Ns.
 	memGB := float64(len(p.Roles)) * 1.5
-	border := strings.Repeat("\u2500", 48)
-	row := func(s string) { fmt.Fprintf(out, "  \u2502 %-48s\u2502\n", s) }
+	bdr := color.Green
+	border := bdr(strings.Repeat("\u2500", 48))
+	row := func(s string) { fmt.Fprintf(out, "  %s %s%s\n", bdr("\u2502"), color.Pad(s, 48), bdr("\u2502")) }
 	fmt.Fprintln(out)
-	fmt.Fprintf(out, "  \u250c%s\u2510\n", border)
-	row(p.Name)
-	row(fmt.Sprintf("%d agents, ~%.0f GB estimated memory", len(p.Roles), memGB))
-	row(fmt.Sprintf("%d files created", len(created)))
+	fmt.Fprintf(out, "  %s%s%s\n", bdr("\u250c"), border, bdr("\u2510"))
+	row(color.Bold(p.Name))
+	row(color.Cyan(fmt.Sprintf("%d", len(p.Roles))) + " agents, " + color.Cyan(fmt.Sprintf("~%.0f GB", memGB)) + " estimated memory")
+	row(color.Cyan(fmt.Sprintf("%d", len(created))) + " files created")
 	row("")
-	row("Next steps:")
-	row("  1. Edit docs/prd.md (define your problem)")
-	row("  2. Run 'bd create' to add your first task")
-	row("  3. Run 'initech' to start your session")
-	row("  4. Press backtick for commands, ? for help")
-	fmt.Fprintf(out, "  \u2514%s\u2518\n", border)
+	row(color.Bold("Next steps:"))
+	row("  " + color.Cyan("1.") + " Edit " + color.Bold("docs/prd.md") + " (define your problem)")
+	row("  " + color.Cyan("2.") + " Run " + color.Bold("'bd create'") + " to add your first task")
+	row("  " + color.Cyan("3.") + " Run " + color.Bold("'initech'") + " to start your session")
+	row("  " + color.Cyan("4.") + " Press " + color.Bold("backtick") + " for commands, " + color.Bold("?") + " for help")
+	fmt.Fprintf(out, "  %s%s%s\n", bdr("\u2514"), border, bdr("\u2518"))
 
 	return nil
 }
@@ -391,9 +402,9 @@ func buildSelectorItemsFromDetected(detected []string) []roles.SelectorItem {
 
 func prompt(reader *bufio.Reader, label, defaultVal string) string {
 	if defaultVal != "" {
-		fmt.Printf("%s [%s]: ", label, defaultVal)
+		fmt.Printf("%s %s: ", color.Cyan(label), color.Dim("["+defaultVal+"]"))
 	} else {
-		fmt.Printf("%s: ", label)
+		fmt.Printf("%s: ", color.Cyan(label))
 	}
 
 	line, _ := reader.ReadString('\n')
