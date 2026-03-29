@@ -165,8 +165,8 @@ func runInit(cmd *cobra.Command, args []string) error {
 	// Uses color.Pad for alignment since ANSI escapes break %-Ns.
 	memGB := float64(len(p.Roles)) * 1.5
 	bdr := color.Green
-	border := bdr(strings.Repeat("\u2500", 48))
-	row := func(s string) { fmt.Fprintf(out, "  %s %s%s\n", bdr("\u2502"), color.Pad(s, 48), bdr("\u2502")) }
+	border := bdr(strings.Repeat("\u2500", 50))
+	row := func(s string) { fmt.Fprintf(out, "  %s %s %s\n", bdr("\u2502"), color.Pad(s, 48), bdr("\u2502")) }
 	fmt.Fprintln(out)
 	fmt.Fprintf(out, "  %s%s%s\n", bdr("\u250c"), border, bdr("\u2510"))
 	row(color.Bold(p.Name))
