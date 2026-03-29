@@ -112,6 +112,11 @@ func (p *Pane) Render(screen tcell.Screen, focused bool, dimmed bool, index int,
 	innerCols, innerRows := r.InnerSize()
 	emuRows := p.emu.Height()
 
+	// Hold renderMu for the entire cell-reading phase to prevent tearing.
+	// Without this, readLoop can call emu.Write() between individual CellAt
+	// calls, mixing old and new screen states within a single frame (ini-45m).
+	p.renderMu.Lock()
+
 	if p.scrollOffset > 0 {
 		// Scrollback mode: render from the combined scrollback + screen buffer.
 		scrollbackLen := p.emu.ScrollbackLen()
@@ -263,6 +268,8 @@ func (p *Pane) Render(screen tcell.Screen, focused bool, dimmed bool, index int,
 			}
 		}
 	}
+
+	p.renderMu.Unlock()
 
 	// Activity bar on the top edge of the pane (ini-lw0). Overlays row 0
 	// of the content area. Running panes get a KITT scanner sweep; all

@@ -69,6 +69,7 @@ type Pane struct {
 	pid           int              // Cached PID from process start (avoids race with restart).
 	emu           *vt.SafeEmulator
 	mu            sync.Mutex
+	renderMu      sync.Mutex       // Serializes readLoop writes with Render cell reads to prevent tearing.
 	sendMu        sync.Mutex       // Serializes IPC send operations to prevent keystroke interleaving.
 	alive          bool
 	visible        bool           // Whether this pane is shown in the layout. Hidden panes keep running.
@@ -243,7 +244,9 @@ func (p *Pane) readLoop() {
 			p.mu.Lock()
 			p.lastOutputTime = time.Now()
 			p.mu.Unlock()
+			p.renderMu.Lock()
 			p.emu.Write(buf[:n])
+			p.renderMu.Unlock()
 		}
 		if err != nil {
 			p.mu.Lock()
