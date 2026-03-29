@@ -268,10 +268,13 @@ func pollPaneRSS(pid int) int64 {
 	return processTreeRSS(pid)
 }
 
-// processTreeRSS sums the RSS of a process and all its descendants.
-// Uses a single `ps -eo pid,ppid,rss` call and builds the tree in memory,
-// replacing the previous recursive pgrep approach which forked 3+ processes
-// per pane per poll. Returns 0 if the PID is invalid or dead.
+// processTreeRSS returns the RSS of the largest process in the tree rooted at
+// pid. Uses a single `ps -eo pid,ppid,rss` call and builds the tree in memory.
+// Returns the max RSS of any single descendant rather than the sum, because
+// summing double-counts shared library pages mapped into every process. The
+// largest descendant is typically the actual Claude binary which holds the bulk
+// of the unique memory. This aligns with Activity Monitor's "Memory" column
+// (physical footprint) much better than the raw RSS sum.
 func processTreeRSS(pid int) int64 {
 	if pid <= 0 {
 		return 0
@@ -302,16 +305,18 @@ func processTreeRSS(pid int) int64 {
 		rssMap[p] = rss
 	}
 
-	// Walk the tree from the root PID, summing RSS.
-	var total int64
+	// Walk the tree, find the single process with the highest RSS.
+	var maxRSS int64
 	stack := []int{pid}
 	for len(stack) > 0 {
 		cur := stack[len(stack)-1]
 		stack = stack[:len(stack)-1]
-		total += rssMap[cur]
+		if rssMap[cur] > maxRSS {
+			maxRSS = rssMap[cur]
+		}
 		stack = append(stack, children[cur]...)
 	}
-	return total
+	return maxRSS
 }
 
 // ── Message queue for suspended panes ───────────────────────────────

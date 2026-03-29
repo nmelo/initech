@@ -371,7 +371,7 @@ func renderSelector(w io.Writer, s *selectorState) {
 			count++
 		}
 	}
-	memGB := float64(count) * 1.5
+	memGB := float64(count) * 0.35 // ~350 MB per Claude agent (observed range: 230-420 MB)
 	printSelLine(w, sAnsiDim+fmt.Sprintf("  %d selected ~%.0f GB", count, memGB)+sAnsiReset)
 
 	// Tooltip: show extended description for the cursor item.
