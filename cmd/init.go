@@ -68,12 +68,17 @@ func runInit(cmd *cobra.Command, args []string) error {
 	}
 
 	// Scaffold project tree
-	created, err := scaffold.Run(p, scaffold.Options{Force: initForce})
+	progress := func(msg string) {
+		fmt.Fprintf(out, "  %s\n", msg)
+	}
+	fmt.Fprintln(out, "\nScaffolding project...")
+	created, err := scaffold.Run(p, scaffold.Options{Force: initForce, Progress: progress})
 	if err != nil {
 		return fmt.Errorf("scaffold: %w", err)
 	}
 
 	// Initialize git
+	fmt.Fprintln(out, "  Initializing git repository...")
 	if err := git.Init(runner, p.Root); err != nil {
 		return fmt.Errorf("git init: %w", err)
 	}
@@ -86,7 +91,6 @@ func runInit(cmd *cobra.Command, args []string) error {
 		}
 
 		repoURL := p.Repos[0].URL
-		// Check if role has a specific repo override
 		if ov, ok := p.RoleOverrides[roleName]; ok && ov.RepoName != "" {
 			for _, r := range p.Repos {
 				if r.Name == ov.RepoName {
@@ -97,11 +101,11 @@ func runInit(cmd *cobra.Command, args []string) error {
 		}
 
 		subPath := filepath.Join(roleName, "src")
-		// Only add submodule if src dir doesn't already have a .git reference
 		gitRef := filepath.Join(p.Root, subPath, ".git")
 		if _, err := os.Stat(gitRef); err != nil {
+			fmt.Fprintf(out, "  Cloning repo into %s/src/...\n", roleName)
 			if err := git.AddSubmodule(runner, p.Root, repoURL, subPath); err != nil {
-				fmt.Fprintf(out, "Warning: git submodule add for %s failed: %v\n", roleName, err)
+				fmt.Fprintf(out, "  Warning: git submodule add for %s failed: %v\n", roleName, err)
 			}
 		}
 	}
@@ -109,22 +113,23 @@ func runInit(cmd *cobra.Command, args []string) error {
 	// Initialize beads (graceful degradation)
 	if _, err := runner.Run("which", "bd"); err == nil {
 		if _, err := os.Stat(filepath.Join(p.Root, ".beads")); err != nil {
+			fmt.Fprintln(out, "  Initializing beads issue tracker...")
 			if _, err := runner.RunInDir(p.Root, "bd", "init"); err != nil {
-				fmt.Fprintf(out, "Warning: bd init failed: %v\n", err)
+				fmt.Fprintf(out, "  Warning: bd init failed: %v\n", err)
 			} else {
 				if p.Beads.Prefix != "" {
 					runner.RunInDir(p.Root, "bd", "config", "set", "issue-prefix", p.Beads.Prefix)
 				}
-				fmt.Fprintln(out, "Initialized beads")
 			}
 		}
 	} else {
-		fmt.Fprintln(out, "Warning: bd not found, skipping beads initialization")
+		fmt.Fprintln(out, "  Skipping beads (bd not found)")
 	}
 
 	// Initial commit
+	fmt.Fprintln(out, "  Creating initial commit...")
 	if err := git.CommitAll(runner, p.Root, "initech: bootstrap "+p.Name); err != nil {
-		fmt.Fprintf(out, "Warning: initial commit failed: %v\n", err)
+		fmt.Fprintf(out, "  Warning: initial commit failed: %v\n", err)
 	}
 
 	// Summary

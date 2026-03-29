@@ -24,12 +24,19 @@ import (
 type Options struct {
 	// Force overwrites existing files when true.
 	Force bool
+	// Progress is called with a short description for each created item.
+	// Nil disables progress output.
+	Progress func(msg string)
 }
 
 // Run creates the full project directory tree from the given config.
 // Returns a list of paths that were created (for summary output).
 func Run(p *config.Project, opts Options) ([]string, error) {
 	var created []string
+	progress := opts.Progress
+	if progress == nil {
+		progress = func(string) {} // no-op
+	}
 
 	// Root directory
 	if err := os.MkdirAll(p.Root, 0755); err != nil {
@@ -40,6 +47,7 @@ func Run(p *config.Project, opts Options) ([]string, error) {
 	if path, err := writeFile(p.Root, ".gitignore", gitignoreContent, opts.Force); err != nil {
 		return nil, err
 	} else if path != "" {
+		progress("Creating .gitignore")
 		created = append(created, ".gitignore")
 	}
 
@@ -48,6 +56,7 @@ func Run(p *config.Project, opts Options) ([]string, error) {
 	if path, err := writeFile(p.Root, "CLAUDE.md", claudeContent, opts.Force); err != nil {
 		return nil, err
 	} else if path != "" {
+		progress("Creating CLAUDE.md")
 		created = append(created, "CLAUDE.md")
 	}
 
@@ -55,6 +64,7 @@ func Run(p *config.Project, opts Options) ([]string, error) {
 	if path, err := writeFile(p.Root, "AGENTS.md", agentsContent, opts.Force); err != nil {
 		return nil, err
 	} else if path != "" {
+		progress("Creating AGENTS.md")
 		created = append(created, "AGENTS.md")
 	}
 
@@ -63,6 +73,7 @@ func Run(p *config.Project, opts Options) ([]string, error) {
 	if err := os.MkdirAll(docsDir, 0755); err != nil {
 		return nil, fmt.Errorf("create docs/: %w", err)
 	}
+	progress("Creating docs/")
 
 	vars := roles.RenderVars{
 		ProjectName: p.Name,
@@ -85,6 +96,7 @@ func Run(p *config.Project, opts Options) ([]string, error) {
 		if path, err := writeFile(docsDir, dt.filename, content, opts.Force); err != nil {
 			return nil, err
 		} else if path != "" {
+			progress("Creating docs/" + dt.filename)
 			created = append(created, "docs/"+dt.filename)
 		}
 	}
@@ -123,12 +135,16 @@ func Run(p *config.Project, opts Options) ([]string, error) {
 
 		tmpl := templateForRole(roleName)
 		content := roles.Render(tmpl, roleVars)
-		// Substitute role_name (not in RenderVars, role-specific)
 		content = roles.RenderString(content, "role_name", roleName)
 
 		if path, err := writeFile(roleDir, "CLAUDE.md", content, opts.Force); err != nil {
 			return nil, err
 		} else if path != "" {
+			if def.NeedsSrc {
+				progress(fmt.Sprintf("Creating %s/CLAUDE.md + .claude/", roleName))
+			} else {
+				progress(fmt.Sprintf("Creating %s/CLAUDE.md", roleName))
+			}
 			created = append(created, roleName+"/CLAUDE.md")
 		}
 
@@ -141,6 +157,7 @@ func Run(p *config.Project, opts Options) ([]string, error) {
 			if err := os.MkdirAll(pbDir, 0755); err != nil {
 				return nil, fmt.Errorf("create %s/playbooks/: %w", roleName, err)
 			}
+			progress(fmt.Sprintf("Creating %s/playbooks/", roleName))
 		}
 	}
 
