@@ -104,12 +104,18 @@ func (t *TUI) renderEventLog() {
 	} else {
 		titleText = fmt.Sprintf(" Event Log (last 60 min, %d events) ", count)
 	}
+	// Center the title text.
 	for i := 0; i < sw; i++ {
-		ch := ' '
-		if i < len(titleText) {
-			ch = rune(titleText[i])
+		s.SetContent(i, 0, ' ', nil, titleStyle)
+	}
+	titleStart := (sw - len([]rune(titleText))) / 2
+	if titleStart < 0 {
+		titleStart = 0
+	}
+	for i, ch := range titleText {
+		if titleStart+i < sw {
+			s.SetContent(titleStart+i, 0, ch, nil, titleStyle)
 		}
-		s.SetContent(i, 0, ch, nil, titleStyle)
 	}
 
 	if count == 0 {

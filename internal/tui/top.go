@@ -204,12 +204,16 @@ func (t *TUI) renderTop() {
 		drawField(s, x, row, statusW, status, style)
 	}
 
-	// Title.
+	// Title (centered).
 	title := " initech top "
 	titleStyle := tcell.StyleDefault.Background(tcell.ColorDodgerBlue).Foreground(tcell.ColorBlack).Bold(true)
+	titleStart := (sw - len([]rune(title))) / 2
+	if titleStart < 0 {
+		titleStart = 0
+	}
 	for i, ch := range title {
-		if 1+i < sw {
-			s.SetContent(1+i, 0, ch, nil, titleStyle)
+		if titleStart+i < sw {
+			s.SetContent(titleStart+i, 0, ch, nil, titleStyle)
 		}
 	}
 
