@@ -37,6 +37,7 @@ type SelectorItem struct {
 	Description string // Short description shown to the right of the name.
 	Group       string // Section header this item belongs to (e.g. "ENGINEERS").
 	Tag         string // Parenthetical annotation after the description (e.g. "supervised").
+	Tooltip     string // Extended description shown when cursor is on this item.
 	Checked     bool   // Whether this item starts checked; mutated during selection.
 }
 
@@ -259,8 +260,9 @@ func itemDisplayRow(rows []displayRow, itemIdx int) int {
 //	row N+7: "v more below" indicator (or blank)
 //	row N+8: blank
 //	row N+9: status
+//	row N+10: tooltip
 func contentHeight(termH int) int {
-	h := termH - 10
+	h := termH - 11
 	if h < 1 {
 		h = 1
 	}
@@ -371,6 +373,11 @@ func renderSelector(w io.Writer, s *selectorState) {
 	}
 	memGB := float64(count) * 1.5
 	printSelLine(w, sAnsiDim+fmt.Sprintf("  %d selected ~%.0f GB", count, memGB)+sAnsiReset)
+
+	// Tooltip: show extended description for the cursor item.
+	if s.cursor >= 0 && s.cursor < len(s.items) && s.items[s.cursor].Tooltip != "" {
+		printSelLine(w, sAnsiDim+"  "+s.items[s.cursor].Tooltip+sAnsiReset)
+	}
 }
 
 // renderDisplayRow writes one display row to w.

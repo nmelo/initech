@@ -165,16 +165,16 @@ func TestMoveCursorSingleItem(t *testing.T) {
 // ── contentHeight ─────────────────────────────────────────────────────
 
 func TestContentHeight(t *testing.T) {
-	// Overhead is 10 rows (title, subtitle, blank, keys, presets, blank,
-	// scroll-above, scroll-below, blank, status).
+	// Overhead is 11 rows (title, subtitle, blank, keys, presets, blank,
+	// scroll-above, scroll-below, blank, status, tooltip).
 	tests := []struct {
 		termH int
 		want  int
 	}{
-		{24, 14},
-		{15, 5},
-		{11, 1},
-		{10, 1}, // minimum clamp (10-10=0, clamped to 1)
+		{24, 13},
+		{15, 4},
+		{12, 1},
+		{11, 1}, // minimum clamp (11-11=0, clamped to 1)
 		{5, 1},  // minimum clamp
 	}
 	for _, tt := range tests {

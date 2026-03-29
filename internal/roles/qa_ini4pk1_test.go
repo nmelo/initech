@@ -83,16 +83,16 @@ func TestQAMoveCursor_Wrapping(t *testing.T) {
 	}
 }
 
-// contentHeight enforces minimum of 1 and uses overhead of 10.
+// contentHeight enforces minimum of 1 and uses overhead of 11.
 func TestQAContentHeight_Minimum(t *testing.T) {
-	for _, h := range []int{1, 5, 10} {
+	for _, h := range []int{1, 5, 11} {
 		got := contentHeight(h)
 		if got < 1 {
 			t.Errorf("contentHeight(%d) = %d, want >= 1", h, got)
 		}
 	}
-	if got := contentHeight(24); got != 14 {
-		t.Errorf("contentHeight(24) = %d, want 14 (24-10)", got)
+	if got := contentHeight(24); got != 13 {
+		t.Errorf("contentHeight(24) = %d, want 13 (24-11)", got)
 	}
 }
 
