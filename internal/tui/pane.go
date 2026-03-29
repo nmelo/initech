@@ -75,6 +75,7 @@ type PaneView interface {
 	BacklogCount() int
 	Emulator() *vt.SafeEmulator
 	GetRegion() Region
+	SetBead(id, title string)
 	SendKey(ev *tcell.EventKey)
 	SendText(text string, enter bool)
 	Render(screen tcell.Screen, focused bool, dimmed bool, index int, sel Selection)

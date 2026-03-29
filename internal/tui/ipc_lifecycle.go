@@ -209,7 +209,7 @@ func (t *TUI) addPane(name string) error {
 	// Check name uniqueness on main (reads t.panes).
 	var existsErr error
 	t.runOnMain(func() {
-		if t.findPane(name) != nil {
+		if t.findPaneByName(name) != nil {
 			existsErr = fmt.Errorf("agent %q already exists", name)
 		}
 	})
@@ -262,7 +262,7 @@ func (t *TUI) addPane(name string) error {
 	// Append to t.panes on main; re-verify uniqueness in case of concurrent add.
 	var finalErr error
 	t.runOnMain(func() {
-		if t.findPane(name) != nil {
+		if t.findPaneByName(name) != nil {
 			p.Close()
 			finalErr = fmt.Errorf("agent %q already exists (added concurrently)", name)
 			return

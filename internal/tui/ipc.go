@@ -150,17 +150,24 @@ func (t *TUI) handleIPCSend(conn net.Conn, req IPCRequest) {
 		return
 	}
 
-	var pane *Pane
+	// Look up the pane. The suspended-pane path needs *Pane for EnqueueMessage
+	// and resumePane; the normal path uses PaneView.SendText.
+	var pv PaneView
+	var concretePane *Pane
 	var queued bool
 	if !t.runOnMain(func() {
-		pane = t.findPane(req.Target)
-		if pane != nil && pane.suspended {
-			dropped := pane.EnqueueMessage(req.Text, req.Enter)
+		pv = t.findPaneByName(req.Target)
+		if pv == nil {
+			return
+		}
+		if lp, ok := pv.(*Pane); ok && lp.suspended {
+			concretePane = lp
+			dropped := lp.EnqueueMessage(req.Text, req.Enter)
 			if dropped {
 				t.notifications = append(t.notifications, notification{
 					event: AgentEvent{
 						Type:   EventAgentStalled,
-						Pane:   pane.name,
+						Pane:   lp.name,
 						Detail: "Message queue full, oldest message dropped.",
 						Time:   time.Now(),
 					},
@@ -173,14 +180,14 @@ func (t *TUI) handleIPCSend(conn net.Conn, req IPCRequest) {
 		writeIPCResponse(conn, IPCResponse{Error: "TUI shutting down"})
 		return
 	}
-	if pane == nil {
+	if pv == nil {
 		writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("pane %q not found", req.Target)})
 		return
 	}
 	if queued {
 		// Trigger resume-on-message: respawn the agent and drain the queue.
 		// This blocks until the agent initializes and messages are delivered.
-		if err := t.resumePane(pane, "incoming message"); err != nil {
+		if err := t.resumePane(concretePane, "incoming message"); err != nil {
 			writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("resume failed: %v", err)})
 			return
 		}
@@ -188,7 +195,8 @@ func (t *TUI) handleIPCSend(conn net.Conn, req IPCRequest) {
 		return
 	}
 
-	t.injectText(pane, req.Text, req.Enter)
+	// Normal path: deliver via PaneView.SendText (works for local and remote).
+	pv.SendText(req.Text, req.Enter)
 
 	// Log the send event (no toast, too frequent).
 	preview := req.Text
@@ -309,16 +317,16 @@ func (t *TUI) handleIPCPeek(conn net.Conn, req IPCRequest) {
 		writeIPCResponse(conn, IPCResponse{Error: "target is required"})
 		return
 	}
-	var pane *Pane
-	if !t.runOnMain(func() { pane = t.findPane(req.Target) }) {
+	var pv PaneView
+	if !t.runOnMain(func() { pv = t.findPaneByName(req.Target) }) {
 		writeIPCResponse(conn, IPCResponse{Error: "TUI shutting down"})
 		return
 	}
-	if pane == nil {
+	if pv == nil {
 		writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("pane %q not found", req.Target)})
 		return
 	}
-	writeIPCResponse(conn, IPCResponse{OK: true, Data: peekContent(pane, req.Lines)})
+	writeIPCResponse(conn, IPCResponse{OK: true, Data: peekContent(pv, req.Lines)})
 }
 
 func (t *TUI) handleIPCPatrol(conn net.Conn, req IPCRequest) {
@@ -432,16 +440,16 @@ func (t *TUI) handleIPCBead(conn net.Conn, req IPCRequest) {
 			return
 		}
 	}
-	var pane *Pane
-	if !t.runOnMain(func() { pane = t.findPane(req.Target) }) {
+	var pv PaneView
+	if !t.runOnMain(func() { pv = t.findPaneByName(req.Target) }) {
 		writeIPCResponse(conn, IPCResponse{Error: "TUI shutting down"})
 		return
 	}
-	if pane == nil {
+	if pv == nil {
 		writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("pane %q not found", req.Target)})
 		return
 	}
-	pane.SetBead(req.Text, "")
+	pv.SetBead(req.Text, "")
 	writeIPCResponse(conn, IPCResponse{OK: true})
 }
 
