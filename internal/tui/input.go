@@ -13,6 +13,12 @@ import (
 )
 
 func (t *TUI) handleKey(ev *tcell.EventKey) bool {
+	// Welcome overlay: dismiss on any keypress.
+	if t.welcome.active {
+		t.welcome.active = false
+		return false
+	}
+
 	// Help modal intercepts all input when active.
 	if t.help.active {
 		return t.handleHelpKey(ev)

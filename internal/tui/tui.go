@@ -85,6 +85,12 @@ type reorderModal struct {
 	moving bool     // True when an item is "picked up" and j/k moves it.
 }
 
+// welcomeOverlay is shown once on first launch, then never again.
+type welcomeOverlay struct {
+	active    bool
+	expiresAt time.Time
+}
+
 // mouseSelection holds mouse text selection state.
 type mouseSelection struct {
 	active       bool
@@ -128,6 +134,7 @@ type TUI struct {
 	eventLogM eventLogModal  // Event log history modal.
 	help      helpModal      // Help reference card modal.
 	reorder   reorderModal   // Agent reorder modal.
+	welcome   welcomeOverlay // First-launch keybinding hints.
 	sel       mouseSelection // Mouse text selection.
 	quitCh   chan struct{} // Closed by IPC quit action to signal event loop exit.
 	quitOnce sync.Once   // Guards single close of quitCh; prevents concurrent-quit panics.
@@ -331,11 +338,13 @@ func Run(cfg Config) error {
 
 	// Restore saved layout if available, otherwise use defaults.
 	var layoutState LayoutState
+	firstLaunch := false
 	if !cfg.ResetLayout && cfg.ProjectRoot != "" {
 		if saved, ok := LoadLayout(cfg.ProjectRoot, agentNames); ok {
 			layoutState = saved
 		} else {
 			layoutState = DefaultLayoutState(agentNames)
+			firstLaunch = true
 		}
 	} else {
 		layoutState = DefaultLayoutState(agentNames)
@@ -362,6 +371,11 @@ func Run(cfg Config) error {
 		quitCh:            quitCh,
 		ipcCh:             make(chan ipcAction, 32),
 		agentEvents:       make(chan AgentEvent, 64),
+	}
+
+	// Show welcome overlay on first launch (no saved layout).
+	if firstLaunch {
+		t.welcome = welcomeOverlay{active: true, expiresAt: time.Now().Add(10 * time.Second)}
 	}
 
 	// Start IPC socket server for inter-agent messaging.
@@ -478,6 +492,9 @@ func Run(cfg Config) error {
 			t.pruneNotifications()
 			t.pruneConfirmation()
 			t.pruneError()
+			if t.welcome.active && time.Now().After(t.welcome.expiresAt) {
+				t.welcome.active = false
+			}
 			t.rotateTip()
 			t.pollQuota()
 			t.render()

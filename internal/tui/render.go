@@ -75,6 +75,11 @@ func (t *TUI) render() {
 		t.renderOverlay()
 	}
 
+	// Welcome overlay on first launch (centered, auto-dismisses).
+	if t.welcome.active {
+		t.renderWelcome()
+	}
+
 	// Toast notifications (skip during command modal to avoid overlap).
 	if !t.cmd.active {
 		t.renderNotifications()
@@ -176,6 +181,67 @@ func (t *TUI) renderReorder() {
 			}
 		}
 		y++
+	}
+}
+
+// renderWelcome draws a centered overlay with the top keybindings on first launch.
+func (t *TUI) renderWelcome() {
+	s := t.screen
+	sw, sh := s.Size()
+
+	lines := []string{
+		"Welcome to initech",
+		"",
+		"  `  (backtick)    Open command bar",
+		"  Alt+Left/Right   Switch panes",
+		"  Alt+z            Zoom focused pane",
+		"  Alt+s            Toggle status overlay",
+		"  ?                Full help reference",
+		"",
+		"Press any key to dismiss",
+	}
+
+	boxW := 44
+	boxH := len(lines) + 2 // 1 padding top + bottom
+	startX := (sw - boxW) / 2
+	startY := (sh - boxH) / 2
+	if startX < 0 {
+		startX = 0
+	}
+	if startY < 0 {
+		startY = 0
+	}
+
+	bgStyle := tcell.StyleDefault.Background(tcell.NewRGBColor(20, 20, 20)).Foreground(tcell.ColorSilver)
+	titleStyle := bgStyle.Foreground(tcell.ColorDodgerBlue).Bold(true)
+	dimStyle := bgStyle.Foreground(tcell.ColorGray)
+
+	// Draw box background.
+	for y := startY; y < startY+boxH && y < sh; y++ {
+		for x := startX; x < startX+boxW && x < sw; x++ {
+			s.SetContent(x, y, ' ', nil, bgStyle)
+		}
+	}
+
+	// Draw lines.
+	for i, line := range lines {
+		y := startY + 1 + i
+		if y >= sh {
+			break
+		}
+		style := bgStyle
+		if i == 0 {
+			style = titleStyle
+		}
+		if i == len(lines)-1 {
+			style = dimStyle
+		}
+		for j, ch := range line {
+			x := startX + 2 + j
+			if x < startX+boxW-1 && x < sw {
+				s.SetContent(x, y, ch, nil, style)
+			}
+		}
 	}
 }
 
