@@ -59,6 +59,26 @@ const (
 	maxContentLen   = 4096 // Max content bytes per JournalEntry.
 )
 
+// PaneView abstracts pane behavior so both local panes (Pane) and future
+// network-backed panes (RemotePane) can be used interchangeably by the TUI.
+type PaneView interface {
+	Name() string
+	Host() string // "" for local panes.
+	IsAlive() bool
+	Activity() ActivityState
+	LastOutputTime() time.Time
+	BeadID() string
+	SessionDesc() string
+	Emulator() *vt.SafeEmulator
+	SendKey(ev *tcell.EventKey)
+	SendText(text string, enter bool)
+	Resize(rows, cols int)
+	Close()
+}
+
+// Compile-time assertion: Pane implements PaneView.
+var _ PaneView = (*Pane)(nil)
+
 // Pane represents a terminal pane backed by a PTY process.
 // It uses a SafeEmulator from charmbracelet/x/vt for terminal emulation.
 type Pane struct {
@@ -361,6 +381,40 @@ func (p *Pane) IsAlive() bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.alive
+}
+
+// Name returns the pane's display name (role name).
+func (p *Pane) Name() string {
+	return p.name
+}
+
+// Host returns the hostname for this pane. Local panes always return "".
+func (p *Pane) Host() string {
+	return ""
+}
+
+// Emulator returns the pane's terminal emulator for cell-level access.
+func (p *Pane) Emulator() *vt.SafeEmulator {
+	return p.emu
+}
+
+// SendText injects text into the pane's PTY via keystroke injection, with
+// optional Enter. Acquires sendMu to serialize with concurrent sends. Sends
+// Ctrl+S to stash pending user input before injecting (ini-gd0).
+func (p *Pane) SendText(text string, enter bool) {
+	p.sendMu.Lock()
+	defer p.sendMu.Unlock()
+
+	p.emu.SendKey(uv.KeyPressEvent(uv.Key{Code: 's', Mod: uv.ModCtrl}))
+	time.Sleep(75 * time.Millisecond)
+
+	for _, r := range text {
+		p.emu.SendKey(uv.KeyPressEvent(uv.Key{Code: r, Text: string(r)}))
+	}
+
+	if enter {
+		p.emu.SendKey(uv.KeyPressEvent(uv.Key{Code: uv.KeyEnter}))
+	}
 }
 
 // Visible returns whether the pane is included in the current layout.
