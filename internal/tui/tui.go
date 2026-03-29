@@ -437,7 +437,21 @@ func Run(cfg Config) error {
 	// Connect to remote peers and add their agents as RemotePanes.
 	if cfg.Project != nil {
 		remotePanes := connectRemotes(cfg.Project)
-		t.panes = append(t.panes, remotePanes...)
+		if len(remotePanes) > 0 {
+			t.panes = append(t.panes, remotePanes...)
+			// Recalculate grid to accommodate the expanded pane count.
+			// The layout was sized for local-only agents; remote panes
+			// need additional grid cells.
+			visCount := 0
+			for _, p := range t.panes {
+				if !t.layoutState.Hidden[p.Name()] {
+					visCount++
+				}
+			}
+			cols, rows := autoGrid(visCount)
+			t.layoutState.GridCols = cols
+			t.layoutState.GridRows = rows
+		}
 	}
 
 	// Sync pinned state from layout to panes.
