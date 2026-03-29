@@ -246,6 +246,22 @@ func (t *TUI) executeConfirmed() bool {
 	}
 	switch parts[0] {
 	case "quit":
+		// Show immediate feedback before the multi-second shutdown.
+		if t.screen != nil {
+			sw, sh := t.screen.Size()
+			style := tcell.StyleDefault.Background(tcell.NewRGBColor(30, 30, 30)).Foreground(tcell.ColorYellow).Bold(true)
+			msg := " Quitting..."
+			y := sh - 2
+			for x := 0; x < sw; x++ {
+				t.screen.SetContent(x, y, ' ', nil, style)
+			}
+			for i, ch := range msg {
+				if i < sw {
+					t.screen.SetContent(i, y, ch, nil, style)
+				}
+			}
+			t.screen.Show()
+		}
 		return true
 	case "remove", "rm":
 		if len(parts) >= 2 {
