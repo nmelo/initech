@@ -152,20 +152,22 @@ func runInit(cmd *cobra.Command, args []string) error {
 		fmt.Fprintf(out, "  Warning: initial commit failed: %v\n", err)
 	}
 
-	// Summary box.
+	// Summary box. Inner width 48 fits the longest next-step line (46 chars + 2 padding).
 	memGB := float64(len(p.Roles)) * 1.5
+	border := strings.Repeat("\u2500", 48)
+	row := func(s string) { fmt.Fprintf(out, "  \u2502 %-48s\u2502\n", s) }
 	fmt.Fprintln(out)
-	fmt.Fprintln(out, "  \u250c\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2510")
-	fmt.Fprintf(out, "  \u2502  %-42s\u2502\n", p.Name)
-	fmt.Fprintf(out, "  \u2502  %-42s\u2502\n", fmt.Sprintf("%d agents, ~%.0f GB estimated memory", len(p.Roles), memGB))
-	fmt.Fprintf(out, "  \u2502  %-42s\u2502\n", fmt.Sprintf("%d files created", len(created)))
-	fmt.Fprintf(out, "  \u2502  %-42s\u2502\n", "")
-	fmt.Fprintf(out, "  \u2502  %-42s\u2502\n", "Next steps:")
-	fmt.Fprintf(out, "  \u2502  %-42s\u2502\n", "  1. Edit docs/prd.md (define your problem)")
-	fmt.Fprintf(out, "  \u2502  %-42s\u2502\n", "  2. Run 'bd create' to add your first task")
-	fmt.Fprintf(out, "  \u2502  %-42s\u2502\n", "  3. Run 'initech' to start your session")
-	fmt.Fprintf(out, "  \u2502  %-42s\u2502\n", "  4. Press backtick for commands, ? for help")
-	fmt.Fprintln(out, "  \u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2518")
+	fmt.Fprintf(out, "  \u250c%s\u2510\n", border)
+	row(p.Name)
+	row(fmt.Sprintf("%d agents, ~%.0f GB estimated memory", len(p.Roles), memGB))
+	row(fmt.Sprintf("%d files created", len(created)))
+	row("")
+	row("Next steps:")
+	row("  1. Edit docs/prd.md (define your problem)")
+	row("  2. Run 'bd create' to add your first task")
+	row("  3. Run 'initech' to start your session")
+	row("  4. Press backtick for commands, ? for help")
+	fmt.Fprintf(out, "  \u2514%s\u2518\n", border)
 
 	return nil
 }
