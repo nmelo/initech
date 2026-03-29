@@ -63,11 +63,10 @@ func TestCrashLogNoProjectRoot(t *testing.T) {
 }
 
 func TestSafeGo_CatchesPanicAndWritesCrashLog(t *testing.T) {
-	dir := t.TempDir()
-	// t.Cleanup runs LIFO before t.TempDir()'s cleanup. Remove the crash
-	// log subdirectory explicitly so TempDir's RemoveAll doesn't race with
-	// a still-writing goroutine.
-	t.Cleanup(func() { os.RemoveAll(filepath.Join(dir, ".initech")) })
+	dir, err := os.MkdirTemp("", "initech-crash-*")
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	quitCh := make(chan struct{})
 	tui := &TUI{
@@ -76,30 +75,32 @@ func TestSafeGo_CatchesPanicAndWritesCrashLog(t *testing.T) {
 		quitCh:      quitCh,
 	}
 
+	// Track goroutine completion with a WaitGroup so we can block until
+	// the entire defer chain (crashLog + close(quitCh)) has finished
+	// before attempting cleanup. This is the structural fix for the CI
+	// race where t.TempDir cleanup ran while the goroutine was still
+	// in its defer stack.
+	var wg sync.WaitGroup
+	wg.Add(1)
 	tui.safeGo(func() {
+		defer wg.Done()
 		panic("test goroutine panic")
 	})
 
 	select {
 	case <-quitCh:
-	case <-time.After(2 * time.Second):
+	case <-time.After(5 * time.Second):
 		t.Fatal("quitCh was not closed after goroutine panic")
 	}
 
-	// crashLog runs BEFORE close(quitCh) in safeGo, so the file exists
-	// by the time we get here. Poll to be safe on slow CI.
+	// Wait for goroutine to fully exit (defer chain complete).
+	wg.Wait()
+	defer os.RemoveAll(dir) // Clean up only after goroutine is done.
+
 	path := filepath.Join(dir, ".initech", "crash.log")
-	var data []byte
-	for i := 0; i < 20; i++ {
-		var err error
-		data, err = os.ReadFile(path)
-		if err == nil {
-			break
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
-	if len(data) == 0 {
-		t.Fatal("crash.log not written after polling")
+	data, readErr := os.ReadFile(path)
+	if readErr != nil {
+		t.Fatalf("crash.log not written: %v", readErr)
 	}
 	content := string(data)
 	if !strings.Contains(content, "test goroutine panic") {
@@ -137,8 +138,10 @@ func TestSafeGo_NormalFunctionRunsCleanly(t *testing.T) {
 }
 
 func TestSafeGo_DoubleCloseQuitChSafe(t *testing.T) {
-	dir := t.TempDir()
-	t.Cleanup(func() { os.RemoveAll(filepath.Join(dir, ".initech")) })
+	dir, err := os.MkdirTemp("", "initech-crash-*")
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	quitCh := make(chan struct{})
 	tui := &TUI{
@@ -147,19 +150,17 @@ func TestSafeGo_DoubleCloseQuitChSafe(t *testing.T) {
 		quitCh:      quitCh,
 	}
 
-	// Close quitCh first, then panic in safeGo. Should not double-panic.
 	close(quitCh)
-	done := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Add(1)
 	tui.safeGo(func() {
-		defer func() { close(done) }()
+		defer wg.Done()
 		panic("after quitCh already closed")
 	})
 
-	select {
-	case <-done:
-	case <-time.After(2 * time.Second):
-		t.Fatal("safeGo goroutine did not complete after double-close scenario")
-	}
+	// Wait for the goroutine to fully exit before cleanup.
+	wg.Wait()
+	defer os.RemoveAll(dir)
 }
 
 func TestPaneStart_UsesSafeGo(t *testing.T) {

@@ -304,19 +304,10 @@ func TestInteg_KeyboardInput(t *testing.T) {
 	}
 
 	// Poll peek until the echoed text appears (cat echoes input back).
-	// Polling is more reliable than a fixed sleep on slow CI runners.
-	var found bool
-	for i := 0; i < 20; i++ {
-		time.Sleep(200 * time.Millisecond)
+	// CI runners can be very slow; allow up to 30s with 500ms intervals.
+	if !pollPeek(t, tc, "eng1", "hello from test", 30*time.Second) {
 		peekResp := tc.sendControl(t, ControlCmd{Action: "peek", Target: "eng1", Lines: 20})
-		if peekResp.OK && strings.Contains(peekResp.Data, "hello from test") {
-			found = true
-			break
-		}
-	}
-	if !found {
-		peekResp := tc.sendControl(t, ControlCmd{Action: "peek", Target: "eng1", Lines: 20})
-		t.Errorf("expected 'hello from test' in peek after polling, got: %q", peekResp.Data[:min(len(peekResp.Data), 200)])
+		t.Errorf("expected 'hello from test' in peek after 30s, got: %q", peekResp.Data[:min(len(peekResp.Data), 200)])
 	}
 }
 
@@ -350,18 +341,9 @@ func TestInteg_ForwardSend(t *testing.T) {
 		t.Fatalf("forward_send failed: %s", resp.Error)
 	}
 
-	var found bool
-	for i := 0; i < 20; i++ {
-		time.Sleep(200 * time.Millisecond)
+	if !pollPeek(t, tc, "eng1", "forwarded-msg", 30*time.Second) {
 		peekResp := tc.sendControl(t, ControlCmd{Action: "peek", Target: "eng1", Lines: 20})
-		if peekResp.OK && strings.Contains(peekResp.Data, "forwarded-msg") {
-			found = true
-			break
-		}
-	}
-	if !found {
-		peekResp := tc.sendControl(t, ControlCmd{Action: "peek", Target: "eng1", Lines: 20})
-		t.Errorf("expected 'forwarded-msg' in peek after polling, got: %q", peekResp.Data[:min(len(peekResp.Data), 200)])
+		t.Errorf("expected 'forwarded-msg' in peek after 30s, got: %q", peekResp.Data[:min(len(peekResp.Data), 200)])
 	}
 }
 
@@ -503,4 +485,19 @@ func TestInteg_RemotePaneImplementsPaneView(t *testing.T) {
 	if pv.IsAlive() != true {
 		t.Error("IsAlive should be true for connected remote pane")
 	}
+}
+
+// pollPeek repeatedly peeks a pane until the expected text appears or timeout
+// elapses. Returns true if found. Polls every 500ms, CI-friendly timeout.
+func pollPeek(t *testing.T, tc *testClient, agent, want string, timeout time.Duration) bool {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		resp := tc.sendControl(t, ControlCmd{Action: "peek", Target: agent, Lines: 30})
+		if resp.OK && strings.Contains(resp.Data, want) {
+			return true
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+	return false
 }
