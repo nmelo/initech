@@ -24,6 +24,11 @@ import (
 // filesystem paths, and CLI argument splitting.
 var roleNameRe = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
 
+// peerNameRe restricts peer names to letters, digits, and hyphens. No colons
+// (colon is the host:agent separator in cross-machine addressing), no
+// underscores (distinguish from role names at a glance).
+var peerNameRe = regexp.MustCompile(`^[a-zA-Z0-9-]+$`)
+
 // Project is the top-level config read from initech.yaml.
 type Project struct {
 	Name          string                  `yaml:"project"`
@@ -37,6 +42,19 @@ type Project struct {
 	ClaudeCommand []string                `yaml:"claude_command,omitempty"`
 	ClaudeArgs    []string                `yaml:"claude_args,omitempty"`
 	RoleOverrides map[string]RoleOverride `yaml:"role_overrides,omitempty"`
+
+	// Cross-machine coordination fields.
+	PeerName string            `yaml:"peer_name,omitempty"` // This instance's identity (e.g., "workbench").
+	Mode     string            `yaml:"mode,omitempty"`      // "" (default TUI) or "headless" (daemon).
+	Listen   string            `yaml:"listen,omitempty"`    // TCP listen addr for headless mode (e.g., ":7391").
+	Token    string            `yaml:"token,omitempty"`     // Shared auth token.
+	Remotes  map[string]Remote `yaml:"remotes,omitempty"`   // Named remote peers.
+}
+
+// Remote describes a remote initech peer for cross-machine coordination.
+type Remote struct {
+	Addr  string `yaml:"addr"`            // host:port of the remote peer.
+	Token string `yaml:"token,omitempty"` // Auth token for this remote (overrides project-level token).
 }
 
 // Repo is a code repository that agents get as a git submodule.
@@ -161,6 +179,27 @@ func Validate(p *Project) error {
 	for name := range p.RoleOverrides {
 		if !roleSet[name] {
 			return fmt.Errorf("role_override %q is not in roles list", name)
+		}
+	}
+
+	// Cross-machine coordination validation.
+	if p.Mode != "" && p.Mode != "headless" {
+		return fmt.Errorf("invalid mode %q: must be \"\" or \"headless\"", p.Mode)
+	}
+	if p.Mode == "headless" {
+		if p.Listen == "" {
+			return fmt.Errorf("listen address is required in headless mode")
+		}
+		if p.PeerName == "" {
+			return fmt.Errorf("peer_name is required in headless mode")
+		}
+	}
+	if p.PeerName != "" && !peerNameRe.MatchString(p.PeerName) {
+		return fmt.Errorf("invalid peer_name %q: must contain only letters, digits, or hyphens (no colons)", p.PeerName)
+	}
+	for name, remote := range p.Remotes {
+		if remote.Addr == "" {
+			return fmt.Errorf("remote %q has empty addr", name)
 		}
 	}
 

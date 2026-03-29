@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -403,5 +404,169 @@ func TestWrite(t *testing.T) {
 	}
 	if len(loaded.Roles) != 2 {
 		t.Errorf("roundtrip Roles = %d", len(loaded.Roles))
+	}
+}
+
+// ── Cross-machine coordination config (ini-wa3) ────────────────────
+
+func TestLoad_HeadlessConfig(t *testing.T) {
+	dir := t.TempDir()
+	yaml := `project: cluster
+root: ` + dir + `
+roles:
+  - eng1
+  - eng2
+peer_name: workbench
+mode: headless
+listen: ":7391"
+token: secret123
+`
+	path := filepath.Join(dir, "initech.yaml")
+	os.WriteFile(path, []byte(yaml), 0644)
+
+	p, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load headless config: %v", err)
+	}
+	if p.PeerName != "workbench" {
+		t.Errorf("PeerName = %q, want 'workbench'", p.PeerName)
+	}
+	if p.Mode != "headless" {
+		t.Errorf("Mode = %q, want 'headless'", p.Mode)
+	}
+	if p.Listen != ":7391" {
+		t.Errorf("Listen = %q, want ':7391'", p.Listen)
+	}
+	if p.Token != "secret123" {
+		t.Errorf("Token = %q, want 'secret123'", p.Token)
+	}
+}
+
+func TestLoad_TUIWithRemotes(t *testing.T) {
+	dir := t.TempDir()
+	yaml := `project: multihost
+root: ` + dir + `
+roles:
+  - super
+  - eng1
+remotes:
+  workbench:
+    addr: "192.168.1.100:7391"
+    token: wb-token
+  spark1:
+    addr: "192.168.1.101:7391"
+`
+	path := filepath.Join(dir, "initech.yaml")
+	os.WriteFile(path, []byte(yaml), 0644)
+
+	p, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load remotes config: %v", err)
+	}
+	if len(p.Remotes) != 2 {
+		t.Fatalf("Remotes count = %d, want 2", len(p.Remotes))
+	}
+	wb := p.Remotes["workbench"]
+	if wb.Addr != "192.168.1.100:7391" {
+		t.Errorf("workbench addr = %q", wb.Addr)
+	}
+	if wb.Token != "wb-token" {
+		t.Errorf("workbench token = %q", wb.Token)
+	}
+	sp := p.Remotes["spark1"]
+	if sp.Addr != "192.168.1.101:7391" {
+		t.Errorf("spark1 addr = %q", sp.Addr)
+	}
+	if sp.Token != "" {
+		t.Errorf("spark1 token = %q, want empty", sp.Token)
+	}
+}
+
+func TestValidate_HeadlessRequiresListen(t *testing.T) {
+	p := &Project{
+		Name:     "x",
+		Root:     "/x",
+		Roles:    []string{"a"},
+		Mode:     "headless",
+		PeerName: "node1",
+	}
+	err := Validate(p)
+	if err == nil || err.Error() != "listen address is required in headless mode" {
+		t.Errorf("err = %v, want listen required", err)
+	}
+}
+
+func TestValidate_HeadlessRequiresPeerName(t *testing.T) {
+	p := &Project{
+		Name:   "x",
+		Root:   "/x",
+		Roles:  []string{"a"},
+		Mode:   "headless",
+		Listen: ":7391",
+	}
+	err := Validate(p)
+	if err == nil || err.Error() != "peer_name is required in headless mode" {
+		t.Errorf("err = %v, want peer_name required", err)
+	}
+}
+
+func TestValidate_PeerNameNoColon(t *testing.T) {
+	p := &Project{
+		Name:     "x",
+		Root:     "/x",
+		Roles:    []string{"a"},
+		PeerName: "bad:name",
+	}
+	err := Validate(p)
+	if err == nil {
+		t.Fatal("expected error for peer_name with colon")
+	}
+	if !strings.Contains(err.Error(), "invalid peer_name") {
+		t.Errorf("err = %v, want invalid peer_name", err)
+	}
+}
+
+func TestValidate_RemoteEmptyAddr(t *testing.T) {
+	p := &Project{
+		Name:  "x",
+		Root:  "/x",
+		Roles: []string{"a"},
+		Remotes: map[string]Remote{
+			"bad": {Addr: ""},
+		},
+	}
+	err := Validate(p)
+	if err == nil {
+		t.Fatal("expected error for remote with empty addr")
+	}
+	if !strings.Contains(err.Error(), "empty addr") {
+		t.Errorf("err = %v, want empty addr", err)
+	}
+}
+
+func TestValidate_UnknownMode(t *testing.T) {
+	p := &Project{
+		Name:  "x",
+		Root:  "/x",
+		Roles: []string{"a"},
+		Mode:  "invalid",
+	}
+	err := Validate(p)
+	if err == nil {
+		t.Fatal("expected error for unknown mode")
+	}
+	if !strings.Contains(err.Error(), "invalid mode") {
+		t.Errorf("err = %v, want invalid mode", err)
+	}
+}
+
+func TestValidate_BackwardsCompatible(t *testing.T) {
+	p := &Project{
+		Name:  "legacy",
+		Root:  "/tmp/legacy",
+		Roles: []string{"super", "eng1"},
+	}
+	if err := Validate(p); err != nil {
+		t.Errorf("existing config without new fields should validate: %v", err)
 	}
 }
