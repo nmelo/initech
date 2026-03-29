@@ -369,7 +369,8 @@ func renderSelector(w io.Writer, s *selectorState) {
 			count++
 		}
 	}
-	printSelLine(w, sAnsiDim+fmt.Sprintf("  %d selected", count)+sAnsiReset)
+	memGB := float64(count) * 1.5
+	printSelLine(w, sAnsiDim+fmt.Sprintf("  %d selected ~%.0f GB", count, memGB)+sAnsiReset)
 }
 
 // renderDisplayRow writes one display row to w.
