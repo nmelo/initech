@@ -120,21 +120,32 @@ func (t *TUI) renderHelp() {
 		y := row + 1
 
 		// Section headers (no leading space) use yellow; body lines use silver.
-		// Contribution footer lines get muted styling.
+		// Contribution footer renders as a dark blue box with yellow text.
+		isFooter := strings.HasPrefix(line, "found a bug") || strings.HasPrefix(line, "github.com")
 		style := bodyStyle
-		if strings.HasPrefix(line, "found a bug") {
-			style = helpStyle // dim gray
-		} else if strings.HasPrefix(line, "github.com") {
-			style = tcell.StyleDefault.Foreground(tcell.ColorSilver)
-		} else if len(line) > 0 && line[0] != ' ' {
-			style = headerStyle
-		}
-		for x := 0; x < sw; x++ {
-			s.SetContent(x, y, ' ', nil, tcell.StyleDefault)
-		}
-		for i, ch := range line {
-			if 1+i < sw {
-				s.SetContent(1+i, y, ch, nil, style)
+		if isFooter {
+			footerBg := tcell.NewRGBColor(15, 20, 45)
+			style = tcell.StyleDefault.Background(footerBg).Foreground(tcell.ColorYellow)
+			for x := 0; x < sw; x++ {
+				s.SetContent(x, y, ' ', nil, style)
+			}
+			padded := " " + line + " "
+			for i, ch := range padded {
+				if 1+i < sw {
+					s.SetContent(1+i, y, ch, nil, style)
+				}
+			}
+		} else {
+			if len(line) > 0 && line[0] != ' ' {
+				style = headerStyle
+			}
+			for x := 0; x < sw; x++ {
+				s.SetContent(x, y, ' ', nil, tcell.StyleDefault)
+			}
+			for i, ch := range line {
+				if 1+i < sw {
+					s.SetContent(1+i, y, ch, nil, style)
+				}
 			}
 		}
 	}
