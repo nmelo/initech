@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/nmelo/initech/internal/config"
 	iexec "github.com/nmelo/initech/internal/exec"
@@ -103,9 +104,28 @@ func runInit(cmd *cobra.Command, args []string) error {
 		subPath := filepath.Join(roleName, "src")
 		gitRef := filepath.Join(p.Root, subPath, ".git")
 		if _, err := os.Stat(gitRef); err != nil {
-			fmt.Fprintf(out, "  Cloning repo into %s/src/...\n", roleName)
-			if err := git.AddSubmodule(runner, p.Root, repoURL, subPath); err != nil {
-				fmt.Fprintf(out, "  Warning: git submodule add for %s failed: %v\n", roleName, err)
+			fmt.Fprintf(out, "  Cloning repo into %s/src/... ", roleName)
+			done := make(chan struct{})
+			go func() {
+				spinner := []rune{'⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'}
+				i := 0
+				for {
+					select {
+					case <-done:
+						return
+					default:
+						fmt.Fprintf(out, "\r  Cloning repo into %s/src/... %c", roleName, spinner[i%len(spinner)])
+						i++
+						time.Sleep(80 * time.Millisecond)
+					}
+				}
+			}()
+			cloneErr := git.AddSubmodule(runner, p.Root, repoURL, subPath)
+			close(done)
+			if cloneErr != nil {
+				fmt.Fprintf(out, "\r  Warning: git submodule add for %s failed: %v\n", roleName, cloneErr)
+			} else {
+				fmt.Fprintf(out, "\r  Cloning repo into %s/src/... done\n", roleName)
 			}
 		}
 	}
@@ -132,17 +152,20 @@ func runInit(cmd *cobra.Command, args []string) error {
 		fmt.Fprintf(out, "  Warning: initial commit failed: %v\n", err)
 	}
 
-	// Summary
-	fmt.Fprintln(out, "\nCreated:")
-	for _, c := range created {
-		fmt.Fprintf(out, "  %s\n", c)
-	}
-	fmt.Fprintf(out, "\nReady. Run 'initech' to start.\n")
-	fmt.Fprintln(out, "\nNext steps:")
-	fmt.Fprintln(out, "  1. Edit docs/prd.md (define your problem)")
-	fmt.Fprintln(out, "  2. Run 'bd create' to add your first task")
-	fmt.Fprintln(out, "  3. Run 'initech' to start your session")
-	fmt.Fprintln(out, "  4. Press backtick for commands, ? for help")
+	// Summary box.
+	memGB := float64(len(p.Roles)) * 1.5
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, "  \u250c\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2510")
+	fmt.Fprintf(out, "  \u2502  %-42s\u2502\n", p.Name)
+	fmt.Fprintf(out, "  \u2502  %-42s\u2502\n", fmt.Sprintf("%d agents, ~%.0f GB estimated memory", len(p.Roles), memGB))
+	fmt.Fprintf(out, "  \u2502  %-42s\u2502\n", fmt.Sprintf("%d files created", len(created)))
+	fmt.Fprintf(out, "  \u2502  %-42s\u2502\n", "")
+	fmt.Fprintf(out, "  \u2502  %-42s\u2502\n", "Next steps:")
+	fmt.Fprintf(out, "  \u2502  %-42s\u2502\n", "  1. Edit docs/prd.md (define your problem)")
+	fmt.Fprintf(out, "  \u2502  %-42s\u2502\n", "  2. Run 'bd create' to add your first task")
+	fmt.Fprintf(out, "  \u2502  %-42s\u2502\n", "  3. Run 'initech' to start your session")
+	fmt.Fprintf(out, "  \u2502  %-42s\u2502\n", "  4. Press backtick for commands, ? for help")
+	fmt.Fprintln(out, "  \u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2518")
 
 	return nil
 }
@@ -213,29 +236,30 @@ func interactiveSetup(wd string) (*config.Project, error) {
 
 // roleSpec defines the display properties of one role in the selector.
 type roleSpec struct {
-	name  string
-	group string
-	desc  string
+	name    string
+	group   string
+	desc    string
+	tooltip string
 }
 
 // selectorOrder defines the grouped display order for the role selector.
 // Items appear in this order; group headers are inserted automatically when
 // the group field changes.
 var selectorOrder = []roleSpec{
-	{"super",   "COORDINATORS", "Coordinator/dispatcher"},
-	{"pm",      "PRODUCT",      "Product manager"},
-	{"pmm",     "PRODUCT",      "Product marketing manager"},
-	{"arch",    "PRODUCT",      "Architect"},
-	{"eng1",    "ENGINEERS",    "Engineer"},
-	{"eng2",    "ENGINEERS",    "Engineer"},
-	{"eng3",    "ENGINEERS",    "Engineer"},
-	{"qa1",     "QA",           "QA tester"},
-	{"qa2",     "QA",           "QA tester"},
-	{"shipper", "OPERATIONS",   "Release manager"},
-	{"sec",     "OPERATIONS",   "Security reviewer"},
-	{"ops",     "OPERATIONS",   "Operations/UX tester"},
-	{"writer",  "OPERATIONS",   "Technical writer"},
-	{"growth",  "OPERATIONS",   "Growth engineer"},
+	{"super",   "COORDINATORS", "Coordinator/dispatcher", "Dispatches beads to agents and monitors progress. Supervised mode."},
+	{"pm",      "PRODUCT",      "Product manager",        "Writes PRDs, specs, and acceptance criteria for beads."},
+	{"pmm",     "PRODUCT",      "Product marketing manager", "Positioning, messaging, and go-to-market strategy."},
+	{"arch",    "PRODUCT",      "Architect",              "Designs system architecture, API contracts, and cross-package interfaces."},
+	{"eng1",    "ENGINEERS",    "Engineer",               "Implements features and fixes. Gets a src/ clone of your repo."},
+	{"eng2",    "ENGINEERS",    "Engineer",               "Implements features and fixes. Gets a src/ clone of your repo."},
+	{"eng3",    "ENGINEERS",    "Engineer",               "Implements features and fixes. Gets a src/ clone of your repo."},
+	{"qa1",     "QA",           "QA tester",              "Validates bead acceptance criteria. Gets src/ and playbooks/."},
+	{"qa2",     "QA",           "QA tester",              "Validates bead acceptance criteria. Gets src/ and playbooks/."},
+	{"shipper", "OPERATIONS",   "Release manager",        "Cuts releases, manages changelogs, and publishes to package registries."},
+	{"sec",     "OPERATIONS",   "Security reviewer",      "Reviews code for vulnerabilities, OWASP top 10, supply chain risks."},
+	{"ops",     "OPERATIONS",   "Operations/UX tester",   "Tests UX flows, accessibility, and operational readiness."},
+	{"writer",  "OPERATIONS",   "Technical writer",       "Writes docs, READMEs, and user guides."},
+	{"growth",  "OPERATIONS",   "Growth engineer",        "Analytics, onboarding funnels, and conversion optimization."},
 }
 
 // standardPreset is the set of roles pre-checked in the selector by default.
@@ -264,6 +288,7 @@ func buildSelectorItems() []roles.SelectorItem {
 			Description: spec.desc,
 			Group:       spec.group,
 			Tag:         tag,
+			Tooltip:     spec.tooltip,
 			Checked:     standardPreset[spec.name],
 		}
 	}
@@ -344,6 +369,7 @@ func buildSelectorItemsFromDetected(detected []string) []roles.SelectorItem {
 			Description: spec.desc,
 			Group:       spec.group,
 			Tag:         tag,
+			Tooltip:     spec.tooltip,
 			Checked:     detectedSet[spec.name],
 		}
 	}
