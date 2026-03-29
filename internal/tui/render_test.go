@@ -174,7 +174,7 @@ func TestApplyLayout_ReservesStatusBar(t *testing.T) {
 	ls := DefaultLayoutState([]string{"eng1"})
 	tui := &TUI{
 		screen:      s,
-		panes:       panes,
+		panes:       toPaneViews(panes),
 		layoutState: ls,
 		lastW:       120,
 		lastH:       40,

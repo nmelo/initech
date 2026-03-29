@@ -17,14 +17,18 @@ func (t *TUI) handleMouse(ev *tcell.EventMouse) {
 	switch {
 	case ev.Buttons()&tcell.Button1 != 0 && !t.sel.active:
 		// Button1 press: forward to pane and start TUI selection.
-		for i, p := range t.panes {
-			if t.layoutState.Hidden[p.name] {
+		for i, pv := range t.panes {
+			p, ok := pv.(*Pane)
+			if !ok {
+				continue
+			}
+			if t.layoutState.Hidden[p.Name()] {
 				continue
 			}
 			r := p.region
 			if mx >= r.X && mx < r.X+r.W && my >= r.Y && my < r.Y+r.H {
-				if t.layoutState.Focused != p.name {
-					t.layoutState.Focused = p.name
+				if t.layoutState.Focused != p.Name() {
+					t.layoutState.Focused = p.Name()
 					t.applyLayout()
 				}
 				// Convert to pane-local content coordinates.
@@ -53,7 +57,8 @@ func (t *TUI) handleMouse(ev *tcell.EventMouse) {
 	case ev.Buttons()&tcell.Button1 != 0 && t.sel.active:
 		// Drag: update selection end and forward motion.
 		if t.sel.pane < len(t.panes) {
-			p := t.panes[t.sel.pane]
+			p, _ := t.panes[t.sel.pane].(*Pane)
+			if p == nil { break }
 			r := p.region
 			lx := mx - r.X
 			ly := my - r.Y
@@ -78,7 +83,8 @@ func (t *TUI) handleMouse(ev *tcell.EventMouse) {
 	case ev.Buttons() == tcell.ButtonNone && t.sel.active:
 		// Release: forward to pane, copy selection, and clear.
 		if t.sel.pane < len(t.panes) {
-			p := t.panes[t.sel.pane]
+			p, _ := t.panes[t.sel.pane].(*Pane)
+			if p == nil { break }
 			r := p.region
 			lx := mx - r.X
 			ly := my - r.Y
@@ -100,13 +106,14 @@ func (t *TUI) handleMouse(ev *tcell.EventMouse) {
 
 	case ev.Buttons()&tcell.WheelUp != 0:
 		// Scroll back into history for the pane under cursor.
-		for _, p := range t.panes {
-			if t.layoutState.Hidden[p.name] {
+		for _, pv := range t.panes {
+			p, ok := pv.(*Pane)
+			if !ok || t.layoutState.Hidden[p.Name()] {
 				continue
 			}
 			r := p.region
 			if mx >= r.X && mx < r.X+r.W && my >= r.Y && my < r.Y+r.H {
-				t.layoutState.Focused = p.name
+				t.layoutState.Focused = p.Name()
 				p.ScrollUp(3)
 				return
 			}
@@ -114,13 +121,14 @@ func (t *TUI) handleMouse(ev *tcell.EventMouse) {
 
 	case ev.Buttons()&tcell.WheelDown != 0:
 		// Scroll toward live view for the pane under cursor.
-		for _, p := range t.panes {
-			if t.layoutState.Hidden[p.name] {
+		for _, pv := range t.panes {
+			p, ok := pv.(*Pane)
+			if !ok || t.layoutState.Hidden[p.Name()] {
 				continue
 			}
 			r := p.region
 			if mx >= r.X && mx < r.X+r.W && my >= r.Y && my < r.Y+r.H {
-				t.layoutState.Focused = p.name
+				t.layoutState.Focused = p.Name()
 				p.ScrollDown(3)
 				return
 			}
@@ -167,8 +175,12 @@ func (t *TUI) forwardMouseEvent(p *Pane, lx, ly int, button uv.MouseButton, isMo
 // forwardMouseToFocused forwards a mouse event to the focused pane if the
 // click is within its region.
 func (t *TUI) forwardMouseToFocused(mx, my int, button uv.MouseButton, isMotion, isRelease bool, mods tcell.ModMask) {
-	p := t.focusedPane()
-	if p == nil {
+	fp := t.focusedPane()
+	if fp == nil {
+		return
+	}
+	p, ok := fp.(*Pane)
+	if !ok {
 		return
 	}
 	r := p.region
@@ -194,7 +206,11 @@ func (t *TUI) copySelection() {
 	if t.sel.startX == t.sel.endX && t.sel.startY == t.sel.endY {
 		return
 	}
-	p := t.panes[t.sel.pane]
+	pv := t.panes[t.sel.pane]
+	p, ok := pv.(*Pane)
+	if !ok {
+		return
+	}
 
 	// Normalize selection bounds (start may be after end).
 	r0, c0, r1, c1 := t.sel.startY, t.sel.startX, t.sel.endY, t.sel.endX
@@ -207,12 +223,10 @@ func (t *TUI) copySelection() {
 		r1 = rows - 1
 	}
 
-	// Use the contentOffset snapshot from mouse-down time, not the current
-	// offset. This prevents content reflow during the drag from shifting
-	// the copied text.
 	startRow := t.sel.startRow
 	renderOffset := t.sel.renderOffset
-	emuRows := p.emu.Height()
+	emu := p.Emulator()
+	emuRows := emu.Height()
 
 	var buf strings.Builder
 	for row := r0; row <= r1; row++ {
@@ -233,10 +247,9 @@ func (t *TUI) copySelection() {
 			endCol = cols
 		}
 
-		// Collect characters from the emulator.
 		var line strings.Builder
 		for col := startCol; col < endCol; col++ {
-			cell := p.emu.CellAt(col, emuRow)
+			cell := emu.CellAt(col, emuRow)
 			if cell != nil && cell.Content != "" {
 				line.WriteString(cell.Content)
 			} else {

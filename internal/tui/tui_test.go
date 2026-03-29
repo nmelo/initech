@@ -453,7 +453,7 @@ func TestHandleIPCList(t *testing.T) {
 	b := newEmuPane("eng1", 80, 24)
 	b.SetVisible(false)
 	tui := &TUI{
-		panes:       []*Pane{a, b},
+		panes:       toPaneViews([]*Pane{a, b}),
 		layoutState: LayoutState{Hidden: map[string]bool{"eng1": true}},
 	}
 
@@ -498,7 +498,7 @@ func TestHandleIPCPeek(t *testing.T) {
 	p := newEmuPane("eng1", 80, 24)
 	// Write some text into the emulator.
 	p.emu.Write([]byte("hello world\r\nline two\r\n"))
-	tui := &TUI{panes: []*Pane{p}}
+	tui := &TUI{panes: toPaneViews([]*Pane{p})}
 
 	server, client := net.Pipe()
 	defer server.Close()
@@ -537,7 +537,7 @@ func TestHandleIPCPeekMissingTarget(t *testing.T) {
 }
 
 func TestHandleIPCPeekUnknownTarget(t *testing.T) {
-	tui := &TUI{panes: []*Pane{newEmuPane("eng1", 80, 24)}}
+	tui := &TUI{panes: toPaneViews([]*Pane{newEmuPane("eng1", 80, 24)})}
 	server, client := net.Pipe()
 	defer server.Close()
 	defer client.Close()
@@ -573,7 +573,7 @@ func TestHandleIPCSendMissingTarget(t *testing.T) {
 }
 
 func TestHandleIPCSendUnknownTarget(t *testing.T) {
-	tui := &TUI{panes: []*Pane{newEmuPane("eng1", 80, 24)}}
+	tui := &TUI{panes: toPaneViews([]*Pane{newEmuPane("eng1", 80, 24)})}
 	server, client := net.Pipe()
 	defer server.Close()
 	defer client.Close()
@@ -591,7 +591,7 @@ func TestHandleIPCSendUnknownTarget(t *testing.T) {
 
 func TestHandleIPCSendNoEnter(t *testing.T) {
 	p := newEmuPane("eng1", 80, 24)
-	tui := &TUI{panes: []*Pane{p}}
+	tui := &TUI{panes: toPaneViews([]*Pane{p})}
 
 	server, client := net.Pipe()
 	defer server.Close()
@@ -648,7 +648,7 @@ func TestHasStuckInput_TextAtPrompt(t *testing.T) {
 
 func TestHandleIPCConnRouting(t *testing.T) {
 	p := newEmuPane("eng1", 80, 24)
-	tui := &TUI{panes: []*Pane{p}}
+	tui := &TUI{panes: toPaneViews([]*Pane{p})}
 
 	tests := []struct {
 		name   string
@@ -713,7 +713,7 @@ func TestHandleIPCConn_GoroutineExitsAfterNonSendResponse(t *testing.T) {
 	// only "send" clears it. This test verifies the goroutine exits promptly
 	// regardless of whether the client closes the connection.
 	p := newEmuPane("eng1", 80, 24)
-	tui := &TUI{panes: []*Pane{p}}
+	tui := &TUI{panes: toPaneViews([]*Pane{p})}
 
 	server, client := net.Pipe()
 	defer client.Close()
@@ -749,7 +749,7 @@ func TestHandleIPCConn_GoroutineExitsAfterNonSendResponse(t *testing.T) {
 func TestIPCRoundTrip(t *testing.T) {
 	p := newEmuPane("eng1", 80, 24)
 	p.emu.Write([]byte("visible content\r\n"))
-	tui := &TUI{panes: []*Pane{p}}
+	tui := &TUI{panes: toPaneViews([]*Pane{p})}
 
 	sockPath := filepath.Join(t.TempDir(), "test.sock")
 	cleanup, err := tui.startIPC(sockPath)

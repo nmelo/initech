@@ -88,7 +88,7 @@ func TestHandleIPCBead_DELRejected(t *testing.T) {
 	tui := &TUI{
 		quitCh: quitCh,
 		ipcCh:  nil, // runOnMain executes inline
-		panes:  []*Pane{{name: "eng1"}},
+		panes:  toPaneViews([]*Pane{{name: "eng1"}}),
 	}
 
 	c1, c2 := net.Pipe()
@@ -127,7 +127,7 @@ func TestHandleIPCBead_ControlCharRejected(t *testing.T) {
 	tui := &TUI{
 		quitCh: quitCh,
 		ipcCh:  nil,
-		panes:  []*Pane{{name: "eng1"}},
+		panes:  toPaneViews([]*Pane{{name: "eng1"}}),
 	}
 
 	c1, c2 := net.Pipe()

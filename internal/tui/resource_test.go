@@ -177,8 +177,7 @@ func TestSystemMemoryTotal_Accessor(t *testing.T) {
 func TestPollAllRSS_Integration(t *testing.T) {
 	tui := &TUI{quitCh: make(chan struct{})}
 	p := &Pane{pid: os.Getpid()}
-	tui.panes = []*Pane{p}
-
+	tui.panes = toPaneViews([]*Pane{p})
 	tui.pollAllRSS()
 
 	if rss := p.MemoryRSS(); rss <= 0 {
@@ -219,8 +218,7 @@ func TestSuspendPolicy_BelowThreshold(t *testing.T) {
 	// 70% used, threshold 80% -> no suspension.
 	tui := newResourceTestTUI(100000, 30000, 80)
 	p := newResourceTestPane("eng1", true, StateIdle, "", time.Now().Add(-10*time.Minute))
-	tui.panes = []*Pane{p}
-
+	tui.panes = toPaneViews([]*Pane{p})
 	tui.checkSuspendPolicy()
 
 	p.mu.Lock()
@@ -236,8 +234,7 @@ func TestSuspendPolicy_SuspendsLRUIdle(t *testing.T) {
 	tui := newResourceTestTUI(100000, 10000, 80)
 	older := newResourceTestPane("eng1", true, StateIdle, "", time.Now().Add(-30*time.Minute))
 	newer := newResourceTestPane("eng2", true, StateIdle, "", time.Now().Add(-5*time.Minute))
-	tui.panes = []*Pane{older, newer}
-
+	tui.panes = toPaneViews([]*Pane{older, newer})
 	tui.checkSuspendPolicy()
 
 	older.mu.Lock()
@@ -260,8 +257,7 @@ func TestSuspendPolicy_NeverSuspendsWithBead(t *testing.T) {
 	// 95% used, but only agent has a bead -> no suspension.
 	tui := newResourceTestTUI(100000, 5000, 80)
 	p := newResourceTestPane("eng1", true, StateIdle, "ini-abc.1", time.Now().Add(-30*time.Minute))
-	tui.panes = []*Pane{p}
-
+	tui.panes = toPaneViews([]*Pane{p})
 	tui.checkSuspendPolicy()
 
 	p.mu.Lock()
@@ -276,8 +272,7 @@ func TestSuspendPolicy_NeverSuspendsPinned(t *testing.T) {
 	tui := newResourceTestTUI(100000, 5000, 80)
 	p := newResourceTestPane("eng1", true, StateIdle, "", time.Now().Add(-30*time.Minute))
 	p.pinned = true
-	tui.panes = []*Pane{p}
-
+	tui.panes = toPaneViews([]*Pane{p})
 	tui.checkSuspendPolicy()
 
 	p.mu.Lock()
@@ -291,7 +286,7 @@ func TestSuspendPolicy_NeverSuspendsPinned(t *testing.T) {
 func TestSuspendPolicy_NeverSuspendsFocused(t *testing.T) {
 	tui := newResourceTestTUI(100000, 5000, 80)
 	p := newResourceTestPane("eng1", true, StateIdle, "", time.Now().Add(-30*time.Minute))
-	tui.panes = []*Pane{p}
+	tui.panes = toPaneViews([]*Pane{p})
 	tui.layoutState.Focused = "eng1"
 
 	tui.checkSuspendPolicy()
@@ -307,8 +302,7 @@ func TestSuspendPolicy_NeverSuspendsFocused(t *testing.T) {
 func TestSuspendPolicy_NeverSuspendsRunning(t *testing.T) {
 	tui := newResourceTestTUI(100000, 5000, 80)
 	p := newResourceTestPane("eng1", true, StateRunning, "", time.Now())
-	tui.panes = []*Pane{p}
-
+	tui.panes = toPaneViews([]*Pane{p})
 	tui.checkSuspendPolicy()
 
 	p.mu.Lock()
@@ -323,8 +317,7 @@ func TestSuspendPolicy_RespectsResumeGrace(t *testing.T) {
 	tui := newResourceTestTUI(100000, 5000, 80)
 	p := newResourceTestPane("eng1", true, StateIdle, "", time.Now().Add(-30*time.Minute))
 	p.resumeGrace = time.Now().Add(1 * time.Minute) // In grace period.
-	tui.panes = []*Pane{p}
-
+	tui.panes = toPaneViews([]*Pane{p})
 	tui.checkSuspendPolicy()
 
 	p.mu.Lock()
@@ -348,7 +341,7 @@ func TestSuspendPolicy_MaxTwoPerCycle(t *testing.T) {
 		)
 		panes[i].memoryRSS = 100 // Tiny RSS so avail barely changes.
 	}
-	tui.panes = panes
+	tui.panes = toPaneViews(panes)
 
 	tui.checkSuspendPolicy()
 
@@ -580,7 +573,7 @@ func TestHandleIPCSendResumesSuspended(t *testing.T) {
 	p := newEmuPane("eng1", 80, 24)
 	p.suspended = true
 	tui := &TUI{
-		panes:       []*Pane{p},
+		panes:       toPaneViews([]*Pane{p}),
 		quitCh:      make(chan struct{}),
 		agentEvents: make(chan AgentEvent, 64),
 	}
@@ -620,7 +613,7 @@ func TestHandleIPCSendResumesSuspended(t *testing.T) {
 func TestHandleIPCSendBypassesQueueWhenNotSuspended(t *testing.T) {
 	p := newEmuPane("eng1", 80, 24)
 	p.suspended = false
-	tui := &TUI{panes: []*Pane{p}}
+	tui := &TUI{panes: toPaneViews([]*Pane{p})}
 
 	server, client := net.Pipe()
 	defer client.Close()
@@ -653,8 +646,7 @@ func TestSuspendPolicy_ThresholdDefaultsTo85(t *testing.T) {
 	// pressureThreshold=0 (unset) should use default 85.
 	tui := newResourceTestTUI(100000, 14000, 0) // 86% used, default threshold 85
 	p := newResourceTestPane("eng1", true, StateIdle, "", time.Now().Add(-30*time.Minute))
-	tui.panes = []*Pane{p}
-
+	tui.panes = toPaneViews([]*Pane{p})
 	tui.checkSuspendPolicy()
 
 	p.mu.Lock()
@@ -668,8 +660,7 @@ func TestSuspendPolicy_ThresholdDefaultsTo85(t *testing.T) {
 func TestSuspendPolicy_EmitsEvent(t *testing.T) {
 	tui := newResourceTestTUI(100000, 5000, 80)
 	p := newResourceTestPane("eng1", true, StateIdle, "", time.Now().Add(-30*time.Minute))
-	tui.panes = []*Pane{p}
-
+	tui.panes = toPaneViews([]*Pane{p})
 	tui.checkSuspendPolicy()
 
 	select {
@@ -697,7 +688,7 @@ func TestSuspendPolicy_LRUOrdering(t *testing.T) {
 	middle.memoryRSS = 10000
 	newest := newResourceTestPane("eng3", true, StateIdle, "", time.Now().Add(-5*time.Minute))
 	newest.memoryRSS = 10000
-	tui.panes = []*Pane{newest, oldest, middle} // Scrambled order
+	tui.panes = toPaneViews([]*Pane{newest, oldest, middle}) // Scrambled order
 
 	tui.checkSuspendPolicy()
 
@@ -727,8 +718,7 @@ func TestSuspendPolicy_SkipsDeadAndSuspended(t *testing.T) {
 	dead := newResourceTestPane("eng1", false, StateDead, "", time.Now().Add(-60*time.Minute))
 	suspended := newResourceTestPane("eng2", true, StateSuspended, "", time.Now().Add(-30*time.Minute))
 	idle := newResourceTestPane("eng3", true, StateIdle, "", time.Now().Add(-10*time.Minute))
-	tui.panes = []*Pane{dead, suspended, idle}
-
+	tui.panes = toPaneViews([]*Pane{dead, suspended, idle})
 	tui.checkSuspendPolicy()
 
 	dead.mu.Lock()
@@ -756,8 +746,7 @@ func TestSuspendPolicy_NoTotalMemory(t *testing.T) {
 	// systemMemTotal=0 means we couldn't query it. Policy should be a no-op.
 	tui := newResourceTestTUI(0, 5000, 80)
 	p := newResourceTestPane("eng1", true, StateIdle, "", time.Now().Add(-30*time.Minute))
-	tui.panes = []*Pane{p}
-
+	tui.panes = toPaneViews([]*Pane{p})
 	tui.checkSuspendPolicy()
 
 	p.mu.Lock()
@@ -792,7 +781,7 @@ func TestResumePane_SkipsIfNotSuspended(t *testing.T) {
 	p := newEmuPane("eng1", 80, 24)
 	p.suspended = false
 	tui := &TUI{
-		panes:       []*Pane{p},
+		panes:       toPaneViews([]*Pane{p}),
 		quitCh:      make(chan struct{}),
 		agentEvents: make(chan AgentEvent, 64),
 	}
@@ -808,7 +797,7 @@ func TestResumePane_SetsGracePeriod(t *testing.T) {
 	p := newEmuPane("eng1", 80, 24)
 	p.suspended = true
 	tui := &TUI{
-		panes:       []*Pane{p},
+		panes:       toPaneViews([]*Pane{p}),
 		quitCh:      make(chan struct{}),
 		agentEvents: make(chan AgentEvent, 64),
 	}
@@ -820,7 +809,7 @@ func TestResumePane_SetsGracePeriod(t *testing.T) {
 
 	// The new pane should have a resume grace period set.
 	newPane := tui.panes[0]
-	if !newPane.InResumeGrace() {
+	if !newPane.(*Pane).InResumeGrace() {
 		t.Error("resumed pane should be in grace period")
 	}
 }
@@ -829,7 +818,7 @@ func TestResumePane_EmitsEvent(t *testing.T) {
 	p := newEmuPane("eng1", 80, 24)
 	p.suspended = true
 	tui := &TUI{
-		panes:       []*Pane{p},
+		panes:       toPaneViews([]*Pane{p}),
 		quitCh:      make(chan struct{}),
 		agentEvents: make(chan AgentEvent, 64),
 	}
@@ -864,7 +853,7 @@ func TestResumePane_PreservesQueueOnFailure(t *testing.T) {
 	p.EnqueueMessage("pending", true)
 
 	tui := &TUI{
-		panes:       []*Pane{p},
+		panes:       toPaneViews([]*Pane{p}),
 		quitCh:      make(chan struct{}),
 		agentEvents: make(chan AgentEvent, 64),
 	}
@@ -885,7 +874,7 @@ func TestResumePane_ConcurrentResume(t *testing.T) {
 	p := newEmuPane("eng1", 80, 24)
 	p.suspended = true
 	tui := &TUI{
-		panes:       []*Pane{p},
+		panes:       toPaneViews([]*Pane{p}),
 		quitCh:      make(chan struct{}),
 		agentEvents: make(chan AgentEvent, 64),
 	}
@@ -912,7 +901,7 @@ func TestResumePane_CopiesPinnedAndBead(t *testing.T) {
 	p.beadID = "ini-abc.1"
 	p.beadTitle = "Test bead"
 	tui := &TUI{
-		panes:       []*Pane{p},
+		panes:       toPaneViews([]*Pane{p}),
 		quitCh:      make(chan struct{}),
 		agentEvents: make(chan AgentEvent, 64),
 	}

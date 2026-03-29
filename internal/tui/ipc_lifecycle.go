@@ -53,9 +53,11 @@ func (t *TUI) handleIPCStart(conn net.Conn, req IPCRequest) {
 	var oldIdx int
 	if !t.runOnMain(func() {
 		for i, p := range t.panes {
-			if p.name == req.Target {
-				old = p
-				oldIdx = i
+			if p.Name() == req.Target {
+				if lp, ok := p.(*Pane); ok {
+					old = lp
+					oldIdx = i
+				}
 				return
 			}
 		}
@@ -121,9 +123,11 @@ func (t *TUI) handleIPCRestart(conn net.Conn, req IPCRequest) {
 	var oldIdx int
 	if !t.runOnMain(func() {
 		for i, p := range t.panes {
-			if p.name == req.Target {
-				old = p
-				oldIdx = i
+			if p.Name() == req.Target {
+				if lp, ok := p.(*Pane); ok {
+					old = lp
+					oldIdx = i
+				}
 				return
 			}
 		}
@@ -293,7 +297,7 @@ func (t *TUI) removePane(name string) error {
 	t.runOnMain(func() {
 		idx := -1
 		for i, p := range t.panes {
-			if p.name == name {
+			if p.Name() == name {
 				idx = i
 				break
 			}
@@ -343,7 +347,7 @@ func (t *TUI) removePane(name string) error {
 func (t *TUI) recalcGrid() {
 	visCount := 0
 	for _, p := range t.panes {
-		if t.layoutState.Hidden == nil || !t.layoutState.Hidden[p.name] {
+		if t.layoutState.Hidden == nil || !t.layoutState.Hidden[p.Name()] {
 			visCount++
 		}
 	}

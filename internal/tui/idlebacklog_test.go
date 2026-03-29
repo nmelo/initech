@@ -87,7 +87,7 @@ func TestHandleAgentEvent_ClearsIdleWithBacklogOnClaim(t *testing.T) {
 	p.SetIdleWithBacklog(2)
 
 	tui := &TUI{
-		panes:       []*Pane{p},
+		panes:       toPaneViews([]*Pane{p}),
 		agentEvents: make(chan AgentEvent, 8),
 	}
 	tui.handleAgentEvent(AgentEvent{
@@ -108,7 +108,7 @@ func TestHandleAgentEvent_NoEffectForOtherEvents(t *testing.T) {
 	p.SetIdleWithBacklog(2)
 
 	tui := &TUI{
-		panes:       []*Pane{p},
+		panes:       toPaneViews([]*Pane{p}),
 		agentEvents: make(chan AgentEvent, 8),
 	}
 	tui.handleAgentEvent(AgentEvent{

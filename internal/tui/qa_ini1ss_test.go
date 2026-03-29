@@ -17,7 +17,7 @@ func TestOverlayDotRunningIsFilledGreen(t *testing.T) {
 	tui, s := newTestTUIWithScreen("eng1")
 	tui.layoutState.Overlay = true
 	// Use lastOutputTime so updateActivity() (called by render) computes StateRunning.
-	tui.panes[0].lastOutputTime = time.Now()
+	tui.panes[0].(*Pane).lastOutputTime = time.Now()
 	tui.render()
 
 	sw, _ := s.Size()
@@ -65,7 +65,7 @@ func TestOverlayDotIdleIsHollowGray(t *testing.T) {
 func TestOverlayDotMixedRunningAndIdle(t *testing.T) {
 	tui, s := newTestTUIWithScreen("eng1", "eng2")
 	tui.layoutState.Overlay = true
-	tui.panes[0].lastOutputTime = time.Now() // eng1 running: recent output
+	tui.panes[0].(*Pane).lastOutputTime = time.Now() // eng1 running: recent output
 	// eng2: zero lastOutputTime → idle
 	tui.render()
 

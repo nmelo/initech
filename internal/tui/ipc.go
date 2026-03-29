@@ -339,11 +339,11 @@ func (t *TUI) handleIPCPatrol(conn net.Conn, req IPCRequest) {
 		result = make([]patrolEntry, len(t.panes))
 		for i, p := range t.panes {
 			result[i] = patrolEntry{
-				Name:     p.name,
+				Name:     p.Name(),
 				Activity: p.Activity().String(),
 				Bead:     p.BeadID(),
 				Alive:    p.IsAlive(),
-				Visible:  !t.layoutState.Hidden[p.name],
+				Visible:  !t.layoutState.Hidden[p.Name()],
 				Content:  peekContent(p, lines),
 			}
 		}
@@ -355,15 +355,15 @@ func (t *TUI) handleIPCPatrol(conn net.Conn, req IPCRequest) {
 // peekContent extracts the last N lines of terminal content from a pane's
 // emulator. Returns the content as a string with newline-separated lines.
 // If lines <= 0, returns all non-blank content.
-func peekContent(p *Pane, lines int) string {
-	cols := p.emu.Width()
-	emuRows := p.emu.Height()
+func peekContent(p PaneView, lines int) string {
+	cols := p.Emulator().Width()
+	emuRows := p.Emulator().Height()
 
 	allLines := make([]string, emuRows)
 	for row := 0; row < emuRows; row++ {
 		var line strings.Builder
 		for col := 0; col < cols; col++ {
-			cell := p.emu.CellAt(col, row)
+			cell := p.Emulator().CellAt(col, row)
 			if cell != nil && cell.Content != "" {
 				line.WriteString(cell.Content)
 			} else {
@@ -405,10 +405,10 @@ func (t *TUI) handleIPCList(conn net.Conn) {
 		panes = make([]paneInfo, len(t.panes))
 		for i, p := range t.panes {
 			panes[i] = paneInfo{
-				Name:     p.name,
+				Name:     p.Name(),
 				Activity: p.Activity().String(),
 				Alive:    p.IsAlive(),
-				Visible:  !t.layoutState.Hidden[p.name],
+				Visible:  !t.layoutState.Hidden[p.Name()],
 			}
 		}
 	})
@@ -447,8 +447,10 @@ func (t *TUI) handleIPCBead(conn net.Conn, req IPCRequest) {
 
 func (t *TUI) findPane(name string) *Pane {
 	for _, p := range t.panes {
-		if p.name == name {
-			return p
+		if p.Name() == name {
+			if lp, ok := p.(*Pane); ok {
+				return lp
+			}
 		}
 	}
 	return nil

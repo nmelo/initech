@@ -123,8 +123,8 @@ func (t *TUI) handleAgentEvent(ev AgentEvent) {
 	// Clear idle-with-backlog indicator when an agent claims a bead.
 	// This gives immediate feedback without waiting for the next backlog check.
 	if ev.Type == EventBeadClaimed {
-		if p := t.findPaneByName(ev.Pane); p != nil {
-			p.ClearIdleWithBacklog()
+		if lp, ok := t.findPaneByName(ev.Pane).(*Pane); ok {
+			lp.ClearIdleWithBacklog()
 		}
 	}
 
@@ -146,8 +146,10 @@ func (t *TUI) handleAgentEvent(ev AgentEvent) {
 	// Run in a goroutine to avoid blocking the render loop.
 	if ev.Type == EventAgentIdleWithBead {
 		if super := t.findPaneByName("super"); super != nil && super.IsAlive() {
-			msg := fmt.Sprintf("[from initech] %s is now idle (bead: %s). Check if work is complete.", ev.Pane, ev.BeadID)
-			t.safeGo(func() { t.injectText(super, msg, true) })
+			if lp, ok := super.(*Pane); ok {
+				msg := fmt.Sprintf("[from initech] %s is now idle (bead: %s). Check if work is complete.", ev.Pane, ev.BeadID)
+				t.safeGo(func() { t.injectText(lp, msg, true) })
+			}
 		}
 	}
 

@@ -57,8 +57,8 @@ func (t *TUI) watchBacklog(runner iexec.Runner) {
 			if !stillIdle {
 				delete(notified, name)
 				t.runOnMain(func() {
-					if p := t.findPaneByName(name); p != nil {
-						p.ClearIdleWithBacklog()
+					if lp, ok := t.findPaneByName(name).(*Pane); ok {
+						lp.ClearIdleWithBacklog()
 					}
 				})
 			}
@@ -74,8 +74,8 @@ func (t *TUI) watchBacklog(runner iexec.Runner) {
 			// No ready work: ensure idle agents don't show yellow dot.
 			t.runOnMain(func() {
 				for _, name := range idle {
-					if p := t.findPaneByName(name); p != nil {
-						p.ClearIdleWithBacklog()
+					if lp, ok := t.findPaneByName(name).(*Pane); ok {
+						lp.ClearIdleWithBacklog()
 					}
 				}
 			})
@@ -85,8 +85,8 @@ func (t *TUI) watchBacklog(runner iexec.Runner) {
 		// Set overlay flag and emit one event per idle agent (deduped).
 		t.runOnMain(func() {
 			for _, name := range idle {
-				if p := t.findPaneByName(name); p != nil {
-					p.SetIdleWithBacklog(readyCount)
+				if lp, ok := t.findPaneByName(name).(*Pane); ok {
+					lp.SetIdleWithBacklog(readyCount)
 				}
 			}
 		})
@@ -111,7 +111,7 @@ func (t *TUI) idleAgentsWithoutBead() []string {
 	var names []string
 	for _, p := range t.panes {
 		if p.IsAlive() && p.Activity() == StateIdle && p.BeadID() == "" {
-			names = append(names, p.name)
+			names = append(names, p.Name())
 		}
 	}
 	return names

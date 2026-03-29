@@ -16,29 +16,27 @@ func (t *TUI) refreshTopData() {
 		return
 	}
 	entries := make([]topEntry, len(t.panes))
-	for i, p := range t.panes {
+	for i, pv := range t.panes {
 		e := topEntry{
-			Name:    p.name,
-			Command: strings.Join(p.cfg.Command, " "),
-			Bead:    p.BeadID(),
-			Status:  p.Activity().String(),
+			Name:   pv.Name(),
+			Bead:   pv.BeadID(),
+			Status: pv.Activity().String(),
 		}
-		if t.layoutState.Hidden[p.name] {
+		if t.layoutState.Hidden[pv.Name()] {
 			e.Status += " [hidden]"
 		}
-		if p.pid > 0 {
-			e.PID = p.pid
-			// Sum RSS across the entire process tree (shell -> node -> claude).
-			// The pane PID is the shell wrapper; the real Claude process is 2-3
-			// levels deep and holds the bulk of the memory (ini-ac4).
-			e.RSS = processTreeRSS(p.pid)
-			// Query process name from the direct PID (shell wrapper).
-			out, err := exec.Command("ps", "-o", "comm=", "-p",
-				fmt.Sprintf("%d", e.PID)).Output()
-			if err == nil {
-				comm := strings.TrimSpace(string(out))
-				if comm != "" {
-					e.Comm = filepath.Base(comm)
+		if lp, ok := pv.(*Pane); ok {
+			e.Command = strings.Join(lp.cfg.Command, " ")
+			if lp.pid > 0 {
+				e.PID = lp.pid
+				e.RSS = processTreeRSS(lp.pid)
+				out, err := exec.Command("ps", "-o", "comm=", "-p",
+					fmt.Sprintf("%d", e.PID)).Output()
+				if err == nil {
+					comm := strings.TrimSpace(string(out))
+					if comm != "" {
+						e.Comm = filepath.Base(comm)
+					}
 				}
 			}
 		}
@@ -71,26 +69,23 @@ func (t *TUI) handleTopKey(ev *tcell.EventKey) bool {
 			return false
 		case 'r':
 			if t.top.selected >= 0 && t.top.selected < len(t.panes) {
-				p := t.panes[t.top.selected]
+				p, ok := t.panes[t.top.selected].(*Pane)
+				if !ok { return false }
 				idx := t.top.selected
-				// Use emulator dimensions with fallback for dead panes
-				// that may report zero.
-				cols := p.emu.Width()
-				rows := p.emu.Height()
+				cols := p.Emulator().Width()
+				rows := p.Emulator().Height()
 				if cols < 10 {
 					cols = 80
 				}
 				if rows < 2 {
 					rows = 24
 				}
-				// Serialize with any in-flight IPC send before closing (same
-			// pattern as handleIPCRestart in ipc.go).
 				p.sendMu.Lock()
 				p.Close()
 				p.sendMu.Unlock()
 				np, err := NewPane(p.cfg, rows, cols)
 				if err != nil {
-					t.cmd.error = fmt.Sprintf("restart %s: %v", p.name, err)
+					t.cmd.error = fmt.Sprintf("restart %s: %v", p.Name(), err)
 				} else {
 					np.eventCh = t.agentEvents
 					np.safeGo = t.safeGo
@@ -104,12 +99,11 @@ func (t *TUI) handleTopKey(ev *tcell.EventKey) bool {
 			return false
 		case 'k':
 			if t.top.selected >= 0 && t.top.selected < len(t.panes) {
-				p := t.panes[t.top.selected]
+				p, ok := t.panes[t.top.selected].(*Pane)
+				if !ok { return false }
 				if p.cmd != nil && p.cmd.Process != nil {
 					p.cmd.Process.Kill()
 				}
-				// Mark dead immediately so overlay/top update without
-				// waiting for readLoop to detect the EOF.
 				p.mu.Lock()
 				p.alive = false
 				p.mu.Unlock()
@@ -118,16 +112,20 @@ func (t *TUI) handleTopKey(ev *tcell.EventKey) bool {
 			return false
 		case 'p':
 			if t.top.selected >= 0 && t.top.selected < len(t.panes) {
-				name := t.panes[t.top.selected].name
+				name := t.panes[t.top.selected].Name()
 				if t.layoutState.Pinned == nil {
 					t.layoutState.Pinned = make(map[string]bool)
 				}
 				if t.layoutState.Pinned[name] {
 					delete(t.layoutState.Pinned, name)
-					t.panes[t.top.selected].SetPinned(false)
+					if lp, ok := t.panes[t.top.selected].(*Pane); ok {
+						lp.SetPinned(false)
+					}
 				} else {
 					t.layoutState.Pinned[name] = true
-					t.panes[t.top.selected].SetPinned(true)
+					if lp, ok := t.panes[t.top.selected].(*Pane); ok {
+						lp.SetPinned(true)
+					}
 				}
 				t.saveLayoutIfConfigured()
 				t.top.cacheTime = time.Time{} // refresh display
@@ -135,7 +133,7 @@ func (t *TUI) handleTopKey(ev *tcell.EventKey) bool {
 			return false
 		case 'h':
 			if t.top.selected >= 0 && t.top.selected < len(t.panes) {
-				name := t.panes[t.top.selected].name
+				name := t.panes[t.top.selected].Name()
 				if t.layoutState.Hidden[name] {
 					delete(t.layoutState.Hidden, name)
 				} else {

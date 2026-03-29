@@ -102,7 +102,7 @@ func TestReorderKey_Escape_Cancels(t *testing.T) {
 			items:  []string{"a", "b"},
 			cursor: 0,
 		},
-		panes: []*Pane{{name: "a"}, {name: "b"}},
+		panes: toPaneViews([]*Pane{{name: "a"}, {name: "b"}}),
 	}
 
 	// Move item.
@@ -116,8 +116,8 @@ func TestReorderKey_Escape_Cancels(t *testing.T) {
 		t.Error("modal should be closed after Esc")
 	}
 	// Panes should be unchanged.
-	if tui.panes[0].name != "a" || tui.panes[1].name != "b" {
-		t.Errorf("panes = [%s %s], want [a b] (cancel should not apply)", tui.panes[0].name, tui.panes[1].name)
+	if tui.panes[0].Name() != "a" || tui.panes[1].Name() != "b" {
+		t.Errorf("panes = [%s %s], want [a b] (cancel should not apply)", tui.panes[0].Name(), tui.panes[1].Name())
 	}
 }
 
@@ -139,8 +139,8 @@ func TestReorderKey_Space_Confirms(t *testing.T) {
 	if len(tui.layoutState.Order) != 2 || tui.layoutState.Order[0] != "b" || tui.layoutState.Order[1] != "a" {
 		t.Errorf("Order = %v, want [b a]", tui.layoutState.Order)
 	}
-	if tui.panes[0].name != "b" || tui.panes[1].name != "a" {
-		t.Errorf("panes = [%s %s], want [b a] after confirm", tui.panes[0].name, tui.panes[1].name)
+	if tui.panes[0].Name() != "b" || tui.panes[1].Name() != "a" {
+		t.Errorf("panes = [%s %s], want [b a] after confirm", tui.panes[0].Name(), tui.panes[1].Name())
 	}
 }
 
@@ -170,7 +170,7 @@ func TestRenderReorder_NoPanic(t *testing.T) {
 	s.SetSize(80, 24)
 	tui := &TUI{
 		screen: s,
-		panes:  []*Pane{{name: "eng1", visible: true}, {name: "qa1", visible: true}},
+		panes:  toPaneViews([]*Pane{{name: "eng1", visible: true}, {name: "qa1", visible: true}}),
 		reorder: reorderModal{
 			active: true,
 			items:  []string{"eng1", "qa1"},

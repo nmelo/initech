@@ -65,13 +65,19 @@ type PaneView interface {
 	Name() string
 	Host() string // "" for local panes.
 	IsAlive() bool
+	IsSuspended() bool
+	IsPinned() bool
 	Activity() ActivityState
 	LastOutputTime() time.Time
 	BeadID() string
 	SessionDesc() string
+	IdleWithBacklog() bool
+	BacklogCount() int
 	Emulator() *vt.SafeEmulator
+	GetRegion() Region
 	SendKey(ev *tcell.EventKey)
 	SendText(text string, enter bool)
+	Render(screen tcell.Screen, focused bool, dimmed bool, index int, sel Selection)
 	Resize(rows, cols int)
 	Close()
 }
@@ -415,6 +421,11 @@ func (p *Pane) SendText(text string, enter bool) {
 	if enter {
 		p.emu.SendKey(uv.KeyPressEvent(uv.Key{Code: uv.KeyEnter}))
 	}
+}
+
+// GetRegion returns the pane's screen region.
+func (p *Pane) GetRegion() Region {
+	return p.region
 }
 
 // Visible returns whether the pane is included in the current layout.

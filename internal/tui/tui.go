@@ -108,7 +108,7 @@ type mouseSelection struct {
 // a set of terminal panes, and handles input routing, layout, and rendering.
 type TUI struct {
 	screen      tcell.Screen
-	panes       []*Pane
+	panes       []PaneView
 	layoutState LayoutState // Single source of truth for layout intent.
 	plan        RenderPlan  // Current frame's render instructions.
 
@@ -206,9 +206,11 @@ func (t *TUI) applyLayout() {
 		return
 	}
 	for _, pr := range t.plan.Panes {
-		old := pr.Pane.region
+		old := pr.Pane.GetRegion()
 		if old != pr.Region {
-			pr.Pane.region = pr.Region
+			if lp, ok := pr.Pane.(*Pane); ok {
+				lp.region = pr.Region
+			}
 			cols, rows := pr.Region.InnerSize()
 			pr.Pane.Resize(rows, cols)
 		}
@@ -224,7 +226,7 @@ func (t *TUI) saveLayoutIfConfigured() {
 	// Snapshot current pane order into layoutState before persisting.
 	t.layoutState.Order = make([]string, len(t.panes))
 	for i, p := range t.panes {
-		t.layoutState.Order[i] = p.name
+		t.layoutState.Order[i] = p.Name()
 	}
 	if err := SaveLayout(t.projectRoot, t.layoutState); err != nil {
 		LogWarn("layout", "save failed", "err", err)
@@ -232,10 +234,10 @@ func (t *TUI) saveLayoutIfConfigured() {
 }
 
 // focusedPane returns the currently focused pane, or nil.
-func (t *TUI) focusedPane() *Pane {
+func (t *TUI) focusedPane() PaneView {
 	name := t.layoutState.Focused
 	for _, p := range t.panes {
-		if p.name == name {
+		if p.Name() == name {
 			return p
 		}
 	}
@@ -431,8 +433,10 @@ func Run(cfg Config) error {
 
 	// Sync pinned state from layout to panes.
 	for _, p := range t.panes {
-		if t.layoutState.Pinned[p.name] {
-			p.SetPinned(true)
+		if t.layoutState.Pinned[p.Name()] {
+			if lp, ok := p.(*Pane); ok {
+				lp.SetPinned(true)
+			}
 		}
 	}
 
@@ -517,7 +521,9 @@ func (t *TUI) handleEvent(ev tcell.Event) bool {
 		t.handleResize()
 	case *tcell.EventPaste:
 		if p := t.focusedPane(); p != nil {
-			p.SendPaste(ev.Start())
+			if lp, ok := p.(*Pane); ok {
+				lp.SendPaste(ev.Start())
+			}
 		}
 	}
 	return false

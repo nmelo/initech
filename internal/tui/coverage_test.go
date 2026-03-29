@@ -121,7 +121,7 @@ func TestCalcMainVerticalSingle(t *testing.T) {
 func TestComputeLayoutZoomed(t *testing.T) {
 	panes := []*Pane{newTestPane("a", true), newTestPane("b", true)}
 	state := LayoutState{Mode: LayoutGrid, GridCols: 2, GridRows: 1, Zoomed: true, Focused: "a", Hidden: map[string]bool{}}
-	plan := computeLayout(state, panes, 100, 50)
+	plan := computeLayout(state, toPaneViews(panes), 100, 50)
 	if len(plan.Panes) != 1 {
 		t.Fatalf("zoomed should return 1 pane, got %d", len(plan.Panes))
 	}
@@ -133,7 +133,7 @@ func TestComputeLayoutZoomed(t *testing.T) {
 func TestComputeLayoutFocusModeOld(t *testing.T) {
 	panes := []*Pane{newTestPane("a", true), newTestPane("b", true)}
 	state := LayoutState{Mode: LayoutFocus, Focused: "a", Hidden: map[string]bool{}}
-	plan := computeLayout(state, panes, 100, 50)
+	plan := computeLayout(state, toPaneViews(panes), 100, 50)
 	if len(plan.Panes) != 1 {
 		t.Fatalf("focus mode should return 1 pane, got %d", len(plan.Panes))
 	}
@@ -142,7 +142,7 @@ func TestComputeLayoutFocusModeOld(t *testing.T) {
 func TestComputeLayoutNoVisible(t *testing.T) {
 	panes := []*Pane{newTestPane("a", true)}
 	state := LayoutState{Mode: LayoutGrid, Focused: "a", Hidden: map[string]bool{"a": true}}
-	plan := computeLayout(state, panes, 100, 50)
+	plan := computeLayout(state, toPaneViews(panes), 100, 50)
 	if len(plan.Panes) != 0 {
 		t.Errorf("no visible panes should return 0 pane renders, got %d", len(plan.Panes))
 	}
@@ -151,7 +151,7 @@ func TestComputeLayoutNoVisible(t *testing.T) {
 func TestComputeLayout2ColOld(t *testing.T) {
 	panes := []*Pane{newTestPane("a", true), newTestPane("b", true), newTestPane("c", true)}
 	state := LayoutState{Mode: Layout2Col, Focused: "a", Hidden: map[string]bool{}}
-	plan := computeLayout(state, panes, 100, 50)
+	plan := computeLayout(state, toPaneViews(panes), 100, 50)
 	if len(plan.Panes) != 3 {
 		t.Fatalf("got %d pane renders, want 3", len(plan.Panes))
 	}
@@ -651,14 +651,19 @@ func newTestTUIWithScreen(names ...string) (*TUI, tcell.SimulationScreen) {
 	}
 
 	ls := DefaultLayoutState(names)
+	// Convert []*Pane to []PaneView.
+	views := make([]PaneView, len(panes))
+	for i, p := range panes {
+		views[i] = p
+	}
 	t := &TUI{
 		screen:      s,
-		panes:       panes,
+		panes:       views,
 		layoutState: ls,
 		lastW:       120,
 		lastH:       40,
 	}
-	t.plan = computeLayout(ls, panes, 120, 40)
+	t.plan = computeLayout(ls, views, 120, 40)
 	return t, s
 }
 
@@ -763,7 +768,7 @@ func TestRenderNoFocusedPane(t *testing.T) {
 func TestForwardMouseToFocused(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("a")
 	tui.layoutState.Focused = "a"
-	r := tui.panes[0].region
+	r := tui.panes[0].(*Pane).region
 
 	// Click inside the pane region (should not panic).
 	tui.forwardMouseToFocused(r.X+5, r.Y+5, uv.MouseLeft, false, false, tcell.ModNone)
@@ -778,7 +783,7 @@ func TestForwardMouseToFocused(t *testing.T) {
 
 func TestForwardMouseEvent(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("a")
-	p := tui.panes[0]
+	p := tui.panes[0].(*Pane)
 
 	// Click, motion, release - none should panic.
 	tui.forwardMouseEvent(p, 5, 5, uv.MouseLeft, false, false, tcell.ModShift|tcell.ModAlt|tcell.ModCtrl)
@@ -794,7 +799,7 @@ func TestHandleMouseButton1StartSelection(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("a", "b")
 	tui.applyLayout()
 
-	r := tui.panes[0].region
+	r := tui.panes[0].(*Pane).region
 	ev := tcell.NewEventMouse(r.X+5, r.Y+5, tcell.Button1, tcell.ModNone)
 	tui.handleMouse(ev)
 
@@ -813,7 +818,7 @@ func TestHandleMouseDragUpdatesSelection(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("a")
 	tui.applyLayout()
 
-	r := tui.panes[0].region
+	r := tui.panes[0].(*Pane).region
 	// Start selection.
 	ev := tcell.NewEventMouse(r.X+1, r.Y+2, tcell.Button1, tcell.ModNone)
 	tui.handleMouse(ev)
@@ -831,7 +836,7 @@ func TestHandleMouseReleaseClearsSelection(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("a")
 	tui.applyLayout()
 
-	r := tui.panes[0].region
+	r := tui.panes[0].(*Pane).region
 	// Start selection.
 	ev := tcell.NewEventMouse(r.X+1, r.Y+2, tcell.Button1, tcell.ModNone)
 	tui.handleMouse(ev)
@@ -852,14 +857,14 @@ func TestHandleMouseWheelUp(t *testing.T) {
 	tui.applyLayout()
 	// Write content to create scrollback.
 	for i := 0; i < 50; i++ {
-		tui.panes[0].emu.Write([]byte("line\r\n"))
+		tui.panes[0].(*Pane).emu.Write([]byte("line\r\n"))
 	}
 
-	r := tui.panes[0].region
+	r := tui.panes[0].(*Pane).region
 	ev := tcell.NewEventMouse(r.X+1, r.Y+1, tcell.WheelUp, tcell.ModNone)
 	tui.handleMouse(ev)
 
-	if !tui.panes[0].InScrollback() {
+	if !tui.panes[0].(*Pane).InScrollback() {
 		t.Error("WheelUp should enter scrollback")
 	}
 }
@@ -867,21 +872,21 @@ func TestHandleMouseWheelUp(t *testing.T) {
 func TestHandleMouseWheelDown(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("a")
 	tui.applyLayout()
-	tui.panes[0].scrollOffset = 10
+	tui.panes[0].(*Pane).scrollOffset = 10
 
-	r := tui.panes[0].region
+	r := tui.panes[0].(*Pane).region
 	ev := tcell.NewEventMouse(r.X+1, r.Y+1, tcell.WheelDown, tcell.ModNone)
 	tui.handleMouse(ev)
 
-	if tui.panes[0].scrollOffset != 7 {
-		t.Errorf("scrollOffset = %d, want 7 (10-3)", tui.panes[0].scrollOffset)
+	if tui.panes[0].(*Pane).scrollOffset != 7 {
+		t.Errorf("scrollOffset = %d, want 7 (10-3)", tui.panes[0].(*Pane).scrollOffset)
 	}
 }
 
 func TestHandleMouseIgnoredDuringCmd(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("a")
 	tui.cmd.active = true
-	r := tui.panes[0].region
+	r := tui.panes[0].(*Pane).region
 	ev := tcell.NewEventMouse(r.X+1, r.Y+1, tcell.Button1, tcell.ModNone)
 	tui.handleMouse(ev)
 	if tui.sel.active {
@@ -892,7 +897,7 @@ func TestHandleMouseIgnoredDuringCmd(t *testing.T) {
 func TestHandleMouseMiddleClick(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("a")
 	tui.applyLayout()
-	r := tui.panes[0].region
+	r := tui.panes[0].(*Pane).region
 	// Should not panic.
 	ev := tcell.NewEventMouse(r.X+5, r.Y+5, tcell.Button2, tcell.ModNone)
 	tui.handleMouse(ev)
@@ -901,7 +906,7 @@ func TestHandleMouseMiddleClick(t *testing.T) {
 func TestHandleMouseRightClick(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("a")
 	tui.applyLayout()
-	r := tui.panes[0].region
+	r := tui.panes[0].(*Pane).region
 	ev := tcell.NewEventMouse(r.X+5, r.Y+5, tcell.Button3, tcell.ModNone)
 	tui.handleMouse(ev)
 }
@@ -911,7 +916,7 @@ func TestHandleMouseHiddenPaneSkipped(t *testing.T) {
 	tui.applyLayout()
 	tui.layoutState.Hidden = map[string]bool{"a": true}
 
-	r := tui.panes[0].region
+	r := tui.panes[0].(*Pane).region
 	ev := tcell.NewEventMouse(r.X+5, r.Y+5, tcell.Button1, tcell.ModNone)
 	tui.handleMouse(ev)
 	// Click should not start selection on hidden pane.
@@ -927,7 +932,7 @@ func TestHandleMouseHiddenPaneSkipped(t *testing.T) {
 func TestRenderPaneScrollbackMode(t *testing.T) {
 	tui, s := newTestTUIWithScreen("a")
 	tui.applyLayout()
-	p := tui.panes[0]
+	p := tui.panes[0].(*Pane)
 
 	// Write content to create scrollback.
 	for i := 0; i < 50; i++ {
@@ -956,7 +961,7 @@ func TestRenderPaneScrollbackMode(t *testing.T) {
 func TestRenderPaneDead(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("a")
 	tui.applyLayout()
-	tui.panes[0].alive = false
+	tui.panes[0].(*Pane).alive = false
 	tui.layoutState.Overlay = false
 	// Should render dead pane without panic.
 	tui.render()
@@ -977,7 +982,7 @@ func TestSessionDesc(t *testing.T) {
 
 func TestRenderOverlayWithHiddenPanes(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("super", "eng1", "eng2")
-	tui.panes[2].SetVisible(false)
+	tui.panes[2].(*Pane).SetVisible(false)
 	tui.layoutState.Overlay = true
 	tui.render()
 	// Should not panic, and overlay should show all panes.
@@ -1043,7 +1048,7 @@ func TestCopySelection_EdgeCases(t *testing.T) {
 			tui, _ := newTestTUIWithScreen("a")
 			tui.applyLayout()
 			if tt.content != "" && tt.pane < len(tui.panes) {
-				tui.panes[tt.pane].emu.Write([]byte(tt.content))
+				tui.panes[tt.pane].(*Pane).emu.Write([]byte(tt.content))
 			}
 			tui.sel.pane = tt.pane
 			tui.sel.startX = tt.startX
@@ -1063,7 +1068,7 @@ func TestRenderWithSelectionHighlight(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("a")
 	tui.applyLayout()
 	tui.layoutState.Overlay = false
-	tui.panes[0].emu.Write([]byte("Some content\r\n"))
+	tui.panes[0].(*Pane).emu.Write([]byte("Some content\r\n"))
 
 	tui.sel.active = true
 	tui.sel.pane = 0
@@ -1080,7 +1085,7 @@ func TestRenderWithCursor(t *testing.T) {
 	tui.layoutState.Focused = "a"
 	tui.layoutState.Overlay = false
 	tui.sel.active = false
-	tui.panes[0].emu.Write([]byte("cursor test\r\n"))
+	tui.panes[0].(*Pane).emu.Write([]byte("cursor test\r\n"))
 	tui.render() // Should draw cursor.
 }
 
@@ -1131,7 +1136,7 @@ func TestRenderTooSmallRegion(t *testing.T) {
 func TestRenderAltScreen(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("a")
 	tui.applyLayout()
-	p := tui.panes[0]
+	p := tui.panes[0].(*Pane)
 	// Switch to alt screen via escape sequence.
 	p.emu.Write([]byte("\x1b[?1049h")) // Enter alt screen.
 	p.emu.Write([]byte("alt screen content\r\n"))
@@ -1167,7 +1172,7 @@ func TestCalcRegionsGridDefault(t *testing.T) {
 func TestRenderExtractsSessionDesc(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("a")
 	tui.applyLayout()
-	p := tui.panes[0]
+	p := tui.panes[0].(*Pane)
 
 	// Write content followed by a "session description" at the cursor row.
 	p.emu.Write([]byte("output line\r\n"))
@@ -1188,7 +1193,7 @@ func TestHandleMouseDragClampNegative(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("a")
 	tui.applyLayout()
 
-	r := tui.panes[0].region
+	r := tui.panes[0].(*Pane).region
 	// Start selection.
 	ev := tcell.NewEventMouse(r.X+5, r.Y+5, tcell.Button1, tcell.ModNone)
 	tui.handleMouse(ev)
@@ -1206,7 +1211,7 @@ func TestHandleMouseDragClampBeyondPane(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("a")
 	tui.applyLayout()
 
-	r := tui.panes[0].region
+	r := tui.panes[0].(*Pane).region
 	// Start selection.
 	ev := tcell.NewEventMouse(r.X+5, r.Y+5, tcell.Button1, tcell.ModNone)
 	tui.handleMouse(ev)
@@ -1228,7 +1233,7 @@ func TestHandleMouseDragClampBeyondPane(t *testing.T) {
 func TestHandleEventMouse(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("a")
 	tui.applyLayout()
-	r := tui.panes[0].region
+	r := tui.panes[0].(*Pane).region
 
 	mev := tcell.NewEventMouse(r.X+1, r.Y+1, tcell.Button1, tcell.ModNone)
 	quit := tui.handleEvent(mev)

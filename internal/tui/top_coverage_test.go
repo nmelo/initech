@@ -38,7 +38,7 @@ func topTestTUI(entries []topEntry) (*TUI, tcell.SimulationScreen) {
 
 	tui := &TUI{
 		screen:      s,
-		panes:       panes,
+		panes:       toPaneViews(panes),
 		layoutState: DefaultLayoutState(nil),
 		top:         topModal{active: true, data: entries, cacheTime: time.Now()},
 	}
@@ -444,7 +444,7 @@ func TestRefreshTopData_PopulatesFromPanes(t *testing.T) {
 		cfg:     PaneConfig{Command: []string{"claude", "--continue"}},
 	}
 	tui := &TUI{
-		panes:       []*Pane{p},
+		panes:       toPaneViews([]*Pane{p}),
 		layoutState: DefaultLayoutState(nil),
 	}
 
@@ -473,7 +473,7 @@ func TestRefreshTopData_CachePreventsRepoll(t *testing.T) {
 		}
 	}()
 	tui := &TUI{
-		panes:       []*Pane{{name: "a", emu: emu, alive: true}},
+		panes:       toPaneViews([]*Pane{{name: "a", emu: emu, alive: true}}),
 		layoutState: DefaultLayoutState(nil),
 	}
 	tui.refreshTopData()
@@ -500,7 +500,7 @@ func TestRefreshTopData_HiddenStatus(t *testing.T) {
 		}
 	}()
 	tui := &TUI{
-		panes:       []*Pane{{name: "eng1", emu: emu, alive: true}},
+		panes:       toPaneViews([]*Pane{{name: "eng1", emu: emu, alive: true}}),
 		layoutState: DefaultLayoutState(nil),
 	}
 	tui.layoutState.Hidden = map[string]bool{"eng1": true}

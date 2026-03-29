@@ -16,7 +16,7 @@ func TestAddPane_Success(t *testing.T) {
 	os.MkdirAll(wsDir, 0755)
 
 	tui := &TUI{
-		panes:       []*Pane{testPane("eng1"), testPane("eng2")},
+		panes:       toPaneViews([]*Pane{testPane("eng1"), testPane("eng2")}),
 		layoutState: DefaultLayoutState([]string{"eng1", "eng2"}),
 		agentEvents: make(chan AgentEvent, 8),
 		quitCh:      make(chan struct{}),
@@ -36,8 +36,8 @@ func TestAddPane_Success(t *testing.T) {
 	if len(tui.panes) != 3 {
 		t.Errorf("panes = %d, want 3", len(tui.panes))
 	}
-	if tui.panes[2].name != "eng3" {
-		t.Errorf("new pane name = %q, want eng3", tui.panes[2].name)
+	if tui.panes[2].Name() != "eng3" {
+		t.Errorf("new pane name = %q, want eng3", tui.panes[2].Name())
 	}
 	// Clean up the PTY process.
 	tui.panes[2].Close()
@@ -51,7 +51,7 @@ func TestAddPane_SetsGoroutines(t *testing.T) {
 	os.MkdirAll(filepath.Join(dir, "eng3"), 0755)
 
 	tui := &TUI{
-		panes:       []*Pane{testPane("eng1")},
+		panes:       toPaneViews([]*Pane{testPane("eng1")}),
 		layoutState: DefaultLayoutState([]string{"eng1"}),
 		agentEvents: make(chan AgentEvent, 8),
 		quitCh:      make(chan struct{}),
@@ -67,7 +67,7 @@ func TestAddPane_SetsGoroutines(t *testing.T) {
 	p := tui.panes[len(tui.panes)-1]
 	t.Cleanup(func() { p.Close() })
 
-	if p.safeGo == nil {
+	if p.(*Pane).safeGo == nil {
 		t.Error("addPane did not set safeGo on new pane")
 	}
 	if !p.IsAlive() {
@@ -77,7 +77,7 @@ func TestAddPane_SetsGoroutines(t *testing.T) {
 
 func TestAddPane_AlreadyExists(t *testing.T) {
 	tui := &TUI{
-		panes: []*Pane{testPane("eng1")},
+		panes: toPaneViews([]*Pane{testPane("eng1")}),
 		paneConfigBuilder: func(name string) (PaneConfig, error) {
 			return PaneConfig{Name: name, Dir: "/tmp"}, nil
 		},
@@ -91,7 +91,7 @@ func TestAddPane_AlreadyExists(t *testing.T) {
 
 func TestAddPane_NoBuilder(t *testing.T) {
 	tui := &TUI{
-		panes:             []*Pane{testPane("eng1")},
+		panes:             toPaneViews([]*Pane{testPane("eng1")}),
 		paneConfigBuilder: nil,
 	}
 
@@ -103,7 +103,7 @@ func TestAddPane_NoBuilder(t *testing.T) {
 
 func TestAddPane_MissingWorkspace(t *testing.T) {
 	tui := &TUI{
-		panes: []*Pane{testPane("eng1")},
+		panes: toPaneViews([]*Pane{testPane("eng1")}),
 		paneConfigBuilder: func(name string) (PaneConfig, error) {
 			return PaneConfig{Name: name, Dir: "/nonexistent/path/" + name}, nil
 		},
@@ -127,7 +127,7 @@ func TestAddPane_EmptyName(t *testing.T) {
 
 func TestRemovePane_Success(t *testing.T) {
 	tui := &TUI{
-		panes:       []*Pane{testPane("eng1"), testPane("eng2"), testPane("eng3")},
+		panes:       toPaneViews([]*Pane{testPane("eng1"), testPane("eng2"), testPane("eng3")}),
 		layoutState: DefaultLayoutState([]string{"eng1", "eng2", "eng3"}),
 	}
 
@@ -139,7 +139,7 @@ func TestRemovePane_Success(t *testing.T) {
 		t.Errorf("panes = %d, want 2", len(tui.panes))
 	}
 	for _, p := range tui.panes {
-		if p.name == "eng2" {
+		if p.Name() == "eng2" {
 			t.Error("eng2 still in panes after removal")
 		}
 	}
@@ -147,7 +147,7 @@ func TestRemovePane_Success(t *testing.T) {
 
 func TestRemovePane_NotFound(t *testing.T) {
 	tui := &TUI{
-		panes: []*Pane{testPane("eng1")},
+		panes: toPaneViews([]*Pane{testPane("eng1")}),
 	}
 
 	err := tui.removePane("eng99")
@@ -158,7 +158,7 @@ func TestRemovePane_NotFound(t *testing.T) {
 
 func TestRemovePane_LastPane(t *testing.T) {
 	tui := &TUI{
-		panes: []*Pane{testPane("eng1")},
+		panes: toPaneViews([]*Pane{testPane("eng1")}),
 	}
 
 	err := tui.removePane("eng1")
@@ -169,7 +169,7 @@ func TestRemovePane_LastPane(t *testing.T) {
 
 func TestRemovePane_CleansHidden(t *testing.T) {
 	tui := &TUI{
-		panes: []*Pane{testPane("eng1"), testPane("eng2")},
+		panes: toPaneViews([]*Pane{testPane("eng1"), testPane("eng2")}),
 		layoutState: LayoutState{
 			Hidden:   map[string]bool{"eng2": true},
 			GridCols: 2,
@@ -189,7 +189,7 @@ func TestRemovePane_CleansHidden(t *testing.T) {
 
 func TestRemovePane_FocusSnaps(t *testing.T) {
 	tui := &TUI{
-		panes: []*Pane{testPane("eng1"), testPane("eng2")},
+		panes: toPaneViews([]*Pane{testPane("eng1"), testPane("eng2")}),
 		layoutState: LayoutState{
 			Focused:  "eng2",
 			GridCols: 2,
@@ -208,7 +208,7 @@ func TestRemovePane_FocusSnaps(t *testing.T) {
 }
 
 func TestRemovePane_EmptyName(t *testing.T) {
-	tui := &TUI{panes: []*Pane{testPane("eng1")}}
+	tui := &TUI{panes: toPaneViews([]*Pane{testPane("eng1")})}
 	err := tui.removePane("")
 	if err == nil {
 		t.Fatal("expected error for empty name, got nil")
@@ -219,7 +219,7 @@ func TestRemovePane_EmptyName(t *testing.T) {
 
 func TestRecalcGrid(t *testing.T) {
 	tui := &TUI{
-		panes: []*Pane{testPane("a"), testPane("b"), testPane("c")},
+		panes: toPaneViews([]*Pane{testPane("a"), testPane("b"), testPane("c")}),
 		layoutState: LayoutState{
 			GridCols: 1,
 			GridRows: 1,
@@ -239,7 +239,7 @@ func TestRecalcGrid(t *testing.T) {
 
 func TestRecalcGrid_HiddenExcluded(t *testing.T) {
 	tui := &TUI{
-		panes: []*Pane{testPane("a"), testPane("b"), testPane("c")},
+		panes: toPaneViews([]*Pane{testPane("a"), testPane("b"), testPane("c")}),
 		layoutState: LayoutState{
 			Hidden:   map[string]bool{"c": true},
 			GridCols: 1,

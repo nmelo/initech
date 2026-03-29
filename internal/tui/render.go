@@ -23,7 +23,9 @@ func (t *TUI) render() {
 	// Refresh activity state for all panes before rendering.
 	// updateActivity checks PTY output recency under a lock; cost is negligible.
 	for _, p := range t.panes {
-		p.updateActivity()
+		if lp, ok := p.(*Pane); ok {
+			lp.updateActivity()
+		}
 	}
 
 	s.Clear()
@@ -92,7 +94,7 @@ func (t *TUI) render() {
 }
 
 // selectionForPane returns the selection state for a given pane.
-func (t *TUI) selectionForPane(p *Pane) Selection {
+func (t *TUI) selectionForPane(p PaneView) Selection {
 	if !t.sel.active {
 		return Selection{}
 	}
@@ -322,7 +324,11 @@ func (t *TUI) pollQuota() {
 		if !p.IsAlive() || p.IsSuspended() {
 			continue
 		}
-		if pct := p.ScrapeQuota(); pct >= 0 {
+		lp, ok := p.(*Pane)
+		if !ok {
+			continue
+		}
+		if pct := lp.ScrapeQuota(); pct >= 0 {
 			t.quotaPercent = pct
 			return
 		}
@@ -711,7 +717,7 @@ func (t *TUI) renderOverlay() {
 	maxNameLen := 0
 	hiddenCount := 0
 	for i, p := range t.panes {
-		vis := !t.layoutState.Hidden[p.name]
+		vis := !t.layoutState.Hidden[p.Name()]
 		act := p.Activity()
 		bead := p.BeadID()
 		// Build status: show idle-with-backlog hint when idle, then combine
@@ -729,9 +735,9 @@ func (t *TUI) renderOverlay() {
 		if bead != "" {
 			status = fmt.Sprintf("%s (%s)", act.String(), bead)
 		}
-		pin := t.layoutState.Pinned[p.name]
-		agents[i] = AgentInfo{Name: p.name, Status: status, Activity: act, Visible: vis, IdleWithBacklog: idleBacklog, BacklogCount: backlogN, Pinned: pin}
-		nameLen := len(p.name)
+		pin := t.layoutState.Pinned[p.Name()]
+		agents[i] = AgentInfo{Name: p.Name(), Status: status, Activity: act, Visible: vis, IdleWithBacklog: idleBacklog, BacklogCount: backlogN, Pinned: pin}
+		nameLen := len(p.Name())
 		if pin {
 			nameLen += 4 // " [P]"
 		}

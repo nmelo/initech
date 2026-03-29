@@ -374,7 +374,7 @@ func (t *TUI) completionCandidates(cmd string) []string {
 		// All pane names + "all" (reorder applies to any pane).
 		names := make([]string, len(t.panes))
 		for i, p := range t.panes {
-			names[i] = p.name
+			names[i] = p.Name()
 		}
 		names = append(names, "all")
 		return names
@@ -382,8 +382,8 @@ func (t *TUI) completionCandidates(cmd string) []string {
 		// Hidden panes plus the special "all" keyword.
 		var names []string
 		for _, p := range t.panes {
-			if t.layoutState.Hidden[p.name] {
-				names = append(names, p.name)
+			if t.layoutState.Hidden[p.Name()] {
+				names = append(names, p.Name())
 			}
 		}
 		names = append(names, "all")
@@ -392,8 +392,8 @@ func (t *TUI) completionCandidates(cmd string) []string {
 		// Visible panes only.
 		var names []string
 		for _, p := range t.panes {
-			if !t.layoutState.Hidden[p.name] {
-				names = append(names, p.name)
+			if !t.layoutState.Hidden[p.Name()] {
+				names = append(names, p.Name())
 			}
 		}
 		return names
@@ -401,8 +401,8 @@ func (t *TUI) completionCandidates(cmd string) []string {
 		// Unpinned panes only.
 		var names []string
 		for _, p := range t.panes {
-			if !t.layoutState.Pinned[p.name] {
-				names = append(names, p.name)
+			if !t.layoutState.Pinned[p.Name()] {
+				names = append(names, p.Name())
 			}
 		}
 		return names
@@ -410,8 +410,8 @@ func (t *TUI) completionCandidates(cmd string) []string {
 		// Pinned panes only.
 		var names []string
 		for _, p := range t.panes {
-			if t.layoutState.Pinned[p.name] {
-				names = append(names, p.name)
+			if t.layoutState.Pinned[p.Name()] {
+				names = append(names, p.Name())
 			}
 		}
 		return names
@@ -419,7 +419,7 @@ func (t *TUI) completionCandidates(cmd string) []string {
 		// All pane names.
 		names := make([]string, len(t.panes))
 		for i, p := range t.panes {
-			names[i] = p.name
+			names[i] = p.Name()
 		}
 		return names
 	}
@@ -706,7 +706,7 @@ func (t *TUI) cmdShow(parts []string) bool {
 
 	if len(names) == 1 && names[0] == "all" {
 		sort.Slice(t.panes, func(i, j int) bool {
-			return t.panes[i].name < t.panes[j].name
+			return t.panes[i].Name() < t.panes[j].Name()
 		})
 		t.applyLayout()
 		t.saveLayoutIfConfigured()
@@ -737,17 +737,17 @@ func (t *TUI) cmdShow(parts []string) bool {
 	for _, n := range names {
 		namedSet[n] = true
 	}
-	var newOrder []*Pane
+	var newOrder []PaneView
 	for _, name := range names {
 		for _, p := range t.panes {
-			if p.name == name {
+			if p.Name() == name {
 				newOrder = append(newOrder, p)
 				break
 			}
 		}
 	}
 	for _, p := range t.panes {
-		if !namedSet[p.name] {
+		if !namedSet[p.Name()] {
 			newOrder = append(newOrder, p)
 		}
 	}
@@ -821,7 +821,9 @@ func (t *TUI) cmdPin(parts []string) bool {
 		t.layoutState.Pinned = make(map[string]bool)
 	}
 	t.layoutState.Pinned[parts[1]] = true
-	p.SetPinned(true)
+	if lp, ok := p.(*Pane); ok {
+		lp.SetPinned(true)
+	}
 	t.saveLayoutIfConfigured()
 	return false
 }
@@ -837,7 +839,9 @@ func (t *TUI) cmdUnpin(parts []string) bool {
 		return false
 	}
 	delete(t.layoutState.Pinned, parts[1])
-	p.SetPinned(false)
+	if lp, ok := p.(*Pane); ok {
+		lp.SetPinned(false)
+	}
 	t.saveLayoutIfConfigured()
 	return false
 }
@@ -859,7 +863,7 @@ func (t *TUI) cmdView(parts []string) bool {
 	}
 	visCount := 0
 	for _, p := range t.panes {
-		if show[p.name] {
+		if show[p.Name()] {
 			visCount++
 		}
 	}
@@ -869,8 +873,8 @@ func (t *TUI) cmdView(parts []string) bool {
 	}
 	hidden := make(map[string]bool)
 	for _, p := range t.panes {
-		if !show[p.name] {
-			hidden[p.name] = true
+		if !show[p.Name()] {
+			hidden[p.Name()] = true
 		}
 	}
 	t.layoutState.Hidden = hidden
@@ -896,7 +900,7 @@ func (t *TUI) cmdLayout(parts []string) bool {
 		}
 		names := make([]string, len(t.panes))
 		for i, p := range t.panes {
-			names[i] = p.name
+			names[i] = p.Name()
 		}
 		t.layoutState = DefaultLayoutState(names)
 		t.applyLayout()
@@ -931,7 +935,7 @@ func (t *TUI) cmdPatrol() bool {
 	// Build patrol output and copy to clipboard for easy pasting.
 	var buf strings.Builder
 	for _, p := range t.panes {
-		header := p.name + " (" + p.Activity().String()
+		header := p.Name() + " (" + p.Activity().String()
 		if bead := p.BeadID(); bead != "" {
 			header += " | " + bead
 		}
@@ -993,7 +997,7 @@ func (t *TUI) cmdLog() bool {
 func (t *TUI) cmdOrder() bool {
 	items := make([]string, len(t.panes))
 	for i, p := range t.panes {
-		items[i] = p.name
+		items[i] = p.Name()
 	}
 	t.reorder = reorderModal{
 		active: true,
@@ -1136,9 +1140,9 @@ func parseGrid(s string, numPanes int) (cols, rows int, ok bool) {
 }
 
 // findPaneByName returns the pane with the given name, or nil.
-func (t *TUI) findPaneByName(name string) *Pane {
+func (t *TUI) findPaneByName(name string) PaneView {
 	for _, p := range t.panes {
-		if p.name == name {
+		if p.Name() == name {
 			return p
 		}
 	}
@@ -1149,7 +1153,7 @@ func (t *TUI) findPaneByName(name string) *Pane {
 func (t *TUI) visibleCountFromState() int {
 	n := 0
 	for _, p := range t.panes {
-		if !t.layoutState.Hidden[p.name] {
+		if !t.layoutState.Hidden[p.Name()] {
 			n++
 		}
 	}
@@ -1180,7 +1184,7 @@ func (t *TUI) cycleFocus(delta int) {
 	// Find current focused index.
 	cur := 0
 	for i, p := range t.panes {
-		if p.name == t.layoutState.Focused {
+		if p.Name() == t.layoutState.Focused {
 			cur = i
 			break
 		}
@@ -1189,8 +1193,8 @@ func (t *TUI) cycleFocus(delta int) {
 	next := cur
 	for i := 0; i < n; i++ {
 		next = (next + delta + n) % n
-		if !t.layoutState.Hidden[t.panes[next].name] {
-			t.layoutState.Focused = t.panes[next].name
+		if !t.layoutState.Hidden[t.panes[next].Name()] {
+			t.layoutState.Focused = t.panes[next].Name()
 			t.applyLayout()
 			return
 		}
@@ -1204,7 +1208,11 @@ func (t *TUI) restartFocused() error {
 	if fp == nil {
 		return fmt.Errorf("no pane focused")
 	}
-	return t.restartPane(fp)
+	local, ok := fp.(*Pane)
+	if !ok {
+		return fmt.Errorf("restart not supported for remote panes")
+	}
+	return t.restartPane(local)
 }
 
 // restartByName finds the named pane and restarts it.
@@ -1213,7 +1221,11 @@ func (t *TUI) restartByName(name string) error {
 	if p == nil {
 		return fmt.Errorf("unknown agent %q", name)
 	}
-	return t.restartPane(p)
+	local, ok := p.(*Pane)
+	if !ok {
+		return fmt.Errorf("restart not supported for remote panes")
+	}
+	return t.restartPane(local)
 }
 
 // restartPane kills the given pane's process and starts a new one at the same

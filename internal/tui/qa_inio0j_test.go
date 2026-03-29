@@ -12,7 +12,7 @@ func TestCopySelection_ZeroWidthSkipped(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("a")
 	tui.applyLayout()
 	p := tui.panes[0]
-	p.emu.Write([]byte("Hello\r\n"))
+	p.(*Pane).emu.Write([]byte("Hello\r\n"))
 
 	// Simulate a click: start == end at col 2, row 0.
 	tui.sel.pane = 0
@@ -33,7 +33,7 @@ func TestCopySelection_SingleCharDragStillWorks(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("a")
 	tui.applyLayout()
 	p := tui.panes[0]
-	p.emu.Write([]byte("Hello\r\n"))
+	p.(*Pane).emu.Write([]byte("Hello\r\n"))
 
 	// Drag from col 2 to col 3 on row 0 — one character selected.
 	tui.sel.pane = 0

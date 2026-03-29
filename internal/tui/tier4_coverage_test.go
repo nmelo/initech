@@ -37,12 +37,12 @@ func cmdTestTUI(names ...string) *TUI {
 	ls := DefaultLayoutState(names)
 	tui := &TUI{
 		screen:      s,
-		panes:       panes,
+		panes:       toPaneViews(panes),
 		layoutState: ls,
 		lastW:       120,
 		lastH:       40,
 	}
-	tui.plan = computeLayout(ls, panes, 120, 40)
+	tui.plan = computeLayout(ls, toPaneViews(panes), 120, 40)
 	return tui
 }
 
@@ -153,11 +153,11 @@ func TestExecCmd_Main(t *testing.T) {
 func TestExecCmd_ShowReorder(t *testing.T) {
 	tui := cmdTestTUI("a", "b", "c", "d")
 	tui.execCmd("show c, a")
-	if tui.panes[0].name != "c" || tui.panes[1].name != "a" {
-		t.Errorf("show reorder: got [%s, %s, ...], want [c, a, ...]", tui.panes[0].name, tui.panes[1].name)
+	if tui.panes[0].Name() != "c" || tui.panes[1].Name() != "a" {
+		t.Errorf("show reorder: got [%s, %s, ...], want [c, a, ...]", tui.panes[0].Name(), tui.panes[1].Name())
 	}
-	if tui.panes[2].name != "b" || tui.panes[3].name != "d" {
-		t.Errorf("remaining order: got [..., %s, %s], want [..., b, d]", tui.panes[2].name, tui.panes[3].name)
+	if tui.panes[2].Name() != "b" || tui.panes[3].Name() != "d" {
+		t.Errorf("remaining order: got [..., %s, %s], want [..., b, d]", tui.panes[2].Name(), tui.panes[3].Name())
 	}
 }
 
@@ -165,8 +165,8 @@ func TestExecCmd_ShowAll(t *testing.T) {
 	tui := cmdTestTUI("c", "a", "b")
 	tui.execCmd("show all")
 	// show all resets to alphabetical.
-	if tui.panes[0].name != "a" || tui.panes[1].name != "b" || tui.panes[2].name != "c" {
-		t.Errorf("show all: got [%s, %s, %s], want [a, b, c]", tui.panes[0].name, tui.panes[1].name, tui.panes[2].name)
+	if tui.panes[0].Name() != "a" || tui.panes[1].Name() != "b" || tui.panes[2].Name() != "c" {
+		t.Errorf("show all: got [%s, %s, %s], want [a, b, c]", tui.panes[0].Name(), tui.panes[1].Name(), tui.panes[2].Name())
 	}
 }
 
@@ -189,8 +189,8 @@ func TestExecCmd_ShowUnknown(t *testing.T) {
 func TestExecCmd_ShowDeduplicate(t *testing.T) {
 	tui := cmdTestTUI("a", "b", "c")
 	tui.execCmd("show a, a, b")
-	if tui.panes[0].name != "a" || tui.panes[1].name != "b" || tui.panes[2].name != "c" {
-		t.Errorf("show dedup: got [%s, %s, %s], want [a, b, c]", tui.panes[0].name, tui.panes[1].name, tui.panes[2].name)
+	if tui.panes[0].Name() != "a" || tui.panes[1].Name() != "b" || tui.panes[2].Name() != "c" {
+		t.Errorf("show dedup: got [%s, %s, %s], want [a, b, c]", tui.panes[0].Name(), tui.panes[1].Name(), tui.panes[2].Name())
 	}
 }
 
@@ -312,7 +312,7 @@ func TestExecCmd_Pin(t *testing.T) {
 func TestExecCmd_Unpin(t *testing.T) {
 	tui := cmdTestTUI("eng1")
 	tui.layoutState.Pinned["eng1"] = true
-	tui.panes[0].SetPinned(true)
+	tui.panes[0].(*Pane).SetPinned(true)
 	tui.execCmd("unpin eng1")
 	if tui.layoutState.Pinned["eng1"] {
 		t.Error("unpin should unpin eng1")
@@ -334,7 +334,7 @@ func TestExecCmd_Patrol(t *testing.T) {
 	}()
 	tui := &TUI{
 		screen:      s,
-		panes:       []*Pane{{name: "eng1", emu: emu, alive: true, visible: true}},
+		panes:       toPaneViews([]*Pane{{name: "eng1", emu: emu, alive: true, visible: true}}),
 		layoutState: DefaultLayoutState([]string{"eng1"}),
 	}
 	// Patrol copies to clipboard; just verify it doesn't crash.

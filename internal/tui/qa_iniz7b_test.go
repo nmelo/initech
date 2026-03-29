@@ -16,8 +16,8 @@ func TestOverlayDot_IdleWithBacklogIsYellow(t *testing.T) {
 	tui.layoutState.Overlay = true
 
 	// Set pane to idle + idle-with-backlog.
-	tui.panes[0].activity = StateIdle
-	tui.panes[0].SetIdleWithBacklog(3)
+	tui.panes[0].(*Pane).activity = StateIdle
+	tui.panes[0].(*Pane).SetIdleWithBacklog(3)
 
 	tui.render()
 
@@ -52,7 +52,7 @@ func TestOverlayDot_IdleWithBacklogIsYellow(t *testing.T) {
 func TestOverlayDot_RegularIdleIsGray(t *testing.T) {
 	tui, s := newTestTUIWithScreen("eng1")
 	tui.layoutState.Overlay = true
-	tui.panes[0].activity = StateIdle
+	tui.panes[0].(*Pane).activity = StateIdle
 	// IdleWithBacklog not set.
 
 	tui.render()
@@ -77,8 +77,8 @@ func TestOverlayDot_RegularIdleIsGray(t *testing.T) {
 func TestOverlayStatusText_IdleWithBacklog(t *testing.T) {
 	tui, s := newTestTUIWithScreen("eng1")
 	tui.layoutState.Overlay = true
-	tui.panes[0].activity = StateIdle
-	tui.panes[0].SetIdleWithBacklog(5)
+	tui.panes[0].(*Pane).activity = StateIdle
+	tui.panes[0].(*Pane).SetIdleWithBacklog(5)
 
 	tui.render()
 
@@ -98,9 +98,9 @@ func TestOverlayStatusText_IdleWithBacklog(t *testing.T) {
 func TestOverlayStatusText_BeadPriorityOverBacklog(t *testing.T) {
 	tui, s := newTestTUIWithScreen("eng1")
 	tui.layoutState.Overlay = true
-	tui.panes[0].activity = StateIdle
-	tui.panes[0].SetIdleWithBacklog(3)
-	tui.panes[0].SetBead("ini-abc.1", "")
+	tui.panes[0].(*Pane).activity = StateIdle
+	tui.panes[0].(*Pane).SetIdleWithBacklog(3)
+	tui.panes[0].(*Pane).SetBead("ini-abc.1", "")
 
 	tui.render()
 
@@ -152,7 +152,7 @@ func TestHandleAgentEvent_ClearOnlyTargetPane(t *testing.T) {
 	p2.SetIdleWithBacklog(2)
 
 	tui := &TUI{
-		panes:       []*Pane{p1, p2},
+		panes:       toPaneViews([]*Pane{p1, p2}),
 		agentEvents: make(chan AgentEvent, 8),
 	}
 	tui.handleAgentEvent(AgentEvent{Type: EventBeadClaimed, Pane: "eng1"})
@@ -174,8 +174,8 @@ func TestRenderOverlay_AgentInfoPopulated(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("eng1", "eng2")
 	tui.screen = s
 	tui.layoutState.Overlay = true
-	tui.panes[0].SetIdleWithBacklog(7)
-	tui.panes[1].lastOutputTime = time.Now() // running: recent PTY output
+	tui.panes[0].(*Pane).SetIdleWithBacklog(7)
+	tui.panes[1].(*Pane).lastOutputTime = time.Now() // running: recent PTY output
 
 	// We can't directly inspect AgentInfo (it's local to renderOverlay), but
 	// we can verify the rendered output: eng1 should have yellow dot, eng2 green.

@@ -19,8 +19,8 @@ func testPane(name string) *Pane {
 	}
 }
 
-func testPanes(names ...string) []*Pane {
-	panes := make([]*Pane, len(names))
+func testPanes(names ...string) []PaneView {
+	panes := make([]PaneView, len(names))
 	for i, n := range names {
 		panes[i] = testPane(n)
 	}
@@ -46,8 +46,8 @@ func TestComputeLayoutSinglePane(t *testing.T) {
 		t.Fatalf("single pane: got %d plan entries, want 1", len(plan.Panes))
 	}
 	pr := plan.Panes[0]
-	if pr.Pane.name != "super" {
-		t.Errorf("pane name = %q, want super", pr.Pane.name)
+	if pr.Pane.Name() != "super" {
+		t.Errorf("pane name = %q, want super", pr.Pane.Name())
 	}
 	if !pr.Focused {
 		t.Error("single pane should be focused")
@@ -83,11 +83,11 @@ func TestComputeLayoutGridMode(t *testing.T) {
 	}
 	// Only "a" should be focused.
 	for _, pr := range plan.Panes {
-		if pr.Pane.name == "a" && !pr.Focused {
+		if pr.Pane.Name() == "a" && !pr.Focused {
 			t.Error("pane a should be focused")
 		}
-		if pr.Pane.name != "a" && pr.Focused {
-			t.Errorf("pane %s should not be focused", pr.Pane.name)
+		if pr.Pane.Name() != "a" && pr.Focused {
+			t.Errorf("pane %s should not be focused", pr.Pane.Name())
 		}
 	}
 }
@@ -108,7 +108,7 @@ func TestComputeLayoutHiddenPanesExcluded(t *testing.T) {
 		t.Fatalf("2 visible panes: got %d plan entries, want 2", len(plan.Panes))
 	}
 	for _, pr := range plan.Panes {
-		if pr.Pane.name == "b" {
+		if pr.Pane.Name() == "b" {
 			t.Error("hidden pane b should not be in the plan")
 		}
 	}
@@ -134,8 +134,8 @@ func TestComputeLayoutFocusOnHiddenSnaps(t *testing.T) {
 	}
 	// The focused pane in the plan should match ValidatedFocus.
 	for _, pr := range plan.Panes {
-		if pr.Focused && pr.Pane.name != plan.ValidatedFocus {
-			t.Errorf("plan says %q is focused but ValidatedFocus is %q", pr.Pane.name, plan.ValidatedFocus)
+		if pr.Focused && pr.Pane.Name() != plan.ValidatedFocus {
+			t.Errorf("plan says %q is focused but ValidatedFocus is %q", pr.Pane.Name(), plan.ValidatedFocus)
 		}
 	}
 }
@@ -152,8 +152,8 @@ func TestComputeLayoutFocusMode(t *testing.T) {
 	if len(plan.Panes) != 1 {
 		t.Fatalf("focus mode: got %d plan entries, want 1", len(plan.Panes))
 	}
-	if plan.Panes[0].Pane.name != "b" {
-		t.Errorf("focus mode: got pane %q, want b", plan.Panes[0].Pane.name)
+	if plan.Panes[0].Pane.Name() != "b" {
+		t.Errorf("focus mode: got pane %q, want b", plan.Panes[0].Pane.Name())
 	}
 	if plan.Panes[0].Region.W != 200 || plan.Panes[0].Region.H != 60 {
 		t.Errorf("focus mode: region = %dx%d, want 200x60",
@@ -176,8 +176,8 @@ func TestComputeLayoutZoomOverridesGrid(t *testing.T) {
 	if len(plan.Panes) != 1 {
 		t.Fatalf("zoomed: got %d plan entries, want 1", len(plan.Panes))
 	}
-	if plan.Panes[0].Pane.name != "c" {
-		t.Errorf("zoomed: got pane %q, want c", plan.Panes[0].Pane.name)
+	if plan.Panes[0].Pane.Name() != "c" {
+		t.Errorf("zoomed: got pane %q, want c", plan.Panes[0].Pane.Name())
 	}
 }
 
@@ -269,13 +269,13 @@ func TestComputeLayoutDimmedFlag(t *testing.T) {
 	plan := computeLayout(state, panes, 300, 60)
 
 	for _, pr := range plan.Panes {
-		if pr.Pane.name == "b" {
+		if pr.Pane.Name() == "b" {
 			if pr.Dimmed {
 				t.Error("focused pane b should not be dimmed")
 			}
 		} else {
 			if !pr.Dimmed {
-				t.Errorf("unfocused pane %s should be dimmed", pr.Pane.name)
+				t.Errorf("unfocused pane %s should be dimmed", pr.Pane.Name())
 			}
 		}
 	}

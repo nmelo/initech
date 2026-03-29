@@ -107,9 +107,11 @@ func (t *TUI) pollAllRSS() {
 	var snaps []paneSnap
 
 	t.runOnMain(func() {
-		snaps = make([]paneSnap, len(t.panes))
-		for i, p := range t.panes {
-			snaps[i] = paneSnap{pane: p, pid: p.pid}
+		snaps = make([]paneSnap, 0, len(t.panes))
+		for _, pv := range t.panes {
+			if p, ok := pv.(*Pane); ok {
+				snaps = append(snaps, paneSnap{pane: p, pid: p.pid})
+			}
 		}
 	})
 
@@ -155,7 +157,11 @@ func (t *TUI) checkSuspendPolicy() {
 		var candidates []suspendCandidate
 		t.runOnMain(func() {
 			focused := t.layoutState.Focused
-			for _, p := range t.panes {
+			for _, pv := range t.panes {
+				p, ok := pv.(*Pane)
+				if !ok {
+					continue
+				}
 				p.mu.Lock()
 				alive := p.alive
 				activity := p.activity

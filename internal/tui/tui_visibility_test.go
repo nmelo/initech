@@ -24,7 +24,21 @@ func newTestTUI(panes ...*Pane) *TUI {
 			ls.Hidden[p.name] = true
 		}
 	}
-	return &TUI{panes: panes, layoutState: ls}
+	// Convert []*Pane to []PaneView.
+	views := make([]PaneView, len(panes))
+	for i, p := range panes {
+		views[i] = p
+	}
+	return &TUI{panes: views, layoutState: ls}
+}
+
+// toPaneViews converts a []*Pane to []PaneView for test helpers.
+func toPaneViews(panes []*Pane) []PaneView {
+	views := make([]PaneView, len(panes))
+	for i, p := range panes {
+		views[i] = p
+	}
+	return views
 }
 
 func TestPaneVisibleDefault(t *testing.T) {
@@ -58,12 +72,12 @@ func TestComputeLayoutVisibility(t *testing.T) {
 		Focused: "super",
 		Hidden:  map[string]bool{"eng2": true},
 	}
-	plan := computeLayout(state, panes, 200, 100)
+	plan := computeLayout(state, toPaneViews(panes), 200, 100)
 	if len(plan.Panes) != 3 {
 		t.Fatalf("visible panes = %d, want 3", len(plan.Panes))
 	}
 	for _, pr := range plan.Panes {
-		if pr.Pane.name == "eng2" {
+		if pr.Pane.Name() == "eng2" {
 			t.Error("hidden pane eng2 should not be in the plan")
 		}
 	}
@@ -72,7 +86,7 @@ func TestComputeLayoutVisibility(t *testing.T) {
 func TestComputeLayoutAllVisible(t *testing.T) {
 	panes := []*Pane{newTestPane("a", true), newTestPane("b", true)}
 	state := LayoutState{Mode: LayoutGrid, GridCols: 2, GridRows: 1, Focused: "a", Hidden: map[string]bool{}}
-	plan := computeLayout(state, panes, 200, 100)
+	plan := computeLayout(state, toPaneViews(panes), 200, 100)
 	if len(plan.Panes) != 2 {
 		t.Fatalf("visible panes = %d, want 2", len(plan.Panes))
 	}
@@ -81,7 +95,7 @@ func TestComputeLayoutAllVisible(t *testing.T) {
 func TestComputeLayoutAllHiddenOld(t *testing.T) {
 	panes := []*Pane{newTestPane("a", false), newTestPane("b", false)}
 	state := LayoutState{Mode: LayoutGrid, Focused: "a", Hidden: map[string]bool{"a": true, "b": true}}
-	plan := computeLayout(state, panes, 200, 100)
+	plan := computeLayout(state, toPaneViews(panes), 200, 100)
 	if len(plan.Panes) != 0 {
 		t.Fatalf("visible panes = %d, want 0", len(plan.Panes))
 	}
@@ -95,7 +109,7 @@ func TestVisibleCountFromState(t *testing.T) {
 		newTestPane("qa1", false),
 	}
 	tui := &TUI{
-		panes:       panes,
+		panes:       toPaneViews(panes),
 		layoutState: LayoutState{Hidden: map[string]bool{"eng1": true, "qa1": true}},
 	}
 	if tui.visibleCountFromState() != 2 {
@@ -112,7 +126,7 @@ func TestCycleFocusSkipsHidden(t *testing.T) {
 		newTestPane("qa2", true),
 	}
 	tui := &TUI{
-		panes: panes,
+		panes: toPaneViews(panes),
 		layoutState: LayoutState{
 			Focused: "super",
 			Hidden:  map[string]bool{"eng1": true, "qa1": true},
@@ -147,7 +161,7 @@ func TestCycleFocusSkipsHidden(t *testing.T) {
 func TestCycleFocusAllHidden(t *testing.T) {
 	panes := []*Pane{newTestPane("a", false), newTestPane("b", false)}
 	tui := &TUI{
-		panes: panes,
+		panes: toPaneViews(panes),
 		layoutState: LayoutState{
 			Focused: "a",
 			Hidden:  map[string]bool{"a": true, "b": true},
@@ -173,7 +187,7 @@ func TestComputeLayoutHiddenPaneFocusBug(t *testing.T) {
 		Focused: "eng1", // hidden!
 		Hidden:  map[string]bool{"eng1": true},
 	}
-	plan := computeLayout(state, panes, 200, 100)
+	plan := computeLayout(state, toPaneViews(panes), 200, 100)
 
 	if len(plan.Panes) != 1 {
 		t.Fatalf("focus mode: got %d pane renders, want 1", len(plan.Panes))
@@ -184,7 +198,7 @@ func TestComputeLayoutHiddenPaneFocusBug(t *testing.T) {
 	if plan.ValidatedFocus != "super" {
 		t.Errorf("focus should snap to first visible (super), got %q", plan.ValidatedFocus)
 	}
-	if plan.Panes[0].Pane.name != "super" {
-		t.Errorf("rendered pane should be super, got %q", plan.Panes[0].Pane.name)
+	if plan.Panes[0].Pane.Name() != "super" {
+		t.Errorf("rendered pane should be super, got %q", plan.Panes[0].Pane.Name())
 	}
 }

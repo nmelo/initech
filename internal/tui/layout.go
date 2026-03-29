@@ -52,7 +52,7 @@ type RenderPlan struct {
 
 // PaneRender describes how to render a single pane.
 type PaneRender struct {
-	Pane    *Pane
+	Pane    PaneView
 	Region  Region
 	Index   int  // 1-based pane number (position in full pane list).
 	Focused bool // Receives keyboard input.
@@ -69,7 +69,7 @@ type Divider struct {
 // computeLayout takes layout intent + pane list + screen dimensions and
 // produces the complete render plan. ALL visibility, sizing, positioning,
 // focus validation, and divider calculation lives here.
-func computeLayout(state LayoutState, panes []*Pane, screenW, screenH int) RenderPlan {
+func computeLayout(state LayoutState, panes []PaneView, screenW, screenH int) RenderPlan {
 	plan := RenderPlan{ScreenW: screenW, ScreenH: screenH}
 	if len(panes) == 0 || screenW < 1 || screenH < 1 {
 		return plan
@@ -78,13 +78,13 @@ func computeLayout(state LayoutState, panes []*Pane, screenW, screenH int) Rende
 	// Build pane index map (1-based, from position in full pane list).
 	paneIndex := make(map[string]int, len(panes))
 	for i, p := range panes {
-		paneIndex[p.name] = i + 1
+		paneIndex[p.Name()] = i + 1
 	}
 
 	// 1. Filter visible panes (preserve order).
-	visible := make([]*Pane, 0, len(panes))
+	visible := make([]PaneView, 0, len(panes))
 	for _, p := range panes {
-		if !state.Hidden[p.name] {
+		if !state.Hidden[p.Name()] {
 			visible = append(visible, p)
 		}
 	}
@@ -97,13 +97,13 @@ func computeLayout(state LayoutState, panes []*Pane, screenW, screenH int) Rende
 	focus := state.Focused
 	focusValid := false
 	for _, p := range visible {
-		if p.name == focus {
+		if p.Name() == focus {
 			focusValid = true
 			break
 		}
 	}
 	if !focusValid {
-		focus = visible[0].name
+		focus = visible[0].Name()
 	}
 	plan.ValidatedFocus = focus
 
@@ -115,11 +115,11 @@ func computeLayout(state LayoutState, panes []*Pane, screenW, screenH int) Rende
 		// Single pane: find the focused one, give it the full screen.
 		regions = []Region{{X: 0, Y: 0, W: screenW, H: screenH}}
 		for _, p := range visible {
-			if p.name == focus {
+			if p.Name() == focus {
 				plan.Panes = append(plan.Panes, PaneRender{
 					Pane:    p,
 					Region:  regions[0],
-					Index:   paneIndex[p.name],
+					Index:   paneIndex[p.Name()],
 					Focused: true,
 					Dimmed:  false,
 				})
@@ -148,9 +148,9 @@ func computeLayout(state LayoutState, panes []*Pane, screenW, screenH int) Rende
 		plan.Panes = append(plan.Panes, PaneRender{
 			Pane:    p,
 			Region:  regions[i],
-			Index:   paneIndex[p.name],
-			Focused: p.name == focus,
-			Dimmed:  p.name != focus,
+			Index:   paneIndex[p.Name()],
+			Focused: p.Name() == focus,
+			Dimmed:  p.Name() != focus,
 		})
 	}
 
@@ -493,7 +493,7 @@ func DeleteLayout(projectRoot string) error {
 // reorderPanes rearranges the panes slice to match the given order.
 // Names in order that don't match a pane are skipped. Panes not in order
 // are appended at the end in their current relative order.
-func reorderPanes(panes []*Pane, order []string) {
+func reorderPanes(panes []PaneView, order []string) {
 	if len(order) == 0 {
 		return
 	}
@@ -501,12 +501,12 @@ func reorderPanes(panes []*Pane, order []string) {
 	// in the explicit order would be appended in random map iteration order,
 	// causing non-deterministic positioning for hot-added panes or incomplete
 	// order lists loaded from a prior session.
-	orig := make([]*Pane, len(panes))
+	orig := make([]PaneView, len(panes))
 	copy(orig, panes)
 
-	byName := make(map[string]*Pane, len(panes))
+	byName := make(map[string]PaneView, len(panes))
 	for _, p := range panes {
-		byName[p.name] = p
+		byName[p.Name()] = p
 	}
 	placed := make(map[string]bool, len(order))
 	idx := 0
@@ -519,9 +519,9 @@ func reorderPanes(panes []*Pane, order []string) {
 	}
 	// Append unspecified panes in their original slice order.
 	for _, p := range orig {
-		if !placed[p.name] {
+		if !placed[p.Name()] {
 			panes[idx] = p
-			placed[p.name] = true
+			placed[p.Name()] = true
 			idx++
 		}
 	}

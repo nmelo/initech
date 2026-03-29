@@ -15,10 +15,10 @@ func TestHideCommand(t *testing.T) {
 	tui.layoutState.GridCols, tui.layoutState.GridRows = 2, 2
 
 	tui.execCmd("hide eng2")
-	if !tui.layoutState.Hidden[tui.panes[2].name] {
+	if !tui.layoutState.Hidden[tui.panes[2].Name()] {
 		t.Error("eng2 should be hidden after hide command")
 	}
-	if tui.layoutState.Hidden[tui.panes[0].name] || tui.layoutState.Hidden[tui.panes[1].name] || tui.layoutState.Hidden[tui.panes[3].name] {
+	if tui.layoutState.Hidden[tui.panes[0].Name()] || tui.layoutState.Hidden[tui.panes[1].Name()] || tui.layoutState.Hidden[tui.panes[3].Name()] {
 		t.Error("other panes should remain visible")
 	}
 }
@@ -31,7 +31,7 @@ func TestHideLastVisiblePaneFails(t *testing.T) {
 
 	tui.execCmd("hide super")
 	tui.execCmd("hide eng1")
-	if tui.layoutState.Hidden[tui.panes[1].name] {
+	if tui.layoutState.Hidden[tui.panes[1].Name()] {
 		t.Error("should not be able to hide the last visible pane")
 	}
 	if tui.cmd.error != "cannot hide last visible pane" {
@@ -49,7 +49,7 @@ func TestHideAllFails(t *testing.T) {
 	if tui.cmd.error != "cannot hide all panes" {
 		t.Errorf("expected error, got %q", tui.cmd.error)
 	}
-	if tui.layoutState.Hidden[tui.panes[0].name] || tui.layoutState.Hidden[tui.panes[1].name] {
+	if tui.layoutState.Hidden[tui.panes[0].Name()] || tui.layoutState.Hidden[tui.panes[1].Name()] {
 		t.Error("hide all should not change visibility")
 	}
 }
@@ -85,8 +85,8 @@ func TestUnhideAllCommand(t *testing.T) {
 
 	tui.execCmd("unhide all")
 	for _, p := range tui.panes {
-		if tui.layoutState.Hidden[p.name] {
-			t.Errorf("pane %q should be visible after unhide all", p.name)
+		if tui.layoutState.Hidden[p.Name()] {
+			t.Errorf("pane %q should be visible after unhide all", p.Name())
 		}
 	}
 }
@@ -99,10 +99,10 @@ func TestShowReorder(t *testing.T) {
 	)
 
 	tui.execCmd("show eng2, eng1")
-	if tui.panes[0].name != "eng2" || tui.panes[1].name != "eng1" || tui.panes[2].name != "super" {
+	if tui.panes[0].Name() != "eng2" || tui.panes[1].Name() != "eng1" || tui.panes[2].Name() != "super" {
 		names := make([]string, len(tui.panes))
 		for i, p := range tui.panes {
-			names[i] = p.name
+			names[i] = p.Name()
 		}
 		t.Errorf("show reorder: got %v, want [eng2 eng1 super]", names)
 	}
@@ -118,16 +118,16 @@ func TestViewCommand(t *testing.T) {
 
 	tui.execCmd("view super qa1")
 
-	if tui.layoutState.Hidden[tui.panes[0].name] {
+	if tui.layoutState.Hidden[tui.panes[0].Name()] {
 		t.Error("super should be visible")
 	}
-	if !tui.layoutState.Hidden[tui.panes[1].name] {
+	if !tui.layoutState.Hidden[tui.panes[1].Name()] {
 		t.Error("eng1 should be hidden")
 	}
-	if !tui.layoutState.Hidden[tui.panes[2].name] {
+	if !tui.layoutState.Hidden[tui.panes[2].Name()] {
 		t.Error("eng2 should be hidden")
 	}
-	if tui.layoutState.Hidden[tui.panes[3].name] {
+	if tui.layoutState.Hidden[tui.panes[3].Name()] {
 		t.Error("qa1 should be visible")
 	}
 }
@@ -143,7 +143,7 @@ func TestViewUnknownAgentFails(t *testing.T) {
 		t.Error("expected error for unknown agent in view")
 	}
 	// Nothing should have changed since validation failed.
-	if tui.layoutState.Hidden[tui.panes[0].name] || tui.layoutState.Hidden[tui.panes[1].name] {
+	if tui.layoutState.Hidden[tui.panes[0].Name()] || tui.layoutState.Hidden[tui.panes[1].Name()] {
 		t.Error("visibility should not change on validation failure")
 	}
 }
@@ -175,7 +175,7 @@ func TestComputeLayoutMoveFocusFromHidden(t *testing.T) {
 		Focused: "a", // Hidden pane.
 		Hidden:  map[string]bool{"a": true, "c": true},
 	}
-	plan := computeLayout(state, panes, 200, 100)
+	plan := computeLayout(state, toPaneViews(panes), 200, 100)
 
 	if plan.ValidatedFocus != "b" {
 		t.Errorf("focus = %q, want b (first visible pane)", plan.ValidatedFocus)
@@ -188,7 +188,7 @@ func TestFindPaneByName(t *testing.T) {
 		newTestPane("eng1", true),
 	)
 
-	if p := tui.findPaneByName("eng1"); p == nil || p.name != "eng1" {
+	if p := tui.findPaneByName("eng1"); p == nil || p.Name() != "eng1" {
 		t.Error("findPaneByName should find eng1")
 	}
 	if p := tui.findPaneByName("nonexistent"); p != nil {

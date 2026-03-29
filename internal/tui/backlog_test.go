@@ -57,12 +57,12 @@ func TestQueryBdReady_InvalidJSON(t *testing.T) {
 func TestIdleAgentsWithoutBead(t *testing.T) {
 	t.Helper()
 	tui := &TUI{
-		panes: []*Pane{
+		panes: toPaneViews([]*Pane{
 			{name: "eng1", alive: true, activity: StateIdle, beadID: ""},       // idle, no bead -> included
 			{name: "eng2", alive: true, activity: StateRunning, beadID: ""},    // running -> excluded
 			{name: "eng3", alive: true, activity: StateIdle, beadID: "ini-x.1"}, // has bead -> excluded
 			{name: "eng4", alive: false, activity: StateIdle, beadID: ""},      // dead -> excluded
-		},
+		}),
 	}
 	got := tui.idleAgentsWithoutBead()
 	if len(got) != 1 || got[0] != "eng1" {
@@ -72,10 +72,10 @@ func TestIdleAgentsWithoutBead(t *testing.T) {
 
 func TestIdleAgentsWithoutBead_AllBusy(t *testing.T) {
 	tui := &TUI{
-		panes: []*Pane{
+		panes: toPaneViews([]*Pane{
 			{name: "eng1", alive: true, activity: StateRunning},
 			{name: "eng2", alive: true, activity: StateRunning},
-		},
+		}),
 	}
 	got := tui.idleAgentsWithoutBead()
 	if len(got) != 0 {
@@ -88,9 +88,9 @@ func TestWatchBacklog_EmitsEventForIdleAgent(t *testing.T) {
 	tui := &TUI{
 		quitCh:      quitCh,
 		agentEvents: make(chan AgentEvent, 8),
-		panes: []*Pane{
+		panes: toPaneViews([]*Pane{
 			{name: "eng1", alive: true, activity: StateIdle, beadID: ""},
-		},
+		}),
 	}
 
 	runner := &iexec.FakeRunner{Output: fakeBeads(2)}
@@ -130,9 +130,9 @@ func TestWatchBacklog_EmitsEventForIdleAgent(t *testing.T) {
 func TestWatchBacklog_NoEventWhenNoReadyBeads(t *testing.T) {
 	tui := &TUI{
 		agentEvents: make(chan AgentEvent, 8),
-		panes: []*Pane{
+		panes: toPaneViews([]*Pane{
 			{name: "eng1", alive: true, activity: StateIdle, beadID: ""},
-		},
+		}),
 	}
 	runner := &iexec.FakeRunner{Output: fakeBeads(0)}
 
@@ -149,9 +149,9 @@ func TestWatchBacklog_NoEventWhenNoReadyBeads(t *testing.T) {
 func TestWatchBacklog_NoEventWhenNoIdleAgents(t *testing.T) {
 	tui := &TUI{
 		agentEvents: make(chan AgentEvent, 8),
-		panes: []*Pane{
+		panes: toPaneViews([]*Pane{
 			{name: "eng1", alive: true, activity: StateRunning, beadID: "ini-x.1"},
-		},
+		}),
 	}
 	runner := &iexec.FakeRunner{Output: fakeBeads(3)}
 

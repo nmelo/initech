@@ -73,7 +73,7 @@ func newTUIWithPipePane(t *testing.T) (*TUI, *os.File) {
 	p := &Pane{name: "eng1", ptmx: w, alive: true, visible: true}
 	tui := &TUI{
 		layoutState: LayoutState{Focused: "eng1"},
-		panes:       []*Pane{p},
+		panes: toPaneViews([]*Pane{p}),
 		agentEvents: make(chan AgentEvent, 8),
 		quitCh:      make(chan struct{}),
 	}
@@ -84,7 +84,7 @@ func TestHandleEventPasteStartForwardedToPTY(t *testing.T) {
 	tui, r := newTUIWithPipePane(t)
 
 	tui.handleEvent(tcell.NewEventPaste(true))
-	tui.panes[0].ptmx.Close()
+	tui.panes[0].(*Pane).ptmx.Close()
 
 	got, err := io.ReadAll(r)
 	if err != nil {
@@ -99,7 +99,7 @@ func TestHandleEventPasteEndForwardedToPTY(t *testing.T) {
 	tui, r := newTUIWithPipePane(t)
 
 	tui.handleEvent(tcell.NewEventPaste(false))
-	tui.panes[0].ptmx.Close()
+	tui.panes[0].(*Pane).ptmx.Close()
 
 	got, err := io.ReadAll(r)
 	if err != nil {
@@ -115,7 +115,7 @@ func TestHandleEventPasteNoFocusedPane(t *testing.T) {
 	// handleEvent must not panic.
 	tui := &TUI{
 		layoutState: LayoutState{Focused: "nobody"},
-		panes:       []*Pane{},
+		panes: toPaneViews([]*Pane{}),
 		agentEvents: make(chan AgentEvent, 8),
 		quitCh:      make(chan struct{}),
 	}

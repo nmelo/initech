@@ -18,7 +18,7 @@ func TestRender_UpdateActivity_OverridesManualRunning(t *testing.T) {
 	tui, s := newTestTUIWithScreen("eng1")
 	tui.layoutState.Overlay = true
 	// Manually set running state — render() must override this via updateActivity().
-	tui.panes[0].activity = StateRunning
+	tui.panes[0].(*Pane).activity = StateRunning
 	// lastOutputTime is zero → updateActivity() returns StateIdle.
 	tui.render()
 
@@ -43,7 +43,7 @@ func TestRender_UpdateActivity_OverridesManualRunning(t *testing.T) {
 func TestRender_UpdateActivity_RecentOutputYieldsRunning(t *testing.T) {
 	tui, s := newTestTUIWithScreen("eng1")
 	tui.layoutState.Overlay = true
-	tui.panes[0].lastOutputTime = time.Now() // simulate active PTY output
+	tui.panes[0].(*Pane).lastOutputTime = time.Now() // simulate active PTY output
 	tui.render()
 
 	sw, _ := s.Size()
@@ -67,7 +67,7 @@ func TestRender_UpdateActivity_RecentOutputYieldsRunning(t *testing.T) {
 func TestRender_UpdateActivity_StaleOutputYieldsIdle(t *testing.T) {
 	tui, s := newTestTUIWithScreen("eng1")
 	tui.layoutState.Overlay = true
-	tui.panes[0].lastOutputTime = time.Now().Add(-(ptyIdleTimeout + time.Second))
+	tui.panes[0].(*Pane).lastOutputTime = time.Now().Add(-(ptyIdleTimeout + time.Second))
 	tui.render()
 
 	sw, _ := s.Size()
@@ -92,8 +92,8 @@ func TestRender_UpdateActivity_DeadPaneIsIdle(t *testing.T) {
 	// distinct from idle (gray hollow circle).
 	tui, s := newTestTUIWithScreen("eng1")
 	tui.layoutState.Overlay = true
-	tui.panes[0].alive = false
-	tui.panes[0].lastOutputTime = time.Now() // recent, but pane is dead
+	tui.panes[0].(*Pane).alive = false
+	tui.panes[0].(*Pane).lastOutputTime = time.Now() // recent, but pane is dead
 	tui.render()
 
 	sw, _ := s.Size()

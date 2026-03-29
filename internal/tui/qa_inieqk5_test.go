@@ -69,8 +69,8 @@ func TestUpdateActivity_DeadNotSuspended(t *testing.T) {
 // dot for suspended agents.
 func TestOverlayDot_SuspendedIsBlueHollow(t *testing.T) {
 	tui, s := newTestTUIWithScreen("eng1")
-	tui.panes[0].alive = false
-	tui.panes[0].suspended = true
+	tui.panes[0].(*Pane).alive = false
+	tui.panes[0].(*Pane).suspended = true
 	tui.layoutState.Overlay = true
 	tui.render()
 

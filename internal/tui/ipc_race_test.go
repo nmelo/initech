@@ -86,7 +86,7 @@ func TestRunOnMain_SerializesAccess(t *testing.T) {
 	tui := &TUI{
 		quitCh: quitCh,
 		ipcCh:  ipcCh,
-		panes:  []*Pane{{name: "eng1"}, {name: "eng2"}},
+		panes: toPaneViews([]*Pane{{name: "eng1"}, {name: "eng2"}}),
 	}
 
 	// Simulate main loop.
