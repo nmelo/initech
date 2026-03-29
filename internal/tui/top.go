@@ -203,9 +203,20 @@ func (t *TUI) renderTop() {
 		drawField(s, x, row, statusW, status, style)
 	}
 
-	// Title (centered).
+	// Title (centered). Green when any agent is running, blue when all idle.
 	title := " initech top "
-	titleStyle := tcell.StyleDefault.Background(tcell.ColorDodgerBlue).Foreground(tcell.ColorBlack).Bold(true)
+	anyRunning := false
+	for _, pv := range t.panes {
+		if pv.Activity() == StateRunning {
+			anyRunning = true
+			break
+		}
+	}
+	bg := tcell.ColorDodgerBlue
+	if anyRunning {
+		bg = tcell.ColorDarkGreen
+	}
+	titleStyle := tcell.StyleDefault.Background(bg).Foreground(tcell.ColorBlack).Bold(true)
 	titleStart := (sw - len([]rune(title))) / 2
 	if titleStart < 0 {
 		titleStart = 0

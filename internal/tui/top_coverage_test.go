@@ -64,6 +64,52 @@ func TestRenderTop_TitleVisible(t *testing.T) {
 	}
 }
 
+func TestRenderTop_TitleGreenWhenRunning(t *testing.T) {
+	tui, s := topTestTUI([]topEntry{
+		{Name: "eng1", PID: 100, Status: "running"},
+	})
+	// Mark the pane as having recent output so Activity() returns StateRunning.
+	if lp, ok := tui.panes[0].(*Pane); ok {
+		lp.mu.Lock()
+		lp.alive = true
+		lp.lastOutputTime = time.Now()
+		lp.mu.Unlock()
+	}
+	tui.renderTop()
+
+	// Find the title text and check its background color.
+	sw, _ := s.Size()
+	titleStart := (sw - len(" initech top ")) / 2
+	_, _, style, _ := s.GetContent(titleStart+1, 0)
+	_, bg, _ := style.Decompose()
+	if bg != tcell.ColorDarkGreen {
+		t.Errorf("title bg with running agent = %v, want DarkGreen", bg)
+	}
+}
+
+func TestRenderTop_TitleBlueWhenAllIdle(t *testing.T) {
+	tui, s := topTestTUI([]topEntry{
+		{Name: "eng1", PID: 100, Status: "idle"},
+	})
+	// Pane alive but no recent output -> StateIdle.
+	if lp, ok := tui.panes[0].(*Pane); ok {
+		lp.mu.Lock()
+		lp.alive = true
+		lp.activity = StateIdle
+		lp.lastOutputTime = time.Time{} // zero = no output ever
+		lp.mu.Unlock()
+	}
+	tui.renderTop()
+
+	sw, _ := s.Size()
+	titleStart := (sw - len(" initech top ")) / 2
+	_, _, style, _ := s.GetContent(titleStart+1, 0)
+	_, bg, _ := style.Decompose()
+	if bg != tcell.ColorDodgerBlue {
+		t.Errorf("title bg with all idle = %v, want DodgerBlue", bg)
+	}
+}
+
 func TestRenderTop_HeaderRow(t *testing.T) {
 	tui, s := topTestTUI([]topEntry{
 		{Name: "eng1", Status: "idle"},
