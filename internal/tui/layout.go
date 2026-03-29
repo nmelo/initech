@@ -497,6 +497,13 @@ func reorderPanes(panes []*Pane, order []string) {
 	if len(order) == 0 {
 		return
 	}
+	// Snapshot the original order before mutating. Without this, panes not
+	// in the explicit order would be appended in random map iteration order,
+	// causing non-deterministic positioning for hot-added panes or incomplete
+	// order lists loaded from a prior session.
+	orig := make([]*Pane, len(panes))
+	copy(orig, panes)
+
 	byName := make(map[string]*Pane, len(panes))
 	for _, p := range panes {
 		byName[p.name] = p
@@ -510,7 +517,8 @@ func reorderPanes(panes []*Pane, order []string) {
 			idx++
 		}
 	}
-	for _, p := range byName {
+	// Append unspecified panes in their original slice order.
+	for _, p := range orig {
 		if !placed[p.name] {
 			panes[idx] = p
 			placed[p.name] = true
