@@ -274,7 +274,7 @@ func (t *TUI) renderStatusBar() {
 // every tipRotationInterval, teaching one feature at a time.
 var statusTips = []string{
 	"Press backtick to open the command bar",
-	"Press ? for the full command reference",
+	"Press ` then ? for the full command reference",
 	"Try Alt+z to zoom the focused pane",
 	"Use Alt+Left/Right to switch panes",
 	"Alt+s toggles the agent status overlay",
