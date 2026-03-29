@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"bufio"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net"
@@ -13,11 +15,13 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/hashicorp/yamux"
 	"golang.org/x/term"
 
 	"github.com/nmelo/initech/internal/color"
 	"github.com/nmelo/initech/internal/config"
 	"github.com/nmelo/initech/internal/roles"
+	"github.com/nmelo/initech/internal/tui"
 	"github.com/spf13/cobra"
 )
 
@@ -54,7 +58,14 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 		fmt.Fprintf(out, "\n%s\n", color.Dim("No initech.yaml found. Run 'initech init' to set up."))
 	}
 
-	// Section 3: Terminal Environment
+	// Section 3: Remote Connectivity (if remotes configured)
+	if err == nil {
+		if proj, loadErr := config.Load(cfgPath); loadErr == nil && len(proj.Remotes) > 0 {
+			checkRemotes(out, proj, state)
+		}
+	}
+
+	// Section 4: Terminal Environment
 	checkEnvironment(out)
 
 	// Summary
@@ -378,6 +389,93 @@ func printEnv(out io.Writer, label, value string) {
 func fileExists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil
+}
+
+// checkRemotes tests connectivity to each configured remote peer.
+func checkRemotes(out io.Writer, proj *config.Project, state *doctorState) {
+	fmt.Fprintf(out, "\n%s\n", color.CyanBold("Remote Connectivity"))
+
+	for peerName, remote := range proj.Remotes {
+		// TCP dial with timeout.
+		conn, err := net.DialTimeout("tcp", remote.Addr, 5*time.Second)
+		if err != nil {
+			printCheck(out, peerName,
+				fmt.Sprintf("%s: unreachable (%s)", remote.Addr, err), "WARNING")
+			state.warnings++
+			continue
+		}
+
+		// Attempt yamux + hello handshake.
+		session, err := yamux.Client(conn, yamux.DefaultConfig())
+		if err != nil {
+			conn.Close()
+			printCheck(out, peerName,
+				fmt.Sprintf("%s: yamux failed (%s)", remote.Addr, err), "WARNING")
+			state.warnings++
+			continue
+		}
+
+		ctrl, err := session.Open()
+		if err != nil {
+			session.Close()
+			printCheck(out, peerName,
+				fmt.Sprintf("%s: control stream failed (%s)", remote.Addr, err), "WARNING")
+			state.warnings++
+			continue
+		}
+
+		// Send hello.
+		token := remote.Token
+		if token == "" {
+			token = proj.Token
+		}
+		hello := tui.HelloMsg{
+			Action:   "hello",
+			Version:  1,
+			Token:    token,
+			PeerName: proj.PeerName,
+		}
+		data, _ := json.Marshal(hello)
+		ctrl.Write(data)
+		ctrl.Write([]byte("\n"))
+
+		// Read hello_ok.
+		scanner := bufio.NewScanner(ctrl)
+		ctrl.SetReadDeadline(time.Now().Add(5 * time.Second))
+		if !scanner.Scan() {
+			ctrl.Close()
+			session.Close()
+			printCheck(out, peerName,
+				fmt.Sprintf("%s: no response to hello", remote.Addr), "WARNING")
+			state.warnings++
+			continue
+		}
+
+		var helloOK tui.HelloOKMsg
+		if err := json.Unmarshal(scanner.Bytes(), &helloOK); err != nil || helloOK.Action != "hello_ok" {
+			// Check if it was an error response.
+			var errMsg tui.ErrorMsg
+			json.Unmarshal(scanner.Bytes(), &errMsg)
+			ctrl.Close()
+			session.Close()
+			if errMsg.Error != "" {
+				printCheck(out, peerName,
+					fmt.Sprintf("%s: %s", remote.Addr, errMsg.Error), "WARNING")
+			} else {
+				printCheck(out, peerName,
+					fmt.Sprintf("%s: unexpected response", remote.Addr), "WARNING")
+			}
+			state.warnings++
+			continue
+		}
+
+		ctrl.Close()
+		session.Close()
+
+		printCheck(out, peerName,
+			fmt.Sprintf("%s (peer: %s, %d agents)",
+				remote.Addr, helloOK.PeerName, len(helloOK.Agents)), "ok")
+	}
 }
 
 // getVersion runs versionCmd and extracts a version-looking token.

@@ -420,6 +420,7 @@ func peekContent(p PaneView, lines int) string {
 func (t *TUI) handleIPCList(conn net.Conn) {
 	type paneInfo struct {
 		Name     string `json:"name"`
+		Host     string `json:"host,omitempty"`
 		Activity string `json:"activity"`
 		Alive    bool   `json:"alive"`
 		Visible  bool   `json:"visible"`
@@ -430,6 +431,7 @@ func (t *TUI) handleIPCList(conn net.Conn) {
 		for i, p := range t.panes {
 			panes[i] = paneInfo{
 				Name:     p.Name(),
+				Host:     p.Host(),
 				Activity: p.Activity().String(),
 				Alive:    p.IsAlive(),
 				Visible:  !t.layoutState.Hidden[p.Name()],

@@ -32,6 +32,7 @@ type beadInfo struct {
 // paneInfo matches the JSON returned by the IPC "list" action.
 type paneInfo struct {
 	Name     string `json:"name"`
+	Host     string `json:"host,omitempty"`
 	Activity string `json:"activity"`
 	Alive    bool   `json:"alive"`
 	Visible  bool   `json:"visible"`
@@ -74,6 +75,15 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	// Check if any pane is remote (has a non-empty host).
+	hasRemotes := false
+	for _, pi := range panes {
+		if pi.Host != "" {
+			hasRemotes = true
+			break
+		}
+	}
+
 	header := fmt.Sprintf("Session: %s (%d agents", p.Name, running)
 	if stopped > 0 {
 		header += fmt.Sprintf(", %d stopped", stopped)
@@ -82,12 +92,23 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	fmt.Fprintf(out, "\n%s\n\n", color.Bold(header))
 
 	// Header row: cyan, padded before coloring so alignment holds.
-	fmt.Fprintf(out, "  %s %s %s %s\n",
-		color.Pad(color.Cyan("Role"), 10),
-		color.Pad(color.Cyan("Alive"), 8),
-		color.Pad(color.Cyan("Bead"), 38),
-		color.Cyan("Status"),
-	)
+	// Include HOST column only when remotes are present.
+	if hasRemotes {
+		fmt.Fprintf(out, "  %s %s %s %s %s\n",
+			color.Pad(color.Cyan("Role"), 18),
+			color.Pad(color.Cyan("Host"), 12),
+			color.Pad(color.Cyan("Alive"), 8),
+			color.Pad(color.Cyan("Bead"), 38),
+			color.Cyan("Status"),
+		)
+	} else {
+		fmt.Fprintf(out, "  %s %s %s %s\n",
+			color.Pad(color.Cyan("Role"), 10),
+			color.Pad(color.Cyan("Alive"), 8),
+			color.Pad(color.Cyan("Bead"), 38),
+			color.Cyan("Status"),
+		)
+	}
 
 	for _, pi := range panes {
 		alive := color.Green("yes")
@@ -103,6 +124,12 @@ func runStatus(cmd *cobra.Command, args []string) error {
 			status += " " + color.Dim("[hidden]")
 		}
 
+		// For remote panes, use host:name as display name.
+		displayName := pi.Name
+		if pi.Host != "" {
+			displayName = pi.Host + ":" + pi.Name
+		}
+
 		if b, ok := beadMap[pi.Name]; ok {
 			title := b.Title
 			if len(title) > 30 {
@@ -114,12 +141,26 @@ func runStatus(cmd *cobra.Command, args []string) error {
 			}
 		}
 
-		fmt.Fprintf(out, "  %s %s %s %s\n",
-			color.Pad(color.Blue(pi.Name), 10),
-			color.Pad(alive, 8),
-			color.Pad(bead, 38),
-			status,
-		)
+		if hasRemotes {
+			host := color.Dim("local")
+			if pi.Host != "" {
+				host = color.Cyan(pi.Host)
+			}
+			fmt.Fprintf(out, "  %s %s %s %s %s\n",
+				color.Pad(color.Blue(displayName), 18),
+				color.Pad(host, 12),
+				color.Pad(alive, 8),
+				color.Pad(bead, 38),
+				status,
+			)
+		} else {
+			fmt.Fprintf(out, "  %s %s %s %s\n",
+				color.Pad(color.Blue(displayName), 10),
+				color.Pad(alive, 8),
+				color.Pad(bead, 38),
+				status,
+			)
+		}
 	}
 	fmt.Fprintln(out)
 
