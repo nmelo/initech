@@ -294,7 +294,7 @@ func (p *Pane) renderActivityBar(s *clampedScreen, r Region) {
 	if cycle <= 0 {
 		return
 	}
-	const kittCycleSec = 3.0
+	const kittCycleSec = 4.0
 	elapsed := time.Since(p.kittEpoch).Seconds()
 	frac := math.Mod(elapsed, kittCycleSec) / kittCycleSec
 	pos := frac * float64(cycle)
