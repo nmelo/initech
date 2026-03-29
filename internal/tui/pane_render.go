@@ -288,14 +288,15 @@ func (p *Pane) renderActivityBar(s *clampedScreen, r Region) {
 		return
 	}
 
-	// KITT scanner: gaussian brightness peak sweeping left-right (~2.5s cycle).
+	// KITT scanner: gaussian brightness peak sweeping left-right (~3s cycle).
 	w := r.W
 	cycle := (w - 1) * 2
 	if cycle <= 0 {
 		return
 	}
+	const kittCycleSec = 3.0
 	elapsed := time.Since(p.kittEpoch).Seconds()
-	frac := math.Mod(elapsed, 2.5) / 2.5
+	frac := math.Mod(elapsed, kittCycleSec) / kittCycleSec
 	pos := frac * float64(cycle)
 	if pos >= float64(w) {
 		pos = float64(cycle) - pos
