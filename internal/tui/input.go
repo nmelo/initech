@@ -250,14 +250,17 @@ func (t *TUI) executeConfirmed() bool {
 		if t.screen != nil {
 			sw, sh := t.screen.Size()
 			style := tcell.StyleDefault.Background(tcell.NewRGBColor(30, 30, 30)).Foreground(tcell.ColorYellow).Bold(true)
-			msg := " Quitting..."
-			y := sh - 2
-			for x := 0; x < sw; x++ {
-				t.screen.SetContent(x, y, ' ', nil, style)
+			// Clear both status bar rows (sh-2 and sh-1) to remove the
+			// confirmation prompt before drawing the quitting message.
+			for _, row := range []int{sh - 2, sh - 1} {
+				for x := 0; x < sw; x++ {
+					t.screen.SetContent(x, row, ' ', nil, style)
+				}
 			}
+			msg := " Quitting..."
 			for i, ch := range msg {
 				if i < sw {
-					t.screen.SetContent(i, y, ch, nil, style)
+					t.screen.SetContent(i, sh-2, ch, nil, style)
 				}
 			}
 			t.screen.Show()
