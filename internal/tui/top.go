@@ -94,6 +94,7 @@ func (t *TUI) handleTopKey(ev *tcell.EventKey) bool {
 				} else {
 					np.eventCh = t.agentEvents
 					np.safeGo = t.safeGo
+					np.pinned = p.pinned
 					np.Start()
 					t.panes[idx] = np
 					t.applyLayout()
