@@ -47,7 +47,7 @@ initech
 `initech` (no subcommand) launches the TUI. All agent panes start simultaneously. Each pane runs Claude with the appropriate permission level.
 
 <p align="center">
-  <video src="assets/demo.mp4" autoplay loop muted playsinline poster="assets/screenshot.png" width="100%"></video>
+  <video src="https://github.com/nmelo/initech/releases/download/v0.23.8/demo.mp4" autoplay loop muted playsinline controls width="100%"></video>
 </p>
 
 ## What You See
