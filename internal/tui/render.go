@@ -353,7 +353,7 @@ func (t *TUI) renderHints() {
 			quotaStyle = barStyle.Foreground(tcell.ColorYellow)
 		}
 		qStart := rightStart - len(quotaText) - 3 // 3 chars for " · " separator
-		if qStart > 0 {
+		if qStart >= 0 {
 			for i, ch := range quotaText {
 				s.SetContent(qStart+i, y, ch, nil, quotaStyle)
 			}

@@ -210,11 +210,17 @@ func (t *TUI) checkSuspendPolicy() {
 
 		// Suspend: close the pane process and mark as suspended.
 		// Must happen on the main goroutine since Close() touches TUI state.
+		// Both suspended and activity must be set: suspended is the persistent
+		// flag that handleIPCSend checks for message queueing, and activity
+		// drives the overlay/ribbon display. Without setting suspended=true,
+		// updateActivity would see alive=false + suspended=false and derive
+		// StateDead instead of StateSuspended.
 		t.runOnMain(func() {
 			victim.pane.sendMu.Lock()
 			victim.pane.Close()
 			victim.pane.sendMu.Unlock()
 			victim.pane.mu.Lock()
+			victim.pane.suspended = true
 			victim.pane.activity = StateSuspended
 			victim.pane.mu.Unlock()
 		})
