@@ -255,14 +255,14 @@ func (d *Daemon) handleConnection(conn net.Conn) {
 	}
 	var streams []agentStream
 
-	for i, p := range d.panes {
+	for _, p := range d.panes {
 		s, err := session.Open()
 		if err != nil {
 			LogError("daemon", "stream open failed", "agent", p.Name(), "err", err)
 			return
 		}
-		streamID := uint32(i + 1) // 1-based index as stream identifier.
-		streamMap[streamID] = p.Name()
+		ys, _ := s.(*yamux.Stream)
+		streamMap[ys.StreamID()] = p.Name()
 		streams = append(streams, agentStream{pane: p, stream: s})
 	}
 
