@@ -296,9 +296,13 @@ func (p *Pane) SendPaste(start bool) {
 	}
 }
 
-// Resize updates the emulator and PTY dimensions.
+// Resize updates the emulator and PTY dimensions. Holds renderMu to serialize
+// with readLoop writes and Render cell reads, preventing garbled output when
+// the buffer is reorganized during zoom or layout changes (ini-ipr).
 func (p *Pane) Resize(rows, cols int) {
+	p.renderMu.Lock()
 	p.emu.Resize(cols, rows)
+	p.renderMu.Unlock()
 	pty.Setsize(p.ptmx, &pty.Winsize{
 		Rows: uint16(rows),
 		Cols: uint16(cols),

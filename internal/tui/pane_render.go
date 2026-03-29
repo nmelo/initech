@@ -110,12 +110,13 @@ func (p *Pane) Render(screen tcell.Screen, focused bool, dimmed bool, index int,
 
 	// Terminal content (starts at Y+1, fills full width).
 	innerCols, innerRows := r.InnerSize()
-	emuRows := p.emu.Height()
 
-	// Hold renderMu for the entire cell-reading phase to prevent tearing.
-	// Without this, readLoop can call emu.Write() between individual CellAt
-	// calls, mixing old and new screen states within a single frame (ini-45m).
+	// Hold renderMu for the entire cell-reading phase to prevent tearing
+	// from concurrent readLoop writes (ini-45m) and resize buffer
+	// reorganization (ini-ipr). Read emuRows inside the lock so it matches
+	// the buffer state we'll be reading from.
 	p.renderMu.Lock()
+	emuRows := p.emu.Height()
 
 	if p.scrollOffset > 0 {
 		// Scrollback mode: render from the combined scrollback + screen buffer.
