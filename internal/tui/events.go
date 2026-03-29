@@ -25,6 +25,12 @@ const (
 	EventAgentIdleWithBead              // Agent went running->idle while holding a bead.
 	EventAgentSuspended                 // Agent auto-suspended by resource pressure policy.
 	EventAgentResumed                   // Agent resumed from suspension (triggered by message).
+	EventMessageSent                    // Message delivered to an agent via IPC send.
+	EventAgentStarted                   // Agent pane started via IPC.
+	EventAgentStopped                   // Agent pane stopped via IPC.
+	EventAgentRestarted                 // Agent pane restarted via IPC.
+	EventAgentAdded                     // New agent pane added to session.
+	EventAgentRemoved                   // Agent pane removed from session.
 )
 
 // String returns a human-readable label for the event type.
@@ -48,6 +54,18 @@ func (e EventType) String() string {
 		return "suspended"
 	case EventAgentResumed:
 		return "resumed"
+	case EventMessageSent:
+		return "message"
+	case EventAgentStarted:
+		return "started"
+	case EventAgentStopped:
+		return "stopped"
+	case EventAgentRestarted:
+		return "restarted"
+	case EventAgentAdded:
+		return "added"
+	case EventAgentRemoved:
+		return "removed"
 	}
 	return "unknown"
 }
@@ -258,6 +276,18 @@ func (t *TUI) pruneError() {
 		t.cmd.error = ""
 		t.cmd.errorExpiry = time.Time{}
 	}
+}
+
+// logEvent appends an event to the persistent event log without creating a
+// toast notification. Used for high-frequency IPC events (send, peek) that
+// should appear in the log modal but not spam the notification area.
+// Must be called from the main goroutine or via runOnMain.
+func (t *TUI) logEvent(ev AgentEvent) {
+	if ev.Time.IsZero() {
+		ev.Time = time.Now()
+	}
+	t.eventLog = append(t.eventLog, ev)
+	t.pruneEventLog()
 }
 
 // pruneNotifications removes expired notifications.

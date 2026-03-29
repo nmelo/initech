@@ -189,6 +189,19 @@ func (t *TUI) handleIPCSend(conn net.Conn, req IPCRequest) {
 	}
 
 	t.injectText(pane, req.Text, req.Enter)
+
+	// Log the send event (no toast, too frequent).
+	preview := req.Text
+	if len(preview) > 60 {
+		preview = preview[:57] + "..."
+	}
+	t.runOnMain(func() {
+		t.logEvent(AgentEvent{
+			Type:   EventMessageSent,
+			Pane:   req.Target,
+			Detail: "Message sent to " + req.Target + ": " + preview,
+		})
+	})
 	writeIPCResponse(conn, IPCResponse{OK: true})
 }
 

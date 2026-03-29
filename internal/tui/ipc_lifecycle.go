@@ -35,6 +35,11 @@ func (t *TUI) handleIPCStop(conn net.Conn, req IPCRequest) {
 		return
 	}
 	pane.Close()
+	EmitEvent(t.agentEvents, AgentEvent{
+		Type:   EventAgentStopped,
+		Pane:   req.Target,
+		Detail: "Stopped " + req.Target,
+	})
 	writeIPCResponse(conn, IPCResponse{OK: true})
 }
 
@@ -98,6 +103,11 @@ func (t *TUI) handleIPCStart(conn net.Conn, req IPCRequest) {
 		np.Close() // TUI shutting down; clean up the new pane.
 	}
 	LogInfo("pane", "started", "name", req.Target)
+	EmitEvent(t.agentEvents, AgentEvent{
+		Type:   EventAgentStarted,
+		Pane:   req.Target,
+		Detail: "Started " + req.Target,
+	})
 	writeIPCResponse(conn, IPCResponse{OK: true})
 }
 
@@ -161,6 +171,11 @@ func (t *TUI) handleIPCRestart(conn net.Conn, req IPCRequest) {
 		np.Close() // TUI shutting down; clean up the new pane.
 	}
 	LogInfo("pane", "restarted", "name", req.Target)
+	EmitEvent(t.agentEvents, AgentEvent{
+		Type:   EventAgentRestarted,
+		Pane:   req.Target,
+		Detail: "Restarted " + req.Target,
+	})
 	writeIPCResponse(conn, IPCResponse{OK: true})
 }
 
@@ -259,6 +274,11 @@ func (t *TUI) addPane(name string) error {
 		return finalErr
 	}
 	LogInfo("pane", "added", "name", name)
+	EmitEvent(t.agentEvents, AgentEvent{
+		Type:   EventAgentAdded,
+		Pane:   name,
+		Detail: "Added " + name + " to session",
+	})
 	return nil
 }
 
@@ -310,6 +330,11 @@ func (t *TUI) removePane(name string) error {
 		return removeErr
 	}
 	LogInfo("pane", "removed", "name", name)
+	EmitEvent(t.agentEvents, AgentEvent{
+		Type:   EventAgentRemoved,
+		Pane:   name,
+		Detail: "Removed " + name + " from session",
+	})
 	return nil
 }
 
