@@ -52,6 +52,10 @@ initech
   </a>
 </p>
 
+
+https://github.com/user-attachments/assets/46a33951-316c-484f-a2b7-a0bba91df7b6
+
+
 ## What You See
 
 The TUI renders all agent panes in a configurable grid. The bottom ribbon of each pane shows the agent's name and current bead assignment. A floating overlay panel in the top-right shows every agent's activity state (green dot = active, gray = idle, yellow = idle with work waiting) and bead ID.
