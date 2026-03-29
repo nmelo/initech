@@ -205,6 +205,8 @@ func (t *TUI) renderWelcome() {
 		"  Alt+s            Toggle status overlay",
 		"  ?                Full help reference",
 		"",
+		"HINT: ask super how this project works",
+		"",
 		"Press any key to dismiss",
 	}
 
@@ -221,6 +223,7 @@ func (t *TUI) renderWelcome() {
 
 	bgStyle := tcell.StyleDefault.Background(tcell.NewRGBColor(20, 20, 20)).Foreground(tcell.ColorSilver)
 	titleStyle := bgStyle.Foreground(tcell.ColorDodgerBlue).Bold(true)
+	hintStyle := bgStyle.Foreground(tcell.ColorYellow)
 	dimStyle := bgStyle.Foreground(tcell.ColorGray)
 
 	// Draw box background.
@@ -231,6 +234,7 @@ func (t *TUI) renderWelcome() {
 	}
 
 	// Draw lines.
+	const hintLineIdx = 8 // "HINT: ask super..." line
 	for i, line := range lines {
 		y := startY + 1 + i
 		if y >= sh {
@@ -239,8 +243,9 @@ func (t *TUI) renderWelcome() {
 		style := bgStyle
 		if i == 0 {
 			style = titleStyle
-		}
-		if i == len(lines)-1 {
+		} else if i == hintLineIdx {
+			style = hintStyle
+		} else if i == len(lines)-1 {
 			style = dimStyle
 		}
 		for j, ch := range line {
