@@ -288,30 +288,22 @@ func (d *Daemon) handleConnection(conn net.Conn) {
 	LogInfo("daemon", "client disconnected")
 }
 
-// streamAgent copies PTY output to the yamux stream and stream input to
-// the PTY. The PTY output goes to both the local emulator (for activity
-// tracking) and the network stream.
+// streamAgent wires bidirectional PTY streaming between a pane and a yamux
+// stream. Downstream (PTY -> client) flows via the pane's networkSink which
+// readLoop tees bytes to after writing to the emulator. Upstream (client ->
+// PTY) is a simple read loop forwarding keystrokes to the PTY fd.
 func (d *Daemon) streamAgent(p *Pane, stream net.Conn) {
-	// Downstream: PTY -> network stream.
-	// The pane's readLoop already feeds the emulator via the internal pipe.
-	// We need a separate reader from the PTY fd for the network copy.
-	// Since the PTY fd is already consumed by readLoop, we read from the
-	// emulator's output and forward to the stream.
-	//
-	// For now, use a simpler approach: the client will poll the emulator
-	// state via peek commands on the control channel, and we send periodic
-	// snapshots. Full PTY byte streaming requires refactoring readLoop to
-	// tee output, which is Stage 3 work.
-	//
-	// This goroutine stays alive to keep the stream open and handle
-	// upstream (client -> PTY) input.
+	// Wire downstream: readLoop will tee PTY bytes to this stream.
+	p.SetNetworkSink(stream)
+	defer p.ClearNetworkSink()
+
+	// Upstream: client keystrokes -> PTY.
 	buf := make([]byte, 4096)
 	for {
 		n, err := stream.Read(buf)
 		if err != nil {
-			return // Client closed stream.
+			return // Client disconnected.
 		}
-		// Forward client keystrokes to the pane's PTY.
 		if p.ptmx != nil {
 			p.ptmx.Write(buf[:n])
 		}

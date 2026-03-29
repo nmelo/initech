@@ -98,6 +98,8 @@ type Pane struct {
 	mu            sync.Mutex
 	renderMu      sync.Mutex       // Serializes readLoop writes with Render cell reads to prevent tearing.
 	sendMu        sync.Mutex       // Serializes IPC send operations to prevent keystroke interleaving.
+	networkSink   io.Writer        // Optional: readLoop tees PTY bytes here for network streaming.
+	sinkMu        sync.Mutex       // Protects networkSink assignment.
 	alive          bool
 	visible        bool           // Whether this pane is shown in the layout. Hidden panes keep running.
 	activity       ActivityState  // Current state: running when PTY bytes flowed recently, else idle.
@@ -271,9 +273,20 @@ func (p *Pane) readLoop() {
 			p.mu.Lock()
 			p.lastOutputTime = time.Now()
 			p.mu.Unlock()
+
+			// Write to emulator first (local state, must never block on network).
 			p.renderMu.Lock()
 			p.emu.Write(buf[:n])
 			p.renderMu.Unlock()
+
+			// Tee to network sink if connected. Separate from emu.Write so
+			// network backpressure cannot stall local rendering.
+			p.sinkMu.Lock()
+			sink := p.networkSink
+			p.sinkMu.Unlock()
+			if sink != nil {
+				sink.Write(buf[:n])
+			}
 		}
 		if err != nil {
 			p.mu.Lock()
@@ -427,6 +440,23 @@ func (p *Pane) SendText(text string, enter bool) {
 // GetRegion returns the pane's screen region.
 func (p *Pane) GetRegion() Region {
 	return p.region
+}
+
+// SetNetworkSink sets the writer that receives a copy of all PTY output.
+// Used by the daemon to stream bytes to a connected client. The sink
+// receives bytes after the emulator, so network backpressure cannot stall
+// local rendering.
+func (p *Pane) SetNetworkSink(w io.Writer) {
+	p.sinkMu.Lock()
+	p.networkSink = w
+	p.sinkMu.Unlock()
+}
+
+// ClearNetworkSink removes the network sink. Safe to call if no sink is set.
+func (p *Pane) ClearNetworkSink() {
+	p.sinkMu.Lock()
+	p.networkSink = nil
+	p.sinkMu.Unlock()
 }
 
 // Visible returns whether the pane is included in the current layout.

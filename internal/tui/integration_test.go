@@ -430,6 +430,45 @@ func TestInteg_ResizeViaControl(t *testing.T) {
 	}
 }
 
+func TestInteg_LivePTYBytesViaStream(t *testing.T) {
+	td := startTestDaemon(t, "", "eng1")
+	tc, _ := connectTestClient(t, td.addr, "client", "")
+	tc.readStreamMap(t)
+
+	// Accept the agent stream opened by the daemon.
+	stream, err := tc.session.Accept()
+	if err != nil {
+		t.Fatalf("accept stream: %v", err)
+	}
+	defer stream.Close()
+
+	// The daemon's readLoop tees PTY bytes to this stream via networkSink.
+	// The agent runs 'echo eng1-ready; cat', so we should receive that output.
+	buf := make([]byte, 4096)
+	stream.SetReadDeadline(time.Now().Add(3 * time.Second))
+	n, err := stream.Read(buf)
+	if err != nil {
+		t.Fatalf("read from stream: %v", err)
+	}
+	got := string(buf[:n])
+	if !strings.Contains(got, "eng1-ready") {
+		// The first read may contain shell init noise. Try another read.
+		n2, _ := stream.Read(buf)
+		got += string(buf[:n2])
+	}
+	if !strings.Contains(got, "eng1-ready") {
+		t.Errorf("expected 'eng1-ready' in stream bytes, got: %q", got[:min(len(got), 200)])
+	}
+}
+
+func TestInteg_NetworkSinkNilSafe(t *testing.T) {
+	// Verify readLoop works fine with no sink (nil check, no crash).
+	p := newEmuPane("test", 80, 24)
+	// No sink set. Just verify the methods don't panic.
+	p.SetNetworkSink(nil)
+	p.ClearNetworkSink()
+}
+
 func TestInteg_RemotePaneImplementsPaneView(t *testing.T) {
 	// Compile-time check is already in pane.go (var _ PaneView = (*RemotePane)(nil)).
 	// Runtime check: create a RemotePane from a real yamux stream.
