@@ -174,7 +174,8 @@ func connectTestClient(t *testing.T, addr, peerName, token string) (*testClient,
 	return tc, &helloOK
 }
 
-// readStreamMap reads and parses the stream_map message from the control channel.
+// readStreamMap reads and parses the stream_map message from the control
+// channel, then consumes the replay_start and replay_done markers.
 func (tc *testClient) readStreamMap(t *testing.T) StreamMapMsg {
 	t.Helper()
 	if !tc.scanner.Scan() {
@@ -183,6 +184,22 @@ func (tc *testClient) readStreamMap(t *testing.T) StreamMapMsg {
 	var sm StreamMapMsg
 	if err := json.Unmarshal(tc.scanner.Bytes(), &sm); err != nil {
 		t.Fatalf("parse stream_map: %v", err)
+	}
+	// Consume replay_start marker.
+	if tc.scanner.Scan() {
+		var msg struct{ Action string }
+		json.Unmarshal(tc.scanner.Bytes(), &msg)
+		if msg.Action != "replay_start" {
+			t.Fatalf("expected replay_start, got %q", msg.Action)
+		}
+	}
+	// Consume replay_done marker.
+	if tc.scanner.Scan() {
+		var msg struct{ Action string }
+		json.Unmarshal(tc.scanner.Bytes(), &msg)
+		if msg.Action != "replay_done" {
+			t.Fatalf("expected replay_done, got %q", msg.Action)
+		}
 	}
 	return sm
 }

@@ -38,6 +38,7 @@ type DaemonConfig struct {
 // Daemon manages headless agent panes and streams them to a yamux client.
 type Daemon struct {
 	panes    []*Pane
+	ringBufs map[string]*RingBuf // Per-pane ring buffer keyed by agent name.
 	project  *config.Project
 	listener net.Listener
 	mu       sync.Mutex
@@ -120,17 +121,23 @@ func RunDaemon(cfg DaemonConfig) error {
 	defer pidCleanup()
 
 	d := &Daemon{
-		project: cfg.Project,
-		version: cfg.Version,
+		project:  cfg.Project,
+		version:  cfg.Version,
+		ringBufs: make(map[string]*RingBuf),
 	}
 
-	// Create and start agent panes.
+	// Create and start agent panes with ring buffers for reconnect replay.
 	for _, acfg := range cfg.Agents {
 		p, err := NewPane(acfg, 24, 80)
 		if err != nil {
 			LogError("daemon", "pane creation failed", "name", acfg.Name, "err", err)
 			return fmt.Errorf("create pane %q: %w", acfg.Name, err)
 		}
+		rb := NewRingBuf(DefaultRingBufSize)
+		d.ringBufs[acfg.Name] = rb
+		// Set the ring buffer as the initial sink so PTY bytes accumulate
+		// even before any client connects.
+		p.SetNetworkSink(rb)
 		p.Start()
 		d.panes = append(d.panes, p)
 		LogInfo("daemon", "agent started", "name", acfg.Name, "pid", p.pid)
@@ -269,7 +276,11 @@ func (d *Daemon) handleConnection(conn net.Conn) {
 	// Send stream map.
 	writeJSON(ctrl, StreamMapMsg{Action: "stream_map", Streams: streamMap})
 
-	// Start bidirectional streaming goroutines.
+	// Notify client that replay data is about to be sent on agent streams.
+	writeJSON(ctrl, struct{ Action string `json:"action"` }{"replay_start"})
+
+	// Start bidirectional streaming goroutines. streamAgent replays the
+	// ring buffer snapshot before switching to live bytes.
 	var wg sync.WaitGroup
 	for _, as := range streams {
 		wg.Add(1)
@@ -280,6 +291,9 @@ func (d *Daemon) handleConnection(conn net.Conn) {
 		}(as.pane, as.stream)
 	}
 
+	// Signal that replay is complete and live streaming has begun.
+	writeJSON(ctrl, struct{ Action string `json:"action"` }{"replay_done"})
+
 	// Handle control commands until client disconnects.
 	d.handleControlStream(ctrl, scanner)
 
@@ -289,13 +303,37 @@ func (d *Daemon) handleConnection(conn net.Conn) {
 }
 
 // streamAgent wires bidirectional PTY streaming between a pane and a yamux
-// stream. Downstream (PTY -> client) flows via the pane's networkSink which
-// readLoop tees bytes to after writing to the emulator. Upstream (client ->
-// PTY) is a simple read loop forwarding keystrokes to the PTY fd.
+// stream. On connect: replays the ring buffer snapshot so the client sees
+// current terminal state immediately. Then switches to live streaming via
+// the pane's networkSink (io.MultiWriter of ring buffer + yamux stream).
+// Upstream (client -> PTY) is a read loop forwarding keystrokes.
 func (d *Daemon) streamAgent(p *Pane, stream net.Conn) {
-	// Wire downstream: readLoop will tee PTY bytes to this stream.
-	p.SetNetworkSink(stream)
-	defer p.ClearNetworkSink()
+	rb := d.ringBufs[p.Name()]
+
+	// Replay: send buffered PTY history so the client reconstructs the
+	// current screen state before live bytes start flowing.
+	if rb != nil {
+		if snap := rb.Snapshot(); len(snap) > 0 {
+			stream.Write(snap)
+		}
+	}
+
+	// Wire downstream: readLoop tees PTY bytes to both the ring buffer
+	// (for future reconnects) and the live yamux stream.
+	if rb != nil {
+		p.SetNetworkSink(io.MultiWriter(rb, stream))
+	} else {
+		p.SetNetworkSink(stream)
+	}
+	defer func() {
+		// On disconnect, revert to ring-buffer-only sink so bytes keep
+		// accumulating for the next reconnect.
+		if rb != nil {
+			p.SetNetworkSink(rb)
+		} else {
+			p.ClearNetworkSink()
+		}
+	}()
 
 	// Upstream: client keystrokes -> PTY.
 	buf := make([]byte, 4096)

@@ -182,6 +182,10 @@ func TestDaemonControlSend(t *testing.T) {
 	scanner.Scan()
 	// Read stream_map.
 	scanner.Scan()
+	// Read replay_start.
+	scanner.Scan()
+	// Read replay_done.
+	scanner.Scan()
 
 	// Send a control command: peek.
 	peek := ControlCmd{Action: "peek", Target: "eng1", Lines: 5}
