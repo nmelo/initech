@@ -212,6 +212,8 @@ func (t *TUI) applyLayout() {
 		if old != pr.Region {
 			if lp, ok := pr.Pane.(*Pane); ok {
 				lp.region = pr.Region
+			} else if rp, ok := pr.Pane.(*RemotePane); ok {
+				rp.region = pr.Region
 			}
 			cols, rows := pr.Region.InnerSize()
 			pr.Pane.Resize(rows, cols)
