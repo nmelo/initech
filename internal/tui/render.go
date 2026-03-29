@@ -115,14 +115,21 @@ func (t *TUI) renderReorder() {
 	normalStyle := tcell.StyleDefault.Foreground(tcell.ColorSilver)
 	cursorStyle := tcell.StyleDefault.Background(tcell.ColorDarkBlue).Foreground(tcell.ColorWhite)
 	movingStyle := tcell.StyleDefault.Background(tcell.ColorDodgerBlue).Foreground(tcell.ColorWhite).Bold(true)
-	dimStyle := tcell.StyleDefault.Foreground(tcell.ColorGray)
+	hiddenStyle := tcell.StyleDefault.Foreground(tcell.ColorGray)
 	helpStyle := tcell.StyleDefault.Foreground(tcell.ColorGray)
 
-	// Title bar.
+	// Title bar (full-width, centered like other modals).
 	title := " Reorder agents "
+	for x := 0; x < sw; x++ {
+		s.SetContent(x, 0, ' ', nil, titleStyle)
+	}
+	titleStart := (sw - len([]rune(title))) / 2
+	if titleStart < 0 {
+		titleStart = 0
+	}
 	for i, ch := range title {
-		if 1+i < sw {
-			s.SetContent(1+i, 0, ch, nil, titleStyle)
+		if titleStart+i < sw {
+			s.SetContent(titleStart+i, 0, ch, nil, titleStyle)
 		}
 	}
 
@@ -158,7 +165,7 @@ func (t *TUI) renderReorder() {
 			if t.layoutState.Hidden[name] {
 				tag = " [h]"
 				if i != t.reorder.cursor {
-					style = dimStyle
+					style = hiddenStyle
 				}
 			}
 			if p.IsSuspended() {
