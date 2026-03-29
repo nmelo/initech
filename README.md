@@ -46,6 +46,12 @@ initech
 
 `initech` (no subcommand) launches the TUI. All agent panes start simultaneously. Each pane runs Claude with the appropriate permission level.
 
+<p align="center">
+  <a href="https://initech.sh">
+    <img src="https://initech.sh/screenshot.png" alt="initech TUI showing multiple Claude Code agents in a grid layout" width="100%">
+  </a>
+</p>
+
 ## What You See
 
 The TUI renders all agent panes in a configurable grid. The bottom ribbon of each pane shows the agent's name and current bead assignment. A floating overlay panel in the top-right shows every agent's activity state (green dot = active, gray = idle, yellow = idle with work waiting) and bead ID.
