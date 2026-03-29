@@ -108,7 +108,10 @@ func discoverSocket() (string, *config.Project, error) {
 	// (from a crashed TUI) passes stat but fails to connect.
 	conn, dialErr := net.DialTimeout("unix", sockPath, 500*time.Millisecond)
 	if dialErr != nil {
-		return "", nil, fmt.Errorf("session '%s' is not running. Use 'initech' to start", p.Name)
+		// Clean up the stale socket file so the next 'initech' can start
+		// without manual deletion (ini-db1).
+		os.Remove(sockPath)
+		return "", nil, fmt.Errorf("session '%s' is not running (stale socket removed). Use 'initech' to start", p.Name)
 	}
 	conn.Close()
 	return sockPath, p, nil

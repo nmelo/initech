@@ -35,7 +35,7 @@ var exitFunc = func(code int) { os.Exit(code) }
 //   - SIGINT: Ctrl+C or `kill -INT <pid>` sent from outside the TUI
 //
 // Not handled: SIGKILL (uncatchable), SIGWINCH (tcell uses it for resize).
-func installSignalHandlers(screen tcell.Screen, quitCh chan struct{}) func() {
+func installSignalHandlers(screen tcell.Screen, quitCh chan struct{}, cleanupPaths ...string) func() {
 	ch := make(chan os.Signal, 4)
 	signal.Notify(ch,
 		syscall.SIGTERM,
@@ -59,6 +59,12 @@ func installSignalHandlers(screen tcell.Screen, quitCh chan struct{}) func() {
 		// Log before touching the screen so the entry is always written even
 		// if Fini() panics (unlikely but defensive).
 		LogError("tui", "killed by signal", "signal", sig.String())
+		// Remove socket + PID files before exiting. os.Exit bypasses defers,
+		// so these files would persist and block subsequent startups (ini-db1).
+		// Bare os.Remove only; no PTY/mutex cleanup (deadlock risk).
+		for _, p := range cleanupPaths {
+			os.Remove(p)
+		}
 		if screen != nil {
 			screen.Fini() // restore terminal to cooked mode
 		}

@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"os"
 	osexec "os/exec"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -319,10 +320,13 @@ func Run(cfg Config) error {
 	}()
 
 	// Install OS signal handlers. Must happen after screen.Init() so we have
-	// a valid screen to Fini() on signal receipt. quitCh is created now so
-	// it can be passed to both the signal handler and the TUI struct below.
+	// a valid screen to Fini() on signal receipt. Pass socket and PID file
+	// paths so the handler can remove them before os.Exit (defers don't run
+	// on os.Exit, leaving stale files that block restart — ini-db1).
 	quitCh := make(chan struct{})
-	sigCleanup := installSignalHandlers(screen, quitCh)
+	sp := SocketPath(cfg.ProjectRoot, cfg.ProjectName)
+	pidPath := filepath.Join(cfg.ProjectRoot, ".initech", pidFileName)
+	sigCleanup := installSignalHandlers(screen, quitCh, sp, pidPath)
 	defer sigCleanup()
 
 	// Build layout state from config.
@@ -351,7 +355,6 @@ func Run(cfg Config) error {
 	}
 
 	initW, initH := screen.Size()
-	sp := SocketPath(cfg.ProjectRoot, cfg.ProjectName)
 	t := &TUI{
 		screen:            screen,
 		layoutState:       layoutState,
