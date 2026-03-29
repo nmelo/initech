@@ -59,7 +59,7 @@ func (t *TUI) handleIPCStart(conn net.Conn, req IPCRequest) {
 		return
 	}
 	if old == nil {
-		writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("pane %q not found", req.Target)})
+		writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("pane %q not found. To create a new pane, use: initech add %s", req.Target, req.Target)})
 		return
 	}
 	if old.IsAlive() {
