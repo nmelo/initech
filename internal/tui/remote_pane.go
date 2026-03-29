@@ -1,0 +1,377 @@
+// remote_pane.go implements PaneView for network-backed agent panes. A
+// RemotePane connects to a headless daemon via yamux and presents the remote
+// agent as a local pane in the TUI grid. PTY bytes flow downstream (daemon ->
+// local emulator) for rendering, and keystrokes flow upstream (TUI -> daemon
+// -> PTY) for input.
+package tui
+
+import (
+	"encoding/json"
+	"fmt"
+	"net"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/charmbracelet/x/vt"
+	"github.com/gdamore/tcell/v2"
+)
+
+// Compile-time assertion: RemotePane implements PaneView.
+var _ PaneView = (*RemotePane)(nil)
+
+// RemotePane is a PaneView backed by a yamux stream to a headless daemon.
+// The local VT emulator receives PTY bytes from the stream for rendering.
+// Keystrokes are forwarded upstream to the daemon for injection into the PTY.
+type RemotePane struct {
+	name     string            // Agent name (e.g. "eng1").
+	host     string            // Peer name of the remote daemon (e.g. "workbench").
+	stream   net.Conn          // Yamux stream: downstream PTY bytes + upstream keystrokes.
+	ctrlConn net.Conn          // Control channel for send/resize/peek commands.
+	ctrlMu   sync.Mutex        // Serializes writes to ctrlConn.
+	emu      *vt.SafeEmulator  // Local VT emulator fed by readLoop.
+	mu       sync.Mutex
+	alive    bool
+	activity ActivityState
+	lastOut  time.Time
+	beadID   string
+	sessDesc string
+	region   Region
+}
+
+// NewRemotePane creates a RemotePane connected to a remote agent.
+// The caller must call Start() to begin the readLoop goroutine.
+func NewRemotePane(name, host string, stream, ctrl net.Conn, cols, rows int) *RemotePane {
+	return &RemotePane{
+		name:     name,
+		host:     host,
+		stream:   stream,
+		ctrlConn: ctrl,
+		emu:      vt.NewSafeEmulator(cols, rows),
+		alive:    true,
+		activity: StateIdle,
+	}
+}
+
+// Start launches the background goroutine that reads PTY bytes from the
+// yamux stream and feeds them into the local emulator.
+func (rp *RemotePane) Start() {
+	go rp.readLoop()
+}
+
+// readLoop reads PTY output from the yamux stream and writes it to the local
+// VT emulator. Updates lastOut and activity on each read. Exits when the
+// stream is closed or errors.
+func (rp *RemotePane) readLoop() {
+	buf := make([]byte, 32*1024)
+	for {
+		n, err := rp.stream.Read(buf)
+		if n > 0 {
+			rp.emu.Write(buf[:n])
+			now := time.Now()
+			rp.mu.Lock()
+			rp.lastOut = now
+			rp.activity = StateRunning
+			rp.mu.Unlock()
+		}
+		if err != nil {
+			rp.mu.Lock()
+			rp.alive = false
+			rp.activity = StateDead
+			rp.mu.Unlock()
+			return
+		}
+	}
+}
+
+// ── PaneView interface ──────────────────────────────────────────────
+
+func (rp *RemotePane) Name() string { return rp.name }
+func (rp *RemotePane) Host() string { return rp.host }
+
+func (rp *RemotePane) IsAlive() bool {
+	rp.mu.Lock()
+	defer rp.mu.Unlock()
+	return rp.alive
+}
+
+func (rp *RemotePane) IsSuspended() bool { return false }
+func (rp *RemotePane) IsPinned() bool    { return false }
+
+func (rp *RemotePane) Activity() ActivityState {
+	rp.mu.Lock()
+	defer rp.mu.Unlock()
+	// Derive idle from output recency, same as local panes.
+	if !rp.alive {
+		return StateDead
+	}
+	if time.Since(rp.lastOut) >= ptyIdleTimeout {
+		return StateIdle
+	}
+	return rp.activity
+}
+
+func (rp *RemotePane) LastOutputTime() time.Time {
+	rp.mu.Lock()
+	defer rp.mu.Unlock()
+	return rp.lastOut
+}
+
+func (rp *RemotePane) BeadID() string {
+	rp.mu.Lock()
+	defer rp.mu.Unlock()
+	return rp.beadID
+}
+
+func (rp *RemotePane) SetBead(id, title string) {
+	rp.mu.Lock()
+	rp.beadID = id
+	rp.mu.Unlock()
+}
+
+func (rp *RemotePane) SessionDesc() string {
+	rp.mu.Lock()
+	defer rp.mu.Unlock()
+	return rp.sessDesc
+}
+
+func (rp *RemotePane) IdleWithBacklog() bool { return false }
+func (rp *RemotePane) BacklogCount() int     { return 0 }
+
+func (rp *RemotePane) Emulator() *vt.SafeEmulator { return rp.emu }
+
+func (rp *RemotePane) GetRegion() Region { return rp.region }
+
+// SendKey encodes a tcell key event as raw ANSI bytes and writes them
+// upstream to the daemon, which injects them into the remote PTY.
+func (rp *RemotePane) SendKey(ev *tcell.EventKey) {
+	var b []byte
+	if ev.Key() == tcell.KeyRune {
+		b = []byte(string(ev.Rune()))
+	} else {
+		b = tcellKeyToANSI(ev)
+	}
+	if len(b) > 0 {
+		rp.stream.Write(b)
+	}
+}
+
+// tcellKeyToANSI converts a non-rune tcell key event to its ANSI byte sequence.
+func tcellKeyToANSI(ev *tcell.EventKey) []byte {
+	switch ev.Key() {
+	case tcell.KeyEnter:
+		return []byte{'\r'}
+	case tcell.KeyBackspace, tcell.KeyBackspace2:
+		return []byte{0x7f}
+	case tcell.KeyTab:
+		return []byte{'\t'}
+	case tcell.KeyEscape:
+		return []byte{0x1b}
+	case tcell.KeyUp:
+		return []byte("\x1b[A")
+	case tcell.KeyDown:
+		return []byte("\x1b[B")
+	case tcell.KeyRight:
+		return []byte("\x1b[C")
+	case tcell.KeyLeft:
+		return []byte("\x1b[D")
+	case tcell.KeyHome:
+		return []byte("\x1b[H")
+	case tcell.KeyEnd:
+		return []byte("\x1b[F")
+	case tcell.KeyDelete:
+		return []byte("\x1b[3~")
+	case tcell.KeyPgUp:
+		return []byte("\x1b[5~")
+	case tcell.KeyPgDn:
+		return []byte("\x1b[6~")
+	case tcell.KeyCtrlC:
+		return []byte{0x03}
+	case tcell.KeyCtrlD:
+		return []byte{0x04}
+	case tcell.KeyCtrlZ:
+		return []byte{0x1a}
+	case tcell.KeyCtrlL:
+		return []byte{0x0c}
+	default:
+		// Ctrl+letter: Ctrl+A=0x01, Ctrl+B=0x02, etc.
+		if ev.Key() >= tcell.KeyCtrlA && ev.Key() <= tcell.KeyCtrlZ {
+			return []byte{byte(ev.Key() - tcell.KeyCtrlA + 1)}
+		}
+		return nil
+	}
+}
+
+// SendText sends text to the remote agent via the control channel. This uses
+// the daemon's "send" command which injects text through the emulator path
+// (same as initech send), handling Ctrl+S stash and paste detection.
+func (rp *RemotePane) SendText(text string, enter bool) {
+	rp.ctrlMu.Lock()
+	defer rp.ctrlMu.Unlock()
+
+	cmd := ControlCmd{
+		Action: "send",
+		Target: rp.name,
+		Text:   text,
+		Enter:  enter,
+	}
+	data, _ := json.Marshal(cmd)
+	rp.ctrlConn.Write(data)
+	rp.ctrlConn.Write([]byte("\n"))
+
+	// Read response (best-effort; don't block on errors).
+	scanner := make([]byte, 4096)
+	rp.ctrlConn.Read(scanner)
+}
+
+// Render draws the remote pane with [R] badge in the ribbon title.
+func (rp *RemotePane) Render(screen tcell.Screen, focused bool, dimmed bool, index int, sel Selection) {
+	r := rp.region
+	if r.W < 1 || r.H < 2 {
+		return
+	}
+
+	s := &clampedScreen{Screen: screen, r: r}
+
+	trueBlack := tcell.NewRGBColor(0, 0, 0)
+	ribbonY := r.Y + r.H - 1
+
+	// Fill ribbon background.
+	blackStyle := tcell.StyleDefault.Background(trueBlack)
+	for x := r.X; x < r.X+r.W; x++ {
+		s.SetContent(x, ribbonY, ' ', nil, blackStyle)
+	}
+
+	// Badge style: remote panes use magenta to distinguish from local.
+	var titleStyle tcell.Style
+	if focused {
+		titleStyle = tcell.StyleDefault.Background(tcell.ColorDarkMagenta).Foreground(tcell.ColorWhite).Bold(true)
+	} else {
+		titleStyle = tcell.StyleDefault.Background(trueBlack).Foreground(tcell.ColorDarkMagenta).Bold(true)
+	}
+
+	// Title: "N host:name [R]"
+	displayName := rp.host + ":" + rp.name
+	title := fmt.Sprintf(" %d %s [R] ", index, displayName)
+	if !rp.IsAlive() {
+		title = fmt.Sprintf(" %d %s [R][dead] ", index, displayName)
+		titleStyle = tcell.StyleDefault.Background(trueBlack).Foreground(tcell.ColorRed).Bold(true)
+	}
+	col := r.X + 1
+	for _, ch := range title {
+		if col < r.X+r.W {
+			s.SetContent(col, ribbonY, ch, nil, titleStyle)
+			col++
+		}
+	}
+
+	// Bead ID in dark cyan.
+	bead := rp.BeadID()
+	if bead != "" {
+		beadStr := "| " + bead + " "
+		beadStyle := tcell.StyleDefault.Background(trueBlack).Foreground(tcell.ColorDarkCyan)
+		for _, ch := range beadStr {
+			if col < r.X+r.W {
+				s.SetContent(col, ribbonY, ch, nil, beadStyle)
+				col++
+			}
+		}
+	}
+
+	// Terminal content from local emulator.
+	innerCols, innerRows := r.InnerSize()
+	emuRows := rp.emu.Height()
+	for row := 0; row < innerRows; row++ {
+		emuRow := emuRows - innerRows + row
+		if emuRow < 0 || emuRow >= emuRows {
+			continue
+		}
+		for c := 0; c < innerCols; c++ {
+			cell := rp.emu.CellAt(c, emuRow)
+			ch, style := uvCellToTcell(cell)
+			if dimmed {
+				style = dimStyle(style)
+			}
+			s.SetContent(r.X+c, r.Y+row, ch, nil, style)
+		}
+	}
+
+	// Cursor.
+	if focused && !sel.Active {
+		pos := rp.emu.CursorPosition()
+		visRow := pos.Y - (emuRows - innerRows)
+		if pos.X >= 0 && pos.X < innerCols && visRow >= 0 && visRow < innerRows {
+			cx := r.X + pos.X
+			cy := r.Y + visRow
+			cell := rp.emu.CellAt(pos.X, pos.Y)
+			ch, _ := uvCellToTcell(cell)
+			cursorStyle := tcell.StyleDefault.Background(tcell.ColorWhite).Foreground(tcell.ColorBlack)
+			s.SetContent(cx, cy, ch, nil, cursorStyle)
+		}
+	}
+}
+
+// Resize sends a resize command to the daemon via the control channel.
+func (rp *RemotePane) Resize(rows, cols int) {
+	rp.emu.Resize(cols, rows)
+
+	rp.ctrlMu.Lock()
+	defer rp.ctrlMu.Unlock()
+
+	cmd := ControlCmd{
+		Action: "resize",
+		Target: rp.name,
+		Rows:   rows,
+		Cols:   cols,
+	}
+	data, _ := json.Marshal(cmd)
+	rp.ctrlConn.Write(data)
+	rp.ctrlConn.Write([]byte("\n"))
+
+	// Read response (best-effort).
+	buf := make([]byte, 4096)
+	rp.ctrlConn.Read(buf)
+}
+
+// Close terminates the yamux stream.
+func (rp *RemotePane) Close() {
+	rp.mu.Lock()
+	rp.alive = false
+	rp.mu.Unlock()
+	if rp.stream != nil {
+		rp.stream.Close()
+	}
+}
+
+// ── Helpers ─────────────────────────────────────────────────────────
+
+// extractSessionDesc reads the cursor row text as a session description,
+// same logic as Pane but without the status bar filter (remote panes
+// don't need the CUF bleed-through fix since the daemon's emulator
+// already handles it).
+func (rp *RemotePane) extractSessionDesc() {
+	if rp.emu.IsAltScreen() {
+		return
+	}
+	cols := rp.emu.Width()
+	pos := rp.emu.CursorPosition()
+	if pos.Y >= rp.emu.Height() {
+		return
+	}
+	var desc strings.Builder
+	for c := 0; c < cols; c++ {
+		cell := rp.emu.CellAt(c, pos.Y)
+		if cell != nil && cell.Content != "" {
+			desc.WriteString(cell.Content)
+		} else {
+			desc.WriteByte(' ')
+		}
+	}
+	trimmed := strings.TrimSpace(desc.String())
+	if trimmed != "" && !strings.Contains(trimmed, "\u2502") {
+		rp.mu.Lock()
+		rp.sessDesc = trimmed
+		rp.mu.Unlock()
+	}
+}
+

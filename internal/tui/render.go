@@ -736,8 +736,16 @@ func (t *TUI) renderOverlay() {
 			status = fmt.Sprintf("%s (%s)", act.String(), bead)
 		}
 		pin := t.layoutState.Pinned[p.Name()]
-		agents[i] = AgentInfo{Name: p.Name(), Status: status, Activity: act, Visible: vis, IdleWithBacklog: idleBacklog, BacklogCount: backlogN, Pinned: pin}
-		nameLen := len(p.Name())
+		remote := p.Host() != ""
+		displayName := p.Name()
+		if remote {
+			displayName = p.Host() + ":" + p.Name()
+		}
+		agents[i] = AgentInfo{Name: displayName, Status: status, Activity: act, Visible: vis, IdleWithBacklog: idleBacklog, BacklogCount: backlogN, Pinned: pin, Remote: remote}
+		nameLen := len(displayName)
+		if remote {
+			nameLen += 4 // " [R]"
+		}
 		if pin {
 			nameLen += 4 // " [P]"
 		}
@@ -847,6 +855,16 @@ func (t *TUI) renderOverlay() {
 				s.SetContent(col, row, ch, nil, nameStyle)
 			}
 			col++
+		}
+		// Remote marker.
+		if a.Remote {
+			remoteStyle := bgStyle.Foreground(tcell.ColorDarkMagenta)
+			for _, ch := range " [R]" {
+				if col < px+panelW-1 {
+					s.SetContent(col, row, ch, nil, remoteStyle)
+				}
+				col++
+			}
 		}
 		// Pin marker.
 		if a.Pinned {

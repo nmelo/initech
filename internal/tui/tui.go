@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/gdamore/tcell/v2"
+	"github.com/nmelo/initech/internal/config"
 	iexec "github.com/nmelo/initech/internal/exec"
 )
 
@@ -31,6 +32,7 @@ type AgentInfo struct {
 	IdleWithBacklog bool // True when idle with ready beads in the backlog.
 	BacklogCount    int  // Number of ready beads (when IdleWithBacklog is true).
 	Pinned          bool // True when operator has pinned this agent.
+	Remote          bool // True for agents on remote peers.
 }
 
 // cmdModal holds command modal state.
@@ -255,6 +257,7 @@ type Config struct {
 	AutoSuspend       bool                            // Enable resource-aware auto-suspend/resume.
 	PressureThreshold int                             // RSS percentage threshold (0 uses default 85).
 	PaneConfigBuilder func(name string) (PaneConfig, error) // Optional factory for hot-add. Nil disables add command.
+	Project           *config.Project                       // Full project config. Used for remote peer connections.
 }
 
 // DefaultConfig returns a config with standard shell-only agents.
@@ -429,6 +432,12 @@ func Run(cfg Config) error {
 		p.Start()
 		t.panes = append(t.panes, p)
 		LogDebug("pane", "created", "name", acfg.Name, "dir", acfg.Dir)
+	}
+
+	// Connect to remote peers and add their agents as RemotePanes.
+	if cfg.Project != nil {
+		remotePanes := connectRemotes(cfg.Project)
+		t.panes = append(t.panes, remotePanes...)
 	}
 
 	// Sync pinned state from layout to panes.
