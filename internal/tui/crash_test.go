@@ -92,8 +92,9 @@ func TestSafeGo_CatchesPanicAndWritesCrashLog(t *testing.T) {
 		t.Fatal("quitCh was not closed after goroutine panic")
 	}
 
-	// Brief delay for crashLog file write to complete.
-	time.Sleep(50 * time.Millisecond)
+	// Brief delay for crashLog file write to complete. 200ms is generous
+	// but necessary on slow CI runners where goroutine scheduling is delayed.
+	time.Sleep(200 * time.Millisecond)
 
 	// Verify crash log was written.
 	path := filepath.Join(dir, ".initech", "crash.log")
