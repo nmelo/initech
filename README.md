@@ -215,28 +215,6 @@ All commands communicate with the running TUI via a Unix domain socket at `/tmp/
 | `initech doctor` | Check prerequisites with versions and fix instructions |
 | `initech version` | Print version |
 
-## Architecture
-
-```
-cmd/                    # Cobra CLI commands (15 commands)
-internal/
-  color/                # CLI color helpers (charmbracelet/x/ansi)
-  config/               # initech.yaml types, Load, Validate, Discover
-  exec/                 # Runner interface for shelling out (testing seam)
-  git/                  # git init, submodule add, commit
-  roles/                # Role catalog (13 roles), template rendering, selector
-  scaffold/             # Directory tree creation, CLAUDE.md generation
-  tui/                  # The TUI runtime:
-    tui.go              #   Event loop, lifecycle, layout application
-    input.go            #   Key handling, command modal, tab completion
-    mouse.go            #   Mouse events, text selection, clipboard
-    render.go           #   Screen drawing, overlay, toasts, command bar
-    top.go              #   Activity monitor modal
-    layout.go           #   LayoutState, RenderPlan, persistence
-    pane.go             #   PTY management, emulator, activity detection
-    ipc.go              #   Unix socket server, all IPC handlers
-    events.go           #   Event types, detection (completion, stall, stuck)
-```
 
 ### How It Works
 
