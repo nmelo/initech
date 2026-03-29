@@ -188,6 +188,7 @@ func runTUI(cmd *cobra.Command, args []string) error {
 		Version:           Version,
 		AutoSuspend:       enableAutoSuspend,
 		PressureThreshold: proj.Resource.PressureThreshold,
+		Project:           proj,
 		PaneConfigBuilder: func(name string) (tui.PaneConfig, error) {
 			return buildAgentPaneConfig(name, proj)
 		},
