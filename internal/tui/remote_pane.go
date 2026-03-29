@@ -20,6 +20,11 @@ import (
 // Compile-time assertion: RemotePane implements PaneView.
 var _ PaneView = (*RemotePane)(nil)
 
+// resizeDebounce is how long to wait after the last resize before sending
+// the final dimensions to the remote daemon. Prevents SIGWINCH storms
+// (from dragging the terminal edge) from flooding the control channel.
+const resizeDebounce = 50 * time.Millisecond
+
 // RemotePane is a PaneView backed by a yamux stream to a headless daemon.
 // The local VT emulator receives PTY bytes from the stream for rendering.
 // Keystrokes are forwarded upstream to the daemon for injection into the PTY.
@@ -37,6 +42,13 @@ type RemotePane struct {
 	beadID   string
 	sessDesc string
 	region   Region
+
+	// Resize debounce: pendingResize holds the latest requested dimensions.
+	// The timer fires after resizeDebounce and sends the final geometry.
+	resizeMu      sync.Mutex
+	resizeTimer   *time.Timer
+	pendingRows   int
+	pendingCols   int
 }
 
 // NewRemotePane creates a RemotePane connected to a remote agent.
@@ -311,10 +323,31 @@ func (rp *RemotePane) Render(screen tcell.Screen, focused bool, dimmed bool, ind
 	}
 }
 
-// Resize sends a resize command to the daemon via the control channel.
+// Resize updates the local emulator immediately and debounces the control
+// command to the remote daemon. Rapid resize events (SIGWINCH storms from
+// dragging the terminal edge) are collapsed: only the final geometry is sent
+// after a 50ms quiet period.
 func (rp *RemotePane) Resize(rows, cols int) {
 	rp.emu.Resize(cols, rows)
 
+	rp.resizeMu.Lock()
+	rp.pendingRows = rows
+	rp.pendingCols = cols
+	if rp.resizeTimer != nil {
+		rp.resizeTimer.Stop()
+	}
+	rp.resizeTimer = time.AfterFunc(resizeDebounce, func() {
+		rp.resizeMu.Lock()
+		r, c := rp.pendingRows, rp.pendingCols
+		rp.resizeMu.Unlock()
+		rp.sendResize(r, c)
+	})
+	rp.resizeMu.Unlock()
+}
+
+// sendResize writes a resize control command to the daemon. Called by the
+// debounce timer goroutine.
+func (rp *RemotePane) sendResize(rows, cols int) {
 	rp.ctrlMu.Lock()
 	defer rp.ctrlMu.Unlock()
 
@@ -327,10 +360,6 @@ func (rp *RemotePane) Resize(rows, cols int) {
 	data, _ := json.Marshal(cmd)
 	rp.ctrlConn.Write(data)
 	rp.ctrlConn.Write([]byte("\n"))
-
-	// Read response (best-effort).
-	buf := make([]byte, 4096)
-	rp.ctrlConn.Read(buf)
 }
 
 // Close terminates the yamux stream.

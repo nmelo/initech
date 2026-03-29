@@ -191,6 +191,67 @@ func TestRemotePaneCloseMarksNotAlive(t *testing.T) {
 	}
 }
 
+func TestRemotePaneResizeDebounce(t *testing.T) {
+	// Verify that rapid resizes are debounced: only the final dimensions
+	// reach the control channel after the debounce window.
+	streamS, streamC := net.Pipe()
+	defer streamS.Close()
+	defer streamC.Close()
+
+	ctrlS, ctrlC := net.Pipe()
+	defer ctrlC.Close()
+
+	rp := NewRemotePane("eng1", "wb", streamC, ctrlC, 80, 24)
+
+	// Fire 20 rapid resizes.
+	for i := 0; i < 20; i++ {
+		rp.Resize(20+i, 60+i)
+	}
+
+	// Wait for debounce to fire (50ms + margin).
+	time.Sleep(150 * time.Millisecond)
+
+	// Read from the control channel. Should have exactly 1 message with
+	// the final dimensions (rows=39, cols=79).
+	ctrlS.SetReadDeadline(time.Now().Add(500 * time.Millisecond))
+	scanner := bufio.NewScanner(ctrlS)
+	var commands []ControlCmd
+	for scanner.Scan() {
+		var cmd ControlCmd
+		if err := json.Unmarshal(scanner.Bytes(), &cmd); err == nil {
+			commands = append(commands, cmd)
+		}
+	}
+
+	if len(commands) != 1 {
+		t.Fatalf("debounce: got %d resize commands, want 1", len(commands))
+	}
+	if commands[0].Rows != 39 || commands[0].Cols != 79 {
+		t.Errorf("final resize = %dx%d, want 39x79", commands[0].Rows, commands[0].Cols)
+	}
+}
+
+func TestRemotePaneResizeUpdatesEmulatorImmediately(t *testing.T) {
+	streamS, streamC := net.Pipe()
+	defer streamS.Close()
+	defer streamC.Close()
+
+	ctrlS, ctrlC := net.Pipe()
+	defer ctrlS.Close()
+	defer ctrlC.Close()
+
+	rp := NewRemotePane("eng1", "wb", streamC, ctrlC, 80, 24)
+	rp.Resize(40, 120)
+
+	// Emulator should be updated immediately (no debounce).
+	if rp.Emulator().Width() != 120 {
+		t.Errorf("emu width = %d, want 120", rp.Emulator().Width())
+	}
+	if rp.Emulator().Height() != 40 {
+		t.Errorf("emu height = %d, want 40", rp.Emulator().Height())
+	}
+}
+
 func TestTcellKeyToANSI(t *testing.T) {
 	tests := []struct {
 		name string
