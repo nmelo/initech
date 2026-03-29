@@ -303,16 +303,20 @@ func TestInteg_KeyboardInput(t *testing.T) {
 		t.Fatalf("send failed: %s", resp.Error)
 	}
 
-	// Wait for the echo to appear.
-	time.Sleep(500 * time.Millisecond)
-
-	// Peek to verify input was received (cat echoes input back).
-	peekResp := tc.sendControl(t, ControlCmd{Action: "peek", Target: "eng1", Lines: 20})
-	if !peekResp.OK {
-		t.Fatalf("peek failed: %s", peekResp.Error)
+	// Poll peek until the echoed text appears (cat echoes input back).
+	// Polling is more reliable than a fixed sleep on slow CI runners.
+	var found bool
+	for i := 0; i < 20; i++ {
+		time.Sleep(200 * time.Millisecond)
+		peekResp := tc.sendControl(t, ControlCmd{Action: "peek", Target: "eng1", Lines: 20})
+		if peekResp.OK && strings.Contains(peekResp.Data, "hello from test") {
+			found = true
+			break
+		}
 	}
-	if !strings.Contains(peekResp.Data, "hello from test") {
-		t.Errorf("expected 'hello from test' in peek, got: %q", peekResp.Data[:min(len(peekResp.Data), 200)])
+	if !found {
+		peekResp := tc.sendControl(t, ControlCmd{Action: "peek", Target: "eng1", Lines: 20})
+		t.Errorf("expected 'hello from test' in peek after polling, got: %q", peekResp.Data[:min(len(peekResp.Data), 200)])
 	}
 }
 
@@ -346,14 +350,18 @@ func TestInteg_ForwardSend(t *testing.T) {
 		t.Fatalf("forward_send failed: %s", resp.Error)
 	}
 
-	time.Sleep(500 * time.Millisecond)
-
-	peekResp := tc.sendControl(t, ControlCmd{Action: "peek", Target: "eng1", Lines: 20})
-	if !peekResp.OK {
-		t.Fatalf("peek failed: %s", peekResp.Error)
+	var found bool
+	for i := 0; i < 20; i++ {
+		time.Sleep(200 * time.Millisecond)
+		peekResp := tc.sendControl(t, ControlCmd{Action: "peek", Target: "eng1", Lines: 20})
+		if peekResp.OK && strings.Contains(peekResp.Data, "forwarded-msg") {
+			found = true
+			break
+		}
 	}
-	if !strings.Contains(peekResp.Data, "forwarded-msg") {
-		t.Errorf("expected 'forwarded-msg' in peek, got: %q", peekResp.Data[:min(len(peekResp.Data), 200)])
+	if !found {
+		peekResp := tc.sendControl(t, ControlCmd{Action: "peek", Target: "eng1", Lines: 20})
+		t.Errorf("expected 'forwarded-msg' in peek after polling, got: %q", peekResp.Data[:min(len(peekResp.Data), 200)])
 	}
 }
 
