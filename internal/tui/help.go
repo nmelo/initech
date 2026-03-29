@@ -5,6 +5,7 @@ package tui
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/gdamore/tcell/v2"
 )
@@ -40,6 +41,9 @@ var helpLines = []string{
 	"  remove (rm) <n>  Remove an agent pane.",
 	"  help (?)         This screen.",
 	"  quit (q)         Exit initech.",
+	"",
+	"found a bug? open an issue. have a fix? even better.",
+	"github.com/nmelo/initech",
 }
 
 // helpMaxOffset returns the maximum scroll offset for the help modal
@@ -116,8 +120,13 @@ func (t *TUI) renderHelp() {
 		y := row + 1
 
 		// Section headers (no leading space) use yellow; body lines use silver.
+		// Contribution footer lines get muted styling.
 		style := bodyStyle
-		if len(line) > 0 && line[0] != ' ' {
+		if strings.HasPrefix(line, "found a bug") {
+			style = helpStyle // dim gray
+		} else if strings.HasPrefix(line, "github.com") {
+			style = tcell.StyleDefault.Foreground(tcell.ColorSilver)
+		} else if len(line) > 0 && line[0] != ' ' {
 			style = headerStyle
 		}
 		for x := 0; x < sw; x++ {
