@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/nmelo/initech/internal/color"
@@ -91,7 +92,13 @@ func runInit(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("git init: %w", err)
 	}
 
-	// Add submodules for roles that need src
+	// Add submodules for roles that need src (parallel clones).
+	type cloneJob struct {
+		role    string
+		repoURL string
+		subPath string
+	}
+	var jobs []cloneJob
 	for _, roleName := range p.Roles {
 		def := roles.LookupRole(roleName)
 		if !def.NeedsSrc || len(p.Repos) == 0 {
@@ -111,30 +118,57 @@ func runInit(cmd *cobra.Command, args []string) error {
 		subPath := filepath.Join(roleName, "src")
 		gitRef := filepath.Join(p.Root, subPath, ".git")
 		if _, err := os.Stat(gitRef); err != nil {
-			label := fmt.Sprintf("Cloning repo into %s/src/", color.Blue(roleName))
-			fmt.Fprintf(out, "  %s... ", label)
-			done := make(chan struct{})
-			go func() {
-				spinner := []rune{'⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'}
-				i := 0
-				for {
-					select {
-					case <-done:
-						return
-					default:
-						fmt.Fprintf(out, "\r  %s... %c", label, spinner[i%len(spinner)])
-						i++
-						time.Sleep(80 * time.Millisecond)
-					}
+			jobs = append(jobs, cloneJob{role: roleName, repoURL: repoURL, subPath: subPath})
+		}
+	}
+
+	if len(jobs) > 0 {
+		label := fmt.Sprintf("Cloning repo into %d agent workspaces", len(jobs))
+		fmt.Fprintf(out, "  %s... ", label)
+		spinDone := make(chan struct{})
+		go func() {
+			spinner := []rune{'⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'}
+			i := 0
+			for {
+				select {
+				case <-spinDone:
+					return
+				default:
+					fmt.Fprintf(out, "\r  %s... %c", label, spinner[i%len(spinner)])
+					i++
+					time.Sleep(80 * time.Millisecond)
 				}
-			}()
-			cloneErr := git.AddSubmodule(runner, p.Root, repoURL, subPath)
-			close(done)
-			if cloneErr != nil {
-				fmt.Fprintf(out, "\r  %s %s: %v\n", color.Red("\u2717"), color.Red("clone failed for "+roleName), cloneErr)
-			} else {
-				fmt.Fprintf(out, "\r  %s %s\n", color.Green("\u2713"), label)
 			}
+		}()
+
+		type cloneResult struct {
+			role string
+			err  error
+		}
+		results := make([]cloneResult, len(jobs))
+		var wg sync.WaitGroup
+		for i, job := range jobs {
+			wg.Add(1)
+			go func(idx int, j cloneJob) {
+				defer wg.Done()
+				results[idx] = cloneResult{
+					role: j.role,
+					err:  git.AddSubmodule(runner, p.Root, j.repoURL, j.subPath),
+				}
+			}(i, job)
+		}
+		wg.Wait()
+		close(spinDone)
+
+		var failures int
+		for _, r := range results {
+			if r.err != nil {
+				fmt.Fprintf(out, "\r  %s %s: %v\n", color.Red("\u2717"), color.Red("clone failed for "+r.role), r.err)
+				failures++
+			}
+		}
+		if failures == 0 {
+			fmt.Fprintf(out, "\r  %s %s\n", color.Green("\u2713"), label)
 		}
 	}
 
