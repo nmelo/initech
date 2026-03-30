@@ -220,3 +220,166 @@ func TestDaemonControlSend(t *testing.T) {
 	case <-time.After(200 * time.Millisecond):
 	}
 }
+
+func TestDaemonIPCSend_HostRouting(t *testing.T) {
+	proj := &config.Project{
+		Name:     "test",
+		Root:     t.TempDir(),
+		PeerName: "workbench",
+		Roles:    []string{"eng1"},
+	}
+
+	p := newEmuPane("eng1", 80, 24)
+	d := &Daemon{
+		project: proj,
+		version: "test",
+		panes:   []*Pane{p},
+		clients: make(map[string]net.Conn),
+	}
+
+	// Use TCP loopback for client ctrl so writes have kernel buffer and
+	// don't block synchronously like net.Pipe.
+	ctrlLn, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ctrlLn.Close()
+	ctrlDial, err := net.Dial("tcp", ctrlLn.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ctrlDial.Close()
+	ctrlAccept, err := ctrlLn.Accept()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ctrlAccept.Close()
+
+	// daemon writes to ctrlAccept, test reads from ctrlDial.
+	d.sessionsMu.Lock()
+	d.clients["macbook"] = ctrlAccept
+	d.sessionsMu.Unlock()
+
+	server, client := net.Pipe()
+	defer client.Close()
+
+	go func() {
+		d.handleDaemonIPCConn(server)
+		server.Close()
+	}()
+
+	// Start draining IPC response concurrently (net.Pipe is synchronous).
+	respCh := make(chan IPCResponse, 1)
+	go func() {
+		sc := bufio.NewScanner(client)
+		sc.Scan()
+		var r IPCResponse
+		json.Unmarshal(sc.Bytes(), &r)
+		respCh <- r
+	}()
+
+	req := IPCRequest{Action: "send", Target: "super", Host: "macbook", Text: "hello from daemon", Enter: true}
+	data, _ := json.Marshal(req)
+	client.Write(data)
+	client.Write([]byte("\n"))
+
+	resp := <-respCh
+	if !resp.OK {
+		t.Errorf("IPC send should succeed, got error: %s", resp.Error)
+	}
+
+	// Read forward_send from the client ctrl (TCP, buffered).
+	ctrlDial.SetReadDeadline(time.Now().Add(2 * time.Second))
+	sc := bufio.NewScanner(ctrlDial)
+	if !sc.Scan() {
+		t.Fatal("no forward_send on client ctrl")
+	}
+	var fwd ControlCmd
+	json.Unmarshal(sc.Bytes(), &fwd)
+	if fwd.Action != "forward_send" {
+		t.Errorf("action = %q, want forward_send", fwd.Action)
+	}
+	if fwd.Target != "super" {
+		t.Errorf("target = %q, want super", fwd.Target)
+	}
+	if fwd.Text != "hello from daemon" {
+		t.Errorf("text = %q, want 'hello from daemon'", fwd.Text)
+	}
+}
+
+func TestDaemonIPCSend_UnknownHost(t *testing.T) {
+	proj := &config.Project{
+		Name:     "test",
+		Root:     t.TempDir(),
+		PeerName: "workbench",
+		Roles:    []string{"eng1"},
+	}
+
+	d := &Daemon{
+		project: proj,
+		panes:   []*Pane{newEmuPane("eng1", 80, 24)},
+		clients: make(map[string]net.Conn),
+	}
+
+	server, client := net.Pipe()
+	defer client.Close()
+
+	go func() {
+		d.handleDaemonIPCConn(server)
+		server.Close()
+	}()
+
+	req := IPCRequest{Action: "send", Target: "super", Host: "nonexistent", Text: "msg"}
+	data, _ := json.Marshal(req)
+	client.Write(data)
+	client.Write([]byte("\n"))
+
+	scanner := bufio.NewScanner(client)
+	scanner.Scan()
+	var resp IPCResponse
+	json.Unmarshal(scanner.Bytes(), &resp)
+	if resp.OK {
+		t.Error("send to unknown host should fail")
+	}
+	if resp.Error == "" {
+		t.Error("should have error message")
+	}
+}
+
+func TestDaemonIPCSend_LocalDelivery(t *testing.T) {
+	proj := &config.Project{
+		Name:     "test",
+		Root:     t.TempDir(),
+		PeerName: "workbench",
+		Roles:    []string{"eng1"},
+	}
+
+	p := newEmuPane("eng1", 80, 24)
+	d := &Daemon{
+		project: proj,
+		panes:   []*Pane{p},
+		clients: make(map[string]net.Conn),
+	}
+
+	server, client := net.Pipe()
+	defer client.Close()
+
+	go func() {
+		d.handleDaemonIPCConn(server)
+		server.Close()
+	}()
+
+	// No host = local delivery.
+	req := IPCRequest{Action: "send", Target: "eng1", Text: "local msg", Enter: true}
+	data, _ := json.Marshal(req)
+	client.Write(data)
+	client.Write([]byte("\n"))
+
+	scanner := bufio.NewScanner(client)
+	scanner.Scan()
+	var resp IPCResponse
+	json.Unmarshal(scanner.Bytes(), &resp)
+	if !resp.OK {
+		t.Errorf("local send should succeed, got: %s", resp.Error)
+	}
+}

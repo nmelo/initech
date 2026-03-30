@@ -52,6 +52,9 @@ type Daemon struct {
 	sessionsMu sync.Mutex
 	sessions   []*yamux.Session
 	ctrlConns  []net.Conn // Control channels for shutdown notification.
+
+	// Connected clients by peer name for host:agent routing.
+	clients map[string]net.Conn
 }
 
 // ── Protocol messages ───────────────────────────────────────────────
@@ -311,6 +314,21 @@ func (d *Daemon) handleDaemonIPCConn(conn net.Conn) {
 			writeJSON(conn, IPCResponse{Error: "target is required"})
 			return
 		}
+		// Cross-machine routing: if Host is set and doesn't match our peer name,
+		// forward via the connected client's control stream.
+		if req.Host != "" && req.Host != d.project.PeerName {
+			d.sessionsMu.Lock()
+			clientCtrl := d.clients[req.Host]
+			d.sessionsMu.Unlock()
+			if clientCtrl == nil {
+				writeJSON(conn, IPCResponse{Error: fmt.Sprintf("peer %q not connected. Run 'initech peers' to see available targets.", req.Host)})
+				return
+			}
+			fwd := ControlCmd{Action: "forward_send", Target: req.Target, Text: req.Text, Enter: req.Enter}
+			writeJSON(clientCtrl, fwd)
+			writeJSON(conn, IPCResponse{OK: true})
+			return
+		}
 		p := d.findPane(req.Target)
 		if p == nil {
 			writeJSON(conn, IPCResponse{Error: fmt.Sprintf("pane %q not found", req.Target)})
@@ -432,6 +450,21 @@ func (d *Daemon) handleConnection(conn net.Conn) {
 	}
 
 	LogInfo("daemon", "hello from", "peer", hello.PeerName, "version", hello.Version)
+
+	// Register client for host:agent routing.
+	if hello.PeerName != "" {
+		d.sessionsMu.Lock()
+		if d.clients == nil {
+			d.clients = make(map[string]net.Conn)
+		}
+		d.clients[hello.PeerName] = ctrl
+		d.sessionsMu.Unlock()
+		defer func() {
+			d.sessionsMu.Lock()
+			delete(d.clients, hello.PeerName)
+			d.sessionsMu.Unlock()
+		}()
+	}
 
 	// Build agent status list.
 	agents := make([]AgentStatus, len(d.panes))
