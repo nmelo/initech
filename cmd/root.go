@@ -3,6 +3,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -11,6 +12,7 @@ import (
 	"github.com/nmelo/initech/internal/config"
 	"github.com/nmelo/initech/internal/roles"
 	"github.com/nmelo/initech/internal/tui"
+	"github.com/nmelo/initech/internal/update"
 	"github.com/spf13/cobra"
 )
 
@@ -22,6 +24,11 @@ var (
 	verbose     bool
 	noColor     bool
 	autoSuspend bool
+
+	// updateResult receives the background version check result.
+	// Populated in PersistentPreRun, drained in PersistentPostRun.
+	updateResult   chan *update.ReleaseInfo
+	updateCancel   context.CancelFunc
 )
 
 var rootCmd = &cobra.Command{
@@ -57,10 +64,42 @@ Commands (via ` + "`" + ` modal):
 		if noColor {
 			color.SetEnabled(false)
 		}
+		// Launch background version check (non-blocking, result drained in PostRun).
+		if update.ShouldCheck() && Version != "dev" {
+			ctx, cancel := context.WithCancel(context.Background())
+			updateCancel = cancel
+			ch := make(chan *update.ReleaseInfo, 1)
+			updateResult = ch
+			go func() {
+				info, _ := update.CheckForUpdate(ctx, Version)
+				ch <- info
+			}()
+		}
+		return nil
+	},
+	PersistentPostRunE: func(cmd *cobra.Command, args []string) error {
+		// Cancel the background check if it's still running.
+		if updateCancel != nil {
+			updateCancel()
+		}
+		// Drain the result (non-blocking). Display is handled by later beads.
+		if updateResult != nil {
+			select {
+			case info := <-updateResult:
+				if info != nil {
+					LatestRelease = info
+				}
+			default:
+			}
+		}
 		return nil
 	},
 	RunE: runTUI,
 }
+
+// LatestRelease holds the result of the background version check.
+// Populated by PersistentPostRun, consumed by notification surfaces.
+var LatestRelease *update.ReleaseInfo
 
 // Execute runs the root command.
 func Execute() {
