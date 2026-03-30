@@ -139,6 +139,25 @@ func RunDaemon(cfg DaemonConfig) error {
 		timers:     NewTimerStore(filepath.Join(cfg.Project.Root, ".initech", "timers.json")),
 	}
 
+	// Start local IPC socket so agents can use 'initech send/peek'.
+	sockPath := SocketPath(cfg.Project.Root, cfg.Project.Name)
+	ipcCleanup, err := d.startDaemonIPC(sockPath)
+	if err != nil {
+		LogWarn("daemon", "IPC socket failed (agents won't have initech send)", "err", err)
+		sockPath = "" // Don't inject if we couldn't bind.
+	} else {
+		defer ipcCleanup()
+		LogInfo("daemon", "IPC socket", "path", sockPath)
+	}
+
+	// Inject INITECH_SOCKET and INITECH_AGENT into every agent's environment.
+	for i := range cfg.Agents {
+		if sockPath != "" {
+			cfg.Agents[i].Env = append(cfg.Agents[i].Env, "INITECH_SOCKET="+sockPath)
+		}
+		cfg.Agents[i].Env = append(cfg.Agents[i].Env, "INITECH_AGENT="+cfg.Agents[i].Name)
+	}
+
 	// Create and start agent panes with ring buffers and multi-sinks.
 	for _, acfg := range cfg.Agents {
 		p, err := NewPane(acfg, 24, 80)
@@ -221,6 +240,101 @@ func (d *Daemon) gracefulShutdown() {
 	// Close all yamux sessions (triggers client-side reconnect).
 	for _, s := range sessions {
 		s.Close()
+	}
+}
+
+// startDaemonIPC starts a Unix domain socket server that accepts local IPC
+// requests (send, peek, list) from agents running inside the daemon. This
+// mirrors the TUI's IPC socket so that 'initech send' works for headless
+// agents. Returns a cleanup function that removes the socket file.
+func (d *Daemon) startDaemonIPC(socketPath string) (func(), error) {
+	if _, err := os.Stat(socketPath); err == nil {
+		os.Remove(socketPath)
+	}
+	os.MkdirAll(filepath.Dir(socketPath), 0700)
+
+	ln, err := net.Listen("unix", socketPath)
+	if err != nil {
+		return nil, err
+	}
+
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go d.handleDaemonIPCConn(conn)
+		}
+	}()
+
+	return func() { ln.Close(); os.Remove(socketPath) }, nil
+}
+
+// handleDaemonIPCConn handles a single IPC connection from a local agent.
+func (d *Daemon) handleDaemonIPCConn(conn net.Conn) {
+	defer conn.Close()
+	conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+
+	scanner := bufio.NewScanner(conn)
+	if !scanner.Scan() {
+		return
+	}
+
+	var req IPCRequest
+	if err := json.Unmarshal(scanner.Bytes(), &req); err != nil {
+		writeJSON(conn, IPCResponse{Error: "invalid JSON"})
+		return
+	}
+
+	switch req.Action {
+	case "send":
+		if req.Target == "" {
+			writeJSON(conn, IPCResponse{Error: "target is required"})
+			return
+		}
+		p := d.findPane(req.Target)
+		if p == nil {
+			writeJSON(conn, IPCResponse{Error: fmt.Sprintf("pane %q not found", req.Target)})
+			return
+		}
+		conn.SetReadDeadline(time.Time{})
+		p.SendText(req.Text, req.Enter)
+		writeJSON(conn, IPCResponse{OK: true})
+
+	case "peek":
+		if req.Target == "" {
+			writeJSON(conn, IPCResponse{Error: "target is required"})
+			return
+		}
+		p := d.findPane(req.Target)
+		if p == nil {
+			writeJSON(conn, IPCResponse{Error: fmt.Sprintf("pane %q not found", req.Target)})
+			return
+		}
+		writeJSON(conn, IPCResponse{OK: true, Data: peekContent(p, req.Lines)})
+
+	case "list":
+		type paneInfo struct {
+			Name     string `json:"name"`
+			Activity string `json:"activity"`
+			Alive    bool   `json:"alive"`
+			Visible  bool   `json:"visible"`
+		}
+		panes := make([]paneInfo, len(d.panes))
+		for i, p := range d.panes {
+			panes[i] = paneInfo{
+				Name:     p.Name(),
+				Activity: p.Activity().String(),
+				Alive:    p.IsAlive(),
+				Visible:  true,
+			}
+		}
+		data, _ := json.Marshal(panes)
+		writeJSON(conn, IPCResponse{OK: true, Data: string(data)})
+
+	default:
+		writeJSON(conn, IPCResponse{Error: fmt.Sprintf("unknown action %q", req.Action)})
 	}
 }
 
