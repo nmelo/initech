@@ -21,8 +21,11 @@ const connectTimeout = 5 * time.Second
 // connectPeer establishes a yamux connection to a single remote peer, performs
 // the hello handshake, reads the stream map, and creates RemotePanes.
 func connectPeer(peerName string, remote config.Remote, project *config.Project) ([]PaneView, error) {
-	// Dial TCP.
-	conn, err := net.DialTimeout("tcp", remote.Addr, connectTimeout)
+	// Dial TCP with OS-level keepalive to detect dead peers faster than
+	// the default 2-hour TCP keepalive. yamux has its own keepalive, but
+	// after kill -9 the TCP write may buffer locally without failing.
+	dialer := net.Dialer{Timeout: connectTimeout, KeepAlive: 15 * time.Second}
+	conn, err := dialer.Dial("tcp", remote.Addr)
 	if err != nil {
 		return nil, fmt.Errorf("dial %s: %w", remote.Addr, err)
 	}
