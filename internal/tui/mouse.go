@@ -24,8 +24,8 @@ func (t *TUI) handleMouse(ev *tcell.EventMouse) {
 			}
 			r := pv.GetRegion()
 			if mx >= r.X && mx < r.X+r.W && my >= r.Y && my < r.Y+r.H {
-				if t.layoutState.Focused != pv.Name() {
-					t.layoutState.Focused = pv.Name()
+				if t.layoutState.Focused != paneKey(pv) {
+					t.layoutState.Focused = paneKey(pv)
 					t.applyLayout()
 				}
 				// Text selection + mouse forwarding: local panes only.
@@ -109,7 +109,7 @@ func (t *TUI) handleMouse(ev *tcell.EventMouse) {
 			}
 			r := pv.GetRegion()
 			if mx >= r.X && mx < r.X+r.W && my >= r.Y && my < r.Y+r.H {
-				t.layoutState.Focused = pv.Name()
+				t.layoutState.Focused = paneKey(pv)
 				if p, ok := pv.(*Pane); ok {
 					p.ScrollUp(3)
 				}
@@ -120,12 +120,12 @@ func (t *TUI) handleMouse(ev *tcell.EventMouse) {
 	case ev.Buttons()&tcell.WheelDown != 0:
 		// Scroll toward live view for the pane under cursor.
 		for _, pv := range t.panes {
-			if t.layoutState.Hidden[pv.Name()] {
+			if t.layoutState.Hidden[paneKey(pv)] {
 				continue
 			}
 			r := pv.GetRegion()
 			if mx >= r.X && mx < r.X+r.W && my >= r.Y && my < r.Y+r.H {
-				t.layoutState.Focused = pv.Name()
+				t.layoutState.Focused = paneKey(pv)
 				if p, ok := pv.(*Pane); ok {
 					p.ScrollDown(3)
 				}

@@ -247,7 +247,7 @@ func (t *TUI) saveLayoutIfConfigured() {
 	// Snapshot current pane order into layoutState before persisting.
 	t.layoutState.Order = make([]string, len(t.panes))
 	for i, p := range t.panes {
-		t.layoutState.Order[i] = p.Name()
+		t.layoutState.Order[i] = paneKey(p)
 	}
 	if err := SaveLayout(t.projectRoot, t.layoutState); err != nil {
 		LogWarn("layout", "save failed", "err", err)
@@ -255,10 +255,12 @@ func (t *TUI) saveLayoutIfConfigured() {
 }
 
 // focusedPane returns the currently focused pane, or nil.
+// Uses paneKey (host:name for remote, name for local) to avoid collisions
+// when a local and remote pane share the same agent name.
 func (t *TUI) focusedPane() PaneView {
-	name := t.layoutState.Focused
+	key := t.layoutState.Focused
 	for _, p := range t.panes {
-		if p.Name() == name {
+		if paneKey(p) == key {
 			return p
 		}
 	}
@@ -500,7 +502,7 @@ func Run(cfg Config) error {
 
 	// Sync pinned state from layout to panes.
 	for _, p := range t.panes {
-		if t.layoutState.Pinned[p.Name()] {
+		if t.layoutState.Pinned[paneKey(p)] {
 			if lp, ok := p.(*Pane); ok {
 				lp.SetPinned(true)
 			}
@@ -650,7 +652,7 @@ func autoGrid(n int) (cols, rows int) {
 func (t *TUI) recalcGridForPanes() {
 	visCount := 0
 	for _, p := range t.panes {
-		if !t.layoutState.Hidden[p.Name()] {
+		if !t.layoutState.Hidden[paneKey(p)] {
 			visCount++
 		}
 	}

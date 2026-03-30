@@ -76,15 +76,16 @@ func computeLayout(state LayoutState, panes []PaneView, screenW, screenH int) Re
 	}
 
 	// Build pane index map (1-based, from position in full pane list).
+	// Uses paneKey for uniqueness (host:name for remote, name for local).
 	paneIndex := make(map[string]int, len(panes))
 	for i, p := range panes {
-		paneIndex[p.Name()] = i + 1
+		paneIndex[paneKey(p)] = i + 1
 	}
 
 	// 1. Filter visible panes (preserve order).
 	visible := make([]PaneView, 0, len(panes))
 	for _, p := range panes {
-		if !state.Hidden[p.Name()] {
+		if !state.Hidden[paneKey(p)] {
 			visible = append(visible, p)
 		}
 	}
@@ -97,13 +98,13 @@ func computeLayout(state LayoutState, panes []PaneView, screenW, screenH int) Re
 	focus := state.Focused
 	focusValid := false
 	for _, p := range visible {
-		if p.Name() == focus {
+		if paneKey(p) == focus {
 			focusValid = true
 			break
 		}
 	}
 	if !focusValid {
-		focus = visible[0].Name()
+		focus = paneKey(visible[0])
 	}
 	plan.ValidatedFocus = focus
 
@@ -115,11 +116,11 @@ func computeLayout(state LayoutState, panes []PaneView, screenW, screenH int) Re
 		// Single pane: find the focused one, give it the full screen.
 		regions = []Region{{X: 0, Y: 0, W: screenW, H: screenH}}
 		for _, p := range visible {
-			if p.Name() == focus {
+			if paneKey(p) == focus {
 				plan.Panes = append(plan.Panes, PaneRender{
 					Pane:    p,
 					Region:  regions[0],
-					Index:   paneIndex[p.Name()],
+					Index:   paneIndex[paneKey(p)],
 					Focused: true,
 					Dimmed:  false,
 				})
@@ -145,12 +146,13 @@ func computeLayout(state LayoutState, panes []PaneView, screenW, screenH int) Re
 		if i >= len(regions) {
 			break
 		}
+		pk := paneKey(p)
 		plan.Panes = append(plan.Panes, PaneRender{
 			Pane:    p,
 			Region:  regions[i],
-			Index:   paneIndex[p.Name()],
-			Focused: p.Name() == focus,
-			Dimmed:  p.Name() != focus,
+			Index:   paneIndex[pk],
+			Focused: pk == focus,
+			Dimmed:  pk != focus,
 		})
 	}
 
@@ -504,14 +506,14 @@ func reorderPanes(panes []PaneView, order []string) {
 	orig := make([]PaneView, len(panes))
 	copy(orig, panes)
 
-	byName := make(map[string]PaneView, len(panes))
+	byKey := make(map[string]PaneView, len(panes))
 	for _, p := range panes {
-		byName[p.Name()] = p
+		byKey[paneKey(p)] = p
 	}
 	placed := make(map[string]bool, len(order))
 	idx := 0
 	for _, name := range order {
-		if p, ok := byName[name]; ok && !placed[name] {
+		if p, ok := byKey[name]; ok && !placed[name] {
 			panes[idx] = p
 			placed[name] = true
 			idx++
@@ -519,9 +521,10 @@ func reorderPanes(panes []PaneView, order []string) {
 	}
 	// Append unspecified panes in their original slice order.
 	for _, p := range orig {
-		if !placed[p.Name()] {
+		pk := paneKey(p)
+		if !placed[pk] {
 			panes[idx] = p
-			placed[p.Name()] = true
+			placed[pk] = true
 			idx++
 		}
 	}

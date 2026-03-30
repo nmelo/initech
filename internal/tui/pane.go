@@ -83,6 +83,17 @@ type PaneView interface {
 	Close()
 }
 
+// paneKey returns a unique identifier for a PaneView. Local panes use their
+// bare name ("eng1"). Remote panes include the host prefix ("workbench:eng1").
+// This prevents name collisions when a local pane and remote pane share an
+// agent name (e.g. both have "eng1").
+func paneKey(p PaneView) string {
+	if h := p.Host(); h != "" {
+		return h + ":" + p.Name()
+	}
+	return p.Name()
+}
+
 // Compile-time assertion: Pane implements PaneView.
 var _ PaneView = (*Pane)(nil)
 

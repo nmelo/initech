@@ -375,10 +375,10 @@ func (t *TUI) tabComplete() {
 func (t *TUI) completionCandidates(cmd string) []string {
 	switch cmd {
 	case "show":
-		// All pane names + "all" (reorder applies to any pane).
+		// All pane keys + "all" (reorder applies to any pane).
 		names := make([]string, len(t.panes))
 		for i, p := range t.panes {
-			names[i] = p.Name()
+			names[i] = paneKey(p)
 		}
 		names = append(names, "all")
 		return names
@@ -386,8 +386,8 @@ func (t *TUI) completionCandidates(cmd string) []string {
 		// Hidden panes plus the special "all" keyword.
 		var names []string
 		for _, p := range t.panes {
-			if t.layoutState.Hidden[p.Name()] {
-				names = append(names, p.Name())
+			if t.layoutState.Hidden[paneKey(p)] {
+				names = append(names, paneKey(p))
 			}
 		}
 		names = append(names, "all")
@@ -396,8 +396,8 @@ func (t *TUI) completionCandidates(cmd string) []string {
 		// Visible panes only.
 		var names []string
 		for _, p := range t.panes {
-			if !t.layoutState.Hidden[p.Name()] {
-				names = append(names, p.Name())
+			if !t.layoutState.Hidden[paneKey(p)] {
+				names = append(names, paneKey(p))
 			}
 		}
 		return names
@@ -405,8 +405,8 @@ func (t *TUI) completionCandidates(cmd string) []string {
 		// Unpinned panes only.
 		var names []string
 		for _, p := range t.panes {
-			if !t.layoutState.Pinned[p.Name()] {
-				names = append(names, p.Name())
+			if !t.layoutState.Pinned[paneKey(p)] {
+				names = append(names, paneKey(p))
 			}
 		}
 		return names
@@ -414,8 +414,8 @@ func (t *TUI) completionCandidates(cmd string) []string {
 		// Pinned panes only.
 		var names []string
 		for _, p := range t.panes {
-			if t.layoutState.Pinned[p.Name()] {
-				names = append(names, p.Name())
+			if t.layoutState.Pinned[paneKey(p)] {
+				names = append(names, paneKey(p))
 			}
 		}
 		return names
@@ -423,7 +423,7 @@ func (t *TUI) completionCandidates(cmd string) []string {
 		// All pane names.
 		names := make([]string, len(t.panes))
 		for i, p := range t.panes {
-			names[i] = p.Name()
+			names[i] = paneKey(p)
 		}
 		return names
 	}
@@ -658,11 +658,12 @@ func (t *TUI) cmdFocus(parts []string) bool {
 		return false
 	}
 	name := parts[1]
-	if t.findPaneByName(name) == nil {
+	pv := t.findPaneByName(name)
+	if pv == nil {
 		t.cmd.error = fmt.Sprintf("unknown agent %q", name)
 		return false
 	}
-	t.layoutState.Focused = name
+	t.layoutState.Focused = paneKey(pv)
 	t.layoutState.Mode = LayoutFocus
 	t.layoutState.Zoomed = false
 	t.applyLayout()
@@ -710,7 +711,7 @@ func (t *TUI) cmdShow(parts []string) bool {
 
 	if len(names) == 1 && names[0] == "all" {
 		sort.Slice(t.panes, func(i, j int) bool {
-			return t.panes[i].Name() < t.panes[j].Name()
+			return paneKey(t.panes[i]) < paneKey(t.panes[j])
 		})
 		t.applyLayout()
 		t.saveLayoutIfConfigured()
@@ -744,14 +745,14 @@ func (t *TUI) cmdShow(parts []string) bool {
 	var newOrder []PaneView
 	for _, name := range names {
 		for _, p := range t.panes {
-			if p.Name() == name {
+			if paneKey(p) == name {
 				newOrder = append(newOrder, p)
 				break
 			}
 		}
 	}
 	for _, p := range t.panes {
-		if !namedSet[p.Name()] {
+		if !namedSet[paneKey(p)] {
 			newOrder = append(newOrder, p)
 		}
 	}
@@ -867,7 +868,7 @@ func (t *TUI) cmdView(parts []string) bool {
 	}
 	visCount := 0
 	for _, p := range t.panes {
-		if show[p.Name()] {
+		if show[paneKey(p)] {
 			visCount++
 		}
 	}
@@ -877,8 +878,8 @@ func (t *TUI) cmdView(parts []string) bool {
 	}
 	hidden := make(map[string]bool)
 	for _, p := range t.panes {
-		if !show[p.Name()] {
-			hidden[p.Name()] = true
+		if !show[paneKey(p)] {
+			hidden[paneKey(p)] = true
 		}
 	}
 	t.layoutState.Hidden = hidden
@@ -902,11 +903,11 @@ func (t *TUI) cmdLayout(parts []string) bool {
 		if t.projectRoot != "" {
 			DeleteLayout(t.projectRoot)
 		}
-		names := make([]string, len(t.panes))
+		keys := make([]string, len(t.panes))
 		for i, p := range t.panes {
-			names[i] = p.Name()
+			keys[i] = paneKey(p)
 		}
-		t.layoutState = DefaultLayoutState(names)
+		t.layoutState = DefaultLayoutState(keys)
 		t.applyLayout()
 	default:
 		t.cmd.error = fmt.Sprintf("unknown layout subcommand %q", parts[1])
@@ -1001,7 +1002,7 @@ func (t *TUI) cmdLog() bool {
 func (t *TUI) cmdOrder() bool {
 	items := make([]string, len(t.panes))
 	for i, p := range t.panes {
-		items[i] = p.Name()
+		items[i] = paneKey(p)
 	}
 	t.reorder = reorderModal{
 		active: true,
@@ -1145,6 +1146,13 @@ func parseGrid(s string, numPanes int) (cols, rows int, ok bool) {
 
 // findPaneByName returns the pane with the given name, or nil.
 func (t *TUI) findPaneByName(name string) PaneView {
+	// First try exact paneKey match (handles "workbench:eng1" for remote).
+	for _, p := range t.panes {
+		if paneKey(p) == name {
+			return p
+		}
+	}
+	// Fall back to bare Name match for IPC commands that use short names.
 	for _, p := range t.panes {
 		if p.Name() == name {
 			return p
@@ -1157,7 +1165,7 @@ func (t *TUI) findPaneByName(name string) PaneView {
 func (t *TUI) visibleCountFromState() int {
 	n := 0
 	for _, p := range t.panes {
-		if !t.layoutState.Hidden[p.Name()] {
+		if !t.layoutState.Hidden[paneKey(p)] {
 			n++
 		}
 	}
@@ -1188,7 +1196,7 @@ func (t *TUI) cycleFocus(delta int) {
 	// Find current focused index.
 	cur := 0
 	for i, p := range t.panes {
-		if p.Name() == t.layoutState.Focused {
+		if paneKey(p) == t.layoutState.Focused {
 			cur = i
 			break
 		}
@@ -1197,8 +1205,8 @@ func (t *TUI) cycleFocus(delta int) {
 	next := cur
 	for i := 0; i < n; i++ {
 		next = (next + delta + n) % n
-		if !t.layoutState.Hidden[t.panes[next].Name()] {
-			t.layoutState.Focused = t.panes[next].Name()
+		if !t.layoutState.Hidden[paneKey(t.panes[next])] {
+			t.layoutState.Focused = paneKey(t.panes[next])
 			t.applyLayout()
 			return
 		}

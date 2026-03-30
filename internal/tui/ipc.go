@@ -373,7 +373,7 @@ func (t *TUI) handleIPCPatrol(conn net.Conn, req IPCRequest) {
 				Activity: p.Activity().String(),
 				Bead:     p.BeadID(),
 				Alive:    p.IsAlive(),
-				Visible:  !t.layoutState.Hidden[p.Name()],
+				Visible:  !t.layoutState.Hidden[paneKey(p)],
 				Content:  peekContent(p, lines),
 			}
 		}
@@ -440,7 +440,7 @@ func (t *TUI) handleIPCList(conn net.Conn) {
 				Host:     p.Host(),
 				Activity: p.Activity().String(),
 				Alive:    p.IsAlive(),
-				Visible:  !t.layoutState.Hidden[p.Name()],
+				Visible:  !t.layoutState.Hidden[paneKey(p)],
 			}
 		}
 	})

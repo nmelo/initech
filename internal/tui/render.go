@@ -766,7 +766,7 @@ func (t *TUI) renderOverlay() {
 	maxNameLen := 0
 	hiddenCount := 0
 	for i, p := range t.panes {
-		vis := !t.layoutState.Hidden[p.Name()]
+		vis := !t.layoutState.Hidden[paneKey(p)]
 		act := p.Activity()
 		bead := p.BeadID()
 		// Build status: show idle-with-backlog hint when idle, then combine
@@ -784,7 +784,7 @@ func (t *TUI) renderOverlay() {
 		if bead != "" {
 			status = fmt.Sprintf("%s (%s)", act.String(), bead)
 		}
-		pin := t.layoutState.Pinned[p.Name()]
+		pin := t.layoutState.Pinned[paneKey(p)]
 		remote := p.Host() != ""
 		displayName := p.Name()
 		if remote {
