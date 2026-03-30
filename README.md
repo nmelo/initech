@@ -214,7 +214,78 @@ All commands communicate with the running TUI via a Unix domain socket at `/tmp/
 | `initech standup` | Morning standup from beads (shipped, active, next) |
 | `initech doctor` | Check prerequisites with versions and fix instructions |
 | `initech version` | Print version |
+| `initech serve` | Run headless daemon for remote TUI connections |
+| `initech peers` | List connected remote machines and their agents |
 
+## Cross-Machine Coordination
+
+Run agents across multiple machines. The local TUI streams remote agent panes live over a single TCP connection — no SSH tunneling required.
+
+### Remote machine setup
+
+Add `mode: headless`, `peer_name`, `listen`, and `token` to the remote machine's `initech.yaml`:
+
+```yaml
+project: myproject
+root: /home/user/myproject
+mode: headless
+peer_name: workbench
+listen: ":7391"
+token: "your-shared-secret"
+
+roles:
+  - eng1
+  - eng2
+  - eng3
+```
+
+Start the daemon:
+
+```bash
+initech serve
+```
+
+The daemon launches all configured agents and listens for connections. No TUI on the remote machine.
+
+### Local machine setup
+
+Add a `remotes:` block to the local `initech.yaml`:
+
+```yaml
+project: myproject
+root: /Users/you/myproject
+token: "your-shared-secret"
+
+roles:
+  - super
+  - pm
+  - qa1
+
+remotes:
+  workbench:
+    addr: "192.168.1.100:7391"
+```
+
+Launch the TUI normally:
+
+```bash
+initech
+```
+
+The TUI connects to each configured remote and renders its agents alongside local panes. Remote panes stream live PTY output the same as local ones.
+
+### Addressing remote agents
+
+All IPC commands accept `host:agent` syntax:
+
+```bash
+initech send workbench:eng1 "start the API refactor"
+initech peek workbench:eng2 -n 30
+initech peers          # list connected machines and agents
+initech doctor         # validate remote connectivity before starting
+```
+
+`initech status` shows a HOST column when remotes are present. If the connection to a remote drops, the TUI reconnects automatically when the peer comes back.
 
 ### How It Works
 
