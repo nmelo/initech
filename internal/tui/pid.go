@@ -104,9 +104,15 @@ func isInitechProcess(pid int) bool {
 	return strings.Contains(strings.ToLower(strings.TrimSpace(string(out))), "initech")
 }
 
+// disableSystemLog skips the slow `log show` call in tests.
+var disableSystemLog bool
+
 // querySystemLog queries the macOS unified log and DiagnosticReports for crash
 // evidence related to the given PID. Best-effort: all errors are silently ignored.
 func querySystemLog(pid int) {
+	if disableSystemLog {
+		return
+	}
 	// macOS unified log: look for kill/crash entries in the last 10 minutes.
 	predicate := fmt.Sprintf(`eventMessage contains "%d"`, pid)
 	out, err := exec.Command("log", "show",

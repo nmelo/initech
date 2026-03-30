@@ -130,10 +130,9 @@ func TestDaemonAuthFailure(t *testing.T) {
 		t.Errorf("expected auth failed, got %+v", errMsg)
 	}
 
-	// Wait for handler to finish.
 	select {
 	case <-done:
-	case <-time.After(2 * time.Second):
+	case <-time.After(200 * time.Millisecond):
 		t.Error("handler didn't finish after auth failure")
 	}
 }
@@ -215,8 +214,9 @@ func TestDaemonControlSend(t *testing.T) {
 	}
 
 	ctrl.Close()
+	clientSession.Close() // Terminates all streams, unblocking handleConnection.
 	select {
 	case <-done:
-	case <-time.After(2 * time.Second):
+	case <-time.After(200 * time.Millisecond):
 	}
 }

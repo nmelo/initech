@@ -9,6 +9,11 @@ import (
 	"testing"
 )
 
+func init() {
+	// Skip the slow macOS 'log show' system call in tests (~1-2s per call).
+	disableSystemLog = true
+}
+
 func TestWritePIDFile_WritesCurrentPID(t *testing.T) {
 	dir := t.TempDir()
 	cleanup := writePIDFile(dir)
