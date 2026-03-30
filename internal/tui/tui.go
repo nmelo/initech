@@ -175,6 +175,9 @@ type TUI struct {
 	quotaPercent int
 	quotaPollAt  time.Time // Next time to poll for quota.
 
+	// Timer store for scheduled sends.
+	timers *TimerStore
+
 	// Agent event system.
 	agentEvents   chan AgentEvent // Buffered channel for semantic events from detection modules.
 	notifications []notification // Active notifications for rendering.
@@ -386,6 +389,7 @@ func Run(cfg Config) error {
 		quitCh:            quitCh,
 		ipcCh:             make(chan ipcAction, 32),
 		agentEvents:       make(chan AgentEvent, 64),
+		timers:            NewTimerStore(filepath.Join(cfg.ProjectRoot, ".initech", "timers.json")),
 	}
 
 	// Show welcome overlay on first launch (no saved layout).

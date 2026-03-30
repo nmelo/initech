@@ -20,8 +20,10 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/hashicorp/yamux"
 	"github.com/nmelo/initech/internal/config"
@@ -44,6 +46,7 @@ type Daemon struct {
 	listener   net.Listener
 	mu         sync.Mutex
 	version    string
+	timers     *TimerStore
 
 	// Active client sessions for graceful shutdown.
 	sessionsMu sync.Mutex
@@ -91,13 +94,15 @@ type ErrorMsg struct {
 
 // ControlCmd is a command sent on the control channel after handshake.
 type ControlCmd struct {
-	Action string `json:"action"` // "send", "peek", "resize"
+	Action string `json:"action"` // "send", "peek", "resize", "schedule", etc.
 	Target string `json:"target"` // Agent name.
+	Host   string `json:"host,omitempty"`
 	Text   string `json:"text,omitempty"`
 	Enter  bool   `json:"enter,omitempty"`
 	Lines  int    `json:"lines,omitempty"`
 	Rows   int    `json:"rows,omitempty"`
 	Cols   int    `json:"cols,omitempty"`
+	FireAt string `json:"fire_at,omitempty"` // RFC3339 for schedule command.
 }
 
 // ControlResp is the response to a control command.
@@ -131,6 +136,7 @@ func RunDaemon(cfg DaemonConfig) error {
 		version:    cfg.Version,
 		ringBufs:   make(map[string]*RingBuf),
 		multiSinks: make(map[string]*MultiSink),
+		timers:     NewTimerStore(filepath.Join(cfg.Project.Root, ".initech", "timers.json")),
 	}
 
 	// Create and start agent panes with ring buffers and multi-sinks.
@@ -457,6 +463,40 @@ func (d *Daemon) handleControlStream(ctrl net.Conn, scanner *bufio.Scanner) {
 			peers := []PeerInfo{{Name: peerName, Agents: agents}}
 			data, _ := json.Marshal(peers)
 			writeJSON(ctrl, ControlResp{OK: true, Data: string(data)})
+
+		case "schedule":
+			if d.timers == nil {
+				writeJSON(ctrl, ControlResp{Error: "timer store not initialized"})
+				continue
+			}
+			fireAt, err := time.Parse(time.RFC3339, cmd.FireAt)
+			if err != nil {
+				writeJSON(ctrl, ControlResp{Error: fmt.Sprintf("invalid fire_at: %v", err)})
+				continue
+			}
+			timer := d.timers.Add(cmd.Target, cmd.Host, cmd.Text, cmd.Enter, fireAt)
+			writeJSON(ctrl, ControlResp{OK: true, Data: timer.ID})
+
+		case "list_timers":
+			if d.timers == nil {
+				writeJSON(ctrl, ControlResp{OK: true, Data: "[]"})
+				continue
+			}
+			timers := d.timers.List()
+			tdata, _ := json.Marshal(timers)
+			writeJSON(ctrl, ControlResp{OK: true, Data: string(tdata)})
+
+		case "cancel_timer":
+			if d.timers == nil {
+				writeJSON(ctrl, ControlResp{Error: "timer store not initialized"})
+				continue
+			}
+			timer, err := d.timers.Cancel(cmd.Text)
+			if err != nil {
+				writeJSON(ctrl, ControlResp{Error: err.Error()})
+				continue
+			}
+			writeJSON(ctrl, ControlResp{OK: true, Data: timer.ID})
 
 		default:
 			writeJSON(ctrl, ControlResp{Error: fmt.Sprintf("unknown action %q", cmd.Action)})

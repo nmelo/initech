@@ -131,6 +131,12 @@ func (t *TUI) handleIPCConn(conn net.Conn) {
 		t.handleIPCRemove(conn, req)
 	case "peers_query":
 		t.handleIPCPeers(conn)
+	case "schedule":
+		t.handleIPCSchedule(conn, scanner.Bytes())
+	case "list_timers":
+		t.handleIPCListTimers(conn)
+	case "cancel_timer":
+		t.handleIPCCancelTimer(conn, req)
 	case "quit":
 		t.handleIPCQuit(conn)
 	default:
@@ -529,6 +535,58 @@ func hasStuckInput(p *Pane) bool {
 		return false // No prompt visible, Claude is generating.
 	}
 	return lastPromptContent != ""
+}
+
+func (t *TUI) handleIPCSchedule(conn net.Conn, rawJSON []byte) {
+	var req struct {
+		Target string `json:"target"`
+		Host   string `json:"host"`
+		Text   string `json:"text"`
+		Enter  bool   `json:"enter"`
+		FireAt string `json:"fire_at"`
+	}
+	if err := json.Unmarshal(rawJSON, &req); err != nil {
+		writeIPCResponse(conn, IPCResponse{Error: "invalid schedule request"})
+		return
+	}
+	fireAt, err := time.Parse(time.RFC3339, req.FireAt)
+	if err != nil {
+		writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("invalid fire_at: %v", err)})
+		return
+	}
+	if t.timers == nil {
+		writeIPCResponse(conn, IPCResponse{Error: "timer store not initialized"})
+		return
+	}
+	timer := t.timers.Add(req.Target, req.Host, req.Text, req.Enter, fireAt)
+	writeIPCResponse(conn, IPCResponse{OK: true, Data: timer.ID})
+}
+
+func (t *TUI) handleIPCListTimers(conn net.Conn) {
+	if t.timers == nil {
+		writeIPCResponse(conn, IPCResponse{OK: true, Data: "[]"})
+		return
+	}
+	timers := t.timers.List()
+	data, _ := json.Marshal(timers)
+	writeIPCResponse(conn, IPCResponse{OK: true, Data: string(data)})
+}
+
+func (t *TUI) handleIPCCancelTimer(conn net.Conn, req IPCRequest) {
+	if t.timers == nil {
+		writeIPCResponse(conn, IPCResponse{Error: "timer store not initialized"})
+		return
+	}
+	timer, err := t.timers.Cancel(req.Text)
+	if err != nil {
+		writeIPCResponse(conn, IPCResponse{Error: err.Error()})
+		return
+	}
+	target := timer.Target
+	if timer.Host != "" {
+		target = timer.Host + ":" + target
+	}
+	writeIPCResponse(conn, IPCResponse{OK: true, Data: fmt.Sprintf("%s (%s at %s)", timer.ID, target, timer.FireAt.Local().Format("15:04"))})
 }
 
 func (t *TUI) handleIPCQuit(conn net.Conn) {
