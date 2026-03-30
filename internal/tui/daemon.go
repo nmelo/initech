@@ -354,7 +354,24 @@ func (d *Daemon) handleDaemonIPCConn(conn net.Conn) {
 		}
 		p := d.findPane(req.Target)
 		if p == nil {
-			writeJSON(conn, IPCResponse{Error: fmt.Sprintf("pane %q not found", req.Target)})
+			// Auto-route: target not found locally, forward to connected
+			// TUI clients. This lets remote agents use bare names like
+			// "initech send super msg" without a host prefix.
+			d.sessionsMu.Lock()
+			var targets []net.Conn
+			for _, ctrl := range d.clients {
+				targets = append(targets, ctrl)
+			}
+			d.sessionsMu.Unlock()
+			if len(targets) == 0 {
+				writeJSON(conn, IPCResponse{Error: fmt.Sprintf("pane %q not found locally and no clients connected", req.Target)})
+				return
+			}
+			fwd := ControlCmd{Action: "forward_send", Target: req.Target, Text: req.Text, Enter: req.Enter}
+			for _, ctrl := range targets {
+				writeJSON(ctrl, fwd)
+			}
+			writeJSON(conn, IPCResponse{OK: true})
 			return
 		}
 		conn.SetReadDeadline(time.Time{})

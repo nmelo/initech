@@ -346,6 +346,134 @@ func TestDaemonIPCSend_UnknownHost(t *testing.T) {
 	}
 }
 
+// TestDaemonIPCSend_AutoRouteToClient verifies that when a bare agent name
+// isn't found locally, the daemon auto-routes via forward_send to connected
+// TUI clients.
+func TestDaemonIPCSend_AutoRouteToClient(t *testing.T) {
+	proj := &config.Project{
+		Name:     "test",
+		Root:     t.TempDir(),
+		PeerName: "workbench",
+		Roles:    []string{"eng1"},
+	}
+
+	// Daemon has eng1 locally but NOT super.
+	d := &Daemon{
+		project: proj,
+		panes:   []*Pane{newEmuPane("eng1", 80, 24)},
+		clients: make(map[string]net.Conn),
+	}
+
+	// TCP loopback for client ctrl (kernel buffer avoids blocking).
+	ctrlLn, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ctrlLn.Close()
+	ctrlDial, err := net.Dial("tcp", ctrlLn.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ctrlDial.Close()
+	ctrlAccept, err := ctrlLn.Accept()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ctrlAccept.Close()
+
+	d.sessionsMu.Lock()
+	d.clients["macbook"] = ctrlAccept
+	d.sessionsMu.Unlock()
+
+	server, client := net.Pipe()
+	defer client.Close()
+
+	go func() {
+		d.handleDaemonIPCConn(server)
+		server.Close()
+	}()
+
+	// Drain IPC response concurrently (net.Pipe is synchronous).
+	respCh := make(chan IPCResponse, 1)
+	go func() {
+		sc := bufio.NewScanner(client)
+		sc.Scan()
+		var r IPCResponse
+		json.Unmarshal(sc.Bytes(), &r)
+		respCh <- r
+	}()
+
+	// Send to "super" with NO host prefix. Not found locally -> auto-route.
+	req := IPCRequest{Action: "send", Target: "super", Text: "auto-routed msg", Enter: true}
+	data, _ := json.Marshal(req)
+	client.Write(data)
+	client.Write([]byte("\n"))
+
+	resp := <-respCh
+	if !resp.OK {
+		t.Fatalf("auto-route send should succeed, got error: %s", resp.Error)
+	}
+
+	// Verify forward_send arrived on the client's control stream.
+	ctrlDial.SetReadDeadline(time.Now().Add(2 * time.Second))
+	sc := bufio.NewScanner(ctrlDial)
+	if !sc.Scan() {
+		t.Fatal("no forward_send on client ctrl")
+	}
+	var fwd ControlCmd
+	json.Unmarshal(sc.Bytes(), &fwd)
+	if fwd.Action != "forward_send" {
+		t.Errorf("action = %q, want forward_send", fwd.Action)
+	}
+	if fwd.Target != "super" {
+		t.Errorf("target = %q, want super", fwd.Target)
+	}
+	if fwd.Text != "auto-routed msg" {
+		t.Errorf("text = %q, want 'auto-routed msg'", fwd.Text)
+	}
+}
+
+// TestDaemonIPCSend_AutoRouteNoClients verifies that when no clients are
+// connected and the pane isn't found locally, an appropriate error is returned.
+func TestDaemonIPCSend_AutoRouteNoClients(t *testing.T) {
+	proj := &config.Project{
+		Name:     "test",
+		Root:     t.TempDir(),
+		PeerName: "workbench",
+		Roles:    []string{"eng1"},
+	}
+
+	d := &Daemon{
+		project: proj,
+		panes:   []*Pane{newEmuPane("eng1", 80, 24)},
+		clients: make(map[string]net.Conn),
+	}
+
+	server, client := net.Pipe()
+	defer client.Close()
+
+	go func() {
+		d.handleDaemonIPCConn(server)
+		server.Close()
+	}()
+
+	req := IPCRequest{Action: "send", Target: "super", Text: "msg"}
+	data, _ := json.Marshal(req)
+	client.Write(data)
+	client.Write([]byte("\n"))
+
+	scanner := bufio.NewScanner(client)
+	scanner.Scan()
+	var resp IPCResponse
+	json.Unmarshal(scanner.Bytes(), &resp)
+	if resp.OK {
+		t.Error("send to unknown pane with no clients should fail")
+	}
+	if resp.Error == "" {
+		t.Error("should have error message")
+	}
+}
+
 func TestDaemonIPCSend_LocalDelivery(t *testing.T) {
 	proj := &config.Project{
 		Name:     "test",
