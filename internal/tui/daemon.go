@@ -212,6 +212,13 @@ func RunDaemon(cfg DaemonConfig) error {
 
 	LogInfo("daemon", "ready", "peer_name", cfg.Project.PeerName)
 
+	// Fire any overdue timers from a previous session.
+	d.fireTimers()
+
+	// 1-second ticker for timer execution.
+	timerTicker := time.NewTicker(1 * time.Second)
+	defer timerTicker.Stop()
+
 	for {
 		select {
 		case sig := <-sigCh:
@@ -221,6 +228,8 @@ func RunDaemon(cfg DaemonConfig) error {
 		case conn := <-connCh:
 			LogInfo("daemon", "client connected", "remote", conn.RemoteAddr().String())
 			go d.handleConnection(conn)
+		case <-timerTicker.C:
+			d.fireTimers()
 		}
 	}
 }
@@ -626,6 +635,43 @@ func (d *Daemon) findPane(name string) *Pane {
 		}
 	}
 	return nil
+}
+
+// fireTimers checks for due timers and delivers them to local agents.
+func (d *Daemon) fireTimers() {
+	if d.timers == nil {
+		return
+	}
+	due := d.timers.FireDue(time.Now())
+	for _, timer := range due {
+		d.fireScheduledSend(timer)
+	}
+}
+
+func (d *Daemon) fireScheduledSend(timer Timer) {
+	delay := time.Since(timer.FireAt)
+	if delay > time.Second {
+		LogInfo("timer", "firing overdue",
+			"id", timer.ID, "target", timer.Target,
+			"scheduled", timer.FireAt.Format(time.RFC3339),
+			"delay", delay.Truncate(time.Second).String())
+	} else {
+		LogInfo("timer", "firing", "id", timer.ID, "target", timer.Target)
+	}
+
+	p := d.findPane(timer.Target)
+	if p == nil {
+		LogWarn("timer", "agent not found, message not delivered",
+			"id", timer.ID, "target", timer.Target)
+		return
+	}
+	if !p.IsAlive() {
+		LogWarn("timer", "agent is dead, message not delivered",
+			"id", timer.ID, "target", timer.Target)
+		return
+	}
+	p.SendText(timer.Text, timer.Enter)
+	LogInfo("timer", "delivered", "id", timer.ID, "target", timer.Target)
 }
 
 // writeJSON encodes v as JSON and writes it as a newline-terminated line.

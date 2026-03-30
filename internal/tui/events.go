@@ -31,6 +31,7 @@ const (
 	EventAgentRestarted                 // Agent pane restarted via IPC.
 	EventAgentAdded                     // New agent pane added to session.
 	EventAgentRemoved                   // Agent pane removed from session.
+	EventTimerFired                     // Scheduled timer delivered its message.
 )
 
 // String returns a human-readable label for the event type.
@@ -66,6 +67,8 @@ func (e EventType) String() string {
 		return "added"
 	case EventAgentRemoved:
 		return "removed"
+	case EventTimerFired:
+		return "timer_fired"
 	}
 	return "unknown"
 }

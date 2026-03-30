@@ -165,3 +165,79 @@ func (ts *TimerStore) save() {
 	}
 	os.Rename(tmp, ts.path)
 }
+
+// fireTimers checks for due timers and delivers them. Called from the TUI
+// tick loop (every 33ms) and once at startup for overdue timers.
+func (t *TUI) fireTimers() {
+	if t.timers == nil {
+		return
+	}
+	due := t.timers.FireDue(time.Now())
+	for _, timer := range due {
+		t.fireScheduledSend(timer)
+	}
+}
+
+// fireScheduledSend delivers a single timer's message to its target agent.
+// Logs warnings for missing/dead agents rather than failing hard.
+func (t *TUI) fireScheduledSend(timer Timer) {
+	delay := time.Since(timer.FireAt)
+	if delay > time.Second {
+		LogInfo("timer", "firing overdue",
+			"id", timer.ID, "target", timer.Target,
+			"scheduled", timer.FireAt.Format(time.RFC3339),
+			"delay", delay.Truncate(time.Second).String())
+	} else {
+		LogInfo("timer", "firing", "id", timer.ID, "target", timer.Target)
+	}
+
+	// Find the target pane.
+	var target PaneView
+	for _, p := range t.panes {
+		if timer.Host != "" {
+			// Remote: match host + name.
+			if p.Host() == timer.Host && p.Name() == timer.Target {
+				target = p
+				break
+			}
+		} else {
+			// Local: match name only.
+			if p.Name() == timer.Target {
+				target = p
+				break
+			}
+		}
+	}
+
+	if target == nil {
+		hostInfo := ""
+		if timer.Host != "" {
+			hostInfo = " on peer " + timer.Host
+		}
+		LogWarn("timer", "agent not found, message not delivered",
+			"id", timer.ID, "target", timer.Target+hostInfo)
+		return
+	}
+
+	if !target.IsAlive() {
+		LogWarn("timer", "agent is dead, message not delivered",
+			"id", timer.ID, "target", timer.Target)
+		return
+	}
+
+	target.SendText(timer.Text, timer.Enter)
+
+	// Emit event for the event log.
+	preview := timer.Text
+	if len(preview) > 50 {
+		preview = preview[:47] + "..."
+	}
+	if t.agentEvents != nil {
+		EmitEvent(t.agentEvents, AgentEvent{
+			Type:   EventTimerFired,
+			Pane:   timer.Target,
+			Detail: fmt.Sprintf("Timer %s fired: %s", timer.ID, preview),
+			Time:   time.Now(),
+		})
+	}
+}

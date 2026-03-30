@@ -487,6 +487,10 @@ func Run(cfg Config) error {
 		}
 	}()
 
+	// Fire any overdue timers from a previous session that missed their window
+	// (e.g., initech was restarted after a timer's FireAt).
+	t.fireTimers()
+
 	// Start idle-with-backlog detection if bd is available.
 	if _, err := osexec.LookPath("bd"); err == nil {
 		t.safeGo(func() { t.watchBacklog(&iexec.DefaultRunner{}) })
@@ -538,6 +542,7 @@ func Run(cfg Config) error {
 			}
 			t.rotateTip()
 			t.pollQuota()
+			t.fireTimers()
 			t.render()
 		case <-t.quitCh:
 			return nil

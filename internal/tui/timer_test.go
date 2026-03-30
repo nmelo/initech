@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/charmbracelet/x/vt"
 )
 
 func timerPath(t *testing.T) string {
@@ -239,4 +241,107 @@ func TestTimerStore_MissingFile(t *testing.T) {
 	if ts.Pending() != 0 {
 		t.Errorf("Pending on missing file = %d, want 0", ts.Pending())
 	}
+}
+
+// ── fireScheduledSend (TUI) ────────────────────────────────────────
+
+func TestFireScheduledSend_LocalAgent(t *testing.T) {
+	emu := vt.NewSafeEmulator(80, 24)
+	go func() {
+		buf := make([]byte, 256)
+		for {
+			if _, err := emu.Read(buf); err != nil {
+				return
+			}
+		}
+	}()
+
+	p := &Pane{name: "eng1", emu: emu, alive: true}
+	tui := &TUI{
+		panes:       toPaneViews([]*Pane{p}),
+		agentEvents: make(chan AgentEvent, 8),
+	}
+
+	timer := Timer{
+		ID:     "at-1",
+		Target: "eng1",
+		Text:   "test message",
+		Enter:  true,
+		FireAt: time.Now().Add(-time.Second),
+	}
+
+	// Should not panic and should deliver.
+	tui.fireScheduledSend(timer)
+}
+
+func TestFireScheduledSend_MissingAgent(t *testing.T) {
+	tui := &TUI{
+		panes: toPaneViews([]*Pane{}),
+	}
+
+	timer := Timer{
+		ID:     "at-1",
+		Target: "nonexistent",
+		Text:   "msg",
+		FireAt: time.Now(),
+	}
+
+	// Should not panic. Logs warning internally.
+	tui.fireScheduledSend(timer)
+}
+
+func TestFireScheduledSend_DeadAgent(t *testing.T) {
+	p := &Pane{name: "eng1", emu: vt.NewSafeEmulator(10, 5), alive: false}
+	tui := &TUI{
+		panes: toPaneViews([]*Pane{p}),
+	}
+
+	timer := Timer{
+		ID:     "at-1",
+		Target: "eng1",
+		Text:   "msg",
+		FireAt: time.Now(),
+	}
+
+	// Should not panic. Logs warning about dead agent.
+	tui.fireScheduledSend(timer)
+}
+
+func TestFireTimers_Integration(t *testing.T) {
+	path := timerPath(t)
+	ts := NewTimerStore(path)
+	ts.Add("eng1", "", "fire me", true, time.Now().Add(-time.Second))
+	ts.Add("eng2", "", "not yet", true, time.Now().Add(time.Hour))
+
+	emu := vt.NewSafeEmulator(80, 24)
+	go func() {
+		buf := make([]byte, 256)
+		for {
+			if _, err := emu.Read(buf); err != nil {
+				return
+			}
+		}
+	}()
+
+	tui := &TUI{
+		panes:       toPaneViews([]*Pane{{name: "eng1", emu: emu, alive: true}}),
+		timers:      ts,
+		agentEvents: make(chan AgentEvent, 8),
+	}
+
+	tui.fireTimers()
+
+	// eng1's timer should have fired (removed), eng2's should remain.
+	if ts.Pending() != 1 {
+		t.Errorf("Pending after fire = %d, want 1 (eng2's timer remains)", ts.Pending())
+	}
+	remaining := ts.List()
+	if remaining[0].Target != "eng2" {
+		t.Errorf("remaining target = %q, want 'eng2'", remaining[0].Target)
+	}
+}
+
+func TestFireTimers_NilStore(t *testing.T) {
+	tui := &TUI{timers: nil}
+	tui.fireTimers() // must not panic
 }
