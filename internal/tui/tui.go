@@ -568,8 +568,10 @@ func Run(cfg Config) error {
 		case op := <-t.ipcCh:
 			// Execute IPC-dispatched closures on the main goroutine so they
 			// can safely access t.panes and other unsynchronised TUI state.
+			LogDebug("main-loop", "ipcCh dispatch start")
 			op.fn()
 			close(op.done)
+			LogDebug("main-loop", "ipcCh dispatch done")
 		case <-ticker.C:
 			t.pruneNotifications()
 			t.pruneConfirmation()
@@ -651,6 +653,8 @@ func (t *TUI) recalcGridForPanes() {
 // remote peer connects, reconnects, or goes offline. It swaps the old
 // RemotePanes for the peer with new ones (or removes them on disconnect).
 func (t *TUI) handlePeerUpdate(peerName string, newPanes []PaneView) {
+	LogInfo("peer-update", "start", "peer", peerName, "new_panes", len(newPanes), "current_panes", len(t.panes))
+
 	// Remove old panes for this peer.
 	kept := make([]PaneView, 0, len(t.panes))
 	for _, p := range t.panes {
@@ -666,8 +670,10 @@ func (t *TUI) handlePeerUpdate(peerName string, newPanes []PaneView) {
 		kept = append(kept, newPanes...)
 	}
 	t.panes = kept
+	LogInfo("peer-update", "panes-updated", "peer", peerName, "total_panes", len(kept))
 	t.recalcGridForPanes()
 	t.applyLayout()
+	LogInfo("peer-update", "done", "peer", peerName, "plan_panes", len(t.plan.Panes))
 }
 
 // calcMainVertical creates a layout with a large pane on the left

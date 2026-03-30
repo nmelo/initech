@@ -617,16 +617,20 @@ func (t *TUI) runOnMain(fn func()) bool {
 		return true
 	}
 	op := ipcAction{fn: fn, done: make(chan struct{})}
+	LogDebug("runOnMain", "sending to ipcCh", "pending", len(t.ipcCh), "cap", cap(t.ipcCh))
 	select {
 	case t.ipcCh <- op:
-		// Op sent; wait for main loop to execute it.
+		LogDebug("runOnMain", "sent, waiting for done")
 		select {
 		case <-op.done:
+			LogDebug("runOnMain", "done")
 			return true
 		case <-t.quitCh:
+			LogDebug("runOnMain", "quit while waiting")
 			return false
 		}
 	case <-t.quitCh:
+		LogDebug("runOnMain", "quit while sending")
 		return false
 	}
 }
