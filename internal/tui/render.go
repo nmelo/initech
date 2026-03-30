@@ -346,176 +346,176 @@ func (t *TUI) pollQuota() {
 	// No pane had quota data. Keep the last known value (stale > absent).
 }
 
-// renderHints draws the status bar with a cycling tip on the left and
-// keyboard shortcuts on the right. Subtle dark background with dim text.
-func (t *TUI) renderHints() {
-	s := t.screen
-	sw, sh := s.Size()
-	y := sh - 1
+// statusBarItem is a single element in the status bar (text + style).
+type statusBarItem struct {
+	text  string
+	style tcell.Style
+}
 
-	barStyle := tcell.StyleDefault.Background(tcell.NewRGBColor(30, 30, 30)).Foreground(tcell.ColorGray)
+// statusBarBuilder collects left- and right-aligned items and renders them
+// onto a tcell screen row with dim middle-dot separators between right items.
+// Right items are laid out right-to-left; left items fill remaining space.
+type statusBarBuilder struct {
+	barStyle tcell.Style
+	sepStyle tcell.Style
+	left     []statusBarItem // Rendered left-to-right from x=1.
+	right    []statusBarItem // Rendered left-to-right, positioned flush-right.
+}
+
+// newStatusBarBuilder creates a builder with the standard bar background.
+func newStatusBarBuilder() *statusBarBuilder {
+	bar := tcell.StyleDefault.Background(tcell.NewRGBColor(30, 30, 30)).Foreground(tcell.ColorGray)
+	return &statusBarBuilder{
+		barStyle: bar,
+		sepStyle: bar.Foreground(tcell.NewRGBColor(70, 70, 70)),
+	}
+}
+
+// addRight appends an item to the right side of the status bar.
+func (b *statusBarBuilder) addRight(text string, style tcell.Style) {
+	b.right = append(b.right, statusBarItem{text: text, style: style})
+}
+
+// addLeft appends an item to the left side of the status bar.
+func (b *statusBarBuilder) addLeft(text string, style tcell.Style) {
+	b.left = append(b.left, statusBarItem{text: text, style: style})
+}
+
+const sepWidth = 3 // " · "
+
+// render draws all items onto screen row y. Right items are drawn first
+// (they have priority), then left items fill remaining space with truncation.
+func (b *statusBarBuilder) render(s tcell.Screen, y int) {
+	sw, _ := s.Size()
+
+	// Clear the row.
 	for x := 0; x < sw; x++ {
-		s.SetContent(x, y, ' ', nil, barStyle)
+		s.SetContent(x, y, ' ', nil, b.barStyle)
 	}
 
-	// Right side: keyboard shortcuts (always visible, take priority).
-	shortcuts := "`:cmd  Alt+z:zoom  Alt+s:overlay  ?:help"
-
-	// Battery indicator: placed between shortcuts and tip.
-	battStr := ""
-	battStyle := barStyle
-	if t.batteryPercent >= 0 {
-		battStr = fmt.Sprintf("%d%%", t.batteryPercent)
-		if t.batteryCharging {
-			battStr += " +"
-			battStyle = barStyle.Foreground(tcell.ColorGreen)
-		} else if t.batteryPercent < 10 {
-			battStyle = barStyle.Foreground(tcell.ColorRed)
-		} else if t.batteryPercent < 20 {
-			battStyle = barStyle.Foreground(tcell.ColorYellow)
+	// Calculate total width needed by right items (with separators between them).
+	rightW := 0
+	for i, item := range b.right {
+		rightW += len([]rune(item.text))
+		if i > 0 {
+			rightW += sepWidth
 		}
 	}
 
-	// Clock: rightmost element.
-	clock := time.Now().Format("15:04")
-	sepStyle := barStyle.Foreground(tcell.NewRGBColor(70, 70, 70))
-
-	// Layout from right: clock, sep, shortcuts, sep, battery.
-	rightW := len(clock)
-	rightW += 3 + len(shortcuts) // " · " + shortcuts
-	if battStr != "" {
-		rightW += len(battStr) + 3 // " · " + battery
-	}
+	// Draw right items from their computed start position.
 	rightStart := sw - rightW - 1
 	if rightStart < 0 {
 		rightStart = 0
 	}
-
-	// drawSep writes a dim middle dot separator at position x and returns the new x.
-	drawSep := func(x int) int {
-		if x >= 0 && x < sw {
-			s.SetContent(x, y, ' ', nil, barStyle)
-		}
-		x++
-		if x >= 0 && x < sw {
-			s.SetContent(x, y, '\u00b7', nil, sepStyle)
-		}
-		x++
-		if x >= 0 && x < sw {
-			s.SetContent(x, y, ' ', nil, barStyle)
-		}
-		return x + 1
-	}
-
-	// Draw battery.
 	x := rightStart
-	if battStr != "" {
-		for _, ch := range battStr {
+	for i, item := range b.right {
+		if i > 0 {
+			x = b.drawSep(s, x, y, sw)
+		}
+		for _, ch := range item.text {
 			if x >= 0 && x < sw {
-				s.SetContent(x, y, ch, nil, battStyle)
+				s.SetContent(x, y, ch, nil, item.style)
 			}
 			x++
 		}
-		x = drawSep(x)
 	}
 
-	// Draw shortcuts.
-	for _, ch := range shortcuts {
-		if x >= 0 && x < sw {
-			s.SetContent(x, y, ch, nil, barStyle)
-		}
-		x++
+	// Draw left items, truncating if they would overlap the right block.
+	maxLeft := rightStart - 3 // gap between left and right
+	if maxLeft < 1 {
+		return
 	}
-
-	// Draw clock.
-	x = drawSep(x)
-	for _, ch := range clock {
-		if x >= 0 && x < sw {
-			s.SetContent(x, y, ch, nil, barStyle)
+	lx := 1
+	for _, item := range b.left {
+		remaining := maxLeft - (lx - 1)
+		if remaining < 10 {
+			break
 		}
-		x++
-	}
-
-	// Quota indicator: placed just left of battery (or shortcuts if no battery).
-	leftEdge := rightStart // where the right block starts; quota goes before this
-	if t.quotaPercent >= 0 {
-		quotaText := fmt.Sprintf("Q:%d%%", t.quotaPercent)
-		quotaStyle := barStyle // dim gray by default
-		if t.quotaPercent >= 95 {
-			quotaStyle = barStyle.Foreground(tcell.ColorRed)
-		} else if t.quotaPercent >= 80 {
-			quotaStyle = barStyle.Foreground(tcell.ColorYellow)
+		runes := []rune(item.text)
+		if len(runes) > remaining {
+			runes = append(runes[:remaining-1], '\u2026')
 		}
-		qStart := rightStart - len(quotaText) - 3 // 3 chars for " · " separator
-		if qStart >= 0 {
-			for i, ch := range quotaText {
-				s.SetContent(qStart+i, y, ch, nil, quotaStyle)
+		for _, ch := range runes {
+			if lx < sw {
+				s.SetContent(lx, y, ch, nil, item.style)
 			}
-			// Draw separator between quota and battery/shortcuts.
-			sepX := qStart + len(quotaText)
-			if sepX+2 < sw {
-				s.SetContent(sepX, y, ' ', nil, barStyle)
-				s.SetContent(sepX+1, y, '\u00b7', nil, sepStyle)
-				s.SetContent(sepX+2, y, ' ', nil, barStyle)
-			}
-			leftEdge = qStart
+			lx++
 		}
 	}
+}
 
-	// Update available indicator: left of pending timers block.
-	if t.updateAvailable != "" {
-		updateText := "v" + t.updateAvailable + " available"
-		updateStyle := barStyle.Foreground(tcell.ColorYellow)
-		uStart := leftEdge - len(updateText) - 3
-		if uStart >= 0 {
-			for i, ch := range updateText {
-				s.SetContent(uStart+i, y, ch, nil, updateStyle)
-			}
-			sepX := uStart + len(updateText)
-			if sepX+2 < sw {
-				s.SetContent(sepX, y, ' ', nil, barStyle)
-				s.SetContent(sepX+1, y, '\u00b7', nil, sepStyle)
-				s.SetContent(sepX+2, y, ' ', nil, barStyle)
-			}
-			leftEdge = uStart
-		}
+// drawSep writes a dim " · " separator at position x and returns the new x.
+func (b *statusBarBuilder) drawSep(s tcell.Screen, x, y, sw int) int {
+	if x >= 0 && x < sw {
+		s.SetContent(x, y, ' ', nil, b.barStyle)
 	}
+	x++
+	if x >= 0 && x < sw {
+		s.SetContent(x, y, '\u00b7', nil, b.sepStyle)
+	}
+	x++
+	if x >= 0 && x < sw {
+		s.SetContent(x, y, ' ', nil, b.barStyle)
+	}
+	return x + 1
+}
 
-	// Pending timers indicator: left of quota/battery block.
+// renderHints draws the status bar with a cycling tip on the left and
+// keyboard shortcuts on the right. Subtle dark background with dim text.
+func (t *TUI) renderHints() {
+	_, sh := t.screen.Size()
+	b := newStatusBarBuilder()
+
+	// Left: cycling tip.
+	b.addLeft(statusTips[t.tipIndex%len(statusTips)], b.barStyle)
+
+	// Right items are added in display order (left-to-right within the right block).
+
+	// Pending timers.
 	if t.timers != nil {
 		if pending := t.timers.Pending(); pending > 0 {
-			pendingText := fmt.Sprintf("%d pending", pending)
-			pStart := leftEdge - len(pendingText) - 3
-			if pStart >= 0 {
-				for i, ch := range pendingText {
-					s.SetContent(pStart+i, y, ch, nil, barStyle)
-				}
-				sepX := pStart + len(pendingText)
-				if sepX+2 < sw {
-					s.SetContent(sepX, y, ' ', nil, barStyle)
-					s.SetContent(sepX+1, y, '\u00b7', nil, sepStyle)
-					s.SetContent(sepX+2, y, ' ', nil, barStyle)
-				}
-				leftEdge = pStart
-			}
+			b.addRight(fmt.Sprintf("%d pending", pending), b.barStyle)
 		}
 	}
 
-	// Left side: cycling tip. Truncate with ellipsis if it would overlap the right block.
-	tip := statusTips[t.tipIndex%len(statusTips)]
-	maxTipW := leftEdge - 3 // leave gap between tip and quota/battery/shortcuts
-	if maxTipW < 10 {
-		return // too narrow for a tip
+	// Update available.
+	if t.updateAvailable != "" {
+		b.addRight("v"+t.updateAvailable+" available", b.barStyle.Foreground(tcell.ColorYellow))
 	}
-	tipRunes := []rune(tip)
-	if len(tipRunes) > maxTipW {
-		tipRunes = append(tipRunes[:maxTipW-1], '\u2026')
-	}
-	for i, ch := range tipRunes {
-		if 1+i < sw {
-			s.SetContent(1+i, y, ch, nil, barStyle)
+
+	// Quota.
+	if t.quotaPercent >= 0 {
+		quotaStyle := b.barStyle
+		if t.quotaPercent >= 95 {
+			quotaStyle = b.barStyle.Foreground(tcell.ColorRed)
+		} else if t.quotaPercent >= 80 {
+			quotaStyle = b.barStyle.Foreground(tcell.ColorYellow)
 		}
+		b.addRight(fmt.Sprintf("Q:%d%%", t.quotaPercent), quotaStyle)
 	}
+
+	// Battery.
+	if t.batteryPercent >= 0 {
+		battStr := fmt.Sprintf("%d%%", t.batteryPercent)
+		battStyle := b.barStyle
+		if t.batteryCharging {
+			battStr += " +"
+			battStyle = b.barStyle.Foreground(tcell.ColorGreen)
+		} else if t.batteryPercent < 10 {
+			battStyle = b.barStyle.Foreground(tcell.ColorRed)
+		} else if t.batteryPercent < 20 {
+			battStyle = b.barStyle.Foreground(tcell.ColorYellow)
+		}
+		b.addRight(battStr, battStyle)
+	}
+
+	// Keyboard shortcuts.
+	b.addRight("`:cmd  Alt+z:zoom  Alt+s:overlay  ?:help", b.barStyle)
+
+	// Clock (rightmost).
+	b.addRight(time.Now().Format("15:04"), b.barStyle)
+
+	b.render(t.screen, sh-1)
 }
 
 // startBatteryPoller launches a goroutine that polls battery state every 60s.
