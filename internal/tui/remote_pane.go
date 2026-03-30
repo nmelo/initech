@@ -337,7 +337,10 @@ func (rp *RemotePane) Render(screen tcell.Screen, focused bool, dimmed bool, ind
 // dragging the terminal edge) are collapsed: only the final geometry is sent
 // after a 50ms quiet period.
 func (rp *RemotePane) Resize(rows, cols int) {
-	rp.emu.Resize(cols, rows)
+	// Emulator resize in a goroutine: the SafeEmulator's write lock may be
+	// held by readLoop (mid emu.Write from stream data), and acquiring it
+	// on the main goroutine would block the entire event loop.
+	go rp.emu.Resize(cols, rows)
 
 	rp.resizeMu.Lock()
 	rp.pendingRows = rows
