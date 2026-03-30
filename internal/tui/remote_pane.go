@@ -229,12 +229,20 @@ func tcellKeyToANSI(ev *tcell.EventKey) []byte {
 // the daemon's "send" command which injects text through the emulator path
 // (same as initech send), handling Ctrl+S stash and paste detection.
 func (rp *RemotePane) SendText(text string, enter bool) {
-	rp.mux.Request(ControlCmd{
-		Action: "send",
-		Target: rp.name,
-		Text:   text,
-		Enter:  enter,
-	})
+	// Fire-and-forget: network operations must never block the main loop.
+	// The mux.Request has a 10s timeout; running it synchronously on the
+	// main goroutine would freeze all rendering and input handling.
+	go func() {
+		_, err := rp.mux.Request(ControlCmd{
+			Action: "send",
+			Target: rp.name,
+			Text:   text,
+			Enter:  enter,
+		})
+		if err != nil {
+			LogWarn("remote", "send failed", "agent", rp.name, "err", err)
+		}
+	}()
 }
 
 // Render draws the remote pane with [R] badge in the ribbon title.
@@ -346,15 +354,18 @@ func (rp *RemotePane) Resize(rows, cols int) {
 	rp.resizeMu.Unlock()
 }
 
-// sendResize writes a resize control command to the daemon. Called by the
-// debounce timer goroutine.
+// sendResize writes a resize control command to the daemon. Fire-and-forget:
+// errors are logged but don't block. Called by the debounce timer goroutine.
 func (rp *RemotePane) sendResize(rows, cols int) {
-	rp.mux.Request(ControlCmd{
+	_, err := rp.mux.Request(ControlCmd{
 		Action: "resize",
 		Target: rp.name,
 		Rows:   rows,
 		Cols:   cols,
 	})
+	if err != nil {
+		LogDebug("remote", "resize failed (fire-and-forget)", "agent", rp.name, "err", err)
+	}
 }
 
 // Close terminates the yamux stream.

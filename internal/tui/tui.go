@@ -655,11 +655,13 @@ func (t *TUI) recalcGridForPanes() {
 func (t *TUI) handlePeerUpdate(peerName string, newPanes []PaneView) {
 	LogInfo("peer-update", "start", "peer", peerName, "new_panes", len(newPanes), "current_panes", len(t.panes))
 
-	// Remove old panes for this peer.
+	// Remove old panes for this peer. Close in a goroutine so goWg.Wait()
+	// inside rp.Close() never blocks the main loop (the readLoop goroutine
+	// may be stuck on a yamux stream read from a dead peer).
 	kept := make([]PaneView, 0, len(t.panes))
 	for _, p := range t.panes {
 		if rp, ok := p.(*RemotePane); ok && rp.Host() == peerName {
-			rp.Close()
+			go rp.Close()
 			continue
 		}
 		kept = append(kept, p)
