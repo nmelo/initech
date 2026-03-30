@@ -314,13 +314,11 @@ func (rp *RemotePane) Render(screen tcell.Screen, focused bool, dimmed bool, ind
 		}
 	}
 
-	// Terminal content from local emulator. Use TryLock to avoid blocking
-	// the main render loop when readLoop is mid-write. If the lock is
-	// contended, skip rendering this pane for this frame (~33ms penalty).
+	// Terminal content from local emulator. Hold renderMu to prevent tearing
+	// (same pattern as local Pane). readLoop only holds renderMu during
+	// emu.Write (microseconds), so contention is brief.
 	innerCols, innerRows := r.InnerSize()
-	if !rp.renderMu.TryLock() {
-		return // readLoop is writing; render next frame instead.
-	}
+	rp.renderMu.Lock()
 	emuRows := rp.emu.Height()
 	for row := 0; row < innerRows; row++ {
 		emuRow := emuRows - innerRows + row
