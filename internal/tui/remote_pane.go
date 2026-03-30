@@ -28,12 +28,13 @@ const resizeDebounce = 50 * time.Millisecond
 // The local VT emulator receives PTY bytes from the stream for rendering.
 // Keystrokes are forwarded upstream to the daemon for injection into the PTY.
 type RemotePane struct {
-	name   string            // Agent name (e.g. "eng1").
-	host   string            // Peer name of the remote daemon (e.g. "workbench").
-	stream net.Conn          // Yamux stream: downstream PTY bytes + upstream keystrokes.
-	mux    *ControlMux       // Shared multiplexed control channel (thread-safe).
-	emu    *vt.SafeEmulator  // Local VT emulator fed by readLoop.
-	mu     sync.Mutex
+	name     string            // Agent name (e.g. "eng1").
+	host     string            // Peer name of the remote daemon (e.g. "workbench").
+	stream   net.Conn          // Yamux stream: downstream PTY bytes + upstream keystrokes.
+	mux      *ControlMux       // Shared multiplexed control channel (thread-safe).
+	emu      *vt.SafeEmulator  // Local VT emulator fed by readLoop.
+	renderMu sync.Mutex        // Serializes readLoop writes with Render reads.
+	mu       sync.Mutex
 	alive    bool
 	activity ActivityState
 	lastOut  time.Time
@@ -84,7 +85,9 @@ func (rp *RemotePane) readLoop() {
 	for {
 		n, err := rp.stream.Read(buf)
 		if n > 0 {
+			rp.renderMu.Lock()
 			rp.emu.Write(buf[:n])
+			rp.renderMu.Unlock()
 			now := time.Now()
 			rp.mu.Lock()
 			rp.lastOut = now
@@ -299,8 +302,13 @@ func (rp *RemotePane) Render(screen tcell.Screen, focused bool, dimmed bool, ind
 		}
 	}
 
-	// Terminal content from local emulator.
+	// Terminal content from local emulator. Use TryLock to avoid blocking
+	// the main render loop when readLoop is mid-write. If the lock is
+	// contended, skip rendering this pane for this frame (~33ms penalty).
 	innerCols, innerRows := r.InnerSize()
+	if !rp.renderMu.TryLock() {
+		return // readLoop is writing; render next frame instead.
+	}
 	emuRows := rp.emu.Height()
 	for row := 0; row < innerRows; row++ {
 		emuRow := emuRows - innerRows + row
@@ -330,6 +338,7 @@ func (rp *RemotePane) Render(screen tcell.Screen, focused bool, dimmed bool, ind
 			s.SetContent(cx, cy, ch, nil, cursorStyle)
 		}
 	}
+	rp.renderMu.Unlock()
 }
 
 // Resize updates the local emulator immediately and debounces the control
