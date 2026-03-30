@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/nmelo/initech/internal/config"
 	iexec "github.com/nmelo/initech/internal/exec"
+	"github.com/nmelo/initech/internal/update"
 )
 
 // LayoutMode determines how panes are arranged on screen.
@@ -162,6 +164,9 @@ type TUI struct {
 	systemMemAvail    int64      // Available system RAM in KB, updated by memory monitor.
 	systemMemTotal    int64      // Total system RAM in KB, queried once at startup.
 
+	// Update notification. Set via runOnMain when background check finds a newer version.
+	updateAvailable string // e.g. "0.24.0". Empty = no update or check not done.
+
 	// Status bar tip cycling.
 	tipIndex    int       // Current index into statusTips.
 	tipRotateAt time.Time // When the next tip rotation should happen.
@@ -255,6 +260,27 @@ func (t *TUI) focusedPane() PaneView {
 	return nil
 }
 
+// checkForUpdate triggers a manual version check (Alt+u). Runs the check
+// in a background goroutine to avoid blocking the main event loop.
+func (t *TUI) checkForUpdate() {
+	t.cmd.error = "Checking for updates..."
+	t.safeGo(func() {
+		info, err := update.CheckForUpdate(context.Background(), t.version)
+		t.runOnMain(func() {
+			if err != nil {
+				t.cmd.error = "Update check failed: " + err.Error()
+				return
+			}
+			if info == nil {
+				t.cmd.error = "Up to date (v" + t.version + ")"
+				return
+			}
+			t.updateAvailable = info.Version
+			t.cmd.error = "v" + info.Version + " available - " + update.UpdateInstruction()
+		})
+	})
+}
+
 // Config controls what agents the TUI launches.
 type Config struct {
 	Agents            []PaneConfig                    // One entry per agent pane.
@@ -267,6 +293,7 @@ type Config struct {
 	PressureThreshold int                             // RSS percentage threshold (0 uses default 85).
 	PaneConfigBuilder func(name string) (PaneConfig, error) // Optional factory for hot-add. Nil disables add command.
 	Project           *config.Project                       // Full project config. Used for remote peer connections.
+	UpdateResult      <-chan string                          // Receives newer version string from background check. Nil = no check.
 }
 
 // DefaultConfig returns a config with standard shell-only agents.
@@ -392,6 +419,14 @@ func Run(cfg Config) error {
 		timers:            NewTimerStore(filepath.Join(cfg.ProjectRoot, ".initech", "timers.json")),
 	}
 
+	// Show update notification on stderr after TUI exits.
+	defer func() {
+		if t.updateAvailable != "" {
+			fmt.Fprintf(os.Stderr, "\nA new version of initech is available: v%s -> v%s\n  Update: %s\n\n",
+				t.version, t.updateAvailable, update.UpdateInstruction())
+		}
+	}()
+
 	// Show welcome overlay on first launch (no saved layout).
 	if firstLaunch {
 		t.welcome = welcomeOverlay{active: true, expiresAt: time.Now().Add(10 * time.Second)}
@@ -508,6 +543,15 @@ func Run(cfg Config) error {
 			eventCh <- ev
 		}
 	})
+
+	// Wire background update check result into the TUI.
+	if cfg.UpdateResult != nil {
+		t.safeGo(func() {
+			if ver, ok := <-cfg.UpdateResult; ok && ver != "" {
+				t.runOnMain(func() { t.updateAvailable = ver })
+			}
+		})
+	}
 
 	// Render at ~30 fps.
 	ticker := time.NewTicker(33 * time.Millisecond)

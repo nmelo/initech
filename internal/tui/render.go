@@ -452,6 +452,25 @@ func (t *TUI) renderHints() {
 		}
 	}
 
+	// Update available indicator: left of pending timers block.
+	if t.updateAvailable != "" {
+		updateText := "v" + t.updateAvailable + " available"
+		updateStyle := barStyle.Foreground(tcell.ColorYellow)
+		uStart := leftEdge - len(updateText) - 3
+		if uStart >= 0 {
+			for i, ch := range updateText {
+				s.SetContent(uStart+i, y, ch, nil, updateStyle)
+			}
+			sepX := uStart + len(updateText)
+			if sepX+2 < sw {
+				s.SetContent(sepX, y, ' ', nil, barStyle)
+				s.SetContent(sepX+1, y, '\u00b7', nil, sepStyle)
+				s.SetContent(sepX+2, y, ' ', nil, barStyle)
+			}
+			leftEdge = uStart
+		}
+	}
+
 	// Pending timers indicator: left of quota/battery block.
 	if t.timers != nil {
 		if pending := t.timers.Pending(); pending > 0 {

@@ -82,7 +82,7 @@ Commands (via ` + "`" + ` modal):
 		if updateCancel != nil {
 			updateCancel()
 		}
-		// Drain the result (non-blocking). Display is handled by later beads.
+		// Drain the result (non-blocking).
 		if updateResult != nil {
 			select {
 			case info := <-updateResult:
@@ -90,6 +90,16 @@ Commands (via ` + "`" + ` modal):
 					LatestRelease = info
 				}
 			default:
+			}
+		}
+
+		// Show update notification on stderr for CLI commands.
+		// Skip for: TUI (has its own notification), serve, version.
+		skip := map[string]bool{"initech": true, "serve": true, "version": true}
+		if LatestRelease != nil && !skip[cmd.Name()] {
+			if !update.ShouldSuppressNotification(LatestRelease.PublishedAt) {
+				fmt.Fprintf(os.Stderr, "\nA new version of initech is available: v%s -> v%s\n  Update: %s\n\n",
+					Version, LatestRelease.Version, update.UpdateInstruction())
 			}
 		}
 		return nil
@@ -210,6 +220,21 @@ func runTUI(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("no valid role directories found. Run 'initech init' to create them")
 	}
 
+	// Bridge the background update check into the TUI's update notification.
+	var tuiUpdateCh chan string
+	if updateResult != nil {
+		tuiUpdateCh = make(chan string, 1)
+		go func() {
+			if info := <-updateResult; info != nil {
+				LatestRelease = info
+				if !update.ShouldSuppressNotification(info.PublishedAt) {
+					tuiUpdateCh <- info.Version
+				}
+			}
+			close(tuiUpdateCh)
+		}()
+	}
+
 	// Resolve auto-suspend: CLI flag overrides config. If the flag was
 	// explicitly set on the command line, it wins. Otherwise, fall back to
 	// the config file value.
@@ -228,6 +253,7 @@ func runTUI(cmd *cobra.Command, args []string) error {
 		AutoSuspend:       enableAutoSuspend,
 		PressureThreshold: proj.Resource.PressureThreshold,
 		Project:           proj,
+		UpdateResult:      tuiUpdateCh,
 		PaneConfigBuilder: func(name string) (tui.PaneConfig, error) {
 			return buildAgentPaneConfig(name, proj)
 		},
