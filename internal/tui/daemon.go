@@ -260,6 +260,13 @@ func (d *Daemon) gracefulShutdown() {
 // agents. Returns a cleanup function that removes the socket file.
 func (d *Daemon) startDaemonIPC(socketPath string) (func(), error) {
 	if _, err := os.Stat(socketPath); err == nil {
+		// Check if a live daemon is already listening.
+		conn, dialErr := net.DialTimeout("unix", socketPath, 500*time.Millisecond)
+		if dialErr == nil {
+			conn.Close()
+			return nil, fmt.Errorf("daemon already running (socket %s is active). Use 'initech down' to stop it first", socketPath)
+		}
+		// Stale socket from a crashed instance; safe to remove.
 		os.Remove(socketPath)
 	}
 	os.MkdirAll(filepath.Dir(socketPath), 0700)
