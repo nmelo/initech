@@ -18,10 +18,10 @@ import (
 // connectTimeout is how long to wait for a TCP connection to a remote peer.
 const connectTimeout = 5 * time.Second
 
-// connectRemotes dials each remote in the config and returns RemotePanes for
-// all successfully connected agents. Errors are logged and the remote is
-// skipped (the TUI still works with local-only agents).
-func connectRemotes(project *config.Project) []PaneView {
+// connectRemotesSync dials each remote synchronously and returns RemotePanes.
+// Used for the initial connection attempt at TUI startup. Failures are logged
+// and skipped; the peer manager handles reconnection in the background.
+func connectRemotesSync(project *config.Project) []PaneView {
 	if len(project.Remotes) == 0 {
 		return nil
 	}
@@ -30,7 +30,7 @@ func connectRemotes(project *config.Project) []PaneView {
 	for peerName, remote := range project.Remotes {
 		remotePanes, err := connectPeer(peerName, remote, project)
 		if err != nil {
-			LogWarn("remote", "connection failed", "peer", peerName, "addr", remote.Addr, "err", err)
+			LogWarn("remote", "initial connection failed", "peer", peerName, "addr", remote.Addr, "err", err)
 			continue
 		}
 		panes = append(panes, remotePanes...)

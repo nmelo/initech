@@ -442,23 +442,23 @@ func Run(cfg Config) error {
 	}
 
 	// Connect to remote peers and add their agents as RemotePanes.
-	if cfg.Project != nil {
-		remotePanes := connectRemotes(cfg.Project)
+	// Initial connection is synchronous (fast-fail). A background peer
+	// manager handles reconnection with exponential backoff.
+	if cfg.Project != nil && len(cfg.Project.Remotes) > 0 {
+		remotePanes := connectRemotesSync(cfg.Project)
 		if len(remotePanes) > 0 {
 			t.panes = append(t.panes, remotePanes...)
-			// Recalculate grid to accommodate the expanded pane count.
-			// The layout was sized for local-only agents; remote panes
-			// need additional grid cells.
-			visCount := 0
-			for _, p := range t.panes {
-				if !t.layoutState.Hidden[p.Name()] {
-					visCount++
-				}
-			}
-			cols, rows := autoGrid(visCount)
-			t.layoutState.GridCols = cols
-			t.layoutState.GridRows = rows
 		}
+		t.recalcGridForPanes()
+
+		// Start background reconnect manager. On reconnect, it swaps
+		// panes via runOnMain to avoid races with the render loop.
+		pm := newPeerManager(cfg.Project, func(peerName string, panes []PaneView) {
+			t.runOnMain(func() {
+				t.handlePeerUpdate(peerName, panes)
+			})
+		}, t.quitCh)
+		defer pm.wait()
 	}
 
 	// Sync pinned state from layout to panes.
@@ -584,6 +584,45 @@ func autoGrid(n int) (cols, rows int) {
 }
 
 // calcPaneGrid generates exactly numPanes regions arranged in a grid.
+
+// recalcGridForPanes recalculates the grid dimensions from the current
+// visible pane count. Called after adding/removing remote panes.
+func (t *TUI) recalcGridForPanes() {
+	visCount := 0
+	for _, p := range t.panes {
+		if !t.layoutState.Hidden[p.Name()] {
+			visCount++
+		}
+	}
+	if visCount > 0 {
+		cols, rows := autoGrid(visCount)
+		t.layoutState.GridCols = cols
+		t.layoutState.GridRows = rows
+	}
+}
+
+// handlePeerUpdate is called by the peer manager (via runOnMain) when a
+// remote peer connects, reconnects, or goes offline. It swaps the old
+// RemotePanes for the peer with new ones (or removes them on disconnect).
+func (t *TUI) handlePeerUpdate(peerName string, newPanes []PaneView) {
+	// Remove old panes for this peer.
+	kept := make([]PaneView, 0, len(t.panes))
+	for _, p := range t.panes {
+		if rp, ok := p.(*RemotePane); ok && rp.Host() == peerName {
+			rp.Close()
+			continue
+		}
+		kept = append(kept, p)
+	}
+
+	// Add new panes (nil = peer went offline, nothing to add).
+	if len(newPanes) > 0 {
+		kept = append(kept, newPanes...)
+	}
+	t.panes = kept
+	t.recalcGridForPanes()
+	t.applyLayout()
+}
 
 // calcMainVertical creates a layout with a large pane on the left
 // and stacked panes on the right.
