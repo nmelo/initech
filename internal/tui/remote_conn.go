@@ -75,7 +75,11 @@ func connectPeer(peerName string, remote config.Remote, project *config.Project)
 		Token:    token,
 		PeerName: project.PeerName,
 	}
-	writeJSON(ctrl, hello)
+	if err := writeJSON(ctrl, hello); err != nil {
+		ctrl.Close()
+		session.Close()
+		return nil, fmt.Errorf("send hello: %w", err)
+	}
 
 	// Read hello_ok.
 	scanner := bufio.NewScanner(ctrl)
