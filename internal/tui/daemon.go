@@ -54,8 +54,9 @@ type Daemon struct {
 	sessions   []*yamux.Session
 	ctrlConns  []net.Conn // Control channels for shutdown notification.
 
-	// Connected clients by peer name for host:agent routing.
-	clients map[string]net.Conn
+	// Connected clients by peer name for host:agent routing and stale eviction.
+	clients        map[string]net.Conn       // peer name -> control stream
+	clientSessions map[string]*yamux.Session  // peer name -> yamux session
 }
 
 // ── Protocol messages ───────────────────────────────────────────────
@@ -478,17 +479,34 @@ func (d *Daemon) handleConnection(conn net.Conn) {
 	fmt.Fprintf(os.Stdout, "[%s] Client connected: %s (peer: %s)\n",
 		time.Now().Format("15:04:05"), conn.RemoteAddr(), hello.PeerName)
 
-	// Register client for host:agent routing.
+	// Register client for host:agent routing. If a client with the same
+	// peer_name is already connected (stale session from a crashed client),
+	// evict it first: close its yamux session so all its streams error out
+	// and the MultiSink auto-removes them. Without this, the stale client's
+	// blocked stream writes starve the new client of PTY bytes.
 	if hello.PeerName != "" {
 		d.sessionsMu.Lock()
 		if d.clients == nil {
 			d.clients = make(map[string]net.Conn)
+			d.clientSessions = make(map[string]*yamux.Session)
+		}
+		if oldSession, exists := d.clientSessions[hello.PeerName]; exists {
+			LogWarn("daemon", "evicting stale client", "peer", hello.PeerName)
+			// Close the yamux session: all its streams error immediately,
+			// MultiSink auto-removes dead writers, and the old handleConnection
+			// goroutine unwinds. This prevents blocked writes from starving
+			// the new client of PTY bytes.
+			go oldSession.Close()
 		}
 		d.clients[hello.PeerName] = ctrl
+		d.clientSessions[hello.PeerName] = session
 		d.sessionsMu.Unlock()
 		defer func() {
 			d.sessionsMu.Lock()
-			delete(d.clients, hello.PeerName)
+			if d.clients[hello.PeerName] == ctrl {
+				delete(d.clients, hello.PeerName)
+				delete(d.clientSessions, hello.PeerName)
+			}
 			d.sessionsMu.Unlock()
 		}()
 	}
