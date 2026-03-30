@@ -91,6 +91,12 @@ func (t *TUI) render() {
 	t.renderStatusBar()
 
 	s.Show()
+
+	// Periodic render heartbeat (every ~5s at 30fps = every ~150 frames).
+	t.renderCount++
+	if t.renderCount%150 == 1 {
+		LogInfo("render", "screen.Show called", "frame", t.renderCount, "plan_panes", len(t.plan.Panes))
+	}
 }
 
 // selectionForPane returns the selection state for a given pane.

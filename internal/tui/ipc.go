@@ -613,24 +613,25 @@ type ipcAction struct {
 // ipcCh has buffer space.
 func (t *TUI) runOnMain(fn func()) bool {
 	if t.ipcCh == nil {
+		LogInfo("runOnMain", "ipcCh is nil, executing directly on caller goroutine")
 		fn()
 		return true
 	}
 	op := ipcAction{fn: fn, done: make(chan struct{})}
-	LogDebug("runOnMain", "sending to ipcCh", "pending", len(t.ipcCh), "cap", cap(t.ipcCh))
+	LogInfo("runOnMain", "queued op", "pending", len(t.ipcCh), "cap", cap(t.ipcCh))
 	select {
 	case t.ipcCh <- op:
-		LogDebug("runOnMain", "sent, waiting for done")
+		LogInfo("runOnMain", "op sent, waiting for execution")
 		select {
 		case <-op.done:
-			LogDebug("runOnMain", "done")
+			LogInfo("runOnMain", "op executed")
 			return true
 		case <-t.quitCh:
-			LogDebug("runOnMain", "quit while waiting")
+			LogInfo("runOnMain", "quit while waiting")
 			return false
 		}
 	case <-t.quitCh:
-		LogDebug("runOnMain", "quit while sending")
+		LogInfo("runOnMain", "quit while sending")
 		return false
 	}
 }

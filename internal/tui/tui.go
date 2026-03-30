@@ -155,7 +155,8 @@ type TUI struct {
 	ipcCh chan ipcAction
 
 	// Build version for crash reports.
-	version string
+	version     string
+	renderCount int // Frame counter for periodic render heartbeat logging.
 
 	// Resource management gate. When false, all resource management
 	// (memory monitor, auto-suspend policy) is dormant.
@@ -205,6 +206,7 @@ func (t *TUI) applyLayout() {
 		paneH = 1
 	}
 	t.plan = computeLayout(t.layoutState, t.panes, w, paneH)
+	LogInfo("applyLayout", "layout applied", "panes", len(t.plan.Panes), "w", w, "h", paneH)
 
 	// Cancel any in-progress mouse selection. Layout changes invalidate
 	// the pane index and region the selection was tracking.
@@ -557,6 +559,8 @@ func Run(cfg Config) error {
 	ticker := time.NewTicker(33 * time.Millisecond)
 	defer ticker.Stop()
 
+	LogInfo("main-loop", "entering event loop", "ipcCh_cap", cap(t.ipcCh), "panes", len(t.panes))
+
 	for {
 		select {
 		case ev := <-eventCh:
@@ -566,12 +570,10 @@ func Run(cfg Config) error {
 		case ae := <-t.agentEvents:
 			t.handleAgentEvent(ae)
 		case op := <-t.ipcCh:
-			// Execute IPC-dispatched closures on the main goroutine so they
-			// can safely access t.panes and other unsynchronised TUI state.
-			LogDebug("main-loop", "ipcCh dispatch start")
+			LogInfo("main-loop", "processing ipcCh op")
 			op.fn()
 			close(op.done)
-			LogDebug("main-loop", "ipcCh dispatch done")
+			LogInfo("main-loop", "ipcCh op done")
 		case <-ticker.C:
 			t.pruneNotifications()
 			t.pruneConfirmation()
