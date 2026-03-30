@@ -244,7 +244,14 @@ func RunDaemon(cfg DaemonConfig) error {
 		select {
 		case sig := <-sigCh:
 			LogInfo("daemon", "shutdown", "signal", sig.String())
+			fmt.Fprintf(os.Stdout, "[%s] Shutting down (%s)...\n",
+				time.Now().Format("15:04:05"), sig)
 			d.gracefulShutdown()
+			d.sessionsMu.Lock()
+			nClients := len(d.sessions)
+			d.sessionsMu.Unlock()
+			fmt.Fprintf(os.Stdout, "[%s] Disconnected %d client(s), stopped %d agent(s)\n",
+				time.Now().Format("15:04:05"), nClients, len(d.panes))
 			return nil
 		case conn := <-connCh:
 			LogInfo("daemon", "client connected", "remote", conn.RemoteAddr().String())
@@ -461,11 +468,15 @@ func (d *Daemon) handleConnection(conn net.Conn) {
 	// Validate token.
 	if d.project.Token != "" && hello.Token != d.project.Token {
 		LogWarn("daemon", "auth failed", "peer", hello.PeerName)
+		fmt.Fprintf(os.Stdout, "[%s] Client rejected: %s (auth failed)\n",
+			time.Now().Format("15:04:05"), conn.RemoteAddr())
 		writeJSON(ctrl, ErrorMsg{Action: "error", Error: "auth failed"})
 		return
 	}
 
 	LogInfo("daemon", "hello from", "peer", hello.PeerName, "version", hello.Version)
+	fmt.Fprintf(os.Stdout, "[%s] Client connected: %s (peer: %s)\n",
+		time.Now().Format("15:04:05"), conn.RemoteAddr(), hello.PeerName)
 
 	// Register client for host:agent routing.
 	if hello.PeerName != "" {
@@ -560,6 +571,8 @@ func (d *Daemon) handleConnection(conn net.Conn) {
 	// Wait for streaming goroutines to finish.
 	wg.Wait()
 	LogInfo("daemon", "client disconnected")
+	fmt.Fprintf(os.Stdout, "[%s] Client disconnected: %s (peer: %s)\n",
+		time.Now().Format("15:04:05"), conn.RemoteAddr(), hello.PeerName)
 }
 
 // replayToStream sends buffered PTY history from the ring buffer to the
