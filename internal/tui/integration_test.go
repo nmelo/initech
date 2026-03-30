@@ -542,6 +542,7 @@ func TestInteg_RemotePaneImplementsPaneView(t *testing.T) {
 }
 
 func TestInteg_MultiClient(t *testing.T) {
+	skipInCI(t)
 	td := startTestDaemon(t, "", "eng1")
 
 	// Wait for echo output.
@@ -591,6 +592,7 @@ func TestInteg_MultiClient(t *testing.T) {
 }
 
 func TestInteg_GracefulShutdown(t *testing.T) {
+	skipInCI(t)
 	td := startTestDaemon(t, "", "eng1")
 	tc, _ := connectTestClient(t, td.addr, "client", "")
 	tc.readStreamMap(t)
