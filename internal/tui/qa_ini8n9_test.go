@@ -88,7 +88,7 @@ func TestHandleIPCPeers_WithRemotes(t *testing.T) {
 		name:     "eng1",
 		host:     "workbench",
 		emu:      vt.NewSafeEmulator(10, 5),
-		ctrlConn: &fakeConn{},
+		mux: NewControlMux(&fakeConn{}),
 	}
 
 	tui := &TUI{
@@ -153,7 +153,7 @@ func TestForwardSendToRemote_Found(t *testing.T) {
 		name:     "eng1",
 		host:     "workbench",
 		emu:      emu,
-		ctrlConn: &fakeConn{}, // Absorbs the send command JSON.
+		mux: NewControlMux(&fakeConn{}), // Absorbs the send command JSON.
 	}
 
 	tui := &TUI{

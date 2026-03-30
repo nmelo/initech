@@ -102,6 +102,10 @@ func connectPeer(peerName string, remote config.Remote, project *config.Project)
 		return nil, fmt.Errorf("invalid stream_map: %w", err)
 	}
 
+	// Create a single ControlMux for all RemotePanes from this peer.
+	// The mux owns the reader goroutine and routes responses by ID.
+	mux := NewControlMux(ctrl)
+
 	// Build a reverse map: stream ID -> agent name.
 	agentByStreamID := streamMap.Streams
 
@@ -125,9 +129,8 @@ func connectPeer(peerName string, remote config.Remote, project *config.Project)
 			rawStream.Close()
 			continue
 		}
-		stream := rawStream
 
-		rp := NewRemotePane(agentName, serverPeerName, stream, ctrl, 80, 24)
+		rp := NewRemotePane(agentName, serverPeerName, rawStream, mux, 80, 24)
 		rp.Start()
 		panes = append(panes, rp)
 		LogDebug("remote", "agent connected", "peer", serverPeerName, "agent", agentName)

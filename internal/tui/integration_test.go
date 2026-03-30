@@ -526,7 +526,7 @@ func TestInteg_RemotePaneImplementsPaneView(t *testing.T) {
 		break
 	}
 
-	rp := NewRemotePane(agentName, "testhost", stream, tc.ctrl, 80, 24)
+	rp := NewRemotePane(agentName, "testhost", stream, NewControlMux(tc.ctrl), 80, 24)
 
 	// Verify PaneView methods.
 	var pv PaneView = rp

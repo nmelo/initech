@@ -6,7 +6,6 @@
 package tui
 
 import (
-	"encoding/json"
 	"fmt"
 	"net"
 	"strings"
@@ -29,13 +28,12 @@ const resizeDebounce = 50 * time.Millisecond
 // The local VT emulator receives PTY bytes from the stream for rendering.
 // Keystrokes are forwarded upstream to the daemon for injection into the PTY.
 type RemotePane struct {
-	name     string            // Agent name (e.g. "eng1").
-	host     string            // Peer name of the remote daemon (e.g. "workbench").
-	stream   net.Conn          // Yamux stream: downstream PTY bytes + upstream keystrokes.
-	ctrlConn net.Conn          // Control channel for send/resize/peek commands.
-	ctrlMu   sync.Mutex        // Serializes writes to ctrlConn.
-	emu      *vt.SafeEmulator  // Local VT emulator fed by readLoop.
-	mu       sync.Mutex
+	name   string            // Agent name (e.g. "eng1").
+	host   string            // Peer name of the remote daemon (e.g. "workbench").
+	stream net.Conn          // Yamux stream: downstream PTY bytes + upstream keystrokes.
+	mux    *ControlMux       // Shared multiplexed control channel (thread-safe).
+	emu    *vt.SafeEmulator  // Local VT emulator fed by readLoop.
+	mu     sync.Mutex
 	alive    bool
 	activity ActivityState
 	lastOut  time.Time
@@ -52,13 +50,14 @@ type RemotePane struct {
 }
 
 // NewRemotePane creates a RemotePane connected to a remote agent.
+// The mux is shared across all RemotePanes from the same peer connection.
 // The caller must call Start() to begin the readLoop goroutine.
-func NewRemotePane(name, host string, stream, ctrl net.Conn, cols, rows int) *RemotePane {
+func NewRemotePane(name, host string, stream net.Conn, mux *ControlMux, cols, rows int) *RemotePane {
 	return &RemotePane{
 		name:     name,
 		host:     host,
 		stream:   stream,
-		ctrlConn: ctrl,
+		mux:      mux,
 		emu:      vt.NewSafeEmulator(cols, rows),
 		alive:    true,
 		activity: StateIdle,
@@ -224,25 +223,12 @@ func tcellKeyToANSI(ev *tcell.EventKey) []byte {
 // the daemon's "send" command which injects text through the emulator path
 // (same as initech send), handling Ctrl+S stash and paste detection.
 func (rp *RemotePane) SendText(text string, enter bool) {
-	rp.ctrlMu.Lock()
-	defer rp.ctrlMu.Unlock()
-
-	cmd := ControlCmd{
+	rp.mux.Request(ControlCmd{
 		Action: "send",
 		Target: rp.name,
 		Text:   text,
 		Enter:  enter,
-	}
-	data, _ := json.Marshal(cmd)
-	rp.ctrlConn.SetWriteDeadline(time.Now().Add(networkWriteTimeout))
-	rp.ctrlConn.Write(data)
-	rp.ctrlConn.Write([]byte("\n"))
-
-	// Read response with deadline so a dead session doesn't block forever.
-	rp.ctrlConn.SetReadDeadline(time.Now().Add(networkWriteTimeout))
-	buf := make([]byte, 4096)
-	rp.ctrlConn.Read(buf)
-	rp.ctrlConn.SetReadDeadline(time.Time{}) // Clear for future reads.
+	})
 }
 
 // Render draws the remote pane with [R] badge in the ribbon title.
@@ -357,19 +343,12 @@ func (rp *RemotePane) Resize(rows, cols int) {
 // sendResize writes a resize control command to the daemon. Called by the
 // debounce timer goroutine.
 func (rp *RemotePane) sendResize(rows, cols int) {
-	rp.ctrlMu.Lock()
-	defer rp.ctrlMu.Unlock()
-
-	cmd := ControlCmd{
+	rp.mux.Request(ControlCmd{
 		Action: "resize",
 		Target: rp.name,
 		Rows:   rows,
 		Cols:   cols,
-	}
-	data, _ := json.Marshal(cmd)
-	rp.ctrlConn.SetWriteDeadline(time.Now().Add(networkWriteTimeout))
-	rp.ctrlConn.Write(data)
-	rp.ctrlConn.Write([]byte("\n"))
+	})
 }
 
 // Close terminates the yamux stream.

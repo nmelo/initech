@@ -17,7 +17,7 @@ func TestRemotePaneImplementsPaneView(t *testing.T) {
 	defer server.Close()
 	defer client.Close()
 
-	rp := NewRemotePane("eng1", "workbench", server, client, 80, 24)
+	rp := NewRemotePane("eng1", "workbench", server, NewControlMux(client), 80, 24)
 	if rp.Name() != "eng1" {
 		t.Errorf("Name() = %q, want eng1", rp.Name())
 	}
@@ -49,7 +49,7 @@ func TestRemotePaneSetBead(t *testing.T) {
 	defer server.Close()
 	defer client.Close()
 
-	rp := NewRemotePane("eng1", "wb", server, client, 80, 24)
+	rp := NewRemotePane("eng1", "wb", server, NewControlMux(client), 80, 24)
 	rp.SetBead("ini-abc", "Test bead")
 	if rp.BeadID() != "ini-abc" {
 		t.Errorf("BeadID() = %q, want ini-abc", rp.BeadID())
@@ -66,7 +66,7 @@ func TestRemotePaneReadLoopFeedsEmulator(t *testing.T) {
 	defer ctrlS.Close()
 	defer ctrlC.Close()
 
-	rp := NewRemotePane("eng1", "wb", client, ctrlC, 80, 24)
+	rp := NewRemotePane("eng1", "wb", client, NewControlMux(ctrlC), 80, 24)
 	rp.Start()
 
 	// Write some terminal content.
@@ -104,7 +104,7 @@ func TestRemotePaneSendKeyWritesToStream(t *testing.T) {
 	defer ctrlS.Close()
 	defer ctrlC.Close()
 
-	rp := NewRemotePane("eng1", "wb", client, ctrlC, 80, 24)
+	rp := NewRemotePane("eng1", "wb", client, NewControlMux(ctrlC), 80, 24)
 
 	// Read what SendKey produces on the other end.
 	done := make(chan []byte, 1)
@@ -137,9 +137,9 @@ func TestRemotePaneSendTextUsesControlChannel(t *testing.T) {
 	ctrlS, ctrlC := net.Pipe()
 	defer ctrlC.Close()
 
-	rp := NewRemotePane("eng1", "wb", streamC, ctrlC, 80, 24)
+	rp := NewRemotePane("eng1", "wb", streamC, NewControlMux(ctrlC), 80, 24)
 
-	// Read the control command from the server end.
+	// Read the control command from the server end and echo back with ID.
 	done := make(chan ControlCmd, 1)
 	go func() {
 		scanner := bufio.NewScanner(ctrlS)
@@ -147,9 +147,11 @@ func TestRemotePaneSendTextUsesControlChannel(t *testing.T) {
 			var cmd ControlCmd
 			json.Unmarshal(scanner.Bytes(), &cmd)
 			done <- cmd
+			// Echo response with the request ID so ControlMux routes it.
+			resp, _ := json.Marshal(ControlResp{ID: cmd.ID, OK: true})
+			ctrlS.Write(resp)
+			ctrlS.Write([]byte("\n"))
 		}
-		// Write a response so SendText's Read doesn't block forever.
-		ctrlS.Write([]byte(`{"ok":true}` + "\n"))
 	}()
 
 	go rp.SendText("hello world", true)
@@ -181,7 +183,7 @@ func TestRemotePaneCloseMarksNotAlive(t *testing.T) {
 	defer ctrlS.Close()
 	defer ctrlC.Close()
 
-	rp := NewRemotePane("eng1", "wb", client, ctrlC, 80, 24)
+	rp := NewRemotePane("eng1", "wb", client, NewControlMux(ctrlC), 80, 24)
 	if !rp.IsAlive() {
 		t.Fatal("should be alive before close")
 	}
@@ -201,7 +203,7 @@ func TestRemotePaneResizeDebounce(t *testing.T) {
 	ctrlS, ctrlC := net.Pipe()
 	defer ctrlC.Close()
 
-	rp := NewRemotePane("eng1", "wb", streamC, ctrlC, 80, 24)
+	rp := NewRemotePane("eng1", "wb", streamC, NewControlMux(ctrlC), 80, 24)
 
 	// Fire 20 rapid resizes.
 	for i := 0; i < 20; i++ {
@@ -240,7 +242,7 @@ func TestRemotePaneResizeUpdatesEmulatorImmediately(t *testing.T) {
 	defer ctrlS.Close()
 	defer ctrlC.Close()
 
-	rp := NewRemotePane("eng1", "wb", streamC, ctrlC, 80, 24)
+	rp := NewRemotePane("eng1", "wb", streamC, NewControlMux(ctrlC), 80, 24)
 	rp.Resize(40, 120)
 
 	// Emulator should be updated immediately (no debounce).

@@ -94,8 +94,9 @@ type ErrorMsg struct {
 
 // ControlCmd is a command sent on the control channel after handshake.
 type ControlCmd struct {
-	Action string `json:"action"` // "send", "peek", "resize", "schedule", etc.
-	Target string `json:"target"` // Agent name.
+	ID     string `json:"id,omitempty"`     // Request ID for response correlation.
+	Action string `json:"action"`           // "send", "peek", "resize", "schedule", etc.
+	Target string `json:"target"`           // Agent name.
 	Host   string `json:"host,omitempty"`
 	Text   string `json:"text,omitempty"`
 	Enter  bool   `json:"enter,omitempty"`
@@ -107,6 +108,7 @@ type ControlCmd struct {
 
 // ControlResp is the response to a control command.
 type ControlResp struct {
+	ID    string `json:"id,omitempty"` // Echoed from request for correlation.
 	OK    bool   `json:"ok"`
 	Error string `json:"error,omitempty"`
 	Data  string `json:"data,omitempty"`
@@ -531,10 +533,18 @@ func (d *Daemon) streamAgent(p *Pane, stream net.Conn) {
 // handleControlStream reads JSON commands from the control stream and
 // dispatches them to agents.
 func (d *Daemon) handleControlStream(ctrl net.Conn, scanner *bufio.Scanner) {
+	// respond writes a ControlResp with the request's ID echoed back for
+	// correlation. The client's ControlMux uses the ID to route the
+	// response to the correct waiting caller.
+	respond := func(id string, resp ControlResp) {
+		resp.ID = id
+		writeJSON(ctrl, resp)
+	}
+
 	for scanner.Scan() {
 		var cmd ControlCmd
 		if err := json.Unmarshal(scanner.Bytes(), &cmd); err != nil {
-			writeJSON(ctrl, ControlResp{Error: "invalid JSON"})
+			respond(cmd.ID, ControlResp{Error: "invalid JSON"})
 			continue
 		}
 
@@ -542,40 +552,40 @@ func (d *Daemon) handleControlStream(ctrl net.Conn, scanner *bufio.Scanner) {
 		case "send":
 			p := d.findPane(cmd.Target)
 			if p == nil {
-				writeJSON(ctrl, ControlResp{Error: fmt.Sprintf("agent %q not found", cmd.Target)})
+				respond(cmd.ID, ControlResp{Error: fmt.Sprintf("agent %q not found", cmd.Target)})
 				continue
 			}
 			p.SendText(cmd.Text, cmd.Enter)
-			writeJSON(ctrl, ControlResp{OK: true})
+			respond(cmd.ID, ControlResp{OK: true})
 
 		case "peek":
 			p := d.findPane(cmd.Target)
 			if p == nil {
-				writeJSON(ctrl, ControlResp{Error: fmt.Sprintf("agent %q not found", cmd.Target)})
+				respond(cmd.ID, ControlResp{Error: fmt.Sprintf("agent %q not found", cmd.Target)})
 				continue
 			}
-			writeJSON(ctrl, ControlResp{OK: true, Data: peekContent(p, cmd.Lines)})
+			respond(cmd.ID, ControlResp{OK: true, Data: peekContent(p, cmd.Lines)})
 
 		case "resize":
 			p := d.findPane(cmd.Target)
 			if p == nil {
-				writeJSON(ctrl, ControlResp{Error: fmt.Sprintf("agent %q not found", cmd.Target)})
+				respond(cmd.ID, ControlResp{Error: fmt.Sprintf("agent %q not found", cmd.Target)})
 				continue
 			}
 			if cmd.Rows > 0 && cmd.Cols > 0 {
 				p.Resize(cmd.Rows, cmd.Cols)
 			}
-			writeJSON(ctrl, ControlResp{OK: true})
+			respond(cmd.ID, ControlResp{OK: true})
 
 		case "forward_send":
 			// Received from a remote TUI: deliver to a local agent.
 			p := d.findPane(cmd.Target)
 			if p == nil {
-				writeJSON(ctrl, ControlResp{Error: fmt.Sprintf("agent %q not found", cmd.Target)})
+				respond(cmd.ID, ControlResp{Error: fmt.Sprintf("agent %q not found", cmd.Target)})
 				continue
 			}
 			p.SendText(cmd.Text, cmd.Enter)
-			writeJSON(ctrl, ControlResp{OK: true})
+			respond(cmd.ID, ControlResp{OK: true})
 
 		case "peers_query":
 			agents := make([]string, len(d.panes))
@@ -585,44 +595,44 @@ func (d *Daemon) handleControlStream(ctrl net.Conn, scanner *bufio.Scanner) {
 			peerName := d.project.PeerName
 			peers := []PeerInfo{{Name: peerName, Agents: agents}}
 			data, _ := json.Marshal(peers)
-			writeJSON(ctrl, ControlResp{OK: true, Data: string(data)})
+			respond(cmd.ID, ControlResp{OK: true, Data: string(data)})
 
 		case "schedule":
 			if d.timers == nil {
-				writeJSON(ctrl, ControlResp{Error: "timer store not initialized"})
+				respond(cmd.ID, ControlResp{Error: "timer store not initialized"})
 				continue
 			}
 			fireAt, err := time.Parse(time.RFC3339, cmd.FireAt)
 			if err != nil {
-				writeJSON(ctrl, ControlResp{Error: fmt.Sprintf("invalid fire_at: %v", err)})
+				respond(cmd.ID, ControlResp{Error: fmt.Sprintf("invalid fire_at: %v", err)})
 				continue
 			}
 			timer := d.timers.Add(cmd.Target, cmd.Host, cmd.Text, cmd.Enter, fireAt)
-			writeJSON(ctrl, ControlResp{OK: true, Data: timer.ID})
+			respond(cmd.ID, ControlResp{OK: true, Data: timer.ID})
 
 		case "list_timers":
 			if d.timers == nil {
-				writeJSON(ctrl, ControlResp{OK: true, Data: "[]"})
+				respond(cmd.ID, ControlResp{OK: true, Data: "[]"})
 				continue
 			}
 			timers := d.timers.List()
 			tdata, _ := json.Marshal(timers)
-			writeJSON(ctrl, ControlResp{OK: true, Data: string(tdata)})
+			respond(cmd.ID, ControlResp{OK: true, Data: string(tdata)})
 
 		case "cancel_timer":
 			if d.timers == nil {
-				writeJSON(ctrl, ControlResp{Error: "timer store not initialized"})
+				respond(cmd.ID, ControlResp{Error: "timer store not initialized"})
 				continue
 			}
 			timer, err := d.timers.Cancel(cmd.Text)
 			if err != nil {
-				writeJSON(ctrl, ControlResp{Error: err.Error()})
+				respond(cmd.ID, ControlResp{Error: err.Error()})
 				continue
 			}
-			writeJSON(ctrl, ControlResp{OK: true, Data: timer.ID})
+			respond(cmd.ID, ControlResp{OK: true, Data: timer.ID})
 
 		default:
-			writeJSON(ctrl, ControlResp{Error: fmt.Sprintf("unknown action %q", cmd.Action)})
+			respond(cmd.ID, ControlResp{Error: fmt.Sprintf("unknown action %q", cmd.Action)})
 		}
 	}
 }
