@@ -8,6 +8,7 @@ package tui
 import (
 	"fmt"
 	"net"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -97,6 +98,10 @@ func (rp *RemotePane) readLoop() {
 			rp.renderMu.Lock()
 			rp.emu.Write(buf[:n])
 			rp.renderMu.Unlock()
+			// Yield so Render's Lock can acquire renderMu between reads.
+			// Without this, continuous stream data causes readLoop to
+			// re-acquire renderMu before Render gets a chance (starvation).
+			runtime.Gosched()
 			now := time.Now()
 			rp.mu.Lock()
 			rp.lastOut = now
