@@ -363,6 +363,12 @@ func (rp *RemotePane) sendResize(rows, cols int) {
 
 // Close terminates the yamux stream.
 func (rp *RemotePane) Close() {
+	rp.resizeMu.Lock()
+	if rp.resizeTimer != nil {
+		rp.resizeTimer.Stop()
+	}
+	rp.resizeMu.Unlock()
+
 	rp.mu.Lock()
 	rp.alive = false
 	rp.mu.Unlock()
