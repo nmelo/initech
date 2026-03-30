@@ -666,7 +666,10 @@ func (d *Daemon) handleControlStream(ctrl net.Conn, scanner *bufio.Scanner) {
 	}
 }
 
-// findPane looks up a pane by name.
+// findPane looks up a pane by name. Safe to call without locking because
+// d.panes is populated during RunDaemon startup and never modified afterward.
+// If hot-add/remove agents is implemented for the daemon, this must be
+// synchronized (e.g., protected by d.mu or dispatched via a main goroutine).
 func (d *Daemon) findPane(name string) *Pane {
 	for _, p := range d.panes {
 		if p.Name() == name {
