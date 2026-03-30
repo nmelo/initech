@@ -572,8 +572,9 @@ func Run(cfg Config) error {
 		case op := <-t.ipcCh:
 			LogInfo("main-loop", "processing ipcCh op")
 			op.fn()
+			LogInfo("main-loop", "op.fn returned, closing done channel")
 			close(op.done)
-			LogInfo("main-loop", "ipcCh op done, about to render")
+			LogInfo("main-loop", "done channel closed, about to render")
 		case <-ticker.C:
 			// Periodic housekeeping (runs even if no events arrive).
 			t.pruneNotifications()
