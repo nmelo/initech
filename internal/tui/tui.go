@@ -575,6 +575,7 @@ func Run(cfg Config) error {
 			close(op.done)
 			LogInfo("main-loop", "ipcCh op done")
 		case <-ticker.C:
+			// Periodic housekeeping (runs even if no events arrive).
 			t.pruneNotifications()
 			t.pruneConfirmation()
 			t.pruneError()
@@ -584,10 +585,15 @@ func Run(cfg Config) error {
 			t.rotateTip()
 			t.pollQuota()
 			t.fireTimers()
-			t.render()
 		case <-t.quitCh:
 			return nil
 		}
+		// Render after every select case, not just ticker.C. If another
+		// channel (eventCh, agentEvents, ipcCh) is always ready, the
+		// ticker.C case is starved by Go's random select and the screen
+		// never updates. Rendering unconditionally guarantees the screen
+		// reflects state changes within one event-loop cycle.
+		t.render()
 	}
 }
 
