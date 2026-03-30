@@ -907,7 +907,7 @@ func (t *TUI) renderOverlay() {
 		}
 		// Remote marker.
 		if a.Remote {
-			remoteStyle := bgStyle.Foreground(tcell.ColorDarkMagenta)
+			remoteStyle := bgStyle.Foreground(tcell.ColorTeal)
 			for _, ch := range " [R]" {
 				if col < px+panelW-1 {
 					s.SetContent(col, row, ch, nil, remoteStyle)

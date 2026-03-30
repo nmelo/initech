@@ -306,9 +306,9 @@ func (rp *RemotePane) Render(screen tcell.Screen, focused bool, dimmed bool, ind
 	// Badge style: remote panes use magenta to distinguish from local.
 	var titleStyle tcell.Style
 	if focused {
-		titleStyle = tcell.StyleDefault.Background(tcell.ColorDarkMagenta).Foreground(tcell.ColorWhite).Bold(true)
+		titleStyle = tcell.StyleDefault.Background(tcell.ColorTeal).Foreground(tcell.ColorWhite).Bold(true)
 	} else {
-		titleStyle = tcell.StyleDefault.Background(trueBlack).Foreground(tcell.ColorDarkMagenta).Bold(true)
+		titleStyle = tcell.StyleDefault.Background(trueBlack).Foreground(tcell.ColorTeal).Bold(true)
 	}
 
 	// Title: "N host:name [R]"
