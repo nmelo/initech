@@ -111,9 +111,9 @@ func connectPeer(peerName string, remote config.Remote, project *config.Project)
 
 	serverPeerName := helloOK.PeerName
 	if serverPeerName != peerName {
-		LogWarn("remote", "peer_name mismatch",
-			"expected", peerName, "got", serverPeerName)
-		// Continue anyway; the operator may have renamed the peer.
+		ctrl.Close()
+		session.Close()
+		return nil, fmt.Errorf("peer_name mismatch: expected %q, got %q", peerName, serverPeerName)
 	}
 
 	// Read stream_map.
