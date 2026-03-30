@@ -484,20 +484,26 @@ func (d *Daemon) handleConnection(conn net.Conn) {
 	// Notify client that replay data is about to be sent on agent streams.
 	writeJSON(ctrl, struct{ Action string `json:"action"` }{"replay_start"})
 
-	// Start bidirectional streaming goroutines. streamAgent replays the
-	// ring buffer snapshot before switching to live bytes.
+	// Phase 1: replay ring buffer to each stream synchronously so the
+	// client has complete screen state before replay_done fires.
+	for _, as := range streams {
+		d.replayToStream(as.pane, as.stream)
+	}
+
+	// Signal replay complete. All buffered history has been sent.
+	writeJSON(ctrl, struct{ Action string `json:"action"` }{"replay_done"})
+
+	// Phase 2: start live streaming goroutines (upstream keystrokes +
+	// downstream fan-out via MultiSink).
 	var wg sync.WaitGroup
 	for _, as := range streams {
 		wg.Add(1)
 		go func(p *Pane, s net.Conn) {
 			defer wg.Done()
 			defer s.Close()
-			d.streamAgent(p, s)
+			d.streamAgentLive(p, s)
 		}(as.pane, as.stream)
 	}
-
-	// Signal that replay is complete and live streaming has begun.
-	writeJSON(ctrl, struct{ Action string `json:"action"` }{"replay_done"})
 
 	// Handle control commands until client disconnects.
 	d.handleControlStream(ctrl, scanner)
@@ -507,21 +513,23 @@ func (d *Daemon) handleConnection(conn net.Conn) {
 	LogInfo("daemon", "client disconnected")
 }
 
-// streamAgent wires bidirectional PTY streaming between a pane and a yamux
-// stream. On connect: replays the ring buffer snapshot, then adds the stream
-// to the pane's MultiSink for live fan-out. On disconnect: removes the stream.
-// Upstream (client -> PTY) is a read loop forwarding keystrokes.
-func (d *Daemon) streamAgent(p *Pane, stream net.Conn) {
+// replayToStream sends buffered PTY history from the ring buffer to the
+// stream so the client can reconstruct the current screen state. Called
+// synchronously before replay_done is sent on the control channel.
+func (d *Daemon) replayToStream(p *Pane, stream net.Conn) {
 	rb := d.ringBufs[p.Name()]
-	ms := d.multiSinks[p.Name()]
-
-	// Replay: send buffered PTY history so the client reconstructs the
-	// current screen state before live bytes start flowing.
 	if rb != nil {
 		if snap := rb.Snapshot(); len(snap) > 0 {
 			stream.Write(snap)
 		}
 	}
+}
+
+// streamAgentLive wires bidirectional live PTY streaming between a pane and
+// a yamux stream. Adds the stream to the pane's MultiSink for downstream
+// fan-out. Reads upstream keystrokes until the client disconnects.
+func (d *Daemon) streamAgentLive(p *Pane, stream net.Conn) {
+	ms := d.multiSinks[p.Name()]
 
 	// Add this client's stream to the fan-out sink. readLoop writes to
 	// the MultiSink which delivers to all clients + ring buffer.
