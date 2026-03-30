@@ -20,11 +20,11 @@ const (
 
 // backoff returns the next retry delay using exponential backoff with a cap.
 func backoff(attempt int) time.Duration {
-	d := time.Duration(float64(reconnectInitial) * math.Pow(reconnectFactor, float64(attempt)))
-	if d > reconnectMax {
-		d = reconnectMax
+	f := float64(reconnectInitial) * math.Pow(reconnectFactor, float64(attempt))
+	if f > float64(reconnectMax) || f < 0 || math.IsInf(f, 0) || math.IsNaN(f) {
+		return reconnectMax
 	}
-	return d
+	return time.Duration(f)
 }
 
 // peerManager manages the connection lifecycle for all remote peers.

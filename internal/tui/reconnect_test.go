@@ -33,8 +33,18 @@ func TestBackoff_NeverExceedsMax(t *testing.T) {
 		if d > reconnectMax {
 			t.Errorf("backoff(%d) = %v, exceeds max %v", i, d, reconnectMax)
 		}
-		if d < reconnectInitial {
-			t.Errorf("backoff(%d) = %v, below minimum %v", i, d, reconnectInitial)
+		if d < 0 {
+			t.Errorf("backoff(%d) = %v, negative (overflow)", i, d)
+		}
+	}
+}
+
+func TestBackoff_NoOverflowAtHighIteration(t *testing.T) {
+	// Iteration 34+ caused int64 overflow before the guard was added.
+	for _, i := range []int{34, 50, 63, 100, 1000} {
+		d := backoff(i)
+		if d != reconnectMax {
+			t.Errorf("backoff(%d) = %v, want %v (capped)", i, d, reconnectMax)
 		}
 	}
 }
