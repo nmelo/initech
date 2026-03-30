@@ -7,6 +7,7 @@ package tui
 
 import (
 	"fmt"
+	"io"
 	"net"
 	"strings"
 	"sync"
@@ -68,13 +69,18 @@ func NewRemotePane(name, host string, stream net.Conn, mux *ControlMux, cols, ro
 	}
 }
 
-// Start launches the background goroutine that reads PTY bytes from the
-// yamux stream and feeds them into the local emulator.
+// Start launches background goroutines: readLoop (stream -> dataCh) and
+// responseLoop (drains emulator responses so Write never blocks on the
+// internal io.Pipe).
 func (rp *RemotePane) Start() {
-	rp.goWg.Add(1)
+	rp.goWg.Add(2)
 	go func() {
 		defer rp.goWg.Done()
 		rp.readLoop()
+	}()
+	go func() {
+		defer rp.goWg.Done()
+		rp.responseLoop()
 	}()
 }
 
@@ -114,6 +120,22 @@ func (rp *RemotePane) readLoop() {
 			rp.alive = false
 			rp.activity = StateDead
 			rp.mu.Unlock()
+			return
+		}
+	}
+}
+
+// responseLoop drains the emulator's internal response pipe. The VT emulator
+// writes responses (DA, DSR, cursor position reports) to an io.Pipe when it
+// encounters query sequences in the byte stream. Without a reader, io.Pipe.Write
+// blocks, which deadlocks Emulator.Write (and therefore SafeEmulator.Write)
+// while holding the write lock. For RemotePanes the responses are discarded;
+// the daemon's local emulator handles the real DA responses via its own PTY.
+func (rp *RemotePane) responseLoop() {
+	buf := make([]byte, 256)
+	for {
+		_, err := rp.emu.Read(buf)
+		if err != nil {
 			return
 		}
 	}
@@ -408,7 +430,7 @@ func (rp *RemotePane) sendResize(rows, cols int) {
 	}
 }
 
-// Close terminates the yamux stream.
+// Close terminates the yamux stream and stops background goroutines.
 func (rp *RemotePane) Close() {
 	rp.resizeMu.Lock()
 	if rp.resizeTimer != nil {
@@ -420,7 +442,11 @@ func (rp *RemotePane) Close() {
 	rp.alive = false
 	rp.mu.Unlock()
 	if rp.stream != nil {
-		rp.stream.Close()
+		rp.stream.Close() // readLoop exits on stream read error.
+	}
+	// Close the emulator's input pipe so responseLoop's blocking Read exits.
+	if pw, ok := rp.emu.InputPipe().(interface{ CloseWithError(error) error }); ok {
+		pw.CloseWithError(io.EOF)
 	}
 	rp.goWg.Wait()
 }

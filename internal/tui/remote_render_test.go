@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/x/vt"
 	"github.com/gdamore/tcell/v2"
 )
 
@@ -255,4 +256,72 @@ dataArrived:
 	if !foundContent {
 		t.Error("no pane has visible content after rendering")
 	}
+}
+
+// TestRemotePane_DAQueryDoesNotDeadlock reproduces the root cause: the VT
+// emulator writes DA/DSR responses to an internal io.Pipe. Without a reader
+// draining that pipe, io.Pipe.Write blocks inside Emulator.Write, which holds
+// the SafeEmulator write lock forever, deadlocking the main goroutine.
+func TestRemotePane_DAQueryDoesNotDeadlock(t *testing.T) {
+	// First, prove the bug exists without responseLoop. Use a bare
+	// SafeEmulator (no responseLoop draining the pipe).
+	t.Run("bare_emulator_blocks", func(t *testing.T) {
+		emu := vt.NewSafeEmulator(80, 24)
+		// DA1 query: ESC [ c  (CSI c = "send primary device attributes")
+		// The emulator processes this and writes a response to its pipe.
+		da := []byte("\x1b[c")
+		done := make(chan struct{})
+		go func() {
+			emu.Write(da)
+			close(done)
+		}()
+		select {
+		case <-done:
+			t.Fatal("expected bare emulator Write to block on DA query (no pipe reader)")
+		case <-time.After(200 * time.Millisecond):
+			// Expected: Write blocks because nobody reads from the pipe.
+			t.Log("confirmed: bare emulator blocks on DA query without pipe reader")
+		}
+	})
+
+	// Now prove the fix: RemotePane.Start() launches responseLoop which
+	// drains the pipe, so Write never blocks.
+	t.Run("remote_pane_does_not_block", func(t *testing.T) {
+		server, client := net.Pipe()
+		defer server.Close()
+		defer client.Close()
+		ctrlS, ctrlC := net.Pipe()
+		defer ctrlS.Close()
+		defer ctrlC.Close()
+
+		rp := NewRemotePane("eng1", "wb", client, NewControlMux(ctrlC), 80, 24)
+		rp.region = Region{X: 0, Y: 0, W: 80, H: 25}
+		rp.Start()
+
+		// Write data containing DA query sequence directly to the dataCh
+		// (simulating what readLoop does). Then call Render which drains
+		// dataCh into the emulator.
+		// Mix normal text + DA query + more text.
+		payload := []byte("hello\x1b[cworld\r\n")
+		rp.dataCh <- payload
+
+		s := tcell.NewSimulationScreen("")
+		s.Init()
+		s.SetSize(80, 25)
+
+		done := make(chan struct{})
+		go func() {
+			rp.Render(s, false, false, 1, Selection{})
+			close(done)
+		}()
+
+		select {
+		case <-done:
+			t.Log("Render completed (responseLoop drained DA response)")
+		case <-time.After(2 * time.Second):
+			t.Fatal("Render blocked for 2+ seconds (responseLoop not draining pipe)")
+		}
+
+		rp.Close()
+	})
 }
