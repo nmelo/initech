@@ -258,16 +258,11 @@ func TestRemotePaneResizeUpdatesEmulatorImmediately(t *testing.T) {
 	rp := NewRemotePane("eng1", "wb", streamC, NewControlMux(ctrlC), 80, 24)
 	rp.Resize(40, 120)
 
-	// Emulator resize is now async (goroutine). Poll for the expected dimensions.
-	deadline := time.Now().Add(100 * time.Millisecond)
-	for time.Now().Before(deadline) {
-		if rp.Emulator().Width() == 120 && rp.Emulator().Height() == 40 {
-			return // success
-		}
-		time.Sleep(5 * time.Millisecond)
+	// Resize is synchronous (channel-based approach: emulator owned by main goroutine).
+	if rp.Emulator().Width() != 120 || rp.Emulator().Height() != 40 {
+		t.Errorf("emu dimensions = %dx%d, want 120x40",
+			rp.Emulator().Width(), rp.Emulator().Height())
 	}
-	t.Errorf("emu dimensions = %dx%d, want 120x40 (after 100ms poll)",
-		rp.Emulator().Width(), rp.Emulator().Height())
 }
 
 func TestTcellKeyToANSI(t *testing.T) {

@@ -377,10 +377,10 @@ drained:
 // dragging the terminal edge) are collapsed: only the final geometry is sent
 // after a 50ms quiet period.
 func (rp *RemotePane) Resize(rows, cols int) {
-	// Emulator resize in a goroutine: the SafeEmulator's write lock may be
-	// held by readLoop (mid emu.Write from stream data), and acquiring it
-	// on the main goroutine would block the entire event loop.
-	go rp.emu.Resize(cols, rows)
+	// Emulator resize is synchronous: with the channel-based approach,
+	// readLoop never touches the emulator, so no lock contention.
+	// The emulator is owned exclusively by the main goroutine.
+	rp.emu.Resize(cols, rows)
 
 	rp.resizeMu.Lock()
 	rp.pendingRows = rows
