@@ -18,9 +18,29 @@ import (
 // connectTimeout is how long to wait for a TCP connection to a remote peer.
 const connectTimeout = 5 * time.Second
 
+// peerConn holds all resources for a single remote peer connection.
+// The caller must call Close() when the connection is no longer needed
+// to release the yamux session, control mux, and underlying TCP connection.
+type peerConn struct {
+	session *yamux.Session
+	mux     *ControlMux
+	panes   []PaneView
+}
+
+// Close releases all connection resources: control mux, yamux session
+// (which closes all streams and the TCP connection).
+func (pc *peerConn) Close() {
+	if pc.mux != nil {
+		pc.mux.Close()
+	}
+	if pc.session != nil {
+		pc.session.Close()
+	}
+}
+
 // connectPeer establishes a yamux connection to a single remote peer, performs
 // the hello handshake, reads the stream map, and creates RemotePanes.
-func connectPeer(peerName string, remote config.Remote, project *config.Project) ([]PaneView, error) {
+func connectPeer(peerName string, remote config.Remote, project *config.Project) (*peerConn, error) {
 	// Dial TCP with OS-level keepalive to detect dead peers faster than
 	// the default 2-hour TCP keepalive. yamux has its own keepalive, but
 	// after kill -9 the TCP write may buffer locally without failing.
@@ -139,5 +159,5 @@ func connectPeer(peerName string, remote config.Remote, project *config.Project)
 		LogDebug("remote", "agent connected", "peer", serverPeerName, "agent", agentName)
 	}
 
-	return panes, nil
+	return &peerConn{session: session, mux: mux, panes: panes}, nil
 }

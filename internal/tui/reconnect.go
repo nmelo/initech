@@ -69,7 +69,7 @@ func (pm *peerManager) managePeer(peerName string, remote config.Remote) {
 	attempt := 0
 	for {
 		// Try to connect.
-		panes, err := connectPeer(peerName, remote, pm.project)
+		pc, err := connectPeer(peerName, remote, pm.project)
 		if err != nil {
 			LogWarn("remote", "connection failed", "peer", peerName, "attempt", attempt, "err", err)
 			pm.onPanesChanged(peerName, nil)
@@ -86,12 +86,16 @@ func (pm *peerManager) managePeer(peerName string, remote config.Remote) {
 
 		// Connected successfully.
 		attempt = 0
-		LogInfo("remote", "connected", "peer", peerName, "agents", len(panes))
-		pm.onPanesChanged(peerName, panes)
+		LogInfo("remote", "connected", "peer", peerName, "agents", len(pc.panes))
+		pm.onPanesChanged(peerName, pc.panes)
 
 		// Monitor connection health: wait for all RemotePanes to go dead,
 		// which signals the yamux session died.
-		pm.waitForDisconnect(peerName, panes)
+		pm.waitForDisconnect(peerName, pc.panes)
+
+		// Close the yamux session and control mux to release goroutines,
+		// file descriptors, and the TCP connection.
+		pc.Close()
 
 		LogWarn("remote", "disconnected", "peer", peerName)
 		pm.onPanesChanged(peerName, nil)
