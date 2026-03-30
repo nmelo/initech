@@ -45,7 +45,6 @@ type Daemon struct {
 	multiSinks map[string]*MultiSink // Per-pane fan-out sink keyed by agent name.
 	project    *config.Project
 	listener   net.Listener
-	mu         sync.Mutex
 	version    string
 	timers     *TimerStore
 
@@ -206,7 +205,7 @@ func RunDaemon(cfg DaemonConfig) error {
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 
 	// Accept connections in a goroutine.
-	connCh := make(chan net.Conn, 1)
+	connCh := make(chan net.Conn, 8)
 	go func() {
 		for {
 			conn, err := ln.Accept()
@@ -560,7 +559,10 @@ func (d *Daemon) handleConnection(conn net.Conn) {
 	}
 
 	// Notify client that replay data is about to be sent on agent streams.
-	writeJSON(ctrl, struct{ Action string `json:"action"` }{"replay_start"})
+	if err := writeJSON(ctrl, struct{ Action string `json:"action"` }{"replay_start"}); err != nil {
+		LogWarn("daemon", "failed to send replay_start", "err", err)
+		return
+	}
 
 	// Phase 1: replay ring buffer to each stream synchronously so the
 	// client has complete screen state before replay_done fires.
@@ -569,7 +571,10 @@ func (d *Daemon) handleConnection(conn net.Conn) {
 	}
 
 	// Signal replay complete. All buffered history has been sent.
-	writeJSON(ctrl, struct{ Action string `json:"action"` }{"replay_done"})
+	if err := writeJSON(ctrl, struct{ Action string `json:"action"` }{"replay_done"}); err != nil {
+		LogWarn("daemon", "failed to send replay_done", "err", err)
+		return
+	}
 
 	// Phase 2: start live streaming goroutines (upstream keystrokes +
 	// downstream fan-out via MultiSink).
@@ -601,12 +606,12 @@ func (d *Daemon) replayToStream(p *Pane, stream net.Conn) {
 	if rb != nil {
 		if snap := rb.Snapshot(); len(snap) > 0 {
 			n, err := stream.Write(snap)
-			LogInfo("daemon", "replay sent", "agent", p.Name(), "bytes", n, "err", err)
+			LogDebug("daemon", "replay sent", "agent", p.Name(), "bytes", n, "err", err)
 		} else {
-			LogInfo("daemon", "replay empty", "agent", p.Name())
+			LogDebug("daemon", "replay empty", "agent", p.Name())
 		}
 	} else {
-		LogInfo("daemon", "replay no ringbuf", "agent", p.Name())
+		LogDebug("daemon", "replay no ringbuf", "agent", p.Name())
 	}
 }
 
@@ -618,10 +623,10 @@ func (d *Daemon) streamAgentLive(p *Pane, stream net.Conn) {
 
 	if ms != nil {
 		ms.Add(stream)
-		LogInfo("daemon", "stream added to MultiSink", "agent", p.Name(), "sink_writers", ms.Len())
+		LogDebug("daemon", "stream added to MultiSink", "agent", p.Name(), "sink_writers", ms.Len())
 		defer func() {
 			ms.Remove(stream)
-			LogInfo("daemon", "stream removed from MultiSink", "agent", p.Name())
+			LogDebug("daemon", "stream removed from MultiSink", "agent", p.Name())
 		}()
 	} else {
 		LogWarn("daemon", "no MultiSink for agent", "agent", p.Name())

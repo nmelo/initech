@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"strings"
 	"sync"
 	"time"
 
@@ -114,7 +113,7 @@ func (rp *RemotePane) readLoop() {
 			rp.mu.Unlock()
 		}
 		if err != nil {
-			LogInfo("remote-readloop", "stream ended",
+			LogDebug("remote-readloop", "stream ended",
 				"agent", rp.name, "host", rp.host, "err", err)
 			rp.mu.Lock()
 			rp.alive = false
@@ -451,35 +450,4 @@ func (rp *RemotePane) Close() {
 	rp.goWg.Wait()
 }
 
-// ── Helpers ─────────────────────────────────────────────────────────
-
-// extractSessionDesc reads the cursor row text as a session description,
-// same logic as Pane but without the status bar filter (remote panes
-// don't need the CUF bleed-through fix since the daemon's emulator
-// already handles it).
-func (rp *RemotePane) extractSessionDesc() {
-	if rp.emu.IsAltScreen() {
-		return
-	}
-	cols := rp.emu.Width()
-	pos := rp.emu.CursorPosition()
-	if pos.Y >= rp.emu.Height() {
-		return
-	}
-	var desc strings.Builder
-	for c := 0; c < cols; c++ {
-		cell := rp.emu.CellAt(c, pos.Y)
-		if cell != nil && cell.Content != "" {
-			desc.WriteString(cell.Content)
-		} else {
-			desc.WriteByte(' ')
-		}
-	}
-	trimmed := strings.TrimSpace(desc.String())
-	if trimmed != "" && !strings.Contains(trimmed, "\u2502") {
-		rp.mu.Lock()
-		rp.sessDesc = trimmed
-		rp.mu.Unlock()
-	}
-}
 
