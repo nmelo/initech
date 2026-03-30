@@ -154,6 +154,11 @@ func (rp *RemotePane) Emulator() *vt.SafeEmulator { return rp.emu }
 
 func (rp *RemotePane) GetRegion() Region { return rp.region }
 
+// networkWriteTimeout is applied to all writes on yamux streams and control
+// connections. Prevents the TUI from hanging when a remote daemon dies and
+// the network write buffer fills up.
+const networkWriteTimeout = 3 * time.Second
+
 // SendKey encodes a tcell key event as raw ANSI bytes and writes them
 // upstream to the daemon, which injects them into the remote PTY.
 func (rp *RemotePane) SendKey(ev *tcell.EventKey) {
@@ -164,6 +169,7 @@ func (rp *RemotePane) SendKey(ev *tcell.EventKey) {
 		b = tcellKeyToANSI(ev)
 	}
 	if len(b) > 0 {
+		rp.stream.SetWriteDeadline(time.Now().Add(networkWriteTimeout))
 		rp.stream.Write(b)
 	}
 }
@@ -228,12 +234,15 @@ func (rp *RemotePane) SendText(text string, enter bool) {
 		Enter:  enter,
 	}
 	data, _ := json.Marshal(cmd)
+	rp.ctrlConn.SetWriteDeadline(time.Now().Add(networkWriteTimeout))
 	rp.ctrlConn.Write(data)
 	rp.ctrlConn.Write([]byte("\n"))
 
-	// Read response (best-effort; don't block on errors).
-	scanner := make([]byte, 4096)
-	rp.ctrlConn.Read(scanner)
+	// Read response with deadline so a dead session doesn't block forever.
+	rp.ctrlConn.SetReadDeadline(time.Now().Add(networkWriteTimeout))
+	buf := make([]byte, 4096)
+	rp.ctrlConn.Read(buf)
+	rp.ctrlConn.SetReadDeadline(time.Time{}) // Clear for future reads.
 }
 
 // Render draws the remote pane with [R] badge in the ribbon title.
@@ -358,6 +367,7 @@ func (rp *RemotePane) sendResize(rows, cols int) {
 		Cols:   cols,
 	}
 	data, _ := json.Marshal(cmd)
+	rp.ctrlConn.SetWriteDeadline(time.Now().Add(networkWriteTimeout))
 	rp.ctrlConn.Write(data)
 	rp.ctrlConn.Write([]byte("\n"))
 }

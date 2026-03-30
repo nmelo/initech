@@ -450,6 +450,12 @@ func Run(cfg Config) error {
 	// manager handles reconnection with exponential backoff.
 	if cfg.Project != nil && len(cfg.Project.Remotes) > 0 {
 		remotePanes := connectRemotesSync(cfg.Project)
+		// Build map of which peers were connected during sync connect,
+		// so the peer manager skips the initial connect for those peers.
+		initialByPeer := make(map[string][]PaneView)
+		for _, rp := range remotePanes {
+			initialByPeer[rp.Host()] = append(initialByPeer[rp.Host()], rp)
+		}
 		if len(remotePanes) > 0 {
 			t.panes = append(t.panes, remotePanes...)
 		}
@@ -461,7 +467,7 @@ func Run(cfg Config) error {
 			t.runOnMain(func() {
 				t.handlePeerUpdate(peerName, panes)
 			})
-		}, t.quitCh)
+		}, initialByPeer, t.quitCh)
 		defer pm.wait()
 	}
 
