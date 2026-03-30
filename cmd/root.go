@@ -5,6 +5,9 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"net"
+	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"path/filepath"
 
@@ -24,6 +27,7 @@ var (
 	verbose     bool
 	noColor     bool
 	autoSuspend bool
+	pprofAddr   string
 
 	// updateResult receives the background version check result.
 	// Populated in PersistentPreRun, drained in PersistentPostRun.
@@ -123,6 +127,7 @@ func init() {
 	rootCmd.Flags().BoolVar(&resetLayout, "reset-layout", false, "Ignore saved layout and start with auto-calculated defaults")
 	rootCmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Enable DEBUG-level logging to .initech/initech.log")
 	rootCmd.Flags().BoolVar(&autoSuspend, "auto-suspend", false, "Enable automatic agent suspension under memory pressure")
+	rootCmd.Flags().StringVar(&pprofAddr, "pprof", "", "Start pprof HTTP server on the given address (e.g. localhost:6060)")
 	rootCmd.PersistentFlags().BoolVar(&noColor, "no-color", false, "Disable colored output")
 
 	// Register color functions as template functions so the usage template can
@@ -241,6 +246,16 @@ func runTUI(cmd *cobra.Command, args []string) error {
 	enableAutoSuspend := proj.Resource.AutoSuspend
 	if cmd.Flags().Changed("auto-suspend") {
 		enableAutoSuspend = autoSuspend
+	}
+
+	// Start pprof HTTP server when --pprof is set.
+	if pprofAddr != "" {
+		ln, err := net.Listen("tcp", pprofAddr)
+		if err != nil {
+			return fmt.Errorf("pprof listen on %s: %w", pprofAddr, err)
+		}
+		fmt.Fprintf(os.Stderr, "pprof server listening on http://%s/debug/pprof\n", ln.Addr())
+		go func() { _ = http.Serve(ln, nil) }()
 	}
 
 	return tui.Run(tui.Config{
