@@ -23,8 +23,9 @@ func TestAddPane_Success(t *testing.T) {
 		sockPath:    "/tmp/test.sock",
 		paneConfigBuilder: func(name string) (PaneConfig, error) {
 			return PaneConfig{
-				Name: name,
-				Dir:  filepath.Join(dir, name),
+				Name:    name,
+				Dir:     filepath.Join(dir, name),
+				Command: []string{"/bin/sh", "-c", "exit 0"},
 			}, nil
 		},
 	}
@@ -57,7 +58,7 @@ func TestAddPane_SetsGoroutines(t *testing.T) {
 		quitCh:      make(chan struct{}),
 		sockPath:    "/tmp/test.sock",
 		paneConfigBuilder: func(name string) (PaneConfig, error) {
-			return PaneConfig{Name: name, Dir: filepath.Join(dir, name)}, nil
+			return PaneConfig{Name: name, Dir: filepath.Join(dir, name), Command: []string{"/bin/sh", "-c", "exit 0"}}, nil
 		},
 	}
 
@@ -79,7 +80,7 @@ func TestAddPane_AlreadyExists(t *testing.T) {
 	tui := &TUI{
 		panes: toPaneViews([]*Pane{testPane("eng1")}),
 		paneConfigBuilder: func(name string) (PaneConfig, error) {
-			return PaneConfig{Name: name, Dir: "/tmp"}, nil
+			return PaneConfig{Name: name, Dir: "/tmp", Command: []string{"/bin/sh", "-c", "exit 0"}}, nil
 		},
 	}
 

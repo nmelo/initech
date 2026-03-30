@@ -571,6 +571,7 @@ func TestPinStaleRoleFilteredOnLoad(t *testing.T) {
 // resume succeeds (spawns $SHELL) and drains the queue.
 func TestHandleIPCSendResumesSuspended(t *testing.T) {
 	p := newEmuPane("eng1", 80, 24)
+	p.cfg.Command = []string{"/bin/sh", "-c", "echo ready; sleep 1"}
 	p.suspended = true
 	tui := &TUI{
 		panes:       toPaneViews([]*Pane{p}),
@@ -795,6 +796,7 @@ func TestResumePane_SkipsIfNotSuspended(t *testing.T) {
 func TestResumePane_SetsGracePeriod(t *testing.T) {
 	// Use a real shell command so NewPane succeeds.
 	p := newEmuPane("eng1", 80, 24)
+	p.cfg.Command = []string{"/bin/sh", "-c", "echo ready; sleep 1"}
 	p.suspended = true
 	tui := &TUI{
 		panes:       toPaneViews([]*Pane{p}),
@@ -816,6 +818,7 @@ func TestResumePane_SetsGracePeriod(t *testing.T) {
 
 func TestResumePane_EmitsEvent(t *testing.T) {
 	p := newEmuPane("eng1", 80, 24)
+	p.cfg.Command = []string{"/bin/sh", "-c", "echo ready; sleep 1"}
 	p.suspended = true
 	tui := &TUI{
 		panes:       toPaneViews([]*Pane{p}),
@@ -848,6 +851,7 @@ func TestResumePane_PreservesQueueOnFailure(t *testing.T) {
 	// Create a pane whose cfg points to a nonexistent working directory.
 	// NewPane's pty.StartWithSize will fail because the directory doesn't exist.
 	p := newEmuPane("eng1", 80, 24)
+	p.cfg.Command = []string{"/bin/sh", "-c", "echo ready; sleep 1"}
 	p.suspended = true
 	p.cfg.Dir = "/nonexistent/directory/that/cannot/exist"
 	p.EnqueueMessage("pending", true)
@@ -872,6 +876,7 @@ func TestResumePane_PreservesQueueOnFailure(t *testing.T) {
 func TestResumePane_ConcurrentResume(t *testing.T) {
 	// Two concurrent resumes: the second should find the pane already resumed.
 	p := newEmuPane("eng1", 80, 24)
+	p.cfg.Command = []string{"/bin/sh", "-c", "echo ready; sleep 1"}
 	p.suspended = true
 	tui := &TUI{
 		panes:       toPaneViews([]*Pane{p}),
@@ -896,6 +901,7 @@ func TestResumePane_ConcurrentResume(t *testing.T) {
 
 func TestResumePane_CopiesPinnedAndBead(t *testing.T) {
 	p := newEmuPane("eng1", 80, 24)
+	p.cfg.Command = []string{"/bin/sh", "-c", "echo ready; sleep 1"}
 	p.suspended = true
 	p.pinned = true
 	p.beadID = "ini-abc.1"
