@@ -16,6 +16,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strings"
 	"log/slog"
 	"net"
 	"os"
@@ -216,6 +217,21 @@ func RunDaemon(cfg DaemonConfig) error {
 	}()
 
 	LogInfo("daemon", "ready", "peer_name", cfg.Project.PeerName)
+
+	// Startup banner to stdout.
+	agentNames := make([]string, len(d.panes))
+	for i, p := range d.panes {
+		agentNames[i] = p.Name()
+	}
+	fmt.Fprintf(os.Stdout, "initech serve %s\n", cfg.Version)
+	fmt.Fprintf(os.Stdout, "  peer:    %s\n", cfg.Project.PeerName)
+	fmt.Fprintf(os.Stdout, "  listen:  %s (%s)\n", cfg.Project.Listen, ln.Addr().String())
+	fmt.Fprintf(os.Stdout, "  agents:  %s (%d running)\n", strings.Join(agentNames, " "), len(agentNames))
+	if sockPath != "" {
+		fmt.Fprintf(os.Stdout, "  socket:  %s\n", sockPath)
+	}
+	fmt.Fprintf(os.Stdout, "  pid:     %d\n", os.Getpid())
+	fmt.Fprintln(os.Stdout, "\nWaiting for connections... (Ctrl+C to stop)")
 
 	// Fire any overdue timers from a previous session.
 	d.fireTimers()
