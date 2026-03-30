@@ -4,7 +4,6 @@
 package tui
 
 import (
-	"math"
 	"sync"
 	"time"
 
@@ -15,16 +14,19 @@ import (
 const (
 	reconnectInitial = 1 * time.Second
 	reconnectMax     = 30 * time.Second
-	reconnectFactor  = 2.0
 )
 
 // backoff returns the next retry delay using exponential backoff with a cap.
+// Progression: 1s, 2s, 4s, 8s, 16s, 30s, 30s, 30s...
 func backoff(attempt int) time.Duration {
-	f := float64(reconnectInitial) * math.Pow(reconnectFactor, float64(attempt))
-	if f > float64(reconnectMax) || f < 0 || math.IsInf(f, 0) || math.IsNaN(f) {
+	if attempt >= 30 {
+		return reconnectMax // Prevent overflow on large attempt values.
+	}
+	d := reconnectInitial << uint(attempt)
+	if d > reconnectMax {
 		return reconnectMax
 	}
-	return time.Duration(f)
+	return d
 }
 
 // peerManager manages the connection lifecycle for all remote peers.
