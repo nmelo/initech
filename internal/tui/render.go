@@ -452,6 +452,26 @@ func (t *TUI) renderHints() {
 		}
 	}
 
+	// Pending timers indicator: left of quota/battery block.
+	if t.timers != nil {
+		if pending := t.timers.Pending(); pending > 0 {
+			pendingText := fmt.Sprintf("%d pending", pending)
+			pStart := leftEdge - len(pendingText) - 3
+			if pStart >= 0 {
+				for i, ch := range pendingText {
+					s.SetContent(pStart+i, y, ch, nil, barStyle)
+				}
+				sepX := pStart + len(pendingText)
+				if sepX+2 < sw {
+					s.SetContent(sepX, y, ' ', nil, barStyle)
+					s.SetContent(sepX+1, y, '\u00b7', nil, sepStyle)
+					s.SetContent(sepX+2, y, ' ', nil, barStyle)
+				}
+				leftEdge = pStart
+			}
+		}
+	}
+
 	// Left side: cycling tip. Truncate with ellipsis if it would overlap the right block.
 	tip := statusTips[t.tipIndex%len(statusTips)]
 	maxTipW := leftEdge - 3 // leave gap between tip and quota/battery/shortcuts
