@@ -408,8 +408,8 @@ func TestSocketPath(t *testing.T) {
 // ── IPC: findPane ────────────────────────────────────────────────────
 
 func TestFindPane(t *testing.T) {
-	a := newTestPane("super", true)
-	b := newTestPane("eng1", true)
+	a := testPane("super")
+	b := testPane("eng1")
 	tui := newTestTUI(a, b)
 
 	if got := tui.findPane("eng1"); got != b {
@@ -1044,7 +1044,7 @@ func TestDefaultConfig(t *testing.T) {
 // ── calcRegions ──────────────────────────────────────────────────────
 
 func TestCalcRegionsZoomReturnsOneRegion(t *testing.T) {
-	tui := newTestTUI(newTestPane("a", true), newTestPane("b", true))
+	tui := newTestTUI(testPane("a"), testPane("b"))
 	tui.layoutState.Zoomed = true
 	plan := computeLayout(tui.layoutState, tui.panes, 200, 100); regions := make([]Region, len(plan.Panes)); for ii, pp := range plan.Panes { regions[ii] = pp.Region }
 	if len(regions) != 1 {
@@ -1053,7 +1053,7 @@ func TestCalcRegionsZoomReturnsOneRegion(t *testing.T) {
 }
 
 func TestCalcRegionsFocusReturnsOneRegion(t *testing.T) {
-	tui := newTestTUI(newTestPane("a", true), newTestPane("b", true))
+	tui := newTestTUI(testPane("a"), testPane("b"))
 	tui.layoutState.Mode = LayoutFocus
 	plan := computeLayout(tui.layoutState, tui.panes, 200, 100); regions := make([]Region, len(plan.Panes)); for ii, pp := range plan.Panes { regions[ii] = pp.Region }
 	if len(regions) != 1 {
@@ -1070,9 +1070,9 @@ func TestCalcRegionsNoPanes(t *testing.T) {
 }
 
 func TestCalcRegions2Col(t *testing.T) {
-	a := newTestPane("a", true)
-	b := newTestPane("b", true)
-	c := newTestPane("c", true)
+	a := testPane("a")
+	b := testPane("b")
+	c := testPane("c")
 	tui := newTestTUI(a, b, c)
 	tui.layoutState.Mode = Layout2Col
 	plan := computeLayout(tui.layoutState, tui.panes, 200, 100); regions := make([]Region, len(plan.Panes)); for ii, pp := range plan.Panes { regions[ii] = pp.Region }
@@ -1121,7 +1121,7 @@ func TestExecCmdUnknown(t *testing.T) {
 }
 
 func TestExecCmdPanel(t *testing.T) {
-	tui := newTestTUI(newTestPane("a", true))
+	tui := newTestTUI(testPane("a"))
 	tui.layoutState.Overlay = false
 	tui.execCmd("panel")
 	if !tui.layoutState.Overlay {
@@ -1136,7 +1136,7 @@ func TestExecCmdPanel(t *testing.T) {
 func TestExecCmdZoom(t *testing.T) {
 	// Test zoom toggle directly since execCmd("zoom") calls relayout
 	// which needs a screen.
-	tui := newTestTUI(newTestPane("a", true))
+	tui := newTestTUI(testPane("a"))
 	tui.layoutState.Zoomed = false
 	tui.layoutState.Zoomed = !tui.layoutState.Zoomed // Simulate what execCmd("zoom") does.
 	if !tui.layoutState.Zoomed {
@@ -1149,8 +1149,8 @@ func TestExecCmdZoom(t *testing.T) {
 }
 
 func TestExecCmdUnhideHide(t *testing.T) {
-	a := newTestPane("super", true)
-	b := newTestPane("eng1", true)
+	a := testPane("super")
+	b := testPane("eng1")
 	tui := newTestTUI(a, b)
 
 	// Hide eng1.
@@ -1174,7 +1174,7 @@ func TestExecCmdUnhideHide(t *testing.T) {
 }
 
 func TestExecCmdHideLastPane(t *testing.T) {
-	a := newTestPane("super", true)
+	a := testPane("super")
 	tui := newTestTUI(a)
 	tui.execCmd("hide super")
 	if !a.Visible() {
@@ -1186,8 +1186,8 @@ func TestExecCmdHideLastPane(t *testing.T) {
 }
 
 func TestExecCmdHideAlreadyHidden(t *testing.T) {
-	a := newTestPane("super", true)
-	b := newTestPane("eng1", false)
+	a := testPane("super")
+	b := hiddenTestPane("eng1")
 	tui := newTestTUI(a, b)
 	tui.execCmd("hide eng1") // Already hidden, should be no-op.
 	if tui.cmd.error != "" {
@@ -1198,8 +1198,8 @@ func TestExecCmdHideAlreadyHidden(t *testing.T) {
 func TestExecCmdGridNoArg(t *testing.T) {
 	// grid calls setGrid which calls relayout. Test state directly.
 	tui := newTestTUI(
-		newTestPane("a", true), newTestPane("b", true),
-		newTestPane("c", true), newTestPane("d", true),
+		testPane("a"), testPane("b"),
+		testPane("c"), testPane("d"),
 	)
 	tui.layoutState.Mode = LayoutFocus
 	c, r := autoGrid(tui.visibleCountFromState())
@@ -1212,7 +1212,7 @@ func TestExecCmdGridNoArg(t *testing.T) {
 }
 
 func TestExecCmdGridWithArg(t *testing.T) {
-	tui := newTestTUI(newTestPane("a", true), newTestPane("b", true))
+	tui := newTestTUI(testPane("a"), testPane("b"))
 	// Simulate grid 2x1.
 	tui.layoutState.Mode = LayoutGrid
 	tui.layoutState.GridCols = 2
@@ -1223,7 +1223,7 @@ func TestExecCmdGridWithArg(t *testing.T) {
 }
 
 func TestExecCmdGridInvalid(t *testing.T) {
-	tui := newTestTUI(newTestPane("a", true))
+	tui := newTestTUI(testPane("a"))
 	tui.execCmd("grid abc")
 	if !strings.Contains(tui.cmd.error, "invalid grid") {
 		t.Errorf("cmdError = %q", tui.cmd.error)
@@ -1232,7 +1232,7 @@ func TestExecCmdGridInvalid(t *testing.T) {
 
 func TestExecCmdFocusNoArg(t *testing.T) {
 	// focus calls relayout, so test the state change logic directly.
-	tui := newTestTUI(newTestPane("a", true))
+	tui := newTestTUI(testPane("a"))
 	tui.layoutState.Mode = LayoutGrid
 	// Simulate what execCmd("focus") does minus relayout.
 	tui.layoutState.Mode = LayoutFocus
@@ -1243,8 +1243,8 @@ func TestExecCmdFocusNoArg(t *testing.T) {
 }
 
 func TestExecCmdFocusWithName(t *testing.T) {
-	a := newTestPane("super", true)
-	b := newTestPane("eng1", true)
+	a := testPane("super")
+	b := testPane("eng1")
 	tui := newTestTUI(a, b)
 	tui.layoutState.Mode = LayoutGrid
 
@@ -1262,7 +1262,7 @@ func TestExecCmdFocusWithName(t *testing.T) {
 }
 
 func TestExecCmdFocusUnknown(t *testing.T) {
-	tui := newTestTUI(newTestPane("a", true))
+	tui := newTestTUI(testPane("a"))
 	tui.execCmd("focus ghost")
 	if !strings.Contains(tui.cmd.error, "unknown agent") {
 		t.Errorf("cmdError = %q", tui.cmd.error)
@@ -1270,7 +1270,7 @@ func TestExecCmdFocusUnknown(t *testing.T) {
 }
 
 func TestExecCmdMain(t *testing.T) {
-	tui := newTestTUI(newTestPane("a", true))
+	tui := newTestTUI(testPane("a"))
 	tui.layoutState.Mode = LayoutGrid
 	// main calls relayout; test the state change directly.
 	tui.layoutState.Mode = Layout2Col
@@ -1283,7 +1283,7 @@ func TestExecCmdMain(t *testing.T) {
 // ── handleCmdKey ─────────────────────────────────────────────────────
 
 func TestHandleCmdKeyEscape(t *testing.T) {
-	tui := newTestTUI(newTestPane("a", true))
+	tui := newTestTUI(testPane("a"))
 	tui.cmd.active = true
 	tui.cmd.buf = []rune("partial")
 
@@ -1371,7 +1371,7 @@ func TestHandleCmdKeyEnter(t *testing.T) {
 // ── handleKey ────────────────────────────────────────────────────────
 
 func TestHandleKeyBacktickOpensModal(t *testing.T) {
-	tui := newTestTUI(newTestPane("a", true))
+	tui := newTestTUI(testPane("a"))
 	ev := tcell.NewEventKey(tcell.KeyRune, '`', 0)
 	tui.handleKey(ev)
 	if !tui.cmd.active {
@@ -1382,7 +1382,7 @@ func TestHandleKeyBacktickOpensModal(t *testing.T) {
 func TestHandleKeyAltQ(t *testing.T) {
 	// Alt+q now opens a confirmation instead of quitting immediately
 	// (ini-a1e.32: accidental Alt+q must not silently kill all agents).
-	tui := newTestTUI(newTestPane("a", true))
+	tui := newTestTUI(testPane("a"))
 	ev := tcell.NewEventKey(tcell.KeyRune, 'q', tcell.ModAlt)
 	quit := tui.handleKey(ev)
 	if quit {
@@ -1397,7 +1397,7 @@ func TestHandleKeyAltQ(t *testing.T) {
 }
 
 func TestHandleKeyAltS(t *testing.T) {
-	tui := newTestTUI(newTestPane("a", true))
+	tui := newTestTUI(testPane("a"))
 	tui.layoutState.Overlay = false
 	ev := tcell.NewEventKey(tcell.KeyRune, 's', tcell.ModAlt)
 	tui.handleKey(ev)
@@ -1408,7 +1408,7 @@ func TestHandleKeyAltS(t *testing.T) {
 
 func TestHandleKeyAltZ(t *testing.T) {
 	// Alt+z toggles zoom. Test state directly since relayout needs screen.
-	tui := newTestTUI(newTestPane("a", true))
+	tui := newTestTUI(testPane("a"))
 	tui.layoutState.Zoomed = false
 	tui.layoutState.Zoomed = !tui.layoutState.Zoomed
 	if !tui.layoutState.Zoomed {
@@ -1417,8 +1417,8 @@ func TestHandleKeyAltZ(t *testing.T) {
 }
 
 func TestHandleKeyAltArrows(t *testing.T) {
-	a := newTestPane("a", true)
-	b := newTestPane("b", true)
+	a := testPane("a")
+	b := testPane("b")
 	tui := newTestTUI(a, b)
 	tui.layoutState.Focused = "a"
 
@@ -1450,7 +1450,7 @@ func TestHandleKeyAltArrows(t *testing.T) {
 func TestHandleKeyAltNumbers(t *testing.T) {
 	// Alt+number keys change layout. Since they call relayout (needs screen),
 	// test the expected state transitions directly.
-	tui := newTestTUI(newTestPane("a", true))
+	tui := newTestTUI(testPane("a"))
 	tui.layoutState.Mode = LayoutGrid
 
 	// Alt+1 sets focus mode.
@@ -1500,7 +1500,7 @@ func TestHandleKeyClearsError(t *testing.T) {
 func TestHandleEventRouting(t *testing.T) {
 	// handleEvent routes to the right handler. We can only test
 	// EventKey since EventResize and EventMouse need a screen.
-	tui := newTestTUI(newTestPane("a", true))
+	tui := newTestTUI(testPane("a"))
 	ev := tcell.NewEventKey(tcell.KeyRune, '`', 0)
 	quit := tui.handleEvent(ev)
 	if quit {
@@ -1555,9 +1555,9 @@ func TestPaneForwardMouse(t *testing.T) {
 // ── recalcGrid ───────────────────────────────────────────────────────
 
 func TestRecalcGridNoScreen(t *testing.T) {
-	a := newTestPane("a", true)
-	b := newTestPane("b", true)
-	c := newTestPane("c", true)
+	a := testPane("a")
+	b := testPane("b")
+	c := testPane("c")
 	tui := newTestTUI(a, b, c)
 	tui.layoutState.Mode = LayoutGrid
 
@@ -1569,7 +1569,7 @@ func TestRecalcGridNoScreen(t *testing.T) {
 }
 
 func TestRecalcGridNonGridLayout(t *testing.T) {
-	a := newTestPane("a", true)
+	a := testPane("a")
 	tui := newTestTUI(a)
 	tui.layoutState.Mode = LayoutFocus
 	tui.layoutState.GridCols = 5

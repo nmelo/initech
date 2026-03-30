@@ -5,27 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/charmbracelet/x/vt"
 	"github.com/gdamore/tcell/v2"
 )
-
-// testPane creates a minimal Pane for layout testing (no PTY or process).
-func testPane(name string) *Pane {
-	return &Pane{
-		name:    name,
-		emu:     vt.NewSafeEmulator(10, 5),
-		alive:   true,
-		visible: true,
-	}
-}
-
-func testPanes(names ...string) []PaneView {
-	panes := make([]PaneView, len(names))
-	for i, n := range names {
-		panes[i] = testPane(n)
-	}
-	return panes
-}
 
 // --- computeLayout tests ---
 
@@ -651,7 +632,7 @@ func TestStringToLayoutMode(t *testing.T) {
 // ── saveLayoutIfConfigured ──────────────────────────────────────────
 
 func TestSaveLayoutIfConfiguredNoRoot(t *testing.T) {
-	tui := newTestTUI(newTestPane("super", true))
+	tui := newTestTUI(testPane("super"))
 	tui.projectRoot = ""
 	// Should be a no-op, not panic.
 	tui.saveLayoutIfConfigured()
@@ -660,8 +641,8 @@ func TestSaveLayoutIfConfiguredNoRoot(t *testing.T) {
 func TestSaveLayoutIfConfiguredWritesFile(t *testing.T) {
 	root := t.TempDir()
 	tui := newTestTUI(
-		newTestPane("super", true),
-		newTestPane("eng1", false),
+		testPane("super"),
+		hiddenTestPane("eng1"),
 	)
 	tui.projectRoot = root
 
@@ -688,10 +669,10 @@ func TestLayoutResetCommand(t *testing.T) {
 	})
 
 	tui := newTestTUI(
-		newTestPane("super", true),
-		newTestPane("eng1", false),
-		newTestPane("eng2", true),
-		newTestPane("qa1", true),
+		testPane("super"),
+		hiddenTestPane("eng1"),
+		testPane("eng2"),
+		testPane("qa1"),
 	)
 	tui.projectRoot = root
 
@@ -719,8 +700,8 @@ func TestLayoutResetCommand(t *testing.T) {
 func TestLayoutResetNoFile(t *testing.T) {
 	root := t.TempDir()
 	tui := newTestTUI(
-		newTestPane("super", true),
-		newTestPane("eng1", true),
+		testPane("super"),
+		testPane("eng1"),
 	)
 	tui.projectRoot = root
 
@@ -731,7 +712,7 @@ func TestLayoutResetNoFile(t *testing.T) {
 }
 
 func TestLayoutUnknownSubcommand(t *testing.T) {
-	tui := newTestTUI(newTestPane("super", true))
+	tui := newTestTUI(testPane("super"))
 	tui.execCmd("layout foo")
 	if tui.cmd.error == "" {
 		t.Error("expected error for unknown layout subcommand")
@@ -739,7 +720,7 @@ func TestLayoutUnknownSubcommand(t *testing.T) {
 }
 
 func TestLayoutNoSubcommand(t *testing.T) {
-	tui := newTestTUI(newTestPane("super", true))
+	tui := newTestTUI(testPane("super"))
 	tui.execCmd("layout")
 	if tui.cmd.error == "" {
 		t.Error("expected error for layout with no subcommand")
@@ -751,10 +732,10 @@ func TestLayoutNoSubcommand(t *testing.T) {
 func TestGridCommandSavesLayout(t *testing.T) {
 	root := t.TempDir()
 	tui := newTestTUI(
-		newTestPane("super", true),
-		newTestPane("eng1", true),
-		newTestPane("eng2", true),
-		newTestPane("qa1", true),
+		testPane("super"),
+		testPane("eng1"),
+		testPane("eng2"),
+		testPane("qa1"),
 	)
 	tui.projectRoot = root
 
@@ -772,9 +753,9 @@ func TestGridCommandSavesLayout(t *testing.T) {
 func TestHideCommandSavesLayout(t *testing.T) {
 	root := t.TempDir()
 	tui := newTestTUI(
-		newTestPane("super", true),
-		newTestPane("eng1", true),
-		newTestPane("eng2", true),
+		testPane("super"),
+		testPane("eng1"),
+		testPane("eng2"),
 	)
 	tui.projectRoot = root
 
@@ -792,8 +773,8 @@ func TestHideCommandSavesLayout(t *testing.T) {
 func TestShowCommandSavesLayout(t *testing.T) {
 	root := t.TempDir()
 	tui := newTestTUI(
-		newTestPane("super", true),
-		newTestPane("eng1", false),
+		testPane("super"),
+		hiddenTestPane("eng1"),
 	)
 	tui.projectRoot = root
 
@@ -811,8 +792,8 @@ func TestShowCommandSavesLayout(t *testing.T) {
 func TestFocusCommandSavesLayout(t *testing.T) {
 	root := t.TempDir()
 	tui := newTestTUI(
-		newTestPane("super", true),
-		newTestPane("eng1", true),
+		testPane("super"),
+		testPane("eng1"),
 	)
 	tui.projectRoot = root
 
@@ -830,8 +811,8 @@ func TestFocusCommandSavesLayout(t *testing.T) {
 func TestMainCommandSavesLayout(t *testing.T) {
 	root := t.TempDir()
 	tui := newTestTUI(
-		newTestPane("super", true),
-		newTestPane("eng1", true),
+		testPane("super"),
+		testPane("eng1"),
 	)
 	tui.projectRoot = root
 
@@ -849,9 +830,9 @@ func TestMainCommandSavesLayout(t *testing.T) {
 func TestViewCommandSavesLayout(t *testing.T) {
 	root := t.TempDir()
 	tui := newTestTUI(
-		newTestPane("super", true),
-		newTestPane("eng1", true),
-		newTestPane("eng2", true),
+		testPane("super"),
+		testPane("eng1"),
+		testPane("eng2"),
 	)
 	tui.projectRoot = root
 
@@ -869,9 +850,9 @@ func TestViewCommandSavesLayout(t *testing.T) {
 func TestShowAllCommandSavesLayout(t *testing.T) {
 	root := t.TempDir()
 	tui := newTestTUI(
-		newTestPane("super", true),
-		newTestPane("eng1", false),
-		newTestPane("eng2", false),
+		testPane("super"),
+		hiddenTestPane("eng1"),
+		hiddenTestPane("eng2"),
 	)
 	tui.projectRoot = root
 
@@ -889,8 +870,8 @@ func TestShowAllCommandSavesLayout(t *testing.T) {
 func TestZoomCommandSavesLayout(t *testing.T) {
 	root := t.TempDir()
 	tui := newTestTUI(
-		newTestPane("super", true),
-		newTestPane("eng1", true),
+		testPane("super"),
+		testPane("eng1"),
 	)
 	tui.projectRoot = root
 

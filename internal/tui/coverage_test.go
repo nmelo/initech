@@ -119,7 +119,7 @@ func TestCalcMainVerticalSingle(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestComputeLayoutZoomed(t *testing.T) {
-	panes := []*Pane{newTestPane("a", true), newTestPane("b", true)}
+	panes := []*Pane{testPane("a"), testPane("b")}
 	state := LayoutState{Mode: LayoutGrid, GridCols: 2, GridRows: 1, Zoomed: true, Focused: "a", Hidden: map[string]bool{}}
 	plan := computeLayout(state, toPaneViews(panes), 100, 50)
 	if len(plan.Panes) != 1 {
@@ -131,7 +131,7 @@ func TestComputeLayoutZoomed(t *testing.T) {
 }
 
 func TestComputeLayoutFocusModeOld(t *testing.T) {
-	panes := []*Pane{newTestPane("a", true), newTestPane("b", true)}
+	panes := []*Pane{testPane("a"), testPane("b")}
 	state := LayoutState{Mode: LayoutFocus, Focused: "a", Hidden: map[string]bool{}}
 	plan := computeLayout(state, toPaneViews(panes), 100, 50)
 	if len(plan.Panes) != 1 {
@@ -140,7 +140,7 @@ func TestComputeLayoutFocusModeOld(t *testing.T) {
 }
 
 func TestComputeLayoutNoVisible(t *testing.T) {
-	panes := []*Pane{newTestPane("a", true)}
+	panes := []*Pane{testPane("a")}
 	state := LayoutState{Mode: LayoutGrid, Focused: "a", Hidden: map[string]bool{"a": true}}
 	plan := computeLayout(state, toPaneViews(panes), 100, 50)
 	if len(plan.Panes) != 0 {
@@ -149,7 +149,7 @@ func TestComputeLayoutNoVisible(t *testing.T) {
 }
 
 func TestComputeLayout2ColOld(t *testing.T) {
-	panes := []*Pane{newTestPane("a", true), newTestPane("b", true), newTestPane("c", true)}
+	panes := []*Pane{testPane("a"), testPane("b"), testPane("c")}
 	state := LayoutState{Mode: Layout2Col, Focused: "a", Hidden: map[string]bool{}}
 	plan := computeLayout(state, toPaneViews(panes), 100, 50)
 	if len(plan.Panes) != 3 {
@@ -570,7 +570,7 @@ func TestUvCellToTcellAttributes(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestSelectionForPane(t *testing.T) {
-	tui := newTestTUI(newTestPane("a", true), newTestPane("b", true))
+	tui := newTestTUI(testPane("a"), testPane("b"))
 	tui.sel.active = true
 	tui.sel.pane = 0
 	tui.sel.startX = 1
@@ -622,50 +622,6 @@ func TestDefaultConfigAgents(t *testing.T) {
 // Render with SimulationScreen (covers renderOverlay, renderFocusBorder,
 // renderGridDividers, renderCmdLine, renderCmdError)
 // ---------------------------------------------------------------------------
-
-func newTestTUIWithScreen(names ...string) (*TUI, tcell.SimulationScreen) {
-	s := tcell.NewSimulationScreen("")
-	s.Init()
-	s.SetSize(120, 40)
-
-	panes := make([]*Pane, len(names))
-	for i, n := range names {
-		emu := vt.NewSafeEmulator(40, 10)
-		// Drain emulator responses so SendKey doesn't block.
-		go func() {
-			buf := make([]byte, 256)
-			for {
-				_, err := emu.Read(buf)
-				if err != nil {
-					return
-				}
-			}
-		}()
-		panes[i] = &Pane{
-			name:    n,
-			emu:     emu,
-			alive:   true,
-			visible: true,
-			region:  Region{X: i * 60, Y: 0, W: 60, H: 20},
-		}
-	}
-
-	ls := DefaultLayoutState(names)
-	// Convert []*Pane to []PaneView.
-	views := make([]PaneView, len(panes))
-	for i, p := range panes {
-		views[i] = p
-	}
-	t := &TUI{
-		screen:      s,
-		panes:       views,
-		layoutState: ls,
-		lastW:       120,
-		lastH:       40,
-	}
-	t.plan = computeLayout(ls, views, 120, 40)
-	return t, s
-}
 
 func TestRenderOverlayOnScreen(t *testing.T) {
 	tui, s := newTestTUIWithScreen("super", "eng1")
@@ -1150,9 +1106,9 @@ func TestRenderAltScreen(t *testing.T) {
 
 func TestCalcRegionsGridDefault(t *testing.T) {
 	tui := newTestTUI(
-		newTestPane("a", true),
-		newTestPane("b", true),
-		newTestPane("c", true),
+		testPane("a"),
+		testPane("b"),
+		testPane("c"),
 	)
 	tui.layoutState.Mode = LayoutGrid
 	tui.layoutState.GridCols = 2

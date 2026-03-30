@@ -8,9 +8,9 @@ import (
 
 func TestCmdOrder_PopulatesItems(t *testing.T) {
 	tui := newTestTUI(
-		newTestPane("super", true),
-		newTestPane("eng1", true),
-		newTestPane("qa1", true),
+		testPane("super"),
+		testPane("eng1"),
+		testPane("qa1"),
 	)
 	tui.cmdOrder()
 
@@ -122,8 +122,8 @@ func TestReorderKey_Escape_Cancels(t *testing.T) {
 }
 
 func TestReorderKey_Space_Confirms(t *testing.T) {
-	a := newTestPane("a", true)
-	b := newTestPane("b", true)
+	a := testPane("a")
+	b := testPane("b")
 	tui := newTestTUI(a, b)
 	tui.reorder = reorderModal{
 		active: true,

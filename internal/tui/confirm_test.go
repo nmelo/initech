@@ -10,7 +10,7 @@ import (
 // ── quit confirmation ─────────────────────────────────────────────────
 
 func TestQuitRequiresConfirmation(t *testing.T) {
-	tui := newTestTUI(newTestPane("eng1", true))
+	tui := newTestTUI(testPane("eng1"))
 
 	// First Enter: should set up confirmation, not quit.
 	quit := tui.execCmd("quit")
@@ -29,7 +29,7 @@ func TestQuitRequiresConfirmation(t *testing.T) {
 }
 
 func TestQuitShorthandRequiresConfirmation(t *testing.T) {
-	tui := newTestTUI(newTestPane("eng1", true))
+	tui := newTestTUI(testPane("eng1"))
 	quit := tui.execCmd("q")
 	if quit {
 		t.Fatal("q should not exit on first Enter")
@@ -40,7 +40,7 @@ func TestQuitShorthandRequiresConfirmation(t *testing.T) {
 }
 
 func TestQuitConfirmedOnSecondEnter(t *testing.T) {
-	tui := newTestTUI(newTestPane("eng1", true))
+	tui := newTestTUI(testPane("eng1"))
 	tui.cmd.pendingConfirm = "quit"
 	tui.cmd.confirmMsg = "Quit will stop all agents."
 	tui.cmd.confirmExpiry = time.Now().Add(3 * time.Second)
@@ -56,7 +56,7 @@ func TestQuitConfirmedOnSecondEnter(t *testing.T) {
 }
 
 func TestQuitCancelledWithEsc(t *testing.T) {
-	tui := newTestTUI(newTestPane("eng1", true))
+	tui := newTestTUI(testPane("eng1"))
 	tui.cmd.pendingConfirm = "quit"
 	tui.cmd.confirmExpiry = time.Now().Add(3 * time.Second)
 	tui.cmd.active = true
@@ -77,7 +77,7 @@ func TestQuitConfirmationAutoCancelsViaPrune(t *testing.T) {
 	// ini-a1e.31: expiry is handled by pruneConfirmation() on each render
 	// tick, not inside handleCmdKey. This prevents auto-cancel racing with
 	// Enter pressed at exactly the deadline.
-	tui := newTestTUI(newTestPane("eng1", true))
+	tui := newTestTUI(testPane("eng1"))
 	tui.cmd.pendingConfirm = "quit"
 	tui.cmd.confirmExpiry = time.Now().Add(-1 * time.Second) // already expired
 	tui.cmd.active = true
@@ -95,7 +95,7 @@ func TestQuitConfirmationAutoCancelsViaPrune(t *testing.T) {
 func TestQuitConfirmationEnterAtDeadlineStillConfirms(t *testing.T) {
 	// ini-a1e.31: if the operator presses Enter at exactly the deadline,
 	// the key handler fires before the next prune tick, so Enter confirms.
-	tui := newTestTUI(newTestPane("eng1", true))
+	tui := newTestTUI(testPane("eng1"))
 	tui.cmd.pendingConfirm = "quit"
 	tui.cmd.confirmExpiry = time.Now().Add(-1 * time.Millisecond) // just expired
 	tui.cmd.active = true
@@ -108,7 +108,7 @@ func TestQuitConfirmationEnterAtDeadlineStillConfirms(t *testing.T) {
 }
 
 func TestQuitConfirmationCancelledByOtherKey(t *testing.T) {
-	tui := newTestTUI(newTestPane("eng1", true))
+	tui := newTestTUI(testPane("eng1"))
 	tui.cmd.pendingConfirm = "quit"
 	tui.cmd.confirmExpiry = time.Now().Add(3 * time.Second)
 	tui.cmd.active = true
@@ -126,8 +126,8 @@ func TestQuitConfirmationCancelledByOtherKey(t *testing.T) {
 
 func TestRemoveRequiresConfirmation(t *testing.T) {
 	tui := newTestTUI(
-		newTestPane("super", true),
-		newTestPane("eng1", true),
+		testPane("super"),
+		testPane("eng1"),
 	)
 
 	quit := tui.execCmd("remove eng1")
@@ -144,8 +144,8 @@ func TestRemoveRequiresConfirmation(t *testing.T) {
 
 func TestRemoveShorthandRequiresConfirmation(t *testing.T) {
 	tui := newTestTUI(
-		newTestPane("super", true),
-		newTestPane("eng1", true),
+		testPane("super"),
+		testPane("eng1"),
 	)
 	tui.execCmd("rm eng1")
 	if tui.cmd.pendingConfirm != "remove eng1" {
@@ -154,7 +154,7 @@ func TestRemoveShorthandRequiresConfirmation(t *testing.T) {
 }
 
 func TestRemoveUnknownAgentErrors(t *testing.T) {
-	tui := newTestTUI(newTestPane("eng1", true))
+	tui := newTestTUI(testPane("eng1"))
 	tui.execCmd("remove nobody")
 	if tui.cmd.pendingConfirm != "" {
 		t.Error("unknown agent should not set pendingConfirm")
@@ -165,7 +165,7 @@ func TestRemoveUnknownAgentErrors(t *testing.T) {
 }
 
 func TestRemoveNoArgErrors(t *testing.T) {
-	tui := newTestTUI(newTestPane("eng1", true))
+	tui := newTestTUI(testPane("eng1"))
 	tui.execCmd("remove")
 	if tui.cmd.pendingConfirm != "" {
 		t.Error("remove with no arg should not set pendingConfirm")
@@ -179,8 +179,8 @@ func TestRemoveNoArgErrors(t *testing.T) {
 
 func TestRestartNamedRequiresConfirmation(t *testing.T) {
 	tui := newTestTUI(
-		newTestPane("super", true),
-		newTestPane("eng1", true),
+		testPane("super"),
+		testPane("eng1"),
 	)
 
 	tui.execCmd("restart eng1")
@@ -193,7 +193,7 @@ func TestRestartNamedRequiresConfirmation(t *testing.T) {
 }
 
 func TestRestartNamedUnknownErrors(t *testing.T) {
-	tui := newTestTUI(newTestPane("eng1", true))
+	tui := newTestTUI(testPane("eng1"))
 	tui.execCmd("restart nobody")
 	if tui.cmd.pendingConfirm != "" {
 		t.Error("unknown agent should not set pendingConfirm")
@@ -207,8 +207,8 @@ func TestRestartNamedUnknownErrors(t *testing.T) {
 
 func TestConfirmMsgContainsAgentName(t *testing.T) {
 	tui := newTestTUI(
-		newTestPane("super", true),
-		newTestPane("eng1", true),
+		testPane("super"),
+		testPane("eng1"),
 	)
 	tui.execCmd("remove eng1")
 	if tui.cmd.confirmMsg == "" {

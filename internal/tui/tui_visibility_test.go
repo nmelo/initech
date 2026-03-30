@@ -2,45 +2,6 @@ package tui
 
 import "testing"
 
-// newTestPane creates a minimal Pane for testing layout logic.
-func newTestPane(name string, visible bool) *Pane {
-	p := &Pane{name: name, visible: visible}
-	return p
-}
-
-// newTestTUI creates a TUI with the given panes and no screen.
-func newTestTUI(panes ...*Pane) *TUI {
-	names := make([]string, len(panes))
-	for i, p := range panes {
-		names[i] = p.name
-	}
-	ls := DefaultLayoutState(names)
-	// Mark hidden panes in layoutState.
-	for _, p := range panes {
-		if !p.visible {
-			if ls.Hidden == nil {
-				ls.Hidden = make(map[string]bool)
-			}
-			ls.Hidden[p.name] = true
-		}
-	}
-	// Convert []*Pane to []PaneView.
-	views := make([]PaneView, len(panes))
-	for i, p := range panes {
-		views[i] = p
-	}
-	return &TUI{panes: views, layoutState: ls}
-}
-
-// toPaneViews converts a []*Pane to []PaneView for test helpers.
-func toPaneViews(panes []*Pane) []PaneView {
-	views := make([]PaneView, len(panes))
-	for i, p := range panes {
-		views[i] = p
-	}
-	return views
-}
-
 func TestPaneVisibleDefault(t *testing.T) {
 	p := &Pane{visible: true}
 	if !p.Visible() {
@@ -49,7 +10,7 @@ func TestPaneVisibleDefault(t *testing.T) {
 }
 
 func TestPaneSetVisible(t *testing.T) {
-	p := newTestPane("eng1", true)
+	p := testPane("eng1")
 	p.SetVisible(false)
 	if p.Visible() {
 		t.Error("pane should be hidden after SetVisible(false)")
@@ -62,10 +23,10 @@ func TestPaneSetVisible(t *testing.T) {
 
 func TestComputeLayoutVisibility(t *testing.T) {
 	panes := []*Pane{
-		newTestPane("super", true),
-		newTestPane("eng1", true),
-		newTestPane("eng2", false),
-		newTestPane("qa1", true),
+		testPane("super"),
+		testPane("eng1"),
+		hiddenTestPane("eng2"),
+		testPane("qa1"),
 	}
 	state := LayoutState{
 		Mode: LayoutGrid, GridCols: 2, GridRows: 2,
@@ -84,7 +45,7 @@ func TestComputeLayoutVisibility(t *testing.T) {
 }
 
 func TestComputeLayoutAllVisible(t *testing.T) {
-	panes := []*Pane{newTestPane("a", true), newTestPane("b", true)}
+	panes := []*Pane{testPane("a"), testPane("b")}
 	state := LayoutState{Mode: LayoutGrid, GridCols: 2, GridRows: 1, Focused: "a", Hidden: map[string]bool{}}
 	plan := computeLayout(state, toPaneViews(panes), 200, 100)
 	if len(plan.Panes) != 2 {
@@ -93,7 +54,7 @@ func TestComputeLayoutAllVisible(t *testing.T) {
 }
 
 func TestComputeLayoutAllHiddenOld(t *testing.T) {
-	panes := []*Pane{newTestPane("a", false), newTestPane("b", false)}
+	panes := []*Pane{hiddenTestPane("a"), hiddenTestPane("b")}
 	state := LayoutState{Mode: LayoutGrid, Focused: "a", Hidden: map[string]bool{"a": true, "b": true}}
 	plan := computeLayout(state, toPaneViews(panes), 200, 100)
 	if len(plan.Panes) != 0 {
@@ -103,10 +64,10 @@ func TestComputeLayoutAllHiddenOld(t *testing.T) {
 
 func TestVisibleCountFromState(t *testing.T) {
 	panes := []*Pane{
-		newTestPane("super", true),
-		newTestPane("eng1", false),
-		newTestPane("eng2", true),
-		newTestPane("qa1", false),
+		testPane("super"),
+		hiddenTestPane("eng1"),
+		testPane("eng2"),
+		hiddenTestPane("qa1"),
 	}
 	tui := &TUI{
 		panes:       toPaneViews(panes),
@@ -119,11 +80,11 @@ func TestVisibleCountFromState(t *testing.T) {
 
 func TestCycleFocusSkipsHidden(t *testing.T) {
 	panes := []*Pane{
-		newTestPane("super", true),
-		newTestPane("eng1", false),
-		newTestPane("eng2", true),
-		newTestPane("qa1", false),
-		newTestPane("qa2", true),
+		testPane("super"),
+		hiddenTestPane("eng1"),
+		testPane("eng2"),
+		hiddenTestPane("qa1"),
+		testPane("qa2"),
 	}
 	tui := &TUI{
 		panes: toPaneViews(panes),
@@ -159,7 +120,7 @@ func TestCycleFocusSkipsHidden(t *testing.T) {
 }
 
 func TestCycleFocusAllHidden(t *testing.T) {
-	panes := []*Pane{newTestPane("a", false), newTestPane("b", false)}
+	panes := []*Pane{hiddenTestPane("a"), hiddenTestPane("b")}
 	tui := &TUI{
 		panes: toPaneViews(panes),
 		layoutState: LayoutState{
@@ -178,9 +139,9 @@ func TestComputeLayoutHiddenPaneFocusBug(t *testing.T) {
 	// This is the structural test for the hidden-pane-focus bug.
 	// Focusing a hidden pane should snap focus to the first visible pane.
 	panes := []*Pane{
-		newTestPane("super", true),
-		newTestPane("eng1", false),
-		newTestPane("qa1", true),
+		testPane("super"),
+		hiddenTestPane("eng1"),
+		testPane("qa1"),
 	}
 	state := LayoutState{
 		Mode:    LayoutFocus,

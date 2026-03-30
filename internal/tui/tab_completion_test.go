@@ -31,9 +31,9 @@ func TestLongestCommonPrefix(t *testing.T) {
 
 func TestCompletionCandidatesAll(t *testing.T) {
 	tui := newTestTUI(
-		newTestPane("super", true),
-		newTestPane("eng1", true),
-		newTestPane("eng2", true),
+		testPane("super"),
+		testPane("eng1"),
+		testPane("eng2"),
 	)
 	for _, cmd := range []string{"focus", "remove", "rm", "restart", "r"} {
 		got := tui.completionCandidates(cmd)
@@ -45,9 +45,9 @@ func TestCompletionCandidatesAll(t *testing.T) {
 
 func TestCompletionCandidatesHide(t *testing.T) {
 	tui := newTestTUI(
-		newTestPane("super", true),
-		newTestPane("eng1", true),
-		newTestPane("eng2", false), // hidden
+		testPane("super"),
+		testPane("eng1"),
+		hiddenTestPane("eng2"), // hidden
 	)
 	got := tui.completionCandidates("hide")
 	if len(got) != 2 {
@@ -62,9 +62,9 @@ func TestCompletionCandidatesHide(t *testing.T) {
 
 func TestCompletionCandidatesShow(t *testing.T) {
 	tui := newTestTUI(
-		newTestPane("super", true),
-		newTestPane("eng1", false), // hidden
-		newTestPane("eng2", false), // hidden
+		testPane("super"),
+		hiddenTestPane("eng1"), // hidden
+		hiddenTestPane("eng2"), // hidden
 	)
 	got := tui.completionCandidates("show")
 	// show completes ALL pane names + "all" (reorder, not visibility).
@@ -75,9 +75,9 @@ func TestCompletionCandidatesShow(t *testing.T) {
 
 func TestCompletionCandidatesUnhide(t *testing.T) {
 	tui := newTestTUI(
-		newTestPane("super", true),
-		newTestPane("eng1", false), // hidden
-		newTestPane("eng2", false), // hidden
+		testPane("super"),
+		hiddenTestPane("eng1"), // hidden
+		hiddenTestPane("eng2"), // hidden
 	)
 	got := tui.completionCandidates("unhide")
 	// unhide completes hidden panes + "all".
@@ -90,9 +90,9 @@ func TestCompletionCandidatesUnhide(t *testing.T) {
 
 func TestTabCompleteSingleMatch(t *testing.T) {
 	tui := newTestTUI(
-		newTestPane("super", true),
-		newTestPane("eng1", true),
-		newTestPane("qa1", true),
+		testPane("super"),
+		testPane("eng1"),
+		testPane("qa1"),
 	)
 	tui.cmd.buf = []rune("focus s")
 	tui.tabComplete()
@@ -107,10 +107,10 @@ func TestTabCompleteSingleMatch(t *testing.T) {
 
 func TestTabCompleteMultipleMatchesLCP(t *testing.T) {
 	tui := newTestTUI(
-		newTestPane("super", true),
-		newTestPane("eng1", true),
-		newTestPane("eng2", true),
-		newTestPane("qa1", true),
+		testPane("super"),
+		testPane("eng1"),
+		testPane("eng2"),
+		testPane("qa1"),
 	)
 	// "e" matches eng1 and eng2; LCP is "eng"
 	tui.cmd.buf = []rune("focus e")
@@ -126,8 +126,8 @@ func TestTabCompleteMultipleMatchesLCP(t *testing.T) {
 
 func TestTabCompleteDoubleTapShowsHint(t *testing.T) {
 	tui := newTestTUI(
-		newTestPane("eng1", true),
-		newTestPane("eng2", true),
+		testPane("eng1"),
+		testPane("eng2"),
 	)
 	// After LCP completes to "focus eng", a second Tab shows the hint.
 	tui.cmd.buf = []rune("focus eng")
@@ -143,9 +143,9 @@ func TestTabCompleteDoubleTapShowsHint(t *testing.T) {
 
 func TestTabCompleteEmptyArgShowsHint(t *testing.T) {
 	tui := newTestTUI(
-		newTestPane("eng1", true),
-		newTestPane("eng2", true),
-		newTestPane("qa1", true),
+		testPane("eng1"),
+		testPane("eng2"),
+		testPane("qa1"),
 	)
 	// Trailing space means empty arg slot; show all candidates.
 	tui.cmd.buf = []rune("focus ")
@@ -156,7 +156,7 @@ func TestTabCompleteEmptyArgShowsHint(t *testing.T) {
 }
 
 func TestTabCompleteNoMatchNoop(t *testing.T) {
-	tui := newTestTUI(newTestPane("eng1", true))
+	tui := newTestTUI(testPane("eng1"))
 	tui.cmd.buf = []rune("focus zzz")
 	tui.tabComplete()
 	if string(tui.cmd.buf) != "focus zzz" {
@@ -168,7 +168,7 @@ func TestTabCompleteNoMatchNoop(t *testing.T) {
 }
 
 func TestTabCompleteNonAgentCommandNoop(t *testing.T) {
-	tui := newTestTUI(newTestPane("eng1", true))
+	tui := newTestTUI(testPane("eng1"))
 	tui.cmd.buf = []rune("grid e")
 	tui.tabComplete()
 	if string(tui.cmd.buf) != "grid e" {
@@ -177,7 +177,7 @@ func TestTabCompleteNonAgentCommandNoop(t *testing.T) {
 }
 
 func TestTabCompleteOnlyCommandNoSpaceNoop(t *testing.T) {
-	tui := newTestTUI(newTestPane("eng1", true))
+	tui := newTestTUI(testPane("eng1"))
 	// "focus" typed but no space; nothing to complete yet.
 	tui.cmd.buf = []rune("focus")
 	tui.tabComplete()
@@ -188,9 +188,9 @@ func TestTabCompleteOnlyCommandNoSpaceNoop(t *testing.T) {
 
 func TestTabCompleteViewLastArg(t *testing.T) {
 	tui := newTestTUI(
-		newTestPane("qa1", true),
-		newTestPane("qa2", true),
-		newTestPane("eng1", true),
+		testPane("qa1"),
+		testPane("qa2"),
+		testPane("eng1"),
 	)
 	// "view eng1 q" — complete the last argument.
 	tui.cmd.buf = []rune("view eng1 q")
@@ -203,8 +203,8 @@ func TestTabCompleteViewLastArg(t *testing.T) {
 
 func TestTabCompleteHideOnlyVisible(t *testing.T) {
 	tui := newTestTUI(
-		newTestPane("eng1", true),
-		newTestPane("eng2", false), // hidden
+		testPane("eng1"),
+		hiddenTestPane("eng2"), // hidden
 	)
 	// "hide e" should only complete to visible eng1.
 	tui.cmd.buf = []rune("hide e")
@@ -217,8 +217,8 @@ func TestTabCompleteHideOnlyVisible(t *testing.T) {
 
 func TestTabCompleteUnhideOnlyHidden(t *testing.T) {
 	tui := newTestTUI(
-		newTestPane("eng1", true),
-		newTestPane("eng2", false), // hidden
+		testPane("eng1"),
+		hiddenTestPane("eng2"), // hidden
 	)
 	// "unhide e" should only complete to hidden eng2.
 	tui.cmd.buf = []rune("unhide e")
@@ -232,7 +232,7 @@ func TestTabCompleteUnhideOnlyHidden(t *testing.T) {
 // ── handleCmdKey Tab reset ────────────────────────────────────────────
 
 func TestTabHintClearedOnRune(t *testing.T) {
-	tui := newTestTUI(newTestPane("eng1", true), newTestPane("eng2", true))
+	tui := newTestTUI(testPane("eng1"), testPane("eng2"))
 	tui.cmd.active = true
 	tui.cmd.buf = []rune("focus eng")
 	tui.cmd.tabHint = "eng1  eng2"
@@ -246,7 +246,7 @@ func TestTabHintClearedOnRune(t *testing.T) {
 }
 
 func TestTabHintClearedOnBackspace(t *testing.T) {
-	tui := newTestTUI(newTestPane("eng1", true))
+	tui := newTestTUI(testPane("eng1"))
 	tui.cmd.active = true
 	tui.cmd.buf = []rune("focus eng")
 	tui.cmd.tabHint = "eng1"

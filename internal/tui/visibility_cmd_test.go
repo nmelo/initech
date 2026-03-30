@@ -6,10 +6,10 @@ import (
 
 func TestHideCommand(t *testing.T) {
 	tui := newTestTUI(
-		newTestPane("super", true),
-		newTestPane("eng1", true),
-		newTestPane("eng2", true),
-		newTestPane("qa1", true),
+		testPane("super"),
+		testPane("eng1"),
+		testPane("eng2"),
+		testPane("qa1"),
 	)
 	tui.layoutState.Mode = LayoutGrid
 	tui.layoutState.GridCols, tui.layoutState.GridRows = 2, 2
@@ -25,8 +25,8 @@ func TestHideCommand(t *testing.T) {
 
 func TestHideLastVisiblePaneFails(t *testing.T) {
 	tui := newTestTUI(
-		newTestPane("super", true),
-		newTestPane("eng1", true),
+		testPane("super"),
+		testPane("eng1"),
 	)
 
 	tui.execCmd("hide super")
@@ -41,8 +41,8 @@ func TestHideLastVisiblePaneFails(t *testing.T) {
 
 func TestHideAllFails(t *testing.T) {
 	tui := newTestTUI(
-		newTestPane("super", true),
-		newTestPane("eng1", true),
+		testPane("super"),
+		testPane("eng1"),
 	)
 
 	tui.execCmd("hide all")
@@ -55,7 +55,7 @@ func TestHideAllFails(t *testing.T) {
 }
 
 func TestHideUnknownAgent(t *testing.T) {
-	tui := newTestTUI(newTestPane("super", true))
+	tui := newTestTUI(testPane("super"))
 	tui.execCmd("hide nonexistent")
 	if tui.cmd.error == "" {
 		t.Error("expected error for unknown agent")
@@ -64,9 +64,9 @@ func TestHideUnknownAgent(t *testing.T) {
 
 func TestUnhideCommand(t *testing.T) {
 	tui := newTestTUI(
-		newTestPane("super", true),
-		newTestPane("eng1", true),
-		newTestPane("eng2", false),
+		testPane("super"),
+		testPane("eng1"),
+		hiddenTestPane("eng2"),
 	)
 
 	tui.execCmd("unhide eng2")
@@ -77,10 +77,10 @@ func TestUnhideCommand(t *testing.T) {
 
 func TestUnhideAllCommand(t *testing.T) {
 	tui := newTestTUI(
-		newTestPane("super", true),
-		newTestPane("eng1", false),
-		newTestPane("eng2", true),
-		newTestPane("qa1", false),
+		testPane("super"),
+		hiddenTestPane("eng1"),
+		testPane("eng2"),
+		hiddenTestPane("qa1"),
 	)
 
 	tui.execCmd("unhide all")
@@ -93,9 +93,9 @@ func TestUnhideAllCommand(t *testing.T) {
 
 func TestShowReorder(t *testing.T) {
 	tui := newTestTUI(
-		newTestPane("super", true),
-		newTestPane("eng1", true),
-		newTestPane("eng2", true),
+		testPane("super"),
+		testPane("eng1"),
+		testPane("eng2"),
 	)
 
 	tui.execCmd("show eng2, eng1")
@@ -110,10 +110,10 @@ func TestShowReorder(t *testing.T) {
 
 func TestViewCommand(t *testing.T) {
 	tui := newTestTUI(
-		newTestPane("super", true),
-		newTestPane("eng1", true),
-		newTestPane("eng2", true),
-		newTestPane("qa1", true),
+		testPane("super"),
+		testPane("eng1"),
+		testPane("eng2"),
+		testPane("qa1"),
 	)
 
 	tui.execCmd("view super qa1")
@@ -134,8 +134,8 @@ func TestViewCommand(t *testing.T) {
 
 func TestViewUnknownAgentFails(t *testing.T) {
 	tui := newTestTUI(
-		newTestPane("super", true),
-		newTestPane("eng1", true),
+		testPane("super"),
+		testPane("eng1"),
 	)
 
 	tui.execCmd("view super bogus")
@@ -150,9 +150,9 @@ func TestViewUnknownAgentFails(t *testing.T) {
 
 func TestHideFocusedPaneMoveFocus(t *testing.T) {
 	tui := newTestTUI(
-		newTestPane("super", true),
-		newTestPane("eng1", true),
-		newTestPane("eng2", true),
+		testPane("super"),
+		testPane("eng1"),
+		testPane("eng2"),
 	)
 	tui.layoutState.Focused = "eng1"
 
@@ -165,9 +165,9 @@ func TestHideFocusedPaneMoveFocus(t *testing.T) {
 
 func TestComputeLayoutMoveFocusFromHidden(t *testing.T) {
 	panes := []*Pane{
-		newTestPane("a", false),
-		newTestPane("b", true),
-		newTestPane("c", false),
+		hiddenTestPane("a"),
+		testPane("b"),
+		hiddenTestPane("c"),
 	}
 	state := LayoutState{
 		Mode:    LayoutGrid,
@@ -184,8 +184,8 @@ func TestComputeLayoutMoveFocusFromHidden(t *testing.T) {
 
 func TestFindPaneByName(t *testing.T) {
 	tui := newTestTUI(
-		newTestPane("super", true),
-		newTestPane("eng1", true),
+		testPane("super"),
+		testPane("eng1"),
 	)
 
 	if p := tui.findPaneByName("eng1"); p == nil || p.Name() != "eng1" {
@@ -197,7 +197,7 @@ func TestFindPaneByName(t *testing.T) {
 }
 
 func TestShowNoArgError(t *testing.T) {
-	tui := newTestTUI(newTestPane("a", true))
+	tui := newTestTUI(testPane("a"))
 	tui.execCmd("show")
 	if tui.cmd.error == "" {
 		t.Error("show with no arg should produce error")
@@ -205,7 +205,7 @@ func TestShowNoArgError(t *testing.T) {
 }
 
 func TestHideNoArgError(t *testing.T) {
-	tui := newTestTUI(newTestPane("a", true))
+	tui := newTestTUI(testPane("a"))
 	tui.execCmd("hide")
 	if tui.cmd.error == "" {
 		t.Error("hide with no arg should produce error")
@@ -213,7 +213,7 @@ func TestHideNoArgError(t *testing.T) {
 }
 
 func TestViewNoArgError(t *testing.T) {
-	tui := newTestTUI(newTestPane("a", true))
+	tui := newTestTUI(testPane("a"))
 	tui.execCmd("view")
 	if tui.cmd.error == "" {
 		t.Error("view with no arg should produce error")
