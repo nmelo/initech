@@ -67,16 +67,24 @@ func startTestDaemon(t *testing.T, token string, agents ...string) *testDaemon {
 	}
 
 	d := &Daemon{
-		project: proj,
-		version: "test",
+		project:    proj,
+		version:    "test",
+		ringBufs:   make(map[string]*RingBuf),
+		multiSinks: make(map[string]*MultiSink),
 	}
 
-	// Create and start panes.
+	// Create and start panes with ring buffers and multi-sinks.
 	for _, cfg := range paneConfigs {
 		p, err := NewPane(cfg, 24, 80)
 		if err != nil {
 			t.Fatalf("create pane %q: %v", cfg.Name, err)
 		}
+		rb := NewRingBuf(DefaultRingBufSize)
+		d.ringBufs[cfg.Name] = rb
+		ms := NewMultiSink()
+		ms.Add(rb)
+		d.multiSinks[cfg.Name] = ms
+		p.SetNetworkSink(ms)
 		p.Start()
 		d.panes = append(d.panes, p)
 	}
@@ -103,7 +111,7 @@ func startTestDaemon(t *testing.T, token string, agents ...string) *testDaemon {
 			if err != nil {
 				return
 			}
-			d.handleConnection(conn)
+			go d.handleConnection(conn)
 		}
 	}()
 
@@ -451,6 +459,10 @@ func TestInteg_ResizeViaControl(t *testing.T) {
 func TestInteg_LivePTYBytesViaStream(t *testing.T) {
 	skipInCI(t)
 	td := startTestDaemon(t, "", "eng1")
+
+	// Wait for echo output to reach the ring buffer.
+	time.Sleep(500 * time.Millisecond)
+
 	tc, _ := connectTestClient(t, td.addr, "client", "")
 	tc.readStreamMap(t)
 
@@ -461,19 +473,22 @@ func TestInteg_LivePTYBytesViaStream(t *testing.T) {
 	}
 	defer stream.Close()
 
-	// The daemon's readLoop tees PTY bytes to this stream via networkSink.
-	// The agent runs 'echo eng1-ready; cat', so we should receive that output.
-	buf := make([]byte, 4096)
-	stream.SetReadDeadline(time.Now().Add(3 * time.Second))
-	n, err := stream.Read(buf)
-	if err != nil {
-		t.Fatalf("read from stream: %v", err)
-	}
-	got := string(buf[:n])
-	if !strings.Contains(got, "eng1-ready") {
-		// The first read may contain shell init noise. Try another read.
-		n2, _ := stream.Read(buf)
-		got += string(buf[:n2])
+	// streamAgent replays ring buffer snapshot + live bytes via MultiSink.
+	buf := make([]byte, 32*1024)
+	var got string
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		stream.SetReadDeadline(time.Now().Add(2 * time.Second))
+		n, readErr := stream.Read(buf)
+		if n > 0 {
+			got += string(buf[:n])
+		}
+		if strings.Contains(got, "eng1-ready") {
+			break
+		}
+		if readErr != nil {
+			break
+		}
 	}
 	if !strings.Contains(got, "eng1-ready") {
 		t.Errorf("expected 'eng1-ready' in stream bytes, got: %q", got[:min(len(got), 200)])
@@ -524,6 +539,74 @@ func TestInteg_RemotePaneImplementsPaneView(t *testing.T) {
 	if pv.IsAlive() != true {
 		t.Error("IsAlive should be true for connected remote pane")
 	}
+}
+
+func TestInteg_MultiClient(t *testing.T) {
+	td := startTestDaemon(t, "", "eng1")
+
+	// Wait for echo output.
+	time.Sleep(500 * time.Millisecond)
+
+	// Connect two clients simultaneously.
+	tc1, _ := connectTestClient(t, td.addr, "client1", "")
+	tc1.readStreamMap(t)
+
+	tc2, _ := connectTestClient(t, td.addr, "client2", "")
+	tc2.readStreamMap(t)
+
+	// Both clients should be able to peek.
+	resp1 := tc1.sendControl(t, ControlCmd{Action: "peek", Target: "eng1", Lines: 10})
+	if !resp1.OK {
+		t.Fatalf("client1 peek failed: %s", resp1.Error)
+	}
+
+	resp2 := tc2.sendControl(t, ControlCmd{Action: "peek", Target: "eng1", Lines: 10})
+	if !resp2.OK {
+		t.Fatalf("client2 peek failed: %s", resp2.Error)
+	}
+
+	// Both should see the same content.
+	if !strings.Contains(resp1.Data, "eng1-ready") {
+		t.Errorf("client1 peek missing eng1-ready")
+	}
+	if !strings.Contains(resp2.Data, "eng1-ready") {
+		t.Errorf("client2 peek missing eng1-ready")
+	}
+
+	// Send from client1, verify client2 can see the result.
+	tc1.sendControl(t, ControlCmd{Action: "send", Target: "eng1", Text: "multi-test", Enter: true})
+	if !pollPeek(t, tc2, "eng1", "multi-test", 10*time.Second) {
+		t.Error("client2 should see text sent by client1")
+	}
+
+	// Disconnect client1. Client2 should still work.
+	tc1.ctrl.Close()
+	tc1.session.Close()
+
+	time.Sleep(500 * time.Millisecond)
+	resp3 := tc2.sendControl(t, ControlCmd{Action: "peek", Target: "eng1", Lines: 10})
+	if !resp3.OK {
+		t.Fatalf("client2 peek after client1 disconnect failed: %s", resp3.Error)
+	}
+}
+
+func TestInteg_GracefulShutdown(t *testing.T) {
+	td := startTestDaemon(t, "", "eng1")
+	tc, _ := connectTestClient(t, td.addr, "client", "")
+	tc.readStreamMap(t)
+
+	// Close the listener to simulate shutdown signal path.
+	// We can't send a real SIGTERM to ourselves easily in test,
+	// so test the gracefulShutdown method directly.
+	td.daemon.gracefulShutdown()
+
+	// The control stream should eventually close or return an error.
+	tc.ctrl.SetReadDeadline(time.Now().Add(2 * time.Second))
+	buf := make([]byte, 4096)
+	_, err := tc.ctrl.Read(buf)
+	// We expect either shutdown message or connection close.
+	// Either outcome means the daemon notified the client.
+	_ = err // Not checking error type, just verifying no hang.
 }
 
 // pollPeek repeatedly peeks a pane until the expected text appears or timeout

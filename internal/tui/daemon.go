@@ -37,12 +37,18 @@ type DaemonConfig struct {
 
 // Daemon manages headless agent panes and streams them to a yamux client.
 type Daemon struct {
-	panes    []*Pane
-	ringBufs map[string]*RingBuf // Per-pane ring buffer keyed by agent name.
-	project  *config.Project
-	listener net.Listener
-	mu       sync.Mutex
-	version  string
+	panes      []*Pane
+	ringBufs   map[string]*RingBuf   // Per-pane ring buffer keyed by agent name.
+	multiSinks map[string]*MultiSink // Per-pane fan-out sink keyed by agent name.
+	project    *config.Project
+	listener   net.Listener
+	mu         sync.Mutex
+	version    string
+
+	// Active client sessions for graceful shutdown.
+	sessionsMu sync.Mutex
+	sessions   []*yamux.Session
+	ctrlConns  []net.Conn // Control channels for shutdown notification.
 }
 
 // ── Protocol messages ───────────────────────────────────────────────
@@ -121,12 +127,13 @@ func RunDaemon(cfg DaemonConfig) error {
 	defer pidCleanup()
 
 	d := &Daemon{
-		project:  cfg.Project,
-		version:  cfg.Version,
-		ringBufs: make(map[string]*RingBuf),
+		project:    cfg.Project,
+		version:    cfg.Version,
+		ringBufs:   make(map[string]*RingBuf),
+		multiSinks: make(map[string]*MultiSink),
 	}
 
-	// Create and start agent panes with ring buffers for reconnect replay.
+	// Create and start agent panes with ring buffers and multi-sinks.
 	for _, acfg := range cfg.Agents {
 		p, err := NewPane(acfg, 24, 80)
 		if err != nil {
@@ -135,9 +142,14 @@ func RunDaemon(cfg DaemonConfig) error {
 		}
 		rb := NewRingBuf(DefaultRingBufSize)
 		d.ringBufs[acfg.Name] = rb
-		// Set the ring buffer as the initial sink so PTY bytes accumulate
-		// even before any client connects.
-		p.SetNetworkSink(rb)
+
+		// MultiSink always includes the ring buffer. Client streams are
+		// added/removed dynamically as clients connect/disconnect.
+		ms := NewMultiSink()
+		ms.Add(rb)
+		d.multiSinks[acfg.Name] = ms
+		p.SetNetworkSink(ms)
+
 		p.Start()
 		d.panes = append(d.panes, p)
 		LogInfo("daemon", "agent started", "name", acfg.Name, "pid", p.pid)
@@ -179,11 +191,30 @@ func RunDaemon(cfg DaemonConfig) error {
 		select {
 		case sig := <-sigCh:
 			LogInfo("daemon", "shutdown", "signal", sig.String())
+			d.gracefulShutdown()
 			return nil
 		case conn := <-connCh:
 			LogInfo("daemon", "client connected", "remote", conn.RemoteAddr().String())
-			d.handleConnection(conn)
+			go d.handleConnection(conn)
 		}
+	}
+}
+
+// gracefulShutdown notifies all connected clients and closes sessions.
+func (d *Daemon) gracefulShutdown() {
+	d.sessionsMu.Lock()
+	ctrls := d.ctrlConns
+	sessions := d.sessions
+	d.sessionsMu.Unlock()
+
+	// Notify clients.
+	for _, ctrl := range ctrls {
+		writeJSON(ctrl, struct{ Action string `json:"action"` }{"shutdown"})
+	}
+
+	// Close all yamux sessions (triggers client-side reconnect).
+	for _, s := range sessions {
+		s.Close()
 	}
 }
 
@@ -200,6 +231,21 @@ func (d *Daemon) handleConnection(conn net.Conn) {
 	}
 	defer session.Close()
 
+	// Track this session for graceful shutdown.
+	d.sessionsMu.Lock()
+	d.sessions = append(d.sessions, session)
+	d.sessionsMu.Unlock()
+	defer func() {
+		d.sessionsMu.Lock()
+		for i, s := range d.sessions {
+			if s == session {
+				d.sessions = append(d.sessions[:i], d.sessions[i+1:]...)
+				break
+			}
+		}
+		d.sessionsMu.Unlock()
+	}()
+
 	// Accept the control stream (client opens stream 0 first).
 	ctrl, err := session.Accept()
 	if err != nil {
@@ -207,6 +253,21 @@ func (d *Daemon) handleConnection(conn net.Conn) {
 		return
 	}
 	defer ctrl.Close()
+
+	// Track control channel for shutdown notifications.
+	d.sessionsMu.Lock()
+	d.ctrlConns = append(d.ctrlConns, ctrl)
+	d.sessionsMu.Unlock()
+	defer func() {
+		d.sessionsMu.Lock()
+		for i, c := range d.ctrlConns {
+			if c == ctrl {
+				d.ctrlConns = append(d.ctrlConns[:i], d.ctrlConns[i+1:]...)
+				break
+			}
+		}
+		d.sessionsMu.Unlock()
+	}()
 
 	// Read hello from client.
 	scanner := bufio.NewScanner(ctrl)
@@ -303,12 +364,12 @@ func (d *Daemon) handleConnection(conn net.Conn) {
 }
 
 // streamAgent wires bidirectional PTY streaming between a pane and a yamux
-// stream. On connect: replays the ring buffer snapshot so the client sees
-// current terminal state immediately. Then switches to live streaming via
-// the pane's networkSink (io.MultiWriter of ring buffer + yamux stream).
+// stream. On connect: replays the ring buffer snapshot, then adds the stream
+// to the pane's MultiSink for live fan-out. On disconnect: removes the stream.
 // Upstream (client -> PTY) is a read loop forwarding keystrokes.
 func (d *Daemon) streamAgent(p *Pane, stream net.Conn) {
 	rb := d.ringBufs[p.Name()]
+	ms := d.multiSinks[p.Name()]
 
 	// Replay: send buffered PTY history so the client reconstructs the
 	// current screen state before live bytes start flowing.
@@ -318,22 +379,12 @@ func (d *Daemon) streamAgent(p *Pane, stream net.Conn) {
 		}
 	}
 
-	// Wire downstream: readLoop tees PTY bytes to both the ring buffer
-	// (for future reconnects) and the live yamux stream.
-	if rb != nil {
-		p.SetNetworkSink(io.MultiWriter(rb, stream))
-	} else {
-		p.SetNetworkSink(stream)
+	// Add this client's stream to the fan-out sink. readLoop writes to
+	// the MultiSink which delivers to all clients + ring buffer.
+	if ms != nil {
+		ms.Add(stream)
+		defer ms.Remove(stream)
 	}
-	defer func() {
-		// On disconnect, revert to ring-buffer-only sink so bytes keep
-		// accumulating for the next reconnect.
-		if rb != nil {
-			p.SetNetworkSink(rb)
-		} else {
-			p.ClearNetworkSink()
-		}
-	}()
 
 	// Upstream: client keystrokes -> PTY.
 	buf := make([]byte, 4096)
