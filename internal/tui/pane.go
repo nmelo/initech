@@ -277,17 +277,22 @@ func (p *Pane) Start() {
 }
 
 func (p *Pane) readLoop() {
-	buf := make([]byte, 4096)
+	buf := make([]byte, 32*1024) // Match PTY buffer size for fewer syscalls.
 	for {
 		n, err := p.ptmx.Read(buf)
 		if n > 0 {
+			data := buf[:n]
+
 			p.mu.Lock()
 			p.lastOutputTime = time.Now()
 			p.mu.Unlock()
 
-			// Write to emulator first (local state, must never block on network).
+			// Write to emulator under renderMu. Using a larger read buffer
+			// (32KB) coalesces multiple PTY writes into fewer emulator writes,
+			// reducing the tearing window between renderMu unlock and the
+			// next lock cycle (ini-jrj8).
 			p.renderMu.Lock()
-			p.emu.Write(buf[:n])
+			p.emu.Write(data)
 			p.renderMu.Unlock()
 
 			// Tee to network sink if connected. Separate from emu.Write so
@@ -296,7 +301,7 @@ func (p *Pane) readLoop() {
 			sink := p.networkSink
 			p.sinkMu.Unlock()
 			if sink != nil {
-				sink.Write(buf[:n])
+				sink.Write(data)
 			}
 		}
 		if err != nil {
