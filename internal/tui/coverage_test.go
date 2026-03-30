@@ -1258,7 +1258,7 @@ func TestCycleFocusNoPanes(t *testing.T) {
 func TestRecalcGridNonGridLayoutE2(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("a", "b")
 	tui.layoutState.Mode = Layout2Col
-	tui.autoRecalcGrid()
+	tui.recalcGrid(false)
 	if tui.layoutState.Mode != Layout2Col {
 		t.Error("recalcGrid should preserve non-grid layout")
 	}

@@ -144,7 +144,7 @@ func (t *TUI) handleTopKey(ev *tcell.EventKey) bool {
 						t.layoutState.Hidden[name] = true
 					}
 				}
-				t.autoRecalcGrid()
+				t.recalcGrid(false)
 				t.saveLayoutIfConfigured()
 				t.top.cacheTime = time.Time{}
 			}

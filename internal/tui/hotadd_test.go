@@ -227,7 +227,7 @@ func TestRecalcGrid(t *testing.T) {
 		},
 	}
 
-	tui.recalcGrid()
+	tui.recalcGrid(true)
 
 	// autoGrid(3) should give 2x2.
 	if tui.layoutState.GridCols != 2 || tui.layoutState.GridRows != 2 {
@@ -248,7 +248,7 @@ func TestRecalcGrid_HiddenExcluded(t *testing.T) {
 		},
 	}
 
-	tui.recalcGrid()
+	tui.recalcGrid(true)
 
 	// Only 2 visible; autoGrid(2) = 2x1.
 	if tui.layoutState.GridCols != 2 || tui.layoutState.GridRows != 1 {

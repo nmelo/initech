@@ -647,20 +647,25 @@ func autoGrid(n int) (cols, rows int) {
 
 // calcPaneGrid generates exactly numPanes regions arranged in a grid.
 
-// recalcGridForPanes recalculates the grid dimensions from the current
-// visible pane count. Called after adding/removing remote panes.
-func (t *TUI) recalcGridForPanes() {
-	visCount := 0
-	for _, p := range t.panes {
-		if !t.layoutState.Hidden[paneKey(p)] {
-			visCount++
-		}
+// recalcGrid recomputes GridCols/GridRows from the current visible pane
+// count and applies the layout. When force is true, the mode is switched to
+// LayoutGrid (used after add/remove/remote-connect). When force is false,
+// grid dimensions are only updated if the mode is already LayoutGrid (used
+// after show/hide commands that shouldn't force a mode change).
+func (t *TUI) recalcGrid(force bool) {
+	if force {
+		t.layoutState.Mode = LayoutGrid
+	} else if t.layoutState.Mode != LayoutGrid {
+		t.applyLayout()
+		return
 	}
-	if visCount > 0 {
-		cols, rows := autoGrid(visCount)
+	vis := t.visibleCountFromState()
+	if vis > 0 {
+		cols, rows := autoGrid(vis)
 		t.layoutState.GridCols = cols
 		t.layoutState.GridRows = rows
 	}
+	t.applyLayout()
 }
 
 // handlePeerUpdate is called by the peer manager (via runOnMain) when a
@@ -687,8 +692,7 @@ func (t *TUI) handlePeerUpdate(peerName string, newPanes []PaneView) {
 	}
 	t.panes = kept
 	LogInfo("peer-update", "panes-updated", "peer", peerName, "total_panes", len(kept))
-	t.recalcGridForPanes()
-	t.applyLayout()
+	t.recalcGrid(true)
 	LogInfo("peer-update", "done", "peer", peerName, "plan_panes", len(t.plan.Panes))
 }
 

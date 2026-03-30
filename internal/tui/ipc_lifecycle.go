@@ -270,8 +270,7 @@ func (t *TUI) addPane(name string) error {
 		p.Start()
 		t.panes = append(t.panes, p)
 		// Recalculate grid for the new visible pane count.
-		t.recalcGrid()
-		t.applyLayout()
+		t.recalcGrid(true)
 		t.saveLayoutIfConfigured()
 	})
 	if finalErr != nil {
@@ -327,8 +326,7 @@ func (t *TUI) removePane(name string) error {
 			t.layoutState.Focused = ""
 		}
 
-		t.recalcGrid()
-		t.applyLayout()
+		t.recalcGrid(true)
 		t.saveLayoutIfConfigured()
 	})
 	if removeErr != nil {
@@ -343,17 +341,3 @@ func (t *TUI) removePane(name string) error {
 	return nil
 }
 
-// recalcGrid recomputes GridCols/GridRows from the current visible pane count
-// and switches to LayoutGrid mode. Called after add or remove.
-func (t *TUI) recalcGrid() {
-	visCount := 0
-	for _, p := range t.panes {
-		if t.layoutState.Hidden == nil || !t.layoutState.Hidden[paneKey(p)] {
-			visCount++
-		}
-	}
-	cols, rows := autoGrid(visCount)
-	t.layoutState.GridCols = cols
-	t.layoutState.GridRows = rows
-	t.layoutState.Mode = LayoutGrid
-}

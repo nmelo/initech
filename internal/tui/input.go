@@ -769,7 +769,7 @@ func (t *TUI) cmdUnhide(parts []string) bool {
 	}
 	if parts[1] == "all" {
 		t.layoutState.Hidden = make(map[string]bool)
-		t.autoRecalcGrid()
+		t.recalcGrid(false)
 		t.saveLayoutIfConfigured()
 		return false
 	}
@@ -778,7 +778,7 @@ func (t *TUI) cmdUnhide(parts []string) bool {
 		return false
 	}
 	delete(t.layoutState.Hidden, parts[1])
-	t.autoRecalcGrid()
+	t.recalcGrid(false)
 	t.saveLayoutIfConfigured()
 	return false
 }
@@ -807,7 +807,7 @@ func (t *TUI) cmdHide(parts []string) bool {
 		t.layoutState.Hidden = make(map[string]bool)
 	}
 	t.layoutState.Hidden[parts[1]] = true
-	t.autoRecalcGrid()
+	t.recalcGrid(false)
 	t.saveLayoutIfConfigured()
 	return false
 }
@@ -883,7 +883,7 @@ func (t *TUI) cmdView(parts []string) bool {
 		}
 	}
 	t.layoutState.Hidden = hidden
-	t.autoRecalcGrid()
+	t.recalcGrid(false)
 	t.saveLayoutIfConfigured()
 	return false
 }
@@ -1170,17 +1170,6 @@ func (t *TUI) visibleCountFromState() int {
 		}
 	}
 	return n
-}
-
-// autoRecalcGrid recalculates grid dimensions for the current visible count
-// and applies the layout.
-func (t *TUI) autoRecalcGrid() {
-	if t.layoutState.Mode == LayoutGrid {
-		c, r := autoGrid(t.visibleCountFromState())
-		t.layoutState.GridCols = c
-		t.layoutState.GridRows = r
-	}
-	t.applyLayout()
 }
 
 func (t *TUI) handleResize() {
