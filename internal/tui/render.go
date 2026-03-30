@@ -10,6 +10,10 @@ import (
 )
 
 func (t *TUI) render() {
+	t.renderCount++
+	if t.renderCount <= 5 || t.renderCount%150 == 0 {
+		LogInfo("render", "enter", "frame", t.renderCount, "plan_panes", len(t.plan.Panes))
+	}
 	s := t.screen
 
 	// Detect dimension changes (font resize, window resize).
@@ -58,9 +62,15 @@ func (t *TUI) render() {
 	}
 
 	// Draw panes from the render plan. No visibility checks needed.
-	for _, pr := range t.plan.Panes {
+	for i, pr := range t.plan.Panes {
+		if t.renderCount <= 3 {
+			LogInfo("render", "drawing pane", "frame", t.renderCount, "idx", i, "name", pr.Pane.Name(), "host", pr.Pane.Host())
+		}
 		sel := t.selectionForPane(pr.Pane)
 		pr.Pane.Render(s, pr.Focused, pr.Dimmed, pr.Index, sel)
+		if t.renderCount <= 3 {
+			LogInfo("render", "pane done", "frame", t.renderCount, "idx", i, "name", pr.Pane.Name())
+		}
 	}
 
 	// Draw dividers from the render plan.
@@ -92,10 +102,8 @@ func (t *TUI) render() {
 
 	s.Show()
 
-	// Periodic render heartbeat (every ~5s at 30fps = every ~150 frames).
-	t.renderCount++
-	if t.renderCount%150 == 1 {
-		LogInfo("render", "screen.Show called", "frame", t.renderCount, "plan_panes", len(t.plan.Panes))
+	if t.renderCount <= 5 || t.renderCount%150 == 0 {
+		LogInfo("render", "screen.Show done", "frame", t.renderCount)
 	}
 }
 

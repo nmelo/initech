@@ -573,7 +573,7 @@ func Run(cfg Config) error {
 			LogInfo("main-loop", "processing ipcCh op")
 			op.fn()
 			close(op.done)
-			LogInfo("main-loop", "ipcCh op done")
+			LogInfo("main-loop", "ipcCh op done, about to render")
 		case <-ticker.C:
 			// Periodic housekeeping (runs even if no events arrive).
 			t.pruneNotifications()
