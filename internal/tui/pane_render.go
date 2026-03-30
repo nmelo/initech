@@ -56,18 +56,6 @@ func (p *Pane) Render(screen tcell.Screen, focused bool, dimmed bool, index int,
 	// Clamp all writes to the pane's region.
 	s := &clampedScreen{Screen: screen, r: r}
 
-	// Bottom ribbon (1 row at the bottom of the region).
-	// Use true black (#000000) not palette ColorBlack, which terminals often
-	// render as the same dark gray as the default background.
-	trueBlack := tcell.NewRGBColor(0, 0, 0)
-	ribbonY := r.Y + r.H - 1
-
-	// Fill ribbon row with solid black background.
-	blackStyle := tcell.StyleDefault.Background(trueBlack)
-	for x := r.X; x < r.X+r.W; x++ {
-		s.SetContent(x, ribbonY, ' ', nil, blackStyle)
-	}
-
 	// Badge style: focused = white on DodgerBlue box, unfocused = gray on true black.
 	var titleStyle tcell.Style
 	if focused {
@@ -76,7 +64,7 @@ func (p *Pane) Render(screen tcell.Screen, focused bool, dimmed bool, index int,
 		titleStyle = tcell.StyleDefault.Background(trueBlack).Foreground(tcell.ColorGray).Bold(true)
 	}
 
-	// Pane badge: "N name" with optional bead ID and status indicators.
+	// Pane badge: "N name" with optional status indicators.
 	title := fmt.Sprintf(" %d %s ", index, p.name)
 	if p.IsSuspended() {
 		title = fmt.Sprintf(" %d %s [susp] ", index, p.name)
@@ -88,25 +76,8 @@ func (p *Pane) Render(screen tcell.Screen, focused bool, dimmed bool, index int,
 		title = fmt.Sprintf(" %d %s [+%d] ", index, p.name, p.scrollOffset)
 		titleStyle = tcell.StyleDefault.Background(trueBlack).Foreground(tcell.ColorYellow).Bold(true)
 	}
-	col := r.X + 1
-	for _, ch := range title {
-		if col < r.X+r.W {
-			s.SetContent(col, ribbonY, ch, nil, titleStyle)
-			col++
-		}
-	}
-	// Append bead ID in dark cyan after the name badge.
-	bead := p.BeadID()
-	if bead != "" {
-		beadStr := "| " + bead + " "
-		beadStyle := tcell.StyleDefault.Background(trueBlack).Foreground(tcell.ColorDarkCyan)
-		for _, ch := range beadStr {
-			if col < r.X+r.W {
-				s.SetContent(col, ribbonY, ch, nil, beadStyle)
-				col++
-			}
-		}
-	}
+
+	renderRibbon(s, r, title, titleStyle, p.BeadID())
 
 	// Terminal content (starts at Y+1, fills full width).
 	innerCols, innerRows := r.InnerSize()
@@ -202,15 +173,7 @@ func (p *Pane) Render(screen tcell.Screen, focused bool, dimmed bool, index int,
 			if emuRow >= statusZoneStart && emuRow <= pos.Y && rowContainsStatusBar(p.emu, emuRow, innerCols) {
 				renderStatusBarRow(s, p.emu, r.X, r.Y+row, emuRow, innerCols, dimmed)
 			} else {
-				// Normal row: render directly.
-				for col := 0; col < innerCols; col++ {
-					cell := p.emu.CellAt(col, emuRow)
-					ch, style := uvCellToTcell(cell)
-					if dimmed {
-						style = dimStyle(style)
-					}
-					s.SetContent(r.X+col, r.Y+row, ch, nil, style)
-				}
+				renderCellRow(s, p.emu, r.X, r.Y+row, emuRow, innerCols, dimmed)
 			}
 		}
 	}
@@ -255,19 +218,7 @@ func (p *Pane) Render(screen tcell.Screen, focused bool, dimmed bool, index int,
 			}
 		}
 
-		// Cursor (skip if selection is active to avoid visual conflict).
-		if focused && !sel.Active {
-			pos := p.emu.CursorPosition()
-			visRow := pos.Y - startRow + renderOffset
-			if pos.X >= 0 && pos.X < innerCols && visRow >= 0 && visRow < innerRows {
-				cx := r.X + pos.X
-				cy := r.Y + visRow
-				cell := p.emu.CellAt(pos.X, pos.Y)
-				ch, _ := uvCellToTcell(cell)
-				cursorStyle := tcell.StyleDefault.Background(tcell.ColorWhite).Foreground(tcell.ColorBlack)
-				s.SetContent(cx, cy, ch, nil, cursorStyle)
-			}
-		}
+		renderCursor(s, r, p.emu, focused, sel, startRow-renderOffset)
 	}
 
 	p.renderMu.Unlock()

@@ -293,16 +293,7 @@ func (rp *RemotePane) Render(screen tcell.Screen, focused bool, dimmed bool, ind
 
 	s := &clampedScreen{Screen: screen, r: r}
 
-	trueBlack := tcell.NewRGBColor(0, 0, 0)
-	ribbonY := r.Y + r.H - 1
-
-	// Fill ribbon background.
-	blackStyle := tcell.StyleDefault.Background(trueBlack)
-	for x := r.X; x < r.X+r.W; x++ {
-		s.SetContent(x, ribbonY, ' ', nil, blackStyle)
-	}
-
-	// Badge style: remote panes use magenta to distinguish from local.
+	// Badge style: remote panes use teal to distinguish from local.
 	var titleStyle tcell.Style
 	if focused {
 		titleStyle = tcell.StyleDefault.Background(tcell.ColorTeal).Foreground(tcell.ColorBlack).Bold(true)
@@ -310,43 +301,19 @@ func (rp *RemotePane) Render(screen tcell.Screen, focused bool, dimmed bool, ind
 		titleStyle = tcell.StyleDefault.Background(trueBlack).Foreground(tcell.ColorTeal).Bold(true)
 	}
 
-	// Title: "N host:name [R]"
 	displayName := rp.host + ":" + rp.name
 	title := fmt.Sprintf(" %d %s [R] ", index, displayName)
 	if !rp.IsAlive() {
 		title = fmt.Sprintf(" %d %s [R][dead] ", index, displayName)
 		titleStyle = tcell.StyleDefault.Background(trueBlack).Foreground(tcell.ColorRed).Bold(true)
 	}
-	col := r.X + 1
-	for _, ch := range title {
-		if col < r.X+r.W {
-			s.SetContent(col, ribbonY, ch, nil, titleStyle)
-			col++
-		}
-	}
 
-	// Bead ID in dark cyan.
-	bead := rp.BeadID()
-	if bead != "" {
-		beadStr := "| " + bead + " "
-		beadStyle := tcell.StyleDefault.Background(trueBlack).Foreground(tcell.ColorDarkCyan)
-		for _, ch := range beadStr {
-			if col < r.X+r.W {
-				s.SetContent(col, ribbonY, ch, nil, beadStyle)
-				col++
-			}
-		}
-	}
+	renderRibbon(s, r, title, titleStyle, rp.BeadID())
 
 	// Drain pending byte chunks from readLoop and write to the emulator.
 	// Both drain and cell reads happen on the main goroutine, so no mutex
-	// is needed. This eliminates the deadlock/starvation that plagued every
-	// mutex-based approach.
-	//
-	// Budget: limit bytes processed per frame to prevent stalls when the
-	// ring buffer replays megabytes of historical data into a new pane.
-	// Remaining data stays in dataCh for the next frame (33ms at 30fps).
-	innerCols, innerRows := r.InnerSize()
+	// is needed. Budget limits bytes per frame to prevent stalls when the
+	// ring buffer replays megabytes into a new pane.
 	const drainBudget = 128 * 1024 // 128KB per pane per frame.
 	drained := 0
 	for drained < drainBudget {
@@ -359,35 +326,11 @@ func (rp *RemotePane) Render(screen tcell.Screen, focused bool, dimmed bool, ind
 		}
 	}
 drainDone:
-	emuRows := rp.emu.Height()
-	for row := 0; row < innerRows; row++ {
-		emuRow := emuRows - innerRows + row
-		if emuRow < 0 || emuRow >= emuRows {
-			continue
-		}
-		for c := 0; c < innerCols; c++ {
-			cell := rp.emu.CellAt(c, emuRow)
-			ch, style := uvCellToTcell(cell)
-			if dimmed {
-				style = dimStyle(style)
-			}
-			s.SetContent(r.X+c, r.Y+row, ch, nil, style)
-		}
-	}
 
-	// Cursor.
-	if focused && !sel.Active {
-		pos := rp.emu.CursorPosition()
-		visRow := pos.Y - (emuRows - innerRows)
-		if pos.X >= 0 && pos.X < innerCols && visRow >= 0 && visRow < innerRows {
-			cx := r.X + pos.X
-			cy := r.Y + visRow
-			cell := rp.emu.CellAt(pos.X, pos.Y)
-			ch, _ := uvCellToTcell(cell)
-			cursorStyle := tcell.StyleDefault.Background(tcell.ColorWhite).Foreground(tcell.ColorBlack)
-			s.SetContent(cx, cy, ch, nil, cursorStyle)
-		}
-	}
+	_, innerRows := r.InnerSize()
+	emuStartRow := rp.emu.Height() - innerRows
+	renderCells(s, r, rp.emu, dimmed, emuStartRow)
+	renderCursor(s, r, rp.emu, focused, sel, emuStartRow)
 }
 
 // Resize updates the local emulator immediately and debounces the control
