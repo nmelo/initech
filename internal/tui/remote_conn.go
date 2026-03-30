@@ -27,8 +27,10 @@ type peerConn struct {
 	panes   []PaneView
 }
 
-// Close releases all connection resources: control mux, yamux session
-// (which closes all streams and the TCP connection).
+// Close releases connection resources: control mux, yamux session (which
+// closes all streams and the TCP connection). Callers must close individual
+// RemotePanes first (which waits for background goroutines) before calling
+// Close, since closing the yamux session tears down the streams they read from.
 func (pc *peerConn) Close() {
 	if pc.mux != nil {
 		pc.mux.Close()

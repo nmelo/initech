@@ -126,6 +126,8 @@ func (m *ControlMux) readLoop() {
 			case m.events <- resp:
 			default:
 				// Events channel full; drop oldest.
+				// Safe: single writer goroutine guarantees no concurrent
+				// push between drain and insert.
 				select {
 				case <-m.events:
 				default:

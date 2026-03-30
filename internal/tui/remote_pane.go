@@ -100,6 +100,8 @@ func (rp *RemotePane) readLoop() {
 			case rp.dataCh <- chunk:
 			default:
 				// Channel full: drop oldest to make room (backpressure).
+				// Safe: single writer goroutine guarantees no concurrent
+				// push between drain and insert.
 				select {
 				case <-rp.dataCh:
 				default:

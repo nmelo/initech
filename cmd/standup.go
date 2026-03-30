@@ -57,11 +57,9 @@ func runStandup(cmd *cobra.Command, args []string) error {
 	}
 
 	today := time.Now().Format("2006-01-02")
-	yesterday := time.Now().AddDate(0, 0, -1).Format("2006-01-02")
-
 	fmt.Fprintf(out, "\n%s Daily - %s\n", color.Bold("## "+p.Name), today)
 
-	// Recently shipped (closed since yesterday)
+	// Recently shipped (closed beads).
 	shipped := queryBeads(runner, "list", "--status", "closed", "--json")
 	var recentlyShipped []standupBead
 	for _, b := range shipped {
@@ -69,7 +67,6 @@ func runStandup(cmd *cobra.Command, args []string) error {
 		// so we include all closed beads and let the user scan
 		recentlyShipped = append(recentlyShipped, b)
 	}
-	_ = yesterday // used conceptually for "recent" framing
 
 	fmt.Fprintln(out, "\n"+color.Bold("### What's New"))
 	if len(recentlyShipped) == 0 {

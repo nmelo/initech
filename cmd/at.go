@@ -97,15 +97,8 @@ func runAt(cmd *cobra.Command, args []string) error {
 		label = fmt.Sprintf("at %s", fireAt.Local().Format("15:04"))
 	}
 
-	// Build IPC request.
-	req := tui.IPCRequest{
-		Action: "schedule",
-		Target: target,
-		Text:   text,
-		Enter:  true,
-	}
-	// Encode host and fire_at in the request. IPCRequest doesn't have these
-	// fields, so we use a custom JSON payload.
+	// IPCRequest doesn't have host/fire_at fields, so we use a custom
+	// JSON payload directly.
 	type schedReq struct {
 		Action string `json:"action"`
 		Target string `json:"target"`
@@ -114,7 +107,6 @@ func runAt(cmd *cobra.Command, args []string) error {
 		Enter  bool   `json:"enter"`
 		FireAt string `json:"fire_at"`
 	}
-	_ = req // unused, we send custom JSON instead
 
 	resp, err := ipcCallCustom(schedReq{
 		Action: "schedule",
