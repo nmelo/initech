@@ -321,16 +321,23 @@ func (rp *RemotePane) Render(screen tcell.Screen, focused bool, dimmed bool, ind
 	// Both drain and cell reads happen on the main goroutine, so no mutex
 	// is needed. This eliminates the deadlock/starvation that plagued every
 	// mutex-based approach.
+	//
+	// Budget: limit bytes processed per frame to prevent stalls when the
+	// ring buffer replays megabytes of historical data into a new pane.
+	// Remaining data stays in dataCh for the next frame (33ms at 30fps).
 	innerCols, innerRows := r.InnerSize()
-	for {
+	const drainBudget = 128 * 1024 // 128KB per pane per frame.
+	drained := 0
+	for drained < drainBudget {
 		select {
 		case chunk := <-rp.dataCh:
 			rp.emu.Write(chunk)
+			drained += len(chunk)
 		default:
-			goto drained
+			goto drainDone
 		}
 	}
-drained:
+drainDone:
 	emuRows := rp.emu.Height()
 	for row := 0; row < innerRows; row++ {
 		emuRow := emuRows - innerRows + row

@@ -4,6 +4,7 @@
 package tui
 
 import (
+	"fmt"
 	"net"
 	"os"
 	"strings"
@@ -128,5 +129,130 @@ done:
 		t.Error("screen row 0 is empty after Render (content not drawn)")
 	} else {
 		t.Logf("screen row 0: %q", row0[:min(len(row0), 60)])
+	}
+}
+
+// TestRemotePane_MultiPane_RenderDoesNotBlock reproduces the production scenario:
+// 9 panes (mix of agents) with heavy data flow, multiple render frames.
+// This catches the frame-5 stall caused by unbounded dataCh drain.
+func TestRemotePane_MultiPane_RenderDoesNotBlock(t *testing.T) {
+	if os.Getenv("CI") != "" || testing.Short() {
+		t.Skip("integration test: requires PTY and daemon, run locally")
+	}
+
+	// Start a daemon with 5 agents (simulates multi-agent workbench).
+	agents := []string{"eng1", "eng2", "eng3", "qa1", "super"}
+	td := startTestDaemon(t, "", agents...)
+
+	// Connect as a client.
+	tc, _ := connectTestClient(t, td.addr, "testclient", "")
+	sm := tc.readStreamMap(t)
+
+	if len(sm.Streams) != len(agents) {
+		t.Fatalf("stream_map has %d entries, want %d", len(sm.Streams), len(agents))
+	}
+
+	// Accept all agent streams and create RemotePanes.
+	dummyS, dummyC := net.Pipe()
+	defer dummyS.Close()
+	defer dummyC.Close()
+	dummyMux := NewControlMux(dummyC)
+	defer dummyMux.Close()
+
+	var panes []*RemotePane
+	for i := 0; i < len(agents); i++ {
+		stream, err := tc.session.Accept()
+		if err != nil {
+			t.Fatalf("accept stream %d: %v", i, err)
+		}
+		defer stream.Close()
+
+		// Determine agent name from stream order (daemon opens in agent order).
+		name := fmt.Sprintf("agent%d", i)
+		for _, s := range sm.Streams {
+			// Use stream map names if available.
+			name = s
+			break
+		}
+
+		rp := NewRemotePane(name, "testhost", stream, dummyMux, 80, 24)
+		rp.region = Region{X: 0, Y: i * 25, W: 80, H: 25}
+		rp.Start()
+		panes = append(panes, rp)
+	}
+
+	// Wait for data to arrive on at least one pane.
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		for _, rp := range panes {
+			if len(rp.dataCh) > 0 {
+				goto dataArrived
+			}
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+dataArrived:
+
+	// Flood extra data into each pane's dataCh to simulate heavy replay.
+	// This is the key stress: fill the channel with large chunks so the
+	// drain loop must process significant data under the budget limit.
+	for _, rp := range panes {
+		for j := 0; j < 30; j++ {
+			// 32KB of terminal output per chunk (worst case).
+			chunk := make([]byte, 32*1024)
+			for k := range chunk {
+				chunk[k] = 'A' + byte(k%26)
+			}
+			select {
+			case rp.dataCh <- chunk:
+			default:
+				// Channel full, stop filling.
+			}
+		}
+	}
+
+	// Create a simulation screen large enough for all panes.
+	s := tcell.NewSimulationScreen("")
+	s.Init()
+	s.SetSize(80, 25*len(panes))
+
+	// Render 10 frames (well past frame 5 where production blocks).
+	for frame := 1; frame <= 10; frame++ {
+		renderDone := make(chan struct{})
+		go func() {
+			for _, rp := range panes {
+				rp.Render(s, false, false, 1, Selection{})
+			}
+			close(renderDone)
+		}()
+
+		select {
+		case <-renderDone:
+			// Good.
+		case <-time.After(2 * time.Second):
+			t.Fatalf("frame %d: Render blocked for 2+ seconds (%d panes)", frame, len(panes))
+		}
+	}
+
+	t.Logf("all 10 frames rendered across %d panes without blocking", len(panes))
+
+	// Verify at least one pane has content on screen.
+	var foundContent bool
+	for _, rp := range panes {
+		cols := rp.emu.Width()
+		var line strings.Builder
+		for col := 0; col < cols; col++ {
+			cell := rp.emu.CellAt(col, 0)
+			if cell != nil && cell.Content != "" {
+				line.WriteString(cell.Content)
+			}
+		}
+		if strings.TrimSpace(line.String()) != "" {
+			foundContent = true
+			break
+		}
+	}
+	if !foundContent {
+		t.Error("no pane has visible content after rendering")
 	}
 }

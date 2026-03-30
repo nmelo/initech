@@ -63,14 +63,10 @@ func (t *TUI) render() {
 
 	// Draw panes from the render plan. No visibility checks needed.
 	for i, pr := range t.plan.Panes {
-		if t.renderCount <= 3 {
-			LogInfo("render", "drawing pane", "frame", t.renderCount, "idx", i, "name", pr.Pane.Name(), "host", pr.Pane.Host())
-		}
+		LogInfo("render", "drawing pane", "frame", t.renderCount, "idx", i, "name", pr.Pane.Name(), "host", pr.Pane.Host())
 		sel := t.selectionForPane(pr.Pane)
 		pr.Pane.Render(s, pr.Focused, pr.Dimmed, pr.Index, sel)
-		if t.renderCount <= 3 {
-			LogInfo("render", "pane done", "frame", t.renderCount, "idx", i, "name", pr.Pane.Name())
-		}
+		LogInfo("render", "pane done", "frame", t.renderCount, "idx", i, "name", pr.Pane.Name())
 	}
 
 	// Draw dividers from the render plan.
