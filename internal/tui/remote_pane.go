@@ -8,7 +8,6 @@ package tui
 import (
 	"fmt"
 	"net"
-	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -29,13 +28,13 @@ const resizeDebounce = 50 * time.Millisecond
 // The local VT emulator receives PTY bytes from the stream for rendering.
 // Keystrokes are forwarded upstream to the daemon for injection into the PTY.
 type RemotePane struct {
-	name     string            // Agent name (e.g. "eng1").
-	host     string            // Peer name of the remote daemon (e.g. "workbench").
-	stream   net.Conn          // Yamux stream: downstream PTY bytes + upstream keystrokes.
-	mux      *ControlMux       // Shared multiplexed control channel (thread-safe).
-	emu      *vt.SafeEmulator  // Local VT emulator fed by readLoop.
-	renderMu sync.Mutex        // Serializes readLoop writes with Render reads.
-	mu       sync.Mutex
+	name   string            // Agent name (e.g. "eng1").
+	host   string            // Peer name of the remote daemon (e.g. "workbench").
+	stream net.Conn          // Yamux stream: downstream PTY bytes + upstream keystrokes.
+	mux    *ControlMux       // Shared multiplexed control channel (thread-safe).
+	emu    *vt.SafeEmulator  // Local VT emulator owned exclusively by the main goroutine.
+	dataCh chan []byte        // readLoop sends byte chunks here; Render drains and writes to emu.
+	mu     sync.Mutex
 	alive    bool
 	activity ActivityState
 	lastOut  time.Time
@@ -63,6 +62,7 @@ func NewRemotePane(name, host string, stream net.Conn, mux *ControlMux, cols, ro
 		stream:   stream,
 		mux:      mux,
 		emu:      vt.NewSafeEmulator(cols, rows),
+		dataCh:   make(chan []byte, 64), // Buffered: readLoop sends, Render drains.
 		alive:    true,
 		activity: StateIdle,
 	}
@@ -78,9 +78,10 @@ func (rp *RemotePane) Start() {
 	}()
 }
 
-// readLoop reads PTY output from the yamux stream and writes it to the local
-// VT emulator. Updates lastOut and activity on each read. Exits when the
-// stream is closed or errors.
+// readLoop reads PTY output from the yamux stream and sends byte chunks to
+// dataCh. The main goroutine drains dataCh in Render and writes to the
+// emulator. This eliminates all mutex contention: the emulator is only ever
+// accessed from the main goroutine.
 func (rp *RemotePane) readLoop() {
 	buf := make([]byte, 32*1024)
 	totalBytes := 0
@@ -95,13 +96,20 @@ func (rp *RemotePane) readLoop() {
 					"agent", rp.name, "host", rp.host,
 					"n", n, "total", totalBytes, "reads", reads)
 			}
-			rp.renderMu.Lock()
-			rp.emu.Write(buf[:n])
-			rp.renderMu.Unlock()
-			// Yield so Render's Lock can acquire renderMu between reads.
-			// Without this, continuous stream data causes readLoop to
-			// re-acquire renderMu before Render gets a chance (starvation).
-			runtime.Gosched()
+			// Copy and send to channel. The main goroutine's Render drains
+			// this channel and writes to the emulator (zero contention).
+			chunk := make([]byte, n)
+			copy(chunk, buf[:n])
+			select {
+			case rp.dataCh <- chunk:
+			default:
+				// Channel full: drop oldest to make room (backpressure).
+				select {
+				case <-rp.dataCh:
+				default:
+				}
+				rp.dataCh <- chunk
+			}
 			now := time.Now()
 			rp.mu.Lock()
 			rp.lastOut = now
@@ -319,11 +327,20 @@ func (rp *RemotePane) Render(screen tcell.Screen, focused bool, dimmed bool, ind
 		}
 	}
 
-	// Terminal content from local emulator. Hold renderMu to prevent tearing
-	// (same pattern as local Pane). readLoop only holds renderMu during
-	// emu.Write (microseconds), so contention is brief.
+	// Drain pending byte chunks from readLoop and write to the emulator.
+	// Both drain and cell reads happen on the main goroutine, so no mutex
+	// is needed. This eliminates the deadlock/starvation that plagued every
+	// mutex-based approach.
 	innerCols, innerRows := r.InnerSize()
-	rp.renderMu.Lock()
+	for {
+		select {
+		case chunk := <-rp.dataCh:
+			rp.emu.Write(chunk)
+		default:
+			goto drained
+		}
+	}
+drained:
 	emuRows := rp.emu.Height()
 	for row := 0; row < innerRows; row++ {
 		emuRow := emuRows - innerRows + row
@@ -353,7 +370,6 @@ func (rp *RemotePane) Render(screen tcell.Screen, focused bool, dimmed bool, ind
 			s.SetContent(cx, cy, ch, nil, cursorStyle)
 		}
 	}
-	rp.renderMu.Unlock()
 }
 
 // Resize updates the local emulator immediately and debounces the control

@@ -73,6 +73,19 @@ func TestRemotePaneReadLoopFeedsEmulator(t *testing.T) {
 	server.Write([]byte("Hello from remote\r\n"))
 	time.Sleep(100 * time.Millisecond)
 
+	// Drain the data channel into the emulator (simulates what Render does
+	// on the main goroutine). readLoop sends byte chunks to dataCh; the
+	// emulator is only written from the draining side.
+	for {
+		select {
+		case chunk := <-rp.dataCh:
+			rp.emu.Write(chunk)
+		default:
+			goto drained
+		}
+	}
+drained:
+
 	// The emulator should have received the content.
 	cols := rp.Emulator().Width()
 	var line string
