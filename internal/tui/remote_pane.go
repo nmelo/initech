@@ -84,18 +84,9 @@ func (rp *RemotePane) Start() {
 // accessed from the main goroutine.
 func (rp *RemotePane) readLoop() {
 	buf := make([]byte, 32*1024)
-	totalBytes := 0
-	reads := 0
 	for {
 		n, err := rp.stream.Read(buf)
 		if n > 0 {
-			reads++
-			totalBytes += n
-			if reads <= 3 || reads%100 == 0 {
-				LogInfo("remote-readloop", "bytes received",
-					"agent", rp.name, "host", rp.host,
-					"n", n, "total", totalBytes, "reads", reads)
-			}
 			// Copy and send to channel. The main goroutine's Render drains
 			// this channel and writes to the emulator (zero contention).
 			chunk := make([]byte, n)
@@ -118,8 +109,7 @@ func (rp *RemotePane) readLoop() {
 		}
 		if err != nil {
 			LogInfo("remote-readloop", "stream ended",
-				"agent", rp.name, "host", rp.host,
-				"err", err, "total_bytes", totalBytes, "reads", reads)
+				"agent", rp.name, "host", rp.host, "err", err)
 			rp.mu.Lock()
 			rp.alive = false
 			rp.activity = StateDead
