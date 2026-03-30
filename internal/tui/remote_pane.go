@@ -73,19 +73,9 @@ func (rp *RemotePane) Start() {
 // readLoop reads PTY output from the yamux stream and writes it to the local
 // VT emulator. Updates lastOut and activity on each read. Exits when the
 // stream is closed or errors.
-// remoteReadTimeout is the maximum silence duration before a remote stream
-// is considered dead. Refreshed on every successful read. Must be longer
-// than the yamux keepalive interval (30s) to avoid false positives when
-// the remote agent is idle but the connection is alive.
-const remoteReadTimeout = 90 * time.Second
-
 func (rp *RemotePane) readLoop() {
 	buf := make([]byte, 32*1024)
 	for {
-		// Set a rolling read deadline. If neither PTY bytes nor yamux
-		// keepalive frames arrive within the timeout, the connection
-		// is dead (e.g., daemon killed with SIGKILL, no TCP RST sent).
-		rp.stream.SetReadDeadline(time.Now().Add(remoteReadTimeout))
 		n, err := rp.stream.Read(buf)
 		if n > 0 {
 			rp.emu.Write(buf[:n])

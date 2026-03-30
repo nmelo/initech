@@ -657,6 +657,9 @@ func (d *Daemon) handleControlStream(ctrl net.Conn, scanner *bufio.Scanner) {
 			}
 			if !respond(cmd.ID, ControlResp{OK: true, Data: timer.ID}) { return }
 
+		case "ping":
+			respond(cmd.ID, ControlResp{OK: true, Data: "pong"})
+
 		default:
 			if !respond(cmd.ID, ControlResp{Error: fmt.Sprintf("unknown action %q", cmd.Action)}) { return }
 		}

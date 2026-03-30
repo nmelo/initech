@@ -89,9 +89,16 @@ func (pm *peerManager) managePeer(peerName string, remote config.Remote) {
 		LogInfo("remote", "connected", "peer", peerName, "agents", len(pc.panes))
 		pm.onPanesChanged(peerName, pc.panes)
 
+		// Start heartbeat: ping every 30s. On failure, close the session
+		// to unblock all stream.Read calls (yamux ignores SetReadDeadline).
+		heartbeatDone := make(chan struct{})
+		go pm.heartbeat(peerName, pc, heartbeatDone)
+
 		// Monitor connection health: wait for all RemotePanes to go dead,
-		// which signals the yamux session died.
+		// which signals the yamux session died (either naturally or via
+		// heartbeat closing the session).
 		pm.waitForDisconnect(peerName, pc.panes)
+		close(heartbeatDone)
 
 		// Close the yamux session and control mux to release goroutines,
 		// file descriptors, and the TCP connection.
@@ -103,6 +110,32 @@ func (pm *peerManager) managePeer(peerName string, remote config.Remote) {
 		// Brief pause before reconnecting.
 		select {
 		case <-time.After(reconnectInitial):
+		case <-pm.quit:
+			return
+		}
+	}
+}
+
+// heartbeat sends a ping control command every 30s and expects a pong
+// within 5s. If the ping fails or times out, it closes the yamux session
+// to force all stream.Read calls to return, triggering disconnect detection.
+// This is the reliable liveness check: it tests actual end-to-end reachability,
+// not TCP/yamux internals that may buffer writes to a dead peer.
+func (pm *peerManager) heartbeat(peerName string, pc *peerConn, done chan struct{}) {
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			resp, err := pc.mux.Request(ControlCmd{Action: "ping"})
+			if err != nil || !resp.OK {
+				LogWarn("remote", "heartbeat failed, closing session", "peer", peerName)
+				pc.session.Close()
+				return
+			}
+		case <-done:
+			return
 		case <-pm.quit:
 			return
 		}
