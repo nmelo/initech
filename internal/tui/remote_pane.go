@@ -41,6 +41,8 @@ type RemotePane struct {
 	sessDesc string
 	region   Region
 
+	goWg sync.WaitGroup // Tracks readLoop goroutine. Close waits on this.
+
 	// Resize debounce: pendingResize holds the latest requested dimensions.
 	// The timer fires after resizeDebounce and sends the final geometry.
 	resizeMu      sync.Mutex
@@ -67,7 +69,11 @@ func NewRemotePane(name, host string, stream net.Conn, mux *ControlMux, cols, ro
 // Start launches the background goroutine that reads PTY bytes from the
 // yamux stream and feeds them into the local emulator.
 func (rp *RemotePane) Start() {
-	go rp.readLoop()
+	rp.goWg.Add(1)
+	go func() {
+		defer rp.goWg.Done()
+		rp.readLoop()
+	}()
 }
 
 // readLoop reads PTY output from the yamux stream and writes it to the local
@@ -365,6 +371,7 @@ func (rp *RemotePane) Close() {
 	if rp.stream != nil {
 		rp.stream.Close()
 	}
+	rp.goWg.Wait()
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────
