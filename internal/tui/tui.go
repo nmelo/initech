@@ -445,29 +445,16 @@ func Run(cfg Config) error {
 		LogDebug("pane", "created", "name", acfg.Name, "dir", acfg.Dir)
 	}
 
-	// Connect to remote peers and add their agents as RemotePanes.
-	// Initial connection is synchronous (fast-fail). A background peer
-	// manager handles reconnection with exponential backoff.
+	// Connect to remote peers asynchronously. The peerManager handles both
+	// initial connection and reconnection in background goroutines. The TUI
+	// renders immediately with local-only panes; remote panes appear once
+	// connected via handlePeerUpdate on the main goroutine.
 	if cfg.Project != nil && len(cfg.Project.Remotes) > 0 {
-		remotePanes := connectRemotesSync(cfg.Project)
-		// Build map of which peers were connected during sync connect,
-		// so the peer manager skips the initial connect for those peers.
-		initialByPeer := make(map[string][]PaneView)
-		for _, rp := range remotePanes {
-			initialByPeer[rp.Host()] = append(initialByPeer[rp.Host()], rp)
-		}
-		if len(remotePanes) > 0 {
-			t.panes = append(t.panes, remotePanes...)
-		}
-		t.recalcGridForPanes()
-
-		// Start background reconnect manager. On reconnect, it swaps
-		// panes via runOnMain to avoid races with the render loop.
 		pm := newPeerManager(cfg.Project, func(peerName string, panes []PaneView) {
 			t.runOnMain(func() {
 				t.handlePeerUpdate(peerName, panes)
 			})
-		}, initialByPeer, t.quitCh)
+		}, t.quitCh)
 		defer pm.wait()
 	}
 

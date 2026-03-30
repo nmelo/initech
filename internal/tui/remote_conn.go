@@ -18,27 +18,6 @@ import (
 // connectTimeout is how long to wait for a TCP connection to a remote peer.
 const connectTimeout = 5 * time.Second
 
-// connectRemotesSync dials each remote synchronously and returns RemotePanes.
-// Used for the initial connection attempt at TUI startup. Failures are logged
-// and skipped; the peer manager handles reconnection in the background.
-func connectRemotesSync(project *config.Project) []PaneView {
-	if len(project.Remotes) == 0 {
-		return nil
-	}
-
-	var panes []PaneView
-	for peerName, remote := range project.Remotes {
-		remotePanes, err := connectPeer(peerName, remote, project)
-		if err != nil {
-			LogWarn("remote", "initial connection failed", "peer", peerName, "addr", remote.Addr, "err", err)
-			continue
-		}
-		panes = append(panes, remotePanes...)
-		LogInfo("remote", "connected", "peer", peerName, "agents", len(remotePanes))
-	}
-	return panes
-}
-
 // connectPeer establishes a yamux connection to a single remote peer, performs
 // the hello handshake, reads the stream map, and creates RemotePanes.
 func connectPeer(peerName string, remote config.Remote, project *config.Project) ([]PaneView, error) {

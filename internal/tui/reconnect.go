@@ -36,23 +36,17 @@ type peerManager struct {
 	// added or go offline. The callback receives the peer name and the
 	// new set of PaneViews for that peer (nil = all offline).
 	onPanesChanged func(peerName string, panes []PaneView)
-	// initialPanes holds panes from the synchronous startup connect.
-	// managePeer checks this before its first connection attempt to avoid
-	// a duplicate connect that creates two yamux sessions to the same
-	// daemon (which causes a hang).
-	initialPanes map[string][]PaneView
-	quit         chan struct{}
-	wg           sync.WaitGroup
+	quit           chan struct{}
+	wg             sync.WaitGroup
 }
 
-// newPeerManager creates a manager and starts a reconnect goroutine per remote.
-// initialPanes contains panes that were already connected by connectRemotesSync
-// during startup; those peers skip the first connect and go straight to monitoring.
-func newPeerManager(project *config.Project, onChange func(string, []PaneView), initial map[string][]PaneView, quit chan struct{}) *peerManager {
+// newPeerManager creates a manager and starts a goroutine per remote peer.
+// All connections (initial and reconnect) happen in the background so the
+// TUI renders immediately without blocking on network I/O.
+func newPeerManager(project *config.Project, onChange func(string, []PaneView), quit chan struct{}) *peerManager {
 	pm := &peerManager{
 		project:        project,
 		onPanesChanged: onChange,
-		initialPanes:   initial,
 		quit:           quit,
 	}
 	for peerName, remote := range project.Remotes {
@@ -71,22 +65,6 @@ func (pm *peerManager) wait() {
 // It exits when pm.quit is closed.
 func (pm *peerManager) managePeer(peerName string, remote config.Remote) {
 	defer pm.wg.Done()
-
-	// If the initial synchronous connect already succeeded, skip straight
-	// to monitoring. Without this, managePeer would immediately connect
-	// again, creating duplicate yamux sessions (causes hang).
-	if initial := pm.initialPanes[peerName]; len(initial) > 0 {
-		LogDebug("remote", "using initial connection", "peer", peerName, "agents", len(initial))
-		pm.waitForDisconnect(peerName, initial)
-		LogWarn("remote", "disconnected", "peer", peerName)
-		pm.onPanesChanged(peerName, nil)
-		// Brief pause before reconnecting.
-		select {
-		case <-time.After(reconnectInitial):
-		case <-pm.quit:
-			return
-		}
-	}
 
 	attempt := 0
 	for {
