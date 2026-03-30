@@ -82,9 +82,18 @@ func (rp *RemotePane) Start() {
 // stream is closed or errors.
 func (rp *RemotePane) readLoop() {
 	buf := make([]byte, 32*1024)
+	totalBytes := 0
+	reads := 0
 	for {
 		n, err := rp.stream.Read(buf)
 		if n > 0 {
+			reads++
+			totalBytes += n
+			if reads <= 3 || reads%100 == 0 {
+				LogInfo("remote-readloop", "bytes received",
+					"agent", rp.name, "host", rp.host,
+					"n", n, "total", totalBytes, "reads", reads)
+			}
 			rp.renderMu.Lock()
 			rp.emu.Write(buf[:n])
 			rp.renderMu.Unlock()
@@ -95,6 +104,9 @@ func (rp *RemotePane) readLoop() {
 			rp.mu.Unlock()
 		}
 		if err != nil {
+			LogInfo("remote-readloop", "stream ended",
+				"agent", rp.name, "host", rp.host,
+				"err", err, "total_bytes", totalBytes, "reads", reads)
 			rp.mu.Lock()
 			rp.alive = false
 			rp.activity = StateDead

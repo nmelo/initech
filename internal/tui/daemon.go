@@ -600,8 +600,13 @@ func (d *Daemon) replayToStream(p *Pane, stream net.Conn) {
 	rb := d.ringBufs[p.Name()]
 	if rb != nil {
 		if snap := rb.Snapshot(); len(snap) > 0 {
-			stream.Write(snap)
+			n, err := stream.Write(snap)
+			LogInfo("daemon", "replay sent", "agent", p.Name(), "bytes", n, "err", err)
+		} else {
+			LogInfo("daemon", "replay empty", "agent", p.Name())
 		}
+	} else {
+		LogInfo("daemon", "replay no ringbuf", "agent", p.Name())
 	}
 }
 
@@ -611,11 +616,15 @@ func (d *Daemon) replayToStream(p *Pane, stream net.Conn) {
 func (d *Daemon) streamAgentLive(p *Pane, stream net.Conn) {
 	ms := d.multiSinks[p.Name()]
 
-	// Add this client's stream to the fan-out sink. readLoop writes to
-	// the MultiSink which delivers to all clients + ring buffer.
 	if ms != nil {
 		ms.Add(stream)
-		defer ms.Remove(stream)
+		LogInfo("daemon", "stream added to MultiSink", "agent", p.Name(), "sink_writers", ms.Len())
+		defer func() {
+			ms.Remove(stream)
+			LogInfo("daemon", "stream removed from MultiSink", "agent", p.Name())
+		}()
+	} else {
+		LogWarn("daemon", "no MultiSink for agent", "agent", p.Name())
 	}
 
 	// Upstream: client keystrokes -> PTY.
