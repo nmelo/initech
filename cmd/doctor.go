@@ -36,54 +36,89 @@ func init() {
 	rootCmd.AddCommand(doctorCmd)
 }
 
-// doctorState accumulates pass/fail counts across sections for the summary line.
-type doctorState struct {
-	warnings        int
-	requiredMissing bool
+// ── Result model ───────────────────────────────────────────────────
+
+// CheckResult is a single named check with a status and detail string.
+type CheckResult struct {
+	Label  string // e.g. "Config", "claude", "workbench"
+	Status string // "OK", "WARN", "FAIL", "NOTE", "INFO"
+	Detail string // Human-readable description
 }
 
-func runDoctor(cmd *cobra.Command, args []string) error {
-	out := cmd.OutOrStdout()
-	state := &doctorState{}
+// DoctorReport holds all check results grouped by section.
+type DoctorReport struct {
+	Prereqs     []CheckResult
+	Project     []CheckResult
+	Remotes     []CheckResult
+	Environment []CheckResult
+	ProjectName string // Empty if no project found.
+	ProjectRoot string
+}
 
-	// Section 1: Prerequisites
-	checkPrereqs(out, state)
-
-	// Section 2: Project Health (only when initech.yaml is found)
-	wd, _ := os.Getwd()
-	cfgPath, err := config.Discover(wd)
-	if err == nil {
-		checkProjectHealth(out, cfgPath, state)
-	} else {
-		fmt.Fprintf(out, "\n%s\n", color.Dim("No initech.yaml found. Run 'initech init' to set up."))
+// HasRequiredMissing returns true if any prerequisite check failed.
+func (r DoctorReport) HasRequiredMissing() bool {
+	for _, c := range r.Prereqs {
+		if c.Status == "FAIL" {
+			return true
+		}
 	}
+	return false
+}
 
-	// Section 3: Remote Connectivity (if remotes configured)
+// WarningCount returns the total number of warnings across all sections.
+func (r DoctorReport) WarningCount() int {
+	n := 0
+	for _, checks := range [][]CheckResult{r.Prereqs, r.Project, r.Remotes} {
+		for _, c := range checks {
+			if c.Status == "WARN" {
+				n++
+			}
+		}
+	}
+	return n
+}
+
+// ── Injectable dependencies ────────────────────────────────────────
+
+// DoctorEnv provides injectable dependencies for doctor checks.
+type DoctorEnv struct {
+	LookPath   func(string) (string, error)
+	GetVersion func([]string) string
+	Dial       func(string, string, time.Duration) (net.Conn, error)
+	WorkDir    string
+}
+
+// DefaultDoctorEnv returns the production dependencies.
+func DefaultDoctorEnv() DoctorEnv {
+	wd, _ := os.Getwd()
+	return DoctorEnv{
+		LookPath:   exec.LookPath,
+		GetVersion: getVersion,
+		Dial:       net.DialTimeout,
+		WorkDir:    wd,
+	}
+}
+
+// ── Check orchestration ────────────────────────────────────────────
+
+// RunDoctorReport runs all doctor checks and returns a structured report.
+func RunDoctorReport(env DoctorEnv) DoctorReport {
+	report := DoctorReport{}
+	report.Prereqs = runPrereqChecks(env)
+
+	cfgPath, err := config.Discover(env.WorkDir)
 	if err == nil {
+		report.Project, report.ProjectName, report.ProjectRoot = runProjectChecks(cfgPath)
 		if proj, loadErr := config.Load(cfgPath); loadErr == nil && len(proj.Remotes) > 0 {
-			checkRemotes(out, proj, state)
+			report.Remotes = runRemoteChecks(proj, env.Dial)
 		}
 	}
 
-	// Section 4: Terminal Environment
-	checkEnvironment(out)
-
-	// Summary
-	fmt.Fprintln(out)
-	switch {
-	case state.requiredMissing:
-		fmt.Fprintln(out, color.RedBold("Required prerequisites missing. Install them before running initech."))
-		return fmt.Errorf("required prerequisites missing")
-	case state.warnings > 0:
-		fmt.Fprintln(out, color.YellowBold(fmt.Sprintf(
-			"%d warning(s) found. The session will start but some agents may not work correctly.",
-			state.warnings,
-		)))
-	default:
-		fmt.Fprintln(out, color.GreenBold("All checks passed."))
-	}
-	return nil
+	report.Environment = runEnvironmentChecks()
+	return report
 }
+
+// ── Prerequisite checks ────────────────────────────────────────────
 
 // prereqDef describes a tool that doctor checks.
 type prereqDef struct {
@@ -116,97 +151,70 @@ var prereqList = []prereqDef{
 	},
 }
 
-// checkPrereqs prints the Prerequisites section and updates state.
-func checkPrereqs(out io.Writer, state *doctorState) {
-	fmt.Fprintf(out, "\n%s\n", color.CyanBold("Prerequisites"))
-
-	type missing struct {
-		p prereqDef
-	}
-	var missingList []missing
-
+func runPrereqChecks(env DoctorEnv) []CheckResult {
+	var results []CheckResult
 	for _, p := range prereqList {
-		path, _ := exec.LookPath(p.Name)
-		version := "-"
-		displayPath := "-"
-		var statusStr string
-
+		path, _ := env.LookPath(p.Name)
 		if path == "" {
+			status := "WARN"
 			if p.Required {
-				statusStr = color.RedBold("MISSING")
-				state.requiredMissing = true
-			} else {
-				statusStr = color.YellowBold("MISSING")
-				state.warnings++
+				status = "FAIL"
 			}
-			missingList = append(missingList, missing{p})
+			detail := p.InstallHint
+			if p.Note != "" {
+				detail += " (" + p.Note + ")"
+			}
+			results = append(results, CheckResult{Label: p.Name, Status: status, Detail: detail})
 		} else {
-			displayPath = path
-			version = getVersion(p.VersionCmd)
+			version := env.GetVersion(p.VersionCmd)
 			if version == "" {
-				version = "-"
+				version = "unknown"
 			}
-			statusStr = color.Green("ok")
-		}
-
-		fmt.Fprintf(out, "  %s %s %s %s\n",
-			color.Pad(color.Blue(p.Name), 14),
-			color.Pad(color.Dim(version), 9),
-			color.Pad(color.Dim(displayPath), 42),
-			statusStr,
-		)
-	}
-
-	if len(missingList) > 0 {
-		fmt.Fprintf(out, "\n  %s\n", fmt.Sprintf("%d issue(s):", len(missingList)))
-		for _, m := range missingList {
-			note := ""
-			if m.p.Note != "" {
-				note = " (" + m.p.Note + ")"
-			}
-			fmt.Fprintf(out, "    %s: %s%s\n", m.p.Name, m.p.InstallHint, note)
+			results = append(results, CheckResult{
+				Label:  p.Name,
+				Status: "OK",
+				Detail: fmt.Sprintf("%s (%s)", version, path),
+			})
 		}
 	}
+	return results
 }
 
-// checkProjectHealth prints the Project Health section.
-func checkProjectHealth(out io.Writer, cfgPath string, state *doctorState) {
-	root := filepath.Dir(cfgPath)
+// ── Project health checks ──────────────────────────────────────────
 
-	// Load and validate config — if this fails, report the error and stop.
+func runProjectChecks(cfgPath string) (checks []CheckResult, projectName, projectRoot string) {
+	root := filepath.Dir(cfgPath)
+	projectRoot = root
+
 	proj, err := config.Load(cfgPath)
 	if err != nil {
-		fmt.Fprintf(out, "\n%s\n", color.CyanBold(fmt.Sprintf("Project: %s (%s)", "?", root)))
-		printCheck(out, "Config", "initech.yaml parse error: "+err.Error(), "ERROR")
-		state.warnings++
-		return
+		return []CheckResult{
+			{Label: "Config", Status: "FAIL", Detail: "initech.yaml parse error: " + err.Error()},
+		}, "?", root
 	}
+	projectName = proj.Name
 	if err := config.Validate(proj); err != nil {
-		fmt.Fprintf(out, "\n%s\n", color.CyanBold(fmt.Sprintf("Project: %s (%s)", proj.Name, root)))
-		printCheck(out, "Config", "initech.yaml invalid: "+err.Error(), "WARNING")
-		state.warnings++
-		return
+		return []CheckResult{
+			{Label: "Config", Status: "WARN", Detail: "initech.yaml invalid: " + err.Error()},
+		}, proj.Name, root
 	}
 
-	// Header: "Project: aegis (/path)"
-	fmt.Fprintf(out, "\n%s\n", color.CyanBold(fmt.Sprintf("Project: %s (%s)", proj.Name, root)))
+	checks = append(checks, CheckResult{
+		Label: "Config", Status: "OK",
+		Detail: fmt.Sprintf("initech.yaml valid (%d roles)", len(proj.Roles)),
+	})
 
-	// Config valid
-	printCheck(out, "Config",
-		fmt.Sprintf("initech.yaml valid (%d roles)", len(proj.Roles)), "ok")
-
-	// .beads/ present
+	// .beads/ directory
 	beadsDir := filepath.Join(root, ".beads")
 	if _, err := os.Stat(beadsDir); err != nil {
-		printCheck(out, "Beads", ".beads/ not found — run 'bd init'", "WARNING")
-		state.warnings++
+		checks = append(checks, CheckResult{Label: "Beads", Status: "WARN", Detail: ".beads/ not found — run 'bd init'"})
 	} else {
 		prefix := proj.Beads.Prefix
 		if prefix == "" {
 			prefix = "?"
 		}
-		printCheck(out, "Beads",
-			fmt.Sprintf(".beads/ present (prefix: %s)", prefix), "ok")
+		checks = append(checks, CheckResult{Label: "Beads", Status: "OK",
+			Detail: fmt.Sprintf(".beads/ present (prefix: %s)", prefix)})
 	}
 
 	// Agent workspaces: each role needs a CLAUDE.md
@@ -220,19 +228,18 @@ func checkProjectHealth(out io.Writer, cfgPath string, state *doctorState) {
 	total := len(proj.Roles)
 	ok := total - len(missingClaudes)
 	if len(missingClaudes) > 0 {
-		printCheck(out, "Workspaces",
-			fmt.Sprintf("%d/%d roles have CLAUDE.md", ok, total), "WARNING")
-		for _, r := range missingClaudes {
-			fmt.Fprintf(out, "  %s%s/ missing CLAUDE.md\n",
-				strings.Repeat(" ", 17), r)
-		}
-		state.warnings++
+		checks = append(checks, CheckResult{
+			Label: "Workspaces", Status: "WARN",
+			Detail: fmt.Sprintf("%d/%d roles have CLAUDE.md (missing: %s)", ok, total, strings.Join(missingClaudes, ", ")),
+		})
 	} else {
-		printCheck(out, "Workspaces",
-			fmt.Sprintf("%d/%d roles have CLAUDE.md", ok, total), "ok")
+		checks = append(checks, CheckResult{
+			Label: "Workspaces", Status: "OK",
+			Detail: fmt.Sprintf("%d/%d roles have CLAUDE.md", ok, total),
+		})
 	}
 
-	// src/ submodules: roles with NeedsSrc need a src/.git entry
+	// src/ submodules for roles that need them
 	var missingSubs []string
 	var needsSrcRoles []string
 	for _, role := range proj.Roles {
@@ -250,16 +257,15 @@ func checkProjectHealth(out io.Writer, cfgPath string, state *doctorState) {
 		subTotal := len(needsSrcRoles)
 		subOK := subTotal - len(missingSubs)
 		if len(missingSubs) > 0 {
-			printCheck(out, "Submodules",
-				fmt.Sprintf("%d/%d src/ submodules checked out", subOK, subTotal), "WARNING")
-			for _, r := range missingSubs {
-				fmt.Fprintf(out, "  %s%s/src/ not initialized (run: git submodule update --init %s/src)\n",
-					strings.Repeat(" ", 17), r, r)
-			}
-			state.warnings++
+			checks = append(checks, CheckResult{
+				Label: "Submodules", Status: "WARN",
+				Detail: fmt.Sprintf("%d/%d src/ submodules checked out (missing: %s)", subOK, subTotal, strings.Join(missingSubs, ", ")),
+			})
 		} else {
-			printCheck(out, "Submodules",
-				fmt.Sprintf("%d/%d src/ submodules checked out", subOK, subTotal), "ok")
+			checks = append(checks, CheckResult{
+				Label: "Submodules", Status: "OK",
+				Detail: fmt.Sprintf("%d/%d src/ submodules checked out", subOK, subTotal),
+			})
 		}
 	}
 
@@ -271,71 +277,145 @@ func checkProjectHealth(out io.Writer, cfgPath string, state *doctorState) {
 
 	switch {
 	case sockExists:
-		// Probe whether something is actually listening.
 		conn, dialErr := net.DialTimeout("unix", sockPath, 500*time.Millisecond)
 		if dialErr == nil {
 			conn.Close()
-			// Active session running — read PID if available.
 			pidStr := ""
 			if pidExists {
 				if data, err := os.ReadFile(pidPath); err == nil {
 					pidStr = " (PID " + strings.TrimSpace(string(data)) + ")"
 				}
 			}
-			printCheck(out, "Session", "Session running"+pidStr, "ok")
+			checks = append(checks, CheckResult{Label: "Session", Status: "OK", Detail: "Session running" + pidStr})
 		} else {
-			printCheck(out, "Session", "stale socket found — run: rm "+sockPath, "WARNING")
-			state.warnings++
+			checks = append(checks, CheckResult{Label: "Session", Status: "WARN", Detail: "stale socket found — run: rm " + sockPath})
 		}
 	case pidExists:
-		// No socket but PID file present — check if process is alive.
 		if data, err := os.ReadFile(pidPath); err == nil {
 			pidStr := strings.TrimSpace(string(data))
 			if pid, err := strconv.Atoi(pidStr); err == nil {
 				proc, _ := os.FindProcess(pid)
 				if proc != nil && proc.Signal(syscall.Signal(0)) == nil {
-					printCheck(out, "Session", "no stale socket or PID file", "ok")
+					checks = append(checks, CheckResult{Label: "Session", Status: "OK", Detail: "no stale socket or PID file"})
 				} else {
-					printCheck(out, "Session", fmt.Sprintf("stale PID file (PID %d not running)", pid), "WARNING")
-					state.warnings++
+					checks = append(checks, CheckResult{Label: "Session", Status: "WARN",
+						Detail: fmt.Sprintf("stale PID file (PID %d not running)", pid)})
 				}
 			} else {
-				printCheck(out, "Session", "no stale socket or PID file", "ok")
+				checks = append(checks, CheckResult{Label: "Session", Status: "OK", Detail: "no stale socket or PID file"})
 			}
 		} else {
-			printCheck(out, "Session", "no stale socket or PID file", "ok")
+			checks = append(checks, CheckResult{Label: "Session", Status: "OK", Detail: "no stale socket or PID file"})
 		}
 	default:
-		printCheck(out, "Session", "no stale socket or PID file", "ok")
+		checks = append(checks, CheckResult{Label: "Session", Status: "OK", Detail: "no stale socket or PID file"})
 	}
 
 	// Crash log
 	crashLog := filepath.Join(root, ".initech", "crash.log")
 	if info, err := os.Stat(crashLog); err == nil && info.Size() > 0 {
-		printCheck(out, "Crash log", "crash.log present (run initech to see analysis)", "NOTE")
+		checks = append(checks, CheckResult{Label: "Crash log", Status: "NOTE", Detail: "crash.log present (run initech to see analysis)"})
 	}
+
+	return checks, projectName, root
 }
 
-// checkEnvironment prints the Terminal Environment section (informational only).
-func checkEnvironment(out io.Writer) {
-	fmt.Fprintf(out, "\n%s\n", color.CyanBold("Environment"))
+// ── Remote connectivity checks ─────────────────────────────────────
+
+func runRemoteChecks(proj *config.Project, dial func(string, string, time.Duration) (net.Conn, error)) []CheckResult {
+	var results []CheckResult
+	for peerName, remote := range proj.Remotes {
+		conn, err := dial("tcp", remote.Addr, 5*time.Second)
+		if err != nil {
+			results = append(results, CheckResult{Label: peerName, Status: "WARN",
+				Detail: fmt.Sprintf("%s: unreachable (%s)", remote.Addr, err)})
+			continue
+		}
+
+		session, err := yamux.Client(conn, yamux.DefaultConfig())
+		if err != nil {
+			conn.Close()
+			results = append(results, CheckResult{Label: peerName, Status: "WARN",
+				Detail: fmt.Sprintf("%s: yamux failed (%s)", remote.Addr, err)})
+			continue
+		}
+
+		ctrl, err := session.Open()
+		if err != nil {
+			session.Close()
+			results = append(results, CheckResult{Label: peerName, Status: "WARN",
+				Detail: fmt.Sprintf("%s: control stream failed (%s)", remote.Addr, err)})
+			continue
+		}
+
+		token := remote.Token
+		if token == "" {
+			token = proj.Token
+		}
+		hello := tui.HelloMsg{
+			Action:   "hello",
+			Version:  1,
+			Token:    token,
+			PeerName: proj.PeerName,
+		}
+		data, _ := json.Marshal(hello)
+		ctrl.Write(data)
+		ctrl.Write([]byte("\n"))
+
+		scanner := bufio.NewScanner(ctrl)
+		ctrl.SetReadDeadline(time.Now().Add(5 * time.Second))
+		if !scanner.Scan() {
+			ctrl.Close()
+			session.Close()
+			results = append(results, CheckResult{Label: peerName, Status: "WARN",
+				Detail: fmt.Sprintf("%s: no response to hello", remote.Addr)})
+			continue
+		}
+
+		var helloOK tui.HelloOKMsg
+		if err := json.Unmarshal(scanner.Bytes(), &helloOK); err != nil || helloOK.Action != "hello_ok" {
+			var errMsg tui.ErrorMsg
+			json.Unmarshal(scanner.Bytes(), &errMsg)
+			ctrl.Close()
+			session.Close()
+			if errMsg.Error != "" {
+				results = append(results, CheckResult{Label: peerName, Status: "WARN",
+					Detail: fmt.Sprintf("%s: %s", remote.Addr, errMsg.Error)})
+			} else {
+				results = append(results, CheckResult{Label: peerName, Status: "WARN",
+					Detail: fmt.Sprintf("%s: unexpected response", remote.Addr)})
+			}
+			continue
+		}
+
+		ctrl.Close()
+		session.Close()
+
+		results = append(results, CheckResult{Label: peerName, Status: "OK",
+			Detail: fmt.Sprintf("%s (peer: %s, %d agents)", remote.Addr, helloOK.PeerName, len(helloOK.Agents))})
+	}
+	return results
+}
+
+// ── Environment checks ─────────────────────────────────────────────
+
+func runEnvironmentChecks() []CheckResult {
+	var results []CheckResult
 
 	termVal := os.Getenv("TERM")
 	if termVal == "" {
 		termVal = "(not set)"
 	}
-	printEnv(out, "TERM", termVal)
+	results = append(results, CheckResult{Label: "TERM", Status: "INFO", Detail: termVal})
 
-	// Terminal size — only meaningful when stdout is a TTY.
 	sizeStr := "unknown"
 	if term.IsTerminal(int(os.Stdout.Fd())) {
 		if cols, rows, err := term.GetSize(int(os.Stdout.Fd())); err == nil {
 			sizeStr = fmt.Sprintf("%d x %d", cols, rows)
 		}
 	}
-	printEnv(out, "Terminal", sizeStr)
+	results = append(results, CheckResult{Label: "Terminal", Status: "INFO", Detail: sizeStr})
 
-	// Color depth from COLORTERM + TERM.
 	colorSupport := "basic"
 	colorterm := strings.ToLower(os.Getenv("COLORTERM"))
 	if colorterm == "truecolor" || colorterm == "24bit" {
@@ -345,29 +425,128 @@ func checkEnvironment(out io.Writer) {
 	} else if termVal == "dumb" || termVal == "" || termVal == "(not set)" {
 		colorSupport = "none"
 	}
-	printEnv(out, "Colors", colorSupport)
+	results = append(results, CheckResult{Label: "Colors", Status: "INFO", Detail: colorSupport})
 
 	shell := os.Getenv("SHELL")
 	if shell == "" {
 		shell = "(not set)"
 	}
-	printEnv(out, "Shell", shell)
+	results = append(results, CheckResult{Label: "Shell", Status: "INFO", Detail: shell})
 
-	printEnv(out, "OS", runtime.GOOS+" "+runtime.GOARCH)
+	results = append(results, CheckResult{Label: "OS", Status: "INFO", Detail: runtime.GOOS + " " + runtime.GOARCH})
+
+	return results
 }
 
+// ── Cobra command ──────────────────────────────────────────────────
+
+func runDoctor(cmd *cobra.Command, args []string) error {
+	env := DefaultDoctorEnv()
+	report := RunDoctorReport(env)
+	return formatDoctorReport(cmd.OutOrStdout(), report)
+}
+
+func formatDoctorReport(out io.Writer, report DoctorReport) error {
+	// Section 1: Prerequisites
+	fmt.Fprintf(out, "\n%s\n", color.CyanBold("Prerequisites"))
+	var missingPrereqs []prereqDef
+	for i, r := range report.Prereqs {
+		status := r.Status
+		if status == "OK" {
+			// For prereqs with OK status, display version + path from Detail.
+			parts := strings.SplitN(r.Detail, " (", 2)
+			version := parts[0]
+			displayPath := "-"
+			if len(parts) > 1 {
+				displayPath = strings.TrimSuffix(parts[1], ")")
+			}
+			fmt.Fprintf(out, "  %s %s %s %s\n",
+				color.Pad(color.Blue(r.Label), 14),
+				color.Pad(color.Dim(version), 9),
+				color.Pad(color.Dim(displayPath), 42),
+				color.Green("ok"),
+			)
+		} else {
+			statusStr := color.YellowBold("MISSING")
+			if status == "FAIL" {
+				statusStr = color.RedBold("MISSING")
+			}
+			fmt.Fprintf(out, "  %s %s %s %s\n",
+				color.Pad(color.Blue(r.Label), 14),
+				color.Pad(color.Dim("-"), 9),
+				color.Pad(color.Dim("-"), 42),
+				statusStr,
+			)
+			if i < len(prereqList) {
+				missingPrereqs = append(missingPrereqs, prereqList[i])
+			}
+		}
+	}
+	if len(missingPrereqs) > 0 {
+		fmt.Fprintf(out, "\n  %s\n", fmt.Sprintf("%d issue(s):", len(missingPrereqs)))
+		for _, m := range missingPrereqs {
+			note := ""
+			if m.Note != "" {
+				note = " (" + m.Note + ")"
+			}
+			fmt.Fprintf(out, "    %s: %s%s\n", m.Name, m.InstallHint, note)
+		}
+	}
+
+	// Section 2: Project Health
+	if len(report.Project) > 0 {
+		fmt.Fprintf(out, "\n%s\n", color.CyanBold(fmt.Sprintf("Project: %s (%s)", report.ProjectName, report.ProjectRoot)))
+		for _, r := range report.Project {
+			printCheck(out, r.Label, r.Detail, r.Status)
+		}
+	} else if report.ProjectName == "" {
+		fmt.Fprintf(out, "\n%s\n", color.Dim("No initech.yaml found. Run 'initech init' to set up."))
+	}
+
+	// Section 3: Remote Connectivity
+	if len(report.Remotes) > 0 {
+		fmt.Fprintf(out, "\n%s\n", color.CyanBold("Remote Connectivity"))
+		for _, r := range report.Remotes {
+			printCheck(out, r.Label, r.Detail, r.Status)
+		}
+	}
+
+	// Section 4: Environment
+	fmt.Fprintf(out, "\n%s\n", color.CyanBold("Environment"))
+	for _, r := range report.Environment {
+		printEnv(out, r.Label, r.Detail)
+	}
+
+	// Summary
+	fmt.Fprintln(out)
+	switch {
+	case report.HasRequiredMissing():
+		fmt.Fprintln(out, color.RedBold("Required prerequisites missing. Install them before running initech."))
+		return fmt.Errorf("required prerequisites missing")
+	case report.WarningCount() > 0:
+		fmt.Fprintln(out, color.YellowBold(fmt.Sprintf(
+			"%d warning(s) found. The session will start but some agents may not work correctly.",
+			report.WarningCount(),
+		)))
+	default:
+		fmt.Fprintln(out, color.GreenBold("All checks passed."))
+	}
+	return nil
+}
+
+// ── Formatting helpers ─────────────────────────────────────────────
+
 // printCheck formats a single named check with a status tag.
-// label is left-padded to 12 chars; detail fills the middle; status is right-aligned.
 func printCheck(out io.Writer, label, detail, status string) {
 	statusStr := ""
 	switch status {
-	case "ok":
+	case "OK":
 		statusStr = color.Green("ok")
-	case "WARNING":
+	case "WARN":
 		statusStr = color.YellowBold("WARNING")
 	case "NOTE":
 		statusStr = color.Cyan("NOTE")
-	default: // ERROR, or any unknown
+	default: // FAIL, or any unknown
 		statusStr = color.RedBold(status)
 	}
 	fmt.Fprintf(out, "  %s %s %s\n",
@@ -385,97 +564,12 @@ func printEnv(out io.Writer, label, value string) {
 	)
 }
 
+// ── Utility functions ──────────────────────────────────────────────
+
 // fileExists returns true if the path exists (file or directory).
 func fileExists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil
-}
-
-// checkRemotes tests connectivity to each configured remote peer.
-func checkRemotes(out io.Writer, proj *config.Project, state *doctorState) {
-	fmt.Fprintf(out, "\n%s\n", color.CyanBold("Remote Connectivity"))
-
-	for peerName, remote := range proj.Remotes {
-		// TCP dial with timeout.
-		conn, err := net.DialTimeout("tcp", remote.Addr, 5*time.Second)
-		if err != nil {
-			printCheck(out, peerName,
-				fmt.Sprintf("%s: unreachable (%s)", remote.Addr, err), "WARNING")
-			state.warnings++
-			continue
-		}
-
-		// Attempt yamux + hello handshake.
-		session, err := yamux.Client(conn, yamux.DefaultConfig())
-		if err != nil {
-			conn.Close()
-			printCheck(out, peerName,
-				fmt.Sprintf("%s: yamux failed (%s)", remote.Addr, err), "WARNING")
-			state.warnings++
-			continue
-		}
-
-		ctrl, err := session.Open()
-		if err != nil {
-			session.Close()
-			printCheck(out, peerName,
-				fmt.Sprintf("%s: control stream failed (%s)", remote.Addr, err), "WARNING")
-			state.warnings++
-			continue
-		}
-
-		// Send hello.
-		token := remote.Token
-		if token == "" {
-			token = proj.Token
-		}
-		hello := tui.HelloMsg{
-			Action:   "hello",
-			Version:  1,
-			Token:    token,
-			PeerName: proj.PeerName,
-		}
-		data, _ := json.Marshal(hello)
-		ctrl.Write(data)
-		ctrl.Write([]byte("\n"))
-
-		// Read hello_ok.
-		scanner := bufio.NewScanner(ctrl)
-		ctrl.SetReadDeadline(time.Now().Add(5 * time.Second))
-		if !scanner.Scan() {
-			ctrl.Close()
-			session.Close()
-			printCheck(out, peerName,
-				fmt.Sprintf("%s: no response to hello", remote.Addr), "WARNING")
-			state.warnings++
-			continue
-		}
-
-		var helloOK tui.HelloOKMsg
-		if err := json.Unmarshal(scanner.Bytes(), &helloOK); err != nil || helloOK.Action != "hello_ok" {
-			// Check if it was an error response.
-			var errMsg tui.ErrorMsg
-			json.Unmarshal(scanner.Bytes(), &errMsg)
-			ctrl.Close()
-			session.Close()
-			if errMsg.Error != "" {
-				printCheck(out, peerName,
-					fmt.Sprintf("%s: %s", remote.Addr, errMsg.Error), "WARNING")
-			} else {
-				printCheck(out, peerName,
-					fmt.Sprintf("%s: unexpected response", remote.Addr), "WARNING")
-			}
-			state.warnings++
-			continue
-		}
-
-		ctrl.Close()
-		session.Close()
-
-		printCheck(out, peerName,
-			fmt.Sprintf("%s (peer: %s, %d agents)",
-				remote.Addr, helloOK.PeerName, len(helloOK.Agents)), "ok")
-	}
 }
 
 // getVersion runs versionCmd and extracts a version-looking token.

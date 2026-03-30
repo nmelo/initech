@@ -1,185 +1,313 @@
 package cmd
 
 import (
-	"bytes"
+	"bufio"
+	"encoding/json"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
+	"time"
+
+	"github.com/hashicorp/yamux"
+	"github.com/nmelo/initech/internal/config"
+	"github.com/nmelo/initech/internal/tui"
 )
 
-// TestDoctorPrereqsPresent verifies the prerequisites section prints the
-// expected header and tool names without crashing.
-func TestDoctorPrereqsPresent(t *testing.T) {
-	buf := &bytes.Buffer{}
-	state := &doctorState{}
-	checkPrereqs(buf, state)
+// ── Prereq checks ──────────────────────────────────────────────────
 
-	out := buf.String()
-	if !strings.Contains(out, "Prerequisites") {
-		t.Error("output should contain 'Prerequisites' header")
+func TestDoctorPrereqs_MissingClaude(t *testing.T) {
+	env := DoctorEnv{
+		LookPath: func(name string) (string, error) {
+			if name == "claude" {
+				return "", fmt.Errorf("not found")
+			}
+			return "/usr/bin/" + name, nil
+		},
+		GetVersion: func(cmd []string) string { return "1.0" },
 	}
-	if !strings.Contains(out, "claude") {
-		t.Error("output should mention 'claude'")
+
+	results := runPrereqChecks(env)
+
+	var claudeResult *CheckResult
+	for i := range results {
+		if results[i].Label == "claude" {
+			claudeResult = &results[i]
+			break
+		}
 	}
-	if !strings.Contains(out, "git") {
-		t.Error("output should mention 'git'")
+	if claudeResult == nil {
+		t.Fatal("expected a result for 'claude'")
 	}
-}
-
-// TestDoctorRequiredMissing verifies that when required tools are absent
-// (empty PATH), requiredMissing is set on state.
-func TestDoctorRequiredMissing(t *testing.T) {
-	t.Setenv("PATH", "")
-
-	state := &doctorState{}
-	buf := &bytes.Buffer{}
-	checkPrereqs(buf, state)
-
-	if !state.requiredMissing {
-		t.Error("requiredMissing should be true when claude and git are not found")
+	if claudeResult.Status != "FAIL" {
+		t.Errorf("claude status = %q, want FAIL (required binary missing)", claudeResult.Status)
 	}
 }
 
-// TestDoctorEnvironmentSection verifies the environment section emits all
-// expected labels and does not crash.
-func TestDoctorEnvironmentSection(t *testing.T) {
-	buf := &bytes.Buffer{}
-	checkEnvironment(buf)
+func TestDoctorPrereqs_AllPresent(t *testing.T) {
+	env := DoctorEnv{
+		LookPath:   func(name string) (string, error) { return "/usr/bin/" + name, nil },
+		GetVersion: func(cmd []string) string { return "2.5.0" },
+	}
 
-	out := buf.String()
-	for _, label := range []string{"Environment", "TERM", "Terminal", "Colors", "Shell", "OS"} {
-		if !strings.Contains(out, label) {
-			t.Errorf("environment section missing label %q; output:\n%s", label, out)
+	results := runPrereqChecks(env)
+
+	for _, r := range results {
+		if r.Status != "OK" {
+			t.Errorf("prereq %q: status = %q, want OK", r.Label, r.Status)
+		}
+	}
+	if len(results) != len(prereqList) {
+		t.Errorf("got %d results, want %d", len(results), len(prereqList))
+	}
+}
+
+func TestDoctorPrereqs_OptionalMissing(t *testing.T) {
+	env := DoctorEnv{
+		LookPath: func(name string) (string, error) {
+			if name == "bd" {
+				return "", fmt.Errorf("not found")
+			}
+			return "/usr/bin/" + name, nil
+		},
+		GetVersion: func(cmd []string) string { return "1.0" },
+	}
+
+	results := runPrereqChecks(env)
+
+	var bdResult *CheckResult
+	for i := range results {
+		if results[i].Label == "bd" {
+			bdResult = &results[i]
+			break
+		}
+	}
+	if bdResult == nil {
+		t.Fatal("expected a result for 'bd'")
+	}
+	if bdResult.Status != "WARN" {
+		t.Errorf("bd status = %q, want WARN (optional binary missing)", bdResult.Status)
+	}
+}
+
+// ── Project checks ─────────────────────────────────────────────────
+
+func TestDoctorProject_Valid(t *testing.T) {
+	dir := t.TempDir()
+
+	yaml := fmt.Sprintf("project: testproj\nroot: %s\nroles:\n  - super\n", dir)
+	os.WriteFile(filepath.Join(dir, "initech.yaml"), []byte(yaml), 0644)
+
+	for _, role := range []string{"super"} {
+		roleDir := filepath.Join(dir, role)
+		os.MkdirAll(roleDir, 0755)
+		os.WriteFile(filepath.Join(roleDir, "CLAUDE.md"), []byte("# "+role), 0644)
+	}
+	os.MkdirAll(filepath.Join(dir, ".beads"), 0755)
+
+	checks, name, root := runProjectChecks(filepath.Join(dir, "initech.yaml"))
+
+	if name != "testproj" {
+		t.Errorf("project name = %q, want testproj", name)
+	}
+	if root != dir {
+		t.Errorf("project root = %q, want %q", root, dir)
+	}
+
+	var configCheck *CheckResult
+	for i := range checks {
+		if checks[i].Label == "Config" {
+			configCheck = &checks[i]
+			break
+		}
+	}
+	if configCheck == nil {
+		t.Fatal("expected Config check result")
+	}
+	if configCheck.Status != "OK" {
+		t.Errorf("Config status = %q, want OK; detail: %s", configCheck.Status, configCheck.Detail)
+	}
+
+	for _, c := range checks {
+		if c.Status == "WARN" || c.Status == "FAIL" {
+			t.Errorf("check %q has status %q: %s", c.Label, c.Status, c.Detail)
 		}
 	}
 }
 
-// TestDoctorProjectSectionOk verifies that a clean project (all files in
-// place, no stale socket) produces zero warnings.
-func TestDoctorProjectSectionOk(t *testing.T) {
+func TestDoctorProject_Invalid(t *testing.T) {
 	dir := t.TempDir()
 
-	// Minimal initech.yaml with one role that has no NeedsSrc (super).
-	yaml := "project: testproj\nroot: " + dir + "\nroles:\n  - super\n"
-	cfgPath := filepath.Join(dir, "initech.yaml")
-	if err := os.WriteFile(cfgPath, []byte(yaml), 0644); err != nil {
+	// Missing 'name' field makes Validate fail.
+	os.WriteFile(filepath.Join(dir, "initech.yaml"), []byte("roles: [eng1]\n"), 0644)
+
+	checks, _, _ := runProjectChecks(filepath.Join(dir, "initech.yaml"))
+
+	if len(checks) == 0 {
+		t.Fatal("expected at least one check result")
+	}
+	if checks[0].Label != "Config" {
+		t.Errorf("first check label = %q, want Config", checks[0].Label)
+	}
+	if checks[0].Status != "WARN" && checks[0].Status != "FAIL" {
+		t.Errorf("Config status = %q, want WARN or FAIL", checks[0].Status)
+	}
+}
+
+func TestDoctorProject_MissingWorkspace(t *testing.T) {
+	dir := t.TempDir()
+
+	yaml := fmt.Sprintf("project: testproj\nroot: %s\nroles:\n  - super\n  - eng1\n", dir)
+	os.WriteFile(filepath.Join(dir, "initech.yaml"), []byte(yaml), 0644)
+
+	// Create super workspace but not eng1.
+	os.MkdirAll(filepath.Join(dir, "super"), 0755)
+	os.WriteFile(filepath.Join(dir, "super", "CLAUDE.md"), []byte("# super"), 0644)
+	os.MkdirAll(filepath.Join(dir, ".beads"), 0755)
+
+	checks, _, _ := runProjectChecks(filepath.Join(dir, "initech.yaml"))
+
+	var wsCheck *CheckResult
+	for i := range checks {
+		if checks[i].Label == "Workspaces" {
+			wsCheck = &checks[i]
+			break
+		}
+	}
+	if wsCheck == nil {
+		t.Fatal("expected Workspaces check result")
+	}
+	if wsCheck.Status != "WARN" {
+		t.Errorf("Workspaces status = %q, want WARN (eng1 missing CLAUDE.md)", wsCheck.Status)
+	}
+}
+
+// ── Remote checks ──────────────────────────────────────────────────
+
+func TestDoctorRemotes_Unreachable(t *testing.T) {
+	proj := &config.Project{
+		Name:     "test",
+		PeerName: "laptop",
+		Remotes: map[string]config.Remote{
+			"deadhost": {Addr: "192.0.2.1:9999"},
+		},
+	}
+
+	dial := func(network, addr string, timeout time.Duration) (net.Conn, error) {
+		return nil, fmt.Errorf("connection refused")
+	}
+
+	results := runRemoteChecks(proj, dial)
+
+	if len(results) != 1 {
+		t.Fatalf("got %d results, want 1", len(results))
+	}
+	if results[0].Status != "WARN" {
+		t.Errorf("status = %q, want WARN", results[0].Status)
+	}
+	if results[0].Label != "deadhost" {
+		t.Errorf("label = %q, want deadhost", results[0].Label)
+	}
+}
+
+func TestDoctorRemotes_Reachable(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
 		t.Fatal(err)
 	}
+	defer ln.Close()
 
-	// super/CLAUDE.md
-	superDir := filepath.Join(dir, "super")
-	os.MkdirAll(superDir, 0755)
-	os.WriteFile(filepath.Join(superDir, "CLAUDE.md"), []byte("# super"), 0644)
+	go func() {
+		conn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
 
-	// .beads/
-	os.MkdirAll(filepath.Join(dir, ".beads"), 0755)
+		session, err := yamux.Server(conn, yamux.DefaultConfig())
+		if err != nil {
+			return
+		}
+		defer session.Close()
 
-	buf := &bytes.Buffer{}
-	state := &doctorState{}
-	checkProjectHealth(buf, cfgPath, state)
+		ctrl, err := session.Accept()
+		if err != nil {
+			return
+		}
+		defer ctrl.Close()
 
-	if state.warnings != 0 {
-		t.Errorf("warnings = %d, want 0; output:\n%s", state.warnings, buf.String())
+		scanner := bufio.NewScanner(ctrl)
+		if !scanner.Scan() {
+			return
+		}
+
+		resp := tui.HelloOKMsg{
+			Action:   "hello_ok",
+			Version:  1,
+			PeerName: "workbench",
+			Agents: []tui.AgentStatus{
+				{Name: "eng1", Alive: true, Activity: "idle"},
+			},
+		}
+		data, _ := json.Marshal(resp)
+		ctrl.Write(data)
+		ctrl.Write([]byte("\n"))
+	}()
+
+	proj := &config.Project{
+		Name:     "test",
+		PeerName: "laptop",
+		Remotes: map[string]config.Remote{
+			"workbench": {Addr: ln.Addr().String()},
+		},
 	}
-	if !strings.Contains(buf.String(), "testproj") {
-		t.Error("output should contain project name")
+
+	results := runRemoteChecks(proj, net.DialTimeout)
+
+	if len(results) != 1 {
+		t.Fatalf("got %d results, want 1", len(results))
 	}
-}
-
-// TestDoctorProjectSectionMissingCLAUDE verifies that a missing CLAUDE.md
-// increments warnings and names the role.
-func TestDoctorProjectSectionMissingCLAUDE(t *testing.T) {
-	dir := t.TempDir()
-
-	yaml := "project: testproj\nroot: " + dir + "\nroles:\n  - super\n"
-	cfgPath := filepath.Join(dir, "initech.yaml")
-	os.WriteFile(cfgPath, []byte(yaml), 0644)
-
-	// Create super/ directory but NOT super/CLAUDE.md.
-	os.MkdirAll(filepath.Join(dir, "super"), 0755)
-	os.MkdirAll(filepath.Join(dir, ".beads"), 0755)
-
-	buf := &bytes.Buffer{}
-	state := &doctorState{}
-	checkProjectHealth(buf, cfgPath, state)
-
-	if state.warnings == 0 {
-		t.Error("should have at least one warning for missing CLAUDE.md")
+	if results[0].Status != "OK" {
+		t.Errorf("status = %q, want OK; detail: %s", results[0].Status, results[0].Detail)
 	}
-	if !strings.Contains(buf.String(), "super") {
-		t.Errorf("output should list 'super' as missing CLAUDE.md; got:\n%s", buf.String())
-	}
-}
-
-// TestDoctorProjectSectionStaleSocket verifies that a socket file with
-// nothing listening triggers a WARNING.
-func TestDoctorProjectSectionStaleSocket(t *testing.T) {
-	dir := t.TempDir()
-
-	yaml := "project: testproj\nroot: " + dir + "\nroles:\n  - super\n"
-	cfgPath := filepath.Join(dir, "initech.yaml")
-	os.WriteFile(cfgPath, []byte(yaml), 0644)
-
-	superDir := filepath.Join(dir, "super")
-	os.MkdirAll(superDir, 0755)
-	os.WriteFile(filepath.Join(superDir, "CLAUDE.md"), []byte("# super"), 0644)
-	os.MkdirAll(filepath.Join(dir, ".beads"), 0755)
-
-	// Write a socket path with no listener — DialTimeout will fail.
-	initechDir := filepath.Join(dir, ".initech")
-	os.MkdirAll(initechDir, 0755)
-	sockPath := filepath.Join(initechDir, "initech.sock")
-	os.WriteFile(sockPath, []byte{}, 0644)
-
-	buf := &bytes.Buffer{}
-	state := &doctorState{}
-	checkProjectHealth(buf, cfgPath, state)
-
-	if state.warnings == 0 {
-		t.Error("should have a warning for stale socket")
-	}
-	if !strings.Contains(buf.String(), "stale") {
-		t.Errorf("output should mention 'stale'; got:\n%s", buf.String())
+	if results[0].Label != "workbench" {
+		t.Errorf("label = %q, want workbench", results[0].Label)
 	}
 }
 
-// TestDoctorSummaryAllClear verifies the summary text for a clean state.
-func TestDoctorSummaryAllClear(t *testing.T) {
-	state := &doctorState{}
-	buf := &bytes.Buffer{}
-	switch {
-	case state.requiredMissing:
-		fmt.Fprintln(buf, "Required prerequisites missing.")
-	case state.warnings > 0:
-		fmt.Fprintf(buf, "%d warning(s) found.\n", state.warnings)
-	default:
-		fmt.Fprintln(buf, "All checks passed.")
+// ── Report summary ─────────────────────────────────────────────────
+
+func TestDoctorReport_HasRequiredMissing(t *testing.T) {
+	report := DoctorReport{
+		Prereqs: []CheckResult{
+			{Label: "claude", Status: "FAIL", Detail: "missing"},
+			{Label: "git", Status: "OK", Detail: "ok"},
+		},
 	}
-	if !strings.Contains(buf.String(), "All checks passed.") {
-		t.Errorf("summary should say 'All checks passed.'; got %q", buf.String())
+	if !report.HasRequiredMissing() {
+		t.Error("HasRequiredMissing should be true when a prereq has FAIL status")
+	}
+
+	report.Prereqs[0].Status = "OK"
+	if report.HasRequiredMissing() {
+		t.Error("HasRequiredMissing should be false when all prereqs are OK")
 	}
 }
 
-// TestDoctorSummaryWarnings verifies the summary text when warnings exist.
-func TestDoctorSummaryWarnings(t *testing.T) {
-	state := &doctorState{warnings: 2}
-	buf := &bytes.Buffer{}
-	switch {
-	case state.requiredMissing:
-		fmt.Fprintln(buf, "Required prerequisites missing.")
-	case state.warnings > 0:
-		fmt.Fprintf(buf, "%d warning(s) found.\n", state.warnings)
-	default:
-		fmt.Fprintln(buf, "All checks passed.")
+func TestDoctorReport_WarningCount(t *testing.T) {
+	report := DoctorReport{
+		Prereqs: []CheckResult{{Status: "WARN"}, {Status: "OK"}},
+		Project: []CheckResult{{Status: "WARN"}, {Status: "WARN"}},
+		Remotes: []CheckResult{{Status: "OK"}},
 	}
-	if !strings.Contains(buf.String(), "2 warning") {
-		t.Errorf("summary should mention warning count; got %q", buf.String())
+	if got := report.WarningCount(); got != 3 {
+		t.Errorf("WarningCount = %d, want 3", got)
 	}
 }
 
-// TestGetVersionDoctor verifies getVersion extracts a digit-leading token.
+// ── Utility ────────────────────────────────────────────────────────
+
 func TestGetVersionDoctor(t *testing.T) {
 	v := getVersion([]string{"git", "--version"})
 	if v == "" {
@@ -190,7 +318,6 @@ func TestGetVersionDoctor(t *testing.T) {
 	}
 }
 
-// TestFileExists verifies the fileExists helper.
 func TestFileExists(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "file.txt")
