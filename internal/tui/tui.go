@@ -221,7 +221,7 @@ func (t *TUI) applyLayout() {
 	if t.screen == nil {
 		return
 	}
-	for _, pr := range t.plan.Panes {
+	for i, pr := range t.plan.Panes {
 		old := pr.Pane.GetRegion()
 		if old != pr.Region {
 			if lp, ok := pr.Pane.(*Pane); ok {
@@ -230,9 +230,12 @@ func (t *TUI) applyLayout() {
 				rp.region = pr.Region
 			}
 			cols, rows := pr.Region.InnerSize()
+			LogInfo("applyLayout", "resizing pane", "idx", i, "name", pr.Pane.Name(), "rows", rows, "cols", cols)
 			pr.Pane.Resize(rows, cols)
+			LogInfo("applyLayout", "resize done", "idx", i, "name", pr.Pane.Name())
 		}
 	}
+	LogInfo("applyLayout", "all resizes complete")
 }
 
 // saveLayoutIfConfigured persists the current layout to disk.
