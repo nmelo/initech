@@ -96,6 +96,14 @@ func (t *TUI) renderEventLog() {
 	helpStyle := tcell.StyleDefault.Foreground(tcell.ColorGray)
 	emptyStyle := tcell.StyleDefault.Foreground(tcell.ColorDarkGray)
 
+	// Fill the entire screen with default background so no pane content
+	// bleeds through below the event list.
+	for y := 0; y < sh; y++ {
+		for x := 0; x < sw; x++ {
+			s.SetContent(x, y, ' ', nil, tcell.StyleDefault)
+		}
+	}
+
 	// Title bar.
 	count := len(t.eventLog)
 	var titleText string
