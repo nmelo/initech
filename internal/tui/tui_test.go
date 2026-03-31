@@ -398,10 +398,15 @@ func TestSocketPath(t *testing.T) {
 		t.Errorf("SocketPath with root = %q, want %q", got, want)
 	}
 
-	// With an empty root fall back to /tmp.
+	// With an empty root fall back to /tmp with random suffix.
 	got2 := SocketPath("", "myproject")
-	if got2 != "/tmp/initech-myproject.sock" {
-		t.Errorf("SocketPath empty root = %q, want /tmp/initech-myproject.sock", got2)
+	if !strings.HasPrefix(got2, "/tmp/initech-myproject-") || !strings.HasSuffix(got2, ".sock") {
+		t.Errorf("SocketPath empty root = %q, want /tmp/initech-myproject-<random>.sock", got2)
+	}
+	// Verify randomness: two calls produce different paths.
+	got3 := SocketPath("", "myproject")
+	if got2 == got3 {
+		t.Errorf("SocketPath should produce unique paths, got %q twice", got2)
 	}
 }
 

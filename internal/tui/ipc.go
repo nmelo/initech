@@ -2,6 +2,8 @@ package tui
 
 import (
 	"bufio"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -37,7 +39,10 @@ type IPCResponse struct {
 func SocketPath(projectRoot, projectName string) string {
 	if projectRoot == "" {
 		// Fallback for callers that don't have a project root (e.g. tests).
-		return fmt.Sprintf("/tmp/initech-%s.sock", projectName)
+		// Include random suffix to prevent socket-squatting attacks.
+		var b [8]byte
+		rand.Read(b[:])
+		return fmt.Sprintf("/tmp/initech-%s-%s.sock", projectName, hex.EncodeToString(b[:]))
 	}
 	return filepath.Join(projectRoot, ".initech", "initech.sock")
 }
