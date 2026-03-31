@@ -244,7 +244,23 @@ func Write(path string, p *Project) error {
 	if err != nil {
 		return fmt.Errorf("marshal config: %w", err)
 	}
-	return os.WriteFile(path, data, 0600)
+	out := addYAMLComments(string(data))
+	return os.WriteFile(path, []byte(out), 0600)
+}
+
+// addYAMLComments injects helpful comments after specific fields in the
+// marshaled YAML. Go's yaml.Marshal doesn't support comments natively.
+func addYAMLComments(yamlStr string) string {
+	lines := strings.Split(yamlStr, "\n")
+	var result []string
+	for _, line := range lines {
+		result = append(result, line)
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "listen:") {
+			result = append(result, "# use 0.0.0.0:PORT to accept remote connections (default: localhost only)")
+		}
+	}
+	return strings.Join(result, "\n")
 }
 
 func expandHome(path string) string {
