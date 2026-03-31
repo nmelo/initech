@@ -101,6 +101,8 @@ type RoleOverride struct {
 
 // Load reads, parses, and validates an initech.yaml file from the given path.
 // It expands ~ in the root field to the user's home directory.
+// If the config contains auth tokens and the file is group/world readable,
+// a warning is printed to stderr.
 func Load(path string) (*Project, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -118,7 +120,29 @@ func Load(path string) (*Project, error) {
 		return nil, fmt.Errorf("invalid config: %w", err)
 	}
 
+	// Warn if config contains tokens and file is group/world readable.
+	if hasTokens(&p) {
+		if info, err := os.Stat(path); err == nil {
+			if perm := info.Mode().Perm(); perm&0077 != 0 {
+				fmt.Fprintf(os.Stderr, "Warning: %s contains auth tokens but has permissions %o (should be 0600). Fix with: chmod 600 %s\n", path, perm, path)
+			}
+		}
+	}
+
 	return &p, nil
+}
+
+// hasTokens returns true if the project config contains any auth tokens.
+func hasTokens(p *Project) bool {
+	if p.Token != "" {
+		return true
+	}
+	for _, r := range p.Remotes {
+		if r.Token != "" {
+			return true
+		}
+	}
+	return false
 }
 
 // Discover finds an initech.yaml file by walking upward from dir.
@@ -212,7 +236,7 @@ func Write(path string, p *Project) error {
 	if err != nil {
 		return fmt.Errorf("marshal config: %w", err)
 	}
-	return os.WriteFile(path, data, 0644)
+	return os.WriteFile(path, data, 0600)
 }
 
 func expandHome(path string) string {

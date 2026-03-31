@@ -13,6 +13,7 @@ package tui
 
 import (
 	"bufio"
+	"crypto/subtle"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -518,8 +519,8 @@ func (d *Daemon) handleConnection(conn net.Conn) {
 		return
 	}
 
-	// Validate token.
-	if d.project.Token != "" && hello.Token != d.project.Token {
+	// Validate token (constant-time comparison to prevent timing side-channel).
+	if d.project.Token != "" && subtle.ConstantTimeCompare([]byte(hello.Token), []byte(d.project.Token)) != 1 {
 		LogWarn("daemon", "auth failed", "peer", hello.PeerName)
 		fmt.Fprintf(os.Stdout, "[%s] Client rejected: %s (auth failed)\n",
 			time.Now().Format("15:04:05"), conn.RemoteAddr())
