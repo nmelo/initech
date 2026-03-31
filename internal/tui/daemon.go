@@ -16,13 +16,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"strings"
 	"log/slog"
 	"net"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -56,6 +57,10 @@ type Daemon struct {
 	// Connected clients by peer name for host:agent routing and stale eviction.
 	clients        map[string]net.Conn       // peer name -> control stream
 	clientSessions map[string]*yamux.Session  // peer name -> yamux session
+	clientCtrlMu   map[string]*sync.Mutex    // per-client mutex for ctrl stream read/write serialization
+
+	// Monotonic counter for forward request IDs.
+	forwardSeq atomic.Int64
 }
 
 // ── Protocol messages ───────────────────────────────────────────────
@@ -367,13 +372,22 @@ func (d *Daemon) HandleSend(conn net.Conn, req IPCRequest) {
 	if req.Host != "" && req.Host != d.project.PeerName {
 		d.sessionsMu.Lock()
 		clientCtrl := d.clients[req.Host]
+		mu := d.clientCtrlMu[req.Host]
 		d.sessionsMu.Unlock()
 		if clientCtrl == nil {
 			writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("peer %q not connected. Run 'initech peers' to see available targets.", req.Host)})
 			return
 		}
 		fwd := ControlCmd{Action: "forward_send", Target: req.Target, Text: req.Text, Enter: req.Enter}
-		writeJSON(clientCtrl, fwd)
+		resp, err := d.forwardToClient(req.Host, clientCtrl, mu, fwd)
+		if err != nil {
+			writeIPCResponse(conn, IPCResponse{Error: err.Error()})
+			return
+		}
+		if resp.Error != "" {
+			writeIPCResponse(conn, IPCResponse{Error: resp.Error})
+			return
+		}
 		writeIPCResponse(conn, IPCResponse{OK: true})
 		return
 	}
@@ -382,10 +396,15 @@ func (d *Daemon) HandleSend(conn net.Conn, req IPCRequest) {
 		// Auto-route: target not found locally, forward to connected
 		// TUI clients. This lets remote agents use bare names like
 		// "initech send super msg" without a host prefix.
+		type clientEntry struct {
+			name string
+			ctrl net.Conn
+			mu   *sync.Mutex
+		}
 		d.sessionsMu.Lock()
-		var targets []net.Conn
-		for _, ctrl := range d.clients {
-			targets = append(targets, ctrl)
+		var targets []clientEntry
+		for name, ctrl := range d.clients {
+			targets = append(targets, clientEntry{name, ctrl, d.clientCtrlMu[name]})
 		}
 		d.sessionsMu.Unlock()
 		if len(targets) == 0 {
@@ -393,8 +412,24 @@ func (d *Daemon) HandleSend(conn net.Conn, req IPCRequest) {
 			return
 		}
 		fwd := ControlCmd{Action: "forward_send", Target: req.Target, Text: req.Text, Enter: req.Enter}
-		for _, ctrl := range targets {
-			writeJSON(ctrl, fwd)
+		var delivered bool
+		var lastErr string
+		for _, t := range targets {
+			resp, err := d.forwardToClient(t.name, t.ctrl, t.mu, fwd)
+			if err != nil {
+				lastErr = err.Error()
+				continue
+			}
+			if resp.Error != "" {
+				lastErr = resp.Error
+				continue
+			}
+			delivered = true
+			break
+		}
+		if !delivered {
+			writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("delivery failed: %s", lastErr)})
+			return
 		}
 		writeIPCResponse(conn, IPCResponse{OK: true})
 		return
@@ -503,6 +538,7 @@ func (d *Daemon) handleConnection(conn net.Conn) {
 		if d.clients == nil {
 			d.clients = make(map[string]net.Conn)
 			d.clientSessions = make(map[string]*yamux.Session)
+			d.clientCtrlMu = make(map[string]*sync.Mutex)
 		}
 		if oldSession, exists := d.clientSessions[hello.PeerName]; exists {
 			LogWarn("daemon", "evicting stale client", "peer", hello.PeerName)
@@ -514,12 +550,14 @@ func (d *Daemon) handleConnection(conn net.Conn) {
 		}
 		d.clients[hello.PeerName] = ctrl
 		d.clientSessions[hello.PeerName] = session
+		d.clientCtrlMu[hello.PeerName] = &sync.Mutex{}
 		d.sessionsMu.Unlock()
 		defer func() {
 			d.sessionsMu.Lock()
 			if d.clients[hello.PeerName] == ctrl {
 				delete(d.clients, hello.PeerName)
 				delete(d.clientSessions, hello.PeerName)
+				delete(d.clientCtrlMu, hello.PeerName)
 			}
 			d.sessionsMu.Unlock()
 		}()
@@ -823,6 +861,43 @@ func (d *Daemon) fireScheduledSend(timer Timer) {
 	}
 	p.SendText(timer.Text, timer.Enter)
 	LogInfo("timer", "delivered", "id", timer.ID, "target", timer.Target)
+}
+
+// forwardTimeout is the deadline for waiting on a client's delivery confirmation.
+const forwardTimeout = 5 * time.Second
+
+// forwardToClient sends a ControlCmd to a client's control stream and waits
+// for the delivery confirmation response. The per-client mutex serializes
+// concurrent forwards so writes and reads don't interleave. Returns the
+// client's ControlResp or an error on timeout/write failure.
+func (d *Daemon) forwardToClient(peerName string, ctrl net.Conn, mu *sync.Mutex, fwd ControlCmd) (ControlResp, error) {
+	fwd.ID = fmt.Sprintf("fwd-%d", d.forwardSeq.Add(1))
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	if err := writeJSON(ctrl, fwd); err != nil {
+		return ControlResp{}, fmt.Errorf("write to peer %s: %w", peerName, err)
+	}
+
+	ctrl.SetReadDeadline(time.Now().Add(forwardTimeout))
+	scanner := bufio.NewScanner(ctrl)
+	if !scanner.Scan() {
+		if err := scanner.Err(); err != nil {
+			return ControlResp{}, fmt.Errorf("delivery to peer %s timed out", peerName)
+		}
+		return ControlResp{}, fmt.Errorf("peer %s closed connection", peerName)
+	}
+	ctrl.SetReadDeadline(time.Time{})
+
+	var resp ControlResp
+	if err := json.Unmarshal(scanner.Bytes(), &resp); err != nil {
+		return ControlResp{}, fmt.Errorf("invalid response from peer %s: %w", peerName, err)
+	}
+	if resp.ID != fwd.ID {
+		return ControlResp{}, fmt.Errorf("response ID mismatch from peer %s: got %q, want %q", peerName, resp.ID, fwd.ID)
+	}
+	return resp, nil
 }
 
 // writeJSON encodes v as JSON and writes it as a newline-terminated line.

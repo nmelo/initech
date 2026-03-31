@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"net"
+	"sync"
 	"testing"
 	"time"
 
@@ -258,7 +259,18 @@ func TestDaemonIPCSend_HostRouting(t *testing.T) {
 	// daemon writes to ctrlAccept, test reads from ctrlDial.
 	d.sessionsMu.Lock()
 	d.clients["macbook"] = ctrlAccept
+	d.clientCtrlMu = map[string]*sync.Mutex{"macbook": {}}
 	d.sessionsMu.Unlock()
+
+	// Simulate client: read forward_send and respond with OK.
+	go func() {
+		sc := bufio.NewScanner(ctrlDial)
+		if sc.Scan() {
+			var cmd ControlCmd
+			json.Unmarshal(sc.Bytes(), &cmd)
+			writeJSON(ctrlDial, ControlResp{ID: cmd.ID, OK: true})
+		}
+	}()
 
 	server, client := net.Pipe()
 	defer client.Close()
@@ -288,14 +300,85 @@ func TestDaemonIPCSend_HostRouting(t *testing.T) {
 		t.Errorf("IPC send should succeed, got error: %s", resp.Error)
 	}
 
-	// Read forward_send from the client ctrl (TCP, buffered).
-	ctrlDial.SetReadDeadline(time.Now().Add(2 * time.Second))
-	sc := bufio.NewScanner(ctrlDial)
-	if !sc.Scan() {
-		t.Fatal("no forward_send on client ctrl")
+	// The forward_send was already consumed by the simulated client above.
+	// Verify the response was OK (delivery confirmed).
+	if resp.Error != "" {
+		t.Errorf("unexpected error: %s", resp.Error)
 	}
-	var fwd ControlCmd
-	json.Unmarshal(sc.Bytes(), &fwd)
+}
+
+func TestDaemonIPCSend_HostRouting_ForwardFields(t *testing.T) {
+	proj := &config.Project{
+		Name:     "test",
+		Root:     t.TempDir(),
+		PeerName: "workbench",
+		Roles:    []string{"eng1"},
+	}
+
+	d := &Daemon{
+		project: proj,
+		panes:   []*Pane{newEmuPane("eng1", 80, 24)},
+		clients: make(map[string]net.Conn),
+	}
+
+	ctrlLn, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ctrlLn.Close()
+	ctrlDial, err := net.Dial("tcp", ctrlLn.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ctrlDial.Close()
+	ctrlAccept, err := ctrlLn.Accept()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ctrlAccept.Close()
+
+	d.sessionsMu.Lock()
+	d.clients["macbook"] = ctrlAccept
+	d.clientCtrlMu = map[string]*sync.Mutex{"macbook": {}}
+	d.sessionsMu.Unlock()
+
+	// Capture forward_send fields and respond OK.
+	fwdCh := make(chan ControlCmd, 1)
+	go func() {
+		sc := bufio.NewScanner(ctrlDial)
+		if sc.Scan() {
+			var cmd ControlCmd
+			json.Unmarshal(sc.Bytes(), &cmd)
+			fwdCh <- cmd
+			writeJSON(ctrlDial, ControlResp{ID: cmd.ID, OK: true})
+		}
+	}()
+
+	server, client := net.Pipe()
+	defer client.Close()
+
+	go func() {
+		d.handleDaemonIPCConn(server)
+		server.Close()
+	}()
+
+	respCh := make(chan IPCResponse, 1)
+	go func() {
+		sc := bufio.NewScanner(client)
+		sc.Scan()
+		var r IPCResponse
+		json.Unmarshal(sc.Bytes(), &r)
+		respCh <- r
+	}()
+
+	req := IPCRequest{Action: "send", Target: "super", Host: "macbook", Text: "hello from daemon", Enter: true}
+	data, _ := json.Marshal(req)
+	client.Write(data)
+	client.Write([]byte("\n"))
+
+	<-respCh
+
+	fwd := <-fwdCh
 	if fwd.Action != "forward_send" {
 		t.Errorf("action = %q, want forward_send", fwd.Action)
 	}
@@ -383,7 +466,20 @@ func TestDaemonIPCSend_AutoRouteToClient(t *testing.T) {
 
 	d.sessionsMu.Lock()
 	d.clients["macbook"] = ctrlAccept
+	d.clientCtrlMu = map[string]*sync.Mutex{"macbook": {}}
 	d.sessionsMu.Unlock()
+
+	// Simulate client: read forward_send and respond with OK.
+	fwdCh := make(chan ControlCmd, 1)
+	go func() {
+		sc := bufio.NewScanner(ctrlDial)
+		if sc.Scan() {
+			var cmd ControlCmd
+			json.Unmarshal(sc.Bytes(), &cmd)
+			fwdCh <- cmd
+			writeJSON(ctrlDial, ControlResp{ID: cmd.ID, OK: true})
+		}
+	}()
 
 	server, client := net.Pipe()
 	defer client.Close()
@@ -414,14 +510,8 @@ func TestDaemonIPCSend_AutoRouteToClient(t *testing.T) {
 		t.Fatalf("auto-route send should succeed, got error: %s", resp.Error)
 	}
 
-	// Verify forward_send arrived on the client's control stream.
-	ctrlDial.SetReadDeadline(time.Now().Add(2 * time.Second))
-	sc := bufio.NewScanner(ctrlDial)
-	if !sc.Scan() {
-		t.Fatal("no forward_send on client ctrl")
-	}
-	var fwd ControlCmd
-	json.Unmarshal(sc.Bytes(), &fwd)
+	// Verify forward_send fields.
+	fwd := <-fwdCh
 	if fwd.Action != "forward_send" {
 		t.Errorf("action = %q, want forward_send", fwd.Action)
 	}
@@ -430,6 +520,9 @@ func TestDaemonIPCSend_AutoRouteToClient(t *testing.T) {
 	}
 	if fwd.Text != "auto-routed msg" {
 		t.Errorf("text = %q, want 'auto-routed msg'", fwd.Text)
+	}
+	if fwd.ID == "" {
+		t.Error("forward_send should have a non-empty ID for delivery confirmation")
 	}
 }
 
@@ -471,6 +564,153 @@ func TestDaemonIPCSend_AutoRouteNoClients(t *testing.T) {
 	}
 	if resp.Error == "" {
 		t.Error("should have error message")
+	}
+}
+
+// TestDaemonIPCSend_DeadClientTimeout verifies that forwarding to a dead
+// client returns a timeout error instead of silently succeeding.
+func TestDaemonIPCSend_DeadClientTimeout(t *testing.T) {
+	proj := &config.Project{
+		Name:     "test",
+		Root:     t.TempDir(),
+		PeerName: "workbench",
+		Roles:    []string{"eng1"},
+	}
+
+	d := &Daemon{
+		project: proj,
+		panes:   []*Pane{newEmuPane("eng1", 80, 24)},
+		clients: make(map[string]net.Conn),
+	}
+
+	ctrlLn, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ctrlLn.Close()
+	ctrlDial, err := net.Dial("tcp", ctrlLn.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctrlAccept, err := ctrlLn.Accept()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	d.sessionsMu.Lock()
+	d.clients["macbook"] = ctrlAccept
+	d.clientCtrlMu = map[string]*sync.Mutex{"macbook": {}}
+	d.sessionsMu.Unlock()
+
+	// Close the client side immediately to simulate a dead client.
+	ctrlDial.Close()
+
+	server, client := net.Pipe()
+	defer client.Close()
+
+	go func() {
+		d.handleDaemonIPCConn(server)
+		server.Close()
+	}()
+
+	respCh := make(chan IPCResponse, 1)
+	go func() {
+		sc := bufio.NewScanner(client)
+		sc.Scan()
+		var r IPCResponse
+		json.Unmarshal(sc.Bytes(), &r)
+		respCh <- r
+	}()
+
+	req := IPCRequest{Action: "send", Target: "super", Host: "macbook", Text: "hello", Enter: true}
+	data, _ := json.Marshal(req)
+	client.Write(data)
+	client.Write([]byte("\n"))
+
+	resp := <-respCh
+	if resp.OK {
+		t.Error("send to dead client should fail")
+	}
+	if resp.Error == "" {
+		t.Error("should have error message for dead client")
+	}
+}
+
+// TestDaemonIPCSend_ClientReturnsError verifies that when the client responds
+// with an error (e.g. agent not found), it is relayed to the agent.
+func TestDaemonIPCSend_ClientReturnsError(t *testing.T) {
+	proj := &config.Project{
+		Name:     "test",
+		Root:     t.TempDir(),
+		PeerName: "workbench",
+		Roles:    []string{"eng1"},
+	}
+
+	d := &Daemon{
+		project: proj,
+		panes:   []*Pane{newEmuPane("eng1", 80, 24)},
+		clients: make(map[string]net.Conn),
+	}
+
+	ctrlLn, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ctrlLn.Close()
+	ctrlDial, err := net.Dial("tcp", ctrlLn.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ctrlDial.Close()
+	ctrlAccept, err := ctrlLn.Accept()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ctrlAccept.Close()
+
+	d.sessionsMu.Lock()
+	d.clients["macbook"] = ctrlAccept
+	d.clientCtrlMu = map[string]*sync.Mutex{"macbook": {}}
+	d.sessionsMu.Unlock()
+
+	// Simulate client: respond with error.
+	go func() {
+		sc := bufio.NewScanner(ctrlDial)
+		if sc.Scan() {
+			var cmd ControlCmd
+			json.Unmarshal(sc.Bytes(), &cmd)
+			writeJSON(ctrlDial, ControlResp{ID: cmd.ID, Error: "agent \"super\" not found"})
+		}
+	}()
+
+	server, client := net.Pipe()
+	defer client.Close()
+
+	go func() {
+		d.handleDaemonIPCConn(server)
+		server.Close()
+	}()
+
+	respCh := make(chan IPCResponse, 1)
+	go func() {
+		sc := bufio.NewScanner(client)
+		sc.Scan()
+		var r IPCResponse
+		json.Unmarshal(sc.Bytes(), &r)
+		respCh <- r
+	}()
+
+	req := IPCRequest{Action: "send", Target: "super", Host: "macbook", Text: "hello", Enter: true}
+	data, _ := json.Marshal(req)
+	client.Write(data)
+	client.Write([]byte("\n"))
+
+	resp := <-respCh
+	if resp.OK {
+		t.Error("send should fail when client returns error")
+	}
+	if resp.Error == "" {
+		t.Error("should relay client error")
 	}
 }
 
