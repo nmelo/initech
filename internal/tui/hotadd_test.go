@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -121,6 +122,52 @@ func TestAddPane_EmptyName(t *testing.T) {
 	err := tui.addPane("")
 	if err == nil {
 		t.Fatal("expected error for empty name, got nil")
+	}
+}
+
+func TestAddPane_InvalidNames(t *testing.T) {
+	tui := &TUI{}
+	invalid := []string{
+		"../escape",
+		"has/slash",
+		"has space",
+		"null\x00byte",
+		"ctrl\x01char",
+		"back\\slash",
+		"semi;colon",
+		"pipe|char",
+		"$dollar",
+		"eng1:remote",
+	}
+	for _, name := range invalid {
+		if err := tui.addPane(name); err == nil {
+			t.Errorf("expected error for invalid name %q, got nil", name)
+		}
+	}
+}
+
+func TestAddPane_ValidNames(t *testing.T) {
+	// These should pass name validation (will fail later on missing workspace, etc.)
+	tui := &TUI{}
+	valid := []string{"eng1", "qa-1", "super_2", "Agent-X", "a"}
+	for _, name := range valid {
+		err := tui.addPane(name)
+		// Should NOT fail on name validation (will fail for other reasons like no builder).
+		if err != nil && err.Error() == fmt.Sprintf("invalid agent name %q: must contain only letters, digits, hyphens, or underscores", name) {
+			t.Errorf("valid name %q rejected by validation", name)
+		}
+	}
+}
+
+func TestAddPane_NameTooLong(t *testing.T) {
+	tui := &TUI{}
+	long := make([]byte, 65)
+	for i := range long {
+		long[i] = 'a'
+	}
+	err := tui.addPane(string(long))
+	if err == nil {
+		t.Fatal("expected error for overlength name")
 	}
 }
 

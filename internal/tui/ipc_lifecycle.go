@@ -11,7 +11,13 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"regexp"
 )
+
+// agentNameRe mirrors config.roleNameRe: letters, digits, hyphens, underscores.
+var agentNameRe = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
+
+const maxAgentNameLen = 64
 
 func (t *TUI) handleIPCStop(conn net.Conn, req IPCRequest) {
 	if req.Target == "" {
@@ -205,6 +211,12 @@ func (t *TUI) handleIPCRemove(conn net.Conn, req IPCRequest) {
 func (t *TUI) addPane(name string) error {
 	if name == "" {
 		return fmt.Errorf("name is required")
+	}
+	if len(name) > maxAgentNameLen {
+		return fmt.Errorf("agent name too long (max %d chars)", maxAgentNameLen)
+	}
+	if !agentNameRe.MatchString(name) {
+		return fmt.Errorf("invalid agent name %q: must contain only letters, digits, hyphens, or underscores", name)
 	}
 	// Check name uniqueness on main (reads t.panes).
 	var existsErr error
