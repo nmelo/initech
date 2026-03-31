@@ -35,7 +35,7 @@ var helpLines = []string{
 	"  view <n1> [n2]   Show only named panes, hide rest.",
 	"  layout reset     Reset to auto-calculated defaults.",
 	"  restart (r)      Kill and relaunch focused pane.",
-	"  patrol           Bulk peek all agents, copy to clipboard.",
+	"  patrol           Bulk peek all agents.",
 	"  top (ps)         Activity monitor (PID, memory, status).",
 	"  add <name>       Add a new agent pane.",
 	"  remove (rm) <n>  Remove an agent pane.",

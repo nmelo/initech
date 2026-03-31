@@ -782,7 +782,7 @@ func (t *TUI) cmdRestart(parts []string) bool {
 }
 
 func (t *TUI) cmdPatrol() bool {
-	// Build patrol output and copy to clipboard for easy pasting.
+	// Build patrol output summary.
 	var buf strings.Builder
 	for _, p := range t.panes {
 		header := p.Name() + " (" + p.Activity().String()
@@ -799,7 +799,7 @@ func (t *TUI) cmdPatrol() bool {
 		}
 		buf.WriteByte('\n')
 	}
-	t.cmd.error = copyToClipboard(buf.String())
+	t.cmd.error = fmt.Sprintf("patrol: %d agents", len(t.panes))
 	return false
 }
 

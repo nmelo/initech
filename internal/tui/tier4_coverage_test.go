@@ -337,6 +337,6 @@ func TestExecCmd_Patrol(t *testing.T) {
 		panes:       toPaneViews([]*Pane{{name: "eng1", emu: emu, alive: true, visible: true}}),
 		layoutState: DefaultLayoutState([]string{"eng1"}),
 	}
-	// Patrol copies to clipboard; just verify it doesn't crash.
+	// Patrol peeks all agents; just verify it doesn't crash.
 	tui.execCmd("patrol")
 }
