@@ -372,6 +372,10 @@ func (d *Daemon) HandleSend(conn net.Conn, req IPCRequest) {
 		writeIPCResponse(conn, IPCResponse{Error: "target is required"})
 		return
 	}
+	if len(req.Text) > maxSendTextLen {
+		writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("text too large (%d bytes, max %d)", len(req.Text), maxSendTextLen)})
+		return
+	}
 	// Cross-machine routing: if Host is set and doesn't match our peer name,
 	// forward via the connected client's control stream.
 	if req.Host != "" && req.Host != d.project.PeerName {
@@ -733,6 +737,10 @@ func (d *Daemon) handleControlStream(ctrl net.Conn, scanner *bufio.Scanner) {
 
 		switch cmd.Action {
 		case "send":
+			if len(cmd.Text) > maxSendTextLen {
+				if !respond(cmd.ID, ControlResp{Error: fmt.Sprintf("text too large (%d bytes, max %d)", len(cmd.Text), maxSendTextLen)}) { return }
+				continue
+			}
 			p := d.findPane(cmd.Target)
 			if p == nil {
 				if !respond(cmd.ID, ControlResp{Error: fmt.Sprintf("agent %q not found", cmd.Target)}) { return }
@@ -762,6 +770,10 @@ func (d *Daemon) handleControlStream(ctrl net.Conn, scanner *bufio.Scanner) {
 
 		case "forward_send":
 			// Received from a remote TUI: deliver to a local agent.
+			if len(cmd.Text) > maxSendTextLen {
+				if !respond(cmd.ID, ControlResp{Error: fmt.Sprintf("text too large (%d bytes, max %d)", len(cmd.Text), maxSendTextLen)}) { return }
+				continue
+			}
 			p := d.findPane(cmd.Target)
 			if p == nil {
 				if !respond(cmd.ID, ControlResp{Error: fmt.Sprintf("agent %q not found", cmd.Target)}) { return }
