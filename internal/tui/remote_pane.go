@@ -333,6 +333,7 @@ func (rp *RemotePane) Render(screen tcell.Screen, focused bool, dimmed bool, ind
 	_, innerRows := r.InnerSize()
 	emuStartRow := rp.emu.Height() - innerRows
 	renderCells(s, r, rp.emu, dimmed, emuStartRow)
+	renderSelection(s, r, rp.emu, sel, dimmed, emuStartRow)
 	renderCursor(s, r, rp.emu, focused, sel, emuStartRow)
 }
 

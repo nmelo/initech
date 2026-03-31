@@ -68,6 +68,51 @@ func renderCells(s *clampedScreen, r Region, emu *vt.SafeEmulator, dimmed bool, 
 	}
 }
 
+// renderSelection draws the yellow selection highlight over cells in the
+// selected range. emuStartRow is the emulator row that maps to visual row 0.
+func renderSelection(s *clampedScreen, r Region, emu *vt.SafeEmulator, sel Selection, dimmed bool, emuStartRow int) {
+	if !sel.Active {
+		return
+	}
+	innerCols, innerRows := r.InnerSize()
+	emuRows := emu.Height()
+
+	r0, c0, r1, c1 := sel.StartY, sel.StartX, sel.EndY, sel.EndX
+	if r0 > r1 || (r0 == r1 && c0 > c1) {
+		r0, c0, r1, c1 = r1, c1, r0, c0
+	}
+	selBg := tcell.ColorYellow
+	if dimmed {
+		selBg = tcell.ColorOlive
+	}
+	selStyle := tcell.StyleDefault.Background(selBg).Foreground(tcell.ColorBlack)
+	for row := r0; row <= r1 && row < innerRows; row++ {
+		emuRow := emuStartRow + row
+		if emuRow < 0 || emuRow >= emuRows {
+			continue
+		}
+		sc := 0
+		ec := innerCols
+		if row == r0 {
+			sc = c0
+		}
+		if row == r1 {
+			ec = c1 + 1
+		}
+		if ec > innerCols {
+			ec = innerCols
+		}
+		for col := sc; col < ec; col++ {
+			cell := emu.CellAt(col, emuRow)
+			ch := ' '
+			if cell != nil && cell.Content != "" {
+				ch = []rune(cell.Content)[0]
+			}
+			s.SetContent(r.X+col, r.Y+row, ch, nil, selStyle)
+		}
+	}
+}
+
 // renderCursor draws the cursor block if focused and no selection is active.
 // emuStartRow is the emulator row that maps to visual row 0.
 func renderCursor(s *clampedScreen, r Region, emu *vt.SafeEmulator, focused bool, sel Selection, emuStartRow int) {

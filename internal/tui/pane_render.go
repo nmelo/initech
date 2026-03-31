@@ -180,44 +180,7 @@ func (p *Pane) Render(screen tcell.Screen, focused bool, dimmed bool, index int,
 
 	// Selection and cursor are only drawn in live mode (not scrollback).
 	if p.scrollOffset == 0 {
-		// Selection highlight (yellow background, black text).
-		if sel.Active {
-			r0, c0, r1, c1 := sel.StartY, sel.StartX, sel.EndY, sel.EndX
-			if r0 > r1 || (r0 == r1 && c0 > c1) {
-				r0, c0, r1, c1 = r1, c1, r0, c0
-			}
-			selBg := tcell.ColorYellow
-			if dimmed {
-				selBg = tcell.ColorOlive // Muted highlight for dimmed panes.
-			}
-			selStyle := tcell.StyleDefault.Background(selBg).Foreground(tcell.ColorBlack)
-			for row := r0; row <= r1 && row < innerRows; row++ {
-				emuRow := startRow + (row - renderOffset)
-				if emuRow < 0 || emuRow >= emuRows {
-					continue
-				}
-				sc := 0
-				ec := innerCols
-				if row == r0 {
-					sc = c0
-				}
-				if row == r1 {
-					ec = c1 + 1
-				}
-				if ec > innerCols {
-					ec = innerCols
-				}
-				for col := sc; col < ec; col++ {
-					cell := p.emu.CellAt(col, emuRow)
-					ch := ' '
-					if cell != nil && cell.Content != "" {
-						ch = []rune(cell.Content)[0]
-					}
-					s.SetContent(r.X+col, r.Y+row, ch, nil, selStyle)
-				}
-			}
-		}
-
+		renderSelection(s, r, p.emu, sel, dimmed, startRow-renderOffset)
 		renderCursor(s, r, p.emu, focused, sel, startRow-renderOffset)
 	}
 

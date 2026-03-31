@@ -808,6 +808,46 @@ func TestHandleMouseReleaseClearsSelection(t *testing.T) {
 	}
 }
 
+// TestHandleMouseSelectionOnRemotePane verifies that mouse drag selection
+// works on RemotePane (not just local *Pane). This was the root cause of
+// the v0.25 "drag not working" bug: selection was gated behind *Pane assertion.
+func TestHandleMouseSelectionOnRemotePane(t *testing.T) {
+	tui, s := newTestTUIWithScreen("local")
+	// Replace local pane with a RemotePane.
+	r := tui.panes[0].(*Pane).region
+	rp := NewRemotePane("remote1", "workbench", nil, nil, 80, 24)
+	rp.region = r
+	rp.emu.Write([]byte("remote content here\r\n"))
+	tui.panes[0] = rp
+	// Pre-set focus to avoid applyLayout (which would resize the nil-mux RemotePane).
+	tui.layoutState.Focused = paneKey(rp)
+	_ = s
+
+	// Click on the remote pane.
+	ev := tcell.NewEventMouse(r.X+2, r.Y+1, tcell.Button1, tcell.ModNone)
+	tui.handleMouse(ev)
+	if !tui.sel.active {
+		t.Fatal("selection should start on RemotePane click")
+	}
+	if tui.sel.startX != 2 || tui.sel.startY != 1 {
+		t.Errorf("start = (%d,%d), want (2,1)", tui.sel.startX, tui.sel.startY)
+	}
+
+	// Drag.
+	ev = tcell.NewEventMouse(r.X+10, r.Y+1, tcell.Button1, tcell.ModNone)
+	tui.handleMouse(ev)
+	if tui.sel.endX != 10 {
+		t.Errorf("endX = %d, want 10", tui.sel.endX)
+	}
+
+	// Release.
+	ev = tcell.NewEventMouse(r.X+10, r.Y+1, tcell.ButtonNone, tcell.ModNone)
+	tui.handleMouse(ev)
+	if tui.sel.active {
+		t.Error("selection should be cleared after release")
+	}
+}
+
 // TestHandleMouseReleaseClearsSelectionAfterPaneSwap verifies that releasing
 // the mouse after the pane has been swapped (e.g. RemotePane replacing Pane)
 // still clears sel.active. A stuck selection blocks all future mouse clicks.

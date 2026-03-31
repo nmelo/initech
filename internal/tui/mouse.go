@@ -18,8 +18,8 @@ func (t *TUI) handleMouse(ev *tcell.EventMouse) {
 
 	switch {
 	case ev.Buttons()&tcell.Button1 != 0 && !t.sel.active:
-		// Button1 press: focus resolution works on all PaneViews (local + remote).
-		// Text selection and mouse forwarding only apply to local *Pane.
+		// Button1 press: focus + start selection on any PaneView (local + remote).
+		// Mouse forwarding to the child PTY is local *Pane only.
 		for i, pv := range t.panes {
 			if t.layoutState.Hidden[paneKey(pv)] {
 				continue
@@ -30,27 +30,31 @@ func (t *TUI) handleMouse(ev *tcell.EventMouse) {
 					t.layoutState.Focused = paneKey(pv)
 					t.applyLayout()
 				}
-				// Text selection + mouse forwarding: local panes only.
-				if p, ok := pv.(*Pane); ok {
-					lx := mx - r.X
-					ly := my - r.Y
-					if ly < 0 {
-						ly = 0
-					}
-					t.forwardMouseEvent(p, lx, ly, uv.MouseLeft, false, false, ev.Modifiers())
-					sr, ro := p.contentOffset()
-					t.sel.active = true
-					t.sel.pane = i
-					t.sel.startX = lx
-					t.sel.startY = ly
-					t.sel.endX = lx
-					t.sel.endY = ly
-					t.sel.startRow = sr
-					t.sel.renderOffset = ro
-					LogDebug("mouse", "selection started", "pane", pv.Name(), "idx", i, "lx", lx, "ly", ly, "startRow", sr, "renderOffset", ro)
-				} else {
-					LogDebug("mouse", "click on non-local pane", "pane", pv.Name(), "type", fmt.Sprintf("%T", pv))
+				lx := mx - r.X
+				ly := my - r.Y
+				if ly < 0 {
+					ly = 0
 				}
+				// Forward click to child PTY (local panes only).
+				var sr, ro int
+				if p, ok := pv.(*Pane); ok {
+					t.forwardMouseEvent(p, lx, ly, uv.MouseLeft, false, false, ev.Modifiers())
+					sr, ro = p.contentOffset()
+				} else {
+					// RemotePane: content is bottom-anchored, no scrollback.
+					_, innerRows := r.InnerSize()
+					sr = pv.Emulator().Height() - innerRows
+					ro = 0
+				}
+				t.sel.active = true
+				t.sel.pane = i
+				t.sel.startX = lx
+				t.sel.startY = ly
+				t.sel.endX = lx
+				t.sel.endY = ly
+				t.sel.startRow = sr
+				t.sel.renderOffset = ro
+				LogDebug("mouse", "selection started", "pane", pv.Name(), "idx", i, "lx", lx, "ly", ly, "startRow", sr, "renderOffset", ro)
 				return
 			}
 		}
