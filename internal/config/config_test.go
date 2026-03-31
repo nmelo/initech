@@ -434,8 +434,8 @@ token: secret123
 	if p.Mode != "headless" {
 		t.Errorf("Mode = %q, want 'headless'", p.Mode)
 	}
-	if p.Listen != ":7391" {
-		t.Errorf("Listen = %q, want ':7391'", p.Listen)
+	if p.Listen != "127.0.0.1:7391" {
+		t.Errorf("Listen = %q, want '127.0.0.1:7391' (normalized from ':7391')", p.Listen)
 	}
 	if p.Token != "secret123" {
 		t.Errorf("Token = %q, want 'secret123'", p.Token)
@@ -568,5 +568,49 @@ func TestValidate_BackwardsCompatible(t *testing.T) {
 	}
 	if err := Validate(p); err != nil {
 		t.Errorf("existing config without new fields should validate: %v", err)
+	}
+}
+
+func TestValidate_ListenNormalizesPortOnly(t *testing.T) {
+	p := &Project{
+		Name:     "x",
+		Root:     "/x",
+		Roles:    []string{"a"},
+		Mode:     "headless",
+		PeerName: "host",
+		Listen:   ":7391",
+	}
+	if err := Validate(p); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if p.Listen != "127.0.0.1:7391" {
+		t.Errorf("Listen = %q, want 127.0.0.1:7391", p.Listen)
+	}
+}
+
+func TestValidate_ListenExplicitHostUnchanged(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"0.0.0.0:7391", "0.0.0.0:7391"},
+		{"127.0.0.1:7391", "127.0.0.1:7391"},
+		{"192.168.1.100:7391", "192.168.1.100:7391"},
+	}
+	for _, tt := range tests {
+		p := &Project{
+			Name:     "x",
+			Root:     "/x",
+			Roles:    []string{"a"},
+			Mode:     "headless",
+			PeerName: "host",
+			Listen:   tt.input,
+		}
+		if err := Validate(p); err != nil {
+			t.Fatalf("unexpected error for %q: %v", tt.input, err)
+		}
+		if p.Listen != tt.want {
+			t.Errorf("Listen(%q) = %q, want %q", tt.input, p.Listen, tt.want)
+		}
 	}
 }

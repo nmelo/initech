@@ -46,7 +46,7 @@ type Project struct {
 	// Cross-machine coordination fields.
 	PeerName string            `yaml:"peer_name,omitempty"` // This instance's identity (e.g., "workbench").
 	Mode     string            `yaml:"mode,omitempty"`      // "" (default TUI) or "headless" (daemon).
-	Listen   string            `yaml:"listen,omitempty"`    // TCP listen addr for headless mode (e.g., ":7391").
+	Listen   string            `yaml:"listen,omitempty"`    // TCP listen addr for headless mode. Defaults to 127.0.0.1 if only port given (e.g., ":7391" becomes "127.0.0.1:7391"). Use "0.0.0.0:port" to bind all interfaces.
 	Token    string            `yaml:"token,omitempty"`     // Shared auth token.
 	Remotes  map[string]Remote `yaml:"remotes,omitempty"`   // Named remote peers.
 }
@@ -217,6 +217,11 @@ func Validate(p *Project) error {
 		if p.PeerName == "" {
 			return fmt.Errorf("peer_name is required in headless mode")
 		}
+	}
+	// Normalize listen address: ":port" binds all interfaces which is a
+	// security risk. Default to loopback (127.0.0.1) when only a port is given.
+	if p.Listen != "" && p.Listen[0] == ':' {
+		p.Listen = "127.0.0.1" + p.Listen
 	}
 	if p.PeerName != "" && !peerNameRe.MatchString(p.PeerName) {
 		return fmt.Errorf("invalid peer_name %q: must contain only letters, digits, or hyphens (no colons)", p.PeerName)
