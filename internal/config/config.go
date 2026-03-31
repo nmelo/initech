@@ -217,6 +217,9 @@ func Validate(p *Project) error {
 		if p.PeerName == "" {
 			return fmt.Errorf("peer_name is required in headless mode")
 		}
+		if p.Token == "" {
+			return fmt.Errorf("token is required in headless mode (unauthenticated daemon exposes all agent PTYs)")
+		}
 	}
 	// Normalize listen address: ":port" binds all interfaces which is a
 	// security risk. Default to loopback (127.0.0.1) when only a port is given.

@@ -510,6 +510,21 @@ func TestValidate_HeadlessRequiresPeerName(t *testing.T) {
 	}
 }
 
+func TestValidate_HeadlessRequiresToken(t *testing.T) {
+	p := &Project{
+		Name:     "x",
+		Root:     "/x",
+		Roles:    []string{"a"},
+		Mode:     "headless",
+		Listen:   ":7391",
+		PeerName: "node1",
+	}
+	err := Validate(p)
+	if err == nil || !strings.Contains(err.Error(), "token is required in headless mode") {
+		t.Errorf("err = %v, want token required", err)
+	}
+}
+
 func TestValidate_PeerNameNoColon(t *testing.T) {
 	p := &Project{
 		Name:     "x",
@@ -579,6 +594,7 @@ func TestValidate_ListenNormalizesPortOnly(t *testing.T) {
 		Mode:     "headless",
 		PeerName: "host",
 		Listen:   ":7391",
+		Token:    "test-token",
 	}
 	if err := Validate(p); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -605,6 +621,7 @@ func TestValidate_ListenExplicitHostUnchanged(t *testing.T) {
 			Mode:     "headless",
 			PeerName: "host",
 			Listen:   tt.input,
+			Token:    "test-token",
 		}
 		if err := Validate(p); err != nil {
 			t.Fatalf("unexpected error for %q: %v", tt.input, err)
