@@ -8,9 +8,9 @@
   <img src="assets/hero.jpg" alt="initech — run a fleet of Claude Code agents from one terminal" width="100%">
 </p>
 
-**initech** is a terminal runtime for coordinating teams of Claude Code agents. Each agent gets its own PTY-backed pane, reliable IPC messaging, and bead-aware state tracking — all in one TUI.
+<strong>No tmux required!!</strong>
 
-<strong>No tmux required.</strong>
+**initech** is a terminal runtime for coordinating teams of Claude Code agents. Each agent gets its own PTY-backed pane, reliable IPC messaging, and bead-aware state tracking — all in one TUI.
 
 ## Why
 
