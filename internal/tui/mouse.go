@@ -206,10 +206,6 @@ func (t *TUI) copySelection() {
 		return
 	}
 	pv := t.panes[t.sel.pane]
-	p, ok := pv.(*Pane)
-	if !ok {
-		return
-	}
 
 	// Normalize selection bounds (start may be after end).
 	r0, c0, r1, c1 := t.sel.startY, t.sel.startX, t.sel.endY, t.sel.endX
@@ -217,14 +213,14 @@ func (t *TUI) copySelection() {
 		r0, c0, r1, c1 = r1, c1, r0, c0
 	}
 
-	cols, rows := p.region.InnerSize()
+	cols, rows := pv.GetRegion().InnerSize()
 	if r1 >= rows {
 		r1 = rows - 1
 	}
 
 	startRow := t.sel.startRow
 	renderOffset := t.sel.renderOffset
-	emu := p.Emulator()
+	emu := pv.Emulator()
 	emuRows := emu.Height()
 
 	var buf strings.Builder
