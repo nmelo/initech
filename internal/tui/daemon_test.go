@@ -521,8 +521,8 @@ func TestDaemonIPCSend_AutoRouteToClient(t *testing.T) {
 	if fwd.Text != "auto-routed msg" {
 		t.Errorf("text = %q, want 'auto-routed msg'", fwd.Text)
 	}
-	if fwd.ID == "" {
-		t.Error("forward_send should have a non-empty ID for delivery confirmation")
+	if fwd.ID != "" {
+		t.Errorf("forward_send should have empty ID (fire-and-forget), got %q", fwd.ID)
 	}
 }
 
@@ -602,8 +602,10 @@ func TestDaemonIPCSend_DeadClientTimeout(t *testing.T) {
 	d.clientCtrlMu = map[string]*sync.Mutex{"macbook": {}}
 	d.sessionsMu.Unlock()
 
-	// Close the client side immediately to simulate a dead client.
+	// Close BOTH sides to simulate a dead client. Closing only the dial side
+	// may still allow writes to kernel buffers on the accept side.
 	ctrlDial.Close()
+	ctrlAccept.Close()
 
 	server, client := net.Pipe()
 	defer client.Close()
@@ -629,16 +631,16 @@ func TestDaemonIPCSend_DeadClientTimeout(t *testing.T) {
 
 	resp := <-respCh
 	if resp.OK {
-		t.Error("send to dead client should fail")
+		t.Error("send to dead client should fail (write error)")
 	}
 	if resp.Error == "" {
 		t.Error("should have error message for dead client")
 	}
 }
 
-// TestDaemonIPCSend_ClientReturnsError verifies that when the client responds
-// with an error (e.g. agent not found), it is relayed to the agent.
-func TestDaemonIPCSend_ClientReturnsError(t *testing.T) {
+// TestDaemonIPCSend_FireAndForget verifies that forward_send to a live client
+// succeeds immediately without waiting for a response (fire-and-forget).
+func TestDaemonIPCSend_FireAndForget(t *testing.T) {
 	proj := &config.Project{
 		Name:     "test",
 		Root:     t.TempDir(),
@@ -673,13 +675,14 @@ func TestDaemonIPCSend_ClientReturnsError(t *testing.T) {
 	d.clientCtrlMu = map[string]*sync.Mutex{"macbook": {}}
 	d.sessionsMu.Unlock()
 
-	// Simulate client: respond with error.
+	// Client does NOT respond. Fire-and-forget should still succeed.
+	fwdCh := make(chan ControlCmd, 1)
 	go func() {
 		sc := bufio.NewScanner(ctrlDial)
 		if sc.Scan() {
 			var cmd ControlCmd
 			json.Unmarshal(sc.Bytes(), &cmd)
-			writeJSON(ctrlDial, ControlResp{ID: cmd.ID, Error: "agent \"super\" not found"})
+			fwdCh <- cmd
 		}
 	}()
 
@@ -706,11 +709,14 @@ func TestDaemonIPCSend_ClientReturnsError(t *testing.T) {
 	client.Write([]byte("\n"))
 
 	resp := <-respCh
-	if resp.OK {
-		t.Error("send should fail when client returns error")
+	if !resp.OK {
+		t.Errorf("fire-and-forget should succeed immediately, got error: %s", resp.Error)
 	}
-	if resp.Error == "" {
-		t.Error("should relay client error")
+
+	// Verify the forward_send arrived at the client.
+	fwd := <-fwdCh
+	if fwd.Action != "forward_send" {
+		t.Errorf("action = %q, want forward_send", fwd.Action)
 	}
 }
 

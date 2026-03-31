@@ -23,7 +23,6 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -60,7 +59,6 @@ type Daemon struct {
 	clientCtrlMu   map[string]*sync.Mutex    // per-client mutex for ctrl stream read/write serialization
 
 	// Monotonic counter for forward request IDs.
-	forwardSeq atomic.Int64
 }
 
 // ── Protocol messages ───────────────────────────────────────────────
@@ -868,15 +866,15 @@ func (d *Daemon) fireScheduledSend(timer Timer) {
 	LogInfo("timer", "delivered", "id", timer.ID, "target", timer.Target)
 }
 
-// forwardTimeout is the deadline for waiting on a client's delivery confirmation.
-const forwardTimeout = 5 * time.Second
-
-// forwardToClient sends a ControlCmd to a client's control stream and waits
-// for the delivery confirmation response. The per-client mutex serializes
-// concurrent forwards so writes and reads don't interleave. Returns the
-// client's ControlResp or an error on timeout/write failure.
+// forwardToClient sends a forward_send command to a client's control stream.
+// Fire-and-forget: the TUI's consumeEvents handles delivery asynchronously.
+// No ID is stamped so the TUI's ControlMux routes it to the events channel
+// (not the pending-response map). The per-client mutex serializes writes.
 func (d *Daemon) forwardToClient(peerName string, ctrl net.Conn, mu *sync.Mutex, fwd ControlCmd) (ControlResp, error) {
-	fwd.ID = fmt.Sprintf("fwd-%d", d.forwardSeq.Add(1))
+	// Deliberately no ID: ControlMux routes id-less messages to the events
+	// channel where consumeEvents picks them up. Stamping an ID would route
+	// the message to the pending map where nobody is waiting, silently dropping it.
+	fwd.ID = ""
 
 	mu.Lock()
 	defer mu.Unlock()
@@ -884,25 +882,7 @@ func (d *Daemon) forwardToClient(peerName string, ctrl net.Conn, mu *sync.Mutex,
 	if err := writeJSON(ctrl, fwd); err != nil {
 		return ControlResp{}, fmt.Errorf("write to peer %s: %w", peerName, err)
 	}
-
-	ctrl.SetReadDeadline(time.Now().Add(forwardTimeout))
-	scanner := bufio.NewScanner(ctrl)
-	if !scanner.Scan() {
-		if err := scanner.Err(); err != nil {
-			return ControlResp{}, fmt.Errorf("delivery to peer %s timed out", peerName)
-		}
-		return ControlResp{}, fmt.Errorf("peer %s closed connection", peerName)
-	}
-	ctrl.SetReadDeadline(time.Time{})
-
-	var resp ControlResp
-	if err := json.Unmarshal(scanner.Bytes(), &resp); err != nil {
-		return ControlResp{}, fmt.Errorf("invalid response from peer %s: %w", peerName, err)
-	}
-	if resp.ID != fwd.ID {
-		return ControlResp{}, fmt.Errorf("response ID mismatch from peer %s: got %q, want %q", peerName, resp.ID, fwd.ID)
-	}
-	return resp, nil
+	return ControlResp{OK: true}, nil
 }
 
 // writeJSON encodes v as JSON and writes it as a newline-terminated line.
