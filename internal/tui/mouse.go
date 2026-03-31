@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"os/exec"
 	"strings"
 
@@ -13,6 +14,7 @@ func (t *TUI) handleMouse(ev *tcell.EventMouse) {
 		return
 	}
 	mx, my := ev.Position()
+	LogDebug("mouse", "event", "buttons", ev.Buttons(), "x", mx, "y", my, "sel_active", t.sel.active)
 
 	switch {
 	case ev.Buttons()&tcell.Button1 != 0 && !t.sel.active:
@@ -45,10 +47,14 @@ func (t *TUI) handleMouse(ev *tcell.EventMouse) {
 					t.sel.endY = ly
 					t.sel.startRow = sr
 					t.sel.renderOffset = ro
+					LogDebug("mouse", "selection started", "pane", pv.Name(), "idx", i, "lx", lx, "ly", ly, "startRow", sr, "renderOffset", ro)
+				} else {
+					LogDebug("mouse", "click on non-local pane", "pane", pv.Name(), "type", fmt.Sprintf("%T", pv))
 				}
 				return
 			}
 		}
+		LogDebug("mouse", "Button1 press: no pane hit", "x", mx, "y", my)
 
 	case ev.Buttons()&tcell.Button1 != 0 && t.sel.active:
 		// Drag: update selection end and forward motion.
@@ -75,6 +81,7 @@ func (t *TUI) handleMouse(ev *tcell.EventMouse) {
 			}
 			t.sel.endX = lx
 			t.sel.endY = ly
+			LogDebug("mouse", "drag", "endX", lx, "endY", ly, "pane", pv.Name())
 		}
 
 	case ev.Buttons() == tcell.ButtonNone && t.sel.active:
@@ -94,6 +101,7 @@ func (t *TUI) handleMouse(ev *tcell.EventMouse) {
 			}
 		}
 		t.copySelection()
+		LogDebug("mouse", "release", "sel_start", fmt.Sprintf("(%d,%d)", t.sel.startX, t.sel.startY), "sel_end", fmt.Sprintf("(%d,%d)", t.sel.endX, t.sel.endY))
 		t.sel.active = false
 
 	case ev.Buttons()&tcell.Button2 != 0:
