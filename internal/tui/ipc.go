@@ -104,17 +104,44 @@ func (t *TUI) handleIPCConn(conn net.Conn) {
 	}
 	LogDebug("ipc", "request", "action", req.Action, "target", req.Target)
 
+	dispatchIPC(t, conn, req, scanner.Bytes())
+}
+
+// ── IPCHost implementation ─────────────────────────────────────────
+
+func (t *TUI) FindPaneView(name string) (PaneView, bool) {
+	var pv PaneView
+	ok := t.runOnMain(func() { pv = t.findPaneByName(name) })
+	return pv, ok
+}
+
+func (t *TUI) AllPanes() ([]PaneInfo, bool) {
+	var panes []PaneInfo
+	ok := t.runOnMain(func() {
+		panes = make([]PaneInfo, len(t.panes))
+		for i, p := range t.panes {
+			panes[i] = PaneInfo{
+				Name:     p.Name(),
+				Host:     p.Host(),
+				Activity: p.Activity().String(),
+				Alive:    p.IsAlive(),
+				Visible:  !t.layoutState.Hidden[paneKey(p)],
+			}
+		}
+	})
+	return panes, ok
+}
+
+func (t *TUI) HandleSend(conn net.Conn, req IPCRequest) {
+	t.handleIPCSend(conn, req)
+}
+
+func (t *TUI) Timers() *TimerStore {
+	return t.timers
+}
+
+func (t *TUI) HandleExtended(conn net.Conn, req IPCRequest, rawJSON []byte) bool {
 	switch req.Action {
-	case "send":
-		// injectText holds sendMu for the duration of text delivery; clear the
-		// read deadline so it doesn't race with the initial 5s timeout.
-		// Other actions respond in microseconds and don't need the deadline cleared.
-		conn.SetReadDeadline(time.Time{})
-		t.handleIPCSend(conn, req)
-	case "peek":
-		t.handleIPCPeek(conn, req)
-	case "list":
-		t.handleIPCList(conn)
 	case "stop":
 		t.handleIPCStop(conn, req)
 	case "start":
@@ -131,17 +158,12 @@ func (t *TUI) handleIPCConn(conn net.Conn) {
 		t.handleIPCRemove(conn, req)
 	case "peers_query":
 		t.handleIPCPeers(conn)
-	case "schedule":
-		t.handleIPCSchedule(conn, scanner.Bytes())
-	case "list_timers":
-		t.handleIPCListTimers(conn)
-	case "cancel_timer":
-		t.handleIPCCancelTimer(conn, req)
 	case "quit":
 		t.handleIPCQuit(conn)
 	default:
-		writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("unknown action %q", req.Action)})
+		return false
 	}
+	return true
 }
 
 // maxSendTextLen is the maximum size of text accepted by the send IPC action.
@@ -334,22 +356,6 @@ func looksLikeInjectedText(promptContent, injectedText string) bool {
 	return false
 }
 
-func (t *TUI) handleIPCPeek(conn net.Conn, req IPCRequest) {
-	if req.Target == "" {
-		writeIPCResponse(conn, IPCResponse{Error: "target is required"})
-		return
-	}
-	var pv PaneView
-	if !t.runOnMain(func() { pv = t.findPaneByName(req.Target) }) {
-		writeIPCResponse(conn, IPCResponse{Error: "TUI shutting down"})
-		return
-	}
-	if pv == nil {
-		writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("pane %q not found", req.Target)})
-		return
-	}
-	writeIPCResponse(conn, IPCResponse{OK: true, Data: peekContent(pv, req.Lines)})
-}
 
 func (t *TUI) handleIPCPatrol(conn net.Conn, req IPCRequest) {
 	lines := req.Lines
@@ -423,30 +429,6 @@ func peekContent(p PaneView, lines int) string {
 	return buf.String()
 }
 
-func (t *TUI) handleIPCList(conn net.Conn) {
-	type paneInfo struct {
-		Name     string `json:"name"`
-		Host     string `json:"host,omitempty"`
-		Activity string `json:"activity"`
-		Alive    bool   `json:"alive"`
-		Visible  bool   `json:"visible"`
-	}
-	var panes []paneInfo
-	t.runOnMain(func() {
-		panes = make([]paneInfo, len(t.panes))
-		for i, p := range t.panes {
-			panes[i] = paneInfo{
-				Name:     p.Name(),
-				Host:     p.Host(),
-				Activity: p.Activity().String(),
-				Alive:    p.IsAlive(),
-				Visible:  !t.layoutState.Hidden[paneKey(p)],
-			}
-		}
-	})
-	data, _ := json.Marshal(panes)
-	writeIPCResponse(conn, IPCResponse{OK: true, Data: string(data)})
-}
 
 func (t *TUI) handleIPCBead(conn net.Conn, req IPCRequest) {
 	if req.Target == "" {
@@ -537,57 +519,6 @@ func hasStuckInput(p *Pane) bool {
 	return lastPromptContent != ""
 }
 
-func (t *TUI) handleIPCSchedule(conn net.Conn, rawJSON []byte) {
-	var req struct {
-		Target string `json:"target"`
-		Host   string `json:"host"`
-		Text   string `json:"text"`
-		Enter  bool   `json:"enter"`
-		FireAt string `json:"fire_at"`
-	}
-	if err := json.Unmarshal(rawJSON, &req); err != nil {
-		writeIPCResponse(conn, IPCResponse{Error: "invalid schedule request"})
-		return
-	}
-	fireAt, err := time.Parse(time.RFC3339, req.FireAt)
-	if err != nil {
-		writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("invalid fire_at: %v", err)})
-		return
-	}
-	if t.timers == nil {
-		writeIPCResponse(conn, IPCResponse{Error: "timer store not initialized"})
-		return
-	}
-	timer := t.timers.Add(req.Target, req.Host, req.Text, req.Enter, fireAt)
-	writeIPCResponse(conn, IPCResponse{OK: true, Data: timer.ID})
-}
-
-func (t *TUI) handleIPCListTimers(conn net.Conn) {
-	if t.timers == nil {
-		writeIPCResponse(conn, IPCResponse{OK: true, Data: "[]"})
-		return
-	}
-	timers := t.timers.List()
-	data, _ := json.Marshal(timers)
-	writeIPCResponse(conn, IPCResponse{OK: true, Data: string(data)})
-}
-
-func (t *TUI) handleIPCCancelTimer(conn net.Conn, req IPCRequest) {
-	if t.timers == nil {
-		writeIPCResponse(conn, IPCResponse{Error: "timer store not initialized"})
-		return
-	}
-	timer, err := t.timers.Cancel(req.Text)
-	if err != nil {
-		writeIPCResponse(conn, IPCResponse{Error: err.Error()})
-		return
-	}
-	target := timer.Target
-	if timer.Host != "" {
-		target = timer.Host + ":" + target
-	}
-	writeIPCResponse(conn, IPCResponse{OK: true, Data: fmt.Sprintf("%s (%s at %s)", timer.ID, target, timer.FireAt.Local().Format("15:04"))})
-}
 
 func (t *TUI) handleIPCQuit(conn net.Conn) {
 	writeIPCResponse(conn, IPCResponse{OK: true})

@@ -461,7 +461,7 @@ func TestHandleIPCList(t *testing.T) {
 	defer server.Close()
 	defer client.Close()
 
-	go tui.handleIPCList(server)
+	go dispatchIPC(tui, server, IPCRequest{Action: "list"}, nil)
 
 	buf := make([]byte, 4096)
 	n, _ := client.Read(buf)
@@ -504,7 +504,7 @@ func TestHandleIPCPeek(t *testing.T) {
 	defer server.Close()
 	defer client.Close()
 
-	go tui.handleIPCPeek(server, IPCRequest{Target: "eng1", Lines: 2})
+	go dispatchIPC(tui, server, IPCRequest{Action: "peek", Target: "eng1", Lines: 2}, nil)
 
 	buf := make([]byte, 8192)
 	n, _ := client.Read(buf)
@@ -525,7 +525,7 @@ func TestHandleIPCPeekMissingTarget(t *testing.T) {
 	defer server.Close()
 	defer client.Close()
 
-	go tui.handleIPCPeek(server, IPCRequest{Target: ""})
+	go dispatchIPC(tui, server, IPCRequest{Action: "peek", Target: ""}, nil)
 
 	buf := make([]byte, 1024)
 	n, _ := client.Read(buf)
@@ -542,7 +542,7 @@ func TestHandleIPCPeekUnknownTarget(t *testing.T) {
 	defer server.Close()
 	defer client.Close()
 
-	go tui.handleIPCPeek(server, IPCRequest{Target: "nonexistent"})
+	go dispatchIPC(tui, server, IPCRequest{Action: "peek", Target: "nonexistent"}, nil)
 
 	buf := make([]byte, 1024)
 	n, _ := client.Read(buf)

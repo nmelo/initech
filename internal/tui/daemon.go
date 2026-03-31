@@ -331,87 +331,85 @@ func (d *Daemon) handleDaemonIPCConn(conn net.Conn) {
 		return
 	}
 
-	switch req.Action {
-	case "send":
-		if req.Target == "" {
-			writeJSON(conn, IPCResponse{Error: "target is required"})
-			return
-		}
-		// Cross-machine routing: if Host is set and doesn't match our peer name,
-		// forward via the connected client's control stream.
-		if req.Host != "" && req.Host != d.project.PeerName {
-			d.sessionsMu.Lock()
-			clientCtrl := d.clients[req.Host]
-			d.sessionsMu.Unlock()
-			if clientCtrl == nil {
-				writeJSON(conn, IPCResponse{Error: fmt.Sprintf("peer %q not connected. Run 'initech peers' to see available targets.", req.Host)})
-				return
-			}
-			fwd := ControlCmd{Action: "forward_send", Target: req.Target, Text: req.Text, Enter: req.Enter}
-			writeJSON(clientCtrl, fwd)
-			writeJSON(conn, IPCResponse{OK: true})
-			return
-		}
-		p := d.findPane(req.Target)
-		if p == nil {
-			// Auto-route: target not found locally, forward to connected
-			// TUI clients. This lets remote agents use bare names like
-			// "initech send super msg" without a host prefix.
-			d.sessionsMu.Lock()
-			var targets []net.Conn
-			for _, ctrl := range d.clients {
-				targets = append(targets, ctrl)
-			}
-			d.sessionsMu.Unlock()
-			if len(targets) == 0 {
-				writeJSON(conn, IPCResponse{Error: fmt.Sprintf("pane %q not found locally and no clients connected", req.Target)})
-				return
-			}
-			fwd := ControlCmd{Action: "forward_send", Target: req.Target, Text: req.Text, Enter: req.Enter}
-			for _, ctrl := range targets {
-				writeJSON(ctrl, fwd)
-			}
-			writeJSON(conn, IPCResponse{OK: true})
-			return
-		}
-		conn.SetReadDeadline(time.Time{})
-		p.SendText(req.Text, req.Enter)
-		writeJSON(conn, IPCResponse{OK: true})
+	dispatchIPC(d, conn, req, scanner.Bytes())
+}
 
-	case "peek":
-		if req.Target == "" {
-			writeJSON(conn, IPCResponse{Error: "target is required"})
-			return
-		}
-		p := d.findPane(req.Target)
-		if p == nil {
-			writeJSON(conn, IPCResponse{Error: fmt.Sprintf("pane %q not found", req.Target)})
-			return
-		}
-		writeJSON(conn, IPCResponse{OK: true, Data: peekContent(p, req.Lines)})
+// ── IPCHost implementation ─────────────────────────────────────────
 
-	case "list":
-		type paneInfo struct {
-			Name     string `json:"name"`
-			Activity string `json:"activity"`
-			Alive    bool   `json:"alive"`
-			Visible  bool   `json:"visible"`
-		}
-		panes := make([]paneInfo, len(d.panes))
-		for i, p := range d.panes {
-			panes[i] = paneInfo{
-				Name:     p.Name(),
-				Activity: p.Activity().String(),
-				Alive:    p.IsAlive(),
-				Visible:  true,
-			}
-		}
-		data, _ := json.Marshal(panes)
-		writeJSON(conn, IPCResponse{OK: true, Data: string(data)})
-
-	default:
-		writeJSON(conn, IPCResponse{Error: fmt.Sprintf("unknown action %q", req.Action)})
+func (d *Daemon) FindPaneView(name string) (PaneView, bool) {
+	p := d.findPane(name)
+	if p == nil {
+		return nil, true
 	}
+	return p, true
+}
+
+func (d *Daemon) AllPanes() ([]PaneInfo, bool) {
+	panes := make([]PaneInfo, len(d.panes))
+	for i, p := range d.panes {
+		panes[i] = PaneInfo{
+			Name:     p.Name(),
+			Activity: p.Activity().String(),
+			Alive:    p.IsAlive(),
+			Visible:  true,
+		}
+	}
+	return panes, true
+}
+
+func (d *Daemon) HandleSend(conn net.Conn, req IPCRequest) {
+	if req.Target == "" {
+		writeIPCResponse(conn, IPCResponse{Error: "target is required"})
+		return
+	}
+	// Cross-machine routing: if Host is set and doesn't match our peer name,
+	// forward via the connected client's control stream.
+	if req.Host != "" && req.Host != d.project.PeerName {
+		d.sessionsMu.Lock()
+		clientCtrl := d.clients[req.Host]
+		d.sessionsMu.Unlock()
+		if clientCtrl == nil {
+			writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("peer %q not connected. Run 'initech peers' to see available targets.", req.Host)})
+			return
+		}
+		fwd := ControlCmd{Action: "forward_send", Target: req.Target, Text: req.Text, Enter: req.Enter}
+		writeJSON(clientCtrl, fwd)
+		writeIPCResponse(conn, IPCResponse{OK: true})
+		return
+	}
+	p := d.findPane(req.Target)
+	if p == nil {
+		// Auto-route: target not found locally, forward to connected
+		// TUI clients. This lets remote agents use bare names like
+		// "initech send super msg" without a host prefix.
+		d.sessionsMu.Lock()
+		var targets []net.Conn
+		for _, ctrl := range d.clients {
+			targets = append(targets, ctrl)
+		}
+		d.sessionsMu.Unlock()
+		if len(targets) == 0 {
+			writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("pane %q not found locally and no clients connected", req.Target)})
+			return
+		}
+		fwd := ControlCmd{Action: "forward_send", Target: req.Target, Text: req.Text, Enter: req.Enter}
+		for _, ctrl := range targets {
+			writeJSON(ctrl, fwd)
+		}
+		writeIPCResponse(conn, IPCResponse{OK: true})
+		return
+	}
+	conn.SetReadDeadline(time.Time{})
+	p.SendText(req.Text, req.Enter)
+	writeIPCResponse(conn, IPCResponse{OK: true})
+}
+
+func (d *Daemon) Timers() *TimerStore {
+	return d.timers
+}
+
+func (d *Daemon) HandleExtended(conn net.Conn, req IPCRequest, rawJSON []byte) bool {
+	return false
 }
 
 // handleConnection wraps a TCP connection in yamux, performs the hello
