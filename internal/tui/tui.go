@@ -8,6 +8,7 @@ import (
 	osexec "os/exec"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gdamore/tcell/v2"
@@ -157,6 +158,10 @@ type TUI struct {
 	// Build version for crash reports.
 	version     string
 	renderCount int // Frame counter for periodic render heartbeat logging.
+
+	// lastRenderAt stores the UnixNano timestamp of the last completed render.
+	// Updated atomically by render(), read by the watchdog goroutine.
+	lastRenderAt atomic.Int64
 
 	// Resource management gate. When false, all resource management
 	// (memory monitor, auto-suspend policy) is dormant.
@@ -602,6 +607,10 @@ func Run(cfg Config) error {
 			}
 		})
 	}
+
+	// Start render watchdog: if no render completes within 10s, dump all
+	// goroutine stacks to crash.log for post-mortem analysis of silent freezes.
+	go renderWatchdog(&t.lastRenderAt, 10*time.Second, t.projectRoot, t.version, t.quitCh)
 
 	// Render at ~30 fps.
 	ticker := time.NewTicker(33 * time.Millisecond)

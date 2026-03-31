@@ -97,6 +97,9 @@ func (t *TUI) render() {
 
 	s.Show()
 
+	// Stamp the watchdog heartbeat so it knows we're alive.
+	t.lastRenderAt.Store(time.Now().UnixNano())
+
 	if t.renderCount <= 5 || t.renderCount%150 == 0 {
 		LogInfo("render", "screen.Show done", "frame", t.renderCount)
 	}
