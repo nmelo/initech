@@ -212,12 +212,12 @@ func (rp *RemotePane) SendKey(ev *tcell.EventKey) {
 	var b []byte
 	if ev.Key() == tcell.KeyRune {
 		b = []byte(string(ev.Rune()))
+	} else if ev.Key() == tcell.KeyEnter && ev.Modifiers()&tcell.ModShift != 0 {
+		// Shift+Enter: send newline (not \r). Claude Code treats \n as
+		// "insert newline" vs \r as "submit".
+		b = []byte{'\n'}
 	} else {
-		// Try CSI-u encoding for modified special keys first.
-		b = csiUFallback(ev)
-		if b == nil {
-			b = tcellKeyToANSI(ev)
-		}
+		b = tcellKeyToANSI(ev)
 	}
 	if len(b) > 0 {
 		rp.stream.SetWriteDeadline(time.Now().Add(networkWriteTimeout))

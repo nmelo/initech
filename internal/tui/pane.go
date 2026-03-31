@@ -336,13 +336,12 @@ func (p *Pane) responseLoop() {
 // SendKey translates a tcell key event into a charmbracelet KeyPressEvent
 // and sends it through the emulator, which encodes it for the PTY.
 func (p *Pane) SendKey(ev *tcell.EventKey) {
-	// The charmbracelet/x/vt emulator doesn't support CSI-u encoding yet
-	// (TODO in its SendKey). Modified special keys (Shift+Enter, etc.) are
-	// silently dropped. For these, write the CSI-u sequence directly to the
-	// PTY, bypassing the emulator's SendKey.
-	if b := csiUFallback(ev); b != nil {
+	// Shift+Enter: send a plain newline to the PTY. Claude Code treats \n as
+	// "insert newline" vs \r (Enter) as "submit". The charmbracelet emulator's
+	// SendKey drops Shift+Enter silently (no CSI-u support), so write directly.
+	if ev.Key() == tcell.KeyEnter && ev.Modifiers()&tcell.ModShift != 0 {
 		if p.ptmx != nil {
-			p.ptmx.Write(b)
+			p.ptmx.Write([]byte{'\n'})
 		}
 		return
 	}
@@ -350,52 +349,6 @@ func (p *Pane) SendKey(ev *tcell.EventKey) {
 	p.emu.SendKey(kpe)
 }
 
-// csiUKeyMap maps tcell special keys to their CSI-u codepoint for encoding
-// modified keys that the charmbracelet emulator can't handle.
-var csiUKeyMap = map[tcell.Key]int{
-	tcell.KeyEnter:     13,
-	tcell.KeyTab:       9,
-	tcell.KeyBackspace: 127,
-	tcell.KeyEscape:    27,
-	tcell.KeyUp:        57352, // kitty functional key
-	tcell.KeyDown:      57353,
-	tcell.KeyRight:     57351,
-	tcell.KeyLeft:      57350,
-}
-
-// csiUFallback returns a CSI-u encoded byte sequence for modified special keys
-// that the charmbracelet emulator drops. Returns nil for unmodified keys or
-// keys that the emulator handles correctly.
-func csiUFallback(ev *tcell.EventKey) []byte {
-	mod := ev.Modifiers()
-	// Only needed when a modifier is present that the emulator would drop.
-	// Shift+Tab is already handled by the emulator (ESC[Z), so skip it.
-	if mod == 0 {
-		return nil
-	}
-	if ev.Key() == tcell.KeyBacktab {
-		return nil // Handled correctly by tcellKeyToUV -> emulator.
-	}
-	codepoint, ok := csiUKeyMap[ev.Key()]
-	if !ok {
-		return nil
-	}
-	// CSI-u modifier encoding: 1 + bitmask (shift=1, alt=2, ctrl=4).
-	m := 1
-	if mod&tcell.ModShift != 0 {
-		m += 1
-	}
-	if mod&tcell.ModAlt != 0 {
-		m += 2
-	}
-	if mod&tcell.ModCtrl != 0 {
-		m += 4
-	}
-	if m == 1 {
-		return nil // No recognized modifier bits set.
-	}
-	return []byte(fmt.Sprintf("\x1b[%d;%du", codepoint, m))
-}
 
 // SendPaste writes a bracketed paste marker to the PTY.
 // On start=true it writes \x1b[200~ (paste start); on start=false it writes
