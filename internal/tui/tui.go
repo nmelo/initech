@@ -267,6 +267,17 @@ func (t *TUI) focusedPane() PaneView {
 	return nil
 }
 
+// drainRemotePanes calls DrainData on every RemotePane, including hidden ones.
+// This prevents network data from accumulating in dataCh when a remote pane is
+// not visible in the layout (hidden panes skip Render entirely).
+func (t *TUI) drainRemotePanes() {
+	for _, p := range t.panes {
+		if rp, ok := p.(*RemotePane); ok {
+			rp.DrainData()
+		}
+	}
+}
+
 // checkForUpdate triggers a manual version check (Alt+u). Runs the check
 // in a background goroutine to avoid blocking the main event loop.
 func (t *TUI) checkForUpdate() {
@@ -594,6 +605,9 @@ func Run(cfg Config) error {
 		case <-t.quitCh:
 			return nil
 		}
+		// Drain all remote panes (visible or hidden) so network data doesn't
+		// accumulate in dataCh when a pane is hidden from the layout.
+		t.drainRemotePanes()
 		// Render after every select case, not just ticker.C. If another
 		// channel (eventCh, agentEvents, ipcCh) is always ready, the
 		// ticker.C case is starved by Go's random select and the screen

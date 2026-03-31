@@ -218,9 +218,13 @@ dataArrived:
 	s.SetSize(80, 25*len(panes))
 
 	// Render 10 frames (well past frame 5 where production blocks).
+	// DrainData is called before Render, matching the TUI main loop.
 	for frame := 1; frame <= 10; frame++ {
 		renderDone := make(chan struct{})
 		go func() {
+			for _, rp := range panes {
+				rp.DrainData()
+			}
 			for _, rp := range panes {
 				rp.Render(s, false, false, 1, Selection{})
 			}
@@ -299,8 +303,7 @@ func TestRemotePane_DAQueryDoesNotDeadlock(t *testing.T) {
 		rp.Start()
 
 		// Write data containing DA query sequence directly to the dataCh
-		// (simulating what readLoop does). Then call Render which drains
-		// dataCh into the emulator.
+		// (simulating what readLoop does). Then call DrainData + Render.
 		// Mix normal text + DA query + more text.
 		payload := []byte("hello\x1b[cworld\r\n")
 		rp.dataCh <- payload
@@ -311,15 +314,16 @@ func TestRemotePane_DAQueryDoesNotDeadlock(t *testing.T) {
 
 		done := make(chan struct{})
 		go func() {
+			rp.DrainData()
 			rp.Render(s, false, false, 1, Selection{})
 			close(done)
 		}()
 
 		select {
 		case <-done:
-			t.Log("Render completed (responseLoop drained DA response)")
+			t.Log("DrainData+Render completed (responseLoop drained DA response)")
 		case <-time.After(2 * time.Second):
-			t.Fatal("Render blocked for 2+ seconds (responseLoop not draining pipe)")
+			t.Fatal("DrainData blocked for 2+ seconds (responseLoop not draining pipe)")
 		}
 
 		rp.Close()

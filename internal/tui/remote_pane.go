@@ -286,6 +286,24 @@ func (rp *RemotePane) SendText(text string, enter bool) {
 	}()
 }
 
+// DrainData moves pending byte chunks from dataCh into the emulator. Called
+// by the TUI main loop for ALL remote panes (visible or hidden) so hidden
+// panes don't accumulate stale data. Budget limits bytes per call to prevent
+// stalls when the ring buffer replays megabytes into a new pane.
+func (rp *RemotePane) DrainData() {
+	const drainBudget = 128 * 1024 // 128KB per pane per tick.
+	drained := 0
+	for drained < drainBudget {
+		select {
+		case chunk := <-rp.dataCh:
+			rp.emu.Write(chunk)
+			drained += len(chunk)
+		default:
+			return
+		}
+	}
+}
+
 // Render draws the remote pane with [R] badge in the ribbon title.
 func (rp *RemotePane) Render(screen tcell.Screen, focused bool, dimmed bool, index int, sel Selection) {
 	r := rp.region
@@ -311,23 +329,6 @@ func (rp *RemotePane) Render(screen tcell.Screen, focused bool, dimmed bool, ind
 	}
 
 	renderRibbon(s, r, title, titleStyle, rp.BeadID())
-
-	// Drain pending byte chunks from readLoop and write to the emulator.
-	// Both drain and cell reads happen on the main goroutine, so no mutex
-	// is needed. Budget limits bytes per frame to prevent stalls when the
-	// ring buffer replays megabytes into a new pane.
-	const drainBudget = 128 * 1024 // 128KB per pane per frame.
-	drained := 0
-	for drained < drainBudget {
-		select {
-		case chunk := <-rp.dataCh:
-			rp.emu.Write(chunk)
-			drained += len(chunk)
-		default:
-			goto drainDone
-		}
-	}
-drainDone:
 
 	_, innerRows := r.InnerSize()
 	emuStartRow := rp.emu.Height() - innerRows
