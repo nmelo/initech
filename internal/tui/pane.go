@@ -754,6 +754,9 @@ func tcellKeyToUV(ev *tcell.EventKey) uv.KeyPressEvent {
 		return uv.KeyPressEvent(uv.Key{Code: uv.KeyBackspace, Mod: mod})
 	case tcell.KeyTab:
 		return uv.KeyPressEvent(uv.Key{Code: uv.KeyTab, Mod: mod})
+	case tcell.KeyBacktab:
+		// Shift+Tab: tcell reports this as a distinct key, not Tab+Shift.
+		return uv.KeyPressEvent(uv.Key{Code: uv.KeyTab, Mod: mod | uv.ModShift})
 	case tcell.KeyEscape:
 		return uv.KeyPressEvent(uv.Key{Code: uv.KeyEscape, Mod: mod})
 	case tcell.KeyUp:

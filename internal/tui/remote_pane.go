@@ -229,6 +229,9 @@ func tcellKeyToANSI(ev *tcell.EventKey) []byte {
 		return []byte{0x7f}
 	case tcell.KeyTab:
 		return []byte{'\t'}
+	case tcell.KeyBacktab:
+		// Shift+Tab: ESC [ Z is the standard reverse-tab ANSI sequence.
+		return []byte("\x1b[Z")
 	case tcell.KeyEscape:
 		return []byte{0x1b}
 	case tcell.KeyUp:
