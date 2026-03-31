@@ -503,7 +503,9 @@ func (d *Daemon) handleConnection(conn net.Conn) {
 		d.sessionsMu.Unlock()
 	}()
 
-	// Read hello from client.
+	// Read hello from client. Deadline prevents slow-loris attacks from
+	// holding a goroutine indefinitely without completing the handshake.
+	ctrl.SetReadDeadline(time.Now().Add(10 * time.Second))
 	scanner := bufio.NewScanner(ctrl)
 	if !scanner.Scan() {
 		LogWarn("daemon", "no hello received")
@@ -528,6 +530,9 @@ func (d *Daemon) handleConnection(conn net.Conn) {
 		writeJSON(ctrl, ErrorMsg{Action: "error", Error: "auth failed"})
 		return
 	}
+
+	// Handshake complete: clear the deadline for normal operation.
+	ctrl.SetReadDeadline(time.Time{})
 
 	LogInfo("daemon", "hello from", "peer", hello.PeerName, "version", hello.Version)
 	fmt.Fprintf(os.Stdout, "[%s] Client connected: %s (peer: %s)\n",
