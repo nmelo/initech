@@ -112,9 +112,44 @@ func TestIpcCall_MissingSocket(t *testing.T) {
 		}
 	}()
 
+	// Run from a temp dir with no initech.yaml so discoverSocket() fails.
+	dir := t.TempDir()
+	origDir, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(origDir)
+
 	_, err := ipcCall(tui.IPCRequest{Action: "list"})
 	if err == nil {
-		t.Error("expected error when INITECH_SOCKET is unset")
+		t.Error("expected error when INITECH_SOCKET is unset and no initech.yaml exists")
+	}
+}
+
+func TestIpcCall_FallbackToDiscoverSocket(t *testing.T) {
+	old := os.Getenv("INITECH_SOCKET")
+	os.Unsetenv("INITECH_SOCKET")
+	defer func() {
+		if old != "" {
+			os.Setenv("INITECH_SOCKET", old)
+		}
+	}()
+
+	// Create a project dir with initech.yaml so discoverSocket finds it.
+	dir := t.TempDir()
+	cfgContent := "project: testproj\nroot: " + dir + "\nroles:\n  - eng1\n"
+	os.WriteFile(dir+"/initech.yaml", []byte(cfgContent), 0600)
+	origDir, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(origDir)
+
+	// ipcCall should attempt to connect to the discovered socket (and fail
+	// because no TUI is running), NOT fail with "INITECH_SOCKET not set".
+	_, err := ipcCall(tui.IPCRequest{Action: "list"})
+	if err == nil {
+		t.Error("expected connection error (no TUI running)")
+	}
+	// The error should be about the session not running, not about env var.
+	if strings.Contains(err.Error(), "INITECH_SOCKET") {
+		t.Errorf("error mentions INITECH_SOCKET (should fall back to discover): %v", err)
 	}
 }
 

@@ -61,12 +61,17 @@ func runSend(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// ipcCall sends a request to the TUI's IPC socket (from INITECH_SOCKET env)
-// and returns the response.
+// ipcCall sends a request to the TUI's IPC socket and returns the response.
+// Resolution order: (1) INITECH_SOCKET env var, (2) discoverSocket() fallback
+// which locates the socket from the project's initech.yaml.
 func ipcCall(req tui.IPCRequest) (*tui.IPCResponse, error) {
 	sockPath := os.Getenv("INITECH_SOCKET")
 	if sockPath == "" {
-		return nil, fmt.Errorf("INITECH_SOCKET not set (are you running inside initech TUI?)")
+		discovered, _, err := discoverSocket()
+		if err != nil {
+			return nil, err
+		}
+		sockPath = discovered
 	}
 	return ipcCallSocket(sockPath, req)
 }
