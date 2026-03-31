@@ -127,7 +127,7 @@ func init() {
 	rootCmd.Flags().BoolVar(&resetLayout, "reset-layout", false, "Ignore saved layout and start with auto-calculated defaults")
 	rootCmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Enable DEBUG-level logging to .initech/initech.log")
 	rootCmd.Flags().BoolVar(&autoSuspend, "auto-suspend", false, "Enable automatic agent suspension under memory pressure")
-	rootCmd.Flags().StringVar(&pprofAddr, "pprof", "", "Start pprof HTTP server on the given address (e.g. localhost:6060)")
+	rootCmd.Flags().StringVar(&pprofAddr, "pprof", "", "Start pprof HTTP server on the given localhost address (e.g. localhost:6060)")
 	rootCmd.PersistentFlags().BoolVar(&noColor, "no-color", false, "Disable colored output")
 
 	// Register color functions as template functions so the usage template can
@@ -248,8 +248,17 @@ func runTUI(cmd *cobra.Command, args []string) error {
 		enableAutoSuspend = autoSuspend
 	}
 
-	// Start pprof HTTP server when --pprof is set.
+	// Start pprof HTTP server when --pprof is set. Restricted to localhost
+	// to prevent exposing goroutine dumps (which may contain in-memory tokens)
+	// to the network.
 	if pprofAddr != "" {
+		host, _, err := net.SplitHostPort(pprofAddr)
+		if err != nil {
+			return fmt.Errorf("pprof: invalid address %q: %w", pprofAddr, err)
+		}
+		if host != "localhost" && host != "127.0.0.1" && host != "::1" && host != "" {
+			return fmt.Errorf("pprof: refusing to bind to non-localhost address %q (security risk)", pprofAddr)
+		}
 		ln, err := net.Listen("tcp", pprofAddr)
 		if err != nil {
 			return fmt.Errorf("pprof listen on %s: %w", pprofAddr, err)
