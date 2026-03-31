@@ -217,14 +217,14 @@ func readState(path string) (*StateFile, error) {
 
 func writeState(path string, s *StateFile) {
 	dir := filepath.Dir(path)
-	os.MkdirAll(dir, 0755)
+	os.MkdirAll(dir, 0700)
 
 	data, err := json.MarshalIndent(s, "", "  ")
 	if err != nil {
 		return
 	}
 	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0644); err != nil {
+	if err := os.WriteFile(tmp, data, 0600); err != nil {
 		return
 	}
 	os.Rename(tmp, path)
