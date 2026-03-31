@@ -212,7 +212,11 @@ func (rp *RemotePane) SendKey(ev *tcell.EventKey) {
 	if ev.Key() == tcell.KeyRune {
 		b = []byte(string(ev.Rune()))
 	} else {
-		b = tcellKeyToANSI(ev)
+		// Try CSI-u encoding for modified special keys first.
+		b = csiUFallback(ev)
+		if b == nil {
+			b = tcellKeyToANSI(ev)
+		}
 	}
 	if len(b) > 0 {
 		rp.stream.SetWriteDeadline(time.Now().Add(networkWriteTimeout))
