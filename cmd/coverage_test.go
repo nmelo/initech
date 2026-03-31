@@ -7,8 +7,10 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
+	"github.com/nmelo/initech/internal/config"
 	"github.com/nmelo/initech/internal/tui"
 )
 
@@ -163,5 +165,41 @@ func TestDiscoverSocket_WithConfig(t *testing.T) {
 	}
 	if sockPath == "" {
 		t.Error("sockPath should not be empty")
+	}
+}
+
+func TestBuildAgentPaneConfig_RoleCommandOverride(t *testing.T) {
+	dir := t.TempDir()
+	os.MkdirAll(filepath.Join(dir, "claude-agent"), 0755)
+	os.MkdirAll(filepath.Join(dir, "codex-agent"), 0755)
+
+	proj := &config.Project{
+		Name:  "test",
+		Root:  dir,
+		Roles: []string{"claude-agent", "codex-agent"},
+		RoleOverrides: map[string]config.RoleOverride{
+			"codex-agent": {Command: []string{"codex", "--full-auto"}},
+		},
+	}
+
+	// Claude agent uses default command.
+	cfg1, err := buildAgentPaneConfig("claude-agent", proj)
+	if err != nil {
+		t.Fatalf("claude-agent: %v", err)
+	}
+	if cfg1.Command[0] != "claude" {
+		t.Errorf("claude-agent argv[0] = %q, want 'claude'", cfg1.Command[0])
+	}
+
+	// Codex agent uses per-role command override.
+	cfg2, err := buildAgentPaneConfig("codex-agent", proj)
+	if err != nil {
+		t.Fatalf("codex-agent: %v", err)
+	}
+	if cfg2.Command[0] != "codex" {
+		t.Errorf("codex-agent argv[0] = %q, want 'codex'", cfg2.Command[0])
+	}
+	if !strings.Contains(strings.Join(cfg2.Command, " "), "--full-auto") {
+		t.Errorf("codex-agent argv should contain --full-auto: %v", cfg2.Command)
 	}
 }
