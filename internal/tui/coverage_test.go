@@ -808,6 +808,34 @@ func TestHandleMouseReleaseClearsSelection(t *testing.T) {
 	}
 }
 
+// TestHandleMouseReleaseClearsSelectionAfterPaneSwap verifies that releasing
+// the mouse after the pane has been swapped (e.g. RemotePane replacing Pane)
+// still clears sel.active. A stuck selection blocks all future mouse clicks.
+func TestHandleMouseReleaseClearsSelectionAfterPaneSwap(t *testing.T) {
+	tui, _ := newTestTUIWithScreen("a")
+	tui.applyLayout()
+
+	r := tui.panes[0].(*Pane).region
+	// Start selection on local pane.
+	ev := tcell.NewEventMouse(r.X+1, r.Y+2, tcell.Button1, tcell.ModNone)
+	tui.handleMouse(ev)
+	if !tui.sel.active {
+		t.Fatal("selection should be active after click")
+	}
+
+	// Simulate pane being replaced with a RemotePane (e.g. handlePeerUpdate).
+	rp := NewRemotePane("a", "remote", nil, nil, 80, 24)
+	rp.region = r
+	tui.panes[0] = rp
+
+	// Release on the now-RemotePane slot. Must still clear sel.active.
+	ev = tcell.NewEventMouse(r.X+5, r.Y+3, tcell.ButtonNone, tcell.ModNone)
+	tui.handleMouse(ev)
+	if tui.sel.active {
+		t.Error("selection should be cleared after release even when pane type changed")
+	}
+}
+
 func TestHandleMouseWheelUp(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("a")
 	tui.applyLayout()

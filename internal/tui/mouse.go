@@ -19,7 +19,7 @@ func (t *TUI) handleMouse(ev *tcell.EventMouse) {
 		// Button1 press: focus resolution works on all PaneViews (local + remote).
 		// Text selection and mouse forwarding only apply to local *Pane.
 		for i, pv := range t.panes {
-			if t.layoutState.Hidden[pv.Name()] {
+			if t.layoutState.Hidden[paneKey(pv)] {
 				continue
 			}
 			r := pv.GetRegion()
@@ -53,9 +53,8 @@ func (t *TUI) handleMouse(ev *tcell.EventMouse) {
 	case ev.Buttons()&tcell.Button1 != 0 && t.sel.active:
 		// Drag: update selection end and forward motion.
 		if t.sel.pane < len(t.panes) {
-			p, _ := t.panes[t.sel.pane].(*Pane)
-			if p == nil { break }
-			r := p.region
+			pv := t.panes[t.sel.pane]
+			r := pv.GetRegion()
 			lx := mx - r.X
 			ly := my - r.Y
 			cols, rows := r.InnerSize()
@@ -71,23 +70,28 @@ func (t *TUI) handleMouse(ev *tcell.EventMouse) {
 			if ly >= rows {
 				ly = rows - 1
 			}
-			t.forwardMouseEvent(p, lx, ly, uv.MouseLeft, true, false, ev.Modifiers())
+			if p, ok := pv.(*Pane); ok {
+				t.forwardMouseEvent(p, lx, ly, uv.MouseLeft, true, false, ev.Modifiers())
+			}
 			t.sel.endX = lx
 			t.sel.endY = ly
 		}
 
 	case ev.Buttons() == tcell.ButtonNone && t.sel.active:
 		// Release: forward to pane, copy selection, and clear.
+		// Always clear selection state, even if the forward fails (pane gone,
+		// type assertion fails). A stuck sel.active blocks all future clicks.
 		if t.sel.pane < len(t.panes) {
-			p, _ := t.panes[t.sel.pane].(*Pane)
-			if p == nil { break }
-			r := p.region
+			pv := t.panes[t.sel.pane]
+			r := pv.GetRegion()
 			lx := mx - r.X
 			ly := my - r.Y
 			if ly < 0 {
 				ly = 0
 			}
-			t.forwardMouseEvent(p, lx, ly, uv.MouseNone, false, true, ev.Modifiers())
+			if p, ok := pv.(*Pane); ok {
+				t.forwardMouseEvent(p, lx, ly, uv.MouseNone, false, true, ev.Modifiers())
+			}
 		}
 		t.copySelection()
 		t.sel.active = false
@@ -104,7 +108,7 @@ func (t *TUI) handleMouse(ev *tcell.EventMouse) {
 		// Scroll back into history for the pane under cursor.
 		// Focus works on all PaneViews; scroll only on local *Pane.
 		for _, pv := range t.panes {
-			if t.layoutState.Hidden[pv.Name()] {
+			if t.layoutState.Hidden[paneKey(pv)] {
 				continue
 			}
 			r := pv.GetRegion()
