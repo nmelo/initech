@@ -74,6 +74,7 @@ func buildServeAgentConfig(roleName string, proj *config.Project) (tui.PaneConfi
 		argv = []string{mock}
 	} else {
 		// Per-role command override takes priority (e.g. ["codex"] for non-Claude agents).
+		// When Command is set, it is the complete command; claude_args are NOT appended.
 		ov, hasOverride := proj.RoleOverrides[roleName]
 		if hasOverride && len(ov.Command) > 0 {
 			argv = append(argv, ov.Command...)
@@ -83,13 +84,13 @@ func buildServeAgentConfig(roleName string, proj *config.Project) (tui.PaneConfi
 			} else {
 				argv = []string{"claude"}
 			}
-		}
-		var roleArgs []string
-		if hasOverride {
-			roleArgs = ov.ClaudeArgs
-		}
-		if resolved := roles.ResolveClaudeArgs(roleName, proj.ClaudeArgs, roleArgs); len(resolved) > 0 {
-			argv = append(argv, resolved...)
+			var roleArgs []string
+			if hasOverride {
+				roleArgs = ov.ClaudeArgs
+			}
+			if resolved := roles.ResolveClaudeArgs(roleName, proj.ClaudeArgs, roleArgs); len(resolved) > 0 {
+				argv = append(argv, resolved...)
+			}
 		}
 	}
 

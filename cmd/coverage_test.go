@@ -174,15 +174,16 @@ func TestBuildAgentPaneConfig_RoleCommandOverride(t *testing.T) {
 	os.MkdirAll(filepath.Join(dir, "codex-agent"), 0755)
 
 	proj := &config.Project{
-		Name:  "test",
-		Root:  dir,
-		Roles: []string{"claude-agent", "codex-agent"},
+		Name:      "test",
+		Root:      dir,
+		Roles:     []string{"claude-agent", "codex-agent"},
+		ClaudeArgs: []string{"--continue", "--dangerously-skip-permissions"},
 		RoleOverrides: map[string]config.RoleOverride{
 			"codex-agent": {Command: []string{"codex", "--full-auto"}},
 		},
 	}
 
-	// Claude agent uses default command.
+	// Claude agent uses default command + global claude_args.
 	cfg1, err := buildAgentPaneConfig("claude-agent", proj)
 	if err != nil {
 		t.Fatalf("claude-agent: %v", err)
@@ -190,8 +191,12 @@ func TestBuildAgentPaneConfig_RoleCommandOverride(t *testing.T) {
 	if cfg1.Command[0] != "claude" {
 		t.Errorf("claude-agent argv[0] = %q, want 'claude'", cfg1.Command[0])
 	}
+	joined1 := strings.Join(cfg1.Command, " ")
+	if !strings.Contains(joined1, "--continue") {
+		t.Errorf("claude-agent should have --continue: %v", cfg1.Command)
+	}
 
-	// Codex agent uses per-role command override.
+	// Codex agent uses per-role command override; claude_args must NOT be appended.
 	cfg2, err := buildAgentPaneConfig("codex-agent", proj)
 	if err != nil {
 		t.Fatalf("codex-agent: %v", err)
@@ -199,7 +204,11 @@ func TestBuildAgentPaneConfig_RoleCommandOverride(t *testing.T) {
 	if cfg2.Command[0] != "codex" {
 		t.Errorf("codex-agent argv[0] = %q, want 'codex'", cfg2.Command[0])
 	}
-	if !strings.Contains(strings.Join(cfg2.Command, " "), "--full-auto") {
-		t.Errorf("codex-agent argv should contain --full-auto: %v", cfg2.Command)
+	joined2 := strings.Join(cfg2.Command, " ")
+	if !strings.Contains(joined2, "--full-auto") {
+		t.Errorf("codex-agent should contain --full-auto: %v", cfg2.Command)
+	}
+	if strings.Contains(joined2, "--continue") || strings.Contains(joined2, "--dangerously-skip-permissions") {
+		t.Errorf("codex-agent should NOT have claude_args appended: %v", cfg2.Command)
 	}
 }
