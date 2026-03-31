@@ -624,30 +624,36 @@ func (t *TUI) cmdUnhide(parts []string) bool {
 
 func (t *TUI) cmdHide(parts []string) bool {
 	if len(parts) < 2 {
-		t.cmd.error = "usage: hide <name>"
-		return false
-	}
-	if parts[1] == "all" {
-		t.cmd.error = "cannot hide all panes"
-		return false
-	}
-	if t.findPaneByName(parts[1]) == nil {
-		t.cmd.error = fmt.Sprintf("unknown agent %q", parts[1])
-		return false
-	}
-	if t.layoutState.Hidden[parts[1]] {
-		return false // Already hidden.
-	}
-	if t.visibleCountFromState() <= 1 {
-		t.cmd.error = "cannot hide last visible pane"
+		t.cmd.error = "usage: hide <name> [name...]"
 		return false
 	}
 	if t.layoutState.Hidden == nil {
 		t.layoutState.Hidden = make(map[string]bool)
 	}
-	t.layoutState.Hidden[parts[1]] = true
-	t.recalcGrid(false)
-	t.saveLayoutIfConfigured()
+	var hidden int
+	for _, name := range parts[1:] {
+		if name == "all" {
+			t.cmd.error = "cannot hide all panes"
+			return false
+		}
+		if t.findPaneByName(name) == nil {
+			t.cmd.error = fmt.Sprintf("unknown agent %q", name)
+			return false
+		}
+		if t.layoutState.Hidden[name] {
+			continue // Already hidden.
+		}
+		if t.visibleCountFromState() <= 1 {
+			t.cmd.error = "cannot hide last visible pane"
+			return false
+		}
+		t.layoutState.Hidden[name] = true
+		hidden++
+	}
+	if hidden > 0 {
+		t.recalcGrid(false)
+		t.saveLayoutIfConfigured()
+	}
 	return false
 }
 

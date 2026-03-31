@@ -204,6 +204,44 @@ func TestShowNoArgError(t *testing.T) {
 	}
 }
 
+func TestHideMultipleAgents(t *testing.T) {
+	tui := newTestTUI(
+		testPane("super"),
+		testPane("eng1"),
+		testPane("eng2"),
+		testPane("qa1"),
+	)
+	tui.layoutState.Mode = LayoutGrid
+	tui.layoutState.GridCols, tui.layoutState.GridRows = 2, 2
+
+	tui.execCmd("hide eng1 eng2 qa1")
+	if tui.cmd.error != "" {
+		t.Errorf("unexpected error: %s", tui.cmd.error)
+	}
+	if !tui.layoutState.Hidden["eng1"] || !tui.layoutState.Hidden["eng2"] || !tui.layoutState.Hidden["qa1"] {
+		t.Error("eng1, eng2, qa1 should all be hidden")
+	}
+	if tui.layoutState.Hidden["super"] {
+		t.Error("super should remain visible")
+	}
+}
+
+func TestHideMultipleStopsAtLastVisible(t *testing.T) {
+	tui := newTestTUI(
+		testPane("super"),
+		testPane("eng1"),
+	)
+
+	tui.execCmd("hide super eng1")
+	if tui.cmd.error == "" {
+		t.Error("should error when hiding would leave no visible panes")
+	}
+	// First one should have been hidden, second refused.
+	if !tui.layoutState.Hidden["super"] {
+		t.Error("super should be hidden (processed before eng1)")
+	}
+}
+
 func TestHideNoArgError(t *testing.T) {
 	tui := newTestTUI(testPane("a"))
 	tui.execCmd("hide")
