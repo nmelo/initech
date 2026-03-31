@@ -507,6 +507,15 @@ func Run(cfg Config) error {
 			t.runOnMain(func() {
 				t.handlePeerUpdate(peerName, panes)
 			})
+		}, func(target, text string, enter bool) {
+			// Deliver forwarded message to local pane.
+			var pv PaneView
+			t.runOnMain(func() { pv = t.findPaneByName(target) })
+			if pv != nil {
+				pv.SendText(text, enter)
+			} else {
+				LogWarn("remote", "forward_send target not found", "target", target)
+			}
 		}, t.quitCh)
 		defer func() {
 			done := make(chan struct{})

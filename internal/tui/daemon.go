@@ -115,12 +115,17 @@ type ControlCmd struct {
 	FireAt string `json:"fire_at,omitempty"` // RFC3339 for schedule command.
 }
 
-// ControlResp is the response to a control command.
+// ControlResp is the response to a control command. It also carries unsolicited
+// server-pushed commands (e.g. forward_send) when Action is set.
 type ControlResp struct {
-	ID    string `json:"id,omitempty"` // Echoed from request for correlation.
-	OK    bool   `json:"ok"`
-	Error string `json:"error,omitempty"`
-	Data  string `json:"data,omitempty"`
+	ID     string `json:"id,omitempty"`     // Echoed from request for correlation.
+	OK     bool   `json:"ok"`
+	Error  string `json:"error,omitempty"`
+	Data   string `json:"data,omitempty"`
+	Action string `json:"action,omitempty"` // Set for unsolicited commands (e.g. "forward_send").
+	Target string `json:"target,omitempty"` // Agent name for forward_send.
+	Text   string `json:"text,omitempty"`   // Message text for forward_send.
+	Enter  bool   `json:"enter,omitempty"`  // Append Enter for forward_send.
 }
 
 // RunDaemon starts the headless daemon. Blocks until SIGINT/SIGTERM.

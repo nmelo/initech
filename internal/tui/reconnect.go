@@ -38,17 +38,22 @@ type peerManager struct {
 	// added or go offline. The callback receives the peer name and the
 	// new set of PaneViews for that peer (nil = all offline).
 	onPanesChanged func(peerName string, panes []PaneView)
-	quit           chan struct{}
-	wg             sync.WaitGroup
+	// onForwardSend is called when a daemon pushes a forward_send command
+	// through the control stream. The TUI delivers the message to the
+	// local pane named by target.
+	onForwardSend func(target, text string, enter bool)
+	quit          chan struct{}
+	wg            sync.WaitGroup
 }
 
 // newPeerManager creates a manager and starts a goroutine per remote peer.
 // All connections (initial and reconnect) happen in the background so the
 // TUI renders immediately without blocking on network I/O.
-func newPeerManager(project *config.Project, onChange func(string, []PaneView), quit chan struct{}) *peerManager {
+func newPeerManager(project *config.Project, onChange func(string, []PaneView), onFwd func(string, string, bool), quit chan struct{}) *peerManager {
 	pm := &peerManager{
 		project:        project,
 		onPanesChanged: onChange,
+		onForwardSend:  onFwd,
 		quit:           quit,
 	}
 	for peerName, remote := range project.Remotes {
@@ -96,6 +101,10 @@ func (pm *peerManager) managePeer(peerName string, remote config.Remote) {
 		heartbeatDone := make(chan struct{})
 		go pm.heartbeat(peerName, pc, heartbeatDone)
 
+		// Consume unsolicited events from the control stream (e.g. forward_send
+		// from the daemon routing a remote agent's message to a local pane).
+		go pm.consumeEvents(peerName, pc.mux, heartbeatDone)
+
 		// Monitor connection health: wait for all RemotePanes to go dead,
 		// which signals the yamux session died (either naturally or via
 		// heartbeat closing the session).
@@ -136,6 +145,27 @@ func (pm *peerManager) heartbeat(peerName string, pc *peerConn, done chan struct
 				pc.session.Close()
 				return
 			}
+		case <-done:
+			return
+		case <-pm.quit:
+			return
+		}
+	}
+}
+
+// consumeEvents drains unsolicited events from the ControlMux and handles
+// forward_send commands by delivering messages to local panes. Exits when
+// done or pm.quit is closed.
+func (pm *peerManager) consumeEvents(peerName string, mux *ControlMux, done chan struct{}) {
+	for {
+		select {
+		case ev := <-mux.Events():
+			if ev.Action == "forward_send" && pm.onForwardSend != nil {
+				LogInfo("remote", "forward_send received", "peer", peerName, "target", ev.Target)
+				pm.onForwardSend(ev.Target, ev.Text, ev.Enter)
+			}
+		case <-mux.Done():
+			return
 		case <-done:
 			return
 		case <-pm.quit:

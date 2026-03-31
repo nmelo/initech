@@ -51,7 +51,7 @@ func TestRenderNotBlockedByRemoteConnection(t *testing.T) {
 		tui.runOnMain(func() {
 			tui.handlePeerUpdate(peerName, panes)
 		})
-	}, quitCh)
+	}, nil, quitCh)
 
 	// Verify the TUI can render within 2 seconds (must not block on remote).
 	rendered := make(chan struct{})

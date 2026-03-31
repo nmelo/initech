@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"net"
 	"testing"
 	"time"
 )
@@ -56,4 +57,54 @@ func TestPeerManager_QuitsCleanly(t *testing.T) {
 	close(quit)
 	// Should not hang.
 	pm.wait()
+}
+
+func TestConsumeEvents_ForwardSend(t *testing.T) {
+	// Simulate a daemon pushing a forward_send command through the control
+	// stream. Verify the onForwardSend callback fires with the right args.
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+
+	mux := NewControlMux(client)
+	defer mux.Close()
+
+	delivered := make(chan struct{})
+	var gotTarget, gotText string
+	var gotEnter bool
+
+	quit := make(chan struct{})
+	done := make(chan struct{})
+	pm := &peerManager{
+		quit: quit,
+		onForwardSend: func(target, text string, enter bool) {
+			gotTarget = target
+			gotText = text
+			gotEnter = enter
+			close(delivered)
+		},
+	}
+
+	go pm.consumeEvents("testpeer", mux, done)
+
+	// Write a forward_send command to the server side (daemon writes this).
+	cmd := ControlCmd{Action: "forward_send", Target: "super", Text: "hello from remote", Enter: true}
+	writeJSON(server, cmd)
+
+	select {
+	case <-delivered:
+		if gotTarget != "super" {
+			t.Errorf("target = %q, want super", gotTarget)
+		}
+		if gotText != "hello from remote" {
+			t.Errorf("text = %q, want 'hello from remote'", gotText)
+		}
+		if !gotEnter {
+			t.Error("enter should be true")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("forward_send not delivered within 2s")
+	}
+
+	close(done)
 }
