@@ -310,6 +310,7 @@ func (d *Daemon) startDaemonIPC(socketPath string) (func(), error) {
 	if err != nil {
 		return nil, err
 	}
+	os.Chmod(socketPath, 0700)
 
 	go func() {
 		for {
