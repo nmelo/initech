@@ -98,6 +98,7 @@ type RoleOverride struct {
 	RepoName   string   `yaml:"repo_name,omitempty"`
 	Command    []string `yaml:"command,omitempty"`      // Override the agent command entirely (e.g. ["codex"]).
 	ClaudeArgs []string `yaml:"claude_args,omitempty"`
+	SubmitKey  string   `yaml:"submit_key,omitempty"` // "enter" (default) or "ctrl+enter".
 }
 
 // Load reads, parses, and validates an initech.yaml file from the given path.

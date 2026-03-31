@@ -155,6 +155,7 @@ func (rp *RemotePane) IsAlive() bool {
 
 func (rp *RemotePane) IsSuspended() bool { return false }
 func (rp *RemotePane) IsPinned() bool    { return false }
+func (rp *RemotePane) SubmitKey() string { return "" } // Remote panes use daemon-side config.
 
 func (rp *RemotePane) Activity() ActivityState {
 	rp.mu.Lock()

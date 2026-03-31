@@ -78,6 +78,7 @@ type PaneView interface {
 	SetBead(id, title string)
 	SendKey(ev *tcell.EventKey)
 	SendText(text string, enter bool)
+	SubmitKey() string // "" or "enter" (default), "ctrl+enter".
 	Render(screen tcell.Screen, focused bool, dimmed bool, index int, sel Selection)
 	Resize(rows, cols int)
 	Close()
@@ -138,6 +139,7 @@ type Pane struct {
 	resumeGrace     time.Time        // Until this time, post-resume grace period is active.
 	resumeMu        sync.Mutex       // Serializes concurrent resume attempts for this pane.
 	kittEpoch       time.Time        // Reference time for KITT scanner animation phase.
+	submitKey       string           // Key sequence to submit: "" or "enter" (Enter), "ctrl+enter" (Ctrl+Enter).
 	region          Region
 }
 
@@ -162,10 +164,11 @@ func (r Region) InnerSize() (cols, rows int) {
 
 // PaneConfig describes how to launch a pane's process.
 type PaneConfig struct {
-	Name    string   // Display name (role name).
-	Command []string // Command + args. Empty means use $SHELL.
-	Dir     string   // Working directory. Empty means inherit.
-	Env     []string // Extra env vars (KEY=VALUE). TERM is always set.
+	Name      string   // Display name (role name).
+	Command   []string // Command + args. Empty means use $SHELL.
+	Dir       string   // Working directory. Empty means inherit.
+	Env       []string // Extra env vars (KEY=VALUE). TERM is always set.
+	SubmitKey string   // Key sequence to submit input: "enter" (default) or "ctrl+enter".
 }
 
 // NewPane creates a terminal pane running the configured command (or $SHELL).
@@ -249,6 +252,7 @@ func NewPane(cfg PaneConfig, rows, cols int) (*Pane, error) {
 		jsonlDir:    jsonlDir,
 		dedupEvents: newDedup(),
 		kittEpoch:   time.Now(),
+		submitKey:   cfg.SubmitKey,
 	}
 
 	return p, nil
@@ -491,6 +495,9 @@ func (p *Pane) Emulator() *vt.SafeEmulator {
 	return p.emu
 }
 
+// SubmitKey returns the configured submit key sequence for this pane.
+func (p *Pane) SubmitKey() string { return p.submitKey }
+
 // SendText injects text into the pane's PTY via keystroke injection, with
 // optional Enter. Acquires sendMu to serialize with concurrent sends. Sends
 // Ctrl+S to stash pending user input before injecting (ini-gd0).
@@ -506,7 +513,19 @@ func (p *Pane) SendText(text string, enter bool) {
 	}
 
 	if enter {
-		p.emu.SendKey(uv.KeyPressEvent(uv.Key{Code: uv.KeyEnter}))
+		sendSubmitKey(p.emu, p.submitKey)
+	}
+}
+
+// sendSubmitKey sends the appropriate submit key sequence to an emulator
+// based on the configured submit key. Default ("" or "enter") sends Enter.
+// "ctrl+enter" sends Ctrl+Enter for agents like Codex that use it for submit.
+func sendSubmitKey(emu *vt.SafeEmulator, key string) {
+	switch key {
+	case "ctrl+enter":
+		emu.SendKey(uv.KeyPressEvent(uv.Key{Code: uv.KeyEnter, Mod: uv.ModCtrl}))
+	default:
+		emu.SendKey(uv.KeyPressEvent(uv.Key{Code: uv.KeyEnter}))
 	}
 }
 

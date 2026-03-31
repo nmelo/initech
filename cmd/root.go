@@ -328,10 +328,16 @@ func buildAgentPaneConfig(roleName string, proj *config.Project) (tui.PaneConfig
 		env = append(env, fmt.Sprintf("BEADS_DIR=%s/.beads", proj.Root))
 	}
 
+	var submitKey string
+	if ov, ok := proj.RoleOverrides[roleName]; ok && ov.SubmitKey != "" {
+		submitKey = ov.SubmitKey
+	}
+
 	return tui.PaneConfig{
-		Name:    roleName,
-		Command: argv,
-		Dir:     dir,
-		Env:     env,
+		Name:      roleName,
+		Command:   argv,
+		Dir:       dir,
+		Env:       env,
+		SubmitKey: submitKey,
 	}, nil
 }

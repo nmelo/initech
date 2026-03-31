@@ -287,7 +287,7 @@ func (t *TUI) injectText(pane *Pane, text string, enter bool) {
 	}
 
 	if enter {
-		pane.emu.SendKey(uv.KeyPressEvent(uv.Key{Code: uv.KeyEnter}))
+		sendSubmitKey(pane.emu, pane.submitKey)
 
 		// Smart single-retry for paste dialog (ini-f0d): wait for the async
 		// display pipeline to reflect the result, then check if input is still
@@ -303,7 +303,7 @@ func (t *TUI) injectText(pane *Pane, text string, enter bool) {
 		if pane.IsAlive() && hasStuckInput(pane) {
 			content := getPromptContent(pane)
 			if looksLikeInjectedText(content, text) {
-				pane.emu.SendKey(uv.KeyPressEvent(uv.Key{Code: uv.KeyEnter}))
+				sendSubmitKey(pane.emu, pane.submitKey)
 			}
 		}
 	}
