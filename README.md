@@ -10,7 +10,7 @@
 
 <strong>No tmux required!!</strong>
 
-**initech** is an agent runtime for directing teams of Claude Code agents. Each agent gets its own PTY-backed pane, reliable IPC messaging, and bead-aware state tracking — all in one TUI.
+**initech** is an agent runtime for directing teams of AI coding agents. Each agent gets its own PTY-backed pane, reliable IPC messaging, and bead-aware state tracking — all in one TUI. Works with Claude Code, Codex, Amp, or any CLI.
 
 ## Why
 
@@ -51,6 +51,7 @@ initech
 - **Toast notifications** — work state changes surface automatically, no agent cooperation required
 - **Cross-machine support** — run agents across multiple machines; remote panes stream live over TCP
 - **13 role templates** — super, pm, arch, eng, qa, shipper, sec, pmm, writer, ops, growth, and more
+- **Any CLI per role** — run Claude Code, Codex, Amp, or any CLI side by side via `role_overrides` in `initech.yaml`
 - **Command modal** — layout control, agent restart, patrol view, activity monitor, all from one bar
 
 ## Command Reference
