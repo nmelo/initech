@@ -293,6 +293,105 @@ func TestTcellKeyToANSI(t *testing.T) {
 	}
 }
 
+func TestCsiUFallback(t *testing.T) {
+	tests := []struct {
+		name string
+		key  tcell.Key
+		mod  tcell.ModMask
+		want string // empty = nil (no fallback)
+	}{
+		// Unmodified keys: nil (normal path handles them).
+		{"enter-plain", tcell.KeyEnter, tcell.ModNone, ""},
+		{"tab-plain", tcell.KeyTab, tcell.ModNone, ""},
+		{"escape-plain", tcell.KeyEscape, tcell.ModNone, ""},
+		{"backspace-plain", tcell.KeyBackspace, tcell.ModNone, ""},
+		{"up-plain", tcell.KeyUp, tcell.ModNone, ""},
+
+		// Shift+Tab (KeyBacktab): nil (emulator handles ESC[Z).
+		{"shift-tab", tcell.KeyBacktab, tcell.ModShift, ""},
+
+		// Unknown key with modifier: nil.
+		{"shift-f12", tcell.KeyF12, tcell.ModShift, ""},
+		{"rune-shift", tcell.KeyRune, tcell.ModShift, ""},
+
+		// Shift combos: modifier param = 2.
+		{"shift-enter", tcell.KeyEnter, tcell.ModShift, "\x1b[13;2u"},
+		// Note: tcell reports Shift+Tab as KeyBacktab, never KeyTab+ModShift.
+		// So KeyTab+ModShift can't occur in practice, but if it did, csiUFallback
+		// would not fire because tcell internally converts it to KeyBacktab.
+		{"shift-escape", tcell.KeyEscape, tcell.ModShift, "\x1b[27;2u"},
+		{"shift-backspace", tcell.KeyBackspace, tcell.ModShift, "\x1b[127;2u"},
+		{"shift-up", tcell.KeyUp, tcell.ModShift, "\x1b[57352;2u"},
+		{"shift-down", tcell.KeyDown, tcell.ModShift, "\x1b[57353;2u"},
+		{"shift-right", tcell.KeyRight, tcell.ModShift, "\x1b[57351;2u"},
+		{"shift-left", tcell.KeyLeft, tcell.ModShift, "\x1b[57350;2u"},
+
+		// Alt combos: modifier param = 3.
+		{"alt-enter", tcell.KeyEnter, tcell.ModAlt, "\x1b[13;3u"},
+		{"alt-tab", tcell.KeyTab, tcell.ModAlt, "\x1b[9;3u"},
+
+		// Ctrl combos: modifier param = 5.
+		{"ctrl-enter", tcell.KeyEnter, tcell.ModCtrl, "\x1b[13;5u"},
+		{"ctrl-escape", tcell.KeyEscape, tcell.ModCtrl, "\x1b[27;5u"},
+
+		// Ctrl+Shift: modifier param = 6.
+		{"ctrl-shift-enter", tcell.KeyEnter, tcell.ModCtrl | tcell.ModShift, "\x1b[13;6u"},
+
+		// Alt+Shift: modifier param = 4.
+		{"alt-shift-enter", tcell.KeyEnter, tcell.ModAlt | tcell.ModShift, "\x1b[13;4u"},
+
+		// All three: modifier param = 8.
+		{"ctrl-alt-shift-enter", tcell.KeyEnter, tcell.ModCtrl | tcell.ModAlt | tcell.ModShift, "\x1b[13;8u"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ev := tcell.NewEventKey(tt.key, 0, tt.mod)
+			got := csiUFallback(ev)
+			if tt.want == "" {
+				if got != nil {
+					t.Errorf("csiUFallback = %q, want nil", string(got))
+				}
+			} else {
+				if string(got) != tt.want {
+					t.Errorf("csiUFallback = %q, want %q", string(got), tt.want)
+				}
+			}
+		})
+	}
+}
+
+func TestRemotePaneSendKey_ShiftEnter(t *testing.T) {
+	server, client := net.Pipe()
+	defer client.Close()
+
+	ctrlS, ctrlC := net.Pipe()
+	defer ctrlS.Close()
+	defer ctrlC.Close()
+
+	rp := NewRemotePane("eng1", "wb", client, NewControlMux(ctrlC), 80, 24)
+
+	done := make(chan []byte, 1)
+	go func() {
+		buf := make([]byte, 256)
+		n, _ := server.Read(buf)
+		done <- buf[:n]
+	}()
+
+	// Send Shift+Enter.
+	ev := tcell.NewEventKey(tcell.KeyEnter, 0, tcell.ModShift)
+	rp.SendKey(ev)
+
+	select {
+	case data := <-done:
+		want := "\x1b[13;2u"
+		if string(data) != want {
+			t.Errorf("SendKey(Shift+Enter) produced %q, want %q", string(data), want)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timeout waiting for SendKey data")
+	}
+}
+
 // helper: create a tcell key event for a rune.
 func newKeyEvent(r rune) *tcell.EventKey {
 	return tcell.NewEventKey(tcell.KeyRune, r, tcell.ModNone)
