@@ -10,7 +10,7 @@
 
 <strong>No tmux required!!</strong>
 
-**initech** is a terminal runtime for coordinating teams of Claude Code agents. Each agent gets its own PTY-backed pane, reliable IPC messaging, and bead-aware state tracking — all in one TUI.
+**initech** is an agent runtime for directing teams of Claude Code agents. Each agent gets its own PTY-backed pane, reliable IPC messaging, and bead-aware state tracking — all in one TUI.
 
 ## Why
 
