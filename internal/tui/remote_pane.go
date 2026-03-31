@@ -376,6 +376,7 @@ func (rp *RemotePane) sendResize(rows, cols int) {
 }
 
 // Close terminates the yamux stream and stops background goroutines.
+// Uses a timeout to prevent hanging on dead yamux streams during shutdown.
 func (rp *RemotePane) Close() {
 	rp.resizeMu.Lock()
 	if rp.resizeTimer != nil {
@@ -393,7 +394,19 @@ func (rp *RemotePane) Close() {
 	if pw, ok := rp.emu.InputPipe().(interface{ CloseWithError(error) error }); ok {
 		pw.CloseWithError(io.EOF)
 	}
-	rp.goWg.Wait()
+	// Wait for goroutines with a timeout. Dead yamux streams can cause
+	// stream.Read and stream.Close to block indefinitely after a remote
+	// server restart (half-open TCP connection).
+	done := make(chan struct{})
+	go func() {
+		rp.goWg.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		LogWarn("remote", "Close timed out waiting for goroutines", "agent", rp.name, "host", rp.host)
+	}
 }
 
 

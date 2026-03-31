@@ -508,7 +508,18 @@ func Run(cfg Config) error {
 				t.handlePeerUpdate(peerName, panes)
 			})
 		}, t.quitCh)
-		defer pm.wait()
+		defer func() {
+			done := make(chan struct{})
+			go func() {
+				pm.wait()
+				close(done)
+			}()
+			select {
+			case <-done:
+			case <-time.After(3 * time.Second):
+				LogWarn("tui", "peerManager wait timed out after 3s, forcing exit")
+			}
+		}()
 	}
 
 	// Sync pinned state from layout to panes.
@@ -528,8 +539,20 @@ func Run(cfg Config) error {
 	// Now that panes exist, compute the full render plan.
 	t.applyLayout()
 	defer func() {
-		for _, p := range t.panes {
-			p.Close()
+		// Close all panes with a hard deadline. RemotePane.Close has its own
+		// 2s timeout per pane, but we cap the entire cleanup to 3s in case
+		// many panes are stuck on dead yamux sessions simultaneously.
+		done := make(chan struct{})
+		go func() {
+			for _, p := range t.panes {
+				p.Close()
+			}
+			close(done)
+		}()
+		select {
+		case <-done:
+		case <-time.After(3 * time.Second):
+			LogWarn("tui", "pane cleanup timed out after 3s, forcing exit")
 		}
 	}()
 
