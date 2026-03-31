@@ -4,309 +4,73 @@
 [![Homebrew](https://img.shields.io/badge/brew-nmelo%2Ftap-orange?logo=homebrew)](https://github.com/nmelo/homebrew-tap)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/nmelo/initech)
 
-# initech
-
 <p align="center">
-  <img src="assets/stapler.png" alt="I believe you have my stapler" width="300">
+  <img src="assets/hero.jpg" alt="initech — run a fleet of Claude Code agents from one terminal" width="100%">
 </p>
 
-A terminal multiplexer purpose-built for running multiple Claude Code agents simultaneously. Each agent gets its own PTY-backed pane with terminal emulation, activity detection, bead tracking, and reliable IPC messaging. Replaces tmux with a runtime that understands agent state, work assignments, and session lifecycle. 9,300 lines of Go, 10,500 lines of tests, 15 CLI commands, 11 role templates.
+**initech** is a terminal runtime for coordinating teams of Claude Code agents. Each agent gets its own PTY-backed pane, reliable IPC messaging, and bead-aware state tracking — all in one TUI.
 
-## Why It Exists
+No tmux required.
 
-Running multiple Claude Code agents in tmux works for small teams but degrades in three specific ways that initech solves.
+## Why
 
-**Messages fail silently.** tmux send-keys has no delivery guarantee. When a completion report from eng to super drops, the entire dispatch chain stalls. Nobody knows eng finished. Nobody dispatches QA. initech's IPC socket confirms delivery or returns an explicit error within seconds.
+Running multiple Claude Code agents in tmux breaks in three specific ways:
 
-**Agent state is invisible.** In tmux, a hung agent and a productive one look identical. The only way to know what's happening is to peek each pane manually, which scales linearly with agent count. initech renders all agents simultaneously with activity indicators (derived from PTY output byte flow), bead assignments in ribbon badges, and toast notifications when agents complete, stall, or get stuck in error loops.
-
-**Work is invisible to the runtime.** tmux doesn't know what beads exist, who's assigned to what, or that an agent just ran `bd update --status ready_for_qa`. initech's event system parses Claude's JSONL session logs for bd commands, detects status transitions, and surfaces them as typed events. When an agent finishes, a green toast appears. When an agent stalls for 10+ minutes, a yellow warning fires. When idle agents have ready beads in the backlog, the mismatch is flagged.
+- **Messages drop silently.** `tmux send-keys` has no delivery guarantee. When a completion report from eng to super drops, the dispatch chain stalls. initech's IPC socket confirms delivery or returns an explicit error.
+- **Agent state is invisible.** A hung agent and a productive one look identical in tmux. initech shows every agent's activity state simultaneously — active, idle, stalled, or idle-with-work-waiting.
+- **Work is invisible to the runtime.** tmux doesn't know what beads exist or who's working on what. initech parses Claude's session logs for bead events and surfaces them as typed notifications: green toast when an agent finishes, yellow when it stalls, red when it's error-looping.
 
 ## Quick Start
 
 ```bash
 # Install
-curl -fsSL https://initech.sh/install.sh | bash
-
-# Or via Homebrew
 brew tap nmelo/tap && brew install initech
-
-# Check prerequisites
-initech doctor
 
 # Bootstrap a new project
 mkdir myproject && cd myproject
 initech init
 
-# Launch the TUI
+# Launch
 initech
 ```
 
-`initech init` prompts for a project name, presents an interactive role selector (arrow keys, space to toggle, presets for small/standard/full teams), and scaffolds the full project: `initech.yaml`, agent directories with CLAUDE.md files, git submodules, beads database, and project documents (PRD, spec, system design, roadmap).
+`initech init` prompts for a project name, lets you pick roles interactively, and scaffolds the full workspace: `initech.yaml`, agent directories with CLAUDE.md files, git submodules, and project documents.
 
-`initech` (no subcommand) launches the TUI. All agent panes start simultaneously. Each pane runs Claude with the appropriate permission level.
+`initech` (no subcommand) launches the TUI. All agent panes start simultaneously.
 
 <p align="center">
   <video src="https://github.com/user-attachments/assets/20a30a27-ea82-40e7-8f64-ee5a2adf2252" autoplay loop muted playsinline controls width="100%"></video>
 </p>
 
-## What You See
+## Features
 
-The TUI renders all agent panes in a configurable grid. The bottom ribbon of each pane shows the agent's name and current bead assignment. A floating overlay panel in the top-right shows every agent's activity state (green dot = active, gray = idle, yellow = idle with work waiting) and bead ID.
+- **Full PTY emulation** — each agent runs in a real terminal with VT100 support
+- **Reliable IPC** — `initech send eng1 "message"` delivers or errors; no silent drops
+- **Activity detection** — tracks byte flow per agent; idle-at-prompt is the only zero-output state
+- **Bead integration** — parses Claude's JSONL session logs for `bd` commands; shows assignments in the ribbon
+- **Toast notifications** — work state changes surface automatically, no agent cooperation required
+- **Cross-machine support** — run agents across multiple machines; remote panes stream live over TCP
+- **13 role templates** — super, pm, arch, eng, qa, shipper, sec, pmm, writer, ops, growth, and more
+- **Command modal** — layout control, agent restart, patrol view, activity monitor, all from one bar
 
-### Layouts
-
-Three layout modes, switchable via keyboard or the command modal:
-
-- **Grid** (default): NxM grid auto-calculated from pane count. Manual override with `grid CxR`.
-- **Focus**: Single pane, full screen. Switch with `focus [name]` or Alt+1.
-- **Main + stacked**: 60/40 split, large pane left, stacked panes right. Switch with `main` or Alt+4.
-
-Zoom (Alt+z) expands the focused pane to full screen regardless of layout mode. Layout persists across sessions in `.initech/layout.yaml`.
-
-### Command Modal
-
-Press backtick to open the command bar. Commands:
-
-| Command | Effect |
-|---------|--------|
-| `grid [CxR]` | Set grid layout (e.g., `grid 3x2`). No arg = auto-calculate. |
-| `focus [name]` | Full-screen on a pane. No arg = current pane. |
-| `zoom` | Toggle zoom on focused pane. |
-| `panel` | Toggle agent status overlay. |
-| `main` | Main + stacked layout. |
-| `show <name\|all>` | Show a hidden pane. |
-| `hide <name>` | Hide a pane from the grid. |
-| `view <n1> [n2] ...` | Show only listed panes, hide rest. |
-| `layout reset` | Reset to auto-calculated defaults. |
-| `restart` / `r` | Kill and relaunch the focused pane. |
-| `patrol` | Scrollable view of all agents' recent output. |
-| `top` / `ps` | Activity monitor: PID, memory, command, bead per agent. |
-| `add <name>` | Add a new agent pane (workspace must exist). |
-| `remove <name>` / `rm` | Remove an agent pane. |
-| `log` / `events` | Scrollable event history (last 60 minutes). |
-| `help` / `?` | Reference card with all commands and keybindings. |
-| `quit` / `q` | Exit (with confirmation). |
-
-### Keybindings
-
-| Key | Action |
-|-----|--------|
-| `` ` `` (backtick) | Open/close command modal |
-| Alt+Left/Right | Navigate between panes |
-| Alt+1 | Focus mode (single pane) |
-| Alt+2 | 2x2 grid |
-| Alt+3 | 3x3 grid |
-| Alt+4 | Main + stacked layout |
-| Alt+z | Zoom/unzoom focused pane |
-| Alt+s | Toggle agent status overlay |
-| Alt+q | Quit |
-| Mouse click | Focus pane |
-| Mouse drag | Select text (copies to clipboard on release) |
-| Scroll wheel | Scroll pane history |
-
-### Toast Notifications
-
-The event system watches Claude's JSONL session logs and fires toast notifications for work state changes:
-
-- **Green toast**: Agent completed a bead (detected from `bd update --status ready_for_qa`)
-- **Yellow toast**: Agent stalled (no output for 10+ minutes with a bead assigned)
-- **Red toast**: Agent stuck in error loop (3+ consecutive tool failures)
-- **Blue toast**: Agent claimed a new bead
-- **Gray toast**: Agent idle with ready beads in the backlog
-
-Detection is automatic. No agent cooperation required beyond normal bd usage.
-
-### Activity Monitor
-
-The `top` command (or `ps`) opens a full-screen process table showing each agent's PID, process name, launch command, RSS memory usage, bead assignment, and status. Supports actions: `r` to restart, `k` to kill, `h` to hide/show.
-
-## Configuration
-
-### initech.yaml
-
-```yaml
-project: myproject
-root: /Users/you/Desktop/Projects/myproject
-
-repos:
-  - url: git@github.com:you/myproject.git
-    name: myproject
-
-beads:
-  prefix: mp
-
-claude_args: ["--continue", "--dangerously-skip-permissions"]
-
-roles:
-  - super
-  - pm
-  - eng1
-  - eng2
-  - qa1
-  - qa2
-  - shipper
-
-role_overrides:
-  super:
-    claude_args: []   # Supervised: no skip-permissions
-  eng1:
-    tech_stack: "Go 1.25, cobra, tcell"
-    build_cmd: "make build"
-    test_cmd: "make test"
-```
-
-### Role Catalog
-
-13 well-known roles with production CLAUDE.md templates:
-
-| Role | Permission | Needs src/ | What they own |
-|------|-----------|-----------|---------------|
-| super | Supervised | No | Dispatch, monitoring, session lifecycle |
-| pm | Autonomous | No | Product truth, requirements, acceptance criteria |
-| arch | Autonomous | No | System design, API contracts, ADRs |
-| eng1, eng2, eng3 | Autonomous | Yes | Implementation, tests, code quality |
-| qa1, qa2 | Autonomous | Yes | Behavioral verification, test evidence |
-| shipper | Supervised | Yes | Builds, packaging, distribution |
-| sec | Autonomous | No | Security posture, threat modeling |
-| pmm | Autonomous | No | External messaging, competitive intel |
-| writer | Autonomous | No | User-facing documentation |
-| ops | Autonomous | No | End-user workflow testing |
-| growth | Autonomous | Yes | Metrics, analytics, experiments |
-
-Unknown role names are valid. `LookupRole("designer")` returns a default (Autonomous, no src). Custom roles get a generic CLAUDE.md template.
-
-### CLAUDE.md Hierarchy
-
-initech uses Claude Code's CLAUDE.md file hierarchy for agent instructions:
-
-```
-myproject/
-  CLAUDE.md            # Project-wide protocols (all agents inherit)
-  super/CLAUDE.md      # Supervisor-specific instructions
-  eng1/CLAUDE.md       # Engineer-specific instructions
-  eng1/src/.claude/    # Claude Code session state
-```
-
-Each role's CLAUDE.md encodes identity, decision authority, constraints, workflow, and communication protocols. The templates are the core asset: they encode institutional knowledge about how each role should behave in a multi-agent development team.
-
-## CLI Reference
-
-All commands communicate with the running TUI via a Unix domain socket at `/tmp/initech-<project>.sock`.
-
-| Command | Description |
-|---------|-------------|
-| `initech` | Launch the TUI (reads initech.yaml from cwd or parent) |
-| `initech init` | Bootstrap project with interactive role selection |
-| `initech send <role> <text>` | Deliver text to an agent's terminal (with Enter) |
-| `initech send <role> <text> --no-enter` | Deliver text without pressing Enter |
-| `initech peek <role> [-n lines]` | Read agent's terminal output (default: all) |
-| `initech patrol [-n lines] [--active]` | Bulk peek: all agents' output in one call |
-| `initech bead [id]` | Report current bead assignment to the TUI |
-| `initech bead --clear` | Clear bead assignment |
-| `initech status` | Agent table: activity, bead, alive status |
-| `initech stop <role...>` | Kill agent processes (panes stay in roster) |
-| `initech start <role...> [--bead id]` | Respawn agents with --continue |
-| `initech restart <role> [--bead id]` | Kill + respawn agent |
-| `initech add <name>` | Add agent to running session (workspace must exist) |
-| `initech remove <name>` | Remove agent from running session |
-| `initech down` | Shut down TUI and all agents |
-| `initech standup` | Morning standup from beads (shipped, active, next) |
-| `initech doctor` | Check prerequisites with versions and fix instructions |
-| `initech version` | Print version |
-| `initech serve` | Run headless daemon for remote TUI connections |
-| `initech peers` | List connected remote machines and their agents |
-
-## Cross-Machine Coordination
-
-Run agents across multiple machines. The local TUI streams remote agent panes live over a single TCP connection — no SSH tunneling required.
-
-### Remote machine setup
-
-Add `mode: headless`, `peer_name`, `listen`, and `token` to the remote machine's `initech.yaml`:
-
-```yaml
-project: myproject
-root: /home/user/myproject
-mode: headless
-peer_name: workbench
-listen: ":7391"
-token: "your-shared-secret"
-
-roles:
-  - eng1
-  - eng2
-  - eng3
-```
-
-Start the daemon:
+## Command Reference
 
 ```bash
-initech serve
+initech send <role> "message"    # Deliver text to an agent
+initech peek <role> [-n lines]   # Read agent terminal output
+initech patrol                   # All agents' output in one call
+initech status                   # Agent table: activity, bead, alive
+initech restart <role>           # Kill and respawn an agent
+initech serve                    # Run headless daemon for remote connections
+initech peers                    # List connected machines and their agents
+initech standup                  # Morning standup from beads
+initech doctor                   # Check prerequisites
 ```
 
-The daemon launches all configured agents and listens for connections. No TUI on the remote machine.
+Full CLI reference, configuration options, role catalog, and cross-machine setup: **[Operator Guide](docs/operator-guide.md)**
 
-### Local machine setup
+---
 
-Add a `remotes:` block to the local `initech.yaml`:
-
-```yaml
-project: myproject
-root: /Users/you/myproject
-token: "your-shared-secret"
-
-roles:
-  - super
-  - pm
-  - qa1
-
-remotes:
-  workbench:
-    addr: "192.168.1.100:7391"
-```
-
-Launch the TUI normally:
-
-```bash
-initech
-```
-
-The TUI connects to each configured remote and renders its agents alongside local panes. Remote panes stream live PTY output the same as local ones.
-
-### Addressing remote agents
-
-All IPC commands accept `host:agent` syntax:
-
-```bash
-initech send workbench:eng1 "start the API refactor"
-initech peek workbench:eng2 -n 30
-initech peers          # list connected machines and agents
-initech doctor         # validate remote connectivity before starting
-```
-
-`initech status` shows a HOST column when remotes are present. If the connection to a remote drops, the TUI reconnects automatically when the peer comes back.
-
-### How It Works
-
-The TUI is a single Go process that owns a PTY per agent. Each PTY runs Claude via a login shell (`$SHELL -l -c "claude --continue [flags]"`). Terminal output flows through a VT100 emulator (charmbracelet/x/vt SafeEmulator), which the TUI reads for rendering.
-
-Activity detection tracks PTY byte flow: if the agent's process produced output in the last 2 seconds, it's active. Claude Code's spinner guarantees byte flow during thinking, tool execution, and response generation. The only state with zero output is idle-at-prompt.
-
-The event system tails Claude's JSONL session logs (`~/.claude/projects/<cwd>/`) for semantic events: bd commands in tool_use results (bead claims, status transitions), assistant messages (DONE/FAIL patterns), and error sequences (consecutive failures). Events emit to a channel consumed by the TUI's event loop.
-
-IPC uses a Unix domain socket. CLI commands (`initech send`, `initech peek`, etc.) connect to `/tmp/initech-<project>.sock` and exchange JSON request/response messages. The TUI delivers messages by writing keystrokes through the emulator, the same path as real keyboard input.
-
-Layout is managed by a `LayoutState` struct (mode, grid dimensions, hidden panes, focus) that feeds into `computeLayout()`, which produces a `RenderPlan` consumed by the render loop. Layout persists to `.initech/layout.yaml` and restores on next startup.
-
-## Dependencies
-
-Build:
-- [Go](https://go.dev/) 1.25+
-
-Runtime:
-- [Claude Code](https://docs.anthropic.com/en/docs/claude-code) CLI
-- [git](https://git-scm.com/)
-- [beads](https://github.com/nmelo/beads) (`bd`) for issue tracking (optional, degrades gracefully)
-
-Libraries (bundled): [cobra](https://github.com/spf13/cobra), [yaml.v3](https://pkg.go.dev/gopkg.in/yaml.v3), [charmbracelet/ultraviolet](https://github.com/charmbracelet/ultraviolet) + [x/vt](https://github.com/charmbracelet/x) (terminal emulation), [tcell](https://github.com/gdamore/tcell) (screen rendering), [creack/pty](https://github.com/creack/pty) (PTY allocation), [charmbracelet/x/ansi](https://github.com/charmbracelet/x) (CLI colors).
+<p align="center">
+  <img src="assets/stapler.png" alt="I believe you have my stapler" width="200">
+</p>
