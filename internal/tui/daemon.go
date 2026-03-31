@@ -531,6 +531,8 @@ func (d *Daemon) handleConnection(conn net.Conn) {
 		LogWarn("daemon", "auth failed", "peer", hello.PeerName)
 		fmt.Fprintf(os.Stdout, "[%s] Client rejected: %s (auth failed)\n",
 			time.Now().Format("15:04:05"), conn.RemoteAddr())
+		// Delay before responding to slow down brute-force token guessing.
+		time.Sleep(1 * time.Second)
 		writeJSON(ctrl, ErrorMsg{Action: "error", Error: "auth failed"})
 		return
 	}
