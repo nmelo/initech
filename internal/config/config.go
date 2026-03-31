@@ -96,6 +96,7 @@ type RoleOverride struct {
 	TestCmd    string   `yaml:"test_cmd,omitempty"`
 	Dir        string   `yaml:"dir,omitempty"`
 	RepoName   string   `yaml:"repo_name,omitempty"`
+	Command    []string `yaml:"command,omitempty"`      // Override the agent command entirely (e.g. ["codex"]).
 	ClaudeArgs []string `yaml:"claude_args,omitempty"`
 }
 

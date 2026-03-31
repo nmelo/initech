@@ -73,13 +73,19 @@ func buildServeAgentConfig(roleName string, proj *config.Project) (tui.PaneConfi
 	if mock := os.Getenv("INITECH_MOCK_AGENT"); mock != "" {
 		argv = []string{mock}
 	} else {
-		if len(proj.ClaudeCommand) > 0 {
-			argv = append(argv, proj.ClaudeCommand...)
+		// Per-role command override takes priority (e.g. ["codex"] for non-Claude agents).
+		ov, hasOverride := proj.RoleOverrides[roleName]
+		if hasOverride && len(ov.Command) > 0 {
+			argv = append(argv, ov.Command...)
 		} else {
-			argv = []string{"claude"}
+			if len(proj.ClaudeCommand) > 0 {
+				argv = append(argv, proj.ClaudeCommand...)
+			} else {
+				argv = []string{"claude"}
+			}
 		}
 		var roleArgs []string
-		if ov, ok := proj.RoleOverrides[roleName]; ok {
+		if hasOverride {
 			roleArgs = ov.ClaudeArgs
 		}
 		if resolved := roles.ResolveClaudeArgs(roleName, proj.ClaudeArgs, roleArgs); len(resolved) > 0 {
