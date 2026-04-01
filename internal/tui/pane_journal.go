@@ -168,9 +168,13 @@ func (p *Pane) updateActivity() {
 	runningToIdle := prev == StateRunning && p.activity == StateIdle
 	shouldAutoApprove := false
 	if p.autoApprove {
-		if runningToIdle || now.Sub(p.lastCodexPermScan) >= codexPermissionScanInterval {
+		sinceLast := now.Sub(p.lastCodexPermScan)
+		periodicDue := sinceLast >= codexPermissionScanInterval
+		if runningToIdle || periodicDue {
 			shouldAutoApprove = true
 			p.lastCodexPermScan = now
+			LogDebug("codex-approve", "scan triggered",
+				"pane", p.name, "idleEdge", runningToIdle, "periodicDue", periodicDue, "sinceLast", sinceLast)
 		}
 	}
 

@@ -552,23 +552,40 @@ func sendSubmitKey(emu *vt.SafeEmulator, key string) {
 // to the PTY. It only runs when auto-approval is enabled.
 func (p *Pane) maybeApproveCodexPermissionPrompt() bool {
 	if !p.autoApprove || p.ptmx == nil {
+		LogDebug("codex-approve", "skip precondition",
+			"pane", p.name, "autoApprove", p.autoApprove, "hasPtmx", p.ptmx != nil)
 		return false
 	}
 
 	p.renderMu.Lock()
 	text := emulatorBottomText(p.emu, codexPermissionScanRows)
 	p.renderMu.Unlock()
+
+	LogDebug("codex-approve", "emulator scan",
+		"pane", p.name, "bottomText", truncateLogText(text, 200))
+
 	approvalInput, ok := codexPermissionApprovalInput(text)
 	if !ok {
+		LogDebug("codex-approve", "pattern match failed", "pane", p.name)
 		return false
 	}
+
+	LogDebug("codex-approve", "pattern matched",
+		"pane", p.name, "approvalInput", string(approvalInput))
 
 	p.sendMu.Lock()
 	defer p.sendMu.Unlock()
 	if !p.autoApprove || p.ptmx == nil {
+		LogDebug("codex-approve", "skip after recheck",
+			"pane", p.name, "autoApprove", p.autoApprove, "hasPtmx", p.ptmx != nil)
 		return false
 	}
 	_, err := p.ptmx.Write(approvalInput)
+	if err != nil {
+		LogDebug("codex-approve", "write failed", "pane", p.name, "err", err)
+	} else {
+		LogDebug("codex-approve", "approved", "pane", p.name)
+	}
 	return err == nil
 }
 
@@ -678,6 +695,14 @@ func compactPromptText(text string) string {
 		}
 		return r
 	}, text)
+}
+
+// truncateLogText caps a string at maxLen for log output readability.
+func truncateLogText(s string, maxLen int) string {
+	if len(s) > maxLen {
+		return s[:maxLen] + "..."
+	}
+	return s
 }
 
 func (p *Pane) isCodexReadyForSend() bool {

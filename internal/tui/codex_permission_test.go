@@ -1,7 +1,9 @@
 package tui
 
 import (
+	"log/slog"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -469,5 +471,135 @@ func TestUpdateActivity_IdleEdgeApprovesClaudePromptWhenAutoApproveEnabled(t *te
 		}
 	case <-time.After(time.Second):
 		t.Fatal("timeout waiting for auto-approval write")
+	}
+}
+
+func TestMaybeApproveCodexPermissionPrompt_LogsBottomTextAndMatch(t *testing.T) {
+	dir := t.TempDir()
+	cleanup := InitLogger(dir, slog.LevelDebug)
+	defer cleanup()
+
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe: %v", err)
+	}
+	defer r.Close()
+	defer w.Close()
+
+	emu := testPane("shipper").emu
+	emu.Resize(80, codexPermissionScanRows)
+	emu.Write([]byte("2. Yes, and dont ask again (p)\nPress enter to confirm or esc to cancel"))
+
+	p := &Pane{
+		name:        "shipper",
+		autoApprove: true,
+		alive:       true,
+		emu:         emu,
+		ptmx:        w,
+	}
+
+	done := make(chan []byte, 1)
+	go func() {
+		buf := make([]byte, 1)
+		n, _ := r.Read(buf)
+		done <- buf[:n]
+	}()
+
+	ok := p.maybeApproveCodexPermissionPrompt()
+	if !ok {
+		t.Fatal("expected approval to succeed")
+	}
+
+	<-done
+
+	logPath := filepath.Join(dir, ".initech", logFileName)
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("log file not created: %v", err)
+	}
+	content := string(data)
+
+	if !strings.Contains(content, "emulator scan") || !strings.Contains(content, "pane=shipper") {
+		t.Errorf("missing emulator scan log entry: %s", content)
+	}
+	if !strings.Contains(content, "pattern matched") {
+		t.Errorf("missing pattern matched log entry: %s", content)
+	}
+	if !strings.Contains(content, "approved") {
+		t.Errorf("missing approved log entry: %s", content)
+	}
+}
+
+func TestMaybeApproveCodexPermissionPrompt_LogsNoMatchWhenPromptAbsent(t *testing.T) {
+	dir := t.TempDir()
+	cleanup := InitLogger(dir, slog.LevelDebug)
+	defer cleanup()
+
+	emu := testPane("shipper").emu
+	emu.Resize(80, codexPermissionScanRows)
+	emu.Write([]byte("just normal output here"))
+
+	r, w, _ := os.Pipe()
+	defer r.Close()
+	defer w.Close()
+
+	p := &Pane{
+		name:        "shipper",
+		autoApprove: true,
+		alive:       true,
+		emu:         emu,
+		ptmx:        w,
+	}
+
+	ok := p.maybeApproveCodexPermissionPrompt()
+	if ok {
+		t.Fatal("expected no approval for non-prompt text")
+	}
+
+	logPath := filepath.Join(dir, ".initech", logFileName)
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("log file not created: %v", err)
+	}
+	content := string(data)
+
+	if !strings.Contains(content, "pattern match failed") {
+		t.Errorf("missing pattern match failed log entry: %s", content)
+	}
+}
+
+func TestUpdateActivity_LogsScanTrigger(t *testing.T) {
+	dir := t.TempDir()
+	cleanup := InitLogger(dir, slog.LevelDebug)
+	defer cleanup()
+
+	emu := testPane("shipper").emu
+	emu.Resize(80, codexPermissionScanRows)
+	emu.Write([]byte("normal output"))
+
+	p := &Pane{
+		name:              "shipper",
+		autoApprove:       true,
+		alive:             true,
+		activity:          StateRunning,
+		lastOutputTime:    time.Now().Add(-(ptyIdleTimeout + time.Second)),
+		lastCodexPermScan: time.Now().Add(-(codexPermissionScanInterval + time.Second)),
+		emu:               emu,
+	}
+
+	p.updateActivity()
+
+	logPath := filepath.Join(dir, ".initech", logFileName)
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("log file not created: %v", err)
+	}
+	content := string(data)
+
+	if !strings.Contains(content, "scan triggered") || !strings.Contains(content, "pane=shipper") {
+		t.Errorf("missing scan triggered log entry: %s", content)
+	}
+	if !strings.Contains(content, "idleEdge=true") {
+		t.Errorf("missing idleEdge=true in log: %s", content)
 	}
 }
