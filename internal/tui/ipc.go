@@ -287,16 +287,13 @@ func (t *TUI) injectText(pane *Pane, text string, enter bool) {
 	time.Sleep(75 * time.Millisecond)
 
 	if pane.noBracketedPaste {
-		// Direct PTY write: write raw text bytes + \n to the PTY master,
-		// bypassing the emulator's SendKey translation entirely. The emulator's
-		// key-to-byte encoding differs from what a real terminal sends, which
-		// causes agents like Codex to not recognize the input. Writing directly
-		// to the PTY produces the exact bytes the child process expects.
+		// Direct PTY write for text bytes, but route Enter through the emulator.
+		// The raw text path avoids the emulator's key-to-byte translation for the
+		// message body, which Codex can misinterpret. For the final submit key we
+		// deliberately use the emulator path so Enter encoding stays aligned with
+		// the PTY/terminal mode the emulator is already managing.
 		var buf []byte
 		buf = append(buf, text...)
-		if enter {
-			buf = append(buf, '\n')
-		}
 		pane.ptmx.Write(buf)
 	} else {
 		// Bracketed paste: ESC[200~ + text + ESC[201~ directly to PTY.
@@ -307,18 +304,25 @@ func (t *TUI) injectText(pane *Pane, text string, enter bool) {
 		pane.ptmx.Write(buf)
 	}
 
-	if enter && !pane.noBracketedPaste {
-		// Bracketed paste mode: wait for Claude Code's paste completion
-		// (100ms PASTE_COMPLETION_TIMEOUT_MS) plus async rendering time.
-		time.Sleep(500 * time.Millisecond)
-		sendSubmitKey(pane.emu, pane.submitKey)
+	if !enter {
+		return
+	}
 
-		// Single retry for large pastes where Enter was swallowed.
-		if pane.IsAlive() {
-			time.Sleep(500 * time.Millisecond)
-			if promptHasContent(pane) {
-				sendSubmitKey(pane.emu, pane.submitKey)
-			}
+	if pane.noBracketedPaste {
+		sendSubmitKey(pane.emu, pane.submitKey)
+		return
+	}
+
+	// Bracketed paste mode: wait for Claude Code's paste completion
+	// (100ms PASTE_COMPLETION_TIMEOUT_MS) plus async rendering time.
+	time.Sleep(500 * time.Millisecond)
+	sendSubmitKey(pane.emu, pane.submitKey)
+
+	// Single retry for large pastes where Enter was swallowed.
+	if pane.IsAlive() {
+		time.Sleep(500 * time.Millisecond)
+		if promptHasContent(pane) {
+			sendSubmitKey(pane.emu, pane.submitKey)
 		}
 	}
 }

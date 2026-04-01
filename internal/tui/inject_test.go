@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -107,9 +108,10 @@ func TestInjectText_CtrlS_StillSent(t *testing.T) {
 	_ = tty // Keep slave open for PTY to work.
 }
 
-// TestInjectText_NoBracketedPasteEnterUsesNewline verifies that the direct PTY
-// write path appends \n instead of \r when Enter is requested.
-func TestInjectText_NoBracketedPasteEnterUsesNewline(t *testing.T) {
+// TestInjectText_NoBracketedPasteEnterUsesEmulatorSubmit verifies that the
+// no-bracketed-paste path writes raw text directly to the PTY, but routes the
+// final Enter through the emulator submit path.
+func TestInjectText_NoBracketedPasteEnterUsesEmulatorSubmit(t *testing.T) {
 	ptmx, tty, err := pty.Open()
 	if err != nil {
 		t.Fatalf("pty.Open: %v", err)
@@ -127,7 +129,11 @@ func TestInjectText_NoBracketedPasteEnterUsesNewline(t *testing.T) {
 	go func() {
 		buf := make([]byte, 256)
 		for {
-			if _, err := emu.Read(buf); err != nil {
+			n, err := emu.Read(buf)
+			if n > 0 {
+				_, _ = ptmx.Write(buf[:n])
+			}
+			if err != nil {
 				return
 			}
 		}
@@ -147,9 +153,14 @@ func TestInjectText_NoBracketedPasteEnterUsesNewline(t *testing.T) {
 	}
 
 	got := string(buf[:n])
-	want := "hello\n"
-	if got != want {
-		t.Errorf("PTY received %q, want %q", got, want)
+	if !strings.Contains(got, "hello") {
+		t.Fatalf("PTY received %q, want raw text payload", got)
+	}
+	if !strings.ContainsRune(got, '\r') {
+		t.Fatalf("PTY received %q, want emulator Enter encoding", got)
+	}
+	if strings.ContainsRune(got, '\n') {
+		t.Errorf("PTY received %q, want no raw newline byte", got)
 	}
 }
 
