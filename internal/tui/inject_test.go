@@ -1,12 +1,15 @@
 package tui
 
 import (
+	"bytes"
+	"os"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/charmbracelet/x/vt"
 	"github.com/creack/pty"
+	"github.com/nmelo/initech/internal/config"
 	"golang.org/x/term"
 )
 
@@ -108,9 +111,9 @@ func TestInjectText_CtrlS_StillSent(t *testing.T) {
 	_ = tty // Keep slave open for PTY to work.
 }
 
-// TestInjectText_NoBracketedPasteCodexWritesBodyToPTY verifies that the Codex
-// raw-inject path writes the body directly to the PTY, skips the Ctrl+S stash,
-// and sends only the final Enter through the emulator.
+// TestInjectText_NoBracketedPasteCodexWritesBodyAndSubmitToPTY verifies that
+// the Codex raw-inject path writes both the body and submit byte directly to
+// the PTY and skips the emulator entirely.
 func TestInjectText_NoBracketedPasteCodexWritesBodyToPTY(t *testing.T) {
 	ptmx, tty, err := pty.Open()
 	if err != nil {
@@ -126,6 +129,7 @@ func TestInjectText_NoBracketedPasteCodexWritesBodyToPTY(t *testing.T) {
 	defer term.Restore(int(tty.Fd()), oldState)
 
 	emu := vt.NewSafeEmulator(80, 24)
+	_, _ = emu.Write([]byte(">\n"))
 	var emuMu sync.Mutex
 	var emuOutput []byte
 	go func() {
@@ -144,28 +148,29 @@ func TestInjectText_NoBracketedPasteCodexWritesBodyToPTY(t *testing.T) {
 		}
 	}()
 
-	p := &Pane{name: "eng1", emu: emu, alive: true, ptmx: ptmx, noBracketedPaste: true}
+	p := &Pane{
+		name:             "eng1",
+		emu:              emu,
+		alive:            true,
+		ptmx:             ptmx,
+		noBracketedPaste: true,
+		agentType:        config.AgentTypeCodex,
+		submitKey:        "enter",
+		lastOutputTime:   time.Now().Add(-(ptyIdleTimeout + time.Second)),
+	}
 	tui := &TUI{agentEvents: make(chan AgentEvent, 8)}
 
 	go tui.injectText(p, "hello", true)
 
-	time.Sleep(250 * time.Millisecond)
-	buf := make([]byte, 512)
-	tty.SetReadDeadline(time.Now().Add(time.Second))
-	n, err := tty.Read(buf)
-	if err != nil {
-		t.Fatalf("tty.Read: %v", err)
-	}
-
-	got := string(buf[:n])
+	got := readPTYUntil(t, tty, []byte("hello\r"), time.Second)
 	if got != "hello\r" {
 		t.Fatalf("PTY received %q, want %q", got, "hello\r")
 	}
 
 	emuMu.Lock()
 	defer emuMu.Unlock()
-	if string(emuOutput) != "\r" {
-		t.Fatalf("emulator output %q, want %q", string(emuOutput), "\r")
+	if len(emuOutput) != 0 {
+		t.Fatalf("emulator output %q, want no emulator traffic for Codex raw inject", string(emuOutput))
 	}
 }
 
@@ -199,8 +204,8 @@ func TestInjectText_DeadPane(t *testing.T) {
 }
 
 // TestPaneSendText_NoBracketedPasteCodexUsesLocalRawPath verifies the actual
-// local Pane.SendText path used by IPC sends: raw PTY body, no Ctrl+S stash,
-// and emulator-only Enter submit.
+// local Pane.SendText path used by IPC sends: raw PTY body and submit byte,
+// with no Ctrl+S stash and no emulator traffic.
 func TestPaneSendText_NoBracketedPasteCodexUsesLocalRawPath(t *testing.T) {
 	ptmx, tty, err := pty.Open()
 	if err != nil {
@@ -216,6 +221,7 @@ func TestPaneSendText_NoBracketedPasteCodexUsesLocalRawPath(t *testing.T) {
 	defer term.Restore(int(tty.Fd()), oldState)
 
 	emu := vt.NewSafeEmulator(80, 24)
+	_, _ = emu.Write([]byte(">\n"))
 	var emuMu sync.Mutex
 	var emuOutput []byte
 	go func() {
@@ -234,26 +240,43 @@ func TestPaneSendText_NoBracketedPasteCodexUsesLocalRawPath(t *testing.T) {
 		}
 	}()
 
-	p := &Pane{name: "eng1", emu: emu, alive: true, ptmx: ptmx, noBracketedPaste: true}
+	p := &Pane{
+		name:             "eng1",
+		emu:              emu,
+		alive:            true,
+		ptmx:             ptmx,
+		noBracketedPaste: true,
+		agentType:        config.AgentTypeCodex,
+		submitKey:        "enter",
+		lastOutputTime:   time.Now().Add(-(ptyIdleTimeout + time.Second)),
+	}
 
 	go p.SendText("hello", true)
 
-	time.Sleep(400 * time.Millisecond)
-	buf := make([]byte, 512)
-	tty.SetReadDeadline(time.Now().Add(time.Second))
-	n, err := tty.Read(buf)
-	if err != nil {
-		t.Fatalf("tty.Read: %v", err)
-	}
-
-	got := string(buf[:n])
+	got := readPTYUntil(t, tty, []byte("hello\r"), time.Second)
 	if got != "hello\r" {
 		t.Fatalf("PTY received %q, want %q", got, "hello\r")
 	}
 
 	emuMu.Lock()
 	defer emuMu.Unlock()
-	if string(emuOutput) != "\r" {
-		t.Fatalf("emulator output %q, want %q", string(emuOutput), "\r")
+	if len(emuOutput) != 0 {
+		t.Fatalf("emulator output %q, want no emulator traffic for Codex local raw send", string(emuOutput))
 	}
+}
+
+func readPTYUntil(t *testing.T, tty *os.File, want []byte, timeout time.Duration) string {
+	t.Helper()
+
+	deadline := time.Now().Add(timeout)
+	var out []byte
+	buf := make([]byte, 256)
+	for time.Now().Before(deadline) && !bytes.Equal(out, want) {
+		tty.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
+		n, _ := tty.Read(buf)
+		if n > 0 {
+			out = append(out, buf[:n]...)
+		}
+	}
+	return string(out)
 }

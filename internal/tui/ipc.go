@@ -13,6 +13,7 @@ import (
 	"time"
 
 	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/nmelo/initech/internal/config"
 )
 
 // IPCRequest is the JSON structure sent by CLI commands to the TUI socket.
@@ -278,6 +279,9 @@ func sendPaneTextLocked(pane *Pane, text string, enter bool) {
 	if pane.ptmx == nil {
 		return
 	}
+	if pane.AgentType() == config.AgentTypeCodex {
+		pane.waitForCodexReady(codexReadyTimeout)
+	}
 	// Stash any partially typed input before injecting so that the incoming
 	// message doesn't corrupt text the user was composing (ini-gd0). Codex/raw
 	// panes skip this because they inject directly to the PTY instead of through
@@ -314,6 +318,10 @@ func sendPaneTextLocked(pane *Pane, text string, enter bool) {
 		// Enter. The 8ms parser window observed in source was not enough in the
 		// full PTY/TUI pipeline; use a larger margin here.
 		time.Sleep(200 * time.Millisecond)
+		if pane.AgentType() == config.AgentTypeCodex && pane.submitKey != "ctrl+enter" {
+			_, _ = pane.ptmx.Write([]byte("\r"))
+			return
+		}
 		sendSubmitKey(pane.emu, pane.submitKey)
 		return
 	}

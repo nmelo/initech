@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/vt"
@@ -61,6 +62,9 @@ const (
 )
 
 const codexPermissionScanRows = 10
+const codexReadyPollInterval = 50 * time.Millisecond
+const codexReadyTimeout = 10 * time.Second
+const codexReadyStableDuration = 500 * time.Millisecond
 
 var codexPermissionPromptPatterns = []string{
 	"press enter to confirm or esc to cancel",
@@ -70,6 +74,21 @@ var codexPermissionPromptPatterns = []string{
 	"2. yes, and dont ask again",
 	"yes, and don't ask again",
 	"yes, and dont ask again",
+}
+
+var codexNotReadyPromptPatterns = []string{
+	"do you trust the contents of this directory",
+	"press enter to continue",
+	"1. yes, continue",
+	"2. no, quit",
+	"booting mcp server",
+}
+
+var codexTrustPromptPatterns = []string{
+	"do you trust the contents of this directory",
+	"press enter to continue",
+	"1. yes, continue",
+	"2. no, quit",
 }
 
 // PaneView abstracts pane behavior so both local panes (Pane) and future
@@ -564,11 +583,109 @@ func isCodexPermissionPrompt(text string) bool {
 	normalized := strings.ToLower(text)
 	normalized = strings.ReplaceAll(normalized, "’", "'")
 	for _, pattern := range codexPermissionPromptPatterns {
-		if strings.Contains(normalized, pattern) {
+		if strings.Contains(compactPromptText(normalized), compactPromptText(pattern)) {
 			return true
 		}
 	}
 	return false
+}
+
+func isCodexReadyPrompt(text string) bool {
+	normalized := strings.ToLower(text)
+	normalized = strings.ReplaceAll(normalized, "’", "'")
+	for _, pattern := range codexNotReadyPromptPatterns {
+		if strings.Contains(compactPromptText(normalized), compactPromptText(pattern)) {
+			return false
+		}
+	}
+
+	lines := strings.Split(normalized, "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		line := strings.TrimSpace(lines[i])
+		if line == "" {
+			continue
+		}
+		for _, prompt := range []string{"›", ">"} {
+			if line == prompt {
+				return true
+			}
+			if strings.HasPrefix(line, prompt+" ") {
+				rest := strings.TrimSpace(strings.TrimPrefix(line, prompt))
+				if rest == "" {
+					return true
+				}
+				if rest[0] >= '0' && rest[0] <= '9' {
+					return false
+				}
+				return true
+			}
+		}
+		return false
+	}
+	return false
+}
+
+func isCodexTrustPrompt(text string) bool {
+	normalized := strings.ToLower(text)
+	normalized = strings.ReplaceAll(normalized, "’", "'")
+	for _, pattern := range codexTrustPromptPatterns {
+		if !strings.Contains(compactPromptText(normalized), compactPromptText(pattern)) {
+			return false
+		}
+	}
+	return true
+}
+
+func compactPromptText(text string) string {
+	return strings.Map(func(r rune) rune {
+		if unicode.IsSpace(r) {
+			return -1
+		}
+		return r
+	}, text)
+}
+
+func (p *Pane) isCodexReadyForSend() bool {
+	p.mu.Lock()
+	alive := p.alive
+	lastOutput := p.lastOutputTime
+	p.mu.Unlock()
+	if !alive || time.Since(lastOutput) < ptyIdleTimeout {
+		return false
+	}
+
+	p.renderMu.Lock()
+	text := emulatorBottomText(p.emu, p.emu.Height())
+	p.renderMu.Unlock()
+	return isCodexReadyPrompt(text)
+}
+
+func (p *Pane) waitForCodexReady(timeout time.Duration) bool {
+	deadline := time.Now().Add(timeout)
+	trustAccepted := false
+	var readySince time.Time
+	for {
+		p.renderMu.Lock()
+		text := emulatorBottomText(p.emu, p.emu.Height())
+		p.renderMu.Unlock()
+		if isCodexTrustPrompt(text) && !trustAccepted && p.ptmx != nil {
+			_, _ = p.ptmx.Write([]byte("\r"))
+			trustAccepted = true
+		}
+		if p.isCodexReadyForSend() {
+			if readySince.IsZero() {
+				readySince = time.Now()
+			} else if time.Since(readySince) >= codexReadyStableDuration {
+				return true
+			}
+		} else {
+			readySince = time.Time{}
+		}
+		if time.Now().After(deadline) {
+			return false
+		}
+		time.Sleep(codexReadyPollInterval)
+	}
 }
 
 // GetRegion returns the pane's screen region.
