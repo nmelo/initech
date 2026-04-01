@@ -99,6 +99,68 @@ func TestPaneSendText_CodexWaitsForReadyPrompt(t *testing.T) {
 	}
 }
 
+func TestPaneSendText_OpenCodeWaitsForReadyPrompt(t *testing.T) {
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe: %v", err)
+	}
+	defer r.Close()
+	defer w.Close()
+
+	emu := vt.NewSafeEmulator(80, codexPermissionScanRows)
+	p := &Pane{
+		name:             "eng1",
+		emu:              emu,
+		alive:            true,
+		ptmx:             w,
+		agentType:        config.AgentTypeOpenCode,
+		noBracketedPaste: true,
+		lastOutputTime:   time.Now(),
+	}
+
+	readCh := make(chan []byte, 1)
+	go func() {
+		buf := make([]byte, 16)
+		n, _ := r.Read(buf)
+		readCh <- buf[:n]
+	}()
+
+	done := make(chan struct{})
+	go func() {
+		p.SendText("go", false)
+		close(done)
+	}()
+
+	select {
+	case got := <-readCh:
+		t.Fatalf("got PTY write before ready prompt: %q", string(got))
+	case <-time.After(150 * time.Millisecond):
+	}
+
+	p.mu.Lock()
+	p.lastOutputTime = time.Now().Add(-(ptyIdleTimeout + time.Second))
+	p.mu.Unlock()
+	_, _ = emu.Write([]byte(">"))
+	if !p.isCodexReadyForSend() {
+		t.Fatalf("pane not ready after prompt write; footer=%q", emulatorBottomText(emu, codexPermissionScanRows))
+	}
+
+	select {
+	case got := <-readCh:
+		if string(got) != "go" {
+			t.Fatalf("PTY write = %q, want %q", string(got), "go")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timeout waiting for PTY write after ready prompt")
+	}
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("SendText did not return after ready prompt")
+	}
+}
+
 func TestWaitForCodexReady_AcceptsTrustPrompt(t *testing.T) {
 	r, w, err := os.Pipe()
 	if err != nil {

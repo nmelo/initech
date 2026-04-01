@@ -279,7 +279,7 @@ func sendPaneTextLocked(pane *Pane, text string, enter bool) {
 	if pane.ptmx == nil {
 		return
 	}
-	if pane.AgentType() == config.AgentTypeCodex {
+	if config.IsCodexLikeAgentType(pane.AgentType()) {
 		pane.waitForCodexReady(codexReadyTimeout)
 	}
 	// Stash any partially typed input before injecting so that the incoming
@@ -318,7 +318,7 @@ func sendPaneTextLocked(pane *Pane, text string, enter bool) {
 		// Enter. The 8ms parser window observed in source was not enough in the
 		// full PTY/TUI pipeline; use a larger margin here.
 		time.Sleep(200 * time.Millisecond)
-		if pane.AgentType() == config.AgentTypeCodex && pane.submitKey != "ctrl+enter" {
+		if config.IsCodexLikeAgentType(pane.AgentType()) && pane.submitKey != "ctrl+enter" {
 			_, _ = pane.ptmx.Write([]byte("\r"))
 			return
 		}

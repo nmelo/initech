@@ -265,6 +265,65 @@ func TestPaneSendText_NoBracketedPasteCodexUsesLocalRawPath(t *testing.T) {
 	}
 }
 
+func TestPaneSendText_NoBracketedPasteOpenCodeUsesLocalRawPath(t *testing.T) {
+	ptmx, tty, err := pty.Open()
+	if err != nil {
+		t.Fatalf("pty.Open: %v", err)
+	}
+	defer ptmx.Close()
+	defer tty.Close()
+
+	oldState, err := term.MakeRaw(int(tty.Fd()))
+	if err != nil {
+		t.Fatalf("MakeRaw: %v", err)
+	}
+	defer term.Restore(int(tty.Fd()), oldState)
+
+	emu := vt.NewSafeEmulator(80, 24)
+	_, _ = emu.Write([]byte(">\n"))
+	var emuMu sync.Mutex
+	var emuOutput []byte
+	go func() {
+		buf := make([]byte, 256)
+		for {
+			n, err := emu.Read(buf)
+			if n > 0 {
+				emuMu.Lock()
+				emuOutput = append(emuOutput, buf[:n]...)
+				emuMu.Unlock()
+				_, _ = ptmx.Write(buf[:n])
+			}
+			if err != nil {
+				return
+			}
+		}
+	}()
+
+	p := &Pane{
+		name:             "eng1",
+		emu:              emu,
+		alive:            true,
+		ptmx:             ptmx,
+		noBracketedPaste: true,
+		agentType:        config.AgentTypeOpenCode,
+		submitKey:        "enter",
+		lastOutputTime:   time.Now().Add(-(ptyIdleTimeout + time.Second)),
+	}
+
+	go p.SendText("hello", true)
+
+	got := readPTYUntil(t, tty, []byte("hello\r"), time.Second)
+	if got != "hello\r" {
+		t.Fatalf("PTY received %q, want %q", got, "hello\r")
+	}
+
+	emuMu.Lock()
+	defer emuMu.Unlock()
+	if len(emuOutput) != 0 {
+		t.Fatalf("emulator output %q, want no emulator traffic for OpenCode local raw send", string(emuOutput))
+	}
+}
+
 func readPTYUntil(t *testing.T, tty *os.File, want []byte, timeout time.Duration) string {
 	t.Helper()
 

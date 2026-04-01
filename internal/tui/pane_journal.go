@@ -167,7 +167,7 @@ func (p *Pane) updateActivity() {
 	}
 
 	runningToIdle := prev == StateRunning && p.activity == StateIdle
-	shouldAutoApprove := runningToIdle && p.AgentType() == config.AgentTypeCodex
+	shouldAutoApprove := runningToIdle && config.IsCodexLikeAgentType(p.AgentType())
 
 	var idleEvent *AgentEvent
 	if runningToIdle && p.beadID != "" && p.eventCh != nil &&

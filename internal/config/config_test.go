@@ -347,6 +347,12 @@ func TestNormalizeAgentType_Default(t *testing.T) {
 	}
 }
 
+func TestNormalizeAgentType_OpenCode(t *testing.T) {
+	if got := NormalizeAgentType(AgentTypeOpenCode); got != AgentTypeOpenCode {
+		t.Errorf("NormalizeAgentType(%q) = %q, want %q", AgentTypeOpenCode, got, AgentTypeOpenCode)
+	}
+}
+
 func TestDefaultAgentTypeBehavior(t *testing.T) {
 	tests := []struct {
 		name             string
@@ -357,6 +363,7 @@ func TestDefaultAgentTypeBehavior(t *testing.T) {
 		{name: "claude-default", agentType: "", noBracketedPaste: false, submitKey: ""},
 		{name: "claude", agentType: AgentTypeClaudeCode, noBracketedPaste: false, submitKey: ""},
 		{name: "codex", agentType: AgentTypeCodex, noBracketedPaste: true, submitKey: "enter"},
+		{name: "opencode", agentType: AgentTypeOpenCode, noBracketedPaste: true, submitKey: "enter"},
 		{name: "generic", agentType: AgentTypeGeneric, noBracketedPaste: true, submitKey: "enter"},
 	}
 
@@ -369,6 +376,25 @@ func TestDefaultAgentTypeBehavior(t *testing.T) {
 				t.Errorf("DefaultSubmitKey(%q) = %q, want %q", tt.agentType, got, tt.submitKey)
 			}
 		})
+	}
+}
+
+func TestIsCodexLikeAgentType(t *testing.T) {
+	tests := []struct {
+		agentType string
+		want      bool
+	}{
+		{agentType: "", want: false},
+		{agentType: AgentTypeClaudeCode, want: false},
+		{agentType: AgentTypeCodex, want: true},
+		{agentType: AgentTypeOpenCode, want: true},
+		{agentType: AgentTypeGeneric, want: false},
+	}
+
+	for _, tt := range tests {
+		if got := IsCodexLikeAgentType(tt.agentType); got != tt.want {
+			t.Errorf("IsCodexLikeAgentType(%q) = %v, want %v", tt.agentType, got, tt.want)
+		}
 	}
 }
 

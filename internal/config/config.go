@@ -86,6 +86,9 @@ const (
 	AgentTypeClaudeCode = "claude-code"
 	// AgentTypeCodex uses typed injection and Enter submit by default.
 	AgentTypeCodex = "codex"
+	// AgentTypeOpenCode uses the same raw-input defaults and readiness handling
+	// as Codex.
+	AgentTypeOpenCode = "opencode"
 	// AgentTypeGeneric is a non-Claude agent with conservative typed-input defaults.
 	AgentTypeGeneric = "generic"
 )
@@ -106,7 +109,7 @@ type RoleOverride struct {
 	TestCmd          string   `yaml:"test_cmd,omitempty"`
 	Dir              string   `yaml:"dir,omitempty"`
 	RepoName         string   `yaml:"repo_name,omitempty"`
-	AgentType        string   `yaml:"agent_type,omitempty"` // "claude-code" (default), "codex", or "generic".
+	AgentType        string   `yaml:"agent_type,omitempty"` // "claude-code" (default), "codex", "opencode", or "generic".
 	Command          []string `yaml:"command,omitempty"`    // Override the agent command entirely (e.g. ["codex"]).
 	ClaudeArgs       []string `yaml:"claude_args,omitempty"`
 	NoBracketedPaste bool     `yaml:"no_bracketed_paste,omitempty"` // When true, use the non-bracketed injection path.
@@ -125,7 +128,18 @@ func NormalizeAgentType(agentType string) string {
 // ValidAgentType reports whether agentType is one of the supported config values.
 func ValidAgentType(agentType string) bool {
 	switch NormalizeAgentType(agentType) {
-	case AgentTypeClaudeCode, AgentTypeCodex, AgentTypeGeneric:
+	case AgentTypeClaudeCode, AgentTypeCodex, AgentTypeOpenCode, AgentTypeGeneric:
+		return true
+	default:
+		return false
+	}
+}
+
+// IsCodexLikeAgentType reports whether agentType should use the Codex/OpenCode
+// readiness and raw-send flow.
+func IsCodexLikeAgentType(agentType string) bool {
+	switch NormalizeAgentType(agentType) {
+	case AgentTypeCodex, AgentTypeOpenCode:
 		return true
 	default:
 		return false
@@ -146,7 +160,7 @@ func DefaultNoBracketedPaste(agentType string) bool {
 // DefaultSubmitKey returns the submit key implied by the agent type.
 func DefaultSubmitKey(agentType string) string {
 	switch NormalizeAgentType(agentType) {
-	case AgentTypeCodex, AgentTypeGeneric:
+	case AgentTypeCodex, AgentTypeOpenCode, AgentTypeGeneric:
 		return "enter"
 	default:
 		return ""
@@ -259,7 +273,7 @@ func Validate(p *Project) error {
 			return fmt.Errorf("role_override %q is not in roles list", name)
 		}
 		if !ValidAgentType(ov.AgentType) {
-			return fmt.Errorf("role_override %q has invalid agent_type %q: must be %q, %q, or %q", name, ov.AgentType, AgentTypeClaudeCode, AgentTypeCodex, AgentTypeGeneric)
+			return fmt.Errorf("role_override %q has invalid agent_type %q: must be %q, %q, %q, or %q", name, ov.AgentType, AgentTypeClaudeCode, AgentTypeCodex, AgentTypeOpenCode, AgentTypeGeneric)
 		}
 		if ov.SubmitKey != "" && ov.SubmitKey != "enter" && ov.SubmitKey != "ctrl+enter" {
 			return fmt.Errorf("role_override %q has invalid submit_key %q: must be \"enter\" or \"ctrl+enter\"", name, ov.SubmitKey)
