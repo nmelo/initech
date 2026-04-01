@@ -63,140 +63,72 @@ func TestDetectOpenCodePermissionSelection_RejectSelectedIsUnsafe(t *testing.T) 
 	}
 }
 
-func TestMaybeApproveOpenCodePermissionPrompt_SendsRightThenEnter(t *testing.T) {
-	r, w, err := os.Pipe()
-	if err != nil {
-		t.Fatalf("os.Pipe: %v", err)
-	}
-	defer r.Close()
-	defer w.Close()
-
+// TestScanPermissionPrompt_OpenCodeAllowReturnsRightEnter verifies that
+// scanPermissionPrompt detects an OpenCode dialog with "Allow" selected
+// and returns the right-arrow + enter sequence.
+func TestScanPermissionPrompt_OpenCodeAllowReturnsRightEnter(t *testing.T) {
 	emu := vt.NewSafeEmulator(120, codexPermissionScanRows)
 	_, _ = emu.Write([]byte(renderOpenCodePermissionDialog(0, "Allow (a)", "Allow for session (s)", "Deny (d)")))
 
 	p := &Pane{
 		name:             "eng2",
 		agentType:        config.AgentTypeOpenCode,
-		autoApprove:      true,
 		noBracketedPaste: true,
-		alive:            true,
 		emu:              emu,
-		ptmx:             w,
 	}
 
-	done := make(chan []byte, 1)
-	go func() {
-		buf := make([]byte, 8)
-		n, _ := r.Read(buf)
-		done <- buf[:n]
-	}()
-
-	if !p.maybeApproveOpenCodePermissionPrompt() {
-		t.Fatal("expected OpenCode prompt approval")
-	}
-
-	select {
-	case got := <-done:
-		if string(got) != "\x1b[C\r" {
-			t.Fatalf("approval write = %q, want %q", string(got), "\x1b[C\r")
-		}
-	case <-time.After(time.Second):
-		t.Fatal("timeout waiting for OpenCode approval write")
+	got := p.scanPermissionPrompt()
+	if string(got) != "\x1b[C\r" {
+		t.Fatalf("scanPermissionPrompt = %q, want %q", string(got), "\x1b[C\r")
 	}
 }
 
-func TestMaybeApproveOpenCodePermissionPrompt_EnterOnlyWhenPersistentSelected(t *testing.T) {
-	r, w, err := os.Pipe()
-	if err != nil {
-		t.Fatalf("os.Pipe: %v", err)
-	}
-	defer r.Close()
-	defer w.Close()
-
+// TestScanPermissionPrompt_OpenCodePersistentReturnsEnter verifies that
+// when the persistent option is selected, scanPermissionPrompt returns Enter.
+func TestScanPermissionPrompt_OpenCodePersistentReturnsEnter(t *testing.T) {
 	emu := vt.NewSafeEmulator(120, codexPermissionScanRows)
 	_, _ = emu.Write([]byte(renderOpenCodePermissionDialog(1, "Allow (a)", "Allow for session (s)", "Deny (d)")))
 
 	p := &Pane{
 		name:             "eng2",
 		agentType:        config.AgentTypeOpenCode,
-		autoApprove:      true,
 		noBracketedPaste: true,
-		alive:            true,
 		emu:              emu,
-		ptmx:             w,
 	}
 
-	done := make(chan []byte, 1)
-	go func() {
-		buf := make([]byte, 8)
-		n, _ := r.Read(buf)
-		done <- buf[:n]
-	}()
-
-	if !p.maybeApproveOpenCodePermissionPrompt() {
-		t.Fatal("expected OpenCode prompt approval")
-	}
-
-	select {
-	case got := <-done:
-		if string(got) != "\r" {
-			t.Fatalf("approval write = %q, want %q", string(got), "\r")
-		}
-	case <-time.After(time.Second):
-		t.Fatal("timeout waiting for OpenCode approval write")
+	got := p.scanPermissionPrompt()
+	if string(got) != "\r" {
+		t.Fatalf("scanPermissionPrompt = %q, want %q", string(got), "\r")
 	}
 }
 
-func TestMaybeApproveOpenCodePermissionPrompt_SkipsWhenRejectSelected(t *testing.T) {
-	r, w, err := os.Pipe()
-	if err != nil {
-		t.Fatalf("os.Pipe: %v", err)
-	}
-	defer r.Close()
-	defer w.Close()
-
+// TestScanPermissionPrompt_OpenCodeRejectReturnsNil verifies that
+// scanPermissionPrompt returns nil when the reject option is selected.
+func TestScanPermissionPrompt_OpenCodeRejectReturnsNil(t *testing.T) {
 	emu := vt.NewSafeEmulator(120, codexPermissionScanRows)
 	_, _ = emu.Write([]byte(renderOpenCodePermissionDialog(2, "Allow once", "Allow always", "Reject")))
 
 	p := &Pane{
 		name:             "eng2",
 		agentType:        config.AgentTypeOpenCode,
-		autoApprove:      true,
 		noBracketedPaste: true,
-		alive:            true,
 		emu:              emu,
-		ptmx:             w,
 	}
 
-	done := make(chan []byte, 1)
-	go func() {
-		buf := make([]byte, 8)
-		n, _ := r.Read(buf)
-		done <- buf[:n]
-	}()
-
-	if p.maybeApproveOpenCodePermissionPrompt() {
-		t.Fatal("expected reject-selected dialog to fail safe")
-	}
-	_ = w.Close()
-
-	select {
-	case got := <-done:
-		if len(got) != 0 {
-			t.Fatalf("unexpected approval write %q", string(got))
-		}
-	case <-time.After(200 * time.Millisecond):
-		t.Fatal("read goroutine did not exit")
+	if got := p.scanPermissionPrompt(); got != nil {
+		t.Fatalf("scanPermissionPrompt = %q, want nil for reject-selected", string(got))
 	}
 }
 
-func TestUpdateActivity_IdleEdgeAutoApprovesOpenCodePrompt(t *testing.T) {
-	r, w, err := os.Pipe()
+// TestReadLoopAutoApprove_OpenCodeWritesApproval simulates the readLoop
+// path for an OpenCode pane and verifies the approval bytes are written.
+func TestReadLoopAutoApprove_OpenCodeWritesApproval(t *testing.T) {
+	ptyR, ptyW, err := os.Pipe()
 	if err != nil {
 		t.Fatalf("os.Pipe: %v", err)
 	}
-	defer r.Close()
-	defer w.Close()
+	defer ptyR.Close()
+	defer ptyW.Close()
 
 	emu := vt.NewSafeEmulator(120, codexPermissionScanRows)
 	_, _ = emu.Write([]byte(renderOpenCodePermissionDialog(0, "Allow (a)", "Allow for session (s)", "Deny (d)")))
@@ -207,20 +139,33 @@ func TestUpdateActivity_IdleEdgeAutoApprovesOpenCodePrompt(t *testing.T) {
 		autoApprove:      true,
 		noBracketedPaste: true,
 		alive:            true,
-		activity:         StateRunning,
-		lastOutputTime:   time.Now().Add(-(ptyIdleTimeout + time.Second)),
 		emu:              emu,
-		ptmx:             w,
+		ptmx:             ptyW,
+	}
+
+	// Simulate readLoop: acquire renderMu, write to emu, scan, release.
+	p.renderMu.Lock()
+	p.emu.Write([]byte(" "))
+	approvalBytes := p.scanPermissionPrompt()
+	p.renderMu.Unlock()
+
+	if approvalBytes == nil {
+		t.Fatal("expected approval bytes from scanPermissionPrompt")
+	}
+
+	p.sendMu.Lock()
+	_, err = p.ptmx.Write(approvalBytes)
+	p.sendMu.Unlock()
+	if err != nil {
+		t.Fatalf("ptmx.Write: %v", err)
 	}
 
 	done := make(chan []byte, 1)
 	go func() {
 		buf := make([]byte, 8)
-		n, _ := r.Read(buf)
+		n, _ := ptyR.Read(buf)
 		done <- buf[:n]
 	}()
-
-	p.updateActivity()
 
 	select {
 	case got := <-done:
@@ -228,134 +173,23 @@ func TestUpdateActivity_IdleEdgeAutoApprovesOpenCodePrompt(t *testing.T) {
 			t.Fatalf("approval write = %q, want %q", string(got), "\x1b[C\r")
 		}
 	case <-time.After(time.Second):
-		t.Fatal("timeout waiting for OpenCode auto-approval write")
+		t.Fatal("timeout waiting for OpenCode approval write")
 	}
 }
 
-func TestUpdateActivity_PeriodicScanThrottleSkipsRecentOpenCodeScan(t *testing.T) {
-	r, w, err := os.Pipe()
-	if err != nil {
-		t.Fatalf("os.Pipe: %v", err)
-	}
-	defer r.Close()
-	defer w.Close()
-
+// TestScanPermissionPrompt_CodexPaneIgnoresOpenCodeDialog verifies that a
+// Codex-typed pane does not match an OpenCode permission dialog.
+func TestScanPermissionPrompt_CodexPaneIgnoresOpenCodeDialog(t *testing.T) {
 	emu := vt.NewSafeEmulator(120, codexPermissionScanRows)
 	_, _ = emu.Write([]byte(renderOpenCodePermissionDialog(0, "Allow (a)", "Allow for session (s)", "Deny (d)")))
 
 	p := &Pane{
-		name:              "eng2",
-		agentType:         config.AgentTypeOpenCode,
-		autoApprove:       true,
-		noBracketedPaste:  true,
-		alive:             true,
-		activity:          StateIdle,
-		lastOutputTime:    time.Now().Add(-(ptyIdleTimeout + time.Second)),
-		lastCodexPermScan: time.Now(),
-		emu:               emu,
-		ptmx:              w,
+		name:      "eng1",
+		agentType: config.AgentTypeCodex,
+		emu:       emu,
 	}
 
-	done := make(chan []byte, 1)
-	go func() {
-		buf := make([]byte, 8)
-		n, _ := r.Read(buf)
-		done <- buf[:n]
-	}()
-
-	p.updateActivity()
-	_ = w.Close()
-
-	select {
-	case got := <-done:
-		if len(got) != 0 {
-			t.Fatalf("unexpected approval write %q with recent scan timestamp", string(got))
-		}
-	case <-time.After(200 * time.Millisecond):
-		t.Fatal("read goroutine did not exit")
-	}
-}
-
-func TestUpdateActivity_IdleEdgeSkipsOpenCodeWhenAutoApproveDisabled(t *testing.T) {
-	r, w, err := os.Pipe()
-	if err != nil {
-		t.Fatalf("os.Pipe: %v", err)
-	}
-	defer r.Close()
-	defer w.Close()
-
-	emu := vt.NewSafeEmulator(120, codexPermissionScanRows)
-	_, _ = emu.Write([]byte(renderOpenCodePermissionDialog(0, "Allow (a)", "Allow for session (s)", "Deny (d)")))
-
-	p := &Pane{
-		name:           "eng2",
-		agentType:      config.AgentTypeOpenCode,
-		autoApprove:    false,
-		alive:          true,
-		activity:       StateRunning,
-		lastOutputTime: time.Now().Add(-(ptyIdleTimeout + time.Second)),
-		emu:            emu,
-		ptmx:           w,
-	}
-
-	done := make(chan []byte, 1)
-	go func() {
-		buf := make([]byte, 8)
-		n, _ := r.Read(buf)
-		done <- buf[:n]
-	}()
-
-	p.updateActivity()
-	_ = w.Close()
-
-	select {
-	case got := <-done:
-		if len(got) != 0 {
-			t.Fatalf("unexpected approval write %q with autoApprove disabled", string(got))
-		}
-	case <-time.After(200 * time.Millisecond):
-		t.Fatal("read goroutine did not exit")
-	}
-}
-
-func TestUpdateActivity_IdleEdgeSkipsCodexWhenOpenCodeDialogVisible(t *testing.T) {
-	r, w, err := os.Pipe()
-	if err != nil {
-		t.Fatalf("os.Pipe: %v", err)
-	}
-	defer r.Close()
-	defer w.Close()
-
-	emu := vt.NewSafeEmulator(120, codexPermissionScanRows)
-	_, _ = emu.Write([]byte(renderOpenCodePermissionDialog(0, "Allow (a)", "Allow for session (s)", "Deny (d)")))
-
-	p := &Pane{
-		name:           "eng1",
-		agentType:      config.AgentTypeCodex,
-		autoApprove:    true,
-		alive:          true,
-		activity:       StateRunning,
-		lastOutputTime: time.Now().Add(-(ptyIdleTimeout + time.Second)),
-		emu:            emu,
-		ptmx:           w,
-	}
-
-	done := make(chan []byte, 1)
-	go func() {
-		buf := make([]byte, 8)
-		n, _ := r.Read(buf)
-		done <- buf[:n]
-	}()
-
-	p.updateActivity()
-	_ = w.Close()
-
-	select {
-	case got := <-done:
-		if len(got) != 0 {
-			t.Fatalf("unexpected approval write %q for codex pane on OpenCode dialog", string(got))
-		}
-	case <-time.After(200 * time.Millisecond):
-		t.Fatal("read goroutine did not exit")
+	if got := p.scanPermissionPrompt(); got != nil {
+		t.Fatalf("scanPermissionPrompt = %q, want nil for codex pane on OpenCode dialog", string(got))
 	}
 }

@@ -166,13 +166,6 @@ func (p *Pane) updateActivity() {
 	}
 
 	runningToIdle := prev == StateRunning && p.activity == StateIdle
-	shouldAutoApprove := false
-	if p.autoApprove {
-		if runningToIdle || now.Sub(p.lastCodexPermScan) >= codexPermissionScanInterval {
-			shouldAutoApprove = true
-			p.lastCodexPermScan = now
-		}
-	}
 
 	var idleEvent *AgentEvent
 	if runningToIdle && p.beadID != "" && p.eventCh != nil &&
@@ -189,9 +182,6 @@ func (p *Pane) updateActivity() {
 
 	if idleEvent != nil {
 		EmitEvent(p.eventCh, *idleEvent)
-	}
-	if shouldAutoApprove {
-		p.maybeApprovePermissionPrompt()
 	}
 }
 
