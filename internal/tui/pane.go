@@ -336,25 +336,11 @@ func (p *Pane) responseLoop() {
 // SendKey translates a tcell key event into a charmbracelet KeyPressEvent
 // and sends it through the emulator, which encodes it for the PTY.
 func (p *Pane) SendKey(ev *tcell.EventKey) {
-	// Shift+Enter: write CSI-u encoded Shift+Enter (ESC[13;2u) directly to the
-	// PTY, bypassing the VT emulator which doesn't support kitty keyboard.
-	//
-	// Why CSI-u: Claude Code requests kitty keyboard protocol (CSI > 1 u) from
-	// its terminal. The charmbracelet emulator ignores this request (no handler),
-	// but Claude Code's input parser still accepts CSI-u sequences on stdin.
-	// Writing the sequence directly to the PTY master delivers it to Claude Code
-	// in a single atomic write, ensuring the timeout-based ESC disambiguation in
-	// Node.js terminal libraries sees the full sequence, not a bare ESC.
-	//
-	// Why not \n: PTY line discipline in raw mode passes \n and \r through
-	// unchanged, but Claude Code doesn't distinguish them in legacy keyboard
-	// mode (both mean "Enter/submit").
-	if ev.Key() == tcell.KeyEnter && ev.Modifiers()&tcell.ModShift != 0 {
-		if p.ptmx != nil {
-			p.ptmx.Write([]byte("\x1b[13;2u"))
-		}
-		return
-	}
+	// NOTE: Shift+Enter is NOT distinguishable from Enter at the PTY byte
+	// level. Real terminals send the same ESC (0x1b) for both. Claude Code
+	// handles Shift+Enter at the TUI framework level (ink/React), not from
+	// stdin bytes. This is a fundamental limitation of PTY multiplexing
+	// (tmux has the same issue). See ini-dq94 for investigation details.
 	kpe := tcellKeyToUV(ev)
 	p.emu.SendKey(kpe)
 }

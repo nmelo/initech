@@ -212,9 +212,6 @@ func (rp *RemotePane) SendKey(ev *tcell.EventKey) {
 	var b []byte
 	if ev.Key() == tcell.KeyRune {
 		b = []byte(string(ev.Rune()))
-	} else if ev.Key() == tcell.KeyEnter && ev.Modifiers()&tcell.ModShift != 0 {
-		// Shift+Enter: CSI-u encoded (ESC[13;2u). See Pane.SendKey for rationale.
-		b = []byte("\x1b[13;2u")
 	} else {
 		b = tcellKeyToANSI(ev)
 	}
