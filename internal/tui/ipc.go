@@ -267,9 +267,10 @@ func (t *TUI) handleIPCSend(conn net.Conn, req IPCRequest) {
 // content as a paste (not typed input). For messages >800 chars, Claude Code
 // collapses the paste into a "[Pasted text #N]" reference internally.
 //
-// After the paste completes (150ms for Claude Code's 100ms completion timeout),
-// Enter is sent to submit. No retry logic is needed because bracketed paste
-// is handled atomically by Claude Code's parser. Safe to call from any goroutine.
+// After the paste completes (500ms for Claude Code's 100ms completion timeout plus
+// async rendering of large paste references), Enter is sent to submit. A single
+// retry fires if the prompt still has content (Enter was swallowed while isPasting
+// was still true). Safe to call from any goroutine.
 func (t *TUI) injectText(pane *Pane, text string, enter bool) {
 	pane.sendMu.Lock()
 	defer pane.sendMu.Unlock()
@@ -294,13 +295,47 @@ func (t *TUI) injectText(pane *Pane, text string, enter bool) {
 	pane.ptmx.Write(buf)
 
 	if enter {
-		// Wait for Claude Code's paste completion timeout (100ms) plus margin.
-		// After isPasting resets to false, Enter is no longer swallowed.
-		time.Sleep(150 * time.Millisecond)
+		// Wait for Claude Code's paste completion (100ms PASTE_COMPLETION_TIMEOUT_MS)
+		// plus rendering time for large pastes (>800 chars collapse to a reference,
+		// which requires additional async processing). 500ms covers both cases.
+		time.Sleep(500 * time.Millisecond)
 		sendSubmitKey(pane.emu, pane.submitKey)
+
+		// Single retry: large pastes may need more time for the isPasting flag
+		// to clear and the collapsed reference to render. If Enter was swallowed
+		// (prompt still has content), send one more.
+		if pane.IsAlive() {
+			time.Sleep(500 * time.Millisecond)
+			if promptHasContent(pane) {
+				sendSubmitKey(pane.emu, pane.submitKey)
+			}
+		}
 	}
 }
 
+// promptHasContent checks if the last ❯ prompt line has non-whitespace content.
+// Used as a lightweight retry signal: if content remains after Enter, it was
+// likely swallowed during paste processing.
+func promptHasContent(p *Pane) bool {
+	cols := p.emu.Width()
+	rows := p.emu.Height()
+	for row := rows - 1; row >= 0; row-- {
+		var line strings.Builder
+		for col := 0; col < cols; col++ {
+			cell := p.emu.CellAt(col, row)
+			if cell != nil && cell.Content != "" {
+				line.WriteString(cell.Content)
+			} else {
+				line.WriteByte(' ')
+			}
+		}
+		text := line.String()
+		if idx := strings.LastIndex(text, "\u276f"); idx >= 0 {
+			return strings.TrimSpace(text[idx+len("\u276f"):]) != ""
+		}
+	}
+	return false
+}
 
 func (t *TUI) handleIPCPatrol(conn net.Conn, req IPCRequest) {
 	lines := req.Lines
