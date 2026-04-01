@@ -149,6 +149,7 @@ const idleNotifyCooldown = 60 * time.Second
 // has elapsed.
 func (p *Pane) updateActivity() {
 	p.mu.Lock()
+	now := time.Now()
 
 	prev := p.activity
 	if !p.alive {
@@ -160,19 +161,25 @@ func (p *Pane) updateActivity() {
 		p.mu.Unlock()
 		return
 	}
-	if time.Since(p.lastOutputTime) < ptyIdleTimeout {
+	if now.Sub(p.lastOutputTime) < ptyIdleTimeout {
 		p.activity = StateRunning
 	} else {
 		p.activity = StateIdle
 	}
 
 	runningToIdle := prev == StateRunning && p.activity == StateIdle
-	shouldAutoApprove := runningToIdle && config.IsCodexLikeAgentType(p.AgentType())
+	shouldAutoApprove := false
+	if config.IsCodexLikeAgentType(p.agentType) {
+		if runningToIdle || now.Sub(p.lastCodexPermScan) >= codexPermissionScanInterval {
+			shouldAutoApprove = true
+			p.lastCodexPermScan = now
+		}
+	}
 
 	var idleEvent *AgentEvent
 	if runningToIdle && p.beadID != "" && p.eventCh != nil &&
-		time.Since(p.lastIdleNotify) > idleNotifyCooldown {
-		p.lastIdleNotify = time.Now()
+		now.Sub(p.lastIdleNotify) > idleNotifyCooldown {
+		p.lastIdleNotify = now
 		idleEvent = &AgentEvent{
 			Type:   EventAgentIdleWithBead,
 			Pane:   p.name,

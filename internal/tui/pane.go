@@ -62,6 +62,7 @@ const (
 )
 
 const codexPermissionScanRows = 10
+const codexPermissionScanInterval = 5 * time.Second
 const codexReadyPollInterval = 50 * time.Millisecond
 const codexReadyTimeout = 10 * time.Second
 const codexReadyStableDuration = 500 * time.Millisecond
@@ -134,48 +135,49 @@ var _ PaneView = (*Pane)(nil)
 // Pane represents a terminal pane backed by a PTY process.
 // It uses a SafeEmulator from charmbracelet/x/vt for terminal emulation.
 type Pane struct {
-	cfg              PaneConfig // Original config for restart.
-	name             string
-	ptmx             *os.File
-	cmd              *exec.Cmd
-	pid              int // Cached PID from process start (avoids race with restart).
-	emu              *vt.SafeEmulator
-	mu               sync.Mutex
-	renderMu         sync.Mutex // Serializes readLoop writes with Render cell reads to prevent tearing.
-	sendMu           sync.Mutex // Serializes IPC send operations to prevent keystroke interleaving.
-	networkSink      io.Writer  // Optional: readLoop tees PTY bytes here for network streaming.
-	sinkMu           sync.Mutex // Protects networkSink assignment.
-	alive            bool
-	visible          bool              // Whether this pane is shown in the layout. Hidden panes keep running.
-	activity         ActivityState     // Current state: running when PTY bytes flowed recently, else idle.
-	lastOutputTime   time.Time         // Last time readLoop received bytes from the PTY.
-	lastIdleNotify   time.Time         // Last time an EventAgentIdleWithBead was emitted.
-	journal          []JournalEntry    // Ring buffer of recent JSONL entries (cap journalRingSize).
-	jsonlDir         string            // Directory to search for session JSONL files.
-	eventCh          chan<- AgentEvent // Emits detected semantic events to the TUI. May be nil.
-	safeGo           func(func())      // Launches a goroutine with panic recovery. Set by TUI after creation.
-	goWg             sync.WaitGroup    // Tracks goroutines launched by Start(). Wait in Close().
-	sessionDesc      string            // Session description extracted from cursor row.
-	beadID           string            // Current bead ID (e.g., "ini-bhk.3"). Empty = no bead.
-	beadTitle        string            // Bead title for top modal display.
-	stallReported    bool              // True after emitting stall event. Reset on new activity.
-	stuckReported    bool              // True after emitting stuck event. Reset on success.
-	dedupEvents      *dedup            // Dedup state for emitted events.
-	startedAt        time.Time         // When this pane's process was started. Used to filter stale JSONL.
-	scrollOffset     int               // Rows scrolled back from live view (0 = live).
-	idleWithBacklog  bool              // True when idle and ready beads exist in the backlog.
-	backlogCount     int               // Number of ready beads at last idle-with-backlog detection.
-	memoryRSS        int64             // RSS in kilobytes, updated by memory monitor goroutine.
-	suspended        bool              // True when auto-suspend policy has stopped this pane.
-	messageQueue     []QueuedMessage   // Messages waiting for resume. Capped at maxMessageQueue.
-	pinned           bool              // Pinned agents are never auto-suspended.
-	resumeGrace      time.Time         // Until this time, post-resume grace period is active.
-	resumeMu         sync.Mutex        // Serializes concurrent resume attempts for this pane.
-	kittEpoch        time.Time         // Reference time for KITT scanner animation phase.
-	agentType        string            // Semantic agent type: claude-code, codex, or generic.
-	noBracketedPaste bool              // True when injectText should use typed input instead of bracketed paste.
-	submitKey        string            // Key sequence to submit: "" or "enter" (Enter), "ctrl+enter" (Ctrl+Enter).
-	region           Region
+	cfg               PaneConfig // Original config for restart.
+	name              string
+	ptmx              *os.File
+	cmd               *exec.Cmd
+	pid               int // Cached PID from process start (avoids race with restart).
+	emu               *vt.SafeEmulator
+	mu                sync.Mutex
+	renderMu          sync.Mutex // Serializes readLoop writes with Render cell reads to prevent tearing.
+	sendMu            sync.Mutex // Serializes IPC send operations to prevent keystroke interleaving.
+	networkSink       io.Writer  // Optional: readLoop tees PTY bytes here for network streaming.
+	sinkMu            sync.Mutex // Protects networkSink assignment.
+	alive             bool
+	visible           bool              // Whether this pane is shown in the layout. Hidden panes keep running.
+	activity          ActivityState     // Current state: running when PTY bytes flowed recently, else idle.
+	lastOutputTime    time.Time         // Last time readLoop received bytes from the PTY.
+	lastIdleNotify    time.Time         // Last time an EventAgentIdleWithBead was emitted.
+	lastCodexPermScan time.Time         // Last time updateActivity triggered a Codex permission prompt scan.
+	journal           []JournalEntry    // Ring buffer of recent JSONL entries (cap journalRingSize).
+	jsonlDir          string            // Directory to search for session JSONL files.
+	eventCh           chan<- AgentEvent // Emits detected semantic events to the TUI. May be nil.
+	safeGo            func(func())      // Launches a goroutine with panic recovery. Set by TUI after creation.
+	goWg              sync.WaitGroup    // Tracks goroutines launched by Start(). Wait in Close().
+	sessionDesc       string            // Session description extracted from cursor row.
+	beadID            string            // Current bead ID (e.g., "ini-bhk.3"). Empty = no bead.
+	beadTitle         string            // Bead title for top modal display.
+	stallReported     bool              // True after emitting stall event. Reset on new activity.
+	stuckReported     bool              // True after emitting stuck event. Reset on success.
+	dedupEvents       *dedup            // Dedup state for emitted events.
+	startedAt         time.Time         // When this pane's process was started. Used to filter stale JSONL.
+	scrollOffset      int               // Rows scrolled back from live view (0 = live).
+	idleWithBacklog   bool              // True when idle and ready beads exist in the backlog.
+	backlogCount      int               // Number of ready beads at last idle-with-backlog detection.
+	memoryRSS         int64             // RSS in kilobytes, updated by memory monitor goroutine.
+	suspended         bool              // True when auto-suspend policy has stopped this pane.
+	messageQueue      []QueuedMessage   // Messages waiting for resume. Capped at maxMessageQueue.
+	pinned            bool              // Pinned agents are never auto-suspended.
+	resumeGrace       time.Time         // Until this time, post-resume grace period is active.
+	resumeMu          sync.Mutex        // Serializes concurrent resume attempts for this pane.
+	kittEpoch         time.Time         // Reference time for KITT scanner animation phase.
+	agentType         string            // Semantic agent type: claude-code, codex, or generic.
+	noBracketedPaste  bool              // True when injectText should use typed input instead of bracketed paste.
+	submitKey         string            // Key sequence to submit: "" or "enter" (Enter), "ctrl+enter" (Ctrl+Enter).
+	region            Region
 }
 
 // Region defines a rectangular area on screen (outer bounds including border).
