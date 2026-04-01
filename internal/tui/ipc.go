@@ -287,10 +287,17 @@ func (t *TUI) injectText(pane *Pane, text string, enter bool) {
 	time.Sleep(75 * time.Millisecond)
 
 	if pane.noBracketedPaste {
-		// Char-by-char: send through the emulator like real keypresses.
-		for _, r := range text {
-			pane.emu.SendKey(uv.KeyPressEvent(uv.Key{Code: r, Text: string(r)}))
+		// Direct PTY write: write raw text bytes + \r to the PTY master,
+		// bypassing the emulator's SendKey translation entirely. The emulator's
+		// key-to-byte encoding differs from what a real terminal sends, which
+		// causes agents like Codex to not recognize the input. Writing directly
+		// to the PTY produces the exact bytes the child process expects.
+		var buf []byte
+		buf = append(buf, text...)
+		if enter {
+			buf = append(buf, '\r')
 		}
+		pane.ptmx.Write(buf)
 	} else {
 		// Bracketed paste: ESC[200~ + text + ESC[201~ directly to PTY.
 		var buf []byte
@@ -300,22 +307,17 @@ func (t *TUI) injectText(pane *Pane, text string, enter bool) {
 		pane.ptmx.Write(buf)
 	}
 
-	if enter {
-		if pane.noBracketedPaste {
-			// Char-by-char mode: submit immediately, no paste processing delay.
-			sendSubmitKey(pane.emu, pane.submitKey)
-		} else {
-			// Bracketed paste mode: wait for Claude Code's paste completion
-			// (100ms PASTE_COMPLETION_TIMEOUT_MS) plus async rendering time.
-			time.Sleep(500 * time.Millisecond)
-			sendSubmitKey(pane.emu, pane.submitKey)
+	if enter && !pane.noBracketedPaste {
+		// Bracketed paste mode: wait for Claude Code's paste completion
+		// (100ms PASTE_COMPLETION_TIMEOUT_MS) plus async rendering time.
+		time.Sleep(500 * time.Millisecond)
+		sendSubmitKey(pane.emu, pane.submitKey)
 
-			// Single retry for large pastes where Enter was swallowed.
-			if pane.IsAlive() {
-				time.Sleep(500 * time.Millisecond)
-				if promptHasContent(pane) {
-					sendSubmitKey(pane.emu, pane.submitKey)
-				}
+		// Single retry for large pastes where Enter was swallowed.
+		if pane.IsAlive() {
+			time.Sleep(500 * time.Millisecond)
+			if promptHasContent(pane) {
+				sendSubmitKey(pane.emu, pane.submitKey)
 			}
 		}
 	}
