@@ -268,9 +268,10 @@ func (t *TUI) handleIPCSend(conn net.Conn, req IPCRequest) {
 // markers and writes directly to the PTY. Claude Code's parser handles this
 // natively, collapsing large pastes (>800 chars) to references.
 //
-// Char-by-char (noBracketedPaste=true, for Codex and other agents): sends each
-// character as a key event through the emulator, same path as real keypresses.
-// Needed for agents that don't support bracketed paste protocol.
+// Raw PTY write (noBracketedPaste=true, for Codex and other agents): writes the
+// message body directly to the PTY without bracketed paste markers. The final
+// submit key still goes through the emulator so submitKey semantics stay
+// aligned with the configured harness behavior.
 //
 // Safe to call from any goroutine.
 func (t *TUI) injectText(pane *Pane, text string, enter bool) {
@@ -282,14 +283,13 @@ func (t *TUI) injectText(pane *Pane, text string, enter bool) {
 	}
 
 	// Stash any partially typed input before injecting so that the incoming
-	// message doesn't corrupt text the user was composing (ini-gd0).
-	if pane.noBracketedPaste {
-		pane.sendTypedTextLocked(text, enter)
-		return
+	// message doesn't corrupt text the user was composing (ini-gd0). Codex/raw
+	// panes skip this because they inject directly to the PTY instead of through
+	// the emulator keystroke path.
+	if !pane.noBracketedPaste {
+		pane.emu.SendKey(uv.KeyPressEvent(uv.Key{Code: 's', Mod: uv.ModCtrl}))
+		time.Sleep(75 * time.Millisecond)
 	}
-
-	pane.emu.SendKey(uv.KeyPressEvent(uv.Key{Code: 's', Mod: uv.ModCtrl}))
-	time.Sleep(75 * time.Millisecond)
 
 	if pane.noBracketedPaste {
 		// Direct PTY write for text bytes, but route Enter through the emulator.
