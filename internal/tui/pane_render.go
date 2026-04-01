@@ -10,9 +10,9 @@ import (
 	"time"
 	"unicode/utf8"
 
+	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
-	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/gdamore/tcell/v2"
 )
 
@@ -294,6 +294,9 @@ func renderStatusBarRow(s *clampedScreen, emu *vt.SafeEmulator, screenX, screenY
 // dimStyle returns a dimmed version of a tcell.Style for unfocused panes.
 // Colors are scaled to ~70% brightness. Default fg becomes dark gray.
 func dimStyle(style tcell.Style) tcell.Style {
+	if style == tcell.StyleDefault {
+		return tcell.StyleDefault.Foreground(tcell.ColorDimGray)
+	}
 	fg, bg, attrs := style.Decompose()
 	return tcell.StyleDefault.
 		Foreground(dimColor(fg)).
