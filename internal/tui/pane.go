@@ -175,6 +175,7 @@ type Pane struct {
 	resumeMu          sync.Mutex        // Serializes concurrent resume attempts for this pane.
 	kittEpoch         time.Time         // Reference time for KITT scanner animation phase.
 	agentType         string            // Semantic agent type: claude-code, codex, or generic.
+	autoApprove       bool              // When true, auto-approve matching permission prompts.
 	noBracketedPaste  bool              // True when injectText should use typed input instead of bracketed paste.
 	submitKey         string            // Key sequence to submit: "" or "enter" (Enter), "ctrl+enter" (Ctrl+Enter).
 	region            Region
@@ -205,6 +206,7 @@ type PaneConfig struct {
 	Dir              string   // Working directory. Empty means inherit.
 	Env              []string // Extra env vars (KEY=VALUE). TERM is always set.
 	AgentType        string   // Semantic agent type: claude-code (default), codex, or generic.
+	AutoApprove      bool     // When true, auto-approve matching permission prompts.
 	NoBracketedPaste bool     // Final resolved injection mode. True uses typed input instead of bracketed paste.
 	SubmitKey        string   // Key sequence to submit input: "enter" (default) or "ctrl+enter".
 }
@@ -299,6 +301,7 @@ func NewPane(cfg PaneConfig, rows, cols int) (*Pane, error) {
 		dedupEvents:      newDedup(),
 		kittEpoch:        time.Now(),
 		agentType:        agentType,
+		autoApprove:      cfg.AutoApprove,
 		noBracketedPaste: cfg.NoBracketedPaste,
 		submitKey:        submitKey,
 	}
@@ -534,9 +537,9 @@ func sendSubmitKey(emu *vt.SafeEmulator, key string) {
 
 // maybeApproveCodexPermissionPrompt scans the bottom rows of the emulator for
 // a Codex permission prompt and, if found, writes "p" to the PTY to approve
-// and remember the choice. It only applies to no-bracketed-paste panes.
+// and remember the choice. It only runs when auto-approval is enabled.
 func (p *Pane) maybeApproveCodexPermissionPrompt() bool {
-	if !p.noBracketedPaste || p.ptmx == nil {
+	if !p.autoApprove || p.ptmx == nil {
 		return false
 	}
 
@@ -549,7 +552,7 @@ func (p *Pane) maybeApproveCodexPermissionPrompt() bool {
 
 	p.sendMu.Lock()
 	defer p.sendMu.Unlock()
-	if !p.noBracketedPaste || p.ptmx == nil {
+	if !p.autoApprove || p.ptmx == nil {
 		return false
 	}
 	_, err := p.ptmx.Write([]byte("p"))

@@ -237,6 +237,9 @@ func TestBuildAgentPaneConfig_RoleCommandOverride(t *testing.T) {
 	if cfg1.AgentType != config.AgentTypeClaudeCode {
 		t.Errorf("claude-agent AgentType = %q, want %q", cfg1.AgentType, config.AgentTypeClaudeCode)
 	}
+	if cfg1.AutoApprove {
+		t.Error("claude-agent AutoApprove = true, want false")
+	}
 	if cfg1.NoBracketedPaste {
 		t.Error("claude-agent NoBracketedPaste = true, want false")
 	}
@@ -261,6 +264,9 @@ func TestBuildAgentPaneConfig_RoleCommandOverride(t *testing.T) {
 	}
 	if cfg2.AgentType != config.AgentTypeCodex {
 		t.Errorf("codex-agent AgentType = %q, want %q", cfg2.AgentType, config.AgentTypeCodex)
+	}
+	if !cfg2.AutoApprove {
+		t.Error("codex-agent AutoApprove = false, want codex default true")
 	}
 	if !cfg2.NoBracketedPaste {
 		t.Error("codex-agent NoBracketedPaste = false, want codex default true")
@@ -290,10 +296,70 @@ func TestBuildServeAgentConfig_AgentTypeDefaults(t *testing.T) {
 	if cfg.AgentType != config.AgentTypeGeneric {
 		t.Errorf("AgentType = %q, want %q", cfg.AgentType, config.AgentTypeGeneric)
 	}
+	if cfg.AutoApprove {
+		t.Error("AutoApprove = true, want false for generic agent")
+	}
 	if !cfg.NoBracketedPaste {
 		t.Error("NoBracketedPaste = false, want true for generic agent")
 	}
 	if cfg.SubmitKey != "enter" {
 		t.Errorf("SubmitKey = %q, want enter", cfg.SubmitKey)
+	}
+}
+
+func TestResolvePaneBehavior_AutoApproveOverride(t *testing.T) {
+	disabled := false
+	enabled := true
+
+	tests := []struct {
+		name            string
+		override        config.RoleOverride
+		wantAgentType   string
+		wantAutoApprove bool
+		wantNoBracketed bool
+		wantSubmitKey   string
+	}{
+		{
+			name:            "codex default",
+			override:        config.RoleOverride{AgentType: config.AgentTypeCodex},
+			wantAgentType:   config.AgentTypeCodex,
+			wantAutoApprove: true,
+			wantNoBracketed: true,
+			wantSubmitKey:   "enter",
+		},
+		{
+			name:            "codex explicit false",
+			override:        config.RoleOverride{AgentType: config.AgentTypeCodex, AutoApprove: &disabled},
+			wantAgentType:   config.AgentTypeCodex,
+			wantAutoApprove: false,
+			wantNoBracketed: true,
+			wantSubmitKey:   "enter",
+		},
+		{
+			name:            "claude explicit true",
+			override:        config.RoleOverride{AgentType: config.AgentTypeClaudeCode, AutoApprove: &enabled},
+			wantAgentType:   config.AgentTypeClaudeCode,
+			wantAutoApprove: true,
+			wantNoBracketed: false,
+			wantSubmitKey:   "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			agentType, autoApprove, noBracketedPaste, submitKey := resolvePaneBehavior(tt.override)
+			if agentType != tt.wantAgentType {
+				t.Fatalf("agentType = %q, want %q", agentType, tt.wantAgentType)
+			}
+			if autoApprove != tt.wantAutoApprove {
+				t.Fatalf("autoApprove = %v, want %v", autoApprove, tt.wantAutoApprove)
+			}
+			if noBracketedPaste != tt.wantNoBracketed {
+				t.Fatalf("noBracketedPaste = %v, want %v", noBracketedPaste, tt.wantNoBracketed)
+			}
+			if submitKey != tt.wantSubmitKey {
+				t.Fatalf("submitKey = %q, want %q", submitKey, tt.wantSubmitKey)
+			}
+		})
 	}
 }

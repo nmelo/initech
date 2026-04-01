@@ -12,8 +12,6 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
-
-	"github.com/nmelo/initech/internal/config"
 )
 
 // watchJSONL polls for new JSONL entries in the session directory and feeds
@@ -169,7 +167,7 @@ func (p *Pane) updateActivity() {
 
 	runningToIdle := prev == StateRunning && p.activity == StateIdle
 	shouldAutoApprove := false
-	if config.IsCodexLikeAgentType(p.agentType) {
+	if p.autoApprove {
 		if runningToIdle || now.Sub(p.lastCodexPermScan) >= codexPermissionScanInterval {
 			shouldAutoApprove = true
 			p.lastCodexPermScan = now

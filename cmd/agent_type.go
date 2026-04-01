@@ -2,8 +2,12 @@ package cmd
 
 import "github.com/nmelo/initech/internal/config"
 
-func resolvePaneBehavior(ov config.RoleOverride) (agentType string, noBracketedPaste bool, submitKey string) {
+func resolvePaneBehavior(ov config.RoleOverride) (agentType string, autoApprove bool, noBracketedPaste bool, submitKey string) {
 	agentType = config.NormalizeAgentType(ov.AgentType)
+	autoApprove = config.DefaultAutoApprove(agentType)
+	if ov.AutoApprove != nil {
+		autoApprove = *ov.AutoApprove
+	}
 	noBracketedPaste = config.DefaultNoBracketedPaste(agentType)
 	if ov.NoBracketedPaste {
 		noBracketedPaste = true
@@ -12,5 +16,5 @@ func resolvePaneBehavior(ov config.RoleOverride) (agentType string, noBracketedP
 	if ov.SubmitKey != "" {
 		submitKey = ov.SubmitKey
 	}
-	return agentType, noBracketedPaste, submitKey
+	return agentType, autoApprove, noBracketedPaste, submitKey
 }

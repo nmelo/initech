@@ -327,7 +327,7 @@ func buildAgentPaneConfig(roleName string, proj *config.Project) (tui.PaneConfig
 		env = append(env, fmt.Sprintf("BEADS_DIR=%s/.beads", proj.Root))
 	}
 
-	agentType, noBracketedPaste, submitKey := resolvePaneBehavior(ov)
+	agentType, autoApprove, noBracketedPaste, submitKey := resolvePaneBehavior(ov)
 
 	return tui.PaneConfig{
 		Name:             roleName,
@@ -335,6 +335,7 @@ func buildAgentPaneConfig(roleName string, proj *config.Project) (tui.PaneConfig
 		Dir:              dir,
 		Env:              env,
 		AgentType:        agentType,
+		AutoApprove:      autoApprove,
 		NoBracketedPaste: noBracketedPaste,
 		SubmitKey:        submitKey,
 	}, nil

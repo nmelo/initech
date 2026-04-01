@@ -7,6 +7,8 @@ import (
 	"testing"
 )
 
+func boolPtr(v bool) *bool { return &v }
+
 const validYAML = `project: testproject
 root: /tmp/testproject
 repos:
@@ -341,6 +343,34 @@ role_overrides:
 	}
 }
 
+func TestLoad_AutoApproveOverride(t *testing.T) {
+	dir := t.TempDir()
+	yaml := `project: test
+root: /tmp/test
+roles:
+  - super
+  - eng1
+role_overrides:
+  eng1:
+    agent_type: codex
+    auto_approve: false
+`
+	path := writeConfig(t, dir, yaml)
+
+	p, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	ov := p.RoleOverrides["eng1"]
+	if ov.AutoApprove == nil {
+		t.Fatal("AutoApprove = nil, want explicit false override")
+	}
+	if *ov.AutoApprove {
+		t.Fatal("AutoApprove = true, want false")
+	}
+}
+
 func TestNormalizeAgentType_Default(t *testing.T) {
 	if got := NormalizeAgentType(""); got != AgentTypeClaudeCode {
 		t.Errorf("NormalizeAgentType(\"\") = %q, want %q", got, AgentTypeClaudeCode)
@@ -357,18 +387,22 @@ func TestDefaultAgentTypeBehavior(t *testing.T) {
 	tests := []struct {
 		name             string
 		agentType        string
+		autoApprove      bool
 		noBracketedPaste bool
 		submitKey        string
 	}{
-		{name: "claude-default", agentType: "", noBracketedPaste: false, submitKey: ""},
-		{name: "claude", agentType: AgentTypeClaudeCode, noBracketedPaste: false, submitKey: ""},
-		{name: "codex", agentType: AgentTypeCodex, noBracketedPaste: true, submitKey: "enter"},
-		{name: "opencode", agentType: AgentTypeOpenCode, noBracketedPaste: true, submitKey: "enter"},
-		{name: "generic", agentType: AgentTypeGeneric, noBracketedPaste: true, submitKey: "enter"},
+		{name: "claude-default", agentType: "", autoApprove: false, noBracketedPaste: false, submitKey: ""},
+		{name: "claude", agentType: AgentTypeClaudeCode, autoApprove: false, noBracketedPaste: false, submitKey: ""},
+		{name: "codex", agentType: AgentTypeCodex, autoApprove: true, noBracketedPaste: true, submitKey: "enter"},
+		{name: "opencode", agentType: AgentTypeOpenCode, autoApprove: false, noBracketedPaste: true, submitKey: "enter"},
+		{name: "generic", agentType: AgentTypeGeneric, autoApprove: false, noBracketedPaste: true, submitKey: "enter"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			if got := DefaultAutoApprove(tt.agentType); got != tt.autoApprove {
+				t.Errorf("DefaultAutoApprove(%q) = %v, want %v", tt.agentType, got, tt.autoApprove)
+			}
 			if got := DefaultNoBracketedPaste(tt.agentType); got != tt.noBracketedPaste {
 				t.Errorf("DefaultNoBracketedPaste(%q) = %v, want %v", tt.agentType, got, tt.noBracketedPaste)
 			}
@@ -376,6 +410,20 @@ func TestDefaultAgentTypeBehavior(t *testing.T) {
 				t.Errorf("DefaultSubmitKey(%q) = %q, want %q", tt.agentType, got, tt.submitKey)
 			}
 		})
+	}
+}
+
+func TestValidate_AutoApproveOverride(t *testing.T) {
+	p := &Project{
+		Name:  "test",
+		Root:  "/tmp/test",
+		Roles: []string{"eng1"},
+		RoleOverrides: map[string]RoleOverride{
+			"eng1": {AgentType: AgentTypeCodex, AutoApprove: boolPtr(false)},
+		},
+	}
+	if err := Validate(p); err != nil {
+		t.Fatalf("Validate: %v", err)
 	}
 }
 
