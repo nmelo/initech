@@ -278,9 +278,7 @@ func runTUI(cmd *cobra.Command, args []string) error {
 		PressureThreshold: proj.Resource.PressureThreshold,
 		Project:           proj,
 		UpdateResult:      tuiUpdateCh,
-		PaneConfigBuilder: func(name string) (tui.PaneConfig, error) {
-			return buildAgentPaneConfig(name, proj)
-		},
+		PaneConfigBuilder: buildReloadingPaneConfigBuilder(cfgPath, buildAgentPaneConfig),
 	})
 }
 
