@@ -261,16 +261,18 @@ func (t *TUI) handleIPCSend(conn net.Conn, req IPCRequest) {
 	writeIPCResponse(conn, IPCResponse{OK: true})
 }
 
-// injectText sends text into a pane's PTY using bracketed paste. The text is
-// wrapped in ESC[200~ / ESC[201~ markers and written directly to the PTY
-// master. Claude Code's input parser recognizes these markers and handles the
-// content as a paste (not typed input). For messages >800 chars, Claude Code
-// collapses the paste into a "[Pasted text #N]" reference internally.
+// injectText sends text into a pane's PTY. Two modes based on the pane's
+// noBracketedPaste config:
 //
-// After the paste completes (500ms for Claude Code's 100ms completion timeout plus
-// async rendering of large paste references), Enter is sent to submit. A single
-// retry fires if the prompt still has content (Enter was swallowed while isPasting
-// was still true). Safe to call from any goroutine.
+// Bracketed paste (default, for Claude Code): wraps text in ESC[200~/ESC[201~
+// markers and writes directly to the PTY. Claude Code's parser handles this
+// natively, collapsing large pastes (>800 chars) to references.
+//
+// Char-by-char (noBracketedPaste=true, for Codex and other agents): sends each
+// character as a key event through the emulator, same path as real keypresses.
+// Needed for agents that don't support bracketed paste protocol.
+//
+// Safe to call from any goroutine.
 func (t *TUI) injectText(pane *Pane, text string, enter bool) {
 	pane.sendMu.Lock()
 	defer pane.sendMu.Unlock()
@@ -284,30 +286,36 @@ func (t *TUI) injectText(pane *Pane, text string, enter bool) {
 	pane.emu.SendKey(uv.KeyPressEvent(uv.Key{Code: 's', Mod: uv.ModCtrl}))
 	time.Sleep(75 * time.Millisecond)
 
-	// Write text as a bracketed paste: ESC[200~ + text + ESC[201~.
-	// Claude Code enables DEC 2004 (bracketed paste mode) on startup.
-	// The parser (parse-keypress.ts) switches to IN_PASTE mode on seeing
-	// the start marker and buffers all content until the end marker.
-	var buf []byte
-	buf = append(buf, "\x1b[200~"...)
-	buf = append(buf, text...)
-	buf = append(buf, "\x1b[201~"...)
-	pane.ptmx.Write(buf)
+	if pane.noBracketedPaste {
+		// Char-by-char: send through the emulator like real keypresses.
+		for _, r := range text {
+			pane.emu.SendKey(uv.KeyPressEvent(uv.Key{Code: r, Text: string(r)}))
+		}
+	} else {
+		// Bracketed paste: ESC[200~ + text + ESC[201~ directly to PTY.
+		var buf []byte
+		buf = append(buf, "\x1b[200~"...)
+		buf = append(buf, text...)
+		buf = append(buf, "\x1b[201~"...)
+		pane.ptmx.Write(buf)
+	}
 
 	if enter {
-		// Wait for Claude Code's paste completion (100ms PASTE_COMPLETION_TIMEOUT_MS)
-		// plus rendering time for large pastes (>800 chars collapse to a reference,
-		// which requires additional async processing). 500ms covers both cases.
-		time.Sleep(500 * time.Millisecond)
-		sendSubmitKey(pane.emu, pane.submitKey)
-
-		// Single retry: large pastes may need more time for the isPasting flag
-		// to clear and the collapsed reference to render. If Enter was swallowed
-		// (prompt still has content), send one more.
-		if pane.IsAlive() {
+		if pane.noBracketedPaste {
+			// Char-by-char mode: submit immediately, no paste processing delay.
+			sendSubmitKey(pane.emu, pane.submitKey)
+		} else {
+			// Bracketed paste mode: wait for Claude Code's paste completion
+			// (100ms PASTE_COMPLETION_TIMEOUT_MS) plus async rendering time.
 			time.Sleep(500 * time.Millisecond)
-			if promptHasContent(pane) {
-				sendSubmitKey(pane.emu, pane.submitKey)
+			sendSubmitKey(pane.emu, pane.submitKey)
+
+			// Single retry for large pastes where Enter was swallowed.
+			if pane.IsAlive() {
+				time.Sleep(500 * time.Millisecond)
+				if promptHasContent(pane) {
+					sendSubmitKey(pane.emu, pane.submitKey)
+				}
 			}
 		}
 	}

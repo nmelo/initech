@@ -108,10 +108,19 @@ func buildServeAgentConfig(roleName string, proj *config.Project) (tui.PaneConfi
 		env = append(env, fmt.Sprintf("BEADS_DIR=%s/.beads", proj.Root))
 	}
 
+	var submitKey string
+	var noBracketedPaste bool
+	if ov, ok := proj.RoleOverrides[roleName]; ok {
+		submitKey = ov.SubmitKey
+		noBracketedPaste = ov.NoBracketedPaste
+	}
+
 	return tui.PaneConfig{
-		Name:    roleName,
-		Command: argv,
-		Dir:     dir,
-		Env:     env,
+		Name:             roleName,
+		Command:          argv,
+		Dir:              dir,
+		Env:              env,
+		SubmitKey:        submitKey,
+		NoBracketedPaste: noBracketedPaste,
 	}, nil
 }

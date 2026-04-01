@@ -329,15 +329,20 @@ func buildAgentPaneConfig(roleName string, proj *config.Project) (tui.PaneConfig
 	}
 
 	var submitKey string
-	if ov, ok := proj.RoleOverrides[roleName]; ok && ov.SubmitKey != "" {
-		submitKey = ov.SubmitKey
+	var noBracketedPaste bool
+	if ov, ok := proj.RoleOverrides[roleName]; ok {
+		if ov.SubmitKey != "" {
+			submitKey = ov.SubmitKey
+		}
+		noBracketedPaste = ov.NoBracketedPaste
 	}
 
 	return tui.PaneConfig{
-		Name:      roleName,
-		Command:   argv,
-		Dir:       dir,
-		Env:       env,
-		SubmitKey: submitKey,
+		Name:             roleName,
+		Command:          argv,
+		Dir:              dir,
+		Env:              env,
+		SubmitKey:        submitKey,
+		NoBracketedPaste: noBracketedPaste,
 	}, nil
 }

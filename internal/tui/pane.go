@@ -139,8 +139,9 @@ type Pane struct {
 	resumeGrace     time.Time        // Until this time, post-resume grace period is active.
 	resumeMu        sync.Mutex       // Serializes concurrent resume attempts for this pane.
 	kittEpoch       time.Time        // Reference time for KITT scanner animation phase.
-	submitKey       string           // Key sequence to submit: "" or "enter" (Enter), "ctrl+enter" (Ctrl+Enter).
-	region          Region
+	submitKey        string           // Key sequence to submit: "" or "enter" (Enter), "ctrl+enter" (Ctrl+Enter).
+	noBracketedPaste bool            // When true, use char-by-char SendKey instead of bracketed paste for injection.
+	region           Region
 }
 
 // Region defines a rectangular area on screen (outer bounds including border).
@@ -164,11 +165,12 @@ func (r Region) InnerSize() (cols, rows int) {
 
 // PaneConfig describes how to launch a pane's process.
 type PaneConfig struct {
-	Name      string   // Display name (role name).
-	Command   []string // Command + args. Empty means use $SHELL.
-	Dir       string   // Working directory. Empty means inherit.
-	Env       []string // Extra env vars (KEY=VALUE). TERM is always set.
-	SubmitKey string   // Key sequence to submit input: "enter" (default) or "ctrl+enter".
+	Name             string   // Display name (role name).
+	Command          []string // Command + args. Empty means use $SHELL.
+	Dir              string   // Working directory. Empty means inherit.
+	Env              []string // Extra env vars (KEY=VALUE). TERM is always set.
+	SubmitKey        string   // Key sequence to submit input: "enter" (default) or "ctrl+enter".
+	NoBracketedPaste bool     // When true, use char-by-char injection instead of bracketed paste.
 }
 
 // NewPane creates a terminal pane running the configured command (or $SHELL).
@@ -251,8 +253,9 @@ func NewPane(cfg PaneConfig, rows, cols int) (*Pane, error) {
 		activity:    StateIdle,
 		jsonlDir:    jsonlDir,
 		dedupEvents: newDedup(),
-		kittEpoch:   time.Now(),
-		submitKey:   cfg.SubmitKey,
+		kittEpoch:        time.Now(),
+		submitKey:        cfg.SubmitKey,
+		noBracketedPaste: cfg.NoBracketedPaste,
 	}
 
 	return p, nil
