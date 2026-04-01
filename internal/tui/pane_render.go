@@ -339,19 +339,26 @@ func uvCellToTcell(cell *uv.Cell) (rune, tcell.Style) {
 	}
 
 	ch, _ := utf8.DecodeRuneInString(cell.Content)
+	cellStyle := cell.Style
+
+	// Fast path: no colors, no attributes = return default
+	if cellStyle.Fg == nil && cellStyle.Bg == nil && cellStyle.Attrs == 0 && cellStyle.Underline == 0 {
+		return ch, tcell.StyleDefault
+	}
+
 	style := tcell.StyleDefault
 
 	// Foreground color.
-	if cell.Style.Fg != nil {
-		style = style.Foreground(uvColorToTcell(cell.Style.Fg))
+	if cellStyle.Fg != nil {
+		style = style.Foreground(uvColorToTcell(cellStyle.Fg))
 	}
 	// Background color.
-	if cell.Style.Bg != nil {
-		style = style.Background(uvColorToTcell(cell.Style.Bg))
+	if cellStyle.Bg != nil {
+		style = style.Background(uvColorToTcell(cellStyle.Bg))
 	}
 
 	// Attributes.
-	attrs := cell.Style.Attrs
+	attrs := cellStyle.Attrs
 	if attrs&uv.AttrBold != 0 {
 		style = style.Bold(true)
 	}
@@ -367,7 +374,7 @@ func uvCellToTcell(cell *uv.Cell) (rune, tcell.Style) {
 	if attrs&uv.AttrStrikethrough != 0 {
 		style = style.StrikeThrough(true)
 	}
-	if cell.Style.Underline != 0 {
+	if cellStyle.Underline != 0 {
 		style = style.Underline(true)
 	}
 
