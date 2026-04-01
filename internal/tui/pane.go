@@ -150,6 +150,8 @@ type PaneView interface {
 	SendText(text string, enter bool)
 	AgentType() string
 	SubmitKey() string // "" or "enter" (default), "ctrl+enter".
+	IsDirty() bool   // True when emulator content changed since last ClearDirty.
+	ClearDirty()     // Resets the dirty flag after rendering.
 	Render(screen tcell.Screen, focused bool, dimmed bool, index int, sel Selection)
 	Resize(rows, cols int)
 	Close()
@@ -215,6 +217,7 @@ type Pane struct {
 	autoApprove       bool              // When true, auto-approve matching permission prompts.
 	noBracketedPaste  bool              // True when injectText should use typed input instead of bracketed paste.
 	submitKey         string            // Key sequence to submit: "" or "enter" (Enter), "ctrl+enter" (Ctrl+Enter).
+	dirty             bool              // True when readLoop wrote to emu since last render. Cleared by ClearDirty.
 	region            Region
 }
 
@@ -377,6 +380,7 @@ func (p *Pane) readLoop() {
 
 			p.mu.Lock()
 			p.lastOutputTime = time.Now()
+			p.dirty = true
 			p.mu.Unlock()
 
 			// Write to emulator under renderMu. Using a larger read buffer
@@ -549,6 +553,22 @@ func (p *Pane) SubmitKey() string { return p.submitKey }
 
 // AgentType returns the configured semantic agent type for this pane.
 func (p *Pane) AgentType() string { return p.agentType }
+
+// IsDirty returns true when the emulator received new content since the last
+// ClearDirty call. Used by the TUI render loop to skip expensive per-cell
+// re-rendering of stable panes.
+func (p *Pane) IsDirty() bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.dirty
+}
+
+// ClearDirty resets the dirty flag after rendering.
+func (p *Pane) ClearDirty() {
+	p.mu.Lock()
+	p.dirty = false
+	p.mu.Unlock()
+}
 
 // SendText injects text into the pane using the harness-appropriate local
 // delivery path. Claude panes use bracketed paste; raw-input panes like Codex
