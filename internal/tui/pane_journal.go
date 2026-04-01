@@ -191,7 +191,7 @@ func (p *Pane) updateActivity() {
 		EmitEvent(p.eventCh, *idleEvent)
 	}
 	if shouldAutoApprove {
-		p.maybeApproveCodexPermissionPrompt()
+		p.maybeApprovePermissionPrompt()
 	}
 }
 

@@ -92,6 +92,31 @@ var codexTrustPromptPatterns = []string{
 	"2. no, quit",
 }
 
+var opencodePermissionTitlePatterns = []string{
+	"permission required",
+}
+
+var opencodeAllowOptionPatterns = []string{
+	"allow (a)",
+	"allow once (a)",
+	"allow once",
+	"allow",
+}
+
+var opencodePersistentOptionPatterns = []string{
+	"allow for session (s)",
+	"allow for session",
+	"allow always (s)",
+	"allow always",
+}
+
+var opencodeRejectOptionPatterns = []string{
+	"deny (d)",
+	"deny",
+	"reject (d)",
+	"reject",
+}
+
 // PaneView abstracts pane behavior so both local panes (Pane) and future
 // network-backed panes (RemotePane) can be used interchangeably by the TUI.
 type PaneView interface {
@@ -175,6 +200,7 @@ type Pane struct {
 	resumeMu          sync.Mutex        // Serializes concurrent resume attempts for this pane.
 	kittEpoch         time.Time         // Reference time for KITT scanner animation phase.
 	agentType         string            // Semantic agent type: claude-code, codex, or generic.
+	lastCodexPermScan time.Time         // Last time updateActivity triggered a permission prompt scan.
 	autoApprove       bool              // When true, auto-approve matching permission prompts.
 	noBracketedPaste  bool              // True when injectText should use typed input instead of bracketed paste.
 	submitKey         string            // Key sequence to submit: "" or "enter" (Enter), "ctrl+enter" (Ctrl+Enter).
@@ -559,6 +585,10 @@ func (p *Pane) maybeApproveCodexPermissionPrompt() bool {
 	return err == nil
 }
 
+type optionStyleMatch struct {
+	style uv.Style
+}
+
 func emulatorBottomText(emu *vt.SafeEmulator, lines int) string {
 	cols := emu.Width()
 	rows := emu.Height()
@@ -648,6 +678,172 @@ func compactPromptText(text string) string {
 		}
 		return r
 	}, text)
+}
+
+func cellContentAt(emu *vt.SafeEmulator, row int) ([]*uv.Cell, string) {
+	cols := emu.Width()
+	cells := make([]*uv.Cell, cols)
+	var line strings.Builder
+	for col := 0; col < cols; col++ {
+		cell := emu.CellAt(col, row)
+		cells[col] = cell
+		if cell != nil && cell.Content != "" {
+			line.WriteString(cell.Content)
+		} else {
+			line.WriteByte(' ')
+		}
+	}
+	return cells, line.String()
+}
+
+func labelStyleMatch(cells []*uv.Cell, rowText string, labels []string, after int) (optionStyleMatch, int, bool) {
+	lower := strings.ToLower(rowText)
+	for _, label := range labels {
+		idx := strings.Index(lower[after:], strings.ToLower(label))
+		if idx < 0 {
+			continue
+		}
+		start := after + idx
+		end := start + len(label)
+		if end > len(cells) {
+			continue
+		}
+		var style *uv.Style
+		valid := false
+		for i := start; i < end; i++ {
+			cell := cells[i]
+			if cell == nil || strings.TrimSpace(cell.Content) == "" {
+				continue
+			}
+			if style == nil {
+				s := cell.Style
+				style = &s
+				valid = true
+				continue
+			}
+			if !style.Equal(&cell.Style) {
+				valid = false
+				break
+			}
+		}
+		if !valid || style == nil {
+			continue
+		}
+		return optionStyleMatch{style: *style}, end, true
+	}
+	return optionStyleMatch{}, 0, false
+}
+
+func detectOpenCodePermissionSelection(emu *vt.SafeEmulator, lines int) (int, bool) {
+	if !isOpenCodePermissionPrompt(emulatorBottomText(emu, lines)) {
+		return -1, false
+	}
+
+	rows := emu.Height()
+	if lines <= 0 || lines > rows {
+		lines = rows
+	}
+	startRow := rows - lines
+
+	for row := startRow; row < rows; row++ {
+		cells, rowText := cellContentAt(emu, row)
+		allow, next, ok := labelStyleMatch(cells, rowText, opencodeAllowOptionPatterns, 0)
+		if !ok {
+			continue
+		}
+		persistent, next, ok := labelStyleMatch(cells, rowText, opencodePersistentOptionPatterns, next)
+		if !ok {
+			continue
+		}
+		reject, _, ok := labelStyleMatch(cells, rowText, opencodeRejectOptionPatterns, next)
+		if !ok {
+			continue
+		}
+
+		switch {
+		case !allow.style.Equal(&persistent.style) && persistent.style.Equal(&reject.style):
+			return 0, true
+		case !persistent.style.Equal(&allow.style) && allow.style.Equal(&reject.style):
+			return 1, true
+		case !reject.style.Equal(&allow.style) && allow.style.Equal(&persistent.style):
+			return 2, true
+		default:
+			return -1, false
+		}
+	}
+
+	return -1, false
+}
+
+func isOpenCodePermissionPrompt(text string) bool {
+	normalized := strings.ToLower(text)
+	normalized = strings.ReplaceAll(normalized, "’", "'")
+	compacted := compactPromptText(normalized)
+	for _, pattern := range opencodePermissionTitlePatterns {
+		if !strings.Contains(compacted, compactPromptText(pattern)) {
+			return false
+		}
+	}
+
+	order := [][]string{
+		opencodeAllowOptionPatterns,
+		opencodePersistentOptionPatterns,
+		opencodeRejectOptionPatterns,
+	}
+	pos := 0
+	for _, variants := range order {
+		found := -1
+		for _, variant := range variants {
+			idx := strings.Index(compacted[pos:], compactPromptText(strings.ToLower(variant)))
+			if idx >= 0 && (found == -1 || idx < found) {
+				found = idx
+			}
+		}
+		if found < 0 {
+			return false
+		}
+		pos += found + 1
+	}
+
+	return true
+}
+
+func (p *Pane) maybeApproveOpenCodePermissionPrompt() bool {
+	if !p.autoApprove || !p.noBracketedPaste || p.ptmx == nil || p.AgentType() != config.AgentTypeOpenCode {
+		return false
+	}
+
+	p.renderMu.Lock()
+	selected, ok := detectOpenCodePermissionSelection(p.emu, codexPermissionScanRows)
+	p.renderMu.Unlock()
+	if !ok {
+		return false
+	}
+
+	var action []byte
+	switch selected {
+	case 0:
+		action = []byte("\x1b[C\r")
+	case 1:
+		action = []byte("\r")
+	default:
+		return false
+	}
+
+	p.sendMu.Lock()
+	defer p.sendMu.Unlock()
+	if !p.autoApprove || !p.noBracketedPaste || p.ptmx == nil || p.AgentType() != config.AgentTypeOpenCode {
+		return false
+	}
+	_, err := p.ptmx.Write(action)
+	return err == nil
+}
+
+func (p *Pane) maybeApprovePermissionPrompt() bool {
+	if p.AgentType() == config.AgentTypeOpenCode {
+		return p.maybeApproveOpenCodePermissionPrompt()
+	}
+	return p.maybeApproveCodexPermissionPrompt()
 }
 
 func (p *Pane) isCodexReadyForSend() bool {

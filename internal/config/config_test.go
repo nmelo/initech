@@ -352,7 +352,7 @@ roles:
   - eng1
 role_overrides:
   eng1:
-    agent_type: codex
+    agent_type: opencode
     auto_approve: false
 `
 	path := writeConfig(t, dir, yaml)
@@ -394,7 +394,7 @@ func TestDefaultAgentTypeBehavior(t *testing.T) {
 		{name: "claude-default", agentType: "", autoApprove: false, noBracketedPaste: false, submitKey: ""},
 		{name: "claude", agentType: AgentTypeClaudeCode, autoApprove: false, noBracketedPaste: false, submitKey: ""},
 		{name: "codex", agentType: AgentTypeCodex, autoApprove: true, noBracketedPaste: true, submitKey: "enter"},
-		{name: "opencode", agentType: AgentTypeOpenCode, autoApprove: false, noBracketedPaste: true, submitKey: "enter"},
+		{name: "opencode", agentType: AgentTypeOpenCode, autoApprove: true, noBracketedPaste: true, submitKey: "enter"},
 		{name: "generic", agentType: AgentTypeGeneric, autoApprove: false, noBracketedPaste: true, submitKey: "enter"},
 	}
 
@@ -419,7 +419,7 @@ func TestValidate_AutoApproveOverride(t *testing.T) {
 		Root:  "/tmp/test",
 		Roles: []string{"eng1"},
 		RoleOverrides: map[string]RoleOverride{
-			"eng1": {AgentType: AgentTypeCodex, AutoApprove: boolPtr(false)},
+			"eng1": {AgentType: AgentTypeOpenCode, AutoApprove: boolPtr(false)},
 		},
 	}
 	if err := Validate(p); err != nil {
@@ -445,6 +445,8 @@ func TestIsCodexLikeAgentType(t *testing.T) {
 		}
 	}
 }
+
+func boolPtr(v bool) *bool { return &v }
 
 func TestValidate_InvalidAgentType(t *testing.T) {
 	p := &Project{

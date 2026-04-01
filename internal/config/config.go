@@ -169,9 +169,15 @@ func DefaultSubmitKey(agentType string) string {
 }
 
 // DefaultAutoApprove returns the agent-type default for permission prompt
-// auto-approval. Codex defaults on; all other agent types default off.
+// auto-approval. Codex and OpenCode default on; all other agent types default
+// off.
 func DefaultAutoApprove(agentType string) bool {
-	return NormalizeAgentType(agentType) == AgentTypeCodex
+	switch NormalizeAgentType(agentType) {
+	case AgentTypeCodex, AgentTypeOpenCode:
+		return true
+	default:
+		return false
+	}
 }
 
 // Load reads, parses, and validates an initech.yaml file from the given path.
