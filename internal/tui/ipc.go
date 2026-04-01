@@ -287,7 +287,7 @@ func (t *TUI) injectText(pane *Pane, text string, enter bool) {
 	time.Sleep(75 * time.Millisecond)
 
 	if pane.noBracketedPaste {
-		// Direct PTY write: write raw text bytes + \r to the PTY master,
+		// Direct PTY write: write raw text bytes + \n to the PTY master,
 		// bypassing the emulator's SendKey translation entirely. The emulator's
 		// key-to-byte encoding differs from what a real terminal sends, which
 		// causes agents like Codex to not recognize the input. Writing directly
@@ -295,7 +295,7 @@ func (t *TUI) injectText(pane *Pane, text string, enter bool) {
 		var buf []byte
 		buf = append(buf, text...)
 		if enter {
-			buf = append(buf, '\r')
+			buf = append(buf, '\n')
 		}
 		pane.ptmx.Write(buf)
 	} else {

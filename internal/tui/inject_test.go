@@ -107,6 +107,52 @@ func TestInjectText_CtrlS_StillSent(t *testing.T) {
 	_ = tty // Keep slave open for PTY to work.
 }
 
+// TestInjectText_NoBracketedPasteEnterUsesNewline verifies that the direct PTY
+// write path appends \n instead of \r when Enter is requested.
+func TestInjectText_NoBracketedPasteEnterUsesNewline(t *testing.T) {
+	ptmx, tty, err := pty.Open()
+	if err != nil {
+		t.Fatalf("pty.Open: %v", err)
+	}
+	defer ptmx.Close()
+	defer tty.Close()
+
+	oldState, err := term.MakeRaw(int(tty.Fd()))
+	if err != nil {
+		t.Fatalf("MakeRaw: %v", err)
+	}
+	defer term.Restore(int(tty.Fd()), oldState)
+
+	emu := vt.NewSafeEmulator(80, 24)
+	go func() {
+		buf := make([]byte, 256)
+		for {
+			if _, err := emu.Read(buf); err != nil {
+				return
+			}
+		}
+	}()
+
+	p := &Pane{name: "eng1", emu: emu, alive: true, ptmx: ptmx, noBracketedPaste: true}
+	tui := &TUI{agentEvents: make(chan AgentEvent, 8)}
+
+	go tui.injectText(p, "hello", true)
+
+	time.Sleep(150 * time.Millisecond)
+	buf := make([]byte, 512)
+	tty.SetReadDeadline(time.Now().Add(time.Second))
+	n, err := tty.Read(buf)
+	if err != nil {
+		t.Fatalf("tty.Read: %v", err)
+	}
+
+	got := string(buf[:n])
+	want := "hello\n"
+	if got != want {
+		t.Errorf("PTY received %q, want %q", got, want)
+	}
+}
+
 // TestInjectText_DeadPane verifies that injectText returns quickly for dead panes.
 func TestInjectText_DeadPane(t *testing.T) {
 	emu := vt.NewSafeEmulator(80, 24)
