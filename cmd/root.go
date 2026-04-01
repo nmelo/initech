@@ -31,8 +31,8 @@ var (
 
 	// updateResult receives the background version check result.
 	// Populated in PersistentPreRun, drained in PersistentPostRun.
-	updateResult   chan *update.ReleaseInfo
-	updateCancel   context.CancelFunc
+	updateResult chan *update.ReleaseInfo
+	updateCancel context.CancelFunc
 )
 
 var rootCmd = &cobra.Command{
@@ -289,13 +289,14 @@ func runTUI(cmd *cobra.Command, args []string) error {
 // INITECH_SOCKET and INITECH_AGENT are NOT set here; the TUI injects them
 // at pane-creation time so they reflect the live socket path.
 func buildAgentPaneConfig(roleName string, proj *config.Project) (tui.PaneConfig, error) {
+	ov, hasOverride := proj.RoleOverrides[roleName]
+
 	var argv []string
 	if mock := os.Getenv("INITECH_MOCK_AGENT"); mock != "" {
 		argv = []string{mock}
 	} else {
 		// Per-role command override takes priority (e.g. ["codex"] for non-Claude agents).
 		// When Command is set, it is the complete command; claude_args are NOT appended.
-		ov, hasOverride := proj.RoleOverrides[roleName]
 		if hasOverride && len(ov.Command) > 0 {
 			argv = append(argv, ov.Command...)
 		} else {
@@ -315,7 +316,7 @@ func buildAgentPaneConfig(roleName string, proj *config.Project) (tui.PaneConfig
 	}
 
 	dir := filepath.Join(proj.Root, roleName)
-	if ov, ok := proj.RoleOverrides[roleName]; ok && ov.Dir != "" {
+	if hasOverride && ov.Dir != "" {
 		dir = ov.Dir
 	}
 
@@ -328,21 +329,15 @@ func buildAgentPaneConfig(roleName string, proj *config.Project) (tui.PaneConfig
 		env = append(env, fmt.Sprintf("BEADS_DIR=%s/.beads", proj.Root))
 	}
 
-	var submitKey string
-	var noBracketedPaste bool
-	if ov, ok := proj.RoleOverrides[roleName]; ok {
-		if ov.SubmitKey != "" {
-			submitKey = ov.SubmitKey
-		}
-		noBracketedPaste = ov.NoBracketedPaste
-	}
+	agentType, noBracketedPaste, submitKey := resolvePaneBehavior(ov)
 
 	return tui.PaneConfig{
 		Name:             roleName,
 		Command:          argv,
 		Dir:              dir,
 		Env:              env,
-		SubmitKey:        submitKey,
+		AgentType:        agentType,
 		NoBracketedPaste: noBracketedPaste,
+		SubmitKey:        submitKey,
 	}, nil
 }

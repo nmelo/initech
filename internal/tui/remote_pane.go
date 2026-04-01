@@ -28,13 +28,13 @@ const resizeDebounce = 50 * time.Millisecond
 // The local VT emulator receives PTY bytes from the stream for rendering.
 // Keystrokes are forwarded upstream to the daemon for injection into the PTY.
 type RemotePane struct {
-	name   string            // Agent name (e.g. "eng1").
-	host   string            // Peer name of the remote daemon (e.g. "workbench").
-	stream net.Conn          // Yamux stream: downstream PTY bytes + upstream keystrokes.
-	mux    *ControlMux       // Shared multiplexed control channel (thread-safe).
-	emu    *vt.SafeEmulator  // Local VT emulator owned exclusively by the main goroutine.
-	dataCh chan []byte        // readLoop sends byte chunks here; Render drains and writes to emu.
-	mu     sync.Mutex
+	name     string           // Agent name (e.g. "eng1").
+	host     string           // Peer name of the remote daemon (e.g. "workbench").
+	stream   net.Conn         // Yamux stream: downstream PTY bytes + upstream keystrokes.
+	mux      *ControlMux      // Shared multiplexed control channel (thread-safe).
+	emu      *vt.SafeEmulator // Local VT emulator owned exclusively by the main goroutine.
+	dataCh   chan []byte      // readLoop sends byte chunks here; Render drains and writes to emu.
+	mu       sync.Mutex
 	alive    bool
 	activity ActivityState
 	lastOut  time.Time
@@ -46,10 +46,10 @@ type RemotePane struct {
 
 	// Resize debounce: pendingResize holds the latest requested dimensions.
 	// The timer fires after resizeDebounce and sends the final geometry.
-	resizeMu      sync.Mutex
-	resizeTimer   *time.Timer
-	pendingRows   int
-	pendingCols   int
+	resizeMu    sync.Mutex
+	resizeTimer *time.Timer
+	pendingRows int
+	pendingCols int
 }
 
 // NewRemotePane creates a RemotePane connected to a remote agent.
@@ -155,6 +155,7 @@ func (rp *RemotePane) IsAlive() bool {
 
 func (rp *RemotePane) IsSuspended() bool { return false }
 func (rp *RemotePane) IsPinned() bool    { return false }
+func (rp *RemotePane) AgentType() string { return "" } // Remote panes do not currently expose daemon-side agent type.
 func (rp *RemotePane) SubmitKey() string { return "" } // Remote panes use daemon-side config.
 
 func (rp *RemotePane) Activity() ActivityState {
@@ -416,5 +417,3 @@ func (rp *RemotePane) Close() {
 		LogWarn("remote", "Close timed out waiting for goroutines", "agent", rp.name, "host", rp.host)
 	}
 }
-
-

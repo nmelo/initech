@@ -14,10 +14,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/charmbracelet/x/vt"
 	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/charmbracelet/x/vt"
 	"github.com/creack/pty"
 	"github.com/gdamore/tcell/v2"
+	"github.com/nmelo/initech/internal/config"
 )
 
 // ActivityState describes what an agent is doing based on JSONL session tailing.
@@ -90,6 +91,7 @@ type PaneView interface {
 	SetBead(id, title string)
 	SendKey(ev *tcell.EventKey)
 	SendText(text string, enter bool)
+	AgentType() string
 	SubmitKey() string // "" or "enter" (default), "ctrl+enter".
 	Render(screen tcell.Screen, focused bool, dimmed bool, index int, sel Selection)
 	Resize(rows, cols int)
@@ -113,46 +115,47 @@ var _ PaneView = (*Pane)(nil)
 // Pane represents a terminal pane backed by a PTY process.
 // It uses a SafeEmulator from charmbracelet/x/vt for terminal emulation.
 type Pane struct {
-	cfg           PaneConfig // Original config for restart.
-	name          string
-	ptmx          *os.File
-	cmd           *exec.Cmd
-	pid           int              // Cached PID from process start (avoids race with restart).
-	emu           *vt.SafeEmulator
-	mu            sync.Mutex
-	renderMu      sync.Mutex       // Serializes readLoop writes with Render cell reads to prevent tearing.
-	sendMu        sync.Mutex       // Serializes IPC send operations to prevent keystroke interleaving.
-	networkSink   io.Writer        // Optional: readLoop tees PTY bytes here for network streaming.
-	sinkMu        sync.Mutex       // Protects networkSink assignment.
-	alive          bool
-	visible        bool           // Whether this pane is shown in the layout. Hidden panes keep running.
-	activity       ActivityState  // Current state: running when PTY bytes flowed recently, else idle.
-	lastOutputTime time.Time      // Last time readLoop received bytes from the PTY.
-	lastIdleNotify time.Time      // Last time an EventAgentIdleWithBead was emitted.
-	journal        []JournalEntry // Ring buffer of recent JSONL entries (cap journalRingSize).
-	jsonlDir      string             // Directory to search for session JSONL files.
-	eventCh       chan<- AgentEvent  // Emits detected semantic events to the TUI. May be nil.
-	safeGo        func(func())     // Launches a goroutine with panic recovery. Set by TUI after creation.
-	goWg          sync.WaitGroup  // Tracks goroutines launched by Start(). Wait in Close().
-	sessionDesc   string       // Session description extracted from cursor row.
-	beadID        string       // Current bead ID (e.g., "ini-bhk.3"). Empty = no bead.
-	beadTitle     string       // Bead title for top modal display.
-	stallReported   bool           // True after emitting stall event. Reset on new activity.
-	stuckReported   bool           // True after emitting stuck event. Reset on success.
-	dedupEvents     *dedup           // Dedup state for emitted events.
-	startedAt       time.Time        // When this pane's process was started. Used to filter stale JSONL.
-	scrollOffset    int              // Rows scrolled back from live view (0 = live).
-	idleWithBacklog bool             // True when idle and ready beads exist in the backlog.
-	backlogCount    int              // Number of ready beads at last idle-with-backlog detection.
-	memoryRSS       int64            // RSS in kilobytes, updated by memory monitor goroutine.
-	suspended       bool             // True when auto-suspend policy has stopped this pane.
-	messageQueue    []QueuedMessage  // Messages waiting for resume. Capped at maxMessageQueue.
-	pinned          bool             // Pinned agents are never auto-suspended.
-	resumeGrace     time.Time        // Until this time, post-resume grace period is active.
-	resumeMu        sync.Mutex       // Serializes concurrent resume attempts for this pane.
-	kittEpoch       time.Time        // Reference time for KITT scanner animation phase.
-	submitKey        string           // Key sequence to submit: "" or "enter" (Enter), "ctrl+enter" (Ctrl+Enter).
-	noBracketedPaste bool            // When true, use char-by-char SendKey instead of bracketed paste for injection.
+	cfg              PaneConfig // Original config for restart.
+	name             string
+	ptmx             *os.File
+	cmd              *exec.Cmd
+	pid              int // Cached PID from process start (avoids race with restart).
+	emu              *vt.SafeEmulator
+	mu               sync.Mutex
+	renderMu         sync.Mutex // Serializes readLoop writes with Render cell reads to prevent tearing.
+	sendMu           sync.Mutex // Serializes IPC send operations to prevent keystroke interleaving.
+	networkSink      io.Writer  // Optional: readLoop tees PTY bytes here for network streaming.
+	sinkMu           sync.Mutex // Protects networkSink assignment.
+	alive            bool
+	visible          bool              // Whether this pane is shown in the layout. Hidden panes keep running.
+	activity         ActivityState     // Current state: running when PTY bytes flowed recently, else idle.
+	lastOutputTime   time.Time         // Last time readLoop received bytes from the PTY.
+	lastIdleNotify   time.Time         // Last time an EventAgentIdleWithBead was emitted.
+	journal          []JournalEntry    // Ring buffer of recent JSONL entries (cap journalRingSize).
+	jsonlDir         string            // Directory to search for session JSONL files.
+	eventCh          chan<- AgentEvent // Emits detected semantic events to the TUI. May be nil.
+	safeGo           func(func())      // Launches a goroutine with panic recovery. Set by TUI after creation.
+	goWg             sync.WaitGroup    // Tracks goroutines launched by Start(). Wait in Close().
+	sessionDesc      string            // Session description extracted from cursor row.
+	beadID           string            // Current bead ID (e.g., "ini-bhk.3"). Empty = no bead.
+	beadTitle        string            // Bead title for top modal display.
+	stallReported    bool              // True after emitting stall event. Reset on new activity.
+	stuckReported    bool              // True after emitting stuck event. Reset on success.
+	dedupEvents      *dedup            // Dedup state for emitted events.
+	startedAt        time.Time         // When this pane's process was started. Used to filter stale JSONL.
+	scrollOffset     int               // Rows scrolled back from live view (0 = live).
+	idleWithBacklog  bool              // True when idle and ready beads exist in the backlog.
+	backlogCount     int               // Number of ready beads at last idle-with-backlog detection.
+	memoryRSS        int64             // RSS in kilobytes, updated by memory monitor goroutine.
+	suspended        bool              // True when auto-suspend policy has stopped this pane.
+	messageQueue     []QueuedMessage   // Messages waiting for resume. Capped at maxMessageQueue.
+	pinned           bool              // Pinned agents are never auto-suspended.
+	resumeGrace      time.Time         // Until this time, post-resume grace period is active.
+	resumeMu         sync.Mutex        // Serializes concurrent resume attempts for this pane.
+	kittEpoch        time.Time         // Reference time for KITT scanner animation phase.
+	agentType        string            // Semantic agent type: claude-code, codex, or generic.
+	noBracketedPaste bool              // True when injectText should use typed input instead of bracketed paste.
+	submitKey        string            // Key sequence to submit: "" or "enter" (Enter), "ctrl+enter" (Ctrl+Enter).
 	region           Region
 }
 
@@ -174,20 +177,28 @@ func (r Region) InnerSize() (cols, rows int) {
 	return
 }
 
-
 // PaneConfig describes how to launch a pane's process.
 type PaneConfig struct {
 	Name             string   // Display name (role name).
 	Command          []string // Command + args. Empty means use $SHELL.
 	Dir              string   // Working directory. Empty means inherit.
 	Env              []string // Extra env vars (KEY=VALUE). TERM is always set.
+	AgentType        string   // Semantic agent type: claude-code (default), codex, or generic.
+	NoBracketedPaste bool     // Final resolved injection mode. True uses typed input instead of bracketed paste.
 	SubmitKey        string   // Key sequence to submit input: "enter" (default) or "ctrl+enter".
-	NoBracketedPaste bool     // When true, use char-by-char injection instead of bracketed paste.
 }
 
 // NewPane creates a terminal pane running the configured command (or $SHELL).
 func NewPane(cfg PaneConfig, rows, cols int) (*Pane, error) {
 	emu := vt.NewSafeEmulator(cols, rows)
+	agentType := cfg.AgentType
+	if agentType == "" {
+		agentType = config.AgentTypeClaudeCode
+	}
+	submitKey := cfg.SubmitKey
+	if submitKey == "" {
+		submitKey = config.DefaultSubmitKey(agentType)
+	}
 
 	shell := os.Getenv("SHELL")
 	if shell == "" {
@@ -254,20 +265,21 @@ func NewPane(cfg PaneConfig, rows, cols int) (*Pane, error) {
 	}
 
 	p := &Pane{
-		cfg:         cfg,
-		name:        cfg.Name,
-		ptmx:        ptmx,
-		cmd:         cmd,
-		pid:         pid,
-		emu:         emu,
-		alive:       true,
-		visible:     true,
-		activity:    StateIdle,
-		jsonlDir:    jsonlDir,
-		dedupEvents: newDedup(),
+		cfg:              cfg,
+		name:             cfg.Name,
+		ptmx:             ptmx,
+		cmd:              cmd,
+		pid:              pid,
+		emu:              emu,
+		alive:            true,
+		visible:          true,
+		activity:         StateIdle,
+		jsonlDir:         jsonlDir,
+		dedupEvents:      newDedup(),
 		kittEpoch:        time.Now(),
-		submitKey:        cfg.SubmitKey,
+		agentType:        agentType,
 		noBracketedPaste: cfg.NoBracketedPaste,
+		submitKey:        submitKey,
 	}
 
 	return p, nil
@@ -373,7 +385,6 @@ func (p *Pane) SendKey(ev *tcell.EventKey) {
 	p.emu.SendKey(kpe)
 }
 
-
 // SendPaste writes a bracketed paste marker to the PTY.
 // On start=true it writes \x1b[200~ (paste start); on start=false it writes
 // \x1b[201~ (paste end). The child process uses these delimiters to
@@ -475,13 +486,10 @@ func (p *Pane) Emulator() *vt.SafeEmulator {
 // SubmitKey returns the configured submit key sequence for this pane.
 func (p *Pane) SubmitKey() string { return p.submitKey }
 
-// SendText injects text into the pane's PTY via keystroke injection, with
-// optional Enter. Acquires sendMu to serialize with concurrent sends. Sends
-// Ctrl+S to stash pending user input before injecting (ini-gd0).
-func (p *Pane) SendText(text string, enter bool) {
-	p.sendMu.Lock()
-	defer p.sendMu.Unlock()
+// AgentType returns the configured semantic agent type for this pane.
+func (p *Pane) AgentType() string { return p.agentType }
 
+func (p *Pane) sendTypedTextLocked(text string, enter bool) {
 	p.emu.SendKey(uv.KeyPressEvent(uv.Key{Code: 's', Mod: uv.ModCtrl}))
 	time.Sleep(75 * time.Millisecond)
 
@@ -492,6 +500,15 @@ func (p *Pane) SendText(text string, enter bool) {
 	if enter {
 		sendSubmitKey(p.emu, p.submitKey)
 	}
+}
+
+// SendText injects text into the pane's PTY via keystroke injection, with
+// optional Enter. Acquires sendMu to serialize with concurrent sends. Sends
+// Ctrl+S to stash pending user input before injecting (ini-gd0).
+func (p *Pane) SendText(text string, enter bool) {
+	p.sendMu.Lock()
+	defer p.sendMu.Unlock()
+	p.sendTypedTextLocked(text, enter)
 }
 
 // sendSubmitKey sends the appropriate submit key sequence to an emulator

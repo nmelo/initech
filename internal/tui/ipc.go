@@ -283,6 +283,11 @@ func (t *TUI) injectText(pane *Pane, text string, enter bool) {
 
 	// Stash any partially typed input before injecting so that the incoming
 	// message doesn't corrupt text the user was composing (ini-gd0).
+	if pane.noBracketedPaste {
+		pane.sendTypedTextLocked(text, enter)
+		return
+	}
+
 	pane.emu.SendKey(uv.KeyPressEvent(uv.Key{Code: 's', Mod: uv.ModCtrl}))
 	time.Sleep(75 * time.Millisecond)
 
@@ -352,7 +357,6 @@ func promptHasContent(p *Pane) bool {
 	}
 	return false
 }
-
 func (t *TUI) handleIPCPatrol(conn net.Conn, req IPCRequest) {
 	lines := req.Lines
 	if lines <= 0 {
@@ -425,7 +429,6 @@ func peekContent(p PaneView, lines int) string {
 	return buf.String()
 }
 
-
 func (t *TUI) handleIPCBead(conn net.Conn, req IPCRequest) {
 	if req.Target == "" {
 		writeIPCResponse(conn, IPCResponse{Error: "target is required (set INITECH_AGENT or use --agent)"})
@@ -465,8 +468,6 @@ func (t *TUI) findPane(name string) *Pane {
 	}
 	return nil
 }
-
-
 
 func (t *TUI) handleIPCQuit(conn net.Conn) {
 	writeIPCResponse(conn, IPCResponse{OK: true})

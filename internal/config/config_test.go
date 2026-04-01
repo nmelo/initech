@@ -309,6 +309,87 @@ role_overrides:
 	}
 }
 
+func TestLoad_AgentTypeOverride(t *testing.T) {
+	dir := t.TempDir()
+	yaml := `project: test
+root: /tmp/test
+roles:
+  - super
+  - eng1
+role_overrides:
+  eng1:
+    agent_type: codex
+    no_bracketed_paste: true
+    submit_key: ctrl+enter
+`
+	path := writeConfig(t, dir, yaml)
+
+	p, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	ov := p.RoleOverrides["eng1"]
+	if ov.AgentType != AgentTypeCodex {
+		t.Fatalf("AgentType = %q, want %q", ov.AgentType, AgentTypeCodex)
+	}
+	if !ov.NoBracketedPaste {
+		t.Error("NoBracketedPaste = false, want true")
+	}
+	if ov.SubmitKey != "ctrl+enter" {
+		t.Errorf("SubmitKey = %q, want ctrl+enter", ov.SubmitKey)
+	}
+}
+
+func TestNormalizeAgentType_Default(t *testing.T) {
+	if got := NormalizeAgentType(""); got != AgentTypeClaudeCode {
+		t.Errorf("NormalizeAgentType(\"\") = %q, want %q", got, AgentTypeClaudeCode)
+	}
+}
+
+func TestDefaultAgentTypeBehavior(t *testing.T) {
+	tests := []struct {
+		name             string
+		agentType        string
+		noBracketedPaste bool
+		submitKey        string
+	}{
+		{name: "claude-default", agentType: "", noBracketedPaste: false, submitKey: ""},
+		{name: "claude", agentType: AgentTypeClaudeCode, noBracketedPaste: false, submitKey: ""},
+		{name: "codex", agentType: AgentTypeCodex, noBracketedPaste: true, submitKey: "enter"},
+		{name: "generic", agentType: AgentTypeGeneric, noBracketedPaste: true, submitKey: "enter"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := DefaultNoBracketedPaste(tt.agentType); got != tt.noBracketedPaste {
+				t.Errorf("DefaultNoBracketedPaste(%q) = %v, want %v", tt.agentType, got, tt.noBracketedPaste)
+			}
+			if got := DefaultSubmitKey(tt.agentType); got != tt.submitKey {
+				t.Errorf("DefaultSubmitKey(%q) = %q, want %q", tt.agentType, got, tt.submitKey)
+			}
+		})
+	}
+}
+
+func TestValidate_InvalidAgentType(t *testing.T) {
+	p := &Project{
+		Name:  "test",
+		Root:  "/tmp/test",
+		Roles: []string{"eng1"},
+		RoleOverrides: map[string]RoleOverride{
+			"eng1": {AgentType: "bogus"},
+		},
+	}
+	err := Validate(p)
+	if err == nil {
+		t.Fatal("expected error for invalid agent_type")
+	}
+	if !strings.Contains(err.Error(), "invalid agent_type") {
+		t.Fatalf("Validate error = %q, want invalid agent_type", err)
+	}
+}
+
 func TestLoad_ResourceConfig(t *testing.T) {
 	dir := t.TempDir()
 	yaml := `project: test

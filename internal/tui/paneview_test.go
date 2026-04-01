@@ -131,6 +131,14 @@ func TestPaneView_Emulator(t *testing.T) {
 	}
 }
 
+// TestPaneView_AgentType returns the pane's semantic agent type.
+func TestPaneView_AgentType(t *testing.T) {
+	p := &Pane{emu: vt.NewSafeEmulator(10, 5), agentType: "codex"}
+	if p.AgentType() != "codex" {
+		t.Errorf("AgentType() = %q, want codex", p.AgentType())
+	}
+}
+
 // TestPaneView_GetRegion returns the pane's screen region.
 func TestPaneView_GetRegion(t *testing.T) {
 	r := Region{X: 10, Y: 20, W: 80, H: 24}

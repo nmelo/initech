@@ -45,6 +45,9 @@ func TestRemotePaneImplementsPaneView(t *testing.T) {
 	if rp.Emulator() == nil {
 		t.Error("Emulator() should not be nil")
 	}
+	if rp.AgentType() != "" {
+		t.Errorf("AgentType() = %q, want empty string", rp.AgentType())
+	}
 }
 
 func TestRemotePaneSetBead(t *testing.T) {

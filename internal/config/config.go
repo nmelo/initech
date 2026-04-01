@@ -80,6 +80,16 @@ type ResourceConfig struct {
 // auto-suspended. Used when PressureThreshold is zero (unset).
 const DefaultPressureThreshold = 85
 
+const (
+	// AgentTypeClaudeCode is the default agent type. Claude Code supports
+	// bracketed paste, so it keeps the existing paste-based injection path.
+	AgentTypeClaudeCode = "claude-code"
+	// AgentTypeCodex uses typed injection and Enter submit by default.
+	AgentTypeCodex = "codex"
+	// AgentTypeGeneric is a non-Claude agent with conservative typed-input defaults.
+	AgentTypeGeneric = "generic"
+)
+
 // EffectivePressureThreshold returns the pressure threshold to use, applying
 // the default when the configured value is zero.
 func (rc ResourceConfig) EffectivePressureThreshold() int {
@@ -91,15 +101,56 @@ func (rc ResourceConfig) EffectivePressureThreshold() int {
 
 // RoleOverride lets a project customize per-role settings beyond catalog defaults.
 type RoleOverride struct {
-	TechStack  string   `yaml:"tech_stack,omitempty"`
-	BuildCmd   string   `yaml:"build_cmd,omitempty"`
-	TestCmd    string   `yaml:"test_cmd,omitempty"`
-	Dir        string   `yaml:"dir,omitempty"`
-	RepoName   string   `yaml:"repo_name,omitempty"`
-	Command          []string `yaml:"command,omitempty"`           // Override the agent command entirely (e.g. ["codex"]).
+	TechStack        string   `yaml:"tech_stack,omitempty"`
+	BuildCmd         string   `yaml:"build_cmd,omitempty"`
+	TestCmd          string   `yaml:"test_cmd,omitempty"`
+	Dir              string   `yaml:"dir,omitempty"`
+	RepoName         string   `yaml:"repo_name,omitempty"`
+	AgentType        string   `yaml:"agent_type,omitempty"` // "claude-code" (default), "codex", or "generic".
+	Command          []string `yaml:"command,omitempty"`    // Override the agent command entirely (e.g. ["codex"]).
 	ClaudeArgs       []string `yaml:"claude_args,omitempty"`
-	SubmitKey        string   `yaml:"submit_key,omitempty"`        // "enter" (default) or "ctrl+enter".
-	NoBracketedPaste bool     `yaml:"no_bracketed_paste,omitempty"` // When true, use char-by-char SendKey instead of bracketed paste.
+	NoBracketedPaste bool     `yaml:"no_bracketed_paste,omitempty"` // When true, use the non-bracketed injection path.
+	SubmitKey        string   `yaml:"submit_key,omitempty"`         // "enter" (default) or "ctrl+enter".
+}
+
+// NormalizeAgentType returns the effective agent type, defaulting to
+// claude-code when the config omits it.
+func NormalizeAgentType(agentType string) string {
+	if agentType == "" {
+		return AgentTypeClaudeCode
+	}
+	return agentType
+}
+
+// ValidAgentType reports whether agentType is one of the supported config values.
+func ValidAgentType(agentType string) bool {
+	switch NormalizeAgentType(agentType) {
+	case AgentTypeClaudeCode, AgentTypeCodex, AgentTypeGeneric:
+		return true
+	default:
+		return false
+	}
+}
+
+// DefaultNoBracketedPaste returns the agent-type default for text injection.
+// Only Claude Code keeps bracketed paste enabled by default.
+func DefaultNoBracketedPaste(agentType string) bool {
+	switch NormalizeAgentType(agentType) {
+	case AgentTypeClaudeCode:
+		return false
+	default:
+		return true
+	}
+}
+
+// DefaultSubmitKey returns the submit key implied by the agent type.
+func DefaultSubmitKey(agentType string) string {
+	switch NormalizeAgentType(agentType) {
+	case AgentTypeCodex, AgentTypeGeneric:
+		return "enter"
+	default:
+		return ""
+	}
 }
 
 // Load reads, parses, and validates an initech.yaml file from the given path.
@@ -203,9 +254,15 @@ func Validate(p *Project) error {
 		}
 	}
 
-	for name := range p.RoleOverrides {
+	for name, ov := range p.RoleOverrides {
 		if !roleSet[name] {
 			return fmt.Errorf("role_override %q is not in roles list", name)
+		}
+		if !ValidAgentType(ov.AgentType) {
+			return fmt.Errorf("role_override %q has invalid agent_type %q: must be %q, %q, or %q", name, ov.AgentType, AgentTypeClaudeCode, AgentTypeCodex, AgentTypeGeneric)
+		}
+		if ov.SubmitKey != "" && ov.SubmitKey != "enter" && ov.SubmitKey != "ctrl+enter" {
+			return fmt.Errorf("role_override %q has invalid submit_key %q: must be \"enter\" or \"ctrl+enter\"", name, ov.SubmitKey)
 		}
 	}
 

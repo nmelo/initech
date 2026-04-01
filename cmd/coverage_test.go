@@ -209,12 +209,16 @@ func TestBuildAgentPaneConfig_RoleCommandOverride(t *testing.T) {
 	os.MkdirAll(filepath.Join(dir, "codex-agent"), 0755)
 
 	proj := &config.Project{
-		Name:      "test",
-		Root:      dir,
-		Roles:     []string{"claude-agent", "codex-agent"},
+		Name:       "test",
+		Root:       dir,
+		Roles:      []string{"claude-agent", "codex-agent"},
 		ClaudeArgs: []string{"--continue", "--dangerously-skip-permissions"},
 		RoleOverrides: map[string]config.RoleOverride{
-			"codex-agent": {Command: []string{"codex", "--full-auto"}},
+			"codex-agent": {
+				AgentType: config.AgentTypeCodex,
+				Command:   []string{"codex", "--full-auto"},
+				SubmitKey: "ctrl+enter",
+			},
 		},
 	}
 
@@ -229,6 +233,15 @@ func TestBuildAgentPaneConfig_RoleCommandOverride(t *testing.T) {
 	joined1 := strings.Join(cfg1.Command, " ")
 	if !strings.Contains(joined1, "--continue") {
 		t.Errorf("claude-agent should have --continue: %v", cfg1.Command)
+	}
+	if cfg1.AgentType != config.AgentTypeClaudeCode {
+		t.Errorf("claude-agent AgentType = %q, want %q", cfg1.AgentType, config.AgentTypeClaudeCode)
+	}
+	if cfg1.NoBracketedPaste {
+		t.Error("claude-agent NoBracketedPaste = true, want false")
+	}
+	if cfg1.SubmitKey != "" {
+		t.Errorf("claude-agent SubmitKey = %q, want empty default", cfg1.SubmitKey)
 	}
 
 	// Codex agent uses per-role command override; claude_args must NOT be appended.
@@ -245,5 +258,42 @@ func TestBuildAgentPaneConfig_RoleCommandOverride(t *testing.T) {
 	}
 	if strings.Contains(joined2, "--continue") || strings.Contains(joined2, "--dangerously-skip-permissions") {
 		t.Errorf("codex-agent should NOT have claude_args appended: %v", cfg2.Command)
+	}
+	if cfg2.AgentType != config.AgentTypeCodex {
+		t.Errorf("codex-agent AgentType = %q, want %q", cfg2.AgentType, config.AgentTypeCodex)
+	}
+	if !cfg2.NoBracketedPaste {
+		t.Error("codex-agent NoBracketedPaste = false, want codex default true")
+	}
+	if cfg2.SubmitKey != "ctrl+enter" {
+		t.Errorf("codex-agent SubmitKey = %q, want ctrl+enter override", cfg2.SubmitKey)
+	}
+}
+
+func TestBuildServeAgentConfig_AgentTypeDefaults(t *testing.T) {
+	dir := t.TempDir()
+	os.MkdirAll(filepath.Join(dir, "generic-agent"), 0755)
+
+	proj := &config.Project{
+		Name:  "test",
+		Root:  dir,
+		Roles: []string{"generic-agent"},
+		RoleOverrides: map[string]config.RoleOverride{
+			"generic-agent": {AgentType: config.AgentTypeGeneric},
+		},
+	}
+
+	cfg, err := buildServeAgentConfig("generic-agent", proj)
+	if err != nil {
+		t.Fatalf("buildServeAgentConfig: %v", err)
+	}
+	if cfg.AgentType != config.AgentTypeGeneric {
+		t.Errorf("AgentType = %q, want %q", cfg.AgentType, config.AgentTypeGeneric)
+	}
+	if !cfg.NoBracketedPaste {
+		t.Error("NoBracketedPaste = false, want true for generic agent")
+	}
+	if cfg.SubmitKey != "enter" {
+		t.Errorf("SubmitKey = %q, want enter", cfg.SubmitKey)
 	}
 }
