@@ -446,8 +446,6 @@ func TestIsCodexLikeAgentType(t *testing.T) {
 	}
 }
 
-func boolPtr(v bool) *bool { return &v }
-
 func TestValidate_InvalidAgentType(t *testing.T) {
 	p := &Project{
 		Name:  "test",

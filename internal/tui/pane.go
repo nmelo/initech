@@ -200,7 +200,6 @@ type Pane struct {
 	resumeMu          sync.Mutex        // Serializes concurrent resume attempts for this pane.
 	kittEpoch         time.Time         // Reference time for KITT scanner animation phase.
 	agentType         string            // Semantic agent type: claude-code, codex, or generic.
-	lastCodexPermScan time.Time         // Last time updateActivity triggered a permission prompt scan.
 	autoApprove       bool              // When true, auto-approve matching permission prompts.
 	noBracketedPaste  bool              // True when injectText should use typed input instead of bracketed paste.
 	submitKey         string            // Key sequence to submit: "" or "enter" (Enter), "ctrl+enter" (Ctrl+Enter).
