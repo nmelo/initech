@@ -2,11 +2,14 @@
 package tui
 
 import (
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/charmbracelet/x/vt"
+	"github.com/creack/pty"
 	"github.com/gdamore/tcell/v2"
+	"golang.org/x/term"
 )
 
 // TestPaneImplementsPaneView is a runtime check that supplements the
@@ -164,15 +167,27 @@ func TestPaneView_SendKey(t *testing.T) {
 	p.SendKey(tcell.NewEventKey(tcell.KeyRune, 'a', 0))
 }
 
-// TestPaneView_SendText injects text through the emulator.
+// TestPaneView_SendText injects text through the local pane send path.
 func TestPaneView_SendText(t *testing.T) {
+	ptmx, tty, err := pty.Open()
+	if err != nil {
+		t.Fatalf("pty.Open: %v", err)
+	}
+	defer ptmx.Close()
+	defer tty.Close()
+
+	oldState, err := term.MakeRaw(int(tty.Fd()))
+	if err != nil {
+		t.Fatalf("MakeRaw: %v", err)
+	}
+	defer term.Restore(int(tty.Fd()), oldState)
+
 	emu := vt.NewSafeEmulator(80, 24)
 	readDone := make(chan []byte, 1)
 	go func() {
 		var got []byte
 		buf := make([]byte, 256)
-		// Ctrl+S (1 byte) + "hi" (2 bytes) = 3 bytes.
-		for len(got) < 3 {
+		for len(got) < 1 {
 			n, err := emu.Read(buf)
 			got = append(got, buf[:n]...)
 			if err != nil {
@@ -182,20 +197,29 @@ func TestPaneView_SendText(t *testing.T) {
 		readDone <- got
 	}()
 
-	p := &Pane{name: "eng1", emu: emu, alive: true}
+	p := &Pane{name: "eng1", emu: emu, alive: true, ptmx: ptmx}
 	p.SendText("hi", false)
+
+	buf := make([]byte, 256)
+	tty.SetReadDeadline(time.Now().Add(time.Second))
+	n, err := tty.Read(buf)
+	if err != nil {
+		t.Fatalf("SendText PTY read: %v", err)
+	}
+	if got := string(buf[:n]); got != "\x1b[200~hi\x1b[201~" {
+		t.Fatalf("SendText PTY write = %q, want %q", got, "\x1b[200~hi\x1b[201~")
+	}
 
 	select {
 	case got := <-readDone:
-		if len(got) < 3 {
-			t.Fatalf("SendText: got %d bytes, want >= 3 (Ctrl+S + 'hi')", len(got))
+		if len(got) < 1 {
+			t.Fatalf("SendText: got %d bytes, want >= 1 (Ctrl+S)", len(got))
 		}
-		// First byte is Ctrl+S (0x13), then "hi".
 		if got[0] != 0x13 {
 			t.Errorf("SendText: first byte = 0x%02x, want 0x13 (Ctrl+S stash)", got[0])
 		}
-		if string(got[1:3]) != "hi" {
-			t.Errorf("SendText: text = %q, want 'hi'", string(got[1:3]))
+		if strings.Contains(string(got), "hi") {
+			t.Errorf("SendText emulator output = %q, want no pasted body bytes", string(got))
 		}
 	case <-time.After(500 * time.Millisecond):
 		t.Fatal("SendText: timed out waiting for emulator output")

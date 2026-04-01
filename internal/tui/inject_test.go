@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -109,11 +108,10 @@ func TestInjectText_CtrlS_StillSent(t *testing.T) {
 	_ = tty // Keep slave open for PTY to work.
 }
 
-// TestInjectText_NoBracketedPasteWritesBodyToPTY verifies that the
-// no-bracketed-paste path writes the message body directly to the PTY, skips
-// the Ctrl+S stash, and only routes the final Enter through the emulator
-// submit path.
-func TestInjectText_NoBracketedPasteWritesBodyToPTY(t *testing.T) {
+// TestInjectText_NoBracketedPasteCodexWritesBodyToPTY verifies that the Codex
+// raw-inject path writes the body directly to the PTY, skips the Ctrl+S stash,
+// and sends only the final Enter through the emulator.
+func TestInjectText_NoBracketedPasteCodexWritesBodyToPTY(t *testing.T) {
 	ptmx, tty, err := pty.Open()
 	if err != nil {
 		t.Fatalf("pty.Open: %v", err)
@@ -160,26 +158,14 @@ func TestInjectText_NoBracketedPasteWritesBodyToPTY(t *testing.T) {
 	}
 
 	got := string(buf[:n])
-	if !strings.Contains(got, "hello") {
-		t.Fatalf("PTY received %q, want raw text payload", got)
-	}
-	if !strings.ContainsRune(got, '\r') {
-		t.Fatalf("PTY received %q, want emulator Enter encoding", got)
-	}
-	if strings.ContainsRune(got, '\n') {
-		t.Errorf("PTY received %q, want no raw newline byte", got)
+	if got != "hello\r" {
+		t.Fatalf("PTY received %q, want %q", got, "hello\r")
 	}
 
 	emuMu.Lock()
 	defer emuMu.Unlock()
-	if strings.Contains(string(emuOutput), "hello") {
-		t.Fatalf("emulator output %q unexpectedly contained raw text payload", string(emuOutput))
-	}
-	if strings.ContainsRune(string(emuOutput), 0x13) {
-		t.Fatalf("emulator output %q unexpectedly contained Ctrl+S stash", string(emuOutput))
-	}
-	if !strings.ContainsRune(string(emuOutput), '\r') {
-		t.Fatalf("emulator output %q, want submit key encoding", string(emuOutput))
+	if string(emuOutput) != "\r" {
+		t.Fatalf("emulator output %q, want %q", string(emuOutput), "\r")
 	}
 }
 
@@ -209,5 +195,65 @@ func TestInjectText_DeadPane(t *testing.T) {
 	case <-done:
 	case <-time.After(2 * time.Second):
 		t.Error("injectText(dead pane) did not return promptly")
+	}
+}
+
+// TestPaneSendText_NoBracketedPasteCodexUsesLocalRawPath verifies the actual
+// local Pane.SendText path used by IPC sends: raw PTY body, no Ctrl+S stash,
+// and emulator-only Enter submit.
+func TestPaneSendText_NoBracketedPasteCodexUsesLocalRawPath(t *testing.T) {
+	ptmx, tty, err := pty.Open()
+	if err != nil {
+		t.Fatalf("pty.Open: %v", err)
+	}
+	defer ptmx.Close()
+	defer tty.Close()
+
+	oldState, err := term.MakeRaw(int(tty.Fd()))
+	if err != nil {
+		t.Fatalf("MakeRaw: %v", err)
+	}
+	defer term.Restore(int(tty.Fd()), oldState)
+
+	emu := vt.NewSafeEmulator(80, 24)
+	var emuMu sync.Mutex
+	var emuOutput []byte
+	go func() {
+		buf := make([]byte, 256)
+		for {
+			n, err := emu.Read(buf)
+			if n > 0 {
+				emuMu.Lock()
+				emuOutput = append(emuOutput, buf[:n]...)
+				emuMu.Unlock()
+				_, _ = ptmx.Write(buf[:n])
+			}
+			if err != nil {
+				return
+			}
+		}
+	}()
+
+	p := &Pane{name: "eng1", emu: emu, alive: true, ptmx: ptmx, noBracketedPaste: true}
+
+	go p.SendText("hello", true)
+
+	time.Sleep(400 * time.Millisecond)
+	buf := make([]byte, 512)
+	tty.SetReadDeadline(time.Now().Add(time.Second))
+	n, err := tty.Read(buf)
+	if err != nil {
+		t.Fatalf("tty.Read: %v", err)
+	}
+
+	got := string(buf[:n])
+	if got != "hello\r" {
+		t.Fatalf("PTY received %q, want %q", got, "hello\r")
+	}
+
+	emuMu.Lock()
+	defer emuMu.Unlock()
+	if string(emuOutput) != "\r" {
+		t.Fatalf("emulator output %q, want %q", string(emuOutput), "\r")
 	}
 }

@@ -489,26 +489,14 @@ func (p *Pane) SubmitKey() string { return p.submitKey }
 // AgentType returns the configured semantic agent type for this pane.
 func (p *Pane) AgentType() string { return p.agentType }
 
-func (p *Pane) sendTypedTextLocked(text string, enter bool) {
-	p.emu.SendKey(uv.KeyPressEvent(uv.Key{Code: 's', Mod: uv.ModCtrl}))
-	time.Sleep(75 * time.Millisecond)
-
-	for _, r := range text {
-		p.emu.SendKey(uv.KeyPressEvent(uv.Key{Code: r, Text: string(r)}))
-	}
-
-	if enter {
-		sendSubmitKey(p.emu, p.submitKey)
-	}
-}
-
-// SendText injects text into the pane's PTY via keystroke injection, with
-// optional Enter. Acquires sendMu to serialize with concurrent sends. Sends
-// Ctrl+S to stash pending user input before injecting (ini-gd0).
+// SendText injects text into the pane using the harness-appropriate local
+// delivery path. Claude panes use bracketed paste; raw-input panes like Codex
+// write the body directly to the PTY and delay submit to avoid paste-burst
+// suppression. Acquires sendMu to serialize concurrent sends.
 func (p *Pane) SendText(text string, enter bool) {
 	p.sendMu.Lock()
 	defer p.sendMu.Unlock()
-	p.sendTypedTextLocked(text, enter)
+	sendPaneTextLocked(p, text, enter)
 }
 
 // sendSubmitKey sends the appropriate submit key sequence to an emulator

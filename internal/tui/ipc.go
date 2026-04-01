@@ -274,14 +274,10 @@ func (t *TUI) handleIPCSend(conn net.Conn, req IPCRequest) {
 // aligned with the configured harness behavior.
 //
 // Safe to call from any goroutine.
-func (t *TUI) injectText(pane *Pane, text string, enter bool) {
-	pane.sendMu.Lock()
-	defer pane.sendMu.Unlock()
-
+func sendPaneTextLocked(pane *Pane, text string, enter bool) {
 	if pane.ptmx == nil {
 		return
 	}
-
 	// Stash any partially typed input before injecting so that the incoming
 	// message doesn't corrupt text the user was composing (ini-gd0). Codex/raw
 	// panes skip this because they inject directly to the PTY instead of through
@@ -314,8 +310,10 @@ func (t *TUI) injectText(pane *Pane, text string, enter bool) {
 	}
 
 	if pane.noBracketedPaste {
-		// Let non-bracketed paste-burst detection expire before sending Enter.
-		time.Sleep(20 * time.Millisecond)
+		// Let Codex's non-bracketed paste-burst detection expire before sending
+		// Enter. The 8ms parser window observed in source was not enough in the
+		// full PTY/TUI pipeline; use a larger margin here.
+		time.Sleep(200 * time.Millisecond)
 		sendSubmitKey(pane.emu, pane.submitKey)
 		return
 	}
@@ -332,6 +330,12 @@ func (t *TUI) injectText(pane *Pane, text string, enter bool) {
 			sendSubmitKey(pane.emu, pane.submitKey)
 		}
 	}
+}
+
+func (t *TUI) injectText(pane *Pane, text string, enter bool) {
+	pane.sendMu.Lock()
+	defer pane.sendMu.Unlock()
+	sendPaneTextLocked(pane, text, enter)
 }
 
 // promptHasContent checks if the last ❯ prompt line has non-whitespace content.
