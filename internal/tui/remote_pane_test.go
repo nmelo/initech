@@ -4,10 +4,13 @@ import (
 	"bufio"
 	"encoding/json"
 	"net"
+	"os"
 	"testing"
 	"time"
 
+	"github.com/creack/pty"
 	"github.com/gdamore/tcell/v2"
+	"golang.org/x/term"
 )
 
 func TestRemotePaneImplementsPaneView(t *testing.T) {
@@ -294,12 +297,6 @@ func TestTcellKeyToANSI(t *testing.T) {
 }
 
 func TestRemotePaneSendKey_ShiftEnter(t *testing.T) {
-	// Shift+Enter is NOT distinguishable from Enter at the PTY byte level.
-	// Real terminals send the same bytes for both. This is a fundamental
-	// PTY limitation (tmux has the same issue). See ini-dq94.
-	//
-	// This test verifies that Shift+Enter at least sends SOMETHING (doesn't
-	// crash or silently drop), producing the same \r as plain Enter.
 	server, client := net.Pipe()
 	defer client.Close()
 
@@ -316,13 +313,19 @@ func TestRemotePaneSendKey_ShiftEnter(t *testing.T) {
 		done <- buf[:n]
 	}()
 
+	// Shift+Enter sends CSI-u: ESC[13;2u (7 bytes, single write).
 	ev := tcell.NewEventKey(tcell.KeyEnter, 0, tcell.ModShift)
 	rp.SendKey(ev)
 
 	select {
 	case data := <-done:
-		if string(data) != "\r" {
-			t.Errorf("SendKey(Shift+Enter) produced %q, want %q (same as plain Enter)", string(data), "\r")
+		want := "\x1b[13;2u"
+		if string(data) != want {
+			t.Errorf("SendKey(Shift+Enter) produced %q, want %q", string(data), want)
+		}
+		// Verify all 7 bytes arrived in a single read (atomicity).
+		if len(data) != 7 {
+			t.Errorf("SendKey(Shift+Enter) read %d bytes, want 7 (atomic)", len(data))
 		}
 	case <-time.After(time.Second):
 		t.Fatal("timeout waiting for SendKey data")
@@ -358,6 +361,60 @@ func TestRemotePaneSendKey_PlainEnter(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("timeout waiting for SendKey data")
 	}
+}
+
+// TestShiftEnter_PTY_Atomicity verifies that Shift+Enter's CSI-u sequence
+// arrives as a single atomic read on the PTY slave side. Claude Code's input
+// parser has a 50ms ESC disambiguation timeout (App.tsx:NORMAL_TIMEOUT). If
+// ESC arrives alone in one read, the timer fires and it's treated as standalone
+// Escape. All 7 bytes must arrive in a single read() to be parsed as CSI-u.
+func TestShiftEnter_PTY_Atomicity(t *testing.T) {
+	if os.Getenv("CI") != "" || testing.Short() {
+		t.Skip("PTY test: run locally")
+	}
+
+	ptmx, tty, err := pty.Open()
+	if err != nil {
+		t.Fatalf("pty.Open: %v", err)
+	}
+	defer ptmx.Close()
+	defer tty.Close()
+
+	// Put slave in raw mode (Claude Code does this).
+	oldState, err := term.MakeRaw(int(tty.Fd()))
+	if err != nil {
+		t.Fatalf("MakeRaw: %v", err)
+	}
+	defer term.Restore(int(tty.Fd()), oldState)
+
+	// Write CSI-u Shift+Enter to PTY master (what initech does).
+	seq := []byte("\x1b[13;2u")
+	n, err := ptmx.Write(seq)
+	if err != nil {
+		t.Fatalf("ptmx.Write: %v", err)
+	}
+	if n != 7 {
+		t.Fatalf("ptmx.Write wrote %d bytes, want 7", n)
+	}
+
+	// Read from slave (what Claude Code's stdin sees).
+	time.Sleep(10 * time.Millisecond) // Let bytes propagate.
+	buf := make([]byte, 64)
+	tty.SetReadDeadline(time.Now().Add(500 * time.Millisecond))
+	nr, err := tty.Read(buf)
+	if err != nil {
+		t.Fatalf("tty.Read: %v", err)
+	}
+
+	got := buf[:nr]
+	if string(got) != string(seq) {
+		t.Errorf("slave received %q, want %q", string(got), string(seq))
+	}
+	if nr != 7 {
+		t.Errorf("slave read %d bytes in one read(), want 7 (atomic). "+
+			"Split reads would cause Claude Code's 50ms ESC timeout to fire.", nr)
+	}
+	t.Logf("PTY atomicity confirmed: %d bytes in single read: %q", nr, string(got))
 }
 
 // helper: create a tcell key event for a rune.
