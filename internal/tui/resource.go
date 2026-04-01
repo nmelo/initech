@@ -418,8 +418,19 @@ func (t *TUI) resumePane(pane *Pane, senderName string) error {
 		rows = 24
 	}
 
+	// Rebuild config from the project to pick up any initech.yaml changes.
+	cfg := pane.cfg
+	if t.paneConfigBuilder != nil {
+		if fresh, err := t.paneConfigBuilder(agentName); err == nil {
+			fresh.Env = append(fresh.Env,
+				"INITECH_SOCKET="+t.sockPath,
+				"INITECH_AGENT="+agentName,
+			)
+			cfg = fresh
+		}
+	}
 	// Create new pane process off-main (may fork/exec).
-	np, err := NewPane(pane.cfg, rows, cols)
+	np, err := NewPane(cfg, rows, cols)
 	if err != nil {
 		LogError("resource", "resume failed", "agent", pane.name, "err", err)
 		return fmt.Errorf("resume %s: %w", pane.name, err)

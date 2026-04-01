@@ -88,7 +88,18 @@ func (t *TUI) handleIPCStart(conn net.Conn, req IPCRequest) {
 	if rows < 2 {
 		rows = 24
 	}
-	np, err := NewPane(old.cfg, rows, cols)
+	// Rebuild config from the project to pick up any initech.yaml changes.
+	cfg := old.cfg
+	if t.paneConfigBuilder != nil {
+		if fresh, err := t.paneConfigBuilder(req.Target); err == nil {
+			fresh.Env = append(fresh.Env,
+				"INITECH_SOCKET="+t.sockPath,
+				"INITECH_AGENT="+req.Target,
+			)
+			cfg = fresh
+		}
+	}
+	np, err := NewPane(cfg, rows, cols)
 	if err != nil {
 		LogError("pane", "start failed", "name", req.Target, "err", err)
 		writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("start failed: %v", err)})
@@ -157,8 +168,20 @@ func (t *TUI) handleIPCRestart(conn net.Conn, req IPCRequest) {
 	}
 	old.Close()
 	old.sendMu.Unlock()
+	// Rebuild config from the project to pick up any initech.yaml changes
+	// (e.g. role_overrides.command added after initial spawn).
+	cfg := old.cfg
+	if t.paneConfigBuilder != nil {
+		if fresh, err := t.paneConfigBuilder(req.Target); err == nil {
+			fresh.Env = append(fresh.Env,
+				"INITECH_SOCKET="+t.sockPath,
+				"INITECH_AGENT="+req.Target,
+			)
+			cfg = fresh
+		}
+	}
 	// Create new pane off-main (may fork/exec).
-	np, err := NewPane(old.cfg, rows, cols)
+	np, err := NewPane(cfg, rows, cols)
 	if err != nil {
 		LogError("pane", "restart failed", "name", req.Target, "err", err)
 		writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("restart failed: %v", err)})
