@@ -147,7 +147,6 @@ const idleNotifyCooldown = 60 * time.Second
 // has elapsed.
 func (p *Pane) updateActivity() {
 	p.mu.Lock()
-	defer p.mu.Unlock()
 
 	prev := p.activity
 	if !p.alive {
@@ -156,6 +155,7 @@ func (p *Pane) updateActivity() {
 		} else {
 			p.activity = StateDead
 		}
+		p.mu.Unlock()
 		return
 	}
 	if time.Since(p.lastOutputTime) < ptyIdleTimeout {
@@ -164,19 +164,28 @@ func (p *Pane) updateActivity() {
 		p.activity = StateIdle
 	}
 
-	// Detect running->idle edge with a bead assigned and cooldown elapsed.
-	if prev == StateRunning && p.activity == StateIdle &&
-		p.beadID != "" && p.eventCh != nil &&
+	runningToIdle := prev == StateRunning && p.activity == StateIdle
+	shouldAutoApprove := runningToIdle && p.noBracketedPaste
+
+	var idleEvent *AgentEvent
+	if runningToIdle && p.beadID != "" && p.eventCh != nil &&
 		time.Since(p.lastIdleNotify) > idleNotifyCooldown {
 		p.lastIdleNotify = time.Now()
-		EmitEvent(p.eventCh, AgentEvent{
+		idleEvent = &AgentEvent{
 			Type:   EventAgentIdleWithBead,
 			Pane:   p.name,
 			BeadID: p.beadID,
 			Detail: p.beadID,
-		})
+		}
 	}
+	p.mu.Unlock()
 
+	if idleEvent != nil {
+		EmitEvent(p.eventCh, *idleEvent)
+	}
+	if shouldAutoApprove {
+		p.maybeApproveCodexPermissionPrompt()
+	}
 }
 
 // runDetectors runs all event detectors (completion, stall, stuck) and emits

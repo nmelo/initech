@@ -59,6 +59,18 @@ const (
 	maxContentLen   = 4096 // Max content bytes per JournalEntry.
 )
 
+const codexPermissionScanRows = 10
+
+var codexPermissionPromptPatterns = []string{
+	"press enter to confirm or esc to cancel",
+	"1. yes, proceed",
+	"1. yes (y)",
+	"2. yes, and don't ask again",
+	"2. yes, and dont ask again",
+	"yes, and don't ask again",
+	"yes, and dont ask again",
+}
+
 // PaneView abstracts pane behavior so both local panes (Pane) and future
 // network-backed panes (RemotePane) can be used interchangeably by the TUI.
 type PaneView interface {
@@ -492,6 +504,66 @@ func sendSubmitKey(emu *vt.SafeEmulator, key string) {
 	default:
 		emu.SendKey(uv.KeyPressEvent(uv.Key{Code: uv.KeyEnter}))
 	}
+}
+
+// maybeApproveCodexPermissionPrompt scans the bottom rows of the emulator for
+// a Codex permission prompt and, if found, writes "p" to the PTY to approve
+// and remember the choice. It only applies to no-bracketed-paste panes.
+func (p *Pane) maybeApproveCodexPermissionPrompt() bool {
+	if !p.noBracketedPaste || p.ptmx == nil {
+		return false
+	}
+
+	p.renderMu.Lock()
+	text := emulatorBottomText(p.emu, codexPermissionScanRows)
+	p.renderMu.Unlock()
+	if !isCodexPermissionPrompt(text) {
+		return false
+	}
+
+	p.sendMu.Lock()
+	defer p.sendMu.Unlock()
+	if !p.noBracketedPaste || p.ptmx == nil {
+		return false
+	}
+	_, err := p.ptmx.Write([]byte("p"))
+	return err == nil
+}
+
+func emulatorBottomText(emu *vt.SafeEmulator, lines int) string {
+	cols := emu.Width()
+	rows := emu.Height()
+	if lines <= 0 || lines > rows {
+		lines = rows
+	}
+	start := rows - lines
+
+	var buf strings.Builder
+	for row := start; row < rows; row++ {
+		var line strings.Builder
+		for col := 0; col < cols; col++ {
+			cell := emu.CellAt(col, row)
+			if cell != nil && cell.Content != "" {
+				line.WriteString(cell.Content)
+			} else {
+				line.WriteByte(' ')
+			}
+		}
+		buf.WriteString(strings.TrimRight(line.String(), " "))
+		buf.WriteByte('\n')
+	}
+	return buf.String()
+}
+
+func isCodexPermissionPrompt(text string) bool {
+	normalized := strings.ToLower(text)
+	normalized = strings.ReplaceAll(normalized, "’", "'")
+	for _, pattern := range codexPermissionPromptPatterns {
+		if strings.Contains(normalized, pattern) {
+			return true
+		}
+	}
+	return false
 }
 
 // GetRegion returns the pane's screen region.
