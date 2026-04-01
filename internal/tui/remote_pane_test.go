@@ -310,14 +310,15 @@ func TestRemotePaneSendKey_ShiftEnter(t *testing.T) {
 		done <- buf[:n]
 	}()
 
-	// Shift+Enter should produce \n (newline), not \r (submit).
+	// Shift+Enter should produce CSI-u sequence ESC[13;2u.
 	ev := tcell.NewEventKey(tcell.KeyEnter, 0, tcell.ModShift)
 	rp.SendKey(ev)
 
 	select {
 	case data := <-done:
-		if string(data) != "\n" {
-			t.Errorf("SendKey(Shift+Enter) produced %q, want %q", string(data), "\n")
+		want := "\x1b[13;2u"
+		if string(data) != want {
+			t.Errorf("SendKey(Shift+Enter) produced %q, want %q", string(data), want)
 		}
 	case <-time.After(time.Second):
 		t.Fatal("timeout waiting for SendKey data")
