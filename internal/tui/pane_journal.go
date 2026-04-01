@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/nmelo/initech/internal/config"
 )
 
 // watchJSONL polls for new JSONL entries in the session directory and feeds
@@ -165,7 +167,7 @@ func (p *Pane) updateActivity() {
 	}
 
 	runningToIdle := prev == StateRunning && p.activity == StateIdle
-	shouldAutoApprove := runningToIdle && p.noBracketedPaste
+	shouldAutoApprove := runningToIdle && p.AgentType() == config.AgentTypeCodex
 
 	var idleEvent *AgentEvent
 	if runningToIdle && p.beadID != "" && p.eventCh != nil &&

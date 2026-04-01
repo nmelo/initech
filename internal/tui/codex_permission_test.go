@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/nmelo/initech/internal/config"
 )
 
 func TestIsCodexPermissionPrompt_MatchesKnownPatterns(t *testing.T) {
@@ -28,6 +30,7 @@ func TestUpdateActivity_IdleEdgeAutoApprovesCodexPrompt(t *testing.T) {
 
 	p := &Pane{
 		name:             "eng1",
+		agentType:        config.AgentTypeCodex,
 		alive:            true,
 		activity:         StateRunning,
 		lastOutputTime:   time.Now().Add(-(ptyIdleTimeout + time.Second)),
@@ -69,6 +72,7 @@ func TestUpdateActivity_IdleEdgeSkipsClaudePanePrompt(t *testing.T) {
 
 	p := &Pane{
 		name:           "eng1",
+		agentType:      config.AgentTypeClaudeCode,
 		alive:          true,
 		activity:       StateRunning,
 		lastOutputTime: time.Now().Add(-(ptyIdleTimeout + time.Second)),
@@ -110,6 +114,7 @@ func TestUpdateActivity_IdleEdgeSkipsWhenPromptMissing(t *testing.T) {
 
 	p := &Pane{
 		name:             "eng1",
+		agentType:        config.AgentTypeCodex,
 		alive:            true,
 		activity:         StateRunning,
 		lastOutputTime:   time.Now().Add(-(ptyIdleTimeout + time.Second)),
@@ -152,6 +157,7 @@ func TestUpdateActivity_IdleToIdleDoesNotReapprovePrompt(t *testing.T) {
 
 	p := &Pane{
 		name:             "eng1",
+		agentType:        config.AgentTypeCodex,
 		alive:            true,
 		activity:         StateIdle,
 		lastOutputTime:   time.Now().Add(-(ptyIdleTimeout + time.Second)),
@@ -174,6 +180,49 @@ func TestUpdateActivity_IdleToIdleDoesNotReapprovePrompt(t *testing.T) {
 	case got := <-done:
 		if len(got) != 0 {
 			t.Fatalf("unexpected approval write %q on idle->idle update", string(got))
+		}
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("read goroutine did not exit")
+	}
+}
+
+func TestUpdateActivity_IdleEdgeSkipsGenericTypedInputPanePrompt(t *testing.T) {
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe: %v", err)
+	}
+	defer r.Close()
+	defer w.Close()
+
+	emu := testPane("eng1").emu
+	emu.Resize(80, codexPermissionScanRows)
+	emu.Write([]byte("2. Yes, and dont ask again (p)\nPress enter to confirm or esc to cancel"))
+
+	p := &Pane{
+		name:             "eng1",
+		agentType:        config.AgentTypeGeneric,
+		alive:            true,
+		activity:         StateRunning,
+		lastOutputTime:   time.Now().Add(-(ptyIdleTimeout + time.Second)),
+		noBracketedPaste: true,
+		emu:              emu,
+		ptmx:             w,
+	}
+
+	done := make(chan []byte, 1)
+	go func() {
+		buf := make([]byte, 1)
+		n, _ := r.Read(buf)
+		done <- buf[:n]
+	}()
+
+	p.updateActivity()
+	_ = w.Close()
+
+	select {
+	case got := <-done:
+		if len(got) != 0 {
+			t.Fatalf("unexpected approval write %q for generic pane", string(got))
 		}
 	case <-time.After(200 * time.Millisecond):
 		t.Fatal("read goroutine did not exit")
