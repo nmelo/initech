@@ -144,7 +144,7 @@ func TestInjectText_NoBracketedPasteEnterUsesEmulatorSubmit(t *testing.T) {
 
 	go tui.injectText(p, "hello", true)
 
-	time.Sleep(150 * time.Millisecond)
+	time.Sleep(250 * time.Millisecond)
 	buf := make([]byte, 512)
 	tty.SetReadDeadline(time.Now().Add(time.Second))
 	n, err := tty.Read(buf)

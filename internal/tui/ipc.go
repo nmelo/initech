@@ -309,6 +309,8 @@ func (t *TUI) injectText(pane *Pane, text string, enter bool) {
 	}
 
 	if pane.noBracketedPaste {
+		// Let non-bracketed paste-burst detection expire before sending Enter.
+		time.Sleep(20 * time.Millisecond)
 		sendSubmitKey(pane.emu, pane.submitKey)
 		return
 	}
