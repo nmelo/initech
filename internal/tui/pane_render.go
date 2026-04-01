@@ -282,12 +282,15 @@ func renderStatusBarRow(s *clampedScreen, emu *vt.SafeEmulator, screenX, screenY
 			}
 		}
 	}
-	for col := 0; col < cols; col++ {
-		st := cells[col].style
-		if dimmed {
-			st = dimStyle(st)
+	if !dimmed {
+		for col := 0; col < cols; col++ {
+			s.SetContent(screenX+col, screenY, cells[col].ch, nil, cells[col].style)
 		}
-		s.SetContent(screenX+col, screenY, cells[col].ch, nil, st)
+	} else {
+		for col := 0; col < cols; col++ {
+			st := dimStyle(cells[col].style)
+			s.SetContent(screenX+col, screenY, cells[col].ch, nil, st)
+		}
 	}
 }
 
