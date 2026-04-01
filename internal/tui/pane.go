@@ -77,6 +77,18 @@ var codexPermissionPromptPatterns = []string{
 	"yes, and dont ask again",
 }
 
+var codexPermissionApprovePersistentPatterns = []string{
+	"2. yes, and don't ask again",
+	"2. yes, and dont ask again",
+	"yes, and don't ask again",
+	"yes, and dont ask again",
+}
+
+var codexPermissionApproveProceedPatterns = []string{
+	"1. yes, proceed",
+	"1. yes (y)",
+}
+
 var codexNotReadyPromptPatterns = []string{
 	"do you trust the contents of this directory",
 	"press enter to continue",
@@ -536,8 +548,8 @@ func sendSubmitKey(emu *vt.SafeEmulator, key string) {
 }
 
 // maybeApproveCodexPermissionPrompt scans the bottom rows of the emulator for
-// a Codex permission prompt and, if found, writes "p" to the PTY to approve
-// and remember the choice. It only runs when auto-approval is enabled.
+// a Codex permission prompt and, if found, writes the matching approval input
+// to the PTY. It only runs when auto-approval is enabled.
 func (p *Pane) maybeApproveCodexPermissionPrompt() bool {
 	if !p.autoApprove || p.ptmx == nil {
 		return false
@@ -546,7 +558,8 @@ func (p *Pane) maybeApproveCodexPermissionPrompt() bool {
 	p.renderMu.Lock()
 	text := emulatorBottomText(p.emu, codexPermissionScanRows)
 	p.renderMu.Unlock()
-	if !isCodexPermissionPrompt(text) {
+	approvalInput, ok := codexPermissionApprovalInput(text)
+	if !ok {
 		return false
 	}
 
@@ -555,7 +568,7 @@ func (p *Pane) maybeApproveCodexPermissionPrompt() bool {
 	if !p.autoApprove || p.ptmx == nil {
 		return false
 	}
-	_, err := p.ptmx.Write([]byte("p"))
+	_, err := p.ptmx.Write(approvalInput)
 	return err == nil
 }
 
@@ -585,14 +598,31 @@ func emulatorBottomText(emu *vt.SafeEmulator, lines int) string {
 }
 
 func isCodexPermissionPrompt(text string) bool {
+	_, ok := codexPermissionApprovalInput(text)
+	return ok
+}
+
+func codexPermissionApprovalInput(text string) ([]byte, bool) {
 	normalized := strings.ToLower(text)
 	normalized = strings.ReplaceAll(normalized, "’", "'")
+	compacted := compactPromptText(normalized)
 	for _, pattern := range codexPermissionPromptPatterns {
-		if strings.Contains(compactPromptText(normalized), compactPromptText(pattern)) {
-			return true
+		if !strings.Contains(compacted, compactPromptText(pattern)) {
+			continue
 		}
+		for _, persistent := range codexPermissionApprovePersistentPatterns {
+			if strings.Contains(compacted, compactPromptText(persistent)) {
+				return []byte("p"), true
+			}
+		}
+		for _, proceed := range codexPermissionApproveProceedPatterns {
+			if strings.Contains(compacted, compactPromptText(proceed)) {
+				return []byte("\r"), true
+			}
+		}
+		return nil, false
 	}
-	return false
+	return nil, false
 }
 
 func isCodexReadyPrompt(text string) bool {
