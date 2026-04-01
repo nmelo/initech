@@ -9,7 +9,6 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"time"
 
@@ -262,103 +261,44 @@ func (t *TUI) handleIPCSend(conn net.Conn, req IPCRequest) {
 	writeIPCResponse(conn, IPCResponse{OK: true})
 }
 
-// injectText sends text into a pane's PTY via keystroke injection. Acquires
-// sendMu to serialize against concurrent sends. If enter is true, sends Enter
-// with a smart single-retry that only fires when the prompt still holds our
-// injected content or a paste reference (ini-f0d). Safe to call from any
-// goroutine.
+// injectText sends text into a pane's PTY using bracketed paste. The text is
+// wrapped in ESC[200~ / ESC[201~ markers and written directly to the PTY
+// master. Claude Code's input parser recognizes these markers and handles the
+// content as a paste (not typed input). For messages >800 chars, Claude Code
+// collapses the paste into a "[Pasted text #N]" reference internally.
+//
+// After the paste completes (150ms for Claude Code's 100ms completion timeout),
+// Enter is sent to submit. No retry logic is needed because bracketed paste
+// is handled atomically by Claude Code's parser. Safe to call from any goroutine.
 func (t *TUI) injectText(pane *Pane, text string, enter bool) {
-	// Serialize sends to this pane so concurrent callers don't interleave keystrokes.
 	pane.sendMu.Lock()
 	defer pane.sendMu.Unlock()
 
+	if pane.ptmx == nil {
+		return
+	}
+
 	// Stash any partially typed input before injecting so that the incoming
 	// message doesn't corrupt text the user was composing (ini-gd0).
-	// Ctrl+S in Claude Code stashes the current input line and restores it
-	// after the next response. This was removed in ini-a1e.20 but that removal
-	// was incorrect — the stash/restore is essential to preserve pending input.
 	pane.emu.SendKey(uv.KeyPressEvent(uv.Key{Code: 's', Mod: uv.ModCtrl}))
 	time.Sleep(75 * time.Millisecond)
 
-	// Send each character as a key event through the emulator,
-	// same path as real keypresses from the TUI.
-	for _, r := range text {
-		pane.emu.SendKey(uv.KeyPressEvent(uv.Key{Code: r, Text: string(r)}))
-	}
+	// Write text as a bracketed paste: ESC[200~ + text + ESC[201~.
+	// Claude Code enables DEC 2004 (bracketed paste mode) on startup.
+	// The parser (parse-keypress.ts) switches to IN_PASTE mode on seeing
+	// the start marker and buffers all content until the end marker.
+	var buf []byte
+	buf = append(buf, "\x1b[200~"...)
+	buf = append(buf, text...)
+	buf = append(buf, "\x1b[201~"...)
+	pane.ptmx.Write(buf)
 
 	if enter {
+		// Wait for Claude Code's paste completion timeout (100ms) plus margin.
+		// After isPasting resets to false, Enter is no longer swallowed.
+		time.Sleep(150 * time.Millisecond)
 		sendSubmitKey(pane.emu, pane.submitKey)
-
-		// Smart single-retry for paste dialog (ini-f0d): wait for the async
-		// display pipeline to reflect the result, then check if input is still
-		// stuck. 2s accounts for the round-trip: Claude Code detects the paste,
-		// renders the dialog, sends escape sequences back, and readLoop writes
-		// them to the emulator. If the stuck content looks like what we injected
-		// (raw text or "[Pasted text #N ...]"), send one more Enter. If the
-		// stuck content is something else (user's restored stashed input), do
-		// NOT retry. Skip entirely for dead panes.
-		if pane.IsAlive() {
-			time.Sleep(2 * time.Second)
-		}
-		if pane.IsAlive() && hasStuckInput(pane) {
-			content := getPromptContent(pane)
-			if looksLikeInjectedText(content, text) {
-				sendSubmitKey(pane.emu, pane.submitKey)
-			}
-		}
 	}
-}
-
-// getPromptContent extracts the text visible after the last ❯ prompt character
-// in the pane's emulator. Returns the trimmed content, or empty string if no
-// prompt is visible.
-func getPromptContent(p *Pane) string {
-	cols := p.emu.Width()
-	rows := p.emu.Height()
-	var lastPromptContent string
-
-	for row := 0; row < rows; row++ {
-		var line strings.Builder
-		for col := 0; col < cols; col++ {
-			cell := p.emu.CellAt(col, row)
-			if cell != nil && cell.Content != "" {
-				line.WriteString(cell.Content)
-			} else {
-				line.WriteByte(' ')
-			}
-		}
-		text := line.String()
-		if idx := strings.LastIndex(text, "\u276f"); idx >= 0 {
-			lastPromptContent = strings.TrimSpace(text[idx+len("\u276f"):])
-		}
-	}
-	return lastPromptContent
-}
-
-// looksLikeInjectedText returns true if the prompt content matches the text we
-// just injected, either as a paste reference ("[Pasted text #N ...]"), an exact
-// match (short messages), or a prefix match (medium messages truncated by the
-// terminal width). Returns false for unrelated content such as the user's
-// restored stashed input, preventing an unwanted retry Enter from submitting it.
-func looksLikeInjectedText(promptContent, injectedText string) bool {
-	if promptContent == "" {
-		return false
-	}
-	// Paste reference: "[Pasted text #5 +1 lines]"
-	if pasteIndicatorRe.MatchString(promptContent) {
-		return true
-	}
-	// Exact match: short messages that fit entirely on the prompt line.
-	if promptContent == injectedText {
-		return true
-	}
-	// Prefix match: for messages longer than the terminal width, the prompt
-	// row shows only the first N characters. Check that the injected text
-	// starts with the visible prompt content.
-	if strings.HasPrefix(injectedText, promptContent) {
-		return true
-	}
-	return false
 }
 
 
@@ -475,54 +415,6 @@ func (t *TUI) findPane(name string) *Pane {
 	return nil
 }
 
-// pasteIndicatorRe matches Claude Code's paste reference placeholder.
-var pasteIndicatorRe = regexp.MustCompile(`\[Pasted text #\d+[^\]]*\]`)
-
-// hasStuckInput reads the pane's emulator cells to detect whether the sent
-// message is stuck in the input box. Two cases:
-//
-//  1. Paste indicator: "[Pasted text #N]" visible near the prompt.
-//  2. Text at prompt: the last line containing the ❯ prompt character
-//     has non-whitespace content after it.
-//
-// Returns false when no prompt is visible (Claude is generating) or
-// the prompt is empty (message submitted successfully).
-func hasStuckInput(p *Pane) bool {
-	cols := p.emu.Width()
-	rows := p.emu.Height()
-
-	var lastPromptContent string
-	promptFound := false
-
-	for row := 0; row < rows; row++ {
-		var line strings.Builder
-		for col := 0; col < cols; col++ {
-			cell := p.emu.CellAt(col, row)
-			if cell != nil && cell.Content != "" {
-				line.WriteString(cell.Content)
-			} else {
-				line.WriteByte(' ')
-			}
-		}
-		text := line.String()
-
-		// Case 1: paste indicator anywhere.
-		if pasteIndicatorRe.MatchString(text) {
-			return true
-		}
-
-		// Track the last line with a ❯ prompt character.
-		if idx := strings.LastIndex(text, "\u276f"); idx >= 0 {
-			lastPromptContent = strings.TrimSpace(text[idx+len("\u276f"):])
-			promptFound = true
-		}
-	}
-
-	if !promptFound {
-		return false // No prompt visible, Claude is generating.
-	}
-	return lastPromptContent != ""
-}
 
 
 func (t *TUI) handleIPCQuit(conn net.Conn) {

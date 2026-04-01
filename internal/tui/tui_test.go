@@ -615,40 +615,6 @@ func TestHandleIPCSendNoEnter(t *testing.T) {
 
 // ── IPC: hasStuckInput ──────────────────────────────────────────────
 
-func TestHasStuckInput_EmptyPrompt(t *testing.T) {
-	p := newEmuPane("test", 80, 24)
-	// Write a prompt with nothing after it.
-	p.emu.Write([]byte("\u276f "))
-	if hasStuckInput(p) {
-		t.Error("empty prompt should not be stuck")
-	}
-}
-
-func TestHasStuckInput_NoPrompt(t *testing.T) {
-	p := newEmuPane("test", 80, 24)
-	// Claude is generating (no prompt visible).
-	p.emu.Write([]byte("Processing your request..."))
-	if hasStuckInput(p) {
-		t.Error("no prompt should not be stuck")
-	}
-}
-
-func TestHasStuckInput_PasteIndicator(t *testing.T) {
-	p := newEmuPane("test", 80, 24)
-	p.emu.Write([]byte("\u276f [Pasted text #1]"))
-	if !hasStuckInput(p) {
-		t.Error("paste indicator should be detected as stuck")
-	}
-}
-
-func TestHasStuckInput_TextAtPrompt(t *testing.T) {
-	p := newEmuPane("test", 80, 24)
-	p.emu.Write([]byte("\u276f some leftover text"))
-	if !hasStuckInput(p) {
-		t.Error("text at prompt should be detected as stuck")
-	}
-}
-
 // ── IPC: handleIPCConn routing ──────────────────────────────────────
 
 func TestHandleIPCConnRouting(t *testing.T) {
