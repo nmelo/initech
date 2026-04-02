@@ -25,10 +25,10 @@ type LayoutState struct {
 	GridCols int             `yaml:"grid_cols"`
 	GridRows int             `yaml:"grid_rows"`
 	Zoomed   bool            `yaml:"zoomed,omitempty"`
-	Focused  string          `yaml:"focused"`            // Pane name, not index.
-	Hidden   map[string]bool `yaml:"hidden,omitempty"`   // Pane names that are hidden.
-	Pinned   map[string]bool `yaml:"pinned,omitempty"`  // Pane names protected from auto-suspend.
-	Order    []string        `yaml:"order,omitempty"`    // Pane names in display order (from show command).
+	Focused  string          `yaml:"focused"`          // Pane name, not index.
+	Hidden   map[string]bool `yaml:"hidden,omitempty"` // Pane names that are hidden.
+	Pinned   map[string]bool `yaml:"pinned,omitempty"` // Pane names protected from auto-suspend.
+	Order    []string        `yaml:"order,omitempty"`  // Pane names in display order.
 	Overlay  bool            `yaml:"overlay"`
 
 	// Per-column and per-row proportional sizing (future).
@@ -330,7 +330,7 @@ type PersistentLayout struct {
 	Grid   string   `yaml:"grid"`             // e.g. "3x2"
 	Hidden []string `yaml:"hidden,omitempty"` // Role names of hidden panes.
 	Pinned []string `yaml:"pinned,omitempty"` // Role names protected from auto-suspend.
-	Order  []string `yaml:"order,omitempty"`  // Pane display order (from show command).
+	Order  []string `yaml:"order,omitempty"`  // Pane display order.
 	Mode   string   `yaml:"mode"`             // "grid", "focus", "main"
 }
 
@@ -348,9 +348,9 @@ func layoutPath(projectRoot string) string {
 // (temp file + rename) to prevent corruption. Creates .initech/ if it doesn't exist.
 func SaveLayout(projectRoot string, state LayoutState) error {
 	pl := PersistentLayout{
-		Grid:   fmt.Sprintf("%dx%d", state.GridCols, state.GridRows),
-		Mode:   layoutModeToString(state.Mode),
-		Order:  state.Order,
+		Grid:  fmt.Sprintf("%dx%d", state.GridCols, state.GridRows),
+		Mode:  layoutModeToString(state.Mode),
+		Order: state.Order,
 	}
 	for name, hidden := range state.Hidden {
 		if hidden {

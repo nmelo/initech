@@ -550,7 +550,7 @@ func Run(cfg Config) error {
 		}
 	}
 
-	// Apply saved pane order from layout.yaml (show command persistence).
+	// Apply saved pane order from layout.yaml.
 	if len(t.layoutState.Order) > 0 {
 		reorderPanes(t.panes, t.layoutState.Order)
 	}
