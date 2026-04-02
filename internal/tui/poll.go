@@ -8,6 +8,11 @@ import (
 	"time"
 )
 
+var (
+	readBatteryFn    = readBattery
+	newBatteryTicker = time.NewTicker
+)
+
 // statusTips are progressive hints shown in the status bar. They cycle
 // every tipRotationInterval, teaching one feature at a time.
 var statusTips = []string{
@@ -76,7 +81,7 @@ func (t *TUI) pollQuota() {
 // If the first poll finds no battery, the goroutine exits immediately and
 // batteryPercent stays at -1 (nothing rendered in the status bar).
 func (t *TUI) startBatteryPoller() {
-	pct, charging, hasBattery := readBattery()
+	pct, charging, hasBattery := readBatteryFn()
 	if !hasBattery {
 		return // Desktop or VM, no battery to monitor.
 	}
@@ -84,12 +89,12 @@ func (t *TUI) startBatteryPoller() {
 	t.batteryCharging = charging
 
 	t.safeGo(func() {
-		ticker := time.NewTicker(60 * time.Second)
+		ticker := newBatteryTicker(60 * time.Second)
 		defer ticker.Stop()
 		for {
 			select {
 			case <-ticker.C:
-				pct, charging, has := readBattery()
+				pct, charging, has := readBatteryFn()
 				if has {
 					t.batteryPercent = pct
 					t.batteryCharging = charging
