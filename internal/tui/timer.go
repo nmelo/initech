@@ -39,19 +39,25 @@ type TimerStore struct {
 }
 
 // NewTimerStore creates a store backed by the given file path. If the file
-// exists, timers and the ID counter are loaded from it. If the file doesn't
-// exist or is invalid, the store starts empty.
+// exists, timers and the ID counter are loaded from it. Missing files are
+// treated as empty (first run). Corrupt files log a warning and start empty
+// so the operator is aware of data loss.
 func NewTimerStore(path string) *TimerStore {
 	ts := &TimerStore{
 		path:   path,
 		nextID: 1,
 	}
-	ts.load()
+	if err := ts.load(); err != nil {
+		LogWarn("timer", "corrupt timer file, starting empty",
+			"path", path, "err", err)
+	}
 	return ts
 }
 
-// Add creates a new timer and persists to disk. Returns the created timer.
-func (ts *TimerStore) Add(target, host, text string, enter bool, fireAt time.Time) Timer {
+// Add creates a new timer and persists to disk. Returns the created timer
+// and any persistence error. On save failure, the in-memory state is rolled
+// back so it stays consistent with disk.
+func (ts *TimerStore) Add(target, host, text string, enter bool, fireAt time.Time) (Timer, error) {
 	ts.mu.Lock()
 	defer ts.mu.Unlock()
 
@@ -66,11 +72,19 @@ func (ts *TimerStore) Add(target, host, text string, enter bool, fireAt time.Tim
 	}
 	ts.nextID++
 	ts.timers = append(ts.timers, t)
-	ts.save()
-	return t
+
+	if err := ts.save(); err != nil {
+		// Rollback: remove the timer and restore the ID counter.
+		ts.timers = ts.timers[:len(ts.timers)-1]
+		ts.nextID--
+		return Timer{}, fmt.Errorf("timer not persisted: %w", err)
+	}
+	return t, nil
 }
 
-// Cancel removes a timer by ID and persists. Returns the canceled timer.
+// Cancel removes a timer by ID and persists. Returns the canceled timer
+// and any error (not-found or persistence failure). On save failure, the
+// in-memory removal is rolled back.
 func (ts *TimerStore) Cancel(id string) (Timer, error) {
 	ts.mu.Lock()
 	defer ts.mu.Unlock()
@@ -78,7 +92,11 @@ func (ts *TimerStore) Cancel(id string) (Timer, error) {
 	for i, t := range ts.timers {
 		if t.ID == id {
 			ts.timers = append(ts.timers[:i], ts.timers[i+1:]...)
-			ts.save()
+			if err := ts.save(); err != nil {
+				// Rollback: re-insert the timer at its original position.
+				ts.timers = append(ts.timers[:i], append([]Timer{t}, ts.timers[i:]...)...)
+				return Timer{}, fmt.Errorf("cancel not persisted: %w", err)
+			}
 			return t, nil
 		}
 	}
@@ -99,8 +117,10 @@ func (ts *TimerStore) List() []Timer {
 }
 
 // FireDue returns and removes all timers where FireAt <= now. Persists after
-// removal. Returns nil if no timers are due.
-func (ts *TimerStore) FireDue(now time.Time) []Timer {
+// removal. Returns due timers and any save error. Even on save failure, the
+// due timers are returned so they can still be fired (but the caller should
+// log the error since the timers may resurrect after restart).
+func (ts *TimerStore) FireDue(now time.Time) ([]Timer, error) {
 	ts.mu.Lock()
 	defer ts.mu.Unlock()
 
@@ -113,11 +133,11 @@ func (ts *TimerStore) FireDue(now time.Time) []Timer {
 		}
 	}
 	if len(due) == 0 {
-		return nil
+		return nil, nil
 	}
 	ts.timers = remaining
-	ts.save()
-	return due
+	err := ts.save()
+	return due, err
 }
 
 // Pending returns the count of pending timers.
@@ -127,43 +147,54 @@ func (ts *TimerStore) Pending() int {
 	return len(ts.timers)
 }
 
-// load reads timers.json into the store. Errors are silently ignored
-// (store starts empty on missing/corrupt file).
-func (ts *TimerStore) load() {
+// load reads timers.json into the store. Returns nil for missing files
+// (normal first-run case). Returns an error for corrupt or unreadable files.
+func (ts *TimerStore) load() error {
 	data, err := os.ReadFile(ts.path)
 	if err != nil {
-		return
+		if os.IsNotExist(err) {
+			return nil // First run, no file yet.
+		}
+		return fmt.Errorf("read: %w", err)
 	}
 	var f timerFile
 	if err := json.Unmarshal(data, &f); err != nil {
-		return
+		return fmt.Errorf("parse: %w", err)
 	}
 	ts.timers = f.Timers
 	ts.nextID = f.NextID
 	if ts.nextID < 1 {
 		ts.nextID = 1
 	}
+	return nil
 }
 
-// save writes timers.json atomically (temp file + rename).
-func (ts *TimerStore) save() {
+// save writes timers.json atomically (temp file + rename). Returns an error
+// if any step fails.
+func (ts *TimerStore) save() error {
 	f := timerFile{
 		NextID: ts.nextID,
 		Timers: ts.timers,
 	}
 	data, err := json.MarshalIndent(f, "", "  ")
 	if err != nil {
-		return
+		return fmt.Errorf("marshal: %w", err)
 	}
 
 	dir := filepath.Dir(ts.path)
-	os.MkdirAll(dir, 0700)
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return fmt.Errorf("mkdir: %w", err)
+	}
 
 	tmp := ts.path + ".tmp"
 	if err := os.WriteFile(tmp, data, 0600); err != nil {
-		return
+		return fmt.Errorf("write tmp: %w", err)
 	}
-	os.Rename(tmp, ts.path)
+	if err := os.Rename(tmp, ts.path); err != nil {
+		os.Remove(tmp) // Clean up orphaned tmp.
+		return fmt.Errorf("rename: %w", err)
+	}
+	return nil
 }
 
 // fireTimers checks for due timers and delivers them. Called from the TUI
@@ -172,7 +203,11 @@ func (t *TUI) fireTimers() {
 	if t.timers == nil {
 		return
 	}
-	due := t.timers.FireDue(time.Now())
+	due, err := t.timers.FireDue(time.Now())
+	if err != nil {
+		LogWarn("timer", "persistence error after firing timers",
+			"err", err, "count", len(due))
+	}
 	for _, timer := range due {
 		t.fireScheduledSend(timer)
 	}

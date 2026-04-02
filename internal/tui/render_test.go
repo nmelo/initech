@@ -516,8 +516,8 @@ func TestRenderHints_ShowsPending(t *testing.T) {
 	s.Init()
 	s.SetSize(120, 24)
 	ts := NewTimerStore(filepath.Join(t.TempDir(), "timers.json"))
-	ts.Add("eng1", "", "test msg", true, time.Now().Add(1*time.Hour))
-	ts.Add("eng2", "", "another", true, time.Now().Add(2*time.Hour))
+	ts.Add("eng1", "", "test msg", true, time.Now().Add(1*time.Hour))  //nolint:errcheck
+	ts.Add("eng2", "", "another", true, time.Now().Add(2*time.Hour)) //nolint:errcheck
 	tui := &TUI{screen: s, batteryPercent: -1, quotaPercent: -1, timers: ts}
 	tui.renderHints()
 

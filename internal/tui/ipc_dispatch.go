@@ -115,7 +115,11 @@ func dispatchSchedule(h IPCHost, conn net.Conn, rawJSON []byte) {
 		writeIPCResponse(conn, IPCResponse{Error: "timer store not initialized"})
 		return
 	}
-	timer := ts.Add(req.Target, req.Host, req.Text, req.Enter, fireAt)
+	timer, err := ts.Add(req.Target, req.Host, req.Text, req.Enter, fireAt)
+	if err != nil {
+		writeIPCResponse(conn, IPCResponse{Error: err.Error()})
+		return
+	}
 	writeIPCResponse(conn, IPCResponse{OK: true, Data: timer.ID})
 }
 

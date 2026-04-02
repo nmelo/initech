@@ -848,7 +848,13 @@ func (d *Daemon) handleControlStream(ctrl net.Conn, scanner *bufio.Scanner) {
 				}
 				continue
 			}
-			timer := d.timers.Add(cmd.Target, cmd.Host, cmd.Text, cmd.Enter, fireAt)
+			timer, addErr := d.timers.Add(cmd.Target, cmd.Host, cmd.Text, cmd.Enter, fireAt)
+			if addErr != nil {
+				if !respond(cmd.ID, ControlResp{Error: addErr.Error()}) {
+					return
+				}
+				continue
+			}
 			if !respond(cmd.ID, ControlResp{OK: true, Data: timer.ID}) {
 				return
 			}
@@ -913,7 +919,11 @@ func (d *Daemon) fireTimers() {
 	if d.timers == nil {
 		return
 	}
-	due := d.timers.FireDue(time.Now())
+	due, err := d.timers.FireDue(time.Now())
+	if err != nil {
+		LogWarn("timer", "persistence error after firing timers",
+			"err", err, "count", len(due))
+	}
 	for _, timer := range due {
 		d.fireScheduledSend(timer)
 	}
