@@ -28,6 +28,20 @@ func TestAgentsModal_OpenViaAltA(t *testing.T) {
 	}
 }
 
+func TestAgentsModal_AltAToggles(t *testing.T) {
+	tui, _ := newTestTUIWithScreen("eng1", "eng2")
+	// Open.
+	tui.handleKey(tcell.NewEventKey(tcell.KeyRune, 'a', tcell.ModAlt))
+	if !tui.agents.active {
+		t.Fatal("Alt+a should open agents modal")
+	}
+	// Close.
+	tui.handleKey(tcell.NewEventKey(tcell.KeyRune, 'a', tcell.ModAlt))
+	if tui.agents.active {
+		t.Error("Alt+a again should close agents modal")
+	}
+}
+
 func TestAgentsModal_CloseEsc(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("eng1")
 	tui.openAgentsModal()

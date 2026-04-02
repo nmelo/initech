@@ -112,7 +112,11 @@ func (t *TUI) handleKey(ev *tcell.EventKey) bool {
 				t.saveLayoutIfConfigured()
 				return false
 			case 'a':
-				t.openAgentsModal()
+				if t.agents.active {
+					t.agents.active = false
+				} else {
+					t.openAgentsModal()
+				}
 				return false
 			case 'u':
 				// Manual update check (bypass 24h cache).

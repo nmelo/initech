@@ -23,6 +23,13 @@ func (t *TUI) openAgentsModal() {
 
 // handleAgentsKey processes key events while the agents modal is open.
 func (t *TUI) handleAgentsKey(ev *tcell.EventKey) bool {
+	// Alt+a toggles the modal closed.
+	if ev.Modifiers()&tcell.ModAlt != 0 && ev.Key() == tcell.KeyRune && ev.Rune() == 'a' {
+		t.agents.moving = false
+		t.agents.active = false
+		return false
+	}
+
 	n := len(t.panes)
 	if n == 0 {
 		t.agents.active = false
