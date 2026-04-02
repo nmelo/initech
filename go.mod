@@ -52,4 +52,4 @@ require (
 	golang.org/x/time v0.14.0 // indirect
 )
 
-replace github.com/charmbracelet/x/vt => ../.bench/scrollback-exp/forks/x-sparse/vt
+replace github.com/charmbracelet/x/vt => github.com/nmelo/x/vt v0.0.0-20260402173550-246f6ae86935
