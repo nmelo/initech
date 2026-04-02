@@ -111,10 +111,10 @@ func TestInjectText_CtrlS_StillSent(t *testing.T) {
 	_ = tty // Keep slave open for PTY to work.
 }
 
-// TestInjectText_NoBracketedPasteCodexWritesBodyAndSubmitToPTY verifies that
-// the Codex raw-inject path writes both the body and submit byte directly to
-// the PTY and skips the emulator entirely.
-func TestInjectText_NoBracketedPasteCodexWritesBodyToPTY(t *testing.T) {
+// TestInjectText_NoBracketedPasteCodexUsesBracketedPaste verifies that Codex
+// keeps its direct PTY submit path but wraps the body in bracketed paste so
+// Codex does not classify the burst as non-bracketed pasted typing.
+func TestInjectText_NoBracketedPasteCodexUsesBracketedPaste(t *testing.T) {
 	ptmx, tty, err := pty.Open()
 	if err != nil {
 		t.Fatalf("pty.Open: %v", err)
@@ -155,6 +155,7 @@ func TestInjectText_NoBracketedPasteCodexWritesBodyToPTY(t *testing.T) {
 		ptmx:             ptmx,
 		noBracketedPaste: true,
 		agentType:        config.AgentTypeCodex,
+		activity:         StateIdle,
 		submitKey:        "enter",
 		lastOutputTime:   time.Now().Add(-(ptyIdleTimeout + time.Second)),
 	}
@@ -162,9 +163,9 @@ func TestInjectText_NoBracketedPasteCodexWritesBodyToPTY(t *testing.T) {
 
 	go tui.injectText(p, "hello", true)
 
-	got := readPTYUntil(t, tty, []byte("hello\r"), time.Second)
-	if got != "hello\r" {
-		t.Fatalf("PTY received %q, want %q", got, "hello\r")
+	got := readPTYUntil(t, tty, []byte("\x1b[200~hello\x1b[201~\r"), 2*time.Second)
+	if got != "\x1b[200~hello\x1b[201~\r" {
+		t.Fatalf("PTY received %q, want %q", got, "\x1b[200~hello\x1b[201~\r")
 	}
 
 	emuMu.Lock()
@@ -203,10 +204,10 @@ func TestInjectText_DeadPane(t *testing.T) {
 	}
 }
 
-// TestPaneSendText_NoBracketedPasteCodexUsesLocalRawPath verifies the actual
-// local Pane.SendText path used by IPC sends: raw PTY body and submit byte,
-// with no Ctrl+S stash and no emulator traffic.
-func TestPaneSendText_NoBracketedPasteCodexUsesLocalRawPath(t *testing.T) {
+// TestPaneSendText_NoBracketedPasteCodexUsesBracketedPaste verifies the actual
+// local Pane.SendText path used by IPC sends: Codex gets direct PTY bracketed
+// paste for the body plus a direct submit byte, with no emulator traffic.
+func TestPaneSendText_NoBracketedPasteCodexUsesBracketedPaste(t *testing.T) {
 	ptmx, tty, err := pty.Open()
 	if err != nil {
 		t.Fatalf("pty.Open: %v", err)
@@ -247,21 +248,92 @@ func TestPaneSendText_NoBracketedPasteCodexUsesLocalRawPath(t *testing.T) {
 		ptmx:             ptmx,
 		noBracketedPaste: true,
 		agentType:        config.AgentTypeCodex,
+		activity:         StateIdle,
 		submitKey:        "enter",
 		lastOutputTime:   time.Now().Add(-(ptyIdleTimeout + time.Second)),
 	}
 
 	go p.SendText("hello", true)
 
-	got := readPTYUntil(t, tty, []byte("hello\r"), time.Second)
-	if got != "hello\r" {
-		t.Fatalf("PTY received %q, want %q", got, "hello\r")
+	got := readPTYUntil(t, tty, []byte("\x1b[200~hello\x1b[201~\r"), 2*time.Second)
+	if got != "\x1b[200~hello\x1b[201~\r" {
+		t.Fatalf("PTY received %q, want %q", got, "\x1b[200~hello\x1b[201~\r")
 	}
 
 	emuMu.Lock()
 	defer emuMu.Unlock()
 	if len(emuOutput) != 0 {
 		t.Fatalf("emulator output %q, want no emulator traffic for Codex local raw send", string(emuOutput))
+	}
+}
+
+func TestPromptHasContent_CodexPromptGlyph(t *testing.T) {
+	emu := vt.NewSafeEmulator(40, 5)
+	_, _ = emu.Write([]byte("› hello"))
+
+	p := &Pane{emu: emu}
+	if !promptHasContent(p) {
+		t.Fatal("promptHasContent = false, want true for Codex prompt glyph")
+	}
+}
+
+func TestPaneSendText_CodexQueuesWithTabWhileRunning(t *testing.T) {
+	ptmx, tty, err := pty.Open()
+	if err != nil {
+		t.Fatalf("pty.Open: %v", err)
+	}
+	defer ptmx.Close()
+	defer tty.Close()
+
+	oldState, err := term.MakeRaw(int(tty.Fd()))
+	if err != nil {
+		t.Fatalf("MakeRaw: %v", err)
+	}
+	defer term.Restore(int(tty.Fd()), oldState)
+
+	emu := vt.NewSafeEmulator(80, 24)
+	_, _ = emu.Write([]byte("›\n"))
+	var emuMu sync.Mutex
+	var emuOutput []byte
+	go func() {
+		buf := make([]byte, 256)
+		for {
+			n, err := emu.Read(buf)
+			if n > 0 {
+				emuMu.Lock()
+				emuOutput = append(emuOutput, buf[:n]...)
+				emuMu.Unlock()
+				_, _ = ptmx.Write(buf[:n])
+			}
+			if err != nil {
+				return
+			}
+		}
+	}()
+
+	p := &Pane{
+		name:             "eng1",
+		emu:              emu,
+		alive:            true,
+		ptmx:             ptmx,
+		noBracketedPaste: true,
+		agentType:        config.AgentTypeCodex,
+		submitKey:        "enter",
+		activity:         StateRunning,
+		lastOutputTime:   time.Now(),
+	}
+
+	go p.SendText("hello", true)
+
+	got := readPTYUntil(t, tty, []byte("\x1b[200~hello\x1b[201~\t"), 2*time.Second)
+	if got != "\x1b[200~hello\x1b[201~\t" {
+		t.Fatalf("PTY received %q, want %q", got, "\x1b[200~hello\x1b[201~\t")
+	}
+
+	emuMu.Lock()
+	defer emuMu.Unlock()
+	if len(emuOutput) != 0 {
+		t.Fatalf("emulator output %q, want no emulator traffic for Codex queued send", string(emuOutput))
 	}
 }
 

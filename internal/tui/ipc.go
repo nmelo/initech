@@ -17,6 +17,12 @@ import (
 	"github.com/nmelo/initech/internal/config"
 )
 
+const (
+	rawSubmitDelay            = 200 * time.Millisecond
+	bracketedPasteSubmitDelay = 500 * time.Millisecond
+	codexBracketedSubmitDelay = 200 * time.Millisecond
+)
+
 // IPCRequest is the JSON structure sent by CLI commands to the TUI socket.
 type IPCRequest struct {
 	Action string `json:"action"` // "send", "peek", "list", "peers_query"
@@ -284,19 +290,37 @@ func (t *TUI) handleIPCSend(conn net.Conn, req IPCRequest) {
 // markers and writes directly to the PTY. Claude Code's parser handles this
 // natively, collapsing large pastes (>800 chars) to references.
 //
-// Raw PTY write (noBracketedPaste=true, for Codex and other agents): writes the
-// message body directly to the PTY without bracketed paste markers. The final
-// submit key still goes through the emulator so submitKey semantics stay
-// aligned with the configured harness behavior.
+// Raw PTY write (noBracketedPaste=true, for OpenCode and generic agents):
+// writes the message body directly to the PTY without bracketed paste markers.
+//
+// Codex is handled specially: current Codex enables bracketed paste in the TUI,
+// while its non-bracketed paste-burst detector intentionally turns fast
+// Enter-after-text sequences into a newline instead of submit. For Codex-like
+// panes we therefore inject the body as direct bracketed paste bytes on the PTY
+// and then submit separately.
 //
 // Safe to call from any goroutine.
 func sendPaneTextLocked(pane *Pane, text string, enter bool) {
 	if pane.ptmx == nil {
 		return
 	}
-	if config.IsCodexLikeAgentType(pane.AgentType()) {
-		pane.waitForCodexReady(codexReadyTimeout)
+	useCodexBracketedPaste := pane.noBracketedPaste && pane.AgentType() == config.AgentTypeCodex
+	codexQueueSubmit := pane.AgentType() == config.AgentTypeCodex && pane.Activity() == StateRunning
+	ready := true
+	if config.IsCodexLikeAgentType(pane.AgentType()) && !codexQueueSubmit {
+		ready = pane.waitForCodexReady(codexReadyTimeout)
+		LogDebug("inject", "codex ready wait", "pane", pane.Name(), "ready", ready, "timeout_ms", codexReadyTimeout.Milliseconds())
+	} else if codexQueueSubmit {
+		LogDebug("inject", "codex queueing while running", "pane", pane.Name())
 	}
+	mode := "bracketed"
+	if pane.noBracketedPaste {
+		mode = "raw"
+	}
+	if useCodexBracketedPaste {
+		mode = "codex-bracketed"
+	}
+	LogDebug("inject", "send start", "pane", pane.Name(), "agent_type", pane.AgentType(), "mode", mode, "bytes", len(text), "enter", enter)
 	// Stash any partially typed input before injecting so that the incoming
 	// message doesn't corrupt text the user was composing (ini-gd0). Codex/raw
 	// panes skip this because they inject directly to the PTY instead of through
@@ -306,7 +330,14 @@ func sendPaneTextLocked(pane *Pane, text string, enter bool) {
 		time.Sleep(75 * time.Millisecond)
 	}
 
-	if pane.noBracketedPaste {
+	if useCodexBracketedPaste {
+		var buf []byte
+		buf = append(buf, "\x1b[200~"...)
+		buf = append(buf, text...)
+		buf = append(buf, "\x1b[201~"...)
+		n, err := pane.ptmx.Write(buf)
+		LogDebug("inject", "body written", "pane", pane.Name(), "mode", mode, "bytes", n, "err", err)
+	} else if pane.noBracketedPaste {
 		// Direct PTY write for text bytes, but route Enter through the emulator.
 		// The raw text path avoids the emulator's key-to-byte translation for the
 		// message body, which Codex can misinterpret. For the final submit key we
@@ -314,17 +345,33 @@ func sendPaneTextLocked(pane *Pane, text string, enter bool) {
 		// the PTY/terminal mode the emulator is already managing.
 		var buf []byte
 		buf = append(buf, text...)
-		pane.ptmx.Write(buf)
+		n, err := pane.ptmx.Write(buf)
+		LogDebug("inject", "body written", "pane", pane.Name(), "mode", mode, "bytes", n, "err", err)
 	} else {
 		// Bracketed paste: ESC[200~ + text + ESC[201~ directly to PTY.
 		var buf []byte
 		buf = append(buf, "\x1b[200~"...)
 		buf = append(buf, text...)
 		buf = append(buf, "\x1b[201~"...)
-		pane.ptmx.Write(buf)
+		n, err := pane.ptmx.Write(buf)
+		LogDebug("inject", "body written", "pane", pane.Name(), "mode", mode, "bytes", n, "err", err)
 	}
 
 	if !enter {
+		return
+	}
+
+	if useCodexBracketedPaste {
+		time.Sleep(codexBracketedSubmitDelay)
+		method := sendCodexSubmit(pane, codexQueueSubmit)
+		LogDebug("inject", "submit", "pane", pane.Name(), "mode", mode, "method", method, "delay_ms", codexBracketedSubmitDelay.Milliseconds())
+		if pane.IsAlive() {
+			time.Sleep(bracketedPasteSubmitDelay)
+			if promptHasContent(pane) {
+				method = sendCodexSubmit(pane, codexQueueSubmit)
+				LogDebug("inject", "submit retry", "pane", pane.Name(), "mode", mode, "method", method)
+			}
+		}
 		return
 	}
 
@@ -332,7 +379,8 @@ func sendPaneTextLocked(pane *Pane, text string, enter bool) {
 		// Let Codex's non-bracketed paste-burst detection expire before sending
 		// Enter. The 8ms parser window observed in source was not enough in the
 		// full PTY/TUI pipeline; use a larger margin here.
-		time.Sleep(200 * time.Millisecond)
+		time.Sleep(rawSubmitDelay)
+		LogDebug("inject", "submit", "pane", pane.Name(), "mode", mode, "method", "pty-enter", "delay_ms", rawSubmitDelay.Milliseconds())
 		if config.IsCodexLikeAgentType(pane.AgentType()) && pane.submitKey != "ctrl+enter" {
 			_, _ = pane.ptmx.Write([]byte("\r"))
 			return
@@ -343,13 +391,15 @@ func sendPaneTextLocked(pane *Pane, text string, enter bool) {
 
 	// Bracketed paste mode: wait for Claude Code's paste completion
 	// (100ms PASTE_COMPLETION_TIMEOUT_MS) plus async rendering time.
-	time.Sleep(500 * time.Millisecond)
+	time.Sleep(bracketedPasteSubmitDelay)
+	LogDebug("inject", "submit", "pane", pane.Name(), "mode", mode, "method", "emulator", "delay_ms", bracketedPasteSubmitDelay.Milliseconds())
 	sendSubmitKey(pane.emu, pane.submitKey)
 
 	// Single retry for large pastes where Enter was swallowed.
 	if pane.IsAlive() {
-		time.Sleep(500 * time.Millisecond)
+		time.Sleep(bracketedPasteSubmitDelay)
 		if promptHasContent(pane) {
+			LogDebug("inject", "submit retry", "pane", pane.Name(), "mode", mode, "method", "emulator")
 			sendSubmitKey(pane.emu, pane.submitKey)
 		}
 	}
@@ -378,11 +428,26 @@ func promptHasContent(p *Pane) bool {
 			}
 		}
 		text := line.String()
-		if idx := strings.LastIndex(text, "\u276f"); idx >= 0 {
-			return strings.TrimSpace(text[idx+len("\u276f"):]) != ""
+		for _, prompt := range []string{"\u276f", "\u203a", ">"} {
+			if idx := strings.LastIndex(text, prompt); idx >= 0 {
+				return strings.TrimSpace(text[idx+len(prompt):]) != ""
+			}
 		}
 	}
 	return false
+}
+
+func sendCodexSubmit(pane *Pane, queue bool) string {
+	if queue {
+		_, _ = pane.ptmx.Write([]byte("\t"))
+		return "pty-tab"
+	}
+	if pane.submitKey != "ctrl+enter" {
+		_, _ = pane.ptmx.Write([]byte("\r"))
+		return "pty-enter"
+	}
+	sendSubmitKey(pane.emu, pane.submitKey)
+	return "emulator-ctrl+enter"
 }
 func (t *TUI) handleIPCPatrol(conn net.Conn, req IPCRequest) {
 	lines := req.Lines

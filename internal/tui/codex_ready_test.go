@@ -52,6 +52,7 @@ func TestPaneSendText_CodexWaitsForReadyPrompt(t *testing.T) {
 		alive:            true,
 		ptmx:             w,
 		agentType:        config.AgentTypeCodex,
+		activity:         StateIdle,
 		noBracketedPaste: true,
 		lastOutputTime:   time.Now(),
 	}
@@ -85,8 +86,8 @@ func TestPaneSendText_CodexWaitsForReadyPrompt(t *testing.T) {
 
 	select {
 	case got := <-readCh:
-		if string(got) != "go" {
-			t.Fatalf("PTY write = %q, want %q", string(got), "go")
+		if string(got) != "\x1b[200~go\x1b[201~" {
+			t.Fatalf("PTY write = %q, want %q", string(got), "\x1b[200~go\x1b[201~")
 		}
 	case <-time.After(time.Second):
 		t.Fatal("timeout waiting for PTY write after ready prompt")
@@ -114,6 +115,7 @@ func TestPaneSendText_OpenCodeWaitsForReadyPrompt(t *testing.T) {
 		alive:            true,
 		ptmx:             w,
 		agentType:        config.AgentTypeOpenCode,
+		activity:         StateIdle,
 		noBracketedPaste: true,
 		lastOutputTime:   time.Now(),
 	}
@@ -181,6 +183,7 @@ func TestWaitForCodexReady_AcceptsTrustPrompt(t *testing.T) {
 		alive:            true,
 		ptmx:             w,
 		agentType:        config.AgentTypeCodex,
+		activity:         StateIdle,
 		noBracketedPaste: true,
 		lastOutputTime:   time.Now().Add(-(ptyIdleTimeout + time.Second)),
 	}
