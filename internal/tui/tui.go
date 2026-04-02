@@ -747,6 +747,9 @@ func (t *TUI) handlePeerUpdate(peerName string, newPanes []PaneView) {
 		kept = append(kept, newPanes...)
 	}
 	t.panes = kept
+	if len(t.layoutState.Order) > 0 {
+		reorderPanes(t.panes, t.layoutState.Order)
+	}
 	LogInfo("peer-update", "panes-updated", "peer", peerName, "total_panes", len(kept))
 	t.recalcGrid(true)
 	LogInfo("peer-update", "done", "peer", peerName, "plan_panes", len(t.plan.Panes))

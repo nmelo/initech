@@ -25,10 +25,10 @@ type LayoutState struct {
 	GridCols int             `yaml:"grid_cols"`
 	GridRows int             `yaml:"grid_rows"`
 	Zoomed   bool            `yaml:"zoomed,omitempty"`
-	Focused  string          `yaml:"focused"`          // Pane name, not index.
-	Hidden   map[string]bool `yaml:"hidden,omitempty"` // Pane names that are hidden.
-	Pinned   map[string]bool `yaml:"pinned,omitempty"` // Pane names protected from auto-suspend.
-	Order    []string        `yaml:"order,omitempty"`  // Pane names in display order.
+	Focused  string          `yaml:"focused"`          // Pane key, not index.
+	Hidden   map[string]bool `yaml:"hidden,omitempty"` // Pane keys that are hidden.
+	Pinned   map[string]bool `yaml:"pinned,omitempty"` // Pane keys protected from auto-suspend.
+	Order    []string        `yaml:"order,omitempty"`  // Pane keys in display order (from show command).
 	Overlay  bool            `yaml:"overlay"`
 
 	// Per-column and per-row proportional sizing (future).
@@ -328,9 +328,9 @@ func DefaultLayoutState(paneNames []string) LayoutState {
 // Overlay and weights are excluded (not layout-changing from the user's perspective).
 type PersistentLayout struct {
 	Grid   string   `yaml:"grid"`             // e.g. "3x2"
-	Hidden []string `yaml:"hidden,omitempty"` // Role names of hidden panes.
-	Pinned []string `yaml:"pinned,omitempty"` // Role names protected from auto-suspend.
-	Order  []string `yaml:"order,omitempty"`  // Pane display order.
+	Hidden []string `yaml:"hidden,omitempty"` // Pane keys: name for local, host:name for remote.
+	Pinned []string `yaml:"pinned,omitempty"` // Pane keys protected from auto-suspend.
+	Order  []string `yaml:"order,omitempty"`  // Pane keys in display order (from show command).
 	Mode   string   `yaml:"mode"`             // "grid", "focus", "main"
 }
 
@@ -387,10 +387,13 @@ func SaveLayout(projectRoot string, state LayoutState) error {
 	return nil
 }
 
-// LoadLayout reads .initech/layout.yaml and merges it into a LayoutState,
-// filtering stale pane references. Returns false if the file doesn't exist,
-// is empty, contains invalid YAML, or would result in all panes hidden.
-func LoadLayout(projectRoot string, paneNames []string) (LayoutState, bool) {
+// LoadLayout reads .initech/layout.yaml and merges it into a LayoutState.
+// The caller passes the currently known pane keys. Unknown remote pane keys
+// (host:name) are preserved so delayed peer reconnects can reuse saved hidden
+// and order preferences, while stale local-only names are filtered out.
+// Returns false if the file doesn't exist, is empty, contains invalid YAML,
+// or would result in all currently known panes hidden.
+func LoadLayout(projectRoot string, paneKeys []string) (LayoutState, bool) {
 	data, err := os.ReadFile(layoutPath(projectRoot))
 	if err != nil {
 		return LayoutState{}, false
@@ -405,40 +408,44 @@ func LoadLayout(projectRoot string, paneNames []string) (LayoutState, bool) {
 	}
 
 	// Parse grid dimensions.
-	cols, rows, ok := parseGrid(pl.Grid, len(paneNames))
+	cols, rows, ok := parseGrid(pl.Grid, len(paneKeys))
 	if !ok {
 		return LayoutState{}, false
 	}
 
 	// Build known pane set for filtering stale references.
-	known := make(map[string]bool, len(paneNames))
-	for _, name := range paneNames {
+	known := make(map[string]bool, len(paneKeys))
+	for _, name := range paneKeys {
 		known[name] = true
 	}
 
-	// Filter hidden list to only known panes.
+	// Preserve remote pane keys even when the peer is offline at startup.
+	// A host:name key is not stale just because it is not in paneKeys yet.
 	hidden := make(map[string]bool)
+	currentHiddenCount := 0
 	for _, name := range pl.Hidden {
-		if known[name] {
+		if shouldKeepPersistedPaneKey(name, known) {
 			hidden[name] = true
+			if known[name] {
+				currentHiddenCount++
+			}
 		}
 	}
 
-	// Filter pinned list to only known panes.
 	pinned := make(map[string]bool)
 	for _, name := range pl.Pinned {
-		if known[name] {
+		if shouldKeepPersistedPaneKey(name, known) {
 			pinned[name] = true
 		}
 	}
 
-	// Edge case: all panes hidden -> nonsensical, fall back to defaults.
-	if len(hidden) >= len(paneNames) {
+	// Edge case: all currently known panes hidden -> nonsensical, fall back to defaults.
+	if len(paneKeys) > 0 && currentHiddenCount >= len(paneKeys) {
 		return LayoutState{}, false
 	}
 
 	// Determine visible count for grid auto-recalc.
-	visCount := len(paneNames) - len(hidden)
+	visCount := len(paneKeys) - currentHiddenCount
 	mode := stringToLayoutMode(pl.Mode)
 
 	// If grid can't hold visible panes, auto-recalculate.
@@ -447,23 +454,24 @@ func LoadLayout(projectRoot string, paneNames []string) (LayoutState, bool) {
 	}
 
 	focused := ""
-	if len(paneNames) > 0 {
-		focused = paneNames[0]
+	if len(paneKeys) > 0 {
+		focused = paneKeys[0]
 	}
 
-	// Filter order to only known panes, preserving saved order.
-	// Unknown names (removed since last session) are dropped.
-	// New names (added since last session) are appended.
+	// Preserve remote pane-key placeholders in the saved order so later peer
+	// reconnects can slot remote panes back into position. Stale local-only
+	// names are dropped. Currently known panes not present in the saved order
+	// are appended.
 	var order []string
 	if len(pl.Order) > 0 {
 		orderSet := make(map[string]bool)
 		for _, name := range pl.Order {
-			if known[name] {
+			if shouldKeepPersistedPaneKey(name, known) && !orderSet[name] {
 				order = append(order, name)
 				orderSet[name] = true
 			}
 		}
-		for _, name := range paneNames {
+		for _, name := range paneKeys {
 			if !orderSet[name] {
 				order = append(order, name)
 			}
@@ -480,6 +488,17 @@ func LoadLayout(projectRoot string, paneNames []string) (LayoutState, bool) {
 		Order:    order,
 		Overlay:  true, // Always start with overlay visible.
 	}, true
+}
+
+// shouldKeepPersistedPaneKey reports whether a saved pane identifier should
+// survive LoadLayout filtering. Current panes are always kept. Unknown remote
+// pane keys are also kept so saved layout preferences survive delayed peer
+// reconnects.
+func shouldKeepPersistedPaneKey(name string, known map[string]bool) bool {
+	if known[name] {
+		return true
+	}
+	return strings.Contains(name, ":")
 }
 
 // DeleteLayout removes .initech/layout.yaml. Returns nil if the file

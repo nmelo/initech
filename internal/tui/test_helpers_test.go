@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"time"
+
 	"github.com/charmbracelet/x/vt"
 	"github.com/gdamore/tcell/v2"
 )
@@ -108,3 +110,49 @@ func newTestTUIWithScreen(names ...string) (*TUI, tcell.SimulationScreen) {
 	t.plan = computeLayout(ls, views, 120, 40)
 	return t, s
 }
+
+// fakeRemotePaneView is a no-op PaneView for tests that only need remote
+// identity semantics (paneKey, layout filtering, top actions) without the
+// network machinery and resize timers of a real RemotePane.
+type fakeRemotePaneView struct {
+	name     string
+	host     string
+	emu      *vt.SafeEmulator
+	region   Region
+	alive    bool
+	beadID   string
+	activity ActivityState
+}
+
+func newFakeRemotePaneView(name, host string) *fakeRemotePaneView {
+	return &fakeRemotePaneView{
+		name:   name,
+		host:   host,
+		emu:    vt.NewSafeEmulator(10, 5),
+		region: Region{W: 10, H: 5},
+		alive:  true,
+	}
+}
+
+func (p *fakeRemotePaneView) Name() string                     { return p.name }
+func (p *fakeRemotePaneView) Host() string                     { return p.host }
+func (p *fakeRemotePaneView) IsAlive() bool                    { return p.alive }
+func (p *fakeRemotePaneView) IsSuspended() bool                { return false }
+func (p *fakeRemotePaneView) IsPinned() bool                   { return false }
+func (p *fakeRemotePaneView) Activity() ActivityState          { return p.activity }
+func (p *fakeRemotePaneView) LastOutputTime() time.Time        { return time.Time{} }
+func (p *fakeRemotePaneView) BeadID() string                   { return p.beadID }
+func (p *fakeRemotePaneView) SessionDesc() string              { return "" }
+func (p *fakeRemotePaneView) IdleWithBacklog() bool            { return false }
+func (p *fakeRemotePaneView) BacklogCount() int                { return 0 }
+func (p *fakeRemotePaneView) Emulator() *vt.SafeEmulator       { return p.emu }
+func (p *fakeRemotePaneView) GetRegion() Region                { return p.region }
+func (p *fakeRemotePaneView) SetBead(id, title string)         { p.beadID = id }
+func (p *fakeRemotePaneView) SendKey(ev *tcell.EventKey)       {}
+func (p *fakeRemotePaneView) SendText(text string, enter bool) {}
+func (p *fakeRemotePaneView) AgentType() string                { return "" }
+func (p *fakeRemotePaneView) SubmitKey() string                { return "" }
+func (p *fakeRemotePaneView) Render(screen tcell.Screen, focused bool, dimmed bool, index int, sel Selection) {
+}
+func (p *fakeRemotePaneView) Resize(rows, cols int) {}
+func (p *fakeRemotePaneView) Close()                {}

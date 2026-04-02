@@ -17,12 +17,13 @@ func (t *TUI) refreshTopData() {
 	}
 	entries := make([]topEntry, len(t.panes))
 	for i, pv := range t.panes {
+		pk := paneKey(pv)
 		e := topEntry{
 			Name:   pv.Name(),
 			Bead:   pv.BeadID(),
 			Status: pv.Activity().String(),
 		}
-		if t.layoutState.Hidden[pv.Name()] {
+		if t.layoutState.Hidden[pk] {
 			e.Status += " [hidden]"
 		}
 		if lp, ok := pv.(*Pane); ok {

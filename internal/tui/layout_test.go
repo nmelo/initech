@@ -536,6 +536,38 @@ func TestLoadLayoutStaleReference(t *testing.T) {
 	}
 }
 
+func TestLoadLayoutPreservesUnknownRemotePaneKeys(t *testing.T) {
+	root := t.TempDir()
+	state := LayoutState{
+		Mode:     LayoutGrid,
+		GridCols: 2,
+		GridRows: 1,
+		Hidden:   map[string]bool{"workbench:intern": true},
+		Pinned:   map[string]bool{"workbench:intern": true},
+		Order:    []string{"workbench:intern", "super"},
+	}
+	if err := SaveLayout(root, state); err != nil {
+		t.Fatalf("SaveLayout: %v", err)
+	}
+
+	got, ok := LoadLayout(root, []string{"super", "eng1"})
+	if !ok {
+		t.Fatal("LoadLayout should preserve offline remote pane keys")
+	}
+	if !got.Hidden["workbench:intern"] {
+		t.Fatalf("offline remote hidden key lost: %v", got.Hidden)
+	}
+	if !got.Pinned["workbench:intern"] {
+		t.Fatalf("offline remote pinned key lost: %v", got.Pinned)
+	}
+	if len(got.Order) < 3 {
+		t.Fatalf("order = %v, want preserved remote placeholder plus current panes", got.Order)
+	}
+	if got.Order[0] != "workbench:intern" || got.Order[1] != "super" || got.Order[2] != "eng1" {
+		t.Fatalf("order = %v, want [workbench:intern super eng1]", got.Order)
+	}
+}
+
 func TestLoadLayoutAllHiddenFallback(t *testing.T) {
 	root := t.TempDir()
 	state := LayoutState{
@@ -654,6 +686,38 @@ func TestSaveLayoutIfConfiguredWritesFile(t *testing.T) {
 	}
 	if !got.Hidden["eng1"] {
 		t.Errorf("eng1 should be hidden in saved layout")
+	}
+}
+
+func TestHandlePeerUpdateRespectsSavedRemoteKeys(t *testing.T) {
+	tui := newTestTUI(testPane("super"))
+	tui.layoutState = LayoutState{
+		Mode:     LayoutGrid,
+		GridCols: 1,
+		GridRows: 1,
+		Focused:  "super",
+		Hidden:   map[string]bool{"workbench:intern": true},
+		Order:    []string{"workbench:intern", "super"},
+		Pinned:   map[string]bool{},
+	}
+
+	rp := newFakeRemotePaneView("intern", "workbench")
+	tui.handlePeerUpdate("workbench", []PaneView{rp})
+
+	if len(tui.panes) != 2 {
+		t.Fatalf("panes = %d, want 2", len(tui.panes))
+	}
+	if paneKey(tui.panes[0]) != "workbench:intern" {
+		t.Fatalf("remote pane should be reordered into saved position, got first=%q", paneKey(tui.panes[0]))
+	}
+	if !tui.layoutState.Hidden["workbench:intern"] {
+		t.Fatalf("saved hidden remote key lost after peer update: %v", tui.layoutState.Hidden)
+	}
+	if tui.visibleCountFromState() != 1 {
+		t.Fatalf("visibleCountFromState = %d, want 1 with remote pane still hidden", tui.visibleCountFromState())
+	}
+	if len(tui.plan.Panes) != 1 || paneKey(tui.plan.Panes[0].Pane) != "super" {
+		t.Fatalf("visible panes after peer update = %v, want only super visible", len(tui.plan.Panes))
 	}
 }
 
