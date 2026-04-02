@@ -62,7 +62,6 @@ const (
 )
 
 const codexPermissionScanRows = 10
-const codexPermissionScanInterval = 5 * time.Second
 const codexReadyPollInterval = 50 * time.Millisecond
 const codexReadyTimeout = 10 * time.Second
 const codexReadyStableDuration = 500 * time.Millisecond
@@ -188,7 +187,6 @@ type Pane struct {
 	activity          ActivityState     // Current state: running when PTY bytes flowed recently, else idle.
 	lastOutputTime    time.Time         // Last time readLoop received bytes from the PTY.
 	lastIdleNotify    time.Time         // Last time an EventAgentIdleWithBead was emitted.
-	lastCodexPermScan time.Time         // Last time updateActivity triggered a Codex permission prompt scan.
 	journal           []JournalEntry    // Ring buffer of recent JSONL entries (cap journalRingSize).
 	jsonlDir          string            // Directory to search for session JSONL files.
 	eventCh           chan<- AgentEvent // Emits detected semantic events to the TUI. May be nil.
@@ -377,15 +375,28 @@ func (p *Pane) readLoop() {
 
 			p.mu.Lock()
 			p.lastOutputTime = time.Now()
+			autoApprove := p.autoApprove
 			p.mu.Unlock()
 
-			// Write to emulator under renderMu. Using a larger read buffer
-			// (32KB) coalesces multiple PTY writes into fewer emulator writes,
-			// reducing the tearing window between renderMu unlock and the
-			// next lock cycle (ini-jrj8).
+			// Write to emulator under renderMu. After writing, scan for
+			// permission prompts while we still hold renderMu. This is
+			// event-driven: every PTY read triggers a scan, so prompts
+			// are detected within the same read cycle they arrive
+			// (ini-s306). Approval bytes are written after releasing
+			// renderMu to avoid holding it during ptmx.Write.
+			var approvalBytes []byte
 			p.renderMu.Lock()
 			p.emu.Write(data)
+			if autoApprove {
+				approvalBytes = p.scanPermissionPrompt()
+			}
 			p.renderMu.Unlock()
+
+			if approvalBytes != nil {
+				p.sendMu.Lock()
+				p.ptmx.Write(approvalBytes) //nolint:errcheck
+				p.sendMu.Unlock()
+			}
 
 			// Tee to network sink if connected. Separate from emu.Write so
 			// network backpressure cannot stall local rendering.
@@ -572,29 +583,39 @@ func sendSubmitKey(emu *vt.SafeEmulator, key string) {
 	}
 }
 
-// maybeApproveCodexPermissionPrompt scans the bottom rows of the emulator for
-// a Codex permission prompt and, if found, writes the matching approval input
-// to the PTY. It only runs when auto-approval is enabled.
-func (p *Pane) maybeApproveCodexPermissionPrompt() bool {
-	if !p.autoApprove || p.ptmx == nil {
-		return false
+// scanPermissionPrompt checks the emulator for a permission prompt and returns
+// the approval bytes to send, or nil if no prompt is detected. Must be called
+// with renderMu held (caller is readLoop, which just wrote to the emulator).
+func (p *Pane) scanPermissionPrompt() []byte {
+	if p.AgentType() == config.AgentTypeOpenCode {
+		return p.scanOpenCodePermissionPrompt()
 	}
-
-	p.renderMu.Lock()
 	text := emulatorBottomText(p.emu, codexPermissionScanRows)
-	p.renderMu.Unlock()
 	approvalInput, ok := codexPermissionApprovalInput(text)
 	if !ok {
-		return false
+		return nil
 	}
+	return approvalInput
+}
 
-	p.sendMu.Lock()
-	defer p.sendMu.Unlock()
-	if !p.autoApprove || p.ptmx == nil {
-		return false
+// scanOpenCodePermissionPrompt checks the emulator for an OpenCode permission
+// prompt and returns the approval bytes. Must be called with renderMu held.
+func (p *Pane) scanOpenCodePermissionPrompt() []byte {
+	if !p.noBracketedPaste {
+		return nil
 	}
-	_, err := p.ptmx.Write(approvalInput)
-	return err == nil
+	selected, ok := detectOpenCodePermissionSelection(p.emu, codexPermissionScanRows)
+	if !ok {
+		return nil
+	}
+	switch selected {
+	case 0:
+		return []byte("\x1b[C\r") // Arrow right + enter for "allow" option.
+	case 1:
+		return []byte("\r") // Enter for persistent option.
+	default:
+		return nil
+	}
 }
 
 type optionStyleMatch struct {
@@ -835,44 +856,6 @@ func isOpenCodePermissionPrompt(text string) bool {
 	}
 
 	return true
-}
-
-func (p *Pane) maybeApproveOpenCodePermissionPrompt() bool {
-	if !p.autoApprove || !p.noBracketedPaste || p.ptmx == nil || p.AgentType() != config.AgentTypeOpenCode {
-		return false
-	}
-
-	p.renderMu.Lock()
-	selected, ok := detectOpenCodePermissionSelection(p.emu, codexPermissionScanRows)
-	p.renderMu.Unlock()
-	if !ok {
-		return false
-	}
-
-	var action []byte
-	switch selected {
-	case 0:
-		action = []byte("\x1b[C\r")
-	case 1:
-		action = []byte("\r")
-	default:
-		return false
-	}
-
-	p.sendMu.Lock()
-	defer p.sendMu.Unlock()
-	if !p.autoApprove || !p.noBracketedPaste || p.ptmx == nil || p.AgentType() != config.AgentTypeOpenCode {
-		return false
-	}
-	_, err := p.ptmx.Write(action)
-	return err == nil
-}
-
-func (p *Pane) maybeApprovePermissionPrompt() bool {
-	if p.AgentType() == config.AgentTypeOpenCode {
-		return p.maybeApproveOpenCodePermissionPrompt()
-	}
-	return p.maybeApproveCodexPermissionPrompt()
 }
 
 func (p *Pane) isCodexReadyForSend() bool {
