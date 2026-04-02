@@ -192,3 +192,104 @@ func TestUpdateActivity_IdleWithBead_PrevActivityTracked(t *testing.T) {
 		t.Error("expected EventAgentIdleWithBead on running->idle edge")
 	}
 }
+
+// TestUpdateActivity_CodexAgent_StaysRunningDuringPause verifies that a Codex
+// agent with a 5-second output gap (normal inter-tool-call pause) stays Running
+// rather than transitioning to Idle.
+func TestUpdateActivity_CodexAgent_StaysRunningDuringPause(t *testing.T) {
+	ch := makeEventCh()
+	p := &Pane{
+		name:           "intern",
+		alive:          true,
+		activity:       StateRunning,
+		beadID:         "ini-abc",
+		agentType:      "codex",
+		eventCh:        ch,
+		lastOutputTime: time.Now().Add(-5 * time.Second), // 5s gap — within codex threshold
+	}
+
+	p.updateActivity()
+
+	if p.activity != StateRunning {
+		t.Errorf("Codex agent with 5s gap: activity = %v, want StateRunning", p.activity)
+	}
+	evs := drainEvents(ch)
+	for _, ev := range evs {
+		if ev.Type == EventAgentIdleWithBead {
+			t.Error("unexpected EventAgentIdleWithBead for Codex agent within threshold")
+		}
+	}
+}
+
+// TestUpdateActivity_CodexAgent_IdleAfterLongPause verifies that a Codex agent
+// transitions to Idle after exceeding the codex-specific threshold (15s).
+func TestUpdateActivity_CodexAgent_IdleAfterLongPause(t *testing.T) {
+	ch := makeEventCh()
+	p := &Pane{
+		name:           "intern",
+		alive:          true,
+		activity:       StateRunning,
+		beadID:         "ini-abc",
+		agentType:      "codex",
+		eventCh:        ch,
+		lastOutputTime: time.Now().Add(-16 * time.Second), // well past codex threshold
+	}
+
+	p.updateActivity()
+
+	if p.activity != StateIdle {
+		t.Errorf("Codex agent with 16s gap: activity = %v, want StateIdle", p.activity)
+	}
+	evs := drainEvents(ch)
+	found := false
+	for _, ev := range evs {
+		if ev.Type == EventAgentIdleWithBead {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("expected EventAgentIdleWithBead for Codex agent past threshold")
+	}
+}
+
+// TestUpdateActivity_OpenCodeAgent_StaysRunningDuringPause verifies OpenCode
+// agents also get the extended threshold via IsCodexLikeAgentType.
+func TestUpdateActivity_OpenCodeAgent_StaysRunningDuringPause(t *testing.T) {
+	ch := makeEventCh()
+	p := &Pane{
+		name:           "intern",
+		alive:          true,
+		activity:       StateRunning,
+		beadID:         "ini-abc",
+		agentType:      "opencode",
+		eventCh:        ch,
+		lastOutputTime: time.Now().Add(-5 * time.Second),
+	}
+
+	p.updateActivity()
+
+	if p.activity != StateRunning {
+		t.Errorf("OpenCode agent with 5s gap: activity = %v, want StateRunning", p.activity)
+	}
+}
+
+// TestUpdateActivity_ClaudeCodeAgent_IdleAt2s verifies the original 2s threshold
+// still applies to claude-code agents (regression guard).
+func TestUpdateActivity_ClaudeCodeAgent_IdleAt2s(t *testing.T) {
+	ch := makeEventCh()
+	p := &Pane{
+		name:           "eng1",
+		alive:          true,
+		activity:       StateRunning,
+		beadID:         "ini-abc",
+		agentType:      "claude-code",
+		eventCh:        ch,
+		lastOutputTime: time.Now().Add(-3 * time.Second), // past 2s CC threshold
+	}
+
+	p.updateActivity()
+
+	if p.activity != StateIdle {
+		t.Errorf("Claude Code agent with 3s gap: activity = %v, want StateIdle", p.activity)
+	}
+}

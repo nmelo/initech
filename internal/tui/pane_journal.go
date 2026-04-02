@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/nmelo/initech/internal/config"
 )
 
 // watchJSONL polls for new JSONL entries in the session directory and feeds
@@ -136,10 +138,26 @@ func (p *Pane) applyBeadDetection(entries []JournalEntry) {
 // means the agent is genuinely idle at the prompt.
 const ptyIdleTimeout = 2 * time.Second
 
+// ptyIdleTimeoutCodex is the idle threshold for Codex and OpenCode agents.
+// These agents have natural 5-10s pauses between tool calls with no spinner,
+// so the 2s Claude Code threshold fires false positives. 15s accommodates
+// normal inter-tool-call gaps without masking genuinely stuck agents.
+const ptyIdleTimeoutCodex = 15 * time.Second
+
 // idleNotifyCooldown is the minimum time between EventAgentIdleWithBead
 // emissions for a single pane. Prevents notification spam from burst output
 // patterns that straddle the idle threshold.
 const idleNotifyCooldown = 60 * time.Second
+
+// effectiveIdleTimeout returns the idle threshold for this pane's agent type.
+// Codex/OpenCode agents get a longer threshold because they pause 5-10s
+// between tool calls with no spinner output.
+func (p *Pane) effectiveIdleTimeout() time.Duration {
+	if config.IsCodexLikeAgentType(p.agentType) {
+		return ptyIdleTimeoutCodex
+	}
+	return ptyIdleTimeout
+}
 
 // updateActivity derives activity state from PTY output recency.
 // Called per pane on every render tick. Detects running->idle edge transitions
@@ -159,7 +177,7 @@ func (p *Pane) updateActivity() {
 		p.mu.Unlock()
 		return
 	}
-	if now.Sub(p.lastOutputTime) < ptyIdleTimeout {
+	if now.Sub(p.lastOutputTime) < p.effectiveIdleTimeout() {
 		p.activity = StateRunning
 	} else {
 		p.activity = StateIdle
