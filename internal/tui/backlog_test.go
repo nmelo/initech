@@ -3,6 +3,7 @@ package tui
 import (
 	"encoding/json"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -219,4 +220,173 @@ func TestWatchBacklog_Dedup(t *testing.T) {
 	if evCount != 2 {
 		t.Errorf("after reset: emitted %d total events, want 2", evCount)
 	}
+}
+
+func TestWatchBacklog_SetsBacklogFlagAndEmitsOnce(t *testing.T) {
+	restoreTicker := stubBacklogTicker(t, 5*time.Millisecond)
+	defer restoreTicker()
+
+	pane := &Pane{name: "eng1", alive: true, activity: StateIdle}
+	tui := &TUI{
+		quitCh:      make(chan struct{}),
+		agentEvents: make(chan AgentEvent, 8),
+		panes:       toPaneViews([]*Pane{pane}),
+	}
+	runner := &sequenceRunner{outputs: []string{fakeBeads(2), fakeBeads(2), fakeBeads(2)}}
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		tui.watchBacklog(runner)
+	}()
+	defer stopBacklogWatcher(t, tui, done)
+
+	waitForBacklogCondition(t, func() bool {
+		return pane.IdleWithBacklog() && pane.BacklogCount() == 2
+	})
+
+	ev := waitForBacklogEvent(t, tui.agentEvents)
+	if ev.Type != EventAgentIdle || ev.Pane != "eng1" {
+		t.Fatalf("event = {%v %q}, want EventAgentIdle/eng1", ev.Type, ev.Pane)
+	}
+
+	time.Sleep(20 * time.Millisecond)
+	if len(tui.agentEvents) != 0 {
+		t.Fatalf("expected deduped idle event, got %d extra event(s)", len(tui.agentEvents))
+	}
+}
+
+func TestWatchBacklog_ClearsBacklogFlagWhenReadyQueueEmpties(t *testing.T) {
+	restoreTicker := stubBacklogTicker(t, 5*time.Millisecond)
+	defer restoreTicker()
+
+	pane := &Pane{name: "eng1", alive: true, activity: StateIdle}
+	pane.SetIdleWithBacklog(3)
+	tui := &TUI{
+		quitCh:      make(chan struct{}),
+		agentEvents: make(chan AgentEvent, 8),
+		panes:       toPaneViews([]*Pane{pane}),
+	}
+	runner := &sequenceRunner{outputs: []string{fakeBeads(0), fakeBeads(0)}}
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		tui.watchBacklog(runner)
+	}()
+	defer stopBacklogWatcher(t, tui, done)
+
+	waitForBacklogCondition(t, func() bool {
+		return !pane.IdleWithBacklog() && pane.BacklogCount() == 0
+	})
+	if len(tui.agentEvents) != 0 {
+		t.Fatalf("expected no idle events when ready queue is empty, got %d", len(tui.agentEvents))
+	}
+}
+
+func TestWatchBacklog_ClearsDedupWhenAgentGetsBead(t *testing.T) {
+	restoreTicker := stubBacklogTicker(t, 5*time.Millisecond)
+	defer restoreTicker()
+
+	pane := &Pane{name: "eng1", alive: true, activity: StateIdle}
+	tui := &TUI{
+		quitCh:      make(chan struct{}),
+		agentEvents: make(chan AgentEvent, 8),
+		panes:       toPaneViews([]*Pane{pane}),
+	}
+	runner := &sequenceRunner{outputs: []string{fakeBeads(1), fakeBeads(1), fakeBeads(1), fakeBeads(1)}}
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		tui.watchBacklog(runner)
+	}()
+	defer stopBacklogWatcher(t, tui, done)
+
+	_ = waitForBacklogEvent(t, tui.agentEvents)
+	pane.SetBead("ini-x.1", "claimed")
+	waitForBacklogCondition(t, func() bool { return !pane.IdleWithBacklog() })
+
+	pane.SetBead("", "")
+	waitForBacklogCondition(t, func() bool { return pane.IdleWithBacklog() })
+
+	ev := waitForBacklogEvent(t, tui.agentEvents)
+	if ev.Pane != "eng1" {
+		t.Fatalf("second event pane = %q, want eng1", ev.Pane)
+	}
+}
+
+type sequenceRunner struct {
+	mu      sync.Mutex
+	outputs []string
+	errs    []error
+	calls   int
+}
+
+func (r *sequenceRunner) Run(name string, args ...string) (string, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	idx := r.calls
+	r.calls++
+	if len(r.outputs) == 0 && len(r.errs) == 0 {
+		return "", nil
+	}
+	if idx >= len(r.outputs) && idx >= len(r.errs) {
+		idx = max(len(r.outputs), len(r.errs)) - 1
+	}
+	var out string
+	if idx >= 0 && idx < len(r.outputs) {
+		out = r.outputs[idx]
+	}
+	var err error
+	if idx >= 0 && idx < len(r.errs) {
+		err = r.errs[idx]
+	}
+	return out, err
+}
+
+func (r *sequenceRunner) RunInDir(dir, name string, args ...string) (string, error) {
+	return r.Run(name, args...)
+}
+
+func stubBacklogTicker(t *testing.T, interval time.Duration) func() {
+	t.Helper()
+	orig := newBacklogTicker
+	newBacklogTicker = func(d time.Duration) *time.Ticker {
+		return time.NewTicker(interval)
+	}
+	return func() { newBacklogTicker = orig }
+}
+
+func stopBacklogWatcher(t *testing.T, tui *TUI, done <-chan struct{}) {
+	t.Helper()
+	close(tui.quitCh)
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("watchBacklog did not stop after quit")
+	}
+}
+
+func waitForBacklogCondition(t *testing.T, cond func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(250 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		if cond() {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatal("condition was not met before timeout")
+}
+
+func waitForBacklogEvent(t *testing.T, ch <-chan AgentEvent) AgentEvent {
+	t.Helper()
+	select {
+	case ev := <-ch:
+		return ev
+	case <-time.After(250 * time.Millisecond):
+		t.Fatal("timed out waiting for backlog event")
+	}
+	return AgentEvent{}
 }

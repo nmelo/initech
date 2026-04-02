@@ -14,6 +14,8 @@ import (
 
 const backlogCheckInterval = 2 * time.Minute
 
+var newBacklogTicker = time.NewTicker
+
 // watchBacklog periodically checks for idle agents with no bead assignment
 // against the bd ready queue. Emits EventAgentIdle events to eventCh when
 // both conditions are met. Deduplicates: an agent is only notified once per
@@ -22,7 +24,7 @@ const backlogCheckInterval = 2 * time.Minute
 //
 // Runs as a goroutine; exits when t.quitCh is closed.
 func (t *TUI) watchBacklog(runner iexec.Runner) {
-	ticker := time.NewTicker(backlogCheckInterval)
+	ticker := newBacklogTicker(backlogCheckInterval)
 	defer ticker.Stop()
 
 	// notified tracks which agents have already been notified for the current
