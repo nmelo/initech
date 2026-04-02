@@ -392,6 +392,7 @@ func (p *Pane) readLoop() {
 				p.sendMu.Lock()
 				p.ptmx.Write(approvalBytes) //nolint:errcheck
 				p.sendMu.Unlock()
+				p.verifyAutoApprove(approvalBytes)
 			}
 
 			// Tee to network sink if connected. Separate from emu.Write so
@@ -592,6 +593,78 @@ func (p *Pane) scanPermissionPrompt() []byte {
 		return nil
 	}
 	return approvalInput
+}
+
+// autoApproveVerifyTimeout is how long to wait for meaningful PTY activity
+// after sending an auto-approve keystroke before logging a warning.
+const autoApproveVerifyTimeout = 2500 * time.Millisecond
+
+// autoApproveVerifyMinActivity is the minimum time lastOutputTime must advance
+// past the send moment to count as meaningful activity (filters out echoed
+// keystrokes which update lastOutputTime but represent trivial output).
+const autoApproveVerifyMinActivity = 500 * time.Millisecond
+
+// verifyAutoApprove launches a short-lived goroutine that checks whether
+// meaningful PTY output arrived after sending auto-approve bytes. If not,
+// a warning is logged with the bottom-row emulator content for diagnosis.
+// This is observability only; it never retries or sends additional input.
+func (p *Pane) verifyAutoApprove(approvalBytes []byte) {
+	p.mu.Lock()
+	sendTime := p.lastOutputTime
+	alive := p.alive
+	name := p.name
+	agentType := p.agentType
+	p.mu.Unlock()
+
+	if !alive {
+		return
+	}
+
+	approvalStr := fmt.Sprintf("%q", string(approvalBytes))
+
+	go func() {
+		defer func() { recover() }() //nolint:errcheck
+
+		deadline := time.Now().Add(autoApproveVerifyTimeout)
+		ticker := time.NewTicker(250 * time.Millisecond)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ticker.C:
+				p.mu.Lock()
+				lastOut := p.lastOutputTime
+				stillAlive := p.alive
+				p.mu.Unlock()
+
+				if !stillAlive {
+					return
+				}
+
+				// Meaningful activity: lastOutputTime advanced well past the
+				// send moment (not just a trivial echo of the approval key).
+				if lastOut.Sub(sendTime) >= autoApproveVerifyMinActivity {
+					return
+				}
+
+				if time.Now().After(deadline) {
+					// Timeout: capture bottom-row text for diagnosis.
+					p.renderMu.Lock()
+					bottomText := emulatorBottomText(p.emu, codexPermissionScanRows)
+					p.renderMu.Unlock()
+
+					LogWarn("auto-approve", "no PTY activity after approval send",
+						"pane", name,
+						"agent_type", agentType,
+						"approval_input", approvalStr,
+						"timeout", autoApproveVerifyTimeout.String(),
+						"bottom_text", strings.TrimSpace(bottomText),
+					)
+					return
+				}
+			}
+		}
+	}()
 }
 
 // scanOpenCodePermissionPrompt checks the emulator for an OpenCode permission
