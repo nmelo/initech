@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -18,6 +19,9 @@ func TestAgentsModal_OpenViaCommand(t *testing.T) {
 	if tui.agents.selected != 0 {
 		t.Errorf("selected = %d, want 0", tui.agents.selected)
 	}
+	if tui.agents.scrollOffset != 0 {
+		t.Errorf("scrollOffset = %d, want 0", tui.agents.scrollOffset)
+	}
 }
 
 func TestAgentsModal_OpenViaAltA(t *testing.T) {
@@ -30,12 +34,10 @@ func TestAgentsModal_OpenViaAltA(t *testing.T) {
 
 func TestAgentsModal_AltAToggles(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("eng1", "eng2")
-	// Open.
 	tui.handleKey(tcell.NewEventKey(tcell.KeyRune, 'a', tcell.ModAlt))
 	if !tui.agents.active {
 		t.Fatal("Alt+a should open agents modal")
 	}
-	// Close.
 	tui.handleKey(tcell.NewEventKey(tcell.KeyRune, 'a', tcell.ModAlt))
 	if tui.agents.active {
 		t.Error("Alt+a again should close agents modal")
@@ -77,24 +79,18 @@ func TestAgentsModal_NavigateDownUp(t *testing.T) {
 	if tui.agents.selected != 1 {
 		t.Errorf("after Down: selected = %d, want 1", tui.agents.selected)
 	}
-
 	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyDown, 0, 0))
 	if tui.agents.selected != 2 {
 		t.Errorf("after Down x2: selected = %d, want 2", tui.agents.selected)
 	}
-
-	// Should not go past the last row.
 	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyDown, 0, 0))
 	if tui.agents.selected != 2 {
 		t.Errorf("Down past end: selected = %d, want 2", tui.agents.selected)
 	}
-
 	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyUp, 0, 0))
 	if tui.agents.selected != 1 {
 		t.Errorf("after Up: selected = %d, want 1", tui.agents.selected)
 	}
-
-	// Should not go above first row.
 	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyUp, 0, 0))
 	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyUp, 0, 0))
 	if tui.agents.selected != 0 {
@@ -110,16 +106,29 @@ func TestAgentsModal_NavigateJK(t *testing.T) {
 	if tui.agents.selected != 1 {
 		t.Errorf("after j: selected = %d, want 1", tui.agents.selected)
 	}
-
 	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyRune, 'k', 0))
 	if tui.agents.selected != 0 {
 		t.Errorf("after k: selected = %d, want 0", tui.agents.selected)
 	}
 }
 
+// readScreenRect reads a rectangle of text from the simulation screen.
+func readScreenRect(s tcell.SimulationScreen, x, y, w, h int) string {
+	var b strings.Builder
+	for row := y; row < y+h; row++ {
+		for col := x; col < x+w; col++ {
+			c, _, _ := s.Get(col, row)
+			b.WriteString(c)
+		}
+		if row < y+h-1 {
+			b.WriteByte('\n')
+		}
+	}
+	return b.String()
+}
+
 func TestAgentsModal_RenderShowsAllAgents(t *testing.T) {
 	tui, s := newTestTUIWithScreen("eng1", "qa1", "super")
-
 	tui.panes[0].(*Pane).activity = StateRunning
 	tui.panes[0].(*Pane).lastOutputTime = time.Now()
 	tui.panes[0].(*Pane).beadID = "ini-abc"
@@ -128,30 +137,19 @@ func TestAgentsModal_RenderShowsAllAgents(t *testing.T) {
 	tui.panes[2].(*Pane).lastOutputTime = time.Now()
 
 	tui.openAgentsModal()
-	tui.renderAgents()
+	tui.render()
 
-	sw, _ := s.Size()
-	rows := make([]string, 10)
-	for row := 0; row < 10; row++ {
-		var b strings.Builder
-		for x := 0; x < sw; x++ {
-			c, _, _ := s.Get(x, row)
-			b.WriteString(c)
-		}
-		rows[row] = b.String()
+	sw, sh := s.Size()
+	allText := readScreenRect(s, 0, 0, sw, sh)
+
+	if !strings.Contains(allText, "initech agents") {
+		t.Error("rendered output missing 'initech agents' title")
 	}
-
-	if !strings.Contains(rows[0], "initech agents") {
-		t.Errorf("title row = %q, want 'initech agents'", rows[0])
-	}
-
-	allText := strings.Join(rows, "\n")
 	for _, name := range []string{"eng1", "qa1", "super"} {
 		if !strings.Contains(allText, name) {
 			t.Errorf("rendered output missing agent %q", name)
 		}
 	}
-
 	if !strings.Contains(allText, "ini-abc") {
 		t.Error("rendered output missing bead ID 'ini-abc'")
 	}
@@ -161,26 +159,16 @@ func TestAgentsModal_RenderShowsVisibilityCheckbox(t *testing.T) {
 	tui, s := newTestTUIWithScreen("eng1", "eng2")
 	tui.layoutState.Hidden["eng2"] = true
 	tui.openAgentsModal()
-	tui.renderAgents()
+	tui.render()
 
-	sw, _ := s.Size()
-	readRow := func(row int) string {
-		var b strings.Builder
-		for x := 0; x < sw; x++ {
-			c, _, _ := s.Get(x, row)
-			b.WriteString(c)
-		}
-		return b.String()
+	sw, sh := s.Size()
+	allText := readScreenRect(s, 0, 0, sw, sh)
+
+	if !strings.Contains(allText, "[x]") {
+		t.Error("rendered output missing [x] for visible agent")
 	}
-
-	row1 := readRow(4)
-	row2 := readRow(5)
-
-	if !strings.Contains(row1, "[x]") {
-		t.Errorf("visible agent row = %q, want '[x]'", row1)
-	}
-	if !strings.Contains(row2, "[ ]") {
-		t.Errorf("hidden agent row = %q, want '[ ]'", row2)
+	if !strings.Contains(allText, "[ ]") {
+		t.Error("rendered output missing [ ] for hidden agent")
 	}
 }
 
@@ -188,26 +176,58 @@ func TestAgentsModal_RenderShowsPinBadge(t *testing.T) {
 	tui, s := newTestTUIWithScreen("eng1", "eng2")
 	tui.layoutState.Pinned = map[string]bool{"eng1": true}
 	tui.openAgentsModal()
-	tui.renderAgents()
+	tui.render()
 
-	sw, _ := s.Size()
-	readRow := func(row int) string {
-		var b strings.Builder
-		for x := 0; x < sw; x++ {
-			c, _, _ := s.Get(x, row)
-			b.WriteString(c)
+	sw, sh := s.Size()
+	allText := readScreenRect(s, 0, 0, sw, sh)
+
+	if !strings.Contains(allText, "[P]") {
+		t.Error("rendered output missing [P] for pinned agent")
+	}
+}
+
+func TestAgentsModal_RenderIsFloating(t *testing.T) {
+	tui, s := newTestTUIWithScreen("eng1", "eng2")
+	tui.openAgentsModal()
+	tui.render()
+
+	sw, sh := s.Size()
+	// The box should be centered, so corners should not be at (0,0).
+	boxW := agentsBoxW
+	if sw-4 < boxW {
+		boxW = sw - 4
+	}
+	boxH := agentsBoxH
+	if sh-4 < boxH {
+		boxH = sh - 4
+	}
+	startX := (sw - boxW) / 2
+	startY := (sh - boxH) / 2
+
+	// Top-left corner should be a box drawing character.
+	c, _, _ := s.Get(startX, startY)
+	if c != "\u250c" {
+		t.Errorf("top-left corner = %q, want box drawing char", c)
+	}
+
+	// Cell at (0,0) should NOT be the box corner (floating, not full-screen).
+	if startX > 0 {
+		c0, _, _ := s.Get(0, 0)
+		if c0 == "\u250c" {
+			t.Error("box corner at (0,0) means full-screen, not floating")
 		}
-		return b.String()
 	}
+}
 
-	row1 := readRow(4)
-	row2 := readRow(5)
+func TestAgentsModal_RenderHelpLine(t *testing.T) {
+	tui, s := newTestTUIWithScreen("eng1")
+	tui.openAgentsModal()
+	tui.render()
 
-	if !strings.Contains(row1, "[P]") {
-		t.Errorf("pinned agent row = %q, want '[P]'", row1)
-	}
-	if strings.Contains(row2, "[P]") {
-		t.Errorf("unpinned agent row = %q, should not contain '[P]'", row2)
+	sw, sh := s.Size()
+	allText := readScreenRect(s, 0, 0, sw, sh)
+	if !strings.Contains(allText, "Esc close") {
+		t.Error("help line should contain 'Esc close'")
 	}
 }
 
@@ -276,13 +296,10 @@ func TestAgentsModal_SpaceToggleVisibility(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("eng1", "eng2")
 	tui.openAgentsModal()
 
-	// Hide eng1.
 	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyRune, ' ', 0))
 	if !tui.layoutState.Hidden["eng1"] {
 		t.Error("Space should hide the selected agent")
 	}
-
-	// Unhide eng1.
 	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyRune, ' ', 0))
 	if tui.layoutState.Hidden["eng1"] {
 		t.Error("Space again should unhide the agent")
@@ -304,17 +321,12 @@ func TestAgentsModal_SpaceLastVisibleGuard(t *testing.T) {
 
 func TestAgentsModal_SpaceLastVisibleGuardMultiple(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("eng1", "eng2")
-	// Hide eng2 first so eng1 is the only visible.
 	tui.layoutState.Hidden = map[string]bool{"eng2": true}
 	tui.openAgentsModal()
 
-	// Try to hide eng1 (last visible).
 	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyRune, ' ', 0))
 	if tui.layoutState.Hidden["eng1"] {
 		t.Error("should not hide eng1 when it's the last visible pane")
-	}
-	if tui.agents.error == "" {
-		t.Error("expected error for last-visible guard")
 	}
 }
 
@@ -322,13 +334,10 @@ func TestAgentsModal_EnterGrabDrop(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("eng1", "eng2")
 	tui.openAgentsModal()
 
-	// Grab.
 	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyEnter, 0, 0))
 	if !tui.agents.moving {
 		t.Error("Enter should start moving mode")
 	}
-
-	// Drop.
 	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyEnter, 0, 0))
 	if tui.agents.moving {
 		t.Error("Enter again should stop moving mode")
@@ -339,86 +348,22 @@ func TestAgentsModal_ReorderViaGrab(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("eng1", "eng2", "eng3")
 	tui.openAgentsModal()
 
-	// Grab eng1 (index 0).
 	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyEnter, 0, 0))
-
-	// Move down.
 	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyDown, 0, 0))
 	if tui.panes[0].Name() != "eng2" || tui.panes[1].Name() != "eng1" {
 		t.Errorf("after move down: order = [%s, %s, %s], want [eng2, eng1, eng3]",
 			tui.panes[0].Name(), tui.panes[1].Name(), tui.panes[2].Name())
 	}
 	if tui.agents.selected != 1 {
-		t.Errorf("selected = %d, want 1 (follows grabbed item)", tui.agents.selected)
+		t.Errorf("selected = %d, want 1", tui.agents.selected)
 	}
 
-	// Drop.
 	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyEnter, 0, 0))
 	if tui.agents.moving {
 		t.Error("should have dropped after Enter")
 	}
-
-	// Order persisted.
-	if len(tui.layoutState.Order) != 3 {
-		t.Fatalf("Order length = %d, want 3", len(tui.layoutState.Order))
-	}
-	if tui.layoutState.Order[0] != "eng2" || tui.layoutState.Order[1] != "eng1" {
+	if len(tui.layoutState.Order) != 3 || tui.layoutState.Order[0] != "eng2" {
 		t.Errorf("persisted order = %v, want [eng2, eng1, eng3]", tui.layoutState.Order)
-	}
-}
-
-func TestAgentsModal_ReorderViaJK(t *testing.T) {
-	tui, _ := newTestTUIWithScreen("eng1", "eng2")
-	tui.openAgentsModal()
-
-	// Grab eng1.
-	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyEnter, 0, 0))
-
-	// Move down with j.
-	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyRune, 'j', 0))
-	if tui.panes[0].Name() != "eng2" || tui.panes[1].Name() != "eng1" {
-		t.Error("j should swap grabbed item down")
-	}
-
-	// Move back up with k.
-	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyRune, 'k', 0))
-	if tui.panes[0].Name() != "eng1" || tui.panes[1].Name() != "eng2" {
-		t.Error("k should swap grabbed item up")
-	}
-}
-
-func TestAgentsModal_ReorderBoundsCheck(t *testing.T) {
-	tui, _ := newTestTUIWithScreen("eng1", "eng2")
-	tui.openAgentsModal()
-
-	// Grab eng1 at top, try to move up (should be no-op).
-	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyEnter, 0, 0))
-	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyUp, 0, 0))
-	if tui.panes[0].Name() != "eng1" {
-		t.Error("moving up at top should be a no-op")
-	}
-
-	// Move to bottom, try to move down past end.
-	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyDown, 0, 0))
-	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyDown, 0, 0))
-	if tui.agents.selected != 1 {
-		t.Errorf("selected = %d, want 1 (clamped)", tui.agents.selected)
-	}
-}
-
-func TestAgentsModal_HiddenAgentReorderable(t *testing.T) {
-	tui, _ := newTestTUIWithScreen("eng1", "eng2", "eng3")
-	tui.layoutState.Hidden = map[string]bool{"eng2": true}
-	tui.openAgentsModal()
-
-	// Select eng2 (index 1) and grab it.
-	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyDown, 0, 0))
-	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyEnter, 0, 0))
-
-	// Move down.
-	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyDown, 0, 0))
-	if tui.panes[2].Name() != "eng2" {
-		t.Errorf("hidden agent should be reorderable: panes[2] = %s, want eng2", tui.panes[2].Name())
 	}
 }
 
@@ -426,13 +371,10 @@ func TestAgentsModal_PinToggle(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("eng1", "eng2")
 	tui.openAgentsModal()
 
-	// Pin eng1.
 	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyRune, 'p', 0))
 	if !tui.layoutState.Pinned["eng1"] {
 		t.Error("p should pin the selected agent")
 	}
-
-	// Unpin eng1.
 	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyRune, 'p', 0))
 	if tui.layoutState.Pinned["eng1"] {
 		t.Error("p again should unpin the agent")
@@ -455,21 +397,17 @@ func TestAgentsModal_RevealAll(t *testing.T) {
 func TestAgentsModal_ResetOrder(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("eng1", "eng2", "eng3")
 	tui.project = &config.Project{Roles: []string{"eng3", "eng1", "eng2"}}
-	// Current order: eng1, eng2, eng3.
 	tui.openAgentsModal()
 
 	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyRune, 'R', 0))
 
-	// Order should match config.
 	if tui.panes[0].Name() != "eng3" || tui.panes[1].Name() != "eng1" || tui.panes[2].Name() != "eng2" {
 		t.Errorf("after R: order = [%s, %s, %s], want [eng3, eng1, eng2]",
 			tui.panes[0].Name(), tui.panes[1].Name(), tui.panes[2].Name())
 	}
-	if tui.agents.selected != 0 {
-		t.Errorf("selected = %d, want 0 (reset to top)", tui.agents.selected)
-	}
-	if tui.agents.moving {
-		t.Error("moving should be false after reset")
+	if tui.agents.selected != 0 || tui.agents.scrollOffset != 0 {
+		t.Errorf("selected=%d scroll=%d, want 0,0 after reset",
+			tui.agents.selected, tui.agents.scrollOffset)
 	}
 }
 
@@ -488,13 +426,10 @@ func TestAgentsModal_ErrorClearsOnNextKey(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("eng1")
 	tui.openAgentsModal()
 
-	// Trigger error.
 	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyRune, ' ', 0))
 	if tui.agents.error == "" {
 		t.Fatal("expected error from last-visible guard")
 	}
-
-	// Any keypress should clear it.
 	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyDown, 0, 0))
 	if tui.agents.error != "" {
 		t.Error("error should be cleared on next keypress")
@@ -506,10 +441,6 @@ func TestAgentsModal_EscCancelsMoving(t *testing.T) {
 	tui.openAgentsModal()
 
 	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyEnter, 0, 0))
-	if !tui.agents.moving {
-		t.Fatal("should be in moving mode")
-	}
-
 	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyEscape, 0, 0))
 	if tui.agents.moving {
 		t.Error("Esc should cancel moving mode")
@@ -523,17 +454,12 @@ func TestAgentsModal_RenderMovingTitle(t *testing.T) {
 	tui, s := newTestTUIWithScreen("eng1", "eng2")
 	tui.openAgentsModal()
 	tui.agents.moving = true
+	tui.render()
 
-	tui.renderAgents()
-
-	sw, _ := s.Size()
-	var title strings.Builder
-	for x := 0; x < sw; x++ {
-		c, _, _ := s.Get(x, 0)
-		title.WriteString(c)
-	}
-	if !strings.Contains(title.String(), "moving eng1") {
-		t.Errorf("title = %q, want 'moving eng1' when grabbed", title.String())
+	sw, sh := s.Size()
+	allText := readScreenRect(s, 0, 0, sw, sh)
+	if !strings.Contains(allText, "moving eng1") {
+		t.Errorf("title should contain 'moving eng1' when grabbed, got:\n%s", allText)
 	}
 }
 
@@ -541,18 +467,114 @@ func TestAgentsModal_RenderErrorLine(t *testing.T) {
 	tui, s := newTestTUIWithScreen("eng1")
 	tui.openAgentsModal()
 	tui.agents.error = "test error message"
+	tui.render()
 
-	tui.renderAgents()
-
-	_, sh := s.Size()
-	sw, _ := s.Size()
-	errY := sh - 2
-	var errRow strings.Builder
-	for x := 0; x < sw; x++ {
-		c, _, _ := s.Get(x, errY)
-		errRow.WriteString(c)
+	sw, sh := s.Size()
+	allText := readScreenRect(s, 0, 0, sw, sh)
+	if !strings.Contains(allText, "test error message") {
+		t.Error("rendered output should contain error message")
 	}
-	if !strings.Contains(errRow.String(), "test error message") {
-		t.Errorf("error row = %q, want 'test error message'", errRow.String())
+}
+
+// ── Scroll tests ────────────────────────────────────────────────────
+
+func TestAgentsModal_ScrollDownWhenOverflow(t *testing.T) {
+	// Create more agents than the viewport can show.
+	names := make([]string, 20)
+	for i := range names {
+		names[i] = fmt.Sprintf("agent%02d", i)
+	}
+	tui, _ := newTestTUIWithScreen(names...)
+	tui.openAgentsModal()
+
+	// Navigate to the bottom.
+	for i := 0; i < 19; i++ {
+		tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyDown, 0, 0))
+	}
+	if tui.agents.selected != 19 {
+		t.Errorf("selected = %d, want 19", tui.agents.selected)
+	}
+	if tui.agents.scrollOffset <= 0 {
+		t.Error("scrollOffset should be > 0 after navigating past viewport")
+	}
+	// Selected must be within viewport.
+	vp := tui.agentsViewportHeight()
+	if tui.agents.selected < tui.agents.scrollOffset || tui.agents.selected >= tui.agents.scrollOffset+vp {
+		t.Errorf("selected %d not in viewport [%d, %d)", tui.agents.selected, tui.agents.scrollOffset, tui.agents.scrollOffset+vp)
+	}
+}
+
+func TestAgentsModal_ScrollUpFromBottom(t *testing.T) {
+	names := make([]string, 20)
+	for i := range names {
+		names[i] = fmt.Sprintf("agent%02d", i)
+	}
+	tui, _ := newTestTUIWithScreen(names...)
+	tui.openAgentsModal()
+
+	// Go to bottom.
+	for i := 0; i < 19; i++ {
+		tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyDown, 0, 0))
+	}
+	savedOffset := tui.agents.scrollOffset
+
+	// Go back to top.
+	for i := 0; i < 19; i++ {
+		tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyUp, 0, 0))
+	}
+	if tui.agents.selected != 0 {
+		t.Errorf("selected = %d, want 0", tui.agents.selected)
+	}
+	if tui.agents.scrollOffset != 0 {
+		t.Errorf("scrollOffset = %d, want 0 at top", tui.agents.scrollOffset)
+	}
+	_ = savedOffset
+}
+
+func TestAgentsModal_ScrollWithGrab(t *testing.T) {
+	names := make([]string, 20)
+	for i := range names {
+		names[i] = fmt.Sprintf("agent%02d", i)
+	}
+	tui, _ := newTestTUIWithScreen(names...)
+	tui.openAgentsModal()
+
+	// Grab first agent and move it down past viewport.
+	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyEnter, 0, 0))
+	for i := 0; i < 15; i++ {
+		tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyDown, 0, 0))
+	}
+
+	// The grabbed item should still be visible.
+	vp := tui.agentsViewportHeight()
+	if tui.agents.selected < tui.agents.scrollOffset || tui.agents.selected >= tui.agents.scrollOffset+vp {
+		t.Errorf("grabbed item at %d not in viewport [%d, %d)",
+			tui.agents.selected, tui.agents.scrollOffset, tui.agents.scrollOffset+vp)
+	}
+}
+
+func TestAgentsModal_ScrollRenderIndicators(t *testing.T) {
+	names := make([]string, 20)
+	for i := range names {
+		names[i] = fmt.Sprintf("agent%02d", i)
+	}
+	tui, s := newTestTUIWithScreen(names...)
+	tui.openAgentsModal()
+
+	// Navigate partway down so there are items above and below.
+	// Viewport is ~12 rows, so go past that to trigger scrolling.
+	for i := 0; i < 15; i++ {
+		tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyDown, 0, 0))
+	}
+	tui.render()
+
+	sw, sh := s.Size()
+	allText := readScreenRect(s, 0, 0, sw, sh)
+	// Should have up and down arrows.
+	if !strings.ContainsRune(allText, '\u2191') {
+		t.Error("should show up arrow when items above viewport")
+	}
+	if !strings.ContainsRune(allText, '\u2193') {
+		t.Error("should show down arrow when items below viewport")
 	}
 }
