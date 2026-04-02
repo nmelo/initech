@@ -44,8 +44,8 @@ var helpLines = []string{
 }
 
 // helpBoxW and helpBoxH are the target floating box dimensions.
-const helpBoxW = 78
-const helpBoxH = 18
+const helpBoxW = 94
+const helpBoxH = 25
 
 // helpChromeRows is the number of rows used by modal chrome
 // (title border, spacer, footer help, bottom border).

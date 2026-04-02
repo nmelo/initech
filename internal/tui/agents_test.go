@@ -554,7 +554,7 @@ func TestAgentsModal_ScrollWithGrab(t *testing.T) {
 }
 
 func TestAgentsModal_ScrollRenderIndicators(t *testing.T) {
-	names := make([]string, 20)
+	names := make([]string, 30)
 	for i := range names {
 		names[i] = fmt.Sprintf("agent%02d", i)
 	}
@@ -562,8 +562,8 @@ func TestAgentsModal_ScrollRenderIndicators(t *testing.T) {
 	tui.openAgentsModal()
 
 	// Navigate partway down so there are items above and below.
-	// Viewport is ~12 rows, so go past that to trigger scrolling.
-	for i := 0; i < 15; i++ {
+	// Viewport is ~19 rows, so go past that to trigger scrolling.
+	for i := 0; i < 22; i++ {
 		tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyDown, 0, 0))
 	}
 	tui.render()

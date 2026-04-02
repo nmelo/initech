@@ -15,8 +15,8 @@ import (
 )
 
 // agentsBoxW and agentsBoxH are the target floating box dimensions.
-const agentsBoxW = 78
-const agentsBoxH = 18
+const agentsBoxW = 94
+const agentsBoxH = 25
 
 // agentsChromeRows is the number of rows used by modal chrome (title, header,
 // separator, error, help). Everything else is the scrollable viewport.
