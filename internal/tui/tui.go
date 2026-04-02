@@ -87,6 +87,12 @@ type reorderModal struct {
 	moving bool     // True when an item is "picked up" and j/k moves it.
 }
 
+// agentsModal holds state for the agent management modal.
+type agentsModal struct {
+	active   bool
+	selected int // Currently highlighted row index.
+}
+
 // welcomeOverlay is shown once on first launch, then never again.
 type welcomeOverlay struct {
 	active    bool
@@ -140,6 +146,7 @@ type TUI struct {
 	eventLogM eventLogModal  // Event log history modal.
 	help      helpModal      // Help reference card modal.
 	reorder   reorderModal   // Agent reorder modal.
+	agents    agentsModal    // Agent management modal.
 	welcome   welcomeOverlay // First-launch keybinding hints.
 	sel       mouseSelection // Mouse text selection.
 	quitCh    chan struct{}  // Closed by IPC quit action to signal event loop exit.

@@ -34,6 +34,11 @@ func (t *TUI) handleKey(ev *tcell.EventKey) bool {
 		return t.handleReorderKey(ev)
 	}
 
+	// Agents modal intercepts all input when active.
+	if t.agents.active {
+		return t.handleAgentsKey(ev)
+	}
+
 	// Command modal intercepts all input when active.
 	if t.cmd.active {
 		return t.handleCmdKey(ev)
@@ -105,6 +110,9 @@ func (t *TUI) handleKey(ev *tcell.EventKey) bool {
 				t.layoutState.Zoomed = !t.layoutState.Zoomed
 				t.applyLayout()
 				t.saveLayoutIfConfigured()
+				return false
+			case 'a':
+				t.openAgentsModal()
 				return false
 			case 'u':
 				// Manual update check (bypass 24h cache).

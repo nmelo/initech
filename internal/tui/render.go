@@ -60,6 +60,12 @@ func (t *TUI) render() {
 		return
 	}
 
+	if t.agents.active {
+		t.renderAgents()
+		s.Show()
+		return
+	}
+
 	// Draw panes from the render plan. No visibility checks needed.
 	for i, pr := range t.plan.Panes {
 		LogDebug("render", "drawing pane", "frame", t.renderCount, "idx", i, "name", pr.Pane.Name(), "host", pr.Pane.Host())

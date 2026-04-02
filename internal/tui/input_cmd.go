@@ -292,6 +292,7 @@ var commandNames = []string{
 	"show", "hide", "unhide", "view", "layout",
 	"restart", "patrol", "top", "add", "remove",
 	"log", "help", "quit", "pin", "unpin", "events",
+	"agents",
 }
 
 // commandAliases maps short aliases to their canonical display form.
@@ -439,6 +440,9 @@ func (t *TUI) execCmd(cmd string) bool {
 		return t.cmdPatrol()
 	case "top", "ps":
 		return t.cmdTop()
+	case "agents":
+		t.openAgentsModal()
+		return false
 	case "add":
 		return t.cmdAdd(parts)
 	case "remove", "rm":
