@@ -678,18 +678,8 @@ func (t *TUI) renderOverlay() {
 		vis := !t.layoutState.Hidden[paneKey(p)]
 		act := p.Activity()
 		bead := p.BeadID()
-		// Build status: show idle-with-backlog hint when idle, then combine
-		// activity and bead ID as "running (ini-sx5)".
+		// Build status: combine activity and bead ID as "running (ini-sx5)".
 		status := act.String()
-		idleBacklog := false
-		backlogN := 0
-		if act == StateIdle && bead == "" {
-			idleBacklog = p.IdleWithBacklog()
-			backlogN = p.BacklogCount()
-			if idleBacklog {
-				status = fmt.Sprintf("idle (%d ready)", backlogN)
-			}
-		}
 		if bead != "" {
 			status = fmt.Sprintf("%s (%s)", act.String(), bead)
 		}
@@ -699,7 +689,7 @@ func (t *TUI) renderOverlay() {
 		if remote {
 			displayName = p.Host() + ":" + p.Name()
 		}
-		agents[i] = AgentInfo{Name: displayName, Status: status, Activity: act, Visible: vis, IdleWithBacklog: idleBacklog, BacklogCount: backlogN, Pinned: pin, Remote: remote}
+		agents[i] = AgentInfo{Name: displayName, Status: status, Activity: act, Visible: vis, Pinned: pin, Remote: remote}
 		nameLen := len(displayName)
 		if remote {
 			nameLen += 4 // " [R]"
@@ -785,11 +775,7 @@ func (t *TUI) renderOverlay() {
 			dotColor = tcell.ColorGreen
 		case StateIdle:
 			dot = '\u25cb'
-			if a.IdleWithBacklog {
-				dotColor = tcell.ColorYellow
-			} else {
-				dotColor = tcell.ColorGray
-			}
+			dotColor = tcell.ColorGray
 		case StateDead:
 			dotColor = tcell.ColorRed
 		case StateSuspended:

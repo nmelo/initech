@@ -110,21 +110,6 @@ func TestPaneView_SessionDesc(t *testing.T) {
 	}
 }
 
-// TestPaneView_IdleWithBacklog returns the backlog state.
-func TestPaneView_IdleWithBacklog(t *testing.T) {
-	p := &Pane{emu: vt.NewSafeEmulator(10, 5)}
-	if p.IdleWithBacklog() {
-		t.Error("IdleWithBacklog() should be false by default")
-	}
-	p.SetIdleWithBacklog(3)
-	if !p.IdleWithBacklog() {
-		t.Error("IdleWithBacklog() should be true after SetIdleWithBacklog")
-	}
-	if p.BacklogCount() != 3 {
-		t.Errorf("BacklogCount() = %d, want 3", p.BacklogCount())
-	}
-}
-
 // TestPaneView_Emulator returns the SafeEmulator.
 func TestPaneView_Emulator(t *testing.T) {
 	emu := vt.NewSafeEmulator(80, 24)
@@ -259,8 +244,6 @@ func TestPaneView_InterfaceMethodSet(t *testing.T) {
 	_ = pv.LastOutputTime()
 	_ = pv.BeadID()
 	_ = pv.SessionDesc()
-	_ = pv.IdleWithBacklog()
-	_ = pv.BacklogCount()
 	_ = pv.Emulator()
 	_ = pv.GetRegion()
 	pv.SendKey(tcell.NewEventKey(tcell.KeyRune, 'x', 0))

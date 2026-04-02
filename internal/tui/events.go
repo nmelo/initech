@@ -16,22 +16,22 @@ import (
 type EventType int
 
 const (
-	EventBeadCompleted EventType = iota // Agent finished a bead (DONE comment, ready_for_qa).
-	EventBeadClaimed                    // Agent claimed a bead (in_progress).
-	EventBeadFailed                     // QA failed a bead or agent reported failure.
-	EventAgentStalled                   // No output for configurable threshold (warning).
-	EventAgentStuck                     // Extended inactivity or error loop detected.
-	EventAgentIdle                      // Agent returned to idle after work.
-	EventAgentIdleWithBead              // Agent went running->idle while holding a bead.
-	EventAgentSuspended                 // Agent auto-suspended by resource pressure policy.
-	EventAgentResumed                   // Agent resumed from suspension (triggered by message).
-	EventMessageSent                    // Message delivered to an agent via IPC send.
-	EventAgentStarted                   // Agent pane started via IPC.
-	EventAgentStopped                   // Agent pane stopped via IPC.
-	EventAgentRestarted                 // Agent pane restarted via IPC.
-	EventAgentAdded                     // New agent pane added to session.
-	EventAgentRemoved                   // Agent pane removed from session.
-	EventTimerFired                     // Scheduled timer delivered its message.
+	EventBeadCompleted     EventType = iota // Agent finished a bead (DONE comment, ready_for_qa).
+	EventBeadClaimed                        // Agent claimed a bead (in_progress).
+	EventBeadFailed                         // QA failed a bead or agent reported failure.
+	EventAgentStalled                       // No output for configurable threshold (warning).
+	EventAgentStuck                         // Extended inactivity or error loop detected.
+	EventAgentIdle                          // Agent returned to idle after work.
+	EventAgentIdleWithBead                  // Agent went running->idle while holding a bead.
+	EventAgentSuspended                     // Agent auto-suspended by resource pressure policy.
+	EventAgentResumed                       // Agent resumed from suspension (triggered by message).
+	EventMessageSent                        // Message delivered to an agent via IPC send.
+	EventAgentStarted                       // Agent pane started via IPC.
+	EventAgentStopped                       // Agent pane stopped via IPC.
+	EventAgentRestarted                     // Agent pane restarted via IPC.
+	EventAgentAdded                         // New agent pane added to session.
+	EventAgentRemoved                       // Agent pane removed from session.
+	EventTimerFired                         // Scheduled timer delivered its message.
 )
 
 // String returns a human-readable label for the event type.
@@ -121,14 +121,6 @@ const eventLogRetention = 60 * time.Minute
 func (t *TUI) handleAgentEvent(ev AgentEvent) {
 	if ev.Time.IsZero() {
 		ev.Time = time.Now()
-	}
-
-	// Clear idle-with-backlog indicator when an agent claims a bead.
-	// This gives immediate feedback without waiting for the next backlog check.
-	if ev.Type == EventBeadClaimed {
-		if lp, ok := t.findPaneByName(ev.Pane).(*Pane); ok {
-			lp.ClearIdleWithBacklog()
-		}
 	}
 
 	ttl := notificationTTL

@@ -36,12 +36,6 @@ func TestRemotePaneImplementsPaneView(t *testing.T) {
 	if rp.IsPinned() {
 		t.Error("RemotePane should never be pinned")
 	}
-	if rp.IdleWithBacklog() {
-		t.Error("RemotePane should not have backlog")
-	}
-	if rp.BacklogCount() != 0 {
-		t.Error("RemotePane backlog should be 0")
-	}
 	if rp.Emulator() == nil {
 		t.Error("Emulator() should not be nil")
 	}

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	osexec "os/exec"
 	"path/filepath"
 	"sync"
 	"sync/atomic"
@@ -13,7 +12,6 @@ import (
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/nmelo/initech/internal/config"
-	iexec "github.com/nmelo/initech/internal/exec"
 	"github.com/nmelo/initech/internal/update"
 )
 
@@ -32,8 +30,6 @@ type AgentInfo struct {
 	Status          string        // Display text: activity string or bead ID.
 	Activity        ActivityState // Actual activity state for dot color.
 	Visible         bool
-	IdleWithBacklog bool // True when idle with ready beads in the backlog.
-	BacklogCount    int  // Number of ready beads (when IdleWithBacklog is true).
 	Pinned          bool // True when operator has pinned this agent.
 	Remote          bool // True for agents on remote peers.
 }
@@ -573,11 +569,6 @@ func Run(cfg Config) error {
 	// Fire any overdue timers from a previous session that missed their window
 	// (e.g., initech was restarted after a timer's FireAt).
 	t.fireTimers()
-
-	// Start idle-with-backlog detection if bd is available.
-	if _, err := osexec.LookPath("bd"); err == nil {
-		t.safeGo(func() { t.watchBacklog(&iexec.DefaultRunner{}) })
-	}
 
 	// Start memory monitor when auto-suspend is enabled.
 	if t.autoSuspend {

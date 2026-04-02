@@ -140,8 +140,6 @@ type PaneView interface {
 	LastOutputTime() time.Time
 	BeadID() string
 	SessionDesc() string
-	IdleWithBacklog() bool
-	BacklogCount() int
 	Emulator() *vt.SafeEmulator
 	GetRegion() Region
 	SetBead(id, title string)
@@ -200,8 +198,6 @@ type Pane struct {
 	dedupEvents       *dedup            // Dedup state for emitted events.
 	startedAt         time.Time         // When this pane's process was started. Used to filter stale JSONL.
 	scrollOffset      int               // Rows scrolled back from live view (0 = live).
-	idleWithBacklog   bool              // True when idle and ready beads exist in the backlog.
-	backlogCount      int               // Number of ready beads at last idle-with-backlog detection.
 	memoryRSS         int64             // RSS in kilobytes, updated by memory monitor goroutine.
 	suspended         bool              // True when auto-suspend policy has stopped this pane.
 	messageQueue      []QueuedMessage   // Messages waiting for resume. Capped at maxMessageQueue.
@@ -1002,36 +998,6 @@ func (p *Pane) Activity() ActivityState {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.activity
-}
-
-// IdleWithBacklog returns true when the pane is idle and ready beads exist.
-func (p *Pane) IdleWithBacklog() bool {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	return p.idleWithBacklog
-}
-
-// BacklogCount returns the number of ready beads at the last idle-with-backlog detection.
-func (p *Pane) BacklogCount() int {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	return p.backlogCount
-}
-
-// SetIdleWithBacklog marks the pane as idle with n ready beads in the backlog.
-func (p *Pane) SetIdleWithBacklog(n int) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	p.idleWithBacklog = true
-	p.backlogCount = n
-}
-
-// ClearIdleWithBacklog clears the idle-with-backlog indicator.
-func (p *Pane) ClearIdleWithBacklog() {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	p.idleWithBacklog = false
-	p.backlogCount = 0
 }
 
 // MemoryRSS returns the pane's last polled RSS in kilobytes.

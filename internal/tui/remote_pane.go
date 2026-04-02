@@ -195,9 +195,6 @@ func (rp *RemotePane) SessionDesc() string {
 	return rp.sessDesc
 }
 
-func (rp *RemotePane) IdleWithBacklog() bool { return false }
-func (rp *RemotePane) BacklogCount() int     { return 0 }
-
 func (rp *RemotePane) Emulator() *vt.SafeEmulator { return rp.emu }
 
 func (rp *RemotePane) GetRegion() Region { return rp.region }
