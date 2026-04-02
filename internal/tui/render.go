@@ -17,8 +17,7 @@ func (t *TUI) render() {
 
 	// Detect dimension changes (font resize, window resize).
 	w, h := s.Size()
-	resized := w != t.lastW || h != t.lastH
-	if resized {
+	if w != t.lastW || h != t.lastH {
 		t.lastW = w
 		t.lastH = h
 		t.applyLayout()
@@ -32,75 +31,68 @@ func (t *TUI) render() {
 		}
 	}
 
-	// Full-screen modals always need a full clear + redraw.
-	if t.help.active || t.eventLogM.active || t.top.active || t.reorder.active {
-		s.Clear()
-		switch {
-		case t.help.active:
-			t.renderHelp()
-		case t.eventLogM.active:
-			t.renderEventLog()
-		case t.top.active:
-			t.renderTop()
-		case t.reorder.active:
-			t.renderReorder()
-		}
+	s.Clear()
+
+	if t.help.active {
+		// Full-screen help reference card replaces pane rendering.
+		t.renderHelp()
 		s.Show()
-		// Clear dirty flags so they don't accumulate during modal display.
-		for _, pr := range t.plan.Panes {
-			pr.Pane.ClearDirty()
-		}
-		t.lastRenderAt.Store(time.Now().UnixNano())
 		return
 	}
 
-	// Dirty-frame optimization: only re-render panes whose emulator content
-	// changed since the last frame. A full Clear + all-pane redraw is needed
-	// on resize, first frame, or when the layout shifts. Otherwise, only dirty
-	// panes are re-rendered; clean panes retain their cells in tcell's back
-	// buffer from the previous Show().
-	fullRedraw := resized || t.renderCount <= 1
-	if fullRedraw {
-		s.Clear()
+	if t.eventLogM.active {
+		// Full-screen event log replaces pane rendering.
+		t.renderEventLog()
+		s.Show()
+		return
 	}
 
+	if t.top.active {
+		// Full-screen activity monitor replaces pane rendering.
+		t.renderTop()
+		s.Show()
+		return
+	}
+
+	if t.reorder.active {
+		t.renderReorder()
+		s.Show()
+		return
+	}
+
+	// Draw panes from the render plan. No visibility checks needed.
 	for i, pr := range t.plan.Panes {
-		dirty := pr.Pane.IsDirty()
-		if fullRedraw || dirty {
-			LogDebug("render", "drawing pane", "frame", t.renderCount, "idx", i, "name", pr.Pane.Name(), "host", pr.Pane.Host())
-			sel := t.selectionForPane(pr.Pane)
-			pr.Pane.Render(s, pr.Focused, pr.Dimmed, pr.Index, sel)
-			LogDebug("render", "pane done", "frame", t.renderCount, "idx", i, "name", pr.Pane.Name())
-		}
-		pr.Pane.ClearDirty()
+		LogDebug("render", "drawing pane", "frame", t.renderCount, "idx", i, "name", pr.Pane.Name(), "host", pr.Pane.Host())
+		sel := t.selectionForPane(pr.Pane)
+		pr.Pane.Render(s, pr.Focused, pr.Dimmed, pr.Index, sel)
+		LogDebug("render", "pane done", "frame", t.renderCount, "idx", i, "name", pr.Pane.Name())
 	}
 
-	// Draw dividers (cheap, always drawn to avoid stale artifacts after resize).
-	if fullRedraw {
-		divStyle := tcell.StyleDefault.Foreground(tcell.ColorBlack)
-		for _, d := range t.plan.Dividers {
-			if d.Vertical {
-				for y := d.Y; y < d.Y+d.Len; y++ {
-					s.SetContent(d.X, y, '\u2502', nil, divStyle)
-				}
+	// Draw dividers from the render plan.
+	divStyle := tcell.StyleDefault.Foreground(tcell.ColorBlack)
+	for _, d := range t.plan.Dividers {
+		if d.Vertical {
+			for y := d.Y; y < d.Y+d.Len; y++ {
+				s.SetContent(d.X, y, '\u2502', nil, divStyle)
 			}
 		}
 	}
 
-	// Overlays, notifications, and status bar always render. They write
-	// to fixed screen regions and don't require a preceding Clear.
 	if t.layoutState.Overlay {
 		t.renderOverlay()
 	}
 
+	// Welcome overlay on first launch (centered, auto-dismisses).
 	if t.welcome.active {
 		t.renderWelcome()
 	}
 
+	// Toast notifications (skip during command modal to avoid overlap).
 	if !t.cmd.active {
 		t.renderNotifications()
 	}
 
+	// Persistent status bar at the bottom of the screen.
 	t.renderStatusBar()
 
 	s.Show()

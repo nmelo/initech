@@ -36,7 +36,6 @@ type RemotePane struct {
 	dataCh   chan []byte      // readLoop sends byte chunks here; Render drains and writes to emu.
 	mu       sync.Mutex
 	alive    bool
-	dirty    bool
 	activity ActivityState
 	lastOut  time.Time
 	beadID   string
@@ -158,20 +157,6 @@ func (rp *RemotePane) IsSuspended() bool { return false }
 func (rp *RemotePane) IsPinned() bool    { return false }
 func (rp *RemotePane) AgentType() string { return "" } // Remote panes do not currently expose daemon-side agent type.
 func (rp *RemotePane) SubmitKey() string { return "" } // Remote panes use daemon-side config.
-
-// IsDirty returns true when DrainData wrote new content to the emulator.
-func (rp *RemotePane) IsDirty() bool {
-	rp.mu.Lock()
-	defer rp.mu.Unlock()
-	return rp.dirty
-}
-
-// ClearDirty resets the dirty flag after rendering.
-func (rp *RemotePane) ClearDirty() {
-	rp.mu.Lock()
-	rp.dirty = false
-	rp.mu.Unlock()
-}
 
 func (rp *RemotePane) Activity() ActivityState {
 	rp.mu.Lock()
@@ -322,18 +307,8 @@ func (rp *RemotePane) DrainData() {
 			rp.emu.Write(chunk)
 			drained += len(chunk)
 		default:
-			if drained > 0 {
-				rp.mu.Lock()
-				rp.dirty = true
-				rp.mu.Unlock()
-			}
 			return
 		}
-	}
-	if drained > 0 {
-		rp.mu.Lock()
-		rp.dirty = true
-		rp.mu.Unlock()
 	}
 }
 

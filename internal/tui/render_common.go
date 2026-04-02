@@ -45,19 +45,13 @@ func renderRibbon(s *clampedScreen, r Region, title string, titleStyle tcell.Sty
 
 // renderCellRow draws a single emulator row to the screen at position (x, y).
 func renderCellRow(s *clampedScreen, emu *vt.SafeEmulator, x, y, emuRow, cols int, dimmed bool) {
-	if !dimmed {
-		for c := 0; c < cols; c++ {
-			cell := emu.CellAt(c, emuRow)
-			ch, style := uvCellToTcell(cell)
-			s.SetContent(x+c, y, ch, nil, style)
-		}
-	} else {
-		for c := 0; c < cols; c++ {
-			cell := emu.CellAt(c, emuRow)
-			ch, style := uvCellToTcell(cell)
+	for c := 0; c < cols; c++ {
+		cell := emu.CellAt(c, emuRow)
+		ch, style := uvCellToTcell(cell)
+		if dimmed {
 			style = dimStyle(style)
-			s.SetContent(x+c, y, ch, nil, style)
 		}
+		s.SetContent(x+c, y, ch, nil, style)
 	}
 }
 
