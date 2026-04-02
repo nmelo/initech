@@ -33,13 +33,6 @@ func (t *TUI) render() {
 
 	s.Clear()
 
-	if t.help.active {
-		// Full-screen help reference card replaces pane rendering.
-		t.renderHelp()
-		s.Show()
-		return
-	}
-
 	if t.eventLogM.active {
 		// Full-screen event log replaces pane rendering.
 		t.renderEventLog()
@@ -80,6 +73,11 @@ func (t *TUI) render() {
 
 	if t.layoutState.Overlay {
 		t.renderOverlay()
+	}
+
+	// Help modal (centered floating box, like welcome).
+	if t.help.active {
+		t.renderHelp()
 	}
 
 	// Agents modal (centered floating box, like welcome).

@@ -1,4 +1,4 @@
-// help.go renders the full-screen help reference card modal.
+// help.go renders the help reference card as a centered floating modal.
 // Opened by typing "help" or "?" in the command modal.
 // Closed by pressing Esc, backtick, or q.
 package tui
@@ -18,6 +18,7 @@ var helpLines = []string{
 	"  Alt+2            2x2 grid",
 	"  Alt+3            3x3 grid",
 	"  Alt+4            Main + stacked layout",
+	"  Alt+a            Agent management modal",
 	"  Alt+z            Zoom/unzoom focused pane",
 	"  Alt+s            Toggle agent overlay",
 	"  Alt+q            Quit",
@@ -42,64 +43,135 @@ var helpLines = []string{
 	"github.com/nmelo/initech",
 }
 
-// helpMaxOffset returns the maximum scroll offset for the help modal
-// (scrolled all the way to the bottom of content).
+// helpBoxW and helpBoxH are the target floating box dimensions.
+const helpBoxW = 78
+const helpBoxH = 18
+
+// helpChromeRows is the number of rows used by modal chrome
+// (title border, spacer, footer help, bottom border).
+const helpChromeRows = 3
+
+// helpMaxOffset returns the maximum scroll offset for the help modal.
 func (t *TUI) helpMaxOffset() int {
-	if t.screen == nil {
-		return 0
-	}
-	_, sh := t.screen.Size()
-	contentRows := sh - 2
-	if contentRows < 1 {
-		contentRows = 1
-	}
-	max := len(helpLines) - contentRows
+	vp := t.helpViewportHeight()
+	max := len(helpLines) - vp
 	if max < 0 {
 		max = 0
 	}
 	return max
 }
 
-// renderHelp draws the full-screen help reference card.
+// helpViewportHeight returns the number of visible content rows inside the box.
+func (t *TUI) helpViewportHeight() int {
+	if t.screen == nil {
+		return 1
+	}
+	_, sh := t.screen.Size()
+	boxH := helpBoxH
+	if sh-4 < boxH {
+		boxH = sh - 4
+	}
+	if boxH < helpChromeRows+1 {
+		return 1
+	}
+	return boxH - helpChromeRows
+}
+
+// renderHelp draws the centered floating help reference card.
 func (t *TUI) renderHelp() {
 	s := t.screen
 	sw, sh := s.Size()
-	if sw < 20 || sh < 5 {
-		drawField(s, 0, 0, sw, "Terminal too small for help", tcell.StyleDefault.Foreground(tcell.ColorRed))
-		return
+
+	// Compute box dimensions.
+	boxW := helpBoxW
+	if sw-4 < boxW {
+		boxW = sw - 4
+	}
+	if boxW < 20 {
+		boxW = 20
+	}
+	boxH := helpBoxH
+	if sh-4 < boxH {
+		boxH = sh - 4
+	}
+	if boxH < 6 {
+		boxH = 6
 	}
 
-	titleStyle := tcell.StyleDefault.Background(tcell.ColorDodgerBlue).Foreground(tcell.ColorBlack).Bold(true)
-	headerStyle := tcell.StyleDefault.Foreground(tcell.ColorYellow).Bold(true)
-	bodyStyle := tcell.StyleDefault.Foreground(tcell.ColorSilver)
-	helpStyle := tcell.StyleDefault.Foreground(tcell.ColorGray)
+	startX := (sw - boxW) / 2
+	startY := (sh - boxH) / 2
+	if startX < 0 {
+		startX = 0
+	}
+	if startY < 0 {
+		startY = 0
+	}
 
-	// Title bar (centered).
+	bgStyle := tcell.StyleDefault.Background(tcell.NewRGBColor(20, 20, 20)).Foreground(tcell.ColorSilver)
+	borderStyle := bgStyle.Foreground(tcell.ColorGray)
+	titleStyle := bgStyle.Foreground(tcell.ColorDodgerBlue).Bold(true)
+	headerStyle := bgStyle.Foreground(tcell.ColorYellow).Bold(true)
+	bodyStyle := bgStyle.Foreground(tcell.ColorSilver)
+	helpStyle := bgStyle.Foreground(tcell.ColorGray)
+	scrollStyle := bgStyle.Foreground(tcell.ColorDodgerBlue)
+
+	// Draw opaque background.
+	for y := startY; y < startY+boxH && y < sh; y++ {
+		for x := startX; x < startX+boxW && x < sw; x++ {
+			s.SetContent(x, y, ' ', nil, bgStyle)
+		}
+	}
+
+	// Draw border.
+	s.SetContent(startX, startY, '\u250c', nil, borderStyle)
+	s.SetContent(startX+boxW-1, startY, '\u2510', nil, borderStyle)
+	s.SetContent(startX, startY+boxH-1, '\u2514', nil, borderStyle)
+	s.SetContent(startX+boxW-1, startY+boxH-1, '\u2518', nil, borderStyle)
+	for x := startX + 1; x < startX+boxW-1 && x < sw; x++ {
+		s.SetContent(x, startY, '\u2500', nil, borderStyle)
+		s.SetContent(x, startY+boxH-1, '\u2500', nil, borderStyle)
+	}
+	for y := startY + 1; y < startY+boxH-1 && y < sh; y++ {
+		s.SetContent(startX, y, '\u2502', nil, borderStyle)
+		s.SetContent(startX+boxW-1, y, '\u2502', nil, borderStyle)
+	}
+
+	innerW := boxW - 2
+	innerX := startX + 1
+
+	drawLine := func(y int, text string, style tcell.Style) {
+		for i, ch := range text {
+			if i >= innerW {
+				break
+			}
+			s.SetContent(innerX+i, y, ch, nil, style)
+		}
+	}
+
+	// Title centered in top border.
 	title := " initech help "
 	if t.version != "" {
 		title = fmt.Sprintf(" initech help (v%s) ", t.version)
 	}
-	for x := 0; x < sw; x++ {
-		s.SetContent(x, 0, ' ', nil, titleStyle)
-	}
-	titleStart := (sw - len([]rune(title))) / 2
-	if titleStart < 0 {
-		titleStart = 0
+	titleStart := startX + (boxW-len([]rune(title)))/2
+	if titleStart < startX+1 {
+		titleStart = startX + 1
 	}
 	for i, ch := range title {
-		if titleStart+i < sw {
-			s.SetContent(titleStart+i, 0, ch, nil, titleStyle)
+		if titleStart+i < startX+boxW-1 {
+			s.SetContent(titleStart+i, startY, ch, nil, titleStyle)
 		}
 	}
 
-	// Content area: rows 1 to sh-2.
-	contentRows := sh - 2
-	if contentRows < 1 {
-		contentRows = 1
+	// Content viewport: starts at startY+1, ends before footer row.
+	vpStartY := startY + 1
+	vpHeight := boxH - helpChromeRows
+	if vpHeight < 1 {
+		vpHeight = 1
 	}
 
-	// Cap scroll so we don't go past the end.
-	maxScroll := len(helpLines) - contentRows
+	// Clamp scroll.
+	maxScroll := len(helpLines) - vpHeight
 	if maxScroll < 0 {
 		maxScroll = 0
 	}
@@ -107,56 +179,50 @@ func (t *TUI) renderHelp() {
 		t.help.scrollOffset = maxScroll
 	}
 
-	for row := 0; row < contentRows; row++ {
+	hasAbove := t.help.scrollOffset > 0
+	hasBelow := t.help.scrollOffset+vpHeight < len(helpLines)
+
+	// Scroll indicators.
+	if hasAbove {
+		s.SetContent(startX+boxW-2, vpStartY, '\u2191', nil, scrollStyle)
+	}
+
+	// Content rows.
+	for row := 0; row < vpHeight; row++ {
 		lineIdx := row + t.help.scrollOffset
 		if lineIdx >= len(helpLines) {
 			break
 		}
 		line := helpLines[lineIdx]
-		y := row + 1
+		y := vpStartY + row
 
-		// Section headers (no leading space) use yellow; body lines use silver.
-		// Contribution footer renders as a dark blue box with yellow text.
 		isFooter := strings.HasPrefix(line, "found a bug") || strings.HasPrefix(line, "github.com")
 		style := bodyStyle
 		if isFooter {
 			footerBg := tcell.NewRGBColor(15, 20, 45)
 			style = tcell.StyleDefault.Background(footerBg).Foreground(tcell.ColorYellow)
-			for x := 0; x < sw; x++ {
+			// Fill interior with footer bg.
+			for x := innerX; x < innerX+innerW; x++ {
 				s.SetContent(x, y, ' ', nil, style)
 			}
-			padded := " " + line + " "
-			for i, ch := range padded {
-				if 1+i < sw {
-					s.SetContent(1+i, y, ch, nil, style)
-				}
-			}
+			drawLine(y, " "+line, style)
 		} else {
 			if len(line) > 0 && line[0] != ' ' {
 				style = headerStyle
 			}
-			for x := 0; x < sw; x++ {
-				s.SetContent(x, y, ' ', nil, tcell.StyleDefault)
-			}
-			for i, ch := range line {
-				if 1+i < sw {
-					s.SetContent(1+i, y, ch, nil, style)
-				}
-			}
+			drawLine(y, " "+line, style)
 		}
 	}
 
-	// Help hint at the bottom.
-	hint := "  [j/k] scroll  [Esc/q/`] close"
-	if maxScroll > 0 && t.help.scrollOffset < maxScroll {
-		hint = "  [j/k] scroll  [Esc/q/`] close  (more below)"
-	}
-	for x := 0; x < sw; x++ {
-		s.SetContent(x, sh-1, ' ', nil, tcell.StyleDefault)
-	}
-	for i, ch := range hint {
-		if i < sw {
-			s.SetContent(i, sh-1, ch, nil, helpStyle)
+	if hasBelow {
+		belowY := vpStartY + vpHeight - 1
+		if belowY < startY+boxH-1 {
+			s.SetContent(startX+boxW-2, belowY, '\u2193', nil, scrollStyle)
 		}
 	}
+
+	// Footer help (last interior row).
+	helpY := startY + boxH - 2
+	hint := " j/k scroll  Esc close"
+	drawLine(helpY, hint, helpStyle)
 }

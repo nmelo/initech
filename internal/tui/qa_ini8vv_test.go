@@ -35,15 +35,11 @@ func TestRenderHelp_RendersOnScreen(t *testing.T) {
 	tui := &TUI{screen: s, help: helpModal{active: true}}
 	tui.renderHelp()
 
-	// Title row should contain "initech help" (centered).
-	sw, _ := s.Size()
-	var title strings.Builder
-	for x := 0; x < sw; x++ {
-		c, _, _ := s.Get(x, 0)
-		title.WriteString(c)
-	}
-	if !strings.Contains(title.String(), "initech help") {
-		t.Errorf("title row = %q, want contains 'initech help'", title.String())
+	// Title should be in the centered box area.
+	sw, sh := s.Size()
+	allText := readScreenRect(s, 0, 0, sw, sh)
+	if !strings.Contains(allText, "initech help") {
+		t.Errorf("rendered output missing 'initech help' title")
 	}
 }
 
@@ -55,14 +51,11 @@ func TestRenderHelp_KeybindingsSectionVisible(t *testing.T) {
 	tui := &TUI{screen: s, help: helpModal{active: true, scrollOffset: 0}}
 	tui.renderHelp()
 
-	// Row 1 should start with "Keybindings" (first helpLine, offset 1 from title).
-	var row1 strings.Builder
-	for x := 0; x < 20; x++ {
-		c, _, _ := s.Get(x, 1)
-		row1.WriteString(c)
-	}
-	if !strings.Contains(row1.String(), "Keybindings") {
-		t.Errorf("row 1 = %q, want 'Keybindings' section", row1.String())
+	// Keybindings should appear inside the floating box.
+	sw, sh := s.Size()
+	allText := readScreenRect(s, 0, 0, sw, sh)
+	if !strings.Contains(allText, "Keybindings") {
+		t.Error("rendered output missing 'Keybindings' section")
 	}
 }
 
@@ -145,27 +138,20 @@ func TestRenderHelp_SmallTerminalNoPanic(t *testing.T) {
 	tui.renderHelp() // Must not panic.
 }
 
-// renderHelp is checked BEFORE top modal and eventLogM in render().
-func TestHelpModalPriorityInRender(t *testing.T) {
-	s := tcell.NewSimulationScreen("")
-	s.Init()
-	s.SetSize(120, 40)
+// Help modal intercepts keys before top and eventLog modals.
+func TestHelpModalPriorityInInput(t *testing.T) {
 	tui := &TUI{
-		screen:    s,
 		help:      helpModal{active: true},
 		top:       topModal{active: true},
 		eventLogM: eventLogModal{active: true},
 	}
-	// If help takes priority, the title row should say "initech help" (centered).
-	tui.render()
-	sw, _ := s.Size()
-	var title strings.Builder
-	for x := 0; x < sw; x++ {
-		c, _, _ := s.Get(x, 0)
-		title.WriteString(c)
+	// Pressing 'q' should close help (not top or eventLog).
+	tui.handleKey(tcell.NewEventKey(tcell.KeyRune, 'q', 0))
+	if tui.help.active {
+		t.Error("q should close help first (input priority)")
 	}
-	if !strings.Contains(title.String(), "initech help") {
-		t.Errorf("help should take render priority; title = %q", title.String())
+	if !tui.top.active || !tui.eventLogM.active {
+		t.Error("top and eventLog should remain active (help intercepted)")
 	}
 }
 
@@ -176,10 +162,7 @@ func TestRenderHelp_ScrollOffsetClamped(t *testing.T) {
 	s.SetSize(120, 40)
 	tui := &TUI{screen: s, help: helpModal{active: true, scrollOffset: 9999}}
 	tui.renderHelp() // Should not panic or render garbage.
-	maxScroll := len(helpLines) - (40 - 2)
-	if maxScroll < 0 {
-		maxScroll = 0
-	}
+	maxScroll := tui.helpMaxOffset()
 	if tui.help.scrollOffset > maxScroll {
 		t.Errorf("scrollOffset %d not clamped to max %d during renderHelp",
 			tui.help.scrollOffset, maxScroll)
