@@ -33,7 +33,6 @@ func backoff(attempt int) time.Duration {
 // It owns a goroutine per peer that handles connect/reconnect.
 type peerManager struct {
 	project *config.Project
-	mu      sync.Mutex
 	// onPanesChanged is called (on any goroutine) when remote panes are
 	// added or go offline. The callback receives the peer name and the
 	// new set of PaneViews for that peer (nil = all offline).

@@ -29,13 +29,6 @@ const maxSuspendPerCycle = 2
 
 // ── Feature gate ────────────────────────────────────────────────────
 
-// ResourceEnabled reports whether resource-aware auto-suspend is active for
-// this TUI instance. All resource management code should check this gate
-// before taking any action.
-func (t *TUI) ResourceEnabled() bool {
-	return t.autoSuspend
-}
-
 // PressureThreshold returns the configured RSS percentage above which agents
 // may be auto-suspended. Returns 85 (the default) when not explicitly set.
 func (t *TUI) PressureThreshold() int {
@@ -43,17 +36,6 @@ func (t *TUI) PressureThreshold() int {
 		return t.pressureThreshold
 	}
 	return 85
-}
-
-// SystemMemoryAvailable returns the last polled available system RAM in
-// kilobytes. Returns 0 if not yet polled or if the query failed.
-func (t *TUI) SystemMemoryAvailable() int64 {
-	return t.systemMemAvail
-}
-
-// SystemMemoryTotal returns total system RAM in kilobytes.
-func (t *TUI) SystemMemoryTotal() int64 {
-	return t.systemMemTotal
 }
 
 // ── Memory monitor ──────────────────────────────────────────────────
@@ -268,7 +250,9 @@ func formatRSSHuman(kb int64) string {
 // pollPaneRSS returns the total RSS of a process and all its descendants in
 // kilobytes. This is necessary because the pane's stored PID is the shell
 // wrapper (/bin/sh), not the actual Claude process which is 2-3 levels deep:
-//   /bin/sh (2MB) -> node/ccs (75MB) -> claude (500-900MB)
+//
+//	/bin/sh (2MB) -> node/ccs (75MB) -> claude (500-900MB)
+//
 // Reading only the shell PID would report ~2MB instead of the real ~600-900MB.
 func pollPaneRSS(pid int) int64 {
 	return processTreeRSS(pid)

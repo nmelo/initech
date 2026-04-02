@@ -19,8 +19,8 @@ func TestHelpHintTextInCmdBar(t *testing.T) {
 	hintRow := sh - 1
 	var buf strings.Builder
 	for x := 0; x < sw; x++ {
-		c, _, _, _ := s.GetContent(x, hintRow)
-		buf.WriteRune(c)
+		c, _, _ := s.Get(x, hintRow)
+		buf.WriteString(c)
 	}
 	if !strings.Contains(buf.String(), "?:help") {
 		t.Errorf("cmd hint row %d = %q, want contains '?:help'", hintRow, buf.String())
@@ -39,8 +39,8 @@ func TestRenderHelp_RendersOnScreen(t *testing.T) {
 	sw, _ := s.Size()
 	var title strings.Builder
 	for x := 0; x < sw; x++ {
-		c, _, _, _ := s.GetContent(x, 0)
-		title.WriteRune(c)
+		c, _, _ := s.Get(x, 0)
+		title.WriteString(c)
 	}
 	if !strings.Contains(title.String(), "initech help") {
 		t.Errorf("title row = %q, want contains 'initech help'", title.String())
@@ -58,8 +58,8 @@ func TestRenderHelp_KeybindingsSectionVisible(t *testing.T) {
 	// Row 1 should start with "Keybindings" (first helpLine, offset 1 from title).
 	var row1 strings.Builder
 	for x := 0; x < 20; x++ {
-		c, _, _, _ := s.GetContent(x, 1)
-		row1.WriteRune(c)
+		c, _, _ := s.Get(x, 1)
+		row1.WriteString(c)
 	}
 	if !strings.Contains(row1.String(), "Keybindings") {
 		t.Errorf("row 1 = %q, want 'Keybindings' section", row1.String())
@@ -161,8 +161,8 @@ func TestHelpModalPriorityInRender(t *testing.T) {
 	sw, _ := s.Size()
 	var title strings.Builder
 	for x := 0; x < sw; x++ {
-		c, _, _, _ := s.GetContent(x, 0)
-		title.WriteRune(c)
+		c, _, _ := s.Get(x, 0)
+		title.WriteString(c)
 	}
 	if !strings.Contains(title.String(), "initech help") {
 		t.Errorf("help should take render priority; title = %q", title.String())

@@ -26,8 +26,8 @@ func TestRenderEventLog_EmptyShowsMessage(t *testing.T) {
 	for i := 0; i < sw-len(titleText); i++ {
 		match := true
 		for j, ch := range titleText {
-			c, _, _, _ := s.GetContent(i+j, 0)
-			if c != ch {
+			c, _, _ := s.Get(i+j, 0)
+			if c != string(ch) {
 				match = false
 				break
 			}
@@ -43,8 +43,8 @@ func TestRenderEventLog_EmptyShowsMessage(t *testing.T) {
 
 	// Row 2 should have descriptive hint text starting with spaces + "No events".
 	// The message: "  No events recorded. Events appear here when agents..."
-	c0, _, _, _ := s.GetContent(2, 2) // 'N' at position 2 (after 2 spaces)
-	if c0 != 'N' {
+	c0, _, _ := s.Get(2, 2) // 'N' at position 2 (after 2 spaces)
+	if c0 != "N" {
 		t.Errorf("empty state row 2 col 2 = %q, want 'N' from 'No events'", c0)
 	}
 }
@@ -243,8 +243,8 @@ func TestRenderEventLog_TitleShowsCount(t *testing.T) {
 	for i := 0; i < sw-len(want); i++ {
 		match := true
 		for j, ch := range want {
-			c, _, _, _ := s.GetContent(i+j, 0)
-			if c != ch {
+			c, _, _ := s.Get(i+j, 0)
+			if c != string(ch) {
 				match = false
 				break
 			}
@@ -274,4 +274,3 @@ func TestEventLog_NewEventVisibleAfterAppend(t *testing.T) {
 		t.Errorf("second event detail = %q, want 'second'", tui.eventLog[1].Detail)
 	}
 }
-

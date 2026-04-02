@@ -74,8 +74,8 @@ func TestRenderNotBlockedByRemoteConnection(t *testing.T) {
 	for y := 0; y < sh; y++ {
 		var line string
 		for x := 0; x < sw; x++ {
-			ch, _, _, _ := s.GetContent(x, y)
-			line += string(ch)
+			ch, _, _ := s.Get(x, y)
+			line += ch
 		}
 		if containsStr(line, "eng1") {
 			found = true

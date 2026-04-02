@@ -20,9 +20,6 @@ roles:
   - super
   - eng1
   - qa1
-grid:
-  - super
-  - eng1
 role_overrides:
   eng1:
     tech_stack: "Go 1.23"
@@ -65,9 +62,6 @@ func TestLoad(t *testing.T) {
 	}
 	if len(p.Roles) != 3 {
 		t.Errorf("Roles = %d, want 3", len(p.Roles))
-	}
-	if len(p.Grid) != 2 {
-		t.Errorf("Grid = %d, want 2", len(p.Grid))
 	}
 	if ov, ok := p.RoleOverrides["eng1"]; !ok {
 		t.Error("missing eng1 override")
@@ -148,7 +142,6 @@ func TestValidate_Valid(t *testing.T) {
 		Name:  "test",
 		Root:  "/tmp/test",
 		Roles: []string{"super", "eng1"},
-		Grid:  []string{"super"},
 		RoleOverrides: map[string]RoleOverride{
 			"eng1": {TechStack: "Go"},
 		},
@@ -242,18 +235,6 @@ func TestValidate_RoleWithDot(t *testing.T) {
 		if err := Validate(p); err == nil {
 			t.Errorf("expected error for role name %q containing dot", r)
 		}
-	}
-}
-
-func TestValidate_GridNotInRoles(t *testing.T) {
-	p := &Project{
-		Name:  "test",
-		Root:  "/tmp",
-		Roles: []string{"super"},
-		Grid:  []string{"eng1"},
-	}
-	if err := Validate(p); err == nil {
-		t.Error("expected error for grid role not in roles")
 	}
 }
 
@@ -487,9 +468,6 @@ resource:
 	if p.Resource.PressureThreshold != 70 {
 		t.Errorf("Resource.PressureThreshold = %d, want 70", p.Resource.PressureThreshold)
 	}
-	if p.Resource.EffectivePressureThreshold() != 70 {
-		t.Errorf("EffectivePressureThreshold() = %d, want 70", p.Resource.EffectivePressureThreshold())
-	}
 }
 
 func TestLoad_ResourceConfig_Absent(t *testing.T) {
@@ -506,9 +484,6 @@ func TestLoad_ResourceConfig_Absent(t *testing.T) {
 	}
 	if p.Resource.PressureThreshold != 0 {
 		t.Errorf("Resource.PressureThreshold = %d, want 0 (unset)", p.Resource.PressureThreshold)
-	}
-	if p.Resource.EffectivePressureThreshold() != DefaultPressureThreshold {
-		t.Errorf("EffectivePressureThreshold() = %d, want %d", p.Resource.EffectivePressureThreshold(), DefaultPressureThreshold)
 	}
 }
 
@@ -530,9 +505,6 @@ resource:
 
 	if !p.Resource.AutoSuspend {
 		t.Error("Resource.AutoSuspend should be true")
-	}
-	if p.Resource.EffectivePressureThreshold() != DefaultPressureThreshold {
-		t.Errorf("EffectivePressureThreshold() = %d, want %d", p.Resource.EffectivePressureThreshold(), DefaultPressureThreshold)
 	}
 }
 

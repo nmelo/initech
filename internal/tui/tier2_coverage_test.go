@@ -37,8 +37,8 @@ func TestRenderNotifications_SingleToast(t *testing.T) {
 	// Scan row sh-2 = 22 for the notification text.
 	var buf strings.Builder
 	for x := 0; x < 80; x++ {
-		c, _, _, _ := s.GetContent(x, 22)
-		buf.WriteRune(c)
+		c, _, _ := s.Get(x, 22)
+		buf.WriteString(c)
 	}
 	row := strings.TrimSpace(buf.String())
 	if !strings.Contains(row, "eng1") || !strings.Contains(row, "ini-abc done") {
@@ -48,9 +48,9 @@ func TestRenderNotifications_SingleToast(t *testing.T) {
 
 func TestRenderNotifications_ColorByType(t *testing.T) {
 	tests := []struct {
-		name    string
-		evType  EventType
-		wantBg  tcell.Color
+		name   string
+		evType EventType
+		wantBg tcell.Color
 	}{
 		{"completed", EventBeadCompleted, tcell.ColorDarkGreen},
 		{"claimed", EventBeadClaimed, tcell.ColorDodgerBlue},
@@ -76,7 +76,7 @@ func TestRenderNotifications_ColorByType(t *testing.T) {
 			// Find a cell on row 22 with the expected background.
 			found := false
 			for x := 0; x < 80; x++ {
-				_, _, style, _ := s.GetContent(x, 22)
+				_, style, _ := s.Get(x, 22)
 				_, bg, _ := style.Decompose()
 				if bg == tc.wantBg {
 					found = true
@@ -107,8 +107,8 @@ func TestRenderNotifications_MultipleStack(t *testing.T) {
 	readRow := func(y int) string {
 		var buf strings.Builder
 		for x := 0; x < 80; x++ {
-			c, _, _, _ := s.GetContent(x, y)
-			buf.WriteRune(c)
+			c, _, _ := s.Get(x, y)
+			buf.WriteString(c)
 		}
 		return buf.String()
 	}
@@ -151,8 +151,8 @@ func TestRenderNotifications_LongTextTruncated(t *testing.T) {
 	// Should not overflow or panic. The toast is capped at maxW=50.
 	var buf strings.Builder
 	for x := 0; x < 80; x++ {
-		c, _, _, _ := s.GetContent(x, 22)
-		buf.WriteRune(c)
+		c, _, _ := s.Get(x, 22)
+		buf.WriteString(c)
 	}
 	text := strings.TrimSpace(buf.String())
 	// Should end with ellipsis.

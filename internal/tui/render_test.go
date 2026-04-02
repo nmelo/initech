@@ -57,8 +57,8 @@ func TestRenderStatusBar_DefaultHints(t *testing.T) {
 	y := sh - 1
 	var line string
 	for x := 0; x < 60; x++ {
-		ch, _, _, _ := s.GetContent(x, y)
-		line += string(ch)
+		ch, _, _ := s.Get(x, y)
+		line += ch
 	}
 	if len(line) == 0 {
 		t.Error("status bar should render hint text")
@@ -98,8 +98,8 @@ func TestRenderStatusBar_Error(t *testing.T) {
 	y := sh - 1
 	var line string
 	for x := 0; x < 20; x++ {
-		ch, _, _, _ := s.GetContent(x, y)
-		line += string(ch)
+		ch, _, _ := s.Get(x, y)
+		line += ch
 	}
 	if len(line) == 0 {
 		t.Error("status bar should render error text")
@@ -121,9 +121,9 @@ func TestRenderStatusBar_CmdActive(t *testing.T) {
 	// Should show the > prompt on the bottom row.
 	_, sh := s.Size()
 	y := sh - 1
-	ch, _, _, _ := s.GetContent(0, y)
-	if ch != '>' {
-		t.Errorf("command bar should show > prompt, got %q", string(ch))
+	ch, _, _ := s.Get(0, y)
+	if ch != ">" {
+		t.Errorf("command bar should show > prompt, got %q", ch)
 	}
 }
 
@@ -242,8 +242,8 @@ func TestRenderHints_ShowsTipAndShortcuts(t *testing.T) {
 	y := sh - 1
 	var line string
 	for x := 0; x < sw; x++ {
-		ch, _, _, _ := s.GetContent(x, y)
-		line += string(ch)
+		ch, _, _ := s.Get(x, y)
+		line += ch
 	}
 
 	// Should contain the first tip on the left.
@@ -275,8 +275,8 @@ func TestRenderHints_TruncatesOnNarrowTerminal(t *testing.T) {
 	y := sh - 1
 	var line string
 	for x := 0; x < sw; x++ {
-		ch, _, _, _ := s.GetContent(x, y)
-		line += string(ch)
+		ch, _, _ := s.Get(x, y)
+		line += ch
 	}
 	if !containsStr(line, "help") {
 		t.Errorf("shortcuts should be visible even on narrow terminal, got: %q", line)
@@ -341,8 +341,8 @@ func TestRenderHints_NoBattery(t *testing.T) {
 	y := sh - 1
 	var line string
 	for x := 0; x < sw; x++ {
-		ch, _, _, _ := s.GetContent(x, y)
-		line += string(ch)
+		ch, _, _ := s.Get(x, y)
+		line += ch
 	}
 	// No battery string should appear.
 	if containsStr(line, "%") {
@@ -361,8 +361,8 @@ func TestRenderHints_BatteryDischarging(t *testing.T) {
 	y := sh - 1
 	var line string
 	for x := 0; x < sw; x++ {
-		ch, _, _, _ := s.GetContent(x, y)
-		line += string(ch)
+		ch, _, _ := s.Get(x, y)
+		line += ch
 	}
 	if !containsStr(line, "67%") {
 		t.Errorf("battery should show 67%%, got: %q", line)
@@ -383,8 +383,8 @@ func TestRenderHints_BatteryCharging(t *testing.T) {
 	y := sh - 1
 	var line string
 	for x := 0; x < sw; x++ {
-		ch, _, _, _ := s.GetContent(x, y)
-		line += string(ch)
+		ch, _, _ := s.Get(x, y)
+		line += ch
 	}
 	if !containsStr(line, "42% +") {
 		t.Errorf("charging battery should show '42%% +', got: %q", line)
@@ -402,8 +402,8 @@ func TestRenderHints_BatteryLow(t *testing.T) {
 	y := sh - 1
 	var line string
 	for x := 0; x < sw; x++ {
-		ch, _, _, _ := s.GetContent(x, y)
-		line += string(ch)
+		ch, _, _ := s.Get(x, y)
+		line += ch
 	}
 	if !containsStr(line, "8%") {
 		t.Errorf("low battery should show 8%%, got: %q", line)
@@ -435,8 +435,8 @@ func TestRenderHints_ShowsQuota(t *testing.T) {
 	y := sh - 1
 	var line string
 	for x := 0; x < sw; x++ {
-		ch, _, _, _ := s.GetContent(x, y)
-		line += string(ch)
+		ch, _, _ := s.Get(x, y)
+		line += ch
 	}
 	if !containsStr(line, "Q:75%") {
 		t.Errorf("status bar should contain Q:75%%, got: %q", line)
@@ -454,8 +454,8 @@ func TestRenderHints_HidesQuotaWhenUnavailable(t *testing.T) {
 	y := sh - 1
 	var line string
 	for x := 0; x < sw; x++ {
-		ch, _, _, _ := s.GetContent(x, y)
-		line += string(ch)
+		ch, _, _ := s.Get(x, y)
+		line += ch
 	}
 	if containsStr(line, "Q:") {
 		t.Errorf("status bar should not show Q: when quota unavailable, got: %q", line)
@@ -473,8 +473,8 @@ func TestRenderHints_QuotaColorYellow(t *testing.T) {
 	sw, sh := s.Size()
 	y := sh - 1
 	for x := 0; x < sw; x++ {
-		ch, _, style, _ := s.GetContent(x, y)
-		if ch == 'Q' {
+		ch, style, _ := s.Get(x, y)
+		if ch == "Q" {
 			fg, _, _ := style.Decompose()
 			if fg != tcell.ColorYellow {
 				t.Errorf("Q at 85%% should be yellow, got fg=%v", fg)
@@ -496,8 +496,8 @@ func TestRenderHints_QuotaColorRed(t *testing.T) {
 	sw, sh := s.Size()
 	y := sh - 1
 	for x := 0; x < sw; x++ {
-		ch, _, style, _ := s.GetContent(x, y)
-		if ch == 'Q' {
+		ch, style, _ := s.Get(x, y)
+		if ch == "Q" {
 			fg, _, _ := style.Decompose()
 			if fg != tcell.ColorRed {
 				t.Errorf("Q at 97%% should be red, got fg=%v", fg)
@@ -525,8 +525,8 @@ func TestRenderHints_ShowsPending(t *testing.T) {
 	y := sh - 1
 	var line string
 	for x := 0; x < sw; x++ {
-		ch, _, _, _ := s.GetContent(x, y)
-		line += string(ch)
+		ch, _, _ := s.Get(x, y)
+		line += ch
 	}
 	if !containsStr(line, "2 pending") {
 		t.Errorf("status bar should show '2 pending', got: %q", line)
@@ -545,8 +545,8 @@ func TestRenderHints_NoPendingWhenEmpty(t *testing.T) {
 	y := sh - 1
 	var line string
 	for x := 0; x < sw; x++ {
-		ch, _, _, _ := s.GetContent(x, y)
-		line += string(ch)
+		ch, _, _ := s.Get(x, y)
+		line += ch
 	}
 	if containsStr(line, "pending") {
 		t.Errorf("status bar should NOT show 'pending' when no timers, got: %q", line)
@@ -564,8 +564,8 @@ func TestRenderHints_ShowsClock(t *testing.T) {
 	y := sh - 1
 	var line string
 	for x := 0; x < sw; x++ {
-		ch, _, _, _ := s.GetContent(x, y)
-		line += string(ch)
+		ch, _, _ := s.Get(x, y)
+		line += ch
 	}
 	now := time.Now().Format("15:04")
 	if !containsStr(line, now) {

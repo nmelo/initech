@@ -35,11 +35,11 @@ func TestOverlayDot_IdleWithBacklogIsYellow(t *testing.T) {
 	dotX := px + 2
 	dotY := 2
 
-	mainc, _, style, _ := s.GetContent(dotX, dotY)
+	mainc, style, _ := s.Get(dotX, dotY)
 
 	// Must be hollow dot ○ (idle state, not running).
-	if mainc != '\u25cb' {
-		t.Errorf("idle+backlog dot = %q (%U), want ○ (U+25CB)", mainc, mainc)
+	if mainc != "\u25cb" {
+		t.Errorf("idle+backlog dot = %q (%q), want ○ (U+25CB)", mainc, mainc)
 	}
 	// Must be yellow color.
 	fg, _, _ := style.Decompose()
@@ -63,8 +63,8 @@ func TestOverlayDot_RegularIdleIsGray(t *testing.T) {
 	dotX := px + 2
 	dotY := 2
 
-	mainc, _, style, _ := s.GetContent(dotX, dotY)
-	if mainc != '\u25cb' {
+	mainc, style, _ := s.Get(dotX, dotY)
+	if mainc != "\u25cb" {
 		t.Errorf("regular idle dot = %q, want ○", mainc)
 	}
 	fg, _, _ := style.Decompose()
@@ -86,8 +86,8 @@ func TestOverlayStatusText_IdleWithBacklog(t *testing.T) {
 	sw, _ := s.Size()
 	var row strings.Builder
 	for x := 0; x < sw; x++ {
-		c, _, _, _ := s.GetContent(x, 2)
-		row.WriteRune(c)
+		c, _, _ := s.Get(x, 2)
+		row.WriteString(c)
 	}
 	if !strings.Contains(row.String(), "5 ready") {
 		t.Errorf("overlay row = %q, want contains '5 ready'", row.String())
@@ -107,8 +107,8 @@ func TestOverlayStatusText_BeadPriorityOverBacklog(t *testing.T) {
 	sw, _ := s.Size()
 	var row strings.Builder
 	for x := 0; x < sw; x++ {
-		c, _, _, _ := s.GetContent(x, 2)
-		row.WriteRune(c)
+		c, _, _ := s.Get(x, 2)
+		row.WriteString(c)
 	}
 	rowStr := row.String()
 	// Bead ID should appear.
@@ -194,14 +194,14 @@ func TestRenderOverlay_AgentInfoPopulated(t *testing.T) {
 	dotX := px + 2
 
 	// eng1: row 2, yellow dot.
-	_, _, style1, _ := s.GetContent(dotX, 2)
+	_, style1, _ := s.Get(dotX, 2)
 	fg1, _, _ := style1.Decompose()
 	if fg1 != tcell.ColorYellow {
 		t.Errorf("eng1 (idle+backlog) dot color = %v, want Yellow", fg1)
 	}
 
 	// eng2: row 3, green dot.
-	_, _, style2, _ := s.GetContent(dotX, 3)
+	_, style2, _ := s.Get(dotX, 3)
 	fg2, _, _ := style2.Decompose()
 	if fg2 != tcell.ColorGreen {
 		t.Errorf("eng2 (running) dot color = %v, want Green", fg2)

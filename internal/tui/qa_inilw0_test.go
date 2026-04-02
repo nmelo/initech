@@ -29,10 +29,10 @@ func TestActivityBar_IdleIsUniform(t *testing.T) {
 	p.Render(s, false, false, 1, Selection{})
 
 	// Top row (y=0) should have uniform foreground color across all cells.
-	_, _, refStyle, _ := s.GetContent(0, 0)
+	_, refStyle, _ := s.Get(0, 0)
 	refFg, _, _ := refStyle.Decompose()
 	for x := 1; x < 40; x++ {
-		_, _, style, _ := s.GetContent(x, 0)
+		_, style, _ := s.Get(x, 0)
 		fg, _, _ := style.Decompose()
 		if fg != refFg {
 			t.Errorf("idle bar col %d fg differs from col 0: uniform expected", x)
@@ -63,7 +63,7 @@ func TestActivityBar_RunningHasVariation(t *testing.T) {
 	// Top row should have at least 2 different foreground colors (bright peak + dim base).
 	colors := make(map[tcell.Color]bool)
 	for x := 0; x < 40; x++ {
-		_, _, style, _ := s.GetContent(x, 0)
+		_, style, _ := s.Get(x, 0)
 		fg, _, _ := style.Decompose()
 		colors[fg] = true
 	}
@@ -91,10 +91,10 @@ func TestActivityBar_DeadIsStatic(t *testing.T) {
 	p.Render(s, false, false, 1, Selection{})
 
 	// Should be uniform (static bar, not animated).
-	_, _, refStyle, _ := s.GetContent(0, 0)
+	_, refStyle, _ := s.Get(0, 0)
 	refFg, _, _ := refStyle.Decompose()
 	for x := 1; x < 40; x++ {
-		_, _, style, _ := s.GetContent(x, 0)
+		_, style, _ := s.Get(x, 0)
 		fg, _, _ := style.Decompose()
 		if fg != refFg {
 			t.Errorf("dead bar col %d fg differs: should be static", x)
@@ -122,10 +122,10 @@ func TestActivityBar_SuspendedIsStatic(t *testing.T) {
 	}
 	p.Render(s, false, false, 1, Selection{})
 
-	_, _, refStyle, _ := s.GetContent(0, 0)
+	_, refStyle, _ := s.Get(0, 0)
 	refFg, _, _ := refStyle.Decompose()
 	for x := 1; x < 40; x++ {
-		_, _, style, _ := s.GetContent(x, 0)
+		_, style, _ := s.Get(x, 0)
 		fg, _, _ := style.Decompose()
 		if fg != refFg {
 			t.Errorf("suspended bar col %d fg differs: should be static", x)
@@ -154,9 +154,9 @@ func TestActivityBar_UsesHorizontalLine(t *testing.T) {
 	p.Render(s, false, false, 1, Selection{})
 
 	for x := 0; x < 40; x++ {
-		c, _, _, _ := s.GetContent(x, 0)
-		if c != '\u2500' {
-			t.Errorf("bar col %d char = %q (%U), want U+2500", x, c, c)
+		c, _, _ := s.Get(x, 0)
+		if c != "\u2500" {
+			t.Errorf("bar col %d char = %q (%q), want U+2500", x, c, c)
 			break
 		}
 	}

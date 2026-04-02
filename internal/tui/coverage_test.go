@@ -14,14 +14,14 @@ import (
 
 func TestInnerSize(t *testing.T) {
 	tests := []struct {
-		name       string
-		r          Region
-		wantCols   int
-		wantRows   int
+		name     string
+		r        Region
+		wantCols int
+		wantRows int
 	}{
 		{"normal", Region{0, 0, 80, 25}, 80, 24},
-		{"min_height", Region{0, 0, 80, 1}, 80, 1},      // H-1=0 clamped to 1
-		{"zero_width", Region{0, 0, 0, 10}, 1, 9},        // W=0 clamped to 1
+		{"min_height", Region{0, 0, 80, 1}, 80, 1}, // H-1=0 clamped to 1
+		{"zero_width", Region{0, 0, 0, 10}, 1, 9},  // W=0 clamped to 1
 		{"tiny", Region{0, 0, 1, 2}, 1, 1},
 	}
 	for _, tt := range tests {
@@ -633,8 +633,8 @@ func TestRenderOverlayOnScreen(t *testing.T) {
 	sw, _ := s.Size()
 	found := false
 	for x := sw - 30; x < sw; x++ {
-		mainc, _, _, _ := s.GetContent(x, 1)
-		if mainc != ' ' && mainc != 0 {
+		mainc, _, _ := s.Get(x, 1)
+		if mainc != " " && mainc != "" {
 			found = true
 			break
 		}
@@ -643,7 +643,6 @@ func TestRenderOverlayOnScreen(t *testing.T) {
 		t.Error("overlay should render content on screen")
 	}
 }
-
 
 func TestRenderGridDividersOnScreen(t *testing.T) {
 	tui, s := newTestTUIWithScreen("a", "b")
@@ -654,8 +653,8 @@ func TestRenderGridDividersOnScreen(t *testing.T) {
 	// The divider between panes should be a vertical line at the boundary.
 	if len(tui.plan.Panes) >= 2 && tui.plan.Panes[1].Region.X > 0 {
 		divX := tui.plan.Panes[1].Region.X - 1
-		mainc, _, _, _ := s.GetContent(divX, tui.plan.Panes[1].Region.Y)
-		if mainc != '\u2502' {
+		mainc, _, _ := s.Get(divX, tui.plan.Panes[1].Region.Y)
+		if mainc != "\u2502" {
 			t.Errorf("divider char = %q, want U+2502", mainc)
 		}
 	}
@@ -670,8 +669,8 @@ func TestRenderCmdLineOnScreen(t *testing.T) {
 
 	_, sh := s.Size()
 	// Command line prompt '>' should appear at sh-1.
-	mainc, _, _, _ := s.GetContent(0, sh-1)
-	if mainc != '>' {
+	mainc, _, _ := s.Get(0, sh-1)
+	if mainc != ">" {
 		t.Errorf("cmd prompt = %q, want '>'", mainc)
 	}
 }
@@ -685,8 +684,8 @@ func TestRenderCmdErrorOnScreen(t *testing.T) {
 
 	_, sh := s.Size()
 	// Error text should appear at sh-1.
-	mainc, _, _, _ := s.GetContent(1, sh-1)
-	if mainc != 'b' {
+	mainc, _, _ := s.Get(1, sh-1)
+	if mainc != "b" {
 		t.Errorf("error first char = %q, want 'b'", mainc)
 	}
 }
@@ -971,8 +970,8 @@ func TestRenderPaneScrollbackMode(t *testing.T) {
 	ribbonY := r.Y + r.H - 1
 	found := false
 	for x := r.X; x < r.X+r.W; x++ {
-		mainc, _, _, _ := s.GetContent(x, ribbonY)
-		if mainc == '+' {
+		mainc, _, _ := s.Get(x, ribbonY)
+		if mainc == "+" {
 			found = true
 			break
 		}
@@ -1025,8 +1024,8 @@ func TestRenderOverlayTitleShowsProjectName(t *testing.T) {
 outer:
 	for y := 0; y < sh; y++ {
 		for x := 0; x < sw; x++ {
-			mainc, _, _, _ := s.GetContent(x, y)
-			if mainc == 'm' { // first char of "myproject"
+			mainc, _, _ := s.Get(x, y)
+			if mainc == "m" { // first char of "myproject"
 				found = true
 				break outer
 			}
@@ -1112,7 +1111,6 @@ func TestRenderWithCursor(t *testing.T) {
 	tui.panes[0].(*Pane).emu.Write([]byte("cursor test\r\n"))
 	tui.render() // Should draw cursor.
 }
-
 
 // ---------------------------------------------------------------------------
 // contentOffset with content heavier than pane

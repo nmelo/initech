@@ -12,20 +12,6 @@ import (
 
 // ── Feature gate tests ──────────────────────────────────────────────
 
-func TestResourceEnabled_Default(t *testing.T) {
-	tui := &TUI{}
-	if tui.ResourceEnabled() {
-		t.Error("ResourceEnabled should be false by default")
-	}
-}
-
-func TestResourceEnabled_WhenSet(t *testing.T) {
-	tui := &TUI{autoSuspend: true}
-	if !tui.ResourceEnabled() {
-		t.Error("ResourceEnabled should be true when autoSuspend is set")
-	}
-}
-
 func TestPressureThreshold_Default(t *testing.T) {
 	tui := &TUI{}
 	if got := tui.PressureThreshold(); got != 85 {
@@ -158,20 +144,6 @@ func TestSystemMemoryAvail(t *testing.T) {
 	}
 }
 
-func TestSystemMemoryAvailable_Accessor(t *testing.T) {
-	tui := &TUI{systemMemAvail: 4096}
-	if got := tui.SystemMemoryAvailable(); got != 4096 {
-		t.Errorf("SystemMemoryAvailable() = %d, want 4096", got)
-	}
-}
-
-func TestSystemMemoryTotal_Accessor(t *testing.T) {
-	tui := &TUI{systemMemTotal: 8192}
-	if got := tui.SystemMemoryTotal(); got != 8192 {
-		t.Errorf("SystemMemoryTotal() = %d, want 8192", got)
-	}
-}
-
 // --- pollAllRSS integration ---
 
 func TestPollAllRSS_Integration(t *testing.T) {
@@ -183,8 +155,8 @@ func TestPollAllRSS_Integration(t *testing.T) {
 	if rss := p.MemoryRSS(); rss <= 0 {
 		t.Errorf("after pollAllRSS, pane RSS = %d, want > 0", rss)
 	}
-	if avail := tui.SystemMemoryAvailable(); avail <= 0 {
-		t.Errorf("after pollAllRSS, systemMemAvail = %d, want > 0", avail)
+	if tui.systemMemAvail <= 0 {
+		t.Errorf("after pollAllRSS, systemMemAvail = %d, want > 0", tui.systemMemAvail)
 	}
 }
 
@@ -367,7 +339,7 @@ func TestSuspendPolicy_DisabledWhenGateOff(t *testing.T) {
 	// to 85 so it would still evaluate. The gate prevents the goroutine
 	// from launching in Run(). Test the gate separately.
 	tui := &TUI{autoSuspend: false}
-	if tui.ResourceEnabled() {
+	if tui.autoSuspend {
 		t.Error("resource should not be enabled when autoSuspend is false")
 	}
 }

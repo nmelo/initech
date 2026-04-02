@@ -79,8 +79,8 @@ func TestOverlayDot_SuspendedIsBlueHollow(t *testing.T) {
 	sw, _ := s.Size()
 	found := false
 	for x := sw - 30; x < sw; x++ {
-		c, _, style, _ := s.GetContent(x, 2) // row 2 = first agent row (py=1, +1)
-		if c == '\u25cb' { // hollow dot
+		c, style, _ := s.Get(x, 2) // row 2 = first agent row (py=1, +1)
+		if c == "\u25cb" {                   // hollow dot
 			fg, _, _ := style.Decompose()
 			if fg == tcell.ColorDodgerBlue {
 				found = true
@@ -114,8 +114,8 @@ func TestRibbon_SuspendedShowsSusp(t *testing.T) {
 	// Ribbon is at row r.Y + r.H - 1 = 10. Scan for "[susp]".
 	var buf strings.Builder
 	for x := 0; x < 40; x++ {
-		c, _, _, _ := s.GetContent(x, 10)
-		buf.WriteRune(c)
+		c, _, _ := s.Get(x, 10)
+		buf.WriteString(c)
 	}
 	ribbon := buf.String()
 	if !strings.Contains(ribbon, "[susp]") {
@@ -143,8 +143,8 @@ func TestRibbon_DeadNotSuspendedShowsDead(t *testing.T) {
 
 	var buf strings.Builder
 	for x := 0; x < 40; x++ {
-		c, _, _, _ := s.GetContent(x, 10)
-		buf.WriteRune(c)
+		c, _, _ := s.Get(x, 10)
+		buf.WriteString(c)
 	}
 	ribbon := buf.String()
 	if !strings.Contains(ribbon, "[dead]") {

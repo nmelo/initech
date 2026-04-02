@@ -168,15 +168,15 @@ func TestRenderCmdLine_PromptAndInput(t *testing.T) {
 	_, sh := s.Size()
 	y := sh - 1 // status bar renders at sh-1
 	// First char should be '>'.
-	c, _, _, _ := s.GetContent(0, y)
-	if c != '>' {
+	c, _, _ := s.Get(0, y)
+	if c != ">" {
 		t.Errorf("prompt char = %q, want '>'", c)
 	}
 	// Input text should start at x=2.
 	var buf strings.Builder
 	for x := 2; x < 12; x++ {
-		c, _, _, _ := s.GetContent(x, y)
-		buf.WriteRune(c)
+		c, _, _ := s.Get(x, y)
+		buf.WriteString(c)
 	}
 	if !strings.HasPrefix(buf.String(), "grid 3x3") {
 		t.Errorf("input = %q, want starts with 'grid 3x3'", buf.String())
@@ -198,8 +198,8 @@ func TestRenderCmdLine_ConfirmPrompt(t *testing.T) {
 	_, sh := s.Size()
 	var buf strings.Builder
 	for x := 0; x < 60; x++ {
-		c, _, _, _ := s.GetContent(x, sh-1)
-		buf.WriteRune(c)
+		c, _, _ := s.Get(x, sh-1)
+		buf.WriteString(c)
 	}
 	row := buf.String()
 	if !strings.Contains(row, "Are you sure") {
@@ -217,8 +217,8 @@ func TestRenderCmdLine_HintText(t *testing.T) {
 	_, sh := s.Size()
 	var buf strings.Builder
 	for x := 40; x < 80; x++ {
-		c, _, _, _ := s.GetContent(x, sh-1)
-		buf.WriteRune(c)
+		c, _, _ := s.Get(x, sh-1)
+		buf.WriteString(c)
 	}
 	if !strings.Contains(buf.String(), "?:help") {
 		t.Errorf("hint text = %q, want contains '?:help'", buf.String())
@@ -239,8 +239,8 @@ func TestRenderCmdLine_TabHint(t *testing.T) {
 	// Tab hint is drawn one row above the input (sh-2).
 	var buf strings.Builder
 	for x := 0; x < 40; x++ {
-		c, _, _, _ := s.GetContent(x, sh-2)
-		buf.WriteRune(c)
+		c, _, _ := s.Get(x, sh-2)
+		buf.WriteString(c)
 	}
 	if !strings.Contains(buf.String(), "eng1  eng2  eng3") {
 		t.Errorf("tab hint = %q, want contains 'eng1  eng2  eng3'", buf.String())

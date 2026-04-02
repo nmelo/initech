@@ -61,12 +61,9 @@ func runStandup(cmd *cobra.Command, args []string) error {
 
 	// Recently shipped (closed beads).
 	shipped := queryBeads(runner, "list", "--status", "closed", "--json")
-	var recentlyShipped []standupBead
-	for _, b := range shipped {
-		// bd doesn't have a --closed-after flag in all versions,
-		// so we include all closed beads and let the user scan
-		recentlyShipped = append(recentlyShipped, b)
-	}
+	// bd doesn't have a --closed-after flag in all versions,
+	// so we include all closed beads and let the user scan.
+	recentlyShipped := append([]standupBead(nil), shipped...)
 
 	fmt.Fprintln(out, "\n"+color.Bold("### What's New"))
 	if len(recentlyShipped) == 0 {

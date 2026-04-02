@@ -112,7 +112,7 @@ func TestFakeRunner(t *testing.T) {
 	}
 
 	// RunInDir
-	out, err = f.RunInDir("/tmp", "ls", "-la")
+	_, err = f.RunInDir("/tmp", "ls", "-la")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

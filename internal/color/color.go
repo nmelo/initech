@@ -51,9 +51,6 @@ func hasNoColorArg(args []string) bool {
 // the --no-color flag.
 func SetEnabled(v bool) { enabled = v }
 
-// Enabled reports whether colors are currently active.
-func Enabled() bool { return enabled }
-
 var (
 	styleGreen  = ansi.NewStyle().ForegroundColor(ansi.BrightGreen)
 	styleRed    = ansi.NewStyle().ForegroundColor(ansi.BrightRed)

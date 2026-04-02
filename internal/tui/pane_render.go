@@ -36,11 +36,11 @@ func (c *clampedScreen) SetContent(x, y int, ch rune, comb []rune, style tcell.S
 	}
 }
 
-func (c *clampedScreen) GetContent(x, y int) (rune, []rune, tcell.Style, int) {
+func (c *clampedScreen) Get(x, y int) (string, tcell.Style, int) {
 	if x >= c.r.X && x < c.r.X+c.r.W && y >= c.r.Y && y < c.r.Y+c.r.H {
-		return c.Screen.GetContent(x, y)
+		return c.Screen.Get(x, y)
 	}
-	return ' ', nil, tcell.StyleDefault, 1
+	return " ", tcell.StyleDefault, 1
 }
 
 // Render draws the pane's bottom ribbon and terminal content onto the tcell screen.

@@ -90,17 +90,11 @@ func TestEnabledContainsESC(t *testing.T) {
 // TestSetEnabled verifies the toggle works.
 func TestSetEnabled(t *testing.T) {
 	color.SetEnabled(true)
-	if !color.Enabled() {
-		t.Fatal("Enabled() should be true after SetEnabled(true)")
-	}
 	if color.Green("x") == "x" {
 		t.Fatal("Green should add ANSI codes when enabled")
 	}
 
 	color.SetEnabled(false)
-	if color.Enabled() {
-		t.Fatal("Enabled() should be false after SetEnabled(false)")
-	}
 	if color.Green("x") != "x" {
 		t.Fatal("Green should pass through when disabled")
 	}

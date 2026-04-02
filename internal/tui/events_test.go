@@ -104,8 +104,8 @@ func TestHandleAgentEventCompletionLongerTTL(t *testing.T) {
 	tui.handleAgentEvent(AgentEvent{Type: EventBeadCompleted, Pane: "eng1"})
 	tui.handleAgentEvent(AgentEvent{Type: EventBeadClaimed, Pane: "eng2"})
 
-	completionTTL := tui.notifications[0].expires.Sub(time.Now())
-	claimedTTL := tui.notifications[1].expires.Sub(time.Now())
+	completionTTL := time.Until(tui.notifications[0].expires)
+	claimedTTL := time.Until(tui.notifications[1].expires)
 	if completionTTL <= claimedTTL {
 		t.Errorf("completion TTL (%v) should be longer than claimed TTL (%v)", completionTTL, claimedTTL)
 	}

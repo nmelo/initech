@@ -56,8 +56,8 @@ func TestRenderTop_TitleVisible(t *testing.T) {
 	sw, _ := s.Size()
 	var buf strings.Builder
 	for x := 0; x < sw; x++ {
-		c, _, _, _ := s.GetContent(x, 0)
-		buf.WriteRune(c)
+		c, _, _ := s.Get(x, 0)
+		buf.WriteString(c)
 	}
 	if !strings.Contains(buf.String(), "initech top") {
 		t.Errorf("title row = %q, want 'initech top'", buf.String())
@@ -80,7 +80,7 @@ func TestRenderTop_TitleGreenWhenRunning(t *testing.T) {
 	// Find the title text and check its background color.
 	sw, _ := s.Size()
 	titleStart := (sw - len(" initech top ")) / 2
-	_, _, style, _ := s.GetContent(titleStart+1, 0)
+	_, style, _ := s.Get(titleStart+1, 0)
 	_, bg, _ := style.Decompose()
 	if bg != tcell.ColorDarkGreen {
 		t.Errorf("title bg with running agent = %v, want DarkGreen", bg)
@@ -103,7 +103,7 @@ func TestRenderTop_TitleBlueWhenAllIdle(t *testing.T) {
 
 	sw, _ := s.Size()
 	titleStart := (sw - len(" initech top ")) / 2
-	_, _, style, _ := s.GetContent(titleStart+1, 0)
+	_, style, _ := s.Get(titleStart+1, 0)
 	_, bg, _ := style.Decompose()
 	if bg != tcell.ColorDodgerBlue {
 		t.Errorf("title bg with all idle = %v, want DodgerBlue", bg)
@@ -118,8 +118,8 @@ func TestRenderTop_HeaderRow(t *testing.T) {
 
 	var buf strings.Builder
 	for x := 0; x < 120; x++ {
-		c, _, _, _ := s.GetContent(x, 1)
-		buf.WriteRune(c)
+		c, _, _ := s.Get(x, 1)
+		buf.WriteString(c)
 	}
 	row := buf.String()
 	for _, hdr := range []string{"AGENT", "PID", "PROCESS", "COMMAND", "RSS", "STATUS"} {
@@ -139,8 +139,8 @@ func TestRenderTop_AgentRowRendered(t *testing.T) {
 	// Agent data row is at y=3 (title=0, header=1, separator=2, data=3).
 	var buf strings.Builder
 	for x := 0; x < 120; x++ {
-		c, _, _, _ := s.GetContent(x, 3)
-		buf.WriteRune(c)
+		c, _, _ := s.Get(x, 3)
+		buf.WriteString(c)
 	}
 	row := buf.String()
 	if !strings.Contains(row, "super") {
@@ -162,9 +162,9 @@ func TestRenderTop_DeadStyleApplied(t *testing.T) {
 	tui.renderTop()
 
 	// Check that the 'e' of 'eng1' has red foreground (drawField starts at x=1).
-	c, _, style, _ := s.GetContent(1, 3)
+	c, style, _ := s.Get(1, 3)
 	fg, _, _ := style.Decompose()
-	if c != 'e' {
+	if c != "e" {
 		t.Errorf("expected 'e' at (1,3), got %q", c)
 	}
 	if fg != tcell.ColorRed {
@@ -179,9 +179,9 @@ func TestRenderTop_SuspendedStyleApplied(t *testing.T) {
 	tui.top.selected = -1
 	tui.renderTop()
 
-	c, _, style, _ := s.GetContent(1, 3)
+	c, style, _ := s.Get(1, 3)
 	fg, _, _ := style.Decompose()
-	if c != 'e' {
+	if c != "e" {
 		t.Errorf("expected 'e' at (1,3), got %q", c)
 	}
 	if fg != tcell.ColorDodgerBlue {
@@ -199,7 +199,7 @@ func TestRenderTop_SelectedStyleApplied(t *testing.T) {
 
 	// Selected row (eng2) is at y=4. Check it has DarkBlue background.
 	// drawField writes at x=1 for the first column.
-	_, _, style, _ := s.GetContent(1, 4)
+	_, style, _ := s.Get(1, 4)
 	_, bg, _ := style.Decompose()
 	if bg != tcell.ColorDarkBlue {
 		t.Errorf("selected row bg = %v, want DarkBlue", bg)
@@ -220,8 +220,8 @@ func TestRenderTop_TotalRow(t *testing.T) {
 	for y := 5; y <= 8; y++ {
 		var buf strings.Builder
 		for x := 0; x < 80; x++ {
-			c, _, _, _ := s.GetContent(x, y)
-			buf.WriteRune(c)
+			c, _, _ := s.Get(x, y)
+			buf.WriteString(c)
 		}
 		row := buf.String()
 		if strings.Contains(row, "Total") && strings.Contains(row, "2 alive") {
@@ -243,8 +243,8 @@ func TestRenderTop_HelpLine(t *testing.T) {
 	_, sh := s.Size()
 	var buf strings.Builder
 	for x := 0; x < 80; x++ {
-		c, _, _, _ := s.GetContent(x, sh-1)
-		buf.WriteRune(c)
+		c, _, _ := s.Get(x, sh-1)
+		buf.WriteString(c)
 	}
 	help := buf.String()
 	if !strings.Contains(help, "[r]estart") {
@@ -261,8 +261,8 @@ func TestRenderTop_BeadInStatus(t *testing.T) {
 
 	var buf strings.Builder
 	for x := 0; x < 120; x++ {
-		c, _, _, _ := s.GetContent(x, 3)
-		buf.WriteRune(c)
+		c, _, _ := s.Get(x, 3)
+		buf.WriteString(c)
 	}
 	if !strings.Contains(buf.String(), "ini-abc") {
 		t.Errorf("status should include bead ID: %q", buf.String())
@@ -281,8 +281,8 @@ func TestRenderTop_NarrowTerminal(t *testing.T) {
 
 	var buf strings.Builder
 	for x := 0; x < 30; x++ {
-		c, _, _, _ := s.GetContent(x, 0)
-		buf.WriteRune(c)
+		c, _, _ := s.Get(x, 0)
+		buf.WriteString(c)
 	}
 	if !strings.Contains(buf.String(), "too narrow") {
 		t.Errorf("narrow terminal should show error: %q", buf.String())
@@ -291,9 +291,9 @@ func TestRenderTop_NarrowTerminal(t *testing.T) {
 
 func TestRenderTop_RSSFormatTiers(t *testing.T) {
 	tui, s := topTestTUI([]topEntry{
-		{Name: "a", Status: "idle", RSS: 500},       // KB
-		{Name: "b", Status: "idle", RSS: 5000},      // MB
-		{Name: "c", Status: "idle", RSS: 2000000},   // GB
+		{Name: "a", Status: "idle", RSS: 500},     // KB
+		{Name: "b", Status: "idle", RSS: 5000},    // MB
+		{Name: "c", Status: "idle", RSS: 2000000}, // GB
 	})
 	tui.top.selected = -1
 	tui.renderTop()
@@ -302,8 +302,8 @@ func TestRenderTop_RSSFormatTiers(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		var buf strings.Builder
 		for x := 0; x < 120; x++ {
-			c, _, _, _ := s.GetContent(x, 3+i)
-			buf.WriteRune(c)
+			c, _, _ := s.Get(x, 3+i)
+			buf.WriteString(c)
 		}
 		rows[i] = buf.String()
 	}
@@ -556,4 +556,3 @@ func TestRefreshTopData_HiddenStatus(t *testing.T) {
 		t.Errorf("hidden pane status = %q, want contains '[hidden]'", tui.top.data[0].Status)
 	}
 }
-

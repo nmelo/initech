@@ -647,11 +647,6 @@ func emulatorBottomText(emu *vt.SafeEmulator, lines int) string {
 	return buf.String()
 }
 
-func isCodexPermissionPrompt(text string) bool {
-	_, ok := codexPermissionApprovalInput(text)
-	return ok
-}
-
 func codexPermissionApprovalInput(text string) ([]byte, bool) {
 	normalized := strings.ToLower(text)
 	normalized = strings.ReplaceAll(normalized, "’", "'")

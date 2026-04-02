@@ -34,11 +34,9 @@ type Project struct {
 	Name          string                  `yaml:"project"`
 	Root          string                  `yaml:"root"`
 	Repos         []Repo                  `yaml:"repos,omitempty"`
-	Env           map[string]string       `yaml:"env,omitempty"`
 	Beads         BeadsConfig             `yaml:"beads,omitempty"`
 	Resource      ResourceConfig          `yaml:"resource,omitempty"`
 	Roles         []string                `yaml:"roles"`
-	Grid          []string                `yaml:"grid,omitempty"`
 	ClaudeCommand []string                `yaml:"claude_command,omitempty"`
 	ClaudeArgs    []string                `yaml:"claude_args,omitempty"`
 	RoleOverrides map[string]RoleOverride `yaml:"role_overrides,omitempty"`
@@ -92,15 +90,6 @@ const (
 	// AgentTypeGeneric is a non-Claude agent with conservative typed-input defaults.
 	AgentTypeGeneric = "generic"
 )
-
-// EffectivePressureThreshold returns the pressure threshold to use, applying
-// the default when the configured value is zero.
-func (rc ResourceConfig) EffectivePressureThreshold() int {
-	if rc.PressureThreshold > 0 {
-		return rc.PressureThreshold
-	}
-	return DefaultPressureThreshold
-}
 
 // RoleOverride lets a project customize per-role settings beyond catalog defaults.
 type RoleOverride struct {
@@ -273,12 +262,6 @@ func Validate(p *Project) error {
 			return fmt.Errorf("duplicate role: %s", r)
 		}
 		roleSet[r] = true
-	}
-
-	for _, g := range p.Grid {
-		if !roleSet[g] {
-			return fmt.Errorf("grid role %q is not in roles list", g)
-		}
 	}
 
 	for name, ov := range p.RoleOverrides {

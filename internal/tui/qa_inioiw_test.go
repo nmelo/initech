@@ -28,9 +28,9 @@ func TestRender_UpdateActivity_OverridesManualRunning(t *testing.T) {
 	dotX := px + 2
 	dotY := 2
 
-	mainc, _, style, _ := s.GetContent(dotX, dotY)
-	if mainc != '\u25cb' {
-		t.Errorf("dot = %q (%U), want ○ (U+25CB) — render must override stale StateRunning", mainc, mainc)
+	mainc, style, _ := s.Get(dotX, dotY)
+	if mainc != "\u25cb" {
+		t.Errorf("dot = %q (%q), want ○ (U+25CB) — render must override stale StateRunning", mainc, mainc)
 	}
 	fg, _, _ := style.Decompose()
 	if fg != tcell.ColorGray {
@@ -52,9 +52,9 @@ func TestRender_UpdateActivity_RecentOutputYieldsRunning(t *testing.T) {
 	dotX := px + 2
 	dotY := 2
 
-	mainc, _, style, _ := s.GetContent(dotX, dotY)
-	if mainc != '\u25cf' {
-		t.Errorf("dot = %q (%U), want ● (U+25CF) — recent PTY output must yield running", mainc, mainc)
+	mainc, style, _ := s.Get(dotX, dotY)
+	if mainc != "\u25cf" {
+		t.Errorf("dot = %q (%q), want ● (U+25CF) — recent PTY output must yield running", mainc, mainc)
 	}
 	fg, _, _ := style.Decompose()
 	if fg != tcell.ColorGreen {
@@ -76,9 +76,9 @@ func TestRender_UpdateActivity_StaleOutputYieldsIdle(t *testing.T) {
 	dotX := px + 2
 	dotY := 2
 
-	mainc, _, style, _ := s.GetContent(dotX, dotY)
-	if mainc != '\u25cb' {
-		t.Errorf("dot = %q (%U), want ○ (U+25CB) — stale PTY output must yield idle", mainc, mainc)
+	mainc, style, _ := s.Get(dotX, dotY)
+	if mainc != "\u25cb" {
+		t.Errorf("dot = %q (%q), want ○ (U+25CB) — stale PTY output must yield idle", mainc, mainc)
 	}
 	fg, _, _ := style.Decompose()
 	if fg != tcell.ColorGray {
@@ -102,9 +102,9 @@ func TestRender_UpdateActivity_DeadPaneIsIdle(t *testing.T) {
 	dotX := px + 2
 	dotY := 2
 
-	mainc, _, style, _ := s.GetContent(dotX, dotY)
-	if mainc != '\u25cf' {
-		t.Errorf("dead pane dot = %q (%U), want ● (U+25CF, filled red dot)", mainc, mainc)
+	mainc, style, _ := s.Get(dotX, dotY)
+	if mainc != "\u25cf" {
+		t.Errorf("dead pane dot = %q (%q), want ● (U+25CF, filled red dot)", mainc, mainc)
 	}
 	fg, _, _ := style.Decompose()
 	if fg != tcell.ColorRed {

@@ -16,7 +16,6 @@ func testProject(root string) *config.Project {
 		Repos: []config.Repo{{URL: "git@github.com:test/repo.git", Name: "repo"}},
 		Beads: config.BeadsConfig{Prefix: "tp"},
 		Roles: []string{"super", "eng1", "qa1"},
-		Grid:  []string{"super", "eng1"},
 		RoleOverrides: map[string]config.RoleOverride{
 			"eng1": {TechStack: "Go 1.23", BuildCmd: "go build ./...", TestCmd: "go test ./..."},
 		},

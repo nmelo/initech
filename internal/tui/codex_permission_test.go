@@ -10,7 +10,7 @@ import (
 
 func TestIsCodexPermissionPrompt_MatchesKnownPatterns(t *testing.T) {
 	text := "2. Yes, and dont ask again (p)\nPress enter to confirm or esc to cancel"
-	if !isCodexPermissionPrompt(text) {
+	if _, ok := codexPermissionApprovalInput(text); !ok {
 		t.Fatalf("expected prompt match for %q", text)
 	}
 }

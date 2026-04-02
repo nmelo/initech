@@ -122,8 +122,8 @@ done:
 	// Verify the screen has non-empty content from the render.
 	var screenText strings.Builder
 	for x := 0; x < 80; x++ {
-		c, _, _, _ := s.GetContent(x, 0)
-		screenText.WriteRune(c)
+		c, _, _ := s.Get(x, 0)
+		screenText.WriteString(c)
 	}
 	row0 := strings.TrimSpace(screenText.String())
 	if row0 == "" {

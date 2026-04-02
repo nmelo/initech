@@ -28,9 +28,9 @@ func TestOverlayDotRunningIsFilledGreen(t *testing.T) {
 	dotX := px + 2
 	dotY := 2
 
-	mainc, _, style, _ := s.GetContent(dotX, dotY)
-	if mainc != '\u25cf' {
-		t.Errorf("running dot = %q (%U), want ● (U+25CF)", mainc, mainc)
+	mainc, style, _ := s.Get(dotX, dotY)
+	if mainc != "\u25cf" {
+		t.Errorf("running dot = %q (%q), want ● (U+25CF)", mainc, mainc)
 	}
 	fg, _, _ := style.Decompose()
 	if fg != tcell.ColorGreen {
@@ -51,9 +51,9 @@ func TestOverlayDotIdleIsHollowGray(t *testing.T) {
 	dotX := px + 2
 	dotY := 2
 
-	mainc, _, style, _ := s.GetContent(dotX, dotY)
-	if mainc != '\u25cb' {
-		t.Errorf("idle dot = %q (%U), want ○ (U+25CB)", mainc, mainc)
+	mainc, style, _ := s.Get(dotX, dotY)
+	if mainc != "\u25cb" {
+		t.Errorf("idle dot = %q (%q), want ○ (U+25CB)", mainc, mainc)
 	}
 	fg, _, _ := style.Decompose()
 	if fg != tcell.ColorGray {
@@ -74,8 +74,8 @@ func TestOverlayDotMixedRunningAndIdle(t *testing.T) {
 	px := sw - panelW - 1
 	dotX := px + 2
 
-	c1, _, style1, _ := s.GetContent(dotX, 2)
-	if c1 != '\u25cf' {
+	c1, style1, _ := s.Get(dotX, 2)
+	if c1 != "\u25cf" {
 		t.Errorf("eng1 (running) dot = %q, want ●", c1)
 	}
 	fg1, _, _ := style1.Decompose()
@@ -83,8 +83,8 @@ func TestOverlayDotMixedRunningAndIdle(t *testing.T) {
 		t.Errorf("eng1 (running) dot color = %v, want Green", fg1)
 	}
 
-	c2, _, style2, _ := s.GetContent(dotX, 3)
-	if c2 != '\u25cb' {
+	c2, style2, _ := s.Get(dotX, 3)
+	if c2 != "\u25cb" {
 		t.Errorf("eng2 (idle) dot = %q, want ○", c2)
 	}
 	fg2, _, _ := style2.Decompose()
@@ -92,5 +92,3 @@ func TestOverlayDotMixedRunningAndIdle(t *testing.T) {
 		t.Errorf("eng2 (idle) dot color = %v, want Gray", fg2)
 	}
 }
-
-
