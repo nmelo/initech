@@ -20,6 +20,15 @@ import (
 
 var initForce bool
 
+var (
+	newInitRunner   = func() iexec.Runner { return &iexec.DefaultRunner{} }
+	runRoleSelector = roles.RunSelector
+	scaffoldRun     = scaffold.Run
+	gitInit         = git.Init
+	gitAddSubmodule = git.AddSubmodule
+	gitCommitAll    = git.CommitAll
+)
+
 var initCmd = &cobra.Command{
 	Use:   "init",
 	Short: "Bootstrap a new multi-agent project",
@@ -37,7 +46,7 @@ func init() {
 }
 
 func runInit(cmd *cobra.Command, args []string) error {
-	runner := &iexec.DefaultRunner{}
+	runner := newInitRunner()
 	out := cmd.OutOrStdout()
 
 	wd, err := os.Getwd()
@@ -81,14 +90,14 @@ func runInit(cmd *cobra.Command, args []string) error {
 		}
 	}
 	fmt.Fprintln(out, "\n"+color.CyanBold("Scaffolding project..."))
-	created, err := scaffold.Run(p, scaffold.Options{Force: initForce, Progress: progress})
+	created, err := scaffoldRun(p, scaffold.Options{Force: initForce, Progress: progress})
 	if err != nil {
 		return fmt.Errorf("scaffold: %w", err)
 	}
 
 	// Initialize git
 	fmt.Fprintf(out, "  %s %s\n", color.Green("\u2713"), color.Dim("Initializing git repository"))
-	if err := git.Init(runner, p.Root); err != nil {
+	if err := gitInit(runner, p.Root); err != nil {
 		return fmt.Errorf("git init: %w", err)
 	}
 
@@ -153,7 +162,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 				defer wg.Done()
 				results[idx] = cloneResult{
 					role: j.role,
-					err:  git.AddSubmodule(runner, p.Root, j.repoURL, j.subPath),
+					err:  gitAddSubmodule(runner, p.Root, j.repoURL, j.subPath),
 				}
 			}(i, job)
 		}
@@ -189,7 +198,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 	}
 
 	// Initial commit
-	if err := git.CommitAll(runner, p.Root, "initech: bootstrap "+p.Name); err != nil {
+	if err := gitCommitAll(runner, p.Root, "initech: bootstrap "+p.Name); err != nil {
 		fmt.Fprintf(out, "  %s %s: %v\n", color.Yellow("!"), color.Yellow("initial commit failed"), err)
 	} else {
 		fmt.Fprintf(out, "  %s %s\n", color.Green("\u2713"), color.Dim("Initial commit"))
@@ -252,7 +261,7 @@ func interactiveSetup(wd string) (*config.Project, error) {
 	// chosen (Esc/Ctrl+C aborts the whole init).
 	var roleList []string
 	for {
-		selected, err := roles.RunSelector("Select agents for "+name, items,
+		selected, err := runRoleSelector("Select agents for "+name, items,
 			"Each agent runs Claude Code in its own terminal pane. Pick roles for your team.")
 		if err != nil {
 			return nil, fmt.Errorf("role selection cancelled")

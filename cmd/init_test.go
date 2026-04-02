@@ -1,11 +1,19 @@
 package cmd
 
 import (
+	"bufio"
+	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
+	"github.com/nmelo/initech/internal/config"
+	iexec "github.com/nmelo/initech/internal/exec"
 	"github.com/nmelo/initech/internal/roles"
+	"github.com/nmelo/initech/internal/scaffold"
+	"github.com/spf13/cobra"
 )
 
 func TestBuildSelectorItems_Count(t *testing.T) {
@@ -339,5 +347,230 @@ func TestCatalogContains(t *testing.T) {
 	}
 	if catalogContains("") {
 		t.Error("catalogContains(\"\") should be false")
+	}
+}
+
+func TestPrompt_BlankReturnsDefault(t *testing.T) {
+	reader := bufio.NewReader(strings.NewReader("\n"))
+	if got := prompt(reader, "Project name", "demo"); got != "demo" {
+		t.Fatalf("prompt blank = %q, want default demo", got)
+	}
+}
+
+func TestPrompt_ReturnsEnteredValue(t *testing.T) {
+	reader := bufio.NewReader(strings.NewReader("custom\n"))
+	if got := prompt(reader, "Project name", "demo"); got != "custom" {
+		t.Fatalf("prompt entered = %q, want custom", got)
+	}
+}
+
+func TestInteractiveSetup_UsesDetectedWorkspacesAndRepo(t *testing.T) {
+	root := t.TempDir()
+	mustWriteFile(t, filepath.Join(root, "eng1", "CLAUDE.md"), "# eng1")
+	mustWriteFile(t, filepath.Join(root, "designer", "CLAUDE.md"), "# designer")
+
+	restoreStdin := withStdin(t, "\n"+root+"\nhttps://github.com/acme/widget.git\nY\nwid\n")
+	defer restoreStdin()
+
+	restoreSelector := stubRoleSelector(t, func(title string, items []roles.SelectorItem, help ...string) ([]string, error) {
+		if !strings.Contains(title, "Select agents for "+filepath.Base(root)) {
+			t.Fatalf("selector title = %q", title)
+		}
+
+		checked := map[string]bool{}
+		group := map[string]string{}
+		for _, item := range items {
+			if item.Checked {
+				checked[item.Name] = true
+			}
+			group[item.Name] = item.Group
+		}
+		if !checked["eng1"] || !checked["designer"] {
+			t.Fatalf("detected roles should be prechecked, got checked=%v", checked)
+		}
+		if group["designer"] != "CUSTOM" {
+			t.Fatalf("designer group = %q, want CUSTOM", group["designer"])
+		}
+		return []string{"eng1", "designer"}, nil
+	})
+	defer restoreSelector()
+
+	p, err := interactiveSetup(root)
+	if err != nil {
+		t.Fatalf("interactiveSetup: %v", err)
+	}
+
+	if p.Name != filepath.Base(root) {
+		t.Fatalf("project name = %q, want %q", p.Name, filepath.Base(root))
+	}
+	if p.Root != root {
+		t.Fatalf("project root = %q, want %q", p.Root, root)
+	}
+	if len(p.Roles) != 2 || p.Roles[0] != "eng1" || p.Roles[1] != "designer" {
+		t.Fatalf("roles = %v, want [eng1 designer]", p.Roles)
+	}
+	if p.Beads.Prefix != "wid" {
+		t.Fatalf("beads prefix = %q, want wid", p.Beads.Prefix)
+	}
+	if len(p.Repos) != 1 || p.Repos[0].URL != "https://github.com/acme/widget.git" || p.Repos[0].Name != "widget" {
+		t.Fatalf("repos = %#v, want widget repo", p.Repos)
+	}
+}
+
+func TestInteractiveSetup_CancelledSelector(t *testing.T) {
+	root := t.TempDir()
+	restoreStdin := withStdin(t, "demo\n"+root+"\n\nabc\n")
+	defer restoreStdin()
+
+	restoreSelector := stubRoleSelector(t, func(title string, items []roles.SelectorItem, help ...string) ([]string, error) {
+		return nil, fmt.Errorf("cancelled")
+	})
+	defer restoreSelector()
+
+	_, err := interactiveSetup(root)
+	if err == nil || err.Error() != "role selection cancelled" {
+		t.Fatalf("interactiveSetup cancel error = %v, want role selection cancelled", err)
+	}
+}
+
+func TestRunInit_LoadsExistingConfigAndUsesStubs(t *testing.T) {
+	dir := t.TempDir()
+	cfg := &config.Project{
+		Name:  "demo",
+		Root:  dir,
+		Roles: []string{"pm"},
+		Beads: config.BeadsConfig{Prefix: "dem"},
+	}
+	if err := config.Write(filepath.Join(dir, "initech.yaml"), cfg); err != nil {
+		t.Fatalf("config.Write: %v", err)
+	}
+
+	restoreWD := chdirForTest(t, dir)
+	defer restoreWD()
+
+	restoreRunner := stubInitRunner(t, &fakeMultiRunner{
+		responses: []fakeResponse{
+			{output: "", err: fmt.Errorf("which bd: not found")},
+		},
+	})
+	defer restoreRunner()
+
+	restoreScaffold := stubScaffoldRun(t, func(p *config.Project, opts scaffold.Options) ([]string, error) {
+		if p.Name != "demo" {
+			t.Fatalf("scaffold project = %q, want demo", p.Name)
+		}
+		if opts.Force != initForce {
+			t.Fatalf("scaffold force = %v, want %v", opts.Force, initForce)
+		}
+		if opts.Progress != nil {
+			opts.Progress("Creating docs/prd.md")
+		}
+		return []string{"docs/prd.md", "pm/CLAUDE.md"}, nil
+	})
+	defer restoreScaffold()
+
+	restoreGit := stubInitGit(t)
+	defer restoreGit()
+
+	var out bytes.Buffer
+	cmd := &cobra.Command{}
+	cmd.SetOut(&out)
+
+	if err := runInit(cmd, nil); err != nil {
+		t.Fatalf("runInit: %v", err)
+	}
+
+	got := out.String()
+	for _, want := range []string{
+		"Loaded existing initech.yaml",
+		"Scaffolding project...",
+		"docs/prd.md",
+		"Initializing git repository",
+		"Skipping beads (bd not found)",
+		"Initial commit",
+		"2 files created",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("runInit output missing %q:\n%s", want, got)
+		}
+	}
+}
+
+func TestRunInit_InvalidExistingConfig(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "initech.yaml"), []byte("project: demo\nroles: ["), 0o644); err != nil {
+		t.Fatalf("WriteFile initech.yaml: %v", err)
+	}
+
+	restoreWD := chdirForTest(t, dir)
+	defer restoreWD()
+
+	err := runInit(&cobra.Command{}, nil)
+	if err == nil {
+		t.Fatal("runInit should fail when existing config is invalid")
+	}
+}
+
+func withStdin(t *testing.T, input string) func() {
+	t.Helper()
+	orig := os.Stdin
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe: %v", err)
+	}
+	if _, err := w.WriteString(input); err != nil {
+		t.Fatalf("WriteString stdin: %v", err)
+	}
+	_ = w.Close()
+	os.Stdin = r
+	return func() {
+		os.Stdin = orig
+		_ = r.Close()
+	}
+}
+
+func stubRoleSelector(t *testing.T, fn func(string, []roles.SelectorItem, ...string) ([]string, error)) func() {
+	t.Helper()
+	orig := runRoleSelector
+	runRoleSelector = fn
+	return func() { runRoleSelector = orig }
+}
+
+func stubInitRunner(t *testing.T, runner iexec.Runner) func() {
+	t.Helper()
+	orig := newInitRunner
+	newInitRunner = func() iexec.Runner { return runner }
+	return func() { newInitRunner = orig }
+}
+
+func stubScaffoldRun(t *testing.T, fn func(*config.Project, scaffold.Options) ([]string, error)) func() {
+	t.Helper()
+	orig := scaffoldRun
+	scaffoldRun = fn
+	return func() { scaffoldRun = orig }
+}
+
+func stubInitGit(t *testing.T) func() {
+	t.Helper()
+	origInit := gitInit
+	origAddSubmodule := gitAddSubmodule
+	origCommitAll := gitCommitAll
+	gitInit = func(r iexec.Runner, root string) error { return nil }
+	gitAddSubmodule = func(r iexec.Runner, root, repoURL, subPath string) error { return nil }
+	gitCommitAll = func(r iexec.Runner, root, message string) error { return nil }
+	return func() {
+		gitInit = origInit
+		gitAddSubmodule = origAddSubmodule
+		gitCommitAll = origCommitAll
+	}
+}
+
+func mustWriteFile(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("MkdirAll %s: %v", path, err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("WriteFile %s: %v", path, err)
 	}
 }
