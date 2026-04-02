@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"net"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -447,7 +448,10 @@ func TestDaemonIPCSend_UnknownHost(t *testing.T) {
 // TestDaemonIPCSend_AutoRouteToClient verifies that when a bare agent name
 // isn't found locally, the daemon auto-routes via forward_send to connected
 // TUI clients.
-func TestDaemonIPCSend_AutoRouteToClient(t *testing.T) {
+// TestDaemonIPCSend_HostlessNotFoundSuggestsExplicitHost verifies that a
+// hostless send to a missing local pane returns a clear error suggesting
+// host:agent format, instead of auto-routing nondeterministically (ini-piyb.4).
+func TestDaemonIPCSend_HostlessNotFoundSuggestsExplicitHost(t *testing.T) {
 	proj := &config.Project{
 		Name:     "test",
 		Root:     t.TempDir(),
@@ -455,14 +459,13 @@ func TestDaemonIPCSend_AutoRouteToClient(t *testing.T) {
 		Roles:    []string{"eng1"},
 	}
 
-	// Daemon has eng1 locally but NOT super.
 	d := &Daemon{
 		project: proj,
 		panes:   []*Pane{newEmuPane("eng1", 80, 24)},
 		clients: make(map[string]net.Conn),
 	}
 
-	// TCP loopback for client ctrl (kernel buffer avoids blocking).
+	// Even with a connected peer, hostless sends should NOT auto-route.
 	ctrlLn, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -484,26 +487,6 @@ func TestDaemonIPCSend_AutoRouteToClient(t *testing.T) {
 	d.clientCtrlMu = map[string]*sync.Mutex{"macbook": {}}
 	d.sessionsMu.Unlock()
 
-	// Simulate client: read forward_send and respond with OK.
-	fwdCh := make(chan ControlCmd, 1)
-	go func() {
-		sc := bufio.NewScanner(ctrlDial)
-		if sc.Scan() {
-			var cmd ControlCmd
-			json.Unmarshal(sc.Bytes(), &cmd)
-			fwdCh <- cmd
-			writeJSON(ctrlDial, ControlResp{ID: cmd.ID, OK: true})
-		}
-	}()
-
-	// Read forward responses from daemon side ctrl stream.
-	go func() {
-		sc := bufio.NewScanner(ctrlAccept)
-		for sc.Scan() {
-			d.deliverForwardResp(sc.Bytes())
-		}
-	}()
-
 	server, client := net.Pipe()
 	defer client.Close()
 
@@ -512,7 +495,6 @@ func TestDaemonIPCSend_AutoRouteToClient(t *testing.T) {
 		server.Close()
 	}()
 
-	// Drain IPC response concurrently (net.Pipe is synchronous).
 	respCh := make(chan IPCResponse, 1)
 	go func() {
 		sc := bufio.NewScanner(client)
@@ -522,71 +504,22 @@ func TestDaemonIPCSend_AutoRouteToClient(t *testing.T) {
 		respCh <- r
 	}()
 
-	// Send to "super" with NO host prefix. Not found locally -> auto-route.
-	req := IPCRequest{Action: "send", Target: "super", Text: "auto-routed msg", Enter: true}
+	// Send to "super" without host. Not found locally -> error (not auto-route).
+	req := IPCRequest{Action: "send", Target: "super", Text: "msg", Enter: true}
 	data, _ := json.Marshal(req)
 	client.Write(data)
 	client.Write([]byte("\n"))
 
 	resp := <-respCh
-	if !resp.OK {
-		t.Fatalf("auto-route send should succeed, got error: %s", resp.Error)
-	}
-
-	// Verify forward_send fields.
-	fwd := <-fwdCh
-	if fwd.Action != "forward_send" {
-		t.Errorf("action = %q, want forward_send", fwd.Action)
-	}
-	if fwd.Target != "super" {
-		t.Errorf("target = %q, want super", fwd.Target)
-	}
-	if fwd.Text != "auto-routed msg" {
-		t.Errorf("text = %q, want 'auto-routed msg'", fwd.Text)
-	}
-	if fwd.ID == "" {
-		t.Error("forward_send should carry an ID for delivery confirmation")
-	}
-}
-
-// TestDaemonIPCSend_AutoRouteNoClients verifies that when no clients are
-// connected and the pane isn't found locally, an appropriate error is returned.
-func TestDaemonIPCSend_AutoRouteNoClients(t *testing.T) {
-	proj := &config.Project{
-		Name:     "test",
-		Root:     t.TempDir(),
-		PeerName: "workbench",
-		Roles:    []string{"eng1"},
-	}
-
-	d := &Daemon{
-		project: proj,
-		panes:   []*Pane{newEmuPane("eng1", 80, 24)},
-		clients: make(map[string]net.Conn),
-	}
-
-	server, client := net.Pipe()
-	defer client.Close()
-
-	go func() {
-		d.handleDaemonIPCConn(server)
-		server.Close()
-	}()
-
-	req := IPCRequest{Action: "send", Target: "super", Text: "msg"}
-	data, _ := json.Marshal(req)
-	client.Write(data)
-	client.Write([]byte("\n"))
-
-	scanner := bufio.NewScanner(client)
-	scanner.Scan()
-	var resp IPCResponse
-	json.Unmarshal(scanner.Bytes(), &resp)
 	if resp.OK {
-		t.Error("send to unknown pane with no clients should fail")
+		t.Fatal("hostless send to missing pane should fail, not auto-route")
 	}
 	if resp.Error == "" {
-		t.Error("should have error message")
+		t.Fatal("should have error message")
+	}
+	// Error should suggest using host:agent format.
+	if !strings.Contains(resp.Error, "host:agent") && !strings.Contains(resp.Error, "workbench:super") {
+		t.Errorf("error should suggest host:agent format, got: %s", resp.Error)
 	}
 }
 

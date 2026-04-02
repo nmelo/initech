@@ -409,45 +409,10 @@ func (d *Daemon) HandleSend(conn net.Conn, req IPCRequest) {
 	}
 	p := d.findPane(req.Target)
 	if p == nil {
-		// Auto-route: target not found locally, forward to connected
-		// TUI clients. This lets remote agents use bare names like
-		// "initech send super msg" without a host prefix.
-		type clientEntry struct {
-			name string
-			ctrl net.Conn
-			mu   *sync.Mutex
-		}
-		d.sessionsMu.Lock()
-		var targets []clientEntry
-		for name, ctrl := range d.clients {
-			targets = append(targets, clientEntry{name, ctrl, d.clientCtrlMu[name]})
-		}
-		d.sessionsMu.Unlock()
-		if len(targets) == 0 {
-			writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("pane %q not found locally and no clients connected", req.Target)})
-			return
-		}
-		fwd := ControlCmd{Action: "forward_send", Target: req.Target, Text: req.Text, Enter: req.Enter}
-		var delivered bool
-		var lastErr string
-		for _, t := range targets {
-			resp, err := d.forwardToClient(t.name, t.ctrl, t.mu, fwd)
-			if err != nil {
-				lastErr = err.Error()
-				continue
-			}
-			if resp.Error != "" {
-				lastErr = resp.Error
-				continue
-			}
-			delivered = true
-			break
-		}
-		if !delivered {
-			writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("delivery failed: %s", lastErr)})
-			return
-		}
-		writeIPCResponse(conn, IPCResponse{OK: true})
+		// No local pane matches. Require explicit host:agent for remote
+		// delivery instead of auto-routing nondeterministically across
+		// connected peers (ini-piyb.4).
+		writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("agent %q not found. For remote agents use host:agent format (e.g. 'initech send workbench:%s ...').", req.Target, req.Target)})
 		return
 	}
 	conn.SetReadDeadline(time.Time{})
