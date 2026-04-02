@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"bufio"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -362,7 +361,7 @@ func runRemoteChecks(proj *config.Project, dial func(string, string, time.Durati
 		ctrl.Write(data)
 		ctrl.Write([]byte("\n"))
 
-		scanner := bufio.NewScanner(ctrl)
+		scanner := tui.NewIPCScanner(ctrl)
 		ctrl.SetReadDeadline(time.Now().Add(5 * time.Second))
 		if !scanner.Scan() {
 			ctrl.Close()

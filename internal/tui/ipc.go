@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"path/filepath"
@@ -96,7 +97,7 @@ func (t *TUI) handleIPCConn(conn net.Conn) {
 	// Prevent goroutine leak from clients that connect but never send data.
 	conn.SetReadDeadline(time.Now().Add(5 * time.Second))
 
-	scanner := bufio.NewScanner(conn)
+	scanner := NewIPCScanner(conn)
 	if !scanner.Scan() {
 		return
 	}
@@ -175,6 +176,20 @@ func (t *TUI) HandleExtended(conn net.Conn, req IPCRequest, rawJSON []byte) bool
 // Prevents a misbehaving client from injecting megabytes of keystroke data
 // that would freeze the TUI while processing rune-by-rune under sendMu.
 const maxSendTextLen = 64 * 1024 // 64 KB
+
+// IPCScanBufSize is the buffer limit for all IPC and control-stream scanners.
+// Must exceed maxSendTextLen plus JSON framing overhead so that a legal
+// near-limit send is tokenized successfully before the explicit size check
+// runs. 256 KB gives ~4x headroom over the 64 KB text limit (ini-piyb.2).
+const IPCScanBufSize = 256 * 1024
+
+// NewIPCScanner creates a bufio.Scanner with a buffer large enough to handle
+// the largest supported IPC/control message (maxSendTextLen + JSON framing).
+func NewIPCScanner(r io.Reader) *bufio.Scanner {
+	s := bufio.NewScanner(r)
+	s.Buffer(make([]byte, 0, IPCScanBufSize), IPCScanBufSize)
+	return s
+}
 
 func (t *TUI) handleIPCSend(conn net.Conn, req IPCRequest) {
 	if req.Target == "" {

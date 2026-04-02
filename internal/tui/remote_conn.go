@@ -5,7 +5,6 @@
 package tui
 
 import (
-	"bufio"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -84,7 +83,7 @@ func connectPeer(peerName string, remote config.Remote, project *config.Project)
 	}
 
 	// Read hello_ok.
-	scanner := bufio.NewScanner(ctrl)
+	scanner := NewIPCScanner(ctrl)
 	if !scanner.Scan() {
 		ctrl.Close()
 		session.Close()

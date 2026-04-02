@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"bufio"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -89,7 +88,7 @@ func ipcCallSocket(sockPath string, req tui.IPCRequest) (*tui.IPCResponse, error
 	conn.Write(data)
 	conn.Write([]byte("\n"))
 
-	scanner := bufio.NewScanner(conn)
+	scanner := tui.NewIPCScanner(conn)
 	if !scanner.Scan() {
 		return nil, fmt.Errorf("no response from TUI")
 	}

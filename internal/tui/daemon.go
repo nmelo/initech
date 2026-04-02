@@ -337,7 +337,7 @@ func (d *Daemon) handleDaemonIPCConn(conn net.Conn) {
 	defer conn.Close()
 	conn.SetReadDeadline(time.Now().Add(5 * time.Second))
 
-	scanner := bufio.NewScanner(conn)
+	scanner := NewIPCScanner(conn)
 	if !scanner.Scan() {
 		return
 	}
@@ -517,7 +517,7 @@ func (d *Daemon) handleConnection(conn net.Conn) {
 	// Read hello from client. Deadline prevents slow-loris attacks from
 	// holding a goroutine indefinitely without completing the handshake.
 	ctrl.SetReadDeadline(time.Now().Add(10 * time.Second))
-	scanner := bufio.NewScanner(ctrl)
+	scanner := NewIPCScanner(ctrl)
 	if !scanner.Scan() {
 		LogWarn("daemon", "no hello received")
 		return

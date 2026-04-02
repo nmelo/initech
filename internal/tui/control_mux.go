@@ -5,7 +5,6 @@
 package tui
 
 import (
-	"bufio"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -118,7 +117,7 @@ func (m *ControlMux) Close() {
 // waiting callers (by ID) or to the events channel (no ID).
 func (m *ControlMux) readLoop() {
 	defer close(m.done)
-	scanner := bufio.NewScanner(m.conn)
+	scanner := NewIPCScanner(m.conn)
 	for scanner.Scan() {
 		var resp ControlResp
 		if err := json.Unmarshal(scanner.Bytes(), &resp); err != nil {
