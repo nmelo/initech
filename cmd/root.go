@@ -35,6 +35,14 @@ var (
 	updateCancel context.CancelFunc
 )
 
+var (
+	executeRoot = func() error { return rootCmd.Execute() }
+	exitRoot    = os.Exit
+	tuiRun      = tui.Run
+	listenTCP   = net.Listen
+	serveHTTP   = http.Serve
+)
+
 var rootCmd = &cobra.Command{
 	Use:   "initech",
 	Short: "Bootstrap and manage multi-agent development projects. Have you seen my stapler?",
@@ -117,9 +125,9 @@ var LatestRelease *update.ReleaseInfo
 
 // Execute runs the root command.
 func Execute() {
-	if err := rootCmd.Execute(); err != nil {
+	if err := executeRoot(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		exitRoot(1)
 	}
 }
 
@@ -259,15 +267,15 @@ func runTUI(cmd *cobra.Command, args []string) error {
 		if host != "localhost" && host != "127.0.0.1" && host != "::1" && host != "" {
 			return fmt.Errorf("pprof: refusing to bind to non-localhost address %q (security risk)", pprofAddr)
 		}
-		ln, err := net.Listen("tcp", pprofAddr)
+		ln, err := listenTCP("tcp", pprofAddr)
 		if err != nil {
 			return fmt.Errorf("pprof listen on %s: %w", pprofAddr, err)
 		}
 		fmt.Fprintf(os.Stderr, "pprof server listening on http://%s/debug/pprof\n", ln.Addr())
-		go func() { _ = http.Serve(ln, nil) }()
+		go func() { _ = serveHTTP(ln, nil) }()
 	}
 
-	return tui.Run(tui.Config{
+	return tuiRun(tui.Config{
 		Agents:            agents,
 		ProjectName:       proj.Name,
 		ProjectRoot:       proj.Root,
