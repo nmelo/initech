@@ -26,16 +26,14 @@ var statusTips = []string{
 	"Type grid 3x2 for a custom layout",
 	"Use main for a split layout",
 	"Drag to select text, auto-copies",
-	"Use `show eng1, eng2` to reorder panes",
+	"Use `agents` or Alt+a to manage visibility and order",
 	"Tab completes agent names in commands",
 	"Use `patrol` to peek all agents at once",
 	"Try `top` to see memory and PID per agent",
 	"Use `log` to see recent event history",
 	"Green dot = working, gray = idle",
-	"Yellow dot = idle with work waiting",
 	"Red dot = stuck or error loop detected",
 	"Use `add`/`remove` to change the roster live",
-	"Use pin <name> to protect agents from auto-suspend",
 }
 
 // tipRotationInterval is how long each tip is displayed before cycling.

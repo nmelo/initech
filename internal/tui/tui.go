@@ -706,7 +706,7 @@ func autoGrid(n int) (cols, rows int) {
 // count and applies the layout. When force is true, the mode is switched to
 // LayoutGrid (used after add/remove/remote-connect). When force is false,
 // grid dimensions are only updated if the mode is already LayoutGrid (used
-// after show/hide commands that shouldn't force a mode change).
+// after visibility toggles that shouldn't force a mode change).
 func (t *TUI) recalcGrid(force bool) {
 	if force {
 		t.layoutState.Mode = LayoutGrid
