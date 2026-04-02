@@ -750,7 +750,7 @@ func TestGridCommandSavesLayout(t *testing.T) {
 	}
 }
 
-func TestHideCommandSavesLayout(t *testing.T) {
+func TestAgentsModalHideSavesLayout(t *testing.T) {
 	root := t.TempDir()
 	tui := newTestTUI(
 		testPane("super"),
@@ -759,18 +759,21 @@ func TestHideCommandSavesLayout(t *testing.T) {
 	)
 	tui.projectRoot = root
 
-	tui.execCmd("hide eng2")
+	// Hide eng2 via agents modal (select row 2, toggle visibility).
+	tui.openAgentsModal()
+	tui.agents.selected = 2 // eng2
+	tui.agentsToggleVisibility()
 
 	got, ok := LoadLayout(root, []string{"super", "eng1", "eng2"})
 	if !ok {
-		t.Fatal("layout should be saved after hide command")
+		t.Fatal("layout should be saved after agents modal hide")
 	}
 	if !got.Hidden["eng2"] {
 		t.Errorf("eng2 should be hidden in saved layout")
 	}
 }
 
-func TestShowCommandSavesLayout(t *testing.T) {
+func TestAgentsModalUnhideSavesLayout(t *testing.T) {
 	root := t.TempDir()
 	tui := newTestTUI(
 		testPane("super"),
@@ -778,11 +781,14 @@ func TestShowCommandSavesLayout(t *testing.T) {
 	)
 	tui.projectRoot = root
 
-	tui.execCmd("unhide eng1")
+	// Unhide eng1 via agents modal.
+	tui.openAgentsModal()
+	tui.agents.selected = 1 // eng1
+	tui.agentsToggleVisibility()
 
 	got, ok := LoadLayout(root, []string{"super", "eng1"})
 	if !ok {
-		t.Fatal("layout should be saved after unhide command")
+		t.Fatal("layout should be saved after agents modal unhide")
 	}
 	if len(got.Hidden) != 0 {
 		t.Errorf("saved hidden = %v, want empty", got.Hidden)
@@ -827,27 +833,7 @@ func TestMainCommandSavesLayout(t *testing.T) {
 	}
 }
 
-func TestViewCommandSavesLayout(t *testing.T) {
-	root := t.TempDir()
-	tui := newTestTUI(
-		testPane("super"),
-		testPane("eng1"),
-		testPane("eng2"),
-	)
-	tui.projectRoot = root
-
-	tui.execCmd("view super eng1")
-
-	got, ok := LoadLayout(root, []string{"super", "eng1", "eng2"})
-	if !ok {
-		t.Fatal("layout should be saved after view command")
-	}
-	if !got.Hidden["eng2"] {
-		t.Errorf("eng2 should be hidden in saved layout")
-	}
-}
-
-func TestShowAllCommandSavesLayout(t *testing.T) {
+func TestAgentsModalRevealAllSavesLayout(t *testing.T) {
 	root := t.TempDir()
 	tui := newTestTUI(
 		testPane("super"),
@@ -856,11 +842,13 @@ func TestShowAllCommandSavesLayout(t *testing.T) {
 	)
 	tui.projectRoot = root
 
-	tui.execCmd("unhide all")
+	// Reveal all via agents modal.
+	tui.openAgentsModal()
+	tui.agentsRevealAll()
 
 	got, ok := LoadLayout(root, []string{"super", "eng1", "eng2"})
 	if !ok {
-		t.Fatal("layout should be saved after unhide all command")
+		t.Fatal("layout should be saved after agents modal reveal all")
 	}
 	if len(got.Hidden) != 0 {
 		t.Errorf("saved hidden = %v, want empty", got.Hidden)

@@ -70,56 +70,11 @@ func TestCompletionCandidates_Default(t *testing.T) {
 	}
 }
 
-func TestCompletionCandidates_Show(t *testing.T) {
+func TestCompletionCandidates_ReturnsAllPanes(t *testing.T) {
 	tui := testTUIWithPanes("eng1", "eng2", "super")
-	got := tui.completionCandidates("show")
-	// show completes ALL pane names + "all" (reorder, not visibility).
-	if len(got) != 4 {
-		t.Errorf("show candidates = %v, want 4 (3 panes + all)", got)
-	}
-}
-
-func TestCompletionCandidates_Unhide(t *testing.T) {
-	tui := testTUIWithPanes("eng1", "eng2", "super")
-	tui.layoutState.Hidden["eng2"] = true
-	got := tui.completionCandidates("unhide")
-	// Should include hidden panes + "all".
-	if len(got) != 2 {
-		t.Errorf("unhide candidates = %v, want [eng2, all]", got)
-	}
-}
-
-func TestCompletionCandidates_Hide(t *testing.T) {
-	tui := testTUIWithPanes("eng1", "eng2", "super")
-	tui.layoutState.Hidden["eng2"] = true
-	got := tui.completionCandidates("hide")
-	// Should include visible panes only (eng1, super).
-	if len(got) != 2 {
-		t.Errorf("hide candidates = %v, want 2 visible names", got)
-	}
-	for _, c := range got {
-		if c == "eng2" {
-			t.Error("hide candidates should NOT include hidden eng2")
-		}
-	}
-}
-
-func TestCompletionCandidates_Pin(t *testing.T) {
-	tui := testTUIWithPanes("eng1", "eng2")
-	tui.layoutState.Pinned["eng1"] = true
-	got := tui.completionCandidates("pin")
-	// Should only include unpinned panes (eng2).
-	if len(got) != 1 || got[0] != "eng2" {
-		t.Errorf("pin candidates = %v, want [eng2]", got)
-	}
-}
-
-func TestCompletionCandidates_Unpin(t *testing.T) {
-	tui := testTUIWithPanes("eng1", "eng2")
-	tui.layoutState.Pinned["eng1"] = true
-	got := tui.completionCandidates("unpin")
-	if len(got) != 1 || got[0] != "eng1" {
-		t.Errorf("unpin candidates = %v, want [eng1]", got)
+	got := tui.completionCandidates("focus")
+	if len(got) != 3 {
+		t.Errorf("completionCandidates = %v, want 3 pane names", got)
 	}
 }
 

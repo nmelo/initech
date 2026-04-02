@@ -43,49 +43,6 @@ func TestCompletionCandidatesAll(t *testing.T) {
 	}
 }
 
-func TestCompletionCandidatesHide(t *testing.T) {
-	tui := newTestTUI(
-		testPane("super"),
-		testPane("eng1"),
-		hiddenTestPane("eng2"), // hidden
-	)
-	got := tui.completionCandidates("hide")
-	if len(got) != 2 {
-		t.Errorf("completionCandidates(hide) = %v, want 2 visible panes", got)
-	}
-	for _, name := range got {
-		if name == "eng2" {
-			t.Error("completionCandidates(hide) should not include hidden pane eng2")
-		}
-	}
-}
-
-func TestCompletionCandidatesShow(t *testing.T) {
-	tui := newTestTUI(
-		testPane("super"),
-		hiddenTestPane("eng1"), // hidden
-		hiddenTestPane("eng2"), // hidden
-	)
-	got := tui.completionCandidates("show")
-	// show completes ALL pane names + "all" (reorder, not visibility).
-	if len(got) != 4 {
-		t.Errorf("completionCandidates(show) = %v, want [super eng1 eng2 all]", got)
-	}
-}
-
-func TestCompletionCandidatesUnhide(t *testing.T) {
-	tui := newTestTUI(
-		testPane("super"),
-		hiddenTestPane("eng1"), // hidden
-		hiddenTestPane("eng2"), // hidden
-	)
-	got := tui.completionCandidates("unhide")
-	// unhide completes hidden panes + "all".
-	if len(got) != 3 {
-		t.Errorf("completionCandidates(unhide) = %v, want [eng1 eng2 all]", got)
-	}
-}
-
 // ── tabComplete ───────────────────────────────────────────────────────
 
 func TestTabCompleteSingleMatch(t *testing.T) {
@@ -183,49 +140,6 @@ func TestTabCompleteOnlyCommandNoSpaceNoop(t *testing.T) {
 	tui.tabComplete()
 	if string(tui.cmd.buf) != "focus" {
 		t.Error("command only (no space): buf should not change")
-	}
-}
-
-func TestTabCompleteViewLastArg(t *testing.T) {
-	tui := newTestTUI(
-		testPane("qa1"),
-		testPane("qa2"),
-		testPane("eng1"),
-	)
-	// "view eng1 q" — complete the last argument.
-	tui.cmd.buf = []rune("view eng1 q")
-	tui.tabComplete()
-	got := string(tui.cmd.buf)
-	if got != "view eng1 qa" {
-		t.Errorf("view multi-arg: buf = %q, want %q", got, "view eng1 qa")
-	}
-}
-
-func TestTabCompleteHideOnlyVisible(t *testing.T) {
-	tui := newTestTUI(
-		testPane("eng1"),
-		hiddenTestPane("eng2"), // hidden
-	)
-	// "hide e" should only complete to visible eng1.
-	tui.cmd.buf = []rune("hide e")
-	tui.tabComplete()
-	got := string(tui.cmd.buf)
-	if got != "hide eng1 " {
-		t.Errorf("hide visible only: buf = %q, want %q", got, "hide eng1 ")
-	}
-}
-
-func TestTabCompleteUnhideOnlyHidden(t *testing.T) {
-	tui := newTestTUI(
-		testPane("eng1"),
-		hiddenTestPane("eng2"), // hidden
-	)
-	// "unhide e" should only complete to hidden eng2.
-	tui.cmd.buf = []rune("unhide e")
-	tui.tabComplete()
-	got := string(tui.cmd.buf)
-	if got != "unhide eng2 " {
-		t.Errorf("unhide hidden only: buf = %q, want %q", got, "unhide eng2 ")
 	}
 }
 

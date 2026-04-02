@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/charmbracelet/x/ansi"
 	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
 	"github.com/gdamore/tcell/v2"
 )
@@ -58,9 +58,9 @@ func newEmuPane(name string, cols, rows int) *Pane {
 
 func TestRegionInnerSize(t *testing.T) {
 	tests := []struct {
-		r            Region
-		wantCols     int
-		wantRows     int
+		r        Region
+		wantCols int
+		wantRows int
 	}{
 		{Region{W: 80, H: 25}, 80, 24},
 		{Region{W: 1, H: 2}, 1, 1},
@@ -787,7 +787,7 @@ func TestUvCellToTcell_WithAttributes(t *testing.T) {
 	cell := &uv.Cell{
 		Content: "B",
 		Style: uv.Style{
-			Attrs: uv.AttrBold | uv.AttrItalic | uv.AttrFaint | uv.AttrReverse | uv.AttrStrikethrough,
+			Attrs:     uv.AttrBold | uv.AttrItalic | uv.AttrFaint | uv.AttrReverse | uv.AttrStrikethrough,
 			Underline: 1,
 		},
 	}
@@ -816,7 +816,9 @@ func TestUvCellToTcell_WithColors(t *testing.T) {
 func TestUvColorToTcell(t *testing.T) {
 	tests := []struct {
 		name string
-		c    interface{ RGBA() (uint32, uint32, uint32, uint32) }
+		c    interface {
+			RGBA() (uint32, uint32, uint32, uint32)
+		}
 	}{
 		{"nil", nil},
 		{"basic", ansi.BasicColor(3)},
@@ -1017,7 +1019,11 @@ func TestDefaultConfig(t *testing.T) {
 func TestCalcRegionsZoomReturnsOneRegion(t *testing.T) {
 	tui := newTestTUI(testPane("a"), testPane("b"))
 	tui.layoutState.Zoomed = true
-	plan := computeLayout(tui.layoutState, tui.panes, 200, 100); regions := make([]Region, len(plan.Panes)); for ii, pp := range plan.Panes { regions[ii] = pp.Region }
+	plan := computeLayout(tui.layoutState, tui.panes, 200, 100)
+	regions := make([]Region, len(plan.Panes))
+	for ii, pp := range plan.Panes {
+		regions[ii] = pp.Region
+	}
 	if len(regions) != 1 {
 		t.Errorf("zoom: got %d regions, want 1", len(regions))
 	}
@@ -1026,7 +1032,11 @@ func TestCalcRegionsZoomReturnsOneRegion(t *testing.T) {
 func TestCalcRegionsFocusReturnsOneRegion(t *testing.T) {
 	tui := newTestTUI(testPane("a"), testPane("b"))
 	tui.layoutState.Mode = LayoutFocus
-	plan := computeLayout(tui.layoutState, tui.panes, 200, 100); regions := make([]Region, len(plan.Panes)); for ii, pp := range plan.Panes { regions[ii] = pp.Region }
+	plan := computeLayout(tui.layoutState, tui.panes, 200, 100)
+	regions := make([]Region, len(plan.Panes))
+	for ii, pp := range plan.Panes {
+		regions[ii] = pp.Region
+	}
 	if len(regions) != 1 {
 		t.Errorf("focus: got %d regions, want 1", len(regions))
 	}
@@ -1046,7 +1056,11 @@ func TestCalcRegions2Col(t *testing.T) {
 	c := testPane("c")
 	tui := newTestTUI(a, b, c)
 	tui.layoutState.Mode = Layout2Col
-	plan := computeLayout(tui.layoutState, tui.panes, 200, 100); regions := make([]Region, len(plan.Panes)); for ii, pp := range plan.Panes { regions[ii] = pp.Region }
+	plan := computeLayout(tui.layoutState, tui.panes, 200, 100)
+	regions := make([]Region, len(plan.Panes))
+	for ii, pp := range plan.Panes {
+		regions[ii] = pp.Region
+	}
 	if len(regions) != 3 {
 		t.Fatalf("2col: got %d regions, want 3", len(regions))
 	}
@@ -1119,50 +1133,44 @@ func TestExecCmdZoom(t *testing.T) {
 	}
 }
 
-func TestExecCmdUnhideHide(t *testing.T) {
+func TestAgentsModalHideUnhide(t *testing.T) {
 	a := testPane("super")
 	b := testPane("eng1")
 	tui := newTestTUI(a, b)
 
-	// Hide eng1.
-	tui.execCmd("hide eng1")
+	// Hide eng1 via agents modal.
+	tui.openAgentsModal()
+	tui.agents.selected = 1 // eng1
+	tui.agentsToggleVisibility()
 	if !tui.layoutState.Hidden["eng1"] {
 		t.Error("eng1 should be hidden in layoutState")
 	}
 
 	// Unhide eng1.
-	tui.execCmd("unhide eng1")
+	tui.agentsToggleVisibility()
 	if tui.layoutState.Hidden["eng1"] {
 		t.Error("eng1 should be visible in layoutState")
 	}
 
-	// Unhide all.
+	// Reveal all.
 	tui.layoutState.Hidden["eng1"] = true
-	tui.execCmd("unhide all")
+	tui.agentsRevealAll()
 	if tui.layoutState.Hidden["eng1"] {
-		t.Error("unhide all should make eng1 visible in layoutState")
+		t.Error("reveal all should make eng1 visible in layoutState")
 	}
 }
 
-func TestExecCmdHideLastPane(t *testing.T) {
+func TestAgentsModalHideLastPane(t *testing.T) {
 	a := testPane("super")
 	tui := newTestTUI(a)
-	tui.execCmd("hide super")
-	if !a.Visible() {
+	tui.openAgentsModal()
+	tui.agents.selected = 0
+	tui.agentsToggleVisibility()
+	if tui.layoutState.Hidden["super"] {
 		t.Error("should not hide last visible pane")
 	}
-	if !strings.Contains(tui.cmd.error, "cannot hide last") {
-		t.Errorf("cmdError = %q, want 'cannot hide last'", tui.cmd.error)
-	}
-}
-
-func TestExecCmdHideAlreadyHidden(t *testing.T) {
-	a := testPane("super")
-	b := hiddenTestPane("eng1")
-	tui := newTestTUI(a, b)
-	tui.execCmd("hide eng1") // Already hidden, should be no-op.
-	if tui.cmd.error != "" {
-		t.Errorf("hide already-hidden should not error: %q", tui.cmd.error)
+	if !strings.Contains(tui.agents.error, "cannot hide last") {
+		t.Errorf("agents.error = %q, want 'cannot hide last'", tui.agents.error)
 	}
 }
 

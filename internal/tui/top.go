@@ -70,7 +70,9 @@ func (t *TUI) handleTopKey(ev *tcell.EventKey) bool {
 		case 'r':
 			if t.top.selected >= 0 && t.top.selected < len(t.panes) {
 				p, ok := t.panes[t.top.selected].(*Pane)
-				if !ok { return false }
+				if !ok {
+					return false
+				}
 				idx := t.top.selected
 				cols := p.Emulator().Width()
 				rows := p.Emulator().Height()
@@ -100,52 +102,15 @@ func (t *TUI) handleTopKey(ev *tcell.EventKey) bool {
 		case 'k':
 			if t.top.selected >= 0 && t.top.selected < len(t.panes) {
 				p, ok := t.panes[t.top.selected].(*Pane)
-				if !ok { return false }
+				if !ok {
+					return false
+				}
 				if p.cmd != nil && p.cmd.Process != nil {
 					p.cmd.Process.Kill()
 				}
 				p.mu.Lock()
 				p.alive = false
 				p.mu.Unlock()
-				t.top.cacheTime = time.Time{}
-			}
-			return false
-		case 'p':
-			if t.top.selected >= 0 && t.top.selected < len(t.panes) {
-				name := t.panes[t.top.selected].Name()
-				if t.layoutState.Pinned == nil {
-					t.layoutState.Pinned = make(map[string]bool)
-				}
-				if t.layoutState.Pinned[name] {
-					delete(t.layoutState.Pinned, name)
-					if lp, ok := t.panes[t.top.selected].(*Pane); ok {
-						lp.SetPinned(false)
-					}
-				} else {
-					t.layoutState.Pinned[name] = true
-					if lp, ok := t.panes[t.top.selected].(*Pane); ok {
-						lp.SetPinned(true)
-					}
-				}
-				t.saveLayoutIfConfigured()
-				t.top.cacheTime = time.Time{} // refresh display
-			}
-			return false
-		case 'h':
-			if t.top.selected >= 0 && t.top.selected < len(t.panes) {
-				name := t.panes[t.top.selected].Name()
-				if t.layoutState.Hidden[name] {
-					delete(t.layoutState.Hidden, name)
-				} else {
-					if t.visibleCountFromState() > 1 {
-						if t.layoutState.Hidden == nil {
-							t.layoutState.Hidden = make(map[string]bool)
-						}
-						t.layoutState.Hidden[name] = true
-					}
-				}
-				t.recalcGrid(false)
-				t.saveLayoutIfConfigured()
 				t.top.cacheTime = time.Time{}
 			}
 			return false
@@ -307,14 +272,13 @@ func (t *TUI) renderTop() {
 	}
 
 	// Help line at bottom.
-	help := "  [r]estart  [k]ill  [h]ide/show  [q/Esc] close"
+	help := "  [r]estart  [k]ill  [q/Esc] close"
 	for i, ch := range help {
 		if 1+i < sw {
 			s.SetContent(1+i, sh-1, ch, nil, helpStyle)
 		}
 	}
 }
-
 
 // formatTotalRSS formats a total RSS value in KB to a human-readable string.
 // Mirrors the per-entry RSS formatting tiers (GB / MB / KB) so small totals

@@ -398,61 +398,6 @@ func TestHandleTopKey_KillMarksDeadImmediately(t *testing.T) {
 	}
 }
 
-func TestHandleTopKey_HideToggle(t *testing.T) {
-	tui, _ := topTestTUI([]topEntry{
-		{Name: "eng1", Status: "idle"},
-		{Name: "eng2", Status: "idle"},
-	})
-	tui.top.selected = 0
-	tui.layoutState.Hidden = make(map[string]bool)
-
-	// Hide eng1.
-	tui.handleTopKey(tcell.NewEventKey(tcell.KeyRune, 'h', 0))
-	if !tui.layoutState.Hidden["eng1"] {
-		t.Error("'h' should hide eng1")
-	}
-
-	// Unhide eng1.
-	tui.handleTopKey(tcell.NewEventKey(tcell.KeyRune, 'h', 0))
-	if tui.layoutState.Hidden["eng1"] {
-		t.Error("second 'h' should unhide eng1")
-	}
-}
-
-func TestHandleTopKey_HideBlocksLastVisible(t *testing.T) {
-	tui, _ := topTestTUI([]topEntry{
-		{Name: "eng1", Status: "idle"},
-	})
-	tui.top.selected = 0
-	tui.layoutState.Hidden = make(map[string]bool)
-
-	// Hiding the only visible pane should be blocked.
-	tui.handleTopKey(tcell.NewEventKey(tcell.KeyRune, 'h', 0))
-	if tui.layoutState.Hidden["eng1"] {
-		t.Error("should not hide the last visible pane")
-	}
-}
-
-func TestHandleTopKey_PinToggle(t *testing.T) {
-	tui, _ := topTestTUI([]topEntry{
-		{Name: "eng1", Status: "idle"},
-	})
-	tui.top.selected = 0
-
-	tui.handleTopKey(tcell.NewEventKey(tcell.KeyRune, 'p', 0))
-	if !tui.layoutState.Pinned["eng1"] {
-		t.Error("'p' should pin eng1")
-	}
-	if !tui.panes[0].IsPinned() {
-		t.Error("pane should be pinned")
-	}
-
-	tui.handleTopKey(tcell.NewEventKey(tcell.KeyRune, 'p', 0))
-	if tui.layoutState.Pinned["eng1"] {
-		t.Error("second 'p' should unpin eng1")
-	}
-}
-
 func TestHandleTopKey_AlwaysReturnsFalse(t *testing.T) {
 	tui, _ := topTestTUI([]topEntry{{Name: "a", Status: "idle"}})
 	for _, ev := range []*tcell.EventKey{
@@ -460,8 +405,6 @@ func TestHandleTopKey_AlwaysReturnsFalse(t *testing.T) {
 		tcell.NewEventKey(tcell.KeyUp, 0, 0),
 		tcell.NewEventKey(tcell.KeyDown, 0, 0),
 		tcell.NewEventKey(tcell.KeyRune, 'q', 0),
-		tcell.NewEventKey(tcell.KeyRune, 'h', 0),
-		tcell.NewEventKey(tcell.KeyRune, 'p', 0),
 	} {
 		tui.top.active = true
 		if tui.handleTopKey(ev) {

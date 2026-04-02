@@ -150,90 +150,13 @@ func TestExecCmd_Main(t *testing.T) {
 	}
 }
 
-func TestExecCmd_ShowReorder(t *testing.T) {
-	tui := cmdTestTUI("a", "b", "c", "d")
-	tui.execCmd("show c, a")
-	if tui.panes[0].Name() != "c" || tui.panes[1].Name() != "a" {
-		t.Errorf("show reorder: got [%s, %s, ...], want [c, a, ...]", tui.panes[0].Name(), tui.panes[1].Name())
-	}
-	if tui.panes[2].Name() != "b" || tui.panes[3].Name() != "d" {
-		t.Errorf("remaining order: got [..., %s, %s], want [..., b, d]", tui.panes[2].Name(), tui.panes[3].Name())
-	}
-}
-
-func TestExecCmd_ShowAll(t *testing.T) {
-	tui := cmdTestTUI("c", "a", "b")
-	tui.execCmd("show all")
-	// show all resets to alphabetical.
-	if tui.panes[0].Name() != "a" || tui.panes[1].Name() != "b" || tui.panes[2].Name() != "c" {
-		t.Errorf("show all: got [%s, %s, %s], want [a, b, c]", tui.panes[0].Name(), tui.panes[1].Name(), tui.panes[2].Name())
-	}
-}
-
-func TestExecCmd_ShowNoArgs(t *testing.T) {
-	tui := cmdTestTUI("eng1")
-	tui.execCmd("show")
-	if tui.cmd.error == "" {
-		t.Error("show with no args should set error")
-	}
-}
-
-func TestExecCmd_ShowUnknown(t *testing.T) {
-	tui := cmdTestTUI("eng1")
-	tui.execCmd("show nonexistent")
-	if tui.cmd.error == "" {
-		t.Error("show with unknown name should set error")
-	}
-}
-
-func TestExecCmd_ShowDeduplicate(t *testing.T) {
-	tui := cmdTestTUI("a", "b", "c")
-	tui.execCmd("show a, a, b")
-	if tui.panes[0].Name() != "a" || tui.panes[1].Name() != "b" || tui.panes[2].Name() != "c" {
-		t.Errorf("show dedup: got [%s, %s, %s], want [a, b, c]", tui.panes[0].Name(), tui.panes[1].Name(), tui.panes[2].Name())
-	}
-}
-
-func TestExecCmd_Unhide(t *testing.T) {
-	tui := cmdTestTUI("eng1", "eng2")
-	tui.layoutState.Hidden["eng2"] = true
-	tui.execCmd("unhide eng2")
-	if tui.layoutState.Hidden["eng2"] {
-		t.Error("unhide should unhide eng2")
-	}
-}
-
-func TestExecCmd_UnhideAll(t *testing.T) {
-	tui := cmdTestTUI("eng1", "eng2")
-	tui.layoutState.Hidden["eng1"] = true
-	tui.layoutState.Hidden["eng2"] = true
-	tui.execCmd("unhide all")
-	if tui.layoutState.Hidden["eng1"] || tui.layoutState.Hidden["eng2"] {
-		t.Error("unhide all should unhide all panes")
-	}
-}
-
-func TestExecCmd_Hide(t *testing.T) {
-	tui := cmdTestTUI("eng1", "eng2")
-	tui.execCmd("hide eng1")
-	if !tui.layoutState.Hidden["eng1"] {
-		t.Error("hide should hide eng1")
-	}
-}
-
-func TestExecCmd_HideLastBlocked(t *testing.T) {
-	tui := cmdTestTUI("eng1")
-	tui.execCmd("hide eng1")
-	if tui.layoutState.Hidden["eng1"] {
-		t.Error("hiding the last visible pane should be blocked")
-	}
-}
-
-func TestExecCmd_View(t *testing.T) {
-	tui := cmdTestTUI("eng1", "eng2")
-	tui.execCmd("view eng2")
-	if tui.layoutState.Focused != "eng2" {
-		t.Errorf("view should focus eng2, got %q", tui.layoutState.Focused)
+func TestExecCmd_RetiredCommandsAreUnknown(t *testing.T) {
+	for _, cmd := range []string{"show eng1", "hide eng1", "unhide eng1", "view eng1", "pin eng1", "unpin eng1"} {
+		tui := cmdTestTUI("eng1", "eng2")
+		tui.execCmd(cmd)
+		if tui.cmd.error == "" {
+			t.Errorf("%q should produce unknown command error", cmd)
+		}
 	}
 }
 
@@ -298,24 +221,6 @@ func TestExecCmd_QShortcut(t *testing.T) {
 	tui.execCmd("q")
 	if tui.cmd.pendingConfirm != "quit" {
 		t.Errorf("q should set pendingConfirm = 'quit', got %q", tui.cmd.pendingConfirm)
-	}
-}
-
-func TestExecCmd_Pin(t *testing.T) {
-	tui := cmdTestTUI("eng1")
-	tui.execCmd("pin eng1")
-	if !tui.layoutState.Pinned["eng1"] {
-		t.Error("pin should pin eng1")
-	}
-}
-
-func TestExecCmd_Unpin(t *testing.T) {
-	tui := cmdTestTUI("eng1")
-	tui.layoutState.Pinned["eng1"] = true
-	tui.panes[0].(*Pane).SetPinned(true)
-	tui.execCmd("unpin eng1")
-	if tui.layoutState.Pinned["eng1"] {
-		t.Error("unpin should unpin eng1")
 	}
 }
 

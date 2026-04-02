@@ -71,7 +71,7 @@ func TestHelpLines_CommandsMatchExecCmd(t *testing.T) {
 	// Spot-check key commands: their words must appear in helpLines.
 	required := []string{
 		"grid", "focus", "zoom", "panel", "main",
-		"show", "hide", "view", "layout", "restart",
+		"agents", "layout", "restart",
 		"patrol", "top", "add", "remove", "help", "quit",
 	}
 	helpContent := strings.Join(helpLines, "\n")

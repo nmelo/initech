@@ -147,7 +147,7 @@ func (t *TUI) tabComplete() {
 
 	// Only agent-name commands are tab-completed.
 	switch cmd {
-	case "focus", "hide", "show", "unhide", "view", "remove", "rm", "restart", "r":
+	case "focus", "remove", "rm", "restart", "r":
 		// Fall through to completion logic.
 	default:
 		return
@@ -212,60 +212,12 @@ func (t *TUI) tabComplete() {
 // completionCandidates returns the agent names that are valid completions for
 // the given command keyword.
 func (t *TUI) completionCandidates(cmd string) []string {
-	switch cmd {
-	case "show":
-		// All pane keys + "all" (reorder applies to any pane).
-		names := make([]string, len(t.panes))
-		for i, p := range t.panes {
-			names[i] = paneKey(p)
-		}
-		names = append(names, "all")
-		return names
-	case "unhide":
-		// Hidden panes plus the special "all" keyword.
-		var names []string
-		for _, p := range t.panes {
-			if t.layoutState.Hidden[paneKey(p)] {
-				names = append(names, paneKey(p))
-			}
-		}
-		names = append(names, "all")
-		return names
-	case "hide":
-		// Visible panes only.
-		var names []string
-		for _, p := range t.panes {
-			if !t.layoutState.Hidden[paneKey(p)] {
-				names = append(names, paneKey(p))
-			}
-		}
-		return names
-	case "pin":
-		// Unpinned panes only.
-		var names []string
-		for _, p := range t.panes {
-			if !t.layoutState.Pinned[paneKey(p)] {
-				names = append(names, paneKey(p))
-			}
-		}
-		return names
-	case "unpin":
-		// Pinned panes only.
-		var names []string
-		for _, p := range t.panes {
-			if t.layoutState.Pinned[paneKey(p)] {
-				names = append(names, paneKey(p))
-			}
-		}
-		return names
-	default:
-		// All pane names.
-		names := make([]string, len(t.panes))
-		for i, p := range t.panes {
-			names[i] = paneKey(p)
-		}
-		return names
+	// All pane names.
+	names := make([]string, len(t.panes))
+	for i, p := range t.panes {
+		names[i] = paneKey(p)
 	}
+	return names
 }
 
 // longestCommonPrefix returns the longest string that is a prefix of every
@@ -289,10 +241,8 @@ func longestCommonPrefix(strs []string) string {
 // commandNames lists all valid command keywords for fuzzy matching.
 var commandNames = []string{
 	"grid", "focus", "zoom", "panel", "main",
-	"show", "hide", "unhide", "view", "layout",
-	"restart", "patrol", "top", "add", "remove",
-	"log", "help", "quit", "pin", "unpin", "events",
-	"agents",
+	"layout", "restart", "patrol", "top", "add", "remove",
+	"log", "help", "quit", "events", "agents",
 }
 
 // commandAliases maps short aliases to their canonical display form.
@@ -420,18 +370,6 @@ func (t *TUI) execCmd(cmd string) bool {
 		return t.cmdPanel()
 	case "main":
 		return t.cmdMain()
-	case "show":
-		return t.cmdShow(parts)
-	case "unhide":
-		return t.cmdUnhide(parts)
-	case "hide":
-		return t.cmdHide(parts)
-	case "pin":
-		return t.cmdPin(parts)
-	case "unpin":
-		return t.cmdUnpin(parts)
-	case "view":
-		return t.cmdView(parts)
 	case "layout":
 		return t.cmdLayout(parts)
 	case "restart", "r":
@@ -531,208 +469,6 @@ func (t *TUI) cmdMain() bool {
 	t.layoutState.Mode = Layout2Col
 	t.layoutState.Zoomed = false
 	t.applyLayout()
-	t.saveLayoutIfConfigured()
-	return false
-}
-
-func (t *TUI) cmdShow(parts []string) bool {
-	if len(parts) < 2 {
-		t.cmd.error = "usage: show <name1> [name2] ..."
-		return false
-	}
-
-	// Parse names: handle both comma-separated and space-separated.
-	var names []string
-	for _, p := range parts[1:] {
-		for _, n := range strings.Split(p, ",") {
-			n = strings.TrimSpace(n)
-			if n != "" {
-				names = append(names, n)
-			}
-		}
-	}
-
-	if len(names) == 1 && names[0] == "all" {
-		sort.Slice(t.panes, func(i, j int) bool {
-			return paneKey(t.panes[i]) < paneKey(t.panes[j])
-		})
-		t.applyLayout()
-		t.saveLayoutIfConfigured()
-		return false
-	}
-
-	// Deduplicate while preserving order.
-	seen := make(map[string]bool, len(names))
-	deduped := names[:0]
-	for _, n := range names {
-		if !seen[n] {
-			seen[n] = true
-			deduped = append(deduped, n)
-		}
-	}
-	names = deduped
-
-	// Validate all names exist.
-	for _, name := range names {
-		if t.findPaneByName(name) == nil {
-			t.cmd.error = fmt.Sprintf("unknown agent %q", name)
-			return false
-		}
-	}
-
-	// Build new order: named panes first, then remaining in current order.
-	namedSet := make(map[string]bool, len(names))
-	for _, n := range names {
-		namedSet[n] = true
-	}
-	var newOrder []PaneView
-	for _, name := range names {
-		for _, p := range t.panes {
-			if paneKey(p) == name {
-				newOrder = append(newOrder, p)
-				break
-			}
-		}
-	}
-	for _, p := range t.panes {
-		if !namedSet[paneKey(p)] {
-			newOrder = append(newOrder, p)
-		}
-	}
-	t.panes = newOrder
-	t.applyLayout()
-	t.saveLayoutIfConfigured()
-	return false
-}
-
-func (t *TUI) cmdUnhide(parts []string) bool {
-	if len(parts) < 2 {
-		t.cmd.error = "usage: unhide <name> or unhide all"
-		return false
-	}
-	if parts[1] == "all" {
-		t.layoutState.Hidden = make(map[string]bool)
-		t.recalcGrid(false)
-		t.saveLayoutIfConfigured()
-		return false
-	}
-	if t.findPaneByName(parts[1]) == nil {
-		t.cmd.error = fmt.Sprintf("unknown agent %q", parts[1])
-		return false
-	}
-	delete(t.layoutState.Hidden, parts[1])
-	t.recalcGrid(false)
-	t.saveLayoutIfConfigured()
-	return false
-}
-
-func (t *TUI) cmdHide(parts []string) bool {
-	if len(parts) < 2 {
-		t.cmd.error = "usage: hide <name> [name...]"
-		return false
-	}
-	if t.layoutState.Hidden == nil {
-		t.layoutState.Hidden = make(map[string]bool)
-	}
-	var hidden int
-	for _, name := range parts[1:] {
-		if name == "all" {
-			t.cmd.error = "cannot hide all panes"
-			return false
-		}
-		if t.findPaneByName(name) == nil {
-			t.cmd.error = fmt.Sprintf("unknown agent %q", name)
-			return false
-		}
-		if t.layoutState.Hidden[name] {
-			continue // Already hidden.
-		}
-		if t.visibleCountFromState() <= 1 {
-			t.cmd.error = "cannot hide last visible pane"
-			return false
-		}
-		t.layoutState.Hidden[name] = true
-		hidden++
-	}
-	if hidden > 0 {
-		t.recalcGrid(false)
-		t.saveLayoutIfConfigured()
-	}
-	return false
-}
-
-func (t *TUI) cmdPin(parts []string) bool {
-	if len(parts) < 2 {
-		t.cmd.error = "usage: pin <name>"
-		return false
-	}
-	p := t.findPaneByName(parts[1])
-	if p == nil {
-		t.cmd.error = fmt.Sprintf("unknown agent %q", parts[1])
-		return false
-	}
-	if t.layoutState.Pinned == nil {
-		t.layoutState.Pinned = make(map[string]bool)
-	}
-	t.layoutState.Pinned[parts[1]] = true
-	if lp, ok := p.(*Pane); ok {
-		lp.SetPinned(true)
-	}
-	t.saveLayoutIfConfigured()
-	return false
-}
-
-func (t *TUI) cmdUnpin(parts []string) bool {
-	if len(parts) < 2 {
-		t.cmd.error = "usage: unpin <name>"
-		return false
-	}
-	p := t.findPaneByName(parts[1])
-	if p == nil {
-		t.cmd.error = fmt.Sprintf("unknown agent %q", parts[1])
-		return false
-	}
-	delete(t.layoutState.Pinned, parts[1])
-	if lp, ok := p.(*Pane); ok {
-		lp.SetPinned(false)
-	}
-	t.saveLayoutIfConfigured()
-	return false
-}
-
-func (t *TUI) cmdView(parts []string) bool {
-	if len(parts) < 2 {
-		t.cmd.error = "usage: view <name1> [name2] ..."
-		return false
-	}
-	for _, name := range parts[1:] {
-		if t.findPaneByName(name) == nil {
-			t.cmd.error = fmt.Sprintf("unknown agent %q", name)
-			return false
-		}
-	}
-	show := make(map[string]bool, len(parts)-1)
-	for _, name := range parts[1:] {
-		show[name] = true
-	}
-	visCount := 0
-	for _, p := range t.panes {
-		if show[paneKey(p)] {
-			visCount++
-		}
-	}
-	if visCount == 0 {
-		t.cmd.error = "view must include at least one valid pane"
-		return false
-	}
-	hidden := make(map[string]bool)
-	for _, p := range t.panes {
-		if !show[paneKey(p)] {
-			hidden[paneKey(p)] = true
-		}
-	}
-	t.layoutState.Hidden = hidden
-	t.recalcGrid(false)
 	t.saveLayoutIfConfigured()
 	return false
 }
