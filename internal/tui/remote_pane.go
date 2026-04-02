@@ -36,6 +36,7 @@ type RemotePane struct {
 	dataCh   chan []byte      // readLoop sends byte chunks here; Render drains and writes to emu.
 	mu       sync.Mutex
 	alive    bool
+	visible  bool
 	activity ActivityState
 	lastOut  time.Time
 	beadID   string
@@ -64,6 +65,7 @@ func NewRemotePane(name, host string, stream net.Conn, mux *ControlMux, cols, ro
 		emu:      vt.NewSafeEmulator(cols, rows),
 		dataCh:   make(chan []byte, 64), // Buffered: readLoop sends, Render drains.
 		alive:    true,
+		visible:  true,
 		activity: StateIdle,
 	}
 }
@@ -146,6 +148,20 @@ func (rp *RemotePane) responseLoop() {
 
 func (rp *RemotePane) Name() string { return rp.name }
 func (rp *RemotePane) Host() string { return rp.host }
+
+// Visible returns whether the remote pane should appear in the layout.
+func (rp *RemotePane) Visible() bool {
+	rp.mu.Lock()
+	defer rp.mu.Unlock()
+	return rp.visible
+}
+
+// SetVisible controls whether the remote pane appears in the layout.
+func (rp *RemotePane) SetVisible(v bool) {
+	rp.mu.Lock()
+	defer rp.mu.Unlock()
+	rp.visible = v
+}
 
 func (rp *RemotePane) IsAlive() bool {
 	rp.mu.Lock()

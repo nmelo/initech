@@ -744,6 +744,11 @@ func (t *TUI) handlePeerUpdate(peerName string, newPanes []PaneView) {
 
 	// Add new panes (nil = peer went offline, nothing to add).
 	if len(newPanes) > 0 {
+		for _, p := range newPanes {
+			if vp, ok := p.(interface{ SetVisible(bool) }); ok {
+				vp.SetVisible(!t.layoutState.Hidden[paneKey(p)])
+			}
+		}
 		kept = append(kept, newPanes...)
 	}
 	t.panes = kept

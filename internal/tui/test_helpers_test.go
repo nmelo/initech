@@ -120,22 +120,25 @@ type fakeRemotePaneView struct {
 	emu      *vt.SafeEmulator
 	region   Region
 	alive    bool
+	visible  bool
 	beadID   string
 	activity ActivityState
 }
 
 func newFakeRemotePaneView(name, host string) *fakeRemotePaneView {
 	return &fakeRemotePaneView{
-		name:   name,
-		host:   host,
-		emu:    vt.NewSafeEmulator(10, 5),
-		region: Region{W: 10, H: 5},
-		alive:  true,
+		name:    name,
+		host:    host,
+		emu:     vt.NewSafeEmulator(10, 5),
+		region:  Region{W: 10, H: 5},
+		alive:   true,
+		visible: true,
 	}
 }
 
 func (p *fakeRemotePaneView) Name() string                     { return p.name }
 func (p *fakeRemotePaneView) Host() string                     { return p.host }
+func (p *fakeRemotePaneView) Visible() bool                    { return p.visible }
 func (p *fakeRemotePaneView) IsAlive() bool                    { return p.alive }
 func (p *fakeRemotePaneView) IsSuspended() bool                { return false }
 func (p *fakeRemotePaneView) IsPinned() bool                   { return false }
@@ -152,6 +155,7 @@ func (p *fakeRemotePaneView) SendKey(ev *tcell.EventKey)       {}
 func (p *fakeRemotePaneView) SendText(text string, enter bool) {}
 func (p *fakeRemotePaneView) AgentType() string                { return "" }
 func (p *fakeRemotePaneView) SubmitKey() string                { return "" }
+func (p *fakeRemotePaneView) SetVisible(v bool)                { p.visible = v }
 func (p *fakeRemotePaneView) Render(screen tcell.Screen, focused bool, dimmed bool, index int, sel Selection) {
 }
 func (p *fakeRemotePaneView) Resize(rows, cols int) {}

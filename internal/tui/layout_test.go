@@ -713,6 +713,9 @@ func TestHandlePeerUpdateRespectsSavedRemoteKeys(t *testing.T) {
 	if !tui.layoutState.Hidden["workbench:intern"] {
 		t.Fatalf("saved hidden remote key lost after peer update: %v", tui.layoutState.Hidden)
 	}
+	if rp.Visible() {
+		t.Fatalf("remote pane should be marked hidden on reconnect")
+	}
 	if tui.visibleCountFromState() != 1 {
 		t.Fatalf("visibleCountFromState = %d, want 1 with remote pane still hidden", tui.visibleCountFromState())
 	}
