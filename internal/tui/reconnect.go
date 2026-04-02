@@ -40,8 +40,8 @@ type peerManager struct {
 	onPanesChanged func(peerName string, panes []PaneView)
 	// onForwardSend is called when a daemon pushes a forward_send command
 	// through the control stream. The TUI delivers the message to the
-	// local pane named by target.
-	onForwardSend func(target, text string, enter bool)
+	// local pane named by target. Returns an error if the pane doesn't exist.
+	onForwardSend func(target, text string, enter bool) error
 	quit          chan struct{}
 	wg            sync.WaitGroup
 }
@@ -49,7 +49,7 @@ type peerManager struct {
 // newPeerManager creates a manager and starts a goroutine per remote peer.
 // All connections (initial and reconnect) happen in the background so the
 // TUI renders immediately without blocking on network I/O.
-func newPeerManager(project *config.Project, onChange func(string, []PaneView), onFwd func(string, string, bool), quit chan struct{}) *peerManager {
+func newPeerManager(project *config.Project, onChange func(string, []PaneView), onFwd func(string, string, bool) error, quit chan struct{}) *peerManager {
 	pm := &peerManager{
 		project:        project,
 		onPanesChanged: onChange,
@@ -101,8 +101,22 @@ func (pm *peerManager) managePeer(peerName string, remote config.Remote) {
 		heartbeatDone := make(chan struct{})
 		go pm.heartbeat(peerName, pc, heartbeatDone)
 
-		// Consume unsolicited events from the control stream (e.g. forward_send
-		// from the daemon routing a remote agent's message to a local pane).
+		// Register request handler for forward_send with delivery confirmation.
+		// When the daemon sends a forward_send WITH an ID, the mux dispatches
+		// it here. We deliver to the local pane and respond with OK or error.
+		pc.mux.SetRequestHandler(func(req ControlResp) ControlResp {
+			if req.Action == "forward_send" && pm.onForwardSend != nil {
+				LogInfo("remote", "forward_send request", "peer", peerName, "target", req.Target)
+				if err := pm.onForwardSend(req.Target, req.Text, req.Enter); err != nil {
+					return ControlResp{Error: err.Error()}
+				}
+				return ControlResp{OK: true}
+			}
+			return ControlResp{Error: "unknown action"}
+		})
+
+		// Consume unsolicited events from the control stream (backward compat
+		// for id-less events from older daemons).
 		go pm.consumeEvents(peerName, pc.mux, heartbeatDone)
 
 		// Monitor connection health: wait for all RemotePanes to go dead,
@@ -161,8 +175,8 @@ func (pm *peerManager) consumeEvents(peerName string, mux *ControlMux, done chan
 		select {
 		case ev := <-mux.Events():
 			if ev.Action == "forward_send" && pm.onForwardSend != nil {
-				LogInfo("remote", "forward_send received", "peer", peerName, "target", ev.Target)
-				pm.onForwardSend(ev.Target, ev.Text, ev.Enter)
+				LogInfo("remote", "forward_send event (id-less)", "peer", peerName, "target", ev.Target)
+				pm.onForwardSend(ev.Target, ev.Text, ev.Enter) //nolint:errcheck // id-less events have no caller to report to
 			}
 		case <-mux.Done():
 			return

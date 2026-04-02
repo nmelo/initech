@@ -14,6 +14,11 @@ import (
 	"time"
 )
 
+// RequestHandler is called when the remote end sends a command (a message with
+// both an ID and an Action). The handler processes the command and returns a
+// response. Used by the TUI to handle forward_send from the daemon.
+type RequestHandler func(resp ControlResp) ControlResp
+
 // ControlMux multiplexes a yamux control stream for concurrent request/response
 // use by multiple RemotePanes. Each Request call gets a unique ID, writes the
 // command, and waits for the response with that ID. A single readLoop goroutine
@@ -26,8 +31,9 @@ type ControlMux struct {
 	pendingMu sync.Mutex
 	pending   map[string]chan ControlResp // Request ID -> response channel.
 
-	events chan ControlResp // Unsolicited server-pushed messages (no ID).
-	done   chan struct{}    // Closed when readLoop exits.
+	events    chan ControlResp  // Unsolicited server-pushed messages (no ID).
+	done      chan struct{}     // Closed when readLoop exits.
+	onRequest RequestHandler   // Handler for incoming commands (ID + Action). May be nil.
 }
 
 // NewControlMux creates a multiplexer for the given control stream connection
@@ -96,6 +102,13 @@ func (m *ControlMux) Done() <-chan struct{} {
 	return m.done
 }
 
+// SetRequestHandler registers a callback for incoming commands (messages with
+// both an ID and an Action field). The handler processes the command and
+// returns a response that is written back with the same ID.
+func (m *ControlMux) SetRequestHandler(h RequestHandler) {
+	m.onRequest = h
+}
+
 // Close shuts down the multiplexer by closing the underlying connection.
 func (m *ControlMux) Close() {
 	m.conn.Close()
@@ -113,12 +126,23 @@ func (m *ControlMux) readLoop() {
 		}
 
 		if resp.ID != "" {
-			// Correlated response: route to the waiting caller.
+			// Check for a waiting caller first (outgoing request response).
 			m.pendingMu.Lock()
 			ch, ok := m.pending[resp.ID]
 			m.pendingMu.Unlock()
 			if ok {
 				ch <- resp
+			} else if resp.Action != "" && m.onRequest != nil {
+				// Incoming command from the remote end (ID + Action, no
+				// pending caller). Dispatch to the request handler and
+				// write the response back with the same ID.
+				reply := m.onRequest(resp)
+				reply.ID = resp.ID
+				data, _ := json.Marshal(reply)
+				m.writeMu.Lock()
+				m.conn.Write(data)           //nolint:errcheck
+				m.conn.Write([]byte("\n"))    //nolint:errcheck
+				m.writeMu.Unlock()
 			}
 		} else {
 			// Unsolicited event: send to the events channel (non-blocking).

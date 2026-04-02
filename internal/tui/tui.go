@@ -146,8 +146,8 @@ type TUI struct {
 	reorder   reorderModal   // Agent reorder modal.
 	welcome   welcomeOverlay // First-launch keybinding hints.
 	sel       mouseSelection // Mouse text selection.
-	quitCh   chan struct{} // Closed by IPC quit action to signal event loop exit.
-	quitOnce sync.Once   // Guards single close of quitCh; prevents concurrent-quit panics.
+	quitCh    chan struct{}  // Closed by IPC quit action to signal event loop exit.
+	quitOnce  sync.Once      // Guards single close of quitCh; prevents concurrent-quit panics.
 
 	// ipcCh is the dispatch channel for IPC goroutines that need to access
 	// TUI state (t.panes, layoutState) safely from outside the main event loop.
@@ -167,8 +167,8 @@ type TUI struct {
 	// (memory monitor, auto-suspend policy) is dormant.
 	autoSuspend       bool
 	pressureThreshold int
-	systemMemAvail    int64      // Available system RAM in KB, updated by memory monitor.
-	systemMemTotal    int64      // Total system RAM in KB, queried once at startup.
+	systemMemAvail    int64 // Available system RAM in KB, updated by memory monitor.
+	systemMemTotal    int64 // Total system RAM in KB, queried once at startup.
 
 	// Update notification. Set via runOnMain when background check finds a newer version.
 	updateAvailable string // e.g. "0.24.0". Empty = no update or check not done.
@@ -191,8 +191,8 @@ type TUI struct {
 
 	// Agent event system.
 	agentEvents   chan AgentEvent // Buffered channel for semantic events from detection modules.
-	notifications []notification // Active notifications for rendering.
-	eventLog      []AgentEvent   // Persistent log of all events (last 100 or last 60 min).
+	notifications []notification  // Active notifications for rendering.
+	eventLog      []AgentEvent    // Persistent log of all events (last 100 or last 60 min).
 }
 
 // applyLayout recomputes the render plan from the current layout state
@@ -306,17 +306,17 @@ func (t *TUI) checkForUpdate() {
 
 // Config controls what agents the TUI launches.
 type Config struct {
-	Agents            []PaneConfig                    // One entry per agent pane.
-	ProjectName       string                          // Used for socket path.
-	ProjectRoot       string                          // Project root for .initech/ layout persistence.
-	ResetLayout       bool                            // Ignore saved layout and start with defaults.
-	Verbose           bool                            // Enable DEBUG-level logging (default: INFO).
-	Version           string                          // Build version for crash reports.
-	AutoSuspend       bool                            // Enable resource-aware auto-suspend/resume.
-	PressureThreshold int                             // RSS percentage threshold (0 uses default 85).
+	Agents            []PaneConfig                          // One entry per agent pane.
+	ProjectName       string                                // Used for socket path.
+	ProjectRoot       string                                // Project root for .initech/ layout persistence.
+	ResetLayout       bool                                  // Ignore saved layout and start with defaults.
+	Verbose           bool                                  // Enable DEBUG-level logging (default: INFO).
+	Version           string                                // Build version for crash reports.
+	AutoSuspend       bool                                  // Enable resource-aware auto-suspend/resume.
+	PressureThreshold int                                   // RSS percentage threshold (0 uses default 85).
 	PaneConfigBuilder func(name string) (PaneConfig, error) // Optional factory for hot-add. Nil disables add command.
 	Project           *config.Project                       // Full project config. Used for remote peer connections.
-	UpdateResult      <-chan string                          // Receives newer version string from background check. Nil = no check.
+	UpdateResult      <-chan string                         // Receives newer version string from background check. Nil = no check.
 }
 
 // DefaultConfig returns a config with standard shell-only agents.
@@ -512,15 +512,15 @@ func Run(cfg Config) error {
 			t.runOnMain(func() {
 				t.handlePeerUpdate(peerName, panes)
 			})
-		}, func(target, text string, enter bool) {
+		}, func(target, text string, enter bool) error {
 			// Deliver forwarded message to local pane.
 			var pv PaneView
 			t.runOnMain(func() { pv = t.findPaneByName(target) })
-			if pv != nil {
-				pv.SendText(text, enter)
-			} else {
-				LogWarn("remote", "forward_send target not found", "target", target)
+			if pv == nil {
+				return fmt.Errorf("agent %q not found", target)
 			}
+			pv.SendText(text, enter)
+			return nil
 		}, t.quitCh)
 		defer func() {
 			done := make(chan struct{})
@@ -784,4 +784,3 @@ func calcMainVertical(n, screenW, screenH int) []Region {
 
 // render draws all visible panes, the overlay, and the command modal.
 // It consumes the pre-computed RenderPlan without making layout decisions.
-

@@ -3,12 +3,12 @@
 // clients over yamux-multiplexed connections.
 //
 // Protocol:
-//   1. Client connects via TCP, yamux server wraps the connection.
-//   2. Client opens stream 0 (control channel), sends hello.
-//   3. Server validates token, responds with hello_ok + agent list.
-//   4. Server sends stream_map (yamux stream ID -> agent name).
-//   5. Server opens one yamux stream per agent for bidirectional PTY bytes.
-//   6. Control channel accepts JSON commands (send, peek, resize).
+//  1. Client connects via TCP, yamux server wraps the connection.
+//  2. Client opens stream 0 (control channel), sends hello.
+//  3. Server validates token, responds with hello_ok + agent list.
+//  4. Server sends stream_map (yamux stream ID -> agent name).
+//  5. Server opens one yamux stream per agent for bidirectional PTY bytes.
+//  6. Control channel accepts JSON commands (send, peek, resize).
 package tui
 
 import (
@@ -24,6 +24,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -33,10 +34,10 @@ import (
 
 // DaemonConfig holds the configuration for a headless daemon session.
 type DaemonConfig struct {
-	Project  *config.Project
-	Agents   []PaneConfig
-	Version  string
-	Verbose  bool
+	Project *config.Project
+	Agents  []PaneConfig
+	Version string
+	Verbose bool
 }
 
 // Daemon manages headless agent panes and streams them to a yamux client.
@@ -56,19 +57,23 @@ type Daemon struct {
 
 	// Connected clients by peer name for host:agent routing and stale eviction.
 	clients        map[string]net.Conn       // peer name -> control stream
-	clientSessions map[string]*yamux.Session  // peer name -> yamux session
-	clientCtrlMu   map[string]*sync.Mutex    // per-client mutex for ctrl stream read/write serialization
+	clientSessions map[string]*yamux.Session // peer name -> yamux session
+	clientCtrlMu   map[string]*sync.Mutex    // per-client mutex for ctrl stream writes
 
-	// Monotonic counter for forward request IDs.
+	// Pending forward request responses. forwardToClient registers a channel
+	// here before writing; handleControlStream delivers the response.
+	fwdPendingMu sync.Mutex
+	fwdPending   map[string]chan ControlResp // request ID -> response channel
+	fwdSeq       atomic.Uint64
 }
 
 // ── Protocol messages ───────────────────────────────────────────────
 
 // HelloMsg is sent by the client to initiate the handshake.
 type HelloMsg struct {
-	Action   string `json:"action"`   // "hello"
-	Version  int    `json:"version"`  // Protocol version (1).
-	Token    string `json:"token"`    // Auth token.
+	Action   string `json:"action"`    // "hello"
+	Version  int    `json:"version"`   // Protocol version (1).
+	Token    string `json:"token"`     // Auth token.
 	PeerName string `json:"peer_name"` // Client's peer name.
 }
 
@@ -90,7 +95,7 @@ type AgentStatus struct {
 
 // StreamMapMsg tells the client which yamux stream ID maps to which agent.
 type StreamMapMsg struct {
-	Action  string         `json:"action"`  // "stream_map"
+	Action  string            `json:"action"`  // "stream_map"
 	Streams map[uint32]string `json:"streams"` // Stream ID -> agent name.
 }
 
@@ -102,9 +107,9 @@ type ErrorMsg struct {
 
 // ControlCmd is a command sent on the control channel after handshake.
 type ControlCmd struct {
-	ID     string `json:"id,omitempty"`     // Request ID for response correlation.
-	Action string `json:"action"`           // "send", "peek", "resize", "schedule", etc.
-	Target string `json:"target"`           // Agent name.
+	ID     string `json:"id,omitempty"` // Request ID for response correlation.
+	Action string `json:"action"`       // "send", "peek", "resize", "schedule", etc.
+	Target string `json:"target"`       // Agent name.
 	Host   string `json:"host,omitempty"`
 	Text   string `json:"text,omitempty"`
 	Enter  bool   `json:"enter,omitempty"`
@@ -117,7 +122,7 @@ type ControlCmd struct {
 // ControlResp is the response to a control command. It also carries unsolicited
 // server-pushed commands (e.g. forward_send) when Action is set.
 type ControlResp struct {
-	ID     string `json:"id,omitempty"`     // Echoed from request for correlation.
+	ID     string `json:"id,omitempty"` // Echoed from request for correlation.
 	OK     bool   `json:"ok"`
 	Error  string `json:"error,omitempty"`
 	Data   string `json:"data,omitempty"`
@@ -280,7 +285,9 @@ func (d *Daemon) gracefulShutdown() {
 
 	// Notify clients.
 	for _, ctrl := range ctrls {
-		writeJSON(ctrl, struct{ Action string `json:"action"` }{"shutdown"})
+		writeJSON(ctrl, struct {
+			Action string `json:"action"`
+		}{"shutdown"})
 	}
 
 	// Close all yamux sessions (triggers client-side reconnect).
@@ -628,7 +635,9 @@ func (d *Daemon) handleConnection(conn net.Conn) {
 	}
 
 	// Notify client that replay data is about to be sent on agent streams.
-	if err := writeJSON(ctrl, struct{ Action string `json:"action"` }{"replay_start"}); err != nil {
+	if err := writeJSON(ctrl, struct {
+		Action string `json:"action"`
+	}{"replay_start"}); err != nil {
 		LogWarn("daemon", "failed to send replay_start", "err", err)
 		return
 	}
@@ -640,7 +649,9 @@ func (d *Daemon) handleConnection(conn net.Conn) {
 	}
 
 	// Signal replay complete. All buffered history has been sent.
-	if err := writeJSON(ctrl, struct{ Action string `json:"action"` }{"replay_done"}); err != nil {
+	if err := writeJSON(ctrl, struct {
+		Action string `json:"action"`
+	}{"replay_done"}); err != nil {
 		LogWarn("daemon", "failed to send replay_done", "err", err)
 		return
 	}
@@ -729,8 +740,15 @@ func (d *Daemon) handleControlStream(ctrl net.Conn, scanner *bufio.Scanner) {
 	}
 
 	for scanner.Scan() {
+		line := scanner.Bytes()
+
+		// Check if this is a response to a pending forward_send request.
+		if d.deliverForwardResp(line) {
+			continue
+		}
+
 		var cmd ControlCmd
-		if err := json.Unmarshal(scanner.Bytes(), &cmd); err != nil {
+		if err := json.Unmarshal(line, &cmd); err != nil {
 			if !respond("", ControlResp{Error: "invalid JSON"}) {
 				return
 			}
@@ -740,49 +758,69 @@ func (d *Daemon) handleControlStream(ctrl net.Conn, scanner *bufio.Scanner) {
 		switch cmd.Action {
 		case "send":
 			if len(cmd.Text) > maxSendTextLen {
-				if !respond(cmd.ID, ControlResp{Error: fmt.Sprintf("text too large (%d bytes, max %d)", len(cmd.Text), maxSendTextLen)}) { return }
+				if !respond(cmd.ID, ControlResp{Error: fmt.Sprintf("text too large (%d bytes, max %d)", len(cmd.Text), maxSendTextLen)}) {
+					return
+				}
 				continue
 			}
 			p := d.findPane(cmd.Target)
 			if p == nil {
-				if !respond(cmd.ID, ControlResp{Error: fmt.Sprintf("agent %q not found", cmd.Target)}) { return }
+				if !respond(cmd.ID, ControlResp{Error: fmt.Sprintf("agent %q not found", cmd.Target)}) {
+					return
+				}
 				continue
 			}
 			p.SendText(cmd.Text, cmd.Enter)
-			if !respond(cmd.ID, ControlResp{OK: true}) { return }
+			if !respond(cmd.ID, ControlResp{OK: true}) {
+				return
+			}
 
 		case "peek":
 			p := d.findPane(cmd.Target)
 			if p == nil {
-				if !respond(cmd.ID, ControlResp{Error: fmt.Sprintf("agent %q not found", cmd.Target)}) { return }
+				if !respond(cmd.ID, ControlResp{Error: fmt.Sprintf("agent %q not found", cmd.Target)}) {
+					return
+				}
 				continue
 			}
-			if !respond(cmd.ID, ControlResp{OK: true, Data: peekContent(p, cmd.Lines)}) { return }
+			if !respond(cmd.ID, ControlResp{OK: true, Data: peekContent(p, cmd.Lines)}) {
+				return
+			}
 
 		case "resize":
 			p := d.findPane(cmd.Target)
 			if p == nil {
-				if !respond(cmd.ID, ControlResp{Error: fmt.Sprintf("agent %q not found", cmd.Target)}) { return }
+				if !respond(cmd.ID, ControlResp{Error: fmt.Sprintf("agent %q not found", cmd.Target)}) {
+					return
+				}
 				continue
 			}
 			if cmd.Rows > 0 && cmd.Cols > 0 {
 				p.Resize(cmd.Rows, cmd.Cols)
 			}
-			if !respond(cmd.ID, ControlResp{OK: true}) { return }
+			if !respond(cmd.ID, ControlResp{OK: true}) {
+				return
+			}
 
 		case "forward_send":
 			// Received from a remote TUI: deliver to a local agent.
 			if len(cmd.Text) > maxSendTextLen {
-				if !respond(cmd.ID, ControlResp{Error: fmt.Sprintf("text too large (%d bytes, max %d)", len(cmd.Text), maxSendTextLen)}) { return }
+				if !respond(cmd.ID, ControlResp{Error: fmt.Sprintf("text too large (%d bytes, max %d)", len(cmd.Text), maxSendTextLen)}) {
+					return
+				}
 				continue
 			}
 			p := d.findPane(cmd.Target)
 			if p == nil {
-				if !respond(cmd.ID, ControlResp{Error: fmt.Sprintf("agent %q not found", cmd.Target)}) { return }
+				if !respond(cmd.ID, ControlResp{Error: fmt.Sprintf("agent %q not found", cmd.Target)}) {
+					return
+				}
 				continue
 			}
 			p.SendText(cmd.Text, cmd.Enter)
-			if !respond(cmd.ID, ControlResp{OK: true}) { return }
+			if !respond(cmd.ID, ControlResp{OK: true}) {
+				return
+			}
 
 		case "peers_query":
 			agents := make([]string, len(d.panes))
@@ -792,47 +830,67 @@ func (d *Daemon) handleControlStream(ctrl net.Conn, scanner *bufio.Scanner) {
 			peerName := d.project.PeerName
 			peers := []PeerInfo{{Name: peerName, Agents: agents}}
 			data, _ := json.Marshal(peers)
-			if !respond(cmd.ID, ControlResp{OK: true, Data: string(data)}) { return }
+			if !respond(cmd.ID, ControlResp{OK: true, Data: string(data)}) {
+				return
+			}
 
 		case "schedule":
 			if d.timers == nil {
-				if !respond(cmd.ID, ControlResp{Error: "timer store not initialized"}) { return }
+				if !respond(cmd.ID, ControlResp{Error: "timer store not initialized"}) {
+					return
+				}
 				continue
 			}
 			fireAt, err := time.Parse(time.RFC3339, cmd.FireAt)
 			if err != nil {
-				if !respond(cmd.ID, ControlResp{Error: fmt.Sprintf("invalid fire_at: %v", err)}) { return }
+				if !respond(cmd.ID, ControlResp{Error: fmt.Sprintf("invalid fire_at: %v", err)}) {
+					return
+				}
 				continue
 			}
 			timer := d.timers.Add(cmd.Target, cmd.Host, cmd.Text, cmd.Enter, fireAt)
-			if !respond(cmd.ID, ControlResp{OK: true, Data: timer.ID}) { return }
+			if !respond(cmd.ID, ControlResp{OK: true, Data: timer.ID}) {
+				return
+			}
 
 		case "list_timers":
 			if d.timers == nil {
-				if !respond(cmd.ID, ControlResp{OK: true, Data: "[]"}) { return }
+				if !respond(cmd.ID, ControlResp{OK: true, Data: "[]"}) {
+					return
+				}
 				continue
 			}
 			timers := d.timers.List()
 			tdata, _ := json.Marshal(timers)
-			if !respond(cmd.ID, ControlResp{OK: true, Data: string(tdata)}) { return }
+			if !respond(cmd.ID, ControlResp{OK: true, Data: string(tdata)}) {
+				return
+			}
 
 		case "cancel_timer":
 			if d.timers == nil {
-				if !respond(cmd.ID, ControlResp{Error: "timer store not initialized"}) { return }
+				if !respond(cmd.ID, ControlResp{Error: "timer store not initialized"}) {
+					return
+				}
 				continue
 			}
 			timer, err := d.timers.Cancel(cmd.Text)
 			if err != nil {
-				if !respond(cmd.ID, ControlResp{Error: err.Error()}) { return }
+				if !respond(cmd.ID, ControlResp{Error: err.Error()}) {
+					return
+				}
 				continue
 			}
-			if !respond(cmd.ID, ControlResp{OK: true, Data: timer.ID}) { return }
+			if !respond(cmd.ID, ControlResp{OK: true, Data: timer.ID}) {
+				return
+			}
 
 		case "ping":
 			respond(cmd.ID, ControlResp{OK: true, Data: "pong"})
 
 		default:
-			if !respond(cmd.ID, ControlResp{Error: fmt.Sprintf("unknown action %q", cmd.Action)}) { return }
+			if !respond(cmd.ID, ControlResp{Error: fmt.Sprintf("unknown action %q", cmd.Action)}) {
+				return
+			}
 		}
 	}
 }
@@ -887,23 +945,65 @@ func (d *Daemon) fireScheduledSend(timer Timer) {
 	LogInfo("timer", "delivered", "id", timer.ID, "target", timer.Target)
 }
 
-// forwardToClient sends a forward_send command to a client's control stream.
-// Fire-and-forget: the TUI's consumeEvents handles delivery asynchronously.
-// No ID is stamped so the TUI's ControlMux routes it to the events channel
-// (not the pending-response map). The per-client mutex serializes writes.
+// deliverForwardResp checks if a JSON line from the control stream is a
+// response to a pending forward_send request. Returns true if the line was
+// consumed (callers should skip further processing).
+func (d *Daemon) deliverForwardResp(line []byte) bool {
+	var probe struct {
+		ID string `json:"id"`
+	}
+	if json.Unmarshal(line, &probe) != nil || probe.ID == "" {
+		return false
+	}
+	d.fwdPendingMu.Lock()
+	ch, ok := d.fwdPending[probe.ID]
+	d.fwdPendingMu.Unlock()
+	if !ok {
+		return false
+	}
+	var resp ControlResp
+	json.Unmarshal(line, &resp) //nolint:errcheck
+	ch <- resp
+	return true
+}
+
+// forwardToClient sends a forward_send command to a client's control stream
+// and waits for the client to confirm delivery. The command carries an ID;
+// the client's ControlMux dispatches it to its onRequest handler, which
+// delivers to the target pane and writes back a response with the same ID.
+// handleControlStream reads that response and delivers it to the waiting
+// channel registered here (ini-piyb.1).
 func (d *Daemon) forwardToClient(peerName string, ctrl net.Conn, mu *sync.Mutex, fwd ControlCmd) (ControlResp, error) {
-	// Deliberately no ID: ControlMux routes id-less messages to the events
-	// channel where consumeEvents picks them up. Stamping an ID would route
-	// the message to the pending map where nobody is waiting, silently dropping it.
-	fwd.ID = ""
+	id := fmt.Sprintf("fwd%d", d.fwdSeq.Add(1))
+	fwd.ID = id
+
+	ch := make(chan ControlResp, 1)
+	d.fwdPendingMu.Lock()
+	if d.fwdPending == nil {
+		d.fwdPending = make(map[string]chan ControlResp)
+	}
+	d.fwdPending[id] = ch
+	d.fwdPendingMu.Unlock()
+
+	defer func() {
+		d.fwdPendingMu.Lock()
+		delete(d.fwdPending, id)
+		d.fwdPendingMu.Unlock()
+	}()
 
 	mu.Lock()
-	defer mu.Unlock()
-
-	if err := writeJSON(ctrl, fwd); err != nil {
+	err := writeJSON(ctrl, fwd)
+	mu.Unlock()
+	if err != nil {
 		return ControlResp{}, fmt.Errorf("write to peer %s: %w", peerName, err)
 	}
-	return ControlResp{OK: true}, nil
+
+	select {
+	case resp := <-ch:
+		return resp, nil
+	case <-time.After(5 * time.Second):
+		return ControlResp{}, fmt.Errorf("peer %s: forward_send timeout", peerName)
+	}
 }
 
 // writeJSON encodes v as JSON and writes it as a newline-terminated line.
@@ -918,4 +1018,3 @@ func writeJSON(w io.Writer, v any) error {
 	}
 	return nil
 }
-

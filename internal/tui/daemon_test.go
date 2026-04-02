@@ -272,6 +272,15 @@ func TestDaemonIPCSend_HostRouting(t *testing.T) {
 		}
 	}()
 
+	// Read forward responses from the daemon side of the ctrl stream and
+	// deliver to fwdPending (in production, handleControlStream does this).
+	go func() {
+		sc := bufio.NewScanner(ctrlAccept)
+		for sc.Scan() {
+			d.deliverForwardResp(sc.Bytes())
+		}
+	}()
+
 	server, client := net.Pipe()
 	defer client.Close()
 
@@ -300,8 +309,6 @@ func TestDaemonIPCSend_HostRouting(t *testing.T) {
 		t.Errorf("IPC send should succeed, got error: %s", resp.Error)
 	}
 
-	// The forward_send was already consumed by the simulated client above.
-	// Verify the response was OK (delivery confirmed).
 	if resp.Error != "" {
 		t.Errorf("unexpected error: %s", resp.Error)
 	}
@@ -351,6 +358,14 @@ func TestDaemonIPCSend_HostRouting_ForwardFields(t *testing.T) {
 			json.Unmarshal(sc.Bytes(), &cmd)
 			fwdCh <- cmd
 			writeJSON(ctrlDial, ControlResp{ID: cmd.ID, OK: true})
+		}
+	}()
+
+	// Read forward responses from daemon side ctrl stream.
+	go func() {
+		sc := bufio.NewScanner(ctrlAccept)
+		for sc.Scan() {
+			d.deliverForwardResp(sc.Bytes())
 		}
 	}()
 
@@ -481,6 +496,14 @@ func TestDaemonIPCSend_AutoRouteToClient(t *testing.T) {
 		}
 	}()
 
+	// Read forward responses from daemon side ctrl stream.
+	go func() {
+		sc := bufio.NewScanner(ctrlAccept)
+		for sc.Scan() {
+			d.deliverForwardResp(sc.Bytes())
+		}
+	}()
+
 	server, client := net.Pipe()
 	defer client.Close()
 
@@ -521,8 +544,8 @@ func TestDaemonIPCSend_AutoRouteToClient(t *testing.T) {
 	if fwd.Text != "auto-routed msg" {
 		t.Errorf("text = %q, want 'auto-routed msg'", fwd.Text)
 	}
-	if fwd.ID != "" {
-		t.Errorf("forward_send should have empty ID (fire-and-forget), got %q", fwd.ID)
+	if fwd.ID == "" {
+		t.Error("forward_send should carry an ID for delivery confirmation")
 	}
 }
 
@@ -638,9 +661,10 @@ func TestDaemonIPCSend_DeadClientTimeout(t *testing.T) {
 	}
 }
 
-// TestDaemonIPCSend_FireAndForget verifies that forward_send to a live client
-// succeeds immediately without waiting for a response (fire-and-forget).
-func TestDaemonIPCSend_FireAndForget(t *testing.T) {
+// TestDaemonIPCSend_MissingRemotePaneReturnsError verifies that forward_send
+// to a client that reports the target pane doesn't exist returns an error
+// instead of silent success (ini-piyb.1).
+func TestDaemonIPCSend_MissingRemotePaneReturnsError(t *testing.T) {
 	proj := &config.Project{
 		Name:     "test",
 		Root:     t.TempDir(),
@@ -675,14 +699,21 @@ func TestDaemonIPCSend_FireAndForget(t *testing.T) {
 	d.clientCtrlMu = map[string]*sync.Mutex{"macbook": {}}
 	d.sessionsMu.Unlock()
 
-	// Client does NOT respond. Fire-and-forget should still succeed.
-	fwdCh := make(chan ControlCmd, 1)
+	// Simulate client: read forward_send and respond with error (pane not found).
 	go func() {
 		sc := bufio.NewScanner(ctrlDial)
 		if sc.Scan() {
 			var cmd ControlCmd
 			json.Unmarshal(sc.Bytes(), &cmd)
-			fwdCh <- cmd
+			writeJSON(ctrlDial, ControlResp{ID: cmd.ID, Error: "agent \"ghost\" not found"})
+		}
+	}()
+
+	// Read forward responses from daemon side ctrl stream.
+	go func() {
+		sc := bufio.NewScanner(ctrlAccept)
+		for sc.Scan() {
+			d.deliverForwardResp(sc.Bytes())
 		}
 	}()
 
@@ -703,20 +734,17 @@ func TestDaemonIPCSend_FireAndForget(t *testing.T) {
 		respCh <- r
 	}()
 
-	req := IPCRequest{Action: "send", Target: "super", Host: "macbook", Text: "hello", Enter: true}
+	req := IPCRequest{Action: "send", Target: "ghost", Host: "macbook", Text: "hello", Enter: true}
 	data, _ := json.Marshal(req)
 	client.Write(data)
 	client.Write([]byte("\n"))
 
 	resp := <-respCh
-	if !resp.OK {
-		t.Errorf("fire-and-forget should succeed immediately, got error: %s", resp.Error)
+	if resp.OK {
+		t.Error("send to missing remote pane should fail, got OK")
 	}
-
-	// Verify the forward_send arrived at the client.
-	fwd := <-fwdCh
-	if fwd.Action != "forward_send" {
-		t.Errorf("action = %q, want forward_send", fwd.Action)
+	if resp.Error == "" {
+		t.Error("should have error message for missing remote pane")
 	}
 }
 
