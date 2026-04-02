@@ -90,7 +90,9 @@ type reorderModal struct {
 // agentsModal holds state for the agent management modal.
 type agentsModal struct {
 	active   bool
-	selected int // Currently highlighted row index.
+	selected int    // Currently highlighted row index.
+	moving   bool   // True when a row is grabbed for reorder.
+	error    string // Inline error message (e.g., "cannot hide last visible pane").
 }
 
 // welcomeOverlay is shown once on first launch, then never again.
