@@ -26,14 +26,14 @@ func (t *TUI) handleMcpKey(ev *tcell.EventKey) bool {
 		case 'q', '`':
 			t.mcpM.active = false
 			return false
-		case 'r':
+		case 'x':
 			t.mcpM.tokenRevealed = !t.mcpM.tokenRevealed
 			if t.mcpM.tokenRevealed {
 				t.mcpM.revealExpiry = time.Now().Add(mcpTokenRevealDuration)
 			}
 			return false
 		case 'c':
-			t.mcpCopyClaudeCommand()
+			t.mcpCopyToken()
 			return false
 		}
 	}
@@ -148,10 +148,10 @@ func (t *TUI) renderMcpModal() {
 
 	// Token line.
 	drawLine(iy, " Token      ", labelStyle)
-	tokenDisplay := strings.Repeat("\u25cf", 24) + "  [r] reveal"
+	tokenDisplay := strings.Repeat("\u25cf", 24) + "  [x] reveal"
 	tokenStyle := dimStyle
 	if t.mcpM.tokenRevealed {
-		tokenDisplay = t.mcpToken + "  [r] hide"
+		tokenDisplay = t.mcpToken + "  [x] hide"
 		tokenStyle = valueStyle
 	}
 	// Draw token value after label.
@@ -216,26 +216,20 @@ func (t *TUI) renderMcpModal() {
 
 	// Help line (last interior row).
 	helpY := startY + boxH - 2
-	help := " [c] copy Claude Code command   [r] toggle token   [Esc] close"
+	help := " [c] copy token   [x] toggle token   [Esc] close"
 	drawLine(helpY, help, helpStyle)
 }
 
-// mcpCopyClaudeCommand copies the Claude Code connection command to clipboard
-// via OSC 52 escape sequence (works in most modern terminals).
-func (t *TUI) mcpCopyClaudeCommand() {
-	if t.mcpPort == 0 || t.mcpToken == "" {
+// mcpCopyToken copies the bearer token to clipboard via OSC 52 escape
+// sequence (works in most modern terminals).
+func (t *TUI) mcpCopyToken() {
+	if t.mcpToken == "" {
 		return
 	}
-	host := mcpLANIP()
-	if t.mcpBind == "127.0.0.1" {
-		host = "localhost"
-	}
-	cmd := fmt.Sprintf("claude mcp add --transport http --header 'Authorization: Bearer %s' initech http://%s:%d/mcp",
-		t.mcpToken, host, t.mcpPort)
 
 	// OSC 52: \033]52;c;<base64>\a
-	import64 := base64Encode(cmd)
-	osc := fmt.Sprintf("\033]52;c;%s\a", import64)
+	encoded := base64Encode(t.mcpToken)
+	osc := fmt.Sprintf("\033]52;c;%s\a", encoded)
 
 	// Write directly to the terminal (stdout, not the screen).
 	fmt.Print(osc)

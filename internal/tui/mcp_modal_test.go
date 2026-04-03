@@ -58,23 +58,23 @@ func TestHandleMcpKey_QCloses(t *testing.T) {
 	}
 }
 
-func TestHandleMcpKey_RTogglesToken(t *testing.T) {
+func TestHandleMcpKey_XTogglesToken(t *testing.T) {
 	tui := newTestTUI(testPane("eng1"))
 	tui.mcpM.active = true
 
 	// First r reveals.
-	tui.handleMcpKey(tcell.NewEventKey(tcell.KeyRune, 'r', tcell.ModNone))
+	tui.handleMcpKey(tcell.NewEventKey(tcell.KeyRune, 'x', tcell.ModNone))
 	if !tui.mcpM.tokenRevealed {
-		t.Error("expected token to be revealed after first r")
+		t.Error("expected token to be revealed after first x")
 	}
 	if tui.mcpM.revealExpiry.IsZero() {
 		t.Error("expected revealExpiry to be set")
 	}
 
 	// Second r hides.
-	tui.handleMcpKey(tcell.NewEventKey(tcell.KeyRune, 'r', tcell.ModNone))
+	tui.handleMcpKey(tcell.NewEventKey(tcell.KeyRune, 'x', tcell.ModNone))
 	if tui.mcpM.tokenRevealed {
-		t.Error("expected token to be hidden after second r")
+		t.Error("expected token to be hidden after second x")
 	}
 }
 
