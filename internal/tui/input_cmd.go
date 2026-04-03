@@ -184,7 +184,7 @@ func (t *TUI) executeConfirmed() bool {
 					t.screen.SetContent(x, row, ' ', nil, clearStyle)
 				}
 			}
-			msg := " Quitting..."
+			msg := "Quitting..."
 			rainbow := []tcell.Color{
 				tcell.NewRGBColor(255, 0, 0),     // red
 				tcell.NewRGBColor(255, 140, 0),   // orange
@@ -197,7 +197,7 @@ func (t *TUI) executeConfirmed() bool {
 			for i, ch := range msg {
 				if i < sw {
 					style := tcell.StyleDefault.Background(bg).Foreground(rainbow[i%len(rainbow)]).Bold(true)
-					t.screen.SetContent(i, sh-3, ch, nil, style)
+					t.screen.SetContent(i, sh-1, ch, nil, style)
 				}
 			}
 			t.screen.Show()
