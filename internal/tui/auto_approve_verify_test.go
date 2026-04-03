@@ -30,6 +30,9 @@ func (c *capturedLogs) get() []string {
 }
 
 func TestVerifyAutoApprove_NoWarnOnActivity(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping slow auto-approve verify test in short mode")
+	}
 	emu := vt.NewSafeEmulator(80, 24)
 	go func() {
 		buf := make([]byte, 256)
@@ -64,6 +67,9 @@ func TestVerifyAutoApprove_NoWarnOnActivity(t *testing.T) {
 }
 
 func TestVerifyAutoApprove_WarnsOnTimeout(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping slow auto-approve verify test in short mode")
+	}
 	emu := vt.NewSafeEmulator(80, 24)
 	go func() {
 		buf := make([]byte, 256)
@@ -94,6 +100,9 @@ func TestVerifyAutoApprove_WarnsOnTimeout(t *testing.T) {
 }
 
 func TestVerifyAutoApprove_TrivialEchoStillWarns(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping slow auto-approve verify test in short mode")
+	}
 	emu := vt.NewSafeEmulator(80, 24)
 	go func() {
 		buf := make([]byte, 256)
@@ -139,6 +148,9 @@ func TestVerifyAutoApprove_DeadPaneSkips(t *testing.T) {
 }
 
 func TestVerifyAutoApprove_PaneDiesDuringVerify(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping slow auto-approve verify test in short mode")
+	}
 	emu := vt.NewSafeEmulator(80, 24)
 	go func() {
 		buf := make([]byte, 256)

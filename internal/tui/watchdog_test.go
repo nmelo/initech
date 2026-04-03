@@ -10,6 +10,9 @@ import (
 )
 
 func TestRenderWatchdog_DumpsOnStale(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping slow watchdog test in short mode")
+	}
 	dir := t.TempDir()
 	var lastRender atomic.Int64
 	quit := make(chan struct{})
@@ -42,6 +45,9 @@ func TestRenderWatchdog_DumpsOnStale(t *testing.T) {
 }
 
 func TestRenderWatchdog_NoFalsePositive(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping slow watchdog test in short mode")
+	}
 	dir := t.TempDir()
 	var lastRender atomic.Int64
 	quit := make(chan struct{})

@@ -13,6 +13,9 @@ import (
 // configured but unreachable. This is a regression test for the class of bug
 // where remote connection logic blocks the main render loop.
 func TestRenderNotBlockedByRemoteConnection(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping slow render deadlock test in short mode")
+	}
 	s := tcell.NewSimulationScreen("")
 	s.Init()
 	s.SetSize(120, 40)

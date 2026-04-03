@@ -8,12 +8,15 @@ EXPECTED_ASSETS := checksums.txt initech_darwin_amd64.tar.gz initech_darwin_arm6
 LDFLAGS := -s -w -X github.com/nmelo/initech/cmd.Version=$(VERSION)
 REQUIRE_RELEASE_VERSION = test -n "$(VERSION)" && case "$(VERSION)" in v*) ;; *) echo "VERSION must start with v, got $(VERSION)" >&2; exit 1 ;; esac
 
-.PHONY: build test vet lint clean release check install-hooks release-tag release-wait release-assets release-verify release-ship
+.PHONY: build test test-full vet lint clean release check install-hooks release-tag release-wait release-assets release-verify release-ship
 
 build:
 	go build -ldflags "$(LDFLAGS)" -o initech .
 
 test:
+	go test ./... -count=1 -short
+
+test-full:
 	go test ./... -count=1
 
 vet:

@@ -88,6 +88,9 @@ func TestDaemonHelloHandshake(t *testing.T) {
 }
 
 func TestDaemonAuthFailure(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping slow daemon test in short mode")
+	}
 	proj := &config.Project{
 		Name:     "test",
 		Root:     t.TempDir(),
