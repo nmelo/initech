@@ -633,7 +633,7 @@ func Run(cfg Config) error {
 			if mcpBind == "" {
 				mcpBind = config.DefaultMcpBind
 			}
-			mcpSrv := mcp.NewServer(cfg.McpPort, mcpBind, mcpToken, nil)
+			mcpSrv := mcp.NewServer(cfg.McpPort, mcpBind, mcpToken, nil, nil)
 			mcpCtx, mcpCancel := context.WithCancel(context.Background())
 			go func() {
 				if err := mcpSrv.Start(mcpCtx); err != nil {

@@ -12,8 +12,12 @@ import (
 const testToken = "test-token-abc123"
 
 func startTestServer(t *testing.T) (*Server, context.CancelFunc) {
+	return startTestServerWithHost(t, nil)
+}
+
+func startTestServerWithHost(t *testing.T, host PaneHost) (*Server, context.CancelFunc) {
 	t.Helper()
-	srv := NewServer(0, "", testToken, nil)
+	srv := NewServer(0, "", testToken, host, nil)
 	ctx, cancel := context.WithCancel(context.Background())
 	errCh := make(chan error, 1)
 	go func() { errCh <- srv.Start(ctx) }()
@@ -145,7 +149,7 @@ func TestServer_MissingBearerPrefix(t *testing.T) {
 }
 
 func TestServer_CustomBindAddress(t *testing.T) {
-	srv := NewServer(0, "127.0.0.1", testToken, nil)
+	srv := NewServer(0, "127.0.0.1", testToken, nil, nil)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -169,7 +173,7 @@ func TestServer_CustomBindAddress(t *testing.T) {
 }
 
 func TestServer_DefaultBindAddress(t *testing.T) {
-	srv := NewServer(0, "", testToken, nil)
+	srv := NewServer(0, "", testToken, nil, nil)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 

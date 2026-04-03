@@ -14,6 +14,21 @@ import (
 	gomcp "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
+// PaneHandle is a minimal interface for interacting with a single pane.
+// The MCP package uses this to avoid importing internal/tui directly.
+type PaneHandle interface {
+	Name() string
+	PeekContent(lines int) string
+	SendText(text string, enter bool)
+}
+
+// PaneHost provides pane lookup for the MCP tool handlers.
+type PaneHost interface {
+	// FindPane returns the pane with the given name, or nil if not found.
+	// The bool is false if the host is shutting down.
+	FindPane(name string) (PaneHandle, bool)
+}
+
 // Server is an MCP server that exposes initech agent primitives over
 // streamable HTTP. It wraps the official go-sdk MCP server with bearer
 // token authentication.
@@ -27,7 +42,8 @@ type Server struct {
 // NewServer creates an MCP server bound to the given address and port.
 // The token is required for bearer auth on every request. If port is 0,
 // the OS assigns a free port. If bind is empty, defaults to "0.0.0.0".
-func NewServer(port int, bind, token string, logger *slog.Logger) *Server {
+// The host provides pane access for tool handlers.
+func NewServer(port int, bind, token string, host PaneHost, logger *slog.Logger) *Server {
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -43,6 +59,8 @@ func NewServer(port int, bind, token string, logger *slog.Logger) *Server {
 		},
 		nil,
 	)
+
+	registerTools(mcpServer, host)
 
 	handler := gomcp.NewStreamableHTTPHandler(
 		func(r *http.Request) *gomcp.Server { return mcpServer },
