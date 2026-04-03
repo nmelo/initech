@@ -28,6 +28,7 @@ var (
 	noColor     bool
 	autoSuspend bool
 	pprofAddr   string
+	webPort     int
 
 	// updateResult receives the background version check result.
 	// Populated in PersistentPreRun, drained in PersistentPostRun.
@@ -136,6 +137,7 @@ func init() {
 	rootCmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Enable DEBUG-level logging to .initech/initech.log")
 	rootCmd.Flags().BoolVar(&autoSuspend, "auto-suspend", false, "Enable automatic agent suspension under memory pressure")
 	rootCmd.Flags().StringVar(&pprofAddr, "pprof", "", "Start pprof HTTP server on the given localhost address (e.g. localhost:6060)")
+	rootCmd.Flags().IntVar(&webPort, "web-port", 0, "Start web companion server on the given port (0 = disabled)")
 	rootCmd.PersistentFlags().BoolVar(&noColor, "no-color", false, "Disable colored output")
 
 	// Register color functions as template functions so the usage template can
@@ -287,6 +289,7 @@ func runTUI(cmd *cobra.Command, args []string) error {
 		Project:           proj,
 		UpdateResult:      tuiUpdateCh,
 		PaneConfigBuilder: buildReloadingPaneConfigBuilder(cfgPath, buildAgentPaneConfig),
+		WebPort:           webPort,
 	})
 }
 

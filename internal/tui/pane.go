@@ -180,6 +180,9 @@ type Pane struct {
 	sendMu            sync.Mutex // Serializes IPC send operations to prevent keystroke interleaving.
 	networkSink       io.Writer  // Optional: readLoop tees PTY bytes here for network streaming.
 	sinkMu            sync.Mutex // Protects networkSink assignment.
+	subscribers       map[string]chan []byte // PTY byte fan-out: keyed by subscriber ID.
+	subscriberMu      sync.Mutex            // Protects subscribers map.
+	replayBuf         *RingBuf              // Captures PTY output for replay on new subscriber connect.
 	alive             bool
 	visible           bool              // Whether this pane is shown in the layout. Hidden panes keep running.
 	activity          ActivityState     // Current state: running when PTY bytes flowed recently, else idle.
@@ -335,6 +338,7 @@ func NewPane(cfg PaneConfig, rows, cols int) (*Pane, error) {
 		autoApprove:      cfg.AutoApprove,
 		noBracketedPaste: cfg.NoBracketedPaste,
 		submitKey:        submitKey,
+		replayBuf:        NewRingBuf(DefaultRingBufSize),
 	}
 
 	return p, nil
@@ -403,6 +407,14 @@ func (p *Pane) readLoop() {
 			if sink != nil {
 				sink.Write(data)
 			}
+
+			// Capture for replay on future subscriber connects.
+			if p.replayBuf != nil {
+				p.replayBuf.Write(data)
+			}
+
+			// Fan out to all PTY byte subscribers (web companion, etc.).
+			p.broadcastToSubscribers(data)
 		}
 		if err != nil {
 			p.mu.Lock()
@@ -987,6 +999,88 @@ func (p *Pane) ClearNetworkSink() {
 	p.sinkMu.Unlock()
 }
 
+// subscriberBufSize is the capacity of each subscriber's byte channel.
+// At 64K entries of typical PTY reads (4-32KB each), this provides substantial
+// buffering before drops occur.
+const subscriberBufSize = 64 * 1024
+
+// Subscribe registers a new subscriber for PTY byte fan-out and returns a
+// buffered channel that receives copies of all bytes read from the PTY.
+// The channel has a 64KB buffer; if a slow consumer falls behind, the oldest
+// entry is dropped to prevent blocking the readLoop. Callers must eventually
+// call Unsubscribe to release resources.
+func (p *Pane) Subscribe(id string) chan []byte {
+	ch := make(chan []byte, subscriberBufSize)
+
+	// Replay buffered PTY history so the subscriber can reconstruct the
+	// current screen state immediately, before any new live bytes arrive.
+	if p.replayBuf != nil {
+		if snap := p.replayBuf.Snapshot(); len(snap) > 0 {
+			ch <- snap
+		}
+	}
+
+	// Register after replay so broadcastToSubscribers does not race with
+	// the snapshot send above (channel is buffered, so replay is safe
+	// even without the lock).
+	p.subscriberMu.Lock()
+	if p.subscribers == nil {
+		p.subscribers = make(map[string]chan []byte)
+	}
+	p.subscribers[id] = ch
+	p.subscriberMu.Unlock()
+	return ch
+}
+
+// Unsubscribe removes a subscriber and closes its channel. Safe to call
+// with an ID that was never subscribed or was already unsubscribed.
+func (p *Pane) Unsubscribe(id string) {
+	p.subscriberMu.Lock()
+	ch, ok := p.subscribers[id]
+	if ok {
+		delete(p.subscribers, id)
+	}
+	p.subscriberMu.Unlock()
+	if ok {
+		close(ch)
+	}
+}
+
+// broadcastToSubscribers sends data to all registered subscriber channels.
+// Non-blocking: if a channel is full, the oldest entry is drained before
+// sending the new one. Called from readLoop on every PTY read.
+func (p *Pane) broadcastToSubscribers(data []byte) {
+	// Copy once; all subscribers share this immutable slice.
+	cpy := make([]byte, len(data))
+	copy(cpy, data)
+
+	p.subscriberMu.Lock()
+	defer p.subscriberMu.Unlock()
+
+	for _, ch := range p.subscribers {
+		select {
+		case ch <- cpy:
+		default:
+			// Channel full: drop oldest, then send.
+			<-ch
+			ch <- cpy
+		}
+	}
+}
+
+// closeAllSubscribers closes and removes all subscriber channels.
+// Called from Close() during pane teardown.
+func (p *Pane) closeAllSubscribers() {
+	p.subscriberMu.Lock()
+	subs := p.subscribers
+	p.subscribers = nil
+	p.subscriberMu.Unlock()
+
+	for _, ch := range subs {
+		close(ch)
+	}
+}
+
 // Visible returns whether the pane is included in the current layout.
 // Hidden panes keep their emulator running at their last visible size.
 func (p *Pane) Visible() bool {
@@ -1204,6 +1298,9 @@ func (p *Pane) Close() {
 		}
 		p.cmd.Wait()
 	}
+	// Close all subscriber channels so consumers see EOF.
+	p.closeAllSubscribers()
+
 	// Wait for all goroutines started by Start() to exit before touching
 	// emu or ptmx fields, preventing data races detected by the race detector.
 	p.goWg.Wait()

@@ -13,6 +13,7 @@ import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/nmelo/initech/internal/config"
 	"github.com/nmelo/initech/internal/update"
+	"github.com/nmelo/initech/internal/web"
 )
 
 // LayoutMode determines how panes are arranged on screen.
@@ -324,6 +325,7 @@ type Config struct {
 	PaneConfigBuilder func(name string) (PaneConfig, error) // Optional factory for hot-add. Nil disables add command.
 	Project           *config.Project                       // Full project config. Used for remote peer connections.
 	UpdateResult      <-chan string                         // Receives newer version string from background check. Nil = no check.
+	WebPort           int                                   // Port for the web companion server. 0 = disabled.
 }
 
 // DefaultConfig returns a config with standard shell-only agents.
@@ -584,6 +586,26 @@ func Run(cfg Config) error {
 	// Start memory monitor when auto-suspend is enabled.
 	if t.autoSuspend {
 		t.startMemoryMonitor()
+	}
+
+	// Start web companion server when configured.
+	if cfg.WebPort > 0 {
+		webCtx, webCancel := context.WithCancel(context.Background())
+		lister := &tuiPaneLister{t: t}
+		subscriber := &tuiPaneSubscriber{t: t}
+		webSrv := web.NewServer(cfg.WebPort, lister, subscriber, nil)
+		go func() {
+			if err := webSrv.Start(webCtx); err != nil {
+				LogError("web", "server exited with error", "err", err)
+			}
+		}()
+		LogInfo("web", "companion server starting", "port", cfg.WebPort)
+		defer func() {
+			webCancel()
+			shutCtx, shutCancel := context.WithTimeout(context.Background(), 2*time.Second)
+			webSrv.Shutdown(shutCtx)
+			shutCancel()
+		}()
 	}
 
 	// Start battery polling for status bar display.
