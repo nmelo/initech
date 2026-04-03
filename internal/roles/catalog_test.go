@@ -20,7 +20,7 @@ func TestCatalogCompleteness(t *testing.T) {
 }
 
 func TestCatalogPermissionTiers(t *testing.T) {
-	supervised := []string{"shipper"}
+	supervised := []string{}
 	for _, name := range supervised {
 		def := Catalog[name]
 		if def.Permission != Supervised {
@@ -28,7 +28,7 @@ func TestCatalogPermissionTiers(t *testing.T) {
 		}
 	}
 
-	autonomous := []string{"super", "eng1", "eng2", "eng3", "qa1", "qa2", "pm", "pmm", "arch", "sec", "writer", "ops", "growth"}
+	autonomous := []string{"super", "eng1", "eng2", "eng3", "qa1", "qa2", "shipper", "pm", "pmm", "arch", "sec", "writer", "ops", "growth"}
 	for _, name := range autonomous {
 		def := Catalog[name]
 		if def.Permission != Autonomous {
@@ -126,9 +126,9 @@ func TestResolveClaudeArgs(t *testing.T) {
 			want: []string{"--dangerously-skip-permissions"},
 		},
 		{
-			name: "supervised role with no config returns nil",
+			name: "shipper (autonomous) gets skip-permissions",
 			role: "shipper",
-			want: nil,
+			want: []string{"--dangerously-skip-permissions"},
 		},
 		{
 			name:       "global args override catalog default",
@@ -137,7 +137,7 @@ func TestResolveClaudeArgs(t *testing.T) {
 			want:       []string{"--model", "opus"},
 		},
 		{
-			name:       "global args apply to supervised roles too",
+			name:       "global args apply to all roles",
 			role:       "shipper",
 			globalArgs: []string{"--verbose"},
 			want:       []string{"--verbose"},

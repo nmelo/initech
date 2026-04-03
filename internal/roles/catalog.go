@@ -40,7 +40,7 @@ var Catalog = map[string]RoleDef{
 	"eng3":    {Name: "eng3", Permission: Autonomous, NeedsSrc: true, NeedsMakefile: true},
 	"qa1":     {Name: "qa1", Permission: Autonomous, NeedsSrc: true, NeedsPlaybooks: true},
 	"qa2":     {Name: "qa2", Permission: Autonomous, NeedsSrc: true, NeedsPlaybooks: true},
-	"shipper": {Name: "shipper", Permission: Supervised, NeedsSrc: true, NeedsPlaybooks: true},
+	"shipper": {Name: "shipper", Permission: Autonomous, NeedsSrc: true, NeedsPlaybooks: true},
 	"pm":      {Name: "pm", Permission: Autonomous},
 	"pmm":     {Name: "pmm", Permission: Autonomous},
 	"arch":    {Name: "arch", Permission: Autonomous},

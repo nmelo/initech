@@ -81,7 +81,7 @@ func TestBuildSelectorItems_Tags(t *testing.T) {
 	items := buildSelectorItems()
 	wantTag := map[string]string{
 		"super":   "",
-		"shipper": "supervised",
+		"shipper": "needs src",
 		"eng1":    "needs src",
 		"eng2":    "needs src",
 		"eng3":    "needs src",
