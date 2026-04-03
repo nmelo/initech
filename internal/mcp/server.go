@@ -124,7 +124,13 @@ func NewServer(port int, bind, token string, host PaneHost, logger *slog.Logger)
 
 	handler := gomcp.NewStreamableHTTPHandler(
 		func(r *http.Request) *gomcp.Server { return mcpServer },
-		nil,
+		&gomcp.StreamableHTTPOptions{
+			// Disable DNS rebinding protection so the server accepts requests
+			// from reverse proxies (Tailscale serve, nginx) where the Host
+			// header differs from localhost. Bearer token auth is the access
+			// control, not host validation.
+			DisableLocalhostProtection: true,
+		},
 	)
 
 	s := &Server{
