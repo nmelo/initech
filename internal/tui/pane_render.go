@@ -178,8 +178,10 @@ func (p *Pane) Render(screen tcell.Screen, focused bool, dimmed bool, index int,
 		}
 	}
 
-	// Selection and cursor are only drawn in live mode (not scrollback).
-	if p.scrollOffset == 0 {
+	if p.scrollOffset > 0 {
+		// Scrollback mode: render selection using virtual cell accessor.
+		renderSelectionVirtual(s, r, p, sel, dimmed, startRow)
+	} else {
 		renderSelection(s, r, p.emu, sel, dimmed, startRow-renderOffset)
 		renderCursor(s, r, p.emu, focused, sel, startRow-renderOffset)
 	}

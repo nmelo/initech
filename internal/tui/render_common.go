@@ -113,6 +113,53 @@ func renderSelection(s *clampedScreen, r Region, emu *vt.SafeEmulator, sel Selec
 	}
 }
 
+// renderSelectionVirtual renders the selection highlight in scrollback mode,
+// using the pane's virtualCellAt to read from the combined scrollback + screen
+// buffer. viewTop is the virtual row at the top of the visible window.
+func renderSelectionVirtual(s *clampedScreen, r Region, p *Pane, sel Selection, dimmed bool, viewTop int) {
+	if !sel.Active {
+		return
+	}
+	innerCols, innerRows := r.InnerSize()
+	scrollbackLen := p.emu.ScrollbackLen()
+	totalVirtual := scrollbackLen + p.emu.Height()
+
+	r0, c0, r1, c1 := sel.StartY, sel.StartX, sel.EndY, sel.EndX
+	if r0 > r1 || (r0 == r1 && c0 > c1) {
+		r0, c0, r1, c1 = r1, c1, r0, c0
+	}
+	selBg := tcell.ColorYellow
+	if dimmed {
+		selBg = tcell.ColorOlive
+	}
+	selStyle := tcell.StyleDefault.Background(selBg).Foreground(tcell.ColorBlack)
+	for row := r0; row <= r1 && row < innerRows; row++ {
+		vRow := viewTop + row
+		if vRow < 0 || vRow >= totalVirtual {
+			continue
+		}
+		sc := 0
+		ec := innerCols
+		if row == r0 {
+			sc = c0
+		}
+		if row == r1 {
+			ec = c1 + 1
+		}
+		if ec > innerCols {
+			ec = innerCols
+		}
+		for col := sc; col < ec; col++ {
+			cell := p.virtualCellAt(col, vRow)
+			ch := ' '
+			if cell != nil && cell.Content != "" {
+				ch = []rune(cell.Content)[0]
+			}
+			s.SetContent(r.X+col, r.Y+row, ch, nil, selStyle)
+		}
+	}
+}
+
 // renderCursor draws the cursor block if focused and no selection is active.
 // emuStartRow is the emulator row that maps to visual row 0.
 func renderCursor(s *clampedScreen, r Region, emu *vt.SafeEmulator, focused bool, sel Selection, emuStartRow int) {

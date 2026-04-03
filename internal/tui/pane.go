@@ -504,12 +504,27 @@ func (p *Pane) ForwardMouse(ev uv.MouseEvent) {
 
 // contentOffset computes the mapping from screen-local content rows to
 // emulator rows for bottom-anchored (non-alt-screen) content. In alt-screen
-// mode or scrollback mode, the mapping is identity (both return 0).
+// mode the mapping is identity (both return 0). In scrollback mode, startRow
+// is the virtual row (scrollback + screen combined) of the view window top.
 //
 // Usage: emuRow = startRow + (screenRow - renderOffset)
 func (p *Pane) contentOffset() (startRow, renderOffset int) {
-	if p.scrollOffset > 0 || p.emu.IsAltScreen() {
+	if p.emu.IsAltScreen() {
 		return 0, 0
+	}
+	if p.scrollOffset > 0 {
+		scrollbackLen := p.emu.ScrollbackLen()
+		totalVirtual := scrollbackLen + p.emu.Height()
+		_, innerRows := p.region.InnerSize()
+		viewBottom := totalVirtual - p.scrollOffset
+		if viewBottom < 0 {
+			viewBottom = 0
+		}
+		viewTop := viewBottom - innerRows
+		if viewTop < 0 {
+			viewTop = 0
+		}
+		return viewTop, 0
 	}
 
 	innerCols, innerRows := p.region.InnerSize()
@@ -562,6 +577,17 @@ func (p *Pane) Host() string {
 // Emulator returns the pane's terminal emulator for cell-level access.
 func (p *Pane) Emulator() *vt.SafeEmulator {
 	return p.emu
+}
+
+// virtualCellAt returns the cell at virtual row vRow (scrollback + screen
+// combined). vRow in [0, scrollbackLen) reads from scrollback; vRow in
+// [scrollbackLen, scrollbackLen+emuRows) reads from the live screen buffer.
+func (p *Pane) virtualCellAt(col, vRow int) *uv.Cell {
+	scrollbackLen := p.emu.ScrollbackLen()
+	if vRow < scrollbackLen {
+		return p.emu.ScrollbackCellAt(col, vRow)
+	}
+	return p.emu.CellAt(col, vRow-scrollbackLen)
 }
 
 // SubmitKey returns the configured submit key sequence for this pane.

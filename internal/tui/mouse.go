@@ -239,11 +239,27 @@ func (t *TUI) copySelection() {
 	emu := pv.Emulator()
 	emuRows := emu.Height()
 
+	// In scrollback mode, startRow is a virtual row (scrollback + screen
+	// combined). Use virtualCellAt for correct cell lookup.
+	scrollback := false
+	var localPane *Pane
+	if lp, ok := pv.(*Pane); ok && lp.scrollOffset > 0 {
+		scrollback = true
+		localPane = lp
+	}
+	totalVirtual := emu.ScrollbackLen() + emuRows
+
 	var buf strings.Builder
 	for row := r0; row <= r1; row++ {
-		emuRow := startRow + (row - renderOffset)
-		if emuRow < 0 || emuRow >= emuRows {
-			continue
+		vRow := startRow + (row - renderOffset)
+		if scrollback {
+			if vRow < 0 || vRow >= totalVirtual {
+				continue
+			}
+		} else {
+			if vRow < 0 || vRow >= emuRows {
+				continue
+			}
 		}
 
 		startCol := 0
@@ -260,7 +276,12 @@ func (t *TUI) copySelection() {
 
 		var line strings.Builder
 		for col := startCol; col < endCol; col++ {
-			cell := emu.CellAt(col, emuRow)
+			var cell *uv.Cell
+			if scrollback {
+				cell = localPane.virtualCellAt(col, vRow)
+			} else {
+				cell = emu.CellAt(col, vRow)
+			}
 			if cell != nil && cell.Content != "" {
 				line.WriteString(cell.Content)
 			} else {
