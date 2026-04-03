@@ -172,6 +172,41 @@ func TestAgentsModal_RenderShowsVisibilityCheckbox(t *testing.T) {
 	}
 }
 
+func TestAgentsModal_RenderHiddenAgentNameItalic(t *testing.T) {
+	tui, s := newTestTUIWithScreen("eng1", "eng2")
+	tui.layoutState.Hidden["eng2"] = true
+	tui.openAgentsModal()
+	tui.render()
+
+	sw, sh := s.Size()
+	boxW := agentsBoxW
+	if sw-4 < boxW {
+		boxW = sw - 4
+	}
+	boxH := agentsBoxH
+	if sh-4 < boxH {
+		boxH = sh - 4
+	}
+	startX := (sw - boxW) / 2
+	startY := (sh - boxH) / 2
+	innerX := startX + 1
+	row := startY + 4 // first data row is startY+3, second is startY+4
+
+	visiblePrefix := fmt.Sprintf("%s%2d  %s ", " ", 1, "[x]")
+	_, _, visibleStyle, _ := s.GetContent(innerX+len([]rune(visiblePrefix)), startY+3)
+	_, _, visibleAttrs := visibleStyle.Decompose()
+	if visibleAttrs&tcell.AttrItalic != 0 {
+		t.Fatal("visible agents modal name should not be italic")
+	}
+
+	hiddenPrefix := fmt.Sprintf("%s%2d  %s ", " ", 2, "[ ]")
+	_, _, hiddenStyle, _ := s.GetContent(innerX+len([]rune(hiddenPrefix)), row)
+	_, _, hiddenAttrs := hiddenStyle.Decompose()
+	if hiddenAttrs&tcell.AttrItalic == 0 {
+		t.Fatal("hidden agents modal name should be italic")
+	}
+}
+
 func TestAgentsModal_RenderShowsPinBadge(t *testing.T) {
 	tui, s := newTestTUIWithScreen("eng1", "eng2")
 	tui.layoutState.Pinned = map[string]bool{"eng1": true}

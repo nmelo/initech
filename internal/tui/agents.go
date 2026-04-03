@@ -419,6 +419,7 @@ func (t *TUI) renderAgents() {
 		}
 
 		line := fmt.Sprintf("%s%2d  %s %-12s %s  %s", marker, idx+1, vis, name, pin, status)
+		prefix := fmt.Sprintf("%s%2d  %s ", marker, idx+1, vis)
 
 		style := normalStyle
 		if idx == t.agents.selected {
@@ -433,6 +434,17 @@ func (t *TUI) renderAgents() {
 		}
 
 		drawLine(row, line, style)
+		if hidden {
+			nameStyle := style.Italic(true)
+			nameCol := innerX + len([]rune(prefix))
+			for _, ch := range name {
+				if nameCol >= innerX+innerW {
+					break
+				}
+				s.SetContent(nameCol, row, ch, nil, nameStyle)
+				nameCol++
+			}
+		}
 	}
 
 	if hasBelow {

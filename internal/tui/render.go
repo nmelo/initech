@@ -656,6 +656,7 @@ type topEntry struct {
 	Bead    string // Current bead ID (empty = none).
 	Status  string // running, idle, dead, hidden.
 }
+
 func drawField(s tcell.Screen, x, y, width int, text string, style tcell.Style) {
 	if width <= 0 {
 		return
@@ -795,6 +796,9 @@ func (t *TUI) renderOverlay() {
 			nameStyle = bgStyle.Foreground(tcell.ColorYellow).Bold(true)
 		} else if !a.Visible {
 			nameStyle = bgStyle.Foreground(tcell.ColorDarkGray)
+		}
+		if !a.Visible {
+			nameStyle = nameStyle.Italic(true)
 		}
 		col := px + 4
 		for _, ch := range a.Name {

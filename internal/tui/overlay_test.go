@@ -2,6 +2,8 @@ package tui
 
 import (
 	"testing"
+
+	"github.com/gdamore/tcell/v2"
 )
 
 func TestAgentInfoVisibility(t *testing.T) {
@@ -88,5 +90,30 @@ func TestSummaryLineOnlyWhenHidden(t *testing.T) {
 	// 3 agents + 2 borders + 1 summary = 6
 	if panelH != 6 {
 		t.Errorf("panelH = %d, want 6 (summary row when hidden panes exist)", panelH)
+	}
+}
+
+func TestRenderOverlay_HiddenAgentNameItalic(t *testing.T) {
+	tui, s := newTestTUIWithScreen("eng1", "eng2")
+	tui.layoutState.Hidden["eng2"] = true
+
+	tui.renderOverlay()
+
+	sw, _ := s.Size()
+	maxNameLen := len("eng2") + 4 // hidden suffix " [h]"
+	panelW := 4 + maxNameLen + 1 + 7 + 2
+	px := sw - panelW - 1
+	py := 1
+
+	_, _, visibleStyle, _ := s.GetContent(px+4, py+1)
+	_, _, visibleAttrs := visibleStyle.Decompose()
+	if visibleAttrs&tcell.AttrItalic != 0 {
+		t.Fatal("visible overlay agent name should not be italic")
+	}
+
+	_, _, hiddenStyle, _ := s.GetContent(px+4, py+2)
+	_, _, hiddenAttrs := hiddenStyle.Decompose()
+	if hiddenAttrs&tcell.AttrItalic == 0 {
+		t.Fatal("hidden overlay agent name should be italic")
 	}
 }
