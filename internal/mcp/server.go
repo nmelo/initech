@@ -70,8 +70,9 @@ type Server struct {
 	token     string
 	srv       *http.Server
 	logger    *slog.Logger
-	mcpServer *gomcp.Server // Underlying MCP server for resource notifications.
-	host      PaneHost      // Pane access for resource re-registration on hot-add.
+	mcpServer *gomcp.Server          // Underlying MCP server for resource notifications.
+	host      PaneHost               // Pane access for resource re-registration on hot-add.
+	tracker   *subscriptionTracker   // Tracks subscriptions and debounces output notifications.
 }
 
 // NewServer creates an MCP server bound to the given address and port.
@@ -87,18 +88,38 @@ func NewServer(port int, bind, token string, host PaneHost, logger *slog.Logger)
 	}
 	addr := fmt.Sprintf("%s:%d", bind, port)
 
+	var tracker *subscriptionTracker
+
+	opts := &gomcp.ServerOptions{
+		Logger: logger,
+	}
+
+	// Pre-create tracker so subscribe/unsubscribe handlers can reference it.
+	// The mcpServer pointer is set after creation.
+	tracker = &subscriptionTracker{
+		subs:       make(map[string]int),
+		dirtyPanes: make(map[string]bool),
+		stopCh:     make(chan struct{}),
+	}
+
+	opts.SubscribeHandler = tracker.Subscribe
+	opts.UnsubscribeHandler = tracker.Unsubscribe
+
 	mcpServer := gomcp.NewServer(
 		&gomcp.Implementation{
 			Name:    "initech",
 			Version: "1.0.0",
 		},
-		nil,
+		opts,
 	)
+	tracker.mcpServer = mcpServer
 
 	if host != nil {
 		registerTools(mcpServer, host)
 		registerResources(mcpServer, host)
 	}
+
+	tracker.StartDebounce()
 
 	handler := gomcp.NewStreamableHTTPHandler(
 		func(r *http.Request) *gomcp.Server { return mcpServer },
@@ -111,6 +132,7 @@ func NewServer(port int, bind, token string, host PaneHost, logger *slog.Logger)
 		logger:    logger,
 		mcpServer: mcpServer,
 		host:      host,
+		tracker:   tracker,
 	}
 
 	mux := http.NewServeMux()
@@ -152,8 +174,11 @@ func (s *Server) Addr() string {
 	return s.addr
 }
 
-// Shutdown gracefully stops the server.
+// Shutdown gracefully stops the server and the debounce goroutine.
 func (s *Server) Shutdown(ctx context.Context) error {
+	if s.tracker != nil {
+		s.tracker.Stop()
+	}
 	return s.srv.Shutdown(ctx)
 }
 
@@ -167,6 +192,24 @@ func (s *Server) NotifyResourcesChanged() {
 	// Re-add the resource with the same handler. AddResource replaces the
 	// existing entry and fires the list_changed notification to all sessions.
 	registerResources(s.mcpServer, s.host)
+}
+
+// MarkPaneDirty signals that a pane's terminal output has changed. The
+// notification is debounced (1 per second per pane) to avoid flooding clients.
+// No-op if no clients are subscribed to the pane's output resource.
+func (s *Server) MarkPaneDirty(name string) {
+	if s.tracker != nil {
+		s.tracker.MarkPaneDirty(name)
+	}
+}
+
+// NotifyAgentStateChanged signals that an agent's state has changed (activity
+// toggle, bead claimed/cleared, etc.). Fires notifications for both the fleet
+// status resource and the per-agent status resource.
+func (s *Server) NotifyAgentStateChanged(name string) {
+	if s.tracker != nil {
+		s.tracker.NotifyAgentStateChanged(name)
+	}
 }
 
 // requireBearerToken is middleware that validates the Authorization header
