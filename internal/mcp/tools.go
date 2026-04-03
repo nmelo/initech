@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -76,6 +77,34 @@ type AtOutput struct {
 	TimerID string `json:"timer_id"`
 }
 
+// PatrolInput is the input schema for the initech_patrol tool.
+type PatrolInput struct {
+	Lines int `json:"lines,omitempty" jsonschema:"number of lines per agent (default 20)"`
+}
+
+// PatrolOutput is the output schema for the initech_patrol tool.
+type PatrolOutput struct {
+	Content string `json:"content"`
+}
+
+// StatusInput is the input schema for the initech_status tool (no params).
+type StatusInput struct{}
+
+// StatusOutput is the output schema for the initech_status tool.
+type StatusOutput struct {
+	Content string `json:"content"`
+}
+
+// statusEntry is one agent's status for JSON serialization.
+type statusEntry struct {
+	Name        string `json:"name"`
+	Activity    string `json:"activity"`
+	Alive       bool   `json:"alive"`
+	Visible     bool   `json:"visible"`
+	BeadID      string `json:"bead_id,omitempty"`
+	MemoryRSSKB int64  `json:"memory_rss_kb"`
+}
+
 // registerTools adds MCP tools to the server.
 func registerTools(s *gomcp.Server, host PaneHost) {
 	gomcp.AddTool(s, &gomcp.Tool{
@@ -132,6 +161,20 @@ func registerTools(s *gomcp.Server, host PaneHost) {
 		Description: "Schedule a deferred message to an agent. The message is sent after the specified delay (e.g. \"5m\", \"30s\").",
 	}, func(_ context.Context, _ *gomcp.CallToolRequest, input AtInput) (*gomcp.CallToolResult, AtOutput, error) {
 		return handleAt(host, input)
+	})
+
+	gomcp.AddTool(s, &gomcp.Tool{
+		Name:        "initech_patrol",
+		Description: "Read recent terminal output from all agent panes. Returns a JSON object keyed by agent name with terminal output as values.",
+	}, func(_ context.Context, _ *gomcp.CallToolRequest, input PatrolInput) (*gomcp.CallToolResult, PatrolOutput, error) {
+		return handlePatrol(host, input)
+	})
+
+	gomcp.AddTool(s, &gomcp.Tool{
+		Name:        "initech_status",
+		Description: "Get the status of all agents. Returns a JSON array with name, activity, alive, visible, bead_id, and memory_rss_kb for each agent.",
+	}, func(_ context.Context, _ *gomcp.CallToolRequest, input StatusInput) (*gomcp.CallToolResult, StatusOutput, error) {
+		return handleStatus(host)
 	})
 }
 
@@ -238,7 +281,6 @@ func handleAt(host PaneHost, input AtInput) (*gomcp.CallToolResult, AtOutput, er
 	if input.Delay == "" {
 		return nil, AtOutput{}, fmt.Errorf("delay is required")
 	}
-	// Validate the delay parses as a Go duration before calling the host.
 	if _, err := time.ParseDuration(input.Delay); err != nil {
 		return nil, AtOutput{}, fmt.Errorf("invalid delay %q: %w", input.Delay, err)
 	}
@@ -247,4 +289,46 @@ func handleAt(host PaneHost, input AtInput) (*gomcp.CallToolResult, AtOutput, er
 		return nil, AtOutput{}, err
 	}
 	return nil, AtOutput{Status: "scheduled", TimerID: timerID}, nil
+}
+
+func handlePatrol(host PaneHost, input PatrolInput) (*gomcp.CallToolResult, PatrolOutput, error) {
+	lines := input.Lines
+	if lines <= 0 {
+		lines = 20
+	}
+
+	panes, ok := host.AllPanes()
+	if !ok {
+		return nil, PatrolOutput{}, fmt.Errorf("host is shutting down")
+	}
+
+	result := make(map[string]string, len(panes))
+	for _, p := range panes {
+		result[p.Name()] = p.PeekContent(lines)
+	}
+
+	data, _ := json.Marshal(result)
+	return nil, PatrolOutput{Content: string(data)}, nil
+}
+
+func handleStatus(host PaneHost) (*gomcp.CallToolResult, StatusOutput, error) {
+	panes, ok := host.AllPanes()
+	if !ok {
+		return nil, StatusOutput{}, fmt.Errorf("host is shutting down")
+	}
+
+	entries := make([]statusEntry, len(panes))
+	for i, p := range panes {
+		entries[i] = statusEntry{
+			Name:        p.Name(),
+			Activity:    p.Activity(),
+			Alive:       p.IsAlive(),
+			Visible:     p.IsVisible(),
+			BeadID:      p.BeadID(),
+			MemoryRSSKB: p.MemoryRSSKB(),
+		}
+	}
+
+	data, _ := json.Marshal(entries)
+	return nil, StatusOutput{Content: string(data)}, nil
 }

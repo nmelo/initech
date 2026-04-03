@@ -1,15 +1,21 @@
 package mcp
 
 import (
+	"encoding/json"
 	"fmt"
 	"testing"
 )
 
 // fakePaneHandle implements PaneHandle for testing.
 type fakePaneHandle struct {
-	name    string
-	content string
-	sent    []sentMessage
+	name        string
+	content     string
+	sent        []sentMessage
+	activity    string
+	alive       bool
+	visible     bool
+	beadID      string
+	memoryRSSKB int64
 }
 
 type sentMessage struct {
@@ -24,6 +30,12 @@ func (f *fakePaneHandle) PeekContent(lines int) string { return f.content }
 func (f *fakePaneHandle) SendText(text string, enter bool) {
 	f.sent = append(f.sent, sentMessage{text: text, enter: enter})
 }
+
+func (f *fakePaneHandle) Activity() string   { return f.activity }
+func (f *fakePaneHandle) IsAlive() bool      { return f.alive }
+func (f *fakePaneHandle) IsVisible() bool    { return f.visible }
+func (f *fakePaneHandle) BeadID() string     { return f.beadID }
+func (f *fakePaneHandle) MemoryRSSKB() int64 { return f.memoryRSSKB }
 
 // fakePaneHost implements PaneHost for testing.
 type fakePaneHost struct {
@@ -123,6 +135,17 @@ func (h *fakePaneHost) ScheduleSend(agent, message, delay string) (string, error
 	id := fmt.Sprintf("at-%d", len(h.scheduleLog))
 	h.scheduleLog = append(h.scheduleLog, fmt.Sprintf("schedule:%s:%s", agent, delay))
 	return id, nil
+}
+
+func (h *fakePaneHost) AllPanes() ([]PaneHandle, bool) {
+	if h.shuttingDown {
+		return nil, false
+	}
+	result := make([]PaneHandle, 0, len(h.panes))
+	for _, p := range h.panes {
+		result = append(result, p)
+	}
+	return result, true
 }
 
 func TestHandlePeek_ValidAgent(t *testing.T) {
@@ -556,4 +579,166 @@ func searchSubstring(s, substr string) bool {
 		}
 	}
 	return false
+}
+
+// ── Patrol tests ──
+
+func TestHandlePatrol_AllAgents(t *testing.T) {
+	eng1 := &fakePaneHandle{name: "eng1", content: "eng1 output"}
+	qa1 := &fakePaneHandle{name: "qa1", content: "qa1 output"}
+	host := newFakeHost(eng1, qa1)
+
+	_, out, err := handlePatrol(host, PatrolInput{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var result map[string]string
+	if err := json.Unmarshal([]byte(out.Content), &result); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if len(result) != 2 {
+		t.Errorf("expected 2 entries, got %d", len(result))
+	}
+	if result["eng1"] != "eng1 output" {
+		t.Errorf("eng1 content = %q", result["eng1"])
+	}
+	if result["qa1"] != "qa1 output" {
+		t.Errorf("qa1 content = %q", result["qa1"])
+	}
+}
+
+func TestHandlePatrol_DefaultLines(t *testing.T) {
+	pane := &fakePaneHandle{name: "eng1", content: "output"}
+	host := newFakeHost(pane)
+
+	// Lines=0 should default to 20 (no error).
+	_, out, err := handlePatrol(host, PatrolInput{Lines: 0})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if out.Content == "" {
+		t.Error("expected non-empty content")
+	}
+}
+
+func TestHandlePatrol_EmptyPaneList(t *testing.T) {
+	host := newFakeHost()
+
+	_, out, err := handlePatrol(host, PatrolInput{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var result map[string]string
+	if err := json.Unmarshal([]byte(out.Content), &result); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if len(result) != 0 {
+		t.Errorf("expected empty map, got %d entries", len(result))
+	}
+}
+
+func TestHandlePatrol_ShuttingDown(t *testing.T) {
+	host := newFakeHost()
+	host.shuttingDown = true
+
+	_, _, err := handlePatrol(host, PatrolInput{})
+	if err == nil {
+		t.Fatal("expected error when shutting down")
+	}
+}
+
+// ── Status tests ──
+
+func TestHandleStatus_AllAgents(t *testing.T) {
+	eng1 := &fakePaneHandle{
+		name: "eng1", activity: "running", alive: true, visible: true,
+		beadID: "ini-123", memoryRSSKB: 102400,
+	}
+	qa1 := &fakePaneHandle{
+		name: "qa1", activity: "idle", alive: true, visible: false,
+		memoryRSSKB: 51200,
+	}
+	host := newFakeHost(eng1, qa1)
+
+	_, out, err := handleStatus(host)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var entries []statusEntry
+	if err := json.Unmarshal([]byte(out.Content), &entries); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("expected 2 entries, got %d", len(entries))
+	}
+
+	// Find eng1 entry (map iteration order in AllPanes is non-deterministic).
+	var eng1Entry, qa1Entry *statusEntry
+	for i := range entries {
+		switch entries[i].Name {
+		case "eng1":
+			eng1Entry = &entries[i]
+		case "qa1":
+			qa1Entry = &entries[i]
+		}
+	}
+	if eng1Entry == nil || qa1Entry == nil {
+		t.Fatalf("missing entries: eng1=%v qa1=%v", eng1Entry, qa1Entry)
+	}
+
+	if eng1Entry.Activity != "running" {
+		t.Errorf("eng1 activity = %q", eng1Entry.Activity)
+	}
+	if !eng1Entry.Alive {
+		t.Error("eng1 should be alive")
+	}
+	if !eng1Entry.Visible {
+		t.Error("eng1 should be visible")
+	}
+	if eng1Entry.BeadID != "ini-123" {
+		t.Errorf("eng1 bead_id = %q", eng1Entry.BeadID)
+	}
+	if eng1Entry.MemoryRSSKB != 102400 {
+		t.Errorf("eng1 memory_rss_kb = %d", eng1Entry.MemoryRSSKB)
+	}
+
+	if qa1Entry.Activity != "idle" {
+		t.Errorf("qa1 activity = %q", qa1Entry.Activity)
+	}
+	if qa1Entry.Visible {
+		t.Error("qa1 should not be visible")
+	}
+	if qa1Entry.BeadID != "" {
+		t.Errorf("qa1 bead_id should be empty, got %q", qa1Entry.BeadID)
+	}
+}
+
+func TestHandleStatus_EmptyPaneList(t *testing.T) {
+	host := newFakeHost()
+
+	_, out, err := handleStatus(host)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var entries []statusEntry
+	if err := json.Unmarshal([]byte(out.Content), &entries); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if len(entries) != 0 {
+		t.Errorf("expected empty array, got %d entries", len(entries))
+	}
+}
+
+func TestHandleStatus_ShuttingDown(t *testing.T) {
+	host := newFakeHost()
+	host.shuttingDown = true
+
+	_, _, err := handleStatus(host)
+	if err == nil {
+		t.Fatal("expected error when shutting down")
+	}
 }

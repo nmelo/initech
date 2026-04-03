@@ -20,6 +20,11 @@ type PaneHandle interface {
 	Name() string
 	PeekContent(lines int) string
 	SendText(text string, enter bool)
+	Activity() string
+	IsAlive() bool
+	IsVisible() bool
+	BeadID() string
+	MemoryRSSKB() int64
 }
 
 // PaneHost provides pane lookup and lifecycle operations for MCP tool handlers.
@@ -52,6 +57,9 @@ type PaneHost interface {
 	// The delay is a Go duration string (e.g. "5m", "30s"). Returns the
 	// timer ID on success.
 	ScheduleSend(agent, message, delay string) (string, error)
+
+	// AllPanes returns all panes. The bool is false if the host is shutting down.
+	AllPanes() ([]PaneHandle, bool)
 }
 
 // Server is an MCP server that exposes initech agent primitives over
