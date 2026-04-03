@@ -509,8 +509,8 @@ func (t *TUI) renderCmdLine() {
 		}
 	}
 
-	// Cursor.
-	cursorPos := 2 + len(t.cmd.buf)
+	// Cursor at the editing position (not always at end of buf).
+	cursorPos := 2 + t.cmd.cursor
 	if cursorPos < sw {
 		cursorStyle := tcell.StyleDefault.Background(tcell.ColorWhite).Foreground(tcell.ColorBlack)
 		s.SetContent(cursorPos, y, ' ', nil, cursorStyle)

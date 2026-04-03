@@ -38,6 +38,7 @@ type AgentInfo struct {
 type cmdModal struct {
 	active bool
 	buf    []rune
+	cursor int    // 0-based cursor position within buf (0 = before first rune).
 	error  string // Shown briefly after a bad command.
 
 	// Error auto-clear: when error is set, errorExpiry tracks when to clear it.
