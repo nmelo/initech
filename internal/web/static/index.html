@@ -4,8 +4,201 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>initech</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/css/xterm.min.css">
+<style>
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;background:#1a1a2e;color:#e0e0e0;font-family:system-ui,-apple-system,sans-serif}
+  #app{display:flex;height:100vh;overflow:hidden}
+
+  /* Sidebar */
+  #sidebar{width:200px;min-width:200px;background:#16213e;border-right:1px solid #0f3460;
+    display:flex;flex-direction:column;overflow-y:auto}
+  #sidebar h2{padding:12px 16px 8px;font-size:14px;color:#7f8c8d;text-transform:uppercase;letter-spacing:.5px}
+  .pane-btn{display:block;width:100%;padding:10px 16px;border:none;background:transparent;
+    color:#e0e0e0;text-align:left;cursor:pointer;font-size:13px;font-family:inherit;
+    border-left:3px solid transparent;transition:background .15s}
+  .pane-btn:hover{background:#1a2744}
+  .pane-btn.active{background:#1a2744;border-left-color:#e94560}
+  .pane-btn .status{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:8px}
+  .pane-btn .status.alive{background:#2ecc71}
+  .pane-btn .status.dead{background:#555}
+  .pane-btn .activity{display:block;font-size:11px;color:#7f8c8d;margin-top:2px;margin-left:16px;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+  /* Main area */
+  #main{flex:1;display:flex;flex-direction:column;min-width:0}
+  #toolbar{height:36px;background:#16213e;border-bottom:1px solid #0f3460;
+    display:flex;align-items:center;padding:0 16px;font-size:13px;color:#7f8c8d}
+  #toolbar .name{color:#e0e0e0;font-weight:600;margin-right:12px}
+  #toolbar .conn-status{margin-left:auto}
+  #toolbar .conn-status.connected{color:#2ecc71}
+  #toolbar .conn-status.disconnected{color:#e74c3c}
+  #toolbar .conn-status.connecting{color:#f39c12}
+  #terminal-container{flex:1;padding:4px;overflow:hidden}
+
+  /* Empty state */
+  #empty-state{flex:1;display:flex;align-items:center;justify-content:center;color:#555;font-size:15px}
+</style>
 </head>
 <body>
-<div id="app"></div>
+<div id="app">
+  <div id="sidebar">
+    <h2>Panes</h2>
+    <div id="pane-list"></div>
+  </div>
+  <div id="main">
+    <div id="empty-state">Select a pane to connect</div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/lib/xterm.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0/lib/addon-fit.min.js"></script>
+<script>
+(function() {
+  "use strict";
+
+  var paneList = document.getElementById("pane-list");
+  var mainArea = document.getElementById("main");
+  var activeName = null;
+  var term = null;
+  var fitAddon = null;
+  var ws = null;
+  var reconnectTimer = null;
+  var pollTimer = null;
+
+  // Derive WebSocket base from page origin, replacing http(s) with ws(s).
+  var wsBase = location.origin.replace(/^http/, "ws");
+
+  function fetchPanes() {
+    fetch("/api/panes")
+      .then(function(r) { return r.ok ? r.json() : []; })
+      .then(renderPaneList)
+      .catch(function() {});
+  }
+
+  function renderPaneList(panes) {
+    // Preserve scroll position.
+    var scrollTop = paneList.scrollTop;
+    paneList.innerHTML = "";
+    panes.forEach(function(p) {
+      var btn = document.createElement("button");
+      btn.className = "pane-btn" + (p.name === activeName ? " active" : "");
+      var dot = '<span class="status ' + (p.alive ? "alive" : "dead") + '"></span>';
+      var act = p.activity ? '<span class="activity">' + escapeHtml(p.activity) + "</span>" : "";
+      btn.innerHTML = dot + escapeHtml(p.name) + act;
+      btn.onclick = function() { selectPane(p.name); };
+      paneList.appendChild(btn);
+    });
+    paneList.scrollTop = scrollTop;
+  }
+
+  function selectPane(name) {
+    if (name === activeName) return;
+    activeName = name;
+    cleanup();
+
+    // Replace main area content.
+    mainArea.innerHTML =
+      '<div id="toolbar">' +
+        '<span class="name">' + escapeHtml(name) + '</span>' +
+        '<span class="conn-status connecting" id="conn-status">connecting</span>' +
+      '</div>' +
+      '<div id="terminal-container"></div>';
+
+    // Mark active button.
+    var btns = paneList.querySelectorAll(".pane-btn");
+    for (var i = 0; i < btns.length; i++) {
+      btns[i].className = btns[i].textContent.trim().startsWith(name) ?
+        "pane-btn active" : "pane-btn";
+    }
+
+    initTerminal();
+    connectWs(name);
+  }
+
+  function initTerminal() {
+    term = new window.Terminal({
+      cursorBlink: true,
+      fontSize: 13,
+      fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', Menlo, monospace",
+      theme: {
+        background: "#1a1a2e",
+        foreground: "#e0e0e0",
+        cursor: "#e94560",
+        selectionBackground: "#264f78"
+      },
+      scrollback: 5000,
+      convertEol: true
+    });
+    fitAddon = new window.FitAddon.FitAddon();
+    term.loadAddon(fitAddon);
+    term.open(document.getElementById("terminal-container"));
+    fitAddon.fit();
+  }
+
+  function connectWs(name) {
+    if (ws) { ws.onclose = null; ws.close(); }
+    clearTimeout(reconnectTimer);
+
+    var url = wsBase + "/ws/pane/" + encodeURIComponent(name);
+    ws = new WebSocket(url);
+    ws.binaryType = "arraybuffer";
+
+    ws.onopen = function() {
+      setConnStatus("connected", "connected");
+    };
+
+    ws.onmessage = function(ev) {
+      if (!term) return;
+      if (ev.data instanceof ArrayBuffer) {
+        term.write(new Uint8Array(ev.data));
+      } else {
+        term.write(ev.data);
+      }
+    };
+
+    ws.onclose = function() {
+      setConnStatus("disconnected", "disconnected");
+      // Auto-reconnect after 2s if this pane is still selected.
+      reconnectTimer = setTimeout(function() {
+        if (activeName === name) connectWs(name);
+      }, 2000);
+    };
+
+    ws.onerror = function() {
+      // onclose fires after onerror, reconnect handled there.
+    };
+  }
+
+  function setConnStatus(cls, text) {
+    var el = document.getElementById("conn-status");
+    if (el) {
+      el.className = "conn-status " + cls;
+      el.textContent = text;
+    }
+  }
+
+  function cleanup() {
+    clearTimeout(reconnectTimer);
+    if (ws) { ws.onclose = null; ws.close(); ws = null; }
+    if (term) { term.dispose(); term = null; fitAddon = null; }
+  }
+
+  function escapeHtml(s) {
+    var d = document.createElement("div");
+    d.appendChild(document.createTextNode(s));
+    return d.innerHTML;
+  }
+
+  // Handle window resize.
+  window.addEventListener("resize", function() {
+    if (fitAddon) fitAddon.fit();
+  });
+
+  // Poll pane list every 3 seconds.
+  fetchPanes();
+  pollTimer = setInterval(fetchPanes, 3000);
+})();
+</script>
 </body>
 </html>

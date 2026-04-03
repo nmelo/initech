@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -77,8 +78,15 @@ func TestServesIndex(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", w.Code)
 	}
-	if body := w.Body.String(); len(body) == 0 {
+	body := w.Body.String()
+	if len(body) == 0 {
 		t.Fatal("expected non-empty body for index.html")
+	}
+	if !strings.Contains(body, "xterm") {
+		t.Error("expected index.html to reference xterm.js")
+	}
+	if !strings.Contains(body, "/ws/pane/") {
+		t.Error("expected index.html to reference WebSocket endpoint")
 	}
 }
 
