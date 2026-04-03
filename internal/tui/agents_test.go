@@ -479,8 +479,9 @@ func TestAgentsModal_RenderErrorLine(t *testing.T) {
 // ── Scroll tests ────────────────────────────────────────────────────
 
 func TestAgentsModal_ScrollDownWhenOverflow(t *testing.T) {
-	// Create more agents than the viewport can show.
-	names := make([]string, 20)
+	// Create more agents than the viewport can show (viewport ~30 rows).
+	count := 40
+	names := make([]string, count)
 	for i := range names {
 		names[i] = fmt.Sprintf("agent%02d", i)
 	}
@@ -488,11 +489,11 @@ func TestAgentsModal_ScrollDownWhenOverflow(t *testing.T) {
 	tui.openAgentsModal()
 
 	// Navigate to the bottom.
-	for i := 0; i < 19; i++ {
+	for i := 0; i < count-1; i++ {
 		tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyDown, 0, 0))
 	}
-	if tui.agents.selected != 19 {
-		t.Errorf("selected = %d, want 19", tui.agents.selected)
+	if tui.agents.selected != count-1 {
+		t.Errorf("selected = %d, want %d", tui.agents.selected, count-1)
 	}
 	if tui.agents.scrollOffset <= 0 {
 		t.Error("scrollOffset should be > 0 after navigating past viewport")
@@ -505,7 +506,8 @@ func TestAgentsModal_ScrollDownWhenOverflow(t *testing.T) {
 }
 
 func TestAgentsModal_ScrollUpFromBottom(t *testing.T) {
-	names := make([]string, 20)
+	count := 40
+	names := make([]string, count)
 	for i := range names {
 		names[i] = fmt.Sprintf("agent%02d", i)
 	}
@@ -513,13 +515,13 @@ func TestAgentsModal_ScrollUpFromBottom(t *testing.T) {
 	tui.openAgentsModal()
 
 	// Go to bottom.
-	for i := 0; i < 19; i++ {
+	for i := 0; i < count-1; i++ {
 		tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyDown, 0, 0))
 	}
 	savedOffset := tui.agents.scrollOffset
 
 	// Go back to top.
-	for i := 0; i < 19; i++ {
+	for i := 0; i < count-1; i++ {
 		tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyUp, 0, 0))
 	}
 	if tui.agents.selected != 0 {
@@ -532,7 +534,7 @@ func TestAgentsModal_ScrollUpFromBottom(t *testing.T) {
 }
 
 func TestAgentsModal_ScrollWithGrab(t *testing.T) {
-	names := make([]string, 20)
+	names := make([]string, 40)
 	for i := range names {
 		names[i] = fmt.Sprintf("agent%02d", i)
 	}
@@ -541,7 +543,7 @@ func TestAgentsModal_ScrollWithGrab(t *testing.T) {
 
 	// Grab first agent and move it down past viewport.
 	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyEnter, 0, 0))
-	for i := 0; i < 15; i++ {
+	for i := 0; i < 35; i++ {
 		tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyDown, 0, 0))
 	}
 
@@ -554,7 +556,7 @@ func TestAgentsModal_ScrollWithGrab(t *testing.T) {
 }
 
 func TestAgentsModal_ScrollRenderIndicators(t *testing.T) {
-	names := make([]string, 30)
+	names := make([]string, 50)
 	for i := range names {
 		names[i] = fmt.Sprintf("agent%02d", i)
 	}
@@ -562,8 +564,8 @@ func TestAgentsModal_ScrollRenderIndicators(t *testing.T) {
 	tui.openAgentsModal()
 
 	// Navigate partway down so there are items above and below.
-	// Viewport is ~19 rows, so go past that to trigger scrolling.
-	for i := 0; i < 22; i++ {
+	// Viewport is ~30 rows, so go past that to trigger scrolling.
+	for i := 0; i < 35; i++ {
 		tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyDown, 0, 0))
 	}
 	tui.render()
