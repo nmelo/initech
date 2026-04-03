@@ -53,14 +53,16 @@ type Server struct {
 	subIDSeq   atomic.Uint64  // Monotonic counter for generating unique subscriber IDs.
 }
 
-// NewServer creates a Server bound to 127.0.0.1 on the given port.
+// NewServer creates a Server bound to 0.0.0.0 on the given port, accessible
+// from other machines on the network. The operator explicitly enables this
+// with --web-port, so we bind all interfaces by default.
 // If port is 0, the OS assigns a free port. The subscriber parameter is
 // optional; if nil, the /ws/pane/{name} endpoint returns 501.
 func NewServer(port int, lister PaneLister, subscriber PaneSubscriber, logger *slog.Logger) *Server {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	addr := fmt.Sprintf("127.0.0.1:%d", port)
+	addr := fmt.Sprintf("0.0.0.0:%d", port)
 
 	s := &Server{
 		addr:       addr,
@@ -153,9 +155,8 @@ func (s *Server) handlePaneWS(w http.ResponseWriter, r *http.Request) {
 	}
 
 	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
-		// Allow any origin for local development. The server only binds to
-		// 127.0.0.1, so cross-origin requests come from file:// or localhost
-		// with a different port.
+		// Allow any origin. The server binds to all interfaces and is
+		// explicitly enabled by the operator via --web-port.
 		InsecureSkipVerify: true,
 	})
 	if err != nil {
