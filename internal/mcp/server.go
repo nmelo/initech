@@ -5,6 +5,7 @@ package mcp
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net"
@@ -12,8 +13,6 @@ import (
 	"strings"
 
 	gomcp "github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/modelcontextprotocol/go-sdk/auth"
-	"github.com/modelcontextprotocol/go-sdk/oauthex"
 )
 
 // PaneHandle is a minimal interface for interacting with a single pane.
@@ -139,13 +138,10 @@ func NewServer(port int, bind, token string, host PaneHost, logger *slog.Logger)
 
 	// OAuth Protected Resource Metadata (RFC 9728). Tells MCP clients that
 	// this server uses bearer tokens with no OAuth authorization server.
-	// Without this, clients try OAuth discovery, get Go's default 404 text
-	// response, and fail to parse it as JSON.
-	prmHandler := auth.ProtectedResourceMetadataHandler(&oauthex.ProtectedResourceMetadata{
-		Resource:             fmt.Sprintf("http://%s", addr),
-		AuthorizationServers: []string{},
-		BearerMethodsSupported: []string{"header"},
-	})
+	// The resource URL is derived from the incoming request so it matches
+	// what the client used to connect (handles reverse proxies, Tailscale
+	// serve, etc.). A static URL would break behind any proxy.
+	prmHandler := dynamicProtectedResourceHandler()
 
 	mux := http.NewServeMux()
 	mux.Handle("/mcp", s.requireBearerToken(handler))
@@ -224,6 +220,44 @@ func (s *Server) NotifyAgentStateChanged(name string) {
 	if s.tracker != nil {
 		s.tracker.NotifyAgentStateChanged(name)
 	}
+}
+
+// dynamicProtectedResourceHandler returns an HTTP handler that serves RFC 9728
+// Protected Resource Metadata with the resource URL derived from the incoming
+// request. This ensures the resource field matches what the client used to
+// connect, which is critical behind reverse proxies (Tailscale serve, nginx).
+func dynamicProtectedResourceHandler() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		if r.Method != http.MethodGet {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		scheme := "http"
+		if r.TLS != nil {
+			scheme = "https"
+		}
+		if proto := r.Header.Get("X-Forwarded-Proto"); proto != "" {
+			scheme = proto
+		}
+
+		resource := fmt.Sprintf("%s://%s", scheme, r.Host)
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"resource":                 resource,
+			"authorization_servers":    []string{},
+			"bearer_methods_supported": []string{"header"},
+		})
+	})
 }
 
 // requireBearerToken is middleware that validates the Authorization header

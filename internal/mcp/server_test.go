@@ -226,6 +226,11 @@ func TestServer_OAuthDiscovery_ReturnsMetadata(t *testing.T) {
 	if err := json.Unmarshal(body, &meta); err != nil {
 		t.Fatalf("invalid JSON: %v\nbody: %s", err, body)
 	}
+	// Resource URL should match the request origin (dynamic, not static).
+	wantResource := "http://" + srv.Addr()
+	if meta.Resource != wantResource {
+		t.Errorf("resource = %q, want %q", meta.Resource, wantResource)
+	}
 	if len(meta.AuthorizationServers) != 0 {
 		t.Errorf("authorization_servers should be empty, got %v", meta.AuthorizationServers)
 	}
@@ -247,5 +252,35 @@ func TestServer_OAuthDiscovery_SubPath(t *testing.T) {
 
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+}
+
+func TestServer_OAuthDiscovery_RespectsXForwardedProto(t *testing.T) {
+	srv, cancel := startTestServer(t)
+	defer cancel()
+
+	// Simulate a reverse proxy setting X-Forwarded-Proto: https
+	req, _ := http.NewRequest("GET", "http://"+srv.Addr()+"/.well-known/oauth-protected-resource", nil)
+	req.Host = "myhost.tailnet.ts.net:9201"
+	req.Header.Set("X-Forwarded-Proto", "https")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	var meta struct {
+		Resource string `json:"resource"`
+	}
+	if err := json.Unmarshal(body, &meta); err != nil {
+		t.Fatalf("invalid JSON: %v\nbody: %s", err, body)
+	}
+
+	// Should use the forwarded scheme and host, not the internal bind address.
+	want := "https://myhost.tailnet.ts.net:9201"
+	if meta.Resource != want {
+		t.Errorf("resource = %q, want %q", meta.Resource, want)
 	}
 }
