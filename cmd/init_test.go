@@ -80,7 +80,7 @@ func TestBuildSelectorItems_Groups(t *testing.T) {
 func TestBuildSelectorItems_Tags(t *testing.T) {
 	items := buildSelectorItems()
 	wantTag := map[string]string{
-		"super":   "supervised",
+		"super":   "",
 		"shipper": "supervised",
 		"eng1":    "needs src",
 		"eng2":    "needs src",

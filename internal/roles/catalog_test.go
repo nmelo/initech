@@ -20,7 +20,7 @@ func TestCatalogCompleteness(t *testing.T) {
 }
 
 func TestCatalogPermissionTiers(t *testing.T) {
-	supervised := []string{"super", "shipper"}
+	supervised := []string{"shipper"}
 	for _, name := range supervised {
 		def := Catalog[name]
 		if def.Permission != Supervised {
@@ -28,7 +28,7 @@ func TestCatalogPermissionTiers(t *testing.T) {
 		}
 	}
 
-	autonomous := []string{"eng1", "eng2", "eng3", "qa1", "qa2", "pm", "pmm", "arch", "sec", "writer", "ops", "growth"}
+	autonomous := []string{"super", "eng1", "eng2", "eng3", "qa1", "qa2", "pm", "pmm", "arch", "sec", "writer", "ops", "growth"}
 	for _, name := range autonomous {
 		def := Catalog[name]
 		if def.Permission != Autonomous {
@@ -88,8 +88,8 @@ func TestLookupRole_Known(t *testing.T) {
 	if def.Name != "super" {
 		t.Errorf("Name = %q, want %q", def.Name, "super")
 	}
-	if def.Permission != Supervised {
-		t.Errorf("super should be Supervised")
+	if def.Permission != Autonomous {
+		t.Errorf("super should be Autonomous")
 	}
 }
 
@@ -127,7 +127,7 @@ func TestResolveClaudeArgs(t *testing.T) {
 		},
 		{
 			name: "supervised role with no config returns nil",
-			role: "super",
+			role: "shipper",
 			want: nil,
 		},
 		{
@@ -138,7 +138,7 @@ func TestResolveClaudeArgs(t *testing.T) {
 		},
 		{
 			name:       "global args apply to supervised roles too",
-			role:       "super",
+			role:       "shipper",
 			globalArgs: []string{"--verbose"},
 			want:       []string{"--verbose"},
 		},
@@ -161,11 +161,11 @@ func TestResolveClaudeArgs(t *testing.T) {
 			want: []string{"--dangerously-skip-permissions"},
 		},
 		{
-			name:     "per-role nil falls through to global",
-			role:     "eng1",
+			name:       "per-role nil falls through to global",
+			role:       "eng1",
 			globalArgs: []string{"--continue"},
-			roleArgs: nil,
-			want:     []string{"--continue"},
+			roleArgs:   nil,
+			want:       []string{"--continue"},
 		},
 	}
 

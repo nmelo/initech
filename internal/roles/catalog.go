@@ -34,7 +34,7 @@ type RoleDef struct {
 // Catalog maps well-known role names to their definitions.
 // This is not a closed set; roles not in the catalog get defaults via LookupRole.
 var Catalog = map[string]RoleDef{
-	"super":   {Name: "super", Permission: Supervised},
+	"super":   {Name: "super", Permission: Autonomous},
 	"eng1":    {Name: "eng1", Permission: Autonomous, NeedsSrc: true, NeedsMakefile: true},
 	"eng2":    {Name: "eng2", Permission: Autonomous, NeedsSrc: true, NeedsMakefile: true},
 	"eng3":    {Name: "eng3", Permission: Autonomous, NeedsSrc: true, NeedsMakefile: true},
