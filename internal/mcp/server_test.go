@@ -2,6 +2,8 @@ package mcp
 
 import (
 	"context"
+	"encoding/json"
+	"io"
 	"net"
 	"net/http"
 	"strings"
@@ -195,4 +197,55 @@ func TestServer_DefaultBindAddress(t *testing.T) {
 		time.Sleep(5 * time.Millisecond)
 	}
 	t.Fatal("server did not start in time")
+}
+
+func TestServer_OAuthDiscovery_ReturnsMetadata(t *testing.T) {
+	srv, cancel := startTestServer(t)
+	defer cancel()
+
+	// No auth needed for OAuth discovery (it's public metadata).
+	resp, err := http.Get("http://" + srv.Addr() + "/.well-known/oauth-protected-resource")
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	if ct := resp.Header.Get("Content-Type"); ct != "application/json" {
+		t.Errorf("Content-Type = %q, want application/json", ct)
+	}
+
+	body, _ := io.ReadAll(resp.Body)
+	var meta struct {
+		Resource             string   `json:"resource"`
+		AuthorizationServers []string `json:"authorization_servers"`
+		BearerMethods        []string `json:"bearer_methods_supported"`
+	}
+	if err := json.Unmarshal(body, &meta); err != nil {
+		t.Fatalf("invalid JSON: %v\nbody: %s", err, body)
+	}
+	if len(meta.AuthorizationServers) != 0 {
+		t.Errorf("authorization_servers should be empty, got %v", meta.AuthorizationServers)
+	}
+	if len(meta.BearerMethods) != 1 || meta.BearerMethods[0] != "header" {
+		t.Errorf("bearer_methods_supported = %v, want [header]", meta.BearerMethods)
+	}
+}
+
+func TestServer_OAuthDiscovery_SubPath(t *testing.T) {
+	srv, cancel := startTestServer(t)
+	defer cancel()
+
+	// The SDK also tries /.well-known/oauth-protected-resource/mcp
+	resp, err := http.Get("http://" + srv.Addr() + "/.well-known/oauth-protected-resource/mcp")
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
 }

@@ -12,6 +12,8 @@ import (
 	"strings"
 
 	gomcp "github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/modelcontextprotocol/go-sdk/auth"
+	"github.com/modelcontextprotocol/go-sdk/oauthex"
 )
 
 // PaneHandle is a minimal interface for interacting with a single pane.
@@ -135,8 +137,20 @@ func NewServer(port int, bind, token string, host PaneHost, logger *slog.Logger)
 		tracker:   tracker,
 	}
 
+	// OAuth Protected Resource Metadata (RFC 9728). Tells MCP clients that
+	// this server uses bearer tokens with no OAuth authorization server.
+	// Without this, clients try OAuth discovery, get Go's default 404 text
+	// response, and fail to parse it as JSON.
+	prmHandler := auth.ProtectedResourceMetadataHandler(&oauthex.ProtectedResourceMetadata{
+		Resource:             fmt.Sprintf("http://%s", addr),
+		AuthorizationServers: []string{},
+		BearerMethodsSupported: []string{"header"},
+	})
+
 	mux := http.NewServeMux()
 	mux.Handle("/mcp", s.requireBearerToken(handler))
+	mux.Handle("/.well-known/oauth-protected-resource", prmHandler)
+	mux.Handle("/.well-known/oauth-protected-resource/", prmHandler)
 
 	s.srv = &http.Server{
 		Addr:    addr,
