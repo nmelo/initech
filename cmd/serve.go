@@ -105,9 +105,6 @@ func buildServeAgentConfig(roleName string, proj *config.Project) (tui.PaneConfi
 	}
 
 	var env []string
-	if proj.Beads.Prefix != "" {
-		env = append(env, fmt.Sprintf("BEADS_DIR=%s/.beads", proj.Root))
-	}
 
 	agentType, autoApprove, noBracketedPaste, submitKey := resolvePaneBehavior(ov)
 
