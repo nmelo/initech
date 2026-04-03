@@ -92,10 +92,13 @@ type reorderModal struct {
 // agentsModal holds state for the agent management modal.
 type agentsModal struct {
 	active       bool
-	selected     int    // Currently highlighted row index.
+	selected     int    // Currently highlighted row index (into filtered list when searching).
 	scrollOffset int    // First visible row in the viewport.
 	moving       bool   // True when a row is grabbed for reorder.
 	error        string // Inline error message (e.g., "cannot hide last visible pane").
+	searching    bool   // True when / has been pressed and search is active.
+	searchBuf    []rune // Current search input.
+	filtered     []int  // Indices into t.panes matching the search. Nil = no filter active.
 }
 
 // welcomeOverlay is shown once on first launch, then never again.

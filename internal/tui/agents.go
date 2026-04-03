@@ -10,6 +10,8 @@ package tui
 
 import (
 	"fmt"
+	"strings"
+	"unicode"
 
 	"github.com/gdamore/tcell/v2"
 )
@@ -29,6 +31,9 @@ func (t *TUI) openAgentsModal() {
 	t.agents.scrollOffset = 0
 	t.agents.moving = false
 	t.agents.error = ""
+	t.agents.searching = false
+	t.agents.searchBuf = nil
+	t.agents.filtered = nil
 }
 
 // agentsViewportHeight returns the number of visible agent rows for the
@@ -62,6 +67,9 @@ func (t *TUI) handleAgentsKey(ev *tcell.EventKey) bool {
 	// Alt+a toggles the modal closed.
 	if ev.Modifiers()&tcell.ModAlt != 0 && ev.Key() == tcell.KeyRune && ev.Rune() == 'a' {
 		t.agents.moving = false
+		t.agents.searching = false
+		t.agents.searchBuf = nil
+		t.agents.filtered = nil
 		t.agents.active = false
 		return false
 	}
@@ -74,6 +82,11 @@ func (t *TUI) handleAgentsKey(ev *tcell.EventKey) bool {
 
 	// Clear stale error on any keypress.
 	t.agents.error = ""
+
+	// Search mode: route keys to search input.
+	if t.agents.searching {
+		return t.handleAgentsSearchKey(ev)
+	}
 
 	switch ev.Key() {
 	case tcell.KeyEscape, tcell.KeyCtrlC:
@@ -95,6 +108,12 @@ func (t *TUI) handleAgentsKey(ev *tcell.EventKey) bool {
 
 	case tcell.KeyRune:
 		switch ev.Rune() {
+		case '/':
+			t.agents.searching = true
+			t.agents.searchBuf = nil
+			t.agents.moving = false
+			t.agentsRefilter()
+			return false
 		case 'q', '`':
 			t.agents.moving = false
 			t.agents.active = false
@@ -118,6 +137,64 @@ func (t *TUI) handleAgentsKey(ev *tcell.EventKey) bool {
 			t.agentsResetOrder()
 			return false
 		}
+	}
+	return false
+}
+
+// handleAgentsSearchKey processes keys while in search mode.
+func (t *TUI) handleAgentsSearchKey(ev *tcell.EventKey) bool {
+	switch ev.Key() {
+	case tcell.KeyEscape:
+		// Clear search and restore full list.
+		t.agents.searching = false
+		t.agents.searchBuf = nil
+		t.agents.filtered = nil
+		t.agents.selected = 0
+		t.agents.scrollOffset = 0
+		return false
+
+	case tcell.KeyEnter:
+		// Select from filtered list, then exit search.
+		if t.agents.filtered != nil && len(t.agents.filtered) > 0 && t.agents.selected < len(t.agents.filtered) {
+			t.agents.selected = t.agents.filtered[t.agents.selected]
+		}
+		t.agents.searching = false
+		t.agents.searchBuf = nil
+		t.agents.filtered = nil
+		return false
+
+	case tcell.KeyBackspace, tcell.KeyBackspace2:
+		if len(t.agents.searchBuf) > 0 {
+			t.agents.searchBuf = t.agents.searchBuf[:len(t.agents.searchBuf)-1]
+			t.agentsRefilter()
+		}
+		return false
+
+	case tcell.KeyUp:
+		if t.agents.selected > 0 {
+			t.agents.selected--
+		}
+		t.agentsEnsureVisibleFiltered()
+		return false
+
+	case tcell.KeyDown:
+		maxIdx := t.agentsFilteredCount() - 1
+		if maxIdx < 0 {
+			maxIdx = 0
+		}
+		if t.agents.selected < maxIdx {
+			t.agents.selected++
+		}
+		t.agentsEnsureVisibleFiltered()
+		return false
+
+	case tcell.KeyRune:
+		r := ev.Rune()
+		if unicode.IsPrint(r) {
+			t.agents.searchBuf = append(t.agents.searchBuf, r)
+			t.agentsRefilter()
+		}
+		return false
 	}
 	return false
 }
@@ -228,6 +305,57 @@ func (t *TUI) agentsResetOrder() {
 	t.agents.selected = 0
 	t.agents.scrollOffset = 0
 	t.agents.moving = false
+}
+
+// agentsRefilter recomputes the filtered index list from the current searchBuf.
+// Empty search matches all agents. Resets selection and scroll when the list changes.
+func (t *TUI) agentsRefilter() {
+	query := strings.ToLower(string(t.agents.searchBuf))
+	t.agents.filtered = nil
+	for i, p := range t.panes {
+		if query == "" || strings.Contains(strings.ToLower(p.Name()), query) {
+			t.agents.filtered = append(t.agents.filtered, i)
+		}
+	}
+	// Clamp selection.
+	max := len(t.agents.filtered) - 1
+	if max < 0 {
+		max = 0
+	}
+	if t.agents.selected > max {
+		t.agents.selected = max
+	}
+	t.agents.scrollOffset = 0
+	t.agentsEnsureVisibleFiltered()
+}
+
+// agentsFilteredCount returns the number of visible agents (filtered or all).
+func (t *TUI) agentsFilteredCount() int {
+	if t.agents.filtered != nil {
+		return len(t.agents.filtered)
+	}
+	return len(t.panes)
+}
+
+// agentsEnsureVisibleFiltered adjusts scrollOffset for the filtered list.
+func (t *TUI) agentsEnsureVisibleFiltered() {
+	if t.screen == nil {
+		return // No screen in test context.
+	}
+	vp := t.agentsViewportHeight()
+	if t.agents.searching {
+		// Account for search bar row.
+		vp--
+		if vp < 1 {
+			vp = 1
+		}
+	}
+	if t.agents.selected < t.agents.scrollOffset {
+		t.agents.scrollOffset = t.agents.selected
+	}
+	if t.agents.selected >= t.agents.scrollOffset+vp {
+		t.agents.scrollOffset = t.agents.selected - vp + 1
+	}
 }
 
 // agentsPersistOrder snapshots the current pane order into layoutState and persists.
@@ -346,6 +474,14 @@ func (t *TUI) renderAgents() {
 	// Interior rows: row 0 = startY+1
 	iy := startY + 1
 
+	// Search bar (shown when searching, takes one row before the header).
+	searchStyle := bgStyle.Foreground(tcell.ColorYellow)
+	if t.agents.searching {
+		searchLine := fmt.Sprintf(" / %s_", string(t.agents.searchBuf))
+		drawLine(iy, searchLine, searchStyle)
+		iy++
+	}
+
 	// Header.
 	header := fmt.Sprintf(" %-3s %-3s %-12s %-5s %s", "#", "VIS", "AGENT", "PIN", "STATUS")
 	drawLine(iy, header, headerStyle)
@@ -364,8 +500,19 @@ func (t *TUI) renderAgents() {
 		vpHeight = 1
 	}
 
+	// Build the display list: filtered indices when searching, all panes otherwise.
+	var displayIndices []int
+	if t.agents.searching && t.agents.filtered != nil {
+		displayIndices = t.agents.filtered
+	} else {
+		displayIndices = make([]int, len(t.panes))
+		for i := range t.panes {
+			displayIndices[i] = i
+		}
+	}
+	n := len(displayIndices)
+
 	// Clamp scroll offset.
-	n := len(t.panes)
 	maxScroll := n - vpHeight
 	if maxScroll < 0 {
 		maxScroll = 0
@@ -375,6 +522,12 @@ func (t *TUI) renderAgents() {
 	}
 	if t.agents.scrollOffset < 0 {
 		t.agents.scrollOffset = 0
+	}
+
+	// "No matches" message when searching with no results.
+	if t.agents.searching && n == 0 {
+		dimStyle := bgStyle.Foreground(tcell.ColorGray)
+		drawLine(iy, "  no matches", dimStyle)
 	}
 
 	// Scroll indicators.
@@ -387,10 +540,11 @@ func (t *TUI) renderAgents() {
 
 	// Agent rows.
 	for vi := 0; vi < vpHeight; vi++ {
-		idx := t.agents.scrollOffset + vi
-		if idx >= n {
+		dispIdx := t.agents.scrollOffset + vi
+		if dispIdx >= n {
 			break
 		}
+		idx := displayIndices[dispIdx] // index into t.panes
 		row := iy + vi
 
 		p := t.panes[idx]
@@ -414,16 +568,24 @@ func (t *TUI) renderAgents() {
 		}
 
 		marker := " "
-		if idx == t.agents.selected && t.agents.moving {
+		if !t.agents.searching && idx == t.agents.selected && t.agents.moving {
 			marker = ">"
 		}
 
 		line := fmt.Sprintf("%s%2d  %s %-12s %s  %s", marker, idx+1, vis, name, pin, status)
 		prefix := fmt.Sprintf("%s%2d  %s ", marker, idx+1, vis)
 
+		// Highlight: in search mode, selected refers to position in filtered list.
+		isSelected := false
+		if t.agents.searching {
+			isSelected = dispIdx == t.agents.selected
+		} else {
+			isSelected = idx == t.agents.selected
+		}
+
 		style := normalStyle
-		if idx == t.agents.selected {
-			if t.agents.moving {
+		if isSelected {
+			if !t.agents.searching && t.agents.moving {
 				style = movingStyle
 			} else {
 				style = selectedStyle
@@ -463,5 +625,8 @@ func (t *TUI) renderAgents() {
 	// Help line (last interior row).
 	helpY := startY + boxH - 2
 	help := " Up/Down move  Space hide  Enter grab  p pin  A all  R reset  Esc close"
+	if t.agents.searching {
+		help = " Type to filter  Up/Down navigate  Enter select  Esc clear  / search"
+	}
 	drawLine(helpY, help, helpStyle)
 }
