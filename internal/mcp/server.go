@@ -24,14 +24,17 @@ type Server struct {
 	logger *slog.Logger
 }
 
-// NewServer creates an MCP server bound to 0.0.0.0 on the given port.
+// NewServer creates an MCP server bound to the given address and port.
 // The token is required for bearer auth on every request. If port is 0,
-// the OS assigns a free port.
-func NewServer(port int, token string, logger *slog.Logger) *Server {
+// the OS assigns a free port. If bind is empty, defaults to "0.0.0.0".
+func NewServer(port int, bind, token string, logger *slog.Logger) *Server {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	addr := fmt.Sprintf("0.0.0.0:%d", port)
+	if bind == "" {
+		bind = "0.0.0.0"
+	}
+	addr := fmt.Sprintf("%s:%d", bind, port)
 
 	mcpServer := gomcp.NewServer(
 		&gomcp.Implementation{

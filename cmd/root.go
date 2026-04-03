@@ -290,6 +290,9 @@ func runTUI(cmd *cobra.Command, args []string) error {
 		UpdateResult:      tuiUpdateCh,
 		PaneConfigBuilder: buildReloadingPaneConfigBuilder(cfgPath, buildAgentPaneConfig),
 		WebPort:           webPort,
+		McpPort:           proj.EffectiveMcpPort(),
+		McpToken:          proj.EffectiveMcpToken(),
+		McpBind:           proj.EffectiveMcpBind(),
 	})
 }
 

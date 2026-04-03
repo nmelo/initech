@@ -41,6 +41,11 @@ type Project struct {
 	ClaudeArgs    []string                `yaml:"claude_args,omitempty"`
 	RoleOverrides map[string]RoleOverride `yaml:"role_overrides,omitempty"`
 
+	// MCP server fields.
+	McpPort  *int   `yaml:"mcp_port,omitempty"`  // MCP server port. Default 9200, nil uses default, 0 disables.
+	McpToken string `yaml:"mcp_token,omitempty"` // Bearer token. Auto-generated if empty. INITECH_MCP_TOKEN env var overrides.
+	McpBind  string `yaml:"mcp_bind,omitempty"`  // Bind address. Default "0.0.0.0".
+
 	// Cross-machine coordination fields.
 	PeerName string            `yaml:"peer_name,omitempty"` // This instance's identity (e.g., "workbench").
 	Mode     string            `yaml:"mode,omitempty"`      // "" (default TUI) or "headless" (daemon).
@@ -77,6 +82,39 @@ type ResourceConfig struct {
 // DefaultPressureThreshold is the RSS percentage above which agents may be
 // auto-suspended. Used when PressureThreshold is zero (unset).
 const DefaultPressureThreshold = 85
+
+// DefaultMcpPort is the default MCP server port when mcp_port is not set.
+const DefaultMcpPort = 9200
+
+// DefaultMcpBind is the default bind address for the MCP server.
+const DefaultMcpBind = "0.0.0.0"
+
+// EffectiveMcpPort returns the MCP server port. Returns DefaultMcpPort when
+// mcp_port is not set in config, or the explicit value (including 0 to disable).
+func (p *Project) EffectiveMcpPort() int {
+	if p.McpPort == nil {
+		return DefaultMcpPort
+	}
+	return *p.McpPort
+}
+
+// EffectiveMcpToken returns the MCP bearer token, checking the
+// INITECH_MCP_TOKEN environment variable first, then the config value.
+// Returns empty string if neither is set (caller should auto-generate).
+func (p *Project) EffectiveMcpToken() string {
+	if env := os.Getenv("INITECH_MCP_TOKEN"); env != "" {
+		return env
+	}
+	return p.McpToken
+}
+
+// EffectiveMcpBind returns the MCP bind address, defaulting to "0.0.0.0".
+func (p *Project) EffectiveMcpBind() string {
+	if p.McpBind != "" {
+		return p.McpBind
+	}
+	return DefaultMcpBind
+}
 
 const (
 	// AgentTypeClaudeCode is the default agent type. Claude Code supports
@@ -204,7 +242,7 @@ func Load(path string) (*Project, error) {
 
 // hasTokens returns true if the project config contains any auth tokens.
 func hasTokens(p *Project) bool {
-	if p.Token != "" {
+	if p.Token != "" || p.McpToken != "" {
 		return true
 	}
 	for _, r := range p.Remotes {
@@ -274,6 +312,11 @@ func Validate(p *Project) error {
 		if ov.SubmitKey != "" && ov.SubmitKey != "enter" && ov.SubmitKey != "ctrl+enter" {
 			return fmt.Errorf("role_override %q has invalid submit_key %q: must be \"enter\" or \"ctrl+enter\"", name, ov.SubmitKey)
 		}
+	}
+
+	// MCP server validation.
+	if p.McpPort != nil && (*p.McpPort < 0 || *p.McpPort > 65535) {
+		return fmt.Errorf("mcp_port %d out of range (0-65535)", *p.McpPort)
 	}
 
 	// Cross-machine coordination validation.

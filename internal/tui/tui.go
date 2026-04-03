@@ -2,6 +2,8 @@ package tui
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/base64"
 	"fmt"
 	"log/slog"
 	"os"
@@ -12,6 +14,7 @@ import (
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/nmelo/initech/internal/config"
+	"github.com/nmelo/initech/internal/mcp"
 	"github.com/nmelo/initech/internal/update"
 	"github.com/nmelo/initech/internal/web"
 )
@@ -329,6 +332,9 @@ type Config struct {
 	Project           *config.Project                       // Full project config. Used for remote peer connections.
 	UpdateResult      <-chan string                         // Receives newer version string from background check. Nil = no check.
 	WebPort           int                                   // Port for the web companion server. 0 = disabled.
+	McpPort           int                                   // Port for the MCP server. 0 = disabled.
+	McpToken          string                                // Bearer token for MCP auth. Empty = auto-generate.
+	McpBind           string                                // Bind address for MCP server. Empty = "0.0.0.0".
 }
 
 // DefaultConfig returns a config with standard shell-only agents.
@@ -609,6 +615,39 @@ func Run(cfg Config) error {
 			webSrv.Shutdown(shutCtx)
 			shutCancel()
 		}()
+	}
+
+	// Start MCP server when configured.
+	if cfg.McpPort > 0 {
+		mcpToken := cfg.McpToken
+		if mcpToken == "" {
+			b := make([]byte, 32)
+			if _, err := rand.Read(b); err != nil {
+				LogError("mcp", "failed to generate token", "err", err)
+			} else {
+				mcpToken = base64.RawURLEncoding.EncodeToString(b)
+			}
+		}
+		if mcpToken != "" {
+			mcpBind := cfg.McpBind
+			if mcpBind == "" {
+				mcpBind = config.DefaultMcpBind
+			}
+			mcpSrv := mcp.NewServer(cfg.McpPort, mcpBind, mcpToken, nil)
+			mcpCtx, mcpCancel := context.WithCancel(context.Background())
+			go func() {
+				if err := mcpSrv.Start(mcpCtx); err != nil {
+					LogError("mcp", "server exited with error", "err", err)
+				}
+			}()
+			LogInfo("mcp", "server starting", "addr", fmt.Sprintf("%s:%d", mcpBind, cfg.McpPort), "token", mcpToken)
+			defer func() {
+				mcpCancel()
+				shutCtx, shutCancel := context.WithTimeout(context.Background(), 2*time.Second)
+				mcpSrv.Shutdown(shutCtx)
+				shutCancel()
+			}()
+		}
 	}
 
 	// Start battery polling for status bar display.

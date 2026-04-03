@@ -702,6 +702,174 @@ func TestValidate_UnknownMode(t *testing.T) {
 	}
 }
 
+// ── MCP config tests (ini-uhv.1.3) ───────────────────────────────
+
+func intPtr(v int) *int { return &v }
+
+func TestLoad_McpConfig(t *testing.T) {
+	dir := t.TempDir()
+	yaml := `project: test
+root: /tmp/test
+roles:
+  - super
+mcp_port: 9300
+mcp_token: my-secret-token
+mcp_bind: "127.0.0.1"
+`
+	path := writeConfig(t, dir, yaml)
+
+	p, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if p.McpPort == nil || *p.McpPort != 9300 {
+		t.Errorf("McpPort = %v, want 9300", p.McpPort)
+	}
+	if p.McpToken != "my-secret-token" {
+		t.Errorf("McpToken = %q, want my-secret-token", p.McpToken)
+	}
+	if p.McpBind != "127.0.0.1" {
+		t.Errorf("McpBind = %q, want 127.0.0.1", p.McpBind)
+	}
+}
+
+func TestLoad_McpConfig_Absent(t *testing.T) {
+	dir := t.TempDir()
+	path := writeConfig(t, dir, validYAML)
+
+	p, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if p.McpPort != nil {
+		t.Errorf("McpPort = %v, want nil (unset)", p.McpPort)
+	}
+	if p.McpToken != "" {
+		t.Errorf("McpToken = %q, want empty", p.McpToken)
+	}
+	if p.McpBind != "" {
+		t.Errorf("McpBind = %q, want empty", p.McpBind)
+	}
+}
+
+func TestEffectiveMcpPort_Default(t *testing.T) {
+	p := &Project{Name: "x", Root: "/x", Roles: []string{"a"}}
+	if got := p.EffectiveMcpPort(); got != DefaultMcpPort {
+		t.Errorf("EffectiveMcpPort() = %d, want %d", got, DefaultMcpPort)
+	}
+}
+
+func TestEffectiveMcpPort_Explicit(t *testing.T) {
+	p := &Project{Name: "x", Root: "/x", Roles: []string{"a"}, McpPort: intPtr(9300)}
+	if got := p.EffectiveMcpPort(); got != 9300 {
+		t.Errorf("EffectiveMcpPort() = %d, want 9300", got)
+	}
+}
+
+func TestEffectiveMcpPort_DisabledWithZero(t *testing.T) {
+	p := &Project{Name: "x", Root: "/x", Roles: []string{"a"}, McpPort: intPtr(0)}
+	if got := p.EffectiveMcpPort(); got != 0 {
+		t.Errorf("EffectiveMcpPort() = %d, want 0 (disabled)", got)
+	}
+}
+
+func TestValidate_McpPortOutOfRange(t *testing.T) {
+	p := &Project{Name: "x", Root: "/x", Roles: []string{"a"}, McpPort: intPtr(70000)}
+	err := Validate(p)
+	if err == nil {
+		t.Fatal("expected error for mcp_port out of range")
+	}
+	if !strings.Contains(err.Error(), "mcp_port") {
+		t.Errorf("err = %q, want mcp_port mentioned", err)
+	}
+}
+
+func TestValidate_McpPortValid(t *testing.T) {
+	tests := []struct {
+		name string
+		port *int
+	}{
+		{"nil (default)", nil},
+		{"zero (disabled)", intPtr(0)},
+		{"9200", intPtr(9200)},
+		{"65535", intPtr(65535)},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := &Project{Name: "x", Root: "/x", Roles: []string{"a"}, McpPort: tt.port}
+			if err := Validate(p); err != nil {
+				t.Errorf("unexpected error: %v", err)
+			}
+		})
+	}
+}
+
+func TestLoad_McpPortZeroDisables(t *testing.T) {
+	dir := t.TempDir()
+	yaml := `project: test
+root: /tmp/test
+roles:
+  - super
+mcp_port: 0
+`
+	path := writeConfig(t, dir, yaml)
+
+	p, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if p.McpPort == nil {
+		t.Fatal("McpPort = nil, want explicit 0")
+	}
+	if *p.McpPort != 0 {
+		t.Errorf("McpPort = %d, want 0", *p.McpPort)
+	}
+	if got := p.EffectiveMcpPort(); got != 0 {
+		t.Errorf("EffectiveMcpPort = %d, want 0", got)
+	}
+}
+
+func TestEffectiveMcpToken_EnvOverridesYaml(t *testing.T) {
+	p := &Project{Name: "x", Root: "/x", Roles: []string{"a"}, McpToken: "yaml-token"}
+
+	// With env var set, env wins.
+	t.Setenv("INITECH_MCP_TOKEN", "env-token")
+	if got := p.EffectiveMcpToken(); got != "env-token" {
+		t.Errorf("EffectiveMcpToken() = %q, want env-token", got)
+	}
+}
+
+func TestEffectiveMcpToken_FallsBackToYaml(t *testing.T) {
+	p := &Project{Name: "x", Root: "/x", Roles: []string{"a"}, McpToken: "yaml-token"}
+	// Ensure env var is not set.
+	t.Setenv("INITECH_MCP_TOKEN", "")
+	if got := p.EffectiveMcpToken(); got != "yaml-token" {
+		t.Errorf("EffectiveMcpToken() = %q, want yaml-token", got)
+	}
+}
+
+func TestEffectiveMcpToken_EmptyWhenNeitherSet(t *testing.T) {
+	p := &Project{Name: "x", Root: "/x", Roles: []string{"a"}}
+	t.Setenv("INITECH_MCP_TOKEN", "")
+	if got := p.EffectiveMcpToken(); got != "" {
+		t.Errorf("EffectiveMcpToken() = %q, want empty", got)
+	}
+}
+
+func TestEffectiveMcpBind_Default(t *testing.T) {
+	p := &Project{Name: "x", Root: "/x", Roles: []string{"a"}}
+	if got := p.EffectiveMcpBind(); got != DefaultMcpBind {
+		t.Errorf("EffectiveMcpBind() = %q, want %q", got, DefaultMcpBind)
+	}
+}
+
+func TestEffectiveMcpBind_Explicit(t *testing.T) {
+	p := &Project{Name: "x", Root: "/x", Roles: []string{"a"}, McpBind: "127.0.0.1"}
+	if got := p.EffectiveMcpBind(); got != "127.0.0.1" {
+		t.Errorf("EffectiveMcpBind() = %q, want 127.0.0.1", got)
+	}
+}
+
 func TestValidate_BackwardsCompatible(t *testing.T) {
 	p := &Project{
 		Name:  "legacy",
