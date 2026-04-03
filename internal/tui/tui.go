@@ -84,6 +84,13 @@ type helpModal struct {
 	scrollOffset int
 }
 
+// mcpModal holds MCP setup modal state.
+type mcpModal struct {
+	active        bool
+	tokenRevealed bool
+	revealExpiry  time.Time // auto-hide token after 10 seconds
+}
+
 // reorderModal holds state for the pane reorder modal.
 type reorderModal struct {
 	active bool
@@ -156,6 +163,7 @@ type TUI struct {
 	top       topModal       // Activity monitor overlay.
 	eventLogM eventLogModal  // Event log history modal.
 	help      helpModal      // Help reference card modal.
+	mcpM      mcpModal       // MCP setup modal.
 	reorder   reorderModal   // Agent reorder modal.
 	agents    agentsModal    // Agent management modal.
 	welcome   welcomeOverlay // First-launch keybinding hints.
@@ -199,6 +207,11 @@ type TUI struct {
 	// -1 means not available (no pane showed a quota, or all panes dead).
 	quotaPercent int
 	quotaPollAt  time.Time // Next time to poll for quota.
+
+	// MCP server runtime state for the setup modal.
+	mcpToken string // Active bearer token (empty if MCP disabled).
+	mcpBind  string // Bind address (e.g. "0.0.0.0").
+	mcpPort  int    // Configured port (0 = disabled).
 
 	// Timer store for scheduled sends.
 	timers *TimerStore
@@ -633,6 +646,11 @@ func Run(cfg Config) error {
 			if mcpBind == "" {
 				mcpBind = config.DefaultMcpBind
 			}
+			// Store MCP state for the setup modal.
+			t.mcpToken = mcpToken
+			t.mcpBind = mcpBind
+			t.mcpPort = cfg.McpPort
+
 			mcpHost := &tuiMCPHost{t: t}
 			mcpSrv := mcp.NewServer(cfg.McpPort, mcpBind, mcpToken, mcpHost, nil)
 			mcpCtx, mcpCancel := context.WithCancel(context.Background())
