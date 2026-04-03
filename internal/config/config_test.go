@@ -754,8 +754,8 @@ func TestLoad_McpConfig_Absent(t *testing.T) {
 
 func TestEffectiveMcpPort_Default(t *testing.T) {
 	p := &Project{Name: "x", Root: "/x", Roles: []string{"a"}}
-	if got := p.EffectiveMcpPort(); got != DefaultMcpPort {
-		t.Errorf("EffectiveMcpPort() = %d, want %d", got, DefaultMcpPort)
+	if got := p.EffectiveMcpPort(); got != 0 {
+		t.Errorf("EffectiveMcpPort() = %d, want 0 (disabled by default)", got)
 	}
 }
 

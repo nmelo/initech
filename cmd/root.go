@@ -29,6 +29,7 @@ var (
 	autoSuspend bool
 	pprofAddr   string
 	webPort     int
+	mcpPort     int
 
 	// updateResult receives the background version check result.
 	// Populated in PersistentPreRun, drained in PersistentPostRun.
@@ -138,6 +139,7 @@ func init() {
 	rootCmd.Flags().BoolVar(&autoSuspend, "auto-suspend", false, "Enable automatic agent suspension under memory pressure")
 	rootCmd.Flags().StringVar(&pprofAddr, "pprof", "", "Start pprof HTTP server on the given localhost address (e.g. localhost:6060)")
 	rootCmd.Flags().IntVar(&webPort, "web-port", 0, "Start web companion server on the given port (0 = disabled)")
+	rootCmd.Flags().IntVar(&mcpPort, "mcp-port", 0, "Start MCP server on the given port (0 = disabled)")
 	rootCmd.PersistentFlags().BoolVar(&noColor, "no-color", false, "Disable colored output")
 
 	// Register color functions as template functions so the usage template can
@@ -290,10 +292,21 @@ func runTUI(cmd *cobra.Command, args []string) error {
 		UpdateResult:      tuiUpdateCh,
 		PaneConfigBuilder: buildReloadingPaneConfigBuilder(cfgPath, buildAgentPaneConfig),
 		WebPort:           webPort,
-		McpPort:           proj.EffectiveMcpPort(),
+		McpPort:           effectiveMcpPort(mcpPort, proj),
 		McpToken:          proj.EffectiveMcpToken(),
 		McpBind:           proj.EffectiveMcpBind(),
 	})
+}
+
+// effectiveMcpPort returns the MCP port to use. The --mcp-port flag takes
+// precedence. If the flag is 0 (default/disabled), fall back to the config
+// value (which also defaults to 0 when unset). MCP is disabled when the
+// result is 0.
+func effectiveMcpPort(flagValue int, proj *config.Project) int {
+	if flagValue != 0 {
+		return flagValue
+	}
+	return proj.EffectiveMcpPort()
 }
 
 // buildAgentPaneConfig constructs a PaneConfig for the given role from the

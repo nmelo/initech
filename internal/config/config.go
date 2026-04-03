@@ -83,17 +83,14 @@ type ResourceConfig struct {
 // auto-suspended. Used when PressureThreshold is zero (unset).
 const DefaultPressureThreshold = 85
 
-// DefaultMcpPort is the default MCP server port when mcp_port is not set.
-const DefaultMcpPort = 9200
-
 // DefaultMcpBind is the default bind address for the MCP server.
 const DefaultMcpBind = "0.0.0.0"
 
-// EffectiveMcpPort returns the MCP server port. Returns DefaultMcpPort when
-// mcp_port is not set in config, or the explicit value (including 0 to disable).
+// EffectiveMcpPort returns the MCP server port from config. Returns 0 (disabled)
+// when mcp_port is not set, or the explicit value when set.
 func (p *Project) EffectiveMcpPort() int {
 	if p.McpPort == nil {
-		return DefaultMcpPort
+		return 0
 	}
 	return *p.McpPort
 }
