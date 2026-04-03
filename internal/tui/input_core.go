@@ -51,6 +51,7 @@ func (t *TUI) handleKey(ev *tcell.EventKey) bool {
 	if ev.Key() == tcell.KeyRune && ev.Rune() == '`' && ev.Modifiers() == 0 {
 		t.cmd.active = true
 		t.cmd.buf = t.cmd.buf[:0]
+		t.cmd.cursor = 0
 		t.cmd.error = ""
 		return false
 	}

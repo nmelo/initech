@@ -1279,6 +1279,7 @@ func TestHandleCmdKeyEscape(t *testing.T) {
 func TestHandleCmdKeyBackspace(t *testing.T) {
 	tui := newTestTUI()
 	tui.cmd.buf = []rune("abc")
+	tui.cmd.cursor = 3
 
 	ev := tcell.NewEventKey(tcell.KeyBackspace2, 0, 0)
 	tui.handleCmdKey(ev)
@@ -1301,6 +1302,7 @@ func TestHandleCmdKeyBackspaceEmpty(t *testing.T) {
 func TestHandleCmdKeyRune(t *testing.T) {
 	tui := newTestTUI()
 	tui.cmd.buf = []rune("he")
+	tui.cmd.cursor = 2
 
 	ev := tcell.NewEventKey(tcell.KeyRune, 'l', 0)
 	tui.handleCmdKey(ev)

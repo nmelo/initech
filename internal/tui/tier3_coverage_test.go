@@ -117,7 +117,7 @@ func TestRenderCmdLine_PromptAndInput(t *testing.T) {
 	s := tcell.NewSimulationScreen("")
 	s.Init()
 	s.SetSize(80, 24)
-	tui := &TUI{screen: s, cmd: cmdModal{active: true, buf: []rune("grid 3x3")}}
+	tui := &TUI{screen: s, cmd: cmdModal{active: true, buf: []rune("grid 3x3"), cursor: 8}}
 	tui.renderCmdLine()
 
 	_, sh := s.Size()

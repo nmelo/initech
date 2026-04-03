@@ -24,12 +24,14 @@ func (t *TUI) handleCmdKey(ev *tcell.EventKey) bool {
 			t.cmd.confirmMsg = ""
 			t.cmd.active = false
 			t.cmd.buf = t.cmd.buf[:0]
+			t.cmd.cursor = 0
 			return false
 		default:
 			// Any other key cancels the confirmation.
 			t.cmd.pendingConfirm = ""
 			t.cmd.confirmMsg = ""
 			t.cmd.buf = t.cmd.buf[:0]
+			t.cmd.cursor = 0
 			return false
 		}
 	}
@@ -38,6 +40,7 @@ func (t *TUI) handleCmdKey(ev *tcell.EventKey) bool {
 	case tcell.KeyEscape, tcell.KeyCtrlC:
 		t.cmd.active = false
 		t.cmd.buf = t.cmd.buf[:0]
+		t.cmd.cursor = 0
 		t.cmd.tabBuf = ""
 		t.cmd.tabHint = ""
 		t.cmd.suggestions = nil
@@ -46,22 +49,91 @@ func (t *TUI) handleCmdKey(ev *tcell.EventKey) bool {
 		cmd := strings.TrimSpace(string(t.cmd.buf))
 		t.cmd.active = false
 		t.cmd.buf = t.cmd.buf[:0]
+		t.cmd.cursor = 0
 		t.cmd.tabBuf = ""
 		t.cmd.tabHint = ""
 		t.cmd.suggestions = nil
 		return t.execCmd(cmd)
 	case tcell.KeyTab:
 		t.tabComplete()
+		t.cmd.cursor = len(t.cmd.buf)
 		t.cmd.suggestions = nil
 		return false
+
+	// Movement: Ctrl+A / Home -> beginning of line.
+	case tcell.KeyCtrlA, tcell.KeyHome:
+		t.cmd.cursor = 0
+		return false
+	// Movement: Ctrl+E / End -> end of line.
+	case tcell.KeyCtrlE, tcell.KeyEnd:
+		t.cmd.cursor = len(t.cmd.buf)
+		return false
+	// Movement: Ctrl+B / Left -> back one character.
+	case tcell.KeyCtrlB, tcell.KeyLeft:
+		if t.cmd.cursor > 0 {
+			t.cmd.cursor--
+		}
+		return false
+	// Movement: Ctrl+F / Right -> forward one character.
+	case tcell.KeyCtrlF, tcell.KeyRight:
+		if t.cmd.cursor < len(t.cmd.buf) {
+			t.cmd.cursor++
+		}
+		return false
+
+	// Deletion: Backspace / Ctrl+H -> delete character left of cursor.
 	case tcell.KeyBackspace, tcell.KeyBackspace2:
-		if len(t.cmd.buf) > 0 {
-			t.cmd.buf = t.cmd.buf[:len(t.cmd.buf)-1]
+		if t.cmd.cursor > 0 {
+			t.cmd.buf = append(t.cmd.buf[:t.cmd.cursor-1], t.cmd.buf[t.cmd.cursor:]...)
+			t.cmd.cursor--
 		}
 		t.cmd.tabBuf = ""
 		t.cmd.tabHint = ""
 		t.updateSuggestions()
 		return false
+	// Deletion: Delete / Ctrl+D -> delete character at cursor.
+	case tcell.KeyDelete, tcell.KeyCtrlD:
+		if t.cmd.cursor < len(t.cmd.buf) {
+			t.cmd.buf = append(t.cmd.buf[:t.cmd.cursor], t.cmd.buf[t.cmd.cursor+1:]...)
+		}
+		t.cmd.tabBuf = ""
+		t.cmd.tabHint = ""
+		t.updateSuggestions()
+		return false
+	// Deletion: Ctrl+W -> delete word left of cursor.
+	case tcell.KeyCtrlW:
+		if t.cmd.cursor > 0 {
+			// Skip trailing spaces, then delete until the next space or start.
+			i := t.cmd.cursor
+			for i > 0 && t.cmd.buf[i-1] == ' ' {
+				i--
+			}
+			for i > 0 && t.cmd.buf[i-1] != ' ' {
+				i--
+			}
+			t.cmd.buf = append(t.cmd.buf[:i], t.cmd.buf[t.cmd.cursor:]...)
+			t.cmd.cursor = i
+		}
+		t.cmd.tabBuf = ""
+		t.cmd.tabHint = ""
+		t.updateSuggestions()
+		return false
+	// Deletion: Ctrl+U -> delete from start to cursor.
+	case tcell.KeyCtrlU:
+		t.cmd.buf = t.cmd.buf[t.cmd.cursor:]
+		t.cmd.cursor = 0
+		t.cmd.tabBuf = ""
+		t.cmd.tabHint = ""
+		t.updateSuggestions()
+		return false
+	// Deletion: Ctrl+K -> delete from cursor to end.
+	case tcell.KeyCtrlK:
+		t.cmd.buf = t.cmd.buf[:t.cmd.cursor]
+		t.cmd.tabBuf = ""
+		t.cmd.tabHint = ""
+		t.updateSuggestions()
+		return false
+
 	case tcell.KeyRune:
 		// Backtick while empty closes the modal.
 		if ev.Rune() == '`' && len(t.cmd.buf) == 0 {
@@ -71,7 +143,11 @@ func (t *TUI) handleCmdKey(ev *tcell.EventKey) bool {
 			t.cmd.suggestions = nil
 			return false
 		}
-		t.cmd.buf = append(t.cmd.buf, ev.Rune())
+		// Insert at cursor position.
+		t.cmd.buf = append(t.cmd.buf, 0)
+		copy(t.cmd.buf[t.cmd.cursor+1:], t.cmd.buf[t.cmd.cursor:])
+		t.cmd.buf[t.cmd.cursor] = ev.Rune()
+		t.cmd.cursor++
 		t.cmd.tabBuf = ""
 		t.cmd.tabHint = ""
 		t.updateSuggestions()
@@ -88,6 +164,7 @@ func (t *TUI) executeConfirmed() bool {
 	t.cmd.confirmMsg = ""
 	t.cmd.active = false
 	t.cmd.buf = t.cmd.buf[:0]
+	t.cmd.cursor = 0
 
 	parts := strings.Fields(pending)
 	if len(parts) == 0 {

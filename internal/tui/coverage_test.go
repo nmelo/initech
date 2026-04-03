@@ -322,6 +322,7 @@ func TestHandleCmdKeyBackspaceE2(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("a")
 	tui.cmd.active = true
 	tui.cmd.buf = []rune("abc")
+	tui.cmd.cursor = 3
 
 	ev := tcell.NewEventKey(tcell.KeyBackspace2, 0, tcell.ModNone)
 	tui.handleCmdKey(ev)
@@ -374,6 +375,7 @@ func TestHandleCmdKeyBacktickAppendsWhenNonEmpty(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("a")
 	tui.cmd.active = true
 	tui.cmd.buf = []rune("a")
+	tui.cmd.cursor = 1
 
 	ev := tcell.NewEventKey(tcell.KeyRune, '`', tcell.ModNone)
 	tui.handleCmdKey(ev)
