@@ -325,9 +325,11 @@ func sendPaneTextLocked(pane *Pane, text string, enter bool) {
 	// message doesn't corrupt text the user was composing (ini-gd0). Codex/raw
 	// panes skip this because they inject directly to the PTY instead of through
 	// the emulator keystroke path.
+	stashed := false
 	if !pane.noBracketedPaste {
 		pane.emu.SendKey(uv.KeyPressEvent(uv.Key{Code: 's', Mod: uv.ModCtrl}))
 		time.Sleep(75 * time.Millisecond)
+		stashed = true
 	}
 
 	if useCodexBracketedPaste {
@@ -365,7 +367,10 @@ func sendPaneTextLocked(pane *Pane, text string, enter bool) {
 		time.Sleep(codexBracketedSubmitDelay)
 		method := sendCodexSubmit(pane, codexQueueSubmit)
 		LogDebug("inject", "submit", "pane", pane.Name(), "mode", mode, "method", method, "delay_ms", codexBracketedSubmitDelay.Milliseconds())
-		if pane.IsAlive() {
+		if pane.IsAlive() && !stashed {
+			// Retry only when no stash was active. After a stash, Claude Code
+			// auto-restores the stashed text into the prompt, making
+			// promptHasContent a false positive (ini-vxw).
 			time.Sleep(bracketedPasteSubmitDelay)
 			if promptHasContent(pane) {
 				method = sendCodexSubmit(pane, codexQueueSubmit)
@@ -395,8 +400,11 @@ func sendPaneTextLocked(pane *Pane, text string, enter bool) {
 	LogDebug("inject", "submit", "pane", pane.Name(), "mode", mode, "method", "emulator", "delay_ms", bracketedPasteSubmitDelay.Milliseconds())
 	sendSubmitKey(pane.emu, pane.submitKey)
 
-	// Single retry for large pastes where Enter was swallowed.
-	if pane.IsAlive() {
+	// Single retry for large pastes where Enter was swallowed. Skip when a
+	// stash was active because Claude Code auto-restores stashed text into the
+	// prompt after submit, making promptHasContent a false positive that would
+	// submit the operator's unfinished text (ini-vxw).
+	if pane.IsAlive() && !stashed {
 		time.Sleep(bracketedPasteSubmitDelay)
 		if promptHasContent(pane) {
 			LogDebug("inject", "submit retry", "pane", pane.Name(), "mode", mode, "method", "emulator")
