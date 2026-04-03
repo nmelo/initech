@@ -93,7 +93,9 @@ func NewServer(port int, bind, token string, host PaneHost, logger *slog.Logger)
 		nil,
 	)
 
-	registerTools(mcpServer, host)
+	if host != nil {
+		registerTools(mcpServer, host)
+	}
 
 	handler := gomcp.NewStreamableHTTPHandler(
 		func(r *http.Request) *gomcp.Server { return mcpServer },
