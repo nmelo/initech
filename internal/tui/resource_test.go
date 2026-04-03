@@ -542,6 +542,9 @@ func TestPinStaleRoleFilteredOnLoad(t *testing.T) {
 // and then resume is attempted. Since the test pane has no real command, the
 // resume succeeds (spawns $SHELL) and drains the queue.
 func TestHandleIPCSendResumesSuspended(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping PTY test in short mode")
+	}
 	p := newEmuPane("eng1", 80, 24)
 	p.cfg.Command = []string{"/bin/sh", "-c", "echo ready; sleep 1"}
 	p.suspended = true

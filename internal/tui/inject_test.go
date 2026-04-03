@@ -115,6 +115,9 @@ func TestInjectText_CtrlS_StillSent(t *testing.T) {
 // keeps its direct PTY submit path but wraps the body in bracketed paste so
 // Codex does not classify the burst as non-bracketed pasted typing.
 func TestInjectText_NoBracketedPasteCodexUsesBracketedPaste(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping PTY test in short mode")
+	}
 	ptmx, tty, err := pty.Open()
 	if err != nil {
 		t.Fatalf("pty.Open: %v", err)
@@ -208,6 +211,9 @@ func TestInjectText_DeadPane(t *testing.T) {
 // local Pane.SendText path used by IPC sends: Codex gets direct PTY bracketed
 // paste for the body plus a direct submit byte, with no emulator traffic.
 func TestPaneSendText_NoBracketedPasteCodexUsesBracketedPaste(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping PTY test in short mode")
+	}
 	ptmx, tty, err := pty.Open()
 	if err != nil {
 		t.Fatalf("pty.Open: %v", err)
@@ -338,6 +344,9 @@ func TestPaneSendText_CodexQueuesWithTabWhileRunning(t *testing.T) {
 }
 
 func TestPaneSendText_NoBracketedPasteOpenCodeUsesLocalRawPath(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping PTY test in short mode")
+	}
 	ptmx, tty, err := pty.Open()
 	if err != nil {
 		t.Fatalf("pty.Open: %v", err)
@@ -402,6 +411,9 @@ func TestPaneSendText_NoBracketedPasteOpenCodeUsesLocalRawPath(t *testing.T) {
 // This prevents the bug where the operator's half-written text gets submitted
 // by the retry Enter (ini-vxw).
 func TestInjectText_StashSkipsRetry(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping PTY test in short mode")
+	}
 	ptmx, tty, err := pty.Open()
 	if err != nil {
 		t.Fatalf("pty.Open: %v", err)

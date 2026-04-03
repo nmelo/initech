@@ -12,6 +12,9 @@ import (
 // ── addPane ──────────────────────────────────────────────────────────
 
 func TestAddPane_Success(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping PTY test in short mode")
+	}
 	dir := t.TempDir()
 	wsDir := filepath.Join(dir, "eng3")
 	os.MkdirAll(wsDir, 0755)
@@ -49,6 +52,9 @@ func TestAddPane_Success(t *testing.T) {
 // so the new pane's PTY goroutines actually run. Before the ini-a1e.13 fix,
 // Start() was never called and the pane was a frozen black screen.
 func TestAddPane_SetsGoroutines(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping PTY test in short mode")
+	}
 	dir := t.TempDir()
 	os.MkdirAll(filepath.Join(dir, "eng3"), 0755)
 

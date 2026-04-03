@@ -38,6 +38,9 @@ func TestIsCodexTrustPrompt_MatchesStartupPrompt(t *testing.T) {
 }
 
 func TestPaneSendText_CodexWaitsForReadyPrompt(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping PTY test in short mode")
+	}
 	r, w, err := os.Pipe()
 	if err != nil {
 		t.Fatalf("os.Pipe: %v", err)
@@ -101,6 +104,9 @@ func TestPaneSendText_CodexWaitsForReadyPrompt(t *testing.T) {
 }
 
 func TestPaneSendText_OpenCodeWaitsForReadyPrompt(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping PTY test in short mode")
+	}
 	r, w, err := os.Pipe()
 	if err != nil {
 		t.Fatalf("os.Pipe: %v", err)

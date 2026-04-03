@@ -207,6 +207,9 @@ func TestRemotePaneCloseMarksNotAlive(t *testing.T) {
 }
 
 func TestRemotePaneResizeDebounce(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping slow debounce test in short mode")
+	}
 	// Verify that rapid resizes are debounced: only the final dimensions
 	// reach the control channel after the debounce window.
 	streamS, streamC := net.Pipe()

@@ -42,6 +42,9 @@ func TestAddPane_MissingWorkspaceErrorMessage(t *testing.T) {
 
 // AC: eventCh is wired on hot-added pane so bead auto-detection works.
 func TestAddPane_EventChWired(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping PTY test in short mode")
+	}
 	dir := t.TempDir()
 	os.MkdirAll(filepath.Join(dir, "eng3"), 0755)
 	ch := make(chan AgentEvent, 8)
@@ -68,6 +71,9 @@ func TestAddPane_EventChWired(t *testing.T) {
 
 // AC: INITECH_SOCKET and INITECH_AGENT are injected into hot-added pane env.
 func TestAddPane_EnvInjected(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping PTY test in short mode")
+	}
 	dir := t.TempDir()
 	os.MkdirAll(filepath.Join(dir, "eng3"), 0755)
 
@@ -98,6 +104,9 @@ func TestAddPane_EnvInjected(t *testing.T) {
 
 // AC: Grid recalculates after add (e.g., 2 visible -> 3 visible changes grid).
 func TestAddPane_GridRecalculated(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping PTY test in short mode")
+	}
 	dir := t.TempDir()
 	os.MkdirAll(filepath.Join(dir, "eng3"), 0755)
 
@@ -320,6 +329,9 @@ func TestPaneCloseDoubleClose(t *testing.T) {
 // checking that addPane doesn't call anything that would modify initech.yaml.
 // This is a structural assertion: the method signature takes no config path.
 func TestAddPane_NoConfigModification(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping PTY test in short mode")
+	}
 	dir := t.TempDir()
 	os.MkdirAll(filepath.Join(dir, "eng3"), 0755)
 
