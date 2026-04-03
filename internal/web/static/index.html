@@ -90,6 +90,7 @@
       paneList.appendChild(btn);
     });
     paneList.scrollTop = scrollTop;
+    if (!activeName && panes.length > 0) selectPane(panes[0].name);
   }
 
   function selectPane(name) {
