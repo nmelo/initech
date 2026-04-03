@@ -1,6 +1,7 @@
 package mcp
 
 import (
+	"fmt"
 	"testing"
 )
 
@@ -26,8 +27,10 @@ func (f *fakePaneHandle) SendText(text string, enter bool) {
 
 // fakePaneHost implements PaneHost for testing.
 type fakePaneHost struct {
-	panes      map[string]*fakePaneHandle
+	panes        map[string]*fakePaneHandle
 	shuttingDown bool
+	lifecycleLog []string // records "restart:eng1", "stop:eng1", etc.
+	lifecycleErr error    // if set, lifecycle methods return this error
 }
 
 func newFakeHost(panes ...*fakePaneHandle) *fakePaneHost {
@@ -47,6 +50,39 @@ func (h *fakePaneHost) FindPane(name string) (PaneHandle, bool) {
 		return nil, true
 	}
 	return p, true
+}
+
+func (h *fakePaneHost) RestartAgent(name string) error {
+	if h.lifecycleErr != nil {
+		return h.lifecycleErr
+	}
+	if _, ok := h.panes[name]; !ok {
+		return fmt.Errorf("agent %q not found", name)
+	}
+	h.lifecycleLog = append(h.lifecycleLog, "restart:"+name)
+	return nil
+}
+
+func (h *fakePaneHost) StopAgent(name string) error {
+	if h.lifecycleErr != nil {
+		return h.lifecycleErr
+	}
+	if _, ok := h.panes[name]; !ok {
+		return fmt.Errorf("agent %q not found", name)
+	}
+	h.lifecycleLog = append(h.lifecycleLog, "stop:"+name)
+	return nil
+}
+
+func (h *fakePaneHost) StartAgent(name string) error {
+	if h.lifecycleErr != nil {
+		return h.lifecycleErr
+	}
+	if _, ok := h.panes[name]; !ok {
+		return fmt.Errorf("agent %q not found", name)
+	}
+	h.lifecycleLog = append(h.lifecycleLog, "start:"+name)
+	return nil
 }
 
 func TestHandlePeek_ValidAgent(t *testing.T) {
@@ -185,5 +221,91 @@ func TestHandleSend_ShuttingDown(t *testing.T) {
 	_, _, err := handleSend(host, SendInput{Agent: "eng1", Message: "hello"})
 	if err == nil {
 		t.Fatal("expected error when shutting down")
+	}
+}
+
+// Lifecycle tool tests (restart, stop, start).
+
+func TestHandleLifecycle_Restart(t *testing.T) {
+	pane := &fakePaneHandle{name: "eng1"}
+	host := newFakeHost(pane)
+
+	_, out, err := handleLifecycle(host, AgentInput{Agent: "eng1"}, "restart")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if out.Status != "restarted" {
+		t.Errorf("status = %q, want %q", out.Status, "restarted")
+	}
+	if len(host.lifecycleLog) != 1 || host.lifecycleLog[0] != "restart:eng1" {
+		t.Errorf("lifecycle log = %v", host.lifecycleLog)
+	}
+}
+
+func TestHandleLifecycle_Stop(t *testing.T) {
+	pane := &fakePaneHandle{name: "qa1"}
+	host := newFakeHost(pane)
+
+	_, out, err := handleLifecycle(host, AgentInput{Agent: "qa1"}, "stop")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if out.Status != "stopped" {
+		t.Errorf("status = %q, want %q", out.Status, "stopped")
+	}
+	if len(host.lifecycleLog) != 1 || host.lifecycleLog[0] != "stop:qa1" {
+		t.Errorf("lifecycle log = %v", host.lifecycleLog)
+	}
+}
+
+func TestHandleLifecycle_Start(t *testing.T) {
+	pane := &fakePaneHandle{name: "eng2"}
+	host := newFakeHost(pane)
+
+	_, out, err := handleLifecycle(host, AgentInput{Agent: "eng2"}, "start")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if out.Status != "started" {
+		t.Errorf("status = %q, want %q", out.Status, "started")
+	}
+	if len(host.lifecycleLog) != 1 || host.lifecycleLog[0] != "start:eng2" {
+		t.Errorf("lifecycle log = %v", host.lifecycleLog)
+	}
+}
+
+func TestHandleLifecycle_InvalidAgent(t *testing.T) {
+	host := newFakeHost()
+
+	for _, action := range []string{"restart", "stop", "start"} {
+		_, _, err := handleLifecycle(host, AgentInput{Agent: "nonexistent"}, action)
+		if err == nil {
+			t.Errorf("%s: expected error for nonexistent agent", action)
+		}
+	}
+}
+
+func TestHandleLifecycle_MissingAgent(t *testing.T) {
+	host := newFakeHost()
+
+	for _, action := range []string{"restart", "stop", "start"} {
+		_, _, err := handleLifecycle(host, AgentInput{}, action)
+		if err == nil {
+			t.Errorf("%s: expected error for missing agent", action)
+		}
+	}
+}
+
+func TestHandleLifecycle_HostError(t *testing.T) {
+	pane := &fakePaneHandle{name: "eng1"}
+	host := newFakeHost(pane)
+	host.lifecycleErr = fmt.Errorf("process exited unexpectedly")
+
+	_, _, err := handleLifecycle(host, AgentInput{Agent: "eng1"}, "restart")
+	if err == nil {
+		t.Fatal("expected error from host")
+	}
+	if err.Error() != "process exited unexpectedly" {
+		t.Errorf("error = %q", err.Error())
 	}
 }

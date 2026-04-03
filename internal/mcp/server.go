@@ -22,11 +22,24 @@ type PaneHandle interface {
 	SendText(text string, enter bool)
 }
 
-// PaneHost provides pane lookup for the MCP tool handlers.
+// PaneHost provides pane lookup and lifecycle operations for MCP tool handlers.
 type PaneHost interface {
 	// FindPane returns the pane with the given name, or nil if not found.
 	// The bool is false if the host is shutting down.
 	FindPane(name string) (PaneHandle, bool)
+
+	// RestartAgent restarts the named agent's process. Returns an error if the
+	// agent is not found or the restart fails.
+	RestartAgent(name string) error
+
+	// StopAgent stops the named agent's process. Returns an error if the agent
+	// is not found. Stopping an already-stopped agent is a no-op.
+	StopAgent(name string) error
+
+	// StartAgent starts a previously stopped agent. Returns an error if the
+	// agent is not found or the start fails. Starting an already-running agent
+	// is a no-op.
+	StartAgent(name string) error
 }
 
 // Server is an MCP server that exposes initech agent primitives over

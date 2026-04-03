@@ -31,7 +31,17 @@ type SendOutput struct {
 	Status string `json:"status"`
 }
 
-// registerTools adds initech_peek and initech_send to the MCP server.
+// AgentInput is the input schema for tools that take only an agent name.
+type AgentInput struct {
+	Agent string `json:"agent" jsonschema:"target agent name (e.g. eng1)"`
+}
+
+// AgentOutput is the output schema for lifecycle tools.
+type AgentOutput struct {
+	Status string `json:"status"`
+}
+
+// registerTools adds MCP tools to the server.
 func registerTools(s *gomcp.Server, host PaneHost) {
 	gomcp.AddTool(s, &gomcp.Tool{
 		Name:        "initech_peek",
@@ -45,6 +55,27 @@ func registerTools(s *gomcp.Server, host PaneHost) {
 		Description: "Send a message to an agent's terminal. The text is injected into the agent's PTY input. Call initech_status first to discover available agent names.",
 	}, func(_ context.Context, _ *gomcp.CallToolRequest, input SendInput) (*gomcp.CallToolResult, SendOutput, error) {
 		return handleSend(host, input)
+	})
+
+	gomcp.AddTool(s, &gomcp.Tool{
+		Name:        "initech_restart",
+		Description: "Restart an agent's process. Stops the current process and starts a fresh one with the same configuration.",
+	}, func(_ context.Context, _ *gomcp.CallToolRequest, input AgentInput) (*gomcp.CallToolResult, AgentOutput, error) {
+		return handleLifecycle(host, input, "restart")
+	})
+
+	gomcp.AddTool(s, &gomcp.Tool{
+		Name:        "initech_stop",
+		Description: "Stop an agent's process. The agent pane remains but the process exits.",
+	}, func(_ context.Context, _ *gomcp.CallToolRequest, input AgentInput) (*gomcp.CallToolResult, AgentOutput, error) {
+		return handleLifecycle(host, input, "stop")
+	})
+
+	gomcp.AddTool(s, &gomcp.Tool{
+		Name:        "initech_start",
+		Description: "Start a previously stopped agent. No-op if the agent is already running.",
+	}, func(_ context.Context, _ *gomcp.CallToolRequest, input AgentInput) (*gomcp.CallToolResult, AgentOutput, error) {
+		return handleLifecycle(host, input, "start")
 	})
 }
 
@@ -68,6 +99,32 @@ func handlePeek(host PaneHost, input PeekInput) (*gomcp.CallToolResult, PeekOutp
 
 	content := pane.PeekContent(lines)
 	return nil, PeekOutput{Content: content}, nil
+}
+
+func handleLifecycle(host PaneHost, input AgentInput, action string) (*gomcp.CallToolResult, AgentOutput, error) {
+	if input.Agent == "" {
+		return nil, AgentOutput{}, fmt.Errorf("agent is required")
+	}
+
+	var err error
+	switch action {
+	case "restart":
+		err = host.RestartAgent(input.Agent)
+	case "stop":
+		err = host.StopAgent(input.Agent)
+	case "start":
+		err = host.StartAgent(input.Agent)
+	}
+	if err != nil {
+		return nil, AgentOutput{}, err
+	}
+
+	statusMap := map[string]string{
+		"restart": "restarted",
+		"stop":    "stopped",
+		"start":   "started",
+	}
+	return nil, AgentOutput{Status: statusMap[action]}, nil
 }
 
 func handleSend(host PaneHost, input SendInput) (*gomcp.CallToolResult, SendOutput, error) {
