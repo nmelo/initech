@@ -66,10 +66,12 @@ type PaneHost interface {
 // streamable HTTP. It wraps the official go-sdk MCP server with bearer
 // token authentication.
 type Server struct {
-	addr   string
-	token  string
-	srv    *http.Server
-	logger *slog.Logger
+	addr      string
+	token     string
+	srv       *http.Server
+	logger    *slog.Logger
+	mcpServer *gomcp.Server // Underlying MCP server for resource notifications.
+	host      PaneHost      // Pane access for resource re-registration on hot-add.
 }
 
 // NewServer creates an MCP server bound to the given address and port.
@@ -95,6 +97,7 @@ func NewServer(port int, bind, token string, host PaneHost, logger *slog.Logger)
 
 	if host != nil {
 		registerTools(mcpServer, host)
+		registerResources(mcpServer, host)
 	}
 
 	handler := gomcp.NewStreamableHTTPHandler(
@@ -103,9 +106,11 @@ func NewServer(port int, bind, token string, host PaneHost, logger *slog.Logger)
 	)
 
 	s := &Server{
-		addr:   addr,
-		token:  token,
-		logger: logger,
+		addr:      addr,
+		token:     token,
+		logger:    logger,
+		mcpServer: mcpServer,
+		host:      host,
 	}
 
 	mux := http.NewServeMux()
@@ -150,6 +155,18 @@ func (s *Server) Addr() string {
 // Shutdown gracefully stops the server.
 func (s *Server) Shutdown(ctx context.Context) error {
 	return s.srv.Shutdown(ctx)
+}
+
+// NotifyResourcesChanged triggers a resources/list_changed notification to all
+// connected MCP clients. Call this when panes are hot-added or removed so
+// clients re-fetch the agent status resource.
+func (s *Server) NotifyResourcesChanged() {
+	if s.mcpServer == nil || s.host == nil {
+		return
+	}
+	// Re-add the resource with the same handler. AddResource replaces the
+	// existing entry and fires the list_changed notification to all sessions.
+	registerResources(s.mcpServer, s.host)
 }
 
 // requireBearerToken is middleware that validates the Authorization header
