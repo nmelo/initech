@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	gomcp "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 func TestHandleReadStatus_ReturnsJSON(t *testing.T) {
@@ -152,6 +154,126 @@ func TestRegisterResources_ResourceRegistered(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("resource %q not found in list: %s", statusResourceURI, respBody)
+	}
+}
+
+// ── Per-agent resource template tests ──
+
+func makeReadReq(uri string) *gomcp.ReadResourceRequest {
+	return &gomcp.ReadResourceRequest{
+		Params: &gomcp.ReadResourceParams{URI: uri},
+	}
+}
+
+func TestHandleReadAgentOutput_Valid(t *testing.T) {
+	pane := &fakePaneHandle{name: "eng1", content: "line1\nline2\nprompt>"}
+	host := newFakeHost(pane)
+
+	result, err := handleReadAgentOutput(host, makeReadReq("initech://agents/eng1/output"))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(result.Contents) != 1 {
+		t.Fatalf("expected 1 content, got %d", len(result.Contents))
+	}
+	c := result.Contents[0]
+	if c.MIMEType != "text/plain" {
+		t.Errorf("mimeType = %q, want text/plain", c.MIMEType)
+	}
+	if c.Text != "line1\nline2\nprompt>" {
+		t.Errorf("text = %q", c.Text)
+	}
+}
+
+func TestHandleReadAgentOutput_EmptyBuffer(t *testing.T) {
+	pane := &fakePaneHandle{name: "eng1", content: ""}
+	host := newFakeHost(pane)
+
+	result, err := handleReadAgentOutput(host, makeReadReq("initech://agents/eng1/output"))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Contents[0].Text != "" {
+		t.Errorf("expected empty text, got %q", result.Contents[0].Text)
+	}
+}
+
+func TestHandleReadAgentOutput_InvalidAgent(t *testing.T) {
+	host := newFakeHost()
+
+	_, err := handleReadAgentOutput(host, makeReadReq("initech://agents/nonexistent/output"))
+	if err == nil {
+		t.Fatal("expected error for invalid agent")
+	}
+}
+
+func TestHandleReadAgentOutput_BadURI(t *testing.T) {
+	host := newFakeHost()
+
+	_, err := handleReadAgentOutput(host, makeReadReq("initech://bogus"))
+	if err == nil {
+		t.Fatal("expected error for bad URI")
+	}
+}
+
+func TestHandleReadAgentStatus_Valid(t *testing.T) {
+	pane := &fakePaneHandle{
+		name: "eng1", activity: "running", alive: true, visible: true,
+		beadID: "ini-abc", memoryRSSKB: 102400,
+	}
+	host := newFakeHost(pane)
+
+	result, err := handleReadAgentStatus(host, makeReadReq("initech://agents/eng1/status"))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(result.Contents) != 1 {
+		t.Fatalf("expected 1 content, got %d", len(result.Contents))
+	}
+	c := result.Contents[0]
+	if c.MIMEType != "application/json" {
+		t.Errorf("mimeType = %q, want application/json", c.MIMEType)
+	}
+
+	var entry statusEntry
+	if err := json.Unmarshal([]byte(c.Text), &entry); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if entry.Name != "eng1" || entry.Activity != "running" || !entry.Alive {
+		t.Errorf("entry = %+v", entry)
+	}
+	if entry.BeadID != "ini-abc" || entry.MemoryRSSKB != 102400 {
+		t.Errorf("entry = %+v", entry)
+	}
+}
+
+func TestHandleReadAgentStatus_InvalidAgent(t *testing.T) {
+	host := newFakeHost()
+
+	_, err := handleReadAgentStatus(host, makeReadReq("initech://agents/nonexistent/status"))
+	if err == nil {
+		t.Fatal("expected error for invalid agent")
+	}
+}
+
+func TestParseAgentName(t *testing.T) {
+	tests := []struct {
+		uri  string
+		want string
+	}{
+		{"initech://agents/eng1/output", "eng1"},
+		{"initech://agents/eng1/status", "eng1"},
+		{"initech://agents/super/output", "super"},
+		{"initech://status", ""},
+		{"initech://agents//output", ""},
+		{"http://other/path", ""},
+		{"", ""},
+	}
+	for _, tc := range tests {
+		got := parseAgentName(tc.uri)
+		if got != tc.want {
+			t.Errorf("parseAgentName(%q) = %q, want %q", tc.uri, got, tc.want)
+		}
 	}
 }
 
