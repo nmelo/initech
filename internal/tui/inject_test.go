@@ -396,6 +396,87 @@ func TestPaneSendText_NoBracketedPasteOpenCodeUsesLocalRawPath(t *testing.T) {
 	}
 }
 
+// TestInjectText_StashSkipsRetry verifies that when Ctrl+S stash fires
+// (noBracketedPaste=false), the submit retry is skipped even if the prompt
+// has content (which would be the restored stashed text, not a failed paste).
+// This prevents the bug where the operator's half-written text gets submitted
+// by the retry Enter (ini-vxw).
+func TestInjectText_StashSkipsRetry(t *testing.T) {
+	ptmx, tty, err := pty.Open()
+	if err != nil {
+		t.Fatalf("pty.Open: %v", err)
+	}
+	defer ptmx.Close()
+	defer tty.Close()
+
+	oldState, err := term.MakeRaw(int(tty.Fd()))
+	if err != nil {
+		t.Fatalf("MakeRaw: %v", err)
+	}
+	defer term.Restore(int(tty.Fd()), oldState)
+
+	emu := vt.NewSafeEmulator(80, 24)
+
+	// Put a prompt with content on the bottom row so promptHasContent returns
+	// true. This simulates the restored stashed text after submit.
+	_, _ = emu.Write([]byte("\x1b[24;1H\u276f some typed text"))
+
+	var emuMu sync.Mutex
+	var enterCount int
+	go func() {
+		buf := make([]byte, 256)
+		for {
+			n, err := emu.Read(buf)
+			if n > 0 {
+				emuMu.Lock()
+				for _, b := range buf[:n] {
+					if b == '\r' {
+						enterCount++
+					}
+				}
+				emuMu.Unlock()
+			}
+			if err != nil {
+				return
+			}
+		}
+	}()
+
+	p := &Pane{
+		name:           "eng1",
+		emu:            emu,
+		alive:          true,
+		ptmx:           ptmx,
+		lastOutputTime: time.Now().Add(-(ptyIdleTimeout + time.Second)),
+	}
+
+	// Call with enter=true on a non-noBracketedPaste pane (stash fires).
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		p.SendText("incoming message", true)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("SendText did not return within 5s")
+	}
+
+	// Allow emulator output to flush.
+	time.Sleep(100 * time.Millisecond)
+
+	emuMu.Lock()
+	got := enterCount
+	emuMu.Unlock()
+
+	// With stash active, retry is skipped: exactly 1 Enter (the initial submit).
+	// Before the fix, this would be 2 (initial + retry hitting restored text).
+	if got != 1 {
+		t.Errorf("Enter count = %d, want 1 (retry should be skipped when stash active)", got)
+	}
+}
+
 func readPTYUntil(t *testing.T, tty *os.File, want []byte, timeout time.Duration) string {
 	t.Helper()
 
