@@ -182,6 +182,7 @@ type Pane struct {
 	sinkMu            sync.Mutex // Protects networkSink assignment.
 	subscribers       map[string]chan []byte // PTY byte fan-out: keyed by subscriber ID.
 	subscriberMu      sync.Mutex            // Protects subscribers map.
+	replayBuf         *RingBuf              // Captures PTY output for replay on new subscriber connect.
 	alive             bool
 	visible           bool              // Whether this pane is shown in the layout. Hidden panes keep running.
 	activity          ActivityState     // Current state: running when PTY bytes flowed recently, else idle.
@@ -337,6 +338,7 @@ func NewPane(cfg PaneConfig, rows, cols int) (*Pane, error) {
 		autoApprove:      cfg.AutoApprove,
 		noBracketedPaste: cfg.NoBracketedPaste,
 		submitKey:        submitKey,
+		replayBuf:        NewRingBuf(DefaultRingBufSize),
 	}
 
 	return p, nil
@@ -404,6 +406,11 @@ func (p *Pane) readLoop() {
 			p.sinkMu.Unlock()
 			if sink != nil {
 				sink.Write(data)
+			}
+
+			// Capture for replay on future subscriber connects.
+			if p.replayBuf != nil {
+				p.replayBuf.Write(data)
 			}
 
 			// Fan out to all PTY byte subscribers (web companion, etc.).
@@ -1004,6 +1011,18 @@ const subscriberBufSize = 64 * 1024
 // call Unsubscribe to release resources.
 func (p *Pane) Subscribe(id string) chan []byte {
 	ch := make(chan []byte, subscriberBufSize)
+
+	// Replay buffered PTY history so the subscriber can reconstruct the
+	// current screen state immediately, before any new live bytes arrive.
+	if p.replayBuf != nil {
+		if snap := p.replayBuf.Snapshot(); len(snap) > 0 {
+			ch <- snap
+		}
+	}
+
+	// Register after replay so broadcastToSubscribers does not race with
+	// the snapshot send above (channel is buffered, so replay is safe
+	// even without the lock).
 	p.subscriberMu.Lock()
 	if p.subscribers == nil {
 		p.subscribers = make(map[string]chan []byte)

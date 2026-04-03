@@ -237,3 +237,81 @@ func TestCloseAllSubscribers_ClearsMap(t *testing.T) {
 		t.Fatal("timed out")
 	}
 }
+
+// TestSubscribe_ReplayOnConnect verifies that a new subscriber receives
+// buffered PTY history as the first message before any live data.
+func TestSubscribe_ReplayOnConnect(t *testing.T) {
+	p := &Pane{
+		name:      "test",
+		emu:       vt.NewSafeEmulator(80, 24),
+		replayBuf: NewRingBuf(DefaultRingBufSize),
+	}
+
+	// Simulate PTY output that was captured before any subscriber connects.
+	p.replayBuf.Write([]byte("previous output"))
+
+	ch := p.Subscribe("ws-1")
+	defer p.Unsubscribe("ws-1")
+
+	// First message should be the replay snapshot.
+	select {
+	case got := <-ch:
+		if string(got) != "previous output" {
+			t.Errorf("replay = %q, want %q", got, "previous output")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for replay")
+	}
+
+	// Live data should still arrive after replay.
+	p.broadcastToSubscribers([]byte("live"))
+	select {
+	case got := <-ch:
+		if string(got) != "live" {
+			t.Errorf("live = %q, want %q", got, "live")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for live data")
+	}
+}
+
+// TestSubscribe_NoReplayBuf does not panic when replayBuf is nil.
+func TestSubscribe_NoReplayBuf(t *testing.T) {
+	p := &Pane{name: "test", emu: vt.NewSafeEmulator(80, 24)}
+	ch := p.Subscribe("ws-1")
+	defer p.Unsubscribe("ws-1")
+
+	// Should not have any replay message. Send live data to confirm channel works.
+	p.broadcastToSubscribers([]byte("live"))
+	select {
+	case got := <-ch:
+		if string(got) != "live" {
+			t.Errorf("got %q, want %q", got, "live")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out")
+	}
+}
+
+// TestSubscribe_EmptyReplayBuf sends no replay when buffer is empty.
+func TestSubscribe_EmptyReplayBuf(t *testing.T) {
+	p := &Pane{
+		name:      "test",
+		emu:       vt.NewSafeEmulator(80, 24),
+		replayBuf: NewRingBuf(DefaultRingBufSize),
+	}
+
+	ch := p.Subscribe("ws-1")
+	defer p.Unsubscribe("ws-1")
+
+	// No replay expected. Send live data to prove channel is clean.
+	p.broadcastToSubscribers([]byte("live"))
+	select {
+	case got := <-ch:
+		if string(got) != "live" {
+			t.Errorf("got %q, want %q", got, "live")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out")
+	}
+}
