@@ -7,38 +7,76 @@
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/css/xterm.min.css">
 <style>
   *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-  html,body{height:100%;background:#1a1a2e;color:#e0e0e0;font-family:system-ui,-apple-system,sans-serif}
-  #app{display:flex;flex-direction:column;height:100vh;overflow:hidden}
+  html,body{height:100%;background:#1a1a2e;color:#e0e0e0;
+    font-family:'JetBrains Mono','Fira Code','Cascadia Code',Menlo,monospace}
+  #app{position:relative;height:100vh;overflow:hidden}
 
-  /* Tab bar */
-  #tab-bar{display:flex;align-items:center;background:#16213e;border-bottom:1px solid #0f3460;
-    overflow-x:auto;flex-shrink:0;height:38px;padding:0 8px;gap:2px}
-  #tab-bar::-webkit-scrollbar{height:0}
-  .tab{padding:6px 14px;border:none;background:transparent;color:#7f8c8d;cursor:pointer;
-    font-size:13px;font-family:inherit;border-bottom:2px solid transparent;
-    white-space:nowrap;transition:color .15s,border-color .15s}
-  .tab:hover{color:#e0e0e0}
-  .tab.active{color:#e0e0e0;border-bottom-color:#e94560}
-  .tab .dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:6px;
-    vertical-align:middle}
-  .tab .dot.alive{background:#2ecc71}
-  .tab .dot.dead{background:#555}
-  .conn-badge{margin-left:auto;padding:0 10px;font-size:11px;flex-shrink:0}
-  .conn-badge.connected{color:#2ecc71}
-  .conn-badge.disconnected{color:#e74c3c}
-  .conn-badge.connecting{color:#f39c12}
+  /* Terminal fills entire viewport */
+  #terminal-container{width:100%;height:100%;overflow:hidden;padding:4px}
 
-  /* Terminal fills remaining space */
-  #terminal-container{flex:1;overflow:hidden;padding:4px}
+  /* Toggle button: top-right corner */
+  #toggle-btn{position:fixed;top:8px;right:8px;z-index:20;
+    background:rgba(20,25,40,0.85);border:1px solid #334;color:#7f8c8d;
+    padding:4px 10px;font-size:12px;font-family:inherit;cursor:pointer;
+    border-radius:4px;transition:color .15s}
+  #toggle-btn:hover{color:#e0e0e0}
+  #toggle-btn.active{color:#5b9bd5;border-color:#5b9bd5}
 
-  /* Empty state */
-  #empty-state{flex:1;display:flex;align-items:center;justify-content:center;color:#555;font-size:15px}
+  /* Floating overlay: mimics TUI agent panel */
+  #overlay{position:fixed;top:36px;right:8px;z-index:10;
+    background:rgba(20,25,40,0.95);min-width:260px;max-width:400px;
+    border-radius:0;display:none;font-size:13px;line-height:1}
+
+  /* Rounded box-drawing border via pseudo-elements is complex; use real border chars */
+  #overlay.visible{display:block}
+
+  #overlay-border{border:1px solid #556;border-radius:6px;overflow:hidden}
+
+  /* Title row: sits inside top border */
+  #overlay-title{padding:6px 12px;font-size:12px;color:#5b9bd5;font-weight:700;
+    border-bottom:1px solid #334;letter-spacing:.3px}
+
+  /* Agent rows */
+  .agent-row{display:flex;align-items:center;padding:5px 12px;cursor:pointer;
+    transition:background .1s;gap:8px}
+  .agent-row:hover{background:rgba(50,60,90,0.5)}
+  .agent-row.selected{background:rgba(30,60,120,0.7)}
+
+  /* Status dot */
+  .agent-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+  .agent-dot.alive{background:#2ecc71}
+  .agent-dot.idle{background:#555;border:1px solid #777}
+  .agent-dot.dead{background:#e74c3c}
+
+  /* Agent name */
+  .agent-name{color:#e0e0e0;flex-shrink:0}
+  .agent-row.selected .agent-name{color:#f1c40f;font-weight:700}
+
+  /* Activity text */
+  .agent-activity{color:#7f8c8d;margin-left:auto;white-space:nowrap;overflow:hidden;
+    text-overflow:ellipsis;max-width:160px;text-align:right;font-size:12px}
+
+  /* Connection status in title bar */
+  #overlay-conn{float:right;font-size:11px;font-weight:400}
+  #overlay-conn.connected{color:#2ecc71}
+  #overlay-conn.disconnected{color:#e74c3c}
+  #overlay-conn.connecting{color:#f39c12}
+
+  /* Keyboard hint */
+  #overlay-hint{padding:4px 12px;font-size:11px;color:#555;border-top:1px solid #334}
 </style>
 </head>
 <body>
 <div id="app">
-  <div id="tab-bar"></div>
   <div id="terminal-container"></div>
+  <button id="toggle-btn" title="Toggle agent panel (`)">Agents</button>
+  <div id="overlay">
+    <div id="overlay-border">
+      <div id="overlay-title">Agents <span id="overlay-conn"></span></div>
+      <div id="agent-list"></div>
+      <div id="overlay-hint">click to switch | ` to toggle</div>
+    </div>
+  </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/lib/xterm.min.js"></script>
@@ -47,41 +85,77 @@
 (function() {
   "use strict";
 
-  var tabBar = document.getElementById("tab-bar");
   var termContainer = document.getElementById("terminal-container");
+  var overlay = document.getElementById("overlay");
+  var agentList = document.getElementById("agent-list");
+  var toggleBtn = document.getElementById("toggle-btn");
   var activeName = null;
   var term = null;
   var fitAddon = null;
   var ws = null;
   var reconnectTimer = null;
+  var overlayVisible = true;
+  var lastPanes = [];
 
   var wsBase = location.origin.replace(/^http/, "ws");
+
+  // Show overlay on load.
+  overlay.classList.add("visible");
+  toggleBtn.classList.add("active");
+
+  function toggleOverlay() {
+    overlayVisible = !overlayVisible;
+    overlay.classList.toggle("visible", overlayVisible);
+    toggleBtn.classList.toggle("active", overlayVisible);
+    if (term && fitAddon) fitAddon.fit();
+  }
+
+  toggleBtn.onclick = toggleOverlay;
+
+  document.addEventListener("keydown", function(e) {
+    // Backtick toggles the overlay (matches TUI keybinding).
+    if (e.key === "`" && !e.ctrlKey && !e.altKey && !e.metaKey) {
+      e.preventDefault();
+      toggleOverlay();
+    }
+  });
 
   function fetchPanes() {
     fetch("/api/panes")
       .then(function(r) { return r.ok ? r.json() : []; })
-      .then(renderTabs)
+      .then(function(panes) {
+        lastPanes = panes;
+        renderAgentList(panes);
+      })
       .catch(function() {});
   }
 
-  function renderTabs(panes) {
-    tabBar.innerHTML = "";
+  function renderAgentList(panes) {
+    agentList.innerHTML = "";
     panes.forEach(function(p) {
-      var btn = document.createElement("button");
-      btn.className = "tab" + (p.name === activeName ? " active" : "");
-      btn.innerHTML = '<span class="dot ' + (p.alive ? "alive" : "dead") + '"></span>' +
-        escapeHtml(p.name);
-      btn.onclick = function() { selectPane(p.name); };
-      tabBar.appendChild(btn);
+      var row = document.createElement("div");
+      row.className = "agent-row" + (p.name === activeName ? " selected" : "");
+
+      var dot = document.createElement("span");
+      var dotClass = "agent-dot";
+      if (p.alive) { dotClass += " alive"; }
+      else { dotClass += " dead"; }
+      dot.className = dotClass;
+
+      var name = document.createElement("span");
+      name.className = "agent-name";
+      name.textContent = p.name;
+
+      var activity = document.createElement("span");
+      activity.className = "agent-activity";
+      activity.textContent = p.activity || "";
+
+      row.appendChild(dot);
+      row.appendChild(name);
+      row.appendChild(activity);
+      row.onclick = function() { selectPane(p.name); };
+      agentList.appendChild(row);
     });
-    // Connection status badge at the right end.
-    if (activeName) {
-      var badge = document.createElement("span");
-      badge.id = "conn-status";
-      badge.className = "conn-badge " + (ws && ws.readyState === WebSocket.OPEN ? "connected" : "connecting");
-      badge.textContent = ws && ws.readyState === WebSocket.OPEN ? "connected" : "connecting";
-      tabBar.appendChild(badge);
-    }
     if (!activeName && panes.length > 0) selectPane(panes[0].name);
   }
 
@@ -90,11 +164,8 @@
     activeName = name;
     cleanup();
 
-    // Highlight active tab.
-    var tabs = tabBar.querySelectorAll(".tab");
-    for (var i = 0; i < tabs.length; i++) {
-      tabs[i].className = tabs[i].textContent.trim() === name ? "tab active" : "tab";
-    }
+    // Re-render to update selection highlight.
+    renderAgentList(lastPanes);
 
     initTerminal();
     connectWs(name);
@@ -104,7 +175,7 @@
     term = new window.Terminal({
       cursorBlink: true,
       fontSize: 13,
-      fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', Menlo, monospace",
+      fontFamily: "'JetBrains Mono','Fira Code','Cascadia Code',Menlo,monospace",
       theme: {
         background: "#1a1a2e",
         foreground: "#e0e0e0",
@@ -124,12 +195,13 @@
     if (ws) { ws.onclose = null; ws.close(); }
     clearTimeout(reconnectTimer);
 
+    setConnStatus("connecting");
     var url = wsBase + "/ws/pane/" + encodeURIComponent(name);
     ws = new WebSocket(url);
     ws.binaryType = "arraybuffer";
 
     ws.onopen = function() {
-      setConnStatus("connected", "connected");
+      setConnStatus("connected");
     };
 
     ws.onmessage = function(ev) {
@@ -142,7 +214,7 @@
     };
 
     ws.onclose = function() {
-      setConnStatus("disconnected", "disconnected");
+      setConnStatus("disconnected");
       reconnectTimer = setTimeout(function() {
         if (activeName === name) connectWs(name);
       }, 2000);
@@ -151,24 +223,17 @@
     ws.onerror = function() {};
   }
 
-  function setConnStatus(cls, text) {
-    var el = document.getElementById("conn-status");
-    if (el) {
-      el.className = "conn-badge " + cls;
-      el.textContent = text;
-    }
+  function setConnStatus(state) {
+    var el = document.getElementById("overlay-conn");
+    if (!el) return;
+    el.className = state;
+    el.textContent = state;
   }
 
   function cleanup() {
     clearTimeout(reconnectTimer);
     if (ws) { ws.onclose = null; ws.close(); ws = null; }
     if (term) { term.dispose(); term = null; fitAddon = null; }
-  }
-
-  function escapeHtml(s) {
-    var d = document.createElement("div");
-    d.appendChild(document.createTextNode(s));
-    return d.innerHTML;
   }
 
   window.addEventListener("resize", function() {
