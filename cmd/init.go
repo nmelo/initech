@@ -181,20 +181,24 @@ func runInit(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Initialize beads (graceful degradation)
-	if _, err := runner.Run("which", "bd"); err == nil {
-		if _, err := os.Stat(filepath.Join(p.Root, ".beads")); err != nil {
-			if _, err := runner.RunInDir(p.Root, "bd", "init"); err != nil {
-				fmt.Fprintf(out, "  %s %s: %v\n", color.Yellow("!"), color.Yellow("bd init failed"), err)
-			} else {
-				if p.Beads.Prefix != "" {
-					runner.RunInDir(p.Root, "bd", "config", "set", "issue-prefix", p.Beads.Prefix)
+	// Initialize beads (graceful degradation, skip when disabled)
+	if p.Beads.IsEnabled() {
+		if _, err := runner.Run("which", "bd"); err == nil {
+			if _, err := os.Stat(filepath.Join(p.Root, ".beads")); err != nil {
+				if _, err := runner.RunInDir(p.Root, "bd", "init"); err != nil {
+					fmt.Fprintf(out, "  %s %s: %v\n", color.Yellow("!"), color.Yellow("bd init failed"), err)
+				} else {
+					if p.Beads.Prefix != "" {
+						runner.RunInDir(p.Root, "bd", "config", "set", "issue-prefix", p.Beads.Prefix)
+					}
+					fmt.Fprintf(out, "  %s %s\n", color.Green("\u2713"), color.Dim("Initialized beads"))
 				}
-				fmt.Fprintf(out, "  %s %s\n", color.Green("\u2713"), color.Dim("Initialized beads"))
 			}
+		} else {
+			fmt.Fprintf(out, "  %s %s\n", color.Dim("-"), color.Dim("Skipping beads (bd not found)"))
 		}
 	} else {
-		fmt.Fprintf(out, "  %s %s\n", color.Dim("-"), color.Dim("Skipping beads (bd not found)"))
+		fmt.Fprintf(out, "  %s %s\n", color.Dim("-"), color.Dim("Beads disabled"))
 	}
 
 	// Initial commit
@@ -273,13 +277,23 @@ func interactiveSetup(wd string) (*config.Project, error) {
 		fmt.Fprintln(os.Stderr, "Error: at least one role is required.")
 	}
 
-	prefix := prompt(reader, "Beads prefix", name[:min(3, len(name))])
+	// Beads opt-in prompt.
+	useBeads := prompt(reader, "Use beads for issue tracking? (y/n)", "y")
+	beadsEnabled := strings.HasPrefix(strings.ToLower(useBeads), "y")
+
+	var beadsCfg config.BeadsConfig
+	if beadsEnabled {
+		prefix := prompt(reader, "Beads prefix", name[:min(3, len(name))])
+		beadsCfg = config.BeadsConfig{Enabled: boolPtr(true), Prefix: prefix}
+	} else {
+		beadsCfg = config.BeadsConfig{Enabled: boolPtr(false)}
+	}
 
 	p := &config.Project{
 		Name:  name,
 		Root:  root,
 		Roles: roleList,
-		Beads: config.BeadsConfig{Prefix: prefix},
+		Beads: beadsCfg,
 	}
 
 	if repoURL != "" {
@@ -302,20 +316,20 @@ type roleSpec struct {
 // Items appear in this order; group headers are inserted automatically when
 // the group field changes.
 var selectorOrder = []roleSpec{
-	{"super",   "COORDINATORS", "Coordinator/dispatcher", "Dispatches beads to agents and monitors progress. Supervised mode."},
-	{"pm",      "PRODUCT",      "Product manager",        "Writes PRDs, specs, and acceptance criteria for beads."},
-	{"pmm",     "PRODUCT",      "Product marketing manager", "Positioning, messaging, and go-to-market strategy."},
-	{"arch",    "PRODUCT",      "Architect",              "Designs system architecture, API contracts, and cross-package interfaces."},
-	{"eng1",    "ENGINEERS",    "Engineer",               "Implements features and fixes. Gets a src/ clone of your repo."},
-	{"eng2",    "ENGINEERS",    "Engineer",               "Implements features and fixes. Gets a src/ clone of your repo."},
-	{"eng3",    "ENGINEERS",    "Engineer",               "Implements features and fixes. Gets a src/ clone of your repo."},
-	{"qa1",     "QA",           "QA tester",              "Validates bead acceptance criteria. Gets src/ and playbooks/."},
-	{"qa2",     "QA",           "QA tester",              "Validates bead acceptance criteria. Gets src/ and playbooks/."},
-	{"shipper", "OPERATIONS",   "Release manager",        "Cuts releases, manages changelogs, and publishes to package registries."},
-	{"sec",     "OPERATIONS",   "Security reviewer",      "Reviews code for vulnerabilities, OWASP top 10, supply chain risks."},
-	{"ops",     "OPERATIONS",   "Operations/UX tester",   "Tests UX flows, accessibility, and operational readiness."},
-	{"writer",  "OPERATIONS",   "Technical writer",       "Writes docs, READMEs, and user guides."},
-	{"growth",  "OPERATIONS",   "Growth engineer",        "Analytics, onboarding funnels, and conversion optimization."},
+	{"super", "COORDINATORS", "Coordinator/dispatcher", "Dispatches beads to agents and monitors progress. Supervised mode."},
+	{"pm", "PRODUCT", "Product manager", "Writes PRDs, specs, and acceptance criteria for beads."},
+	{"pmm", "PRODUCT", "Product marketing manager", "Positioning, messaging, and go-to-market strategy."},
+	{"arch", "PRODUCT", "Architect", "Designs system architecture, API contracts, and cross-package interfaces."},
+	{"eng1", "ENGINEERS", "Engineer", "Implements features and fixes. Gets a src/ clone of your repo."},
+	{"eng2", "ENGINEERS", "Engineer", "Implements features and fixes. Gets a src/ clone of your repo."},
+	{"eng3", "ENGINEERS", "Engineer", "Implements features and fixes. Gets a src/ clone of your repo."},
+	{"qa1", "QA", "QA tester", "Validates bead acceptance criteria. Gets src/ and playbooks/."},
+	{"qa2", "QA", "QA tester", "Validates bead acceptance criteria. Gets src/ and playbooks/."},
+	{"shipper", "OPERATIONS", "Release manager", "Cuts releases, manages changelogs, and publishes to package registries."},
+	{"sec", "OPERATIONS", "Security reviewer", "Reviews code for vulnerabilities, OWASP top 10, supply chain risks."},
+	{"ops", "OPERATIONS", "Operations/UX tester", "Tests UX flows, accessibility, and operational readiness."},
+	{"writer", "OPERATIONS", "Technical writer", "Writes docs, READMEs, and user guides."},
+	{"growth", "OPERATIONS", "Growth engineer", "Analytics, onboarding funnels, and conversion optimization."},
 }
 
 // standardPreset is the set of roles pre-checked in the selector by default.
@@ -457,3 +471,5 @@ func prompt(reader *bufio.Reader, label, defaultVal string) string {
 	}
 	return line
 }
+
+func boolPtr(b bool) *bool { return &b }

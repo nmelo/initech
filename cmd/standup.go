@@ -50,6 +50,12 @@ func runStandup(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	// Skip when beads is disabled.
+	if !p.Beads.IsEnabled() {
+		fmt.Fprintln(out, "Beads is disabled in initech.yaml. Enable it to generate standups.")
+		return nil
+	}
+
 	// Check if bd is available
 	if _, err := runner.Run("which", "bd"); err != nil {
 		fmt.Fprintln(out, "bd not found. Install beads to generate standups.")

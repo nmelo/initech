@@ -106,6 +106,9 @@ func (p *Pane) watchJSONL() {
 // filtered out to prevent stale bead IDs from prior sessions (ini-6hz).
 // Must be called outside p.mu (it acquires the lock internally via SetBead).
 func (p *Pane) applyBeadDetection(entries []JournalEntry) {
+	if !p.cfg.BeadsEnabled {
+		return
+	}
 	// Filter to entries from this session only.
 	var current []JournalEntry
 	for _, e := range entries {
@@ -227,23 +230,38 @@ func (p *Pane) runDetectors(newEntries []JournalEntry) {
 		lastTime = journal[len(journal)-1].Timestamp
 	}
 
-	// Completion/claimed/failed detection on new entries only.
-	if len(newEntries) > 0 {
-		for _, ev := range detectCompletion(newEntries, p.name) {
-			if p.dedupEvents.shouldEmit(ev) {
-				EmitEvent(p.eventCh, ev)
+	// Bead-related detection (completion, stall) only when beads enabled.
+	if p.cfg.BeadsEnabled {
+		// Completion/claimed/failed detection on new entries only.
+		if len(newEntries) > 0 {
+			for _, ev := range detectCompletion(newEntries, p.name) {
+				if p.dedupEvents.shouldEmit(ev) {
+					EmitEvent(p.eventCh, ev)
+				}
+			}
+			// New activity clears the stall state so the next silence
+			// triggers a fresh stall notification rather than staying silent.
+			if stallReported {
+				p.mu.Lock()
+				p.stallReported = false
+				p.mu.Unlock()
 			}
 		}
-		// New activity clears the stall state so the next silence
-		// triggers a fresh stall notification rather than staying silent.
-		if stallReported {
-			p.mu.Lock()
-			p.stallReported = false
-			p.mu.Unlock()
+
+		// Stall detection (every tick).
+		if ev := detectStall(lastTime, beadID, p.name, DefaultStallThreshold); ev != nil {
+			if !stallReported {
+				p.mu.Lock()
+				p.stallReported = true
+				p.mu.Unlock()
+				if p.dedupEvents.shouldEmit(*ev) {
+					EmitEvent(p.eventCh, *ev)
+				}
+			}
 		}
 	}
 
-	// Stuck detection on full journal (every tick).
+	// Stuck detection on full journal (every tick). Not bead-specific.
 	if ev := detectStuck(journal, p.name); ev != nil {
 		if !stuckReported {
 			p.mu.Lock()
@@ -258,18 +276,6 @@ func (p *Pane) runDetectors(newEntries []JournalEntry) {
 		p.mu.Lock()
 		p.stuckReported = false
 		p.mu.Unlock()
-	}
-
-	// Stall detection (every tick).
-	if ev := detectStall(lastTime, beadID, p.name, DefaultStallThreshold); ev != nil {
-		if !stallReported {
-			p.mu.Lock()
-			p.stallReported = true
-			p.mu.Unlock()
-			if p.dedupEvents.shouldEmit(*ev) {
-				EmitEvent(p.eventCh, *ev)
-			}
-		}
 	}
 
 	// Periodically prune the dedup map to avoid unbounded growth.

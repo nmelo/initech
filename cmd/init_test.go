@@ -369,7 +369,7 @@ func TestInteractiveSetup_UsesDetectedWorkspacesAndRepo(t *testing.T) {
 	mustWriteFile(t, filepath.Join(root, "eng1", "CLAUDE.md"), "# eng1")
 	mustWriteFile(t, filepath.Join(root, "designer", "CLAUDE.md"), "# designer")
 
-	restoreStdin := withStdin(t, "\n"+root+"\nhttps://github.com/acme/widget.git\nY\nwid\n")
+	restoreStdin := withStdin(t, "\n"+root+"\nhttps://github.com/acme/widget.git\nY\ny\nwid\n")
 	defer restoreStdin()
 
 	restoreSelector := stubRoleSelector(t, func(title string, items []roles.SelectorItem, help ...string) ([]string, error) {

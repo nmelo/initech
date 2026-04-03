@@ -216,6 +216,7 @@ func TestRunDetectors_NewEntriesClearStallState(t *testing.T) {
 		dedupEvents:   newDedup(),
 		alive:         true,
 		stallReported: true,
+		cfg:           PaneConfig{BeadsEnabled: true},
 	}
 
 	entries := []JournalEntry{{

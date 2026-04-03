@@ -15,6 +15,7 @@ func testPane(name string) *Pane {
 		emu:     vt.NewSafeEmulator(10, 5),
 		alive:   true,
 		visible: true,
+		cfg:     PaneConfig{BeadsEnabled: true},
 	}
 }
 

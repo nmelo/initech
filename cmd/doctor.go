@@ -203,17 +203,21 @@ func runProjectChecks(cfgPath string) (checks []CheckResult, projectName, projec
 		Detail: fmt.Sprintf("initech.yaml valid (%d roles)", len(proj.Roles)),
 	})
 
-	// .beads/ directory
-	beadsDir := filepath.Join(root, ".beads")
-	if _, err := os.Stat(beadsDir); err != nil {
-		checks = append(checks, CheckResult{Label: "Beads", Status: "WARN", Detail: ".beads/ not found — run 'bd init'"})
-	} else {
-		prefix := proj.Beads.Prefix
-		if prefix == "" {
-			prefix = "?"
+	// .beads/ directory (skip when disabled)
+	if proj.Beads.IsEnabled() {
+		beadsDir := filepath.Join(root, ".beads")
+		if _, err := os.Stat(beadsDir); err != nil {
+			checks = append(checks, CheckResult{Label: "Beads", Status: "WARN", Detail: ".beads/ not found — run 'bd init'"})
+		} else {
+			prefix := proj.Beads.Prefix
+			if prefix == "" {
+				prefix = "?"
+			}
+			checks = append(checks, CheckResult{Label: "Beads", Status: "OK",
+				Detail: fmt.Sprintf(".beads/ present (prefix: %s)", prefix)})
 		}
-		checks = append(checks, CheckResult{Label: "Beads", Status: "OK",
-			Detail: fmt.Sprintf(".beads/ present (prefix: %s)", prefix)})
+	} else {
+		checks = append(checks, CheckResult{Label: "Beads", Status: "OK", Detail: "disabled"})
 	}
 
 	// Agent workspaces: each role needs a CLAUDE.md

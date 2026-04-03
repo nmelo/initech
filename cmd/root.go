@@ -362,5 +362,6 @@ func buildAgentPaneConfig(roleName string, proj *config.Project) (tui.PaneConfig
 		AutoApprove:      autoApprove,
 		NoBracketedPaste: noBracketedPaste,
 		SubmitKey:        submitKey,
+		BeadsEnabled:     proj.Beads.IsEnabled(),
 	}, nil
 }

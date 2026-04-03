@@ -242,6 +242,7 @@ type PaneConfig struct {
 	AgentType        string   // Semantic agent type: claude-code (default), codex, or generic.
 	AutoApprove      bool     // When true, auto-approve matching permission prompts.
 	NoBracketedPaste bool     // Final resolved injection mode. True uses typed input instead of bracketed paste.
+	BeadsEnabled     bool     // When false, skip bead detection (detectBeadClaim, detectCompletion, detectStall).
 	SubmitKey        string   // Key sequence to submit input: "enter" (default) or "ctrl+enter".
 }
 

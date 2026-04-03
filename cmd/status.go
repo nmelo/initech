@@ -60,9 +60,14 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("parse pane list: %w", err)
 	}
 
-	// Try to get bead assignments.
+	// Try to get bead assignments (skip when disabled).
 	runner := &iexec.DefaultRunner{}
-	beadMap := getBeadAssignments(runner)
+	var beadMap map[string]beadInfo
+	if p.Beads.IsEnabled() {
+		beadMap = getBeadAssignments(runner)
+	} else {
+		beadMap = make(map[string]beadInfo)
+	}
 
 	// Build table.
 	running := 0

@@ -194,7 +194,7 @@ func TestDetectBeadClaim_ClearAfterClaim(t *testing.T) {
 
 func TestApplyBeadDetection_SetsBeadAndEmitsEvent(t *testing.T) {
 	ch := make(chan AgentEvent, 4)
-	p := &Pane{name: "eng1", eventCh: ch}
+	p := &Pane{name: "eng1", eventCh: ch, cfg: PaneConfig{BeadsEnabled: true}}
 
 	entries := []JournalEntry{
 		{
@@ -224,6 +224,7 @@ func TestApplyBeadDetection_IgnoresStaleEntries(t *testing.T) {
 		name:      "eng1",
 		eventCh:   ch,
 		startedAt: time.Now(),
+		cfg:       PaneConfig{BeadsEnabled: true},
 	}
 
 	// Entry from a prior session (timestamp before pane start).
@@ -252,6 +253,7 @@ func TestApplyBeadDetection_ProcessesCurrentEntries(t *testing.T) {
 		name:      "eng1",
 		eventCh:   ch,
 		startedAt: time.Now().Add(-5 * time.Minute),
+		cfg:       PaneConfig{BeadsEnabled: true},
 	}
 
 	// Entry from the current session (timestamp after pane start).
@@ -277,6 +279,7 @@ func TestApplyBeadDetection_MixedStaleAndCurrent(t *testing.T) {
 		name:      "eng1",
 		eventCh:   ch,
 		startedAt: time.Now().Add(-5 * time.Minute),
+		cfg:       PaneConfig{BeadsEnabled: true},
 	}
 
 	entries := []JournalEntry{
@@ -304,7 +307,7 @@ func TestApplyBeadDetection_MixedStaleAndCurrent(t *testing.T) {
 
 func TestApplyBeadDetection_ClearsBead(t *testing.T) {
 	ch := make(chan AgentEvent, 4)
-	p := &Pane{name: "eng1", eventCh: ch}
+	p := &Pane{name: "eng1", eventCh: ch, cfg: PaneConfig{BeadsEnabled: true}}
 	p.beadID = "ini-18m.5"
 
 	entries := []JournalEntry{
@@ -333,10 +336,10 @@ func TestExtractBeadID(t *testing.T) {
 	}{
 		{"bd update ini-18m.5 --claim", "ini-18m.5"},
 		{"bd update ini-q7x.1 --status in_progress", "ini-q7x.1"},
-		{"bd update ini-noid --claim", "ini-noid"},   // root-level ID (no dot) is accepted
-		{"bd update ini-r5u --claim", "ini-r5u"},     // another root-level ID
-		{"bd update --status in_progress", ""},       // no ID before flags
-		{"bd update abc.1 --claim", ""},              // no hyphen prefix
+		{"bd update ini-noid --claim", "ini-noid"}, // root-level ID (no dot) is accepted
+		{"bd update ini-r5u --claim", "ini-r5u"},   // another root-level ID
+		{"bd update --status in_progress", ""},     // no ID before flags
+		{"bd update abc.1 --claim", ""},            // no hyphen prefix
 		{"something else entirely", ""},
 	}
 	for _, tt := range tests {

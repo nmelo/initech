@@ -114,7 +114,7 @@ func TestDetectBeadClaim_ClaimBeforeClearLastWins(t *testing.T) {
 // can overwrite whatever auto-detection set.
 func TestIPCOverrideReplacesAutoDetectedBead(t *testing.T) {
 	ch := make(chan AgentEvent, 4)
-	p := &Pane{name: "eng1", eventCh: ch}
+	p := &Pane{name: "eng1", eventCh: ch, cfg: PaneConfig{BeadsEnabled: true}}
 
 	// Simulate auto-detection setting a bead.
 	autoEntries := []JournalEntry{
@@ -135,7 +135,7 @@ func TestIPCOverrideReplacesAutoDetectedBead(t *testing.T) {
 // AC: Failed bd command (ExitCode != 0) does not change bead display.
 func TestApplyBeadDetection_FailedCommandNoop(t *testing.T) {
 	ch := make(chan AgentEvent, 4)
-	p := &Pane{name: "eng1", eventCh: ch}
+	p := &Pane{name: "eng1", eventCh: ch, cfg: PaneConfig{BeadsEnabled: true}}
 	p.beadID = "ini-existing.1"
 
 	entries := []JournalEntry{
@@ -179,7 +179,7 @@ func TestExtractBeadID_FlagAsCandidate(t *testing.T) {
 // AC: applyBeadDetection event detail includes pane name and bead ID.
 func TestApplyBeadDetection_EventDetailFormat(t *testing.T) {
 	ch := make(chan AgentEvent, 4)
-	p := &Pane{name: "eng2", eventCh: ch}
+	p := &Pane{name: "eng2", eventCh: ch, cfg: PaneConfig{BeadsEnabled: true}}
 
 	entries := []JournalEntry{
 		{Type: "tool_result", ToolName: "Bash", Content: "bd update ini-xyz.9 --claim", ExitCode: 0},
@@ -205,7 +205,7 @@ func TestApplyBeadDetection_EventDetailFormat(t *testing.T) {
 // The guard in watchJSONL is `if p.eventCh != nil`, but applyBeadDetection
 // itself also calls EmitEvent which handles nil safely. Verify no panic.
 func TestApplyBeadDetection_NilEventChNoPanic(t *testing.T) {
-	p := &Pane{name: "eng1", eventCh: nil}
+	p := &Pane{name: "eng1", eventCh: nil, cfg: PaneConfig{BeadsEnabled: true}}
 
 	entries := []JournalEntry{
 		{Type: "tool_result", ToolName: "Bash", Content: "bd update ini-abc.1 --claim", ExitCode: 0},
@@ -221,7 +221,7 @@ func TestApplyBeadDetection_NilEventChNoPanic(t *testing.T) {
 // AC: ready_for_qa on a pane with no current bead is a no-op (no panic, bead stays empty).
 func TestApplyBeadDetection_ClearWithNoBead(t *testing.T) {
 	ch := make(chan AgentEvent, 4)
-	p := &Pane{name: "eng1", eventCh: ch}
+	p := &Pane{name: "eng1", eventCh: ch, cfg: PaneConfig{BeadsEnabled: true}}
 	// beadID is empty by default.
 
 	entries := []JournalEntry{

@@ -68,7 +68,14 @@ type Repo struct {
 
 // BeadsConfig holds beads issue tracker settings.
 type BeadsConfig struct {
-	Prefix string `yaml:"prefix,omitempty"`
+	Enabled *bool  `yaml:"enabled,omitempty"` // nil = legacy (treat as enabled), false = disabled
+	Prefix  string `yaml:"prefix,omitempty"`
+}
+
+// IsEnabled returns whether beads integration is active. Nil (legacy configs
+// without the field) is treated as enabled for backwards compatibility.
+func (b BeadsConfig) IsEnabled() bool {
+	return b.Enabled == nil || *b.Enabled
 }
 
 // ResourceConfig holds resource management settings. When AutoSuspend is true,
