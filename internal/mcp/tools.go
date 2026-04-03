@@ -3,6 +3,7 @@ package mcp
 import (
 	"context"
 	"fmt"
+	"time"
 
 	gomcp "github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -41,6 +42,40 @@ type AgentOutput struct {
 	Status string `json:"status"`
 }
 
+// AddInput is the input schema for the initech_add tool.
+type AddInput struct {
+	Role string `json:"role" jsonschema:"role name for the new agent (e.g. eng3)"`
+}
+
+// AddOutput is the output schema for the initech_add tool.
+type AddOutput struct {
+	Status string `json:"status"`
+	Agent  string `json:"agent"`
+}
+
+// RemoveInput is the input schema for the initech_remove tool.
+type RemoveInput struct {
+	Agent string `json:"agent" jsonschema:"agent name to remove"`
+}
+
+// RemoveOutput is the output schema for the initech_remove tool.
+type RemoveOutput struct {
+	Status string `json:"status"`
+}
+
+// AtInput is the input schema for the initech_at tool.
+type AtInput struct {
+	Agent   string `json:"agent" jsonschema:"target agent name (e.g. eng1)"`
+	Message string `json:"message" jsonschema:"text to send to the agent terminal"`
+	Delay   string `json:"delay" jsonschema:"delay before sending, as a Go duration (e.g. 5m, 30s, 1h)"`
+}
+
+// AtOutput is the output schema for the initech_at tool.
+type AtOutput struct {
+	Status  string `json:"status"`
+	TimerID string `json:"timer_id"`
+}
+
 // registerTools adds MCP tools to the server.
 func registerTools(s *gomcp.Server, host PaneHost) {
 	gomcp.AddTool(s, &gomcp.Tool{
@@ -76,6 +111,27 @@ func registerTools(s *gomcp.Server, host PaneHost) {
 		Description: "Start a previously stopped agent. No-op if the agent is already running.",
 	}, func(_ context.Context, _ *gomcp.CallToolRequest, input AgentInput) (*gomcp.CallToolResult, AgentOutput, error) {
 		return handleLifecycle(host, input, "start")
+	})
+
+	gomcp.AddTool(s, &gomcp.Tool{
+		Name:        "initech_add",
+		Description: "Hot-add a new agent pane to the running session. The workspace directory must already exist.",
+	}, func(_ context.Context, _ *gomcp.CallToolRequest, input AddInput) (*gomcp.CallToolResult, AddOutput, error) {
+		return handleAdd(host, input)
+	})
+
+	gomcp.AddTool(s, &gomcp.Tool{
+		Name:        "initech_remove",
+		Description: "Remove an agent pane from the running session. Cannot remove the last agent.",
+	}, func(_ context.Context, _ *gomcp.CallToolRequest, input RemoveInput) (*gomcp.CallToolResult, RemoveOutput, error) {
+		return handleRemove(host, input)
+	})
+
+	gomcp.AddTool(s, &gomcp.Tool{
+		Name:        "initech_at",
+		Description: "Schedule a deferred message to an agent. The message is sent after the specified delay (e.g. \"5m\", \"30s\").",
+	}, func(_ context.Context, _ *gomcp.CallToolRequest, input AtInput) (*gomcp.CallToolResult, AtOutput, error) {
+		return handleAt(host, input)
 	})
 }
 
@@ -150,4 +206,45 @@ func handleSend(host PaneHost, input SendInput) (*gomcp.CallToolResult, SendOutp
 	pane.SendText(input.Message, enter)
 
 	return nil, SendOutput{Status: "sent"}, nil
+}
+
+func handleAdd(host PaneHost, input AddInput) (*gomcp.CallToolResult, AddOutput, error) {
+	if input.Role == "" {
+		return nil, AddOutput{}, fmt.Errorf("role is required")
+	}
+	if err := host.AddAgent(input.Role); err != nil {
+		return nil, AddOutput{}, err
+	}
+	return nil, AddOutput{Status: "added", Agent: input.Role}, nil
+}
+
+func handleRemove(host PaneHost, input RemoveInput) (*gomcp.CallToolResult, RemoveOutput, error) {
+	if input.Agent == "" {
+		return nil, RemoveOutput{}, fmt.Errorf("agent is required")
+	}
+	if err := host.RemoveAgent(input.Agent); err != nil {
+		return nil, RemoveOutput{}, err
+	}
+	return nil, RemoveOutput{Status: "removed"}, nil
+}
+
+func handleAt(host PaneHost, input AtInput) (*gomcp.CallToolResult, AtOutput, error) {
+	if input.Agent == "" {
+		return nil, AtOutput{}, fmt.Errorf("agent is required")
+	}
+	if input.Message == "" {
+		return nil, AtOutput{}, fmt.Errorf("message is required")
+	}
+	if input.Delay == "" {
+		return nil, AtOutput{}, fmt.Errorf("delay is required")
+	}
+	// Validate the delay parses as a Go duration before calling the host.
+	if _, err := time.ParseDuration(input.Delay); err != nil {
+		return nil, AtOutput{}, fmt.Errorf("invalid delay %q: %w", input.Delay, err)
+	}
+	timerID, err := host.ScheduleSend(input.Agent, input.Message, input.Delay)
+	if err != nil {
+		return nil, AtOutput{}, err
+	}
+	return nil, AtOutput{Status: "scheduled", TimerID: timerID}, nil
 }

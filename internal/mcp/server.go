@@ -40,6 +40,18 @@ type PaneHost interface {
 	// agent is not found or the start fails. Starting an already-running agent
 	// is a no-op.
 	StartAgent(name string) error
+
+	// AddAgent hot-adds a new agent pane with the given role name.
+	AddAgent(name string) error
+
+	// RemoveAgent removes the named agent pane. Returns an error if the
+	// pane is not found or is the last remaining pane.
+	RemoveAgent(name string) error
+
+	// ScheduleSend schedules a message to be sent to an agent after a delay.
+	// The delay is a Go duration string (e.g. "5m", "30s"). Returns the
+	// timer ID on success.
+	ScheduleSend(agent, message, delay string) (string, error)
 }
 
 // Server is an MCP server that exposes initech agent primitives over

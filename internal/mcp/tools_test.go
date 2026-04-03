@@ -31,6 +31,10 @@ type fakePaneHost struct {
 	shuttingDown bool
 	lifecycleLog []string // records "restart:eng1", "stop:eng1", etc.
 	lifecycleErr error    // if set, lifecycle methods return this error
+	addErr       error    // if set, AddAgent returns this error
+	removeErr    error    // if set, RemoveAgent returns this error
+	scheduleErr  error    // if set, ScheduleSend returns this error
+	scheduleLog  []string // records "schedule:eng1:5m" etc.
 }
 
 func newFakeHost(panes ...*fakePaneHandle) *fakePaneHost {
@@ -83,6 +87,42 @@ func (h *fakePaneHost) StartAgent(name string) error {
 	}
 	h.lifecycleLog = append(h.lifecycleLog, "start:"+name)
 	return nil
+}
+
+func (h *fakePaneHost) AddAgent(name string) error {
+	if h.addErr != nil {
+		return h.addErr
+	}
+	if _, ok := h.panes[name]; ok {
+		return fmt.Errorf("agent %q already exists", name)
+	}
+	h.panes[name] = &fakePaneHandle{name: name}
+	h.lifecycleLog = append(h.lifecycleLog, "add:"+name)
+	return nil
+}
+
+func (h *fakePaneHost) RemoveAgent(name string) error {
+	if h.removeErr != nil {
+		return h.removeErr
+	}
+	if _, ok := h.panes[name]; !ok {
+		return fmt.Errorf("agent %q not found", name)
+	}
+	if len(h.panes) == 1 {
+		return fmt.Errorf("cannot remove last agent")
+	}
+	delete(h.panes, name)
+	h.lifecycleLog = append(h.lifecycleLog, "remove:"+name)
+	return nil
+}
+
+func (h *fakePaneHost) ScheduleSend(agent, message, delay string) (string, error) {
+	if h.scheduleErr != nil {
+		return "", h.scheduleErr
+	}
+	id := fmt.Sprintf("at-%d", len(h.scheduleLog))
+	h.scheduleLog = append(h.scheduleLog, fmt.Sprintf("schedule:%s:%s", agent, delay))
+	return id, nil
 }
 
 func TestHandlePeek_ValidAgent(t *testing.T) {
@@ -308,4 +348,212 @@ func TestHandleLifecycle_HostError(t *testing.T) {
 	if err.Error() != "process exited unexpectedly" {
 		t.Errorf("error = %q", err.Error())
 	}
+}
+
+// Add tool tests.
+
+func TestHandleAdd_Success(t *testing.T) {
+	pane := &fakePaneHandle{name: "eng1"}
+	host := newFakeHost(pane)
+
+	_, out, err := handleAdd(host, AddInput{Role: "eng3"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if out.Status != "added" {
+		t.Errorf("status = %q, want added", out.Status)
+	}
+	if out.Agent != "eng3" {
+		t.Errorf("agent = %q, want eng3", out.Agent)
+	}
+	if len(host.lifecycleLog) != 1 || host.lifecycleLog[0] != "add:eng3" {
+		t.Errorf("lifecycle log = %v", host.lifecycleLog)
+	}
+}
+
+func TestHandleAdd_MissingRole(t *testing.T) {
+	host := newFakeHost()
+	_, _, err := handleAdd(host, AddInput{})
+	if err == nil {
+		t.Fatal("expected error for missing role")
+	}
+}
+
+func TestHandleAdd_AlreadyExists(t *testing.T) {
+	pane := &fakePaneHandle{name: "eng1"}
+	host := newFakeHost(pane)
+
+	_, _, err := handleAdd(host, AddInput{Role: "eng1"})
+	if err == nil {
+		t.Fatal("expected error for duplicate agent")
+	}
+	if got := err.Error(); got != `agent "eng1" already exists` {
+		t.Errorf("error = %q", got)
+	}
+}
+
+func TestHandleAdd_HostError(t *testing.T) {
+	host := newFakeHost()
+	host.addErr = fmt.Errorf("workspace not found")
+
+	_, _, err := handleAdd(host, AddInput{Role: "eng3"})
+	if err == nil {
+		t.Fatal("expected error from host")
+	}
+	if err.Error() != "workspace not found" {
+		t.Errorf("error = %q", err.Error())
+	}
+}
+
+// Remove tool tests.
+
+func TestHandleRemove_Success(t *testing.T) {
+	host := newFakeHost(
+		&fakePaneHandle{name: "eng1"},
+		&fakePaneHandle{name: "eng2"},
+	)
+
+	_, out, err := handleRemove(host, RemoveInput{Agent: "eng1"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if out.Status != "removed" {
+		t.Errorf("status = %q, want removed", out.Status)
+	}
+}
+
+func TestHandleRemove_MissingAgent(t *testing.T) {
+	host := newFakeHost()
+	_, _, err := handleRemove(host, RemoveInput{})
+	if err == nil {
+		t.Fatal("expected error for missing agent")
+	}
+}
+
+func TestHandleRemove_NotFound(t *testing.T) {
+	host := newFakeHost(&fakePaneHandle{name: "eng1"})
+
+	_, _, err := handleRemove(host, RemoveInput{Agent: "nonexistent"})
+	if err == nil {
+		t.Fatal("expected error for nonexistent agent")
+	}
+	if got := err.Error(); got != `agent "nonexistent" not found` {
+		t.Errorf("error = %q", got)
+	}
+}
+
+func TestHandleRemove_LastPane(t *testing.T) {
+	host := newFakeHost(&fakePaneHandle{name: "eng1"})
+
+	_, _, err := handleRemove(host, RemoveInput{Agent: "eng1"})
+	if err == nil {
+		t.Fatal("expected error for removing last agent")
+	}
+	if got := err.Error(); got != "cannot remove last agent" {
+		t.Errorf("error = %q", got)
+	}
+}
+
+func TestHandleRemove_HostError(t *testing.T) {
+	host := newFakeHost(&fakePaneHandle{name: "eng1"}, &fakePaneHandle{name: "eng2"})
+	host.removeErr = fmt.Errorf("removal blocked")
+
+	_, _, err := handleRemove(host, RemoveInput{Agent: "eng1"})
+	if err == nil {
+		t.Fatal("expected error from host")
+	}
+}
+
+// At (schedule) tool tests.
+
+func TestHandleAt_Success(t *testing.T) {
+	host := newFakeHost(&fakePaneHandle{name: "eng1"})
+
+	_, out, err := handleAt(host, AtInput{Agent: "eng1", Message: "make test", Delay: "5m"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if out.Status != "scheduled" {
+		t.Errorf("status = %q, want scheduled", out.Status)
+	}
+	if out.TimerID != "at-0" {
+		t.Errorf("timer_id = %q, want at-0", out.TimerID)
+	}
+	if len(host.scheduleLog) != 1 || host.scheduleLog[0] != "schedule:eng1:5m" {
+		t.Errorf("schedule log = %v", host.scheduleLog)
+	}
+}
+
+func TestHandleAt_MissingAgent(t *testing.T) {
+	host := newFakeHost()
+	_, _, err := handleAt(host, AtInput{Message: "hello", Delay: "5m"})
+	if err == nil {
+		t.Fatal("expected error for missing agent")
+	}
+}
+
+func TestHandleAt_MissingMessage(t *testing.T) {
+	host := newFakeHost(&fakePaneHandle{name: "eng1"})
+	_, _, err := handleAt(host, AtInput{Agent: "eng1", Delay: "5m"})
+	if err == nil {
+		t.Fatal("expected error for missing message")
+	}
+}
+
+func TestHandleAt_MissingDelay(t *testing.T) {
+	host := newFakeHost(&fakePaneHandle{name: "eng1"})
+	_, _, err := handleAt(host, AtInput{Agent: "eng1", Message: "hello"})
+	if err == nil {
+		t.Fatal("expected error for missing delay")
+	}
+}
+
+func TestHandleAt_InvalidDelay(t *testing.T) {
+	host := newFakeHost(&fakePaneHandle{name: "eng1"})
+
+	_, _, err := handleAt(host, AtInput{Agent: "eng1", Message: "hello", Delay: "not-a-duration"})
+	if err == nil {
+		t.Fatal("expected error for invalid delay")
+	}
+	if got := err.Error(); !contains(got, "invalid delay") {
+		t.Errorf("error = %q, want 'invalid delay'", got)
+	}
+}
+
+func TestHandleAt_HostError(t *testing.T) {
+	host := newFakeHost(&fakePaneHandle{name: "eng1"})
+	host.scheduleErr = fmt.Errorf("timer store not initialized")
+
+	_, _, err := handleAt(host, AtInput{Agent: "eng1", Message: "hello", Delay: "5m"})
+	if err == nil {
+		t.Fatal("expected error from host")
+	}
+}
+
+func TestHandleAt_VariousDelayFormats(t *testing.T) {
+	host := newFakeHost(&fakePaneHandle{name: "eng1"})
+
+	for _, delay := range []string{"30s", "1h", "100ms", "2h30m"} {
+		_, out, err := handleAt(host, AtInput{Agent: "eng1", Message: "test", Delay: delay})
+		if err != nil {
+			t.Errorf("delay %q: unexpected error: %v", delay, err)
+		}
+		if out.Status != "scheduled" {
+			t.Errorf("delay %q: status = %q", delay, out.Status)
+		}
+	}
+}
+
+// contains is a test helper for substring matching.
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && searchSubstring(s, substr)
+}
+
+func searchSubstring(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
 }
