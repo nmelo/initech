@@ -456,7 +456,7 @@ func (t *TUI) renderHints() {
 	}
 
 	// Keyboard shortcuts.
-	b.addRight("`:cmd  Alt+z:zoom  Alt+s:overlay  ?:help", b.barStyle)
+	b.addRight("`:cmd  Alt+z:zoom  Alt+s:overlay  ?:help  Alt+q:quit", b.barStyle)
 
 	// Clock (rightmost).
 	b.addRight(time.Now().Format("15:04"), b.barStyle)
