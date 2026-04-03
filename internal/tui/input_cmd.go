@@ -175,18 +175,29 @@ func (t *TUI) executeConfirmed() bool {
 		// Show immediate feedback before the multi-second shutdown.
 		if t.screen != nil {
 			sw, sh := t.screen.Size()
-			style := tcell.StyleDefault.Background(tcell.NewRGBColor(30, 30, 30)).Foreground(tcell.ColorYellow).Bold(true)
-			// Clear both status bar rows (sh-2 and sh-1) to remove the
+			bg := tcell.NewRGBColor(30, 30, 30)
+			clearStyle := tcell.StyleDefault.Background(bg)
+			// Clear status bar rows (sh-3, sh-2, sh-1) to remove the
 			// confirmation prompt before drawing the quitting message.
-			for _, row := range []int{sh - 2, sh - 1} {
+			for _, row := range []int{sh - 3, sh - 2, sh - 1} {
 				for x := 0; x < sw; x++ {
-					t.screen.SetContent(x, row, ' ', nil, style)
+					t.screen.SetContent(x, row, ' ', nil, clearStyle)
 				}
 			}
 			msg := " Quitting..."
+			rainbow := []tcell.Color{
+				tcell.NewRGBColor(255, 0, 0),     // red
+				tcell.NewRGBColor(255, 140, 0),   // orange
+				tcell.NewRGBColor(255, 255, 0),   // yellow
+				tcell.NewRGBColor(0, 200, 0),     // green
+				tcell.NewRGBColor(0, 220, 220),   // cyan
+				tcell.NewRGBColor(60, 60, 255),   // blue
+				tcell.NewRGBColor(160, 32, 240),  // violet
+			}
 			for i, ch := range msg {
 				if i < sw {
-					t.screen.SetContent(i, sh-2, ch, nil, style)
+					style := tcell.StyleDefault.Background(bg).Foreground(rainbow[i%len(rainbow)]).Bold(true)
+					t.screen.SetContent(i, sh-3, ch, nil, style)
 				}
 			}
 			t.screen.Show()
