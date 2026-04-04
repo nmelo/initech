@@ -28,7 +28,7 @@ func TestHandleEventsAPI_WrongPayload(t *testing.T) {
 }
 
 func TestNewClient(t *testing.T) {
-	c := NewClient("xapp-test", "xoxb-test", nil, nil)
+	c := NewClient("xapp-test", "xoxb-test", nil, nil, nil)
 	if c.api == nil {
 		t.Fatal("api client should not be nil")
 	}
@@ -37,5 +37,29 @@ func TestNewClient(t *testing.T) {
 	}
 	if c.logger == nil {
 		t.Fatal("logger should default to slog.Default()")
+	}
+}
+
+func TestIsAuthorized_EmptyList(t *testing.T) {
+	c := NewClient("xapp-test", "xoxb-test", nil, nil, nil)
+	if !c.isAuthorized("U12345") {
+		t.Error("empty allowed list should allow all users")
+	}
+}
+
+func TestIsAuthorized_AllowedUser(t *testing.T) {
+	c := NewClient("xapp-test", "xoxb-test", nil, []string{"U12345", "U67890"}, nil)
+	if !c.isAuthorized("U12345") {
+		t.Error("allowed user should be authorized")
+	}
+	if !c.isAuthorized("U67890") {
+		t.Error("allowed user should be authorized")
+	}
+}
+
+func TestIsAuthorized_DeniedUser(t *testing.T) {
+	c := NewClient("xapp-test", "xoxb-test", nil, []string{"U12345"}, nil)
+	if c.isAuthorized("UOTHER") {
+		t.Error("non-allowed user should be denied")
 	}
 }

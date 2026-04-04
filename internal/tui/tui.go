@@ -659,7 +659,11 @@ func Run(cfg Config) error {
 	if cfg.SlackAppToken != "" && cfg.SlackBotToken != "" {
 		slackCtx, slackCancel := context.WithCancel(context.Background())
 		host := &tuiSlackHost{t: t}
-		sc := slackchat.NewClient(cfg.SlackAppToken, cfg.SlackBotToken, host, nil)
+		var allowedUsers []string
+		if cfg.Project != nil {
+			allowedUsers = cfg.Project.Slack.AllowedUsers
+		}
+		sc := slackchat.NewClient(cfg.SlackAppToken, cfg.SlackBotToken, host, allowedUsers, nil)
 		t.safeGo(func() { sc.Run(slackCtx) })
 
 		// Start the completion responder.

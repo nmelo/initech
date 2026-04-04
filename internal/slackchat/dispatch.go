@@ -74,6 +74,18 @@ func (c *Client) handleAppMention(ev *slackevents.AppMentionEvent) {
 		return
 	}
 
+	// Access control: dispatch commands require authorization.
+	// Special commands (help, status) are handled above and bypass this check.
+	if !c.isAuthorized(ev.User) {
+		c.logger.Info("slack dispatch denied",
+			"user", ev.User,
+			"channel", ev.Channel,
+			"agent", agent,
+		)
+		c.reply(ev.Channel, threadTS, "You don't have permission to dispatch initech agents. Contact your workspace admin.")
+		return
+	}
+
 	if c.host == nil {
 		c.reply(ev.Channel, threadTS, "No agent host configured.")
 		return

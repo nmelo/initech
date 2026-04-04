@@ -315,7 +315,7 @@ var _ AgentHost = (*fakeHost)(nil)
 // Verify NewClient accepts a host parameter.
 func TestNewClient_WithHost(t *testing.T) {
 	host := &fakeHost{agents: map[string]AgentInfo{}}
-	c := NewClient("xapp-test", "xoxb-test", host, nil)
+	c := NewClient("xapp-test", "xoxb-test", host, nil, nil)
 	if c.host == nil {
 		t.Fatal("host should not be nil")
 	}

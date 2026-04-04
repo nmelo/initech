@@ -14,24 +14,39 @@ import (
 
 // Client manages the Slack Socket Mode connection and event loop.
 type Client struct {
-	api     *slack.Client
-	sm      *socketmode.Client
-	host    AgentHost
-	tracker *ConversationTracker
-	logger  *slog.Logger
+	api          *slack.Client
+	sm           *socketmode.Client
+	host         AgentHost
+	tracker      *ConversationTracker
+	allowedUsers map[string]bool // Empty map = allow all.
+	logger       *slog.Logger
 }
 
 // NewClient creates a Slack client configured for Socket Mode. The appToken
 // (xapp-...) is used to establish the WebSocket connection. The botToken
 // (xoxb-...) is used for Web API calls (posting messages, adding reactions).
 // The host provides agent lookup and delivery; pass nil to defer wiring.
-func NewClient(appToken, botToken string, host AgentHost, logger *slog.Logger) *Client {
+// allowedUsers is a list of Slack user IDs permitted to dispatch. Empty = all.
+func NewClient(appToken, botToken string, host AgentHost, allowedUsers []string, logger *slog.Logger) *Client {
 	if logger == nil {
 		logger = slog.Default()
 	}
+	allowed := make(map[string]bool, len(allowedUsers))
+	for _, uid := range allowedUsers {
+		allowed[uid] = true
+	}
 	api := slack.New(botToken, slack.OptionAppLevelToken(appToken))
 	sm := socketmode.New(api)
-	return &Client{api: api, sm: sm, host: host, tracker: NewConversationTracker(), logger: logger}
+	return &Client{api: api, sm: sm, host: host, tracker: NewConversationTracker(), allowedUsers: allowed, logger: logger}
+}
+
+// isAuthorized returns true if the user is allowed to dispatch commands.
+// Returns true for all users when the allowed list is empty (default).
+func (c *Client) isAuthorized(userID string) bool {
+	if len(c.allowedUsers) == 0 {
+		return true
+	}
+	return c.allowedUsers[userID]
 }
 
 // API returns the underlying Slack Web API client for use by the responder.

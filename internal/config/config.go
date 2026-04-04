@@ -29,6 +29,9 @@ var roleNameRe = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
 // underscores (distinguish from role names at a glance).
 var peerNameRe = regexp.MustCompile(`^[a-zA-Z0-9-]+$`)
 
+// slackUserIDRe matches Slack user IDs: U followed by uppercase alphanumeric.
+var slackUserIDRe = regexp.MustCompile(`^U[A-Z0-9]+$`)
+
 // Project is the top-level config read from initech.yaml.
 type Project struct {
 	Name          string                  `yaml:"project"`
@@ -395,6 +398,13 @@ func Validate(p *Project) error {
 	for name, remote := range p.Remotes {
 		if remote.Addr == "" {
 			return fmt.Errorf("remote %q has empty addr", name)
+		}
+	}
+
+	// Slack user ID validation (warn only, don't block startup).
+	for _, uid := range p.Slack.AllowedUsers {
+		if !slackUserIDRe.MatchString(uid) {
+			return fmt.Errorf("slack.allowed_users: %q does not look like a Slack user ID (expected U followed by alphanumeric, e.g. U12345ABC)", uid)
 		}
 	}
 
