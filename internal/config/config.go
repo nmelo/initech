@@ -46,7 +46,8 @@ type Project struct {
 
 	// Web companion server fields.
 	WebPort    *int   `yaml:"web_port,omitempty"`    // Web companion port. nil/0 = disabled, >0 = enabled.
-	WebhookURL string `yaml:"webhook_url,omitempty"` // HTTP endpoint for agent event POSTs. Empty = disabled.
+	WebhookURL   string `yaml:"webhook_url,omitempty"`   // HTTP endpoint for agent event POSTs. Empty = disabled.
+	AnnounceURL  string `yaml:"announce_url,omitempty"`  // Agent Radio webhook for TTS announcements. Empty = disabled.
 
 	// MCP server fields.
 	McpPort  *int   `yaml:"mcp_port,omitempty"`  // MCP server port. Default 9200, nil uses default, 0 disables.

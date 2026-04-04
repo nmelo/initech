@@ -70,6 +70,111 @@ func PostNotification(url, kind, agent, message, project string) error {
 	return nil
 }
 
+// AnnouncePayload is the JSON body POSTed to an Agent Radio announce endpoint.
+// Fields use omitempty so only provided values are sent.
+type AnnouncePayload struct {
+	Detail    string `json:"detail"`
+	Kind      string `json:"kind,omitempty"`
+	Agent     string `json:"agent,omitempty"`
+	Project   string `json:"project,omitempty"`
+	BeadID    string `json:"bead_id,omitempty"`
+	Timestamp string `json:"timestamp,omitempty"`
+}
+
+// AnnounceResult describes the outcome of a PostAnnouncement call.
+type AnnounceResult struct {
+	// Status is the server-reported status: "queued", "immediate", "suppressed",
+	// or "rate_limited" (429), or "error" for failures.
+	Status string
+	// Message is the human-readable CLI output line.
+	Message string
+	// Err is non-nil for hard failures (4xx/5xx, timeout, connection refused).
+	Err error
+}
+
+// PostAnnouncement sends a TTS announcement to an Agent Radio endpoint.
+// Unlike PostNotification, it parses the server's JSON response to determine
+// announcement disposition, and treats 429 as a soft success (the server
+// queues rate-limited announcements automatically).
+func PostAnnouncement(url string, p AnnouncePayload) AnnounceResult {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	p.Timestamp = time.Now().Format(time.RFC3339)
+
+	body, err := json.Marshal(p)
+	if err != nil {
+		return AnnounceResult{Status: "error", Message: "Error: marshal payload", Err: err}
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(body))
+	if err != nil {
+		return AnnounceResult{Status: "error", Message: "Error: create request", Err: err}
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := (&http.Client{}).Do(req)
+	if err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			return AnnounceResult{
+				Status:  "error",
+				Message: "Error: connection timed out",
+				Err:     err,
+			}
+		}
+		if isConnectionRefused(err) {
+			return AnnounceResult{
+				Status:  "error",
+				Message: "Error: connection refused (is Agent Radio running?)",
+				Err:     err,
+			}
+		}
+		return AnnounceResult{Status: "error", Message: fmt.Sprintf("Error: %v", err), Err: err}
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == 429 {
+		return AnnounceResult{Status: "rate_limited", Message: "Dropped (rate limited)"}
+	}
+
+	if resp.StatusCode >= 400 {
+		var respBody bytes.Buffer
+		respBody.ReadFrom(resp.Body)
+		return AnnounceResult{
+			Status:  "error",
+			Message: fmt.Sprintf("Error: %d %s", resp.StatusCode, strings.TrimSpace(respBody.String())),
+			Err:     fmt.Errorf("announce returned HTTP %d", resp.StatusCode),
+		}
+	}
+
+	// Parse 200 response for status field.
+	var result struct {
+		Status string `json:"status"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		// Server returned 200 but no parseable JSON; treat as success.
+		return AnnounceResult{Status: "queued", Message: "Announced (queued)"}
+	}
+
+	switch result.Status {
+	case "immediate":
+		return AnnounceResult{Status: "immediate", Message: "Announced"}
+	case "suppressed":
+		return AnnounceResult{Status: "suppressed", Message: "Suppressed (event kind filtered)"}
+	default:
+		return AnnounceResult{Status: "queued", Message: "Announced (queued)"}
+	}
+}
+
+// isConnectionRefused checks whether an error chain contains a "connection refused"
+// indication, which means the target server is not running.
+func isConnectionRefused(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(err.Error(), "connection refused")
+}
+
 // IsSlackWebhook returns true if the URL is a Slack incoming webhook.
 func IsSlackWebhook(url string) bool {
 	return strings.Contains(url, "hooks.slack.com/")
