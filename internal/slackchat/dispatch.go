@@ -90,6 +90,9 @@ func (c *Client) handleAppMention(ev *slackevents.AppMentionEvent) {
 		return
 	}
 
+	// Track the conversation so the responder can post results to this thread.
+	c.tracker.Track(agent, ev.Channel, threadTS, ev.User)
+
 	msg := fmt.Sprintf("Sent to *%s*", agent)
 	if !info.Alive {
 		msg += "\n:warning: Warning: " + agent + " is not running. Message queued for when it restarts."

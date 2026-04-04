@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/nmelo/initech/internal/slackchat"
 )
@@ -60,4 +61,50 @@ func (h *tuiSlackHost) SendToAgent(name, text string) error {
 		err = fmt.Errorf("agent %q not found", name)
 	})
 	return err
+}
+
+// tuiPanePeeker adapts the TUI to the slackchat.PanePeeker interface.
+// Reads the bottom N lines from an agent's VT emulator.
+type tuiPanePeeker struct {
+	t *TUI
+}
+
+var _ slackchat.PanePeeker = (*tuiPanePeeker)(nil)
+
+func (p *tuiPanePeeker) PeekOutput(agentName string, lines int) (string, error) {
+	var result string
+	var err error
+	p.t.runOnMain(func() {
+		for _, pv := range p.t.panes {
+			if pv.Name() != agentName {
+				continue
+			}
+			emu := pv.Emulator()
+			h := emu.Height()
+			w := emu.Width()
+			start := 0
+			if h > lines {
+				start = h - lines
+			}
+			rows := make([]string, 0, h-start)
+			for row := start; row < h; row++ {
+				var sb strings.Builder
+				for col := 0; col < w; col++ {
+					cell := emu.CellAt(col, row)
+					if cell != nil && cell.Content != "" {
+						sb.WriteString(cell.Content)
+					} else {
+						sb.WriteByte(' ')
+					}
+				}
+				rows = append(rows, strings.TrimRight(sb.String(), " "))
+			}
+			result = strings.Join(rows, "\n")
+			// Trim trailing empty lines.
+			result = strings.TrimRight(result, "\n ")
+			return
+		}
+		err = fmt.Errorf("agent %q not found", agentName)
+	})
+	return result, err
 }

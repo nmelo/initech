@@ -14,10 +14,11 @@ import (
 
 // Client manages the Slack Socket Mode connection and event loop.
 type Client struct {
-	api    *slack.Client
-	sm     *socketmode.Client
-	host   AgentHost
-	logger *slog.Logger
+	api     *slack.Client
+	sm      *socketmode.Client
+	host    AgentHost
+	tracker *ConversationTracker
+	logger  *slog.Logger
 }
 
 // NewClient creates a Slack client configured for Socket Mode. The appToken
@@ -30,8 +31,14 @@ func NewClient(appToken, botToken string, host AgentHost, logger *slog.Logger) *
 	}
 	api := slack.New(botToken, slack.OptionAppLevelToken(appToken))
 	sm := socketmode.New(api)
-	return &Client{api: api, sm: sm, host: host, logger: logger}
+	return &Client{api: api, sm: sm, host: host, tracker: NewConversationTracker(), logger: logger}
 }
+
+// API returns the underlying Slack Web API client for use by the responder.
+func (c *Client) API() *slack.Client { return c.api }
+
+// Tracker returns the conversation tracker shared between dispatcher and responder.
+func (c *Client) Tracker() *ConversationTracker { return c.tracker }
 
 // Run connects to Slack via Socket Mode and processes events until the context
 // is cancelled. It blocks, so call it in a goroutine. Reconnection is handled

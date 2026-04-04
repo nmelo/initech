@@ -214,8 +214,9 @@ type TUI struct {
 	// Web companion runtime state for the web modal.
 	webPort         int               // Configured port (0 = disabled).
 	webEventProvider *tuiEventProvider // For broadcasting events to web subscribers. Nil if web disabled.
-	webhookCh        chan AgentEvent   // Fan-out channel for webhook HTTP POSTs. Nil if webhook disabled.
-	webhookURL       string            // Webhook URL from config, for IPC notify action.
+	webhookCh        chan AgentEvent             // Fan-out channel for webhook HTTP POSTs. Nil if webhook disabled.
+	webhookURL       string                     // Webhook URL from config, for IPC notify action.
+	slackEventCh     chan slackchat.ResponderEvent // Fan-out channel for Slack responder. Nil if Slack disabled.
 
 	// Timer store for scheduled sends.
 	timers *TimerStore
@@ -654,13 +655,24 @@ func Run(cfg Config) error {
 		defer webhookCancel()
 	}
 
-	// Start Slack Socket Mode client when tokens are configured.
+	// Start Slack Socket Mode client and responder when tokens are configured.
 	if cfg.SlackAppToken != "" && cfg.SlackBotToken != "" {
 		slackCtx, slackCancel := context.WithCancel(context.Background())
 		host := &tuiSlackHost{t: t}
 		sc := slackchat.NewClient(cfg.SlackAppToken, cfg.SlackBotToken, host, nil)
 		t.safeGo(func() { sc.Run(slackCtx) })
-		LogInfo("slack", "Socket Mode client starting")
+
+		// Start the completion responder.
+		responseMode := "completion"
+		if cfg.Project != nil {
+			responseMode = cfg.Project.Slack.ResponseMode
+		}
+		t.slackEventCh = make(chan slackchat.ResponderEvent, 64)
+		peeker := &tuiPanePeeker{t: t}
+		resp := slackchat.NewResponder(sc.API(), sc.Tracker(), peeker, responseMode, nil)
+		t.safeGo(func() { resp.Run(slackCtx, t.slackEventCh) })
+
+		LogInfo("slack", "Socket Mode client and responder starting")
 		defer slackCancel()
 	}
 

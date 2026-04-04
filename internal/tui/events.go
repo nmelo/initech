@@ -10,6 +10,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/nmelo/initech/internal/slackchat"
 )
 
 // EventType classifies semantic events from agent activity detection.
@@ -134,6 +136,20 @@ func (t *TUI) handleAgentEvent(ev AgentEvent) {
 		case t.webhookCh <- ev:
 		default:
 			LogDebug("webhook", "channel full, dropping event", "kind", ev.Type.String(), "pane", ev.Pane)
+		}
+	}
+
+	// Fan out to Slack responder (non-blocking).
+	if t.slackEventCh != nil {
+		re := slackchat.ResponderEvent{
+			Type:   ev.Type.String(),
+			Pane:   ev.Pane,
+			BeadID: ev.BeadID,
+			Detail: ev.Detail,
+		}
+		select {
+		case t.slackEventCh <- re:
+		default:
 		}
 	}
 
