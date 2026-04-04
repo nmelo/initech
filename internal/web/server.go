@@ -47,8 +47,9 @@ type PaneSubscriber interface {
 // StateSnapshot is the JSON payload sent over /ws/state. It combines layout
 // information with per-agent status for the web companion SPA.
 type StateSnapshot struct {
-	Layout LayoutInfo `json:"layout"`
-	Panes  []PaneState `json:"panes"`
+	Project string      `json:"project,omitempty"`
+	Layout  LayoutInfo  `json:"layout"`
+	Panes   []PaneState `json:"panes"`
 }
 
 // LayoutInfo describes the current TUI layout.

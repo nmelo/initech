@@ -88,6 +88,12 @@ func TestServesIndex(t *testing.T) {
 	if !strings.Contains(body, "/ws/pane/") {
 		t.Error("expected index.html to reference WebSocket endpoint")
 	}
+	if !strings.Contains(body, "status-bar") {
+		t.Error("expected index.html to contain status bar")
+	}
+	if !strings.Contains(body, "/ws/state") {
+		t.Error("expected index.html to reference state WebSocket endpoint")
+	}
 }
 
 func TestStartAndShutdown(t *testing.T) {

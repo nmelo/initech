@@ -72,12 +72,22 @@
   #app.empty #grid{display:none}
   #app.empty #empty-msg{display:flex}
 
-  /* Connection indicator */
-  #conn-status{position:fixed;top:6px;right:8px;z-index:20;font-size:11px;
-    padding:2px 8px;border-radius:3px;background:rgba(20,25,40,0.85)}
-  #conn-status.connected{color:#2ecc71}
-  #conn-status.disconnected{color:#e74c3c}
-  #conn-status.connecting{color:#f39c12}
+  /* Status bar: fixed bottom, matches TUI ribbon */
+  #status-bar{height:24px;background:#141928;border-top:1px solid #334;
+    display:flex;align-items:center;padding:0 10px;font-size:12px;
+    flex-shrink:0;gap:8px;z-index:20}
+  #status-project{color:#5b9bd5;font-weight:600;white-space:nowrap;
+    overflow:hidden;text-overflow:ellipsis;max-width:200px}
+  #status-agents{color:#7f8c8d;white-space:nowrap}
+  #status-spacer{flex:1}
+  #status-conn{display:flex;align-items:center;gap:5px;white-space:nowrap}
+  .conn-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+  .conn-dot.connected{background:#2ecc71}
+  .conn-dot.reconnecting{background:#f39c12}
+  .conn-dot.disconnected{background:#e74c3c}
+  #status-conn-text.connected{color:#2ecc71}
+  #status-conn-text.reconnecting{color:#f39c12}
+  #status-conn-text.disconnected{color:#e74c3c}
 
   /* Zoom hint */
   .zoom-hint{color:#555;font-size:11px;margin-left:auto}
@@ -91,7 +101,12 @@
     <div id="zoom-term"></div>
   </div>
   <div id="empty-msg">No agents running</div>
-  <div id="conn-status">connecting</div>
+  <div id="status-bar">
+    <span id="status-project">initech</span>
+    <span id="status-agents"></span>
+    <span id="status-spacer"></span>
+    <span id="status-conn"><span class="conn-dot"></span><span id="status-conn-text"></span></span>
+  </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/lib/xterm.min.js"></script>
@@ -105,7 +120,10 @@
   var zoomLabel = document.getElementById("zoom-label");
   var zoomTerm = document.getElementById("zoom-term");
   var emptyMsg = document.getElementById("empty-msg");
-  var connStatus = document.getElementById("conn-status");
+  var statusProject = document.getElementById("status-project");
+  var statusAgents = document.getElementById("status-agents");
+  var connDot = document.querySelector("#status-conn .conn-dot");
+  var connText = document.getElementById("status-conn-text");
   var app = document.getElementById("app");
 
   var wsBase = location.origin.replace(/^http/, "ws");
@@ -116,6 +134,7 @@
   var zoomedPane = null;
   var stateWs = null;
   var stateReconnTimer = null;
+  var stateReconnAttempts = 0;
   var resizeTimer = null;
 
   var termOptions = {
@@ -142,10 +161,13 @@
   function connectState() {
     if (stateWs) { stateWs.onclose = null; stateWs.close(); }
     clearTimeout(stateReconnTimer);
-    setConn("connecting");
+    setConn("reconnecting");
 
     stateWs = new WebSocket(wsBase + "/ws/state");
-    stateWs.onopen = function() { setConn("connected"); };
+    stateWs.onopen = function() {
+      stateReconnAttempts = 0;
+      setConn("connected");
+    };
     stateWs.onmessage = function(ev) {
       try {
         var snap = JSON.parse(ev.data);
@@ -153,15 +175,17 @@
       } catch(e) {}
     };
     stateWs.onclose = function() {
-      setConn("disconnected");
+      stateReconnAttempts++;
+      setConn(stateReconnAttempts >= 3 ? "disconnected" : "reconnecting");
       stateReconnTimer = setTimeout(connectState, 2000);
     };
     stateWs.onerror = function() {};
   }
 
   function setConn(state) {
-    connStatus.className = state;
-    connStatus.textContent = state;
+    connDot.className = "conn-dot " + state;
+    connText.className = state;
+    connText.textContent = state;
   }
 
   // --- Apply state snapshot ---
@@ -169,6 +193,15 @@
   function applyState(snap) {
     var layout = snap.layout || {};
     var panes = snap.panes || [];
+
+    // Update status bar: project name and agent count.
+    statusProject.textContent = snap.project || "initech";
+    var alive = 0;
+    var total = panes.length;
+    for (var a = 0; a < panes.length; a++) {
+      if (panes[a].alive) alive++;
+    }
+    statusAgents.textContent = total > 0 ? alive + "/" + total + " agents" : "";
 
     // Update grid template if layout changed.
     var cols = layout.cols || 1;
