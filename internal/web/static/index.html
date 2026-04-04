@@ -204,6 +204,18 @@
     while (el.firstChild) el.removeChild(el.firstChild);
   }
 
+  // Scroll a terminal to bottom after xterm's render pipeline settles.
+  // Used after any operation that changes terminal dimensions (fit, resize,
+  // zoom exit) because xterm.js resets viewportY during re-render. Skipped
+  // if the user has manually scrolled up (_userScrolledUp flag).
+  function settleScrollToBottom(entry) {
+    if (entry._userScrolledUp) return;
+    clearTimeout(entry._settleTimer);
+    entry._settleTimer = setTimeout(function() {
+      if (!entry._userScrolledUp) entry.term.scrollToBottom();
+    }, 150);
+  }
+
   // --- Layout mode ---
 
   function applyLayoutMode() {
@@ -494,6 +506,7 @@
     if (zoomedPane === name) return;
     if (entry.term.cols === data.cols) return;
     entry.term.resize(data.cols, entry.term.rows);
+    settleScrollToBottom(entry);
   }
 
   function updatePaneLabel(name, data) {
@@ -738,7 +751,7 @@
     if (entry) {
       var exitName = entry.nameSpan.textContent;
       entry.cell.appendChild(entry.termDiv);
-      // Fit rows to grid cell, restore TUI cols.
+      // Fit rows to grid cell, restore TUI cols, preserve scroll.
       requestAnimationFrame(function() {
         requestAnimationFrame(function() {
           try {
@@ -746,6 +759,7 @@
             if (entry._tuiCols && entry.term.cols !== entry._tuiCols) {
               entry.term.resize(entry._tuiCols, entry.term.rows);
             }
+            settleScrollToBottom(entry);
           } catch(e) {}
         });
       });
@@ -796,6 +810,7 @@
         if (name !== zoomedPane && e._tuiCols && e.term.cols !== e._tuiCols) {
           e.term.resize(e._tuiCols, e.term.rows);
         }
+        settleScrollToBottom(e);
       } catch(ex) {}
     }
   }
