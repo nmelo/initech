@@ -34,11 +34,11 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Build artifacts
+      - name: Build and archive artifacts
         uses: goreleaser/goreleaser-action@v6
         with:
           version: '~> v2'
-          args: build --clean
+          args: release --split --clean
 
       - name: Archive dist
         run: tar czf dist.tar.gz dist/
@@ -73,7 +73,7 @@ jobs:
         uses: goreleaser/goreleaser-action@v6
         with:
           version: '~> v2'
-          args: release --skip=build
+          args: continue --merge
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
