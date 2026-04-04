@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	iexec "github.com/nmelo/initech/internal/exec"
 )
@@ -30,13 +31,43 @@ func Init(runner iexec.Runner, dir string) error {
 }
 
 // AddSubmodule adds a git submodule at the specified path within the repo.
-// The path is relative to the repo root (e.g., "eng1/src").
+// The path is relative to the repo root (e.g., "eng1/src"). The URL is
+// normalized before use (bare hostnames get git@ SSH prefix).
 func AddSubmodule(runner iexec.Runner, repoDir, url, subPath string) error {
+	url = NormalizeRepoURL(url)
 	_, err := runner.RunInDir(repoDir, "git", "submodule", "add", url, subPath)
 	if err != nil {
 		return fmt.Errorf("git submodule add %s: %w", subPath, err)
 	}
 	return nil
+}
+
+// NormalizeRepoURL converts bare repository references like
+// "github.com/user/repo" into proper git URLs. If the URL already has a
+// recognized protocol prefix (https://, http://, git@, ssh://), it is
+// returned unchanged. Otherwise, the first "/" after the host is converted
+// to ":" and "git@" is prepended, producing SSH URLs like
+// "git@github.com:user/repo.git".
+func NormalizeRepoURL(url string) string {
+	if url == "" {
+		return url
+	}
+	// Already has a protocol prefix: leave it alone.
+	for _, prefix := range []string{"https://", "http://", "ssh://", "git@"} {
+		if strings.HasPrefix(url, prefix) {
+			return url
+		}
+	}
+	// Bare hostname: github.com/user/repo -> git@github.com:user/repo.git
+	if idx := strings.Index(url, "/"); idx > 0 {
+		host := url[:idx]
+		path := url[idx+1:]
+		if !strings.HasSuffix(path, ".git") {
+			path += ".git"
+		}
+		return "git@" + host + ":" + path
+	}
+	return url
 }
 
 // CommitAll stages all files and creates a commit with the given message.

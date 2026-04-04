@@ -126,3 +126,45 @@ func TestCommitAll_AddError(t *testing.T) {
 		t.Errorf("error should mention git add: %v", err)
 	}
 }
+
+func TestNormalizeRepoURL(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"github.com/nmelo/initech", "git@github.com:nmelo/initech.git"},
+		{"github.com/user/repo", "git@github.com:user/repo.git"},
+		{"gitlab.com/org/project", "git@gitlab.com:org/project.git"},
+		{"github.com/nmelo/initech.git", "git@github.com:nmelo/initech.git"},
+		{"git@github.com:nmelo/initech.git", "git@github.com:nmelo/initech.git"},
+		{"https://github.com/nmelo/initech.git", "https://github.com/nmelo/initech.git"},
+		{"https://github.com/nmelo/initech", "https://github.com/nmelo/initech"},
+		{"http://github.com/nmelo/initech.git", "http://github.com/nmelo/initech.git"},
+		{"ssh://git@github.com/nmelo/initech.git", "ssh://git@github.com/nmelo/initech.git"},
+		{"", ""},
+		{"localhost", "localhost"},
+	}
+	for _, tc := range tests {
+		got := NormalizeRepoURL(tc.input)
+		if got != tc.want {
+			t.Errorf("NormalizeRepoURL(%q) = %q, want %q", tc.input, got, tc.want)
+		}
+	}
+}
+
+func TestAddSubmodule_NormalizesURL(t *testing.T) {
+	fake := &iexec.FakeRunner{}
+
+	err := AddSubmodule(fake, "/project", "github.com/nmelo/initech", "eng1/src")
+	if err != nil {
+		t.Fatalf("AddSubmodule: %v", err)
+	}
+
+	if len(fake.Calls) != 1 {
+		t.Fatalf("expected 1 call, got %d", len(fake.Calls))
+	}
+	call := fake.Calls[0]
+	if !strings.Contains(call, "git@github.com:nmelo/initech.git") {
+		t.Errorf("expected normalized URL in call, got %q", call)
+	}
+}
