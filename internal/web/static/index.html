@@ -407,14 +407,13 @@
     cell.appendChild(termDiv);
     grid.appendChild(cell);
 
-    // Create xterm instance sized to match the TUI pane dimensions.
-    // FitAddon is kept for zoom mode only.
+    // Create xterm with TUI column width. Rows are determined by FitAddon
+    // to match the container height (avoids clipping bottom rows). Cols use
+    // the server-provided value so PTY escape sequences land correctly.
     var paneCols = data.cols || 80;
-    var paneRows = data.rows || 24;
     var opts = {};
     for (var key in termOptions) { if (termOptions.hasOwnProperty(key)) opts[key] = termOptions[key]; }
     opts.cols = paneCols;
-    opts.rows = paneRows;
     var term = new window.Terminal(opts);
     var fitAddon = new window.FitAddon.FitAddon();
     term.loadAddon(fitAddon);
@@ -465,9 +464,18 @@
     // Connect pane WebSocket.
     connectPaneWs(name);
 
-    // Terminal is pre-sized to TUI dimensions. Log for diagnostics.
-    console.log("[initech-diag] createPane pane=%s cols=%d rows=%d container=%dx%d",
-      name, paneCols, paneRows, termDiv.offsetWidth, termDiv.offsetHeight);
+    // After a frame, fit rows to container height while keeping TUI cols.
+    requestAnimationFrame(function() {
+      try {
+        fitAddon.fit();
+        // FitAddon sets both cols and rows. Restore server cols.
+        if (term.cols !== paneCols) {
+          term.resize(paneCols, term.rows);
+        }
+      } catch(e) {}
+      console.log("[initech-diag] createPane pane=%s cols=%d rows=%d container=%dx%d",
+        name, term.cols, term.rows, termDiv.offsetWidth, termDiv.offsetHeight);
+    });
   }
 
   function removePane(name) {
@@ -493,18 +501,16 @@
     delete paneMap[name];
   }
 
-  // Resize an existing terminal when the TUI pane dimensions change.
+  // Resize terminal cols when TUI pane width changes. Rows stay fitted to container.
   function resizePaneTerm(name, data) {
     var entry = paneMap[name];
-    if (!entry || !data.cols || !data.rows) return;
+    if (!entry || !data.cols) return;
     entry._tuiCols = data.cols;
-    entry._tuiRows = data.rows;
-    // Don't resize while zoomed (zoom uses FitAddon); will restore on exit.
     if (zoomedPane === name) return;
-    if (entry.term.cols === data.cols && entry.term.rows === data.rows) return;
-    console.log("[initech-diag] resizePaneTerm pane=%s %dx%d -> %dx%d",
-      name, entry.term.cols, entry.term.rows, data.cols, data.rows);
-    entry.term.resize(data.cols, data.rows);
+    if (entry.term.cols === data.cols) return;
+    console.log("[initech-diag] resizePaneTerm pane=%s cols %d -> %d",
+      name, entry.term.cols, data.cols);
+    entry.term.resize(data.cols, entry.term.rows);
   }
 
   function updatePaneLabel(name, data) {
@@ -572,12 +578,25 @@
       });
     }
 
+    // Debounced scroll-to-bottom: fires 150ms after the last write,
+    // ensuring the replay burst has settled and xterm's render pipeline
+    // has synced the viewport. Works around term.scrollToBottom() being
+    // unreliable during batched writes.
+    var scrollTimer = null;
+    function debouncedScrollBottom() {
+      clearTimeout(scrollTimer);
+      scrollTimer = setTimeout(function() {
+        if (!entry._userScrolledUp && vpEl) {
+          vpEl.scrollTop = vpEl.scrollHeight;
+        }
+      }, 150);
+    }
+
     ws.onmessage = function(ev) {
       if (!entry.term) return;
       var data = ev.data instanceof ArrayBuffer ? new Uint8Array(ev.data) : ev.data;
-      entry.term.write(data, function() {
-        if (!entry._userScrolledUp) entry.term.scrollToBottom();
-      });
+      entry.term.write(data);
+      if (!entry._userScrolledUp) debouncedScrollBottom();
     };
 
     ws.onclose = function() {
@@ -747,12 +766,17 @@
     if (entry) {
       var exitName = entry.nameSpan.textContent;
       entry.cell.appendChild(entry.termDiv);
-      // Restore TUI terminal size (last known from /ws/state).
-      if (entry._tuiCols && entry._tuiRows) {
-        entry.term.resize(entry._tuiCols, entry._tuiRows);
-        console.log("[initech-diag] exitZoom pane=%s restored=%dx%d",
-          exitName, entry._tuiCols, entry._tuiRows);
-      }
+      // Fit rows to grid cell, restore TUI cols.
+      requestAnimationFrame(function() {
+        requestAnimationFrame(function() {
+          try {
+            entry.fitAddon.fit();
+            if (entry._tuiCols && entry.term.cols !== entry._tuiCols) {
+              entry.term.resize(entry._tuiCols, entry.term.rows);
+            }
+          } catch(e) {}
+        });
+      });
     }
 
     zoomLabel.onclick = null;
@@ -787,18 +811,26 @@
     blurAllPanes();
   });
 
-  // --- Fit all terminals (debounced on resize) ---
+  // --- Fit terminals on resize ---
 
-  // Fit only the zoomed terminal on browser resize. Grid panes are
-  // fixed to TUI dimensions and scroll within their cells.
-  function fitZoomedTerminal() {
-    if (!zoomedPane || !paneMap[zoomedPane]) return;
-    try { paneMap[zoomedPane].fitAddon.fit(); } catch(e) {}
+  // Re-fit all panes: FitAddon determines rows from container height,
+  // then we restore server cols. Zoomed pane uses FitAddon for both.
+  function fitAllTerminals() {
+    for (var name in paneMap) {
+      if (!paneMap.hasOwnProperty(name)) continue;
+      var e = paneMap[name];
+      try {
+        e.fitAddon.fit();
+        if (name !== zoomedPane && e._tuiCols && e.term.cols !== e._tuiCols) {
+          e.term.resize(e._tuiCols, e.term.rows);
+        }
+      } catch(ex) {}
+    }
   }
 
   window.addEventListener("resize", function() {
     clearTimeout(resizeTimer);
-    resizeTimer = setTimeout(fitZoomedTerminal, 100);
+    resizeTimer = setTimeout(fitAllTerminals, 100);
   });
 
   // --- Toast notifications ---
