@@ -66,7 +66,7 @@ func (f *fakeSubscriber) sendToAll(paneName string, data []byte) {
 func TestWS_ReceivesBytes(t *testing.T) {
 	lister := &fakeLister{ok: true}
 	sub := newFakeSubscriber()
-	srv := NewServer(0, lister, sub, nil, nil)
+	srv := NewServer(0, lister, sub, nil, nil, nil)
 
 	ts := httptest.NewServer(srv.srv.Handler)
 	defer ts.Close()
@@ -98,7 +98,7 @@ func TestWS_ReceivesBytes(t *testing.T) {
 func TestWS_UnknownPane_404(t *testing.T) {
 	lister := &fakeLister{ok: true}
 	sub := newFakeSubscriber()
-	srv := NewServer(0, lister, sub, nil, nil)
+	srv := NewServer(0, lister, sub, nil, nil, nil)
 
 	ts := httptest.NewServer(srv.srv.Handler)
 	defer ts.Close()
@@ -117,7 +117,7 @@ func TestWS_UnknownPane_404(t *testing.T) {
 
 func TestWS_NoSubscriber_501(t *testing.T) {
 	lister := &fakeLister{ok: true}
-	srv := NewServer(0, lister, nil, nil, nil)
+	srv := NewServer(0, lister, nil, nil, nil, nil)
 
 	ts := httptest.NewServer(srv.srv.Handler)
 	defer ts.Close()
@@ -137,7 +137,7 @@ func TestWS_NoSubscriber_501(t *testing.T) {
 func TestWS_DisconnectCleansUp(t *testing.T) {
 	lister := &fakeLister{ok: true}
 	sub := newFakeSubscriber()
-	srv := NewServer(0, lister, sub, nil, nil)
+	srv := NewServer(0, lister, sub, nil, nil, nil)
 
 	ts := httptest.NewServer(srv.srv.Handler)
 	defer ts.Close()
@@ -172,7 +172,7 @@ func TestWS_DisconnectCleansUp(t *testing.T) {
 func TestWS_MultipleConnections(t *testing.T) {
 	lister := &fakeLister{ok: true}
 	sub := newFakeSubscriber()
-	srv := NewServer(0, lister, sub, nil, nil)
+	srv := NewServer(0, lister, sub, nil, nil, nil)
 
 	ts := httptest.NewServer(srv.srv.Handler)
 	defer ts.Close()
@@ -212,7 +212,7 @@ func TestWS_MultipleConnections(t *testing.T) {
 func TestWS_ChannelClosed_ServerCloses(t *testing.T) {
 	lister := &fakeLister{ok: true}
 	sub := newFakeSubscriber()
-	srv := NewServer(0, lister, sub, nil, nil)
+	srv := NewServer(0, lister, sub, nil, nil, nil)
 
 	ts := httptest.NewServer(srv.srv.Handler)
 	defer ts.Close()

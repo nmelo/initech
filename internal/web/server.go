@@ -76,6 +76,30 @@ type StateProvider interface {
 	CurrentState() (StateSnapshot, bool)
 }
 
+// AgentEventInfo is a serializable agent event for the web companion.
+type AgentEventInfo struct {
+	Kind   string `json:"kind"`
+	Pane   string `json:"pane"`
+	BeadID string `json:"bead_id,omitempty"`
+	Detail string `json:"detail"`
+	Time   string `json:"time"` // RFC 3339
+}
+
+// EventProvider provides event subscription for the /ws/state stream.
+// Subscribe returns a channel that receives agent events. Unsubscribe
+// removes the subscription and closes the channel.
+type EventProvider interface {
+	SubscribeEvents(id string) chan AgentEventInfo
+	UnsubscribeEvents(id string)
+}
+
+// wsMessage is the envelope for all /ws/state messages.
+type wsMessage struct {
+	Type  string       `json:"type"`
+	State *StateSnapshot `json:"state,omitempty"`
+	Event *AgentEventInfo `json:"event,omitempty"`
+}
+
 // Server is an HTTP server that serves the SPA and pane API.
 type Server struct {
 	addr          string
@@ -84,6 +108,7 @@ type Server struct {
 	lister        PaneLister
 	subscriber    PaneSubscriber // Optional: enables /ws/pane/{name} endpoint.
 	stateProvider StateProvider  // Optional: enables /ws/state endpoint.
+	eventProvider EventProvider  // Optional: enables events on /ws/state.
 	subIDSeq      atomic.Uint64  // Monotonic counter for generating unique subscriber IDs.
 }
 
@@ -92,7 +117,7 @@ type Server struct {
 // with --web-port, so we bind all interfaces by default.
 // If port is 0, the OS assigns a free port. The subscriber parameter is
 // optional; if nil, the /ws/pane/{name} endpoint returns 501.
-func NewServer(port int, lister PaneLister, subscriber PaneSubscriber, stateProvider StateProvider, logger *slog.Logger) *Server {
+func NewServer(port int, lister PaneLister, subscriber PaneSubscriber, stateProvider StateProvider, eventProvider EventProvider, logger *slog.Logger) *Server {
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -104,6 +129,7 @@ func NewServer(port int, lister PaneLister, subscriber PaneSubscriber, stateProv
 		lister:        lister,
 		subscriber:    subscriber,
 		stateProvider: stateProvider,
+		eventProvider: eventProvider,
 	}
 
 	mux := http.NewServeMux()
@@ -227,8 +253,9 @@ func (s *Server) handlePaneWS(w http.ResponseWriter, r *http.Request) {
 const stateDebounceInterval = 500 * time.Millisecond
 
 // handleStateWS upgrades to WebSocket, sends the initial state snapshot, then
-// pushes updates every 500ms when state changes. Uses snapshot comparison to
-// avoid sending duplicate frames.
+// pushes state updates every 500ms when state changes and event messages
+// immediately when agent events fire. Both message types use a discriminated
+// envelope: {"type":"state",...} or {"type":"event",...}.
 func (s *Server) handleStateWS(w http.ResponseWriter, r *http.Request) {
 	if s.stateProvider == nil {
 		http.Error(w, "state streaming not available", http.StatusNotImplemented)
@@ -246,18 +273,28 @@ func (s *Server) handleStateWS(w http.ResponseWriter, r *http.Request) {
 
 	ctx := conn.CloseRead(r.Context())
 
-	// Send initial snapshot.
+	// Subscribe to events if available.
+	subID := fmt.Sprintf("ws-state-%d", s.subIDSeq.Add(1))
+	var eventCh chan AgentEventInfo
+	if s.eventProvider != nil {
+		eventCh = s.eventProvider.SubscribeEvents(subID)
+		defer s.eventProvider.UnsubscribeEvents(subID)
+	}
+
+	// Send initial state snapshot.
 	snap, ok := s.stateProvider.CurrentState()
 	if !ok {
 		conn.Close(websocket.StatusGoingAway, "shutting down")
 		return
 	}
-	lastJSON, _ := json.Marshal(snap)
-	if err := conn.Write(ctx, websocket.MessageText, lastJSON); err != nil {
+	msg := wsMessage{Type: "state", State: &snap}
+	lastStateJSON, _ := json.Marshal(snap)
+	initJSON, _ := json.Marshal(msg)
+	if err := conn.Write(ctx, websocket.MessageText, initJSON); err != nil {
 		return
 	}
 
-	// Poll for changes on a 500ms ticker.
+	// Poll for state changes on a 500ms ticker, push events immediately.
 	ticker := time.NewTicker(stateDebounceInterval)
 	defer ticker.Stop()
 
@@ -269,15 +306,27 @@ func (s *Server) handleStateWS(w http.ResponseWriter, r *http.Request) {
 				conn.Close(websocket.StatusGoingAway, "shutting down")
 				return
 			}
-			newJSON, _ := json.Marshal(snap)
-			// Skip send if snapshot hasn't changed.
-			if string(newJSON) == string(lastJSON) {
+			newStateJSON, _ := json.Marshal(snap)
+			if string(newStateJSON) == string(lastStateJSON) {
 				continue
 			}
-			lastJSON = newJSON
-			if err := conn.Write(ctx, websocket.MessageText, newJSON); err != nil {
+			lastStateJSON = newStateJSON
+			msg := wsMessage{Type: "state", State: &snap}
+			data, _ := json.Marshal(msg)
+			if err := conn.Write(ctx, websocket.MessageText, data); err != nil {
 				return
 			}
+
+		case evt, open := <-eventCh:
+			if !open {
+				return
+			}
+			msg := wsMessage{Type: "event", Event: &evt}
+			data, _ := json.Marshal(msg)
+			if err := conn.Write(ctx, websocket.MessageText, data); err != nil {
+				return
+			}
+
 		case <-ctx.Done():
 			return
 		}

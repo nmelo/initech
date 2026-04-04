@@ -123,6 +123,11 @@ func (t *TUI) handleAgentEvent(ev AgentEvent) {
 		ev.Time = time.Now()
 	}
 
+	// Broadcast to web companion subscribers.
+	if t.webEventProvider != nil {
+		t.webEventProvider.BroadcastWebEvent(ev)
+	}
+
 	ttl := notificationTTL
 	// Completion events persist longer since they're more actionable.
 	if ev.Type == EventBeadCompleted {

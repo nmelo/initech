@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"sync"
+
 	"github.com/nmelo/initech/internal/web"
 )
 
@@ -121,4 +123,59 @@ func (s *tuiStateProvider) CurrentState() (web.StateSnapshot, bool) {
 		}
 	})
 	return snap, ok
+}
+
+// tuiEventProvider adapts the TUI's agent event system to the web.EventProvider
+// interface. Subscribers receive events when the TUI calls BroadcastWebEvent.
+type tuiEventProvider struct {
+	t   *TUI
+	mu  sync.Mutex
+	subs map[string]chan web.AgentEventInfo
+}
+
+var _ web.EventProvider = (*tuiEventProvider)(nil)
+
+func (p *tuiEventProvider) SubscribeEvents(id string) chan web.AgentEventInfo {
+	ch := make(chan web.AgentEventInfo, 64)
+	p.mu.Lock()
+	if p.subs == nil {
+		p.subs = make(map[string]chan web.AgentEventInfo)
+	}
+	p.subs[id] = ch
+	p.mu.Unlock()
+	return ch
+}
+
+func (p *tuiEventProvider) UnsubscribeEvents(id string) {
+	p.mu.Lock()
+	ch, ok := p.subs[id]
+	if ok {
+		delete(p.subs, id)
+	}
+	p.mu.Unlock()
+	if ok {
+		close(ch)
+	}
+}
+
+// BroadcastWebEvent sends an agent event to all web subscribers. Called from
+// the TUI's handleAgentEvent path. Non-blocking: drops events for slow consumers.
+func (p *tuiEventProvider) BroadcastWebEvent(ev AgentEvent) {
+	info := web.AgentEventInfo{
+		Kind:   ev.Type.String(),
+		Pane:   ev.Pane,
+		BeadID: ev.BeadID,
+		Detail: ev.Detail,
+		Time:   ev.Time.Format("2006-01-02T15:04:05Z07:00"),
+	}
+
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	for _, ch := range p.subs {
+		select {
+		case ch <- info:
+		default:
+			// Slow consumer: drop event.
+		}
+	}
 }

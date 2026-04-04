@@ -220,7 +220,8 @@ type TUI struct {
 	mcpPort  int    // Configured port (0 = disabled).
 
 	// Web companion runtime state for the web modal.
-	webPort int // Configured port (0 = disabled).
+	webPort         int               // Configured port (0 = disabled).
+	webEventProvider *tuiEventProvider // For broadcasting events to web subscribers. Nil if web disabled.
 
 	// Timer store for scheduled sends.
 	timers *TimerStore
@@ -626,7 +627,9 @@ func Run(cfg Config) error {
 		lister := &tuiPaneLister{t: t}
 		subscriber := &tuiPaneSubscriber{t: t}
 		stateProvider := &tuiStateProvider{t: t}
-		webSrv := web.NewServer(cfg.WebPort, lister, subscriber, stateProvider, nil)
+		eventProvider := &tuiEventProvider{t: t}
+		t.webEventProvider = eventProvider
+		webSrv := web.NewServer(cfg.WebPort, lister, subscriber, stateProvider, eventProvider, nil)
 		go func() {
 			if err := webSrv.Start(webCtx); err != nil {
 				LogError("web", "server exited with error", "err", err)
