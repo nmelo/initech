@@ -511,6 +511,160 @@ func TestRunInit_InvalidExistingConfig(t *testing.T) {
 	}
 }
 
+func TestRunInit_EmptyRepoSubmoduleCleanup(t *testing.T) {
+	dir := t.TempDir()
+	cfg := &config.Project{
+		Name:  "demo",
+		Root:  dir,
+		Roles: []string{"eng1"},
+		Repos: []config.Repo{{URL: "git@github.com:test/repo.git", Name: "repo"}},
+		Beads: config.BeadsConfig{Prefix: "dem"},
+	}
+	if err := config.Write(filepath.Join(dir, "initech.yaml"), cfg); err != nil {
+		t.Fatalf("config.Write: %v", err)
+	}
+
+	// Create .git dir and artifacts that a failed submodule add leaves behind.
+	os.MkdirAll(filepath.Join(dir, ".git", "modules", "eng1", "src"), 0755)
+	os.MkdirAll(filepath.Join(dir, "eng1", "src"), 0755)
+	os.WriteFile(filepath.Join(dir, ".git", "index.lock"), []byte("lock"), 0644)
+
+	restoreWD := chdirForTest(t, dir)
+	defer restoreWD()
+
+	restoreRunner := stubInitRunner(t, &fakeMultiRunner{
+		responses: []fakeResponse{
+			{output: "", err: nil},                                // git config --remove-section (CleanFailedSubmodule)
+			{output: "", err: fmt.Errorf("which bd: not found")},  // which bd
+		},
+	})
+	defer restoreRunner()
+
+	restoreScaffold := stubScaffoldRun(t, func(p *config.Project, opts scaffold.Options) ([]string, error) {
+		return []string{"eng1/CLAUDE.md"}, nil
+	})
+	defer restoreScaffold()
+
+	// Stub git: init and commit succeed, submodule add returns empty repo error.
+	origInit := gitInit
+	origAdd := gitAddSubmodule
+	origCommit := gitCommitAll
+	gitInit = func(r iexec.Runner, root string) error { return nil }
+	gitAddSubmodule = func(r iexec.Runner, root, repoURL, subPath string) error {
+		return fmt.Errorf("git submodule add eng1/src: fatal: You are on a branch yet to be born")
+	}
+	gitCommitAll = func(r iexec.Runner, root, message string) error { return nil }
+	defer func() {
+		gitInit = origInit
+		gitAddSubmodule = origAdd
+		gitCommitAll = origCommit
+	}()
+
+	var out bytes.Buffer
+	cmd := &cobra.Command{}
+	cmd.SetOut(&out)
+
+	if err := runInit(cmd, nil); err != nil {
+		t.Fatalf("runInit: %v", err)
+	}
+
+	got := out.String()
+
+	// Should show clear empty-repo message, not raw git error.
+	if !strings.Contains(got, "has no commits") {
+		t.Errorf("output should mention 'has no commits':\n%s", got)
+	}
+	if !strings.Contains(got, "push an initial commit") {
+		t.Errorf("output should tell user to push initial commit:\n%s", got)
+	}
+
+	// Partial checkout directory should be cleaned up.
+	if _, err := os.Stat(filepath.Join(dir, "eng1", "src")); !os.IsNotExist(err) {
+		t.Error("partial checkout dir eng1/src should be removed after cleanup")
+	}
+
+	// index.lock should be cleaned up.
+	if _, err := os.Stat(filepath.Join(dir, ".git", "index.lock")); !os.IsNotExist(err) {
+		t.Error("index.lock should be removed after cleanup")
+	}
+
+	// .git/modules should be cleaned up.
+	if _, err := os.Stat(filepath.Join(dir, ".git", "modules", "eng1", "src")); !os.IsNotExist(err) {
+		t.Error(".git/modules/eng1/src should be removed after cleanup")
+	}
+}
+
+func TestRunInit_GenericSubmoduleFailureCleanup(t *testing.T) {
+	dir := t.TempDir()
+	cfg := &config.Project{
+		Name:  "demo",
+		Root:  dir,
+		Roles: []string{"eng1"},
+		Repos: []config.Repo{{URL: "git@github.com:test/repo.git", Name: "repo"}},
+		Beads: config.BeadsConfig{Prefix: "dem"},
+	}
+	if err := config.Write(filepath.Join(dir, "initech.yaml"), cfg); err != nil {
+		t.Fatalf("config.Write: %v", err)
+	}
+
+	// Create .git dir and index.lock artifact.
+	os.MkdirAll(filepath.Join(dir, ".git"), 0755)
+	os.WriteFile(filepath.Join(dir, ".git", "index.lock"), []byte("lock"), 0644)
+
+	restoreWD := chdirForTest(t, dir)
+	defer restoreWD()
+
+	restoreRunner := stubInitRunner(t, &fakeMultiRunner{
+		responses: []fakeResponse{
+			{output: "", err: nil},                                // git config --remove-section
+			{output: "", err: fmt.Errorf("which bd: not found")},  // which bd
+		},
+	})
+	defer restoreRunner()
+
+	restoreScaffold := stubScaffoldRun(t, func(p *config.Project, opts scaffold.Options) ([]string, error) {
+		return []string{"eng1/CLAUDE.md"}, nil
+	})
+	defer restoreScaffold()
+
+	origInit := gitInit
+	origAdd := gitAddSubmodule
+	origCommit := gitCommitAll
+	gitInit = func(r iexec.Runner, root string) error { return nil }
+	gitAddSubmodule = func(r iexec.Runner, root, repoURL, subPath string) error {
+		return fmt.Errorf("git submodule add eng1/src: connection refused")
+	}
+	gitCommitAll = func(r iexec.Runner, root, message string) error { return nil }
+	defer func() {
+		gitInit = origInit
+		gitAddSubmodule = origAdd
+		gitCommitAll = origCommit
+	}()
+
+	var out bytes.Buffer
+	cmd := &cobra.Command{}
+	cmd.SetOut(&out)
+
+	if err := runInit(cmd, nil); err != nil {
+		t.Fatalf("runInit: %v", err)
+	}
+
+	got := out.String()
+
+	// Generic failures should show the original error (not the empty-repo message).
+	if !strings.Contains(got, "clone failed") {
+		t.Errorf("output should show 'clone failed':\n%s", got)
+	}
+	if strings.Contains(got, "has no commits") {
+		t.Errorf("output should NOT show empty-repo message for generic errors:\n%s", got)
+	}
+
+	// index.lock should still be cleaned up.
+	if _, err := os.Stat(filepath.Join(dir, ".git", "index.lock")); !os.IsNotExist(err) {
+		t.Error("index.lock should be removed after cleanup")
+	}
+}
+
 func withStdin(t *testing.T, input string) func() {
 	t.Helper()
 	orig := os.Stdin

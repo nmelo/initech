@@ -81,3 +81,39 @@ func CommitAll(runner iexec.Runner, dir, message string) error {
 	}
 	return nil
 }
+
+// IsEmptyRepoError reports whether the error indicates the remote repository
+// has no commits. This happens when git submodule add clones a freshly created
+// repo (e.g., a new GitHub repo with no initial commit). Git fails with
+// "You are on a branch yet to be born" because there is no HEAD to check out.
+func IsEmptyRepoError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "yet to be born") ||
+		strings.Contains(msg, "did not match any file") ||
+		strings.Contains(msg, "remote HEAD refers to nonexistent ref")
+}
+
+// CleanFailedSubmodule removes leftover artifacts from a failed
+// git submodule add. This prevents cascading failures: a stale index.lock
+// blocks all subsequent git operations, and partial checkout directories
+// cause "does not have a commit checked out" errors during git add.
+//
+// Cleanup is best-effort; errors are silently ignored because the artifacts
+// may not all exist depending on where the submodule add failed.
+func CleanFailedSubmodule(runner iexec.Runner, repoDir, subPath string) {
+	// Remove partial checkout directory (fixes "does not have a commit checked out")
+	os.RemoveAll(filepath.Join(repoDir, subPath))
+
+	// Remove cached module clone
+	os.RemoveAll(filepath.Join(repoDir, ".git", "modules", subPath))
+
+	// Remove .gitmodules entry if it was partially written
+	runner.RunInDir(repoDir, "git", "config", "-f", ".gitmodules",
+		"--remove-section", "submodule."+subPath)
+
+	// Remove index.lock (fixes "Unable to create index.lock: File exists")
+	os.Remove(filepath.Join(repoDir, ".git", "index.lock"))
+}

@@ -168,3 +168,74 @@ func TestAddSubmodule_NormalizesURL(t *testing.T) {
 		t.Errorf("expected normalized URL in call, got %q", call)
 	}
 }
+
+func TestIsEmptyRepoError(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{"nil error", nil, false},
+		{"generic error", errors.New("connection refused"), false},
+		{"branch yet to be born", errors.New("fatal: You are on a branch yet to be born"), true},
+		{"wrapped yet to be born", errors.New("git submodule add: fatal: You are on a branch yet to be born"), true},
+		{"nonexistent ref", errors.New("fatal: remote HEAD refers to nonexistent ref"), true},
+		{"did not match", errors.New("fatal: pathspec 'HEAD' did not match any file"), true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := IsEmptyRepoError(tc.err); got != tc.want {
+				t.Errorf("IsEmptyRepoError(%v) = %v, want %v", tc.err, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestCleanFailedSubmodule(t *testing.T) {
+	repoDir := t.TempDir()
+
+	// Create the artifacts that a failed git submodule add leaves behind.
+	subPath := "eng1/src"
+	os.MkdirAll(filepath.Join(repoDir, subPath), 0755)
+	os.MkdirAll(filepath.Join(repoDir, ".git", "modules", subPath), 0755)
+	lockPath := filepath.Join(repoDir, ".git", "index.lock")
+	os.WriteFile(lockPath, []byte("lock"), 0644)
+
+	fake := &iexec.FakeRunner{}
+	CleanFailedSubmodule(fake, repoDir, subPath)
+
+	// Partial checkout directory should be removed.
+	if _, err := os.Stat(filepath.Join(repoDir, subPath)); !os.IsNotExist(err) {
+		t.Error("partial checkout dir should be removed")
+	}
+
+	// .git/modules/<subPath> should be removed.
+	if _, err := os.Stat(filepath.Join(repoDir, ".git", "modules", subPath)); !os.IsNotExist(err) {
+		t.Error(".git/modules dir should be removed")
+	}
+
+	// index.lock should be removed.
+	if _, err := os.Stat(lockPath); !os.IsNotExist(err) {
+		t.Error("index.lock should be removed")
+	}
+
+	// Should have called git config to remove .gitmodules section.
+	if len(fake.Calls) != 1 {
+		t.Fatalf("expected 1 runner call, got %d: %v", len(fake.Calls), fake.Calls)
+	}
+	if !strings.Contains(fake.Calls[0], "--remove-section") || !strings.Contains(fake.Calls[0], "submodule.eng1/src") {
+		t.Errorf("expected gitmodules remove-section call, got %q", fake.Calls[0])
+	}
+}
+
+func TestCleanFailedSubmodule_NoArtifacts(t *testing.T) {
+	// Safe to call when no artifacts exist (nothing to clean up).
+	repoDir := t.TempDir()
+	os.MkdirAll(filepath.Join(repoDir, ".git"), 0755)
+
+	fake := &iexec.FakeRunner{}
+	CleanFailedSubmodule(fake, repoDir, "eng1/src")
+
+	// Should not panic or error. The git config call happens regardless
+	// (best-effort), so we just verify no crash.
+}

@@ -172,7 +172,26 @@ func runInit(cmd *cobra.Command, args []string) error {
 		var failures int
 		for _, r := range results {
 			if r.err != nil {
-				fmt.Fprintf(out, "\r  %s %s: %v\n", color.Red("\u2717"), color.Red("clone failed for "+r.role), r.err)
+				// Find the subPath for cleanup
+				var subPath string
+				for _, j := range jobs {
+					if j.role == r.role {
+						subPath = j.subPath
+						break
+					}
+				}
+
+				if git.IsEmptyRepoError(r.err) {
+					fmt.Fprintf(out, "\r  %s %s has no commits — push an initial commit and re-run initech init\n",
+						color.Yellow("!"), color.Yellow(r.role+" repo"))
+				} else {
+					fmt.Fprintf(out, "\r  %s %s: %v\n", color.Red("\u2717"), color.Red("clone failed for "+r.role), r.err)
+				}
+
+				// Clean up partial submodule artifacts so subsequent git
+				// operations (index.lock) and the initial commit (git add -A)
+				// don't fail with cascading errors.
+				git.CleanFailedSubmodule(runner, p.Root, subPath)
 				failures++
 			}
 		}
