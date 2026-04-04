@@ -64,6 +64,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 		Agents:  agents,
 		Version: Version,
 		Verbose: verbose,
+		WebPort: proj.EffectiveWebPort(),
 	})
 }
 

@@ -13,6 +13,7 @@ package tui
 
 import (
 	"bufio"
+	"context"
 	"crypto/subtle"
 	"encoding/json"
 	"fmt"
@@ -30,6 +31,7 @@ import (
 
 	"github.com/hashicorp/yamux"
 	"github.com/nmelo/initech/internal/config"
+	"github.com/nmelo/initech/internal/web"
 )
 
 // DaemonConfig holds the configuration for a headless daemon session.
@@ -38,6 +40,7 @@ type DaemonConfig struct {
 	Agents  []PaneConfig
 	Version string
 	Verbose bool
+	WebPort int // Web companion port. 0 = disabled.
 }
 
 // Daemon manages headless agent panes and streams them to a yamux client.
@@ -245,6 +248,30 @@ func RunDaemon(cfg DaemonConfig) error {
 		fmt.Fprintf(os.Stdout, "  socket:  %s\n", sockPath)
 	}
 	fmt.Fprintf(os.Stdout, "  pid:     %d\n", os.Getpid())
+
+	// Start web companion server when configured.
+	if cfg.WebPort > 0 {
+		webCtx, webCancel := context.WithCancel(context.Background())
+		lister := &daemonPaneLister{d: d}
+		subscriber := &daemonPaneSubscriber{d: d}
+		stateProvider := &daemonStateProvider{d: d}
+		paneWriter := &daemonPaneWriter{d: d}
+		webSrv := web.NewServer(cfg.WebPort, lister, subscriber, stateProvider, nil, paneWriter, nil)
+		go func() {
+			if err := webSrv.Start(webCtx); err != nil {
+				LogError("daemon-web", "server exited with error", "err", err)
+			}
+		}()
+		LogInfo("daemon-web", "companion server starting", "port", cfg.WebPort)
+		fmt.Fprintf(os.Stdout, "  web:     http://0.0.0.0:%d\n", cfg.WebPort)
+		defer func() {
+			webCancel()
+			shutCtx, shutCancel := context.WithTimeout(context.Background(), 2*time.Second)
+			webSrv.Shutdown(shutCtx)
+			shutCancel()
+		}()
+	}
+
 	fmt.Fprintln(os.Stdout, "\nWaiting for connections... (Ctrl+C to stop)")
 
 	// Fire any overdue timers from a previous session.
