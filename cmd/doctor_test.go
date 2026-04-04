@@ -96,7 +96,7 @@ func TestDoctorPrereqs_OptionalMissing(t *testing.T) {
 func TestDoctorProject_Valid(t *testing.T) {
 	dir := t.TempDir()
 
-	yaml := fmt.Sprintf("project: testproj\nroot: %s\nroles:\n  - super\n", dir)
+	yaml := fmt.Sprintf("project: testproj\nroot: %s\nwebhook_url: https://hooks.slack.com/test\nroles:\n  - super\n", dir)
 	os.WriteFile(filepath.Join(dir, "initech.yaml"), []byte(yaml), 0644)
 
 	for _, role := range []string{"super"} {
@@ -133,6 +133,36 @@ func TestDoctorProject_Valid(t *testing.T) {
 		if c.Status == "WARN" || c.Status == "FAIL" {
 			t.Errorf("check %q has status %q: %s", c.Label, c.Status, c.Detail)
 		}
+	}
+}
+
+func TestDoctorProject_MissingWebhookURL(t *testing.T) {
+	dir := t.TempDir()
+
+	yaml := fmt.Sprintf("project: testproj\nroot: %s\nroles:\n  - super\n", dir)
+	os.WriteFile(filepath.Join(dir, "initech.yaml"), []byte(yaml), 0644)
+
+	os.MkdirAll(filepath.Join(dir, "super"), 0755)
+	os.WriteFile(filepath.Join(dir, "super", "CLAUDE.md"), []byte("# super"), 0644)
+	os.MkdirAll(filepath.Join(dir, ".beads"), 0755)
+
+	checks, _, _ := runProjectChecks(filepath.Join(dir, "initech.yaml"))
+
+	var notifyCheck *CheckResult
+	for i := range checks {
+		if checks[i].Label == "Notify" {
+			notifyCheck = &checks[i]
+			break
+		}
+	}
+	if notifyCheck == nil {
+		t.Fatal("expected Notify check result")
+	}
+	if notifyCheck.Status != "WARN" {
+		t.Errorf("Notify status = %q, want WARN", notifyCheck.Status)
+	}
+	if notifyCheck.Detail != "no webhook_url configured (Slack notifications disabled)" {
+		t.Errorf("Notify detail = %q", notifyCheck.Detail)
 	}
 }
 

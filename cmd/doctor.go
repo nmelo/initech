@@ -203,6 +203,19 @@ func runProjectChecks(cfgPath string) (checks []CheckResult, projectName, projec
 		Detail: fmt.Sprintf("initech.yaml valid (%d roles)", len(proj.Roles)),
 	})
 
+	// Notify: webhook_url
+	if proj.WebhookURL == "" {
+		checks = append(checks, CheckResult{
+			Label: "Notify", Status: "WARN",
+			Detail: "no webhook_url configured (Slack notifications disabled)",
+		})
+	} else {
+		checks = append(checks, CheckResult{
+			Label: "Notify", Status: "OK",
+			Detail: "webhook_url configured",
+		})
+	}
+
 	// .beads/ directory (skip when disabled)
 	if proj.Beads.IsEnabled() {
 		beadsDir := filepath.Join(root, ".beads")

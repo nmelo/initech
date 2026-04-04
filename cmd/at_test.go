@@ -326,7 +326,7 @@ func startATIPCServer(t *testing.T, sockPath string, mode responseMode) (<-chan 
 		t.Fatalf("listen unix: %v", err)
 	}
 
-	reqCh := make(chan []byte, 1)
+	reqCh := make(chan []byte, 8)
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
@@ -342,7 +342,10 @@ func startATIPCServer(t *testing.T, sockPath string, mode responseMode) (<-chan 
 				continue // discoverSocket probe connection
 			}
 			req := append([]byte(nil), scanner.Bytes()...)
-			reqCh <- req
+			select {
+			case reqCh <- req:
+			default:
+			}
 
 			if !mode.closeWithoutReply {
 				payload := mode.raw
@@ -352,7 +355,6 @@ func startATIPCServer(t *testing.T, sockPath string, mode responseMode) (<-chan 
 				_, _ = conn.Write([]byte(payload))
 			}
 			_ = conn.Close()
-			return
 		}
 	}()
 

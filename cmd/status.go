@@ -60,6 +60,9 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("parse pane list: %w", err)
 	}
 
+	// Merge remote peer agents not already in the pane list.
+	panes = mergeRemotePeers(sockPath, panes)
+
 	// Try to get bead assignments (skip when disabled).
 	runner := &iexec.DefaultRunner{}
 	var beadMap map[string]beadInfo
@@ -188,6 +191,47 @@ func statusColor(s string) string {
 	default:
 		return s
 	}
+}
+
+// mergeRemotePeers queries peers_query and appends any remote agents not
+// already present in the pane list. Best-effort: errors are silently ignored.
+func mergeRemotePeers(sockPath string, panes []paneInfo) []paneInfo {
+	resp, err := ipcCallSocket(sockPath, tui.IPCRequest{Action: "peers_query"})
+	if err != nil || !resp.OK {
+		return panes
+	}
+
+	var peers []tui.PeerInfo
+	if err := json.Unmarshal([]byte(resp.Data), &peers); err != nil {
+		return panes
+	}
+
+	// Build set of existing pane names (host:name for remote, name for local).
+	existing := make(map[string]bool, len(panes))
+	for _, pi := range panes {
+		existing[pi.Name] = true
+	}
+
+	// Skip the first peer (local). Merge agents from remote peers.
+	for i, peer := range peers {
+		if i == 0 {
+			continue
+		}
+		for _, agent := range peer.Agents {
+			if existing[agent] {
+				continue
+			}
+			panes = append(panes, paneInfo{
+				Name:     agent,
+				Host:     peer.Name,
+				Activity: "connected",
+				Alive:    true,
+				Visible:  true,
+			})
+			existing[agent] = true
+		}
+	}
+	return panes
 }
 
 func getBeadAssignments(runner iexec.Runner) map[string]beadInfo {
