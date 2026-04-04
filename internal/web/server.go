@@ -76,6 +76,15 @@ type StateProvider interface {
 	CurrentState() (StateSnapshot, bool)
 }
 
+// PaneWriter writes raw bytes to a pane's PTY input. Used by the WebSocket
+// handler to relay keyboard input from the browser to the agent terminal.
+// Implementations must serialize writes with other PTY writers (e.g. IPC send).
+type PaneWriter interface {
+	// WriteToPTY writes data to the named pane's PTY master. Returns an error
+	// if the pane is not found or dead. Safe for concurrent use.
+	WriteToPTY(paneName string, data []byte) error
+}
+
 // AgentEventInfo is a serializable agent event for the web companion.
 type AgentEventInfo struct {
 	Kind   string `json:"kind"`
@@ -109,6 +118,7 @@ type Server struct {
 	subscriber    PaneSubscriber // Optional: enables /ws/pane/{name} endpoint.
 	stateProvider StateProvider  // Optional: enables /ws/state endpoint.
 	eventProvider EventProvider  // Optional: enables events on /ws/state.
+	paneWriter    PaneWriter     // Optional: enables PTY input via /ws/pane/{name}. Nil = read-only.
 	subIDSeq      atomic.Uint64  // Monotonic counter for generating unique subscriber IDs.
 }
 
@@ -117,7 +127,7 @@ type Server struct {
 // with --web-port, so we bind all interfaces by default.
 // If port is 0, the OS assigns a free port. The subscriber parameter is
 // optional; if nil, the /ws/pane/{name} endpoint returns 501.
-func NewServer(port int, lister PaneLister, subscriber PaneSubscriber, stateProvider StateProvider, eventProvider EventProvider, logger *slog.Logger) *Server {
+func NewServer(port int, lister PaneLister, subscriber PaneSubscriber, stateProvider StateProvider, eventProvider EventProvider, paneWriter PaneWriter, logger *slog.Logger) *Server {
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -130,6 +140,7 @@ func NewServer(port int, lister PaneLister, subscriber PaneSubscriber, stateProv
 		subscriber:    subscriber,
 		stateProvider: stateProvider,
 		eventProvider: eventProvider,
+		paneWriter:    paneWriter,
 	}
 
 	mux := http.NewServeMux()
@@ -193,10 +204,14 @@ func (s *Server) handlePanes(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(panes)
 }
 
-// handlePaneWS upgrades an HTTP request to a WebSocket connection, subscribes
-// to the named pane's PTY byte fan-out, and relays bytes to the browser as
-// binary WebSocket messages. The connection is closed when the client
-// disconnects or the pane's subscriber channel is closed.
+// paneInputRateLimit is the maximum bytes per second accepted from a single
+// WebSocket client for PTY input. Excess bytes are silently dropped.
+const paneInputRateLimit = 64 * 1024
+
+// handlePaneWS upgrades an HTTP request to a WebSocket connection and runs
+// bidirectional relay: PTY output -> browser (write goroutine) and browser
+// keyboard input -> PTY (read goroutine). Either goroutine returning cancels
+// the other via shared context.
 func (s *Server) handlePaneWS(w http.ResponseWriter, r *http.Request) {
 	if s.subscriber == nil {
 		http.Error(w, "streaming not available", http.StatusNotImplemented)
@@ -231,8 +246,16 @@ func (s *Server) handlePaneWS(w http.ResponseWriter, r *http.Request) {
 		conn.CloseNow()
 	}()
 
-	ctx := conn.CloseRead(r.Context())
+	ctx, cancel := context.WithCancel(r.Context())
+	defer cancel()
 
+	// Read goroutine: browser -> PTY.
+	go func() {
+		defer cancel()
+		s.paneReadLoop(ctx, conn, paneName)
+	}()
+
+	// Write loop: PTY -> browser (runs on this goroutine).
 	for {
 		select {
 		case data, open := <-ch:
@@ -240,12 +263,47 @@ func (s *Server) handlePaneWS(w http.ResponseWriter, r *http.Request) {
 				conn.Close(websocket.StatusGoingAway, "pane closed")
 				return
 			}
-			err := conn.Write(ctx, websocket.MessageBinary, data)
-			if err != nil {
+			if err := conn.Write(ctx, websocket.MessageBinary, data); err != nil {
 				return
 			}
 		case <-ctx.Done():
 			return
+		}
+	}
+}
+
+// paneReadLoop reads WebSocket messages from the browser and writes them to the
+// pane's PTY via PaneWriter. Rate-limited to paneInputRateLimit bytes/sec.
+// Returns when the connection closes or the context is cancelled.
+func (s *Server) paneReadLoop(ctx context.Context, conn *websocket.Conn, paneName string) {
+	var bytesThisWindow int
+	windowStart := time.Now()
+
+	for {
+		_, data, err := conn.Read(ctx)
+		if err != nil {
+			return
+		}
+
+		// Rate limit: reset window every second, drop excess.
+		now := time.Now()
+		if now.Sub(windowStart) >= time.Second {
+			bytesThisWindow = 0
+			windowStart = now
+		}
+		if bytesThisWindow+len(data) > paneInputRateLimit {
+			continue // Drop silently.
+		}
+		bytesThisWindow += len(data)
+
+		// If no writer configured (read-only mode), discard.
+		if s.paneWriter == nil {
+			continue
+		}
+
+		if err := s.paneWriter.WriteToPTY(paneName, data); err != nil {
+			s.logger.Debug("PTY write failed", "pane", paneName, "err", err)
+			// Don't close the connection; the pane may restart.
 		}
 	}
 }

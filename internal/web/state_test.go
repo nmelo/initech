@@ -33,7 +33,7 @@ func TestStateWS_InitialSnapshot(t *testing.T) {
 		},
 		ok: true,
 	}
-	srv := NewServer(0, lister, nil, sp, nil, nil)
+	srv := NewServer(0, lister, nil, sp, nil, nil, nil)
 	ts := httptest.NewServer(srv.srv.Handler)
 	defer ts.Close()
 
@@ -91,7 +91,7 @@ func TestStateWS_PushesOnChange(t *testing.T) {
 		},
 		ok: true,
 	}
-	srv := NewServer(0, lister, nil, sp, nil, nil)
+	srv := NewServer(0, lister, nil, sp, nil, nil, nil)
 	ts := httptest.NewServer(srv.srv.Handler)
 	defer ts.Close()
 
@@ -128,7 +128,7 @@ func TestStateWS_PushesOnChange(t *testing.T) {
 
 func TestStateWS_NoProviderReturns501(t *testing.T) {
 	lister := &fakeLister{ok: true}
-	srv := NewServer(0, lister, nil, nil, nil, nil)
+	srv := NewServer(0, lister, nil, nil, nil, nil, nil)
 	ts := httptest.NewServer(srv.srv.Handler)
 	defer ts.Close()
 
@@ -157,7 +157,7 @@ func TestStateWS_DebounceSkipsDuplicates(t *testing.T) {
 		},
 		ok: true,
 	}
-	srv := NewServer(0, lister, nil, sp, nil, nil)
+	srv := NewServer(0, lister, nil, sp, nil, nil, nil)
 	ts := httptest.NewServer(srv.srv.Handler)
 	defer ts.Close()
 
@@ -231,7 +231,7 @@ func TestStateWS_ReceivesEvents(t *testing.T) {
 		ok: true,
 	}
 	ep := newFakeEventProvider()
-	srv := NewServer(0, lister, nil, sp, ep, nil)
+	srv := NewServer(0, lister, nil, sp, ep, nil, nil)
 	ts := httptest.NewServer(srv.srv.Handler)
 	defer ts.Close()
 
@@ -293,7 +293,7 @@ func TestStateWS_EventWithoutProvider(t *testing.T) {
 		},
 		ok: true,
 	}
-	srv := NewServer(0, lister, nil, sp, nil, nil)
+	srv := NewServer(0, lister, nil, sp, nil, nil, nil)
 	ts := httptest.NewServer(srv.srv.Handler)
 	defer ts.Close()
 

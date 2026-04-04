@@ -629,7 +629,8 @@ func Run(cfg Config) error {
 		stateProvider := &tuiStateProvider{t: t}
 		eventProvider := &tuiEventProvider{t: t}
 		t.webEventProvider = eventProvider
-		webSrv := web.NewServer(cfg.WebPort, lister, subscriber, stateProvider, eventProvider, nil)
+		paneWriter := &tuiPaneWriter{t: t}
+		webSrv := web.NewServer(cfg.WebPort, lister, subscriber, stateProvider, eventProvider, paneWriter, nil)
 		go func() {
 			if err := webSrv.Start(webCtx); err != nil {
 				LogError("web", "server exited with error", "err", err)

@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"sync"
 
 	"github.com/nmelo/initech/internal/web"
@@ -178,4 +179,43 @@ func (p *tuiEventProvider) BroadcastWebEvent(ev AgentEvent) {
 			// Slow consumer: drop event.
 		}
 	}
+}
+
+// tuiPaneWriter adapts the TUI to the web.PaneWriter interface. It writes raw
+// bytes to a pane's PTY master, serialized with sendMu to prevent interleaving
+// with IPC sends.
+type tuiPaneWriter struct {
+	t *TUI
+}
+
+var _ web.PaneWriter = (*tuiPaneWriter)(nil)
+
+// WriteToPTY writes raw bytes to the named pane's PTY. Uses sendMu for
+// serialization with concurrent IPC sends. Returns an error if the pane is not
+// found or not a local pane.
+func (w *tuiPaneWriter) WriteToPTY(paneName string, data []byte) error {
+	var pane *Pane
+	ok := w.t.runOnMain(func() {
+		pv := w.t.findPaneByName(paneName)
+		if pv == nil {
+			return
+		}
+		if lp, isLocal := pv.(*Pane); isLocal {
+			pane = lp
+		}
+	})
+	if !ok {
+		return fmt.Errorf("tui shutting down")
+	}
+	if pane == nil {
+		return fmt.Errorf("pane %q not found", paneName)
+	}
+
+	pane.sendMu.Lock()
+	defer pane.sendMu.Unlock()
+	if pane.ptmx == nil {
+		return fmt.Errorf("pane %q PTY closed", paneName)
+	}
+	_, err := pane.ptmx.Write(data)
+	return err
 }

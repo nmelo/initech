@@ -3,6 +3,7 @@ package web
 
 import (
 	"context"
+	"fmt"
 	"net/http/httptest"
 	"sync"
 	"testing"
@@ -66,7 +67,7 @@ func (f *fakeSubscriber) sendToAll(paneName string, data []byte) {
 func TestWS_ReceivesBytes(t *testing.T) {
 	lister := &fakeLister{ok: true}
 	sub := newFakeSubscriber()
-	srv := NewServer(0, lister, sub, nil, nil, nil)
+	srv := NewServer(0, lister, sub, nil, nil, nil, nil)
 
 	ts := httptest.NewServer(srv.srv.Handler)
 	defer ts.Close()
@@ -98,7 +99,7 @@ func TestWS_ReceivesBytes(t *testing.T) {
 func TestWS_UnknownPane_404(t *testing.T) {
 	lister := &fakeLister{ok: true}
 	sub := newFakeSubscriber()
-	srv := NewServer(0, lister, sub, nil, nil, nil)
+	srv := NewServer(0, lister, sub, nil, nil, nil, nil)
 
 	ts := httptest.NewServer(srv.srv.Handler)
 	defer ts.Close()
@@ -117,7 +118,7 @@ func TestWS_UnknownPane_404(t *testing.T) {
 
 func TestWS_NoSubscriber_501(t *testing.T) {
 	lister := &fakeLister{ok: true}
-	srv := NewServer(0, lister, nil, nil, nil, nil)
+	srv := NewServer(0, lister, nil, nil, nil, nil, nil)
 
 	ts := httptest.NewServer(srv.srv.Handler)
 	defer ts.Close()
@@ -137,7 +138,7 @@ func TestWS_NoSubscriber_501(t *testing.T) {
 func TestWS_DisconnectCleansUp(t *testing.T) {
 	lister := &fakeLister{ok: true}
 	sub := newFakeSubscriber()
-	srv := NewServer(0, lister, sub, nil, nil, nil)
+	srv := NewServer(0, lister, sub, nil, nil, nil, nil)
 
 	ts := httptest.NewServer(srv.srv.Handler)
 	defer ts.Close()
@@ -172,7 +173,7 @@ func TestWS_DisconnectCleansUp(t *testing.T) {
 func TestWS_MultipleConnections(t *testing.T) {
 	lister := &fakeLister{ok: true}
 	sub := newFakeSubscriber()
-	srv := NewServer(0, lister, sub, nil, nil, nil)
+	srv := NewServer(0, lister, sub, nil, nil, nil, nil)
 
 	ts := httptest.NewServer(srv.srv.Handler)
 	defer ts.Close()
@@ -212,7 +213,7 @@ func TestWS_MultipleConnections(t *testing.T) {
 func TestWS_ChannelClosed_ServerCloses(t *testing.T) {
 	lister := &fakeLister{ok: true}
 	sub := newFakeSubscriber()
-	srv := NewServer(0, lister, sub, nil, nil, nil)
+	srv := NewServer(0, lister, sub, nil, nil, nil, nil)
 
 	ts := httptest.NewServer(srv.srv.Handler)
 	defer ts.Close()
@@ -237,5 +238,153 @@ func TestWS_ChannelClosed_ServerCloses(t *testing.T) {
 	_, _, err = conn.Read(ctx)
 	if err == nil {
 		t.Fatal("expected error after channel closed")
+	}
+}
+
+// fakeWriter implements PaneWriter for testing bidirectional input.
+type fakeWriter struct {
+	mu      sync.Mutex
+	writes  map[string][][]byte // paneName -> list of write payloads
+	failFor map[string]bool     // paneName -> return error
+}
+
+func newFakeWriter() *fakeWriter {
+	return &fakeWriter{
+		writes:  make(map[string][][]byte),
+		failFor: make(map[string]bool),
+	}
+}
+
+func (f *fakeWriter) WriteToPTY(paneName string, data []byte) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.failFor[paneName] {
+		return fmt.Errorf("pane %q dead", paneName)
+	}
+	cp := make([]byte, len(data))
+	copy(cp, data)
+	f.writes[paneName] = append(f.writes[paneName], cp)
+	return nil
+}
+
+func (f *fakeWriter) getWrites(paneName string) [][]byte {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.writes[paneName]
+}
+
+func TestWS_InputRelayedToWriter(t *testing.T) {
+	lister := &fakeLister{ok: true}
+	sub := newFakeSubscriber()
+	writer := newFakeWriter()
+	srv := NewServer(0, lister, sub, nil, nil, writer, nil)
+
+	ts := httptest.NewServer(srv.srv.Handler)
+	defer ts.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	conn, _, err := websocket.Dial(ctx, ts.URL+"/ws/pane/eng1", nil)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer conn.CloseNow()
+
+	// Send keyboard input from browser.
+	input := []byte("hello world")
+	if err := conn.Write(ctx, websocket.MessageBinary, input); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	// Also send Ctrl+C (0x03).
+	if err := conn.Write(ctx, websocket.MessageBinary, []byte{0x03}); err != nil {
+		t.Fatalf("write ctrl-c: %v", err)
+	}
+
+	// Wait for writes to arrive.
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		writes := writer.getWrites("eng1")
+		if len(writes) >= 2 {
+			if string(writes[0]) != "hello world" {
+				t.Errorf("write[0] = %q, want %q", writes[0], "hello world")
+			}
+			if len(writes[1]) != 1 || writes[1][0] != 0x03 {
+				t.Errorf("write[1] = %v, want [0x03]", writes[1])
+			}
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("expected 2 writes, got %d", len(writer.getWrites("eng1")))
+}
+
+func TestWS_NilWriter_DiscardsInput(t *testing.T) {
+	lister := &fakeLister{ok: true}
+	sub := newFakeSubscriber()
+	// No writer (read-only mode).
+	srv := NewServer(0, lister, sub, nil, nil, nil, nil)
+
+	ts := httptest.NewServer(srv.srv.Handler)
+	defer ts.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	conn, _, err := websocket.Dial(ctx, ts.URL+"/ws/pane/eng1", nil)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer conn.CloseNow()
+
+	// Send input; should not panic or error.
+	if err := conn.Write(ctx, websocket.MessageBinary, []byte("ignored")); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	// Verify the connection still works for output.
+	sub.sendToAll("eng1", []byte("output"))
+	_, data, err := conn.Read(ctx)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if string(data) != "output" {
+		t.Errorf("data = %q, want %q", data, "output")
+	}
+}
+
+func TestWS_WriterError_DoesNotCloseConn(t *testing.T) {
+	lister := &fakeLister{ok: true}
+	sub := newFakeSubscriber()
+	writer := newFakeWriter()
+	writer.failFor["eng1"] = true // Simulate dead pane.
+	srv := NewServer(0, lister, sub, nil, nil, writer, nil)
+
+	ts := httptest.NewServer(srv.srv.Handler)
+	defer ts.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	conn, _, err := websocket.Dial(ctx, ts.URL+"/ws/pane/eng1", nil)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer conn.CloseNow()
+
+	// Send input that will fail at the writer.
+	if err := conn.Write(ctx, websocket.MessageBinary, []byte("data")); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	// Connection should still work: can receive output.
+	sub.sendToAll("eng1", []byte("still alive"))
+	_, data, err := conn.Read(ctx)
+	if err != nil {
+		t.Fatalf("read after write error: %v", err)
+	}
+	if string(data) != "still alive" {
+		t.Errorf("data = %q, want %q", data, "still alive")
 	}
 }

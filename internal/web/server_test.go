@@ -29,7 +29,7 @@ func TestHandlePanes_ReturnsJSON(t *testing.T) {
 		},
 		ok: true,
 	}
-	srv := NewServer(0, lister, nil, nil, nil, nil)
+	srv := NewServer(0, lister, nil, nil, nil, nil, nil)
 
 	req := httptest.NewRequest("GET", "/api/panes", nil)
 	w := httptest.NewRecorder()
@@ -56,7 +56,7 @@ func TestHandlePanes_ReturnsJSON(t *testing.T) {
 
 func TestHandlePanes_ShuttingDown(t *testing.T) {
 	lister := &fakeLister{ok: false}
-	srv := NewServer(0, lister, nil, nil, nil, nil)
+	srv := NewServer(0, lister, nil, nil, nil, nil, nil)
 
 	req := httptest.NewRequest("GET", "/api/panes", nil)
 	w := httptest.NewRecorder()
@@ -69,7 +69,7 @@ func TestHandlePanes_ShuttingDown(t *testing.T) {
 
 func TestServesIndex(t *testing.T) {
 	lister := &fakeLister{ok: true}
-	srv := NewServer(0, lister, nil, nil, nil, nil)
+	srv := NewServer(0, lister, nil, nil, nil, nil, nil)
 
 	req := httptest.NewRequest("GET", "/", nil)
 	w := httptest.NewRecorder()
@@ -101,7 +101,7 @@ func TestStartAndShutdown(t *testing.T) {
 		panes: []PaneInfo{{Name: "test", Alive: true, Visible: true}},
 		ok:    true,
 	}
-	srv := NewServer(0, lister, nil, nil, nil, nil)
+	srv := NewServer(0, lister, nil, nil, nil, nil, nil)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	errCh := make(chan error, 1)
@@ -155,7 +155,7 @@ func TestPortConflict(t *testing.T) {
 	fmt.Sscanf(portStr, "%d", &port)
 
 	lister := &fakeLister{ok: true}
-	srv := NewServer(port, lister, nil, nil, nil, nil)
+	srv := NewServer(port, lister, nil, nil, nil, nil, nil)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
