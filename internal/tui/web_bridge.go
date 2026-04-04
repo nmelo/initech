@@ -80,3 +80,45 @@ func (s *tuiPaneSubscriber) UnsubscribePane(paneName, subscriberID string) {
 		pane.Unsubscribe(subscriberID)
 	}
 }
+
+// tuiStateProvider adapts the TUI to the web.StateProvider interface.
+type tuiStateProvider struct {
+	t *TUI
+}
+
+var _ web.StateProvider = (*tuiStateProvider)(nil)
+
+func (s *tuiStateProvider) CurrentState() (web.StateSnapshot, bool) {
+	var snap web.StateSnapshot
+	ok := s.t.runOnMain(func() {
+		// Layout info.
+		ls := s.t.layoutState
+		mode := "grid"
+		switch ls.Mode {
+		case LayoutFocus:
+			mode = "focus"
+		case Layout2Col:
+			mode = "2col"
+		}
+		snap.Layout = web.LayoutInfo{
+			Mode:    mode,
+			Cols:    ls.GridCols,
+			Rows:    ls.GridRows,
+			Focused: ls.Focused,
+		}
+
+		// Pane states.
+		snap.Panes = make([]web.PaneState, len(s.t.panes))
+		for i, p := range s.t.panes {
+			snap.Panes[i] = web.PaneState{
+				Name:     p.Name(),
+				Activity: p.Activity().String(),
+				Alive:    p.IsAlive(),
+				Visible:  !ls.Hidden[paneKey(p)],
+				BeadID:   p.BeadID(),
+				Order:    i,
+			}
+		}
+	})
+	return snap, ok
+}

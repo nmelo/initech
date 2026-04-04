@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"sync/atomic"
+	"time"
 
 	"github.com/coder/websocket"
 )
@@ -43,14 +44,46 @@ type PaneSubscriber interface {
 	UnsubscribePane(paneName, subscriberID string)
 }
 
+// StateSnapshot is the JSON payload sent over /ws/state. It combines layout
+// information with per-agent status for the web companion SPA.
+type StateSnapshot struct {
+	Layout LayoutInfo `json:"layout"`
+	Panes  []PaneState `json:"panes"`
+}
+
+// LayoutInfo describes the current TUI layout.
+type LayoutInfo struct {
+	Mode    string `json:"mode"`    // "focus", "grid", or "2col"
+	Cols    int    `json:"cols"`
+	Rows    int    `json:"rows"`
+	Focused string `json:"focused"` // Pane name.
+}
+
+// PaneState describes one agent's state for the web companion.
+type PaneState struct {
+	Name     string `json:"name"`
+	Activity string `json:"activity"`
+	Alive    bool   `json:"alive"`
+	Visible  bool   `json:"visible"`
+	BeadID   string `json:"bead_id,omitempty"`
+	Order    int    `json:"order"`
+}
+
+// StateProvider returns the current TUI state snapshot. Called on a timer
+// by the state broadcaster.
+type StateProvider interface {
+	CurrentState() (StateSnapshot, bool)
+}
+
 // Server is an HTTP server that serves the SPA and pane API.
 type Server struct {
-	addr       string
-	srv        *http.Server
-	logger     *slog.Logger
-	lister     PaneLister
-	subscriber PaneSubscriber // Optional: enables /ws/pane/{name} endpoint.
-	subIDSeq   atomic.Uint64  // Monotonic counter for generating unique subscriber IDs.
+	addr          string
+	srv           *http.Server
+	logger        *slog.Logger
+	lister        PaneLister
+	subscriber    PaneSubscriber // Optional: enables /ws/pane/{name} endpoint.
+	stateProvider StateProvider  // Optional: enables /ws/state endpoint.
+	subIDSeq      atomic.Uint64  // Monotonic counter for generating unique subscriber IDs.
 }
 
 // NewServer creates a Server bound to 0.0.0.0 on the given port, accessible
@@ -58,22 +91,24 @@ type Server struct {
 // with --web-port, so we bind all interfaces by default.
 // If port is 0, the OS assigns a free port. The subscriber parameter is
 // optional; if nil, the /ws/pane/{name} endpoint returns 501.
-func NewServer(port int, lister PaneLister, subscriber PaneSubscriber, logger *slog.Logger) *Server {
+func NewServer(port int, lister PaneLister, subscriber PaneSubscriber, stateProvider StateProvider, logger *slog.Logger) *Server {
 	if logger == nil {
 		logger = slog.Default()
 	}
 	addr := fmt.Sprintf("0.0.0.0:%d", port)
 
 	s := &Server{
-		addr:       addr,
-		logger:     logger,
-		lister:     lister,
-		subscriber: subscriber,
+		addr:          addr,
+		logger:        logger,
+		lister:        lister,
+		subscriber:    subscriber,
+		stateProvider: stateProvider,
 	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/panes", s.handlePanes)
 	mux.HandleFunc("GET /ws/pane/{name}", s.handlePaneWS)
+	mux.HandleFunc("GET /ws/state", s.handleStateWS)
 
 	// Serve embedded SPA files. The embed.FS has a "static" prefix that we
 	// strip so that requests to "/" resolve to static/index.html.
@@ -180,6 +215,66 @@ func (s *Server) handlePaneWS(w http.ResponseWriter, r *http.Request) {
 			}
 			err := conn.Write(ctx, websocket.MessageBinary, data)
 			if err != nil {
+				return
+			}
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
+const stateDebounceInterval = 500 * time.Millisecond
+
+// handleStateWS upgrades to WebSocket, sends the initial state snapshot, then
+// pushes updates every 500ms when state changes. Uses snapshot comparison to
+// avoid sending duplicate frames.
+func (s *Server) handleStateWS(w http.ResponseWriter, r *http.Request) {
+	if s.stateProvider == nil {
+		http.Error(w, "state streaming not available", http.StatusNotImplemented)
+		return
+	}
+
+	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
+		InsecureSkipVerify: true,
+	})
+	if err != nil {
+		s.logger.Error("websocket accept failed", "endpoint", "/ws/state", "err", err)
+		return
+	}
+	defer conn.CloseNow()
+
+	ctx := conn.CloseRead(r.Context())
+
+	// Send initial snapshot.
+	snap, ok := s.stateProvider.CurrentState()
+	if !ok {
+		conn.Close(websocket.StatusGoingAway, "shutting down")
+		return
+	}
+	lastJSON, _ := json.Marshal(snap)
+	if err := conn.Write(ctx, websocket.MessageText, lastJSON); err != nil {
+		return
+	}
+
+	// Poll for changes on a 500ms ticker.
+	ticker := time.NewTicker(stateDebounceInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			snap, ok := s.stateProvider.CurrentState()
+			if !ok {
+				conn.Close(websocket.StatusGoingAway, "shutting down")
+				return
+			}
+			newJSON, _ := json.Marshal(snap)
+			// Skip send if snapshot hasn't changed.
+			if string(newJSON) == string(lastJSON) {
+				continue
+			}
+			lastJSON = newJSON
+			if err := conn.Write(ctx, websocket.MessageText, newJSON); err != nil {
 				return
 			}
 		case <-ctx.Done():
