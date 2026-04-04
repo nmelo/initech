@@ -21,9 +21,14 @@
     border:1px solid #334;border-radius:3px;min-height:0}
   .pane-cell.focused{border-color:#5b9bd5;border-width:2px}
 
-  /* Mobile: single-column stack */
+  /* TUI-mirror mode: fixed cols x rows from /ws/state */
+  #grid.tui-mirror{
+    grid-template-columns:repeat(var(--grid-cols, 1), 1fr);
+    grid-template-rows:repeat(var(--grid-rows, 1), 1fr)}
+
+  /* Mobile: single-column stack (only in Fit mode) */
   @media(max-width:800px){
-    #grid{grid-template-columns:1fr}
+    #grid:not(.tui-mirror){grid-template-columns:1fr}
     .pane-cell{min-height:200px}
   }
 
@@ -87,6 +92,8 @@
   #status-project{color:#5b9bd5;font-weight:600;white-space:nowrap;
     overflow:hidden;text-overflow:ellipsis;max-width:200px}
   #status-agents{color:#7f8c8d;white-space:nowrap}
+  #status-layout{color:#7f8c8d;cursor:pointer;white-space:nowrap;font-size:11px}
+  #status-layout:hover{color:#e0e0e0}
   #status-spacer{flex:1}
   #status-conn{display:flex;align-items:center;gap:5px;white-space:nowrap}
   .conn-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
@@ -135,6 +142,7 @@
   <div id="status-bar">
     <span id="status-project">initech</span>
     <span id="status-agents"></span>
+    <span id="status-layout" title="Toggle layout (Alt+L)"></span>
     <span id="status-spacer"></span>
     <span id="status-conn"><span class="conn-dot"></span><span id="status-conn-text"></span></span>
   </div>
@@ -153,6 +161,7 @@
   var emptyMsg = document.getElementById("empty-msg");
   var statusProject = document.getElementById("status-project");
   var statusAgents = document.getElementById("status-agents");
+  var statusLayout = document.getElementById("status-layout");
   var connDot = document.querySelector("#status-conn .conn-dot");
   var connText = document.getElementById("status-conn-text");
   var app = document.getElementById("app");
@@ -164,6 +173,9 @@
   var zoomedPane = null;
   var focusedPane = null;   // Name of pane with keyboard focus, null = none.
   var preFocusPane = null;  // Focus before zoom, restored on unzoom.
+  var layoutMode = (function() { try { return localStorage.getItem("initech-layout-mode"); } catch(e) {} return null; })() || "fit";
+  var lastCols = 1;
+  var lastRows = 1;
   var stateWs = null;
   var stateReconnTimer = null;
   var stateReconnAttempts = 0;
@@ -187,6 +199,33 @@
   function clearChildren(el) {
     while (el.firstChild) el.removeChild(el.firstChild);
   }
+
+  // --- Layout mode ---
+
+  function applyLayoutMode() {
+    if (layoutMode === "tui") {
+      grid.classList.add("tui-mirror");
+      grid.style.setProperty("--grid-cols", lastCols);
+      grid.style.setProperty("--grid-rows", lastRows);
+      statusLayout.textContent = "TUI layout";
+    } else {
+      grid.classList.remove("tui-mirror");
+      grid.style.removeProperty("--grid-cols");
+      grid.style.removeProperty("--grid-rows");
+      statusLayout.textContent = "Responsive";
+    }
+  }
+
+  function toggleLayoutMode() {
+    if (zoomedPane) exitZoom();
+    layoutMode = layoutMode === "fit" ? "tui" : "fit";
+    try { localStorage.setItem("initech-layout-mode", layoutMode); } catch(e) {}
+    applyLayoutMode();
+    fitAllTerminals();
+  }
+
+  statusLayout.onclick = toggleLayoutMode;
+  applyLayoutMode();
 
   // --- State WebSocket ---
 
@@ -239,8 +278,10 @@
     }
     statusAgents.textContent = total > 0 ? alive + "/" + total + " agents" : "";
 
-    // Grid sizing is handled by CSS auto-fill; layout.cols/rows are
-    // available but only used for focus state, not CSS sizing.
+    // Track TUI layout dimensions for TUI-mirror mode.
+    lastCols = layout.cols || 1;
+    lastRows = layout.rows || 1;
+    applyLayoutMode();
 
     // Build set of visible pane names in order.
     var visibleNames = [];
@@ -628,6 +669,12 @@
     if (e.key === "Escape" && zoomedPane) {
       e.preventDefault();
       exitZoom();
+      return;
+    }
+    // Alt+l toggles layout mode.
+    if (e.altKey && e.key === "l") {
+      e.preventDefault();
+      toggleLayoutMode();
       return;
     }
     // Alt+Left/Right cycles focus between panes.
