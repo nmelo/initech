@@ -85,6 +85,11 @@ func (t *TUI) render() {
 		t.renderMcpModal()
 	}
 
+	// Web companion modal.
+	if t.webM.active {
+		t.renderWebModal()
+	}
+
 	// Agents modal (centered floating box, like welcome).
 	if t.agents.active {
 		t.renderAgents()

@@ -330,7 +330,7 @@ func longestCommonPrefix(strs []string) string {
 var commandNames = []string{
 	"grid", "focus", "zoom", "panel", "main",
 	"layout", "restart", "patrol", "top", "add", "remove",
-	"log", "help", "quit", "events", "agents", "mcp",
+	"log", "help", "quit", "events", "agents", "mcp", "web",
 }
 
 // commandAliases maps short aliases to their canonical display form.
@@ -479,6 +479,8 @@ func (t *TUI) execCmd(cmd string) bool {
 		return t.cmdOrder()
 	case "mcp":
 		return t.cmdMcp()
+	case "web":
+		return t.cmdWeb()
 	case "help", "?":
 		return t.cmdHelp()
 	case "quit", "q":
@@ -690,6 +692,11 @@ func (t *TUI) cmdOrder() bool {
 func (t *TUI) cmdMcp() bool {
 	t.mcpM.active = true
 	t.mcpM.tokenRevealed = false
+	return false
+}
+
+func (t *TUI) cmdWeb() bool {
+	t.webM.active = true
 	return false
 }
 

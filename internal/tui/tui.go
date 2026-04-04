@@ -91,6 +91,11 @@ type mcpModal struct {
 	revealExpiry  time.Time // auto-hide token after 10 seconds
 }
 
+// webModal holds Web Companion modal state.
+type webModal struct {
+	active bool
+}
+
 // reorderModal holds state for the pane reorder modal.
 type reorderModal struct {
 	active bool
@@ -164,6 +169,7 @@ type TUI struct {
 	eventLogM eventLogModal  // Event log history modal.
 	help      helpModal      // Help reference card modal.
 	mcpM      mcpModal       // MCP setup modal.
+	webM      webModal       // Web companion modal.
 	reorder   reorderModal   // Agent reorder modal.
 	agents    agentsModal    // Agent management modal.
 	welcome   welcomeOverlay // First-launch keybinding hints.
@@ -212,6 +218,9 @@ type TUI struct {
 	mcpToken string // Active bearer token (empty if MCP disabled).
 	mcpBind  string // Bind address (e.g. "0.0.0.0").
 	mcpPort  int    // Configured port (0 = disabled).
+
+	// Web companion runtime state for the web modal.
+	webPort int // Configured port (0 = disabled).
 
 	// Timer store for scheduled sends.
 	timers *TimerStore
@@ -612,6 +621,7 @@ func Run(cfg Config) error {
 
 	// Start web companion server when configured.
 	if cfg.WebPort > 0 {
+		t.webPort = cfg.WebPort
 		webCtx, webCancel := context.WithCancel(context.Background())
 		lister := &tuiPaneLister{t: t}
 		subscriber := &tuiPaneSubscriber{t: t}

@@ -39,6 +39,11 @@ func (t *TUI) handleKey(ev *tcell.EventKey) bool {
 		return t.handleMcpKey(ev)
 	}
 
+	// Web companion modal intercepts all input when active.
+	if t.webM.active {
+		return t.handleWebKey(ev)
+	}
+
 	// Agents modal intercepts all input when active.
 	if t.agents.active {
 		return t.handleAgentsKey(ev)
