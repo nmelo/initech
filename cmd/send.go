@@ -57,6 +57,12 @@ func runSend(cmd *cobra.Command, args []string) error {
 	if !resp.OK {
 		return fmt.Errorf("%s", resp.Error)
 	}
+
+	if host != "" {
+		fmt.Fprintf(cmd.OutOrStdout(), "delivered to %s:%s\n", host, target)
+	} else {
+		fmt.Fprintf(cmd.OutOrStdout(), "delivered to %s\n", target)
+	}
 	return nil
 }
 
