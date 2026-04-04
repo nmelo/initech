@@ -561,18 +561,19 @@
       });
     }
 
-    // Debounced scroll-to-bottom: fires 150ms after the last write,
-    // ensuring the replay burst has settled and xterm's render pipeline
-    // has synced the viewport. Works around term.scrollToBottom() being
-    // unreliable during batched writes.
+    // Scroll-to-bottom after replay settles. Uses term.scrollToBottom()
+    // (not vpEl.scrollTop) because xterm.js maintains internal scroll
+    // state that overrides DOM scrollTop on each render cycle. The 500ms
+    // debounce waits for the replay burst to finish and xterm's render
+    // pipeline to process all buffered writes.
     var scrollTimer = null;
     function debouncedScrollBottom() {
       clearTimeout(scrollTimer);
       scrollTimer = setTimeout(function() {
-        if (!entry._userScrolledUp && vpEl) {
-          vpEl.scrollTop = vpEl.scrollHeight;
+        if (!entry._userScrolledUp) {
+          entry.term.scrollToBottom();
         }
-      }, 150);
+      }, 500);
     }
 
     ws.onmessage = function(ev) {
