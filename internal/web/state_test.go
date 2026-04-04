@@ -27,8 +27,8 @@ func TestStateWS_InitialSnapshot(t *testing.T) {
 		snap: StateSnapshot{
 			Layout: LayoutInfo{Mode: "grid", Cols: 2, Rows: 2, Focused: "eng1"},
 			Panes: []PaneState{
-				{Name: "eng1", Activity: "running", Alive: true, Visible: true, Order: 0},
-				{Name: "qa1", Activity: "idle", Alive: true, Visible: true, BeadID: "ini-abc", Order: 1},
+				{Name: "eng1", Activity: "running", Alive: true, Visible: true, Order: 0, Cols: 120, Rows: 40},
+				{Name: "qa1", Activity: "idle", Alive: true, Visible: true, BeadID: "ini-abc", Order: 1, Cols: 120, Rows: 40},
 			},
 		},
 		ok: true,

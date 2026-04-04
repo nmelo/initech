@@ -113,6 +113,7 @@ func (s *tuiStateProvider) CurrentState() (web.StateSnapshot, bool) {
 		// Pane states.
 		snap.Panes = make([]web.PaneState, len(s.t.panes))
 		for i, p := range s.t.panes {
+			emu := p.Emulator()
 			snap.Panes[i] = web.PaneState{
 				Name:     p.Name(),
 				Activity: p.Activity().String(),
@@ -120,6 +121,8 @@ func (s *tuiStateProvider) CurrentState() (web.StateSnapshot, bool) {
 				Visible:  !ls.Hidden[paneKey(p)],
 				BeadID:   p.BeadID(),
 				Order:    i,
+				Cols:     emu.Width(),
+				Rows:     emu.Height(),
 			}
 		}
 	})

@@ -68,6 +68,8 @@ type PaneState struct {
 	Visible  bool   `json:"visible"`
 	BeadID   string `json:"bead_id,omitempty"`
 	Order    int    `json:"order"`
+	Cols     int    `json:"cols"`     // Terminal width in columns (from VT emulator).
+	Rows     int    `json:"rows"`     // Terminal height in rows (from VT emulator).
 }
 
 // StateProvider returns the current TUI state snapshot. Called on a timer
