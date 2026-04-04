@@ -17,7 +17,7 @@
   /* Each pane cell */
   .pane-cell{display:flex;flex-direction:column;overflow:hidden;
     border:1px solid #334;border-radius:3px;min-height:0}
-  .pane-cell.focused{border-color:#5b9bd5}
+  .pane-cell.focused{border-color:#5b9bd5;border-width:2px}
 
   /* Pane label bar */
   .pane-label{display:flex;align-items:center;gap:6px;padding:3px 8px;
@@ -155,6 +155,8 @@
   var paneMap = {};
   var currentLayout = { cols: 1, rows: 1 };
   var zoomedPane = null;
+  var focusedPane = null;   // Name of pane with keyboard focus, null = none.
+  var preFocusPane = null;  // Focus before zoom, restored on unzoom.
   var stateWs = null;
   var stateReconnTimer = null;
   var stateReconnAttempts = 0;
@@ -279,13 +281,8 @@
       }
     }
 
-    // Update focused pane highlight.
-    var focused = layout.focused || "";
-    for (var fn in paneMap) {
-      if (paneMap.hasOwnProperty(fn)) {
-        paneMap[fn].cell.classList.toggle("focused", fn === focused);
-      }
-    }
+    // Note: TUI focused pane (layout.focused) is tracked by the server but
+    // browser input focus is managed independently via focusPane/blurAllPanes.
 
     // Toggle empty state via class (no inline display that would fight zoom CSS).
     app.classList.toggle("empty", visibleNames.length === 0);
@@ -366,8 +363,19 @@
 
     paneMap[name] = entry;
 
-    // Click label to zoom.
-    label.onclick = function() { toggleZoom(name); };
+    // Click cell to focus; double-click label to zoom.
+    cell.addEventListener("mousedown", function(e) {
+      e.stopPropagation();
+      focusPane(name);
+    });
+    label.addEventListener("dblclick", function() { toggleZoom(name); });
+
+    // Route keyboard input from xterm.js to the pane WebSocket.
+    term.onData(function(data) {
+      if (entry.ws && entry.ws.readyState === WebSocket.OPEN) {
+        entry.ws.send(data);
+      }
+    });
 
     // Connect pane WebSocket.
     connectPaneWs(name);
@@ -381,6 +389,17 @@
   function removePane(name) {
     var entry = paneMap[name];
     if (!entry) return;
+
+    // If removing the focused pane, move focus to next visible or clear.
+    if (focusedPane === name) {
+      focusedPane = null;
+      var names = getVisiblePaneNames();
+      var idx = names.indexOf(name);
+      names.splice(idx, 1);
+      if (names.length > 0) {
+        setTimeout(function() { focusPane(names[Math.min(idx, names.length - 1)]); }, 0);
+      }
+    }
 
     clearTimeout(entry.reconnTimer);
     if (entry.ws) { entry.ws.onclose = null; entry.ws.close(); }
@@ -451,6 +470,56 @@
     ws.onerror = function() {};
   }
 
+  // --- Focus management ---
+
+  function focusPane(name) {
+    if (focusedPane === name) return;
+    blurAllPanes();
+    var entry = paneMap[name];
+    if (!entry) return;
+
+    focusedPane = name;
+    entry.cell.classList.add("focused");
+    entry.term.options.cursorBlink = true;
+    entry.term.focus();
+  }
+
+  function blurAllPanes() {
+    for (var n in paneMap) {
+      if (paneMap.hasOwnProperty(n)) {
+        paneMap[n].cell.classList.remove("focused");
+        paneMap[n].term.options.cursorBlink = false;
+        paneMap[n].term.blur();
+      }
+    }
+    focusedPane = null;
+  }
+
+  function cycleFocus(direction) {
+    var names = getVisiblePaneNames();
+    if (names.length === 0) return;
+    if (!focusedPane || names.indexOf(focusedPane) === -1) {
+      focusPane(names[0]);
+      return;
+    }
+    var idx = names.indexOf(focusedPane);
+    var next = (idx + direction + names.length) % names.length;
+    focusPane(names[next]);
+  }
+
+  function getVisiblePaneNames() {
+    var names = [];
+    var cells = grid.children;
+    for (var i = 0; i < cells.length; i++) {
+      for (var n in paneMap) {
+        if (paneMap.hasOwnProperty(n) && paneMap[n].cell === cells[i]) {
+          names.push(n);
+        }
+      }
+    }
+    return names;
+  }
+
   // --- Zoom ---
 
   function toggleZoom(name) {
@@ -465,8 +534,10 @@
     var entry = paneMap[name];
     if (!entry) return;
 
+    preFocusPane = focusedPane;
     zoomedPane = name;
     app.classList.add("zoomed");
+    focusPane(name);
 
     // Move terminal DOM into zoom container.
     clearChildren(zoomTerm);
@@ -531,6 +602,12 @@
     app.classList.remove("zoomed");
     zoomedPane = null;
 
+    // Restore pre-zoom focus.
+    if (preFocusPane && paneMap[preFocusPane]) {
+      setTimeout(function() { focusPane(preFocusPane); }, 0);
+    }
+    preFocusPane = null;
+
     // Move terminal DOM back to its grid cell.
     if (entry) {
       entry.cell.appendChild(entry.termDiv);
@@ -546,12 +623,23 @@
     clearChildren(zoomLabel);
   }
 
-  // Esc exits zoom.
+  // Global keyboard shortcuts.
   document.addEventListener("keydown", function(e) {
     if (e.key === "Escape" && zoomedPane) {
       e.preventDefault();
       exitZoom();
+      return;
     }
+    // Alt+Left/Right cycles focus between panes.
+    if (e.altKey && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
+      e.preventDefault();
+      cycleFocus(e.key === "ArrowRight" ? 1 : -1);
+    }
+  });
+
+  // Click outside panes clears focus.
+  document.addEventListener("mousedown", function() {
+    blurAllPanes();
   });
 
   // --- Fit all terminals (debounced on resize) ---
