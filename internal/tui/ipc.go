@@ -310,13 +310,6 @@ func sendPaneTextLocked(pane *Pane, text string, enter bool) {
 	}
 	useCodexBracketedPaste := pane.noBracketedPaste && pane.AgentType() == config.AgentTypeCodex
 	codexQueueSubmit := pane.AgentType() == config.AgentTypeCodex && pane.Activity() == StateRunning
-	ready := true
-	if config.IsCodexLikeAgentType(pane.AgentType()) && !codexQueueSubmit {
-		ready = pane.waitForCodexReady(codexReadyTimeout)
-		LogDebug("inject", "codex ready wait", "pane", pane.Name(), "ready", ready, "timeout_ms", codexReadyTimeout.Milliseconds())
-	} else if codexQueueSubmit {
-		LogDebug("inject", "codex queueing while running", "pane", pane.Name())
-	}
 	mode := "bracketed"
 	if pane.noBracketedPaste {
 		mode = "raw"
@@ -418,9 +411,26 @@ func sendPaneTextLocked(pane *Pane, text string, enter bool) {
 }
 
 func (t *TUI) injectText(pane *Pane, text string, enter bool) {
+	waitForCodexReadyIfNeeded(pane)
 	pane.sendMu.Lock()
 	defer pane.sendMu.Unlock()
 	sendPaneTextLocked(pane, text, enter)
+}
+
+// waitForCodexReadyIfNeeded polls for the Codex/OpenCode ready prompt
+// BEFORE acquiring sendMu. This prevents the up-to-10s poll from blocking
+// concurrent sends on other goroutines that share the same pane mutex.
+func waitForCodexReadyIfNeeded(pane *Pane) {
+	if pane.ptmx == nil {
+		return
+	}
+	codexQueueSubmit := pane.AgentType() == config.AgentTypeCodex && pane.Activity() == StateRunning
+	if config.IsCodexLikeAgentType(pane.AgentType()) && !codexQueueSubmit {
+		ready := pane.waitForCodexReady(codexReadyTimeout)
+		LogDebug("inject", "codex ready wait", "pane", pane.Name(), "ready", ready, "timeout_ms", codexReadyTimeout.Milliseconds())
+	} else if codexQueueSubmit {
+		LogDebug("inject", "codex queueing while running", "pane", pane.Name())
+	}
 }
 
 // promptHasContent checks if the last ❯ prompt line has non-whitespace content.

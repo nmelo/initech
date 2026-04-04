@@ -600,8 +600,10 @@ func (p *Pane) AgentType() string { return p.agentType }
 // SendText injects text into the pane using the harness-appropriate local
 // delivery path. Claude panes use bracketed paste; raw-input panes like Codex
 // write the body directly to the PTY and delay submit to avoid paste-burst
-// suppression. Acquires sendMu to serialize concurrent sends.
+// suppression. The Codex ready-wait runs before acquiring sendMu so it does
+// not block concurrent sends.
 func (p *Pane) SendText(text string, enter bool) {
+	waitForCodexReadyIfNeeded(p)
 	p.sendMu.Lock()
 	defer p.sendMu.Unlock()
 	sendPaneTextLocked(p, text, enter)
