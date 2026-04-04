@@ -50,6 +50,9 @@ type Project struct {
 	McpToken string `yaml:"mcp_token,omitempty"` // Bearer token. Auto-generated if empty. INITECH_MCP_TOKEN env var overrides.
 	McpBind  string `yaml:"mcp_bind,omitempty"`  // Bind address. Default "0.0.0.0".
 
+	// Slack chat integration fields.
+	Slack SlackConfig `yaml:"slack,omitempty"`
+
 	// Cross-machine coordination fields.
 	PeerName string            `yaml:"peer_name,omitempty"` // This instance's identity (e.g., "workbench").
 	Mode     string            `yaml:"mode,omitempty"`      // "" (default TUI) or "headless" (daemon).
@@ -93,6 +96,33 @@ type ResourceConfig struct {
 // DefaultPressureThreshold is the RSS percentage above which agents may be
 // auto-suspended. Used when PressureThreshold is zero (unset).
 const DefaultPressureThreshold = 85
+
+// SlackConfig holds Slack chat integration settings. When both tokens are set,
+// initech connects via Socket Mode to receive @mention events and dispatch
+// them to agents. Env vars INITECH_SLACK_APP_TOKEN and INITECH_SLACK_BOT_TOKEN
+// override the config file values.
+type SlackConfig struct {
+	AppToken     string   `yaml:"app_token,omitempty"`     // xapp-... App-level token for Socket Mode.
+	BotToken     string   `yaml:"bot_token,omitempty"`     // xoxb-... Bot token for Web API calls.
+	AllowedUsers []string `yaml:"allowed_users,omitempty"` // Slack user IDs allowed to dispatch. Empty = all.
+	ResponseMode string   `yaml:"response_mode,omitempty"` // "thread" (default) or "channel".
+}
+
+// EffectiveSlackAppToken returns the app token, preferring the env var.
+func (p *Project) EffectiveSlackAppToken() string {
+	if v := os.Getenv("INITECH_SLACK_APP_TOKEN"); v != "" {
+		return v
+	}
+	return p.Slack.AppToken
+}
+
+// EffectiveSlackBotToken returns the bot token, preferring the env var.
+func (p *Project) EffectiveSlackBotToken() string {
+	if v := os.Getenv("INITECH_SLACK_BOT_TOKEN"); v != "" {
+		return v
+	}
+	return p.Slack.BotToken
+}
 
 // EffectiveWebPort returns the web companion port from config. Returns 0
 // (disabled) when web_port is not set, or the explicit value when set.

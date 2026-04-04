@@ -15,6 +15,7 @@ import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/nmelo/initech/internal/config"
 	"github.com/nmelo/initech/internal/mcp"
+	"github.com/nmelo/initech/internal/slackchat"
 	"github.com/nmelo/initech/internal/update"
 	"github.com/nmelo/initech/internal/web"
 )
@@ -349,6 +350,8 @@ type Config struct {
 	UpdateResult      <-chan string                         // Receives newer version string from background check. Nil = no check.
 	WebPort           int                                   // Port for the web companion server. 0 = disabled.
 	WebhookURL        string                                // HTTP endpoint for agent event POSTs. Empty = disabled.
+	SlackAppToken     string                                // Slack app-level token for Socket Mode. Empty = disabled.
+	SlackBotToken     string                                // Slack bot token for Web API calls. Empty = disabled.
 	McpPort           int                                   // Port for the MCP server. 0 = disabled.
 	McpToken          string                                // Bearer token for MCP auth. Empty = auto-generate.
 	McpBind           string                                // Bind address for MCP server. Empty = "0.0.0.0".
@@ -649,6 +652,15 @@ func Run(cfg Config) error {
 		})
 		LogInfo("webhook", "event sink starting", "url", cfg.WebhookURL)
 		defer webhookCancel()
+	}
+
+	// Start Slack Socket Mode client when tokens are configured.
+	if cfg.SlackAppToken != "" && cfg.SlackBotToken != "" {
+		slackCtx, slackCancel := context.WithCancel(context.Background())
+		sc := slackchat.NewClient(cfg.SlackAppToken, cfg.SlackBotToken, nil)
+		t.safeGo(func() { sc.Run(slackCtx) })
+		LogInfo("slack", "Socket Mode client starting")
+		defer slackCancel()
 	}
 
 	// Start MCP server when configured.
