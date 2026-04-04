@@ -589,9 +589,13 @@
     buildZoomLabel(name, entry);
     zoomLabel.onclick = function() { exitZoom(); };
 
-    // Re-fit to new (larger) container.
+    // Re-fit to new (larger) container. Double rAF ensures the zoom
+    // container has completed its display:none -> display:flex layout
+    // pass before FitAddon measures clientWidth/clientHeight.
     requestAnimationFrame(function() {
-      try { entry.fitAddon.fit(); } catch(e) {}
+      requestAnimationFrame(function() {
+        try { entry.fitAddon.fit(); } catch(e) {}
+      });
     });
   }
 
@@ -650,11 +654,14 @@
     }
     preFocusPane = null;
 
-    // Move terminal DOM back to its grid cell.
+    // Move terminal DOM back to its grid cell. Double rAF lets the
+    // grid finish its layout pass before FitAddon re-measures.
     if (entry) {
       entry.cell.appendChild(entry.termDiv);
       requestAnimationFrame(function() {
-        try { entry.fitAddon.fit(); } catch(e) {}
+        requestAnimationFrame(function() {
+          try { entry.fitAddon.fit(); } catch(e) {}
+        });
       });
     }
 
