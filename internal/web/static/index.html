@@ -550,13 +550,33 @@
     ws.binaryType = "arraybuffer";
     entry.ws = ws;
 
+    // Auto-scroll: always follow tail unless the user has scrolled up.
+    // The previous buf.viewportY >= buf.baseY check was unreliable during
+    // the initial replay burst (viewportY lags behind baseY in xterm's
+    // async write pipeline, so atBottom evaluates false and auto-scroll
+    // never engages, leaving the viewport stuck at scrollTop=0).
+    entry._userScrolledUp = false;
+
+    // Detect user scroll-up via wheel events on the terminal.
+    entry.termDiv.addEventListener("wheel", function(e) {
+      if (e.deltaY < 0) entry._userScrolledUp = true;
+    });
+
+    // Clear the flag when the viewport reaches the bottom.
+    var vpEl = entry.termDiv.querySelector(".xterm-viewport");
+    if (vpEl) {
+      vpEl.addEventListener("scroll", function() {
+        if (vpEl.scrollTop + vpEl.clientHeight >= vpEl.scrollHeight - 5) {
+          entry._userScrolledUp = false;
+        }
+      });
+    }
+
     ws.onmessage = function(ev) {
       if (!entry.term) return;
-      var buf = entry.term.buffer.active;
-      var atBottom = buf.viewportY >= buf.baseY;
       var data = ev.data instanceof ArrayBuffer ? new Uint8Array(ev.data) : ev.data;
       entry.term.write(data, function() {
-        if (atBottom) entry.term.scrollToBottom();
+        if (!entry._userScrolledUp) entry.term.scrollToBottom();
       });
     };
 
