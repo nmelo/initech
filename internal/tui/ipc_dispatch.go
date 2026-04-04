@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"net"
 	"time"
+
+	"github.com/nmelo/initech/internal/webhook"
 )
 
 // PaneInfo is the JSON structure returned by the "list" IPC action.
@@ -38,6 +40,10 @@ type IPCHost interface {
 
 	// Timers returns the timer store, or nil if timers are not available.
 	Timers() *TimerStore
+
+	// NotifyConfig returns the webhook URL and project name for posting
+	// notifications. Returns empty strings if webhook is not configured.
+	NotifyConfig() (webhookURL, project string)
 
 	// HandleExtended processes runtime-specific actions not covered by
 	// the shared dispatch (e.g. TUI lifecycle commands). Returns true if
@@ -85,6 +91,9 @@ func dispatchIPC(h IPCHost, conn net.Conn, req IPCRequest, rawJSON []byte) {
 		dispatchListTimers(h, conn)
 	case "cancel_timer":
 		dispatchCancelTimer(h, conn, req)
+
+	case "notify":
+		dispatchNotify(h, conn, req)
 
 	default:
 		if !h.HandleExtended(conn, req, rawJSON) {
@@ -150,4 +159,29 @@ func dispatchCancelTimer(h IPCHost, conn net.Conn, req IPCRequest) {
 		target = timer.Host + ":" + target
 	}
 	writeIPCResponse(conn, IPCResponse{OK: true, Data: fmt.Sprintf("%s (%s at %s)", timer.ID, target, timer.FireAt.Local().Format("15:04"))})
+}
+
+// dispatchNotify handles the "notify" IPC action. It reads the message from
+// req.Text and optional kind from req.Target (overloaded), then POSTs directly
+// to the configured webhook URL.
+func dispatchNotify(h IPCHost, conn net.Conn, req IPCRequest) {
+	if req.Text == "" {
+		writeIPCResponse(conn, IPCResponse{Error: "message required"})
+		return
+	}
+	webhookURL, project := h.NotifyConfig()
+	if webhookURL == "" {
+		writeIPCResponse(conn, IPCResponse{Error: "no webhook_url configured"})
+		return
+	}
+	kind := req.Target // overload Target as kind
+	if kind == "" {
+		kind = "custom"
+	}
+	agent := req.Host // overload Host as agent name
+	if err := webhook.PostNotification(webhookURL, kind, agent, req.Text, project); err != nil {
+		writeIPCResponse(conn, IPCResponse{Error: err.Error()})
+		return
+	}
+	writeIPCResponse(conn, IPCResponse{OK: true, Data: "sent"})
 }

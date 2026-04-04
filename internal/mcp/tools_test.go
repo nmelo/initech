@@ -47,6 +47,8 @@ type fakePaneHost struct {
 	removeErr    error    // if set, RemoveAgent returns this error
 	scheduleErr  error    // if set, ScheduleSend returns this error
 	scheduleLog  []string // records "schedule:eng1:5m" etc.
+	webhookURL   string
+	projectName  string
 }
 
 func newFakeHost(panes ...*fakePaneHandle) *fakePaneHost {
@@ -135,6 +137,10 @@ func (h *fakePaneHost) ScheduleSend(agent, message, delay string) (string, error
 	id := fmt.Sprintf("at-%d", len(h.scheduleLog))
 	h.scheduleLog = append(h.scheduleLog, fmt.Sprintf("schedule:%s:%s", agent, delay))
 	return id, nil
+}
+
+func (h *fakePaneHost) NotifyConfig() (string, string) {
+	return h.webhookURL, h.projectName
 }
 
 func (h *fakePaneHost) AllPanes() ([]PaneHandle, bool) {

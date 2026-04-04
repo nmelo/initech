@@ -214,6 +214,7 @@ type TUI struct {
 	webPort         int               // Configured port (0 = disabled).
 	webEventProvider *tuiEventProvider // For broadcasting events to web subscribers. Nil if web disabled.
 	webhookCh        chan AgentEvent   // Fan-out channel for webhook HTTP POSTs. Nil if webhook disabled.
+	webhookURL       string            // Webhook URL from config, for IPC notify action.
 
 	// Timer store for scheduled sends.
 	timers *TimerStore
@@ -460,6 +461,7 @@ func Run(cfg Config) error {
 		lastH:             initH,
 		projectRoot:       cfg.ProjectRoot,
 		projectName:       cfg.ProjectName,
+		webhookURL:        cfg.WebhookURL,
 		project:           cfg.Project,
 		version:           cfg.Version,
 		sockPath:          sp,

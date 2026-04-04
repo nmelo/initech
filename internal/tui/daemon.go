@@ -451,6 +451,13 @@ func (d *Daemon) Timers() *TimerStore {
 	return d.timers
 }
 
+func (d *Daemon) NotifyConfig() (webhookURL, project string) {
+	if d.project != nil {
+		return d.project.WebhookURL, d.project.Name
+	}
+	return "", ""
+}
+
 func (d *Daemon) HandleExtended(conn net.Conn, req IPCRequest, rawJSON []byte) bool {
 	return false
 }

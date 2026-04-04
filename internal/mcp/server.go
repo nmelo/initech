@@ -61,6 +61,10 @@ type PaneHost interface {
 
 	// AllPanes returns all panes. The bool is false if the host is shutting down.
 	AllPanes() ([]PaneHandle, bool)
+
+	// NotifyConfig returns the webhook URL and project name for posting
+	// notifications. Returns empty strings if not configured.
+	NotifyConfig() (webhookURL, project string)
 }
 
 // Server is an MCP server that exposes initech agent primitives over

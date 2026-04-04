@@ -152,6 +152,10 @@ func (t *TUI) Timers() *TimerStore {
 	return t.timers
 }
 
+func (t *TUI) NotifyConfig() (webhookURL, project string) {
+	return t.webhookURL, t.projectName
+}
+
 func (t *TUI) HandleExtended(conn net.Conn, req IPCRequest, rawJSON []byte) bool {
 	switch req.Action {
 	case "stop":

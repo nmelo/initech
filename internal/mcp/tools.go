@@ -7,6 +7,8 @@ import (
 	"time"
 
 	gomcp "github.com/modelcontextprotocol/go-sdk/mcp"
+
+	"github.com/nmelo/initech/internal/webhook"
 )
 
 // PeekInput is the input schema for the initech_peek tool.
@@ -85,6 +87,18 @@ type PatrolInput struct {
 // PatrolOutput is the output schema for the initech_patrol tool.
 type PatrolOutput struct {
 	Content string `json:"content"`
+}
+
+// NotifyInput is the input schema for the initech_notify tool.
+type NotifyInput struct {
+	Message string `json:"message" jsonschema:"notification message text"`
+	Kind    string `json:"kind,omitempty" jsonschema:"event kind (default custom). Dot-notation encouraged: deploy, release, milestone"`
+	Agent   string `json:"agent,omitempty" jsonschema:"agent name to attribute the notification to"`
+}
+
+// NotifyOutput is the output schema for the initech_notify tool.
+type NotifyOutput struct {
+	Status string `json:"status"`
 }
 
 // StatusInput is the input schema for the initech_status tool (no params).
@@ -175,6 +189,13 @@ func registerTools(s *gomcp.Server, host PaneHost) {
 		Description: "Get the status of all agents. Returns a JSON array with name, activity, alive, visible, bead_id, and memory_rss_kb for each agent.",
 	}, func(_ context.Context, _ *gomcp.CallToolRequest, input StatusInput) (*gomcp.CallToolResult, StatusOutput, error) {
 		return handleStatus(host)
+	})
+
+	gomcp.AddTool(s, &gomcp.Tool{
+		Name:        "initech_notify",
+		Description: "Post a notification to the configured webhook (Slack, Discord, or generic). Use for milestones, deployments, status updates, and custom announcements.",
+	}, func(_ context.Context, _ *gomcp.CallToolRequest, input NotifyInput) (*gomcp.CallToolResult, NotifyOutput, error) {
+		return handleNotify(host, input)
 	})
 }
 
@@ -331,4 +352,26 @@ func handleStatus(host PaneHost) (*gomcp.CallToolResult, StatusOutput, error) {
 
 	data, _ := json.Marshal(entries)
 	return nil, StatusOutput{Content: string(data)}, nil
+}
+
+func handleNotify(host PaneHost, input NotifyInput) (*gomcp.CallToolResult, NotifyOutput, error) {
+	if input.Message == "" {
+		return nil, NotifyOutput{}, fmt.Errorf("message is required")
+	}
+
+	webhookURL, project := host.NotifyConfig()
+	if webhookURL == "" {
+		return nil, NotifyOutput{}, fmt.Errorf("no webhook_url configured in initech.yaml")
+	}
+
+	kind := input.Kind
+	if kind == "" {
+		kind = "custom"
+	}
+
+	if err := webhook.PostNotification(webhookURL, kind, input.Agent, input.Message, project); err != nil {
+		return nil, NotifyOutput{}, err
+	}
+
+	return nil, NotifyOutput{Status: "sent"}, nil
 }

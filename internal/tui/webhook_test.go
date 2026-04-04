@@ -8,11 +8,13 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/nmelo/initech/internal/webhook"
 )
 
 func TestWebhookSink_PostsCorrectPayload(t *testing.T) {
 	var mu sync.Mutex
-	var received []webhookPayload
+	var received []webhook.Payload
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "POST" {
@@ -21,7 +23,7 @@ func TestWebhookSink_PostsCorrectPayload(t *testing.T) {
 		if ct := r.Header.Get("Content-Type"); ct != "application/json" {
 			t.Errorf("Content-Type = %q, want application/json", ct)
 		}
-		var p webhookPayload
+		var p webhook.Payload
 		if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
 			t.Errorf("decode: %v", err)
 			return

@@ -143,6 +143,10 @@ func (h *tuiMCPHost) RemoveAgent(name string) error {
 	return err
 }
 
+func (h *tuiMCPHost) NotifyConfig() (string, string) {
+	return h.t.webhookURL, h.t.projectName
+}
+
 func (h *tuiMCPHost) ScheduleSend(agent, message, delay string) (string, error) {
 	dur, err := time.ParseDuration(delay)
 	if err != nil {

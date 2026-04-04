@@ -366,6 +366,8 @@ type dispatchHost struct {
 	panes           []PaneInfo
 	allOK           bool
 	timers          *TimerStore
+	webhookURL      string
+	projectName     string
 	sendCalled      bool
 	sendConn        net.Conn
 	sendReq         IPCRequest
@@ -392,6 +394,10 @@ func (h *dispatchHost) HandleSend(conn net.Conn, req IPCRequest) {
 
 func (h *dispatchHost) Timers() *TimerStore {
 	return h.timers
+}
+
+func (h *dispatchHost) NotifyConfig() (string, string) {
+	return h.webhookURL, h.projectName
 }
 
 func (h *dispatchHost) HandleExtended(conn net.Conn, req IPCRequest, rawJSON []byte) bool {
