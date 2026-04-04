@@ -14,12 +14,14 @@ import (
 
 // Client manages the Slack Socket Mode connection and event loop.
 type Client struct {
-	api          *slack.Client
-	sm           *socketmode.Client
-	host         AgentHost
-	tracker      *ConversationTracker
-	allowedUsers map[string]bool // Empty map = allow all.
-	logger       *slog.Logger
+	api           *slack.Client
+	sm            *socketmode.Client
+	host          AgentHost
+	tracker       *ConversationTracker
+	userCache     *UserCache
+	threadContext bool            // When true, fetch thread history for dispatch context.
+	allowedUsers  map[string]bool // Empty map = allow all.
+	logger        *slog.Logger
 }
 
 // NewClient creates a Slack client configured for Socket Mode. The appToken
@@ -37,7 +39,16 @@ func NewClient(appToken, botToken string, host AgentHost, allowedUsers []string,
 	}
 	api := slack.New(botToken, slack.OptionAppLevelToken(appToken))
 	sm := socketmode.New(api)
-	return &Client{api: api, sm: sm, host: host, tracker: NewConversationTracker(), allowedUsers: allowed, logger: logger}
+	return &Client{
+		api:           api,
+		sm:            sm,
+		host:          host,
+		tracker:       NewConversationTracker(),
+		userCache:     NewUserCache(api),
+		threadContext: true,
+		allowedUsers:  allowed,
+		logger:        logger,
+	}
 }
 
 // isAuthorized returns true if the user is allowed to dispatch commands.
@@ -54,6 +65,9 @@ func (c *Client) API() *slack.Client { return c.api }
 
 // Tracker returns the conversation tracker shared between dispatcher and responder.
 func (c *Client) Tracker() *ConversationTracker { return c.tracker }
+
+// SetThreadContext enables or disables thread history fetching for dispatch.
+func (c *Client) SetThreadContext(enabled bool) { c.threadContext = enabled }
 
 // Run connects to Slack via Socket Mode and processes events until the context
 // is cancelled. It blocks, so call it in a goroutine. Reconnection is handled

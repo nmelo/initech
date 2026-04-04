@@ -664,6 +664,9 @@ func Run(cfg Config) error {
 			allowedUsers = cfg.Project.Slack.AllowedUsers
 		}
 		sc := slackchat.NewClient(cfg.SlackAppToken, cfg.SlackBotToken, host, allowedUsers, nil)
+		if cfg.Project != nil {
+			sc.SetThreadContext(cfg.Project.Slack.IsThreadContextEnabled())
+		}
 		t.safeGo(func() { sc.Run(slackCtx) })
 
 		// Start the completion responder.

@@ -105,10 +105,17 @@ const DefaultPressureThreshold = 85
 // them to agents. Env vars INITECH_SLACK_APP_TOKEN and INITECH_SLACK_BOT_TOKEN
 // override the config file values.
 type SlackConfig struct {
-	AppToken     string   `yaml:"app_token,omitempty"`     // xapp-... App-level token for Socket Mode.
-	BotToken     string   `yaml:"bot_token,omitempty"`     // xoxb-... Bot token for Web API calls.
-	AllowedUsers []string `yaml:"allowed_users,omitempty"` // Slack user IDs allowed to dispatch. Empty = all.
-	ResponseMode string   `yaml:"response_mode,omitempty"` // "thread" (default) or "channel".
+	AppToken      string   `yaml:"app_token,omitempty"`      // xapp-... App-level token for Socket Mode.
+	BotToken      string   `yaml:"bot_token,omitempty"`      // xoxb-... Bot token for Web API calls.
+	AllowedUsers  []string `yaml:"allowed_users,omitempty"`  // Slack user IDs allowed to dispatch. Empty = all.
+	ResponseMode  string   `yaml:"response_mode,omitempty"`  // "thread" (default) or "channel".
+	ThreadContext *bool    `yaml:"thread_context,omitempty"` // Fetch thread history for dispatch context. nil/true = enabled.
+}
+
+// IsThreadContextEnabled returns true if thread context fetching is enabled.
+// Defaults to true when not explicitly set.
+func (s *SlackConfig) IsThreadContextEnabled() bool {
+	return s.ThreadContext == nil || *s.ThreadContext
 }
 
 // EffectiveSlackAppToken returns the app token, preferring the env var.

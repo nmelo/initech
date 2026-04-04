@@ -97,7 +97,16 @@ func (c *Client) handleAppMention(ev *slackevents.AppMentionEvent) {
 		return
 	}
 
-	if err := c.host.SendToAgent(agent, body); err != nil {
+	// Prepend thread context when the mention is inside a thread.
+	deliveryBody := body
+	if c.threadContext && ev.ThreadTimeStamp != "" && c.api != nil {
+		ctx := FetchThreadContext(c.api, c.userCache, ev.Channel, ev.ThreadTimeStamp, ev.TimeStamp)
+		if ctx != "" {
+			deliveryBody = ctx + "\n\n" + body
+		}
+	}
+
+	if err := c.host.SendToAgent(agent, deliveryBody); err != nil {
 		c.reply(ev.Channel, threadTS, fmt.Sprintf("Delivery failed: %s", err))
 		return
 	}
