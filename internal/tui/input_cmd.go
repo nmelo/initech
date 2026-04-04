@@ -186,13 +186,13 @@ func (t *TUI) executeConfirmed() bool {
 			}
 			msg := "Quitting..."
 			rainbow := []tcell.Color{
-				tcell.NewRGBColor(255, 0, 0),     // red
-				tcell.NewRGBColor(255, 140, 0),   // orange
-				tcell.NewRGBColor(255, 255, 0),   // yellow
-				tcell.NewRGBColor(0, 200, 0),     // green
-				tcell.NewRGBColor(0, 220, 220),   // cyan
-				tcell.NewRGBColor(60, 60, 255),   // blue
-				tcell.NewRGBColor(160, 32, 240),  // violet
+				tcell.NewRGBColor(255, 150, 150), // pastel red
+				tcell.NewRGBColor(255, 200, 150), // pastel orange
+				tcell.NewRGBColor(255, 255, 170), // pastel yellow
+				tcell.NewRGBColor(150, 230, 150), // pastel green
+				tcell.NewRGBColor(150, 230, 230), // pastel cyan
+				tcell.NewRGBColor(160, 160, 255), // pastel blue
+				tcell.NewRGBColor(210, 150, 255), // pastel violet
 			}
 			for i, ch := range msg {
 				if i < sw {
