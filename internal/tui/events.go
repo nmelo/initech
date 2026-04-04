@@ -128,6 +128,15 @@ func (t *TUI) handleAgentEvent(ev AgentEvent) {
 		t.webEventProvider.BroadcastWebEvent(ev)
 	}
 
+	// Fan out to webhook sink (non-blocking).
+	if t.webhookCh != nil {
+		select {
+		case t.webhookCh <- ev:
+		default:
+			LogDebug("webhook", "channel full, dropping event", "kind", ev.Type.String(), "pane", ev.Pane)
+		}
+	}
+
 	ttl := notificationTTL
 	// Completion events persist longer since they're more actionable.
 	if ev.Type == EventBeadCompleted {

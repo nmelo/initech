@@ -42,7 +42,8 @@ type Project struct {
 	RoleOverrides map[string]RoleOverride `yaml:"role_overrides,omitempty"`
 
 	// Web companion server fields.
-	WebPort *int `yaml:"web_port,omitempty"` // Web companion port. nil/0 = disabled, >0 = enabled.
+	WebPort    *int   `yaml:"web_port,omitempty"`    // Web companion port. nil/0 = disabled, >0 = enabled.
+	WebhookURL string `yaml:"webhook_url,omitempty"` // HTTP endpoint for agent event POSTs. Empty = disabled.
 
 	// MCP server fields.
 	McpPort  *int   `yaml:"mcp_port,omitempty"`  // MCP server port. Default 9200, nil uses default, 0 disables.

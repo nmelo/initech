@@ -213,6 +213,7 @@ type TUI struct {
 	// Web companion runtime state for the web modal.
 	webPort         int               // Configured port (0 = disabled).
 	webEventProvider *tuiEventProvider // For broadcasting events to web subscribers. Nil if web disabled.
+	webhookCh        chan AgentEvent   // Fan-out channel for webhook HTTP POSTs. Nil if webhook disabled.
 
 	// Timer store for scheduled sends.
 	timers *TimerStore
@@ -346,6 +347,7 @@ type Config struct {
 	Project           *config.Project                       // Full project config. Used for remote peer connections.
 	UpdateResult      <-chan string                         // Receives newer version string from background check. Nil = no check.
 	WebPort           int                                   // Port for the web companion server. 0 = disabled.
+	WebhookURL        string                                // HTTP endpoint for agent event POSTs. Empty = disabled.
 	McpPort           int                                   // Port for the MCP server. 0 = disabled.
 	McpToken          string                                // Bearer token for MCP auth. Empty = auto-generate.
 	McpBind           string                                // Bind address for MCP server. Empty = "0.0.0.0".
@@ -634,6 +636,17 @@ func Run(cfg Config) error {
 			webSrv.Shutdown(shutCtx)
 			shutCancel()
 		}()
+	}
+
+	// Start webhook event sink when configured.
+	if cfg.WebhookURL != "" {
+		webhookCtx, webhookCancel := context.WithCancel(context.Background())
+		t.webhookCh = make(chan AgentEvent, 64)
+		t.safeGo(func() {
+			startWebhookSink(webhookCtx, cfg.WebhookURL, cfg.ProjectName, t.webhookCh)
+		})
+		LogInfo("webhook", "event sink starting", "url", cfg.WebhookURL)
+		defer webhookCancel()
 	}
 
 	// Start MCP server when configured.
