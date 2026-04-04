@@ -495,9 +495,11 @@
 
     ws.onmessage = function(ev) {
       if (!entry.term) return;
+      var buf = entry.term.buffer.active;
+      var atBottom = buf.viewportY >= buf.baseY;
       var data = ev.data instanceof ArrayBuffer ? new Uint8Array(ev.data) : ev.data;
       entry.term.write(data, function() {
-        entry.term.scrollToBottom();
+        if (atBottom) entry.term.scrollToBottom();
       });
     };
 
