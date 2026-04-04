@@ -22,19 +22,35 @@
   /* Pane label bar */
   .pane-label{display:flex;align-items:center;gap:6px;padding:3px 8px;
     background:#141928;cursor:pointer;flex-shrink:0;user-select:none;
-    border-bottom:1px solid #334;font-size:12px;line-height:1}
+    border-bottom:1px solid #334;font-size:12px;line-height:1;
+    position:relative;overflow:hidden;z-index:0}
   .pane-label:hover{background:#1c2340}
+
+  /* KITT scanner: gaussian sweep on running panes (4s cycle matching TUI) */
+  .pane-label.running::after{content:'';position:absolute;top:0;left:0;
+    width:100%;height:100%;z-index:-1;
+    background:radial-gradient(ellipse 25% 100% at 50% 50%,
+      rgba(46,204,113,0.18) 0%, transparent 100%);
+    animation:kitt-sweep 4s ease-in-out infinite alternate}
+  @keyframes kitt-sweep{
+    0%{transform:translateX(-70%)}
+    100%{transform:translateX(70%)}
+  }
 
   /* Activity dot */
   .pane-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
-  .pane-dot.alive{background:#2ecc71}
+  .pane-dot.running{background:#2ecc71}
   .pane-dot.idle{background:#555}
   .pane-dot.dead{background:#e74c3c}
+  .pane-dot.suspended{background:#5b9bd5}
+  .pane-dot.backlog{background:#f1c40f}
 
   .pane-name{color:#e0e0e0;font-weight:600;font-size:12px}
+  .pane-sep{color:#555;font-size:11px}
+  .pane-bead{color:#00b4d8;font-size:11px;max-width:16ch;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .pane-activity{color:#7f8c8d;margin-left:auto;font-size:11px;
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:140px}
-  .pane-bead{color:#5b9bd5;font-size:11px;margin-left:4px}
 
   /* Terminal container inside each cell */
   .pane-term{flex:1;overflow:hidden;min-height:0}
@@ -45,7 +61,8 @@
   #app.zoomed #zoom-container{display:flex}
   #zoom-label{display:flex;align-items:center;gap:6px;padding:4px 10px;
     background:#141928;cursor:pointer;flex-shrink:0;user-select:none;
-    border-bottom:1px solid #334;font-size:13px;line-height:1}
+    border-bottom:1px solid #334;font-size:13px;line-height:1;
+    position:relative;overflow:hidden;z-index:0}
   #zoom-label:hover{background:#1c2340}
   #zoom-term{flex:1;overflow:hidden;min-height:0;padding:2px}
 
@@ -230,7 +247,7 @@
 
     // Label bar
     var label = document.createElement("div");
-    label.className = "pane-label";
+    label.className = "pane-label" + (isRunning(data) ? " running" : "");
 
     var dot = document.createElement("span");
     dot.className = "pane-dot " + dotClass(data);
@@ -239,9 +256,14 @@
     nameSpan.className = "pane-name";
     nameSpan.textContent = name;
 
+    var sep = document.createElement("span");
+    sep.className = "pane-sep";
+    var beadId = data.bead_id || "";
+    sep.textContent = beadId ? "|" : "";
+
     var beadSpan = document.createElement("span");
     beadSpan.className = "pane-bead";
-    beadSpan.textContent = data.bead_id || "";
+    beadSpan.textContent = beadId;
 
     var actSpan = document.createElement("span");
     actSpan.className = "pane-activity";
@@ -249,6 +271,7 @@
 
     label.appendChild(dot);
     label.appendChild(nameSpan);
+    label.appendChild(sep);
     label.appendChild(beadSpan);
     label.appendChild(actSpan);
 
@@ -271,6 +294,7 @@
       label: label,
       dot: dot,
       nameSpan: nameSpan,
+      sep: sep,
       actSpan: actSpan,
       beadSpan: beadSpan,
       termDiv: termDiv,
@@ -310,14 +334,29 @@
     var entry = paneMap[name];
     if (!entry) return;
     entry.dot.className = "pane-dot " + dotClass(data);
+    entry.label.classList.toggle("running", isRunning(data));
     entry.actSpan.textContent = data.activity || "";
-    entry.beadSpan.textContent = data.bead_id || "";
+    var beadId = data.bead_id || "";
+    entry.sep.textContent = beadId ? "|" : "";
+    entry.beadSpan.textContent = beadId;
+
+    // Sync zoom label if this pane is zoomed.
+    if (zoomedPane === name) updateZoomLabel(name, data);
   }
 
   function dotClass(data) {
     if (!data.alive) return "dead";
-    if (data.activity === "idle" || data.activity === "") return "idle";
-    return "alive";
+    var a = data.activity || "";
+    if (a === "idle" || a === "") return "idle";
+    if (a === "suspended") return "suspended";
+    if (a === "idle-with-backlog") return "backlog";
+    return "running";
+  }
+
+  function isRunning(data) {
+    if (!data.alive) return false;
+    var a = data.activity || "";
+    return a !== "" && a !== "idle" && a !== "suspended" && a !== "idle-with-backlog";
   }
 
   // --- Pane WebSocket ---
@@ -373,25 +412,56 @@
     clearChildren(zoomTerm);
     zoomTerm.appendChild(entry.termDiv);
 
-    // Build zoom label.
-    clearChildren(zoomLabel);
-    var dot = document.createElement("span");
-    dot.className = entry.dot.className;
-    var nameSpan = document.createElement("span");
-    nameSpan.className = "pane-name";
-    nameSpan.textContent = name;
-    var hint = document.createElement("span");
-    hint.className = "zoom-hint";
-    hint.textContent = "click or Esc to return";
-    zoomLabel.appendChild(dot);
-    zoomLabel.appendChild(nameSpan);
-    zoomLabel.appendChild(hint);
+    // Build zoom label mirroring grid label state.
+    buildZoomLabel(name, entry);
     zoomLabel.onclick = function() { exitZoom(); };
 
     // Re-fit to new (larger) container.
     requestAnimationFrame(function() {
       try { entry.fitAddon.fit(); } catch(e) {}
     });
+  }
+
+  function buildZoomLabel(name, entry) {
+    clearChildren(zoomLabel);
+    zoomLabel.className = "pane-label" + (entry.label.classList.contains("running") ? " running" : "");
+    // Override zoom label ID styling.
+    zoomLabel.id = "zoom-label";
+
+    var dot = document.createElement("span");
+    dot.className = entry.dot.className;
+    var nameSpan = document.createElement("span");
+    nameSpan.className = "pane-name";
+    nameSpan.textContent = name;
+    var sep = document.createElement("span");
+    sep.className = "pane-sep";
+    sep.textContent = entry.sep.textContent;
+    var bead = document.createElement("span");
+    bead.className = "pane-bead";
+    bead.textContent = entry.beadSpan.textContent;
+    var hint = document.createElement("span");
+    hint.className = "zoom-hint";
+    hint.textContent = "click or Esc to return";
+
+    zoomLabel.appendChild(dot);
+    zoomLabel.appendChild(nameSpan);
+    zoomLabel.appendChild(sep);
+    zoomLabel.appendChild(bead);
+    zoomLabel.appendChild(hint);
+  }
+
+  function updateZoomLabel(name, data) {
+    var entry = paneMap[name];
+    if (!entry) return;
+    // Find elements inside zoom label by class.
+    var dot = zoomLabel.querySelector(".pane-dot");
+    var sep = zoomLabel.querySelector(".pane-sep");
+    var bead = zoomLabel.querySelector(".pane-bead");
+    if (dot) dot.className = "pane-dot " + dotClass(data);
+    zoomLabel.classList.toggle("running", isRunning(data));
+    var beadId = data.bead_id || "";
+    if (sep) sep.textContent = beadId ? "|" : "";
+    if (bead) bead.textContent = beadId;
   }
 
   function exitZoom() {
@@ -410,6 +480,8 @@
     }
 
     zoomLabel.onclick = null;
+    zoomLabel.className = "";
+    zoomLabel.id = "zoom-label";
     clearChildren(zoomTerm);
     clearChildren(zoomLabel);
   }
