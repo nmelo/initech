@@ -92,8 +92,9 @@
   #status-project{color:#5b9bd5;font-weight:600;white-space:nowrap;
     overflow:hidden;text-overflow:ellipsis;max-width:200px}
   #status-agents{color:#7f8c8d;white-space:nowrap}
-  #status-layout{color:#7f8c8d;cursor:pointer;white-space:nowrap;font-size:11px}
-  #status-layout:hover{color:#e0e0e0}
+  #status-layout{color:#7f8c8d;cursor:pointer;white-space:nowrap;font-size:11px;
+    padding:1px 6px;border:1px solid #334;border-radius:3px}
+  #status-layout:hover{color:#e0e0e0;border-color:#556}
   #status-spacer{flex:1}
   #status-conn{display:flex;align-items:center;gap:5px;white-space:nowrap}
   .conn-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
@@ -410,6 +411,15 @@
       focusPane(name);
     });
     label.addEventListener("dblclick", function() { toggleZoom(name); });
+
+    // Let app-level shortcuts pass through xterm.js to the document handler.
+    // Return false = xterm ignores the key, letting it bubble to document.
+    term.attachCustomKeyEventHandler(function(e) {
+      if (e.type !== "keydown") return true;
+      if (e.key === "Escape") return false;
+      if (e.altKey && (e.key === "l" || e.key === "ArrowLeft" || e.key === "ArrowRight")) return false;
+      return true;
+    });
 
     // Route keyboard input from xterm.js to the pane WebSocket.
     term.onData(function(data) {
