@@ -41,6 +41,9 @@ type Project struct {
 	ClaudeArgs    []string                `yaml:"claude_args,omitempty"`
 	RoleOverrides map[string]RoleOverride `yaml:"role_overrides,omitempty"`
 
+	// Web companion server fields.
+	WebPort *int `yaml:"web_port,omitempty"` // Web companion port. nil/0 = disabled, >0 = enabled.
+
 	// MCP server fields.
 	McpPort  *int   `yaml:"mcp_port,omitempty"`  // MCP server port. Default 9200, nil uses default, 0 disables.
 	McpToken string `yaml:"mcp_token,omitempty"` // Bearer token. Auto-generated if empty. INITECH_MCP_TOKEN env var overrides.
@@ -89,6 +92,15 @@ type ResourceConfig struct {
 // DefaultPressureThreshold is the RSS percentage above which agents may be
 // auto-suspended. Used when PressureThreshold is zero (unset).
 const DefaultPressureThreshold = 85
+
+// EffectiveWebPort returns the web companion port from config. Returns 0
+// (disabled) when web_port is not set, or the explicit value when set.
+func (p *Project) EffectiveWebPort() int {
+	if p.WebPort == nil {
+		return 0
+	}
+	return *p.WebPort
+}
 
 // DefaultMcpBind is the default bind address for the MCP server.
 const DefaultMcpBind = "0.0.0.0"
@@ -319,6 +331,9 @@ func Validate(p *Project) error {
 	}
 
 	// MCP server validation.
+	if p.WebPort != nil && (*p.WebPort < 0 || *p.WebPort > 65535) {
+		return fmt.Errorf("web_port %d out of range (0-65535)", *p.WebPort)
+	}
 	if p.McpPort != nil && (*p.McpPort < 0 || *p.McpPort > 65535) {
 		return fmt.Errorf("mcp_port %d out of range (0-65535)", *p.McpPort)
 	}

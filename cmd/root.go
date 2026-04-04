@@ -291,11 +291,21 @@ func runTUI(cmd *cobra.Command, args []string) error {
 		Project:           proj,
 		UpdateResult:      tuiUpdateCh,
 		PaneConfigBuilder: buildReloadingPaneConfigBuilder(cfgPath, buildAgentPaneConfig),
-		WebPort:           webPort,
+		WebPort:           effectiveWebPort(webPort, proj),
 		McpPort:           effectiveMcpPort(mcpPort, proj),
 		McpToken:          proj.EffectiveMcpToken(),
 		McpBind:           proj.EffectiveMcpBind(),
 	})
+}
+
+// effectiveWebPort returns the web companion port to use. The --web-port flag
+// takes precedence. If the flag is 0 (default/disabled), fall back to the
+// config value. Web companion is disabled when the result is 0.
+func effectiveWebPort(flagValue int, proj *config.Project) int {
+	if flagValue != 0 {
+		return flagValue
+	}
+	return proj.EffectiveWebPort()
 }
 
 // effectiveMcpPort returns the MCP port to use. The --mcp-port flag takes
