@@ -237,7 +237,7 @@ func interactiveSetup(wd string) (*config.Project, error) {
 
 	name := prompt(reader, "Project name", dirName)
 	root := prompt(reader, "Project root", wd)
-	repoURL := prompt(reader, "Code repo URL", "")
+	repoURL := prompt(reader, "Code repo URL (e.g. git@github.com:user/repo.git)", "")
 
 	// Detect existing agent workspaces before showing the role selector, so the
 	// operator can adopt their existing directory structure without retyping names.
