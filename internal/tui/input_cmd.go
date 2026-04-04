@@ -475,8 +475,6 @@ func (t *TUI) execCmd(cmd string) bool {
 		return t.cmdRemove(parts)
 	case "log", "events":
 		return t.cmdLog()
-	case "order":
-		return t.cmdOrder()
 	case "mcp":
 		return t.cmdMcp()
 	case "web":
@@ -673,19 +671,6 @@ func (t *TUI) cmdLog() bool {
 	t.cmd.error = ""
 	t.eventLogM.active = true
 	t.eventLogM.scrollOffset = 0
-	return false
-}
-
-func (t *TUI) cmdOrder() bool {
-	items := make([]string, len(t.panes))
-	for i, p := range t.panes {
-		items[i] = paneKey(p)
-	}
-	t.reorder = reorderModal{
-		active: true,
-		items:  items,
-		cursor: 0,
-	}
 	return false
 }
 

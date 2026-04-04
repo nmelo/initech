@@ -96,14 +96,6 @@ type webModal struct {
 	active bool
 }
 
-// reorderModal holds state for the pane reorder modal.
-type reorderModal struct {
-	active bool
-	items  []string // Pane names in the working order (copy of current).
-	cursor int      // Currently highlighted row.
-	moving bool     // True when an item is "picked up" and j/k moves it.
-}
-
 // agentsModal holds state for the agent management modal.
 type agentsModal struct {
 	active       bool
@@ -170,7 +162,6 @@ type TUI struct {
 	help      helpModal      // Help reference card modal.
 	mcpM      mcpModal       // MCP setup modal.
 	webM      webModal       // Web companion modal.
-	reorder   reorderModal   // Agent reorder modal.
 	agents    agentsModal    // Agent management modal.
 	welcome   welcomeOverlay // First-launch keybinding hints.
 	sel       mouseSelection // Mouse text selection.
