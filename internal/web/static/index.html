@@ -91,6 +91,28 @@
 
   /* Zoom hint */
   .zoom-hint{color:#555;font-size:11px;margin-left:auto}
+
+  /* Toast notifications */
+  #toast-container{position:fixed;bottom:32px;right:12px;z-index:100;
+    display:flex;flex-direction:column-reverse;gap:6px;pointer-events:none;
+    max-height:calc(100vh - 80px);overflow:hidden}
+  .toast{pointer-events:auto;display:flex;align-items:flex-start;gap:8px;
+    padding:8px 12px;border-radius:6px;font-size:12px;line-height:1.4;
+    background:#1e2233;border:1px solid #334;max-width:340px;min-width:220px;
+    cursor:pointer;opacity:0;transform:translateX(100%);
+    animation:toast-in 0.3s ease forwards;box-shadow:0 4px 12px rgba(0,0,0,0.4)}
+  .toast.dismissing{animation:toast-out 0.3s ease forwards}
+  @keyframes toast-in{to{opacity:1;transform:translateX(0)}}
+  @keyframes toast-out{from{opacity:1;transform:translateX(0)}to{opacity:0;transform:translateX(100%)}}
+  .toast-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;margin-top:3px}
+  .toast-dot.green{background:#2ecc71}
+  .toast-dot.blue{background:#5b9bd5}
+  .toast-dot.red{background:#e74c3c}
+  .toast-dot.yellow{background:#f1c40f}
+  .toast-dot.gray{background:#7f8c8d}
+  .toast-agent{color:#e0e0e0;font-weight:600;white-space:nowrap}
+  .toast-detail{color:#999;overflow:hidden;text-overflow:ellipsis;
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
 </style>
 </head>
 <body>
@@ -101,6 +123,7 @@
     <div id="zoom-term"></div>
   </div>
   <div id="empty-msg">No agents running</div>
+  <div id="toast-container"></div>
   <div id="status-bar">
     <span id="status-project">initech</span>
     <span id="status-agents"></span>
@@ -170,8 +193,12 @@
     };
     stateWs.onmessage = function(ev) {
       try {
-        var snap = JSON.parse(ev.data);
-        applyState(snap);
+        var msg = JSON.parse(ev.data);
+        if (msg.type === "state" && msg.state) {
+          applyState(msg.state);
+        } else if (msg.type === "event" && msg.event) {
+          handleEvent(msg.event);
+        }
       } catch(e) {}
     };
     stateWs.onclose = function() {
@@ -541,6 +568,90 @@
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(fitAllTerminals, 100);
   });
+
+  // --- Toast notifications ---
+
+  var toastContainer = document.getElementById("toast-container");
+  var MAX_TOASTS = 5;
+
+  var EVENT_COLORS = {
+    bead_completed: "green",
+    bead_claimed: "blue",
+    bead_failed: "red",
+    stalled: "yellow",
+    stuck: "red",
+    idle: "gray",
+    "idle-with-bead": "yellow",
+    suspended: "blue",
+    resumed: "green",
+    started: "gray",
+    stopped: "gray",
+    restarted: "gray",
+    added: "gray",
+    removed: "gray",
+    message: "gray",
+    timer_fired: "blue"
+  };
+
+  // Noisy events suppressed unless they have a bead_id.
+  var SUPPRESS_WITHOUT_BEAD = {idle: true, started: true, stopped: true, restarted: true};
+
+  function handleEvent(evt) {
+    var kind = evt.kind || "";
+
+    // Suppress noisy events without bead context.
+    if (SUPPRESS_WITHOUT_BEAD[kind] && !evt.bead_id) return;
+
+    var ttl = kind === "bead_completed" || kind === "completed" ? 12000 : 10000;
+    var color = EVENT_COLORS[kind] || "gray";
+
+    // Enforce max visible toasts.
+    var toasts = toastContainer.children;
+    while (toasts.length >= MAX_TOASTS) {
+      dismissToast(toasts[toasts.length - 1], true);
+    }
+
+    var el = document.createElement("div");
+    el.className = "toast";
+
+    var dot = document.createElement("span");
+    dot.className = "toast-dot " + color;
+
+    var body = document.createElement("div");
+    var agent = document.createElement("span");
+    agent.className = "toast-agent";
+    agent.textContent = evt.pane || "";
+
+    var detail = document.createElement("div");
+    detail.className = "toast-detail";
+    detail.textContent = evt.detail || kind;
+
+    body.appendChild(agent);
+    body.appendChild(detail);
+    el.appendChild(dot);
+    el.appendChild(body);
+
+    el.onclick = function() { dismissToast(el, false); };
+
+    // Insert at beginning (bottom of visual stack due to column-reverse).
+    toastContainer.insertBefore(el, toastContainer.firstChild);
+
+    // Auto-dismiss timer.
+    el._dismissTimer = setTimeout(function() { dismissToast(el, false); }, ttl);
+  }
+
+  function dismissToast(el, immediate) {
+    if (!el || !el.parentNode) return;
+    clearTimeout(el._dismissTimer);
+    if (immediate) {
+      el.parentNode.removeChild(el);
+    } else {
+      el.classList.add("dismissing");
+      el.addEventListener("animationend", function() {
+        if (el.parentNode) el.parentNode.removeChild(el);
+      });
+    }
+  }
 
   // --- Boot ---
 
