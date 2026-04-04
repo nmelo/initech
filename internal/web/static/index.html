@@ -49,9 +49,11 @@
   #zoom-label:hover{background:#1c2340}
   #zoom-term{flex:1;overflow:hidden;min-height:0;padding:2px}
 
-  /* Empty state */
+  /* Empty state: class-driven so it doesn't fight zoomed CSS */
   #empty-msg{display:none;flex:1;align-items:center;justify-content:center;
     color:#555;font-size:16px}
+  #app.empty #grid{display:none}
+  #app.empty #empty-msg{display:flex}
 
   /* Connection indicator */
   #conn-status{position:fixed;top:6px;right:8px;z-index:20;font-size:11px;
@@ -208,10 +210,8 @@
       }
     }
 
-    // Show/hide empty message.
-    var hasVisible = visibleNames.length > 0;
-    emptyMsg.style.display = hasVisible ? "none" : "flex";
-    grid.style.display = hasVisible ? "grid" : "none";
+    // Toggle empty state via class (no inline display that would fight zoom CSS).
+    app.classList.toggle("empty", visibleNames.length === 0);
 
     // If zoomed pane was removed, exit zoom.
     if (zoomedPane && !paneMap[zoomedPane]) {
