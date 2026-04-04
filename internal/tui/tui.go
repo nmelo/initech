@@ -657,7 +657,8 @@ func Run(cfg Config) error {
 	// Start Slack Socket Mode client when tokens are configured.
 	if cfg.SlackAppToken != "" && cfg.SlackBotToken != "" {
 		slackCtx, slackCancel := context.WithCancel(context.Background())
-		sc := slackchat.NewClient(cfg.SlackAppToken, cfg.SlackBotToken, nil)
+		host := &tuiSlackHost{t: t}
+		sc := slackchat.NewClient(cfg.SlackAppToken, cfg.SlackBotToken, host, nil)
 		t.safeGo(func() { sc.Run(slackCtx) })
 		LogInfo("slack", "Socket Mode client starting")
 		defer slackCancel()

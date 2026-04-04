@@ -16,19 +16,21 @@ import (
 type Client struct {
 	api    *slack.Client
 	sm     *socketmode.Client
+	host   AgentHost
 	logger *slog.Logger
 }
 
 // NewClient creates a Slack client configured for Socket Mode. The appToken
 // (xapp-...) is used to establish the WebSocket connection. The botToken
 // (xoxb-...) is used for Web API calls (posting messages, adding reactions).
-func NewClient(appToken, botToken string, logger *slog.Logger) *Client {
+// The host provides agent lookup and delivery; pass nil to defer wiring.
+func NewClient(appToken, botToken string, host AgentHost, logger *slog.Logger) *Client {
 	if logger == nil {
 		logger = slog.Default()
 	}
 	api := slack.New(botToken, slack.OptionAppLevelToken(appToken))
 	sm := socketmode.New(api)
-	return &Client{api: api, sm: sm, logger: logger}
+	return &Client{api: api, sm: sm, host: host, logger: logger}
 }
 
 // Run connects to Slack via Socket Mode and processes events until the context
@@ -96,6 +98,6 @@ func (c *Client) handleEventsAPI(evt socketmode.Event) {
 			"text", ev.Text,
 			"ts", ev.TimeStamp,
 		)
-		// Dispatch to agents is handled by ini-01f.1.2.
+		c.handleAppMention(ev)
 	}
 }

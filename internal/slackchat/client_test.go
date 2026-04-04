@@ -28,7 +28,7 @@ func TestHandleEventsAPI_WrongPayload(t *testing.T) {
 }
 
 func TestNewClient(t *testing.T) {
-	c := NewClient("xapp-test", "xoxb-test", nil)
+	c := NewClient("xapp-test", "xoxb-test", nil, nil)
 	if c.api == nil {
 		t.Fatal("api client should not be nil")
 	}
