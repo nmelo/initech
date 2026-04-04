@@ -202,6 +202,15 @@
     while (el.firstChild) el.removeChild(el.firstChild);
   }
 
+  // --- Diagnostic logging (remove after debugging) ---
+  function diagLog(context, name, entry) {
+    var container = entry.termDiv;
+    console.log("[initech-diag] %s pane=%s container=%dx%d term=%dx%d",
+      context, name,
+      container.offsetWidth, container.offsetHeight,
+      entry.term.cols, entry.term.rows);
+  }
+
   // --- Layout mode ---
 
   function applyLayoutMode() {
@@ -283,6 +292,8 @@
     // Track TUI layout dimensions for TUI-mirror mode.
     lastCols = layout.cols || 1;
     lastRows = layout.rows || 1;
+    console.log("[initech-diag] applyState layout=%o mode=%s gridStyle=%s",
+      layout, layoutMode, grid.style.cssText);
     applyLayoutMode();
 
     // Build set of visible pane names in order.
@@ -434,7 +445,14 @@
 
     // Fit after a frame so the container has its final size.
     requestAnimationFrame(function() {
-      try { fitAddon.fit(); } catch(e) {}
+      try {
+        console.log("[initech-diag] createPane.preFit pane=%s container=%dx%d",
+          name, termDiv.offsetWidth, termDiv.offsetHeight);
+        fitAddon.fit();
+        diagLog("createPane.postFit", name, entry);
+      } catch(e) {
+        console.log("[initech-diag] createPane.fitError pane=%s err=%s", name, e);
+      }
     });
   }
 
@@ -603,9 +621,21 @@
     // Re-fit to new (larger) container. Double rAF ensures the zoom
     // container has completed its display:none -> display:flex layout
     // pass before FitAddon measures clientWidth/clientHeight.
+    console.log("[initech-diag] enterZoom pane=%s zoomTerm=%dx%d termDiv=%dx%d",
+      name, zoomTerm.offsetWidth, zoomTerm.offsetHeight,
+      entry.termDiv.offsetWidth, entry.termDiv.offsetHeight);
     requestAnimationFrame(function() {
       requestAnimationFrame(function() {
-        try { entry.fitAddon.fit(); } catch(e) {}
+        try {
+          console.log("[initech-diag] enterZoom.preFit pane=%s zoomTerm=%dx%d termDiv=%dx%d cols=%d rows=%d",
+            name, zoomTerm.offsetWidth, zoomTerm.offsetHeight,
+            entry.termDiv.offsetWidth, entry.termDiv.offsetHeight,
+            entry.term.cols, entry.term.rows);
+          entry.fitAddon.fit();
+          diagLog("enterZoom.postFit", name, entry);
+        } catch(e) {
+          console.log("[initech-diag] enterZoom.fitError pane=%s err=%s", name, e);
+        }
       });
     });
   }
@@ -668,10 +698,22 @@
     // Move terminal DOM back to its grid cell. Double rAF lets the
     // grid finish its layout pass before FitAddon re-measures.
     if (entry) {
+      var exitName = entry.nameSpan.textContent;
       entry.cell.appendChild(entry.termDiv);
+      console.log("[initech-diag] exitZoom pane=%s cell=%dx%d termDiv=%dx%d",
+        exitName, entry.cell.offsetWidth, entry.cell.offsetHeight,
+        entry.termDiv.offsetWidth, entry.termDiv.offsetHeight);
       requestAnimationFrame(function() {
         requestAnimationFrame(function() {
-          try { entry.fitAddon.fit(); } catch(e) {}
+          try {
+            console.log("[initech-diag] exitZoom.preFit pane=%s termDiv=%dx%d cols=%d rows=%d",
+              exitName, entry.termDiv.offsetWidth, entry.termDiv.offsetHeight,
+              entry.term.cols, entry.term.rows);
+            entry.fitAddon.fit();
+            diagLog("exitZoom.postFit", exitName, entry);
+          } catch(e) {
+            console.log("[initech-diag] exitZoom.fitError pane=%s err=%s", exitName, e);
+          }
         });
       });
     }
@@ -711,16 +753,26 @@
   // --- Fit all terminals (debounced on resize) ---
 
   function fitAllTerminals() {
+    console.log("[initech-diag] fitAllTerminals window=%dx%d grid=%dx%d paneCount=%d",
+      window.innerWidth, window.innerHeight,
+      grid.offsetWidth, grid.offsetHeight,
+      Object.keys(paneMap).length);
     for (var name in paneMap) {
       if (paneMap.hasOwnProperty(name)) {
-        try { paneMap[name].fitAddon.fit(); } catch(e) {}
+        try {
+          paneMap[name].fitAddon.fit();
+          diagLog("fitAll.postFit", name, paneMap[name]);
+        } catch(e) {}
       }
     }
   }
 
   window.addEventListener("resize", function() {
     clearTimeout(resizeTimer);
-    resizeTimer = setTimeout(fitAllTerminals, 100);
+    resizeTimer = setTimeout(function() {
+      console.log("[initech-diag] resize triggered window=%dx%d", window.innerWidth, window.innerHeight);
+      fitAllTerminals();
+    }, 100);
   });
 
   // --- Toast notifications ---
