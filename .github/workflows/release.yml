@@ -23,34 +23,8 @@ jobs:
       - name: Run tests
         run: make test
 
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-
-      - name: Build and archive artifacts
-        uses: goreleaser/goreleaser-action@v6
-        with:
-          version: '~> v2'
-          args: release --split --clean
-
-      - name: Archive dist
-        run: tar czf dist.tar.gz dist/
-
-      - name: Upload dist
-        uses: actions/upload-artifact@v4
-        with:
-          name: dist
-          path: dist.tar.gz
-
   release:
-    needs: [test, build]
+    needs: [test]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -61,19 +35,11 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Download dist
-        uses: actions/download-artifact@v4
-        with:
-          name: dist
-
-      - name: Extract dist
-        run: tar xzf dist.tar.gz
-
-      - name: Publish release
+      - name: Run goreleaser
         uses: goreleaser/goreleaser-action@v6
         with:
           version: '~> v2'
-          args: continue --merge
+          args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
