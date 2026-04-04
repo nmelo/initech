@@ -204,15 +204,6 @@
     while (el.firstChild) el.removeChild(el.firstChild);
   }
 
-  // --- Diagnostic logging (remove after debugging) ---
-  function diagLog(context, name, entry) {
-    var container = entry.termDiv;
-    console.log("[initech-diag] %s pane=%s container=%dx%d term=%dx%d",
-      context, name,
-      container.offsetWidth, container.offsetHeight,
-      entry.term.cols, entry.term.rows);
-  }
-
   // --- Layout mode ---
 
   function applyLayoutMode() {
@@ -290,7 +281,6 @@
       if (panes[d].cols > 0 && panes[d].rows > 0) { hasRealDims = true; break; }
     }
     if (!stateReceived && panes.length > 0 && !hasRealDims) {
-      console.log("[initech-diag] applyState: skipping (no real dims yet)");
       return;
     }
     stateReceived = true;
@@ -307,8 +297,6 @@
     // Track TUI layout dimensions for TUI-mirror mode.
     lastCols = layout.cols || 1;
     lastRows = layout.rows || 1;
-    console.log("[initech-diag] applyState layout=%o mode=%s panes=%d hasRealDims=%s",
-      layout, layoutMode, panes.length, hasRealDims);
     applyLayoutMode();
 
     // Build set of visible pane names in order.
@@ -431,7 +419,6 @@
       term: term,
       fitAddon: fitAddon,
       _tuiCols: paneCols,
-      _tuiRows: paneRows,
       ws: null,
       reconnTimer: null
     };
@@ -473,8 +460,6 @@
           term.resize(paneCols, term.rows);
         }
       } catch(e) {}
-      console.log("[initech-diag] createPane pane=%s cols=%d rows=%d container=%dx%d",
-        name, term.cols, term.rows, termDiv.offsetWidth, termDiv.offsetHeight);
     });
   }
 
@@ -508,8 +493,6 @@
     entry._tuiCols = data.cols;
     if (zoomedPane === name) return;
     if (entry.term.cols === data.cols) return;
-    console.log("[initech-diag] resizePaneTerm pane=%s cols %d -> %d",
-      name, entry.term.cols, data.cols);
     entry.term.resize(data.cols, entry.term.rows);
   }
 
@@ -688,21 +671,9 @@
     // Re-fit to new (larger) container. Double rAF ensures the zoom
     // container has completed its display:none -> display:flex layout
     // pass before FitAddon measures clientWidth/clientHeight.
-    console.log("[initech-diag] enterZoom pane=%s zoomTerm=%dx%d termDiv=%dx%d",
-      name, zoomTerm.offsetWidth, zoomTerm.offsetHeight,
-      entry.termDiv.offsetWidth, entry.termDiv.offsetHeight);
     requestAnimationFrame(function() {
       requestAnimationFrame(function() {
-        try {
-          console.log("[initech-diag] enterZoom.preFit pane=%s zoomTerm=%dx%d termDiv=%dx%d cols=%d rows=%d",
-            name, zoomTerm.offsetWidth, zoomTerm.offsetHeight,
-            entry.termDiv.offsetWidth, entry.termDiv.offsetHeight,
-            entry.term.cols, entry.term.rows);
-          entry.fitAddon.fit();
-          diagLog("enterZoom.postFit", name, entry);
-        } catch(e) {
-          console.log("[initech-diag] enterZoom.fitError pane=%s err=%s", name, e);
-        }
+        try { entry.fitAddon.fit(); } catch(e) {}
       });
     });
   }
