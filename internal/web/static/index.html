@@ -495,11 +495,10 @@
 
     ws.onmessage = function(ev) {
       if (!entry.term) return;
-      if (ev.data instanceof ArrayBuffer) {
-        entry.term.write(new Uint8Array(ev.data));
-      } else {
-        entry.term.write(ev.data);
-      }
+      var data = ev.data instanceof ArrayBuffer ? new Uint8Array(ev.data) : ev.data;
+      entry.term.write(data, function() {
+        entry.term.scrollToBottom();
+      });
     };
 
     ws.onclose = function() {
