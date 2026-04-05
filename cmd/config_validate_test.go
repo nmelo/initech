@@ -233,6 +233,60 @@ func TestConfigValidate_YAMLParseError(t *testing.T) {
 	}
 }
 
+func TestConfigValidate_ReposNotFlagged(t *testing.T) {
+	restoreColor := disableColor(t)
+	defer restoreColor()
+
+	dir := t.TempDir()
+	yaml := fmt.Sprintf("project: testproj\nroot: %s\nroles:\n  - eng1\nbeads:\n  prefix: ini\nwebhook_url: https://hooks.test\nannounce_url: https://announce.test\nrepos:\n  - url: git@github.com:test/repo.git\n    name: repo\n", dir)
+	os.WriteFile(filepath.Join(dir, "initech.yaml"), []byte(yaml), 0644)
+	os.MkdirAll(filepath.Join(dir, "eng1"), 0755)
+
+	restoreWD := chdirForTest(t, dir)
+	defer restoreWD()
+
+	var out bytes.Buffer
+	cmd := &cobra.Command{}
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	err := runConfigValidate(cmd, nil)
+	if err != nil {
+		t.Fatalf("repos should not cause validation error: %v\noutput:\n%s", err, out.String())
+	}
+
+	got := out.String()
+	if strings.Contains(got, "repos") && strings.Contains(got, "unknown") {
+		t.Errorf("repos flagged as unknown field (false positive):\n%s", got)
+	}
+	if strings.Contains(got, "WARN") {
+		t.Errorf("valid config with repos should have no warnings:\n%s", got)
+	}
+}
+
+func TestConfigValidate_TypoReposStillFlagged(t *testing.T) {
+	restoreColor := disableColor(t)
+	defer restoreColor()
+
+	dir := t.TempDir()
+	yaml := fmt.Sprintf("project: testproj\nroot: %s\nroles:\n  - eng1\nbeads:\n  prefix: ini\nreposs:\n  - url: git@github.com:test/repo.git\n", dir)
+	os.WriteFile(filepath.Join(dir, "initech.yaml"), []byte(yaml), 0644)
+	os.MkdirAll(filepath.Join(dir, "eng1"), 0755)
+
+	restoreWD := chdirForTest(t, dir)
+	defer restoreWD()
+
+	var out bytes.Buffer
+	cmd := &cobra.Command{}
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	_ = runConfigValidate(cmd, nil)
+
+	got := out.String()
+	if !strings.Contains(got, "reposs") || !strings.Contains(got, "unknown") {
+		t.Errorf("typo 'reposs' should be flagged as unknown:\n%s", got)
+	}
+}
+
 func TestConfigValidate_BeadsPrefixWarn(t *testing.T) {
 	restoreColor := disableColor(t)
 	defer restoreColor()

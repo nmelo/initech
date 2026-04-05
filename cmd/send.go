@@ -14,10 +14,18 @@ import (
 )
 
 var sendCmd = &cobra.Command{
-	Use:   "send <role> <text>",
+	Use:   "send [host:]<agent> <text>",
 	Short: "Send text to an agent's terminal",
 	Long: `Injects text into the specified agent's PTY. By default appends Enter
 to execute the text as a command. Use --no-enter to send text without Enter.
+
+For cross-machine addressing, use host:agent format:
+
+  initech send laptop:super "Phase 2 complete"
+  initech send workbench:shipper "Release v1.9"
+
+The host name is the peer_name from the remote machine's initech.yaml.
+Run 'initech status' to see all agents and their hosts.
 
 Requires a running initech TUI (connects via INITECH_SOCKET).`,
 	Args: cobra.MinimumNArgs(2),

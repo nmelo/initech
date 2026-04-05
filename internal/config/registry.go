@@ -57,6 +57,7 @@ var Registry = []FieldMeta{
 	{Key: "slack.thread_context", Type: "bool", Default: "true", Description: "Fetch thread history and prepend as context for dispatched messages"},
 
 	// Repos.
+	{Key: "repos", Type: "[]object", Description: "Code repositories cloned as agent workspace submodules"},
 	{Key: "repos[].url", Type: "string", Description: "Git clone URL for agent submodule"},
 	{Key: "repos[].name", Type: "string", Description: "Local directory name for the repo submodule"},
 
