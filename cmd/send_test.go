@@ -47,9 +47,9 @@ func TestSendCommand_LocalDeliveryConfirmation(t *testing.T) {
 	sockPath := startFakeIPC(t, tui.IPCResponse{OK: true})
 	t.Setenv("INITECH_SOCKET", sockPath)
 
-	var buf bytes.Buffer
-	rootCmd.SetOut(&buf)
-	rootCmd.SetErr(&buf)
+	var stdout, stderr bytes.Buffer
+	rootCmd.SetOut(&stdout)
+	rootCmd.SetErr(&stderr)
 	rootCmd.SetArgs([]string{"send", "eng2", "hello world"})
 	defer rootCmd.SetArgs(nil)
 
@@ -57,9 +57,12 @@ func TestSendCommand_LocalDeliveryConfirmation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	got := buf.String()
+	if stdout.Len() != 0 {
+		t.Errorf("expected empty stdout, got %q", stdout.String())
+	}
+	got := stderr.String()
 	if got != "delivered to eng2\n" {
-		t.Errorf("got %q, want %q", got, "delivered to eng2\n")
+		t.Errorf("stderr = %q, want %q", got, "delivered to eng2\n")
 	}
 }
 
@@ -67,9 +70,9 @@ func TestSendCommand_RemoteDeliveryConfirmation(t *testing.T) {
 	sockPath := startFakeIPC(t, tui.IPCResponse{OK: true})
 	t.Setenv("INITECH_SOCKET", sockPath)
 
-	var buf bytes.Buffer
-	rootCmd.SetOut(&buf)
-	rootCmd.SetErr(&buf)
+	var stdout, stderr bytes.Buffer
+	rootCmd.SetOut(&stdout)
+	rootCmd.SetErr(&stderr)
 	rootCmd.SetArgs([]string{"send", "workbench:intern", "do the thing"})
 	defer rootCmd.SetArgs(nil)
 
@@ -77,9 +80,12 @@ func TestSendCommand_RemoteDeliveryConfirmation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	got := buf.String()
+	if stdout.Len() != 0 {
+		t.Errorf("expected empty stdout, got %q", stdout.String())
+	}
+	got := stderr.String()
 	if got != "delivered to workbench:intern\n" {
-		t.Errorf("got %q, want %q", got, "delivered to workbench:intern\n")
+		t.Errorf("stderr = %q, want %q", got, "delivered to workbench:intern\n")
 	}
 }
 
