@@ -131,9 +131,10 @@ func TestRunStandup_PrintsMessageWhenBdMissing(t *testing.T) {
 
 func disableColor(t *testing.T) func() {
 	t.Helper()
+	prev := color.Enabled()
 	color.SetEnabled(false)
 	return func() {
-		color.SetEnabled(true)
+		color.SetEnabled(prev)
 	}
 }
 
