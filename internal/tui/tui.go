@@ -218,6 +218,12 @@ type TUI struct {
 	webhookURL       string                     // Webhook URL from config, for IPC notify action.
 	slackEventCh     chan slackchat.ResponderEvent // Fan-out channel for Slack responder. Nil if Slack disabled.
 
+	// Paste buffering: accumulate characters between EventPaste start/end,
+	// then flush as one atomic PTY write with bracketed paste markers.
+	// Turns O(N) renders into O(1) for large pastes.
+	pasting  bool   // True between EventPaste(start) and EventPaste(end).
+	pasteBuf []byte // Accumulated paste characters.
+
 	// Timer store for scheduled sends.
 	timers *TimerStore
 
@@ -787,29 +793,36 @@ func Run(cfg Config) error {
 		// Drain all remote panes (visible or hidden) so network data doesn't
 		// accumulate in dataCh when a pane is hidden from the layout.
 		t.drainRemotePanes()
-		// Render after every select case, not just ticker.C. If another
-		// channel (eventCh, agentEvents, ipcCh) is always ready, the
-		// ticker.C case is starved by Go's random select and the screen
-		// never updates. Rendering unconditionally guarantees the screen
-		// reflects state changes within one event-loop cycle.
-		t.render()
+		// Skip rendering while accumulating paste characters. The paste
+		// flush in handlePaste triggers a single render when complete.
+		// This turns O(N) renders into O(1) for large pastes.
+		if !t.pasting {
+			// Render after every select case, not just ticker.C. If another
+			// channel (eventCh, agentEvents, ipcCh) is always ready, the
+			// ticker.C case is starved by Go's random select and the screen
+			// never updates. Rendering unconditionally guarantees the screen
+			// reflects state changes within one event-loop cycle.
+			t.render()
+		}
 	}
 }
 
 func (t *TUI) handleEvent(ev tcell.Event) bool {
 	switch ev := ev.(type) {
 	case *tcell.EventKey:
+		// While buffering a paste, accumulate characters instead of
+		// forwarding them per-key. This avoids O(N) renders.
+		if t.pasting {
+			t.bufferPasteKey(ev)
+			return false
+		}
 		return t.handleKey(ev)
 	case *tcell.EventMouse:
 		t.handleMouse(ev)
 	case *tcell.EventResize:
 		t.handleResize()
 	case *tcell.EventPaste:
-		if p := t.focusedPane(); p != nil {
-			if lp, ok := p.(*Pane); ok {
-				lp.SendPaste(ev.Start())
-			}
-		}
+		t.handlePaste(ev.Start())
 	}
 	return false
 }

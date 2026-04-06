@@ -483,6 +483,43 @@ func (p *Pane) SendPaste(start bool) {
 	}
 }
 
+// FlushPaste writes the entire paste content to the PTY in a single operation,
+// wrapped in bracketed paste markers (unless noBracketedPaste is set). Uses
+// sendMu to serialize with concurrent IPC sends and prevent interleaving.
+// For large pastes (>64KB), the content is written in chunks to avoid blocking
+// the PTY write buffer for extended periods.
+func (p *Pane) FlushPaste(content []byte) {
+	if p.ptmx == nil || len(content) == 0 {
+		return
+	}
+
+	p.sendMu.Lock()
+	defer p.sendMu.Unlock()
+
+	if p.noBracketedPaste {
+		p.writePTYChunked(content)
+		return
+	}
+
+	p.ptmx.Write([]byte("\x1b[200~")) //nolint:errcheck
+	p.writePTYChunked(content)
+	p.ptmx.Write([]byte("\x1b[201~")) //nolint:errcheck
+}
+
+// writePTYChunked writes data to the PTY, splitting into 64KB chunks for
+// large payloads to avoid blocking the PTY write buffer indefinitely.
+func (p *Pane) writePTYChunked(data []byte) {
+	const chunkSize = 64 * 1024
+	for len(data) > 0 {
+		n := len(data)
+		if n > chunkSize {
+			n = chunkSize
+		}
+		p.ptmx.Write(data[:n]) //nolint:errcheck
+		data = data[n:]
+	}
+}
+
 // Resize updates the emulator and PTY dimensions. Holds renderMu to serialize
 // with readLoop writes and Render cell reads, preventing garbled output when
 // the buffer is reorganized during zoom or layout changes (ini-ipr).
