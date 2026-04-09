@@ -59,8 +59,8 @@ func TestCUFHeuristic_InputRowNotFiltered(t *testing.T) {
 	// Simulate an input row with typed text next to colored autocomplete ghost text.
 	// Write "/model " in default fg, then "s" in default fg, then "onnet" colored.
 	// The old heuristic would blank the "s" because it's uncolored near colored text.
-	emu.Write([]byte("\033[5;1H"))        // Move to row 5 (0-indexed: 4)
-	emu.Write([]byte("/model s"))          // Default fg text
+	emu.Write([]byte("\033[5;1H"))            // Move to row 5 (0-indexed: 4)
+	emu.Write([]byte("/model s"))             // Default fg text
 	emu.Write([]byte("\033[90monnet\033[0m")) // Colored (dim gray) ghost text
 
 	// Row 4 has no │, so rowContainsStatusBar returns false.
@@ -105,7 +105,7 @@ func TestRowContainsStatusBar_ZeroCols(t *testing.T) {
 // Boundary: row index at emulator edge.
 func TestRowContainsStatusBar_LastRow(t *testing.T) {
 	emu := vt.NewSafeEmulator(40, 10)
-	emu.Write([]byte("\033[10;1H"))       // Move to last row (0-indexed: 9)
+	emu.Write([]byte("\033[10;1H")) // Move to last row (0-indexed: 9)
 	emu.Write([]byte("text \u2502 more"))
 
 	if !rowContainsStatusBar(emu, 9, 40) {

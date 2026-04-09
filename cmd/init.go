@@ -284,11 +284,23 @@ func interactiveSetup(wd string) (*config.Project, error) {
 		beadsCfg = config.BeadsConfig{Enabled: boolPtr(false)}
 	}
 
+	// CCS (Claude Code Server) opt-in prompt.
+	useCCS := prompt(reader, "Do you use CCS (Claude Code Server)? (y/n)", "n")
+	var claudeCommand []string
+	var claudeArgs []string
+	if strings.HasPrefix(strings.ToLower(useCCS), "y") {
+		profile := prompt(reader, "CCS profile name", "work")
+		claudeCommand = []string{"ccs", profile}
+		claudeArgs = []string{"--continue", "--dangerously-skip-permissions"}
+	}
+
 	p := &config.Project{
-		Name:  name,
-		Root:  root,
-		Roles: roleList,
-		Beads: beadsCfg,
+		Name:          name,
+		Root:          root,
+		Roles:         roleList,
+		Beads:         beadsCfg,
+		ClaudeCommand: claudeCommand,
+		ClaudeArgs:    claudeArgs,
 	}
 
 	if repoURL != "" {

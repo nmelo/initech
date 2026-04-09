@@ -375,4 +375,3 @@ func (t *TUI) removePane(name string) error {
 	})
 	return nil
 }
-

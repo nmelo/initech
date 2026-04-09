@@ -139,9 +139,9 @@ func TestInteg_ConfigRoundTrip(t *testing.T) {
 
 func TestInteg_ConfigValidation(t *testing.T) {
 	tests := []struct {
-		name    string
-		proj    config.Project
-		errSub  string
+		name   string
+		proj   config.Project
+		errSub string
 	}{
 		{"empty name", config.Project{Root: "/x", Roles: []string{"a"}}, "project name"},
 		{"empty roles", config.Project{Name: "x", Root: "/x"}, "at least one role"},

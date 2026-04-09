@@ -85,10 +85,10 @@ func TestHandleIPCPeers_LocalOnly(t *testing.T) {
 func TestHandleIPCPeers_WithRemotes(t *testing.T) {
 	localPane := &Pane{name: "super", emu: vt.NewSafeEmulator(10, 5), alive: true}
 	remotePane := &RemotePane{
-		name:     "eng1",
-		host:     "workbench",
-		emu:      vt.NewSafeEmulator(10, 5),
-		mux: NewControlMux(&fakeConn{}),
+		name: "eng1",
+		host: "workbench",
+		emu:  vt.NewSafeEmulator(10, 5),
+		mux:  NewControlMux(&fakeConn{}),
 	}
 
 	tui := &TUI{
@@ -150,10 +150,10 @@ func TestForwardSendToRemote_Found(t *testing.T) {
 	}()
 
 	rp := &RemotePane{
-		name:     "eng1",
-		host:     "workbench",
-		emu:      emu,
-		mux: NewControlMux(&fakeConn{}), // Absorbs the send command JSON.
+		name: "eng1",
+		host: "workbench",
+		emu:  emu,
+		mux:  NewControlMux(&fakeConn{}), // Absorbs the send command JSON.
 	}
 
 	tui := &TUI{
@@ -210,13 +210,13 @@ func (f *fakeConn) Write(b []byte) (int, error) {
 	return len(b), nil
 }
 
-func (f *fakeConn) Read([]byte) (int, error)                  { return 0, io.EOF }
-func (f *fakeConn) Close() error                               { return nil }
-func (f *fakeConn) LocalAddr() net.Addr                        { return nil }
-func (f *fakeConn) RemoteAddr() net.Addr                       { return nil }
-func (f *fakeConn) SetDeadline(time.Time) error                { return nil }
-func (f *fakeConn) SetReadDeadline(time.Time) error            { return nil }
-func (f *fakeConn) SetWriteDeadline(time.Time) error           { return nil }
+func (f *fakeConn) Read([]byte) (int, error)         { return 0, io.EOF }
+func (f *fakeConn) Close() error                     { return nil }
+func (f *fakeConn) LocalAddr() net.Addr              { return nil }
+func (f *fakeConn) RemoteAddr() net.Addr             { return nil }
+func (f *fakeConn) SetDeadline(time.Time) error      { return nil }
+func (f *fakeConn) SetReadDeadline(time.Time) error  { return nil }
+func (f *fakeConn) SetWriteDeadline(time.Time) error { return nil }
 
 func (f *fakeConn) findNewline() int {
 	for i, b := range f.written {

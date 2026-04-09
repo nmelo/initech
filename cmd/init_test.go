@@ -369,7 +369,7 @@ func TestInteractiveSetup_UsesDetectedWorkspacesAndRepo(t *testing.T) {
 	mustWriteFile(t, filepath.Join(root, "eng1", "CLAUDE.md"), "# eng1")
 	mustWriteFile(t, filepath.Join(root, "designer", "CLAUDE.md"), "# designer")
 
-	restoreStdin := withStdin(t, "\n"+root+"\nhttps://github.com/acme/widget.git\nY\ny\nwid\n")
+	restoreStdin := withStdin(t, "\n"+root+"\nhttps://github.com/acme/widget.git\nY\ny\nwid\nn\n")
 	defer restoreStdin()
 
 	restoreSelector := stubRoleSelector(t, func(title string, items []roles.SelectorItem, help ...string) ([]string, error) {
@@ -739,6 +739,101 @@ func TestRunInit_IndexLockCleanedBetweenSubmodules(t *testing.T) {
 	// index.lock should be cleaned up after the last failure.
 	if _, err := os.Stat(filepath.Join(dir, ".git", "index.lock")); !os.IsNotExist(err) {
 		t.Error("index.lock should be removed after final cleanup")
+	}
+}
+
+// ── CCS prompt ──────────────────────────────────────────────────────
+
+func TestInteractiveSetup_CCSYesDefaultProfile(t *testing.T) {
+	root := t.TempDir()
+	// project name (default) → root → repo URL (none) → no detected workspaces → beads (n) → CCS (y) → profile (default "work")
+	restoreStdin := withStdin(t, "\n"+root+"\n\nn\ny\n\n")
+	defer restoreStdin()
+
+	restoreSelector := stubRoleSelector(t, func(title string, items []roles.SelectorItem, help ...string) ([]string, error) {
+		return []string{"eng1"}, nil
+	})
+	defer restoreSelector()
+
+	p, err := interactiveSetup(root)
+	if err != nil {
+		t.Fatalf("interactiveSetup: %v", err)
+	}
+
+	if len(p.ClaudeCommand) != 2 || p.ClaudeCommand[0] != "ccs" || p.ClaudeCommand[1] != "work" {
+		t.Errorf("ClaudeCommand = %v, want [ccs work]", p.ClaudeCommand)
+	}
+	if len(p.ClaudeArgs) != 2 || p.ClaudeArgs[0] != "--continue" || p.ClaudeArgs[1] != "--dangerously-skip-permissions" {
+		t.Errorf("ClaudeArgs = %v, want [--continue --dangerously-skip-permissions]", p.ClaudeArgs)
+	}
+}
+
+func TestInteractiveSetup_CCSYesCustomProfile(t *testing.T) {
+	root := t.TempDir()
+	// beads (n) → CCS (y) → profile (personal)
+	restoreStdin := withStdin(t, "\n"+root+"\n\nn\ny\npersonal\n")
+	defer restoreStdin()
+
+	restoreSelector := stubRoleSelector(t, func(title string, items []roles.SelectorItem, help ...string) ([]string, error) {
+		return []string{"eng1"}, nil
+	})
+	defer restoreSelector()
+
+	p, err := interactiveSetup(root)
+	if err != nil {
+		t.Fatalf("interactiveSetup: %v", err)
+	}
+
+	if len(p.ClaudeCommand) != 2 || p.ClaudeCommand[0] != "ccs" || p.ClaudeCommand[1] != "personal" {
+		t.Errorf("ClaudeCommand = %v, want [ccs personal]", p.ClaudeCommand)
+	}
+}
+
+func TestInteractiveSetup_CCSNo(t *testing.T) {
+	root := t.TempDir()
+	// beads (n) → CCS (n)
+	restoreStdin := withStdin(t, "\n"+root+"\n\nn\nn\n")
+	defer restoreStdin()
+
+	restoreSelector := stubRoleSelector(t, func(title string, items []roles.SelectorItem, help ...string) ([]string, error) {
+		return []string{"eng1"}, nil
+	})
+	defer restoreSelector()
+
+	p, err := interactiveSetup(root)
+	if err != nil {
+		t.Fatalf("interactiveSetup: %v", err)
+	}
+
+	if p.ClaudeCommand != nil {
+		t.Errorf("ClaudeCommand = %v, want nil", p.ClaudeCommand)
+	}
+	if p.ClaudeArgs != nil {
+		t.Errorf("ClaudeArgs = %v, want nil", p.ClaudeArgs)
+	}
+}
+
+func TestInteractiveSetup_CCSDefaultNo(t *testing.T) {
+	root := t.TempDir()
+	// beads (n) → CCS (just press enter, default "n")
+	restoreStdin := withStdin(t, "\n"+root+"\n\nn\n\n")
+	defer restoreStdin()
+
+	restoreSelector := stubRoleSelector(t, func(title string, items []roles.SelectorItem, help ...string) ([]string, error) {
+		return []string{"eng1"}, nil
+	})
+	defer restoreSelector()
+
+	p, err := interactiveSetup(root)
+	if err != nil {
+		t.Fatalf("interactiveSetup: %v", err)
+	}
+
+	if p.ClaudeCommand != nil {
+		t.Errorf("ClaudeCommand = %v, want nil (default should be no CCS)", p.ClaudeCommand)
+	}
+	if p.ClaudeArgs != nil {
+		t.Errorf("ClaudeArgs = %v, want nil", p.ClaudeArgs)
 	}
 }
 

@@ -11,9 +11,9 @@ import (
 // from shell injection when passed to sh -c.
 func TestShellQuoteArgs(t *testing.T) {
 	cases := []struct {
-		name  string
-		args  []string
-		want  string
+		name string
+		args []string
+		want string
 	}{
 		{
 			name: "simple args",

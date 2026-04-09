@@ -193,7 +193,7 @@ type displayRowKind int
 
 const (
 	rowHeader displayRowKind = iota
-	rowItem                   // a selectable role item
+	rowItem                  // a selectable role item
 )
 
 // displayRow represents one visual line in the selector: a group header or a
@@ -276,7 +276,7 @@ func moveCursor(s *selectorState, delta int) {
 	if n == 0 {
 		return
 	}
-	s.cursor = ((s.cursor + delta) % n + n) % n
+	s.cursor = ((s.cursor+delta)%n + n) % n
 	scrollToCursor(s)
 }
 
@@ -521,7 +521,7 @@ func applyPreset(s *selectorState, preset string) {
 type keyType int
 
 const (
-	keyUp       keyType = iota
+	keyUp keyType = iota
 	keyDown
 	keySpace
 	keyEnter

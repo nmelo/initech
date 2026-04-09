@@ -14,7 +14,7 @@ func TestFormatTotalRSS(t *testing.T) {
 		{2048, "2 MB"},
 		{10240, "10 MB"},
 		{1048576, "1024 MB"}, // exactly at GB threshold (not >, so MB)
-		{1048577, "1.0 GB"},   // one KB over threshold → GB
+		{1048577, "1.0 GB"},  // one KB over threshold → GB
 		{2097152, "2.0 GB"},
 	}
 	for _, c := range cases {

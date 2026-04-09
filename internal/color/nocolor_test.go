@@ -15,7 +15,7 @@ func TestHasNoColorArg(t *testing.T) {
 		{[]string{"up", "--no-color"}, true},
 		{[]string{"up", "--verbose"}, false},
 		{[]string{}, false},
-		{[]string{"-no-color"}, false},      // single dash not matched
+		{[]string{"-no-color"}, false},       // single dash not matched
 		{[]string{"no-color"}, false},        // missing dashes not matched
 		{[]string{"--no-color=true"}, false}, // with value not matched (cobra strips it)
 	}
