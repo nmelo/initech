@@ -665,6 +665,83 @@ func TestRunInit_GenericSubmoduleFailureCleanup(t *testing.T) {
 	}
 }
 
+func TestRunInit_IndexLockCleanedBetweenSubmodules(t *testing.T) {
+	dir := t.TempDir()
+	// Config with two NeedsSrc roles so we get two sequential submodule adds.
+	cfg := &config.Project{
+		Name:  "demo",
+		Root:  dir,
+		Roles: []string{"eng1", "eng2"},
+		Repos: []config.Repo{{URL: "git@github.com:test/repo.git", Name: "repo"}},
+		Beads: config.BeadsConfig{Prefix: "dem"},
+	}
+	if err := config.Write(filepath.Join(dir, "initech.yaml"), cfg); err != nil {
+		t.Fatalf("config.Write: %v", err)
+	}
+
+	os.MkdirAll(filepath.Join(dir, ".git"), 0755)
+
+	restoreWD := chdirForTest(t, dir)
+	defer restoreWD()
+
+	restoreRunner := stubInitRunner(t, &fakeMultiRunner{
+		responses: []fakeResponse{
+			{output: "", err: nil},                               // git config --remove-section for eng1 cleanup
+			{output: "", err: nil},                               // git config --remove-section for eng2 cleanup
+			{output: "", err: fmt.Errorf("which bd: not found")}, // which bd
+		},
+	})
+	defer restoreRunner()
+
+	restoreScaffold := stubScaffoldRun(t, func(p *config.Project, opts scaffold.Options) ([]string, error) {
+		return []string{"eng1/CLAUDE.md", "eng2/CLAUDE.md"}, nil
+	})
+	defer restoreScaffold()
+
+	// Track the order of submodule add calls and simulate index.lock
+	// being left behind by each failure.
+	var addCalls []string
+	origInit := gitInit
+	origAdd := gitAddSubmodule
+	origCommit := gitCommitAll
+	gitInit = func(r iexec.Runner, root string) error { return nil }
+	gitAddSubmodule = func(r iexec.Runner, root, repoURL, subPath string) error {
+		addCalls = append(addCalls, subPath)
+		// Simulate: on failure, git leaves index.lock behind.
+		os.WriteFile(filepath.Join(root, ".git", "index.lock"), []byte("lock"), 0644)
+		return fmt.Errorf("git submodule add %s: fatal: You are on a branch yet to be born", subPath)
+	}
+	gitCommitAll = func(r iexec.Runner, root, message string) error { return nil }
+	defer func() {
+		gitInit = origInit
+		gitAddSubmodule = origAdd
+		gitCommitAll = origCommit
+	}()
+
+	var out bytes.Buffer
+	cmd := &cobra.Command{}
+	cmd.SetOut(&out)
+
+	if err := runInit(cmd, nil); err != nil {
+		t.Fatalf("runInit: %v", err)
+	}
+
+	// Both submodule adds should have been attempted (not just the first).
+	// This proves cleanup ran between them, removing the index.lock that
+	// would otherwise block the second add.
+	if len(addCalls) != 2 {
+		t.Fatalf("expected 2 submodule add calls, got %d: %v", len(addCalls), addCalls)
+	}
+	if addCalls[0] != "eng1/src" || addCalls[1] != "eng2/src" {
+		t.Errorf("submodule adds called in wrong order: %v", addCalls)
+	}
+
+	// index.lock should be cleaned up after the last failure.
+	if _, err := os.Stat(filepath.Join(dir, ".git", "index.lock")); !os.IsNotExist(err) {
+		t.Error("index.lock should be removed after final cleanup")
+	}
+}
+
 func withStdin(t *testing.T, input string) func() {
 	t.Helper()
 	orig := os.Stdin

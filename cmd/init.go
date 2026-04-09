@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/nmelo/initech/internal/color"
@@ -150,51 +149,28 @@ func runInit(cmd *cobra.Command, args []string) error {
 			}
 		}()
 
-		type cloneResult struct {
-			role string
-			err  error
-		}
-		results := make([]cloneResult, len(jobs))
-		var wg sync.WaitGroup
-		for i, job := range jobs {
-			wg.Add(1)
-			go func(idx int, j cloneJob) {
-				defer wg.Done()
-				results[idx] = cloneResult{
-					role: j.role,
-					err:  gitAddSubmodule(runner, p.Root, j.repoURL, j.subPath),
-				}
-			}(i, job)
-		}
-		wg.Wait()
-		close(spinDone)
-
+		// Submodule adds run sequentially because each one mutates
+		// .git/index. Parallel execution causes cascading index.lock
+		// failures when any clone fails.
 		var failures int
-		for _, r := range results {
-			if r.err != nil {
-				// Find the subPath for cleanup
-				var subPath string
-				for _, j := range jobs {
-					if j.role == r.role {
-						subPath = j.subPath
-						break
-					}
-				}
-
-				if git.IsEmptyRepoError(r.err) {
+		for _, job := range jobs {
+			if err := gitAddSubmodule(runner, p.Root, job.repoURL, job.subPath); err != nil {
+				if git.IsEmptyRepoError(err) {
 					fmt.Fprintf(out, "\r  %s %s has no commits — push an initial commit and re-run initech init\n",
-						color.Yellow("!"), color.Yellow(r.role+" repo"))
+						color.Yellow("!"), color.Yellow(job.role+" repo"))
 				} else {
-					fmt.Fprintf(out, "\r  %s %s: %v\n", color.Red("\u2717"), color.Red("clone failed for "+r.role), r.err)
+					fmt.Fprintf(out, "\r  %s %s: %v\n", color.Red("\u2717"), color.Red("clone failed for "+job.role), err)
 				}
 
-				// Clean up partial submodule artifacts so subsequent git
-				// operations (index.lock) and the initial commit (git add -A)
-				// don't fail with cascading errors.
-				git.CleanFailedSubmodule(runner, p.Root, subPath)
+				// Clean up partial submodule artifacts before the next
+				// attempt. Removes index.lock, partial checkout dir, and
+				// .git/modules cache so the next submodule add starts clean.
+				git.CleanFailedSubmodule(runner, p.Root, job.subPath)
 				failures++
 			}
 		}
+		close(spinDone)
+
 		if failures == 0 {
 			fmt.Fprintf(out, "\r  %s %s\n", color.Green("\u2713"), label)
 		}
