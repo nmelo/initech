@@ -284,8 +284,8 @@ func interactiveSetup(wd string) (*config.Project, error) {
 		beadsCfg = config.BeadsConfig{Enabled: boolPtr(false)}
 	}
 
-	// CCS (Claude Code Server) opt-in prompt.
-	useCCS := prompt(reader, "Do you use CCS (Claude Code Server)? (y/n)", "n")
+	// CCS (Claude Code Switcher) opt-in prompt.
+	useCCS := prompt(reader, "Do you use CCS (Claude Code Switcher)? (y/n)", "n")
 	var claudeCommand []string
 	var claudeArgs []string
 	if strings.HasPrefix(strings.ToLower(useCCS), "y") {
