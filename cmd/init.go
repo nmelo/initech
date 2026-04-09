@@ -180,7 +180,11 @@ func runInit(cmd *cobra.Command, args []string) error {
 	if p.Beads.IsEnabled() {
 		if _, err := runner.Run("which", "bd"); err == nil {
 			if _, err := os.Stat(filepath.Join(p.Root, ".beads")); err != nil {
-				if _, err := runner.RunInDir(p.Root, "bd", "init"); err != nil {
+				bdInitArgs := []string{"init"}
+				if p.Beads.Prefix != "" {
+					bdInitArgs = append(bdInitArgs, "--prefix", p.Beads.Prefix)
+				}
+				if _, err := runner.RunInDir(p.Root, "bd", bdInitArgs...); err != nil {
 					fmt.Fprintf(out, "  %s %s: %v\n", color.Yellow("!"), color.Yellow("bd init failed"), err)
 				} else {
 					if p.Beads.Prefix != "" {
