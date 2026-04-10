@@ -169,10 +169,14 @@ func (rp *RemotePane) IsAlive() bool {
 	return rp.alive
 }
 
-func (rp *RemotePane) IsSuspended() bool { return false }
-func (rp *RemotePane) IsPinned() bool    { return false }
-func (rp *RemotePane) AgentType() string { return "" } // Remote panes do not currently expose daemon-side agent type.
-func (rp *RemotePane) SubmitKey() string { return "" } // Remote panes use daemon-side config.
+func (rp *RemotePane) IsSuspended() bool          { return false }
+func (rp *RemotePane) IsPinned() bool              { return false }
+func (rp *RemotePane) AgentType() string           { return "" } // Remote panes do not currently expose daemon-side agent type.
+func (rp *RemotePane) SubmitKey() string           { return "" } // Remote panes use daemon-side config.
+func (rp *RemotePane) ActiveRunStart() time.Time   { return time.Time{} }
+func (rp *RemotePane) ActiveRunBytes() int64       { return 0 }
+func (rp *RemotePane) LastMessageReceived() time.Time { return time.Time{} }
+func (rp *RemotePane) LastEventTime() time.Time    { return time.Time{} }
 
 func (rp *RemotePane) Activity() ActivityState {
 	rp.mu.Lock()

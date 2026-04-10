@@ -411,6 +411,9 @@ func sendPaneTextLocked(pane *Pane, text string, enter bool) {
 }
 
 func (t *TUI) injectText(pane *Pane, text string, enter bool) {
+	pane.mu.Lock()
+	pane.lastMessageReceived = time.Now()
+	pane.mu.Unlock()
 	waitForCodexReadyIfNeeded(pane)
 	pane.sendMu.Lock()
 	defer pane.sendMu.Unlock()

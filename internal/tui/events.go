@@ -125,6 +125,17 @@ func (t *TUI) handleAgentEvent(ev AgentEvent) {
 		ev.Time = time.Now()
 	}
 
+	// Update lastEventTime on the source pane for conviction scoring.
+	if ev.Pane != "" {
+		if pv := t.findPaneByName(ev.Pane); pv != nil {
+			if lp, ok := pv.(*Pane); ok {
+				lp.mu.Lock()
+				lp.lastEventTime = ev.Time
+				lp.mu.Unlock()
+			}
+		}
+	}
+
 	// Broadcast to web companion subscribers.
 	if t.webEventProvider != nil {
 		t.webEventProvider.BroadcastWebEvent(ev)

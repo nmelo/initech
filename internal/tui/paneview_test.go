@@ -246,6 +246,10 @@ func TestPaneView_InterfaceMethodSet(t *testing.T) {
 	_ = pv.SessionDesc()
 	_ = pv.Emulator()
 	_ = pv.GetRegion()
+	_ = pv.ActiveRunStart()
+	_ = pv.ActiveRunBytes()
+	_ = pv.LastMessageReceived()
+	_ = pv.LastEventTime()
 	pv.SendKey(tcell.NewEventKey(tcell.KeyRune, 'x', 0))
 
 	s := tcell.NewSimulationScreen("")

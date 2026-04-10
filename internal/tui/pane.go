@@ -147,6 +147,10 @@ type PaneView interface {
 	SendText(text string, enter bool)
 	AgentType() string
 	SubmitKey() string // "" or "enter" (default), "ctrl+enter".
+	ActiveRunStart() time.Time
+	ActiveRunBytes() int64
+	LastMessageReceived() time.Time
+	LastEventTime() time.Time
 	Render(screen tcell.Screen, focused bool, dimmed bool, index int, sel Selection)
 	Resize(rows, cols int)
 	Close()
@@ -210,9 +214,13 @@ type Pane struct {
 	kittEpoch         time.Time         // Reference time for KITT scanner animation phase.
 	agentType         string            // Semantic agent type: claude-code, codex, or generic.
 	autoApprove       bool              // When true, auto-approve matching permission prompts.
-	noBracketedPaste  bool              // True when injectText should use typed input instead of bracketed paste.
-	submitKey         string            // Key sequence to submit: "" or "enter" (Enter), "ctrl+enter" (Ctrl+Enter).
-	region            Region
+	noBracketedPaste    bool              // True when injectText should use typed input instead of bracketed paste.
+	submitKey           string            // Key sequence to submit: "" or "enter" (Enter), "ctrl+enter" (Ctrl+Enter).
+	region              Region
+	activeRunStart      time.Time  // Set on idle->running edge, cleared on running->idle.
+	activeRunBytes      int64      // Bytes received since last idle->running edge.
+	lastMessageReceived time.Time  // Updated when injectText delivers a message to this pane.
+	lastEventTime       time.Time  // Updated when an AgentEvent fires for this pane.
 }
 
 // Region defines a rectangular area on screen (outer bounds including border).
@@ -376,6 +384,7 @@ func (p *Pane) readLoop() {
 
 			p.mu.Lock()
 			p.lastOutputTime = time.Now()
+			p.activeRunBytes += int64(n)
 			autoApprove := p.autoApprove
 			p.mu.Unlock()
 
@@ -1231,6 +1240,34 @@ func (p *Pane) Activity() ActivityState {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.activity
+}
+
+// ActiveRunStart returns when the current running streak began.
+func (p *Pane) ActiveRunStart() time.Time {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.activeRunStart
+}
+
+// ActiveRunBytes returns bytes received during the current running streak.
+func (p *Pane) ActiveRunBytes() int64 {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.activeRunBytes
+}
+
+// LastMessageReceived returns when a message was last delivered to this pane.
+func (p *Pane) LastMessageReceived() time.Time {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.lastMessageReceived
+}
+
+// LastEventTime returns when an AgentEvent last fired for this pane.
+func (p *Pane) LastEventTime() time.Time {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.lastEventTime
 }
 
 // MemoryRSS returns the pane's last polled RSS in kilobytes.

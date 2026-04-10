@@ -186,6 +186,12 @@ func (p *Pane) updateActivity() {
 		p.activity = StateIdle
 	}
 
+	// Track conviction scoring edges.
+	if prev != StateRunning && p.activity == StateRunning {
+		p.activeRunStart = now
+		p.activeRunBytes = 0
+	}
+
 	runningToIdle := prev == StateRunning && p.activity == StateIdle
 
 	var idleEvent *AgentEvent
