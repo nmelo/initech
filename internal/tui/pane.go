@@ -649,6 +649,9 @@ func (p *Pane) AgentType() string { return p.agentType }
 // suppression. The Codex ready-wait runs before acquiring sendMu so it does
 // not block concurrent sends.
 func (p *Pane) SendText(text string, enter bool) {
+	p.mu.Lock()
+	p.lastMessageReceived = time.Now()
+	p.mu.Unlock()
 	waitForCodexReadyIfNeeded(p)
 	p.sendMu.Lock()
 	defer p.sendMu.Unlock()
