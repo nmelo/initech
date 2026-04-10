@@ -27,6 +27,7 @@ const (
 	LayoutFocus LayoutMode = iota // Single pane, full screen.
 	LayoutGrid                    // Arbitrary NxM grid.
 	Layout2Col                    // Main pane left, stacked right.
+	LayoutLive                    // Dynamic pane rotation by activity conviction score.
 )
 
 // AgentInfo describes an agent for the status overlay.

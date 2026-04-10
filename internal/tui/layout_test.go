@@ -634,6 +634,7 @@ func TestLayoutModeToString(t *testing.T) {
 		{LayoutFocus, "focus"},
 		{LayoutGrid, "grid"},
 		{Layout2Col, "main"},
+		{LayoutLive, "live"},
 		{LayoutMode(99), "grid"},
 	}
 	for _, tt := range tests {
@@ -651,6 +652,7 @@ func TestStringToLayoutMode(t *testing.T) {
 		{"focus", LayoutFocus},
 		{"grid", LayoutGrid},
 		{"main", Layout2Col},
+		{"live", LayoutLive},
 		{"unknown", LayoutGrid},
 		{"", LayoutGrid},
 	}

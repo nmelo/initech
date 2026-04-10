@@ -35,6 +35,10 @@ type LayoutState struct {
 	// nil means uniform. Values are relative weights (e.g., [60, 40] = 60%/40%).
 	ColWeights []int `yaml:"col_weights,omitempty"`
 	RowWeights []int `yaml:"row_weights,omitempty"`
+
+	// Live mode: dynamic pane rotation by conviction score.
+	LivePinned map[string]int `yaml:"live_pinned,omitempty"` // Agent name -> slot index.
+	LiveSlots  []string       `yaml:"live_slots,omitempty"`  // Current agent name per slot (updated by live engine).
 }
 
 // RenderPlan is the complete set of instructions for one frame.
@@ -131,6 +135,23 @@ func computeLayout(state LayoutState, panes []PaneView, screenW, screenH int) Re
 	}
 
 	switch state.Mode {
+	case LayoutLive:
+		// Live mode: reorder visible panes by conviction-scored slot assignment.
+		slotNames := liveTickSlots(visible, state.LivePinned, state.GridCols*state.GridRows)
+		reordered := make([]PaneView, 0, len(slotNames))
+		paneByKey := make(map[string]PaneView, len(visible))
+		for _, p := range visible {
+			paneByKey[paneKey(p)] = p
+		}
+		for _, name := range slotNames {
+			if p, ok := paneByKey[name]; ok {
+				reordered = append(reordered, p)
+			}
+		}
+		visible = reordered
+		n = len(visible)
+		regions = gridRegions(state.GridCols, state.GridRows, n, screenW, screenH,
+			state.ColWeights, state.RowWeights)
 	case LayoutGrid:
 		regions = gridRegions(state.GridCols, state.GridRows, n, screenW, screenH,
 			state.ColWeights, state.RowWeights)
@@ -558,6 +579,8 @@ func layoutModeToString(m LayoutMode) string {
 		return "grid"
 	case Layout2Col:
 		return "main"
+	case LayoutLive:
+		return "live"
 	default:
 		return "grid"
 	}
@@ -572,6 +595,8 @@ func stringToLayoutMode(s string) LayoutMode {
 		return LayoutGrid
 	case "main":
 		return Layout2Col
+	case "live":
+		return LayoutLive
 	default:
 		return LayoutGrid
 	}
