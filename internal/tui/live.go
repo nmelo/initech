@@ -168,21 +168,17 @@ func (le *LiveEngine) Tick(panes []PaneView, now time.Time) []string {
 		}
 	}
 
-	// Build sorted candidate list for filling and challenging.
-	// Primary sort: config roles order (stable positioning).
-	// Fallback: score descending, then last output time, then alphabetical.
-	candidates := make([]ranked, 0, len(scores))
-	for _, s := range scores {
-		candidates = append(candidates, s)
-	}
+	// Build candidate lists. Two sort orders serve different purposes:
+	// - candidates: score descending (highest score wins displacement).
+	// - fillOrder:  roles order (stable slot positioning when filling empties).
 	roleIdx := make(map[string]int, len(le.RolesOrder))
 	for i, r := range le.RolesOrder {
 		roleIdx[r] = i
 	}
 	maxRoleIdx := len(le.RolesOrder)
-	sort.Slice(candidates, func(i, j int) bool {
-		ai, aOK := roleIdx[candidates[i].name]
-		bi, bOK := roleIdx[candidates[j].name]
+	roleCmp := func(a, b ranked) bool {
+		ai, aOK := roleIdx[a.name]
+		bi, bOK := roleIdx[b.name]
 		if !aOK {
 			ai = maxRoleIdx
 		}
@@ -192,14 +188,32 @@ func (le *LiveEngine) Tick(panes []PaneView, now time.Time) []string {
 		if ai != bi {
 			return ai < bi
 		}
+		if !a.lastOutputTime.Equal(b.lastOutputTime) {
+			return a.lastOutputTime.After(b.lastOutputTime)
+		}
+		return a.name < b.name
+	}
+
+	candidates := make([]ranked, 0, len(scores))
+	for _, s := range scores {
+		candidates = append(candidates, s)
+	}
+	// Score-sorted: used by bestUnplaced for displacement decisions.
+	sort.Slice(candidates, func(i, j int) bool {
 		if candidates[i].score != candidates[j].score {
 			return candidates[i].score > candidates[j].score
 		}
-		if !candidates[i].lastOutputTime.Equal(candidates[j].lastOutputTime) {
-			return candidates[i].lastOutputTime.After(candidates[j].lastOutputTime)
-		}
-		return candidates[i].name < candidates[j].name
+		return roleCmp(candidates[i], candidates[j])
 	})
+	// Roles-sorted copy: used for filling empty slots in config order.
+	// When no roles order is configured, fill by score (same as candidates).
+	fillOrder := make([]ranked, len(candidates))
+	copy(fillOrder, candidates)
+	if len(le.RolesOrder) > 0 {
+		sort.Slice(fillOrder, func(i, j int) bool {
+			return roleCmp(fillOrder[i], fillOrder[j])
+		})
+	}
 
 	// Track which candidates are consumed by a slot.
 	placed := make(map[string]bool, len(pinnedSet)+len(candidates))
@@ -227,9 +241,9 @@ func (le *LiveEngine) Tick(panes []PaneView, now time.Time) []string {
 		prev := le.Slots[slot]
 		prevInfo, prevAlive := scores[prev]
 
-		// Empty slot: fill with best available candidate (not a displacement).
+		// Empty slot: fill in config roles order (not a displacement).
 		if prev == "" {
-			if best, ok := bestUnplaced(candidates, placed); ok {
+			if best, ok := bestUnplaced(fillOrder, placed); ok {
 				result[slot] = best.name
 				placed[best.name] = true
 				le.holdUntil[slot] = now.Add(liveHoldDuration)
