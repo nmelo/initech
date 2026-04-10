@@ -345,6 +345,329 @@ func TestLiveEngine_Tick_RemotePaneKey(t *testing.T) {
 	}
 }
 
+// ── Anti-thrashing tests ────────────────────────────────────────────
+
+func TestLiveEngine_HoldTimePreventsSwap(t *testing.T) {
+	now := time.Now()
+
+	// Tick 1: fill empty slots. eng1 (score=30 from bead) gets slot 0, eng2 (score=0) gets slot 1.
+	panes := []PaneView{
+		&mockPaneView{name: "eng1", alive: true, activity: StateIdle, beadID: "ini-a"},
+		&mockPaneView{name: "eng2", alive: true, activity: StateIdle},
+	}
+	le := NewLiveEngine(2, nil)
+	slots := le.Tick(panes, now)
+	if slots[0] != "eng1" || slots[1] != "eng2" {
+		t.Fatalf("tick 1: got %v, want [eng1 eng2]", slots)
+	}
+
+	// Tick 2: 5 seconds later (within hold time). eng3 appears with high score.
+	// eng3: bead(30) + running>5s(20) = 50.
+	tick2 := now.Add(5 * time.Second)
+	panes2 := []PaneView{
+		&mockPaneView{name: "eng1", alive: true, activity: StateIdle, beadID: "ini-a"},
+		&mockPaneView{name: "eng2", alive: true, activity: StateIdle},
+		&mockPaneView{name: "eng3", alive: true, beadID: "ini-b", activity: StateRunning, runStart: tick2.Add(-10 * time.Second)},
+	}
+	slots = le.Tick(panes2, tick2)
+
+	// Hold time prevents any change: eng1 and eng2 stay.
+	if slots[0] != "eng1" {
+		t.Errorf("tick 2 slot 0 = %q, want eng1 (hold time active)", slots[0])
+	}
+	if slots[1] != "eng2" {
+		t.Errorf("tick 2 slot 1 = %q, want eng2 (hold time active)", slots[1])
+	}
+}
+
+func TestLiveEngine_HoldTimeExpiryAllowsSwap(t *testing.T) {
+	now := time.Now()
+
+	// Tick 1: fill. eng1 (score=30) slot 0, eng2 (score=0) slot 1.
+	le := NewLiveEngine(2, nil)
+	le.Tick([]PaneView{
+		&mockPaneView{name: "eng1", alive: true, activity: StateIdle, beadID: "ini-a"},
+		&mockPaneView{name: "eng2", alive: true, activity: StateIdle},
+	}, now)
+
+	// Tick 2: 15 seconds later (hold time expired). eng3 with score 50 appears.
+	tick2 := now.Add(15 * time.Second)
+	panes := []PaneView{
+		&mockPaneView{name: "eng1", alive: true, activity: StateIdle, beadID: "ini-a"},                                            // score 30
+		&mockPaneView{name: "eng2", alive: true, activity: StateIdle},                                                              // score 0
+		&mockPaneView{name: "eng3", alive: true, beadID: "ini-b", activity: StateRunning, runStart: tick2.Add(-10 * time.Second)}, // score 50
+	}
+	slots := le.Tick(panes, tick2)
+
+	// eng2 (score 0) is below keepThreshold (10). eng3 (50) >= claimThreshold (40).
+	// Slot 1 swaps first (slot 0 occupant eng1 has score 30 >= keep, eng3 needs margin).
+	// eng3(50) - eng1(30) = 20 >= margin(20). Slot 0 is also eligible.
+	// Iteration order: slot 0 first. eng1(30) above keep. eng3(50) >= claim(40), margin=20 >= 20. Swap!
+	if slots[0] != "eng3" {
+		t.Errorf("slot 0 = %q, want eng3 (hold expired, challenger wins)", slots[0])
+	}
+	// One-swap-per-tick: slot 1 keeps eng2 despite being below keep.
+	if slots[1] != "eng2" {
+		t.Errorf("slot 1 = %q, want eng2 (one-swap-per-tick)", slots[1])
+	}
+}
+
+func TestLiveEngine_HysteresisClaimThreshold(t *testing.T) {
+	now := time.Now()
+
+	// Fill: eng1 (score=30) in slot 0.
+	le := NewLiveEngine(1, nil)
+	le.Tick([]PaneView{
+		&mockPaneView{name: "eng1", alive: true, activity: StateIdle, beadID: "ini-a"}, // score 30
+	}, now)
+
+	// After hold time: challenger eng2 with bead only (score=30). < claimThreshold(40). Can't claim.
+	tick2 := now.Add(15 * time.Second)
+	panes := []PaneView{
+		&mockPaneView{name: "eng1", alive: true, activity: StateIdle, beadID: "ini-a"}, // score 30
+		&mockPaneView{name: "eng2", alive: true, activity: StateIdle, beadID: "ini-b"}, // score 30
+	}
+	slots := le.Tick(panes, tick2)
+
+	// eng2 (30) < claimThreshold (40). Cannot displace eng1.
+	if slots[0] != "eng1" {
+		t.Errorf("slot 0 = %q, want eng1 (challenger below claim threshold)", slots[0])
+	}
+}
+
+func TestLiveEngine_HysteresisMarginRequired(t *testing.T) {
+	now := time.Now()
+
+	// Fill: eng1 (score=30) in slot 0.
+	le := NewLiveEngine(1, nil)
+	le.Tick([]PaneView{
+		&mockPaneView{name: "eng1", alive: true, activity: StateIdle, beadID: "ini-a"}, // score 30
+	}, now)
+
+	// Challenger eng2 has score 45 (bead=30, volume>10KB=15). Meets claim threshold (40).
+	// But margin: 45 - 30 = 15 < 20. Not enough to displace.
+	tick2 := now.Add(15 * time.Second)
+	panes := []PaneView{
+		&mockPaneView{name: "eng1", alive: true, activity: StateIdle, beadID: "ini-a"},                          // score 30
+		&mockPaneView{name: "eng2", alive: true, activity: StateIdle, beadID: "ini-b", runBytes: 11 * 1024}, // score 45
+	}
+	slots := le.Tick(panes, tick2)
+
+	if slots[0] != "eng1" {
+		t.Errorf("slot 0 = %q, want eng1 (challenger margin too small: 15 < 20)", slots[0])
+	}
+}
+
+func TestLiveEngine_HysteresisKeepThreshold(t *testing.T) {
+	now := time.Now()
+
+	// Fill: eng1 with event (score=10: recent event only).
+	le := NewLiveEngine(1, nil)
+	le.Tick([]PaneView{
+		&mockPaneView{name: "eng1", alive: true, activity: StateIdle, eventTime: now.Add(-3 * time.Second)}, // score 10
+	}, now)
+
+	// After hold, eng1's event is stale (score=0, below keep=10).
+	// eng2 has score 50 (bead + running). >= claim threshold.
+	tick2 := now.Add(15 * time.Second)
+	panes := []PaneView{
+		&mockPaneView{name: "eng1", alive: true, activity: StateIdle}, // score 0 (event expired)
+		&mockPaneView{name: "eng2", alive: true, beadID: "ini-b", activity: StateRunning, runStart: tick2.Add(-10 * time.Second)}, // score 50
+	}
+	slots := le.Tick(panes, tick2)
+
+	// eng1 below keep threshold (0 < 10). eng2 >= claim threshold (50 >= 40). Swap.
+	if slots[0] != "eng2" {
+		t.Errorf("slot 0 = %q, want eng2 (occupant below keep threshold)", slots[0])
+	}
+}
+
+func TestLiveEngine_BelowKeepNoQualifiedChallenger(t *testing.T) {
+	now := time.Now()
+
+	// Fill: eng1 with score 10 (recent event).
+	le := NewLiveEngine(1, nil)
+	le.Tick([]PaneView{
+		&mockPaneView{name: "eng1", alive: true, activity: StateIdle, eventTime: now.Add(-3 * time.Second)},
+	}, now)
+
+	// After hold, eng1 score drops to 0. eng2 has score 30 (bead only) < claimThreshold(40).
+	tick2 := now.Add(15 * time.Second)
+	panes := []PaneView{
+		&mockPaneView{name: "eng1", alive: true, activity: StateIdle},                  // score 0
+		&mockPaneView{name: "eng2", alive: true, activity: StateIdle, beadID: "ini-b"}, // score 30
+	}
+	slots := le.Tick(panes, tick2)
+
+	// eng1 below keep, but eng2 (30) < claimThreshold (40). No qualified challenger. eng1 stays.
+	if slots[0] != "eng1" {
+		t.Errorf("slot 0 = %q, want eng1 (no qualified challenger)", slots[0])
+	}
+}
+
+func TestLiveEngine_OneSwapPerTick_MultipleEligible(t *testing.T) {
+	now := time.Now()
+
+	// Fill 3 slots with low-scoring agents.
+	le := NewLiveEngine(3, nil)
+	le.Tick([]PaneView{
+		&mockPaneView{name: "eng1", alive: true, activity: StateIdle, eventTime: now.Add(-3 * time.Second)}, // score 10
+		&mockPaneView{name: "eng2", alive: true, activity: StateIdle, eventTime: now.Add(-3 * time.Second)}, // score 10
+		&mockPaneView{name: "eng3", alive: true, activity: StateIdle, eventTime: now.Add(-3 * time.Second)}, // score 10
+	}, now)
+
+	// After hold: all occupants drop to 0. Three challengers qualify.
+	tick2 := now.Add(15 * time.Second)
+	panes := []PaneView{
+		&mockPaneView{name: "eng1", alive: true, activity: StateIdle}, // score 0 (event expired)
+		&mockPaneView{name: "eng2", alive: true, activity: StateIdle}, // score 0
+		&mockPaneView{name: "eng3", alive: true, activity: StateIdle}, // score 0
+		&mockPaneView{name: "hot1", alive: true, beadID: "ini-a", activity: StateRunning, runStart: tick2.Add(-10 * time.Second)}, // score 50
+		&mockPaneView{name: "hot2", alive: true, beadID: "ini-b", activity: StateRunning, runStart: tick2.Add(-10 * time.Second)}, // score 50
+		&mockPaneView{name: "hot3", alive: true, beadID: "ini-c", activity: StateRunning, runStart: tick2.Add(-10 * time.Second)}, // score 50
+	}
+	slots := le.Tick(panes, tick2)
+
+	// One-swap-per-tick: only slot 0 changes (first eligible, iteration order).
+	// hot1 wins slot 0 (alphabetical tiebreak: hot1 < hot2 < hot3).
+	if slots[0] != "hot1" {
+		t.Errorf("slot 0 = %q, want hot1 (first swap, alpha tiebreak)", slots[0])
+	}
+	if slots[1] != "eng2" {
+		t.Errorf("slot 1 = %q, want eng2 (one-swap-per-tick, no change)", slots[1])
+	}
+	if slots[2] != "eng3" {
+		t.Errorf("slot 2 = %q, want eng3 (one-swap-per-tick, no change)", slots[2])
+	}
+
+	// Tick 3: immediately after (within new hold for slot 0, but not for slots 1,2).
+	// Slots 1 and 2 don't have new hold times, so they CAN swap.
+	tick3 := tick2.Add(16 * time.Millisecond)
+	slots = le.Tick(panes, tick3)
+
+	// Slot 0: hot1 under hold time, stays.
+	if slots[0] != "hot1" {
+		t.Errorf("tick 3 slot 0 = %q, want hot1 (hold time)", slots[0])
+	}
+	// Slot 1: eng2 (0) below keep. hot2 wins (next best unplaced after hot1).
+	if slots[1] != "hot2" {
+		t.Errorf("tick 3 slot 1 = %q, want hot2 (second swap cascade)", slots[1])
+	}
+	// Slot 2: one-swap-per-tick, eng3 stays.
+	if slots[2] != "eng3" {
+		t.Errorf("tick 3 slot 2 = %q, want eng3 (one-swap-per-tick)", slots[2])
+	}
+
+	// Tick 4: third swap.
+	tick4 := tick3.Add(16 * time.Millisecond)
+	slots = le.Tick(panes, tick4)
+	if slots[2] != "hot3" {
+		t.Errorf("tick 4 slot 2 = %q, want hot3 (third swap cascade)", slots[2])
+	}
+}
+
+func TestLiveEngine_TiebreakerDeterminism(t *testing.T) {
+	now := time.Now()
+
+	// Two agents with identical scores and output times.
+	// Alphabetical name tiebreak: "alpha" < "beta".
+	panes := []PaneView{
+		&mockPaneView{name: "beta", alive: true, beadID: "ini-a", activity: StateRunning, runStart: now.Add(-10 * time.Second)},
+		&mockPaneView{name: "alpha", alive: true, beadID: "ini-b", activity: StateRunning, runStart: now.Add(-10 * time.Second)},
+	}
+	le := NewLiveEngine(2, nil)
+	slots := le.Tick(panes, now)
+
+	// Both score 50. Same lastOutputTime (zero). Alpha wins by name.
+	if slots[0] != "alpha" {
+		t.Errorf("slot 0 = %q, want alpha (alphabetical tiebreak)", slots[0])
+	}
+	if slots[1] != "beta" {
+		t.Errorf("slot 1 = %q, want beta", slots[1])
+	}
+}
+
+func TestLiveEngine_DeadAgentHoldThenReplace(t *testing.T) {
+	now := time.Now()
+
+	// Fill: eng1 (score=30) in slot 0.
+	le := NewLiveEngine(1, nil)
+	le.Tick([]PaneView{
+		&mockPaneView{name: "eng1", alive: true, activity: StateIdle, beadID: "ini-a"},
+	}, now)
+
+	// Agent dies within hold time. eng2 available with high score.
+	tick2 := now.Add(5 * time.Second)
+	panes := []PaneView{
+		&mockPaneView{name: "eng1", alive: false},
+		&mockPaneView{name: "eng2", alive: true, beadID: "ini-b", activity: StateRunning, runStart: tick2.Add(-10 * time.Second)},
+	}
+	slots := le.Tick(panes, tick2)
+
+	// Hold time still active: dead agent stays (operator notices).
+	if slots[0] != "eng1" {
+		t.Errorf("slot 0 = %q, want eng1 (dead but hold active)", slots[0])
+	}
+
+	// After hold time: dead agent gets replaced.
+	tick3 := now.Add(15 * time.Second)
+	slots = le.Tick(panes, tick3)
+	if slots[0] != "eng2" {
+		t.Errorf("slot 0 = %q, want eng2 (dead agent replaced after hold)", slots[0])
+	}
+}
+
+func TestLiveEngine_DisplacedAgentFillsEmptySlot(t *testing.T) {
+	now := time.Now()
+
+	// Fill: eng1 (score=30) slot 0, slot 1 remains empty (only one candidate).
+	le := NewLiveEngine(2, nil)
+	le.Tick([]PaneView{
+		&mockPaneView{name: "eng1", alive: true, activity: StateIdle, beadID: "ini-a"},
+	}, now)
+
+	// After hold: eng2 appears with score 50, displaces eng1 from slot 0.
+	// eng1 (displaced) should fill empty slot 1.
+	tick2 := now.Add(15 * time.Second)
+	panes := []PaneView{
+		&mockPaneView{name: "eng1", alive: true, activity: StateIdle, beadID: "ini-a"},                                            // score 30
+		&mockPaneView{name: "eng2", alive: true, beadID: "ini-b", activity: StateRunning, runStart: tick2.Add(-10 * time.Second)}, // score 50
+	}
+	slots := le.Tick(panes, tick2)
+
+	// eng2 displaces eng1 from slot 0. eng1 fills empty slot 1.
+	if slots[0] != "eng2" {
+		t.Errorf("slot 0 = %q, want eng2 (displaced eng1)", slots[0])
+	}
+	if slots[1] != "eng1" {
+		t.Errorf("slot 1 = %q, want eng1 (displaced agent fills empty slot)", slots[1])
+	}
+}
+
+func TestLiveEngine_EmptySlotFillNotLimitedBySwapCap(t *testing.T) {
+	now := time.Now()
+
+	// First tick fills all 3 empty slots in one call.
+	panes := []PaneView{
+		&mockPaneView{name: "eng1", alive: true, beadID: "ini-a", activity: StateRunning, runStart: now.Add(-10 * time.Second)}, // score 50
+		&mockPaneView{name: "eng2", alive: true, activity: StateIdle, beadID: "ini-b"},                                          // score 30
+		&mockPaneView{name: "eng3", alive: true, activity: StateIdle},                                                            // score 0
+	}
+	le := NewLiveEngine(3, nil)
+	slots := le.Tick(panes, now)
+
+	// All empty slots filled in one tick (fills are not displacements).
+	if slots[0] != "eng1" {
+		t.Errorf("slot 0 = %q, want eng1", slots[0])
+	}
+	if slots[1] != "eng2" {
+		t.Errorf("slot 1 = %q, want eng2", slots[1])
+	}
+	if slots[2] != "eng3" {
+		t.Errorf("slot 2 = %q, want eng3", slots[2])
+	}
+}
+
 // ── liveTickSlots tests ─────────────────────────────────────────────
 
 func TestLiveTickSlots_DefaultsToLen(t *testing.T) {
