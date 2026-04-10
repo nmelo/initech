@@ -258,6 +258,7 @@ func (t *TUI) applyLayout() {
 	// Pass ALL panes (not just visible) so hidden agents with high
 	// conviction can displace visible agents with low conviction.
 	if t.layoutState.Mode == LayoutLive && t.liveEngine != nil {
+		LogInfo("applyLayout", "live-tick-input", "t.panes", len(t.panes))
 		prev := make([]string, len(t.liveEngine.Slots))
 		copy(prev, t.liveEngine.Slots)
 		t.layoutState.LiveSlots = t.liveEngine.Tick(t.panes, time.Now())

@@ -111,6 +111,13 @@ func bestUnplaced(candidates []ranked, placed map[string]bool) (ranked, bool) {
 func (le *LiveEngine) Tick(panes []PaneView, now time.Time) []string {
 	numSlots := len(le.Slots)
 
+	// Log pane roster received by Tick.
+	names := make([]string, len(panes))
+	for i, p := range panes {
+		names[i] = paneKey(p)
+	}
+	LogInfo("live-tick", "roster", "count", len(panes), "names", fmt.Sprintf("%v", names), "slots", numSlots)
+
 	// Ensure holdUntil is correctly sized (handles engine reuse across resizes).
 	if len(le.holdUntil) != numSlots {
 		hold := make([]time.Time, numSlots)
