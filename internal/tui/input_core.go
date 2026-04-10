@@ -106,6 +106,23 @@ func (t *TUI) handleKey(ev *tcell.EventKey) bool {
 				t.applyLayout()
 				t.saveLayoutIfConfigured()
 				return false
+			case '5':
+				if t.layoutState.Mode == LayoutLive {
+					// Toggle off: switch back to grid.
+					t.layoutState.Mode = LayoutGrid
+					t.liveEngine = nil
+				} else {
+					// Toggle on: enter live mode with current grid dimensions.
+					t.layoutState.Mode = LayoutLive
+					t.layoutState.Zoomed = false
+					if t.layoutState.LivePinned == nil {
+						t.layoutState.LivePinned = make(map[string]int)
+					}
+					t.initLiveEngine()
+				}
+				t.applyLayout()
+				t.saveLayoutIfConfigured()
+				return false
 			case 's':
 				// Overlay toggle is deliberately not persisted. It's a
 				// lightweight view preference (like scrollback position),

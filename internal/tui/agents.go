@@ -136,9 +136,43 @@ func (t *TUI) handleAgentsKey(ev *tcell.EventKey) bool {
 		case 'R':
 			t.agentsResetOrder()
 			return false
+		default:
+			// Number keys 0-9: pin selected agent to that live slot.
+			if t.layoutState.Mode == LayoutLive && ev.Rune() >= '0' && ev.Rune() <= '9' {
+				t.agentsLivePin(int(ev.Rune() - '0'))
+				return false
+			}
 		}
 	}
 	return false
+}
+
+// agentsLivePin pins the selected agent to the given slot index in live mode.
+func (t *TUI) agentsLivePin(slot int) {
+	if t.agents.selected < 0 || t.agents.selected >= len(t.panes) {
+		return
+	}
+	totalSlots := t.layoutState.GridCols * t.layoutState.GridRows
+	if slot >= totalSlots {
+		t.agents.error = fmt.Sprintf("slot %d does not exist (grid has %d slots)", slot, totalSlots)
+		return
+	}
+	if t.layoutState.LivePinned == nil {
+		t.layoutState.LivePinned = make(map[string]int)
+	}
+	name := paneKey(t.panes[t.agents.selected])
+	// Remove any existing pin on this slot.
+	for k, v := range t.layoutState.LivePinned {
+		if v == slot {
+			delete(t.layoutState.LivePinned, k)
+		}
+	}
+	t.layoutState.LivePinned[name] = slot
+	if t.liveEngine != nil {
+		t.liveEngine.Pinned = t.layoutState.LivePinned
+	}
+	t.applyLayout()
+	t.saveLayoutIfConfigured()
 }
 
 // handleAgentsSearchKey processes keys while in search mode.
@@ -562,6 +596,22 @@ func (t *TUI) renderAgents() {
 		if pinned {
 			pin = "[P]"
 		}
+
+		// Live mode slot info overrides pin column.
+		if t.layoutState.Mode == LayoutLive {
+			if liveSlot, lp := t.layoutState.LivePinned[paneKey(p)]; lp {
+				pin = fmt.Sprintf("P:%d", liveSlot)
+			} else {
+				// Check if agent is in a dynamic slot.
+				for si, sn := range t.layoutState.LiveSlots {
+					if sn == paneKey(p) {
+						pin = fmt.Sprintf("D:%d", si)
+						break
+					}
+				}
+			}
+		}
+
 		status := act.String()
 		if bead != "" {
 			status = fmt.Sprintf("%s (%s)", act.String(), bead)

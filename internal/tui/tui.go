@@ -232,6 +232,10 @@ type TUI struct {
 	agentEvents   chan AgentEvent // Buffered channel for semantic events from detection modules.
 	notifications []notification  // Active notifications for rendering.
 	eventLog      []AgentEvent    // Persistent log of all events (last 100 or last 60 min).
+
+	// Live Mode: persistent engine for anti-thrashing across render frames.
+	// Nil when not in live mode. Created by cmdLive/Alt+5, destroyed on mode switch.
+	liveEngine *LiveEngine
 }
 
 // applyLayout recomputes the render plan from the current layout state
@@ -249,6 +253,20 @@ func (t *TUI) applyLayout() {
 	if paneH < 1 {
 		paneH = 1
 	}
+	// Tick live engine before computing layout so LiveSlots are fresh.
+	if t.layoutState.Mode == LayoutLive && t.liveEngine != nil {
+		visible := make([]PaneView, 0, len(t.panes))
+		for _, p := range t.panes {
+			if !t.layoutState.Hidden[paneKey(p)] {
+				visible = append(visible, p)
+			}
+		}
+		prev := make([]string, len(t.liveEngine.Slots))
+		copy(prev, t.liveEngine.Slots)
+		t.layoutState.LiveSlots = t.liveEngine.Tick(visible, time.Now())
+		t.onLiveSwap(prev, t.liveEngine.Slots)
+	}
+
 	t.plan = computeLayout(t.layoutState, t.panes, w, paneH)
 	LogInfo("applyLayout", "layout applied", "panes", len(t.plan.Panes), "w", w, "h", paneH)
 
@@ -280,6 +298,40 @@ func (t *TUI) applyLayout() {
 		}
 	}
 	LogInfo("applyLayout", "all resizes complete")
+}
+
+// initLiveEngine creates a persistent LiveEngine for live mode with the given
+// grid dimensions and any existing live pins.
+func (t *TUI) initLiveEngine() {
+	numSlots := t.layoutState.GridCols * t.layoutState.GridRows
+	if numSlots < 1 {
+		numSlots = t.visibleCountFromState()
+	}
+	t.liveEngine = NewLiveEngine(numSlots, t.layoutState.LivePinned)
+}
+
+// onLiveSwap compares previous and current slot assignments. If any slot
+// changed to a different agent, fires a lightweight announce POST for the
+// audio cue. The POST is fire-and-forget with a 1-second timeout.
+func (t *TUI) onLiveSwap(prev, curr []string) {
+	var swapped string
+	for i := 0; i < len(curr) && i < len(prev); i++ {
+		if prev[i] != curr[i] && curr[i] != "" && prev[i] != "" {
+			swapped = curr[i]
+			break
+		}
+	}
+	if swapped == "" {
+		return
+	}
+	url := ""
+	if t.project != nil {
+		url = t.project.AnnounceURL
+	}
+	if url == "" {
+		return
+	}
+	go announceLiveSwap(url, swapped)
 }
 
 // saveLayoutIfConfigured persists the current layout to disk.

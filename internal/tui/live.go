@@ -1,7 +1,10 @@
 package tui
 
 import (
+	"fmt"
+	"net/http"
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -248,4 +251,18 @@ func liveTickSlots(panes []PaneView, pinned map[string]int, numSlots int) []stri
 	}
 	le := NewLiveEngine(numSlots, pinned)
 	return le.Tick(panes, time.Now())
+}
+
+// announceLiveSwap sends a fire-and-forget POST to the Agent Radio announce
+// endpoint when a live mode slot swap occurs. The POST has a 1-second timeout
+// and never blocks or delays rendering. Failures are logged and ignored.
+func announceLiveSwap(announceURL, agent string) {
+	body := fmt.Sprintf(`{"detail":"%s is now on screen","kind":"live.swap","agent":"%s"}`, agent, agent)
+	client := &http.Client{Timeout: 1 * time.Second}
+	resp, err := client.Post(announceURL, "application/json", strings.NewReader(body))
+	if err != nil {
+		LogDebug("live", "announce swap failed", "err", err)
+		return
+	}
+	resp.Body.Close()
 }

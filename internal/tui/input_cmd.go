@@ -235,7 +235,7 @@ func (t *TUI) tabComplete() {
 
 	// Only agent-name commands are tab-completed.
 	switch cmd {
-	case "focus", "remove", "rm", "restart", "r":
+	case "focus", "remove", "rm", "restart", "r", "pin":
 		// Fall through to completion logic.
 	default:
 		return
@@ -328,7 +328,7 @@ func longestCommonPrefix(strs []string) string {
 
 // commandNames lists all valid command keywords for fuzzy matching.
 var commandNames = []string{
-	"grid", "focus", "zoom", "panel", "main",
+	"grid", "focus", "zoom", "panel", "main", "live", "pin", "unpin",
 	"layout", "restart", "patrol", "top", "add", "remove",
 	"log", "help", "quit", "events", "agents", "mcp", "web",
 }
@@ -458,6 +458,12 @@ func (t *TUI) execCmd(cmd string) bool {
 		return t.cmdPanel()
 	case "main":
 		return t.cmdMain()
+	case "live":
+		return t.cmdLive(parts)
+	case "pin":
+		return t.cmdPin(parts)
+	case "unpin":
+		return t.cmdUnpin(parts)
 	case "layout":
 		return t.cmdLayout(parts)
 	case "restart", "r":
@@ -696,6 +702,90 @@ func (t *TUI) cmdQuit() bool {
 	t.cmd.confirmMsg = "Quit will stop all agents. Enter to confirm, Esc to cancel."
 	t.cmd.confirmExpiry = time.Now().Add(10 * time.Second)
 	t.cmd.active = true
+	return false
+}
+
+func (t *TUI) cmdLive(parts []string) bool {
+	if len(parts) >= 2 {
+		visCount := t.visibleCountFromState()
+		cols, rows, ok := parseGrid(parts[1], visCount)
+		if !ok {
+			t.cmd.error = fmt.Sprintf("invalid grid %q, use CxR (e.g. live 2x3)", parts[1])
+			return false
+		}
+		t.layoutState.GridCols = cols
+		t.layoutState.GridRows = rows
+	}
+	t.layoutState.Mode = LayoutLive
+	t.layoutState.Zoomed = false
+	if t.layoutState.LivePinned == nil {
+		t.layoutState.LivePinned = make(map[string]int)
+	}
+	t.initLiveEngine()
+	t.applyLayout()
+	t.saveLayoutIfConfigured()
+	return false
+}
+
+func (t *TUI) cmdPin(parts []string) bool {
+	if len(parts) < 3 {
+		t.cmd.error = "usage: pin <agent> <slot>"
+		return false
+	}
+	name := parts[1]
+	pv := t.findPaneByName(name)
+	if pv == nil {
+		t.cmd.error = fmt.Sprintf("unknown agent %q", name)
+		return false
+	}
+	slot, err := strconv.Atoi(parts[2])
+	if err != nil || slot < 0 {
+		t.cmd.error = fmt.Sprintf("invalid slot %q, must be 0-based integer", parts[2])
+		return false
+	}
+	totalSlots := t.layoutState.GridCols * t.layoutState.GridRows
+	if slot >= totalSlots {
+		t.cmd.error = fmt.Sprintf("slot %d does not exist (grid has %d slots)", slot, totalSlots)
+		return false
+	}
+	if t.layoutState.LivePinned == nil {
+		t.layoutState.LivePinned = make(map[string]int)
+	}
+	// Remove any existing pin on this slot (only one agent per slot).
+	for k, v := range t.layoutState.LivePinned {
+		if v == slot {
+			delete(t.layoutState.LivePinned, k)
+		}
+	}
+	t.layoutState.LivePinned[paneKey(pv)] = slot
+	if t.liveEngine != nil {
+		t.liveEngine.Pinned = t.layoutState.LivePinned
+	}
+	t.applyLayout()
+	t.saveLayoutIfConfigured()
+	return false
+}
+
+func (t *TUI) cmdUnpin(parts []string) bool {
+	if len(parts) < 2 {
+		t.cmd.error = "usage: unpin <slot>"
+		return false
+	}
+	slot, err := strconv.Atoi(parts[1])
+	if err != nil || slot < 0 {
+		t.cmd.error = fmt.Sprintf("invalid slot %q", parts[1])
+		return false
+	}
+	for k, v := range t.layoutState.LivePinned {
+		if v == slot {
+			delete(t.layoutState.LivePinned, k)
+		}
+	}
+	if t.liveEngine != nil {
+		t.liveEngine.Pinned = t.layoutState.LivePinned
+	}
+	t.applyLayout()
+	t.saveLayoutIfConfigured()
 	return false
 }
 

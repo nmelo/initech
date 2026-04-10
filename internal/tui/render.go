@@ -52,6 +52,22 @@ func (t *TUI) render() {
 		LogDebug("render", "drawing pane", "frame", t.renderCount, "idx", i, "name", pr.Pane.Name(), "host", pr.Pane.Host())
 		sel := t.selectionForPane(pr.Pane)
 		pr.Pane.Render(s, pr.Focused, pr.Dimmed, pr.Index, sel)
+		// Live mode: draw [P] badge for pinned panes, right-aligned on ribbon.
+		if t.layoutState.Mode == LayoutLive {
+			pk := paneKey(pr.Pane)
+			if _, pinned := t.layoutState.LivePinned[pk]; pinned {
+				r := pr.Region
+				ribbonY := r.Y + r.H - 1
+				badge := "[P]"
+				startX := r.X + r.W - len(badge) - 1
+				pinStyle := tcell.StyleDefault.Background(trueBlack).Foreground(tcell.ColorMediumPurple).Bold(true)
+				for j, ch := range badge {
+					if startX+j >= r.X && startX+j < r.X+r.W {
+						s.SetContent(startX+j, ribbonY, ch, nil, pinStyle)
+					}
+				}
+			}
+		}
 		LogDebug("render", "pane done", "frame", t.renderCount, "idx", i, "name", pr.Pane.Name())
 	}
 

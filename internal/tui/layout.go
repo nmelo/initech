@@ -136,8 +136,13 @@ func computeLayout(state LayoutState, panes []PaneView, screenW, screenH int) Re
 
 	switch state.Mode {
 	case LayoutLive:
-		// Live mode: reorder visible panes by conviction-scored slot assignment.
-		slotNames := liveTickSlots(visible, state.LivePinned, state.GridCols*state.GridRows)
+		// Live mode: reorder visible panes by slot assignment.
+		// If LiveSlots is pre-computed (persistent engine on TUI), use it directly.
+		// Otherwise fall back to stateless liveTickSlots (tests, first frame).
+		slotNames := state.LiveSlots
+		if len(slotNames) == 0 {
+			slotNames = liveTickSlots(visible, state.LivePinned, state.GridCols*state.GridRows)
+		}
 		reordered := make([]PaneView, 0, len(slotNames))
 		paneByKey := make(map[string]PaneView, len(visible))
 		for _, p := range visible {
@@ -348,11 +353,12 @@ func DefaultLayoutState(paneNames []string) LayoutState {
 // Focused pane is deliberately excluded (momentary choice, not a preference).
 // Overlay and weights are excluded (not layout-changing from the user's perspective).
 type PersistentLayout struct {
-	Grid   string   `yaml:"grid"`             // e.g. "3x2"
-	Hidden []string `yaml:"hidden,omitempty"` // Pane keys: name for local, host:name for remote.
-	Pinned []string `yaml:"pinned,omitempty"` // Pane keys protected from auto-suspend.
-	Order  []string `yaml:"order,omitempty"`  // Pane keys in display order (from show command).
-	Mode   string   `yaml:"mode"`             // "grid", "focus", "main"
+	Grid       string         `yaml:"grid"`                  // e.g. "3x2"
+	Hidden     []string       `yaml:"hidden,omitempty"`      // Pane keys: name for local, host:name for remote.
+	Pinned     []string       `yaml:"pinned,omitempty"`      // Pane keys protected from auto-suspend.
+	Order      []string       `yaml:"order,omitempty"`       // Pane keys in display order (from show command).
+	Mode       string         `yaml:"mode"`                  // "grid", "focus", "main", "live"
+	LivePinned map[string]int `yaml:"live_pinned,omitempty"` // Agent name -> fixed slot index for live mode.
 }
 
 // layoutDir returns the .initech directory path under projectRoot.
@@ -369,9 +375,10 @@ func layoutPath(projectRoot string) string {
 // (temp file + rename) to prevent corruption. Creates .initech/ if it doesn't exist.
 func SaveLayout(projectRoot string, state LayoutState) error {
 	pl := PersistentLayout{
-		Grid:  fmt.Sprintf("%dx%d", state.GridCols, state.GridRows),
-		Mode:  layoutModeToString(state.Mode),
-		Order: state.Order,
+		Grid:       fmt.Sprintf("%dx%d", state.GridCols, state.GridRows),
+		Mode:       layoutModeToString(state.Mode),
+		Order:      state.Order,
+		LivePinned: state.LivePinned,
 	}
 	for name, hidden := range state.Hidden {
 		if hidden {
@@ -500,14 +507,15 @@ func LoadLayout(projectRoot string, paneKeys []string) (LayoutState, bool) {
 	}
 
 	return LayoutState{
-		Mode:     mode,
-		GridCols: cols,
-		GridRows: rows,
-		Focused:  focused,
-		Hidden:   hidden,
-		Pinned:   pinned,
-		Order:    order,
-		Overlay:  true, // Always start with overlay visible.
+		Mode:       mode,
+		GridCols:   cols,
+		GridRows:   rows,
+		Focused:    focused,
+		Hidden:     hidden,
+		Pinned:     pinned,
+		Order:      order,
+		Overlay:    true, // Always start with overlay visible.
+		LivePinned: pl.LivePinned,
 	}, true
 }
 
