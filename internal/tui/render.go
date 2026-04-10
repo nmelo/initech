@@ -347,6 +347,35 @@ func (t *TUI) renderHints() {
 
 	// Right items are added in display order (left-to-right within the right block).
 
+	// Layout mode label.
+	{
+		var modeLabel string
+		modeStyle := b.barStyle
+		switch t.layoutState.Mode {
+		case LayoutLive:
+			modeLabel = "Live"
+			modeStyle = b.barStyle.Foreground(tcell.ColorGreen)
+			if t.layoutState.GridCols > 0 && t.layoutState.GridRows > 0 {
+				modeLabel = fmt.Sprintf("Live %dx%d", t.layoutState.GridCols, t.layoutState.GridRows)
+			}
+		case LayoutGrid:
+			modeLabel = "Grid"
+			if t.layoutState.GridCols > 0 && t.layoutState.GridRows > 0 {
+				modeLabel = fmt.Sprintf("Grid %dx%d", t.layoutState.GridCols, t.layoutState.GridRows)
+			}
+		case LayoutFocus:
+			modeLabel = "Focus"
+		case Layout2Col:
+			modeLabel = "Main"
+		}
+		if t.layoutState.Zoomed {
+			modeLabel += " (zoomed)"
+		}
+		if modeLabel != "" {
+			b.addRight(modeLabel, modeStyle)
+		}
+	}
+
 	// Pending timers.
 	if t.timers != nil {
 		if pending := t.timers.Pending(); pending > 0 {

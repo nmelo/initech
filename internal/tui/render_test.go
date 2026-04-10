@@ -266,7 +266,7 @@ func TestRenderHints_ShowsTipAndShortcuts(t *testing.T) {
 func TestRenderHints_TruncatesOnNarrowTerminal(t *testing.T) {
 	s := tcell.NewSimulationScreen("")
 	s.Init()
-	s.SetSize(55, 24) // narrow
+	s.SetSize(65, 24) // narrow (accounts for mode label)
 	tui := &TUI{screen: s, tipIndex: 0}
 	tui.renderHints()
 
