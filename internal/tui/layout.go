@@ -156,10 +156,9 @@ func computeLayout(state LayoutState, panes []PaneView, screenW, screenH int) Re
 		}
 		visible = reordered
 		n = len(visible)
-		liveCols, liveRows := state.GridCols, state.GridRows
-		if state.LiveAuto && n > 0 {
-			liveCols, liveRows = autoGrid(n)
-		}
+		// Recompute grid dimensions from actual visible count so the layout
+		// shrinks when agents are evicted and grows when they appear.
+		liveCols, liveRows := autoGrid(n)
 		regions = gridRegions(liveCols, liveRows, n, screenW, screenH,
 			state.ColWeights, state.RowWeights)
 	case LayoutGrid:

@@ -706,6 +706,7 @@ func (t *TUI) cmdQuit() bool {
 }
 
 func (t *TUI) cmdLive(parts []string) bool {
+	explicitSlots := 0
 	if len(parts) >= 2 && strings.EqualFold(parts[1], "auto") {
 		t.layoutState.LiveAuto = true
 	} else if len(parts) >= 2 {
@@ -718,13 +719,14 @@ func (t *TUI) cmdLive(parts []string) bool {
 		t.layoutState.GridCols = cols
 		t.layoutState.GridRows = rows
 		t.layoutState.LiveAuto = false
+		explicitSlots = cols * rows
 	}
 	t.layoutState.Mode = LayoutLive
 	t.layoutState.Zoomed = false
 	if t.layoutState.LivePinned == nil {
 		t.layoutState.LivePinned = make(map[string]int)
 	}
-	t.initLiveEngine()
+	t.initLiveEngine(explicitSlots)
 	t.applyLayout()
 	t.saveLayoutIfConfigured()
 	return false

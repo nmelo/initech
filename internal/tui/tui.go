@@ -312,9 +312,13 @@ func (t *TUI) applyLayout() {
 	LogInfo("applyLayout", "all resizes complete")
 }
 
-// initLiveEngine creates a persistent LiveEngine for live mode with the given
-// grid dimensions and any existing live pins.
-func (t *TUI) initLiveEngine() {
+// initLiveEngine creates a persistent LiveEngine for live mode.
+// When numSlots is 0, the slot count is derived from the visible pane
+// count via autoGrid so the live grid is square-ish for the agents
+// actually on screen. A non-zero numSlots overrides (for explicit
+// `:live CxR` dimensions). In LiveAuto mode, starts with zero slots
+// since TickAuto manages the slot list dynamically.
+func (t *TUI) initLiveEngine(numSlots int) {
 	var roles []string
 	if t.project != nil {
 		roles = t.project.Roles
@@ -324,9 +328,13 @@ func (t *TUI) initLiveEngine() {
 		t.liveEngine = NewLiveEngine(0, t.layoutState.LivePinned, roles)
 		return
 	}
-	numSlots := t.layoutState.GridCols * t.layoutState.GridRows
 	if numSlots < 1 {
-		numSlots = t.visibleCountFromState()
+		visCount := t.visibleCountFromState()
+		if visCount < 1 {
+			visCount = len(t.panes)
+		}
+		cols, rows := autoGrid(visCount)
+		numSlots = cols * rows
 	}
 	t.liveEngine = NewLiveEngine(numSlots, t.layoutState.LivePinned, roles)
 }
@@ -679,7 +687,7 @@ func Run(cfg Config) error {
 		if t.layoutState.LivePinned == nil {
 			t.layoutState.LivePinned = make(map[string]int)
 		}
-		t.initLiveEngine()
+		t.initLiveEngine(0)
 	}
 
 	// Now that panes exist, compute the full render plan.

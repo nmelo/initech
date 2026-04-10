@@ -119,7 +119,7 @@ func (t *TUI) handleKey(ev *tcell.EventKey) bool {
 					if t.layoutState.LivePinned == nil {
 						t.layoutState.LivePinned = make(map[string]int)
 					}
-					t.initLiveEngine()
+					t.initLiveEngine(0)
 				}
 				t.applyLayout()
 				t.saveLayoutIfConfigured()
