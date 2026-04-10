@@ -273,11 +273,18 @@ func (t *TUI) handleIPCSend(conn net.Conn, req IPCRequest) {
 	pv.SendText(req.Text, req.Enter)
 
 	// Log the send event (no toast, too frequent).
+	// Also update lastMessageReceived so the dispatch conviction signal
+	// fires for live mode scoring (SendText itself doesn't touch metadata).
 	preview := req.Text
 	if len(preview) > 60 {
 		preview = preview[:57] + "..."
 	}
 	t.runOnMain(func() {
+		if lp, ok := pv.(*Pane); ok {
+			lp.mu.Lock()
+			lp.lastMessageReceived = time.Now()
+			lp.mu.Unlock()
+		}
 		t.logEvent(AgentEvent{
 			Type:   EventMessageSent,
 			Pane:   req.Target,
