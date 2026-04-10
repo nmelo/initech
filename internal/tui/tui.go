@@ -659,6 +659,16 @@ func Run(cfg Config) error {
 		reorderPanes(t.panes, t.layoutState.Order)
 	}
 
+	// Initialize live engine if the restored layout is in live mode.
+	// Without this, liveEngine is nil and applyLayout falls through to
+	// computeLayout's stateless fallback which only sees visible panes.
+	if t.layoutState.Mode == LayoutLive {
+		if t.layoutState.LivePinned == nil {
+			t.layoutState.LivePinned = make(map[string]int)
+		}
+		t.initLiveEngine()
+	}
+
 	// Now that panes exist, compute the full render plan.
 	t.applyLayout()
 	defer func() {
