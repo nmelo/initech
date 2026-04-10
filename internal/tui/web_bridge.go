@@ -102,6 +102,8 @@ func (s *tuiStateProvider) CurrentState() (web.StateSnapshot, bool) {
 			mode = "focus"
 		case Layout2Col:
 			mode = "2col"
+		case LayoutLive:
+			mode = "live"
 		}
 		snap.Layout = web.LayoutInfo{
 			Mode:    mode,
@@ -110,19 +112,32 @@ func (s *tuiStateProvider) CurrentState() (web.StateSnapshot, bool) {
 			Focused: ls.Focused,
 		}
 
+		// Build pinned lookup for live mode.
+		livePinned := ls.LivePinned // may be nil
+
 		// Pane states.
 		snap.Panes = make([]web.PaneState, len(s.t.panes))
 		for i, p := range s.t.panes {
 			emu := p.Emulator()
+			_, isPinned := livePinned[paneKey(p)]
 			snap.Panes[i] = web.PaneState{
 				Name:     p.Name(),
 				Activity: p.Activity().String(),
 				Alive:    p.IsAlive(),
 				Visible:  !ls.Hidden[paneKey(p)],
+				Pinned:   ls.Mode == LayoutLive && isPinned,
 				BeadID:   p.BeadID(),
 				Order:    i,
 				Cols:     emu.Width(),
 				Rows:     emu.Height(),
+			}
+		}
+
+		// Live mode info.
+		if ls.Mode == LayoutLive {
+			snap.Live = &web.LiveInfo{
+				Pinned: livePinned,
+				Slots:  ls.LiveSlots,
 			}
 		}
 	})
@@ -221,4 +236,76 @@ func (w *tuiPaneWriter) WriteToPTY(paneName string, data []byte) error {
 	}
 	_, err := pane.ptmx.Write(data)
 	return err
+}
+
+// tuiPinToggler adapts the TUI to the web.PinToggler interface.
+// Toggling a pin in live mode either pins the agent to its current slot
+// or removes its pin.
+type tuiPinToggler struct {
+	t *TUI
+}
+
+var _ web.PinToggler = (*tuiPinToggler)(nil)
+
+// TogglePin toggles the live-mode pin for the named pane. If the pane is
+// already pinned, it is unpinned. If not pinned, it is pinned to its current
+// slot in LiveSlots. Returns the new pinned state and true, or false if the
+// pane is not found or live mode is not active.
+func (p *tuiPinToggler) TogglePin(paneName string) (bool, bool) {
+	var pinned bool
+	var found bool
+	ok := p.t.runOnMain(func() {
+		if p.t.layoutState.Mode != LayoutLive {
+			return
+		}
+		pv := p.t.findPaneByName(paneName)
+		if pv == nil {
+			return
+		}
+		key := paneKey(pv)
+
+		// Check if already pinned.
+		if _, isPinned := p.t.layoutState.LivePinned[key]; isPinned {
+			// Unpin.
+			delete(p.t.layoutState.LivePinned, key)
+			if p.t.liveEngine != nil {
+				p.t.liveEngine.Pinned = p.t.layoutState.LivePinned
+			}
+			pinned = false
+			found = true
+		} else {
+			// Find current slot for this agent.
+			slot := -1
+			for i, s := range p.t.layoutState.LiveSlots {
+				if s == key {
+					slot = i
+					break
+				}
+			}
+			if slot < 0 {
+				return
+			}
+			if p.t.layoutState.LivePinned == nil {
+				p.t.layoutState.LivePinned = make(map[string]int)
+			}
+			// Remove any existing pin on this slot.
+			for k, v := range p.t.layoutState.LivePinned {
+				if v == slot {
+					delete(p.t.layoutState.LivePinned, k)
+				}
+			}
+			p.t.layoutState.LivePinned[key] = slot
+			if p.t.liveEngine != nil {
+				p.t.liveEngine.Pinned = p.t.layoutState.LivePinned
+			}
+			pinned = true
+			found = true
+		}
+		p.t.applyLayout()
+		p.t.saveLayoutIfConfigured()
+	})
+	if !ok || !found {
+		return false, false
+	}
+	return pinned, true
 }

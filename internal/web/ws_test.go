@@ -67,7 +67,7 @@ func (f *fakeSubscriber) sendToAll(paneName string, data []byte) {
 func TestWS_ReceivesBytes(t *testing.T) {
 	lister := &fakeLister{ok: true}
 	sub := newFakeSubscriber()
-	srv := NewServer(0, lister, sub, nil, nil, nil, nil)
+	srv := NewServer(0, lister, sub, nil, nil, nil, nil, nil)
 
 	ts := httptest.NewServer(srv.srv.Handler)
 	defer ts.Close()
@@ -99,7 +99,7 @@ func TestWS_ReceivesBytes(t *testing.T) {
 func TestWS_UnknownPane_404(t *testing.T) {
 	lister := &fakeLister{ok: true}
 	sub := newFakeSubscriber()
-	srv := NewServer(0, lister, sub, nil, nil, nil, nil)
+	srv := NewServer(0, lister, sub, nil, nil, nil, nil, nil)
 
 	ts := httptest.NewServer(srv.srv.Handler)
 	defer ts.Close()
@@ -118,7 +118,7 @@ func TestWS_UnknownPane_404(t *testing.T) {
 
 func TestWS_NoSubscriber_501(t *testing.T) {
 	lister := &fakeLister{ok: true}
-	srv := NewServer(0, lister, nil, nil, nil, nil, nil)
+	srv := NewServer(0, lister, nil, nil, nil, nil, nil, nil)
 
 	ts := httptest.NewServer(srv.srv.Handler)
 	defer ts.Close()
@@ -138,7 +138,7 @@ func TestWS_NoSubscriber_501(t *testing.T) {
 func TestWS_DisconnectCleansUp(t *testing.T) {
 	lister := &fakeLister{ok: true}
 	sub := newFakeSubscriber()
-	srv := NewServer(0, lister, sub, nil, nil, nil, nil)
+	srv := NewServer(0, lister, sub, nil, nil, nil, nil, nil)
 
 	ts := httptest.NewServer(srv.srv.Handler)
 	defer ts.Close()
@@ -173,7 +173,7 @@ func TestWS_DisconnectCleansUp(t *testing.T) {
 func TestWS_MultipleConnections(t *testing.T) {
 	lister := &fakeLister{ok: true}
 	sub := newFakeSubscriber()
-	srv := NewServer(0, lister, sub, nil, nil, nil, nil)
+	srv := NewServer(0, lister, sub, nil, nil, nil, nil, nil)
 
 	ts := httptest.NewServer(srv.srv.Handler)
 	defer ts.Close()
@@ -213,7 +213,7 @@ func TestWS_MultipleConnections(t *testing.T) {
 func TestWS_ChannelClosed_ServerCloses(t *testing.T) {
 	lister := &fakeLister{ok: true}
 	sub := newFakeSubscriber()
-	srv := NewServer(0, lister, sub, nil, nil, nil, nil)
+	srv := NewServer(0, lister, sub, nil, nil, nil, nil, nil)
 
 	ts := httptest.NewServer(srv.srv.Handler)
 	defer ts.Close()
@@ -277,7 +277,7 @@ func TestWS_InputRelayedToWriter(t *testing.T) {
 	lister := &fakeLister{ok: true}
 	sub := newFakeSubscriber()
 	writer := newFakeWriter()
-	srv := NewServer(0, lister, sub, nil, nil, writer, nil)
+	srv := NewServer(0, lister, sub, nil, nil, writer, nil, nil)
 
 	ts := httptest.NewServer(srv.srv.Handler)
 	defer ts.Close()
@@ -324,7 +324,7 @@ func TestWS_NilWriter_DiscardsInput(t *testing.T) {
 	lister := &fakeLister{ok: true}
 	sub := newFakeSubscriber()
 	// No writer (read-only mode).
-	srv := NewServer(0, lister, sub, nil, nil, nil, nil)
+	srv := NewServer(0, lister, sub, nil, nil, nil, nil, nil)
 
 	ts := httptest.NewServer(srv.srv.Handler)
 	defer ts.Close()
@@ -359,7 +359,7 @@ func TestWS_WriterError_DoesNotCloseConn(t *testing.T) {
 	sub := newFakeSubscriber()
 	writer := newFakeWriter()
 	writer.failFor["eng1"] = true // Simulate dead pane.
-	srv := NewServer(0, lister, sub, nil, nil, writer, nil)
+	srv := NewServer(0, lister, sub, nil, nil, writer, nil, nil)
 
 	ts := httptest.NewServer(srv.srv.Handler)
 	defer ts.Close()

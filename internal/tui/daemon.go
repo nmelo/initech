@@ -256,7 +256,7 @@ func RunDaemon(cfg DaemonConfig) error {
 		subscriber := &daemonPaneSubscriber{d: d}
 		stateProvider := &daemonStateProvider{d: d}
 		paneWriter := &daemonPaneWriter{d: d}
-		webSrv := web.NewServer(cfg.WebPort, lister, subscriber, stateProvider, nil, paneWriter, nil)
+		webSrv := web.NewServer(cfg.WebPort, lister, subscriber, stateProvider, nil, paneWriter, nil, nil)
 		go func() {
 			if err := webSrv.Start(webCtx); err != nil {
 				LogError("daemon-web", "server exited with error", "err", err)

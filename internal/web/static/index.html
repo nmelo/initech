@@ -40,6 +40,14 @@
     position:relative;overflow:hidden;z-index:0}
   .pane-label:hover{background:#1c2340}
 
+  /* Pin badge */
+  .pane-pin{color:#f39c12;font-size:10px;font-weight:700;flex-shrink:0;
+    letter-spacing:0.5px}
+
+  /* Swap transition for live mode */
+  .pane-cell.swapping-in{animation:swap-in 0.25s ease-out}
+  @keyframes swap-in{from{opacity:0}to{opacity:1}}
+
   /* KITT scanner: gaussian sweep on running panes (4s cycle matching TUI) */
   .pane-label.running::after{content:'';position:absolute;top:0;left:0;
     width:100%;height:100%;z-index:-1;
@@ -180,6 +188,8 @@
   var lastCols = 1;
   var lastRows = 1;
   var stateReceived = false; // True after first /ws/state with real data arrives.
+  var liveMode = false;      // True when TUI is in live layout mode.
+  var livePinned = {};       // agent name -> slot index (from server).
   var stateWs = null;
   var stateReconnTimer = null;
   var stateReconnAttempts = 0;
@@ -223,12 +233,12 @@
       grid.classList.add("tui-mirror");
       grid.style.setProperty("--grid-cols", lastCols);
       grid.style.setProperty("--grid-rows", lastRows);
-      statusLayout.textContent = "TUI layout";
+      statusLayout.textContent = liveMode ? "Live" : "TUI layout";
     } else {
       grid.classList.remove("tui-mirror");
       grid.style.removeProperty("--grid-cols");
       grid.style.removeProperty("--grid-rows");
-      statusLayout.textContent = "Responsive";
+      statusLayout.textContent = liveMode ? "Live (responsive)" : "Responsive";
     }
   }
 
@@ -297,6 +307,11 @@
     }
     stateReceived = true;
 
+    // Track live mode state.
+    var wasLive = liveMode;
+    liveMode = (layout.mode === "live");
+    livePinned = (snap.live && snap.live.pinned) ? snap.live.pinned : {};
+
     // Update status bar: project name and agent count.
     statusProject.textContent = snap.project || "initech";
     var alive = 0;
@@ -340,6 +355,15 @@
         resizePaneTerm(name, data);
       } else {
         createPane(name, data);
+        // Animate swap-in during live mode.
+        if (liveMode && paneMap[name]) {
+          paneMap[name].cell.classList.add("swapping-in");
+          (function(cell) {
+            cell.addEventListener("animationend", function() {
+              cell.classList.remove("swapping-in");
+            }, {once: true});
+          })(paneMap[name].cell);
+        }
       }
     }
 
@@ -380,6 +404,10 @@
     nameSpan.className = "pane-name";
     nameSpan.textContent = name;
 
+    var pinSpan = document.createElement("span");
+    pinSpan.className = "pane-pin";
+    pinSpan.textContent = data.pinned ? "[P]" : "";
+
     var sep = document.createElement("span");
     sep.className = "pane-sep";
     var beadId = data.bead_id || "";
@@ -395,6 +423,7 @@
 
     label.appendChild(dot);
     label.appendChild(nameSpan);
+    label.appendChild(pinSpan);
     label.appendChild(sep);
     label.appendChild(beadSpan);
     label.appendChild(actSpan);
@@ -424,6 +453,7 @@
       label: label,
       dot: dot,
       nameSpan: nameSpan,
+      pinSpan: pinSpan,
       sep: sep,
       actSpan: actSpan,
       beadSpan: beadSpan,
@@ -443,6 +473,18 @@
       focusPane(name);
     });
     label.addEventListener("dblclick", function() { toggleZoom(name); });
+
+    // Click pin badge to toggle pin in live mode.
+    pinSpan.addEventListener("click", function(e) {
+      e.stopPropagation();
+      if (!liveMode) return;
+      togglePin(name);
+    });
+    // Single click on label in live mode toggles pin (double-click still zooms).
+    label.addEventListener("click", function(e) {
+      if (!liveMode) return;
+      togglePin(name);
+    });
 
     // Let app-level shortcuts pass through xterm.js to the document handler.
     // Return false = xterm ignores the key, letting it bubble to document.
@@ -515,6 +557,7 @@
     entry.dot.className = "pane-dot " + dotClass(data);
     entry.label.classList.toggle("running", isRunning(data));
     entry.actSpan.textContent = data.activity || "";
+    entry.pinSpan.textContent = data.pinned ? "[P]" : "";
     var beadId = data.bead_id || "";
     entry.sep.textContent = beadId ? "|" : "";
     entry.beadSpan.textContent = beadId;
@@ -536,6 +579,19 @@
     if (!data.alive) return false;
     var a = data.activity || "";
     return a !== "" && a !== "idle" && a !== "suspended" && a !== "idle-with-backlog";
+  }
+
+  // --- Pin toggle (live mode) ---
+
+  function togglePin(name) {
+    fetch("/api/pin/" + encodeURIComponent(name), {method: "POST"})
+      .then(function(resp) { return resp.ok ? resp.json() : null; })
+      .then(function(data) {
+        if (!data) return;
+        var entry = paneMap[name];
+        if (entry) entry.pinSpan.textContent = data.pinned ? "[P]" : "";
+      })
+      .catch(function() {});
   }
 
   // --- Pane WebSocket ---
@@ -703,6 +759,9 @@
     var nameSpan = document.createElement("span");
     nameSpan.className = "pane-name";
     nameSpan.textContent = name;
+    var pin = document.createElement("span");
+    pin.className = "pane-pin";
+    pin.textContent = entry.pinSpan.textContent;
     var sep = document.createElement("span");
     sep.className = "pane-sep";
     sep.textContent = entry.sep.textContent;
@@ -715,6 +774,7 @@
 
     zoomLabel.appendChild(dot);
     zoomLabel.appendChild(nameSpan);
+    zoomLabel.appendChild(pin);
     zoomLabel.appendChild(sep);
     zoomLabel.appendChild(bead);
     zoomLabel.appendChild(hint);
@@ -725,9 +785,11 @@
     if (!entry) return;
     // Find elements inside zoom label by class.
     var dot = zoomLabel.querySelector(".pane-dot");
+    var pin = zoomLabel.querySelector(".pane-pin");
     var sep = zoomLabel.querySelector(".pane-sep");
     var bead = zoomLabel.querySelector(".pane-bead");
     if (dot) dot.className = "pane-dot " + dotClass(data);
+    if (pin) pin.textContent = data.pinned ? "[P]" : "";
     zoomLabel.classList.toggle("running", isRunning(data));
     var beadId = data.bead_id || "";
     if (sep) sep.textContent = beadId ? "|" : "";

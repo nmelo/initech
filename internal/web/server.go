@@ -50,11 +50,19 @@ type StateSnapshot struct {
 	Project string      `json:"project,omitempty"`
 	Layout  LayoutInfo  `json:"layout"`
 	Panes   []PaneState `json:"panes"`
+	Live    *LiveInfo   `json:"live,omitempty"` // Non-nil only in live mode.
+}
+
+// LiveInfo describes live mode state: which agents are pinned and the current
+// slot assignments. Sent only when layout mode is "live".
+type LiveInfo struct {
+	Pinned map[string]int `json:"pinned"` // Agent name -> slot index (0-based).
+	Slots  []string       `json:"slots"`  // Current agent name per slot.
 }
 
 // LayoutInfo describes the current TUI layout.
 type LayoutInfo struct {
-	Mode    string `json:"mode"`    // "focus", "grid", or "2col"
+	Mode    string `json:"mode"`    // "focus", "grid", "2col", or "live"
 	Cols    int    `json:"cols"`
 	Rows    int    `json:"rows"`
 	Focused string `json:"focused"` // Pane name.
@@ -66,6 +74,7 @@ type PaneState struct {
 	Activity string `json:"activity"`
 	Alive    bool   `json:"alive"`
 	Visible  bool   `json:"visible"`
+	Pinned   bool   `json:"pinned,omitempty"` // True if pinned in live mode.
 	BeadID   string `json:"bead_id,omitempty"`
 	Order    int    `json:"order"`
 	Cols     int    `json:"cols"`     // Terminal width in columns (from VT emulator).
@@ -85,6 +94,13 @@ type PaneWriter interface {
 	// WriteToPTY writes data to the named pane's PTY master. Returns an error
 	// if the pane is not found or dead. Safe for concurrent use.
 	WriteToPTY(paneName string, data []byte) error
+}
+
+// PinToggler toggles the pinned state of a pane in live mode.
+// Returns the new pinned state and true on success, or false if the pane
+// is not found or live mode is not active.
+type PinToggler interface {
+	TogglePin(paneName string) (pinned bool, ok bool)
 }
 
 // AgentEventInfo is a serializable agent event for the web companion.
@@ -121,6 +137,7 @@ type Server struct {
 	stateProvider StateProvider  // Optional: enables /ws/state endpoint.
 	eventProvider EventProvider  // Optional: enables events on /ws/state.
 	paneWriter    PaneWriter     // Optional: enables PTY input via /ws/pane/{name}. Nil = read-only.
+	pinToggler    PinToggler     // Optional: enables POST /api/pin/{name}. Nil = 501.
 	subIDSeq      atomic.Uint64  // Monotonic counter for generating unique subscriber IDs.
 }
 
@@ -129,7 +146,7 @@ type Server struct {
 // with --web-port, so we bind all interfaces by default.
 // If port is 0, the OS assigns a free port. The subscriber parameter is
 // optional; if nil, the /ws/pane/{name} endpoint returns 501.
-func NewServer(port int, lister PaneLister, subscriber PaneSubscriber, stateProvider StateProvider, eventProvider EventProvider, paneWriter PaneWriter, logger *slog.Logger) *Server {
+func NewServer(port int, lister PaneLister, subscriber PaneSubscriber, stateProvider StateProvider, eventProvider EventProvider, paneWriter PaneWriter, pinToggler PinToggler, logger *slog.Logger) *Server {
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -143,12 +160,14 @@ func NewServer(port int, lister PaneLister, subscriber PaneSubscriber, stateProv
 		stateProvider: stateProvider,
 		eventProvider: eventProvider,
 		paneWriter:    paneWriter,
+		pinToggler:    pinToggler,
 	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/panes", s.handlePanes)
 	mux.HandleFunc("GET /ws/pane/{name}", s.handlePaneWS)
 	mux.HandleFunc("GET /ws/state", s.handleStateWS)
+	mux.HandleFunc("POST /api/pin/{name}", s.handlePin)
 
 	// Serve embedded SPA files. The embed.FS has a "static" prefix that we
 	// strip so that requests to "/" resolve to static/index.html.
@@ -391,4 +410,30 @@ func (s *Server) handleStateWS(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+}
+
+// pinResponse is the JSON response from POST /api/pin/{name}.
+type pinResponse struct {
+	Name   string `json:"name"`
+	Pinned bool   `json:"pinned"`
+}
+
+// handlePin toggles a pane's pinned state in live mode.
+func (s *Server) handlePin(w http.ResponseWriter, r *http.Request) {
+	if s.pinToggler == nil {
+		http.Error(w, "pin not available", http.StatusNotImplemented)
+		return
+	}
+	name := r.PathValue("name")
+	if name == "" {
+		http.Error(w, "pane name required", http.StatusBadRequest)
+		return
+	}
+	pinned, ok := s.pinToggler.TogglePin(name)
+	if !ok {
+		http.Error(w, "pane not found or live mode not active", http.StatusNotFound)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(pinResponse{Name: name, Pinned: pinned})
 }
