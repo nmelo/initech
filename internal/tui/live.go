@@ -123,25 +123,11 @@ func NewLiveEngine(numSlots int, pinned map[string]int, rolesOrder []string) *Li
 
 // bestUnplaced returns the highest-ranked candidate not already placed.
 func bestUnplaced(candidates []ranked, placed map[string]bool) (ranked, bool) {
-	// Diagnostic: log full candidate list and placed set for tracing.
-	cnames := make([]string, len(candidates))
-	for i, c := range candidates {
-		cnames[i] = fmt.Sprintf("%s(%d)", c.name, c.score)
-	}
-	pnames := make([]string, 0, len(placed))
-	for k := range placed {
-		pnames = append(pnames, k)
-	}
-	sort.Strings(pnames)
-	LogInfo("bestUnplaced", "input", "candidates", fmt.Sprintf("%v", cnames), "placed", fmt.Sprintf("%v", pnames))
-
 	for _, c := range candidates {
 		if !placed[c.name] {
-			LogInfo("bestUnplaced", "selected", "agent", c.name, "score", c.score)
 			return c, true
 		}
 	}
-	LogInfo("bestUnplaced", "none-available")
 	return ranked{}, false
 }
 
@@ -244,33 +230,14 @@ func (le *LiveEngine) Tick(panes []PaneView, now time.Time) []string {
 	for _, s := range scores {
 		candidates = append(candidates, s)
 	}
-	// Score-sorted: used by bestUnplaced for displacement decisions.
+	// Score-sorted: used by bestUnplaced for BOTH displacement and fill decisions.
+	// Invariant #2: score determines who gets a slot. Yaml order is tiebreaker only.
 	sort.Slice(candidates, func(i, j int) bool {
 		if candidates[i].score != candidates[j].score {
 			return candidates[i].score > candidates[j].score
 		}
 		return roleCmp(candidates[i], candidates[j])
 	})
-	// Roles-sorted copy: used for filling empty slots in config order.
-	// When no roles order is configured, fill by score (same as candidates).
-	fillOrder := make([]ranked, len(candidates))
-	copy(fillOrder, candidates)
-	if len(le.RolesOrder) > 0 {
-		sort.Slice(fillOrder, func(i, j int) bool {
-			return roleCmp(fillOrder[i], fillOrder[j])
-		})
-	}
-
-	// Log both sort orders for diagnostic tracing.
-	candNames := make([]string, len(candidates))
-	for i, c := range candidates {
-		candNames[i] = fmt.Sprintf("%s(%d)", c.name, c.score)
-	}
-	fillNames := make([]string, len(fillOrder))
-	for i, c := range fillOrder {
-		fillNames[i] = fmt.Sprintf("%s(%d)", c.name, c.score)
-	}
-	LogInfo("live-tick", "candidate-lists", "byScore", fmt.Sprintf("%v", candNames), "byRoles", fmt.Sprintf("%v", fillNames))
 
 	// Track which candidates are consumed by a slot.
 	placed := make(map[string]bool, len(pinnedSet)+len(candidates))
@@ -298,9 +265,9 @@ func (le *LiveEngine) Tick(panes []PaneView, now time.Time) []string {
 		prev := le.Slots[slot]
 		prevInfo, prevAlive := scores[prev]
 
-		// Empty slot: fill in config roles order (not a displacement).
+		// Empty slot: fill with highest-scoring unplaced agent (not a displacement).
 		if prev == "" {
-			if best, ok := bestUnplaced(fillOrder, placed); ok {
+			if best, ok := bestUnplaced(candidates, placed); ok {
 				result[slot] = best.name
 				placed[best.name] = true
 				le.holdUntil[slot] = now.Add(liveHoldDuration)
@@ -370,6 +337,49 @@ func (le *LiveEngine) Tick(panes []PaneView, now time.Time) []string {
 
 		// Keep current occupant (already in placed from exclusion above).
 		result[slot] = prev
+	}
+
+	// Invariant #3: yaml order determines WHERE agents sit (display concern).
+	// After score-based placement decisions, re-sort dynamic slots by yaml
+	// role index so the grid layout matches the config file order.
+	if len(le.RolesOrder) > 0 {
+		type dynEntry struct {
+			name string
+			hold time.Time
+		}
+		var dynSlots []int
+		var dynAgents []dynEntry
+		for i := 0; i < numSlots; i++ {
+			if pinnedSet[result[i]] {
+				continue
+			}
+			dynSlots = append(dynSlots, i)
+			if result[i] != "" {
+				dynAgents = append(dynAgents, dynEntry{result[i], le.holdUntil[i]})
+			}
+		}
+		sort.Slice(dynAgents, func(i, j int) bool {
+			ai, bi := maxRoleIdx, maxRoleIdx
+			if idx, ok := roleIdx[dynAgents[i].name]; ok {
+				ai = idx
+			}
+			if idx, ok := roleIdx[dynAgents[j].name]; ok {
+				bi = idx
+			}
+			if ai != bi {
+				return ai < bi
+			}
+			return dynAgents[i].name < dynAgents[j].name
+		})
+		for i, si := range dynSlots {
+			if i < len(dynAgents) {
+				result[si] = dynAgents[i].name
+				le.holdUntil[si] = dynAgents[i].hold
+			} else {
+				result[si] = ""
+				le.holdUntil[si] = time.Time{}
+			}
+		}
 	}
 
 	le.Slots = result

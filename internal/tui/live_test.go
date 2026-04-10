@@ -761,6 +761,90 @@ func TestTick_ScoreTiebreakByYamlOrder(t *testing.T) {
 	}
 }
 
+// ── ini-dsr: fill-empty uses score order, display uses yaml order ────
+
+// TestFillEmpty_HighestScoreFirst verifies invariant #2 for the fill path:
+// when filling empty slots, the highest-scoring agent gets placed first,
+// regardless of yaml position. Shipper (last in yaml, highest score) must
+// not be excluded.
+func TestFillEmpty_HighestScoreFirst(t *testing.T) {
+	now := time.Now()
+	roles := []string{"super", "eng1", "eng2", "qa1", "shipper"}
+	pinned := map[string]int{"super": 0}
+	panes := []PaneView{
+		&mockPaneView{name: "super", alive: true, activity: StateIdle},
+		&mockPaneView{name: "eng1", alive: true, activity: StateIdle, beadID: "bb-1"},                                                          // score 30
+		&mockPaneView{name: "eng2", alive: true, activity: StateIdle, beadID: "bb-2"},                                                          // score 30
+		&mockPaneView{name: "qa1", alive: true, activity: StateIdle, beadID: "bb-q"},                                                           // score 30
+		&mockPaneView{name: "shipper", alive: true, activity: StateRunning, beadID: "bb-s", runStart: now.Add(-10 * time.Second), runBytes: 20000}, // score 65
+	}
+	le := NewLiveEngine(4, pinned, roles) // super pinned + 3 dynamic
+	result := le.Tick(panes, now)
+
+	// Shipper must be placed (highest score fills first).
+	found := false
+	for _, name := range result {
+		if name == "shipper" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("shipper (score 65) not placed in any slot: %v", result)
+	}
+	// Super stays pinned at slot 0.
+	if result[0] != "super" {
+		t.Errorf("slot 0 = %q, want super (pinned)", result[0])
+	}
+}
+
+// TestBestUnplaced_LastYamlRole_HighestScore verifies that bestUnplaced
+// returns the highest-scoring agent even when it is last in yaml order.
+func TestBestUnplaced_LastYamlRole_HighestScore(t *testing.T) {
+	placed := map[string]bool{"super": true, "eng1": true}
+	candidates := []ranked{
+		{name: "shipper", score: 40},
+		{name: "eng2", score: 15},
+		{name: "qa1", score: 15},
+	}
+	// candidates is pre-sorted by score descending.
+	best, ok := bestUnplaced(candidates, placed)
+	if !ok {
+		t.Fatal("bestUnplaced returned !ok, expected shipper")
+	}
+	if best.name != "shipper" {
+		t.Errorf("bestUnplaced = %q (score %d), want shipper (score 40)", best.name, best.score)
+	}
+}
+
+// TestDisplayOrder_AfterScoreBasedFill verifies invariant #3: after score-based
+// fill, dynamic slots are re-sorted by yaml role order for display. Shipper
+// (last yaml, highest score) should sit after eng1 in the grid.
+func TestDisplayOrder_AfterScoreBasedFill(t *testing.T) {
+	now := time.Now()
+	roles := []string{"super", "eng1", "shipper"}
+	pinned := map[string]int{"super": 0}
+	panes := []PaneView{
+		&mockPaneView{name: "super", alive: true, activity: StateIdle},
+		&mockPaneView{name: "eng1", alive: true, activity: StateIdle, beadID: "bb-1"},                                                          // score 30
+		&mockPaneView{name: "shipper", alive: true, activity: StateRunning, beadID: "bb-s", runStart: now.Add(-10 * time.Second), runBytes: 20000}, // score 65
+	}
+	le := NewLiveEngine(3, pinned, roles) // super + 2 dynamic
+	result := le.Tick(panes, now)
+
+	// Both eng1 and shipper must be placed.
+	// Display order: super(pinned), eng1(yaml idx 1), shipper(yaml idx 2).
+	if result[0] != "super" {
+		t.Errorf("slot 0 = %q, want super (pinned)", result[0])
+	}
+	if result[1] != "eng1" {
+		t.Errorf("slot 1 = %q, want eng1 (yaml before shipper)", result[1])
+	}
+	if result[2] != "shipper" {
+		t.Errorf("slot 2 = %q, want shipper (yaml after eng1)", result[2])
+	}
+}
+
 // ── liveTickSlots tests ─────────────────────────────────────────────
 
 func TestLiveTickSlots_DefaultsToLen(t *testing.T) {
