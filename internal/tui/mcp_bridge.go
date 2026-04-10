@@ -143,6 +143,10 @@ func (h *tuiMCPHost) RemoveAgent(name string) error {
 	return err
 }
 
+func (h *tuiMCPHost) InterruptAgent(name string, hard bool) error {
+	return h.t.InterruptAgent(name, hard)
+}
+
 func (h *tuiMCPHost) NotifyConfig() (string, string) {
 	return h.t.webhookURL, h.t.projectName
 }

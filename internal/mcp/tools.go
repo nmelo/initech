@@ -101,6 +101,17 @@ type NotifyOutput struct {
 	Status string `json:"status"`
 }
 
+// InterruptInput is the input schema for the initech_interrupt tool.
+type InterruptInput struct {
+	Agent string `json:"agent" jsonschema:"target agent name (e.g. eng1)"`
+	Hard  bool   `json:"hard,omitempty" jsonschema:"send Ctrl+C instead of Escape (default false)"`
+}
+
+// InterruptOutput is the output schema for the initech_interrupt tool.
+type InterruptOutput struct {
+	Status string `json:"status"`
+}
+
 // StatusInput is the input schema for the initech_status tool (no params).
 type StatusInput struct{}
 
@@ -196,6 +207,13 @@ func registerTools(s *gomcp.Server, host PaneHost) {
 		Description: "Post a notification to the configured webhook (Slack, Discord, or generic). Use for milestones, deployments, status updates, and custom announcements.",
 	}, func(_ context.Context, _ *gomcp.CallToolRequest, input NotifyInput) (*gomcp.CallToolResult, NotifyOutput, error) {
 		return handleNotify(host, input)
+	})
+
+	gomcp.AddTool(s, &gomcp.Tool{
+		Name:        "initech_interrupt",
+		Description: "Send Escape or Ctrl+C to an agent's terminal. Escape stops Claude Code's current action. Ctrl+C (hard=true) kills a running shell command.",
+	}, func(_ context.Context, _ *gomcp.CallToolRequest, input InterruptInput) (*gomcp.CallToolResult, InterruptOutput, error) {
+		return handleInterrupt(host, input)
 	})
 }
 
@@ -374,4 +392,18 @@ func handleNotify(host PaneHost, input NotifyInput) (*gomcp.CallToolResult, Noti
 	}
 
 	return nil, NotifyOutput{Status: "sent"}, nil
+}
+
+func handleInterrupt(host PaneHost, input InterruptInput) (*gomcp.CallToolResult, InterruptOutput, error) {
+	if input.Agent == "" {
+		return nil, InterruptOutput{}, fmt.Errorf("agent is required")
+	}
+	if err := host.InterruptAgent(input.Agent, input.Hard); err != nil {
+		return nil, InterruptOutput{}, err
+	}
+	status := "interrupted (Escape)"
+	if input.Hard {
+		status = "interrupted (Ctrl+C)"
+	}
+	return nil, InterruptOutput{Status: status}, nil
 }

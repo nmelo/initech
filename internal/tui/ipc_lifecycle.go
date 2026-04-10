@@ -379,3 +379,98 @@ func (t *TUI) removePane(name string) error {
 	})
 	return nil
 }
+
+// handleIPCInterrupt sends a raw control byte (Escape or Ctrl+C) to
+// the target agent's PTY. Unlike send, this bypasses bracketed paste
+// so the byte is interpreted as a control signal, not as text input.
+func (t *TUI) handleIPCInterrupt(conn net.Conn, req IPCRequest) {
+	if req.Target == "" {
+		writeIPCResponse(conn, IPCResponse{Error: "target is required"})
+		return
+	}
+
+	// Cross-machine routing.
+	if req.Host != "" {
+		localPeerName := ""
+		if t.project != nil {
+			localPeerName = t.project.PeerName
+		}
+		if req.Host != localPeerName {
+			t.forwardSendToRemote(conn, req)
+			return
+		}
+	}
+
+	b := byte(0x1B) // Escape
+	if req.Text == "hard" {
+		b = byte(0x03) // Ctrl+C
+	}
+
+	var pane *Pane
+	if !t.runOnMain(func() {
+		pv := t.findPaneByName(req.Target)
+		if pv == nil {
+			return
+		}
+		if lp, ok := pv.(*Pane); ok {
+			pane = lp
+		}
+	}) {
+		writeIPCResponse(conn, IPCResponse{Error: "TUI shutting down"})
+		return
+	}
+	if pane == nil {
+		writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("agent %q not found", req.Target)})
+		return
+	}
+
+	pane.sendMu.Lock()
+	if pane.ptmx == nil {
+		pane.sendMu.Unlock()
+		writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("agent %s is not running", req.Target)})
+		return
+	}
+	pane.ptmx.Write([]byte{b}) //nolint:errcheck
+	pane.sendMu.Unlock()
+
+	writeIPCResponse(conn, IPCResponse{OK: true})
+}
+
+// InterruptAgent sends a raw control byte to the named agent's PTY.
+// Used by the MCP server. hard=true sends Ctrl+C, false sends Escape.
+func (t *TUI) InterruptAgent(name string, hard bool) error {
+	b := byte(0x1B)
+	if hard {
+		b = byte(0x03)
+	}
+
+	var pane *Pane
+	var notFound bool
+	if !t.runOnMain(func() {
+		pv := t.findPaneByName(name)
+		if pv == nil {
+			notFound = true
+			return
+		}
+		if lp, ok := pv.(*Pane); ok {
+			pane = lp
+		}
+	}) {
+		return fmt.Errorf("TUI shutting down")
+	}
+	if notFound {
+		return fmt.Errorf("agent %q not found", name)
+	}
+	if pane == nil {
+		return fmt.Errorf("interrupt not supported for remote panes")
+	}
+
+	pane.sendMu.Lock()
+	if pane.ptmx == nil {
+		pane.sendMu.Unlock()
+		return fmt.Errorf("agent %s is not running", name)
+	}
+	pane.ptmx.Write([]byte{b}) //nolint:errcheck
+	pane.sendMu.Unlock()
+	return nil
+}

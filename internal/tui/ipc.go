@@ -172,6 +172,8 @@ func (t *TUI) HandleExtended(conn net.Conn, req IPCRequest, rawJSON []byte) bool
 		t.handleIPCAdd(conn, req)
 	case "remove":
 		t.handleIPCRemove(conn, req)
+	case "interrupt":
+		t.handleIPCInterrupt(conn, req)
 	case "peers_query":
 		t.handleIPCPeers(conn)
 	case "quit":

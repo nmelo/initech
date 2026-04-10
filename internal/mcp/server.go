@@ -54,6 +54,10 @@ type PaneHost interface {
 	// pane is not found or is the last remaining pane.
 	RemoveAgent(name string) error
 
+	// InterruptAgent sends a raw control byte to the named agent's PTY.
+	// hard=true sends Ctrl+C (0x03), false sends Escape (0x1B).
+	InterruptAgent(name string, hard bool) error
+
 	// ScheduleSend schedules a message to be sent to an agent after a delay.
 	// The delay is a Go duration string (e.g. "5m", "30s"). Returns the
 	// timer ID on success.

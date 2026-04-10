@@ -98,6 +98,11 @@ If an agent is stuck (no progress in 15-20 minutes):
 2. ` + "`" + `initech send <agent> "status check: what are you working on?"` + "`" + `
 3. If unresponsive: ` + "`" + `initech restart <agent> --bead <id>` + "`" + `
 
+If an agent is ignoring instructions or running a process you need to abort:
+1. ` + "`" + `initech interrupt <agent>` + "`" + ` (sends Escape, stops Claude Code current action)
+2. If still running: ` + "`" + `initech interrupt <agent> --hard` + "`" + ` (sends Ctrl+C, kills shell command)
+3. If unresponsive after both: ` + "`" + `initech restart <agent> --bead <id>` + "`" + `
+
 ### Crash Diagnosis
 
 If an agent dies or the TUI crashes:
@@ -188,6 +193,8 @@ Use ` + "`" + `initech send` + "`" + ` and ` + "`" + `initech peek` + "`" + ` fo
 - ` + "`" + `initech stop <role...>` + "`" + ` - free memory
 - ` + "`" + `initech start <role...>` + "`" + ` - bring back agents
 - ` + "`" + `initech restart <role> --bead <id>` + "`" + ` - kill + restart with dispatch
+- ` + "`" + `initech interrupt <agent>` + "`" + ` - send Escape (soft interrupt)
+- ` + "`" + `initech interrupt <agent> --hard` + "`" + ` - send Ctrl+C (hard interrupt)
 - ` + "`" + `bd ready` + "`" + ` - unblocked beads
 - ` + "`" + `bd list` + "`" + ` - all beads
 - ` + "`" + `bd show <id>` + "`" + ` - bead details

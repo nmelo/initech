@@ -130,6 +130,18 @@ func (h *fakePaneHost) RemoveAgent(name string) error {
 	return nil
 }
 
+func (h *fakePaneHost) InterruptAgent(name string, hard bool) error {
+	if _, ok := h.panes[name]; !ok {
+		return fmt.Errorf("agent %q not found", name)
+	}
+	label := "escape"
+	if hard {
+		label = "ctrlc"
+	}
+	h.lifecycleLog = append(h.lifecycleLog, fmt.Sprintf("interrupt:%s:%s", name, label))
+	return nil
+}
+
 func (h *fakePaneHost) ScheduleSend(agent, message, delay string) (string, error) {
 	if h.scheduleErr != nil {
 		return "", h.scheduleErr
