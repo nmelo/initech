@@ -239,6 +239,16 @@ type TUI struct {
 	lastLiveTick time.Time // Throttles live-mode applyLayout to 1-second cadence.
 }
 
+// logPanesMutation is temporary DEBUG logging. Logs every mutation of t.panes
+// with a call-site tag, old count, new count, and names.
+func (t *TUI) logPanesMutation(site string, oldLen int) {
+	names := make([]string, len(t.panes))
+	for i, p := range t.panes {
+		names[i] = paneKey(p)
+	}
+	LogInfo("panes-mutation", site, "old", oldLen, "new", len(t.panes), "names", fmt.Sprintf("%v", names))
+}
+
 // applyLayout recomputes the render plan from the current layout state
 // and resizes panes whose regions changed. The bottom row is reserved
 // for the persistent status bar and excluded from pane layout.
@@ -596,7 +606,9 @@ func Run(cfg Config) error {
 		p.eventCh = t.agentEvents
 		p.safeGo = t.safeGo
 		p.Start()
+		old := len(t.panes)
 		t.panes = append(t.panes, p)
+		t.logPanesMutation("create-pane", old)
 		LogDebug("pane", "created", "name", acfg.Name, "dir", acfg.Dir)
 	}
 
@@ -959,7 +971,9 @@ func (t *TUI) handlePeerUpdate(peerName string, newPanes []PaneView) {
 		}
 		kept = append(kept, newPanes...)
 	}
+	oldLen := len(t.panes)
 	t.panes = kept
+	t.logPanesMutation("peer-update", oldLen)
 	if len(t.layoutState.Order) > 0 {
 		reorderPanes(t.panes, t.layoutState.Order)
 	}

@@ -303,7 +303,9 @@ func (t *TUI) addPane(name string) error {
 			return
 		}
 		p.Start()
+		oldLen := len(t.panes)
 		t.panes = append(t.panes, p)
+		t.logPanesMutation("hot-add", oldLen)
 		// Recalculate grid for the new visible pane count.
 		t.recalcGrid(true)
 		t.saveLayoutIfConfigured()
@@ -350,7 +352,9 @@ func (t *TUI) removePane(name string) error {
 		p.Close()
 
 		// Remove from slice without leaving gaps.
+		oldLen := len(t.panes)
 		t.panes = append(t.panes[:idx], t.panes[idx+1:]...)
+		t.logPanesMutation("remove-pane", oldLen)
 
 		// Clean up layout state references.
 		if t.layoutState.Hidden != nil {
