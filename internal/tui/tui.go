@@ -841,6 +841,9 @@ func Run(cfg Config) error {
 			t.rotateTip()
 			t.pollQuota()
 			t.fireTimers()
+			if t.layoutState.Mode == LayoutLive {
+				t.applyLayout()
+			}
 		case <-t.quitCh:
 			return nil
 		}
