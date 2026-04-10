@@ -172,7 +172,7 @@ func (t *TUI) handleAgentEvent(ev AgentEvent) {
 	if ev.Type == EventAgentIdleWithBead {
 		if super := t.findPaneByName("super"); super != nil && super.IsAlive() {
 			if lp, ok := super.(*Pane); ok {
-				msg := fmt.Sprintf("[from initech] %s is now idle (bead: %s). Check if work is complete.", ev.Pane, ev.BeadID)
+				msg := fmt.Sprintf("[from initech] %s idle with bead %s. If done: bd update %s --status ready_for_qa && tell %s to run initech bead --clear. If not: nudge %s to continue.", ev.Pane, ev.BeadID, ev.BeadID, ev.Pane, ev.Pane)
 				t.safeGo(func() { t.injectText(lp, msg, true) })
 			}
 		}
