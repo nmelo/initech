@@ -272,6 +272,9 @@ func (le *LiveEngine) Tick(panes []PaneView, now time.Time) []string {
 
 		// Current occupant above keep threshold: only displace if challenger
 		// meets claim threshold AND exceeds by margin.
+		// Temporarily exclude the occupant from candidates so bestUnplaced
+		// doesn't return the occupant itself as its own challenger.
+		placed[prev] = true
 		if !swapped {
 			if best, ok := bestUnplaced(candidates, placed); ok &&
 				best.score >= liveClaimThreshold &&
@@ -280,8 +283,9 @@ func (le *LiveEngine) Tick(panes []PaneView, now time.Time) []string {
 				placed[best.name] = true
 				le.holdUntil[slot] = now.Add(liveHoldDuration)
 				swapped = true
+				// Displaced occupant returns to pool.
+				delete(placed, prev)
 				LogInfo("live-tick", "displace-margin", "slot", slot, "old", prev, "oldScore", prevInfo.score, "new", best.name, "newScore", best.score, "margin", best.score-prevInfo.score)
-				// Displaced agent returns to pool (not marked placed).
 				continue
 			}
 			if best, ok := bestUnplaced(candidates, placed); ok {
@@ -293,9 +297,8 @@ func (le *LiveEngine) Tick(panes []PaneView, now time.Time) []string {
 			LogInfo("live-tick", "skip-already-swapped", "slot", slot, "occupant", prev, "score", prevInfo.score)
 		}
 
-		// Keep current occupant.
+		// Keep current occupant (already in placed from exclusion above).
 		result[slot] = prev
-		placed[prev] = true
 	}
 
 	le.Slots = result

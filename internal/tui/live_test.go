@@ -608,6 +608,40 @@ func TestLiveEngine_DeadAgentHoldThenReplace(t *testing.T) {
 	}
 }
 
+func TestLiveEngine_OccupantNotChallengerForOwnSlot(t *testing.T) {
+	now := time.Now()
+
+	// Fill 2 slots: eng1 (score 30, bead only) and pm (score 30, bead only).
+	le := NewLiveEngine(2, nil, nil)
+	le.Tick([]PaneView{
+		&mockPaneView{name: "eng1", alive: true, activity: StateIdle, beadID: "ini-a"},
+		&mockPaneView{name: "pm", alive: true, activity: StateIdle, beadID: "ini-b"},
+	}, now)
+
+	// After hold: eng1 and pm still score 30, but pmm scores 60.
+	// pmm should be the challenger, not the occupant challenging itself.
+	tick2 := now.Add(15 * time.Second)
+	panes := []PaneView{
+		&mockPaneView{name: "eng1", alive: true, activity: StateIdle, beadID: "ini-a"}, // score 30
+		&mockPaneView{name: "pm", alive: true, activity: StateIdle, beadID: "ini-b"},   // score 30
+		&mockPaneView{name: "pmm", alive: true, beadID: "ini-c", activity: StateRunning, runStart: tick2.Add(-10 * time.Second), msgReceived: tick2.Add(-5 * time.Second)}, // score 30+20+25=75
+	}
+	slots := le.Tick(panes, tick2)
+
+	// pmm (75) >= claimThreshold (40) and pmm(75) - eng1(30) = 45 >= margin(20).
+	// One swap per tick: first eligible slot (slot 0) gets displaced.
+	displaced := false
+	for _, s := range slots {
+		if s == "pmm" {
+			displaced = true
+			break
+		}
+	}
+	if !displaced {
+		t.Errorf("pmm should displace an occupant but slots = %v", slots)
+	}
+}
+
 func TestLiveEngine_DisplacedAgentFillsEmptySlot(t *testing.T) {
 	now := time.Now()
 
