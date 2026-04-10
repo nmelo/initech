@@ -506,6 +506,7 @@ func (t *TUI) cmdGrid(parts []string) bool {
 		t.layoutState.Mode = LayoutGrid
 		t.layoutState.GridCols = c
 		t.layoutState.GridRows = r
+		t.layoutState.GridExplicit = false
 		t.layoutState.Zoomed = false
 		t.applyLayout()
 		t.saveLayoutIfConfigured()
@@ -520,6 +521,7 @@ func (t *TUI) cmdGrid(parts []string) bool {
 	t.layoutState.Mode = LayoutGrid
 	t.layoutState.GridCols = cols
 	t.layoutState.GridRows = rows
+	t.layoutState.GridExplicit = true
 	t.layoutState.Zoomed = false
 	t.applyLayout()
 	t.saveLayoutIfConfigured()
@@ -529,6 +531,7 @@ func (t *TUI) cmdGrid(parts []string) bool {
 func (t *TUI) cmdFocus(parts []string) bool {
 	if len(parts) < 2 {
 		t.layoutState.Mode = LayoutFocus
+		t.layoutState.GridExplicit = false
 		t.layoutState.Zoomed = false
 		t.applyLayout()
 		t.saveLayoutIfConfigured()
@@ -542,6 +545,7 @@ func (t *TUI) cmdFocus(parts []string) bool {
 	}
 	t.layoutState.Focused = paneKey(pv)
 	t.layoutState.Mode = LayoutFocus
+	t.layoutState.GridExplicit = false
 	t.layoutState.Zoomed = false
 	t.applyLayout()
 	t.saveLayoutIfConfigured()
@@ -563,6 +567,7 @@ func (t *TUI) cmdPanel() bool {
 
 func (t *TUI) cmdMain() bool {
 	t.layoutState.Mode = Layout2Col
+	t.layoutState.GridExplicit = false
 	t.layoutState.Zoomed = false
 	t.applyLayout()
 	t.saveLayoutIfConfigured()
@@ -722,6 +727,7 @@ func (t *TUI) cmdLive(parts []string) bool {
 		explicitSlots = cols * rows
 	}
 	t.layoutState.Mode = LayoutLive
+	t.layoutState.GridExplicit = false
 	t.layoutState.Zoomed = false
 	if t.layoutState.LivePinned == nil {
 		t.layoutState.LivePinned = make(map[string]int)

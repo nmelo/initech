@@ -959,6 +959,10 @@ func autoGrid(n int) (cols, rows int) {
 // When force is false, grid dimensions are only updated if the mode is
 // already LayoutGrid or LayoutLive (used after visibility toggles that
 // shouldn't force a mode change).
+//
+// When GridExplicit is true the user chose dimensions via :grid CxR or
+// Alt+2/Alt+3. In that case we skip the auto-recalculation so peer updates
+// and hot-adds don't overwrite the user's choice.
 func (t *TUI) recalcGrid(force bool) {
 	if force && t.layoutState.Mode != LayoutLive {
 		t.layoutState.Mode = LayoutGrid
@@ -966,11 +970,13 @@ func (t *TUI) recalcGrid(force bool) {
 		t.applyLayout()
 		return
 	}
-	vis := t.visibleCountFromState()
-	if vis > 0 {
-		cols, rows := autoGrid(vis)
-		t.layoutState.GridCols = cols
-		t.layoutState.GridRows = rows
+	if !t.layoutState.GridExplicit {
+		vis := t.visibleCountFromState()
+		if vis > 0 {
+			cols, rows := autoGrid(vis)
+			t.layoutState.GridCols = cols
+			t.layoutState.GridRows = rows
+		}
 	}
 	t.applyLayout()
 }

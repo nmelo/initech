@@ -80,6 +80,7 @@ func (t *TUI) handleKey(ev *tcell.EventKey) bool {
 			switch ev.Rune() {
 			case '1':
 				t.layoutState.Mode = LayoutFocus
+				t.layoutState.GridExplicit = false
 				t.layoutState.Zoomed = false
 				t.applyLayout()
 				t.saveLayoutIfConfigured()
@@ -88,6 +89,7 @@ func (t *TUI) handleKey(ev *tcell.EventKey) bool {
 				t.layoutState.Mode = LayoutGrid
 				t.layoutState.GridCols = 2
 				t.layoutState.GridRows = 2
+				t.layoutState.GridExplicit = true
 				t.layoutState.Zoomed = false
 				t.applyLayout()
 				t.saveLayoutIfConfigured()
@@ -96,12 +98,14 @@ func (t *TUI) handleKey(ev *tcell.EventKey) bool {
 				t.layoutState.Mode = LayoutGrid
 				t.layoutState.GridCols = 3
 				t.layoutState.GridRows = 3
+				t.layoutState.GridExplicit = true
 				t.layoutState.Zoomed = false
 				t.applyLayout()
 				t.saveLayoutIfConfigured()
 				return false
 			case '4':
 				t.layoutState.Mode = Layout2Col
+				t.layoutState.GridExplicit = false
 				t.layoutState.Zoomed = false
 				t.applyLayout()
 				t.saveLayoutIfConfigured()
@@ -115,6 +119,7 @@ func (t *TUI) handleKey(ev *tcell.EventKey) bool {
 					// Toggle on: enter live auto mode (default).
 					t.layoutState.Mode = LayoutLive
 					t.layoutState.LiveAuto = true
+					t.layoutState.GridExplicit = false
 					t.layoutState.Zoomed = false
 					if t.layoutState.LivePinned == nil {
 						t.layoutState.LivePinned = make(map[string]int)

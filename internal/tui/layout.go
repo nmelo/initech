@@ -31,6 +31,11 @@ type LayoutState struct {
 	Order    []string        `yaml:"order,omitempty"`  // Pane keys in display order (from show command).
 	Overlay  bool            `yaml:"overlay"`
 
+	// GridExplicit is true when the user chose grid dimensions via :grid CxR
+	// or Alt+2/Alt+3. When set, recalcGrid skips auto-recalculation so peer
+	// updates and hot-adds don't overwrite the user's choice.
+	GridExplicit bool `yaml:"grid_explicit,omitempty"`
+
 	// Per-column and per-row proportional sizing (future).
 	// nil means uniform. Values are relative weights (e.g., [60, 40] = 60%/40%).
 	ColWeights []int `yaml:"col_weights,omitempty"`
@@ -357,13 +362,14 @@ func DefaultLayoutState(paneNames []string) LayoutState {
 // Focused pane is deliberately excluded (momentary choice, not a preference).
 // Overlay and weights are excluded (not layout-changing from the user's perspective).
 type PersistentLayout struct {
-	Grid       string         `yaml:"grid"`                  // e.g. "3x2"
-	Hidden     []string       `yaml:"hidden,omitempty"`      // Pane keys: name for local, host:name for remote.
-	Pinned     []string       `yaml:"pinned,omitempty"`      // Pane keys protected from auto-suspend.
-	Order      []string       `yaml:"order,omitempty"`       // Pane keys in display order (from show command).
-	Mode       string         `yaml:"mode"`                  // "grid", "focus", "main", "live"
-	LivePinned map[string]int `yaml:"live_pinned,omitempty"` // Agent name -> fixed slot index for live mode.
-	LiveAuto   bool           `yaml:"live_auto,omitempty"`   // True = auto-size grid from active agent count.
+	Grid         string         `yaml:"grid"`                    // e.g. "3x2"
+	GridExplicit bool           `yaml:"grid_explicit,omitempty"` // True = user chose CxR explicitly; don't auto-resize.
+	Hidden       []string       `yaml:"hidden,omitempty"`        // Pane keys: name for local, host:name for remote.
+	Pinned       []string       `yaml:"pinned,omitempty"`        // Pane keys protected from auto-suspend.
+	Order        []string       `yaml:"order,omitempty"`         // Pane keys in display order (from show command).
+	Mode         string         `yaml:"mode"`                    // "grid", "focus", "main", "live"
+	LivePinned   map[string]int `yaml:"live_pinned,omitempty"`   // Agent name -> fixed slot index for live mode.
+	LiveAuto     bool           `yaml:"live_auto,omitempty"`     // True = auto-size grid from active agent count.
 }
 
 // layoutDir returns the .initech directory path under projectRoot.
@@ -380,11 +386,12 @@ func layoutPath(projectRoot string) string {
 // (temp file + rename) to prevent corruption. Creates .initech/ if it doesn't exist.
 func SaveLayout(projectRoot string, state LayoutState) error {
 	pl := PersistentLayout{
-		Grid:       fmt.Sprintf("%dx%d", state.GridCols, state.GridRows),
-		Mode:       layoutModeToString(state.Mode),
-		Order:      state.Order,
-		LivePinned: state.LivePinned,
-		LiveAuto:   state.LiveAuto,
+		Grid:         fmt.Sprintf("%dx%d", state.GridCols, state.GridRows),
+		GridExplicit: state.GridExplicit,
+		Mode:         layoutModeToString(state.Mode),
+		Order:        state.Order,
+		LivePinned:   state.LivePinned,
+		LiveAuto:     state.LiveAuto,
 	}
 	for name, hidden := range state.Hidden {
 		if hidden {
@@ -513,16 +520,17 @@ func LoadLayout(projectRoot string, paneKeys []string) (LayoutState, bool) {
 	}
 
 	return LayoutState{
-		Mode:       mode,
-		GridCols:   cols,
-		GridRows:   rows,
-		Focused:    focused,
-		Hidden:     hidden,
-		Pinned:     pinned,
-		Order:      order,
-		Overlay:    true, // Always start with overlay visible.
-		LivePinned: pl.LivePinned,
-		LiveAuto:   pl.LiveAuto,
+		Mode:         mode,
+		GridCols:     cols,
+		GridRows:     rows,
+		GridExplicit: pl.GridExplicit,
+		Focused:      focused,
+		Hidden:       hidden,
+		Pinned:       pinned,
+		Order:        order,
+		Overlay:      true, // Always start with overlay visible.
+		LivePinned:   pl.LivePinned,
+		LiveAuto:     pl.LiveAuto,
 	}, true
 }
 
