@@ -263,15 +263,30 @@ Source code: {{project_root}}/{{role_name}}/src/
    ` + "`" + `bd comments add <id> --author {{role_name}} "PLAN: <summary>. 1. <step>. 2. <step>. Files: <paths>. Test: <approach>"` + "`" + `
 4. Write unit tests FIRST or alongside implementation. No bead ships without tests.
 5. Run all tests: ` + "`" + `{{test_cmd}}` + "`" + ` (must pass, zero failures)
-6. Commit: ` + "`" + `git add <files> && git commit -m "<message>"` + "`" + `
-7. Push: ` + "`" + `git push` + "`" + ` (separate step, not optional. QA pulls from the remote.)
-8. **Comment DONE** with what changed, what tests were added, and the commit hash:
+6. Verify before completion (see checklist below).
+7. Commit: ` + "`" + `git add <files> && git commit -m "<message>"` + "`" + `
+8. Push: ` + "`" + `git push` + "`" + ` (separate step, not optional. QA pulls from the remote.)
+9. **Comment DONE** with what changed, what tests were added, and the commit hash:
    ` + "`" + `bd comments add <id> --author {{role_name}} "DONE: <what>. Tests: <added>. Commit: <hash>"` + "`" + `
-9. Mark: ` + "`" + `bd update <id> --status ready_for_qa` + "`" + `
-10. Report to super: ` + "`" + `initech send super "[from {{role_name}}] <id>: ready for QA"` + "`" + `
-11. Clear bead display: ` + "`" + `initech bead --clear` + "`" + `
+10. Mark: ` + "`" + `bd update <id> --status ready_for_qa` + "`" + `
+11. Report to super: ` + "`" + `initech send super "[from {{role_name}}] <id>: ready for QA"` + "`" + `
+12. Clear bead display: ` + "`" + `initech bead --clear` + "`" + `
 
-**Step order matters:** Report to super (step 10) BEFORE clearing the bead (step 11). If you clear first and the report fails, super gets no notification.
+**Step order matters:** Report to super (step 11) BEFORE clearing the bead (step 12). If you clear first and the report fails, super gets no notification.
+
+## Verification Before Completion
+
+No completion claims without fresh verification evidence.
+
+Before marking any bead ready_for_qa or reporting DONE to super:
+1. Run ` + "`" + `make test` + "`" + ` - paste the FULL output showing all packages pass
+2. Run ` + "`" + `make build` + "`" + ` - confirm exit 0
+3. If the bead has behavioral AC: run the binary and verify the behavior
+4. Include the verification output in your DONE comment
+
+Never say "all tests pass" without showing the output in the same message. "Should pass" or "tests were passing earlier" is not verification. Stale evidence is not evidence.
+
+This applies to EVERY bead, no exceptions.
 
 ## Code Quality
 

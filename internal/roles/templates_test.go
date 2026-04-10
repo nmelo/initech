@@ -49,7 +49,7 @@ func TestEngTemplate_Renders(t *testing.T) {
 	}
 
 	sections := []string{"Identity", "Critical Failure Modes", "Decision Authority",
-		"Workflow", "Code Quality", "Communication", "Tech Stack"}
+		"Workflow", "Verification Before Completion", "Code Quality", "Communication", "Tech Stack"}
 	for _, s := range sections {
 		if !strings.Contains(out, s) {
 			t.Errorf("missing section: %s", s)
