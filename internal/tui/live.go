@@ -169,11 +169,29 @@ func (le *LiveEngine) Tick(panes []PaneView, now time.Time) []string {
 	}
 
 	// Build sorted candidate list for filling and challenging.
+	// Primary sort: config roles order (stable positioning).
+	// Fallback: score descending, then last output time, then alphabetical.
 	candidates := make([]ranked, 0, len(scores))
 	for _, s := range scores {
 		candidates = append(candidates, s)
 	}
+	roleIdx := make(map[string]int, len(le.RolesOrder))
+	for i, r := range le.RolesOrder {
+		roleIdx[r] = i
+	}
+	maxRoleIdx := len(le.RolesOrder)
 	sort.Slice(candidates, func(i, j int) bool {
+		ai, aOK := roleIdx[candidates[i].name]
+		bi, bOK := roleIdx[candidates[j].name]
+		if !aOK {
+			ai = maxRoleIdx
+		}
+		if !bOK {
+			bi = maxRoleIdx
+		}
+		if ai != bi {
+			return ai < bi
+		}
 		if candidates[i].score != candidates[j].score {
 			return candidates[i].score > candidates[j].score
 		}

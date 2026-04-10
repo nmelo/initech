@@ -659,6 +659,29 @@ func TestLiveEngine_EmptySlotFillNotLimitedBySwapCap(t *testing.T) {
 	}
 }
 
+func TestTick_RolesOrderDeterminesSlotAssignment(t *testing.T) {
+	now := time.Now()
+	// Roles order: [eng1, eng2, eng3]. eng3 has highest score but should get
+	// slot 2 (last), not slot 0, because eng1 comes first in roles list.
+	panes := []PaneView{
+		&mockPaneView{name: "eng3", alive: true, activity: StateRunning, beadID: "bb-3", runStart: now.Add(-10 * time.Second), runBytes: 20000},
+		&mockPaneView{name: "eng1", alive: true, activity: StateIdle, beadID: "bb-1"},
+		&mockPaneView{name: "eng2", alive: true, activity: StateIdle, beadID: "bb-2"},
+	}
+	le := NewLiveEngine(3, nil, []string{"eng1", "eng2", "eng3"})
+	result := le.Tick(panes, now)
+	// Slots should fill in roles order: eng1=slot0, eng2=slot1, eng3=slot2.
+	if result[0] != "eng1" {
+		t.Errorf("slot 0: expected eng1 (roles[0]), got %q", result[0])
+	}
+	if result[1] != "eng2" {
+		t.Errorf("slot 1: expected eng2 (roles[1]), got %q", result[1])
+	}
+	if result[2] != "eng3" {
+		t.Errorf("slot 2: expected eng3 (roles[2]), got %q", result[2])
+	}
+}
+
 // ── liveTickSlots tests ─────────────────────────────────────────────
 
 func TestLiveTickSlots_DefaultsToLen(t *testing.T) {
