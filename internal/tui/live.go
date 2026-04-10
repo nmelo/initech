@@ -242,12 +242,10 @@ func (le *LiveEngine) Tick(panes []PaneView, now time.Time) []string {
 					continue
 				}
 			}
-			// No swap available or already swapped this tick. Keep current.
-			result[slot] = prev
-			if prevAlive {
-				placed[prev] = true
-			}
-			LogInfo("live-tick", "keep-weak-no-swap", "slot", slot, "agent", prev, "score", prevInfo.score, "alive", prevAlive, "alreadySwapped", swapped)
+			// No swap available or already swapped this tick.
+			// Evict: agent below keep threshold loses the slot regardless.
+			// The empty slot can be filled on a future tick when someone qualifies.
+			LogInfo("live-tick", "evict-weak", "slot", slot, "agent", prev, "score", prevInfo.score, "alive", prevAlive, "alreadySwapped", swapped)
 			continue
 		}
 

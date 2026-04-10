@@ -406,9 +406,9 @@ func TestLiveEngine_HoldTimeExpiryAllowsSwap(t *testing.T) {
 	if slots[0] != "eng3" {
 		t.Errorf("slot 0 = %q, want eng3 (hold expired, challenger wins)", slots[0])
 	}
-	// One-swap-per-tick: slot 1 keeps eng2 despite being below keep.
-	if slots[1] != "eng2" {
-		t.Errorf("slot 1 = %q, want eng2 (one-swap-per-tick)", slots[1])
+	// Slot 1: eng2 below keep threshold, evicted to empty.
+	if slots[1] != "" {
+		t.Errorf("slot 1 = %q, want empty (evict below keep threshold)", slots[1])
 	}
 }
 
@@ -499,9 +499,9 @@ func TestLiveEngine_BelowKeepNoQualifiedChallenger(t *testing.T) {
 	}
 	slots := le.Tick(panes, tick2)
 
-	// eng1 below keep, but eng2 (30) < claimThreshold (40). No qualified challenger. eng1 stays.
-	if slots[0] != "eng1" {
-		t.Errorf("slot 0 = %q, want eng1 (no qualified challenger)", slots[0])
+	// eng1 below keep threshold, evicted regardless of challenger qualification.
+	if slots[0] != "" {
+		t.Errorf("slot 0 = %q, want empty (evict below keep threshold)", slots[0])
 	}
 }
 
@@ -528,20 +528,19 @@ func TestLiveEngine_OneSwapPerTick_MultipleEligible(t *testing.T) {
 	}
 	slots := le.Tick(panes, tick2)
 
-	// One-swap-per-tick: only slot 0 changes (first eligible, iteration order).
-	// hot1 wins slot 0 (alphabetical tiebreak: hot1 < hot2 < hot3).
+	// Slot 0: eng1 (0) below keep, hot1 (50) displaces (one swap used).
 	if slots[0] != "hot1" {
 		t.Errorf("slot 0 = %q, want hot1 (first swap, alpha tiebreak)", slots[0])
 	}
-	if slots[1] != "eng2" {
-		t.Errorf("slot 1 = %q, want eng2 (one-swap-per-tick, no change)", slots[1])
+	// Slots 1,2: eng2,eng3 below keep threshold, evicted to empty.
+	if slots[1] != "" {
+		t.Errorf("slot 1 = %q, want empty (evict below keep threshold)", slots[1])
 	}
-	if slots[2] != "eng3" {
-		t.Errorf("slot 2 = %q, want eng3 (one-swap-per-tick, no change)", slots[2])
+	if slots[2] != "" {
+		t.Errorf("slot 2 = %q, want empty (evict below keep threshold)", slots[2])
 	}
 
-	// Tick 3: immediately after (within new hold for slot 0, but not for slots 1,2).
-	// Slots 1 and 2 don't have new hold times, so they CAN swap.
+	// Tick 3: slots 1,2 are empty, so filling them is not a displacement.
 	tick3 := tick2.Add(16 * time.Millisecond)
 	slots = le.Tick(panes, tick3)
 
@@ -549,20 +548,12 @@ func TestLiveEngine_OneSwapPerTick_MultipleEligible(t *testing.T) {
 	if slots[0] != "hot1" {
 		t.Errorf("tick 3 slot 0 = %q, want hot1 (hold time)", slots[0])
 	}
-	// Slot 1: eng2 (0) below keep. hot2 wins (next best unplaced after hot1).
+	// Slots 1,2: empty, filled by hot2 and hot3 (not displacements).
 	if slots[1] != "hot2" {
-		t.Errorf("tick 3 slot 1 = %q, want hot2 (second swap cascade)", slots[1])
+		t.Errorf("tick 3 slot 1 = %q, want hot2 (fill empty slot)", slots[1])
 	}
-	// Slot 2: one-swap-per-tick, eng3 stays.
-	if slots[2] != "eng3" {
-		t.Errorf("tick 3 slot 2 = %q, want eng3 (one-swap-per-tick)", slots[2])
-	}
-
-	// Tick 4: third swap.
-	tick4 := tick3.Add(16 * time.Millisecond)
-	slots = le.Tick(panes, tick4)
 	if slots[2] != "hot3" {
-		t.Errorf("tick 4 slot 2 = %q, want hot3 (third swap cascade)", slots[2])
+		t.Errorf("tick 3 slot 2 = %q, want hot3 (fill empty slot)", slots[2])
 	}
 }
 
