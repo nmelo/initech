@@ -166,7 +166,7 @@ func TestLiveEngine_Tick_HighestScoreGetsSlot(t *testing.T) {
 		&mockPaneView{name: "eng2", alive: true, activity: StateRunning, runStart: now.Add(-10 * time.Second), beadID: "ini-abc"},
 		&mockPaneView{name: "eng3", alive: true, activity: StateIdle, beadID: "ini-xyz"},
 	}
-	le := NewLiveEngine(2, nil)
+	le := NewLiveEngine(2, nil, nil)
 	slots := le.Tick(panes, now)
 
 	// eng2 has score 50 (bead=30 + activity=20), eng3 has score 30 (bead only).
@@ -186,7 +186,7 @@ func TestLiveEngine_Tick_PinnedAgentsFixed(t *testing.T) {
 		&mockPaneView{name: "eng2", alive: true, activity: StateIdle},
 	}
 	pinned := map[string]int{"super": 0}
-	le := NewLiveEngine(2, pinned)
+	le := NewLiveEngine(2, pinned, nil)
 	slots := le.Tick(panes, now)
 
 	if slots[0] != "super" {
@@ -203,7 +203,7 @@ func TestLiveEngine_Tick_DeadAgentsExcluded(t *testing.T) {
 		&mockPaneView{name: "eng1", alive: false, beadID: "ini-abc"},
 		&mockPaneView{name: "eng2", alive: true, activity: StateIdle},
 	}
-	le := NewLiveEngine(2, nil)
+	le := NewLiveEngine(2, nil, nil)
 	slots := le.Tick(panes, now)
 
 	if slots[0] != "eng2" {
@@ -220,7 +220,7 @@ func TestLiveEngine_Tick_SuspendedExcluded(t *testing.T) {
 		&mockPaneView{name: "eng1", alive: true, suspended: true, beadID: "ini-abc"},
 		&mockPaneView{name: "eng2", alive: true, activity: StateIdle},
 	}
-	le := NewLiveEngine(2, nil)
+	le := NewLiveEngine(2, nil, nil)
 	slots := le.Tick(panes, now)
 
 	if slots[0] != "eng2" {
@@ -239,7 +239,7 @@ func TestLiveEngine_Tick_AllIdleFallback(t *testing.T) {
 		&mockPaneView{name: "eng2", alive: true, activity: StateIdle, lastOutputTime: now.Add(-5 * time.Second)},
 		&mockPaneView{name: "eng3", alive: true, activity: StateIdle, lastOutputTime: now.Add(-60 * time.Second)},
 	}
-	le := NewLiveEngine(3, nil)
+	le := NewLiveEngine(3, nil, nil)
 	slots := le.Tick(panes, now)
 
 	// All scores are 0, so tiebreak by most recent output time.
@@ -259,7 +259,7 @@ func TestLiveEngine_Tick_FewerAgentsThanSlots(t *testing.T) {
 	panes := []PaneView{
 		&mockPaneView{name: "eng1", alive: true, activity: StateIdle},
 	}
-	le := NewLiveEngine(3, nil)
+	le := NewLiveEngine(3, nil, nil)
 	slots := le.Tick(panes, now)
 
 	if slots[0] != "eng1" {
@@ -278,7 +278,7 @@ func TestLiveEngine_Tick_PinnedOutOfRange(t *testing.T) {
 	}
 	// Pin to slot 99 (out of range for 2 slots) -- should be ignored.
 	pinned := map[string]int{"super": 99}
-	le := NewLiveEngine(2, pinned)
+	le := NewLiveEngine(2, pinned, nil)
 	slots := le.Tick(panes, now)
 
 	// super is not pinned (out of range), both compete normally.
@@ -300,7 +300,7 @@ func TestLiveEngine_Tick_MultiplePinned(t *testing.T) {
 		&mockPaneView{name: "eng2", alive: true, beadID: "ini-xyz"},
 	}
 	pinned := map[string]int{"super": 0, "pm": 2}
-	le := NewLiveEngine(4, pinned)
+	le := NewLiveEngine(4, pinned, nil)
 	slots := le.Tick(panes, now)
 
 	if slots[0] != "super" {
@@ -319,7 +319,7 @@ func TestLiveEngine_Tick_MultiplePinned(t *testing.T) {
 }
 
 func TestLiveEngine_Tick_NoPanes(t *testing.T) {
-	le := NewLiveEngine(2, nil)
+	le := NewLiveEngine(2, nil, nil)
 	slots := le.Tick(nil, time.Now())
 
 	if slots[0] != "" || slots[1] != "" {
@@ -333,7 +333,7 @@ func TestLiveEngine_Tick_RemotePaneKey(t *testing.T) {
 		&mockPaneView{name: "eng1", host: "workbench", alive: true, beadID: "ini-abc"},
 		&mockPaneView{name: "eng1", alive: true, activity: StateIdle},
 	}
-	le := NewLiveEngine(2, nil)
+	le := NewLiveEngine(2, nil, nil)
 	slots := le.Tick(panes, now)
 
 	// Remote pane has key "workbench:eng1", local has "eng1".
@@ -355,7 +355,7 @@ func TestLiveEngine_HoldTimePreventsSwap(t *testing.T) {
 		&mockPaneView{name: "eng1", alive: true, activity: StateIdle, beadID: "ini-a"},
 		&mockPaneView{name: "eng2", alive: true, activity: StateIdle},
 	}
-	le := NewLiveEngine(2, nil)
+	le := NewLiveEngine(2, nil, nil)
 	slots := le.Tick(panes, now)
 	if slots[0] != "eng1" || slots[1] != "eng2" {
 		t.Fatalf("tick 1: got %v, want [eng1 eng2]", slots)
@@ -384,7 +384,7 @@ func TestLiveEngine_HoldTimeExpiryAllowsSwap(t *testing.T) {
 	now := time.Now()
 
 	// Tick 1: fill. eng1 (score=30) slot 0, eng2 (score=0) slot 1.
-	le := NewLiveEngine(2, nil)
+	le := NewLiveEngine(2, nil, nil)
 	le.Tick([]PaneView{
 		&mockPaneView{name: "eng1", alive: true, activity: StateIdle, beadID: "ini-a"},
 		&mockPaneView{name: "eng2", alive: true, activity: StateIdle},
@@ -416,7 +416,7 @@ func TestLiveEngine_HysteresisClaimThreshold(t *testing.T) {
 	now := time.Now()
 
 	// Fill: eng1 (score=30) in slot 0.
-	le := NewLiveEngine(1, nil)
+	le := NewLiveEngine(1, nil, nil)
 	le.Tick([]PaneView{
 		&mockPaneView{name: "eng1", alive: true, activity: StateIdle, beadID: "ini-a"}, // score 30
 	}, now)
@@ -439,7 +439,7 @@ func TestLiveEngine_HysteresisMarginRequired(t *testing.T) {
 	now := time.Now()
 
 	// Fill: eng1 (score=30) in slot 0.
-	le := NewLiveEngine(1, nil)
+	le := NewLiveEngine(1, nil, nil)
 	le.Tick([]PaneView{
 		&mockPaneView{name: "eng1", alive: true, activity: StateIdle, beadID: "ini-a"}, // score 30
 	}, now)
@@ -462,7 +462,7 @@ func TestLiveEngine_HysteresisKeepThreshold(t *testing.T) {
 	now := time.Now()
 
 	// Fill: eng1 with event (score=10: recent event only).
-	le := NewLiveEngine(1, nil)
+	le := NewLiveEngine(1, nil, nil)
 	le.Tick([]PaneView{
 		&mockPaneView{name: "eng1", alive: true, activity: StateIdle, eventTime: now.Add(-3 * time.Second)}, // score 10
 	}, now)
@@ -486,7 +486,7 @@ func TestLiveEngine_BelowKeepNoQualifiedChallenger(t *testing.T) {
 	now := time.Now()
 
 	// Fill: eng1 with score 10 (recent event).
-	le := NewLiveEngine(1, nil)
+	le := NewLiveEngine(1, nil, nil)
 	le.Tick([]PaneView{
 		&mockPaneView{name: "eng1", alive: true, activity: StateIdle, eventTime: now.Add(-3 * time.Second)},
 	}, now)
@@ -509,7 +509,7 @@ func TestLiveEngine_OneSwapPerTick_MultipleEligible(t *testing.T) {
 	now := time.Now()
 
 	// Fill 3 slots with low-scoring agents.
-	le := NewLiveEngine(3, nil)
+	le := NewLiveEngine(3, nil, nil)
 	le.Tick([]PaneView{
 		&mockPaneView{name: "eng1", alive: true, activity: StateIdle, eventTime: now.Add(-3 * time.Second)}, // score 10
 		&mockPaneView{name: "eng2", alive: true, activity: StateIdle, eventTime: now.Add(-3 * time.Second)}, // score 10
@@ -566,7 +566,7 @@ func TestLiveEngine_TiebreakerDeterminism(t *testing.T) {
 		&mockPaneView{name: "beta", alive: true, beadID: "ini-a", activity: StateRunning, runStart: now.Add(-10 * time.Second)},
 		&mockPaneView{name: "alpha", alive: true, beadID: "ini-b", activity: StateRunning, runStart: now.Add(-10 * time.Second)},
 	}
-	le := NewLiveEngine(2, nil)
+	le := NewLiveEngine(2, nil, nil)
 	slots := le.Tick(panes, now)
 
 	// Both score 50. Same lastOutputTime (zero). Alpha wins by name.
@@ -582,7 +582,7 @@ func TestLiveEngine_DeadAgentHoldThenReplace(t *testing.T) {
 	now := time.Now()
 
 	// Fill: eng1 (score=30) in slot 0.
-	le := NewLiveEngine(1, nil)
+	le := NewLiveEngine(1, nil, nil)
 	le.Tick([]PaneView{
 		&mockPaneView{name: "eng1", alive: true, activity: StateIdle, beadID: "ini-a"},
 	}, now)
@@ -612,7 +612,7 @@ func TestLiveEngine_DisplacedAgentFillsEmptySlot(t *testing.T) {
 	now := time.Now()
 
 	// Fill: eng1 (score=30) slot 0, slot 1 remains empty (only one candidate).
-	le := NewLiveEngine(2, nil)
+	le := NewLiveEngine(2, nil, nil)
 	le.Tick([]PaneView{
 		&mockPaneView{name: "eng1", alive: true, activity: StateIdle, beadID: "ini-a"},
 	}, now)
@@ -644,7 +644,7 @@ func TestLiveEngine_EmptySlotFillNotLimitedBySwapCap(t *testing.T) {
 		&mockPaneView{name: "eng2", alive: true, activity: StateIdle, beadID: "ini-b"},                                          // score 30
 		&mockPaneView{name: "eng3", alive: true, activity: StateIdle},                                                            // score 0
 	}
-	le := NewLiveEngine(3, nil)
+	le := NewLiveEngine(3, nil, nil)
 	slots := le.Tick(panes, now)
 
 	// All empty slots filled in one tick (fills are not displacements).
@@ -681,7 +681,7 @@ func TestTickAuto_PinnedAlwaysVisible(t *testing.T) {
 		&mockPaneView{name: "super", alive: true, activity: StateIdle},
 		&mockPaneView{name: "eng1", alive: true, activity: StateIdle},
 	}
-	le := NewLiveEngine(0, map[string]int{"super": 0})
+	le := NewLiveEngine(0, map[string]int{"super": 0}, nil)
 	result := le.TickAuto(panes, now)
 	if len(result) != 1 || result[0] != "super" {
 		t.Errorf("expected [super], got %v", result)
@@ -695,7 +695,7 @@ func TestTickAuto_ActiveAgentBecomesVisible(t *testing.T) {
 		&mockPaneView{name: "super", alive: true, activity: StateIdle},
 		&mockPaneView{name: "eng1", alive: true, activity: StateIdle, beadID: "bb-1"},
 	}
-	le := NewLiveEngine(0, map[string]int{"super": 0})
+	le := NewLiveEngine(0, map[string]int{"super": 0}, nil)
 
 	// Tick 1: super is always visible. eng1 gets added (one add per tick).
 	r1 := le.TickAuto(panes, now)
@@ -719,7 +719,7 @@ func TestTickAuto_IncrementalGrowth(t *testing.T) {
 		&mockPaneView{name: "eng2", alive: true, activity: StateIdle, beadID: "bb-2"},
 		&mockPaneView{name: "eng3", alive: true, activity: StateIdle, beadID: "bb-3"},
 	}
-	le := NewLiveEngine(0, map[string]int{"super": 0})
+	le := NewLiveEngine(0, map[string]int{"super": 0}, nil)
 
 	// Each tick should add at most one agent (one-change-per-tick).
 	r1 := le.TickAuto(panes, now)
@@ -743,7 +743,7 @@ func TestTickAuto_IncrementalShrink(t *testing.T) {
 	now := time.Now()
 	expired := now.Add(-1 * time.Second) // Hold time expired.
 	// Start with 3 visible: super (pinned), eng1, eng2.
-	le := NewLiveEngine(0, map[string]int{"super": 0})
+	le := NewLiveEngine(0, map[string]int{"super": 0}, nil)
 	le.Slots = []string{"super", "eng1", "eng2"}
 	le.holdUntil = []time.Time{expired, expired, expired}
 
@@ -769,7 +769,7 @@ func TestTickAuto_IncrementalShrink(t *testing.T) {
 func TestTickAuto_HoldTimePreventsRemoval(t *testing.T) {
 	now := time.Now()
 	// eng1 is visible with hold time still active.
-	le := NewLiveEngine(0, map[string]int{"super": 0})
+	le := NewLiveEngine(0, map[string]int{"super": 0}, nil)
 	le.Slots = []string{"super", "eng1"}
 	le.holdUntil = []time.Time{
 		now.Add(-1 * time.Second), // super: expired (doesn't matter, pinned)
@@ -802,7 +802,7 @@ func TestTickAuto_ZeroActiveOnlySuper(t *testing.T) {
 		&mockPaneView{name: "eng1", alive: true, activity: StateIdle},
 		&mockPaneView{name: "eng2", alive: true, activity: StateIdle},
 	}
-	le := NewLiveEngine(0, map[string]int{"super": 0})
+	le := NewLiveEngine(0, map[string]int{"super": 0}, nil)
 	result := le.TickAuto(panes, now)
 	if len(result) != 1 || result[0] != "super" {
 		t.Errorf("with all idle, expected only [super], got %v", result)
@@ -817,7 +817,7 @@ func TestTickAuto_AllActive(t *testing.T) {
 		&mockPaneView{name: "eng1", alive: true, activity: StateIdle, beadID: "bb-1"},
 		&mockPaneView{name: "eng2", alive: true, activity: StateIdle, beadID: "bb-2"},
 	}
-	le := NewLiveEngine(0, map[string]int{"super": 0})
+	le := NewLiveEngine(0, map[string]int{"super": 0}, nil)
 
 	// One add per tick. After 3 ticks, all visible.
 	le.TickAuto(panes, now)
@@ -834,7 +834,7 @@ func TestTickAuto_PinnedFirstInOrder(t *testing.T) {
 		&mockPaneView{name: "eng1", alive: true, activity: StateIdle, beadID: "bb-1"},
 		&mockPaneView{name: "super", alive: true, activity: StateIdle},
 	}
-	le := NewLiveEngine(0, map[string]int{"super": 0})
+	le := NewLiveEngine(0, map[string]int{"super": 0}, nil)
 	// Tick until eng1 is visible.
 	le.TickAuto(panes, now)
 	result := le.TickAuto(panes, now)
@@ -844,5 +844,74 @@ func TestTickAuto_PinnedFirstInOrder(t *testing.T) {
 	}
 	if result[0] != "super" {
 		t.Errorf("pinned agent should come first, got %v", result)
+	}
+}
+
+func TestTickAuto_RolesOrderDeterminesPosition(t *testing.T) {
+	now := time.Now()
+	// Roles order: a, b, c. Visible: c (score 30), a (score 50).
+	// Output should be [a, c] (roles order), NOT [c, a] (score order).
+	panes := []PaneView{
+		&mockPaneView{name: "c", alive: true, activity: StateIdle, beadID: "bb-3"},
+		&mockPaneView{name: "a", alive: true, activity: StateRunning, beadID: "bb-1", runStart: now.Add(-10 * time.Second), runBytes: 20000},
+	}
+	le := NewLiveEngine(0, nil, []string{"a", "b", "c"})
+	// Tick twice: one add per tick.
+	le.TickAuto(panes, now)
+	result := le.TickAuto(panes, now)
+	if len(result) != 2 {
+		t.Fatalf("expected 2 visible, got %d: %v", len(result), result)
+	}
+	if result[0] != "a" || result[1] != "c" {
+		t.Errorf("expected [a c] (roles order), got %v", result)
+	}
+}
+
+func TestTickAuto_HotAddedAgentsSortToEnd(t *testing.T) {
+	now := time.Now()
+	// Roles: [super, eng1]. Hot-added "intern" not in roles list.
+	panes := []PaneView{
+		&mockPaneView{name: "super", alive: true, activity: StateIdle},
+		&mockPaneView{name: "intern", alive: true, activity: StateIdle, beadID: "bb-i"},
+		&mockPaneView{name: "eng1", alive: true, activity: StateIdle, beadID: "bb-1"},
+	}
+	le := NewLiveEngine(0, map[string]int{"super": 0}, []string{"super", "eng1"})
+	// Tick until all visible.
+	le.TickAuto(panes, now)
+	result := le.TickAuto(panes, now)
+	if len(result) < 3 {
+		result = le.TickAuto(panes, now)
+	}
+	if len(result) != 3 {
+		t.Fatalf("expected 3 visible, got %d: %v", len(result), result)
+	}
+	// super first (pinned), eng1 second (roles[1]), intern last (not in roles).
+	if result[0] != "super" {
+		t.Errorf("expected super first (pinned), got %v", result)
+	}
+	if result[1] != "eng1" {
+		t.Errorf("expected eng1 second (roles order), got %v", result)
+	}
+	if result[2] != "intern" {
+		t.Errorf("expected intern last (hot-added), got %v", result)
+	}
+}
+
+func TestTickAuto_NilRolesFallsBackToAlphabetical(t *testing.T) {
+	now := time.Now()
+	// No roles list: should fall back to alphabetical (current behavior).
+	panes := []PaneView{
+		&mockPaneView{name: "c", alive: true, activity: StateIdle, beadID: "bb-3"},
+		&mockPaneView{name: "a", alive: true, activity: StateIdle, beadID: "bb-1"},
+	}
+	le := NewLiveEngine(0, nil, nil)
+	le.TickAuto(panes, now)
+	result := le.TickAuto(panes, now)
+	if len(result) != 2 {
+		t.Fatalf("expected 2 visible, got %d: %v", len(result), result)
+	}
+	// Both not in roles list -> maxIdx, tiebreak alphabetically.
+	if result[0] != "a" || result[1] != "c" {
+		t.Errorf("expected [a c] (alphabetical fallback), got %v", result)
 	}
 }

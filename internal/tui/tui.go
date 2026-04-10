@@ -315,16 +315,20 @@ func (t *TUI) applyLayout() {
 // initLiveEngine creates a persistent LiveEngine for live mode with the given
 // grid dimensions and any existing live pins.
 func (t *TUI) initLiveEngine() {
+	var roles []string
+	if t.project != nil {
+		roles = t.project.Roles
+	}
 	if t.layoutState.LiveAuto {
 		// Auto mode: start with zero slots; TickAuto manages the slot list dynamically.
-		t.liveEngine = NewLiveEngine(0, t.layoutState.LivePinned)
+		t.liveEngine = NewLiveEngine(0, t.layoutState.LivePinned, roles)
 		return
 	}
 	numSlots := t.layoutState.GridCols * t.layoutState.GridRows
 	if numSlots < 1 {
 		numSlots = t.visibleCountFromState()
 	}
-	t.liveEngine = NewLiveEngine(numSlots, t.layoutState.LivePinned)
+	t.liveEngine = NewLiveEngine(numSlots, t.layoutState.LivePinned, roles)
 }
 
 // onLiveSwap compares previous and current slot assignments. If any slot

@@ -71,18 +71,21 @@ type ranked struct {
 // hysteresis, one-swap-per-tick) prevent flickering when agent scores
 // change rapidly.
 type LiveEngine struct {
-	Slots     []string       // Current agent per slot.
-	Pinned    map[string]int // Agent name -> fixed slot index.
-	holdUntil []time.Time    // Per-slot hold expiry; slot cannot change until this time.
+	Slots      []string       // Current agent per slot.
+	Pinned     map[string]int // Agent name -> fixed slot index.
+	RolesOrder []string       // Config roles list for stable ordering in auto mode.
+	holdUntil  []time.Time    // Per-slot hold expiry; slot cannot change until this time.
 }
 
 // NewLiveEngine creates a LiveEngine with the given number of slots
-// and pinned assignments.
-func NewLiveEngine(numSlots int, pinned map[string]int) *LiveEngine {
+// and pinned assignments. rolesOrder provides stable ordering for auto mode;
+// pass nil for fixed-slot mode where order is determined by slot index.
+func NewLiveEngine(numSlots int, pinned map[string]int, rolesOrder []string) *LiveEngine {
 	return &LiveEngine{
-		Slots:     make([]string, numSlots),
-		Pinned:    pinned,
-		holdUntil: make([]time.Time, numSlots),
+		Slots:      make([]string, numSlots),
+		Pinned:     pinned,
+		RolesOrder: rolesOrder,
+		holdUntil:  make([]time.Time, numSlots),
 	}
 }
 
@@ -396,7 +399,39 @@ func (le *LiveEngine) TickAuto(panes []PaneView, now time.Time) []string {
 		LogInfo("live-auto", "remove", "agent", toRemove[0])
 	}
 
-	// Build result: pinned first (sorted), then remaining by score descending.
+	// Build role index lookup for stable ordering.
+	roleIdx := make(map[string]int, len(le.RolesOrder))
+	for i, r := range le.RolesOrder {
+		roleIdx[r] = i
+	}
+	// sortByRole returns a comparator that sorts by roles index, with agents
+	// not in the roles list pushed to the end (alphabetically among themselves).
+	maxIdx := len(le.RolesOrder)
+	sortByRole := func(a, b scored) int {
+		ai, aOK := roleIdx[a.name]
+		bi, bOK := roleIdx[b.name]
+		if !aOK {
+			ai = maxIdx
+		}
+		if !bOK {
+			bi = maxIdx
+		}
+		if ai != bi {
+			if ai < bi {
+				return -1
+			}
+			return 1
+		}
+		if a.name < b.name {
+			return -1
+		}
+		if a.name > b.name {
+			return 1
+		}
+		return 0
+	}
+
+	// Build result: pinned first (role order), then remaining (role order).
 	var pinResult []scored
 	var dynResult []scored
 	for _, s := range allScored {
@@ -409,13 +444,8 @@ func (le *LiveEngine) TickAuto(panes []PaneView, now time.Time) []string {
 			dynResult = append(dynResult, s)
 		}
 	}
-	sort.Slice(pinResult, func(i, j int) bool { return pinResult[i].name < pinResult[j].name })
-	sort.Slice(dynResult, func(i, j int) bool {
-		if dynResult[i].score != dynResult[j].score {
-			return dynResult[i].score > dynResult[j].score
-		}
-		return dynResult[i].name < dynResult[j].name
-	})
+	sort.Slice(pinResult, func(i, j int) bool { return sortByRole(pinResult[i], pinResult[j]) < 0 })
+	sort.Slice(dynResult, func(i, j int) bool { return sortByRole(dynResult[i], dynResult[j]) < 0 })
 
 	result := make([]string, 0, len(pinResult)+len(dynResult))
 	for _, s := range pinResult {
@@ -447,7 +477,7 @@ func liveTickSlots(panes []PaneView, pinned map[string]int, numSlots int) []stri
 	if numSlots < 1 {
 		numSlots = len(panes)
 	}
-	le := NewLiveEngine(numSlots, pinned)
+	le := NewLiveEngine(numSlots, pinned, nil)
 	return le.Tick(panes, time.Now())
 }
 
