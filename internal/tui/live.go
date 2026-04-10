@@ -1,5 +1,37 @@
 package tui
 
+// Live Mode Invariants
+//
+// 1. SCORE determines WHO QUALIFIES.
+//    An agent must meet claimThreshold (40) to enter a slot,
+//    keepThreshold (10) to retain one, and exceed the current
+//    occupant by claimMargin (20) to displace them.
+//
+// 2. SCORE determines WHO DISPLACES.
+//    bestUnplaced() returns the highest-scoring agent not already
+//    in a slot. Score descending is the ONLY sort order for
+//    candidate selection. Ties break by yaml role index.
+//
+// 3. YAML ORDER determines WHERE agents SIT.
+//    After the live engine decides which agents are visible,
+//    the final pane list is sorted by config.Roles index.
+//    Pinned agents first, then unpinned by role order.
+//    This is a DISPLAY concern, not a SELECTION concern.
+//
+// 4. ANTI-THRASHING determines WHEN.
+//    Hold time (10s) prevents a slot from changing too soon.
+//    One-swap-per-tick prevents multiple simultaneous changes.
+//    These are TIMING constraints, independent of scoring.
+//
+// 5. OCCUPANTS ARE EXCLUDED from the unplaced pool.
+//    An agent currently in a slot is never a candidate for
+//    bestUnplaced(), even if another slot would score higher.
+//    An agent can only be in one slot at a time.
+//
+// 6. bestUnplaced() ALWAYS returns the highest-scoring
+//    non-placed agent, or nil if none qualify.
+//    It never considers yaml order for selection.
+
 import (
 	"fmt"
 	"net/http"

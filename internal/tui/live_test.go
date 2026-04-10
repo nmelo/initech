@@ -716,6 +716,51 @@ func TestTick_RolesOrderDeterminesSlotAssignment(t *testing.T) {
 	}
 }
 
+// TestTick_DisplacementByScoreNotYamlOrder verifies invariant 2: bestUnplaced
+// returns the highest-scoring unplaced agent for displacement, not the one
+// earliest in yaml role order. This is the regression scenario from ini-ae9.
+func TestTick_DisplacementByScoreNotYamlOrder(t *testing.T) {
+	now := time.Now()
+	// Roles order: eng1 before eng3. eng1 has lower score.
+	// One dynamic slot occupied by a weak agent that will be displaced.
+	panes := []PaneView{
+		&mockPaneView{name: "weak", alive: true, activity: StateIdle}, // score 0 (below keep)
+		&mockPaneView{name: "eng1", alive: true, activity: StateIdle, beadID: "bb-1"},                                                  // score 30
+		&mockPaneView{name: "eng3", alive: true, activity: StateRunning, beadID: "bb-3", runStart: now.Add(-10 * time.Second), runBytes: 20000}, // score 65
+	}
+	le := NewLiveEngine(1, nil, []string{"eng1", "eng2", "eng3"})
+	// First tick: fill with highest score (eng3, 65).
+	le.Tick(panes, now)
+
+	// Evict eng3 so "weak" can take the slot, then let weak expire.
+	le.Slots = []string{"weak"}
+	le.holdUntil = []time.Time{now.Add(-1 * time.Second)} // hold expired
+
+	// Tick: weak (score 0) is below keep threshold. Displacement should pick
+	// eng3 (score 65), NOT eng1 (score 30) even though eng1 is earlier in yaml.
+	result := le.Tick(panes, now)
+	if result[0] != "eng3" {
+		t.Errorf("slot 0 = %q, want eng3 (highest score wins displacement, not yaml order)", result[0])
+	}
+}
+
+// TestTick_ScoreTiebreakByYamlOrder verifies that when two candidates have
+// identical scores, yaml role order breaks the tie (invariant 2 tiebreaker).
+func TestTick_ScoreTiebreakByYamlOrder(t *testing.T) {
+	now := time.Now()
+	// Both eng1 and eng3 have score 30 (bead only, idle).
+	// eng1 is earlier in yaml, so wins the tiebreak.
+	panes := []PaneView{
+		&mockPaneView{name: "eng3", alive: true, activity: StateIdle, beadID: "bb-3"}, // score 30
+		&mockPaneView{name: "eng1", alive: true, activity: StateIdle, beadID: "bb-1"}, // score 30
+	}
+	le := NewLiveEngine(1, nil, []string{"eng1", "eng2", "eng3"})
+	result := le.Tick(panes, now)
+	if result[0] != "eng1" {
+		t.Errorf("slot 0 = %q, want eng1 (yaml tiebreaker when scores equal)", result[0])
+	}
+}
+
 // ── liveTickSlots tests ─────────────────────────────────────────────
 
 func TestLiveTickSlots_DefaultsToLen(t *testing.T) {
