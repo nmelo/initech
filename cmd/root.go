@@ -62,6 +62,7 @@ Keybindings:
   Alt+2            2x2 grid
   Alt+3            3x3 grid
   Alt+4            Main + stacked layout
+  Alt+5            Live mode (dynamic pane rotation)
   Alt+z            Zoom/unzoom focused pane
   Alt+s            Toggle agent status overlay
   Alt+q            Quit
@@ -72,6 +73,9 @@ Commands (via ` + "`" + ` modal):
   zoom             Toggle zoom
   panel            Toggle agent overlay
   main             Main + stacked layout
+  live [CxR]       Live mode: dynamic rotation by activity score
+  pin <a> <slot>   Pin agent to live slot (0-based)
+  unpin <slot>     Unpin slot, make it dynamic
   layout reset     Reset layout to auto-calculated defaults
   quit             Exit`,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
