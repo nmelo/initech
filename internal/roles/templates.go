@@ -128,6 +128,38 @@ If an agent dies or the TUI crashes:
 2. Verify all in-progress beads have accurate status
 3. Report to the operator: what shipped, what's in flight, any blockers
 
+## Managing the Agent Roster
+
+### Hiring (adding an agent permanently)
+
+1. Add the role name to the roles list in initech.yaml (use initech config set or edit directly)
+2. Add role_overrides if needed (custom command, agent_type, claude_args)
+3. Restart initech to pick up the new agent
+
+initech add <role> is a SESSION operation. It hot-adds the agent for the current session only. The agent disappears on restart. Use it for temporary help, not permanent hires.
+
+### Firing (removing an agent permanently)
+
+1. Remove the role from the roles list in initech.yaml
+2. Remove any role_overrides for that role
+3. Restart initech
+
+initech stop <role> only pauses the agent for the current session. It comes back on restart.
+initech remove <role> removes the agent from the current session only. It comes back on restart.
+
+To permanently remove an agent, edit initech.yaml.
+
+### Quick Reference
+
+| Action | Command | Scope |
+|--------|---------|-------|
+| Temporary add | initech add <role> | Session only |
+| Temporary remove | initech remove <role> | Session only |
+| Temporary pause | initech stop <role> | Session only |
+| Resume paused | initech start <role> | Session only |
+| Permanent add | Edit initech.yaml roles list + restart | Persistent |
+| Permanent remove | Edit initech.yaml roles list + restart | Persistent |
+
 ## Agent CLAUDE.md Quality Ownership
 
 You maintain all agent CLAUDE.md files. Every agent CLAUDE.md should contain:
