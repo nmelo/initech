@@ -355,8 +355,9 @@ func (t *TUI) renderHints() {
 		case LayoutLive:
 			modeLabel = "Live"
 			modeStyle = b.barStyle.Foreground(tcell.ColorGreen)
-			if t.layoutState.GridCols > 0 && t.layoutState.GridRows > 0 {
-				modeLabel = fmt.Sprintf("Live %dx%d", t.layoutState.GridCols, t.layoutState.GridRows)
+			if n := len(t.layoutState.LiveSlots); n > 0 {
+				c, r := autoGrid(n)
+				modeLabel = fmt.Sprintf("Live %dx%d", c, r)
 			}
 		case LayoutGrid:
 			modeLabel = "Grid"
