@@ -134,14 +134,26 @@ func (le *LiveEngine) Tick(panes []PaneView, now time.Time) []string {
 	for _, p := range panes {
 		pk := paneKey(p)
 		if pinnedSet[pk] {
+			LogInfo("live-tick", "pinned (skip scoring)", "agent", pk, "slot", le.Pinned[pk])
 			continue
 		}
 		if !p.IsAlive() || p.IsSuspended() {
+			LogInfo("live-tick", "skip dead/suspended", "agent", pk, "alive", p.IsAlive(), "suspended", p.IsSuspended())
 			continue
 		}
+		s := convictionScore(p, now)
+		LogInfo("live-tick", "score",
+			"agent", pk,
+			"total", s,
+			"bead", p.BeadID(),
+			"activity", p.Activity(),
+			"runBytes", p.ActiveRunBytes(),
+			"lastMsg", now.Sub(p.LastMessageReceived()).Truncate(time.Second),
+			"lastEvent", now.Sub(p.LastEventTime()).Truncate(time.Second),
+		)
 		scores[pk] = ranked{
 			name:           pk,
-			score:          convictionScore(p, now),
+			score:          s,
 			lastOutputTime: p.LastOutputTime(),
 		}
 	}
@@ -169,8 +181,18 @@ func (le *LiveEngine) Tick(panes []PaneView, now time.Time) []string {
 
 	swapped := false // one displacement per tick
 
+	// Log current slot state before processing.
+	for i, name := range le.Slots {
+		holdLeft := le.holdUntil[i].Sub(now).Truncate(time.Second)
+		if holdLeft < 0 {
+			holdLeft = 0
+		}
+		LogInfo("live-tick", "slot-state", "slot", i, "occupant", name, "holdLeft", holdLeft)
+	}
+
 	for slot := 0; slot < numSlots; slot++ {
 		if result[slot] != "" {
+			LogInfo("live-tick", "slot-pinned", "slot", slot, "agent", result[slot])
 			continue // pinned slot
 		}
 
@@ -183,6 +205,9 @@ func (le *LiveEngine) Tick(panes []PaneView, now time.Time) []string {
 				result[slot] = best.name
 				placed[best.name] = true
 				le.holdUntil[slot] = now.Add(liveHoldDuration)
+				LogInfo("live-tick", "fill-empty", "slot", slot, "agent", best.name, "score", best.score)
+			} else {
+				LogInfo("live-tick", "empty-no-candidate", "slot", slot)
 			}
 			continue
 		}
@@ -193,6 +218,7 @@ func (le *LiveEngine) Tick(panes []PaneView, now time.Time) []string {
 			if prevAlive {
 				placed[prev] = true
 			}
+			LogInfo("live-tick", "hold-active", "slot", slot, "agent", prev, "remaining", le.holdUntil[slot].Sub(now).Truncate(time.Second))
 			continue
 		}
 
@@ -205,6 +231,7 @@ func (le *LiveEngine) Tick(panes []PaneView, now time.Time) []string {
 					placed[best.name] = true
 					le.holdUntil[slot] = now.Add(liveHoldDuration)
 					swapped = true
+					LogInfo("live-tick", "displace-weak", "slot", slot, "old", prev, "oldScore", prevInfo.score, "oldAlive", prevAlive, "new", best.name, "newScore", best.score)
 					continue
 				}
 			}
@@ -213,6 +240,7 @@ func (le *LiveEngine) Tick(panes []PaneView, now time.Time) []string {
 			if prevAlive {
 				placed[prev] = true
 			}
+			LogInfo("live-tick", "keep-weak-no-swap", "slot", slot, "agent", prev, "score", prevInfo.score, "alive", prevAlive, "alreadySwapped", swapped)
 			continue
 		}
 
@@ -226,9 +254,17 @@ func (le *LiveEngine) Tick(panes []PaneView, now time.Time) []string {
 				placed[best.name] = true
 				le.holdUntil[slot] = now.Add(liveHoldDuration)
 				swapped = true
+				LogInfo("live-tick", "displace-margin", "slot", slot, "old", prev, "oldScore", prevInfo.score, "new", best.name, "newScore", best.score, "margin", best.score-prevInfo.score)
 				// Displaced agent returns to pool (not marked placed).
 				continue
 			}
+			if best, ok := bestUnplaced(candidates, placed); ok {
+				LogInfo("live-tick", "no-displace", "slot", slot, "occupant", prev, "occScore", prevInfo.score, "challenger", best.name, "chalScore", best.score, "needMargin", liveClaimMargin, "needThresh", liveClaimThreshold)
+			} else {
+				LogInfo("live-tick", "no-challenger", "slot", slot, "occupant", prev, "score", prevInfo.score)
+			}
+		} else {
+			LogInfo("live-tick", "skip-already-swapped", "slot", slot, "occupant", prev, "score", prevInfo.score)
 		}
 
 		// Keep current occupant.
@@ -237,6 +273,7 @@ func (le *LiveEngine) Tick(panes []PaneView, now time.Time) []string {
 	}
 
 	le.Slots = result
+	LogInfo("live-tick", "result", "slots", fmt.Sprintf("%v", result))
 	return result
 }
 
