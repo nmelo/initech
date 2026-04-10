@@ -123,11 +123,25 @@ func NewLiveEngine(numSlots int, pinned map[string]int, rolesOrder []string) *Li
 
 // bestUnplaced returns the highest-ranked candidate not already placed.
 func bestUnplaced(candidates []ranked, placed map[string]bool) (ranked, bool) {
+	// Diagnostic: log full candidate list and placed set for tracing.
+	cnames := make([]string, len(candidates))
+	for i, c := range candidates {
+		cnames[i] = fmt.Sprintf("%s(%d)", c.name, c.score)
+	}
+	pnames := make([]string, 0, len(placed))
+	for k := range placed {
+		pnames = append(pnames, k)
+	}
+	sort.Strings(pnames)
+	LogInfo("bestUnplaced", "input", "candidates", fmt.Sprintf("%v", cnames), "placed", fmt.Sprintf("%v", pnames))
+
 	for _, c := range candidates {
 		if !placed[c.name] {
+			LogInfo("bestUnplaced", "selected", "agent", c.name, "score", c.score)
 			return c, true
 		}
 	}
+	LogInfo("bestUnplaced", "none-available")
 	return ranked{}, false
 }
 
@@ -246,6 +260,17 @@ func (le *LiveEngine) Tick(panes []PaneView, now time.Time) []string {
 			return roleCmp(fillOrder[i], fillOrder[j])
 		})
 	}
+
+	// Log both sort orders for diagnostic tracing.
+	candNames := make([]string, len(candidates))
+	for i, c := range candidates {
+		candNames[i] = fmt.Sprintf("%s(%d)", c.name, c.score)
+	}
+	fillNames := make([]string, len(fillOrder))
+	for i, c := range fillOrder {
+		fillNames[i] = fmt.Sprintf("%s(%d)", c.name, c.score)
+	}
+	LogInfo("live-tick", "candidate-lists", "byScore", fmt.Sprintf("%v", candNames), "byRoles", fmt.Sprintf("%v", fillNames))
 
 	// Track which candidates are consumed by a slot.
 	placed := make(map[string]bool, len(pinnedSet)+len(candidates))
