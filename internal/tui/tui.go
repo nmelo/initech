@@ -235,7 +235,8 @@ type TUI struct {
 
 	// Live Mode: persistent engine for anti-thrashing across render frames.
 	// Nil when not in live mode. Created by cmdLive/Alt+5, destroyed on mode switch.
-	liveEngine *LiveEngine
+	liveEngine   *LiveEngine
+	lastLiveTick time.Time // Throttles live-mode applyLayout to 1-second cadence.
 }
 
 // applyLayout recomputes the render plan from the current layout state
@@ -841,7 +842,8 @@ func Run(cfg Config) error {
 			t.rotateTip()
 			t.pollQuota()
 			t.fireTimers()
-			if t.layoutState.Mode == LayoutLive {
+			if t.layoutState.Mode == LayoutLive && time.Since(t.lastLiveTick) >= time.Second {
+				t.lastLiveTick = time.Now()
 				t.applyLayout()
 			}
 		case <-t.quitCh:
@@ -912,13 +914,15 @@ func autoGrid(n int) (cols, rows int) {
 
 // recalcGrid recomputes GridCols/GridRows from the current visible pane
 // count and applies the layout. When force is true, the mode is switched to
-// LayoutGrid (used after add/remove/remote-connect). When force is false,
-// grid dimensions are only updated if the mode is already LayoutGrid (used
-// after visibility toggles that shouldn't force a mode change).
+// LayoutGrid (used after add/remove/remote-connect) unless the current mode
+// is LayoutLive (live mode manages its own slot assignments via LiveEngine).
+// When force is false, grid dimensions are only updated if the mode is
+// already LayoutGrid or LayoutLive (used after visibility toggles that
+// shouldn't force a mode change).
 func (t *TUI) recalcGrid(force bool) {
-	if force {
+	if force && t.layoutState.Mode != LayoutLive {
 		t.layoutState.Mode = LayoutGrid
-	} else if t.layoutState.Mode != LayoutGrid {
+	} else if t.layoutState.Mode != LayoutGrid && t.layoutState.Mode != LayoutLive {
 		t.applyLayout()
 		return
 	}

@@ -289,6 +289,13 @@ func TestRecalcGrid(t *testing.T) {
 	if tui.layoutState.Mode != LayoutGrid {
 		t.Error("mode should be LayoutGrid after recalcGrid")
 	}
+
+	// recalcGrid(true) preserves LayoutLive (live mode manages its own slots).
+	tui.layoutState.Mode = LayoutLive
+	tui.recalcGrid(true)
+	if tui.layoutState.Mode != LayoutLive {
+		t.Error("recalcGrid(true) should preserve LayoutLive")
+	}
 }
 
 func TestRecalcGrid_HiddenExcluded(t *testing.T) {
