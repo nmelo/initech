@@ -69,6 +69,13 @@ type PaneHost interface {
 	// NotifyConfig returns the webhook URL and project name for posting
 	// notifications. Returns empty strings if not configured.
 	NotifyConfig() (webhookURL, project string)
+
+	// AnnounceConfig returns the Agent Radio announce URL and project name.
+	// Returns empty strings if not configured.
+	AnnounceConfig() (announceURL, project string)
+
+	// SetBead registers a bead ID on a pane for display in the TUI overlay.
+	SetBead(agent, beadID string) error
 }
 
 // Server is an MCP server that exposes initech agent primitives over

@@ -151,6 +151,33 @@ func (h *tuiMCPHost) NotifyConfig() (string, string) {
 	return h.t.webhookURL, h.t.projectName
 }
 
+func (h *tuiMCPHost) AnnounceConfig() (string, string) {
+	var url, project string
+	h.t.runOnMain(func() {
+		if h.t.project != nil {
+			url = h.t.project.AnnounceURL
+		}
+		project = h.t.projectName
+	})
+	return url, project
+}
+
+func (h *tuiMCPHost) SetBead(agent, beadID string) error {
+	var err error
+	ok := h.t.runOnMain(func() {
+		p := h.t.findPane(agent)
+		if p == nil {
+			err = fmt.Errorf("agent %q not found", agent)
+			return
+		}
+		p.SetBead(beadID, "")
+	})
+	if !ok {
+		return fmt.Errorf("TUI shutting down")
+	}
+	return err
+}
+
 func (h *tuiMCPHost) ScheduleSend(agent, message, delay string) (string, error) {
 	dur, err := time.ParseDuration(delay)
 	if err != nil {

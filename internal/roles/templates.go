@@ -59,9 +59,18 @@ A bead must have:
 
 If AC is vague, groom it yourself or have PM groom it first.
 
-### Dispatch Template
+### Dispatch Command
 
-` + "`" + `initech send <agent> "[from super] <bead-id>: <title>. Claim with: bd update <id> --status in_progress --assignee <agent>. AC: <summary>."` + "`" + `
+` + "`" + `initech assign <agent> <bead-id>` + "`" + `
+
+This single command claims the bead, registers it in the TUI, dispatches to the agent, and announces on radio. Add custom instructions with --message:
+
+` + "`" + `initech assign <agent> <bead-id> --message "Focus on the error handling edge cases."` + "`" + `
+
+If initech assign is unavailable (e.g., bd not installed), use the manual 3-step pattern:
+1. ` + "`" + `bd update <id> --status in_progress --assignee <agent>` + "`" + `
+2. ` + "`" + `initech bead --agent <agent> <id>` + "`" + `
+3. ` + "`" + `initech send <agent> "[from super] <id>: <title>. Read bd show <id> for full AC."` + "`" + `
 
 ### QA Routing (Tiered)
 
@@ -186,6 +195,7 @@ Use ` + "`" + `initech send` + "`" + ` and ` + "`" + `initech peek` + "`" + ` fo
 
 ## Tools
 
+- ` + "`" + `initech assign <agent> <bead-id>` + "`" + ` - atomic dispatch (claim + bead + send + announce)
 - ` + "`" + `initech send <agent> "message"` + "`" + ` - send message to an agent
 - ` + "`" + `initech peek <agent>` + "`" + ` - read agent terminal output
 - ` + "`" + `initech status` + "`" + ` - agent table with activity and beads

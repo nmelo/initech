@@ -155,6 +155,17 @@ func (h *fakePaneHost) NotifyConfig() (string, string) {
 	return h.webhookURL, h.projectName
 }
 
+func (h *fakePaneHost) AnnounceConfig() (string, string) {
+	return "", h.projectName
+}
+
+func (h *fakePaneHost) SetBead(agent, beadID string) error {
+	if _, ok := h.panes[agent]; !ok {
+		return fmt.Errorf("agent %q not found", agent)
+	}
+	return nil
+}
+
 func (h *fakePaneHost) AllPanes() ([]PaneHandle, bool) {
 	if h.shuttingDown {
 		return nil, false

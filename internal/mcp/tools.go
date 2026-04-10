@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os/exec"
+	"strings"
 	"time"
 
 	gomcp "github.com/modelcontextprotocol/go-sdk/mcp"
@@ -112,6 +114,18 @@ type InterruptOutput struct {
 	Status string `json:"status"`
 }
 
+// AssignInput is the input schema for the initech_assign tool.
+type AssignInput struct {
+	Agent   string `json:"agent" jsonschema:"target agent name (e.g. eng1)"`
+	BeadID  string `json:"bead_id" jsonschema:"bead ID to assign (e.g. ini-abc)"`
+	Message string `json:"message,omitempty" jsonschema:"custom instructions appended to the dispatch message"`
+}
+
+// AssignOutput is the output schema for the initech_assign tool.
+type AssignOutput struct {
+	Status string `json:"status"`
+}
+
 // StatusInput is the input schema for the initech_status tool (no params).
 type StatusInput struct{}
 
@@ -214,6 +228,13 @@ func registerTools(s *gomcp.Server, host PaneHost) {
 		Description: "Send Escape or Ctrl+C to an agent's terminal. Escape stops Claude Code's current action. Ctrl+C (hard=true) kills a running shell command.",
 	}, func(_ context.Context, _ *gomcp.CallToolRequest, input InterruptInput) (*gomcp.CallToolResult, InterruptOutput, error) {
 		return handleInterrupt(host, input)
+	})
+
+	gomcp.AddTool(s, &gomcp.Tool{
+		Name:        "initech_assign",
+		Description: "Atomic bead dispatch: claims a bead, registers it in the TUI, and sends a dispatch message to the agent. Requires bd CLI.",
+	}, func(_ context.Context, _ *gomcp.CallToolRequest, input AssignInput) (*gomcp.CallToolResult, AssignOutput, error) {
+		return handleAssign(host, input)
 	})
 }
 
@@ -370,6 +391,71 @@ func handleStatus(host PaneHost) (*gomcp.CallToolResult, StatusOutput, error) {
 
 	data, _ := json.Marshal(entries)
 	return nil, StatusOutput{Content: string(data)}, nil
+}
+
+func handleAssign(host PaneHost, input AssignInput) (*gomcp.CallToolResult, AssignOutput, error) {
+	if input.Agent == "" {
+		return nil, AssignOutput{}, fmt.Errorf("agent is required")
+	}
+	if input.BeadID == "" {
+		return nil, AssignOutput{}, fmt.Errorf("bead_id is required")
+	}
+
+	// Step 1: Read bead title.
+	out, err := exec.Command("bd", "show", input.BeadID, "--json").CombinedOutput()
+	if err != nil {
+		return nil, AssignOutput{}, fmt.Errorf("bead %s not found: %s", input.BeadID, strings.TrimSpace(string(out)))
+	}
+	var bead struct {
+		Title string `json:"title"`
+	}
+	if err := json.Unmarshal(out, &bead); err != nil {
+		return nil, AssignOutput{}, fmt.Errorf("parse bd output: %w", err)
+	}
+	if bead.Title == "" {
+		return nil, AssignOutput{}, fmt.Errorf("bead %s has no title", input.BeadID)
+	}
+	title := bead.Title
+	if len(title) > 80 {
+		title = title[:77] + "..."
+	}
+
+	// Step 2: Claim bead.
+	claimOut, err := exec.Command("bd", "update", input.BeadID, "--status", "in_progress", "--assignee", input.Agent).CombinedOutput()
+	if err != nil {
+		return nil, AssignOutput{}, fmt.Errorf("bd update failed: %s", strings.TrimSpace(string(claimOut)))
+	}
+
+	// Step 3: Register bead in TUI (cosmetic, warn on failure).
+	_ = host.SetBead(input.Agent, input.BeadID)
+
+	// Step 4: Send dispatch.
+	dispatch := fmt.Sprintf("[from super] %s: %s. Read bd show %s for full AC.", input.BeadID, title, input.BeadID)
+	if input.Message != "" {
+		dispatch += " " + input.Message
+	}
+	pane, ok := host.FindPane(input.Agent)
+	if !ok {
+		return nil, AssignOutput{}, fmt.Errorf("host is shutting down")
+	}
+	if pane == nil {
+		return nil, AssignOutput{}, fmt.Errorf("bead claimed but agent %q not found for dispatch", input.Agent)
+	}
+	pane.SendText(dispatch, true)
+
+	// Step 5: Announce (fire and forget).
+	if announceURL, project := host.AnnounceConfig(); announceURL != "" {
+		detail := fmt.Sprintf("%s picking up %s: %s", input.Agent, input.BeadID, title)
+		webhook.PostAnnouncement(announceURL, webhook.AnnouncePayload{
+			Detail:  detail,
+			Kind:    "agent.started",
+			Agent:   input.Agent,
+			Project: project,
+			BeadID:  input.BeadID,
+		})
+	}
+
+	return nil, AssignOutput{Status: fmt.Sprintf("assigned %s to %s: %s", input.BeadID, input.Agent, title)}, nil
 }
 
 func handleNotify(host PaneHost, input NotifyInput) (*gomcp.CallToolResult, NotifyOutput, error) {
