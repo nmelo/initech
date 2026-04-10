@@ -271,7 +271,11 @@ func (t *TUI) applyLayout() {
 		LogInfo("applyLayout", "live-tick-input", "t.panes", len(t.panes))
 		prev := make([]string, len(t.liveEngine.Slots))
 		copy(prev, t.liveEngine.Slots)
-		t.layoutState.LiveSlots = t.liveEngine.Tick(t.panes, time.Now())
+		if t.layoutState.LiveAuto {
+			t.layoutState.LiveSlots = t.liveEngine.TickAuto(t.panes, time.Now())
+		} else {
+			t.layoutState.LiveSlots = t.liveEngine.Tick(t.panes, time.Now())
+		}
 		t.onLiveSwap(prev, t.liveEngine.Slots)
 	}
 
@@ -311,6 +315,11 @@ func (t *TUI) applyLayout() {
 // initLiveEngine creates a persistent LiveEngine for live mode with the given
 // grid dimensions and any existing live pins.
 func (t *TUI) initLiveEngine() {
+	if t.layoutState.LiveAuto {
+		// Auto mode: start with zero slots; TickAuto manages the slot list dynamically.
+		t.liveEngine = NewLiveEngine(0, t.layoutState.LivePinned)
+		return
+	}
 	numSlots := t.layoutState.GridCols * t.layoutState.GridRows
 	if numSlots < 1 {
 		numSlots = t.visibleCountFromState()

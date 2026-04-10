@@ -706,15 +706,18 @@ func (t *TUI) cmdQuit() bool {
 }
 
 func (t *TUI) cmdLive(parts []string) bool {
-	if len(parts) >= 2 {
+	if len(parts) >= 2 && strings.EqualFold(parts[1], "auto") {
+		t.layoutState.LiveAuto = true
+	} else if len(parts) >= 2 {
 		visCount := t.visibleCountFromState()
 		cols, rows, ok := parseGrid(parts[1], visCount)
 		if !ok {
-			t.cmd.error = fmt.Sprintf("invalid grid %q, use CxR (e.g. live 2x3)", parts[1])
+			t.cmd.error = fmt.Sprintf("invalid grid %q, use CxR or 'auto' (e.g. live 2x3, live auto)", parts[1])
 			return false
 		}
 		t.layoutState.GridCols = cols
 		t.layoutState.GridRows = rows
+		t.layoutState.LiveAuto = false
 	}
 	t.layoutState.Mode = LayoutLive
 	t.layoutState.Zoomed = false

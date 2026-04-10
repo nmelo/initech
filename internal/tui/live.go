@@ -282,6 +282,162 @@ func (le *LiveEngine) Tick(panes []PaneView, now time.Time) []string {
 	return result
 }
 
+// TickAuto computes the visible agent list for Live Auto mode.
+// Unlike Tick (fixed slot count), TickAuto dynamically grows and shrinks
+// the visible set based on conviction scores:
+//   - Pinned agents are always visible regardless of score.
+//   - Other agents are visible if score >= liveKeepThreshold.
+//   - Hold time: a newly visible agent stays visible for liveHoldDuration
+//     even if its score drops below threshold.
+//   - One change per tick: at most one agent added or removed per call,
+//     preventing the grid from jumping sizes instantly.
+//
+// Returns the ordered list of visible agent names (pinned first, then by
+// score descending).
+func (le *LiveEngine) TickAuto(panes []PaneView, now time.Time) []string {
+	// Score all panes.
+	type scored struct {
+		name  string
+		score int
+	}
+	var allScored []scored
+	pinnedNames := make(map[string]bool, len(le.Pinned))
+	for name := range le.Pinned {
+		pinnedNames[name] = true
+	}
+
+	for _, p := range panes {
+		pk := paneKey(p)
+		s := convictionScore(p, now)
+		allScored = append(allScored, scored{pk, s})
+	}
+
+	// Build current visible set from le.Slots.
+	currentVisible := make(map[string]bool, len(le.Slots))
+	for _, name := range le.Slots {
+		if name != "" {
+			currentVisible[name] = true
+		}
+	}
+
+	// Build hold map: index in le.Slots -> name, for hold time checks.
+	holdMap := make(map[string]time.Time, len(le.Slots))
+	for i, name := range le.Slots {
+		if name != "" && i < len(le.holdUntil) {
+			holdMap[name] = le.holdUntil[i]
+		}
+	}
+
+	// Determine desired visibility for each agent.
+	wantVisible := make(map[string]bool)
+	for _, s := range allScored {
+		if pinnedNames[s.name] {
+			wantVisible[s.name] = true
+			continue
+		}
+		if s.score >= liveKeepThreshold {
+			wantVisible[s.name] = true
+			continue
+		}
+		// Below threshold but under hold time: keep visible.
+		if currentVisible[s.name] {
+			if hold, ok := holdMap[s.name]; ok && now.Before(hold) {
+				wantVisible[s.name] = true
+			}
+		}
+	}
+
+	// Pinned agents are always added immediately (bypass one-change-per-tick).
+	for _, s := range allScored {
+		if pinnedNames[s.name] && !currentVisible[s.name] {
+			currentVisible[s.name] = true
+			holdMap[s.name] = now.Add(liveHoldDuration)
+			LogInfo("live-auto", "add-pinned", "agent", s.name)
+		}
+	}
+
+	// Compute dynamic additions and removals.
+	var toAdd []scored
+	var toRemove []string
+	for _, s := range allScored {
+		if pinnedNames[s.name] {
+			continue // Already handled above.
+		}
+		if wantVisible[s.name] && !currentVisible[s.name] {
+			toAdd = append(toAdd, s)
+		}
+	}
+	for name := range currentVisible {
+		if !wantVisible[name] {
+			toRemove = append(toRemove, name)
+		}
+	}
+
+	// Sort additions by score descending for priority.
+	sort.Slice(toAdd, func(i, j int) bool {
+		if toAdd[i].score != toAdd[j].score {
+			return toAdd[i].score > toAdd[j].score
+		}
+		return toAdd[i].name < toAdd[j].name
+	})
+	sort.Strings(toRemove)
+
+	// One change per tick: either add one or remove one (dynamic only).
+	changed := false
+	if len(toAdd) > 0 {
+		currentVisible[toAdd[0].name] = true
+		holdMap[toAdd[0].name] = now.Add(liveHoldDuration)
+		changed = true
+		LogInfo("live-auto", "add", "agent", toAdd[0].name, "score", toAdd[0].score)
+	}
+	if len(toRemove) > 0 && !changed {
+		delete(currentVisible, toRemove[0])
+		delete(holdMap, toRemove[0])
+		LogInfo("live-auto", "remove", "agent", toRemove[0])
+	}
+
+	// Build result: pinned first (sorted), then remaining by score descending.
+	var pinResult []scored
+	var dynResult []scored
+	for _, s := range allScored {
+		if !currentVisible[s.name] {
+			continue
+		}
+		if pinnedNames[s.name] {
+			pinResult = append(pinResult, s)
+		} else {
+			dynResult = append(dynResult, s)
+		}
+	}
+	sort.Slice(pinResult, func(i, j int) bool { return pinResult[i].name < pinResult[j].name })
+	sort.Slice(dynResult, func(i, j int) bool {
+		if dynResult[i].score != dynResult[j].score {
+			return dynResult[i].score > dynResult[j].score
+		}
+		return dynResult[i].name < dynResult[j].name
+	})
+
+	result := make([]string, 0, len(pinResult)+len(dynResult))
+	for _, s := range pinResult {
+		result = append(result, s.name)
+	}
+	for _, s := range dynResult {
+		result = append(result, s.name)
+	}
+
+	// Update engine state: rebuild Slots and holdUntil to match visible set.
+	le.Slots = result
+	le.holdUntil = make([]time.Time, len(result))
+	for i, name := range result {
+		if h, ok := holdMap[name]; ok {
+			le.holdUntil[i] = h
+		}
+	}
+
+	LogInfo("live-auto", "result", "visible", len(result), "names", fmt.Sprintf("%v", result))
+	return result
+}
+
 // liveTickSlots is a convenience function called by computeLayout.
 // It creates a temporary LiveEngine, runs one Tick, and returns the
 // slot name list. Because this creates a throwaway engine, anti-thrashing

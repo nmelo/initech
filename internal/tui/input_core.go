@@ -112,8 +112,9 @@ func (t *TUI) handleKey(ev *tcell.EventKey) bool {
 					t.layoutState.Mode = LayoutGrid
 					t.liveEngine = nil
 				} else {
-					// Toggle on: enter live mode with current grid dimensions.
+					// Toggle on: enter live auto mode (default).
 					t.layoutState.Mode = LayoutLive
+					t.layoutState.LiveAuto = true
 					t.layoutState.Zoomed = false
 					if t.layoutState.LivePinned == nil {
 						t.layoutState.LivePinned = make(map[string]int)

@@ -671,3 +671,178 @@ func TestLiveTickSlots_DefaultsToLen(t *testing.T) {
 		t.Errorf("liveTickSlots(0) should default to len(panes)=%d, got %d", len(panes), len(slots))
 	}
 }
+
+// ── TickAuto tests ────────────────────────────────────────────────────
+
+func TestTickAuto_PinnedAlwaysVisible(t *testing.T) {
+	now := time.Now()
+	// Super is pinned but idle (score 0). Should still appear.
+	panes := []PaneView{
+		&mockPaneView{name: "super", alive: true, activity: StateIdle},
+		&mockPaneView{name: "eng1", alive: true, activity: StateIdle},
+	}
+	le := NewLiveEngine(0, map[string]int{"super": 0})
+	result := le.TickAuto(panes, now)
+	if len(result) != 1 || result[0] != "super" {
+		t.Errorf("expected [super], got %v", result)
+	}
+}
+
+func TestTickAuto_ActiveAgentBecomesVisible(t *testing.T) {
+	now := time.Now()
+	// eng1 has bead (score 30, above keepThreshold 10).
+	panes := []PaneView{
+		&mockPaneView{name: "super", alive: true, activity: StateIdle},
+		&mockPaneView{name: "eng1", alive: true, activity: StateIdle, beadID: "bb-1"},
+	}
+	le := NewLiveEngine(0, map[string]int{"super": 0})
+
+	// Tick 1: super is always visible. eng1 gets added (one add per tick).
+	r1 := le.TickAuto(panes, now)
+	found := false
+	for _, name := range r1 {
+		if name == "eng1" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("eng1 with bead should become visible, got %v", r1)
+	}
+}
+
+func TestTickAuto_IncrementalGrowth(t *testing.T) {
+	now := time.Now()
+	// super pinned, eng1/eng2/eng3 all active with beads.
+	panes := []PaneView{
+		&mockPaneView{name: "super", alive: true, activity: StateIdle},
+		&mockPaneView{name: "eng1", alive: true, activity: StateIdle, beadID: "bb-1"},
+		&mockPaneView{name: "eng2", alive: true, activity: StateIdle, beadID: "bb-2"},
+		&mockPaneView{name: "eng3", alive: true, activity: StateIdle, beadID: "bb-3"},
+	}
+	le := NewLiveEngine(0, map[string]int{"super": 0})
+
+	// Each tick should add at most one agent (one-change-per-tick).
+	r1 := le.TickAuto(panes, now)
+	// super + one eng = 2
+	if len(r1) > 2 {
+		t.Errorf("tick 1: expected at most 2 visible (one add), got %d: %v", len(r1), r1)
+	}
+
+	r2 := le.TickAuto(panes, now)
+	if len(r2) > 3 {
+		t.Errorf("tick 2: expected at most 3 visible, got %d: %v", len(r2), r2)
+	}
+
+	r3 := le.TickAuto(panes, now)
+	if len(r3) != 4 {
+		t.Errorf("tick 3: expected 4 visible, got %d: %v", len(r3), r3)
+	}
+}
+
+func TestTickAuto_IncrementalShrink(t *testing.T) {
+	now := time.Now()
+	expired := now.Add(-1 * time.Second) // Hold time expired.
+	// Start with 3 visible: super (pinned), eng1, eng2.
+	le := NewLiveEngine(0, map[string]int{"super": 0})
+	le.Slots = []string{"super", "eng1", "eng2"}
+	le.holdUntil = []time.Time{expired, expired, expired}
+
+	// All engs go idle (score 0, below keepThreshold).
+	panes := []PaneView{
+		&mockPaneView{name: "super", alive: true, activity: StateIdle},
+		&mockPaneView{name: "eng1", alive: true, activity: StateIdle},
+		&mockPaneView{name: "eng2", alive: true, activity: StateIdle},
+	}
+
+	r1 := le.TickAuto(panes, now)
+	// Should remove one (one-change-per-tick). super stays, one eng removed.
+	if len(r1) != 2 {
+		t.Errorf("tick 1: expected 2 (remove one), got %d: %v", len(r1), r1)
+	}
+
+	r2 := le.TickAuto(panes, now)
+	if len(r2) != 1 || r2[0] != "super" {
+		t.Errorf("tick 2: expected [super], got %v", r2)
+	}
+}
+
+func TestTickAuto_HoldTimePreventsRemoval(t *testing.T) {
+	now := time.Now()
+	// eng1 is visible with hold time still active.
+	le := NewLiveEngine(0, map[string]int{"super": 0})
+	le.Slots = []string{"super", "eng1"}
+	le.holdUntil = []time.Time{
+		now.Add(-1 * time.Second), // super: expired (doesn't matter, pinned)
+		now.Add(5 * time.Second),  // eng1: 5s remaining
+	}
+
+	// eng1 idle (score 0) but hold time active. Should stay.
+	panes := []PaneView{
+		&mockPaneView{name: "super", alive: true, activity: StateIdle},
+		&mockPaneView{name: "eng1", alive: true, activity: StateIdle},
+	}
+
+	result := le.TickAuto(panes, now)
+	found := false
+	for _, name := range result {
+		if name == "eng1" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("eng1 should stay visible during hold time, got %v", result)
+	}
+}
+
+func TestTickAuto_ZeroActiveOnlySuper(t *testing.T) {
+	now := time.Now()
+	// All idle, only super pinned.
+	panes := []PaneView{
+		&mockPaneView{name: "super", alive: true, activity: StateIdle},
+		&mockPaneView{name: "eng1", alive: true, activity: StateIdle},
+		&mockPaneView{name: "eng2", alive: true, activity: StateIdle},
+	}
+	le := NewLiveEngine(0, map[string]int{"super": 0})
+	result := le.TickAuto(panes, now)
+	if len(result) != 1 || result[0] != "super" {
+		t.Errorf("with all idle, expected only [super], got %v", result)
+	}
+}
+
+func TestTickAuto_AllActive(t *testing.T) {
+	now := time.Now()
+	// All have beads (score 30 each, above keepThreshold).
+	panes := []PaneView{
+		&mockPaneView{name: "super", alive: true, activity: StateIdle, beadID: "bb-0"},
+		&mockPaneView{name: "eng1", alive: true, activity: StateIdle, beadID: "bb-1"},
+		&mockPaneView{name: "eng2", alive: true, activity: StateIdle, beadID: "bb-2"},
+	}
+	le := NewLiveEngine(0, map[string]int{"super": 0})
+
+	// One add per tick. After 3 ticks, all visible.
+	le.TickAuto(panes, now)
+	le.TickAuto(panes, now)
+	r3 := le.TickAuto(panes, now)
+	if len(r3) != 3 {
+		t.Errorf("after 3 ticks with all active, expected 3, got %d: %v", len(r3), r3)
+	}
+}
+
+func TestTickAuto_PinnedFirstInOrder(t *testing.T) {
+	now := time.Now()
+	panes := []PaneView{
+		&mockPaneView{name: "eng1", alive: true, activity: StateIdle, beadID: "bb-1"},
+		&mockPaneView{name: "super", alive: true, activity: StateIdle},
+	}
+	le := NewLiveEngine(0, map[string]int{"super": 0})
+	// Tick until eng1 is visible.
+	le.TickAuto(panes, now)
+	result := le.TickAuto(panes, now)
+
+	if len(result) < 2 {
+		t.Skipf("eng1 not yet visible (need more ticks), got %v", result)
+	}
+	if result[0] != "super" {
+		t.Errorf("pinned agent should come first, got %v", result)
+	}
+}

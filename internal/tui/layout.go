@@ -39,6 +39,7 @@ type LayoutState struct {
 	// Live mode: dynamic pane rotation by conviction score.
 	LivePinned map[string]int `yaml:"live_pinned,omitempty"` // Agent name -> slot index.
 	LiveSlots  []string       `yaml:"live_slots,omitempty"`  // Current agent name per slot (updated by live engine).
+	LiveAuto   bool           `yaml:"live_auto,omitempty"`   // True = auto-size grid from active agent count.
 }
 
 // RenderPlan is the complete set of instructions for one frame.
@@ -155,7 +156,11 @@ func computeLayout(state LayoutState, panes []PaneView, screenW, screenH int) Re
 		}
 		visible = reordered
 		n = len(visible)
-		regions = gridRegions(state.GridCols, state.GridRows, n, screenW, screenH,
+		liveCols, liveRows := state.GridCols, state.GridRows
+		if state.LiveAuto && n > 0 {
+			liveCols, liveRows = autoGrid(n)
+		}
+		regions = gridRegions(liveCols, liveRows, n, screenW, screenH,
 			state.ColWeights, state.RowWeights)
 	case LayoutGrid:
 		regions = gridRegions(state.GridCols, state.GridRows, n, screenW, screenH,
@@ -359,6 +364,7 @@ type PersistentLayout struct {
 	Order      []string       `yaml:"order,omitempty"`       // Pane keys in display order (from show command).
 	Mode       string         `yaml:"mode"`                  // "grid", "focus", "main", "live"
 	LivePinned map[string]int `yaml:"live_pinned,omitempty"` // Agent name -> fixed slot index for live mode.
+	LiveAuto   bool           `yaml:"live_auto,omitempty"`   // True = auto-size grid from active agent count.
 }
 
 // layoutDir returns the .initech directory path under projectRoot.
@@ -379,6 +385,7 @@ func SaveLayout(projectRoot string, state LayoutState) error {
 		Mode:       layoutModeToString(state.Mode),
 		Order:      state.Order,
 		LivePinned: state.LivePinned,
+		LiveAuto:   state.LiveAuto,
 	}
 	for name, hidden := range state.Hidden {
 		if hidden {
@@ -516,6 +523,7 @@ func LoadLayout(projectRoot string, paneKeys []string) (LayoutState, bool) {
 		Order:      order,
 		Overlay:    true, // Always start with overlay visible.
 		LivePinned: pl.LivePinned,
+		LiveAuto:   pl.LiveAuto,
 	}, true
 }
 
