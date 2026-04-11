@@ -251,7 +251,7 @@ func TestExecCmdLogResetsScrollOffset(t *testing.T) {
 	}
 }
 
-// ── eventLogStyle ─────────────────────────────────────────────────────
+// ── eventLogRowStyle ──────────────────────────────────────────────────
 
 func TestEventLogStyleCoverage(t *testing.T) {
 	// Just ensure no panic for all event types.
@@ -261,6 +261,6 @@ func TestEventLogStyleCoverage(t *testing.T) {
 		EventType(99),
 	}
 	for _, et := range types {
-		_ = eventLogStyle(et)
+		_ = eventLogRowStyle(et, tcell.StyleDefault)
 	}
 }

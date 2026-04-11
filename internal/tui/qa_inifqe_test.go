@@ -9,7 +9,7 @@ import (
 	"github.com/gdamore/tcell/v2"
 )
 
-// AC4 (empty state): renderEventLog shows descriptive message when no events.
+// AC4 (empty state): renderEventLog shows title and empty message.
 func TestRenderEventLog_EmptyShowsMessage(t *testing.T) {
 	s := tcell.NewSimulationScreen("")
 	s.Init()
@@ -17,35 +17,58 @@ func TestRenderEventLog_EmptyShowsMessage(t *testing.T) {
 	tui := &TUI{screen: s, eventLogM: eventLogModal{active: true}}
 	tui.renderEventLog()
 
-	// Title row should contain "no events recorded" text (row 0).
-	// The title text is " Event Log (no events recorded) ".
-	// Look for 'n' from "no" somewhere in the title row.
-	found := false
-	sw, _ := s.Size()
-	titleText := " Event Log (no events recorded) "
-	for i := 0; i < sw-len(titleText); i++ {
-		match := true
-		for j, ch := range titleText {
-			c, _, _ := s.Get(i+j, 0)
-			if c != string(ch) {
-				match = false
+	sw, sh := s.Size()
+
+	// Title should contain "Events" somewhere on screen (in the border).
+	foundTitle := false
+	title := " Events "
+	for y := 0; y < sh; y++ {
+		for x := 0; x < sw-len(title); x++ {
+			match := true
+			for j, ch := range title {
+				c, _, _ := s.Get(x+j, y)
+				if c != string(ch) {
+					match = false
+					break
+				}
+			}
+			if match {
+				foundTitle = true
 				break
 			}
 		}
-		if match {
-			found = true
+		if foundTitle {
 			break
 		}
 	}
-	if !found {
-		t.Error("empty event log title should contain 'no events recorded'")
+	if !foundTitle {
+		t.Error("empty event log should show 'Events' title")
 	}
 
-	// Row 2 should have descriptive hint text starting with spaces + "No events".
-	// The message: "  No events recorded. Events appear here when agents..."
-	c0, _, _ := s.Get(2, 2) // 'N' at position 2 (after 2 spaces)
-	if c0 != "N" {
-		t.Errorf("empty state row 2 col 2 = %q, want 'N' from 'No events'", c0)
+	// Should show "No events recorded" somewhere in the modal.
+	foundEmpty := false
+	needle := "No events recorded"
+	for y := 0; y < sh; y++ {
+		for x := 0; x < sw-len(needle); x++ {
+			match := true
+			for j, ch := range needle {
+				c, _, _ := s.Get(x+j, y)
+				if c != string(ch) {
+					match = false
+					break
+				}
+			}
+			if match {
+				foundEmpty = true
+				break
+			}
+		}
+		if foundEmpty {
+			break
+		}
+	}
+	if !foundEmpty {
+		t.Error("empty event log should show 'No events recorded'")
 	}
 }
 
@@ -63,10 +86,10 @@ func TestEventLogStyle_Colors(t *testing.T) {
 		{EventAgentIdle, tcell.ColorGray},
 	}
 	for _, tt := range tests {
-		style := eventLogStyle(tt.et)
+		style := eventLogRowStyle(tt.et, tcell.StyleDefault)
 		fg, _, _ := style.Decompose()
 		if fg != tt.wantColor {
-			t.Errorf("eventLogStyle(%v) fg = %v, want %v", tt.et, fg, tt.wantColor)
+			t.Errorf("eventLogRowStyle(%v) fg = %v, want %v", tt.et, fg, tt.wantColor)
 		}
 	}
 }
@@ -236,26 +259,28 @@ func TestRenderEventLog_TitleShowsCount(t *testing.T) {
 	}
 	tui.renderEventLog()
 
-	// Title row should contain "3 events".
-	want := "3 events)"
-	sw, _ := s.Size()
+	// Title should contain "(3)" somewhere on screen (floating modal title).
+	want := "(3)"
+	sw, sh := s.Size()
 	found := false
-	for i := 0; i < sw-len(want); i++ {
-		match := true
-		for j, ch := range want {
-			c, _, _ := s.Get(i+j, 0)
-			if c != string(ch) {
-				match = false
+	for y := 0; y < sh && !found; y++ {
+		for x := 0; x < sw-len(want); x++ {
+			match := true
+			for j, ch := range want {
+				c, _, _ := s.Get(x+j, y)
+				if c != string(ch) {
+					match = false
+					break
+				}
+			}
+			if match {
+				found = true
 				break
 			}
 		}
-		if match {
-			found = true
-			break
-		}
 	}
 	if !found {
-		t.Error("title should contain '3 events)' with event count")
+		t.Error("title should contain '(3)' with event count")
 	}
 }
 
