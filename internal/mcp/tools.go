@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -126,6 +127,20 @@ type AssignOutput struct {
 	Status string `json:"status"`
 }
 
+// DeliverInput is the input schema for the initech_deliver tool.
+type DeliverInput struct {
+	BeadID  string `json:"bead_id" jsonschema:"bead ID to deliver (e.g. ini-abc)"`
+	Pass    *bool  `json:"pass,omitempty" jsonschema:"mark ready_for_qa (default true)"`
+	Reason  string `json:"reason,omitempty" jsonschema:"failure reason (used when pass=false)"`
+	To      string `json:"to,omitempty" jsonschema:"agent to report to (default super)"`
+	Message string `json:"message,omitempty" jsonschema:"custom note appended to the report"`
+}
+
+// DeliverOutput is the output schema for the initech_deliver tool.
+type DeliverOutput struct {
+	Status string `json:"status"`
+}
+
 // StatusInput is the input schema for the initech_status tool (no params).
 type StatusInput struct{}
 
@@ -235,6 +250,13 @@ func registerTools(s *gomcp.Server, host PaneHost) {
 		Description: "Atomic bead dispatch: claims a bead, registers it in the TUI, and sends a dispatch message to the agent. Requires bd CLI.",
 	}, func(_ context.Context, _ *gomcp.CallToolRequest, input AssignInput) (*gomcp.CallToolResult, AssignOutput, error) {
 		return handleAssign(host, input)
+	})
+
+	gomcp.AddTool(s, &gomcp.Tool{
+		Name:        "initech_deliver",
+		Description: "Atomic bead completion: updates status, clears TUI, reports to super, announces on radio/webhook. Counterpart to initech_assign. Requires bd CLI.",
+	}, func(_ context.Context, _ *gomcp.CallToolRequest, input DeliverInput) (*gomcp.CallToolResult, DeliverOutput, error) {
+		return handleDeliver(host, input)
 	})
 }
 
@@ -492,4 +514,127 @@ func handleInterrupt(host PaneHost, input InterruptInput) (*gomcp.CallToolResult
 		status = "interrupted (Ctrl+C)"
 	}
 	return nil, InterruptOutput{Status: status}, nil
+}
+
+func handleDeliver(host PaneHost, input DeliverInput) (*gomcp.CallToolResult, DeliverOutput, error) {
+	if input.BeadID == "" {
+		return nil, DeliverOutput{}, fmt.Errorf("bead_id is required")
+	}
+
+	isFail := input.Pass != nil && !*input.Pass
+
+	// Step 1: Read bead info.
+	out, err := exec.Command("bd", "show", input.BeadID, "--json").CombinedOutput()
+	if err != nil {
+		return nil, DeliverOutput{}, fmt.Errorf("bead %s not found: %s", input.BeadID, strings.TrimSpace(string(out)))
+	}
+	var beads []struct {
+		Title string `json:"title"`
+	}
+	if err := json.Unmarshal(out, &beads); err != nil {
+		return nil, DeliverOutput{}, fmt.Errorf("parse bd output: %w", err)
+	}
+	title := input.BeadID
+	if len(beads) > 0 && beads[0].Title != "" {
+		title = beads[0].Title
+	}
+	if len(title) > 80 {
+		title = title[:77] + "..."
+	}
+
+	// Step 2: Update bead status.
+	if isFail {
+		reason := input.Reason
+		if reason == "" {
+			reason = "no reason provided"
+		}
+		commentArgs := []string{"comments", "add", input.BeadID, "FAILED: " + reason}
+		if commentOut, err := exec.Command("bd", commentArgs...).CombinedOutput(); err != nil {
+			return nil, DeliverOutput{}, fmt.Errorf("bd comment failed: %s", strings.TrimSpace(string(commentOut)))
+		}
+	} else {
+		statusOut, err := exec.Command("bd", "update", input.BeadID, "--status", "ready_for_qa").CombinedOutput()
+		if err != nil {
+			return nil, DeliverOutput{}, fmt.Errorf("bd update failed: %s", strings.TrimSpace(string(statusOut)))
+		}
+	}
+
+	// Step 3: Clear TUI bead on the caller (best effort).
+	callerAgent := os.Getenv("INITECH_AGENT")
+	if callerAgent != "" {
+		_ = host.SetBead(callerAgent, "")
+	}
+
+	// Step 4: Send report.
+	recipient := input.To
+	if recipient == "" {
+		recipient = "super"
+	}
+	var report string
+	if isFail {
+		reason := input.Reason
+		if reason == "" {
+			reason = "no reason provided"
+		}
+		report = fmt.Sprintf("[from %s] %s: %s FAILED: %s", agentOrUnknownMCP(callerAgent), input.BeadID, title, reason)
+	} else {
+		report = fmt.Sprintf("[from %s] %s: %s ready for QA", agentOrUnknownMCP(callerAgent), input.BeadID, title)
+	}
+	if input.Message != "" {
+		report += ". " + input.Message
+	}
+	pane, ok := host.FindPane(recipient)
+	if ok && pane != nil {
+		pane.SendText(report, true)
+	}
+
+	// Step 5: Announce (fire and forget).
+	if announceURL, project := host.AnnounceConfig(); announceURL != "" {
+		var detail, kind string
+		if isFail {
+			kind = "agent.failed"
+			detail = fmt.Sprintf("%s hit a wall on %s", agentOrUnknownMCP(callerAgent), input.BeadID)
+			if input.Reason != "" {
+				detail += ": " + input.Reason
+			}
+		} else {
+			kind = "agent.completed"
+			detail = fmt.Sprintf("%s finished %s: %s", agentOrUnknownMCP(callerAgent), input.BeadID, title)
+		}
+		webhook.PostAnnouncement(announceURL, webhook.AnnouncePayload{
+			Detail:  detail,
+			Kind:    kind,
+			Agent:   agentOrUnknownMCP(callerAgent),
+			Project: project,
+			BeadID:  input.BeadID,
+		})
+	}
+
+	// Step 6: Webhook (fire and forget).
+	if webhookURL, project := host.NotifyConfig(); webhookURL != "" {
+		var kind, message string
+		if isFail {
+			kind = "agent.failed"
+			message = fmt.Sprintf("%s: %s FAILED", input.BeadID, title)
+			if input.Reason != "" {
+				message += ": " + input.Reason
+			}
+		} else {
+			kind = "agent.completed"
+			message = fmt.Sprintf("%s: %s ready for QA", input.BeadID, title)
+		}
+		webhook.PostNotification(webhookURL, kind, agentOrUnknownMCP(callerAgent), message, project) //nolint:errcheck
+	}
+
+	if isFail {
+		return nil, DeliverOutput{Status: fmt.Sprintf("delivered %s (FAILED) -> %s", input.BeadID, recipient)}, nil
+	}
+	return nil, DeliverOutput{Status: fmt.Sprintf("delivered %s (ready for QA) -> %s", input.BeadID, recipient)}, nil
+}
+
+func agentOrUnknownMCP(agent string) string {
+	if agent == "" {
+		return "unknown"
+	}
+	return agent
 }

@@ -126,6 +126,7 @@ If an agent dies or the TUI crashes:
 - Engineers comment PLAN before coding, DONE with verification steps when finished
 - Engineers write unit tests for all new code
 - Engineers push to git before marking ready_for_qa
+- Engineers complete work with ` + "`" + `initech deliver` + "`" + `, which marks ready_for_qa and reports to you automatically
 - Only QA transitions to qa_passed
 - Only the operator closes beads
 
@@ -285,11 +286,8 @@ Source code: {{project_root}}/{{role_name}}/src/
 8. Push: ` + "`" + `git push` + "`" + ` (separate step, not optional. QA pulls from the remote.)
 9. **Comment DONE** with what changed, what tests were added, and the commit hash:
    ` + "`" + `bd comments add <id> --author {{role_name}} "DONE: <what>. Tests: <added>. Commit: <hash>"` + "`" + `
-10. Mark: ` + "`" + `bd update <id> --status ready_for_qa` + "`" + `
-11. Report to super: ` + "`" + `initech send super "[from {{role_name}}] <id>: ready for QA"` + "`" + `
-12. Clear bead display: ` + "`" + `initech bead --clear` + "`" + `
-
-**Step order matters:** Report to super (step 11) BEFORE clearing the bead (step 12). If you clear first and the report fails, super gets no notification.
+10. Deliver: ` + "`" + `initech deliver <id>` + "`" + ` (marks ready_for_qa, clears TUI, reports to super atomically)
+    Or if something failed: ` + "`" + `initech deliver <id> --fail --reason "<what went wrong>"` + "`" + `
 
 ## Verification Before Completion
 
