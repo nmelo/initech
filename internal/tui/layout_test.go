@@ -543,7 +543,7 @@ func TestLoadLayoutPreservesUnknownRemotePaneKeys(t *testing.T) {
 		GridCols: 2,
 		GridRows: 1,
 		Hidden:   map[string]bool{"workbench:intern": true},
-		Pinned:   map[string]bool{"workbench:intern": true},
+		Protected: map[string]bool{"workbench:intern": true},
 		Order:    []string{"workbench:intern", "super"},
 	}
 	if err := SaveLayout(root, state); err != nil {
@@ -557,8 +557,8 @@ func TestLoadLayoutPreservesUnknownRemotePaneKeys(t *testing.T) {
 	if !got.Hidden["workbench:intern"] {
 		t.Fatalf("offline remote hidden key lost: %v", got.Hidden)
 	}
-	if !got.Pinned["workbench:intern"] {
-		t.Fatalf("offline remote pinned key lost: %v", got.Pinned)
+	if !got.Protected["workbench:intern"] {
+		t.Fatalf("offline remote protected key lost: %v", got.Protected)
 	}
 	if len(got.Order) < 3 {
 		t.Fatalf("order = %v, want preserved remote placeholder plus current panes", got.Order)
@@ -700,7 +700,7 @@ func TestHandlePeerUpdateRespectsSavedRemoteKeys(t *testing.T) {
 		Focused:  "super",
 		Hidden:   map[string]bool{"workbench:intern": true},
 		Order:    []string{"workbench:intern", "super"},
-		Pinned:   map[string]bool{},
+		Protected: map[string]bool{},
 	}
 
 	rp := newFakeRemotePaneView("intern", "workbench")

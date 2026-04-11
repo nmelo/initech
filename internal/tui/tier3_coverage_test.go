@@ -58,7 +58,7 @@ func testTUIWithPanes(names ...string) *TUI {
 	}
 	ls := DefaultLayoutState(nil)
 	ls.Hidden = make(map[string]bool)
-	ls.Pinned = make(map[string]bool)
+	ls.Protected = make(map[string]bool)
 	return &TUI{panes: toPaneViews(panes), layoutState: ls}
 }
 

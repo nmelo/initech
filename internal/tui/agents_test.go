@@ -208,7 +208,7 @@ func TestAgentsModal_RenderHiddenAgentNameItalic(t *testing.T) {
 
 func TestAgentsModal_RenderShowsPinBadge(t *testing.T) {
 	tui, s := newTestTUIWithScreen("eng1", "eng2")
-	tui.layoutState.Pinned = map[string]bool{"eng1": true}
+	tui.layoutState.Protected = map[string]bool{"eng1": true}
 	tui.openAgentsModal()
 	tui.render()
 
@@ -238,7 +238,7 @@ func TestAgentsModal_RenderShowsLivePinBadge(t *testing.T) {
 func TestAgentsModal_RenderShowsLivePinBadgeInLiveMode(t *testing.T) {
 	tui, s := newTestTUIWithScreen("super", "eng1", "pm")
 	tui.layoutState.Mode = LayoutLive
-	tui.layoutState.Pinned = map[string]bool{"super": true}
+	tui.layoutState.Protected = map[string]bool{"super": true}
 	tui.layoutState.LivePinned = map[string]int{"pm": 1}
 	tui.layoutState.LiveSlots = []string{"super", "pm"}
 	tui.openAgentsModal()
@@ -439,11 +439,11 @@ func TestAgentsModal_PinToggle(t *testing.T) {
 	tui.openAgentsModal()
 
 	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyRune, 'p', 0))
-	if !tui.layoutState.Pinned["eng1"] {
+	if !tui.layoutState.Protected["eng1"] {
 		t.Error("p should pin the selected agent")
 	}
 	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyRune, 'p', 0))
-	if tui.layoutState.Pinned["eng1"] {
+	if tui.layoutState.Protected["eng1"] {
 		t.Error("p again should unpin the agent")
 	}
 }

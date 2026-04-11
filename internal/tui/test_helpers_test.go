@@ -142,7 +142,7 @@ func (p *fakeRemotePaneView) Host() string                     { return p.host }
 func (p *fakeRemotePaneView) Visible() bool                    { return p.visible }
 func (p *fakeRemotePaneView) IsAlive() bool                    { return p.alive }
 func (p *fakeRemotePaneView) IsSuspended() bool                { return false }
-func (p *fakeRemotePaneView) IsPinned() bool                   { return false }
+func (p *fakeRemotePaneView) IsProtected() bool                { return false }
 func (p *fakeRemotePaneView) Activity() ActivityState          { return p.activity }
 func (p *fakeRemotePaneView) LastOutputTime() time.Time        { return time.Time{} }
 func (p *fakeRemotePaneView) BeadID() string                   { return p.beadID }

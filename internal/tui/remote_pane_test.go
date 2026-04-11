@@ -33,8 +33,8 @@ func TestRemotePaneImplementsPaneView(t *testing.T) {
 	if rp.IsSuspended() {
 		t.Error("RemotePane should never be suspended")
 	}
-	if rp.IsPinned() {
-		t.Error("RemotePane should never be pinned")
+	if rp.IsProtected() {
+		t.Error("RemotePane should never be protected")
 	}
 	if rp.Emulator() == nil {
 		t.Error("Emulator() should not be nil")

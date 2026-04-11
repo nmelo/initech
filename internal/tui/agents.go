@@ -128,7 +128,7 @@ func (t *TUI) handleAgentsKey(ev *tcell.EventKey) bool {
 			t.agentsToggleVisibility()
 			return false
 		case 'p':
-			t.agentsTogglePin()
+			t.agentsToggleProtected()
 			return false
 		case 'A':
 			t.agentsRevealAll()
@@ -291,25 +291,25 @@ func (t *TUI) agentsToggleVisibility() {
 	t.saveLayoutIfConfigured()
 }
 
-// agentsTogglePin toggles the pinned state for the selected pane.
-func (t *TUI) agentsTogglePin() {
+// agentsToggleProtected toggles the pinned state for the selected pane.
+func (t *TUI) agentsToggleProtected() {
 	if t.agents.selected < 0 || t.agents.selected >= len(t.panes) {
 		return
 	}
 	name := paneKey(t.panes[t.agents.selected])
 
-	if t.layoutState.Pinned == nil {
-		t.layoutState.Pinned = make(map[string]bool)
+	if t.layoutState.Protected == nil {
+		t.layoutState.Protected = make(map[string]bool)
 	}
-	if t.layoutState.Pinned[name] {
-		delete(t.layoutState.Pinned, name)
+	if t.layoutState.Protected[name] {
+		delete(t.layoutState.Protected, name)
 		if lp, ok := t.panes[t.agents.selected].(*Pane); ok {
-			lp.SetPinned(false)
+			lp.SetProtected(false)
 		}
 	} else {
-		t.layoutState.Pinned[name] = true
+		t.layoutState.Protected[name] = true
 		if lp, ok := t.panes[t.agents.selected].(*Pane); ok {
-			lp.SetPinned(true)
+			lp.SetProtected(true)
 		}
 	}
 	t.saveLayoutIfConfigured()
@@ -585,7 +585,7 @@ func (t *TUI) renderAgents() {
 		name := p.Name()
 		hidden := t.layoutState.Hidden[paneKey(p)]
 		pk := paneKey(p)
-		generalPinned := t.layoutState.Pinned[pk]
+		generalProtected := t.layoutState.Protected[pk]
 		_, livePinned := t.layoutState.LivePinned[pk]
 		act := p.Activity()
 		bead := p.BeadID()
@@ -595,7 +595,7 @@ func (t *TUI) renderAgents() {
 			vis = "[ ]"
 		}
 		pin := "   "
-		if generalPinned || livePinned {
+		if generalProtected || livePinned {
 			pin = "[P]"
 		}
 
@@ -608,7 +608,7 @@ func (t *TUI) renderAgents() {
 				// Check if agent is in a dynamic slot.
 				for si, sn := range t.layoutState.LiveSlots {
 					if sn == pk {
-						if generalPinned {
+						if generalProtected {
 							pin = fmt.Sprintf("P:%d", si)
 						} else {
 							pin = fmt.Sprintf("D:%d", si)
@@ -651,6 +651,20 @@ func (t *TUI) renderAgents() {
 		}
 
 		drawLine(row, line, style)
+
+		// Overlay pin badge with purple color (match pane ribbon [P] badge).
+		if pin != "   " && !isSelected {
+			pinStyle := bgStyle.Foreground(tcell.ColorMediumPurple).Bold(true)
+			pinCol := innerX + len([]rune(prefix)) + 12 + 1 // after name column + space
+			for _, ch := range pin {
+				if pinCol >= innerX+innerW {
+					break
+				}
+				s.SetContent(pinCol, row, ch, nil, pinStyle)
+				pinCol++
+			}
+		}
+
 		if hidden {
 			nameStyle := style.Italic(true)
 			nameCol := innerX + len([]rune(prefix))

@@ -27,7 +27,7 @@ type LayoutState struct {
 	Zoomed   bool            `yaml:"zoomed,omitempty"`
 	Focused  string          `yaml:"focused"`          // Pane key, not index.
 	Hidden   map[string]bool `yaml:"hidden,omitempty"` // Pane keys that are hidden.
-	Pinned   map[string]bool `yaml:"pinned,omitempty"` // Pane keys protected from auto-suspend.
+	Protected map[string]bool `yaml:"protected,omitempty"` // Pane keys protected from auto-suspend.
 	Order    []string        `yaml:"order,omitempty"`  // Pane keys in display order (from show command).
 	Overlay  bool            `yaml:"overlay"`
 
@@ -339,21 +339,21 @@ func DefaultLayoutState(paneNames []string) LayoutState {
 	if len(paneNames) > 0 {
 		focused = paneNames[0]
 	}
-	// Super is pinned by default (coordination hub, never auto-suspended).
-	pinned := make(map[string]bool)
+	// Super is protected by default (coordination hub, never auto-suspended).
+	protected := make(map[string]bool)
 	for _, name := range paneNames {
 		if name == "super" {
-			pinned[name] = true
+			protected[name] = true
 		}
 	}
 	return LayoutState{
-		Mode:     LayoutGrid,
-		GridCols: cols,
-		GridRows: rows,
-		Focused:  focused,
-		Hidden:   make(map[string]bool),
-		Pinned:   pinned,
-		Overlay:  true,
+		Mode:      LayoutGrid,
+		GridCols:  cols,
+		GridRows:  rows,
+		Focused:   focused,
+		Hidden:    make(map[string]bool),
+		Protected: protected,
+		Overlay:   true,
 	}
 }
 
@@ -366,7 +366,8 @@ type PersistentLayout struct {
 	Grid         string         `yaml:"grid"`                    // e.g. "3x2"
 	GridExplicit bool           `yaml:"grid_explicit,omitempty"` // True = user chose CxR explicitly; don't auto-resize.
 	Hidden       []string       `yaml:"hidden,omitempty"`        // Pane keys: name for local, host:name for remote.
-	Pinned       []string       `yaml:"pinned,omitempty"`        // Pane keys protected from auto-suspend.
+	Protected    []string       `yaml:"protected,omitempty"`     // Pane keys protected from auto-suspend.
+	DepPinned    []string       `yaml:"pinned,omitempty"`        // Deprecated: migration shim for old layout.yaml files.
 	Order        []string       `yaml:"order,omitempty"`         // Pane keys in display order (from show command).
 	Mode         string         `yaml:"mode"`                    // "grid", "focus", "main", "live"
 	LivePinned   map[string]int `yaml:"live_pinned,omitempty"`   // Agent name -> fixed slot index for live mode.
@@ -400,12 +401,12 @@ func SaveLayout(projectRoot string, state LayoutState) error {
 		}
 	}
 	sort.Strings(pl.Hidden)
-	for name, pinned := range state.Pinned {
-		if pinned {
-			pl.Pinned = append(pl.Pinned, name)
+	for name, prot := range state.Protected {
+		if prot {
+			pl.Protected = append(pl.Protected, name)
 		}
 	}
-	sort.Strings(pl.Pinned)
+	sort.Strings(pl.Protected)
 
 	dir := layoutDir(projectRoot)
 	if err := os.MkdirAll(dir, 0700); err != nil {
@@ -474,10 +475,16 @@ func LoadLayout(projectRoot string, paneKeys []string) (LayoutState, bool) {
 		}
 	}
 
-	pinned := make(map[string]bool)
-	for _, name := range pl.Pinned {
+	// Migration: accept both old "pinned:" and new "protected:" keys.
+	// "protected:" takes precedence; fall back to "pinned:" for old layout files.
+	protectedList := pl.Protected
+	if len(protectedList) == 0 {
+		protectedList = pl.DepPinned
+	}
+	protected := make(map[string]bool)
+	for _, name := range protectedList {
 		if shouldKeepPersistedPaneKey(name, known) {
-			pinned[name] = true
+			protected[name] = true
 		}
 	}
 
@@ -527,7 +534,7 @@ func LoadLayout(projectRoot string, paneKeys []string) (LayoutState, bool) {
 		GridExplicit: pl.GridExplicit,
 		Focused:      focused,
 		Hidden:       hidden,
-		Pinned:       pinned,
+		Protected:    protected,
 		Order:        order,
 		Overlay:      true, // Always start with overlay visible.
 		LivePinned:   pl.LivePinned,

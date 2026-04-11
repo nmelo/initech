@@ -80,16 +80,16 @@ func TestPaneMemoryRSS_ResetToZero(t *testing.T) {
 
 func TestPanePinned(t *testing.T) {
 	p := &Pane{}
-	if p.IsPinned() {
+	if p.IsProtected() {
 		t.Error("new pane should not be pinned")
 	}
-	p.SetPinned(true)
-	if !p.IsPinned() {
-		t.Error("pane should be pinned after SetPinned(true)")
+	p.SetProtected(true)
+	if !p.IsProtected() {
+		t.Error("pane should be pinned after SetProtected(true)")
 	}
-	p.SetPinned(false)
-	if p.IsPinned() {
-		t.Error("pane should not be pinned after SetPinned(false)")
+	p.SetProtected(false)
+	if p.IsProtected() {
+		t.Error("pane should not be pinned after SetProtected(false)")
 	}
 }
 
@@ -243,7 +243,7 @@ func TestSuspendPolicy_NeverSuspendsWithBead(t *testing.T) {
 func TestSuspendPolicy_NeverSuspendsPinned(t *testing.T) {
 	tui := newResourceTestTUI(100000, 5000, 80)
 	p := newResourceTestPane("eng1", true, StateIdle, "", time.Now().Add(-30*time.Minute))
-	p.pinned = true
+	p.protected = true
 	tui.panes = toPaneViews([]*Pane{p})
 	tui.checkSuspendPolicy()
 
@@ -463,29 +463,29 @@ func TestEnqueueMessageTimestamp(t *testing.T) {
 
 // ── Pin/unpin tests ─────────────────────────────────────────────────
 
-// TestPinnedAccessor verifies IsPinned/SetPinned on Pane.
+// TestPinnedAccessor verifies IsProtected/SetProtected on Pane.
 func TestPinnedAccessor(t *testing.T) {
 	p := &Pane{}
-	if p.IsPinned() {
+	if p.IsProtected() {
 		t.Error("new pane should not be pinned")
 	}
-	p.SetPinned(true)
-	if !p.IsPinned() {
-		t.Error("pane should be pinned after SetPinned(true)")
+	p.SetProtected(true)
+	if !p.IsProtected() {
+		t.Error("pane should be pinned after SetProtected(true)")
 	}
-	p.SetPinned(false)
-	if p.IsPinned() {
-		t.Error("pane should not be pinned after SetPinned(false)")
+	p.SetProtected(false)
+	if p.IsProtected() {
+		t.Error("pane should not be pinned after SetProtected(false)")
 	}
 }
 
 // TestSuperPinnedByDefault verifies DefaultLayoutState pins "super".
 func TestSuperPinnedByDefault(t *testing.T) {
 	ls := DefaultLayoutState([]string{"super", "eng1", "eng2"})
-	if !ls.Pinned["super"] {
+	if !ls.Protected["super"] {
 		t.Error("super should be pinned by default")
 	}
-	if ls.Pinned["eng1"] {
+	if ls.Protected["eng1"] {
 		t.Error("eng1 should not be pinned by default")
 	}
 }
@@ -497,7 +497,7 @@ func TestPinPersistsInLayout(t *testing.T) {
 	initechDir := dir // SaveLayout expects the project root.
 
 	state := DefaultLayoutState([]string{"super", "eng1", "eng2"})
-	state.Pinned["eng1"] = true // pin eng1 too
+	state.Protected["eng1"] = true // pin eng1 too
 
 	if err := SaveLayout(initechDir, state); err != nil {
 		t.Fatalf("SaveLayout: %v", err)
@@ -507,13 +507,13 @@ func TestPinPersistsInLayout(t *testing.T) {
 	if !ok {
 		t.Fatal("LoadLayout returned false")
 	}
-	if !loaded.Pinned["super"] {
+	if !loaded.Protected["super"] {
 		t.Error("super should be pinned after load")
 	}
-	if !loaded.Pinned["eng1"] {
+	if !loaded.Protected["eng1"] {
 		t.Error("eng1 should be pinned after load")
 	}
-	if loaded.Pinned["eng2"] {
+	if loaded.Protected["eng2"] {
 		t.Error("eng2 should not be pinned after load")
 	}
 }
@@ -524,7 +524,7 @@ func TestPinStaleRoleFilteredOnLoad(t *testing.T) {
 	dir := t.TempDir()
 
 	state := DefaultLayoutState([]string{"super", "eng1", "eng2"})
-	state.Pinned["eng2"] = true
+	state.Protected["eng2"] = true
 	SaveLayout(dir, state)
 
 	// Load with eng2 removed from the roster.
@@ -532,7 +532,7 @@ func TestPinStaleRoleFilteredOnLoad(t *testing.T) {
 	if !ok {
 		t.Fatal("LoadLayout returned false")
 	}
-	if loaded.Pinned["eng2"] {
+	if loaded.Protected["eng2"] {
 		t.Error("stale pinned role eng2 should be filtered out on load")
 	}
 }
@@ -878,7 +878,7 @@ func TestResumePane_CopiesPinnedAndBead(t *testing.T) {
 	p := newEmuPane("eng1", 80, 24)
 	p.cfg.Command = []string{"/bin/sh", "-c", "echo ready; sleep 1"}
 	p.suspended = true
-	p.pinned = true
+	p.protected = true
 	p.beadIDs = []string{"ini-abc.1"}
 	p.beadTitle = "Test bead"
 	tui := &TUI{
@@ -893,7 +893,7 @@ func TestResumePane_CopiesPinnedAndBead(t *testing.T) {
 	}
 
 	newPane := tui.panes[0]
-	if !newPane.IsPinned() {
+	if !newPane.IsProtected() {
 		t.Error("resumed pane should preserve pinned state")
 	}
 	if newPane.BeadID() != "ini-abc.1" {

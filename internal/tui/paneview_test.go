@@ -65,15 +65,15 @@ func TestPaneView_IsSuspended(t *testing.T) {
 	}
 }
 
-// TestPaneView_IsPinned reflects the pinned field.
-func TestPaneView_IsPinned(t *testing.T) {
+// TestPaneView_IsProtected reflects the protected field.
+func TestPaneView_IsProtected(t *testing.T) {
 	p := &Pane{emu: vt.NewSafeEmulator(10, 5)}
-	if p.IsPinned() {
-		t.Error("IsPinned() should be false by default")
+	if p.IsProtected() {
+		t.Error("IsProtected() should be false by default")
 	}
-	p.SetPinned(true)
-	if !p.IsPinned() {
-		t.Error("IsPinned() should be true after SetPinned(true)")
+	p.SetProtected(true)
+	if !p.IsProtected() {
+		t.Error("IsProtected() should be true after SetProtected(true)")
 	}
 }
 
@@ -239,7 +239,7 @@ func TestPaneView_InterfaceMethodSet(t *testing.T) {
 	_ = pv.Host()
 	_ = pv.IsAlive()
 	_ = pv.IsSuspended()
-	_ = pv.IsPinned()
+	_ = pv.IsProtected()
 	_ = pv.Activity()
 	_ = pv.LastOutputTime()
 	_ = pv.BeadID()

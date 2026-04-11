@@ -151,7 +151,7 @@ func (t *TUI) checkSuspendPolicy() {
 				if len(p.beadIDs) > 0 {
 					bead = p.beadIDs[0]
 				}
-				pinned := p.pinned
+				pinned := p.protected
 				name := p.name
 				lot := p.lastOutputTime
 				rss := p.memoryRSS
@@ -432,7 +432,7 @@ func (t *TUI) resumePane(pane *Pane, senderName string) error {
 				np.region = pane.region
 				np.eventCh = t.agentEvents
 				np.safeGo = t.safeGo
-				np.pinned = pane.pinned
+				np.protected = pane.protected
 				if len(pane.beadIDs) > 0 {
 					np.beadIDs = make([]string, len(pane.beadIDs))
 					copy(np.beadIDs, pane.beadIDs)

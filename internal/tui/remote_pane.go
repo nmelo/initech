@@ -170,7 +170,7 @@ func (rp *RemotePane) IsAlive() bool {
 }
 
 func (rp *RemotePane) IsSuspended() bool          { return false }
-func (rp *RemotePane) IsPinned() bool              { return false }
+func (rp *RemotePane) IsProtected() bool           { return false }
 func (rp *RemotePane) AgentType() string           { return "" } // Remote panes do not currently expose daemon-side agent type.
 func (rp *RemotePane) SubmitKey() string           { return "" } // Remote panes use daemon-side config.
 func (rp *RemotePane) ActiveRunStart() time.Time   { return time.Time{} }

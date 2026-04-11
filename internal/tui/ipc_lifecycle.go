@@ -109,7 +109,7 @@ func (t *TUI) handleIPCStart(conn net.Conn, req IPCRequest) {
 	np.region = old.region
 	np.eventCh = t.agentEvents
 	np.safeGo = t.safeGo
-	np.pinned = old.IsPinned()
+	np.protected = old.IsProtected()
 	// Replace in t.panes on main; re-verify index is still valid.
 	if !t.runOnMain(func() {
 		if oldIdx < len(t.panes) && t.panes[oldIdx] == old {
@@ -191,7 +191,7 @@ func (t *TUI) handleIPCRestart(conn net.Conn, req IPCRequest) {
 	np.region = old.region
 	np.eventCh = t.agentEvents
 	np.safeGo = t.safeGo
-	np.pinned = old.IsPinned()
+	np.protected = old.IsProtected()
 	// Replace in t.panes on main; re-verify index is still valid.
 	if !t.runOnMain(func() {
 		if oldIdx < len(t.panes) && t.panes[oldIdx] == old {

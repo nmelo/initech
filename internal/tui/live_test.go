@@ -28,7 +28,7 @@ func (m *mockPaneView) Name() string                   { return m.name }
 func (m *mockPaneView) Host() string                   { return m.host }
 func (m *mockPaneView) IsAlive() bool                  { return m.alive }
 func (m *mockPaneView) IsSuspended() bool              { return m.suspended }
-func (m *mockPaneView) IsPinned() bool                 { return m.pinned }
+func (m *mockPaneView) IsProtected() bool               { return m.pinned }
 func (m *mockPaneView) BeadID() string                 { return m.beadID }
 func (m *mockPaneView) BeadIDs() []string {
 	if m.beadID == "" {

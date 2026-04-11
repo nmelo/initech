@@ -36,7 +36,7 @@ type AgentInfo struct {
 	Status          string        // Display text: activity string or bead ID.
 	Activity        ActivityState // Actual activity state for dot color.
 	Visible         bool
-	Pinned          bool // True when operator has pinned this agent.
+	Protected       bool // True when agent is protected from auto-suspend.
 	Remote          bool // True for agents on remote peers.
 }
 
@@ -686,9 +686,9 @@ func Run(cfg Config) error {
 
 	// Sync pinned state from layout to panes.
 	for _, p := range t.panes {
-		if t.layoutState.Pinned[paneKey(p)] {
+		if t.layoutState.Protected[paneKey(p)] {
 			if lp, ok := p.(*Pane); ok {
-				lp.SetPinned(true)
+				lp.SetProtected(true)
 			}
 		}
 	}

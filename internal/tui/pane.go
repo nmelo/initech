@@ -135,7 +135,7 @@ type PaneView interface {
 	Host() string // "" for local panes.
 	IsAlive() bool
 	IsSuspended() bool
-	IsPinned() bool
+	IsProtected() bool
 	Activity() ActivityState
 	LastOutputTime() time.Time
 	BeadID() string
@@ -211,7 +211,7 @@ type Pane struct {
 	memoryRSS         int64             // RSS in kilobytes, updated by memory monitor goroutine.
 	suspended         bool              // True when auto-suspend policy has stopped this pane.
 	messageQueue      []QueuedMessage   // Messages waiting for resume. Capped at maxMessageQueue.
-	pinned            bool              // Pinned agents are never auto-suspended.
+	protected         bool              // Protected agents are never auto-suspended.
 	resumeGrace       time.Time         // Until this time, post-resume grace period is active.
 	resumeMu          sync.Mutex        // Serializes concurrent resume attempts for this pane.
 	kittEpoch         time.Time         // Reference time for KITT scanner animation phase.
@@ -1206,19 +1206,19 @@ func (p *Pane) SetSuspended(v bool) {
 	p.suspended = v
 }
 
-// IsPinned reports whether the operator has pinned this pane to prevent
-// auto-suspension. Pinned panes are always kept running.
-func (p *Pane) IsPinned() bool {
+// IsProtected reports whether the operator has protected this pane from
+// auto-suspension. Protected panes are always kept running.
+func (p *Pane) IsProtected() bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	return p.pinned
+	return p.protected
 }
 
-// SetPinned marks the pane as pinned (true) or unpinned (false).
-func (p *Pane) SetPinned(v bool) {
+// SetProtected marks the pane as protected (true) or unprotected (false).
+func (p *Pane) SetProtected(v bool) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	p.pinned = v
+	p.protected = v
 }
 
 // SessionDesc returns the session description extracted from Claude's cursor row.

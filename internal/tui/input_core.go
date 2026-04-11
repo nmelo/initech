@@ -289,7 +289,7 @@ func (t *TUI) restartPane(fp *Pane) error {
 	}
 	p.eventCh = t.agentEvents
 	p.safeGo = t.safeGo
-	p.pinned = fp.pinned
+	p.protected = fp.protected
 	p.Start()
 	t.panes[idx] = p
 	t.applyLayout()
