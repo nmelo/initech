@@ -61,6 +61,51 @@ func TestScrollUpThenDown(t *testing.T) {
 	}
 }
 
+func TestScrollAnchor_NewOutputDoesNotDrift(t *testing.T) {
+	emu := vt.NewSafeEmulator(80, 24)
+	// Fill screen + scrollback with 100 lines.
+	for i := 0; i < 100; i++ {
+		emu.Write([]byte("line of content\r\n"))
+	}
+
+	p := &Pane{emu: emu, region: Region{X: 0, Y: 0, W: 82, H: 26}} // 80 inner cols, 24 inner rows
+
+	// Scroll up 20 lines, record where we are.
+	p.ScrollUp(20)
+	startRow1, _ := p.contentOffset()
+
+	// Simulate 10 new lines of output (scrollback grows).
+	for i := 0; i < 10; i++ {
+		emu.Write([]byte("new output line\r\n"))
+	}
+
+	// Render again: contentOffset should compensate for the new lines.
+	startRow2, _ := p.contentOffset()
+
+	if startRow1 != startRow2 {
+		t.Errorf("view drifted: startRow before=%d, after=%d (should be stable)", startRow1, startRow2)
+	}
+}
+
+func TestScrollAnchor_ClearedAtLiveEdge(t *testing.T) {
+	emu := vt.NewSafeEmulator(80, 24)
+	for i := 0; i < 50; i++ {
+		emu.Write([]byte("line\r\n"))
+	}
+
+	p := &Pane{emu: emu}
+	p.ScrollUp(10)
+	if p.scrollAnchorLen == 0 {
+		t.Error("scrollAnchorLen should be set after ScrollUp")
+	}
+
+	// Scroll back to live edge.
+	p.ScrollDown(10)
+	if p.scrollAnchorLen != 0 {
+		t.Errorf("scrollAnchorLen = %d, want 0 (cleared at live edge)", p.scrollAnchorLen)
+	}
+}
+
 func TestScrollUpClampsToMaxScrollback(t *testing.T) {
 	emu := vt.NewSafeEmulator(80, 24)
 	for i := 0; i < 50; i++ {

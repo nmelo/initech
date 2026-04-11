@@ -207,6 +207,7 @@ type Pane struct {
 	dedupEvents       *dedup            // Dedup state for emitted events.
 	startedAt         time.Time         // When this pane's process was started. Used to filter stale JSONL.
 	scrollOffset      int               // Rows scrolled back from live view (0 = live).
+	scrollAnchorLen   int               // Scrollback length when user last scrolled. Used to compensate for new output.
 	memoryRSS         int64             // RSS in kilobytes, updated by memory monitor goroutine.
 	suspended         bool              // True when auto-suspend policy has stopped this pane.
 	messageQueue      []QueuedMessage   // Messages waiting for resume. Capped at maxMessageQueue.
@@ -563,6 +564,17 @@ func (p *Pane) contentOffset() (startRow, renderOffset int) {
 	}
 	if p.scrollOffset > 0 {
 		scrollbackLen := p.emu.ScrollbackLen()
+
+		// Compensate for new scrollback lines added since the user scrolled.
+		// This keeps the viewed region stable when new output arrives.
+		if p.scrollAnchorLen > 0 {
+			delta := scrollbackLen - p.scrollAnchorLen
+			if delta > 0 {
+				p.scrollOffset += delta
+				p.scrollAnchorLen = scrollbackLen
+			}
+		}
+
 		totalVirtual := scrollbackLen + p.emu.Height()
 		_, innerRows := p.region.InnerSize()
 		viewBottom := totalVirtual - p.scrollOffset
@@ -1394,6 +1406,9 @@ func (p *Pane) ScrollUp(n int) {
 	if p.scrollOffset > maxOffset {
 		p.scrollOffset = maxOffset
 	}
+	// Record the current scrollback length so contentOffset can compensate
+	// for new output arriving while the user is scrolled up.
+	p.scrollAnchorLen = p.emu.ScrollbackLen()
 }
 
 // ScrollDown moves the viewport down (toward live output) by n rows.
@@ -1402,6 +1417,10 @@ func (p *Pane) ScrollDown(n int) {
 	p.scrollOffset -= n
 	if p.scrollOffset < 0 {
 		p.scrollOffset = 0
+	}
+	// When returning to live edge, clear the anchor so auto-scroll resumes.
+	if p.scrollOffset == 0 {
+		p.scrollAnchorLen = 0
 	}
 }
 
