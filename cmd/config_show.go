@@ -112,7 +112,7 @@ func resolveAllFields(proj *config.Project, yamlKeys map[string]bool) []configLi
 
 	// Expand role_overrides map.
 	if len(proj.RoleOverrides) > 0 {
-		names := sortedRoleOverrideKeys(proj.RoleOverrides)
+		names := sortedKeys(proj.RoleOverrides)
 		for _, name := range names {
 			ov := proj.RoleOverrides[name]
 			ovLines := expandRoleOverride(name, ov)
@@ -372,9 +372,4 @@ func sortedKeys[V any](m map[string]V) []string {
 	}
 	sort.Strings(keys)
 	return keys
-}
-
-// sortedRoleOverrideKeys returns role override map keys sorted alphabetically.
-func sortedRoleOverrideKeys(m map[string]config.RoleOverride) []string {
-	return sortedKeys(m)
 }

@@ -78,7 +78,6 @@ func Run(p *config.Project, opts Options) ([]string, error) {
 	vars := roles.RenderVars{
 		ProjectName: p.Name,
 		ProjectRoot: p.Root,
-		BeadsPrefix: p.Beads.Prefix,
 	}
 
 	docTemplates := []struct {
@@ -129,10 +128,6 @@ func Run(p *config.Project, opts Options) ([]string, error) {
 				roleVars.TestCmd = ov.TestCmd
 			}
 		}
-		if len(p.Repos) > 0 {
-			roleVars.RepoURL = p.Repos[0].URL
-		}
-
 		tmpl := templateForRole(roleName)
 		content := roles.Render(tmpl, roleVars)
 		content = roles.RenderString(content, "role_name", roleName)

@@ -324,7 +324,7 @@ func TestInteg_SocketLiveness(t *testing.T) {
 // ── Test 6: Doctor prereq check ─────────────────────────────────────
 
 func TestInteg_DoctorPrereqs(t *testing.T) {
-	env := DefaultDoctorEnv()
+	env := defaultDoctorEnv()
 	results := runPrereqChecks(env)
 
 	// Results should cover all 3 tools.

@@ -18,7 +18,7 @@ import (
 // ── Prereq checks ──────────────────────────────────────────────────
 
 func TestDoctorPrereqs_MissingClaude(t *testing.T) {
-	env := DoctorEnv{
+	env := doctorEnv{
 		LookPath: func(name string) (string, error) {
 			if name == "claude" {
 				return "", fmt.Errorf("not found")
@@ -30,7 +30,7 @@ func TestDoctorPrereqs_MissingClaude(t *testing.T) {
 
 	results := runPrereqChecks(env)
 
-	var claudeResult *CheckResult
+	var claudeResult *checkResult
 	for i := range results {
 		if results[i].Label == "claude" {
 			claudeResult = &results[i]
@@ -46,7 +46,7 @@ func TestDoctorPrereqs_MissingClaude(t *testing.T) {
 }
 
 func TestDoctorPrereqs_AllPresent(t *testing.T) {
-	env := DoctorEnv{
+	env := doctorEnv{
 		LookPath:   func(name string) (string, error) { return "/usr/bin/" + name, nil },
 		GetVersion: func(cmd []string) string { return "2.5.0" },
 	}
@@ -64,7 +64,7 @@ func TestDoctorPrereqs_AllPresent(t *testing.T) {
 }
 
 func TestDoctorPrereqs_OptionalMissing(t *testing.T) {
-	env := DoctorEnv{
+	env := doctorEnv{
 		LookPath: func(name string) (string, error) {
 			if name == "bd" {
 				return "", fmt.Errorf("not found")
@@ -76,7 +76,7 @@ func TestDoctorPrereqs_OptionalMissing(t *testing.T) {
 
 	results := runPrereqChecks(env)
 
-	var bdResult *CheckResult
+	var bdResult *checkResult
 	for i := range results {
 		if results[i].Label == "bd" {
 			bdResult = &results[i]
@@ -115,7 +115,7 @@ func TestDoctorProject_Valid(t *testing.T) {
 		t.Errorf("project root = %q, want %q", root, dir)
 	}
 
-	var configCheck *CheckResult
+	var configCheck *checkResult
 	for i := range checks {
 		if checks[i].Label == "Config" {
 			configCheck = &checks[i]
@@ -148,7 +148,7 @@ func TestDoctorProject_MissingWebhookURL(t *testing.T) {
 
 	checks, _, _ := runProjectChecks(filepath.Join(dir, "initech.yaml"))
 
-	var notifyCheck *CheckResult
+	var notifyCheck *checkResult
 	for i := range checks {
 		if checks[i].Label == "Notify" {
 			notifyCheck = &checks[i]
@@ -198,7 +198,7 @@ func TestDoctorProject_MissingWorkspace(t *testing.T) {
 
 	checks, _, _ := runProjectChecks(filepath.Join(dir, "initech.yaml"))
 
-	var wsCheck *CheckResult
+	var wsCheck *checkResult
 	for i := range checks {
 		if checks[i].Label == "Workspaces" {
 			wsCheck = &checks[i]
@@ -309,8 +309,8 @@ func TestDoctorRemotes_Reachable(t *testing.T) {
 // ── Report summary ─────────────────────────────────────────────────
 
 func TestDoctorReport_HasRequiredMissing(t *testing.T) {
-	report := DoctorReport{
-		Prereqs: []CheckResult{
+	report := doctorReport{
+		Prereqs: []checkResult{
 			{Label: "claude", Status: "FAIL", Detail: "missing"},
 			{Label: "git", Status: "OK", Detail: "ok"},
 		},
@@ -326,10 +326,10 @@ func TestDoctorReport_HasRequiredMissing(t *testing.T) {
 }
 
 func TestDoctorReport_WarningCount(t *testing.T) {
-	report := DoctorReport{
-		Prereqs: []CheckResult{{Status: "WARN"}, {Status: "OK"}},
-		Project: []CheckResult{{Status: "WARN"}, {Status: "WARN"}},
-		Remotes: []CheckResult{{Status: "OK"}},
+	report := doctorReport{
+		Prereqs: []checkResult{{Status: "WARN"}, {Status: "OK"}},
+		Project: []checkResult{{Status: "WARN"}, {Status: "WARN"}},
+		Remotes: []checkResult{{Status: "OK"}},
 	}
 	if got := report.WarningCount(); got != 3 {
 		t.Errorf("WarningCount = %d, want 3", got)

@@ -15,8 +15,6 @@ const conversationTTL = 30 * time.Minute
 type Conversation struct {
 	Channel   string
 	ThreadTS  string
-	AgentName string
-	UserID    string
 	StartedAt time.Time
 }
 
@@ -40,8 +38,6 @@ func (t *ConversationTracker) Track(agent, channel, threadTS, userID string) {
 	t.convos[agent] = Conversation{
 		Channel:   channel,
 		ThreadTS:  threadTS,
-		AgentName: agent,
-		UserID:    userID,
 		StartedAt: time.Now(),
 	}
 }

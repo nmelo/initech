@@ -37,25 +37,25 @@ func init() {
 
 // ── Result model ───────────────────────────────────────────────────
 
-// CheckResult is a single named check with a status and detail string.
-type CheckResult struct {
+// checkResult is a single named check with a status and detail string.
+type checkResult struct {
 	Label  string // e.g. "Config", "claude", "workbench"
 	Status string // "OK", "WARN", "FAIL", "NOTE", "INFO"
 	Detail string // Human-readable description
 }
 
-// DoctorReport holds all check results grouped by section.
-type DoctorReport struct {
-	Prereqs     []CheckResult
-	Project     []CheckResult
-	Remotes     []CheckResult
-	Environment []CheckResult
+// doctorReport holds all check results grouped by section.
+type doctorReport struct {
+	Prereqs     []checkResult
+	Project     []checkResult
+	Remotes     []checkResult
+	Environment []checkResult
 	ProjectName string // Empty if no project found.
 	ProjectRoot string
 }
 
 // HasRequiredMissing returns true if any prerequisite check failed.
-func (r DoctorReport) HasRequiredMissing() bool {
+func (r doctorReport) HasRequiredMissing() bool {
 	for _, c := range r.Prereqs {
 		if c.Status == "FAIL" {
 			return true
@@ -65,9 +65,9 @@ func (r DoctorReport) HasRequiredMissing() bool {
 }
 
 // WarningCount returns the total number of warnings across all sections.
-func (r DoctorReport) WarningCount() int {
+func (r doctorReport) WarningCount() int {
 	n := 0
-	for _, checks := range [][]CheckResult{r.Prereqs, r.Project, r.Remotes} {
+	for _, checks := range [][]checkResult{r.Prereqs, r.Project, r.Remotes} {
 		for _, c := range checks {
 			if c.Status == "WARN" {
 				n++
@@ -79,18 +79,18 @@ func (r DoctorReport) WarningCount() int {
 
 // ── Injectable dependencies ────────────────────────────────────────
 
-// DoctorEnv provides injectable dependencies for doctor checks.
-type DoctorEnv struct {
+// doctorEnv provides injectable dependencies for doctor checks.
+type doctorEnv struct {
 	LookPath   func(string) (string, error)
 	GetVersion func([]string) string
 	Dial       func(string, string, time.Duration) (net.Conn, error)
 	WorkDir    string
 }
 
-// DefaultDoctorEnv returns the production dependencies.
-func DefaultDoctorEnv() DoctorEnv {
+// defaultDoctorEnv returns the production dependencies.
+func defaultDoctorEnv() doctorEnv {
 	wd, _ := os.Getwd()
-	return DoctorEnv{
+	return doctorEnv{
 		LookPath:   exec.LookPath,
 		GetVersion: getVersion,
 		Dial:       net.DialTimeout,
@@ -100,9 +100,9 @@ func DefaultDoctorEnv() DoctorEnv {
 
 // ── Check orchestration ────────────────────────────────────────────
 
-// RunDoctorReport runs all doctor checks and returns a structured report.
-func RunDoctorReport(env DoctorEnv) DoctorReport {
-	report := DoctorReport{}
+// runDoctorReport runs all doctor checks and returns a structured report.
+func runDoctorReport(env doctorEnv) doctorReport {
+	report := doctorReport{}
 	report.Prereqs = runPrereqChecks(env)
 
 	cfgPath, err := config.Discover(env.WorkDir)
@@ -150,8 +150,8 @@ var prereqList = []prereqDef{
 	},
 }
 
-func runPrereqChecks(env DoctorEnv) []CheckResult {
-	var results []CheckResult
+func runPrereqChecks(env doctorEnv) []checkResult {
+	var results []checkResult
 	for _, p := range prereqList {
 		path, _ := env.LookPath(p.Name)
 		if path == "" {
@@ -163,13 +163,13 @@ func runPrereqChecks(env DoctorEnv) []CheckResult {
 			if p.Note != "" {
 				detail += " (" + p.Note + ")"
 			}
-			results = append(results, CheckResult{Label: p.Name, Status: status, Detail: detail})
+			results = append(results, checkResult{Label: p.Name, Status: status, Detail: detail})
 		} else {
 			version := env.GetVersion(p.VersionCmd)
 			if version == "" {
 				version = "unknown"
 			}
-			results = append(results, CheckResult{
+			results = append(results, checkResult{
 				Label:  p.Name,
 				Status: "OK",
 				Detail: fmt.Sprintf("%s (%s)", version, path),
@@ -181,36 +181,36 @@ func runPrereqChecks(env DoctorEnv) []CheckResult {
 
 // ── Project health checks ──────────────────────────────────────────
 
-func runProjectChecks(cfgPath string) (checks []CheckResult, projectName, projectRoot string) {
+func runProjectChecks(cfgPath string) (checks []checkResult, projectName, projectRoot string) {
 	root := filepath.Dir(cfgPath)
 	projectRoot = root
 
 	proj, err := config.Load(cfgPath)
 	if err != nil {
-		return []CheckResult{
+		return []checkResult{
 			{Label: "Config", Status: "FAIL", Detail: "initech.yaml parse error: " + err.Error()},
 		}, "?", root
 	}
 	projectName = proj.Name
 	if err := config.Validate(proj); err != nil {
-		return []CheckResult{
+		return []checkResult{
 			{Label: "Config", Status: "WARN", Detail: "initech.yaml invalid: " + err.Error()},
 		}, proj.Name, root
 	}
 
-	checks = append(checks, CheckResult{
+	checks = append(checks, checkResult{
 		Label: "Config", Status: "OK",
 		Detail: fmt.Sprintf("initech.yaml valid (%d roles)", len(proj.Roles)),
 	})
 
 	// Notify: webhook_url
 	if proj.WebhookURL == "" {
-		checks = append(checks, CheckResult{
+		checks = append(checks, checkResult{
 			Label: "Notify", Status: "WARN",
 			Detail: "no webhook_url configured (Slack notifications disabled)",
 		})
 	} else {
-		checks = append(checks, CheckResult{
+		checks = append(checks, checkResult{
 			Label: "Notify", Status: "OK",
 			Detail: "webhook_url configured",
 		})
@@ -220,17 +220,17 @@ func runProjectChecks(cfgPath string) (checks []CheckResult, projectName, projec
 	if proj.Beads.IsEnabled() {
 		beadsDir := filepath.Join(root, ".beads")
 		if _, err := os.Stat(beadsDir); err != nil {
-			checks = append(checks, CheckResult{Label: "Beads", Status: "WARN", Detail: ".beads/ not found — run 'bd init'"})
+			checks = append(checks, checkResult{Label: "Beads", Status: "WARN", Detail: ".beads/ not found — run 'bd init'"})
 		} else {
 			prefix := proj.Beads.Prefix
 			if prefix == "" {
 				prefix = "?"
 			}
-			checks = append(checks, CheckResult{Label: "Beads", Status: "OK",
+			checks = append(checks, checkResult{Label: "Beads", Status: "OK",
 				Detail: fmt.Sprintf(".beads/ present (prefix: %s)", prefix)})
 		}
 	} else {
-		checks = append(checks, CheckResult{Label: "Beads", Status: "OK", Detail: "disabled"})
+		checks = append(checks, checkResult{Label: "Beads", Status: "OK", Detail: "disabled"})
 	}
 
 	// Agent workspaces: each role needs a CLAUDE.md
@@ -244,12 +244,12 @@ func runProjectChecks(cfgPath string) (checks []CheckResult, projectName, projec
 	total := len(proj.Roles)
 	ok := total - len(missingClaudes)
 	if len(missingClaudes) > 0 {
-		checks = append(checks, CheckResult{
+		checks = append(checks, checkResult{
 			Label: "Workspaces", Status: "WARN",
 			Detail: fmt.Sprintf("%d/%d roles have CLAUDE.md (missing: %s)", ok, total, strings.Join(missingClaudes, ", ")),
 		})
 	} else {
-		checks = append(checks, CheckResult{
+		checks = append(checks, checkResult{
 			Label: "Workspaces", Status: "OK",
 			Detail: fmt.Sprintf("%d/%d roles have CLAUDE.md", ok, total),
 		})
@@ -273,12 +273,12 @@ func runProjectChecks(cfgPath string) (checks []CheckResult, projectName, projec
 		subTotal := len(needsSrcRoles)
 		subOK := subTotal - len(missingSubs)
 		if len(missingSubs) > 0 {
-			checks = append(checks, CheckResult{
+			checks = append(checks, checkResult{
 				Label: "Submodules", Status: "WARN",
 				Detail: fmt.Sprintf("%d/%d src/ submodules checked out (missing: %s)", subOK, subTotal, strings.Join(missingSubs, ", ")),
 			})
 		} else {
-			checks = append(checks, CheckResult{
+			checks = append(checks, checkResult{
 				Label: "Submodules", Status: "OK",
 				Detail: fmt.Sprintf("%d/%d src/ submodules checked out", subOK, subTotal),
 			})
@@ -302,9 +302,9 @@ func runProjectChecks(cfgPath string) (checks []CheckResult, projectName, projec
 					pidStr = " (PID " + strings.TrimSpace(string(data)) + ")"
 				}
 			}
-			checks = append(checks, CheckResult{Label: "Session", Status: "OK", Detail: "Session running" + pidStr})
+			checks = append(checks, checkResult{Label: "Session", Status: "OK", Detail: "Session running" + pidStr})
 		} else {
-			checks = append(checks, CheckResult{Label: "Session", Status: "WARN", Detail: "stale socket found — run: rm " + sockPath})
+			checks = append(checks, checkResult{Label: "Session", Status: "WARN", Detail: "stale socket found — run: rm " + sockPath})
 		}
 	case pidExists:
 		if data, err := os.ReadFile(pidPath); err == nil {
@@ -312,25 +312,25 @@ func runProjectChecks(cfgPath string) (checks []CheckResult, projectName, projec
 			if pid, err := strconv.Atoi(pidStr); err == nil {
 				proc, _ := os.FindProcess(pid)
 				if proc != nil && proc.Signal(syscall.Signal(0)) == nil {
-					checks = append(checks, CheckResult{Label: "Session", Status: "OK", Detail: "no stale socket or PID file"})
+					checks = append(checks, checkResult{Label: "Session", Status: "OK", Detail: "no stale socket or PID file"})
 				} else {
-					checks = append(checks, CheckResult{Label: "Session", Status: "WARN",
+					checks = append(checks, checkResult{Label: "Session", Status: "WARN",
 						Detail: fmt.Sprintf("stale PID file (PID %d not running)", pid)})
 				}
 			} else {
-				checks = append(checks, CheckResult{Label: "Session", Status: "OK", Detail: "no stale socket or PID file"})
+				checks = append(checks, checkResult{Label: "Session", Status: "OK", Detail: "no stale socket or PID file"})
 			}
 		} else {
-			checks = append(checks, CheckResult{Label: "Session", Status: "OK", Detail: "no stale socket or PID file"})
+			checks = append(checks, checkResult{Label: "Session", Status: "OK", Detail: "no stale socket or PID file"})
 		}
 	default:
-		checks = append(checks, CheckResult{Label: "Session", Status: "OK", Detail: "no stale socket or PID file"})
+		checks = append(checks, checkResult{Label: "Session", Status: "OK", Detail: "no stale socket or PID file"})
 	}
 
 	// Crash log
 	crashLog := filepath.Join(root, ".initech", "crash.log")
 	if info, err := os.Stat(crashLog); err == nil && info.Size() > 0 {
-		checks = append(checks, CheckResult{Label: "Crash log", Status: "NOTE", Detail: "crash.log present (run initech to see analysis)"})
+		checks = append(checks, checkResult{Label: "Crash log", Status: "NOTE", Detail: "crash.log present (run initech to see analysis)"})
 	}
 
 	return checks, projectName, root
@@ -338,12 +338,12 @@ func runProjectChecks(cfgPath string) (checks []CheckResult, projectName, projec
 
 // ── Remote connectivity checks ─────────────────────────────────────
 
-func runRemoteChecks(proj *config.Project, dial func(string, string, time.Duration) (net.Conn, error)) []CheckResult {
-	var results []CheckResult
+func runRemoteChecks(proj *config.Project, dial func(string, string, time.Duration) (net.Conn, error)) []checkResult {
+	var results []checkResult
 	for peerName, remote := range proj.Remotes {
 		conn, err := dial("tcp", remote.Addr, 5*time.Second)
 		if err != nil {
-			results = append(results, CheckResult{Label: peerName, Status: "WARN",
+			results = append(results, checkResult{Label: peerName, Status: "WARN",
 				Detail: fmt.Sprintf("%s: unreachable (%s)", remote.Addr, err)})
 			continue
 		}
@@ -351,7 +351,7 @@ func runRemoteChecks(proj *config.Project, dial func(string, string, time.Durati
 		session, err := yamux.Client(conn, yamux.DefaultConfig())
 		if err != nil {
 			conn.Close()
-			results = append(results, CheckResult{Label: peerName, Status: "WARN",
+			results = append(results, checkResult{Label: peerName, Status: "WARN",
 				Detail: fmt.Sprintf("%s: yamux failed (%s)", remote.Addr, err)})
 			continue
 		}
@@ -359,7 +359,7 @@ func runRemoteChecks(proj *config.Project, dial func(string, string, time.Durati
 		ctrl, err := session.Open()
 		if err != nil {
 			session.Close()
-			results = append(results, CheckResult{Label: peerName, Status: "WARN",
+			results = append(results, checkResult{Label: peerName, Status: "WARN",
 				Detail: fmt.Sprintf("%s: control stream failed (%s)", remote.Addr, err)})
 			continue
 		}
@@ -383,7 +383,7 @@ func runRemoteChecks(proj *config.Project, dial func(string, string, time.Durati
 		if !scanner.Scan() {
 			ctrl.Close()
 			session.Close()
-			results = append(results, CheckResult{Label: peerName, Status: "WARN",
+			results = append(results, checkResult{Label: peerName, Status: "WARN",
 				Detail: fmt.Sprintf("%s: no response to hello", remote.Addr)})
 			continue
 		}
@@ -395,10 +395,10 @@ func runRemoteChecks(proj *config.Project, dial func(string, string, time.Durati
 			ctrl.Close()
 			session.Close()
 			if errMsg.Error != "" {
-				results = append(results, CheckResult{Label: peerName, Status: "WARN",
+				results = append(results, checkResult{Label: peerName, Status: "WARN",
 					Detail: fmt.Sprintf("%s: %s", remote.Addr, errMsg.Error)})
 			} else {
-				results = append(results, CheckResult{Label: peerName, Status: "WARN",
+				results = append(results, checkResult{Label: peerName, Status: "WARN",
 					Detail: fmt.Sprintf("%s: unexpected response", remote.Addr)})
 			}
 			continue
@@ -407,7 +407,7 @@ func runRemoteChecks(proj *config.Project, dial func(string, string, time.Durati
 		ctrl.Close()
 		session.Close()
 
-		results = append(results, CheckResult{Label: peerName, Status: "OK",
+		results = append(results, checkResult{Label: peerName, Status: "OK",
 			Detail: fmt.Sprintf("%s (peer: %s, %d agents)", remote.Addr, helloOK.PeerName, len(helloOK.Agents))})
 	}
 	return results
@@ -415,14 +415,14 @@ func runRemoteChecks(proj *config.Project, dial func(string, string, time.Durati
 
 // ── Environment checks ─────────────────────────────────────────────
 
-func runEnvironmentChecks() []CheckResult {
-	var results []CheckResult
+func runEnvironmentChecks() []checkResult {
+	var results []checkResult
 
 	termVal := os.Getenv("TERM")
 	if termVal == "" {
 		termVal = "(not set)"
 	}
-	results = append(results, CheckResult{Label: "TERM", Status: "INFO", Detail: termVal})
+	results = append(results, checkResult{Label: "TERM", Status: "INFO", Detail: termVal})
 
 	sizeStr := "unknown"
 	if term.IsTerminal(int(os.Stdout.Fd())) {
@@ -430,7 +430,7 @@ func runEnvironmentChecks() []CheckResult {
 			sizeStr = fmt.Sprintf("%d x %d", cols, rows)
 		}
 	}
-	results = append(results, CheckResult{Label: "Terminal", Status: "INFO", Detail: sizeStr})
+	results = append(results, checkResult{Label: "Terminal", Status: "INFO", Detail: sizeStr})
 
 	colorSupport := "basic"
 	colorterm := strings.ToLower(os.Getenv("COLORTERM"))
@@ -441,15 +441,15 @@ func runEnvironmentChecks() []CheckResult {
 	} else if termVal == "dumb" || termVal == "" || termVal == "(not set)" {
 		colorSupport = "none"
 	}
-	results = append(results, CheckResult{Label: "Colors", Status: "INFO", Detail: colorSupport})
+	results = append(results, checkResult{Label: "Colors", Status: "INFO", Detail: colorSupport})
 
 	shell := os.Getenv("SHELL")
 	if shell == "" {
 		shell = "(not set)"
 	}
-	results = append(results, CheckResult{Label: "Shell", Status: "INFO", Detail: shell})
+	results = append(results, checkResult{Label: "Shell", Status: "INFO", Detail: shell})
 
-	results = append(results, CheckResult{Label: "OS", Status: "INFO", Detail: runtime.GOOS + " " + runtime.GOARCH})
+	results = append(results, checkResult{Label: "OS", Status: "INFO", Detail: runtime.GOOS + " " + runtime.GOARCH})
 
 	return results
 }
@@ -457,12 +457,12 @@ func runEnvironmentChecks() []CheckResult {
 // ── Cobra command ──────────────────────────────────────────────────
 
 func runDoctor(cmd *cobra.Command, args []string) error {
-	env := DefaultDoctorEnv()
-	report := RunDoctorReport(env)
+	env := defaultDoctorEnv()
+	report := runDoctorReport(env)
 	return formatDoctorReport(cmd.OutOrStdout(), report)
 }
 
-func formatDoctorReport(out io.Writer, report DoctorReport) error {
+func formatDoctorReport(out io.Writer, report doctorReport) error {
 	// Section 1: Prerequisites
 	fmt.Fprintf(out, "\n%s\n", color.CyanBold("Prerequisites"))
 	var missingPrereqs []prereqDef

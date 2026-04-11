@@ -105,7 +105,7 @@ Commands (via ` + "`" + ` modal):
 			select {
 			case info := <-updateResult:
 				if info != nil {
-					LatestRelease = info
+					latestRelease = info
 				}
 			default:
 			}
@@ -114,10 +114,10 @@ Commands (via ` + "`" + ` modal):
 		// Show update notification on stderr for CLI commands.
 		// Skip for: TUI (has its own notification), serve, version.
 		skip := map[string]bool{"initech": true, "serve": true, "version": true}
-		if LatestRelease != nil && !skip[cmd.Name()] {
-			if !update.ShouldSuppressNotification(LatestRelease.PublishedAt) {
+		if latestRelease != nil && !skip[cmd.Name()] {
+			if !update.ShouldSuppressNotification(latestRelease.PublishedAt) {
 				fmt.Fprintf(os.Stderr, "\nA new version of initech is available: v%s -> v%s\n  Update: %s\n\n",
-					Version, LatestRelease.Version, update.UpdateInstruction())
+					Version, latestRelease.Version, update.UpdateInstruction())
 			}
 		}
 		return nil
@@ -125,9 +125,9 @@ Commands (via ` + "`" + ` modal):
 	RunE: runTUI,
 }
 
-// LatestRelease holds the result of the background version check.
+// latestRelease holds the result of the background version check.
 // Populated by PersistentPostRun, consumed by notification surfaces.
-var LatestRelease *update.ReleaseInfo
+var latestRelease *update.ReleaseInfo
 
 // Execute runs the root command.
 func Execute() {
@@ -247,7 +247,7 @@ func runTUI(cmd *cobra.Command, args []string) error {
 		tuiUpdateCh = make(chan string, 1)
 		go func() {
 			if info := <-updateResult; info != nil {
-				LatestRelease = info
+				latestRelease = info
 				if !update.ShouldSuppressNotification(info.PublishedAt) {
 					tuiUpdateCh <- info.Version
 				}

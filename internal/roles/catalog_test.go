@@ -65,16 +65,6 @@ func TestCatalogNeedsPlaybooks(t *testing.T) {
 	}
 }
 
-func TestCatalogNeedsMakefile(t *testing.T) {
-	needsMakefile := []string{"eng1", "eng2", "eng3"}
-	for _, name := range needsMakefile {
-		def := Catalog[name]
-		if !def.NeedsMakefile {
-			t.Errorf("%s should have NeedsMakefile=true", name)
-		}
-	}
-}
-
 func TestCatalogNames(t *testing.T) {
 	for name, def := range Catalog {
 		if def.Name != name {
@@ -106,9 +96,6 @@ func TestLookupRole_Unknown(t *testing.T) {
 	}
 	if def.NeedsPlaybooks {
 		t.Error("unknown role should not need playbooks")
-	}
-	if def.NeedsMakefile {
-		t.Error("unknown role should not need makefile")
 	}
 }
 

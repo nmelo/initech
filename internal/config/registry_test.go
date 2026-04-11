@@ -162,27 +162,6 @@ func TestLookupField_NotFound(t *testing.T) {
 	}
 }
 
-func TestIsSecret(t *testing.T) {
-	tests := []struct {
-		key  string
-		want bool
-	}{
-		{"mcp_token", true},
-		{"token", true},
-		{"slack.app_token", true},
-		{"slack.bot_token", true},
-		{"remotes.workbench.token", true},
-		{"mcp_port", false},
-		{"project", false},
-		{"nonexistent", false},
-	}
-	for _, tt := range tests {
-		if got := IsSecret(tt.key); got != tt.want {
-			t.Errorf("IsSecret(%q) = %v, want %v", tt.key, got, tt.want)
-		}
-	}
-}
-
 func TestAllFields_NonEmpty(t *testing.T) {
 	fields := AllFields()
 	if len(fields) == 0 {

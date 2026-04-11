@@ -12,11 +12,9 @@ var varPattern = regexp.MustCompile(`\{\{(\w+)\}\}`)
 type RenderVars struct {
 	ProjectName string
 	ProjectRoot string
-	RepoURL     string
 	TechStack   string
 	BuildCmd    string
 	TestCmd     string
-	BeadsPrefix string
 }
 
 // Render substitutes {{variable}} placeholders in a template string.
@@ -29,11 +27,9 @@ func Render(tmpl string, vars RenderVars) string {
 	lookup := map[string]string{
 		"project_name": vars.ProjectName,
 		"project_root": vars.ProjectRoot,
-		"repo_url":     vars.RepoURL,
 		"tech_stack":   vars.TechStack,
 		"build_cmd":    vars.BuildCmd,
 		"test_cmd":     vars.TestCmd,
-		"beads_prefix": vars.BeadsPrefix,
 	}
 
 	return varPattern.ReplaceAllStringFunc(tmpl, func(match string) string {

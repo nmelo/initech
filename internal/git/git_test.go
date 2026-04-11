@@ -145,9 +145,9 @@ func TestNormalizeRepoURL(t *testing.T) {
 		{"localhost", "localhost"},
 	}
 	for _, tc := range tests {
-		got := NormalizeRepoURL(tc.input)
+		got := normalizeRepoURL(tc.input)
 		if got != tc.want {
-			t.Errorf("NormalizeRepoURL(%q) = %q, want %q", tc.input, got, tc.want)
+			t.Errorf("normalizeRepoURL(%q) = %q, want %q", tc.input, got, tc.want)
 		}
 	}
 }

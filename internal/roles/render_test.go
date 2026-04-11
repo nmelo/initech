@@ -6,15 +6,14 @@ import (
 )
 
 func TestRender_FullSubstitution(t *testing.T) {
-	tmpl := "Project: {{project_name}}, Root: {{project_root}}, Repo: {{repo_url}}"
+	tmpl := "Project: {{project_name}}, Root: {{project_root}}"
 	vars := RenderVars{
 		ProjectName: "testapp",
 		ProjectRoot: "/home/user/testapp",
-		RepoURL:     "git@github.com:user/testapp.git",
 	}
 
 	got := Render(tmpl, vars)
-	want := "Project: testapp, Root: /home/user/testapp, Repo: git@github.com:user/testapp.git"
+	want := "Project: testapp, Root: /home/user/testapp"
 	if got != want {
 		t.Errorf("got %q, want %q", got, want)
 	}
@@ -64,16 +63,14 @@ func TestRender_AllVars(t *testing.T) {
 	vars := RenderVars{
 		ProjectName: "p",
 		ProjectRoot: "r",
-		RepoURL:     "u",
 		TechStack:   "t",
 		BuildCmd:    "b",
 		TestCmd:     "x",
-		BeadsPrefix: "bp",
 	}
 
-	tmpl := "{{project_name}}|{{project_root}}|{{repo_url}}|{{tech_stack}}|{{build_cmd}}|{{test_cmd}}|{{beads_prefix}}"
+	tmpl := "{{project_name}}|{{project_root}}|{{tech_stack}}|{{build_cmd}}|{{test_cmd}}"
 	got := Render(tmpl, vars)
-	want := "p|r|u|t|b|x|bp"
+	want := "p|r|t|b|x"
 	if got != want {
 		t.Errorf("got %q, want %q", got, want)
 	}

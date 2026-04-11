@@ -289,9 +289,9 @@ func TestBuildServeAgentConfig_AgentTypeDefaults(t *testing.T) {
 		},
 	}
 
-	cfg, err := buildServeAgentConfig("generic-agent", proj)
+	cfg, err := buildAgentPaneConfig("generic-agent", proj)
 	if err != nil {
-		t.Fatalf("buildServeAgentConfig: %v", err)
+		t.Fatalf("buildAgentPaneConfig: %v", err)
 	}
 	if cfg.AgentType != config.AgentTypeGeneric {
 		t.Errorf("AgentType = %q, want %q", cfg.AgentType, config.AgentTypeGeneric)

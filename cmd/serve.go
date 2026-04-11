@@ -3,10 +3,8 @@ package cmd
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 
 	"github.com/nmelo/initech/internal/config"
-	"github.com/nmelo/initech/internal/roles"
 	"github.com/nmelo/initech/internal/tui"
 	"github.com/spf13/cobra"
 )
@@ -47,7 +45,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 	// Build agent configs.
 	agents := make([]tui.PaneConfig, 0, len(proj.Roles))
 	for _, roleName := range proj.Roles {
-		pcfg, err := buildServeAgentConfig(roleName, proj)
+		pcfg, err := buildAgentPaneConfig(roleName, proj)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: %v\n", err)
 			continue
@@ -68,55 +66,3 @@ func runServe(cmd *cobra.Command, args []string) error {
 	})
 }
 
-// buildServeAgentConfig constructs a PaneConfig for a role in serve mode.
-func buildServeAgentConfig(roleName string, proj *config.Project) (tui.PaneConfig, error) {
-	ov, hasOverride := proj.RoleOverrides[roleName]
-
-	var argv []string
-	if mock := os.Getenv("INITECH_MOCK_AGENT"); mock != "" {
-		argv = []string{mock}
-	} else {
-		// Per-role command override takes priority (e.g. ["codex"] for non-Claude agents).
-		// When Command is set, it is the complete command; claude_args are NOT appended.
-		if hasOverride && len(ov.Command) > 0 {
-			argv = append(argv, ov.Command...)
-		} else {
-			if len(proj.ClaudeCommand) > 0 {
-				argv = append(argv, proj.ClaudeCommand...)
-			} else {
-				argv = []string{"claude"}
-			}
-			var roleArgs []string
-			if hasOverride {
-				roleArgs = ov.ClaudeArgs
-			}
-			if resolved := roles.ResolveClaudeArgs(roleName, proj.ClaudeArgs, roleArgs); len(resolved) > 0 {
-				argv = append(argv, resolved...)
-			}
-		}
-	}
-
-	dir := filepath.Join(proj.Root, roleName)
-	if hasOverride && ov.Dir != "" {
-		dir = ov.Dir
-	}
-
-	if _, err := os.Stat(dir); os.IsNotExist(err) {
-		return tui.PaneConfig{}, fmt.Errorf("role %q directory does not exist: %s", roleName, dir)
-	}
-
-	var env []string
-
-	agentType, autoApprove, noBracketedPaste, submitKey := resolvePaneBehavior(ov)
-
-	return tui.PaneConfig{
-		Name:             roleName,
-		Command:          argv,
-		Dir:              dir,
-		Env:              env,
-		AgentType:        agentType,
-		AutoApprove:      autoApprove,
-		NoBracketedPaste: noBracketedPaste,
-		SubmitKey:        submitKey,
-	}, nil
-}

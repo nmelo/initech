@@ -106,12 +106,6 @@ func LookupField(key string) (FieldMeta, bool) {
 	return FieldMeta{}, false
 }
 
-// IsSecret returns true if the field should be masked in output.
-func IsSecret(key string) bool {
-	f, ok := LookupField(key)
-	return ok && f.Secret
-}
-
 // matchTemplate checks whether concrete key parts match a template pattern.
 // Template segments like "<name>" or "<role>" match any non-empty value.
 // Bracket segments like "[]" in "repos[].url" also match any value.

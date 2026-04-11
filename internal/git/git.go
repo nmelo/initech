@@ -34,7 +34,7 @@ func Init(runner iexec.Runner, dir string) error {
 // The path is relative to the repo root (e.g., "eng1/src"). The URL is
 // normalized before use (bare hostnames get git@ SSH prefix).
 func AddSubmodule(runner iexec.Runner, repoDir, url, subPath string) error {
-	url = NormalizeRepoURL(url)
+	url = normalizeRepoURL(url)
 	_, err := runner.RunInDir(repoDir, "git", "submodule", "add", url, subPath)
 	if err != nil {
 		return fmt.Errorf("git submodule add %s: %w", subPath, err)
@@ -42,13 +42,13 @@ func AddSubmodule(runner iexec.Runner, repoDir, url, subPath string) error {
 	return nil
 }
 
-// NormalizeRepoURL converts bare repository references like
+// normalizeRepoURL converts bare repository references like
 // "github.com/user/repo" into proper git URLs. If the URL already has a
 // recognized protocol prefix (https://, http://, git@, ssh://), it is
 // returned unchanged. Otherwise, the first "/" after the host is converted
 // to ":" and "git@" is prepended, producing SSH URLs like
 // "git@github.com:user/repo.git".
-func NormalizeRepoURL(url string) string {
+func normalizeRepoURL(url string) string {
 	if url == "" {
 		return url
 	}
