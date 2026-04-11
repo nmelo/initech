@@ -347,8 +347,10 @@ func (t *TUI) initLiveEngine(numSlots int) {
 }
 
 // onLiveSwap compares previous and current slot assignments. If any slot
-// changed to a different agent, fires a lightweight announce POST for the
-// audio cue. The POST is fire-and-forget with a 1-second timeout.
+// changed to a different agent, emits an EventLiveSwap. The event flows
+// through the standard fan-out (event log, webhook, MCP) but is suppressed
+// from toasts (too frequent). No direct radio POST; the webhook sink
+// handles external notification.
 func (t *TUI) onLiveSwap(prev, curr []string) {
 	var swapped string
 	var prevAgent string
@@ -365,21 +367,11 @@ func (t *TUI) onLiveSwap(prev, curr []string) {
 		return
 	}
 
-	// Emit LiveSwap event (suppressed from toasts, visible in log + webhook).
 	t.handleAgentEvent(AgentEvent{
 		Type:   EventLiveSwap,
 		Pane:   swapped,
 		Detail: fmt.Sprintf("%s swapped into slot %d (was %s)", swapped, slotIdx, prevAgent),
 	})
-
-	url := ""
-	if t.project != nil {
-		url = t.project.AnnounceURL
-	}
-	if url == "" {
-		return
-	}
-	go announceLiveSwap(url, swapped)
 }
 
 // saveLayoutIfConfigured persists the current layout to disk.
