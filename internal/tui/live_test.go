@@ -1170,3 +1170,85 @@ func TestTickAuto_NilRolesFallsBackToAlphabetical(t *testing.T) {
 		t.Errorf("expected [a c] (alphabetical fallback), got %v", result)
 	}
 }
+
+// ── ini-y71: fill-empty must not duplicate agents ─────────────────────
+
+func TestFillEmpty_NoDuplicates(t *testing.T) {
+	now := time.Now()
+	// 4 slots (1 pinned + 3 dynamic), 5 candidates with varying scores.
+	// All slots are empty (fresh engine). Each dynamic slot should get a
+	// unique agent, not the same top-scorer repeated.
+	panes := []PaneView{
+		&mockPaneView{name: "super", alive: true, activity: StateIdle},
+		&mockPaneView{name: "eng1", alive: true, activity: StateRunning, beadID: "bb-1", runStart: now.Add(-10 * time.Second), runBytes: 20000},
+		&mockPaneView{name: "eng2", alive: true, activity: StateIdle, beadID: "bb-2"},
+		&mockPaneView{name: "qa1", alive: true, activity: StateRunning, beadID: "bb-q", runStart: now.Add(-10 * time.Second), runBytes: 15000},
+		&mockPaneView{name: "pm", alive: true, activity: StateIdle, beadID: "bb-p"},
+		&mockPaneView{name: "shipper", alive: true, activity: StateIdle},
+	}
+	le := NewLiveEngine(4, map[string]int{"super": 0}, []string{"super", "eng1", "eng2", "qa1", "pm", "shipper"})
+	result := le.Tick(panes, now)
+
+	// Verify no duplicates.
+	seen := make(map[string]bool)
+	for i, name := range result {
+		if name == "" {
+			continue
+		}
+		if seen[name] {
+			t.Errorf("slot %d: duplicate agent %q in result %v", i, name, result)
+		}
+		seen[name] = true
+	}
+
+	// Verify all 4 slots filled (super + top 3 dynamic agents).
+	filled := 0
+	for _, name := range result {
+		if name != "" {
+			filled++
+		}
+	}
+	if filled != 4 {
+		t.Errorf("expected 4 filled slots, got %d: %v", filled, result)
+	}
+
+	// Super must be in slot 0 (pinned).
+	if result[0] != "super" {
+		t.Errorf("slot 0 should be super (pinned), got %q", result[0])
+	}
+}
+
+func TestFillEmpty_NoDuplicates_TickAuto(t *testing.T) {
+	now := time.Now()
+	// 4 agents all above keep threshold. After enough ticks, all should be
+	// visible and each unique.
+	panes := []PaneView{
+		&mockPaneView{name: "super", alive: true, activity: StateIdle},
+		&mockPaneView{name: "eng1", alive: true, activity: StateIdle, beadID: "bb-1"},
+		&mockPaneView{name: "eng2", alive: true, activity: StateIdle, beadID: "bb-2"},
+		&mockPaneView{name: "qa1", alive: true, activity: StateIdle, beadID: "bb-3"},
+	}
+	le := NewLiveEngine(0, map[string]int{"super": 0}, []string{"super", "eng1", "eng2", "qa1"})
+
+	// Tick enough times for all agents to become visible (one add per tick).
+	var result []string
+	for i := 0; i < 5; i++ {
+		result = le.TickAuto(panes, now)
+	}
+
+	// Verify no duplicates.
+	seen := make(map[string]bool)
+	for i, name := range result {
+		if name == "" {
+			continue
+		}
+		if seen[name] {
+			t.Errorf("slot %d: duplicate agent %q in result %v", i, name, result)
+		}
+		seen[name] = true
+	}
+
+	if len(result) != 4 {
+		t.Errorf("expected 4 visible agents, got %d: %v", len(result), result)
+	}
+}
