@@ -83,7 +83,7 @@ func TestEventLogStyle_Colors(t *testing.T) {
 		{EventAgentStuck, tcell.ColorRed},
 		{EventAgentStalled, tcell.ColorYellow},
 		{EventBeadClaimed, tcell.ColorDodgerBlue},
-		{EventAgentIdle, tcell.ColorGray},
+		{EventAgentStarted, tcell.ColorSilver},
 	}
 	for _, tt := range tests {
 		style := eventLogRowStyle(tt.et, tcell.StyleDefault)

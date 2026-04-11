@@ -584,18 +584,24 @@ func (t *TUI) renderNotifications() {
 		case EventBeadCompleted:
 			gutterColor = tcell.ColorGreen
 			style = tcell.StyleDefault.Background(tcell.ColorDarkGreen).Foreground(tcell.ColorBlack)
-		case EventBeadClaimed:
+		case EventBeadClaimed, EventBeadAssigned:
 			gutterColor = tcell.ColorDodgerBlue
 			style = tcell.StyleDefault.Background(tcell.ColorDodgerBlue).Foreground(tcell.ColorWhite)
+		case EventBeadDelivered:
+			gutterColor = tcell.ColorGreen
+			style = tcell.StyleDefault.Background(tcell.ColorDarkGreen).Foreground(tcell.ColorBlack)
+		case EventPeerConnected:
+			gutterColor = tcell.ColorGreen
+			style = tcell.StyleDefault.Background(tcell.ColorDarkGreen).Foreground(tcell.ColorBlack)
+		case EventPeerDisconnected:
+			gutterColor = tcell.ColorRed
+			style = tcell.StyleDefault.Background(tcell.ColorDarkRed).Foreground(tcell.ColorWhite)
 		case EventBeadFailed, EventAgentStuck:
 			gutterColor = tcell.ColorRed
 			style = tcell.StyleDefault.Background(tcell.ColorDarkRed).Foreground(tcell.ColorWhite)
 		case EventAgentStalled:
 			gutterColor = tcell.ColorOrange
 			style = tcell.StyleDefault.Background(tcell.ColorDarkOrange).Foreground(tcell.ColorBlack)
-		case EventAgentIdle:
-			gutterColor = tcell.ColorGray
-			style = tcell.StyleDefault.Background(tcell.ColorDimGray).Foreground(tcell.ColorWhite)
 		default:
 			gutterColor = tcell.ColorGray
 			style = tcell.StyleDefault.Background(tcell.ColorDimGray).Foreground(tcell.ColorWhite)

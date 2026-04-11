@@ -344,15 +344,27 @@ func (t *TUI) initLiveEngine(numSlots int) {
 // audio cue. The POST is fire-and-forget with a 1-second timeout.
 func (t *TUI) onLiveSwap(prev, curr []string) {
 	var swapped string
+	var prevAgent string
+	var slotIdx int
 	for i := 0; i < len(curr) && i < len(prev); i++ {
 		if prev[i] != curr[i] && curr[i] != "" && prev[i] != "" {
 			swapped = curr[i]
+			prevAgent = prev[i]
+			slotIdx = i
 			break
 		}
 	}
 	if swapped == "" {
 		return
 	}
+
+	// Emit LiveSwap event (suppressed from toasts, visible in log + webhook).
+	t.handleAgentEvent(AgentEvent{
+		Type:   EventLiveSwap,
+		Pane:   swapped,
+		Detail: fmt.Sprintf("%s swapped into slot %d (was %s)", swapped, slotIdx, prevAgent),
+	})
+
 	url := ""
 	if t.project != nil {
 		url = t.project.AnnounceURL
@@ -1007,6 +1019,15 @@ func (t *TUI) handlePeerUpdate(peerName string, newPanes []PaneView) {
 			}
 		}
 		kept = append(kept, newPanes...)
+		t.handleAgentEvent(AgentEvent{
+			Type:   EventPeerConnected,
+			Detail: fmt.Sprintf("%s connected (%d agents)", peerName, len(newPanes)),
+		})
+	} else {
+		t.handleAgentEvent(AgentEvent{
+			Type:   EventPeerDisconnected,
+			Detail: fmt.Sprintf("%s disconnected", peerName),
+		})
 	}
 	oldLen := len(t.panes)
 	t.panes = kept

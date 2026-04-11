@@ -12,6 +12,7 @@ import (
 	"net"
 	"os"
 	"regexp"
+	"time"
 )
 
 // agentNameRe mirrors config.roleNameRe: letters, digits, hyphens, underscores.
@@ -473,4 +474,50 @@ func (t *TUI) InterruptAgent(name string, hard bool) error {
 	pane.ptmx.Write([]byte{b}) //nolint:errcheck
 	pane.sendMu.Unlock()
 	return nil
+}
+
+// handleIPCEmitEvent injects a typed event into the TUI event system.
+// Used by CLI commands (assign, deliver) to create toast + log entries.
+// Encoding: Target=agent, Host=bead ID, Text="type|detail" (pipe-separated).
+func (t *TUI) handleIPCEmitEvent(conn net.Conn, req IPCRequest) {
+	var evTypeStr, detail string
+	if idx := indexOf(req.Text, '|'); idx >= 0 {
+		evTypeStr = req.Text[:idx]
+		detail = req.Text[idx+1:]
+	} else {
+		evTypeStr = req.Text
+	}
+
+	evType := parseEventType(evTypeStr)
+	t.runOnMain(func() {
+		t.handleAgentEvent(AgentEvent{
+			Type:   evType,
+			Pane:   req.Target,
+			BeadID: req.Host,
+			Detail: detail,
+			Time:   time.Now(),
+		})
+	})
+	writeIPCResponse(conn, IPCResponse{OK: true})
+}
+
+func indexOf(s string, ch byte) int {
+	for i := 0; i < len(s); i++ {
+		if s[i] == ch {
+			return i
+		}
+	}
+	return -1
+}
+
+// parseEventType converts a string event type to EventType.
+func parseEventType(s string) EventType {
+	switch s {
+	case "bead_assigned":
+		return EventBeadAssigned
+	case "bead_delivered":
+		return EventBeadDelivered
+	default:
+		return EventType(-1)
+	}
 }

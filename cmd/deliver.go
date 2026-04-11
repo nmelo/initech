@@ -147,6 +147,19 @@ func runDeliver(cmd *cobra.Command, args []string) error {
 	// Step 6: Post to webhook (fire and forget).
 	webhookDeliver(cmd, agent, beadID, displayTitle, isFail, deliverReason)
 
+	// Step 7: Emit event to TUI (fire and forget).
+	if isFail {
+		reason := deliverReason
+		if reason == "" {
+			reason = "no reason provided"
+		}
+		emitIPCEvent(agentOrUnknown(agent), beadID, "bead_delivered",
+			fmt.Sprintf("%s failed %s: %s", agentOrUnknown(agent), beadID, reason))
+	} else {
+		emitIPCEvent(agentOrUnknown(agent), beadID, "bead_delivered",
+			fmt.Sprintf("%s delivered %s (ready for QA)", agentOrUnknown(agent), beadID))
+	}
+
 	// Output summary.
 	if isFail {
 		reason := deliverReason

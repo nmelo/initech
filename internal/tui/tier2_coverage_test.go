@@ -57,7 +57,7 @@ func TestRenderNotifications_ColorByType(t *testing.T) {
 		{"failed", EventBeadFailed, tcell.ColorDarkRed},
 		{"stuck", EventAgentStuck, tcell.ColorDarkRed},
 		{"stalled", EventAgentStalled, tcell.ColorDarkOrange},
-		{"idle", EventAgentIdle, tcell.ColorDimGray},
+		{"started", EventAgentStarted, tcell.ColorDimGray},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

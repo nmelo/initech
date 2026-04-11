@@ -132,8 +132,23 @@ func runAssign(cmd *cobra.Command, args []string) error {
 	// Step 5: Announce to Agent Radio (fire and forget).
 	announceDispatch(cmd, agent, beadID, dispatchTitle)
 
+	// Step 6: Emit event to TUI (fire and forget).
+	emitIPCEvent(agent, beadID, "bead_assigned", fmt.Sprintf("assigned %s to %s: %s", beadID, agent, dispatchTitle))
+
 	fmt.Fprintf(cmd.ErrOrStderr(), "assigned %s to %s: %s\n", beadID, agent, dispatchTitle)
 	return nil
+}
+
+// emitIPCEvent fires a typed event into the TUI event system. Best-effort;
+// failures are silently ignored (the event is supplementary, not critical).
+func emitIPCEvent(agent, beadID, eventType, detail string) {
+	req := tui.IPCRequest{
+		Action: "emit_event",
+		Target: agent,
+		Host:   beadID,
+		Text:   eventType + "|" + detail,
+	}
+	ipcCall(req) //nolint:errcheck
 }
 
 // announceDispatch posts an agent.started announcement to Agent Radio if

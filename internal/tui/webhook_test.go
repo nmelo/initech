@@ -99,9 +99,9 @@ func TestWebhookSink_AllEventKinds(t *testing.T) {
 			t.Errorf("EventType %d: kind = %q, want %q", evType, kind, wantKind)
 		}
 	}
-	// Verify all 16 event types are mapped.
-	if len(webhookKindMap) != 16 {
-		t.Errorf("webhookKindMap has %d entries, want 16", len(webhookKindMap))
+	// Verify all 20 event types are mapped.
+	if len(webhookKindMap) != 20 {
+		t.Errorf("webhookKindMap has %d entries, want 20", len(webhookKindMap))
 	}
 }
 
@@ -110,8 +110,8 @@ func TestWebhookSink_NonBlockingSend(t *testing.T) {
 	ch := make(chan AgentEvent, 2)
 
 	// Fill the channel.
-	ch <- AgentEvent{Type: EventAgentIdle, Pane: "eng1"}
-	ch <- AgentEvent{Type: EventAgentIdle, Pane: "eng2"}
+	ch <- AgentEvent{Type: EventAgentStarted, Pane: "eng1"}
+	ch <- AgentEvent{Type: EventAgentStarted, Pane: "eng2"}
 
 	// Non-blocking send should succeed without deadlock.
 	ev := AgentEvent{Type: EventBeadCompleted, Pane: "eng3"}

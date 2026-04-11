@@ -213,7 +213,7 @@ func TestRenderEventLogWithEventsNoPanic(t *testing.T) {
 		screen:    s,
 		eventLogM: eventLogModal{active: true},
 	}
-	for _, typ := range []EventType{EventBeadCompleted, EventBeadClaimed, EventBeadFailed, EventAgentStalled, EventAgentStuck, EventAgentIdle} {
+	for _, typ := range []EventType{EventBeadCompleted, EventBeadClaimed, EventBeadFailed, EventAgentStalled, EventAgentStuck, EventBeadAssigned} {
 		tui.eventLog = append(tui.eventLog, AgentEvent{
 			Type:   typ,
 			Pane:   "eng1",
@@ -257,7 +257,9 @@ func TestEventLogStyleCoverage(t *testing.T) {
 	// Just ensure no panic for all event types.
 	types := []EventType{
 		EventBeadCompleted, EventBeadClaimed, EventBeadFailed,
-		EventAgentStalled, EventAgentStuck, EventAgentIdle,
+		EventBeadAssigned, EventBeadDelivered,
+		EventAgentStalled, EventAgentStuck,
+		EventPeerConnected, EventPeerDisconnected, EventLiveSwap,
 		EventType(99),
 	}
 	for _, et := range types {

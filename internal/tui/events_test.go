@@ -16,7 +16,11 @@ func TestEventTypeString(t *testing.T) {
 		{EventBeadFailed, "failed"},
 		{EventAgentStalled, "stalled"},
 		{EventAgentStuck, "stuck"},
-		{EventAgentIdle, "idle"},
+		{EventBeadAssigned, "assigned"},
+		{EventBeadDelivered, "delivered"},
+		{EventPeerConnected, "peer_connected"},
+		{EventPeerDisconnected, "peer_disconnected"},
+		{EventLiveSwap, "live_swap"},
 		{EventType(99), "unknown"},
 	}
 	for _, tt := range tests {
@@ -34,7 +38,7 @@ func TestEmitEventNonBlocking(t *testing.T) {
 	EmitEvent(ch, AgentEvent{Type: EventBeadCompleted, Pane: "eng1"})
 
 	// Third emit should not block (dropped).
-	EmitEvent(ch, AgentEvent{Type: EventAgentIdle, Pane: "eng1"})
+	EmitEvent(ch, AgentEvent{Type: EventAgentStarted, Pane: "eng1"})
 
 	if len(ch) != 2 {
 		t.Errorf("channel length = %d, want 2 (third should be dropped)", len(ch))

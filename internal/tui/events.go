@@ -18,22 +18,26 @@ import (
 type EventType int
 
 const (
-	EventBeadCompleted     EventType = iota // Agent finished a bead (DONE comment, ready_for_qa).
-	EventBeadClaimed                        // Agent claimed a bead (in_progress).
-	EventBeadFailed                         // QA failed a bead or agent reported failure.
-	EventAgentStalled                       // No output for configurable threshold (warning).
-	EventAgentStuck                         // Extended inactivity or error loop detected.
-	EventAgentIdle                          // Agent returned to idle after work.
-	EventAgentIdleWithBead                  // Agent went running->idle while holding a bead.
-	EventAgentSuspended                     // Agent auto-suspended by resource pressure policy.
-	EventAgentResumed                       // Agent resumed from suspension (triggered by message).
-	EventMessageSent                        // Message delivered to an agent via IPC send.
-	EventAgentStarted                       // Agent pane started via IPC.
-	EventAgentStopped                       // Agent pane stopped via IPC.
-	EventAgentRestarted                     // Agent pane restarted via IPC.
-	EventAgentAdded                         // New agent pane added to session.
-	EventAgentRemoved                       // Agent pane removed from session.
-	EventTimerFired                         // Scheduled timer delivered its message.
+	EventBeadCompleted      EventType = iota // Agent finished a bead (DONE comment, ready_for_qa).
+	EventBeadClaimed                         // Agent claimed a bead (in_progress).
+	EventBeadFailed                          // QA failed a bead or agent reported failure.
+	EventBeadAssigned                        // Agent received work via initech assign.
+	EventBeadDelivered                       // Agent completed work via initech deliver (pass or fail).
+	EventAgentStalled                        // No output for configurable threshold (warning).
+	EventAgentStuck                          // Extended inactivity or error loop detected.
+	EventAgentIdleWithBead                   // Agent went running->idle while holding a bead.
+	EventAgentSuspended                      // Agent auto-suspended by resource pressure policy.
+	EventAgentResumed                        // Agent resumed from suspension (triggered by message).
+	EventMessageSent                         // Message delivered to an agent via IPC send.
+	EventAgentStarted                        // Agent pane started via IPC.
+	EventAgentStopped                        // Agent pane stopped via IPC.
+	EventAgentRestarted                      // Agent pane restarted via IPC.
+	EventAgentAdded                          // New agent pane added to session.
+	EventAgentRemoved                        // Agent pane removed from session.
+	EventTimerFired                          // Scheduled timer delivered its message.
+	EventPeerConnected                       // Remote daemon connected.
+	EventPeerDisconnected                    // Remote daemon disconnected.
+	EventLiveSwap                            // Live mode swapped an agent into/out of a slot.
 )
 
 // String returns a human-readable label for the event type.
@@ -45,12 +49,14 @@ func (e EventType) String() string {
 		return "claimed"
 	case EventBeadFailed:
 		return "failed"
+	case EventBeadAssigned:
+		return "assigned"
+	case EventBeadDelivered:
+		return "delivered"
 	case EventAgentStalled:
 		return "stalled"
 	case EventAgentStuck:
 		return "stuck"
-	case EventAgentIdle:
-		return "idle"
 	case EventAgentIdleWithBead:
 		return "idle-with-bead"
 	case EventAgentSuspended:
@@ -71,6 +77,12 @@ func (e EventType) String() string {
 		return "removed"
 	case EventTimerFired:
 		return "timer_fired"
+	case EventPeerConnected:
+		return "peer_connected"
+	case EventPeerDisconnected:
+		return "peer_disconnected"
+	case EventLiveSwap:
+		return "live_swap"
 	}
 	return "unknown"
 }
@@ -162,6 +174,13 @@ func (t *TUI) handleAgentEvent(ev AgentEvent) {
 		case t.slackEventCh <- re:
 		default:
 		}
+	}
+
+	// LiveSwap events are too frequent for toasts; log-only + fan-out.
+	if ev.Type == EventLiveSwap {
+		t.eventLog = append(t.eventLog, ev)
+		t.pruneEventLog()
+		return
 	}
 
 	ttl := notificationTTL

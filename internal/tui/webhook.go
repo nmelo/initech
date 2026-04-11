@@ -18,9 +18,10 @@ var webhookKindMap = map[EventType]string{
 	EventBeadCompleted:     "agent.completed",
 	EventBeadClaimed:       "agent.claimed",
 	EventBeadFailed:        "agent.failed",
+	EventBeadAssigned:      "agent.assigned",
+	EventBeadDelivered:     "agent.delivered",
 	EventAgentStalled:      "agent.stalled",
 	EventAgentStuck:        "agent.stuck",
-	EventAgentIdle:         "agent.idle",
 	EventAgentIdleWithBead: "agent.idle_with_bead",
 	EventAgentSuspended:    "agent.suspended",
 	EventAgentResumed:      "agent.resumed",
@@ -31,6 +32,9 @@ var webhookKindMap = map[EventType]string{
 	EventAgentAdded:        "agent.added",
 	EventAgentRemoved:      "agent.removed",
 	EventTimerFired:        "agent.timer_fired",
+	EventPeerConnected:     "peer.connected",
+	EventPeerDisconnected:  "peer.disconnected",
+	EventLiveSwap:          "live.swap",
 }
 
 // startWebhookSink reads events from ch and POSTs each one to url as JSON.

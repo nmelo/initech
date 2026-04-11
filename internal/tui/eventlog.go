@@ -295,17 +295,21 @@ func (t *TUI) renderEventLog() {
 // using the modal background color for visual consistency.
 func eventLogRowStyle(et EventType, bg tcell.Style) tcell.Style {
 	switch et {
-	case EventBeadCompleted:
+	case EventBeadCompleted, EventBeadDelivered:
 		return bg.Foreground(tcell.ColorGreen)
 	case EventBeadFailed, EventAgentStuck:
 		return bg.Foreground(tcell.ColorRed)
 	case EventAgentStalled:
 		return bg.Foreground(tcell.ColorYellow)
-	case EventBeadClaimed:
+	case EventBeadClaimed, EventBeadAssigned:
 		return bg.Foreground(tcell.ColorDodgerBlue)
 	case EventAgentSuspended, EventAgentResumed:
 		return bg.Foreground(tcell.ColorDodgerBlue)
-	case EventAgentIdle:
+	case EventPeerConnected:
+		return bg.Foreground(tcell.ColorGreen)
+	case EventPeerDisconnected:
+		return bg.Foreground(tcell.ColorRed)
+	case EventLiveSwap:
 		return bg.Foreground(tcell.ColorGray)
 	default:
 		return bg.Foreground(tcell.ColorSilver)
