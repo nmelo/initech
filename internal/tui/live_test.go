@@ -406,9 +406,9 @@ func TestLiveEngine_HoldTimeExpiryAllowsSwap(t *testing.T) {
 	if slots[0] != "eng3" {
 		t.Errorf("slot 0 = %q, want eng3 (hold expired, challenger wins)", slots[0])
 	}
-	// Slot 1: eng2 below keep threshold, evicted to empty.
-	if slots[1] != "" {
-		t.Errorf("slot 1 = %q, want empty (evict below keep threshold)", slots[1])
+	// Slot 1: eng2 below keep threshold but CxR never evicts. Stays in slot.
+	if slots[1] != "eng2" {
+		t.Errorf("slot 1 = %q, want eng2 (CxR keeps weak occupant)", slots[1])
 	}
 }
 
@@ -499,9 +499,9 @@ func TestLiveEngine_BelowKeepNoQualifiedChallenger(t *testing.T) {
 	}
 	slots := le.Tick(panes, tick2)
 
-	// eng1 below keep threshold, evicted regardless of challenger qualification.
-	if slots[0] != "" {
-		t.Errorf("slot 0 = %q, want empty (evict below keep threshold)", slots[0])
+	// CxR never evicts. eng1 stays despite score 0 (no qualified challenger).
+	if slots[0] != "eng1" {
+		t.Errorf("slot 0 = %q, want eng1 (CxR keeps weak occupant)", slots[0])
 	}
 }
 
@@ -532,28 +532,27 @@ func TestLiveEngine_OneSwapPerTick_MultipleEligible(t *testing.T) {
 	if slots[0] != "hot1" {
 		t.Errorf("slot 0 = %q, want hot1 (first swap, alpha tiebreak)", slots[0])
 	}
-	// Slots 1,2: eng2,eng3 below keep threshold, evicted to empty.
-	if slots[1] != "" {
-		t.Errorf("slot 1 = %q, want empty (evict below keep threshold)", slots[1])
+	// Slots 1,2: CxR keeps weak occupants (no eviction). One swap already used.
+	if slots[1] != "eng2" {
+		t.Errorf("slot 1 = %q, want eng2 (CxR keeps, swap cap reached)", slots[1])
 	}
-	if slots[2] != "" {
-		t.Errorf("slot 2 = %q, want empty (evict below keep threshold)", slots[2])
+	if slots[2] != "eng3" {
+		t.Errorf("slot 2 = %q, want eng3 (CxR keeps, swap cap reached)", slots[2])
 	}
 
-	// Tick 3: slots 1,2 are empty, so filling them is not a displacement.
-	tick3 := tick2.Add(16 * time.Millisecond)
+	// Tick 3: hot2 displaces eng2 (one swap per tick).
+	tick3 := now.Add(30 * time.Second) // past hold time for slot 1
 	slots = le.Tick(panes, tick3)
 
-	// Slot 0: hot1 under hold time, stays.
 	if slots[0] != "hot1" {
 		t.Errorf("tick 3 slot 0 = %q, want hot1 (hold time)", slots[0])
 	}
-	// Slots 1,2: empty, filled by hot2 and hot3 (not displacements).
 	if slots[1] != "hot2" {
-		t.Errorf("tick 3 slot 1 = %q, want hot2 (fill empty slot)", slots[1])
+		t.Errorf("tick 3 slot 1 = %q, want hot2 (displace eng2)", slots[1])
 	}
-	if slots[2] != "hot3" {
-		t.Errorf("tick 3 slot 2 = %q, want hot3 (fill empty slot)", slots[2])
+	// Slot 2: eng3 still kept (one swap per tick already used).
+	if slots[2] != "eng3" {
+		t.Errorf("tick 3 slot 2 = %q, want eng3 (CxR keeps, swap cap reached)", slots[2])
 	}
 }
 
@@ -758,6 +757,69 @@ func TestTick_ScoreTiebreakByYamlOrder(t *testing.T) {
 	result := le.Tick(panes, now)
 	if result[0] != "eng1" {
 		t.Errorf("slot 0 = %q, want eng1 (yaml tiebreaker when scores equal)", result[0])
+	}
+}
+
+// ── ini-bs0: CxR never evicts, occupants stay until displaced ────────
+
+// TestTick_CxR_NoEviction verifies that in CxR mode (Tick), agents below
+// keepThreshold are NOT evicted. All dynamic slots stay occupied.
+func TestTick_CxR_NoEviction(t *testing.T) {
+	now := time.Now()
+	// Fill 3 slots with agents that have score 10 (recent event).
+	le := NewLiveEngine(3, nil, nil)
+	le.Tick([]PaneView{
+		&mockPaneView{name: "eng1", alive: true, activity: StateIdle, eventTime: now.Add(-3 * time.Second)}, // score 10
+		&mockPaneView{name: "eng2", alive: true, activity: StateIdle, eventTime: now.Add(-3 * time.Second)}, // score 10
+		&mockPaneView{name: "eng3", alive: true, activity: StateIdle, eventTime: now.Add(-3 * time.Second)}, // score 10
+	}, now)
+
+	// After hold: all scores drop to 0 (event expired). No challengers.
+	tick2 := now.Add(15 * time.Second)
+	panes := []PaneView{
+		&mockPaneView{name: "eng1", alive: true, activity: StateIdle}, // score 0
+		&mockPaneView{name: "eng2", alive: true, activity: StateIdle}, // score 0
+		&mockPaneView{name: "eng3", alive: true, activity: StateIdle}, // score 0
+	}
+	slots := le.Tick(panes, tick2)
+
+	// CxR: no eviction. All slots stay occupied.
+	if slots[0] != "eng1" {
+		t.Errorf("slot 0 = %q, want eng1 (CxR no eviction)", slots[0])
+	}
+	if slots[1] != "eng2" {
+		t.Errorf("slot 1 = %q, want eng2 (CxR no eviction)", slots[1])
+	}
+	if slots[2] != "eng3" {
+		t.Errorf("slot 2 = %q, want eng3 (CxR no eviction)", slots[2])
+	}
+}
+
+// TestTick_CxR_DisplacementStillWorks verifies that displacement still works
+// in CxR even when occupant is below keepThreshold.
+func TestTick_CxR_DisplacementStillWorks(t *testing.T) {
+	now := time.Now()
+	le := NewLiveEngine(2, nil, nil)
+	le.Tick([]PaneView{
+		&mockPaneView{name: "eng1", alive: true, activity: StateIdle, eventTime: now.Add(-3 * time.Second)}, // score 10
+		&mockPaneView{name: "eng2", alive: true, activity: StateIdle, eventTime: now.Add(-3 * time.Second)}, // score 10
+	}, now)
+
+	// After hold: eng1/eng2 drop to 0. qa1 arrives with score 50.
+	tick2 := now.Add(15 * time.Second)
+	panes := []PaneView{
+		&mockPaneView{name: "eng1", alive: true, activity: StateIdle},                                                             // score 0
+		&mockPaneView{name: "eng2", alive: true, activity: StateIdle},                                                             // score 0
+		&mockPaneView{name: "qa1", alive: true, beadID: "ini-a", activity: StateRunning, runStart: tick2.Add(-10 * time.Second)}, // score 50
+	}
+	slots := le.Tick(panes, tick2)
+
+	// qa1 (50) displaces eng1 (0) in slot 0. eng2 stays (one swap per tick).
+	if slots[0] != "qa1" {
+		t.Errorf("slot 0 = %q, want qa1 (displaces weak occupant)", slots[0])
+	}
+	if slots[1] != "eng2" {
+		t.Errorf("slot 1 = %q, want eng2 (CxR keeps, swap cap reached)", slots[1])
 	}
 }
 

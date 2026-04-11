@@ -290,6 +290,10 @@ func (le *LiveEngine) Tick(panes []PaneView, now time.Time) []string {
 
 		// Current occupant below keep threshold or no longer a valid candidate
 		// (dead/suspended). Eligible for displacement by anyone >= claim threshold.
+		// In CxR mode (Tick), the occupant is NEVER evicted to empty. The operator
+		// asked for a fixed grid and gets a fixed grid. The occupant stays until
+		// actively displaced by a higher-scoring agent. (TickAuto handles eviction
+		// for auto mode where the grid resizes dynamically.)
 		if !prevAlive || prevInfo.score < liveKeepThreshold {
 			if !swapped {
 				if best, ok := bestUnplaced(candidates, placed); ok && best.score >= liveClaimThreshold {
@@ -301,10 +305,10 @@ func (le *LiveEngine) Tick(panes []PaneView, now time.Time) []string {
 					continue
 				}
 			}
-			// No swap available or already swapped this tick.
-			// Evict: agent below keep threshold loses the slot regardless.
-			// The empty slot can be filled on a future tick when someone qualifies.
-			LogInfo("live-tick", "evict-weak", "slot", slot, "agent", prev, "score", prevInfo.score, "alive", prevAlive, "alreadySwapped", swapped)
+			// No displacement available. Keep occupant in CxR (no eviction).
+			result[slot] = prev
+			placed[prev] = true
+			LogInfo("live-tick", "keep-weak", "slot", slot, "agent", prev, "score", prevInfo.score, "alive", prevAlive, "alreadySwapped", swapped)
 			continue
 		}
 
