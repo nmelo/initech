@@ -130,6 +130,15 @@ If an agent dies or the TUI crashes:
 - Only QA transitions to qa_passed
 - Only the operator closes beads
 
+## Announcement Rule
+
+When announcing or reporting: describe WHAT happened, not WHICH bead. The operator does not memorize bead IDs.
+
+Bad: "ini-y71 ready for QA"
+Good: "Duplicate agent fill fix ready for QA"
+
+Bead IDs belong in metadata (--bead flag), not in message text. initech deliver and initech assign handle this automatically; follow the same rule for manual initech announce calls.
+
 ## Session Lifecycle
 
 ### Start of Day
@@ -304,6 +313,15 @@ Never say "all tests pass" without showing the output in the same message. "Shou
 
 This applies to EVERY bead, no exceptions.
 
+## Announcement Rule
+
+When announcing or reporting: describe WHAT happened, not WHICH bead. The operator does not memorize bead IDs.
+
+Bad: "ini-y71 ready for QA"
+Good: "Duplicate agent fill fix ready for QA"
+
+Bead IDs belong in metadata (--bead flag), not in message text. initech deliver handles this automatically; follow the same rule for manual initech announce calls.
+
 ## Code Quality
 
 - Write tests for every exported function
@@ -372,6 +390,15 @@ Fallback (if initech deliver is unavailable):
 1. ` + "`" + `bd update <id> --status qa_passed` + "`" + ` (or in_progress for fail)
 2. ` + "`" + `initech send super "[from {{role_name}}] <id>: PASS/FAIL. <summary>"` + "`" + `
 3. ` + "`" + `initech bead --clear` + "`" + `
+
+## Announcement Rule
+
+When announcing or reporting: describe WHAT happened, not WHICH bead. The operator does not memorize bead IDs.
+
+Bad: "ini-y71 QA passed"
+Good: "Duplicate agent fill fix QA passed"
+
+Bead IDs belong in metadata (--bead flag), not in message text. initech deliver handles this automatically; follow the same rule for manual reports.
 
 ## What QA Looks Like
 
@@ -531,6 +558,15 @@ Fallback (if initech deliver is unavailable):
 1. ` + "`" + `bd update <id> --status ready_for_qa` + "`" + `
 2. ` + "`" + `initech send super "[from {{role_name}}] <id>: done"` + "`" + `
 3. ` + "`" + `initech bead --clear` + "`" + `
+
+## Announcement Rule
+
+When announcing or reporting: describe WHAT happened, not WHICH bead. The operator does not memorize bead IDs.
+
+Bad: "ini-eny.1, ini-eny.2 groomed"
+Good: "Groomed 3 live mode beads with full AC"
+
+Bead IDs belong in metadata (--bead flag), not in message text. initech deliver handles this automatically; follow the same rule for manual initech announce calls.
 
 ## Artifacts
 
@@ -731,6 +767,15 @@ Playbooks: {{project_root}}/{{role_name}}/playbooks/
 9. Deliver: ` + "`" + `initech deliver <id> --message "<version> released to Homebrew"` + "`" + `
 
 Fallback: ` + "`" + `initech send super "[from {{role_name}}] <version> released"` + "`" + `
+
+## Announcement Rule
+
+When announcing or reporting: describe WHAT happened, not WHICH bead. The operator does not memorize bead IDs.
+
+Bad: "ini-xyz released"
+Good: "v1.15.0 released to Homebrew"
+
+Bead IDs belong in metadata (--bead flag), not in message text. initech deliver handles this automatically; follow the same rule for manual initech announce calls.
 
 ## Communication
 
