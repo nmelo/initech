@@ -265,16 +265,22 @@ func (t *TUI) applyLayout() {
 		paneH = 1
 	}
 	// Tick live engine before computing layout so LiveSlots are fresh.
-	// Pass ALL panes (not just visible) so hidden agents with high
-	// conviction can displace visible agents with low conviction.
+	// Exclude manually hidden panes so the engine only scores and assigns
+	// agents that the operator wants visible. Hidden means hidden.
 	if t.layoutState.Mode == LayoutLive && t.liveEngine != nil {
-		LogInfo("applyLayout", "live-tick-input", "t.panes", len(t.panes))
+		livePanes := make([]PaneView, 0, len(t.panes))
+		for _, p := range t.panes {
+			if !t.layoutState.Hidden[paneKey(p)] {
+				livePanes = append(livePanes, p)
+			}
+		}
+		LogInfo("applyLayout", "live-tick-input", "total", len(t.panes), "visible", len(livePanes))
 		prev := make([]string, len(t.liveEngine.Slots))
 		copy(prev, t.liveEngine.Slots)
 		if t.layoutState.LiveAuto {
-			t.layoutState.LiveSlots = t.liveEngine.TickAuto(t.panes, time.Now())
+			t.layoutState.LiveSlots = t.liveEngine.TickAuto(livePanes, time.Now())
 		} else {
-			t.layoutState.LiveSlots = t.liveEngine.Tick(t.panes, time.Now())
+			t.layoutState.LiveSlots = t.liveEngine.Tick(livePanes, time.Now())
 		}
 		t.onLiveSwap(prev, t.liveEngine.Slots)
 	}
