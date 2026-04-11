@@ -215,8 +215,8 @@ func TestAgentsModal_RenderShowsPinBadge(t *testing.T) {
 	sw, sh := s.Size()
 	allText := readScreenRect(s, 0, 0, sw, sh)
 
-	if !strings.Contains(allText, "[P]") {
-		t.Error("rendered output missing [P] for pinned agent")
+	if !strings.Contains(allText, "[*]") {
+		t.Error("rendered output missing [*] for protected agent")
 	}
 }
 
@@ -434,17 +434,47 @@ func TestAgentsModal_ReorderViaGrab(t *testing.T) {
 	}
 }
 
-func TestAgentsModal_PinToggle(t *testing.T) {
+func TestAgentsModal_ProtectToggle(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("eng1", "eng2")
 	tui.openAgentsModal()
 
-	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyRune, 'p', 0))
+	// Shift+P toggles auto-suspend protection.
+	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyRune, 'P', 0))
 	if !tui.layoutState.Protected["eng1"] {
-		t.Error("p should pin the selected agent")
+		t.Error("P should protect the selected agent")
+	}
+	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyRune, 'P', 0))
+	if tui.layoutState.Protected["eng1"] {
+		t.Error("P again should unprotect the agent")
+	}
+}
+
+func TestAgentsModal_LivePinToggle(t *testing.T) {
+	tui, _ := newTestTUIWithScreen("eng1", "eng2")
+	tui.layoutState.Mode = LayoutLive
+	tui.layoutState.LivePinned = make(map[string]int)
+	tui.layoutState.LiveSlots = []string{"eng1", "eng2"}
+	tui.openAgentsModal()
+
+	// p toggles live pin.
+	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyRune, 'p', 0))
+	if _, pinned := tui.layoutState.LivePinned["eng1"]; !pinned {
+		t.Error("p should live-pin the selected agent")
 	}
 	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyRune, 'p', 0))
-	if tui.layoutState.Protected["eng1"] {
+	if _, pinned := tui.layoutState.LivePinned["eng1"]; pinned {
 		t.Error("p again should unpin the agent")
+	}
+}
+
+func TestAgentsModal_LivePinRequiresLiveMode(t *testing.T) {
+	tui, _ := newTestTUIWithScreen("eng1", "eng2")
+	tui.layoutState.Mode = LayoutGrid // not live mode
+	tui.openAgentsModal()
+
+	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyRune, 'p', 0))
+	if tui.agents.error == "" {
+		t.Error("p in non-live mode should show error")
 	}
 }
 

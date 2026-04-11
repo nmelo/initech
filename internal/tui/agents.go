@@ -128,6 +128,9 @@ func (t *TUI) handleAgentsKey(ev *tcell.EventKey) bool {
 			t.agentsToggleVisibility()
 			return false
 		case 'p':
+			t.agentsToggleLivePin()
+			return false
+		case 'P':
 			t.agentsToggleProtected()
 			return false
 		case 'A':
@@ -291,7 +294,54 @@ func (t *TUI) agentsToggleVisibility() {
 	t.saveLayoutIfConfigured()
 }
 
-// agentsToggleProtected toggles the pinned state for the selected pane.
+// agentsToggleLivePin toggles the live mode slot pin for the selected agent.
+// If the agent is already live-pinned, removes the pin. If not, pins it to
+// its current slot (or the first available slot). Only active in live mode.
+func (t *TUI) agentsToggleLivePin() {
+	if t.layoutState.Mode != LayoutLive {
+		t.agents.error = "live pin requires live mode"
+		return
+	}
+	if t.agents.selected < 0 || t.agents.selected >= len(t.panes) {
+		return
+	}
+	pk := paneKey(t.panes[t.agents.selected])
+
+	if t.layoutState.LivePinned == nil {
+		t.layoutState.LivePinned = make(map[string]int)
+	}
+
+	if _, pinned := t.layoutState.LivePinned[pk]; pinned {
+		// Unpin: remove from LivePinned.
+		delete(t.layoutState.LivePinned, pk)
+	} else {
+		// Pin: find current slot in LiveSlots, or use first available.
+		slot := -1
+		for i, sn := range t.layoutState.LiveSlots {
+			if sn == pk {
+				slot = i
+				break
+			}
+		}
+		if slot < 0 {
+			slot = 0 // fallback to slot 0
+		}
+		// Clear any existing occupant of this slot from LivePinned.
+		for k, v := range t.layoutState.LivePinned {
+			if v == slot {
+				delete(t.layoutState.LivePinned, k)
+			}
+		}
+		t.layoutState.LivePinned[pk] = slot
+	}
+	if t.liveEngine != nil {
+		t.liveEngine.Pinned = t.layoutState.LivePinned
+	}
+	t.applyLayout()
+	t.saveLayoutIfConfigured()
+}
+
+// agentsToggleProtected toggles the auto-suspend protection for the selected pane.
 func (t *TUI) agentsToggleProtected() {
 	if t.agents.selected < 0 || t.agents.selected >= len(t.panes) {
 		return
@@ -517,7 +567,7 @@ func (t *TUI) renderAgents() {
 	}
 
 	// Header.
-	header := fmt.Sprintf(" %-3s %-3s %-12s %-5s %s", "#", "VIS", "AGENT", "PIN", "STATUS")
+	header := fmt.Sprintf(" %-3s %-3s %-12s %-4s %-4s %s", "#", "VIS", "AGENT", "PIN", "PROT", "STATUS")
 	drawLine(iy, header, headerStyle)
 	iy++
 
@@ -594,29 +644,26 @@ func (t *TUI) renderAgents() {
 		if hidden {
 			vis = "[ ]"
 		}
-		pin := "   "
-		if generalProtected || livePinned {
-			pin = "[P]"
-		}
 
-		// Live mode: show slot info. Live-pinned shows P:N, dynamic shows D:N.
-		// General-pinned agents not in LivePinned keep [P].
+		// Separate PIN (live slot) and PROT (auto-suspend) columns.
+		livePin := "    " // 4 chars: blank or P:N/D:N
+		prot := "    "    // 4 chars: blank or [*]
 		if t.layoutState.Mode == LayoutLive {
 			if liveSlot, lp := t.layoutState.LivePinned[pk]; lp {
-				pin = fmt.Sprintf("P:%d", liveSlot)
+				livePin = fmt.Sprintf("P:%-2d", liveSlot)
 			} else {
-				// Check if agent is in a dynamic slot.
 				for si, sn := range t.layoutState.LiveSlots {
 					if sn == pk {
-						if generalProtected {
-							pin = fmt.Sprintf("P:%d", si)
-						} else {
-							pin = fmt.Sprintf("D:%d", si)
-						}
+						livePin = fmt.Sprintf("D:%-2d", si)
 						break
 					}
 				}
 			}
+		} else if livePinned {
+			livePin = "[P] "
+		}
+		if generalProtected {
+			prot = "[*] "
 		}
 
 		status := act.String()
@@ -627,7 +674,7 @@ func (t *TUI) renderAgents() {
 			marker = ">"
 		}
 
-		line := fmt.Sprintf("%s%2d  %s %-12s %s  %s", marker, idx+1, vis, name, pin, status)
+		line := fmt.Sprintf("%s%2d  %s %-12s %s %s %s", marker, idx+1, vis, name, livePin, prot, status)
 		prefix := fmt.Sprintf("%s%2d  %s ", marker, idx+1, vis)
 
 		// Highlight: in search mode, selected refers to position in filtered list.
@@ -652,29 +699,40 @@ func (t *TUI) renderAgents() {
 
 		drawLine(row, line, style)
 
-		// Overlay pin badge with color: blue for Protected, purple for LivePinned.
-		if pin != "   " {
-			var pinColor tcell.Color
-			if livePinned {
-				pinColor = tcell.ColorMediumPurple
-			} else {
-				pinColor = tcell.ColorCornflowerBlue
-			}
-			pinStyle := bgStyle.Foreground(pinColor).Bold(true)
+		// Color overlays for PIN (purple) and PROT (blue) columns.
+		nameW := len([]rune(name))
+		if nameW < 12 {
+			nameW = 12
+		}
+		pinColStart := innerX + len([]rune(prefix)) + nameW + 1
+
+		if livePin != "    " {
+			pinStyle := bgStyle.Foreground(tcell.ColorMediumPurple).Bold(true)
 			if isSelected {
-				pinStyle = style.Foreground(pinColor).Bold(true)
+				pinStyle = style.Foreground(tcell.ColorMediumPurple).Bold(true)
 			}
-			nameW := len([]rune(name))
-			if nameW < 12 {
-				nameW = 12
-			}
-			pinCol := innerX + len([]rune(prefix)) + nameW + 1 // after name column + space
-			for _, ch := range pin {
-				if pinCol >= innerX+innerW {
+			col := pinColStart
+			for _, ch := range livePin {
+				if col >= innerX+innerW {
 					break
 				}
-				s.SetContent(pinCol, row, ch, nil, pinStyle)
-				pinCol++
+				s.SetContent(col, row, ch, nil, pinStyle)
+				col++
+			}
+		}
+
+		if prot != "    " {
+			protStyle := bgStyle.Foreground(tcell.ColorCornflowerBlue).Bold(true)
+			if isSelected {
+				protStyle = style.Foreground(tcell.ColorCornflowerBlue).Bold(true)
+			}
+			col := pinColStart + 5 // PIN column (4 chars) + space
+			for _, ch := range prot {
+				if col >= innerX+innerW {
+					break
+				}
+				s.SetContent(col, row, ch, nil, protStyle)
+				col++
 			}
 		}
 
@@ -706,7 +764,7 @@ func (t *TUI) renderAgents() {
 
 	// Help line (last interior row).
 	helpY := startY + boxH - 2
-	help := " Up/Down move  Space hide  Enter grab  p pin  A all  R reset  Esc close"
+	help := " Up/Down move  Space hide  Enter grab  p pin  P protect  A all  R reset  Esc close"
 	if t.agents.searching {
 		help = " Type to filter  Up/Down navigate  Enter select  Esc clear  / search"
 	}
