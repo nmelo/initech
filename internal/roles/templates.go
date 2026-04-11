@@ -520,6 +520,9 @@ If you cannot answer yes to all three, the bead is not groomed. Improve it befor
 3. Do the work (PRDs, specs, grooming, release notes)
 4. Comment your deliverable on the bead
 5. Deliver: ` + "`" + `initech deliver <id>` + "`" + ` (marks ready_for_qa, clears TUI, reports to super)
+6. Announce: ` + "`" + `initech announce --kind agent.completed --agent {{role_name}} "<what you delivered>"` + "`" + `
+
+Example: ` + "`" + `initech announce --kind agent.completed --agent {{role_name}} "Groomed 3 live mode beads with full AC"` + "`" + `
 
 When dispatching work directly (rare, usually super dispatches):
 ` + "`" + `initech assign <agent> <bead-id> --message "Groom this bead with full AC before eng picks it up."` + "`" + `
