@@ -18,13 +18,15 @@ func (t *TUI) handleMouse(ev *tcell.EventMouse) {
 
 	switch {
 	case ev.Buttons()&tcell.Button1 != 0 && !t.sel.active:
-		// Button1 press: focus + start selection on any PaneView (local + remote).
-		// Mouse forwarding to the child PTY is local *Pane only.
-		for i, pv := range t.panes {
+		// Button1 press: focus + start selection. Hit-test against the render
+		// plan (panes actually on screen) to avoid matching evicted panes with
+		// stale regions. Hidden check is a safety guard for stale plans.
+		for _, pr := range t.plan.Panes {
+			pv := pr.Pane
 			if t.layoutState.Hidden[paneKey(pv)] {
 				continue
 			}
-			r := pv.GetRegion()
+			r := pr.Region
 			if mx >= r.X && mx < r.X+r.W && my >= r.Y && my < r.Y+r.H {
 				if t.layoutState.Focused != paneKey(pv) {
 					t.layoutState.Focused = paneKey(pv)
@@ -41,20 +43,27 @@ func (t *TUI) handleMouse(ev *tcell.EventMouse) {
 					t.forwardMouseEvent(p, lx, ly, uv.MouseLeft, false, false, ev.Modifiers())
 					sr, ro = p.contentOffset()
 				} else {
-					// RemotePane: content is bottom-anchored, no scrollback.
 					_, innerRows := r.InnerSize()
 					sr = pv.Emulator().Height() - innerRows
 					ro = 0
 				}
+				// Find pane index in t.panes for selection tracking.
+				paneIdx := 0
+				for pi, pp := range t.panes {
+					if paneKey(pp) == paneKey(pv) {
+						paneIdx = pi
+						break
+					}
+				}
 				t.sel.active = true
-				t.sel.pane = i
+				t.sel.pane = paneIdx
 				t.sel.startX = lx
 				t.sel.startY = ly
 				t.sel.endX = lx
 				t.sel.endY = ly
 				t.sel.startRow = sr
 				t.sel.renderOffset = ro
-				LogDebug("mouse", "selection started", "pane", pv.Name(), "idx", i, "lx", lx, "ly", ly, "startRow", sr, "renderOffset", ro)
+				LogDebug("mouse", "selection started", "pane", pv.Name(), "idx", paneIdx, "lx", lx, "ly", ly, "startRow", sr, "renderOffset", ro)
 				return
 			}
 		}
@@ -118,15 +127,11 @@ func (t *TUI) handleMouse(ev *tcell.EventMouse) {
 
 	case ev.Buttons()&tcell.WheelUp != 0:
 		// Scroll back into history for the pane under cursor.
-		// Focus works on all PaneViews; scroll only on local *Pane.
-		for _, pv := range t.panes {
-			if t.layoutState.Hidden[paneKey(pv)] {
-				continue
-			}
-			r := pv.GetRegion()
+		for _, pr := range t.plan.Panes {
+			r := pr.Region
 			if mx >= r.X && mx < r.X+r.W && my >= r.Y && my < r.Y+r.H {
-				t.layoutState.Focused = paneKey(pv)
-				if p, ok := pv.(*Pane); ok {
+				t.layoutState.Focused = paneKey(pr.Pane)
+				if p, ok := pr.Pane.(*Pane); ok {
 					p.ScrollUp(3)
 				}
 				return
@@ -135,14 +140,11 @@ func (t *TUI) handleMouse(ev *tcell.EventMouse) {
 
 	case ev.Buttons()&tcell.WheelDown != 0:
 		// Scroll toward live view for the pane under cursor.
-		for _, pv := range t.panes {
-			if t.layoutState.Hidden[paneKey(pv)] {
-				continue
-			}
-			r := pv.GetRegion()
+		for _, pr := range t.plan.Panes {
+			r := pr.Region
 			if mx >= r.X && mx < r.X+r.W && my >= r.Y && my < r.Y+r.H {
-				t.layoutState.Focused = paneKey(pv)
-				if p, ok := pv.(*Pane); ok {
+				t.layoutState.Focused = paneKey(pr.Pane)
+				if p, ok := pr.Pane.(*Pane); ok {
 					p.ScrollDown(3)
 				}
 				return

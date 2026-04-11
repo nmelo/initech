@@ -419,6 +419,9 @@ func (rp *RemotePane) Resize(rows, cols int) {
 // sendResize writes a resize control command to the daemon. Fire-and-forget:
 // errors are logged but don't block. Called by the debounce timer goroutine.
 func (rp *RemotePane) sendResize(rows, cols int) {
+	if rp.mux == nil {
+		return
+	}
 	_, err := rp.mux.Request(ControlCmd{
 		Action: "resize",
 		Target: rp.name,

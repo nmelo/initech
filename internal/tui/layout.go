@@ -161,6 +161,20 @@ func computeLayout(state LayoutState, panes []PaneView, screenW, screenH int) Re
 		}
 		visible = reordered
 		n = len(visible)
+		// Re-validate focus against the live-visible set. An evicted agent
+		// passes the earlier focus validation (not hidden) but is not in the
+		// render plan. Snap focus to the first visible pane if the current
+		// focus is not in the live-visible set.
+		focusInLive := false
+		for _, p := range visible {
+			if paneKey(p) == focus {
+				focusInLive = true
+				break
+			}
+		}
+		if !focusInLive && len(visible) > 0 {
+			focus = paneKey(visible[0])
+		}
 		liveCols, liveRows := state.GridCols, state.GridRows
 		if state.LiveAuto {
 			liveCols, liveRows = autoGrid(n)

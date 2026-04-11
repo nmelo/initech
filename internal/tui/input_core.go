@@ -177,11 +177,27 @@ func (t *TUI) handleResize() {
 }
 
 func (t *TUI) cycleFocus(delta int) {
+	// In live mode, cycle through rendered panes only (skips evicted panes
+	// that are not on screen). In other modes, cycle all non-hidden panes.
+	if t.layoutState.Mode == LayoutLive && len(t.plan.Panes) > 0 {
+		n := len(t.plan.Panes)
+		cur := 0
+		for i, pr := range t.plan.Panes {
+			if paneKey(pr.Pane) == t.layoutState.Focused {
+				cur = i
+				break
+			}
+		}
+		next := (cur + delta + n) % n
+		t.layoutState.Focused = paneKey(t.plan.Panes[next].Pane)
+		t.applyLayout()
+		return
+	}
+	// Fallback: cycle t.panes, skip hidden.
 	n := len(t.panes)
 	if n == 0 {
 		return
 	}
-	// Find current focused index.
 	cur := 0
 	for i, p := range t.panes {
 		if paneKey(p) == t.layoutState.Focused {
@@ -189,7 +205,6 @@ func (t *TUI) cycleFocus(delta int) {
 			break
 		}
 	}
-	// Skip hidden panes. Try every pane at most once.
 	next := cur
 	for i := 0; i < n; i++ {
 		next = (next + delta + n) % n
