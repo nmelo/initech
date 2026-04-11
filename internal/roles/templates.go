@@ -197,6 +197,7 @@ Use ` + "`" + `initech send` + "`" + ` and ` + "`" + `initech peek` + "`" + ` fo
 ## Tools
 
 - ` + "`" + `initech assign <agent> <bead-id>` + "`" + ` - atomic dispatch (claim + bead + send + announce)
+- ` + "`" + `initech deliver <bead-id>` + "`" + ` - atomic completion (status + clear + report + announce)
 - ` + "`" + `initech send <agent> "message"` + "`" + ` - send message to an agent
 - ` + "`" + `initech peek <agent>` + "`" + ` - read agent terminal output
 - ` + "`" + `initech status` + "`" + ` - agent table with activity and beads
@@ -364,12 +365,13 @@ Source code: {{project_root}}/{{role_name}}/src/
 6. Verify unit tests pass: ` + "`" + `cd src && make test` + "`" + `
 7. Test each acceptance criterion independently by running the binary
 8. Comment verdict: PASS or FAIL as first word, followed by evidence
-9. If PASS: ` + "`" + `bd update <id> --status qa_passed` + "`" + `
-10. If FAIL: ` + "`" + `bd update <id> --status in_progress` + "`" + ` with specific failure details so eng can reproduce
-11. Report: ` + "`" + `initech send super "[from {{role_name}}] <id>: PASS/FAIL. <summary>"` + "`" + `
-12. Clear bead display: ` + "`" + `initech bead --clear` + "`" + `
+9. If PASS: ` + "`" + `bd update <id> --status qa_passed` + "`" + ` then ` + "`" + `initech deliver <id>` + "`" + `
+10. If FAIL: ` + "`" + `initech deliver <id> --fail --reason "AC item N not met: <details>"` + "`" + `
 
-**Step order matters:** Report to super (step 11) BEFORE clearing the bead (step 12).
+Fallback (if initech deliver is unavailable):
+1. ` + "`" + `bd update <id> --status qa_passed` + "`" + ` (or in_progress for fail)
+2. ` + "`" + `initech send super "[from {{role_name}}] <id>: PASS/FAIL. <summary>"` + "`" + `
+3. ` + "`" + `initech bead --clear` + "`" + `
 
 ## What QA Looks Like
 
@@ -517,9 +519,15 @@ If you cannot answer yes to all three, the bead is not groomed. Improve it befor
    ` + "`" + `initech bead <id>` + "`" + `
 3. Do the work (PRDs, specs, grooming, release notes)
 4. Comment your deliverable on the bead
-5. Mark: ` + "`" + `bd update <id> --status ready_for_qa` + "`" + `
-6. Report to super: ` + "`" + `initech send super "[from {{role_name}}] <id>: done"` + "`" + `
-7. Clear bead display: ` + "`" + `initech bead --clear` + "`" + `
+5. Deliver: ` + "`" + `initech deliver <id>` + "`" + ` (marks ready_for_qa, clears TUI, reports to super)
+
+When dispatching work directly (rare, usually super dispatches):
+` + "`" + `initech assign <agent> <bead-id> --message "Groom this bead with full AC before eng picks it up."` + "`" + `
+
+Fallback (if initech deliver is unavailable):
+1. ` + "`" + `bd update <id> --status ready_for_qa` + "`" + `
+2. ` + "`" + `initech send super "[from {{role_name}}] <id>: done"` + "`" + `
+3. ` + "`" + `initech bead --clear` + "`" + `
 
 ## Artifacts
 
@@ -716,7 +724,9 @@ Playbooks: {{project_root}}/{{role_name}}/playbooks/
 5. Run build and package
 6. Test install path on clean environment
 7. Publish artifacts
-8. Report to super: ` + "`" + `initech send super "[from {{role_name}}] <version> released"` + "`" + `
+8. Deliver: ` + "`" + `initech deliver <id> --message "<version> released to Homebrew"` + "`" + `
+
+Fallback: ` + "`" + `initech send super "[from {{role_name}}] <version> released"` + "`" + `
 
 ## Communication
 
