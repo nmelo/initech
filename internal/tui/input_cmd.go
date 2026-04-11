@@ -727,7 +727,7 @@ func (t *TUI) cmdLive(parts []string) bool {
 		explicitSlots = cols * rows
 	}
 	t.layoutState.Mode = LayoutLive
-	t.layoutState.GridExplicit = false
+	t.layoutState.GridExplicit = explicitSlots > 0
 	t.layoutState.Zoomed = false
 	if t.layoutState.LivePinned == nil {
 		t.layoutState.LivePinned = make(map[string]int)
