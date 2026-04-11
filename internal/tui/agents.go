@@ -652,10 +652,23 @@ func (t *TUI) renderAgents() {
 
 		drawLine(row, line, style)
 
-		// Overlay pin badge with purple color (match pane ribbon [P] badge).
-		if pin != "   " && !isSelected {
-			pinStyle := bgStyle.Foreground(tcell.ColorMediumPurple).Bold(true)
-			pinCol := innerX + len([]rune(prefix)) + 12 + 1 // after name column + space
+		// Overlay pin badge with color: blue for Protected, purple for LivePinned.
+		if pin != "   " {
+			var pinColor tcell.Color
+			if livePinned {
+				pinColor = tcell.ColorMediumPurple
+			} else {
+				pinColor = tcell.ColorCornflowerBlue
+			}
+			pinStyle := bgStyle.Foreground(pinColor).Bold(true)
+			if isSelected {
+				pinStyle = style.Foreground(pinColor).Bold(true)
+			}
+			nameW := len([]rune(name))
+			if nameW < 12 {
+				nameW = 12
+			}
+			pinCol := innerX + len([]rune(prefix)) + nameW + 1 // after name column + space
 			for _, ch := range pin {
 				if pinCol >= innerX+innerW {
 					break

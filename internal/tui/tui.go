@@ -37,6 +37,7 @@ type AgentInfo struct {
 	Activity        ActivityState // Actual activity state for dot color.
 	Visible         bool
 	Protected       bool // True when agent is protected from auto-suspend.
+	LivePinned      bool // True when agent is pinned to a live mode slot.
 	Remote          bool // True for agents on remote peers.
 }
 

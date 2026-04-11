@@ -656,18 +656,26 @@ func (t *TUI) renderOverlay() {
 		act := p.Activity()
 		// Overlay shows activity state only; bead info is in the pane ribbon.
 		status := act.String()
-		pin := t.layoutState.Protected[paneKey(p)]
+		pk := paneKey(p)
+		pin := t.layoutState.Protected[pk]
+		if !pin {
+			_, pin = t.layoutState.LivePinned[pk]
+		}
 		remote := p.Host() != ""
 		displayName := p.Name()
 		if remote {
 			displayName = p.Host() + ":" + p.Name()
 		}
-		agents[i] = AgentInfo{Name: displayName, Status: status, Activity: act, Visible: vis, Protected: pin, Remote: remote}
+		_, livePin := t.layoutState.LivePinned[pk]
+		agents[i] = AgentInfo{Name: displayName, Status: status, Activity: act, Visible: vis, Protected: t.layoutState.Protected[pk], LivePinned: livePin, Remote: remote}
 		nameLen := len(displayName)
 		if remote {
 			nameLen += 4 // " [R]"
 		}
-		if pin {
+		if t.layoutState.Protected[pk] {
+			nameLen += 4 // " [P]"
+		}
+		if livePin {
 			nameLen += 4 // " [P]"
 		}
 		if !vis {
@@ -786,9 +794,18 @@ func (t *TUI) renderOverlay() {
 				col++
 			}
 		}
-		// Pin marker.
+		// Pin markers: blue for Protected, purple for LivePinned.
 		if a.Protected {
 			pinStyle := bgStyle.Foreground(tcell.ColorCornflowerBlue)
+			for _, ch := range " [P]" {
+				if col < px+panelW-1 {
+					s.SetContent(col, row, ch, nil, pinStyle)
+				}
+				col++
+			}
+		}
+		if a.LivePinned {
+			pinStyle := bgStyle.Foreground(tcell.ColorMediumPurple).Bold(true)
 			for _, ch := range " [P]" {
 				if col < px+panelW-1 {
 					s.SetContent(col, row, ch, nil, pinStyle)
