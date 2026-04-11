@@ -657,9 +657,15 @@ func (t *TUI) renderOverlay() {
 		vis := !t.layoutState.Hidden[paneKey(p)]
 		act := p.Activity()
 		bead := p.BeadID()
-		// Build status: combine activity and bead ID as "running (ini-sx5)".
+		beadTitle := ""
+		if lp, ok := p.(*Pane); ok {
+			beadTitle = lp.BeadTitle()
+		}
+		// Build status: combine activity and bead as "running (ini-sx5: Fix the bug)".
 		status := act.String()
-		if bead != "" {
+		if bead != "" && beadTitle != "" {
+			status = fmt.Sprintf("%s (%s: %s)", act.String(), bead, beadTitle)
+		} else if bead != "" {
 			status = fmt.Sprintf("%s (%s)", act.String(), bead)
 		}
 		pin := t.layoutState.Pinned[paneKey(p)]

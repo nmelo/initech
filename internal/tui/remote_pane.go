@@ -382,7 +382,7 @@ func (rp *RemotePane) Render(screen tcell.Screen, focused bool, dimmed bool, ind
 		titleStyle = tcell.StyleDefault.Background(trueBlack).Foreground(tcell.ColorRed).Bold(true)
 	}
 
-	renderRibbon(s, r, title, titleStyle, rp.BeadID())
+	renderRibbon(s, r, title, titleStyle, rp.BeadID(), "")
 
 	_, innerRows := r.InnerSize()
 	emuStartRow := rp.emu.Height() - innerRows

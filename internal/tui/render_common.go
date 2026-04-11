@@ -12,8 +12,8 @@ import (
 var trueBlack = tcell.NewRGBColor(0, 0, 0)
 
 // renderRibbon draws the bottom ribbon: solid black background, title badge,
-// and optional bead ID. Returns the column position after the last element.
-func renderRibbon(s *clampedScreen, r Region, title string, titleStyle tcell.Style, bead string) int {
+// and optional bead ID with title. Returns the column position after the last element.
+func renderRibbon(s *clampedScreen, r Region, title string, titleStyle tcell.Style, beadID, beadTitle string) int {
 	ribbonY := r.Y + r.H - 1
 
 	blackStyle := tcell.StyleDefault.Background(trueBlack)
@@ -29,11 +29,26 @@ func renderRibbon(s *clampedScreen, r Region, title string, titleStyle tcell.Sty
 		}
 	}
 
-	if bead != "" {
-		beadStr := "| " + bead + " "
+	if beadID != "" {
 		beadStyle := tcell.StyleDefault.Background(trueBlack).Foreground(tcell.ColorDarkCyan)
-		for _, ch := range beadStr {
-			if col < r.X+r.W {
+		maxCol := r.X + r.W
+
+		// Build bead display: "| id: title " or "| id " if no title.
+		beadStr := "| " + beadID
+		if beadTitle != "" {
+			beadStr += ": " + beadTitle
+		}
+		beadStr += " "
+
+		// Truncate with ellipsis if it exceeds available width.
+		avail := maxCol - col
+		beadRunes := []rune(beadStr)
+		if len(beadRunes) > avail && avail > 6 {
+			beadRunes = append(beadRunes[:avail-1], '\u2026')
+		}
+
+		for _, ch := range beadRunes {
+			if col < maxCol {
 				s.SetContent(col, ribbonY, ch, nil, beadStyle)
 				col++
 			}

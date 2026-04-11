@@ -124,15 +124,22 @@ func runAssign(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("no beads could be assigned")
 	}
 
-	// Register all beads in TUI (comma-separated, cosmetic, warn on failure).
+	// Register beads in TUI (cosmetic, warn on failure).
+	// Single bead: "id\ttitle" for ribbon display. Multi: "id1,id2" (no titles).
 	successIDs := make([]string, len(successes))
 	for i, s := range successes {
 		successIDs[i] = s.id
 	}
+	var beadText string
+	if len(successes) == 1 {
+		beadText = successes[0].id + "\t" + successes[0].title
+	} else {
+		beadText = strings.Join(successIDs, ",")
+	}
 	beadReq := tui.IPCRequest{
 		Action: "bead",
 		Target: agent,
-		Text:   strings.Join(successIDs, ","),
+		Text:   beadText,
 	}
 	if resp, err := ipcCall(beadReq); err != nil {
 		fmt.Fprintf(cmd.ErrOrStderr(), "warning: could not register bead in TUI (is initech running?)\n")

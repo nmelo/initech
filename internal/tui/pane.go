@@ -1250,6 +1250,13 @@ func (p *Pane) BeadIDs() []string {
 	return out
 }
 
+// BeadTitle returns the title of the primary bead, or empty string.
+func (p *Pane) BeadTitle() string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.beadTitle
+}
+
 // SetBead sets a single bead ID (backward compat). Pass "" to clear.
 func (p *Pane) SetBead(id, title string) {
 	p.mu.Lock()

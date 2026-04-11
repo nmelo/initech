@@ -555,14 +555,15 @@ func (t *TUI) handleIPCBead(conn net.Conn, req IPCRequest) {
 		writeIPCResponse(conn, IPCResponse{Error: "target is required (set INITECH_AGENT or use --agent)"})
 		return
 	}
-	// Validate bead ID text before touching TUI state.
-	if len(req.Text) > 64 {
-		writeIPCResponse(conn, IPCResponse{Error: "bead ID too long (max 64 chars)"})
+	// Validate bead text before touching TUI state. Tab is allowed as the
+	// id\ttitle delimiter; other control characters are rejected.
+	if len(req.Text) > 256 {
+		writeIPCResponse(conn, IPCResponse{Error: "bead text too long (max 256 chars)"})
 		return
 	}
 	for _, ch := range req.Text {
-		if ch < 0x20 || ch == 0x7F {
-			writeIPCResponse(conn, IPCResponse{Error: "bead ID contains control characters"})
+		if ch != '\t' && (ch < 0x20 || ch == 0x7F) {
+			writeIPCResponse(conn, IPCResponse{Error: "bead text contains control characters"})
 			return
 		}
 	}
@@ -575,15 +576,22 @@ func (t *TUI) handleIPCBead(conn net.Conn, req IPCRequest) {
 		writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("pane %q not found", req.Target)})
 		return
 	}
-	// Support comma-separated bead IDs for multi-bead assignment.
-	if strings.Contains(req.Text, ",") {
-		ids := strings.Split(req.Text, ",")
+	// Parse bead text. Supports:
+	// - "id\ttitle" (tab-delimited: ID with title)
+	// - "id1,id2,id3" (comma-separated: multiple IDs, no titles)
+	// - "id" (plain: single ID, no title)
+	// - "" (clear)
+	text := req.Text
+	if strings.Contains(text, ",") {
+		ids := strings.Split(text, ",")
 		for i := range ids {
 			ids[i] = strings.TrimSpace(ids[i])
 		}
 		pv.SetBeads(ids)
+	} else if idx := strings.IndexByte(text, '\t'); idx >= 0 {
+		pv.SetBead(text[:idx], text[idx+1:])
 	} else {
-		pv.SetBead(req.Text, "")
+		pv.SetBead(text, "")
 	}
 	writeIPCResponse(conn, IPCResponse{OK: true})
 }

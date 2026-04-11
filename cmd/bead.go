@@ -46,13 +46,25 @@ func runBead(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("no agent specified (set --agent or run inside a TUI pane where INITECH_AGENT is set)")
 	}
 
-	// Determine the bead ID(s). Comma-separated for multi-bead IPC.
+	// Determine the bead ID(s).
 	beadText := ""
 	if !beadClear {
 		if len(args) < 1 {
 			return fmt.Errorf("bead ID required (or use --clear)")
 		}
-		beadText = strings.Join(args, ",")
+		if len(args) == 1 {
+			// Single bead: try to fetch title from bd for ribbon display.
+			id := args[0]
+			title, err := bdShowTitle(id)
+			if err == nil && title != "" {
+				beadText = id + "\t" + truncateTitle(title, 80)
+			} else {
+				beadText = id
+			}
+		} else {
+			// Multiple beads: comma-separated, no titles.
+			beadText = strings.Join(args, ",")
+		}
 	}
 
 	req := tui.IPCRequest{

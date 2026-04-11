@@ -77,7 +77,7 @@ func (p *Pane) Render(screen tcell.Screen, focused bool, dimmed bool, index int,
 		titleStyle = tcell.StyleDefault.Background(trueBlack).Foreground(tcell.ColorYellow).Bold(true)
 	}
 
-	renderRibbon(s, r, title, titleStyle, p.BeadID())
+	renderRibbon(s, r, title, titleStyle, p.BeadID(), p.BeadTitle())
 
 	// Terminal content (starts at Y+1, fills full width).
 	innerCols, innerRows := r.InnerSize()
