@@ -154,10 +154,10 @@ func runDeliver(cmd *cobra.Command, args []string) error {
 			reason = "no reason provided"
 		}
 		emitIPCEvent(agentOrUnknown(agent), beadID, "bead_delivered",
-			fmt.Sprintf("%s failed %s: %s", agentOrUnknown(agent), beadID, reason))
+			fmt.Sprintf("%s failed: %s", agentOrUnknown(agent), reason))
 	} else {
 		emitIPCEvent(agentOrUnknown(agent), beadID, "bead_delivered",
-			fmt.Sprintf("%s delivered %s (ready for QA)", agentOrUnknown(agent), beadID))
+			fmt.Sprintf("%s delivered: %s (ready for QA)", agentOrUnknown(agent), displayTitle))
 	}
 
 	// Output summary.
@@ -244,13 +244,14 @@ func announceDeliver(cmd *cobra.Command, agent, beadID, title string, isFail boo
 	var detail, kind string
 	if isFail {
 		kind = "agent.failed"
-		detail = fmt.Sprintf("%s hit a wall on %s: %s", agentOrUnknown(agent), beadID, reason)
-		if reason == "" {
-			detail = fmt.Sprintf("%s hit a wall on %s", agentOrUnknown(agent), beadID)
+		if reason != "" {
+			detail = fmt.Sprintf("%s hit a wall: %s", agentOrUnknown(agent), reason)
+		} else {
+			detail = fmt.Sprintf("%s hit a wall", agentOrUnknown(agent))
 		}
 	} else {
 		kind = "agent.completed"
-		detail = fmt.Sprintf("%s finished %s: %s", agentOrUnknown(agent), beadID, title)
+		detail = fmt.Sprintf("%s finished: %s", agentOrUnknown(agent), title)
 	}
 
 	result := webhook.PostAnnouncement(p.AnnounceURL, webhook.AnnouncePayload{
@@ -283,13 +284,13 @@ func webhookDeliver(cmd *cobra.Command, agent, beadID, title string, isFail bool
 	var kind, message string
 	if isFail {
 		kind = "agent.failed"
-		message = fmt.Sprintf("%s: %s FAILED", beadID, title)
+		message = fmt.Sprintf("%s FAILED", title)
 		if reason != "" {
 			message += ": " + reason
 		}
 	} else {
 		kind = "agent.completed"
-		message = fmt.Sprintf("%s: %s ready for QA", beadID, title)
+		message = fmt.Sprintf("%s ready for QA", title)
 	}
 
 	if err := webhook.PostNotification(p.WebhookURL, kind, agentOrUnknown(agent), message, p.Name); err != nil {

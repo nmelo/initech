@@ -170,7 +170,7 @@ func runAssign(cmd *cobra.Command, args []string) error {
 
 	// Emit events to TUI (fire and forget, one per bead).
 	for _, s := range successes {
-		emitIPCEvent(agent, s.id, "bead_assigned", fmt.Sprintf("assigned %s to %s: %s", s.id, agent, s.title))
+		emitIPCEvent(agent, s.id, "bead_assigned", fmt.Sprintf("assigned to %s: %s", agent, s.title))
 	}
 
 	// Print summary to stderr.
@@ -253,9 +253,9 @@ func announceAssignment(cmd *cobra.Command, agent string, successes []assignResu
 
 	var detail string
 	if len(successes) == 1 {
-		detail = fmt.Sprintf("%s picking up %s: %s", agent, successes[0].id, successes[0].title)
+		detail = fmt.Sprintf("%s picking up: %s", agent, successes[0].title)
 	} else {
-		detail = fmt.Sprintf("%s assigned %d beads (%s)", agent, len(successes), strings.Join(ids, ", "))
+		detail = fmt.Sprintf("%s assigned %d beads", agent, len(successes))
 	}
 
 	payload := webhook.AnnouncePayload{

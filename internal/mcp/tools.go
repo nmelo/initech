@@ -515,9 +515,9 @@ func handleAssign(host PaneHost, input AssignInput) (*gomcp.CallToolResult, Assi
 		}
 		var detail string
 		if len(successes) == 1 {
-			detail = fmt.Sprintf("%s picking up %s: %s", input.Agent, successes[0].id, successes[0].title)
+			detail = fmt.Sprintf("%s picking up: %s", input.Agent, successes[0].title)
 		} else {
-			detail = fmt.Sprintf("%s assigned %d beads (%s)", input.Agent, len(successes), strings.Join(ids, ", "))
+			detail = fmt.Sprintf("%s assigned %d beads", input.Agent, len(successes))
 		}
 		webhook.PostAnnouncement(announceURL, webhook.AnnouncePayload{
 			Detail:  detail,
@@ -652,13 +652,14 @@ func handleDeliver(host PaneHost, input DeliverInput) (*gomcp.CallToolResult, De
 		var detail, kind string
 		if isFail {
 			kind = "agent.failed"
-			detail = fmt.Sprintf("%s hit a wall on %s", agentOrUnknownMCP(callerAgent), input.BeadID)
 			if input.Reason != "" {
-				detail += ": " + input.Reason
+				detail = fmt.Sprintf("%s hit a wall: %s", agentOrUnknownMCP(callerAgent), input.Reason)
+			} else {
+				detail = fmt.Sprintf("%s hit a wall", agentOrUnknownMCP(callerAgent))
 			}
 		} else {
 			kind = "agent.completed"
-			detail = fmt.Sprintf("%s finished %s: %s", agentOrUnknownMCP(callerAgent), input.BeadID, title)
+			detail = fmt.Sprintf("%s finished: %s", agentOrUnknownMCP(callerAgent), title)
 		}
 		webhook.PostAnnouncement(announceURL, webhook.AnnouncePayload{
 			Detail:  detail,
@@ -674,13 +675,13 @@ func handleDeliver(host PaneHost, input DeliverInput) (*gomcp.CallToolResult, De
 		var kind, message string
 		if isFail {
 			kind = "agent.failed"
-			message = fmt.Sprintf("%s: %s FAILED", input.BeadID, title)
+			message = fmt.Sprintf("%s FAILED", title)
 			if input.Reason != "" {
 				message += ": " + input.Reason
 			}
 		} else {
 			kind = "agent.completed"
-			message = fmt.Sprintf("%s: %s ready for QA", input.BeadID, title)
+			message = fmt.Sprintf("%s ready for QA", title)
 		}
 		webhook.PostNotification(webhookURL, kind, agentOrUnknownMCP(callerAgent), message, project) //nolint:errcheck
 	}
