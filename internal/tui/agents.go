@@ -584,7 +584,9 @@ func (t *TUI) renderAgents() {
 		p := t.panes[idx]
 		name := p.Name()
 		hidden := t.layoutState.Hidden[paneKey(p)]
-		pinned := t.layoutState.Pinned[paneKey(p)]
+		pk := paneKey(p)
+		generalPinned := t.layoutState.Pinned[pk]
+		_, livePinned := t.layoutState.LivePinned[pk]
 		act := p.Activity()
 		bead := p.BeadID()
 
@@ -593,19 +595,24 @@ func (t *TUI) renderAgents() {
 			vis = "[ ]"
 		}
 		pin := "   "
-		if pinned {
+		if generalPinned || livePinned {
 			pin = "[P]"
 		}
 
-		// Live mode slot info overrides pin column.
+		// Live mode: show slot info. Live-pinned shows P:N, dynamic shows D:N.
+		// General-pinned agents not in LivePinned keep [P].
 		if t.layoutState.Mode == LayoutLive {
-			if liveSlot, lp := t.layoutState.LivePinned[paneKey(p)]; lp {
+			if liveSlot, lp := t.layoutState.LivePinned[pk]; lp {
 				pin = fmt.Sprintf("P:%d", liveSlot)
 			} else {
 				// Check if agent is in a dynamic slot.
 				for si, sn := range t.layoutState.LiveSlots {
-					if sn == paneKey(p) {
-						pin = fmt.Sprintf("D:%d", si)
+					if sn == pk {
+						if generalPinned {
+							pin = fmt.Sprintf("P:%d", si)
+						} else {
+							pin = fmt.Sprintf("D:%d", si)
+						}
 						break
 					}
 				}

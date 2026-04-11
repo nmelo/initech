@@ -220,6 +220,39 @@ func TestAgentsModal_RenderShowsPinBadge(t *testing.T) {
 	}
 }
 
+func TestAgentsModal_RenderShowsLivePinBadge(t *testing.T) {
+	tui, s := newTestTUIWithScreen("eng1", "eng2")
+	tui.layoutState.LivePinned = map[string]int{"eng2": 0}
+	tui.openAgentsModal()
+	tui.render()
+
+	sw, sh := s.Size()
+	allText := readScreenRect(s, 0, 0, sw, sh)
+
+	// LivePinned agent should show pin indicator (either [P] or P:N).
+	if !strings.Contains(allText, "[P]") && !strings.Contains(allText, "P:") {
+		t.Error("rendered output missing pin badge for live-pinned agent eng2")
+	}
+}
+
+func TestAgentsModal_RenderShowsLivePinBadgeInLiveMode(t *testing.T) {
+	tui, s := newTestTUIWithScreen("super", "eng1", "pm")
+	tui.layoutState.Mode = LayoutLive
+	tui.layoutState.Pinned = map[string]bool{"super": true}
+	tui.layoutState.LivePinned = map[string]int{"pm": 1}
+	tui.layoutState.LiveSlots = []string{"super", "pm"}
+	tui.openAgentsModal()
+	tui.render()
+
+	sw, sh := s.Size()
+	allText := readScreenRect(s, 0, 0, sw, sh)
+
+	// In live mode: super (general pinned) should show P:0, pm (live-pinned) should show P:1.
+	if !strings.Contains(allText, "P:") {
+		t.Errorf("rendered output missing P:N for pinned agents in live mode. Got:\n%s", allText)
+	}
+}
+
 func TestAgentsModal_RenderIsFloating(t *testing.T) {
 	tui, s := newTestTUIWithScreen("eng1", "eng2")
 	tui.openAgentsModal()
