@@ -724,7 +724,8 @@ Playbooks: {{project_root}}/{{role_name}}/playbooks/
 5. Run build and package
 6. Test install path on clean environment
 7. Publish artifacts
-8. Deliver: ` + "`" + `initech deliver <id> --message "<version> released to Homebrew"` + "`" + `
+8. Announce the release: ` + "`" + `initech announce --kind deploy.completed --agent {{role_name}} "v<version> released to Homebrew"` + "`" + `
+9. Deliver: ` + "`" + `initech deliver <id> --message "<version> released to Homebrew"` + "`" + `
 
 Fallback: ` + "`" + `initech send super "[from {{role_name}}] <version> released"` + "`" + `
 
