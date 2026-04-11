@@ -183,7 +183,7 @@ func TestRunDetectors_CompletionEmitsEvent(t *testing.T) {
 		eventCh:     ch,
 		dedupEvents: newDedup(),
 		alive:       true,
-		beadID:      "ini-test",
+		beadIDs:     []string{"ini-test"},
 	}
 
 	// Simulate a DONE comment in the JSONL entry that triggers completion detection.

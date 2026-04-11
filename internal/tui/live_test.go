@@ -30,6 +30,12 @@ func (m *mockPaneView) IsAlive() bool                  { return m.alive }
 func (m *mockPaneView) IsSuspended() bool              { return m.suspended }
 func (m *mockPaneView) IsPinned() bool                 { return m.pinned }
 func (m *mockPaneView) BeadID() string                 { return m.beadID }
+func (m *mockPaneView) BeadIDs() []string {
+	if m.beadID == "" {
+		return nil
+	}
+	return []string{m.beadID}
+}
 func (m *mockPaneView) Activity() ActivityState        { return m.activity }
 func (m *mockPaneView) ActiveRunStart() time.Time      { return m.runStart }
 func (m *mockPaneView) ActiveRunBytes() int64          { return m.runBytes }
@@ -42,6 +48,7 @@ func (m *mockPaneView) SessionDesc() string                                     
 func (m *mockPaneView) AgentType() string                                            { return "" }
 func (m *mockPaneView) SubmitKey() string                                            { return "" }
 func (m *mockPaneView) SetBead(id, title string)                                     {}
+func (m *mockPaneView) SetBeads(ids []string)                                        {}
 func (m *mockPaneView) SendKey(_ *tcell.EventKey)                                    {}
 func (m *mockPaneView) SendText(_ string, _ bool)                                    {}
 func (m *mockPaneView) Render(_ tcell.Screen, _ bool, _ bool, _ int, _ Selection)    {}

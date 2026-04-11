@@ -139,10 +139,12 @@ type PaneView interface {
 	Activity() ActivityState
 	LastOutputTime() time.Time
 	BeadID() string
+	BeadIDs() []string
 	SessionDesc() string
 	Emulator() *vt.SafeEmulator
 	GetRegion() Region
 	SetBead(id, title string)
+	SetBeads(ids []string)
 	SendKey(ev *tcell.EventKey)
 	SendText(text string, enter bool)
 	AgentType() string
@@ -198,7 +200,7 @@ type Pane struct {
 	safeGo            func(func())      // Launches a goroutine with panic recovery. Set by TUI after creation.
 	goWg              sync.WaitGroup    // Tracks goroutines launched by Start(). Wait in Close().
 	sessionDesc       string            // Session description extracted from cursor row.
-	beadID            string            // Current bead ID (e.g., "ini-bhk.3"). Empty = no bead.
+	beadIDs           []string          // Current bead IDs. Nil = no beads. First is primary.
 	beadTitle         string            // Bead title for top modal display.
 	stallReported     bool              // True after emitting stall event. Reset on new activity.
 	stuckReported     bool              // True after emitting stuck event. Reset on success.
@@ -1214,19 +1216,51 @@ func (p *Pane) SessionDesc() string {
 	return p.sessionDesc
 }
 
-// BeadID returns the currently assigned bead ID, or empty string.
+// BeadID returns the first (primary) bead ID, or empty string.
 func (p *Pane) BeadID() string {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	return p.beadID
+	if len(p.beadIDs) == 0 {
+		return ""
+	}
+	return p.beadIDs[0]
 }
 
-// SetBead sets the current bead ID and title.
+// BeadIDs returns all assigned bead IDs.
+func (p *Pane) BeadIDs() []string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if len(p.beadIDs) == 0 {
+		return nil
+	}
+	out := make([]string, len(p.beadIDs))
+	copy(out, p.beadIDs)
+	return out
+}
+
+// SetBead sets a single bead ID (backward compat). Pass "" to clear.
 func (p *Pane) SetBead(id, title string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	p.beadID = id
+	if id == "" {
+		p.beadIDs = nil
+	} else {
+		p.beadIDs = []string{id}
+	}
 	p.beadTitle = title
+}
+
+// SetBeads sets multiple bead IDs. Pass nil to clear.
+func (p *Pane) SetBeads(ids []string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if len(ids) == 0 {
+		p.beadIDs = nil
+	} else {
+		p.beadIDs = make([]string, len(ids))
+		copy(p.beadIDs, ids)
+	}
+	p.beadTitle = ""
 }
 
 // RecentEntries returns a copy of the recent JSONL entries ring buffer.

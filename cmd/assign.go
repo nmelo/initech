@@ -14,20 +14,21 @@ import (
 )
 
 var assignCmd = &cobra.Command{
-	Use:   "assign <agent> <bead-id>",
-	Short: "Claim a bead, register it in the TUI, and dispatch to an agent",
+	Use:   "assign <agent> <bead-id> [<bead-id>...]",
+	Short: "Claim beads, register in the TUI, and dispatch to an agent",
 	Long: `Atomic dispatch: combines bd update, initech bead, and initech send in one
-command. Auto-generates a dispatch message from the bead title.
+command. Auto-generates a dispatch message from bead titles.
 
   initech assign eng1 ini-abc
+  initech assign eng1 ini-abc ini-def ini-ghi
   initech assign eng2 ini-xyz --message "Focus on the error handling edge cases."
 
-Fail-fast ordering: bd operations first (durable state), TUI bead display
-second (cosmetic), dispatch last (notification). If dispatch fails, the bead
-is still claimed and you can notify manually.
+Multiple beads are claimed individually (partial failures are logged and
+skipped), then dispatched as one consolidated message. Exit 0 if at least
+one bead succeeds, exit 1 if all fail.
 
 Requires bd and a running initech TUI.`,
-	Args: cobra.ExactArgs(2),
+	Args: cobra.MinimumNArgs(2),
 	RunE: runAssign,
 }
 
@@ -73,9 +74,15 @@ func truncateTitle(title string, maxLen int) string {
 	return title[:maxLen-3] + "..."
 }
 
+// assignResult holds the outcome of a single bead assignment.
+type assignResult struct {
+	id    string
+	title string
+}
+
 func runAssign(cmd *cobra.Command, args []string) error {
 	agent := args[0]
-	beadID := args[1]
+	beadIDs := args[1:]
 
 	// Parse host:agent for cross-machine routing on the send step.
 	var host string
@@ -84,22 +91,48 @@ func runAssign(cmd *cobra.Command, args []string) error {
 		agent = agent[idx+1:]
 	}
 
-	// Step 1: Read bead title (fail fast if bead not found).
-	title, err := bdShowTitle(beadID)
-	if err != nil {
-		return err
+	// Deduplicate bead IDs.
+	seen := make(map[string]bool, len(beadIDs))
+	unique := make([]string, 0, len(beadIDs))
+	for _, id := range beadIDs {
+		if !seen[id] {
+			seen[id] = true
+			unique = append(unique, id)
+		}
+	}
+	beadIDs = unique
+
+	// Process each bead: show + claim. Failures logged and skipped.
+	var successes []assignResult
+	var failures []string
+	for _, id := range beadIDs {
+		title, err := bdShowTitle(id)
+		if err != nil {
+			fmt.Fprintf(cmd.ErrOrStderr(), "warning: %s\n", err)
+			failures = append(failures, id)
+			continue
+		}
+		if err := bdUpdateClaim(id, agent); err != nil {
+			fmt.Fprintf(cmd.ErrOrStderr(), "warning: %s: %s\n", id, err)
+			failures = append(failures, id)
+			continue
+		}
+		successes = append(successes, assignResult{id: id, title: truncateTitle(title, 80)})
 	}
 
-	// Step 2: Claim bead in bd (fail fast if already claimed/conflict).
-	if err := bdUpdateClaim(beadID, agent); err != nil {
-		return err
+	if len(successes) == 0 {
+		return fmt.Errorf("no beads could be assigned")
 	}
 
-	// Step 3: Register bead in TUI (cosmetic, warn on failure).
+	// Register all beads in TUI (comma-separated, cosmetic, warn on failure).
+	successIDs := make([]string, len(successes))
+	for i, s := range successes {
+		successIDs[i] = s.id
+	}
 	beadReq := tui.IPCRequest{
 		Action: "bead",
 		Target: agent,
-		Text:   beadID,
+		Text:   strings.Join(successIDs, ","),
 	}
 	if resp, err := ipcCall(beadReq); err != nil {
 		fmt.Fprintf(cmd.ErrOrStderr(), "warning: could not register bead in TUI (is initech running?)\n")
@@ -107,12 +140,8 @@ func runAssign(cmd *cobra.Command, args []string) error {
 		fmt.Fprintf(cmd.ErrOrStderr(), "warning: TUI bead registration: %s\n", resp.Error)
 	}
 
-	// Step 4: Send dispatch message to agent.
-	dispatchTitle := truncateTitle(title, 80)
-	dispatch := fmt.Sprintf("[from super] %s: %s. Read bd show %s for full AC.", beadID, dispatchTitle, beadID)
-	if assignMessage != "" {
-		dispatch += " " + assignMessage
-	}
+	// Build consolidated dispatch message.
+	dispatch := buildDispatchMessage(successes, assignMessage)
 
 	sendReq := tui.IPCRequest{
 		Action: "send",
@@ -123,19 +152,26 @@ func runAssign(cmd *cobra.Command, args []string) error {
 	}
 	resp, err := ipcCall(sendReq)
 	if err != nil {
-		return fmt.Errorf("bead claimed but dispatch failed: %w\nRun: initech send %s to notify manually", err, agent)
+		return fmt.Errorf("beads claimed but dispatch failed: %w\nRun: initech send %s to notify manually", err, agent)
 	}
 	if !resp.OK {
-		return fmt.Errorf("bead claimed but dispatch failed: %s\nRun: initech send %s to notify manually", resp.Error, agent)
+		return fmt.Errorf("beads claimed but dispatch failed: %s\nRun: initech send %s to notify manually", resp.Error, agent)
 	}
 
-	// Step 5: Announce to Agent Radio (fire and forget).
-	announceDispatch(cmd, agent, beadID, dispatchTitle)
+	// Announce to Agent Radio (fire and forget).
+	announceAssignment(cmd, agent, successes)
 
-	// Step 6: Emit event to TUI (fire and forget).
-	emitIPCEvent(agent, beadID, "bead_assigned", fmt.Sprintf("assigned %s to %s: %s", beadID, agent, dispatchTitle))
+	// Emit events to TUI (fire and forget, one per bead).
+	for _, s := range successes {
+		emitIPCEvent(agent, s.id, "bead_assigned", fmt.Sprintf("assigned %s to %s: %s", s.id, agent, s.title))
+	}
 
-	fmt.Fprintf(cmd.ErrOrStderr(), "assigned %s to %s: %s\n", beadID, agent, dispatchTitle)
+	// Print summary to stderr.
+	summary := fmt.Sprintf("assigned %d bead(s) to %s: %s", len(successes), agent, strings.Join(successIDs, ", "))
+	if len(failures) > 0 {
+		summary += fmt.Sprintf(" (failed: %s)", strings.Join(failures, ", "))
+	}
+	fmt.Fprintln(cmd.ErrOrStderr(), summary)
 	return nil
 }
 
@@ -151,10 +187,45 @@ func emitIPCEvent(agent, beadID, eventType, detail string) {
 	ipcCall(req) //nolint:errcheck
 }
 
-// announceDispatch posts an agent.started announcement to Agent Radio if
-// announce_url is configured. Failures are logged as warnings and never
-// block the assign command.
-func announceDispatch(cmd *cobra.Command, agent, beadID, title string) {
+// buildDispatchMessage creates the dispatch text sent to the agent.
+func buildDispatchMessage(successes []assignResult, message string) string {
+	if len(successes) == 1 {
+		// Single bead: compact format (backwards compatible).
+		s := successes[0]
+		dispatch := fmt.Sprintf("[from super] %s: %s. Read bd show %s for full AC.", s.id, s.title, s.id)
+		if message != "" {
+			dispatch += " " + message
+		}
+		return dispatch
+	}
+
+	// Multiple beads: list format.
+	var b strings.Builder
+	fmt.Fprintf(&b, "[from super] Assigned %d beads:", len(successes))
+
+	showCount := len(successes)
+	truncated := 0
+	if showCount > 5 {
+		truncated = showCount - 5
+		showCount = 5
+	}
+	for i := 0; i < showCount; i++ {
+		s := successes[i]
+		fmt.Fprintf(&b, "\n- %s: %s", s.id, s.title)
+	}
+	if truncated > 0 {
+		fmt.Fprintf(&b, "\n... and %d more. Run bd list --assignee <self> for full list.", truncated)
+	} else {
+		fmt.Fprintf(&b, "\nRead bd show <id> for full AC on each.")
+	}
+	if message != "" {
+		b.WriteString("\n" + message)
+	}
+	return b.String()
+}
+
+// announceAssignment posts a single announcement for the batch assignment.
+func announceAssignment(cmd *cobra.Command, agent string, successes []assignResult) {
 	wd, err := os.Getwd()
 	if err != nil {
 		return
@@ -168,13 +239,24 @@ func announceDispatch(cmd *cobra.Command, agent, beadID, title string) {
 		return
 	}
 
-	detail := fmt.Sprintf("%s picking up %s: %s", agent, beadID, title)
+	ids := make([]string, len(successes))
+	for i, s := range successes {
+		ids[i] = s.id
+	}
+
+	var detail string
+	if len(successes) == 1 {
+		detail = fmt.Sprintf("%s picking up %s: %s", agent, successes[0].id, successes[0].title)
+	} else {
+		detail = fmt.Sprintf("%s assigned %d beads (%s)", agent, len(successes), strings.Join(ids, ", "))
+	}
+
 	payload := webhook.AnnouncePayload{
 		Detail:  detail,
 		Kind:    "agent.started",
 		Agent:   agent,
 		Project: p.Name,
-		BeadID:  beadID,
+		BeadID:  successes[0].id,
 	}
 	result := webhook.PostAnnouncement(p.AnnounceURL, payload)
 	if result.Err != nil {

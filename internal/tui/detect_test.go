@@ -308,7 +308,7 @@ func TestApplyBeadDetection_MixedStaleAndCurrent(t *testing.T) {
 func TestApplyBeadDetection_ClearsBead(t *testing.T) {
 	ch := make(chan AgentEvent, 4)
 	p := &Pane{name: "eng1", eventCh: ch, cfg: PaneConfig{BeadsEnabled: true}}
-	p.beadID = "ini-18m.5"
+	p.beadIDs = []string{"ini-18m.5"}
 
 	entries := []JournalEntry{
 		{

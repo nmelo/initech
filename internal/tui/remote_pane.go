@@ -39,7 +39,7 @@ type RemotePane struct {
 	visible  bool
 	activity ActivityState
 	lastOut  time.Time
-	beadID   string
+	beadIDs  []string
 	sessDesc string
 	region   Region
 
@@ -200,12 +200,41 @@ func (rp *RemotePane) LastOutputTime() time.Time {
 func (rp *RemotePane) BeadID() string {
 	rp.mu.Lock()
 	defer rp.mu.Unlock()
-	return rp.beadID
+	if len(rp.beadIDs) == 0 {
+		return ""
+	}
+	return rp.beadIDs[0]
+}
+
+func (rp *RemotePane) BeadIDs() []string {
+	rp.mu.Lock()
+	defer rp.mu.Unlock()
+	if len(rp.beadIDs) == 0 {
+		return nil
+	}
+	out := make([]string, len(rp.beadIDs))
+	copy(out, rp.beadIDs)
+	return out
 }
 
 func (rp *RemotePane) SetBead(id, title string) {
 	rp.mu.Lock()
-	rp.beadID = id
+	if id == "" {
+		rp.beadIDs = nil
+	} else {
+		rp.beadIDs = []string{id}
+	}
+	rp.mu.Unlock()
+}
+
+func (rp *RemotePane) SetBeads(ids []string) {
+	rp.mu.Lock()
+	if len(ids) == 0 {
+		rp.beadIDs = nil
+	} else {
+		rp.beadIDs = make([]string, len(ids))
+		copy(rp.beadIDs, ids)
+	}
 	rp.mu.Unlock()
 }
 

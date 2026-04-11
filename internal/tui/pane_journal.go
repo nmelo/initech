@@ -195,14 +195,18 @@ func (p *Pane) updateActivity() {
 	runningToIdle := prev == StateRunning && p.activity == StateIdle
 
 	var idleEvent *AgentEvent
-	if runningToIdle && p.beadID != "" && p.eventCh != nil &&
+	primaryBead := ""
+	if len(p.beadIDs) > 0 {
+		primaryBead = p.beadIDs[0]
+	}
+	if runningToIdle && primaryBead != "" && p.eventCh != nil &&
 		now.Sub(p.lastIdleNotify) > idleNotifyCooldown {
 		p.lastIdleNotify = now
 		idleEvent = &AgentEvent{
 			Type:   EventAgentIdleWithBead,
 			Pane:   p.name,
-			BeadID: p.beadID,
-			Detail: p.beadID,
+			BeadID: primaryBead,
+			Detail: primaryBead,
 		}
 	}
 	p.mu.Unlock()
@@ -223,7 +227,10 @@ func (p *Pane) runDetectors(newEntries []JournalEntry) {
 
 	// Read protected fields atomically.
 	p.mu.Lock()
-	beadID := p.beadID
+	beadID := ""
+	if len(p.beadIDs) > 0 {
+		beadID = p.beadIDs[0]
+	}
 	journal := make([]JournalEntry, len(p.journal))
 	copy(journal, p.journal)
 	stallReported := p.stallReported

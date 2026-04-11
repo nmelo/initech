@@ -96,7 +96,7 @@ func TestPaneView_LastOutputTime(t *testing.T) {
 
 // TestPaneView_BeadID returns the current bead assignment.
 func TestPaneView_BeadID(t *testing.T) {
-	p := &Pane{emu: vt.NewSafeEmulator(10, 5), beadID: "ini-abc"}
+	p := &Pane{emu: vt.NewSafeEmulator(10, 5), beadIDs: []string{"ini-abc"}}
 	if p.BeadID() != "ini-abc" {
 		t.Errorf("BeadID() = %q, want 'ini-abc'", p.BeadID())
 	}

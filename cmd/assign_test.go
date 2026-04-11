@@ -3,6 +3,7 @@ package cmd
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -26,7 +27,6 @@ func TestTruncateTitle(t *testing.T) {
 }
 
 func TestBdShowTitle_ParsesJSON(t *testing.T) {
-	// Create a fake bd script that outputs JSON.
 	dir := t.TempDir()
 	fakeBd := filepath.Join(dir, "bd")
 	script := `#!/bin/sh
@@ -35,7 +35,6 @@ echo '[{"id":"ini-abc","title":"Fix the bug","status":"open"}]'
 	if err := os.WriteFile(fakeBd, []byte(script), 0755); err != nil {
 		t.Fatal(err)
 	}
-	// Prepend fake bd to PATH.
 	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
 
 	title, err := bdShowTitle("ini-abc")
@@ -48,7 +47,6 @@ echo '[{"id":"ini-abc","title":"Fix the bug","status":"open"}]'
 }
 
 func TestBdShowTitle_NotFound(t *testing.T) {
-	// Create a fake bd that fails.
 	dir := t.TempDir()
 	fakeBd := filepath.Join(dir, "bd")
 	script := `#!/bin/sh
@@ -73,5 +71,75 @@ func TestAssignCommand_RequiresArgs(t *testing.T) {
 	err := rootCmd.Execute()
 	if err == nil {
 		t.Fatal("expected error for missing args")
+	}
+}
+
+func TestAssignCommand_AcceptsSingleBead(t *testing.T) {
+	// Verify cobra accepts 2 args (agent + 1 bead).
+	rootCmd.SetArgs([]string{"assign", "eng1", "ini-abc"})
+	defer rootCmd.SetArgs(nil)
+	// Will fail on bd/IPC but shouldn't fail on arg validation.
+	err := rootCmd.Execute()
+	if err != nil && strings.Contains(err.Error(), "accepts") {
+		t.Fatalf("should accept 2 args, got: %v", err)
+	}
+}
+
+func TestAssignCommand_AcceptsMultipleBeads(t *testing.T) {
+	// Verify cobra accepts 4 args (agent + 3 beads).
+	rootCmd.SetArgs([]string{"assign", "eng1", "ini-abc", "ini-def", "ini-ghi"})
+	defer rootCmd.SetArgs(nil)
+	// Will fail on bd/IPC but shouldn't fail on arg validation.
+	err := rootCmd.Execute()
+	if err != nil && strings.Contains(err.Error(), "accepts") {
+		t.Fatalf("should accept 4 args, got: %v", err)
+	}
+}
+
+func TestBuildDispatchMessage_SingleBead(t *testing.T) {
+	successes := []assignResult{{id: "ini-abc", title: "Fix the bug"}}
+	msg := buildDispatchMessage(successes, "")
+	if !strings.Contains(msg, "ini-abc: Fix the bug") {
+		t.Errorf("single bead dispatch missing title: %q", msg)
+	}
+	if !strings.Contains(msg, "Read bd show ini-abc") {
+		t.Errorf("single bead dispatch missing bd show hint: %q", msg)
+	}
+}
+
+func TestBuildDispatchMessage_MultipleBeads(t *testing.T) {
+	successes := []assignResult{
+		{id: "ini-abc", title: "Fix auth"},
+		{id: "ini-def", title: "Add tests"},
+		{id: "ini-ghi", title: "Update docs"},
+	}
+	msg := buildDispatchMessage(successes, "")
+	if !strings.Contains(msg, "Assigned 3 beads") {
+		t.Errorf("multi-bead dispatch missing count: %q", msg)
+	}
+	if !strings.Contains(msg, "- ini-abc: Fix auth") {
+		t.Errorf("multi-bead dispatch missing first bead: %q", msg)
+	}
+	if !strings.Contains(msg, "- ini-ghi: Update docs") {
+		t.Errorf("multi-bead dispatch missing third bead: %q", msg)
+	}
+}
+
+func TestBuildDispatchMessage_TruncatesAt5(t *testing.T) {
+	successes := make([]assignResult, 7)
+	for i := range successes {
+		successes[i] = assignResult{id: "ini-" + string(rune('a'+i)), title: "Task"}
+	}
+	msg := buildDispatchMessage(successes, "")
+	if !strings.Contains(msg, "... and 2 more") {
+		t.Errorf("expected truncation message in: %q", msg)
+	}
+}
+
+func TestBuildDispatchMessage_WithCustomMessage(t *testing.T) {
+	successes := []assignResult{{id: "ini-abc", title: "Fix the bug"}}
+	msg := buildDispatchMessage(successes, "Focus on edge cases.")
+	if !strings.Contains(msg, "Focus on edge cases.") {
+		t.Errorf("custom message not appended: %q", msg)
 	}
 }

@@ -31,7 +31,7 @@ func TestUpdateActivity_IdleWithBead_EdgeFires(t *testing.T) {
 		name:           "eng1",
 		alive:          true,
 		activity:       StateRunning,
-		beadID:         "ini-abc",
+		beadIDs:        []string{"ini-abc"},
 		eventCh:        ch,
 		lastOutputTime: time.Now().Add(-5 * time.Second), // past idle threshold
 		lastIdleNotify: time.Time{},                      // never notified
@@ -62,7 +62,7 @@ func TestUpdateActivity_IdleWithBead_NoBead(t *testing.T) {
 		name:           "eng1",
 		alive:          true,
 		activity:       StateRunning,
-		beadID:         "", // no bead
+		beadIDs:        nil, // no bead
 		eventCh:        ch,
 		lastOutputTime: time.Now().Add(-5 * time.Second),
 	}
@@ -85,7 +85,7 @@ func TestUpdateActivity_IdleWithBead_Cooldown(t *testing.T) {
 		name:           "eng1",
 		alive:          true,
 		activity:       StateRunning,
-		beadID:         "ini-abc",
+		beadIDs:        []string{"ini-abc"},
 		eventCh:        ch,
 		lastOutputTime: time.Now().Add(-5 * time.Second),
 		lastIdleNotify: time.Now(), // notified just now — cooldown active
@@ -109,7 +109,7 @@ func TestUpdateActivity_IdleWithBead_CooldownExpired(t *testing.T) {
 		name:           "eng1",
 		alive:          true,
 		activity:       StateRunning,
-		beadID:         "ini-abc",
+		beadIDs:        []string{"ini-abc"},
 		eventCh:        ch,
 		lastOutputTime: time.Now().Add(-5 * time.Second),
 		lastIdleNotify: time.Now().Add(-2 * idleNotifyCooldown), // well past cooldown
@@ -137,7 +137,7 @@ func TestUpdateActivity_IdleWithBead_NoEdge(t *testing.T) {
 		name:           "eng1",
 		alive:          true,
 		activity:       StateIdle, // was already idle
-		beadID:         "ini-abc",
+		beadIDs:        []string{"ini-abc"},
 		eventCh:        ch,
 		lastOutputTime: time.Now().Add(-5 * time.Second),
 	}
@@ -160,7 +160,7 @@ func TestUpdateActivity_IdleWithBead_PrevActivityTracked(t *testing.T) {
 		name:           "eng1",
 		alive:          true,
 		activity:       StateRunning,
-		beadID:         "ini-abc",
+		beadIDs:        []string{"ini-abc"},
 		eventCh:        ch,
 		lastOutputTime: time.Now(), // still active
 	}
@@ -202,7 +202,7 @@ func TestUpdateActivity_CodexAgent_StaysRunningDuringPause(t *testing.T) {
 		name:           "intern",
 		alive:          true,
 		activity:       StateRunning,
-		beadID:         "ini-abc",
+		beadIDs:        []string{"ini-abc"},
 		agentType:      "codex",
 		eventCh:        ch,
 		lastOutputTime: time.Now().Add(-5 * time.Second), // 5s gap — within codex threshold
@@ -229,7 +229,7 @@ func TestUpdateActivity_CodexAgent_IdleAfterLongPause(t *testing.T) {
 		name:           "intern",
 		alive:          true,
 		activity:       StateRunning,
-		beadID:         "ini-abc",
+		beadIDs:        []string{"ini-abc"},
 		agentType:      "codex",
 		eventCh:        ch,
 		lastOutputTime: time.Now().Add(-16 * time.Second), // well past codex threshold
@@ -260,7 +260,7 @@ func TestUpdateActivity_OpenCodeAgent_StaysRunningDuringPause(t *testing.T) {
 		name:           "intern",
 		alive:          true,
 		activity:       StateRunning,
-		beadID:         "ini-abc",
+		beadIDs:        []string{"ini-abc"},
 		agentType:      "opencode",
 		eventCh:        ch,
 		lastOutputTime: time.Now().Add(-5 * time.Second),
@@ -281,7 +281,7 @@ func TestUpdateActivity_ClaudeCodeAgent_IdleAt2s(t *testing.T) {
 		name:           "eng1",
 		alive:          true,
 		activity:       StateRunning,
-		beadID:         "ini-abc",
+		beadIDs:        []string{"ini-abc"},
 		agentType:      "claude-code",
 		eventCh:        ch,
 		lastOutputTime: time.Now().Add(-3 * time.Second), // past 2s CC threshold

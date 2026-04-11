@@ -146,12 +146,25 @@ func (p *fakeRemotePaneView) IsPinned() bool                   { return false }
 func (p *fakeRemotePaneView) Activity() ActivityState          { return p.activity }
 func (p *fakeRemotePaneView) LastOutputTime() time.Time        { return time.Time{} }
 func (p *fakeRemotePaneView) BeadID() string                   { return p.beadID }
+func (p *fakeRemotePaneView) BeadIDs() []string {
+	if p.beadID == "" {
+		return nil
+	}
+	return []string{p.beadID}
+}
 func (p *fakeRemotePaneView) SessionDesc() string              { return "" }
 func (p *fakeRemotePaneView) IdleWithBacklog() bool            { return false }
 func (p *fakeRemotePaneView) BacklogCount() int                { return 0 }
 func (p *fakeRemotePaneView) Emulator() *vt.SafeEmulator       { return p.emu }
 func (p *fakeRemotePaneView) GetRegion() Region                { return p.region }
 func (p *fakeRemotePaneView) SetBead(id, title string)         { p.beadID = id }
+func (p *fakeRemotePaneView) SetBeads(ids []string) {
+	if len(ids) > 0 {
+		p.beadID = ids[0]
+	} else {
+		p.beadID = ""
+	}
+}
 func (p *fakeRemotePaneView) SendKey(ev *tcell.EventKey)       {}
 func (p *fakeRemotePaneView) SendText(text string, enter bool) {}
 func (p *fakeRemotePaneView) AgentType() string                { return "" }

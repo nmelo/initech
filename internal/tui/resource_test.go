@@ -180,7 +180,7 @@ func newResourceTestPane(name string, alive bool, activity ActivityState, beadID
 		name:           name,
 		alive:          alive,
 		activity:       activity,
-		beadID:         beadID,
+		beadIDs:        func() []string { if beadID == "" { return nil }; return []string{beadID} }(),
 		lastOutputTime: lastOutput,
 		memoryRSS:      500000, // 500 MB default
 	}
@@ -879,7 +879,7 @@ func TestResumePane_CopiesPinnedAndBead(t *testing.T) {
 	p.cfg.Command = []string{"/bin/sh", "-c", "echo ready; sleep 1"}
 	p.suspended = true
 	p.pinned = true
-	p.beadID = "ini-abc.1"
+	p.beadIDs = []string{"ini-abc.1"}
 	p.beadTitle = "Test bead"
 	tui := &TUI{
 		panes:       toPaneViews([]*Pane{p}),

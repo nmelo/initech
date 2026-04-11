@@ -147,7 +147,10 @@ func (t *TUI) checkSuspendPolicy() {
 				p.mu.Lock()
 				alive := p.alive
 				activity := p.activity
-				bead := p.beadID
+				bead := ""
+				if len(p.beadIDs) > 0 {
+					bead = p.beadIDs[0]
+				}
 				pinned := p.pinned
 				name := p.name
 				lot := p.lastOutputTime
@@ -430,7 +433,10 @@ func (t *TUI) resumePane(pane *Pane, senderName string) error {
 				np.eventCh = t.agentEvents
 				np.safeGo = t.safeGo
 				np.pinned = pane.pinned
-				np.beadID = pane.beadID
+				if len(pane.beadIDs) > 0 {
+					np.beadIDs = make([]string, len(pane.beadIDs))
+					copy(np.beadIDs, pane.beadIDs)
+				}
 				np.beadTitle = pane.beadTitle
 				np.Start()
 				t.panes[i] = np

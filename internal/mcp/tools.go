@@ -117,9 +117,10 @@ type InterruptOutput struct {
 
 // AssignInput is the input schema for the initech_assign tool.
 type AssignInput struct {
-	Agent   string `json:"agent" jsonschema:"target agent name (e.g. eng1)"`
-	BeadID  string `json:"bead_id" jsonschema:"bead ID to assign (e.g. ini-abc)"`
-	Message string `json:"message,omitempty" jsonschema:"custom instructions appended to the dispatch message"`
+	Agent   string   `json:"agent" jsonschema:"target agent name (e.g. eng1)"`
+	BeadID  string   `json:"bead_id,omitempty" jsonschema:"single bead ID (backwards compat)"`
+	BeadIDs []string `json:"bead_ids,omitempty" jsonschema:"one or more bead IDs to assign"`
+	Message string   `json:"message,omitempty" jsonschema:"custom instructions appended to the dispatch message"`
 }
 
 // AssignOutput is the output schema for the initech_assign tool.
@@ -419,65 +420,123 @@ func handleAssign(host PaneHost, input AssignInput) (*gomcp.CallToolResult, Assi
 	if input.Agent == "" {
 		return nil, AssignOutput{}, fmt.Errorf("agent is required")
 	}
-	if input.BeadID == "" {
-		return nil, AssignOutput{}, fmt.Errorf("bead_id is required")
+
+	// Merge bead_id (string, backward compat) and bead_ids (array).
+	beadIDs := input.BeadIDs
+	if len(beadIDs) == 0 && input.BeadID != "" {
+		beadIDs = []string{input.BeadID}
+	}
+	if len(beadIDs) == 0 {
+		return nil, AssignOutput{}, fmt.Errorf("bead_id or bead_ids is required")
 	}
 
-	// Step 1: Read bead title.
-	out, err := exec.Command("bd", "show", input.BeadID, "--json").CombinedOutput()
-	if err != nil {
-		return nil, AssignOutput{}, fmt.Errorf("bead %s not found: %s", input.BeadID, strings.TrimSpace(string(out)))
+	type result struct {
+		id    string
+		title string
 	}
-	var beads []struct {
-		Title string `json:"title"`
-	}
-	if err := json.Unmarshal(out, &beads); err != nil {
-		return nil, AssignOutput{}, fmt.Errorf("parse bd output: %w", err)
-	}
-	if len(beads) == 0 || beads[0].Title == "" {
-		return nil, AssignOutput{}, fmt.Errorf("bead %s has no title", input.BeadID)
-	}
-	title := beads[0].Title
-	if len(title) > 80 {
-		title = title[:77] + "..."
+	var successes []result
+	var failures []string
+
+	// Process each bead: show + claim.
+	for _, id := range beadIDs {
+		out, err := exec.Command("bd", "show", id, "--json").CombinedOutput()
+		if err != nil {
+			failures = append(failures, id)
+			continue
+		}
+		var beads []struct {
+			Title string `json:"title"`
+		}
+		if err := json.Unmarshal(out, &beads); err != nil || len(beads) == 0 || beads[0].Title == "" {
+			failures = append(failures, id)
+			continue
+		}
+		title := beads[0].Title
+		if len(title) > 80 {
+			title = title[:77] + "..."
+		}
+
+		claimOut, err := exec.Command("bd", "update", id, "--status", "in_progress", "--assignee", input.Agent).CombinedOutput()
+		if err != nil {
+			_ = claimOut
+			failures = append(failures, id)
+			continue
+		}
+		successes = append(successes, result{id: id, title: title})
 	}
 
-	// Step 2: Claim bead.
-	claimOut, err := exec.Command("bd", "update", input.BeadID, "--status", "in_progress", "--assignee", input.Agent).CombinedOutput()
-	if err != nil {
-		return nil, AssignOutput{}, fmt.Errorf("bd update failed: %s", strings.TrimSpace(string(claimOut)))
+	if len(successes) == 0 {
+		return nil, AssignOutput{}, fmt.Errorf("no beads could be assigned (failed: %s)", strings.Join(failures, ", "))
 	}
 
-	// Step 3: Register bead in TUI (cosmetic, warn on failure).
-	_ = host.SetBead(input.Agent, input.BeadID)
+	// Register beads in TUI (first bead for backward compat).
+	_ = host.SetBead(input.Agent, successes[0].id)
 
-	// Step 4: Send dispatch.
-	dispatch := fmt.Sprintf("[from super] %s: %s. Read bd show %s for full AC.", input.BeadID, title, input.BeadID)
+	// Build and send dispatch message.
+	var dispatch string
+	if len(successes) == 1 {
+		s := successes[0]
+		dispatch = fmt.Sprintf("[from super] %s: %s. Read bd show %s for full AC.", s.id, s.title, s.id)
+	} else {
+		var b strings.Builder
+		fmt.Fprintf(&b, "[from super] Assigned %d beads:", len(successes))
+		showCount := len(successes)
+		if showCount > 5 {
+			showCount = 5
+		}
+		for i := 0; i < showCount; i++ {
+			fmt.Fprintf(&b, "\n- %s: %s", successes[i].id, successes[i].title)
+		}
+		if len(successes) > 5 {
+			fmt.Fprintf(&b, "\n... and %d more. Run bd list --assignee %s for full list.", len(successes)-5, input.Agent)
+		} else {
+			b.WriteString("\nRead bd show <id> for full AC on each.")
+		}
+		dispatch = b.String()
+	}
 	if input.Message != "" {
 		dispatch += " " + input.Message
 	}
+
 	pane, ok := host.FindPane(input.Agent)
 	if !ok {
 		return nil, AssignOutput{}, fmt.Errorf("host is shutting down")
 	}
 	if pane == nil {
-		return nil, AssignOutput{}, fmt.Errorf("bead claimed but agent %q not found for dispatch", input.Agent)
+		return nil, AssignOutput{}, fmt.Errorf("beads claimed but agent %q not found for dispatch", input.Agent)
 	}
 	pane.SendText(dispatch, true)
 
-	// Step 5: Announce (fire and forget).
+	// Announce (fire and forget).
 	if announceURL, project := host.AnnounceConfig(); announceURL != "" {
-		detail := fmt.Sprintf("%s picking up %s: %s", input.Agent, input.BeadID, title)
+		ids := make([]string, len(successes))
+		for i, s := range successes {
+			ids[i] = s.id
+		}
+		var detail string
+		if len(successes) == 1 {
+			detail = fmt.Sprintf("%s picking up %s: %s", input.Agent, successes[0].id, successes[0].title)
+		} else {
+			detail = fmt.Sprintf("%s assigned %d beads (%s)", input.Agent, len(successes), strings.Join(ids, ", "))
+		}
 		webhook.PostAnnouncement(announceURL, webhook.AnnouncePayload{
 			Detail:  detail,
 			Kind:    "agent.started",
 			Agent:   input.Agent,
 			Project: project,
-			BeadID:  input.BeadID,
+			BeadID:  successes[0].id,
 		})
 	}
 
-	return nil, AssignOutput{Status: fmt.Sprintf("assigned %s to %s: %s", input.BeadID, input.Agent, title)}, nil
+	ids := make([]string, len(successes))
+	for i, s := range successes {
+		ids[i] = s.id
+	}
+	status := fmt.Sprintf("assigned %d bead(s) to %s: %s", len(successes), input.Agent, strings.Join(ids, ", "))
+	if len(failures) > 0 {
+		status += fmt.Sprintf(" (failed: %s)", strings.Join(failures, ", "))
+	}
+	return nil, AssignOutput{Status: status}, nil
 }
 
 func handleNotify(host PaneHost, input NotifyInput) (*gomcp.CallToolResult, NotifyOutput, error) {

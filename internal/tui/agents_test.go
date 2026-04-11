@@ -131,7 +131,7 @@ func TestAgentsModal_RenderShowsAllAgents(t *testing.T) {
 	tui, s := newTestTUIWithScreen("eng1", "qa1", "super")
 	tui.panes[0].(*Pane).activity = StateRunning
 	tui.panes[0].(*Pane).lastOutputTime = time.Now()
-	tui.panes[0].(*Pane).beadID = "ini-abc"
+	tui.panes[0].(*Pane).beadIDs = []string{"ini-abc"}
 	tui.panes[1].(*Pane).activity = StateIdle
 	tui.panes[2].(*Pane).activity = StateRunning
 	tui.panes[2].(*Pane).lastOutputTime = time.Now()

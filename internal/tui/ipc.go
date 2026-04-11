@@ -575,7 +575,16 @@ func (t *TUI) handleIPCBead(conn net.Conn, req IPCRequest) {
 		writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("pane %q not found", req.Target)})
 		return
 	}
-	pv.SetBead(req.Text, "")
+	// Support comma-separated bead IDs for multi-bead assignment.
+	if strings.Contains(req.Text, ",") {
+		ids := strings.Split(req.Text, ",")
+		for i := range ids {
+			ids[i] = strings.TrimSpace(ids[i])
+		}
+		pv.SetBeads(ids)
+	} else {
+		pv.SetBead(req.Text, "")
+	}
 	writeIPCResponse(conn, IPCResponse{OK: true})
 }
 
