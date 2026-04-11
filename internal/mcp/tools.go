@@ -406,16 +406,16 @@ func handleAssign(host PaneHost, input AssignInput) (*gomcp.CallToolResult, Assi
 	if err != nil {
 		return nil, AssignOutput{}, fmt.Errorf("bead %s not found: %s", input.BeadID, strings.TrimSpace(string(out)))
 	}
-	var bead struct {
+	var beads []struct {
 		Title string `json:"title"`
 	}
-	if err := json.Unmarshal(out, &bead); err != nil {
+	if err := json.Unmarshal(out, &beads); err != nil {
 		return nil, AssignOutput{}, fmt.Errorf("parse bd output: %w", err)
 	}
-	if bead.Title == "" {
+	if len(beads) == 0 || beads[0].Title == "" {
 		return nil, AssignOutput{}, fmt.Errorf("bead %s has no title", input.BeadID)
 	}
-	title := bead.Title
+	title := beads[0].Title
 	if len(title) > 80 {
 		title = title[:77] + "..."
 	}

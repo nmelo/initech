@@ -30,7 +30,7 @@ func TestBdShowTitle_ParsesJSON(t *testing.T) {
 	dir := t.TempDir()
 	fakeBd := filepath.Join(dir, "bd")
 	script := `#!/bin/sh
-echo '{"id":"ini-abc","title":"Fix the bug","status":"open"}'
+echo '[{"id":"ini-abc","title":"Fix the bug","status":"open"}]'
 `
 	if err := os.WriteFile(fakeBd, []byte(script), 0755); err != nil {
 		t.Fatal(err)

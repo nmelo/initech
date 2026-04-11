@@ -44,16 +44,16 @@ func bdShowTitle(beadID string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("bead %s not found: %s", beadID, strings.TrimSpace(string(out)))
 	}
-	var bead struct {
+	var beads []struct {
 		Title string `json:"title"`
 	}
-	if err := json.Unmarshal(out, &bead); err != nil {
+	if err := json.Unmarshal(out, &beads); err != nil {
 		return "", fmt.Errorf("parse bd output: %w", err)
 	}
-	if bead.Title == "" {
+	if len(beads) == 0 || beads[0].Title == "" {
 		return "", fmt.Errorf("bead %s has no title", beadID)
 	}
-	return bead.Title, nil
+	return beads[0].Title, nil
 }
 
 // bdUpdateClaim runs bd update to set status and assignee.
