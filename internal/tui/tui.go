@@ -68,10 +68,11 @@ type cmdModal struct {
 
 // topModal holds activity monitor (top) modal state.
 type topModal struct {
-	active    bool
-	selected  int
-	data      []topEntry
-	cacheTime time.Time
+	active       bool
+	selected     int
+	scrollOffset int
+	data         []topEntry
+	cacheTime    time.Time
 }
 
 // eventLogModal holds event log modal state.

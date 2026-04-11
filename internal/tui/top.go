@@ -10,6 +10,12 @@ import (
 	"github.com/gdamore/tcell/v2"
 )
 
+// Top modal box dimensions.
+const (
+	topBoxW = 100
+	topBoxH = 30
+)
+
 // refreshTopData queries ps for each pane and caches the result.
 func (t *TUI) refreshTopData() {
 	if time.Since(t.top.cacheTime) < 2*time.Second && len(t.top.data) > 0 {
@@ -56,11 +62,13 @@ func (t *TUI) handleTopKey(ev *tcell.EventKey) bool {
 	case tcell.KeyUp:
 		if t.top.selected > 0 {
 			t.top.selected--
+			t.topEnsureVisible()
 		}
 		return false
 	case tcell.KeyDown:
 		if t.top.selected < len(t.panes)-1 {
 			t.top.selected++
+			t.topEnsureVisible()
 		}
 		return false
 	case tcell.KeyRune:
@@ -123,39 +131,149 @@ func (t *TUI) handleTopKey(ev *tcell.EventKey) bool {
 	return false
 }
 
-// renderTop draws the full-screen activity monitor table.
+// topVisibleRows returns how many data rows fit inside the modal box,
+// excluding header (2 rows: header + separator), summary (1), and help (1).
+func (t *TUI) topVisibleRows() int {
+	_, sh := t.screen.Size()
+	boxH := topBoxH
+	if boxH > sh-4 {
+		boxH = sh - 4
+	}
+	if boxH < 8 {
+		boxH = 8
+	}
+	// Interior rows: boxH - 2 (border) - 2 (header+sep) - 1 (summary) - 1 (help) = boxH - 6
+	vis := boxH - 6
+	if vis < 1 {
+		vis = 1
+	}
+	return vis
+}
+
+// topEnsureVisible adjusts scrollOffset so the selected row is in the viewport.
+func (t *TUI) topEnsureVisible() {
+	vis := t.topVisibleRows()
+	if t.top.selected < t.top.scrollOffset {
+		t.top.scrollOffset = t.top.selected
+	}
+	if t.top.selected >= t.top.scrollOffset+vis {
+		t.top.scrollOffset = t.top.selected - vis + 1
+	}
+}
+
+// renderTop draws the floating activity monitor modal.
 func (t *TUI) renderTop() {
 	t.refreshTopData()
 	s := t.screen
 	sw, sh := s.Size()
-	if sw < 40 || sh < 5 {
-		drawField(s, 0, 0, sw, "Terminal too narrow for top", tcell.StyleDefault.Foreground(tcell.ColorRed))
+
+	boxW := topBoxW
+	boxH := topBoxH
+	if boxW > sw-4 {
+		boxW = sw - 4
+	}
+	if boxH > sh-4 {
+		boxH = sh - 4
+	}
+	if boxW < 40 || boxH < 8 {
+		drawField(s, 0, 0, sw, "Terminal too small for top", tcell.StyleDefault.Foreground(tcell.ColorRed))
 		return
 	}
 
-	headerStyle := tcell.StyleDefault.Bold(true).Foreground(tcell.ColorWhite)
-	normalStyle := tcell.StyleDefault.Foreground(tcell.ColorSilver)
-	deadStyle := tcell.StyleDefault.Foreground(tcell.ColorRed)
-	suspendedStyle := tcell.StyleDefault.Foreground(tcell.ColorDodgerBlue)
-	selectedStyle := tcell.StyleDefault.Background(tcell.ColorDarkBlue).Foreground(tcell.ColorWhite)
-	totalStyle := tcell.StyleDefault.Foreground(tcell.ColorYellow).Bold(true)
-	helpStyle := tcell.StyleDefault.Foreground(tcell.ColorGray)
-
-	// Column widths.
-	nameW := 10
-	pidW := 8
-	commW := 12
-	rssW := 10
-	statusW := 22
-	cmdW := sw - nameW - pidW - commW - rssW - statusW - 6 // 6 for spacing
-	if cmdW < 10 {
-		cmdW = 10
+	startX := (sw - boxW) / 2
+	startY := (sh - boxH) / 2
+	if startX < 0 {
+		startX = 0
+	}
+	if startY < 0 {
+		startY = 0
 	}
 
-	// Header row.
-	y := 1
+	bgStyle := tcell.StyleDefault.Background(tcell.NewRGBColor(20, 20, 20)).Foreground(tcell.ColorSilver)
+	borderStyle := bgStyle.Foreground(tcell.ColorGray)
+	headerStyle := bgStyle.Bold(true).Foreground(tcell.ColorWhite)
+	normalStyle := bgStyle.Foreground(tcell.ColorSilver)
+	deadStyle := bgStyle.Foreground(tcell.ColorRed)
+	suspendedStyle := bgStyle.Foreground(tcell.ColorDodgerBlue)
+	selectedStyle := tcell.StyleDefault.Background(tcell.ColorDarkBlue).Foreground(tcell.ColorWhite)
+	totalStyle := bgStyle.Foreground(tcell.ColorYellow).Bold(true)
+	helpStyle := bgStyle.Foreground(tcell.ColorGray)
+	scrollStyle := bgStyle.Foreground(tcell.ColorDodgerBlue)
+
+	// Draw opaque background.
+	for y := startY; y < startY+boxH && y < sh; y++ {
+		for x := startX; x < startX+boxW && x < sw; x++ {
+			s.SetContent(x, y, ' ', nil, bgStyle)
+		}
+	}
+
+	// Draw border.
+	s.SetContent(startX, startY, '\u250c', nil, borderStyle)
+	s.SetContent(startX+boxW-1, startY, '\u2510', nil, borderStyle)
+	s.SetContent(startX, startY+boxH-1, '\u2514', nil, borderStyle)
+	s.SetContent(startX+boxW-1, startY+boxH-1, '\u2518', nil, borderStyle)
+	for x := startX + 1; x < startX+boxW-1 && x < sw; x++ {
+		s.SetContent(x, startY, '\u2500', nil, borderStyle)
+		s.SetContent(x, startY+boxH-1, '\u2500', nil, borderStyle)
+	}
+	for y := startY + 1; y < startY+boxH-1 && y < sh; y++ {
+		s.SetContent(startX, y, '\u2502', nil, borderStyle)
+		s.SetContent(startX+boxW-1, y, '\u2502', nil, borderStyle)
+	}
+
+	innerW := boxW - 2
+	innerX := startX + 1
+
+	drawLine := func(y int, text string, style tcell.Style) {
+		runes := []rune(text)
+		for i := 0; i < len(runes) && i < innerW; i++ {
+			s.SetContent(innerX+i, y, runes[i], nil, style)
+		}
+	}
+
+	fillRow := func(y int, style tcell.Style) {
+		for x := innerX; x < innerX+innerW; x++ {
+			s.SetContent(x, y, ' ', nil, style)
+		}
+	}
+
+	// Title centered in top border. Green when running, blue when idle.
+	anyRunning := false
+	for _, pv := range t.panes {
+		if pv.Activity() == StateRunning {
+			anyRunning = true
+			break
+		}
+	}
+	titleText := " initech top "
+	titleBg := tcell.ColorDodgerBlue
+	if anyRunning {
+		titleBg = tcell.ColorDarkGreen
+	}
+	titleStyle := tcell.StyleDefault.Background(titleBg).Foreground(tcell.ColorBlack).Bold(true)
+	titleStart := startX + (boxW-len([]rune(titleText)))/2
+	if titleStart < startX+1 {
+		titleStart = startX + 1
+	}
+	for i, ch := range titleText {
+		if titleStart+i < startX+boxW-1 {
+			s.SetContent(titleStart+i, startY, ch, nil, titleStyle)
+		}
+	}
+
+	// Column widths (fit within innerW).
+	nameW := 10
+	pidW := 7
+	commW := 10
+	rssW := 9
+	statusW := 18
+	cmdW := innerW - nameW - pidW - commW - rssW - statusW - 5 // 5 spaces between cols
+	if cmdW < 8 {
+		cmdW = 8
+	}
+
 	drawRow := func(row int, style tcell.Style, name, pid, comm, cmd, rss, status string) {
-		x := 1
+		x := innerX
 		drawField(s, x, row, nameW, name, style)
 		x += nameW + 1
 		drawField(s, x, row, pidW, pid, style)
@@ -169,40 +287,39 @@ func (t *TUI) renderTop() {
 		drawField(s, x, row, statusW, status, style)
 	}
 
-	// Title (centered). Green when any agent is running, blue when all idle.
-	title := " initech top "
-	anyRunning := false
-	for _, pv := range t.panes {
-		if pv.Activity() == StateRunning {
-			anyRunning = true
-			break
-		}
+	iy := startY + 1
+
+	// Header row.
+	drawRow(iy, headerStyle, "AGENT", "PID", "PROCESS", "COMMAND", "RSS", "STATUS")
+	iy++
+	// Separator.
+	for x := innerX; x < innerX+innerW; x++ {
+		s.SetContent(x, iy, '\u2500', nil, borderStyle)
 	}
-	bg := tcell.ColorDodgerBlue
-	if anyRunning {
-		bg = tcell.ColorDarkGreen
-	}
-	titleStyle := tcell.StyleDefault.Background(bg).Foreground(tcell.ColorBlack).Bold(true)
-	titleStart := (sw - len([]rune(title))) / 2
-	if titleStart < 0 {
-		titleStart = 0
-	}
-	for i, ch := range title {
-		if titleStart+i < sw {
-			s.SetContent(titleStart+i, 0, ch, nil, titleStyle)
-		}
+	iy++
+
+	// Data rows with scrolling.
+	visRows := boxH - 6 // header(1) + sep(1) + summary(1) + help(1) + borders(2)
+	if visRows < 1 {
+		visRows = 1
 	}
 
-	drawRow(y, headerStyle, "AGENT", "PID", "PROCESS", "COMMAND", "RSS", "STATUS")
-	y++
-	// Separator.
-	for x := 1; x < sw-1; x++ {
-		s.SetContent(x, y, '\u2500', nil, tcell.StyleDefault.Foreground(tcell.ColorGray))
+	// Scroll indicators.
+	if t.top.scrollOffset > 0 {
+		drawLine(iy-1, string('\u25b2'), scrollStyle) // up arrow on separator line
 	}
-	y++
 
 	var totalRSS int64
-	for i, e := range t.top.data {
+	for _, e := range t.top.data {
+		if e.RSS > 0 {
+			totalRSS += e.RSS
+		}
+	}
+
+	dataLen := len(t.top.data)
+	for vi := 0; vi < visRows && vi+t.top.scrollOffset < dataLen; vi++ {
+		i := vi + t.top.scrollOffset
+		e := t.top.data[i]
 		style := normalStyle
 		if e.Status == StateSuspended.String() || strings.HasPrefix(e.Status, StateSuspended.String()+" ") {
 			style = suspendedStyle
@@ -210,6 +327,7 @@ func (t *TUI) renderTop() {
 			style = deadStyle
 		}
 		if i == t.top.selected {
+			fillRow(iy+vi, selectedStyle)
 			style = selectedStyle
 		}
 
@@ -227,7 +345,6 @@ func (t *TUI) renderTop() {
 		}
 		rss := "-"
 		if e.RSS > 0 {
-			totalRSS += e.RSS
 			if e.RSS > 1048576 {
 				rss = fmt.Sprintf("%.1f GB", float64(e.RSS)/1048576)
 			} else if e.RSS > 1024 {
@@ -237,21 +354,19 @@ func (t *TUI) renderTop() {
 			}
 		}
 		status := e.Status
-		if e.Bead != "" {
-			status = fmt.Sprintf("%s (%s)", e.Status, e.Bead)
-		}
 		if status == "" {
 			status = "-"
 		}
-		drawRow(y, style, e.Name, pid, comm, cmd, rss, status)
-		y++
-		if y >= sh-3 {
-			break
-		}
+		drawRow(iy+vi, style, e.Name, pid, comm, cmd, rss, status)
 	}
 
-	// Total row.
-	y++
+	// Down scroll indicator.
+	if t.top.scrollOffset+visRows < dataLen {
+		drawLine(iy+visRows-1, string('\u25bc'), scrollStyle) // down arrow on last data row
+	}
+
+	// Summary row.
+	summaryY := iy + visRows
 	totalStr := "-"
 	if totalRSS > 0 {
 		totalStr = formatTotalRSS(totalRSS)
@@ -266,19 +381,12 @@ func (t *TUI) renderTop() {
 		}
 	}
 	summary := fmt.Sprintf("Total: %s (%d alive, %d dead)", totalStr, alive, dead)
-	for i, ch := range summary {
-		if 1+i < sw {
-			s.SetContent(1+i, y, ch, nil, totalStyle)
-		}
-	}
+	drawLine(summaryY, summary, totalStyle)
 
-	// Help line at bottom.
-	help := "  [r]estart  [k]ill  [q/Esc] close"
-	for i, ch := range help {
-		if 1+i < sw {
-			s.SetContent(1+i, sh-1, ch, nil, helpStyle)
-		}
-	}
+	// Help line.
+	helpY := summaryY + 1
+	help := "[r]estart  [k]ill  [q/Esc] close"
+	drawLine(helpY, help, helpStyle)
 }
 
 // formatTotalRSS formats a total RSS value in KB to a human-readable string.

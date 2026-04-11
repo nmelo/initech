@@ -40,13 +40,6 @@ func (t *TUI) render() {
 		return
 	}
 
-	if t.top.active {
-		// Full-screen activity monitor replaces pane rendering.
-		t.renderTop()
-		s.Show()
-		return
-	}
-
 	// Draw panes from the render plan. No visibility checks needed.
 	for i, pr := range t.plan.Panes {
 		LogDebug("render", "drawing pane", "frame", t.renderCount, "idx", i, "name", pr.Pane.Name(), "host", pr.Pane.Host())
@@ -103,6 +96,11 @@ func (t *TUI) render() {
 	// Agents modal (centered floating box, like welcome).
 	if t.agents.active {
 		t.renderAgents()
+	}
+
+	// Top/activity monitor modal (centered floating box).
+	if t.top.active {
+		t.renderTop()
 	}
 
 	// Welcome overlay on first launch (centered, auto-dismisses).

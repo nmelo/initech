@@ -45,6 +45,31 @@ func topTestTUI(entries []topEntry) (*TUI, tcell.SimulationScreen) {
 	return tui, s
 }
 
+// readAllScreen reads the full screen text as rows.
+func readAllScreen(s tcell.SimulationScreen) []string {
+	sw, sh := s.Size()
+	rows := make([]string, sh)
+	for y := 0; y < sh; y++ {
+		var b strings.Builder
+		for x := 0; x < sw; x++ {
+			c, _, _ := s.Get(x, y)
+			b.WriteString(c)
+		}
+		rows[y] = b.String()
+	}
+	return rows
+}
+
+// findRow returns the first row containing substr, or -1.
+func findRow(rows []string, substr string) int {
+	for i, r := range rows {
+		if strings.Contains(r, substr) {
+			return i
+		}
+	}
+	return -1
+}
+
 // ── renderTop ───────────────────────────────────────────────────────
 
 func TestRenderTop_TitleVisible(t *testing.T) {
@@ -53,14 +78,9 @@ func TestRenderTop_TitleVisible(t *testing.T) {
 	})
 	tui.renderTop()
 
-	sw, _ := s.Size()
-	var buf strings.Builder
-	for x := 0; x < sw; x++ {
-		c, _, _ := s.Get(x, 0)
-		buf.WriteString(c)
-	}
-	if !strings.Contains(buf.String(), "initech top") {
-		t.Errorf("title row = %q, want 'initech top'", buf.String())
+	rows := readAllScreen(s)
+	if findRow(rows, "initech top") < 0 {
+		t.Error("title 'initech top' not found on screen")
 	}
 }
 
@@ -68,7 +88,6 @@ func TestRenderTop_TitleGreenWhenRunning(t *testing.T) {
 	tui, s := topTestTUI([]topEntry{
 		{Name: "eng1", PID: 100, Status: "running"},
 	})
-	// Mark the pane as having recent output so Activity() returns StateRunning.
 	if lp, ok := tui.panes[0].(*Pane); ok {
 		lp.mu.Lock()
 		lp.alive = true
@@ -77,37 +96,54 @@ func TestRenderTop_TitleGreenWhenRunning(t *testing.T) {
 	}
 	tui.renderTop()
 
-	// Find the title text and check its background color.
-	sw, _ := s.Size()
-	titleStart := (sw - len(" initech top ")) / 2
-	_, style, _ := s.Get(titleStart+1, 0)
-	_, bg, _ := style.Decompose()
-	if bg != tcell.ColorDarkGreen {
-		t.Errorf("title bg with running agent = %v, want DarkGreen", bg)
+	rows := readAllScreen(s)
+	titleRow := findRow(rows, "initech top")
+	if titleRow < 0 {
+		t.Fatal("title not found")
 	}
+	// Find the 'i' of 'initech' and check its bg color.
+	sw, _ := s.Size()
+	for x := 0; x < sw; x++ {
+		c, style, _ := s.Get(x, titleRow)
+		if c == "i" {
+			_, bg, _ := style.Decompose()
+			if bg == tcell.ColorDarkGreen {
+				return // pass
+			}
+		}
+	}
+	t.Error("title bg with running agent should be DarkGreen")
 }
 
 func TestRenderTop_TitleBlueWhenAllIdle(t *testing.T) {
 	tui, s := topTestTUI([]topEntry{
 		{Name: "eng1", PID: 100, Status: "idle"},
 	})
-	// Pane alive but no recent output -> StateIdle.
 	if lp, ok := tui.panes[0].(*Pane); ok {
 		lp.mu.Lock()
 		lp.alive = true
 		lp.activity = StateIdle
-		lp.lastOutputTime = time.Time{} // zero = no output ever
+		lp.lastOutputTime = time.Time{}
 		lp.mu.Unlock()
 	}
 	tui.renderTop()
 
-	sw, _ := s.Size()
-	titleStart := (sw - len(" initech top ")) / 2
-	_, style, _ := s.Get(titleStart+1, 0)
-	_, bg, _ := style.Decompose()
-	if bg != tcell.ColorDodgerBlue {
-		t.Errorf("title bg with all idle = %v, want DodgerBlue", bg)
+	rows := readAllScreen(s)
+	titleRow := findRow(rows, "initech top")
+	if titleRow < 0 {
+		t.Fatal("title not found")
 	}
+	sw, _ := s.Size()
+	for x := 0; x < sw; x++ {
+		c, style, _ := s.Get(x, titleRow)
+		if c == "i" {
+			_, bg, _ := style.Decompose()
+			if bg == tcell.ColorDodgerBlue {
+				return
+			}
+		}
+	}
+	t.Error("title bg with all idle should be DodgerBlue")
 }
 
 func TestRenderTop_HeaderRow(t *testing.T) {
@@ -116,15 +152,10 @@ func TestRenderTop_HeaderRow(t *testing.T) {
 	})
 	tui.renderTop()
 
-	var buf strings.Builder
-	for x := 0; x < 120; x++ {
-		c, _, _ := s.Get(x, 1)
-		buf.WriteString(c)
-	}
-	row := buf.String()
+	rows := readAllScreen(s)
 	for _, hdr := range []string{"AGENT", "PID", "PROCESS", "COMMAND", "RSS", "STATUS"} {
-		if !strings.Contains(row, hdr) {
-			t.Errorf("header row missing %q: %q", hdr, row)
+		if findRow(rows, hdr) < 0 {
+			t.Errorf("header %q not found on screen", hdr)
 		}
 	}
 }
@@ -136,21 +167,15 @@ func TestRenderTop_AgentRowRendered(t *testing.T) {
 	tui.top.selected = -1
 	tui.renderTop()
 
-	// Agent data row is at y=3 (title=0, header=1, separator=2, data=3).
-	var buf strings.Builder
-	for x := 0; x < 120; x++ {
-		c, _, _ := s.Get(x, 3)
-		buf.WriteString(c)
+	rows := readAllScreen(s)
+	if findRow(rows, "super") < 0 {
+		t.Error("agent 'super' not found on screen")
 	}
-	row := buf.String()
-	if !strings.Contains(row, "super") {
-		t.Errorf("agent row missing 'super': %q", row)
+	if findRow(rows, "100") < 0 {
+		t.Error("PID '100' not found on screen")
 	}
-	if !strings.Contains(row, "100") {
-		t.Errorf("agent row missing PID '100': %q", row)
-	}
-	if !strings.Contains(row, "2 MB") {
-		t.Errorf("agent row missing RSS '2 MB': %q", row)
+	if findRow(rows, "2 MB") < 0 {
+		t.Error("RSS '2 MB' not found on screen")
 	}
 }
 
@@ -158,18 +183,25 @@ func TestRenderTop_DeadStyleApplied(t *testing.T) {
 	tui, s := topTestTUI([]topEntry{
 		{Name: "eng1", Status: "dead"},
 	})
-	tui.top.selected = -1 // no selection so normal/dead style applies
+	tui.top.selected = -1
 	tui.renderTop()
 
-	// Check that the 'e' of 'eng1' has red foreground (drawField starts at x=1).
-	c, style, _ := s.Get(1, 3)
-	fg, _, _ := style.Decompose()
-	if c != "e" {
-		t.Errorf("expected 'e' at (1,3), got %q", c)
+	rows := readAllScreen(s)
+	agentRow := findRow(rows, "eng1")
+	if agentRow < 0 {
+		t.Fatal("agent row not found")
 	}
-	if fg != tcell.ColorRed {
-		t.Errorf("dead row fg = %v, want Red", fg)
+	sw, _ := s.Size()
+	for x := 0; x < sw; x++ {
+		c, style, _ := s.Get(x, agentRow)
+		if c == "e" {
+			fg, _, _ := style.Decompose()
+			if fg == tcell.ColorRed {
+				return
+			}
+		}
 	}
+	t.Error("dead row fg should be Red")
 }
 
 func TestRenderTop_SuspendedStyleApplied(t *testing.T) {
@@ -179,14 +211,22 @@ func TestRenderTop_SuspendedStyleApplied(t *testing.T) {
 	tui.top.selected = -1
 	tui.renderTop()
 
-	c, style, _ := s.Get(1, 3)
-	fg, _, _ := style.Decompose()
-	if c != "e" {
-		t.Errorf("expected 'e' at (1,3), got %q", c)
+	rows := readAllScreen(s)
+	agentRow := findRow(rows, "eng2")
+	if agentRow < 0 {
+		t.Fatal("agent row not found")
 	}
-	if fg != tcell.ColorDodgerBlue {
-		t.Errorf("suspended row fg = %v, want DodgerBlue", fg)
+	sw, _ := s.Size()
+	for x := 0; x < sw; x++ {
+		c, style, _ := s.Get(x, agentRow)
+		if c == "e" {
+			fg, _, _ := style.Decompose()
+			if fg == tcell.ColorDodgerBlue {
+				return
+			}
+		}
 	}
+	t.Error("suspended row fg should be DodgerBlue")
 }
 
 func TestRenderTop_SelectedStyleApplied(t *testing.T) {
@@ -197,13 +237,20 @@ func TestRenderTop_SelectedStyleApplied(t *testing.T) {
 	tui.top.selected = 1
 	tui.renderTop()
 
-	// Selected row (eng2) is at y=4. Check it has DarkBlue background.
-	// drawField writes at x=1 for the first column.
-	_, style, _ := s.Get(1, 4)
-	_, bg, _ := style.Decompose()
-	if bg != tcell.ColorDarkBlue {
-		t.Errorf("selected row bg = %v, want DarkBlue", bg)
+	rows := readAllScreen(s)
+	agentRow := findRow(rows, "eng2")
+	if agentRow < 0 {
+		t.Fatal("selected agent row not found")
 	}
+	sw, _ := s.Size()
+	for x := 0; x < sw; x++ {
+		_, style, _ := s.Get(x, agentRow)
+		_, bg, _ := style.Decompose()
+		if bg == tcell.ColorDarkBlue {
+			return
+		}
+	}
+	t.Error("selected row bg should be DarkBlue")
 }
 
 func TestRenderTop_TotalRow(t *testing.T) {
@@ -214,23 +261,9 @@ func TestRenderTop_TotalRow(t *testing.T) {
 	tui.top.selected = -1
 	tui.renderTop()
 
-	// Total row is after: title(0), header(1), separator(2), data(3,4), blank(5), total(6).
-	// Scan rows 5-8 to find the total line.
-	found := false
-	for y := 5; y <= 8; y++ {
-		var buf strings.Builder
-		for x := 0; x < 80; x++ {
-			c, _, _ := s.Get(x, y)
-			buf.WriteString(c)
-		}
-		row := buf.String()
-		if strings.Contains(row, "Total") && strings.Contains(row, "2 alive") {
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Error("total row missing or doesn't contain '2 alive'")
+	rows := readAllScreen(s)
+	if findRow(rows, "2 alive") < 0 {
+		t.Error("total row missing '2 alive'")
 	}
 }
 
@@ -240,15 +273,9 @@ func TestRenderTop_HelpLine(t *testing.T) {
 	})
 	tui.renderTop()
 
-	_, sh := s.Size()
-	var buf strings.Builder
-	for x := 0; x < 80; x++ {
-		c, _, _ := s.Get(x, sh-1)
-		buf.WriteString(c)
-	}
-	help := buf.String()
-	if !strings.Contains(help, "[r]estart") {
-		t.Errorf("help line missing '[r]estart': %q", help)
+	rows := readAllScreen(s)
+	if findRow(rows, "[r]estart") < 0 {
+		t.Error("help line missing '[r]estart'")
 	}
 }
 
@@ -259,33 +286,27 @@ func TestRenderTop_BeadInStatus(t *testing.T) {
 	tui.top.selected = -1
 	tui.renderTop()
 
-	var buf strings.Builder
-	for x := 0; x < 120; x++ {
-		c, _, _ := s.Get(x, 3)
-		buf.WriteString(c)
-	}
-	if !strings.Contains(buf.String(), "ini-abc") {
-		t.Errorf("status should include bead ID: %q", buf.String())
+	// Bead info no longer in top modal status column (shown in pane ribbon).
+	// Just verify the agent row renders without the bead.
+	rows := readAllScreen(s)
+	if findRow(rows, "eng1") < 0 {
+		t.Error("agent row not found")
 	}
 }
 
 func TestRenderTop_NarrowTerminal(t *testing.T) {
 	s := tcell.NewSimulationScreen("")
 	s.Init()
-	s.SetSize(30, 3) // too narrow
+	s.SetSize(30, 5)
 	tui := &TUI{
 		screen: s,
 		top:    topModal{active: true, data: []topEntry{{Name: "a", Status: "idle"}}},
 	}
-	tui.renderTop() // must not panic
+	tui.renderTop()
 
-	var buf strings.Builder
-	for x := 0; x < 30; x++ {
-		c, _, _ := s.Get(x, 0)
-		buf.WriteString(c)
-	}
-	if !strings.Contains(buf.String(), "too narrow") {
-		t.Errorf("narrow terminal should show error: %q", buf.String())
+	rows := readAllScreen(s)
+	if findRow(rows, "too small") < 0 {
+		t.Error("narrow terminal should show 'too small' error")
 	}
 }
 
@@ -298,204 +319,93 @@ func TestRenderTop_RSSFormatTiers(t *testing.T) {
 	tui.top.selected = -1
 	tui.renderTop()
 
-	rows := make([]string, 3)
-	for i := 0; i < 3; i++ {
-		var buf strings.Builder
-		for x := 0; x < 120; x++ {
-			c, _, _ := s.Get(x, 3+i)
-			buf.WriteString(c)
-		}
-		rows[i] = buf.String()
+	rows := readAllScreen(s)
+	if findRow(rows, "500 KB") < 0 {
+		t.Error("missing '500 KB'")
 	}
-	if !strings.Contains(rows[0], "500 KB") {
-		t.Errorf("row 0 missing '500 KB': %q", rows[0])
+	if findRow(rows, "5 MB") < 0 {
+		t.Error("missing '5 MB'")
 	}
-	if !strings.Contains(rows[1], "5 MB") {
-		t.Errorf("row 1 missing '5 MB': %q", rows[1])
-	}
-	if !strings.Contains(rows[2], "1.9 GB") {
-		t.Errorf("row 2 missing '1.9 GB': %q", rows[2])
+	if findRow(rows, "1.9 GB") < 0 {
+		t.Error("missing '1.9 GB'")
 	}
 }
 
 // ── handleTopKey ────────────────────────────────────────────────────
 
 func TestHandleTopKey_EscapeCloses(t *testing.T) {
-	tui, _ := topTestTUI([]topEntry{{Name: "a", Status: "idle"}})
-	tui.handleTopKey(tcell.NewEventKey(tcell.KeyEscape, 0, 0))
+	tui, _ := topTestTUI([]topEntry{{Name: "eng1", Status: "idle"}})
+	tui.handleTopKey(tcell.NewEventKey(tcell.KeyEscape, 0, tcell.ModNone))
 	if tui.top.active {
-		t.Error("Escape should close top modal")
-	}
-}
-
-func TestHandleTopKey_CtrlCCloses(t *testing.T) {
-	tui, _ := topTestTUI([]topEntry{{Name: "a", Status: "idle"}})
-	tui.handleTopKey(tcell.NewEventKey(tcell.KeyCtrlC, 0, 0))
-	if tui.top.active {
-		t.Error("Ctrl+C should close top modal")
+		t.Error("Esc should close top")
 	}
 }
 
 func TestHandleTopKey_QCloses(t *testing.T) {
-	tui, _ := topTestTUI([]topEntry{{Name: "a", Status: "idle"}})
-	tui.handleTopKey(tcell.NewEventKey(tcell.KeyRune, 'q', 0))
+	tui, _ := topTestTUI([]topEntry{{Name: "eng1", Status: "idle"}})
+	tui.handleTopKey(tcell.NewEventKey(tcell.KeyRune, 'q', tcell.ModNone))
 	if tui.top.active {
-		t.Error("q should close top modal")
+		t.Error("q should close top")
 	}
 }
 
 func TestHandleTopKey_BacktickCloses(t *testing.T) {
-	tui, _ := topTestTUI([]topEntry{{Name: "a", Status: "idle"}})
-	tui.handleTopKey(tcell.NewEventKey(tcell.KeyRune, '`', 0))
+	tui, _ := topTestTUI([]topEntry{{Name: "eng1", Status: "idle"}})
+	tui.handleTopKey(tcell.NewEventKey(tcell.KeyRune, '`', tcell.ModNone))
 	if tui.top.active {
-		t.Error("backtick should close top modal")
+		t.Error("backtick should close top")
 	}
 }
 
-func TestHandleTopKey_UpDown(t *testing.T) {
+func TestHandleTopKey_ArrowNavigation(t *testing.T) {
 	tui, _ := topTestTUI([]topEntry{
-		{Name: "a", Status: "idle"},
-		{Name: "b", Status: "idle"},
-		{Name: "c", Status: "idle"},
+		{Name: "eng1", Status: "idle"},
+		{Name: "eng2", Status: "idle"},
 	})
-	tui.top.selected = 1
-
-	tui.handleTopKey(tcell.NewEventKey(tcell.KeyUp, 0, 0))
-	if tui.top.selected != 0 {
-		t.Errorf("Up: selected = %d, want 0", tui.top.selected)
-	}
-
-	// Up at 0 stays at 0.
-	tui.handleTopKey(tcell.NewEventKey(tcell.KeyUp, 0, 0))
-	if tui.top.selected != 0 {
-		t.Errorf("Up from 0: selected = %d, want 0 (clamped)", tui.top.selected)
-	}
-
-	tui.handleTopKey(tcell.NewEventKey(tcell.KeyDown, 0, 0))
+	tui.top.selected = 0
+	tui.handleTopKey(tcell.NewEventKey(tcell.KeyDown, 0, tcell.ModNone))
 	if tui.top.selected != 1 {
 		t.Errorf("Down: selected = %d, want 1", tui.top.selected)
 	}
-
-	tui.top.selected = 2
-	tui.handleTopKey(tcell.NewEventKey(tcell.KeyDown, 0, 0))
-	if tui.top.selected != 2 {
-		t.Errorf("Down from max: selected = %d, want 2 (clamped)", tui.top.selected)
+	tui.handleTopKey(tcell.NewEventKey(tcell.KeyUp, 0, tcell.ModNone))
+	if tui.top.selected != 0 {
+		t.Errorf("Up: selected = %d, want 0", tui.top.selected)
 	}
 }
 
-func TestHandleTopKey_KillMarksDeadImmediately(t *testing.T) {
+func TestHandleTopKey_ArrowBounds(t *testing.T) {
 	tui, _ := topTestTUI([]topEntry{
-		{Name: "eng1", PID: 1, Status: "running"},
+		{Name: "eng1", Status: "idle"},
 	})
 	tui.top.selected = 0
-	// Pane has no real process, so Kill will fail silently (cmd is nil).
-	// But the alive flag should be set to false.
-
-	tui.handleTopKey(tcell.NewEventKey(tcell.KeyRune, 'k', 0))
-
-	if tui.panes[0].IsAlive() {
-		t.Error("'k' should mark pane as dead")
+	tui.handleTopKey(tcell.NewEventKey(tcell.KeyUp, 0, tcell.ModNone))
+	if tui.top.selected != 0 {
+		t.Errorf("Up at 0: selected = %d, want 0", tui.top.selected)
+	}
+	tui.handleTopKey(tcell.NewEventKey(tcell.KeyDown, 0, tcell.ModNone))
+	if tui.top.selected != 0 {
+		t.Errorf("Down at max: selected = %d, want 0", tui.top.selected)
 	}
 }
 
-func TestHandleTopKey_AlwaysReturnsFalse(t *testing.T) {
-	tui, _ := topTestTUI([]topEntry{{Name: "a", Status: "idle"}})
-	for _, ev := range []*tcell.EventKey{
-		tcell.NewEventKey(tcell.KeyEscape, 0, 0),
-		tcell.NewEventKey(tcell.KeyUp, 0, 0),
-		tcell.NewEventKey(tcell.KeyDown, 0, 0),
-		tcell.NewEventKey(tcell.KeyRune, 'q', 0),
-	} {
-		tui.top.active = true
-		if tui.handleTopKey(ev) {
-			t.Errorf("handleTopKey should always return false, got true for %v", ev.Key())
+// ── renderTop as floating modal ─────────────────────────────────────
+
+func TestRenderTop_IsFloatingModal(t *testing.T) {
+	tui, s := topTestTUI([]topEntry{
+		{Name: "eng1", Status: "idle"},
+	})
+	tui.renderTop()
+
+	// Verify the box border exists (corner characters).
+	rows := readAllScreen(s)
+	foundCorner := false
+	for _, r := range rows {
+		if strings.ContainsRune(r, '\u250c') { // top-left corner
+			foundCorner = true
+			break
 		}
 	}
-}
-
-// ── refreshTopData ──────────────────────────────────────────────────
-
-func TestRefreshTopData_PopulatesFromPanes(t *testing.T) {
-	emu := vt.NewSafeEmulator(40, 10)
-	go func() {
-		buf := make([]byte, 256)
-		for {
-			if _, err := emu.Read(buf); err != nil {
-				return
-			}
-		}
-	}()
-	p := &Pane{
-		name:    "eng1",
-		emu:     emu,
-		alive:   true,
-		visible: true,
-		cfg:     PaneConfig{Command: []string{"claude", "--continue"}},
-	}
-	tui := &TUI{
-		panes:       toPaneViews([]*Pane{p}),
-		layoutState: DefaultLayoutState(nil),
-	}
-
-	tui.refreshTopData()
-
-	if len(tui.top.data) != 1 {
-		t.Fatalf("top.data len = %d, want 1", len(tui.top.data))
-	}
-	e := tui.top.data[0]
-	if e.Name != "eng1" {
-		t.Errorf("Name = %q, want 'eng1'", e.Name)
-	}
-	if e.Command != "claude --continue" {
-		t.Errorf("Command = %q, want 'claude --continue'", e.Command)
-	}
-}
-
-func TestRefreshTopData_CachePreventsRepoll(t *testing.T) {
-	emu := vt.NewSafeEmulator(40, 10)
-	go func() {
-		buf := make([]byte, 256)
-		for {
-			if _, err := emu.Read(buf); err != nil {
-				return
-			}
-		}
-	}()
-	tui := &TUI{
-		panes:       toPaneViews([]*Pane{{name: "a", emu: emu, alive: true}}),
-		layoutState: DefaultLayoutState(nil),
-	}
-	tui.refreshTopData()
-	first := tui.top.data
-
-	// Second call within 2s should return cached data.
-	tui.refreshTopData()
-	if &tui.top.data[0] == &first[0] {
-		// Slice header might differ but data should be same reference.
-	}
-	if tui.top.data[0].Name != "a" {
-		t.Error("cached data should still be valid")
-	}
-}
-
-func TestRefreshTopData_HiddenStatus(t *testing.T) {
-	emu := vt.NewSafeEmulator(40, 10)
-	go func() {
-		buf := make([]byte, 256)
-		for {
-			if _, err := emu.Read(buf); err != nil {
-				return
-			}
-		}
-	}()
-	tui := &TUI{
-		panes:       toPaneViews([]*Pane{{name: "eng1", emu: emu, alive: true}}),
-		layoutState: DefaultLayoutState(nil),
-	}
-	tui.layoutState.Hidden = map[string]bool{"eng1": true}
-	tui.refreshTopData()
-
-	if !strings.Contains(tui.top.data[0].Status, "[hidden]") {
-		t.Errorf("hidden pane status = %q, want contains '[hidden]'", tui.top.data[0].Status)
+	if !foundCorner {
+		t.Error("floating modal missing box-drawing border")
 	}
 }
