@@ -656,18 +656,8 @@ func (t *TUI) renderOverlay() {
 	for i, p := range t.panes {
 		vis := !t.layoutState.Hidden[paneKey(p)]
 		act := p.Activity()
-		bead := p.BeadID()
-		beadTitle := ""
-		if lp, ok := p.(*Pane); ok {
-			beadTitle = lp.BeadTitle()
-		}
-		// Build status: combine activity and bead as "running (ini-sx5: Fix the bug)".
+		// Overlay shows activity state only; bead info is in the pane ribbon.
 		status := act.String()
-		if bead != "" && beadTitle != "" {
-			status = fmt.Sprintf("%s (%s: %s)", act.String(), bead, beadTitle)
-		} else if bead != "" {
-			status = fmt.Sprintf("%s (%s)", act.String(), bead)
-		}
 		pin := t.layoutState.Pinned[paneKey(p)]
 		remote := p.Host() != ""
 		displayName := p.Name()

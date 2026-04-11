@@ -150,9 +150,8 @@ func TestAgentsModal_RenderShowsAllAgents(t *testing.T) {
 			t.Errorf("rendered output missing agent %q", name)
 		}
 	}
-	if !strings.Contains(allText, "ini-abc") {
-		t.Error("rendered output missing bead ID 'ini-abc'")
-	}
+	// Bead IDs no longer shown in the agents modal (ini-2j2).
+	// They appear in the pane ribbon instead.
 }
 
 func TestAgentsModal_RenderShowsVisibilityCheckbox(t *testing.T) {

@@ -613,9 +613,7 @@ func (t *TUI) renderAgents() {
 		}
 
 		status := act.String()
-		if bead != "" {
-			status = fmt.Sprintf("%s (%s)", act.String(), bead)
-		}
+		_ = bead // Bead info shown in pane ribbon, not in modal rows.
 
 		marker := " "
 		if !t.agents.searching && idx == t.agents.selected && t.agents.moving {
