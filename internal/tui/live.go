@@ -263,6 +263,14 @@ func (le *LiveEngine) Tick(panes []PaneView, now time.Time) []string {
 		}
 
 		prev := le.Slots[slot]
+
+		// If the previous occupant is already placed in another slot (stale
+		// duplicate from a prior bug or race), treat this slot as empty.
+		if prev != "" && placed[prev] {
+			LogInfo("live-tick", "dedup-occupant", "slot", slot, "agent", prev)
+			prev = ""
+		}
+
 		prevInfo, prevAlive := scores[prev]
 
 		// Empty slot: fill with highest-scoring unplaced agent (not a displacement).
