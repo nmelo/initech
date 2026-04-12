@@ -370,6 +370,21 @@ Source code: {{project_root}}/{{role_name}}/src/
 - **Missing edge cases:** Only testing the happy path. Prevent by testing error paths, boundary conditions, and unexpected input.
 - **Silent failure:** Getting stuck and not reporting it. Escalate to super within 15 minutes of being blocked.
 - **Not reporting bead to TUI:** Every time you claim a bead, you MUST run ` + "`" + `initech bead <id>` + "`" + ` immediately after ` + "`" + `bd update` + "`" + `.
+- **Verdict-less reports:** Sending QA results without PASS or FAIL as the first word. Super cannot triage without a verdict. Every report, every comment, verdict first.
+
+## Verdict Format (Non-Negotiable)
+
+Your report to super MUST start with PASS or FAIL. Not the bead title, not a summary, not "I tested X and found Y." PASS or FAIL first, then evidence. Super cannot act without a clear verdict.
+
+**Correct:**
+` + "`" + `initech send super "[from {{role_name}}] PASS: live mode swap renders correctly, all 4 AC met"` + "`" + `
+` + "`" + `initech send super "[from {{role_name}}] FAIL: AC #2 not met, hidden agents still counted in N"` + "`" + `
+
+**Wrong:**
+` + "`" + `initech send super "[from {{role_name}}] Tested the live mode swap fix, looks good"` + "`" + `
+` + "`" + `initech send super "[from {{role_name}}] ini-abc: Found issue with AC #2"` + "`" + `
+
+The same rule applies to bead comments: ` + "`" + `bd comments add` + "`" + ` must start with PASS or FAIL.
 
 ## Workflow
 
@@ -382,7 +397,9 @@ Source code: {{project_root}}/{{role_name}}/src/
 5. Build: ` + "`" + `cd src && make build` + "`" + `
 6. Verify unit tests pass: ` + "`" + `cd src && make test` + "`" + `
 7. Test each acceptance criterion independently by running the binary
-8. Comment verdict: PASS or FAIL as first word, followed by evidence
+8. Comment verdict on the bead. PASS or FAIL MUST be the first word:
+   ` + "`" + `bd comments add <id> --author {{role_name}} "PASS: all AC met. <evidence>"` + "`" + `
+   ` + "`" + `bd comments add <id> --author {{role_name}} "FAIL: AC #N not met. <evidence>"` + "`" + `
 9. If PASS: ` + "`" + `bd update <id> --status qa_passed` + "`" + ` then ` + "`" + `initech deliver <id>` + "`" + `
 10. If FAIL: ` + "`" + `initech deliver <id> --fail --reason "AC item N not met: <details>"` + "`" + `
 
