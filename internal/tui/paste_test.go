@@ -168,6 +168,27 @@ func TestBufferedPaste_SpecialChars(t *testing.T) {
 	}
 }
 
+func TestBufferedPaste_MultiLineLF(t *testing.T) {
+	tui, r := newTUIWithPipePane(t)
+
+	tui.handleEvent(tcell.NewEventPaste(true))
+	tui.handleEvent(tcell.NewEventKey(tcell.KeyRune, 'a', 0))
+	// LF (0x0A) arrives as KeyCtrlJ from macOS clipboard.
+	tui.handleEvent(tcell.NewEventKey(tcell.KeyCtrlJ, 0, 0))
+	tui.handleEvent(tcell.NewEventKey(tcell.KeyRune, 'b', 0))
+	tui.handleEvent(tcell.NewEventKey(tcell.KeyCtrlJ, 0, 0))
+	tui.handleEvent(tcell.NewEventKey(tcell.KeyRune, 'c', 0))
+	tui.handleEvent(tcell.NewEventPaste(false))
+
+	tui.panes[0].(*Pane).ptmx.Close()
+	got, _ := io.ReadAll(r)
+
+	want := "\x1b[200~a\nb\nc\x1b[201~"
+	if string(got) != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
 func TestBufferedPaste_ModalDropsPaste(t *testing.T) {
 	tui, r := newTUIWithPipePane(t)
 

@@ -55,6 +55,8 @@ func (t *TUI) bufferPasteKey(ev *tcell.EventKey) {
 	switch ev.Key() {
 	case tcell.KeyEnter:
 		t.pasteBuf = append(t.pasteBuf, '\r')
+	case tcell.KeyCtrlJ:
+		t.pasteBuf = append(t.pasteBuf, '\n')
 	case tcell.KeyTab:
 		t.pasteBuf = append(t.pasteBuf, '\t')
 	case tcell.KeyBackspace, tcell.KeyBackspace2:
