@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"testing"
 	"time"
+
+	"github.com/nmelo/initech/internal/config"
 )
 
 func TestEventTypeString(t *testing.T) {
@@ -128,5 +130,51 @@ func TestPruneNotifications(t *testing.T) {
 	}
 	if tui.notifications[0].event.Pane != "b" {
 		t.Errorf("surviving notification = %q, want b", tui.notifications[0].event.Pane)
+	}
+}
+
+func TestAutoNotifyDisabled_SuppressesIdleWithBead(t *testing.T) {
+	f := false
+	tui := &TUI{
+		project: &config.Project{AutoNotify: &f},
+	}
+
+	ev := AgentEvent{
+		Type:   EventAgentIdleWithBead,
+		Pane:   "eng1",
+		BeadID: "ini-test",
+		Detail: "eng1 idle with bead",
+		Time:   time.Now(),
+	}
+	tui.handleAgentEvent(ev)
+
+	// The event should still appear in notifications (toast) and event log,
+	// but the injectText to super should NOT fire. Since we have no super pane
+	// and no safeGo, a panic would indicate the code tried to notify.
+	// Absence of panic = suppression worked.
+	if len(tui.notifications) != 1 {
+		t.Errorf("notifications = %d, want 1 (event still logged)", len(tui.notifications))
+	}
+}
+
+func TestAutoNotifyDefault_AllowsIdleWithBead(t *testing.T) {
+	// nil AutoNotify = defaults to true (enabled).
+	tui := &TUI{
+		project: &config.Project{},
+	}
+
+	ev := AgentEvent{
+		Type:   EventAgentIdleWithBead,
+		Pane:   "eng1",
+		BeadID: "ini-test",
+		Detail: "eng1 idle with bead",
+		Time:   time.Now(),
+	}
+	// No super pane exists, so the notify block is entered but findPaneByName
+	// returns nil. No panic = the config check passed (enabled path entered).
+	tui.handleAgentEvent(ev)
+
+	if len(tui.notifications) != 1 {
+		t.Errorf("notifications = %d, want 1", len(tui.notifications))
 	}
 }

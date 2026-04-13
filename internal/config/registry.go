@@ -35,6 +35,7 @@ var Registry = []FieldMeta{
 	{Key: "web_port", Type: "int", Default: "0 (disabled)", Description: "Web companion server port. 0 or omitted disables it", Restart: true},
 	{Key: "webhook_url", Type: "string", Description: "HTTP endpoint for agent event webhook POSTs. Empty disables"},
 	{Key: "announce_url", Type: "string", Description: "Agent Radio webhook URL for TTS announcements. Empty disables"},
+	{Key: "auto_notify", Type: "bool", Default: "true", Description: "Send idle-with-bead reminders to super. false disables"},
 
 	// MCP server.
 	{Key: "mcp_port", Type: "int", Default: "9200", Description: "MCP server port. 0 disables", Restart: true},

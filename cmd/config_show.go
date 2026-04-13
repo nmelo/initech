@@ -169,6 +169,8 @@ func resolveFieldValue(proj *config.Project, key string) string {
 		return proj.WebhookURL
 	case "announce_url":
 		return proj.AnnounceURL
+	case "auto_notify":
+		return fmt.Sprintf("%t", proj.IsAutoNotifyEnabled())
 	case "mcp_port":
 		if proj.McpPort == nil {
 			return ""

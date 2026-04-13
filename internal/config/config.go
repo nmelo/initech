@@ -48,6 +48,7 @@ type Project struct {
 	WebPort    *int   `yaml:"web_port,omitempty"`    // Web companion port. nil/0 = disabled, >0 = enabled.
 	WebhookURL   string `yaml:"webhook_url,omitempty"`   // HTTP endpoint for agent event POSTs. Empty = disabled.
 	AnnounceURL  string `yaml:"announce_url,omitempty"`  // Agent Radio webhook for TTS announcements. Empty = disabled.
+	AutoNotify   *bool  `yaml:"auto_notify,omitempty"`  // Send idle-with-bead reminders to super. nil/true = enabled, false = disabled.
 
 	// MCP server fields.
 	McpPort  *int   `yaml:"mcp_port,omitempty"`  // MCP server port. Default 9200, nil uses default, 0 disables.
@@ -63,6 +64,12 @@ type Project struct {
 	Listen   string            `yaml:"listen,omitempty"`    // TCP listen addr for headless mode. Defaults to 127.0.0.1 if only port given (e.g., ":7391" becomes "127.0.0.1:7391"). Use "0.0.0.0:port" to bind all interfaces.
 	Token    string            `yaml:"token,omitempty"`     // Shared auth token.
 	Remotes  map[string]Remote `yaml:"remotes,omitempty"`   // Named remote peers.
+}
+
+// IsAutoNotifyEnabled returns true if the idle-with-bead auto-notify is enabled.
+// Defaults to true when AutoNotify is nil (field absent from yaml).
+func (p *Project) IsAutoNotifyEnabled() bool {
+	return p.AutoNotify == nil || *p.AutoNotify
 }
 
 // Remote describes a remote initech peer for cross-machine coordination.
