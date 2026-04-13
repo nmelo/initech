@@ -290,9 +290,22 @@ func (t *TUI) applyLayout() {
 	t.plan = computeLayout(t.layoutState, t.panes, w, paneH)
 	LogInfo("applyLayout", "layout applied", "panes", len(t.plan.Panes), "w", w, "h", paneH)
 
-	// Cancel any in-progress mouse selection. Layout changes invalidate
-	// the pane index and region the selection was tracking.
-	t.sel.active = false
+	// Cancel in-progress mouse selection only if the tracked pane's region
+	// changed. Live mode ticks applyLayout every second; clearing selection
+	// unconditionally makes click-drag copy impossible in live mode.
+	if t.sel.active && t.sel.pane < len(t.panes) {
+		pk := paneKey(t.panes[t.sel.pane])
+		stillValid := false
+		for _, pr := range t.plan.Panes {
+			if paneKey(pr.Pane) == pk && pr.Region == t.panes[t.sel.pane].GetRegion() {
+				stillValid = true
+				break
+			}
+		}
+		if !stillValid {
+			t.sel.active = false
+		}
+	}
 
 	// Write validated focus back to layoutState so it stays consistent.
 	if t.plan.ValidatedFocus != "" {
