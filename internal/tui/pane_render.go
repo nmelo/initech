@@ -87,6 +87,18 @@ func (p *Pane) Render(screen tcell.Screen, focused bool, dimmed bool, index int,
 	// reorganization (ini-ipr). Read emuRows inside the lock so it matches
 	// the buffer state we'll be reading from.
 	p.renderMu.Lock()
+
+	// After a resize, skip one render frame to let the child process (Claude
+	// Code) redraw into the new dimensions. Without this, stale content from
+	// the pre-resize layout (e.g. "Claude Code" banner fragments) bleeds into
+	// the prompt area.
+	if p.resizeSettling {
+		p.resizeSettling = false
+		p.renderMu.Unlock()
+		p.renderActivityBar(s, r)
+		return
+	}
+
 	emuRows := p.emu.Height()
 
 	if p.scrollOffset > 0 {

@@ -207,6 +207,7 @@ type Pane struct {
 	dedupEvents       *dedup            // Dedup state for emitted events.
 	startedAt         time.Time         // When this pane's process was started. Used to filter stale JSONL.
 	scrollOffset      int               // Rows scrolled back from live view (0 = live).
+	resizeSettling    bool              // True for one render frame after resize. Suppresses content draw.
 	scrollAnchorLen   int               // Scrollback length when user last scrolled. Used to compensate for new output.
 	memoryRSS         int64             // RSS in kilobytes, updated by memory monitor goroutine.
 	suspended         bool              // True when auto-suspend policy has stopped this pane.
@@ -538,6 +539,7 @@ func (p *Pane) writePTYChunked(data []byte) {
 func (p *Pane) Resize(rows, cols int) {
 	p.renderMu.Lock()
 	p.emu.Resize(cols, rows)
+	p.resizeSettling = true
 	p.renderMu.Unlock()
 	pty.Setsize(p.ptmx, &pty.Winsize{
 		Rows: uint16(rows),

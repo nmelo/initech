@@ -324,8 +324,10 @@ func (t *TUI) applyLayout() {
 			} else if rp, ok := pr.Pane.(*RemotePane); ok {
 				rp.region = pr.Region
 			}
+			oldCols, oldRows := old.InnerSize()
 			cols, rows := pr.Region.InnerSize()
-			LogInfo("applyLayout", "resizing pane", "idx", i, "name", pr.Pane.Name(), "rows", rows, "cols", cols)
+			LogInfo("applyLayout", "resizing pane", "idx", i, "name", pr.Pane.Name(),
+				"oldRows", oldRows, "oldCols", oldCols, "newRows", rows, "newCols", cols)
 			pr.Pane.Resize(rows, cols)
 			LogInfo("applyLayout", "resize done", "idx", i, "name", pr.Pane.Name())
 		}
