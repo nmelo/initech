@@ -99,6 +99,8 @@ func resolveConfigValue(p *config.Project, key string) (string, bool) {
 		return p.AnnounceURL, true
 	case "auto_notify":
 		return fmt.Sprintf("%t", p.IsAutoNotifyEnabled()), true
+	case "telemetry":
+		return fmt.Sprintf("%t", p.IsTelemetryEnabled()), true
 	case "mcp_port":
 		return formatIntPtr(p.McpPort), true
 	case "mcp_token":

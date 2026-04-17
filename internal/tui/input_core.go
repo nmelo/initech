@@ -125,6 +125,7 @@ func (t *TUI) handleKey(ev *tcell.EventKey) bool {
 						t.layoutState.LivePinned = make(map[string]int)
 					}
 					t.initLiveEngine(0)
+					t.trackLiveModeActivated()
 				}
 				t.applyLayout()
 				t.saveLayoutIfConfigured()

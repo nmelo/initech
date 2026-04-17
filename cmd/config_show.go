@@ -171,6 +171,8 @@ func resolveFieldValue(proj *config.Project, key string) string {
 		return proj.AnnounceURL
 	case "auto_notify":
 		return fmt.Sprintf("%t", proj.IsAutoNotifyEnabled())
+	case "telemetry":
+		return fmt.Sprintf("%t", proj.IsTelemetryEnabled())
 	case "mcp_port":
 		if proj.McpPort == nil {
 			return ""

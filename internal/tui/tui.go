@@ -16,6 +16,7 @@ import (
 	"github.com/nmelo/initech/internal/config"
 	"github.com/nmelo/initech/internal/mcp"
 	"github.com/nmelo/initech/internal/slackchat"
+	"github.com/nmelo/initech/internal/telemetry"
 	"github.com/nmelo/initech/internal/update"
 	"github.com/nmelo/initech/internal/web"
 )
@@ -151,6 +152,10 @@ type TUI struct {
 	// project holds the full config for cross-machine peer name lookup and
 	// remote connection routing. Nil when no config is loaded (tests).
 	project *config.Project
+
+	// telemetry is the PostHog telemetry client. Nil when disabled.
+	telemetry      *telemetry.Client
+	liveTracked    bool // true after first live_mode_activated event
 
 	// sockPath is the IPC socket this TUI is listening on. Used to inject
 	// INITECH_SOCKET into hot-added panes.
@@ -333,6 +338,28 @@ func (t *TUI) applyLayout() {
 		}
 	}
 	LogInfo("applyLayout", "all resizes complete")
+}
+
+// trackLiveModeActivated sends a one-time telemetry event for live mode.
+func (t *TUI) trackLiveModeActivated() {
+	if t.telemetry == nil || t.liveTracked {
+		return
+	}
+	t.liveTracked = true
+	mode := "CxR"
+	if t.layoutState.LiveAuto {
+		mode = "auto"
+	}
+	visCount := 0
+	for _, p := range t.panes {
+		if !t.layoutState.Hidden[paneKey(p)] {
+			visCount++
+		}
+	}
+	t.telemetry.Track("live_mode_activated", map[string]any{
+		"mode":        mode,
+		"agent_count": visCount,
+	})
 }
 
 // initLiveEngine creates a persistent LiveEngine for live mode.
@@ -596,6 +623,34 @@ func Run(cfg Config) error {
 		agentEvents:       make(chan AgentEvent, 64),
 		timers:            NewTimerStore(filepath.Join(cfg.ProjectRoot, ".initech", "timers.json")),
 	}
+
+	// Initialize telemetry if enabled.
+	if cfg.Project == nil || cfg.Project.IsTelemetryEnabled() {
+		t.telemetry = telemetry.Init(cfg.Version)
+		agentTypes := make(map[string]bool, len(cfg.Agents))
+		for _, a := range cfg.Agents {
+			agentTypes[a.AgentType] = true
+		}
+		types := make([]string, 0, len(agentTypes))
+		for at := range agentTypes {
+			if at != "" {
+				types = append(types, at)
+			}
+		}
+		t.telemetry.Track("session_started", map[string]any{
+			"agent_count": len(cfg.Agents),
+			"agent_types": types,
+		})
+	}
+	defer func() {
+		if t.telemetry != nil {
+			t.telemetry.Track("session_ended", map[string]any{
+				"duration_seconds": int(t.telemetry.Duration().Seconds()),
+				"agents_started":  len(t.panes),
+			})
+			t.telemetry.Shutdown()
+		}
+	}()
 
 	// Show update notification on stderr after TUI exits.
 	defer func() {
