@@ -254,7 +254,7 @@ func (t *TUI) addPane(name string) error {
 	}
 
 	if t.paneConfigBuilder == nil {
-		return fmt.Errorf("add not available: no config builder (was TUI started via 'initech up'?)")
+		return fmt.Errorf("add not available: no config builder (was TUI started via 'initech'?)")
 	}
 
 	cfg, err := t.paneConfigBuilder(name)

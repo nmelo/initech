@@ -16,7 +16,7 @@ import (
 var configValidateCmd = &cobra.Command{
 	Use:   "validate",
 	Short: "Check config for errors before starting",
-	Long:  `Runs the same validation checks as initech up but without starting the TUI. Reports PASS, WARN, ERROR, or INFO for each check.`,
+	Long:  `Runs the same validation checks that run at startup but without starting the TUI. Reports PASS, WARN, ERROR, or INFO for each check.`,
 	RunE:  runConfigValidate,
 }
 

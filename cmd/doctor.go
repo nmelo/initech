@@ -27,7 +27,7 @@ import (
 var doctorCmd = &cobra.Command{
 	Use:   "doctor",
 	Short: "Check prerequisites and project health",
-	Long:  `Checks prerequisites, project configuration, and terminal environment. Surfaces problems before initech up.`,
+	Long:  `Checks prerequisites, project configuration, and terminal environment. Surfaces problems before starting initech.`,
 	RunE:  runDoctor,
 }
 
