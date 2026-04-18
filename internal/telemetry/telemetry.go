@@ -16,7 +16,7 @@ import (
 
 const (
 	posthogEndpoint = "https://us.i.posthog.com/capture"
-	posthogAPIKey   = "POSTHOG_API_KEY_PLACEHOLDER"
+	posthogAPIKey   = "phc_Hlm2RtsGAMCBcpmBvjFBuECVCHhfbE5kzdIa8a33qgD"
 	bufferSize      = 16
 	sendTimeout     = 3 * time.Second
 )
