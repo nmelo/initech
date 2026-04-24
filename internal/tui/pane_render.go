@@ -101,19 +101,20 @@ func (p *Pane) Render(screen tcell.Screen, focused bool, dimmed bool, index int,
 
 	emuRows := p.emu.Height()
 
+	// Compensate scrollOffset for new output before any cell drawing.
+	p.applyScrollAnchor()
+
+	// Compute view-window mapping (single source of truth for both paths).
+	startRow, renderOffset := p.contentOffset()
+
 	if p.scrollOffset > 0 {
 		// Scrollback mode: render from the combined scrollback + screen buffer.
 		scrollbackLen := p.emu.ScrollbackLen()
+		viewTop := startRow
+		viewBottom := viewTop + innerRows
 		totalVirtual := scrollbackLen + emuRows
-
-		// The bottom of the view window (exclusive).
-		viewBottom := totalVirtual - p.scrollOffset
-		if viewBottom < 0 {
-			viewBottom = 0
-		}
-		viewTop := viewBottom - innerRows
-		if viewTop < 0 {
-			viewTop = 0
+		if viewBottom > totalVirtual {
+			viewBottom = totalVirtual
 		}
 
 		for row := 0; row < innerRows; row++ {
@@ -136,9 +137,6 @@ func (p *Pane) Render(screen tcell.Screen, focused bool, dimmed bool, index int,
 			}
 		}
 	}
-
-	// These variables are used by both the live rendering and cursor logic below.
-	startRow, renderOffset := p.contentOffset()
 
 	if p.scrollOffset == 0 {
 		// Live mode: anchor content to the bottom of the pane.

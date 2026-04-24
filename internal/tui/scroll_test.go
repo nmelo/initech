@@ -79,11 +79,40 @@ func TestScrollAnchor_NewOutputDoesNotDrift(t *testing.T) {
 		emu.Write([]byte("new output line\r\n"))
 	}
 
-	// Render again: contentOffset should compensate for the new lines.
+	// applyScrollAnchor must run before contentOffset (as Render does).
+	p.applyScrollAnchor()
 	startRow2, _ := p.contentOffset()
 
 	if startRow1 != startRow2 {
 		t.Errorf("view drifted: startRow before=%d, after=%d (should be stable)", startRow1, startRow2)
+	}
+}
+
+func TestScrollAnchor_CompensationBeforeDraw(t *testing.T) {
+	emu := vt.NewSafeEmulator(80, 24)
+	for i := 0; i < 100; i++ {
+		emu.Write([]byte("line of content\r\n"))
+	}
+
+	p := &Pane{emu: emu, region: Region{X: 0, Y: 0, W: 82, H: 26}}
+	p.ScrollUp(20)
+	origOffset := p.scrollOffset
+
+	// New output arrives.
+	for i := 0; i < 5; i++ {
+		emu.Write([]byte("new line\r\n"))
+	}
+
+	// Before applyScrollAnchor, scrollOffset is stale.
+	if p.scrollOffset != origOffset {
+		t.Fatalf("scrollOffset changed before applyScrollAnchor: got %d, want %d", p.scrollOffset, origOffset)
+	}
+
+	p.applyScrollAnchor()
+
+	// After applyScrollAnchor, scrollOffset must include the delta.
+	if p.scrollOffset != origOffset+5 {
+		t.Errorf("scrollOffset after applyScrollAnchor: got %d, want %d", p.scrollOffset, origOffset+5)
 	}
 }
 

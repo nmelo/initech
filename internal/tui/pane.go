@@ -554,6 +554,19 @@ func (p *Pane) ForwardMouse(ev uv.MouseEvent) {
 	p.emu.SendMouse(ev)
 }
 
+// applyScrollAnchor adjusts scrollOffset to compensate for new scrollback
+// lines added since the user scrolled. Must be called before any cell drawing
+// so the view window uses the corrected offset.
+func (p *Pane) applyScrollAnchor() {
+	if p.scrollOffset > 0 && p.scrollAnchorLen > 0 {
+		delta := p.emu.ScrollbackLen() - p.scrollAnchorLen
+		if delta > 0 {
+			p.scrollOffset += delta
+			p.scrollAnchorLen = p.emu.ScrollbackLen()
+		}
+	}
+}
+
 // contentOffset computes the mapping from screen-local content rows to
 // emulator rows for bottom-anchored (non-alt-screen) content. In alt-screen
 // mode the mapping is identity (both return 0). In scrollback mode, startRow
@@ -566,17 +579,6 @@ func (p *Pane) contentOffset() (startRow, renderOffset int) {
 	}
 	if p.scrollOffset > 0 {
 		scrollbackLen := p.emu.ScrollbackLen()
-
-		// Compensate for new scrollback lines added since the user scrolled.
-		// This keeps the viewed region stable when new output arrives.
-		if p.scrollAnchorLen > 0 {
-			delta := scrollbackLen - p.scrollAnchorLen
-			if delta > 0 {
-				p.scrollOffset += delta
-				p.scrollAnchorLen = scrollbackLen
-			}
-		}
-
 		totalVirtual := scrollbackLen + p.emu.Height()
 		_, innerRows := p.region.InnerSize()
 		viewBottom := totalVirtual - p.scrollOffset
