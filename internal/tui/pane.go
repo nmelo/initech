@@ -206,8 +206,9 @@ type Pane struct {
 	stuckReported     bool              // True after emitting stuck event. Reset on success.
 	dedupEvents       *dedup            // Dedup state for emitted events.
 	startedAt         time.Time         // When this pane's process was started. Used to filter stale JSONL.
-	scrollOffset      int               // Rows scrolled back from live view (0 = live).
-	resizeSettling    bool              // True for one render frame after resize. Suppresses content draw.
+	scrollOffset          int           // Rows scrolled back from live view (0 = live).
+	resizeSettleFrames    int           // Render frames remaining to skip after resize.
+	resizeSettleDeadline  time.Time     // Hard deadline: skip content rendering until this time.
 	scrollAnchorLen   int               // Scrollback length when user last scrolled. Used to compensate for new output.
 	memoryRSS         int64             // RSS in kilobytes, updated by memory monitor goroutine.
 	suspended         bool              // True when auto-suspend policy has stopped this pane.
@@ -236,6 +237,22 @@ type Region struct {
 func (r Region) InnerSize() (cols, rows int) {
 	cols = r.W
 	rows = r.H - 1
+	if cols < 1 {
+		cols = 1
+	}
+	if rows < 1 {
+		rows = 1
+	}
+	return
+}
+
+// TerminalSize returns the dimensions given to the VT emulator and PTY.
+// Subtracts 2 rows from region height: 1 for the bottom ribbon, 1 for the
+// top activity bar. The child process sees these dimensions via LINES and
+// SIGWINCH, so content it renders fits entirely within the visible area.
+func (r Region) TerminalSize() (cols, rows int) {
+	cols = r.W
+	rows = r.H - 2
 	if cols < 1 {
 		cols = 1
 	}
@@ -533,18 +550,29 @@ func (p *Pane) writePTYChunked(data []byte) {
 	}
 }
 
-// Resize updates the emulator and PTY dimensions. Holds renderMu to serialize
-// with readLoop writes and Render cell reads, preventing garbled output when
-// the buffer is reorganized during zoom or layout changes (ini-ipr).
+// resizeSettleCount is the number of render frames to skip after a resize.
+// One frame is insufficient: the child process needs to receive SIGWINCH,
+// re-layout, and emit new-geometry output before the emulator content is valid.
+const resizeSettleCount = 3
+
+// resizeSettleDuration is the minimum wall-clock time to suppress content
+// rendering after a resize, covering slow child redraws.
+const resizeSettleDuration = 150 * time.Millisecond
+
+// Resize updates the PTY and emulator dimensions. Calls pty.Setsize first so
+// the child process receives SIGWINCH before the emulator buffer reorganizes.
+// Holds renderMu across both operations to prevent readLoop from writing
+// old-geometry PTY output into a new-geometry emulator buffer (ini-yah).
 func (p *Pane) Resize(rows, cols int) {
 	p.renderMu.Lock()
-	p.emu.Resize(cols, rows)
-	p.resizeSettling = true
-	p.renderMu.Unlock()
+	defer p.renderMu.Unlock()
 	pty.Setsize(p.ptmx, &pty.Winsize{
 		Rows: uint16(rows),
 		Cols: uint16(cols),
 	})
+	p.emu.Resize(cols, rows)
+	p.resizeSettleFrames = resizeSettleCount
+	p.resizeSettleDeadline = time.Now().Add(resizeSettleDuration)
 }
 
 // ForwardMouse sends a mouse event to the emulator with pane-local content
@@ -580,19 +608,19 @@ func (p *Pane) contentOffset() (startRow, renderOffset int) {
 	if p.scrollOffset > 0 {
 		scrollbackLen := p.emu.ScrollbackLen()
 		totalVirtual := scrollbackLen + p.emu.Height()
-		_, innerRows := p.region.InnerSize()
+		_, termRows := p.region.TerminalSize()
 		viewBottom := totalVirtual - p.scrollOffset
 		if viewBottom < 0 {
 			viewBottom = 0
 		}
-		viewTop := viewBottom - innerRows
+		viewTop := viewBottom - termRows
 		if viewTop < 0 {
 			viewTop = 0
 		}
 		return viewTop, 0
 	}
 
-	innerCols, innerRows := p.region.InnerSize()
+	innerCols, termRows := p.region.TerminalSize()
 	pos := p.emu.CursorPosition()
 	scanEnd := pos.Y - 1
 	if scanEnd < 0 {
@@ -614,9 +642,9 @@ func (p *Pane) contentOffset() (startRow, renderOffset int) {
 		}
 	}
 	contentEnd := lastContent + 1
-	if contentEnd > innerRows {
+	if contentEnd > termRows {
 		// Content overflows the pane: scroll to show the bottom.
-		startRow = contentEnd - innerRows
+		startRow = contentEnd - termRows
 	}
 	// When content fits within the pane, render from the top (no offset).
 	return

@@ -2,6 +2,7 @@ package tui
 
 import (
 	"testing"
+	"time"
 
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/vt"
@@ -31,6 +32,85 @@ func TestInnerSize(t *testing.T) {
 				t.Errorf("InnerSize() = (%d, %d), want (%d, %d)", cols, rows, tt.wantCols, tt.wantRows)
 			}
 		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Region.TerminalSize
+// ---------------------------------------------------------------------------
+
+func TestTerminalSize(t *testing.T) {
+	tests := []struct {
+		name     string
+		r        Region
+		wantCols int
+		wantRows int
+	}{
+		{"normal", Region{0, 0, 80, 24}, 80, 22},
+		{"small", Region{0, 0, 80, 5}, 80, 3},
+		{"min_height_3", Region{0, 0, 80, 3}, 80, 1},
+		{"min_height_2", Region{0, 0, 80, 2}, 80, 1},  // H-2=0 clamped to 1
+		{"min_height_1", Region{0, 0, 80, 1}, 80, 1},  // H-2=-1 clamped to 1
+		{"zero_width", Region{0, 0, 0, 10}, 1, 8},     // W=0 clamped to 1
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cols, rows := tt.r.TerminalSize()
+			if cols != tt.wantCols || rows != tt.wantRows {
+				t.Errorf("TerminalSize() = (%d, %d), want (%d, %d)", cols, rows, tt.wantCols, tt.wantRows)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TerminalSize vs InnerSize relationship
+// ---------------------------------------------------------------------------
+
+func TestTerminalSizeIsInnerSizeMinusOne(t *testing.T) {
+	for h := 4; h <= 30; h++ {
+		r := Region{0, 0, 80, h}
+		_, innerRows := r.InnerSize()
+		_, termRows := r.TerminalSize()
+		if termRows != innerRows-1 {
+			t.Errorf("H=%d: TerminalSize rows (%d) != InnerSize rows (%d) - 1",
+				h, termRows, innerRows)
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Resize settling uses frame counter + deadline
+// ---------------------------------------------------------------------------
+
+func TestResizeSettleMultiFrame(t *testing.T) {
+	emu := vt.NewSafeEmulator(80, 22)
+	p := &Pane{
+		name:     "test",
+		emu:      emu,
+		alive:    true,
+		region:   Region{0, 0, 80, 24},
+		activity: StateIdle,
+	}
+
+	// Simulate a resize: set settle frames and deadline.
+	p.resizeSettleFrames = resizeSettleCount
+	p.resizeSettleDeadline = time.Now().Add(-1 * time.Millisecond) // deadline already passed
+
+	// Each render should decrement the frame counter and skip content.
+	for i := resizeSettleCount; i > 0; i-- {
+		if p.resizeSettleFrames != i {
+			t.Fatalf("frame %d: expected %d settle frames, got %d", resizeSettleCount-i, i, p.resizeSettleFrames)
+		}
+		// Call Render — it should return early due to settling.
+		scr := tcell.NewSimulationScreen("")
+		scr.SetSize(80, 24)
+		scr.Init()
+		p.Render(scr, false, false, 1, Selection{})
+	}
+
+	if p.resizeSettleFrames != 0 {
+		t.Fatalf("after %d renders, settle frames should be 0, got %d", resizeSettleCount, p.resizeSettleFrames)
 	}
 }
 

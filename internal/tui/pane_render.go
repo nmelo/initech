@@ -49,7 +49,7 @@ func (c *clampedScreen) Get(x, y int) (string, tcell.Style, int) {
 // All writes are clamped to the pane's region to prevent bleed-through.
 func (p *Pane) Render(screen tcell.Screen, focused bool, dimmed bool, index int, sel Selection) {
 	r := p.region
-	if r.W < 1 || r.H < 2 {
+	if r.W < 1 || r.H < 3 {
 		return
 	}
 
@@ -79,8 +79,15 @@ func (p *Pane) Render(screen tcell.Screen, focused bool, dimmed bool, index int,
 
 	renderRibbon(s, r, title, titleStyle, p.BeadID(), p.BeadTitle())
 
-	// Terminal content (starts at Y+1, fills full width).
-	innerCols, innerRows := r.InnerSize()
+	// Activity bar at r.Y (top edge). Drawn before content so it is always
+	// present even when content rendering is suppressed during resize settling.
+	p.renderActivityBar(s, r)
+
+	// Content region: below activity bar (r.Y+1), above ribbon (r.Y+H-1).
+	// cr.InnerSize() returns TerminalSize dimensions (H-2 rows), and
+	// cr.Y+row naturally places cells below the activity bar (ini-yah).
+	cr := Region{X: r.X, Y: r.Y + 1, W: r.W, H: r.H - 1}
+	termCols, termRows := cr.InnerSize()
 
 	// Hold renderMu for the entire cell-reading phase to prevent tearing
 	// from concurrent readLoop writes (ini-45m) and resize buffer
@@ -88,14 +95,15 @@ func (p *Pane) Render(screen tcell.Screen, focused bool, dimmed bool, index int,
 	// the buffer state we'll be reading from.
 	p.renderMu.Lock()
 
-	// After a resize, skip one render frame to let the child process (Claude
-	// Code) redraw into the new dimensions. Without this, stale content from
-	// the pre-resize layout (e.g. "Claude Code" banner fragments) bleeds into
-	// the prompt area.
-	if p.resizeSettling {
-		p.resizeSettling = false
+	// After a resize, suppress content rendering for multiple frames and a
+	// minimum wall-clock duration to let the child process redraw into the
+	// new dimensions (ini-yah). Without this, stale content from the
+	// pre-resize layout bleeds into the prompt area.
+	if p.resizeSettleFrames > 0 || time.Now().Before(p.resizeSettleDeadline) {
+		if p.resizeSettleFrames > 0 {
+			p.resizeSettleFrames--
+		}
 		p.renderMu.Unlock()
-		p.renderActivityBar(s, r)
 		return
 	}
 
@@ -111,18 +119,18 @@ func (p *Pane) Render(screen tcell.Screen, focused bool, dimmed bool, index int,
 		// Scrollback mode: render from the combined scrollback + screen buffer.
 		scrollbackLen := p.emu.ScrollbackLen()
 		viewTop := startRow
-		viewBottom := viewTop + innerRows
+		viewBottom := viewTop + termRows
 		totalVirtual := scrollbackLen + emuRows
 		if viewBottom > totalVirtual {
 			viewBottom = totalVirtual
 		}
 
-		for row := 0; row < innerRows; row++ {
+		for row := 0; row < termRows; row++ {
 			vRow := viewTop + row
 			if vRow >= viewBottom {
 				continue
 			}
-			for col := 0; col < innerCols; col++ {
+			for col := 0; col < termCols; col++ {
 				var cell *uv.Cell
 				if vRow < scrollbackLen {
 					cell = p.emu.ScrollbackCellAt(col, vRow)
@@ -133,7 +141,7 @@ func (p *Pane) Render(screen tcell.Screen, focused bool, dimmed bool, index int,
 				if dimmed {
 					style = dimStyle(style)
 				}
-				s.SetContent(r.X+col, r.Y+row, ch, nil, style)
+				s.SetContent(cr.X+col, cr.Y+row, ch, nil, style)
 			}
 		}
 	}
@@ -147,7 +155,7 @@ func (p *Pane) Render(screen tcell.Screen, focused bool, dimmed bool, index int,
 			// Only update if non-empty (resizes temporarily clear the cursor row).
 			if pos.Y < emuRows {
 				var desc strings.Builder
-				for col := 0; col < innerCols; col++ {
+				for col := 0; col < termCols; col++ {
 					cell := p.emu.CellAt(col, pos.Y)
 					if cell != nil && cell.Content != "" {
 						desc.WriteString(cell.Content)
@@ -156,9 +164,7 @@ func (p *Pane) Render(screen tcell.Screen, focused bool, dimmed bool, index int,
 					}
 				}
 				trimmed := strings.TrimSpace(desc.String())
-				// Only use as description if it looks like real text, not
-				// Claude's status bar (which contains │ separators).
-				if trimmed != "" && !strings.Contains(trimmed, "\u2502") {
+				if trimmed != "" && !strings.Contains(trimmed, "│") {
 					p.mu.Lock()
 					p.sessionDesc = trimmed
 					p.mu.Unlock()
@@ -166,42 +172,33 @@ func (p *Pane) Render(screen tcell.Screen, focused bool, dimmed bool, index int,
 			}
 		}
 		// Determine status bar zone for CUF bleed-through fix.
-		// Only apply the fix near the cursor (last 4 rows of content).
 		statusZoneStart := pos.Y - 4
 		if statusZoneStart < 0 {
 			statusZoneStart = 0
 		}
 
-		for row := 0; row < innerRows; row++ {
+		for row := 0; row < termRows; row++ {
 			emuRow := startRow + (row - renderOffset)
 			if emuRow < 0 || emuRow >= emuRows {
 				continue
 			}
 
-			// In the status bar zone, blank stale CUF bleed-through on
-			// rows that contain the status bar separator (ini-cp3).
-			if emuRow >= statusZoneStart && emuRow <= pos.Y && rowContainsStatusBar(p.emu, emuRow, innerCols) {
-				renderStatusBarRow(s, p.emu, r.X, r.Y+row, emuRow, innerCols, dimmed)
+			if emuRow >= statusZoneStart && emuRow <= pos.Y && rowContainsStatusBar(p.emu, emuRow, termCols) {
+				renderStatusBarRow(s, p.emu, cr.X, cr.Y+row, emuRow, termCols, dimmed)
 			} else {
-				renderCellRow(s, p.emu, r.X, r.Y+row, emuRow, innerCols, dimmed)
+				renderCellRow(s, p.emu, cr.X, cr.Y+row, emuRow, termCols, dimmed)
 			}
 		}
 	}
 
 	if p.scrollOffset > 0 {
-		// Scrollback mode: render selection using virtual cell accessor.
-		renderSelectionVirtual(s, r, p, sel, dimmed, startRow)
+		renderSelectionVirtual(s, cr, p, sel, dimmed, startRow)
 	} else {
-		renderSelection(s, r, p.emu, sel, dimmed, startRow-renderOffset)
-		renderCursor(s, r, p.emu, focused, sel, startRow-renderOffset)
+		renderSelection(s, cr, p.emu, sel, dimmed, startRow-renderOffset)
+		renderCursor(s, cr, p.emu, focused, sel, startRow-renderOffset)
 	}
 
 	p.renderMu.Unlock()
-
-	// Activity bar on the top edge of the pane (ini-lw0). Overlays row 0
-	// of the content area. Running panes get a KITT scanner sweep; all
-	// other states get a static dim line.
-	p.renderActivityBar(s, r)
 }
 
 // renderActivityBar draws a 1-row activity indicator on the top edge of the
@@ -217,7 +214,7 @@ func (p *Pane) renderActivityBar(s *clampedScreen, r Region) {
 
 	if p.Activity() != StateRunning {
 		for x := r.X; x < r.X+r.W; x++ {
-			s.SetContent(x, y, '\u2500', nil, baseStyle)
+			s.SetContent(x, y, '─', nil, baseStyle)
 		}
 		return
 	}
@@ -240,10 +237,10 @@ func (p *Pane) renderActivityBar(s *clampedScreen, r Region) {
 		dist := float64(dx) - pos
 		brightness := 85.0 * math.Exp(-dist*dist*0.15)
 		if brightness < baseBrightness {
-			s.SetContent(r.X+dx, y, '\u2500', nil, baseStyle)
+			s.SetContent(r.X+dx, y, '─', nil, baseStyle)
 		} else {
 			b := int32(brightness)
-			s.SetContent(r.X+dx, y, '\u2500', nil, tcell.StyleDefault.Foreground(tcell.NewRGBColor(b, b, b)))
+			s.SetContent(r.X+dx, y, '─', nil, tcell.StyleDefault.Foreground(tcell.NewRGBColor(b, b, b)))
 		}
 	}
 }
@@ -332,7 +329,7 @@ func rowContainsStatusBar(emu *vt.SafeEmulator, row, cols int) bool {
 		cell := emu.CellAt(col, row)
 		if cell != nil {
 			for _, r := range cell.Content {
-				if r == '\u2502' {
+				if r == '│' {
 					return true
 				}
 			}

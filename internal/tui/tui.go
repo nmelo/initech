@@ -329,8 +329,8 @@ func (t *TUI) applyLayout() {
 			} else if rp, ok := pr.Pane.(*RemotePane); ok {
 				rp.region = pr.Region
 			}
-			oldCols, oldRows := old.InnerSize()
-			cols, rows := pr.Region.InnerSize()
+			oldCols, oldRows := old.TerminalSize()
+			cols, rows := pr.Region.TerminalSize()
 			LogInfo("applyLayout", "resizing pane", "idx", i, "name", pr.Pane.Name(),
 				"oldRows", oldRows, "oldCols", oldCols, "newRows", rows, "newCols", cols)
 			pr.Pane.Resize(rows, cols)
@@ -696,7 +696,7 @@ func Run(cfg Config) error {
 	// Create panes.
 	for i, acfg := range cfg.Agents {
 		r := regions[i%len(regions)]
-		cols, rows := r.InnerSize()
+		cols, rows := r.TerminalSize()
 		p, err := NewPane(acfg, rows, cols)
 		if err != nil {
 			LogError("pane", "launch failed", "name", acfg.Name, "err", err)
