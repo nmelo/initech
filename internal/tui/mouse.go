@@ -34,15 +34,19 @@ func (t *TUI) handleMouse(ev *tcell.EventMouse) {
 				}
 				lx := mx - r.X
 				ly := my - r.Y
-				if ly < 0 {
-					ly = 0
-				}
 				// Forward click to child PTY (local panes only).
 				var sr, ro int
 				if p, ok := pv.(*Pane); ok {
+					ly-- // content starts below activity bar (ini-yah)
+					if ly < 0 {
+						ly = 0
+					}
 					t.forwardMouseEvent(p, lx, ly, uv.MouseLeft, false, false, ev.Modifiers())
 					sr, ro = p.contentOffset()
 				} else {
+					if ly < 0 {
+						ly = 0
+					}
 					_, innerRows := r.InnerSize()
 					sr = pv.Emulator().Height() - innerRows
 					ro = 0
@@ -76,7 +80,16 @@ func (t *TUI) handleMouse(ev *tcell.EventMouse) {
 			r := pv.GetRegion()
 			lx := mx - r.X
 			ly := my - r.Y
-			cols, rows := r.InnerSize()
+			_, isLocal := pv.(*Pane)
+			if isLocal {
+				ly-- // content starts below activity bar (ini-yah)
+			}
+			var cols, rows int
+			if isLocal {
+				cols, rows = r.TerminalSize()
+			} else {
+				cols, rows = r.InnerSize()
+			}
 			if lx < 0 {
 				lx = 0
 			}
@@ -106,6 +119,9 @@ func (t *TUI) handleMouse(ev *tcell.EventMouse) {
 			r := pv.GetRegion()
 			lx := mx - r.X
 			ly := my - r.Y
+			if _, ok := pv.(*Pane); ok {
+				ly-- // content starts below activity bar (ini-yah)
+			}
 			if ly < 0 {
 				ly = 0
 			}
@@ -205,7 +221,7 @@ func (t *TUI) forwardMouseToFocused(mx, my int, button uv.MouseButton, isMotion,
 		return
 	}
 	lx := mx - r.X
-	ly := my - r.Y
+	ly := my - r.Y - 1 // -1: content starts below activity bar (ini-yah)
 	if ly < 0 {
 		ly = 0
 	}

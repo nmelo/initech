@@ -902,9 +902,12 @@ func TestHandleMouseSelectionOnRemotePane(t *testing.T) {
 	tui.panes[0] = rp
 	// Pre-set focus to avoid applyLayout (which would resize the nil-mux RemotePane).
 	tui.layoutState.Focused = paneKey(rp)
+	// Rebuild plan so pr.Pane points to the RemotePane (not the old *Pane).
+	tui.plan = computeLayout(tui.layoutState, tui.panes, 120, 40)
 	_ = s
 
-	// Click on the remote pane.
+	// Click on the remote pane. RemotePane has no activity bar, so content
+	// starts at r.Y (not r.Y+1). ly = (r.Y+1) - r.Y = 1.
 	ev := tcell.NewEventMouse(r.X+2, r.Y+1, tcell.Button1, tcell.ModNone)
 	tui.handleMouse(ev)
 	if !tui.sel.active {
