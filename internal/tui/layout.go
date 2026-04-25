@@ -512,7 +512,9 @@ func LoadLayout(projectRoot string, paneKeys []string) (LayoutState, bool) {
 	mode := stringToLayoutMode(pl.Mode)
 
 	// If grid can't hold visible panes, auto-recalculate.
-	if cols*rows < visCount {
+	// Skip for live mode: the grid is a viewport, intentionally smaller
+	// than total agents — conviction scoring rotates the rest.
+	if mode != LayoutLive && cols*rows < visCount {
 		cols, rows = autoGrid(visCount)
 	}
 

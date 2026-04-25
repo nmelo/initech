@@ -379,12 +379,16 @@ func (t *TUI) initLiveEngine(numSlots int) {
 		return
 	}
 	if numSlots < 1 {
-		visCount := t.visibleCountFromState()
-		if visCount < 1 {
-			visCount = len(t.panes)
+		if t.layoutState.GridExplicit && t.layoutState.GridCols > 0 && t.layoutState.GridRows > 0 {
+			numSlots = t.layoutState.GridCols * t.layoutState.GridRows
+		} else {
+			visCount := t.visibleCountFromState()
+			if visCount < 1 {
+				visCount = len(t.panes)
+			}
+			cols, rows := autoGrid(visCount)
+			numSlots = cols * rows
 		}
-		cols, rows := autoGrid(visCount)
-		numSlots = cols * rows
 	}
 	t.liveEngine = NewLiveEngine(numSlots, t.layoutState.LivePinned, roles)
 }

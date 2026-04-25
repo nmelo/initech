@@ -975,3 +975,51 @@ func TestLoadLayoutMainMode(t *testing.T) {
 		t.Errorf("mode = %d, want Layout2Col", got.Mode)
 	}
 }
+
+func TestLoadLayout_LiveModePreservesSmallGrid(t *testing.T) {
+	root := t.TempDir()
+	state := LayoutState{
+		Mode:         LayoutLive,
+		GridCols:     2,
+		GridRows:     1,
+		GridExplicit: true,
+		Hidden:       make(map[string]bool),
+	}
+	if err := SaveLayout(root, state); err != nil {
+		t.Fatalf("SaveLayout: %v", err)
+	}
+
+	agents := []string{"super", "eng1", "eng2", "eng3", "qa1", "pm", "shipper"}
+	got, ok := LoadLayout(root, agents)
+	if !ok {
+		t.Fatal("LoadLayout returned false")
+	}
+	if got.GridCols != 2 || got.GridRows != 1 {
+		t.Errorf("grid = %dx%d, want 2x1 (live mode should not auto-expand)", got.GridCols, got.GridRows)
+	}
+	if got.Mode != LayoutLive {
+		t.Errorf("mode = %d, want LayoutLive", got.Mode)
+	}
+}
+
+func TestLoadLayout_GridModeStillAutoExpands(t *testing.T) {
+	root := t.TempDir()
+	state := LayoutState{
+		Mode:     LayoutGrid,
+		GridCols: 2,
+		GridRows: 1,
+		Hidden:   make(map[string]bool),
+	}
+	if err := SaveLayout(root, state); err != nil {
+		t.Fatalf("SaveLayout: %v", err)
+	}
+
+	agents := []string{"super", "eng1", "eng2", "eng3", "qa1"}
+	got, ok := LoadLayout(root, agents)
+	if !ok {
+		t.Fatal("LoadLayout returned false")
+	}
+	if got.GridCols*got.GridRows < len(agents) {
+		t.Errorf("grid = %dx%d (%d slots), want >= %d for grid mode", got.GridCols, got.GridRows, got.GridCols*got.GridRows, len(agents))
+	}
+}

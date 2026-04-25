@@ -1252,3 +1252,43 @@ func TestFillEmpty_NoDuplicates_TickAuto(t *testing.T) {
 		t.Errorf("expected 4 visible agents, got %d: %v", len(result), result)
 	}
 }
+
+func TestInitLiveEngine_RespectsGridExplicit(t *testing.T) {
+	tui := &TUI{
+		layoutState: LayoutState{
+			GridCols:     2,
+			GridRows:     1,
+			GridExplicit: true,
+			LivePinned:   make(map[string]int),
+			Hidden:       make(map[string]bool),
+		},
+		panes: testPanes("a", "b", "c", "d", "e", "f", "g", "h"),
+	}
+	tui.initLiveEngine(0)
+	if tui.liveEngine == nil {
+		t.Fatal("liveEngine is nil")
+	}
+	if len(tui.liveEngine.Slots) != 2 {
+		t.Errorf("slots = %d, want 2 (GridExplicit 2x1)", len(tui.liveEngine.Slots))
+	}
+}
+
+func TestInitLiveEngine_AutoGridWhenNotExplicit(t *testing.T) {
+	tui := &TUI{
+		layoutState: LayoutState{
+			GridCols:     2,
+			GridRows:     1,
+			GridExplicit: false,
+			LivePinned:   make(map[string]int),
+			Hidden:       make(map[string]bool),
+		},
+		panes: testPanes("a", "b", "c", "d", "e", "f", "g", "h"),
+	}
+	tui.initLiveEngine(0)
+	if tui.liveEngine == nil {
+		t.Fatal("liveEngine is nil")
+	}
+	if len(tui.liveEngine.Slots) == 2 {
+		t.Errorf("slots = 2, want autoGrid result (GridExplicit=false should auto-calculate)")
+	}
+}
