@@ -193,7 +193,9 @@ type Pane struct {
 	visible           bool              // Whether this pane is shown in the layout. Hidden panes keep running.
 	activity          ActivityState     // Current state: running when PTY bytes flowed recently, else idle.
 	lastOutputTime    time.Time         // Last time readLoop received bytes from the PTY.
-	lastIdleNotify    time.Time         // Last time an EventAgentIdleWithBead was emitted.
+	lastIdleNotify         time.Time     // Last time an EventAgentIdleWithBead was emitted.
+	idleWithBeadThreshold  time.Duration  // Silence duration before idle-with-bead fires. 0 = disabled.
+	idleBeadNotified       bool           // True after idle-with-bead fires. Reset when output resumes.
 	journal           []JournalEntry    // Ring buffer of recent JSONL entries (cap journalRingSize).
 	jsonlDir          string            // Directory to search for session JSONL files.
 	eventCh           chan<- AgentEvent // Emits detected semantic events to the TUI. May be nil.

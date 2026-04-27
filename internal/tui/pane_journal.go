@@ -147,6 +147,12 @@ const ptyIdleTimeout = 2 * time.Second
 // normal inter-tool-call gaps without masking genuinely stuck agents.
 const ptyIdleTimeoutCodex = 15 * time.Second
 
+// defaultIdleWithBeadThreshold is how long a pane must be silent (no PTY
+// output) before an idle-with-bead notification fires. This is deliberately
+// much longer than ptyIdleTimeout (2s/15s for the activity bar) because
+// agents regularly pause 5-30s during thinking, tool approval, and file reads.
+const defaultIdleWithBeadThreshold = 60 * time.Second
+
 // idleNotifyCooldown is the minimum time between EventAgentIdleWithBead
 // emissions for a single pane. Prevents notification spam from burst output
 // patterns that straddle the idle threshold.
@@ -163,9 +169,10 @@ func (p *Pane) effectiveIdleTimeout() time.Duration {
 }
 
 // updateActivity derives activity state from PTY output recency.
-// Called per pane on every render tick. Detects running->idle edge transitions
-// and emits EventAgentIdleWithBead when the pane holds a bead and the cooldown
-// has elapsed.
+// Called per pane on every render tick. The activity state (Running/Idle)
+// uses ptyIdleTimeout (2s/15s) for responsive UI indicators. The
+// idle-with-bead notification uses a separate, longer threshold (default
+// 60s) to avoid false positives during normal thinking pauses (ini-hu2).
 func (p *Pane) updateActivity() {
 	p.mu.Lock()
 	now := time.Now()
@@ -180,7 +187,8 @@ func (p *Pane) updateActivity() {
 		p.mu.Unlock()
 		return
 	}
-	if now.Sub(p.lastOutputTime) < p.effectiveIdleTimeout() {
+	silenceDur := now.Sub(p.lastOutputTime)
+	if silenceDur < p.effectiveIdleTimeout() {
 		p.activity = StateRunning
 	} else {
 		p.activity = StateIdle
@@ -192,15 +200,25 @@ func (p *Pane) updateActivity() {
 		p.activeRunBytes = 0
 	}
 
-	runningToIdle := prev == StateRunning && p.activity == StateIdle
+	// Reset idle-with-bead flag when output resumes.
+	if p.activity == StateRunning {
+		p.idleBeadNotified = false
+	}
 
 	var idleEvent *AgentEvent
 	primaryBead := ""
 	if len(p.beadIDs) > 0 {
 		primaryBead = p.beadIDs[0]
 	}
-	if runningToIdle && primaryBead != "" && p.eventCh != nil &&
+	// Fire idle-with-bead once when silence exceeds the bead threshold.
+	// Threshold of 0 disables entirely. The flag prevents re-firing every
+	// tick; cooldown is a secondary safety net.
+	if p.idleWithBeadThreshold > 0 &&
+		silenceDur > p.idleWithBeadThreshold &&
+		!p.idleBeadNotified &&
+		primaryBead != "" && p.eventCh != nil &&
 		now.Sub(p.lastIdleNotify) > idleNotifyCooldown {
+		p.idleBeadNotified = true
 		p.lastIdleNotify = now
 		idleEvent = &AgentEvent{
 			Type:   EventAgentIdleWithBead,

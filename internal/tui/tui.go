@@ -697,6 +697,13 @@ func Run(cfg Config) error {
 		)
 	}
 
+	// Compute idle-with-bead threshold from config (default 60s).
+	beadThreshold := defaultIdleWithBeadThreshold
+	if cfg.Project != nil {
+		sec := cfg.Project.GetIdleWithBeadThreshold()
+		beadThreshold = time.Duration(sec) * time.Second
+	}
+
 	// Create panes.
 	for i, acfg := range cfg.Agents {
 		r := regions[i%len(regions)]
@@ -712,6 +719,7 @@ func Run(cfg Config) error {
 		p.region = r
 		p.eventCh = t.agentEvents
 		p.safeGo = t.safeGo
+		p.idleWithBeadThreshold = beadThreshold
 		p.Start()
 		old := len(t.panes)
 		t.panes = append(t.panes, p)
