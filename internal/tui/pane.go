@@ -582,6 +582,23 @@ func (p *Pane) ForwardMouse(ev uv.MouseEvent) {
 	p.emu.SendMouse(ev)
 }
 
+// maxScrollOffset returns the largest meaningful scrollOffset. Beyond this
+// value the view window would extend past the top of the virtual buffer
+// (scrollback + screen). The formula is scrollbackLen + emuHeight - termRows.
+func (p *Pane) maxScrollOffset() int {
+	scrollbackLen := p.emu.ScrollbackLen()
+	emuHeight := p.emu.Height()
+	termRows := emuHeight
+	if p.region.H > 2 {
+		_, termRows = p.region.TerminalSize()
+	}
+	max := scrollbackLen + emuHeight - termRows
+	if max < 0 {
+		max = 0
+	}
+	return max
+}
+
 // applyScrollAnchor adjusts scrollOffset to compensate for new scrollback
 // lines added since the user scrolled. Must be called before any cell drawing
 // so the view window uses the corrected offset.
@@ -592,6 +609,9 @@ func (p *Pane) applyScrollAnchor() {
 			p.scrollOffset += delta
 			p.scrollAnchorLen = p.emu.ScrollbackLen()
 		}
+	}
+	if max := p.maxScrollOffset(); p.scrollOffset > max {
+		p.scrollOffset = max
 	}
 }
 
@@ -1440,13 +1460,10 @@ func removeArg(args []string, flag string) []string {
 
 // ScrollUp moves the viewport up (into scrollback history) by n rows.
 func (p *Pane) ScrollUp(n int) {
-	maxOffset := p.emu.ScrollbackLen()
 	p.scrollOffset += n
-	if p.scrollOffset > maxOffset {
-		p.scrollOffset = maxOffset
+	if max := p.maxScrollOffset(); p.scrollOffset > max {
+		p.scrollOffset = max
 	}
-	// Record the current scrollback length so contentOffset can compensate
-	// for new output arriving while the user is scrolled up.
 	p.scrollAnchorLen = p.emu.ScrollbackLen()
 }
 

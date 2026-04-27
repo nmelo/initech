@@ -50,7 +50,7 @@ func newEmuPane(name string, cols, rows int) *Pane {
 		emu:     emu,
 		visible: true,
 		alive:   true,
-		region:  Region{X: 0, Y: 0, W: cols, H: rows + 1}, // +1 for title bar
+		region:  Region{X: 0, Y: 0, W: cols, H: rows + 2}, // +2 for ribbon + activity bar
 	}
 }
 

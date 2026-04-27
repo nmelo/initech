@@ -150,3 +150,75 @@ func TestScrollUpClampsToMaxScrollback(t *testing.T) {
 		t.Errorf("scrollOffset = %d, want %d (clamped to scrollback len)", p.scrollOffset, scrollbackLen)
 	}
 }
+
+func TestMaxScrollOffset_StopsAtTopOfBuffer(t *testing.T) {
+	emu := vt.NewSafeEmulator(80, 24)
+	for i := 0; i < 100; i++ {
+		emu.Write([]byte("line of content\r\n"))
+	}
+	p := &Pane{emu: emu, region: Region{X: 0, Y: 0, W: 82, H: 26}}
+
+	max := p.maxScrollOffset()
+	scrollbackLen := emu.ScrollbackLen()
+	emuHeight := emu.Height()
+	_, termRows := p.region.TerminalSize()
+	want := scrollbackLen + emuHeight - termRows
+	if max != want {
+		t.Errorf("maxScrollOffset = %d, want %d", max, want)
+	}
+
+	p.ScrollUp(999999)
+	p.applyScrollAnchor()
+	startRow, _ := p.contentOffset()
+	if startRow != 0 {
+		t.Errorf("startRow at max scroll = %d, want 0 (top of buffer)", startRow)
+	}
+}
+
+func TestScrollUp_ViewTopClampsToZero(t *testing.T) {
+	emu := vt.NewSafeEmulator(80, 24)
+	for i := 0; i < 10; i++ {
+		emu.Write([]byte("short scrollback\r\n"))
+	}
+	p := &Pane{emu: emu, region: Region{X: 0, Y: 0, W: 82, H: 26}}
+
+	p.ScrollUp(999)
+	p.applyScrollAnchor()
+	startRow, _ := p.contentOffset()
+	if startRow != 0 {
+		t.Errorf("startRow = %d, want 0", startRow)
+	}
+
+	scrollbackLen := emu.ScrollbackLen()
+	emuHeight := emu.Height()
+	_, termRows := p.region.TerminalSize()
+	viewBottom := startRow + termRows
+	totalVirtual := scrollbackLen + emuHeight
+	if viewBottom > totalVirtual {
+		t.Errorf("viewBottom %d > totalVirtual %d (would render past buffer)", viewBottom, totalVirtual)
+	}
+}
+
+func TestApplyScrollAnchor_ReclampsAfterGrowth(t *testing.T) {
+	emu := vt.NewSafeEmulator(80, 24)
+	for i := 0; i < 100; i++ {
+		emu.Write([]byte("line\r\n"))
+	}
+	p := &Pane{emu: emu, region: Region{X: 0, Y: 0, W: 82, H: 26}}
+
+	p.ScrollUp(999)
+	maxBefore := p.maxScrollOffset()
+
+	for i := 0; i < 50; i++ {
+		emu.Write([]byte("new line\r\n"))
+	}
+
+	p.applyScrollAnchor()
+	maxAfter := p.maxScrollOffset()
+	if p.scrollOffset > maxAfter {
+		t.Errorf("scrollOffset %d > maxScrollOffset %d after anchor compensation", p.scrollOffset, maxAfter)
+	}
+	if maxAfter < maxBefore {
+		t.Errorf("maxScrollOffset decreased: %d -> %d", maxBefore, maxAfter)
+	}
+}
