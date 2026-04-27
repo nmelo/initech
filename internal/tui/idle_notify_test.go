@@ -33,6 +33,7 @@ func TestUpdateActivity_IdleWithBead_FiresAfterThreshold(t *testing.T) {
 		alive:                 true,
 		activity:              StateRunning,
 		beadIDs:               []string{"ini-abc"},
+		beadAssignedAt:        time.Now().Add(-2 * time.Hour),
 		eventCh:               ch,
 		idleWithBeadThreshold: defaultIdleWithBeadThreshold,
 		lastOutputTime:        time.Now().Add(-65 * time.Second), // past 60s threshold
@@ -66,6 +67,7 @@ func TestUpdateActivity_IdleWithBead_NoFireDuringThinkingPause(t *testing.T) {
 		alive:                 true,
 		activity:              StateRunning,
 		beadIDs:               []string{"ini-abc"},
+		beadAssignedAt:        time.Now().Add(-2 * time.Hour),
 		eventCh:               ch,
 		idleWithBeadThreshold: defaultIdleWithBeadThreshold,
 		lastOutputTime:        time.Now().Add(-10 * time.Second), // 10s pause — normal thinking
@@ -120,6 +122,7 @@ func TestUpdateActivity_IdleWithBead_Cooldown(t *testing.T) {
 		alive:                 true,
 		activity:              StateIdle,
 		beadIDs:               []string{"ini-abc"},
+		beadAssignedAt:        time.Now().Add(-2 * time.Hour),
 		eventCh:               ch,
 		idleWithBeadThreshold: defaultIdleWithBeadThreshold,
 		lastOutputTime:        time.Now().Add(-65 * time.Second),
@@ -145,6 +148,7 @@ func TestUpdateActivity_IdleWithBead_CooldownExpired(t *testing.T) {
 		alive:                 true,
 		activity:              StateIdle,
 		beadIDs:               []string{"ini-abc"},
+		beadAssignedAt:        time.Now().Add(-2 * time.Hour),
 		eventCh:               ch,
 		idleWithBeadThreshold: defaultIdleWithBeadThreshold,
 		lastOutputTime:        time.Now().Add(-65 * time.Second),
@@ -175,6 +179,7 @@ func TestUpdateActivity_IdleWithBead_FiresOncePerSilence(t *testing.T) {
 		alive:                 true,
 		activity:              StateRunning,
 		beadIDs:               []string{"ini-abc"},
+		beadAssignedAt:        time.Now().Add(-2 * time.Hour),
 		eventCh:               ch,
 		idleWithBeadThreshold: defaultIdleWithBeadThreshold,
 		lastOutputTime:        time.Now().Add(-65 * time.Second),
@@ -204,6 +209,7 @@ func TestUpdateActivity_IdleWithBead_ResetsOnNewOutput(t *testing.T) {
 		alive:                 true,
 		activity:              StateRunning,
 		beadIDs:               []string{"ini-abc"},
+		beadAssignedAt:        time.Now().Add(-2 * time.Hour),
 		eventCh:               ch,
 		idleWithBeadThreshold: defaultIdleWithBeadThreshold,
 		lastOutputTime:        time.Now().Add(-65 * time.Second),
@@ -254,6 +260,7 @@ func TestUpdateActivity_IdleWithBead_DisabledWhenZero(t *testing.T) {
 		alive:                 true,
 		activity:              StateRunning,
 		beadIDs:               []string{"ini-abc"},
+		beadAssignedAt:        time.Now().Add(-2 * time.Hour),
 		eventCh:               ch,
 		idleWithBeadThreshold: 0, // disabled
 		lastOutputTime:        time.Now().Add(-120 * time.Second),
@@ -297,6 +304,7 @@ func TestUpdateActivity_CodexAgent_StaysRunningDuringPause(t *testing.T) {
 		alive:                 true,
 		activity:              StateRunning,
 		beadIDs:               []string{"ini-abc"},
+		beadAssignedAt:        time.Now().Add(-2 * time.Hour),
 		agentType:             "codex",
 		eventCh:               ch,
 		idleWithBeadThreshold: defaultIdleWithBeadThreshold,
@@ -325,6 +333,7 @@ func TestUpdateActivity_CodexAgent_IdleAfterLongPause(t *testing.T) {
 		alive:                 true,
 		activity:              StateRunning,
 		beadIDs:               []string{"ini-abc"},
+		beadAssignedAt:        time.Now().Add(-2 * time.Hour),
 		agentType:             "codex",
 		eventCh:               ch,
 		idleWithBeadThreshold: defaultIdleWithBeadThreshold,
@@ -357,6 +366,7 @@ func TestUpdateActivity_OpenCodeAgent_StaysRunningDuringPause(t *testing.T) {
 		alive:                 true,
 		activity:              StateRunning,
 		beadIDs:               []string{"ini-abc"},
+		beadAssignedAt:        time.Now().Add(-2 * time.Hour),
 		agentType:             "opencode",
 		eventCh:               ch,
 		idleWithBeadThreshold: defaultIdleWithBeadThreshold,
@@ -379,6 +389,7 @@ func TestUpdateActivity_ClaudeCodeAgent_IdleAt2s(t *testing.T) {
 		alive:                 true,
 		activity:              StateRunning,
 		beadIDs:               []string{"ini-abc"},
+		beadAssignedAt:        time.Now().Add(-2 * time.Hour),
 		agentType:             "claude-code",
 		eventCh:               ch,
 		idleWithBeadThreshold: defaultIdleWithBeadThreshold,
@@ -407,6 +418,7 @@ func TestUpdateActivity_CustomThreshold(t *testing.T) {
 		alive:                 true,
 		activity:              StateRunning,
 		beadIDs:               []string{"ini-abc"},
+		beadAssignedAt:        time.Now().Add(-2 * time.Hour),
 		eventCh:               ch,
 		idleWithBeadThreshold: 30 * time.Second, // custom 30s
 		lastOutputTime:        time.Now().Add(-35 * time.Second),
@@ -423,5 +435,142 @@ func TestUpdateActivity_CustomThreshold(t *testing.T) {
 	}
 	if !found {
 		t.Error("expected EventAgentIdleWithBead with custom 30s threshold")
+	}
+}
+
+// TestUpdateActivity_BeadAssignmentGrace_SuppressesImmediate verifies that
+// assigning a bead to an already-idle agent does NOT fire immediately.
+func TestUpdateActivity_BeadAssignmentGrace_SuppressesImmediate(t *testing.T) {
+	ch := makeEventCh()
+	p := &Pane{
+		name:                  "eng1",
+		alive:                 true,
+		activity:              StateIdle,
+		idleWithBeadThreshold: defaultIdleWithBeadThreshold,
+		eventCh:               ch,
+		lastOutputTime:        time.Now().Add(-5 * time.Minute), // idle for 5 minutes
+	}
+
+	// Assign bead — this should set beadAssignedAt to now.
+	p.SetBead("ini-xyz", "fix the bug")
+
+	// Immediately tick — silence > threshold, but bead was JUST assigned.
+	p.updateActivity()
+
+	evs := drainEvents(ch)
+	for _, ev := range evs {
+		if ev.Type == EventAgentIdleWithBead {
+			t.Error("unexpected EventAgentIdleWithBead immediately after bead assignment")
+		}
+	}
+}
+
+// TestUpdateActivity_BeadAssignmentGrace_FiresAfterGrace verifies the
+// notification fires after the grace period expires.
+func TestUpdateActivity_BeadAssignmentGrace_FiresAfterGrace(t *testing.T) {
+	ch := makeEventCh()
+	p := &Pane{
+		name:                  "eng1",
+		alive:                 true,
+		activity:              StateIdle,
+		idleWithBeadThreshold: defaultIdleWithBeadThreshold,
+		eventCh:               ch,
+		lastOutputTime:        time.Now().Add(-5 * time.Minute),
+	}
+
+	// Assign bead with grace already expired (simulate 65s ago).
+	p.mu.Lock()
+	p.beadIDs = []string{"ini-xyz"}
+	p.beadAssignedAt = time.Now().Add(-65 * time.Second)
+	p.mu.Unlock()
+
+	p.updateActivity()
+
+	evs := drainEvents(ch)
+	found := false
+	for _, ev := range evs {
+		if ev.Type == EventAgentIdleWithBead {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("expected EventAgentIdleWithBead after grace period expired")
+	}
+}
+
+// TestUpdateActivity_BeadAssignmentGrace_RunningAgentUnaffected verifies that
+// an agent already running when a bead is assigned behaves normally — the grace
+// period exists but the running output resets the silence clock anyway.
+func TestUpdateActivity_BeadAssignmentGrace_RunningAgentUnaffected(t *testing.T) {
+	ch := makeEventCh()
+	p := &Pane{
+		name:                  "eng1",
+		alive:                 true,
+		activity:              StateRunning,
+		idleWithBeadThreshold: defaultIdleWithBeadThreshold,
+		eventCh:               ch,
+		lastOutputTime:        time.Now(), // actively producing output
+	}
+
+	// Assign bead while running.
+	p.SetBead("ini-xyz", "fix the bug")
+
+	// Tick — still running (recent output), no notification.
+	p.updateActivity()
+	if p.activity != StateRunning {
+		t.Fatalf("activity = %v, want StateRunning", p.activity)
+	}
+	evs := drainEvents(ch)
+	for _, ev := range evs {
+		if ev.Type == EventAgentIdleWithBead {
+			t.Error("unexpected notification while agent is still running")
+		}
+	}
+}
+
+// TestSetBead_ResetsIdleBeadNotified verifies that assigning a new bead
+// resets the idleBeadNotified flag so a fresh notification can fire.
+func TestSetBead_ResetsIdleBeadNotified(t *testing.T) {
+	p := &Pane{
+		name:             "eng1",
+		alive:            true,
+		idleBeadNotified: true, // previously fired
+	}
+
+	p.SetBead("ini-new", "new work")
+
+	p.mu.Lock()
+	notified := p.idleBeadNotified
+	assigned := p.beadAssignedAt
+	p.mu.Unlock()
+
+	if notified {
+		t.Error("idleBeadNotified should be reset on bead assignment")
+	}
+	if assigned.IsZero() {
+		t.Error("beadAssignedAt should be set on bead assignment")
+	}
+}
+
+// TestSetBeads_ResetsIdleBeadNotified verifies SetBeads also resets the flag.
+func TestSetBeads_ResetsIdleBeadNotified(t *testing.T) {
+	p := &Pane{
+		name:             "eng1",
+		alive:            true,
+		idleBeadNotified: true,
+	}
+
+	p.SetBeads([]string{"ini-a", "ini-b"})
+
+	p.mu.Lock()
+	notified := p.idleBeadNotified
+	assigned := p.beadAssignedAt
+	p.mu.Unlock()
+
+	if notified {
+		t.Error("idleBeadNotified should be reset on SetBeads")
+	}
+	if assigned.IsZero() {
+		t.Error("beadAssignedAt should be set on SetBeads")
 	}
 }

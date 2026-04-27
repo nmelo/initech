@@ -196,6 +196,7 @@ type Pane struct {
 	lastIdleNotify         time.Time     // Last time an EventAgentIdleWithBead was emitted.
 	idleWithBeadThreshold  time.Duration  // Silence duration before idle-with-bead fires. 0 = disabled.
 	idleBeadNotified       bool           // True after idle-with-bead fires. Reset when output resumes.
+	beadAssignedAt         time.Time      // When the current bead was assigned. Grace period starts here.
 	journal           []JournalEntry    // Ring buffer of recent JSONL entries (cap journalRingSize).
 	jsonlDir          string            // Directory to search for session JSONL files.
 	eventCh           chan<- AgentEvent // Emits detected semantic events to the TUI. May be nil.
@@ -1312,6 +1313,8 @@ func (p *Pane) BeadTitle() string {
 }
 
 // SetBead sets a single bead ID (backward compat). Pass "" to clear.
+// When assigning a non-empty bead, resets the idle-with-bead grace window
+// so the notification doesn't fire on stale lastOutputTime (ini-t42).
 func (p *Pane) SetBead(id, title string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -1319,11 +1322,15 @@ func (p *Pane) SetBead(id, title string) {
 		p.beadIDs = nil
 	} else {
 		p.beadIDs = []string{id}
+		p.beadAssignedAt = time.Now()
+		p.idleBeadNotified = false
 	}
 	p.beadTitle = title
 }
 
 // SetBeads sets multiple bead IDs. Pass nil to clear.
+// When assigning non-empty beads, resets the idle-with-bead grace window
+// so the notification doesn't fire on stale lastOutputTime (ini-t42).
 func (p *Pane) SetBeads(ids []string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -1332,6 +1339,8 @@ func (p *Pane) SetBeads(ids []string) {
 	} else {
 		p.beadIDs = make([]string, len(ids))
 		copy(p.beadIDs, ids)
+		p.beadAssignedAt = time.Now()
+		p.idleBeadNotified = false
 	}
 	p.beadTitle = ""
 }

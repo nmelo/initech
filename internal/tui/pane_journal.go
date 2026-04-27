@@ -212,9 +212,14 @@ func (p *Pane) updateActivity() {
 	}
 	// Fire idle-with-bead once when silence exceeds the bead threshold.
 	// Threshold of 0 disables entirely. The flag prevents re-firing every
-	// tick; cooldown is a secondary safety net.
+	// tick; cooldown is a secondary safety net. The beadAssignedAt grace
+	// window prevents false positives when a bead is assigned to an agent
+	// that was already idle — the threshold is measured from assignment
+	// time, not from last output (ini-t42).
+	beadAge := now.Sub(p.beadAssignedAt)
 	if p.idleWithBeadThreshold > 0 &&
 		silenceDur > p.idleWithBeadThreshold &&
+		beadAge > p.idleWithBeadThreshold &&
 		!p.idleBeadNotified &&
 		primaryBead != "" && p.eventCh != nil &&
 		now.Sub(p.lastIdleNotify) > idleNotifyCooldown {
