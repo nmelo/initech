@@ -478,6 +478,53 @@ func TestAgentsModal_LivePinRequiresLiveMode(t *testing.T) {
 	}
 }
 
+func TestAgentsModal_MultiPinDoesNotEvictSlot0(t *testing.T) {
+	tui, _ := newTestTUIWithScreen("eng1", "eng2", "eng3")
+	tui.layoutState.Mode = LayoutLive
+	tui.layoutState.GridCols = 2
+	tui.layoutState.GridRows = 1
+	tui.layoutState.LivePinned = make(map[string]int)
+	tui.layoutState.LiveSlots = []string{"eng1", "eng2"}
+	tui.openAgentsModal()
+
+	// Pin eng1 (slot 0).
+	tui.agents.selected = 0
+	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyRune, 'p', 0))
+	if tui.layoutState.LivePinned["eng1"] != 0 {
+		t.Fatalf("eng1 should be pinned to slot 0, got %d", tui.layoutState.LivePinned["eng1"])
+	}
+
+	// Pin eng3 (not in any slot — should get first available, which is slot 1).
+	tui.agents.selected = 2
+	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyRune, 'p', 0))
+	if _, ok := tui.layoutState.LivePinned["eng1"]; !ok {
+		t.Error("eng1 pin should NOT be evicted when pinning eng3")
+	}
+	if slot, ok := tui.layoutState.LivePinned["eng3"]; !ok || slot != 1 {
+		t.Errorf("eng3 should be pinned to slot 1, got slot=%d ok=%v", slot, ok)
+	}
+}
+
+func TestAgentsModal_AllSlotsPinnedShowsError(t *testing.T) {
+	tui, _ := newTestTUIWithScreen("eng1", "eng2", "eng3")
+	tui.layoutState.Mode = LayoutLive
+	tui.layoutState.GridCols = 2
+	tui.layoutState.GridRows = 1
+	tui.layoutState.LivePinned = map[string]int{"eng1": 0, "eng2": 1}
+	tui.layoutState.LiveSlots = []string{"eng1", "eng2"}
+	tui.openAgentsModal()
+
+	// Try to pin eng3 — all 2 slots are occupied.
+	tui.agents.selected = 2
+	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyRune, 'p', 0))
+	if tui.agents.error == "" {
+		t.Error("should show error when all slots are pinned")
+	}
+	if _, ok := tui.layoutState.LivePinned["eng3"]; ok {
+		t.Error("eng3 should NOT be pinned when all slots are full")
+	}
+}
+
 func TestAgentsModal_RevealAll(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("eng1", "eng2", "eng3")
 	tui.layoutState.Hidden = map[string]bool{"eng1": true, "eng3": true}

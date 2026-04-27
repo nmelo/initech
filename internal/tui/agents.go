@@ -324,7 +324,21 @@ func (t *TUI) agentsToggleLivePin() {
 			}
 		}
 		if slot < 0 {
-			slot = 0 // fallback to slot 0
+			numSlots := t.layoutState.GridCols * t.layoutState.GridRows
+			occupied := make(map[int]bool, len(t.layoutState.LivePinned))
+			for _, v := range t.layoutState.LivePinned {
+				occupied[v] = true
+			}
+			for i := 0; i < numSlots; i++ {
+				if !occupied[i] {
+					slot = i
+					break
+				}
+			}
+			if slot < 0 {
+				t.agents.error = "all live slots are pinned"
+				return
+			}
 		}
 		// Clear any existing occupant of this slot from LivePinned.
 		for k, v := range t.layoutState.LivePinned {
