@@ -119,6 +119,36 @@ func TestRunAddAgent_SuccessOutput(t *testing.T) {
 	}
 }
 
+func TestRunAddAgentList_ShowsAllRoles(t *testing.T) {
+	root := t.TempDir()
+	writeTestConfig(t, root, []string{"pm", "super"})
+
+	origWd := chdirTemp(t, root)
+	defer os.Chdir(origWd)
+
+	var buf bytes.Buffer
+	addAgentCmd.SetOut(&buf)
+	addAgentList = true
+	defer func() { addAgentList = false }()
+
+	if err := runAddAgent(addAgentCmd, nil); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	out := buf.String()
+	for _, name := range []string{"super", "pm", "arch", "eng1", "qa1", "shipper"} {
+		if !strings.Contains(out, name) {
+			t.Errorf("output missing role %q", name)
+		}
+	}
+	if !strings.Contains(out, "✓") {
+		t.Error("output missing installed checkmark")
+	}
+	if !strings.Contains(out, "-") {
+		t.Error("output missing uninstalled marker")
+	}
+}
+
 func writeTestConfig(t *testing.T, root string, roles []string) {
 	t.Helper()
 	p := &config.Project{

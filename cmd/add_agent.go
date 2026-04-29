@@ -17,6 +17,8 @@ import (
 
 var newAddAgentRunner = func() iexec.Runner { return &iexec.DefaultRunner{} }
 
+var addAgentList bool
+
 var addAgentCmd = &cobra.Command{
 	Use:   "add-agent <name>",
 	Short: "Add a new agent workspace to the project",
@@ -29,18 +31,28 @@ Known roles: super, pm, pmm, arch, eng1, eng2, eng3, qa1, qa2, shipper, sec,
 ops, writer, growth.
 
 Restart initech (or run 'initech' in a new session) to activate the new agent.`,
-	Args: cobra.ExactArgs(1),
+	Args: cobra.MaximumNArgs(1),
 	RunE: runAddAgent,
 }
 
 func init() {
+	addAgentCmd.Flags().BoolVarP(&addAgentList, "list", "l", false, "List all agents and their install status")
 	rootCmd.AddCommand(addAgentCmd)
 }
 
 func runAddAgent(cmd *cobra.Command, args []string) error {
+	out := cmd.OutOrStdout()
+
+	if addAgentList {
+		return runAddAgentList(cmd)
+	}
+
+	if len(args) == 0 {
+		return fmt.Errorf("agent name required. Use --list to see available agents")
+	}
+
 	roleName := args[0]
 	runner := newAddAgentRunner()
-	out := cmd.OutOrStdout()
 
 	if _, ok := roles.Catalog[roleName]; !ok {
 		return fmt.Errorf("unknown agent %q. Known agents: %s", roleName, knownRoleNames())
@@ -116,6 +128,39 @@ func runAddAgent(cmd *cobra.Command, args []string) error {
 	}
 	fmt.Fprintf(out, "  %s Updated %s\n", color.Green("✓"), color.Bold("initech.yaml"))
 	fmt.Fprintf(out, "\n%s added. Restart initech to activate.\n", color.CyanBold(roleName))
+	return nil
+}
+
+// runAddAgentList prints all catalog roles with install status for the current project.
+func runAddAgentList(cmd *cobra.Command) error {
+	out := cmd.OutOrStdout()
+
+	// Load project config if available; missing config is not an error here.
+	installed := map[string]bool{}
+	wd, err := os.Getwd()
+	if err == nil {
+		if cfgPath, err := config.Discover(wd); err == nil {
+			if p, err := config.Load(cfgPath); err == nil {
+				for _, r := range p.Roles {
+					installed[r] = true
+				}
+			}
+		}
+	}
+
+	var lastGroup string
+	for _, spec := range selectorOrder {
+		if spec.group != lastGroup {
+			fmt.Fprintf(out, "\n%s\n", color.Dim(spec.group))
+			lastGroup = spec.group
+		}
+		if installed[spec.name] {
+			fmt.Fprintf(out, "  %s %-10s %s\n", color.Green("✓"), spec.name, color.Dim(spec.desc))
+		} else {
+			fmt.Fprintf(out, "  %s %-10s %s\n", color.Dim("-"), spec.name, color.Dim(spec.desc))
+		}
+	}
+	fmt.Fprintln(out)
 	return nil
 }
 
