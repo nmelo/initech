@@ -22,20 +22,19 @@ var addAgentList bool
 var addAgentCmd = &cobra.Command{
 	Use:   "add-agent <name>",
 	Short: "Add a new agent workspace to the project",
-	Long: `Scaffolds a new agent workspace directory and registers it in initech.yaml.
+	Args:  cobra.MaximumNArgs(1),
+	RunE:  runAddAgent,
+}
+
+func init() {
+	addAgentCmd.Long = fmt.Sprintf(`Scaffolds a new agent workspace directory and registers it in initech.yaml.
 
 The agent name must be a known role supported by initech. The role must not
 already exist in the project.
 
-Known roles: super, pm, pmm, arch, eng1, eng2, eng3, qa1, qa2, shipper, sec,
-ops, writer, growth.
+Known roles: %s.
 
-Restart initech (or run 'initech' in a new session) to activate the new agent.`,
-	Args: cobra.MaximumNArgs(1),
-	RunE: runAddAgent,
-}
-
-func init() {
+Restart initech (or run 'initech' in a new session) to activate the new agent.`, knownRoleNames())
 	addAgentCmd.Flags().BoolVarP(&addAgentList, "list", "l", false, "List all agents and their install status")
 	addAgentCmd.ValidArgsFunction = completeAddAgent
 	rootCmd.AddCommand(addAgentCmd)
@@ -104,10 +103,11 @@ func runAddAgent(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Scaffold only the new role. Root-level files (CLAUDE.md, docs/) are
-	// idempotent and will be skipped since they already exist (Force: false).
+	// Scaffold with the full role list (existing + new) so root-level files
+	// like CLAUDE.md are rendered with all roles if they happen to be missing.
+	// Root-level files are idempotent and skipped when they already exist.
 	singleRole := *p
-	singleRole.Roles = []string{roleName}
+	singleRole.Roles = append(append([]string{}, p.Roles...), roleName)
 	progress := func(msg string) {
 		if strings.HasPrefix(msg, "Creating ") {
 			path := strings.TrimPrefix(msg, "Creating ")
@@ -134,13 +134,22 @@ func runAddAgent(cmd *cobra.Command, args []string) error {
 		}
 		subPath := filepath.Join(roleName, "src")
 		gitRef := filepath.Join(p.Root, subPath, ".git")
-		if _, statErr := os.Stat(gitRef); statErr != nil {
+		_, statErr := os.Stat(gitRef)
+		if statErr != nil && !os.IsNotExist(statErr) {
+			return fmt.Errorf("check %s: %w", gitRef, statErr)
+		}
+		if os.IsNotExist(statErr) {
+			// Record whether role/src pre-existed so we only clean up
+			// artifacts we created, not pre-existing user data.
+			_, srcExisted := os.Stat(filepath.Join(p.Root, subPath))
 			if err := gitAddSubmodule(runner, p.Root, repoURL, subPath); err != nil {
+				if srcExisted != nil {
+					git.CleanFailedSubmodule(runner, p.Root, subPath)
+				}
 				if git.IsEmptyRepoError(err) {
 					fmt.Fprintf(out, "  %s %s has no commits — push an initial commit then re-run\n",
 						color.Yellow("!"), color.Yellow(roleName+" repo"))
 				} else {
-					git.CleanFailedSubmodule(runner, p.Root, subPath)
 					return fmt.Errorf("add submodule for %s: %w", roleName, err)
 				}
 			} else {

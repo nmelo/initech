@@ -55,7 +55,9 @@ func TestRunAddAgent_NoConfig(t *testing.T) {
 func TestRunAddAgent_Success(t *testing.T) {
 	root := t.TempDir()
 	writeTestConfig(t, root, []string{"pm"})
-	os.MkdirAll(filepath.Join(root, "pm"), 0755)
+	if err := os.MkdirAll(filepath.Join(root, "pm"), 0755); err != nil {
+		t.Fatal(err)
+	}
 
 	origWd := chdirTemp(t, root)
 	defer os.Chdir(origWd)
@@ -66,6 +68,7 @@ func TestRunAddAgent_Success(t *testing.T) {
 
 	var buf bytes.Buffer
 	addAgentCmd.SetOut(&buf)
+	defer addAgentCmd.SetOut(nil)
 	if err := runAddAgent(addAgentCmd, []string{"arch"}); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -97,7 +100,9 @@ func TestRunAddAgent_Success(t *testing.T) {
 func TestRunAddAgent_SuccessOutput(t *testing.T) {
 	root := t.TempDir()
 	writeTestConfig(t, root, []string{"pm"})
-	os.MkdirAll(filepath.Join(root, "pm"), 0755)
+	if err := os.MkdirAll(filepath.Join(root, "pm"), 0755); err != nil {
+		t.Fatal(err)
+	}
 
 	origWd := chdirTemp(t, root)
 	defer os.Chdir(origWd)
@@ -108,6 +113,7 @@ func TestRunAddAgent_SuccessOutput(t *testing.T) {
 
 	var buf bytes.Buffer
 	addAgentCmd.SetOut(&buf)
+	defer addAgentCmd.SetOut(nil)
 	if err := runAddAgent(addAgentCmd, []string{"sec"}); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -129,6 +135,7 @@ func TestRunAddAgentList_ShowsAllRoles(t *testing.T) {
 
 	var buf bytes.Buffer
 	addAgentCmd.SetOut(&buf)
+	defer addAgentCmd.SetOut(nil)
 	addAgentList = true
 	defer func() { addAgentList = false }()
 
@@ -183,6 +190,64 @@ func TestCompleteAddAgent_NoArgAfterFirst(t *testing.T) {
 	completions, _ := completeAddAgent(addAgentCmd, []string{"arch"}, "")
 	if completions != nil {
 		t.Errorf("expected nil completions after first arg, got %v", completions)
+	}
+}
+
+func TestRunAddAgent_NeedsSrcCallsSubmodule(t *testing.T) {
+	root := t.TempDir()
+	p := &config.Project{
+		Name:  "test",
+		Root:  root,
+		Roles: []string{"pm"},
+		Beads: config.BeadsConfig{Enabled: boolPtr(false)},
+		Repos: []config.Repo{{URL: "git@github.com:example/repo.git", Name: "repo"}},
+	}
+	if err := config.Write(filepath.Join(root, "initech.yaml"), p); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, "pm"), 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	origWd := chdirTemp(t, root)
+	defer os.Chdir(origWd)
+
+	origRunner := newAddAgentRunner
+	newAddAgentRunner = func() iexec.Runner { return &iexec.FakeRunner{} }
+	defer func() { newAddAgentRunner = origRunner }()
+
+	var submoduleCalled bool
+	origGitAddSubmodule := gitAddSubmodule
+	gitAddSubmodule = func(runner iexec.Runner, repoDir, repoURL, subPath string) error {
+		submoduleCalled = true
+		return nil
+	}
+	defer func() { gitAddSubmodule = origGitAddSubmodule }()
+
+	var buf bytes.Buffer
+	addAgentCmd.SetOut(&buf)
+	defer addAgentCmd.SetOut(nil)
+	if err := runAddAgent(addAgentCmd, []string{"eng1"}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !submoduleCalled {
+		t.Error("gitAddSubmodule not called for NeedsSrc role")
+	}
+
+	updated, err := config.Load(filepath.Join(root, "initech.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, r := range updated.Roles {
+		if r == "eng1" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("eng1 not added to config roles: %v", updated.Roles)
 	}
 }
 
