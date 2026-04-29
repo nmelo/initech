@@ -37,7 +37,34 @@ Restart initech (or run 'initech' in a new session) to activate the new agent.`,
 
 func init() {
 	addAgentCmd.Flags().BoolVarP(&addAgentList, "list", "l", false, "List all agents and their install status")
+	addAgentCmd.ValidArgsFunction = completeAddAgent
 	rootCmd.AddCommand(addAgentCmd)
+}
+
+// completeAddAgent returns catalog roles not yet installed in the project.
+func completeAddAgent(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	if len(args) > 0 {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+
+	installed := map[string]bool{}
+	if wd, err := os.Getwd(); err == nil {
+		if cfgPath, err := config.Discover(wd); err == nil {
+			if p, err := config.Load(cfgPath); err == nil {
+				for _, r := range p.Roles {
+					installed[r] = true
+				}
+			}
+		}
+	}
+
+	var candidates []string
+	for _, spec := range selectorOrder {
+		if !installed[spec.name] {
+			candidates = append(candidates, spec.name+"\t"+spec.desc)
+		}
+	}
+	return candidates, cobra.ShellCompDirectiveNoFileComp
 }
 
 func runAddAgent(cmd *cobra.Command, args []string) error {

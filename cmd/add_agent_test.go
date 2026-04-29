@@ -9,6 +9,7 @@ import (
 
 	"github.com/nmelo/initech/internal/config"
 	iexec "github.com/nmelo/initech/internal/exec"
+	"github.com/spf13/cobra"
 )
 
 func TestRunAddAgent_UnknownRole(t *testing.T) {
@@ -146,6 +147,42 @@ func TestRunAddAgentList_ShowsAllRoles(t *testing.T) {
 	}
 	if !strings.Contains(out, "-") {
 		t.Error("output missing uninstalled marker")
+	}
+}
+
+func TestCompleteAddAgent_ExcludesInstalled(t *testing.T) {
+	root := t.TempDir()
+	writeTestConfig(t, root, []string{"pm", "super", "eng1"})
+
+	origWd := chdirTemp(t, root)
+	defer os.Chdir(origWd)
+
+	completions, directive := completeAddAgent(addAgentCmd, nil, "")
+
+	if directive != cobra.ShellCompDirectiveNoFileComp {
+		t.Errorf("directive = %v, want ShellCompDirectiveNoFileComp", directive)
+	}
+
+	names := make(map[string]bool, len(completions))
+	for _, c := range completions {
+		name := strings.SplitN(c, "\t", 2)[0]
+		names[name] = true
+	}
+
+	for _, installed := range []string{"pm", "super", "eng1"} {
+		if names[installed] {
+			t.Errorf("installed role %q should not appear in completions", installed)
+		}
+	}
+	if !names["arch"] {
+		t.Error("uninstalled role 'arch' should appear in completions")
+	}
+}
+
+func TestCompleteAddAgent_NoArgAfterFirst(t *testing.T) {
+	completions, _ := completeAddAgent(addAgentCmd, []string{"arch"}, "")
+	if completions != nil {
+		t.Errorf("expected nil completions after first arg, got %v", completions)
 	}
 }
 
