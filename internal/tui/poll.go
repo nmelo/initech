@@ -5,6 +5,7 @@ package tui
 
 import (
 	"math/rand"
+	"sync"
 	"time"
 )
 
@@ -15,25 +16,35 @@ var (
 
 // statusTips are progressive hints shown in the status bar. They cycle
 // every tipRotationInterval, teaching one feature at a time.
-var statusTips = []string{
-	"Press backtick to open the command bar",
-	"Press ` then ? for the full command reference",
-	"Try Alt+z to zoom the focused pane",
-	"Use Alt+Left/Right to switch panes",
-	"Alt+s toggles the agent status overlay",
-	"Alt+1 enters focus mode (one pane)",
-	"Try Alt+2 for a 2x2 grid layout",
-	"Type grid 3x2 for a custom layout",
-	"Use main for a split layout",
-	"Drag to select text, auto-copies",
-	"Use `agents` or Alt+a to manage visibility and order",
-	"Tab completes agent names in commands",
-	"Use `patrol` to peek all agents at once",
-	"Try `top` to see memory and PID per agent",
-	"Use `log` to see recent event history",
-	"Green dot = working, gray = idle",
-	"Red dot = stuck or error loop detected",
-	"Use `add`/`remove` to change the roster live",
+// Built lazily so modKey (Opt on macOS, Alt elsewhere) is resolved.
+var statusTips []string
+var statusTipsOnce sync.Once
+
+func getStatusTips() []string {
+	statusTipsOnce.Do(func() {
+		m := modKey
+		statusTips = []string{
+			"Press backtick to open the command bar",
+			"Press ` then ? for the full command reference",
+			"Try " + m + "+z to zoom the focused pane",
+			"Use " + m + "+Left/Right to switch panes",
+			m + "+s toggles the agent status overlay",
+			m + "+1 enters focus mode (one pane)",
+			"Try " + m + "+2 for a 2x2 grid layout",
+			"Type grid 3x2 for a custom layout",
+			"Use main for a split layout",
+			"Drag to select text, auto-copies",
+			"Use `agents` or " + m + "+a to manage visibility and order",
+			"Tab completes agent names in commands",
+			"Use `patrol` to peek all agents at once",
+			"Try `top` to see memory and PID per agent",
+			"Use `log` to see recent event history",
+			"Green dot = working, gray = idle",
+			"Red dot = stuck or error loop detected",
+			"Use `add`/`remove` to change the roster live",
+		}
+	})
+	return statusTips
 }
 
 // tipRotationInterval is how long each tip is displayed before cycling.
@@ -43,7 +54,7 @@ const tipRotationInterval = 2 * time.Minute
 // Called from the render tick.
 func (t *TUI) rotateTip() {
 	if time.Now().After(t.tipRotateAt) {
-		t.tipIndex = rand.Intn(len(statusTips))
+		t.tipIndex = rand.Intn(len(getStatusTips()))
 		t.tipRotateAt = time.Now().Add(tipRotationInterval)
 	}
 }

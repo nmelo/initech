@@ -6,58 +6,67 @@ package tui
 import (
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/gdamore/tcell/v2"
 )
 
-// helpLines is the static help content. Update when commands change.
-var helpLines = []string{
-	"Keybindings",
-	"  Alt+Left/Right   Navigate between panes",
-	"  Alt+1            Focus mode (single pane)",
-	"  Alt+2            2x2 grid",
-	"  Alt+3            3x3 grid",
-	"  Alt+4            Main + stacked layout",
-	"  Alt+5            Live auto mode (auto-size grid by activity)",
-	"  Alt+a            Agent management modal",
-	"  Alt+z            Zoom/unzoom focused pane",
-	"  Alt+s            Toggle agent overlay",
-	"  Alt+q            Quit",
-	"",
-	"Commands  (press ` to open)",
-	"  grid [CxR]       Set grid layout (e.g. grid 3x2). No arg = auto.",
-	"  focus [name]     Full-screen on a pane. No arg = current pane.",
-	"  zoom             Toggle zoom on focused pane.",
-	"  panel            Toggle agent status overlay.",
-	"  main             Main pane left + stacked right.",
-	"  live [CxR|auto]  Live mode: CxR = fixed grid, auto = auto-size.",
-	"  pin <a> <slot>   Pin agent to live slot (0-based).",
-	"  unpin <slot>     Unpin slot, make it dynamic.",
-	"  agents           Manage visibility, order, and pinning (Alt+a).",
-	"  layout reset     Reset to auto-calculated defaults.",
-	"  restart (r)      Kill and relaunch focused pane.",
-	"  patrol           Bulk peek all agents.",
-	"  top (ps)         Activity monitor (PID, memory, status).",
-	"  add <name>       Add a new agent pane.",
-	"  remove (rm) <n>  Remove an agent pane.",
-	"  mcp              MCP server status and connection info.",
-	"  web              Web companion status and URL.",
-	"  help (?)         This screen.",
-	"  quit (q)         Exit initech.",
-	"",
-	"Command bar editing",
-	"  Ctrl+A / Home    Move to beginning of line",
-	"  Ctrl+E / End     Move to end of line",
-	"  Ctrl+B / Left    Move back one character",
-	"  Ctrl+F / Right   Move forward one character",
-	"  Ctrl+W           Delete word left of cursor",
-	"  Ctrl+U           Delete to beginning of line",
-	"  Ctrl+K           Delete to end of line",
-	"  Ctrl+D / Delete  Delete character at cursor",
-	"  Backspace        Delete character left of cursor",
-	"",
-	"found a bug? open an issue. have a fix? even better.",
-	"github.com/nmelo/initech",
+var helpOnce sync.Once
+var helpLines []string
+
+func getHelpLines() []string {
+	helpOnce.Do(func() {
+		m := modKey
+		helpLines = []string{
+			"Keybindings",
+			"  " + m + "+Left/Right   Navigate between panes",
+			"  " + m + "+1            Focus mode (single pane)",
+			"  " + m + "+2            2x2 grid",
+			"  " + m + "+3            3x3 grid",
+			"  " + m + "+4            Main + stacked layout",
+			"  " + m + "+5            Live auto mode (auto-size grid by activity)",
+			"  " + m + "+a            Agent management modal",
+			"  " + m + "+z            Zoom/unzoom focused pane",
+			"  " + m + "+s            Toggle agent overlay",
+			"  " + m + "+q            Quit",
+			"",
+			"Commands  (press ` to open)",
+			"  grid [CxR]       Set grid layout (e.g. grid 3x2). No arg = auto.",
+			"  focus [name]     Full-screen on a pane. No arg = current pane.",
+			"  zoom             Toggle zoom on focused pane.",
+			"  panel            Toggle agent status overlay.",
+			"  main             Main pane left + stacked right.",
+			"  live [CxR|auto]  Live mode: CxR = fixed grid, auto = auto-size.",
+			"  pin <a> <slot>   Pin agent to live slot (0-based).",
+			"  unpin <slot>     Unpin slot, make it dynamic.",
+			"  agents           Manage visibility, order, and pinning (" + m + "+a).",
+			"  layout reset     Reset to auto-calculated defaults.",
+			"  restart (r)      Kill and relaunch focused pane.",
+			"  patrol           Bulk peek all agents.",
+			"  top (ps)         Activity monitor (PID, memory, status).",
+			"  add <name>       Add a new agent pane.",
+			"  remove (rm) <n>  Remove an agent pane.",
+			"  mcp              MCP server status and connection info.",
+			"  web              Web companion status and URL.",
+			"  help (?)         This screen.",
+			"  quit (q)         Exit initech.",
+			"",
+			"Command bar editing",
+			"  Ctrl+A / Home    Move to beginning of line",
+			"  Ctrl+E / End     Move to end of line",
+			"  Ctrl+B / Left    Move back one character",
+			"  Ctrl+F / Right   Move forward one character",
+			"  Ctrl+W           Delete word left of cursor",
+			"  Ctrl+U           Delete to beginning of line",
+			"  Ctrl+K           Delete to end of line",
+			"  Ctrl+D / Delete  Delete character at cursor",
+			"  Backspace        Delete character left of cursor",
+			"",
+			"found a bug? open an issue. have a fix? even better.",
+			"github.com/nmelo/initech",
+		}
+	})
+	return helpLines
 }
 
 // helpBoxW and helpBoxH are the target floating box dimensions.
@@ -71,7 +80,8 @@ const helpChromeRows = 3
 // helpMaxOffset returns the maximum scroll offset for the help modal.
 func (t *TUI) helpMaxOffset() int {
 	vp := t.helpViewportHeight()
-	max := len(helpLines) - vp
+	lines := getHelpLines()
+	max := len(lines) - vp
 	if max < 0 {
 		max = 0
 	}
@@ -98,6 +108,8 @@ func (t *TUI) helpViewportHeight() int {
 func (t *TUI) renderHelp() {
 	s := t.screen
 	sw, sh := s.Size()
+
+	lines := getHelpLines()
 
 	// Compute box dimensions.
 	boxW := helpBoxW
@@ -140,17 +152,17 @@ func (t *TUI) renderHelp() {
 	}
 
 	// Draw border.
-	s.SetContent(startX, startY, '\u250c', nil, borderStyle)
-	s.SetContent(startX+boxW-1, startY, '\u2510', nil, borderStyle)
-	s.SetContent(startX, startY+boxH-1, '\u2514', nil, borderStyle)
-	s.SetContent(startX+boxW-1, startY+boxH-1, '\u2518', nil, borderStyle)
+	s.SetContent(startX, startY, '┌', nil, borderStyle)
+	s.SetContent(startX+boxW-1, startY, '┐', nil, borderStyle)
+	s.SetContent(startX, startY+boxH-1, '└', nil, borderStyle)
+	s.SetContent(startX+boxW-1, startY+boxH-1, '┘', nil, borderStyle)
 	for x := startX + 1; x < startX+boxW-1 && x < sw; x++ {
-		s.SetContent(x, startY, '\u2500', nil, borderStyle)
-		s.SetContent(x, startY+boxH-1, '\u2500', nil, borderStyle)
+		s.SetContent(x, startY, '─', nil, borderStyle)
+		s.SetContent(x, startY+boxH-1, '─', nil, borderStyle)
 	}
 	for y := startY + 1; y < startY+boxH-1 && y < sh; y++ {
-		s.SetContent(startX, y, '\u2502', nil, borderStyle)
-		s.SetContent(startX+boxW-1, y, '\u2502', nil, borderStyle)
+		s.SetContent(startX, y, '│', nil, borderStyle)
+		s.SetContent(startX+boxW-1, y, '│', nil, borderStyle)
 	}
 
 	innerW := boxW - 2
@@ -188,7 +200,7 @@ func (t *TUI) renderHelp() {
 	}
 
 	// Clamp scroll.
-	maxScroll := len(helpLines) - vpHeight
+	maxScroll := len(lines) - vpHeight
 	if maxScroll < 0 {
 		maxScroll = 0
 	}
@@ -197,20 +209,20 @@ func (t *TUI) renderHelp() {
 	}
 
 	hasAbove := t.help.scrollOffset > 0
-	hasBelow := t.help.scrollOffset+vpHeight < len(helpLines)
+	hasBelow := t.help.scrollOffset+vpHeight < len(lines)
 
 	// Scroll indicators.
 	if hasAbove {
-		s.SetContent(startX+boxW-2, vpStartY, '\u2191', nil, scrollStyle)
+		s.SetContent(startX+boxW-2, vpStartY, '↑', nil, scrollStyle)
 	}
 
 	// Content rows.
 	for row := 0; row < vpHeight; row++ {
 		lineIdx := row + t.help.scrollOffset
-		if lineIdx >= len(helpLines) {
+		if lineIdx >= len(lines) {
 			break
 		}
-		line := helpLines[lineIdx]
+		line := lines[lineIdx]
 		y := vpStartY + row
 
 		isFooter := strings.HasPrefix(line, "found a bug") || strings.HasPrefix(line, "github.com")
@@ -218,7 +230,6 @@ func (t *TUI) renderHelp() {
 		if isFooter {
 			footerBg := tcell.NewRGBColor(15, 20, 45)
 			style = tcell.StyleDefault.Background(footerBg).Foreground(tcell.ColorYellow)
-			// Fill interior with footer bg.
 			for x := innerX; x < innerX+innerW; x++ {
 				s.SetContent(x, y, ' ', nil, style)
 			}
@@ -234,7 +245,7 @@ func (t *TUI) renderHelp() {
 	if hasBelow {
 		belowY := vpStartY + vpHeight - 1
 		if belowY < startY+boxH-1 {
-			s.SetContent(startX+boxW-2, belowY, '\u2193', nil, scrollStyle)
+			s.SetContent(startX+boxW-2, belowY, '↓', nil, scrollStyle)
 		}
 	}
 

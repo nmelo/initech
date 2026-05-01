@@ -146,13 +146,14 @@ func (t *TUI) renderWelcome() {
 	s := t.screen
 	sw, sh := s.Size()
 
+	m := modKey
 	lines := []string{
 		"Welcome to initech",
 		"",
 		"  `  (backtick)    Open command bar",
-		"  Alt+Left/Right   Switch panes",
-		"  Alt+z            Zoom focused pane",
-		"  Alt+s            Toggle status overlay",
+		"  " + m + "+Left/Right   Switch panes",
+		"  " + m + "+z            Zoom focused pane",
+		"  " + m + "+s            Toggle status overlay",
 		"  ?                Full help reference",
 		"",
 		"HINT: ask super how this project works",
@@ -341,7 +342,8 @@ func (t *TUI) renderHints() {
 	b := newStatusBarBuilder()
 
 	// Left: cycling tip.
-	b.addLeft(statusTips[t.tipIndex%len(statusTips)], b.barStyle)
+	tips := getStatusTips()
+	b.addLeft(tips[t.tipIndex%len(tips)], b.barStyle)
 
 	// Right items are added in display order (left-to-right within the right block).
 
@@ -418,7 +420,7 @@ func (t *TUI) renderHints() {
 	}
 
 	// Keyboard shortcuts.
-	b.addRight("`:cmd  Alt+z:zoom  Alt+s:overlay  ?:help  Alt+q:quit", b.barStyle)
+	b.addRight(fmt.Sprintf("`:cmd  %s+z:zoom  %s+s:overlay  ?:help  %s+q:quit", modKey, modKey, modKey), b.barStyle)
 
 	// Clock (rightmost).
 	b.addRight(time.Now().Format("15:04"), b.barStyle)
