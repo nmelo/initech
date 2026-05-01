@@ -20,3 +20,7 @@ docs/
 initech.yaml
 AGENTS.md
 ARCHITECTURE.md
+1echo
+1tokf
+coverage.out
+.tokf/
