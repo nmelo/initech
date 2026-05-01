@@ -451,6 +451,8 @@ func runEnvironmentChecks() []checkResult {
 
 	results = append(results, checkResult{Label: "OS", Status: "INFO", Detail: runtime.GOOS + " " + runtime.GOARCH})
 
+	results = append(results, platformEnvironmentChecks()...)
+
 	return results
 }
 
