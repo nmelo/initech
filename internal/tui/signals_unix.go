@@ -1,5 +1,7 @@
-// signals.go installs OS signal handlers so every external termination leaves
-// a trace in initech.log before the process exits.
+//go:build !windows
+
+// signals_unix.go installs OS signal handlers so every external termination
+// leaves a trace in initech.log before the process exits.
 //
 // Without this, SIGTERM/SIGHUP/SIGKILL from the OS kill the process silently
 // and leave the terminal in raw mode (screen.Fini never runs). The handlers
