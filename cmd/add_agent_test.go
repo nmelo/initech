@@ -2,6 +2,8 @@ package cmd
 
 import (
 	"bytes"
+	"encoding/json"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,6 +11,7 @@ import (
 
 	"github.com/nmelo/initech/internal/config"
 	iexec "github.com/nmelo/initech/internal/exec"
+	"github.com/nmelo/initech/internal/tui"
 	"github.com/spf13/cobra"
 )
 
@@ -242,6 +245,101 @@ func TestRunAddAgent_NeedsSrcCallsSubmodule(t *testing.T) {
 	if !found {
 		t.Errorf("eng1 not added to config roles: %v", updated.Roles)
 	}
+}
+
+func TestRunAddAgent_NoSession_PrintsRestart(t *testing.T) {
+	root := t.TempDir()
+	writeTestConfig(t, root, []string{"pm"})
+	os.MkdirAll(filepath.Join(root, "pm"), 0755)
+	chdirTemp(t, root)
+
+	origRunner := newAddAgentRunner
+	newAddAgentRunner = func() iexec.Runner { return &iexec.FakeRunner{} }
+	t.Cleanup(func() { newAddAgentRunner = origRunner })
+
+	var buf bytes.Buffer
+	addAgentCmd.SetOut(&buf)
+	t.Cleanup(func() { addAgentCmd.SetOut(nil) })
+	if err := runAddAgent(addAgentCmd, []string{"arch"}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(buf.String(), "Restart") {
+		t.Errorf("expected restart message when no session running, got: %q", buf.String())
+	}
+	if strings.Contains(buf.String(), "activated") {
+		t.Errorf("should not say activated when no session running, got: %q", buf.String())
+	}
+}
+
+func TestTryHotAdd_ReturnsTrue(t *testing.T) {
+	skipWindows(t)
+	root, err := os.MkdirTemp("", "iha-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(root) })
+	writeTestConfig(t, root, []string{"pm"})
+	chdirTemp(t, root)
+
+	sockPath := tui.SocketPath(root, "test")
+	os.MkdirAll(filepath.Dir(sockPath), 0700)
+	ln, err := net.Listen("unix", sockPath)
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	t.Cleanup(func() { ln.Close(); os.Remove(sockPath) })
+
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			scanner := tui.NewIPCScanner(conn)
+			if scanner.Scan() {
+				resp, _ := json.Marshal(tui.IPCResponse{OK: true})
+				conn.Write(resp)
+				conn.Write([]byte("\n"))
+			}
+			conn.Close()
+		}
+	}()
+
+	var buf bytes.Buffer
+	ok := tryHotAdd(&buf, "sec")
+	if !ok {
+		t.Errorf("tryHotAdd returned false, want true; output: %q", buf.String())
+	}
+	if !strings.Contains(buf.String(), "hot-added") {
+		t.Errorf("expected hot-added message, got: %q", buf.String())
+	}
+}
+
+func TestTryHotAdd_ReturnsFalse_NoSession(t *testing.T) {
+	root := t.TempDir()
+	writeTestConfig(t, root, []string{"pm"})
+	chdirTemp(t, root)
+
+	var buf bytes.Buffer
+	ok := tryHotAdd(&buf, "sec")
+	if ok {
+		t.Error("tryHotAdd should return false when no session running")
+	}
+}
+
+func TestAddAgentCmd_HireAlias(t *testing.T) {
+	if !contains(addAgentCmd.Aliases, "hire") {
+		t.Error("add-agent command should have 'hire' alias")
+	}
+}
+
+func contains(ss []string, s string) bool {
+	for _, v := range ss {
+		if v == s {
+			return true
+		}
+	}
+	return false
 }
 
 func writeTestConfig(t *testing.T, root string, roles []string) {

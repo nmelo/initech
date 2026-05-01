@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,6 +13,7 @@ import (
 	"github.com/nmelo/initech/internal/git"
 	"github.com/nmelo/initech/internal/roles"
 	"github.com/nmelo/initech/internal/scaffold"
+	"github.com/nmelo/initech/internal/tui"
 	"github.com/spf13/cobra"
 )
 
@@ -20,10 +22,11 @@ var newAddAgentRunner = func() iexec.Runner { return &iexec.DefaultRunner{} }
 var addAgentList bool
 
 var addAgentCmd = &cobra.Command{
-	Use:   "add-agent <name>",
-	Short: "Add a new agent workspace to the project",
-	Args:  cobra.MaximumNArgs(1),
-	RunE:  runAddAgent,
+	Use:     "add-agent <name>",
+	Aliases: []string{"hire"},
+	Short:   "Add a new agent workspace to the project",
+	Args:    cobra.MaximumNArgs(1),
+	RunE:    runAddAgent,
 }
 
 func init() {
@@ -163,8 +166,36 @@ func runAddAgent(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("update config: %w", err)
 	}
 	fmt.Fprintf(out, "  %s Updated %s\n", color.Green("✓"), color.Bold("initech.yaml"))
-	fmt.Fprintf(out, "\n%s added. Restart initech to activate.\n", color.CyanBold(roleName))
+
+	if tryHotAdd(out, roleName) {
+		fmt.Fprintf(out, "\n%s added and activated.\n", color.CyanBold(roleName))
+	} else {
+		fmt.Fprintf(out, "\n%s added. Restart initech to activate.\n", color.CyanBold(roleName))
+	}
 	return nil
+}
+
+// tryHotAdd attempts to add the agent to a running TUI session via IPC.
+// Returns true if the agent was activated, false if no session or add failed.
+func tryHotAdd(out io.Writer, roleName string) bool {
+	sockPath, _, err := discoverSocket()
+	if err != nil {
+		return false
+	}
+	resp, err := ipcCallSocket(sockPath, tui.IPCRequest{
+		Action: "add",
+		Target: roleName,
+	})
+	if err != nil {
+		fmt.Fprintf(out, "  %s Could not hot-add to running session: %v\n", color.Yellow("!"), err)
+		return false
+	}
+	if !resp.OK {
+		fmt.Fprintf(out, "  %s Hot-add warning: %s\n", color.Yellow("!"), resp.Error)
+		return false
+	}
+	fmt.Fprintf(out, "  %s %s\n", color.Green("✓"), color.Dim("hot-added to running session"))
+	return true
 }
 
 // runAddAgentList prints all catalog roles with install status for the current project.
