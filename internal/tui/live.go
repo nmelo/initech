@@ -3,9 +3,10 @@ package tui
 // Live Mode Invariants
 //
 // 1. SCORE determines WHO QUALIFIES.
-//    An agent must meet claimThreshold (40) to enter a slot,
-//    keepThreshold (10) to retain one, and exceed the current
-//    occupant by claimMargin (20) to displace them.
+//    Weak occupant (below keepThreshold): challenger needs keepThreshold (10).
+//    Strong occupant (above keepThreshold): challenger needs claimThreshold (40)
+//    AND must exceed occupant by claimMargin (20).
+//    Retaining a slot only requires keepThreshold (10).
 //
 // 2. SCORE determines WHO DISPLACES.
 //    bestUnplaced() returns the highest-scoring agent not already
@@ -134,8 +135,10 @@ func bestUnplaced(candidates []ranked, placed map[string]bool) (ranked, bool) {
 // Pinned agents are placed in their fixed slots unconditionally.
 // Dynamic slots use anti-thrashing rules:
 //   - Hold time: a slot keeps its agent for at least liveHoldDuration after assignment.
-//   - Hysteresis: claiming requires score >= liveClaimThreshold and beating the
-//     current occupant by liveClaimMargin. Keeping only requires >= liveKeepThreshold.
+//   - Hysteresis: displacing a strong occupant (>= keepThreshold) requires
+//     score >= claimThreshold and beating it by claimMargin. Displacing a weak
+//     occupant (< keepThreshold or dead) only requires score >= keepThreshold.
+//     Keeping a slot requires >= keepThreshold.
 //   - One-swap-per-tick: at most one displacement per call, preventing full-screen flashes.
 //
 // Filling an empty slot is not a displacement and is always allowed.
@@ -295,14 +298,16 @@ func (le *LiveEngine) Tick(panes []PaneView, now time.Time) []string {
 		}
 
 		// Current occupant below keep threshold or no longer a valid candidate
-		// (dead/suspended). Eligible for displacement by anyone >= claim threshold.
+		// (dead/suspended). Eligible for displacement by anyone >= keep threshold.
+		// The full claim threshold only applies when displacing a strong occupant
+		// (above keepThreshold) — a weak occupant has no claim worth protecting.
 		// In CxR mode (Tick), the occupant is NEVER evicted to empty. The operator
 		// asked for a fixed grid and gets a fixed grid. The occupant stays until
 		// actively displaced by a higher-scoring agent. (TickAuto handles eviction
 		// for auto mode where the grid resizes dynamically.)
 		if !prevAlive || prevInfo.score < liveKeepThreshold {
 			if !swapped {
-				if best, ok := bestUnplaced(candidates, placed); ok && best.score >= liveClaimThreshold {
+				if best, ok := bestUnplaced(candidates, placed); ok && best.score >= liveKeepThreshold {
 					result[slot] = best.name
 					placed[best.name] = true
 					le.holdUntil[slot] = now.Add(liveHoldDuration)

@@ -498,17 +498,18 @@ func TestLiveEngine_BelowKeepNoQualifiedChallenger(t *testing.T) {
 		&mockPaneView{name: "eng1", alive: true, activity: StateIdle, eventTime: now.Add(-3 * time.Second)},
 	}, now)
 
-	// After hold, eng1 score drops to 0. eng2 has score 30 (bead only) < claimThreshold(40).
+	// After hold, eng1 score drops to 0. eng2 also scores 0 (no signals).
+	// Neither qualifies for displacement (both below keepThreshold).
 	tick2 := now.Add(15 * time.Second)
 	panes := []PaneView{
-		&mockPaneView{name: "eng1", alive: true, activity: StateIdle},                  // score 0
-		&mockPaneView{name: "eng2", alive: true, activity: StateIdle, beadID: "ini-b"}, // score 30
+		&mockPaneView{name: "eng1", alive: true, activity: StateIdle}, // score 0
+		&mockPaneView{name: "eng2", alive: true, activity: StateIdle}, // score 0
 	}
 	slots := le.Tick(panes, tick2)
 
-	// CxR never evicts. eng1 stays despite score 0 (no qualified challenger).
+	// CxR keeps occupant when no challenger meets keepThreshold.
 	if slots[0] != "eng1" {
-		t.Errorf("slot 0 = %q, want eng1 (CxR keeps weak occupant)", slots[0])
+		t.Errorf("slot 0 = %q, want eng1 (CxR keeps weak occupant, no qualified challenger)", slots[0])
 	}
 }
 
@@ -1290,5 +1291,161 @@ func TestInitLiveEngine_AutoGridWhenNotExplicit(t *testing.T) {
 	}
 	if len(tui.liveEngine.Slots) == 2 {
 		t.Errorf("slots = 2, want autoGrid result (GridExplicit=false should auto-calculate)")
+	}
+}
+
+// ── ini-0vx: weak-occupant displacement uses keepThreshold ──────────
+
+// TestTick_VolumeOnlyDisplacesIdleOccupant is the exact bug scenario from
+// ini-0vx: an agent with 918KB output (volume signal = 15) should displace
+// an idle occupant scoring 0. Before the fix, claimThreshold (40) blocked this.
+func TestTick_VolumeOnlyDisplacesIdleOccupant(t *testing.T) {
+	now := time.Now()
+
+	// Fill: arch and shipper occupy 2 slots, both idle (score 0).
+	le := NewLiveEngine(2, nil, nil)
+	le.Tick([]PaneView{
+		&mockPaneView{name: "arch", alive: true, activity: StateIdle},
+		&mockPaneView{name: "shipper", alive: true, activity: StateIdle},
+	}, now)
+
+	// After hold: datasc has 918KB output but is idle (activity decayed).
+	// Score = volume(15) only. Occupants score 0.
+	tick2 := now.Add(15 * time.Second)
+	panes := []PaneView{
+		&mockPaneView{name: "arch", alive: true, activity: StateIdle},                     // score 0
+		&mockPaneView{name: "shipper", alive: true, activity: StateIdle},                  // score 0
+		&mockPaneView{name: "datasc", alive: true, activity: StateIdle, runBytes: 918357}, // score 15
+	}
+	slots := le.Tick(panes, tick2)
+
+	found := false
+	for _, s := range slots {
+		if s == "datasc" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("datasc (score 15, volume only) should displace idle occupant (score 0), got %v", slots)
+	}
+}
+
+// TestTick_WeakDisplacementAtExactKeepThreshold verifies that an agent
+// scoring exactly keepThreshold (10) can displace a weak occupant.
+func TestTick_WeakDisplacementAtExactKeepThreshold(t *testing.T) {
+	now := time.Now()
+
+	le := NewLiveEngine(1, nil, nil)
+	le.Tick([]PaneView{
+		&mockPaneView{name: "idle", alive: true, activity: StateIdle, eventTime: now.Add(-3 * time.Second)}, // score 10
+	}, now)
+
+	// After hold: occupant drops to 0 (event expired). Challenger has recent event (score 10).
+	tick2 := now.Add(15 * time.Second)
+	panes := []PaneView{
+		&mockPaneView{name: "idle", alive: true, activity: StateIdle},                                           // score 0
+		&mockPaneView{name: "active", alive: true, activity: StateIdle, eventTime: tick2.Add(-5 * time.Second)}, // score 10
+	}
+	slots := le.Tick(panes, tick2)
+
+	if slots[0] != "active" {
+		t.Errorf("slot 0 = %q, want active (score 10 >= keepThreshold displaces weak occupant)", slots[0])
+	}
+}
+
+// TestTick_WeakDisplacementBlockedBelowKeepThreshold verifies that a
+// challenger below keepThreshold cannot displace even a zero-score occupant.
+func TestTick_WeakDisplacementBlockedBelowKeepThreshold(t *testing.T) {
+	now := time.Now()
+
+	le := NewLiveEngine(1, nil, nil)
+	le.Tick([]PaneView{
+		&mockPaneView{name: "idle", alive: true, activity: StateIdle, eventTime: now.Add(-3 * time.Second)},
+	}, now)
+
+	// After hold: occupant at 0, challenger also at 0 (no signals). No displacement.
+	tick2 := now.Add(15 * time.Second)
+	panes := []PaneView{
+		&mockPaneView{name: "idle", alive: true, activity: StateIdle},      // score 0
+		&mockPaneView{name: "also_idle", alive: true, activity: StateIdle}, // score 0
+	}
+	slots := le.Tick(panes, tick2)
+
+	if slots[0] != "idle" {
+		t.Errorf("slot 0 = %q, want idle (challenger at 0 cannot displace)", slots[0])
+	}
+}
+
+// TestTick_StrongOccupantStillNeedsClaimThreshold verifies that the strong-
+// occupant displacement path is unchanged: challenger needs claimThreshold (40)
+// AND margin (20) to displace an occupant above keepThreshold.
+func TestTick_StrongOccupantStillNeedsClaimThreshold(t *testing.T) {
+	now := time.Now()
+
+	// Fill: eng1 with bead (score 30, above keepThreshold).
+	le := NewLiveEngine(1, nil, nil)
+	le.Tick([]PaneView{
+		&mockPaneView{name: "eng1", alive: true, activity: StateIdle, beadID: "ini-a"}, // score 30
+	}, now)
+
+	// After hold: challenger with volume (score 15). Meets keepThreshold but not claimThreshold.
+	tick2 := now.Add(15 * time.Second)
+	panes := []PaneView{
+		&mockPaneView{name: "eng1", alive: true, activity: StateIdle, beadID: "ini-a"},     // score 30
+		&mockPaneView{name: "datasc", alive: true, activity: StateIdle, runBytes: 918357}, // score 15
+	}
+	slots := le.Tick(panes, tick2)
+
+	if slots[0] != "eng1" {
+		t.Errorf("slot 0 = %q, want eng1 (strong occupant still needs claimThreshold+margin to displace)", slots[0])
+	}
+}
+
+// TestTick_PinnedProtectedFromWeakDisplacement verifies that pinned agents
+// are never subject to displacement regardless of scoring.
+func TestTick_PinnedProtectedFromWeakDisplacement(t *testing.T) {
+	now := time.Now()
+
+	pinned := map[string]int{"super": 0}
+	le := NewLiveEngine(1, pinned, nil)
+	le.Tick([]PaneView{
+		&mockPaneView{name: "super", alive: true, activity: StateIdle},
+	}, now)
+
+	tick2 := now.Add(15 * time.Second)
+	panes := []PaneView{
+		&mockPaneView{name: "super", alive: true, activity: StateIdle},                                                               // score 0, pinned
+		&mockPaneView{name: "hot", alive: true, beadID: "ini-a", activity: StateRunning, runStart: tick2.Add(-10 * time.Second)}, // score 50
+	}
+	slots := le.Tick(panes, tick2)
+
+	if slots[0] != "super" {
+		t.Errorf("slot 0 = %q, want super (pinned agents always protected)", slots[0])
+	}
+}
+
+// TestTick_BeadlessAgentDisplacesIdleWithBead verifies AC4: the fix works
+// for agents WITHOUT beads displacing agents that DO have a bead but are
+// below keepThreshold (e.g., dead agent with stale bead assignment).
+func TestTick_BeadlessAgentDisplacesIdleWithBead(t *testing.T) {
+	now := time.Now()
+
+	le := NewLiveEngine(1, nil, nil)
+	le.Tick([]PaneView{
+		&mockPaneView{name: "eng1", alive: true, activity: StateIdle, beadID: "ini-a"}, // score 30
+	}, now)
+
+	// eng1 dies. After hold: dead agent (score 0 regardless of bead).
+	// Beadless agent with recent dispatch (score 25) should displace.
+	tick2 := now.Add(15 * time.Second)
+	panes := []PaneView{
+		&mockPaneView{name: "eng1", alive: false, beadID: "ini-a"},                                              // score 0 (dead)
+		&mockPaneView{name: "intern", alive: true, activity: StateIdle, msgReceived: tick2.Add(-5 * time.Second)}, // score 25 (no bead)
+	}
+	slots := le.Tick(panes, tick2)
+
+	if slots[0] != "intern" {
+		t.Errorf("slot 0 = %q, want intern (beadless agent displaces dead occupant)", slots[0])
 	}
 }
