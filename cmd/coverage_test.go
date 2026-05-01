@@ -168,8 +168,9 @@ func TestDiscoverSocket_NoConfig(t *testing.T) {
 }
 
 func TestDiscoverSocket_WithConfig(t *testing.T) {
+	skipWindows(t)
 	// Use /tmp for short socket paths (macOS 104-byte limit).
-	dir, err := os.MkdirTemp("/tmp", "initech-cov-")
+	dir, err := os.MkdirTemp("", "initech-cov-")
 	if err != nil {
 		t.Fatal(err)
 	}

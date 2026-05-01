@@ -44,6 +44,7 @@ func startFakeIPC(t *testing.T, resp tui.IPCResponse) string {
 }
 
 func TestSendCommand_LocalDeliveryConfirmation(t *testing.T) {
+	skipWindows(t)
 	sockPath := startFakeIPC(t, tui.IPCResponse{OK: true})
 	t.Setenv("INITECH_SOCKET", sockPath)
 
@@ -67,6 +68,7 @@ func TestSendCommand_LocalDeliveryConfirmation(t *testing.T) {
 }
 
 func TestSendCommand_RemoteDeliveryConfirmation(t *testing.T) {
+	skipWindows(t)
 	sockPath := startFakeIPC(t, tui.IPCResponse{OK: true})
 	t.Setenv("INITECH_SOCKET", sockPath)
 
@@ -90,6 +92,7 @@ func TestSendCommand_RemoteDeliveryConfirmation(t *testing.T) {
 }
 
 func TestSendCommand_ErrorPrintsToStderr(t *testing.T) {
+	skipWindows(t)
 	sockPath := startFakeIPC(t, tui.IPCResponse{OK: false, Error: "agent not found"})
 	t.Setenv("INITECH_SOCKET", sockPath)
 

@@ -16,6 +16,7 @@ import (
 )
 
 func TestRunStatus_LocalSessionWithoutHostColumn(t *testing.T) {
+	skipWindows(t)
 	restoreColor := disableColor(t)
 	defer restoreColor()
 
@@ -98,6 +99,7 @@ esac
 }
 
 func TestRunStatus_RemotesRenderHostColumn(t *testing.T) {
+	skipWindows(t)
 	restoreColor := disableColor(t)
 	defer restoreColor()
 

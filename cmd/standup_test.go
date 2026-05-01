@@ -13,6 +13,7 @@ import (
 )
 
 func TestRunStandup_PrintsFormattedSummary(t *testing.T) {
+	skipWindows(t)
 	restoreColor := disableColor(t)
 	defer restoreColor()
 

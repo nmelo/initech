@@ -16,6 +16,7 @@ import (
 )
 
 func TestRunPatrol_PrintsFilteredEntries(t *testing.T) {
+	skipWindows(t)
 	restoreColor := disableColor(t)
 	defer restoreColor()
 	restorePatrolFlags := setPatrolFlags(t, 7, true, []string{"eng1", "eng3"})
@@ -61,6 +62,7 @@ func TestRunPatrol_PrintsFilteredEntries(t *testing.T) {
 }
 
 func TestRunPatrol_ReturnsIPCError(t *testing.T) {
+	skipWindows(t)
 	restorePatrolFlags := setPatrolFlags(t, 5, false, nil)
 	defer restorePatrolFlags()
 
@@ -77,6 +79,7 @@ func TestRunPatrol_ReturnsIPCError(t *testing.T) {
 }
 
 func TestRunPatrol_ReturnsParseError(t *testing.T) {
+	skipWindows(t)
 	restorePatrolFlags := setPatrolFlags(t, 5, false, nil)
 	defer restorePatrolFlags()
 

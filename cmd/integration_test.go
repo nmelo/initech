@@ -170,8 +170,9 @@ func TestInteg_ConfigValidation(t *testing.T) {
 // ── Test 4: IPC socket round-trip ───────────────────────────────────
 
 func TestInteg_IPCRoundTrip(t *testing.T) {
+	skipWindows(t)
 	// Use /tmp for short socket paths (macOS 104-byte limit).
-	sockDir, err := os.MkdirTemp("/tmp", "initech-ipc-")
+	sockDir, err := os.MkdirTemp("", "initech-ipc-")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -270,7 +271,8 @@ func TestInteg_IPCRoundTrip(t *testing.T) {
 // ── Test 5: Socket liveness check ───────────────────────────────────
 
 func TestInteg_SocketLiveness(t *testing.T) {
-	sockDir, err := os.MkdirTemp("/tmp", "initech-live-")
+	skipWindows(t)
+	sockDir, err := os.MkdirTemp("", "initech-live-")
 	if err != nil {
 		t.Fatal(err)
 	}

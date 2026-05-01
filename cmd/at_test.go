@@ -89,6 +89,7 @@ func TestRunAt_RequiresArgs(t *testing.T) {
 }
 
 func TestRunAt_ScheduleModeSendsCustomIPC(t *testing.T) {
+	skipWindows(t)
 	restoreFlags := setAtFlags(t, "5m", "", false, "")
 	defer restoreFlags()
 
@@ -145,6 +146,7 @@ func TestRunAt_ScheduleModeSendsCustomIPC(t *testing.T) {
 }
 
 func TestRunAtList_PrintsTimersAndTruncatesMessage(t *testing.T) {
+	skipWindows(t)
 	restoreFlags := setAtFlags(t, "", "", true, "")
 	defer restoreFlags()
 
@@ -201,6 +203,7 @@ func TestRunAtList_PrintsTimersAndTruncatesMessage(t *testing.T) {
 }
 
 func TestRunAtList_PrintsEmptyState(t *testing.T) {
+	skipWindows(t)
 	restoreFlags := setAtFlags(t, "", "", true, "")
 	defer restoreFlags()
 
@@ -228,6 +231,7 @@ func TestRunAtList_PrintsEmptyState(t *testing.T) {
 }
 
 func TestRunAtCancel_PrintsCanceledID(t *testing.T) {
+	skipWindows(t)
 	restoreFlags := setAtFlags(t, "", "", false, "at-7")
 	defer restoreFlags()
 
@@ -255,6 +259,7 @@ func TestRunAtCancel_PrintsCanceledID(t *testing.T) {
 }
 
 func TestIPCCallCustom_InvalidResponse(t *testing.T) {
+	skipWindows(t)
 	projectDir := shortProjectDir(t)
 	writeStandupConfig(t, projectDir, "demo")
 	restoreWD := chdirForTest(t, projectDir)
@@ -273,6 +278,7 @@ func TestIPCCallCustom_InvalidResponse(t *testing.T) {
 }
 
 func TestIPCCallCustom_NoResponse(t *testing.T) {
+	skipWindows(t)
 	projectDir := shortProjectDir(t)
 	writeStandupConfig(t, projectDir, "demo")
 	restoreWD := chdirForTest(t, projectDir)
@@ -307,7 +313,7 @@ func setAtFlags(t *testing.T, in, at string, list bool, cancel string) func() {
 
 func shortProjectDir(t *testing.T) string {
 	t.Helper()
-	dir, err := os.MkdirTemp("/tmp", "iat-")
+	dir, err := os.MkdirTemp("", "iat-")
 	if err != nil {
 		t.Fatalf("MkdirTemp: %v", err)
 	}

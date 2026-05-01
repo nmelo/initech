@@ -67,6 +67,7 @@ func TestRunTUI_MissingConfig(t *testing.T) {
 }
 
 func TestRunTUI_NoValidRoleDirectories(t *testing.T) {
+	skipWindows(t)
 	dir := shortProjectDir(t)
 	cfg := &config.Project{
 		Name:  "demo",
@@ -87,6 +88,7 @@ func TestRunTUI_NoValidRoleDirectories(t *testing.T) {
 }
 
 func TestRunTUI_PassesConfigToTUI(t *testing.T) {
+	skipWindows(t)
 	dir := shortProjectDir(t)
 	mustWriteFile(t, filepath.Join(dir, "eng1", "CLAUDE.md"), "# eng1")
 	cfg := &config.Project{
@@ -151,6 +153,7 @@ func TestRunTUI_PassesConfigToTUI(t *testing.T) {
 }
 
 func TestRunTUI_AutoSuspendFlagOverridesConfig(t *testing.T) {
+	skipWindows(t)
 	dir := shortProjectDir(t)
 	mustWriteFile(t, filepath.Join(dir, "eng1", "CLAUDE.md"), "# eng1")
 	cfg := &config.Project{
@@ -191,6 +194,7 @@ func TestRunTUI_AutoSuspendFlagOverridesConfig(t *testing.T) {
 }
 
 func TestRunTUI_RejectsNonLocalhostPprof(t *testing.T) {
+	skipWindows(t)
 	dir := shortProjectDir(t)
 	mustWriteFile(t, filepath.Join(dir, "eng1", "CLAUDE.md"), "# eng1")
 	cfg := &config.Project{Name: "demo", Root: dir, Roles: []string{"eng1"}}
@@ -218,6 +222,7 @@ func TestRunTUI_RejectsNonLocalhostPprof(t *testing.T) {
 }
 
 func TestRunTUI_UsesPprofListenerWhenConfigured(t *testing.T) {
+	skipWindows(t)
 	dir := shortProjectDir(t)
 	mustWriteFile(t, filepath.Join(dir, "eng1", "CLAUDE.md"), "# eng1")
 	cfg := &config.Project{Name: "demo", Root: dir, Roles: []string{"eng1"}}

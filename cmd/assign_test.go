@@ -27,6 +27,7 @@ func TestTruncateTitle(t *testing.T) {
 }
 
 func TestBdShowTitle_ParsesJSON(t *testing.T) {
+	skipWindows(t)
 	dir := t.TempDir()
 	fakeBd := filepath.Join(dir, "bd")
 	script := `#!/bin/sh

@@ -666,6 +666,7 @@ func TestRunInit_GenericSubmoduleFailureCleanup(t *testing.T) {
 }
 
 func TestRunInit_IndexLockCleanedBetweenSubmodules(t *testing.T) {
+	skipWindows(t)
 	dir := t.TempDir()
 	// Config with two NeedsSrc roles so we get two sequential submodule adds.
 	cfg := &config.Project{
