@@ -9,13 +9,20 @@ dist/
 
 # Workspace files (live in initech-workspace repo)
 .beads/
+arch/
 eng1/
 eng2/
+eng3/
+growth/
+ops/
 pm/
+pmm/
 qa1/
 qa2/
+sec/
 shipper/
 super/
+writer/
 docs/
 initech.yaml
 AGENTS.md

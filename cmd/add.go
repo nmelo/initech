@@ -2,8 +2,11 @@ package cmd
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"time"
 
+	"github.com/nmelo/initech/internal/roles"
 	"github.com/nmelo/initech/internal/tui"
 	"github.com/spf13/cobra"
 )
@@ -30,8 +33,11 @@ func init() {
 func runAdd(cmd *cobra.Command, args []string) error {
 	name := args[0]
 
-	sockPath, _, err := discoverSocket()
+	sockPath, proj, err := discoverSocket()
 	if err != nil {
+		if hint := addAgentHint(name, ""); hint != "" {
+			fmt.Fprintln(cmd.ErrOrStderr(), hint)
+		}
 		return err
 	}
 
@@ -44,6 +50,9 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("could not add %s: %w", name, err)
 	}
 	if !resp.OK {
+		if hint := addAgentHint(name, proj.Root); hint != "" {
+			fmt.Fprintln(cmd.ErrOrStderr(), hint)
+		}
 		return fmt.Errorf("%s", resp.Error)
 	}
 	fmt.Fprintf(out, "Added %s.\n", name)
@@ -66,4 +75,20 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		}
 	}
 	return nil
+}
+
+// addAgentHint returns a suggestion to use 'add-agent' when the named role is
+// catalog-known but its workspace directory does not exist. projRoot may be
+// empty (e.g. when discoverSocket failed); in that case only catalog membership
+// is checked.
+func addAgentHint(name, projRoot string) string {
+	if _, ok := roles.Catalog[name]; !ok {
+		return ""
+	}
+	if projRoot != "" {
+		if _, err := os.Stat(filepath.Join(projRoot, name)); err == nil {
+			return "" // dir exists, not a missing-agent situation
+		}
+	}
+	return fmt.Sprintf("Hint: to create the %s workspace first, run: initech add-agent %s", name, name)
 }
