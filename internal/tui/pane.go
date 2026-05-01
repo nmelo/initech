@@ -290,41 +290,7 @@ func NewPane(cfg PaneConfig, rows, cols int) (*Pane, error) {
 		submitKey = config.DefaultSubmitKey(agentType)
 	}
 
-	shell := os.Getenv("SHELL")
-	if shell == "" {
-		shell = "/bin/bash"
-	}
-
-	var cmd *exec.Cmd
-	if len(cfg.Command) == 0 {
-		// No command: run an interactive login shell.
-		cmd = exec.Command(shell, "-l")
-	} else if containsArg(cfg.Command, "--continue") {
-		// --continue fails when no prior session exists (first launch,
-		// hot-added agent, deleted session). Build a shell fallback:
-		//   claude --continue ... || claude ...
-		// The "||" operator is POSIX sh syntax; using $SHELL here would fail
-		// for fish/tcsh users since those shells use different operators.
-		// /bin/sh is guaranteed POSIX-compliant on all Unix systems.
-		primary := shellQuoteArgs(cfg.Command)
-		fallback := shellQuoteArgs(removeArg(cfg.Command, "--continue"))
-		cmd = exec.Command("/bin/sh", "-l", "-c", primary+" || "+fallback)
-	} else {
-		// Execute directly without a shell. The login shell wrapper (shell -l)
-		// is still used to initialize the PTY environment (stty, $PATH, etc.)
-		// but exec replaces it with the target process, preventing shell injection.
-		quoted := shellQuoteArgs(cfg.Command)
-		cmd = exec.Command(shell, "-l", "-c", "exec "+quoted)
-	}
-	cmd.Env = append(os.Environ(),
-		"TERM=xterm-256color",
-		fmt.Sprintf("LINES=%d", rows),
-		fmt.Sprintf("COLUMNS=%d", cols),
-	)
-	cmd.Env = append(cmd.Env, cfg.Env...)
-	if cfg.Dir != "" {
-		cmd.Dir = cfg.Dir
-	}
+	cmd := buildPaneCmd(cfg, rows, cols)
 
 	ptmx, err := xpty.NewPty(cols, rows)
 	if err != nil {
