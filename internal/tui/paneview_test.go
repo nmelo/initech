@@ -2,6 +2,7 @@
 package tui
 
 import (
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -154,6 +155,9 @@ func TestPaneView_SendKey(t *testing.T) {
 
 // TestPaneView_SendText injects text through the local pane send path.
 func TestPaneView_SendText(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("test uses Unix PTY")
+	}
 	ptmx, tty, err := pty.Open()
 	if err != nil {
 		t.Fatalf("pty.Open: %v", err)

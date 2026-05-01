@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -85,6 +86,9 @@ func TestCheckPreviousCrash_StaleDeadPIDRemovesFile(t *testing.T) {
 }
 
 func TestCheckPreviousCrash_LivePIDLeavesFile(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("checkPreviousCrash uses Unix process detection")
+	}
 	dir := t.TempDir()
 	initechDir := filepath.Join(dir, ".initech")
 	os.MkdirAll(initechDir, 0755)
