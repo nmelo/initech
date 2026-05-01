@@ -8,8 +8,12 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 )
@@ -25,6 +29,7 @@ const (
 // Zero value is not usable; call Init to create a client.
 type Client struct {
 	apiKey    string
+	deviceID  string
 	sessionID string
 	version   string
 	startTime time.Time
@@ -40,19 +45,19 @@ type event struct {
 }
 
 type capturePayload struct {
-	APIKey     string `json:"api_key"`
-	Event      string `json:"event"`
+	APIKey     string         `json:"api_key"`
+	Event      string         `json:"event"`
 	Properties map[string]any `json:"properties"`
-	Timestamp  string `json:"timestamp"`
-	DistinctID string `json:"distinct_id"`
+	Timestamp  string         `json:"timestamp"`
+	DistinctID string         `json:"distinct_id"`
 }
 
 // Init creates a telemetry client and starts the background sender.
-// Pass the initech version string. Returns a no-op client if apiKey
-// is the placeholder (telemetry not configured for this build).
+// Pass the initech version string.
 func Init(version string) *Client {
 	c := &Client{
 		apiKey:    posthogAPIKey,
+		deviceID:  loadOrCreateDeviceID(),
 		sessionID: newSessionID(),
 		version:   version,
 		startTime: time.Now(),
@@ -69,6 +74,14 @@ func (c *Client) SessionID() string {
 		return ""
 	}
 	return c.sessionID
+}
+
+// DeviceID returns the stable device identifier used as PostHog distinct_id.
+func (c *Client) DeviceID() string {
+	if c == nil {
+		return ""
+	}
+	return c.deviceID
 }
 
 // Track enqueues an event for async delivery. Non-blocking: if the
@@ -134,7 +147,7 @@ func (c *Client) send(client *http.Client, ev event) {
 		Event:      ev.Name,
 		Properties: ev.Properties,
 		Timestamp:  ev.Timestamp,
-		DistinctID: c.sessionID,
+		DistinctID: c.deviceID,
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {
@@ -156,4 +169,51 @@ func newSessionID() string {
 	b := make([]byte, 8)
 	rand.Read(b)
 	return hex.EncodeToString(b)
+}
+
+// deviceIDDir is overridable for testing.
+var deviceIDDir = defaultDeviceIDDir
+
+func defaultDeviceIDDir() string {
+	if runtime.GOOS == "windows" {
+		if dir := os.Getenv("LOCALAPPDATA"); dir != "" {
+			return filepath.Join(dir, "initech")
+		}
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(home, ".config", "initech")
+}
+
+// loadOrCreateDeviceID reads the stable device UUID from disk, creating it
+// on first run. Falls back to a random session-scoped ID if disk I/O fails.
+func loadOrCreateDeviceID() string {
+	dir := deviceIDDir()
+	if dir == "" {
+		return newDeviceUUID()
+	}
+	path := filepath.Join(dir, "device_id")
+
+	if data, err := os.ReadFile(path); err == nil {
+		id := strings.TrimSpace(string(data))
+		if len(id) >= 32 {
+			return id
+		}
+	}
+
+	id := newDeviceUUID()
+	os.MkdirAll(dir, 0700)
+	os.WriteFile(path, []byte(id+"\n"), 0600)
+	return id
+}
+
+func newDeviceUUID() string {
+	b := make([]byte, 16)
+	rand.Read(b)
+	// RFC 4122 v4: set version and variant bits.
+	b[6] = (b[6] & 0x0f) | 0x40
+	b[8] = (b[8] & 0x3f) | 0x80
+	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
 }
