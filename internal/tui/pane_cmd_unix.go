@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"syscall"
 )
 
 func buildPaneCmd(cfg PaneConfig, rows, cols int) *exec.Cmd {
@@ -34,5 +35,6 @@ func buildPaneCmd(cfg PaneConfig, rows, cols int) *exec.Cmd {
 	if cfg.Dir != "" {
 		cmd.Dir = cfg.Dir
 	}
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true, Setctty: true}
 	return cmd
 }
