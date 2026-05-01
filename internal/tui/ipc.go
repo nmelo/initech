@@ -2,14 +2,11 @@ package tui
 
 import (
 	"bufio"
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -40,51 +37,25 @@ type IPCResponse struct {
 	Data  string `json:"data,omitempty"` // Pane content for peek, pane list for list.
 }
 
-// SocketPath returns the socket path for a project. The socket is placed
-// inside the project's .initech/ directory (not /tmp/) so it is scoped to the
-// project and not world-visible.
+// SocketPath returns the IPC endpoint path for a project. On Unix this is a
+// domain socket inside .initech/; on Windows it is a named pipe.
 func SocketPath(projectRoot, projectName string) string {
-	if projectRoot == "" {
-		// Fallback for callers that don't have a project root (e.g. tests).
-		// Include random suffix to prevent socket-squatting attacks.
-		var b [8]byte
-		rand.Read(b[:])
-		return fmt.Sprintf("/tmp/initech-%s-%s.sock", projectName, hex.EncodeToString(b[:]))
-	}
-	return filepath.Join(projectRoot, ".initech", "initech.sock")
+	return socketPath(projectRoot, projectName)
 }
 
-// startIPC launches the Unix domain socket server in a goroutine.
-// Returns a cleanup function that closes the listener and removes the socket.
-func (t *TUI) startIPC(socketPath string) (cleanup func(), err error) {
-	// Check for an existing active instance. Only dial if the socket file
-	// exists (avoids 500ms timeout on clean starts).
-	if _, statErr := os.Stat(socketPath); statErr == nil {
-		conn, dialErr := net.DialTimeout("unix", socketPath, 500*time.Millisecond)
-		if dialErr == nil {
-			conn.Close()
-			return nil, fmt.Errorf("session already running (socket %s is active). Use 'initech down' to stop it first", socketPath)
-		}
-		// Stale socket from a crashed instance; safe to remove.
-		os.Remove(socketPath)
-	}
-
-	// Ensure the directory exists before binding the socket.
-	os.MkdirAll(filepath.Dir(socketPath), 0700)
-
-	ln, err := net.Listen("unix", socketPath)
+// startIPC launches the IPC server in a goroutine.
+// Returns a cleanup function that closes the listener and removes the endpoint.
+func (t *TUI) startIPC(sp string) (cleanup func(), err error) {
+	ln, err := listenIPC(sp)
 	if err != nil {
-		return nil, fmt.Errorf("listen on %s: %w", socketPath, err)
+		return nil, err
 	}
-
-	// Restrict socket to owner-only. All agents run as the same user.
-	os.Chmod(socketPath, 0700)
 
 	t.safeGo(func() {
 		for {
 			conn, err := ln.Accept()
 			if err != nil {
-				return // Listener closed.
+				return
 			}
 			t.safeGo(func() { t.handleIPCConn(conn) })
 		}
@@ -92,7 +63,7 @@ func (t *TUI) startIPC(socketPath string) (cleanup func(), err error) {
 
 	cleanup = func() {
 		ln.Close()
-		os.Remove(socketPath)
+		os.Remove(sp)
 	}
 	return cleanup, nil
 }
