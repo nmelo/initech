@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net"
 	"os"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -38,6 +39,9 @@ func TestPollPaneRSS_InvalidPID(t *testing.T) {
 }
 
 func TestPollPaneRSS_CurrentProcess(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("pollPaneRSS uses /proc on Unix")
+	}
 	pid := os.Getpid()
 	rss := pollPaneRSS(pid)
 	if rss <= 0 {
@@ -147,6 +151,9 @@ func TestSystemMemoryAvail(t *testing.T) {
 // --- pollAllRSS integration ---
 
 func TestPollAllRSS_Integration(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("pollPaneRSS uses /proc on Unix")
+	}
 	tui := &TUI{quitCh: make(chan struct{})}
 	p := &Pane{pid: os.Getpid()}
 	tui.panes = toPaneViews([]*Pane{p})

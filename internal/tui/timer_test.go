@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -267,7 +268,9 @@ func TestTimerStore_CorruptFileStartsEmpty(t *testing.T) {
 // TestTimerStore_SaveFailureRollsBackAdd verifies that when save fails,
 // Add rolls back the in-memory state and returns an error.
 func TestTimerStore_SaveFailureRollsBackAdd(t *testing.T) {
-	// Use a read-only directory so writes fail.
+	if runtime.GOOS == "windows" {
+		t.Skip("chmod 500 does not block writes on Windows")
+	}
 	dir := t.TempDir()
 	path := filepath.Join(dir, "sub", "timers.json")
 	ts := NewTimerStore(path)
@@ -293,6 +296,9 @@ func TestTimerStore_SaveFailureRollsBackAdd(t *testing.T) {
 // TestTimerStore_SaveFailureRollsBackCancel verifies that when save fails,
 // Cancel rolls back the in-memory removal and returns an error.
 func TestTimerStore_SaveFailureRollsBackCancel(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("chmod 500 does not block writes on Windows")
+	}
 	dir := t.TempDir()
 	path := filepath.Join(dir, "sub", "timers.json")
 	ts := NewTimerStore(path)
@@ -316,6 +322,9 @@ func TestTimerStore_SaveFailureRollsBackCancel(t *testing.T) {
 // TestTimerStore_FireDueSaveError verifies that FireDue returns due timers
 // AND the save error, so the caller can fire them but knows persistence broke.
 func TestTimerStore_FireDueSaveError(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("chmod 500 does not block writes on Windows")
+	}
 	dir := t.TempDir()
 	path := filepath.Join(dir, "sub", "timers.json")
 	ts := NewTimerStore(path)

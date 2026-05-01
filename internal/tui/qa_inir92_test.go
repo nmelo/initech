@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -81,6 +82,9 @@ func TestQACheckPreviousCrash_DetectsDeadProcess(t *testing.T) {
 
 // Live PID file is left alone by checkPreviousCrash — the process exists.
 func TestQACheckPreviousCrash_IgnoresLiveProcess(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("checkPreviousCrash uses Unix process detection")
+	}
 	dir := t.TempDir()
 	initechDir := filepath.Join(dir, ".initech")
 	os.MkdirAll(initechDir, 0755)
@@ -99,6 +103,9 @@ func TestQACheckPreviousCrash_IgnoresLiveProcess(t *testing.T) {
 // redirectStderr creates .initech/stderr.log at the OS fd level.
 // The file must exist immediately after the call.
 func TestQARedirectStderr_CreatesFile(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("redirectStderr is a no-op on Windows")
+	}
 	dir := t.TempDir()
 	cleanup := redirectStderr(dir)
 	defer cleanup()

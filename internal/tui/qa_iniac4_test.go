@@ -3,12 +3,16 @@ package tui
 
 import (
 	"os"
+	"runtime"
 	"testing"
 )
 
 // TestProcessTreeRSS_Self verifies that processTreeRSS returns a non-zero
 // value for the current process.
 func TestProcessTreeRSS_Self(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("processTreeRSS uses /proc on Unix")
+	}
 	pid := os.Getpid()
 	rss := processTreeRSS(pid)
 	if rss <= 0 {

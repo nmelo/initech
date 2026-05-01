@@ -269,7 +269,7 @@ func TestPostAnnouncement_ConnectionRefused(t *testing.T) {
 	if result.Err == nil {
 		t.Fatal("connection refused should return error")
 	}
-	if !strings.Contains(result.Message, "connection refused") {
+	if !strings.Contains(result.Message, "refused") && !strings.Contains(result.Message, "connectex") {
 		t.Errorf("message = %q, want mention of connection refused", result.Message)
 	}
 }
