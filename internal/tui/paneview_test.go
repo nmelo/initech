@@ -182,7 +182,7 @@ func TestPaneView_SendText(t *testing.T) {
 		readDone <- got
 	}()
 
-	p := &Pane{name: "eng1", emu: emu, alive: true, ptmx: ptmx}
+	p := &Pane{name: "eng1", emu: emu, alive: true, ptmx: &filePty{ptmx}}
 	p.SendText("hi", false)
 
 	buf := make([]byte, 256)

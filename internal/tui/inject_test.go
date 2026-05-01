@@ -41,7 +41,7 @@ func TestInjectText_BracketedPaste(t *testing.T) {
 		}
 	}()
 
-	p := &Pane{name: "eng1", emu: emu, alive: true, ptmx: ptmx}
+	p := &Pane{name: "eng1", emu: emu, alive: true, ptmx: &filePty{ptmx}}
 	tui := &TUI{agentEvents: make(chan AgentEvent, 8)}
 
 	// Inject without Enter so we only see the paste markers + text.
@@ -96,7 +96,7 @@ func TestInjectText_CtrlS_StillSent(t *testing.T) {
 		}
 	}()
 
-	p := &Pane{name: "eng1", emu: emu, alive: true, ptmx: ptmx}
+	p := &Pane{name: "eng1", emu: emu, alive: true, ptmx: &filePty{ptmx}}
 	tui := &TUI{agentEvents: make(chan AgentEvent, 8)}
 
 	go tui.injectText(p, "hi", false)
@@ -155,7 +155,7 @@ func TestInjectText_NoBracketedPasteCodexUsesBracketedPaste(t *testing.T) {
 		name:             "eng1",
 		emu:              emu,
 		alive:            true,
-		ptmx:             ptmx,
+		ptmx:             &filePty{ptmx},
 		noBracketedPaste: true,
 		agentType:        config.AgentTypeCodex,
 		activity:         StateIdle,
@@ -251,7 +251,7 @@ func TestPaneSendText_NoBracketedPasteCodexUsesBracketedPaste(t *testing.T) {
 		name:             "eng1",
 		emu:              emu,
 		alive:            true,
-		ptmx:             ptmx,
+		ptmx:             &filePty{ptmx},
 		noBracketedPaste: true,
 		agentType:        config.AgentTypeCodex,
 		activity:         StateIdle,
@@ -321,7 +321,7 @@ func TestPaneSendText_CodexQueuesWithTabWhileRunning(t *testing.T) {
 		name:             "eng1",
 		emu:              emu,
 		alive:            true,
-		ptmx:             ptmx,
+		ptmx:             &filePty{ptmx},
 		noBracketedPaste: true,
 		agentType:        config.AgentTypeCodex,
 		submitKey:        "enter",
@@ -384,7 +384,7 @@ func TestPaneSendText_NoBracketedPasteOpenCodeUsesLocalRawPath(t *testing.T) {
 		name:             "eng1",
 		emu:              emu,
 		alive:            true,
-		ptmx:             ptmx,
+		ptmx:             &filePty{ptmx},
 		noBracketedPaste: true,
 		agentType:        config.AgentTypeOpenCode,
 		submitKey:        "enter",
@@ -458,7 +458,7 @@ func TestInjectText_StashSkipsRetry(t *testing.T) {
 		name:           "eng1",
 		emu:            emu,
 		alive:          true,
-		ptmx:           ptmx,
+		ptmx:           &filePty{ptmx},
 		lastOutputTime: time.Now().Add(-(ptyIdleTimeout + time.Second)),
 	}
 

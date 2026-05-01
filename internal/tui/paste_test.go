@@ -20,7 +20,7 @@ func paneWithPipe(t *testing.T) (*Pane, *os.File) {
 		t.Fatalf("os.Pipe: %v", err)
 	}
 	t.Cleanup(func() { r.Close(); w.Close() })
-	p := &Pane{ptmx: w}
+	p := &Pane{ptmx: &filePty{w}}
 	return p, r
 }
 
@@ -71,7 +71,7 @@ func newTUIWithPipePane(t *testing.T) (*TUI, *os.File) {
 	}
 	t.Cleanup(func() { r.Close(); w.Close() })
 
-	p := &Pane{name: "eng1", ptmx: w, alive: true, visible: true}
+	p := &Pane{name: "eng1", ptmx: &filePty{w}, alive: true, visible: true}
 	tui := &TUI{
 		layoutState: LayoutState{Focused: "eng1"},
 		panes:       toPaneViews([]*Pane{p}),
@@ -105,7 +105,7 @@ func TestBufferedPaste_NoBracketedPaste(t *testing.T) {
 	defer r.Close()
 	defer w.Close()
 
-	p := &Pane{name: "eng1", ptmx: w, alive: true, visible: true, noBracketedPaste: true}
+	p := &Pane{name: "eng1", ptmx: &filePty{w}, alive: true, visible: true, noBracketedPaste: true}
 	tui := &TUI{
 		layoutState: LayoutState{Focused: "eng1"},
 		panes:       toPaneViews([]*Pane{p}),

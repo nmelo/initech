@@ -118,7 +118,7 @@ func TestReadLoopAutoApprove_WritesApprovalOnPrompt(t *testing.T) {
 		autoApprove: true,
 		alive:       true,
 		emu:         emu,
-		ptmx:        ptyW,
+		ptmx:        &filePty{ptyW},
 	}
 
 	// Simulate readLoop: lock renderMu, write to emu, scan, release.

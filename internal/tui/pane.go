@@ -17,7 +17,7 @@ import (
 
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/vt"
-	"github.com/creack/pty"
+	"github.com/charmbracelet/x/xpty"
 	"github.com/gdamore/tcell/v2"
 	"github.com/nmelo/initech/internal/config"
 )
@@ -177,7 +177,7 @@ var _ PaneView = (*Pane)(nil)
 type Pane struct {
 	cfg               PaneConfig // Original config for restart.
 	name              string
-	ptmx              *os.File
+	ptmx              xpty.Pty
 	cmd               *exec.Cmd
 	pid               int // Cached PID from process start (avoids race with restart).
 	emu               *vt.SafeEmulator
@@ -326,12 +326,13 @@ func NewPane(cfg PaneConfig, rows, cols int) (*Pane, error) {
 		cmd.Dir = cfg.Dir
 	}
 
-	ptmx, err := pty.StartWithSize(cmd, &pty.Winsize{
-		Rows: uint16(rows),
-		Cols: uint16(cols),
-	})
+	ptmx, err := xpty.NewPty(cols, rows)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("create pty: %w", err)
+	}
+	if err := ptmx.Start(cmd); err != nil {
+		ptmx.Close()
+		return nil, fmt.Errorf("start command: %w", err)
 	}
 
 	// Determine the JSONL session directory for this pane.
@@ -562,17 +563,16 @@ const resizeSettleCount = 3
 // rendering after a resize, covering slow child redraws.
 const resizeSettleDuration = 150 * time.Millisecond
 
-// Resize updates the PTY and emulator dimensions. Calls pty.Setsize first so
-// the child process receives SIGWINCH before the emulator buffer reorganizes.
-// Holds renderMu across both operations to prevent readLoop from writing
-// old-geometry PTY output into a new-geometry emulator buffer (ini-yah).
+// Resize updates the PTY and emulator dimensions. Resizes the PTY first so
+// the child process receives the size change before the emulator buffer
+// reorganizes. Holds renderMu across both operations to prevent readLoop from
+// writing old-geometry PTY output into a new-geometry emulator buffer (ini-yah).
 func (p *Pane) Resize(rows, cols int) {
 	p.renderMu.Lock()
 	defer p.renderMu.Unlock()
-	pty.Setsize(p.ptmx, &pty.Winsize{
-		Rows: uint16(rows),
-		Cols: uint16(cols),
-	})
+	if p.ptmx != nil {
+		p.ptmx.Resize(cols, rows)
+	}
 	p.emu.Resize(cols, rows)
 	p.resizeSettleFrames = resizeSettleCount
 	p.resizeSettleDeadline = time.Now().Add(resizeSettleDuration)

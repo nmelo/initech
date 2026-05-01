@@ -1,11 +1,22 @@
 package tui
 
 import (
+	"os"
+	"os/exec"
 	"time"
 
 	"github.com/charmbracelet/x/vt"
 	"github.com/gdamore/tcell/v2"
 )
+
+// filePty wraps an *os.File to satisfy xpty.Pty for tests that inject a pipe
+// as the PTY handle. Only Read/Write/Close/Fd are real; other methods are stubs.
+type filePty struct{ *os.File }
+
+func (f *filePty) Resize(int, int) error                  { return nil }
+func (f *filePty) Size() (int, int, error)                { return 80, 24, nil }
+func (f *filePty) Name() string                           { return "test" }
+func (f *filePty) Start(*exec.Cmd) error                  { return nil }
 
 // testPane creates a minimal Pane for testing (no PTY or process).
 // Includes a SafeEmulator so layout, render, and visibility tests work.

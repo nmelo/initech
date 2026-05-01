@@ -131,7 +131,7 @@ func TestReadLoopAutoApprove_OpenCodeWritesApproval(t *testing.T) {
 		noBracketedPaste: true,
 		alive:            true,
 		emu:              emu,
-		ptmx:             ptyW,
+		ptmx:             &filePty{ptyW},
 	}
 
 	p.renderMu.Lock()
