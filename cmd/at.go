@@ -3,7 +3,6 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
-	"net"
 	"strings"
 	"time"
 
@@ -221,7 +220,7 @@ func ipcCallCustom(payload any) (*tui.IPCResponse, error) {
 	if err != nil {
 		return nil, err
 	}
-	conn, err := net.Dial("unix", sockPath)
+	conn, err := tui.DialIPC(sockPath)
 	if err != nil {
 		return nil, fmt.Errorf("connect to TUI: %w", err)
 	}

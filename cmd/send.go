@@ -3,10 +3,8 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
-	"net"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/nmelo/initech/internal/config"
 	"github.com/nmelo/initech/internal/tui"
@@ -89,10 +87,11 @@ func ipcCall(req tui.IPCRequest) (*tui.IPCResponse, error) {
 	return ipcCallSocket(sockPath, req)
 }
 
-// ipcCallSocket sends a request to the TUI's IPC socket at the given path.
-// Used by commands that run outside the TUI and derive the socket path from config.
+// ipcCallSocket sends a request to the TUI's IPC endpoint at the given path.
+// Uses tui.DialIPC which handles Unix sockets on POSIX and TCP via .port file
+// on Windows.
 func ipcCallSocket(sockPath string, req tui.IPCRequest) (*tui.IPCResponse, error) {
-	conn, err := net.Dial("unix", sockPath)
+	conn, err := tui.DialIPC(sockPath)
 	if err != nil {
 		return nil, fmt.Errorf("connect to TUI: %w", err)
 	}
@@ -130,12 +129,12 @@ func discoverSocket() (string, *config.Project, error) {
 		return "", nil, fmt.Errorf("load config: %w", err)
 	}
 	sockPath := tui.SocketPath(p.Root, p.Name)
-	// Probe the socket with a dial instead of stat. A stale socket file
+	// Probe the endpoint with a dial instead of stat. A stale socket file
 	// (from a crashed TUI) passes stat but fails to connect.
-	conn, dialErr := net.DialTimeout("unix", sockPath, 500*time.Millisecond)
+	conn, dialErr := tui.DialIPC(sockPath)
 	if dialErr != nil {
-		// Clean up the stale socket file so the next 'initech' can start
-		// without manual deletion (ini-db1).
+		// Clean up the stale socket/port file so the next 'initech' can
+		// start without manual deletion (ini-db1).
 		os.Remove(sockPath)
 		return "", nil, fmt.Errorf("session '%s' is not running (stale socket removed). Use 'initech' to start", p.Name)
 	}
