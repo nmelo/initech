@@ -243,7 +243,11 @@ func RunDaemon(cfg DaemonConfig) error {
 	fmt.Fprintf(os.Stdout, "initech serve %s\n", cfg.Version)
 	fmt.Fprintf(os.Stdout, "  peer:    %s\n", cfg.Project.PeerName)
 	fmt.Fprintf(os.Stdout, "  listen:  %s (%s)\n", cfg.Project.Listen, ln.Addr().String())
-	fmt.Fprintf(os.Stdout, "  agents:  %s (%d running)\n", strings.Join(agentNames, " "), len(agentNames))
+	if len(agentNames) > 0 {
+		fmt.Fprintf(os.Stdout, "  agents:  %s (%d running)\n", strings.Join(agentNames, " "), len(agentNames))
+	} else {
+		fmt.Fprintf(os.Stdout, "  agents:  (none)\n")
+	}
 	if sockPath != "" {
 		fmt.Fprintf(os.Stdout, "  socket:  %s\n", sockPath)
 	}
