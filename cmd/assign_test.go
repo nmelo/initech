@@ -1,10 +1,14 @@
 package cmd
 
 import (
+	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/nmelo/initech/internal/tui"
 )
 
 func TestTruncateTitle(t *testing.T) {
@@ -38,7 +42,7 @@ echo '[{"id":"ini-abc","title":"Fix the bug","status":"open"}]'
 	}
 	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
 
-	title, err := bdShowTitle("ini-abc")
+	title, err := bdShowTitleImpl("ini-abc")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -59,7 +63,7 @@ exit 1
 	}
 	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
 
-	_, err := bdShowTitle("ini-nonexistent")
+	_, err := bdShowTitleImpl("ini-nonexistent")
 	if err == nil {
 		t.Fatal("expected error for missing bead")
 	}
@@ -142,5 +146,233 @@ func TestBuildDispatchMessage_WithCustomMessage(t *testing.T) {
 	msg := buildDispatchMessage(successes, "Focus on edge cases.")
 	if !strings.Contains(msg, "Focus on edge cases.") {
 		t.Errorf("custom message not appended: %q", msg)
+	}
+}
+
+// resetAssignFlags resets the package-level flag vars to defaults.
+func resetAssignFlags(t *testing.T) {
+	t.Helper()
+	assignMessage = ""
+	t.Cleanup(func() { assignMessage = "" })
+}
+
+func TestRunAssign_SingleBeadSuccess(t *testing.T) {
+	skipWindows(t)
+	stubBdFns(t)
+	resetAssignFlags(t)
+
+	bdShowTitleFn = func(id string) (string, error) { return "Fix the bug", nil }
+	var claimedID, claimedAgent string
+	bdUpdateClaimFn = func(id, agent string) error {
+		claimedID = id
+		claimedAgent = agent
+		return nil
+	}
+
+	sockPath := startFakeIPC(t, tui.IPCResponse{OK: true})
+	t.Setenv("INITECH_SOCKET", sockPath)
+
+	var stderr bytes.Buffer
+	rootCmd.SetOut(&bytes.Buffer{})
+	rootCmd.SetErr(&stderr)
+	rootCmd.SetArgs([]string{"assign", "eng1", "ini-abc"})
+	defer rootCmd.SetArgs(nil)
+
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if claimedID != "ini-abc" {
+		t.Errorf("claimed ID = %q, want ini-abc", claimedID)
+	}
+	if claimedAgent != "eng1" {
+		t.Errorf("claimed agent = %q, want eng1", claimedAgent)
+	}
+	if !strings.Contains(stderr.String(), "assigned 1 bead(s) to eng1") {
+		t.Errorf("stderr = %q, want assignment confirmation", stderr.String())
+	}
+}
+
+func TestRunAssign_MultiBeadSuccess(t *testing.T) {
+	skipWindows(t)
+	stubBdFns(t)
+	resetAssignFlags(t)
+
+	bdShowTitleFn = func(id string) (string, error) { return "Task " + id, nil }
+
+	sockPath := startFakeIPC(t, tui.IPCResponse{OK: true})
+	t.Setenv("INITECH_SOCKET", sockPath)
+
+	var stderr bytes.Buffer
+	rootCmd.SetOut(&bytes.Buffer{})
+	rootCmd.SetErr(&stderr)
+	rootCmd.SetArgs([]string{"assign", "eng1", "ini-a", "ini-b", "ini-c"})
+	defer rootCmd.SetArgs(nil)
+
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(stderr.String(), "assigned 3 bead(s)") {
+		t.Errorf("stderr = %q, want 3 beads assigned", stderr.String())
+	}
+}
+
+func TestRunAssign_PartialFailure(t *testing.T) {
+	skipWindows(t)
+	stubBdFns(t)
+	resetAssignFlags(t)
+
+	bdShowTitleFn = func(id string) (string, error) {
+		if id == "ini-bad" {
+			return "", fmt.Errorf("bead %s not found", id)
+		}
+		return "Task " + id, nil
+	}
+
+	sockPath := startFakeIPC(t, tui.IPCResponse{OK: true})
+	t.Setenv("INITECH_SOCKET", sockPath)
+
+	var stderr bytes.Buffer
+	rootCmd.SetOut(&bytes.Buffer{})
+	rootCmd.SetErr(&stderr)
+	rootCmd.SetArgs([]string{"assign", "eng1", "ini-ok", "ini-bad"})
+	defer rootCmd.SetArgs(nil)
+
+	err := rootCmd.Execute()
+	if err != nil {
+		t.Fatalf("partial failure should succeed (1 of 2): %v", err)
+	}
+	if !strings.Contains(stderr.String(), "assigned 1 bead(s)") {
+		t.Errorf("stderr = %q, want 1 bead assigned", stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "failed: ini-bad") {
+		t.Errorf("stderr = %q, want failure listed", stderr.String())
+	}
+}
+
+func TestRunAssign_AllFail(t *testing.T) {
+	skipWindows(t)
+	stubBdFns(t)
+	resetAssignFlags(t)
+
+	bdShowTitleFn = func(id string) (string, error) {
+		return "", fmt.Errorf("bead %s not found", id)
+	}
+
+	sockPath := startFakeIPC(t, tui.IPCResponse{OK: true})
+	t.Setenv("INITECH_SOCKET", sockPath)
+
+	rootCmd.SetOut(&bytes.Buffer{})
+	rootCmd.SetErr(&bytes.Buffer{})
+	rootCmd.SetArgs([]string{"assign", "eng1", "ini-a", "ini-b"})
+	defer rootCmd.SetArgs(nil)
+
+	err := rootCmd.Execute()
+	if err == nil {
+		t.Fatal("expected error when all beads fail")
+	}
+	if !strings.Contains(err.Error(), "no beads could be assigned") {
+		t.Errorf("error = %q, want 'no beads could be assigned'", err.Error())
+	}
+}
+
+func TestRunAssign_DeduplicatesBeads(t *testing.T) {
+	skipWindows(t)
+	stubBdFns(t)
+	resetAssignFlags(t)
+
+	var claimCount int
+	bdShowTitleFn = func(id string) (string, error) { return "Task", nil }
+	bdUpdateClaimFn = func(id, agent string) error {
+		claimCount++
+		return nil
+	}
+
+	sockPath := startFakeIPC(t, tui.IPCResponse{OK: true})
+	t.Setenv("INITECH_SOCKET", sockPath)
+
+	var stderr bytes.Buffer
+	rootCmd.SetOut(&bytes.Buffer{})
+	rootCmd.SetErr(&stderr)
+	rootCmd.SetArgs([]string{"assign", "eng1", "ini-abc", "ini-abc", "ini-abc"})
+	defer rootCmd.SetArgs(nil)
+
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if claimCount != 1 {
+		t.Errorf("claimed %d times, want 1 (dedup)", claimCount)
+	}
+}
+
+func TestRunAssign_CrossMachineAgent(t *testing.T) {
+	skipWindows(t)
+	stubBdFns(t)
+	resetAssignFlags(t)
+
+	bdShowTitleFn = func(id string) (string, error) { return "Task", nil }
+
+	sockPath := startFakeIPC(t, tui.IPCResponse{OK: true})
+	t.Setenv("INITECH_SOCKET", sockPath)
+
+	var stderr bytes.Buffer
+	rootCmd.SetOut(&bytes.Buffer{})
+	rootCmd.SetErr(&stderr)
+	rootCmd.SetArgs([]string{"assign", "workbench:eng1", "ini-abc"})
+	defer rootCmd.SetArgs(nil)
+
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(stderr.String(), "assigned 1 bead(s) to eng1") {
+		t.Errorf("stderr = %q, want agent name without host prefix", stderr.String())
+	}
+}
+
+func TestRunAssign_ClaimFailure(t *testing.T) {
+	skipWindows(t)
+	stubBdFns(t)
+	resetAssignFlags(t)
+
+	bdShowTitleFn = func(id string) (string, error) { return "Task", nil }
+	bdUpdateClaimFn = func(id, agent string) error {
+		return fmt.Errorf("bd update failed: locked")
+	}
+
+	sockPath := startFakeIPC(t, tui.IPCResponse{OK: true})
+	t.Setenv("INITECH_SOCKET", sockPath)
+
+	rootCmd.SetOut(&bytes.Buffer{})
+	rootCmd.SetErr(&bytes.Buffer{})
+	rootCmd.SetArgs([]string{"assign", "eng1", "ini-abc"})
+	defer rootCmd.SetArgs(nil)
+
+	err := rootCmd.Execute()
+	if err == nil {
+		t.Fatal("expected error when claim fails")
+	}
+}
+
+func TestRunAssign_IPCDispatchFailure(t *testing.T) {
+	skipWindows(t)
+	stubBdFns(t)
+	resetAssignFlags(t)
+
+	bdShowTitleFn = func(id string) (string, error) { return "Task", nil }
+
+	// IPC returns error on send.
+	sockPath := startFakeIPC(t, tui.IPCResponse{OK: false, Error: "agent not found"})
+	t.Setenv("INITECH_SOCKET", sockPath)
+
+	rootCmd.SetOut(&bytes.Buffer{})
+	rootCmd.SetErr(&bytes.Buffer{})
+	rootCmd.SetArgs([]string{"assign", "eng1", "ini-abc"})
+	defer rootCmd.SetArgs(nil)
+
+	err := rootCmd.Execute()
+	if err == nil {
+		t.Fatal("expected error when IPC dispatch fails")
+	}
+	if !strings.Contains(err.Error(), "dispatch failed") {
+		t.Errorf("error = %q, want 'dispatch failed'", err.Error())
 	}
 }

@@ -314,3 +314,33 @@ func TestConfigValidate_BeadsPrefixWarn(t *testing.T) {
 		t.Errorf("should warn about missing beads prefix:\n%s", got)
 	}
 }
+
+func TestConfigValidate_NoProject(t *testing.T) {
+	dir := t.TempDir()
+	orig, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(orig)
+
+	rootCmd.SetOut(&bytes.Buffer{})
+	rootCmd.SetErr(&bytes.Buffer{})
+	rootCmd.SetArgs([]string{"config", "validate"})
+	defer rootCmd.SetArgs(nil)
+
+	err := rootCmd.Execute()
+	if err == nil {
+		t.Fatal("expected error when no project found")
+	}
+}
+
+func TestExpandRootForValidation(t *testing.T) {
+	if got := expandRootForValidation("/absolute/path"); got != "/absolute/path" {
+		t.Errorf("absolute path should pass through, got %q", got)
+	}
+	home, _ := os.UserHomeDir()
+	if got := expandRootForValidation("~/projects"); got != home+"/projects" {
+		t.Errorf("tilde expansion failed: got %q, want %q", got, home+"/projects")
+	}
+	if got := expandRootForValidation("relative/path"); got != "relative/path" {
+		t.Errorf("relative path should pass through, got %q", got)
+	}
+}

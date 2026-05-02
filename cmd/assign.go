@@ -39,8 +39,11 @@ func init() {
 	rootCmd.AddCommand(assignCmd)
 }
 
-// bdShowTitle runs bd show --json and extracts the title field.
-func bdShowTitle(beadID string) (string, error) {
+// bdShowTitleFn is the default implementation. Tests override this.
+var bdShowTitleFn = bdShowTitleImpl
+
+// bdShowTitleImpl runs bd show --json and extracts the title field.
+func bdShowTitleImpl(beadID string) (string, error) {
 	out, err := exec.Command("bd", "show", beadID, "--json").CombinedOutput()
 	if err != nil {
 		return "", fmt.Errorf("bead %s not found: %s", beadID, strings.TrimSpace(string(out)))
@@ -57,8 +60,11 @@ func bdShowTitle(beadID string) (string, error) {
 	return beads[0].Title, nil
 }
 
-// bdUpdateClaim runs bd update to set status and assignee.
-func bdUpdateClaim(beadID, agent string) error {
+// bdUpdateClaimFn is the default implementation. Tests override this.
+var bdUpdateClaimFn = bdUpdateClaimImpl
+
+// bdUpdateClaimImpl runs bd update to set status and assignee.
+func bdUpdateClaimImpl(beadID, agent string) error {
 	out, err := exec.Command("bd", "update", beadID, "--status", "in_progress", "--assignee", agent).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("bd update failed: %s", strings.TrimSpace(string(out)))
@@ -106,13 +112,13 @@ func runAssign(cmd *cobra.Command, args []string) error {
 	var successes []assignResult
 	var failures []string
 	for _, id := range beadIDs {
-		title, err := bdShowTitle(id)
+		title, err := bdShowTitleFn(id)
 		if err != nil {
 			fmt.Fprintf(cmd.ErrOrStderr(), "warning: %s\n", err)
 			failures = append(failures, id)
 			continue
 		}
-		if err := bdUpdateClaim(id, agent); err != nil {
+		if err := bdUpdateClaimFn(id, agent); err != nil {
 			fmt.Fprintf(cmd.ErrOrStderr(), "warning: %s: %s\n", id, err)
 			failures = append(failures, id)
 			continue

@@ -70,7 +70,7 @@ func runDeliver(cmd *cobra.Command, args []string) error {
 	}
 
 	// Step 1: Read bead info (fail fast if bead not found).
-	title, assignee, err := bdShowBead(beadID)
+	title, assignee, err := bdShowBeadFn(beadID)
 	if err != nil {
 		return err
 	}
@@ -87,11 +87,11 @@ func runDeliver(cmd *cobra.Command, args []string) error {
 			reason = "no reason provided"
 		}
 		// Stay in_progress, add failure comment.
-		if err := bdCommentAdd(beadID, agent, "FAILED: "+reason); err != nil {
+		if err := bdCommentAddFn(beadID, agent, "FAILED: "+reason); err != nil {
 			fmt.Fprintf(cmd.ErrOrStderr(), "warning: bd comment failed: %s\n", err)
 		}
 	} else {
-		if err := bdUpdateStatus(beadID, "ready_for_qa"); err != nil {
+		if err := bdUpdateStatusFn(beadID, "ready_for_qa"); err != nil {
 			return err
 		}
 	}
@@ -173,8 +173,11 @@ func runDeliver(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
+// bdShowBeadFn is the default implementation of bdShowBead. Tests override this.
+var bdShowBeadFn = bdShowBeadImpl
+
 // bdShowBead reads bead info and returns title and assignee.
-func bdShowBead(beadID string) (title, assignee string, err error) {
+func bdShowBeadImpl(beadID string) (title, assignee string, err error) {
 	out, err := exec.Command("bd", "show", beadID, "--json").CombinedOutput()
 	if err != nil {
 		return "", "", fmt.Errorf("bead %s not found: %s", beadID, strings.TrimSpace(string(out)))
@@ -196,8 +199,11 @@ func bdShowBead(beadID string) (title, assignee string, err error) {
 	return t, beads[0].Assignee, nil
 }
 
-// bdUpdateStatus runs bd update to set bead status.
-func bdUpdateStatus(beadID, status string) error {
+// bdUpdateStatusFn is the default implementation. Tests override this.
+var bdUpdateStatusFn = bdUpdateStatusImpl
+
+// bdUpdateStatusImpl runs bd update to set bead status.
+func bdUpdateStatusImpl(beadID, status string) error {
 	out, err := exec.Command("bd", "update", beadID, "--status", status).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("bd update failed: %s", strings.TrimSpace(string(out)))
@@ -205,8 +211,11 @@ func bdUpdateStatus(beadID, status string) error {
 	return nil
 }
 
-// bdCommentAdd runs bd comments add on a bead.
-func bdCommentAdd(beadID, author, comment string) error {
+// bdCommentAddFn is the default implementation. Tests override this.
+var bdCommentAddFn = bdCommentAddImpl
+
+// bdCommentAddImpl runs bd comments add on a bead.
+func bdCommentAddImpl(beadID, author, comment string) error {
 	args := []string{"comments", "add", beadID}
 	if author != "" {
 		args = append(args, "--author", author)

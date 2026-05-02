@@ -55,7 +55,7 @@ func runBead(cmd *cobra.Command, args []string) error {
 		if len(args) == 1 {
 			// Single bead: try to fetch title from bd for ribbon display.
 			id := args[0]
-			title, err := bdShowTitle(id)
+			title, err := bdShowTitleFn(id)
 			if err == nil && title != "" {
 				beadText = id + "\t" + truncateTitle(title, 80)
 			} else {

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	iexec "github.com/nmelo/initech/internal/exec"
+	"github.com/nmelo/initech/internal/tui"
 )
 
 // ── Command registration ────────────────────────────────────────────
@@ -223,6 +224,71 @@ func TestRunBead_AgentFromEnv(t *testing.T) {
 	// If it fails, it should be an IPC error, not an agent error.
 	if got := err.Error(); got == "no agent specified (set --agent or run inside a TUI pane where INITECH_AGENT is set)" {
 		t.Error("should have resolved agent from INITECH_AGENT env")
+	}
+}
+
+func TestRunBead_SingleWithTitle(t *testing.T) {
+	skipWindows(t)
+	stubBdFns(t)
+	bdShowTitleFn = func(id string) (string, error) { return "Fix the bug", nil }
+	sockPath := startFakeIPC(t, tui.IPCResponse{OK: true})
+	t.Setenv("INITECH_SOCKET", sockPath)
+	t.Setenv("INITECH_AGENT", "eng1")
+	beadAgent = ""
+	beadClear = false
+	defer func() { beadAgent = ""; beadClear = false }()
+
+	err := runBead(beadCmd, []string{"ini-abc"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestRunBead_SingleWithoutTitle(t *testing.T) {
+	skipWindows(t)
+	stubBdFns(t)
+	bdShowTitleFn = func(id string) (string, error) { return "", fmt.Errorf("bd not found") }
+	sockPath := startFakeIPC(t, tui.IPCResponse{OK: true})
+	t.Setenv("INITECH_SOCKET", sockPath)
+	t.Setenv("INITECH_AGENT", "eng1")
+	beadAgent = ""
+	beadClear = false
+	defer func() { beadAgent = ""; beadClear = false }()
+
+	err := runBead(beadCmd, []string{"ini-abc"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestRunBead_MultipleBead(t *testing.T) {
+	skipWindows(t)
+	stubBdFns(t)
+	sockPath := startFakeIPC(t, tui.IPCResponse{OK: true})
+	t.Setenv("INITECH_SOCKET", sockPath)
+	t.Setenv("INITECH_AGENT", "eng1")
+	beadAgent = ""
+	beadClear = false
+	defer func() { beadAgent = ""; beadClear = false }()
+
+	err := runBead(beadCmd, []string{"ini-a", "ini-b", "ini-c"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestRunBead_Clear(t *testing.T) {
+	skipWindows(t)
+	sockPath := startFakeIPC(t, tui.IPCResponse{OK: true})
+	t.Setenv("INITECH_SOCKET", sockPath)
+	t.Setenv("INITECH_AGENT", "eng1")
+	beadAgent = ""
+	beadClear = true
+	defer func() { beadAgent = ""; beadClear = false }()
+
+	err := runBead(beadCmd, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 

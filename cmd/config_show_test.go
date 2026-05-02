@@ -234,3 +234,140 @@ func TestResolveFieldValue_AllKeys(t *testing.T) {
 		}
 	}
 }
+
+func TestExpandRoleOverride_AllFields(t *testing.T) {
+	auto := true
+	ov := config.RoleOverride{
+		Command:          []string{"claude", "--fast"},
+		ClaudeArgs:       []string{"--continue"},
+		AgentType:        "claude_code",
+		Dir:              "/custom",
+		AutoApprove:      &auto,
+		SubmitKey:        "enter",
+		NoBracketedPaste: true,
+		TechStack:        "Go",
+		BuildCmd:         "make build",
+		TestCmd:          "make test",
+		RepoName:         "initech",
+	}
+	lines := expandRoleOverride("eng1", ov)
+	if len(lines) != 11 {
+		t.Errorf("expected 11 lines, got %d", len(lines))
+	}
+	keys := make(map[string]bool)
+	for _, l := range lines {
+		keys[l.Key] = true
+	}
+	for _, k := range []string{
+		"role_overrides.eng1.command",
+		"role_overrides.eng1.agent_type",
+		"role_overrides.eng1.auto_approve",
+		"role_overrides.eng1.tech_stack",
+		"role_overrides.eng1.repo_name",
+	} {
+		if !keys[k] {
+			t.Errorf("missing key %q in output", k)
+		}
+	}
+}
+
+func TestExpandRoleOverride_EmptyOverride(t *testing.T) {
+	lines := expandRoleOverride("eng1", config.RoleOverride{})
+	if len(lines) != 0 {
+		t.Errorf("empty override should produce 0 lines, got %d", len(lines))
+	}
+}
+
+func TestRunConfigShow_ViaCommand(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "initech.yaml")
+	cfg := fmt.Sprintf("project: showcmd\nroot: %s\nroles:\n  - eng1\n", dir)
+	os.WriteFile(cfgPath, []byte(cfg), 0644)
+	os.MkdirAll(filepath.Join(dir, "eng1"), 0755)
+
+	orig, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(orig)
+
+	var buf bytes.Buffer
+	rootCmd.SetOut(&buf)
+	rootCmd.SetErr(&buf)
+	rootCmd.SetArgs([]string{"config", "show"})
+	defer rootCmd.SetArgs(nil)
+
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(buf.String(), "showcmd") {
+		t.Errorf("output should contain project name, got: %s", buf.String())
+	}
+}
+
+func TestRunConfigShow_WithReveal(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "initech.yaml")
+	cfg := fmt.Sprintf("project: revealpj\nroot: %s\nroles:\n  - eng1\ntoken: secret123\n", dir)
+	os.WriteFile(cfgPath, []byte(cfg), 0600)
+
+	orig, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(orig)
+
+	var buf bytes.Buffer
+	rootCmd.SetOut(&buf)
+	rootCmd.SetErr(&buf)
+	rootCmd.SetArgs([]string{"config", "show", "--reveal"})
+	defer rootCmd.SetArgs(nil)
+
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(buf.String(), "secret123") {
+		t.Errorf("--reveal should show token value, got: %s", buf.String())
+	}
+}
+
+func TestParseYAMLKeys(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "initech.yaml")
+	yaml := "project: test\nroot: /tmp\nroles:\n  - eng1\nremotes:\n  workbench:\n    addr: 192.168.1.100\n"
+	os.WriteFile(cfgPath, []byte(yaml), 0644)
+
+	keys, err := parseYAMLKeys(cfgPath)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for _, k := range []string{"project", "root", "roles", "remotes.workbench.addr"} {
+		if !keys[k] {
+			t.Errorf("missing key %q", k)
+		}
+	}
+}
+
+func TestResolveAllFields(t *testing.T) {
+	proj := &config.Project{
+		Name:  "test",
+		Root:  "/tmp",
+		Roles: []string{"eng1"},
+		RoleOverrides: map[string]config.RoleOverride{
+			"eng1": {AgentType: "claude_code"},
+		},
+		Remotes: map[string]config.Remote{
+			"wb": {Addr: "192.168.1.100"},
+		},
+	}
+	yamlKeys := map[string]bool{"project": true, "root": true, "roles": true}
+	lines := resolveAllFields(proj, yamlKeys)
+	if len(lines) == 0 {
+		t.Error("expected config lines")
+	}
+	found := false
+	for _, l := range lines {
+		if l.Key == "project" && l.Value == "test" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("expected 'project' key with value 'test'")
+	}
+}

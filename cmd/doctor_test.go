@@ -2,11 +2,13 @@ package cmd
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -359,3 +361,207 @@ func TestFileExists(t *testing.T) {
 		t.Error("fileExists should return true after creating file")
 	}
 }
+
+// ── formatDoctorReport + helpers ────────────────────────────────────
+
+func TestFormatDoctorReport_AllPassed(t *testing.T) {
+	var buf bytes.Buffer
+	report := doctorReport{
+		Prereqs: []checkResult{
+			{Label: "claude", Status: "OK", Detail: "1.0.0 (/usr/bin/claude)"},
+		},
+		Environment: []checkResult{
+			{Label: "OS", Detail: "darwin"},
+		},
+	}
+	err := formatDoctorReport(&buf, report)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(buf.String(), "All checks passed") {
+		t.Errorf("output missing 'All checks passed': %s", buf.String())
+	}
+}
+
+func TestFormatDoctorReport_RequiredMissing(t *testing.T) {
+	var buf bytes.Buffer
+	report := doctorReport{
+		Prereqs: []checkResult{
+			{Label: "claude", Status: "FAIL", Detail: "not found"},
+		},
+		Environment: []checkResult{},
+	}
+	err := formatDoctorReport(&buf, report)
+	if err == nil {
+		t.Fatal("expected error for missing required prereq")
+	}
+}
+
+func TestFormatDoctorReport_WithWarnings(t *testing.T) {
+	var buf bytes.Buffer
+	report := doctorReport{
+		Prereqs: []checkResult{
+			{Label: "claude", Status: "OK", Detail: "1.0"},
+			{Label: "bd", Status: "WARN", Detail: "not found"},
+		},
+		Environment: []checkResult{},
+	}
+	err := formatDoctorReport(&buf, report)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(buf.String(), "warning") {
+		t.Errorf("output should mention warnings: %s", buf.String())
+	}
+}
+
+func TestFormatDoctorReport_WithProject(t *testing.T) {
+	var buf bytes.Buffer
+	report := doctorReport{
+		Prereqs:     []checkResult{{Label: "claude", Status: "OK", Detail: "1.0"}},
+		Project:     []checkResult{{Label: "Config", Status: "OK", Detail: "valid"}},
+		ProjectName: "testproj",
+		ProjectRoot: "/tmp/testproj",
+		Environment: []checkResult{},
+	}
+	err := formatDoctorReport(&buf, report)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(buf.String(), "testproj") {
+		t.Errorf("output should mention project name: %s", buf.String())
+	}
+}
+
+func TestFormatDoctorReport_WithRemotes(t *testing.T) {
+	var buf bytes.Buffer
+	report := doctorReport{
+		Prereqs:     []checkResult{{Label: "claude", Status: "OK", Detail: "1.0"}},
+		Remotes:     []checkResult{{Label: "workbench", Status: "OK", Detail: "connected"}},
+		Environment: []checkResult{},
+	}
+	err := formatDoctorReport(&buf, report)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(buf.String(), "Remote") {
+		t.Errorf("output should have Remote section: %s", buf.String())
+	}
+}
+
+func TestPrintCheck_Statuses(t *testing.T) {
+	for _, status := range []string{"OK", "WARN", "FAIL", "NOTE"} {
+		var buf bytes.Buffer
+		printCheck(&buf, "test", "detail", status)
+		if buf.Len() == 0 {
+			t.Errorf("printCheck(%q) produced no output", status)
+		}
+	}
+}
+
+func TestPrintEnv(t *testing.T) {
+	var buf bytes.Buffer
+	printEnv(&buf, "OS", "darwin")
+	if buf.Len() == 0 {
+		t.Error("printEnv produced no output")
+	}
+}
+
+func TestRunDoctorReport_NoProject(t *testing.T) {
+	dir := t.TempDir()
+	env := doctorEnv{
+		LookPath:   func(name string) (string, error) { return "/usr/bin/" + name, nil },
+		GetVersion: func(cmd []string) string { return "1.0" },
+		WorkDir:    dir,
+	}
+	report := runDoctorReport(env)
+	if len(report.Prereqs) == 0 {
+		t.Error("expected prereq results")
+	}
+	if report.ProjectName != "" {
+		t.Errorf("expected no project, got %q", report.ProjectName)
+	}
+	if len(report.Environment) == 0 {
+		t.Error("expected environment results")
+	}
+}
+
+func TestRunDoctorReport_WithProject(t *testing.T) {
+	dir := t.TempDir()
+	cfg := fmt.Sprintf("project: testdoc\nroot: %s\nroles:\n  - eng1\n", dir)
+	os.MkdirAll(filepath.Join(dir, "eng1"), 0755)
+	os.WriteFile(filepath.Join(dir, "initech.yaml"), []byte(cfg), 0644)
+
+	env := doctorEnv{
+		LookPath:   func(name string) (string, error) { return "/usr/bin/" + name, nil },
+		GetVersion: func(cmd []string) string { return "1.0" },
+		WorkDir:    dir,
+	}
+	report := runDoctorReport(env)
+	if report.ProjectName != "testdoc" {
+		t.Errorf("ProjectName = %q, want 'testdoc'", report.ProjectName)
+	}
+	if len(report.Project) == 0 {
+		t.Error("expected project check results")
+	}
+}
+
+func TestRunDoctor_ViaCommand(t *testing.T) {
+	// Exercise the full runDoctor -> runDoctorReport -> formatDoctorReport path.
+	// Run from a temp dir so no real project is found.
+	dir := t.TempDir()
+	orig, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(orig)
+
+	var buf bytes.Buffer
+	rootCmd.SetOut(&buf)
+	rootCmd.SetErr(&buf)
+	rootCmd.SetArgs([]string{"doctor"})
+	defer rootCmd.SetArgs(nil)
+
+	// May return error if required prereqs are missing in CI, that's OK.
+	rootCmd.Execute()
+	if buf.Len() == 0 {
+		t.Error("doctor should produce output")
+	}
+}
+
+func TestRunDoctor_WithProject(t *testing.T) {
+	dir := t.TempDir()
+	cfg := fmt.Sprintf("project: testdoc\nroot: %s\nroles:\n  - eng1\n", dir)
+	os.MkdirAll(filepath.Join(dir, "eng1"), 0755)
+	os.WriteFile(filepath.Join(dir, "initech.yaml"), []byte(cfg), 0644)
+
+	orig, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(orig)
+
+	var buf bytes.Buffer
+	rootCmd.SetOut(&buf)
+	rootCmd.SetErr(&buf)
+	rootCmd.SetArgs([]string{"doctor"})
+	defer rootCmd.SetArgs(nil)
+
+	rootCmd.Execute()
+	if !strings.Contains(buf.String(), "testdoc") {
+		t.Errorf("doctor output should mention project name, got: %s", buf.String())
+	}
+}
+
+func TestRunEnvironmentChecks(t *testing.T) {
+	results := runEnvironmentChecks()
+	if len(results) < 4 {
+		t.Errorf("expected at least 4 environment checks, got %d", len(results))
+	}
+	labels := make(map[string]bool)
+	for _, r := range results {
+		labels[r.Label] = true
+	}
+	for _, expected := range []string{"TERM", "Terminal", "Colors", "Shell", "OS"} {
+		if !labels[expected] {
+			t.Errorf("missing environment check: %s", expected)
+		}
+	}
+}
+
