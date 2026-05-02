@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/nmelo/initech/internal/config"
@@ -92,9 +93,13 @@ func runServeZeroConfig(cmd *cobra.Command, wd string) error {
 	if token == "" {
 		token = os.Getenv("INITECH_TOKEN")
 	}
+	// tokenCreated reports whether the token was freshly generated on this
+	// run (true) or read from .initech/token (false). The connection snippet
+	// is only printed on first run to avoid noise on subsequent restarts.
+	tokenCreated := false
 	if token == "" {
 		var err error
-		token, err = tui.ReadOrCreateToken(initechDir)
+		token, tokenCreated, err = tui.ReadOrCreateTokenStatus(initechDir)
 		if err != nil {
 			return err
 		}
@@ -119,15 +124,10 @@ func runServeZeroConfig(cmd *cobra.Command, wd string) error {
 	out := cmd.OutOrStdout()
 	fmt.Fprintf(out, "Token: %s\n", token)
 	fmt.Fprintf(out, "Listening on %s\n", listen)
-	fmt.Fprintln(out)
-	fmt.Fprintln(out, "Add to your local initech.yaml:")
-	fmt.Fprintln(out)
-	fmt.Fprintln(out, "remotes:")
-	fmt.Fprintf(out, "  %s:\n", hostname)
-	fmt.Fprintf(out, "    addr: <this-machine-ip>:%d\n", servePort)
-	fmt.Fprintf(out, "    token: %s\n", token)
-	fmt.Fprintln(out, "    roles: []")
-	fmt.Fprintln(out)
+
+	if tokenCreated {
+		printConnectionSnippet(out, hostname, tui.LANIPv4(), servePort, token)
+	}
 
 	return tui.RunDaemon(tui.DaemonConfig{
 		Project: proj,
@@ -135,4 +135,19 @@ func runServeZeroConfig(cmd *cobra.Command, wd string) error {
 		Version: Version,
 		Verbose: verbose,
 	})
+}
+
+// printConnectionSnippet writes a ready-to-paste YAML block to out so the
+// operator can copy it directly into their local initech.yaml. Only printed
+// on first run (when the token is freshly generated).
+func printConnectionSnippet(out io.Writer, hostname, ip string, port int, token string) {
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, "Add this to your local initech.yaml:")
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, "remotes:")
+	fmt.Fprintf(out, "  %s:\n", hostname)
+	fmt.Fprintf(out, "    addr: %s:%d\n", ip, port)
+	fmt.Fprintf(out, "    token: %s\n", token)
+	fmt.Fprintln(out, "    roles: []   # Add role names here")
+	fmt.Fprintln(out)
 }

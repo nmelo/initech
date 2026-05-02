@@ -125,3 +125,68 @@ func TestServeDefaultPort(t *testing.T) {
 		t.Errorf("default port = %d, want 9090", servePort)
 	}
 }
+
+func TestReadOrCreateTokenStatus_FirstRunReportsCreated(t *testing.T) {
+	skipWindows(t)
+	dir := filepath.Join(t.TempDir(), ".initech")
+
+	tok, created, err := tui.ReadOrCreateTokenStatus(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !created {
+		t.Error("first run should report created=true")
+	}
+	if tok == "" {
+		t.Error("token should be non-empty")
+	}
+}
+
+func TestReadOrCreateTokenStatus_SecondRunReportsExisting(t *testing.T) {
+	skipWindows(t)
+	dir := filepath.Join(t.TempDir(), ".initech")
+
+	if _, created, err := tui.ReadOrCreateTokenStatus(dir); err != nil || !created {
+		t.Fatalf("first run: created=%v err=%v", created, err)
+	}
+
+	tok, created, err := tui.ReadOrCreateTokenStatus(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if created {
+		t.Error("second run should report created=false")
+	}
+	if tok == "" {
+		t.Error("token should be non-empty on read")
+	}
+}
+
+func TestPrintConnectionSnippet_ContainsExpectedFields(t *testing.T) {
+	var buf strings.Builder
+	printConnectionSnippet(&buf, "workbench", "192.168.1.50", 9090, "TOK-abc")
+	out := buf.String()
+
+	for _, want := range []string{
+		"remotes:",
+		"workbench:",
+		"addr: 192.168.1.50:9090",
+		"token: TOK-abc",
+		"roles: []",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("snippet missing %q\nfull output:\n%s", want, out)
+		}
+	}
+}
+
+func TestLANIPv4_NonLoopback(t *testing.T) {
+	ip := tui.LANIPv4()
+	if ip == "" {
+		t.Fatal("LANIPv4 should never return empty")
+	}
+	// Either a real LAN IP or the 0.0.0.0 fallback. Loopback should never appear.
+	if strings.HasPrefix(ip, "127.") {
+		t.Errorf("LANIPv4 returned loopback %q", ip)
+	}
+}
