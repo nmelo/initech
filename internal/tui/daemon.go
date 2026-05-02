@@ -46,8 +46,10 @@ type DaemonConfig struct {
 // Daemon manages headless agent panes and streams them to a yamux client.
 type Daemon struct {
 	panes      []*Pane
+	panesMu    sync.Mutex            // Protects panes/ringBufs/multiSinks for hot-add/remove via control commands.
 	ringBufs   map[string]*RingBuf   // Per-pane ring buffer keyed by agent name.
 	multiSinks map[string]*MultiSink // Per-pane fan-out sink keyed by agent name.
+	ownership  *agentOwnership       // Tracks which client pushed which agent (zero-config remote).
 	project    *config.Project
 	listener   net.Listener
 	version    string
@@ -159,6 +161,7 @@ func RunDaemon(cfg DaemonConfig) error {
 		version:    cfg.Version,
 		ringBufs:   make(map[string]*RingBuf),
 		multiSinks: make(map[string]*MultiSink),
+		ownership:  newAgentOwnership(),
 		timers:     NewTimerStore(filepath.Join(cfg.Project.Root, ".initech", "timers.json")),
 	}
 
@@ -672,7 +675,7 @@ func (d *Daemon) handleConnection(conn net.Conn) {
 	}
 
 	// Handle control commands until client disconnects.
-	d.handleControlStream(ctrl, scanner)
+	d.handleControlStream(ctrl, scanner, hello.PeerName)
 
 	// Wait for streaming goroutines to finish.
 	wg.Wait()
@@ -729,8 +732,9 @@ func (d *Daemon) streamAgentLive(p *Pane, stream net.Conn) {
 }
 
 // handleControlStream reads JSON commands from the control stream and
-// dispatches them to agents.
-func (d *Daemon) handleControlStream(ctrl net.Conn, scanner *bufio.Scanner) {
+// dispatches them to agents. peerName identifies the connected client and
+// is used for ownership checks on configure_agent / stop_agent / restart_agent.
+func (d *Daemon) handleControlStream(ctrl net.Conn, scanner *bufio.Scanner, peerName string) {
 	// respond writes a ControlResp with the request's ID echoed back for
 	// correlation. Returns false if the write fails (dead control stream).
 	respond := func(id string, resp ControlResp) bool {
@@ -895,6 +899,21 @@ func (d *Daemon) handleControlStream(ctrl net.Conn, scanner *bufio.Scanner) {
 
 		case "ping":
 			respond(cmd.ID, ControlResp{OK: true, Data: "pong"})
+
+		case "configure_agent":
+			if !respond(cmd.ID, d.handleConfigureAgent(line, peerName)) {
+				return
+			}
+
+		case "stop_agent":
+			if !respond(cmd.ID, d.handleStopAgent(line, peerName)) {
+				return
+			}
+
+		case "restart_agent":
+			if !respond(cmd.ID, d.handleRestartAgent(line, peerName)) {
+				return
+			}
 
 		default:
 			if !respond(cmd.ID, ControlResp{Error: fmt.Sprintf("unknown action %q", cmd.Action)}) {
