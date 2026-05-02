@@ -164,5 +164,24 @@ func connectPeer(peerName string, remote config.Remote, project *config.Project)
 		LogDebug("remote", "agent connected", "peer", serverPeerName, "agent", agentName)
 	}
 
+	// Zero-config push: if remote.Roles is configured, send configure_agent
+	// for each role and stop_agent for orphans (running but no longer in
+	// config). The daemon's idempotent configure_agent handles same-owner
+	// re-pushes by refreshing CLAUDE.md without disrupting running agents.
+	//
+	// Note: agents created by configure_agent in this call do not get yamux
+	// streams in the current connection — the existing handshake already
+	// allocated streams for the pre-existing pane set. They appear on the
+	// next reconnect via hello_ok's running list. (Stream-on-create wiring
+	// is tracked in ini-4q9.2.1.)
+	if len(remote.Roles) > 0 {
+		owned := make(map[string]bool, len(helloOK.Agents))
+		for _, ag := range helloOK.Agents {
+			owned[ag.Name] = true
+		}
+		configured, stopped := pushRolesToPeer(mux, peerName, remote, project, helloOK.Agents, owned)
+		LogInfo("remote", "push complete", "peer", peerName, "configured", configured, "stopped", stopped)
+	}
+
 	return &peerConn{session: session, mux: mux, panes: panes}, nil
 }

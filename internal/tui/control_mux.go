@@ -90,6 +90,64 @@ func (m *ControlMux) Request(cmd ControlCmd) (ControlResp, error) {
 	}
 }
 
+// RequestRaw sends an arbitrary JSON-encodable payload on the control stream
+// and waits for the correlated response. The payload must serialise to a JSON
+// object with a top-level "id" field; if the field is empty, RequestRaw
+// generates a fresh ID and overwrites it via a marshal-then-merge pass.
+//
+// Used for control commands whose payload struct is not ControlCmd (for
+// example, ConfigureAgentCmd and StopAgentCmd).
+func (m *ControlMux) RequestRaw(payload any) (ControlResp, error) {
+	id := fmt.Sprintf("r%d", m.nextID.Add(1))
+
+	// Marshal once to a generic map so we can inject/override the ID without
+	// reflecting on the caller's struct. This keeps the mux agnostic to the
+	// concrete payload type.
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return ControlResp{}, fmt.Errorf("marshal payload: %w", err)
+	}
+	var asMap map[string]any
+	if err := json.Unmarshal(raw, &asMap); err != nil {
+		return ControlResp{}, fmt.Errorf("payload must be a JSON object: %w", err)
+	}
+	asMap["id"] = id
+	data, err := json.Marshal(asMap)
+	if err != nil {
+		return ControlResp{}, fmt.Errorf("re-marshal with id: %w", err)
+	}
+
+	ch := make(chan ControlResp, 1)
+	m.pendingMu.Lock()
+	m.pending[id] = ch
+	m.pendingMu.Unlock()
+	defer func() {
+		m.pendingMu.Lock()
+		delete(m.pending, id)
+		m.pendingMu.Unlock()
+	}()
+
+	m.writeMu.Lock()
+	m.conn.SetWriteDeadline(time.Now().Add(networkWriteTimeout))
+	_, werr := m.conn.Write(data)
+	if werr == nil {
+		_, werr = m.conn.Write([]byte("\n"))
+	}
+	m.writeMu.Unlock()
+	if werr != nil {
+		return ControlResp{}, fmt.Errorf("write: %w", werr)
+	}
+
+	select {
+	case resp := <-ch:
+		return resp, nil
+	case <-m.done:
+		return ControlResp{}, fmt.Errorf("control stream closed")
+	case <-time.After(10 * time.Second):
+		return ControlResp{}, fmt.Errorf("request timeout")
+	}
+}
+
 // Events returns a channel that receives unsolicited server-pushed messages
 // (responses with no ID, such as agent_died or timer_fired events).
 func (m *ControlMux) Events() <-chan ControlResp {

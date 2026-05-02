@@ -53,6 +53,11 @@ type RemotePane struct {
 	pendingCols int
 }
 
+// Mux exposes the shared control multiplexer for this RemotePane's peer
+// connection. Callers (e.g. :remote-stop) use it to send control commands
+// such as stop_agent that target the remote daemon directly.
+func (rp *RemotePane) Mux() *ControlMux { return rp.mux }
+
 // NewRemotePane creates a RemotePane connected to a remote agent.
 // The mux is shared across all RemotePanes from the same peer connection.
 // The caller must call Start() to begin the readLoop goroutine.

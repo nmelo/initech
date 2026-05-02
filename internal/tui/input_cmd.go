@@ -215,8 +215,52 @@ func (t *TUI) executeConfirmed() bool {
 				t.cmd.error = fmt.Sprintf("restart failed: %v", err)
 			}
 		}
+	case "remote-stop":
+		if len(parts) < 2 {
+			t.cmd.error = "remote-stop: peer name required"
+			return false
+		}
+		stopped, err := t.remoteStopPeer(parts[1])
+		if err != nil {
+			t.cmd.error = fmt.Sprintf("remote-stop: %v", err)
+			return false
+		}
+		t.cmd.error = fmt.Sprintf("remote-stop %s: %d agent(s) stopped", parts[1], stopped)
 	}
 	return false
+}
+
+// remoteStopPeer sends stop_agent for every RemotePane belonging to peerName.
+// Returns the number of successful stops.
+func (t *TUI) remoteStopPeer(peerName string) (int, error) {
+	var targets []*RemotePane
+	for _, p := range t.panes {
+		if rp, ok := p.(*RemotePane); ok && rp.Host() == peerName {
+			targets = append(targets, rp)
+		}
+	}
+	if len(targets) == 0 {
+		return 0, fmt.Errorf("no agents from peer %q", peerName)
+	}
+	stopped := 0
+	for _, rp := range targets {
+		mux := rp.Mux()
+		if mux == nil {
+			continue
+		}
+		stopCmd := StopAgentCmd{Action: "stop_agent", Name: rp.Name()}
+		resp, err := mux.RequestRaw(stopCmd)
+		if err != nil {
+			LogWarn("remote-stop", "send failed", "peer", peerName, "agent", rp.Name(), "err", err)
+			continue
+		}
+		if !resp.OK {
+			LogWarn("remote-stop", "rejected", "peer", peerName, "agent", rp.Name(), "err", resp.Error)
+			continue
+		}
+		stopped++
+	}
+	return stopped, nil
 }
 
 // tabComplete handles Tab keypresses in the command modal, completing agent
@@ -331,6 +375,7 @@ var commandNames = []string{
 	"grid", "focus", "zoom", "panel", "main", "live", "pin", "unpin",
 	"layout", "restart", "patrol", "top", "add", "remove",
 	"log", "help", "quit", "events", "agents", "mcp", "web",
+	"remote-stop",
 }
 
 // commandAliases maps short aliases to their canonical display form.

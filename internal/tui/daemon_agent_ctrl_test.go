@@ -124,6 +124,107 @@ func TestHandleConfigureAgent_Collision(t *testing.T) {
 	}
 }
 
+func TestHandleConfigureAgent_IdempotentSameOwner(t *testing.T) {
+	d := newTestDaemon(t)
+	dir := filepath.Join(d.project.Root, "eng2")
+
+	first, _ := json.Marshal(ConfigureAgentCmd{
+		Action: "configure_agent", Name: "eng2",
+		Command:  []string{"/bin/sh", "-c", "sleep 30"},
+		Dir:      dir,
+		ClaudeMD: "# original\n",
+	})
+	if r := d.handleConfigureAgent(first, "alice"); !r.OK {
+		t.Fatalf("first push failed: %v", r.Error)
+	}
+	defer d.removePane("eng2")
+
+	// Same owner re-pushes with new CLAUDE.md content. Should succeed
+	// without collision and overwrite the file.
+	second, _ := json.Marshal(ConfigureAgentCmd{
+		Action: "configure_agent", Name: "eng2",
+		Command:  []string{"/bin/sh", "-c", "sleep 30"},
+		Dir:      dir,
+		ClaudeMD: "# updated\n",
+	})
+	r := d.handleConfigureAgent(second, "alice")
+	if !r.OK {
+		t.Fatalf("idempotent re-push should succeed: %v", r.Error)
+	}
+	if r.Action != "configure_agent_ok" {
+		t.Errorf("response action = %q, want configure_agent_ok", r.Action)
+	}
+
+	got, _ := os.ReadFile(filepath.Join(dir, "CLAUDE.md"))
+	if string(got) != "# updated\n" {
+		t.Errorf("CLAUDE.md = %q, want updated content", got)
+	}
+}
+
+func TestHandleConfigureAgent_DifferentOwnerStillCollides(t *testing.T) {
+	d := newTestDaemon(t)
+	dir := filepath.Join(d.project.Root, "eng2")
+
+	first, _ := json.Marshal(ConfigureAgentCmd{
+		Action: "configure_agent", Name: "eng2",
+		Command: []string{"/bin/sh", "-c", "sleep 30"}, Dir: dir,
+	})
+	if r := d.handleConfigureAgent(first, "alice"); !r.OK {
+		t.Fatalf("first push failed: %v", r.Error)
+	}
+	defer d.removePane("eng2")
+
+	// Bob tries to push the same agent — should still get a collision error.
+	r := d.handleConfigureAgent(first, "bob")
+	if r.OK {
+		t.Error("different-owner push should be rejected")
+	}
+	if !strings.Contains(r.Error, "already exists") {
+		t.Errorf("error = %q, want 'already exists'", r.Error)
+	}
+}
+
+func TestRefreshClaudeMD_NoWriteIfUnchanged(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "eng2")
+	os.MkdirAll(dir, 0755)
+	mdPath := filepath.Join(dir, "CLAUDE.md")
+	content := "# stable content\n"
+	os.WriteFile(mdPath, []byte(content), 0644)
+
+	// Capture mtime.
+	info1, _ := os.Stat(mdPath)
+	mtime1 := info1.ModTime()
+
+	// Refresh with identical content — should not rewrite.
+	time.Sleep(10 * time.Millisecond)
+	err := refreshClaudeMD(ConfigureAgentCmd{Dir: dir, ClaudeMD: content})
+	if err != nil {
+		t.Fatalf("refresh: %v", err)
+	}
+
+	info2, _ := os.Stat(mdPath)
+	if !info2.ModTime().Equal(mtime1) {
+		t.Error("file should not be rewritten when content is unchanged")
+	}
+}
+
+func TestRefreshClaudeMD_WritesWhenDifferent(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "eng2")
+	os.MkdirAll(dir, 0755)
+	mdPath := filepath.Join(dir, "CLAUDE.md")
+	os.WriteFile(mdPath, []byte("# old\n"), 0644)
+
+	err := refreshClaudeMD(ConfigureAgentCmd{Dir: dir, ClaudeMD: "# new\n"})
+	if err != nil {
+		t.Fatalf("refresh: %v", err)
+	}
+
+	got, _ := os.ReadFile(mdPath)
+	if string(got) != "# new\n" {
+		t.Errorf("CLAUDE.md = %q, want '# new\\n'", got)
+	}
+}
+
 func TestHandleStopAgent_OwnershipEnforced(t *testing.T) {
 	d := newTestDaemon(t)
 	dir := filepath.Join(d.project.Root, "eng2")
