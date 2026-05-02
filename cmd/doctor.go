@@ -24,14 +24,21 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var doctorRemoteFlag string
+
 var doctorCmd = &cobra.Command{
 	Use:   "doctor",
 	Short: "Check prerequisites and project health",
-	Long:  `Checks prerequisites, project configuration, and terminal environment. Surfaces problems before starting initech.`,
-	RunE:  runDoctor,
+	Long: `Checks prerequisites, project configuration, and terminal environment. Surfaces problems before starting initech.
+
+Use --remote <name> to health-check a single remote peer: dials the daemon,
+performs the hello handshake, verifies the auth token, and reports protocol
+version + running agent count.`,
+	RunE: runDoctor,
 }
 
 func init() {
+	doctorCmd.Flags().StringVar(&doctorRemoteFlag, "remote", "", "Health-check a single remote peer by name (from initech.yaml)")
 	rootCmd.AddCommand(doctorCmd)
 }
 
@@ -460,6 +467,9 @@ func runEnvironmentChecks() []checkResult {
 
 func runDoctor(cmd *cobra.Command, args []string) error {
 	env := defaultDoctorEnv()
+	if doctorRemoteFlag != "" {
+		return runDoctorRemote(env, doctorRemoteFlag, cmd.OutOrStdout())
+	}
 	report := runDoctorReport(env)
 	return formatDoctorReport(cmd.OutOrStdout(), report)
 }
