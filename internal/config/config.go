@@ -92,8 +92,19 @@ func (p *Project) IsTelemetryEnabled() bool {
 
 // Remote describes a remote initech peer for cross-machine coordination.
 type Remote struct {
-	Addr  string `yaml:"addr"`            // host:port of the remote peer.
-	Token string `yaml:"token,omitempty"` // Auth token for this remote (overrides project-level token).
+	Addr  string   `yaml:"addr"`            // host:port of the remote peer.
+	Token string   `yaml:"token,omitempty"` // Auth token for this remote (overrides project-level token).
+	Roles []string `yaml:"roles,omitempty"` // Roles to push to this remote daemon (zero-config remote).
+	Root  string   `yaml:"root,omitempty"`  // Workspace base path on remote. Default "/opt/initech/<project>".
+}
+
+// EffectiveRoot returns the workspace base path on the remote, defaulting to
+// "/opt/initech/<project>" when Root is empty.
+func (r Remote) EffectiveRoot(projectName string) string {
+	if r.Root != "" {
+		return r.Root
+	}
+	return "/opt/initech/" + projectName
 }
 
 // Repo is a code repository that agents get as a git submodule.
@@ -428,9 +439,23 @@ func Validate(p *Project) error {
 	if p.PeerName != "" && !peerNameRe.MatchString(p.PeerName) {
 		return fmt.Errorf("invalid peer_name %q: must contain only letters, digits, or hyphens (no colons)", p.PeerName)
 	}
+	// Track which remote owns each pushed role, to detect ambiguous overlaps.
+	roleOwner := make(map[string]string)
 	for name, remote := range p.Remotes {
 		if remote.Addr == "" {
 			return fmt.Errorf("remote %q has empty addr", name)
+		}
+		for _, r := range remote.Roles {
+			if r == "" {
+				return fmt.Errorf("remote %q has empty role name", name)
+			}
+			if !roleNameRe.MatchString(r) {
+				return fmt.Errorf("remote %q has invalid role name %q: must contain only letters, digits, hyphens, or underscores", name, r)
+			}
+			if prev, ok := roleOwner[r]; ok && prev != name {
+				fmt.Fprintf(os.Stderr, "Warning: role %q appears in remotes.%s.roles and remotes.%s.roles. Push will be ambiguous; only one daemon will own this role.\n", r, prev, name)
+			}
+			roleOwner[r] = name
 		}
 	}
 

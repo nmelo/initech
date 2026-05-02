@@ -686,6 +686,107 @@ func TestValidate_RemoteEmptyAddr(t *testing.T) {
 	}
 }
 
+func TestValidate_RemoteRolesValid(t *testing.T) {
+	p := &Project{
+		Name:  "x",
+		Root:  "/x",
+		Roles: []string{"a"},
+		Remotes: map[string]Remote{
+			"workbench": {Addr: "host:7391", Roles: []string{"eng2", "eng3"}},
+		},
+	}
+	if err := Validate(p); err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+}
+
+func TestValidate_RemoteRoleEmptyName(t *testing.T) {
+	p := &Project{
+		Name:  "x",
+		Root:  "/x",
+		Roles: []string{"a"},
+		Remotes: map[string]Remote{
+			"workbench": {Addr: "host:7391", Roles: []string{""}},
+		},
+	}
+	err := Validate(p)
+	if err == nil || !strings.Contains(err.Error(), "empty role name") {
+		t.Fatalf("expected empty role name error, got %v", err)
+	}
+}
+
+func TestValidate_RemoteRoleInvalidName(t *testing.T) {
+	p := &Project{
+		Name:  "x",
+		Root:  "/x",
+		Roles: []string{"a"},
+		Remotes: map[string]Remote{
+			"workbench": {Addr: "host:7391", Roles: []string{"bad/name"}},
+		},
+	}
+	err := Validate(p)
+	if err == nil || !strings.Contains(err.Error(), "invalid role name") {
+		t.Fatalf("expected invalid role name error, got %v", err)
+	}
+}
+
+func TestValidate_RemoteRolesOverlapWarns(t *testing.T) {
+	// Capture stderr to verify the warning is emitted (not an error).
+	origStderr := os.Stderr
+	r, w, _ := os.Pipe()
+	os.Stderr = w
+
+	p := &Project{
+		Name:  "x",
+		Root:  "/x",
+		Roles: []string{"a"},
+		Remotes: map[string]Remote{
+			"alpha": {Addr: "h1:7391", Roles: []string{"eng2"}},
+			"beta":  {Addr: "h2:7391", Roles: []string{"eng2"}},
+		},
+	}
+	err := Validate(p)
+
+	w.Close()
+	os.Stderr = origStderr
+	buf := make([]byte, 1024)
+	n, _ := r.Read(buf)
+	stderrOut := string(buf[:n])
+
+	if err != nil {
+		t.Fatalf("expected no error (overlap is a warning), got %v", err)
+	}
+	if !strings.Contains(stderrOut, "Warning") || !strings.Contains(stderrOut, "eng2") {
+		t.Errorf("expected warning about eng2 overlap, got: %q", stderrOut)
+	}
+}
+
+func TestValidate_RemoteRoleNotInTopLevel(t *testing.T) {
+	// Roles in remotes do NOT need to be in top-level p.Roles.
+	p := &Project{
+		Name:  "x",
+		Root:  "/x",
+		Roles: []string{"local"},
+		Remotes: map[string]Remote{
+			"workbench": {Addr: "host:7391", Roles: []string{"remote-only"}},
+		},
+	}
+	if err := Validate(p); err != nil {
+		t.Errorf("remote-only roles should be valid, got %v", err)
+	}
+}
+
+func TestRemote_EffectiveRoot(t *testing.T) {
+	r := Remote{Addr: "h:7391"}
+	if got := r.EffectiveRoot("myproject"); got != "/opt/initech/myproject" {
+		t.Errorf("EffectiveRoot default = %q, want /opt/initech/myproject", got)
+	}
+	r2 := Remote{Addr: "h:7391", Root: "/custom/path"}
+	if got := r2.EffectiveRoot("myproject"); got != "/custom/path" {
+		t.Errorf("EffectiveRoot custom = %q, want /custom/path", got)
+	}
+}
+
 func TestValidate_UnknownMode(t *testing.T) {
 	p := &Project{
 		Name:  "x",

@@ -67,6 +67,8 @@ var Registry = []FieldMeta{
 	// Remotes (template: one entry per named remote peer).
 	{Key: "remotes.<name>.addr", Type: "string", Description: "Host:port of the remote peer"},
 	{Key: "remotes.<name>.token", Type: "string", Description: "Auth token for this remote (overrides project-level token)", Secret: true},
+	{Key: "remotes.<name>.roles", Type: "[]string", Description: "Roles to push to this remote daemon (zero-config remote)"},
+	{Key: "remotes.<name>.root", Type: "string", Default: "/opt/initech/<project>", Description: "Workspace base path on remote. Defaults to /opt/initech/<project_name>"},
 
 	// Role overrides (template: one entry per role name).
 	{Key: "role_overrides.<role>.command", Type: "[]string", Description: "Override the agent launch command entirely"},
