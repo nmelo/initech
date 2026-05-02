@@ -104,6 +104,15 @@ type StreamMapMsg struct {
 	Streams map[uint32]string `json:"streams"` // Stream ID -> agent name.
 }
 
+// StreamAddedMsg announces a new agent stream created mid-session by a
+// configure_agent push. The client opens a RemotePane bound to StreamID and
+// adds it to the displayed pane list.
+type StreamAddedMsg struct {
+	Action   string `json:"action"`    // "stream_added"
+	StreamID uint32 `json:"stream_id"` // yamux stream ID for this agent.
+	Name     string `json:"name"`      // Agent name.
+}
+
 // ErrorMsg is sent on handshake failure.
 type ErrorMsg struct {
 	Action string `json:"action"` // "error"
@@ -125,16 +134,18 @@ type ControlCmd struct {
 }
 
 // ControlResp is the response to a control command. It also carries unsolicited
-// server-pushed commands (e.g. forward_send) when Action is set.
+// server-pushed commands (e.g. forward_send, stream_added) when Action is set.
 type ControlResp struct {
-	ID     string `json:"id,omitempty"` // Echoed from request for correlation.
-	OK     bool   `json:"ok"`
-	Error  string `json:"error,omitempty"`
-	Data   string `json:"data,omitempty"`
-	Action string `json:"action,omitempty"` // Set for unsolicited commands (e.g. "forward_send").
-	Target string `json:"target,omitempty"` // Agent name for forward_send.
-	Text   string `json:"text,omitempty"`   // Message text for forward_send.
-	Enter  bool   `json:"enter,omitempty"`  // Append Enter for forward_send.
+	ID       string `json:"id,omitempty"` // Echoed from request for correlation.
+	OK       bool   `json:"ok"`
+	Error    string `json:"error,omitempty"`
+	Data     string `json:"data,omitempty"`
+	Action   string `json:"action,omitempty"`    // Set for unsolicited commands (e.g. "forward_send", "stream_added").
+	Target   string `json:"target,omitempty"`    // Agent name for forward_send.
+	Text     string `json:"text,omitempty"`      // Message text for forward_send.
+	Enter    bool   `json:"enter,omitempty"`     // Append Enter for forward_send.
+	StreamID uint32 `json:"stream_id,omitempty"` // yamux stream ID for stream_added.
+	Name     string `json:"name,omitempty"`      // Agent name for stream_added.
 }
 
 // RunDaemon starts the headless daemon. Blocks until SIGINT/SIGTERM.

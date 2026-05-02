@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"sync"
 	"time"
 
 	"github.com/hashicorp/yamux"
@@ -23,6 +24,7 @@ const connectTimeout = 5 * time.Second
 type peerConn struct {
 	session *yamux.Session
 	mux     *ControlMux
+	panesMu sync.Mutex // Protects panes slice (mutated by stream_added handler).
 	panes   []PaneView
 }
 

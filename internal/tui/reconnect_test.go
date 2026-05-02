@@ -86,7 +86,8 @@ func TestConsumeEvents_ForwardSend(t *testing.T) {
 		},
 	}
 
-	go pm.consumeEvents("testpeer", mux, done)
+	pc := &peerConn{mux: mux}
+	go pm.consumeEvents("testpeer", pc, done)
 
 	// Write a forward_send command to the server side (daemon writes this).
 	cmd := ControlCmd{Action: "forward_send", Target: "super", Text: "hello from remote", Enter: true}

@@ -752,6 +752,14 @@ func Run(cfg Config) error {
 			pv.SendText(text, enter)
 			return nil
 		}, t.quitCh)
+		// Stream-on-create: when a daemon announces a new agent stream
+		// (configure_agent → stream_added), append the new RemotePane to
+		// the live grid via runOnMain so it shows up in the next render.
+		pm.SetOnPaneAdded(func(peerName string, pane PaneView) {
+			t.runOnMain(func() {
+				t.handlePeerPaneAdded(peerName, pane)
+			})
+		})
 		defer func() {
 			done := make(chan struct{})
 			go func() {
@@ -1126,6 +1134,28 @@ func (t *TUI) handlePeerUpdate(peerName string, newPanes []PaneView) {
 	LogInfo("peer-update", "panes-updated", "peer", peerName, "total_panes", len(kept))
 	t.recalcGrid(true)
 	LogInfo("peer-update", "done", "peer", peerName, "plan_panes", len(t.plan.Panes))
+}
+
+// handlePeerPaneAdded inserts a single remote pane into the TUI when the
+// daemon announces a stream-on-create (configure_agent → stream_added).
+// Unlike handlePeerUpdate it does not replace the peer's existing panes —
+// it adds a single new one to the end of the list.
+func (t *TUI) handlePeerPaneAdded(peerName string, pane PaneView) {
+	if vp, ok := pane.(interface{ SetVisible(bool) }); ok {
+		vp.SetVisible(!t.layoutState.Hidden[paneKey(pane)])
+	}
+	oldLen := len(t.panes)
+	t.panes = append(t.panes, pane)
+	t.logPanesMutation("peer-pane-added", oldLen)
+	if len(t.layoutState.Order) > 0 {
+		reorderPanes(t.panes, t.layoutState.Order)
+	}
+	t.handleAgentEvent(AgentEvent{
+		Type:   EventPeerConnected,
+		Detail: fmt.Sprintf("%s: %s pushed", peerName, pane.Name()),
+	})
+	t.recalcGrid(true)
+	LogInfo("peer-pane-added", "done", "peer", peerName, "agent", pane.Name())
 }
 
 // calcMainVertical creates a layout with a large pane on the left

@@ -197,7 +197,7 @@ func TestRefreshClaudeMD_NoWriteIfUnchanged(t *testing.T) {
 
 	// Refresh with identical content — should not rewrite.
 	time.Sleep(10 * time.Millisecond)
-	err := refreshClaudeMD(ConfigureAgentCmd{Dir: dir, ClaudeMD: content})
+	err := writeWorkspace(ConfigureAgentCmd{Dir: dir, ClaudeMD: content})
 	if err != nil {
 		t.Fatalf("refresh: %v", err)
 	}
@@ -214,7 +214,7 @@ func TestRefreshClaudeMD_WritesWhenDifferent(t *testing.T) {
 	mdPath := filepath.Join(dir, "CLAUDE.md")
 	os.WriteFile(mdPath, []byte("# old\n"), 0644)
 
-	err := refreshClaudeMD(ConfigureAgentCmd{Dir: dir, ClaudeMD: "# new\n"})
+	err := writeWorkspace(ConfigureAgentCmd{Dir: dir, ClaudeMD: "# new\n"})
 	if err != nil {
 		t.Fatalf("refresh: %v", err)
 	}
@@ -222,6 +222,127 @@ func TestRefreshClaudeMD_WritesWhenDifferent(t *testing.T) {
 	got, _ := os.ReadFile(mdPath)
 	if string(got) != "# new\n" {
 		t.Errorf("CLAUDE.md = %q, want '# new\\n'", got)
+	}
+}
+
+// ── ini-4q9.2.1: workspace creation on push ─────────────────────────
+
+func TestWriteWorkspace_CreatesClaudeSubdir(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "eng2")
+
+	err := writeWorkspace(ConfigureAgentCmd{
+		Dir:      dir,
+		ClaudeMD: "# eng2\n",
+	})
+	if err != nil {
+		t.Fatalf("writeWorkspace: %v", err)
+	}
+
+	claudeDir := filepath.Join(dir, ".claude")
+	info, err := os.Stat(claudeDir)
+	if err != nil {
+		t.Fatalf(".claude dir not created: %v", err)
+	}
+	if !info.IsDir() {
+		t.Error(".claude should be a directory")
+	}
+	if info.Mode().Perm() != 0755 {
+		t.Errorf(".claude permissions = %o, want 0755", info.Mode().Perm())
+	}
+}
+
+func TestWriteWorkspace_FilePermissions(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "eng2")
+
+	err := writeWorkspace(ConfigureAgentCmd{
+		Dir:          dir,
+		ClaudeMD:     "# role\n",
+		RootClaudeMD: "# root\n",
+	})
+	if err != nil {
+		t.Fatalf("writeWorkspace: %v", err)
+	}
+
+	rolePath := filepath.Join(dir, "CLAUDE.md")
+	info, _ := os.Stat(rolePath)
+	if info.Mode().Perm() != 0644 {
+		t.Errorf("role CLAUDE.md permissions = %o, want 0644", info.Mode().Perm())
+	}
+
+	rootPath := filepath.Join(filepath.Dir(dir), "CLAUDE.md")
+	info, _ = os.Stat(rootPath)
+	if info.Mode().Perm() != 0644 {
+		t.Errorf("root CLAUDE.md permissions = %o, want 0644", info.Mode().Perm())
+	}
+}
+
+func TestWriteWorkspace_DirPermissions(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "eng2")
+
+	err := writeWorkspace(ConfigureAgentCmd{Dir: dir})
+	if err != nil {
+		t.Fatalf("writeWorkspace: %v", err)
+	}
+
+	info, _ := os.Stat(dir)
+	if info.Mode().Perm() != 0755 {
+		t.Errorf("workspace dir permissions = %o, want 0755", info.Mode().Perm())
+	}
+}
+
+func TestWriteWorkspace_EmptyDirIsNoop(t *testing.T) {
+	if err := writeWorkspace(ConfigureAgentCmd{Dir: ""}); err != nil {
+		t.Errorf("empty Dir should be a no-op, got error: %v", err)
+	}
+}
+
+func TestWriteWorkspace_OverwritesExisting(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "eng2")
+	os.MkdirAll(dir, 0755)
+	rolePath := filepath.Join(dir, "CLAUDE.md")
+	os.WriteFile(rolePath, []byte("# old role\n"), 0644)
+	rootPath := filepath.Join(filepath.Dir(dir), "CLAUDE.md")
+	os.WriteFile(rootPath, []byte("# old root\n"), 0644)
+
+	err := writeWorkspace(ConfigureAgentCmd{
+		Dir:          dir,
+		ClaudeMD:     "# new role\n",
+		RootClaudeMD: "# new root\n",
+	})
+	if err != nil {
+		t.Fatalf("writeWorkspace: %v", err)
+	}
+
+	got, _ := os.ReadFile(rolePath)
+	if string(got) != "# new role\n" {
+		t.Errorf("role CLAUDE.md not overwritten: %q", got)
+	}
+	got, _ = os.ReadFile(rootPath)
+	if string(got) != "# new root\n" {
+		t.Errorf("root CLAUDE.md not overwritten: %q", got)
+	}
+}
+
+func TestHandleConfigureAgent_CreatesClaudeSubdir(t *testing.T) {
+	d := newTestDaemon(t)
+	dir := filepath.Join(d.project.Root, "eng2")
+
+	cmd := ConfigureAgentCmd{
+		Action:   "configure_agent",
+		Name:     "eng2",
+		Command:  []string{"/bin/sh", "-c", "sleep 30"},
+		Dir:      dir,
+		ClaudeMD: "# eng2\n",
+	}
+	line, _ := json.Marshal(cmd)
+	resp := d.handleConfigureAgent(line, "alice")
+	if !resp.OK {
+		t.Fatalf("configure failed: %v", resp.Error)
+	}
+	defer d.removePane("eng2")
+
+	if _, err := os.Stat(filepath.Join(dir, ".claude")); err != nil {
+		t.Errorf(".claude dir should be created by handleConfigureAgent: %v", err)
 	}
 }
 

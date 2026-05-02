@@ -113,7 +113,7 @@ func (d *Daemon) handleConfigureAgent(line []byte, owner string) ControlResp {
 	}
 
 	// Idempotent path: if agent exists and is owned by this client, refresh
-	// CLAUDE.md files and return OK. The agent process is not restarted —
+	// the workspace files and return OK. The agent process is not restarted —
 	// it picks up the new CLAUDE.md on its next session start.
 	if existing := d.findPane(cmd.Name); existing != nil {
 		if prev, ok := d.ownership.verify(cmd.Name, owner); !ok {
@@ -122,30 +122,15 @@ func (d *Daemon) handleConfigureAgent(line []byte, owner string) ControlResp {
 				Error: fmt.Sprintf("agent %q already exists (owned by %q)", cmd.Name, prev),
 			}
 		}
-		if err := refreshClaudeMD(cmd); err != nil {
+		if err := writeWorkspace(cmd); err != nil {
 			return ControlResp{ID: cmd.ID, Error: err.Error()}
 		}
 		return ControlResp{ID: cmd.ID, OK: true, Action: "configure_agent_ok", Target: cmd.Name}
 	}
 
-	// Create workspace and write CLAUDE.md files.
-	if cmd.Dir != "" {
-		if err := os.MkdirAll(cmd.Dir, 0o755); err != nil {
-			return ControlResp{ID: cmd.ID, Error: fmt.Sprintf("create workspace %s: %v", cmd.Dir, err)}
-		}
-		if cmd.ClaudeMD != "" {
-			path := filepath.Join(cmd.Dir, "CLAUDE.md")
-			if err := os.WriteFile(path, []byte(cmd.ClaudeMD), 0o644); err != nil {
-				return ControlResp{ID: cmd.ID, Error: fmt.Sprintf("write CLAUDE.md: %v", err)}
-			}
-		}
-	}
-	// Root CLAUDE.md goes in the parent of the agent dir (project root).
-	if cmd.RootClaudeMD != "" && cmd.Dir != "" {
-		rootPath := filepath.Join(filepath.Dir(cmd.Dir), "CLAUDE.md")
-		if err := os.WriteFile(rootPath, []byte(cmd.RootClaudeMD), 0o644); err != nil {
-			return ControlResp{ID: cmd.ID, Error: fmt.Sprintf("write root CLAUDE.md: %v", err)}
-		}
+	// New pane: create the workspace tree and write CLAUDE.md files.
+	if err := writeWorkspace(cmd); err != nil {
+		return ControlResp{ID: cmd.ID, Error: err.Error()}
 	}
 
 	paneCfg := PaneConfig{
@@ -173,7 +158,74 @@ func (d *Daemon) handleConfigureAgent(line []byte, owner string) ControlResp {
 		return ControlResp{ID: cmd.ID, Error: fmt.Sprintf("start agent: %v", err)}
 	}
 
+	// Stream-on-create: open a yamux stream on the owner's session and
+	// announce it to the client via stream_added. Best-effort — failures
+	// here don't roll back the configure (the agent is running; the client
+	// will discover it on next reconnect via hello_ok).
+	if err := d.allocateStreamForPushedPane(cmd.Name, owner); err != nil {
+		LogWarn("daemon", "stream-on-create failed", "agent", cmd.Name, "owner", owner, "err", err)
+	}
+
 	return ControlResp{ID: cmd.ID, OK: true, Action: "configure_agent_ok", Target: cmd.Name}
+}
+
+// allocateStreamForPushedPane opens a yamux stream on the named owner's
+// session, wires it to the new pane's MultiSink, and sends a stream_added
+// control message so the client can attach a RemotePane.
+//
+// Returns nil if the owner is not currently connected (reconnect path will
+// handle it via hello_ok).
+func (d *Daemon) allocateStreamForPushedPane(agentName, owner string) error {
+	d.sessionsMu.Lock()
+	session := d.clientSessions[owner]
+	ctrl := d.clients[owner]
+	ctrlMu := d.clientCtrlMu[owner]
+	d.sessionsMu.Unlock()
+
+	if session == nil || ctrl == nil {
+		return nil // Owner disconnected; not an error.
+	}
+
+	stream, err := session.Open()
+	if err != nil {
+		return fmt.Errorf("open yamux stream: %w", err)
+	}
+	ys, ok := stream.(yamuxStreamLike)
+	if !ok {
+		stream.Close()
+		return fmt.Errorf("unexpected stream type")
+	}
+	streamID := ys.StreamID()
+
+	// Wire the stream to the pane's multisink for downstream PTY bytes.
+	d.panesMu.Lock()
+	ms := d.multiSinks[agentName]
+	d.panesMu.Unlock()
+	if ms != nil {
+		ms.Add(stream)
+	}
+
+	// Send stream_added on the control channel so the client opens a RemotePane.
+	msg := StreamAddedMsg{Action: "stream_added", StreamID: streamID, Name: agentName}
+	if ctrlMu != nil {
+		ctrlMu.Lock()
+		err = writeJSON(ctrl, msg)
+		ctrlMu.Unlock()
+	} else {
+		err = writeJSON(ctrl, msg)
+	}
+	if err != nil {
+		return fmt.Errorf("send stream_added: %w", err)
+	}
+	return nil
+}
+
+// yamuxStreamLike is the subset of *yamux.Stream we depend on. Defined as
+// an interface to keep this file from importing yamux directly (the package
+// already imports it elsewhere; this type assertion stays type-safe via
+// the runtime check above).
+type yamuxStreamLike interface {
+	StreamID() uint32
 }
 
 // handleStopAgent stops a previously-pushed agent. Verifies ownership.
@@ -237,32 +289,53 @@ func (d *Daemon) handleRestartAgent(line []byte, owner string) ControlResp {
 	return ControlResp{ID: cmd.ID, OK: true, Action: "restart_agent_ok", Target: cmd.Name}
 }
 
-// refreshClaudeMD writes CLAUDE.md and root CLAUDE.md only if the on-disk
-// content differs from the new payload. Used by the idempotent
-// configure_agent re-push path so unchanged content avoids a write.
-func refreshClaudeMD(cmd ConfigureAgentCmd) error {
+// writeWorkspace creates the agent workspace tree and writes CLAUDE.md
+// content from the configure_agent payload. Idempotent: directory creation
+// is MkdirAll and file writes only fire when content has changed (so
+// repeated pushes don't churn mtime).
+//
+// Layout:
+//
+//	<dir>/                  (0755)
+//	<dir>/.claude/          (0755)
+//	<dir>/CLAUDE.md         (0644, role-level)
+//	<filepath.Dir(dir)>/CLAUDE.md  (0644, project-root)
+//
+// A no-op when cmd.Dir is empty (some control flows pass nothing).
+func writeWorkspace(cmd ConfigureAgentCmd) error {
 	if cmd.Dir == "" {
 		return nil
 	}
+	if err := os.MkdirAll(cmd.Dir, 0o755); err != nil {
+		return fmt.Errorf("create workspace %s: %w", cmd.Dir, err)
+	}
+	claudeDir := filepath.Join(cmd.Dir, ".claude")
+	if err := os.MkdirAll(claudeDir, 0o755); err != nil {
+		return fmt.Errorf("create .claude dir %s: %w", claudeDir, err)
+	}
 	if cmd.ClaudeMD != "" {
 		path := filepath.Join(cmd.Dir, "CLAUDE.md")
-		existing, _ := os.ReadFile(path)
-		if string(existing) != cmd.ClaudeMD {
-			if err := os.WriteFile(path, []byte(cmd.ClaudeMD), 0o644); err != nil {
-				return fmt.Errorf("refresh CLAUDE.md: %w", err)
-			}
+		if err := writeIfChanged(path, cmd.ClaudeMD, 0o644); err != nil {
+			return fmt.Errorf("write CLAUDE.md: %w", err)
 		}
 	}
 	if cmd.RootClaudeMD != "" {
 		rootPath := filepath.Join(filepath.Dir(cmd.Dir), "CLAUDE.md")
-		existing, _ := os.ReadFile(rootPath)
-		if string(existing) != cmd.RootClaudeMD {
-			if err := os.WriteFile(rootPath, []byte(cmd.RootClaudeMD), 0o644); err != nil {
-				return fmt.Errorf("refresh root CLAUDE.md: %w", err)
-			}
+		if err := writeIfChanged(rootPath, cmd.RootClaudeMD, 0o644); err != nil {
+			return fmt.Errorf("write root CLAUDE.md: %w", err)
 		}
 	}
 	return nil
+}
+
+// writeIfChanged writes content to path only if the existing file differs.
+// Avoids spurious mtime updates when push payloads are unchanged.
+func writeIfChanged(path, content string, mode os.FileMode) error {
+	existing, _ := os.ReadFile(path)
+	if string(existing) == content {
+		return nil
+	}
+	return os.WriteFile(path, []byte(content), mode)
 }
 
 // startPushedPane creates a Pane, wires the per-agent ring buffer + multisink,
