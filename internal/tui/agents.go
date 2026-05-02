@@ -274,15 +274,20 @@ func (t *TUI) agentsToggleVisibility() {
 		return
 	}
 	name := paneKey(t.panes[t.agents.selected])
+	if !t.toggleHidden(name) {
+		t.agents.error = "cannot hide last visible pane"
+	}
+}
 
+// toggleHidden toggles hidden state for the named pane. Returns false if
+// the toggle was blocked (hiding the last visible pane). Used by both the
+// agents modal and overlay dot click.
+func (t *TUI) toggleHidden(name string) bool {
 	if t.layoutState.Hidden[name] {
-		// Unhide.
 		delete(t.layoutState.Hidden, name)
 	} else {
-		// Hide: guard against last visible pane.
 		if t.visibleCountFromState() <= 1 {
-			t.agents.error = "cannot hide last visible pane"
-			return
+			return false
 		}
 		if t.layoutState.Hidden == nil {
 			t.layoutState.Hidden = make(map[string]bool)
@@ -292,6 +297,7 @@ func (t *TUI) agentsToggleVisibility() {
 	t.recalcGrid(false)
 	t.applyLayout()
 	t.saveLayoutIfConfigured()
+	return true
 }
 
 // agentsToggleLivePin toggles the live mode slot pin for the selected agent.

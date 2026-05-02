@@ -719,6 +719,10 @@ func (t *TUI) renderOverlay() {
 		return
 	}
 
+	t.overlayBounds.x = px
+	t.overlayBounds.y = py
+	t.overlayBounds.agentCount = len(agents)
+
 	overlayBg := tcell.NewRGBColor(20, 25, 40)
 	bgStyle := tcell.StyleDefault.Background(overlayBg)
 	borderStyle := tcell.StyleDefault.Foreground(tcell.ColorWhite).Background(overlayBg)

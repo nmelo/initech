@@ -117,3 +117,107 @@ func TestRenderOverlay_HiddenAgentNameItalic(t *testing.T) {
 		t.Fatal("hidden overlay agent name should be italic")
 	}
 }
+
+// ── ini-khy: overlay dot click-to-toggle ────────────────────────────
+
+func TestOverlayDotClick_TogglesHidden(t *testing.T) {
+	tui, _ := newTestTUIWithScreen("eng1", "eng2", "eng3")
+	tui.layoutState.Overlay = true
+	tui.renderOverlay()
+
+	dotCol := tui.overlayBounds.x + 2
+	eng2Row := tui.overlayBounds.y + 1 + 1 // agent index 1 = eng2
+
+	if tui.layoutState.Hidden["eng2"] {
+		t.Fatal("eng2 should start visible")
+	}
+
+	tui.handleMouse(tcell.NewEventMouse(dotCol, eng2Row, tcell.Button1, 0))
+
+	if !tui.layoutState.Hidden["eng2"] {
+		t.Error("clicking dot should hide eng2")
+	}
+
+	// Click again to unhide.
+	tui.handleMouse(tcell.NewEventMouse(dotCol, eng2Row, tcell.Button1, 0))
+
+	if tui.layoutState.Hidden["eng2"] {
+		t.Error("clicking dot again should unhide eng2")
+	}
+}
+
+func TestOverlayDotClick_OnlyDotColumnIsTarget(t *testing.T) {
+	tui, _ := newTestTUIWithScreen("eng1", "eng2")
+	tui.layoutState.Overlay = true
+	tui.renderOverlay()
+
+	nameCol := tui.overlayBounds.x + 4 // name starts here, not the dot
+	eng1Row := tui.overlayBounds.y + 1  // agent index 0
+
+	tui.handleMouse(tcell.NewEventMouse(nameCol, eng1Row, tcell.Button1, 0))
+
+	if tui.layoutState.Hidden["eng1"] {
+		t.Error("clicking the name column (not dot) should not toggle visibility")
+	}
+}
+
+func TestOverlayDotClick_BlocksLastVisible(t *testing.T) {
+	tui, _ := newTestTUIWithScreen("eng1", "eng2")
+	tui.layoutState.Overlay = true
+	tui.layoutState.Hidden["eng2"] = true // only eng1 visible
+	tui.renderOverlay()
+
+	dotCol := tui.overlayBounds.x + 2
+	eng1Row := tui.overlayBounds.y + 1
+
+	tui.handleMouse(tcell.NewEventMouse(dotCol, eng1Row, tcell.Button1, 0))
+
+	if tui.layoutState.Hidden["eng1"] {
+		t.Error("should not be able to hide last visible pane")
+	}
+}
+
+func TestOverlayDotClick_OverlayNotVisible(t *testing.T) {
+	tui, _ := newTestTUIWithScreen("eng1", "eng2")
+	tui.layoutState.Overlay = false
+	// Set fake bounds as if overlay had rendered previously.
+	tui.overlayBounds.x = 100
+	tui.overlayBounds.y = 1
+	tui.overlayBounds.agentCount = 2
+
+	dotCol := tui.overlayBounds.x + 2
+	eng1Row := tui.overlayBounds.y + 1
+
+	tui.handleMouse(tcell.NewEventMouse(dotCol, eng1Row, tcell.Button1, 0))
+
+	if tui.layoutState.Hidden["eng1"] {
+		t.Error("should not toggle when overlay is not visible")
+	}
+}
+
+func TestOverlayDotClick_ClickOutsideAgentRows(t *testing.T) {
+	tui, _ := newTestTUIWithScreen("eng1", "eng2")
+	tui.layoutState.Overlay = true
+	tui.renderOverlay()
+
+	dotCol := tui.overlayBounds.x + 2
+	pastLastRow := tui.overlayBounds.y + 1 + 2 // only 2 agents (indices 0,1)
+
+	tui.handleMouse(tcell.NewEventMouse(dotCol, pastLastRow, tcell.Button1, 0))
+
+	if tui.layoutState.Hidden["eng1"] || tui.layoutState.Hidden["eng2"] {
+		t.Error("clicking outside agent rows should not toggle anything")
+	}
+}
+
+func TestOverlayDotClick_StoresBoundsCorrectly(t *testing.T) {
+	tui, _ := newTestTUIWithScreen("eng1", "eng2", "eng3")
+	tui.renderOverlay()
+
+	if tui.overlayBounds.agentCount != 3 {
+		t.Errorf("agentCount = %d, want 3", tui.overlayBounds.agentCount)
+	}
+	if tui.overlayBounds.y != 1 {
+		t.Errorf("overlay y = %d, want 1 (standard py)", tui.overlayBounds.y)
+	}
+}

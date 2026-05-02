@@ -18,6 +18,19 @@ func (t *TUI) handleMouse(ev *tcell.EventMouse) {
 
 	switch {
 	case ev.Buttons()&tcell.Button1 != 0 && !t.sel.active:
+		// Overlay dot click: toggle hide/unhide before pane hit-test.
+		if t.layoutState.Overlay && t.overlayBounds.agentCount > 0 {
+			dotCol := t.overlayBounds.x + 2
+			agentStartY := t.overlayBounds.y + 1
+			if mx == dotCol && my >= agentStartY && my < agentStartY+t.overlayBounds.agentCount {
+				idx := my - agentStartY
+				if idx >= 0 && idx < len(t.panes) {
+					t.toggleHidden(paneKey(t.panes[idx]))
+					return
+				}
+			}
+		}
+
 		// Button1 press: focus + start selection. Hit-test against the render
 		// plan (panes actually on screen) to avoid matching evicted panes with
 		// stale regions. Hidden check is a safety guard for stale plans.

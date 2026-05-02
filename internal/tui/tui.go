@@ -240,6 +240,12 @@ type TUI struct {
 	notifications []notification  // Active notifications for rendering.
 	eventLog      []AgentEvent    // Persistent log of all events (last 100 or last 60 min).
 
+	// Overlay geometry cached by renderOverlay for mouse hit-testing.
+	overlayBounds struct {
+		x, y       int // Panel top-left corner.
+		agentCount int // Number of agent rows rendered.
+	}
+
 	// Live Mode: persistent engine for anti-thrashing across render frames.
 	// Nil when not in live mode. Created by cmdLive/Alt+5, destroyed on mode switch.
 	liveEngine   *LiveEngine
