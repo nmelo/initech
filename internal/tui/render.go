@@ -345,7 +345,12 @@ func (t *TUI) renderHints() {
 	tips := getStatusTips()
 	b.addLeft(tips[t.tipIndex%len(tips)], b.barStyle)
 
-	// Right items are added in display order (left-to-right within the right block).
+	// Right side groups items by category, in display order (left-to-right):
+	//   1. App state:    mode, pending timers, update
+	//   2. System state: battery, branch, clock
+	//   3. Hints:        keyboard shortcuts
+
+	// --- App state ---
 
 	// Layout mode label.
 	{
@@ -393,6 +398,8 @@ func (t *TUI) renderHints() {
 		b.addRight("v"+t.updateAvailable+" available", b.barStyle.Foreground(tcell.ColorYellow))
 	}
 
+	// --- System state ---
+
 	// Battery. Read both fields under t.mu via the helper, then drop the
 	// lock before any styling work — the critical section is two reads.
 	battPct, battCharging := t.batteryStatus()
@@ -416,11 +423,13 @@ func (t *TUI) renderHints() {
 		b.addRight("git:"+truncateRunes(t.branch, 25), b.barStyle)
 	}
 
+	// Clock.
+	b.addRight(time.Now().Format("15:04"), b.barStyle)
+
+	// --- Hints ---
+
 	// Keyboard shortcuts.
 	b.addRight(fmt.Sprintf("`:cmd  %s+z:zoom  %s+s:overlay  ?:help  %s+q:quit", modKey, modKey, modKey), b.barStyle)
-
-	// Clock (rightmost).
-	b.addRight(time.Now().Format("15:04"), b.barStyle)
 
 	b.render(t.screen, sh-1)
 }

@@ -278,8 +278,11 @@ func TestRenderHints_TruncatesOnNarrowTerminal(t *testing.T) {
 		ch, _, _ := s.Get(x, y)
 		line += ch
 	}
-	if !containsStr(line, "help") {
-		t.Errorf("shortcuts should be visible even on narrow terminal, got: %q", line)
+	// Shortcuts are now the rightmost group, so on a narrow terminal they
+	// truncate first. Confirm the bar didn't blow up and at least the
+	// leading shortcut prefix is visible.
+	if !containsStr(line, ":cmd") {
+		t.Errorf("shortcuts should be at least partially visible, got: %q", line)
 	}
 }
 
