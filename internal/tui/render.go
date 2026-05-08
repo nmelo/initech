@@ -410,6 +410,11 @@ func (t *TUI) renderHints() {
 		b.addRight(battStr, battStyle)
 	}
 
+	// Current git branch.
+	if t.branch != "" {
+		b.addRight("git:"+t.branch, b.barStyle)
+	}
+
 	// Keyboard shortcuts.
 	b.addRight(fmt.Sprintf("`:cmd  %s+z:zoom  %s+s:overlay  ?:help  %s+q:quit", modKey, modKey, modKey), b.barStyle)
 
