@@ -400,21 +400,22 @@ func (t *TUI) renderHints() {
 
 	// --- System state ---
 
-	// Battery. Read both fields under t.mu via the helper, then drop the
-	// lock before any styling work — the critical section is two reads.
+	// Battery. "Bat" prefix makes the meaning unambiguous without needing a
+	// glyph/icon (no font dependency). Percent is left-padded to 3 chars
+	// (right-aligned) so the readout stays the same width across 0–100.
+	// Read both fields under t.mu via the helper, then drop the lock before
+	// any styling work — the critical section is two reads.
 	battPct, battCharging := t.batteryStatus()
 	if battPct >= 0 {
-		battStr := fmt.Sprintf("%d%%", battPct)
 		battStyle := b.barStyle
 		if battCharging {
-			battStr += " +"
 			battStyle = b.barStyle.Foreground(tcell.ColorGreen)
 		} else if battPct < 10 {
 			battStyle = b.barStyle.Foreground(tcell.ColorRed)
 		} else if battPct < 20 {
 			battStyle = b.barStyle.Foreground(tcell.ColorYellow)
 		}
-		b.addRight(battStr, battStyle)
+		b.addRight(fmt.Sprintf("Bat %3d%%", battPct), battStyle)
 	}
 
 	// Current git branch. Truncated to keep rightmost items (clock) visible

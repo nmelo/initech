@@ -336,8 +336,12 @@ func TestRenderHints_BatteryDischarging(t *testing.T) {
 	if !containsStr(line, "67%") {
 		t.Errorf("battery should show 67%%, got: %q", line)
 	}
-	if containsStr(line, "67% +") {
-		t.Error("discharging battery should not show charging indicator")
+	// State is conveyed by color, not text. No charging-style marker should
+	// appear (guards against accidental reintroduction of a "+", "⚡", etc.).
+	for _, marker := range []string{"+", "⚡", "AC", "chrg"} {
+		if containsStr(line, marker) {
+			t.Errorf("discharging battery should not contain %q, got: %q", marker, line)
+		}
 	}
 }
 
@@ -355,8 +359,14 @@ func TestRenderHints_BatteryCharging(t *testing.T) {
 		ch, _, _ := s.Get(x, y)
 		line += ch
 	}
-	if !containsStr(line, "42% +") {
-		t.Errorf("charging battery should show '42%% +', got: %q", line)
+	if !containsStr(line, "42%") {
+		t.Errorf("charging battery should show 42%%, got: %q", line)
+	}
+	// Charging is signalled by color only — readout text matches discharging.
+	for _, marker := range []string{"+", "⚡", "AC", "chrg"} {
+		if containsStr(line, marker) {
+			t.Errorf("battery readout should be text-stable; unexpected %q in: %q", marker, line)
+		}
 	}
 }
 
