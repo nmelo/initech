@@ -29,5 +29,13 @@ jobs:
       - name: Vet
         run: go vet ./...
 
+      # ini-ybe.1: reject test names admitting "we just call it and see if
+      # it crashes" intent. Linux-only — content check, no value running 3x.
+      # No user input interpolated; matrix.os is workflow-defined, script
+      # path is static.
+      - name: Lint test names
+        if: matrix.os == 'ubuntu-latest'
+        run: bash scripts/lint-test-names.sh
+
       - name: Test
         run: go test ./... -count=1 -short

@@ -50,6 +50,10 @@ Every package and every exported function gets a Go doc comment. This is the pri
 ```bash
 make build              # Build binary
 make test               # Run all tests
-make check              # Vet + test
+make check              # Vet + lint-test-names + test
 make release            # goreleaser release
 ```
+
+## Test naming policy (ini-ybe.1)
+
+Test names must describe the contract being verified, not the absence of a crash. Suffixes `_NoOp`, `_NoPanic`, `_DoesNotPanic`, `_Smoke` are rejected by `make lint-test-names` (also runs in CI). Either add a real assertion (preferred) or pick a name describing what the test verifies — e.g. `TestRender_HandlesNarrowTerminal` instead of `TestRender_NarrowNoPanic`. If a test legitimately verifies a no-op contract AND has assertions proving the no-op, add `// lint:test-name-allow <reason>` directly above the function. Use sparingly. Background: the repo audit found ~5% of tests assert nothing; coverage % stays high while mutation kill rate stays near zero, and naming is the cheapest cultural lever to stop new instances accumulating.

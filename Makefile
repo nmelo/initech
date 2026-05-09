@@ -8,7 +8,7 @@ EXPECTED_ASSETS := checksums.txt initech_darwin_amd64.tar.gz initech_darwin_arm6
 LDFLAGS := -s -w -X github.com/nmelo/initech/cmd.Version=$(VERSION)
 REQUIRE_RELEASE_VERSION = test -n "$(VERSION)" && case "$(VERSION)" in v*) ;; *) echo "VERSION must start with v, got $(VERSION)" >&2; exit 1 ;; esac
 
-.PHONY: build test test-full integration vet lint clean release check install-hooks release-tag release-wait release-assets release-verify release-ship
+.PHONY: build test test-full integration vet lint lint-test-names lint-test-names-self-test clean release check install-hooks release-tag release-wait release-assets release-verify release-ship
 
 build:
 	go build -ldflags "$(LDFLAGS)" -o initech .
@@ -31,10 +31,21 @@ vet:
 lint:
 	golangci-lint run ./...
 
+# Reject test names ending in _NoOp / _NoPanic / _DoesNotPanic / _Smoke.
+# Names admit "we just call it and see if it crashes" intent — either add
+# a real assertion or pick an honest name. Override per-test with
+# // lint:test-name-allow <reason> directly above the function. ini-ybe.1.
+lint-test-names:
+	@bash scripts/lint-test-names.sh
+
+# Self-test the lint script itself (fixture-driven, no impact on the repo).
+lint-test-names-self-test:
+	@bash scripts/lint-test-names_test.sh
+
 clean:
 	rm -f initech
 
-check: vet test
+check: vet lint-test-names test
 
 release:
 	@set -eu; \

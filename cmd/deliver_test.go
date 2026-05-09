@@ -1017,6 +1017,7 @@ func TestRunDeliver_NormalStatusesProceed(t *testing.T) {
 // writing ready_for_qa here yanks the bead out from under the reviewer.
 // This is family-conditional (NOT a universal outer guard) so the QA-on-
 // in_qa flow (PASS -> qa_passed, FAIL -> stays) is preserved.
+// lint:test-name-allow no-op-contract  // ini-ybe.1: contract IS the no-op; body has 3 assertions verifying it
 func TestRunDeliver_Eng_InQa_NoOp(t *testing.T) {
 	skipWindows(t)
 	written, reqs, stderr, err := runDeliverWithStatus(t, "eng1", "Login bug", "in_qa")
