@@ -3,9 +3,11 @@ package cmd
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/nmelo/initech/internal/color"
@@ -131,10 +133,24 @@ func runInit(cmd *cobra.Command, args []string) error {
 	}
 
 	if len(jobs) > 0 {
+		// Serialize writes for the lifetime of this block — the spinner
+		// goroutine spawned below writes to 'out' concurrently with the
+		// main loop's per-job error/success messages. Production 'out'
+		// (os.Stderr) is atomic at the syscall level, but tests pass a
+		// bytes.Buffer which is NOT goroutine-safe. The shadow keeps the
+		// fix scoped to where the goroutine actually exists.
+		out := &syncWriter{w: out}
 		label := fmt.Sprintf("Cloning repo into %d agent workspaces", len(jobs))
 		fmt.Fprintf(out, "  %s... ", label)
 		spinDone := make(chan struct{})
+		// spinExited closes when the goroutine has actually returned, so
+		// callers can wait for the spinner's last write to finish before
+		// any subsequent writes to 'out'. Without this join, close(spinDone)
+		// is non-blocking and the spinner can still be mid-iteration when
+		// main proceeds — racing with later writes that bypass syncWriter.
+		spinExited := make(chan struct{})
 		go func() {
+			defer close(spinExited)
 			spinner := []rune{'⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'}
 			i := 0
 			for {
@@ -170,6 +186,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 			}
 		}
 		close(spinDone)
+		<-spinExited // join: ensure no spinner write outlives this block
 
 		if failures == 0 {
 			fmt.Fprintf(out, "\r  %s %s\n", color.Green("\u2713"), label)
@@ -484,3 +501,21 @@ func prompt(reader *bufio.Reader, label, defaultVal string) string {
 }
 
 func boolPtr(b bool) *bool { return &b }
+
+// syncWriter serializes Write calls so a spawned goroutine writing to a
+// shared io.Writer cannot race with the main goroutine's writes. Used in
+// runInit to wrap the spinner's writer for the duration of the submodule-
+// clone loop. fmt.Fprintf builds a complete formatted buffer before
+// issuing a single Write, so this serializes whole formatted writes (not
+// byte fragments) — the spinner's \r-driven line repaints handle any
+// cosmetic interleaving.
+type syncWriter struct {
+	mu sync.Mutex
+	w  io.Writer
+}
+
+func (s *syncWriter) Write(p []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.w.Write(p)
+}
