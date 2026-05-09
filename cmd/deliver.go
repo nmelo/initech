@@ -84,7 +84,7 @@ func runDeliver(cmd *cobra.Command, args []string) error {
 	}
 
 	// Step 1: Read bead info (fail fast if bead not found).
-	title, assignee, err := bdShowBeadFn(beadID)
+	title, assignee, status, err := bdShowBeadFn(beadID)
 	if err != nil {
 		return err
 	}
@@ -94,21 +94,62 @@ func runDeliver(cmd *cobra.Command, args []string) error {
 		fmt.Fprintf(cmd.ErrOrStderr(), "warning: bead assigned to %s, you are %s\n", assignee, agent)
 	}
 
-	// Step 2: Update bead status.
-	// Status-transition-by-family is owned by ini-dgt.1; this commit preserves
-	// today's behavior (success -> ready_for_qa for every family).
+	// Step 1c: Outer status guard. qa_passed and closed are terminal-ish for
+	// deliver — overwriting them silently regresses real verdicts (the bug in
+	// ini-dgt.1). Per the agreed contract: --fail on qa_passed still records
+	// the FAILED comment so QA keeps an audit trail of post-pass regressions;
+	// --fail on closed is fully skipped (commenting on a closed bead is noise).
+	// On the no-op path, nothing leaves the box: no status write, no report,
+	// no announce, no webhook, no IPC event, no TUI bead clear. Exit code 0
+	// so existing automation that ignores warnings keeps working.
+	if status == "qa_passed" || status == "closed" {
+		if isFail && status == "qa_passed" {
+			reason := deliverReason
+			if reason == "" {
+				reason = "no reason provided"
+			}
+			if err := bdCommentAddFn(beadID, agent, "FAILED: "+reason); err != nil {
+				fmt.Fprintf(cmd.ErrOrStderr(), "warning: bd comment failed: %s\n", err)
+			}
+			fmt.Fprintf(cmd.ErrOrStderr(), "deliver no-op for %s: bead is qa_passed; FAILED comment recorded for audit trail\n", beadID)
+		} else {
+			fmt.Fprintf(cmd.ErrOrStderr(), "deliver no-op for %s: bead is already %s\n", beadID, status)
+		}
+		return nil
+	}
+
+	// Step 2: Update bead status — family-aware transition. eng2's
+	// validateDeliverFlags pre-validated the (family, verdict, isFail) tuple,
+	// so each branch can trust its inputs without re-checking.
 	if isFail {
 		reason := deliverReason
 		if reason == "" {
 			reason = "no reason provided"
 		}
-		// Stay in_progress, add failure comment.
+		// Stay in_progress, add failure comment. Same behavior for every
+		// family — only the announce/report templates differ (eng2's domain).
 		if err := bdCommentAddFn(beadID, agent, "FAILED: "+reason); err != nil {
 			fmt.Fprintf(cmd.ErrOrStderr(), "warning: bd comment failed: %s\n", err)
 		}
 	} else {
-		if err := bdUpdateStatusFn(beadID, "ready_for_qa"); err != nil {
-			return err
+		switch family {
+		case roles.FamilyEng:
+			if err := bdUpdateStatusFn(beadID, "ready_for_qa"); err != nil {
+				return err
+			}
+		case roles.FamilyQA:
+			// validation guarantees verdict == "PASS" here: FAIL routes
+			// through isFail above, and "" is rejected upstream for QA.
+			if verdict != "PASS" {
+				panic(fmt.Sprintf("deliver: QA family reached status branch with verdict=%q, isFail=false; validateDeliverFlags should have rejected this", verdict))
+			}
+			if err := bdUpdateStatusFn(beadID, "qa_passed"); err != nil {
+				return err
+			}
+		case roles.FamilyOther:
+			// No status write: Other-family deliveries announce but do not
+			// transition status. The bead's lifecycle (ready_for_qa,
+			// qa_passed, etc.) is owned by eng/qa, not by shipper/pm/etc.
 		}
 	}
 
@@ -170,27 +211,30 @@ func runDeliver(cmd *cobra.Command, args []string) error {
 // bdShowBeadFn is the default implementation of bdShowBead. Tests override this.
 var bdShowBeadFn = bdShowBeadImpl
 
-// bdShowBead reads bead info and returns title and assignee.
-func bdShowBeadImpl(beadID string) (title, assignee string, err error) {
+// bdShowBead reads bead info and returns title, assignee, and current status.
+// Status is needed by the outer no-op guard in runDeliver; missing status
+// (empty string) is treated as "not terminal" and proceeds normally.
+func bdShowBeadImpl(beadID string) (title, assignee, status string, err error) {
 	out, err := exec.Command("bd", "show", beadID, "--json").CombinedOutput()
 	if err != nil {
-		return "", "", fmt.Errorf("bead %s not found: %s", beadID, strings.TrimSpace(string(out)))
+		return "", "", "", fmt.Errorf("bead %s not found: %s", beadID, strings.TrimSpace(string(out)))
 	}
 	var beads []struct {
 		Title    string `json:"title"`
 		Assignee string `json:"assignee"`
+		Status   string `json:"status"`
 	}
 	if err := json.Unmarshal(out, &beads); err != nil {
-		return "", "", fmt.Errorf("parse bd output: %w", err)
+		return "", "", "", fmt.Errorf("parse bd output: %w", err)
 	}
 	if len(beads) == 0 {
-		return beadID, "", nil
+		return beadID, "", "", nil
 	}
 	t := beads[0].Title
 	if t == "" {
 		t = beadID
 	}
-	return t, beads[0].Assignee, nil
+	return t, beads[0].Assignee, beads[0].Status, nil
 }
 
 // bdUpdateStatusFn is the default implementation. Tests override this.
