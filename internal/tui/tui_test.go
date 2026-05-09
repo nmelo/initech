@@ -851,50 +851,93 @@ func TestUvColorToTcell(t *testing.T) {
 
 // ── tcellKeyToUV ─────────────────────────────────────────────────────
 
+// TestTcellKeyToUV asserts the actual mapping produced by tcellKeyToUV for
+// every supported key + modifier combination. Earlier versions of this test
+// discarded the return value and only proved no-panic — mutation kill rate
+// was effectively 0%. Expected values come from reading pane.go's switch,
+// not from case names: backspace (both KeyBackspace and KeyBackspace2
+// collapse to uv.KeyBackspace), shift+tab (KeyBacktab lowers to
+// KeyTab+ModShift), and ctrl+letter (KeyCtrlA..KeyCtrlZ arithmetic
+// produces runes 'a'..'z' with ModCtrl) are the cases where naming would
+// have lied.
 func TestTcellKeyToUV(t *testing.T) {
 	tests := []struct {
-		name string
-		key  tcell.Key
-		r    rune
-		mod  tcell.ModMask
+		name     string
+		key      tcell.Key
+		r        rune
+		mod      tcell.ModMask
+		wantCode rune
+		wantMod  uv.KeyMod
+		wantText string
 	}{
-		{"rune a", tcell.KeyRune, 'a', 0},
-		{"enter", tcell.KeyEnter, 0, 0},
-		{"backspace", tcell.KeyBackspace2, 0, 0},
-		{"tab", tcell.KeyTab, 0, 0},
-		{"escape", tcell.KeyEscape, 0, 0},
-		{"up", tcell.KeyUp, 0, 0},
-		{"down", tcell.KeyDown, 0, 0},
-		{"left", tcell.KeyLeft, 0, 0},
-		{"right", tcell.KeyRight, 0, 0},
-		{"home", tcell.KeyHome, 0, 0},
-		{"end", tcell.KeyEnd, 0, 0},
-		{"delete", tcell.KeyDelete, 0, 0},
-		{"pgup", tcell.KeyPgUp, 0, 0},
-		{"pgdn", tcell.KeyPgDn, 0, 0},
-		{"insert", tcell.KeyInsert, 0, 0},
-		{"F1", tcell.KeyF1, 0, 0},
-		{"F12", tcell.KeyF12, 0, 0},
-		{"ctrl+a", tcell.KeyCtrlA, 0, tcell.ModCtrl},
-		{"ctrl+z", tcell.KeyCtrlZ, 0, tcell.ModCtrl},
-		{"alt+rune", tcell.KeyRune, 'x', tcell.ModAlt},
-		{"shift+enter", tcell.KeyEnter, 0, tcell.ModShift},
+		// KeyRune sets Text from string(r); modifiers flow through.
+		{"rune a", tcell.KeyRune, 'a', 0, 'a', 0, "a"},
+		{"alt+rune", tcell.KeyRune, 'x', tcell.ModAlt, 'x', uv.ModAlt, "x"},
+
+		// Named keys — Code is the matching uv constant, no Text.
+		{"enter", tcell.KeyEnter, 0, 0, uv.KeyEnter, 0, ""},
+		{"shift+enter", tcell.KeyEnter, 0, tcell.ModShift, uv.KeyEnter, uv.ModShift, ""},
+		{"tab", tcell.KeyTab, 0, 0, uv.KeyTab, 0, ""},
+		{"escape", tcell.KeyEscape, 0, 0, uv.KeyEscape, 0, ""},
+		{"up", tcell.KeyUp, 0, 0, uv.KeyUp, 0, ""},
+		{"down", tcell.KeyDown, 0, 0, uv.KeyDown, 0, ""},
+		{"left", tcell.KeyLeft, 0, 0, uv.KeyLeft, 0, ""},
+		{"right", tcell.KeyRight, 0, 0, uv.KeyRight, 0, ""},
+		{"home", tcell.KeyHome, 0, 0, uv.KeyHome, 0, ""},
+		{"end", tcell.KeyEnd, 0, 0, uv.KeyEnd, 0, ""},
+		{"delete", tcell.KeyDelete, 0, 0, uv.KeyDelete, 0, ""},
+		{"pgup", tcell.KeyPgUp, 0, 0, uv.KeyPgUp, 0, ""},
+		// tcell.KeyPgDn vs uv.KeyPgDown — constant naming differs across packages.
+		{"pgdn", tcell.KeyPgDn, 0, 0, uv.KeyPgDown, 0, ""},
+		{"insert", tcell.KeyInsert, 0, 0, uv.KeyInsert, 0, ""},
+		{"F1", tcell.KeyF1, 0, 0, uv.KeyF1, 0, ""},
+		{"F12", tcell.KeyF12, 0, 0, uv.KeyF12, 0, ""},
+
+		// Backspace collapse: tcell has two key constants, uv has one.
+		{"backspace2", tcell.KeyBackspace2, 0, 0, uv.KeyBackspace, 0, ""},
+		{"backspace_legacy", tcell.KeyBackspace, 0, 0, uv.KeyBackspace, 0, ""},
+
+		// Shift+Tab is a distinct tcell key, lowered to KeyTab+ModShift.
+		{"shift+tab", tcell.KeyBacktab, 0, 0, uv.KeyTab, uv.ModShift, ""},
+
+		// Ctrl+letter: tcell.KeyCtrlA..KeyCtrlZ map to runes 'a'..'z' via
+		// 'rune('a' + ev.Key() - tcell.KeyCtrlA)' with mod | uv.ModCtrl.
+		{"ctrl+a", tcell.KeyCtrlA, 0, tcell.ModCtrl, 'a', uv.ModCtrl, ""},
+		{"ctrl+z", tcell.KeyCtrlZ, 0, tcell.ModCtrl, 'z', uv.ModCtrl, ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ev := tcell.NewEventKey(tt.key, tt.r, tt.mod)
-			// Verify no panic.
-			_ = tcellKeyToUV(ev)
+			got := uv.Key(tcellKeyToUV(ev))
+			if got.Code != tt.wantCode {
+				t.Errorf("Code = %v, want %v", got.Code, tt.wantCode)
+			}
+			if got.Mod != tt.wantMod {
+				t.Errorf("Mod = %v, want %v", got.Mod, tt.wantMod)
+			}
+			if got.Text != tt.wantText {
+				t.Errorf("Text = %q, want %q", got.Text, tt.wantText)
+			}
 		})
 	}
 }
 
+// TestTcellKeyToUV_FallbackSpace asserts the unmapped-key fallback returns
+// uv.KeySpace AND drops all modifiers. The Mod assertion captures a quirk
+// of the current implementation: 'return uv.Key{Code: uv.KeySpace}' has no
+// Mod field, so input modifiers are silently discarded on fallback. That
+// behavior is now pinned by the test — if a future change preserves
+// modifiers on fallback (intentionally or not), this test will catch it.
 func TestTcellKeyToUV_FallbackSpace(t *testing.T) {
-	// A key not in the switch should return space fallback.
-	ev := tcell.NewEventKey(tcell.KeyF13, 0, 0)
-	kpe := tcellKeyToUV(ev)
-	if uv.Key(kpe).Code != uv.KeySpace {
-		t.Errorf("unknown key should fallback to space, got %v", uv.Key(kpe).Code)
+	// KeyF13 isn't in the switch; pass every modifier so we can prove the
+	// fallback drops them.
+	ev := tcell.NewEventKey(tcell.KeyF13, 0, tcell.ModCtrl|tcell.ModAlt|tcell.ModShift)
+	got := uv.Key(tcellKeyToUV(ev))
+	if got.Code != uv.KeySpace {
+		t.Errorf("Code = %v, want uv.KeySpace", got.Code)
+	}
+	if got.Mod != 0 {
+		t.Errorf("Mod = %v, want 0 (fallback drops all modifiers)", got.Mod)
 	}
 }
 
