@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"sync"
 
 	gomcp "github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -82,6 +83,13 @@ type PaneHost interface {
 // streamable HTTP. It wraps the official go-sdk MCP server with bearer
 // token authentication.
 type Server struct {
+	// addrMu protects addr against the read/write race between Start
+	// (which overwrites addr with the actual bound address once the
+	// listener is up — including resolving port 0) and Addr (called by
+	// callers polling for readiness). Same pattern as internal/web's
+	// Server; if you add a third Server-with-addr in this codebase,
+	// follow this pattern (or pull the shape into a shared base).
+	addrMu    sync.Mutex
 	addr      string
 	token     string
 	srv       *http.Server
@@ -184,8 +192,11 @@ func (s *Server) Start(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("mcp server listen: %w", err)
 	}
-	s.addr = ln.Addr().String()
-	s.logger.Info("mcp server listening", "addr", s.addr)
+	bound := ln.Addr().String()
+	s.addrMu.Lock()
+	s.addr = bound
+	s.addrMu.Unlock()
+	s.logger.Info("mcp server listening", "addr", bound)
 
 	go func() {
 		<-ctx.Done()
@@ -200,8 +211,12 @@ func (s *Server) Start(ctx context.Context) error {
 }
 
 // Addr returns the address the server is bound to. Only meaningful after
-// Start has been called.
+// Start has been called. Safe to call from any goroutine while Start is
+// racing to bind — addrMu serializes the initial-config read with Start's
+// bound-address write.
 func (s *Server) Addr() string {
+	s.addrMu.Lock()
+	defer s.addrMu.Unlock()
 	return s.addr
 }
 

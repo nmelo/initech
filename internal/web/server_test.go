@@ -142,6 +142,50 @@ func TestStartAndShutdown(t *testing.T) {
 	}
 }
 
+// TestServer_AddrRaceFreeAcrossStart is the named regression for ini-t89:
+// Start writes Server.addr (resolving port 0 to the actual bound port)
+// while a polling caller reads it via Addr(). Pre-fix, both were
+// unsynchronized and `go test -race` flagged a DATA RACE on every run.
+// This test launches Start on its own goroutine and hammers Addr() from
+// the main goroutine — under the race detector, an unsynchronized version
+// of this code fails immediately. Even without -race, the test exercises
+// the critical-section ordering and asserts Addr() eventually returns the
+// bound (non-zero-port) address.
+func TestServer_AddrRaceFreeAcrossStart(t *testing.T) {
+	lister := &fakeLister{ok: true}
+	srv := NewServer(0, lister, nil, nil, nil, nil, nil, nil)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- srv.Start(ctx)
+	}()
+
+	// Hammer Addr() from the main goroutine while Start is racing to bind.
+	// This is the access pattern the race detector caught on HEAD~1.
+	deadline := time.Now().Add(2 * time.Second)
+	var bound string
+	for time.Now().Before(deadline) {
+		bound = srv.Addr()
+		if bound != "" && bound != "0.0.0.0:0" && !strings.HasSuffix(bound, ":0") {
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if bound == "" || bound == "0.0.0.0:0" || strings.HasSuffix(bound, ":0") {
+		t.Fatalf("Addr() never reflected the bound port within deadline, last seen %q", bound)
+	}
+
+	cancel()
+	select {
+	case <-errCh:
+	case <-time.After(3 * time.Second):
+		t.Fatal("Start did not return after shutdown")
+	}
+}
+
 func TestPortConflict(t *testing.T) {
 	// Occupy a port on all interfaces (matching the server's 0.0.0.0 bind).
 	ln, err := net.Listen("tcp", "0.0.0.0:0")

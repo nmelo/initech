@@ -12,14 +12,43 @@ import (
 	"github.com/coder/websocket"
 )
 
-// fakeStateProvider implements StateProvider for testing.
+// fakeStateProvider implements StateProvider for testing. mu guards snap
+// against concurrent test mutation (e.g. setActivity) and the websocket
+// handler's reads via CurrentState (which then JSON-encodes the slice on
+// the http server's goroutine). CurrentState returns a defensive copy of
+// Panes so the handler can encode safely while a test mutates the
+// underlying slice — fixing the second race surfaced under ini-t89.
 type fakeStateProvider struct {
+	mu   sync.Mutex
 	snap StateSnapshot
 	ok   bool
 }
 
 func (f *fakeStateProvider) CurrentState() (StateSnapshot, bool) {
-	return f.snap, f.ok
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	// PaneState is a value type, so a slice copy is sufficient for the
+	// fields tests mutate today (Activity, Alive, etc.). Layout is a
+	// value type. Live is a pointer; if a future test mutates *Live,
+	// extend the copy here.
+	panes := make([]PaneState, len(f.snap.Panes))
+	copy(panes, f.snap.Panes)
+	return StateSnapshot{
+		Project: f.snap.Project,
+		Layout:  f.snap.Layout,
+		Panes:   panes,
+		Live:    f.snap.Live,
+	}, f.ok
+}
+
+// setActivity mutates a single pane's Activity under f.mu. Tests that
+// want to trigger a state-change broadcast must use this (or a similar
+// locked mutator) instead of writing snap fields directly — the ws
+// handler is reading concurrently.
+func (f *fakeStateProvider) setActivity(idx int, activity string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.snap.Panes[idx].Activity = activity
 }
 
 func TestStateWS_InitialSnapshot(t *testing.T) {
@@ -108,8 +137,9 @@ func TestStateWS_PushesOnChange(t *testing.T) {
 	// Read initial snapshot.
 	conn.Read(ctx)
 
-	// Change state.
-	sp.snap.Panes[0].Activity = "idle"
+	// Change state via the locked mutator — the ws handler is reading
+	// snap concurrently from another goroutine (see fakeStateProvider).
+	sp.setActivity(0, "idle")
 
 	// Wait for debounce tick (slightly over 500ms).
 	_, data, err := conn.Read(ctx)

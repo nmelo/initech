@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -129,6 +130,12 @@ type wsMessage struct {
 
 // Server is an HTTP server that serves the SPA and pane API.
 type Server struct {
+	// addrMu protects addr against the read/write race between Start
+	// (which overwrites addr with the actual bound address once the
+	// listener is up — including resolving port 0) and Addr (called by
+	// callers polling for readiness). Initialized by NewServer; rewritten
+	// once during Start; read by Addr from any goroutine.
+	addrMu        sync.Mutex
 	addr          string
 	srv           *http.Server
 	logger        *slog.Logger
@@ -189,8 +196,11 @@ func (s *Server) Start(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("web server listen: %w", err)
 	}
-	s.addr = ln.Addr().String() // capture actual address (port 0 case)
-	s.logger.Info("web server listening", "addr", s.addr)
+	bound := ln.Addr().String() // capture actual address (port 0 case)
+	s.addrMu.Lock()
+	s.addr = bound
+	s.addrMu.Unlock()
+	s.logger.Info("web server listening", "addr", bound)
 
 	go func() {
 		<-ctx.Done()
@@ -205,8 +215,12 @@ func (s *Server) Start(ctx context.Context) error {
 }
 
 // Addr returns the address the server is bound to. Only meaningful after
-// Start has been called (and the listener is active).
+// Start has been called (and the listener is active). Safe to call from
+// any goroutine while Start is racing to bind — addrMu serializes the
+// initial-config read with Start's bound-address write.
 func (s *Server) Addr() string {
+	s.addrMu.Lock()
+	defer s.addrMu.Unlock()
 	return s.addr
 }
 
