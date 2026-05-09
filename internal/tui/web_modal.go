@@ -174,6 +174,5 @@ func (t *TUI) webCopyURL() {
 	}
 	host := mcpLANIP()
 	url := fmt.Sprintf("http://%s:%d", host, t.webPort)
-	osc := fmt.Sprintf("\033]52;c;%s\a", base64Encode(url))
-	fmt.Print(osc)
+	fmt.Print(buildOSC52(url))
 }

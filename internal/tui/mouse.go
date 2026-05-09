@@ -241,23 +241,51 @@ func (t *TUI) forwardMouseToFocused(mx, my int, button uv.MouseButton, isMotion,
 	t.forwardMouseEvent(p, lx, ly, button, isMotion, isRelease, mods)
 }
 
+// pbcopyExec is the side-effecting hook that copySelection uses to write to
+// the macOS clipboard. Tests swap it via pbcopyExec = stub; production callers
+// shell out to /usr/bin/pbcopy. Errors are intentionally swallowed: a missing
+// pbcopy on a non-Mac host should not crash the TUI, just no-op the copy.
+var pbcopyExec = func(text string) error {
+	cmd := exec.Command("pbcopy")
+	cmd.Stdin = strings.NewReader(text)
+	return cmd.Run()
+}
+
 // copySelection extracts the current selection and writes it to the macOS
-// clipboard via pbcopy. The zero-width guard (ini-o0j) skips plain clicks
-// where start == end so a focus click does not overwrite the clipboard.
+// clipboard via pbcopyExec. Two short-circuits in order:
 //
-// ini-jr0 Phase 1 instrumentation: the extracted text and selection bounds
-// are logged on every release path so .initech/initech.log can confirm
-// whether mouse-twitch motion events are producing 1-cell drags that
-// extract 2 adjacent characters (e.g. "ll" from "calls"/"hello").
+//  1. Zero-width (ini-o0j): start == end. Plain pane-focus click; without
+//     this guard, every click overwrites the clipboard with the single
+//     character under the cursor.
+//  2. Near-zero same-row (ini-jr0): |endX - startX| <= 1 AND startY == endY.
+//     Mouse-twitch motion events between Button1 press and release upgrade
+//     a click into a 1-cell drag, which extracts 2 adjacent cells (e.g.
+//     "ll" from "Hello"/"calls"). Vertical 1-cell deltas are deliberately
+//     NOT widened — a 1-row drag extracts a long L-shape that is visually
+//     obvious selection, not a ghost copy.
+//
+// Trade-off: a deliberate single-character drag (rare; double-click is the
+// natural way to select one character) is filtered. If real users hit this,
+// upgrade to a configurable threshold per fix-shape Option B in the bead.
 func (t *TUI) copySelection() {
 	if t.sel.pane >= len(t.panes) {
 		return
 	}
-	// Skip zero-width selections (plain clicks with no drag). Without this
-	// guard, every pane-focus click overwrites the system clipboard with the
-	// single character under the cursor (ini-o0j).
+	// Guard 1: exact zero-width (ini-o0j).
 	if t.sel.startX == t.sel.endX && t.sel.startY == t.sel.endY {
 		return
+	}
+	// Guard 2: near-zero same-row (ini-jr0). Mouse-twitch widening.
+	if t.sel.startY == t.sel.endY {
+		dx := t.sel.endX - t.sel.startX
+		if dx < 0 {
+			dx = -dx
+		}
+		if dx <= 1 {
+			LogDebug("mouse", "copy skipped: 1-cell same-row delta (ini-jr0 guard)",
+				"startX", t.sel.startX, "endX", t.sel.endX, "y", t.sel.startY)
+			return
+		}
 	}
 	text := t.extractSelectionText()
 	if text == "" {
@@ -269,9 +297,7 @@ func (t *TUI) copySelection() {
 		"endX", t.sel.endX, "endY", t.sel.endY,
 		"text_len", len(text), "text", text)
 
-	cmd := exec.Command("pbcopy")
-	cmd.Stdin = strings.NewReader(text)
-	cmd.Run()
+	pbcopyExec(text)
 }
 
 // extractSelectionText returns the text contained within the current

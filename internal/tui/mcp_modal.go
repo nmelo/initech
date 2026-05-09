@@ -226,13 +226,19 @@ func (t *TUI) mcpCopyToken() {
 	if t.mcpToken == "" {
 		return
 	}
-
-	// OSC 52: \033]52;c;<base64>\a
-	encoded := base64Encode(t.mcpToken)
-	osc := fmt.Sprintf("\033]52;c;%s\a", encoded)
-
 	// Write directly to the terminal (stdout, not the screen).
-	fmt.Print(osc)
+	fmt.Print(buildOSC52(t.mcpToken))
+}
+
+// buildOSC52 returns the OSC 52 clipboard-set escape sequence for content.
+// Format: \033]52;c;<base64>\a — recognised by most modern terminals as a
+// "set system clipboard to this base64-decoded payload" request.
+//
+// Extracted so ini-jr0 Phase 3 can verify the emitted sequence round-trips
+// without capturing stdout. Used by both mcpCopyToken and webCopyURL so a
+// future encoding change happens in one place.
+func buildOSC52(content string) string {
+	return fmt.Sprintf("\033]52;c;%s\a", base64Encode(content))
 }
 
 // base64Encode returns the standard base64 encoding of s.
