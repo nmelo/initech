@@ -27,8 +27,8 @@ func TestStartBatteryPoller_NoBatteryStopsAfterInitialCheck(t *testing.T) {
 	tui.startBatteryPoller()
 	time.Sleep(25 * time.Millisecond)
 
-	if tui.batteryPercent != -1 {
-		t.Fatalf("batteryPercent = %d, want -1 when no battery exists", tui.batteryPercent)
+	if pct, _ := tui.batteryStatus(); pct != -1 {
+		t.Fatalf("batteryPercent = %d, want -1 when no battery exists", pct)
 	}
 	if calls.Load() != 1 {
 		t.Fatalf("readBattery calls = %d, want 1", calls.Load())
@@ -60,12 +60,13 @@ func TestStartBatteryPoller_SeedsInitialStateAndUpdatesOnTick(t *testing.T) {
 
 	tui.startBatteryPoller()
 
-	if tui.batteryPercent != 40 || !tui.batteryCharging {
-		t.Fatalf("initial battery state = (%d,%v), want (40,true)", tui.batteryPercent, tui.batteryCharging)
+	if pct, charging := tui.batteryStatus(); pct != 40 || !charging {
+		t.Fatalf("initial battery state = (%d,%v), want (40,true)", pct, charging)
 	}
 
 	waitForCondition(t, func() bool {
-		return tui.batteryPercent == 55 && !tui.batteryCharging
+		pct, charging := tui.batteryStatus()
+		return pct == 55 && !charging
 	})
 	close(tui.quitCh)
 }
@@ -90,8 +91,8 @@ func TestStartBatteryPoller_KeepsLastKnownValueWhenBatteryReadDropsOut(t *testin
 	waitForCondition(t, func() bool { return calls.Load() >= 2 })
 	close(tui.quitCh)
 
-	if tui.batteryPercent != 72 || tui.batteryCharging {
-		t.Fatalf("battery state after dropout = (%d,%v), want stale (72,false)", tui.batteryPercent, tui.batteryCharging)
+	if pct, charging := tui.batteryStatus(); pct != 72 || charging {
+		t.Fatalf("battery state after dropout = (%d,%v), want stale (72,false)", pct, charging)
 	}
 }
 

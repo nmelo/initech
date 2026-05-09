@@ -393,16 +393,18 @@ func (t *TUI) renderHints() {
 		b.addRight("v"+t.updateAvailable+" available", b.barStyle.Foreground(tcell.ColorYellow))
 	}
 
-	// Battery.
-	if t.batteryPercent >= 0 {
-		battStr := fmt.Sprintf("%d%%", t.batteryPercent)
+	// Battery. Read both fields under t.mu via the helper, then drop the
+	// lock before any styling work — the critical section is two reads.
+	battPct, battCharging := t.batteryStatus()
+	if battPct >= 0 {
+		battStr := fmt.Sprintf("%d%%", battPct)
 		battStyle := b.barStyle
-		if t.batteryCharging {
+		if battCharging {
 			battStr += " +"
 			battStyle = b.barStyle.Foreground(tcell.ColorGreen)
-		} else if t.batteryPercent < 10 {
+		} else if battPct < 10 {
 			battStyle = b.barStyle.Foreground(tcell.ColorRed)
-		} else if t.batteryPercent < 20 {
+		} else if battPct < 20 {
 			battStyle = b.barStyle.Foreground(tcell.ColorYellow)
 		}
 		b.addRight(battStr, battStyle)

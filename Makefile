@@ -19,6 +19,9 @@ test:
 test-full:
 	go test ./... -count=1
 
+test-race:
+	go test ./... -count=1 -race
+
 integration:
 	go test ./... -count=1 -run 'Integ|Watchdog|AutoApprove|RenderNotBlocked|DaemonAuth|AddPane_(Success|SetsGoroutines|EventChWired|EnvInjected|GridRecalculated|NoConfigModification)|NoBracketedPaste|WaitsForReady|StashSkipsRetry|ResumesSuspended|ResizeDebounce'
 

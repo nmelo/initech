@@ -62,13 +62,19 @@ func (t *TUI) rotateTip() {
 // startBatteryPoller launches a goroutine that polls battery state every 60s.
 // If the first poll finds no battery, the goroutine exits immediately and
 // batteryPercent stays at -1 (nothing rendered in the status bar).
+//
+// All writes to t.batteryPercent and t.batteryCharging happen under t.mu so
+// the renderer (which reads on every paint) and tests (which read after the
+// goroutine starts) cannot race with the poller goroutine.
 func (t *TUI) startBatteryPoller() {
 	pct, charging, hasBattery := readBatteryFn()
 	if !hasBattery {
 		return // Desktop or VM, no battery to monitor.
 	}
+	t.mu.Lock()
 	t.batteryPercent = pct
 	t.batteryCharging = charging
+	t.mu.Unlock()
 
 	t.safeGo(func() {
 		ticker := newBatteryTicker(60 * time.Second)
@@ -78,12 +84,24 @@ func (t *TUI) startBatteryPoller() {
 			case <-ticker.C:
 				pct, charging, has := readBatteryFn()
 				if has {
+					t.mu.Lock()
 					t.batteryPercent = pct
 					t.batteryCharging = charging
+					t.mu.Unlock()
 				}
 			case <-t.quitCh:
 				return
 			}
 		}
 	})
+}
+
+// batteryStatus returns the current battery percentage and charging state
+// under t.mu. Renderer paints, tests, and any future readers must use this
+// helper instead of reading the fields directly so the locking discipline
+// stays in one place.
+func (t *TUI) batteryStatus() (pct int, charging bool) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.batteryPercent, t.batteryCharging
 }

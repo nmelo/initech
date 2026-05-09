@@ -205,7 +205,9 @@ type TUI struct {
 	tipIndex    int       // Current index into statusTips.
 	tipRotateAt time.Time // When the next tip rotation should happen.
 
-	// Battery monitoring for status bar.
+	// Battery monitoring for status bar. mu protects both fields against
+	// concurrent reads (renderer paint, tests) and writes (background poller).
+	mu              sync.Mutex
 	batteryPercent  int  // 0-100, or -1 if no battery detected.
 	batteryCharging bool // True when plugged in and charging.
 
