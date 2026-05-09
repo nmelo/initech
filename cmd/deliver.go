@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/nmelo/initech/internal/config"
+	"github.com/nmelo/initech/internal/roles"
 	"github.com/nmelo/initech/internal/tui"
 	"github.com/nmelo/initech/internal/webhook"
 	"github.com/spf13/cobra"
@@ -19,13 +20,23 @@ var deliverCmd = &cobra.Command{
 	Long: `Atomic completion: combines bd update, bd comment, initech bead --clear,
 and initech send in one command. Counterpart to initech assign.
 
-  initech deliver ini-abc                              # mark ready_for_qa, report to super
-  initech deliver ini-abc --fail --reason "tests fail"  # stay in_progress, report failure
+  initech deliver ini-abc                              # eng: mark ready_for_qa, report to super
+  initech deliver ini-abc --fail --reason "tests fail"  # eng: stay in_progress, report failure
+  initech deliver ini-abc --verdict PASS                # qa: announce PASS verdict
+  initech deliver ini-abc --verdict FAIL --reason X     # qa: announce FAIL verdict
   initech deliver ini-abc --to qa1                      # report to qa1 instead of super
   initech deliver ini-abc --message "also fixed lint"   # append note to report
+  initech deliver ini-abc --as qa2 --verdict PASS       # override INITECH_AGENT (rare)
 
-Fail-fast ordering: bd operations first (durable state), TUI bead clear
-second (cosmetic), report/announce last (notifications). A partial failure
+The notification template is selected from the caller's role family:
+  eng*       -> "ready for QA" / "FAILED" (current behavior)
+  qa*        -> "PASS:" / "FAIL:" — --verdict PASS|FAIL is required
+  others     -> "delivered:" / "delivery failed:"
+Unknown roles error rather than silently using the engineer template.
+
+Fail-fast ordering: input validation first (rejects bad flag combos before
+any side effects), bd operations second (durable state), TUI bead clear
+third (cosmetic), report/announce last (notifications). A partial failure
 leaves the bead in the correct status even if notifications fail.
 
 Requires bd and a running initech TUI.`,
@@ -39,27 +50,30 @@ var (
 	deliverReason  string
 	deliverTo      string
 	deliverMessage string
+	deliverVerdict string
+	deliverAs      string
 )
 
 func init() {
 	deliverCmd.Flags().BoolVar(&deliverPass, "pass", false, "Mark ready_for_qa (default behavior)")
 	deliverCmd.Flags().BoolVar(&deliverFail, "fail", false, "Stay in_progress, report failure")
-	deliverCmd.Flags().StringVar(&deliverReason, "reason", "", "Failure reason (used with --fail)")
+	deliverCmd.Flags().StringVar(&deliverReason, "reason", "", "Failure reason (used with --fail or --verdict FAIL)")
 	deliverCmd.Flags().StringVar(&deliverTo, "to", "super", "Agent to report to (default: super)")
 	deliverCmd.Flags().StringVarP(&deliverMessage, "message", "m", "", "Custom note appended to the report")
+	deliverCmd.Flags().StringVar(&deliverVerdict, "verdict", "", "QA verdict: PASS or FAIL (required for qa* roles)")
+	deliverCmd.Flags().StringVar(&deliverAs, "as", "", "Override caller role (default: INITECH_AGENT env var)")
 	rootCmd.AddCommand(deliverCmd)
 }
 
 func runDeliver(cmd *cobra.Command, args []string) error {
 	beadID := args[0]
 
-	if deliverFail && deliverPass {
-		return fmt.Errorf("cannot specify both --pass and --fail")
+	// Pre-validate flags before any side effects (bd writes, IPC, network).
+	// All caller errors must surface here so downstream paths can trust the inputs.
+	agent, family, verdict, isFail, err := validateDeliverFlags()
+	if err != nil {
+		return err
 	}
-	// Default to pass if neither specified.
-	isFail := deliverFail
-
-	agent := os.Getenv("INITECH_AGENT")
 
 	// Parse host:agent for the --to recipient.
 	recipient := deliverTo
@@ -81,6 +95,8 @@ func runDeliver(cmd *cobra.Command, args []string) error {
 	}
 
 	// Step 2: Update bead status.
+	// Status-transition-by-family is owned by ini-dgt.1; this commit preserves
+	// today's behavior (success -> ready_for_qa for every family).
 	if isFail {
 		reason := deliverReason
 		if reason == "" {
@@ -112,18 +128,14 @@ func runDeliver(cmd *cobra.Command, args []string) error {
 		fmt.Fprintf(cmd.ErrOrStderr(), "warning: INITECH_AGENT not set, skipping TUI bead clear\n")
 	}
 
-	// Step 4: Send report to recipient.
+	// Step 3.5: Pick the per-family notification template. All four downstream
+	// paths (report, announce, webhook, IPC) read from this single struct so
+	// they cannot drift out of sync.
 	displayTitle := truncateTitle(title, 80)
-	var report string
-	if isFail {
-		reason := deliverReason
-		if reason == "" {
-			reason = "no reason provided"
-		}
-		report = fmt.Sprintf("[from %s] %s: %s FAILED: %s", agentOrUnknown(agent), beadID, displayTitle, reason)
-	} else {
-		report = fmt.Sprintf("[from %s] %s: %s ready for QA", agentOrUnknown(agent), beadID, displayTitle)
-	}
+	tpl := selectTemplate(family, isFail, verdict, deliverReason, displayTitle, agent)
+
+	// Step 4: Send report to recipient.
+	report := fmt.Sprintf("[from %s] %s: %s", agentOrUnknown(agent), beadID, tpl.ReportText)
 	if deliverMessage != "" {
 		report += ". " + deliverMessage
 	}
@@ -142,34 +154,16 @@ func runDeliver(cmd *cobra.Command, args []string) error {
 	}
 
 	// Step 5: Announce to Agent Radio (fire and forget).
-	announceDeliver(cmd, agent, beadID, displayTitle, isFail, deliverReason)
+	announceDeliver(cmd, agent, beadID, tpl)
 
 	// Step 6: Post to webhook (fire and forget).
-	webhookDeliver(cmd, agent, beadID, displayTitle, isFail, deliverReason)
+	webhookDeliver(cmd, agent, beadID, tpl)
 
 	// Step 7: Emit event to TUI (fire and forget).
-	if isFail {
-		reason := deliverReason
-		if reason == "" {
-			reason = "no reason provided"
-		}
-		emitIPCEvent(agentOrUnknown(agent), beadID, "bead_delivered",
-			fmt.Sprintf("%s failed: %s", agentOrUnknown(agent), reason))
-	} else {
-		emitIPCEvent(agentOrUnknown(agent), beadID, "bead_delivered",
-			fmt.Sprintf("%s delivered: %s (ready for QA)", agentOrUnknown(agent), displayTitle))
-	}
+	emitIPCEvent(agentOrUnknown(agent), beadID, "bead_delivered", tpl.IPCSummary)
 
 	// Output summary.
-	if isFail {
-		reason := deliverReason
-		if reason == "" {
-			reason = "no reason provided"
-		}
-		fmt.Fprintf(cmd.ErrOrStderr(), "delivered %s (FAILED: %s) -> %s\n", beadID, reason, deliverTo)
-	} else {
-		fmt.Fprintf(cmd.ErrOrStderr(), "delivered %s (ready for QA) -> %s\n", beadID, deliverTo)
-	}
+	fmt.Fprintf(cmd.ErrOrStderr(), "delivered %s (%s) -> %s\n", beadID, tpl.SummarySuffix, deliverTo)
 	return nil
 }
 
@@ -235,8 +229,10 @@ func agentOrUnknown(agent string) string {
 	return agent
 }
 
-// announceDeliver posts a completion/failure announcement to Agent Radio.
-func announceDeliver(cmd *cobra.Command, agent, beadID, title string, isFail bool, reason string) {
+// announceDeliver posts a completion/failure announcement to Agent Radio using
+// the family-aware template. Fire-and-forget: returns silently if no announce
+// URL is configured.
+func announceDeliver(cmd *cobra.Command, agent, beadID string, tpl deliverTemplate) {
 	wd, err := os.Getwd()
 	if err != nil {
 		return
@@ -250,22 +246,9 @@ func announceDeliver(cmd *cobra.Command, agent, beadID, title string, isFail boo
 		return
 	}
 
-	var detail, kind string
-	if isFail {
-		kind = "agent.failed"
-		if reason != "" {
-			detail = fmt.Sprintf("%s hit a wall: %s", agentOrUnknown(agent), reason)
-		} else {
-			detail = fmt.Sprintf("%s hit a wall", agentOrUnknown(agent))
-		}
-	} else {
-		kind = "agent.completed"
-		detail = fmt.Sprintf("%s finished: %s", agentOrUnknown(agent), title)
-	}
-
 	result := webhook.PostAnnouncement(p.AnnounceURL, webhook.AnnouncePayload{
-		Detail:  detail,
-		Kind:    kind,
+		Detail:  tpl.RadioDetail,
+		Kind:    tpl.Kind,
 		Agent:   agentOrUnknown(agent),
 		Project: p.Name,
 		BeadID:  beadID,
@@ -275,8 +258,10 @@ func announceDeliver(cmd *cobra.Command, agent, beadID, title string, isFail boo
 	}
 }
 
-// webhookDeliver posts a completion/failure notification to the webhook.
-func webhookDeliver(cmd *cobra.Command, agent, beadID, title string, isFail bool, reason string) {
+// webhookDeliver posts a completion/failure notification to the webhook using
+// the family-aware template. Fire-and-forget: returns silently if no webhook
+// URL is configured.
+func webhookDeliver(cmd *cobra.Command, agent, beadID string, tpl deliverTemplate) {
 	wd, err := os.Getwd()
 	if err != nil {
 		return
@@ -290,19 +275,182 @@ func webhookDeliver(cmd *cobra.Command, agent, beadID, title string, isFail bool
 		return
 	}
 
-	var kind, message string
-	if isFail {
-		kind = "agent.failed"
-		message = fmt.Sprintf("%s FAILED", title)
-		if reason != "" {
-			message += ": " + reason
-		}
-	} else {
-		kind = "agent.completed"
-		message = fmt.Sprintf("%s ready for QA", title)
+	if err := webhook.PostNotification(p.WebhookURL, tpl.Kind, agentOrUnknown(agent), tpl.WebhookText, p.Name); err != nil {
+		fmt.Fprintf(cmd.ErrOrStderr(), "warning: webhook failed: %s\n", err)
+	}
+}
+
+// deliverTemplate is the per-family notification bundle used by every downstream
+// path in runDeliver. Selecting the template once and threading it through
+// keeps the four notification surfaces (report, radio, webhook, IPC) byte-for-
+// byte consistent for any (family, verdict, isFail) tuple.
+type deliverTemplate struct {
+	Kind          string // webhook event kind, e.g. agent.completed | agent.failed
+	RadioDetail   string // TTS message body for Agent Radio
+	WebhookText   string // short notification text for Slack/webhook
+	ReportText    string // suffix for the [from X] <id>: ... line sent to recipient
+	IPCSummary    string // summary string for the bead_delivered TUI event
+	SummarySuffix string // parenthetical for the operator-facing stderr summary
+}
+
+// resolveDeliverAgent returns the effective agent name, preferring the --as
+// flag override over the INITECH_AGENT env var. Returns the empty string if
+// neither is set; callers must reject that case via validateDeliverFlags.
+func resolveDeliverAgent() string {
+	if deliverAs != "" {
+		return deliverAs
+	}
+	return os.Getenv("INITECH_AGENT")
+}
+
+// validateDeliverFlags resolves the caller, normalizes the verdict, and
+// applies all per-family flag rules in one place so downstream code can trust
+// the inputs without re-checking. No side effects: callers can run this before
+// any bd writes, IPC, or network.
+//
+// Returns (agent, family, verdict, isFail, error). On error, none of the other
+// values are meaningful.
+func validateDeliverFlags() (agent string, family roles.RoleFamily, verdict string, isFail bool, err error) {
+	if deliverFail && deliverPass {
+		return "", "", "", false, fmt.Errorf("cannot specify both --pass and --fail")
 	}
 
-	if err := webhook.PostNotification(p.WebhookURL, kind, agentOrUnknown(agent), message, p.Name); err != nil {
-		fmt.Fprintf(cmd.ErrOrStderr(), "warning: webhook failed: %s\n", err)
+	agent = resolveDeliverAgent()
+	family = roles.RoleFamilyOf(agent)
+	verdict = strings.ToUpper(strings.TrimSpace(deliverVerdict))
+
+	switch verdict {
+	case "", "PASS", "FAIL":
+		// ok
+	default:
+		return "", "", "", false, fmt.Errorf("--verdict must be PASS or FAIL, got %q", deliverVerdict)
+	}
+
+	// --verdict and --fail must agree if both supplied.
+	if verdict == "PASS" && deliverFail {
+		return "", "", "", false, fmt.Errorf("--verdict PASS conflicts with --fail")
+	}
+
+	// Effective failure state: explicit --fail OR --verdict FAIL.
+	isFail = deliverFail || verdict == "FAIL"
+
+	switch family {
+	case roles.FamilyUnknown:
+		if agent == "" {
+			return "", "", "", false, fmt.Errorf("cannot detect role: INITECH_AGENT not set and --as not provided")
+		}
+		return "", "", "", false, fmt.Errorf("cannot detect role for agent %q; pass --as <eng|qa|...> to override", agent)
+	case roles.FamilyEng:
+		if verdict != "" {
+			return "", "", "", false, fmt.Errorf("--verdict is only valid for qa* roles, got role %s", agent)
+		}
+	case roles.FamilyQA:
+		if verdict == "" && !deliverFail {
+			return "", "", "", false, fmt.Errorf("qa role %s requires --verdict PASS|FAIL (or --fail --reason ...)", agent)
+		}
+	case roles.FamilyOther:
+		if verdict != "" {
+			return "", "", "", false, fmt.Errorf("--verdict is only valid for qa* roles, got role %s", agent)
+		}
+	}
+
+	return agent, family, verdict, isFail, nil
+}
+
+// selectTemplate picks the notification template for the (family, isFail,
+// verdict) tuple. Inputs must already be validated by validateDeliverFlags;
+// this function panics on contradictory states (e.g. QA family with empty
+// verdict and isFail=false) because that is an internal contract violation,
+// not user input.
+func selectTemplate(family roles.RoleFamily, isFail bool, verdict, reason, title, agent string) deliverTemplate {
+	a := agentOrUnknown(agent)
+	r := reason
+	if isFail && r == "" {
+		r = "no reason provided"
+	}
+
+	switch family {
+	case roles.FamilyEng:
+		if isFail {
+			detail := fmt.Sprintf("%s hit a wall: %s", a, r)
+			webhookText := fmt.Sprintf("%s FAILED: %s", title, r)
+			if reason == "" {
+				detail = fmt.Sprintf("%s hit a wall", a)
+				webhookText = fmt.Sprintf("%s FAILED", title)
+			}
+			return deliverTemplate{
+				Kind:          "agent.failed",
+				RadioDetail:   detail,
+				WebhookText:   webhookText,
+				ReportText:    fmt.Sprintf("%s FAILED: %s", title, r),
+				IPCSummary:    fmt.Sprintf("%s failed: %s", a, r),
+				SummarySuffix: fmt.Sprintf("FAILED: %s", r),
+			}
+		}
+		return deliverTemplate{
+			Kind:          "agent.completed",
+			RadioDetail:   fmt.Sprintf("%s finished: %s", a, title),
+			WebhookText:   fmt.Sprintf("%s ready for QA", title),
+			ReportText:    fmt.Sprintf("%s ready for QA", title),
+			IPCSummary:    fmt.Sprintf("%s delivered: %s (ready for QA)", a, title),
+			SummarySuffix: "ready for QA",
+		}
+
+	case roles.FamilyQA:
+		if isFail {
+			// --verdict FAIL or --fail. Lead with FAIL so the radio TTS reads
+			// the verdict first, matching QA's verdict-first reporting rule.
+			detail := fmt.Sprintf("%s FAIL: %s — %s", a, title, r)
+			return deliverTemplate{
+				Kind:          "agent.failed",
+				RadioDetail:   detail,
+				WebhookText:   fmt.Sprintf("FAIL: %s — %s", title, r),
+				ReportText:    fmt.Sprintf("FAIL: %s — %s", title, r),
+				IPCSummary:    fmt.Sprintf("%s FAIL: %s", a, title),
+				SummarySuffix: fmt.Sprintf("FAIL: %s", r),
+			}
+		}
+		// verdict == PASS (validation guarantees this branch is only reached
+		// for QA when isFail=false and verdict was supplied).
+		return deliverTemplate{
+			Kind:          "agent.completed",
+			RadioDetail:   fmt.Sprintf("%s PASS: %s", a, title),
+			WebhookText:   fmt.Sprintf("PASS: %s", title),
+			ReportText:    fmt.Sprintf("PASS: %s", title),
+			IPCSummary:    fmt.Sprintf("%s PASS: %s", a, title),
+			SummarySuffix: "PASS",
+		}
+
+	case roles.FamilyOther:
+		if isFail {
+			return deliverTemplate{
+				Kind:          "agent.failed",
+				RadioDetail:   fmt.Sprintf("%s delivery failed: %s", a, r),
+				WebhookText:   fmt.Sprintf("%s delivery failed: %s", title, r),
+				ReportText:    fmt.Sprintf("%s delivery failed: %s", title, r),
+				IPCSummary:    fmt.Sprintf("%s delivery failed: %s", a, r),
+				SummarySuffix: fmt.Sprintf("delivery failed: %s", r),
+			}
+		}
+		return deliverTemplate{
+			Kind:          "agent.completed",
+			RadioDetail:   fmt.Sprintf("%s delivered: %s", a, title),
+			WebhookText:   fmt.Sprintf("%s delivered: %s", a, title),
+			ReportText:    fmt.Sprintf("delivered: %s", title),
+			IPCSummary:    fmt.Sprintf("%s delivered: %s", a, title),
+			SummarySuffix: "delivered",
+		}
+	}
+
+	// FamilyUnknown reaches here only if validateDeliverFlags is bypassed,
+	// which is an internal contract violation. Return a defensive fallback so
+	// production code never crashes; tests should fail if this branch fires.
+	return deliverTemplate{
+		Kind:          "agent.completed",
+		RadioDetail:   fmt.Sprintf("%s delivered: %s", a, title),
+		WebhookText:   fmt.Sprintf("%s delivered: %s", a, title),
+		ReportText:    fmt.Sprintf("delivered: %s", title),
+		IPCSummary:    fmt.Sprintf("%s delivered: %s", a, title),
+		SummarySuffix: "delivered",
 	}
 }

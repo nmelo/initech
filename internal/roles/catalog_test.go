@@ -99,6 +99,44 @@ func TestLookupRole_Unknown(t *testing.T) {
 	}
 }
 
+func TestRoleFamilyOf(t *testing.T) {
+	tests := []struct {
+		name string
+		want RoleFamily
+	}{
+		{"", FamilyUnknown},
+		{"eng1", FamilyEng},
+		{"eng2", FamilyEng},
+		{"eng3", FamilyEng},
+		{"engineer", FamilyEng},
+		{"qa1", FamilyQA},
+		{"qa2", FamilyQA},
+		{"qa3", FamilyQA},
+		{"qaWhatever", FamilyQA},
+		{"super", FamilyOther},
+		{"shipper", FamilyOther},
+		{"pm", FamilyOther},
+		{"pmm", FamilyOther},
+		{"growth", FamilyOther},
+		{"writer", FamilyOther},
+		{"ops", FamilyOther},
+		{"arch", FamilyOther},
+		{"sec", FamilyOther},
+		{"intern", FamilyOther},
+		{"designer", FamilyUnknown},
+		{"random-custom-role", FamilyUnknown},
+		{"dba", FamilyUnknown},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := RoleFamilyOf(tt.name)
+			if got != tt.want {
+				t.Errorf("RoleFamilyOf(%q) = %q, want %q", tt.name, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestResolveClaudeArgs(t *testing.T) {
 	tests := []struct {
 		name       string

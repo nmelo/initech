@@ -9,6 +9,8 @@
 // This package does not know about files on disk, config parsing, or the TUI.
 package roles
 
+import "strings"
+
 // PermissionTier controls whether an agent runs with --dangerously-skip-permissions.
 type PermissionTier int
 
@@ -60,6 +62,47 @@ func LookupRole(name string) RoleDef {
 		Name:       name,
 		Permission: Autonomous,
 	}
+}
+
+// RoleFamily groups roles that share notification and lifecycle semantics.
+// Used by initech deliver to pick the right announce template per caller, and
+// by status-transition logic to decide which lifecycle move (if any) to make.
+//
+// The set is intentionally small: Eng and QA are the two roles whose deliver
+// behavior diverges materially today. Everything else collapses into Other,
+// which gets a generic "delivered" message and no status transition. Unknown
+// captures the empty/unrecognized agent case so callers can fail loudly
+// instead of guessing.
+type RoleFamily string
+
+const (
+	FamilyEng     RoleFamily = "eng"
+	FamilyQA      RoleFamily = "qa"
+	FamilyOther   RoleFamily = "other"
+	FamilyUnknown RoleFamily = "unknown"
+)
+
+// RoleFamilyOf maps an agent name to its RoleFamily. Detection prefers prefix
+// matching for the eng/qa families (so eng1, eng2, qa3 all resolve correctly
+// without catalog updates), then falls back to exact-match against the open
+// catalog of known role names. Names that match neither pattern return
+// FamilyUnknown so callers can reject them rather than silently defaulting to
+// the engineer template.
+func RoleFamilyOf(name string) RoleFamily {
+	if name == "" {
+		return FamilyUnknown
+	}
+	switch {
+	case strings.HasPrefix(name, "qa"):
+		return FamilyQA
+	case strings.HasPrefix(name, "eng"):
+		return FamilyEng
+	}
+	switch name {
+	case "super", "shipper", "pm", "pmm", "arch", "sec", "writer", "ops", "growth", "intern":
+		return FamilyOther
+	}
+	return FamilyUnknown
 }
 
 // ResolveClaudeArgs returns the claude flags for a role using the priority
