@@ -535,6 +535,11 @@ func Run(cfg Config) error {
 	screen.SetTitle(fmt.Sprintf("initech - %s", cfg.ProjectName))
 	screen.EnableMouse()
 	screen.EnablePaste()
+	// Suppress the OS hardware caret; initech draws its own focus-indicator
+	// cell. On Windows the OS cursor tracks every SetContent and visibly
+	// hops; on Unix it's a no-op (the cursor was already idle). State is
+	// restored by screen.Fini() on clean exit and panic recovery.
+	screen.HideCursor()
 	defer screen.Fini()
 
 	// Initialize structured logging before anything else.
