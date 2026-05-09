@@ -31,3 +31,7 @@ ARCHITECTURE.md
 1tokf
 coverage.out
 .tokf/
+
+# Mutation-testing scratch (gremlins logs, ini-ybe.3 spike outputs).
+# Logs are tied to a specific run; the report in pm/specs/ is the durable artifact.
+.tmp/
