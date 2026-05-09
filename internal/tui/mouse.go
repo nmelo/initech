@@ -241,7 +241,14 @@ func (t *TUI) forwardMouseToFocused(mx, my int, button uv.MouseButton, isMotion,
 	t.forwardMouseEvent(p, lx, ly, button, isMotion, isRelease, mods)
 }
 
-// copySelection extracts selected text from the pane's emulator and copies to clipboard.
+// copySelection extracts the current selection and writes it to the macOS
+// clipboard via pbcopy. The zero-width guard (ini-o0j) skips plain clicks
+// where start == end so a focus click does not overwrite the clipboard.
+//
+// ini-jr0 Phase 1 instrumentation: the extracted text and selection bounds
+// are logged on every release path so .initech/initech.log can confirm
+// whether mouse-twitch motion events are producing 1-cell drags that
+// extract 2 adjacent characters (e.g. "ll" from "calls"/"hello").
 func (t *TUI) copySelection() {
 	if t.sel.pane >= len(t.panes) {
 		return
@@ -252,6 +259,30 @@ func (t *TUI) copySelection() {
 	if t.sel.startX == t.sel.endX && t.sel.startY == t.sel.endY {
 		return
 	}
+	text := t.extractSelectionText()
+	if text == "" {
+		return
+	}
+
+	LogDebug("mouse", "copied",
+		"startX", t.sel.startX, "startY", t.sel.startY,
+		"endX", t.sel.endX, "endY", t.sel.endY,
+		"text_len", len(text), "text", text)
+
+	cmd := exec.Command("pbcopy")
+	cmd.Stdin = strings.NewReader(text)
+	cmd.Run()
+}
+
+// extractSelectionText returns the text contained within the current
+// selection without performing any clipboard side effect. Pure function over
+// the pane emulator state plus t.sel — testable in isolation, which is how
+// ini-jr0 Phase 1 confirms the suspected 1-cell-drag-extracts-2-chars pattern.
+//
+// Caller must have validated t.sel.pane < len(t.panes). The zero-width guard
+// is the caller's responsibility; this function will happily return a
+// single-cell extract for a single-cell selection.
+func (t *TUI) extractSelectionText() string {
 	pv := t.panes[t.sel.pane]
 
 	// Normalize selection bounds (start may be after end).
@@ -328,13 +359,5 @@ func (t *TUI) copySelection() {
 		}
 	}
 
-	text := buf.String()
-	if text == "" {
-		return
-	}
-
-	// Copy to macOS clipboard via pbcopy.
-	cmd := exec.Command("pbcopy")
-	cmd.Stdin = strings.NewReader(text)
-	cmd.Run()
+	return buf.String()
 }
