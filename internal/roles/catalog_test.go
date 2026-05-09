@@ -99,6 +99,118 @@ func TestLookupRole_Unknown(t *testing.T) {
 	}
 }
 
+func TestIsValidRoleName(t *testing.T) {
+	tests := []struct {
+		name string
+		want bool
+	}{
+		// Exact catalog matches.
+		{"super", true},
+		{"shipper", true},
+		{"eng1", true},
+		{"qa2", true},
+		{"intern", true},
+		{"growth", true},
+
+		// Numbered family extensions (the new behavior).
+		{"qa3", true},
+		{"qa10", true},
+		{"qa007", true},
+		{"qa99999", true},
+		{"qa0", true}, // no zero special-case per spec
+		{"eng4", true},
+		{"eng7", true},
+		{"eng99", true},
+
+		// Typos and near-misses must still reject.
+		{"qaa1", false},
+		{"enginer", false},
+		{"engineer", false},
+		{"qa1.5", false},
+		{"qa-1", false},
+		{"qa_1", false},
+		{"q1", false},
+		{"engX", false},
+		{"eng", false},
+		{"qa", false},
+		{"eng99extra", false},
+		{"prefixqa1", false}, // anchored: qa must start at position 0
+		{"qa1suffix", false}, // anchored: qa1 must end at the right anchor
+
+		// Case-sensitive: uppercase is rejected.
+		{"Q1", false},
+		{"QA1", false},
+		{"ENG1", false},
+		{"Qa1", false},
+
+		// Custom names that are not in catalog and not numbered families.
+		{"designer", false},
+		{"dba", false},
+		{"random-custom-role", false},
+
+		// Empty rejects.
+		{"", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := IsValidRoleName(tt.name)
+			if got != tt.want {
+				t.Errorf("IsValidRoleName(%q) = %v, want %v", tt.name, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestLookupRole_NumberedFamily(t *testing.T) {
+	t.Run("qa10 inherits qa1/qa2 defaults", func(t *testing.T) {
+		def := LookupRole("qa10")
+		if def.Name != "qa10" {
+			t.Errorf("Name = %q, want %q", def.Name, "qa10")
+		}
+		if def.Permission != Autonomous {
+			t.Error("qa10 should be Autonomous")
+		}
+		if !def.NeedsSrc {
+			t.Error("qa10 must inherit NeedsSrc=true from qa1/qa2; otherwise scaffold skips qa10/src/")
+		}
+		if !def.NeedsPlaybooks {
+			t.Error("qa10 must inherit NeedsPlaybooks=true from qa1/qa2; otherwise scaffold skips qa10/playbooks/")
+		}
+	})
+
+	t.Run("eng7 inherits eng1/eng2/eng3 defaults", func(t *testing.T) {
+		def := LookupRole("eng7")
+		if def.Name != "eng7" {
+			t.Errorf("Name = %q, want %q", def.Name, "eng7")
+		}
+		if def.Permission != Autonomous {
+			t.Error("eng7 should be Autonomous")
+		}
+		if !def.NeedsSrc {
+			t.Error("eng7 must inherit NeedsSrc=true from eng1/eng2/eng3")
+		}
+		if def.NeedsPlaybooks {
+			t.Error("eng7 must NOT have NeedsPlaybooks=true (eng family does not use playbooks)")
+		}
+	})
+
+	t.Run("typo qaa1 falls through to bare default", func(t *testing.T) {
+		// Regression guard for the open-set contract: names that fail the
+		// numbered-family regex must still receive the bare default RoleDef
+		// rather than being silently treated as qa-family.
+		def := LookupRole("qaa1")
+		if def.Name != "qaa1" {
+			t.Errorf("Name = %q, want %q", def.Name, "qaa1")
+		}
+		if def.NeedsSrc {
+			t.Error("qaa1 must NOT have NeedsSrc=true (typo, not a real qa)")
+		}
+		if def.NeedsPlaybooks {
+			t.Error("qaa1 must NOT have NeedsPlaybooks=true (typo, not a real qa)")
+		}
+	})
+}
+
 func TestRoleFamilyOf(t *testing.T) {
 	tests := []struct {
 		name string

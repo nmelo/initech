@@ -366,3 +366,85 @@ func chdirTemp(t *testing.T, dir string) {
 	}
 	t.Cleanup(func() { os.Chdir(orig) })
 }
+
+// TestRunAddAgent_NumberedRoleAccepted: ini-j2u opens the CLI gate to
+// arbitrary numbered eng/qa roles. This proves runAddAgent("qa10") goes all
+// the way through scaffold + config update + NeedsSrc submodule clone, which
+// is the load-bearing path the catalog gate previously blocked.
+func TestRunAddAgent_NumberedRoleAccepted(t *testing.T) {
+	root := t.TempDir()
+	p := &config.Project{
+		Name:  "test",
+		Root:  root,
+		Roles: []string{"pm"},
+		Beads: config.BeadsConfig{Enabled: boolPtr(false)},
+		Repos: []config.Repo{{URL: "git@github.com:example/repo.git", Name: "repo"}},
+	}
+	if err := config.Write(filepath.Join(root, "initech.yaml"), p); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, "pm"), 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	chdirTemp(t, root)
+
+	origRunner := newAddAgentRunner
+	newAddAgentRunner = func() iexec.Runner { return &iexec.FakeRunner{} }
+	t.Cleanup(func() { newAddAgentRunner = origRunner })
+
+	var submoduleCalled bool
+	origGitSub := gitAddSubmodule
+	t.Cleanup(func() { gitAddSubmodule = origGitSub })
+	gitAddSubmodule = func(runner iexec.Runner, repoDir, repoURL, subPath string) error {
+		submoduleCalled = true
+		return nil
+	}
+
+	var buf bytes.Buffer
+	addAgentCmd.SetOut(&buf)
+	t.Cleanup(func() { addAgentCmd.SetOut(nil) })
+	if err := runAddAgent(addAgentCmd, []string{"qa10"}); err != nil {
+		t.Fatalf("unexpected error for qa10: %v", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(root, "qa10")); err != nil {
+		t.Error("qa10/ directory not created by scaffold")
+	}
+	// LookupRole("qa10") must report NeedsSrc=true so the submodule clone fires.
+	if !submoduleCalled {
+		t.Error("gitAddSubmodule not called for qa10 — LookupRole defaults are not flowing through")
+	}
+
+	updated, err := config.Load(filepath.Join(root, "initech.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, r := range updated.Roles {
+		if r == "qa10" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("qa10 not appended to config roles: %v", updated.Roles)
+	}
+}
+
+// TestRunAddAgent_TypoRoleRejected: anchored regex must reject typos like
+// qaa1. The error message must mention the numbered-family pattern so the
+// operator knows what shape names are acceptable.
+func TestRunAddAgent_TypoRoleRejected(t *testing.T) {
+	err := runAddAgent(addAgentCmd, []string{"qaa1"})
+	if err == nil {
+		t.Fatal("expected error for typo 'qaa1'")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "unknown agent") {
+		t.Errorf("error = %q, want 'unknown agent'", msg)
+	}
+	if !strings.Contains(msg, "Numbered families") {
+		t.Errorf("error = %q, want mention of 'Numbered families' so operators see the qa\\d+/eng\\d+ shape", msg)
+	}
+}

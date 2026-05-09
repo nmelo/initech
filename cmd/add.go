@@ -78,11 +78,11 @@ func runAdd(cmd *cobra.Command, args []string) error {
 }
 
 // addAgentHint returns a suggestion to use 'add-agent' when the named role is
-// catalog-known but its workspace directory does not exist. projRoot may be
-// empty (e.g. when discoverSocket failed); in that case only catalog membership
-// is checked.
+// recognized (catalog member or numbered family like qa10/eng7) but its
+// workspace directory does not exist. projRoot may be empty (e.g. when
+// discoverSocket failed); in that case only role validity is checked.
 func addAgentHint(name, projRoot string) string {
-	if _, ok := roles.Catalog[name]; !ok {
+	if !roles.IsValidRoleName(name) {
 		return ""
 	}
 	if projRoot != "" {

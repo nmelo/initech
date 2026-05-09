@@ -32,10 +32,11 @@ var addAgentCmd = &cobra.Command{
 func init() {
 	addAgentCmd.Long = fmt.Sprintf(`Scaffolds a new agent workspace directory and registers it in initech.yaml.
 
-The agent name must be a known role supported by initech. The role must not
-already exist in the project.
+The agent name must be a known role or a member of a numbered family
+(eng1..N, qa1..N). The role must not already exist in the project.
 
 Known roles: %s.
+Numbered families: eng1..N, qa1..N (e.g. eng7, qa10).
 
 Restart initech (or run 'initech' in a new session) to activate the new agent.`, knownRoleNames())
 	addAgentCmd.Flags().BoolVarP(&addAgentList, "list", "l", false, "List all agents and their install status")
@@ -83,8 +84,8 @@ func runAddAgent(cmd *cobra.Command, args []string) error {
 	roleName := args[0]
 	runner := newAddAgentRunner()
 
-	if _, ok := roles.Catalog[roleName]; !ok {
-		return fmt.Errorf("unknown agent %q. Known agents: %s", roleName, knownRoleNames())
+	if !roles.IsValidRoleName(roleName) {
+		return fmt.Errorf("unknown agent %q. Known agents: %s. Numbered families also accepted: eng1..N, qa1..N", roleName, knownRoleNames())
 	}
 
 	wd, err := os.Getwd()

@@ -9,7 +9,16 @@
 // This package does not know about files on disk, config parsing, or the TUI.
 package roles
 
-import "strings"
+import (
+	"regexp"
+	"strings"
+)
+
+// numberedRoleRe matches role names like eng1, eng7, qa1, qa10. Anchored on
+// both ends to reject typos (qaa1, enginer), separators (qa-1, qa_1), and
+// fractional/extra characters (qa1.5, eng99extra). Used by both IsValidRoleName
+// (CLI gate) and LookupRole (default selection for unlisted family members).
+var numberedRoleRe = regexp.MustCompile(`^(qa|eng)\d+$`)
 
 // PermissionTier controls whether an agent runs with --dangerously-skip-permissions.
 type PermissionTier int
@@ -54,17 +63,54 @@ var Catalog = map[string]RoleDef{
 	"intern":  {Name: "intern", Permission: Autonomous, NeedsSrc: true},
 }
 
-// LookupRole returns the RoleDef for a role name. Known roles return their
-// catalog entry. Unknown roles return a default: Autonomous, no src, no
-// playbooks, no makefile. This keeps the catalog open for custom roles.
+// LookupRole returns the RoleDef for a role name. Resolution order:
+//  1. Exact catalog match -> the catalog entry verbatim.
+//  2. Numbered family match (qa\d+, eng\d+) -> a synthesized RoleDef with the
+//     same NeedsSrc/NeedsPlaybooks defaults the catalog uses for the explicit
+//     family members (qa1/qa2 and eng1/eng2/eng3). This lets operators spin up
+//     qa10 or eng7 without modifying the catalog.
+//  3. Anything else (custom roles like "designer", "dba") -> a bare default
+//     RoleDef: Autonomous, no src, no playbooks. Preserves the open-set design.
 func LookupRole(name string) RoleDef {
 	if def, ok := Catalog[name]; ok {
 		return def
+	}
+	if numberedRoleRe.MatchString(name) {
+		if strings.HasPrefix(name, "qa") {
+			return RoleDef{
+				Name:           name,
+				Permission:     Autonomous,
+				NeedsSrc:       true,
+				NeedsPlaybooks: true,
+			}
+		}
+		// Must be eng\d+ — numberedRoleRe alternation has only two branches.
+		return RoleDef{
+			Name:       name,
+			Permission: Autonomous,
+			NeedsSrc:   true,
+		}
 	}
 	return RoleDef{
 		Name:       name,
 		Permission: Autonomous,
 	}
+}
+
+// IsValidRoleName reports whether name is acceptable as a role name for CLI
+// commands like 'initech hire' / 'initech add-agent'. Two paths to acceptance:
+//  - exact match against the Catalog (covers the curated role set), or
+//  - match against the numbered family pattern qa\d+ / eng\d+ (covers
+//    arbitrary scaling like qa10, eng7, qa007).
+//
+// Custom non-numbered names (e.g. "designer", "dba") are deliberately rejected
+// at the CLI to preserve typo protection. Operators wanting truly custom roles
+// must add them to the Catalog or design a separate opt-in (out of scope here).
+func IsValidRoleName(name string) bool {
+	if _, ok := Catalog[name]; ok {
+		return true
+	}
+	return numberedRoleRe.MatchString(name)
 }
 
 // RoleFamily groups roles that share notification and lifecycle semantics.
