@@ -5,7 +5,7 @@ import "testing"
 func TestCatalogCompleteness(t *testing.T) {
 	expected := []string{
 		"super", "eng1", "eng2", "eng3", "qa1", "qa2", "shipper",
-		"pm", "pmm", "arch", "sec", "writer", "ops", "growth",
+		"pm", "pmm", "arch", "sec", "writer", "ops", "growth", "intern",
 	}
 
 	for _, name := range expected {
@@ -28,7 +28,7 @@ func TestCatalogPermissionTiers(t *testing.T) {
 		}
 	}
 
-	autonomous := []string{"super", "eng1", "eng2", "eng3", "qa1", "qa2", "shipper", "pm", "pmm", "arch", "sec", "writer", "ops", "growth"}
+	autonomous := []string{"super", "eng1", "eng2", "eng3", "qa1", "qa2", "shipper", "pm", "pmm", "arch", "sec", "writer", "ops", "growth", "intern"}
 	for _, name := range autonomous {
 		def := Catalog[name]
 		if def.Permission != Autonomous {
@@ -38,7 +38,7 @@ func TestCatalogPermissionTiers(t *testing.T) {
 }
 
 func TestCatalogNeedsSrc(t *testing.T) {
-	needsSrc := []string{"eng1", "eng2", "eng3", "qa1", "qa2", "shipper", "growth"}
+	needsSrc := []string{"eng1", "eng2", "eng3", "qa1", "qa2", "shipper", "growth", "intern"}
 	for _, name := range needsSrc {
 		def := Catalog[name]
 		if !def.NeedsSrc {

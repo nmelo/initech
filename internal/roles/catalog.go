@@ -16,11 +16,13 @@ type PermissionTier int
 
 const (
 	// Supervised agents require manual approval for tool use.
-	// Used for super (coordinator) and shipper (release).
+	// Available for opt-in via per-role config; no catalog role uses it today.
 	Supervised PermissionTier = iota
 
 	// Autonomous agents run with --dangerously-skip-permissions.
-	// Used for eng, qa, pm, arch, and most other roles.
+	// Used for every catalog role today (super, eng, qa, pm, arch, sec, shipper,
+	// pmm, writer, ops, growth, intern). Operators can override per role via
+	// claude_args in initech.yaml.
 	Autonomous
 )
 
@@ -49,6 +51,7 @@ var Catalog = map[string]RoleDef{
 	"writer":  {Name: "writer", Permission: Autonomous},
 	"ops":     {Name: "ops", Permission: Autonomous, NeedsPlaybooks: true},
 	"growth":  {Name: "growth", Permission: Autonomous, NeedsSrc: true},
+	"intern":  {Name: "intern", Permission: Autonomous, NeedsSrc: true},
 }
 
 // LookupRole returns the RoleDef for a role name. Known roles return their

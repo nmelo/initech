@@ -182,6 +182,8 @@ func templateForRole(name string) string {
 		return roles.OpsTemplate
 	case "growth":
 		return roles.GrowthTemplate
+	case "intern":
+		return roles.InternTemplate
 	default:
 		// Numbered variants: eng1->Eng, qa1->QA, qa2->QA, qa3->QA
 		if strings.HasPrefix(name, "qa") {

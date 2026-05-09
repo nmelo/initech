@@ -93,6 +93,7 @@ func TestAllRoleTemplates_Render(t *testing.T) {
 		{"Writer", WriterTemplate, "Technical Writer"},
 		{"Ops", OpsTemplate, "Operations"},
 		{"Growth", GrowthTemplate, "Growth Engineer"},
+		{"Intern", InternTemplate, "Intern"},
 	}
 
 	for _, tt := range tests {
