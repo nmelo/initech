@@ -156,22 +156,16 @@ Bead IDs belong in metadata (--bead flag), not in message text. initech deliver 
 
 ### Hiring (adding an agent permanently)
 
-1. Add the role name to the roles list in initech.yaml (use initech config set or edit directly)
-2. Add role_overrides if needed (custom command, agent_type, claude_args)
-3. Restart initech to pick up the new agent
+initech add-agent <role> (alias: initech hire <role>) adds the role to initech.yaml AND scaffolds the workspace. Use this for any agent you intend to keep across restarts.
 
 initech add <role> is a SESSION operation. It hot-adds the agent for the current session only. The agent disappears on restart. Use it for temporary help, not permanent hires.
 
 ### Firing (removing an agent permanently)
 
-1. Remove the role from the roles list in initech.yaml
-2. Remove any role_overrides for that role
-3. Restart initech
+initech delete-agent <role> (alias: initech fire <role>) removes the role from initech.yaml and offers to delete the workspace. Use this when you are retiring an agent for good.
 
 initech stop <role> only pauses the agent for the current session. It comes back on restart.
 initech remove <role> removes the agent from the current session only. It comes back on restart.
-
-To permanently remove an agent, edit initech.yaml.
 
 ### Quick Reference
 
@@ -181,8 +175,8 @@ To permanently remove an agent, edit initech.yaml.
 | Temporary remove | initech remove <role> | Session only |
 | Temporary pause | initech stop <role> | Session only |
 | Resume paused | initech start <role> | Session only |
-| Permanent add | Edit initech.yaml roles list + restart | Persistent |
-| Permanent remove | Edit initech.yaml roles list + restart | Persistent |
+| Permanent add | initech add-agent <role> (alias: hire) | Persistent |
+| Permanent remove | initech delete-agent <role> (alias: fire) | Persistent |
 
 ## Agent CLAUDE.md Quality Ownership
 
@@ -205,17 +199,45 @@ Use ` + "`" + `initech send` + "`" + ` and ` + "`" + `initech peek` + "`" + ` fo
 
 ## Tools
 
+**Dispatch and completion:**
 - ` + "`" + `initech assign <agent> <bead-id>` + "`" + ` - atomic dispatch (claim + bead + send + announce)
 - ` + "`" + `initech deliver <bead-id>` + "`" + ` - atomic completion (status + clear + report + announce)
+- ` + "`" + `initech announce "<message>"` + "`" + ` - voice announcement to Agent Radio (manual; deliver/assign do this automatically)
+
+**Agent communication:**
 - ` + "`" + `initech send <agent> "message"` + "`" + ` - send message to an agent
 - ` + "`" + `initech peek <agent>` + "`" + ` - read agent terminal output
-- ` + "`" + `initech status` + "`" + ` - agent table with activity and beads
-- ` + "`" + `initech patrol` + "`" + ` - bulk peek all agents
+- ` + "`" + `initech at <agent> <message...>` + "`" + ` - schedule a timed send to an agent
+- ` + "`" + `initech clear <agent>` + "`" + ` - send /clear to reset an agent's conversation context
+
+**Agent lifecycle (session-scoped):**
+- ` + "`" + `initech add <role>` + "`" + ` - hot-add an agent for this session only
+- ` + "`" + `initech remove <role>` + "`" + ` - remove an agent from this session only
 - ` + "`" + `initech stop <role...>` + "`" + ` - free memory
 - ` + "`" + `initech start <role...>` + "`" + ` - bring back agents
 - ` + "`" + `initech restart <role> --bead <id>` + "`" + ` - kill + restart with dispatch
 - ` + "`" + `initech interrupt <agent>` + "`" + ` - send Escape (soft interrupt)
 - ` + "`" + `initech interrupt <agent> --hard` + "`" + ` - send Ctrl+C (hard interrupt)
+
+**Agent roster (persistent, edits initech.yaml):**
+- ` + "`" + `initech add-agent <role>` + "`" + ` (alias: ` + "`" + `hire` + "`" + `) - permanently add an agent + scaffold workspace
+- ` + "`" + `initech delete-agent <role>` + "`" + ` (alias: ` + "`" + `fire` + "`" + `) - permanently remove an agent
+
+**Visibility:**
+- ` + "`" + `initech status` + "`" + ` - agent table with activity and beads
+- ` + "`" + `initech patrol` + "`" + ` - bulk peek all agents
+- ` + "`" + `initech standup` + "`" + ` - generate morning standup from beads
+- ` + "`" + `initech peers` + "`" + ` - show available remote peers and their agents
+- ` + "`" + `initech whoami` + "`" + ` - show this agent's identity and working directory
+
+**Operator utilities:**
+- ` + "`" + `initech notify "<message>"` + "`" + ` - post a notification to the configured webhook
+- ` + "`" + `initech doctor` + "`" + ` - run diagnostics
+- ` + "`" + `initech update` + "`" + ` - update initech to the latest version
+- ` + "`" + `initech serve` + "`" + ` - run headless daemon for remote TUI connections
+- ` + "`" + `initech config show|list|get|validate` + "`" + ` - inspect or validate configuration
+
+**Beads:**
 - ` + "`" + `bd ready` + "`" + ` - unblocked beads
 - ` + "`" + `bd list` + "`" + ` - all beads
 - ` + "`" + `bd show <id>` + "`" + ` - bead details
@@ -298,6 +320,11 @@ Source code: {{project_root}}/{{role_name}}/src/
    ` + "`" + `bd comments add <id> --author {{role_name}} "DONE: <what>. Tests: <added>. Commit: <hash>"` + "`" + `
 10. Deliver: ` + "`" + `initech deliver <id>` + "`" + ` (marks ready_for_qa, clears TUI, reports to super atomically)
     Or if something failed: ` + "`" + `initech deliver <id> --fail --reason "<what went wrong>"` + "`" + `
+
+Fallback (if initech deliver is unavailable):
+1. ` + "`" + `bd update <id> --status ready_for_qa` + "`" + `
+2. ` + "`" + `initech send super "[from {{role_name}}] <id>: ready for QA. Commit: <hash>"` + "`" + `
+3. ` + "`" + `initech bead --clear` + "`" + `
 
 ## Verification Before Completion
 
@@ -563,10 +590,9 @@ If you cannot answer yes to all three, the bead is not groomed. Improve it befor
    ` + "`" + `initech bead <id>` + "`" + `
 3. Do the work (PRDs, specs, grooming, release notes)
 4. Comment your deliverable on the bead
-5. Deliver: ` + "`" + `initech deliver <id>` + "`" + ` (marks ready_for_qa, clears TUI, reports to super)
-6. Announce: ` + "`" + `initech announce --kind agent.completed --agent {{role_name}} "<what you delivered>"` + "`" + `
+5. Deliver: ` + "`" + `initech deliver <id>` + "`" + ` (marks ready_for_qa, clears TUI, reports to super, announces to Agent Radio)
 
-Example: ` + "`" + `initech announce --kind agent.completed --agent {{role_name}} "Groomed 3 live mode beads with full AC"` + "`" + `
+Example announcement (only if you bypass deliver): ` + "`" + `initech announce --kind agent.completed --agent {{role_name}} "Groomed 3 live mode beads with full AC"` + "`" + `
 
 When dispatching work directly (rare, usually super dispatches):
 ` + "`" + `initech assign <agent> <bead-id> --message "Groom this bead with full AC before eng picks it up."` + "`" + `
@@ -597,6 +623,7 @@ Use ` + "`" + `initech send` + "`" + ` and ` + "`" + `initech peek` + "`" + ` fo
 
 **Check who's busy:** ` + "`" + `initech status` + "`" + `
 **Send a message:** ` + "`" + `initech send <role> "<message>"` + "`" + `
+**Read agent output:** ` + "`" + `initech peek <role>` + "`" + `
 **Receive work:** Direction from the operator, requests from super.
 **Report:** ` + "`" + `initech send super "[from {{role_name}}] <message>"` + "`" + `
 **Always report completion.** When you finish any task, message super immediately.
@@ -653,12 +680,38 @@ Working directory: {{project_root}}/{{role_name}}
 - Domain model, API contracts
 - Research findings
 
+## Workflow
+
+1. Receive task from super
+2. Claim and report bead to TUI:
+   ` + "`" + `bd update <id> --status in_progress --assignee {{role_name}}` + "`" + `
+   ` + "`" + `initech bead <id>` + "`" + `
+3. Do the work (design, ADR, contract, review)
+4. Comment your deliverable on the bead:
+   ` + "`" + `bd comments add <id> --author {{role_name}} "DONE: <summary>"` + "`" + `
+5. Deliver: ` + "`" + `initech deliver <id>` + "`" + ` (marks ready_for_qa, clears TUI, reports to super, announces to Agent Radio)
+
+Fallback (if initech deliver is unavailable):
+1. ` + "`" + `bd update <id> --status ready_for_qa` + "`" + `
+2. ` + "`" + `initech send super "[from {{role_name}}] <id>: done"` + "`" + `
+3. ` + "`" + `initech bead --clear` + "`" + `
+
+## Announcement Rule
+
+When announcing or reporting: describe WHAT happened, not WHICH bead. The operator does not memorize bead IDs.
+
+Bad: "ini-y71 done"
+Good: "Auth boundary ADR drafted"
+
+Bead IDs belong in metadata (--bead flag), not in message text. initech deliver handles this automatically; follow the same rule for manual initech announce calls.
+
 ## Communication
 
 Use ` + "`" + `initech send` + "`" + ` and ` + "`" + `initech peek` + "`" + ` for all agent communication. Do NOT use gn, gp, or ga.
 
 **Check who's busy:** ` + "`" + `initech status` + "`" + `
 **Send a message:** ` + "`" + `initech send <role> "<message>"` + "`" + `
+**Read agent output:** ` + "`" + `initech peek <role>` + "`" + `
 **Receive work:** Direction from the operator, requests from super.
 **Report:** ` + "`" + `initech send super "[from {{role_name}}] <message>"` + "`" + `
 **Always report completion.** When you finish any task, message super immediately.
@@ -715,11 +768,38 @@ Working directory: {{project_root}}/{{role_name}}
 - Vulnerability triage with enrichment
 - Detection effectiveness reviews
 
+## Workflow
+
+1. Receive task from super
+2. Claim and report bead to TUI:
+   ` + "`" + `bd update <id> --status in_progress --assignee {{role_name}}` + "`" + `
+   ` + "`" + `initech bead <id>` + "`" + `
+3. Do the work (threat model, vuln assessment, review)
+4. Comment your finding on the bead:
+   ` + "`" + `bd comments add <id> --author {{role_name}} "DONE: <finding + enrichment>"` + "`" + `
+5. Deliver: ` + "`" + `initech deliver <id>` + "`" + ` (marks ready_for_qa, clears TUI, reports to super, announces to Agent Radio)
+
+Fallback (if initech deliver is unavailable):
+1. ` + "`" + `bd update <id> --status ready_for_qa` + "`" + `
+2. ` + "`" + `initech send super "[from {{role_name}}] <id>: done"` + "`" + `
+3. ` + "`" + `initech bead --clear` + "`" + `
+
+## Announcement Rule
+
+When announcing or reporting: describe WHAT happened, not WHICH bead. The operator does not memorize bead IDs.
+
+Bad: "ini-y71 done"
+Good: "IPC socket auth gap flagged (HIGH)"
+
+Bead IDs belong in metadata (--bead flag), not in message text. initech deliver handles this automatically; follow the same rule for manual initech announce calls.
+
 ## Communication
 
 Use ` + "`" + `initech send` + "`" + ` and ` + "`" + `initech peek` + "`" + ` for all agent communication. Do NOT use gn, gp, or ga.
 
 **Check who's busy:** ` + "`" + `initech status` + "`" + `
+**Send a message:** ` + "`" + `initech send <role> "<message>"` + "`" + `
+**Read agent output:** ` + "`" + `initech peek <role>` + "`" + `
 **Receive work:** Dispatches from super.
 **Report findings:** ` + "`" + `initech send super "[from {{role_name}}] <finding-summary>"` + "`" + `
 **Always report completion.** When you finish any task, message super immediately.
@@ -799,6 +879,8 @@ Bead IDs belong in metadata (--bead flag), not in message text. initech deliver 
 Use ` + "`" + `initech send` + "`" + ` and ` + "`" + `initech peek` + "`" + ` for all agent communication. Do NOT use gn, gp, or ga.
 
 **Check who's busy:** ` + "`" + `initech status` + "`" + `
+**Send a message:** ` + "`" + `initech send <role> "<message>"` + "`" + `
+**Read agent output:** ` + "`" + `initech peek <role>` + "`" + `
 **Receive work:** Release directives from super.
 **Report:** ` + "`" + `initech send super "[from {{role_name}}] <release-status>"` + "`" + `
 **Always report completion.** When you finish any task, message super immediately.
@@ -845,11 +927,38 @@ Working directory: {{project_root}}/{{role_name}}
 4. Changelog and release announcements
 5. README content
 
+## Workflow
+
+1. Receive task from super
+2. Claim and report bead to TUI:
+   ` + "`" + `bd update <id> --status in_progress --assignee {{role_name}}` + "`" + `
+   ` + "`" + `initech bead <id>` + "`" + `
+3. Do the work (positioning, copy, competitive analysis, release announcement draft)
+4. Comment your draft on the bead (all external content remains a DRAFT until the operator approves):
+   ` + "`" + `bd comments add <id> --author {{role_name}} "DONE (DRAFT): <summary>"` + "`" + `
+5. Deliver: ` + "`" + `initech deliver <id>` + "`" + ` (marks ready_for_qa, clears TUI, reports to super, announces to Agent Radio)
+
+Fallback (if initech deliver is unavailable):
+1. ` + "`" + `bd update <id> --status ready_for_qa` + "`" + `
+2. ` + "`" + `initech send super "[from {{role_name}}] <id>: draft ready"` + "`" + `
+3. ` + "`" + `initech bead --clear` + "`" + `
+
+## Announcement Rule
+
+When announcing or reporting: describe WHAT happened, not WHICH bead. The operator does not memorize bead IDs.
+
+Bad: "ini-y71 drafted"
+Good: "v1.16 release announcement drafted (awaits operator approval)"
+
+Bead IDs belong in metadata (--bead flag), not in message text. initech deliver handles this automatically; follow the same rule for manual initech announce calls.
+
 ## Communication
 
 Use ` + "`" + `initech send` + "`" + ` and ` + "`" + `initech peek` + "`" + ` for all agent communication. Do NOT use gn, gp, or ga.
 
 **Check who's busy:** ` + "`" + `initech status` + "`" + `
+**Send a message:** ` + "`" + `initech send <role> "<message>"` + "`" + `
+**Read agent output:** ` + "`" + `initech peek <role>` + "`" + `
 **Receive work:** Direction from the operator, product context from PM.
 **Report:** ` + "`" + `initech send super "[from {{role_name}}] <message>"` + "`" + `
 **Always report completion.** When you finish any task, message super immediately.
@@ -892,11 +1001,38 @@ Working directory: {{project_root}}/{{role_name}}
 4. Troubleshooting guides
 5. Verify all docs by cloning and building fresh
 
+## Workflow
+
+1. Receive task from super
+2. Claim and report bead to TUI:
+   ` + "`" + `bd update <id> --status in_progress --assignee {{role_name}}` + "`" + `
+   ` + "`" + `initech bead <id>` + "`" + `
+3. Do the work (write or update docs, then verify by following them on a clean checkout)
+4. Comment your deliverable on the bead, including verification steps you followed:
+   ` + "`" + `bd comments add <id> --author {{role_name}} "DONE: <summary>. Verified by: <steps>"` + "`" + `
+5. Deliver: ` + "`" + `initech deliver <id>` + "`" + ` (marks ready_for_qa, clears TUI, reports to super, announces to Agent Radio)
+
+Fallback (if initech deliver is unavailable):
+1. ` + "`" + `bd update <id> --status ready_for_qa` + "`" + `
+2. ` + "`" + `initech send super "[from {{role_name}}] <id>: done"` + "`" + `
+3. ` + "`" + `initech bead --clear` + "`" + `
+
+## Announcement Rule
+
+When announcing or reporting: describe WHAT happened, not WHICH bead. The operator does not memorize bead IDs.
+
+Bad: "ini-y71 done"
+Good: "Windows install guide rewritten and verified on a fresh checkout"
+
+Bead IDs belong in metadata (--bead flag), not in message text. initech deliver handles this automatically; follow the same rule for manual initech announce calls.
+
 ## Communication
 
 Use ` + "`" + `initech send` + "`" + ` and ` + "`" + `initech peek` + "`" + ` for all agent communication. Do NOT use gn, gp, or ga.
 
 **Check who's busy:** ` + "`" + `initech status` + "`" + `
+**Send a message:** ` + "`" + `initech send <role> "<message>"` + "`" + `
+**Read agent output:** ` + "`" + `initech peek <role>` + "`" + `
 **Receive work:** Dispatches from super.
 **Report:** ` + "`" + `initech send super "[from {{role_name}}] <message>"` + "`" + `
 **Always report completion.** When you finish any task, message super immediately.
@@ -937,11 +1073,38 @@ Playbooks: {{project_root}}/{{role_name}}/playbooks/
 3. Operational playbook authoring
 4. UX issue identification and reporting
 
+## Workflow
+
+1. Receive task from super
+2. Claim and report bead to TUI:
+   ` + "`" + `bd update <id> --status in_progress --assignee {{role_name}}` + "`" + `
+   ` + "`" + `initech bead <id>` + "`" + `
+3. Do the work (run real workflows on real hardware, capture observations and UX issues)
+4. Comment your findings on the bead with concrete commands run and observations:
+   ` + "`" + `bd comments add <id> --author {{role_name}} "DONE: <summary>. Steps run: <list>. Findings: <list>"` + "`" + `
+5. Deliver: ` + "`" + `initech deliver <id>` + "`" + ` (marks ready_for_qa, clears TUI, reports to super, announces to Agent Radio)
+
+Fallback (if initech deliver is unavailable):
+1. ` + "`" + `bd update <id> --status ready_for_qa` + "`" + `
+2. ` + "`" + `initech send super "[from {{role_name}}] <id>: done"` + "`" + `
+3. ` + "`" + `initech bead --clear` + "`" + `
+
+## Announcement Rule
+
+When announcing or reporting: describe WHAT happened, not WHICH bead. The operator does not memorize bead IDs.
+
+Bad: "ini-y71 tested"
+Good: "Fresh-install flow validated on Windows 11; first-run hangs on missing PATH entry"
+
+Bead IDs belong in metadata (--bead flag), not in message text. initech deliver handles this automatically; follow the same rule for manual initech announce calls.
+
 ## Communication
 
 Use ` + "`" + `initech send` + "`" + ` and ` + "`" + `initech peek` + "`" + ` for all agent communication. Do NOT use gn, gp, or ga.
 
 **Check who's busy:** ` + "`" + `initech status` + "`" + `
+**Send a message:** ` + "`" + `initech send <role> "<message>"` + "`" + `
+**Read agent output:** ` + "`" + `initech peek <role>` + "`" + `
 **Receive work:** Dispatches from super.
 **Report:** ` + "`" + `initech send super "[from {{role_name}}] <message>"` + "`" + `
 **Always report completion.** When you finish any task, message super immediately.
@@ -988,11 +1151,38 @@ Source code: {{project_root}}/{{role_name}}/src/
 4. Experiment design and analysis
 5. Data-informed recommendations to PM
 
+## Workflow
+
+1. Receive task from super
+2. Claim and report bead to TUI:
+   ` + "`" + `bd update <id> --status in_progress --assignee {{role_name}}` + "`" + `
+   ` + "`" + `initech bead <id>` + "`" + `
+3. Do the work (instrument events, run analyses, design experiments)
+4. Comment your deliverable on the bead, with the events added or the analysis methodology:
+   ` + "`" + `bd comments add <id> --author {{role_name}} "DONE: <summary>. Events: <list>. Findings: <list>"` + "`" + `
+5. Deliver: ` + "`" + `initech deliver <id>` + "`" + ` (marks ready_for_qa, clears TUI, reports to super, announces to Agent Radio)
+
+Fallback (if initech deliver is unavailable):
+1. ` + "`" + `bd update <id> --status ready_for_qa` + "`" + `
+2. ` + "`" + `initech send super "[from {{role_name}}] <id>: done"` + "`" + `
+3. ` + "`" + `initech bead --clear` + "`" + `
+
+## Announcement Rule
+
+When announcing or reporting: describe WHAT happened, not WHICH bead. The operator does not memorize bead IDs.
+
+Bad: "ini-y71 instrumented"
+Good: "Onboarding funnel events shipped; first cohort data flowing tomorrow"
+
+Bead IDs belong in metadata (--bead flag), not in message text. initech deliver handles this automatically; follow the same rule for manual initech announce calls.
+
 ## Communication
 
 Use ` + "`" + `initech send` + "`" + ` and ` + "`" + `initech peek` + "`" + ` for all agent communication. Do NOT use gn, gp, or ga.
 
 **Check who's busy:** ` + "`" + `initech status` + "`" + `
+**Send a message:** ` + "`" + `initech send <role> "<message>"` + "`" + `
+**Read agent output:** ` + "`" + `initech peek <role>` + "`" + `
 **Receive work:** Dispatches from super, data requests from PM.
 **Report:** ` + "`" + `initech send super "[from {{role_name}}] <message>"` + "`" + `
 **Always report completion.** When you finish any task, message super immediately.
