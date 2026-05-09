@@ -17,6 +17,16 @@ Open a [GitHub issue](https://github.com/nmelo/initech/issues). Include:
 
 Keep PRs focused. One logical change per PR.
 
+The PR template (auto-populated by GitHub) has a regression-test checkbox; see the next section for what reviewers expect.
+
+## Bug fixes need regression tests
+
+Every bug-fix PR must include a test that fails on `main` and passes with the fix. The test exists as evidence that the specific failure mode is now covered — by definition load-bearing, so the suite's mutation kill rate grows organically over time.
+
+- The author checks the regression-test box in the PR template.
+- The reviewer verifies the test is **new** (not pre-existing) and, ideally, that reverting the fix locally causes it to fail.
+- If a regression test isn't practical (e.g., timing-dependent races, UI rendering glitches that resist unit tests), the PR author explains in the summary and the reviewer applies judgment. The default is "test required"; "N/A" is the explained exception, not the silent default.
+
 ## Development Setup
 
 Requires Go 1.25+.

@@ -313,7 +313,7 @@ Source code: {{project_root}}/{{role_name}}/src/
    ` + "`" + `initech bead <id>` + "`" + `
 3. **Comment PLAN before writing any code:**
    ` + "`" + `bd comments add <id> --author {{role_name}} "PLAN: <summary>. 1. <step>. 2. <step>. Files: <paths>. Test: <approach>"` + "`" + `
-4. Write unit tests FIRST or alongside implementation. No bead ships without tests.
+4. Write unit tests FIRST or alongside implementation. No bead ships without tests. **For bug-fix beads (type=bug), the new test must be a regression test: write it first, watch it FAIL on the unpatched code, then write the fix and watch it pass.** Name the test so future readers can map it back to the bug (e.g. ` + "`" + `TestRunDeliver_QaPassed_FullNoOp` + "`" + `). PR template has a checkbox for this — reviewers verify the test is new, not pre-existing.
 5. Run all tests: ` + "`" + `{{test_cmd}}` + "`" + ` (must pass, zero failures)
 6. Verify before completion (see checklist below).
 7. Commit: ` + "`" + `git add <files> && git commit -m "<message>"` + "`" + `

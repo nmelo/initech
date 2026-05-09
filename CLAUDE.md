@@ -45,6 +45,14 @@ Architecture must support continuous rewrites. Any component should be replaceab
 
 Every package and every exported function gets a Go doc comment. This is the primary mechanism by which agents understand the codebase fast enough to be useful.
 
+## Bug fixes need regression tests
+
+Every bug-fix PR must include a test that fails on `main` and passes with the fix. The point isn't coverage — it's evidence: a regression test, by definition, was written to catch a specific failure mode and would have prevented this bug from shipping. Each one is load-bearing.
+
+- Pick up a bead labeled `bug` → write the test first (or alongside the fix), confirm it fails on the unpatched code, then write the fix and watch it go green.
+- Name the test so future readers can map it back to the bug (e.g. `TestRunDeliver_QaPassed_FullNoOp` for the bug whose AC said "deliver must not regress qa_passed"). The bug's name lives in the suite forever.
+- The PR template has a checkbox for this. Reviewers verify the test is new (not pre-existing) and applies judgment for the rare cases where a regression test isn't practical (timing-dependent races, UI glitches). The default is "test required"; "N/A" is the explained exception, not the silent default.
+
 ## Build
 
 ```bash
