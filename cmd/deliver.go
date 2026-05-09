@@ -118,6 +118,20 @@ func runDeliver(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
+	// Step 1d: Eng-on-in_qa carve-out. Per the original AC, an engineer
+	// running deliver on a bead currently under QA review must warn and
+	// no-op rather than reset the bead to ready_for_qa (which would yank
+	// it out from under the reviewer). This is intentionally NOT in the
+	// universal outer guard above — QA family on in_qa is the legitimate
+	// entry point for verdict=PASS (transitions to qa_passed) and FAIL
+	// (announces but leaves status). Only Eng-on-in_qa is the surprise.
+	// --fail is left untouched: an engineer recording a regression mid-
+	// review is useful data and doesn't reset status.
+	if status == "in_qa" && family == roles.FamilyEng && !isFail {
+		fmt.Fprintf(cmd.ErrOrStderr(), "deliver no-op for %s: bead is in_qa (someone else is mid-review)\n", beadID)
+		return nil
+	}
+
 	// Step 2: Update bead status — family-aware transition. eng2's
 	// validateDeliverFlags pre-validated the (family, verdict, isFail) tuple,
 	// so each branch can trust its inputs without re-checking.

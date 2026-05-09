@@ -990,14 +990,14 @@ func TestRunDeliver_Closed_FailFullySkipped(t *testing.T) {
 }
 
 // TestRunDeliver_NormalStatusesProceed asserts the gate is narrow: every
-// non-terminal status routes through the family branch, not the outer guard.
-// in_qa is in this set even though the original triage flagged it — under the
-// scope-changed contract, QA legitimately transitions in_qa->qa_passed via
-// --verdict PASS, and Eng on in_qa is a re-review request that still writes
-// ready_for_qa. The only no-op statuses are qa_passed and closed.
+// non-terminal status that isn't in_qa routes through the family branch for
+// Eng. in_qa is excluded from this list because Eng-on-in_qa is its own
+// no-op (covered separately); it would otherwise yank the bead away from
+// the QA reviewer mid-review. The only universal no-op statuses are
+// qa_passed and closed.
 func TestRunDeliver_NormalStatusesProceed(t *testing.T) {
 	skipWindows(t)
-	statuses := []string{"open", "in_progress", "ready_for_qa", "in_qa", "blocked"}
+	statuses := []string{"open", "in_progress", "ready_for_qa", "blocked"}
 	for _, status := range statuses {
 		t.Run(status, func(t *testing.T) {
 			written, _, _, err := runDeliverWithStatus(t, "eng1", "x", status)
@@ -1008,5 +1008,103 @@ func TestRunDeliver_NormalStatusesProceed(t *testing.T) {
 				t.Errorf("status %q: expected eng pass to write ready_for_qa, got %q", status, written)
 			}
 		})
+	}
+}
+
+// TestRunDeliver_Eng_InQa_NoOp covers the Eng-on-in_qa carve-out (qa1's A3
+// regression on the first round of ini-dgt.1). An engineer running deliver
+// while QA is mid-review must warn and skip the status reset, because
+// writing ready_for_qa here yanks the bead out from under the reviewer.
+// This is family-conditional (NOT a universal outer guard) so the QA-on-
+// in_qa flow (PASS -> qa_passed, FAIL -> stays) is preserved.
+func TestRunDeliver_Eng_InQa_NoOp(t *testing.T) {
+	skipWindows(t)
+	written, reqs, stderr, err := runDeliverWithStatus(t, "eng1", "Login bug", "in_qa")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if written != "" {
+		t.Errorf("Eng+in_qa must no-op status write, got %q (qa1's A3 regression)", written)
+	}
+	if hasIPCSend(reqs) {
+		t.Error("Eng+in_qa no-op must not send a report")
+	}
+	if !strings.Contains(stderr, "in_qa") || !strings.Contains(stderr, "no-op") {
+		t.Errorf("expected no-op warning mentioning in_qa, got stderr=%q", stderr)
+	}
+}
+
+// TestRunDeliver_QA_InQa_PreservedByCarveOut is the contract test that the
+// Eng-on-in_qa carve-out did NOT also block the QA flow. If this fails,
+// someone widened the carve-out into a universal guard (the regression
+// shape qa1's literal one-line sketch would have introduced).
+func TestRunDeliver_QA_InQa_PreservedByCarveOut(t *testing.T) {
+	skipWindows(t)
+	t.Run("PASS still transitions to qa_passed", func(t *testing.T) {
+		written, _, _, err := runDeliverWithStatus(t, "qa1", "Login bug", "in_qa", "--verdict", "PASS")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if written != "qa_passed" {
+			t.Errorf("QA+PASS+in_qa must transition to qa_passed, got %q (carve-out widened?)", written)
+		}
+	})
+	t.Run("FAIL still leaves status alone", func(t *testing.T) {
+		written, reqs, _, err := runDeliverWithStatus(t, "qa1", "Login bug", "in_qa",
+			"--verdict", "FAIL", "--reason", "logout broken")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if written != "" {
+			t.Errorf("QA+FAIL+in_qa must not write status, got %q", written)
+		}
+		if !hasIPCSend(reqs) {
+			t.Error("QA+FAIL+in_qa must still send a report (only Eng+in_qa is suppressed)")
+		}
+	})
+}
+
+// TestRunDeliver_Eng_InQa_FailUnchanged: --fail on Eng+in_qa is intentionally
+// NOT covered by the carve-out. An engineer recording a regression mid-QA
+// is useful audit data and doesn't reset status anyway.
+func TestRunDeliver_Eng_InQa_FailUnchanged(t *testing.T) {
+	skipWindows(t)
+	stubBdFns(t)
+	resetDeliverFlags(t)
+
+	bdShowBeadFn = func(id string) (string, string, string, error) {
+		return "Login bug", "eng1", "in_qa", nil
+	}
+	var commentText string
+	bdCommentAddFn = func(id, author, comment string) error {
+		commentText = comment
+		return nil
+	}
+	var statusCalled bool
+	bdUpdateStatusFn = func(id, status string) error {
+		statusCalled = true
+		return nil
+	}
+
+	sockPath, received := startCapturingFakeIPC(t, tui.IPCResponse{OK: true})
+	t.Setenv("INITECH_SOCKET", sockPath)
+	t.Setenv("INITECH_AGENT", "eng1")
+
+	rootCmd.SetOut(&bytes.Buffer{})
+	rootCmd.SetErr(&bytes.Buffer{})
+	rootCmd.SetArgs([]string{"deliver", "ini-abc", "--fail", "--reason", "found a regression"})
+	defer rootCmd.SetArgs(nil)
+
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if statusCalled {
+		t.Error("--fail on in_qa must not write status (matches today's --fail semantics)")
+	}
+	if !strings.Contains(commentText, "FAILED: found a regression") {
+		t.Errorf("expected FAILED comment, got %q", commentText)
+	}
+	if !hasIPCSend(*received) {
+		t.Error("Eng+--fail+in_qa must still send a report (carve-out is for the !isFail path only)")
 	}
 }
