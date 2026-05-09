@@ -8,6 +8,22 @@ import (
 )
 
 func (t *TUI) handleKey(ev *tcell.EventKey) bool {
+	// ini-4pk Phase 0: capture what the outer terminal hands tcell for each
+	// key event. Goal is to confirm whether Shift+Enter arrives as a
+	// distinguishable event today (mod=Shift on KeyEnter) or as plain Enter
+	// (mod=0). DEBUG-level so it only fires under `initech --verbose` and
+	// imposes zero cost in normal runs. Remove or downgrade once Phase 1
+	// proceeds (or stays here forever if Phase 1 doesn't proceed — it's
+	// inert at default level).
+	LogDebug("input", "key event",
+		"key", ev.Key(),
+		"key_name", ev.Name(),
+		"rune", fmt.Sprintf("%q", ev.Rune()),
+		"mod", ev.Modifiers(),
+		"mod_shift", ev.Modifiers()&tcell.ModShift != 0,
+		"mod_ctrl", ev.Modifiers()&tcell.ModCtrl != 0,
+		"mod_alt", ev.Modifiers()&tcell.ModAlt != 0)
+
 	// Welcome overlay: dismiss on any keypress.
 	if t.welcome.active {
 		t.welcome.active = false
