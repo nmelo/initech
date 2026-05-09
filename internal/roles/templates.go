@@ -318,10 +318,12 @@ Source code: {{project_root}}/{{role_name}}/src/
 6. Verify before completion (see checklist below).
 7. Commit: ` + "`" + `git add <files> && git commit -m "<message>"` + "`" + `
 8. Push: ` + "`" + `git push` + "`" + ` (separate step, not optional. QA pulls from the remote.)
-9. **Comment DONE** with what changed, what tests were added, and the commit hash:
-   ` + "`" + `bd comments add <id> --author {{role_name}} "DONE: <what>. Tests: <added>. Commit: <hash>"` + "`" + `
-10. Deliver: ` + "`" + `initech deliver <id>` + "`" + ` (marks ready_for_qa, clears TUI, reports to super atomically)
-    Or if something failed: ` + "`" + `initech deliver <id> --fail --reason "<what went wrong>"` + "`" + `
+9. **Deliver with DONE message** — one command, lands the comment on the bead AND reports to super:
+   ` + "`" + `initech deliver <id> -m "DONE: <what>. Tests: <added>. Commit: <hash>"` + "`" + `
+   Or if something failed: ` + "`" + `initech deliver <id> --fail --reason "<what went wrong>"` + "`" + `
+
+   Two-step fallback (if -m doesn't fit your DONE body, e.g. very long content):
+   ` + "`" + `bd comments add <id> --author {{role_name}} "DONE: <body>"` + "`" + ` then ` + "`" + `initech deliver <id>` + "`" + `
 
 Fallback (if initech deliver is unavailable):
 1. ` + "`" + `bd update <id> --status ready_for_qa` + "`" + `

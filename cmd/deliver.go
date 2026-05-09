@@ -21,11 +21,11 @@ var deliverCmd = &cobra.Command{
 and initech send in one command. Counterpart to initech assign.
 
   initech deliver ini-abc                              # eng: mark ready_for_qa, report to super
+  initech deliver ini-abc -m "DONE: <body>"            # eng: success + DONE comment on bead
   initech deliver ini-abc --fail --reason "tests fail"  # eng: stay in_progress, report failure
   initech deliver ini-abc --verdict PASS                # qa: announce PASS verdict
   initech deliver ini-abc --verdict FAIL --reason X     # qa: announce FAIL verdict
   initech deliver ini-abc --to qa1                      # report to qa1 instead of super
-  initech deliver ini-abc --message "also fixed lint"   # append note to report
   initech deliver ini-abc --as qa2 --verdict PASS       # override INITECH_AGENT (rare)
 
 The notification template is selected from the caller's role family:
@@ -33,6 +33,18 @@ The notification template is selected from the caller's role family:
   qa*        -> "PASS:" / "FAIL:" — --verdict PASS|FAIL is required
   others     -> "delivered:" / "delivery failed:"
 Unknown roles error rather than silently using the engineer template.
+
+--message / -m semantics:
+  - On the SUCCESS path, the body is written verbatim as a bd comment AND
+    appended to the chat report. Empty -m skips the comment-add. The body
+    is user-controlled, so verdict/role prefixes (e.g. "PASS: ", "DONE: ")
+    are the caller's responsibility.
+  - On the --fail path, the body is appended to the chat report only; the
+    bead's audit-trail comment is "FAILED: <reason>" from --reason, not
+    -m. This avoids a double comment on a single failure event.
+  - If a caller already ran bd comments add manually before deliver, an
+    -m on the same call will produce a duplicate comment; engineers are
+    expected to pick one path.
 
 Fail-fast ordering: input validation first (rejects bad flag combos before
 any side effects), bd operations second (durable state), TUI bead clear
@@ -59,7 +71,7 @@ func init() {
 	deliverCmd.Flags().BoolVar(&deliverFail, "fail", false, "Stay in_progress, report failure")
 	deliverCmd.Flags().StringVar(&deliverReason, "reason", "", "Failure reason (used with --fail or --verdict FAIL)")
 	deliverCmd.Flags().StringVar(&deliverTo, "to", "super", "Agent to report to (default: super)")
-	deliverCmd.Flags().StringVarP(&deliverMessage, "message", "m", "", "Custom note appended to the report")
+	deliverCmd.Flags().StringVarP(&deliverMessage, "message", "m", "", "Custom note appended to the chat report; on success, also written as a bd comment on the bead")
 	deliverCmd.Flags().StringVar(&deliverVerdict, "verdict", "", "QA verdict: PASS or FAIL (required for qa* roles)")
 	deliverCmd.Flags().StringVar(&deliverAs, "as", "", "Override caller role (default: INITECH_AGENT env var)")
 	rootCmd.AddCommand(deliverCmd)
@@ -164,6 +176,20 @@ func runDeliver(cmd *cobra.Command, args []string) error {
 			// No status write: Other-family deliveries announce but do not
 			// transition status. The bead's lifecycle (ready_for_qa,
 			// qa_passed, etc.) is owned by eng/qa, not by shipper/pm/etc.
+		}
+	}
+
+	// Step 2.5: On the success path, if -m was provided, write the body as
+	// a bd comment so the bead's audit trail records what was delivered
+	// (ini-lwd: deliver previously only put the body in the chat report,
+	// leaving 'ready_for_qa' beads with no DONE comment unless the engineer
+	// ran 'bd comments add' manually beforehand). Body is user-controlled —
+	// callers add their own "DONE: " / "PASS: " prefixes. Empty -m skips
+	// the call. Failure-path comment ("FAILED: <reason>") is unchanged
+	// above; -m on --fail stays chat-only to avoid a double comment.
+	if !isFail && deliverMessage != "" {
+		if err := bdCommentAddFn(beadID, agent, deliverMessage); err != nil {
+			fmt.Fprintf(cmd.ErrOrStderr(), "warning: bd comment failed: %s\n", err)
 		}
 	}
 

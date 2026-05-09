@@ -1108,3 +1108,136 @@ func TestRunDeliver_Eng_InQa_FailUnchanged(t *testing.T) {
 		t.Error("Eng+--fail+in_qa must still send a report (carve-out is for the !isFail path only)")
 	}
 }
+
+// --- ini-lwd: success path writes -m body as a bd comment ---
+
+// runDeliverCapturingComments wires the same fake IPC + bd stubs as
+// runDeliverWith, but also captures every (author, body) pair passed to
+// bdCommentAddFn. Returns the list of comments written (in order), the
+// captured IPC requests, the stderr buffer, and any rootCmd error. Useful
+// for asserting that the success-path comment-add fired exactly once with
+// the expected body, and that the failure-path didn't double-up.
+func runDeliverCapturingComments(t *testing.T, agent, beadTitle string, args ...string) (comments []deliverComment, requests []tui.IPCRequest, stderr string, err error) {
+	t.Helper()
+	stubBdFns(t)
+	resetDeliverFlags(t)
+
+	bdShowBeadFn = func(id string) (string, string, string, error) {
+		return beadTitle, agent, "", nil
+	}
+	bdCommentAddFn = func(id, author, body string) error {
+		comments = append(comments, deliverComment{id: id, author: author, body: body})
+		return nil
+	}
+
+	sockPath, received := startCapturingFakeIPC(t, tui.IPCResponse{OK: true})
+	t.Setenv("INITECH_SOCKET", sockPath)
+	t.Setenv("INITECH_AGENT", agent)
+
+	var stderrBuf bytes.Buffer
+	rootCmd.SetOut(&bytes.Buffer{})
+	rootCmd.SetErr(&stderrBuf)
+	rootCmd.SetArgs(append([]string{"deliver", "ini-test"}, args...))
+	defer rootCmd.SetArgs(nil)
+
+	err = rootCmd.Execute()
+	return comments, *received, stderrBuf.String(), err
+}
+
+type deliverComment struct {
+	id, author, body string
+}
+
+func TestRunDeliver_SuccessWithMessage_WritesComment(t *testing.T) {
+	skipWindows(t)
+	comments, _, _, err := runDeliverCapturingComments(t, "eng1", "Auth bug",
+		"-m", "DONE: refactored auth, added 12 tests")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(comments) != 1 {
+		t.Fatalf("want exactly 1 comment, got %d: %+v", len(comments), comments)
+	}
+	if comments[0].body != "DONE: refactored auth, added 12 tests" {
+		t.Errorf("comment body = %q, want %q", comments[0].body, "DONE: refactored auth, added 12 tests")
+	}
+	if comments[0].author != "eng1" {
+		t.Errorf("comment author = %q, want %q", comments[0].author, "eng1")
+	}
+	if comments[0].id != "ini-test" {
+		t.Errorf("comment bead id = %q, want %q", comments[0].id, "ini-test")
+	}
+}
+
+func TestRunDeliver_SuccessWithoutMessage_NoComment(t *testing.T) {
+	skipWindows(t)
+	comments, _, _, err := runDeliverCapturingComments(t, "eng1", "Auth bug")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(comments) != 0 {
+		t.Errorf("expected no comment when -m is absent, got %d: %+v", len(comments), comments)
+	}
+}
+
+func TestRunDeliver_SuccessWithEmptyMessage_NoComment(t *testing.T) {
+	skipWindows(t)
+	comments, _, _, err := runDeliverCapturingComments(t, "eng1", "Auth bug", "-m", "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(comments) != 0 {
+		t.Errorf("expected no comment for empty -m, got %d: %+v", len(comments), comments)
+	}
+}
+
+// TestRunDeliver_FailWithMessage_OnlyFailedComment: -m on --fail stays
+// chat-only. The bead's audit trail comment is "FAILED: <reason>" from
+// --reason, NOT a duplicate from -m. Verifies the asymmetry documented
+// in the deliverCmd Long doc-comment.
+func TestRunDeliver_FailWithMessage_OnlyFailedComment(t *testing.T) {
+	skipWindows(t)
+	comments, reqs, _, err := runDeliverCapturingComments(t, "eng1", "Auth bug",
+		"--fail", "--reason", "tests broken", "-m", "chat-only note")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(comments) != 1 {
+		t.Fatalf("want exactly 1 comment on --fail, got %d: %+v", len(comments), comments)
+	}
+	if !strings.Contains(comments[0].body, "FAILED: tests broken") {
+		t.Errorf("comment body = %q, want it to contain 'FAILED: tests broken'", comments[0].body)
+	}
+	if strings.Contains(comments[0].body, "chat-only note") {
+		t.Errorf("--fail comment body must not duplicate the -m body, got %q", comments[0].body)
+	}
+	// -m body still appears in the chat report.
+	var report string
+	for _, r := range reqs {
+		if r.Action == "send" {
+			report = r.Text
+			break
+		}
+	}
+	if !strings.Contains(report, "chat-only note") {
+		t.Errorf("chat report must include the -m body, got %q", report)
+	}
+}
+
+// TestRunDeliver_QA_PassWithMessage_WritesComment: contract test that the
+// new -m -> bd comment path is family-agnostic (QA family also gets the
+// comment landed). User-controlled body — no automatic verdict prefix.
+func TestRunDeliver_QA_PassWithMessage_WritesComment(t *testing.T) {
+	skipWindows(t)
+	comments, _, _, err := runDeliverCapturingComments(t, "qa1", "Login flow",
+		"--verdict", "PASS", "-m", "PASS: all AC met")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(comments) != 1 {
+		t.Fatalf("want exactly 1 comment, got %d: %+v", len(comments), comments)
+	}
+	if comments[0].body != "PASS: all AC met" {
+		t.Errorf("QA comment body = %q, want it to land verbatim (no auto-prefix)", comments[0].body)
+	}
+}
