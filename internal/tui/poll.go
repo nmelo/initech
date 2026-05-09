@@ -1,5 +1,5 @@
 // Package tui polling functions. These gather data on the render tick
-// (tip rotation, quota scraping) or in background goroutines (battery).
+// (tip rotation) or in background goroutines (battery).
 // Separated from render.go so that file stays pure drawing.
 package tui
 
@@ -57,33 +57,6 @@ func (t *TUI) rotateTip() {
 		t.tipIndex = rand.Intn(len(getStatusTips()))
 		t.tipRotateAt = time.Now().Add(tipRotationInterval)
 	}
-}
-
-// quotaPollInterval is how often the TUI scrapes quota from a pane.
-const quotaPollInterval = 30 * time.Second
-
-// pollQuota reads the Claude Code quota percentage from the first available
-// alive, non-suspended pane. Called on the render tick; only runs every 30s.
-func (t *TUI) pollQuota() {
-	if time.Now().Before(t.quotaPollAt) {
-		return
-	}
-	t.quotaPollAt = time.Now().Add(quotaPollInterval)
-
-	for _, p := range t.panes {
-		if !p.IsAlive() || p.IsSuspended() {
-			continue
-		}
-		lp, ok := p.(*Pane)
-		if !ok {
-			continue
-		}
-		if pct := lp.ScrapeQuota(); pct >= 0 {
-			t.quotaPercent = pct
-			return
-		}
-	}
-	// No pane had quota data. Keep the last known value (stale > absent).
 }
 
 // startBatteryPoller launches a goroutine that polls battery state every 60s.

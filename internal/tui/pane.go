@@ -8,8 +8,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -1584,47 +1582,6 @@ func tcellKeyToUV(ev *tcell.EventKey) uv.KeyPressEvent {
 
 	// Fallback: space.
 	return uv.KeyPressEvent(uv.Key{Code: uv.KeySpace})
-}
-
-// quotaRe matches "N% of" in the Claude Code status bar (e.g. "75% of limit").
-var quotaRe = regexp.MustCompile(`(\d{1,3})%\s+of`)
-
-// ScrapeQuota reads the emulator's status bar rows and extracts the quota
-// percentage ("N% of limit"). Returns 0-100 on success, -1 if not found.
-// Skips panes in alt-screen mode (vim, less) where the status bar is hidden.
-func (p *Pane) ScrapeQuota() int {
-	if p.emu == nil || p.emu.IsAltScreen() {
-		return -1
-	}
-	cols := p.emu.Width()
-	rows := p.emu.Height()
-	if cols < 10 || rows < 2 {
-		return -1
-	}
-
-	// Scan the last 4 rows for a status bar (contains U+2502 separator).
-	for row := rows - 1; row >= rows-4 && row >= 0; row-- {
-		if !rowContainsStatusBar(p.emu, row, cols) {
-			continue
-		}
-		// Extract text content from this row.
-		var sb strings.Builder
-		for col := 0; col < cols; col++ {
-			cell := p.emu.CellAt(col, row)
-			if cell != nil && cell.Content != "" {
-				sb.WriteString(cell.Content)
-			} else {
-				sb.WriteByte(' ')
-			}
-		}
-		line := sb.String()
-		if m := quotaRe.FindStringSubmatch(line); m != nil {
-			if pct, err := strconv.Atoi(m[1]); err == nil && pct >= 0 && pct <= 100 {
-				return pct
-			}
-		}
-	}
-	return -1
 }
 
 // Ensure io.Writer is implemented (used by readLoop calling emu.Write).

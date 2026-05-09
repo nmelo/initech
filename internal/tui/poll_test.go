@@ -1,76 +1,11 @@
 package tui
 
 import (
-	"fmt"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 )
-
-func TestPollQuota_SkipsBeforeDeadline(t *testing.T) {
-	pane := newEmuPane("eng1", 80, 24)
-	writeQuotaStatus(t, pane, 75)
-
-	tui := &TUI{
-		panes:        []PaneView{pane},
-		quotaPercent: 33,
-		quotaPollAt:  time.Now().Add(time.Minute),
-	}
-
-	tui.pollQuota()
-
-	if tui.quotaPercent != 33 {
-		t.Fatalf("quotaPercent = %d, want 33", tui.quotaPercent)
-	}
-}
-
-func TestPollQuota_UsesFirstEligiblePaneWithQuota(t *testing.T) {
-	deadPane := newEmuPane("dead", 80, 24)
-	deadPane.alive = false
-
-	suspendedPane := newEmuPane("suspended", 80, 24)
-	suspendedPane.suspended = true
-
-	remotePane := &RemotePane{alive: true}
-
-	noQuotaPane := newEmuPane("eng1", 80, 24)
-	noQuotaPane.emu.Write([]byte(fmt.Sprintf("\x1b[%d;1H%s", 24, "opus-4 │ idle │ session")))
-
-	quotaPane := newEmuPane("eng2", 80, 24)
-	writeQuotaStatus(t, quotaPane, 75)
-
-	tui := &TUI{
-		panes:       []PaneView{deadPane, suspendedPane, remotePane, noQuotaPane, quotaPane},
-		quotaPollAt: time.Now().Add(-time.Second),
-	}
-
-	tui.pollQuota()
-
-	if tui.quotaPercent != 75 {
-		t.Fatalf("quotaPercent = %d, want 75", tui.quotaPercent)
-	}
-	if !tui.quotaPollAt.After(time.Now()) {
-		t.Fatal("quotaPollAt should be moved into the future after polling")
-	}
-}
-
-func TestPollQuota_KeepsLastKnownValueWhenNoPaneHasQuota(t *testing.T) {
-	noQuotaPane := newEmuPane("eng1", 80, 24)
-	noQuotaPane.emu.Write([]byte(fmt.Sprintf("\x1b[%d;1H%s", 24, "opus-4 │ idle │ session")))
-
-	tui := &TUI{
-		panes:        []PaneView{noQuotaPane, &RemotePane{alive: true}},
-		quotaPercent: 61,
-		quotaPollAt:  time.Now().Add(-time.Second),
-	}
-
-	tui.pollQuota()
-
-	if tui.quotaPercent != 61 {
-		t.Fatalf("quotaPercent = %d, want stale value 61", tui.quotaPercent)
-	}
-}
 
 func TestStartBatteryPoller_NoBatteryStopsAfterInitialCheck(t *testing.T) {
 	restore := stubBatteryPolling(t, func() (int, bool, bool) {
@@ -158,12 +93,6 @@ func TestStartBatteryPoller_KeepsLastKnownValueWhenBatteryReadDropsOut(t *testin
 	if tui.batteryPercent != 72 || tui.batteryCharging {
 		t.Fatalf("battery state after dropout = (%d,%v), want stale (72,false)", tui.batteryPercent, tui.batteryCharging)
 	}
-}
-
-func writeQuotaStatus(t *testing.T, pane *Pane, pct int) {
-	t.Helper()
-	statusBar := fmt.Sprintf("opus-4 │ %d%% of limit │ session-abc", pct)
-	pane.emu.Write([]byte(fmt.Sprintf("\x1b[%d;1H%s", 24, statusBar)))
 }
 
 func stubBatteryPolling(t *testing.T, readFn func() (int, bool, bool), interval time.Duration) func() {

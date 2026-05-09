@@ -393,17 +393,6 @@ func (t *TUI) renderHints() {
 		b.addRight("v"+t.updateAvailable+" available", b.barStyle.Foreground(tcell.ColorYellow))
 	}
 
-	// Quota.
-	if t.quotaPercent >= 0 {
-		quotaStyle := b.barStyle
-		if t.quotaPercent >= 95 {
-			quotaStyle = b.barStyle.Foreground(tcell.ColorRed)
-		} else if t.quotaPercent >= 80 {
-			quotaStyle = b.barStyle.Foreground(tcell.ColorYellow)
-		}
-		b.addRight(fmt.Sprintf("Q:%d%%", t.quotaPercent), quotaStyle)
-	}
-
 	// Battery.
 	if t.batteryPercent >= 0 {
 		battStr := fmt.Sprintf("%d%%", t.batteryPercent)

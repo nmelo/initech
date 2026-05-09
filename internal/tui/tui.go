@@ -209,11 +209,6 @@ type TUI struct {
 	batteryPercent  int  // 0-100, or -1 if no battery detected.
 	batteryCharging bool // True when plugged in and charging.
 
-	// Claude Code quota percentage scraped from an agent's status bar.
-	// -1 means not available (no pane showed a quota, or all panes dead).
-	quotaPercent int
-	quotaPollAt  time.Time // Next time to poll for quota.
-
 	// MCP server runtime state for the setup modal.
 	mcpToken string // Active bearer token (empty if MCP disabled).
 	mcpBind  string // Bind address (e.g. "0.0.0.0").
@@ -626,8 +621,6 @@ func Run(cfg Config) error {
 		pressureThreshold: cfg.PressureThreshold,
 		tipRotateAt:       time.Now().Add(tipRotationInterval),
 		batteryPercent:    -1,
-		quotaPercent:      -1,
-		quotaPollAt:       time.Now().Add(5 * time.Second), // first poll after 5s startup
 		quitCh:            quitCh,
 		ipcCh:             make(chan ipcAction, 32),
 		agentEvents:       make(chan AgentEvent, 64),
@@ -988,7 +981,6 @@ func Run(cfg Config) error {
 				t.welcome.active = false
 			}
 			t.rotateTip()
-			t.pollQuota()
 			t.fireTimers()
 			if t.layoutState.Mode == LayoutLive && time.Since(t.lastLiveTick) >= time.Second {
 				t.lastLiveTick = time.Now()

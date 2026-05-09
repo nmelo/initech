@@ -294,47 +294,13 @@ func TestStatusTips_NonEmpty(t *testing.T) {
 	}
 }
 
-func TestScrapeQuota_FindsPercentage(t *testing.T) {
-	// Create a pane with an emulator and write a Claude Code status bar.
-	p := newEmuPane("eng1", 80, 24)
-	// Write a status bar with quota at the last row.
-	// Claude Code format: "model │ 75% of limit │ session"
-	statusBar := "opus-4 \u2502 75% of limit \u2502 session-abc"
-	// Move cursor to last row and write.
-	p.emu.Write([]byte(fmt.Sprintf("\x1b[%d;1H%s", 24, statusBar)))
-
-	pct := p.ScrapeQuota()
-	if pct != 75 {
-		t.Errorf("ScrapeQuota() = %d, want 75", pct)
-	}
-}
-
-func TestScrapeQuota_NoQuota(t *testing.T) {
-	// Status bar without quota information.
-	p := newEmuPane("eng1", 80, 24)
-	statusBar := "opus-4 \u2502 session-abc \u2502 idle"
-	p.emu.Write([]byte(fmt.Sprintf("\x1b[%d;1H%s", 24, statusBar)))
-
-	pct := p.ScrapeQuota()
-	if pct != -1 {
-		t.Errorf("ScrapeQuota() = %d, want -1 (no quota)", pct)
-	}
-}
-
-func TestScrapeQuota_NilEmu(t *testing.T) {
-	p := &Pane{}
-	if pct := p.ScrapeQuota(); pct != -1 {
-		t.Errorf("ScrapeQuota() on nil emu = %d, want -1", pct)
-	}
-}
-
 // ── Battery rendering tests ─────────────────────────────────────────
 
 func TestRenderHints_NoBattery(t *testing.T) {
 	s := tcell.NewSimulationScreen("")
 	s.Init()
 	s.SetSize(120, 24)
-	tui := &TUI{screen: s, batteryPercent: -1, quotaPercent: -1}
+	tui := &TUI{screen: s, batteryPercent: -1}
 	tui.renderHints()
 
 	sw, sh := s.Size()
@@ -354,7 +320,7 @@ func TestRenderHints_BatteryDischarging(t *testing.T) {
 	s := tcell.NewSimulationScreen("")
 	s.Init()
 	s.SetSize(120, 24)
-	tui := &TUI{screen: s, batteryPercent: 67, batteryCharging: false, quotaPercent: -1}
+	tui := &TUI{screen: s, batteryPercent: 67, batteryCharging: false}
 	tui.renderHints()
 
 	sw, sh := s.Size()
@@ -376,7 +342,7 @@ func TestRenderHints_BatteryCharging(t *testing.T) {
 	s := tcell.NewSimulationScreen("")
 	s.Init()
 	s.SetSize(120, 24)
-	tui := &TUI{screen: s, batteryPercent: 42, batteryCharging: true, quotaPercent: -1}
+	tui := &TUI{screen: s, batteryPercent: 42, batteryCharging: true}
 	tui.renderHints()
 
 	sw, sh := s.Size()
@@ -395,7 +361,7 @@ func TestRenderHints_BatteryLow(t *testing.T) {
 	s := tcell.NewSimulationScreen("")
 	s.Init()
 	s.SetSize(120, 24)
-	tui := &TUI{screen: s, batteryPercent: 8, batteryCharging: false, quotaPercent: -1}
+	tui := &TUI{screen: s, batteryPercent: 8, batteryCharging: false}
 	tui.renderHints()
 
 	sw, sh := s.Size()
@@ -422,93 +388,6 @@ func TestReadBattery_Callable(t *testing.T) {
 	}
 }
 
-// ── Quota rendering tests ───────────────────────────────────────────
-
-func TestRenderHints_ShowsQuota(t *testing.T) {
-	s := tcell.NewSimulationScreen("")
-	s.Init()
-	s.SetSize(120, 24)
-	tui := &TUI{screen: s, tipIndex: 0, quotaPercent: 75, batteryPercent: -1}
-	tui.renderHints()
-
-	sw, sh := s.Size()
-	y := sh - 1
-	var line string
-	for x := 0; x < sw; x++ {
-		ch, _, _ := s.Get(x, y)
-		line += ch
-	}
-	if !containsStr(line, "Q:75%") {
-		t.Errorf("status bar should contain Q:75%%, got: %q", line)
-	}
-}
-
-func TestRenderHints_HidesQuotaWhenUnavailable(t *testing.T) {
-	s := tcell.NewSimulationScreen("")
-	s.Init()
-	s.SetSize(120, 24)
-	tui := &TUI{screen: s, tipIndex: 0, quotaPercent: -1, batteryPercent: -1}
-	tui.renderHints()
-
-	sw, sh := s.Size()
-	y := sh - 1
-	var line string
-	for x := 0; x < sw; x++ {
-		ch, _, _ := s.Get(x, y)
-		line += ch
-	}
-	if containsStr(line, "Q:") {
-		t.Errorf("status bar should not show Q: when quota unavailable, got: %q", line)
-	}
-}
-
-func TestRenderHints_QuotaColorYellow(t *testing.T) {
-	s := tcell.NewSimulationScreen("")
-	s.Init()
-	s.SetSize(120, 24)
-	tui := &TUI{screen: s, tipIndex: 0, quotaPercent: 85, batteryPercent: -1}
-	tui.renderHints()
-
-	// Find 'Q' on the status bar and check its foreground.
-	sw, sh := s.Size()
-	y := sh - 1
-	for x := 0; x < sw; x++ {
-		ch, style, _ := s.Get(x, y)
-		if ch == "Q" {
-			fg, _, _ := style.Decompose()
-			if fg != tcell.ColorYellow {
-				t.Errorf("Q at 85%% should be yellow, got fg=%v", fg)
-			}
-			return
-		}
-	}
-	t.Error("Q not found in status bar")
-	_ = sh
-}
-
-func TestRenderHints_QuotaColorRed(t *testing.T) {
-	s := tcell.NewSimulationScreen("")
-	s.Init()
-	s.SetSize(120, 24)
-	tui := &TUI{screen: s, tipIndex: 0, quotaPercent: 97, batteryPercent: -1}
-	tui.renderHints()
-
-	sw, sh := s.Size()
-	y := sh - 1
-	for x := 0; x < sw; x++ {
-		ch, style, _ := s.Get(x, y)
-		if ch == "Q" {
-			fg, _, _ := style.Decompose()
-			if fg != tcell.ColorRed {
-				t.Errorf("Q at 97%% should be red, got fg=%v", fg)
-			}
-			return
-		}
-	}
-	t.Error("Q not found in status bar")
-	_ = sh
-}
-
 // ── Clock rendering tests ───────────────────────────────────────────
 
 func TestRenderHints_ShowsPending(t *testing.T) {
@@ -518,7 +397,7 @@ func TestRenderHints_ShowsPending(t *testing.T) {
 	ts := NewTimerStore(filepath.Join(t.TempDir(), "timers.json"))
 	ts.Add("eng1", "", "test msg", true, time.Now().Add(1*time.Hour))  //nolint:errcheck
 	ts.Add("eng2", "", "another", true, time.Now().Add(2*time.Hour)) //nolint:errcheck
-	tui := &TUI{screen: s, batteryPercent: -1, quotaPercent: -1, timers: ts}
+	tui := &TUI{screen: s, batteryPercent: -1, timers: ts}
 	tui.renderHints()
 
 	sw, sh := s.Size()
@@ -538,7 +417,7 @@ func TestRenderHints_NoPendingWhenEmpty(t *testing.T) {
 	s.Init()
 	s.SetSize(120, 24)
 	ts := NewTimerStore(filepath.Join(t.TempDir(), "timers.json"))
-	tui := &TUI{screen: s, batteryPercent: -1, quotaPercent: -1, timers: ts}
+	tui := &TUI{screen: s, batteryPercent: -1, timers: ts}
 	tui.renderHints()
 
 	sw, sh := s.Size()
@@ -557,7 +436,7 @@ func TestRenderHints_ShowsClock(t *testing.T) {
 	s := tcell.NewSimulationScreen("")
 	s.Init()
 	s.SetSize(120, 24)
-	tui := &TUI{screen: s, batteryPercent: -1, quotaPercent: -1}
+	tui := &TUI{screen: s, batteryPercent: -1}
 	tui.renderHints()
 
 	sw, sh := s.Size()
