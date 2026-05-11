@@ -211,6 +211,62 @@ func TestLookupRole_NumberedFamily(t *testing.T) {
 	})
 }
 
+// TestRoleFamilyOfWithRoster covers the ini-98n tier extension: roster-aware
+// classification for custom roles defined in initech.yaml. The roster is the
+// third-tier source of truth, behind prefix matches (tier 2/3) and catalog
+// exact matches (tier 4), so the function's existing semantics are preserved
+// for prefix and catalog roles regardless of roster contents.
+func TestRoleFamilyOfWithRoster(t *testing.T) {
+	tests := []struct {
+		desc   string
+		name   string
+		roster []string
+		want   RoleFamily
+	}{
+		// ini-98n core: custom role from initech.yaml roster.
+		{"practitioner in roster -> Other", "practitioner", []string{"super", "practitioner", "analyst"}, FamilyOther},
+		{"analyst in roster -> Other", "analyst", []string{"super", "practitioner", "analyst"}, FamilyOther},
+
+		// Typo protection survives: arbitrary string not in roster -> Unknown.
+		{"wronk not in roster -> Unknown", "wronk", []string{"super", "practitioner"}, FamilyUnknown},
+		{"random-typo not in roster -> Unknown", "random-typo", []string{"practitioner"}, FamilyUnknown},
+
+		// Empty roster matches today's RoleFamilyOf for every input.
+		{"empty roster: eng1 prefix -> Eng", "eng1", nil, FamilyEng},
+		{"empty roster: qa1 prefix -> QA", "qa1", nil, FamilyQA},
+		{"empty roster: pm catalog -> Other", "pm", nil, FamilyOther},
+		{"empty roster: custom unknown -> Unknown", "practitioner", nil, FamilyUnknown},
+		{"empty roster: empty agent -> Unknown", "", nil, FamilyUnknown},
+
+		// Prefix wins before roster lookup. A roster entry that LOOKS like an
+		// eng/qa name must not reclassify it from Eng/QA to Other.
+		{"prefix wins over roster: engineer (eng prefix) stays Eng even if in roster",
+			"engineer", []string{"engineer"}, FamilyEng},
+		{"prefix wins over roster: qaThing (qa prefix) stays QA even if in roster",
+			"qaThing", []string{"qaThing"}, FamilyQA},
+
+		// Catalog wins before roster lookup. A roster that includes a catalog
+		// name still gets the catalog classification (which is FamilyOther
+		// today, but the SOURCE of the classification matters — preserves the
+		// invariant that catalog roles never depend on roster contents).
+		{"catalog wins over roster: shipper stays Other (catalog, not roster)",
+			"shipper", []string{"shipper"}, FamilyOther},
+		{"catalog wins over roster: pm stays Other (catalog, not roster)",
+			"pm", []string{"pm", "practitioner"}, FamilyOther},
+
+		// Empty name short-circuits regardless of roster.
+		{"empty name with non-empty roster still Unknown", "", []string{"practitioner"}, FamilyUnknown},
+	}
+	for _, tt := range tests {
+		t.Run(tt.desc, func(t *testing.T) {
+			got := RoleFamilyOfWithRoster(tt.name, tt.roster)
+			if got != tt.want {
+				t.Errorf("RoleFamilyOfWithRoster(%q, %v) = %q, want %q", tt.name, tt.roster, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestRoleFamilyOf(t *testing.T) {
 	tests := []struct {
 		name string

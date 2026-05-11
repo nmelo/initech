@@ -1242,3 +1242,209 @@ func TestRunDeliver_QA_PassWithMessage_WritesComment(t *testing.T) {
 		t.Errorf("QA comment body = %q, want it to land verbatim (no auto-prefix)", comments[0].body)
 	}
 }
+
+// --- ini-98n: roster-aware role classification ---
+//
+// RoleFamilyOf shipped in ini-dgt.2 as a pure prefix+catalog classifier and
+// rejected any custom role not in the built-in list. initech.yaml is the
+// canonical roster for any project, so deliver now consults it as a third
+// tier (after prefix and catalog) — custom roles like "practitioner" get the
+// generic FamilyOther template instead of being rejected. Typo protection
+// survives: names not in any tier still error.
+
+// isolateFromProjectWithRoster is isolateFromProject with a caller-supplied
+// roles list. Used by ini-98n tests that need a specific custom roster.
+func isolateFromProjectWithRoster(t *testing.T, rosterRoles []string) {
+	t.Helper()
+	dir := t.TempDir()
+	var rolesYAML strings.Builder
+	for _, r := range rosterRoles {
+		rolesYAML.WriteString("  - ")
+		rolesYAML.WriteString(r)
+		rolesYAML.WriteString("\n")
+	}
+	cfg := fmt.Sprintf("project: test\nroot: %s\nroles:\n%s", dir, rolesYAML.String())
+	os.WriteFile(dir+"/initech.yaml", []byte(cfg), 0644)
+	orig, _ := os.Getwd()
+	os.Chdir(dir)
+	t.Cleanup(func() { os.Chdir(orig) })
+}
+
+// stubBdFnsWithRoster is stubBdFns variant that takes an explicit roster.
+func stubBdFnsWithRoster(t *testing.T, rosterRoles []string) {
+	t.Helper()
+	isolateFromProjectWithRoster(t, rosterRoles)
+	origShow := bdShowBeadFn
+	origUpdate := bdUpdateStatusFn
+	origComment := bdCommentAddFn
+	origTitle := bdShowTitleFn
+	origClaim := bdUpdateClaimFn
+	t.Cleanup(func() {
+		bdShowBeadFn = origShow
+		bdUpdateStatusFn = origUpdate
+		bdCommentAddFn = origComment
+		bdShowTitleFn = origTitle
+		bdUpdateClaimFn = origClaim
+	})
+	bdShowBeadFn = func(id string) (string, string, string, error) { return id, "", "", nil }
+	bdUpdateStatusFn = func(id, status string) error { return nil }
+	bdCommentAddFn = func(id, author, comment string) error { return nil }
+	bdShowTitleFn = func(id string) (string, error) { return id, nil }
+	bdUpdateClaimFn = func(id, agent string) error { return nil }
+}
+
+// TestRunDeliver_CustomRoleFromRoster_Accepted: a non-prefix non-catalog
+// role defined in initech.yaml is now accepted by deliver and gets the
+// FamilyOther generic announce template. This is the core ini-98n fix.
+func TestRunDeliver_CustomRoleFromRoster_Accepted(t *testing.T) {
+	skipWindows(t)
+	stubBdFnsWithRoster(t, []string{"super", "practitioner", "analyst"})
+	resetDeliverFlags(t)
+
+	bdShowBeadFn = func(id string) (string, string, string, error) {
+		return "Fix the bug", "practitioner", "", nil
+	}
+
+	sockPath, received := startCapturingFakeIPC(t, tui.IPCResponse{OK: true})
+	t.Setenv("INITECH_SOCKET", sockPath)
+	t.Setenv("INITECH_AGENT", "practitioner")
+
+	var stderr bytes.Buffer
+	rootCmd.SetOut(&bytes.Buffer{})
+	rootCmd.SetErr(&stderr)
+	rootCmd.SetArgs([]string{"deliver", "ini-abc"})
+	defer rootCmd.SetArgs(nil)
+
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("custom roster role must be accepted, got error: %v", err)
+	}
+
+	var report string
+	for _, req := range *received {
+		if req.Action == "send" {
+			report = req.Text
+			break
+		}
+	}
+	// FamilyOther generic template: "<role> delivered: <title>".
+	if !strings.Contains(report, "delivered:") {
+		t.Errorf("custom-role report must use generic 'delivered:' template, got %q", report)
+	}
+	if strings.Contains(report, "ready for QA") {
+		t.Errorf("custom role must NOT use eng 'ready for QA' template, got %q", report)
+	}
+	if strings.Contains(report, "PASS") || strings.Contains(report, "FAIL") {
+		t.Errorf("custom role must NOT use QA verdict template, got %q", report)
+	}
+}
+
+// TestRunDeliver_NotInRoster_Rejected: typo protection survives. A name not
+// in any tier (prefix, catalog, roster) errors with the new message naming
+// the actual roster so the user knows what to fix.
+func TestRunDeliver_NotInRoster_Rejected(t *testing.T) {
+	skipWindows(t)
+	stubBdFnsWithRoster(t, []string{"super", "practitioner", "analyst"})
+	resetDeliverFlags(t)
+
+	sockPath := startFakeIPC(t, tui.IPCResponse{OK: true})
+	t.Setenv("INITECH_SOCKET", sockPath)
+	t.Setenv("INITECH_AGENT", "wronk")
+
+	rootCmd.SetOut(&bytes.Buffer{})
+	rootCmd.SetErr(&bytes.Buffer{})
+	rootCmd.SetArgs([]string{"deliver", "ini-abc"})
+	defer rootCmd.SetArgs(nil)
+
+	err := rootCmd.Execute()
+	if err == nil {
+		t.Fatal("name not in roster must error")
+	}
+	if !strings.Contains(err.Error(), "not in initech.yaml roster") {
+		t.Errorf("error should name the policy, got %q", err)
+	}
+	// Error message should include the actual roster so the user can fix it.
+	if !strings.Contains(err.Error(), "practitioner") || !strings.Contains(err.Error(), "analyst") {
+		t.Errorf("error should list the known roster (practitioner, analyst), got %q", err)
+	}
+}
+
+// TestRunDeliver_AsOverride_CustomRole: --as <custom-role> respects roster
+// just like INITECH_AGENT does. Validates the override path against ini-98n.
+func TestRunDeliver_AsOverride_CustomRole(t *testing.T) {
+	skipWindows(t)
+	stubBdFnsWithRoster(t, []string{"super", "practitioner", "analyst"})
+	resetDeliverFlags(t)
+
+	bdShowBeadFn = func(id string) (string, string, string, error) {
+		return "Some bead", "analyst", "", nil
+	}
+
+	sockPath, received := startCapturingFakeIPC(t, tui.IPCResponse{OK: true})
+	t.Setenv("INITECH_SOCKET", sockPath)
+	t.Setenv("INITECH_AGENT", "practitioner") // first roster entry
+
+	rootCmd.SetOut(&bytes.Buffer{})
+	rootCmd.SetErr(&bytes.Buffer{})
+	// --as analyst: also in roster, should be respected.
+	rootCmd.SetArgs([]string{"deliver", "ini-abc", "--as", "analyst"})
+	defer rootCmd.SetArgs(nil)
+
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("--as custom roster role must be accepted, got error: %v", err)
+	}
+
+	var report string
+	for _, req := range *received {
+		if req.Action == "send" {
+			report = req.Text
+			break
+		}
+	}
+	// Report should attribute to analyst (the --as value), not practitioner.
+	if !strings.Contains(report, "[from analyst]") {
+		t.Errorf("--as override should attribute to analyst, got %q", report)
+	}
+}
+
+// TestRunDeliver_PrefixWinsOverRoster: a name like "engineer" has the eng
+// prefix and must classify as FamilyEng even if it appears in the roster.
+// Pinning this prevents a future refactor from accidentally reordering tiers
+// and silently flipping engineer-template tests to other-template.
+func TestRunDeliver_PrefixWinsOverRoster(t *testing.T) {
+	skipWindows(t)
+	// Roster includes "engineer" — but prefix should still win.
+	stubBdFnsWithRoster(t, []string{"super", "engineer"})
+	resetDeliverFlags(t)
+
+	bdShowBeadFn = func(id string) (string, string, string, error) {
+		return "Title", "engineer", "", nil
+	}
+
+	sockPath, received := startCapturingFakeIPC(t, tui.IPCResponse{OK: true})
+	t.Setenv("INITECH_SOCKET", sockPath)
+	t.Setenv("INITECH_AGENT", "engineer")
+
+	rootCmd.SetOut(&bytes.Buffer{})
+	rootCmd.SetErr(&bytes.Buffer{})
+	rootCmd.SetArgs([]string{"deliver", "ini-abc"})
+	defer rootCmd.SetArgs(nil)
+
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("engineer (eng prefix) must be accepted, got error: %v", err)
+	}
+
+	var report string
+	for _, req := range *received {
+		if req.Action == "send" {
+			report = req.Text
+			break
+		}
+	}
+	// Eng family uses "ready for QA" — NOT the generic "delivered:" Other template.
+	if !strings.Contains(report, "ready for QA") {
+		t.Errorf("engineer should use Eng family 'ready for QA' template, got %q", report)
+	}
+	if strings.Contains(report, "delivered:") {
+		t.Errorf("engineer must NOT fall through to Other-family template even when in roster, got %q", report)
+	}
+}

@@ -131,13 +131,36 @@ const (
 	FamilyUnknown RoleFamily = "unknown"
 )
 
-// RoleFamilyOf maps an agent name to its RoleFamily. Detection prefers prefix
-// matching for the eng/qa families (so eng1, eng2, qa3 all resolve correctly
-// without catalog updates), then falls back to exact-match against the open
-// catalog of known role names. Names that match neither pattern return
-// FamilyUnknown so callers can reject them rather than silently defaulting to
-// the engineer template.
+// RoleFamilyOf maps an agent name to its RoleFamily using built-in
+// classification only (prefix + catalog). Equivalent to RoleFamilyOfWithRoster
+// with a nil roster; see that function for the full resolution order.
+//
+// Callers that have access to the project roster (e.g. the deliver command)
+// should call RoleFamilyOfWithRoster directly so custom roles defined in
+// initech.yaml are accepted instead of being misclassified as FamilyUnknown
+// (ini-98n).
 func RoleFamilyOf(name string) RoleFamily {
+	return RoleFamilyOfWithRoster(name, nil)
+}
+
+// RoleFamilyOfWithRoster maps an agent name to its RoleFamily, consulting an
+// optional project roster as the final non-error tier. Resolution order:
+//
+//  1. Empty name -> FamilyUnknown.
+//  2. qa* prefix -> FamilyQA (covers qa1, qa10, qaWhatever).
+//  3. eng* prefix -> FamilyEng (covers eng1, eng7, engineer).
+//  4. Catalog exact match (super, shipper, pm, pmm, etc.) -> FamilyOther.
+//  5. Roster exact match -> FamilyOther (the ini-98n tier: custom roles
+//     defined in initech.yaml are accepted with the generic announce
+//     template).
+//  6. Otherwise -> FamilyUnknown so callers can reject with a clear error
+//     rather than silently defaulting to the engineer template.
+//
+// The roster is passed in as data (not loaded from disk inside this function)
+// to preserve the package's pure-function promise. Prefix and catalog tiers
+// intentionally win first so a roster entry like "engineer" doesn't reclassify
+// it from FamilyEng to FamilyOther.
+func RoleFamilyOfWithRoster(name string, roster []string) RoleFamily {
 	if name == "" {
 		return FamilyUnknown
 	}
@@ -150,6 +173,11 @@ func RoleFamilyOf(name string) RoleFamily {
 	switch name {
 	case "super", "shipper", "pm", "pmm", "arch", "sec", "writer", "ops", "growth", "intern":
 		return FamilyOther
+	}
+	for _, r := range roster {
+		if r == name {
+			return FamilyOther
+		}
 	}
 	return FamilyUnknown
 }

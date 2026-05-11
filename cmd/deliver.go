@@ -387,10 +387,32 @@ func resolveDeliverAgent() string {
 	return os.Getenv("INITECH_AGENT")
 }
 
+// loadProjectRoster reads the project's initech.yaml from the current
+// working directory and returns its roles list. Errors are returned to the
+// caller so validation logic can produce a precise message rather than a
+// silent fallback. ini-98n: the roster is the third-tier source of truth for
+// role classification, behind the built-in prefix and catalog tiers.
+var loadProjectRoster = func() ([]string, error) {
+	wd, err := os.Getwd()
+	if err != nil {
+		return nil, fmt.Errorf("get working directory: %w", err)
+	}
+	cfgPath, err := config.Discover(wd)
+	if err != nil {
+		return nil, fmt.Errorf("no initech.yaml found in %s or parents: %w", wd, err)
+	}
+	p, err := config.Load(cfgPath)
+	if err != nil {
+		return nil, fmt.Errorf("load %s: %w", cfgPath, err)
+	}
+	return p.Roles, nil
+}
+
 // validateDeliverFlags resolves the caller, normalizes the verdict, and
 // applies all per-family flag rules in one place so downstream code can trust
-// the inputs without re-checking. No side effects: callers can run this before
-// any bd writes, IPC, or network.
+// the inputs without re-checking. Reads initech.yaml to discover the project
+// roster for custom-role classification (ini-98n); no bd writes, no IPC, no
+// network.
 //
 // Returns (agent, family, verdict, isFail, error). On error, none of the other
 // values are meaningful.
@@ -400,7 +422,14 @@ func validateDeliverFlags() (agent string, family roles.RoleFamily, verdict stri
 	}
 
 	agent = resolveDeliverAgent()
-	family = roles.RoleFamilyOf(agent)
+
+	// Roster load is best-effort: a missing/malformed initech.yaml only
+	// matters if classification falls through to FamilyUnknown for a
+	// non-empty agent that isn't prefix- or catalog-classified. Prefix and
+	// catalog roles (eng1, qa1, pm, shipper, etc.) don't need the roster.
+	roster, rosterErr := loadProjectRoster()
+	family = roles.RoleFamilyOfWithRoster(agent, roster)
+
 	verdict = strings.ToUpper(strings.TrimSpace(deliverVerdict))
 
 	switch verdict {
@@ -423,7 +452,10 @@ func validateDeliverFlags() (agent string, family roles.RoleFamily, verdict stri
 		if agent == "" {
 			return "", "", "", false, fmt.Errorf("cannot detect role: INITECH_AGENT not set and --as not provided")
 		}
-		return "", "", "", false, fmt.Errorf("cannot detect role for agent %q; pass --as <eng|qa|...> to override", agent)
+		if rosterErr != nil {
+			return "", "", "", false, fmt.Errorf("cannot validate role %q: %w", agent, rosterErr)
+		}
+		return "", "", "", false, fmt.Errorf("role %q not in initech.yaml roster (known: %s); add it to the roster or check the spelling", agent, strings.Join(roster, ", "))
 	case roles.FamilyEng:
 		if verdict != "" {
 			return "", "", "", false, fmt.Errorf("--verdict is only valid for qa* roles, got role %s", agent)
