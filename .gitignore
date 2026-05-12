@@ -36,5 +36,6 @@ coverage.out
 # Logs are tied to a specific run; the report in pm/specs/ is the durable artifact.
 .tmp/
 
-# Claude Code worktrees
-.claude/worktrees/
+# Claude Code config (per-developer; CLAUDE.md, TOKF.md, settings.json,
+# and the worktrees subfolder all live here)
+.claude/
