@@ -63,9 +63,9 @@ func TestRenderStatusBar_DefaultHints(t *testing.T) {
 	if len(line) == 0 {
 		t.Error("status bar should render hint text")
 	}
-	// Should contain at least one recognizable hint.
+	// Should contain at least one recognizable hint (rotating tip on the left).
 	found := false
-	for _, hint := range []string{"commands", "zoom", "overlay", "help"} {
+	for _, hint := range []string{"backtick", "command", "Alt", "Tab", "agent", "tip"} {
 		for i := 0; i <= len(line)-len(hint); i++ {
 			if line[i:i+len(hint)] == hint {
 				found = true
@@ -77,7 +77,7 @@ func TestRenderStatusBar_DefaultHints(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Errorf("status bar should contain keyboard hints, got: %q", line)
+		t.Errorf("status bar should contain a tip, got: %q", line)
 	}
 }
 
@@ -231,7 +231,7 @@ func TestRotateTip_StaysInBounds(t *testing.T) {
 	}
 }
 
-func TestRenderHints_ShowsTipAndShortcuts(t *testing.T) {
+func TestRenderHints_ShowsTip(t *testing.T) {
 	s := tcell.NewSimulationScreen("")
 	s.Init()
 	s.SetSize(120, 24)
@@ -246,41 +246,22 @@ func TestRenderHints_ShowsTipAndShortcuts(t *testing.T) {
 		line += ch
 	}
 
-	// Should contain the first tip on the left.
 	if len(line) == 0 {
 		t.Fatal("status bar should have content")
 	}
-	// Should contain shortcuts on the right.
-	found := false
-	for _, kw := range []string{"zoom", "overlay", "help"} {
-		if containsStr(line, kw) {
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Errorf("status bar should contain keyboard shortcuts, got: %q", line)
+	// Should contain the first tip on the left.
+	if !containsStr(line, statusTips[0]) {
+		t.Errorf("status bar should contain first tip, got: %q", line)
 	}
 }
 
-func TestRenderHints_TruncatesOnNarrowTerminal(t *testing.T) {
+func TestRenderHints_NarrowTerminal(t *testing.T) {
 	s := tcell.NewSimulationScreen("")
 	s.Init()
-	s.SetSize(65, 24) // narrow (accounts for mode label)
+	s.SetSize(65, 24)
 	tui := &TUI{screen: s, tipIndex: 0}
+	// Should not panic at narrow width.
 	tui.renderHints()
-
-	// Should not panic. Shortcuts should still be visible.
-	sw, sh := s.Size()
-	y := sh - 1
-	var line string
-	for x := 0; x < sw; x++ {
-		ch, _, _ := s.Get(x, y)
-		line += ch
-	}
-	if !containsStr(line, "help") {
-		t.Errorf("shortcuts should be visible even on narrow terminal, got: %q", line)
-	}
 }
 
 func TestStatusTips_NonEmpty(t *testing.T) {
@@ -330,11 +311,8 @@ func TestRenderHints_BatteryDischarging(t *testing.T) {
 		ch, _, _ := s.Get(x, y)
 		line += ch
 	}
-	if !containsStr(line, "67%") {
-		t.Errorf("battery should show 67%%, got: %q", line)
-	}
-	if containsStr(line, "67% +") {
-		t.Error("discharging battery should not show charging indicator")
+	if !containsStr(line, "Bat  67%") {
+		t.Errorf("battery should show 'Bat  67%%', got: %q", line)
 	}
 }
 
@@ -352,8 +330,8 @@ func TestRenderHints_BatteryCharging(t *testing.T) {
 		ch, _, _ := s.Get(x, y)
 		line += ch
 	}
-	if !containsStr(line, "42% +") {
-		t.Errorf("charging battery should show '42%% +', got: %q", line)
+	if !containsStr(line, "Bat  42%") {
+		t.Errorf("charging battery should show 'Bat  42%%', got: %q", line)
 	}
 }
 
@@ -459,4 +437,50 @@ func containsStr(s, substr string) bool {
 		}
 	}
 	return false
+}
+
+func TestRenderHints_BranchShort(t *testing.T) {
+	s := tcell.NewSimulationScreen("")
+	s.Init()
+	s.SetSize(120, 24)
+	tui := &TUI{screen: s, branch: "main", batteryPercent: -1}
+	tui.renderHints()
+
+	sw, sh := s.Size()
+	y := sh - 1
+	var line string
+	for x := 0; x < sw; x++ {
+		ch, _, _ := s.Get(x, y)
+		line += ch
+	}
+	if !containsStr(line, "git:main") {
+		t.Errorf("short branch should render verbatim, got: %q", line)
+	}
+	if containsStr(line, "git:main…") || containsStr(line, "git:mai…") {
+		t.Errorf("short branch should not be ellipsised, got: %q", line)
+	}
+}
+
+func TestRenderHints_BranchTruncated(t *testing.T) {
+	s := tcell.NewSimulationScreen("")
+	s.Init()
+	s.SetSize(200, 24)
+	long := "feat/this-is-a-very-long-branch-name-that-overflows"
+	tui := &TUI{screen: s, branch: long, batteryPercent: -1}
+	tui.renderHints()
+
+	sw, sh := s.Size()
+	y := sh - 1
+	var line string
+	for x := 0; x < sw; x++ {
+		ch, _, _ := s.Get(x, y)
+		line += ch
+	}
+	want := "git:feat/this-is-a-very-long…"
+	if !containsStr(line, want) {
+		t.Errorf("long branch should render as %q, got: %q", want, line)
+	}
+	if containsStr(line, long) {
+		t.Errorf("full untruncated branch leaked into render: %q", line)
+	}
 }

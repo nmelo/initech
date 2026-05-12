@@ -336,7 +336,9 @@ func (b *statusBarBuilder) drawSep(s tcell.Screen, x, y, sw int) int {
 }
 
 // renderHints draws the status bar with a cycling tip on the left and
-// keyboard shortcuts on the right. Subtle dark background with dim text.
+// ambient state (mode, pending, update, battery, branch, clock) on
+// the right. Subtle dark background with dim text. Keyboard shortcuts live
+// in the help modal (?) and the rotating tips, not on this bar.
 func (t *TUI) renderHints() {
 	_, sh := t.screen.Size()
 	b := newStatusBarBuilder()
@@ -345,7 +347,14 @@ func (t *TUI) renderHints() {
 	tips := getStatusTips()
 	b.addLeft(tips[t.tipIndex%len(tips)], b.barStyle)
 
-	// Right items are added in display order (left-to-right within the right block).
+	// Right side groups items by category, in display order (left-to-right):
+	//   1. App state:    mode, pending timers, update
+	//   2. System state: battery, branch, clock
+	// The keyboard shortcuts are reachable via `?` (help modal); they used to
+	// live here too, but mixed teaching aids with ambient state. Tips on the
+	// left already cycle through them.
+
+	// --- App state ---
 
 	// Layout mode label.
 	{
@@ -393,25 +402,31 @@ func (t *TUI) renderHints() {
 		b.addRight("v"+t.updateAvailable+" available", b.barStyle.Foreground(tcell.ColorYellow))
 	}
 
-	// Battery. Read both fields under t.mu via the helper, then drop the
-	// lock before any styling work — the critical section is two reads.
+	// --- System state ---
+
+	// Battery. "Bat" prefix makes the meaning unambiguous without needing a
+	// glyph/icon (no font dependency). Percent is left-padded to 3 chars
+	// (right-aligned) so the readout stays the same width across 0–100.
+	// Read both fields under t.mu via the helper, then drop the lock before
+	// any styling work — the critical section is two reads.
 	battPct, battCharging := t.batteryStatus()
 	if battPct >= 0 {
-		battStr := fmt.Sprintf("%d%%", battPct)
 		battStyle := b.barStyle
 		if battCharging {
-			battStr += " +"
 			battStyle = b.barStyle.Foreground(tcell.ColorGreen)
 		} else if battPct < 10 {
 			battStyle = b.barStyle.Foreground(tcell.ColorRed)
 		} else if battPct < 20 {
 			battStyle = b.barStyle.Foreground(tcell.ColorYellow)
 		}
-		b.addRight(battStr, battStyle)
+		b.addRight(fmt.Sprintf("Bat %3d%%", battPct), battStyle)
 	}
 
-	// Keyboard shortcuts.
-	b.addRight(fmt.Sprintf("`:cmd  %s+z:zoom  %s+s:overlay  ?:help  %s+q:quit", modKey, modKey, modKey), b.barStyle)
+	// Current git branch. Truncated to keep rightmost items (clock) visible
+	// when branch names are long.
+	if t.branch != "" {
+		b.addRight("git:"+truncateRunes(t.branch, 25), b.barStyle)
+	}
 
 	// Clock (rightmost).
 	b.addRight(time.Now().Format("15:04"), b.barStyle)

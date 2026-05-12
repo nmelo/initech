@@ -211,6 +211,12 @@ type TUI struct {
 	batteryPercent  int  // 0-100, or -1 if no battery detected.
 	batteryCharging bool // True when plugged in and charging.
 
+	// Current git branch of projectRoot, refreshed by pollBranch on the
+	// render tick. Empty when projectRoot is not a git repo.
+	branch       string
+	branchPollAt time.Time
+
+
 	// MCP server runtime state for the setup modal.
 	mcpToken string // Active bearer token (empty if MCP disabled).
 	mcpBind  string // Bind address (e.g. "0.0.0.0").
@@ -988,6 +994,7 @@ func Run(cfg Config) error {
 				t.welcome.active = false
 			}
 			t.rotateTip()
+			t.pollBranch()
 			t.fireTimers()
 			if t.layoutState.Mode == LayoutLive && time.Since(t.lastLiveTick) >= time.Second {
 				t.lastLiveTick = time.Now()
