@@ -460,3 +460,49 @@ func containsStr(s, substr string) bool {
 	}
 	return false
 }
+
+func TestRenderHints_BranchShort(t *testing.T) {
+	s := tcell.NewSimulationScreen("")
+	s.Init()
+	s.SetSize(120, 24)
+	tui := &TUI{screen: s, branch: "main", batteryPercent: -1, quotaPercent: -1}
+	tui.renderHints()
+
+	sw, sh := s.Size()
+	y := sh - 1
+	var line string
+	for x := 0; x < sw; x++ {
+		ch, _, _ := s.Get(x, y)
+		line += ch
+	}
+	if !containsStr(line, "git:main") {
+		t.Errorf("short branch should render verbatim, got: %q", line)
+	}
+	if containsStr(line, "git:main…") || containsStr(line, "git:mai…") {
+		t.Errorf("short branch should not be ellipsised, got: %q", line)
+	}
+}
+
+func TestRenderHints_BranchTruncated(t *testing.T) {
+	s := tcell.NewSimulationScreen("")
+	s.Init()
+	s.SetSize(200, 24)
+	long := "feat/this-is-a-very-long-branch-name-that-overflows"
+	tui := &TUI{screen: s, branch: long, batteryPercent: -1, quotaPercent: -1}
+	tui.renderHints()
+
+	sw, sh := s.Size()
+	y := sh - 1
+	var line string
+	for x := 0; x < sw; x++ {
+		ch, _, _ := s.Get(x, y)
+		line += ch
+	}
+	want := "git:feat/this-is-a-very-long…"
+	if !containsStr(line, want) {
+		t.Errorf("long branch should render as %q, got: %q", want, line)
+	}
+	if containsStr(line, long) {
+		t.Errorf("full untruncated branch leaked into render: %q", line)
+	}
+}

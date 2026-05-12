@@ -51,9 +51,17 @@ func TestReadBranch_FromSubdir(t *testing.T) {
 
 func TestReadBranch_DetachedHEAD(t *testing.T) {
 	dir := t.TempDir()
-	writeFile(t, filepath.Join(dir, ".git", "HEAD"), "deadbeefcafe1234567890abcdef\n")
-	if got := readBranch(dir); got != "deadbee" {
-		t.Errorf("readBranch(detached) = %q, want deadbee", got)
+	writeFile(t, filepath.Join(dir, ".git", "HEAD"), "deadbeefcafe1234567890abcdef0123456789ab\n")
+	if got := readBranch(dir); got != "" {
+		t.Errorf("readBranch(detached) = %q, want empty (not on a branch)", got)
+	}
+}
+
+func TestReadBranch_NonBranchRef(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, ".git", "HEAD"), "ref: refs/tags/v1.0\n")
+	if got := readBranch(dir); got != "" {
+		t.Errorf("readBranch(tag ref) = %q, want empty", got)
 	}
 }
 
@@ -110,5 +118,27 @@ func TestReadBranch_MissingHEAD(t *testing.T) {
 	}
 	if got := readBranch(dir); got != "" {
 		t.Errorf("readBranch(no HEAD) = %q, want empty", got)
+	}
+}
+
+func TestTruncateRunes(t *testing.T) {
+	cases := []struct {
+		in   string
+		max  int
+		want string
+	}{
+		{"main", 25, "main"},
+		{"feat/short", 25, "feat/short"},
+		{"feat/exactly-twenty-five", 25, "feat/exactly-twenty-five"},
+		{"feat/this-is-a-very-long-branch-name", 25, "feat/this-is-a-very-long…"},
+		{"αβγδε", 4, "αβγ…"},
+		{"abc", 0, ""},
+		{"abc", 1, "…"},
+		{"", 25, ""},
+	}
+	for _, c := range cases {
+		if got := truncateRunes(c.in, c.max); got != c.want {
+			t.Errorf("truncateRunes(%q, %d) = %q, want %q", c.in, c.max, got, c.want)
+		}
 	}
 }

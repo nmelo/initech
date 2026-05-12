@@ -410,9 +410,10 @@ func (t *TUI) renderHints() {
 		b.addRight(battStr, battStyle)
 	}
 
-	// Current git branch.
+	// Current git branch. Truncated to keep rightmost items (clock) visible
+	// when branch names are long.
 	if t.branch != "" {
-		b.addRight("git:"+t.branch, b.barStyle)
+		b.addRight("git:"+truncateRunes(t.branch, 25), b.barStyle)
 	}
 
 	// Keyboard shortcuts.

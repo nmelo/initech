@@ -76,10 +76,7 @@ func readBranch(dir string) string {
 	if ref, ok := strings.CutPrefix(s, "ref: refs/heads/"); ok {
 		return ref
 	}
-	// Detached HEAD: HEAD contains a raw sha.
-	if len(s) >= 7 {
-		return s[:7]
-	}
+	// Not on a branch (detached HEAD, tag checkout, etc.) — nothing to show.
 	return ""
 }
 
@@ -91,4 +88,21 @@ func (t *TUI) pollBranch() {
 	}
 	t.branchPollAt = time.Now().Add(branchPollInterval)
 	t.branch = readBranch(t.projectRoot)
+}
+
+// truncateRunes returns s clipped to max runes, appending an ellipsis when
+// it had to drop characters. Counts runes (not bytes) so multi-byte names
+// keep a stable display width.
+func truncateRunes(s string, max int) string {
+	if max <= 0 {
+		return ""
+	}
+	r := []rune(s)
+	if len(r) <= max {
+		return s
+	}
+	if max == 1 {
+		return "…"
+	}
+	return string(r[:max-1]) + "…"
 }
