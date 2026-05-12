@@ -35,10 +35,10 @@ func findGitDir(dir string) (string, os.FileInfo) {
 	}
 }
 
-// readBranch returns the branch name for the repo containing dir, or a short
-// sha for a detached HEAD, or "" if no enclosing git repo is found.
-// Walks upward from dir until a .git entry is found or the filesystem root
-// is reached.
+// readBranch returns the branch name for the repo containing dir, or "" for
+// any non-branch state (detached HEAD, tag/remote ref, malformed HEAD, no
+// enclosing git repo). Walks upward from dir until a .git entry is found or
+// the filesystem root is reached.
 func readBranch(dir string) string {
 	if dir == "" {
 		return ""
@@ -76,10 +76,7 @@ func readBranch(dir string) string {
 	if ref, ok := strings.CutPrefix(s, "ref: refs/heads/"); ok {
 		return ref
 	}
-	// Detached HEAD: HEAD contains a raw sha.
-	if len(s) >= 7 {
-		return s[:7]
-	}
+	// Not on a branch (detached HEAD, tag checkout, etc.) — nothing to show.
 	return ""
 }
 
@@ -91,4 +88,22 @@ func (t *TUI) pollBranch() {
 	}
 	t.branchPollAt = time.Now().Add(branchPollInterval)
 	t.branch = readBranch(t.projectRoot)
+}
+
+// truncateRunes returns s clipped to max runes, appending an ellipsis when
+// it had to drop characters. Counts runes (not bytes); note that runes are
+// not the same as terminal cell widths for wide characters (e.g. CJK), so
+// the on-screen width may exceed max for those inputs.
+func truncateRunes(s string, max int) string {
+	if max <= 0 {
+		return ""
+	}
+	r := []rune(s)
+	if len(r) <= max {
+		return s
+	}
+	if max == 1 {
+		return "…"
+	}
+	return string(r[:max-1]) + "…"
 }
