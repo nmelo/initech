@@ -71,8 +71,7 @@ type Project struct {
 // IsAutoNotifyEnabled returns true if the idle-with-bead auto-notify is
 // enabled. The notify is an opt-in safety net (ini-3k1): defaults to false
 // when AutoNotify is nil (field absent from yaml). Users who want the
-// notifications set auto_notify: true in initech.yaml or run
-// 'initech config set auto_notify true'.
+// notifications add 'auto_notify: true' to initech.yaml and restart.
 func (p *Project) IsAutoNotifyEnabled() bool {
 	return p.AutoNotify != nil && *p.AutoNotify
 }
