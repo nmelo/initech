@@ -48,7 +48,7 @@ type Project struct {
 	WebPort    *int   `yaml:"web_port,omitempty"`    // Web companion port. nil/0 = disabled, >0 = enabled.
 	WebhookURL   string `yaml:"webhook_url,omitempty"`   // HTTP endpoint for agent event POSTs. Empty = disabled.
 	AnnounceURL  string `yaml:"announce_url,omitempty"`  // Agent Radio webhook for TTS announcements. Empty = disabled.
-	AutoNotify             *bool  `yaml:"auto_notify,omitempty"`               // Send idle-with-bead reminders to super. nil/true = enabled, false = disabled.
+	AutoNotify             *bool  `yaml:"auto_notify,omitempty"`               // Send idle-with-bead reminders to super. nil/false = disabled, true = enabled. Opt-in safety net (ini-3k1).
 	IdleWithBeadThreshold  *int   `yaml:"idle_with_bead_threshold,omitempty"`  // Seconds of silence before idle-with-bead fires. nil = 60, 0 = disabled.
 	Telemetry              *bool  `yaml:"telemetry,omitempty"`                 // Anonymous usage telemetry. nil/true = enabled, false = disabled.
 
@@ -68,10 +68,13 @@ type Project struct {
 	Remotes  map[string]Remote `yaml:"remotes,omitempty"`   // Named remote peers.
 }
 
-// IsAutoNotifyEnabled returns true if the idle-with-bead auto-notify is enabled.
-// Defaults to true when AutoNotify is nil (field absent from yaml).
+// IsAutoNotifyEnabled returns true if the idle-with-bead auto-notify is
+// enabled. The notify is an opt-in safety net (ini-3k1): defaults to false
+// when AutoNotify is nil (field absent from yaml). Users who want the
+// notifications set auto_notify: true in initech.yaml or run
+// 'initech config set auto_notify true'.
 func (p *Project) IsAutoNotifyEnabled() bool {
-	return p.AutoNotify == nil || *p.AutoNotify
+	return p.AutoNotify != nil && *p.AutoNotify
 }
 
 // GetIdleWithBeadThreshold returns the idle-with-bead notification threshold

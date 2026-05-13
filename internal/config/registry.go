@@ -35,7 +35,7 @@ var Registry = []FieldMeta{
 	{Key: "web_port", Type: "int", Default: "0 (disabled)", Description: "Web companion server port. 0 or omitted disables it", Restart: true},
 	{Key: "webhook_url", Type: "string", Description: "HTTP endpoint for agent event webhook POSTs. Empty disables"},
 	{Key: "announce_url", Type: "string", Description: "Agent Radio webhook URL for TTS announcements. Empty disables"},
-	{Key: "auto_notify", Type: "bool", Default: "true", Description: "Send idle-with-bead reminders to super. false disables"},
+	{Key: "auto_notify", Type: "bool", Default: "false", Description: "Send idle-with-bead reminders to super. Opt-in safety net; set true to enable"},
 	{Key: "idle_with_bead_threshold", Type: "int", Default: "60", Description: "Seconds of silence before idle-with-bead notification fires. 0 disables"},
 	{Key: "telemetry", Type: "bool", Default: "true", Description: "Anonymous usage telemetry. false disables all event collection"},
 

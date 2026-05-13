@@ -157,8 +157,17 @@ func TestAutoNotifyDisabled_SuppressesIdleWithBead(t *testing.T) {
 	}
 }
 
-func TestAutoNotifyDefault_AllowsIdleWithBead(t *testing.T) {
-	// nil AutoNotify = defaults to true (enabled).
+// TestAutoNotifyDefault_SuppressesIdleWithBead: post-ini-3k1 the nil
+// AutoNotify default means SUPPRESS, not allow. This test pins the new
+// opt-in default. The toast/event-log notification still appears (it's
+// unconditional); only the super-pane injectText is gated.
+//
+// Test depth caveat: we verify the toast appears AND no panic, which only
+// proves the code took a survivable path. Strong assertion (that injectText
+// was not called) requires a super-pane fixture + interception — pre-existing
+// test debt mirrored in the sibling _Disabled and _ExplicitTrue tests.
+func TestAutoNotifyDefault_SuppressesIdleWithBead(t *testing.T) {
+	// nil AutoNotify post-ini-3k1 = defaults to false (suppressed).
 	tui := &TUI{
 		project: &config.Project{},
 	}
@@ -170,8 +179,34 @@ func TestAutoNotifyDefault_AllowsIdleWithBead(t *testing.T) {
 		Detail: "eng1 idle with bead",
 		Time:   time.Now(),
 	}
-	// No super pane exists, so the notify block is entered but findPaneByName
-	// returns nil. No panic = the config check passed (enabled path entered).
+	// IsAutoNotifyEnabled returns false on the nil default, so the
+	// findPaneByName("super") branch is NOT entered. No panic confirms the
+	// suppression path was taken; the toast still appears below.
+	tui.handleAgentEvent(ev)
+
+	if len(tui.notifications) != 1 {
+		t.Errorf("notifications = %d, want 1 (toast still appears even when super-notify is suppressed)", len(tui.notifications))
+	}
+}
+
+// TestAutoNotifyExplicitTrue_AllowsIdleWithBead: opt-in path. With
+// AutoNotify: &true, the notify branch enters; findPaneByName returns nil
+// here because no super pane is wired in the fixture, so injectText is
+// never called and no panic results. Toast still fires. Mirrors the
+// _Disabled / _Default suppression tests with the opposite gate decision.
+func TestAutoNotifyExplicitTrue_AllowsIdleWithBead(t *testing.T) {
+	tr := true
+	tui := &TUI{
+		project: &config.Project{AutoNotify: &tr},
+	}
+
+	ev := AgentEvent{
+		Type:   EventAgentIdleWithBead,
+		Pane:   "eng1",
+		BeadID: "ini-test",
+		Detail: "eng1 idle with bead",
+		Time:   time.Now(),
+	}
 	tui.handleAgentEvent(ev)
 
 	if len(tui.notifications) != 1 {

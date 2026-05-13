@@ -198,7 +198,8 @@ func (t *TUI) handleAgentEvent(ev AgentEvent) {
 	}
 
 	// When an agent goes idle while holding a bead, notify the super pane.
-	// Suppressed when auto_notify is false in initech.yaml.
+	// Opt-in safety net: only fires when auto_notify is explicitly true in
+	// initech.yaml (ini-3k1; nil/absent now defaults to disabled).
 	// Run in a goroutine to avoid blocking the render loop.
 	if ev.Type == EventAgentIdleWithBead && (t.project == nil || t.project.IsAutoNotifyEnabled()) {
 		if super := t.findPaneByName("super"); super != nil && super.IsAlive() {
