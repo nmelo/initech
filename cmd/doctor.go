@@ -210,6 +210,11 @@ func runProjectChecks(cfgPath string) (checks []checkResult, projectName, projec
 		Detail: fmt.Sprintf("initech.yaml valid (%d roles)", len(proj.Roles)),
 	})
 
+	// File permissions on initech.yaml (Unix only — Windows is a no-op).
+	// Warns when group/other bits are set because the file holds auth
+	// tokens. Stays silent on the happy path.
+	checks = append(checks, checkConfigPermissions(cfgPath)...)
+
 	// Notify: webhook_url
 	if proj.WebhookURL == "" {
 		checks = append(checks, checkResult{

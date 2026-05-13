@@ -471,14 +471,25 @@ func Validate(p *Project) error {
 	return nil
 }
 
-// Write serializes a Project to YAML and writes it to the given path.
+// Write serializes a Project to YAML and writes it to the given path. The
+// file holds auth tokens (announce_url, webhook_url, MCP bearer) so it must
+// stay readable only by the owner. os.WriteFile's perm arg is the CREATE
+// mode and is ignored if the file already exists, so an existing 0644 file
+// would keep its loose perms after a rewrite — the explicit Chmod after
+// WriteFile is the belt-and-suspenders that closes that gap (ini-45h).
 func Write(path string, p *Project) error {
 	data, err := yaml.Marshal(p)
 	if err != nil {
 		return fmt.Errorf("marshal config: %w", err)
 	}
 	out := addYAMLComments(string(data))
-	return os.WriteFile(path, []byte(out), 0600)
+	if err := os.WriteFile(path, []byte(out), 0o600); err != nil {
+		return err
+	}
+	if err := os.Chmod(path, 0o600); err != nil {
+		return fmt.Errorf("set initech.yaml permissions: %w", err)
+	}
+	return nil
 }
 
 // addYAMLComments injects helpful comments after specific fields in the

@@ -12,6 +12,15 @@ import (
 	"golang.org/x/sys/windows"
 )
 
+// checkConfigPermissions is a no-op on Windows. NTFS uses ACLs rather than
+// Unix mode bits, and Go's os.Stat reports a synthetic mode that doesn't
+// reflect the ACL state. Translating ACL audit ("is this file readable by
+// any principal other than the owner?") is a separate scope — skipping
+// the check here matches the cleaner choice the bead recommended.
+func checkConfigPermissions(cfgPath string) []checkResult {
+	return nil
+}
+
 // platformEnvironmentChecks returns Windows-specific diagnostics: ConPTY
 // capability, terminal emulator detection, and PATH validation.
 func platformEnvironmentChecks() []checkResult {

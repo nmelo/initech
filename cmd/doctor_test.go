@@ -99,7 +99,7 @@ func TestDoctorProject_Valid(t *testing.T) {
 	dir := t.TempDir()
 
 	yaml := fmt.Sprintf("project: testproj\nroot: %s\nwebhook_url: https://hooks.slack.com/test\nroles:\n  - super\n", dir)
-	os.WriteFile(filepath.Join(dir, "initech.yaml"), []byte(yaml), 0644)
+	os.WriteFile(filepath.Join(dir, "initech.yaml"), []byte(yaml), 0o600)
 
 	for _, role := range []string{"super"} {
 		roleDir := filepath.Join(dir, role)
@@ -142,7 +142,7 @@ func TestDoctorProject_MissingWebhookURL(t *testing.T) {
 	dir := t.TempDir()
 
 	yaml := fmt.Sprintf("project: testproj\nroot: %s\nroles:\n  - super\n", dir)
-	os.WriteFile(filepath.Join(dir, "initech.yaml"), []byte(yaml), 0644)
+	os.WriteFile(filepath.Join(dir, "initech.yaml"), []byte(yaml), 0o600)
 
 	os.MkdirAll(filepath.Join(dir, "super"), 0755)
 	os.WriteFile(filepath.Join(dir, "super", "CLAUDE.md"), []byte("# super"), 0644)
@@ -172,7 +172,7 @@ func TestDoctorProject_Invalid(t *testing.T) {
 	dir := t.TempDir()
 
 	// Missing 'name' field makes Validate fail.
-	os.WriteFile(filepath.Join(dir, "initech.yaml"), []byte("roles: [eng1]\n"), 0644)
+	os.WriteFile(filepath.Join(dir, "initech.yaml"), []byte("roles: [eng1]\n"), 0o600)
 
 	checks, _, _ := runProjectChecks(filepath.Join(dir, "initech.yaml"))
 
@@ -191,7 +191,7 @@ func TestDoctorProject_MissingWorkspace(t *testing.T) {
 	dir := t.TempDir()
 
 	yaml := fmt.Sprintf("project: testproj\nroot: %s\nroles:\n  - super\n  - eng1\n", dir)
-	os.WriteFile(filepath.Join(dir, "initech.yaml"), []byte(yaml), 0644)
+	os.WriteFile(filepath.Join(dir, "initech.yaml"), []byte(yaml), 0o600)
 
 	// Create super workspace but not eng1.
 	os.MkdirAll(filepath.Join(dir, "super"), 0755)
@@ -490,7 +490,7 @@ func TestRunDoctorReport_WithProject(t *testing.T) {
 	dir := t.TempDir()
 	cfg := fmt.Sprintf("project: testdoc\nroot: %s\nroles:\n  - eng1\n", dir)
 	os.MkdirAll(filepath.Join(dir, "eng1"), 0755)
-	os.WriteFile(filepath.Join(dir, "initech.yaml"), []byte(cfg), 0644)
+	os.WriteFile(filepath.Join(dir, "initech.yaml"), []byte(cfg), 0o600)
 
 	env := doctorEnv{
 		LookPath:   func(name string) (string, error) { return "/usr/bin/" + name, nil },
@@ -531,7 +531,7 @@ func TestRunDoctor_WithProject(t *testing.T) {
 	dir := t.TempDir()
 	cfg := fmt.Sprintf("project: testdoc\nroot: %s\nroles:\n  - eng1\n", dir)
 	os.MkdirAll(filepath.Join(dir, "eng1"), 0755)
-	os.WriteFile(filepath.Join(dir, "initech.yaml"), []byte(cfg), 0644)
+	os.WriteFile(filepath.Join(dir, "initech.yaml"), []byte(cfg), 0o600)
 
 	orig, _ := os.Getwd()
 	os.Chdir(dir)
