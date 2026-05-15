@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -155,6 +156,9 @@ func TestRunStatus_RemotesRenderHostColumn(t *testing.T) {
 }
 
 func TestRunStatus_PeersMergeRemoteAgents(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("windows: writeExecutable installs a #!/bin/sh script as a fake bd binary; needs cross-platform shim (e.g. .bat with cmd.exe equivalent)")
+	}
 	restoreColor := disableColor(t)
 	defer restoreColor()
 
@@ -265,6 +269,9 @@ func startMultiIPCServer(t *testing.T, sockPath string, responses map[string]str
 }
 
 func TestRunStatus_ParsePaneListError(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("windows: writeExecutable installs a #!/bin/sh fake bd + startATIPCServer uses unix-domain socket")
+	}
 	projectDir := shortProjectDir(t)
 	writeStandupConfig(t, projectDir, "demo")
 	restoreWD := chdirForTest(t, projectDir)
@@ -294,6 +301,9 @@ func TestRunStatus_ParsePaneListError(t *testing.T) {
 }
 
 func TestRunStatus_IPCError(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("windows: writeExecutable installs a #!/bin/sh fake bd + startATIPCServer uses unix-domain socket")
+	}
 	projectDir := shortProjectDir(t)
 	writeStandupConfig(t, projectDir, "demo")
 	restoreWD := chdirForTest(t, projectDir)

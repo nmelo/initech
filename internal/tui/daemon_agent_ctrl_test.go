@@ -372,6 +372,9 @@ func TestHandleConfigureAgent_CreatesClaudeSubdir(t *testing.T) {
 }
 
 func TestHandleStopAgent_OwnershipEnforced(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("windows: configure-step spawns /bin/sh which is not available")
+	}
 	d := newTestDaemon(t)
 	dir := filepath.Join(d.project.Root, "eng2")
 	cfgLine, _ := json.Marshal(ConfigureAgentCmd{
@@ -424,6 +427,9 @@ func TestHandleStopAgent_NameRequired(t *testing.T) {
 }
 
 func TestHandleRestartAgent_RecreatesWithSameConfig(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("windows: spawns /bin/sh which is not available")
+	}
 	d := newTestDaemon(t)
 	dir := filepath.Join(d.project.Root, "eng2")
 	origCmd := []string{"/bin/sh", "-c", "sleep 30"}
@@ -467,6 +473,9 @@ func TestHandleRestartAgent_RecreatesWithSameConfig(t *testing.T) {
 }
 
 func TestHandleRestartAgent_OwnershipEnforced(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("windows: configure-step spawns /bin/sh which is not available")
+	}
 	d := newTestDaemon(t)
 	dir := filepath.Join(d.project.Root, "eng2")
 	cfgLine, _ := json.Marshal(ConfigureAgentCmd{

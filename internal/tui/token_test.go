@@ -3,6 +3,7 @@ package tui
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -25,6 +26,9 @@ func TestGenerateToken(t *testing.T) {
 }
 
 func TestReadOrCreateToken_Creates(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("windows: asserts unix mode bits (0600) on the token file which NTFS does not model the same way")
+	}
 	dir := filepath.Join(t.TempDir(), ".initech")
 
 	tok, err := ReadOrCreateToken(dir)
@@ -91,6 +95,9 @@ func TestReadOrCreateToken_RegeneratesWhitespace(t *testing.T) {
 }
 
 func TestReadOrCreateToken_DirPermissions(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("windows: asserts unix mode bits (0700) on the dir which NTFS does not model the same way")
+	}
 	dir := filepath.Join(t.TempDir(), ".initech")
 
 	_, err := ReadOrCreateToken(dir)
