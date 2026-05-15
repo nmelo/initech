@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -53,6 +54,9 @@ func TestAgentOwnership_ClaimReleaseVerify(t *testing.T) {
 }
 
 func TestHandleConfigureAgent_CreatesWorkspaceAndPane(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("windows: spawns /bin/sh which is not available; needs cross-platform test command (e.g. via exec.LookPath)")
+	}
 	d := newTestDaemon(t)
 	dir := filepath.Join(d.project.Root, "eng2")
 
@@ -105,6 +109,9 @@ func TestHandleConfigureAgent_NameRequired(t *testing.T) {
 }
 
 func TestHandleConfigureAgent_Collision(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("windows: spawns /bin/sh which is not available")
+	}
 	d := newTestDaemon(t)
 	dir := filepath.Join(d.project.Root, "eng2")
 
@@ -125,6 +132,9 @@ func TestHandleConfigureAgent_Collision(t *testing.T) {
 }
 
 func TestHandleConfigureAgent_IdempotentSameOwner(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("windows: spawns /bin/sh which is not available")
+	}
 	d := newTestDaemon(t)
 	dir := filepath.Join(d.project.Root, "eng2")
 
@@ -162,6 +172,9 @@ func TestHandleConfigureAgent_IdempotentSameOwner(t *testing.T) {
 }
 
 func TestHandleConfigureAgent_DifferentOwnerStillCollides(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("windows: spawns /bin/sh which is not available")
+	}
 	d := newTestDaemon(t)
 	dir := filepath.Join(d.project.Root, "eng2")
 
@@ -228,6 +241,9 @@ func TestRefreshClaudeMD_WritesWhenDifferent(t *testing.T) {
 // ── ini-4q9.2.1: workspace creation on push ─────────────────────────
 
 func TestWriteWorkspace_CreatesClaudeSubdir(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("windows: asserts unix mode bits (0755) which NTFS does not model the same way")
+	}
 	dir := filepath.Join(t.TempDir(), "eng2")
 
 	err := writeWorkspace(ConfigureAgentCmd{
@@ -252,6 +268,9 @@ func TestWriteWorkspace_CreatesClaudeSubdir(t *testing.T) {
 }
 
 func TestWriteWorkspace_FilePermissions(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("windows: asserts unix mode bits (0644) which NTFS does not model the same way")
+	}
 	dir := filepath.Join(t.TempDir(), "eng2")
 
 	err := writeWorkspace(ConfigureAgentCmd{
@@ -277,6 +296,9 @@ func TestWriteWorkspace_FilePermissions(t *testing.T) {
 }
 
 func TestWriteWorkspace_DirPermissions(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("windows: asserts unix mode bits (0755) which NTFS does not model the same way")
+	}
 	dir := filepath.Join(t.TempDir(), "eng2")
 
 	err := writeWorkspace(ConfigureAgentCmd{Dir: dir})
@@ -324,6 +346,9 @@ func TestWriteWorkspace_OverwritesExisting(t *testing.T) {
 }
 
 func TestHandleConfigureAgent_CreatesClaudeSubdir(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("windows: spawns /bin/sh which is not available")
+	}
 	d := newTestDaemon(t)
 	dir := filepath.Join(d.project.Root, "eng2")
 

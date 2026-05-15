@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -17,6 +18,9 @@ import (
 // ── ipcCallSocket ───────────────────────────────────────────────────
 
 func TestIpcCallSocket_Success(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("windows: unix-domain socket assumption (production uses port-file TCP on windows; see internal/tui/ipc_listen_windows.go)")
+	}
 	dir := t.TempDir()
 	sock := filepath.Join(dir, "test.sock")
 	ln, err := net.Listen("unix", sock)
@@ -52,6 +56,9 @@ func TestIpcCallSocket_Success(t *testing.T) {
 }
 
 func TestIpcCallSocket_ConnectionRefused(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("windows: hardcoded /tmp path; ipcCallSocket reads port file on windows so the failure mode differs from the Unix-socket connect-refused this test was written to verify")
+	}
 	_, err := ipcCallSocket("/tmp/nonexistent-initech-coverage-test.sock", tui.IPCRequest{Action: "list"})
 	if err == nil {
 		t.Error("expected error for nonexistent socket")
@@ -59,6 +66,9 @@ func TestIpcCallSocket_ConnectionRefused(t *testing.T) {
 }
 
 func TestIpcCallSocket_NoResponse(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("windows: unix-domain socket assumption (production uses port-file TCP on windows)")
+	}
 	dir := t.TempDir()
 	sock := filepath.Join(dir, "test.sock")
 	ln, err := net.Listen("unix", sock)
@@ -79,6 +89,9 @@ func TestIpcCallSocket_NoResponse(t *testing.T) {
 }
 
 func TestIpcCallSocket_InvalidJSON(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("windows: unix-domain socket assumption (production uses port-file TCP on windows)")
+	}
 	dir := t.TempDir()
 	sock := filepath.Join(dir, "test.sock")
 	ln, err := net.Listen("unix", sock)
