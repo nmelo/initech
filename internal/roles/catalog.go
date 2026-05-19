@@ -20,6 +20,13 @@ import (
 // (CLI gate) and LookupRole (default selection for unlisted family members).
 var numberedRoleRe = regexp.MustCompile(`^(qa|eng)\d+$`)
 
+// customRoleNameRe matches the safe identifier pattern for opt-in custom role
+// names. Lowercase letter start, then up to 31 more lowercase letters, digits,
+// or hyphens. Hyphens (not underscores) to keep names URL- and directory-shape
+// friendly and consistent with the catalog's own naming. Used by
+// IsValidCustomRoleName; not used by IsValidRoleName.
+var customRoleNameRe = regexp.MustCompile(`^[a-z][a-z0-9-]{0,31}$`)
+
 // PermissionTier controls whether an agent runs with --dangerously-skip-permissions.
 type PermissionTier int
 
@@ -98,19 +105,36 @@ func LookupRole(name string) RoleDef {
 }
 
 // IsValidRoleName reports whether name is acceptable as a role name for CLI
-// commands like 'initech hire' / 'initech add-agent'. Two paths to acceptance:
+// commands like 'initech hire' / 'initech add-agent' without any opt-in flag.
+// Two paths to acceptance:
 //  - exact match against the Catalog (covers the curated role set), or
 //  - match against the numbered family pattern qa\d+ / eng\d+ (covers
 //    arbitrary scaling like qa10, eng7, qa007).
 //
 // Custom non-numbered names (e.g. "designer", "dba") are deliberately rejected
-// at the CLI to preserve typo protection. Operators wanting truly custom roles
-// must add them to the Catalog or design a separate opt-in (out of scope here).
+// here to preserve typo protection. The opt-in path is IsValidCustomRoleName,
+// gated at the CLI by an explicit --custom flag.
 func IsValidRoleName(name string) bool {
 	if _, ok := Catalog[name]; ok {
 		return true
 	}
 	return numberedRoleRe.MatchString(name)
+}
+
+// IsValidCustomRoleName reports whether name is acceptable as an opt-in custom
+// role name. The check is strictly a pattern check: lowercase identifier,
+// 1-32 characters, starting with a letter, with alphanumerics and hyphens
+// allowed thereafter (^[a-z][a-z0-9-]{0,31}$).
+//
+// Callers should reach for this only after IsValidRoleName has returned false
+// and the operator has explicitly opted in (e.g. via --custom). Catalog and
+// numbered-family names also satisfy this pattern; callers can safely check
+// IsValidRoleName first and treat IsValidCustomRoleName as the fallback gate.
+//
+// The pattern keeps custom names URL- and directory-friendly and consistent
+// with the catalog's own naming. Underscores are intentionally excluded.
+func IsValidCustomRoleName(name string) bool {
+	return customRoleNameRe.MatchString(name)
 }
 
 // RoleFamily groups roles that share notification and lifecycle semantics.

@@ -161,6 +161,79 @@ func TestIsValidRoleName(t *testing.T) {
 	}
 }
 
+// TestIsValidCustomRoleName_AcceptsAndRejects covers the opt-in custom-role
+// gate. The function is a pure pattern check — lowercase letter start, then up
+// to 31 lowercase letters, digits, or hyphens. Catalog and numbered-family
+// names also satisfy the pattern; the catalog clash is handled by callers
+// that consult IsValidRoleName first.
+//
+// Regression for the missing opt-in scoped out by IsValidRoleName's prior doc
+// comment: operators legitimately want custom names like "marketing" and
+// "designer" but the CLI rejected every non-catalog name.
+func TestIsValidCustomRoleName_AcceptsAndRejects(t *testing.T) {
+	tests := []struct {
+		name string
+		want bool
+	}{
+		// Legitimate custom names operators want to use.
+		{"marketing", true},
+		{"designer", true},
+		{"dba", true},
+		{"content", true},
+		{"demandgen", true},
+		{"leadops", true},
+		{"events", true},
+		{"community", true},
+		{"data-eng", true},
+		{"lead-gen", true},
+
+		// Catalog and numbered-family names also satisfy the pattern.
+		// Callers check IsValidRoleName first; this is fine.
+		{"super", true},
+		{"pm", true},
+		{"eng1", true},
+		{"qa10", true},
+
+		// Empty rejects.
+		{"", false},
+
+		// Must start with a lowercase letter.
+		{"1marketing", false},
+		{"-marketing", false},
+		{"9designer", false},
+
+		// Uppercase rejects (consistency with IsValidRoleName).
+		{"Marketing", false},
+		{"DESIGNER", false},
+		{"Data-Eng", false},
+
+		// Underscores rejected by design (hyphens only).
+		{"data_eng", false},
+		{"lead_gen", false},
+
+		// Other punctuation and whitespace rejected.
+		{"marketing!", false},
+		{"market.ing", false},
+		{"market ing", false},
+		{"marketing/", false},
+		{"marketing\n", false},
+		{" marketing", false},
+		{"marketing ", false},
+
+		// Max length 32 characters: the boundary cases.
+		{"abcdefghijklmnopqrstuvwxyz012345", true},  // 32 chars
+		{"abcdefghijklmnopqrstuvwxyz0123456", false}, // 33 chars
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := IsValidCustomRoleName(tt.name)
+			if got != tt.want {
+				t.Errorf("IsValidCustomRoleName(%q) = %v, want %v", tt.name, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestLookupRole_NumberedFamily(t *testing.T) {
 	t.Run("qa10 inherits qa1/qa2 defaults", func(t *testing.T) {
 		def := LookupRole("qa10")
