@@ -20,6 +20,7 @@ import (
 var newAddAgentRunner = func() iexec.Runner { return &iexec.DefaultRunner{} }
 
 var addAgentList bool
+var addAgentCustom bool
 
 var addAgentCmd = &cobra.Command{
 	Use:     "add-agent <name>",
@@ -38,8 +39,14 @@ The agent name must be a known role or a member of a numbered family
 Known roles: %s.
 Numbered families: eng1..N, qa1..N (e.g. eng7, qa10).
 
+For roles outside the catalog (e.g. "marketing", "designer", "dba"), pass
+--custom to opt out of the strict catalog gate. Custom names must match
+^[a-z][a-z0-9-]{0,31}$. Custom roles receive sensible defaults: Autonomous
+permission, no src submodule, no playbooks.
+
 Restart initech (or run 'initech' in a new session) to activate the new agent.`, knownRoleNames())
 	addAgentCmd.Flags().BoolVarP(&addAgentList, "list", "l", false, "List all agents and their install status")
+	addAgentCmd.Flags().BoolVar(&addAgentCustom, "custom", false, "Allow a custom role name outside the catalog (must match ^[a-z][a-z0-9-]{0,31}$)")
 	addAgentCmd.ValidArgsFunction = completeAddAgent
 	rootCmd.AddCommand(addAgentCmd)
 }
@@ -85,7 +92,12 @@ func runAddAgent(cmd *cobra.Command, args []string) error {
 	runner := newAddAgentRunner()
 
 	if !roles.IsValidRoleName(roleName) {
-		return fmt.Errorf("unknown agent %q. Known agents: %s. Numbered families also accepted: eng1..N, qa1..N", roleName, knownRoleNames())
+		if !addAgentCustom {
+			return fmt.Errorf("unknown agent %q. Known agents: %s. Numbered families also accepted: eng1..N, qa1..N. Pass --custom to add a role outside the catalog", roleName, knownRoleNames())
+		}
+		if !roles.IsValidCustomRoleName(roleName) {
+			return fmt.Errorf("invalid custom role name %q: must match ^[a-z][a-z0-9-]{0,31}$ (lowercase letter start, then up to 31 lowercase letters, digits, or hyphens)", roleName)
+		}
 	}
 
 	wd, err := os.Getwd()

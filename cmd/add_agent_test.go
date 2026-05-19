@@ -23,6 +23,117 @@ func TestRunAddAgent_UnknownRole(t *testing.T) {
 	if !strings.Contains(err.Error(), "unknown agent") {
 		t.Errorf("error = %q, want to contain 'unknown agent'", err.Error())
 	}
+	if !strings.Contains(err.Error(), "--custom") {
+		t.Errorf("error = %q, want hint mentioning --custom", err.Error())
+	}
+}
+
+// TestRunAddAgent_CustomFlag_AllowsArbitraryName proves the opt-in path:
+// names outside the catalog and numbered families (e.g. "marketing") are
+// accepted when --custom is passed. Regression for the gap where the package
+// claimed an open set ("unknown role names are valid and receive sensible
+// defaults") but the CLI gate rejected every non-catalog name.
+func TestRunAddAgent_CustomFlag_AllowsArbitraryName(t *testing.T) {
+	root := t.TempDir()
+	writeTestConfig(t, root, []string{"pm"})
+	if err := os.MkdirAll(filepath.Join(root, "pm"), 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	chdirTemp(t, root)
+
+	origRunner := newAddAgentRunner
+	newAddAgentRunner = func() iexec.Runner { return &iexec.FakeRunner{} }
+	t.Cleanup(func() { newAddAgentRunner = origRunner })
+
+	addAgentCustom = true
+	t.Cleanup(func() { addAgentCustom = false })
+
+	var buf bytes.Buffer
+	addAgentCmd.SetOut(&buf)
+	t.Cleanup(func() { addAgentCmd.SetOut(nil) })
+
+	if err := runAddAgent(addAgentCmd, []string{"marketing"}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(root, "marketing")); err != nil {
+		t.Error("marketing/ directory not created")
+	}
+
+	updated, err := config.Load(filepath.Join(root, "initech.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, r := range updated.Roles {
+		if r == "marketing" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("marketing not added to config roles: %v", updated.Roles)
+	}
+}
+
+// TestRunAddAgent_CustomFlag_RejectsBadIdentifier verifies the opt-in still
+// enforces the safe identifier pattern. Uppercase, leading digits, and other
+// shell- or filesystem-hostile inputs must reject with a clear pattern error.
+func TestRunAddAgent_CustomFlag_RejectsBadIdentifier(t *testing.T) {
+	root := t.TempDir()
+	writeTestConfig(t, root, []string{"pm"})
+	chdirTemp(t, root)
+
+	addAgentCustom = true
+	t.Cleanup(func() { addAgentCustom = false })
+
+	cases := []string{
+		"Marketing",   // uppercase
+		"1marketing",  // leads with digit
+		"market.ing",  // dot
+		"market ing",  // space
+		"data_eng",    // underscore
+		"",            // empty
+	}
+
+	for _, name := range cases {
+		t.Run(name, func(t *testing.T) {
+			// Empty triggers cobra's "agent name required" branch instead
+			// of the validator. Skip the empty case here so this test
+			// stays focused on the pattern gate.
+			if name == "" {
+				return
+			}
+			err := runAddAgent(addAgentCmd, []string{name})
+			if err == nil {
+				t.Fatalf("expected error for invalid custom name %q", name)
+			}
+			if !strings.Contains(err.Error(), "invalid custom role name") {
+				t.Errorf("error = %q, want to mention 'invalid custom role name'", err.Error())
+			}
+		})
+	}
+}
+
+// TestRunAddAgent_WithoutCustomFlag_StillRejectsUnknown locks in the
+// existing behavior: --custom is strictly opt-in. The default closed-set
+// gate remains for typo protection.
+func TestRunAddAgent_WithoutCustomFlag_StillRejectsUnknown(t *testing.T) {
+	root := t.TempDir()
+	writeTestConfig(t, root, []string{"pm"})
+	chdirTemp(t, root)
+
+	// Ensure custom is off (other tests set it; defend against ordering).
+	addAgentCustom = false
+
+	err := runAddAgent(addAgentCmd, []string{"marketing"})
+	if err == nil {
+		t.Fatal("expected error for unknown role without --custom")
+	}
+	if !strings.Contains(err.Error(), "unknown agent") {
+		t.Errorf("error = %q, want 'unknown agent'", err.Error())
+	}
 }
 
 func TestRunAddAgent_AlreadyExists(t *testing.T) {
