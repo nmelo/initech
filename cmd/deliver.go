@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/nmelo/initech/internal/config"
+	"github.com/nmelo/initech/internal/lifecycle"
 	"github.com/nmelo/initech/internal/roles"
 	"github.com/nmelo/initech/internal/tui"
 	"github.com/nmelo/initech/internal/webhook"
@@ -106,76 +107,57 @@ func runDeliver(cmd *cobra.Command, args []string) error {
 		fmt.Fprintf(cmd.ErrOrStderr(), "warning: bead assigned to %s, you are %s\n", assignee, agent)
 	}
 
-	// Step 1c: Outer status guard. qa_passed and closed are terminal-ish for
-	// deliver — overwriting them silently regresses real verdicts (the bug in
-	// ini-dgt.1). Per the agreed contract: --fail on qa_passed still records
-	// the FAILED comment so QA keeps an audit trail of post-pass regressions;
-	// --fail on closed is fully skipped (commenting on a closed bead is noise).
-	// On the no-op path, nothing leaves the box: no status write, no report,
-	// no announce, no webhook, no IPC event, no TUI bead clear. Exit code 0
-	// so existing automation that ignores warnings keeps working.
-	if status == "qa_passed" || status == "closed" {
-		if isFail && status == "qa_passed" {
-			reason := deliverReason
-			if reason == "" {
-				reason = "no reason provided"
-			}
-			if err := bdCommentAddFn(beadID, agent, "FAILED: "+reason); err != nil {
-				fmt.Fprintf(cmd.ErrOrStderr(), "warning: bd comment failed: %s\n", err)
-			}
-			fmt.Fprintf(cmd.ErrOrStderr(), "deliver no-op for %s: bead is qa_passed; FAILED comment recorded for audit trail\n", beadID)
-		} else {
-			fmt.Fprintf(cmd.ErrOrStderr(), "deliver no-op for %s: bead is already %s\n", beadID, status)
-		}
-		return nil
+	// Step 2: Lifecycle walk (ini-6e54). bd's status.custom drives the chain
+	// middle; deliver advances one step on success, walks back one step on
+	// failure. Role/family does NOT gate the status write — anyone delivering
+	// on a bead moves it. (Role/family still drives the announce template
+	// selection downstream — that's eng2's ini-dgt.2 work and stays intact.)
+	//
+	// Terminal-state semantics:
+	//   - At terminal (last in chain), success no-ops with a warning and
+	//     returns. No announce/report fires; the bead is already done.
+	//   - At initial (first in chain), --fail no-ops with a warning and
+	//     returns. The bead can't regress further.
+	//
+	// On --fail (non-initial state): the FAILED audit comment AND the
+	// walk-back state write are both performed (ini-6e54 Q2). The comment
+	// is the reason; the walk-back is the action.
+	chain, err := lifecycle.LoadChain()
+	if err != nil {
+		return fmt.Errorf("cannot determine bead lifecycle: %w (configure bd's status.custom or check that bd is reachable)", err)
 	}
 
-	// Step 1d: Eng-on-in_qa carve-out. Per the original AC, an engineer
-	// running deliver on a bead currently under QA review must warn and
-	// no-op rather than reset the bead to ready_for_qa (which would yank
-	// it out from under the reviewer). This is intentionally NOT in the
-	// universal outer guard above — QA family on in_qa is the legitimate
-	// entry point for verdict=PASS (transitions to qa_passed) and FAIL
-	// (announces but leaves status). Only Eng-on-in_qa is the surprise.
-	// --fail is left untouched: an engineer recording a regression mid-
-	// review is useful data and doesn't reset status.
-	if status == "in_qa" && family == roles.FamilyEng && !isFail {
-		fmt.Fprintf(cmd.ErrOrStderr(), "deliver no-op for %s: bead is in_qa (someone else is mid-review)\n", beadID)
-		return nil
-	}
+	// Family is read but not used for the status decision anymore. Keep the
+	// reference so future role-aware policies (e.g., audit-only roles) can
+	// re-enable it without changing the function signature.
+	_ = family
 
-	// Step 2: Update bead status — family-aware transition. eng2's
-	// validateDeliverFlags pre-validated the (family, verdict, isFail) tuple,
-	// so each branch can trust its inputs without re-checking.
 	if isFail {
+		target, canMove := lifecycle.PrevState(chain, status)
+		if !canMove {
+			fmt.Fprintf(cmd.ErrOrStderr(), "deliver --fail no-op for %s: bead is at initial state %q (no previous step in lifecycle)\n", beadID, status)
+			return nil
+		}
+		// Walk back AND record the reason. Comment first so the audit
+		// captures the intent even if the status write fails afterwards.
 		reason := deliverReason
 		if reason == "" {
 			reason = "no reason provided"
 		}
-		// Stay in_progress, add failure comment. Same behavior for every
-		// family — only the announce/report templates differ (eng2's domain).
 		if err := bdCommentAddFn(beadID, agent, "FAILED: "+reason); err != nil {
 			fmt.Fprintf(cmd.ErrOrStderr(), "warning: bd comment failed: %s\n", err)
 		}
+		if err := bdUpdateStatusFn(beadID, target); err != nil {
+			return err
+		}
 	} else {
-		switch family {
-		case roles.FamilyEng:
-			if err := bdUpdateStatusFn(beadID, "ready_for_qa"); err != nil {
-				return err
-			}
-		case roles.FamilyQA:
-			// validation guarantees verdict == "PASS" here: FAIL routes
-			// through isFail above, and "" is rejected upstream for QA.
-			if verdict != "PASS" {
-				panic(fmt.Sprintf("deliver: QA family reached status branch with verdict=%q, isFail=false; validateDeliverFlags should have rejected this", verdict))
-			}
-			if err := bdUpdateStatusFn(beadID, "qa_passed"); err != nil {
-				return err
-			}
-		case roles.FamilyOther:
-			// No status write: Other-family deliveries announce but do not
-			// transition status. The bead's lifecycle (ready_for_qa,
-			// qa_passed, etc.) is owned by eng/qa, not by shipper/pm/etc.
+		target, canMove := lifecycle.NextState(chain, status)
+		if !canMove {
+			fmt.Fprintf(cmd.ErrOrStderr(), "deliver no-op for %s: bead is at terminal state %q\n", beadID, status)
+			return nil
+		}
+		if err := bdUpdateStatusFn(beadID, target); err != nil {
+			return err
 		}
 	}
 

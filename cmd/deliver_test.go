@@ -10,6 +10,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/nmelo/initech/internal/lifecycle"
 	"github.com/nmelo/initech/internal/roles"
 	"github.com/nmelo/initech/internal/tui"
 )
@@ -29,6 +30,11 @@ func isolateFromProject(t *testing.T) {
 
 // stubBdFns overrides all bd function vars with stubs, isolates from the real
 // project (prevents announce/webhook calls), and restores on cleanup.
+// Also stubs lifecycle.ConfigGetFn (ini-6e54) to return the default initech
+// custom-status list, so the lifecycle walker can build a real chain without
+// shelling out to bd. bdShowBeadFn defaults to returning status "in_progress"
+// so deliver has a valid starting point in the chain — tests that need to
+// exercise a specific state override the stub.
 func stubBdFns(t *testing.T) {
 	t.Helper()
 	isolateFromProject(t)
@@ -37,18 +43,24 @@ func stubBdFns(t *testing.T) {
 	origComment := bdCommentAddFn
 	origTitle := bdShowTitleFn
 	origClaim := bdUpdateClaimFn
+	origLifecycle := lifecycle.ConfigGetFn
 	t.Cleanup(func() {
 		bdShowBeadFn = origShow
 		bdUpdateStatusFn = origUpdate
 		bdCommentAddFn = origComment
 		bdShowTitleFn = origTitle
 		bdUpdateClaimFn = origClaim
+		lifecycle.ConfigGetFn = origLifecycle
 	})
-	bdShowBeadFn = func(id string) (string, string, string, error) { return id, "", "", nil }
+	bdShowBeadFn = func(id string) (string, string, string, error) { return id, "", "in_progress", nil }
 	bdUpdateStatusFn = func(id, status string) error { return nil }
 	bdCommentAddFn = func(id, author, comment string) error { return nil }
 	bdShowTitleFn = func(id string) (string, error) { return id, nil }
 	bdUpdateClaimFn = func(id, agent string) error { return nil }
+	lifecycle.ConfigGetFn = func(key string) (string, error) {
+		// Default initech chain: [open, in_progress] + custom + [closed].
+		return "ready_for_qa,in_qa,qa_passed,ready_to_ship", nil
+	}
 }
 
 // resetDeliverFlags resets the package-level flag vars to defaults.
@@ -78,7 +90,7 @@ func TestRunDeliver_PassSuccess(t *testing.T) {
 	resetDeliverFlags(t)
 
 	bdShowBeadFn = func(id string) (string, string, string, error) {
-		return "Fix the login bug", "eng1", "", nil
+		return "Fix the login bug", "eng1", "in_progress", nil
 	}
 	var updatedStatus string
 	bdUpdateStatusFn = func(id, status string) error {
@@ -107,22 +119,26 @@ func TestRunDeliver_PassSuccess(t *testing.T) {
 	}
 }
 
+// TestRunDeliver_FailMode: --fail on a non-initial state walks the bead
+// back one step in the lifecycle AND records a FAILED audit comment
+// (ini-6e54 Q2). The pre-walker behavior (no status write on --fail) was
+// removed; --fail now does both the comment and the walk-back.
 func TestRunDeliver_FailMode(t *testing.T) {
 	skipWindows(t)
 	stubBdFns(t)
 	resetDeliverFlags(t)
 
 	bdShowBeadFn = func(id string) (string, string, string, error) {
-		return "Fix the bug", "eng1", "", nil
+		return "Fix the bug", "eng1", "in_progress", nil
 	}
 	var commentText string
 	bdCommentAddFn = func(id, author, comment string) error {
 		commentText = comment
 		return nil
 	}
-	var statusCalled bool
+	var statusWritten string
 	bdUpdateStatusFn = func(id, status string) error {
-		statusCalled = true
+		statusWritten = status
 		return nil
 	}
 
@@ -139,8 +155,9 @@ func TestRunDeliver_FailMode(t *testing.T) {
 	if err := rootCmd.Execute(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if statusCalled {
-		t.Error("fail mode should NOT call bdUpdateStatus")
+	// --fail on in_progress walks back to open (the initial state).
+	if statusWritten != "open" {
+		t.Errorf("expected --fail to walk back to open, got status=%q", statusWritten)
 	}
 	if !strings.Contains(commentText, "FAILED: tests broken") {
 		t.Errorf("comment = %q, want FAILED reason", commentText)
@@ -205,7 +222,7 @@ func TestRunDeliver_StatusUpdateError(t *testing.T) {
 	resetDeliverFlags(t)
 
 	bdShowBeadFn = func(id string) (string, string, string, error) {
-		return "Fix it", "eng1", "", nil
+		return "Fix it", "eng1", "in_progress", nil
 	}
 	bdUpdateStatusFn = func(id, status string) error {
 		return fmt.Errorf("bd update failed: permission denied")
@@ -235,7 +252,7 @@ func TestRunDeliver_AssigneeMismatchWarning(t *testing.T) {
 	resetDeliverFlags(t)
 
 	bdShowBeadFn = func(id string) (string, string, string, error) {
-		return "Fix it", "eng2", "", nil
+		return "Fix it", "eng2", "in_progress", nil
 	}
 
 	sockPath := startFakeIPC(t, tui.IPCResponse{OK: true})
@@ -266,7 +283,7 @@ func TestRunDeliver_NoAgent(t *testing.T) {
 	resetDeliverFlags(t)
 
 	bdShowBeadFn = func(id string) (string, string, string, error) {
-		return "Fix it", "", "", nil
+		return "Fix it", "", "in_progress", nil
 	}
 
 	sockPath := startFakeIPC(t, tui.IPCResponse{OK: true})
@@ -294,7 +311,7 @@ func TestRunDeliver_CustomMessage(t *testing.T) {
 	resetDeliverFlags(t)
 
 	bdShowBeadFn = func(id string) (string, string, string, error) {
-		return "Fix it", "eng1", "", nil
+		return "Fix it", "eng1", "in_progress", nil
 	}
 
 	// Capture what gets sent to IPC to verify message appears in report.
@@ -322,7 +339,7 @@ func TestRunDeliver_CrossMachineRecipient(t *testing.T) {
 	resetDeliverFlags(t)
 
 	bdShowBeadFn = func(id string) (string, string, string, error) {
-		return "Fix it", "eng1", "", nil
+		return "Fix it", "eng1", "in_progress", nil
 	}
 
 	sockPath := startFakeIPC(t, tui.IPCResponse{OK: true})
@@ -401,13 +418,17 @@ func startCapturingFakeIPC(t *testing.T, resp tui.IPCResponse) (string, *[]tui.I
 // runDeliverWith executes the deliver command with the given args and the
 // fake-IPC + bd stubs already wired. Returns the captured report (the IPC
 // "send" action body), stderr, and any error from rootCmd.Execute.
+//
+// Default bead state is "in_progress" so the lifecycle walker (ini-6e54)
+// has a valid starting point. Tests that need a different state should
+// reassign bdShowBeadFn after calling this helper.
 func runDeliverWith(t *testing.T, agent, beadTitle string, args ...string) (report string, stderr string, err error) {
 	t.Helper()
 	stubBdFns(t)
 	resetDeliverFlags(t)
 
 	bdShowBeadFn = func(id string) (string, string, string, error) {
-		return beadTitle, agent, "", nil
+		return beadTitle, agent, "in_progress", nil
 	}
 
 	sockPath, received := startCapturingFakeIPC(t, tui.IPCResponse{OK: true})
@@ -577,7 +598,7 @@ func TestRunDeliver_AsOverride(t *testing.T) {
 	resetDeliverFlags(t)
 
 	bdShowBeadFn = func(id string) (string, string, string, error) {
-		return "Some bead", "qa1", "", nil
+		return "Some bead", "qa1", "in_qa", nil
 	}
 
 	sockPath, received := startCapturingFakeIPC(t, tui.IPCResponse{OK: true})
@@ -832,29 +853,6 @@ func TestRunDeliver_QA_PassVerdict_WritesQaPassed(t *testing.T) {
 	}
 }
 
-func TestRunDeliver_QA_FailVerdict_NoStatusWrite(t *testing.T) {
-	skipWindows(t)
-	written, _, _, err := runDeliverWithStatus(t, "qa1", "Login flow", "in_qa",
-		"--verdict", "FAIL", "--reason", "logout broken")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if written != "" {
-		t.Errorf("QA+FAIL must not write status, got %q", written)
-	}
-}
-
-func TestRunDeliver_Other_NoStatusWrite(t *testing.T) {
-	skipWindows(t)
-	written, _, _, err := runDeliverWithStatus(t, "shipper", "Release v1.21", "in_progress")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if written != "" {
-		t.Errorf("Other family must not write status, got %q", written)
-	}
-}
-
 func TestRunDeliver_Eng_PassWritesReadyForQa(t *testing.T) {
 	// Mirror of TestRunDeliver_PassSuccess with explicit current-status seed,
 	// so the byte-for-byte eng regression contract is enforced even after the
@@ -873,23 +871,6 @@ func TestRunDeliver_Eng_PassWritesReadyForQa(t *testing.T) {
 // ini-dgt.1 bug: a deliver against an already-qa_passed bead must NOT write
 // status, must NOT send a report, and must exit 0 with a warning. Carries the
 // bug's name in the suite forever — if this fails, the regression is back.
-func TestRunDeliver_QaPassed_FullNoOp(t *testing.T) {
-	skipWindows(t)
-	written, reqs, stderr, err := runDeliverWithStatus(t, "eng1", "Already passed", "qa_passed")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if written != "" {
-		t.Errorf("qa_passed must no-op status write, got %q (regression of ini-dgt.1)", written)
-	}
-	if hasIPCSend(reqs) {
-		t.Error("qa_passed no-op must not send a report (nothing leaves the box)")
-	}
-	if !strings.Contains(stderr, "no-op") || !strings.Contains(stderr, "qa_passed") {
-		t.Errorf("expected no-op warning mentioning qa_passed, got stderr=%q", stderr)
-	}
-}
-
 func TestRunDeliver_Closed_FullNoOp(t *testing.T) {
 	skipWindows(t)
 	written, reqs, stderr, err := runDeliverWithStatus(t, "eng1", "Done long ago", "closed")
@@ -910,107 +891,14 @@ func TestRunDeliver_Closed_FullNoOp(t *testing.T) {
 // TestRunDeliver_QaPassed_FailComment_AuditTrail: --fail on qa_passed is the
 // one carve-out from the no-op guard. QA needs a way to record post-pass
 // regressions on the bead even though the status is terminal.
-func TestRunDeliver_QaPassed_FailComment_AuditTrail(t *testing.T) {
-	skipWindows(t)
-	stubBdFns(t)
-	resetDeliverFlags(t)
-
-	bdShowBeadFn = func(id string) (string, string, string, error) {
-		return "Already passed", "eng1", "qa_passed", nil
-	}
-	var commentText string
-	bdCommentAddFn = func(id, author, comment string) error {
-		commentText = comment
-		return nil
-	}
-	var statusCalled bool
-	bdUpdateStatusFn = func(id, status string) error {
-		statusCalled = true
-		return nil
-	}
-
-	sockPath, received := startCapturingFakeIPC(t, tui.IPCResponse{OK: true})
-	t.Setenv("INITECH_SOCKET", sockPath)
-	t.Setenv("INITECH_AGENT", "eng1")
-
-	var stderr bytes.Buffer
-	rootCmd.SetOut(&bytes.Buffer{})
-	rootCmd.SetErr(&stderr)
-	rootCmd.SetArgs([]string{"deliver", "ini-abc", "--fail", "--reason", "regression in production"})
-	defer rootCmd.SetArgs(nil)
-
-	if err := rootCmd.Execute(); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if statusCalled {
-		t.Error("--fail on qa_passed must not write status")
-	}
-	if !strings.Contains(commentText, "FAILED: regression in production") {
-		t.Errorf("expected FAILED comment recorded for audit trail, got %q", commentText)
-	}
-	if hasIPCSend(*received) {
-		t.Error("no-op path must not send a report even when comment is recorded")
-	}
-	if !strings.Contains(stderr.String(), "audit trail") {
-		t.Errorf("expected stderr to mention audit trail, got %q", stderr.String())
-	}
-}
-
 // TestRunDeliver_Closed_FailFullySkipped: --fail on closed is fully a no-op
 // (no comment, no status, no report). Commenting on a closed bead is noise.
-func TestRunDeliver_Closed_FailFullySkipped(t *testing.T) {
-	skipWindows(t)
-	stubBdFns(t)
-	resetDeliverFlags(t)
-
-	bdShowBeadFn = func(id string) (string, string, string, error) {
-		return "Long-closed bead", "eng1", "closed", nil
-	}
-	var commentCalled bool
-	bdCommentAddFn = func(id, author, comment string) error {
-		commentCalled = true
-		return nil
-	}
-
-	sockPath := startFakeIPC(t, tui.IPCResponse{OK: true})
-	t.Setenv("INITECH_SOCKET", sockPath)
-	t.Setenv("INITECH_AGENT", "eng1")
-
-	rootCmd.SetOut(&bytes.Buffer{})
-	rootCmd.SetErr(&bytes.Buffer{})
-	rootCmd.SetArgs([]string{"deliver", "ini-abc", "--fail", "--reason", "noise"})
-	defer rootCmd.SetArgs(nil)
-
-	if err := rootCmd.Execute(); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if commentCalled {
-		t.Error("--fail on closed must not add a comment (no audit value, just noise)")
-	}
-}
-
 // TestRunDeliver_NormalStatusesProceed asserts the gate is narrow: every
 // non-terminal status that isn't in_qa routes through the family branch for
 // Eng. in_qa is excluded from this list because Eng-on-in_qa is its own
 // no-op (covered separately); it would otherwise yank the bead away from
 // the QA reviewer mid-review. The only universal no-op statuses are
 // qa_passed and closed.
-func TestRunDeliver_NormalStatusesProceed(t *testing.T) {
-	skipWindows(t)
-	statuses := []string{"open", "in_progress", "ready_for_qa", "blocked"}
-	for _, status := range statuses {
-		t.Run(status, func(t *testing.T) {
-			written, _, _, err := runDeliverWithStatus(t, "eng1", "x", status)
-			if err != nil {
-				t.Fatalf("status %q: unexpected error: %v", status, err)
-			}
-			if written != "ready_for_qa" {
-				t.Errorf("status %q: expected eng pass to write ready_for_qa, got %q", status, written)
-			}
-		})
-	}
-}
-
 // TestRunDeliver_Eng_InQa_NoOp covers the Eng-on-in_qa carve-out (qa1's A3
 // regression on the first round of ini-dgt.1). An engineer running deliver
 // while QA is mid-review must warn and skip the status reset, because
@@ -1018,98 +906,13 @@ func TestRunDeliver_NormalStatusesProceed(t *testing.T) {
 // This is family-conditional (NOT a universal outer guard) so the QA-on-
 // in_qa flow (PASS -> qa_passed, FAIL -> stays) is preserved.
 // lint:test-name-allow no-op-contract  // ini-ybe.1: contract IS the no-op; body has 3 assertions verifying it
-func TestRunDeliver_Eng_InQa_NoOp(t *testing.T) {
-	skipWindows(t)
-	written, reqs, stderr, err := runDeliverWithStatus(t, "eng1", "Login bug", "in_qa")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if written != "" {
-		t.Errorf("Eng+in_qa must no-op status write, got %q (qa1's A3 regression)", written)
-	}
-	if hasIPCSend(reqs) {
-		t.Error("Eng+in_qa no-op must not send a report")
-	}
-	if !strings.Contains(stderr, "in_qa") || !strings.Contains(stderr, "no-op") {
-		t.Errorf("expected no-op warning mentioning in_qa, got stderr=%q", stderr)
-	}
-}
-
 // TestRunDeliver_QA_InQa_PreservedByCarveOut is the contract test that the
 // Eng-on-in_qa carve-out did NOT also block the QA flow. If this fails,
 // someone widened the carve-out into a universal guard (the regression
 // shape qa1's literal one-line sketch would have introduced).
-func TestRunDeliver_QA_InQa_PreservedByCarveOut(t *testing.T) {
-	skipWindows(t)
-	t.Run("PASS still transitions to qa_passed", func(t *testing.T) {
-		written, _, _, err := runDeliverWithStatus(t, "qa1", "Login bug", "in_qa", "--verdict", "PASS")
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if written != "qa_passed" {
-			t.Errorf("QA+PASS+in_qa must transition to qa_passed, got %q (carve-out widened?)", written)
-		}
-	})
-	t.Run("FAIL still leaves status alone", func(t *testing.T) {
-		written, reqs, _, err := runDeliverWithStatus(t, "qa1", "Login bug", "in_qa",
-			"--verdict", "FAIL", "--reason", "logout broken")
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if written != "" {
-			t.Errorf("QA+FAIL+in_qa must not write status, got %q", written)
-		}
-		if !hasIPCSend(reqs) {
-			t.Error("QA+FAIL+in_qa must still send a report (only Eng+in_qa is suppressed)")
-		}
-	})
-}
-
 // TestRunDeliver_Eng_InQa_FailUnchanged: --fail on Eng+in_qa is intentionally
 // NOT covered by the carve-out. An engineer recording a regression mid-QA
 // is useful audit data and doesn't reset status anyway.
-func TestRunDeliver_Eng_InQa_FailUnchanged(t *testing.T) {
-	skipWindows(t)
-	stubBdFns(t)
-	resetDeliverFlags(t)
-
-	bdShowBeadFn = func(id string) (string, string, string, error) {
-		return "Login bug", "eng1", "in_qa", nil
-	}
-	var commentText string
-	bdCommentAddFn = func(id, author, comment string) error {
-		commentText = comment
-		return nil
-	}
-	var statusCalled bool
-	bdUpdateStatusFn = func(id, status string) error {
-		statusCalled = true
-		return nil
-	}
-
-	sockPath, received := startCapturingFakeIPC(t, tui.IPCResponse{OK: true})
-	t.Setenv("INITECH_SOCKET", sockPath)
-	t.Setenv("INITECH_AGENT", "eng1")
-
-	rootCmd.SetOut(&bytes.Buffer{})
-	rootCmd.SetErr(&bytes.Buffer{})
-	rootCmd.SetArgs([]string{"deliver", "ini-abc", "--fail", "--reason", "found a regression"})
-	defer rootCmd.SetArgs(nil)
-
-	if err := rootCmd.Execute(); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if statusCalled {
-		t.Error("--fail on in_qa must not write status (matches today's --fail semantics)")
-	}
-	if !strings.Contains(commentText, "FAILED: found a regression") {
-		t.Errorf("expected FAILED comment, got %q", commentText)
-	}
-	if !hasIPCSend(*received) {
-		t.Error("Eng+--fail+in_qa must still send a report (carve-out is for the !isFail path only)")
-	}
-}
-
 // --- ini-lwd: success path writes -m body as a bd comment ---
 
 // runDeliverCapturingComments wires the same fake IPC + bd stubs as
@@ -1124,7 +927,7 @@ func runDeliverCapturingComments(t *testing.T, agent, beadTitle string, args ...
 	resetDeliverFlags(t)
 
 	bdShowBeadFn = func(id string) (string, string, string, error) {
-		return beadTitle, agent, "", nil
+		return beadTitle, agent, "in_progress", nil
 	}
 	bdCommentAddFn = func(id, author, body string) error {
 		comments = append(comments, deliverComment{id: id, author: author, body: body})
@@ -1271,6 +1074,8 @@ func isolateFromProjectWithRoster(t *testing.T, rosterRoles []string) {
 }
 
 // stubBdFnsWithRoster is stubBdFns variant that takes an explicit roster.
+// Also stubs lifecycle.ConfigGetFn so deliver's bd-lifecycle reader (ini-6e54)
+// has a valid chain without shelling out.
 func stubBdFnsWithRoster(t *testing.T, rosterRoles []string) {
 	t.Helper()
 	isolateFromProjectWithRoster(t, rosterRoles)
@@ -1279,18 +1084,23 @@ func stubBdFnsWithRoster(t *testing.T, rosterRoles []string) {
 	origComment := bdCommentAddFn
 	origTitle := bdShowTitleFn
 	origClaim := bdUpdateClaimFn
+	origLifecycle := lifecycle.ConfigGetFn
 	t.Cleanup(func() {
 		bdShowBeadFn = origShow
 		bdUpdateStatusFn = origUpdate
 		bdCommentAddFn = origComment
 		bdShowTitleFn = origTitle
 		bdUpdateClaimFn = origClaim
+		lifecycle.ConfigGetFn = origLifecycle
 	})
-	bdShowBeadFn = func(id string) (string, string, string, error) { return id, "", "", nil }
+	bdShowBeadFn = func(id string) (string, string, string, error) { return id, "", "in_progress", nil }
 	bdUpdateStatusFn = func(id, status string) error { return nil }
 	bdCommentAddFn = func(id, author, comment string) error { return nil }
 	bdShowTitleFn = func(id string) (string, error) { return id, nil }
 	bdUpdateClaimFn = func(id, agent string) error { return nil }
+	lifecycle.ConfigGetFn = func(key string) (string, error) {
+		return "ready_for_qa,in_qa,qa_passed,ready_to_ship", nil
+	}
 }
 
 // TestRunDeliver_CustomRoleFromRoster_Accepted: a non-prefix non-catalog
@@ -1302,7 +1112,7 @@ func TestRunDeliver_CustomRoleFromRoster_Accepted(t *testing.T) {
 	resetDeliverFlags(t)
 
 	bdShowBeadFn = func(id string) (string, string, string, error) {
-		return "Fix the bug", "practitioner", "", nil
+		return "Fix the bug", "practitioner", "in_progress", nil
 	}
 
 	sockPath, received := startCapturingFakeIPC(t, tui.IPCResponse{OK: true})
@@ -1376,7 +1186,7 @@ func TestRunDeliver_AsOverride_CustomRole(t *testing.T) {
 	resetDeliverFlags(t)
 
 	bdShowBeadFn = func(id string) (string, string, string, error) {
-		return "Some bead", "analyst", "", nil
+		return "Some bead", "analyst", "in_progress", nil
 	}
 
 	sockPath, received := startCapturingFakeIPC(t, tui.IPCResponse{OK: true})
@@ -1417,7 +1227,7 @@ func TestRunDeliver_PrefixWinsOverRoster(t *testing.T) {
 	resetDeliverFlags(t)
 
 	bdShowBeadFn = func(id string) (string, string, string, error) {
-		return "Title", "engineer", "", nil
+		return "Title", "engineer", "in_progress", nil
 	}
 
 	sockPath, received := startCapturingFakeIPC(t, tui.IPCResponse{OK: true})
@@ -1446,5 +1256,259 @@ func TestRunDeliver_PrefixWinsOverRoster(t *testing.T) {
 	}
 	if strings.Contains(report, "delivered:") {
 		t.Errorf("engineer must NOT fall through to Other-family template even when in roster, got %q", report)
+	}
+}
+
+// --- ini-6e54: lifecycle-walker tests ---
+//
+// deliver advances beads through bd's configured lifecycle chain
+// (open → in_progress → ...custom states... → closed) one step per call.
+// Role/family no longer gates status writes; anyone delivering on a bead
+// moves it. Failure walks back one step AND records a FAILED audit comment.
+
+// runDeliverFromStatus is a focused helper that drives deliver with a
+// specific starting bead status and captures (statusWrite, comments, err)
+// for the lifecycle assertions below. Keeps the test bodies short so the
+// load-bearing full-walk test stays scannable.
+func runDeliverFromStatus(t *testing.T, agent, startStatus string, args ...string) (statusWritten string, comments []deliverComment, err error) {
+	t.Helper()
+	stubBdFns(t)
+	resetDeliverFlags(t)
+
+	bdShowBeadFn = func(id string) (string, string, string, error) {
+		return "bead-title", agent, startStatus, nil
+	}
+	bdUpdateStatusFn = func(id, status string) error {
+		statusWritten = status
+		return nil
+	}
+	bdCommentAddFn = func(id, author, body string) error {
+		comments = append(comments, deliverComment{id: id, author: author, body: body})
+		return nil
+	}
+
+	sockPath := startFakeIPC(t, tui.IPCResponse{OK: true})
+	t.Setenv("INITECH_SOCKET", sockPath)
+	t.Setenv("INITECH_AGENT", agent)
+
+	rootCmd.SetOut(&bytes.Buffer{})
+	rootCmd.SetErr(&bytes.Buffer{})
+	rootCmd.SetArgs(append([]string{"deliver", "ini-test"}, args...))
+	defer rootCmd.SetArgs(nil)
+
+	err = rootCmd.Execute()
+	return statusWritten, comments, err
+}
+
+// TestDeliver_FullLifecycleWalk_Forward is the load-bearing regression
+// super specified: exercise the user's full real lifecycle end-to-end
+// (open → in_progress → ready_for_qa → in_qa → qa_passed → ready_to_ship
+// → closed) via successive deliver calls. The previous test discipline
+// (assert a single pair) missed the cross-pair chain construction bugs.
+// This walks every pair in one test so any chain-shape regression fails
+// here, not in production.
+func TestDeliver_FullLifecycleWalk_Forward(t *testing.T) {
+	skipWindows(t)
+	// Default initech chain comes from stubBdFns:
+	//   open → in_progress → ready_for_qa → in_qa → qa_passed → ready_to_ship → closed
+	tests := []struct {
+		from, to string
+	}{
+		{"open", "in_progress"},
+		{"in_progress", "ready_for_qa"},
+		{"ready_for_qa", "in_qa"},
+		{"in_qa", "qa_passed"},
+		{"qa_passed", "ready_to_ship"},
+		{"ready_to_ship", "closed"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.from+"_to_"+tt.to, func(t *testing.T) {
+			// QA-family agent uses --verdict so validateDeliverFlags accepts
+			// the call regardless of starting state. The status write is
+			// purely lifecycle-driven now (role doesn't gate it).
+			got, _, err := runDeliverFromStatus(t, "qa1", tt.from, "--verdict", "PASS")
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != tt.to {
+				t.Errorf("from %s: deliver wrote status=%q, want %q", tt.from, got, tt.to)
+			}
+		})
+	}
+}
+
+// TestDeliver_FailWalksBack: --fail walks the bead back one step in the
+// chain AND records a FAILED audit comment (ini-6e54 Q2).
+func TestDeliver_FailWalksBack(t *testing.T) {
+	skipWindows(t)
+	tests := []struct {
+		from, to string
+	}{
+		{"in_progress", "open"},
+		{"ready_for_qa", "in_progress"},
+		{"in_qa", "ready_for_qa"},
+		{"qa_passed", "in_qa"},
+		{"ready_to_ship", "qa_passed"},
+		{"closed", "ready_to_ship"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.from+"_back_to_"+tt.to, func(t *testing.T) {
+			got, comments, err := runDeliverFromStatus(t, "qa1", tt.from, "--verdict", "FAIL", "--reason", "regression found")
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != tt.to {
+				t.Errorf("--fail from %s: deliver wrote status=%q, want %q", tt.from, got, tt.to)
+			}
+			// FAILED audit comment must accompany the walk-back.
+			foundFailed := false
+			for _, c := range comments {
+				if strings.Contains(c.body, "FAILED: regression found") {
+					foundFailed = true
+					break
+				}
+			}
+			if !foundFailed {
+				t.Errorf("--fail from %s: expected FAILED audit comment, got %+v", tt.from, comments)
+			}
+		})
+	}
+}
+
+// TestDeliver_AtTerminal_SuccessNoOps: at the chain's terminal (closed),
+// success no-ops with a warning and returns without writing status.
+func TestDeliver_AtTerminal_SuccessNoOps(t *testing.T) {
+	skipWindows(t)
+	got, _, err := runDeliverFromStatus(t, "eng1", "closed")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != "" {
+		t.Errorf("deliver at closed must not write status, got %q", got)
+	}
+}
+
+// TestDeliver_AtInitial_FailNoOps: at the chain's initial (open), --fail
+// no-ops because there's no previous state to walk back to.
+func TestDeliver_AtInitial_FailNoOps(t *testing.T) {
+	skipWindows(t)
+	got, comments, err := runDeliverFromStatus(t, "eng1", "open", "--fail", "--reason", "blocked")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != "" {
+		t.Errorf("deliver --fail at open must not write status, got %q", got)
+	}
+	// Per ini-6e54 Q2 + bead "failure no-ops with a warning": no audit
+	// comment is added on the initial-state no-op path. The walk-back is
+	// the action; if we can't walk back, we skip the action+reason both.
+	if len(comments) != 0 {
+		t.Errorf("deliver --fail at open must not write comments, got %+v", comments)
+	}
+}
+
+// TestDeliver_CustomLifecycle: a project with a custom status.custom
+// (different from initech's default) drives a different chain, and
+// deliver walks the new chain correctly. This proves the bead-AC
+// requirement that "Custom states declared in bd ... participate
+// naturally — no initech code change required to support a new state."
+func TestDeliver_CustomLifecycle(t *testing.T) {
+	skipWindows(t)
+	stubBdFns(t)
+	resetDeliverFlags(t)
+
+	// Simulate a code-review-heavy project.
+	lifecycle.ConfigGetFn = func(key string) (string, error) {
+		return "design_review,code_review,ready_to_ship", nil
+	}
+
+	// Bead is at design_review (custom state #1).
+	bdShowBeadFn = func(id string) (string, string, string, error) {
+		return "Some change", "eng1", "design_review", nil
+	}
+	var statusWritten string
+	bdUpdateStatusFn = func(id, status string) error {
+		statusWritten = status
+		return nil
+	}
+
+	sockPath := startFakeIPC(t, tui.IPCResponse{OK: true})
+	t.Setenv("INITECH_SOCKET", sockPath)
+	t.Setenv("INITECH_AGENT", "eng1")
+
+	rootCmd.SetOut(&bytes.Buffer{})
+	rootCmd.SetErr(&bytes.Buffer{})
+	rootCmd.SetArgs([]string{"deliver", "ini-test"})
+	defer rootCmd.SetArgs(nil)
+
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// design_review → code_review (next in the custom chain).
+	if statusWritten != "code_review" {
+		t.Errorf("custom chain: design_review should advance to code_review, got %q", statusWritten)
+	}
+}
+
+// TestDeliver_AnyRole_AdvancesStatus pins the Q3 contract: role/family does
+// not gate the status write. Eng, QA, Other, and a custom-roster role all
+// advance the bead one step. Announce templates still differ by role (ini-
+// dgt.2) but that's tested separately.
+func TestDeliver_AnyRole_AdvancesStatus(t *testing.T) {
+	skipWindows(t)
+	tests := []struct {
+		role string
+		args []string
+	}{
+		{"eng1", nil},
+		{"qa1", []string{"--verdict", "PASS"}},
+		{"shipper", nil},
+		{"pm", nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.role, func(t *testing.T) {
+			// Bead is at qa_passed; all roles should advance it to ready_to_ship.
+			got, _, err := runDeliverFromStatus(t, tt.role, "qa_passed", tt.args...)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != "ready_to_ship" {
+				t.Errorf("role %s at qa_passed: deliver wrote %q, want ready_to_ship (any role can advance per Q3)",
+					tt.role, got)
+			}
+		})
+	}
+}
+
+// TestDeliver_BdUnavailable_HardFails (ini-6e54 Q4): when bd cannot be
+// reached, deliver refuses to write status with a clear error message
+// pointing the operator at the fix. No silent fallback to a hardcoded
+// chain.
+func TestDeliver_BdUnavailable_HardFails(t *testing.T) {
+	skipWindows(t)
+	stubBdFns(t)
+	resetDeliverFlags(t)
+
+	// Force the lifecycle reader to error.
+	lifecycle.ConfigGetFn = func(key string) (string, error) {
+		return "", fmt.Errorf("bd: command not found")
+	}
+
+	sockPath := startFakeIPC(t, tui.IPCResponse{OK: true})
+	t.Setenv("INITECH_SOCKET", sockPath)
+	t.Setenv("INITECH_AGENT", "eng1")
+
+	rootCmd.SetOut(&bytes.Buffer{})
+	var stderr bytes.Buffer
+	rootCmd.SetErr(&stderr)
+	rootCmd.SetArgs([]string{"deliver", "ini-test"})
+	defer rootCmd.SetArgs(nil)
+
+	err := rootCmd.Execute()
+	if err == nil {
+		t.Fatal("expected hard error when bd is unavailable, got nil")
+	}
+	if !strings.Contains(err.Error(), "lifecycle") {
+		t.Errorf("error should mention 'lifecycle' for operator clarity, got %q", err.Error())
 	}
 }
