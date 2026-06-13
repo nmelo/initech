@@ -44,6 +44,13 @@ type Project struct {
 	ClaudeArgs    []string                `yaml:"claude_args,omitempty"`
 	RoleOverrides map[string]RoleOverride `yaml:"role_overrides,omitempty"`
 
+	// LayoutPresets maps the Alt/Option 1–5 layout shortcut slots ("1".."5")
+	// to layout specs ("CxR" grid, or keyword focus/live/main). Raw strings
+	// only — the tui package parses, validates, and default-fills each slot at
+	// startup so a typo never blocks load (a bad slot falls back to its
+	// built-in default with a warning). Absent map = all built-in defaults.
+	LayoutPresets map[string]string `yaml:"layout_presets,omitempty"`
+
 	// Web companion server fields.
 	WebPort    *int   `yaml:"web_port,omitempty"`    // Web companion port. nil/0 = disabled, >0 = enabled.
 	WebhookURL   string `yaml:"webhook_url,omitempty"`   // HTTP endpoint for agent event POSTs. Empty = disabled.

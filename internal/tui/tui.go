@@ -139,6 +139,12 @@ type TUI struct {
 	layoutState LayoutState // Single source of truth for layout intent.
 	plan        RenderPlan  // Current frame's render instructions.
 
+	// layoutPresets holds the resolved Alt/Option 1–5 layout shortcuts,
+	// parsed and default-filled from cfg.Project.LayoutPresets at startup.
+	// Index 0 = Alt+1 ... index 4 = Alt+5. Zero value (all-grid) is replaced
+	// by defaultLayoutPresets() for any TUI built without explicit resolution.
+	layoutPresets [presetSlots]LayoutPreset
+
 	// Tracked screen dimensions for detecting resize.
 	lastW, lastH int
 
@@ -617,10 +623,21 @@ func Run(cfg Config) error {
 		layoutState = DefaultLayoutState(agentNames)
 	}
 
+	// Resolve Alt+1–5 layout presets from config (default-filled, never fails).
+	var rawPresets map[string]string
+	if cfg.Project != nil {
+		rawPresets = cfg.Project.LayoutPresets
+	}
+	layoutPresets, presetWarnings := ResolvePresets(rawPresets)
+	for _, w := range presetWarnings {
+		LogWarn("layout-presets", w)
+	}
+
 	initW, initH := screen.Size()
 	t := &TUI{
 		screen:            screen,
 		layoutState:       layoutState,
+		layoutPresets:     layoutPresets,
 		lastW:             initW,
 		lastH:             initH,
 		projectRoot:       cfg.ProjectRoot,

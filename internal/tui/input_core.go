@@ -94,57 +94,11 @@ func (t *TUI) handleKey(ev *tcell.EventKey) bool {
 			return false
 		case tcell.KeyRune:
 			switch ev.Rune() {
-			case '1':
-				t.layoutState.Mode = LayoutFocus
-				t.layoutState.GridExplicit = false
-				t.layoutState.Zoomed = false
-				t.applyLayout()
-				t.saveLayoutIfConfigured()
-				return false
-			case '2':
-				t.layoutState.Mode = LayoutGrid
-				t.layoutState.GridCols = 2
-				t.layoutState.GridRows = 2
-				t.layoutState.GridExplicit = true
-				t.layoutState.Zoomed = false
-				t.applyLayout()
-				t.saveLayoutIfConfigured()
-				return false
-			case '3':
-				t.layoutState.Mode = LayoutGrid
-				t.layoutState.GridCols = 3
-				t.layoutState.GridRows = 3
-				t.layoutState.GridExplicit = true
-				t.layoutState.Zoomed = false
-				t.applyLayout()
-				t.saveLayoutIfConfigured()
-				return false
-			case '4':
-				t.layoutState.Mode = Layout2Col
-				t.layoutState.GridExplicit = false
-				t.layoutState.Zoomed = false
-				t.applyLayout()
-				t.saveLayoutIfConfigured()
-				return false
-			case '5':
-				if t.layoutState.Mode == LayoutLive {
-					// Toggle off: switch back to grid.
-					t.layoutState.Mode = LayoutGrid
-					t.liveEngine = nil
-				} else {
-					// Toggle on: enter live auto mode (default).
-					t.layoutState.Mode = LayoutLive
-					t.layoutState.LiveAuto = true
-					t.layoutState.GridExplicit = false
-					t.layoutState.Zoomed = false
-					if t.layoutState.LivePinned == nil {
-						t.layoutState.LivePinned = make(map[string]int)
-					}
-					t.initLiveEngine(0)
-					t.trackLiveModeActivated()
-				}
-				t.applyLayout()
-				t.saveLayoutIfConfigured()
+			case '1', '2', '3', '4', '5':
+				// Layout shortcut slots are config-driven (ini-lkww): each
+				// maps to a preset resolved from initech.yaml at startup,
+				// defaulting to 2x1/3x1/4x1/3x2/live.
+				t.applyLayoutPreset(int(ev.Rune() - '1'))
 				return false
 			case 's':
 				// Overlay toggle is deliberately not persisted. It's a

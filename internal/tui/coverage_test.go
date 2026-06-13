@@ -513,35 +513,47 @@ func TestHandleKeyAltQE2(t *testing.T) {
 	}
 }
 
+// TestHandleKeyAltLayoutShortcuts verifies the Alt+1–5 keystrokes dispatch
+// through the config-driven preset path (ini-lkww). With the built-in defaults
+// resolved, the new shipped bindings are 2x1 / 3x1 / 4x1 / 3x2 / live (the old
+// hardcoded focus/2x2/3x3/2col/live set is gone).
 func TestHandleKeyAltLayoutShortcuts(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("a", "b", "c", "d")
+	tui.layoutPresets = defaultLayoutPresets()
 
-	// Alt-1 = focus mode.
+	// Alt-1 = 2x1 grid.
 	ev := tcell.NewEventKey(tcell.KeyRune, '1', tcell.ModAlt)
 	tui.handleKey(ev)
-	if tui.layoutState.Mode != LayoutFocus {
-		t.Error("Alt-1 should set LayoutFocus")
+	if tui.layoutState.Mode != LayoutGrid || tui.layoutState.GridCols != 2 || tui.layoutState.GridRows != 1 {
+		t.Errorf("Alt-1: mode=%v %dx%d, want grid 2x1", tui.layoutState.Mode, tui.layoutState.GridCols, tui.layoutState.GridRows)
 	}
 
-	// Alt-2 = 2x2 grid.
+	// Alt-2 = 3x1 grid.
 	ev = tcell.NewEventKey(tcell.KeyRune, '2', tcell.ModAlt)
 	tui.handleKey(ev)
-	if tui.layoutState.GridCols != 2 || tui.layoutState.GridRows != 2 {
-		t.Errorf("Alt-2: %dx%d, want 2x2", tui.layoutState.GridCols, tui.layoutState.GridRows)
+	if tui.layoutState.GridCols != 3 || tui.layoutState.GridRows != 1 {
+		t.Errorf("Alt-2: %dx%d, want 3x1", tui.layoutState.GridCols, tui.layoutState.GridRows)
 	}
 
-	// Alt-3 = 3x3 grid.
+	// Alt-3 = 4x1 grid.
 	ev = tcell.NewEventKey(tcell.KeyRune, '3', tcell.ModAlt)
 	tui.handleKey(ev)
-	if tui.layoutState.GridCols != 3 || tui.layoutState.GridRows != 3 {
-		t.Errorf("Alt-3: %dx%d, want 3x3", tui.layoutState.GridCols, tui.layoutState.GridRows)
+	if tui.layoutState.GridCols != 4 || tui.layoutState.GridRows != 1 {
+		t.Errorf("Alt-3: %dx%d, want 4x1", tui.layoutState.GridCols, tui.layoutState.GridRows)
 	}
 
-	// Alt-4 = 2-col layout.
+	// Alt-4 = 3x2 grid.
 	ev = tcell.NewEventKey(tcell.KeyRune, '4', tcell.ModAlt)
 	tui.handleKey(ev)
-	if tui.layoutState.Mode != Layout2Col {
-		t.Error("Alt-4 should set Layout2Col")
+	if tui.layoutState.GridCols != 3 || tui.layoutState.GridRows != 2 {
+		t.Errorf("Alt-4: %dx%d, want 3x2", tui.layoutState.GridCols, tui.layoutState.GridRows)
+	}
+
+	// Alt-5 = live mode.
+	ev = tcell.NewEventKey(tcell.KeyRune, '5', tcell.ModAlt)
+	tui.handleKey(ev)
+	if tui.layoutState.Mode != LayoutLive {
+		t.Errorf("Alt-5: mode=%v, want LayoutLive", tui.layoutState.Mode)
 	}
 }
 

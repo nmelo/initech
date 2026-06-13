@@ -58,11 +58,11 @@ Requires initech.yaml in the current directory or a parent directory.
 Keybindings:
   ` + "`" + `                Open command modal
   Alt+Left/Right   Navigate between panes
-  Alt+1            Focus mode (single pane)
-  Alt+2            2x2 grid
-  Alt+3            3x3 grid
-  Alt+4            Main + stacked layout
-  Alt+5            Live auto mode (auto-size grid by activity)
+  Alt+1            Layout preset 1 (default 2x1, remappable in initech.yaml)
+  Alt+2            Layout preset 2 (default 3x1)
+  Alt+3            Layout preset 3 (default 4x1)
+  Alt+4            Layout preset 4 (default 3x2)
+  Alt+5            Layout preset 5 (default live)
   Alt+z            Zoom/unzoom focused pane
   Alt+s            Toggle agent status overlay
   Alt+q            Quit
