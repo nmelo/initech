@@ -25,6 +25,7 @@ func getHelpLines() []string {
 			"  " + m + "+3            Layout 3 (default 4x1)",
 			"  " + m + "+4            Layout 4 (default 3x2)",
 			"  " + m + "+5            Layout 5 (default live)",
+			"  Shift+" + m + "+1-5    Same preset slot, in live (auto-managed) mode",
 			"  " + m + "+a            Agent management modal",
 			"  " + m + "+z            Zoom/unzoom focused pane",
 			"  " + m + "+s            Toggle agent overlay",

@@ -63,6 +63,7 @@ Keybindings:
   Alt+3            Layout preset 3 (default 4x1)
   Alt+4            Layout preset 4 (default 3x2)
   Alt+5            Layout preset 5 (default live)
+  Shift+Alt+1-5    Same preset slot, in live (auto-managed) mode
   Alt+z            Zoom/unzoom focused pane
   Alt+s            Toggle agent status overlay
   Alt+q            Quit

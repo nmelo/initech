@@ -79,6 +79,18 @@ func (t *TUI) handleKey(ev *tcell.EventKey) bool {
 
 	// Alt-key combos are TUI shortcuts.
 	if ev.Modifiers()&tcell.ModAlt != 0 {
+		// Shift+Alt+digit (1-5) applies the slot's preset in LIVE mode
+		// (ini-era4). Must be intercepted BEFORE the static Alt+digit switch
+		// below: that switch gates on ModAlt, which is also set for Shift+Alt,
+		// so without this guard a shifted press would misfire the static
+		// preset (violating the fail-safe requirement). A shifted non-digit or
+		// out-of-range rune falls through and never fires a preset.
+		if ev.Modifiers()&tcell.ModShift != 0 && ev.Key() == tcell.KeyRune {
+			if r := ev.Rune(); r >= '1' && r <= '5' {
+				t.applyLayoutPresetLive(int(r - '1'))
+				return false
+			}
+		}
 		switch ev.Key() {
 		case tcell.KeyLeft:
 			t.cycleFocus(-1)
