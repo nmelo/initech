@@ -391,7 +391,9 @@ func (rp *RemotePane) Render(screen tcell.Screen, focused bool, dimmed bool, ind
 
 	_, innerRows := r.InnerSize()
 	emuStartRow := rp.emu.Height() - innerRows
-	renderCells(s, r, rp.emu, dimmed, emuStartRow)
+	// Remote panes don't carry the local lastOutputTime/tint-hold state, so the
+	// running-pane tint is local-only for v1 (ini-zmzg). No tint here.
+	renderCells(s, r, rp.emu, dimmed, emuStartRow, tcell.ColorDefault)
 	renderSelection(s, r, rp.emu, sel, dimmed, emuStartRow)
 	renderCursor(s, r, rp.emu, focused, sel, emuStartRow)
 }

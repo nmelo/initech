@@ -59,10 +59,14 @@ func renderRibbon(s *clampedScreen, r Region, title string, titleStyle tcell.Sty
 }
 
 // renderCellRow draws a single emulator row to the screen at position (x, y).
-func renderCellRow(s *clampedScreen, emu *vt.SafeEmulator, x, y, emuRow, cols int, dimmed bool) {
+// tint is the running-pane background wash applied to default-bg cells only
+// (tcell.ColorDefault = no tint). Tint is applied before dimming so it survives
+// the unfocused-pane dim (dimStyle preserves bg).
+func renderCellRow(s *clampedScreen, emu *vt.SafeEmulator, x, y, emuRow, cols int, dimmed bool, tint tcell.Color) {
 	for c := 0; c < cols; c++ {
 		cell := emu.CellAt(c, emuRow)
 		ch, style := uvCellToTcell(cell)
+		style = tintStyle(style, tint)
 		if dimmed {
 			style = dimStyle(style)
 		}
@@ -71,7 +75,8 @@ func renderCellRow(s *clampedScreen, emu *vt.SafeEmulator, x, y, emuRow, cols in
 }
 
 // renderCells draws terminal content from the emulator, starting at emuStartRow.
-func renderCells(s *clampedScreen, r Region, emu *vt.SafeEmulator, dimmed bool, emuStartRow int) {
+// tint applies the running-pane background wash to default-bg cells.
+func renderCells(s *clampedScreen, r Region, emu *vt.SafeEmulator, dimmed bool, emuStartRow int, tint tcell.Color) {
 	innerCols, innerRows := r.InnerSize()
 	emuRows := emu.Height()
 	for row := 0; row < innerRows; row++ {
@@ -79,7 +84,7 @@ func renderCells(s *clampedScreen, r Region, emu *vt.SafeEmulator, dimmed bool, 
 		if emuRow < 0 || emuRow >= emuRows {
 			continue
 		}
-		renderCellRow(s, emu, r.X, r.Y+row, emuRow, innerCols, dimmed)
+		renderCellRow(s, emu, r.X, r.Y+row, emuRow, innerCols, dimmed, tint)
 	}
 }
 

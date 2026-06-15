@@ -191,6 +191,7 @@ type Pane struct {
 	visible           bool              // Whether this pane is shown in the layout. Hidden panes keep running.
 	activity          ActivityState     // Current state: running when PTY bytes flowed recently, else idle.
 	lastOutputTime    time.Time         // Last time readLoop received bytes from the PTY.
+	tintUntil         time.Time         // Hold deadline for the running-pane background tint (ini-zmzg). Bumped while StateRunning; the tint shows until this passes, giving the bg its own hysteresis window decoupled from the 2s dot/KITT signal.
 	lastIdleNotify         time.Time     // Last time an EventAgentIdleWithBead was emitted.
 	idleWithBeadThreshold  time.Duration  // Silence duration before idle-with-bead fires. 0 = disabled.
 	idleBeadNotified       bool           // True after idle-with-bead fires. Reset when output resumes.

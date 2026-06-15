@@ -147,6 +147,14 @@ const ptyIdleTimeout = 2 * time.Second
 // normal inter-tool-call gaps without masking genuinely stuck agents.
 const ptyIdleTimeoutCodex = 15 * time.Second
 
+// tintHoldWindow is how long the running-pane background tint persists after the
+// last StateRunning observation before fading to neutral (ini-zmzg). It is
+// deliberately much longer than ptyIdleTimeout (the 2s/15s dot + KITT-bar
+// timing, which is unchanged) so brief output pauses don't strobe the whole
+// pane background green<->neutral. Sits at the stable end of the spec's 10-15s
+// range.
+const tintHoldWindow = 12 * time.Second
+
 // defaultIdleWithBeadThreshold is how long a pane must be silent (no PTY
 // output) before an idle-with-bead notification fires. This is deliberately
 // much longer than ptyIdleTimeout (2s/15s for the activity bar) because
@@ -203,6 +211,12 @@ func (p *Pane) updateActivity() {
 	// Reset idle-with-bead flag when output resumes.
 	if p.activity == StateRunning {
 		p.idleBeadNotified = false
+		// Hold the background tint past this running observation. The bump
+		// only happens while StateRunning (agent-type-aware via
+		// effectiveIdleTimeout), so the tint layers a longer, stable window on
+		// top of the responsive 2s dot/KITT signal — it won't strobe during
+		// bursty output (ini-zmzg AC-2).
+		p.tintUntil = now.Add(tintHoldWindow)
 	}
 
 	var idleEvent *AgentEvent

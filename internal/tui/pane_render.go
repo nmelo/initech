@@ -83,6 +83,11 @@ func (p *Pane) Render(screen tcell.Screen, focused bool, dimmed bool, index int,
 	// present even when content rendering is suppressed during resize settling.
 	p.renderActivityBar(s, r)
 
+	// Running-pane background tint (ini-zmzg): ColorDefault when not running /
+	// past the hold window, so idle/dead/suspended panes render exactly as
+	// before. Applied only to default-bg content cells.
+	tint := p.backgroundTint()
+
 	// Content region: below activity bar (r.Y+1), above ribbon (r.Y+H-1).
 	// cr.InnerSize() returns TerminalSize dimensions (H-2 rows), and
 	// cr.Y+row naturally places cells below the activity bar (ini-yah).
@@ -138,6 +143,7 @@ func (p *Pane) Render(screen tcell.Screen, focused bool, dimmed bool, index int,
 					cell = p.emu.CellAt(col, vRow-scrollbackLen)
 				}
 				ch, style := uvCellToTcell(cell)
+				style = tintStyle(style, tint)
 				if dimmed {
 					style = dimStyle(style)
 				}
@@ -184,9 +190,9 @@ func (p *Pane) Render(screen tcell.Screen, focused bool, dimmed bool, index int,
 			}
 
 			if emuRow >= statusZoneStart && emuRow <= pos.Y && rowContainsStatusBar(p.emu, emuRow, termCols) {
-				renderStatusBarRow(s, p.emu, cr.X, cr.Y+row, emuRow, termCols, dimmed)
+				renderStatusBarRow(s, p.emu, cr.X, cr.Y+row, emuRow, termCols, dimmed, tint)
 			} else {
-				renderCellRow(s, p.emu, cr.X, cr.Y+row, emuRow, termCols, dimmed)
+				renderCellRow(s, p.emu, cr.X, cr.Y+row, emuRow, termCols, dimmed, tint)
 			}
 		}
 	}
@@ -261,7 +267,7 @@ type cufCellInfo struct {
 // allocation. Grows to the widest pane and stays there.
 var cufCells []cufCellInfo
 
-func renderStatusBarRow(s *clampedScreen, emu *vt.SafeEmulator, screenX, screenY, emuRow, cols int, dimmed bool) {
+func renderStatusBarRow(s *clampedScreen, emu *vt.SafeEmulator, screenX, screenY, emuRow, cols int, dimmed bool, tint tcell.Color) {
 	if cap(cufCells) < cols {
 		cufCells = make([]cufCellInfo, cols*2)
 	}
@@ -292,7 +298,7 @@ func renderStatusBarRow(s *clampedScreen, emu *vt.SafeEmulator, screenX, screenY
 		}
 	}
 	for col := 0; col < cols; col++ {
-		st := cells[col].style
+		st := tintStyle(cells[col].style, tint)
 		if dimmed {
 			st = dimStyle(st)
 		}
@@ -336,6 +342,45 @@ func rowContainsStatusBar(emu *vt.SafeEmulator, row, cols int) bool {
 		}
 	}
 	return false
+}
+
+// runningTintColor is the subtle background wash applied to a running pane's
+// default-background cells (ini-zmzg). A very dark, desaturated near-black green
+// chosen so default white and dimmed-gray agent text stay legible (panel bg for
+// reference is RGB(20,25,40)).
+var runningTintColor = tcell.NewRGBColor(16, 30, 18)
+
+// tintStyle applies a pane-level background tint to a cell style, but ONLY when
+// the cell has no explicit background (style bg == ColorDefault). Cells whose
+// background was set by agent output (SGR colors, selections, syntax highlight)
+// keep their own bg. A tint of ColorDefault is a no-op, so idle panes render
+// exactly as before.
+func tintStyle(style tcell.Style, tint tcell.Color) tcell.Style {
+	if tint == tcell.ColorDefault {
+		return style
+	}
+	if _, bg, _ := style.Decompose(); bg == tcell.ColorDefault {
+		return style.Background(tint)
+	}
+	return style
+}
+
+// backgroundTint returns the green tint for this pane's default-bg cells, or
+// tcell.ColorDefault for no tint. The tint shows while the pane is alive,
+// not suspended, and within the tint hold window (bumped by updateActivity on
+// each StateRunning observation). Dead, suspended, and long-idle panes are
+// neutral. The hold window decouples the tint from the responsive 2s activity
+// signal so the background doesn't strobe (ini-zmzg).
+func (p *Pane) backgroundTint() tcell.Color {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if !p.alive || p.suspended {
+		return tcell.ColorDefault
+	}
+	if time.Now().Before(p.tintUntil) {
+		return runningTintColor
+	}
+	return tcell.ColorDefault
 }
 
 // uvCellToTcell converts a charmbracelet ultraviolet Cell to a rune + tcell.Style.
