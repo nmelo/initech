@@ -51,6 +51,13 @@ type Project struct {
 	// built-in default with a warning). Absent map = all built-in defaults.
 	LayoutPresets map[string]string `yaml:"layout_presets,omitempty"`
 
+	// RunningPaneTint sets the background tint color for running panes as a hex
+	// string ("#rrggbb"), or "none"/"off" to disable the tint. Raw string only
+	// — the tui package parses it at startup; an invalid value falls back to the
+	// built-in subtler default with a warning (never blocks load). Empty =
+	// default tint.
+	RunningPaneTint string `yaml:"running_pane_tint,omitempty"`
+
 	// Web companion server fields.
 	WebPort    *int   `yaml:"web_port,omitempty"`    // Web companion port. nil/0 = disabled, >0 = enabled.
 	WebhookURL   string `yaml:"webhook_url,omitempty"`   // HTTP endpoint for agent event POSTs. Empty = disabled.

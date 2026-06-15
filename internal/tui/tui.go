@@ -633,6 +633,19 @@ func Run(cfg Config) error {
 		LogWarn("layout-presets", w)
 	}
 
+	// Resolve the running-pane tint color from config (ini-eo2d). Set once here
+	// before the render loop starts; backgroundTint reads it on the main render
+	// goroutine. Invalid values fall back to the default with a warning.
+	var rawTint string
+	if cfg.Project != nil {
+		rawTint = cfg.Project.RunningPaneTint
+	}
+	resolvedTint, tintWarn := resolveRunningTintColor(rawTint)
+	runningTintColor = resolvedTint
+	if tintWarn != "" {
+		LogWarn("running-tint", tintWarn)
+	}
+
 	initW, initH := screen.Size()
 	t := &TUI{
 		screen:            screen,

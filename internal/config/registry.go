@@ -85,6 +85,9 @@ var Registry = []FieldMeta{
 
 	// Layout presets (template: one entry per Alt+1–5 slot "1".."5").
 	{Key: "layout_presets.<slot>", Type: "string", Description: "Alt/Option 1-5 layout binding: a grid \"CxR\" (cols/rows 1-8) or keyword focus/live/main. Invalid values fall back to the built-in default (2x1/3x1/4x1/3x2/live)"},
+
+	// Running-pane background tint.
+	{Key: "running_pane_tint", Type: "string", Default: "#0c120e", Description: "Background tint for running panes as a hex color \"#rrggbb\", or \"none\"/\"off\" to disable. Invalid values fall back to the subtle default"},
 }
 
 // AllFields returns the full registry. Callers should not modify the slice.

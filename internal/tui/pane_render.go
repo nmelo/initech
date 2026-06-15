@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"image/color"
 	"math"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -344,11 +345,56 @@ func rowContainsStatusBar(emu *vt.SafeEmulator, row, cols int) bool {
 	return false
 }
 
-// runningTintColor is the subtle background wash applied to a running pane's
-// default-background cells (ini-zmzg). A very dark, desaturated near-black green
-// chosen so default white and dimmed-gray agent text stay legible (panel bg for
-// reference is RGB(20,25,40)).
-var runningTintColor = tcell.NewRGBColor(16, 30, 18)
+// defaultRunningTintColor is the built-in running-pane tint: a very dark,
+// desaturated near-black green (#0c120e) chosen so default white and dimmed-gray
+// agent text stay legible (panel bg for reference is RGB(20,25,40)). It is
+// deliberately subtle — a faint hint, not a wash — since the color is now
+// configurable via running_pane_tint (ini-eo2d, subtler than the originally
+// shipped #101e12).
+var defaultRunningTintColor = tcell.NewRGBColor(12, 18, 14)
+
+// runningTintColor is the active running-pane tint, resolved from
+// running_pane_tint at TUI construction (or the default when unset). It is
+// tcell.ColorDefault when the tint is disabled ("none"/"off"), which makes
+// tintStyle a no-op so running panes render with the neutral idle background.
+// Written once at startup on the main goroutine, then read-only.
+var runningTintColor = defaultRunningTintColor
+
+// resolveRunningTintColor parses the raw running_pane_tint config value into a
+// tint color. "" -> the subtler default. "none"/"off" (case-insensitive) ->
+// tcell.ColorDefault (tint disabled). A "#rrggbb" hex -> that color. Anything
+// unparseable -> the default plus a non-empty warning (never blocks startup,
+// mirroring the layout_presets resolution).
+func resolveRunningTintColor(raw string) (tcell.Color, string) {
+	s := strings.ToLower(strings.TrimSpace(raw))
+	switch s {
+	case "":
+		return defaultRunningTintColor, ""
+	case "none", "off":
+		return tcell.ColorDefault, ""
+	}
+	if c, ok := parseHexColor(s); ok {
+		return c, ""
+	}
+	return defaultRunningTintColor, fmt.Sprintf("running_pane_tint %q is not a valid hex color (e.g. \"#0c120e\") or none/off; using default", raw)
+}
+
+// parseHexColor parses a "#rrggbb" hex string into a tcell.Color. The leading
+// "#" and exactly six hex digits are required — a bare "0c120e" is rejected so
+// the config surface stays unambiguous.
+func parseHexColor(s string) (tcell.Color, bool) {
+	if len(s) != 7 || s[0] != '#' {
+		return tcell.ColorDefault, false
+	}
+	v, err := strconv.ParseUint(s[1:], 16, 32)
+	if err != nil {
+		return tcell.ColorDefault, false
+	}
+	r := int32(v >> 16 & 0xff)
+	g := int32(v >> 8 & 0xff)
+	b := int32(v & 0xff)
+	return tcell.NewRGBColor(r, g, b), true
+}
 
 // tintStyle applies a pane-level background tint to a cell style, but ONLY when
 // the cell has no explicit background (style bg == ColorDefault). Cells whose
