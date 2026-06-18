@@ -283,6 +283,32 @@ func sendPaneTextLocked(pane *Pane, text string, enter bool) {
 	if pane.ptmx == nil {
 		return
 	}
+
+	// Modal guard (ini-7txh): never paste a body or fire a submit into an open
+	// Claude Code modal (AskUserQuestion / permission prompt). An option picker
+	// swallows the pasted body and reads the submit key as "confirm the
+	// highlighted option" — auto-answering a destructive default the operator
+	// never saw. Defer the message to the queue instead; readLoop re-delivers it
+	// once the modal closes. This guards EVERY send caller (IPC, timers, slack,
+	// mcp) and is reached after sendMu is held, so the check races minimally with
+	// the paste it gates. The resume/modal-drain paths only inject when the modal
+	// is gone, so they pass straight through; if a modal reopens mid-drain the
+	// message is safely re-enqueued rather than lost.
+	if paneHasModal(pane) {
+		dropped := pane.EnqueueMessage(text, enter)
+		preview := text
+		if len(preview) > 60 {
+			preview = preview[:57] + "..."
+		}
+		LogDebug("inject", "deferred: modal open", "pane", pane.Name(), "enter", enter, "queue_dropped", dropped)
+		EmitEvent(pane.eventCh, AgentEvent{
+			Type:   EventMessageSent,
+			Pane:   pane.Name(),
+			Detail: "deferred (modal open): " + preview,
+		})
+		return
+	}
+
 	useCodexBracketedPaste := pane.noBracketedPaste && pane.AgentType() == config.AgentTypeCodex
 	codexQueueSubmit := pane.AgentType() == config.AgentTypeCodex && pane.Activity() == StateRunning
 	mode := "bracketed"

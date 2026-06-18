@@ -62,6 +62,7 @@ type modalSendCapture struct {
 	enterCount int    // count of submit Enter (0x0d) emitted through the emulator.
 	ctrlS      bool   // whether Ctrl+S (0x13) stash was emitted through the emulator.
 	logText    string // captured initech.log content (debug level).
+	queueLen   int    // messages left buffered on the pane after the send (deferred).
 }
 
 // runSendIntoModal stands up a default (bracketed-paste / Claude Code) pane whose
@@ -179,124 +180,90 @@ func runSendIntoModal(t *testing.T, msg string, enter bool) modalSendCapture {
 		enterCount: enterCount,
 		ctrlS:      sawCtrlS,
 		logText:    string(logBytes),
+		queueLen:   p.QueueLen(),
 	}
 	ptyMu.Unlock()
 	emuMu.Unlock()
 	return res
 }
 
-// TestSendIntoAskUserQuestionModal_DoubleWhammyRepro is the reproduction: it
-// pins the CURRENT (buggy) behavior so the double-whammy is demonstrated
-// deterministically and the inject log evidence is captured. It stays GREEN on
-// unpatched code. When the fix lands, this characterization should be inverted
-// (see the FixAnchor test below, which encodes the desired contract).
-func TestSendIntoAskUserQuestionModal_DoubleWhammyRepro(t *testing.T) {
+// TestSendIntoAskUserQuestionModal_DefersInsteadOfPastingOrSubmitting is the
+// inverted repro: it pins the FIXED contract. The ini-2jpo repro proved the
+// unpatched code pasted the body (swallow) and fired one submit Enter
+// (auto-answer of the destructive default). With the modal guard, a send into an
+// open modal must paste NOTHING, submit NOTHING, skip the Ctrl+S stash, and
+// instead DEFER the message to the queue for re-delivery on modal-close.
+func TestSendIntoAskUserQuestionModal_DefersInsteadOfPastingOrSubmitting(t *testing.T) {
 	const msg = "REPRO MESSAGE 123"
 	res := runSendIntoModal(t, msg, true)
 
-	// FAILURE 1 mechanism — swallow: the body is bracketed-pasted blindly into
-	// the modal, which has no text field to accept it.
-	wantBody := "\x1b[200~" + msg + "\x1b[201~"
-	if !strings.Contains(res.ptyBody, wantBody) {
-		t.Fatalf("expected body bracketed-pasted into the modal (swallow mechanism); PTY received %q, want substring %q", res.ptyBody, wantBody)
-	}
-
-	// FAILURE 2 mechanism — auto-answer: a submit Enter is driven into the modal,
-	// confirming the highlighted option. Exactly one (the retry at ipc.go:379 is
-	// skipped for a stashed Claude pane — confirms eng2's single-Enter finding).
-	if res.enterCount != 1 {
-		t.Fatalf("expected exactly 1 submit Enter into the modal (auto-answer; retry skipped due to stash), got %d", res.enterCount)
-	}
-
-	// Ctrl+S stash also fires — meaningless/invalid against an option picker.
-	if !res.ctrlS {
-		t.Fatalf("expected Ctrl+S (0x13) stash to be emitted (invalid against a modal)")
-	}
-
-	// Inject log evidence captured deterministically (invisible at prod INFO level).
-	for _, want := range []string{"[inject] send start", "[inject] body written", "[inject] submit"} {
-		if !strings.Contains(res.logText, want) {
-			t.Errorf("inject log missing %q; captured log:\n%s", want, res.logText)
-		}
-	}
-	// And NO "submit retry" for a stashed Claude pane: the second stray submit is
-	// a codex/raw-only risk, not present here (eng2's point).
-	if strings.Contains(res.logText, "submit retry") {
-		t.Errorf("did not expect 'submit retry' for a stashed Claude pane (single Enter only); captured log:\n%s", res.logText)
-	}
-}
-
-// TestSendIntoAskUserQuestionModal_MustNotAutoSubmit_FixAnchor encodes the
-// DESIRED contract for the follow-up fix bead: a send into an open modal must
-// neither auto-submit nor blindly paste the body. It is RED on unpatched code.
-//
-// It is env-gated rather than t.Skip-without-condition so the failure can be
-// demonstrated on demand without editing the file:
-//
-//	INITECH_RUN_RED_ANCHOR=1 go test ./internal/tui/ -run FixAnchor
-//
-// The fix bead removes this gate (and inverts the characterization test above).
-//
-// NOTE for the fix bead: suppressing the submit is necessary but NOT sufficient.
-// eng2's live enter=false run showed the body is then LOST (swallowed, not
-// buffered). The fix must ALSO defer/queue the body and re-deliver on modal-clear
-// — the codebase already has this primitive: Pane.EnqueueMessage + the
-// resume-drain path (handleIPCSend, ipc.go:212-245) used for suspended panes. A
-// third assertion (body re-delivered after the modal clears) belongs here once
-// that mechanism is wired in.
-func TestSendIntoAskUserQuestionModal_MustNotAutoSubmit_FixAnchor(t *testing.T) {
-	if os.Getenv("INITECH_RUN_RED_ANCHOR") == "" {
-		t.Skip("RED anchor for the modal-aware-send FIX (follow-up to ini-2jpo). " +
-			"Run with INITECH_RUN_RED_ANCHOR=1 to watch it fail on unpatched code. " +
-			"The fix (detect modal via an emulatorBottomText/scanPermissionPrompt-style scan, " +
-			"then suppress or defer the submit) removes this gate and the test goes green.")
-	}
-
-	const msg = "REPRO MESSAGE 123"
-	res := runSendIntoModal(t, msg, true)
-
-	// DESIRED: no submit key may be driven into an open modal (no auto-answer).
-	if res.enterCount != 0 {
-		t.Errorf("DESIRED: 0 submit Enter into an open AskUserQuestion modal; got %d (auto-answer bug)", res.enterCount)
-	}
-	// DESIRED: the body must not be blindly bracketed-pasted into a picker (no swallow).
+	// No body pasted into the picker (kills the swallow).
 	if strings.Contains(res.ptyBody, "\x1b[200~") {
-		t.Errorf("DESIRED: body must not be bracketed-pasted into an open modal; PTY received %q (swallow bug)", res.ptyBody)
+		t.Errorf("body must not be bracketed-pasted into an open modal; PTY received %q", res.ptyBody)
+	}
+	// No submit fired (kills the destructive auto-answer).
+	if res.enterCount != 0 {
+		t.Errorf("no submit Enter may be driven into an open modal; got %d", res.enterCount)
+	}
+	// No Ctrl+S stash either — the whole inject sequence is suppressed.
+	if res.ctrlS {
+		t.Error("Ctrl+S stash must not fire when the send is deferred for a modal")
+	}
+	// The message is buffered, not lost.
+	if res.queueLen != 1 {
+		t.Errorf("deferred message should be queued (queueLen=1), got %d", res.queueLen)
+	}
+	// The deferral is logged; the inject body/submit lines must be absent.
+	if !strings.Contains(res.logText, "deferred: modal open") {
+		t.Errorf("expected 'deferred: modal open' in inject log; got:\n%s", res.logText)
+	}
+	if strings.Contains(res.logText, "[inject] body written") {
+		t.Errorf("body must not be written when deferring; log:\n%s", res.logText)
 	}
 }
 
-// TestSendIntoAskUserQuestionModal_EnterFalse_SuppressesAutoAnswerButStillSwallows
-// covers vary item #4 (enter=false): with enter=false, sendPaneTextLocked returns
-// after the body write (ipc.go:334) and sends NO submit — so the auto-answer half
-// is avoided, but the body is STILL bracketed-pasted into the picker (still
-// swallowed). I.e. `--no-enter` is a partial mitigation, not a fix.
-func TestSendIntoAskUserQuestionModal_EnterFalse_SuppressesAutoAnswerButStillSwallows(t *testing.T) {
+// TestSendIntoAskUserQuestionModal_NoAutoSubmit is the regression that was the
+// env-gated RED fix-anchor in the repro (ini-2jpo). It is now ungated and must
+// stay green: a send into an open AskUserQuestion modal selects NO option (no
+// submit) and pastes NO body. If it ever goes red again, the destructive
+// auto-answer regressed.
+func TestSendIntoAskUserQuestionModal_NoAutoSubmit(t *testing.T) {
+	const msg = "REPRO MESSAGE 123"
+	res := runSendIntoModal(t, msg, true)
+
+	if res.enterCount != 0 {
+		t.Errorf("0 submit Enter into an open AskUserQuestion modal expected; got %d (auto-answer regression)", res.enterCount)
+	}
+	if strings.Contains(res.ptyBody, "\x1b[200~") {
+		t.Errorf("body must not be bracketed-pasted into an open modal; PTY received %q (swallow regression)", res.ptyBody)
+	}
+}
+
+// TestSendIntoAskUserQuestionModal_EnterFalse_DefersWithoutLoss covers the AC
+// edge case: an enter=false / --no-enter send must ALSO detect the modal and
+// defer the body, not just drop the submit. The repro proved that suppress-Enter
+// alone still pasted-and-lost the body; the guard defers the whole message.
+func TestSendIntoAskUserQuestionModal_EnterFalse_DefersWithoutLoss(t *testing.T) {
 	const msg = "REPRO MESSAGE 123"
 	res := runSendIntoModal(t, msg, false)
 
-	// No submit key fired: the modal is NOT auto-answered when enter=false.
 	if res.enterCount != 0 {
-		t.Errorf("enter=false should drive 0 submit Enter into the modal, got %d", res.enterCount)
+		t.Errorf("enter=false should drive 0 submit into the modal, got %d", res.enterCount)
 	}
-	// But the body was still pasted into the modal (the swallow half persists).
-	wantBody := "\x1b[200~" + msg + "\x1b[201~"
-	if !strings.Contains(res.ptyBody, wantBody) {
-		t.Errorf("enter=false still bracketed-pastes the body into the modal (swallow persists); PTY received %q, want substring %q", res.ptyBody, wantBody)
+	if strings.Contains(res.ptyBody, "\x1b[200~") {
+		t.Errorf("enter=false must not paste the body into the modal (no silent loss); PTY received %q", res.ptyBody)
+	}
+	if res.queueLen != 1 {
+		t.Errorf("enter=false send should be deferred (queueLen=1), got %d", res.queueLen)
 	}
 }
 
-// TestSendIntoCodexModal_RetryFiresSecondStraySubmit covers vary item #4 (codex /
-// !stashed) and eng2's hand-off. The submit retry at ipc.go:347/379 is guarded by
-// `!stashed`. A standard Claude pane stashes (stashed=true) so the retry is
-// skipped — only ONE Enter. A codex pane does NOT stash (noBracketedPaste skips
-// the Ctrl+S), so `!stashed` is true and the retry fires a SECOND blind submit
-// whenever promptHasContent is true. An open modal's rendered option text ("❯ 1.
-// ...") trips promptHasContent, so the codex path drives TWO blind submits into
-// the modal. (Idle codex would be two Enters; a running codex queues, so it is two
-// Tabs — captured here. Either way it is a second stray submit the operator never
-// authorized.) Contrast TestPaneSendText_CodexQueuesWithTabWhileRunning, whose
-// clean prompt makes promptHasContent false → exactly one Tab.
-func TestSendIntoCodexModal_RetryFiresSecondStraySubmit(t *testing.T) {
+// TestSendIntoCodexModal_DefersInsteadOfStraySubmits covers the AC codex/raw
+// edge case. The repro showed the !stashed codex path drove TWO blind submits
+// into a modal (initial + a promptHasContent-tripped retry). With the modal
+// guard, a send into a codex pane showing the modal must fire ZERO submits and
+// defer the message — the second-stray-submit risk is gone for codex/raw too.
+func TestSendIntoCodexModal_DefersInsteadOfStraySubmits(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("test uses Unix pipes / raw PTY mode")
 	}
@@ -371,12 +338,17 @@ func TestSendIntoCodexModal_RetryFiresSecondStraySubmit(t *testing.T) {
 	ptyMu.Unlock()
 	logBytes, _ := os.ReadFile(logDir + "/.initech/" + logFileName)
 
-	// Two submits driven into the modal: the initial submit plus the retry's
-	// second stray submit (promptHasContent tripped by the modal's option text).
-	if n := strings.Count(got, "\t"); n != 2 {
-		t.Fatalf("expected 2 blind submits into codex modal (initial + retry), got %d Tab(s); PTY=%q", n, got)
+	// No submit (Tab) and no body reach the modal: the send is deferred.
+	if n := strings.Count(got, "\t"); n != 0 {
+		t.Fatalf("expected 0 submits into codex modal (deferred), got %d Tab(s); PTY=%q", n, got)
 	}
-	if !strings.Contains(string(logBytes), "submit retry") {
-		t.Errorf("expected 'submit retry' in inject log for the !stashed codex path; log:\n%s", string(logBytes))
+	if strings.Contains(got, "\x1b[200~") {
+		t.Errorf("body must not be pasted into the codex modal; PTY=%q", got)
+	}
+	if p.QueueLen() != 1 {
+		t.Errorf("codex modal send should be deferred (queueLen=1), got %d", p.QueueLen())
+	}
+	if !strings.Contains(string(logBytes), "deferred: modal open") {
+		t.Errorf("expected 'deferred: modal open' in inject log; log:\n%s", string(logBytes))
 	}
 }

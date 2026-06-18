@@ -330,8 +330,11 @@ type QueuedMessage struct {
 // capacity (maxMessageQueue), the oldest message is dropped. Returns true if
 // a message was dropped to make room.
 //
-// Caller must be on the main goroutine (via runOnMain).
+// Thread-safe (guards p.mu): called both from the main goroutine (suspended
+// resume path) and from the send goroutine (modal-deferred sends, ini-7txh).
 func (p *Pane) EnqueueMessage(text string, enter bool) bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	dropped := false
 	if len(p.messageQueue) >= maxMessageQueue {
 		p.messageQueue = p.messageQueue[1:]
@@ -346,10 +349,13 @@ func (p *Pane) EnqueueMessage(text string, enter bool) bool {
 }
 
 // DrainQueue returns all queued messages in FIFO order and clears the queue.
-// Called on resume to deliver buffered messages.
+// Called on resume and on modal-close to deliver buffered messages.
 //
-// Caller must be on the main goroutine (via runOnMain).
+// Thread-safe (guards p.mu): called both from the main goroutine (resume) and
+// from the pane read/drain goroutine (modal-close re-delivery, ini-7txh).
 func (p *Pane) DrainQueue() []QueuedMessage {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	if len(p.messageQueue) == 0 {
 		return nil
 	}
