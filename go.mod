@@ -13,7 +13,7 @@ require (
 	github.com/gdamore/tcell/v2 v2.13.8
 	github.com/hashicorp/yamux v0.1.2
 	github.com/modelcontextprotocol/go-sdk v1.4.1
-	github.com/slack-go/slack v0.20.0
+	github.com/slack-go/slack v0.23.1
 	github.com/spf13/cobra v1.10.2
 	golang.org/x/sys v0.41.0
 	golang.org/x/term v0.38.0
