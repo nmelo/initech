@@ -371,6 +371,58 @@ func (p *Pane) QueueLen() int {
 	return len(p.messageQueue)
 }
 
+// maybeDrainModalQueue re-delivers messages that were deferred while a Claude
+// modal was open (ini-7txh), once that modal has closed. Called from readLoop
+// after every PTY read; it is cheap when the queue is empty. The actual
+// delivery runs in a guarded goroutine so the read loop is never blocked, and a
+// single in-flight drain is enforced via p.modalDraining.
+func (p *Pane) maybeDrainModalQueue() {
+	if p.QueueLen() == 0 {
+		return
+	}
+	if paneHasModal(p) {
+		return // still blocked; wait for the modal to close.
+	}
+	p.mu.Lock()
+	if p.modalDraining {
+		p.mu.Unlock()
+		return
+	}
+	p.modalDraining = true
+	p.mu.Unlock()
+
+	run := func() {
+		defer func() {
+			p.mu.Lock()
+			p.modalDraining = false
+			p.mu.Unlock()
+		}()
+		p.drainModalQueue()
+	}
+	if p.safeGo != nil {
+		p.safeGo(run)
+	} else {
+		go run()
+	}
+}
+
+// drainModalQueue delivers all buffered messages in FIFO order via SendText.
+// SendText is modal-aware: if a modal has reopened mid-drain, the remaining
+// messages are safely re-enqueued rather than injected into the picker.
+// Messages are spaced by queueDrainInterval to give the agent time to process.
+func (p *Pane) drainModalQueue() {
+	if paneHasModal(p) {
+		return // a modal reopened before the drain ran; leave the queue intact.
+	}
+	msgs := p.DrainQueue()
+	for i, m := range msgs {
+		p.SendText(m.Text, m.Enter)
+		if i < len(msgs)-1 {
+			time.Sleep(queueDrainInterval)
+		}
+	}
+}
+
 // ── Resume-on-message ───────────────────────────────────────────────
 
 // resumeTimeout is how long to wait for a resumed agent to initialize

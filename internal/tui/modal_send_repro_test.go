@@ -352,3 +352,129 @@ func TestSendIntoCodexModal_DefersInsteadOfStraySubmits(t *testing.T) {
 		t.Errorf("expected 'deferred: modal open' in inject log; log:\n%s", string(logBytes))
 	}
 }
+
+// TestDrainModalQueue_RedeliversAfterModalCloses verifies the re-delivery half
+// of the fix (the AC's primary guarantee): a message deferred while a modal was
+// open is delivered once the modal closes — body + submit reach the now-normal
+// prompt, and the queue empties. No silent loss.
+func TestDrainModalQueue_RedeliversAfterModalCloses(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("test uses Unix pipes / raw PTY mode")
+	}
+	ptmx, tty, err := pty.Open()
+	if err != nil {
+		t.Fatalf("pty.Open: %v", err)
+	}
+	defer ptmx.Close()
+	defer tty.Close()
+	oldState, err := term.MakeRaw(int(tty.Fd()))
+	if err != nil {
+		t.Fatalf("MakeRaw: %v", err)
+	}
+	defer term.Restore(int(tty.Fd()), oldState)
+
+	emu := vt.NewSafeEmulator(80, 24)
+	renderAskUserQuestionModal(emu)
+
+	var emuMu sync.Mutex
+	var enterCount int
+	go func() {
+		buf := make([]byte, 256)
+		for {
+			n, err := emu.Read(buf)
+			if n > 0 {
+				emuMu.Lock()
+				for _, b := range buf[:n] {
+					if b == '\r' {
+						enterCount++
+					}
+				}
+				emuMu.Unlock()
+			}
+			if err != nil {
+				return
+			}
+		}
+	}()
+	var ptyMu sync.Mutex
+	var ptyBytes []byte
+	go func() {
+		buf := make([]byte, 512)
+		for {
+			tty.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
+			n, err := tty.Read(buf)
+			if n > 0 {
+				ptyMu.Lock()
+				ptyBytes = append(ptyBytes, buf[:n]...)
+				ptyMu.Unlock()
+			}
+			if err != nil && !os.IsTimeout(err) {
+				return
+			}
+		}
+	}()
+
+	p := &Pane{
+		name:           "growth",
+		emu:            emu,
+		alive:          true,
+		ptmx:           &filePty{ptmx},
+		lastOutputTime: time.Now().Add(-(ptyIdleTimeout + time.Second)),
+	}
+
+	// Send while the modal is open: must be deferred, nothing on the PTY.
+	const msg = "DEFERRED MESSAGE 123"
+	p.SendText(msg, true)
+	if p.QueueLen() != 1 {
+		t.Fatalf("message should be deferred while modal open (queueLen=1), got %d", p.QueueLen())
+	}
+	ptyMu.Lock()
+	pre := string(ptyBytes)
+	ptyMu.Unlock()
+	if strings.Contains(pre, "\x1b[200~") {
+		t.Fatalf("nothing should reach the PTY while the modal is open; got %q", pre)
+	}
+
+	// Close the modal: clear the screen and show a normal prompt.
+	_, _ = emu.Write([]byte("\x1b[2J\x1b[24;1H❯ "))
+	if paneHasModal(p) {
+		t.Fatal("emulator should no longer look like a modal after clearing")
+	}
+
+	// Drain: the deferred message is now re-delivered to the normal prompt.
+	p.drainModalQueue()
+	time.Sleep(bracketedPasteSubmitDelay + 300*time.Millisecond)
+
+	ptyMu.Lock()
+	got := string(ptyBytes)
+	ptyMu.Unlock()
+	if !strings.Contains(got, "\x1b[200~"+msg+"\x1b[201~") {
+		t.Errorf("deferred body should be delivered after modal close; PTY got %q", got)
+	}
+	emuMu.Lock()
+	gotEnter := enterCount
+	emuMu.Unlock()
+	if gotEnter != 1 {
+		t.Errorf("deferred message should be submitted once after modal close, got %d Enter", gotEnter)
+	}
+	if p.QueueLen() != 0 {
+		t.Errorf("queue should be empty after drain, got %d", p.QueueLen())
+	}
+}
+
+// TestMaybeDrainModalQueue_RetainsWhileModalOpen verifies the drain trigger does
+// nothing while the modal is still open — the message stays buffered, not lost
+// and not delivered into the modal.
+func TestMaybeDrainModalQueue_RetainsWhileModalOpen(t *testing.T) {
+	emu := vt.NewSafeEmulator(80, 24)
+	renderAskUserQuestionModal(emu)
+	p := &Pane{name: "growth", emu: emu, alive: true}
+	p.EnqueueMessage("buffered", true)
+
+	p.maybeDrainModalQueue()
+	time.Sleep(50 * time.Millisecond)
+
+	if p.QueueLen() != 1 {
+		t.Errorf("queue should be retained while modal open, got %d", p.QueueLen())
+	}
+}

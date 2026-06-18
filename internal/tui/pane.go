@@ -214,7 +214,8 @@ type Pane struct {
 	scrollAnchorLen   int               // Scrollback length when user last scrolled. Used to compensate for new output.
 	memoryRSS         int64             // RSS in kilobytes, updated by memory monitor goroutine.
 	suspended         bool              // True when auto-suspend policy has stopped this pane.
-	messageQueue      []QueuedMessage   // Messages waiting for resume. Capped at maxMessageQueue.
+	messageQueue      []QueuedMessage   // Messages waiting for resume or modal-close. Capped at maxMessageQueue.
+	modalDraining     bool              // True while a modal-close queue drain is in flight (guarded by p.mu).
 	protected         bool              // Protected agents are never auto-suspended.
 	resumeGrace       time.Time         // Until this time, post-resume grace period is active.
 	resumeMu          sync.Mutex        // Serializes concurrent resume attempts for this pane.
@@ -398,6 +399,11 @@ func (p *Pane) readLoop() {
 				p.sendMu.Unlock()
 				p.verifyAutoApprove(approvalBytes)
 			}
+
+			// Re-deliver any sends that were deferred while a modal was open,
+			// now that the latest output is on screen and the modal may have
+			// closed (ini-7txh). Cheap no-op when the queue is empty.
+			p.maybeDrainModalQueue()
 
 			// Tee to network sink if connected. Separate from emu.Write so
 			// network backpressure cannot stall local rendering.
