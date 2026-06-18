@@ -64,9 +64,12 @@ func runSend(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("%s", resp.Error)
 	}
 
-	if host != "" {
+	switch {
+	case host != "":
 		fmt.Fprintf(cmd.ErrOrStderr(), "delivered to %s:%s\n", host, target)
-	} else {
+	case strings.Contains(resp.Data, "deferred"):
+		fmt.Fprintf(cmd.ErrOrStderr(), "deferred to %s — target has a modal open; will deliver when it closes\n", target)
+	default:
 		fmt.Fprintf(cmd.ErrOrStderr(), "delivered to %s\n", target)
 	}
 	return nil

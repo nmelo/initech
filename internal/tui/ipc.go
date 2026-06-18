@@ -244,8 +244,22 @@ func (t *TUI) handleIPCSend(conn net.Conn, req IPCRequest) {
 		return
 	}
 
+	// Detect a Claude modal on the local target before delivery so the sender is
+	// told the send was deferred rather than receiving a misleading "delivered"
+	// (ini-7txh). Best-effort for the response only — sendPaneTextLocked is
+	// authoritative for the actual defer/queue and emits its own operator event.
+	modalDeferred := false
+	if lp, ok := pv.(*Pane); ok {
+		t.runOnMain(func() { modalDeferred = paneHasModal(lp) })
+	}
+
 	// Normal path: deliver via PaneView.SendText (works for local and remote).
 	pv.SendText(req.Text, req.Enter)
+
+	if modalDeferred {
+		writeIPCResponse(conn, IPCResponse{OK: true, Data: "deferred (modal open)"})
+		return
+	}
 
 	// Log the send event (no toast, too frequent).
 	preview := req.Text

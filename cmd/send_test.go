@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -64,6 +65,32 @@ func TestSendCommand_LocalDeliveryConfirmation(t *testing.T) {
 	got := stderr.String()
 	if got != "delivered to eng2\n" {
 		t.Errorf("stderr = %q, want %q", got, "delivered to eng2\n")
+	}
+}
+
+// TestSendCommand_ModalDeferredFeedback verifies the sender is told when a send
+// was deferred because the target had a modal open (ini-7txh), instead of a
+// misleading "delivered" message.
+func TestSendCommand_ModalDeferredFeedback(t *testing.T) {
+	skipWindows(t)
+	sockPath := startFakeIPC(t, tui.IPCResponse{OK: true, Data: "deferred (modal open)"})
+	t.Setenv("INITECH_SOCKET", sockPath)
+
+	var stdout, stderr bytes.Buffer
+	rootCmd.SetOut(&stdout)
+	rootCmd.SetErr(&stderr)
+	rootCmd.SetArgs([]string{"send", "growth", "coordinate please"})
+	defer rootCmd.SetArgs(nil)
+
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	got := stderr.String()
+	if !strings.Contains(got, "deferred") || !strings.Contains(got, "growth") {
+		t.Errorf("stderr = %q, want a deferred-modal message mentioning the target", got)
+	}
+	if strings.Contains(got, "delivered to growth\n") {
+		t.Errorf("stderr = %q, must not claim plain delivery when deferred", got)
 	}
 }
 
