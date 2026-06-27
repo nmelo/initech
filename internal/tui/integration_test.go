@@ -451,8 +451,10 @@ func TestInteg_ResizeViaControl(t *testing.T) {
 	if w := p.Emulator().Width(); w != 120 {
 		t.Errorf("emulator width = %d, want 120", w)
 	}
-	if h := p.Emulator().Height(); h != 40 {
-		t.Errorf("emulator height = %d, want 40", h)
+	// Height is decoupled from the visible pane height and grown to
+	// effectiveEmuRows(visible) so tall live regions are scrollable (ini-44hp).
+	if h, want := p.Emulator().Height(), effectiveEmuRows(40); h != want {
+		t.Errorf("emulator height = %d, want %d (effectiveEmuRows(40), ini-44hp)", h, want)
 	}
 }
 

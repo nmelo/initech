@@ -541,12 +541,47 @@ const resizeSettleDuration = 150 * time.Millisecond
 func (p *Pane) Resize(rows, cols int) {
 	p.renderMu.Lock()
 	defer p.renderMu.Unlock()
+	// Decouple the emulator/PTY height from the visible pane height: give the
+	// child a TALLER virtual screen so a live region (an AskUserQuestion modal,
+	// an in-progress response) that exceeds the visible window is rendered into
+	// the emulator in full rather than clipped to the small pane. The render
+	// path windows the bottom `rows` lines (pane_render live mode) and scrolling
+	// reveals the clipped top. Stable per resize, not toggled on content
+	// (ini-44hp).
+	emuRows := effectiveEmuRows(rows)
 	if p.ptmx != nil {
-		p.ptmx.Resize(cols, rows)
+		p.ptmx.Resize(cols, emuRows)
 	}
-	p.emu.Resize(cols, rows)
+	p.emu.Resize(cols, emuRows)
 	p.resizeSettleFrames = resizeSettleCount
 	p.resizeSettleDeadline = time.Now().Add(resizeSettleDuration)
+}
+
+// emuRowsGrowthFactor multiplies a pane's visible height to get its emulator
+// height. 3x covers the confirmed worst case (a tall AskUserQuestion modal of
+// ~25-30 rows in a 10-row pane) with headroom; see ini-44hp.
+const emuRowsGrowthFactor = 3
+
+// emuRowsCap bounds per-pane emulator memory regardless of visible height.
+const emuRowsCap = 300
+
+// effectiveEmuRows returns the emulator/PTY height for a pane whose VISIBLE
+// height is visibleRows. The emulator is grown to emuRowsGrowthFactor x the
+// visible height (capped at emuRowsCap, and never smaller than the visible
+// height) so the child renders its full live region into a scrollable buffer
+// instead of clipping it to the small pane (ini-44hp).
+func effectiveEmuRows(visibleRows int) int {
+	if visibleRows < 1 {
+		visibleRows = 1
+	}
+	emuRows := emuRowsGrowthFactor * visibleRows
+	if emuRows > emuRowsCap {
+		emuRows = emuRowsCap
+	}
+	if emuRows < visibleRows {
+		emuRows = visibleRows
+	}
+	return emuRows
 }
 
 // ForwardMouse sends a mouse event to the emulator with pane-local content

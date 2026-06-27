@@ -320,8 +320,11 @@ func TestPaneResize(t *testing.T) {
 	if w := p.emu.Width(); w != 100 {
 		t.Errorf("emu width after resize = %d, want 100", w)
 	}
-	if h := p.emu.Height(); h != 40 {
-		t.Errorf("emu height after resize = %d, want 40", h)
+	// Emulator height is decoupled from the visible pane height: it grows to
+	// effectiveEmuRows(visible) so a tall live region is captured and
+	// scrollable (ini-44hp). Width (cols) tracks the request unchanged.
+	if h, want := p.emu.Height(), effectiveEmuRows(40); h != want {
+		t.Errorf("emu height after resize = %d, want %d (effectiveEmuRows(40))", h, want)
 	}
 }
 
