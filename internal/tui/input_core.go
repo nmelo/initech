@@ -79,14 +79,14 @@ func (t *TUI) handleKey(ev *tcell.EventKey) bool {
 
 	// Alt-key combos are TUI shortcuts.
 	if ev.Modifiers()&tcell.ModAlt != 0 {
-		// Shift+Alt+digit (1-5) applies the slot's preset in LIVE mode
+		// Shift+Alt+digit (1-7) applies the slot's preset in LIVE mode
 		// (ini-era4). Must be intercepted BEFORE the static Alt+digit switch
 		// below: that switch gates on ModAlt, which is also set for Shift+Alt,
 		// so without this guard a shifted press would misfire the static
 		// preset (violating the fail-safe requirement). A shifted non-digit or
 		// out-of-range rune falls through and never fires a preset.
 		if ev.Modifiers()&tcell.ModShift != 0 && ev.Key() == tcell.KeyRune {
-			if r := ev.Rune(); r >= '1' && r <= '5' {
+			if r := ev.Rune(); r >= '1' && r <= '7' {
 				t.applyLayoutPresetLive(int(r - '1'))
 				return false
 			}
@@ -106,10 +106,11 @@ func (t *TUI) handleKey(ev *tcell.EventKey) bool {
 			return false
 		case tcell.KeyRune:
 			switch ev.Rune() {
-			case '1', '2', '3', '4', '5':
+			case '1', '2', '3', '4', '5', '6', '7':
 				// Layout shortcut slots are config-driven (ini-lkww): each
 				// maps to a preset resolved from initech.yaml at startup,
-				// defaulting to 2x1/3x1/4x1/3x2/live.
+				// defaulting (ini-dxjk) to focus/2x1/3x1/4x1/3x2/4x2/live —
+				// panel-count-consistent (Option+N draws N panels for N=1..4).
 				t.applyLayoutPreset(int(ev.Rune() - '1'))
 				return false
 			case 's':

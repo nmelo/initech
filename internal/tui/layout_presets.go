@@ -1,6 +1,6 @@
-// layout_presets.go makes the Alt/Option 1–5 layout shortcuts config-driven.
+// layout_presets.go makes the Alt/Option 1–7 layout shortcuts config-driven.
 //
-// initech.yaml carries raw `layout_presets` strings (slot "1".."5" ->
+// initech.yaml carries raw `layout_presets` strings (slot "1".."7" ->
 // "CxR"/focus/live/main). ResolvePresets parses and validates them once at
 // startup, filling every missing or invalid slot with its built-in default so
 // a typo never blocks launch. applyLayoutPreset then maps a parsed preset onto
@@ -25,8 +25,8 @@ const (
 	presetLive                    // LayoutLive: conviction-scored auto grid (toggle).
 )
 
-// presetSlots is the number of remappable layout shortcut slots (Alt+1..Alt+5).
-const presetSlots = 5
+// presetSlots is the number of remappable layout shortcut slots (Alt+1..Alt+7).
+const presetSlots = 7
 
 // maxPresetDim caps grid columns and rows for a preset. Larger shapes are
 // rejected as typos (the spec's sane ceiling; revisit if real layouts exceed it).
@@ -42,16 +42,20 @@ type LayoutPreset struct {
 	Spec string
 }
 
-// defaultLayoutPresets returns the built-in Alt+1–5 bindings used when a slot
-// is absent or invalid: 2x1 / 3x1 / 4x1 / 3x2 / live. These are the new shipped
-// defaults (ini-lkww), softened by full remappability via initech.yaml.
+// defaultLayoutPresets returns the built-in Alt+1–7 bindings used when a slot is
+// absent or invalid. Panel-count-consistent (ini-dxjk): Option+N draws N panels
+// for N=1..4, denser grids on 5-6, and live auto-grid on 7 —
+// focus / 2x1 / 3x1 / 4x1 / 3x2 / 4x2 / live. Softened by full remappability via
+// initech.yaml (a remapped slot wins over its default).
 func defaultLayoutPresets() [presetSlots]LayoutPreset {
 	return [presetSlots]LayoutPreset{
-		{Kind: presetGrid, Cols: 2, Rows: 1, Spec: "2x1"},
-		{Kind: presetGrid, Cols: 3, Rows: 1, Spec: "3x1"},
-		{Kind: presetGrid, Cols: 4, Rows: 1, Spec: "4x1"},
-		{Kind: presetGrid, Cols: 3, Rows: 2, Spec: "3x2"},
-		{Kind: presetLive, Spec: "live"},
+		{Kind: presetFocus, Spec: "focus"},               // Option+1: 1 pane
+		{Kind: presetGrid, Cols: 2, Rows: 1, Spec: "2x1"}, // Option+2: 2
+		{Kind: presetGrid, Cols: 3, Rows: 1, Spec: "3x1"}, // Option+3: 3
+		{Kind: presetGrid, Cols: 4, Rows: 1, Spec: "4x1"}, // Option+4: 4
+		{Kind: presetGrid, Cols: 3, Rows: 2, Spec: "3x2"}, // Option+5: 6
+		{Kind: presetGrid, Cols: 4, Rows: 2, Spec: "4x2"}, // Option+6: 8
+		{Kind: presetLive, Spec: "live"},                  // Option+7: auto-grid
 	}
 }
 
@@ -92,7 +96,7 @@ func ParseLayoutPreset(spec string) (LayoutPreset, bool) {
 	return LayoutPreset{Kind: presetGrid, Cols: cols, Rows: rows, Spec: fmt.Sprintf("%dx%d", cols, rows)}, true
 }
 
-// ResolvePresets builds the five Alt+1–5 slots from raw initech.yaml config,
+// ResolvePresets builds the seven Alt+1–7 slots from raw initech.yaml config,
 // filling each missing or invalid slot with its built-in default. It never
 // fails: an unparseable value or out-of-range key falls back to the default and
 // is reported in the returned warnings (which the caller logs). raw may be nil.
@@ -101,7 +105,7 @@ func ResolvePresets(raw map[string]string) (presets [presetSlots]LayoutPreset, w
 	for key, val := range raw {
 		slot, err := strconv.Atoi(key)
 		if err != nil || slot < 1 || slot > presetSlots {
-			warnings = append(warnings, fmt.Sprintf("layout_presets[%q] ignored: slot must be \"1\"..\"5\"", key))
+			warnings = append(warnings, fmt.Sprintf("layout_presets[%q] ignored: slot must be \"1\"..\"7\"", key))
 			continue
 		}
 		p, ok := ParseLayoutPreset(val)
@@ -116,7 +120,7 @@ func ResolvePresets(raw map[string]string) (presets [presetSlots]LayoutPreset, w
 }
 
 // applyLayoutPreset applies the preset bound to the given zero-based slot
-// (0 = Alt+1 ... 4 = Alt+5). Grid presets pin GridExplicit so recalcGrid won't
+// (0 = Alt+1 ... 6 = Alt+7). Grid presets pin GridExplicit so recalcGrid won't
 // auto-resize over the operator's choice; the live slot preserves the
 // toggle-off-to-grid behavior of the old hardcoded handler. Out-of-range slots
 // are a no-op. Mirrors the apply + persist tail every layout shortcut runs.

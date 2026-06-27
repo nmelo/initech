@@ -513,47 +513,46 @@ func TestHandleKeyAltQE2(t *testing.T) {
 	}
 }
 
-// TestHandleKeyAltLayoutShortcuts verifies the Alt+1–5 keystrokes dispatch
-// through the config-driven preset path (ini-lkww). With the built-in defaults
-// resolved, the new shipped bindings are 2x1 / 3x1 / 4x1 / 3x2 / live (the old
-// hardcoded focus/2x2/3x3/2col/live set is gone).
+// TestHandleKeyAltLayoutShortcuts verifies the Alt+1–7 keystrokes dispatch
+// through the config-driven preset path (ini-lkww) to the panel-count-consistent
+// defaults (ini-dxjk): focus / 2x1 / 3x1 / 4x1 / 3x2 / 4x2 / live. Pressing N
+// draws N panels for N=1..4 (off-by-one gone).
 func TestHandleKeyAltLayoutShortcuts(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("a", "b", "c", "d")
 	tui.layoutPresets = defaultLayoutPresets()
 
-	// Alt-1 = 2x1 grid.
+	// Alt-1 = focus (single pane).
 	ev := tcell.NewEventKey(tcell.KeyRune, '1', tcell.ModAlt)
 	tui.handleKey(ev)
-	if tui.layoutState.Mode != LayoutGrid || tui.layoutState.GridCols != 2 || tui.layoutState.GridRows != 1 {
-		t.Errorf("Alt-1: mode=%v %dx%d, want grid 2x1", tui.layoutState.Mode, tui.layoutState.GridCols, tui.layoutState.GridRows)
+	if tui.layoutState.Mode != LayoutFocus {
+		t.Errorf("Alt-1: mode=%v, want LayoutFocus (single pane)", tui.layoutState.Mode)
 	}
 
-	// Alt-2 = 3x1 grid.
-	ev = tcell.NewEventKey(tcell.KeyRune, '2', tcell.ModAlt)
-	tui.handleKey(ev)
-	if tui.layoutState.GridCols != 3 || tui.layoutState.GridRows != 1 {
-		t.Errorf("Alt-2: %dx%d, want 3x1", tui.layoutState.GridCols, tui.layoutState.GridRows)
+	// Alt-2..Alt-6 = grids of increasing density.
+	grids := []struct {
+		rune       rune
+		cols, rows int
+	}{
+		{'2', 2, 1}, // 2 panes
+		{'3', 3, 1}, // 3 panes
+		{'4', 4, 1}, // 4 panes
+		{'5', 3, 2}, // 6 panes
+		{'6', 4, 2}, // 8 panes
+	}
+	for _, g := range grids {
+		ev = tcell.NewEventKey(tcell.KeyRune, g.rune, tcell.ModAlt)
+		tui.handleKey(ev)
+		ls := tui.layoutState
+		if ls.Mode != LayoutGrid || ls.GridCols != g.cols || ls.GridRows != g.rows {
+			t.Errorf("Alt-%c: mode=%v %dx%d, want grid %dx%d", g.rune, ls.Mode, ls.GridCols, ls.GridRows, g.cols, g.rows)
+		}
 	}
 
-	// Alt-3 = 4x1 grid.
-	ev = tcell.NewEventKey(tcell.KeyRune, '3', tcell.ModAlt)
-	tui.handleKey(ev)
-	if tui.layoutState.GridCols != 4 || tui.layoutState.GridRows != 1 {
-		t.Errorf("Alt-3: %dx%d, want 4x1", tui.layoutState.GridCols, tui.layoutState.GridRows)
-	}
-
-	// Alt-4 = 3x2 grid.
-	ev = tcell.NewEventKey(tcell.KeyRune, '4', tcell.ModAlt)
-	tui.handleKey(ev)
-	if tui.layoutState.GridCols != 3 || tui.layoutState.GridRows != 2 {
-		t.Errorf("Alt-4: %dx%d, want 3x2", tui.layoutState.GridCols, tui.layoutState.GridRows)
-	}
-
-	// Alt-5 = live mode.
-	ev = tcell.NewEventKey(tcell.KeyRune, '5', tcell.ModAlt)
+	// Alt-7 = live mode.
+	ev = tcell.NewEventKey(tcell.KeyRune, '7', tcell.ModAlt)
 	tui.handleKey(ev)
 	if tui.layoutState.Mode != LayoutLive {
-		t.Errorf("Alt-5: mode=%v, want LayoutLive", tui.layoutState.Mode)
+		t.Errorf("Alt-7: mode=%v, want LayoutLive", tui.layoutState.Mode)
 	}
 }
 

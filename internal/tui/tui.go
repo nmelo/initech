@@ -623,7 +623,7 @@ func Run(cfg Config) error {
 		layoutState = DefaultLayoutState(agentNames)
 	}
 
-	// Resolve Alt+1–5 layout presets from config (default-filled, never fails).
+	// Resolve Alt+1–7 layout presets from config (default-filled, never fails).
 	var rawPresets map[string]string
 	if cfg.Project != nil {
 		rawPresets = cfg.Project.LayoutPresets

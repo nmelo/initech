@@ -68,14 +68,17 @@ func TestResolvePresets_NilUsesDefaults(t *testing.T) {
 	}
 }
 
-// TestResolvePresets_Defaults pins the new shipped defaults: 2x1/3x1/4x1/3x2/live.
+// TestResolvePresets_Defaults pins the panel-count-consistent shipped defaults
+// (ini-dxjk): focus / 2x1 / 3x1 / 4x1 / 3x2 / 4x2 / live.
 func TestResolvePresets_Defaults(t *testing.T) {
 	d := defaultLayoutPresets()
-	want := [5]LayoutPreset{
+	want := [presetSlots]LayoutPreset{
+		{Kind: presetFocus, Spec: "focus"},
 		{Kind: presetGrid, Cols: 2, Rows: 1, Spec: "2x1"},
 		{Kind: presetGrid, Cols: 3, Rows: 1, Spec: "3x1"},
 		{Kind: presetGrid, Cols: 4, Rows: 1, Spec: "4x1"},
 		{Kind: presetGrid, Cols: 3, Rows: 2, Spec: "3x2"},
+		{Kind: presetGrid, Cols: 4, Rows: 2, Spec: "4x2"},
 		{Kind: presetLive, Spec: "live"},
 	}
 	if d != want {
@@ -113,7 +116,8 @@ func TestResolvePresets_InvalidValueFallsBackWithWarning(t *testing.T) {
 }
 
 func TestResolvePresets_InvalidKeyIgnoredWithWarning(t *testing.T) {
-	presets, warnings := ResolvePresets(map[string]string{"6": "2x2", "abc": "focus"})
+	// "8" is out of range (valid slots are "1".."7"); "abc" is non-numeric.
+	presets, warnings := ResolvePresets(map[string]string{"8": "2x2", "abc": "focus"})
 	if presets != defaultLayoutPresets() {
 		t.Errorf("invalid keys changed presets: %+v", presets)
 	}
@@ -124,11 +128,11 @@ func TestResolvePresets_InvalidKeyIgnoredWithWarning(t *testing.T) {
 
 func TestApplyLayoutPreset_Grid(t *testing.T) {
 	tui := testTUIWithPanes("a", "b", "c")
-	tui.layoutPresets = defaultLayoutPresets() // slot index 2 = 4x1
+	tui.layoutPresets = defaultLayoutPresets() // slot index 2 = 3x1 (Option+3)
 	tui.applyLayoutPreset(2)
 	ls := tui.layoutState
-	if ls.Mode != LayoutGrid || ls.GridCols != 4 || ls.GridRows != 1 {
-		t.Errorf("applyLayoutPreset(2) => mode=%v cols=%d rows=%d, want grid 4x1", ls.Mode, ls.GridCols, ls.GridRows)
+	if ls.Mode != LayoutGrid || ls.GridCols != 3 || ls.GridRows != 1 {
+		t.Errorf("applyLayoutPreset(2) => mode=%v cols=%d rows=%d, want grid 3x1", ls.Mode, ls.GridCols, ls.GridRows)
 	}
 	if !ls.GridExplicit {
 		t.Error("applyLayoutPreset(grid) must set GridExplicit=true (so recalcGrid won't override)")
@@ -140,7 +144,7 @@ func TestApplyLayoutPreset_Grid(t *testing.T) {
 
 func TestApplyLayoutPreset_Focus(t *testing.T) {
 	tui := testTUIWithPanes("a", "b")
-	tui.layoutPresets = [5]LayoutPreset{0: {Kind: presetFocus, Spec: "focus"}}
+	tui.layoutPresets = [presetSlots]LayoutPreset{0: {Kind: presetFocus, Spec: "focus"}}
 	tui.applyLayoutPreset(0)
 	ls := tui.layoutState
 	if ls.Mode != LayoutFocus || ls.GridExplicit {
@@ -150,7 +154,7 @@ func TestApplyLayoutPreset_Focus(t *testing.T) {
 
 func TestApplyLayoutPreset_Main(t *testing.T) {
 	tui := testTUIWithPanes("a", "b", "c")
-	tui.layoutPresets = [5]LayoutPreset{0: {Kind: presetMain, Spec: "main"}}
+	tui.layoutPresets = [presetSlots]LayoutPreset{0: {Kind: presetMain, Spec: "main"}}
 	tui.applyLayoutPreset(0)
 	if tui.layoutState.Mode != Layout2Col {
 		t.Errorf("applyLayoutPreset(main) => mode=%v, want Layout2Col", tui.layoutState.Mode)
@@ -161,7 +165,7 @@ func TestApplyLayoutPreset_Main(t *testing.T) {
 // pressing the live slot enters live mode, pressing it again toggles back to grid.
 func TestApplyLayoutPreset_LiveToggles(t *testing.T) {
 	tui := testTUIWithPanes("a", "b", "c")
-	tui.layoutPresets = [5]LayoutPreset{0: {Kind: presetLive, Spec: "live"}}
+	tui.layoutPresets = [presetSlots]LayoutPreset{0: {Kind: presetLive, Spec: "live"}}
 
 	tui.applyLayoutPreset(0)
 	if tui.layoutState.Mode != LayoutLive {
@@ -181,7 +185,7 @@ func TestApplyLayoutPreset_OutOfRangeNoChange(t *testing.T) {
 	tui.layoutPresets = defaultLayoutPresets()
 	before := tui.layoutState
 	tui.applyLayoutPreset(-1)
-	tui.applyLayoutPreset(5)
+	tui.applyLayoutPreset(7) // slot 7 is out of range (valid slots are 0..6)
 	if tui.layoutState.Mode != before.Mode || tui.layoutState.GridCols != before.GridCols {
 		t.Errorf("out-of-range slot mutated layout: %+v", tui.layoutState)
 	}
@@ -194,7 +198,7 @@ func TestApplyLayoutPreset_OutOfRangeNoChange(t *testing.T) {
 // AllPanes (the source for the agents overlay and `initech status`).
 func TestApplyLayoutPreset_OverflowDoesNotHide(t *testing.T) {
 	tui := testTUIWithPanes("a", "b", "c", "d", "e", "f") // 6 visible
-	tui.layoutPresets = [5]LayoutPreset{0: {Kind: presetGrid, Cols: 4, Rows: 1, Spec: "4x1"}}
+	tui.layoutPresets = [presetSlots]LayoutPreset{0: {Kind: presetGrid, Cols: 4, Rows: 1, Spec: "4x1"}}
 
 	if len(tui.layoutState.Hidden) != 0 {
 		t.Fatalf("precondition: Hidden = %v, want empty", tui.layoutState.Hidden)
@@ -233,7 +237,7 @@ func TestApplyLayoutPreset_OverflowDoesNotHide(t *testing.T) {
 func TestApplyLayoutPreset_PreservesManualHide(t *testing.T) {
 	tui := testTUIWithPanes("a", "b", "c")
 	tui.layoutState.Hidden["b"] = true // user hid b
-	tui.layoutPresets = [5]LayoutPreset{0: {Kind: presetGrid, Cols: 2, Rows: 2, Spec: "2x2"}}
+	tui.layoutPresets = [presetSlots]LayoutPreset{0: {Kind: presetGrid, Cols: 2, Rows: 2, Spec: "2x2"}}
 
 	tui.applyLayoutPreset(0)
 

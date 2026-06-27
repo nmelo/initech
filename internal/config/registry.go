@@ -83,8 +83,8 @@ var Registry = []FieldMeta{
 	{Key: "role_overrides.<role>.test_cmd", Type: "string", Description: "Test command injected into the role template"},
 	{Key: "role_overrides.<role>.repo_name", Type: "string", Description: "Repo submodule name when multiple repos are configured"},
 
-	// Layout presets (template: one entry per Alt+1–5 slot "1".."5").
-	{Key: "layout_presets.<slot>", Type: "string", Description: "Alt/Option 1-5 layout binding: a grid \"CxR\" (cols/rows 1-8) or keyword focus/live/main. Invalid values fall back to the built-in default (2x1/3x1/4x1/3x2/live)"},
+	// Layout presets (template: one entry per Alt+1–7 slot "1".."7").
+	{Key: "layout_presets.<slot>", Type: "string", Description: "Alt/Option 1-7 layout binding: a grid \"CxR\" (cols/rows 1-8) or keyword focus/live/main. Invalid values fall back to the built-in default (focus/2x1/3x1/4x1/3x2/4x2/live)"},
 
 	// Running-pane background tint.
 	{Key: "running_pane_tint", Type: "string", Default: "#0c120e", Description: "Background tint for running panes as a hex color \"#rrggbb\", or \"none\"/\"off\" to disable. Invalid values fall back to the subtle default"},

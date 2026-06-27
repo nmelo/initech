@@ -11,7 +11,7 @@ import (
 // GridExplicit so recalcGrid won't auto-resize the live viewport on hot-add.
 func TestApplyLayoutPresetLive_GridSlot(t *testing.T) {
 	tui := testTUIWithPanes("a", "b", "c")
-	tui.layoutPresets = defaultLayoutPresets() // slot index 2 = 4x1
+	tui.layoutPresets = defaultLayoutPresets() // slot index 2 = 3x1 (Option+3)
 	tui.applyLayoutPresetLive(2)
 	ls := tui.layoutState
 	if ls.Mode != LayoutLive {
@@ -20,8 +20,8 @@ func TestApplyLayoutPresetLive_GridSlot(t *testing.T) {
 	if ls.LiveAuto {
 		t.Error("grid preset live: LiveAuto must be false (fixed dims)")
 	}
-	if ls.GridCols != 4 || ls.GridRows != 1 {
-		t.Errorf("dims = %dx%d, want 4x1", ls.GridCols, ls.GridRows)
+	if ls.GridCols != 3 || ls.GridRows != 1 {
+		t.Errorf("dims = %dx%d, want 3x1", ls.GridCols, ls.GridRows)
 	}
 	if !ls.GridExplicit {
 		t.Error("grid preset live must set GridExplicit (preserve fixed dims across hot-adds)")
@@ -38,8 +38,8 @@ func TestApplyLayoutPresetLive_GridSlot(t *testing.T) {
 // entered via the live path becomes LayoutLive with LiveAuto=true (autoGrid dims).
 func TestApplyLayoutPresetLive_KeywordSlot(t *testing.T) {
 	tui := testTUIWithPanes("a", "b", "c")
-	tui.layoutPresets = defaultLayoutPresets() // slot index 4 = live keyword
-	tui.applyLayoutPresetLive(4)
+	tui.layoutPresets = defaultLayoutPresets() // slot index 6 = live keyword (Option+7)
+	tui.applyLayoutPresetLive(6)
 	if tui.layoutState.Mode != LayoutLive {
 		t.Errorf("mode = %v, want LayoutLive", tui.layoutState.Mode)
 	}
@@ -53,7 +53,7 @@ func TestApplyLayoutPresetLive_KeywordSlot(t *testing.T) {
 // never produces fixed dims on the live path).
 func TestApplyLayoutPresetLive_FocusKeywordIsAuto(t *testing.T) {
 	tui := testTUIWithPanes("a", "b")
-	tui.layoutPresets = [5]LayoutPreset{0: {Kind: presetFocus, Spec: "focus"}}
+	tui.layoutPresets = [presetSlots]LayoutPreset{0: {Kind: presetFocus, Spec: "focus"}}
 	tui.applyLayoutPresetLive(0)
 	if tui.layoutState.Mode != LayoutLive || !tui.layoutState.LiveAuto {
 		t.Errorf("focus keyword live => mode=%v auto=%v, want LayoutLive + auto", tui.layoutState.Mode, tui.layoutState.LiveAuto)
@@ -65,14 +65,14 @@ func TestApplyLayoutPresetLive_OutOfRangeLeavesLayoutUnchanged(t *testing.T) {
 	tui.layoutPresets = defaultLayoutPresets()
 	before := tui.layoutState
 	tui.applyLayoutPresetLive(-1)
-	tui.applyLayoutPresetLive(5)
+	tui.applyLayoutPresetLive(7) // slot 7 is out of range (valid slots are 0..6)
 	if tui.layoutState.Mode != before.Mode || tui.layoutState.GridCols != before.GridCols {
 		t.Errorf("out-of-range slot mutated layout: %+v", tui.layoutState)
 	}
 }
 
 // TestShiftAltDigit_GridPreset: Shift+Alt+3 routes through the live path and
-// applies the default slot-3 grid (4x1) in live mode at fixed dims.
+// applies the default Option+3 grid (3x1) in live mode at fixed dims.
 func TestShiftAltDigit_GridPreset(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("a", "b", "c", "d")
 	tui.layoutPresets = defaultLayoutPresets()
@@ -81,26 +81,26 @@ func TestShiftAltDigit_GridPreset(t *testing.T) {
 	tui.handleKey(ev)
 
 	ls := tui.layoutState
-	if ls.Mode != LayoutLive || ls.LiveAuto || ls.GridCols != 4 || ls.GridRows != 1 {
-		t.Errorf("Shift+Alt+3 => mode=%v auto=%v %dx%d, want LayoutLive fixed 4x1", ls.Mode, ls.LiveAuto, ls.GridCols, ls.GridRows)
+	if ls.Mode != LayoutLive || ls.LiveAuto || ls.GridCols != 3 || ls.GridRows != 1 {
+		t.Errorf("Shift+Alt+3 => mode=%v auto=%v %dx%d, want LayoutLive fixed 3x1", ls.Mode, ls.LiveAuto, ls.GridCols, ls.GridRows)
 	}
 }
 
-// TestShiftAltDigit_KeywordPreset: Shift+Alt+5 (default `live` keyword) routes
+// TestShiftAltDigit_KeywordPreset: Shift+Alt+7 (default `live` keyword) routes
 // to live auto-grid.
 func TestShiftAltDigit_KeywordPreset(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("a", "b", "c")
 	tui.layoutPresets = defaultLayoutPresets()
 
-	ev := tcell.NewEventKey(tcell.KeyRune, '5', tcell.ModShift|tcell.ModAlt)
+	ev := tcell.NewEventKey(tcell.KeyRune, '7', tcell.ModShift|tcell.ModAlt)
 	tui.handleKey(ev)
 
 	if tui.layoutState.Mode != LayoutLive || !tui.layoutState.LiveAuto {
-		t.Errorf("Shift+Alt+5 => mode=%v auto=%v, want LayoutLive + auto", tui.layoutState.Mode, tui.layoutState.LiveAuto)
+		t.Errorf("Shift+Alt+7 => mode=%v auto=%v, want LayoutLive + auto", tui.layoutState.Mode, tui.layoutState.LiveAuto)
 	}
 }
 
-// TestShiftAltDigit_FailSafe: a Shift+Alt rune outside the 1-5 slot range must
+// TestShiftAltDigit_FailSafe: a Shift+Alt rune outside the 1-7 slot range must
 // NOT fire any layout preset (it falls through; never misfires as a preset).
 // '9' is an out-of-range digit with no other Alt handler, so it's a clean no-op
 // — the fail-safe guarantee from AC #7 (never trigger a preset on an
@@ -122,24 +122,25 @@ func TestShiftAltDigit_FailSafe(t *testing.T) {
 }
 
 // TestShiftAltDigit_RegressionStaticUnchanged is the ini-lkww regression guard:
-// plain Alt+1 (no Shift) must still apply the STATIC preset (LayoutGrid 2x1),
+// plain Alt+2 (no Shift) must still apply the STATIC preset (LayoutGrid 2x1),
 // never the live variant. Proves the Shift interceptor didn't capture the
-// unshifted path.
+// unshifted path. (Uses Alt+2 since the panel-count remap (ini-dxjk) made Alt+1
+// the focus slot — a non-grid mode that wouldn't exercise the grid-dims check.)
 func TestShiftAltDigit_RegressionStaticUnchanged(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("a", "b", "c", "d")
 	tui.layoutPresets = defaultLayoutPresets()
 
-	ev := tcell.NewEventKey(tcell.KeyRune, '1', tcell.ModAlt) // no Shift
+	ev := tcell.NewEventKey(tcell.KeyRune, '2', tcell.ModAlt) // no Shift
 	tui.handleKey(ev)
 
 	ls := tui.layoutState
 	if ls.Mode != LayoutGrid {
-		t.Errorf("Alt+1 (no shift) => mode=%v, want static LayoutGrid (not live)", ls.Mode)
+		t.Errorf("Alt+2 (no shift) => mode=%v, want static LayoutGrid (not live)", ls.Mode)
 	}
 	if ls.GridCols != 2 || ls.GridRows != 1 {
-		t.Errorf("Alt+1 (no shift) => %dx%d, want static 2x1", ls.GridCols, ls.GridRows)
+		t.Errorf("Alt+2 (no shift) => %dx%d, want static 2x1", ls.GridCols, ls.GridRows)
 	}
 	if ls.LiveAuto {
-		t.Error("Alt+1 (no shift) must not enable LiveAuto")
+		t.Error("Alt+2 (no shift) must not enable LiveAuto")
 	}
 }
