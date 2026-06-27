@@ -650,8 +650,14 @@ func (p *Pane) contentOffset() (startRow, renderOffset int) {
 	}
 
 	innerCols, termRows := p.region.TerminalSize()
-	pos := p.emu.CursorPosition()
-	scanEnd := pos.Y - 1
+	// Anchor to the bottom of the FULL drawn screen, not the cursor row. The
+	// emulator may be taller than the visible window (ini-44hp); claude parks
+	// its cursor mid-screen and renders its status bar BELOW the cursor, so a
+	// cursor-bounded scan (pos.Y-1) anchors too high and clips the active area
+	// off the bottom window. Scanning the whole screen finds the true last drawn
+	// row. For a non-taller emulator (emuHeight==termRows) the result is
+	// identical: contentEnd<=termRows, so startRow stays 0.
+	scanEnd := p.emu.Height() - 1
 	if scanEnd < 0 {
 		scanEnd = 0
 	}

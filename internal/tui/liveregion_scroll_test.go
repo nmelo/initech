@@ -137,3 +137,33 @@ func TestLiveRegionScroll_NormalModeAnchorsToContent(t *testing.T) {
 		t.Errorf("normal-mode live window dropped active content (blank-row drift to emu bottom?). view:\n%s", view)
 	}
 }
+
+// TestLiveRegionScroll_AnchorsToContentBelowCursor is the regression test for
+// the gate-(b) failure the real-claude probe caught (ini-44hp inc1b): with a
+// taller emulator, claude parks its cursor mid-screen and draws its STATUS BAR
+// BELOW the cursor. The live window must anchor to the bottom of the FULL drawn
+// screen so that below-cursor content is visible — not anchor via the cursor
+// row (which clips it).
+func TestLiveRegionScroll_AnchorsToContentBelowCursor(t *testing.T) {
+	const visible, cols = 8, 40
+	emu := vt.NewSafeEmulator(cols, visible)
+	p := &Pane{emu: emu, alive: true}
+	p.region = Region{X: 0, Y: 0, W: cols, H: visible + 2}
+	p.Resize(visible, cols) // emu grows to 24
+
+	// 20 lines drawn in place, then park the cursor at row 15 — ABOVE the last
+	// drawn line (L20 at row 20). This mimics claude: prompt/cursor mid-screen,
+	// status bar below it.
+	for i := 1; i <= 20; i++ {
+		emu.Write([]byte(fmt.Sprintf("\x1b[%d;1HL%02d", i, i)))
+	}
+	emu.Write([]byte("\x1b[15;1H")) // cursor to row 15 (0-indexed 14), above L20
+
+	// Live edge must show the bottom-most drawn content (L20 = the "status bar"),
+	// not anchor above the cursor and clip it.
+	p.scrollOffset = 0
+	view := renderAtCurrentOffset(p)
+	if !strings.Contains(view, "L20") {
+		t.Errorf("live window clipped content below the cursor (L20 missing) — cursor-bounded anchoring drift.\nview:\n%s", view)
+	}
+}
