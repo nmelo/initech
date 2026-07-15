@@ -2,12 +2,16 @@ package web
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/subtle"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io/fs"
 	"log/slog"
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -146,7 +150,17 @@ type Server struct {
 	paneWriter    PaneWriter     // Optional: enables PTY input via /ws/pane/{name}. Nil = read-only.
 	pinToggler    PinToggler     // Optional: enables POST /api/pin/{name}. Nil = 501.
 	subIDSeq      atomic.Uint64  // Monotonic counter for generating unique subscriber IDs.
+	// token authenticates EVERY request (ini-mfmh). Auto-generated in NewServer
+	// so the server is never unauthenticated; SetToken can override it before
+	// Start to share the daemon/MCP token. An empty token fails closed (all
+	// requests 401). Set once at construction, never mutated after Start.
+	token string
 }
+
+// webTokenCookie carries the auth token for the SPA so its sub-resource fetches
+// and the same-origin WebSocket handshake authenticate after the operator opens
+// the companion with ?token=<token>.
+const webTokenCookie = "initech_web_token"
 
 // NewServer creates a Server bound to 0.0.0.0 on the given port, accessible
 // from other machines on the network. The operator explicitly enables this
@@ -170,6 +184,14 @@ func NewServer(port int, lister PaneLister, subscriber PaneSubscriber, stateProv
 		pinToggler:    pinToggler,
 	}
 
+	// Auto-generate an auth token so the companion is never unauthenticated
+	// (ini-mfmh). A generation failure leaves token empty, which fails closed.
+	if tok, err := newAuthToken(); err != nil {
+		logger.Error("web auth token generation failed; server will reject all requests", "err", err)
+	} else {
+		s.token = tok
+	}
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/panes", s.handlePanes)
 	mux.HandleFunc("GET /ws/pane/{name}", s.handlePaneWS)
@@ -182,10 +204,86 @@ func NewServer(port int, lister PaneLister, subscriber PaneSubscriber, stateProv
 	mux.Handle("GET /", http.FileServer(http.FS(staticSub)))
 
 	s.srv = &http.Server{
-		Addr:    addr,
-		Handler: mux,
+		Addr: addr,
+		// Every route is behind the auth check (ini-mfmh): data/control routes
+		// and the SPA alike. The operator opens the companion with ?token=<token>;
+		// authed() then sets a cookie so the SPA's sub-resources and its
+		// same-origin WebSocket handshakes authenticate without further plumbing.
+		Handler: s.authed(mux),
 	}
 	return s
+}
+
+// newAuthToken returns a cryptographically random URL-safe token.
+func newAuthToken() (string, error) {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(b), nil
+}
+
+// Token returns the auth token clients must present (Authorization: Bearer, a
+// ?token= query param, or the auth cookie). Callers print it so the operator
+// can reach the companion.
+func (s *Server) Token() string { return s.token }
+
+// SetToken overrides the auto-generated token (e.g. to share the daemon token).
+// Must be called before Start. An empty token fails closed.
+func (s *Server) SetToken(token string) { s.token = token }
+
+// authed wraps a handler so every request must present the auth token. The
+// token is accepted via an "Authorization: Bearer <token>" header, a ?token=
+// query param (for browser WebSocket connections that cannot set headers), or
+// the auth cookie. Comparison is constant-time. An empty server token fails
+// closed — all requests are rejected. On success the token is echoed back as an
+// HttpOnly, SameSite=Strict cookie so the SPA's sub-resource requests and its
+// same-origin WebSocket handshake carry it automatically.
+func (s *Server) authed(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !s.tokenValid(r) {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		http.SetCookie(w, &http.Cookie{
+			Name:     webTokenCookie,
+			Value:    s.token,
+			Path:     "/",
+			HttpOnly: true,
+			SameSite: http.SameSiteStrictMode,
+		})
+		next.ServeHTTP(w, r)
+	})
+}
+
+// tokenValid reports whether the request carries the correct auth token. Fails
+// closed when the server token is empty.
+func (s *Server) tokenValid(r *http.Request) bool {
+	if s.token == "" {
+		return false
+	}
+	presented := tokenFromRequest(r)
+	if presented == "" {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(presented), []byte(s.token)) == 1
+}
+
+// tokenFromRequest extracts a presented token from, in order: the Bearer
+// Authorization header, the ?token= query param, then the auth cookie.
+func tokenFromRequest(r *http.Request) string {
+	if h := r.Header.Get("Authorization"); h != "" {
+		if after, ok := strings.CutPrefix(h, "Bearer "); ok {
+			return strings.TrimSpace(after)
+		}
+	}
+	if q := r.URL.Query().Get("token"); q != "" {
+		return q
+	}
+	if c, err := r.Cookie(webTokenCookie); err == nil {
+		return c.Value
+	}
+	return ""
 }
 
 // Start begins listening and serving. It blocks until the server is shut down
@@ -266,11 +364,11 @@ func (s *Server) handlePaneWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
-		// Allow any origin. The server binds to all interfaces and is
-		// explicitly enabled by the operator via --web-port.
-		InsecureSkipVerify: true,
-	})
+	// InsecureSkipVerify is intentionally NOT set: coder/websocket enforces a
+	// same-origin check when an Origin header is present (rejecting cross-site
+	// WebSocket hijacking) and skips it for non-browser clients that send none.
+	// Combined with the auth token, this closes the ini-mfmh RCE.
+	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{})
 	if err != nil {
 		s.subscriber.UnsubscribePane(paneName, subID)
 		s.logger.Error("websocket accept failed", "pane", paneName, "err", err)
@@ -355,9 +453,8 @@ func (s *Server) handleStateWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
-		InsecureSkipVerify: true,
-	})
+	// Same-origin enforced (no InsecureSkipVerify); auth handled upstream (ini-mfmh).
+	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{})
 	if err != nil {
 		s.logger.Error("websocket accept failed", "endpoint", "/ws/state", "err", err)
 		return

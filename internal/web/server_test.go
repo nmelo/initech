@@ -31,7 +31,7 @@ func TestHandlePanes_ReturnsJSON(t *testing.T) {
 	}
 	srv := NewServer(0, lister, nil, nil, nil, nil, nil, nil)
 
-	req := httptest.NewRequest("GET", "/api/panes", nil)
+	req := httptest.NewRequest("GET", "/api/panes?token="+srv.Token(), nil)
 	w := httptest.NewRecorder()
 	srv.srv.Handler.ServeHTTP(w, req)
 
@@ -58,7 +58,7 @@ func TestHandlePanes_ShuttingDown(t *testing.T) {
 	lister := &fakeLister{ok: false}
 	srv := NewServer(0, lister, nil, nil, nil, nil, nil, nil)
 
-	req := httptest.NewRequest("GET", "/api/panes", nil)
+	req := httptest.NewRequest("GET", "/api/panes?token="+srv.Token(), nil)
 	w := httptest.NewRecorder()
 	srv.srv.Handler.ServeHTTP(w, req)
 
@@ -71,7 +71,7 @@ func TestServesIndex(t *testing.T) {
 	lister := &fakeLister{ok: true}
 	srv := NewServer(0, lister, nil, nil, nil, nil, nil, nil)
 
-	req := httptest.NewRequest("GET", "/", nil)
+	req := httptest.NewRequest("GET", "/?token="+srv.Token(), nil)
 	w := httptest.NewRecorder()
 	srv.srv.Handler.ServeHTTP(w, req)
 
@@ -121,7 +121,7 @@ func TestStartAndShutdown(t *testing.T) {
 	}
 
 	// Hit the API on the real listener.
-	resp, err := http.Get("http://" + srv.Addr() + "/api/panes")
+	resp, err := http.Get("http://" + srv.Addr() + "/api/panes?token="+srv.Token())
 	if err != nil {
 		t.Fatalf("GET /api/panes: %v", err)
 	}

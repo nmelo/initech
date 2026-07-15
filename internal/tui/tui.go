@@ -875,12 +875,20 @@ func Run(cfg Config) error {
 		paneWriter := &tuiPaneWriter{t: t}
 		pinToggler := &tuiPinToggler{t: t}
 		webSrv := web.NewServer(cfg.WebPort, lister, subscriber, stateProvider, eventProvider, paneWriter, pinToggler, nil)
+		// Share the configured MCP token so one token unlocks MCP + web
+		// (ini-mfmh). When none is configured, the web server keeps its own
+		// auto-generated token (still fail-closed, never open).
+		if cfg.McpToken != "" {
+			webSrv.SetToken(cfg.McpToken)
+		}
 		go func() {
 			if err := webSrv.Start(webCtx); err != nil {
 				LogError("web", "server exited with error", "err", err)
 			}
 		}()
-		LogInfo("web", "companion server starting", "port", cfg.WebPort)
+		// Log the token-bearing URL: the TUI owns the screen, so the operator
+		// retrieves the companion URL (with its auth token) from initech.log.
+		LogInfo("web", "companion server starting", "url", fmt.Sprintf("http://0.0.0.0:%d/?token=%s", cfg.WebPort, webSrv.Token()))
 		defer func() {
 			webCancel()
 			shutCtx, shutCancel := context.WithTimeout(context.Background(), 2*time.Second)

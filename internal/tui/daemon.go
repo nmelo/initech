@@ -275,13 +275,19 @@ func RunDaemon(cfg DaemonConfig) error {
 		stateProvider := &daemonStateProvider{d: d}
 		paneWriter := &daemonPaneWriter{d: d}
 		webSrv := web.NewServer(cfg.WebPort, lister, subscriber, stateProvider, nil, paneWriter, nil, nil)
+		// Share the daemon's auth token so one token unlocks TCP + web
+		// (ini-mfmh). When no daemon token is configured, the web server keeps
+		// its own auto-generated token (still fail-closed, never open).
+		if d.project != nil && d.project.Token != "" {
+			webSrv.SetToken(d.project.Token)
+		}
 		go func() {
 			if err := webSrv.Start(webCtx); err != nil {
 				LogError("daemon-web", "server exited with error", "err", err)
 			}
 		}()
 		LogInfo("daemon-web", "companion server starting", "port", cfg.WebPort)
-		fmt.Fprintf(os.Stdout, "  web:     http://0.0.0.0:%d\n", cfg.WebPort)
+		fmt.Fprintf(os.Stdout, "  web:     http://0.0.0.0:%d/?token=%s\n", cfg.WebPort, webSrv.Token())
 		defer func() {
 			webCancel()
 			shutCtx, shutCancel := context.WithTimeout(context.Background(), 2*time.Second)

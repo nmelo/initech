@@ -75,7 +75,7 @@ func TestWS_ReceivesBytes(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	conn, _, err := websocket.Dial(ctx, ts.URL+"/ws/pane/eng1", nil)
+	conn, _, err := websocket.Dial(ctx, ts.URL+"/ws/pane/eng1?token="+srv.Token(), nil)
 	if err != nil {
 		t.Fatalf("dial: %v", err)
 	}
@@ -107,7 +107,7 @@ func TestWS_UnknownPane_404(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
-	_, resp, err := websocket.Dial(ctx, ts.URL+"/ws/pane/missing", nil)
+	_, resp, err := websocket.Dial(ctx, ts.URL+"/ws/pane/missing?token="+srv.Token(), nil)
 	if err == nil {
 		t.Fatal("expected error for missing pane")
 	}
@@ -126,7 +126,7 @@ func TestWS_NoSubscriber_501(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
-	_, resp, err := websocket.Dial(ctx, ts.URL+"/ws/pane/eng1", nil)
+	_, resp, err := websocket.Dial(ctx, ts.URL+"/ws/pane/eng1?token="+srv.Token(), nil)
 	if err == nil {
 		t.Fatal("expected error when subscriber is nil")
 	}
@@ -146,7 +146,7 @@ func TestWS_DisconnectCleansUp(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	conn, _, err := websocket.Dial(ctx, ts.URL+"/ws/pane/eng1", nil)
+	conn, _, err := websocket.Dial(ctx, ts.URL+"/ws/pane/eng1?token="+srv.Token(), nil)
 	if err != nil {
 		t.Fatalf("dial: %v", err)
 	}
@@ -181,13 +181,13 @@ func TestWS_MultipleConnections(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	conn1, _, err := websocket.Dial(ctx, ts.URL+"/ws/pane/eng1", nil)
+	conn1, _, err := websocket.Dial(ctx, ts.URL+"/ws/pane/eng1?token="+srv.Token(), nil)
 	if err != nil {
 		t.Fatalf("dial 1: %v", err)
 	}
 	defer conn1.CloseNow()
 
-	conn2, _, err := websocket.Dial(ctx, ts.URL+"/ws/pane/eng1", nil)
+	conn2, _, err := websocket.Dial(ctx, ts.URL+"/ws/pane/eng1?token="+srv.Token(), nil)
 	if err != nil {
 		t.Fatalf("dial 2: %v", err)
 	}
@@ -221,7 +221,7 @@ func TestWS_ChannelClosed_ServerCloses(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	conn, _, err := websocket.Dial(ctx, ts.URL+"/ws/pane/eng1", nil)
+	conn, _, err := websocket.Dial(ctx, ts.URL+"/ws/pane/eng1?token="+srv.Token(), nil)
 	if err != nil {
 		t.Fatalf("dial: %v", err)
 	}
@@ -285,7 +285,7 @@ func TestWS_InputRelayedToWriter(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	conn, _, err := websocket.Dial(ctx, ts.URL+"/ws/pane/eng1", nil)
+	conn, _, err := websocket.Dial(ctx, ts.URL+"/ws/pane/eng1?token="+srv.Token(), nil)
 	if err != nil {
 		t.Fatalf("dial: %v", err)
 	}
@@ -332,7 +332,7 @@ func TestWS_NilWriter_DiscardsInput(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	conn, _, err := websocket.Dial(ctx, ts.URL+"/ws/pane/eng1", nil)
+	conn, _, err := websocket.Dial(ctx, ts.URL+"/ws/pane/eng1?token="+srv.Token(), nil)
 	if err != nil {
 		t.Fatalf("dial: %v", err)
 	}
@@ -367,7 +367,7 @@ func TestWS_WriterError_DoesNotCloseConn(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	conn, _, err := websocket.Dial(ctx, ts.URL+"/ws/pane/eng1", nil)
+	conn, _, err := websocket.Dial(ctx, ts.URL+"/ws/pane/eng1?token="+srv.Token(), nil)
 	if err != nil {
 		t.Fatalf("dial: %v", err)
 	}

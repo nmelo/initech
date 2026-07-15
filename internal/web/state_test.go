@@ -70,7 +70,7 @@ func TestStateWS_InitialSnapshot(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	conn, _, err := websocket.Dial(ctx, "ws"+ts.URL[4:]+"/ws/state", nil)
+	conn, _, err := websocket.Dial(ctx, "ws"+ts.URL[4:]+"/ws/state?token="+srv.Token(), nil)
 	if err != nil {
 		t.Fatalf("dial: %v", err)
 	}
@@ -128,7 +128,7 @@ func TestStateWS_PushesOnChange(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	conn, _, err := websocket.Dial(ctx, "ws"+ts.URL[4:]+"/ws/state", nil)
+	conn, _, err := websocket.Dial(ctx, "ws"+ts.URL[4:]+"/ws/state?token="+srv.Token(), nil)
 	if err != nil {
 		t.Fatalf("dial: %v", err)
 	}
@@ -166,7 +166,7 @@ func TestStateWS_NoProviderReturns501(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
-	_, resp, err := websocket.Dial(ctx, "ws"+ts.URL[4:]+"/ws/state", nil)
+	_, resp, err := websocket.Dial(ctx, "ws"+ts.URL[4:]+"/ws/state?token="+srv.Token(), nil)
 	if err == nil {
 		t.Fatal("expected error when provider is nil")
 	}
@@ -195,7 +195,7 @@ func TestStateWS_DebounceSkipsDuplicates(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
-	conn, _, err := websocket.Dial(ctx, "ws"+ts.URL[4:]+"/ws/state", nil)
+	conn, _, err := websocket.Dial(ctx, "ws"+ts.URL[4:]+"/ws/state?token="+srv.Token(), nil)
 	if err != nil {
 		t.Fatalf("dial: %v", err)
 	}
@@ -269,7 +269,7 @@ func TestStateWS_ReceivesEvents(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	conn, _, err := websocket.Dial(ctx, "ws"+ts.URL[4:]+"/ws/state", nil)
+	conn, _, err := websocket.Dial(ctx, "ws"+ts.URL[4:]+"/ws/state?token="+srv.Token(), nil)
 	if err != nil {
 		t.Fatalf("dial: %v", err)
 	}
@@ -331,7 +331,7 @@ func TestStateWS_EventWithoutProvider(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
-	conn, _, err := websocket.Dial(ctx, "ws"+ts.URL[4:]+"/ws/state", nil)
+	conn, _, err := websocket.Dial(ctx, "ws"+ts.URL[4:]+"/ws/state?token="+srv.Token(), nil)
 	if err != nil {
 		t.Fatalf("dial: %v", err)
 	}
@@ -374,7 +374,7 @@ func TestStateWS_LiveModeFields(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	conn, _, err := websocket.Dial(ctx, "ws"+ts.URL[4:]+"/ws/state", nil)
+	conn, _, err := websocket.Dial(ctx, "ws"+ts.URL[4:]+"/ws/state?token="+srv.Token(), nil)
 	if err != nil {
 		t.Fatalf("dial: %v", err)
 	}
@@ -433,7 +433,7 @@ func TestPinEndpoint_TogglePin(t *testing.T) {
 	defer ts.Close()
 
 	// First toggle: should pin.
-	resp, err := http.Post(ts.URL+"/api/pin/eng1", "", nil)
+	resp, err := http.Post(ts.URL+"/api/pin/eng1?token="+srv.Token(), "", nil)
 	if err != nil {
 		t.Fatalf("post: %v", err)
 	}
@@ -448,7 +448,7 @@ func TestPinEndpoint_TogglePin(t *testing.T) {
 	}
 
 	// Second toggle: should unpin.
-	resp, err = http.Post(ts.URL+"/api/pin/eng1", "", nil)
+	resp, err = http.Post(ts.URL+"/api/pin/eng1?token="+srv.Token(), "", nil)
 	if err != nil {
 		t.Fatalf("post: %v", err)
 	}
@@ -466,7 +466,7 @@ func TestPinEndpoint_NotFound(t *testing.T) {
 	ts := httptest.NewServer(srv.srv.Handler)
 	defer ts.Close()
 
-	resp, err := http.Post(ts.URL+"/api/pin/nonexistent", "", nil)
+	resp, err := http.Post(ts.URL+"/api/pin/nonexistent?token="+srv.Token(), "", nil)
 	if err != nil {
 		t.Fatalf("post: %v", err)
 	}
@@ -482,7 +482,7 @@ func TestPinEndpoint_NoPinToggler(t *testing.T) {
 	ts := httptest.NewServer(srv.srv.Handler)
 	defer ts.Close()
 
-	resp, err := http.Post(ts.URL+"/api/pin/eng1", "", nil)
+	resp, err := http.Post(ts.URL+"/api/pin/eng1?token="+srv.Token(), "", nil)
 	if err != nil {
 		t.Fatalf("post: %v", err)
 	}
