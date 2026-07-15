@@ -217,7 +217,7 @@ func RunDaemon(cfg DaemonConfig) error {
 		LogInfo("daemon", "agent started", "name", acfg.Name, "pid", p.pid)
 	}
 	defer func() {
-		for _, p := range d.panes {
+		for _, p := range d.snapshotPanes() {
 			p.Close()
 		}
 	}()
@@ -250,8 +250,9 @@ func RunDaemon(cfg DaemonConfig) error {
 	LogInfo("daemon", "ready", "peer_name", cfg.Project.PeerName)
 
 	// Startup banner to stdout.
-	agentNames := make([]string, len(d.panes))
-	for i, p := range d.panes {
+	bannerPanes := d.snapshotPanes()
+	agentNames := make([]string, len(bannerPanes))
+	for i, p := range bannerPanes {
 		agentNames[i] = p.Name()
 	}
 	fmt.Fprintf(os.Stdout, "initech serve %s\n", cfg.Version)
@@ -315,8 +316,9 @@ func RunDaemon(cfg DaemonConfig) error {
 			d.sessionsMu.Lock()
 			nClients := len(d.sessions)
 			d.sessionsMu.Unlock()
+			nAgents := len(d.snapshotPanes())
 			fmt.Fprintf(os.Stdout, "[%s] Disconnected %d client(s), stopped %d agent(s)\n",
-				time.Now().Format("15:04:05"), nClients, len(d.panes))
+				time.Now().Format("15:04:05"), nClients, nAgents)
 			return nil
 		case conn := <-connCh:
 			LogInfo("daemon", "client connected", "remote", conn.RemoteAddr().String())
@@ -413,8 +415,9 @@ func (d *Daemon) FindPaneView(name string) (PaneView, bool) {
 }
 
 func (d *Daemon) AllPanes() ([]PaneInfo, bool) {
-	panes := make([]PaneInfo, len(d.panes))
-	for i, p := range d.panes {
+	snap := d.snapshotPanes()
+	panes := make([]PaneInfo, len(snap))
+	for i, p := range snap {
 		panes[i] = PaneInfo{
 			Name:     p.Name(),
 			Activity: p.Activity().String(),
@@ -609,9 +612,13 @@ func (d *Daemon) handleConnection(conn net.Conn) {
 		}()
 	}
 
+	// Snapshot panes once under panesMu, then use it for the status list and
+	// the per-agent stream setup below (ini-sz46: never range d.panes unlocked).
+	panesSnap := d.snapshotPanes()
+
 	// Build agent status list.
-	agents := make([]AgentStatus, len(d.panes))
-	for i, p := range d.panes {
+	agents := make([]AgentStatus, len(panesSnap))
+	for i, p := range panesSnap {
 		agents[i] = AgentStatus{
 			Name:     p.Name(),
 			Alive:    p.IsAlive(),
@@ -640,7 +647,7 @@ func (d *Daemon) handleConnection(conn net.Conn) {
 	}
 	var streams []agentStream
 
-	for _, p := range d.panes {
+	for _, p := range panesSnap {
 		s, err := session.Open()
 		if err != nil {
 			LogError("daemon", "stream open failed", "agent", p.Name(), "err", err)
@@ -705,7 +712,7 @@ func (d *Daemon) handleConnection(conn net.Conn) {
 // stream so the client can reconstruct the current screen state. Called
 // synchronously before replay_done is sent on the control channel.
 func (d *Daemon) replayToStream(p *Pane, stream net.Conn) {
-	rb := d.ringBufs[p.Name()]
+	rb := d.ringBufFor(p.Name()) // snapshot the ref under a short lock, then stream unlocked
 	if rb != nil {
 		if snap := rb.Snapshot(); len(snap) > 0 {
 			n, err := stream.Write(snap)
@@ -722,7 +729,7 @@ func (d *Daemon) replayToStream(p *Pane, stream net.Conn) {
 // a yamux stream. Adds the stream to the pane's MultiSink for downstream
 // fan-out. Reads upstream keystrokes until the client disconnects.
 func (d *Daemon) streamAgentLive(p *Pane, stream net.Conn) {
-	ms := d.multiSinks[p.Name()]
+	ms := d.multiSinkFor(p.Name()) // snapshot the ref under a short lock, then stream unlocked
 
 	if ms != nil {
 		ms.Add(stream)
@@ -847,8 +854,9 @@ func (d *Daemon) handleControlStream(ctrl net.Conn, scanner *bufio.Scanner, peer
 			}
 
 		case "peers_query":
-			agents := make([]string, len(d.panes))
-			for i, p := range d.panes {
+			snap := d.snapshotPanes()
+			agents := make([]string, len(snap))
+			for i, p := range snap {
 				agents[i] = p.Name()
 			}
 			peerName := d.project.PeerName
@@ -940,17 +948,48 @@ func (d *Daemon) handleControlStream(ctrl net.Conn, scanner *bufio.Scanner, peer
 	}
 }
 
-// findPane looks up a pane by name. Safe to call without locking because
-// d.panes is populated during RunDaemon startup and never modified afterward.
-// If hot-add/remove agents is implemented for the daemon, this must be
-// synchronized (e.g., protected by d.mu or dispatched via a main goroutine).
+// findPane looks up a pane by name under panesMu. Zero-config remote
+// (configure_agent/stop_agent) mutates d.panes at runtime via
+// startPushedPane/removePane, so this MUST hold the lock — an earlier
+// "never modified after startup" assumption caused a fatal concurrent
+// map/slice access on reconnect (ini-sz46). No caller holds panesMu when
+// calling findPane, so the lock does not nest.
 func (d *Daemon) findPane(name string) *Pane {
+	d.panesMu.Lock()
+	defer d.panesMu.Unlock()
 	for _, p := range d.panes {
 		if p.Name() == name {
 			return p
 		}
 	}
 	return nil
+}
+
+// snapshotPanes returns a copy of the pane slice taken under panesMu. Callers
+// range the copy without holding the lock; the Pane pointers are stable.
+func (d *Daemon) snapshotPanes() []*Pane {
+	d.panesMu.Lock()
+	defer d.panesMu.Unlock()
+	out := make([]*Pane, len(d.panes))
+	copy(out, d.panes)
+	return out
+}
+
+// ringBufFor returns the ring buffer for a pane (or nil) under a SHORT panesMu
+// hold. The caller streams from the returned *RingBuf WITHOUT the lock, so a
+// slow network write never blocks the hot-add/remove writers (ini-sz46).
+func (d *Daemon) ringBufFor(name string) *RingBuf {
+	d.panesMu.Lock()
+	defer d.panesMu.Unlock()
+	return d.ringBufs[name]
+}
+
+// multiSinkFor returns the fan-out sink for a pane (or nil) under a SHORT
+// panesMu hold; the caller uses the returned *MultiSink without the lock.
+func (d *Daemon) multiSinkFor(name string) *MultiSink {
+	d.panesMu.Lock()
+	defer d.panesMu.Unlock()
+	return d.multiSinks[name]
 }
 
 // fireTimers checks for due timers and delivers them to local agents.

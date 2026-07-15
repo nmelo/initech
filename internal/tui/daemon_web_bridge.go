@@ -12,8 +12,9 @@ type daemonPaneLister struct {
 }
 
 func (l *daemonPaneLister) AllPanes() ([]web.PaneInfo, bool) {
-	panes := make([]web.PaneInfo, len(l.d.panes))
-	for i, p := range l.d.panes {
+	snap := l.d.snapshotPanes() // ini-sz46: synchronized read of d.panes
+	panes := make([]web.PaneInfo, len(snap))
+	for i, p := range snap {
 		panes[i] = web.PaneInfo{
 			Name:     p.Name(),
 			Activity: p.Activity().String(),
@@ -31,20 +32,15 @@ type daemonPaneSubscriber struct {
 }
 
 func (s *daemonPaneSubscriber) SubscribePane(paneName, subscriberID string) (chan []byte, bool) {
-	for _, p := range s.d.panes {
-		if p.Name() == paneName {
-			return p.Subscribe(subscriberID), true
-		}
+	if p := s.d.findPane(paneName); p != nil { // ini-sz46: synchronized lookup
+		return p.Subscribe(subscriberID), true
 	}
 	return nil, false
 }
 
 func (s *daemonPaneSubscriber) UnsubscribePane(paneName, subscriberID string) {
-	for _, p := range s.d.panes {
-		if p.Name() == paneName {
-			p.Unsubscribe(subscriberID)
-			return
-		}
+	if p := s.d.findPane(paneName); p != nil { // ini-sz46: synchronized lookup
+		p.Unsubscribe(subscriberID)
 	}
 }
 
@@ -55,11 +51,12 @@ type daemonStateProvider struct {
 }
 
 func (sp *daemonStateProvider) CurrentState() (web.StateSnapshot, bool) {
-	n := len(sp.d.panes)
+	snap := sp.d.snapshotPanes() // ini-sz46: synchronized read of d.panes
+	n := len(snap)
 	cols, rows := autoGrid(n)
 
 	panes := make([]web.PaneState, n)
-	for i, p := range sp.d.panes {
+	for i, p := range snap {
 		panes[i] = web.PaneState{
 			Name:     p.Name(),
 			Activity: p.Activity().String(),
@@ -86,15 +83,12 @@ type daemonPaneWriter struct {
 }
 
 func (w *daemonPaneWriter) WriteToPTY(paneName string, data []byte) error {
-	for _, p := range w.d.panes {
-		if p.Name() == paneName {
-			p.sendMu.Lock()
-			defer p.sendMu.Unlock()
-			if p.ptmx != nil {
-				_, err := p.ptmx.Write(data)
-				return err
-			}
-			return nil
+	if p := w.d.findPane(paneName); p != nil { // ini-sz46: synchronized lookup
+		p.sendMu.Lock()
+		defer p.sendMu.Unlock()
+		if p.ptmx != nil {
+			_, err := p.ptmx.Write(data)
+			return err
 		}
 	}
 	return nil
