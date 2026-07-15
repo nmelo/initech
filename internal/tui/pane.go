@@ -549,6 +549,12 @@ func (p *Pane) Resize(rows, cols int) {
 	// reveals the clipped top. Stable per resize, not toggled on content
 	// (ini-44hp).
 	emuRows := effectiveEmuRows(rows)
+	// Clamp cols to a sane bound (ini-hup3): an out-of-range column count from a
+	// resize control message (e.g. cols=MaxInt32, or a large finite value)
+	// otherwise flows straight into the emulator buffer's make(Line, width),
+	// panicking with "makeslice: len out of range" or allocating multiple GB and
+	// OOMing the daemon. Mirrors the effectiveEmuRows cap on the row axis.
+	cols = effectiveEmuCols(cols)
 	if p.ptmx != nil {
 		p.ptmx.Resize(cols, emuRows)
 	}
@@ -564,6 +570,23 @@ const emuRowsGrowthFactor = 3
 
 // emuRowsCap bounds per-pane emulator memory regardless of visible height.
 const emuRowsCap = 300
+
+// emuColsCap bounds per-pane emulator width regardless of the requested column
+// count, so a malicious or buggy resize can't panic (makeslice) or allocate
+// unbounded memory in the emulator buffer (ini-hup3). Generous vs. real
+// terminals (~80-400 cols) while keeping a width x height buffer tiny.
+const emuColsCap = 1000
+
+// effectiveEmuCols clamps a requested column count to [1, emuColsCap].
+func effectiveEmuCols(cols int) int {
+	if cols < 1 {
+		return 1
+	}
+	if cols > emuColsCap {
+		return emuColsCap
+	}
+	return cols
+}
 
 // effectiveEmuRows returns the emulator/PTY height for a pane whose VISIBLE
 // height is visibleRows. The emulator is grown to emuRowsGrowthFactor x the
