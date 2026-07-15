@@ -238,6 +238,11 @@ func (t *TUI) handleAgentsSearchKey(ev *tcell.EventKey) bool {
 
 // agentsMoveUp moves the cursor or the grabbed row up by one position.
 func (t *TUI) agentsMoveUp() {
+	// Guard a stale selection (e.g. a concurrent pane removal shrank t.panes
+	// while a row was grabbed) — matches the sibling actions (ini-t3ov).
+	if t.agents.selected < 0 || t.agents.selected >= len(t.panes) {
+		return
+	}
 	if t.agents.moving {
 		if t.agents.selected > 0 {
 			i := t.agents.selected
@@ -409,6 +414,41 @@ func (t *TUI) agentsResetOrder() {
 	t.agents.selected = 0
 	t.agents.scrollOffset = 0
 	t.agents.moving = false
+}
+
+// agentsReconcile re-derives the agents-modal selection state against the
+// current t.panes. Call it whenever the pane set changes (removal, peer
+// update) so stale filtered/selected/scrollOffset indices can't crash the
+// render loop or move actions (ini-w7ym / ini-t3ov). No-op when the modal is
+// closed (state is reset on open).
+func (t *TUI) agentsReconcile() {
+	if !t.agents.active {
+		return
+	}
+	n := len(t.panes)
+	if n == 0 {
+		t.agents.selected = 0
+		t.agents.scrollOffset = 0
+		t.agents.moving = false
+		t.agents.filtered = nil
+		return
+	}
+	if t.agents.searching {
+		// Rebuild the filtered snapshot against the current panes; this also
+		// clamps selected (an index into filtered) and resets scrollOffset.
+		t.agentsRefilter()
+		return
+	}
+	// Non-search: selected indexes t.panes directly.
+	if t.agents.selected >= n {
+		t.agents.selected = n - 1
+	}
+	if t.agents.selected < 0 {
+		t.agents.selected = 0
+	}
+	if t.agents.scrollOffset < 0 || t.agents.scrollOffset >= n {
+		t.agents.scrollOffset = 0
+	}
 }
 
 // agentsRefilter recomputes the filtered index list from the current searchBuf.
@@ -649,6 +689,11 @@ func (t *TUI) renderAgents() {
 			break
 		}
 		idx := displayIndices[dispIdx] // index into t.panes
+		if idx < 0 || idx >= len(t.panes) {
+			// Stale filtered index after a concurrent pane removal — skip it
+			// rather than index out of range and crash the TUI (ini-w7ym).
+			continue
+		}
 		row := iy + vi
 
 		p := t.panes[idx]

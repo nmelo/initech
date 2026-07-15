@@ -356,6 +356,10 @@ func (t *TUI) removePane(name string) error {
 		oldLen := len(t.panes)
 		t.panes = append(t.panes[:idx], t.panes[idx+1:]...)
 		t.logPanesMutation("remove-pane", oldLen)
+		// Keep the agents-modal selection state valid against the shrunk pane
+		// set so a stale filtered/selected index can't crash the TUI
+		// (ini-w7ym / ini-t3ov).
+		t.agentsReconcile()
 
 		// Clean up layout state references.
 		if t.layoutState.Hidden != nil {

@@ -1167,6 +1167,9 @@ func (t *TUI) handlePeerUpdate(peerName string, newPanes []PaneView) {
 	if len(t.layoutState.Order) > 0 {
 		reorderPanes(t.panes, t.layoutState.Order)
 	}
+	// Keep the agents-modal selection state valid against the new pane set so a
+	// stale filtered/selected index can't crash the render loop (ini-w7ym).
+	t.agentsReconcile()
 	LogInfo("peer-update", "panes-updated", "peer", peerName, "total_panes", len(kept))
 	t.recalcGrid(true)
 	LogInfo("peer-update", "done", "peer", peerName, "plan_panes", len(t.plan.Panes))
