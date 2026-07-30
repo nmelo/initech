@@ -71,6 +71,7 @@ func startTestDaemon(t *testing.T, token string, agents ...string) *testDaemon {
 		version:    "test",
 		ringBufs:   make(map[string]*RingBuf),
 		multiSinks: make(map[string]*MultiSink),
+		ownership:  newAgentOwnership(),
 	}
 
 	// Create and start panes with ring buffers and multi-sinks.
@@ -611,6 +612,115 @@ func TestInteg_GracefulShutdown(t *testing.T) {
 	// We expect either shutdown message or connection close.
 	// Either outcome means the daemon notified the client.
 	_ = err // Not checking error type, just verifying no hang.
+}
+
+// sendRawWithID sends any JSON-marshalable command (which must have an "id"
+// field set to wantID) over the control channel and returns the response
+// matching that ID. A new pane's configure_agent can trigger an unsolicited
+// stream_added push on the SAME connection (allocateStreamForPushedPane,
+// sent synchronously before the actual response) -- skip any message whose
+// ID does not match rather than assume the very next line is the response.
+func (tc *testClient) sendRawWithID(t *testing.T, cmd any, wantID string) ControlResp {
+	t.Helper()
+	writeJSON(tc.ctrl, cmd)
+	for i := 0; i < 5; i++ {
+		if !tc.scanner.Scan() {
+			t.Fatal("no control response")
+		}
+		var resp ControlResp
+		if err := json.Unmarshal(tc.scanner.Bytes(), &resp); err != nil {
+			t.Fatalf("parse control response: %v", err)
+		}
+		if resp.ID == wantID {
+			return resp
+		}
+	}
+	t.Fatalf("no response with id %q after 5 messages", wantID)
+	return ControlResp{}
+}
+
+// TestInteg_ConfigureAgentPushEstablishesOwnership_ThenStopSucceeds is a
+// regression test for ini-om0: defaultConfigureAgentBuilder was never
+// registered by any cmd/ code, so no real client ever sent a configure_agent
+// push, so ownership was never established, so handleStopAgent/
+// handleRestartAgent's ownership gate rejected every real caller. This went
+// unnoticed because the existing ownership tests (TestHandleStopAgent_
+// OwnershipEnforced, TestHandleRestartAgent_OwnershipEnforced) call
+// handleConfigureAgent directly, bypassing the wire entirely -- they prove
+// the GATE works given real ownership, not that a real client can ever
+// ESTABLISH it. This test exercises the full path over a real TCP+yamux
+// connection: client A pushes configure_agent for a brand-new role (the
+// zero-config first-connect case pushRolesToPeer handles), a different
+// client B's stop_agent is rejected (not the owner), and client A's own
+// stop_agent succeeds.
+func TestInteg_ConfigureAgentPushEstablishesOwnership_ThenStopSucceeds(t *testing.T) {
+	skipInCI(t)
+	td := startTestDaemon(t, "tok") // no pre-configured agents
+
+	tcA, _ := connectTestClient(t, td.addr, "clientA", "tok")
+	tcA.readStreamMap(t)
+
+	dir := td.daemon.project.Root + "/eng9"
+	cfgResp := tcA.sendRawWithID(t, ConfigureAgentCmd{
+		ID:      "cfg-1",
+		Action:  "configure_agent",
+		Name:    "eng9",
+		Command: []string{"/bin/sh", "-c", "sleep 30"},
+		Dir:     dir,
+	}, "cfg-1")
+	if !cfgResp.OK {
+		t.Fatalf("configure_agent failed: %s", cfgResp.Error)
+	}
+
+	tcB, _ := connectTestClient(t, td.addr, "clientB", "tok")
+	tcB.readStreamMap(t) // sees eng9 as pre-existing; consumes its stream_map/replay.
+
+	stopByB := tcB.sendRawWithID(t, StopAgentCmd{ID: "stop-b", Action: "stop_agent", Name: "eng9"}, "stop-b")
+	if stopByB.OK || !strings.Contains(stopByB.Error, "owned by") {
+		t.Errorf("non-owner stop_agent should be rejected, got %+v", stopByB)
+	}
+
+	stopByA := tcA.sendRawWithID(t, StopAgentCmd{ID: "stop-a", Action: "stop_agent", Name: "eng9"}, "stop-a")
+	if !stopByA.OK {
+		t.Errorf("owner's stop_agent should succeed, got %+v", stopByA)
+	}
+}
+
+// TestInteg_ConfigureAgentPushEstablishesOwnership_ThenRestartSucceeds mirrors
+// the stop test above for restart_agent -- same gate (handleRestartAgent),
+// same assumption (a real push establishes ownership), verified independently
+// per ini-om0's explicit ask not to fix stop while leaving restart unverified.
+func TestInteg_ConfigureAgentPushEstablishesOwnership_ThenRestartSucceeds(t *testing.T) {
+	skipInCI(t)
+	td := startTestDaemon(t, "tok")
+
+	tcA, _ := connectTestClient(t, td.addr, "clientA", "tok")
+	tcA.readStreamMap(t)
+
+	dir := td.daemon.project.Root + "/eng9"
+	cfgResp := tcA.sendRawWithID(t, ConfigureAgentCmd{
+		ID:      "cfg-1",
+		Action:  "configure_agent",
+		Name:    "eng9",
+		Command: []string{"/bin/sh", "-c", "sleep 30"},
+		Dir:     dir,
+	}, "cfg-1")
+	if !cfgResp.OK {
+		t.Fatalf("configure_agent failed: %s", cfgResp.Error)
+	}
+
+	tcB, _ := connectTestClient(t, td.addr, "clientB", "tok")
+	tcB.readStreamMap(t)
+
+	restartByB := tcB.sendRawWithID(t, RestartAgentCmd{ID: "restart-b", Action: "restart_agent", Name: "eng9"}, "restart-b")
+	if restartByB.OK || !strings.Contains(restartByB.Error, "owned by") {
+		t.Errorf("non-owner restart_agent should be rejected, got %+v", restartByB)
+	}
+
+	restartByA := tcA.sendRawWithID(t, RestartAgentCmd{ID: "restart-a", Action: "restart_agent", Name: "eng9"}, "restart-a")
+	if !restartByA.OK {
+		t.Errorf("owner's restart_agent should succeed, got %+v", restartByA)
+	}
 }
 
 // pollPeek repeatedly peeks a pane until the expected text appears or timeout

@@ -281,15 +281,20 @@ func TestRemoteStopConfirmedCallsRemoteStopPeer(t *testing.T) {
 	tui.cmd.confirmExpiry = time.Now().Add(3 * time.Second)
 
 	// Second Enter: executeConfirmed's existing "remote-stop" case must
-	// actually run. mux is nil so remoteStopPeer safely no-ops the network
-	// call (no real daemon needed to prove the dispatch path), but reaching
-	// its result message at all proves the command-bar-to-remoteStopPeer
-	// path is wired end to end, not just that pendingConfirm gets set.
+	// actually run. mux is nil so remoteStopPeer's stop_agent send is
+	// skipped (no real daemon needed to prove the dispatch path), leaving
+	// zero of the one target actually stopped -- which ini-om0 made an
+	// error rather than a silent "0 agent(s) stopped" success, so the
+	// error text differs from the pre-fix message this test originally
+	// checked. Reaching ANY result message at all (still routed through
+	// cmd.error, still naming the peer) is what proves the command-bar-to-
+	// remoteStopPeer path is wired end to end, not just that pendingConfirm
+	// gets set.
 	quit := tui.handleCmdKey(tcell.NewEventKey(tcell.KeyEnter, 0, 0))
 	if quit {
 		t.Error("remote-stop confirmation should not quit")
 	}
-	if !containsSubstr(tui.cmd.error, "remote-stop workbench") {
+	if !containsSubstr(tui.cmd.error, "remote-stop") || !containsSubstr(tui.cmd.error, "workbench") {
 		t.Errorf("executeConfirmed should report the remote-stop result, got error=%q", tui.cmd.error)
 	}
 }

@@ -52,7 +52,7 @@ func Run(p *config.Project, opts Options) ([]string, error) {
 	}
 
 	// Root CLAUDE.md
-	claudeContent := renderRootCLAUDE(p)
+	claudeContent := RenderRootCLAUDE(p)
 	if path, err := writeFile(p.Root, "CLAUDE.md", claudeContent, opts.Force); err != nil {
 		return nil, err
 	} else if path != "" {
@@ -128,7 +128,7 @@ func Run(p *config.Project, opts Options) ([]string, error) {
 				roleVars.TestCmd = ov.TestCmd
 			}
 		}
-		tmpl := templateForRole(roleName)
+		tmpl := TemplateForRole(roleName)
 		content := roles.Render(tmpl, roleVars)
 		content = roles.RenderString(content, "role_name", roleName)
 
@@ -159,10 +159,10 @@ func Run(p *config.Project, opts Options) ([]string, error) {
 	return created, nil
 }
 
-// templateForRole returns the appropriate CLAUDE.md template for a role.
+// TemplateForRole returns the appropriate CLAUDE.md template for a role.
 // Matches against known role prefixes (eng1, eng2 both match eng).
 // Falls back to EngTemplate for unknown roles.
-func templateForRole(name string) string {
+func TemplateForRole(name string) string {
 	switch name {
 	case "super":
 		return roles.SuperTemplate
@@ -211,7 +211,11 @@ func writeFile(dir, name, content string, force bool) (string, error) {
 	return path, nil
 }
 
-func renderRootCLAUDE(p *config.Project) string {
+// RenderRootCLAUDE renders the project-root CLAUDE.md content from the
+// project config. Exported (ini-om0) so the remote-push builder can render
+// the same content sent to a zero-config remote daemon as configure_agent's
+// RootClaudeMD field, without duplicating this project-summary logic.
+func RenderRootCLAUDE(p *config.Project) string {
 	var content string
 	content += "# " + p.Name + "\n\n"
 	content += "## Project Documents\n\n"

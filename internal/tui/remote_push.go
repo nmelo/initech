@@ -62,20 +62,46 @@ func computePushDiff(configRoles []string, running []AgentStatus, owned map[stri
 // directory existence checks (the remote may or may not have the dir yet).
 type configureAgentBuilder func(roleName string, project *config.Project, remote config.Remote) (ConfigureAgentCmd, error)
 
-// defaultConfigureAgentBuilder is a placeholder that callers should replace.
-// The cmd layer wires in a real builder via SetConfigureAgentBuilder so this
-// file stays free of role-template/CLAUDE.md rendering deps.
+// defaultConfigureAgentBuilder is a placeholder until the cmd layer calls
+// SetConfigureAgentBuilder (from a package init(), so it happens before any
+// peer connection can be attempted) with a real builder that has access to
+// role templates and project state. Keeping the placeholder here (rather
+// than a nil func) means a caller who reaches it before registration gets a
+// clear error instead of a nil-pointer panic; this file itself stays free of
+// role-template/CLAUDE.md rendering deps (ini-om0).
 var defaultConfigureAgentBuilder configureAgentBuilder = func(roleName string, project *config.Project, remote config.Remote) (ConfigureAgentCmd, error) {
 	return ConfigureAgentCmd{}, fmt.Errorf("configureAgentBuilder not registered")
 }
 
+// configureAgentBuilderRegistered tracks whether SetConfigureAgentBuilder has
+// ever been called with a non-nil builder, distinct from
+// defaultConfigureAgentBuilder itself (which is never nil -- see above). Lets
+// ConfigureAgentBuilderRegistered answer "was a real builder wired in" without
+// invoking the builder (which could panic against production arguments if
+// called speculatively) (ini-om0).
+var configureAgentBuilderRegistered bool
+
 // SetConfigureAgentBuilder registers the function used by pushRolesToPeer
 // to construct configure_agent payloads. The cmd layer calls this once at
-// startup with a builder that has access to role templates and project state.
+// startup (from an init(), not a per-connection or per-command path) with a
+// builder that has access to role templates and project state.
 func SetConfigureAgentBuilder(b configureAgentBuilder) {
 	if b != nil {
 		defaultConfigureAgentBuilder = b
+		configureAgentBuilderRegistered = true
 	}
+}
+
+// ConfigureAgentBuilderRegistered reports whether a real builder has been
+// registered via SetConfigureAgentBuilder, as opposed to pushRolesToPeer
+// still calling the placeholder above (which always errors, meaning no
+// remote agent can ever be pushed or have its ownership established). Exists
+// so a test can assert the cmd layer's normal startup wiring actually ran,
+// rather than merely that SetConfigureAgentBuilder itself works when a test
+// calls it directly -- the exact gap that let ini-om0 go unnoticed for three
+// months: no cmd/ file ever called SetConfigureAgentBuilder in production.
+func ConfigureAgentBuilderRegistered() bool {
+	return configureAgentBuilderRegistered
 }
 
 // pushRolesToPeer applies the role-diff against a connected peer.

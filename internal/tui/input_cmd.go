@@ -260,6 +260,20 @@ func (t *TUI) remoteStopPeer(peerName string) (int, error) {
 		}
 		stopped++
 	}
+	if stopped == 0 {
+		// (ini-om0) "0 agent(s) stopped" reads as a benign no-op -- as if
+		// there were simply nothing to do -- but every one of len(targets)
+		// attempted stops actually failed. remote-stop is a safety action
+		// taken before an intentional disconnect (78885e40); a safety
+		// action that silently reports success while doing nothing is worse
+		// than one that errors, especially under the pressure of an
+		// operator trying to disconnect cleanly. The individual rejection
+		// reasons are already LogWarn'd above (most commonly ownership,
+		// exactly ini-om0's failure mode: this client never pushed these
+		// agents so it never owns them), so point at the log rather than
+		// repeat every reason here.
+		return 0, fmt.Errorf("attempted to stop %d agent(s) from peer %q, but none succeeded (see .initech/initech.log for rejection reasons -- often means this client does not own them)", len(targets), peerName)
+	}
 	return stopped, nil
 }
 
