@@ -443,6 +443,13 @@ func TestRemotePane_DAQueryDoesNotDeadlock(t *testing.T) {
 			// fragile shape and needs the same skip. See
 			// remoteRenderDeadlockBound's doc comment for why the bound
 			// itself stays tight instead of growing to compensate.
+			//
+			// CAVEAT: after this skip, this subtest's coverage survives
+			// only under the `go test ./... -count=1` Makefile target (no
+			// -short, no -race) -- not under `go test -race
+			// ./internal/tui/` (what QA runs) and not under `make
+			// check`/`make test`. Don't read this skip guard as dead code
+			// and delete it.
 			t.Skip("ini-ls0c/ini-adb9: -race overhead confounds the deadline; see remoteRenderDeadlockBound's doc comment")
 		}
 
