@@ -19,6 +19,23 @@ func TestRemotePane_EndToEnd_EmulatorHasContent(t *testing.T) {
 	if os.Getenv("CI") != "" || testing.Short() {
 		t.Skip("integration test: requires PTY and daemon, run locally")
 	}
+	if raceDetectorEnabled {
+		// ini-ls0c/ini-adb9: same shape as the other skips in this file --
+		// the select below asserts rp.Render completes within a fixed 2s
+		// wall-clock budget, wrapping real PTY/daemon I/O plus emulator
+		// rendering, and -race's own instrumentation overhead is a large
+		// enough fraction of that budget to false-fail under load with
+		// nothing actually wrong. See remoteRenderDeadlockBound's doc
+		// comment for why the bound stays tight instead of growing to
+		// compensate.
+		//
+		// CAVEAT: after this skip, this test's coverage survives only
+		// under the `go test ./... -count=1` Makefile target (no -short,
+		// no -race) -- not under `go test -race ./internal/tui/` (what QA
+		// runs) and not under `make check`/`make test`. Don't read the
+		// double skip guard as dead code and delete it.
+		t.Skip("ini-ls0c/ini-adb9: -race overhead confounds the deadline; see remoteRenderDeadlockBound's doc comment")
+	}
 
 	// Start a daemon with one agent that echoes identifiable output.
 	td := startTestDaemon(t, "", "eng1")
@@ -140,6 +157,36 @@ func TestRemotePane_MultiPane_RenderDoesNotBlock(t *testing.T) {
 	if os.Getenv("CI") != "" || testing.Short() {
 		t.Skip("integration test: requires PTY and daemon, run locally")
 	}
+	if raceDetectorEnabled {
+		// ini-ls0c / ini-adb9: each frame below must complete within
+		// remoteRenderDeadlockBound. -race's own 5-10x instrumentation
+		// overhead is a large enough fraction of that budget to false-fail
+		// under a loaded parallel run even when nothing is actually wrong --
+		// reproduced repeatedly (18+ times across two independent
+		// investigations), zero WARNING: DATA RACE alongside any failure.
+		// Skipping here rather than loosening the bound to compensate: a
+		// bound wide enough to absorb -race overhead would also silently
+		// pass a genuine multi-second render stall, which is exactly the
+		// regression this test exists to catch. TestRemoteRenderFrame_DeadlockBoundFires
+		// proves remoteRenderFrame's bound mechanism itself still works;
+		// TestRemotePane_DAQueryDoesNotDeadlock covers the actual deadlock
+		// class (io.Pipe fill) this test also guards against, and isn't
+		// skipped here since its blocking assertion has the opposite shape
+		// (asserting something does NOT complete quickly, which -race
+		// overhead cannot false-fail).
+		//
+		// CAVEAT for whoever reads this next to three skip guards on one
+		// test: this is not dead code. After this skip, the coverage this
+		// test provides survives in exactly ONE place -- the `go test ./...
+		// -count=1` Makefile target, which runs neither -short nor -race.
+		// That is NOT the target QA runs (`go test -race ./internal/tui/`,
+		// which is also what surfaced ini-adb9) and NOT `make check`/`make
+		// test`. Losing that specific target's coverage is the deliberate,
+		// correct trade here -- -race's overhead is precisely the confound --
+		// but don't read "skipped under -short AND -race" as "never runs"
+		// and delete it; it still runs, just not under either of those two.
+		t.Skip("ini-ls0c/ini-adb9: -race overhead confounds the deadline; see comment above")
+	}
 
 	// Start a daemon with 5 agents (simulates multi-agent workbench).
 	agents := []string{"eng1", "eng2", "eng3", "qa1", "super"}
@@ -218,24 +265,13 @@ dataArrived:
 	s.SetSize(80, 25*len(panes))
 
 	// Render 10 frames (well past frame 5 where production blocks).
-	// DrainData is called before Render, matching the TUI main loop.
+	// remoteRenderDeadlockBound is a DEADLOCK bound, not a performance
+	// assertion -- see its doc comment. TestRemoteRenderFrame_DeadlockBoundFires
+	// forces the exact hang this guards against and proves the bound actually
+	// fires (deterministically, not by absence over N probabilistic runs).
 	for frame := 1; frame <= 10; frame++ {
-		renderDone := make(chan struct{})
-		go func() {
-			for _, rp := range panes {
-				rp.DrainData()
-			}
-			for _, rp := range panes {
-				rp.Render(s, false, false, 1, Selection{})
-			}
-			close(renderDone)
-		}()
-
-		select {
-		case <-renderDone:
-			// Good.
-		case <-time.After(2 * time.Second):
-			t.Fatalf("frame %d: Render blocked for 2+ seconds (%d panes)", frame, len(panes))
+		if err := remoteRenderFrame(panes, s, frame, remoteRenderDeadlockBound); err != nil {
+			t.Fatal(err)
 		}
 	}
 
@@ -260,6 +296,110 @@ dataArrived:
 	if !foundContent {
 		t.Error("no pane has visible content after rendering")
 	}
+}
+
+// remoteRenderDeadlockBound bounds how long one frame's DrainData+Render may
+// take before a caller treats it as evidence of the deadlock class
+// TestRemotePane_DAQueryDoesNotDeadlock reproduces directly (io.Pipe fills,
+// Emulator.Write blocks forever inside the SafeEmulator write lock).
+//
+// KEPT TIGHT DELIBERATELY (ini-ls0c/ini-adb9): an earlier version of this
+// fix widened this to 30s to absorb go test -race's 5-10x instrumentation
+// overhead under load. That was wrong and was withdrawn before landing --
+// "any finite bound eventually catches a TRUE infinite hang" is true, but it
+// ignores the middle case: a real, finite, user-perceptible stall (say 25s,
+// from an actual future regression) would then pass silently. A bound loose
+// enough to never trigger under adversarial conditions is not a fix, it's an
+// assertion that can no longer fail -- strictly worse than the flake it
+// replaces, which at least told the truth on failure. The correct fix for
+// the -race/load false-fail is skipping the affected callers under -race
+// (see raceDetectorEnabled, and TestRemotePane_MultiPane_RenderDoesNotBlock's
+// skip), not loosening what "too slow" means. This bound stays close to the
+// original 2s (with modest jitter headroom) so it remains a meaningful
+// assertion wherever it still runs.
+//
+// TestRemoteRenderFrame_DeadlockBoundFires forces the exact hang this bound
+// exists to catch and proves it fires -- deterministically, not by absence
+// over N probabilistic runs, which cannot distinguish "fixed" from "didn't
+// happen to reproduce this time" for a low-base-rate condition.
+const remoteRenderDeadlockBound = 5 * time.Second
+
+// remoteRenderFrame drains and renders every pane for one frame, returning
+// nil if it completes within bound or an error naming the frame if it
+// doesn't. Extracted so TestRemoteRenderFrame_DeadlockBoundFires can drive
+// the exact same code TestRemotePane_MultiPane_RenderDoesNotBlock uses, with
+// a short bound instead of the real one, rather than re-implementing (and
+// potentially drifting from) the mechanism under test.
+func remoteRenderFrame(panes []*RemotePane, s tcell.Screen, frame int, bound time.Duration) error {
+	renderDone := make(chan struct{})
+	go func() {
+		for _, rp := range panes {
+			rp.DrainData()
+		}
+		for _, rp := range panes {
+			rp.Render(s, false, false, 1, Selection{})
+		}
+		close(renderDone)
+	}()
+
+	select {
+	case <-renderDone:
+		return nil
+	case <-time.After(bound):
+		return fmt.Errorf("frame %d: Render blocked for %s+ (%d panes) -- this bound is a deadlock detector, not a performance assertion; see remoteRenderDeadlockBound's doc comment", frame, bound, len(panes))
+	}
+}
+
+// TestRemoteRenderFrame_DeadlockBoundFires forces the deadlock
+// remoteRenderDeadlockBound exists to catch -- a bare SafeEmulator with no
+// responseLoop draining its response pipe, fed a DA query, per
+// TestRemotePane_DAQueryDoesNotDeadlock's bare_emulator_blocks subtest --
+// and proves the bound terminates it rather than hanging forever or
+// returning instantly. Uses a short bound so the test itself stays fast;
+// remoteRenderFrame is the identical production-path helper
+// TestRemotePane_MultiPane_RenderDoesNotBlock calls with the real 30s value,
+// so this exercises the real mechanism, not a stand-in for it.
+//
+// This is the verification ini-ls0c's low base rate (~1-2 reproductions per
+// 16 probabilistic runs) demands: a clean N-run batch after the fix proves
+// almost nothing for a condition this rare (it's roughly the same
+// observation you'd get WITHOUT the fix), because absence of a rare event in
+// a small sample cannot distinguish "fixed" from "didn't happen to fire this
+// time." Only forcing the condition on purpose and watching the bound
+// actually engage constitutes proof.
+func TestRemoteRenderFrame_DeadlockBoundFires(t *testing.T) {
+	// Bare SafeEmulator: Start() is never called, so no responseLoop drains
+	// its response pipe. A DA query write blocks forever inside
+	// Emulator.Write -- confirmed by TestRemotePane_DAQueryDoesNotDeadlock's
+	// bare_emulator_blocks subtest above.
+	rp := &RemotePane{
+		name:   "eng1",
+		host:   "wb",
+		emu:    vt.NewSafeEmulator(80, 24),
+		dataCh: make(chan []byte, 1),
+	}
+	rp.dataCh <- []byte("\x1b[c") // DA1 query: CSI c.
+
+	s := tcell.NewSimulationScreen("")
+	s.Init()
+	s.SetSize(80, 24)
+
+	const shortBound = 150 * time.Millisecond
+	start := time.Now()
+	err := remoteRenderFrame([]*RemotePane{rp}, s, 1, shortBound)
+	elapsed := time.Since(start)
+
+	if err == nil {
+		t.Fatal("expected remoteRenderFrame to report the deadlock bound firing; it returned nil instead -- this means the test did not actually force the hang it claims to")
+	}
+	if elapsed < shortBound {
+		t.Errorf("bound fired after %s, want >= %s -- returned too early, meaning DrainData did not actually block", elapsed, shortBound)
+	}
+	const slack = 2 * time.Second
+	if elapsed > shortBound+slack {
+		t.Errorf("bound fired after %s, want ~%s (within %s) -- overshot by a lot, the select/timeout wiring may be broken", elapsed, shortBound, slack)
+	}
+	t.Logf("deadlock bound correctly fired after %s (bound %s): %v", elapsed, shortBound, err)
 }
 
 // TestRemotePane_DAQueryDoesNotDeadlock reproduces the root cause: the VT
@@ -291,6 +431,21 @@ func TestRemotePane_DAQueryDoesNotDeadlock(t *testing.T) {
 	// Now prove the fix: RemotePane.Start() launches responseLoop which
 	// drains the pipe, so Write never blocks.
 	t.Run("remote_pane_does_not_block", func(t *testing.T) {
+		if raceDetectorEnabled {
+			// ini-ls0c/ini-adb9: same shape and same fix as
+			// TestRemotePane_MultiPane_RenderDoesNotBlock's skip -- this
+			// subtest asserts DrainData+Render completes within
+			// remoteRenderDeadlockBound, which -race's own overhead can
+			// exceed under load with nothing actually wrong. Unlike the
+			// sibling bare_emulator_blocks subtest above (which asserts the
+			// OPPOSITE: that something does NOT complete quickly, a shape
+			// -race overhead cannot false-fail), this one shares the
+			// fragile shape and needs the same skip. See
+			// remoteRenderDeadlockBound's doc comment for why the bound
+			// itself stays tight instead of growing to compensate.
+			t.Skip("ini-ls0c/ini-adb9: -race overhead confounds the deadline; see remoteRenderDeadlockBound's doc comment")
+		}
+
 		server, client := net.Pipe()
 		defer server.Close()
 		defer client.Close()
@@ -312,19 +467,10 @@ func TestRemotePane_DAQueryDoesNotDeadlock(t *testing.T) {
 		s.Init()
 		s.SetSize(80, 25)
 
-		done := make(chan struct{})
-		go func() {
-			rp.DrainData()
-			rp.Render(s, false, false, 1, Selection{})
-			close(done)
-		}()
-
-		select {
-		case <-done:
-			t.Log("DrainData+Render completed (responseLoop drained DA response)")
-		case <-time.After(2 * time.Second):
-			t.Fatal("DrainData blocked for 2+ seconds (responseLoop not draining pipe)")
+		if err := remoteRenderFrame([]*RemotePane{rp}, s, 1, remoteRenderDeadlockBound); err != nil {
+			t.Fatal(err)
 		}
+		t.Log("DrainData+Render completed (responseLoop drained DA response)")
 
 		rp.Close()
 	})

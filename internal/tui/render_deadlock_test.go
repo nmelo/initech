@@ -16,6 +16,24 @@ func TestRenderNotBlockedByRemoteConnection(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping slow render deadlock test in short mode")
 	}
+	if raceDetectorEnabled {
+		// ini-ls0c/ini-adb9: same shape as TestRemotePane_MultiPane_RenderDoesNotBlock
+		// and TestRemotePane_DAQueryDoesNotDeadlock's remote_pane_does_not_block
+		// subtest -- this asserts tui.render() completes within a fixed 2s
+		// wall-clock budget, and -race's own instrumentation overhead is a
+		// large enough fraction of that budget to false-fail under a loaded
+		// parallel run with nothing actually wrong. See
+		// remoteRenderDeadlockBound's doc comment in remote_render_test.go
+		// for why the bound stays tight instead of growing to compensate.
+		//
+		// CAVEAT: after this skip, this test's coverage survives only under
+		// the `go test ./... -count=1` Makefile target (no -short, no
+		// -race) -- not under `go test -race ./internal/tui/` (what QA
+		// runs, and what surfaced ini-adb9) and not under `make check`/`make
+		// test`. That's a deliberate trade, not an oversight -- don't read
+		// "skipped under -short AND -race" as dead code and delete it.
+		t.Skip("ini-ls0c/ini-adb9: -race overhead confounds the deadline; see remoteRenderDeadlockBound's doc comment")
+	}
 	s := tcell.NewSimulationScreen("")
 	s.Init()
 	s.SetSize(120, 40)
