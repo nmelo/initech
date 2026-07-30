@@ -144,11 +144,6 @@ func (t *TUI) handleAgentEvent(ev AgentEvent) {
 		}
 	}
 
-	// Broadcast to web companion subscribers.
-	if t.webEventProvider != nil {
-		t.webEventProvider.BroadcastWebEvent(ev)
-	}
-
 	// Fan out to Slack responder (non-blocking).
 	if t.slackEventCh != nil {
 		re := slackchat.ResponderEvent{

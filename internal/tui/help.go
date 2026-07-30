@@ -50,7 +50,6 @@ func getHelpLines() []string {
 			"  add <name>       Add a new agent pane.",
 			"  remove (rm) <n>  Remove an agent pane.",
 			"  mcp              MCP server status and connection info.",
-			"  web              Web companion status and URL.",
 			"  help (?)         This screen.",
 			"  quit (q)         Exit initech.",
 			"",

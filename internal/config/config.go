@@ -58,8 +58,6 @@ type Project struct {
 	// default tint.
 	RunningPaneTint string `yaml:"running_pane_tint,omitempty"`
 
-	// Web companion server fields.
-	WebPort               *int   `yaml:"web_port,omitempty"`                 // Web companion port. nil/0 = disabled, >0 = enabled.
 	WebhookURL            string `yaml:"webhook_url,omitempty"`              // HTTP endpoint for agent event POSTs. Empty = disabled.
 	AnnounceURL           string `yaml:"announce_url,omitempty"`             // Agent Radio webhook for TTS announcements. Empty = disabled.
 	IdleWithBeadThreshold *int   `yaml:"idle_with_bead_threshold,omitempty"` // Seconds of silence before idle-with-bead fires. nil = 60, 0 = disabled.
@@ -169,15 +167,6 @@ func (p *Project) EffectiveSlackBotToken() string {
 		return v
 	}
 	return p.Slack.BotToken
-}
-
-// EffectiveWebPort returns the web companion port from config. Returns 0
-// (disabled) when web_port is not set, or the explicit value when set.
-func (p *Project) EffectiveWebPort() int {
-	if p.WebPort == nil {
-		return 0
-	}
-	return *p.WebPort
 }
 
 // DefaultMcpBind is the default bind address for the MCP server.
@@ -409,9 +398,6 @@ func Validate(p *Project) error {
 	}
 
 	// MCP server validation.
-	if p.WebPort != nil && (*p.WebPort < 0 || *p.WebPort > 65535) {
-		return fmt.Errorf("web_port %d out of range (0-65535)", *p.WebPort)
-	}
 	if p.McpPort != nil && (*p.McpPort < 0 || *p.McpPort > 65535) {
 		return fmt.Errorf("mcp_port %d out of range (0-65535)", *p.McpPort)
 	}

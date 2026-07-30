@@ -81,7 +81,6 @@ func runServeWithConfig(cmd *cobra.Command, cfgPath string) error {
 		Agents:  agents,
 		Version: Version,
 		Verbose: verbose,
-		WebPort: proj.EffectiveWebPort(),
 	})
 }
 

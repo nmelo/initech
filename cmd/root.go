@@ -26,7 +26,6 @@ var (
 	noColor     bool
 	autoSuspend bool
 	pprofAddr   string
-	webPort     int
 	mcpPort     int
 )
 
@@ -96,7 +95,6 @@ func init() {
 	rootCmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Enable DEBUG-level logging to .initech/initech.log")
 	rootCmd.Flags().BoolVar(&autoSuspend, "auto-suspend", false, "Enable automatic agent suspension under memory pressure")
 	rootCmd.Flags().StringVar(&pprofAddr, "pprof", "", "Start pprof HTTP server on the given localhost address (e.g. localhost:6060)")
-	rootCmd.Flags().IntVar(&webPort, "web-port", 0, "Start web companion server on the given port (0 = disabled)")
 	rootCmd.Flags().IntVar(&mcpPort, "mcp-port", 0, "Start MCP server on the given port (0 = disabled)")
 	rootCmd.PersistentFlags().BoolVar(&noColor, "no-color", false, "Disable colored output")
 
@@ -233,7 +231,6 @@ func runTUI(cmd *cobra.Command, args []string) error {
 		PressureThreshold: proj.Resource.PressureThreshold,
 		Project:           proj,
 		PaneConfigBuilder: buildReloadingPaneConfigBuilder(cfgPath, buildAgentPaneConfig),
-		WebPort:           effectiveWebPort(webPort, proj),
 		WebhookURL:        proj.WebhookURL,
 		SlackAppToken:     proj.EffectiveSlackAppToken(),
 		SlackBotToken:     proj.EffectiveSlackBotToken(),
@@ -241,16 +238,6 @@ func runTUI(cmd *cobra.Command, args []string) error {
 		McpToken:          proj.EffectiveMcpToken(),
 		McpBind:           proj.EffectiveMcpBind(),
 	})
-}
-
-// effectiveWebPort returns the web companion port to use. The --web-port flag
-// takes precedence. If the flag is 0 (default/disabled), fall back to the
-// config value. Web companion is disabled when the result is 0.
-func effectiveWebPort(flagValue int, proj *config.Project) int {
-	if flagValue != 0 {
-		return flagValue
-	}
-	return proj.EffectiveWebPort()
 }
 
 // effectiveMcpPort returns the MCP port to use. The --mcp-port flag takes

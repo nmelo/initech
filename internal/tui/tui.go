@@ -16,7 +16,6 @@ import (
 	"github.com/nmelo/initech/internal/config"
 	"github.com/nmelo/initech/internal/mcp"
 	"github.com/nmelo/initech/internal/slackchat"
-	"github.com/nmelo/initech/internal/web"
 )
 
 // LayoutMode determines how panes are arranged on screen.
@@ -94,11 +93,6 @@ type mcpModal struct {
 	revealExpiry  time.Time // auto-hide token after 10 seconds
 }
 
-// webModal holds Web Companion modal state.
-type webModal struct {
-	active bool
-}
-
 // agentsModal holds state for the agent management modal.
 type agentsModal struct {
 	active       bool
@@ -170,7 +164,6 @@ type TUI struct {
 	eventLogM eventLogModal  // Event log history modal.
 	help      helpModal      // Help reference card modal.
 	mcpM      mcpModal       // MCP setup modal.
-	webM      webModal       // Web companion modal.
 	agents    agentsModal    // Agent management modal.
 	welcome   welcomeOverlay // First-launch keybinding hints.
 	sel       mouseSelection // Mouse text selection.
@@ -219,11 +212,8 @@ type TUI struct {
 	mcpBind  string // Bind address (e.g. "0.0.0.0").
 	mcpPort  int    // Configured port (0 = disabled).
 
-	// Web companion runtime state for the web modal.
-	webPort          int                           // Configured port (0 = disabled).
-	webEventProvider *tuiEventProvider             // For broadcasting events to web subscribers. Nil if web disabled.
-	webhookURL       string                        // Webhook URL from config, for IPC notify action.
-	slackEventCh     chan slackchat.ResponderEvent // Fan-out channel for Slack responder. Nil if Slack disabled.
+	webhookURL   string                        // Webhook URL from config, for IPC notify action.
+	slackEventCh chan slackchat.ResponderEvent // Fan-out channel for Slack responder. Nil if Slack disabled.
 
 	// Paste buffering: accumulate characters between EventPaste start/end,
 	// then flush as one atomic PTY write with bracketed paste markers.
@@ -453,7 +443,6 @@ type Config struct {
 	PressureThreshold int                                   // RSS percentage threshold (0 uses default 85).
 	PaneConfigBuilder func(name string) (PaneConfig, error) // Optional factory for hot-add. Nil disables add command.
 	Project           *config.Project                       // Full project config. Used for remote peer connections.
-	WebPort           int                                   // Port for the web companion server. 0 = disabled.
 	WebhookURL        string                                // HTTP endpoint for agent event POSTs. Empty = disabled.
 	SlackAppToken     string                                // Slack app-level token for Socket Mode. Empty = disabled.
 	SlackBotToken     string                                // Slack bot token for Web API calls. Empty = disabled.
@@ -763,40 +752,6 @@ func Run(cfg Config) error {
 	// Start memory monitor when auto-suspend is enabled.
 	if t.autoSuspend {
 		t.startMemoryMonitor()
-	}
-
-	// Start web companion server when configured.
-	if cfg.WebPort > 0 {
-		t.webPort = cfg.WebPort
-		webCtx, webCancel := context.WithCancel(context.Background())
-		lister := &tuiPaneLister{t: t}
-		subscriber := &tuiPaneSubscriber{t: t}
-		stateProvider := &tuiStateProvider{t: t}
-		eventProvider := &tuiEventProvider{t: t}
-		t.webEventProvider = eventProvider
-		paneWriter := &tuiPaneWriter{t: t}
-		pinToggler := &tuiPinToggler{t: t}
-		webSrv := web.NewServer(cfg.WebPort, lister, subscriber, stateProvider, eventProvider, paneWriter, pinToggler, nil)
-		// Share the configured MCP token so one token unlocks MCP + web
-		// (ini-mfmh). When none is configured, the web server keeps its own
-		// auto-generated token (still fail-closed, never open).
-		if cfg.McpToken != "" {
-			webSrv.SetToken(cfg.McpToken)
-		}
-		go func() {
-			if err := webSrv.Start(webCtx); err != nil {
-				LogError("web", "server exited with error", "err", err)
-			}
-		}()
-		// Log the token-bearing URL: the TUI owns the screen, so the operator
-		// retrieves the companion URL (with its auth token) from initech.log.
-		LogInfo("web", "companion server starting", "url", fmt.Sprintf("http://0.0.0.0:%d/?token=%s", cfg.WebPort, webSrv.Token()))
-		defer func() {
-			webCancel()
-			shutCtx, shutCancel := context.WithTimeout(context.Background(), 2*time.Second)
-			webSrv.Shutdown(shutCtx)
-			shutCancel()
-		}()
 	}
 
 	// Start Slack Socket Mode client and responder when tokens are configured.

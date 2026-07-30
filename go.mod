@@ -7,7 +7,6 @@ require (
 	github.com/charmbracelet/x/ansi v0.11.6
 	github.com/charmbracelet/x/vt v0.0.0-20260323091123-df7b1bcffcca
 	github.com/charmbracelet/x/xpty v0.1.3
-	github.com/coder/websocket v1.8.14
 	github.com/creack/pty v1.1.24
 	github.com/gdamore/tcell/v2 v2.13.8
 	github.com/hashicorp/yamux v0.1.2
