@@ -15,7 +15,6 @@ import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/nmelo/initech/internal/config"
 	"github.com/nmelo/initech/internal/mcp"
-	"github.com/nmelo/initech/internal/slackchat"
 )
 
 // LayoutMode determines how panes are arranged on screen.
@@ -212,8 +211,7 @@ type TUI struct {
 	mcpBind  string // Bind address (e.g. "0.0.0.0").
 	mcpPort  int    // Configured port (0 = disabled).
 
-	webhookURL   string                        // Webhook URL from config, for IPC notify action.
-	slackEventCh chan slackchat.ResponderEvent // Fan-out channel for Slack responder. Nil if Slack disabled.
+	webhookURL string // Webhook URL from config, for IPC notify action.
 
 	// Paste buffering: accumulate characters between EventPaste start/end,
 	// then flush as one atomic PTY write with bracketed paste markers.
@@ -444,8 +442,6 @@ type Config struct {
 	PaneConfigBuilder func(name string) (PaneConfig, error) // Optional factory for hot-add. Nil disables add command.
 	Project           *config.Project                       // Full project config. Used for remote peer connections.
 	WebhookURL        string                                // HTTP endpoint for agent event POSTs. Empty = disabled.
-	SlackAppToken     string                                // Slack app-level token for Socket Mode. Empty = disabled.
-	SlackBotToken     string                                // Slack bot token for Web API calls. Empty = disabled.
 	McpPort           int                                   // Port for the MCP server. 0 = disabled.
 	McpToken          string                                // Bearer token for MCP auth. Empty = auto-generate.
 	McpBind           string                                // Bind address for MCP server. Empty = "0.0.0.0".
@@ -752,34 +748,6 @@ func Run(cfg Config) error {
 	// Start memory monitor when auto-suspend is enabled.
 	if t.autoSuspend {
 		t.startMemoryMonitor()
-	}
-
-	// Start Slack Socket Mode client and responder when tokens are configured.
-	if cfg.SlackAppToken != "" && cfg.SlackBotToken != "" {
-		slackCtx, slackCancel := context.WithCancel(context.Background())
-		host := &tuiSlackHost{t: t}
-		var allowedUsers []string
-		if cfg.Project != nil {
-			allowedUsers = cfg.Project.Slack.AllowedUsers
-		}
-		sc := slackchat.NewClient(cfg.SlackAppToken, cfg.SlackBotToken, host, allowedUsers, nil)
-		if cfg.Project != nil {
-			sc.SetThreadContext(cfg.Project.Slack.IsThreadContextEnabled())
-		}
-		t.safeGo(func() { sc.Run(slackCtx) })
-
-		// Start the completion responder.
-		responseMode := "completion"
-		if cfg.Project != nil {
-			responseMode = cfg.Project.Slack.ResponseMode
-		}
-		t.slackEventCh = make(chan slackchat.ResponderEvent, 64)
-		peeker := &tuiPanePeeker{t: t}
-		resp := slackchat.NewResponder(sc.API(), sc.Tracker(), peeker, responseMode, nil)
-		t.safeGo(func() { resp.Run(slackCtx, t.slackEventCh) })
-
-		LogInfo("slack", "Socket Mode client and responder starting")
-		defer slackCancel()
 	}
 
 	// Start MCP server when configured.

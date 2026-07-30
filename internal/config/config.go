@@ -29,9 +29,6 @@ var roleNameRe = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
 // underscores (distinguish from role names at a glance).
 var peerNameRe = regexp.MustCompile(`^[a-zA-Z0-9-]+$`)
 
-// slackUserIDRe matches Slack user IDs: U followed by uppercase alphanumeric.
-var slackUserIDRe = regexp.MustCompile(`^U[A-Z0-9]+$`)
-
 // Project is the top-level config read from initech.yaml.
 type Project struct {
 	Name          string                  `yaml:"project"`
@@ -66,9 +63,6 @@ type Project struct {
 	McpPort  *int   `yaml:"mcp_port,omitempty"`  // MCP server port. Default 9200, nil uses default, 0 disables.
 	McpToken string `yaml:"mcp_token,omitempty"` // Bearer token. Auto-generated if empty. INITECH_MCP_TOKEN env var overrides.
 	McpBind  string `yaml:"mcp_bind,omitempty"`  // Bind address. Default "0.0.0.0".
-
-	// Slack chat integration fields.
-	Slack SlackConfig `yaml:"slack,omitempty"`
 
 	// Cross-machine coordination fields.
 	PeerName string            `yaml:"peer_name,omitempty"` // This instance's identity (e.g., "workbench").
@@ -134,40 +128,6 @@ type ResourceConfig struct {
 // DefaultPressureThreshold is the RSS percentage above which agents may be
 // auto-suspended. Used when PressureThreshold is zero (unset).
 const DefaultPressureThreshold = 85
-
-// SlackConfig holds Slack chat integration settings. When both tokens are set,
-// initech connects via Socket Mode to receive @mention events and dispatch
-// them to agents. Env vars INITECH_SLACK_APP_TOKEN and INITECH_SLACK_BOT_TOKEN
-// override the config file values.
-type SlackConfig struct {
-	AppToken      string   `yaml:"app_token,omitempty"`      // xapp-... App-level token for Socket Mode.
-	BotToken      string   `yaml:"bot_token,omitempty"`      // xoxb-... Bot token for Web API calls.
-	AllowedUsers  []string `yaml:"allowed_users,omitempty"`  // Slack user IDs allowed to dispatch. Empty = all.
-	ResponseMode  string   `yaml:"response_mode,omitempty"`  // "thread" (default) or "channel".
-	ThreadContext *bool    `yaml:"thread_context,omitempty"` // Fetch thread history for dispatch context. nil/true = enabled.
-}
-
-// IsThreadContextEnabled returns true if thread context fetching is enabled.
-// Defaults to true when not explicitly set.
-func (s *SlackConfig) IsThreadContextEnabled() bool {
-	return s.ThreadContext == nil || *s.ThreadContext
-}
-
-// EffectiveSlackAppToken returns the app token, preferring the env var.
-func (p *Project) EffectiveSlackAppToken() string {
-	if v := os.Getenv("INITECH_SLACK_APP_TOKEN"); v != "" {
-		return v
-	}
-	return p.Slack.AppToken
-}
-
-// EffectiveSlackBotToken returns the bot token, preferring the env var.
-func (p *Project) EffectiveSlackBotToken() string {
-	if v := os.Getenv("INITECH_SLACK_BOT_TOKEN"); v != "" {
-		return v
-	}
-	return p.Slack.BotToken
-}
 
 // DefaultMcpBind is the default bind address for the MCP server.
 const DefaultMcpBind = "0.0.0.0"
@@ -442,13 +402,6 @@ func Validate(p *Project) error {
 				fmt.Fprintf(os.Stderr, "Warning: role %q appears in remotes.%s.roles and remotes.%s.roles. Push will be ambiguous; only one daemon will own this role.\n", r, prev, name)
 			}
 			roleOwner[r] = name
-		}
-	}
-
-	// Slack user ID validation (warn only, don't block startup).
-	for _, uid := range p.Slack.AllowedUsers {
-		if !slackUserIDRe.MatchString(uid) {
-			return fmt.Errorf("slack.allowed_users: %q does not look like a Slack user ID (expected U followed by alphanumeric, e.g. U12345ABC)", uid)
 		}
 	}
 

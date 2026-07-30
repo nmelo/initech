@@ -232,8 +232,6 @@ func runTUI(cmd *cobra.Command, args []string) error {
 		Project:           proj,
 		PaneConfigBuilder: buildReloadingPaneConfigBuilder(cfgPath, buildAgentPaneConfig),
 		WebhookURL:        proj.WebhookURL,
-		SlackAppToken:     proj.EffectiveSlackAppToken(),
-		SlackBotToken:     proj.EffectiveSlackBotToken(),
 		McpPort:           effectiveMcpPort(mcpPort, proj),
 		McpToken:          proj.EffectiveMcpToken(),
 		McpBind:           proj.EffectiveMcpBind(),
