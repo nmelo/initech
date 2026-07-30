@@ -184,11 +184,32 @@ func (m *ControlMux) readLoop() {
 
 		if resp.ID != "" {
 			// Check for a waiting caller first (outgoing request response).
+			// Delete the entry atomically with the lookup (ini-5my1): a
+			// duplicate response for the same ID -- e.g. a peer that resends
+			// after Request already abandoned the entry via a write-timeout
+			// error path -- then finds no registration at all, rather than a
+			// stale channel nobody is draining.
 			m.pendingMu.Lock()
 			ch, ok := m.pending[resp.ID]
+			if ok {
+				delete(m.pending, resp.ID)
+			}
 			m.pendingMu.Unlock()
 			if ok {
-				ch <- resp
+				// Non-blocking send (ini-5my1): ch has capacity 1 and, by
+				// construction above, this is the only send this readLoop
+				// will ever attempt against this specific channel, so the
+				// default case should be unreachable in practice. It exists
+				// as defense in depth against a caller abandoning ch (e.g. a
+				// Request that gave up after its own 10s timeout) so a
+				// blocked send can never wedge this, the sole reader of the
+				// shared control stream for every RemotePane on this peer.
+				select {
+				case ch <- resp:
+				default:
+					LogDebug("control_mux", "dropped response: no receiver",
+						"id", resp.ID)
+				}
 			} else if resp.Action != "" && m.onRequest != nil {
 				// Incoming command from the remote end (ID + Action, no
 				// pending caller). Dispatch to the request handler and
