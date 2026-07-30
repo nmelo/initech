@@ -7,7 +7,6 @@ import (
 	"io"
 	"net"
 	"os"
-	"runtime/debug"
 	"strings"
 	"syscall"
 	"testing"
@@ -118,43 +117,38 @@ var deliveryEffectActions = map[string]bool{
 	"emit_event": true,
 }
 
-// buildInfoMainVersion returns the main module's version as embedded by the
-// Go toolchain, overridable for tests. Wraps runtime/debug.ReadBuildInfo.
-var buildInfoMainVersion = func() (string, bool) {
-	bi, ok := debug.ReadBuildInfo()
-	if !ok {
-		return "", false
-	}
-	return bi.Main.Version, true
-}
-
 // isDevBuild reports whether this binary looks like a local, uncommitted-tree
-// build rather than a properly released one (ini-grg3). Checks two
-// independent signals so a false positive can't gate a legitimate user out of
-// every delivery command with no obvious cause:
+// build rather than a properly released one (ini-grg3).
 //
-//  1. Version (cmd.Version, ldflag-injected at release time by goreleaser;
-//     "dev" is the hardcoded default for any local `go build`/`make build`).
-//  2. If Version is still "dev", runtime/debug's build info for the main
-//     module: "(devel)" (or absent) means the binary was built from the main
-//     module's own working directory — exactly `go build .` inside a
-//     checkout, the shape that caused the incident. Any other value is a real
-//     resolved module version, meaning the binary came from `go install
-//     pkg@version` rather than a raw local build, even though our own ldflag
-//     wasn't injected. (This repo's go.mod replace directive currently blocks
-//     `go install` outright, but this stays correct if that ever changes.)
+// Version=='dev' (cmd.Version, ldflag-injected at release time by
+// goreleaser; "dev" is the hardcoded default for any local `go
+// build`/`make build`) is SUFFICIENT ON ITS OWN. Do not add a second gate
+// that can override it to false: a prior version of this function also
+// consulted runtime/debug's build info and required "(devel)" (or absent)
+// before agreeing the binary was a dev build, treating any other value as
+// evidence of a legitimate `go install pkg@version`. That was wrong on this
+// toolchain (go1.26.4): a real `make build`/`go build .` run from a clean,
+// tagged, NON-submodule checkout embeds a genuine computed pseudo-version
+// (e.g. "v1.31.2-0.20260730144731-4f96ef884dbd"), not "(devel)" — verified
+// empirically against a plain `git clone`, not assumed (the submodule-style
+// checkout every agent workspace uses for src/ happens to suppress VCS
+// stamping, which is why an earlier check from inside one produced "(devel)"
+// and looked correct). So the build-info condition silently disabled the
+// guard for exactly the common case it exists to catch. `go install` is
+// separately confirmed to be blocked outright by this repo's go.mod replace
+// directive (reverified, not just carried forward), so there is no live
+// scenario the extra check was protecting anyway, and no unit test can
+// express the distinction it was chasing: a go-test binary's own build info
+// never matches what a sibling `go build`/`make build` produces, so a test
+// asserting build-info behavior only ever proves go-test's shape, not a real
+// build's. Verify manually instead: `make build`, then run the binary
+// against a nonexistent socket path; the guard's refusal error is the
+// expected result, a raw dial error means it did not fire.
 func isDevBuild() bool {
 	if isRunningUnderGoTest() {
 		return false
 	}
-	if Version != "dev" {
-		return false
-	}
-	v, ok := buildInfoMainVersion()
-	if !ok {
-		return true
-	}
-	return v == "" || v == "(devel)"
+	return Version == "dev"
 }
 
 // isRunningUnderGoTest reports whether this binary was compiled and run by
@@ -287,6 +281,26 @@ func ipcCall(req tui.IPCRequest) (*tui.IPCResponse, error) {
 // not a const, so tests can shrink it instead of waiting out the real value.
 var ipcCallTimeout = 10 * time.Second
 
+// sendActionTimeout is the deadline used specifically for the "send" action
+// (ini-ousx qa7). handleIPCSend blocks synchronously on resumePane when the
+// target pane is suspended (internal/tui/ipc.go:232-239), and the client has
+// no way to know in advance whether a given send will hit that path, so
+// every send must budget for the worst case. Enumerated every other
+// delivery-effect action's server-side handler (internal/tui/ipc.go,
+// ipc_lifecycle.go): none has a comparable long synchronous wait, so this
+// deadline applies ONLY to "send" (which "clear" also uses, since it sends
+// literal "/clear" via the same action) — every other action keeps the
+// shorter ipcCallTimeout, preserving fast-stall detection where no legitimate
+// long wait exists.
+//
+// Justified maximum, not a convention: resumeTimeout (internal/tui/
+// resource.go:430) = 30s, the dominant term. Plus up to (maxMessageQueue-1)
+// = 19 gaps of queueDrainInterval (resource.go:319, :434) = 9.5s for a fully
+// queued suspended pane. Plus ~3s margin for NewPane (fork/exec) and
+// runOnMain pane-replacement overhead (normally sub-second; this is safety
+// margin, not a measured figure). Total 42.5s, rounded up to 45s.
+var sendActionTimeout = 45 * time.Second
+
 // ipcCallSocket sends a request to the TUI's IPC endpoint at the given path.
 // Uses tui.DialIPC which handles Unix sockets on POSIX and TCP via .port file
 // on Windows.
@@ -317,7 +331,17 @@ func ipcCallSocket(sockPath string, req tui.IPCRequest) (*tui.IPCResponse, error
 	// SIGSTOPped or wedged TUI hangs the CLI forever (ini-ousx) — the
 	// server already protects itself this way (ipc.go's 5s read deadline)
 	// but the client never did.
-	conn.SetDeadline(time.Now().Add(ipcCallTimeout))
+	//
+	// "send" gets the longer, resume-aware budget (ini-ousx qa7): the client
+	// can't know in advance whether this send will hit a suspended pane and
+	// block server-side on resumePane for up to resumeTimeout. Every other
+	// action keeps the short ipcCallTimeout, since none has a comparable
+	// legitimate long wait (enumerated on the bead).
+	deadline := ipcCallTimeout
+	if req.Action == "send" {
+		deadline = sendActionTimeout
+	}
+	conn.SetDeadline(time.Now().Add(deadline))
 
 	data, _ := json.Marshal(req)
 	conn.Write(data)
@@ -327,7 +351,7 @@ func ipcCallSocket(sockPath string, req tui.IPCRequest) (*tui.IPCResponse, error
 	if !scanner.Scan() {
 		if err := scanner.Err(); err != nil {
 			if ne, ok := err.(net.Error); ok && ne.Timeout() {
-				return nil, fmt.Errorf("timed out waiting for TUI response after %s — the session may be stalled or unresponsive", ipcCallTimeout)
+				return nil, fmt.Errorf("timed out waiting for TUI response after %s — the session may be stalled or unresponsive", deadline)
 			}
 			return nil, fmt.Errorf("read response: %w", err)
 		}

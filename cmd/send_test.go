@@ -453,10 +453,15 @@ func TestSendCommand_StalledTUI_ClientGivesUpOnItsOwnDeadline(t *testing.T) {
 	t.Setenv("INITECH_SOCKET", sockPath)
 
 	// Shrink the production deadline for a fast, deterministic test instead
-	// of waiting out the real value.
-	orig := ipcCallTimeout
+	// of waiting out the real value. This test's command is "send", which
+	// uses sendActionTimeout (ini-ousx qa7), not the shared ipcCallTimeout --
+	// shrink both so a stray reliance on the wrong one would surface as a
+	// wrong duration, not a silent 45s wait.
+	origCall := ipcCallTimeout
+	origSend := sendActionTimeout
 	ipcCallTimeout = 100 * time.Millisecond
-	t.Cleanup(func() { ipcCallTimeout = orig })
+	sendActionTimeout = 100 * time.Millisecond
+	t.Cleanup(func() { ipcCallTimeout = origCall; sendActionTimeout = origSend })
 
 	rootCmd.SetArgs([]string{"send", "eng2", "hello world"})
 	defer rootCmd.SetArgs(nil)
@@ -478,6 +483,97 @@ func TestSendCommand_StalledTUI_ClientGivesUpOnItsOwnDeadline(t *testing.T) {
 		// fires, the client is NOT enforcing its own deadline -- it is
 		// hanging exactly as ini-ousx describes.
 		t.Fatal("WEDGE: send did not return within 2s of a 100ms client deadline against a stalled TUI")
+	}
+}
+
+// startSlowFakeIPC spins up a Unix socket that accepts a connection, sleeps
+// for delay, then replies with resp -- simulating a LEGITIMATELY slow but
+// working server (e.g. resume-on-message reinitializing a suspended agent),
+// as opposed to startStalledFakeIPC's never-responds-at-all shape.
+func startSlowFakeIPC(t *testing.T, delay time.Duration, resp tui.IPCResponse) string {
+	t.Helper()
+	n := fakeIPCCounter.Add(1)
+	sockPath := filepath.Join("/tmp", fmt.Sprintf("initech-test-slow-%d-%d.sock", os.Getpid(), n))
+	os.Remove(sockPath)
+	ln, err := net.Listen("unix", sockPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { ln.Close(); os.Remove(sockPath) })
+
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			time.Sleep(delay)
+			data, _ := json.Marshal(resp)
+			conn.Write(data)
+			conn.Write([]byte("\n"))
+			conn.Close()
+		}
+	}()
+	return sockPath
+}
+
+// TestSendCommand_SlowButLegitimateResume_Succeeds is the ini-ousx qa7
+// regression test: a send that triggers resume-on-message against a
+// suspended pane can legitimately take up to resumeTimeout (30s) server-
+// side. The original fix used ONE shared 10s deadline for every
+// delivery-effect action, which made a slow-but-working resume
+// indistinguishable from a genuinely stalled TUI -- a false "stalled"
+// timeout on a session that was actually fine. "send" must get a deadline
+// long enough to cover that legitimate wait; other actions must not.
+func TestSendCommand_SlowButLegitimateResume_Succeeds(t *testing.T) {
+	skipWindows(t)
+	origCall := ipcCallTimeout
+	origSend := sendActionTimeout
+	ipcCallTimeout = 50 * time.Millisecond    // simulates the old, too-short shared deadline
+	sendActionTimeout = 300 * time.Millisecond // simulates the fixed, resume-aware deadline
+	t.Cleanup(func() { ipcCallTimeout = origCall; sendActionTimeout = origSend })
+
+	// Longer than the old shared deadline, comfortably inside the new one --
+	// exactly what a legitimate-but-slow resume looks like.
+	sockPath := startSlowFakeIPC(t, 150*time.Millisecond, tui.IPCResponse{OK: true})
+	t.Setenv("INITECH_SOCKET", sockPath)
+
+	rootCmd.SetArgs([]string{"send", "eng2", "hello"})
+	defer rootCmd.SetArgs(nil)
+
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("a legitimately slow (but working) send must succeed, not time out: %v", err)
+	}
+}
+
+// TestInterruptCommand_NonSendActionKeepsShortDeadline confirms the fix is
+// scoped to "send" only: a non-send delivery-effect action must still use
+// the SHORT ipcCallTimeout, not the longer sendActionTimeout, so a genuinely
+// stalled TUI is still detected quickly on the 9 actions confirmed to have
+// no comparable legitimate long wait (ini-ousx qa7 enumeration).
+func TestInterruptCommand_NonSendActionKeepsShortDeadline(t *testing.T) {
+	skipWindows(t)
+	origCall := ipcCallTimeout
+	origSend := sendActionTimeout
+	ipcCallTimeout = 100 * time.Millisecond
+	sendActionTimeout = 5 * time.Second // deliberately large so a failure to
+	// scope the fix would let this test pass for the WRONG reason.
+	t.Cleanup(func() { ipcCallTimeout = origCall; sendActionTimeout = origSend })
+
+	// Slower than ipcCallTimeout, faster than sendActionTimeout: if
+	// "interrupt" incorrectly got the send budget, this would succeed.
+	sockPath := startSlowFakeIPC(t, 300*time.Millisecond, tui.IPCResponse{OK: true})
+	t.Setenv("INITECH_SOCKET", sockPath)
+
+	rootCmd.SetArgs([]string{"interrupt", "eng2"})
+	defer rootCmd.SetArgs(nil)
+
+	err := rootCmd.Execute()
+	if err == nil {
+		t.Fatal("expected interrupt to time out at the SHORT ipcCallTimeout, but it succeeded — the fix leaked the longer send budget to a non-send action")
+	}
+	if !strings.Contains(strings.ToLower(err.Error()), "timed out") && !strings.Contains(strings.ToLower(err.Error()), "timeout") {
+		t.Errorf("error = %q, want a timeout-shaped message", err.Error())
 	}
 }
 

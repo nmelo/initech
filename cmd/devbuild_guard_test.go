@@ -64,18 +64,35 @@ func listenCountingFakeIPC(t *testing.T, resp tui.IPCResponse) (sockPath string,
 func resetDevBuildGuardState(t *testing.T) {
 	t.Helper()
 	origVersion := Version
-	origBuildInfo := buildInfoMainVersion
 	origAllow := allowDevDelivery
 	origUnderTest := isRunningUnderGoTest
 	isRunningUnderGoTest = func() bool { return false }
 	t.Cleanup(func() {
 		Version = origVersion
-		buildInfoMainVersion = origBuildInfo
 		allowDevDelivery = origAllow
 		isRunningUnderGoTest = origUnderTest
 	})
 }
 
+// TestDevBuildGuard_RefusesDeliveryEffectCommand pins the corrected contract
+// directly: Version=='dev' must gate the command BY ITSELF, with no other
+// condition able to override it. A prior version of isDevBuild() ALSO
+// required runtime/debug's build info to show "(devel)" before agreeing,
+// treating any other value as a veto. That was actively wrong: verified
+// empirically (a fresh, plain `git clone` -- NOT the submodule-style
+// checkout every agent workspace uses for src/, which happens to suppress
+// VCS stamping and was why an earlier check looked correct) that `make
+// build`/`go build .` from a clean, tagged checkout on this toolchain
+// (go1.26.4) embeds a REAL computed pseudo-version in build info, not
+// "(devel)". That is the common case, not an exotic one, so the veto
+// silently disabled the guard for ordinary local builds -- a P1 safety fix
+// that did nothing in practice. This gap cannot be pinned by asserting a
+// specific build-info shape in-process: a go-test binary's own build info
+// never matches what a sibling `go build`/`make build` produces, so any test
+// built that way would only prove go-test's shape, never a real build's.
+// The bead documents the manual check instead: `make build`, then run the
+// binary against a nonexistent socket path -- the guard's refusal error is
+// the expected result, a raw dial error means it did not fire.
 func TestDevBuildGuard_RefusesDeliveryEffectCommand(t *testing.T) {
 	skipWindows(t)
 	resetDevBuildGuardState(t)
@@ -146,35 +163,6 @@ func TestDevBuildGuard_ReleaseVersionIsNotGated(t *testing.T) {
 
 	if err := rootCmd.Execute(); err != nil {
 		t.Fatalf("a release-versioned build should never be gated, got error: %v", err)
-	}
-}
-
-// TestDevBuildGuard_RealBuildInfoVersionIsNotGated is the defense-in-depth
-// branch: Version stays "dev" (as it would for `go install pkg@version`,
-// which does not run our Makefile's ldflags), but runtime/debug build info
-// shows a real resolved module version rather than "(devel)". Verified
-// empirically that "go build ." from inside this repo embeds "(devel)" and a
-// real brew install embeds a real version (see ini-grg3 bead comments); this
-// test simulates the "go install" shape via the overridable var, since a real
-// go install round-trip isn't reproducible in this suite (this repo's
-// replace directive currently blocks `go install` outright -- see the bead).
-func TestDevBuildGuard_RealBuildInfoVersionIsNotGated(t *testing.T) {
-	skipWindows(t)
-	resetDevBuildGuardState(t)
-	Version = "dev"
-	buildInfoMainVersion = func() (string, bool) { return "v1.9.1", true }
-
-	sockPath := startFakeIPC(t, tui.IPCResponse{OK: true})
-	t.Setenv("INITECH_SOCKET", sockPath)
-
-	var stdout, stderr bytes.Buffer
-	rootCmd.SetOut(&stdout)
-	rootCmd.SetErr(&stderr)
-	rootCmd.SetArgs([]string{"send", "eng1", "test"})
-	defer rootCmd.SetArgs(nil)
-
-	if err := rootCmd.Execute(); err != nil {
-		t.Fatalf("a real build-info version should not be gated even with Version=dev, got error: %v", err)
 	}
 }
 
