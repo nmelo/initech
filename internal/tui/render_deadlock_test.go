@@ -26,12 +26,24 @@ func TestRenderNotBlockedByRemoteConnection(t *testing.T) {
 		// remoteRenderDeadlockBound's doc comment in remote_render_test.go
 		// for why the bound stays tight instead of growing to compensate.
 		//
-		// CAVEAT: after this skip, this test's coverage survives only under
-		// the `go test ./... -count=1` Makefile target (no -short, no
-		// -race) -- not under `go test -race ./internal/tui/` (what QA
-		// runs, and what surfaced ini-adb9) and not under `make check`/`make
-		// test`. That's a deliberate trade, not an oversight -- don't read
-		// "skipped under -short AND -race" as dead code and delete it.
+		// CAVEAT: after this skip, this test's coverage survives under
+		// `go test ./... -count=1` (no -short, no -race) -- not under
+		// `go test -race ./internal/tui/` (what QA runs, and what surfaced
+		// ini-adb9) and not under `make check`/`make test`. It ALSO
+		// incidentally survives under `make integration` (ini-dtmh): this
+		// test's name happens to match the `RenderNotBlocked` alternative
+		// in that target's -run regex, which passes neither -race nor
+		// -short, so it runs for real there too -- confirmed empirically,
+		// a genuine 5.00s PASS, not a skip. Unlike the other three tests
+		// skipped under raceDetectorEnabled (see remoteRenderDeadlockBound's
+		// doc comment in remote_render_test.go), which do not match that
+		// regex and survive ONLY under `go test ./... -count=1`, this one
+		// has a second surviving location. Treat that as incidental, not
+		// load-bearing: that -run regex has already swept in coverage it
+		// wasn't meant to report once before (ini-1g0n) and a future edit to
+		// it could just as easily stop matching this test's name. Either
+		// way, this is a deliberate skip-under-race trade, not an oversight
+		// -- don't read it as dead code and delete it.
 		t.Skip("ini-ls0c/ini-adb9: -race overhead confounds the deadline; see remoteRenderDeadlockBound's doc comment")
 	}
 	s := tcell.NewSimulationScreen("")

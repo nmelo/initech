@@ -326,14 +326,20 @@ dataArrived:
 // TestRemotePane_DAQueryDoesNotDeadlock's remote_pane_does_not_block
 // subtest, TestRenderNotBlockedByRemoteConnection, and
 // TestRemotePane_EndToEnd_EmulatorHasContent): after those skips, the
-// skipped assertion's coverage survives in exactly ONE place -- the
+// skipped assertion's coverage survives in AT LEAST ONE place -- the
 // `go test ./... -count=1` Makefile target, which runs neither -short nor
 // -race. That is NOT `go test -race ./internal/tui/` (what QA runs) and NOT
-// `make check`/`make test`. This is a deliberate trade, not an oversight --
-// don't read a test skipped under both -short and -race as dead code and
-// delete it. (Each of the four skip sites also carries this caveat inline,
-// so a reader who never follows this pointer still sees it; this paragraph
-// exists so the pointer itself resolves to something real too.)
+// `make check`/`make test`. Three of the four survive in exactly that one
+// place. TestRenderNotBlockedByRemoteConnection does not: its name
+// incidentally matches `make integration`'s -run regex, so it also runs
+// for real under that target -- see its own skip comment in
+// render_deadlock_test.go for the detail and why that extra coverage is
+// incidental rather than load-bearing (ini-dtmh). Either way this is a
+// deliberate trade, not an oversight -- don't read a test skipped under
+// both -short and -race as dead code and delete it. (Each of the four skip
+// sites also carries this caveat inline, so a reader who never follows
+// this pointer still sees it; this paragraph exists so the pointer itself
+// resolves to something real too.)
 //
 // TestRemoteRenderFrame_DeadlockBoundFires forces the exact hang this bound
 // exists to catch and proves it fires -- deterministically, not by absence
