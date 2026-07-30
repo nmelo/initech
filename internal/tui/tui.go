@@ -211,7 +211,7 @@ type TUI struct {
 	mcpBind  string // Bind address (e.g. "0.0.0.0").
 	mcpPort  int    // Configured port (0 = disabled).
 
-	webhookURL string // Webhook URL from config, for IPC notify action.
+	webhookURL string // Webhook URL from config, returned by NotifyConfig().
 
 	// Paste buffering: accumulate characters between EventPaste start/end,
 	// then flush as one atomic PTY write with bracketed paste markers.

@@ -331,7 +331,7 @@ func (b *statusBarBuilder) drawSep(s tcell.Screen, x, y, sw int) int {
 }
 
 // renderHints draws the status bar with a cycling tip on the left and
-// ambient state (mode, pending, update, battery, branch, clock) on
+// ambient state (mode, battery, branch, clock) on
 // the right. Subtle dark background with dim text. Keyboard shortcuts live
 // in the help modal (?) and the rotating tips, not on this bar.
 func (t *TUI) renderHints() {
@@ -343,7 +343,7 @@ func (t *TUI) renderHints() {
 	b.addLeft(tips[t.tipIndex%len(tips)], b.barStyle)
 
 	// Right side groups items by category, in display order (left-to-right):
-	//   1. App state:    mode, pending timers, update
+	//   1. App state:    mode
 	//   2. System state: battery, branch, clock
 	// The keyboard shortcuts are reachable via `?` (help modal); they used to
 	// live here too, but mixed teaching aids with ambient state. Tips on the
