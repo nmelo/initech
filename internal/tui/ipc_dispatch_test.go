@@ -175,8 +175,6 @@ type dispatchHost struct {
 	findOK          bool
 	panes           []PaneInfo
 	allOK           bool
-	webhookURL      string
-	projectName     string
 	sendCalled      bool
 	sendConn        net.Conn
 	sendReq         IPCRequest
@@ -199,10 +197,6 @@ func (h *dispatchHost) HandleSend(conn net.Conn, req IPCRequest) {
 	h.sendCalled = true
 	h.sendConn = conn
 	h.sendReq = req
-}
-
-func (h *dispatchHost) NotifyConfig() (string, string) {
-	return h.webhookURL, h.projectName
 }
 
 func (h *dispatchHost) HandleExtended(conn net.Conn, req IPCRequest, rawJSON []byte) bool {

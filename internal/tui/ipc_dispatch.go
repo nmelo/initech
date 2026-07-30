@@ -36,10 +36,6 @@ type IPCHost interface {
 	// Daemon: client routing, auto-forward).
 	HandleSend(conn net.Conn, req IPCRequest)
 
-	// NotifyConfig returns the webhook URL and project name for posting
-	// notifications. Returns empty strings if webhook is not configured.
-	NotifyConfig() (webhookURL, project string)
-
 	// HandleExtended processes runtime-specific actions not covered by
 	// the shared dispatch (e.g. TUI lifecycle commands). Returns true if
 	// the action was handled, false if it should fall through to "unknown".

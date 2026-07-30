@@ -55,8 +55,7 @@ type Project struct {
 	// default tint.
 	RunningPaneTint string `yaml:"running_pane_tint,omitempty"`
 
-	WebhookURL            string `yaml:"webhook_url,omitempty"`              // HTTP endpoint for agent event POSTs. Empty = disabled.
-	IdleWithBeadThreshold *int   `yaml:"idle_with_bead_threshold,omitempty"` // Seconds of silence before idle-with-bead fires. nil = 60, 0 = disabled.
+	IdleWithBeadThreshold *int `yaml:"idle_with_bead_threshold,omitempty"` // Seconds of silence before idle-with-bead fires. nil = 60, 0 = disabled.
 
 	// Cross-machine coordination fields.
 	PeerName string            `yaml:"peer_name,omitempty"` // This instance's identity (e.g., "workbench").
@@ -368,7 +367,7 @@ func Validate(p *Project) error {
 }
 
 // Write serializes a Project to YAML and writes it to the given path. The
-// file holds auth tokens (webhook_url, cross-machine token) so it must
+// file holds auth tokens (cross-machine token) so it must
 // stay readable only by the owner. os.WriteFile's perm arg is the CREATE
 // mode and is ignored if the file already exists, so an existing 0644 file
 // would keep its loose perms after a rewrite — the explicit Chmod after

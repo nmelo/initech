@@ -193,8 +193,6 @@ type TUI struct {
 	branch       string
 	branchPollAt time.Time
 
-	webhookURL string // Webhook URL from config, returned by NotifyConfig().
-
 	// Paste buffering: accumulate characters between EventPaste start/end,
 	// then flush as one atomic PTY write with bracketed paste markers.
 	// Turns O(N) renders into O(1) for large pastes.
@@ -345,9 +343,8 @@ func (t *TUI) initLiveEngine(numSlots int) {
 
 // onLiveSwap compares previous and current slot assignments. If any slot
 // changed to a different agent, emits an EventLiveSwap. The event flows
-// through the standard fan-out (event log, webhook) but is suppressed
-// from toasts (too frequent). No direct radio POST; the webhook sink
-// handles external notification.
+// through the standard fan-out (event log) but is suppressed from toasts
+// (too frequent).
 func (t *TUI) onLiveSwap(prev, curr []string) {
 	var swapped string
 	var prevAgent string
@@ -423,7 +420,6 @@ type Config struct {
 	PressureThreshold int                                   // RSS percentage threshold (0 uses default 85).
 	PaneConfigBuilder func(name string) (PaneConfig, error) // Optional factory for hot-add. Nil disables add command.
 	Project           *config.Project                       // Full project config. Used for remote peer connections.
-	WebhookURL        string                                // HTTP endpoint for agent event POSTs. Empty = disabled.
 }
 
 // DefaultConfig returns a config with standard shell-only agents.
@@ -562,7 +558,6 @@ func Run(cfg Config) error {
 		lastH:             initH,
 		projectRoot:       cfg.ProjectRoot,
 		projectName:       cfg.ProjectName,
-		webhookURL:        cfg.WebhookURL,
 		project:           cfg.Project,
 		version:           cfg.Version,
 		sockPath:          sp,

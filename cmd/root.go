@@ -229,7 +229,6 @@ func runTUI(cmd *cobra.Command, args []string) error {
 		PressureThreshold: proj.Resource.PressureThreshold,
 		Project:           proj,
 		PaneConfigBuilder: buildReloadingPaneConfigBuilder(cfgPath, buildAgentPaneConfig),
-		WebhookURL:        proj.WebhookURL,
 	})
 }
 
