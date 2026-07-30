@@ -88,16 +88,11 @@ func (p *tuiPanePeeker) PeekOutput(agentName string, lines int) (string, error) 
 			}
 			rows := make([]string, 0, h-start)
 			for row := start; row < h; row++ {
-				var sb strings.Builder
-				for col := 0; col < w; col++ {
-					cell := emu.CellAt(col, row)
-					if cell != nil && cell.Content != "" {
-						sb.WriteString(cell.Content)
-					} else {
-						sb.WriteByte(' ')
-					}
-				}
-				rows = append(rows, strings.TrimRight(sb.String(), " "))
+				// RowText copies the row under a single lock: runOnMain
+				// serializes t.panes access, not emulator cell memory, so
+				// this must not read cells via the pointer-returning CellAt
+				// (ini-wizq).
+				rows = append(rows, strings.TrimRight(emu.RowText(row, w), " "))
 			}
 			result = strings.Join(rows, "\n")
 			// Trim trailing empty lines.

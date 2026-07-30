@@ -63,4 +63,4 @@ require (
 	golang.org/x/time v0.14.0 // indirect
 )
 
-replace github.com/charmbracelet/x/vt => github.com/nmelo/x/vt v0.0.0-20260515234019-4f5c35880703
+replace github.com/charmbracelet/x/vt => github.com/nmelo/x/vt v0.0.0-20260730134143-579064bea1f5

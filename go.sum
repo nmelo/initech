@@ -88,8 +88,8 @@ github.com/modelcontextprotocol/go-sdk v1.4.1 h1:M4x9GyIPj+HoIlHNGpK2hq5o3BFhC+7
 github.com/modelcontextprotocol/go-sdk v1.4.1/go.mod h1:Bo/mS87hPQqHSRkMv4dQq1XCu6zv4INdXnFZabkNU6s=
 github.com/muesli/cancelreader v0.2.2 h1:3I4Kt4BQjOR54NavqnDogx/MIoWBFa0StPA8ELUXHmA=
 github.com/muesli/cancelreader v0.2.2/go.mod h1:3XuTXfFS2VjM+HTLZY9Ak0l6eUKfijIfMUZ4EgX0QYo=
-github.com/nmelo/x/vt v0.0.0-20260515234019-4f5c35880703 h1:WiIgHgFOw30qupxnqxxAbngu1zSXqinM9KwTQTbF1gI=
-github.com/nmelo/x/vt v0.0.0-20260515234019-4f5c35880703/go.mod h1:2djWW5EeP5QlpztEYYbbyyzUyyxVD71mWVQguNISHcM=
+github.com/nmelo/x/vt v0.0.0-20260730134143-579064bea1f5 h1:2KMxaUsLssiUz5Wn5/S+5GpchhYcLhQeAszXFhCR+ok=
+github.com/nmelo/x/vt v0.0.0-20260730134143-579064bea1f5/go.mod h1:2djWW5EeP5QlpztEYYbbyyzUyyxVD71mWVQguNISHcM=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/rivo/uniseg v0.4.7 h1:WUdvkW8uEhrYfLC4ZzdpI2ztxP1I582+49Oc5Mq64VQ=

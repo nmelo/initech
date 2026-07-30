@@ -688,8 +688,12 @@ func (p *Pane) contentOffset() (startRow, renderOffset int) {
 	for row := scanEnd; row >= 0; row-- {
 		empty := true
 		for col := 0; col < innerCols; col++ {
-			cell := p.emu.CellAt(col, row)
-			if cell != nil && cell.Content != "" && cell.Content != " " {
+			// CellValueAt copies under lock (ini-wizq): contentOffset is
+			// called both under p.renderMu (from Render) and with no lock at
+			// all (from mouse.go on every mouse event), so it cannot rely on
+			// the caller holding renderMu.
+			cell, ok := p.emu.CellValueAt(col, row)
+			if ok && cell.Content != "" && cell.Content != " " {
 				empty = false
 				break
 			}
@@ -733,12 +737,30 @@ func (p *Pane) Emulator() *vt.SafeEmulator {
 // virtualCellAt returns the cell at virtual row vRow (scrollback + screen
 // combined). vRow in [0, scrollbackLen) reads from scrollback; vRow in
 // [scrollbackLen, scrollbackLen+emuRows) reads from the live screen buffer.
+//
+// The returned pointer aliases live emulator/scrollback memory (ini-wizq): safe
+// only under a lock that excludes concurrent Write/Reflow, which today means
+// p.renderMu. Render (via renderSelectionVirtual) holds renderMu, so its use
+// there is correct. Any other caller must use virtualCellValueAt instead.
 func (p *Pane) virtualCellAt(col, vRow int) *uv.Cell {
 	scrollbackLen := p.emu.ScrollbackLen()
 	if vRow < scrollbackLen {
 		return p.emu.ScrollbackCellAt(col, vRow)
 	}
 	return p.emu.CellAt(col, vRow-scrollbackLen)
+}
+
+// virtualCellValueAt is the lock-free-safe counterpart to virtualCellAt: it
+// returns a COPY of the cell, safe to read without holding renderMu or any
+// other lock (ini-wizq). Use this from any caller that is not already
+// serialized against emulator writes by renderMu — e.g. the mouse selection
+// copy path, which runs on the main goroutine without renderMu.
+func (p *Pane) virtualCellValueAt(col, vRow int) (uv.Cell, bool) {
+	scrollbackLen := p.emu.ScrollbackLen()
+	if vRow < scrollbackLen {
+		return p.emu.ScrollbackCellValueAt(col, vRow)
+	}
+	return p.emu.CellValueAt(col, vRow-scrollbackLen)
 }
 
 // SubmitKey returns the configured submit key sequence for this pane.
@@ -895,16 +917,9 @@ func emulatorBottomText(emu *vt.SafeEmulator, lines int) string {
 
 	var buf strings.Builder
 	for row := start; row < rows; row++ {
-		var line strings.Builder
-		for col := 0; col < cols; col++ {
-			cell := emu.CellAt(col, row)
-			if cell != nil && cell.Content != "" {
-				line.WriteString(cell.Content)
-			} else {
-				line.WriteByte(' ')
-			}
-		}
-		buf.WriteString(strings.TrimRight(line.String(), " "))
+		// RowText copies the row under a single lock, so this cannot observe
+		// a torn cell from a concurrent readLoop write (ini-wizq).
+		buf.WriteString(strings.TrimRight(emu.RowText(row, cols), " "))
 		buf.WriteByte('\n')
 	}
 	return buf.String()

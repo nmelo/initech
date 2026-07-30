@@ -48,8 +48,12 @@ func isModalPrompt(text string) bool {
 }
 
 // paneHasModal reports whether the pane is currently showing a blocking Claude
-// Code modal. It reads the emulator's bottom rows directly (like
-// promptHasContent); SafeEmulator is safe for concurrent reads.
+// Code modal. It reads the emulator's bottom rows via emulatorBottomText,
+// which uses SafeEmulator.RowText — NOT the raw pointer-returning CellAt.
+// SafeEmulator.CellAt is NOT safe for concurrent reads: it releases its lock
+// before returning a pointer into the live buffer, so a caller dereferencing
+// the pointee afterward races a concurrent Write (ini-wizq). RowText copies
+// under the lock instead, which is what makes this call safe.
 func paneHasModal(p *Pane) bool {
 	if p == nil || p.emu == nil {
 		return false

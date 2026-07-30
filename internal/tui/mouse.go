@@ -364,13 +364,19 @@ func (t *TUI) extractSelectionText() string {
 
 		var line strings.Builder
 		for col := startCol; col < endCol; col++ {
-			var cell *uv.Cell
+			// Value-copying accessors, not the pointer-returning
+			// virtualCellAt/CellAt: this runs on the main goroutine without
+			// p.renderMu, so a pointer read here would race readLoop's
+			// concurrent emulator write and could put torn garbage on the
+			// operator's clipboard (ini-wizq).
+			var cell uv.Cell
+			var ok bool
 			if scrollback {
-				cell = localPane.virtualCellAt(col, vRow)
+				cell, ok = localPane.virtualCellValueAt(col, vRow)
 			} else {
-				cell = emu.CellAt(col, vRow)
+				cell, ok = emu.CellValueAt(col, vRow)
 			}
-			if cell != nil && cell.Content != "" {
+			if ok && cell.Content != "" {
 				line.WriteString(cell.Content)
 			} else {
 				line.WriteByte(' ')

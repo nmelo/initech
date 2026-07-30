@@ -458,16 +458,9 @@ func promptHasContent(p *Pane) bool {
 	cols := p.emu.Width()
 	rows := p.emu.Height()
 	for row := rows - 1; row >= 0; row-- {
-		var line strings.Builder
-		for col := 0; col < cols; col++ {
-			cell := p.emu.CellAt(col, row)
-			if cell != nil && cell.Content != "" {
-				line.WriteString(cell.Content)
-			} else {
-				line.WriteByte(' ')
-			}
-		}
-		text := line.String()
+		// RowText copies the row under a single lock, so a torn read here
+		// cannot flip the submit-retry decision (ini-wizq).
+		text := p.emu.RowText(row, cols)
 		for _, prompt := range []string{"\u276f", "\u203a", ">"} {
 			if idx := strings.LastIndex(text, prompt); idx >= 0 {
 				return strings.TrimSpace(text[idx+len(prompt):]) != ""
@@ -524,21 +517,17 @@ func (t *TUI) handleIPCPatrol(conn net.Conn, req IPCRequest) {
 // emulator. Returns the content as a string with newline-separated lines.
 // If lines <= 0, returns all non-blank content.
 func peekContent(p PaneView, lines int) string {
-	cols := p.Emulator().Width()
-	emuRows := p.Emulator().Height()
+	emu := p.Emulator()
+	cols := emu.Width()
+	emuRows := emu.Height()
 
 	allLines := make([]string, emuRows)
 	for row := 0; row < emuRows; row++ {
-		var line strings.Builder
-		for col := 0; col < cols; col++ {
-			cell := p.Emulator().CellAt(col, row)
-			if cell != nil && cell.Content != "" {
-				line.WriteString(cell.Content)
-			} else {
-				line.WriteByte(' ')
-			}
-		}
-		allLines[row] = strings.TrimRight(line.String(), " ")
+		// RowText copies the row under a single lock, so this cannot observe
+		// a torn cell from a concurrent readLoop write (ini-wizq). peekContent
+		// is reached from IPC/daemon/MCP handler goroutines and the main-loop
+		// patrol/:peek paths, none of which hold p.renderMu.
+		allLines[row] = strings.TrimRight(emu.RowText(row, cols), " ")
 	}
 
 	// Strip trailing blank lines.
