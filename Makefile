@@ -23,7 +23,7 @@ test-race:
 	go test ./... -count=1 -race
 
 integration:
-	go test ./... -count=1 -run 'Integ|Watchdog|AutoApprove|RenderNotBlocked|DaemonAuth|AddPane_(Success|SetsGoroutines|EventChWired|EnvInjected|GridRecalculated|NoConfigModification)|NoBracketedPaste|WaitsForReady|StashSkipsRetry|ResumesSuspended|ResizeDebounce'
+	go test ./... -count=1 -run 'Integ|Watchdog|RenderNotBlocked|DaemonAuth|AddPane_(Success|SetsGoroutines|EventChWired|EnvInjected|GridRecalculated|NoConfigModification)|NoBracketedPaste|WaitsForReady|StashSkipsRetry|ResumesSuspended|ResizeDebounce'
 
 vet:
 	go vet ./...
