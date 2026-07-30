@@ -113,8 +113,8 @@ func TestRunDeliver_PassSuccess(t *testing.T) {
 	if updatedStatus != "ready_for_qa" {
 		t.Errorf("expected status update to ready_for_qa, got %q", updatedStatus)
 	}
-	if !strings.Contains(stderr.String(), "delivered ini-abc (ready for QA)") {
-		t.Errorf("stderr = %q, want confirmation message", stderr.String())
+	if !strings.Contains(stderr.String(), "delivered ini-abc: in_progress -> ready_for_qa (ready for QA)") {
+		t.Errorf("stderr = %q, want confirmation message naming the actual transition (ini-j2lb)", stderr.String())
 	}
 }
 
@@ -245,13 +245,23 @@ func TestRunDeliver_StatusUpdateError(t *testing.T) {
 	}
 }
 
-func TestRunDeliver_AssigneeMismatchWarning(t *testing.T) {
+// TestRunDeliver_AssigneeMismatch_FailsLoudly is the named regression for
+// ini-j2lb: a non-assignee delivering a bead must not print a bare success
+// message. Superseded a "warn only, still succeeds" contract — the old
+// behavior was the bug (qa5/ini-mgz7.6 and super/ini-2jpo both hit it and
+// believed the delivery had landed when the bead hadn't actually advanced).
+func TestRunDeliver_AssigneeMismatch_FailsLoudly(t *testing.T) {
 	skipWindows(t)
 	stubBdFns(t)
 	resetDeliverFlags(t)
 
 	bdShowBeadFn = func(id string) (string, string, string, error) {
 		return "Fix it", "eng2", "in_progress", nil
+	}
+	statusWritten := false
+	bdUpdateStatusFn = func(id, status string) error {
+		statusWritten = true
+		return nil
 	}
 
 	sockPath := startFakeIPC(t, tui.IPCResponse{OK: true})
@@ -264,11 +274,74 @@ func TestRunDeliver_AssigneeMismatchWarning(t *testing.T) {
 	rootCmd.SetArgs([]string{"deliver", "ini-abc"})
 	defer rootCmd.SetArgs(nil)
 
-	if err := rootCmd.Execute(); err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	err := rootCmd.Execute()
+	if err == nil {
+		t.Fatal("expected a non-nil error for a non-assignee delivery, got nil")
 	}
-	if !strings.Contains(stderr.String(), "assigned to eng2, you are eng1") {
-		t.Errorf("stderr = %q, want assignee mismatch warning", stderr.String())
+	if !strings.Contains(err.Error(), "assigned to eng2, you are eng1") {
+		t.Errorf("err = %q, want it to name the assignee and the caller", err.Error())
+	}
+	if !strings.Contains(err.Error(), "--assignee") {
+		t.Errorf("err = %q, want it to say how to fix it (claim the bead)", err.Error())
+	}
+	if strings.Contains(stderr.String(), "delivered") {
+		t.Errorf("stderr = %q, must not contain a misleading success line", stderr.String())
+	}
+	if statusWritten {
+		t.Error("status must not be written when the caller is not the assignee")
+	}
+}
+
+// TestRunDeliver_CASConflict_NoMisleadingSuccess checks that ini-j2lb's fix
+// (report the actual transition, never a bare success line) composes with
+// ini-khjh's compare-and-set instead of fighting it: a CAS conflict must
+// surface as a clear error with no "delivered" line, exactly like the
+// assignee-mismatch case above, even though the assignee matches here and
+// the caller cleared the earlier gate. bdShowBeadFn is stateful — its first
+// call is runDeliver's Step 1 read, its second is compareAndSetBeadStatus's
+// re-read under the lock, simulating another process having advanced the
+// bead in between without needing real goroutines.
+func TestRunDeliver_CASConflict_NoMisleadingSuccess(t *testing.T) {
+	skipWindows(t)
+	stubBdFns(t)
+	resetDeliverFlags(t)
+
+	calls := 0
+	bdShowBeadFn = func(id string) (string, string, string, error) {
+		calls++
+		if calls == 1 {
+			return "Fix it", "eng1", "in_progress", nil
+		}
+		return "Fix it", "eng1", "ready_for_qa", nil // someone else already advanced it
+	}
+	statusWritten := false
+	bdUpdateStatusFn = func(id, status string) error {
+		statusWritten = true
+		return nil
+	}
+
+	sockPath := startFakeIPC(t, tui.IPCResponse{OK: true})
+	t.Setenv("INITECH_SOCKET", sockPath)
+	t.Setenv("INITECH_AGENT", "eng1")
+
+	var stderr bytes.Buffer
+	rootCmd.SetOut(&bytes.Buffer{})
+	rootCmd.SetErr(&stderr)
+	rootCmd.SetArgs([]string{"deliver", "ini-abc"})
+	defer rootCmd.SetArgs(nil)
+
+	err := rootCmd.Execute()
+	if err == nil {
+		t.Fatal("expected a CAS conflict error, got nil")
+	}
+	if !strings.Contains(err.Error(), "concurrent delivery") {
+		t.Errorf("err = %q, want it to mention concurrent delivery", err.Error())
+	}
+	if strings.Contains(stderr.String(), "delivered") {
+		t.Errorf("stderr = %q, must not contain a misleading success line on a CAS conflict", stderr.String())
+	}
+	if statusWritten {
+		t.Error("status must not be written when the CAS check detects a conflict")
 	}
 }
 
@@ -687,8 +760,8 @@ func TestRunDeliver_Eng_RegressionTemplates(t *testing.T) {
 		if report != want {
 			t.Errorf("report = %q\n want = %q", report, want)
 		}
-		if !strings.Contains(stderr, "delivered ini-test (ready for QA) -> super") {
-			t.Errorf("stderr = %q, want 'delivered ini-test (ready for QA) -> super'", stderr)
+		if !strings.Contains(stderr, "delivered ini-test: in_progress -> ready_for_qa (ready for QA) -> super") {
+			t.Errorf("stderr = %q, want 'delivered ini-test: in_progress -> ready_for_qa (ready for QA) -> super'", stderr)
 		}
 	})
 

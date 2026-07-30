@@ -107,9 +107,16 @@ func runDeliver(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Step 1b: Verify caller is assignee (warn only, not error).
+	// Step 1b: Verify caller is assignee. A mismatch fails loudly rather
+	// than warning and continuing (ini-j2lb): a bead delivered by whoever
+	// never claimed it is exactly the false-success shape that bug closed
+	// — the call must not reach a status write, and therefore must never
+	// reach the success line below, on a mismatch. Chose fail-loudly over
+	// silently reassigning to the caller: the fix is an action the caller
+	// takes (claim it), not something deliver should paper over, and
+	// auto-reassigning would blur who actually did the work.
 	if agent != "" && assignee != "" && agent != assignee {
-		fmt.Fprintf(cmd.ErrOrStderr(), "warning: bead assigned to %s, you are %s\n", assignee, agent)
+		return fmt.Errorf("bead %s is assigned to %s, you are %s — claim it first with 'bd update %s --assignee %s', then re-run deliver", beadID, assignee, agent, beadID, agent)
 	}
 
 	// Step 2: Lifecycle walk (ini-6e54). bd's status.custom drives the chain
@@ -137,8 +144,13 @@ func runDeliver(cmd *cobra.Command, args []string) error {
 	// re-enable it without changing the function signature.
 	_ = family
 
+	// target is the resulting status once the write below succeeds; it's
+	// named in the final success line (ini-j2lb AC: report the actual
+	// transition, not a generic "delivered").
+	var target string
 	if isFail {
-		target, canMove := lifecycle.PrevState(chain, status)
+		var canMove bool
+		target, canMove = lifecycle.PrevState(chain, status)
 		if !canMove {
 			fmt.Fprintf(cmd.ErrOrStderr(), "deliver --fail no-op for %s: bead is at initial state %q (no previous step in lifecycle)\n", beadID, status)
 			return nil
@@ -156,7 +168,8 @@ func runDeliver(cmd *cobra.Command, args []string) error {
 			return err
 		}
 	} else {
-		target, canMove := lifecycle.NextState(chain, status)
+		var canMove bool
+		target, canMove = lifecycle.NextState(chain, status)
 		if !canMove {
 			fmt.Fprintf(cmd.ErrOrStderr(), "deliver no-op for %s: bead is at terminal state %q\n", beadID, status)
 			return nil
@@ -225,7 +238,7 @@ func runDeliver(cmd *cobra.Command, args []string) error {
 	emitIPCEvent(agentOrUnknown(agent), beadID, "bead_delivered", tpl.IPCSummary)
 
 	// Output summary.
-	fmt.Fprintf(cmd.ErrOrStderr(), "delivered %s (%s) -> %s\n", beadID, tpl.SummarySuffix, deliverTo)
+	fmt.Fprintf(cmd.ErrOrStderr(), "delivered %s: %s -> %s (%s) -> %s\n", beadID, status, target, tpl.SummarySuffix, deliverTo)
 	return nil
 }
 
