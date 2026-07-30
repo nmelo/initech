@@ -220,11 +220,6 @@ type TUI struct {
 	// alone only requests a stop, it doesn't confirm one.
 	batteryPollerDone chan struct{}
 
-	// Current git branch of projectRoot, refreshed by pollBranch on the
-	// render tick. Empty when projectRoot is not a git repo.
-	branch       string
-	branchPollAt time.Time
-
 	// Paste buffering: accumulate characters between EventPaste start/end,
 	// then flush as one atomic PTY write with bracketed paste markers.
 	// Turns O(N) renders into O(1) for large pastes.
@@ -810,7 +805,6 @@ func Run(cfg Config) error {
 				t.welcome.active = false
 			}
 			t.rotateTip()
-			t.pollBranch()
 			if t.layoutState.Mode == LayoutLive && time.Since(t.lastLiveTick) >= time.Second {
 				t.lastLiveTick = time.Now()
 				t.applyLayout()

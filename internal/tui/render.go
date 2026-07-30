@@ -331,7 +331,7 @@ func (b *statusBarBuilder) drawSep(s tcell.Screen, x, y, sw int) int {
 }
 
 // renderHints draws the status bar with a cycling tip on the left and
-// ambient state (mode, battery, branch, clock) on
+// ambient state (mode, battery, clock) on
 // the right. Subtle dark background with dim text. Keyboard shortcuts live
 // in the help modal (?) and the rotating tips, not on this bar.
 func (t *TUI) renderHints() {
@@ -344,7 +344,7 @@ func (t *TUI) renderHints() {
 
 	// Right side groups items by category, in display order (left-to-right):
 	//   1. App state:    mode
-	//   2. System state: battery, branch, clock
+	//   2. System state: battery, clock
 	// The keyboard shortcuts are reachable via `?` (help modal); they used to
 	// live here too, but mixed teaching aids with ambient state. Tips on the
 	// left already cycle through them.
@@ -403,12 +403,6 @@ func (t *TUI) renderHints() {
 			battStyle = b.barStyle.Foreground(tcell.ColorYellow)
 		}
 		b.addRight(fmt.Sprintf("Bat %3d%%", battPct), battStyle)
-	}
-
-	// Current git branch. Truncated to keep rightmost items (clock) visible
-	// when branch names are long.
-	if t.branch != "" {
-		b.addRight("git:"+truncateRunes(t.branch, 25), b.barStyle)
 	}
 
 	// Clock (rightmost).
