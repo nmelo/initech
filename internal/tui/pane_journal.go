@@ -123,7 +123,18 @@ func (p *Pane) applyBeadDetection(entries []JournalEntry) {
 	beadID, clear := detectBeadClaim(current)
 	switch {
 	case clear:
-		p.SetBead("", "")
+		// Only apply the clear if it targets the bead currently displayed
+		// (or its target can't be determined). detectBeadClaim's clear
+		// signal is bead-ID-agnostic -- it just says "a ready_for_qa
+		// happened" -- so without this check, a DELAYED read of the
+		// agent's own self-report finishing a PRIOR bead can wipe out a
+		// bead an external dispatch (initech bead --agent) set moments
+		// earlier for a DIFFERENT bead, since watchJSONL's 500ms poll can
+		// read that stale entry after the external SetBead already landed
+		// (ini-cs7).
+		if target := clearTargetBeadID(current); target == "" || target == p.BeadID() {
+			p.SetBead("", "")
+		}
 	case beadID != "":
 		p.SetBead(beadID, "")
 		EmitEvent(p.eventCh, AgentEvent{
@@ -133,6 +144,32 @@ func (p *Pane) applyBeadDetection(entries []JournalEntry) {
 			Detail: p.name + " claimed " + beadID,
 		})
 	}
+}
+
+// clearTargetBeadID returns the bead ID targeted by the most recent
+// ready_for_qa clear signal in entries, or "" if none is found or it can't
+// be parsed. Mirrors detectBeadClaim's own clear-detection condition and
+// reuses extractBeadID's parsing, kept as a separate, narrowly-scoped
+// function rather than changing detectBeadClaim's own return contract
+// (which several existing tests assert returns "" on a clear signal) --
+// this only answers "which bead was this specific clear command for" for
+// applyBeadDetection's own guard against clobbering a different, more
+// recently displayed bead (ini-cs7).
+func clearTargetBeadID(entries []JournalEntry) string {
+	var target string
+	for _, e := range entries {
+		if e.Type != "tool_result" || e.ExitCode != 0 || e.ToolName != "Bash" {
+			continue
+		}
+		content := e.Content
+		if !strings.Contains(content, "bd update") {
+			continue
+		}
+		if strings.Contains(content, "--status ready_for_qa") || strings.Contains(content, "--status=ready_for_qa") {
+			target = extractBeadID(content)
+		}
+	}
+	return target
 }
 
 // ptyIdleTimeout is how long to wait after the last PTY byte before declaring

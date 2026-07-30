@@ -571,6 +571,14 @@ func (t *TUI) handleIPCBead(conn net.Conn, req IPCRequest) {
 		writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("pane %q not found", req.Target)})
 		return
 	}
+	if !pv.IsAlive() {
+		// A dead pane's process has exited; silently "succeeding" here would
+		// mean the bead display update is lost the moment the pane is
+		// restarted (NewPane starts with no bead state), indistinguishable
+		// from the request never having been sent (ini-cs7).
+		writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("pane %q is not alive (agent process has exited); restart it before setting its bead", req.Target)})
+		return
+	}
 	// Parse bead text. Supports:
 	// - "id\ttitle" (tab-delimited: ID with title)
 	// - "id1,id2,id3" (comma-separated: multiple IDs, no titles)

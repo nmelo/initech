@@ -1,9 +1,11 @@
 package cmd
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 
 	iexec "github.com/nmelo/initech/internal/exec"
@@ -303,6 +305,53 @@ func TestRunBead_Clear(t *testing.T) {
 	err := runBead(beadCmd, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+// TestRunBead_PrintsConfirmationOnSuccess is a regression test for ini-cs7:
+// runBead used to return nil with zero output on success, indistinguishable
+// from a silent no-op (the exact symptom super reported). A caller outside
+// the TUI has no ribbon to look at, so stdout is the only evidence the IPC
+// call actually landed.
+func TestRunBead_PrintsConfirmationOnSuccess(t *testing.T) {
+	skipWindows(t)
+	sockPath := startFakeIPC(t, tui.IPCResponse{OK: true})
+	t.Setenv("INITECH_SOCKET", sockPath)
+	beadAgent = "qa4"
+	beadClear = false
+	defer func() { beadAgent = ""; beadClear = false }()
+
+	var out bytes.Buffer
+	beadCmd.SetOut(&out)
+	defer beadCmd.SetOut(nil)
+
+	if err := runBead(beadCmd, []string{"ini-svv7"}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := out.String(); !strings.Contains(got, "ini-svv7") || !strings.Contains(got, "qa4") {
+		t.Errorf("stdout = %q, want confirmation naming both the bead and the agent", got)
+	}
+}
+
+// TestRunBead_PrintsConfirmationOnClear mirrors the above for --clear, the
+// other silent form the bead's edge cases called out explicitly.
+func TestRunBead_PrintsConfirmationOnClear(t *testing.T) {
+	skipWindows(t)
+	sockPath := startFakeIPC(t, tui.IPCResponse{OK: true})
+	t.Setenv("INITECH_SOCKET", sockPath)
+	beadAgent = "qa7"
+	beadClear = true
+	defer func() { beadAgent = ""; beadClear = false }()
+
+	var out bytes.Buffer
+	beadCmd.SetOut(&out)
+	defer beadCmd.SetOut(nil)
+
+	if err := runBead(beadCmd, nil); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := out.String(); !strings.Contains(got, "qa7") {
+		t.Errorf("stdout = %q, want confirmation naming the agent", got)
 	}
 }
 

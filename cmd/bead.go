@@ -80,5 +80,18 @@ func runBead(cmd *cobra.Command, args []string) error {
 	if !resp.OK {
 		return fmt.Errorf("%s", resp.Error)
 	}
+
+	// A silent success (exit 0, no output) is indistinguishable from doing
+	// nothing at all -- confirm what changed so a caller outside the TUI
+	// (no visible ribbon to check) has direct evidence the IPC call actually
+	// landed, and so a LATER failure (e.g. an unrelated auto-detect clear
+	// racing in and reverting this) is visibly a change from this baseline
+	// rather than an unexplained absence (ini-cs7).
+	out := cmd.OutOrStdout()
+	if beadClear {
+		fmt.Fprintf(out, "Cleared bead for %s.\n", agent)
+	} else {
+		fmt.Fprintf(out, "Set %s for %s.\n", strings.Join(args, ", "), agent)
+	}
 	return nil
 }

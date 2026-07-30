@@ -329,6 +329,38 @@ func TestApplyBeadDetection_ClearsBead(t *testing.T) {
 	}
 }
 
+// TestApplyBeadDetection_ClearForDifferentBeadDoesNotClobberCurrent is a
+// regression test for ini-cs7: watchJSONL polls every 500ms, so a delayed
+// read of the agent's OWN self-report finishing a PRIOR bead (ini-old, a
+// "ready_for_qa" clear) can arrive AFTER an external dispatch (initech bead
+// --agent, simulated here via SetBead) already set the pane to a NEWER,
+// different bead (ini-new). Before this fix, applyBeadDetection's clear
+// branch was bead-ID-agnostic and cleared whatever was currently displayed
+// regardless of which bead the ready_for_qa command actually named --
+// silently wiping out the external dispatch moments after it landed.
+func TestApplyBeadDetection_ClearForDifferentBeadDoesNotClobberCurrent(t *testing.T) {
+	ch := make(chan AgentEvent, 4)
+	p := &Pane{name: "eng1", eventCh: ch, cfg: PaneConfig{BeadsEnabled: true}}
+
+	// External dispatch already set the pane to a NEW bead.
+	p.SetBead("ini-new.1", "")
+
+	// Delayed read of the self-report finishing the OLD, different bead.
+	entries := []JournalEntry{
+		{
+			Type:     "tool_result",
+			ToolName: "Bash",
+			Content:  "bd update ini-old.1 --status ready_for_qa",
+			ExitCode: 0,
+		},
+	}
+	p.applyBeadDetection(entries)
+
+	if got := p.BeadID(); got != "ini-new.1" {
+		t.Errorf("BeadID() = %q, want ini-new.1 (clear for a different, already-superseded bead must not clobber it)", got)
+	}
+}
+
 func TestExtractBeadID(t *testing.T) {
 	tests := []struct {
 		input string
