@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -70,6 +71,9 @@ func hammer(n int, d time.Duration, fn func()) {
 // handler, handleIPCPatrol and the :peek command. None of
 // them hold renderMu, so all of them raced readLoop.
 func TestPeekContent_IsRaceFreeAgainstLivePTYOutput(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("windows: noisyPane hardcodes /bin/sh as the pane's command (peek_race_test.go:34) to produce continuous PTY output for the race detector; needs a cross-platform equivalent (e.g. a small Go helper binary), product code's own shell resolution is unaffected (pane_cmd_unix.go / pane_cmd_windows.go already split)")
+	}
 	p := noisyPane(t, "eng1", "abcdefghijklmnopqrstuvwxyz")
 	hammer(4, 900*time.Millisecond, func() { _ = peekContent(p, 20) })
 }
@@ -78,6 +82,9 @@ func TestPeekContent_IsRaceFreeAgainstLivePTYOutput(t *testing.T) {
 // read there fires a spurious duplicate Enter (submitting the operator's
 // unfinished prompt, the ini-vxw hazard) or swallows a message.
 func TestPromptHasContent_IsRaceFreeAgainstLivePTYOutput(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("windows: noisyPane hardcodes /bin/sh (peek_race_test.go:34); see TestPeekContent_IsRaceFreeAgainstLivePTYOutput for the full reason")
+	}
 	p := noisyPane(t, "eng2", "> some prompt text")
 	hammer(4, 900*time.Millisecond, func() { _ = promptHasContent(p) })
 }
@@ -86,6 +93,9 @@ func TestPromptHasContent_IsRaceFreeAgainstLivePTYOutput(t *testing.T) {
 // doc comment used to claim SafeEmulator was safe for concurrent reads, which
 // is what licensed the whole family of unsynchronized readers.
 func TestPaneHasModal_IsRaceFreeAgainstLivePTYOutput(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("windows: noisyPane hardcodes /bin/sh (peek_race_test.go:34); see TestPeekContent_IsRaceFreeAgainstLivePTYOutput for the full reason")
+	}
 	p := noisyPane(t, "eng3", "Do you want to proceed?")
 	hammer(4, 900*time.Millisecond, func() { _ = paneHasModal(p) })
 }
@@ -93,6 +103,9 @@ func TestPaneHasModal_IsRaceFreeAgainstLivePTYOutput(t *testing.T) {
 // The selection-copy path (mouse.go) walks cells to build clipboard text. A
 // torn read puts garbage on the operator's clipboard.
 func TestSelectionCopy_IsRaceFreeAgainstLivePTYOutput(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("windows: noisyPane hardcodes /bin/sh (peek_race_test.go:34); see TestPeekContent_IsRaceFreeAgainstLivePTYOutput for the full reason")
+	}
 	p := noisyPane(t, "eng4", "selectable content here")
 	hammer(4, 900*time.Millisecond, func() {
 		emu := p.Emulator()
@@ -110,6 +123,9 @@ func TestSelectionCopy_IsRaceFreeAgainstLivePTYOutput(t *testing.T) {
 // with no renderMu. This exercises the REAL function, in both live-screen and
 // scrollback-mode branches, against a live producing PTY.
 func TestExtractSelectionText_IsRaceFreeAgainstLivePTYOutput(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("windows: noisyPane hardcodes /bin/sh (peek_race_test.go:34); see TestPeekContent_IsRaceFreeAgainstLivePTYOutput for the full reason")
+	}
 	p := noisyPane(t, "eng6", "selectable content for the clipboard test")
 	p.region = Region{X: 0, Y: 0, W: 80, H: 24}
 
@@ -125,6 +141,9 @@ func TestExtractSelectionText_IsRaceFreeAgainstLivePTYOutput(t *testing.T) {
 // 0) by scrolling the pane up first, so the copy path reads from the combined
 // scrollback+screen buffer while readLoop keeps writing to the live screen.
 func TestExtractSelectionText_ScrollbackMode_IsRaceFreeAgainstLivePTYOutput(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("windows: noisyPane hardcodes /bin/sh (peek_race_test.go:34); see TestPeekContent_IsRaceFreeAgainstLivePTYOutput for the full reason")
+	}
 	p := noisyPane(t, "eng7", "scrollback selection content")
 	p.region = Region{X: 0, Y: 0, W: 80, H: 24}
 	p.ScrollUp(5)
@@ -142,6 +161,9 @@ func TestExtractSelectionText_ScrollbackMode_IsRaceFreeAgainstLivePTYOutput(t *t
 // Every rune the child emits is printable ASCII, so any control byte or
 // replacement char in the output means a read observed a corrupted cell.
 func TestPeekContent_ReturnsUncorruptedTextDuringLiveOutput(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("windows: noisyPane hardcodes /bin/sh (peek_race_test.go:34); see TestPeekContent_IsRaceFreeAgainstLivePTYOutput for the full reason")
+	}
 	const payload = "STABLEPAYLOAD0123456789"
 	p := noisyPane(t, "eng5", payload)
 
