@@ -263,6 +263,34 @@ func (t *TUI) remoteStopPeer(peerName string) (int, error) {
 	return stopped, nil
 }
 
+// cmdRemoteStop validates "remote-stop <peer>" and, if the peer has at least
+// one connected RemotePane, sets up the same confirm-before-destructive-action
+// flow as cmdRestart/cmdRemove: the operator must press Enter again before
+// executeConfirmed's "remote-stop" case actually runs remoteStopPeer.
+func (t *TUI) cmdRemoteStop(parts []string) bool {
+	if len(parts) < 2 || parts[1] == "" {
+		t.cmd.error = "remote-stop: peer name required"
+		return false
+	}
+	peerName := parts[1]
+	found := false
+	for _, p := range t.panes {
+		if rp, ok := p.(*RemotePane); ok && rp.Host() == peerName {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.cmd.error = fmt.Sprintf("remote-stop: no agents from peer %q", peerName)
+		return false
+	}
+	t.cmd.pendingConfirm = "remote-stop " + peerName
+	t.cmd.confirmMsg = fmt.Sprintf("Stop all agents on peer %s? Enter to confirm, Esc to cancel.", peerName)
+	t.cmd.confirmExpiry = time.Now().Add(10 * time.Second)
+	t.cmd.active = true
+	return false
+}
+
 // tabComplete handles Tab keypresses in the command modal, completing agent
 // names in-place. Single match: complete + trailing space. Multiple matches:
 // complete to longest common prefix; second Tab shows all matches as a hint.
@@ -524,6 +552,8 @@ func (t *TUI) execCmd(cmd string) bool {
 		return t.cmdAdd(parts)
 	case "remove", "rm":
 		return t.cmdRemove(parts)
+	case "remote-stop":
+		return t.cmdRemoteStop(parts)
 	case "log", "events":
 		return t.cmdLog()
 	case "help", "?":

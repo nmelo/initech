@@ -249,6 +249,8 @@ func isUnknownExecCmd(t *testing.T, name string) bool {
 // both a commandNames entry and an executeConfirmed case for "remote-stop" in
 // the same commit, but never added the execCmd case that sets pendingConfirm
 // to reach it -- so it read as implemented while being dispatched nowhere.
+// ini-z61 added the missing execCmd route, closing the gap this function
+// exists to detect.
 func dispatchableCommandNames(t *testing.T) []string {
 	t.Helper()
 	var reachable []string
@@ -260,38 +262,36 @@ func dispatchableCommandNames(t *testing.T) []string {
 	return reachable
 }
 
-// knownUndispatchableCommandNames lists commandNames entries that are
-// deliberately, temporarily excluded from TestCommandNamesAreAllDispatchable
-// pending a decision this bead (ini-162m) is not scoped to make.
-//
-// "remote-stop": has a full executeConfirmed case and a real remoteStopPeer
-// implementation (input_cmd.go), and is registered here for fuzzy-match --
-// but execCmd's dispatcher has no case for it, so nothing ever sets
-// pendingConfirm to reach the confirmed handler. Half-wired since commit
-// 78885e40, which added the commandNames entry and the executeConfirmed case
-// in the same commit but never added the execCmd route. Filed as ini-z61 to
-// decide: wire the missing execCmd case (then remove this exclusion), or
-// delete the dead executeConfirmed case, remoteStopPeer, and this
-// commandNames entry entirely. Not this bead's call.
-var knownUndispatchableCommandNames = map[string]bool{
-	"remote-stop": true,
-}
+// knownUndispatchableCommandNames lists commandNames entries deliberately,
+// temporarily excluded from TestCommandNamesAreAllDispatchable while a
+// decision about whether the command should exist is pending on a bead. Kept
+// empty by default (see TestKnownUndispatchableCommandNamesIsEmpty below): a
+// suppression list with one documented, tracked entry is a reasonable
+// engineering decision, but the same list left to accumulate undocumented
+// entries is where unreachable commands go to be forgotten -- which is
+// exactly how "remote-stop" survived unreachable for three months (ini-z61).
+// If a genuinely new case arises, name the tracking bead in a comment above
+// the added entry and update TestKnownUndispatchableCommandNamesIsEmpty's
+// expectation deliberately, not by leaving it red.
+var knownUndispatchableCommandNames = map[string]bool{}
 
 // TestCommandNamesAreAllDispatchable is the other half of ini-162m's
 // guardrail: it catches "offered but unreachable" (commandNames advertises a
 // command execCmd cannot actually run), the exact shape of the remote-stop
-// bug, and the reason a false "remote-stop <peer>" line briefly appeared in
-// the help overlay -- the original guardrail only checked "reachable but
-// undocumented" and had no way to notice a command that was never reachable
-// in the first place. Without both halves, the honest response to the first
-// half's signal can produce a false statement to users.
+// bug (fixed by ini-z61), and the reason a false "remote-stop <peer>" line
+// briefly appeared in the help overlay -- the original guardrail only
+// checked "reachable but undocumented" and had no way to notice a command
+// that was never reachable in the first place. Without both halves, the
+// honest response to the first half's signal can produce a false statement
+// to users.
 //
-// Skips knownUndispatchableCommandNames rather than silently passing or
-// failing on the one disclosed, already-filed exception: commandNames also
-// drives the live command bar's fuzzy-match autocomplete (updateSuggestions),
-// so "remote-stop" is currently suggested to a user who then hits "unknown
-// command" on Enter -- the same false-claim defect class as the help text,
-// on a different surface ini-z61 should also account for.
+// Skips knownUndispatchableCommandNames (empty by default) rather than
+// failing outright, so a future genuinely-undecided command can be disclosed
+// and tracked the same way remote-stop was, instead of forcing a permanently
+// red suite: commandNames also drives the live command bar's fuzzy-match
+// autocomplete (updateSuggestions), so an undispatchable entry is suggested
+// to a user who then hits "unknown command" on Enter -- the same false-claim
+// defect class as the help text, on a different surface.
 func TestCommandNamesAreAllDispatchable(t *testing.T) {
 	for _, name := range commandNames {
 		if knownUndispatchableCommandNames[name] {
@@ -300,6 +300,20 @@ func TestCommandNamesAreAllDispatchable(t *testing.T) {
 		if isUnknownExecCmd(t, name) {
 			t.Errorf("commandNames contains %q but execCmd has no route to it -- it is offered (fuzzy-match, help text candidate) but not reachable (typing it returns \"unknown command\"). Either execCmd is missing a case, or this entry should be removed from commandNames.", name)
 		}
+	}
+}
+
+// TestKnownUndispatchableCommandNamesIsEmpty guards the suppression list
+// itself against becoming a place unreachable commands go to be forgotten
+// (ini-z61's root cause: a half-wired command survived three months because
+// nothing forced a decision). A future contributor adding an entry to work
+// around a red TestCommandNamesAreAllDispatchable makes THIS test fail
+// instead -- a new, visible signal that a conscious decision (name the
+// tracking bead, update this test's expectation) is required, rather than a
+// silent, permanent exclusion.
+func TestKnownUndispatchableCommandNamesIsEmpty(t *testing.T) {
+	if len(knownUndispatchableCommandNames) > 0 {
+		t.Errorf("knownUndispatchableCommandNames is not empty: %v -- this suppression list is meant to be temporary and self-expiring (see ini-z61); if a new entry is genuinely needed, document the tracking bead in a comment above the map and update this test's expectation deliberately", knownUndispatchableCommandNames)
 	}
 }
 

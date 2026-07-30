@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -200,6 +201,96 @@ func TestRestartNamedUnknownErrors(t *testing.T) {
 	}
 	if tui.cmd.error == "" {
 		t.Error("unknown agent should set error message")
+	}
+}
+
+// ── remote-stop confirmation (ini-z61) ────────────────────────────────
+//
+// remote-stop was offered by the command bar's autocomplete (commandNames)
+// and appeared implemented (executeConfirmed had a full case for it) since
+// commit 78885e40, but execCmd's dispatcher had no route to it, so nothing
+// ever set pendingConfirm and typing "remote-stop <peer>" always returned
+// "unknown command" -- half-wired since birth. These tests drive the exact
+// user-facing path (execCmd, then Enter via handleCmdKey) rather than
+// calling executeConfirmed directly, so they fail the same way a real user
+// hitting Enter would have failed before this fix.
+
+func TestRemoteStopRequiresConfirmation(t *testing.T) {
+	rp := NewRemotePane("agent1", "workbench", nil, nil, 40, 10)
+	tui := &TUI{panes: []PaneView{rp}}
+
+	quit := tui.execCmd("remote-stop workbench")
+	if quit {
+		t.Fatal("remote-stop should not quit")
+	}
+	if got := fmt.Sprintf("unknown command %q", "remote-stop"); tui.cmd.error == got {
+		t.Fatalf("remote-stop rejected as unknown command -- execCmd has no route to it")
+	}
+	if tui.cmd.pendingConfirm != "remote-stop workbench" {
+		t.Errorf("pendingConfirm = %q, want %q", tui.cmd.pendingConfirm, "remote-stop workbench")
+	}
+	if !tui.cmd.active {
+		t.Error("modal should remain active while confirmation is pending")
+	}
+}
+
+func TestRemoteStopUnknownPeerErrors(t *testing.T) {
+	rp := NewRemotePane("agent1", "workbench", nil, nil, 40, 10)
+	tui := &TUI{panes: []PaneView{rp}}
+
+	tui.execCmd("remote-stop nosuchpeer")
+	if tui.cmd.pendingConfirm != "" {
+		t.Error("unknown peer should not set pendingConfirm")
+	}
+	// Must be cmdRemoteStop's own validation error, not execCmd's generic
+	// "unknown command" fallback -- the latter would pass this assertion
+	// vacuously whether or not remote-stop is actually routed at all.
+	if got := fmt.Sprintf("unknown command %q", "remote-stop"); tui.cmd.error == got {
+		t.Fatalf("remote-stop rejected as unknown command -- execCmd has no route to it")
+	}
+	if tui.cmd.error == "" {
+		t.Error("unknown peer should set an error message")
+	}
+	if !containsSubstr(tui.cmd.error, "nosuchpeer") {
+		t.Errorf("error message %q should name the unknown peer", tui.cmd.error)
+	}
+}
+
+func TestRemoteStopNoArgErrors(t *testing.T) {
+	tui := &TUI{}
+	tui.execCmd("remote-stop")
+	if tui.cmd.pendingConfirm != "" {
+		t.Error("remote-stop with no arg should not set pendingConfirm")
+	}
+	if got := fmt.Sprintf("unknown command %q", "remote-stop"); tui.cmd.error == got {
+		t.Fatalf("remote-stop rejected as unknown command -- execCmd has no route to it")
+	}
+	if tui.cmd.error == "" {
+		t.Error("remote-stop with no arg should set an error message")
+	}
+}
+
+func TestRemoteStopConfirmedCallsRemoteStopPeer(t *testing.T) {
+	rp := NewRemotePane("agent1", "workbench", nil, nil, 40, 10)
+	tui := &TUI{panes: []PaneView{rp}}
+
+	tui.execCmd("remote-stop workbench")
+	if tui.cmd.pendingConfirm != "remote-stop workbench" {
+		t.Fatalf("pendingConfirm = %q, want %q -- remote-stop did not reach the confirmation step", tui.cmd.pendingConfirm, "remote-stop workbench")
+	}
+	tui.cmd.confirmExpiry = time.Now().Add(3 * time.Second)
+
+	// Second Enter: executeConfirmed's existing "remote-stop" case must
+	// actually run. mux is nil so remoteStopPeer safely no-ops the network
+	// call (no real daemon needed to prove the dispatch path), but reaching
+	// its result message at all proves the command-bar-to-remoteStopPeer
+	// path is wired end to end, not just that pendingConfirm gets set.
+	quit := tui.handleCmdKey(tcell.NewEventKey(tcell.KeyEnter, 0, 0))
+	if quit {
+		t.Error("remote-stop confirmation should not quit")
+	}
+	if !containsSubstr(tui.cmd.error, "remote-stop workbench") {
+		t.Errorf("executeConfirmed should report the remote-stop result, got error=%q", tui.cmd.error)
 	}
 }
 
