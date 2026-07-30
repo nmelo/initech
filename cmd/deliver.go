@@ -11,7 +11,6 @@ import (
 	"github.com/nmelo/initech/internal/lifecycle"
 	"github.com/nmelo/initech/internal/roles"
 	"github.com/nmelo/initech/internal/tui"
-	"github.com/nmelo/initech/internal/webhook"
 	"github.com/spf13/cobra"
 )
 
@@ -191,9 +190,9 @@ func runDeliver(cmd *cobra.Command, args []string) error {
 		fmt.Fprintf(cmd.ErrOrStderr(), "warning: INITECH_AGENT not set, skipping TUI bead clear\n")
 	}
 
-	// Step 3.5: Pick the per-family notification template. All three downstream
-	// paths (report, webhook, IPC) read from this single struct so
-	// they cannot drift out of sync.
+	// Step 3.5: Pick the per-family notification template. Both downstream
+	// paths (report, IPC) read from this single struct so they cannot drift
+	// out of sync.
 	displayTitle := truncateTitle(title, 80)
 	tpl := selectTemplate(family, isFail, verdict, deliverReason, displayTitle, agent)
 
@@ -216,10 +215,7 @@ func runDeliver(cmd *cobra.Command, args []string) error {
 		fmt.Fprintf(cmd.ErrOrStderr(), "warning: report failed: %s\n", resp.Error)
 	}
 
-	// Step 6: Post to webhook (fire and forget).
-	webhookDeliver(cmd, agent, beadID, tpl)
-
-	// Step 7: Emit event to TUI (fire and forget).
+	// Step 5: Emit event to TUI (fire and forget).
 	emitIPCEvent(agentOrUnknown(agent), beadID, "bead_delivered", tpl.IPCSummary)
 
 	// Output summary.
@@ -292,35 +288,12 @@ func agentOrUnknown(agent string) string {
 	return agent
 }
 
-// webhookDeliver posts a completion/failure notification to the webhook using
-// the family-aware template. Fire-and-forget: returns silently if no webhook
-// URL is configured.
-func webhookDeliver(cmd *cobra.Command, agent, beadID string, tpl deliverTemplate) {
-	wd, err := os.Getwd()
-	if err != nil {
-		return
-	}
-	cfgPath, err := config.Discover(wd)
-	if err != nil {
-		return
-	}
-	p, err := config.Load(cfgPath)
-	if err != nil || p.WebhookURL == "" {
-		return
-	}
-
-	if err := webhook.PostNotification(p.WebhookURL, tpl.Kind, agentOrUnknown(agent), tpl.WebhookText, p.Name); err != nil {
-		fmt.Fprintf(cmd.ErrOrStderr(), "warning: webhook failed: %s\n", err)
-	}
-}
-
 // deliverTemplate is the per-family notification bundle used by every downstream
 // path in runDeliver. Selecting the template once and threading it through
-// keeps the three notification surfaces (report, webhook, IPC) byte-for-
-// byte consistent for any (family, verdict, isFail) tuple.
+// keeps the report and IPC notification surfaces byte-for-byte consistent
+// for any (family, verdict, isFail) tuple.
 type deliverTemplate struct {
-	Kind          string // webhook event kind, e.g. agent.completed | agent.failed
-	WebhookText   string // short notification text for Slack/webhook
+	Kind          string // event kind, e.g. agent.completed | agent.failed
 	ReportText    string // suffix for the [from X] <id>: ... line sent to recipient
 	IPCSummary    string // summary string for the bead_delivered TUI event
 	SummarySuffix string // parenthetical for the operator-facing stderr summary
@@ -437,13 +410,8 @@ func selectTemplate(family roles.RoleFamily, isFail bool, verdict, reason, title
 	switch family {
 	case roles.FamilyEng:
 		if isFail {
-			webhookText := fmt.Sprintf("%s FAILED: %s", title, r)
-			if reason == "" {
-				webhookText = fmt.Sprintf("%s FAILED", title)
-			}
 			return deliverTemplate{
 				Kind:          "agent.failed",
-				WebhookText:   webhookText,
 				ReportText:    fmt.Sprintf("%s FAILED: %s", title, r),
 				IPCSummary:    fmt.Sprintf("%s failed: %s", a, r),
 				SummarySuffix: fmt.Sprintf("FAILED: %s", r),
@@ -451,7 +419,6 @@ func selectTemplate(family roles.RoleFamily, isFail bool, verdict, reason, title
 		}
 		return deliverTemplate{
 			Kind:          "agent.completed",
-			WebhookText:   fmt.Sprintf("%s ready for QA", title),
 			ReportText:    fmt.Sprintf("%s ready for QA", title),
 			IPCSummary:    fmt.Sprintf("%s delivered: %s (ready for QA)", a, title),
 			SummarySuffix: "ready for QA",
@@ -463,7 +430,6 @@ func selectTemplate(family roles.RoleFamily, isFail bool, verdict, reason, title
 			// the verdict first, matching QA's verdict-first reporting rule.
 			return deliverTemplate{
 				Kind:          "agent.failed",
-				WebhookText:   fmt.Sprintf("FAIL: %s — %s", title, r),
 				ReportText:    fmt.Sprintf("FAIL: %s — %s", title, r),
 				IPCSummary:    fmt.Sprintf("%s FAIL: %s", a, title),
 				SummarySuffix: fmt.Sprintf("FAIL: %s", r),
@@ -473,7 +439,6 @@ func selectTemplate(family roles.RoleFamily, isFail bool, verdict, reason, title
 		// for QA when isFail=false and verdict was supplied).
 		return deliverTemplate{
 			Kind:          "agent.completed",
-			WebhookText:   fmt.Sprintf("PASS: %s", title),
 			ReportText:    fmt.Sprintf("PASS: %s", title),
 			IPCSummary:    fmt.Sprintf("%s PASS: %s", a, title),
 			SummarySuffix: "PASS",
@@ -483,7 +448,6 @@ func selectTemplate(family roles.RoleFamily, isFail bool, verdict, reason, title
 		if isFail {
 			return deliverTemplate{
 				Kind:          "agent.failed",
-				WebhookText:   fmt.Sprintf("%s delivery failed: %s", title, r),
 				ReportText:    fmt.Sprintf("%s delivery failed: %s", title, r),
 				IPCSummary:    fmt.Sprintf("%s delivery failed: %s", a, r),
 				SummarySuffix: fmt.Sprintf("delivery failed: %s", r),
@@ -491,7 +455,6 @@ func selectTemplate(family roles.RoleFamily, isFail bool, verdict, reason, title
 		}
 		return deliverTemplate{
 			Kind:          "agent.completed",
-			WebhookText:   fmt.Sprintf("%s delivered: %s", a, title),
 			ReportText:    fmt.Sprintf("delivered: %s", title),
 			IPCSummary:    fmt.Sprintf("%s delivered: %s", a, title),
 			SummarySuffix: "delivered",
@@ -503,7 +466,6 @@ func selectTemplate(family roles.RoleFamily, isFail bool, verdict, reason, title
 	// production code never crashes; tests should fail if this branch fires.
 	return deliverTemplate{
 		Kind:          "agent.completed",
-		WebhookText:   fmt.Sprintf("%s delivered: %s", a, title),
 		ReportText:    fmt.Sprintf("delivered: %s", title),
 		IPCSummary:    fmt.Sprintf("%s delivered: %s", a, title),
 		SummarySuffix: "delivered",

@@ -220,10 +220,9 @@ type TUI struct {
 	mcpPort  int    // Configured port (0 = disabled).
 
 	// Web companion runtime state for the web modal.
-	webPort         int               // Configured port (0 = disabled).
-	webEventProvider *tuiEventProvider // For broadcasting events to web subscribers. Nil if web disabled.
-	webhookCh        chan AgentEvent             // Fan-out channel for webhook HTTP POSTs. Nil if webhook disabled.
-	webhookURL       string                     // Webhook URL from config, for IPC notify action.
+	webPort          int                           // Configured port (0 = disabled).
+	webEventProvider *tuiEventProvider             // For broadcasting events to web subscribers. Nil if web disabled.
+	webhookURL       string                        // Webhook URL from config, for IPC notify action.
 	slackEventCh     chan slackchat.ResponderEvent // Fan-out channel for Slack responder. Nil if Slack disabled.
 
 	// Paste buffering: accumulate characters between EventPaste start/end,
@@ -798,17 +797,6 @@ func Run(cfg Config) error {
 			webSrv.Shutdown(shutCtx)
 			shutCancel()
 		}()
-	}
-
-	// Start webhook event sink when configured.
-	if cfg.WebhookURL != "" {
-		webhookCtx, webhookCancel := context.WithCancel(context.Background())
-		t.webhookCh = make(chan AgentEvent, 64)
-		t.safeGo(func() {
-			startWebhookSink(webhookCtx, cfg.WebhookURL, cfg.ProjectName, t.webhookCh)
-		})
-		LogInfo("webhook", "event sink starting", "url", cfg.WebhookURL)
-		defer webhookCancel()
 	}
 
 	// Start Slack Socket Mode client and responder when tokens are configured.

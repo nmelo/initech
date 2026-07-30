@@ -15,9 +15,8 @@ import (
 	"github.com/nmelo/initech/internal/tui"
 )
 
-// isolateFromProject chdir to a temp dir with a minimal initech.yaml (no
-// webhook_url). config.Discover finds it, but the webhook call bails out
-// immediately because the URL is empty.
+// isolateFromProject chdir to a temp dir with a minimal initech.yaml so
+// config.Discover finds it without touching the real project.
 func isolateFromProject(t *testing.T) {
 	t.Helper()
 	dir := t.TempDir()
@@ -29,7 +28,7 @@ func isolateFromProject(t *testing.T) {
 }
 
 // stubBdFns overrides all bd function vars with stubs, isolates from the real
-// project (prevents webhook calls), and restores on cleanup.
+// project, and restores on cleanup.
 // Also stubs lifecycle.ConfigGetFn (ini-6e54) to return the default initech
 // custom-status list, so the lifecycle walker can build a real chain without
 // shelling out to bd. bdShowBeadFn defaults to returning status "in_progress"

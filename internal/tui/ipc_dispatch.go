@@ -8,8 +8,6 @@ import (
 	"fmt"
 	"net"
 	"time"
-
-	"github.com/nmelo/initech/internal/webhook"
 )
 
 // PaneInfo is the JSON structure returned by the "list" IPC action.
@@ -49,8 +47,8 @@ type IPCHost interface {
 }
 
 // dispatchIPC routes an IPC request to the appropriate handler. Shared actions
-// (peek, list, notify) are handled here. Send is delegated to h.HandleSend.
-// Anything else goes to h.HandleExtended.
+// (peek, list) are handled here. Send is delegated to h.HandleSend. Anything
+// else goes to h.HandleExtended.
 func dispatchIPC(h IPCHost, conn net.Conn, req IPCRequest, rawJSON []byte) {
 	switch req.Action {
 	case "send":
@@ -82,37 +80,9 @@ func dispatchIPC(h IPCHost, conn net.Conn, req IPCRequest, rawJSON []byte) {
 		data, _ := json.Marshal(panes)
 		writeIPCResponse(conn, IPCResponse{OK: true, Data: string(data)})
 
-	case "notify":
-		dispatchNotify(h, conn, req)
-
 	default:
 		if !h.HandleExtended(conn, req, rawJSON) {
 			writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("unknown action %q", req.Action)})
 		}
 	}
-}
-
-// dispatchNotify handles the "notify" IPC action. It reads the message from
-// req.Text and optional kind from req.Target (overloaded), then POSTs directly
-// to the configured webhook URL.
-func dispatchNotify(h IPCHost, conn net.Conn, req IPCRequest) {
-	if req.Text == "" {
-		writeIPCResponse(conn, IPCResponse{Error: "message required"})
-		return
-	}
-	webhookURL, project := h.NotifyConfig()
-	if webhookURL == "" {
-		writeIPCResponse(conn, IPCResponse{Error: "no webhook_url configured"})
-		return
-	}
-	kind := req.Target // overload Target as kind
-	if kind == "" {
-		kind = "custom"
-	}
-	agent := req.Host // overload Host as agent name
-	if err := webhook.PostNotification(webhookURL, kind, agent, req.Text, project); err != nil {
-		writeIPCResponse(conn, IPCResponse{Error: err.Error()})
-		return
-	}
-	writeIPCResponse(conn, IPCResponse{OK: true, Data: "sent"})
 }

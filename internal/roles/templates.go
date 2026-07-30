@@ -230,7 +230,6 @@ Use ` + "`" + `initech send` + "`" + ` and ` + "`" + `initech peek` + "`" + ` fo
 - ` + "`" + `initech whoami` + "`" + ` - show this agent's identity and working directory
 
 **Operator utilities:**
-- ` + "`" + `initech notify "<message>"` + "`" + ` - post a notification to the configured webhook
 - ` + "`" + `initech serve` + "`" + ` - run headless daemon for remote TUI connections
 
 **Beads:**

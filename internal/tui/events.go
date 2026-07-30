@@ -149,15 +149,6 @@ func (t *TUI) handleAgentEvent(ev AgentEvent) {
 		t.webEventProvider.BroadcastWebEvent(ev)
 	}
 
-	// Fan out to webhook sink (non-blocking).
-	if t.webhookCh != nil {
-		select {
-		case t.webhookCh <- ev:
-		default:
-			LogDebug("webhook", "channel full, dropping event", "kind", ev.Type.String(), "pane", ev.Pane)
-		}
-	}
-
 	// Fan out to Slack responder (non-blocking).
 	if t.slackEventCh != nil {
 		re := slackchat.ResponderEvent{
