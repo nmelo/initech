@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/nmelo/initech/internal/config"
 	"github.com/nmelo/initech/internal/tui"
@@ -179,6 +181,17 @@ func ipcCall(req tui.IPCRequest) (*tui.IPCResponse, error) {
 	return ipcCallSocket(sockPath, req)
 }
 
+// ipcCallTimeout bounds how long ipcCallSocket waits on the connection
+// (write + read-response) before giving up, so a stalled or SIGSTOPped TUI
+// cannot hang the CLI forever (ini-ousx). The server's own read deadline
+// (internal/tui/ipc.go, 5s) only bounds it reading the incoming request
+// line, not producing the response, so this needs a bit more margin, not
+// less. 10s matches the client-side round-trip timeout convention already
+// established for a comparable persistent request/response channel
+// (ControlMux.Request, internal/tui/control_mux.go). A package-level var,
+// not a const, so tests can shrink it instead of waiting out the real value.
+var ipcCallTimeout = 10 * time.Second
+
 // ipcCallSocket sends a request to the TUI's IPC endpoint at the given path.
 // Uses tui.DialIPC which handles Unix sockets on POSIX and TCP via .port file
 // on Windows.
@@ -189,12 +202,26 @@ func ipcCallSocket(sockPath string, req tui.IPCRequest) (*tui.IPCResponse, error
 	}
 	defer conn.Close()
 
+	// Bound both the write and the read-response wait: a stalled TUI could
+	// block either side (a full socket recv buffer blocks Write; a wedged
+	// event loop that never responds blocks Scan). Without this, a
+	// SIGSTOPped or wedged TUI hangs the CLI forever (ini-ousx) — the
+	// server already protects itself this way (ipc.go's 5s read deadline)
+	// but the client never did.
+	conn.SetDeadline(time.Now().Add(ipcCallTimeout))
+
 	data, _ := json.Marshal(req)
 	conn.Write(data)
 	conn.Write([]byte("\n"))
 
 	scanner := tui.NewIPCScanner(conn)
 	if !scanner.Scan() {
+		if err := scanner.Err(); err != nil {
+			if ne, ok := err.(net.Error); ok && ne.Timeout() {
+				return nil, fmt.Errorf("timed out waiting for TUI response after %s — the session may be stalled or unresponsive", ipcCallTimeout)
+			}
+			return nil, fmt.Errorf("read response: %w", err)
+		}
 		return nil, fmt.Errorf("no response from TUI")
 	}
 

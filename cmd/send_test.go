@@ -11,6 +11,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/nmelo/initech/internal/tui"
 )
@@ -396,6 +397,87 @@ func TestSendCommand_HelpDocumentsBacktickHazard(t *testing.T) {
 	}
 	if !strings.Contains(help, "--stdin") {
 		t.Errorf("send --help must document the shell-safe --stdin path; got:\n%s", help)
+	}
+}
+
+// startStalledFakeIPC spins up a Unix socket that ACCEPTS connections but
+// never writes a response and never closes them, simulating a TUI whose
+// accept loop is alive (so the dial succeeds) but whose event loop is
+// wedged or SIGSTOPped, so it never processes the request (ini-ousx).
+// Unlike startFakeIPC, connections are deliberately left open and silent.
+func startStalledFakeIPC(t *testing.T) string {
+	t.Helper()
+	n := fakeIPCCounter.Add(1)
+	sockPath := filepath.Join("/tmp", fmt.Sprintf("initech-test-stalled-%d-%d.sock", os.Getpid(), n))
+	os.Remove(sockPath)
+	ln, err := net.Listen("unix", sockPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { ln.Close(); os.Remove(sockPath) })
+
+	var mu sync.Mutex
+	var conns []net.Conn
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			mu.Lock()
+			conns = append(conns, conn)
+			mu.Unlock()
+			// Deliberately never write or close: the whole point is a
+			// server that accepted the connection and then never responds.
+		}
+	}()
+	t.Cleanup(func() {
+		mu.Lock()
+		for _, c := range conns {
+			c.Close()
+		}
+		mu.Unlock()
+	})
+	return sockPath
+}
+
+// TestSendCommand_StalledTUI_ClientGivesUpOnItsOwnDeadline is the ini-ousx
+// regression test. A healthy-server test proves nothing about this bug --
+// the defect is that ipcCallSocket sets no deadline at all, so the ONLY way
+// to prove the fix is to exercise a server that accepts but never replies,
+// and confirm the CLIENT gives up on its own clock rather than the test's
+// outer bound saving it.
+func TestSendCommand_StalledTUI_ClientGivesUpOnItsOwnDeadline(t *testing.T) {
+	skipWindows(t)
+	sockPath := startStalledFakeIPC(t)
+	t.Setenv("INITECH_SOCKET", sockPath)
+
+	// Shrink the production deadline for a fast, deterministic test instead
+	// of waiting out the real value.
+	orig := ipcCallTimeout
+	ipcCallTimeout = 100 * time.Millisecond
+	t.Cleanup(func() { ipcCallTimeout = orig })
+
+	rootCmd.SetArgs([]string{"send", "eng2", "hello world"})
+	defer rootCmd.SetArgs(nil)
+
+	done := make(chan error, 1)
+	go func() { done <- rootCmd.Execute() }()
+
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("expected a timeout error against a stalled server, got nil")
+		}
+		msg := strings.ToLower(err.Error())
+		if !strings.Contains(msg, "timed out") && !strings.Contains(msg, "timeout") {
+			t.Errorf("error = %q, want a message identifying a timeout against an unresponsive TUI", err.Error())
+		}
+	case <-time.After(2 * time.Second):
+		// The outer bound is 20x the shrunk 100ms client deadline: if this
+		// fires, the client is NOT enforcing its own deadline -- it is
+		// hanging exactly as ini-ousx describes.
+		t.Fatal("WEDGE: send did not return within 2s of a 100ms client deadline against a stalled TUI")
 	}
 }
 
