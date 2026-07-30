@@ -10,8 +10,6 @@ import (
 	"time"
 
 	gomcp "github.com/modelcontextprotocol/go-sdk/mcp"
-
-	"github.com/nmelo/initech/internal/webhook"
 )
 
 // PeekInput is the input schema for the initech_peek tool.
@@ -90,18 +88,6 @@ type PatrolInput struct {
 // PatrolOutput is the output schema for the initech_patrol tool.
 type PatrolOutput struct {
 	Content string `json:"content"`
-}
-
-// NotifyInput is the input schema for the initech_notify tool.
-type NotifyInput struct {
-	Message string `json:"message" jsonschema:"notification message text"`
-	Kind    string `json:"kind,omitempty" jsonschema:"event kind (default custom). Dot-notation encouraged: deploy, release, milestone"`
-	Agent   string `json:"agent,omitempty" jsonschema:"agent name to attribute the notification to"`
-}
-
-// NotifyOutput is the output schema for the initech_notify tool.
-type NotifyOutput struct {
-	Status string `json:"status"`
 }
 
 // InterruptInput is the input schema for the initech_interrupt tool.
@@ -233,13 +219,6 @@ func registerTools(s *gomcp.Server, host PaneHost) {
 	})
 
 	gomcp.AddTool(s, &gomcp.Tool{
-		Name:        "initech_notify",
-		Description: "Post a notification to the configured webhook (Slack, Discord, or generic). Use for milestones, deployments, status updates, and custom announcements.",
-	}, func(_ context.Context, _ *gomcp.CallToolRequest, input NotifyInput) (*gomcp.CallToolResult, NotifyOutput, error) {
-		return handleNotify(host, input)
-	})
-
-	gomcp.AddTool(s, &gomcp.Tool{
 		Name:        "initech_interrupt",
 		Description: "Send Escape or Ctrl+C to an agent's terminal. Escape stops Claude Code's current action. Ctrl+C (hard=true) kills a running shell command.",
 	}, func(_ context.Context, _ *gomcp.CallToolRequest, input InterruptInput) (*gomcp.CallToolResult, InterruptOutput, error) {
@@ -255,7 +234,7 @@ func registerTools(s *gomcp.Server, host PaneHost) {
 
 	gomcp.AddTool(s, &gomcp.Tool{
 		Name:        "initech_deliver",
-		Description: "Atomic bead completion: updates status, clears TUI, reports to super, announces on radio/webhook. Counterpart to initech_assign. Requires bd CLI.",
+		Description: "Atomic bead completion: updates status, clears TUI, reports to super. Counterpart to initech_assign. Requires bd CLI.",
 	}, func(_ context.Context, _ *gomcp.CallToolRequest, input DeliverInput) (*gomcp.CallToolResult, DeliverOutput, error) {
 		return handleDeliver(host, input)
 	})
@@ -507,27 +486,6 @@ func handleAssign(host PaneHost, input AssignInput) (*gomcp.CallToolResult, Assi
 	}
 	pane.SendText(dispatch, true)
 
-	// Announce (fire and forget).
-	if announceURL, project := host.AnnounceConfig(); announceURL != "" {
-		ids := make([]string, len(successes))
-		for i, s := range successes {
-			ids[i] = s.id
-		}
-		var detail string
-		if len(successes) == 1 {
-			detail = fmt.Sprintf("%s picking up: %s", input.Agent, successes[0].title)
-		} else {
-			detail = fmt.Sprintf("%s assigned %d beads", input.Agent, len(successes))
-		}
-		webhook.PostAnnouncement(announceURL, webhook.AnnouncePayload{
-			Detail:  detail,
-			Kind:    "agent.started",
-			Agent:   input.Agent,
-			Project: project,
-			BeadID:  successes[0].id,
-		})
-	}
-
 	ids := make([]string, len(successes))
 	for i, s := range successes {
 		ids[i] = s.id
@@ -537,28 +495,6 @@ func handleAssign(host PaneHost, input AssignInput) (*gomcp.CallToolResult, Assi
 		status += fmt.Sprintf(" (failed: %s)", strings.Join(failures, ", "))
 	}
 	return nil, AssignOutput{Status: status}, nil
-}
-
-func handleNotify(host PaneHost, input NotifyInput) (*gomcp.CallToolResult, NotifyOutput, error) {
-	if input.Message == "" {
-		return nil, NotifyOutput{}, fmt.Errorf("message is required")
-	}
-
-	webhookURL, project := host.NotifyConfig()
-	if webhookURL == "" {
-		return nil, NotifyOutput{}, fmt.Errorf("no webhook_url configured in initech.yaml")
-	}
-
-	kind := input.Kind
-	if kind == "" {
-		kind = "custom"
-	}
-
-	if err := webhook.PostNotification(webhookURL, kind, input.Agent, input.Message, project); err != nil {
-		return nil, NotifyOutput{}, err
-	}
-
-	return nil, NotifyOutput{Status: "sent"}, nil
 }
 
 func handleInterrupt(host PaneHost, input InterruptInput) (*gomcp.CallToolResult, InterruptOutput, error) {
@@ -645,45 +581,6 @@ func handleDeliver(host PaneHost, input DeliverInput) (*gomcp.CallToolResult, De
 	pane, ok := host.FindPane(recipient)
 	if ok && pane != nil {
 		pane.SendText(report, true)
-	}
-
-	// Step 5: Announce (fire and forget).
-	if announceURL, project := host.AnnounceConfig(); announceURL != "" {
-		var detail, kind string
-		if isFail {
-			kind = "agent.failed"
-			if input.Reason != "" {
-				detail = fmt.Sprintf("%s hit a wall: %s", agentOrUnknownMCP(callerAgent), input.Reason)
-			} else {
-				detail = fmt.Sprintf("%s hit a wall", agentOrUnknownMCP(callerAgent))
-			}
-		} else {
-			kind = "agent.completed"
-			detail = fmt.Sprintf("%s finished: %s", agentOrUnknownMCP(callerAgent), title)
-		}
-		webhook.PostAnnouncement(announceURL, webhook.AnnouncePayload{
-			Detail:  detail,
-			Kind:    kind,
-			Agent:   agentOrUnknownMCP(callerAgent),
-			Project: project,
-			BeadID:  input.BeadID,
-		})
-	}
-
-	// Step 6: Webhook (fire and forget).
-	if webhookURL, project := host.NotifyConfig(); webhookURL != "" {
-		var kind, message string
-		if isFail {
-			kind = "agent.failed"
-			message = fmt.Sprintf("%s FAILED", title)
-			if input.Reason != "" {
-				message += ": " + input.Reason
-			}
-		} else {
-			kind = "agent.completed"
-			message = fmt.Sprintf("%s ready for QA", title)
-		}
-		webhook.PostNotification(webhookURL, kind, agentOrUnknownMCP(callerAgent), message, project) //nolint:errcheck
 	}
 
 	if isFail {
