@@ -144,13 +144,19 @@ func TestHandleHelpKey_KeyDownClamped(t *testing.T) {
 }
 
 func TestHelpLinesNotEmpty(t *testing.T) {
-	if len(helpLines) == 0 {
+	// getHelpLines() populates the package-level helpLines slice lazily via
+	// sync.Once. Call it here rather than reading helpLines directly: this
+	// test must not depend on some other test having already triggered the
+	// Once first, or it fails under -shuffle=on whenever it draws a position
+	// before that other test (ini-ls0c).
+	lines := getHelpLines()
+	if len(lines) == 0 {
 		t.Error("helpLines must not be empty")
 	}
 	// Verify keybindings and commands sections are present.
 	foundKeybindings := false
 	foundCommands := false
-	for _, line := range helpLines {
+	for _, line := range lines {
 		if line == "Keybindings" {
 			foundKeybindings = true
 		}

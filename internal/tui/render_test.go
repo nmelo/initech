@@ -264,10 +264,15 @@ func TestRenderHints_NarrowTerminal(t *testing.T) {
 }
 
 func TestStatusTips_NonEmpty(t *testing.T) {
-	if len(statusTips) == 0 {
+	// getStatusTips() populates the package-level statusTips slice lazily via
+	// sync.Once — call it rather than reading statusTips directly, or this
+	// test depends on another test having already triggered the Once first
+	// and fails under -shuffle=on (ini-ls0c).
+	tips := getStatusTips()
+	if len(tips) == 0 {
 		t.Fatal("statusTips should not be empty")
 	}
-	for i, tip := range statusTips {
+	for i, tip := range tips {
 		if tip == "" {
 			t.Errorf("statusTips[%d] is empty", i)
 		}

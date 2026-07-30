@@ -67,7 +67,11 @@ func TestHelpLines_CommandsMatchExecCmd(t *testing.T) {
 		"agents", "layout", "restart",
 		"patrol", "top", "add", "remove", "help", "quit",
 	}
-	helpContent := strings.Join(helpLines, "\n")
+	// getHelpLines() populates the package-level helpLines slice lazily via
+	// sync.Once — call it rather than reading helpLines directly, or this
+	// test depends on another test having already triggered the Once first
+	// and fails under -shuffle=on (ini-ls0c).
+	helpContent := strings.Join(getHelpLines(), "\n")
 	for _, cmd := range required {
 		if !strings.Contains(helpContent, cmd) {
 			t.Errorf("helpLines missing command %q", cmd)
