@@ -2,12 +2,14 @@ package cmd
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
 	"os"
 	"runtime/debug"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -339,6 +341,11 @@ func ipcCallSocket(sockPath string, req tui.IPCRequest) (*tui.IPCResponse, error
 	return &resp, nil
 }
 
+// discoverSocketDial is overridable for tests to supply controlled dial
+// error values, since reproducing exotic OS-level conditions (a full accept
+// backlog, a SIGSTOPped process) deterministically isn't practical (ini-0fvf).
+var discoverSocketDial = tui.DialIPC
+
 // discoverSocket finds the IPC socket path for the current project.
 // Returns the socket path and project config, or an error.
 func discoverSocket() (string, *config.Project, error) {
@@ -357,8 +364,15 @@ func discoverSocket() (string, *config.Project, error) {
 	sockPath := tui.SocketPath(p.Root, p.Name)
 	// Probe the endpoint with a dial instead of stat. A stale socket file
 	// (from a crashed TUI) passes stat but fails to connect.
-	conn, dialErr := tui.DialIPC(sockPath)
+	conn, dialErr := discoverSocketDial(sockPath)
 	if dialErr != nil {
+		if !isStaleSocketError(dialErr) {
+			// A live TUI with a momentarily full/busy accept queue also
+			// fails to dial. Deleting the socket over that ambiguous signal
+			// orphans a LIVE session until manual restart (ini-0fvf) — worse
+			// than the stale-socket annoyance this cleanup was meant to fix.
+			return "", nil, fmt.Errorf("session '%s' appears busy or unresponsive (%w); the socket was left in place in case it recovers", p.Name, dialErr)
+		}
 		// Clean up the stale socket/port file so the next 'initech' can
 		// start without manual deletion (ini-db1).
 		os.Remove(sockPath)
@@ -366,4 +380,28 @@ func discoverSocket() (string, *config.Project, error) {
 	}
 	conn.Close()
 	return sockPath, p, nil
+}
+
+// isStaleSocketError reports whether err indicates NO listener is present at
+// all — the only case where deleting the socket file is safe (ini-0fvf).
+// Checks Timeout() first: a definite timeout always means "maybe still
+// busy," regardless of what it might also match underneath. ECONNREFUSED is
+// the classic Linux dead-listener shape; ENOENT is what this platform's own
+// net.DialTimeout actually returns for a dead listener (verified
+// empirically, not assumed). EINVAL is what this platform returns for a
+// unix socket path exceeding the sun_path length limit (~104 bytes on
+// macOS) — a path that long could never have been bound by any listener in
+// the first place, so it is just as unambiguously "no listener" as the
+// other two, not a "maybe busy" signal (also verified empirically).
+// Anything else defaults to "not stale" — leaving a genuinely dead socket
+// around a little longer (the original ini-db1 annoyance) is a far smaller
+// cost than orphaning a live-but-busy session.
+func isStaleSocketError(err error) bool {
+	var netErr net.Error
+	if errors.As(err, &netErr) && netErr.Timeout() {
+		return false
+	}
+	return errors.Is(err, syscall.ECONNREFUSED) ||
+		errors.Is(err, syscall.ENOENT) ||
+		errors.Is(err, syscall.EINVAL)
 }
