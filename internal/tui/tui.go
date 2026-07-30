@@ -995,8 +995,17 @@ func calcMainVertical(n, screenW, screenH int) []Region {
 	rightW := screenW - leftW
 	rightCount := n - 1
 
+	// Reserve the left pane's last column as the gutter for the divider
+	// between it and the right grid (ini-czi) -- the right grid still
+	// starts at the unshrunk leftW offset below, so the reserved column
+	// falls exactly where computeDividers' X = nextX-1 already points.
+	leftOwnedW := leftW - 1
+	if leftOwnedW < 1 {
+		leftOwnedW = 1
+	}
+
 	regions := make([]Region, 0, n)
-	regions = append(regions, Region{X: 0, Y: 0, W: leftW, H: screenH})
+	regions = append(regions, Region{X: 0, Y: 0, W: leftOwnedW, H: screenH})
 
 	cols, rows := autoGrid(rightCount)
 	rightRegions := gridRegions(cols, rows, rightCount, rightW, screenH, nil, nil)

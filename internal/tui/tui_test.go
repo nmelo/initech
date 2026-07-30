@@ -1028,9 +1028,13 @@ func TestCalcMainVertical_SingleFullScreen(t *testing.T) {
 // and grid-right behavior change (was 60/40 with a stacked right column; is
 // now 40/60 with the right side reflowed via gridRegions). Covers n=2, 3, 5
 // per the bead's acceptance criteria.
+// TestCalcMainVertical_40_60RatioWithGridRight also covers ini-czi: the left
+// pane and every non-last column in a row give up one column as the divider
+// gutter to its right, so owned widths are one narrower than a pure 40/60 (or
+// even) split would give; the rightmost column in each row is never shrunk.
 func TestCalcMainVertical_40_60RatioWithGridRight(t *testing.T) {
 	const screenW, screenH = 200, 100
-	const wantLeftW = 80 // 40% of 200
+	const wantLeftW = 79 // 40% of 200 (80), minus 1 reserved divider column
 
 	t.Run("n=2_single_pane_fills_right", func(t *testing.T) {
 		regions := calcMainVertical(2, screenW, screenH)
@@ -1041,8 +1045,10 @@ func TestCalcMainVertical_40_60RatioWithGridRight(t *testing.T) {
 		if left.X != 0 || left.Y != 0 || left.W != wantLeftW || left.H != screenH {
 			t.Errorf("left region = %+v, want {0,0,%d,%d}", left, wantLeftW, screenH)
 		}
+		// Alone in its row (rightCount=1), so not shrunk -- still the full
+		// 60% (120).
 		right := regions[1]
-		want := Region{X: wantLeftW, Y: 0, W: screenW - wantLeftW, H: screenH}
+		want := Region{X: 80, Y: 0, W: screenW - 80, H: screenH}
 		if right != want {
 			t.Errorf("right region = %+v, want %+v", right, want)
 		}
@@ -1058,7 +1064,8 @@ func TestCalcMainVertical_40_60RatioWithGridRight(t *testing.T) {
 			t.Errorf("left region = %+v, want W=%d H=%d", left, wantLeftW, screenH)
 		}
 		// autoGrid(2) = (2,1): both right panes side by side, full height.
-		want1 := Region{X: 80, Y: 0, W: 60, H: 100}
+		// The first (non-last) column gives up one column to the divider.
+		want1 := Region{X: 80, Y: 0, W: 59, H: 100}
 		want2 := Region{X: 140, Y: 0, W: 60, H: 100}
 		if regions[1] != want1 {
 			t.Errorf("right[0] = %+v, want %+v", regions[1], want1)
@@ -1077,11 +1084,12 @@ func TestCalcMainVertical_40_60RatioWithGridRight(t *testing.T) {
 		if left.W != wantLeftW || left.H != screenH {
 			t.Errorf("left region = %+v, want W=%d H=%d", left, wantLeftW, screenH)
 		}
-		// autoGrid(4) = (2,2): a 2x2 grid over the right 60% (120 wide).
+		// autoGrid(4) = (2,2): a 2x2 grid over the right 60% (120 wide). The
+		// first column of each row gives up one column to the divider.
 		want := []Region{
-			{X: 80, Y: 0, W: 60, H: 50},
+			{X: 80, Y: 0, W: 59, H: 50},
 			{X: 140, Y: 0, W: 60, H: 50},
-			{X: 80, Y: 50, W: 60, H: 50},
+			{X: 80, Y: 50, W: 59, H: 50},
 			{X: 140, Y: 50, W: 60, H: 50},
 		}
 		for i, w := range want {

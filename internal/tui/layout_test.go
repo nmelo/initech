@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -174,9 +175,10 @@ func TestComputeLayout2Col(t *testing.T) {
 	if len(plan.Panes) != 3 {
 		t.Fatalf("2col: got %d plan entries, want 3", len(plan.Panes))
 	}
-	// Focused pane (a) gets the 40% left slot (ini-vtki: was 60%).
-	if plan.Panes[0].Region.W != 80 {
-		t.Errorf("2col main pane width = %d, want 80", plan.Panes[0].Region.W)
+	// Focused pane (a) gets the 40% left slot (ini-vtki: was 60%), minus one
+	// reserved column for the divider between it and the right grid (ini-czi).
+	if plan.Panes[0].Region.W != 79 {
+		t.Errorf("2col main pane width = %d, want 79 (80 - 1 reserved divider column)", plan.Panes[0].Region.W)
 	}
 }
 
@@ -201,7 +203,7 @@ func TestComputeLayout2Col_FocusedPaneGetsLeftSlot(t *testing.T) {
 
 	var leftPane string
 	for _, pr := range plan.Panes {
-		if pr.Region.W == 80 { // 40% of 200: the big/left slot.
+		if pr.Region.X == 0 { // the big/left slot always starts at X=0.
 			leftPane = pr.Pane.Name()
 			if !pr.Focused {
 				t.Errorf("pane %q occupies the left slot but Focused=false", leftPane)
@@ -213,12 +215,12 @@ func TestComputeLayout2Col_FocusedPaneGetsLeftSlot(t *testing.T) {
 	}
 
 	// The other two panes (a, c) must be in the right grid: neither at the
-	// left slot's width, and neither marked Focused.
+	// left slot's position, and neither marked Focused.
 	for _, pr := range plan.Panes {
 		if pr.Pane.Name() == "b" {
 			continue
 		}
-		if pr.Region.W == 80 {
+		if pr.Region.X == 0 {
 			t.Errorf("non-focused pane %q occupies the left slot", pr.Pane.Name())
 		}
 		if pr.Focused {
@@ -279,8 +281,8 @@ func TestComputeLayout2Col_AddingPaneReflowsRightGrid(t *testing.T) {
 	for _, plan := range []RenderPlan{before, after} {
 		for _, pr := range plan.Panes {
 			if pr.Pane.Name() == "a" {
-				if pr.Region.W != 80 {
-					t.Errorf("focused pane a width = %d, want 80 (left slot)", pr.Region.W)
+				if pr.Region.W != 79 {
+					t.Errorf("focused pane a width = %d, want 79 (80 left slot - 1 reserved divider column)", pr.Region.W)
 				}
 				if !pr.Focused {
 					t.Error("focused pane a should have Focused=true")
@@ -429,8 +431,11 @@ func TestGridRegionsWeightedColumns(t *testing.T) {
 	if len(regions) != 2 {
 		t.Fatalf("got %d regions, want 2", len(regions))
 	}
-	if regions[0].W != 120 || regions[1].W != 80 {
-		t.Errorf("widths = [%d, %d], want [120, 80]", regions[0].W, regions[1].W)
+	// Unweighted split would be [120, 80]; the non-last column (index 0)
+	// gives up one column as the divider gutter to its right (ini-czi), so
+	// it owns 119. The last column in the row is never shrunk.
+	if regions[0].W != 119 || regions[1].W != 80 {
+		t.Errorf("widths = [%d, %d], want [119, 80]", regions[0].W, regions[1].W)
 	}
 }
 
@@ -449,10 +454,13 @@ func TestGridRegionsNilWeights(t *testing.T) {
 	if len(regions) != 4 {
 		t.Fatalf("got %d regions, want 4", len(regions))
 	}
-	// Uniform: each ~100x30.
+	// Uniform: each ~100x30, but the first column of each row (indices 0, 2)
+	// gives up one column as the divider gutter to its right (ini-czi); the
+	// last column in each row (indices 1, 3) is never shrunk.
+	wantW := []int{99, 100, 99, 100}
 	for i, r := range regions {
-		if r.W != 100 {
-			t.Errorf("region %d width = %d, want 100", i, r.W)
+		if r.W != wantW[i] {
+			t.Errorf("region %d width = %d, want %d", i, r.W, wantW[i])
 		}
 		if r.H != 30 {
 			t.Errorf("region %d height = %d, want 30", i, r.H)
@@ -1131,5 +1139,226 @@ func TestLoadLayout_GridModeStillAutoExpands(t *testing.T) {
 	}
 	if got.GridCols*got.GridRows < len(agents) {
 		t.Errorf("grid = %dx%d (%d slots), want >= %d for grid mode", got.GridCols, got.GridRows, got.GridCols*got.GridRows, len(agents))
+	}
+}
+
+// ── ini-czi: dividers must not steal a pane's column (C1, C3) ─────────
+//
+// gridRegions/calcMainVertical previously tiled regions CONTIGUOUSLY, with
+// no column reserved for a divider. computeDividers computes divider X as
+// (next region's X) - 1, which is only a real gutter if the pane to the
+// left does not already claim that column -- with contiguous tiling it
+// always did, silently erasing the final character of every line in every
+// non-rightmost pane (the operator's "Either" -> "Eithe" report).
+
+// assertNoDividerOverlapsAnyRegion is the C1 assertion: a divider occupies
+// a column no pane owns.
+func assertNoDividerOverlapsAnyRegion(t *testing.T, plan RenderPlan) {
+	t.Helper()
+	for _, d := range plan.Dividers {
+		for _, pr := range plan.Panes {
+			r := pr.Region
+			// A partial last row legitimately has different column
+			// boundaries than the row above it (TestComputeLayoutLastRowExpands,
+			// out of scope for this bead per the spec: "the row shapes are
+			// correct; only the divider geometry derived from them is
+			// wrong"). Grid columns align vertically, so without a Y-overlap
+			// check, a divider's X can coincidentally fall inside an
+			// unrelated, differently-shaped row's pane -- a false positive,
+			// since the divider never actually draws into that pane's rows.
+			overlapsY := d.Y < r.Y+r.H && r.Y < d.Y+d.Len
+			if overlapsY && d.X >= r.X && d.X < r.X+r.W {
+				t.Errorf("divider at X=%d, Y=%d overlaps pane %q's region %+v -- C1 violated (divider drawn on a column the pane owns)", d.X, d.Y, pr.Pane.Name(), r)
+			}
+		}
+	}
+}
+
+// assertDividersRespectRowWidth is the C3 assertion: for each row, the sum
+// of pane content widths plus the divider columns between them equals the
+// width allotted to that row -- nothing lost, nothing overlapping.
+func assertDividersRespectRowWidth(t *testing.T, plan RenderPlan) {
+	t.Helper()
+	type rowKey struct{ y, h int }
+	rows := make(map[rowKey][]PaneRender)
+	for _, pr := range plan.Panes {
+		k := rowKey{pr.Region.Y, pr.Region.H}
+		rows[k] = append(rows[k], pr)
+	}
+	for k, prs := range rows {
+		if len(prs) < 2 {
+			continue // no internal dividers possible with a single pane in the row
+		}
+		minX, maxX := prs[0].Region.X, prs[0].Region.X+prs[0].Region.W
+		sumW := 0
+		for _, pr := range prs {
+			sumW += pr.Region.W
+			if pr.Region.X < minX {
+				minX = pr.Region.X
+			}
+			if pr.Region.X+pr.Region.W > maxX {
+				maxX = pr.Region.X + pr.Region.W
+			}
+		}
+		rowWidth := maxX - minX
+		// Matches on Y and X range only, deliberately NOT on Len: this test
+		// targets C3 (content-width accounting) in isolation, and must not
+		// be confused by ini-mdj5's separate C2 (divider length) defect,
+		// which can make a top-row divider's Y match but Len disagree with
+		// this row's H. Safe from double-counting a divider across two
+		// row-groups that share a Y (Layout2Col's left pane vs. the top
+		// grid row): the left pane is always alone in its own (Y,H) group
+		// and is skipped above by the len(prs) < 2 guard.
+		internalDividers := 0
+		for _, d := range plan.Dividers {
+			if d.Y == k.y && d.X > minX && d.X < maxX {
+				internalDividers++
+			}
+		}
+		if sumW+internalDividers != rowWidth {
+			t.Errorf("row y=%d h=%d: content width %d + %d divider column(s) = %d, want %d (allotted row width) -- C3 violated", k.y, k.h, sumW, internalDividers, sumW+internalDividers, rowWidth)
+		}
+	}
+}
+
+func namesN(n int) []string {
+	names := make([]string, n)
+	for i := range names {
+		names[i] = fmt.Sprintf("p%d", i)
+	}
+	return names
+}
+
+func TestComputeDividers_NoDividerOverlapsAnyRegion(t *testing.T) {
+	cases := []struct {
+		name  string
+		state func(names []string) LayoutState
+	}{
+		{"grid", func(names []string) LayoutState {
+			cols, rows := autoGrid(len(names))
+			return LayoutState{Mode: LayoutGrid, GridCols: cols, GridRows: rows, Focused: names[0], Hidden: map[string]bool{}}
+		}},
+		{"main", func(names []string) LayoutState {
+			return LayoutState{Mode: Layout2Col, Focused: names[0], Hidden: map[string]bool{}}
+		}},
+		{"live", func(names []string) LayoutState {
+			return LayoutState{Mode: LayoutLive, LiveAuto: true, Focused: names[0], Hidden: map[string]bool{}}
+		}},
+	}
+	for _, tc := range cases {
+		for _, n := range []int{2, 3, 4, 5, 7, 8, 9, 12} {
+			n := n
+			names := namesN(n)
+			t.Run(fmt.Sprintf("%s/n=%d", tc.name, n), func(t *testing.T) {
+				plan := computeLayout(tc.state(names), testPanes(names...), 250, 60)
+				assertNoDividerOverlapsAnyRegion(t, plan)
+			})
+		}
+	}
+}
+
+func TestComputeDividers_ContentPlusDividersEqualsRowWidth(t *testing.T) {
+	cases := []struct {
+		name  string
+		state func(names []string) LayoutState
+	}{
+		{"grid", func(names []string) LayoutState {
+			cols, rows := autoGrid(len(names))
+			return LayoutState{Mode: LayoutGrid, GridCols: cols, GridRows: rows, Focused: names[0], Hidden: map[string]bool{}}
+		}},
+		{"main", func(names []string) LayoutState {
+			return LayoutState{Mode: Layout2Col, Focused: names[0], Hidden: map[string]bool{}}
+		}},
+	}
+	for _, tc := range cases {
+		for _, n := range []int{2, 3, 4, 5, 7, 8, 9, 12} {
+			n := n
+			names := namesN(n)
+			t.Run(fmt.Sprintf("%s/n=%d", tc.name, n), func(t *testing.T) {
+				plan := computeLayout(tc.state(names), testPanes(names...), 250, 60)
+				assertDividersRespectRowWidth(t, plan)
+			})
+		}
+	}
+}
+
+// ── ini-mdj5: a divider must not cross a row boundary (C2) ────────────
+//
+// computeDividers grouped panes by Region.Y alone and took rowInfo.h from
+// whichever pane it met first for that Y, never revisited. Layout2Col's
+// full-height left pane (Y=0, H=screenH, regions[0], always inserted
+// first) poisoned the Y=0 group's h for every OTHER pane sharing that Y --
+// the top grid row's internal dividers inherited screenH and ran straight
+// through the bottom row. The defect fires at every pane count but is only
+// VISIBLE when the last grid row is partial (its column boundaries differ
+// from the top row's, so an overlong divider lands mid-pane instead of on
+// a real boundary) -- both a partial and a full last row must be tested,
+// since the full case is exactly where a future regression would hide.
+
+// assertNoDividerCrossesRowBoundary is the C2 assertion: for every
+// divider, find a pane whose region it borders (the divider sits exactly
+// at that region's right edge, per the ini-czi column-reservation fix) and
+// assert the divider's [Y, Y+Len) exactly matches that pane's own row
+// span [Region.Y, Region.Y+Region.H) -- not just "within", since a
+// divider separating one row must span exactly that row, no more.
+func assertNoDividerCrossesRowBoundary(t *testing.T, plan RenderPlan) {
+	t.Helper()
+	for _, d := range plan.Dividers {
+		if !d.Vertical {
+			continue
+		}
+		// Grid columns are vertically aligned, so a divider's X can border
+		// several panes on ONE side stacked across different rows (e.g. the
+		// Layout2Col left-pane boundary borders every grid row's first
+		// column at the same X). The correct C2 check is therefore not
+		// "equals this one neighbor's row exactly" -- it is "is a SUBSET of
+		// every neighboring pane's own row span": a single tall neighbor
+		// (like the left pane) legitimately contains a shorter divider
+		// without that divider needing to span the tall neighbor's full
+		// height. A divider extending past ANY neighbor's own bounds is the
+		// one thing that means it has crossed into a row it doesn't belong
+		// to.
+		found := false
+		for _, pr := range plan.Panes {
+			r := pr.Region
+			adjacentX := r.X+r.W == d.X || r.X == d.X+1
+			if !adjacentX {
+				continue
+			}
+			// Grid columns align vertically, so a pane from a COMPLETELY
+			// different, non-overlapping row can share this X (e.g. a
+			// bottom-row pane sharing a top-row divider's column) without
+			// being a real neighbor of THIS divider at all -- exclude those
+			// before applying the subset check, or an unrelated row's pane
+			// would wrongly fail it.
+			overlapsY := d.Y < r.Y+r.H && r.Y < d.Y+d.Len
+			if !overlapsY {
+				continue
+			}
+			found = true
+			if d.Y < r.Y || d.Y+d.Len > r.Y+r.H {
+				t.Errorf("divider at X=%d [Y=%d, Y+Len=%d) extends beyond neighboring pane %q's own row span [Y=%d, Y+H=%d) -- C2 violated (divider crosses a row boundary)",
+					d.X, d.Y, d.Y+d.Len, pr.Pane.Name(), r.Y, r.Y+r.H)
+			}
+		}
+		if !found {
+			t.Errorf("divider at X=%d, Y=%d, Len=%d has no neighboring pane region on either side", d.X, d.Y, d.Len)
+		}
+	}
+}
+
+func TestComputeDividers_NoDividerCrossesRowBoundary(t *testing.T) {
+	// Matches the spec's worked example (pm/specs/divider-geometry.md) at
+	// a 250x60 screen: rightCount=7 (8 visible) gives a PARTIAL last grid
+	// row (4+3, where the bug is currently visible); rightCount=8 (9
+	// visible) gives a FULL last row (4+4, where it currently hides).
+	for _, rightCount := range []int{7, 8} {
+		rightCount := rightCount
+		t.Run(fmt.Sprintf("rightCount=%d", rightCount), func(t *testing.T) {
+			names := namesN(rightCount + 1) // p0 = focus (left pane), rest = right grid
+			state := LayoutState{Mode: Layout2Col, Focused: names[0], Hidden: map[string]bool{}}
+			plan := computeLayout(state, testPanes(names...), 250, 60)
+			assertNoDividerCrossesRowBoundary(t, plan)
+		})
 	}
 }

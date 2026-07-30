@@ -271,7 +271,21 @@ func gridRegions(cols, rows, numPanes, screenW, screenH int,
 		x := 0
 		for c := 0; c < colsThisRow; c++ {
 			w := colWidths[c]
-			regions = append(regions, Region{X: x, Y: y, W: w, H: h})
+			ownedW := w
+			if c < colsThisRow-1 {
+				// Reserve this column's LAST cell as the gutter for the
+				// divider computeDividers draws to this pane's right (ini-czi:
+				// contiguous tiling left no gap, so the divider landed on and
+				// erased this pane's real last column). x still advances by
+				// the FULL w so the next column's start is unchanged and the
+				// reserved cell -- computeDividers' existing X = nextX-1 --
+				// falls on a column this pane no longer claims.
+				ownedW = w - 1
+				if ownedW < 1 {
+					ownedW = 1
+				}
+			}
+			regions = append(regions, Region{X: x, Y: y, W: ownedW, H: h})
 			x += w
 			placed++
 		}
@@ -331,18 +345,28 @@ func computeDividers(panes []PaneRender) []Divider {
 		return nil
 	}
 
-	// Group panes by row (same Y value).
+	// Group panes by row (same Y AND H -- not Y alone). In Layout2Col the
+	// full-height left pane shares Y=0 with the top grid row but has a
+	// different H (screenH vs. the row's own height); keying on Y alone let
+	// whichever pane arrived first set rowInfo.h for the whole group, so the
+	// left pane (always first, as regions[0]) poisoned every top-row
+	// divider's length to screenH, running dividers through the row below
+	// (ini-mdj5). The left pane's own X=0 already excludes it from
+	// contributing an xs entry (guard below), so keying on (Y,H) separates
+	// it from the top row's group with no other change needed.
+	type rowKey struct{ y, h int }
 	type rowInfo struct {
 		y, h int
 		xs   []int
 	}
-	rowMap := make(map[int]*rowInfo)
+	rowMap := make(map[rowKey]*rowInfo)
 	for _, pr := range panes {
 		r := pr.Region
-		ri, ok := rowMap[r.Y]
+		k := rowKey{r.Y, r.H}
+		ri, ok := rowMap[k]
 		if !ok {
 			ri = &rowInfo{y: r.Y, h: r.H}
-			rowMap[r.Y] = ri
+			rowMap[k] = ri
 		}
 		if r.X > 0 {
 			ri.xs = append(ri.xs, r.X)

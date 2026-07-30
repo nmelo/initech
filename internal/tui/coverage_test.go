@@ -124,13 +124,18 @@ func TestCalcPaneGrid(t *testing.T) {
 	if len(regions) != 4 {
 		t.Fatalf("got %d regions, want 4", len(regions))
 	}
-	// All regions should tile the screen with no gaps.
+	// Each row's non-last column gives up one column as the divider gutter
+	// to its right (ini-czi), so the panes no longer tile the screen with
+	// zero gaps -- 2 columns per row x 2 rows = 2 reserved columns total,
+	// each 25 tall (this grid's row height), so total area is 100*50 minus
+	// that reserved 2x25 strip.
 	totalArea := 0
 	for _, r := range regions {
 		totalArea += r.W * r.H
 	}
-	if totalArea != 100*50 {
-		t.Errorf("total area = %d, want %d", totalArea, 100*50)
+	wantArea := 100*50 - 2*25
+	if totalArea != wantArea {
+		t.Errorf("total area = %d, want %d", totalArea, wantArea)
 	}
 	// First region starts at origin.
 	if regions[0].X != 0 || regions[0].Y != 0 {
@@ -168,14 +173,17 @@ func TestCalcMainVerticalLayout(t *testing.T) {
 	if len(regions) != 4 {
 		t.Fatalf("got %d regions, want 4", len(regions))
 	}
-	// Main pane is now 40% width (the focused pane gets the smaller half).
-	if regions[0].W != 40 {
-		t.Errorf("main pane width = %d, want 40", regions[0].W)
+	// Main pane is now 40% width (the focused pane gets the smaller half),
+	// minus one reserved column for the divider to the right grid (ini-czi).
+	if regions[0].W != 39 {
+		t.Errorf("main pane width = %d, want 39 (40 - 1 reserved divider column)", regions[0].W)
 	}
 	// Right side is autoGrid(3) = (2,2): two panes in row 0, one wide pane
-	// filling row 1 (the reflowed last-row-expands behavior).
+	// filling row 1 (the reflowed last-row-expands behavior). Row 0's first
+	// column (X=40) also gives up one column as the divider gutter to its
+	// right; the last column in each row is never shrunk.
 	want := []Region{
-		{X: 40, Y: 0, W: 30, H: 25},
+		{X: 40, Y: 0, W: 29, H: 25},
 		{X: 70, Y: 0, W: 30, H: 25},
 		{X: 40, Y: 25, W: 60, H: 25},
 	}
