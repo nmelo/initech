@@ -83,7 +83,7 @@ func TestAddSubmodule(t *testing.T) {
 func TestAddSubmodule_Error(t *testing.T) {
 	fake := &iexec.FakeRunner{Err: errors.New("submodule failed")}
 
-	err := AddSubmodule(fake, "/project", "url", "path")
+	err := AddSubmodule(fake, "/project", "github.com/user/repo", "path")
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -127,7 +127,12 @@ func TestCommitAll_AddError(t *testing.T) {
 	}
 }
 
-func TestNormalizeRepoURL(t *testing.T) {
+// TestNormalizeRepoURL_AcceptedForms covers every repos.url form initech
+// accepts. host:owner/repo(.git) is the ini-lj64 regression: it must round
+// trip to a valid git@ URL without the separator getting rewritten (that
+// rewrite is what produced git@github.com:nmelo:initech.git — a colon where
+// a slash belongs — from a configured github.com:nmelo/initech.git).
+func TestNormalizeRepoURL_AcceptedForms(t *testing.T) {
 	tests := []struct {
 		input string
 		want  string
@@ -136,18 +141,41 @@ func TestNormalizeRepoURL(t *testing.T) {
 		{"github.com/user/repo", "git@github.com:user/repo.git"},
 		{"gitlab.com/org/project", "git@gitlab.com:org/project.git"},
 		{"github.com/nmelo/initech.git", "git@github.com:nmelo/initech.git"},
+		{"github.com:nmelo/initech.git", "git@github.com:nmelo/initech.git"},
+		{"github.com:nmelo/initech", "git@github.com:nmelo/initech.git"},
+		{"gitlab.com:org/project", "git@gitlab.com:org/project.git"},
 		{"git@github.com:nmelo/initech.git", "git@github.com:nmelo/initech.git"},
 		{"https://github.com/nmelo/initech.git", "https://github.com/nmelo/initech.git"},
 		{"https://github.com/nmelo/initech", "https://github.com/nmelo/initech"},
 		{"http://github.com/nmelo/initech.git", "http://github.com/nmelo/initech.git"},
 		{"ssh://git@github.com/nmelo/initech.git", "ssh://git@github.com/nmelo/initech.git"},
-		{"", ""},
-		{"localhost", "localhost"},
 	}
 	for _, tc := range tests {
-		got := normalizeRepoURL(tc.input)
+		got, err := NormalizeRepoURL(tc.input)
+		if err != nil {
+			t.Errorf("NormalizeRepoURL(%q) unexpected error: %v", tc.input, err)
+			continue
+		}
 		if got != tc.want {
-			t.Errorf("normalizeRepoURL(%q) = %q, want %q", tc.input, got, tc.want)
+			t.Errorf("NormalizeRepoURL(%q) = %q, want %q", tc.input, got, tc.want)
+		}
+	}
+}
+
+// TestNormalizeRepoURL_RejectsUnparseable asserts the fail-fast half of the
+// fix: a url that cannot be turned into a valid clone URL must return an
+// error naming the expected format, never a silently-passed-through string
+// that git will reject downstream (ini-lj64).
+func TestNormalizeRepoURL_RejectsUnparseable(t *testing.T) {
+	tests := []string{"", "localhost", "no-separator-at-all"}
+	for _, input := range tests {
+		got, err := NormalizeRepoURL(input)
+		if err == nil {
+			t.Errorf("NormalizeRepoURL(%q) = %q, want error", input, got)
+			continue
+		}
+		if !strings.Contains(err.Error(), "owner/repo") {
+			t.Errorf("NormalizeRepoURL(%q) error = %q, want it to name the expected format", input, err.Error())
 		}
 	}
 }

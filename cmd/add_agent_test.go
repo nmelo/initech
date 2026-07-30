@@ -3,6 +3,7 @@ package cmd
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"net"
 	"os"
 	"path/filepath"
@@ -540,6 +541,178 @@ func TestRunAddAgent_NumberedRoleAccepted(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("qa10 not appended to config roles: %v", updated.Roles)
+	}
+}
+
+// TestRunAddAgent_InvalidRepoURL_FailsBeforeCreatingDirectory is the ini-lj64
+// regression for the fail-fast half of the fix: a repos.url that cannot be
+// turned into a valid clone URL must be rejected before scaffold touches
+// disk at all, not discovered only after git submodule add fails.
+func TestRunAddAgent_InvalidRepoURL_FailsBeforeCreatingDirectory(t *testing.T) {
+	root := t.TempDir()
+	p := &config.Project{
+		Name:  "test",
+		Root:  root,
+		Roles: []string{"pm"},
+		Beads: config.BeadsConfig{Enabled: boolPtr(false)},
+		Repos: []config.Repo{{URL: "not-a-valid-url", Name: "repo"}},
+	}
+	if err := config.Write(filepath.Join(root, "initech.yaml"), p); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, "pm"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	chdirTemp(t, root)
+
+	origRunner := newAddAgentRunner
+	newAddAgentRunner = func() iexec.Runner { return &iexec.FakeRunner{} }
+	t.Cleanup(func() { newAddAgentRunner = origRunner })
+
+	var submoduleCalled bool
+	origGitSub := gitAddSubmodule
+	t.Cleanup(func() { gitAddSubmodule = origGitSub })
+	gitAddSubmodule = func(runner iexec.Runner, repoDir, repoURL, subPath string) error {
+		submoduleCalled = true
+		return nil
+	}
+
+	err := runAddAgent(addAgentCmd, []string{"eng1"})
+	if err == nil {
+		t.Fatal("expected error for unparseable repos.url")
+	}
+	if !strings.Contains(err.Error(), "owner/repo") {
+		t.Errorf("error = %q, want it to name the expected repos.url format", err.Error())
+	}
+	if submoduleCalled {
+		t.Error("gitAddSubmodule was called; URL validation should fail before any clone attempt")
+	}
+	if _, statErr := os.Stat(filepath.Join(root, "eng1")); !os.IsNotExist(statErr) {
+		t.Errorf("eng1/ was created despite the invalid URL; want no directory at all, stat err = %v", statErr)
+	}
+
+	updated, err := config.Load(filepath.Join(root, "initech.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if contains(updated.Roles, "eng1") {
+		t.Errorf("eng1 registered in roles despite the invalid URL: %v", updated.Roles)
+	}
+}
+
+// TestRunAddAgent_SubmoduleFailure_RollsBackFreshRoleDir is the ini-lj64
+// regression for the rollback half: a submodule-add failure for a role
+// add-agent created fresh this run must leave no partial workspace behind —
+// otherwise a subsequent add-agent hits "already exists" (it isn't) while
+// add hits "no src/" (also true), the exact dead-end super hit hiring
+// eng4-6. Re-running the same command after the rollback must succeed.
+func TestRunAddAgent_SubmoduleFailure_RollsBackFreshRoleDir(t *testing.T) {
+	root := t.TempDir()
+	p := &config.Project{
+		Name:  "test",
+		Root:  root,
+		Roles: []string{"pm"},
+		Beads: config.BeadsConfig{Enabled: boolPtr(false)},
+		Repos: []config.Repo{{URL: "git@github.com:example/repo.git", Name: "repo"}},
+	}
+	if err := config.Write(filepath.Join(root, "initech.yaml"), p); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, "pm"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	chdirTemp(t, root)
+
+	origRunner := newAddAgentRunner
+	newAddAgentRunner = func() iexec.Runner { return &iexec.FakeRunner{} }
+	t.Cleanup(func() { newAddAgentRunner = origRunner })
+
+	origGitSub := gitAddSubmodule
+	t.Cleanup(func() { gitAddSubmodule = origGitSub })
+	gitAddSubmodule = func(runner iexec.Runner, repoDir, repoURL, subPath string) error {
+		return errors.New("fatal: remote error: is not a valid repository name")
+	}
+
+	if err := runAddAgent(addAgentCmd, []string{"eng1"}); err == nil {
+		t.Fatal("expected error from the failing submodule add")
+	}
+
+	if _, statErr := os.Stat(filepath.Join(root, "eng1")); !os.IsNotExist(statErr) {
+		t.Errorf("eng1/ survived the failed clone; want the fresh workspace rolled back, stat err = %v", statErr)
+	}
+	afterFailure, err := config.Load(filepath.Join(root, "initech.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if contains(afterFailure.Roles, "eng1") {
+		t.Fatalf("eng1 registered despite the failed clone: %v", afterFailure.Roles)
+	}
+
+	// Re-run the identical command with a succeeding submodule add: proves
+	// the rollback actually leaves the operation re-runnable, not just
+	// silent about the failure.
+	gitAddSubmodule = func(runner iexec.Runner, repoDir, repoURL, subPath string) error {
+		return nil
+	}
+	if err := runAddAgent(addAgentCmd, []string{"eng1"}); err != nil {
+		t.Fatalf("re-run after rollback should succeed, got: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "eng1", "CLAUDE.md")); err != nil {
+		t.Error("eng1/CLAUDE.md missing after successful re-run")
+	}
+	afterRetry, err := config.Load(filepath.Join(root, "initech.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !contains(afterRetry.Roles, "eng1") {
+		t.Errorf("eng1 not registered after successful re-run: %v", afterRetry.Roles)
+	}
+}
+
+// TestRunAddAgent_EmptyRepoError_DoesNotRegisterRole covers the second
+// contributor to the ini-lj64 dead-end: an empty-repo clone failure used to
+// fall through to config.Write, registering the role with no working src/.
+// That role could then never again pass add-agent's already-exists gate.
+// The empty-repo case must now fail like any other clone failure and leave
+// the role unregistered, so a later add-agent (after pushing an initial
+// commit) starts clean instead of hitting "already exists".
+func TestRunAddAgent_EmptyRepoError_DoesNotRegisterRole(t *testing.T) {
+	root := t.TempDir()
+	p := &config.Project{
+		Name:  "test",
+		Root:  root,
+		Roles: []string{"pm"},
+		Beads: config.BeadsConfig{Enabled: boolPtr(false)},
+		Repos: []config.Repo{{URL: "git@github.com:example/repo.git", Name: "repo"}},
+	}
+	if err := config.Write(filepath.Join(root, "initech.yaml"), p); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, "pm"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	chdirTemp(t, root)
+
+	origRunner := newAddAgentRunner
+	newAddAgentRunner = func() iexec.Runner { return &iexec.FakeRunner{} }
+	t.Cleanup(func() { newAddAgentRunner = origRunner })
+
+	origGitSub := gitAddSubmodule
+	t.Cleanup(func() { gitAddSubmodule = origGitSub })
+	gitAddSubmodule = func(runner iexec.Runner, repoDir, repoURL, subPath string) error {
+		return errors.New("fatal: You are on a branch yet to be born")
+	}
+
+	if err := runAddAgent(addAgentCmd, []string{"eng1"}); err == nil {
+		t.Fatal("expected error for an empty remote repo")
+	}
+
+	updated, err := config.Load(filepath.Join(root, "initech.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if contains(updated.Roles, "eng1") {
+		t.Errorf("eng1 registered despite the empty-repo failure — it has no src/ and can never pass add-agent's already-exists gate again: %v", updated.Roles)
 	}
 }
 

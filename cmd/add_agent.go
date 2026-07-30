@@ -119,6 +119,35 @@ func runAddAgent(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	// Roles with NeedsSrc require a git submodule clone. Resolve and
+	// validate the repo URL BEFORE scaffolding anything on disk, so a
+	// malformed repos.url fails fast instead of leaving a half-created
+	// workspace behind it (ini-lj64).
+	def := roles.LookupRole(roleName)
+	needsSubmodule := def.NeedsSrc && len(p.Repos) > 0
+	var repoURL string
+	if needsSubmodule {
+		repoURL = p.Repos[0].URL
+		if ov, ok := p.RoleOverrides[roleName]; ok && ov.RepoName != "" {
+			for _, r := range p.Repos {
+				if r.Name == ov.RepoName {
+					repoURL = r.URL
+					break
+				}
+			}
+		}
+		if _, err := git.NormalizeRepoURL(repoURL); err != nil {
+			return err
+		}
+	}
+
+	// Record whether the role directory pre-existed so a failed clone only
+	// rolls back the workspace THIS run created, never pre-existing user
+	// data (ini-lj64).
+	roleDir := filepath.Join(p.Root, roleName)
+	_, roleDirStatErr := os.Stat(roleDir)
+	roleDirPreExisted := roleDirStatErr == nil
+
 	// Scaffold with the full role list (existing + new) so root-level files
 	// like CLAUDE.md are rendered with all roles if they happen to be missing.
 	// Root-level files are idempotent and skipped when they already exist.
@@ -136,18 +165,7 @@ func runAddAgent(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("scaffold: %w", err)
 	}
 
-	// Roles with NeedsSrc require a git submodule clone.
-	def := roles.LookupRole(roleName)
-	if def.NeedsSrc && len(p.Repos) > 0 {
-		repoURL := p.Repos[0].URL
-		if ov, ok := p.RoleOverrides[roleName]; ok && ov.RepoName != "" {
-			for _, r := range p.Repos {
-				if r.Name == ov.RepoName {
-					repoURL = r.URL
-					break
-				}
-			}
-		}
+	if needsSubmodule {
 		subPath := filepath.Join(roleName, "src")
 		gitRef := filepath.Join(p.Root, subPath, ".git")
 		_, statErr := os.Stat(gitRef)
@@ -162,15 +180,21 @@ func runAddAgent(cmd *cobra.Command, args []string) error {
 				if srcExisted != nil {
 					git.CleanFailedSubmodule(runner, p.Root, subPath)
 				}
-				if git.IsEmptyRepoError(err) {
-					fmt.Fprintf(out, "  %s %s has no commits — push an initial commit then re-run\n",
-						color.Yellow("!"), color.Yellow(roleName+" repo"))
-				} else {
-					return fmt.Errorf("add submodule for %s: %w", roleName, err)
+				// A failed clone — including an empty remote repo — must not
+				// leave a half-created workspace that neither add-agent
+				// (role would already be registered) nor add (src/ missing)
+				// can recover from. Roll back the whole role directory when
+				// this run created it fresh, so the same command is safely
+				// re-runnable from scratch (ini-lj64).
+				if !roleDirPreExisted {
+					os.RemoveAll(roleDir)
 				}
-			} else {
-				fmt.Fprintf(out, "  %s %s\n", color.Green("✓"), color.Dim("src/ submodule"))
+				if git.IsEmptyRepoError(err) {
+					return fmt.Errorf("%s repo has no commits — push an initial commit then re-run: %w", roleName, err)
+				}
+				return fmt.Errorf("add submodule for %s: %w", roleName, err)
 			}
+			fmt.Fprintf(out, "  %s %s\n", color.Green("✓"), color.Dim("src/ submodule"))
 		}
 	}
 

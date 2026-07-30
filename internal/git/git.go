@@ -32,42 +32,63 @@ func Init(runner iexec.Runner, dir string) error {
 
 // AddSubmodule adds a git submodule at the specified path within the repo.
 // The path is relative to the repo root (e.g., "eng1/src"). The URL is
-// normalized before use (bare hostnames get git@ SSH prefix).
+// normalized before use (bare hostnames get git@ SSH prefix). Returns before
+// shelling out to git at all if the URL cannot be normalized, so a malformed
+// repos.url never reaches a "git submodule add" invocation (ini-lj64).
 func AddSubmodule(runner iexec.Runner, repoDir, url, subPath string) error {
-	url = normalizeRepoURL(url)
-	_, err := runner.RunInDir(repoDir, "git", "submodule", "add", url, subPath)
+	normalized, err := NormalizeRepoURL(url)
+	if err != nil {
+		return err
+	}
+	_, err = runner.RunInDir(repoDir, "git", "submodule", "add", normalized, subPath)
 	if err != nil {
 		return fmt.Errorf("git submodule add %s: %w", subPath, err)
 	}
 	return nil
 }
 
-// normalizeRepoURL converts bare repository references like
-// "github.com/user/repo" into proper git URLs. If the URL already has a
-// recognized protocol prefix (https://, http://, git@, ssh://), it is
-// returned unchanged. Otherwise, the first "/" after the host is converted
-// to ":" and "git@" is prepended, producing SSH URLs like
-// "git@github.com:user/repo.git".
-func normalizeRepoURL(url string) string {
-	if url == "" {
-		return url
-	}
-	// Already has a protocol prefix: leave it alone.
+// NormalizeRepoURL converts an accepted repos.url form into a proper git
+// clone URL:
+//
+//   - A URL with a recognized protocol prefix (https://, http://, ssh://,
+//     git@) is returned unchanged.
+//   - SCP-style host:owner/repo(.git) — a colon appears before the first
+//     slash, or there is no slash at all — gets git@ prepended and a .git
+//     suffix ensured, WITHOUT touching the existing colon. This is the
+//     idempotency fix (ini-lj64): treating already-SCP-style input as if it
+//     were the bare-slash form put the colon between owner and repo instead
+//     of between host and owner (git@github.com:nmelo:initech.git from a
+//     configured github.com:nmelo/initech.git).
+//   - Bare host/owner/repo(.git) — a slash appears before any colon — has
+//     its first slash converted to a colon and git@ prepended.
+//   - Anything else (including empty) cannot be turned into a valid clone
+//     URL and returns an error naming the accepted forms, so a bad
+//     repos.url is caught before any git command runs.
+func NormalizeRepoURL(url string) (string, error) {
 	for _, prefix := range []string{"https://", "http://", "ssh://", "git@"} {
 		if strings.HasPrefix(url, prefix) {
-			return url
+			return url, nil
 		}
 	}
-	// Bare hostname: github.com/user/repo -> git@github.com:user/repo.git
-	if idx := strings.Index(url, "/"); idx > 0 {
-		host := url[:idx]
-		path := url[idx+1:]
+	slashIdx := strings.Index(url, "/")
+	colonIdx := strings.Index(url, ":")
+	switch {
+	case colonIdx > 0 && (slashIdx < 0 || colonIdx < slashIdx):
+		path := url
 		if !strings.HasSuffix(path, ".git") {
 			path += ".git"
 		}
-		return "git@" + host + ":" + path
+		return "git@" + path, nil
+	case slashIdx > 0:
+		host := url[:slashIdx]
+		path := url[slashIdx+1:]
+		if !strings.HasSuffix(path, ".git") {
+			path += ".git"
+		}
+		return "git@" + host + ":" + path, nil
+	default:
+		return "", fmt.Errorf("cannot parse repos.url %q: expected host/owner/repo.git, host:owner/repo.git, git@host:owner/repo.git, or a URL with https://, http://, or ssh:// prefix", url)
 	}
-	return url
 }
 
 // CommitAll stages all files and creates a commit with the given message.
