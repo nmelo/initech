@@ -50,6 +50,11 @@ func (t *TUI) handleKey(ev *tcell.EventKey) bool {
 		return t.handleAgentsKey(ev)
 	}
 
+	// Quick grid/live dimension popup intercepts all input when active.
+	if t.quickGrid.active {
+		return t.handleQuickGridKey(ev)
+	}
+
 	// Command modal intercepts all input when active.
 	if t.cmd.active {
 		return t.handleCmdKey(ev)
@@ -120,6 +125,12 @@ func (t *TUI) handleKey(ev *tcell.EventKey) bool {
 				} else {
 					t.openAgentsModal()
 				}
+				return false
+			case 'g':
+				t.openQuickGrid(false)
+				return false
+			case 'l':
+				t.openQuickGrid(true)
 				return false
 			case 'q':
 				// Open confirmation instead of quitting immediately.

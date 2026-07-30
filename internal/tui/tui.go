@@ -99,6 +99,20 @@ type welcomeOverlay struct {
 	expiresAt time.Time
 }
 
+// quickGridModal holds state for the Option+G / Option+L quick-dimension
+// popup (ini-dvy5): type two digits and the layout applies immediately, no
+// Enter. Digits are columns then rows, matching :grid/:live's own CxR
+// convention exactly -- there is one dimension order in the product, not two.
+type quickGridModal struct {
+	active bool
+	live   bool // true for Option+L (apply via cmdLive); false for Option+G (cmdGrid).
+	// firstDigit is the first digit typed (columns). 0 means not yet typed --
+	// valid digits are 1-9, so 0 is unambiguous as "empty". The second digit
+	// is consumed and submitted in the same keystroke it arrives in, so no
+	// separate field is needed for it.
+	firstDigit int
+}
+
 // mouseSelection holds mouse text selection state.
 type mouseSelection struct {
 	active       bool
@@ -152,6 +166,7 @@ type TUI struct {
 	eventLogM eventLogModal  // Event log history modal.
 	help      helpModal      // Help reference card modal.
 	agents    agentsModal    // Agent management modal.
+	quickGrid quickGridModal // Quick grid/live dimension popup (Option+G/L).
 	welcome   welcomeOverlay // First-launch keybinding hints.
 	sel       mouseSelection // Mouse text selection.
 	quitCh    chan struct{}  // Closed by IPC quit action to signal event loop exit.

@@ -93,6 +93,11 @@ func (t *TUI) render() {
 		t.renderTop()
 	}
 
+	// Quick grid/live dimension popup (centered floating box).
+	if t.quickGrid.active {
+		t.renderQuickGrid()
+	}
+
 	// Welcome overlay on first launch (centered, auto-dismisses).
 	if t.welcome.active {
 		t.renderWelcome()
