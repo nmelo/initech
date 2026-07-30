@@ -59,12 +59,11 @@ type Project struct {
 	RunningPaneTint string `yaml:"running_pane_tint,omitempty"`
 
 	// Web companion server fields.
-	WebPort    *int   `yaml:"web_port,omitempty"`    // Web companion port. nil/0 = disabled, >0 = enabled.
-	WebhookURL   string `yaml:"webhook_url,omitempty"`   // HTTP endpoint for agent event POSTs. Empty = disabled.
-	AnnounceURL  string `yaml:"announce_url,omitempty"`  // Agent Radio webhook for TTS announcements. Empty = disabled.
-	AutoNotify             *bool  `yaml:"auto_notify,omitempty"`               // Send idle-with-bead reminders to super. nil/false = disabled, true = enabled. Opt-in safety net (ini-3k1).
-	IdleWithBeadThreshold  *int   `yaml:"idle_with_bead_threshold,omitempty"`  // Seconds of silence before idle-with-bead fires. nil = 60, 0 = disabled.
-	Telemetry              *bool  `yaml:"telemetry,omitempty"`                 // Anonymous usage telemetry. nil/true = enabled, false = disabled.
+	WebPort               *int   `yaml:"web_port,omitempty"`                 // Web companion port. nil/0 = disabled, >0 = enabled.
+	WebhookURL            string `yaml:"webhook_url,omitempty"`              // HTTP endpoint for agent event POSTs. Empty = disabled.
+	AnnounceURL           string `yaml:"announce_url,omitempty"`             // Agent Radio webhook for TTS announcements. Empty = disabled.
+	AutoNotify            *bool  `yaml:"auto_notify,omitempty"`              // Send idle-with-bead reminders to super. nil/false = disabled, true = enabled. Opt-in safety net (ini-3k1).
+	IdleWithBeadThreshold *int   `yaml:"idle_with_bead_threshold,omitempty"` // Seconds of silence before idle-with-bead fires. nil = 60, 0 = disabled.
 
 	// MCP server fields.
 	McpPort  *int   `yaml:"mcp_port,omitempty"`  // MCP server port. Default 9200, nil uses default, 0 disables.
@@ -98,12 +97,6 @@ func (p *Project) GetIdleWithBeadThreshold() int {
 		return 60
 	}
 	return *p.IdleWithBeadThreshold
-}
-
-// IsTelemetryEnabled returns true if anonymous usage telemetry is enabled.
-// Defaults to true when Telemetry is nil (field absent from yaml).
-func (p *Project) IsTelemetryEnabled() bool {
-	return p.Telemetry == nil || *p.Telemetry
 }
 
 // Remote describes a remote initech peer for cross-machine coordination.

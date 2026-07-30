@@ -783,7 +783,6 @@ func (t *TUI) cmdLive(parts []string) bool {
 		t.layoutState.LivePinned = make(map[string]int)
 	}
 	t.initLiveEngine(explicitSlots)
-	t.trackLiveModeActivated()
 	t.applyLayout()
 	t.saveLayoutIfConfigured()
 	return false

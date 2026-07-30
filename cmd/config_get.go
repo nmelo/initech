@@ -101,8 +101,6 @@ func resolveConfigValue(p *config.Project, key string) (string, bool) {
 		return fmt.Sprintf("%t", p.IsAutoNotifyEnabled()), true
 	case "idle_with_bead_threshold":
 		return fmt.Sprintf("%d", p.GetIdleWithBeadThreshold()), true
-	case "telemetry":
-		return fmt.Sprintf("%t", p.IsTelemetryEnabled()), true
 	case "mcp_port":
 		return formatIntPtr(p.McpPort), true
 	case "mcp_token":

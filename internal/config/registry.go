@@ -37,7 +37,6 @@ var Registry = []FieldMeta{
 	{Key: "announce_url", Type: "string", Description: "Agent Radio webhook URL for TTS announcements. Empty disables"},
 	{Key: "auto_notify", Type: "bool", Default: "false", Description: "Send idle-with-bead reminders to super. Opt-in safety net; set true to enable"},
 	{Key: "idle_with_bead_threshold", Type: "int", Default: "60", Description: "Seconds of silence before idle-with-bead notification fires. 0 disables"},
-	{Key: "telemetry", Type: "bool", Default: "true", Description: "Anonymous usage telemetry. false disables all event collection"},
 
 	// MCP server.
 	{Key: "mcp_port", Type: "int", Default: "9200", Description: "MCP server port. 0 disables", Restart: true},

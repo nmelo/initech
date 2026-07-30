@@ -173,8 +173,6 @@ func resolveFieldValue(proj *config.Project, key string) string {
 		return fmt.Sprintf("%t", proj.IsAutoNotifyEnabled())
 	case "idle_with_bead_threshold":
 		return fmt.Sprintf("%d", proj.GetIdleWithBeadThreshold())
-	case "telemetry":
-		return fmt.Sprintf("%t", proj.IsTelemetryEnabled())
 	case "mcp_port":
 		if proj.McpPort == nil {
 			return ""

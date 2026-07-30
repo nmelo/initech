@@ -159,7 +159,6 @@ func (t *TUI) applyLayoutPreset(slot int) {
 				t.layoutState.LivePinned = make(map[string]int)
 			}
 			t.initLiveEngine(0)
-			t.trackLiveModeActivated()
 		}
 	}
 	t.applyLayout()
@@ -175,9 +174,9 @@ func (t *TUI) applyLayoutPreset(slot int) {
 //     dims via autoGrid).
 //
 // Entry runs the same engine-init path as the Alt+5 live toggle (LivePinned
-// init, initLiveEngine, trackLiveModeActivated) so pinning/eviction/activation
-// telemetry behave identically. It is a direct set, not a toggle; leave live by
-// pressing any static Alt+M. Out-of-range slots are a no-op.
+// init, initLiveEngine) so pinning/eviction/activation behave identically.
+// It is a direct set, not a toggle; leave live by pressing any static Alt+M.
+// Out-of-range slots are a no-op.
 func (t *TUI) applyLayoutPresetLive(slot int) {
 	if slot < 0 || slot >= len(t.layoutPresets) {
 		return
@@ -201,7 +200,6 @@ func (t *TUI) applyLayoutPresetLive(slot int) {
 		t.layoutState.LivePinned = make(map[string]int)
 	}
 	t.initLiveEngine(0)
-	t.trackLiveModeActivated()
 	t.applyLayout()
 	t.saveLayoutIfConfigured()
 }

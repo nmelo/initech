@@ -295,7 +295,7 @@ func TestResolveConfigValue_AllKeys(t *testing.T) {
 		"project", "root", "roles", "claude_args", "peer_name",
 		"mode", "listen", "token", "web_port", "webhook_url",
 		"announce_url", "auto_notify", "idle_with_bead_threshold",
-		"telemetry", "mcp_port", "mcp_token", "mcp_bind",
+		"mcp_port", "mcp_token", "mcp_bind",
 		"beads.enabled", "beads.prefix",
 		"resource.auto_suspend", "resource.pressure_threshold",
 		"slack.app_token", "slack.bot_token", "slack.allowed_users",
