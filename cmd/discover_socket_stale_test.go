@@ -9,6 +9,8 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+
+	"github.com/nmelo/initech/internal/tui"
 )
 
 // Regression tests for ini-0fvf: discoverSocket used to delete the socket
@@ -68,7 +70,7 @@ func stubDiscoverSocketDial(t *testing.T, fn func(string) (net.Conn, error)) {
 func TestDiscoverSocket_TimeoutDialError_LeavesSocketInPlace(t *testing.T) {
 	dir := setupDiscoverableProject(t)
 	defer chdirForTest(t, dir)()
-	sockFile := filepath.Join(dir, ".initech", "initech.sock")
+	sockFile := tui.SocketPath(dir, "test")
 	if err := os.WriteFile(sockFile, []byte("not a real socket, just a marker file"), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -95,7 +97,7 @@ func TestDiscoverSocket_TimeoutDialError_LeavesSocketInPlace(t *testing.T) {
 func TestDiscoverSocket_ConnectionRefused_RemovesStaleSocket(t *testing.T) {
 	dir := setupDiscoverableProject(t)
 	defer chdirForTest(t, dir)()
-	sockFile := filepath.Join(dir, ".initech", "initech.sock")
+	sockFile := tui.SocketPath(dir, "test")
 	if err := os.WriteFile(sockFile, []byte("stale marker"), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -119,7 +121,7 @@ func TestDiscoverSocket_ConnectionRefused_RemovesStaleSocket(t *testing.T) {
 func TestDiscoverSocket_NoSuchFile_RemovesStaleSocket(t *testing.T) {
 	dir := setupDiscoverableProject(t)
 	defer chdirForTest(t, dir)()
-	sockFile := filepath.Join(dir, ".initech", "initech.sock")
+	sockFile := tui.SocketPath(dir, "test")
 	if err := os.WriteFile(sockFile, []byte("stale marker"), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -156,7 +158,7 @@ func TestDiscoverSocket_NoSuchFile_RemovesStaleSocket(t *testing.T) {
 func TestDiscoverSocket_InvalidArgument_RemovesStaleSocket(t *testing.T) {
 	dir := setupDiscoverableProject(t)
 	defer chdirForTest(t, dir)()
-	sockFile := filepath.Join(dir, ".initech", "initech.sock")
+	sockFile := tui.SocketPath(dir, "test")
 	if err := os.WriteFile(sockFile, []byte("stale marker"), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -168,6 +170,43 @@ func TestDiscoverSocket_InvalidArgument_RemovesStaleSocket(t *testing.T) {
 	_, _, err := discoverSocket()
 	if err == nil {
 		t.Fatal("expected an error for invalid-argument (over-long path)")
+	}
+	if !strings.Contains(err.Error(), "stale socket removed") {
+		t.Errorf("error = %q, want the existing stale-socket-removed message preserved", err.Error())
+	}
+	if _, statErr := os.Stat(sockFile); !errors.Is(statErr, os.ErrNotExist) {
+		t.Errorf("expected the stale socket file to be removed, stat err = %v", statErr)
+	}
+}
+
+// TestDiscoverSocket_NotADirectory_RemovesStaleSocket covers a FOURTH dial
+// error shape, found from the ini-fxeu Windows CI failure rather than
+// anticipated in advance: Windows reports a missing INTERMEDIATE path
+// component (e.g. the .initech directory itself absent, not just the final
+// socket/port file within it) as ERROR_PATH_NOT_FOUND ("The system cannot
+// find the path specified"), which Go's syscall package aliases to
+// syscall.ENOTDIR -- confirmed from the literal Windows error text quoted in
+// the CI log and from Go's own stdlib source (syscall/zerrors_windows.go:
+// ENOTDIR = ERROR_PATH_NOT_FOUND), not assumed. This is a DIFFERENT errno
+// from ERROR_FILE_NOT_FOUND/ENOENT (missing final file, dir exists), and the
+// classifier missed it entirely: a missing directory is at least as strong
+// evidence of "no session running" as a missing file, so it belongs with
+// the other unambiguous stale shapes.
+func TestDiscoverSocket_NotADirectory_RemovesStaleSocket(t *testing.T) {
+	dir := setupDiscoverableProject(t)
+	defer chdirForTest(t, dir)()
+	sockFile := tui.SocketPath(dir, "test")
+	if err := os.WriteFile(sockFile, []byte("stale marker"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	stubDiscoverSocketDial(t, func(string) (net.Conn, error) {
+		return nil, &net.OpError{Op: "dial", Net: "tcp", Err: syscall.ENOTDIR}
+	})
+
+	_, _, err := discoverSocket()
+	if err == nil {
+		t.Fatal("expected an error for a missing intermediate path component")
 	}
 	if !strings.Contains(err.Error(), "stale socket removed") {
 		t.Errorf("error = %q, want the existing stale-socket-removed message preserved", err.Error())

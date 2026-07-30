@@ -410,16 +410,27 @@ func discoverSocket() (string, *config.Project, error) {
 // all — the only case where deleting the socket file is safe (ini-0fvf).
 // Checks Timeout() first: a definite timeout always means "maybe still
 // busy," regardless of what it might also match underneath. ECONNREFUSED is
-// the classic Linux dead-listener shape; ENOENT is what this platform's own
-// net.DialTimeout actually returns for a dead listener (verified
-// empirically, not assumed). EINVAL is what this platform returns for a
-// unix socket path exceeding the sun_path length limit (~104 bytes on
-// macOS) — a path that long could never have been bound by any listener in
-// the first place, so it is just as unambiguously "no listener" as the
-// other two, not a "maybe busy" signal (also verified empirically).
-// Anything else defaults to "not stale" — leaving a genuinely dead socket
-// around a little longer (the original ini-db1 annoyance) is a far smaller
-// cost than orphaning a live-but-busy session.
+// the classic Linux dead-listener shape (also how Go's Windows syscall
+// package reports WSAECONNREFUSED, via an aliased Errno meant for exactly
+// this kind of portable errors.Is check — verified in syscall/
+// zerrors_windows.go, not assumed). ENOENT is what this platform's own
+// net.DialTimeout actually returns for a dead listener on Unix (verified
+// empirically), and is also Windows' ERROR_FILE_NOT_FOUND — ini-fxeu found
+// that Windows distinguishes a missing FINAL path component (ENOENT) from a
+// missing INTERMEDIATE one: a socket path whose containing .initech
+// directory doesn't exist at all fails with ERROR_PATH_NOT_FOUND ("The
+// system cannot find the path specified" — the literal text from the CI
+// failure that traced this), which Go aliases to ENOTDIR on Windows.
+// EINVAL is what this platform returns for a unix socket path exceeding the
+// sun_path length limit (~104 bytes on macOS) — a path that long could
+// never have been bound by any listener in the first place, so it is just
+// as unambiguously "no listener" as the others, not a "maybe busy" signal
+// (also verified empirically). A missing directory is at least as strong
+// evidence of "no session running" as a missing file, so ENOTDIR belongs
+// with the same unambiguous group. Anything else defaults to "not stale" —
+// leaving a genuinely dead socket around a little longer (the original
+// ini-db1 annoyance) is a far smaller cost than orphaning a live-but-busy
+// session.
 func isStaleSocketError(err error) bool {
 	var netErr net.Error
 	if errors.As(err, &netErr) && netErr.Timeout() {
@@ -427,5 +438,6 @@ func isStaleSocketError(err error) bool {
 	}
 	return errors.Is(err, syscall.ECONNREFUSED) ||
 		errors.Is(err, syscall.ENOENT) ||
-		errors.Is(err, syscall.EINVAL)
+		errors.Is(err, syscall.EINVAL) ||
+		errors.Is(err, syscall.ENOTDIR)
 }
