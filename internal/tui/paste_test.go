@@ -371,7 +371,6 @@ func TestModalActive_AllModals(t *testing.T) {
 		{"help", func(t *TUI) { t.help.active = true }},
 		{"eventLog", func(t *TUI) { t.eventLogM.active = true }},
 		{"top", func(t *TUI) { t.top.active = true }},
-		{"mcp", func(t *TUI) { t.mcpM.active = true }},
 		{"agents", func(t *TUI) { t.agents.active = true }},
 		{"cmd", func(t *TUI) { t.cmd.active = true }},
 	}

@@ -444,45 +444,6 @@ func (t *TUI) handleIPCInterrupt(conn net.Conn, req IPCRequest) {
 	writeIPCResponse(conn, IPCResponse{OK: true})
 }
 
-// InterruptAgent sends a raw control byte to the named agent's PTY.
-// Used by the MCP server. hard=true sends Ctrl+C, false sends Escape.
-func (t *TUI) InterruptAgent(name string, hard bool) error {
-	b := byte(0x1B)
-	if hard {
-		b = byte(0x03)
-	}
-
-	var pane *Pane
-	var notFound bool
-	if !t.runOnMain(func() {
-		pv := t.findPaneByName(name)
-		if pv == nil {
-			notFound = true
-			return
-		}
-		if lp, ok := pv.(*Pane); ok {
-			pane = lp
-		}
-	}) {
-		return fmt.Errorf("TUI shutting down")
-	}
-	if notFound {
-		return fmt.Errorf("agent %q not found", name)
-	}
-	if pane == nil {
-		return fmt.Errorf("interrupt not supported for remote panes")
-	}
-
-	pane.sendMu.Lock()
-	if pane.ptmx == nil {
-		pane.sendMu.Unlock()
-		return fmt.Errorf("agent %s is not running", name)
-	}
-	pane.ptmx.Write([]byte{b}) //nolint:errcheck
-	pane.sendMu.Unlock()
-	return nil
-}
-
 // handleIPCEmitEvent injects a typed event into the TUI event system.
 // Used by CLI commands (assign, deliver) to create toast + log entries.
 // Encoding: Target=agent, Host=bead ID, Text="type|detail" (pipe-separated).

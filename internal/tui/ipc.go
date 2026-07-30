@@ -299,7 +299,7 @@ func sendPaneTextLocked(pane *Pane, text string, enter bool) {
 	// swallows the pasted body and reads the submit key as "confirm the
 	// highlighted option" — auto-answering a destructive default the operator
 	// never saw. Defer the message to the queue instead; readLoop re-delivers it
-	// once the modal closes. This guards EVERY send caller (IPC, mcp) and is
+	// once the modal closes. This guards EVERY send caller (IPC) and is
 	// reached after sendMu is held, so the check races minimally with
 	// the paste it gates. The resume/modal-drain paths only inject when the modal
 	// is gone, so they pass straight through; if a modal reopens mid-drain the
@@ -521,7 +521,7 @@ func peekContent(p PaneView, lines int) string {
 	for row := 0; row < emuRows; row++ {
 		// RowText copies the row under a single lock, so this cannot observe
 		// a torn cell from a concurrent readLoop write (ini-wizq). peekContent
-		// is reached from IPC/daemon/MCP handler goroutines and the main-loop
+		// is reached from IPC/daemon handler goroutines and the main-loop
 		// patrol/:peek paths, none of which hold p.renderMu.
 		allLines[row] = strings.TrimRight(emu.RowText(row, cols), " ")
 	}

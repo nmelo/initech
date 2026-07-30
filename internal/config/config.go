@@ -56,13 +56,7 @@ type Project struct {
 	RunningPaneTint string `yaml:"running_pane_tint,omitempty"`
 
 	WebhookURL            string `yaml:"webhook_url,omitempty"`              // HTTP endpoint for agent event POSTs. Empty = disabled.
-	AnnounceURL           string `yaml:"announce_url,omitempty"`             // Agent Radio webhook for TTS announcements. Empty = disabled.
 	IdleWithBeadThreshold *int   `yaml:"idle_with_bead_threshold,omitempty"` // Seconds of silence before idle-with-bead fires. nil = 60, 0 = disabled.
-
-	// MCP server fields.
-	McpPort  *int   `yaml:"mcp_port,omitempty"`  // MCP server port. Default 9200, nil uses default, 0 disables.
-	McpToken string `yaml:"mcp_token,omitempty"` // Bearer token. Auto-generated if empty. INITECH_MCP_TOKEN env var overrides.
-	McpBind  string `yaml:"mcp_bind,omitempty"`  // Bind address. Default "0.0.0.0".
 
 	// Cross-machine coordination fields.
 	PeerName string            `yaml:"peer_name,omitempty"` // This instance's identity (e.g., "workbench").
@@ -128,36 +122,6 @@ type ResourceConfig struct {
 // DefaultPressureThreshold is the RSS percentage above which agents may be
 // auto-suspended. Used when PressureThreshold is zero (unset).
 const DefaultPressureThreshold = 85
-
-// DefaultMcpBind is the default bind address for the MCP server.
-const DefaultMcpBind = "0.0.0.0"
-
-// EffectiveMcpPort returns the MCP server port from config. Returns 0 (disabled)
-// when mcp_port is not set, or the explicit value when set.
-func (p *Project) EffectiveMcpPort() int {
-	if p.McpPort == nil {
-		return 0
-	}
-	return *p.McpPort
-}
-
-// EffectiveMcpToken returns the MCP bearer token, checking the
-// INITECH_MCP_TOKEN environment variable first, then the config value.
-// Returns empty string if neither is set (caller should auto-generate).
-func (p *Project) EffectiveMcpToken() string {
-	if env := os.Getenv("INITECH_MCP_TOKEN"); env != "" {
-		return env
-	}
-	return p.McpToken
-}
-
-// EffectiveMcpBind returns the MCP bind address, defaulting to "0.0.0.0".
-func (p *Project) EffectiveMcpBind() string {
-	if p.McpBind != "" {
-		return p.McpBind
-	}
-	return DefaultMcpBind
-}
 
 const (
 	// AgentTypeClaudeCode is the default agent type. Claude Code supports
@@ -285,7 +249,7 @@ func Load(path string) (*Project, error) {
 
 // hasTokens returns true if the project config contains any auth tokens.
 func hasTokens(p *Project) bool {
-	if p.Token != "" || p.McpToken != "" {
+	if p.Token != "" {
 		return true
 	}
 	for _, r := range p.Remotes {
@@ -357,11 +321,6 @@ func Validate(p *Project) error {
 		}
 	}
 
-	// MCP server validation.
-	if p.McpPort != nil && (*p.McpPort < 0 || *p.McpPort > 65535) {
-		return fmt.Errorf("mcp_port %d out of range (0-65535)", *p.McpPort)
-	}
-
 	// Cross-machine coordination validation.
 	if p.Mode != "" && p.Mode != "headless" {
 		return fmt.Errorf("invalid mode %q: must be \"\" or \"headless\"", p.Mode)
@@ -409,7 +368,7 @@ func Validate(p *Project) error {
 }
 
 // Write serializes a Project to YAML and writes it to the given path. The
-// file holds auth tokens (announce_url, webhook_url, MCP bearer) so it must
+// file holds auth tokens (webhook_url, cross-machine token) so it must
 // stay readable only by the owner. os.WriteFile's perm arg is the CREATE
 // mode and is ignored if the file already exists, so an existing 0644 file
 // would keep its loose perms after a rewrite — the explicit Chmod after

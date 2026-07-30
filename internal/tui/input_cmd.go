@@ -374,7 +374,7 @@ func longestCommonPrefix(strs []string) string {
 var commandNames = []string{
 	"grid", "focus", "zoom", "panel", "main", "live", "pin", "unpin",
 	"layout", "restart", "patrol", "top", "add", "remove",
-	"log", "help", "quit", "events", "agents", "mcp",
+	"log", "help", "quit", "events", "agents",
 	"remote-stop",
 }
 
@@ -526,8 +526,6 @@ func (t *TUI) execCmd(cmd string) bool {
 		return t.cmdRemove(parts)
 	case "log", "events":
 		return t.cmdLog()
-	case "mcp":
-		return t.cmdMcp()
 	case "help", "?":
 		return t.cmdHelp()
 	case "quit", "q":
@@ -730,12 +728,6 @@ func (t *TUI) cmdLog() bool {
 	t.cmd.error = ""
 	t.eventLogM.active = true
 	t.eventLogM.scrollOffset = 0
-	return false
-}
-
-func (t *TUI) cmdMcp() bool {
-	t.mcpM.active = true
-	t.mcpM.tokenRevealed = false
 	return false
 }
 

@@ -26,7 +26,6 @@ var (
 	noColor     bool
 	autoSuspend bool
 	pprofAddr   string
-	mcpPort     int
 )
 
 var (
@@ -95,7 +94,6 @@ func init() {
 	rootCmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Enable DEBUG-level logging to .initech/initech.log")
 	rootCmd.Flags().BoolVar(&autoSuspend, "auto-suspend", false, "Enable automatic agent suspension under memory pressure")
 	rootCmd.Flags().StringVar(&pprofAddr, "pprof", "", "Start pprof HTTP server on the given localhost address (e.g. localhost:6060)")
-	rootCmd.Flags().IntVar(&mcpPort, "mcp-port", 0, "Start MCP server on the given port (0 = disabled)")
 	rootCmd.PersistentFlags().BoolVar(&noColor, "no-color", false, "Disable colored output")
 
 	// Register color functions as template functions so the usage template can
@@ -232,21 +230,7 @@ func runTUI(cmd *cobra.Command, args []string) error {
 		Project:           proj,
 		PaneConfigBuilder: buildReloadingPaneConfigBuilder(cfgPath, buildAgentPaneConfig),
 		WebhookURL:        proj.WebhookURL,
-		McpPort:           effectiveMcpPort(mcpPort, proj),
-		McpToken:          proj.EffectiveMcpToken(),
-		McpBind:           proj.EffectiveMcpBind(),
 	})
-}
-
-// effectiveMcpPort returns the MCP port to use. The --mcp-port flag takes
-// precedence. If the flag is 0 (default/disabled), fall back to the config
-// value (which also defaults to 0 when unset). MCP is disabled when the
-// result is 0.
-func effectiveMcpPort(flagValue int, proj *config.Project) int {
-	if flagValue != 0 {
-		return flagValue
-	}
-	return proj.EffectiveMcpPort()
 }
 
 // buildAgentPaneConfig constructs a PaneConfig for the given role from the

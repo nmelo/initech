@@ -83,11 +83,6 @@ func (t *TUI) render() {
 		t.renderHelp()
 	}
 
-	// MCP setup modal.
-	if t.mcpM.active {
-		t.renderMcpModal()
-	}
-
 	// Agents modal (centered floating box, like welcome).
 	if t.agents.active {
 		t.renderAgents()

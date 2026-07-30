@@ -1,9 +1,6 @@
 package tui
 
 import (
-	"context"
-	"crypto/rand"
-	"encoding/base64"
 	"fmt"
 	"log/slog"
 	"os"
@@ -14,7 +11,6 @@ import (
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/nmelo/initech/internal/config"
-	"github.com/nmelo/initech/internal/mcp"
 )
 
 // LayoutMode determines how panes are arranged on screen.
@@ -83,13 +79,6 @@ type eventLogModal struct {
 type helpModal struct {
 	active       bool
 	scrollOffset int
-}
-
-// mcpModal holds MCP setup modal state.
-type mcpModal struct {
-	active        bool
-	tokenRevealed bool
-	revealExpiry  time.Time // auto-hide token after 10 seconds
 }
 
 // agentsModal holds state for the agent management modal.
@@ -162,7 +151,6 @@ type TUI struct {
 	top       topModal       // Activity monitor overlay.
 	eventLogM eventLogModal  // Event log history modal.
 	help      helpModal      // Help reference card modal.
-	mcpM      mcpModal       // MCP setup modal.
 	agents    agentsModal    // Agent management modal.
 	welcome   welcomeOverlay // First-launch keybinding hints.
 	sel       mouseSelection // Mouse text selection.
@@ -204,12 +192,6 @@ type TUI struct {
 	// render tick. Empty when projectRoot is not a git repo.
 	branch       string
 	branchPollAt time.Time
-
-
-	// MCP server runtime state for the setup modal.
-	mcpToken string // Active bearer token (empty if MCP disabled).
-	mcpBind  string // Bind address (e.g. "0.0.0.0").
-	mcpPort  int    // Configured port (0 = disabled).
 
 	webhookURL string // Webhook URL from config, returned by NotifyConfig().
 
@@ -363,7 +345,7 @@ func (t *TUI) initLiveEngine(numSlots int) {
 
 // onLiveSwap compares previous and current slot assignments. If any slot
 // changed to a different agent, emits an EventLiveSwap. The event flows
-// through the standard fan-out (event log, webhook, MCP) but is suppressed
+// through the standard fan-out (event log, webhook) but is suppressed
 // from toasts (too frequent). No direct radio POST; the webhook sink
 // handles external notification.
 func (t *TUI) onLiveSwap(prev, curr []string) {
@@ -442,9 +424,6 @@ type Config struct {
 	PaneConfigBuilder func(name string) (PaneConfig, error) // Optional factory for hot-add. Nil disables add command.
 	Project           *config.Project                       // Full project config. Used for remote peer connections.
 	WebhookURL        string                                // HTTP endpoint for agent event POSTs. Empty = disabled.
-	McpPort           int                                   // Port for the MCP server. 0 = disabled.
-	McpToken          string                                // Bearer token for MCP auth. Empty = auto-generate.
-	McpBind           string                                // Bind address for MCP server. Empty = "0.0.0.0".
 }
 
 // DefaultConfig returns a config with standard shell-only agents.
@@ -748,45 +727,6 @@ func Run(cfg Config) error {
 	// Start memory monitor when auto-suspend is enabled.
 	if t.autoSuspend {
 		t.startMemoryMonitor()
-	}
-
-	// Start MCP server when configured.
-	if cfg.McpPort > 0 {
-		mcpToken := cfg.McpToken
-		if mcpToken == "" {
-			b := make([]byte, 32)
-			if _, err := rand.Read(b); err != nil {
-				LogError("mcp", "failed to generate token", "err", err)
-			} else {
-				mcpToken = base64.RawURLEncoding.EncodeToString(b)
-			}
-		}
-		if mcpToken != "" {
-			mcpBind := cfg.McpBind
-			if mcpBind == "" {
-				mcpBind = config.DefaultMcpBind
-			}
-			// Store MCP state for the setup modal.
-			t.mcpToken = mcpToken
-			t.mcpBind = mcpBind
-			t.mcpPort = cfg.McpPort
-
-			mcpHost := &tuiMCPHost{t: t}
-			mcpSrv := mcp.NewServer(cfg.McpPort, mcpBind, mcpToken, mcpHost, nil)
-			mcpCtx, mcpCancel := context.WithCancel(context.Background())
-			go func() {
-				if err := mcpSrv.Start(mcpCtx); err != nil {
-					LogError("mcp", "server exited with error", "err", err)
-				}
-			}()
-			LogInfo("mcp", "server starting", "addr", fmt.Sprintf("%s:%d", mcpBind, cfg.McpPort), "token", mcpToken)
-			defer func() {
-				mcpCancel()
-				shutCtx, shutCancel := context.WithTimeout(context.Background(), 2*time.Second)
-				mcpSrv.Shutdown(shutCtx)
-				shutCancel()
-			}()
-		}
 	}
 
 	// Start battery polling for status bar display.

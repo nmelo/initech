@@ -49,7 +49,6 @@ func getHelpLines() []string {
 			"  top (ps)         Activity monitor (PID, memory, status).",
 			"  add <name>       Add a new agent pane.",
 			"  remove (rm) <n>  Remove an agent pane.",
-			"  mcp              MCP server status and connection info.",
 			"  help (?)         This screen.",
 			"  quit (q)         Exit initech.",
 			"",

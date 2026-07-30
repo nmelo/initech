@@ -45,11 +45,6 @@ func (t *TUI) handleKey(ev *tcell.EventKey) bool {
 		return t.handleTopKey(ev)
 	}
 
-	// MCP modal intercepts all input when active.
-	if t.mcpM.active {
-		return t.handleMcpKey(ev)
-	}
-
 	// Agents modal intercepts all input when active.
 	if t.agents.active {
 		return t.handleAgentsKey(ev)
@@ -285,4 +280,3 @@ func (t *TUI) restartPane(fp *Pane) error {
 	t.applyLayout()
 	return nil
 }
-

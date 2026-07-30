@@ -10,15 +10,9 @@
 // selections, so the buggy extraction is never sent to pbcopy. Tests below
 // verify the guard fires for the bug shape AND does not over-fire on real
 // drags (>= 2 cells, vertical, etc.).
-//
-// Phase 3 (OSC 52 verification): structured paths (mcp_modal.go,
-// web_modal.go) emit base64-encoded payloads through buildOSC52, not
-// extracted cells. The TestBuildOSC52_RoundTrip test pins that contract.
 package tui
 
 import (
-	"encoding/base64"
-	"strings"
 	"testing"
 )
 
@@ -203,52 +197,5 @@ func TestCopySelection_VerticalOneCellDrag_StillCopies_ini_jr0(t *testing.T) {
 
 	if len(*calls) != 1 {
 		t.Errorf("vertical 1-row drag should copy (different bug shape than horizontal twitch), got %d call(s)", len(*calls))
-	}
-}
-
-// --- Phase 3: OSC 52 verification ---
-
-// TestBuildOSC52_RoundTrip pins the structured-clipboard contract for the
-// MCP token and web URL paths. Per PM's triage, those paths are
-// "vanishingly unlikely" to leak literal substrings because they encode
-// through base64 — this test makes that confidence explicit.
-//
-// The escape sequence format \033]52;c;<base64>\a is fixed by terminal
-// convention; a regression here would mean we shipped a clipboard payload
-// that real terminals can't decode.
-func TestBuildOSC52_RoundTrip_ini_jr0(t *testing.T) {
-	tests := []struct {
-		name    string
-		content string
-	}{
-		{"mcp token style", "Bearer eyJhbGciOiJIUzI1NiJ9.token-here.signature"},
-		{"web url style", "http://192.168.1.42:7890"},
-		{"empty", ""},
-		{"unicode", "café résumé naïve"},
-		{"multiline", "line1\nline2"},
-		{"contains ll", "calls and hello"}, // even if the input has 'll', the OSC 52 path encodes it safely
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			osc := buildOSC52(tt.content)
-
-			if !strings.HasPrefix(osc, "\033]52;c;") {
-				t.Errorf("OSC sequence missing \\033]52;c; prefix: %q", osc)
-			}
-			if !strings.HasSuffix(osc, "\a") {
-				t.Errorf("OSC sequence missing \\a (BEL) terminator: %q", osc)
-			}
-
-			// Strip prefix and BEL, decode base64, must round-trip to content.
-			payload := strings.TrimPrefix(osc, "\033]52;c;")
-			payload = strings.TrimSuffix(payload, "\a")
-			decoded, err := base64.StdEncoding.DecodeString(payload)
-			if err != nil {
-				t.Fatalf("base64 decode failed: %v (payload %q)", err, payload)
-			}
-			if string(decoded) != tt.content {
-				t.Errorf("round-trip failed: decoded = %q, want %q", string(decoded), tt.content)
-			}
-		})
 	}
 }

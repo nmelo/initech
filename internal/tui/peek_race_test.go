@@ -67,7 +67,7 @@ func hammer(n int, d time.Duration, fn func()) {
 }
 
 // peekContent is reached from the IPC peek handler, the daemon control peek
-// handler, the MCP peek tool, handleIPCPatrol and the :peek command. None of
+// handler, handleIPCPatrol and the :peek command. None of
 // them hold renderMu, so all of them raced readLoop.
 func TestPeekContent_IsRaceFreeAgainstLivePTYOutput(t *testing.T) {
 	p := noisyPane(t, "eng1", "abcdefghijklmnopqrstuvwxyz")

@@ -74,7 +74,6 @@ func (t *TUI) modalActive() bool {
 		t.help.active ||
 		t.eventLogM.active ||
 		t.top.active ||
-		t.mcpM.active ||
 		t.agents.active ||
 		t.cmd.active
 }
