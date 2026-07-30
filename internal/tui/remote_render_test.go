@@ -304,19 +304,36 @@ dataArrived:
 // Emulator.Write blocks forever inside the SafeEmulator write lock).
 //
 // KEPT TIGHT DELIBERATELY (ini-ls0c/ini-adb9): an earlier version of this
-// fix widened this to 30s to absorb go test -race's 5-10x instrumentation
-// overhead under load. That was wrong and was withdrawn before landing --
+// fix widened this bound substantially to absorb go test -race's 5-10x
+// instrumentation overhead under load. That was wrong and was withdrawn
+// before landing -- and the withdrawn number is not repeated here on
+// purpose: a rejected value has no business surviving as text next to the
+// accepted one, where a skimming reader cannot tell which is authoritative.
+// The reasoning for rejecting it stands on its own without the number:
 // "any finite bound eventually catches a TRUE infinite hang" is true, but it
-// ignores the middle case: a real, finite, user-perceptible stall (say 25s,
-// from an actual future regression) would then pass silently. A bound loose
-// enough to never trigger under adversarial conditions is not a fix, it's an
-// assertion that can no longer fail -- strictly worse than the flake it
-// replaces, which at least told the truth on failure. The correct fix for
+// ignores the middle case: a real, finite, user-perceptible stall from an
+// actual future regression would then pass silently too. A bound loose
+// enough to never trigger under adversarial -race conditions is not a fix,
+// it's an assertion that can no longer fail -- strictly worse than the flake
+// it replaces, which at least told the truth on failure. The correct fix for
 // the -race/load false-fail is skipping the affected callers under -race
-// (see raceDetectorEnabled, and TestRemotePane_MultiPane_RenderDoesNotBlock's
-// skip), not loosening what "too slow" means. This bound stays close to the
-// original 2s (with modest jitter headroom) so it remains a meaningful
-// assertion wherever it still runs.
+// (see raceDetectorEnabled), not loosening what "too slow" means. This bound
+// stays close to the original 2s (with modest jitter headroom) so it
+// remains a meaningful assertion wherever it still runs.
+//
+// COVERAGE CAVEAT, applying to every caller skipped under
+// raceDetectorEnabled (TestRemotePane_MultiPane_RenderDoesNotBlock,
+// TestRemotePane_DAQueryDoesNotDeadlock's remote_pane_does_not_block
+// subtest, TestRenderNotBlockedByRemoteConnection, and
+// TestRemotePane_EndToEnd_EmulatorHasContent): after those skips, the
+// skipped assertion's coverage survives in exactly ONE place -- the
+// `go test ./... -count=1` Makefile target, which runs neither -short nor
+// -race. That is NOT `go test -race ./internal/tui/` (what QA runs) and NOT
+// `make check`/`make test`. This is a deliberate trade, not an oversight --
+// don't read a test skipped under both -short and -race as dead code and
+// delete it. (Each of the four skip sites also carries this caveat inline,
+// so a reader who never follows this pointer still sees it; this paragraph
+// exists so the pointer itself resolves to something real too.)
 //
 // TestRemoteRenderFrame_DeadlockBoundFires forces the exact hang this bound
 // exists to catch and proves it fires -- deterministically, not by absence
@@ -357,8 +374,9 @@ func remoteRenderFrame(panes []*RemotePane, s tcell.Screen, frame int, bound tim
 // and proves the bound terminates it rather than hanging forever or
 // returning instantly. Uses a short bound so the test itself stays fast;
 // remoteRenderFrame is the identical production-path helper
-// TestRemotePane_MultiPane_RenderDoesNotBlock calls with the real 30s value,
-// so this exercises the real mechanism, not a stand-in for it.
+// TestRemotePane_MultiPane_RenderDoesNotBlock calls with the real
+// remoteRenderDeadlockBound value, so this exercises the real mechanism,
+// not a stand-in for it.
 //
 // This is the verification ini-ls0c's low base rate (~1-2 reproductions per
 // 16 probabilistic runs) demands: a clean N-run batch after the fix proves
