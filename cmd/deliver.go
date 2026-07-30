@@ -51,6 +51,12 @@ any side effects), bd operations second (durable state), TUI bead clear
 third (cosmetic), report last (notifications). A partial failure
 leaves the bead in the correct status even if notifications fail.
 
+The status write is compare-and-set: if the bead's status changed between
+when this call read it and when it writes (e.g. a concurrent deliver on the
+same bead), the write is refused with a clear error rather than silently
+advancing from whatever the other call left behind. Re-run deliver to act
+on the bead's current state.
+
 Requires bd and a running initech TUI.`,
 	Args: cobra.ExactArgs(1),
 	RunE: runDeliver,
@@ -146,7 +152,7 @@ func runDeliver(cmd *cobra.Command, args []string) error {
 		if err := bdCommentAddFn(beadID, agent, "FAILED: "+reason); err != nil {
 			fmt.Fprintf(cmd.ErrOrStderr(), "warning: bd comment failed: %s\n", err)
 		}
-		if err := bdUpdateStatusFn(beadID, target); err != nil {
+		if err := compareAndSetBeadStatus(beadID, status, target); err != nil {
 			return err
 		}
 	} else {
@@ -155,7 +161,7 @@ func runDeliver(cmd *cobra.Command, args []string) error {
 			fmt.Fprintf(cmd.ErrOrStderr(), "deliver no-op for %s: bead is at terminal state %q\n", beadID, status)
 			return nil
 		}
-		if err := bdUpdateStatusFn(beadID, target); err != nil {
+		if err := compareAndSetBeadStatus(beadID, status, target); err != nil {
 			return err
 		}
 	}
