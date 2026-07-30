@@ -34,6 +34,7 @@ func TestStartBatteryPoller_NoBatteryStopsAfterInitialCheck(t *testing.T) {
 		t.Fatalf("readBattery calls = %d, want 1", calls.Load())
 	}
 	close(tui.quitCh)
+	<-tui.batteryPollerDone
 }
 
 func TestStartBatteryPoller_SeedsInitialStateAndUpdatesOnTick(t *testing.T) {
@@ -69,6 +70,7 @@ func TestStartBatteryPoller_SeedsInitialStateAndUpdatesOnTick(t *testing.T) {
 		return pct == 55 && !charging
 	})
 	close(tui.quitCh)
+	<-tui.batteryPollerDone
 }
 
 func TestStartBatteryPoller_KeepsLastKnownValueWhenBatteryReadDropsOut(t *testing.T) {
@@ -90,6 +92,7 @@ func TestStartBatteryPoller_KeepsLastKnownValueWhenBatteryReadDropsOut(t *testin
 	tui.startBatteryPoller()
 	waitForCondition(t, func() bool { return calls.Load() >= 2 })
 	close(tui.quitCh)
+	<-tui.batteryPollerDone
 
 	if pct, charging := tui.batteryStatus(); pct != 72 || charging {
 		t.Fatalf("battery state after dropout = (%d,%v), want stale (72,false)", pct, charging)

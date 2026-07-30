@@ -67,9 +67,11 @@ func (t *TUI) rotateTip() {
 // the renderer (which reads on every paint) and tests (which read after the
 // goroutine starts) cannot race with the poller goroutine.
 func (t *TUI) startBatteryPoller() {
+	t.batteryPollerDone = make(chan struct{})
 	pct, charging, hasBattery := readBatteryFn()
 	if !hasBattery {
-		return // Desktop or VM, no battery to monitor.
+		close(t.batteryPollerDone) // No goroutine spawned; nothing to wait on.
+		return                     // Desktop or VM, no battery to monitor.
 	}
 	t.mu.Lock()
 	t.batteryPercent = pct
@@ -77,6 +79,7 @@ func (t *TUI) startBatteryPoller() {
 	t.mu.Unlock()
 
 	t.safeGo(func() {
+		defer close(t.batteryPollerDone)
 		ticker := newBatteryTicker(60 * time.Second)
 		defer ticker.Stop()
 		for {

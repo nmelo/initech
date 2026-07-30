@@ -197,6 +197,14 @@ type TUI struct {
 	batteryPercent  int  // 0-100, or -1 if no battery detected.
 	batteryCharging bool // True when plugged in and charging.
 
+	// batteryPollerDone is closed by startBatteryPoller once its background
+	// goroutine has fully exited (or immediately if no goroutine was spawned
+	// because the machine has no battery). Test-observability only: lets
+	// tests wait for the poller to actually stop touching readBatteryFn/
+	// newBatteryTicker before restoring those test stubs — closing quitCh
+	// alone only requests a stop, it doesn't confirm one.
+	batteryPollerDone chan struct{}
+
 	// Current git branch of projectRoot, refreshed by pollBranch on the
 	// render tick. Empty when projectRoot is not a git repo.
 	branch       string
