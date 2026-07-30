@@ -3,6 +3,7 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -12,10 +13,23 @@ import (
 )
 
 var sendCmd = &cobra.Command{
-	Use:   "send [host:]<agent> <text>",
+	Use:   "send [host:]<agent> <text> | --stdin | -f <file>",
 	Short: "Send text to an agent's terminal",
 	Long: `Injects text into the specified agent's PTY. By default appends Enter
 to execute the text as a command. Use --no-enter to send text without Enter.
+
+WARNING: backticks in a double-quoted message are consumed by YOUR shell
+(command substitution) before initech ever sees them — the backticked text is
+silently deleted from the delivered message. For bodies containing backticks,
+use the shell-safe input paths, or single quotes:
+
+  printf 'use %s to disable the job' '` + "`if: false`" + `' | initech send eng1 --stdin
+  initech send eng1 -f draft.txt        # read body from a file
+  initech send eng1 -f -                # same as --stdin
+  initech send eng1 'use ` + "`if: false`" + ` to disable'   # single quotes are safe
+
+The body from --stdin or -f is delivered byte-for-byte; the shell never
+re-evaluates it.
 
 A bare agent name resolves to any agent connected to this TUI, whether
 local or remote — no host prefix required:
@@ -39,20 +53,30 @@ a bare name resolves to the first matching pane, which is not guaranteed to
 be the one you meant. Use host:agent to target a specific machine's agent.
 
 Requires a running initech TUI (connects via INITECH_SOCKET).`,
-	Args: cobra.MinimumNArgs(2),
+	Args: cobra.MinimumNArgs(1),
 	RunE: runSend,
 }
 
-var sendNoEnter bool
+var (
+	sendNoEnter bool
+	sendStdin   bool
+	sendFile    string
+)
 
 func init() {
 	sendCmd.Flags().BoolVar(&sendNoEnter, "no-enter", false, "Don't append Enter after the text")
+	sendCmd.Flags().BoolVar(&sendStdin, "stdin", false, "Read the message body from stdin (shell-safe: no command substitution)")
+	sendCmd.Flags().StringVarP(&sendFile, "file", "f", "", "Read the message body from a file; \"-\" means stdin")
 	rootCmd.AddCommand(sendCmd)
 }
 
 func runSend(cmd *cobra.Command, args []string) error {
 	target := args[0]
-	text := strings.Join(args[1:], " ")
+
+	text, err := resolveSendBody(cmd, args)
+	if err != nil {
+		return err
+	}
 
 	// Parse host:agent format for cross-machine routing.
 	var host string
@@ -86,6 +110,58 @@ func runSend(cmd *cobra.Command, args []string) error {
 		fmt.Fprintf(cmd.ErrOrStderr(), "delivered to %s\n", target)
 	}
 	return nil
+}
+
+// resolveSendBody returns the message body for a send invocation. Positional
+// args after the target are joined with spaces (existing behavior). With
+// --stdin or -f the body is read verbatim from stdin or a file instead —
+// byte-identical, no trimming — because the caller's shell performs command
+// substitution on backticks in double-quoted arguments before initech sees
+// argv (ini-da7f / GitHub #26), and content already mangled by the shell
+// cannot be recovered here.
+func resolveSendBody(cmd *cobra.Command, args []string) (string, error) {
+	fromStdin := sendStdin || sendFile == "-"
+	fromFile := sendFile != "" && sendFile != "-"
+
+	if sendStdin && sendFile != "" {
+		return "", fmt.Errorf("cannot use both --stdin and --file")
+	}
+	if !fromStdin && !fromFile {
+		if len(args) < 2 {
+			return "", fmt.Errorf("message text required (or read the body from --stdin / -f <file>)")
+		}
+		return strings.Join(args[1:], " "), nil
+	}
+
+	if len(args) > 1 {
+		return "", fmt.Errorf("unexpected message arguments %q: the body comes from %s", strings.Join(args[1:], " "), bodySourceName(fromStdin))
+	}
+
+	var body []byte
+	var err error
+	if fromStdin {
+		body, err = io.ReadAll(cmd.InOrStdin())
+		if err != nil {
+			return "", fmt.Errorf("read stdin: %w", err)
+		}
+	} else {
+		body, err = os.ReadFile(sendFile)
+		if err != nil {
+			return "", fmt.Errorf("read %s: %w", sendFile, err)
+		}
+	}
+	if len(body) == 0 {
+		return "", fmt.Errorf("message body from %s is empty", bodySourceName(fromStdin))
+	}
+	return string(body), nil
+}
+
+// bodySourceName names the active body source for error messages.
+func bodySourceName(fromStdin bool) string {
+	if fromStdin {
+		return "stdin"
+	}
+	return "file"
 }
 
 // ipcCall sends a request to the TUI's IPC socket and returns the response.

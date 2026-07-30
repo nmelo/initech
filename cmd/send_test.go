@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 
@@ -179,6 +180,222 @@ func TestSendCommand_HelpDocumentsBareNameAutoResolve(t *testing.T) {
 	// The usage line must keep host optional.
 	if !strings.Contains(sendCmd.Use, "[host:]") {
 		t.Errorf("send usage should mark host optional, got %q", sendCmd.Use)
+	}
+}
+
+// capturedIPC records every IPCRequest a fake server receives so tests can
+// assert on the exact bytes delivered (ini-da7f: backtick content must arrive
+// byte-identical through the shell-safe input paths).
+type capturedIPC struct {
+	mu   sync.Mutex
+	reqs []tui.IPCRequest
+}
+
+func (c *capturedIPC) last(t *testing.T) tui.IPCRequest {
+	t.Helper()
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if len(c.reqs) == 0 {
+		t.Fatal("no IPC request captured")
+	}
+	return c.reqs[len(c.reqs)-1]
+}
+
+// startCapturingIPC is startFakeIPC plus request capture: it decodes each
+// incoming request line before replying with the canned response.
+func startCapturingIPC(t *testing.T, resp tui.IPCResponse) (string, *capturedIPC) {
+	t.Helper()
+	captured := &capturedIPC{}
+	n := fakeIPCCounter.Add(1)
+	sockPath := filepath.Join("/tmp", fmt.Sprintf("initech-test-cap-%d-%d.sock", os.Getpid(), n))
+	os.Remove(sockPath)
+	ln, err := net.Listen("unix", sockPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { ln.Close(); os.Remove(sockPath) })
+
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			scanner := tui.NewIPCScanner(conn)
+			if scanner.Scan() {
+				var req tui.IPCRequest
+				if json.Unmarshal(scanner.Bytes(), &req) == nil {
+					captured.mu.Lock()
+					captured.reqs = append(captured.reqs, req)
+					captured.mu.Unlock()
+				}
+			}
+			data, _ := json.Marshal(resp)
+			conn.Write(data)
+			conn.Write([]byte("\n"))
+			conn.Close()
+		}
+	}()
+	return sockPath, captured
+}
+
+// resetSendBodyFlags restores the package-level send flag state that cobra
+// leaves behind after Execute, so later tests see pristine defaults.
+func resetSendBodyFlags(t *testing.T) {
+	t.Helper()
+	t.Cleanup(func() {
+		sendStdin = false
+		sendFile = ""
+		sendNoEnter = false
+		rootCmd.SetIn(nil)
+		// Cobra's built-in help flag persists across Execute calls; a test that
+		// ran `send --help` would otherwise short-circuit every later send test.
+		if f := sendCmd.Flags().Lookup("help"); f != nil {
+			f.Value.Set("false")
+			f.Changed = false
+		}
+	})
+}
+
+func TestSendCommand_StdinBodyArrivesVerbatim(t *testing.T) {
+	skipWindows(t)
+	resetSendBodyFlags(t)
+	sockPath, captured := startCapturingIPC(t, tui.IPCResponse{OK: true})
+	t.Setenv("INITECH_SOCKET", sockPath)
+
+	body := "use `if: false` to disable the job\nand `make check` before `git push`\n"
+	rootCmd.SetIn(strings.NewReader(body))
+
+	var stdout, stderr bytes.Buffer
+	rootCmd.SetOut(&stdout)
+	rootCmd.SetErr(&stderr)
+	rootCmd.SetArgs([]string{"send", "eng2", "--stdin"})
+	defer rootCmd.SetArgs(nil)
+
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	req := captured.last(t)
+	if req.Action != "send" || req.Target != "eng2" {
+		t.Errorf("request = %+v, want action=send target=eng2", req)
+	}
+	if req.Text != body {
+		t.Errorf("delivered body = %q, want byte-identical %q", req.Text, body)
+	}
+	if !req.Enter {
+		t.Error("Enter = false, want true (default submit behavior unchanged)")
+	}
+	if got := stderr.String(); got != "delivered to eng2\n" {
+		t.Errorf("stderr = %q, want %q", got, "delivered to eng2\n")
+	}
+}
+
+func TestSendCommand_FileBodyArrivesVerbatim(t *testing.T) {
+	skipWindows(t)
+	resetSendBodyFlags(t)
+	sockPath, captured := startCapturingIPC(t, tui.IPCResponse{OK: true})
+	t.Setenv("INITECH_SOCKET", sockPath)
+
+	body := "draft for super:\n`initech deliver` walks one step; `bd close` is operator-only.\n"
+	path := filepath.Join(t.TempDir(), "body.txt")
+	if err := os.WriteFile(path, []byte(body), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	rootCmd.SetArgs([]string{"send", "super", "-f", path})
+	defer rootCmd.SetArgs(nil)
+
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	req := captured.last(t)
+	if req.Target != "super" {
+		t.Errorf("target = %q, want super", req.Target)
+	}
+	if req.Text != body {
+		t.Errorf("delivered body = %q, want byte-identical %q", req.Text, body)
+	}
+}
+
+func TestSendCommand_FileDashReadsStdin(t *testing.T) {
+	skipWindows(t)
+	resetSendBodyFlags(t)
+	sockPath, captured := startCapturingIPC(t, tui.IPCResponse{OK: true})
+	t.Setenv("INITECH_SOCKET", sockPath)
+
+	body := "`-f -` must behave exactly like --stdin\n"
+	rootCmd.SetIn(strings.NewReader(body))
+	rootCmd.SetArgs([]string{"send", "eng2", "-f", "-"})
+	defer rootCmd.SetArgs(nil)
+
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if req := captured.last(t); req.Text != body {
+		t.Errorf("delivered body = %q, want byte-identical %q", req.Text, body)
+	}
+}
+
+func TestSendCommand_StdinRejectsPositionalBody(t *testing.T) {
+	skipWindows(t)
+	resetSendBodyFlags(t)
+	rootCmd.SetIn(strings.NewReader("body\n"))
+	rootCmd.SetArgs([]string{"send", "eng2", "stray text", "--stdin"})
+	defer rootCmd.SetArgs(nil)
+
+	if err := rootCmd.Execute(); err == nil {
+		t.Fatal("expected error for positional body combined with --stdin, got nil")
+	}
+}
+
+func TestSendCommand_StdinAndFileConflict(t *testing.T) {
+	skipWindows(t)
+	resetSendBodyFlags(t)
+	rootCmd.SetArgs([]string{"send", "eng2", "--stdin", "-f", "somefile"})
+	defer rootCmd.SetArgs(nil)
+
+	err := rootCmd.Execute()
+	if err == nil {
+		t.Fatal("expected error for --stdin combined with -f, got nil")
+	}
+	if !strings.Contains(err.Error(), "--stdin") || !strings.Contains(err.Error(), "--file") {
+		t.Errorf("error = %q, want a mutual-exclusion message naming --stdin and --file", err)
+	}
+}
+
+func TestSendCommand_EmptyStdinBodyRejected(t *testing.T) {
+	skipWindows(t)
+	resetSendBodyFlags(t)
+	rootCmd.SetIn(strings.NewReader(""))
+	rootCmd.SetArgs([]string{"send", "eng2", "--stdin"})
+	defer rootCmd.SetArgs(nil)
+
+	err := rootCmd.Execute()
+	if err == nil {
+		t.Fatal("expected error for empty stdin body, got nil")
+	}
+	if !strings.Contains(err.Error(), "empty") {
+		t.Errorf("error = %q, want an empty-body message", err)
+	}
+}
+
+func TestSendCommand_HelpDocumentsBacktickHazard(t *testing.T) {
+	resetSendBodyFlags(t)
+	var out bytes.Buffer
+	rootCmd.SetOut(&out)
+	rootCmd.SetErr(&out)
+	rootCmd.SetArgs([]string{"send", "--help"})
+	defer rootCmd.SetArgs(nil)
+
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	help := out.String()
+	if !strings.Contains(help, "backtick") {
+		t.Errorf("send --help must document the backtick/command-substitution hazard; got:\n%s", help)
+	}
+	if !strings.Contains(help, "--stdin") {
+		t.Errorf("send --help must document the shell-safe --stdin path; got:\n%s", help)
 	}
 }
 

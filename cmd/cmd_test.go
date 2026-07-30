@@ -114,15 +114,29 @@ func TestRestartCommandFlags(t *testing.T) {
 
 // ── Args validation ─────────────────────────────────────────────────
 
+// TestSendRequiresMinArgs: since ini-da7f the cobra validator only requires
+// the target (the body may come from --stdin / -f, so one positional arg is
+// legal); the missing-body case is rejected later by resolveSendBody, which
+// can see the flag state.
 func TestSendRequiresMinArgs(t *testing.T) {
 	if sendCmd.Args == nil {
 		t.Fatal("send should have Args validator")
 	}
-	if err := sendCmd.Args(sendCmd, []string{"eng1"}); err == nil {
-		t.Error("send with 1 arg should fail (needs role + text)")
+	if err := sendCmd.Args(sendCmd, nil); err == nil {
+		t.Error("send with 0 args should fail (needs a target)")
+	}
+	if err := sendCmd.Args(sendCmd, []string{"eng1"}); err != nil {
+		t.Errorf("send with 1 arg should pass the Args validator (body may come from --stdin/-f): %v", err)
 	}
 	if err := sendCmd.Args(sendCmd, []string{"eng1", "hello"}); err != nil {
 		t.Errorf("send with 2 args should pass: %v", err)
+	}
+
+	// The moved check: no body flags and no positional body is still an error.
+	sendStdin = false
+	sendFile = ""
+	if _, err := resolveSendBody(sendCmd, []string{"eng1"}); err == nil {
+		t.Error("send with 1 arg and no body flags should fail in resolveSendBody")
 	}
 }
 
