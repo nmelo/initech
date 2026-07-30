@@ -23,7 +23,6 @@ type ConfigureAgentCmd struct {
 	Dir              string   `json:"dir"`
 	Env              []string `json:"env,omitempty"`
 	AgentType        string   `json:"agent_type,omitempty"`
-	AutoApprove      bool     `json:"auto_approve,omitempty"`
 	NoBracketedPaste bool     `json:"no_bracketed_paste,omitempty"`
 	SubmitKey        string   `json:"submit_key,omitempty"`
 	ClaudeMD         string   `json:"claude_md,omitempty"`      // Role-level CLAUDE.md content.
@@ -139,7 +138,6 @@ func (d *Daemon) handleConfigureAgent(line []byte, owner string) ControlResp {
 		Dir:              cmd.Dir,
 		Env:              cmd.Env,
 		AgentType:        cmd.AgentType,
-		AutoApprove:      cmd.AutoApprove,
 		NoBracketedPaste: cmd.NoBracketedPaste,
 		SubmitKey:        cmd.SubmitKey,
 	}

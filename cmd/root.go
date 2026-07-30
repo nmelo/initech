@@ -306,7 +306,7 @@ func buildAgentPaneConfig(roleName string, proj *config.Project) (tui.PaneConfig
 
 	var env []string
 
-	agentType, autoApprove, noBracketedPaste, submitKey := resolvePaneBehavior(ov)
+	agentType, _, noBracketedPaste, submitKey := resolvePaneBehavior(ov)
 
 	return tui.PaneConfig{
 		Name:             roleName,
@@ -314,7 +314,6 @@ func buildAgentPaneConfig(roleName string, proj *config.Project) (tui.PaneConfig
 		Dir:              dir,
 		Env:              env,
 		AgentType:        agentType,
-		AutoApprove:      autoApprove,
 		NoBracketedPaste: noBracketedPaste,
 		SubmitKey:        submitKey,
 		BeadsEnabled:     proj.Beads.IsEnabled(),

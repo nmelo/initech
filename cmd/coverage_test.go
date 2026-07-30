@@ -251,9 +251,6 @@ func TestBuildAgentPaneConfig_RoleCommandOverride(t *testing.T) {
 	if cfg1.AgentType != config.AgentTypeClaudeCode {
 		t.Errorf("claude-agent AgentType = %q, want %q", cfg1.AgentType, config.AgentTypeClaudeCode)
 	}
-	if cfg1.AutoApprove {
-		t.Error("claude-agent AutoApprove = true, want false")
-	}
 	if cfg1.NoBracketedPaste {
 		t.Error("claude-agent NoBracketedPaste = true, want false")
 	}
@@ -278,9 +275,6 @@ func TestBuildAgentPaneConfig_RoleCommandOverride(t *testing.T) {
 	}
 	if cfg2.AgentType != config.AgentTypeCodex {
 		t.Errorf("codex-agent AgentType = %q, want %q", cfg2.AgentType, config.AgentTypeCodex)
-	}
-	if !cfg2.AutoApprove {
-		t.Error("codex-agent AutoApprove = false, want codex default true")
 	}
 	if !cfg2.NoBracketedPaste {
 		t.Error("codex-agent NoBracketedPaste = false, want codex default true")
@@ -309,9 +303,6 @@ func TestBuildServeAgentConfig_AgentTypeDefaults(t *testing.T) {
 	}
 	if cfg.AgentType != config.AgentTypeGeneric {
 		t.Errorf("AgentType = %q, want %q", cfg.AgentType, config.AgentTypeGeneric)
-	}
-	if cfg.AutoApprove {
-		t.Error("AutoApprove = true, want false for generic agent")
 	}
 	if !cfg.NoBracketedPaste {
 		t.Error("NoBracketedPaste = false, want true for generic agent")

@@ -48,7 +48,7 @@ func TestPaneSendText_CodexWaitsForReadyPrompt(t *testing.T) {
 	defer r.Close()
 	defer w.Close()
 
-	emu := vt.NewSafeEmulator(80, codexPermissionScanRows)
+	emu := vt.NewSafeEmulator(80, 10)
 	p := &Pane{
 		name:             "eng1",
 		emu:              emu,
@@ -84,7 +84,7 @@ func TestPaneSendText_CodexWaitsForReadyPrompt(t *testing.T) {
 	p.mu.Unlock()
 	_, _ = emu.Write([]byte(">"))
 	if !p.isCodexReadyForSend() {
-		t.Fatalf("pane not ready after prompt write; footer=%q", emulatorBottomText(emu, codexPermissionScanRows))
+		t.Fatalf("pane not ready after prompt write; footer=%q", emulatorBottomText(emu, 10))
 	}
 
 	select {
@@ -114,7 +114,7 @@ func TestPaneSendText_OpenCodeWaitsForReadyPrompt(t *testing.T) {
 	defer r.Close()
 	defer w.Close()
 
-	emu := vt.NewSafeEmulator(80, codexPermissionScanRows)
+	emu := vt.NewSafeEmulator(80, 10)
 	p := &Pane{
 		name:             "eng1",
 		emu:              emu,
@@ -150,7 +150,7 @@ func TestPaneSendText_OpenCodeWaitsForReadyPrompt(t *testing.T) {
 	p.mu.Unlock()
 	_, _ = emu.Write([]byte(">"))
 	if !p.isCodexReadyForSend() {
-		t.Fatalf("pane not ready after prompt write; footer=%q", emulatorBottomText(emu, codexPermissionScanRows))
+		t.Fatalf("pane not ready after prompt write; footer=%q", emulatorBottomText(emu, 10))
 	}
 
 	select {
@@ -177,10 +177,10 @@ func TestWaitForCodexReady_AcceptsTrustPrompt(t *testing.T) {
 	defer r.Close()
 	defer w.Close()
 
-	emu := vt.NewSafeEmulator(80, codexPermissionScanRows)
+	emu := vt.NewSafeEmulator(80, 10)
 	_, _ = emu.Write([]byte("Do you trust the contents of this directory?\n> 1. Yes, continue\n2. No, quit\nPress enter to continue\n"))
-	if !isCodexTrustPrompt(emulatorBottomText(emu, codexPermissionScanRows)) {
-		t.Fatalf("synthetic trust prompt not detected; footer=%q", emulatorBottomText(emu, codexPermissionScanRows))
+	if !isCodexTrustPrompt(emulatorBottomText(emu, 10)) {
+		t.Fatalf("synthetic trust prompt not detected; footer=%q", emulatorBottomText(emu, 10))
 	}
 
 	p := &Pane{

@@ -59,32 +59,9 @@ const (
 	maxContentLen   = 4096 // Max content bytes per JournalEntry.
 )
 
-const codexPermissionScanRows = 10
 const codexReadyPollInterval = 50 * time.Millisecond
 const codexReadyTimeout = 10 * time.Second
 const codexReadyStableDuration = 500 * time.Millisecond
-
-var codexPermissionPromptPatterns = []string{
-	"press enter to confirm or esc to cancel",
-	"1. yes, proceed",
-	"1. yes (y)",
-	"2. yes, and don't ask again",
-	"2. yes, and dont ask again",
-	"yes, and don't ask again",
-	"yes, and dont ask again",
-}
-
-var codexPermissionApprovePersistentPatterns = []string{
-	"2. yes, and don't ask again",
-	"2. yes, and dont ask again",
-	"yes, and don't ask again",
-	"yes, and dont ask again",
-}
-
-var codexPermissionApproveProceedPatterns = []string{
-	"1. yes, proceed",
-	"1. yes (y)",
-}
 
 var codexNotReadyPromptPatterns = []string{
 	"do you trust the contents of this directory",
@@ -99,31 +76,6 @@ var codexTrustPromptPatterns = []string{
 	"press enter to continue",
 	"1. yes, continue",
 	"2. no, quit",
-}
-
-var opencodePermissionTitlePatterns = []string{
-	"permission required",
-}
-
-var opencodeAllowOptionPatterns = []string{
-	"allow (a)",
-	"allow once (a)",
-	"allow once",
-	"allow",
-}
-
-var opencodePersistentOptionPatterns = []string{
-	"allow for session (s)",
-	"allow for session",
-	"allow always (s)",
-	"allow always",
-}
-
-var opencodeRejectOptionPatterns = []string{
-	"deny (d)",
-	"deny",
-	"reject (d)",
-	"reject",
 }
 
 // PaneView abstracts pane behavior so both local panes (Pane) and future
@@ -221,7 +173,6 @@ type Pane struct {
 	resumeMu          sync.Mutex        // Serializes concurrent resume attempts for this pane.
 	kittEpoch         time.Time         // Reference time for KITT scanner animation phase.
 	agentType         string            // Semantic agent type: claude-code, codex, or generic.
-	autoApprove       bool              // When true, auto-approve matching permission prompts.
 	noBracketedPaste    bool              // True when injectText should use typed input instead of bracketed paste.
 	submitKey           string            // Key sequence to submit: "" or "enter" (Enter), "ctrl+enter" (Ctrl+Enter).
 	region              Region
@@ -272,7 +223,6 @@ type PaneConfig struct {
 	Dir              string   // Working directory. Empty means inherit.
 	Env              []string // Extra env vars (KEY=VALUE). TERM is always set.
 	AgentType        string   // Semantic agent type: claude-code (default), codex, or generic.
-	AutoApprove      bool     // When true, auto-approve matching permission prompts.
 	NoBracketedPaste bool     // Final resolved injection mode. True uses typed input instead of bracketed paste.
 	BeadsEnabled     bool     // When false, skip bead detection (detectBeadClaim, detectCompletion, detectStall).
 	SubmitKey        string   // Key sequence to submit input: "enter" (default) or "ctrl+enter".
@@ -335,7 +285,6 @@ func NewPane(cfg PaneConfig, rows, cols int) (*Pane, error) {
 		dedupEvents:      newDedup(),
 		kittEpoch:        time.Now(),
 		agentType:        agentType,
-		autoApprove:      cfg.AutoApprove,
 		noBracketedPaste: cfg.NoBracketedPaste,
 		submitKey:        submitKey,
 		replayBuf:        NewRingBuf(DefaultRingBufSize),
@@ -376,29 +325,11 @@ func (p *Pane) readLoop() {
 			p.mu.Lock()
 			p.lastOutputTime = time.Now()
 			p.activeRunBytes += int64(n)
-			autoApprove := p.autoApprove
 			p.mu.Unlock()
 
-			// Write to emulator under renderMu. After writing, scan for
-			// permission prompts while we still hold renderMu. This is
-			// event-driven: every PTY read triggers a scan, so prompts
-			// are detected within the same read cycle they arrive
-			// (ini-s306). Approval bytes are written after releasing
-			// renderMu to avoid holding it during ptmx.Write.
-			var approvalBytes []byte
 			p.renderMu.Lock()
 			p.emu.Write(data)
-			if autoApprove {
-				approvalBytes = p.scanPermissionPrompt()
-			}
 			p.renderMu.Unlock()
-
-			if approvalBytes != nil {
-				p.sendMu.Lock()
-				p.ptmx.Write(approvalBytes) //nolint:errcheck
-				p.sendMu.Unlock()
-				p.verifyAutoApprove(approvalBytes)
-			}
 
 			// Re-deliver any sends that were deferred while a modal was open,
 			// now that the latest output is on screen and the modal may have
@@ -796,117 +727,6 @@ func sendSubmitKey(emu *vt.SafeEmulator, key string) {
 	}
 }
 
-// scanPermissionPrompt checks the emulator for a permission prompt and returns
-// the approval bytes to send, or nil if no prompt is detected. Must be called
-// with renderMu held (caller is readLoop, which just wrote to the emulator).
-func (p *Pane) scanPermissionPrompt() []byte {
-	if p.AgentType() == config.AgentTypeOpenCode {
-		return p.scanOpenCodePermissionPrompt()
-	}
-	text := emulatorBottomText(p.emu, codexPermissionScanRows)
-	approvalInput, ok := codexPermissionApprovalInput(text)
-	if !ok {
-		return nil
-	}
-	return approvalInput
-}
-
-// autoApproveVerifyTimeout is how long to wait for meaningful PTY activity
-// after sending an auto-approve keystroke before logging a warning.
-const autoApproveVerifyTimeout = 2500 * time.Millisecond
-
-// autoApproveVerifyMinActivity is the minimum time lastOutputTime must advance
-// past the send moment to count as meaningful activity (filters out echoed
-// keystrokes which update lastOutputTime but represent trivial output).
-const autoApproveVerifyMinActivity = 500 * time.Millisecond
-
-// verifyAutoApprove launches a short-lived goroutine that checks whether
-// meaningful PTY output arrived after sending auto-approve bytes. If not,
-// a warning is logged with the bottom-row emulator content for diagnosis.
-// This is observability only; it never retries or sends additional input.
-func (p *Pane) verifyAutoApprove(approvalBytes []byte) {
-	p.mu.Lock()
-	sendTime := p.lastOutputTime
-	alive := p.alive
-	name := p.name
-	agentType := p.agentType
-	p.mu.Unlock()
-
-	if !alive {
-		return
-	}
-
-	approvalStr := fmt.Sprintf("%q", string(approvalBytes))
-
-	go func() {
-		defer func() { recover() }() //nolint:errcheck
-
-		deadline := time.Now().Add(autoApproveVerifyTimeout)
-		ticker := time.NewTicker(250 * time.Millisecond)
-		defer ticker.Stop()
-
-		for {
-			select {
-			case <-ticker.C:
-				p.mu.Lock()
-				lastOut := p.lastOutputTime
-				stillAlive := p.alive
-				p.mu.Unlock()
-
-				if !stillAlive {
-					return
-				}
-
-				// Meaningful activity: lastOutputTime advanced well past the
-				// send moment (not just a trivial echo of the approval key).
-				if lastOut.Sub(sendTime) >= autoApproveVerifyMinActivity {
-					return
-				}
-
-				if time.Now().After(deadline) {
-					// Timeout: capture bottom-row text for diagnosis.
-					p.renderMu.Lock()
-					bottomText := emulatorBottomText(p.emu, codexPermissionScanRows)
-					p.renderMu.Unlock()
-
-					LogWarn("auto-approve", "no PTY activity after approval send",
-						"pane", name,
-						"agent_type", agentType,
-						"approval_input", approvalStr,
-						"timeout", autoApproveVerifyTimeout.String(),
-						"bottom_text", strings.TrimSpace(bottomText),
-					)
-					return
-				}
-			}
-		}
-	}()
-}
-
-// scanOpenCodePermissionPrompt checks the emulator for an OpenCode permission
-// prompt and returns the approval bytes. Must be called with renderMu held.
-func (p *Pane) scanOpenCodePermissionPrompt() []byte {
-	if !p.noBracketedPaste {
-		return nil
-	}
-	selected, ok := detectOpenCodePermissionSelection(p.emu, codexPermissionScanRows)
-	if !ok {
-		return nil
-	}
-	switch selected {
-	case 0:
-		return []byte("\x1b[C\r") // Arrow right + enter for "allow" option.
-	case 1:
-		return []byte("\r") // Enter for persistent option.
-	default:
-		return nil
-	}
-}
-
-type optionStyleMatch struct {
-	style uv.Style
-}
-
 func emulatorBottomText(emu *vt.SafeEmulator, lines int) string {
 	cols := emu.Width()
 	rows := emu.Height()
@@ -923,29 +743,6 @@ func emulatorBottomText(emu *vt.SafeEmulator, lines int) string {
 		buf.WriteByte('\n')
 	}
 	return buf.String()
-}
-
-func codexPermissionApprovalInput(text string) ([]byte, bool) {
-	normalized := strings.ToLower(text)
-	normalized = strings.ReplaceAll(normalized, "’", "'")
-	compacted := compactPromptText(normalized)
-	for _, pattern := range codexPermissionPromptPatterns {
-		if !strings.Contains(compacted, compactPromptText(pattern)) {
-			continue
-		}
-		for _, persistent := range codexPermissionApprovePersistentPatterns {
-			if strings.Contains(compacted, compactPromptText(persistent)) {
-				return []byte("p"), true
-			}
-		}
-		for _, proceed := range codexPermissionApproveProceedPatterns {
-			if strings.Contains(compacted, compactPromptText(proceed)) {
-				return []byte("\r"), true
-			}
-		}
-		return nil, false
-	}
-	return nil, false
 }
 
 func isCodexReadyPrompt(text string) bool {
@@ -1001,134 +798,6 @@ func compactPromptText(text string) string {
 		}
 		return r
 	}, text)
-}
-
-func cellContentAt(emu *vt.SafeEmulator, row int) ([]*uv.Cell, string) {
-	cols := emu.Width()
-	cells := make([]*uv.Cell, cols)
-	var line strings.Builder
-	for col := 0; col < cols; col++ {
-		cell := emu.CellAt(col, row)
-		cells[col] = cell
-		if cell != nil && cell.Content != "" {
-			line.WriteString(cell.Content)
-		} else {
-			line.WriteByte(' ')
-		}
-	}
-	return cells, line.String()
-}
-
-func labelStyleMatch(cells []*uv.Cell, rowText string, labels []string, after int) (optionStyleMatch, int, bool) {
-	lower := strings.ToLower(rowText)
-	for _, label := range labels {
-		idx := strings.Index(lower[after:], strings.ToLower(label))
-		if idx < 0 {
-			continue
-		}
-		start := after + idx
-		end := start + len(label)
-		if end > len(cells) {
-			continue
-		}
-		var style *uv.Style
-		valid := false
-		for i := start; i < end; i++ {
-			cell := cells[i]
-			if cell == nil || strings.TrimSpace(cell.Content) == "" {
-				continue
-			}
-			if style == nil {
-				s := cell.Style
-				style = &s
-				valid = true
-				continue
-			}
-			if !style.Equal(&cell.Style) {
-				valid = false
-				break
-			}
-		}
-		if !valid || style == nil {
-			continue
-		}
-		return optionStyleMatch{style: *style}, end, true
-	}
-	return optionStyleMatch{}, 0, false
-}
-
-func detectOpenCodePermissionSelection(emu *vt.SafeEmulator, lines int) (int, bool) {
-	if !isOpenCodePermissionPrompt(emulatorBottomText(emu, lines)) {
-		return -1, false
-	}
-
-	rows := emu.Height()
-	if lines <= 0 || lines > rows {
-		lines = rows
-	}
-	startRow := rows - lines
-
-	for row := startRow; row < rows; row++ {
-		cells, rowText := cellContentAt(emu, row)
-		allow, next, ok := labelStyleMatch(cells, rowText, opencodeAllowOptionPatterns, 0)
-		if !ok {
-			continue
-		}
-		persistent, next, ok := labelStyleMatch(cells, rowText, opencodePersistentOptionPatterns, next)
-		if !ok {
-			continue
-		}
-		reject, _, ok := labelStyleMatch(cells, rowText, opencodeRejectOptionPatterns, next)
-		if !ok {
-			continue
-		}
-
-		switch {
-		case !allow.style.Equal(&persistent.style) && persistent.style.Equal(&reject.style):
-			return 0, true
-		case !persistent.style.Equal(&allow.style) && allow.style.Equal(&reject.style):
-			return 1, true
-		case !reject.style.Equal(&allow.style) && allow.style.Equal(&persistent.style):
-			return 2, true
-		default:
-			return -1, false
-		}
-	}
-
-	return -1, false
-}
-
-func isOpenCodePermissionPrompt(text string) bool {
-	normalized := strings.ToLower(text)
-	normalized = strings.ReplaceAll(normalized, "’", "'")
-	compacted := compactPromptText(normalized)
-	for _, pattern := range opencodePermissionTitlePatterns {
-		if !strings.Contains(compacted, compactPromptText(pattern)) {
-			return false
-		}
-	}
-
-	order := [][]string{
-		opencodeAllowOptionPatterns,
-		opencodePersistentOptionPatterns,
-		opencodeRejectOptionPatterns,
-	}
-	pos := 0
-	for _, variants := range order {
-		found := -1
-		for _, variant := range variants {
-			idx := strings.Index(compacted[pos:], compactPromptText(strings.ToLower(variant)))
-			if idx >= 0 && (found == -1 || idx < found) {
-				found = idx
-			}
-		}
-		if found < 0 {
-			return false
-		}
-		pos += found + 1
-	}
-
-	return true
 }
 
 func (p *Pane) isCodexReadyForSend() bool {
