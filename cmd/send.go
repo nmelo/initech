@@ -17,13 +17,26 @@ var sendCmd = &cobra.Command{
 	Long: `Injects text into the specified agent's PTY. By default appends Enter
 to execute the text as a command. Use --no-enter to send text without Enter.
 
-For cross-machine addressing, use host:agent format:
+A bare agent name resolves to any agent connected to this TUI, whether
+local or remote — no host prefix required:
+
+  initech send eng1 "status?"
+  initech send eng9 "rebase onto main"
+
+Agents on a connected peer machine are addressed exactly like local ones, so
+the second example reaches eng9 on its peer without naming the host.
+
+Use the qualified host:agent form to name a machine explicitly:
 
   initech send laptop:super "Phase 2 complete"
   initech send workbench:shipper "Release v1.9"
 
 The host name is the peer_name from the remote machine's initech.yaml.
 Run 'initech status' to see all agents and their hosts.
+
+Disambiguation: when the same agent name exists on more than one machine,
+a bare name resolves to the first matching pane, which is not guaranteed to
+be the one you meant. Use host:agent to target a specific machine's agent.
 
 Requires a running initech TUI (connects via INITECH_SOCKET).`,
 	Args: cobra.MinimumNArgs(2),

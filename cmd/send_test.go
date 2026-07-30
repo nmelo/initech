@@ -138,6 +138,50 @@ func TestSendCommand_ErrorPrintsToStderr(t *testing.T) {
 	}
 }
 
+// TestSendCommand_HelpDocumentsBareNameAutoResolve locks the send help text to
+// the routing behavior it describes. GitHub #15 asked for bare-name peer
+// addressing, which findPaneByName has always supported (internal/tui/
+// input_core.go: exact paneKey match, then a bare Name() fallback), and
+// handleIPCSend delivers through PaneView.SendText for local and remote panes
+// alike. The feature only *looked* unimplemented because this help text said
+// "For cross-machine addressing, use host:agent format" and never mentioned
+// that a bare name resolves on its own. These assertions keep the text from
+// regressing to prefix-required, and keep the duplicate-name caveat documented.
+func TestSendCommand_HelpDocumentsBareNameAutoResolve(t *testing.T) {
+	long := sendCmd.Long
+
+	// The bare-name path must be documented as needing no host prefix.
+	for _, want := range []string{
+		"no host prefix required",
+		"local or remote",
+	} {
+		if !strings.Contains(long, want) {
+			t.Errorf("send help does not document bare-name auto-resolve: missing %q", want)
+		}
+	}
+
+	// The one real sharp edge: duplicate agent names across peers resolve to the
+	// first matching pane, so the qualified form is how you target the other one.
+	for _, want := range []string{
+		"more than one machine",
+		"first matching pane",
+	} {
+		if !strings.Contains(long, want) {
+			t.Errorf("send help does not document the duplicate-name caveat: missing %q", want)
+		}
+	}
+
+	// Guard against the original wording, which implied the prefix was mandatory.
+	if strings.Contains(long, "For cross-machine addressing, use host:agent format") {
+		t.Error("send help still implies host:agent is required for cross-machine addressing")
+	}
+
+	// The usage line must keep host optional.
+	if !strings.Contains(sendCmd.Use, "[host:]") {
+		t.Errorf("send usage should mark host optional, got %q", sendCmd.Use)
+	}
+}
+
 func TestSendCommand_NoSocket(t *testing.T) {
 	// Point to a non-existent socket and no config to discover.
 	t.Setenv("INITECH_SOCKET", "")

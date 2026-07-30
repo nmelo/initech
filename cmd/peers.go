@@ -13,7 +13,11 @@ import (
 var peersCmd = &cobra.Command{
 	Use:   "peers",
 	Short: "Show available peers and their agents",
-	Long:  `Lists all connected peers (local and remote) with their agent names. Use host:agent syntax to send messages across machines.`,
+	Long: `Lists all connected peers (local and remote) with their agent names.
+
+A bare agent name is enough to send to any agent listed here, on any machine.
+Use host:agent syntax when the same agent name appears under more than one
+peer and you need to pick which one.`,
 	RunE:  runPeers,
 }
 
