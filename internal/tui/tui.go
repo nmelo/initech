@@ -17,7 +17,6 @@ import (
 	"github.com/nmelo/initech/internal/mcp"
 	"github.com/nmelo/initech/internal/slackchat"
 	"github.com/nmelo/initech/internal/telemetry"
-	"github.com/nmelo/initech/internal/update"
 	"github.com/nmelo/initech/internal/web"
 )
 
@@ -203,9 +202,6 @@ type TUI struct {
 	pressureThreshold int
 	systemMemAvail    int64 // Available system RAM in KB, updated by memory monitor.
 	systemMemTotal    int64 // Total system RAM in KB, queried once at startup.
-
-	// Update notification. Set via runOnMain when background check finds a newer version.
-	updateAvailable string // e.g. "0.24.0". Empty = no update or check not done.
 
 	// Status bar tip cycling.
 	tipIndex    int       // Current index into statusTips.
@@ -476,27 +472,6 @@ func (t *TUI) drainRemotePanes() {
 	}
 }
 
-// checkForUpdate triggers a manual version check (Alt+u). Runs the check
-// in a background goroutine to avoid blocking the main event loop.
-func (t *TUI) checkForUpdate() {
-	t.cmd.error = "Checking for updates..."
-	t.safeGo(func() {
-		info, err := update.CheckForUpdate(context.Background(), t.version)
-		t.runOnMain(func() {
-			if err != nil {
-				t.cmd.error = "Update check failed: " + err.Error()
-				return
-			}
-			if info == nil {
-				t.cmd.error = "Up to date (v" + t.version + ")"
-				return
-			}
-			t.updateAvailable = info.Version
-			t.cmd.error = "v" + info.Version + " available - " + update.UpdateInstruction()
-		})
-	})
-}
-
 // Config controls what agents the TUI launches.
 type Config struct {
 	Agents            []PaneConfig                          // One entry per agent pane.
@@ -509,7 +484,6 @@ type Config struct {
 	PressureThreshold int                                   // RSS percentage threshold (0 uses default 85).
 	PaneConfigBuilder func(name string) (PaneConfig, error) // Optional factory for hot-add. Nil disables add command.
 	Project           *config.Project                       // Full project config. Used for remote peer connections.
-	UpdateResult      <-chan string                         // Receives newer version string from background check. Nil = no check.
 	WebPort           int                                   // Port for the web companion server. 0 = disabled.
 	WebhookURL        string                                // HTTP endpoint for agent event POSTs. Empty = disabled.
 	SlackAppToken     string                                // Slack app-level token for Socket Mode. Empty = disabled.
@@ -695,14 +669,6 @@ func Run(cfg Config) error {
 				"agents_started":  len(t.panes),
 			})
 			t.telemetry.Shutdown()
-		}
-	}()
-
-	// Show update notification on stderr after TUI exits.
-	defer func() {
-		if t.updateAvailable != "" {
-			fmt.Fprintf(os.Stderr, "\nA new version of initech is available: v%s -> v%s\n  Update: %s\n\n",
-				t.version, t.updateAvailable, update.UpdateInstruction())
 		}
 	}()
 
@@ -989,15 +955,6 @@ func Run(cfg Config) error {
 			eventCh <- ev
 		}
 	})
-
-	// Wire background update check result into the TUI.
-	if cfg.UpdateResult != nil {
-		t.safeGo(func() {
-			if ver, ok := <-cfg.UpdateResult; ok && ver != "" {
-				t.runOnMain(func() { t.updateAvailable = ver })
-			}
-		})
-	}
 
 	// Start render watchdog: if no render completes within 10s, dump all
 	// goroutine stacks to crash.log for post-mortem analysis of silent freezes.

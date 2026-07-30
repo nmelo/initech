@@ -131,10 +131,6 @@ func (t *TUI) handleKey(ev *tcell.EventKey) bool {
 					t.openAgentsModal()
 				}
 				return false
-			case 'u':
-				// Manual update check (bypass 24h cache).
-				t.checkForUpdate()
-				return false
 			case 'q':
 				// Open confirmation instead of quitting immediately.
 				// Alt+q is one key away from Alt+z and Alt+s; accidental

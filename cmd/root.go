@@ -3,7 +3,6 @@
 package cmd
 
 import (
-	"context"
 	"fmt"
 	"net"
 	"net/http"
@@ -15,7 +14,6 @@ import (
 	"github.com/nmelo/initech/internal/config"
 	"github.com/nmelo/initech/internal/roles"
 	"github.com/nmelo/initech/internal/tui"
-	"github.com/nmelo/initech/internal/update"
 	"github.com/spf13/cobra"
 )
 
@@ -30,11 +28,6 @@ var (
 	pprofAddr   string
 	webPort     int
 	mcpPort     int
-
-	// updateResult receives the background version check result.
-	// Populated in PersistentPreRun, drained in PersistentPostRun.
-	updateResult chan *update.ReleaseInfo
-	updateCancel context.CancelFunc
 )
 
 var (
@@ -85,52 +78,10 @@ Commands (via ` + "`" + ` modal):
 		if noColor {
 			color.SetEnabled(false)
 		}
-		// Launch background version check (non-blocking, result drained in PostRun).
-		if update.ShouldCheck() && Version != "dev" {
-			ctx, cancel := context.WithCancel(context.Background())
-			updateCancel = cancel
-			ch := make(chan *update.ReleaseInfo, 1)
-			updateResult = ch
-			go func() {
-				info, _ := update.CheckForUpdate(ctx, Version)
-				ch <- info
-			}()
-		}
-		return nil
-	},
-	PersistentPostRunE: func(cmd *cobra.Command, args []string) error {
-		// Cancel the background check if it's still running.
-		if updateCancel != nil {
-			updateCancel()
-		}
-		// Drain the result (non-blocking).
-		if updateResult != nil {
-			select {
-			case info := <-updateResult:
-				if info != nil {
-					latestRelease = info
-				}
-			default:
-			}
-		}
-
-		// Show update notification on stderr for CLI commands.
-		// Skip for: TUI (has its own notification), serve, version.
-		skip := map[string]bool{"initech": true, "serve": true, "version": true}
-		if latestRelease != nil && !skip[cmd.Name()] {
-			if !update.ShouldSuppressNotification(latestRelease.PublishedAt) {
-				fmt.Fprintf(os.Stderr, "\nA new version of initech is available: v%s -> v%s\n  Update: %s\n\n",
-					Version, latestRelease.Version, update.UpdateInstruction())
-			}
-		}
 		return nil
 	},
 	RunE: runTUI,
 }
-
-// latestRelease holds the result of the background version check.
-// Populated by PersistentPostRun, consumed by notification surfaces.
-var latestRelease *update.ReleaseInfo
 
 // Execute runs the root command.
 func Execute() {
@@ -244,21 +195,6 @@ func runTUI(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("no valid role directories found. Run 'initech init' to create them")
 	}
 
-	// Bridge the background update check into the TUI's update notification.
-	var tuiUpdateCh chan string
-	if updateResult != nil {
-		tuiUpdateCh = make(chan string, 1)
-		go func() {
-			if info := <-updateResult; info != nil {
-				latestRelease = info
-				if !update.ShouldSuppressNotification(info.PublishedAt) {
-					tuiUpdateCh <- info.Version
-				}
-			}
-			close(tuiUpdateCh)
-		}()
-	}
-
 	// Resolve auto-suspend: CLI flag overrides config. If the flag was
 	// explicitly set on the command line, it wins. Otherwise, fall back to
 	// the config file value.
@@ -296,7 +232,6 @@ func runTUI(cmd *cobra.Command, args []string) error {
 		AutoSuspend:       enableAutoSuspend,
 		PressureThreshold: proj.Resource.PressureThreshold,
 		Project:           proj,
-		UpdateResult:      tuiUpdateCh,
 		PaneConfigBuilder: buildReloadingPaneConfigBuilder(cfgPath, buildAgentPaneConfig),
 		WebPort:           effectiveWebPort(webPort, proj),
 		WebhookURL:        proj.WebhookURL,

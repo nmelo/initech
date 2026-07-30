@@ -397,11 +397,6 @@ func (t *TUI) renderHints() {
 		}
 	}
 
-	// Update available.
-	if t.updateAvailable != "" {
-		b.addRight("v"+t.updateAvailable+" available", b.barStyle.Foreground(tcell.ColorYellow))
-	}
-
 	// --- System state ---
 
 	// Battery. "Bat" prefix makes the meaning unambiguous without needing a
