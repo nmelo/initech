@@ -64,8 +64,17 @@ func (t *TUI) render() {
 		LogDebug("render", "pane done", "frame", t.renderCount, "idx", i, "name", pr.Pane.Name())
 	}
 
-	// Draw dividers from the render plan.
-	divStyle := tcell.StyleDefault.Foreground(tcell.ColorBlack)
+	// Draw dividers from the render plan. Foreground only, no explicit
+	// background: ColorGray (true middle gray, 0x808080) is theme-neutral,
+	// giving the line real, roughly balanced contrast against both a dark
+	// and a light terminal default without needing to detect either
+	// (tcell/this codebase does not, and cannot reliably across terminals).
+	// A black foreground with no background resets to the terminal's own
+	// default, which read as blank space on a dark terminal -- failing
+	// ini-czi's own AC that dividers remain visible (ini-6o3, qa7's ANSI
+	// capture: ESC[30m then ESC[49m). The divider column has no pane
+	// content or running-pane tint (ini-z9a3) to fight, post-ini-czi.
+	divStyle := tcell.StyleDefault.Foreground(tcell.ColorGray)
 	for _, d := range t.plan.Dividers {
 		if d.Vertical {
 			for y := d.Y; y < d.Y+d.Len; y++ {
