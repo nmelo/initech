@@ -166,14 +166,87 @@ func TestDevBuildGuard_ReleaseVersionIsNotGated(t *testing.T) {
 	}
 }
 
+// TestDevBuildGuard_DoesNotGateReadOnlyActions previously set INITECH_SOCKET
+// and expected "status" to use it. That was wrong: status.go's runStatus
+// calls discoverSocket() directly and never reads INITECH_SOCKET at all
+// (unlike send/interrupt/bead/etc., which go through the shared ipcCall
+// wrapper) -- so the env var was silently ignored and discoverSocket() walked
+// up from the test binary's REAL working directory instead. In this repo
+// that reaches the actual shared workspace's real initech.yaml and, if a
+// live TUI happens to be running, dials its REAL socket -- an uncontrolled
+// test dependency on live infrastructure, structurally the same class of
+// hazard as ini-grg3 itself, just triggered by `go test` instead of a manual
+// CLI invocation. When no live TUI is reachable there, the dial fails as
+// stale and ini-0fvf's classifier (correctly) deletes that socket file,
+// which is what qa2 observed as "session 'qa-approve' is not running (stale
+// socket removed)" -- a real, uncontrolled project this test had no business
+// touching, discovered via an untethered cwd walk, not a fixture.
+//
+// Fixed by properly isolating status's ACTUAL resolution path: chdir into a
+// dedicated temp project with its own initech.yaml and a real listening
+// socket, so discoverSocket() finds THIS controlled fixture rather than
+// whatever the real cwd happens to reach. The temp dir is created under
+// /tmp directly (not t.TempDir(), which uses the long $TMPDIR on macOS) to
+// keep the resulting socket path under the ~104-byte unix-socket sun_path
+// limit -- exceeding it yields EINVAL, which ini-0fvf correctly classifies
+// as stale and removes, an unrelated failure mode this test must not
+// reintroduce by using a long path (mirrors startFakeIPC's own documented
+// reason for using /tmp).
+//
+// The ini-0fvf REMOVAL behavior itself is not changed here, deliberately:
+// discoverSocket's stale-socket cleanup is a property of discovery, not of
+// which command triggered it, and it is already gated to fire only on a
+// definite no-listener dial error (ECONNREFUSED/ENOENT/EINVAL), never on a
+// timeout that could indicate a live-but-busy session. A read-only command
+// finding and cleaning up a genuinely dead socket matches ini-db1's original
+// intent; the defect was this test's isolation, not that behavior.
 func TestDevBuildGuard_DoesNotGateReadOnlyActions(t *testing.T) {
 	skipWindows(t)
 	resetDevBuildGuardState(t)
 	Version = "dev"
 
+	dir, err := os.MkdirTemp("/tmp", "initech-grg3-ro-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(dir) })
+
+	cfg := fmt.Sprintf("project: test\nroot: %s\nroles:\n  - eng1\n", dir)
+	if err := os.WriteFile(filepath.Join(dir, "initech.yaml"), []byte(cfg), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, ".initech"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	sockFile := filepath.Join(dir, ".initech", "initech.sock")
+	ln, err := net.Listen("unix", sockFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+
 	panes := `[{"name":"eng1","activity":"idle","alive":true}]`
-	sockPath := startFakeIPC(t, tui.IPCResponse{OK: true, Data: panes})
-	t.Setenv("INITECH_SOCKET", sockPath)
+	go func() {
+		for {
+			conn, aerr := ln.Accept()
+			if aerr != nil {
+				return
+			}
+			data, _ := json.Marshal(tui.IPCResponse{OK: true, Data: panes})
+			conn.Write(data)
+			conn.Write([]byte("\n"))
+			conn.Close()
+		}
+	}()
+
+	old, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chdir(old) })
 
 	var stdout, stderr bytes.Buffer
 	rootCmd.SetOut(&stdout)
