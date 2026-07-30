@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"testing"
 
+	"github.com/nmelo/initech/internal/color"
 	"github.com/nmelo/initech/internal/tui"
 )
 
@@ -16,6 +17,48 @@ func skipWindows(t *testing.T) {
 	t.Helper()
 	if runtime.GOOS == "windows" {
 		t.Skip("test uses Unix-specific features (sockets, /tmp, /bin/sh)")
+	}
+}
+
+func disableColor(t *testing.T) func() {
+	t.Helper()
+	prev := color.Enabled()
+	color.SetEnabled(false)
+	return func() {
+		color.SetEnabled(prev)
+	}
+}
+
+// writeBasicConfig writes a minimal single-role initech.yaml for tests that
+// only need config.Discover/Load to succeed.
+func writeBasicConfig(t *testing.T, dir, project string) {
+	t.Helper()
+	cfg := "project: " + project + "\nroot: " + dir + "\nroles:\n  - eng1\n"
+	if err := os.WriteFile(filepath.Join(dir, "initech.yaml"), []byte(cfg), 0o644); err != nil {
+		t.Fatalf("WriteFile initech.yaml: %v", err)
+	}
+}
+
+func writeExecutable(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(content), 0o755); err != nil {
+		t.Fatalf("WriteFile %s: %v", path, err)
+	}
+}
+
+func chdirForTest(t *testing.T, dir string) func() {
+	t.Helper()
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Getwd: %v", err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("Chdir(%s): %v", dir, err)
+	}
+	return func() {
+		if err := os.Chdir(wd); err != nil {
+			t.Fatalf("restore Chdir(%s): %v", wd, err)
+		}
 	}
 }
 

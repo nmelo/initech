@@ -18,7 +18,7 @@ func TestAllCommandsRegistered(t *testing.T) {
 		"version": true, "init": true,
 		"send": true, "peek": true, "status": true,
 		"stop": true, "start": true, "restart": true,
-		"down": true, "standup": true, "patrol": true,
+		"down": true, "patrol": true,
 		"bead": true, "add": true, "remove": true,
 	}
 
@@ -387,44 +387,6 @@ func TestGetBeadAssignments_JSONLines(t *testing.T) {
 	result := getBeadAssignments(r)
 	if len(result) != 2 {
 		t.Errorf("expected 2 assignments, got %d", len(result))
-	}
-}
-
-// ── queryBeads ──────────────────────────────────────────────────────
-
-func TestQueryBeads_JSONArray(t *testing.T) {
-	beads := []standupBead{
-		{ID: "ini-c.1", Title: "Feature"},
-		{ID: "ini-c.2", Title: "Bug"},
-	}
-	data, _ := json.Marshal(beads)
-	r := &iexec.FakeRunner{Output: string(data)}
-
-	got := queryBeads(r, "list", "--json")
-	if len(got) != 2 {
-		t.Fatalf("got %d beads, want 2", len(got))
-	}
-	if got[0].ID != "ini-c.1" {
-		t.Errorf("got[0].ID = %q", got[0].ID)
-	}
-}
-
-func TestQueryBeads_JSONLines(t *testing.T) {
-	lines := `{"id":"ini-d.1","title":"A"}
-{"id":"ini-d.2","title":"B"}`
-	r := &iexec.FakeRunner{Output: lines}
-
-	got := queryBeads(r, "ready", "--json")
-	if len(got) != 2 {
-		t.Fatalf("got %d beads, want 2", len(got))
-	}
-}
-
-func TestQueryBeads_Error(t *testing.T) {
-	r := &iexec.FakeRunner{Err: fmt.Errorf("bd not found")}
-	got := queryBeads(r, "list")
-	if got != nil {
-		t.Error("should return nil on error")
 	}
 }
 

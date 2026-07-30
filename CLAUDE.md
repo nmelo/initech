@@ -15,7 +15,7 @@ Initech is a TUI-based multi-agent orchestrator. It manages PTY-based agent pane
 ## Package Architecture
 
 ```
-cmd/             # Cobra commands (init, up, status, down, stop, start, restart, standup, send, peek)
+cmd/             # Cobra commands (init, up, status, down, stop, start, restart, send, peek)
 internal/
   exec/          # Runner interface + DefaultRunner + FakeRunner
   config/        # initech.yaml types, Load, Discover, Validate

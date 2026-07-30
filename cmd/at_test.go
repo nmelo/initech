@@ -94,7 +94,7 @@ func TestRunAt_ScheduleModeSendsCustomIPC(t *testing.T) {
 	defer restoreFlags()
 
 	projectDir := shortProjectDir(t)
-	writeStandupConfig(t, projectDir, "demo")
+	writeBasicConfig(t, projectDir, "demo")
 	restoreWD := chdirForTest(t, projectDir)
 	defer restoreWD()
 
@@ -151,7 +151,7 @@ func TestRunAtList_PrintsTimersAndTruncatesMessage(t *testing.T) {
 	defer restoreFlags()
 
 	projectDir := shortProjectDir(t)
-	writeStandupConfig(t, projectDir, "demo")
+	writeBasicConfig(t, projectDir, "demo")
 	restoreWD := chdirForTest(t, projectDir)
 	defer restoreWD()
 
@@ -208,7 +208,7 @@ func TestRunAtList_PrintsEmptyState(t *testing.T) {
 	defer restoreFlags()
 
 	projectDir := shortProjectDir(t)
-	writeStandupConfig(t, projectDir, "demo")
+	writeBasicConfig(t, projectDir, "demo")
 	restoreWD := chdirForTest(t, projectDir)
 	defer restoreWD()
 
@@ -236,7 +236,7 @@ func TestRunAtCancel_PrintsCanceledID(t *testing.T) {
 	defer restoreFlags()
 
 	projectDir := shortProjectDir(t)
-	writeStandupConfig(t, projectDir, "demo")
+	writeBasicConfig(t, projectDir, "demo")
 	restoreWD := chdirForTest(t, projectDir)
 	defer restoreWD()
 
@@ -261,7 +261,7 @@ func TestRunAtCancel_PrintsCanceledID(t *testing.T) {
 func TestIPCCallCustom_InvalidResponse(t *testing.T) {
 	skipWindows(t)
 	projectDir := shortProjectDir(t)
-	writeStandupConfig(t, projectDir, "demo")
+	writeBasicConfig(t, projectDir, "demo")
 	restoreWD := chdirForTest(t, projectDir)
 	defer restoreWD()
 
@@ -280,7 +280,7 @@ func TestIPCCallCustom_InvalidResponse(t *testing.T) {
 func TestIPCCallCustom_NoResponse(t *testing.T) {
 	skipWindows(t)
 	projectDir := shortProjectDir(t)
-	writeStandupConfig(t, projectDir, "demo")
+	writeBasicConfig(t, projectDir, "demo")
 	restoreWD := chdirForTest(t, projectDir)
 	defer restoreWD()
 

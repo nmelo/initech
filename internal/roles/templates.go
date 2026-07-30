@@ -228,7 +228,6 @@ Use ` + "`" + `initech send` + "`" + ` and ` + "`" + `initech peek` + "`" + ` fo
 **Visibility:**
 - ` + "`" + `initech status` + "`" + ` - agent table with activity and beads
 - ` + "`" + `initech patrol` + "`" + ` - bulk peek all agents
-- ` + "`" + `initech standup` + "`" + ` - generate morning standup from beads
 - ` + "`" + `initech peers` + "`" + ` - show available remote peers and their agents
 - ` + "`" + `initech whoami` + "`" + ` - show this agent's identity and working directory
 

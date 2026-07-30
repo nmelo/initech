@@ -22,7 +22,7 @@ func TestRunStatus_LocalSessionWithoutHostColumn(t *testing.T) {
 	defer restoreColor()
 
 	projectDir := shortProjectDir(t)
-	writeStandupConfig(t, projectDir, "demo")
+	writeBasicConfig(t, projectDir, "demo")
 	restoreWD := chdirForTest(t, projectDir)
 	defer restoreWD()
 
@@ -105,7 +105,7 @@ func TestRunStatus_RemotesRenderHostColumn(t *testing.T) {
 	defer restoreColor()
 
 	projectDir := shortProjectDir(t)
-	writeStandupConfig(t, projectDir, "demo")
+	writeBasicConfig(t, projectDir, "demo")
 	restoreWD := chdirForTest(t, projectDir)
 	defer restoreWD()
 
@@ -163,7 +163,7 @@ func TestRunStatus_PeersMergeRemoteAgents(t *testing.T) {
 	defer restoreColor()
 
 	projectDir := shortProjectDir(t)
-	writeStandupConfig(t, projectDir, "demo")
+	writeBasicConfig(t, projectDir, "demo")
 	restoreWD := chdirForTest(t, projectDir)
 	defer restoreWD()
 
@@ -273,7 +273,7 @@ func TestRunStatus_ParsePaneListError(t *testing.T) {
 		t.Skip("windows: writeExecutable installs a #!/bin/sh fake bd + startATIPCServer uses unix-domain socket")
 	}
 	projectDir := shortProjectDir(t)
-	writeStandupConfig(t, projectDir, "demo")
+	writeBasicConfig(t, projectDir, "demo")
 	restoreWD := chdirForTest(t, projectDir)
 	defer restoreWD()
 
@@ -305,7 +305,7 @@ func TestRunStatus_IPCError(t *testing.T) {
 		t.Skip("windows: writeExecutable installs a #!/bin/sh fake bd + startATIPCServer uses unix-domain socket")
 	}
 	projectDir := shortProjectDir(t)
-	writeStandupConfig(t, projectDir, "demo")
+	writeBasicConfig(t, projectDir, "demo")
 	restoreWD := chdirForTest(t, projectDir)
 	defer restoreWD()
 

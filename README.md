@@ -64,7 +64,6 @@ initech status                   # Agent table: activity, bead, alive
 initech restart <role>           # Kill and respawn an agent
 initech serve                    # Run headless daemon for remote connections
 initech peers                    # List connected machines and their agents
-initech standup                  # Morning standup from beads
 ```
 
 Full CLI reference, configuration options, role catalog, and cross-machine setup: **[Operator Guide](docs/operator-guide.md)**
