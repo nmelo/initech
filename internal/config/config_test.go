@@ -3,11 +3,10 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
-
-func boolPtr(v bool) *bool { return &v }
 
 const validYAML = `project: testproject
 root: /tmp/testproject
@@ -324,9 +323,19 @@ role_overrides:
 	}
 }
 
-func TestLoad_AutoApproveOverride(t *testing.T) {
-	dir := t.TempDir()
-	yaml := `project: test
+// TestLoad_RemovedAutoApproveKeyIsIgnored is the regression test for
+// ini-1g0n: auto_approve was a config knob whose only production consumer
+// discarded the resolved value (cmd/root.go), so setting it produced every
+// outward sign of working (no error, valid config) with zero effect. The
+// fix removes the field entirely rather than restoring a discarded
+// consumer, since the feature it once controlled (permission-prompt
+// auto-approval) was deliberately deleted in ini-mgz7.10. This asserts the
+// resulting contract: a leftover auto_approve key in an old initech.yaml is
+// silently ignored (Load succeeds, not rejected) and has no effect on the
+// rest of the parsed role override, rather than the knob being resurrected
+// or made to error.
+func TestLoad_RemovedAutoApproveKeyIsIgnored(t *testing.T) {
+	withKey := `project: test
 root: /tmp/test
 roles:
   - super
@@ -334,21 +343,33 @@ roles:
 role_overrides:
   eng1:
     agent_type: opencode
-    auto_approve: false
+    auto_approve: true
 `
-	path := writeConfig(t, dir, yaml)
+	withoutKey := `project: test
+root: /tmp/test
+roles:
+  - super
+  - eng1
+role_overrides:
+  eng1:
+    agent_type: opencode
+`
+	pathWith := writeConfig(t, t.TempDir(), withKey)
+	pathWithout := writeConfig(t, t.TempDir(), withoutKey)
 
-	p, err := Load(path)
+	pWith, err := Load(pathWith)
 	if err != nil {
-		t.Fatalf("Load: %v", err)
+		t.Fatalf("Load with leftover auto_approve key: %v", err)
+	}
+	pWithout, err := Load(pathWithout)
+	if err != nil {
+		t.Fatalf("Load without auto_approve key: %v", err)
 	}
 
-	ov := p.RoleOverrides["eng1"]
-	if ov.AutoApprove == nil {
-		t.Fatal("AutoApprove = nil, want explicit false override")
-	}
-	if *ov.AutoApprove {
-		t.Fatal("AutoApprove = true, want false")
+	ovWith := pWith.RoleOverrides["eng1"]
+	ovWithout := pWithout.RoleOverrides["eng1"]
+	if !reflect.DeepEqual(ovWith, ovWithout) {
+		t.Fatalf("role override differs based on the removed auto_approve key: with=%+v without=%+v", ovWith, ovWithout)
 	}
 }
 
@@ -368,22 +389,18 @@ func TestDefaultAgentTypeBehavior(t *testing.T) {
 	tests := []struct {
 		name             string
 		agentType        string
-		autoApprove      bool
 		noBracketedPaste bool
 		submitKey        string
 	}{
-		{name: "claude-default", agentType: "", autoApprove: false, noBracketedPaste: false, submitKey: ""},
-		{name: "claude", agentType: AgentTypeClaudeCode, autoApprove: false, noBracketedPaste: false, submitKey: ""},
-		{name: "codex", agentType: AgentTypeCodex, autoApprove: true, noBracketedPaste: true, submitKey: "enter"},
-		{name: "opencode", agentType: AgentTypeOpenCode, autoApprove: true, noBracketedPaste: true, submitKey: "enter"},
-		{name: "generic", agentType: AgentTypeGeneric, autoApprove: false, noBracketedPaste: true, submitKey: "enter"},
+		{name: "claude-default", agentType: "", noBracketedPaste: false, submitKey: ""},
+		{name: "claude", agentType: AgentTypeClaudeCode, noBracketedPaste: false, submitKey: ""},
+		{name: "codex", agentType: AgentTypeCodex, noBracketedPaste: true, submitKey: "enter"},
+		{name: "opencode", agentType: AgentTypeOpenCode, noBracketedPaste: true, submitKey: "enter"},
+		{name: "generic", agentType: AgentTypeGeneric, noBracketedPaste: true, submitKey: "enter"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := DefaultAutoApprove(tt.agentType); got != tt.autoApprove {
-				t.Errorf("DefaultAutoApprove(%q) = %v, want %v", tt.agentType, got, tt.autoApprove)
-			}
 			if got := DefaultNoBracketedPaste(tt.agentType); got != tt.noBracketedPaste {
 				t.Errorf("DefaultNoBracketedPaste(%q) = %v, want %v", tt.agentType, got, tt.noBracketedPaste)
 			}
@@ -391,20 +408,6 @@ func TestDefaultAgentTypeBehavior(t *testing.T) {
 				t.Errorf("DefaultSubmitKey(%q) = %q, want %q", tt.agentType, got, tt.submitKey)
 			}
 		})
-	}
-}
-
-func TestValidate_AutoApproveOverride(t *testing.T) {
-	p := &Project{
-		Name:  "test",
-		Root:  "/tmp/test",
-		Roles: []string{"eng1"},
-		RoleOverrides: map[string]RoleOverride{
-			"eng1": {AgentType: AgentTypeOpenCode, AutoApprove: boolPtr(false)},
-		},
-	}
-	if err := Validate(p); err != nil {
-		t.Fatalf("Validate: %v", err)
 	}
 }
 

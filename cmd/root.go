@@ -274,7 +274,7 @@ func buildAgentPaneConfig(roleName string, proj *config.Project) (tui.PaneConfig
 
 	var env []string
 
-	agentType, _, noBracketedPaste, submitKey := resolvePaneBehavior(ov)
+	agentType, noBracketedPaste, submitKey := resolvePaneBehavior(ov)
 
 	return tui.PaneConfig{
 		Name:             roleName,

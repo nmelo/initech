@@ -312,15 +312,11 @@ func TestBuildServeAgentConfig_AgentTypeDefaults(t *testing.T) {
 	}
 }
 
-func TestResolvePaneBehavior_AutoApproveOverride(t *testing.T) {
-	disabled := false
-	enabled := true
-
+func TestResolvePaneBehavior_AgentTypeDefaults(t *testing.T) {
 	tests := []struct {
 		name            string
 		override        config.RoleOverride
 		wantAgentType   string
-		wantAutoApprove bool
 		wantNoBracketed bool
 		wantSubmitKey   string
 	}{
@@ -328,7 +324,6 @@ func TestResolvePaneBehavior_AutoApproveOverride(t *testing.T) {
 			name:            "codex default",
 			override:        config.RoleOverride{AgentType: config.AgentTypeCodex},
 			wantAgentType:   config.AgentTypeCodex,
-			wantAutoApprove: true,
 			wantNoBracketed: true,
 			wantSubmitKey:   "enter",
 		},
@@ -336,36 +331,16 @@ func TestResolvePaneBehavior_AutoApproveOverride(t *testing.T) {
 			name:            "opencode default",
 			override:        config.RoleOverride{AgentType: config.AgentTypeOpenCode},
 			wantAgentType:   config.AgentTypeOpenCode,
-			wantAutoApprove: true,
 			wantNoBracketed: true,
 			wantSubmitKey:   "enter",
-		},
-		{
-			name:            "opencode explicit false",
-			override:        config.RoleOverride{AgentType: config.AgentTypeOpenCode, AutoApprove: &disabled},
-			wantAgentType:   config.AgentTypeOpenCode,
-			wantAutoApprove: false,
-			wantNoBracketed: true,
-			wantSubmitKey:   "enter",
-		},
-		{
-			name:            "claude explicit true",
-			override:        config.RoleOverride{AgentType: config.AgentTypeClaudeCode, AutoApprove: &enabled},
-			wantAgentType:   config.AgentTypeClaudeCode,
-			wantAutoApprove: true,
-			wantNoBracketed: false,
-			wantSubmitKey:   "",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			agentType, autoApprove, noBracketedPaste, submitKey := resolvePaneBehavior(tt.override)
+			agentType, noBracketedPaste, submitKey := resolvePaneBehavior(tt.override)
 			if agentType != tt.wantAgentType {
 				t.Fatalf("agentType = %q, want %q", agentType, tt.wantAgentType)
-			}
-			if autoApprove != tt.wantAutoApprove {
-				t.Fatalf("autoApprove = %v, want %v", autoApprove, tt.wantAutoApprove)
 			}
 			if noBracketedPaste != tt.wantNoBracketed {
 				t.Fatalf("noBracketedPaste = %v, want %v", noBracketedPaste, tt.wantNoBracketed)

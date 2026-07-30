@@ -145,7 +145,6 @@ type RoleOverride struct {
 	AgentType        string   `yaml:"agent_type,omitempty"` // "claude-code" (default), "codex", "opencode", or "generic".
 	Command          []string `yaml:"command,omitempty"`    // Override the agent command entirely (e.g. ["codex"]).
 	ClaudeArgs       []string `yaml:"claude_args,omitempty"`
-	AutoApprove      *bool    `yaml:"auto_approve,omitempty"`       // When true, auto-approve matching permission prompts.
 	NoBracketedPaste bool     `yaml:"no_bracketed_paste,omitempty"` // When true, use the non-bracketed injection path.
 	SubmitKey        string   `yaml:"submit_key,omitempty"`         // "enter" (default) or "ctrl+enter".
 }
@@ -198,18 +197,6 @@ func DefaultSubmitKey(agentType string) string {
 		return "enter"
 	default:
 		return ""
-	}
-}
-
-// DefaultAutoApprove returns the agent-type default for permission prompt
-// auto-approval. Codex and OpenCode default on; all other agent types default
-// off.
-func DefaultAutoApprove(agentType string) bool {
-	switch NormalizeAgentType(agentType) {
-	case AgentTypeCodex, AgentTypeOpenCode:
-		return true
-	default:
-		return false
 	}
 }
 
