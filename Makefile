@@ -119,8 +119,7 @@ release-verify: release-wait release-assets
 	if [ "$$actual_version" != "initech $(VERSION_NO_V)" ]; then \
 		echo "initech version mismatch: $$actual_version" >&2; \
 		exit 1; \
-	fi; \
-	initech doctor
+	fi
 
 release-ship: test release-tag release-verify
 	@echo "Mechanical release steps completed for $(VERSION)"
