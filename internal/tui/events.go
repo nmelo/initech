@@ -34,7 +34,6 @@ const (
 	EventAgentRestarted                      // Agent pane restarted via IPC.
 	EventAgentAdded                          // New agent pane added to session.
 	EventAgentRemoved                        // Agent pane removed from session.
-	EventTimerFired                          // Scheduled timer delivered its message.
 	EventPeerConnected                       // Remote daemon connected.
 	EventPeerDisconnected                    // Remote daemon disconnected.
 	EventLiveSwap                            // Live mode swapped an agent into/out of a slot.
@@ -75,8 +74,6 @@ func (e EventType) String() string {
 		return "added"
 	case EventAgentRemoved:
 		return "removed"
-	case EventTimerFired:
-		return "timer_fired"
 	case EventPeerConnected:
 		return "peer_connected"
 	case EventPeerDisconnected:

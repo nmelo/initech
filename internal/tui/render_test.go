@@ -3,7 +3,6 @@ package tui
 
 import (
 	"fmt"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -367,48 +366,6 @@ func TestReadBattery_Callable(t *testing.T) {
 }
 
 // ── Clock rendering tests ───────────────────────────────────────────
-
-func TestRenderHints_ShowsPending(t *testing.T) {
-	s := tcell.NewSimulationScreen("")
-	s.Init()
-	s.SetSize(120, 24)
-	ts := NewTimerStore(filepath.Join(t.TempDir(), "timers.json"))
-	ts.Add("eng1", "", "test msg", true, time.Now().Add(1*time.Hour))  //nolint:errcheck
-	ts.Add("eng2", "", "another", true, time.Now().Add(2*time.Hour)) //nolint:errcheck
-	tui := &TUI{screen: s, batteryPercent: -1, timers: ts}
-	tui.renderHints()
-
-	sw, sh := s.Size()
-	y := sh - 1
-	var line string
-	for x := 0; x < sw; x++ {
-		ch, _, _ := s.Get(x, y)
-		line += ch
-	}
-	if !containsStr(line, "2 pending") {
-		t.Errorf("status bar should show '2 pending', got: %q", line)
-	}
-}
-
-func TestRenderHints_NoPendingWhenEmpty(t *testing.T) {
-	s := tcell.NewSimulationScreen("")
-	s.Init()
-	s.SetSize(120, 24)
-	ts := NewTimerStore(filepath.Join(t.TempDir(), "timers.json"))
-	tui := &TUI{screen: s, batteryPercent: -1, timers: ts}
-	tui.renderHints()
-
-	sw, sh := s.Size()
-	y := sh - 1
-	var line string
-	for x := 0; x < sw; x++ {
-		ch, _, _ := s.Get(x, y)
-		line += ch
-	}
-	if containsStr(line, "pending") {
-		t.Errorf("status bar should NOT show 'pending' when no timers, got: %q", line)
-	}
-}
 
 func TestRenderHints_ShowsClock(t *testing.T) {
 	s := tcell.NewSimulationScreen("")

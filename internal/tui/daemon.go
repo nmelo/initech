@@ -53,7 +53,6 @@ type Daemon struct {
 	project    *config.Project
 	listener   net.Listener
 	version    string
-	timers     *TimerStore
 
 	// Active client sessions for graceful shutdown.
 	sessionsMu sync.Mutex
@@ -122,7 +121,7 @@ type ErrorMsg struct {
 // ControlCmd is a command sent on the control channel after handshake.
 type ControlCmd struct {
 	ID     string `json:"id,omitempty"` // Request ID for response correlation.
-	Action string `json:"action"`       // "send", "peek", "resize", "schedule", etc.
+	Action string `json:"action"`       // "send", "peek", "resize", etc.
 	Target string `json:"target"`       // Agent name.
 	Host   string `json:"host,omitempty"`
 	Text   string `json:"text,omitempty"`
@@ -130,7 +129,6 @@ type ControlCmd struct {
 	Lines  int    `json:"lines,omitempty"`
 	Rows   int    `json:"rows,omitempty"`
 	Cols   int    `json:"cols,omitempty"`
-	FireAt string `json:"fire_at,omitempty"` // RFC3339 for schedule command.
 }
 
 // ControlResp is the response to a control command. It also carries unsolicited
@@ -173,7 +171,6 @@ func RunDaemon(cfg DaemonConfig) error {
 		ringBufs:   make(map[string]*RingBuf),
 		multiSinks: make(map[string]*MultiSink),
 		ownership:  newAgentOwnership(),
-		timers:     NewTimerStore(filepath.Join(cfg.Project.Root, ".initech", "timers.json")),
 	}
 
 	// Start local IPC socket so agents can use 'initech send/peek'.
@@ -299,13 +296,6 @@ func RunDaemon(cfg DaemonConfig) error {
 
 	fmt.Fprintln(os.Stdout, "\nWaiting for connections... (Ctrl+C to stop)")
 
-	// Fire any overdue timers from a previous session.
-	d.fireTimers()
-
-	// 1-second ticker for timer execution.
-	timerTicker := time.NewTicker(1 * time.Second)
-	defer timerTicker.Stop()
-
 	for {
 		select {
 		case sig := <-sigCh:
@@ -323,8 +313,6 @@ func RunDaemon(cfg DaemonConfig) error {
 		case conn := <-connCh:
 			LogInfo("daemon", "client connected", "remote", conn.RemoteAddr().String())
 			go d.handleConnection(conn)
-		case <-timerTicker.C:
-			d.fireTimers()
 		}
 	}
 }
@@ -472,10 +460,6 @@ func (d *Daemon) HandleSend(conn net.Conn, req IPCRequest) {
 	conn.SetReadDeadline(time.Time{})
 	p.SendText(req.Text, req.Enter)
 	writeIPCResponse(conn, IPCResponse{OK: true})
-}
-
-func (d *Daemon) Timers() *TimerStore {
-	return d.timers
 }
 
 func (d *Daemon) NotifyConfig() (webhookURL, project string) {
@@ -866,62 +850,6 @@ func (d *Daemon) handleControlStream(ctrl net.Conn, scanner *bufio.Scanner, peer
 				return
 			}
 
-		case "schedule":
-			if d.timers == nil {
-				if !respond(cmd.ID, ControlResp{Error: "timer store not initialized"}) {
-					return
-				}
-				continue
-			}
-			fireAt, err := time.Parse(time.RFC3339, cmd.FireAt)
-			if err != nil {
-				if !respond(cmd.ID, ControlResp{Error: fmt.Sprintf("invalid fire_at: %v", err)}) {
-					return
-				}
-				continue
-			}
-			timer, addErr := d.timers.Add(cmd.Target, cmd.Host, cmd.Text, cmd.Enter, fireAt)
-			if addErr != nil {
-				if !respond(cmd.ID, ControlResp{Error: addErr.Error()}) {
-					return
-				}
-				continue
-			}
-			if !respond(cmd.ID, ControlResp{OK: true, Data: timer.ID}) {
-				return
-			}
-
-		case "list_timers":
-			if d.timers == nil {
-				if !respond(cmd.ID, ControlResp{OK: true, Data: "[]"}) {
-					return
-				}
-				continue
-			}
-			timers := d.timers.List()
-			tdata, _ := json.Marshal(timers)
-			if !respond(cmd.ID, ControlResp{OK: true, Data: string(tdata)}) {
-				return
-			}
-
-		case "cancel_timer":
-			if d.timers == nil {
-				if !respond(cmd.ID, ControlResp{Error: "timer store not initialized"}) {
-					return
-				}
-				continue
-			}
-			timer, err := d.timers.Cancel(cmd.Text)
-			if err != nil {
-				if !respond(cmd.ID, ControlResp{Error: err.Error()}) {
-					return
-				}
-				continue
-			}
-			if !respond(cmd.ID, ControlResp{OK: true, Data: timer.ID}) {
-				return
-			}
-
 		case "ping":
 			respond(cmd.ID, ControlResp{OK: true, Data: "pong"})
 
@@ -990,47 +918,6 @@ func (d *Daemon) multiSinkFor(name string) *MultiSink {
 	d.panesMu.Lock()
 	defer d.panesMu.Unlock()
 	return d.multiSinks[name]
-}
-
-// fireTimers checks for due timers and delivers them to local agents.
-func (d *Daemon) fireTimers() {
-	if d.timers == nil {
-		return
-	}
-	due, err := d.timers.FireDue(time.Now())
-	if err != nil {
-		LogWarn("timer", "persistence error after firing timers",
-			"err", err, "count", len(due))
-	}
-	for _, timer := range due {
-		d.fireScheduledSend(timer)
-	}
-}
-
-func (d *Daemon) fireScheduledSend(timer Timer) {
-	delay := time.Since(timer.FireAt)
-	if delay > time.Second {
-		LogInfo("timer", "firing overdue",
-			"id", timer.ID, "target", timer.Target,
-			"scheduled", timer.FireAt.Format(time.RFC3339),
-			"delay", delay.Truncate(time.Second).String())
-	} else {
-		LogInfo("timer", "firing", "id", timer.ID, "target", timer.Target)
-	}
-
-	p := d.findPane(timer.Target)
-	if p == nil {
-		LogWarn("timer", "agent not found, message not delivered",
-			"id", timer.ID, "target", timer.Target)
-		return
-	}
-	if !p.IsAlive() {
-		LogWarn("timer", "agent is dead, message not delivered",
-			"id", timer.ID, "target", timer.Target)
-		return
-	}
-	p.SendText(timer.Text, timer.Enter)
-	LogInfo("timer", "delivered", "id", timer.ID, "target", timer.Target)
 }
 
 // deliverForwardResp checks if a JSON line from the control stream is a

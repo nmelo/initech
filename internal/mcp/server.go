@@ -59,11 +59,6 @@ type PaneHost interface {
 	// hard=true sends Ctrl+C (0x03), false sends Escape (0x1B).
 	InterruptAgent(name string, hard bool) error
 
-	// ScheduleSend schedules a message to be sent to an agent after a delay.
-	// The delay is a Go duration string (e.g. "5m", "30s"). Returns the
-	// timer ID on success.
-	ScheduleSend(agent, message, delay string) (string, error)
-
 	// AllPanes returns all panes. The bool is false if the host is shutting down.
 	AllPanes() ([]PaneHandle, bool)
 

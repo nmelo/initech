@@ -2,7 +2,6 @@ package tui
 
 import (
 	"fmt"
-	"time"
 
 	"github.com/nmelo/initech/internal/mcp"
 )
@@ -176,19 +175,6 @@ func (h *tuiMCPHost) SetBead(agent, beadID string) error {
 		return fmt.Errorf("TUI shutting down")
 	}
 	return err
-}
-
-func (h *tuiMCPHost) ScheduleSend(agent, message, delay string) (string, error) {
-	dur, err := time.ParseDuration(delay)
-	if err != nil {
-		return "", fmt.Errorf("invalid delay %q: %w", delay, err)
-	}
-	fireAt := time.Now().Add(dur)
-	timer, err := h.t.timers.Add(agent, "", message, true, fireAt)
-	if err != nil {
-		return "", err
-	}
-	return timer.ID, nil
 }
 
 // mcpPaneHandle wraps a *Pane to implement mcp.PaneHandle.

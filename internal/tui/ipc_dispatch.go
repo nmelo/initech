@@ -38,9 +38,6 @@ type IPCHost interface {
 	// Daemon: client routing, auto-forward).
 	HandleSend(conn net.Conn, req IPCRequest)
 
-	// Timers returns the timer store, or nil if timers are not available.
-	Timers() *TimerStore
-
 	// NotifyConfig returns the webhook URL and project name for posting
 	// notifications. Returns empty strings if webhook is not configured.
 	NotifyConfig() (webhookURL, project string)
@@ -52,8 +49,8 @@ type IPCHost interface {
 }
 
 // dispatchIPC routes an IPC request to the appropriate handler. Shared actions
-// (peek, list, schedule, list_timers, cancel_timer) are handled here. Send is
-// delegated to h.HandleSend. Anything else goes to h.HandleExtended.
+// (peek, list, notify) are handled here. Send is delegated to h.HandleSend.
+// Anything else goes to h.HandleExtended.
 func dispatchIPC(h IPCHost, conn net.Conn, req IPCRequest, rawJSON []byte) {
 	switch req.Action {
 	case "send":
@@ -85,13 +82,6 @@ func dispatchIPC(h IPCHost, conn net.Conn, req IPCRequest, rawJSON []byte) {
 		data, _ := json.Marshal(panes)
 		writeIPCResponse(conn, IPCResponse{OK: true, Data: string(data)})
 
-	case "schedule":
-		dispatchSchedule(h, conn, rawJSON)
-	case "list_timers":
-		dispatchListTimers(h, conn)
-	case "cancel_timer":
-		dispatchCancelTimer(h, conn, req)
-
 	case "notify":
 		dispatchNotify(h, conn, req)
 
@@ -100,65 +90,6 @@ func dispatchIPC(h IPCHost, conn net.Conn, req IPCRequest, rawJSON []byte) {
 			writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("unknown action %q", req.Action)})
 		}
 	}
-}
-
-func dispatchSchedule(h IPCHost, conn net.Conn, rawJSON []byte) {
-	var req struct {
-		Target string `json:"target"`
-		Host   string `json:"host"`
-		Text   string `json:"text"`
-		Enter  bool   `json:"enter"`
-		FireAt string `json:"fire_at"`
-	}
-	if err := json.Unmarshal(rawJSON, &req); err != nil {
-		writeIPCResponse(conn, IPCResponse{Error: "invalid schedule request"})
-		return
-	}
-	fireAt, err := time.Parse(time.RFC3339, req.FireAt)
-	if err != nil {
-		writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("invalid fire_at: %v", err)})
-		return
-	}
-	ts := h.Timers()
-	if ts == nil {
-		writeIPCResponse(conn, IPCResponse{Error: "timer store not initialized"})
-		return
-	}
-	timer, err := ts.Add(req.Target, req.Host, req.Text, req.Enter, fireAt)
-	if err != nil {
-		writeIPCResponse(conn, IPCResponse{Error: err.Error()})
-		return
-	}
-	writeIPCResponse(conn, IPCResponse{OK: true, Data: timer.ID})
-}
-
-func dispatchListTimers(h IPCHost, conn net.Conn) {
-	ts := h.Timers()
-	if ts == nil {
-		writeIPCResponse(conn, IPCResponse{OK: true, Data: "[]"})
-		return
-	}
-	timers := ts.List()
-	data, _ := json.Marshal(timers)
-	writeIPCResponse(conn, IPCResponse{OK: true, Data: string(data)})
-}
-
-func dispatchCancelTimer(h IPCHost, conn net.Conn, req IPCRequest) {
-	ts := h.Timers()
-	if ts == nil {
-		writeIPCResponse(conn, IPCResponse{Error: "timer store not initialized"})
-		return
-	}
-	timer, err := ts.Cancel(req.Text)
-	if err != nil {
-		writeIPCResponse(conn, IPCResponse{Error: err.Error()})
-		return
-	}
-	target := timer.Target
-	if timer.Host != "" {
-		target = timer.Host + ":" + target
-	}
-	writeIPCResponse(conn, IPCResponse{OK: true, Data: fmt.Sprintf("%s (%s at %s)", timer.ID, target, timer.FireAt.Local().Format("15:04"))})
 }
 
 // dispatchNotify handles the "notify" IPC action. It reads the message from

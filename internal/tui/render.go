@@ -390,13 +390,6 @@ func (t *TUI) renderHints() {
 		}
 	}
 
-	// Pending timers.
-	if t.timers != nil {
-		if pending := t.timers.Pending(); pending > 0 {
-			b.addRight(fmt.Sprintf("%d pending", pending), b.barStyle)
-		}
-	}
-
 	// --- System state ---
 
 	// Battery. "Bat" prefix makes the meaning unambiguous without needing a

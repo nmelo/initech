@@ -7,7 +7,6 @@ import (
 	"os"
 	"os/exec"
 	"strings"
-	"time"
 
 	gomcp "github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -65,19 +64,6 @@ type RemoveInput struct {
 // RemoveOutput is the output schema for the initech_remove tool.
 type RemoveOutput struct {
 	Status string `json:"status"`
-}
-
-// AtInput is the input schema for the initech_at tool.
-type AtInput struct {
-	Agent   string `json:"agent" jsonschema:"target agent name (e.g. eng1)"`
-	Message string `json:"message" jsonschema:"text to send to the agent terminal"`
-	Delay   string `json:"delay" jsonschema:"delay before sending, as a Go duration (e.g. 5m, 30s, 1h)"`
-}
-
-// AtOutput is the output schema for the initech_at tool.
-type AtOutput struct {
-	Status  string `json:"status"`
-	TimerID string `json:"timer_id"`
 }
 
 // PatrolInput is the input schema for the initech_patrol tool.
@@ -195,13 +181,6 @@ func registerTools(s *gomcp.Server, host PaneHost) {
 		Description: "Remove an agent pane from the running session. Cannot remove the last agent.",
 	}, func(_ context.Context, _ *gomcp.CallToolRequest, input RemoveInput) (*gomcp.CallToolResult, RemoveOutput, error) {
 		return handleRemove(host, input)
-	})
-
-	gomcp.AddTool(s, &gomcp.Tool{
-		Name:        "initech_at",
-		Description: "Schedule a deferred message to an agent. The message is sent after the specified delay (e.g. \"5m\", \"30s\").",
-	}, func(_ context.Context, _ *gomcp.CallToolRequest, input AtInput) (*gomcp.CallToolResult, AtOutput, error) {
-		return handleAt(host, input)
 	})
 
 	gomcp.AddTool(s, &gomcp.Tool{
@@ -331,26 +310,6 @@ func handleRemove(host PaneHost, input RemoveInput) (*gomcp.CallToolResult, Remo
 		return nil, RemoveOutput{}, err
 	}
 	return nil, RemoveOutput{Status: "removed"}, nil
-}
-
-func handleAt(host PaneHost, input AtInput) (*gomcp.CallToolResult, AtOutput, error) {
-	if input.Agent == "" {
-		return nil, AtOutput{}, fmt.Errorf("agent is required")
-	}
-	if input.Message == "" {
-		return nil, AtOutput{}, fmt.Errorf("message is required")
-	}
-	if input.Delay == "" {
-		return nil, AtOutput{}, fmt.Errorf("delay is required")
-	}
-	if _, err := time.ParseDuration(input.Delay); err != nil {
-		return nil, AtOutput{}, fmt.Errorf("invalid delay %q: %w", input.Delay, err)
-	}
-	timerID, err := host.ScheduleSend(input.Agent, input.Message, input.Delay)
-	if err != nil {
-		return nil, AtOutput{}, err
-	}
-	return nil, AtOutput{Status: "scheduled", TimerID: timerID}, nil
 }
 
 func handlePatrol(host PaneHost, input PatrolInput) (*gomcp.CallToolResult, PatrolOutput, error) {

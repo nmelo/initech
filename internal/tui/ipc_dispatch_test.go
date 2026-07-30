@@ -4,8 +4,6 @@ import (
 	"encoding/json"
 	"io"
 	"net"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -172,200 +170,11 @@ func TestDispatchIPC_ExtendedAndUnknown(t *testing.T) {
 	})
 }
 
-func TestDispatchScheduleResponses(t *testing.T) {
-	t.Run("invalid json", func(t *testing.T) {
-		conn := &dispatchConn{}
-		dispatchSchedule(&dispatchHost{}, conn, []byte("{not json"))
-		resp := decodeDispatchResponse(t, conn)
-		if resp.Error != "invalid schedule request" {
-			t.Fatalf("error = %q, want invalid schedule request", resp.Error)
-		}
-	})
-
-	t.Run("invalid fire_at", func(t *testing.T) {
-		conn := &dispatchConn{}
-		raw := []byte(`{"target":"eng1","text":"hello","fire_at":"tomorrow"}`)
-		dispatchSchedule(&dispatchHost{}, conn, raw)
-		resp := decodeDispatchResponse(t, conn)
-		if !strings.Contains(resp.Error, "invalid fire_at:") {
-			t.Fatalf("error = %q, want invalid fire_at", resp.Error)
-		}
-	})
-
-	t.Run("missing timer store", func(t *testing.T) {
-		conn := &dispatchConn{}
-		fireAt := time.Now().Add(time.Hour).UTC().Format(time.RFC3339)
-		raw := []byte(`{"target":"eng1","text":"hello","fire_at":"` + fireAt + `"}`)
-		dispatchSchedule(&dispatchHost{}, conn, raw)
-		resp := decodeDispatchResponse(t, conn)
-		if resp.Error != "timer store not initialized" {
-			t.Fatalf("error = %q, want timer store not initialized", resp.Error)
-		}
-	})
-
-	t.Run("add failure", func(t *testing.T) {
-		conn := &dispatchConn{}
-		ts := newBrokenTimerStore(t)
-		host := &dispatchHost{timers: ts}
-		fireAt := time.Now().Add(time.Hour).UTC().Format(time.RFC3339)
-		raw := []byte(`{"target":"eng1","text":"hello","fire_at":"` + fireAt + `"}`)
-
-		dispatchSchedule(host, conn, raw)
-
-		resp := decodeDispatchResponse(t, conn)
-		if resp.OK {
-			t.Fatal("schedule should fail when add persistence fails")
-		}
-		if !strings.Contains(resp.Error, "timer not persisted") {
-			t.Fatalf("error = %q, want persistence failure", resp.Error)
-		}
-	})
-
-	t.Run("success", func(t *testing.T) {
-		conn := &dispatchConn{}
-		ts := NewTimerStore(filepath.Join(t.TempDir(), "timers.json"))
-		host := &dispatchHost{timers: ts}
-		fireAt := time.Now().Add(time.Hour).UTC().Truncate(time.Second)
-		raw := []byte(`{"target":"eng1","host":"macbook","text":"hello","enter":true,"fire_at":"` + fireAt.Format(time.RFC3339) + `"}`)
-
-		dispatchSchedule(host, conn, raw)
-
-		resp := decodeDispatchResponse(t, conn)
-		if !resp.OK {
-			t.Fatalf("schedule response not OK: %s", resp.Error)
-		}
-		if resp.Data != "at-1" {
-			t.Fatalf("timer ID = %q, want at-1", resp.Data)
-		}
-		timers := ts.List()
-		if len(timers) != 1 {
-			t.Fatalf("stored timers = %d, want 1", len(timers))
-		}
-		if timers[0].Host != "macbook" || timers[0].Target != "eng1" || !timers[0].Enter {
-			t.Fatalf("stored timer = %+v, want remote enter timer", timers[0])
-		}
-	})
-}
-
-func TestDispatchListTimersResponses(t *testing.T) {
-	t.Run("nil store returns empty list", func(t *testing.T) {
-		conn := &dispatchConn{}
-		dispatchListTimers(&dispatchHost{}, conn)
-		resp := decodeDispatchResponse(t, conn)
-		if !resp.OK || resp.Data != "[]" {
-			t.Fatalf("response = %+v, want OK empty list", resp)
-		}
-	})
-
-	t.Run("returns sorted timers", func(t *testing.T) {
-		conn := &dispatchConn{}
-		ts := NewTimerStore(filepath.Join(t.TempDir(), "timers.json"))
-		later := time.Now().Add(2 * time.Hour).UTC().Truncate(time.Second)
-		sooner := time.Now().Add(time.Hour).UTC().Truncate(time.Second)
-		if _, err := ts.Add("eng1", "", "later", false, later); err != nil {
-			t.Fatalf("Add later: %v", err)
-		}
-		if _, err := ts.Add("eng2", "", "sooner", false, sooner); err != nil {
-			t.Fatalf("Add sooner: %v", err)
-		}
-
-		dispatchListTimers(&dispatchHost{timers: ts}, conn)
-
-		resp := decodeDispatchResponse(t, conn)
-		if !resp.OK {
-			t.Fatalf("list_timers response not OK: %s", resp.Error)
-		}
-		var timers []Timer
-		if err := json.Unmarshal([]byte(resp.Data), &timers); err != nil {
-			t.Fatalf("unmarshal timers: %v", err)
-		}
-		if len(timers) != 2 {
-			t.Fatalf("got %d timers, want 2", len(timers))
-		}
-		if timers[0].Text != "sooner" || timers[1].Text != "later" {
-			t.Fatalf("timers = %+v, want sorted by FireAt", timers)
-		}
-	})
-}
-
-func TestDispatchCancelTimerResponses(t *testing.T) {
-	t.Run("missing timer store", func(t *testing.T) {
-		conn := &dispatchConn{}
-		dispatchCancelTimer(&dispatchHost{}, conn, IPCRequest{Text: "at-1"})
-		resp := decodeDispatchResponse(t, conn)
-		if resp.Error != "timer store not initialized" {
-			t.Fatalf("error = %q, want timer store not initialized", resp.Error)
-		}
-	})
-
-	t.Run("unknown timer", func(t *testing.T) {
-		conn := &dispatchConn{}
-		ts := NewTimerStore(filepath.Join(t.TempDir(), "timers.json"))
-		dispatchCancelTimer(&dispatchHost{timers: ts}, conn, IPCRequest{Text: "at-9"})
-		resp := decodeDispatchResponse(t, conn)
-		if !strings.Contains(resp.Error, `timer "at-9" not found`) {
-			t.Fatalf("error = %q, want not found", resp.Error)
-		}
-	})
-
-	t.Run("cancel failure", func(t *testing.T) {
-		conn := &dispatchConn{}
-		ts := NewTimerStore(filepath.Join(t.TempDir(), "timers.json"))
-		timer, err := ts.Add("eng1", "", "hello", false, time.Now().Add(time.Hour))
-		if err != nil {
-			t.Fatalf("Add: %v", err)
-		}
-		blockingPath := filepath.Join(t.TempDir(), "not-a-dir")
-		if err := os.WriteFile(blockingPath, []byte("x"), 0600); err != nil {
-			t.Fatalf("WriteFile: %v", err)
-		}
-		ts.path = filepath.Join(blockingPath, "timers.json")
-
-		dispatchCancelTimer(&dispatchHost{timers: ts}, conn, IPCRequest{Text: timer.ID})
-
-		resp := decodeDispatchResponse(t, conn)
-		if resp.OK {
-			t.Fatal("cancel should fail when persistence fails")
-		}
-		if !strings.Contains(resp.Error, "cancel not persisted") {
-			t.Fatalf("error = %q, want cancel persistence failure", resp.Error)
-		}
-		if ts.Pending() != 1 {
-			t.Fatalf("pending timers = %d, want rollback to preserve timer", ts.Pending())
-		}
-	})
-
-	t.Run("success", func(t *testing.T) {
-		conn := &dispatchConn{}
-		ts := NewTimerStore(filepath.Join(t.TempDir(), "timers.json"))
-		fireAt := time.Now().Add(90 * time.Minute).UTC().Truncate(time.Minute)
-		timer, err := ts.Add("eng1", "macbook", "hello", true, fireAt)
-		if err != nil {
-			t.Fatalf("Add: %v", err)
-		}
-
-		dispatchCancelTimer(&dispatchHost{timers: ts}, conn, IPCRequest{Text: timer.ID})
-
-		resp := decodeDispatchResponse(t, conn)
-		if !resp.OK {
-			t.Fatalf("cancel response not OK: %s", resp.Error)
-		}
-		want := timer.ID + " (macbook:eng1 at " + fireAt.Local().Format("15:04") + ")"
-		if resp.Data != want {
-			t.Fatalf("cancel data = %q, want %q", resp.Data, want)
-		}
-		if ts.Pending() != 0 {
-			t.Fatalf("pending timers = %d, want 0", ts.Pending())
-		}
-	})
-}
-
 type dispatchHost struct {
 	findPane        PaneView
 	findOK          bool
 	panes           []PaneInfo
 	allOK           bool
-	timers          *TimerStore
 	webhookURL      string
 	projectName     string
 	sendCalled      bool
@@ -390,10 +199,6 @@ func (h *dispatchHost) HandleSend(conn net.Conn, req IPCRequest) {
 	h.sendCalled = true
 	h.sendConn = conn
 	h.sendReq = req
-}
-
-func (h *dispatchHost) Timers() *TimerStore {
-	return h.timers
 }
 
 func (h *dispatchHost) NotifyConfig() (string, string) {
@@ -439,13 +244,4 @@ func decodeDispatchResponse(t *testing.T, conn *dispatchConn) IPCResponse {
 		t.Fatalf("unmarshal IPC response: %v (raw %q)", err, line)
 	}
 	return resp
-}
-
-func newBrokenTimerStore(t *testing.T) *TimerStore {
-	t.Helper()
-	base := filepath.Join(t.TempDir(), "not-a-dir")
-	if err := os.WriteFile(base, []byte("x"), 0600); err != nil {
-		t.Fatalf("WriteFile: %v", err)
-	}
-	return NewTimerStore(filepath.Join(base, "timers.json"))
 }

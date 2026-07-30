@@ -31,7 +31,6 @@ var webhookKindMap = map[EventType]string{
 	EventAgentRestarted:    "agent.restarted",
 	EventAgentAdded:        "agent.added",
 	EventAgentRemoved:      "agent.removed",
-	EventTimerFired:        "agent.timer_fired",
 	EventPeerConnected:     "peer.connected",
 	EventPeerDisconnected:  "peer.disconnected",
 	EventLiveSwap:          "live.swap",

@@ -99,9 +99,9 @@ func TestWebhookSink_AllEventKinds(t *testing.T) {
 			t.Errorf("EventType %d: kind = %q, want %q", evType, kind, wantKind)
 		}
 	}
-	// Verify all 20 event types are mapped.
-	if len(webhookKindMap) != 20 {
-		t.Errorf("webhookKindMap has %d entries, want 20", len(webhookKindMap))
+	// Verify all 19 event types are mapped.
+	if len(webhookKindMap) != 19 {
+		t.Errorf("webhookKindMap has %d entries, want 19", len(webhookKindMap))
 	}
 }
 

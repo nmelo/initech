@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -8,6 +9,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
+	"time"
 
 	"github.com/nmelo/initech/internal/color"
 	"github.com/nmelo/initech/internal/tui"
@@ -59,6 +61,101 @@ func chdirForTest(t *testing.T, dir string) func() {
 		if err := os.Chdir(wd); err != nil {
 			t.Fatalf("restore Chdir(%s): %v", wd, err)
 		}
+	}
+}
+
+// shortProjectDir returns a short-named temp dir, for tests whose project
+// path feeds into a Unix socket path (subject to the ~108-byte sun_path
+// limit) rather than t.TempDir()'s longer, test-name-derived path.
+func shortProjectDir(t *testing.T) string {
+	t.Helper()
+	dir, err := os.MkdirTemp("", "iat-")
+	if err != nil {
+		t.Fatalf("MkdirTemp: %v", err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	return dir
+}
+
+// responseMode configures how startATIPCServer replies to the single request
+// it captures: a parsed IPCResponse (resp), a raw payload bypassing that
+// encoding (raw), or no reply at all (closeWithoutReply).
+type responseMode struct {
+	resp              string
+	raw               string
+	closeWithoutReply bool
+}
+
+// startATIPCServer listens on sockPath and replies to the first request per
+// mode, capturing the raw request bytes onto the returned channel. Named for
+// its original caller (the at-command tests); reused by other commands that
+// need the same single-request IPC fake.
+func startATIPCServer(t *testing.T, sockPath string, mode responseMode) (<-chan []byte, func()) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(sockPath), 0o700); err != nil {
+		t.Fatalf("MkdirAll socket dir: %v", err)
+	}
+	_ = os.Remove(sockPath)
+	ln, err := net.Listen("unix", sockPath)
+	if err != nil {
+		t.Fatalf("listen unix: %v", err)
+	}
+
+	reqCh := make(chan []byte, 8)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+
+			scanner := bufio.NewScanner(conn)
+			if !scanner.Scan() {
+				_ = conn.Close()
+				continue // discoverSocket probe connection
+			}
+			req := append([]byte(nil), scanner.Bytes()...)
+			select {
+			case reqCh <- req:
+			default:
+			}
+
+			if !mode.closeWithoutReply {
+				payload := mode.raw
+				if payload == "" {
+					payload = mode.resp + "\n"
+				}
+				_, _ = conn.Write([]byte(payload))
+			}
+			_ = conn.Close()
+		}
+	}()
+
+	cleanup := func() {
+		_ = ln.Close()
+		_ = os.Remove(sockPath)
+		select {
+		case <-done:
+		case <-time.After(2 * time.Second):
+			t.Fatal("timed out waiting for at IPC server shutdown")
+		}
+	}
+	return reqCh, cleanup
+}
+
+// waitATRequest reads one request captured by startATIPCServer and unmarshals
+// it into dst, failing the test if none arrives within 2s.
+func waitATRequest(t *testing.T, reqCh <-chan []byte, dst any) {
+	t.Helper()
+	select {
+	case req := <-reqCh:
+		if err := json.Unmarshal(req, dst); err != nil {
+			t.Fatalf("unmarshal request: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for at IPC request")
 	}
 }
 

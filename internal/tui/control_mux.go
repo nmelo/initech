@@ -149,7 +149,7 @@ func (m *ControlMux) RequestRaw(payload any) (ControlResp, error) {
 }
 
 // Events returns a channel that receives unsolicited server-pushed messages
-// (responses with no ID, such as agent_died or timer_fired events).
+// (responses with no ID, such as forward_send or stream_added events).
 func (m *ControlMux) Events() <-chan ControlResp {
 	return m.events
 }

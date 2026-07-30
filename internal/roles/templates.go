@@ -208,7 +208,6 @@ Use ` + "`" + `initech send` + "`" + ` and ` + "`" + `initech peek` + "`" + ` fo
 **Agent communication:**
 - ` + "`" + `initech send <agent> "message"` + "`" + ` - send message to an agent
 - ` + "`" + `initech peek <agent>` + "`" + ` - read agent terminal output
-- ` + "`" + `initech at <agent> <message...>` + "`" + ` - schedule a timed send to an agent
 - ` + "`" + `initech clear <agent>` + "`" + ` - send /clear to reset an agent's conversation context
 
 **Agent lifecycle (session-scoped):**

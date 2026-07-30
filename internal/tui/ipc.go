@@ -119,10 +119,6 @@ func (t *TUI) HandleSend(conn net.Conn, req IPCRequest) {
 	t.handleIPCSend(conn, req)
 }
 
-func (t *TUI) Timers() *TimerStore {
-	return t.timers
-}
-
 func (t *TUI) NotifyConfig() (webhookURL, project string) {
 	return t.webhookURL, t.projectName
 }

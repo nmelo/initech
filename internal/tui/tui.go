@@ -232,9 +232,6 @@ type TUI struct {
 	pasting  bool   // True between EventPaste(start) and EventPaste(end).
 	pasteBuf []byte // Accumulated paste characters.
 
-	// Timer store for scheduled sends.
-	timers *TimerStore
-
 	// Agent event system.
 	agentEvents   chan AgentEvent // Buffered channel for semantic events from detection modules.
 	notifications []notification  // Active notifications for rendering.
@@ -614,7 +611,6 @@ func Run(cfg Config) error {
 		quitCh:            quitCh,
 		ipcCh:             make(chan ipcAction, 32),
 		agentEvents:       make(chan AgentEvent, 64),
-		timers:            NewTimerStore(filepath.Join(cfg.ProjectRoot, ".initech", "timers.json")),
 	}
 
 	// Show welcome overlay on first launch (no saved layout).
@@ -764,10 +760,6 @@ func Run(cfg Config) error {
 			LogWarn("tui", "pane cleanup timed out after 3s, forcing exit")
 		}
 	}()
-
-	// Fire any overdue timers from a previous session that missed their window
-	// (e.g., initech was restarted after a timer's FireAt).
-	t.fireTimers()
 
 	// Start memory monitor when auto-suspend is enabled.
 	if t.autoSuspend {
@@ -935,7 +927,6 @@ func Run(cfg Config) error {
 			}
 			t.rotateTip()
 			t.pollBranch()
-			t.fireTimers()
 			if t.layoutState.Mode == LayoutLive && time.Since(t.lastLiveTick) >= time.Second {
 				t.lastLiveTick = time.Now()
 				t.applyLayout()
