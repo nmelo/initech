@@ -8,8 +8,6 @@ The README covers installation, configuration, command reference, and architectu
 
 ### Before You Launch
 
-Run `initech doctor` first. It checks prerequisites (claude, git, bd), validates your project config, and reports terminal environment. Fix anything red before proceeding.
-
 If you haven't set up a project yet: `mkdir myproject && cd myproject && initech init`. The init wizard walks you through project name, repo URL, and an interactive role selector. Start with the Standard preset (super, pm, eng1, eng2, qa1, qa2, shipper). You can add or remove agents later.
 
 ### What Happens on Launch
@@ -148,9 +146,8 @@ If the TUI itself crashes:
 1. Check `.initech/crash.log` for panic stack traces
 2. Check `.initech/stderr.log` for native crash output
 3. Check `.initech/initech.log` for application-level errors
-4. Run `initech doctor` to check for stale socket/PID files
 
-If there's a stale socket: `rm .initech/initech.sock` and relaunch. `initech doctor` will tell you if this is needed.
+If there's a stale socket: `rm .initech/initech.sock` and relaunch.
 
 ### Agent Lost Context (Post-Compaction)
 
@@ -235,4 +232,4 @@ At the end of a session, tell super: "landing the plane." Super will instruct al
 
 ### After a Crash
 
-If initech crashes mid-session, agents' Claude sessions survive (they're independent processes, though they'll lose their terminal). Relaunch `initech` and agents reconnect via `--continue`. Check `initech doctor` first to clear any stale socket files.
+If initech crashes mid-session, agents' Claude sessions survive (they're independent processes, though they'll lose their terminal). Relaunch `initech` and agents reconnect via `--continue`.

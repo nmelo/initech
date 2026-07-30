@@ -1,4 +1,4 @@
-// Integration tests: end-to-end verification of scaffold, config, IPC, doctor,
+// Integration tests: end-to-end verification of scaffold, config, IPC,
 // and CLI error paths. All use t.TempDir() for filesystem isolation.
 package cmd
 
@@ -321,83 +321,6 @@ func TestInteg_SocketLiveness(t *testing.T) {
 		t.Fatalf("re-listen after stale cleanup: %v", err)
 	}
 	ln2.Close()
-}
-
-// ── Test 6: Doctor prereq check ─────────────────────────────────────
-
-func TestInteg_DoctorPrereqs(t *testing.T) {
-	env := defaultDoctorEnv()
-	results := runPrereqChecks(env)
-
-	// Results should cover all 3 tools.
-	labels := make(map[string]bool)
-	for _, r := range results {
-		labels[r.Label] = true
-	}
-	for _, tool := range []string{"claude", "git", "bd"} {
-		if !labels[tool] {
-			t.Errorf("prereq results missing tool %q", tool)
-		}
-	}
-}
-
-// ── Test 7: Doctor project health ───────────────────────────────────
-
-func TestInteg_DoctorProjectHealth(t *testing.T) {
-	dir := t.TempDir()
-	proj := &config.Project{
-		Name:  "healthtest",
-		Root:  dir,
-		Roles: []string{"eng1", "qa1"},
-		Beads: config.BeadsConfig{Prefix: "ht"},
-	}
-
-	// Scaffold the project and write config.
-	if _, err := scaffold.Run(proj, scaffold.Options{}); err != nil {
-		t.Fatalf("scaffold: %v", err)
-	}
-	cfgPath := filepath.Join(dir, "initech.yaml")
-	if err := config.Write(cfgPath, proj); err != nil {
-		t.Fatalf("config.Write: %v", err)
-	}
-
-	// First check: everything should be "ok" for workspaces.
-	checks1, name1, _ := runProjectChecks(cfgPath)
-	if name1 != "healthtest" {
-		t.Errorf("project name = %q, want healthtest", name1)
-	}
-	hasOK := false
-	for _, c := range checks1 {
-		if c.Status == "OK" {
-			hasOK = true
-			break
-		}
-	}
-	if !hasOK {
-		t.Error("healthy project should have at least one OK check")
-	}
-
-	// Delete one CLAUDE.md.
-	os.Remove(filepath.Join(dir, "qa1", "CLAUDE.md"))
-
-	// Second check: should show WARNING with the missing role.
-	checks2, _, _ := runProjectChecks(cfgPath)
-	hasWarn := false
-	mentionsQA1 := false
-	for _, c := range checks2 {
-		if c.Status == "WARN" {
-			hasWarn = true
-		}
-		if strings.Contains(c.Detail, "qa1") {
-			mentionsQA1 = true
-		}
-	}
-	if !hasWarn {
-		t.Error("missing CLAUDE.md should trigger WARN check result")
-	}
-	if !mentionsQA1 {
-		t.Error("warning detail should mention 'qa1'")
-	}
 }
 
 // ── Test 8: CLI error paths ─────────────────────────────────────────

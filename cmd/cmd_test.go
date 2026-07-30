@@ -15,7 +15,7 @@ import (
 func TestAllCommandsRegistered(t *testing.T) {
 	// Every subcommand should be registered on rootCmd.
 	want := map[string]bool{
-		"version": true, "init": true, "doctor": true,
+		"version": true, "init": true,
 		"send": true, "peek": true, "status": true,
 		"stop": true, "start": true, "restart": true,
 		"down": true, "standup": true, "patrol": true,
