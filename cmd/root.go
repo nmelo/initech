@@ -58,6 +58,7 @@ Keybindings:
   Alt+7            Layout preset 7 (default live)
   Shift+Alt+1-7    Same preset slot, in live (auto-managed) mode
   Alt+z            Zoom/unzoom focused pane
+  Alt+f            Focus split: focused pane left, grid right (toggle)
   Alt+s            Toggle agent status overlay
   Alt+q            Quit
 
@@ -66,7 +67,7 @@ Commands (via ` + "`" + ` modal):
   focus [name]     Focus mode, optionally on a named agent
   zoom             Toggle zoom
   panel            Toggle agent overlay
-  main             Main + stacked layout
+  main             Focused pane left (40%), grid of others right (60%)
   live [CxR|auto]  Live mode: CxR = fixed grid, auto = auto-size
   pin <a> <slot>   Pin agent to live slot (0-based)
   unpin <slot>     Unpin slot, make it dynamic

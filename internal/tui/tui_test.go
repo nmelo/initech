@@ -1011,8 +1011,10 @@ func TestAutoGrid(t *testing.T) {
 
 // ── calcMainVertical ─────────────────────────────────────────────────
 
-func TestCalcMainVertical(t *testing.T) {
-	// Single pane: full screen.
+// TestCalcMainVertical_SingleFullScreen covers n=1: no split, full screen.
+// This fallback is unchanged by ini-vtki (it also serves :main/presets with
+// a single agent, independent of the Option+F chord).
+func TestCalcMainVertical_SingleFullScreen(t *testing.T) {
 	regions := calcMainVertical(1, 200, 100)
 	if len(regions) != 1 {
 		t.Fatalf("n=1: got %d regions, want 1", len(regions))
@@ -1020,33 +1022,74 @@ func TestCalcMainVertical(t *testing.T) {
 	if regions[0].W != 200 || regions[0].H != 100 {
 		t.Errorf("n=1: region = %+v, want full screen", regions[0])
 	}
+}
 
-	// Multiple panes: main left + stacked right.
-	regions = calcMainVertical(4, 200, 100)
-	if len(regions) != 4 {
-		t.Fatalf("n=4: got %d regions, want 4", len(regions))
-	}
-	// Main pane should be ~60% width.
-	if regions[0].W != 120 {
-		t.Errorf("main pane width = %d, want 120", regions[0].W)
-	}
-	// Right panes should fill remaining width.
-	for i := 1; i < len(regions); i++ {
-		if regions[i].X != 120 {
-			t.Errorf("right pane[%d].X = %d, want 120", i, regions[i].X)
+// TestCalcMainVertical_40_60RatioWithGridRight is ini-vtki's ratio inversion
+// and grid-right behavior change (was 60/40 with a stacked right column; is
+// now 40/60 with the right side reflowed via gridRegions). Covers n=2, 3, 5
+// per the bead's acceptance criteria.
+func TestCalcMainVertical_40_60RatioWithGridRight(t *testing.T) {
+	const screenW, screenH = 200, 100
+	const wantLeftW = 80 // 40% of 200
+
+	t.Run("n=2_single_pane_fills_right", func(t *testing.T) {
+		regions := calcMainVertical(2, screenW, screenH)
+		if len(regions) != 2 {
+			t.Fatalf("got %d regions, want 2", len(regions))
 		}
-		if regions[i].W != 80 {
-			t.Errorf("right pane[%d].W = %d, want 80", i, regions[i].W)
+		left := regions[0]
+		if left.X != 0 || left.Y != 0 || left.W != wantLeftW || left.H != screenH {
+			t.Errorf("left region = %+v, want {0,0,%d,%d}", left, wantLeftW, screenH)
 		}
-	}
-	// Right panes should sum to full height.
-	totalH := 0
-	for i := 1; i < len(regions); i++ {
-		totalH += regions[i].H
-	}
-	if totalH != 100 {
-		t.Errorf("right panes total height = %d, want 100", totalH)
-	}
+		right := regions[1]
+		want := Region{X: wantLeftW, Y: 0, W: screenW - wantLeftW, H: screenH}
+		if right != want {
+			t.Errorf("right region = %+v, want %+v", right, want)
+		}
+	})
+
+	t.Run("n=3_two_panes_side_by_side_on_right", func(t *testing.T) {
+		regions := calcMainVertical(3, screenW, screenH)
+		if len(regions) != 3 {
+			t.Fatalf("got %d regions, want 3", len(regions))
+		}
+		left := regions[0]
+		if left.W != wantLeftW || left.H != screenH {
+			t.Errorf("left region = %+v, want W=%d H=%d", left, wantLeftW, screenH)
+		}
+		// autoGrid(2) = (2,1): both right panes side by side, full height.
+		want1 := Region{X: 80, Y: 0, W: 60, H: 100}
+		want2 := Region{X: 140, Y: 0, W: 60, H: 100}
+		if regions[1] != want1 {
+			t.Errorf("right[0] = %+v, want %+v", regions[1], want1)
+		}
+		if regions[2] != want2 {
+			t.Errorf("right[1] = %+v, want %+v", regions[2], want2)
+		}
+	})
+
+	t.Run("n=5_2x2_grid_on_right", func(t *testing.T) {
+		regions := calcMainVertical(5, screenW, screenH)
+		if len(regions) != 5 {
+			t.Fatalf("got %d regions, want 5", len(regions))
+		}
+		left := regions[0]
+		if left.W != wantLeftW || left.H != screenH {
+			t.Errorf("left region = %+v, want W=%d H=%d", left, wantLeftW, screenH)
+		}
+		// autoGrid(4) = (2,2): a 2x2 grid over the right 60% (120 wide).
+		want := []Region{
+			{X: 80, Y: 0, W: 60, H: 50},
+			{X: 140, Y: 0, W: 60, H: 50},
+			{X: 80, Y: 50, W: 60, H: 50},
+			{X: 140, Y: 50, W: 60, H: 50},
+		}
+		for i, w := range want {
+			if regions[i+1] != w {
+				t.Errorf("right[%d] = %+v, want %+v", i, regions[i+1], w)
+			}
+		}
+	})
 }
 
 // selectionForPane tests live in coverage_test.go.

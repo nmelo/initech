@@ -161,26 +161,28 @@ func TestCalcPaneGridEmpty(t *testing.T) {
 // calcMainVertical
 // ---------------------------------------------------------------------------
 
+// TestCalcMainVerticalLayout covers ini-vtki's 40/60 ratio inversion with the
+// right side reflowed as a grid (was 60/40 with a stacked column).
 func TestCalcMainVerticalLayout(t *testing.T) {
 	regions := calcMainVertical(4, 100, 50)
 	if len(regions) != 4 {
 		t.Fatalf("got %d regions, want 4", len(regions))
 	}
-	// First pane (main) should be ~60% width.
-	if regions[0].W != 60 {
-		t.Errorf("main pane width = %d, want 60", regions[0].W)
+	// Main pane is now 40% width (the focused pane gets the smaller half).
+	if regions[0].W != 40 {
+		t.Errorf("main pane width = %d, want 40", regions[0].W)
 	}
-	// Right panes should fill the remaining width.
-	if regions[1].W != 40 {
-		t.Errorf("right pane width = %d, want 40", regions[1].W)
+	// Right side is autoGrid(3) = (2,2): two panes in row 0, one wide pane
+	// filling row 1 (the reflowed last-row-expands behavior).
+	want := []Region{
+		{X: 40, Y: 0, W: 30, H: 25},
+		{X: 70, Y: 0, W: 30, H: 25},
+		{X: 40, Y: 25, W: 60, H: 25},
 	}
-	// Right panes should stack vertically.
-	totalH := 0
-	for _, r := range regions[1:] {
-		totalH += r.H
-	}
-	if totalH != 50 {
-		t.Errorf("right panes total height = %d, want 50", totalH)
+	for i, w := range want {
+		if regions[i+1] != w {
+			t.Errorf("right[%d] = %+v, want %+v", i, regions[i+1], w)
+		}
 	}
 }
 

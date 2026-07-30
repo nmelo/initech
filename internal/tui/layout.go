@@ -185,6 +185,24 @@ func computeLayout(state LayoutState, panes []PaneView, screenW, screenH int) Re
 		regions = gridRegions(state.GridCols, state.GridRows, n, screenW, screenH,
 			state.ColWeights, state.RowWeights)
 	case Layout2Col:
+		// Reorder so the focused pane is first: calcMainVertical is purely
+		// positional (region 0 is the big slot), and the focused pane must
+		// always land there for Option+F's promotion to work (ini-vtki).
+		// Mirrors the LayoutLive reorder above; uses the already-validated
+		// `focus`, so a focused pane that was hidden/removed is handled for
+		// free (it was already snapped to visible[0] in step 2).
+		reordered := make([]PaneView, 0, len(visible))
+		var focusedPane PaneView
+		for _, p := range visible {
+			if paneKey(p) == focus {
+				focusedPane = p
+			} else {
+				reordered = append(reordered, p)
+			}
+		}
+		if focusedPane != nil {
+			visible = append([]PaneView{focusedPane}, reordered...)
+		}
 		regions = calcMainVertical(n, screenW, screenH)
 	default:
 		regions = gridRegions(state.GridCols, state.GridRows, n, screenW, screenH,

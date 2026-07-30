@@ -19,7 +19,7 @@ type LayoutMode int
 const (
 	LayoutFocus LayoutMode = iota // Single pane, full screen.
 	LayoutGrid                    // Arbitrary NxM grid.
-	Layout2Col                    // Main pane left, stacked right.
+	Layout2Col                    // Focused pane left (40%), grid of others right (60%).
 	LayoutLive                    // Dynamic pane rotation by activity conviction score.
 )
 
@@ -246,6 +246,11 @@ type TUI struct {
 	// Nil when not in live mode. Created by cmdLive/Alt+5, destroyed on mode switch.
 	liveEngine   *LiveEngine
 	lastLiveTick time.Time // Throttles live-mode applyLayout to 1-second cadence.
+
+	// Option+F focus split (ini-vtki). Non-nil while the split is active via
+	// Option+F specifically; holds what to restore on toggle-off. See
+	// focus_split.go.
+	focusSplitPrev *focusSplitSnapshot
 }
 
 // logPanesMutation is temporary DEBUG logging. Logs every mutation of t.panes
@@ -980,33 +985,30 @@ func (t *TUI) handlePeerPaneAdded(peerName string, pane PaneView) {
 	LogInfo("peer-pane-added", "done", "peer", peerName, "agent", pane.Name())
 }
 
-// calcMainVertical creates a layout with a large pane on the left
-// and stacked panes on the right.
+// calcMainVertical creates a focus-split layout: a smaller pane on the left
+// (40%) and every other pane reflowed as a grid on the right (60%). The
+// caller is responsible for ordering the input pane list so the pane meant
+// for the left slot is first (region 0) — this function is purely
+// positional (ini-vtki: was 60/40 with the right side stacked; the ratio
+// inverted and the right side became a grid so the focused pane keeps every
+// other agent visible, not just a sliver of each).
 func calcMainVertical(n, screenW, screenH int) []Region {
 	if n <= 1 {
 		return []Region{{X: 0, Y: 0, W: screenW, H: screenH}}
 	}
 
-	leftW := screenW * 60 / 100
+	leftW := screenW * 40 / 100
 	rightW := screenW - leftW
 	rightCount := n - 1
-	if rightCount < 1 {
-		rightCount = 1
-	}
 
 	regions := make([]Region, 0, n)
 	regions = append(regions, Region{X: 0, Y: 0, W: leftW, H: screenH})
 
-	cellH := screenH / rightCount
-	extraH := screenH - cellH*rightCount
-	y := 0
-	for i := 0; i < rightCount; i++ {
-		h := cellH
-		if i < extraH {
-			h++
-		}
-		regions = append(regions, Region{X: leftW, Y: y, W: rightW, H: h})
-		y += h
+	cols, rows := autoGrid(rightCount)
+	rightRegions := gridRegions(cols, rows, rightCount, rightW, screenH, nil, nil)
+	for _, r := range rightRegions {
+		r.X += leftW
+		regions = append(regions, r)
 	}
 	return regions
 }

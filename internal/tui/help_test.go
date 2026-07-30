@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/gdamore/tcell/v2"
@@ -169,5 +170,23 @@ func TestHelpLinesNotEmpty(t *testing.T) {
 	}
 	if !foundCommands {
 		t.Error("helpLines missing 'Commands' section header")
+	}
+}
+
+// TestHelpLinesDocumentFocusSplit guards ini-vtki's Option+F keybinding
+// against silently disappearing from the help modal. Calls getHelpLines()
+// directly rather than reading the package-level helpLines slice, for the
+// same sync.Once shuffle-order reason as TestHelpLinesNotEmpty (ini-ls0c).
+func TestHelpLinesDocumentFocusSplit(t *testing.T) {
+	lines := getHelpLines()
+	found := false
+	for _, line := range lines {
+		if strings.Contains(line, "+f") && strings.Contains(line, "split") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("helpLines missing the Option+F focus split keybinding")
 	}
 }

@@ -119,6 +119,9 @@ func (t *TUI) handleKey(ev *tcell.EventKey) bool {
 				t.applyLayout()
 				t.saveLayoutIfConfigured()
 				return false
+			case 'f':
+				t.toggleFocusSplit()
+				return false
 			case 'a':
 				if t.agents.active {
 					t.agents.active = false

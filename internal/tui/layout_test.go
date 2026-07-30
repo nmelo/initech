@@ -174,9 +174,119 @@ func TestComputeLayout2Col(t *testing.T) {
 	if len(plan.Panes) != 3 {
 		t.Fatalf("2col: got %d plan entries, want 3", len(plan.Panes))
 	}
-	// First pane (a) gets 60% width.
-	if plan.Panes[0].Region.W != 120 {
-		t.Errorf("2col main pane width = %d, want 120", plan.Panes[0].Region.W)
+	// Focused pane (a) gets the 40% left slot (ini-vtki: was 60%).
+	if plan.Panes[0].Region.W != 80 {
+		t.Errorf("2col main pane width = %d, want 80", plan.Panes[0].Region.W)
+	}
+}
+
+// TestComputeLayout2Col_FocusedPaneGetsLeftSlot is the ini-vtki regression
+// test for a real gap found while building the focus-split feature: before
+// this bead, Layout2Col zipped visible[i] with regions[i] positionally, so
+// whichever pane was first in the input list got the big region regardless
+// of which pane was actually focused. Promotion (Option+F's whole point)
+// depends on the focused pane always landing in the big slot.
+func TestComputeLayout2Col_FocusedPaneGetsLeftSlot(t *testing.T) {
+	panes := testPanes("a", "b", "c")
+	state := LayoutState{
+		Mode:    Layout2Col,
+		Focused: "b", // NOT first in the input list.
+		Hidden:  map[string]bool{},
+	}
+	plan := computeLayout(state, panes, 200, 60)
+
+	if len(plan.Panes) != 3 {
+		t.Fatalf("2col: got %d plan entries, want 3", len(plan.Panes))
+	}
+
+	var leftPane string
+	for _, pr := range plan.Panes {
+		if pr.Region.W == 80 { // 40% of 200: the big/left slot.
+			leftPane = pr.Pane.Name()
+			if !pr.Focused {
+				t.Errorf("pane %q occupies the left slot but Focused=false", leftPane)
+			}
+		}
+	}
+	if leftPane != "b" {
+		t.Errorf("left slot occupied by %q, want the focused pane %q", leftPane, "b")
+	}
+
+	// The other two panes (a, c) must be in the right grid: neither at the
+	// left slot's width, and neither marked Focused.
+	for _, pr := range plan.Panes {
+		if pr.Pane.Name() == "b" {
+			continue
+		}
+		if pr.Region.W == 80 {
+			t.Errorf("non-focused pane %q occupies the left slot", pr.Pane.Name())
+		}
+		if pr.Focused {
+			t.Errorf("non-focused pane %q has Focused=true", pr.Pane.Name())
+		}
+	}
+}
+
+// TestComputeLayout2Col_RemovedFocusedPanePromotesFirstRemaining covers the
+// bead's edge case: if the focused pane is removed while in the split,
+// promote the first remaining pane rather than leaving the left half
+// empty. This is the existing generic focus-validation-snap (step 2 of
+// computeLayout) composing with ini-vtki's reorder — no new code needed
+// beyond the reorder itself, verified end to end here.
+func TestComputeLayout2Col_RemovedFocusedPanePromotesFirstRemaining(t *testing.T) {
+	panes := testPanes("a", "c") // "b", the focused pane, is gone.
+	state := LayoutState{
+		Mode:    Layout2Col,
+		Focused: "b",
+		Hidden:  map[string]bool{},
+	}
+	plan := computeLayout(state, panes, 200, 60)
+
+	if len(plan.Panes) != 2 {
+		t.Fatalf("2col: got %d plan entries, want 2", len(plan.Panes))
+	}
+	for _, pr := range plan.Panes {
+		if pr.Region.W == 80 { // the left slot
+			if pr.Pane.Name() != "a" {
+				t.Errorf("left slot occupied by %q, want promoted pane %q", pr.Pane.Name(), "a")
+			}
+			if !pr.Focused {
+				t.Error("promoted pane in the left slot should be Focused=true")
+			}
+		}
+	}
+	if plan.ValidatedFocus != "a" {
+		t.Errorf("ValidatedFocus = %q, want %q", plan.ValidatedFocus, "a")
+	}
+}
+
+// TestComputeLayout2Col_AddingPaneReflowsRightGrid covers the bead's edge
+// case: a pane added while in the split reflows the right grid for the new
+// n-1, and the focused pane stays in the left slot throughout.
+func TestComputeLayout2Col_AddingPaneReflowsRightGrid(t *testing.T) {
+	state := LayoutState{Mode: Layout2Col, Focused: "a", Hidden: map[string]bool{}}
+
+	before := computeLayout(state, testPanes("a", "b", "c"), 200, 100)
+	if len(before.Panes) != 3 {
+		t.Fatalf("before: got %d plan entries, want 3", len(before.Panes))
+	}
+
+	after := computeLayout(state, testPanes("a", "b", "c", "d"), 200, 100)
+	if len(after.Panes) != 4 {
+		t.Fatalf("after: got %d plan entries, want 4", len(after.Panes))
+	}
+
+	for _, plan := range []RenderPlan{before, after} {
+		for _, pr := range plan.Panes {
+			if pr.Pane.Name() == "a" {
+				if pr.Region.W != 80 {
+					t.Errorf("focused pane a width = %d, want 80 (left slot)", pr.Region.W)
+				}
+				if !pr.Focused {
+					t.Error("focused pane a should have Focused=true")
+				}
+			}
+		}
 	}
 }
 
