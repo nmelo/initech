@@ -2,11 +2,14 @@ package tui
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net"
 	"os"
+	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -613,10 +616,42 @@ type ipcAction struct {
 	done chan struct{}
 }
 
+// currentGoroutineID returns the ID of the calling goroutine, parsed from the
+// "goroutine N [state]:" header runtime.Stack always writes first. Go does
+// not expose goroutine IDs as a supported API; this is the standard, if
+// inelegant, way to answer "is this the goroutine I think it is" without
+// threading a token through every runOnMain call site (present and future).
+// Used only by runOnMain's reentrancy check below, never on a per-frame or
+// per-byte hot path, so the cost of parsing a short stack trace is immaterial.
+func currentGoroutineID() uint64 {
+	var buf [64]byte
+	n := runtime.Stack(buf[:], false)
+	b := bytes.TrimPrefix(buf[:n], []byte("goroutine "))
+	if i := bytes.IndexByte(b, ' '); i >= 0 {
+		b = b[:i]
+	}
+	id, _ := strconv.ParseUint(string(b), 10, 64)
+	return id
+}
+
 // runOnMain dispatches fn to the TUI main event loop and blocks until it
 // executes. Returns false if the TUI is shutting down (quitCh was closed).
 // When ipcCh is nil (test contexts without a running event loop) fn is
 // executed directly on the calling goroutine.
+//
+// Reentrancy guard (ini-jesh): if the CALLER is already the TUI's own main
+// goroutine — a command-bar handler like cmdAdd running inline as part of
+// Run()'s own synchronous key handling, rather than an IPC connection or
+// background goroutine — enqueueing onto ipcCh would deadlock forever: the
+// only goroutine that ever drains ipcCh is this one, and it would be
+// blocked waiting on itself. fn is executed directly in that case, which is
+// exactly what the main loop would have done had the op reached its select
+// statement, just without the pointless (and here, fatal) channel round trip.
+// mainGoroutineID is captured once at TUI construction, before any other
+// goroutine starts, so this comparison needs no additional synchronization.
+// Tests that never set mainGoroutineID (the zero value) are unaffected —
+// this guard cannot fire for them, so they exercise the same channel-based
+// path they always have.
 //
 // Two-phase select: first, race the send against quit; second, race the
 // completion signal against quit. This ensures quitCh always wins even when
@@ -624,6 +659,11 @@ type ipcAction struct {
 func (t *TUI) runOnMain(fn func()) bool {
 	if t.ipcCh == nil {
 		LogInfo("runOnMain", "ipcCh is nil, executing directly on caller goroutine")
+		fn()
+		return true
+	}
+	if t.mainGoroutineID != 0 && currentGoroutineID() == t.mainGoroutineID {
+		LogInfo("runOnMain", "already on main goroutine, executing directly")
 		fn()
 		return true
 	}

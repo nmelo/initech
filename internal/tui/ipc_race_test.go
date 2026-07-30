@@ -118,3 +118,35 @@ func TestRunOnMain_SerializesAccess(t *testing.T) {
 	wg.Wait()
 	close(quitCh)
 }
+
+// TestRunOnMain_ExecutesDirectlyWhenCalledFromMainGoroutine is the ini-jesh
+// regression test at the runOnMain primitive itself. It reproduces the exact
+// deadlock shape: a goroutine identifies itself as the TUI's main goroutine
+// (exactly as Run() does once at construction), then calls runOnMain
+// synchronously with nobody else free to drain ipcCh -- because that
+// goroutine IS the one that would drain it, and it's blocked calling into
+// itself. Timeout-guarded so a regression shows up as a clean test failure,
+// not a hung suite.
+func TestRunOnMain_ExecutesDirectlyWhenCalledFromMainGoroutine(t *testing.T) {
+	tui := &TUI{
+		quitCh: make(chan struct{}),
+		ipcCh:  make(chan ipcAction), // unbuffered: nothing ever drains this
+	}
+
+	done := make(chan bool, 1)
+	go func() {
+		tui.mainGoroutineID = currentGoroutineID()
+		var executed bool
+		tui.runOnMain(func() { executed = true })
+		done <- executed
+	}()
+
+	select {
+	case executed := <-done:
+		if !executed {
+			t.Error("runOnMain returned without executing fn")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("runOnMain deadlocked when called from the goroutine it identifies as main (ini-jesh)")
+	}
+}

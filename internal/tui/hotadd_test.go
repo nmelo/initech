@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 // testPane is defined in layout_test.go (same package).
@@ -266,6 +267,94 @@ func TestRemovePane_EmptyName(t *testing.T) {
 	err := tui.removePane("")
 	if err == nil {
 		t.Fatal("expected error for empty name, got nil")
+	}
+}
+
+// TestAddPane_DoesNotDeadlockFromMainGoroutine is the ini-jesh regression
+// test reproducing cmdAdd's exact real call shape: the command bar calls
+// addPane synchronously, inline, as part of the same goroutine that IS
+// Run()'s own event loop -- so if addPane's runOnMain calls ever fall back
+// to the channel path in that situation, the goroutine that would drain
+// ipcCh is the one blocked sending to it. ipcCh is unbuffered and nothing
+// else drains it, matching production exactly (nothing else CAN drain it;
+// the main goroutine is the only drainer, and it's the caller here).
+// Timeout-guarded so a regression is a clean test failure, not a hung suite.
+func TestAddPane_DoesNotDeadlockFromMainGoroutine(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping PTY test in short mode")
+	}
+	dir := t.TempDir()
+	os.MkdirAll(filepath.Join(dir, "eng3"), 0755)
+
+	tui := &TUI{
+		panes:       toPaneViews([]*Pane{testPane("eng1"), testPane("eng2")}),
+		layoutState: DefaultLayoutState([]string{"eng1", "eng2"}),
+		agentEvents: make(chan AgentEvent, 8),
+		quitCh:      make(chan struct{}),
+		ipcCh:       make(chan ipcAction), // unbuffered: nothing ever drains this
+		sockPath:    "/tmp/test.sock",
+		paneConfigBuilder: func(name string) (PaneConfig, error) {
+			return PaneConfig{
+				Name:    name,
+				Dir:     filepath.Join(dir, name),
+				Command: []string{"/bin/sh", "-c", "exit 0"},
+			}, nil
+		},
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		// This goroutine plays cmdAdd's role: it identifies itself as the
+		// main goroutine exactly as Run() does at construction, then calls
+		// addPane synchronously -- the same call shape as pressing `add
+		// eng3` in the command bar.
+		tui.mainGoroutineID = currentGoroutineID()
+		done <- tui.addPane("eng3")
+	}()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("addPane from the main goroutine: %v", err)
+		}
+		if len(tui.panes) != 3 {
+			t.Errorf("panes = %d, want 3", len(tui.panes))
+		}
+		tui.panes[2].Close()
+	case <-time.After(2 * time.Second):
+		t.Fatal("addPane deadlocked when called from the goroutine it identifies as main -- cmdAdd's exact failure mode (ini-jesh)")
+	}
+}
+
+// TestRemovePane_DoesNotDeadlockFromMainGoroutine is the removePane half of
+// the ini-jesh regression: the confirmed-remove path in the command bar
+// (executeConfirmed's "remove" case) calls removePane synchronously from
+// the same goroutine that is Run()'s event loop. Same shape and same
+// timeout guard as the addPane test above.
+func TestRemovePane_DoesNotDeadlockFromMainGoroutine(t *testing.T) {
+	tui := &TUI{
+		panes:       toPaneViews([]*Pane{testPane("eng1"), testPane("eng2")}),
+		layoutState: DefaultLayoutState([]string{"eng1", "eng2"}),
+		quitCh:      make(chan struct{}),
+		ipcCh:       make(chan ipcAction), // unbuffered: nothing ever drains this
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		tui.mainGoroutineID = currentGoroutineID()
+		done <- tui.removePane("eng2")
+	}()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("removePane from the main goroutine: %v", err)
+		}
+		if len(tui.panes) != 1 {
+			t.Errorf("panes = %d, want 1", len(tui.panes))
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("removePane deadlocked when called from the goroutine it identifies as main -- executeConfirmed's exact failure mode (ini-jesh)")
 	}
 }
 

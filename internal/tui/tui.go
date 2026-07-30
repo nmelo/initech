@@ -163,6 +163,15 @@ type TUI struct {
 	// to direct execution when nil).
 	ipcCh chan ipcAction
 
+	// mainGoroutineID identifies the goroutine running Run()'s own event
+	// loop, captured once at construction (tui.go) before any other
+	// goroutine starts. runOnMain compares against this to detect a
+	// command-bar handler calling in from the main goroutine itself, rather
+	// than an IPC or background goroutine, and skip the channel round trip
+	// that would otherwise deadlock (ini-jesh). Zero value (unset) in test
+	// contexts that never call Run() — the guard cannot fire for them.
+	mainGoroutineID uint64
+
 	// Build version for crash reports.
 	version     string
 	renderCount int // Frame counter for periodic render heartbeat logging.
@@ -569,6 +578,7 @@ func Run(cfg Config) error {
 		quitCh:            quitCh,
 		ipcCh:             make(chan ipcAction, 32),
 		agentEvents:       make(chan AgentEvent, 64),
+		mainGoroutineID:   currentGoroutineID(),
 	}
 
 	// Show welcome overlay on first launch (no saved layout).
