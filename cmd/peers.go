@@ -28,7 +28,7 @@ func init() {
 func runPeers(cmd *cobra.Command, args []string) error {
 	out := cmd.OutOrStdout()
 
-	sockPath, _, err := discoverSocket()
+	sockPath, _, err := resolveSocket()
 	if err != nil {
 		return err
 	}

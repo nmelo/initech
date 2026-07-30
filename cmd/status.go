@@ -41,9 +41,20 @@ type paneInfo struct {
 func runStatus(cmd *cobra.Command, args []string) error {
 	out := cmd.OutOrStdout()
 
-	sockPath, p, err := discoverSocket()
+	sockPath, p, err := resolveSocket()
 	if err != nil {
 		return err
+	}
+	// p is nil when INITECH_SOCKET is set but no initech.yaml is
+	// discoverable from cwd (e.g. an isolated test fixture) — resolveSocket
+	// deliberately decouples socket resolution from project metadata
+	// (ini-raup), so display and bead-lookup gracefully degrade instead of
+	// requiring a project.
+	projName := "(unknown project)"
+	beadsEnabled := false
+	if p != nil {
+		projName = p.Name
+		beadsEnabled = p.Beads.IsEnabled()
 	}
 
 	// Query pane list from TUI.
@@ -66,7 +77,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	// Try to get bead assignments (skip when disabled).
 	runner := &iexec.DefaultRunner{}
 	var beadMap map[string]beadInfo
-	if p.Beads.IsEnabled() {
+	if beadsEnabled {
 		beadMap = getBeadAssignments(runner)
 	} else {
 		beadMap = make(map[string]beadInfo)
@@ -92,7 +103,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	header := fmt.Sprintf("Session: %s (%d agents", p.Name, running)
+	header := fmt.Sprintf("Session: %s (%d agents", projName, running)
 	if stopped > 0 {
 		header += fmt.Sprintf(", %d stopped", stopped)
 	}

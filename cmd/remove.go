@@ -23,7 +23,7 @@ func init() {
 func runRemove(cmd *cobra.Command, args []string) error {
 	name := args[0]
 
-	sockPath, _, err := discoverSocket()
+	sockPath, _, err := resolveSocket()
 	if err != nil {
 		return err
 	}

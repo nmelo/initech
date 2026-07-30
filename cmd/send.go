@@ -257,17 +257,64 @@ func bodySourceName(fromStdin bool) string {
 
 // ipcCall sends a request to the TUI's IPC socket and returns the response.
 // Resolution order: (1) INITECH_SOCKET env var, (2) discoverSocket() fallback
-// which locates the socket from the project's initech.yaml.
+// which locates the socket from the project's initech.yaml. Delegates to
+// resolveSocket(), the single resolution path shared by every command
+// (ini-raup).
 func ipcCall(req tui.IPCRequest) (*tui.IPCResponse, error) {
-	sockPath := os.Getenv("INITECH_SOCKET")
-	if sockPath == "" {
-		discovered, _, err := discoverSocket()
-		if err != nil {
-			return nil, err
-		}
-		sockPath = discovered
+	sockPath, _, err := resolveSocket()
+	if err != nil {
+		return nil, err
 	}
 	return ipcCallSocket(sockPath, req)
+}
+
+// resolveSocket determines which socket to dial, honoring INITECH_SOCKET as
+// authoritative ahead of any config-based discovery (ini-raup). Before this,
+// only ipcCall (used by send/peek/bead/etc.) checked the env var first;
+// status/add/down/start/stop/restart/remove/peers/add-agent/delete-agent
+// called discoverSocket() directly and silently ignored it, so a fixture
+// that set INITECH_SOCKET to isolate a test could still have its dial (and
+// discoverSocket's stale-socket deletion) escape to whatever real project
+// cwd's upward walk found — which is exactly how a go test run once reached
+// the operator's live fleet and deleted a real socket file.
+//
+// When INITECH_SOCKET is set, discoverSocket() (and therefore its internal
+// config.Discover walk, dial probe, and stale-delete) is never invoked at
+// all — the env var is returned as-is. The project return value is
+// best-effort DISPLAY metadata only, resolved independently via
+// discoverProjectBestEffort: it is nil whenever no initech.yaml is
+// discoverable from cwd (expected for an isolated test fixture), and even
+// when found, it is NEVER used to derive sockPath here — only
+// discoverSocket()'s own resolution does that, and only when INITECH_SOCKET
+// is unset. This deliberately decouples the two: the low-risk metadata walk
+// (a display string) is not required to satisfy the AC that a test cannot
+// reach real infrastructure, since it can never influence which socket gets
+// dialed or deleted.
+func resolveSocket() (sockPath string, proj *config.Project, err error) {
+	if sockPath = os.Getenv("INITECH_SOCKET"); sockPath != "" {
+		return sockPath, discoverProjectBestEffort(), nil
+	}
+	return discoverSocket()
+}
+
+// discoverProjectBestEffort looks up the project config from cwd purely for
+// display metadata (project name, root), independent of socket resolution.
+// Returns nil if none is found or it fails to load — callers must tolerate
+// an absent project (ini-raup).
+func discoverProjectBestEffort() *config.Project {
+	wd, err := os.Getwd()
+	if err != nil {
+		return nil
+	}
+	cfgPath, err := config.Discover(wd)
+	if err != nil {
+		return nil
+	}
+	p, err := config.Load(cfgPath)
+	if err != nil {
+		return nil
+	}
+	return p
 }
 
 // ipcCallTimeout bounds how long ipcCallSocket waits on the connection

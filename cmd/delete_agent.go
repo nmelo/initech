@@ -76,7 +76,7 @@ func runDeleteAgent(cmd *cobra.Command, args []string) error {
 	fmt.Fprintf(out, "  %s Removed %s from %s\n", color.Green("✓"), color.Bold(roleName), color.Bold("initech.yaml"))
 
 	// Hot-remove from running TUI if a session is active.
-	if sockPath, _, sockErr := discoverSocket(); sockErr == nil {
+	if sockPath, _, sockErr := resolveSocket(); sockErr == nil {
 		resp, ipcErr := ipcCallSocket(sockPath, tui.IPCRequest{
 			Action: "remove",
 			Target: roleName,

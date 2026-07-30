@@ -33,7 +33,7 @@ func init() {
 func runAdd(cmd *cobra.Command, args []string) error {
 	name := args[0]
 
-	sockPath, proj, err := discoverSocket()
+	sockPath, proj, err := resolveSocket()
 	if err != nil {
 		if hint := addAgentHint(name, ""); hint != "" {
 			fmt.Fprintln(cmd.ErrOrStderr(), hint)
@@ -50,7 +50,13 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("could not add %s: %w", name, err)
 	}
 	if !resp.OK {
-		if hint := addAgentHint(name, proj.Root); hint != "" {
+		// proj is nil when INITECH_SOCKET is set but no initech.yaml is
+		// discoverable from cwd — see resolveSocket (ini-raup).
+		projRoot := ""
+		if proj != nil {
+			projRoot = proj.Root
+		}
+		if hint := addAgentHint(name, projRoot); hint != "" {
 			fmt.Fprintln(cmd.ErrOrStderr(), hint)
 		}
 		return fmt.Errorf("%s", resp.Error)

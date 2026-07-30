@@ -29,7 +29,7 @@ func runStart(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("--bead can only be used when starting a single agent")
 	}
 
-	sockPath, _, err := discoverSocket()
+	sockPath, _, err := resolveSocket()
 	if err != nil {
 		return err
 	}

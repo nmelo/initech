@@ -20,7 +20,7 @@ func init() {
 }
 
 func runStop(cmd *cobra.Command, args []string) error {
-	sockPath, _, err := discoverSocket()
+	sockPath, _, err := resolveSocket()
 	if err != nil {
 		return err
 	}

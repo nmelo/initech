@@ -19,7 +19,7 @@ func init() {
 }
 
 func runDown(cmd *cobra.Command, args []string) error {
-	sockPath, p, err := discoverSocket()
+	sockPath, p, err := resolveSocket()
 	if err != nil {
 		return err
 	}
@@ -32,6 +32,12 @@ func runDown(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("%s", resp.Error)
 	}
 
-	fmt.Fprintf(cmd.OutOrStdout(), "Session '%s' stopped.\n", p.Name)
+	// p is nil when INITECH_SOCKET is set but no initech.yaml is
+	// discoverable from cwd — see resolveSocket (ini-raup).
+	projName := "(unknown project)"
+	if p != nil {
+		projName = p.Name
+	}
+	fmt.Fprintf(cmd.OutOrStdout(), "Session '%s' stopped.\n", projName)
 	return nil
 }

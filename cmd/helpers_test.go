@@ -15,6 +15,23 @@ import (
 	"github.com/nmelo/initech/internal/tui"
 )
 
+// TestMain clears INITECH_SOCKET before any test in this package runs.
+// Several commands now treat INITECH_SOCKET as authoritative for socket
+// resolution (ini-raup); every real agent pane has it exported (pointing at
+// a live TUI socket — confirmed present in this repo's own dev shells), and
+// none of this package's ~20+ discoverSocket-reaching tests set or clear it
+// themselves, since they isolate purely via os.Chdir into a fixture. Without
+// this, running `go test` in a shell that inherits a real INITECH_SOCKET
+// would silently redirect those tests' dials away from their own fixtures
+// and into live infrastructure — the same incident this bug fixes, in the
+// opposite direction. Tests that need their own fixture socket already
+// t.Setenv it explicitly; that scoping is unaffected since t.Setenv restores
+// per-test regardless of what the process-wide baseline was.
+func TestMain(m *testing.M) {
+	os.Unsetenv("INITECH_SOCKET")
+	os.Exit(m.Run())
+}
+
 func skipWindows(t *testing.T) {
 	t.Helper()
 	if runtime.GOOS == "windows" {

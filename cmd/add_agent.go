@@ -215,7 +215,7 @@ func runAddAgent(cmd *cobra.Command, args []string) error {
 // tryHotAdd attempts to add the agent to a running TUI session via IPC.
 // Returns true if the agent was activated, false if no session or add failed.
 func tryHotAdd(out io.Writer, roleName string) bool {
-	sockPath, _, err := discoverSocket()
+	sockPath, _, err := resolveSocket()
 	if err != nil {
 		return false
 	}
