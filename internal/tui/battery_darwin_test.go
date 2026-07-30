@@ -75,6 +75,24 @@ func TestParseBatteryOutput_RealPmsetStrings(t *testing.T) {
 			wantHasBatt: true,
 		},
 		{
+			// qa2's adversarial fixture, failing ini-eqdw's first QA pass:
+			// a percent on a line BEFORE the InternalBattery line. When
+			// batteryPercentRe was matched against the full multi-line
+			// text instead of the InternalBattery line alone, this string
+			// produced pct=55 (the OTHER device's percent) with
+			// hasBattery=true -- a silent wrong number, not a caught
+			// failure. The fix scopes both regexes to the InternalBattery
+			// line only. This is the guardrail against widening that scope
+			// back to the full text.
+			name: "percent on an earlier unrelated line (qa2)",
+			text: "Now drawing from 'AC Power'\n" +
+				"Some Other Device: 55%\n" +
+				" -InternalBattery-0 (id=35717219)\t80%; AC attached; not charging present: true\n",
+			wantPct:     80,
+			wantCharge:  false,
+			wantHasBatt: true,
+		},
+		{
 			name:        "desktop Mac, no battery",
 			text:        "Now drawing from 'AC Power'\n",
 			wantPct:     0,

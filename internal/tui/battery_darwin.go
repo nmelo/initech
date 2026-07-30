@@ -53,22 +53,33 @@ func readBattery() (percent int, charging bool, hasBattery bool) {
 // without mocking exec.Command.
 //
 // Percent and charging are two independent facts about the same line of
-// output, deliberately parsed separately (ini-eqdw). The percent regex
-// matches on its own; if it fails, hasBattery is false, since there is
-// truly no percent to show. Charging is then classified separately by
+// output, deliberately parsed separately (ini-eqdw). The percent regex is
+// matched against the InternalBattery line ONLY, not the full multi-line
+// output -- qa2 caught that matching the full text lets a percent on an
+// earlier line (a second device, a UPS, some future pmset addition) be
+// mistaken for the battery's own percent. If the InternalBattery line has
+// no percent, hasBattery is false, since there is truly no percent to show.
+// Charging is then classified separately (also scoped to that line) by
 // exact-matching each semicolon-delimited field against
 // batteryChargingWords. A field like "not charging" contains the substring
 // "charging" but is never an exact trimmed field equal to "charging", so it
-// correctly does not count -- that's what fixes the bug, not a broader word
-// list. If no field matches, charging degrades to false: a battery
-// indicator that's wrong about "currently charging" (a false green) is
-// worse than one that shows the percent without asserting a charging state
-// it can't confirm.
+// correctly does not count -- that's what fixes the original bug, not a
+// broader word list. If no field matches, charging degrades to false: a
+// battery indicator that's wrong about "currently charging" (a false green)
+// is worse than one that shows the percent without asserting a charging
+// state it can't confirm.
 func parseBatteryOutput(text string) (percent int, charging bool, hasBattery bool) {
-	if !strings.Contains(text, "InternalBattery") {
+	batteryLine := ""
+	for _, line := range strings.Split(text, "\n") {
+		if strings.Contains(line, "InternalBattery") {
+			batteryLine = line
+			break
+		}
+	}
+	if batteryLine == "" {
 		return 0, false, false // Desktop Mac, no battery.
 	}
-	pctMatch := batteryPercentRe.FindStringSubmatch(text)
+	pctMatch := batteryPercentRe.FindStringSubmatch(batteryLine)
 	if len(pctMatch) < 2 {
 		return 0, false, false
 	}
@@ -76,7 +87,7 @@ func parseBatteryOutput(text string) (percent int, charging bool, hasBattery boo
 	if err != nil {
 		return 0, false, false
 	}
-	return pct, isChargingField(text), true
+	return pct, isChargingField(batteryLine), true
 }
 
 // isChargingField reports whether text contains a semicolon-delimited field
