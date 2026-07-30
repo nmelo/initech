@@ -232,9 +232,7 @@ Use ` + "`" + `initech send` + "`" + ` and ` + "`" + `initech peek` + "`" + ` fo
 
 **Operator utilities:**
 - ` + "`" + `initech notify "<message>"` + "`" + ` - post a notification to the configured webhook
-- ` + "`" + `initech update` + "`" + ` - update initech to the latest version
 - ` + "`" + `initech serve` + "`" + ` - run headless daemon for remote TUI connections
-- ` + "`" + `initech config show|list|get|validate` + "`" + ` - inspect or validate configuration
 
 **Beads:**
 - ` + "`" + `bd ready` + "`" + ` - unblocked beads
