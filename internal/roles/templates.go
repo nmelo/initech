@@ -65,7 +65,7 @@ If AC is vague, groom it yourself or have PM groom it first.
 
 ` + "`" + `initech assign <agent> <bead-id>` + "`" + `
 
-This single command claims the bead, registers it in the TUI, dispatches to the agent, and announces on radio. Add custom instructions with --message:
+This single command claims the bead, registers it in the TUI, and dispatches to the agent. Add custom instructions with --message:
 
 ` + "`" + `initech assign <agent> <bead-id> --message "Focus on the error handling edge cases."` + "`" + `
 
@@ -139,7 +139,7 @@ When announcing or reporting: describe WHAT happened, not WHICH bead. The operat
 Bad: "ini-y71 ready for QA"
 Good: "Duplicate agent fill fix ready for QA"
 
-Bead IDs belong in metadata (--bead flag), not in message text. initech deliver and initech assign handle this automatically; follow the same rule for manual initech announce calls.
+Bead IDs belong in metadata (--bead flag), not in message text. initech deliver and initech assign handle this automatically; follow the same rule if you report status any other way.
 
 ## Session Lifecycle
 
@@ -202,9 +202,8 @@ Use ` + "`" + `initech send` + "`" + ` and ` + "`" + `initech peek` + "`" + ` fo
 ## Tools
 
 **Dispatch and completion:**
-- ` + "`" + `initech assign <agent> <bead-id>` + "`" + ` - atomic dispatch (claim + bead + send + announce)
-- ` + "`" + `initech deliver <bead-id>` + "`" + ` - atomic completion (status + clear + report + announce)
-- ` + "`" + `initech announce "<message>"` + "`" + ` - voice announcement to Agent Radio (manual; deliver/assign do this automatically)
+- ` + "`" + `initech assign <agent> <bead-id>` + "`" + ` - atomic dispatch (claim + bead + send)
+- ` + "`" + `initech deliver <bead-id>` + "`" + ` - atomic completion (status + clear + report)
 
 **Agent communication:**
 - ` + "`" + `initech send <agent> "message"` + "`" + ` - send message to an agent
@@ -349,7 +348,7 @@ When announcing or reporting: describe WHAT happened, not WHICH bead. The operat
 Bad: "ini-y71 ready for QA"
 Good: "Duplicate agent fill fix ready for QA"
 
-Bead IDs belong in metadata (--bead flag), not in message text. initech deliver handles this automatically; follow the same rule for manual initech announce calls.
+Bead IDs belong in metadata (--bead flag), not in message text. initech deliver handles this automatically; follow the same rule if you report status any other way.
 
 ## Code Quality
 
@@ -615,9 +614,7 @@ If you cannot answer yes to all three, the bead is not groomed. Improve it befor
    ` + "`" + `initech bead <id>` + "`" + `
 3. Do the work (PRDs, specs, grooming, release notes)
 4. Comment your deliverable on the bead
-5. Deliver: ` + "`" + `initech deliver <id>` + "`" + ` (marks ready_for_qa, clears TUI, reports to super, announces to Agent Radio)
-
-Example announcement (only if you bypass deliver): ` + "`" + `initech announce --kind agent.completed --agent {{role_name}} "Groomed 3 live mode beads with full AC"` + "`" + `
+5. Deliver: ` + "`" + `initech deliver <id>` + "`" + ` (marks ready_for_qa, clears TUI, reports to super)
 
 When dispatching work directly (rare, usually super dispatches):
 ` + "`" + `initech assign <agent> <bead-id> --message "Groom this bead with full AC before eng picks it up."` + "`" + `
@@ -634,7 +631,7 @@ When announcing or reporting: describe WHAT happened, not WHICH bead. The operat
 Bad: "ini-eny.1, ini-eny.2 groomed"
 Good: "Groomed 3 live mode beads with full AC"
 
-Bead IDs belong in metadata (--bead flag), not in message text. initech deliver handles this automatically; follow the same rule for manual initech announce calls.
+Bead IDs belong in metadata (--bead flag), not in message text. initech deliver handles this automatically; follow the same rule if you report status any other way.
 
 ## Artifacts
 
@@ -714,7 +711,7 @@ Working directory: {{project_root}}/{{role_name}}
 3. Do the work (design, ADR, contract, review)
 4. Comment your deliverable on the bead:
    ` + "`" + `bd comments add <id> --author {{role_name}} "DONE: <summary>"` + "`" + `
-5. Deliver: ` + "`" + `initech deliver <id>` + "`" + ` (marks ready_for_qa, clears TUI, reports to super, announces to Agent Radio)
+5. Deliver: ` + "`" + `initech deliver <id>` + "`" + ` (marks ready_for_qa, clears TUI, reports to super)
 
 Fallback (if initech deliver is unavailable):
 1. ` + "`" + `bd update <id> --status ready_for_qa` + "`" + `
@@ -728,7 +725,7 @@ When announcing or reporting: describe WHAT happened, not WHICH bead. The operat
 Bad: "ini-y71 done"
 Good: "Auth boundary ADR drafted"
 
-Bead IDs belong in metadata (--bead flag), not in message text. initech deliver handles this automatically; follow the same rule for manual initech announce calls.
+Bead IDs belong in metadata (--bead flag), not in message text. initech deliver handles this automatically; follow the same rule if you report status any other way.
 
 ## Communication
 
@@ -802,7 +799,7 @@ Working directory: {{project_root}}/{{role_name}}
 3. Do the work (threat model, vuln assessment, review)
 4. Comment your finding on the bead:
    ` + "`" + `bd comments add <id> --author {{role_name}} "DONE: <finding + enrichment>"` + "`" + `
-5. Deliver: ` + "`" + `initech deliver <id>` + "`" + ` (marks ready_for_qa, clears TUI, reports to super, announces to Agent Radio)
+5. Deliver: ` + "`" + `initech deliver <id>` + "`" + ` (marks ready_for_qa, clears TUI, reports to super)
 
 Fallback (if initech deliver is unavailable):
 1. ` + "`" + `bd update <id> --status ready_for_qa` + "`" + `
@@ -816,7 +813,7 @@ When announcing or reporting: describe WHAT happened, not WHICH bead. The operat
 Bad: "ini-y71 done"
 Good: "IPC socket auth gap flagged (HIGH)"
 
-Bead IDs belong in metadata (--bead flag), not in message text. initech deliver handles this automatically; follow the same rule for manual initech announce calls.
+Bead IDs belong in metadata (--bead flag), not in message text. initech deliver handles this automatically; follow the same rule if you report status any other way.
 
 ## Communication
 
@@ -888,9 +885,7 @@ Playbooks: {{project_root}}/{{role_name}}/playbooks/
 6. Run build and package
 7. Test install path on clean environment
 8. Publish artifacts
-9. Deliver: ` + "`" + `initech deliver <id> --message "<version> released to Homebrew"` + "`" + ` (marks ready_for_qa, clears TUI, reports to super, announces to Agent Radio)
-
-Example announcement (only if you bypass deliver): ` + "`" + `initech announce --kind deploy.completed --agent {{role_name}} "v<version> released to Homebrew"` + "`" + `
+9. Deliver: ` + "`" + `initech deliver <id> --message "<version> released to Homebrew"` + "`" + ` (marks ready_for_qa, clears TUI, reports to super)
 
 Fallback (if initech deliver is unavailable):
 1. ` + "`" + `bd update <id> --status ready_for_qa` + "`" + `
@@ -904,7 +899,7 @@ When announcing or reporting: describe WHAT happened, not WHICH bead. The operat
 Bad: "ini-xyz released"
 Good: "v1.15.0 released to Homebrew"
 
-Bead IDs belong in metadata (--bead flag), not in message text. initech deliver handles this automatically; follow the same rule for manual initech announce calls.
+Bead IDs belong in metadata (--bead flag), not in message text. initech deliver handles this automatically; follow the same rule if you report status any other way.
 
 ## Communication
 
@@ -968,7 +963,7 @@ Working directory: {{project_root}}/{{role_name}}
 3. Do the work (positioning, copy, competitive analysis, release announcement draft)
 4. Comment your draft on the bead (all external content remains a DRAFT until the operator approves):
    ` + "`" + `bd comments add <id> --author {{role_name}} "DONE (DRAFT): <summary>"` + "`" + `
-5. Deliver: ` + "`" + `initech deliver <id>` + "`" + ` (marks ready_for_qa, clears TUI, reports to super, announces to Agent Radio)
+5. Deliver: ` + "`" + `initech deliver <id>` + "`" + ` (marks ready_for_qa, clears TUI, reports to super)
 
 Fallback (if initech deliver is unavailable):
 1. ` + "`" + `bd update <id> --status ready_for_qa` + "`" + `
@@ -982,7 +977,7 @@ When announcing or reporting: describe WHAT happened, not WHICH bead. The operat
 Bad: "ini-y71 drafted"
 Good: "v1.16 release announcement drafted (awaits operator approval)"
 
-Bead IDs belong in metadata (--bead flag), not in message text. initech deliver handles this automatically; follow the same rule for manual initech announce calls.
+Bead IDs belong in metadata (--bead flag), not in message text. initech deliver handles this automatically; follow the same rule if you report status any other way.
 
 ## Communication
 
@@ -1042,7 +1037,7 @@ Working directory: {{project_root}}/{{role_name}}
 3. Do the work (write or update docs, then verify by following them on a clean checkout)
 4. Comment your deliverable on the bead, including verification steps you followed:
    ` + "`" + `bd comments add <id> --author {{role_name}} "DONE: <summary>. Verified by: <steps>"` + "`" + `
-5. Deliver: ` + "`" + `initech deliver <id>` + "`" + ` (marks ready_for_qa, clears TUI, reports to super, announces to Agent Radio)
+5. Deliver: ` + "`" + `initech deliver <id>` + "`" + ` (marks ready_for_qa, clears TUI, reports to super)
 
 Fallback (if initech deliver is unavailable):
 1. ` + "`" + `bd update <id> --status ready_for_qa` + "`" + `
@@ -1056,7 +1051,7 @@ When announcing or reporting: describe WHAT happened, not WHICH bead. The operat
 Bad: "ini-y71 done"
 Good: "Windows install guide rewritten and verified on a fresh checkout"
 
-Bead IDs belong in metadata (--bead flag), not in message text. initech deliver handles this automatically; follow the same rule for manual initech announce calls.
+Bead IDs belong in metadata (--bead flag), not in message text. initech deliver handles this automatically; follow the same rule if you report status any other way.
 
 ## Communication
 
@@ -1114,7 +1109,7 @@ Playbooks: {{project_root}}/{{role_name}}/playbooks/
 3. Do the work (run real workflows on real hardware, capture observations and UX issues)
 4. Comment your findings on the bead with concrete commands run and observations:
    ` + "`" + `bd comments add <id> --author {{role_name}} "DONE: <summary>. Steps run: <list>. Findings: <list>"` + "`" + `
-5. Deliver: ` + "`" + `initech deliver <id>` + "`" + ` (marks ready_for_qa, clears TUI, reports to super, announces to Agent Radio)
+5. Deliver: ` + "`" + `initech deliver <id>` + "`" + ` (marks ready_for_qa, clears TUI, reports to super)
 
 Fallback (if initech deliver is unavailable):
 1. ` + "`" + `bd update <id> --status ready_for_qa` + "`" + `
@@ -1128,7 +1123,7 @@ When announcing or reporting: describe WHAT happened, not WHICH bead. The operat
 Bad: "ini-y71 tested"
 Good: "Fresh-install flow validated on Windows 11; first-run hangs on missing PATH entry"
 
-Bead IDs belong in metadata (--bead flag), not in message text. initech deliver handles this automatically; follow the same rule for manual initech announce calls.
+Bead IDs belong in metadata (--bead flag), not in message text. initech deliver handles this automatically; follow the same rule if you report status any other way.
 
 ## Communication
 
@@ -1192,7 +1187,7 @@ Source code: {{project_root}}/{{role_name}}/src/
 3. Do the work (instrument events, run analyses, design experiments)
 4. Comment your deliverable on the bead, with the events added or the analysis methodology:
    ` + "`" + `bd comments add <id> --author {{role_name}} "DONE: <summary>. Events: <list>. Findings: <list>"` + "`" + `
-5. Deliver: ` + "`" + `initech deliver <id>` + "`" + ` (marks ready_for_qa, clears TUI, reports to super, announces to Agent Radio)
+5. Deliver: ` + "`" + `initech deliver <id>` + "`" + ` (marks ready_for_qa, clears TUI, reports to super)
 
 Fallback (if initech deliver is unavailable):
 1. ` + "`" + `bd update <id> --status ready_for_qa` + "`" + `
@@ -1206,7 +1201,7 @@ When announcing or reporting: describe WHAT happened, not WHICH bead. The operat
 Bad: "ini-y71 instrumented"
 Good: "Onboarding funnel events shipped; first cohort data flowing tomorrow"
 
-Bead IDs belong in metadata (--bead flag), not in message text. initech deliver handles this automatically; follow the same rule for manual initech announce calls.
+Bead IDs belong in metadata (--bead flag), not in message text. initech deliver handles this automatically; follow the same rule if you report status any other way.
 
 ## Communication
 
@@ -1281,7 +1276,7 @@ You propose; engineers decide what graduates from exploration to production.
 4. Run experiments, logging each iteration's changes and results
 5. Summarize findings on the bead:
    ` + "`" + `bd comments add <id> --author {{role_name}} "DONE: <summary>. Top result: <X>. Branch: <name>"` + "`" + `
-6. Deliver: ` + "`" + `initech deliver <id>` + "`" + ` (marks ready_for_qa, clears TUI, reports to super, announces to Agent Radio)
+6. Deliver: ` + "`" + `initech deliver <id>` + "`" + ` (marks ready_for_qa, clears TUI, reports to super)
 
 Fallback (if initech deliver is unavailable):
 1. ` + "`" + `bd update <id> --status ready_for_qa` + "`" + `
@@ -1295,7 +1290,7 @@ When announcing or reporting: describe WHAT happened, not WHICH bead. The operat
 Bad: "ini-y71 done"
 Good: "Hyperparameter sweep complete: 4 configs beat baseline by >5%"
 
-Bead IDs belong in metadata (--bead flag), not in message text. initech deliver handles this automatically; follow the same rule for manual initech announce calls.
+Bead IDs belong in metadata (--bead flag), not in message text. initech deliver handles this automatically; follow the same rule if you report status any other way.
 
 ## Communication
 

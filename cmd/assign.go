@@ -3,13 +3,10 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 	"os/exec"
 	"strings"
 
-	"github.com/nmelo/initech/internal/config"
 	"github.com/nmelo/initech/internal/tui"
-	"github.com/nmelo/initech/internal/webhook"
 	"github.com/spf13/cobra"
 )
 
@@ -171,9 +168,6 @@ func runAssign(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("beads claimed but dispatch failed: %s\nRun: initech send %s to notify manually", resp.Error, agent)
 	}
 
-	// Announce to Agent Radio (fire and forget).
-	announceAssignment(cmd, agent, successes)
-
 	// Emit events to TUI (fire and forget, one per bead).
 	for _, s := range successes {
 		emitIPCEvent(agent, s.id, "bead_assigned", fmt.Sprintf("assigned to %s: %s", agent, s.title))
@@ -235,44 +229,4 @@ func buildDispatchMessage(successes []assignResult, message string) string {
 		b.WriteString("\n" + message)
 	}
 	return b.String()
-}
-
-// announceAssignment posts a single announcement for the batch assignment.
-func announceAssignment(cmd *cobra.Command, agent string, successes []assignResult) {
-	wd, err := os.Getwd()
-	if err != nil {
-		return
-	}
-	cfgPath, err := config.Discover(wd)
-	if err != nil {
-		return
-	}
-	p, err := config.Load(cfgPath)
-	if err != nil || p.AnnounceURL == "" {
-		return
-	}
-
-	ids := make([]string, len(successes))
-	for i, s := range successes {
-		ids[i] = s.id
-	}
-
-	var detail string
-	if len(successes) == 1 {
-		detail = fmt.Sprintf("%s picking up: %s", agent, successes[0].title)
-	} else {
-		detail = fmt.Sprintf("%s assigned %d beads", agent, len(successes))
-	}
-
-	payload := webhook.AnnouncePayload{
-		Detail:  detail,
-		Kind:    "agent.started",
-		Agent:   agent,
-		Project: p.Name,
-		BeadID:  successes[0].id,
-	}
-	result := webhook.PostAnnouncement(p.AnnounceURL, payload)
-	if result.Err != nil {
-		fmt.Fprintf(cmd.ErrOrStderr(), "warning: announce failed: %s\n", result.Err)
-	}
 }

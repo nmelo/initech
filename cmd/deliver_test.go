@@ -16,8 +16,8 @@ import (
 )
 
 // isolateFromProject chdir to a temp dir with a minimal initech.yaml (no
-// announce_url/webhook_url). config.Discover finds it, but announce/webhook
-// calls bail out immediately because the URLs are empty.
+// webhook_url). config.Discover finds it, but the webhook call bails out
+// immediately because the URL is empty.
 func isolateFromProject(t *testing.T) {
 	t.Helper()
 	dir := t.TempDir()
@@ -29,7 +29,7 @@ func isolateFromProject(t *testing.T) {
 }
 
 // stubBdFns overrides all bd function vars with stubs, isolates from the real
-// project (prevents announce/webhook calls), and restores on cleanup.
+// project (prevents webhook calls), and restores on cleanup.
 // Also stubs lifecycle.ConfigGetFn (ini-6e54) to return the default initech
 // custom-status list, so the lifecycle walker can build a real chain without
 // shelling out to bd. bdShowBeadFn defaults to returning status "in_progress"
@@ -275,7 +275,7 @@ func TestRunDeliver_AssigneeMismatchWarning(t *testing.T) {
 
 // TestRunDeliver_NoAgent: ini-dgt.2 changed the contract. Empty
 // INITECH_AGENT (and no --as) is now a hard error, not a warning, because
-// announce/report/webhook templates are role-aware and silently defaulting to
+// report/webhook templates are role-aware and silently defaulting to
 // the engineer template was the original bug.
 func TestRunDeliver_NoAgent(t *testing.T) {
 	skipWindows(t)
@@ -729,51 +729,50 @@ func TestSelectTemplate(t *testing.T) {
 		title             string
 		agent             string
 		wantKind          string
-		wantRadioPrefix   string
 		wantReportPrefix  string
 		wantSummarySuffix string
 	}{
 		{
 			name: "eng pass", family: roles.FamilyEng, agent: "eng1", title: "Auth refactor",
-			wantKind: "agent.completed", wantRadioPrefix: "eng1 finished:",
+			wantKind:         "agent.completed",
 			wantReportPrefix: "Auth refactor ready for QA", wantSummarySuffix: "ready for QA",
 		},
 		{
 			name: "eng fail with reason", family: roles.FamilyEng, isFail: true, reason: "tests broken",
 			agent: "eng2", title: "Login bug",
-			wantKind: "agent.failed", wantRadioPrefix: "eng2 hit a wall: tests broken",
+			wantKind:         "agent.failed",
 			wantReportPrefix: "Login bug FAILED: tests broken", wantSummarySuffix: "FAILED: tests broken",
 		},
 		{
 			name: "eng fail no reason", family: roles.FamilyEng, isFail: true,
 			agent: "eng3", title: "Bug",
-			wantKind: "agent.failed", wantRadioPrefix: "eng3 hit a wall",
-			wantReportPrefix: "Bug FAILED: no reason provided",
+			wantKind:          "agent.failed",
+			wantReportPrefix:  "Bug FAILED: no reason provided",
 			wantSummarySuffix: "FAILED: no reason provided",
 		},
 		{
 			name: "qa pass", family: roles.FamilyQA, verdict: "PASS",
 			agent: "qa1", title: "Login regression",
-			wantKind: "agent.completed", wantRadioPrefix: "qa1 PASS:",
+			wantKind:         "agent.completed",
 			wantReportPrefix: "PASS:", wantSummarySuffix: "PASS",
 		},
 		{
 			name: "qa fail", family: roles.FamilyQA, isFail: true, verdict: "FAIL", reason: "logout broken",
 			agent: "qa2", title: "Auth bug",
-			wantKind: "agent.failed", wantRadioPrefix: "qa2 FAIL:",
+			wantKind:         "agent.failed",
 			wantReportPrefix: "FAIL:", wantSummarySuffix: "FAIL: logout broken",
 		},
 		{
 			name: "other pass generic", family: roles.FamilyOther,
 			agent: "pm", title: "Spec for live mode",
-			wantKind: "agent.completed", wantRadioPrefix: "pm delivered:",
+			wantKind:         "agent.completed",
 			wantReportPrefix: "delivered:", wantSummarySuffix: "delivered",
 		},
 		{
 			name: "other fail generic", family: roles.FamilyOther, isFail: true, reason: "missing approval",
 			agent: "shipper", title: "Release v1.21",
-			wantKind: "agent.failed", wantRadioPrefix: "shipper delivery failed: missing approval",
-			wantReportPrefix: "Release v1.21 delivery failed: missing approval",
+			wantKind:          "agent.failed",
+			wantReportPrefix:  "Release v1.21 delivery failed: missing approval",
 			wantSummarySuffix: "delivery failed: missing approval",
 		},
 	}
@@ -782,9 +781,6 @@ func TestSelectTemplate(t *testing.T) {
 			tpl := selectTemplate(tt.family, tt.isFail, tt.verdict, tt.reason, tt.title, tt.agent)
 			if tpl.Kind != tt.wantKind {
 				t.Errorf("Kind = %q, want %q", tpl.Kind, tt.wantKind)
-			}
-			if !strings.HasPrefix(tpl.RadioDetail, tt.wantRadioPrefix) {
-				t.Errorf("RadioDetail = %q, want prefix %q", tpl.RadioDetail, tt.wantRadioPrefix)
 			}
 			if !strings.HasPrefix(tpl.ReportText, tt.wantReportPrefix) {
 				t.Errorf("ReportText = %q, want prefix %q", tpl.ReportText, tt.wantReportPrefix)
@@ -1105,7 +1101,7 @@ func stubBdFnsWithRoster(t *testing.T, rosterRoles []string) {
 
 // TestRunDeliver_CustomRoleFromRoster_Accepted: a non-prefix non-catalog
 // role defined in initech.yaml is now accepted by deliver and gets the
-// FamilyOther generic announce template. This is the core ini-98n fix.
+// FamilyOther generic notification template. This is the core ini-98n fix.
 func TestRunDeliver_CustomRoleFromRoster_Accepted(t *testing.T) {
 	skipWindows(t)
 	stubBdFnsWithRoster(t, []string{"super", "practitioner", "analyst"})
@@ -1452,7 +1448,7 @@ func TestDeliver_CustomLifecycle(t *testing.T) {
 
 // TestDeliver_AnyRole_AdvancesStatus pins the Q3 contract: role/family does
 // not gate the status write. Eng, QA, Other, and a custom-roster role all
-// advance the bead one step. Announce templates still differ by role (ini-
+// advance the bead one step. Notification templates still differ by role (ini-
 // dgt.2) but that's tested separately.
 func TestDeliver_AnyRole_AdvancesStatus(t *testing.T) {
 	skipWindows(t)
