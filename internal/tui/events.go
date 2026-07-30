@@ -6,7 +6,6 @@
 package tui
 
 import (
-	"fmt"
 	"regexp"
 	"strings"
 	"time"
@@ -192,19 +191,6 @@ func (t *TUI) handleAgentEvent(ev AgentEvent) {
 	// Cap at maxNotifications. Drop oldest if over limit.
 	if len(t.notifications) > maxNotifications {
 		t.notifications = t.notifications[len(t.notifications)-maxNotifications:]
-	}
-
-	// When an agent goes idle while holding a bead, notify the super pane.
-	// Opt-in safety net: only fires when auto_notify is explicitly true in
-	// initech.yaml (ini-3k1; nil/absent now defaults to disabled).
-	// Run in a goroutine to avoid blocking the render loop.
-	if ev.Type == EventAgentIdleWithBead && (t.project == nil || t.project.IsAutoNotifyEnabled()) {
-		if super := t.findPaneByName("super"); super != nil && super.IsAlive() {
-			if lp, ok := super.(*Pane); ok {
-				msg := fmt.Sprintf("[from initech] %s idle with bead %s. If done: bd update %s --status ready_for_qa && tell %s to run initech bead --clear. If not: nudge %s to continue.", ev.Pane, ev.BeadID, ev.BeadID, ev.Pane, ev.Pane)
-				t.safeGo(func() { t.injectText(lp, msg, true) })
-			}
-		}
 	}
 
 	// Also append to the persistent event log.

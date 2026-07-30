@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"testing"
 	"time"
-
-	"github.com/nmelo/initech/internal/config"
 )
 
 func TestEventTypeString(t *testing.T) {
@@ -133,72 +131,12 @@ func TestPruneNotifications(t *testing.T) {
 	}
 }
 
-func TestAutoNotifyDisabled_SuppressesIdleWithBead(t *testing.T) {
-	f := false
-	tui := &TUI{
-		project: &config.Project{AutoNotify: &f},
-	}
-
-	ev := AgentEvent{
-		Type:   EventAgentIdleWithBead,
-		Pane:   "eng1",
-		BeadID: "ini-test",
-		Detail: "eng1 idle with bead",
-		Time:   time.Now(),
-	}
-	tui.handleAgentEvent(ev)
-
-	// The event should still appear in notifications (toast) and event log,
-	// but the injectText to super should NOT fire. Since we have no super pane
-	// and no safeGo, a panic would indicate the code tried to notify.
-	// Absence of panic = suppression worked.
-	if len(tui.notifications) != 1 {
-		t.Errorf("notifications = %d, want 1 (event still logged)", len(tui.notifications))
-	}
-}
-
-// TestAutoNotifyDefault_SuppressesIdleWithBead: post-ini-3k1 the nil
-// AutoNotify default means SUPPRESS, not allow. This test pins the new
-// opt-in default. The toast/event-log notification still appears (it's
-// unconditional); only the super-pane injectText is gated.
-//
-// Test depth caveat: we verify the toast appears AND no panic, which only
-// proves the code took a survivable path. Strong assertion (that injectText
-// was not called) requires a super-pane fixture + interception — pre-existing
-// test debt mirrored in the sibling _Disabled and _ExplicitTrue tests.
-func TestAutoNotifyDefault_SuppressesIdleWithBead(t *testing.T) {
-	// nil AutoNotify post-ini-3k1 = defaults to false (suppressed).
-	tui := &TUI{
-		project: &config.Project{},
-	}
-
-	ev := AgentEvent{
-		Type:   EventAgentIdleWithBead,
-		Pane:   "eng1",
-		BeadID: "ini-test",
-		Detail: "eng1 idle with bead",
-		Time:   time.Now(),
-	}
-	// IsAutoNotifyEnabled returns false on the nil default, so the
-	// findPaneByName("super") branch is NOT entered. No panic confirms the
-	// suppression path was taken; the toast still appears below.
-	tui.handleAgentEvent(ev)
-
-	if len(tui.notifications) != 1 {
-		t.Errorf("notifications = %d, want 1 (toast still appears even when super-notify is suppressed)", len(tui.notifications))
-	}
-}
-
-// TestAutoNotifyExplicitTrue_AllowsIdleWithBead: opt-in path. With
-// AutoNotify: &true, the notify branch enters; findPaneByName returns nil
-// here because no super pane is wired in the fixture, so injectText is
-// never called and no panic results. Toast still fires. Mirrors the
-// _Disabled / _Default suppression tests with the opposite gate decision.
-func TestAutoNotifyExplicitTrue_AllowsIdleWithBead(t *testing.T) {
-	tr := true
-	tui := &TUI{
-		project: &config.Project{AutoNotify: &tr},
-	}
+// TestHandleAgentEvent_IdleWithBead_ProducesToast verifies the operator
+// toast still appears for EventAgentIdleWithBead — this notification is
+// unconditional (KEPT); only the super-pane nudge (removed) was gated on
+// the config opt-in.
+func TestHandleAgentEvent_IdleWithBead_ProducesToast(t *testing.T) {
+	tui := &TUI{}
 
 	ev := AgentEvent{
 		Type:   EventAgentIdleWithBead,
@@ -211,5 +149,8 @@ func TestAutoNotifyExplicitTrue_AllowsIdleWithBead(t *testing.T) {
 
 	if len(tui.notifications) != 1 {
 		t.Errorf("notifications = %d, want 1", len(tui.notifications))
+	}
+	if len(tui.eventLog) != 1 {
+		t.Errorf("eventLog = %d, want 1", len(tui.eventLog))
 	}
 }

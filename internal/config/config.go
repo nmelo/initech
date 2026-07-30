@@ -62,7 +62,6 @@ type Project struct {
 	WebPort               *int   `yaml:"web_port,omitempty"`                 // Web companion port. nil/0 = disabled, >0 = enabled.
 	WebhookURL            string `yaml:"webhook_url,omitempty"`              // HTTP endpoint for agent event POSTs. Empty = disabled.
 	AnnounceURL           string `yaml:"announce_url,omitempty"`             // Agent Radio webhook for TTS announcements. Empty = disabled.
-	AutoNotify            *bool  `yaml:"auto_notify,omitempty"`              // Send idle-with-bead reminders to super. nil/false = disabled, true = enabled. Opt-in safety net (ini-3k1).
 	IdleWithBeadThreshold *int   `yaml:"idle_with_bead_threshold,omitempty"` // Seconds of silence before idle-with-bead fires. nil = 60, 0 = disabled.
 
 	// MCP server fields.
@@ -79,14 +78,6 @@ type Project struct {
 	Listen   string            `yaml:"listen,omitempty"`    // TCP listen addr for headless mode. Defaults to 127.0.0.1 if only port given (e.g., ":7391" becomes "127.0.0.1:7391"). Use "0.0.0.0:port" to bind all interfaces.
 	Token    string            `yaml:"token,omitempty"`     // Shared auth token.
 	Remotes  map[string]Remote `yaml:"remotes,omitempty"`   // Named remote peers.
-}
-
-// IsAutoNotifyEnabled returns true if the idle-with-bead auto-notify is
-// enabled. The notify is an opt-in safety net (ini-3k1): defaults to false
-// when AutoNotify is nil (field absent from yaml). Users who want the
-// notifications add 'auto_notify: true' to initech.yaml and restart.
-func (p *Project) IsAutoNotifyEnabled() bool {
-	return p.AutoNotify != nil && *p.AutoNotify
 }
 
 // GetIdleWithBeadThreshold returns the idle-with-bead notification threshold
