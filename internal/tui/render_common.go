@@ -11,14 +11,27 @@ import (
 // render as a dark gray matching the default background.
 var trueBlack = tcell.NewRGBColor(0, 0, 0)
 
+// runningSquareStyle is the red running indicator drawn at the ribbon's
+// reserved leading cell (ini-z9a3). Always red regardless of focus, matching
+// the badge's other status colors (red also means [dead] — the two never
+// coexist since running requires alive).
+var runningSquareStyle = tcell.StyleDefault.Background(trueBlack).Foreground(tcell.ColorRed).Bold(true)
+
 // renderRibbon draws the bottom ribbon: solid black background, title badge,
-// and optional bead ID with title. Returns the column position after the last element.
-func renderRibbon(s *clampedScreen, r Region, title string, titleStyle tcell.Style, beadID, beadTitle string) int {
+// and optional bead ID with title. running draws a red square at the ribbon's
+// leading cell (reserved unconditionally by the col := r.X+1 title start
+// below, so the badge never shifts whether or not the square is shown).
+// Returns the column position after the last element.
+func renderRibbon(s *clampedScreen, r Region, title string, titleStyle tcell.Style, beadID, beadTitle string, running bool) int {
 	ribbonY := r.Y + r.H - 1
 
 	blackStyle := tcell.StyleDefault.Background(trueBlack)
 	for x := r.X; x < r.X+r.W; x++ {
 		s.SetContent(x, ribbonY, ' ', nil, blackStyle)
+	}
+
+	if running {
+		s.SetContent(r.X, ribbonY, '■', nil, runningSquareStyle)
 	}
 
 	col := r.X + 1

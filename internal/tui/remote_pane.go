@@ -387,12 +387,15 @@ func (rp *RemotePane) Render(screen tcell.Screen, focused bool, dimmed bool, ind
 		titleStyle = tcell.StyleDefault.Background(trueBlack).Foreground(tcell.ColorRed).Bold(true)
 	}
 
-	renderRibbon(s, r, title, titleStyle, rp.BeadID(), "")
+	// Remote panes don't carry the local lastOutputTime/tint-hold state, so
+	// the running-pane tint is local-only for v1 (ini-zmzg). The badge's
+	// running square (ini-z9a3) reuses that exact tint signal by design, so
+	// it's local-only for the same reason here — never a fabricated parallel
+	// "running" notion for remote panes.
+	renderRibbon(s, r, title, titleStyle, rp.BeadID(), "", false)
 
 	_, innerRows := r.InnerSize()
 	emuStartRow := rp.emu.Height() - innerRows
-	// Remote panes don't carry the local lastOutputTime/tint-hold state, so the
-	// running-pane tint is local-only for v1 (ini-zmzg). No tint here.
 	renderCells(s, r, rp.emu, dimmed, emuStartRow, tcell.ColorDefault)
 	renderSelection(s, r, rp.emu, sel, dimmed, emuStartRow)
 	renderCursor(s, r, rp.emu, focused, sel, emuStartRow)

@@ -57,6 +57,17 @@ func (p *Pane) Render(screen tcell.Screen, focused bool, dimmed bool, index int,
 	// Clamp all writes to the pane's region.
 	s := &clampedScreen{Screen: screen, r: r}
 
+	// Running-pane background tint (ini-zmzg): ColorDefault when not running /
+	// past the hold window, so idle/dead/suspended panes render exactly as
+	// before. Applied only to default-bg content cells.
+	//
+	// Computed once, here, and reused for the badge's running square
+	// (ini-z9a3) so the two indicators are always the same claim about the
+	// same pane, read from the same field — never a parallel notion of
+	// "running" that could disagree with the tint.
+	tint := p.backgroundTint()
+	running := tint != tcell.ColorDefault
+
 	// Badge style: focused = white on DodgerBlue box, unfocused = gray on true black.
 	var titleStyle tcell.Style
 	if focused {
@@ -78,16 +89,11 @@ func (p *Pane) Render(screen tcell.Screen, focused bool, dimmed bool, index int,
 		titleStyle = tcell.StyleDefault.Background(trueBlack).Foreground(tcell.ColorYellow).Bold(true)
 	}
 
-	renderRibbon(s, r, title, titleStyle, p.BeadID(), p.BeadTitle())
+	renderRibbon(s, r, title, titleStyle, p.BeadID(), p.BeadTitle(), running)
 
 	// Activity bar at r.Y (top edge). Drawn before content so it is always
 	// present even when content rendering is suppressed during resize settling.
 	p.renderActivityBar(s, r)
-
-	// Running-pane background tint (ini-zmzg): ColorDefault when not running /
-	// past the hold window, so idle/dead/suspended panes render exactly as
-	// before. Applied only to default-bg content cells.
-	tint := p.backgroundTint()
 
 	// Content region: below activity bar (r.Y+1), above ribbon (r.Y+H-1).
 	// cr.InnerSize() returns TerminalSize dimensions (H-2 rows), and
