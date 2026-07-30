@@ -17,15 +17,22 @@ const (
 )
 
 // refreshTopData queries ps for each pane and caches the result.
+//
+// The cached rows are what the modal draws, so t.top.selected indexes this
+// snapshot — not the live t.panes. Every rebuild re-anchors the highlight to
+// the agent it was on by identity rather than by position, so a removal above
+// the selection cannot slide the highlight onto a different agent (ini-6gjg).
 func (t *TUI) refreshTopData() {
 	if time.Since(t.top.cacheTime) < 2*time.Second && len(t.top.data) > 0 {
 		return
 	}
+	prevKey := t.topSelectedKey()
 	entries := make([]topEntry, len(t.panes))
 	for i, pv := range t.panes {
 		pk := paneKey(pv)
 		e := topEntry{
 			Name:   pv.Name(),
+			Key:    pk,
 			Bead:   pv.BeadID(),
 			Status: pv.Activity().String(),
 		}
@@ -51,6 +58,103 @@ func (t *TUI) refreshTopData() {
 	}
 	t.top.data = entries
 	t.top.cacheTime = time.Now()
+	t.topResync(prevKey)
+}
+
+// topSelectedKey returns the identity of the agent on the highlighted row —
+// the row the operator can actually see. Empty when the selection falls
+// outside the rendered snapshot, which is the caller's signal that there is no
+// visible agent to act on.
+func (t *TUI) topSelectedKey() string {
+	if t.top.selected < 0 || t.top.selected >= len(t.top.data) {
+		return ""
+	}
+	return t.top.data[t.top.selected].Key
+}
+
+// topResync re-points the highlight at prevKey's row in the freshly rebuilt
+// snapshot so the selection follows the agent across a pane-set change instead
+// of staying on a position that now belongs to someone else. Clamps into range
+// when that agent is gone.
+func (t *TUI) topResync(prevKey string) {
+	n := len(t.top.data)
+	if n == 0 {
+		t.top.selected = 0
+		t.top.scrollOffset = 0
+		return
+	}
+	if prevKey != "" {
+		for i, e := range t.top.data {
+			if e.Key == prevKey {
+				t.top.selected = i
+				break
+			}
+		}
+	}
+	if t.top.selected >= n {
+		t.top.selected = n - 1
+	}
+	if t.top.selected < 0 {
+		t.top.selected = 0
+	}
+	if t.top.scrollOffset < 0 || t.top.scrollOffset >= n {
+		t.top.scrollOffset = 0
+	}
+}
+
+// topResolveSelected maps the highlighted row to an index into the live
+// t.panes by pane identity rather than by position.
+//
+// The modal draws from a snapshot up to 2s old, so the row the operator sees
+// and the live slice can disagree after a removal (t.panes shrinks) or a peer
+// update (reorderPanes permutes t.panes without changing its length). A
+// positional lookup then resolves to an agent that was never highlighted.
+// Every destructive action goes through here; ok=false means the highlighted
+// agent has no live counterpart and the caller must refuse rather than act on
+// whichever pane inherited the index (ini-6gjg). The returned index comes from
+// ranging over t.panes, so it is in range by construction.
+func (t *TUI) topResolveSelected() (int, bool) {
+	key := t.topSelectedKey()
+	if key == "" {
+		return -1, false
+	}
+	for i, pv := range t.panes {
+		if paneKey(pv) == key {
+			return i, true
+		}
+	}
+	return -1, false
+}
+
+// topRefuseAction reports a destructive action that could not be tied to a
+// live agent and invalidates the cache so the next render redraws from live
+// state. The operator gets told nothing happened and sees the corrected list,
+// rather than a silent no-op against a row that no longer exists.
+func (t *TUI) topRefuseAction(verb string) {
+	name := "selected agent"
+	if t.top.selected >= 0 && t.top.selected < len(t.top.data) {
+		if n := t.top.data[t.top.selected].Name; n != "" {
+			name = n
+		}
+	}
+	t.cmd.error = fmt.Sprintf("%s refused: %s is no longer running (list refreshed)", verb, name)
+	t.top.cacheTime = time.Time{}
+}
+
+// topReconcile invalidates the top modal's cached rows when the pane set
+// changes, so a removed agent is not drawn for the rest of the cache window.
+// Call it wherever t.panes changes, alongside agentsReconcile. No-op when the
+// modal is closed (state is reset on open).
+//
+// This narrows the stale window; it does not carry the correctness. Actions
+// resolve their target by identity (topResolveSelected), which is what
+// guarantees a destructive action can never hit an agent the operator did not
+// see (ini-6gjg).
+func (t *TUI) topReconcile() {
+	if !t.top.active {
+		return
+	}
+	t.top.cacheTime = time.Time{}
 }
 
 // handleTopKey handles input while the top modal is active.
@@ -66,7 +170,9 @@ func (t *TUI) handleTopKey(ev *tcell.EventKey) bool {
 		}
 		return false
 	case tcell.KeyDown:
-		if t.top.selected < len(t.panes)-1 {
+		// Bounded by the rendered snapshot, not the live slice: selected
+		// indexes t.top.data, which is what the operator is looking at.
+		if t.top.selected < len(t.top.data)-1 {
 			t.top.selected++
 			t.topEnsureVisible()
 		}
@@ -77,12 +183,15 @@ func (t *TUI) handleTopKey(ev *tcell.EventKey) bool {
 			t.top.active = false
 			return false
 		case 'r':
-			if t.top.selected >= 0 && t.top.selected < len(t.panes) {
-				p, ok := t.panes[t.top.selected].(*Pane)
+			// Resolve by identity: the agent on the highlighted row, never the
+			// pane that happens to sit at that index right now (ini-6gjg).
+			if idx, resolved := t.topResolveSelected(); !resolved {
+				t.topRefuseAction("restart")
+			} else if idx >= 0 && idx < len(t.panes) {
+				p, ok := t.panes[idx].(*Pane)
 				if !ok {
 					return false
 				}
-				idx := t.top.selected
 				cols := p.Emulator().Width()
 				rows := p.Emulator().Height()
 				if cols < 10 {
@@ -109,8 +218,12 @@ func (t *TUI) handleTopKey(ev *tcell.EventKey) bool {
 			}
 			return false
 		case 'k':
-			if t.top.selected >= 0 && t.top.selected < len(t.panes) {
-				p, ok := t.panes[t.top.selected].(*Pane)
+			// Same identity resolution as restart: kill destroys in-flight
+			// work, so a stale index must refuse, not redirect (ini-6gjg).
+			if idx, resolved := t.topResolveSelected(); !resolved {
+				t.topRefuseAction("kill")
+			} else if idx >= 0 && idx < len(t.panes) {
+				p, ok := t.panes[idx].(*Pane)
 				if !ok {
 					return false
 				}
@@ -159,11 +272,21 @@ func (t *TUI) topEnsureVisible() {
 	if t.top.selected >= t.top.scrollOffset+vis {
 		t.top.scrollOffset = t.top.selected - vis + 1
 	}
+	// selected == -1 means nothing is highlighted; scrolling to meet it would
+	// drive the offset negative and index t.top.data out of range.
+	if t.top.scrollOffset < 0 {
+		t.top.scrollOffset = 0
+	}
 }
 
 // renderTop draws the floating activity monitor modal.
 func (t *TUI) renderTop() {
 	t.refreshTopData()
+	// Keep the highlight on screen. A rebuild can move the selection (an agent
+	// above it was removed) and leave scrollOffset pointing elsewhere; drawing
+	// a selection the operator cannot see would put a destructive action on an
+	// invisible target (ini-6gjg).
+	t.topEnsureVisible()
 	s := t.screen
 	sw, sh := s.Size()
 

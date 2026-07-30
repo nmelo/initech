@@ -1178,6 +1178,9 @@ func (t *TUI) handlePeerUpdate(peerName string, newPanes []PaneView) {
 	// Keep the agents-modal selection state valid against the new pane set so a
 	// stale filtered/selected index can't crash the render loop (ini-w7ym).
 	t.agentsReconcile()
+	// Drop the top modal's cached rows: a peer update can both shrink and
+	// reorder t.panes, so the cached rows no longer describe it (ini-6gjg).
+	t.topReconcile()
 	LogInfo("peer-update", "panes-updated", "peer", peerName, "total_panes", len(kept))
 	t.recalcGrid(true)
 	LogInfo("peer-update", "done", "peer", peerName, "plan_panes", len(t.plan.Panes))

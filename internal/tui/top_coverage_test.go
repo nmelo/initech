@@ -36,6 +36,15 @@ func topTestTUI(entries []topEntry) (*TUI, tcell.SimulationScreen) {
 		}
 	}
 
+	// Rows carry the pane identity in production (refreshTopData); mirror that
+	// here so actions, which resolve their target by identity rather than by
+	// position (ini-6gjg), see resolvable rows.
+	for i := range entries {
+		if entries[i].Key == "" {
+			entries[i].Key = paneKey(panes[i])
+		}
+	}
+
 	tui := &TUI{
 		screen:      s,
 		panes:       toPaneViews(panes),

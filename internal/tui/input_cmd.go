@@ -693,6 +693,11 @@ func (t *TUI) cmdTop() bool {
 	t.cmd.error = "" // Clear stale errors so they don't reappear on close.
 	t.top.active = true
 	t.top.selected = 0
+	t.top.scrollOffset = 0
+	// Drop the previous session's rows outright, not just their freshness: a
+	// keypress landing before the first render must have nothing to resolve
+	// against rather than an agent list the operator never saw (ini-6gjg).
+	t.top.data = nil
 	t.top.cacheTime = time.Time{} // Force fresh data.
 	return false
 }

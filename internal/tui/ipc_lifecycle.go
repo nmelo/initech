@@ -360,6 +360,9 @@ func (t *TUI) removePane(name string) error {
 		// set so a stale filtered/selected index can't crash the TUI
 		// (ini-w7ym / ini-t3ov).
 		t.agentsReconcile()
+		// Drop the top modal's cached rows so it stops drawing the removed
+		// agent (ini-6gjg).
+		t.topReconcile()
 
 		// Clean up layout state references.
 		if t.layoutState.Hidden != nil {

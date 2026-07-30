@@ -629,7 +629,13 @@ func (t *TUI) renderNotifications() {
 
 // topEntry holds process info for one pane.
 type topEntry struct {
-	Name    string
+	Name string
+	// Key is the pane identity (paneKey) captured when the row was built.
+	// Name is what the operator reads; Key is what the row *is*, and it is
+	// what destructive actions resolve against so a stale row cannot target a
+	// different agent (ini-6gjg). Host-qualified, so two peers' same-named
+	// agents stay distinct.
+	Key     string
 	PID     int
 	Comm    string // Process name from ps.
 	Command string // Launch command from config.
