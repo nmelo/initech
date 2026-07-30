@@ -52,7 +52,6 @@ func getHelpLines() []string {
 			"  top (ps)         Activity monitor (PID, memory, status).",
 			"  add <name>       Add a new agent pane.",
 			"  remove (rm) <n>  Remove an agent pane.",
-			"  remote-stop <peer>  Stop all agents from a connected peer.",
 			"  log (events)     Event history: last 60 min, up to 100 events.",
 			"  help (?)         This screen.",
 			"  quit (q)         Exit initech.",

@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -221,18 +222,101 @@ func TestHelpLinesDocumentQuickGridAndLive(t *testing.T) {
 	}
 }
 
-// TestHelpLinesDocumentEveryCommand guards against ini-162m's whole defect
-// class recurring: a command the command bar accepts (commandNames, used for
-// fuzzy-match suggestions) with no entry in the help overlay's Commands
-// section ships invisibly -- a capability nobody can find has not really
-// shipped. Broader than asserting specific strings so the NEXT command added
-// without a help entry fails here too, instead of shipping and being found
-// by a user reading release notes for a feature the product can't explain.
+// isUnknownExecCmd runs name through the real execCmd dispatcher on a fresh
+// zero-value TUI and reports whether it fell through to the "unknown
+// command" default case -- i.e. whether name is actually REACHABLE, as
+// opposed to merely present in the commandNames registry. A fresh TUI per
+// call avoids state (like pendingConfirm) leaking between probes, and
+// recover guards the whole test suite against a command that happens to
+// need real pane/screen state to run without panicking on a zero value.
+func isUnknownExecCmd(t *testing.T, name string) bool {
+	t.Helper()
+	tui := &TUI{}
+	defer func() {
+		if r := recover(); r != nil {
+			t.Errorf("execCmd(%q) panicked on a zero-value TUI: %v -- dispatch reachability could not be probed safely", name, r)
+		}
+	}()
+	tui.execCmd(name)
+	return tui.cmd.error == fmt.Sprintf("unknown command %q", name)
+}
+
+// dispatchableCommandNames returns the subset of commandNames that execCmd
+// actually routes, probed behaviorally rather than assumed. commandNames is
+// the OFFERED set (real production data driving the command bar's
+// fuzzy-match, not a test fixture); execCmd's switch is the REACHABLE set.
+// ini-162m found these had silently diverged since commit 78885e40: it added
+// both a commandNames entry and an executeConfirmed case for "remote-stop" in
+// the same commit, but never added the execCmd case that sets pendingConfirm
+// to reach it -- so it read as implemented while being dispatched nowhere.
+func dispatchableCommandNames(t *testing.T) []string {
+	t.Helper()
+	var reachable []string
+	for _, name := range commandNames {
+		if !isUnknownExecCmd(t, name) {
+			reachable = append(reachable, name)
+		}
+	}
+	return reachable
+}
+
+// knownUndispatchableCommandNames lists commandNames entries that are
+// deliberately, temporarily excluded from TestCommandNamesAreAllDispatchable
+// pending a decision this bead (ini-162m) is not scoped to make.
 //
-// Matches each commandNames entry as a whole punctuation-stripped token
-// anywhere in the Commands section (not just line-leading position), since
-// "log" and "events" are both independent commandNames entries documented
-// on one shared line as "log (events)" -- same pattern already used for
+// "remote-stop": has a full executeConfirmed case and a real remoteStopPeer
+// implementation (input_cmd.go), and is registered here for fuzzy-match --
+// but execCmd's dispatcher has no case for it, so nothing ever sets
+// pendingConfirm to reach the confirmed handler. Half-wired since commit
+// 78885e40, which added the commandNames entry and the executeConfirmed case
+// in the same commit but never added the execCmd route. Filed as ini-z61 to
+// decide: wire the missing execCmd case (then remove this exclusion), or
+// delete the dead executeConfirmed case, remoteStopPeer, and this
+// commandNames entry entirely. Not this bead's call.
+var knownUndispatchableCommandNames = map[string]bool{
+	"remote-stop": true,
+}
+
+// TestCommandNamesAreAllDispatchable is the other half of ini-162m's
+// guardrail: it catches "offered but unreachable" (commandNames advertises a
+// command execCmd cannot actually run), the exact shape of the remote-stop
+// bug, and the reason a false "remote-stop <peer>" line briefly appeared in
+// the help overlay -- the original guardrail only checked "reachable but
+// undocumented" and had no way to notice a command that was never reachable
+// in the first place. Without both halves, the honest response to the first
+// half's signal can produce a false statement to users.
+//
+// Skips knownUndispatchableCommandNames rather than silently passing or
+// failing on the one disclosed, already-filed exception: commandNames also
+// drives the live command bar's fuzzy-match autocomplete (updateSuggestions),
+// so "remote-stop" is currently suggested to a user who then hits "unknown
+// command" on Enter -- the same false-claim defect class as the help text,
+// on a different surface ini-z61 should also account for.
+func TestCommandNamesAreAllDispatchable(t *testing.T) {
+	for _, name := range commandNames {
+		if knownUndispatchableCommandNames[name] {
+			continue
+		}
+		if isUnknownExecCmd(t, name) {
+			t.Errorf("commandNames contains %q but execCmd has no route to it -- it is offered (fuzzy-match, help text candidate) but not reachable (typing it returns \"unknown command\"). Either execCmd is missing a case, or this entry should be removed from commandNames.", name)
+		}
+	}
+}
+
+// TestHelpLinesDocumentEveryCommand guards against ini-162m's defect class
+// recurring: a command execCmd actually dispatches, with no entry in the
+// help overlay's Commands section, ships invisibly -- a capability nobody
+// can find has not really shipped. Iterates dispatchableCommandNames, NOT
+// commandNames directly, so this test can only ever demand documentation of
+// a command that actually works: it must not (and, given
+// TestCommandNamesAreAllDispatchable passing, in practice does not) compel
+// documenting an offered-but-unreachable entry, which is what produced the
+// false "remote-stop <peer>" line this bead had to retract.
+//
+// Matches each entry as a whole punctuation-stripped token anywhere in the
+// Commands section (not just line-leading position), since "log" and
+// "events" are both independent commandNames entries documented on one
+// shared line as "log (events)" -- same pattern already used for
 // commandAliases like "restart (r)" and "top (ps)".
 func TestHelpLinesDocumentEveryCommand(t *testing.T) {
 	lines := getHelpLines()
@@ -258,7 +342,7 @@ func TestHelpLinesDocumentEveryCommand(t *testing.T) {
 		t.Fatal("could not locate the Commands section in helpLines")
 	}
 
-	for _, name := range commandNames {
+	for _, name := range dispatchableCommandNames(t) {
 		found := false
 		for _, line := range commandLines {
 			for _, field := range strings.Fields(line) {
@@ -272,7 +356,7 @@ func TestHelpLinesDocumentEveryCommand(t *testing.T) {
 			}
 		}
 		if !found {
-			t.Errorf("commandNames contains %q but the help overlay's Commands section does not document it -- a command with no help entry ships invisibly (ini-162m)", name)
+			t.Errorf("%q is dispatchable via execCmd but the help overlay's Commands section does not document it -- a command with no help entry ships invisibly (ini-162m)", name)
 		}
 	}
 }
