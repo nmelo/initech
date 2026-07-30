@@ -57,6 +57,8 @@ Keybindings:
   Alt+6            Layout preset 6 (default 4x2)
   Alt+7            Layout preset 7 (default live)
   Shift+Alt+1-7    Same preset slot, in live (auto-managed) mode
+  Alt+g            Quick grid popup: type columns, then rows (e.g. 3,2 = grid 3x2)
+  Alt+l            Quick live popup: type columns, then rows (e.g. 3,2 = live 3x2)
   Alt+z            Zoom/unzoom focused pane
   Alt+f            Focus split: focused pane left, grid right (toggle)
   Alt+s            Toggle agent status overlay

@@ -342,3 +342,22 @@ func captureStderr(t *testing.T) (func(), *bytes.Buffer) {
 		_ = r.Close()
 	}, &buf
 }
+
+// TestRootLongDocumentsQuickGridAndLive guards ini-dvy5's Option+G/Option+L
+// quick grid/live popup against silently missing from `initech --help`
+// (ini-162m: the feature shipped in v2.1.0 but neither binding appeared in
+// either help surface). Both must describe columns-then-rows, matching
+// :grid/:live's own CxR convention -- ini-dvy5's spec reversed mid-build from
+// an original rows-first design, and help text is exactly where that stale
+// framing could quietly reappear.
+func TestRootLongDocumentsQuickGridAndLive(t *testing.T) {
+	if !strings.Contains(rootCmd.Long, "Alt+g") {
+		t.Error("rootCmd.Long missing the Alt+g quick grid keybinding")
+	}
+	if !strings.Contains(rootCmd.Long, "Alt+l") {
+		t.Error("rootCmd.Long missing the Alt+l quick live keybinding")
+	}
+	if strings.Contains(rootCmd.Long, "rows, then columns") || strings.Contains(rootCmd.Long, "rows then columns") {
+		t.Error("rootCmd.Long describes quick grid/live as rows-then-columns -- ini-dvy5 reversed this to columns-then-rows; do not reintroduce the stale framing")
+	}
+}

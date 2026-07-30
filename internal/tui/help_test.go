@@ -190,3 +190,89 @@ func TestHelpLinesDocumentFocusSplit(t *testing.T) {
 		t.Error("helpLines missing the Option+F focus split keybinding")
 	}
 }
+
+// TestHelpLinesDocumentQuickGridAndLive guards ini-dvy5's Option+G/Option+L
+// quick grid/live popup against silently missing from the in-app help
+// overlay (ini-162m: the feature shipped in v2.1.0 but neither binding
+// appeared here, discovered against the installed binary, not the diff).
+// Both must describe columns-then-rows, matching :grid/:live's own CxR
+// convention -- ini-dvy5's spec reversed mid-build from an original
+// rows-first design, and help text is exactly where that stale framing
+// could quietly reappear.
+func TestHelpLinesDocumentQuickGridAndLive(t *testing.T) {
+	lines := getHelpLines()
+	foundG, foundL := false, false
+	for _, line := range lines {
+		if strings.Contains(line, "+g") && strings.Contains(line, "grid") {
+			foundG = true
+		}
+		if strings.Contains(line, "+l") && strings.Contains(line, "live") {
+			foundL = true
+		}
+		if strings.Contains(line, "rows, then columns") || strings.Contains(line, "rows then columns") {
+			t.Error("helpLines describes quick grid/live as rows-then-columns -- ini-dvy5 reversed this to columns-then-rows; do not reintroduce the stale framing")
+		}
+	}
+	if !foundG {
+		t.Error("helpLines missing the Option+G quick grid keybinding")
+	}
+	if !foundL {
+		t.Error("helpLines missing the Option+L quick live keybinding")
+	}
+}
+
+// TestHelpLinesDocumentEveryCommand guards against ini-162m's whole defect
+// class recurring: a command the command bar accepts (commandNames, used for
+// fuzzy-match suggestions) with no entry in the help overlay's Commands
+// section ships invisibly -- a capability nobody can find has not really
+// shipped. Broader than asserting specific strings so the NEXT command added
+// without a help entry fails here too, instead of shipping and being found
+// by a user reading release notes for a feature the product can't explain.
+//
+// Matches each commandNames entry as a whole punctuation-stripped token
+// anywhere in the Commands section (not just line-leading position), since
+// "log" and "events" are both independent commandNames entries documented
+// on one shared line as "log (events)" -- same pattern already used for
+// commandAliases like "restart (r)" and "top (ps)".
+func TestHelpLinesDocumentEveryCommand(t *testing.T) {
+	lines := getHelpLines()
+
+	var commandLines []string
+	inCommands := false
+	for _, line := range lines {
+		if line == "" {
+			if inCommands {
+				break
+			}
+			continue
+		}
+		if strings.HasPrefix(line, "Commands") {
+			inCommands = true
+			continue
+		}
+		if inCommands {
+			commandLines = append(commandLines, line)
+		}
+	}
+	if len(commandLines) == 0 {
+		t.Fatal("could not locate the Commands section in helpLines")
+	}
+
+	for _, name := range commandNames {
+		found := false
+		for _, line := range commandLines {
+			for _, field := range strings.Fields(line) {
+				if strings.Trim(field, "()[]<>.,;:") == name {
+					found = true
+					break
+				}
+			}
+			if found {
+				break
+			}
+		}
+		if !found {
+			t.Errorf("commandNames contains %q but the help overlay's Commands section does not document it -- a command with no help entry ships invisibly (ini-162m)", name)
+		}
+	}
+}
