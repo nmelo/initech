@@ -25,13 +25,13 @@ const (
 
 // AgentInfo describes an agent for the status overlay.
 type AgentInfo struct {
-	Name            string
-	Status          string        // Display text: activity string or bead ID.
-	Activity        ActivityState // Actual activity state for dot color.
-	Visible         bool
-	Protected       bool // True when agent is protected from auto-suspend.
-	LivePinned      bool // True when agent is pinned to a live mode slot.
-	Remote          bool // True for agents on remote peers.
+	Name       string
+	Status     string        // Display text: activity string or bead ID.
+	Activity   ActivityState // Actual activity state for dot color.
+	Visible    bool
+	Protected  bool // True when agent is protected from auto-suspend.
+	LivePinned bool // True when agent is pinned to a live mode slot.
+	Remote     bool // True for agents on remote peers.
 }
 
 // cmdModal holds command modal state.
@@ -83,14 +83,22 @@ type helpModal struct {
 
 // agentsModal holds state for the agent management modal.
 type agentsModal struct {
-	active       bool
-	selected     int    // Currently highlighted row index (into filtered list when searching).
-	scrollOffset int    // First visible row in the viewport.
-	moving       bool   // True when a row is grabbed for reorder.
-	error        string // Inline error message (e.g., "cannot hide last visible pane").
-	searching    bool   // True when / has been pressed and search is active.
-	searchBuf    []rune // Current search input.
-	filtered     []int  // Indices into t.panes matching the search. Nil = no filter active.
+	active    bool
+	selected  int    // Grid: index into t.panes of the selected/grabbed pane.
+	moving    bool   // True when a row is grabbed for reorder.
+	error     string // Inline error message (e.g., "cannot hide last visible pane").
+	searching bool   // True when / has been pressed and search is active.
+	searchBuf []rune // Current search input.
+	// preSearchSelected is the selection at the moment / was pressed,
+	// restored on Esc (spec: "Esc restores the pre-search selection").
+	// Enter deliberately does NOT restore it -- Enter keeps the selection
+	// the search reached.
+	preSearchSelected int
+
+	// Group creation (ini-2rc): 'g' opens a name prompt in the search bar's
+	// visual language. Mutually exclusive with searching.
+	creatingGroup bool
+	groupNameBuf  []rune
 }
 
 // welcomeOverlay is shown once on first launch, then never again.

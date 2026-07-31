@@ -1,4 +1,9 @@
-// Tests for agent modal search/filter (/ keystroke).
+// Tests for the grid agents modal's search (/ keystroke). The grid DIMS
+// non-matches in place rather than filtering rows out (ini-2rc, spec:
+// "the spatial layout is the thing being navigated, so it must not reflow
+// under the query") -- these tests were TestAgentsRefilter_* against the
+// flat modal's filtered-list model; adapted to agentsMatched/matchCells/
+// matchNav against the grid.
 package tui
 
 import (
@@ -7,108 +12,148 @@ import (
 	"github.com/gdamore/tcell/v2"
 )
 
-func TestAgentsRefilter_EmptyQueryShowsAll(t *testing.T) {
+func TestAgentsMatched_EmptyQueryMatchesAll(t *testing.T) {
 	tui := newTestTUI(testPane("eng1"), testPane("eng2"), testPane("qa1"))
 	tui.agents.searching = true
 	tui.agents.searchBuf = nil
-	tui.agentsRefilter()
 
-	if len(tui.agents.filtered) != 3 {
-		t.Errorf("expected 3 matches, got %d", len(tui.agents.filtered))
+	for i := range tui.panes {
+		if !tui.agentsMatched(i) {
+			t.Errorf("pane %d should match an empty query", i)
+		}
 	}
 }
 
-func TestAgentsRefilter_SubstringMatch(t *testing.T) {
+func TestAgentsMatched_SubstringMatch(t *testing.T) {
 	tui := newTestTUI(testPane("eng1"), testPane("eng2"), testPane("qa1"), testPane("super"))
 	tui.agents.searching = true
 	tui.agents.searchBuf = []rune("eng")
-	tui.agentsRefilter()
 
-	if len(tui.agents.filtered) != 2 {
-		t.Errorf("expected 2 matches for 'eng', got %d", len(tui.agents.filtered))
-	}
-	if tui.agents.filtered[0] != 0 || tui.agents.filtered[1] != 1 {
-		t.Errorf("filtered indices = %v, want [0, 1]", tui.agents.filtered)
+	want := map[int]bool{0: true, 1: true, 2: false, 3: false}
+	for i, w := range want {
+		if got := tui.agentsMatched(i); got != w {
+			t.Errorf("pane %d (%s) matched=%v, want %v", i, tui.panes[i].Name(), got, w)
+		}
 	}
 }
 
-func TestAgentsRefilter_CaseInsensitive(t *testing.T) {
+func TestAgentsMatched_CaseInsensitive(t *testing.T) {
 	tui := newTestTUI(testPane("Eng1"), testPane("eng2"), testPane("QA1"))
 	tui.agents.searching = true
 	tui.agents.searchBuf = []rune("ENG")
-	tui.agentsRefilter()
 
-	if len(tui.agents.filtered) != 2 {
-		t.Errorf("expected 2 matches for 'ENG', got %d", len(tui.agents.filtered))
+	if !tui.agentsMatched(0) || !tui.agentsMatched(1) {
+		t.Error("ENG should match Eng1 and eng2 case-insensitively")
+	}
+	if tui.agentsMatched(2) {
+		t.Error("ENG should not match QA1")
 	}
 }
 
-func TestAgentsRefilter_NoMatches(t *testing.T) {
+func TestAgentsMatched_NumberPrefix(t *testing.T) {
+	// Pane numbers are 1-based positions: eng1 is pane 1, the tenth pane is 10.
+	tui := newTestTUI(testPane("eng1"), testPane("a"), testPane("b"), testPane("c"),
+		testPane("d"), testPane("e"), testPane("f"), testPane("g"), testPane("h"),
+		testPane("i"), testPane("j"), testPane("k"))
+	tui.agents.searching = true
+	tui.agents.searchBuf = []rune("1")
+
+	// "1" should match pane 1 (eng1) by number prefix, and also panes 10, 11
+	// by prefix -- but not pane 2.
+	if !tui.agentsMatched(0) { // pane number 1
+		t.Error("query '1' should match pane number 1 by prefix")
+	}
+	if tui.agentsMatched(1) { // pane number 2
+		t.Error("query '1' should not match pane number 2")
+	}
+	if !tui.agentsMatched(9) { // pane number 10
+		t.Error("query '1' should match pane number 10 by prefix")
+	}
+}
+
+func TestAgentsMatched_NoMatches(t *testing.T) {
 	tui := newTestTUI(testPane("eng1"), testPane("qa1"))
 	tui.agents.searching = true
 	tui.agents.searchBuf = []rune("xyz")
-	tui.agentsRefilter()
 
-	if len(tui.agents.filtered) != 0 {
-		t.Errorf("expected 0 matches for 'xyz', got %d", len(tui.agents.filtered))
+	for i := range tui.panes {
+		if tui.agentsMatched(i) {
+			t.Errorf("pane %d should not match 'xyz'", i)
+		}
 	}
 }
 
-func TestAgentsRefilter_SelectionClamped(t *testing.T) {
-	tui := newTestTUI(testPane("eng1"), testPane("eng2"), testPane("qa1"), testPane("super"))
+func TestAgentsMatchCells_ReturnsGridOrderIndices(t *testing.T) {
+	tui, s := newTestTUIWithScreen("super", "eng1", "eng2", "qa1")
+	tui.openAgentsModal()
 	tui.agents.searching = true
-	tui.agents.selected = 3 // pointing at "super"
 	tui.agents.searchBuf = []rune("eng")
-	tui.agentsRefilter()
+	sw, _ := s.Size()
 
-	// Only 2 matches, so selected should clamp to 1 (last index).
-	if tui.agents.selected != 1 {
-		t.Errorf("selected = %d, want 1 (clamped)", tui.agents.selected)
+	members := tui.agentsGroupMembers()
+	perRow := agentsGridPerRow(members, tui.layoutState.Groups, sw)
+	cells := agentsGridLayoutCells(members, tui.layoutState.Groups, 4, 0, perRow)
+
+	mc := tui.agentsMatchCells(cells)
+	if len(mc) != 2 {
+		t.Fatalf("expected 2 matching cells for 'eng', got %d", len(mc))
+	}
+	for _, ci := range mc {
+		name := tui.panes[cells[ci].paneIdx].Name()
+		if name != "eng1" && name != "eng2" {
+			t.Errorf("matched cell has unexpected pane %q", name)
+		}
 	}
 }
 
-func TestAgentsRefilter_SingleChar(t *testing.T) {
-	tui := newTestTUI(testPane("eng1"), testPane("eng2"), testPane("qa1"))
+func TestAgentsEnsureMatchSelected_SnapsToFirstMatch(t *testing.T) {
+	tui, s := newTestTUIWithScreen("super", "eng1", "eng2", "qa1")
+	tui.openAgentsModal()
+	tui.agents.selected = 3 // qa1 -- about to stop matching
+	sw, _ := s.Size()
+
+	members := tui.agentsGroupMembers()
+	perRow := agentsGridPerRow(members, tui.layoutState.Groups, sw)
+	cells := agentsGridLayoutCells(members, tui.layoutState.Groups, 4, 0, perRow)
+
 	tui.agents.searching = true
-	tui.agents.searchBuf = []rune("q")
-	tui.agentsRefilter()
+	tui.agents.searchBuf = []rune("eng")
+	tui.agentsEnsureMatchSelected(cells)
 
-	if len(tui.agents.filtered) != 1 {
-		t.Errorf("expected 1 match for 'q', got %d", len(tui.agents.filtered))
-	}
-	if tui.agents.filtered[0] != 2 {
-		t.Errorf("filtered[0] = %d, want 2 (qa1)", tui.agents.filtered[0])
+	name := tui.panes[tui.agents.selected].Name()
+	if name != "eng1" && name != "eng2" {
+		t.Errorf("selection should snap to a match, got %q", name)
 	}
 }
 
-func TestAgentsSearch_EnterSelectsFromFiltered(t *testing.T) {
-	tui := newTestTUI(testPane("eng1"), testPane("eng2"), testPane("qa1"), testPane("super"))
+func TestAgentsSearch_EnterKeepsSelectionAndExits(t *testing.T) {
+	tui, _ := newTestTUIWithScreen("eng1", "eng2", "qa1", "super")
 	tui.agents.active = true
 	tui.agents.searching = true
 	tui.agents.searchBuf = []rune("eng")
-	tui.agentsRefilter()
+	tui.agents.selected = 1 // eng2, a real match
 
-	// Move to second filtered item (eng2, which is pane index 1).
-	tui.agents.selected = 1
-
-	// Simulate Enter.
 	tui.handleAgentsSearchKey(tcell.NewEventKey(tcell.KeyEnter, 0, tcell.ModNone))
 
-	// After Enter, searching should be off and selected should be pane index 1.
 	if tui.agents.searching {
 		t.Error("searching should be false after Enter")
 	}
 	if tui.agents.selected != 1 {
-		t.Errorf("selected = %d, want 1 (eng2 pane index)", tui.agents.selected)
+		t.Errorf("selected = %d, want 1 (kept, not reset)", tui.agents.selected)
 	}
 }
 
-func TestAgentsSearch_EscClearsSearch(t *testing.T) {
-	tui := newTestTUI(testPane("eng1"), testPane("qa1"))
+func TestAgentsSearch_EscRestoresPreSearchSelection(t *testing.T) {
+	tui, _ := newTestTUIWithScreen("eng1", "eng2", "qa1")
 	tui.agents.active = true
-	tui.agents.searching = true
+	tui.agents.selected = 2 // qa1, before search starts
+
+	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyRune, '/', tcell.ModNone))
+	if !tui.agents.searching {
+		t.Fatal("expected searching to be true after /")
+	}
 	tui.agents.searchBuf = []rune("eng")
-	tui.agentsRefilter()
+	tui.agents.selected = 0 // search moved selection to eng1
 
 	tui.handleAgentsSearchKey(tcell.NewEventKey(tcell.KeyEscape, 0, tcell.ModNone))
 
@@ -118,45 +163,55 @@ func TestAgentsSearch_EscClearsSearch(t *testing.T) {
 	if tui.agents.searchBuf != nil {
 		t.Error("searchBuf should be nil after Esc")
 	}
-	if tui.agents.filtered != nil {
-		t.Error("filtered should be nil after Esc")
-	}
-	if tui.agents.selected != 0 {
-		t.Errorf("selected should reset to 0, got %d", tui.agents.selected)
+	if tui.agents.selected != 2 {
+		t.Errorf("selected = %d, want 2 (pre-search selection restored)", tui.agents.selected)
 	}
 }
 
 func TestAgentsSearch_BackspaceRemovesRune(t *testing.T) {
-	tui := newTestTUI(testPane("eng1"), testPane("qa1"))
+	tui, _ := newTestTUIWithScreen("eng1", "qa1")
 	tui.agents.active = true
 	tui.agents.searching = true
 	tui.agents.searchBuf = []rune("en")
-	tui.agentsRefilter()
 
-	if len(tui.agents.filtered) != 1 {
-		t.Fatalf("pre-check: expected 1 match for 'en', got %d", len(tui.agents.filtered))
+	if !tui.agentsMatched(0) || tui.agentsMatched(1) {
+		t.Fatal("pre-check: 'en' should match eng1 only")
 	}
 
-	// Backspace to "e".
 	tui.handleAgentsSearchKey(tcell.NewEventKey(tcell.KeyBackspace2, 0, tcell.ModNone))
 
 	if string(tui.agents.searchBuf) != "e" {
 		t.Errorf("searchBuf = %q, want %q", string(tui.agents.searchBuf), "e")
 	}
-	// "e" matches eng1 still.
-	if len(tui.agents.filtered) != 1 {
-		t.Errorf("expected 1 match for 'e', got %d", len(tui.agents.filtered))
+	if !tui.agentsMatched(0) {
+		t.Error("'e' should still match eng1")
 	}
 }
 
-func TestAgentsSearch_ResetOnModalClose(t *testing.T) {
-	tui := newTestTUI(testPane("eng1"), testPane("qa1"))
+func TestAgentsSearch_BackspaceOnEmptyExitsAndRestoresSelection(t *testing.T) {
+	tui, _ := newTestTUIWithScreen("eng1", "qa1")
+	tui.agents.active = true
+	tui.agents.selected = 1
+
+	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyRune, '/', tcell.ModNone))
+	tui.agents.selected = 0
+
+	tui.handleAgentsSearchKey(tcell.NewEventKey(tcell.KeyBackspace2, 0, tcell.ModNone))
+
+	if tui.agents.searching {
+		t.Error("Backspace on an empty query should exit search")
+	}
+	if tui.agents.selected != 1 {
+		t.Errorf("selected = %d, want 1 (restored, same as Esc)", tui.agents.selected)
+	}
+}
+
+func TestAgentsSearch_ResetOnModalReopen(t *testing.T) {
+	tui, _ := newTestTUIWithScreen("eng1", "qa1")
 	tui.agents.active = true
 	tui.agents.searching = true
 	tui.agents.searchBuf = []rune("eng")
-	tui.agentsRefilter()
 
-	// Reopen modal.
 	tui.openAgentsModal()
 
 	if tui.agents.searching {
@@ -165,40 +220,57 @@ func TestAgentsSearch_ResetOnModalClose(t *testing.T) {
 	if tui.agents.searchBuf != nil {
 		t.Error("searchBuf should be nil on reopen")
 	}
-	if tui.agents.filtered != nil {
-		t.Error("filtered should be nil on reopen")
+}
+
+// TestAgentsSearch_SpaceHidesMidSearch is a spec-explicit behavior: Space
+// works mid-search (hides the selection) rather than typing a space into
+// the query.
+func TestAgentsSearch_SpaceHidesMidSearch(t *testing.T) {
+	tui, _ := newTestTUIWithScreen("eng1", "eng2")
+	tui.agents.active = true
+	tui.agents.searching = true
+	tui.agents.selected = 0
+
+	tui.handleAgentsSearchKey(tcell.NewEventKey(tcell.KeyRune, ' ', tcell.ModNone))
+
+	if !tui.layoutState.Hidden["eng1"] {
+		t.Error("Space mid-search should hide the selected agent")
+	}
+	if len(tui.agents.searchBuf) != 0 {
+		t.Errorf("searchBuf should be untouched by Space, got %q", string(tui.agents.searchBuf))
 	}
 }
 
-func TestAgentsSearch_SlashOnlyWhenNotSearching(t *testing.T) {
-	tui := newTestTUI(testPane("eng1"))
+// TestAgentsSearch_PTypesNotPins is the spec's explicit contrast case for
+// Space: "p does NOT [act] -- names contain the letter p, so typing must
+// win."
+func TestAgentsSearch_PTypesNotPins(t *testing.T) {
+	tui, _ := newTestTUIWithScreen("eng1", "eng2")
+	tui.layoutState.Mode = LayoutLive
+	tui.agents.active = true
+	tui.agents.searching = true
+
+	tui.handleAgentsSearchKey(tcell.NewEventKey(tcell.KeyRune, 'p', tcell.ModNone))
+
+	if string(tui.agents.searchBuf) != "p" {
+		t.Errorf("searchBuf = %q, want %q -- 'p' must type into the query, not pin", string(tui.agents.searchBuf), "p")
+	}
+	if _, pinned := tui.layoutState.LivePinned["eng1"]; pinned {
+		t.Error("'p' mid-search should not live-pin the selection")
+	}
+}
+
+func TestAgentsSearch_SlashTypesIntoQueryMidSearch(t *testing.T) {
+	tui, _ := newTestTUIWithScreen("eng1")
 	tui.agents.active = true
 
-	// / from normal mode enters search.
 	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyRune, '/', tcell.ModNone))
 	if !tui.agents.searching {
 		t.Fatal("expected searching to be true after /")
 	}
 
-	// / while searching should be treated as printable (appended to searchBuf).
 	tui.handleAgentsSearchKey(tcell.NewEventKey(tcell.KeyRune, '/', tcell.ModNone))
-	// '/' is printable, so it gets appended.
 	if string(tui.agents.searchBuf) != "/" {
 		t.Errorf("expected '/' in searchBuf, got %q", string(tui.agents.searchBuf))
-	}
-}
-
-func TestAgentsFilteredCount(t *testing.T) {
-	tui := newTestTUI(testPane("eng1"), testPane("eng2"), testPane("qa1"))
-
-	// No filter.
-	if tui.agentsFilteredCount() != 3 {
-		t.Errorf("no filter: got %d, want 3", tui.agentsFilteredCount())
-	}
-
-	// With filter.
-	tui.agents.filtered = []int{0, 1}
-	if tui.agentsFilteredCount() != 2 {
-		t.Errorf("filtered: got %d, want 2", tui.agentsFilteredCount())
 	}
 }

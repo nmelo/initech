@@ -21,15 +21,15 @@ import (
 // on what the screen should look like. Trivially serializable to YAML for
 // persistent layout.
 type LayoutState struct {
-	Mode     LayoutMode      `yaml:"mode"`
-	GridCols int             `yaml:"grid_cols"`
-	GridRows int             `yaml:"grid_rows"`
-	Zoomed   bool            `yaml:"zoomed,omitempty"`
-	Focused  string          `yaml:"focused"`          // Pane key, not index.
-	Hidden   map[string]bool `yaml:"hidden,omitempty"` // Pane keys that are hidden.
+	Mode      LayoutMode      `yaml:"mode"`
+	GridCols  int             `yaml:"grid_cols"`
+	GridRows  int             `yaml:"grid_rows"`
+	Zoomed    bool            `yaml:"zoomed,omitempty"`
+	Focused   string          `yaml:"focused"`             // Pane key, not index.
+	Hidden    map[string]bool `yaml:"hidden,omitempty"`    // Pane keys that are hidden.
 	Protected map[string]bool `yaml:"protected,omitempty"` // Pane keys protected from auto-suspend.
-	Order    []string        `yaml:"order,omitempty"`  // Pane keys in display order (from show command).
-	Overlay  bool            `yaml:"overlay"`
+	Order     []string        `yaml:"order,omitempty"`     // Pane keys in display order (from show command).
+	Overlay   bool            `yaml:"overlay"`
 
 	// GridExplicit is true when the user chose grid dimensions via :grid CxR
 	// or Alt+2/Alt+3. When set, recalcGrid skips auto-recalculation so peer
@@ -45,6 +45,16 @@ type LayoutState struct {
 	LivePinned map[string]int `yaml:"live_pinned,omitempty"` // Agent name -> slot index.
 	LiveSlots  []string       `yaml:"live_slots,omitempty"`  // Current agent name per slot (updated by live engine).
 	LiveAuto   bool           `yaml:"live_auto,omitempty"`   // True = auto-size grid from active agent count.
+
+	// Agents-grid modal (ini-2rc): band membership. Groups is the ordered
+	// list of band labels (top-to-bottom); GroupOf maps a pane key to its
+	// band label. Deliberately NOT a per-band member list: within a band, a
+	// pane's relative position is just its position in Order/t.panes, so a
+	// same-band swap is an ordinary Order swap and a cross-band grab is
+	// GroupOf reassignment plus an Order splice -- one flat source of truth
+	// for ordering, Groups/GroupOf is a pure additive layer on top of it.
+	Groups  []string          `yaml:"groups,omitempty"`
+	GroupOf map[string]string `yaml:"group_of,omitempty"`
 }
 
 // RenderPlan is the complete set of instructions for one frame.
@@ -419,15 +429,17 @@ func DefaultLayoutState(paneNames []string) LayoutState {
 // Focused pane is deliberately excluded (momentary choice, not a preference).
 // Overlay and weights are excluded (not layout-changing from the user's perspective).
 type PersistentLayout struct {
-	Grid         string         `yaml:"grid"`                    // e.g. "3x2"
-	GridExplicit bool           `yaml:"grid_explicit,omitempty"` // True = user chose CxR explicitly; don't auto-resize.
-	Hidden       []string       `yaml:"hidden,omitempty"`        // Pane keys: name for local, host:name for remote.
-	Protected    []string       `yaml:"protected,omitempty"`     // Pane keys protected from auto-suspend.
-	DepPinned    []string       `yaml:"pinned,omitempty"`        // Deprecated: migration shim for old layout.yaml files.
-	Order        []string       `yaml:"order,omitempty"`         // Pane keys in display order (from show command).
-	Mode         string         `yaml:"mode"`                    // "grid", "focus", "main", "live"
-	LivePinned   map[string]int `yaml:"live_pinned,omitempty"`   // Agent name -> fixed slot index for live mode.
-	LiveAuto     bool           `yaml:"live_auto,omitempty"`     // True = auto-size grid from active agent count.
+	Grid         string            `yaml:"grid"`                    // e.g. "3x2"
+	GridExplicit bool              `yaml:"grid_explicit,omitempty"` // True = user chose CxR explicitly; don't auto-resize.
+	Hidden       []string          `yaml:"hidden,omitempty"`        // Pane keys: name for local, host:name for remote.
+	Protected    []string          `yaml:"protected,omitempty"`     // Pane keys protected from auto-suspend.
+	DepPinned    []string          `yaml:"pinned,omitempty"`        // Deprecated: migration shim for old layout.yaml files.
+	Order        []string          `yaml:"order,omitempty"`         // Pane keys in display order (from show command).
+	Mode         string            `yaml:"mode"`                    // "grid", "focus", "main", "live"
+	LivePinned   map[string]int    `yaml:"live_pinned,omitempty"`   // Agent name -> fixed slot index for live mode.
+	LiveAuto     bool              `yaml:"live_auto,omitempty"`     // True = auto-size grid from active agent count.
+	Groups       []string          `yaml:"groups,omitempty"`        // Agents-grid band labels, in order.
+	GroupOf      map[string]string `yaml:"group_of,omitempty"`      // Pane key -> band label.
 }
 
 // layoutDir returns the .initech directory path under projectRoot.
@@ -450,6 +462,8 @@ func SaveLayout(projectRoot string, state LayoutState) error {
 		Order:        state.Order,
 		LivePinned:   state.LivePinned,
 		LiveAuto:     state.LiveAuto,
+		Groups:       state.Groups,
+		GroupOf:      state.GroupOf,
 	}
 	for name, hidden := range state.Hidden {
 		if hidden {
@@ -585,6 +599,29 @@ func LoadLayout(projectRoot string, paneKeys []string) (LayoutState, bool) {
 		}
 	}
 
+	// GroupOf: same staleness filter as Hidden/Protected/Order. Groups is
+	// then pruned to labels that still have at least one surviving member --
+	// the same "no empty bands surface" invariant the agents-grid modal
+	// enforces on close, applied here too since a stale-key filter is
+	// exactly the other way a band can end up empty (ini-2rc).
+	var groupOf map[string]string
+	memberCount := make(map[string]int)
+	for name, label := range pl.GroupOf {
+		if shouldKeepPersistedPaneKey(name, known) {
+			if groupOf == nil {
+				groupOf = make(map[string]string)
+			}
+			groupOf[name] = label
+			memberCount[label]++
+		}
+	}
+	var groups []string
+	for _, label := range pl.Groups {
+		if memberCount[label] > 0 {
+			groups = append(groups, label)
+		}
+	}
+
 	return LayoutState{
 		Mode:         mode,
 		GridCols:     cols,
@@ -597,6 +634,8 @@ func LoadLayout(projectRoot string, paneKeys []string) (LayoutState, bool) {
 		Overlay:      true, // Always start with overlay visible.
 		LivePinned:   pl.LivePinned,
 		LiveAuto:     pl.LiveAuto,
+		Groups:       groups,
+		GroupOf:      groupOf,
 	}, true
 }
 
