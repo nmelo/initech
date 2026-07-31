@@ -1,7 +1,7 @@
-// running_square_test.go tests the red running square at the left of the
-// pane badge (ini-z9a3). The square reuses backgroundTint()'s exact signal
-// (alive && !suspended && tintUntil in the future) so it can never disagree
-// with the running-pane background tint.
+// running_square_test.go tests the green running square at the left of the
+// pane badge (ini-z9a3, recolored ini-8a7). The square reuses
+// backgroundTint()'s exact signal (alive && !suspended && tintUntil in the
+// future) so it can never disagree with the running-pane background tint.
 package tui
 
 import (
@@ -17,7 +17,7 @@ import (
 func runningSquareCell(s tcell.SimulationScreen, r Region) bool {
 	ribbonY := r.Y + r.H - 1
 	mainc, _, _ := s.Get(r.X, ribbonY)
-	return mainc == "■"
+	return mainc == "█"
 }
 
 // TestRenderBadge_RunningShowsSquare: a pane within the tint hold window
@@ -226,6 +226,62 @@ func TestRenderBadge_ClearsWithTintAfterHoldWindowElapses(t *testing.T) {
 	}
 	if got := p.backgroundTint(); got != tcell.ColorDefault {
 		t.Errorf("background tint should have cleared at the same moment, got %v", got)
+	}
+}
+
+// TestRenderBadge_RunningSquareColorDoesNotMatchDeadBadge is the ini-8a7
+// regression: before this fix, runningSquareStyle and the [dead] badge both
+// used tcell.ColorRed, so a running square and dead text meant the same
+// color in the same badge region, distinguished only by position and glyph.
+// Fails on the pre-fix code (both foregrounds equal ColorRed) and passes
+// post-fix (green vs. red). Exact-value checks, not a loosened "differs from
+// something" comparison.
+func TestRenderBadge_RunningSquareColorDoesNotMatchDeadBadge(t *testing.T) {
+	tui, s := newTestTUIWithScreen("a", "b")
+	tui.applyLayout()
+	tui.layoutState.Overlay = false
+
+	running := tui.panes[0].(*Pane)
+	running.tintUntil = time.Now().Add(tintHoldWindow)
+
+	dead := tui.panes[1].(*Pane)
+	dead.alive = false
+
+	tui.render()
+
+	ribbonY := running.region.Y + running.region.H - 1
+	mainc, style, _ := s.Get(running.region.X, ribbonY)
+	if mainc == " " || mainc == "" {
+		t.Fatalf("precondition failed: running pane's leading ribbon cell is blank, want a running-square glyph")
+	}
+	squareFg, _, _ := style.Decompose()
+	if squareFg != tcell.ColorGreen {
+		t.Errorf("running square foreground = %v, want tcell.ColorGreen exactly", squareFg)
+	}
+
+	deadRibbonY := dead.region.Y + dead.region.H - 1
+	// [dead] appears inside the title text, not the leading cell -- scan the
+	// row for the style used on the "d" of "[dead]" rather than assuming a
+	// column offset.
+	deadFg := tcell.ColorDefault
+	found := false
+	for x := dead.region.X; x < dead.region.X+dead.region.W; x++ {
+		mainc, style, _ := s.Get(x, deadRibbonY)
+		if mainc == "d" {
+			deadFg, _, _ = style.Decompose()
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("precondition failed: could not locate [dead] badge text to read its color")
+	}
+	if deadFg != tcell.ColorRed {
+		t.Fatalf("precondition failed: [dead] badge foreground = %v, want tcell.ColorRed (unchanged by this bead)", deadFg)
+	}
+
+	if squareFg == deadFg {
+		t.Errorf("running square and [dead] badge share foreground color %v -- the collision ini-8a7 fixes has regressed", squareFg)
 	}
 }
 

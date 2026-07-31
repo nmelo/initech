@@ -11,17 +11,25 @@ import (
 // render as a dark gray matching the default background.
 var trueBlack = tcell.NewRGBColor(0, 0, 0)
 
-// runningSquareStyle is the red running indicator drawn at the ribbon's
-// reserved leading cell (ini-z9a3). Always red regardless of focus, matching
-// the badge's other status colors (red also means [dead] — the two never
-// coexist since running requires alive).
-var runningSquareStyle = tcell.StyleDefault.Background(trueBlack).Foreground(tcell.ColorRed).Bold(true)
+// runningSquareStyle is the green running indicator drawn at the ribbon's
+// reserved leading cell (ini-z9a3, recolored ini-8a7). Always green
+// regardless of focus. Deliberately NOT red: red also means [dead] on this
+// same badge, and ColorRed here would make the two indistinguishable except
+// by position — a real collision, not a style preference (ini-8a7). Green
+// instead matches the hue family of the running-pane background tint, which
+// is driven by the same tintUntil field the square reads — but NOT the
+// tint's literal RGB (#0c120e, pane_render.go's defaultRunningTintColor):
+// that value is a deliberately near-black background wash, not a legible
+// foreground color, so reusing it here would reproduce the exact
+// invisible-glyph failure ini-6o3 exists to prevent, just in a different
+// color. Do not "fix" this back to red or to the literal tint RGB.
+var runningSquareStyle = tcell.StyleDefault.Background(trueBlack).Foreground(tcell.ColorGreen).Bold(true)
 
 // renderRibbon draws the bottom ribbon: solid black background, title badge,
-// and optional bead ID with title. running draws a red square at the ribbon's
-// leading cell (reserved unconditionally by the col := r.X+1 title start
-// below, so the badge never shifts whether or not the square is shown).
-// Returns the column position after the last element.
+// and optional bead ID with title. running draws a full-height green block at
+// the ribbon's leading cell (reserved unconditionally by the col := r.X+1
+// title start below, so the badge never shifts whether or not the square is
+// shown). Returns the column position after the last element.
 func renderRibbon(s *clampedScreen, r Region, title string, titleStyle tcell.Style, beadID, beadTitle string, running bool) int {
 	ribbonY := r.Y + r.H - 1
 
@@ -31,7 +39,7 @@ func renderRibbon(s *clampedScreen, r Region, title string, titleStyle tcell.Sty
 	}
 
 	if running {
-		s.SetContent(r.X, ribbonY, '■', nil, runningSquareStyle)
+		s.SetContent(r.X, ribbonY, '█', nil, runningSquareStyle)
 	}
 
 	col := r.X + 1
