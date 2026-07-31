@@ -401,18 +401,22 @@ func containsStr(s, substr string) bool {
 	return false
 }
 
-// TestRender_DividerHasVisibleContrast is ini-6o3's regression test. qa7
-// confirmed at the ANSI level that the divider glyph emitted ESC[30m (black
-// foreground) then ESC[49m (an explicit reset to the TERMINAL'S OWN default
-// background) -- so on a dark terminal it read as blank space, not a
-// separator, failing ini-czi's own AC ("dividers remain visible as column
-// separators"). Render a real Layout2Col split with a real
-// tcell.SimulationScreen, locate an actual divider cell from the render
-// plan (not a hardcoded coordinate, so this doesn't silently stop testing
-// anything if the geometry ever shifts), and assert its rendered style has
-// real contrast (not black) -- theme-neutral, since the fix must read on
-// both a dark and a light terminal default, not just one.
-func TestRender_DividerHasVisibleContrast(t *testing.T) {
+// TestRender_DividerGutterIsUnwritten is ini-573's regression test,
+// superseding ini-6o3's TestRender_DividerHasVisibleContrast. ini-6o3 drew a
+// ColorGray line here to fix an invisible-on-dark-terminal bug; ini-573
+// reverses that color choice entirely -- the operator, looking at the real
+// render rather than a feature list, chose a fully empty gutter over any
+// drawn line. This is safe now in a way the pre-ini-czi black-on-black bug
+// was not: ini-czi already reserved this column so it is never a pane's own
+// content to lose, it is just never painted.
+//
+// Render a real Layout2Col split with a real tcell.SimulationScreen, locate
+// an actual divider-plan cell (not a hardcoded coordinate, so this doesn't
+// silently stop testing anything if the geometry ever shifts), and assert
+// nothing was ever written there: content is a blank space and the style is
+// the screen's own untouched default -- not merely "not ColorGray", which
+// would also pass for a black glyph the operator explicitly rejected.
+func TestRender_DividerGutterIsUnwritten(t *testing.T) {
 	tui, screen := newTestTUIWithScreen("a", "b", "c")
 	tui.layoutState.Mode = Layout2Col
 	tui.layoutState.Focused = "a"
@@ -427,24 +431,21 @@ func TestRender_DividerHasVisibleContrast(t *testing.T) {
 		t.Fatalf("unexpected divider shape: %+v", d)
 	}
 	y := d.Y
-	_, _, style, _ := screen.GetContent(d.X, y)
+	mainc, _, style, _ := screen.GetContent(d.X, y)
 	fg, bg, _ := style.Decompose()
 
-	// Pinned to the exact chosen color (0x808080, true middle gray), not
-	// just "anything but black": that value is the theme-neutral choice
-	// reasoned through on the bead -- roughly balanced contrast against
-	// both a dark and a light terminal default without needing to detect
-	// either. A looser "not black" check would also pass for a color biased
-	// toward only one theme, which is exactly what this bead's AC rules out.
-	if fg != tcell.ColorGray {
-		t.Errorf("divider foreground = %v, want ColorGray (0x808080) -- theme-neutral contrast on both dark and light terminals", fg)
+	if mainc != ' ' {
+		t.Errorf("gutter column content = %q, want a blank space -- nothing should be drawn there", mainc)
 	}
-	// No explicit background: the fix must not fight the pane background or
-	// the running-pane tint (ini-z9a3) on the surrounding cells -- the
-	// divider column has no pane content to fight post-ini-czi, and forcing
-	// a background here would be an unnecessary, untested visual change
-	// beyond what this bead asks for.
+	// Exact-value, not a loosened "not ColorGray": a black-on-default glyph
+	// would also read as ColorDefault foreground here if tcell folded
+	// ColorBlack into the default channel, so pin both fg and bg to
+	// StyleDefault's own zero value, proving no SetContent call touched
+	// this cell at all -- not merely that its color looks empty.
+	if fg != tcell.ColorDefault {
+		t.Errorf("gutter column foreground = %v, want ColorDefault (unwritten)", fg)
+	}
 	if bg != tcell.ColorDefault {
-		t.Errorf("divider background = %v, want ColorDefault (no explicit background)", bg)
+		t.Errorf("gutter column background = %v, want ColorDefault (unwritten)", bg)
 	}
 }

@@ -753,12 +753,13 @@ func TestRenderGridDividersOnScreen(t *testing.T) {
 	tui.applyLayout()
 	tui.render()
 
-	// The divider between panes should be a vertical line at the boundary.
+	// The reserved gutter column between panes is left empty (ini-573):
+	// no glyph drawn there, deliberately -- see render.go's divider comment.
 	if len(tui.plan.Panes) >= 2 && tui.plan.Panes[1].Region.X > 0 {
 		divX := tui.plan.Panes[1].Region.X - 1
 		mainc, _, _ := s.Get(divX, tui.plan.Panes[1].Region.Y)
-		if mainc != "\u2502" {
-			t.Errorf("divider char = %q, want U+2502", mainc)
+		if mainc != " " {
+			t.Errorf("gutter column char = %q, want a blank space (ini-573: no divider glyph is drawn)", mainc)
 		}
 	}
 }

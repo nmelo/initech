@@ -64,24 +64,31 @@ func (t *TUI) render() {
 		LogDebug("render", "pane done", "frame", t.renderCount, "idx", i, "name", pr.Pane.Name())
 	}
 
-	// Draw dividers from the render plan. Foreground only, no explicit
-	// background: ColorGray (true middle gray, 0x808080) is theme-neutral,
-	// giving the line real, roughly balanced contrast against both a dark
-	// and a light terminal default without needing to detect either
-	// (tcell/this codebase does not, and cannot reliably across terminals).
-	// A black foreground with no background resets to the terminal's own
-	// default, which read as blank space on a dark terminal -- failing
-	// ini-czi's own AC that dividers remain visible (ini-6o3, qa7's ANSI
-	// capture: ESC[30m then ESC[49m). The divider column has no pane
-	// content or running-pane tint (ini-z9a3) to fight, post-ini-czi.
-	divStyle := tcell.StyleDefault.Foreground(tcell.ColorGray)
-	for _, d := range t.plan.Dividers {
-		if d.Vertical {
-			for y := d.Y; y < d.Y+d.Len; y++ {
-				s.SetContent(d.X, y, '\u2502', nil, divStyle)
-			}
-		}
-	}
+	// Dividers (ini-573): the reserved gutter column is left EMPTY on
+	// purpose -- no SetContent call at all, not a drawn glyph in a dark
+	// color. This is deliberate, not a rendering gap left unfinished: do
+	// not "fix" it back to a drawn line.
+	//
+	// History: ini-6o3 originally drew a ColorGray '\u2502' here because a black
+	// glyph on this exact column, pre-ini-czi, erased a pane's own last
+	// content column (the divider and the pane's content shared a cell), so
+	// the loss was invisible -- catastrophic, not just subtle. ini-czi fixed
+	// that by reserving this column for the gutter alone, so it was never a
+	// pane's to lose. ini-573 revisits the color choice ini-6o3 landed
+	// (ColorGray is SGR 90, delegated to the terminal's own palette --
+	// unpredictably bright on most dark themes) and the operator, having
+	// looked at the real render rather than a feature list, chose an empty
+	// gutter over any drawn line, dim or otherwise. Because the column is
+	// reserved and never shared with pane content (ini-czi's fix), leaving
+	// it empty is safe now in a way it was not before ini-czi: nothing here
+	// was ever a pane's to erase.
+	//
+	// Known tradeoff, surfaced and accepted before landing: two IDLE panes
+	// side by side, both on the terminal's own default background, have no
+	// visible break in their content area with the gutter left empty -- only
+	// the per-pane ribbon (renderRibbon fills exactly r.W per pane, never
+	// the gutter column) leaves an incidental notch marking where one pane
+	// ends and the next begins. Accepted deliberately, not missed.
 
 	if t.layoutState.Overlay {
 		t.renderOverlay()
