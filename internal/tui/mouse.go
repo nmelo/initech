@@ -139,7 +139,21 @@ func (t *TUI) handleMouse(ev *tcell.EventMouse) {
 				ly = 0
 			}
 			if p, ok := pv.(*Pane); ok {
-				t.forwardMouseEvent(p, lx, ly, uv.MouseNone, false, true, ev.Modifiers())
+				// uv.MouseLeft, not uv.MouseNone (ini-82k): this release
+				// always follows a Button1 press (t.sel.active is only set
+				// there), so the button that's being released is always
+				// left. ansi.EncodeMouseButton(MouseNone, ...) collapses to
+				// the X10 legacy "any button released" sentinel (Cb=3)
+				// regardless of the isRelease flag passed separately below
+				// -- inside an otherwise-SGR-tagged sequence, that produces
+				// a release whose Cb does not match the preceding press's
+				// Cb=0, unlike a real terminal's SGR release (which
+				// preserves the actual button). A client that validates
+				// press/release button identity before completing a click
+				// (a common defensive UI pattern) would drop it silently.
+				// isRelease=true (passed separately, not derived from the
+				// button value) still correctly produces a MouseReleaseEvent.
+				t.forwardMouseEvent(p, lx, ly, uv.MouseLeft, false, true, ev.Modifiers())
 			}
 		}
 		t.copySelection()
