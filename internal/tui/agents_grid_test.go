@@ -181,6 +181,91 @@ func TestAgentsMoveV_GrabSpliceIntoWrappedBand(t *testing.T) {
 	}
 }
 
+// TestAgentsMoveV_GrabIntoFreshlyCreatedEmptyGroup is the qa1 regression:
+// grabbing an agent and carrying it onto a just-created (empty) group's
+// reserved line must populate that group, not silently no-op. This is the
+// spec's own stated mechanism for reaching a custom grouping ("g" then
+// grab) -- the PoC never implemented group creation at all, so this
+// interaction was never prototyped before this bead, and this test is the
+// only thing establishing it works.
+func TestAgentsMoveV_GrabIntoFreshlyCreatedEmptyGroup(t *testing.T) {
+	tui, _ := newTestTUIWithScreen("super", "pmm")
+	tui.openAgentsModal()
+	if got := tui.layoutState.GroupOf["pmm"]; got != "core" {
+		t.Fatalf("precondition: pmm should seed to core, got %q", got)
+	}
+
+	// Select pmm, create "mkt" right after core (pmm's own band).
+	for i, p := range tui.panes {
+		if p.Name() == "pmm" {
+			tui.agents.selected = i
+		}
+	}
+	tui.agentsCreateGroup("mkt")
+	want := []string{"core", "mkt"}
+	if got := tui.layoutState.Groups; len(got) != 2 || got[0] != want[0] || got[1] != want[1] {
+		t.Fatalf("precondition: groups = %v, want %v", got, want)
+	}
+
+	// Grab pmm and carry it down onto mkt's (empty) line.
+	tui.agents.moving = true
+	cells := tui.agentsCurrentCells()
+	tui.agentsMoveV(cells, 1)
+
+	if got := tui.layoutState.GroupOf["pmm"]; got != "mkt" {
+		t.Fatalf("pmm's group after grab into the empty band = %q, want mkt -- the grab silently no-op'd", got)
+	}
+	if !tui.agents.moving {
+		t.Error("moving should still be true after a successful splice (drop is a separate Enter press)")
+	}
+	// pmm must appear exactly once, nothing lost or duplicated.
+	count := 0
+	for _, p := range tui.panes {
+		if p.Name() == "pmm" {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Errorf("pmm appears %d times in t.panes after the splice, want exactly 1", count)
+	}
+	if len(tui.panes) != 2 {
+		t.Errorf("pane count = %d after splice, want 2", len(tui.panes))
+	}
+	// Confirm via the actual members query too, not just GroupOf.
+	members := tui.agentsGroupMembers()
+	if len(members["mkt"]) != 1 || tui.panes[members["mkt"][0]].Name() != "pmm" {
+		t.Errorf("mkt's members = %v, want exactly [pmm]", members["mkt"])
+	}
+}
+
+// TestAgentsMoveV_PlainNavOntoEmptyBandStaysPut is the other half of qa1's
+// ask: non-grab arrow navigation onto an empty band's line has no agent to
+// select there, so the selection must stay put rather than crash, jump
+// somewhere arbitrary, or silently select the wrong pane.
+func TestAgentsMoveV_PlainNavOntoEmptyBandStaysPut(t *testing.T) {
+	tui, _ := newTestTUIWithScreen("super", "pmm")
+	tui.openAgentsModal()
+	for i, p := range tui.panes {
+		if p.Name() == "pmm" {
+			tui.agents.selected = i
+		}
+	}
+	tui.agentsCreateGroup("mkt")
+
+	before := tui.agents.selected
+	tui.agents.moving = false // plain navigation, not grabbing
+	cells := tui.agentsCurrentCells()
+	tui.agentsMoveV(cells, 1) // toward mkt's empty line
+
+	if tui.agents.selected != before {
+		t.Errorf("plain nav onto an empty band's line changed selection from %d to %d, want unchanged", before, tui.agents.selected)
+	}
+	// The group must still be empty -- plain nav must never mutate GroupOf.
+	if got := tui.layoutState.GroupOf["pmm"]; got != "core" {
+		t.Errorf("plain nav mutated pmm's group to %q, want unchanged (core)", got)
+	}
+}
+
 // ---------- group seed rule ----------
 
 func TestGroupFor_SeedRule(t *testing.T) {

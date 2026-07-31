@@ -182,6 +182,49 @@ func agentsCellForPane(cells []gridCell, paneIdx int) *gridCell {
 	return nil
 }
 
+// agentsLineBand walks the same per-band line/row accounting
+// agentsGridLayoutCells uses (each band reserves ceil(n/perRow) lines,
+// minimum 1 even when n==0) and reports which band owns the given line and
+// whether that band is empty. A band with zero members still reserves
+// exactly one line -- visible in the grid as a label with a blank row
+// beneath it -- but agentsGridLayoutCells emits no gridCell for it, so
+// agentsMoveV's normal cell scan can never find a landing point there on
+// its own. This is the lookup that lets it recognize "this line is real,
+// it's just an empty band" instead of treating the line as unreachable.
+func agentsLineBand(members map[string][]int, groups []string, perRow, targetLine int) (label string, isEmpty bool, ok bool) {
+	line := 0
+	for _, g := range groups {
+		n := len(members[g])
+		rows := (n + perRow - 1) / perRow
+		if rows < 1 {
+			rows = 1
+		}
+		if targetLine >= line && targetLine < line+rows {
+			return g, n == 0, true
+		}
+		line += rows
+	}
+	return "", false, false
+}
+
+// agentsFlatInsertionForEmptyBand returns the t.panes index at which a sole
+// new member of an empty band should be inserted, so that filtering the
+// resulting flat order by band (agentsGroupMembers) places it correctly:
+// immediately after the last member of the nearest earlier band in Groups
+// order that actually has one, or at position 0 if no earlier band does.
+func (t *TUI) agentsFlatInsertionForEmptyBand(members map[string][]int, targetLabel string) int {
+	insertAt := 0
+	for _, g := range t.layoutState.Groups {
+		if g == targetLabel {
+			break
+		}
+		if idxs := members[g]; len(idxs) > 0 {
+			insertAt = idxs[len(idxs)-1] + 1
+		}
+	}
+	return insertAt
+}
+
 // ---------- search ----------
 
 // agentsMatched reports whether the pane at paneIdx matches the current
@@ -320,6 +363,40 @@ func (t *TUI) agentsMoveV(cells []gridCell, delta int) {
 		}
 	}
 	if best == nil {
+		// The normal scan finds nothing when targetLine belongs to an empty
+		// band: agentsGridLayoutCells reserves the line (so it renders, with
+		// a label and a blank row) but emits no gridCell for it, since there
+		// are no members to place. Plain navigation has nothing to select
+		// there, so it stays put. Grabbed, this is the only way to populate
+		// a freshly-created group at all -- without it, 'g' can create a
+		// band the shipped UI can never put an agent into.
+		if !t.agents.moving || t.screen == nil {
+			return
+		}
+		// Recompute perRow via the same agentsGridBoxDims every other caller
+		// uses (render, agentsCurrentCells) -- not a second formula, the
+		// same one, so this can't drift from what built `cells` in the
+		// first place.
+		members := t.agentsGroupMembers()
+		sw, sh := t.screen.Size()
+		box := agentsGridBoxDims(members, t.layoutState.Groups, sw, sh, t.agents.searching || t.agents.creatingGroup)
+		label, isEmpty, ok := agentsLineBand(members, t.layoutState.Groups, box.perRow, targetLine)
+		if !ok || !isEmpty {
+			return
+		}
+		ag := t.panes[sel]
+		insertAt := t.agentsFlatInsertionForEmptyBand(members, label)
+		t.panes = append(t.panes[:sel], t.panes[sel+1:]...)
+		if insertAt > sel {
+			insertAt--
+		}
+		if insertAt > len(t.panes) {
+			insertAt = len(t.panes)
+		}
+		t.panes = append(t.panes[:insertAt], append([]PaneView{ag}, t.panes[insertAt:]...)...)
+		t.agents.selected = insertAt
+		t.layoutState.GroupOf[paneKey(ag)] = label
+		t.agentsPersistOrder()
 		return
 	}
 	if !t.agents.moving {
