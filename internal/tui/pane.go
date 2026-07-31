@@ -521,9 +521,23 @@ func (p *Pane) resizeLocked(rows, cols int) {
 // PTY write, so the pane's own on-screen rectangle doesn't need to have
 // changed -- the trigger is the child's rendering mode, not a layout event.
 // Caller must hold renderMu (readLoop already does, around emu.Write).
+//
+// On ENTRY specifically, also clears scrollOffset/scrollAnchorLen (ini-i3v).
+// Wheel input while alt-screen is active is forwarded to the child instead
+// of mutating scrollOffset (see mouse.go), so scrollOffset cannot accumulate
+// DURING alt-screen -- but a pane that was already mid-scrollback in normal
+// mode before its child switched to alt-screen would otherwise carry that
+// stale, invisible-during-alt-screen offset forward. Without this reset,
+// exiting alt-screen would silently drop the pane into that stale scrollback
+// position instead of resuming the live view.
 func (p *Pane) checkAltScreenTransition() {
-	if p.emu.IsAltScreen() == p.lastAltScreen {
+	nowAlt := p.emu.IsAltScreen()
+	if nowAlt == p.lastAltScreen {
 		return
+	}
+	if nowAlt {
+		p.scrollOffset = 0
+		p.scrollAnchorLen = 0
 	}
 	cols, rows := p.region.TerminalSize()
 	p.resizeLocked(rows, cols)

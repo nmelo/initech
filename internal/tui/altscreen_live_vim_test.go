@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/gdamore/tcell/v2"
 )
 
 // TestAltScreenLiveProbe_Vim is a MANUAL live-verification harness for
@@ -150,5 +152,100 @@ func TestAltScreenLiveProbe_Vim(t *testing.T) {
 	time.Sleep(300 * time.Millisecond)
 	if got, want := p.Emulator().Height(), effectiveEmuRows(visibleRows); got != want {
 		t.Errorf("emulator height after vim exited alt-screen = %d, want %d (restored inflated height)", got, want)
+	}
+}
+
+// TestAltScreenLiveProbe_VimWheelScroll is a MANUAL live-verification
+// harness for ini-i3v. Nelson's confirmed decision was to FORWARD wheel
+// events to an alt-screen child rather than have initech interpret them --
+// this proves that forwarding actually moves a REAL vim's own view, driven
+// through the real input path (tui.handleMouse), not by calling
+// forwardWheelEvent directly. A synthetic byte-level check (in
+// wheel_altscreen_test.go) already proves bytes reach the emulator's
+// response pipe; this proves those bytes cause vim to actually do
+// something, which requires vim's own mouse=a to be enabled -- exactly the
+// "silently drops if the child hasn't enabled mouse reporting" caveat on
+// forwardMouseEvent/forwardWheelEvent's doc comments.
+//
+// Gated behind INITECH_ALTPROBE_VIM=1, same as TestAltScreenLiveProbe_Vim.
+// Run: INITECH_ALTPROBE_VIM=1 go test ./internal/tui/ -run TestAltScreenLiveProbe_VimWheelScroll -v -count=1 -timeout 30s
+func TestAltScreenLiveProbe_VimWheelScroll(t *testing.T) {
+	if os.Getenv("INITECH_ALTPROBE_VIM") != "1" {
+		t.Skip("set INITECH_ALTPROBE_VIM=1 to run the manual live vim alt-screen probe")
+	}
+	if _, err := os.Stat("/usr/bin/vim"); err != nil {
+		if _, err := os.Stat("/opt/homebrew/bin/vim"); err != nil {
+			t.Skip("vim not found")
+		}
+	}
+
+	dir := t.TempDir()
+	testFile := filepath.Join(dir, "testfile.txt")
+	var lines []string
+	for i := 1; i <= 200; i++ {
+		lines = append(lines, "LINE_"+strconv.Itoa(i))
+	}
+	if err := os.WriteFile(testFile, []byte(strings.Join(lines, "\n")+"\n"), 0o644); err != nil {
+		t.Fatalf("write testfile: %v", err)
+	}
+
+	const visibleRows, cols = 14, 80
+	p, err := NewPane(PaneConfig{
+		Name:      "vimwheelprobe",
+		Command:   []string{"vim", "-u", "NONE", "-N", "-c", "set mouse=a laststatus=2 nocompatible", testFile},
+		Dir:       dir,
+		AgentType: "generic",
+	}, visibleRows, cols)
+	if err != nil {
+		t.Fatalf("NewPane: %v", err)
+	}
+	p.region = Region{X: 0, Y: 0, W: cols, H: visibleRows + 2}
+	p.Start()
+	defer p.Close()
+
+	deadline := time.Now().Add(10 * time.Second)
+	entered := false
+	for time.Now().Before(deadline) {
+		if p.Emulator().IsAltScreen() {
+			entered = true
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if !entered {
+		t.Fatalf("vim never entered alt-screen mode within timeout; content:\n%s", peekContent(p, 0))
+	}
+	time.Sleep(300 * time.Millisecond)
+
+	topLineBefore := strings.TrimSpace(p.Emulator().RowText(0, cols))
+	t.Logf("top row before scroll: %q", topLineBefore)
+	if topLineBefore != "LINE_1" {
+		t.Fatalf("precondition: top row = %q, want LINE_1 (vim should open at the top of the file)", topLineBefore)
+	}
+
+	// Drive real wheel-down events through the actual production input
+	// path (tui.handleMouse), exactly as a real mouse would, rather than
+	// calling forwardWheelEvent directly.
+	tui := newTestTUI(p)
+	tui.applyLayout() // no screen: computes tui.plan.Panes without touching p.region
+	if len(tui.plan.Panes) == 0 {
+		t.Fatal("computed layout has no panes")
+	}
+	r := tui.plan.Panes[0].Region
+	for i := 0; i < 5; i++ {
+		ev := tcell.NewEventMouse(r.X+1, r.Y+1, tcell.WheelDown, tcell.ModNone)
+		tui.handleMouse(ev)
+		time.Sleep(100 * time.Millisecond)
+	}
+	time.Sleep(300 * time.Millisecond)
+
+	topLineAfter := strings.TrimSpace(p.Emulator().RowText(0, cols))
+	t.Logf("top row after 5x wheel-down: %q", topLineAfter)
+	if topLineAfter == topLineBefore {
+		t.Errorf("top row unchanged after wheel-down (%q) -- forwarded wheel events did not move vim's own view", topLineAfter)
+	}
+
+	if p.scrollOffset != 0 {
+		t.Errorf("scrollOffset = %d, want 0 (alt-screen wheel input must never mutate scrollOffset, even against a real child)", p.scrollOffset)
 	}
 }
