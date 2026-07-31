@@ -177,6 +177,13 @@ type Pane struct {
 	activeRunBytes      int64      // Bytes received since last idle->running edge.
 	lastMessageReceived time.Time  // Updated when injectText delivers a message to this pane.
 	lastEventTime       time.Time  // Updated when an AgentEvent fires for this pane.
+
+	// lastAltScreen is the child's alt-screen state as of the most recent
+	// resize (ini-y97). Compared against p.emu.IsAltScreen() on every PTY
+	// write (checkAltScreenTransition) to detect entry/exit and trigger the
+	// PTY/emulator resize each requires. Zero value (false) matches a
+	// freshly-started shell, which is not in alt-screen mode.
+	lastAltScreen bool
 }
 
 // Region defines a rectangular area on screen (outer bounds including border).
@@ -325,6 +332,7 @@ func (p *Pane) readLoop() {
 
 			p.renderMu.Lock()
 			p.emu.Write(data)
+			p.checkAltScreenTransition()
 			p.renderMu.Unlock()
 
 			// Re-deliver any sends that were deferred while a modal was open,
@@ -453,21 +461,44 @@ const resizeSettleCount = 3
 // rendering after a resize, covering slow child redraws.
 const resizeSettleDuration = 150 * time.Millisecond
 
-// Resize updates the PTY and emulator dimensions. Resizes the PTY first so
-// the child process receives the size change before the emulator buffer
-// reorganizes. Holds renderMu across both operations to prevent readLoop from
-// writing old-geometry PTY output into a new-geometry emulator buffer (ini-yah).
+// Resize updates the PTY and emulator dimensions to fit the given VISIBLE
+// rows/cols. Resizes the PTY first so the child process receives the size
+// change before the emulator buffer reorganizes. Holds renderMu across both
+// operations to prevent readLoop from writing old-geometry PTY output into a
+// new-geometry emulator buffer (ini-yah).
 func (p *Pane) Resize(rows, cols int) {
 	p.renderMu.Lock()
 	defer p.renderMu.Unlock()
-	// Decouple the emulator/PTY height from the visible pane height: give the
-	// child a TALLER virtual screen so a live region (an AskUserQuestion modal,
-	// an in-progress response) that exceeds the visible window is rendered into
-	// the emulator in full rather than clipped to the small pane. The render
-	// path windows the bottom `rows` lines (pane_render live mode) and scrolling
-	// reveals the clipped top. Stable per resize, not toggled on content
-	// (ini-44hp).
-	emuRows := effectiveEmuRows(rows)
+	p.resizeLocked(rows, cols)
+}
+
+// resizeLocked performs the actual PTY/emulator resize to fit the given
+// VISIBLE rows/cols. Caller must hold renderMu.
+//
+// The emulator/PTY height is NOT simply the visible height: whether it gets
+// inflated depends on the child's CURRENT screen mode, checked fresh here
+// every call rather than cached, since a resize can itself be the trigger
+// that needs to react to a mode that just changed (see
+// checkAltScreenTransition).
+//
+//   - Normal (non-alt-screen) child: inflate to effectiveEmuRows(rows) -- a
+//     TALLER virtual screen so a live region (an AskUserQuestion modal, an
+//     in-progress response) that exceeds the visible window renders into the
+//     emulator in full rather than clipping. The render path windows the
+//     bottom `rows` lines (pane_render live mode, contentOffset's bottom
+//     anchor) and scrolling reveals the clipped top (ini-44hp).
+//   - Alt-screen child (vim, htop, Claude Code's "tui":"fullscreen"): use the
+//     TRUE visible rows, unmodified. An alt-screen child draws ABSOLUTELY
+//     across whatever height it is told it has -- there is no bottom-anchor
+//     to reveal a clipped portion the way there is for normal scrolling
+//     content, so a 3x-inflated report can never fit a 1x visible window no
+//     matter how the render path windows it. The child must be told the
+//     truth (ini-y97).
+func (p *Pane) resizeLocked(rows, cols int) {
+	emuRows := rows
+	if !p.emu.IsAltScreen() {
+		emuRows = effectiveEmuRows(rows)
+	}
 	// Clamp cols to a sane bound (ini-hup3): an out-of-range column count from a
 	// resize control message (e.g. cols=MaxInt32, or a large finite value)
 	// otherwise flows straight into the emulator buffer's make(Line, width),
@@ -480,6 +511,22 @@ func (p *Pane) Resize(rows, cols int) {
 	p.emu.Resize(cols, emuRows)
 	p.resizeSettleFrames = resizeSettleCount
 	p.resizeSettleDeadline = time.Now().Add(resizeSettleDuration)
+	p.lastAltScreen = p.emu.IsAltScreen()
+}
+
+// checkAltScreenTransition detects a change in the child's alt-screen mode
+// since the last check and, if one occurred, resizes the PTY/emulator to
+// match (see resizeLocked): true visible dimensions on entry, the inflated
+// scrollable-live-region height on exit. Called from readLoop after every
+// PTY write, so the pane's own on-screen rectangle doesn't need to have
+// changed -- the trigger is the child's rendering mode, not a layout event.
+// Caller must hold renderMu (readLoop already does, around emu.Write).
+func (p *Pane) checkAltScreenTransition() {
+	if p.emu.IsAltScreen() == p.lastAltScreen {
+		return
+	}
+	cols, rows := p.region.TerminalSize()
+	p.resizeLocked(rows, cols)
 }
 
 // emuRowsGrowthFactor multiplies a pane's visible height to get its emulator
