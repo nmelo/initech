@@ -140,6 +140,8 @@ func (t *TUI) HandleExtended(conn net.Conn, req IPCRequest, rawJSON []byte) bool
 		t.handleIPCRemove(conn, req)
 	case "interrupt":
 		t.handleIPCInterrupt(conn, req)
+	case "attention":
+		t.handleIPCAttention(conn, req)
 	case "emit_event":
 		t.handleIPCEmitEvent(conn, req)
 	case "peers_query":
@@ -758,4 +760,40 @@ func writeIPCResponse(conn net.Conn, resp IPCResponse) {
 	data, _ := json.Marshal(resp)
 	conn.Write(data)
 	conn.Write([]byte("\n"))
+}
+
+// handleIPCAttention marks a pane as waiting on the operator, from the
+// consent-gated Notification hook (ini-2x8.4).
+//
+// The hook is the REDUNDANCY tier: OSC 777 is tier-1 and always on, so this
+// path adds a second independent witness for approvals rather than being the
+// only signal. It still reports at chime tier, because the payload comes from
+// Claude Code declaring its own state -- the same class of evidence as OSC 777,
+// not an inference.
+//
+// Only permission_prompt payloads ever reach here; the CLI filters idle_prompt
+// out before sending, since that event fires for every idle agent and would put
+// the resting fleet on the list.
+func (t *TUI) handleIPCAttention(conn net.Conn, req IPCRequest) {
+	if req.Target == "" {
+		writeIPCResponse(conn, IPCResponse{Error: "target is required"})
+		return
+	}
+	var pv PaneView
+	if !t.runOnMain(func() { pv = t.findPaneByName(req.Target) }) {
+		writeIPCResponse(conn, IPCResponse{Error: "TUI shutting down"})
+		return
+	}
+	if pv == nil {
+		writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("pane %q not found", req.Target)})
+		return
+	}
+	lp, ok := pv.(*Pane)
+	if !ok {
+		// A remote pane's waiting state belongs to the window that owns it.
+		writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("pane %q is not local to this session", req.Target)})
+		return
+	}
+	t.runOnMain(func() { lp.SetWaitingInputTier(req.Text, WaitingTierChime) })
+	writeIPCResponse(conn, IPCResponse{OK: true})
 }

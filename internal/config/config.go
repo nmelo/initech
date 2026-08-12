@@ -148,7 +148,24 @@ type AttentionConfig struct {
 	// falls back to the default rather than blocking load, so a config written
 	// against a later version does not wedge this one.
 	Sound string `yaml:"sound,omitempty"`
+
+	// Hooks gates the consent-gated Notification hook tier (ini-2x8.4).
+	// nil = UNSET, which triggers the one-time consent prompt; true/false is
+	// the recorded answer and is never re-asked. A POINTER rather than a bool
+	// precisely so "not yet asked" is distinguishable from "asked and
+	// declined": with a plain bool those two states are identical, and the
+	// operator who said No would be asked again on every start forever.
+	Hooks *bool `yaml:"hooks,omitempty"`
 }
+
+// HooksAnswered reports whether the operator has already answered the consent
+// prompt. Unanswered is the only state that may prompt.
+func (a AttentionConfig) HooksAnswered() bool { return a.Hooks != nil }
+
+// HooksGranted reports whether the hook tier is enabled. Unset counts as NOT
+// granted -- the operator-decided default is No, so an unanswered prompt never
+// installs anything.
+func (a AttentionConfig) HooksGranted() bool { return a.Hooks != nil && *a.Hooks }
 
 // AttentionSound normalises the configured sound to "bell" or "none".
 // Anything unrecognised -- including the reserved custom-file value -- falls
