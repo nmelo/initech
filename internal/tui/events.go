@@ -15,27 +15,28 @@ import (
 type EventType int
 
 const (
-	EventBeadCompleted     EventType = iota // Agent finished a bead (DONE comment, ready_for_qa).
-	EventBeadClaimed                        // Agent claimed a bead (in_progress).
-	EventBeadFailed                         // QA failed a bead or agent reported failure.
-	EventBeadAssigned                       // Agent received work via initech assign.
-	EventBeadDelivered                      // Agent completed work via initech deliver (pass or fail).
-	EventAgentStalled                       // No output for configurable threshold (warning).
-	EventAgentStuck                         // Extended inactivity or error loop detected.
-	EventAgentIdleWithBead                  // Agent went running->idle while holding a bead.
-	EventAgentSuspended                     // Agent auto-suspended by resource pressure policy.
-	EventAgentResumed                       // Agent resumed from suspension (triggered by message).
-	EventMessageSent                        // Message delivered to an agent via IPC send.
-	EventAgentStarted                       // Agent pane started via IPC.
-	EventAgentStopped                       // Agent pane stopped via IPC.
-	EventAgentRestarted                     // Agent pane restarted via IPC.
-	EventAgentAdded                         // New agent pane added to session.
-	EventAgentRemoved                       // Agent pane removed from session.
-	EventPeerConnected                      // Remote daemon connected.
-	EventPeerDisconnected                   // Remote daemon disconnected.
-	EventLiveSwap                           // Live mode swapped an agent into/out of a slot.
-	EventWindowFoldback                     // A secondary window went away; its agents now render in window 1 (ini-9ka.7).
-	EventWindowRestored                     // A secondary window reattached; its agents went back to it.
+	EventBeadCompleted          EventType = iota // Agent finished a bead (DONE comment, ready_for_qa).
+	EventBeadClaimed                             // Agent claimed a bead (in_progress).
+	EventBeadFailed                              // QA failed a bead or agent reported failure.
+	EventBeadAssigned                            // Agent received work via initech assign.
+	EventBeadDelivered                           // Agent completed work via initech deliver (pass or fail).
+	EventAgentStalled                            // No output for configurable threshold (warning).
+	EventAgentStuck                              // Extended inactivity or error loop detected.
+	EventAgentIdleWithBead                       // Agent went running->idle while holding a bead.
+	EventAgentSuspended                          // Agent auto-suspended by resource pressure policy.
+	EventAgentResumed                            // Agent resumed from suspension (triggered by message).
+	EventMessageSent                             // Message delivered to an agent via IPC send.
+	EventAgentStarted                            // Agent pane started via IPC.
+	EventAgentStopped                            // Agent pane stopped via IPC.
+	EventAgentRestarted                          // Agent pane restarted via IPC.
+	EventAgentAdded                              // New agent pane added to session.
+	EventAgentRemoved                            // Agent pane removed from session.
+	EventPeerConnected                           // Remote daemon connected.
+	EventPeerDisconnected                        // Remote daemon disconnected.
+	EventLiveSwap                                // Live mode swapped an agent into/out of a slot.
+	EventWindowFoldback                          // A secondary window went away; its agents now render in window 1 (ini-9ka.7).
+	EventWindowRestored                          // A secondary window reattached; its agents went back to it.
+	EventAssignmentWriteRefused                  // A window-assignment change could not be saved (ini-9ka.9).
 )
 
 // String returns a human-readable label for the event type.
@@ -81,6 +82,8 @@ func (e EventType) String() string {
 		return "window-foldback"
 	case EventWindowRestored:
 		return "window-restored"
+	case EventAssignmentWriteRefused:
+		return "assignment-write-refused"
 	case EventLiveSwap:
 		return "live_swap"
 	}

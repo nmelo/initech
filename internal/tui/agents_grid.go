@@ -323,8 +323,14 @@ func (t *TUI) agentsAssignment() *WindowAssignment {
 	}
 	a, err := LoadAssignment(t.projectRoot)
 	if err != nil {
-		LogWarn("agents", "assignment store unreadable, treating all groups as window 1", "err", err)
-		a = &WindowAssignment{root: t.projectRoot, groupWindow: map[string]string{}}
+		// READ-ONLY fallback (ini-9ka.9). The store is unreadable, not
+		// absent -- the operator's real arrangement is still in that file,
+		// merely unparseable. A writable fallback would replace it with a
+		// near-empty one on the next move, turning a recoverable parse error
+		// into silent erasure. Reads still work and report everything on
+		// window 1, which is the correct degraded view.
+		LogWarn("agents", "assignment store unreadable, treating all groups as window 1 and refusing writes", "err", err)
+		a = newFallbackAssignment(t.projectRoot)
 	}
 	t.assignment = a
 	return t.assignment
@@ -626,6 +632,7 @@ func (t *TUI) agentsCreateGroup(name string) {
 	// (ini-9ka.4), so creating on window 1 correctly writes nothing.
 	if targetWindow != WindowOne {
 		if err := t.agentsAssignment().MoveGroup(name, targetWindow); err != nil {
+			t.noticeAssignmentWriteFailed("assign new group "+name, err)
 			LogWarn("agents", "assigning new group to the selection's window failed",
 				"group", name, "window", targetWindow, "err", err)
 		}
@@ -688,6 +695,7 @@ func (t *TUI) agentsMoveGroupToNextWindow() {
 	}
 	next := windows[(idx+1)%len(windows)]
 	if err := assign.MoveGroup(group, next); err != nil {
+		t.noticeAssignmentWriteFailed("move group "+group, err)
 		LogWarn("agents", "move group to next window failed", "group", group, "window", next, "err", err)
 	}
 }

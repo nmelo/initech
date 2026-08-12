@@ -25,6 +25,7 @@
 package tui
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -228,4 +229,29 @@ func (t *TUI) noticeWindowTransitions() {
 // and silently drop the rest.
 func isSecondaryWindowIdentity(peerName string) bool {
 	return strings.HasPrefix(peerName, "window-")
+}
+
+// noticeAssignmentWriteFailed surfaces a refused or failed assignment write to
+// the operator (ini-9ka.9).
+//
+// The operator asked for a move; a silent no-op would leave them believing it
+// applied. That matters most in the read-only-fallback case, where the move is
+// refused precisely BECAUSE their real arrangement is still on disk and must
+// not be overwritten -- so the notice names the recovery action rather than
+// just reporting failure.
+//
+// Session-level (no pane attached): this describes the session's assignment
+// store, not one agent, so it renders in every window.
+func (t *TUI) noticeAssignmentWriteFailed(action string, err error) {
+	detail := fmt.Sprintf("%s failed: %v", action, err)
+	if errors.Is(err, ErrAssignmentReadOnly) {
+		detail = fmt.Sprintf("%s was not applied: the assignment store is unreadable. "+
+			"Your existing arrangement is preserved on disk and was NOT overwritten. "+
+			"Repair or delete .initech/assignments.yaml, then reopen this modal.", action)
+	}
+	EmitEvent(t.agentEvents, AgentEvent{
+		Type:   EventAssignmentWriteRefused,
+		Detail: detail,
+		Time:   time.Now(),
+	})
 }

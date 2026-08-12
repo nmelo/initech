@@ -24,6 +24,13 @@ import (
 
 // openAgentsModal initializes and opens the agent management modal.
 func (t *TUI) openAgentsModal() {
+	// Drop a read-only fallback store so a repaired assignments.yaml is
+	// picked up on the next modal open rather than requiring a restart
+	// (ini-9ka.9). Only the fallback is dropped: a healthy cached store is
+	// kept, so this does not turn every modal open into a file read.
+	if t.assignment != nil && t.assignment.readOnly {
+		t.assignment = nil
+	}
 	t.agents.active = true
 	t.agents.selected = 0
 	t.agents.moving = false

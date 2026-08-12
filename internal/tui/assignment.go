@@ -12,6 +12,7 @@
 package tui
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -45,6 +46,40 @@ type persistentAssignment struct {
 type WindowAssignment struct {
 	root        string
 	groupWindow map[string]string
+
+	// readOnly marks a FALLBACK store -- one synthesized because the real
+	// store on disk could not be read (ini-9ka.9). It answers reads normally
+	// (everything on window 1, which is the correct degraded view) but cannot
+	// persist: save() refuses before touching the filesystem.
+	//
+	// This exists because the alternative is silent data loss. A fallback
+	// store built from a CORRUPT file still carries that file's root, so any
+	// write would replace the operator's real -- merely unreadable --
+	// arrangement with a near-empty one, converting a loud, recoverable parse
+	// error into quiet erasure one interaction later. A corrupt file is not
+	// an absent file, and the fallback must not treat it as one.
+	readOnly bool
+}
+
+// ErrAssignmentReadOnly is returned when a write is attempted against a
+// fallback store. Callers match on it to tell "your move was refused because
+// the store is unreadable" apart from an ordinary validation failure, so the
+// operator can be told the difference.
+var ErrAssignmentReadOnly = errors.New("assignment store is unreadable; window assignments cannot be changed until .initech/assignments.yaml is repaired or deleted")
+
+// newFallbackAssignment builds the read-only store used when the real one
+// cannot be loaded. It deliberately keeps the root -- reads and error messages
+// want to know which project it belongs to -- and relies on readOnly, NOT on
+// an empty root, to prevent writes. An empty root would be actively worse:
+// assignmentPath("") is RELATIVE, so save() would MkdirAll and write a stray
+// .initech/assignments.yaml into whatever directory initech was launched
+// from, reporting success while corrupting nothing the operator can find.
+func newFallbackAssignment(root string) *WindowAssignment {
+	return &WindowAssignment{
+		root:        root,
+		groupWindow: map[string]string{},
+		readOnly:    true,
+	}
 }
 
 // assignmentPath returns the full path to .initech/assignments.yaml.
@@ -91,6 +126,12 @@ func LoadAssignment(projectRoot string) (*WindowAssignment, error) {
 // SaveLayout. The staging path is derived from the store's own path so it
 // cannot collide with any other atomic write under .initech.
 func (a *WindowAssignment) save() error {
+	// A fallback store never writes. Checked here rather than at each call
+	// site so there is no path -- present or future -- by which an unreadable
+	// store can overwrite the file it failed to read.
+	if a.readOnly {
+		return ErrAssignmentReadOnly
+	}
 	dir := layoutDir(a.root)
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return fmt.Errorf("create .initech/: %w", err)
