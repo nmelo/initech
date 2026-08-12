@@ -185,3 +185,78 @@ func TestConsent_HookDeletedAfterConsentDegradesLikeDeclined(t *testing.T) {
 		t.Errorf("reinstall after deletion installed %d, want 1", n)
 	}
 }
+
+// ── init-path TTY gating (ini-2x8.6) ─────────────────────────────────
+
+func stubTTY(t *testing.T, isTTY bool) {
+	t.Helper()
+	orig := stdinIsTerminal
+	stdinIsTerminal = func() bool { return isTTY }
+	t.Cleanup(func() { stdinIsTerminal = orig })
+}
+
+// TestInitConsent_SkippedWhenStdinIsNotATerminal is the never-block-a-script
+// requirement. `initech init` runs in CI, setup scripts and Dockerfiles; a
+// blocking read there hangs the caller forever on a question nobody can see.
+// Silence is the only safe default for a consent prompt with no human
+// attached: unset STAYS unset, so the operator is asked later on a surface
+// that can reach them, rather than having a default recorded on their behalf.
+func TestInitConsent_SkippedWhenStdinIsNotATerminal(t *testing.T) {
+	stubTTY(t, false)
+	proj := consentProject(t, "eng1")
+	var out bytes.Buffer
+
+	if maybeAskAttentionConsent(proj, &out) {
+		t.Error("a non-TTY init reported a recorded answer")
+	}
+	if proj.Attention.HooksAnswered() {
+		t.Error("a non-TTY init recorded an answer; unset must stay unset so the TUI can ask later")
+	}
+	if out.Len() != 0 {
+		t.Errorf("a non-TTY init printed a prompt: %q", out.String())
+	}
+	if _, err := os.Stat(hooks.AgentSettingsPath(proj.Root, "eng1")); !os.IsNotExist(err) {
+		t.Error("a non-TTY init wrote agent settings")
+	}
+}
+
+func TestInitConsent_AsksWhenStdinIsATerminal(t *testing.T) {
+	stubTTY(t, true)
+	proj := consentProject(t, "eng1")
+	proj.Attention.Hooks = nil
+
+	// EnsureAttentionHooksConsent reads os.Stdin here, which in `go test` is
+	// not interactive -- so this asserts the GATE opened (a prompt happened
+	// and an answer was recorded), with EOF correctly defaulting to No.
+	var out bytes.Buffer
+	answered := maybeAskAttentionConsent(proj, &out)
+	if !answered {
+		t.Fatal("a TTY init did not run the consent flow")
+	}
+	if !proj.Attention.HooksAnswered() {
+		t.Error("the answer was not recorded")
+	}
+	if proj.Attention.HooksGranted() {
+		t.Error("EOF on stdin was read as consent; it must default to No")
+	}
+}
+
+// TestInitConsent_NeverAsksOnceAnswered mirrors the modal's exactly-once
+// property on the init surface, including the cross-surface case: an answer
+// recorded by the TUI means init never asks either.
+func TestInitConsent_NeverAsksOnceAnswered(t *testing.T) {
+	for _, answered := range []bool{true, false} {
+		stubTTY(t, true)
+		proj := consentProject(t, "eng1")
+		a := answered
+		proj.Attention.Hooks = &a
+
+		var out bytes.Buffer
+		if maybeAskAttentionConsent(proj, &out) {
+			t.Errorf("hooks=%v: init re-asked an already-answered question", answered)
+		}
+		if out.Len() != 0 {
+			t.Errorf("hooks=%v: init printed a prompt anyway: %q", answered, out.String())
+		}
+	}
+}

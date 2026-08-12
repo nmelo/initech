@@ -96,6 +96,16 @@ func runInit(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("scaffold: %w", err)
 	}
 
+	// One-time attention-hooks consent (ini-2x8.6). AFTER scaffold, because the
+	// install writes into <role>/.claude/ -- asking first would let a granted
+	// consent install into directories that do not exist yet, silently doing
+	// nothing on the very run the operator said yes.
+	if maybeAskAttentionConsent(p, out) {
+		if err := config.Write(cfgPath, p); err != nil {
+			return fmt.Errorf("record attention consent: %w", err)
+		}
+	}
+
 	// Initialize git
 	fmt.Fprintf(out, "  %s %s\n", color.Green("\u2713"), color.Dim("Initializing git repository"))
 	if err := gitInit(runner, p.Root); err != nil {

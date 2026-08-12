@@ -24,6 +24,15 @@ func (t *TUI) handleKey(ev *tcell.EventKey) bool {
 		"mod_ctrl", ev.Modifiers()&tcell.ModCtrl != 0,
 		"mod_alt", ev.Modifiers()&tcell.ModAlt != 0)
 
+	// Consent modal owns the keyboard while open: it is a question about
+	// writing files inside the operator's agents, so no keystroke may reach
+	// the fleet beneath it or be mistaken for an answer (ini-2x8.6). Ahead of
+	// the welcome overlay, which dismisses on ANY key -- the two must not both
+	// consume one keypress.
+	if t.handleAttentionConsentKey(ev) {
+		return false
+	}
+
 	// Welcome overlay: dismiss on any keypress.
 	if t.welcome.active {
 		t.welcome.active = false

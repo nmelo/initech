@@ -4,10 +4,13 @@ import (
 	"bufio"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 
 	"github.com/nmelo/initech/internal/config"
 	"github.com/nmelo/initech/internal/hooks"
+	"github.com/nmelo/initech/internal/tui"
+	"golang.org/x/term"
 )
 
 // attentionConsentPrompt is the one-time consent copy (pm-owned).
@@ -20,20 +23,12 @@ import (
 // on this answer -- declining declines a redundant second witness, and saying
 // otherwise would buy a Yes under false pretences on a prompt whose entire
 // purpose is informed consent to writing files inside the operator's agents.
-const attentionConsentPrompt = `Add a Claude notification hook to each agent's settings?
-
-initech already detects agent dialogs on its own; this adds a second,
-independent signal for permission prompts. Declining costs redundancy,
-not the feature.
-
-It writes a Notification hook into <agent>/.claude/settings.json for each
-agent, preserving anything already there. [y/N]: `
 
 // PromptAttentionHooksConsent asks the one-time consent question and returns
 // the answer. Anything other than an explicit yes is No: the operator-decided
 // default, and the right default for a prompt about writing to their files.
 func PromptAttentionHooksConsent(in io.Reader, out io.Writer) bool {
-	fmt.Fprint(out, attentionConsentPrompt)
+	fmt.Fprint(out, hooks.ConsentPrompt)
 	line, err := bufio.NewReader(in).ReadString('\n')
 	if err != nil && line == "" {
 		return false // EOF / non-interactive: default No, never assume Yes.
@@ -91,4 +86,58 @@ func InstallAttentionHooks(proj *config.Project, out io.Writer) int {
 		}
 	}
 	return installed
+}
+
+// stdinIsTerminal reports whether stdin is an interactive terminal. Overridable
+// so tests can drive both branches without a real TTY.
+var stdinIsTerminal = func() bool { return term.IsTerminal(int(os.Stdin.Fd())) }
+
+// maybeAskAttentionConsent runs the one-time consent flow on the init path,
+// and reports whether the config now needs writing.
+//
+// SKIPPED ENTIRELY when stdin is not a terminal. `initech init` is scriptable
+// -- CI, a setup script, a Dockerfile -- and a blocking read there would hang
+// the caller forever on a question nobody can see. Silence is the only safe
+// default for a consent prompt with no human attached: unset stays unset, so
+// the operator is asked later on a surface that can actually reach them (the
+// in-TUI modal) rather than having a default silently recorded for them.
+func maybeAskAttentionConsent(p *config.Project, out io.Writer) bool {
+	if p == nil || p.Attention.HooksAnswered() {
+		return false
+	}
+	if !stdinIsTerminal() {
+		return false
+	}
+	return EnsureAttentionHooksConsent(p, os.Stdin, out)
+}
+
+// attentionConsentRecorder returns the callback the TUI invokes when the
+// operator answers the in-TUI consent modal (ini-2x8.6).
+//
+// It persists the answer FIRST and installs second. If the write fails, the
+// install is skipped: a session that installed hooks but failed to record the
+// answer would ask again next startup and install again -- and the operator
+// would have no way to tell that their "yes" had been remembered, because the
+// evidence lives in the config that failed to save.
+//
+// Errors are logged rather than surfaced as a modal: the operator has just
+// answered and dismissed a question, and a second popup reporting a config
+// write failure is not what they asked for. The hook tier is redundancy, so a
+// failure here costs a second witness, never detection.
+func attentionConsentRecorder(cfgPath string, proj *config.Project) func(bool) {
+	if proj == nil || cfgPath == "" {
+		return nil
+	}
+	return func(granted bool) {
+		if err := config.Write(cfgPath, proj); err != nil {
+			tui.LogWarn("attention", "could not record hook consent", "err", err)
+			return
+		}
+		if !granted {
+			return
+		}
+		var buf strings.Builder
+		n := InstallAttentionHooks(proj, &buf)
+		tui.LogInfo("attention", "installed notification hook", "agents", n, "detail", buf.String())
+	}
 }

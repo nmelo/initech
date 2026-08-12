@@ -249,16 +249,17 @@ func runTUI(cmd *cobra.Command, args []string) error {
 	}
 
 	return tuiRun(tui.Config{
-		Agents:            agents,
-		ProjectName:       proj.Name,
-		ProjectRoot:       proj.Root,
-		ResetLayout:       resetLayout,
-		Verbose:           verbose,
-		Version:           Version,
-		AutoSuspend:       enableAutoSuspend,
-		PressureThreshold: proj.Resource.PressureThreshold,
-		Project:           proj,
-		PaneConfigBuilder: buildReloadingPaneConfigBuilder(cfgPath, buildAgentPaneConfig),
+		Agents:             agents,
+		ProjectName:        proj.Name,
+		ProjectRoot:        proj.Root,
+		ResetLayout:        resetLayout,
+		Verbose:            verbose,
+		Version:            Version,
+		AutoSuspend:        enableAutoSuspend,
+		PressureThreshold:  proj.Resource.PressureThreshold,
+		Project:            proj,
+		PaneConfigBuilder:  buildReloadingPaneConfigBuilder(cfgPath, buildAgentPaneConfig),
+		OnAttentionConsent: attentionConsentRecorder(cfgPath, proj),
 	})
 }
 

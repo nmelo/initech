@@ -202,9 +202,18 @@ type TUI struct {
 	agents    agentsModal    // Agent management modal.
 	quickGrid quickGridModal // Quick grid/live dimension popup (Option+G/L).
 	welcome   welcomeOverlay // First-launch keybinding hints.
-	sel       mouseSelection // Mouse text selection.
-	quitCh    chan struct{}  // Closed by IPC quit action to signal event loop exit.
-	quitOnce  sync.Once      // Guards single close of quitCh; prevents concurrent-quit panics.
+
+	// attentionConsent is the one-time attention-hooks consent question for
+	// EXISTING projects (ini-2x8.6). Window 1 only.
+	attentionConsent attentionConsentModal
+
+	// onAttentionConsent persists the recorded answer and, when granted, runs
+	// the install. Injected by the cmd layer so this package stays free of
+	// config-writing and agent-settings deps.
+	onAttentionConsent func(granted bool)
+	sel                mouseSelection // Mouse text selection.
+	quitCh             chan struct{}  // Closed by IPC quit action to signal event loop exit.
+	quitOnce           sync.Once      // Guards single close of quitCh; prevents concurrent-quit panics.
 
 	// ipcCh is the dispatch channel for IPC goroutines that need to access
 	// TUI state (t.panes, layoutState) safely from outside the main event loop.
@@ -490,16 +499,17 @@ func (t *TUI) drainRemotePanes() {
 
 // Config controls what agents the TUI launches.
 type Config struct {
-	Agents            []PaneConfig                          // One entry per agent pane.
-	ProjectName       string                                // Used for socket path.
-	ProjectRoot       string                                // Project root for .initech/ layout persistence.
-	ResetLayout       bool                                  // Ignore saved layout and start with defaults.
-	Verbose           bool                                  // Enable DEBUG-level logging (default: INFO).
-	Version           string                                // Build version for crash reports.
-	AutoSuspend       bool                                  // Enable resource-aware auto-suspend/resume.
-	PressureThreshold int                                   // RSS percentage threshold (0 uses default 85).
-	PaneConfigBuilder func(name string) (PaneConfig, error) // Optional factory for hot-add. Nil disables add command.
-	Project           *config.Project                       // Full project config. Used for remote peer connections.
+	Agents             []PaneConfig                          // One entry per agent pane.
+	ProjectName        string                                // Used for socket path.
+	ProjectRoot        string                                // Project root for .initech/ layout persistence.
+	ResetLayout        bool                                  // Ignore saved layout and start with defaults.
+	Verbose            bool                                  // Enable DEBUG-level logging (default: INFO).
+	Version            string                                // Build version for crash reports.
+	AutoSuspend        bool                                  // Enable resource-aware auto-suspend/resume.
+	PressureThreshold  int                                   // RSS percentage threshold (0 uses default 85).
+	PaneConfigBuilder  func(name string) (PaneConfig, error) // Optional factory for hot-add. Nil disables add command.
+	Project            *config.Project                       // Full project config. Used for remote peer connections.
+	OnAttentionConsent func(granted bool)                    // Persists the one-time consent answer (ini-2x8.6). Nil disables the modal's write-back.
 }
 
 // DefaultConfig returns a config with standard shell-only agents.
@@ -668,6 +678,12 @@ func Run(cfg Config) error {
 	// GridExplicit is respected inside recalcGrid, so an operator's chosen
 	// CxR is still not overridden.
 	t.recalcGrid(false)
+
+	// One-time attention-hooks consent for an EXISTING project (ini-2x8.6).
+	// Window 1 only; a project that already recorded an answer sees nothing,
+	// which is what keeps this bead's census claim true.
+	t.onAttentionConsent = cfg.OnAttentionConsent
+	t.maybeStartAttentionConsent()
 
 	// Show welcome overlay on first launch (no saved layout).
 	if firstLaunch {
