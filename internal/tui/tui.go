@@ -169,15 +169,16 @@ type TUI struct {
 	// INITECH_SOCKET into hot-added panes.
 	sockPath string
 
-	// Multi-monitor state (ini-9ka.6). windowID is this window's identity in
-	// the assignment model -- WindowOne for the session owner, "window-N" for
-	// a secondary window. assignment and windowSrv are nil for an ordinary
-	// single-window session, which is what makes the render filter below a
-	// no-op there rather than a new code path.
-	windowID   string
-	assignment *WindowAssignment
-	windowSrv  *windowServer
-	liveness   *windowLivenessTracker
+	// Multi-monitor render state (ini-9ka.6). windowID is this window's
+	// identity in the assignment model -- WindowOne for the session owner,
+	// "window-N" for a secondary window. These are zero for an ordinary
+	// single-window session, which is what makes the render filter a no-op
+	// there rather than a new code path. The assignment store itself is the
+	// shared `assignment` field declared above (ini-9ka.4/.5) -- one store per
+	// session, read by both the modal and the render filter.
+	windowID  string
+	windowSrv *windowServer
+	liveness  *windowLivenessTracker
 
 	// paneConfigBuilder builds a PaneConfig for a new role at runtime.
 	// Set from Config.PaneConfigBuilder. Nil disables the add command.
