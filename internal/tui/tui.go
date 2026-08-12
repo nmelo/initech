@@ -225,6 +225,14 @@ type TUI struct {
 	version     string
 	renderCount int // Frame counter for periodic render heartbeat logging.
 
+	// Attention system (ini-2x8). chime is nil in tests that do not care about
+	// sound; attentionChimes tolerates that. attentionSound is the normalised
+	// config value ("bell" or "none"). chimeSeen tracks which waits have already
+	// been announced, keyed by paneKey.
+	chime          Chimer
+	attentionSound string
+	chimeSeen      map[string]chimeState
+
 	// lastRenderAt stores the UnixNano timestamp of the last completed render.
 	// Updated atomically by render(), read by the watchdog goroutine.
 	lastRenderAt atomic.Int64
@@ -699,6 +707,19 @@ func Run(cfg Config) error {
 	if cfg.Project != nil {
 		sec := cfg.Project.GetIdleWithBeadThreshold()
 		beadThreshold = time.Duration(sec) * time.Second
+	}
+
+	// Attention chime (ini-2x8.3). Default-on audible surface: absent config
+	// means "bell", and only an explicit attention.sound: none silences it.
+	t.attentionSound = "bell"
+	if cfg.Project != nil {
+		t.attentionSound = cfg.Project.Attention.AttentionSound()
+	}
+	if t.chimeSeen == nil {
+		t.chimeSeen = make(map[string]chimeState)
+	}
+	if t.chime == nil && t.screen != nil {
+		t.chime = screenChimer{screen: t.screen}
 	}
 
 	// Create panes.

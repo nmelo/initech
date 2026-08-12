@@ -67,6 +67,10 @@ type Project struct {
 
 	IdleWithBeadThreshold *int `yaml:"idle_with_bead_threshold,omitempty"` // Seconds of silence before idle-with-bead fires. nil = 60, 0 = disabled.
 
+	// Attention configures the needs-input surface: the top-left list of agents
+	// blocked on the operator, and the chime that announces them (ini-2x8).
+	Attention AttentionConfig `yaml:"attention,omitempty"`
+
 	// Cross-machine coordination fields.
 	PeerName string            `yaml:"peer_name,omitempty"` // This instance's identity (e.g., "workbench").
 	Mode     string            `yaml:"mode,omitempty"`      // "" (default TUI) or "headless" (daemon).
@@ -134,6 +138,30 @@ func (b BeadsConfig) IsEnabled() bool {
 // ResourceConfig holds resource management settings. When AutoSuspend is true,
 // the TUI runs a memory monitor and can auto-suspend/resume agents under
 // memory pressure. When absent or false, all resource management is dormant.
+// AttentionConfig configures the attention system (ini-2x8).
+type AttentionConfig struct {
+	// Sound selects the audible surface: "bell" (default) writes a terminal BEL
+	// when an agent starts waiting on the operator, "none" stays silent while
+	// the list still renders.
+	//
+	// A file path is a RESERVED value, not v1 behaviour: an unrecognised value
+	// falls back to the default rather than blocking load, so a config written
+	// against a later version does not wedge this one.
+	Sound string `yaml:"sound,omitempty"`
+}
+
+// AttentionSound normalises the configured sound to "bell" or "none".
+// Anything unrecognised -- including the reserved custom-file value -- falls
+// back to "bell", because the default-on audible surface failing OPEN is the
+// safe direction: a silent attention system is the bug this feature exists to
+// fix, while an unexpected bell is merely noticeable.
+func (a AttentionConfig) AttentionSound() string {
+	if a.Sound == "none" {
+		return "none"
+	}
+	return "bell"
+}
+
 type ResourceConfig struct {
 	AutoSuspend       bool `yaml:"auto_suspend,omitempty"`
 	PressureThreshold int  `yaml:"pressure_threshold,omitempty"` // RSS percentage (0-100). Default: 85.

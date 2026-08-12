@@ -96,6 +96,11 @@ func (t *TUI) render() {
 	// switch anyone can leave on and no space reserved for an empty box.
 	t.renderAttention()
 
+	// Chime for anyone who just started waiting (ini-2x8.3). Driven from the
+	// same tick as the list so the sound and the row can never disagree about
+	// who is waiting.
+	t.attentionChimes(time.Now())
+
 	if t.layoutState.Overlay {
 		t.renderOverlay()
 	}

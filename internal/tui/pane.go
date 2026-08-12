@@ -158,6 +158,7 @@ type Pane struct {
 	beadAssignedAt         time.Time      // When the current bead was assigned. Grace period starts here.
 	waitingSince      time.Time         // When the currently-open blocking dialog was first seen. Zero = not waiting.
 	waitingPreview    string            // What to show for this agent in the needs-input list. Empty is allowed.
+	waitingTier       WaitingTier       // Confidence in the current wait. Zero value is the SILENT tier, deliberately.
 	journal           []JournalEntry    // Ring buffer of recent JSONL entries (cap journalRingSize).
 	jsonlDir          string            // Directory to search for session JSONL files.
 	eventCh           chan<- AgentEvent // Emits detected semantic events to the TUI. May be nil.
@@ -1060,22 +1061,44 @@ func (p *Pane) Activity() ActivityState {
 	return p.activity
 }
 
-// SetWaitingInput marks the pane as blocked on the operator, with preview as
-// the text the needs-input list shows for it. Idempotent on the timestamp: a
-// detector that re-asserts the same open dialog every tick must not restart the
-// wait clock, or the list's durations never advance and the chime's rising edge
-// fires forever. Only the FIRST call since the last clear sets waitingSince.
+// SetWaitingInput marks the pane as blocked on the operator at the LIST-ONLY
+// tier -- it appears in the needs-input list and stays silent.
 //
-// preview is refreshed on every call, so a detector that learns better text
-// later (screen scrape arriving after the edge signal) can upgrade the row
-// without disturbing the clock.
+// Silent is the default on purpose. The operator's standing rule is that a false
+// chime is a defect, and that when a tier's confidence is in doubt the row
+// renders while the chime stays quiet. Making the quiet tier the zero value
+// means a detector has to opt IN to making noise, so a new detector added later
+// cannot become audible by forgetting to say anything.
 func (p *Pane) SetWaitingInput(preview string) {
+	p.SetWaitingInputTier(preview, WaitingTierListOnly)
+}
+
+// SetWaitingInputTier marks the pane as blocked on the operator at an explicit
+// tier. Idempotent on the timestamp: a detector that re-asserts the same open
+// dialog every tick must not restart the wait clock, or the list's durations
+// never advance and the 2-minute chime reminder never comes due. Only the FIRST
+// call since the last clear sets waitingSince.
+//
+// preview and tier are refreshed on every call, so a detector that learns more
+// later -- a screen scrape arriving after the edge signal, or a hook confirming
+// what a heuristic guessed -- can upgrade the row without costing it the wait it
+// has already accumulated.
+func (p *Pane) SetWaitingInputTier(preview string, tier WaitingTier) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.waitingSince.IsZero() {
 		p.waitingSince = time.Now()
 	}
 	p.waitingPreview = preview
+	p.waitingTier = tier
+}
+
+// WaitingTierOf returns the tier of the current wait. Meaningless when the pane
+// is not waiting.
+func (p *Pane) WaitingTierOf() WaitingTier {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.waitingTier
 }
 
 // ClearWaitingInput marks the pane as no longer blocked on the operator.
@@ -1085,6 +1108,7 @@ func (p *Pane) ClearWaitingInput() {
 	defer p.mu.Unlock()
 	p.waitingSince = time.Time{}
 	p.waitingPreview = ""
+	p.waitingTier = WaitingTierListOnly
 }
 
 // WaitingInput reports whether the operator is being waited on, since when, and
