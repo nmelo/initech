@@ -1,5 +1,3 @@
-//go:build !windows
-
 package tui
 
 import (

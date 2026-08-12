@@ -18,10 +18,20 @@
 # sibling, move the portable half into an untagged file instead. That is what
 # ini-47w did, and it returned two whole suites to Windows.
 #
-# SEEDED FROM A REAL RUN, 2026-08-12 (ini-2x8.8), not guessed: every entry below
-# came out of the first census of this repo. Reasons are stated at the accuracy
-# I could verify; the ones marked "cause not restated by its author" are exactly
-# that, and are now visible for review rather than invisible.
+# SEEDED FROM A REAL RUN, 2026-08-12 (ini-2x8.8), then AUDITED (ini-2x8.9): each
+# entry whose rationale had never been recorded was tested by removing its tag
+# and compiling for Windows. Three files turned out not to need the constraint
+# at all and are gone from this list; the rest carry the compiler error or the
+# specific incompatible call as their reason.
+#
+# ONE OF THE SEEDED REASONS WAS WRONG, and it is worth knowing why. This file
+# briefly claimed window_server_test.go was constrained because it "serves the
+# pane stream over a unix-domain socket". It does not -- it binds TCP on
+# 127.0.0.1, and the file's own header comment says "none of these tests bind a
+# unix socket". The reason had been INFERRED from a grep hit on that very
+# comment rather than read. An inferred reason is not evidence, and it lands in
+# the same place as an invented one: a plausible sentence guarding a gap nobody
+# has actually checked. Read the file.
 
 # ── Drive a real PTY (creack/pty is Unix-only in this usage) ──────────
 internal/tui/attention_emitter_probe_test.go  windows  # live OSC 777 probe spawns a real Claude Code under a PTY via creack/pty
@@ -38,18 +48,21 @@ internal/tui/liveregion_probe_test.go         windows  # NewPane starts a PTY-ba
 internal/config/config_perms_unix_test.go     windows  # asserts 0600 file modes and Chmod semantics that Windows does not implement
 internal/tui/foldback_test.go                 windows  # unix-domain socket plumbing plus syscall-level process control
 internal/tui/window_wedge_test.go             windows  # unix-domain socket plumbing plus syscall-level process control
-internal/tui/window_server_test.go            windows  # serves the pane stream over a unix-domain socket
 internal/roles/selector_goroutine_test.go     windows  # opens /dev/tty directly
 internal/roles/qa_ini4pk1_test.go             windows  # opens /dev/tty directly
 internal/tui/battery_darwin_test.go           linux,windows  # parses `pmset` output; the source file it covers is //go:build darwin
 
-# ── Pre-existing constraints whose cause is not stated in the file ────
-# Not audited by ini-2x8.8: these carried '//go:build !windows' before this
-# check existed and their authors did not record why. Listed honestly rather
-# than given an invented rationale. Each is a candidate for the ini-47w
-# treatment -- check whether the constraint is real or merely inherited.
-internal/roles/selector_test.go               windows  # cause not restated by its author; sibling of the /dev/tty selector tests
-internal/roles/selector_unit_test.go          windows  # cause not restated by its author; sibling of the /dev/tty selector tests
-internal/tui/pane_env_test.go                 windows  # cause not restated by its author; asserts pane env for PTY-backed children
-internal/tui/window_cli_integration_test.go   windows  # cause not restated by its author; exercises the window CLI end to end
-internal/tui/parity_test.go                   windows  # cause not restated by its author; cross-window fleet operations over the window server
+# ── Audited: constraint is REAL, with the evidence that proves it ────
+# ini-2x8.9 removed each tag and compiled for Windows. These failed, and the
+# compiler error IS the reason -- the symbol they test does not exist there.
+internal/roles/selector_test.go               windows  # undefined: selectorState -- selector.go is itself //go:build !windows, so the raw-terminal selector does not exist on Windows
+internal/roles/selector_unit_test.go          windows  # undefined: buildDisplayRows -- same: the symbol under test lives in the //go:build !windows selector.go
+
+# ── Compiles for Windows, but RUNTIME portability is genuinely doubtful ───
+# Stated rather than resolved by guesswork, per ini-2x8.9's AC. The compile-time
+# constraint here is inherited (buildInitechBinary is portable Go), but the file
+# builds the real binary as "initech" with no extension and then executes it,
+# and Windows generally requires .exe to exec. Unmasking it without making
+# buildInitechBinary platform-aware would trade a silent gap for a red CI leg
+# that tells us nothing new. Candidate for its own bead.
+internal/tui/window_cli_integration_test.go   windows  # inherited from buildInitechBinary (portable), but the test EXECUTES a binary built without a .exe suffix; runtime portability unverified
