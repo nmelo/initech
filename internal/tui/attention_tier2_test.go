@@ -1,5 +1,3 @@
-//go:build !windows
-
 package tui
 
 // attention_tier2_test.go covers the coverage tier (ini-2x8.5).

@@ -37,5 +37,18 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: bash scripts/lint-test-names.sh
 
+      # ini-47w: witness WHICH tests this platform actually compiled, by name.
+      # Build constraints silently remove whole suites from a leg -- a portable
+      # helper parked in a '//go:build !windows' file drags every consumer out
+      # with it, and CI still reports that leg green because a green run does
+      # not witness suites that never ran. This lists the names so absence is
+      # visible in the log rather than inferred from a passing total.
+      #
+      # Runs BEFORE Test on purpose: when restoring a suite to a platform
+      # unmasks real failures, the names are already in the log above them.
+      # -list compiles and enumerates without running, so it costs seconds.
+      - name: Witness tests present on this platform
+        run: go test ./internal/tui/ -list '.*' -count=1
+
       - name: Test
         run: go test ./... -count=1 -short
