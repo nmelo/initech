@@ -376,3 +376,59 @@ func drainEmulator(t *testing.T, p *Pane) {
 		}
 	}()
 }
+
+// TestWindowServer_WindowDisconnectLeavesOthersConnected is the AC's
+// "window N disconnecting does not affect window 1 or any other window"
+// requirement. Fold-back (ini-9ka.7) will be built on top of exactly this
+// disconnect signal, so it matters that one window dropping is contained:
+// the server keeps serving, the surviving window stays registered, and the
+// panes keep their sinks so output never stops flowing.
+func TestWindowServer_WindowDisconnectLeavesOthersConnected(t *testing.T) {
+	panes := []*Pane{windowServerTestPane("eng1")}
+	ws, addr := startTestWindowServer(t, panes)
+
+	s2, c2, _ := dialWindow(t, addr, "window2")
+	s3, c3, _ := dialWindow(t, addr, "window3")
+	defer s3.Close()
+	defer c3.Close()
+	waitForClients(t, ws, 2)
+
+	// Window 2 goes away.
+	c2.Close()
+	s2.Close()
+
+	// Window 3 must remain registered.
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		ws.daemon.sessionsMu.Lock()
+		_, still3 := ws.daemon.clients["window3"]
+		n := len(ws.daemon.clients)
+		ws.daemon.sessionsMu.Unlock()
+		if n == 1 && still3 {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	ws.daemon.sessionsMu.Lock()
+	_, still3 := ws.daemon.clients["window3"]
+	ws.daemon.sessionsMu.Unlock()
+	if !still3 {
+		t.Error("surviving window3 was dropped when window2 disconnected")
+	}
+
+	// The pane keeps its sink: output must not stop because one window left.
+	panes[0].sinkMu.Lock()
+	sink := panes[0].networkSink
+	panes[0].sinkMu.Unlock()
+	if sink == nil {
+		t.Error("pane lost its network sink when one window disconnected")
+	}
+
+	// And the server still accepts new windows.
+	s4, c4, ok := dialWindow(t, addr, "window4")
+	defer s4.Close()
+	defer c4.Close()
+	if ok.Action != "hello_ok" {
+		t.Errorf("server stopped accepting new windows after a disconnect: %q", ok.Action)
+	}
+}
