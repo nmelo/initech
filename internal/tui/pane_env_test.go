@@ -200,12 +200,48 @@ func TestPaneEnv_PreservesUnrelatedVariables(t *testing.T) {
 	t.Setenv("INITECH_AGENT", "eng1")
 	t.Setenv("PATH_LIKE_THING", "keepme")
 	t.Setenv("TERM_PROGRAM_EXTRA", "keepme") // shares a prefix with a replaced name
+	// Set rather than assumed: these exist on every platform only because the
+	// test puts them there. Windows CI has no HOME.
+	t.Setenv("HOME", "/home/agent")
+	t.Setenv("PATH", os.Getenv("PATH"))
+	t.Setenv("SHELL", "/bin/sh")
 
 	env := paneEnv(t)
 
-	for _, key := range []string{"INITECH_AGENT", "PATH_LIKE_THING", "TERM_PROGRAM_EXTRA", "HOME", "PATH"} {
+	// Assert the contract itself rather than a hand-picked list of variables:
+	// EVERY inherited variable that is not on a drop list must survive. The
+	// earlier version named HOME and PATH explicitly and failed on Windows CI,
+	// which has no HOME at all -- the test was asserting the host's shape, not
+	// initech's behaviour. This form is platform-independent and strictly
+	// stronger: it catches an over-broad filter whatever it eats.
+	dropped := map[string]bool{}
+	for _, name := range append(append([]string{}, overriddenTerminalEnv...), shadowingIdentityEnv...) {
+		dropped[name] = true
+	}
+	for _, kv := range os.Environ() {
+		name := kv
+		if i := strings.IndexByte(kv, '='); i >= 0 {
+			name = kv[:i]
+		}
+		if dropped[name] {
+			continue
+		}
+		if _, ok := envValue(env, name); !ok {
+			t.Errorf("the override removed %q, which is not terminal identity", name)
+		}
+	}
+	// The sweep alone is not enough, and the gap is worth naming: it derives its
+	// expectation FROM the drop lists, so it passes for ANY list -- including
+	// one that grew to eat something load-bearing. (Verified by mutation: adding
+	// SHELL to the drop list left the sweep green.) So the names that must never
+	// be dropped are also asserted against a fixed list the test owns, and are
+	// SET here rather than assumed present, because the host's shape differs by
+	// platform -- Windows CI has no HOME, which is what broke the earlier form.
+	for _, key := range []string{"HOME", "PATH", "SHELL", "TERM_PROGRAM_EXTRA"} {
 		if _, ok := envValue(env, key); !ok {
-			t.Errorf("the override removed %q, which is not terminal identity", key)
+			t.Errorf("the override removed %q. It is not terminal identity, and an agent "+
+				"needs it -- an over-broad filter breaks agents far more visibly than the "+
+				"bug it was added to fix", key)
 		}
 	}
 }
