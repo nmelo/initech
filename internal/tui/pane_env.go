@@ -74,6 +74,48 @@ var overriddenTerminalEnv = []string{
 	"TERMINAL_EMULATOR",
 }
 
+// shadowingIdentityEnv are variables that are NOT terminal identity but that
+// Claude consults BEFORE TERM_PROGRAM when resolving which terminal it is in --
+// so they outrank the pin and can silently restore the dead-tier-1 bug that
+// pinning was meant to end (ini-m2e).
+//
+// All four candidates were measured with the pin already in place, one variable
+// at a time, live canary:
+//
+//	CURSOR_TRACE_ID=<uuid>                    -> SHADOWS (90s silent)
+//	VSCODE_GIT_ASKPASS_MAIN=<a Cursor path>   -> SHADOWS (90s silent)
+//	VSCODE_GIT_ASKPASS_MAIN=<a VS Code path>  -> does NOT shadow (777 in 10.7s)
+//	__CFBundleIdentifier=com.jetbrains.<x>    -> SHADOWS (90s silent)
+//	VisualStudioVersion=17.0                  -> SHADOWS (90s silent)
+//
+// Only CURSOR_TRACE_ID is listed, because shadowing is necessary but not
+// sufficient: a variable is removed only if it also has no second job in an
+// agent pane. CURSOR_TRACE_ID is a trace-correlation id with no consumer here.
+// The other three carry real freight and are deliberately KEPT, with the cost
+// of keeping them recorded on ini-m2e rather than hidden:
+//
+//   - VSCODE_GIT_ASKPASS_MAIN is read by the GIT_ASKPASS shim, so dropping it
+//     costs credential prompts for every VS Code-family agent -- and the
+//     measurement above shows a plain VS Code path does not shadow at all, so a
+//     blanket scrub would break the many to fix the few. A value-conditional
+//     scrub would mean mirroring Claude's private substring test, which drifts
+//     the moment they edit it.
+//   - __CFBundleIdentifier is set by macOS launchd and read by Apple tooling. It
+//     is process provenance, not terminal identity; removing it is a broader
+//     environment change than this bug justifies.
+//   - VisualStudioVersion is consumed by MSBuild. It is also moot on this path:
+//     the Windows pane builder does not use this env at all (see ini-m2e).
+//
+// NOTE ON WHAT THIS BUYS: Cursor sets CURSOR_TRACE_ID *and* the askpass path, so
+// removing the first does not by itself restore tier-1 for a real Cursor host --
+// measured, the askpass marker alone still suppresses. This removes one lie for
+// free; it is not a fix for the Cursor population. The measured fix for the kept
+// three is forcing the notification channel rather than fighting the input list
+// (ini-m2e records that lever and its trade-offs).
+var shadowingIdentityEnv = []string{
+	"CURSOR_TRACE_ID",
+}
+
 // agentBaseEnv returns the environment for an agent pane: the process
 // environment with host-terminal identity removed and initech's own pinned
 // identity applied. It is the single owner of the terminal-facing environment,
@@ -87,7 +129,8 @@ var overriddenTerminalEnv = []string{
 // shows TMUX itself suppressing, it belongs in overriddenTerminalEnv with that
 // measurement cited.
 func agentBaseEnv() []string {
-	return append(scrubEnv(os.Environ(), overriddenTerminalEnv),
+	drop := append(append([]string{}, overriddenTerminalEnv...), shadowingIdentityEnv...)
+	return append(scrubEnv(os.Environ(), drop),
 		"TERM="+pinnedTerm,
 		"TERM_PROGRAM="+pinnedTermProgram,
 	)

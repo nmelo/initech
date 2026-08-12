@@ -125,6 +125,56 @@ func TestPaneEnv_DropsShadowingTerminalMarkers(t *testing.T) {
 	}
 }
 
+// TestPaneEnv_DropsFreightFreeShadowingMarkers covers markers that outrank the
+// pin in Claude's terminal resolution and cost nothing to remove (ini-m2e).
+// CURSOR_TRACE_ID is a trace-correlation id with no consumer in an agent pane,
+// and MEASURED with the pin already in place it suppressed OSC 777 completely.
+func TestPaneEnv_DropsFreightFreeShadowingMarkers(t *testing.T) {
+	t.Setenv("CURSOR_TRACE_ID", "7f3a9c21-0000-4000-8000-abcdefabcdef")
+
+	if v, ok := envValue(paneEnv(t), "CURSOR_TRACE_ID"); ok {
+		t.Errorf("agent pane env carries CURSOR_TRACE_ID=%q; it outranks TERM_PROGRAM in "+
+			"Claude's terminal resolution and silently defeats the pin", v)
+	}
+}
+
+// TestPaneEnv_KeepsShadowingMarkersThatCarryFreight pins three DELIBERATE
+// non-removals, so a future reader does not "complete" ini-m2e by scrubbing
+// what merely looks symmetrical (ini-m2e).
+//
+// All three shadow the pin -- measured, 90s of silence each -- and all three are
+// kept anyway, because shadowing is necessary but not sufficient: removal also
+// has to be free, and none of these is.
+//
+//   - VSCODE_GIT_ASKPASS_MAIN: the GIT_ASKPASS shim reads it, so scrubbing costs
+//     credential prompts. And it only shadows for Cursor/Windsurf-flavoured
+//     paths -- a plain VS Code path emitted OSC 777 in 10.7s -- so a blanket
+//     scrub would break every VS Code-family operator to fix a subset.
+//   - __CFBundleIdentifier: launchd-set process provenance read by Apple tooling.
+//   - VisualStudioVersion: consumed by MSBuild.
+//
+// The measured alternative for these is forcing Claude's notification channel
+// outright rather than enumerating an input list we do not own. If that lands,
+// this test is the right place to revisit -- with the measurement cited.
+func TestPaneEnv_KeepsShadowingMarkersThatCarryFreight(t *testing.T) {
+	kept := map[string]string{
+		"VSCODE_GIT_ASKPASS_MAIN": "/Applications/Cursor.app/Contents/Resources/app/extensions/git/dist/askpass-main.js",
+		"__CFBundleIdentifier":    "com.jetbrains.pycharm",
+		"VisualStudioVersion":     "17.0",
+	}
+	for key, value := range kept {
+		t.Run(key, func(t *testing.T) {
+			t.Setenv(key, value)
+
+			if _, ok := envValue(paneEnv(t), key); !ok {
+				t.Errorf("%s was scrubbed. It does shadow the pin, but removing it breaks a "+
+					"real consumer (askpass / Apple tooling / MSBuild). Scrubbing it is a "+
+					"measured decision, not a symmetry argument -- see ini-m2e", key)
+			}
+		})
+	}
+}
+
 // TestPaneEnv_StillPinsTerm guards the older half of the terminal-identity
 // story: the rework must not have disturbed the TERM pin, and TERM must be the
 // pinned value rather than the host's, exactly once.
