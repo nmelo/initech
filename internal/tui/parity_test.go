@@ -1,3 +1,5 @@
+//go:build !windows
+
 // parity_test.go is ini-9ka.8's verification half: which cross-window fleet
 // operations actually fall out of existing primitives, and which do not.
 //

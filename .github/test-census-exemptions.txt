@@ -58,6 +58,17 @@ internal/tui/battery_darwin_test.go           linux,windows  # parses `pmset` ou
 internal/roles/selector_test.go               windows  # undefined: selectorState -- selector.go is itself //go:build !windows, so the raw-terminal selector does not exist on Windows
 internal/roles/selector_unit_test.go          windows  # undefined: buildDisplayRows -- same: the symbol under test lives in the //go:build !windows selector.go
 
+# ── Compiles for Windows, but MEASURED to hang there ─────────────────
+# ini-2x8.9 unmasked these on the strength of a COMPILE check and CI proved the
+# compile check insufficient, exactly as that bead warned it might be. The tui
+# package timed out at 600s on windows-latest (run 31651424793, job 94296390977)
+# with goroutines parked in startWindowServer's TCP Accept and in drainEmulator's
+# emulator Read. Re-tagged on evidence, not on retreat. Whether the window server
+# itself works on Windows is a PRODUCT question, filed separately -- these tests
+# hanging is the symptom, not the whole finding.
+internal/tui/window_server_test.go            windows  # tui package hangs 600s on windows CI: goroutines stuck in startWindowServer TCP Accept (run 31651424793)
+internal/tui/parity_test.go                   windows  # same hang: depends on startTestWindowServer, which is what parks in Accept
+
 # ── Compiles for Windows, but RUNTIME portability is genuinely doubtful ───
 # Stated rather than resolved by guesswork, per ini-2x8.9's AC. The compile-time
 # constraint here is inherited (buildInitechBinary is portable Go), but the file

@@ -120,5 +120,5 @@ func paneHasTier2Dialog(p *Pane) bool {
 	if p == nil || p.emu == nil {
 		return false
 	}
-	return hasTier2Dialog(emulatorBottomText(p.emu, modalScanRows))
+	return hasTier2Dialog(emulatorBottomText(p.emu, modalScanWholePane))
 }

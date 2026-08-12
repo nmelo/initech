@@ -1,3 +1,5 @@
+//go:build !windows
+
 // window_server_test.go covers ini-9ka.2's in-process pane-stream listener:
 // window 1 serving secondary windows while keeping direct PTY ownership.
 //

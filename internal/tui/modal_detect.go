@@ -11,10 +11,30 @@ package tui
 
 import "strings"
 
-// modalScanRows is how many bottom emulator rows to inspect for a modal
-// signature. Generous enough to capture a multi-line AskUserQuestion box and
-// its footer.
-const modalScanRows = 14
+// modalScanWholePane makes the modal scan cover EVERY rendered row of the pane
+// rather than a fixed count of bottom rows.
+//
+// It was a fixed 14 rows until ini-t6n, and that was a fixed-window fence in a
+// variable-window world. Measured in a composed 50-row TUI: a permission
+// prompt's "Do you want to proceed?" anchor sat ~16 rows above the pane bottom
+// -- options, the esc/tab/ctrl+e hints, a spacer, the input box, the bypass
+// footer and padding all push it up -- so the scan never saw it. paneHasModal
+// stayed false with the dialog plainly on screen, markModalSeen never set, and
+// the attention row could never be retired. The signature captures that chose
+// 14 were real but taken in a raw 40-row PTY, where the same dialog sits much
+// lower; the composed pane's own chrome is what moved it.
+//
+// AskUserQuestion anchored ~12 rows up and worked, which brackets the boundary
+// AT THAT PANE SIZE ONLY. Any other number would just relocate the cliff.
+//
+// The scan reads already-rendered rows, so covering the whole pane is cheap.
+// The tradeoff is honest: a wider window can match text that is merely VISIBLE
+// rather than part of a live dialog. That direction is the safe one for the
+// send-deferral consumer -- a false "modal present" defers a send, while a
+// false "no modal" auto-confirms a destructive default (ini-2jpo, a P1) -- and
+// for the attention consumer it trades a measured, reproducible stale row for a
+// speculative one.
+const modalScanWholePane = 0
 
 // modalPromptPatterns are substrings (lowercased, whitespace-compacted) that
 // identify a blocking Claude Code modal. They are deliberately conservative:
@@ -58,5 +78,5 @@ func paneHasModal(p *Pane) bool {
 	if p == nil || p.emu == nil {
 		return false
 	}
-	return isModalPrompt(emulatorBottomText(p.emu, modalScanRows))
+	return isModalPrompt(emulatorBottomText(p.emu, modalScanWholePane))
 }

@@ -217,7 +217,7 @@ func (p *Pane) waitingPreviewText() string {
 	if p == nil || p.emu == nil {
 		return ""
 	}
-	text := emulatorBottomText(p.emu, modalScanRows)
+	text := emulatorBottomText(p.emu, modalScanWholePane)
 	if text == "" {
 		return ""
 	}
