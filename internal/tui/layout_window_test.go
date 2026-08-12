@@ -298,19 +298,27 @@ func TestSaveLayoutForWindow_RejectsUnsafeIdentity(t *testing.T) {
 	}
 }
 
-// TestLoadLayoutForWindow_IndependentOfAssignmentState is the grooming AC.
-// Two forms, because the obvious one is vacuous today: ini-9ka.4's assignment
-// store does not exist yet, so "corrupt the store and see that layout still
-// works" would pass even against code that reads it. Form (a) is the
-// forward-compatible guard; form (b) is the assertion that actually holds --
-// a layout round-trip touches exactly its own file and nothing else, whatever
-// .4 later names its store.
+// TestLoadLayoutForWindow_IndependentOfAssignmentState is the grooming AC,
+// hardened per ini-4kp after ini-9ka.4 landed.
+//
+// Form (a) corrupts the assignment store and confirms the layout round-trip
+// is unaffected. When first written this was forward-guessing -- .4 did not
+// exist, so the path was a literal guess. It now resolves the store through
+// .4's own assignmentPath helper, so if that store is ever renamed this test
+// follows it instead of silently reverting to guessing at a path nothing
+// writes (which would make the guard quietly vacuous again).
+//
+// Form (b) is the structural claim: a layout round-trip touches its own file
+// and NOTHING else. It lists the directory unfiltered -- the earlier version
+// filtered to a "layout" prefix, which meant a stray write of any
+// differently-named file (assignments.yaml being the obvious one) was
+// invisible to an assertion whose whole point is "nothing else".
 func TestLoadLayoutForWindow_IndependentOfAssignmentState(t *testing.T) {
 	panes := windowTestPanes
 	want := windowLayoutState(3, 2, LayoutGrid)
 
 	// (a) Round-trip is byte-identical with a corrupt assignment-store
-	// artifact present and with no such file at all.
+	// present and with no such file at all.
 	var results []LayoutState
 	for _, withCorruptStore := range []bool{false, true} {
 		root := t.TempDir()
@@ -318,8 +326,8 @@ func TestLoadLayoutForWindow_IndependentOfAssignmentState(t *testing.T) {
 			if err := os.MkdirAll(filepath.Join(root, ".initech"), 0700); err != nil {
 				t.Fatal(err)
 			}
-			corrupt := filepath.Join(root, ".initech", "assignments.yaml")
-			if err := os.WriteFile(corrupt, []byte("{{{ not: [valid yaml"), 0600); err != nil {
+			// The REAL store path, via .4's helper -- not a literal.
+			if err := os.WriteFile(assignmentPath(root), []byte("{{{ not: [valid yaml"), 0600); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -336,7 +344,8 @@ func TestLoadLayoutForWindow_IndependentOfAssignmentState(t *testing.T) {
 		t.Errorf("layout round-trip differed with a corrupt assignment store present: %+v vs %+v", results[0], results[1])
 	}
 
-	// (b) The non-vacuous form: a full round-trip touches exactly one file.
+	// (b) A full round-trip touches exactly one file -- asserted against an
+	// UNFILTERED listing, so any extra write of any name is caught.
 	root := t.TempDir()
 	if err := SaveLayoutForWindow(root, "two", want); err != nil {
 		t.Fatalf("save: %v", err)
@@ -344,10 +353,31 @@ func TestLoadLayoutForWindow_IndependentOfAssignmentState(t *testing.T) {
 	if _, ok := LoadLayoutForWindow(root, "two", panes); !ok {
 		t.Fatal("load returned false")
 	}
-	entries := layoutFilesIn(t, root)
+	entries := allInitechEntries(t, root)
 	if len(entries) != 1 || entries[0] != "layout-two.yaml" {
 		t.Errorf("round-trip touched %v, want exactly [layout-two.yaml] -- layout persistence must read and write no other state", entries)
 	}
+}
+
+// allInitechEntries lists EVERY entry under .initech, unfiltered and sorted.
+// Deliberately not layoutFilesIn: that one filters to a "layout" prefix, which
+// is right for tests asking "which layout files exist" but wrong for any test
+// asserting that nothing else was written (ini-4kp).
+func allInitechEntries(t *testing.T, root string) []string {
+	t.Helper()
+	des, err := os.ReadDir(filepath.Join(root, ".initech"))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		t.Fatalf("read .initech: %v", err)
+	}
+	var out []string
+	for _, de := range des {
+		out = append(out, de.Name())
+	}
+	sort.Strings(out)
+	return out
 }
 
 // TestDeleteLayoutForWindow_RemovesOnlyThatWindow confirms reset for one
