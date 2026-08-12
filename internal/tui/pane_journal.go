@@ -233,9 +233,20 @@ func (p *Pane) updateActivity() {
 		return
 	}
 	silenceDur := now.Sub(p.lastOutputTime)
-	if silenceDur < p.effectiveIdleTimeout() {
+	switch {
+	case !p.waitingSince.IsZero():
+		// Waiting on the operator OUTRANKS byte recency, and the order here is
+		// load-bearing (ini-2x8.1). An open dialog keeps repainting -- spinner,
+		// cursor, box redraw -- so bytes keep arriving and the recency test below
+		// would call it StateRunning on the very next tick, erasing the state a
+		// tick after the detector set it. That is the recorded codex gap
+		// verbatim: a permission dialog reading as running despite no work. The
+		// whole point of this state is that it is NOT derived from byte flow, so
+		// nothing derived from byte flow may overwrite it.
+		p.activity = StateWaitingInput
+	case silenceDur < p.effectiveIdleTimeout():
 		p.activity = StateRunning
-	} else {
+	default:
 		p.activity = StateIdle
 	}
 
@@ -267,8 +278,16 @@ func (p *Pane) updateActivity() {
 	// window prevents false positives when a bead is assigned to an agent
 	// that was already idle — the threshold is measured from assignment
 	// time, not from last output (ini-t42).
+	// An agent blocked on the operator must NOT also fire idle-with-bead
+	// (ini-2x8.1). It is silent for the same reason the needs-input list already
+	// names it, so firing both notifies twice for one condition -- and this
+	// feature exists because the operator has too many things to notice, not too
+	// few. Before StateWaitingInput this could not happen by accident: an open
+	// dialog repaints, so byte recency kept resetting idleBeadNotified. Now that
+	// waiting no longer reads as running, the suppression has to be explicit.
 	beadAge := now.Sub(p.beadAssignedAt)
-	if p.idleWithBeadThreshold > 0 &&
+	if p.waitingSince.IsZero() &&
+		p.idleWithBeadThreshold > 0 &&
 		silenceDur > p.idleWithBeadThreshold &&
 		beadAge > p.idleWithBeadThreshold &&
 		!p.idleBeadNotified &&

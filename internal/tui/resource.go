@@ -110,6 +110,38 @@ func (t *TUI) pollAllRSS() {
 }
 
 // suspendCandidate holds the data needed to rank and suspend an agent.
+// suspendEligible reports whether a pane may be auto-suspended under memory
+// pressure. Extracted from the pressure loop so the rules can be asserted
+// directly instead of only through a live memory-pressure scenario.
+//
+// Only a genuinely IDLE agent is eligible, which is what keeps an agent blocked
+// on the operator safe: StateWaitingInput is its own state, not a flavour of
+// idle, so it fails this test the same way StateRunning does. Suspending an
+// agent the operator is about to answer would be a new bug of exactly the kind
+// the attention system exists to prevent -- the question would vanish along with
+// the process (ini-2x8.1).
+func suspendEligible(alive bool, activity ActivityState, bead string, pinned, focused, inGrace bool) bool {
+	if !alive || activity == StateSuspended || activity == StateDead {
+		return false
+	}
+	if activity != StateIdle {
+		return false
+	}
+	if bead != "" {
+		return false // Never suspend agents with beads.
+	}
+	if pinned {
+		return false
+	}
+	if focused {
+		return false // Never suspend the focused agent.
+	}
+	if inGrace {
+		return false // Recently resumed, give it time.
+	}
+	return true
+}
+
 type suspendCandidate struct {
 	pane           *Pane
 	lastOutputTime time.Time
@@ -158,23 +190,8 @@ func (t *TUI) checkSuspendPolicy() {
 				inGrace := time.Now().Before(p.resumeGrace)
 				p.mu.Unlock()
 
-				if !alive || activity == StateSuspended || activity == StateDead {
+				if !suspendEligible(alive, activity, bead, pinned, name == focused, inGrace) {
 					continue
-				}
-				if activity != StateIdle {
-					continue
-				}
-				if bead != "" {
-					continue // Never suspend agents with beads.
-				}
-				if pinned {
-					continue
-				}
-				if name == focused {
-					continue // Never suspend the focused agent.
-				}
-				if inGrace {
-					continue // Recently resumed, give it time.
 				}
 				candidates = append(candidates, suspendCandidate{
 					pane:           p,

@@ -90,6 +90,12 @@ func (t *TUI) render() {
 	// the gutter column) leaves an incidental notch marking where one pane
 	// ends and the next begins. Accepted deliberately, not missed.
 
+	// Needs-input list (ini-2x8.1). Unconditional call, but it draws nothing
+	// unless an agent is actually blocked on the operator -- the hidden-when-empty
+	// rule lives inside renderAttention rather than in a flag here, so there is no
+	// switch anyone can leave on and no space reserved for an empty box.
+	t.renderAttention()
+
 	if t.layoutState.Overlay {
 		t.renderOverlay()
 	}

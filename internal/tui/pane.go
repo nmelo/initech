@@ -25,9 +25,18 @@ type ActivityState int
 
 const (
 	StateRunning   ActivityState = iota // Claude is processing.
-	StateIdle                           // Waiting for input.
+	StateIdle                           // Sitting at the prompt with nothing to do.
 	StateDead                           // Process has exited; pane is no longer alive.
 	StateSuspended                      // Auto-suspended by resource policy. Eligible for resume.
+	// StateWaitingInput means a blocking dialog is open and the OPERATOR is the
+	// thing being waited on -- a question, a permission prompt. Distinct from
+	// StateIdle (nothing to do) and from StateRunning (working), and NOT
+	// derivable from either: both are computed from PTY byte recency, and a
+	// dialog that repaints keeps producing bytes, which is exactly why the
+	// recorded codex gap shows a permission prompt reading as "running" despite
+	// no work happening. Appended rather than inserted so the existing constants
+	// keep their values (ini-2x8.1).
+	StateWaitingInput
 )
 
 // String returns a human-readable label for the state.
@@ -41,6 +50,8 @@ func (s ActivityState) String() string {
 		return "dead"
 	case StateSuspended:
 		return "suspended"
+	case StateWaitingInput:
+		return "waiting"
 	}
 	return "unknown"
 }
@@ -145,6 +156,8 @@ type Pane struct {
 	idleWithBeadThreshold  time.Duration  // Silence duration before idle-with-bead fires. 0 = disabled.
 	idleBeadNotified       bool           // True after idle-with-bead fires. Reset when output resumes.
 	beadAssignedAt         time.Time      // When the current bead was assigned. Grace period starts here.
+	waitingSince      time.Time         // When the currently-open blocking dialog was first seen. Zero = not waiting.
+	waitingPreview    string            // What to show for this agent in the needs-input list. Empty is allowed.
 	journal           []JournalEntry    // Ring buffer of recent JSONL entries (cap journalRingSize).
 	jsonlDir          string            // Directory to search for session JSONL files.
 	eventCh           chan<- AgentEvent // Emits detected semantic events to the TUI. May be nil.
@@ -1045,6 +1058,41 @@ func (p *Pane) Activity() ActivityState {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.activity
+}
+
+// SetWaitingInput marks the pane as blocked on the operator, with preview as
+// the text the needs-input list shows for it. Idempotent on the timestamp: a
+// detector that re-asserts the same open dialog every tick must not restart the
+// wait clock, or the list's durations never advance and the chime's rising edge
+// fires forever. Only the FIRST call since the last clear sets waitingSince.
+//
+// preview is refreshed on every call, so a detector that learns better text
+// later (screen scrape arriving after the edge signal) can upgrade the row
+// without disturbing the clock.
+func (p *Pane) SetWaitingInput(preview string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.waitingSince.IsZero() {
+		p.waitingSince = time.Now()
+	}
+	p.waitingPreview = preview
+}
+
+// ClearWaitingInput marks the pane as no longer blocked on the operator.
+// Safe to call when it was not waiting.
+func (p *Pane) ClearWaitingInput() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.waitingSince = time.Time{}
+	p.waitingPreview = ""
+}
+
+// WaitingInput reports whether the operator is being waited on, since when, and
+// what to show. since is zero exactly when waiting is false.
+func (p *Pane) WaitingInput() (waiting bool, since time.Time, preview string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return !p.waitingSince.IsZero(), p.waitingSince, p.waitingPreview
 }
 
 // ActiveRunStart returns when the current running streak began.
