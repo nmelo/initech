@@ -27,6 +27,12 @@ func (t *TUI) render() {
 	// updateActivity checks PTY output recency under a lock; cost is negligible.
 	for _, p := range t.panes {
 		if lp, ok := p.(*Pane); ok {
+			// Attention detection runs BEFORE updateActivity so a dialog that
+			// opened since the last frame is already reflected in the waiting
+			// state that updateActivity is about to rank against byte recency
+			// (ini-2x8.2). The other order would show the agent as running for
+			// one extra frame every time it starts waiting.
+			lp.refreshWaitingState()
 			lp.updateActivity()
 		}
 	}

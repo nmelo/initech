@@ -159,6 +159,8 @@ type Pane struct {
 	waitingSince      time.Time         // When the currently-open blocking dialog was first seen. Zero = not waiting.
 	waitingPreview    string            // What to show for this agent in the needs-input list. Empty is allowed.
 	waitingTier       WaitingTier       // Confidence in the current wait. Zero value is the SILENT tier, deliberately.
+	waitingModalSeen  bool              // The screen has confirmed this wait's dialog, so the screen may also retire it.
+	attn              *attentionSignal  // Mailbox the OSC 777 handler writes into. Leaf-locked; see attention_detect.go.
 	journal           []JournalEntry    // Ring buffer of recent JSONL entries (cap journalRingSize).
 	jsonlDir          string            // Directory to search for session JSONL files.
 	eventCh           chan<- AgentEvent // Emits detected semantic events to the TUI. May be nil.
@@ -305,7 +307,14 @@ func NewPane(cfg PaneConfig, rows, cols int) (*Pane, error) {
 		agentType:        agentType,
 		noBracketedPaste: cfg.NoBracketedPaste,
 		submitKey:        submitKey,
+		attn:             &attentionSignal{},
 	}
+
+	// Wire tier-1 attention detection (ini-2x8.2) BEFORE Start() spins up
+	// readLoop. Registering an OSC handler mutates the emulator's handler map,
+	// which Write reads -- doing it on a pane that is already reading is a data
+	// race, not just a timing question.
+	registerAttentionOSC(p)
 
 	return p, nil
 }
@@ -1109,6 +1118,7 @@ func (p *Pane) ClearWaitingInput() {
 	p.waitingSince = time.Time{}
 	p.waitingPreview = ""
 	p.waitingTier = WaitingTierListOnly
+	p.waitingModalSeen = false
 }
 
 // WaitingInput reports whether the operator is being waited on, since when, and

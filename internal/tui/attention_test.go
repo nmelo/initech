@@ -21,7 +21,14 @@ import (
 
 // ── Duration formatting ─────────────────────────────────────────────
 
-func TestFormatWaitDuration_SecondsUnderAMinuteThenMSS(t *testing.T) {
+// TestFormatWaitDuration_SecondsThenMSSThenHoursAndMinutes pins pm's ruling of
+// 2026-08-12. It REPLACES an earlier no-hours expectation: this code originally
+// implemented "s under a minute, m:ss after" literally and left the >1h case
+// reading "120m00s", flagging the gap for pm rather than inventing a format.
+// pm ruled hours-and-minutes past the hour, so 90 minutes is "1h30m" and the
+// seconds are deliberately dropped at that scale -- the row measures attention
+// debt, and seconds there are noise pretending to be precision.
+func TestFormatWaitDuration_SecondsThenMSSThenHoursAndMinutes(t *testing.T) {
 	cases := []struct {
 		d    time.Duration
 		want string
@@ -34,11 +41,17 @@ func TestFormatWaitDuration_SecondsUnderAMinuteThenMSS(t *testing.T) {
 		{84 * time.Second, "1m24s"},
 		{130 * time.Second, "2m10s"},
 		{242 * time.Second, "4m02s"},
-		// No hours tier: the approved rule is "s under a minute, m:ss after"
-		// and stops there. Inventing "2h00m" would be a layout decision this
-		// code is not entitled to make. Recorded as a real case, not an
-		// oversight -- the fleet journals show waits this long.
-		{2 * time.Hour, "120m00s"},
+		{59*time.Minute + 59*time.Second, "59m59s"},
+		// The hour boundary, both sides.
+		{3599 * time.Second, "59m59s"},
+		{3600 * time.Second, "1h00m"},
+		// pm's worked example.
+		{90 * time.Minute, "1h30m"},
+		{2 * time.Hour, "2h00m"},
+		{2*time.Hour + 5*time.Minute + 59*time.Second, "2h05m"},
+		// Real waits reach this: the fleet journals show an AskUserQuestion
+		// answered after 12 hours.
+		{12*time.Hour + 3*time.Minute, "12h03m"},
 	}
 	for _, c := range cases {
 		if got := formatWaitDuration(c.d); got != c.want {

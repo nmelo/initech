@@ -50,24 +50,32 @@ const (
 	attentionMinPreviewW = 12
 )
 
-// formatWaitDuration renders a wait per the approved rule: seconds under a
-// minute, m:ss at and above one minute.
+// formatWaitDuration renders a wait per pm's ruling of 2026-08-12: bare seconds
+// under a minute, m:ss from one minute to an hour, hours-and-minutes past the
+// hour. Ninety minutes reads "1h30m".
 //
-// Deliberately has no hours tier. The rule the operator approved says "s under a
-// minute, m:ss after" and stops there, so a two-hour wait reads "120m14s" rather
-// than inventing an "2h00m" format nobody signed off on. Real waits do get that
-// long -- the fleet journals show an AskUserQuestion answered after 12 hours --
-// so whether long waits deserve an hours tier is a real question, but it is pm's
-// to answer, not this function's to assume.
+// The seconds are dropped past the hour on purpose -- the row measures attention
+// debt, and at that scale the seconds are noise pretending to be precision.
+//
+// This is the ONLY duration formatter for the attention surface. (detect.go's
+// formatDuration is a separate, minute-granularity formatter for stall
+// notifications -- "no output for 45m" -- with its own pinned tests and its own
+// contract; the two are not merged because they answer different questions on
+// different surfaces, and folding stall text into this rule would silently
+// restyle an unrelated notification.)
 func formatWaitDuration(d time.Duration) string {
 	if d < 0 {
 		d = 0
 	}
 	secs := int(d.Seconds())
-	if secs < 60 {
+	switch {
+	case secs < 60:
 		return itoa(secs) + "s"
+	case secs < 3600:
+		return itoa(secs/60) + "m" + pad2(secs%60) + "s"
+	default:
+		return itoa(secs/3600) + "h" + pad2((secs%3600)/60) + "m"
 	}
-	return itoa(secs/60) + "m" + pad2(secs%60) + "s"
 }
 
 func itoa(n int) string {

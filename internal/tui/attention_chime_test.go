@@ -311,3 +311,38 @@ func TestScreenChimer_NilScreenDoesNotPanic(t *testing.T) {
 	c := screenChimer{}
 	c.Chime()
 }
+
+// TestAttentionChimes_NewWaitBetweenTicksStillRings is qa1's probe from ini-1io,
+// lifted verbatim, and it closes a real hole in this file's own coverage.
+//
+// TestAttentionChimes_RingsAgainForAGenuinelyNewWait ticks once while the pane
+// is cleared, so pruneChimeState drops the entry and presence alone is enough to
+// pass it. qa1 re-ran the presence-keyed mutation against the committed suite
+// and it stayed GREEN -- my ini-2x8.3 DONE comment claimed that mutation went
+// red, which was wrong: the mutation I ran also defeated prune, so it never
+// isolated the identity comparison.
+//
+// This is the distinctive case: answered and re-asked BETWEEN two ticks, so
+// prune never sees the gap and only comparing the wait's START TIME can tell
+// there were two questions. It is also design point 3's own motivating case, and
+// render-tick timing makes it rare enough that a regression would ship silently.
+func TestAttentionChimes_NewWaitBetweenTicksStillRings(t *testing.T) {
+	p := testPane("pm")
+	tu, c := chimeTUI(p)
+	now := time.Now()
+
+	p.SetWaitingInputTier("stripe or paypal first?", WaitingTierChime)
+	tu.attentionChimes(now)
+
+	// Answered and re-asked with NO tick in between: prune never observes the
+	// gap, so a presence-keyed edge would swallow the second question.
+	p.ClearWaitingInput()
+	p.SetWaitingInputTier("and which currency?", WaitingTierChime)
+
+	tu.attentionChimes(now.Add(2 * time.Second))
+
+	if c.n != 2 {
+		t.Errorf("chimer called %d times, want 2 -- a question answered and re-asked between "+
+			"ticks is two questions, and the second must not be swallowed", c.n)
+	}
+}
