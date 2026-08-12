@@ -78,13 +78,21 @@ func TestAgentsGrid_SingleWindowGolden(t *testing.T) {
 		return
 	}
 
-	want, err := os.ReadFile(agentsGoldenPath())
+	raw, err := os.ReadFile(agentsGoldenPath())
 	if err != nil {
 		t.Fatalf("read golden (regenerate with -update-golden, but only deliberately): %v", err)
 	}
-	if got != string(want) {
+	// Normalize CRLF before comparing. The golden is a byte-exact capture of
+	// RENDERED TERMINAL CONTENT, which never contains CR -- but git may
+	// EOL-convert the file on checkout (it did, on Windows: every line gained
+	// a trailing \r and the test failed for a reason unrelated to rendering).
+	// .gitattributes marks *.golden -text to stop that at the source; this
+	// makes the comparison itself independent of how the file arrived, which
+	// is the property a cross-platform golden actually needs (ini-vfk).
+	want := strings.ReplaceAll(string(raw), "\r\n", "\n")
+	if got != want {
 		t.Errorf("single-window modal changed.\n--- want (golden, captured from main) ---\n%s\n--- got ---\n%s\n%s",
-			string(want), got, firstDiffLine(string(want), got))
+			want, got, firstDiffLine(want, got))
 	}
 }
 

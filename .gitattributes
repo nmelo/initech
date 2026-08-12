@@ -1,3 +1,9 @@
 
 # Use bd merge for beads JSONL files
 .beads/issues.jsonl merge=beads
+
+# Golden files are byte-exact captures of rendered terminal output. Git's EOL
+# conversion would rewrite them on checkout (CRLF on Windows), so a comparison
+# against the rendered screen -- which contains no CR -- would fail for a
+# reason that has nothing to do with rendering (ini-vfk).
+*.golden -text
