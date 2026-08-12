@@ -149,6 +149,32 @@ If the TUI itself crashes:
 
 If there's a stale socket: `rm .initech/initech.sock` and relaunch.
 
+### A Secondary Window Looks Frozen (Multi-Monitor)
+
+If a secondary window (`initech --window N`) hangs — the terminal stops
+repainting but the process is still alive — its monitor keeps showing agent
+output frozen at the moment it wedged, while still *looking* live. This is the
+one display state that can briefly misrepresent liveness, so it is worth
+knowing the bound.
+
+**A wedged window is detected and folded back within ~12 seconds** (worst
+case; the same fold-back notice as a window that crashed). Its agents
+reappear in window 1 automatically — they never stop running, and they do not
+stay invisible.
+
+A window that hangs only briefly — a heavy render, a slow moment — is *not*
+folded back: transient stalls shorter than about 7 seconds are tolerated, so
+a busy-but-healthy window keeps its agents.
+
+If the wedged window later recovers, just rerun `initech --window N`. It
+reattaches through the ordinary path and its previous split is restored; there
+is no wedge-specific recovery step.
+
+A window that is closed or killed outright is detected immediately (single
+render cycle) — the ~12s bound applies only to the alive-but-unresponsive
+case, where nothing about the connection signals a problem and the only
+evidence is a missed keepalive.
+
 ### Agent Lost Context (Post-Compaction)
 
 Claude Code compacts conversation history when approaching context limits. Agents may lose working memory of what they were doing. Signs: agent asks "what should I work on?" when they have an active bead.

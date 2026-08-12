@@ -51,6 +51,13 @@ type Daemon struct {
 	listener   net.Listener
 	version    string
 
+	// yamuxCfg overrides the transport config for sessions this daemon
+	// accepts. Nil means yamux.DefaultConfig() -- the WAN-sized defaults
+	// every cross-machine peer keeps. Only startWindowServer sets it, so a
+	// tightened keepalive is scoped to local window clients by construction
+	// rather than by a conditional inside the shared path (ini-z8o).
+	yamuxCfg *yamux.Config
+
 	// Active client sessions for graceful shutdown.
 	sessionsMu sync.Mutex
 	sessions   []*yamux.Session
@@ -439,8 +446,10 @@ func (d *Daemon) HandleExtended(conn net.Conn, req IPCRequest, rawJSON []byte) b
 func (d *Daemon) handleConnection(conn net.Conn) {
 	defer conn.Close()
 
-	// Wrap in yamux server.
-	session, err := yamux.Server(conn, yamux.DefaultConfig())
+	// Wrap in yamux server. Config comes from this daemon INSTANCE: the
+	// cross-machine daemon leaves it nil and gets the untouched defaults;
+	// the in-process window server sets a tightened one (ini-z8o).
+	session, err := yamux.Server(conn, d.yamuxConfig())
 	if err != nil {
 		LogError("daemon", "yamux server init failed", "err", err)
 		return
@@ -953,4 +962,17 @@ func writeJSON(w io.Writer, v any) error {
 		return fmt.Errorf("write: %w", err)
 	}
 	return nil
+}
+
+// yamuxConfig returns the transport config for sessions this daemon accepts.
+//
+// A nil yamuxCfg -- every cross-machine daemon, since only startWindowServer
+// sets it -- yields yamux.DefaultConfig() with no mutation, so the remote
+// path's timeouts are not merely equal to the defaults but are literally the
+// same call the code made before ini-z8o.
+func (d *Daemon) yamuxConfig() *yamux.Config {
+	if d.yamuxCfg != nil {
+		return d.yamuxCfg
+	}
+	return yamux.DefaultConfig()
 }

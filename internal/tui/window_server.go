@@ -22,10 +22,48 @@ import (
 	"fmt"
 	"net"
 	"sync"
+	"time"
 
 	"github.com/hashicorp/yamux"
 	"github.com/nmelo/initech/internal/config"
 )
+
+// Wedged-window detection timeouts (ini-z8o). These apply ONLY to the
+// in-process window server's sessions -- cross-machine peers keep
+// yamux.DefaultConfig()'s WAN-sized 30s/10s, untouched, because the daemon
+// serving them is a different instance that never sets these.
+//
+// yamux's model (read from v0.1.2 session.go, not assumed): keepalive() pings
+// every KeepAliveInterval, and Ping waits for the pong for
+// ConnectionWriteTimeout before killing the session. Two different bounds
+// follow, and they constrain two different ACs:
+//
+//   - WORST-case detection = interval + writeTimeout, when a wedge begins
+//     just after a successful ping. 5+7 = 12s, inside the <=15s bound.
+//     (The defaults' 30+10 = 40s is exactly qa1's measured 40.03s, so this
+//     model is calibrated against a real measurement, not just the docs.)
+//   - MINIMUM time-to-drop = writeTimeout alone, when a wedge begins exactly
+//     as a ping falls due. 7s, above the >=5s transient-stall tolerance, so a
+//     SIGSTOP+SIGCONT inside 5s cannot be dropped even at the worst phase.
+//
+// Tuning the interval alone would have hit the detection bound while leaving
+// transient tolerance at 10s -- the two numbers are not interchangeable.
+// Deliberately not tighter (e.g. 3+5): the bound is <=15s, not "as low as
+// possible", and eagerness is the failure mode this tuning introduces.
+const (
+	windowKeepAliveInterval      = 5 * time.Second
+	windowConnectionWriteTimeout = 7 * time.Second
+)
+
+// windowYamuxConfig returns the tightened transport config for window-client
+// sessions. Built from DefaultConfig so every field we do NOT tune tracks
+// upstream rather than being pinned to a stale copy.
+func windowYamuxConfig() *yamux.Config {
+	cfg := yamux.DefaultConfig()
+	cfg.KeepAliveInterval = windowKeepAliveInterval
+	cfg.ConnectionWriteTimeout = windowConnectionWriteTimeout
+	return cfg
+}
 
 // windowServer holds the in-process pane-stream listener that lets secondary
 // windows attach to this TUI.
@@ -61,6 +99,9 @@ func startWindowServer(project *config.Project, version string, panes []*Pane, s
 		clientSessions: make(map[string]*yamux.Session),
 		clientCtrlMu:   make(map[string]*sync.Mutex),
 		fwdPending:     make(map[string]chan ControlResp),
+		// Scoped here, on THIS daemon instance only (ini-z8o). RunDaemon's
+		// instance leaves yamuxCfg nil and keeps the defaults.
+		yamuxCfg: windowYamuxConfig(),
 	}
 
 	// Attach a ring buffer + fan-out sink to each already-running pane. The
