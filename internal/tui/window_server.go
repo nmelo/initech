@@ -140,3 +140,28 @@ func localPanes(views []PaneView) []*Pane {
 	}
 	return out
 }
+
+// connectedWindows returns the identities of the secondary windows currently
+// attached. This is fold-back's liveness input (ini-9ka.7): a window leaves
+// this set the moment its control stream errors, which happens when its
+// process dies -- cleanly or by crashing, since either way the kernel closes
+// its TCP connection.
+//
+// Deliberately a snapshot read rather than a subscription: the render path
+// calls this each frame and compares against assignment, so fold-back happens
+// on the first frame after a disconnect without any event plumbing to lag or
+// drop. Returns an empty (non-nil) map when there is no server, which is the
+// single-window case -- every secondary window is trivially absent, so window
+// 1 renders everything, exactly as it does today.
+func (w *windowServer) connectedWindows() map[string]bool {
+	out := make(map[string]bool)
+	if w == nil || w.daemon == nil {
+		return out
+	}
+	w.daemon.sessionsMu.Lock()
+	defer w.daemon.sessionsMu.Unlock()
+	for peer := range w.daemon.clients {
+		out[peer] = true
+	}
+	return out
+}
