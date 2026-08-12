@@ -675,6 +675,27 @@ func Run(cfg Config) error {
 		LogDebug("pane", "created", "name", acfg.Name, "dir", acfg.Dir)
 	}
 
+	// Multi-monitor: serve the pane-stream protocol in-process so secondary
+	// windows can attach (ini-9ka.2). Started here, after the panes exist,
+	// because attaching windows stream those panes.
+	//
+	// Gated on WindowListen being configured. A single-window fleet leaves it
+	// empty and this block is skipped entirely -- no listener, no goroutine,
+	// no artifact, no output -- so single-window sessions run today's code
+	// path rather than a new one that merely behaves the same.
+	if cfg.Project != nil && cfg.Project.WindowListen != "" {
+		_, wsCleanup, err := startWindowServer(cfg.Project, cfg.Version, localPanes(t.panes), t.safeGo)
+		if err != nil {
+			// Non-fatal: a secondary window is an enhancement, and failing to
+			// bind it must not take down a session whose agents are already
+			// running. Surfaced in the log rather than as a startup abort.
+			LogError("window-server", "failed to start; secondary windows cannot attach",
+				"addr", cfg.Project.WindowListen, "err", err)
+		} else {
+			defer wsCleanup()
+		}
+	}
+
 	// Connect to remote peers asynchronously. The peerManager handles both
 	// initial connection and reconnection in background goroutines. The TUI
 	// renders immediately with local-only panes; remote panes appear once
