@@ -26,7 +26,7 @@ func buildPaneCmd(cfg PaneConfig, rows, cols int) *exec.Cmd {
 		quoted := shellQuoteArgs(cfg.Command)
 		cmd = exec.Command(shell, "-l", "-c", "exec "+quoted)
 	}
-	cmd.Env = append(os.Environ(),
+	cmd.Env = append(agentBaseEnv(),
 		"TERM=xterm-256color",
 		fmt.Sprintf("LINES=%d", rows),
 		fmt.Sprintf("COLUMNS=%d", cols),

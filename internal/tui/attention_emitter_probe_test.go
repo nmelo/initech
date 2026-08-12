@@ -77,9 +77,9 @@ func TestAttentionOSC_IgnoresOtherOSCTraffic(t *testing.T) {
 	noise := []string{
 		"\x1b]0;✳ Claude Code\x07",                      // window title
 		"\x1b]0;◐ Run Unix timestamp shell command\x07", // title with spinner glyph
-		"\x1b]9;4;3;\x07",                                    // progress: busy
-		"\x1b]9;4;0;\x07",                                    // progress: done
-		"\x1b]8;id=zaxmda;https://example.com\x07",           // hyperlink
+		"\x1b]9;4;3;\x07",                               // progress: busy
+		"\x1b]9;4;0;\x07",                               // progress: done
+		"\x1b]8;id=zaxmda;https://example.com\x07",      // hyperlink
 	}
 	for _, seq := range noise {
 		p := testPane("eng1")
@@ -99,7 +99,7 @@ func TestAttentionOSC_IgnoresOtherOSCTraffic(t *testing.T) {
 
 func TestNotifyMessage_ParsesTheMeasuredPayload(t *testing.T) {
 	cases := map[string]string{
-		"notify;Claude Code;Claude needs your permission": "Claude needs your permission",
+		"notify;Claude Code;Claude needs your permission":     "Claude needs your permission",
 		"notify;Claude Code;Claude is waiting for your input": "Claude is waiting for your input",
 		"notify;Claude Code": "",
 		"notify;":            "",
@@ -141,7 +141,11 @@ func TestAttentionOSC_LiveClaudeStillEmits(t *testing.T) {
 
 	cmd := exec.Command("claude", "Run the shell command: date +%s")
 	cmd.Dir = dir
-	cmd.Env = append(os.Environ(),
+	// agentBaseEnv, NOT os.Environ(): the probe must build its child's
+	// environment through the SAME scrub real panes use (ini-g0h), or it tests
+	// an environment production never produces -- and would keep failing under
+	// a tmux-set TERM_PROGRAM even after the pane path was fixed.
+	cmd.Env = append(agentBaseEnv(),
 		"TERM=xterm-256color",
 		// An inherited child-session marker disables transcript writing and
 		// changes startup behaviour; clear it so this is a normal session.
