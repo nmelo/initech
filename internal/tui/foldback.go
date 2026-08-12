@@ -27,6 +27,7 @@ package tui
 import (
 	"errors"
 	"fmt"
+	"net"
 	"sort"
 	"strings"
 	"time"
@@ -204,19 +205,40 @@ func (t *TUI) noticeWindowTransitions() {
 	}
 	gone, returned := t.liveness.observe(t.connectedWindowSet())
 	for _, w := range gone {
+		detail := fmt.Sprintf("window %s disconnected; its agents folded back into window 1", w)
 		EmitEvent(t.agentEvents, AgentEvent{
 			Type:   EventWindowFoldback,
-			Detail: fmt.Sprintf("window %s disconnected; its agents folded back into window 1", w),
+			Detail: detail,
 			Time:   time.Now(),
 		})
+		// Fan out to every OTHER attached window. Raised here, on window 1,
+		// because it is the hub -- secondary windows cannot push to each
+		// other, so a notice raised in one of them would render in exactly
+		// one place (ini-9ka.8).
+		t.windowSrv.broadcastSessionNotice(detail)
 	}
 	for _, w := range returned {
+		detail := fmt.Sprintf("window %s reattached; its agents moved back", w)
 		EmitEvent(t.agentEvents, AgentEvent{
 			Type:   EventWindowRestored,
-			Detail: fmt.Sprintf("window %s reattached; its agents moved back", w),
+			Detail: detail,
 			Time:   time.Now(),
 		})
+		t.windowSrv.broadcastSessionNotice(detail)
 	}
+}
+
+// surfaceSessionNotice renders a notice broadcast by window 1 in THIS window.
+// The receiving side of broadcastSessionNotice: a secondary window turns the
+// control-stream message back into an ordinary local event, so a session
+// notice reaches the operator's eyes in every window rather than only where it
+// was raised.
+func (t *TUI) surfaceSessionNotice(text string) {
+	EmitEvent(t.agentEvents, AgentEvent{
+		Type:   EventWindowFoldback,
+		Detail: text,
+		Time:   time.Now(),
+	})
 }
 
 // isSecondaryWindowIdentity reports whether a peer_name is one the --window
@@ -254,4 +276,36 @@ func (t *TUI) noticeAssignmentWriteFailed(action string, err error) {
 		Detail: detail,
 		Time:   time.Now(),
 	})
+}
+
+// sessionNoticeAction is the unsolicited control-stream message that carries a
+// session-level notice from window 1 out to every attached window (ini-9ka.8).
+//
+// It rides the transport that already exists rather than adding one:
+// gracefulShutdown has always pushed unsolicited messages to every ctrlConns
+// entry, and the client's ControlMux already routes ID-less messages to its
+// events channel. Only the message type and the raise site were missing.
+const sessionNoticeAction = "session_notice"
+
+// broadcastSessionNotice pushes a session-level notice to every attached
+// window. Called on window 1, which is the hub: secondary windows cannot push
+// to each other, so a notice raised locally in one of them would render in
+// exactly one place -- which is the bug this closes.
+//
+// Best-effort per client: a window whose control stream is already broken is
+// about to be detected as disconnected anyway (ini-9ka.7), and failing the
+// whole broadcast because one recipient died would drop the notice for the
+// windows that are still there.
+func (w *windowServer) broadcastSessionNotice(text string) {
+	if w == nil || w.daemon == nil {
+		return
+	}
+	w.daemon.sessionsMu.Lock()
+	ctrls := append([]net.Conn(nil), w.daemon.ctrlConns...)
+	w.daemon.sessionsMu.Unlock()
+
+	for _, ctrl := range ctrls {
+		writeJSON(ctrl, ControlResp{Action: sessionNoticeAction, Text: text}) //nolint:errcheck
+	}
+	LogDebug("window-server", "session notice broadcast", "windows", len(ctrls), "text", text)
 }

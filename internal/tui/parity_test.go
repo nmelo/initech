@@ -96,38 +96,85 @@ func TestParity_ProtectDoesNotPropagateAcrossWindows(t *testing.T) {
 		"configure_agent/stop_agent/restart_agent).")
 }
 
-// TestParity_NoSessionNoticeBroadcastExists records the fan-out gap and, more
-// usefully, the mechanism that would carry it. Window 1 ALREADY pushes
-// unsolicited messages to every attached window -- gracefulShutdown writes
-// {"action":"shutdown"} to all ctrlConns, and the client's ControlMux routes
-// unsolicited messages to a broadcast channel. So notice fan-out needs no new
-// transport, only a message type and a raise site.
+// TestParity_SessionNoticeReachesEveryAttachedWindow is the INVERTED form of
+// what was a negative control: fan-out now exists, so this asserts the
+// capability rather than recording its absence. Two windows attach; window 1
+// broadcasts; BOTH receive it off the real control stream.
 //
-// That asymmetry is the routing topology the epic's docs need: window 1 is the
-// hub. Secondary windows cannot push to each other; they reach window 1 via
-// control commands, so a session notice should be raised BY window 1 and
-// broadcast outward, not raised locally in a secondary window where it would
-// render in exactly one place.
-func TestParity_NoSessionNoticeBroadcastExists(t *testing.T) {
+// The transport was never the gap -- gracefulShutdown had always pushed
+// unsolicited messages to every ctrlConns entry, and the client's ControlMux
+// had always routed ID-less messages to its events channel. Only a message
+// type and a raise site were missing, which is why this closed without new
+// plumbing.
+func TestParity_SessionNoticeReachesEveryAttachedWindow(t *testing.T) {
+	panes := []*Pane{windowServerTestPane("eng1")}
+	ws, addr := startTestWindowServer(t, panes)
+
+	s2, c2, _ := dialWindow(t, addr, "window-2")
+	defer s2.Close()
+	defer c2.Close()
+	s3, c3, _ := dialWindow(t, addr, "window-3")
+	defer s3.Close()
+	defer c3.Close()
+	waitForClients(t, ws, 2)
+
+	const notice = "window-9 disconnected; its agents folded back into window 1"
+	ws.broadcastSessionNotice(notice)
+
+	// One scanner per control stream -- the IPCScanner double-reader trap
+	// (qa1's find on ini-9ka.2): a second scanner on the same conn steals
+	// buffered bytes from the first.
+	// Dispatch BY ACTION rather than assuming the notice is the first message
+	// on the stream -- it is not. The server also pushes replay_start and
+	// other unsolicited traffic, and the real client (peerManager.consumeEvents)
+	// switches on ev.Action for exactly this reason. A test that asserted
+	// ordering would be testing the harness, not the fan-out.
+	for name, ctrl := range map[string]net.Conn{"window-2": c2, "window-3": c3} {
+		ctrl.SetReadDeadline(time.Now().Add(5 * time.Second))
+		scanner := NewIPCScanner(ctrl)
+		found := false
+		for scanner.Scan() {
+			var got ControlResp
+			if err := json.Unmarshal(scanner.Bytes(), &got); err != nil {
+				continue
+			}
+			if got.Action != sessionNoticeAction {
+				continue // replay_start and friends.
+			}
+			found = true
+			if got.Text != notice {
+				t.Errorf("%s got text %q, want %q", name, got.Text, notice)
+			}
+			if got.ID != "" {
+				t.Errorf("%s: notice carried an ID (%q); it must be ID-less so ControlMux routes it as an unsolicited event rather than a response nobody is waiting for", name, got.ID)
+			}
+			break
+		}
+		if !found {
+			t.Errorf("%s never received the session notice; a fold-back in window 1 would be invisible there", name)
+		}
+	}
+}
+
+// TestParity_SecondaryWindowSurfacesAReceivedNotice covers the receiving half:
+// a broadcast notice must become an ordinary local event in the attached
+// window, or it would arrive on the wire and render nowhere.
+func TestParity_SecondaryWindowSurfacesAReceivedNotice(t *testing.T) {
 	w2 := windowTUI(t, "window-2", "eng1")
 
-	// A notice raised in a secondary window today lands only on that window's
-	// own local channel -- there is no path off this process.
-	w2.noticeAssignmentWriteFailed("move group eng", ErrAssignmentReadOnly)
+	w2.surfaceSessionNotice("window-3 reattached; its agents moved back")
 
 	select {
 	case ev := <-w2.agentEvents:
-		if ev.Type != EventAssignmentWriteRefused {
-			t.Errorf("unexpected event type %v", ev.Type)
+		if ev.Detail == "" {
+			t.Error("surfaced notice has no detail text")
+		}
+		if ev.Pane != "" {
+			t.Errorf("surfaced notice attached to pane %q; session notices are session-level", ev.Pane)
 		}
 	default:
-		t.Fatal("the notice did not even reach the local channel")
+		t.Fatal("a received session notice did not become a local event; it would arrive on the wire and render nowhere")
 	}
-	t.Log("CONFIRMED GAP (ini-9ka.8): a session notice raised in a secondary window is process-local; " +
-		"no broadcast reaches other windows. Transport EXISTS and is unused for this -- " +
-		"gracefulShutdown already pushes unsolicited messages to all ctrlConns, and ControlMux " +
-		"routes unsolicited messages client-side. Topology: window 1 is the hub; notices should be " +
-		"raised by window 1 and fanned out.")
 }
 
 // TestParity_DispatchRoutesThroughTheControlStream is the POSITIVE result: the
@@ -175,4 +222,65 @@ func TestParity_DispatchRoutesThroughTheControlStream(t *testing.T) {
 	case <-time.After(3 * time.Second):
 		t.Fatal("dispatch from a secondary window issued no control command; parity does NOT fall out and needs its own wiring")
 	}
+}
+
+// --- Modal liveness in a secondary window ----------------------------------
+//
+// The bead asks whether window 2's agents modal shows LIVE state or an
+// attach-time snapshot. The answer is neither, exactly, and the distinction
+// matters for whoever closes it: ACTIVITY is live because it is derived from
+// the byte stream, while BEAD state is not synced AT ALL -- not stale, simply
+// never populated from window 1. A fix aimed at "refresh the snapshot" would
+// miss that there is no snapshot to refresh.
+
+// TestParity_RemotePaneActivityIsDerivedLiveFromTheStream is the POSITIVE
+// half: activity is computed from output recency on every call, so it tracks
+// the agent in real time rather than being frozen at attach. This is why my
+// ini-9ka.2 RingBuf replay does NOT introduce staleness here -- activity is
+// never stored as a snapshot to go stale.
+func TestParity_RemotePaneActivityIsDerivedLiveFromTheStream(t *testing.T) {
+	rp := &RemotePane{name: "eng1", alive: true, activity: StateRunning}
+
+	// No recent output: derived as idle regardless of the stored activity.
+	rp.lastOut = time.Now().Add(-2 * ptyIdleTimeout)
+	if got := rp.Activity(); got != StateIdle {
+		t.Errorf("activity with stale output = %v, want idle (it must be derived, not remembered)", got)
+	}
+
+	// Fresh bytes arrive: the SAME object now reports running, with no
+	// refresh call and no re-attach.
+	rp.lastOut = time.Now()
+	if got := rp.Activity(); got != StateRunning {
+		t.Errorf("activity after fresh output = %v, want running -- window 2 would show a stale state", got)
+	}
+}
+
+// TestParity_RemotePaneBeadStateIsNeverSyncedFromWindowOne is the NEGATIVE
+// control, and it records a sharper fact than "the snapshot is stale":
+// RemotePane.beadIDs is only ever written by the LOCAL process's own IPC
+// (ipc.go's SetBeads path). The attach handshake's helloOK.Agents is consumed
+// solely by pushRolesToPeer for zero-config role pushing and never applied to
+// pane state, and no control message carries a bead update outward.
+//
+// So an agent that claims a bead in window 1 shows NO bead in window 2's
+// modal -- not an out-of-date one. When this gap closes, invert rather than
+// delete: the assertion becomes "window 2 sees the bead window 1 set".
+func TestParity_RemotePaneBeadStateIsNeverSyncedFromWindowOne(t *testing.T) {
+	// Window 1's view: a local pane holding a bead.
+	w1pane := testPane("eng1")
+	w1pane.SetBead("ini-123", "some work")
+	if w1pane.BeadID() != "ini-123" {
+		t.Fatalf("precondition: window 1's pane should hold the bead, got %q", w1pane.BeadID())
+	}
+
+	// Window 2's view of the same agent, freshly attached.
+	w2pane := &RemotePane{name: "eng1", alive: true}
+
+	if got := w2pane.BeadID(); got != "" {
+		t.Fatalf("UNEXPECTED: window 2 sees bead %q -- bead sync has landed; invert this negative control rather than deleting it", got)
+	}
+	t.Log("CONFIRMED GAP (ini-9ka.8): bead state is never synced to a secondary window. " +
+		"RemotePane.beadIDs is written only by the local process's IPC; helloOK.Agents is consumed " +
+		"by pushRolesToPeer and never applied to pane state; no control message carries a bead update. " +
+		"This is an ABSENT value, not a stale one -- a 'refresh the snapshot' fix would miss it.")
 }

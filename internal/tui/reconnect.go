@@ -41,6 +41,11 @@ type peerManager struct {
 	// mid-session via stream_added (after a configure_agent push). The
 	// TUI appends the pane to its existing list for that peer.
 	onPaneAdded func(peerName string, pane PaneView)
+	// onSessionNotice is called when window 1 broadcasts a session-level
+	// notice (ini-9ka.8). Session notices describe the session's shape
+	// changing -- a window folding back or reattaching -- rather than one
+	// agent's activity, so every attached window renders them.
+	onSessionNotice func(text string)
 	// onForwardSend is called when a daemon pushes a forward_send command
 	// through the control stream. The TUI delivers the message to the
 	// local pane named by target. Returns an error if the pane doesn't exist.
@@ -192,6 +197,11 @@ func (pm *peerManager) consumeEvents(peerName string, pc *peerConn, done chan st
 					LogInfo("remote", "forward_send event (id-less)", "peer", peerName, "target", ev.Target)
 					pm.onForwardSend(ev.Target, ev.Text, ev.Enter) //nolint:errcheck // id-less events have no caller to report to
 				}
+			case sessionNoticeAction:
+				if pm.onSessionNotice != nil {
+					LogInfo("remote", "session notice from window 1", "peer", peerName, "text", ev.Text)
+					pm.onSessionNotice(ev.Text)
+				}
 			case "stream_added":
 				pm.handleStreamAdded(peerName, pc, ev)
 			}
@@ -253,4 +263,11 @@ func (pm *peerManager) waitForDisconnect(peerName string, panes []PaneView) {
 			return
 		}
 	}
+}
+
+// SetOnSessionNotice registers the callback fired when window 1 broadcasts a
+// session-level notice, so the attached window can surface it locally
+// (ini-9ka.8).
+func (pm *peerManager) SetOnSessionNotice(fn func(text string)) {
+	pm.onSessionNotice = fn
 }

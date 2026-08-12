@@ -758,6 +758,12 @@ func Run(cfg Config) error {
 			pv.SendText(text, enter)
 			return nil
 		}, t.quitCh)
+		// Session notices broadcast by window 1 must render here too
+		// (ini-9ka.8): they describe the session's shape changing, not one
+		// agent's activity.
+		pm.SetOnSessionNotice(func(text string) {
+			t.runOnMain(func() { t.surfaceSessionNotice(text) })
+		})
 		// Stream-on-create: when a daemon announces a new agent stream
 		// (configure_agent → stream_added), append the new RemotePane to
 		// the live grid via runOnMain so it shows up in the next render.
