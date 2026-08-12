@@ -29,6 +29,16 @@ var roleNameRe = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
 // underscores (distinguish from role names at a glance).
 var peerNameRe = regexp.MustCompile(`^[a-zA-Z0-9-]+$`)
 
+// ValidPeerName reports whether name is a well-formed peer identity. This is
+// the canonical check — Validate applies the same regex to peer_name — and is
+// exported so other packages that build filesystem paths or wire identifiers
+// from a peer identity validate identically instead of inventing a second,
+// drifting rule. Rejecting dots, slashes, and colons also makes any name that
+// passes safe to embed in a filename (ini-9ka.3's per-window layout files).
+func ValidPeerName(name string) bool {
+	return peerNameRe.MatchString(name)
+}
+
 // Project is the top-level config read from initech.yaml.
 type Project struct {
 	Name          string                  `yaml:"project"`

@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/nmelo/initech/internal/config"
 	"gopkg.in/yaml.v3"
 )
 
@@ -452,9 +453,55 @@ func layoutPath(projectRoot string) string {
 	return filepath.Join(layoutDir(projectRoot), "layout.yaml")
 }
 
+// layoutPathFor returns the layout file path for a given window identity.
+//
+// The empty identity is window 1 and resolves to the original
+// .initech/layout.yaml, unchanged in both path and format. That is what makes
+// upgrades safe without a migration step: an existing project's layout.yaml
+// from any prior release is simply adopted in place as window 1's file, so
+// there is no rename, copy, or rewrite that could lose it partway (ini-9ka.3).
+//
+// Other windows get .initech/layout-<windowID>.yaml. windowID must already
+// have passed validWindowID; callers reject invalid identities before reaching
+// here rather than sanitizing, so a traversal attempt is a refusal, not a
+// silently rewritten path.
+func layoutPathFor(projectRoot, windowID string) string {
+	if windowID == "" {
+		return layoutPath(projectRoot)
+	}
+	return filepath.Join(layoutDir(projectRoot), "layout-"+windowID+".yaml")
+}
+
+// validWindowID reports whether windowID is safe to embed in a layout
+// filename. The empty identity (window 1) is always valid. Everything else
+// must satisfy the canonical peer-name rule (config.ValidPeerName), which
+// admits only letters, digits, and hyphens — so separators, dots, and ".."
+// are rejected and the resulting path cannot escape .initech. Deliberately
+// reuses the existing validator rather than defining a second regex here,
+// since two independently-maintained rules for the same identity is how they
+// drift apart.
+func validWindowID(windowID string) bool {
+	return windowID == "" || config.ValidPeerName(windowID)
+}
+
 // SaveLayout writes the layout state to .initech/layout.yaml using atomic write
 // (temp file + rename) to prevent corruption. Creates .initech/ if it doesn't exist.
+//
+// Equivalent to SaveLayoutForWindow with the window-1 identity; kept as the
+// project-scoped entry point every existing caller already uses.
 func SaveLayout(projectRoot string, state LayoutState) error {
+	return SaveLayoutForWindow(projectRoot, "", state)
+}
+
+// SaveLayoutForWindow writes the layout state for one window identity, so N
+// windows over the same project each persist independently instead of
+// clobbering a single shared file on every layout change (ini-9ka.3). The
+// empty windowID is window 1 and writes the original .initech/layout.yaml.
+// Returns an error for an unsafe windowID rather than sanitizing it.
+func SaveLayoutForWindow(projectRoot, windowID string, state LayoutState) error {
+	if !validWindowID(windowID) {
+		return fmt.Errorf("invalid window id %q: must contain only letters, digits, or hyphens", windowID)
+	}
 	pl := PersistentLayout{
 		Grid:         fmt.Sprintf("%dx%d", state.GridCols, state.GridRows),
 		GridExplicit: state.GridExplicit,
@@ -488,12 +535,17 @@ func SaveLayout(projectRoot string, state LayoutState) error {
 		return fmt.Errorf("marshal layout: %w", err)
 	}
 
-	// Atomic write: write to temp file, then rename.
-	tmp := layoutPath(projectRoot) + ".tmp"
+	// Atomic write: write to temp file, then rename. The staging path is
+	// derived from the PER-WINDOW path, not the shared project path: two
+	// windows saving concurrently would otherwise stage through the same
+	// .tmp and rename over each other, cross-contaminating final files that
+	// look independent by name (ini-9ka.3).
+	final := layoutPathFor(projectRoot, windowID)
+	tmp := final + ".tmp"
 	if err := os.WriteFile(tmp, data, 0600); err != nil {
 		return fmt.Errorf("write temp layout: %w", err)
 	}
-	if err := os.Rename(tmp, layoutPath(projectRoot)); err != nil {
+	if err := os.Rename(tmp, final); err != nil {
 		os.Remove(tmp)
 		return fmt.Errorf("rename layout: %w", err)
 	}
@@ -506,8 +558,27 @@ func SaveLayout(projectRoot string, state LayoutState) error {
 // and order preferences, while stale local-only names are filtered out.
 // Returns false if the file doesn't exist, is empty, contains invalid YAML,
 // or would result in all currently known panes hidden.
+// Equivalent to LoadLayoutForWindow with the window-1 identity; kept as the
+// project-scoped entry point every existing caller already uses.
 func LoadLayout(projectRoot string, paneKeys []string) (LayoutState, bool) {
-	data, err := os.ReadFile(layoutPath(projectRoot))
+	return LoadLayoutForWindow(projectRoot, "", paneKeys)
+}
+
+// LoadLayoutForWindow reads one window identity's layout file and merges it
+// into a LayoutState, with the same filtering and migration behavior as
+// LoadLayout (ini-9ka.3). The empty windowID is window 1 and reads the
+// original .initech/layout.yaml, so a file written by any prior release loads
+// unchanged after upgrade. Returns false for an unsafe windowID, and for the
+// same reasons LoadLayout does: missing, empty, invalid, or all-hidden.
+//
+// Reads exactly one file and consults no other state — in particular it does
+// not read group-to-window assignment (ini-9ka.4), so the two persistence
+// concerns round-trip independently and neither can corrupt the other.
+func LoadLayoutForWindow(projectRoot, windowID string, paneKeys []string) (LayoutState, bool) {
+	if !validWindowID(windowID) {
+		return LayoutState{}, false
+	}
+	data, err := os.ReadFile(layoutPathFor(projectRoot, windowID))
 	if err != nil {
 		return LayoutState{}, false
 	}
@@ -652,8 +723,22 @@ func shouldKeepPersistedPaneKey(name string, known map[string]bool) bool {
 
 // DeleteLayout removes .initech/layout.yaml. Returns nil if the file
 // doesn't exist (idempotent).
+//
+// Equivalent to DeleteLayoutForWindow with the window-1 identity; kept as the
+// project-scoped entry point every existing caller already uses.
 func DeleteLayout(projectRoot string) error {
-	err := os.Remove(layoutPath(projectRoot))
+	return DeleteLayoutForWindow(projectRoot, "")
+}
+
+// DeleteLayoutForWindow removes one window identity's layout file, leaving
+// other windows' layouts intact (ini-9ka.3). Idempotent: returns nil if the
+// file does not exist. Returns an error for an unsafe windowID rather than
+// deleting a path derived from it.
+func DeleteLayoutForWindow(projectRoot, windowID string) error {
+	if !validWindowID(windowID) {
+		return fmt.Errorf("invalid window id %q: must contain only letters, digits, or hyphens", windowID)
+	}
+	err := os.Remove(layoutPathFor(projectRoot, windowID))
 	if err != nil && !os.IsNotExist(err) {
 		return err
 	}

@@ -671,6 +671,39 @@ func TestValidate_PeerNameNoColon(t *testing.T) {
 	}
 }
 
+// TestValidPeerName_MatchesValidateAndRejectsPathUnsafeNames covers the
+// validator exported for ini-9ka.3, where a peer identity is embedded in a
+// layout filename. Two things must hold: it accepts/rejects exactly what
+// Validate's peer_name check does (one canonical rule, not a second drifting
+// copy), and everything it accepts is safe to place in a path.
+func TestValidPeerName_MatchesValidateAndRejectsPathUnsafeNames(t *testing.T) {
+	valid := []string{"workbench", "window-2", "w2", "A-1"}
+	invalid := []string{"", "bad:name", "with space", "dot.name", "under_score", "../escape", "a/b", ".", ".."}
+
+	for _, name := range valid {
+		if !ValidPeerName(name) {
+			t.Errorf("ValidPeerName(%q) = false, want true", name)
+		}
+		if strings.ContainsAny(name, `/\:.`) {
+			t.Errorf("ValidPeerName accepted %q, which is not safe to embed in a path", name)
+		}
+	}
+	for _, name := range invalid {
+		if ValidPeerName(name) {
+			t.Errorf("ValidPeerName(%q) = true, want false", name)
+		}
+	}
+
+	// Agreement with Validate: a name ValidPeerName rejects must also make
+	// Validate fail, so the two can never drift into disagreeing.
+	for _, name := range []string{"bad:name", "dot.name", "with space"} {
+		p := &Project{Name: "x", Root: "/x", Roles: []string{"a"}, PeerName: name}
+		if err := Validate(p); err == nil {
+			t.Errorf("Validate accepted peer_name %q that ValidPeerName rejects", name)
+		}
+	}
+}
+
 func TestValidate_RemoteEmptyAddr(t *testing.T) {
 	p := &Project{
 		Name:  "x",
