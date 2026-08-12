@@ -95,10 +95,12 @@ type HelloOKMsg struct {
 
 // AgentStatus describes an agent's state for the hello handshake.
 type AgentStatus struct {
-	Name     string `json:"name"`
-	Alive    bool   `json:"alive"`
-	Activity string `json:"activity"`
-	Bead     string `json:"bead,omitempty"`
+	Name     string   `json:"name"`
+	Alive    bool     `json:"alive"`
+	Activity string   `json:"activity"`
+	Bead     string   `json:"bead,omitempty"`  // PRIMARY bead only. Kept populated for wire compatibility with peers that predate Beads; new consumers must read Beads.
+	Beads    []string `json:"beads,omitempty"` // ALL beads the agent holds (ini-9ka.11). Agents routinely hold several; reading Bead alone silently truncates to one, which displays as wrong-but-populated rather than empty.
+	Desc     string   `json:"desc,omitempty"`  // Session description (ini-9ka.11).
 }
 
 // StreamMapMsg tells the client which yamux stream ID maps to which agent.
@@ -138,16 +140,18 @@ type ControlCmd struct {
 // ControlResp is the response to a control command. It also carries unsolicited
 // server-pushed commands (e.g. forward_send, stream_added) when Action is set.
 type ControlResp struct {
-	ID       string `json:"id,omitempty"` // Echoed from request for correlation.
-	OK       bool   `json:"ok"`
-	Error    string `json:"error,omitempty"`
-	Data     string `json:"data,omitempty"`
-	Action   string `json:"action,omitempty"`    // Set for unsolicited commands (e.g. "forward_send", "stream_added").
-	Target   string `json:"target,omitempty"`    // Agent name for forward_send.
-	Text     string `json:"text,omitempty"`      // Message text for forward_send.
-	Enter    bool   `json:"enter,omitempty"`     // Append Enter for forward_send.
-	StreamID uint32 `json:"stream_id,omitempty"` // yamux stream ID for stream_added.
-	Name     string `json:"name,omitempty"`      // Agent name for stream_added.
+	ID       string   `json:"id,omitempty"` // Echoed from request for correlation.
+	OK       bool     `json:"ok"`
+	Error    string   `json:"error,omitempty"`
+	Data     string   `json:"data,omitempty"`
+	Action   string   `json:"action,omitempty"`    // Set for unsolicited commands (e.g. "forward_send", "stream_added").
+	Target   string   `json:"target,omitempty"`    // Agent name for forward_send.
+	Text     string   `json:"text,omitempty"`      // Message text for forward_send.
+	Enter    bool     `json:"enter,omitempty"`     // Append Enter for forward_send.
+	StreamID uint32   `json:"stream_id,omitempty"` // yamux stream ID for stream_added.
+	Name     string   `json:"name,omitempty"`      // Agent name for stream_added / agent_status.
+	Beads    []string `json:"beads,omitempty"`     // All beads an agent holds (ini-9ka.11 agent_status).
+	Bead     string   `json:"bead,omitempty"`      // Primary bead only; wire compatibility for peers predating Beads.
 }
 
 // RunDaemon starts the headless daemon. Blocks until SIGINT/SIGTERM.
@@ -578,6 +582,8 @@ func (d *Daemon) handleConnection(conn net.Conn) {
 			Alive:    p.IsAlive(),
 			Activity: p.Activity().String(),
 			Bead:     p.BeadID(),
+			Beads:    p.BeadIDs(),
+			Desc:     p.SessionDesc(),
 		}
 	}
 

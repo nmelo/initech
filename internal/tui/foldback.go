@@ -309,3 +309,92 @@ func (w *windowServer) broadcastSessionNotice(text string) {
 	}
 	LogDebug("window-server", "session notice broadcast", "windows", len(ctrls), "text", text)
 }
+
+// agentStatusAction is the unsolicited control-stream message carrying an
+// agent's observed state (beads, session description) from window 1 outward
+// (ini-9ka.11). Rides the same channel as sessionNoticeAction.
+const agentStatusAction = "agent_status"
+
+// agentStatusSnapshot is the last value broadcast for one agent, used to emit
+// only on genuine change.
+type agentStatusSnapshot struct {
+	beads string // Joined, for cheap comparison only -- the wire carries the slice.
+	desc  string
+}
+
+// broadcastAgentStatusChanges pushes per-agent bead/description updates to
+// every attached window, but ONLY for agents whose state actually changed
+// since the last call (ini-9ka.11).
+//
+// The diff is the point. Beads change rarely and discretely, so pushing on
+// change is right for them. Session descriptions are re-extracted from the
+// cursor row on essentially every frame, so pushing unconditionally would
+// flood the control stream at frame rate. Comparing against the last broadcast
+// value gets both: bead changes propagate within the render cycle they happen
+// in, and descriptions cost nothing while they are merely being recomputed to
+// the same string.
+//
+// Called from the render loop on window 1, which is the sole authority --
+// secondary windows cannot push (the ini-9ka.8 topology fact).
+func (t *TUI) broadcastAgentStatusChanges() {
+	if t.windowSrv == nil {
+		return // Single-window session: nobody to tell.
+	}
+	if t.agentStatus == nil {
+		t.agentStatus = make(map[string]agentStatusSnapshot)
+	}
+	for _, pv := range t.panes {
+		p, ok := pv.(*Pane)
+		if !ok {
+			continue // Only locally-owned agents are ours to report.
+		}
+		beads := p.BeadIDs()
+		desc := p.SessionDesc()
+		key := paneKey(p)
+		next := agentStatusSnapshot{beads: strings.Join(beads, "\x00"), desc: desc}
+		if prev, seen := t.agentStatus[key]; seen && prev == next {
+			continue
+		}
+		t.agentStatus[key] = next
+		t.windowSrv.broadcastAgentStatus(p.Name(), beads, desc)
+	}
+}
+
+// broadcastAgentStatus pushes one agent's state to every attached window.
+// Best-effort per recipient, for the same reason as broadcastSessionNotice: a
+// window whose stream is already broken is about to be detected as gone.
+func (w *windowServer) broadcastAgentStatus(name string, beads []string, desc string) {
+	if w == nil || w.daemon == nil {
+		return
+	}
+	w.daemon.sessionsMu.Lock()
+	ctrls := append([]net.Conn(nil), w.daemon.ctrlConns...)
+	w.daemon.sessionsMu.Unlock()
+
+	primary := ""
+	if len(beads) > 0 {
+		primary = beads[0]
+	}
+	for _, ctrl := range ctrls {
+		writeJSON(ctrl, ControlResp{ //nolint:errcheck
+			Action: agentStatusAction,
+			Name:   name,
+			Beads:  beads,
+			Bead:   primary, // Wire compatibility, same as AgentStatus.
+			Text:   desc,
+		})
+	}
+}
+
+// applyAgentStatus updates the named remote pane from a broadcast (ini-9ka.11).
+// The receiving half of broadcastAgentStatus.
+func (t *TUI) applyAgentStatus(name string, beads []string, desc string) {
+	for _, pv := range t.panes {
+		rp, ok := pv.(*RemotePane)
+		if !ok || rp.Name() != name {
+			continue
+		}
+		rp.ApplyStatus(beads, desc)
+		return
+	}
+}

@@ -46,6 +46,10 @@ type peerManager struct {
 	// changing -- a window folding back or reattaching -- rather than one
 	// agent's activity, so every attached window renders them.
 	onSessionNotice func(text string)
+	// onAgentStatus is called when window 1 broadcasts an agent's observed
+	// state (ini-9ka.11). primary is AgentStatus.Bead, used only when beads is
+	// empty because the peer predates the plural field.
+	onAgentStatus func(name string, beads []string, primary, desc string)
 	// onForwardSend is called when a daemon pushes a forward_send command
 	// through the control stream. The TUI delivers the message to the
 	// local pane named by target. Returns an error if the pane doesn't exist.
@@ -197,6 +201,10 @@ func (pm *peerManager) consumeEvents(peerName string, pc *peerConn, done chan st
 					LogInfo("remote", "forward_send event (id-less)", "peer", peerName, "target", ev.Target)
 					pm.onForwardSend(ev.Target, ev.Text, ev.Enter) //nolint:errcheck // id-less events have no caller to report to
 				}
+			case agentStatusAction:
+				if pm.onAgentStatus != nil {
+					pm.onAgentStatus(ev.Name, ev.Beads, ev.Bead, ev.Text)
+				}
 			case sessionNoticeAction:
 				if pm.onSessionNotice != nil {
 					LogInfo("remote", "session notice from window 1", "peer", peerName, "text", ev.Text)
@@ -270,4 +278,10 @@ func (pm *peerManager) waitForDisconnect(peerName string, panes []PaneView) {
 // (ini-9ka.8).
 func (pm *peerManager) SetOnSessionNotice(fn func(text string)) {
 	pm.onSessionNotice = fn
+}
+
+// SetOnAgentStatus registers the callback fired when window 1 broadcasts an
+// agent's bead/description state (ini-9ka.11).
+func (pm *peerManager) SetOnAgentStatus(fn func(name string, beads []string, primary, desc string)) {
+	pm.onAgentStatus = fn
 }

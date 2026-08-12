@@ -174,14 +174,14 @@ func (rp *RemotePane) IsAlive() bool {
 	return rp.alive
 }
 
-func (rp *RemotePane) IsSuspended() bool          { return false }
-func (rp *RemotePane) IsProtected() bool           { return false }
-func (rp *RemotePane) AgentType() string           { return "" } // Remote panes do not currently expose daemon-side agent type.
-func (rp *RemotePane) SubmitKey() string           { return "" } // Remote panes use daemon-side config.
-func (rp *RemotePane) ActiveRunStart() time.Time   { return time.Time{} }
-func (rp *RemotePane) ActiveRunBytes() int64       { return 0 }
+func (rp *RemotePane) IsSuspended() bool              { return false }
+func (rp *RemotePane) IsProtected() bool              { return false }
+func (rp *RemotePane) AgentType() string              { return "" } // Remote panes do not currently expose daemon-side agent type.
+func (rp *RemotePane) SubmitKey() string              { return "" } // Remote panes use daemon-side config.
+func (rp *RemotePane) ActiveRunStart() time.Time      { return time.Time{} }
+func (rp *RemotePane) ActiveRunBytes() int64          { return 0 }
 func (rp *RemotePane) LastMessageReceived() time.Time { return time.Time{} }
-func (rp *RemotePane) LastEventTime() time.Time    { return time.Time{} }
+func (rp *RemotePane) LastEventTime() time.Time       { return time.Time{} }
 
 func (rp *RemotePane) Activity() ActivityState {
 	rp.mu.Lock()
@@ -475,4 +475,33 @@ func (rp *RemotePane) Close() {
 	case <-time.After(2 * time.Second):
 		LogWarn("remote", "Close timed out waiting for goroutines", "agent", rp.name, "host", rp.host)
 	}
+}
+
+// ApplyStatus updates this remote pane's observed agent state -- the bead it
+// holds and its session description -- from window 1 (ini-9ka.11).
+//
+// Before this existed, beadIDs was written ONLY by the local process's own IPC
+// and sessDesc had no writer at all, so a secondary window showed no bead and
+// no description for any agent: absent values, not stale ones. The data was
+// already arriving in the hello_ok handshake (AgentStatus.Bead) and being
+// discarded; this is the missing write.
+//
+// PLURAL, deliberately: agents routinely hold several beads and the ribbon
+// renders all of them. A singular signature here would truncate to one and
+// display a WRONG-but-populated value, which is harder to notice than the
+// empty field this bead exists to fix.
+//
+// Empty is meaningful and applied as-is: clearing beads is a real state change
+// an operator must see, so this must not treat empty as "no update". Callers
+// that mean "no update" simply do not call. The slice is copied so a caller
+// reusing its buffer cannot mutate this pane's state afterwards.
+func (rp *RemotePane) ApplyStatus(beads []string, desc string) {
+	rp.mu.Lock()
+	defer rp.mu.Unlock()
+	if len(beads) == 0 {
+		rp.beadIDs = nil
+	} else {
+		rp.beadIDs = append([]string(nil), beads...)
+	}
+	rp.sessDesc = desc
 }

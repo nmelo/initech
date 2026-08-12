@@ -180,6 +180,12 @@ type TUI struct {
 	windowSrv *windowServer
 	liveness  *windowLivenessTracker
 
+	// agentStatus is the last bead/description broadcast per agent, so window
+	// 1 emits only on genuine change (ini-9ka.11). Descriptions are
+	// recomputed every frame; without this diff the control stream would
+	// carry a full status push at frame rate.
+	agentStatus map[string]agentStatusSnapshot
+
 	// paneConfigBuilder builds a PaneConfig for a new role at runtime.
 	// Set from Config.PaneConfigBuilder. Nil disables the add command.
 	paneConfigBuilder func(name string) (PaneConfig, error)
@@ -321,6 +327,7 @@ func (t *TUI) applyLayout() {
 	// notice and the pane movement it describes land in the same frame
 	// (ini-9ka.6 wiring ini-9ka.7's transitions).
 	t.noticeWindowTransitions()
+	t.broadcastAgentStatusChanges()
 
 	t.plan = computeLayout(t.layoutState, t.visiblePanesForWindow(), w, paneH)
 	LogInfo("applyLayout", "layout applied", "panes", len(t.plan.Panes), "w", w, "h", paneH)
@@ -761,6 +768,12 @@ func Run(cfg Config) error {
 		// Session notices broadcast by window 1 must render here too
 		// (ini-9ka.8): they describe the session's shape changing, not one
 		// agent's activity.
+		pm.SetOnAgentStatus(func(name string, beads []string, primary, desc string) {
+			if len(beads) == 0 && primary != "" {
+				beads = []string{primary} // Peer predates the plural field.
+			}
+			t.runOnMain(func() { t.applyAgentStatus(name, beads, desc) })
+		})
 		pm.SetOnSessionNotice(func(text string) {
 			t.runOnMain(func() { t.surfaceSessionNotice(text) })
 		})

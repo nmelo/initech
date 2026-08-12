@@ -255,32 +255,157 @@ func TestParity_RemotePaneActivityIsDerivedLiveFromTheStream(t *testing.T) {
 	}
 }
 
-// TestParity_RemotePaneBeadStateIsNeverSyncedFromWindowOne is the NEGATIVE
-// control, and it records a sharper fact than "the snapshot is stale":
-// RemotePane.beadIDs is only ever written by the LOCAL process's own IPC
-// (ipc.go's SetBeads path). The attach handshake's helloOK.Agents is consumed
-// solely by pushRolesToPeer for zero-config role pushing and never applied to
-// pane state, and no control message carries a bead update outward.
+// TestParity_RemotePaneBeadStateSyncsFromWindowOne is the INVERTED form of a
+// negative control ini-9ka.8 committed (and wrote to be inverted, not
+// deleted): bead state now reaches a secondary window. ini-9ka.11 closed it.
 //
-// So an agent that claims a bead in window 1 shows NO bead in window 2's
-// modal -- not an out-of-date one. When this gap closes, invert rather than
-// delete: the assertion becomes "window 2 sees the bead window 1 set".
-func TestParity_RemotePaneBeadStateIsNeverSyncedFromWindowOne(t *testing.T) {
-	// Window 1's view: a local pane holding a bead.
-	w1pane := testPane("eng1")
-	w1pane.SetBead("ini-123", "some work")
-	if w1pane.BeadID() != "ini-123" {
-		t.Fatalf("precondition: window 1's pane should hold the bead, got %q", w1pane.BeadID())
+// The gap was ABSENT, not stale -- nothing ever wrote the field, even though
+// the handshake already carried the value and discarded it. That is why the
+// fix is a write path rather than a refresh.
+func TestParity_RemotePaneBeadStateSyncsFromWindowOne(t *testing.T) {
+	rp := &RemotePane{name: "eng1", alive: true}
+
+	// THREE beads, deliberately: not 1 (which a truncating implementation
+	// would satisfy by accident) and not any count a default produces. A
+	// singular API silently keeping only the first would display a
+	// wrong-but-POPULATED ribbon, which is harder to spot than the empty
+	// field this bead fixed.
+	want := []string{"ini-aaa", "ini-bbb", "ini-ccc"}
+	rp.ApplyStatus(want, "reviewing the parity matrix")
+
+	got := rp.BeadIDs()
+	if len(got) != len(want) {
+		t.Fatalf("BeadIDs() = %v (%d), want %v (%d) -- a truncating propagation shows a wrong-but-populated ribbon", got, len(got), want, len(want))
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("bead %d = %q, want %q", i, got[i], want[i])
+		}
+	}
+	if rp.BeadID() != "ini-aaa" {
+		t.Errorf("primary bead = %q, want ini-aaa", rp.BeadID())
+	}
+	if rp.SessionDesc() != "reviewing the parity matrix" {
+		t.Errorf("SessionDesc() = %q; sessDesc previously had NO writer at all", rp.SessionDesc())
+	}
+}
+
+// TestParity_AgentStatusClearPropagates covers the change half of the AC:
+// claim, change, and CLEAR must each be reflected. Clearing is the one a
+// naive "only apply non-empty updates" implementation gets wrong -- the
+// operator would see a bead the agent no longer holds.
+func TestParity_AgentStatusClearPropagates(t *testing.T) {
+	rp := &RemotePane{name: "eng1", alive: true}
+
+	rp.ApplyStatus([]string{"ini-aaa", "ini-bbb"}, "working")
+	if len(rp.BeadIDs()) != 2 {
+		t.Fatalf("precondition: expected 2 beads, got %v", rp.BeadIDs())
 	}
 
-	// Window 2's view of the same agent, freshly attached.
-	w2pane := &RemotePane{name: "eng1", alive: true}
-
-	if got := w2pane.BeadID(); got != "" {
-		t.Fatalf("UNEXPECTED: window 2 sees bead %q -- bead sync has landed; invert this negative control rather than deleting it", got)
+	rp.ApplyStatus([]string{"ini-ccc"}, "different work") // change
+	if got := rp.BeadIDs(); len(got) != 1 || got[0] != "ini-ccc" {
+		t.Errorf("after change, BeadIDs() = %v, want [ini-ccc]", got)
 	}
-	t.Log("CONFIRMED GAP (ini-9ka.8): bead state is never synced to a secondary window. " +
-		"RemotePane.beadIDs is written only by the local process's IPC; helloOK.Agents is consumed " +
-		"by pushRolesToPeer and never applied to pane state; no control message carries a bead update. " +
-		"This is an ABSENT value, not a stale one -- a 'refresh the snapshot' fix would miss it.")
+
+	rp.ApplyStatus(nil, "") // clear
+	if got := rp.BeadIDs(); len(got) != 0 {
+		t.Errorf("after clear, BeadIDs() = %v, want empty -- empty must be applied, not treated as 'no update'", got)
+	}
+	if rp.SessionDesc() != "" {
+		t.Errorf("after clear, SessionDesc() = %q, want empty", rp.SessionDesc())
+	}
+}
+
+// TestParity_ApplyStatusCopiesTheSlice guards a caller reusing its buffer:
+// the pane must not alias the caller's slice, or a later reuse would silently
+// rewrite this agent's beads.
+func TestParity_ApplyStatusCopiesTheSlice(t *testing.T) {
+	rp := &RemotePane{name: "eng1", alive: true}
+	buf := []string{"ini-aaa", "ini-bbb"}
+	rp.ApplyStatus(buf, "d")
+
+	buf[0] = "MUTATED"
+	if got := rp.BeadIDs(); got[0] != "ini-aaa" {
+		t.Errorf("pane aliased the caller's slice: bead 0 = %q after the caller mutated its buffer", got[0])
+	}
+}
+
+// TestParity_AgentStatusBroadcastCarriesAllBeads is the wire-level half of the
+// multi-bead AC: the broadcast itself must not truncate. Asserted on the
+// message a real attached window receives, dispatching BY ACTION -- the
+// control stream carries other unsolicited traffic (replay_start arrives
+// first), a constraint recorded during ini-9ka.8 rather than rediscovered.
+func TestParity_AgentStatusBroadcastCarriesAllBeads(t *testing.T) {
+	panes := []*Pane{windowServerTestPane("eng1")}
+	ws, addr := startTestWindowServer(t, panes)
+
+	s2, c2, _ := dialWindow(t, addr, "window-2")
+	defer s2.Close()
+	defer c2.Close()
+	waitForClients(t, ws, 1)
+
+	want := []string{"ini-aaa", "ini-bbb", "ini-ccc"}
+	ws.broadcastAgentStatus("eng1", want, "three beads in flight")
+
+	c2.SetReadDeadline(time.Now().Add(5 * time.Second))
+	scanner := NewIPCScanner(c2)
+	found := false
+	for scanner.Scan() {
+		var got ControlResp
+		if err := json.Unmarshal(scanner.Bytes(), &got); err != nil {
+			continue
+		}
+		if got.Action != agentStatusAction {
+			continue
+		}
+		found = true
+		if got.Name != "eng1" {
+			t.Errorf("status for %q, want eng1", got.Name)
+		}
+		if len(got.Beads) != len(want) {
+			t.Errorf("wire carried %d beads (%v), want %d (%v) -- truncation here shows a wrong-but-populated ribbon", len(got.Beads), got.Beads, len(want), want)
+		}
+		if got.Bead != "ini-aaa" {
+			t.Errorf("compat primary = %q, want ini-aaa", got.Bead)
+		}
+		if got.Text != "three beads in flight" {
+			t.Errorf("description = %q", got.Text)
+		}
+		break
+	}
+	if !found {
+		t.Error("no agent_status message reached the attached window")
+	}
+}
+
+// TestParity_HandshakeCarriesBeadsForLateAttach covers the late-attach AC at
+// its source: a window attaching AFTER an agent claimed beads must see them
+// from the handshake, without waiting for a subsequent change. The data was
+// always on the wire -- ini-9ka.11 stopped discarding it.
+func TestParity_HandshakeCarriesBeadsForLateAttach(t *testing.T) {
+	pane := windowServerTestPane("eng1")
+	pane.SetBeads([]string{"ini-aaa", "ini-bbb", "ini-ccc"})
+
+	_, addr := startTestWindowServer(t, []*Pane{pane})
+
+	// Attach AFTER the beads were set.
+	session, ctrl, ok := dialWindow(t, addr, "window-2")
+	defer session.Close()
+	defer ctrl.Close()
+
+	var found *AgentStatus
+	for i := range ok.Agents {
+		if ok.Agents[i].Name == "eng1" {
+			found = &ok.Agents[i]
+		}
+	}
+	if found == nil {
+		t.Fatal("handshake did not describe eng1")
+	}
+	if len(found.Beads) != 3 {
+		t.Errorf("handshake carried %d beads (%v), want 3 -- a late-attaching window would show an incomplete ribbon", len(found.Beads), found.Beads)
+	}
+	if found.Bead != "ini-aaa" {
+		t.Errorf("handshake primary bead = %q, want ini-aaa", found.Bead)
+	}
 }

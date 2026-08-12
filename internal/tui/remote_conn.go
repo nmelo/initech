@@ -139,6 +139,13 @@ func connectPeer(peerName string, remote config.Remote, project *config.Project)
 	// Build a reverse map: stream ID -> agent name.
 	agentByStreamID := streamMap.Streams
 
+	// Index the handshake's agent status by name so each RemotePane can be
+	// seeded with what the server already told us (ini-9ka.11).
+	statusByAgent := make(map[string]AgentStatus, len(helloOK.Agents))
+	for _, ag := range helloOK.Agents {
+		statusByAgent[ag.Name] = ag
+	}
+
 	// Accept yamux streams opened by the server (one per agent).
 	var panes []PaneView
 	for range agentByStreamID {
@@ -161,6 +168,22 @@ func connectPeer(peerName string, remote config.Remote, project *config.Project)
 		}
 
 		rp := NewRemotePane(agentName, serverPeerName, rawStream, mux, 80, 24)
+		// Apply the status the handshake ALREADY carried (ini-9ka.11). Before
+		// this, helloOK.Agents was received and handed only to
+		// pushRolesToPeer, so the bead arrived on the wire and was discarded --
+		// which is why a secondary window showed no bead rather than a stale
+		// one. This is also what makes a LATE attach correct: a window opened
+		// after an agent claimed a bead sees it immediately, without waiting
+		// for the next change.
+		if st, ok := statusByAgent[agentName]; ok {
+			beads := st.Beads
+			if len(beads) == 0 && st.Bead != "" {
+				// Peer predates the Beads field: fall back to the primary so
+				// an older window 1 still populates something correct.
+				beads = []string{st.Bead}
+			}
+			rp.ApplyStatus(beads, st.Desc)
+		}
 		rp.Start()
 		panes = append(panes, rp)
 		LogDebug("remote", "agent connected", "peer", serverPeerName, "agent", agentName)
