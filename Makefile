@@ -28,6 +28,19 @@ integration:
 vet:
 	go vet ./...
 
+# Cross-platform vet. `go vet` type-checks _test.go files too, so this catches
+# a test file that consumes a symbol from a '//go:build !windows' sibling
+# without matching the constraint -- twice in two days (ini-vfk, ini-69w).
+# It cross-compiles without running anything, so it costs seconds on darwin.
+#
+# In `check`, therefore in the pre-commit hook: the ini-vfk fix was a manual
+# sweep that was correct when run and stale one bead later, because the
+# offending file did not exist yet. Manual sweeps rot; a check in the loop
+# every commit runs does not. Catching this at COMMIT time on every machine
+# beats catching it at TAG time in CI, which is where it cost a release cut.
+vet-windows:
+	GOOS=windows GOARCH=amd64 go vet ./...
+
 lint:
 	golangci-lint run ./...
 
@@ -45,7 +58,7 @@ lint-test-names-self-test:
 clean:
 	rm -f initech
 
-check: vet lint-test-names test
+check: vet vet-windows lint-test-names test
 
 release:
 	@set -eu; \
