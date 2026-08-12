@@ -336,13 +336,59 @@ func TestAttentionChimes_NewWaitBetweenTicksStillRings(t *testing.T) {
 
 	// Answered and re-asked with NO tick in between: prune never observes the
 	// gap, so a presence-keyed edge would swallow the second question.
-	p.ClearWaitingInput()
-	p.SetWaitingInputTier("and which currency?", WaitingTierChime)
+	reraiseWithDistinctWaitStart(t, p, "and which currency?")
 
 	tu.attentionChimes(now.Add(2 * time.Second))
 
 	if c.n != 2 {
 		t.Errorf("chimer called %d times, want 2 -- a question answered and re-asked between "+
 			"ticks is two questions, and the second must not be swallowed", c.n)
+	}
+}
+
+// reraiseWithDistinctWaitStart answers a pane's current wait and raises a new
+// one, guaranteeing the two waits carry DIFFERENT start timestamps -- which is
+// the precondition the between-ticks test manufactures and then measures.
+//
+// WHY THIS EXISTS (ini-ypt): the wait's start time doubles as its identity, so
+// two waits are distinguishable only while their timestamps differ. On Windows
+// the clock granularity is ~15ms, far coarser than the microseconds this test
+// takes to clear and re-raise, so both waits recorded the SAME instant, the
+// chime correctly saw ONE episode, and the test failed with "chimer called 1
+// times, want 2". Reproduced on darwin by truncating the pane's clock to 20ms,
+// which fails identically -- the mechanism, not a guess.
+//
+// The loop spins on the OBSERVABLE THE TEST DEPENDS ON -- that the pane's newly
+// recorded waitingSince differs from the previous one -- rather than sleeping a
+// constant chosen to exceed some platform's granularity. A constant is a guess
+// about every clock this suite will ever run on; this is a postcondition, so it
+// is correct on a clock of any coarseness and costs microseconds on a fine one.
+//
+// It deliberately performs NO attentionChimes call, because the absence of an
+// intervening tick is the entire point: with a tick in between, prune drops the
+// entry and presence alone would pass, which is exactly the weakness ini-1io
+// was filed to close.
+//
+// NOTE this is a FIXTURE fix, not a product fix. Production cannot hit the
+// collision: it needs an entire wait EPISODE -- raise, operator answers, clear,
+// re-raise -- to complete inside one clock tick, i.e. a human answering a dialog
+// in under 15ms. The margin is not thin, it is absolute.
+func reraiseWithDistinctWaitStart(t *testing.T, p *Pane, preview string) {
+	t.Helper()
+	_, before, _ := p.WaitingInput()
+
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		p.ClearWaitingInput()
+		p.SetWaitingInputTier(preview, WaitingTierChime)
+
+		_, after, _ := p.WaitingInput()
+		if !after.Equal(before) {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("clock never advanced past %v: could not manufacture two waits with "+
+				"distinct start times, so the between-ticks case cannot be tested here", before)
+		}
 	}
 }
