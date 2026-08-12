@@ -58,12 +58,13 @@ func TestAttentionOSC_LiveClaudeStillEmits(t *testing.T) {
 
 	cmd := exec.Command("claude", "Run the shell command: date +%s")
 	cmd.Dir = dir
-	// agentBaseEnv, NOT os.Environ(): the probe must build its child's
-	// environment through the SAME scrub real panes use (ini-g0h), or it tests
-	// an environment production never produces -- and would keep failing under
-	// a tmux-set TERM_PROGRAM even after the pane path was fixed.
+	// agentBaseEnv, NOT os.Environ(): the probe must build its child's terminal
+	// identity exactly the way real panes do (ini-g0h), or it measures an
+	// environment production never produces. It carries the pinned TERM and
+	// TERM_PROGRAM, so nothing terminal-facing is set here -- if this test and
+	// buildPaneCmd ever disagree about the identity, the canary is measuring
+	// something no operator runs.
 	cmd.Env = append(agentBaseEnv(),
-		"TERM=xterm-256color",
 		// An inherited child-session marker disables transcript writing and
 		// changes startup behaviour; clear it so this is a normal session.
 		"CLAUDE_CODE_CHILD_SESSION=",

@@ -26,8 +26,9 @@ func buildPaneCmd(cfg PaneConfig, rows, cols int) *exec.Cmd {
 		quoted := shellQuoteArgs(cfg.Command)
 		cmd = exec.Command(shell, "-l", "-c", "exec "+quoted)
 	}
+	// agentBaseEnv owns the whole terminal identity story (TERM, TERM_PROGRAM);
+	// only the size follows here.
 	cmd.Env = append(agentBaseEnv(),
-		"TERM=xterm-256color",
 		fmt.Sprintf("LINES=%d", rows),
 		fmt.Sprintf("COLUMNS=%d", cols),
 	)
