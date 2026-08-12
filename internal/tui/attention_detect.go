@@ -39,6 +39,8 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+
+	"github.com/nmelo/initech/internal/config"
 )
 
 // oscNotify is the OSC command number Claude Code uses for desktop
@@ -264,4 +266,23 @@ func numberedOption(s string) bool {
 		return false
 	}
 	return s[1] == '.' || (len(s) > 2 && s[1] >= '0' && s[1] <= '9' && s[2] == '.')
+}
+
+// hasTier1Signal reports whether this pane's agent declares its own waiting
+// state, which is what makes tier-1 detection possible for it.
+//
+// Decided by agent type because that is where the measurement landed: Claude
+// Code 2.1.229 emits OSC 777 on every blocking dialog (captured, and pinned by
+// the live emitter probe), while codex 0.145.0 emits nothing at all -- zero
+// OSC 777 and zero OSC 9 across a 13987-byte capture holding two open dialogs.
+//
+// Deliberately NOT "has this pane emitted an OSC 777 yet": a Claude pane has not
+// emitted one before its first dialog, so that test would leave it tier-2
+// eligible at startup and let the screen heuristic drive a pane that has an
+// authoritative signal available.
+func (p *Pane) hasTier1Signal() bool {
+	if p == nil {
+		return false
+	}
+	return !config.IsCodexLikeAgentType(p.agentType) && p.agentType != config.AgentTypeGeneric
 }

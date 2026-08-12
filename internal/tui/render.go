@@ -33,6 +33,7 @@ func (t *TUI) render() {
 			// (ini-2x8.2). The other order would show the agent as running for
 			// one extra frame every time it starts waiting.
 			lp.refreshWaitingState()
+			lp.refreshTier2WaitingState()
 			lp.updateActivity()
 		}
 	}
