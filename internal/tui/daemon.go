@@ -58,6 +58,12 @@ type Daemon struct {
 	// rather than by a conditional inside the shared path (ini-z8o).
 	yamuxCfg *yamux.Config
 
+	// onFleetState applies a secondary window's set_fleet_state command on
+	// window 1, the only writer (ini-9ka.10). Nil on a cross-machine daemon,
+	// which has no fleet state to own -- so the command is refused there
+	// rather than silently accepted.
+	onFleetState func(FleetStateCmd) error
+
 	// Active client sessions for graceful shutdown.
 	sessionsMu sync.Mutex
 	sessions   []*yamux.Session
@@ -844,6 +850,11 @@ func (d *Daemon) handleControlStream(ctrl net.Conn, scanner *bufio.Scanner, peer
 				return
 			}
 
+		case "set_fleet_state":
+			if !respond(cmd.ID, d.handleSetFleetState(line)) {
+				return
+			}
+
 		default:
 			if !respond(cmd.ID, ControlResp{Error: fmt.Sprintf("unknown action %q", cmd.Action)}) {
 				return
@@ -981,4 +992,22 @@ func (d *Daemon) yamuxConfig() *yamux.Config {
 		return d.yamuxCfg
 	}
 	return yamux.DefaultConfig()
+}
+
+// handleSetFleetState applies a secondary window's global hide/protect/pin
+// change on window 1 (ini-9ka.10). Ownership is not per-agent here -- fleet
+// state is session-global, so any attached window may request a change; the
+// authority rule is about who WRITES the file, not who may ask.
+func (d *Daemon) handleSetFleetState(line []byte) ControlResp {
+	var cmd FleetStateCmd
+	if err := json.Unmarshal(line, &cmd); err != nil {
+		return ControlResp{Error: fmt.Sprintf("invalid set_fleet_state payload: %v", err)}
+	}
+	if d.onFleetState == nil {
+		return ControlResp{ID: cmd.ID, Error: "this session does not own fleet state"}
+	}
+	if err := d.onFleetState(cmd); err != nil {
+		return ControlResp{ID: cmd.ID, Error: err.Error()}
+	}
+	return ControlResp{ID: cmd.ID, OK: true, Action: "set_fleet_state_ok", Target: cmd.Name}
 }

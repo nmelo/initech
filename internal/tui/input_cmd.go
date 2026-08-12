@@ -808,9 +808,7 @@ func (t *TUI) cmdLive(parts []string) bool {
 	t.layoutState.Mode = LayoutLive
 	t.layoutState.GridExplicit = explicitSlots > 0
 	t.layoutState.Zoomed = false
-	if t.layoutState.LivePinned == nil {
-		t.layoutState.LivePinned = make(map[string]int)
-	}
+	t.fleetState() // Ensure the global projection is populated.
 	t.initLiveEngine(explicitSlots)
 	t.applyLayout()
 	t.saveLayoutIfConfigured()
@@ -838,16 +836,11 @@ func (t *TUI) cmdPin(parts []string) bool {
 		t.cmd.error = fmt.Sprintf("slot %d does not exist (grid has %d slots)", slot, totalSlots)
 		return false
 	}
-	if t.layoutState.LivePinned == nil {
-		t.layoutState.LivePinned = make(map[string]int)
+	// Global (ini-9ka.10); one-agent-per-slot eviction lives in SetLiveSlot.
+	if err := t.setLiveSlot(paneKey(pv), slot, true); err != nil {
+		t.cmd.error = err.Error()
+		return false
 	}
-	// Remove any existing pin on this slot (only one agent per slot).
-	for k, v := range t.layoutState.LivePinned {
-		if v == slot {
-			delete(t.layoutState.LivePinned, k)
-		}
-	}
-	t.layoutState.LivePinned[paneKey(pv)] = slot
 	if t.liveEngine != nil {
 		t.liveEngine.Pinned = t.layoutState.LivePinned
 	}
@@ -868,7 +861,10 @@ func (t *TUI) cmdUnpin(parts []string) bool {
 	}
 	for k, v := range t.layoutState.LivePinned {
 		if v == slot {
-			delete(t.layoutState.LivePinned, k)
+			if err := t.setLiveSlot(k, slot, false); err != nil {
+				t.cmd.error = err.Error()
+				return false
+			}
 		}
 	}
 	if t.liveEngine != nil {

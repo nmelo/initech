@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 
 	"github.com/nmelo/initech/internal/config"
@@ -22,14 +21,22 @@ import (
 // on what the screen should look like. Trivially serializable to YAML for
 // persistent layout.
 type LayoutState struct {
-	Mode      LayoutMode      `yaml:"mode"`
-	GridCols  int             `yaml:"grid_cols"`
-	GridRows  int             `yaml:"grid_rows"`
-	Zoomed    bool            `yaml:"zoomed,omitempty"`
-	Focused   string          `yaml:"focused"`             // Pane key, not index.
-	Hidden    map[string]bool `yaml:"hidden,omitempty"`    // Pane keys that are hidden.
-	Protected map[string]bool `yaml:"protected,omitempty"` // Pane keys protected from auto-suspend.
-	Order     []string        `yaml:"order,omitempty"`     // Pane keys in display order (from show command).
+	Mode     LayoutMode `yaml:"mode"`
+	GridCols int        `yaml:"grid_cols"`
+	GridRows int        `yaml:"grid_rows"`
+	Zoomed   bool       `yaml:"zoomed,omitempty"`
+	Focused  string     `yaml:"focused"` // Pane key, not index.
+	// Hidden and Protected are a DERIVED PROJECTION of FleetState
+	// (ini-9ka.10), not owned state. They are session-GLOBAL facts kept in
+	// .initech/fleet-state.yaml; this struct is PER-WINDOW, so a copy stored
+	// here is a read cache only. Refreshed store->memory and never the
+	// reverse; never persisted (PersistentLayout carries neither); never
+	// written directly -- route changes through TUI.setHidden/setProtected,
+	// which go through FleetState so every window agrees. A direct write here
+	// will not survive a reload, and a guardrail test asserts exactly that.
+	Hidden    map[string]bool `yaml:"-"`
+	Protected map[string]bool `yaml:"-"`
+	Order     []string        `yaml:"order,omitempty"` // Pane keys in display order (from show command).
 	Overlay   bool            `yaml:"overlay"`
 
 	// GridExplicit is true when the user chose grid dimensions via :grid CxR
@@ -43,9 +50,13 @@ type LayoutState struct {
 	RowWeights []int `yaml:"row_weights,omitempty"`
 
 	// Live mode: dynamic pane rotation by conviction score.
-	LivePinned map[string]int `yaml:"live_pinned,omitempty"` // Agent name -> slot index.
-	LiveSlots  []string       `yaml:"live_slots,omitempty"`  // Current agent name per slot (updated by live engine).
-	LiveAuto   bool           `yaml:"live_auto,omitempty"`   // True = auto-size grid from active agent count.
+	// LivePinned is the same derived projection of FleetState as Hidden and
+	// Protected above -- global, stored in fleet-state.yaml, cached here,
+	// never persisted from this struct. Route changes through
+	// TUI.setLiveSlot.
+	LivePinned map[string]int `yaml:"-"`
+	LiveSlots  []string       `yaml:"live_slots,omitempty"` // Current agent name per slot (updated by live engine).
+	LiveAuto   bool           `yaml:"live_auto,omitempty"`  // True = auto-size grid from active agent count.
 
 	// Agents-grid modal (ini-2rc): band membership. Groups is the ordered
 	// list of band labels (top-to-bottom); GroupOf maps a pane key to its
@@ -430,17 +441,25 @@ func DefaultLayoutState(paneNames []string) LayoutState {
 // Focused pane is deliberately excluded (momentary choice, not a preference).
 // Overlay and weights are excluded (not layout-changing from the user's perspective).
 type PersistentLayout struct {
-	Grid         string            `yaml:"grid"`                    // e.g. "3x2"
-	GridExplicit bool              `yaml:"grid_explicit,omitempty"` // True = user chose CxR explicitly; don't auto-resize.
-	Hidden       []string          `yaml:"hidden,omitempty"`        // Pane keys: name for local, host:name for remote.
-	Protected    []string          `yaml:"protected,omitempty"`     // Pane keys protected from auto-suspend.
-	DepPinned    []string          `yaml:"pinned,omitempty"`        // Deprecated: migration shim for old layout.yaml files.
-	Order        []string          `yaml:"order,omitempty"`         // Pane keys in display order (from show command).
-	Mode         string            `yaml:"mode"`                    // "grid", "focus", "main", "live"
-	LivePinned   map[string]int    `yaml:"live_pinned,omitempty"`   // Agent name -> fixed slot index for live mode.
-	LiveAuto     bool              `yaml:"live_auto,omitempty"`     // True = auto-size grid from active agent count.
-	Groups       []string          `yaml:"groups,omitempty"`        // Agents-grid band labels, in order.
-	GroupOf      map[string]string `yaml:"group_of,omitempty"`      // Pane key -> band label.
+	Grid         string `yaml:"grid"`                    // e.g. "3x2"
+	GridExplicit bool   `yaml:"grid_explicit,omitempty"` // True = user chose CxR explicitly; don't auto-resize.
+	// Hidden/Protected/DepPinned/LivePinned are LEGACY (pre-ini-9ka.10).
+	// These global facts now live in .initech/fleet-state.yaml. They remain
+	// declared so the loader can still PARSE an old file -- import-once reads
+	// them exactly once, when fleet-state.yaml is absent -- but SaveLayout no
+	// longer populates them, so they are never written again. Old files keep
+	// their copies as dead data forever: the file is never rewritten to strip
+	// them (adoption-in-place, ini-9ka.3), because a rewrite opens a window in
+	// which the operator's state can be lost and stripping buys nothing.
+	Hidden     []string          `yaml:"hidden,omitempty"`
+	Protected  []string          `yaml:"protected,omitempty"`
+	DepPinned  []string          `yaml:"pinned,omitempty"`
+	Order      []string          `yaml:"order,omitempty"`       // Pane keys in display order (from show command).
+	Mode       string            `yaml:"mode"`                  // "grid", "focus", "main", "live"
+	LivePinned map[string]int    `yaml:"live_pinned,omitempty"` // Legacy; see above.
+	LiveAuto   bool              `yaml:"live_auto,omitempty"`   // True = auto-size grid from active agent count.
+	Groups     []string          `yaml:"groups,omitempty"`      // Agents-grid band labels, in order.
+	GroupOf    map[string]string `yaml:"group_of,omitempty"`    // Pane key -> band label.
 }
 
 // layoutDir returns the .initech directory path under projectRoot.
@@ -507,23 +526,13 @@ func SaveLayoutForWindow(projectRoot, windowID string, state LayoutState) error 
 		GridExplicit: state.GridExplicit,
 		Mode:         layoutModeToString(state.Mode),
 		Order:        state.Order,
-		LivePinned:   state.LivePinned,
 		LiveAuto:     state.LiveAuto,
 		Groups:       state.Groups,
 		GroupOf:      state.GroupOf,
 	}
-	for name, hidden := range state.Hidden {
-		if hidden {
-			pl.Hidden = append(pl.Hidden, name)
-		}
-	}
-	sort.Strings(pl.Hidden)
-	for name, prot := range state.Protected {
-		if prot {
-			pl.Protected = append(pl.Protected, name)
-		}
-	}
-	sort.Strings(pl.Protected)
+	// Hidden/Protected/LivePinned are deliberately NOT written: they are
+	// session-global and live in fleet-state.yaml (ini-9ka.10). A layout file
+	// carries arrangement only.
 
 	dir := layoutDir(projectRoot)
 	if err := os.MkdirAll(dir, 0700); err != nil {
@@ -603,31 +612,18 @@ func LoadLayoutForWindow(projectRoot, windowID string, paneKeys []string) (Layou
 		known[name] = true
 	}
 
-	// Preserve remote pane keys even when the peer is offline at startup.
-	// A host:name key is not stale just because it is not in paneKeys yet.
+	// pl.Hidden / pl.Protected / pl.DepPinned / pl.LivePinned are LEGACY dead
+	// data (ini-9ka.10). They are still PARSED so importLegacyFleetState can
+	// read them exactly once, but they are deliberately NOT consumed here:
+	// these are session-global facts owned by fleet-state.yaml, and the TUI
+	// projects them onto LayoutState after this returns. Consuming them would
+	// be actively wrong twice over -- an old file's stale hidden set would
+	// briefly overwrite the global truth, and the all-hidden guard below would
+	// reject a perfectly good arrangement on the strength of data that no
+	// longer governs anything.
 	hidden := make(map[string]bool)
-	currentHiddenCount := 0
-	for _, name := range pl.Hidden {
-		if shouldKeepPersistedPaneKey(name, known) {
-			hidden[name] = true
-			if known[name] {
-				currentHiddenCount++
-			}
-		}
-	}
-
-	// Migration: accept both old "pinned:" and new "protected:" keys.
-	// "protected:" takes precedence; fall back to "pinned:" for old layout files.
-	protectedList := pl.Protected
-	if len(protectedList) == 0 {
-		protectedList = pl.DepPinned
-	}
 	protected := make(map[string]bool)
-	for _, name := range protectedList {
-		if shouldKeepPersistedPaneKey(name, known) {
-			protected[name] = true
-		}
-	}
+	currentHiddenCount := 0
 
 	// Edge case: all currently known panes hidden -> nonsensical, fall back to defaults.
 	if len(paneKeys) > 0 && currentHiddenCount >= len(paneKeys) {
@@ -703,7 +699,6 @@ func LoadLayoutForWindow(projectRoot, windowID string, paneKeys []string) (Layou
 		Protected:    protected,
 		Order:        order,
 		Overlay:      true, // Always start with overlay visible.
-		LivePinned:   pl.LivePinned,
 		LiveAuto:     pl.LiveAuto,
 		Groups:       groups,
 		GroupOf:      groupOf,

@@ -550,8 +550,11 @@ func TestSaveLoadLayout(t *testing.T) {
 	if got.Mode != LayoutGrid {
 		t.Errorf("mode = %d, want LayoutGrid", got.Mode)
 	}
-	if !got.Hidden["arch"] || !got.Hidden["sec"] {
-		t.Errorf("hidden = %v, want arch+sec", got.Hidden)
+	// Hidden is NOT part of a layout file any more (ini-9ka.10): it is a
+	// session-global fact in fleet-state.yaml. Asserting its absence here is
+	// the point -- this is the format change, not an omission.
+	if len(got.Hidden) != 0 {
+		t.Errorf("hidden = %v, want empty -- layout files carry arrangement only", got.Hidden)
 	}
 	// Focused pane is NOT persisted; should default to first pane name.
 	if got.Focused != "super" {
@@ -660,8 +663,6 @@ func TestLoadLayoutPreservesUnknownRemotePaneKeys(t *testing.T) {
 		Mode:     LayoutGrid,
 		GridCols: 2,
 		GridRows: 1,
-		Hidden:   map[string]bool{"workbench:intern": true},
-		Protected: map[string]bool{"workbench:intern": true},
 		Order:    []string{"workbench:intern", "super"},
 	}
 	if err := SaveLayout(root, state); err != nil {
@@ -672,12 +673,11 @@ func TestLoadLayoutPreservesUnknownRemotePaneKeys(t *testing.T) {
 	if !ok {
 		t.Fatal("LoadLayout should preserve offline remote pane keys")
 	}
-	if !got.Hidden["workbench:intern"] {
-		t.Fatalf("offline remote hidden key lost: %v", got.Hidden)
-	}
-	if !got.Protected["workbench:intern"] {
-		t.Fatalf("offline remote protected key lost: %v", got.Protected)
-	}
+	// Hidden/Protected for an offline remote are preserved by the GLOBAL
+	// store now (ini-9ka.10), which keys on the same host:name pane-key space
+	// and applies no known-pane filter at all -- so an offline peer's state
+	// survives more robustly than it did here. Order remains a layout concern
+	// and is still what this test guards.
 	if len(got.Order) < 3 {
 		t.Fatalf("order = %v, want preserved remote placeholder plus current panes", got.Order)
 	}
@@ -686,19 +686,32 @@ func TestLoadLayoutPreservesUnknownRemotePaneKeys(t *testing.T) {
 	}
 }
 
+// TestLoadLayoutAllHiddenFallback guarded against a layout file that hid every
+// pane. Since ini-9ka.10 a layout file cannot express that at all -- Hidden is
+// session-global and lives in fleet-state.yaml -- so the guard has no input
+// here and the nonsensical state is unrepresentable in this file rather than
+// merely rejected. The legacy-tolerance half is what still matters and is what
+// this now asserts: an OLD file carrying hidden: keys must still load (its
+// hidden data is imported once, then ignored), not be rejected.
 func TestLoadLayoutAllHiddenFallback(t *testing.T) {
 	root := t.TempDir()
-	state := LayoutState{
-		Mode:     LayoutGrid,
-		GridCols: 2,
-		GridRows: 1,
-		Hidden:   map[string]bool{"super": true, "eng1": true},
+	if err := os.MkdirAll(filepath.Join(root, ".initech"), 0700); err != nil {
+		t.Fatal(err)
 	}
-	SaveLayout(root, state)
+	legacy := "grid: 2x1\nmode: grid\nhidden:\n    - super\n    - eng1\n"
+	if err := os.WriteFile(layoutPath(root), []byte(legacy), 0600); err != nil {
+		t.Fatal(err)
+	}
 
-	_, ok := LoadLayout(root, []string{"super", "eng1"})
-	if ok {
-		t.Error("LoadLayout should return false when all panes would be hidden")
+	got, ok := LoadLayout(root, []string{"super", "eng1"})
+	if !ok {
+		t.Fatal("a legacy layout file carrying hidden: keys must still load; its hidden data is dead but the arrangement is not")
+	}
+	if len(got.Hidden) != 0 {
+		t.Errorf("hidden = %v, want empty -- legacy hidden keys are dead data after import", got.Hidden)
+	}
+	if got.GridCols != 2 || got.GridRows != 1 {
+		t.Errorf("grid = %dx%d, want the legacy arrangement 2x1 to survive", got.GridCols, got.GridRows)
 	}
 }
 
@@ -804,8 +817,10 @@ func TestSaveLayoutIfConfiguredWritesFile(t *testing.T) {
 	if !ok {
 		t.Fatal("expected layout file to exist after save")
 	}
-	if !got.Hidden["eng1"] {
-		t.Errorf("eng1 should be hidden in saved layout")
+	// The file exists and carries arrangement; hidden state is no longer part
+	// of it (ini-9ka.10) and is asserted in the fleet-state tests instead.
+	if got.Mode != LayoutGrid {
+		t.Errorf("mode = %v, want the saved arrangement to round-trip", got.Mode)
 	}
 }
 
@@ -951,12 +966,24 @@ func TestAgentsModalHideSavesLayout(t *testing.T) {
 	tui.agents.selected = 2 // eng2
 	tui.agentsToggleVisibility()
 
+	// Hide is GLOBAL now (ini-9ka.10): it persists to fleet-state.yaml, not
+	// to this window's layout file.
+	fs, err := LoadFleetState(root)
+	if err != nil {
+		t.Fatalf("LoadFleetState: %v", err)
+	}
+	if !fs.IsHidden("eng2") {
+		t.Error("eng2 should be hidden in the persisted fleet state after a modal hide")
+	}
+
+	// The layout file is still written (arrangement), and must NOT carry the
+	// hidden flag any more -- that is the format change.
 	got, ok := LoadLayout(root, []string{"super", "eng1", "eng2"})
 	if !ok {
 		t.Fatal("layout should be saved after agents modal hide")
 	}
-	if !got.Hidden["eng2"] {
-		t.Errorf("eng2 should be hidden in saved layout")
+	if len(got.Hidden) != 0 {
+		t.Errorf("layout file carried hidden = %v; hidden belongs to fleet state now", got.Hidden)
 	}
 }
 

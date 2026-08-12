@@ -157,6 +157,11 @@ type TUI struct {
 	// cached for the modal's tier rendering and the m/grab interactions.
 	assignment *WindowAssignment
 
+	// fleet is the session-GLOBAL hidden/protected/live-pinned store
+	// (ini-9ka.10). Loaded once and cached. Only window 1 writes it;
+	// secondary windows mutate via the set_fleet_state control command.
+	fleet *FleetState
+
 	// projectName is shown in the overlay title ("Agents (initech)").
 	// Comes from initech.yaml's project field. Empty falls back to "Agents".
 	projectName string
@@ -639,6 +644,23 @@ func Run(cfg Config) error {
 		mainGoroutineID:   currentGoroutineID(),
 	}
 
+	// Load session-global fleet state and project it onto layoutState
+	// (ini-9ka.10). Must happen before the first applyLayout: Hidden feeds
+	// visibility, Protected feeds auto-suspend policy, and LivePinned feeds
+	// the live engine, so a frame rendered before this would briefly show
+	// hidden agents. On a fresh upgrade this is also where the one-time
+	// import from a legacy layout.yaml happens.
+	t.fleetState()
+
+	// Re-size the grid now that hidden panes are known. LoadLayout used to do
+	// this itself, because Hidden lived in the layout file; it no longer does
+	// (ini-9ka.10), so the auto-recalc has to happen HERE, after the global
+	// projection lands. Without it a session that starts with agents hidden
+	// would size its grid for the full fleet and render empty cells.
+	// GridExplicit is respected inside recalcGrid, so an operator's chosen
+	// CxR is still not overridden.
+	t.recalcGrid(false)
+
 	// Show welcome overlay on first launch (no saved layout).
 	if firstLaunch {
 		t.welcome = welcomeOverlay{active: true, expiresAt: time.Now().Add(10 * time.Second)}
@@ -711,7 +733,7 @@ func Run(cfg Config) error {
 	// no artifact, no output -- so single-window sessions run today's code
 	// path rather than a new one that merely behaves the same.
 	if cfg.Project != nil && cfg.Project.WindowListen != "" {
-		ws, wsCleanup, err := startWindowServer(cfg.Project, cfg.Version, localPanes(t.panes), t.safeGo)
+		ws, wsCleanup, err := startWindowServer(cfg.Project, cfg.Version, localPanes(t.panes), t.safeGo, t.applyFleetStateCmd)
 		if err != nil {
 			// Non-fatal: a secondary window is an enhancement, and failing to
 			// bind it must not take down a session whose agents are already
@@ -817,9 +839,7 @@ func Run(cfg Config) error {
 	// Without this, liveEngine is nil and applyLayout falls through to
 	// computeLayout's stateless fallback which only sees visible panes.
 	if t.layoutState.Mode == LayoutLive {
-		if t.layoutState.LivePinned == nil {
-			t.layoutState.LivePinned = make(map[string]int)
-		}
+		t.fleetState() // Populate the global projection.
 		t.initLiveEngine(0)
 	}
 

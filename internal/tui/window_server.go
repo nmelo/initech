@@ -84,7 +84,7 @@ type windowServer struct {
 //
 // Returns a cleanup func that stops accepting and detaches the sinks. Callers
 // must only invoke this when project.WindowListen is non-empty.
-func startWindowServer(project *config.Project, version string, panes []*Pane, safeGo func(func())) (*windowServer, func(), error) {
+func startWindowServer(project *config.Project, version string, panes []*Pane, safeGo func(func()), onFleetState func(FleetStateCmd) error) (*windowServer, func(), error) {
 	if project == nil || project.WindowListen == "" {
 		return nil, nil, fmt.Errorf("startWindowServer called without a WindowListen address (single-window fleets must not reach here)")
 	}
@@ -102,6 +102,9 @@ func startWindowServer(project *config.Project, version string, panes []*Pane, s
 		// Scoped here, on THIS daemon instance only (ini-z8o). RunDaemon's
 		// instance leaves yamuxCfg nil and keeps the defaults.
 		yamuxCfg: windowYamuxConfig(),
+		// Window 1 owns fleet state; this is how a secondary's
+		// set_fleet_state reaches it (ini-9ka.10).
+		onFleetState: onFleetState,
 	}
 
 	// Attach a ring buffer + fan-out sink to each already-running pane. The

@@ -497,23 +497,32 @@ func TestSuperPinnedByDefault(t *testing.T) {
 	}
 }
 
-// TestPinPersistsInLayout verifies that SaveLayout/LoadLayout round-trip the
-// pinned set.
+// TestPinPersistsInLayout verifies the protected set round-trips. Since
+// ini-9ka.10 "protected" is a session-GLOBAL fact owned by fleet-state.yaml
+// rather than a per-window layout field, so the round-trip under test is the
+// fleet store's -- renamed in spirit, not in coverage: the contract (a
+// protected agent stays protected across a reload) is unchanged and still
+// asserted, only its home moved.
 func TestPinPersistsInLayout(t *testing.T) {
 	dir := t.TempDir()
-	initechDir := dir // SaveLayout expects the project root.
 
-	state := DefaultLayoutState([]string{"super", "eng1", "eng2"})
-	state.Protected["eng1"] = true // pin eng1 too
-
-	if err := SaveLayout(initechDir, state); err != nil {
-		t.Fatalf("SaveLayout: %v", err)
+	fs, err := LoadFleetState(dir)
+	if err != nil {
+		t.Fatalf("LoadFleetState: %v", err)
+	}
+	// DefaultLayoutState protects super by default; mirror that here plus eng1.
+	if err := fs.SetProtected("super", true); err != nil {
+		t.Fatalf("SetProtected super: %v", err)
+	}
+	if err := fs.SetProtected("eng1", true); err != nil {
+		t.Fatalf("SetProtected eng1: %v", err)
 	}
 
-	loaded, ok := LoadLayout(initechDir, []string{"super", "eng1", "eng2"})
-	if !ok {
-		t.Fatal("LoadLayout returned false")
+	reloaded, err := LoadFleetState(dir)
+	if err != nil {
+		t.Fatalf("reload: %v", err)
 	}
+	loaded := LayoutState{Protected: reloaded.ProtectedMap()}
 	if !loaded.Protected["super"] {
 		t.Error("super should be pinned after load")
 	}

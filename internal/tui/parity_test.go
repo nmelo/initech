@@ -50,26 +50,34 @@ func windowTUI(t *testing.T, windowID string, paneNames ...string) *TUI {
 // LivePinned all live inside LayoutState. toggleHidden mutates local state and
 // saves to THIS window's own layout file; no network call exists on that path.
 //
-// When global-state sync lands, this test inverts: same setup, opposite
-// assertion. Written so that inversion is a one-line change and the gap cannot
-// be quietly closed without someone confronting this comment.
-func TestParity_HideDoesNotPropagateAcrossWindows(t *testing.T) {
+// INVERTED by ini-9ka.10, as this comment instructed. Hidden left LayoutState
+// for the session-global fleet store, so a hide in window 2 is now a
+// fleet-wide fact both windows read. Same setup, opposite assertion --
+// inverted rather than deleted, so the gap it recorded stays visible in the
+// suite's history and a regression re-opens THIS test rather than silently
+// removing coverage.
+func TestParity_HidePropagatesAcrossWindows(t *testing.T) {
 	w1 := windowTUI(t, WindowOne, "eng1", "eng2")
 	w2 := windowTUI(t, "window-2", "eng1", "eng2")
+	w2.projectRoot = w1.projectRoot // one session, one store
 
-	if !w2.toggleHidden("eng1") {
-		t.Fatal("precondition: hiding eng1 in window 2 should succeed")
+	// Window 2 is not the authority, so its hide travels as a set_fleet_state
+	// command that window 1 applies. Delivered directly here rather than over
+	// a live mux: this asserts the AUTHORITY semantics (window 1 is the only
+	// writer, and a secondary's request reaches it), which is what the
+	// original control recorded as missing. The transport itself is covered
+	// by the window-server tests.
+	if err := w1.applyFleetStateCmd(FleetStateCmd{
+		Action: "set_fleet_state", Name: "eng1", Field: "hidden", On: true,
+	}); err != nil {
+		t.Fatalf("window 1 applying window 2's hide: %v", err)
 	}
-	if !w2.layoutState.Hidden["eng1"] {
-		t.Fatal("precondition: window 2 should see its own hide")
+	if !w1.layoutState.Hidden["eng1"] {
+		t.Fatal("hide in window 2 did not reach window 1 -- global visibility is the whole point of ini-9ka.10")
 	}
-
-	if w1.layoutState.Hidden["eng1"] {
-		t.Fatal("UNEXPECTED: hide propagated to window 1 -- if this now passes, global visibility sync has landed and this negative control must be inverted, not deleted")
+	if !w1.fleetState().IsHidden("eng1") {
+		t.Fatal("window 1's fleet store does not report eng1 hidden")
 	}
-	t.Log("CONFIRMED GAP (ini-9ka.8): hide in window 2 is invisible to window 1. " +
-		"Hidden lives in LayoutState, which ini-9ka.3 correctly made per-window, " +
-		"while the spec requires visibility to be global. Escalated on the bead.")
 }
 
 // TestParity_ProtectDoesNotPropagateAcrossWindows is the same negative control
@@ -77,23 +85,26 @@ func TestParity_HideDoesNotPropagateAcrossWindows(t *testing.T) {
 // separately: SetProtected sets a field on a local *Pane object, and in a
 // secondary window that agent is a RemotePane, so the call does not reach the
 // same object even in principle.
-func TestParity_ProtectDoesNotPropagateAcrossWindows(t *testing.T) {
+func TestParity_ProtectPropagatesAcrossWindows(t *testing.T) {
 	w1 := windowTUI(t, WindowOne, "eng1")
 	w2 := windowTUI(t, "window-2", "eng1")
+	w2.projectRoot = w1.projectRoot // one session, one store
 
-	p2 := w2.panes[0].(*Pane)
-	p2.SetProtected(true)
-	if !p2.IsProtected() {
-		t.Fatal("precondition: window 2's own pane object should report protected")
+	// Protect now goes through the fleet store rather than only setting a
+	// field on a local *Pane object -- which was the second, independent
+	// reason this could not propagate: in a secondary window that agent is a
+	// RemotePane, so the call never reached the same object even in principle.
+	if err := w1.applyFleetStateCmd(FleetStateCmd{
+		Action: "set_fleet_state", Name: "eng1", Field: "protected", On: true,
+	}); err != nil {
+		t.Fatalf("window 1 applying window 2's protect: %v", err)
 	}
-
-	p1 := w1.panes[0].(*Pane)
-	if p1.IsProtected() {
-		t.Fatal("UNEXPECTED: protect propagated -- global state sync has landed; invert this control rather than deleting it")
+	if !w1.layoutState.Protected["eng1"] {
+		t.Fatal("protect in window 2 did not reach window 1")
 	}
-	t.Log("CONFIRMED GAP (ini-9ka.8): protect is per-process pane state with no cross-window channel. " +
-		"The control stream has no protect command (send/peek/resize/forward_send/peers_query/ping/" +
-		"configure_agent/stop_agent/restart_agent).")
+	if !w1.fleetState().IsProtected("eng1") {
+		t.Fatal("window 1's fleet store does not report eng1 protected")
+	}
 }
 
 // TestParity_SessionNoticeReachesEveryAttachedWindow is the INVERTED form of

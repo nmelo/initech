@@ -180,16 +180,31 @@ func TestLoadLayout_PriorReleaseFileLoadsUnchangedAfterUpgrade(t *testing.T) {
 		if got.Mode != LayoutGrid {
 			t.Errorf("%s: mode = %v, want LayoutGrid", label, got.Mode)
 		}
-		if !got.Hidden["eng5"] {
-			t.Errorf("%s: hidden = %v, want eng5 hidden", label, got.Hidden)
-		}
-		// The deprecated `pinned:` key migrates into Protected.
-		if !got.Protected["super"] {
-			t.Errorf("%s: protected = %v, want super (migrated from the old `pinned:` key)", label, got.Protected)
+		// hidden/protected are NO LONGER layout fields (ini-9ka.10): they are
+		// session-global and migrate into fleet-state.yaml. Asserted below,
+		// end-to-end, which is a stronger upgrade claim than this was --
+		// it proves the state moved, not merely that it was re-read.
+		if len(got.Hidden) != 0 || len(got.Protected) != 0 {
+			t.Errorf("%s: layout carried hidden=%v protected=%v; both belong to fleet state now",
+				label, got.Hidden, got.Protected)
 		}
 	}
 
-	// Upgrade must not rewrite or relocate the file.
+	// The one-time import lifts the legacy global fields into fleet state --
+	// including the doubly-deprecated `pinned:` key, so an upgrade from two
+	// formats back does not lose protection.
+	fs, err := LoadFleetState(root)
+	if err != nil {
+		t.Fatalf("LoadFleetState after upgrade: %v", err)
+	}
+	if !fs.IsHidden("eng5") {
+		t.Error("upgrade lost the hidden flag: eng5 should be hidden in fleet state")
+	}
+	if !fs.IsProtected("super") {
+		t.Error("upgrade lost protection migrated from the legacy `pinned:` key")
+	}
+
+	// Upgrade must not rewrite or relocate the LAYOUT file.
 	entries := layoutFilesIn(t, root)
 	if len(entries) != 1 || entries[0] != "layout.yaml" {
 		t.Errorf("layout files after an upgrade read = %v, want exactly [layout.yaml] -- nothing may be migrated or renamed", entries)

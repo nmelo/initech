@@ -364,9 +364,12 @@ func (t *TUI) removePane(name string) error {
 		// agent (ini-6gjg).
 		t.topReconcile()
 
-		// Clean up layout state references.
-		if t.layoutState.Hidden != nil {
-			delete(t.layoutState.Hidden, pk)
+		// Clean up global state for the departing pane. Hidden is fleet-wide
+		// (ini-9ka.10), so a removed agent must be unhidden for every window,
+		// not just this one's projection -- otherwise its key lingers in the
+		// store and a re-added agent of the same name comes back hidden.
+		if err := t.setHidden(pk, false); err != nil {
+			LogWarn("fleet", "could not clear hidden state for removed pane", "pane", pk, "err", err)
 		}
 		// If this was the focused pane, clear focus so applyLayout snaps to next visible.
 		if t.layoutState.Focused == pk {

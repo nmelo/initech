@@ -49,7 +49,7 @@ type LayoutPreset struct {
 // initech.yaml (a remapped slot wins over its default).
 func defaultLayoutPresets() [presetSlots]LayoutPreset {
 	return [presetSlots]LayoutPreset{
-		{Kind: presetFocus, Spec: "focus"},               // Option+1: 1 pane
+		{Kind: presetFocus, Spec: "focus"},                // Option+1: 1 pane
 		{Kind: presetGrid, Cols: 2, Rows: 1, Spec: "2x1"}, // Option+2: 2
 		{Kind: presetGrid, Cols: 3, Rows: 1, Spec: "3x1"}, // Option+3: 3
 		{Kind: presetGrid, Cols: 4, Rows: 1, Spec: "4x1"}, // Option+4: 4
@@ -155,9 +155,7 @@ func (t *TUI) applyLayoutPreset(slot int) {
 			t.layoutState.LiveAuto = true
 			t.layoutState.GridExplicit = false
 			t.layoutState.Zoomed = false
-			if t.layoutState.LivePinned == nil {
-				t.layoutState.LivePinned = make(map[string]int)
-			}
+			t.fleetState() // Populate the global projection.
 			t.initLiveEngine(0)
 		}
 	}
@@ -196,9 +194,7 @@ func (t *TUI) applyLayoutPresetLive(slot int) {
 		t.layoutState.LiveAuto = true
 		t.layoutState.GridExplicit = false
 	}
-	if t.layoutState.LivePinned == nil {
-		t.layoutState.LivePinned = make(map[string]int)
-	}
+	t.fleetState() // Populate the global projection.
 	t.initLiveEngine(0)
 	t.applyLayout()
 	t.saveLayoutIfConfigured()

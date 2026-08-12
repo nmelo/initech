@@ -180,17 +180,13 @@ func (t *TUI) agentsLivePin(slot int) {
 		t.agents.error = fmt.Sprintf("slot %d does not exist (grid has %d slots)", slot, totalSlots)
 		return
 	}
-	if t.layoutState.LivePinned == nil {
-		t.layoutState.LivePinned = make(map[string]int)
-	}
 	name := paneKey(t.panes[t.agents.selected])
-	// Remove any existing pin on this slot.
-	for k, v := range t.layoutState.LivePinned {
-		if v == slot {
-			delete(t.layoutState.LivePinned, k)
-		}
+	// LivePinned is GLOBAL (ini-9ka.10). SetLiveSlot also evicts any other
+	// agent already holding this slot, so the "one agent per slot" rule lives
+	// in the store rather than being re-implemented at each call site.
+	if err := t.setLiveSlot(name, slot, true); err != nil {
+		return
 	}
-	t.layoutState.LivePinned[name] = slot
 	if t.liveEngine != nil {
 		t.liveEngine.Pinned = t.layoutState.LivePinned
 	}
@@ -298,16 +294,16 @@ func (t *TUI) agentsToggleVisibility() {
 // the toggle was blocked (hiding the last visible pane). Used by both the
 // agents modal and overlay dot click.
 func (t *TUI) toggleHidden(name string) bool {
-	if t.layoutState.Hidden[name] {
-		delete(t.layoutState.Hidden, name)
-	} else {
-		if t.visibleCountFromState() <= 1 {
-			return false
-		}
-		if t.layoutState.Hidden == nil {
-			t.layoutState.Hidden = make(map[string]bool)
-		}
-		t.layoutState.Hidden[name] = true
+	hide := !t.layoutState.Hidden[name]
+	if hide && t.visibleCountFromState() <= 1 {
+		return false
+	}
+	// Hidden is GLOBAL (ini-9ka.10): route through the fleet store so the
+	// change reaches every window, instead of mutating this window's own
+	// projection and saving it to a per-window layout file -- which is
+	// exactly the gap ini-9ka.8's negative controls recorded.
+	if err := t.setHidden(name, hide); err != nil {
+		return false
 	}
 	t.recalcGrid(false)
 	t.applyLayout()
@@ -328,13 +324,10 @@ func (t *TUI) agentsToggleLivePin() {
 	}
 	pk := paneKey(t.panes[t.agents.selected])
 
-	if t.layoutState.LivePinned == nil {
-		t.layoutState.LivePinned = make(map[string]int)
-	}
-
 	if _, pinned := t.layoutState.LivePinned[pk]; pinned {
-		// Unpin: remove from LivePinned.
-		delete(t.layoutState.LivePinned, pk)
+		if err := t.setLiveSlot(pk, 0, false); err != nil {
+			return
+		}
 	} else {
 		// Pin: find current slot in LiveSlots, or use first available.
 		slot := -1
@@ -361,13 +354,11 @@ func (t *TUI) agentsToggleLivePin() {
 				return
 			}
 		}
-		// Clear any existing occupant of this slot from LivePinned.
-		for k, v := range t.layoutState.LivePinned {
-			if v == slot {
-				delete(t.layoutState.LivePinned, k)
-			}
+		// Slot eviction is the store's job (SetLiveSlot), not this
+		// function's -- one place implements "a slot holds one agent".
+		if err := t.setLiveSlot(pk, slot, true); err != nil {
+			return
 		}
-		t.layoutState.LivePinned[pk] = slot
 	}
 	if t.liveEngine != nil {
 		t.liveEngine.Pinned = t.layoutState.LivePinned
@@ -383,26 +374,24 @@ func (t *TUI) agentsToggleProtected() {
 	}
 	name := paneKey(t.panes[t.agents.selected])
 
-	if t.layoutState.Protected == nil {
-		t.layoutState.Protected = make(map[string]bool)
+	protect := !t.layoutState.Protected[name]
+	if err := t.setProtected(name, protect); err != nil {
+		return
 	}
-	if t.layoutState.Protected[name] {
-		delete(t.layoutState.Protected, name)
-		if lp, ok := t.panes[t.agents.selected].(*Pane); ok {
-			lp.SetProtected(false)
-		}
-	} else {
-		t.layoutState.Protected[name] = true
-		if lp, ok := t.panes[t.agents.selected].(*Pane); ok {
-			lp.SetProtected(true)
-		}
+	// Mirror onto the local pane object for the auto-suspend policy, which
+	// reads Pane.IsProtected. The store is the truth; this keeps the running
+	// object in step with it.
+	if lp, ok := t.panes[t.agents.selected].(*Pane); ok {
+		lp.SetProtected(protect)
 	}
 	t.saveLayoutIfConfigured()
 }
 
 // agentsRevealAll unhides all agents.
 func (t *TUI) agentsRevealAll() {
-	t.layoutState.Hidden = make(map[string]bool)
+	if err := t.clearHidden(); err != nil {
+		return
+	}
 	t.recalcGrid(false)
 	t.applyLayout()
 	t.saveLayoutIfConfigured()
