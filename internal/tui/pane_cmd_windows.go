@@ -4,7 +4,6 @@ package tui
 
 import (
 	"fmt"
-	"os"
 	"os/exec"
 	"strings"
 )
@@ -20,7 +19,21 @@ func buildPaneCmd(cfg PaneConfig, rows, cols int) *exec.Cmd {
 	} else {
 		cmd = exec.Command(cfg.Command[0], cfg.Command[1:]...)
 	}
-	cmd.Env = append(os.Environ(),
+	// agentBaseEnv, not os.Environ(): the terminal identity an agent sees is
+	// initech's own emulator on every platform, so it is pinned on every
+	// platform (ini-g0h / ini-m2e). This path used os.Environ() and therefore
+	// had no pin at all -- the host's TERM_PROGRAM passed straight through and
+	// tier-1 attention detection was dead on Windows for the original g0h
+	// reason. Nothing about the emulator is platform-specific, so nothing about
+	// the identity should be either.
+	//
+	// UNMEASURED HALF, stated rather than assumed: the environment contract is
+	// now identical on all three platforms and tested on all three, but the live
+	// OSC canary has only ever run on macOS. That Claude-on-Windows emits OSC 777
+	// given this identity is inferred from the resolver being platform-independent
+	// JS in the same binary, not observed. It needs a Windows rig to become a
+	// measurement (ini-m2e).
+	cmd.Env = append(agentBaseEnv(),
 		fmt.Sprintf("LINES=%d", rows),
 		fmt.Sprintf("COLUMNS=%d", cols),
 	)
