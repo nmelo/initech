@@ -24,7 +24,12 @@
 // converge on that one signal, which is why they share one consequence.
 package tui
 
-import "sort"
+import (
+	"fmt"
+	"sort"
+	"strings"
+	"time"
+)
 
 // rendersInWindow reports whether windowID should render the given agent,
 // given the current assignment and the set of currently-attached secondary
@@ -142,4 +147,85 @@ func (t *windowLivenessTracker) observe(connected map[string]bool) (gone, return
 	sort.Strings(gone)
 	sort.Strings(returned)
 	return gone, returned
+}
+
+// visiblePanesForWindow filters the TUI's panes down to those this window
+// should render, consulting rendersInWindow with the current assignment and
+// the live connected-window set (ini-9ka.6 wires what ini-9ka.7 decided).
+//
+// Returns the pane list unchanged when no assignment store is loaded, which
+// is every ordinary single-window session: window 1 renders everything, via
+// the same slice it always did. That keeps multi-monitor from being a second
+// code path for users who never enabled it.
+func (t *TUI) visiblePanesForWindow() []PaneView {
+	if t.assignment == nil {
+		return t.panes
+	}
+	connected := t.connectedWindowSet()
+	groupOf := t.layoutState.GroupOf
+
+	out := make([]PaneView, 0, len(t.panes))
+	for _, p := range t.panes {
+		if rendersInWindow(paneKey(p), t.windowID, t.assignment, groupOf, connected) {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// connectedWindowSet reports which secondary windows are attached right now.
+//
+// Window 1 reads it from its own listener. A SECONDARY window has no listener
+// and cannot observe its siblings -- but it does not need to: the predicate
+// only consults liveness for windows other than the one being asked about,
+// and a secondary window renders exactly what is assigned to it. So it
+// reports itself as present, which is trivially true (it is running), and
+// that is sufficient for the predicate to return the right answer for its own
+// agents.
+func (t *TUI) connectedWindowSet() map[string]bool {
+	if t.windowID != WindowOne {
+		return map[string]bool{t.windowID: true}
+	}
+	return t.windowSrv.connectedWindows()
+}
+
+// noticeWindowTransitions raises the session-level fold-back and restore
+// notices when a window comes or goes. Called from the render loop, so the
+// notice lands in the same frame the panes move.
+//
+// Per the spec's standing assumption 3, these are SESSION-level notices: they
+// describe the session's shape changing, not one agent's activity, so they are
+// emitted with no pane attached and render in every window rather than only
+// where the agent lives.
+func (t *TUI) noticeWindowTransitions() {
+	if t.assignment == nil || t.liveness == nil {
+		return
+	}
+	gone, returned := t.liveness.observe(t.connectedWindowSet())
+	for _, w := range gone {
+		EmitEvent(t.agentEvents, AgentEvent{
+			Type:   EventWindowFoldback,
+			Detail: fmt.Sprintf("window %s disconnected; its agents folded back into window 1", w),
+			Time:   time.Now(),
+		})
+	}
+	for _, w := range returned {
+		EmitEvent(t.agentEvents, AgentEvent{
+			Type:   EventWindowRestored,
+			Detail: fmt.Sprintf("window %s reattached; its agents moved back", w),
+			Time:   time.Now(),
+		})
+	}
+}
+
+// isSecondaryWindowIdentity reports whether a peer_name is one the --window
+// flag derives (window-2, window-3, ...). It is how a TUI knows it is a
+// secondary window rather than the session owner.
+//
+// Matching the derived shape rather than "peer_name is non-empty" matters:
+// peer_name is also set for ordinary cross-machine peers, and treating one of
+// those as a secondary window would make it render only its assigned groups
+// and silently drop the rest.
+func isSecondaryWindowIdentity(peerName string) bool {
+	return strings.HasPrefix(peerName, "window-")
 }

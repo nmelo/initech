@@ -169,6 +169,16 @@ type TUI struct {
 	// INITECH_SOCKET into hot-added panes.
 	sockPath string
 
+	// Multi-monitor state (ini-9ka.6). windowID is this window's identity in
+	// the assignment model -- WindowOne for the session owner, "window-N" for
+	// a secondary window. assignment and windowSrv are nil for an ordinary
+	// single-window session, which is what makes the render filter below a
+	// no-op there rather than a new code path.
+	windowID   string
+	assignment *WindowAssignment
+	windowSrv  *windowServer
+	liveness   *windowLivenessTracker
+
 	// paneConfigBuilder builds a PaneConfig for a new role at runtime.
 	// Set from Config.PaneConfigBuilder. Nil disables the add command.
 	paneConfigBuilder func(name string) (PaneConfig, error)
@@ -306,7 +316,12 @@ func (t *TUI) applyLayout() {
 		t.onLiveSwap(prev, t.liveEngine.Slots)
 	}
 
-	t.plan = computeLayout(t.layoutState, t.panes, w, paneH)
+	// Raise fold-back / restore notices before computing the plan, so the
+	// notice and the pane movement it describes land in the same frame
+	// (ini-9ka.6 wiring ini-9ka.7's transitions).
+	t.noticeWindowTransitions()
+
+	t.plan = computeLayout(t.layoutState, t.visiblePanesForWindow(), w, paneH)
 	LogInfo("applyLayout", "layout applied", "panes", len(t.plan.Panes), "w", w, "h", paneH)
 
 	// Cancel in-progress mouse selection only if the tracked pane's region
@@ -688,7 +703,7 @@ func Run(cfg Config) error {
 	// no artifact, no output -- so single-window sessions run today's code
 	// path rather than a new one that merely behaves the same.
 	if cfg.Project != nil && cfg.Project.WindowListen != "" {
-		_, wsCleanup, err := startWindowServer(cfg.Project, cfg.Version, localPanes(t.panes), t.safeGo)
+		ws, wsCleanup, err := startWindowServer(cfg.Project, cfg.Version, localPanes(t.panes), t.safeGo)
 		if err != nil {
 			// Non-fatal: a secondary window is an enhancement, and failing to
 			// bind it must not take down a session whose agents are already
@@ -697,6 +712,29 @@ func Run(cfg Config) error {
 				"addr", cfg.Project.WindowListen, "err", err)
 		} else {
 			defer wsCleanup()
+			t.windowSrv = ws
+		}
+	}
+
+	// Multi-monitor render state (ini-9ka.6). Loaded only when this session
+	// participates in multi-window -- window 1 because it serves, a secondary
+	// window because it was launched with --window N and so has a peer_name.
+	// Left nil otherwise, which is what makes visiblePanesForWindow a no-op
+	// for ordinary single-window sessions.
+	if cfg.Project != nil && (cfg.Project.WindowListen != "" || isSecondaryWindowIdentity(cfg.Project.PeerName)) {
+		if a, err := LoadAssignment(cfg.ProjectRoot); err != nil {
+			// A corrupt store must not take down the session: fall back to
+			// single-window rendering (window 1 shows everything) rather than
+			// refusing to start with agents already running.
+			LogError("assignment", "load failed; rendering all panes in this window", "err", err)
+		} else {
+			t.assignment = a
+			t.windowID = WindowOne
+			if isSecondaryWindowIdentity(cfg.Project.PeerName) {
+				t.windowID = cfg.Project.PeerName
+			}
+			t.liveness = newWindowLivenessTracker()
+			LogInfo("window", "multi-monitor rendering active", "window_id", t.windowID)
 		}
 	}
 

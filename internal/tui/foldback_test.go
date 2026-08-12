@@ -14,6 +14,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -363,5 +364,133 @@ func TestFoldedBackAgents_ListsOnlyOrphansInCallerOrder(t *testing.T) {
 	// Nothing folded back while the window is attached.
 	if got := foldedBackAgents(keys, a, groupOf, map[string]bool{"window2": true}); len(got) != 0 {
 		t.Errorf("folded back = %v while window2 attached, want none", got)
+	}
+}
+
+// --- Production wiring (ini-9ka.6) -----------------------------------------
+//
+// qa1's .7 verdict flagged that rendersInWindow and the notice events had no
+// non-test consumers. These assert the REAL render path consults the predicate
+// and the notices actually raise, rather than the predicate being correct in
+// isolation while nothing calls it.
+
+// TestApplyLayout_ExcludesPanesOwnedByAConnectedWindow proves the production
+// layout path -- not a test helper -- filters by assignment. If applyLayout
+// stopped calling the predicate, this is what would catch it.
+func TestApplyLayout_ExcludesPanesOwnedByAConnectedWindow(t *testing.T) {
+	tui, _ := newTestTUIWithScreen("super", "eng1")
+	root := t.TempDir()
+	a, err := LoadAssignment(root)
+	if err != nil {
+		t.Fatalf("LoadAssignment: %v", err)
+	}
+	if err := a.MoveGroup("eng", "window-2"); err != nil {
+		t.Fatalf("MoveGroup: %v", err)
+	}
+	tui.assignment = a
+	tui.windowID = WindowOne
+	tui.liveness = newWindowLivenessTracker()
+	tui.layoutState.GroupOf = map[string]string{"super": "core", "eng1": "eng"}
+
+	// window-2 attached: window 1 must not render eng1.
+	tui.windowSrv = fakeWindowServerWith("window-2")
+	tui.applyLayout()
+	if planHasPane(tui, "eng1") {
+		t.Error("applyLayout included a pane owned by a CONNECTED window-2; the real render path is not consulting the assignment predicate")
+	}
+	if !planHasPane(tui, "super") {
+		t.Error("applyLayout dropped window 1's own pane")
+	}
+
+	// window-2 gone: eng1 folds back into the plan.
+	tui.windowSrv = fakeWindowServerWith()
+	tui.applyLayout()
+	if !planHasPane(tui, "eng1") {
+		t.Error("applyLayout did not fold a disconnected window's pane back into window 1; the agent would render nowhere")
+	}
+}
+
+// TestApplyLayout_SingleWindowSessionRendersEveryPane is the zero-change
+// guard for the wiring: with no assignment loaded (every ordinary session),
+// the filter must be a pass-through, not a new code path with the same
+// intended result.
+func TestApplyLayout_SingleWindowSessionRendersEveryPane(t *testing.T) {
+	tui, _ := newTestTUIWithScreen("super", "eng1")
+	if tui.assignment != nil {
+		t.Fatal("precondition: a plain test TUI must have no assignment store")
+	}
+	tui.applyLayout()
+	for _, name := range []string{"super", "eng1"} {
+		if !planHasPane(tui, name) {
+			t.Errorf("single-window session dropped pane %q", name)
+		}
+	}
+}
+
+// TestNoticeWindowTransitions_RaisesFoldbackAndRestoreEvents proves the
+// notices actually fire through the TUI's own event channel -- the AC's "with
+// a notice", which qa1 flagged as unconsumed after .7.
+func TestNoticeWindowTransitions_RaisesFoldbackAndRestoreEvents(t *testing.T) {
+	tui, _ := newTestTUIWithScreen("eng1")
+	root := t.TempDir()
+	a, _ := LoadAssignment(root)
+	tui.assignment = a
+	tui.windowID = WindowOne
+	tui.liveness = newWindowLivenessTracker()
+	tui.agentEvents = make(chan AgentEvent, 8)
+
+	// Baseline with window-2 present, then it vanishes.
+	tui.windowSrv = fakeWindowServerWith("window-2")
+	tui.noticeWindowTransitions()
+	tui.windowSrv = fakeWindowServerWith()
+	tui.noticeWindowTransitions()
+
+	ev := drainOneEvent(t, tui.agentEvents)
+	if ev.Type != EventWindowFoldback {
+		t.Errorf("event type = %v, want EventWindowFoldback", ev.Type)
+	}
+	if !strings.Contains(ev.Detail, "window-2") {
+		t.Errorf("fold-back notice does not name the window: %q", ev.Detail)
+	}
+	if ev.Pane != "" {
+		t.Errorf("fold-back notice is attached to pane %q; it is session-level and must render in every window", ev.Pane)
+	}
+
+	// And back again.
+	tui.windowSrv = fakeWindowServerWith("window-2")
+	tui.noticeWindowTransitions()
+	ev = drainOneEvent(t, tui.agentEvents)
+	if ev.Type != EventWindowRestored {
+		t.Errorf("event type = %v, want EventWindowRestored", ev.Type)
+	}
+}
+
+// fakeWindowServerWith builds a windowServer whose connected set is exactly
+// the given peers, without opening a socket.
+func fakeWindowServerWith(peers ...string) *windowServer {
+	d := &Daemon{clients: make(map[string]net.Conn)}
+	for _, p := range peers {
+		d.clients[p] = nil
+	}
+	return &windowServer{daemon: d}
+}
+
+func planHasPane(t *TUI, name string) bool {
+	for _, pr := range t.plan.Panes {
+		if pr.Pane.Name() == name {
+			return true
+		}
+	}
+	return false
+}
+
+func drainOneEvent(t *testing.T, ch chan AgentEvent) AgentEvent {
+	t.Helper()
+	select {
+	case ev := <-ch:
+		return ev
+	case <-time.After(2 * time.Second):
+		t.Fatal("no event raised")
+		return AgentEvent{}
 	}
 }

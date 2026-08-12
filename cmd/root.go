@@ -26,6 +26,7 @@ var (
 	noColor     bool
 	autoSuspend bool
 	pprofAddr   string
+	windowNum   int
 )
 
 var (
@@ -97,6 +98,7 @@ func init() {
 	rootCmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Enable DEBUG-level logging to .initech/initech.log")
 	rootCmd.Flags().BoolVar(&autoSuspend, "auto-suspend", false, "Enable automatic agent suspension under memory pressure")
 	rootCmd.Flags().StringVar(&pprofAddr, "pprof", "", "Start pprof HTTP server on the given localhost address (e.g. localhost:6060)")
+	rootCmd.Flags().IntVar(&windowNum, "window", 0, "Attach as secondary window N of a running session, showing only the groups assigned to it. Closing it folds its agents back into window 1; rerunning restores them to this window.")
 	rootCmd.PersistentFlags().BoolVar(&noColor, "no-color", false, "Disable colored output")
 
 	// Register color functions as template functions so the usage template can
@@ -178,6 +180,23 @@ func runTUI(cmd *cobra.Command, args []string) error {
 	proj, err := config.Load(cfgPath)
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
+	}
+
+	// Secondary-window (viewer) mode. Deliberately applied AFTER config load
+	// and validation, so --window is never a validation bypass: a malformed
+	// config fails above with exactly the message plain `initech` gives, and
+	// viewer mode is not even reachable until it has passed (ini-9ka.6).
+	if windowNum != 0 {
+		listenAddr := proj.WindowListen
+		proj, err = viewerProject(proj, windowNum)
+		if err != nil {
+			return err
+		}
+		// Fail fast when there is nothing to attach to, rather than starting
+		// an empty window that retries in the background forever.
+		if err := checkWindowOneReachable(listenAddr, windowNum); err != nil {
+			return err
+		}
 	}
 
 	agents := make([]tui.PaneConfig, 0, len(proj.Roles))
