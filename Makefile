@@ -8,7 +8,7 @@ EXPECTED_ASSETS := checksums.txt initech_darwin_amd64.tar.gz initech_darwin_arm6
 LDFLAGS := -s -w -X github.com/nmelo/initech/cmd.Version=$(VERSION)
 REQUIRE_RELEASE_VERSION = test -n "$(VERSION)" && case "$(VERSION)" in v*) ;; *) echo "VERSION must start with v, got $(VERSION)" >&2; exit 1 ;; esac
 
-.PHONY: build test test-full integration vet lint lint-test-names lint-test-names-self-test clean release check install-hooks release-tag release-wait release-assets release-verify release-ship
+.PHONY: build test test-full integration vet lint test-census lint-test-names lint-test-names-self-test clean release check install-hooks release-tag release-wait release-assets release-verify release-ship
 
 build:
 	go build -ldflags "$(LDFLAGS)" -o initech .
@@ -58,7 +58,15 @@ lint-test-names-self-test:
 clean:
 	rm -f initech
 
-check: vet vet-windows lint-test-names test
+# ini-2x8.8: fail when a test file compiles on one platform and not another
+# without a declared exemption. Sits next to vet-windows on purpose -- both
+# answer a cross-platform question STATICALLY, so both belong at commit time
+# rather than waiting for the CI matrix. vet-windows catches "this file no
+# longer compiles there"; test-census catches "this file is no longer THERE".
+test-census:
+	@go run ./scripts/testcensus
+
+check: vet vet-windows test-census lint-test-names test
 
 release:
 	@set -eu; \

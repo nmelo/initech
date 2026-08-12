@@ -37,6 +37,15 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: bash scripts/lint-test-names.sh
 
+      # ini-2x8.8: fail when a test file compiles on one platform and not
+      # another without a declared exemption. Static (`go list` applies build
+      # constraints without running anything), so one leg answers for all three
+      # -- same reason lint-test-names is ubuntu-only. Also runs in `make check`
+      # at commit time; this is the backstop for a push that skipped it.
+      - name: Test census (cross-platform suite parity)
+        if: matrix.os == 'ubuntu-latest'
+        run: go run ./scripts/testcensus
+
       # ini-47w: witness WHICH tests this platform actually compiled, by name.
       # Build constraints silently remove whole suites from a leg -- a portable
       # helper parked in a '//go:build !windows' file drags every consumer out
