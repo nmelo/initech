@@ -1,0 +1,26 @@
+# BASELINE PROVENANCE (ini-9ka.2)
+# Captured from the SHIPPED v2.5.2 binary:
+#   /opt/homebrew/Cellar/initech/2.5.2/bin/initech  ("initech version" -> 2.5.2)
+# NOT from a local build -- a baseline derived from the branch under test would
+# prove self-agreement, not zero-change.
+# Captured 3x; byte-identical across all three runs (stability verified before
+# committing, so a later mismatch means a real change, not fixture flake).
+#
+# initech single-window .initech/ census fixture
+# Captured by censusprobe. Entries are NAME<TAB>TYPE, sorted.
+# TYPE: file | dir | socket | symlink. Sizes/mtimes/contents deliberately excluded
+# (they vary per run); this fixture asserts WHICH artifacts exist, per the
+# ini-9ka.2 zero-change AC.
+
+[census: while running]
+initech.log	file
+initech.pid	file
+initech.sock	socket
+stderr.log	file
+
+[census: after shutdown]
+initech.log	file
+stderr.log	file
+
+[startup output: pre-alt-screen, normalized]
+(no plain-text output before alt-screen entry)
