@@ -125,6 +125,9 @@ func (t *TUI) handleAgentsKey(ev *tcell.EventKey) bool {
 		case 'P':
 			t.agentsToggleProtected()
 			return false
+		case 'm':
+			t.agentsMoveGroupToNextWindow()
+			return false
 		case 'A':
 			t.agentsRevealAll()
 			return false
@@ -156,9 +159,8 @@ func (t *TUI) handleAgentsKey(ev *tcell.EventKey) bool {
 func (t *TUI) agentsCurrentCells() []gridCell {
 	sw, sh := t.screen.Size()
 	t.ensureGroups(false)
-	members := t.agentsGroupMembers()
-	box := agentsGridBoxDims(members, t.layoutState.Groups, sw, sh, t.agents.searching || t.agents.creatingGroup)
-	return agentsGridLayoutCells(members, t.layoutState.Groups, box.innerX, box.startY+box.searchRows, box.perRow)
+	_, geo := t.agentsFrameGeometry(sw, sh, t.agents.searching || t.agents.creatingGroup)
+	return geo.cells
 }
 
 // agentsLivePin pins the selected agent to the given slot index in live mode.

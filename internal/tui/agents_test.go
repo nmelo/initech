@@ -214,7 +214,7 @@ func TestAgentsModal_RenderHiddenAgentNameItalic(t *testing.T) {
 
 	sw, sh := s.Size()
 	members := tui.agentsGroupMembers()
-	box := agentsGridBoxDims(members, tui.layoutState.Groups, sw, sh, false)
+	box := agentsGridBoxDims(members, tui.layoutState.Groups, untieredTiers(tui.layoutState.Groups), false, sw, sh, false)
 
 	cells := agentsGridLayoutCells(members, tui.layoutState.Groups, box.innerX, box.startY, box.perRow)
 	var eng1Cell, eng2Cell *gridCell
@@ -302,7 +302,7 @@ func TestAgentsModal_RenderIsFloating(t *testing.T) {
 
 	sw, sh := s.Size()
 	members := tui.agentsGroupMembers()
-	box := agentsGridBoxDims(members, tui.layoutState.Groups, sw, sh, false)
+	box := agentsGridBoxDims(members, tui.layoutState.Groups, untieredTiers(tui.layoutState.Groups), false, sw, sh, false)
 	startX, startY := box.startX, box.startY
 
 	c, _, _ := s.Get(startX, startY)

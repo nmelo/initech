@@ -9,6 +9,7 @@ package tui
 
 import (
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -23,6 +24,7 @@ const (
 	gridMaxPerRow = 6  // Groups larger than this wrap into a multi-line band.
 	gridBandLead  = 1  // Blank line before each group label.
 	gridLabelGap  = 1  // Blank line between the label and its cell row(s).
+	gridTierLead  = 1  // Blank line before each monitor-tier header (ini-9ka.5).
 )
 
 // agentsHelpText is the default (non-searching, non-group-creating) footer.
@@ -137,37 +139,207 @@ type gridCell struct {
 	line    int
 }
 
-// agentsGridLayoutCells computes cell positions for the current grid
-// geometry, mirroring the PoC's layoutCells exactly. innerX/firstY are the
-// modal's interior origin; perRow is from agentsGridPerRow. Groups iterates
-// t.layoutState.Groups (not the members map, whose Go map order is
-// unspecified) so band order is deterministic.
-func agentsGridLayoutCells(members map[string][]int, groups []string, innerX, firstY, perRow int) []gridCell {
-	var cells []gridCell
+// bandLabel is a rendered group rule: its label and the row it occupies.
+type bandLabel struct {
+	label string
+	y     int
+}
+
+// tierLabel is a rendered monitor-tier header: the window it names and the row
+// it occupies. Empty unless tiers are active (more than one window configured).
+type tierLabel struct {
+	windowID string
+	index    int // 1-based monitor number as displayed.
+	y        int
+}
+
+// lineInfo describes one navigable cell-line: which band owns it and whether
+// that band is empty. Indexed by the global line number vertical navigation
+// uses, so a line lookup is an index rather than a second walk.
+type lineInfo struct {
+	label   string
+	isEmpty bool
+}
+
+// agentsGridGeometry is the SINGLE source of truth for modal geometry: every
+// cell position, every band and tier label position, the per-line band map,
+// and the total content height all come from one walk (ini-9ka.5).
+//
+// Before this, four sites independently re-derived the same per-band row
+// accounting (rows = ceil(n/perRow), min 1): the cell layout, the line->band
+// lookup used by vertical navigation, the box-height computation, and the
+// render loop that drew band labels. Four places had to agree, and the
+// reference PoC hit that exact multi-site-accounting bug twice before
+// consolidating. Adding the tier level would have made it four sites across
+// three hierarchy levels. Now there is nowhere else a row count or a y is
+// computed, so a divergence between what is drawn and what is computed is not
+// merely absent -- it cannot be written.
+type agentsGridGeometry struct {
+	cells        []gridCell
+	bands        []bandLabel
+	tiers        []tierLabel
+	lines        []lineInfo
+	contentLines int
+}
+
+// tierGroup pairs a window identity with the groups displayed under it, in
+// render order. Built by agentsTierGroups; a single entry with an empty
+// windowID and tiersActive=false is the single-window shape.
+type tierGroup struct {
+	windowID string
+	groups   []string
+}
+
+// agentsGridWalk computes all modal geometry in one pass. innerX/firstY are
+// the modal's interior origin and perRow is from agentsGridPerRow; callers
+// that only need the height (box sizing) pass a zero origin and read
+// contentLines, so height and positions can never come from different
+// accounting.
+//
+// tiers carries the window grouping. When tiersActive is false it holds
+// exactly one entry whose groups are rendered with no tier header, which is
+// today's single-window layout byte-for-byte: no tier lead, no header row,
+// identical band rhythm.
+func agentsGridWalk(members map[string][]int, tiers []tierGroup, tiersActive bool, innerX, firstY, perRow int) agentsGridGeometry {
+	var g agentsGridGeometry
 	y := firstY + 1
 	line := 0
-	for _, label := range groups {
-		y += gridBandLead
-		agentIdxs := members[label]
-		for ai, paneIdx := range agentIdxs {
-			col := ai % perRow
-			row := ai / perRow
-			cells = append(cells, gridCell{
-				paneIdx: paneIdx,
-				group:   label,
-				x:       innerX + col*gridCellW,
-				y:       y + 1 + gridLabelGap + row,
-				line:    line + row,
-			})
+	startY := y
+
+	for ti, tg := range tiers {
+		if tiersActive {
+			y += gridTierLead
+			g.tiers = append(g.tiers, tierLabel{windowID: tg.windowID, index: ti + 1, y: y})
+			y++
 		}
-		rows := (len(agentIdxs) + perRow - 1) / perRow
-		if rows < 1 {
-			rows = 1
+		for _, label := range tg.groups {
+			y += gridBandLead
+			g.bands = append(g.bands, bandLabel{label: label, y: y})
+
+			agentIdxs := members[label]
+			for ai, paneIdx := range agentIdxs {
+				col := ai % perRow
+				row := ai / perRow
+				g.cells = append(g.cells, gridCell{
+					paneIdx: paneIdx,
+					group:   label,
+					x:       innerX + col*gridCellW,
+					y:       y + 1 + gridLabelGap + row,
+					line:    line + row,
+				})
+			}
+
+			rows := (len(agentIdxs) + perRow - 1) / perRow
+			if rows < 1 {
+				rows = 1
+			}
+			for r := 0; r < rows; r++ {
+				g.lines = append(g.lines, lineInfo{label: label, isEmpty: len(agentIdxs) == 0})
+			}
+			y += 1 + gridLabelGap + rows
+			line += rows
 		}
-		y += 1 + gridLabelGap + rows
-		line += rows
 	}
-	return cells
+
+	g.contentLines = y - startY
+	return g
+}
+
+// untieredTiers is the single-window tier shape: every group under one
+// implicit window, no tier header. Used by the box-height path and by callers
+// that predate tiers.
+func untieredTiers(groups []string) []tierGroup {
+	return []tierGroup{{windowID: WindowOne, groups: groups}}
+}
+
+// agentsGridLayoutCells returns just the cell positions for an untiered
+// layout. A thin DELEGATE to agentsGridWalk, not a second accounting site --
+// it exists so callers that only want cells need not destructure the full
+// geometry.
+func agentsGridLayoutCells(members map[string][]int, groups []string, innerX, firstY, perRow int) []gridCell {
+	return agentsGridWalk(members, untieredTiers(groups), false, innerX, firstY, perRow).cells
+}
+
+// agentsTiersActive reports whether monitor tiers should render: only when
+// more than one window is CONFIGURED (project.WindowListen non-empty, the
+// ini-9ka.2 gate).
+//
+// Deliberately configuration, not live attach count. Gating on attachment
+// would make tiers appear and disappear as windows connect, and during
+// fold-back -- when window N is gone and its groups are temporarily rendered
+// in window 1 -- the tier showing where those groups actually belong would
+// vanish at exactly the moment the operator needs to see it. Configuration is
+// also what makes the single-window zero-change guarantee structural: an
+// empty WindowListen is the only state a single-window fleet is ever in, so
+// this returns false and the walk emits today's layout unchanged.
+func (t *TUI) agentsTiersActive() bool {
+	return t.project != nil && t.project.WindowListen != ""
+}
+
+// agentsWindowOrder returns the window identities to render as tiers, in a
+// stable order: window 1 first, then any other window that owns at least one
+// group, sorted. Sorted rather than first-seen so the tier order cannot shift
+// between frames as group membership changes.
+func agentsWindowOrder(assign *WindowAssignment, groups []string) []string {
+	order := []string{WindowOne}
+	seen := map[string]bool{WindowOne: true}
+	var others []string
+	for _, g := range groups {
+		w := assign.WindowOfGroup(g)
+		if !seen[w] {
+			seen[w] = true
+			others = append(others, w)
+		}
+	}
+	sort.Strings(others)
+	return append(order, others...)
+}
+
+// agentsTierGroups partitions groups by window for rendering. When tiers are
+// inactive it returns a single untiered entry holding every group in its
+// existing order -- the shape that reproduces today's single-window layout
+// exactly, so the untiered path is the same code path rather than a parallel
+// one that has to be kept in sync.
+func (t *TUI) agentsTierGroups(assign *WindowAssignment, tiersActive bool) []tierGroup {
+	groups := t.layoutState.Groups
+	if !tiersActive || assign == nil {
+		return []tierGroup{{windowID: WindowOne, groups: groups}}
+	}
+	var out []tierGroup
+	for _, w := range agentsWindowOrder(assign, groups) {
+		out = append(out, tierGroup{windowID: w, groups: assign.GroupsForWindow(w, groups)})
+	}
+	return out
+}
+
+// agentsAssignment returns the group-to-window assignment store (ini-9ka.4),
+// loading it once per session and caching it. A project with no root (tests,
+// ad-hoc TUIs) or an unreadable store yields an empty assignment, in which
+// every group is on window 1 -- so the modal degrades to the single-window
+// arrangement rather than failing to render.
+func (t *TUI) agentsAssignment() *WindowAssignment {
+	if t.assignment != nil {
+		return t.assignment
+	}
+	a, err := LoadAssignment(t.projectRoot)
+	if err != nil {
+		LogWarn("agents", "assignment store unreadable, treating all groups as window 1", "err", err)
+		a = &WindowAssignment{root: t.projectRoot, groupWindow: map[string]string{}}
+	}
+	t.assignment = a
+	return t.assignment
+}
+
+// agentsFrameGeometry computes the box and the one-walk geometry for the
+// current frame. Every consumer -- render, navigation, cell lookup -- goes
+// through here, so they cannot disagree about where anything is (ini-9ka.5).
+func (t *TUI) agentsFrameGeometry(sw, sh int, searching bool) (agentsGridBox, agentsGridGeometry) {
+	members := t.agentsGroupMembers()
+	tiersActive := t.agentsTiersActive()
+	tiers := t.agentsTierGroups(t.agentsAssignment(), tiersActive)
+	box := agentsGridBoxDims(members, t.layoutState.Groups, tiers, tiersActive, sw, sh, searching)
+	geo := agentsGridWalk(members, tiers, tiersActive, box.innerX, box.startY+box.searchRows, box.perRow)
+	return box, geo
 }
 
 // agentsCellForPane returns the cell for the given t.panes index, or nil if
@@ -191,20 +363,14 @@ func agentsCellForPane(cells []gridCell, paneIdx int) *gridCell {
 // agentsMoveV's normal cell scan can never find a landing point there on
 // its own. This is the lookup that lets it recognize "this line is real,
 // it's just an empty band" instead of treating the line as unreachable.
-func agentsLineBand(members map[string][]int, groups []string, perRow, targetLine int) (label string, isEmpty bool, ok bool) {
-	line := 0
-	for _, g := range groups {
-		n := len(members[g])
-		rows := (n + perRow - 1) / perRow
-		if rows < 1 {
-			rows = 1
-		}
-		if targetLine >= line && targetLine < line+rows {
-			return g, n == 0, true
-		}
-		line += rows
+// It is now a pure INDEX into the walk's per-line output rather than a second
+// walk of its own -- the accounting lives in agentsGridWalk only (ini-9ka.5).
+func agentsLineBand(geo agentsGridGeometry, targetLine int) (label string, isEmpty bool, ok bool) {
+	if targetLine < 0 || targetLine >= len(geo.lines) {
+		return "", false, false
 	}
-	return "", false, false
+	li := geo.lines[targetLine]
+	return li.label, li.isEmpty, true
 }
 
 // agentsFlatInsertionForEmptyBand returns the t.panes index at which a sole
@@ -379,8 +545,8 @@ func (t *TUI) agentsMoveV(cells []gridCell, delta int) {
 		// first place.
 		members := t.agentsGroupMembers()
 		sw, sh := t.screen.Size()
-		box := agentsGridBoxDims(members, t.layoutState.Groups, sw, sh, t.agents.searching || t.agents.creatingGroup)
-		label, isEmpty, ok := agentsLineBand(members, t.layoutState.Groups, box.perRow, targetLine)
+		_, geo := t.agentsFrameGeometry(sw, sh, t.agents.searching || t.agents.creatingGroup)
+		label, isEmpty, ok := agentsLineBand(geo, targetLine)
 		if !ok || !isEmpty {
 			return
 		}
@@ -442,35 +608,148 @@ func (t *TUI) agentsCreateGroup(name string) {
 			}
 		}
 	}
+	// Capture the selection's window BEFORE mutating Groups: the new band
+	// lands on the window the selection was in at creation time (ini-9ka.5's
+	// grooming decision -- "you create where you are"). Read first because
+	// the lookup goes through GroupOf, which the splice below does not touch
+	// but which a future edit here easily could.
+	targetWindow := t.agentsSelectedWindow()
+
 	groups := make([]string, 0, len(t.layoutState.Groups)+1)
 	groups = append(groups, t.layoutState.Groups[:afterIdx+1]...)
 	groups = append(groups, name)
 	groups = append(groups, t.layoutState.Groups[afterIdx+1:]...)
 	t.layoutState.Groups = groups
 	t.saveLayoutIfConfigured()
+
+	// Only non-default windows need a stored row; window 1 is absence
+	// (ini-9ka.4), so creating on window 1 correctly writes nothing.
+	if targetWindow != WindowOne {
+		if err := t.agentsAssignment().MoveGroup(name, targetWindow); err != nil {
+			LogWarn("agents", "assigning new group to the selection's window failed",
+				"group", name, "window", targetWindow, "err", err)
+		}
+	}
+}
+
+// agentsSelectedWindow returns the window the current selection's group is
+// assigned to, or window 1 when there is no valid selection.
+func (t *TUI) agentsSelectedWindow() string {
+	sel := t.agents.selected
+	if sel < 0 || sel >= len(t.panes) {
+		return WindowOne
+	}
+	return t.agentsAssignment().WindowOfAgent(paneKey(t.panes[sel]), t.layoutState.GroupOf)
+}
+
+// agentsMoveGroupToNextWindow implements `m`: move the selected agent's WHOLE
+// group to the next window, cycling through the configured windows when there
+// are more than two (spec: "cycles through windows if N>2").
+//
+// The window list is the tier order plus one slot past the last, so a group
+// can always be pushed onto a window that has no groups yet -- otherwise the
+// very first move would have nowhere to go and `m` would be inert on a fresh
+// two-window fleet. Persists immediately via MoveGroup (ini-9ka.4).
+func (t *TUI) agentsMoveGroupToNextWindow() {
+	if !t.agentsTiersActive() {
+		return // Single window: nothing to move between.
+	}
+	sel := t.agents.selected
+	if sel < 0 || sel >= len(t.panes) {
+		return
+	}
+	group, ok := t.layoutState.GroupOf[paneKey(t.panes[sel])]
+	if !ok || group == "" {
+		return
+	}
+
+	assign := t.agentsAssignment()
+	windows := agentsWindowOrder(assign, t.layoutState.Groups)
+
+	// A brand-new window is offered ONLY when the group is currently on
+	// window 1. Offering one from every window would make the cycle
+	// unbounded and, worse, non-cycling: moving the last group off a window
+	// makes that window disappear from the order, so a fresh slot would be
+	// re-offered under a recycled name each press and the group would
+	// ping-pong between two new windows without ever returning to window 1.
+	// Push-out-from-window-1, then cycle through the windows that exist and
+	// back to 1, is bounded and predictable.
+	cur := assign.WindowOfGroup(group)
+	if cur == WindowOne {
+		windows = append(windows, agentsNextWindowID(windows))
+	}
+
+	idx := 0
+	for i, w := range windows {
+		if w == cur {
+			idx = i
+			break
+		}
+	}
+	next := windows[(idx+1)%len(windows)]
+	if err := assign.MoveGroup(group, next); err != nil {
+		LogWarn("agents", "move group to next window failed", "group", group, "window", next, "err", err)
+	}
+}
+
+// agentsNextWindowID returns an identity for a window that does not exist yet,
+// so `m` can create the second (or Nth) window's assignment. Numeric-suffixed
+// and validated by the same canonical rule every other window identity uses.
+func agentsNextWindowID(existing []string) string {
+	for n := 2; ; n++ {
+		candidate := "window" + strconv.Itoa(n)
+		taken := false
+		for _, w := range existing {
+			if w == candidate {
+				taken = true
+				break
+			}
+		}
+		if !taken {
+			return candidate
+		}
+	}
 }
 
 // agentsPruneEmptyGroups removes bands with zero members (spec: "a group
 // empty when the modal closes is removed"). Applied on modal close AND on
 // LoadLayout (see layout.go) -- the same invariant enforced at both points
 // a band could end up empty, not just the close-time case.
+//
+// Also clears the pruned band's window assignment (ini-9ka.5). Dropping the
+// label from Groups without clearing its assignment would leave a
+// group->window row for a group that no longer exists, which would silently
+// resurface if that label were ever recreated -- a group reappearing on a
+// window the operator never put it on. This is the empty-on-close half of the
+// g-create rule, and it applies on every window, not just window 1.
 func (t *TUI) agentsPruneEmptyGroups() {
 	if len(t.layoutState.Groups) == 0 {
 		return
 	}
 	members := t.agentsGroupMembers()
 	var kept []string
-	changed := false
+	var pruned []string
 	for _, g := range t.layoutState.Groups {
 		if len(members[g]) > 0 {
 			kept = append(kept, g)
 		} else {
-			changed = true
+			pruned = append(pruned, g)
 		}
 	}
-	if changed {
-		t.layoutState.Groups = kept
-		t.saveLayoutIfConfigured()
+	if len(pruned) == 0 {
+		return
+	}
+	t.layoutState.Groups = kept
+	t.saveLayoutIfConfigured()
+
+	assign := t.agentsAssignment()
+	for _, g := range pruned {
+		if assign.WindowOfGroup(g) == WindowOne {
+			continue // Nothing stored for a window-1 group.
+		}
+		if err := assign.MoveGroup(g, WindowOne); err != nil {
+			LogWarn("agents", "clearing assignment for pruned group failed", "group", g, "err", err)
+		}
 	}
 }
 
@@ -495,7 +774,7 @@ type agentsGridBox struct {
 // groups/screen size/search-or-create-active state. searching covers both
 // the / search bar and the g group-creation prompt -- both take the same
 // one-row slot under the top border.
-func agentsGridBoxDims(members map[string][]int, groups []string, sw, sh int, searching bool) agentsGridBox {
+func agentsGridBoxDims(members map[string][]int, groups []string, tiers []tierGroup, tiersActive bool, sw, sh int, searching bool) agentsGridBox {
 	perRow := agentsGridPerRow(members, groups, sw)
 	if perRow < 1 {
 		perRow = 1
@@ -515,15 +794,11 @@ func agentsGridBoxDims(members map[string][]int, groups []string, sw, sh int, se
 		boxW = sw
 	}
 
-	contentLines := 0
-	for _, g := range groups {
-		n := len(members[g])
-		rows := (n + perRow - 1) / perRow
-		if n == 0 {
-			rows = 1
-		}
-		contentLines += gridBandLead + 1 + gridLabelGap + rows
-	}
+	// Height comes from the SAME walk that produces positions, at a zero
+	// origin since only the total matters here. Previously this re-derived
+	// the per-band row accounting independently, which is the divergence
+	// ini-9ka.5's one-walk AC exists to make unrepresentable.
+	contentLines := agentsGridWalk(members, tiers, tiersActive, 0, 0, perRow).contentLines
 	searchRows := 0
 	if searching {
 		searchRows = 1
@@ -567,14 +842,16 @@ func (t *TUI) renderAgentsGrid() {
 	sw, sh := s.Size()
 
 	t.ensureGroups(true)
-	members := t.agentsGroupMembers()
-	box := agentsGridBoxDims(members, t.layoutState.Groups, sw, sh, t.agents.searching || t.agents.creatingGroup)
-	perRow, boxW, boxH, startX, startY, searchRows := box.perRow, box.boxW, box.boxH, box.startX, box.startY, box.searchRows
+	box, geo := t.agentsFrameGeometry(sw, sh, t.agents.searching || t.agents.creatingGroup)
+	boxW, boxH, startX, startY := box.boxW, box.boxH, box.startX, box.startY
 
 	bgStyle := tcell.StyleDefault.Background(tcell.NewRGBColor(20, 20, 20)).Foreground(tcell.ColorSilver)
 	borderStyle := bgStyle.Foreground(tcell.ColorGray)
 	titleStyle := bgStyle.Foreground(tcell.ColorDodgerBlue).Bold(true)
 	labelStyle := bgStyle.Foreground(tcell.ColorGray)
+	// Tier headers take the title's DodgerBlue per the PoC/spec, so the
+	// hierarchy reads monitor -> group -> agent by weight as well as by rule.
+	tierStyle := bgStyle.Foreground(tcell.ColorDodgerBlue).Bold(true)
 	selectedStyle := tcell.StyleDefault.Background(tcell.ColorDarkBlue).Foreground(tcell.ColorWhite)
 	movingStyle := tcell.StyleDefault.Background(tcell.ColorDodgerBlue).Foreground(tcell.ColorWhite).Bold(true)
 	helpStyle := bgStyle.Foreground(tcell.ColorGray)
@@ -615,12 +892,12 @@ func (t *TUI) renderAgentsGrid() {
 		}
 	}
 
-	innerX := startX + 2
-	// Layout cells fresh every render call -- this frame's members/perRow,
-	// never a value cached from the previous frame. The no-matches verdict
-	// below reads THIS cells slice, computed just above it in this same
-	// call, which is the fix for the exact bug the spec names (ini-2rc).
-	cells := agentsGridLayoutCells(members, t.layoutState.Groups, innerX, startY+searchRows, perRow)
+	innerX := box.innerX
+	// Geometry is computed fresh every render call by agentsFrameGeometry --
+	// this frame's members/perRow, never a value cached from the previous
+	// frame. The no-matches verdict below reads THIS cells slice, from the
+	// same walk, which is the fix for the exact bug the spec names (ini-2rc).
+	cells := geo.cells
 	t.agentsEnsureMatchSelected(cells)
 
 	if t.agents.creatingGroup {
@@ -651,26 +928,35 @@ func (t *TUI) renderAgentsGrid() {
 		}
 	}
 
-	y := startY + 1 + searchRows
-	for _, g := range t.layoutState.Groups {
-		y += gridBandLead
-		lab := fmt.Sprintf("─ %s ", g)
+	// Tier headers and band labels are drawn at the positions the ONE walk
+	// computed. No y is advanced here: this loop reads geometry, it does not
+	// re-derive it, which is what makes a drawn/computed divergence
+	// unrepresentable rather than merely absent (ini-9ka.5).
+	for _, tl := range geo.tiers {
+		lab := fmt.Sprintf("══ monitor %d ", tl.index)
 		x := innerX
 		for _, ch := range lab {
 			if x < startX+boxW-1 {
-				s.SetContent(x, y, ch, nil, labelStyle)
+				s.SetContent(x, tl.y, ch, nil, tierStyle)
 			}
 			x++
 		}
 		for ; x < startX+boxW-2; x++ {
-			s.SetContent(x, y, '─', nil, labelStyle)
+			s.SetContent(x, tl.y, '═', nil, tierStyle)
 		}
-		n := len(members[g])
-		rows := (n + perRow - 1) / perRow
-		if n == 0 {
-			rows = 1
+	}
+	for _, bl := range geo.bands {
+		lab := fmt.Sprintf("─ %s ", bl.label)
+		x := innerX
+		for _, ch := range lab {
+			if x < startX+boxW-1 {
+				s.SetContent(x, bl.y, ch, nil, labelStyle)
+			}
+			x++
 		}
-		y += 1 + gridLabelGap + rows
+		for ; x < startX+boxW-2; x++ {
+			s.SetContent(x, bl.y, '─', nil, labelStyle)
+		}
 	}
 
 	for _, c := range cells {

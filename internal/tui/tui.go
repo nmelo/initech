@@ -153,6 +153,10 @@ type TUI struct {
 	// Project root for .initech/layout.yaml persistence. Empty disables auto-save.
 	projectRoot string
 
+	// assignment is the group-to-window store (ini-9ka.4), loaded once and
+	// cached for the modal's tier rendering and the m/grab interactions.
+	assignment *WindowAssignment
+
 	// projectName is shown in the overlay title ("Agents (initech)").
 	// Comes from initech.yaml's project field. Empty falls back to "Agents".
 	projectName string
