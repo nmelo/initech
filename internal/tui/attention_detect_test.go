@@ -1,3 +1,5 @@
+//go:build !windows
+
 package tui
 
 // attention_detect_test.go covers tier-1 detection (ini-2x8.2): OSC 777 raises
