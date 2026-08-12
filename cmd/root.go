@@ -190,7 +190,15 @@ func runTUI(cmd *cobra.Command, args []string) error {
 		agents = append(agents, pcfg)
 	}
 
-	if len(agents) == 0 {
+	// Zero local agents is legal ONLY for a pure viewer: no roles configured
+	// at all, with remotes to render instead (ini-9ka.1). This mirrors the
+	// same narrow relaxation config.Validate makes, and deliberately keys off
+	// len(proj.Roles) rather than len(agents): if the operator DID configure
+	// roles and every one of them failed to build (missing directories), that
+	// is still the error it always was, even when remotes are present.
+	// Collapsing those two cases would turn a real "your workspace is broken"
+	// diagnostic into a session that silently starts with nothing.
+	if len(agents) == 0 && !(len(proj.Roles) == 0 && len(proj.Remotes) > 0) {
 		return fmt.Errorf("no valid role directories found. Run 'initech init' to create them")
 	}
 

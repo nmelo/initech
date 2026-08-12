@@ -298,7 +298,15 @@ func Validate(p *Project) error {
 	if p.Root == "" {
 		return fmt.Errorf("root path is required")
 	}
-	if len(p.Roles) == 0 {
+	// A project must have something to do: local roles, remote peers, or both.
+	// Empty roles are legal ONLY alongside remotes, which is the pure-viewer
+	// case a secondary multi-monitor window runs in -- it renders another
+	// window's agents and owns none itself (ini-9ka.1). The relaxation is
+	// deliberately narrow: a config with no roles AND no remotes has nothing
+	// to do and still fails here with the same message it always has, so an
+	// operator who simply forgot their roles list gets the same diagnostic as
+	// before rather than a session that starts and does nothing.
+	if len(p.Roles) == 0 && len(p.Remotes) == 0 {
 		return fmt.Errorf("at least one role is required")
 	}
 
