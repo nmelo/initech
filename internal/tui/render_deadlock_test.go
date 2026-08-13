@@ -80,9 +80,9 @@ func TestRenderNotBlockedByRemoteConnection(t *testing.T) {
 
 	// Start the peer manager in the background (same as Run() does).
 	// This will attempt to connect to the unreachable remote.
-	pm := newPeerManager(proj, func(peerName string, panes []PaneView) {
+	pm := newPeerManager(proj, func(peerName string, panes []PaneView, connected bool) {
 		tui.runOnMain(func() {
-			tui.handlePeerUpdate(peerName, panes)
+			tui.handlePeerUpdate(peerName, panes, connected)
 		})
 	}, nil, quitCh)
 
@@ -146,7 +146,7 @@ func TestRenderWithFailedRemoteShowsLocalPanes(t *testing.T) {
 	tui.plan = computeLayout(tui.layoutState, tui.panes, 120, 39)
 
 	// Simulate a peer update with nil panes (remote failed).
-	tui.handlePeerUpdate("deadhost", nil)
+	tui.handlePeerUpdate("deadhost", nil, false)
 
 	// Render must succeed and show both local panes.
 	tui.render()
@@ -180,7 +180,7 @@ func TestRenderWithConnectedRemoteAddsPane(t *testing.T) {
 	remotePane := newEmuPane("eng2", 60, 39)
 	// Wrap in a minimal RemotePane-like PaneView (newEmuPane returns *Pane,
 	// which satisfies PaneView, good enough for this test).
-	tui.handlePeerUpdate("workbench", []PaneView{remotePane})
+	tui.handlePeerUpdate("workbench", []PaneView{remotePane}, true)
 
 	if len(tui.panes) != 2 {
 		t.Errorf("pane count = %d, want 2 (local + remote)", len(tui.panes))

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/nmelo/initech/internal/config"
+	"github.com/nmelo/initech/internal/tui"
 )
 
 // windowDialTimeout bounds the pre-flight reachability check. Window 1 is on
@@ -104,7 +105,12 @@ func viewerProject(proj *config.Project, n int) (*config.Project, error) {
 }
 
 // windowOnePeer is the name a secondary window uses for the session owner in
-// its remotes map. Window 1's own identity in the assignment model is the
-// empty string (tui.WindowOne); this is only the local label for the
-// connection, which needs a non-empty key.
-const windowOnePeer = "window1"
+// its remotes map. Window 1's own identity in the ASSIGNMENT model is the
+// empty string (tui.WindowOne); this is the label for the CONNECTION, which
+// needs a non-empty key.
+//
+// It aliases tui.WindowOnePeerName rather than repeating the literal: window 1
+// advertises that same constant in its handshake, and connectPeer rejects the
+// connection if the two disagree. When they were two independent literals --
+// one here, one implicitly "" on the server -- every attach failed (ini-1ch).
+const windowOnePeer = tui.WindowOnePeerName

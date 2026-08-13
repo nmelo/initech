@@ -36,7 +36,12 @@ type peerManager struct {
 	// onPanesChanged is called (on any goroutine) when remote panes are
 	// added or go offline. The callback receives the peer name and the
 	// new set of PaneViews for that peer (nil = all offline).
-	onPanesChanged func(peerName string, panes []PaneView)
+	// onPanesChanged reports a peer's panes AND whether the peer is currently
+	// connected. The flag is explicit because the two facts are independent:
+	// a peer can be connected with ZERO agents assigned to this window, which
+	// is a perfectly healthy connection that len(panes)==0 cannot distinguish
+	// from an offline peer (ini-1ch).
+	onPanesChanged func(peerName string, panes []PaneView, connected bool)
 	// onPaneAdded is called when a daemon announces a new agent stream
 	// mid-session via stream_added (after a configure_agent push). The
 	// TUI appends the pane to its existing list for that peer.
@@ -61,7 +66,7 @@ type peerManager struct {
 // newPeerManager creates a manager and starts a goroutine per remote peer.
 // All connections (initial and reconnect) happen in the background so the
 // TUI renders immediately without blocking on network I/O.
-func newPeerManager(project *config.Project, onChange func(string, []PaneView), onFwd func(string, string, bool) error, quit chan struct{}) *peerManager {
+func newPeerManager(project *config.Project, onChange func(string, []PaneView, bool), onFwd func(string, string, bool) error, quit chan struct{}) *peerManager {
 	pm := &peerManager{
 		project:        project,
 		onPanesChanged: onChange,
@@ -97,7 +102,7 @@ func (pm *peerManager) managePeer(peerName string, remote config.Remote) {
 		pc, err := connectPeer(peerName, remote, pm.project)
 		if err != nil {
 			LogWarn("remote", "connection failed", "peer", peerName, "attempt", attempt, "err", err)
-			pm.onPanesChanged(peerName, nil)
+			pm.onPanesChanged(peerName, nil, false)
 
 			delay := backoff(attempt)
 			attempt++
@@ -112,7 +117,7 @@ func (pm *peerManager) managePeer(peerName string, remote config.Remote) {
 		// Connected successfully.
 		attempt = 0
 		LogInfo("remote", "connected", "peer", peerName, "agents", len(pc.panes))
-		pm.onPanesChanged(peerName, pc.panes)
+		pm.onPanesChanged(peerName, pc.panes, true)
 
 		// Start heartbeat: ping every 30s. On failure, close the session
 		// to unblock all stream.Read calls (yamux ignores SetReadDeadline).
@@ -140,7 +145,7 @@ func (pm *peerManager) managePeer(peerName string, remote config.Remote) {
 		// Monitor connection health: wait for all RemotePanes to go dead,
 		// which signals the yamux session died (either naturally or via
 		// heartbeat closing the session).
-		pm.waitForDisconnect(peerName, pc.panes)
+		pm.waitForDisconnect(peerName, pc)
 		close(heartbeatDone)
 
 		// Close the yamux session and control mux to release goroutines,
@@ -148,7 +153,7 @@ func (pm *peerManager) managePeer(peerName string, remote config.Remote) {
 		pc.Close()
 
 		LogWarn("remote", "disconnected", "peer", peerName)
-		pm.onPanesChanged(peerName, nil)
+		pm.onPanesChanged(peerName, nil, false)
 
 		// Brief pause before reconnecting.
 		select {
@@ -251,12 +256,36 @@ func (pm *peerManager) handleStreamAdded(peerName string, pc *peerConn, ev Contr
 
 // waitForDisconnect blocks until all panes from a peer are dead (yamux
 // session closed) or pm.quit fires.
-func (pm *peerManager) waitForDisconnect(peerName string, panes []PaneView) {
+func (pm *peerManager) waitForDisconnect(peerName string, pc *peerConn) {
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
+
+	// The yamux session is the authority on whether the CONNECTION is alive.
+	// Pane liveness is a proxy for it, and a proxy that lies when the set is
+	// empty (ini-1ch): "every pane is dead" is VACUOUSLY TRUE with no panes, so
+	// a window that has been assigned no agents tore down a perfectly healthy
+	// session on the first tick, reconnected, and tore it down again -- against
+	// a window 1 that was alive the whole time, which is exactly what the
+	// operator saw. Watching the session directly is both correct for the empty
+	// case and a better signal than the proxy in every other case.
+	var closed <-chan struct{}
+	if pc != nil && pc.session != nil {
+		closed = pc.session.CloseChan()
+	}
+
 	for {
 		select {
+		case <-closed:
+			return
 		case <-ticker.C:
+			pc.panesMu.Lock()
+			panes := append([]PaneView(nil), pc.panes...)
+			pc.panesMu.Unlock()
+			// No panes is not evidence of anything. Only a non-empty set whose
+			// members have ALL died says the peer is gone.
+			if len(panes) == 0 {
+				continue
+			}
 			allDead := true
 			for _, p := range panes {
 				if p.IsAlive() {

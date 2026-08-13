@@ -837,7 +837,7 @@ func TestHandlePeerUpdateRespectsSavedRemoteKeys(t *testing.T) {
 	}
 
 	rp := newFakeRemotePaneView("intern", "workbench")
-	tui.handlePeerUpdate("workbench", []PaneView{rp})
+	tui.handlePeerUpdate("workbench", []PaneView{rp}, true)
 
 	if len(tui.panes) != 2 {
 		t.Fatalf("panes = %d, want 2", len(tui.panes))

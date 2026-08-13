@@ -28,6 +28,18 @@ import (
 // fresh-project default for free.
 const WindowOne = ""
 
+// WindowOnePeerName is the name window 1 answers to ON THE WIRE, as distinct
+// from WindowOne above, which is its identity in the ASSIGNMENT model.
+//
+// The two exist because the assignment model wants "absent means window 1"
+// (hence the empty string) while the connection layer cannot dial or verify an
+// empty name: a secondary window's remotes map needs a non-empty key, and
+// connectPeer asserts the server's advertised peer_name equals the label the
+// client dialled. Keeping both identities is fine; keeping them in two places
+// that could disagree was ini-1ch, where window 1 advertised "" against a
+// client expecting "window1" and every attach failed the handshake.
+const WindowOnePeerName = "window1"
+
 // persistentAssignment is the on-disk shape. Only NON-default assignments are
 // stored: a group absent from the map is on window 1. This keeps a fresh
 // project's file empty (or missing) rather than requiring a seeding step that

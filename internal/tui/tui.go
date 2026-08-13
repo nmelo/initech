@@ -242,6 +242,12 @@ type TUI struct {
 	attentionSound string
 	chimeSeen      map[string]chimeState
 
+	// peerConnected is the last REPORTED connection state per peer, so notices
+	// fire on the transition rather than on every reconnect attempt (ini-1ch).
+	// The retry loop is by design; an unbounded stack of identical notices for
+	// one underlying fact is not.
+	peerConnected map[string]bool
+
 	// lastRenderAt stores the UnixNano timestamp of the last completed render.
 	// Updated atomically by render(), read by the watchdog goroutine.
 	lastRenderAt atomic.Int64
@@ -794,6 +800,9 @@ func Run(cfg Config) error {
 	if cfg.Project != nil {
 		t.attentionSound = cfg.Project.Attention.AttentionSound()
 	}
+	if t.peerConnected == nil {
+		t.peerConnected = make(map[string]bool)
+	}
 	if t.chimeSeen == nil {
 		t.chimeSeen = make(map[string]chimeState)
 	}
@@ -873,9 +882,9 @@ func Run(cfg Config) error {
 	// renders immediately with local-only panes; remote panes appear once
 	// connected via handlePeerUpdate on the main goroutine.
 	if cfg.Project != nil && len(cfg.Project.Remotes) > 0 {
-		pm := newPeerManager(cfg.Project, func(peerName string, panes []PaneView) {
+		pm := newPeerManager(cfg.Project, func(peerName string, panes []PaneView, connected bool) {
 			t.runOnMain(func() {
-				t.handlePeerUpdate(peerName, panes)
+				t.handlePeerUpdate(peerName, panes, connected)
 			})
 		}, func(target, text string, enter bool) error {
 			// Deliver forwarded message to local pane.
@@ -1118,8 +1127,9 @@ func (t *TUI) recalcGrid(force bool) {
 // handlePeerUpdate is called by the peer manager (via runOnMain) when a
 // remote peer connects, reconnects, or goes offline. It swaps the old
 // RemotePanes for the peer with new ones (or removes them on disconnect).
-func (t *TUI) handlePeerUpdate(peerName string, newPanes []PaneView) {
-	LogInfo("peer-update", "start", "peer", peerName, "new_panes", len(newPanes), "current_panes", len(t.panes))
+func (t *TUI) handlePeerUpdate(peerName string, newPanes []PaneView, connected bool) {
+	LogInfo("peer-update", "start", "peer", peerName, "new_panes", len(newPanes),
+		"current_panes", len(t.panes), "connected", connected)
 
 	// Remove old panes for this peer. Close in a goroutine so goWg.Wait()
 	// inside rp.Close() never blocks the main loop (the readLoop goroutine
@@ -1133,23 +1143,39 @@ func (t *TUI) handlePeerUpdate(peerName string, newPanes []PaneView) {
 		kept = append(kept, p)
 	}
 
-	// Add new panes (nil = peer went offline, nothing to add).
-	if len(newPanes) > 0 {
-		for _, p := range newPanes {
-			if vp, ok := p.(interface{ SetVisible(bool) }); ok {
-				vp.SetVisible(!t.layoutState.Hidden[paneKey(p)])
-			}
+	for _, p := range newPanes {
+		if vp, ok := p.(interface{ SetVisible(bool) }); ok {
+			vp.SetVisible(!t.layoutState.Hidden[paneKey(p)])
 		}
-		kept = append(kept, newPanes...)
-		t.handleAgentEvent(AgentEvent{
-			Type:   EventPeerConnected,
-			Detail: fmt.Sprintf("%s connected (%d agents)", peerName, len(newPanes)),
-		})
-	} else {
-		t.handleAgentEvent(AgentEvent{
-			Type:   EventPeerDisconnected,
-			Detail: fmt.Sprintf("%s disconnected", peerName),
-		})
+	}
+	kept = append(kept, newPanes...)
+
+	// Notify on the STATE CHANGE, not on the attempt (ini-1ch). The reconnect
+	// loop retries by design, so an event per attempt is an unbounded stack of
+	// identical notices for one underlying fact -- four of them on the
+	// operator's screen. And the state is `connected`, NOT len(newPanes): a
+	// peer connected with zero agents assigned to this window is healthy, and
+	// reporting it as a disconnect is how a working attach announced itself as
+	// a failure.
+	// Initialised here rather than only at construction: TUIs are built by
+	// several paths (tests included) and a nil map would panic on the write
+	// below, turning a notice-discipline fix into a crash.
+	if t.peerConnected == nil {
+		t.peerConnected = make(map[string]bool)
+	}
+	if was, seen := t.peerConnected[peerName]; !seen || was != connected {
+		t.peerConnected[peerName] = connected
+		if connected {
+			t.handleAgentEvent(AgentEvent{
+				Type:   EventPeerConnected,
+				Detail: fmt.Sprintf("%s connected (%d agents)", peerName, len(newPanes)),
+			})
+		} else {
+			t.handleAgentEvent(AgentEvent{
+				Type:   EventPeerDisconnected,
+				Detail: fmt.Sprintf("%s disconnected", peerName),
+			})
+		}
 	}
 	oldLen := len(t.panes)
 	t.panes = kept

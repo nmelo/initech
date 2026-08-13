@@ -591,7 +591,13 @@ func (t *TUI) renderNotifications() {
 		}
 
 		// Format: "[agent] detail"
-		text := fmt.Sprintf("[%s] %s", n.event.Pane, n.event.Detail)
+		// Session-level notices (peer connect/disconnect, fleet events) carry no
+		// pane, and formatting them as "[] detail" renders an empty bracket the
+		// operator has to decode (ini-1ch). No pane, no bracket.
+		text := n.event.Detail
+		if n.event.Pane != "" {
+			text = fmt.Sprintf("[%s] %s", n.event.Pane, n.event.Detail)
+		}
 		runes := []rune(text)
 		if len(runes) > maxW-2 {
 			runes = append(runes[:maxW-3], '\u2026')

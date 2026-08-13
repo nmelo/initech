@@ -89,8 +89,25 @@ func startWindowServer(project *config.Project, version string, panes []*Pane, s
 		return nil, nil, fmt.Errorf("startWindowServer called without a WindowListen address (single-window fleets must not reach here)")
 	}
 
+	// Window 1 has TWO identities and until ini-1ch only one side knew it.
+	// In the ASSIGNMENT model its identity is the empty string (WindowOne).
+	// On the WIRE it needs a name, because connectPeer asserts that the
+	// server's advertised peer_name equals the label the client dialled -- a
+	// correct guard for cross-machine peers, where a mismatch means you
+	// reached the wrong host. A secondary window dials window 1 under the
+	// label WindowOnePeerName, so window 1 must answer to it; advertising ""
+	// made every handshake fail with `peer_name mismatch: expected "window1",
+	// got ""`, which the retry loop then repeated forever against a server
+	// that was alive and accepting the whole time.
+	//
+	// The copy is deliberate: this renames the identity the DAEMON advertises
+	// without touching the TUI's own project, whose empty PeerName is what the
+	// assignment model means by "window 1".
+	serving := *project
+	serving.PeerName = WindowOnePeerName
+
 	d := &Daemon{
-		project:        project,
+		project:        &serving,
 		version:        version,
 		ringBufs:       make(map[string]*RingBuf),
 		multiSinks:     make(map[string]*MultiSink),
