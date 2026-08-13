@@ -383,6 +383,15 @@ func (t *TUI) noticeAssignmentWriteFailed(action string, err error) {
 // events channel. Only the message type and the raise site were missing.
 const sessionNoticeAction = "session_notice"
 
+// identityTakenOverAction is the server's eviction VERDICT (ini-jhm6): sent on
+// the OLD client's control stream just before its session is closed, telling
+// it another connection took its window identity. The verdict is what makes
+// eviction terminal for the loser -- a bare disconnect is indistinguishable
+// from a transient drop, and the reconnect loop rightly treats those as
+// retryable, which is exactly how two undead --window processes fought a
+// 1-second eviction war all afternoon.
+const identityTakenOverAction = "identity_taken_over"
+
 // broadcastSessionNotice pushes a session-level notice to every attached
 // window. Called on window 1, which is the hub: secondary windows cannot push
 // to each other, so a notice raised locally in one of them would render in

@@ -4,6 +4,7 @@
 package tui
 
 import (
+	"fmt"
 	"sync"
 	"time"
 
@@ -51,6 +52,20 @@ type peerManager struct {
 	// changing -- a window folding back or reattaching -- rather than one
 	// agent's activity, so every attached window renders them.
 	onSessionNotice func(text string)
+	// onEvicted is called AT MOST ONCE, when this client concludes another
+	// process has taken over its window identity -- either by the server's
+	// explicit verdict or by inference from consecutive immediate evictions
+	// (ini-jhm6). The manager's loop for that peer has already exited
+	// permanently when this fires: eviction is terminal, not a disconnect.
+	//
+	// Guarded by cbMu: newPeerManager starts the manager goroutines before
+	// SetOnEvicted runs, so an unsynchronized set-then-read is a data race
+	// (caught by -race on the war tests, and production wires it in the same
+	// order). The other Set* callbacks are registered before any connection
+	// can complete, which bounds them in practice, but this one is read on
+	// the teardown path that a fast eviction reaches immediately.
+	cbMu      sync.Mutex
+	onEvicted func(peerName, reason string)
 	// onAgentStatus is called when window 1 broadcasts an agent's observed
 	// state (ini-9ka.11). primary is AgentStatus.Bead, used only when beads is
 	// empty because the peer predates the plural field.
@@ -87,6 +102,63 @@ func (pm *peerManager) SetOnPaneAdded(fn func(peerName string, pane PaneView)) {
 }
 
 // wait blocks until all peer goroutines have exited.
+// quickEvictionWindow and quickEvictionLimit calibrate the lost-verdict
+// inference (ini-jhm6 edge 1). The measured war cycled about once per second,
+// so a genuine takeover loss dies well inside 5s of connecting; a session that
+// lives longer was real and resets the count. Two in a row rather than one,
+// because a single quick death has innocent causes (window 1 restarting the
+// instant after accepting); two consecutive is the war's signature.
+const (
+	quickEvictionWindow = 5 * time.Second
+	quickEvictionLimit  = 2
+)
+
+// sweepEvictionVerdict drains the control mux after a session ends, looking
+// for an identity_taken_over that arrived too late for consumeEvents. The
+// mux's reader keeps delivering already-received frames after the close;
+// Done() marks the reader finished, after which one final non-blocking sweep
+// catches anything still buffered.
+func (pm *peerManager) sweepEvictionVerdict(pc *peerConn, budget time.Duration) {
+	if pc == nil || pc.mux == nil || pc.evicted.Load() {
+		return
+	}
+	deadline := time.After(budget)
+	for {
+		select {
+		case ev := <-pc.mux.Events():
+			if ev.Action == identityTakenOverAction {
+				pc.evicted.Store(true)
+				return
+			}
+		case <-pc.mux.Done():
+			for {
+				select {
+				case ev := <-pc.mux.Events():
+					if ev.Action == identityTakenOverAction {
+						pc.evicted.Store(true)
+						return
+					}
+				default:
+					return
+				}
+			}
+		case <-deadline:
+			return
+		}
+	}
+}
+
+// concludeEvicted reports the terminal eviction upward exactly once.
+func (pm *peerManager) concludeEvicted(peerName, reason string) {
+	LogWarn("remote", "eviction is terminal; not reconnecting", "peer", peerName, "reason", reason)
+	pm.cbMu.Lock()
+	fn := pm.onEvicted
+	pm.cbMu.Unlock()
+	if fn != nil {
+		fn(peerName, reason)
+	}
+}
+
 func (pm *peerManager) wait() {
 	pm.wg.Wait()
 }
@@ -97,6 +169,14 @@ func (pm *peerManager) managePeer(peerName string, remote config.Remote) {
 	defer pm.wg.Done()
 
 	attempt := 0
+	// Consecutive immediate evictions infer a lost takeover verdict
+	// (ini-jhm6): a session that is accepted and then dies within
+	// quickEvictionWindow looks like losing a war; one that survives longer
+	// was a real session and resets the count. DIAL FAILURES NEVER COUNT --
+	// window 1 being down is connection-refused, and inferring takeover from
+	// it would turn every window-1 restart into a false eviction.
+	quickDeaths := 0
+
 	for {
 		// Try to connect.
 		pc, err := connectPeer(peerName, remote, pm.project)
@@ -116,6 +196,7 @@ func (pm *peerManager) managePeer(peerName string, remote config.Remote) {
 
 		// Connected successfully.
 		attempt = 0
+		connectedAt := time.Now()
 		LogInfo("remote", "connected", "peer", peerName, "agents", len(pc.panes))
 		pm.onPanesChanged(peerName, pc.panes, true)
 
@@ -154,6 +235,37 @@ func (pm *peerManager) managePeer(peerName string, remote config.Remote) {
 
 		LogWarn("remote", "disconnected", "peer", peerName)
 		pm.onPanesChanged(peerName, nil, false)
+
+		// Sweep for a verdict that raced the teardown (ini-jhm6): the verdict
+		// is written just before the server closes the session, so it can sit
+		// parsed-but-undelivered in the mux's event buffer at the moment
+		// consumeEvents exits on heartbeatDone -- the flag never sets and the
+		// eviction reads as transient. MEASURED by the war test: the verdict
+		// path redialed once before this sweep existed. Bounded, not polite:
+		// the reader has already seen the bytes or never will.
+		pm.sweepEvictionVerdict(pc, time.Second)
+
+		// EVICTION IS TERMINAL (ini-jhm6). Two exits, one conclusion:
+		// the server's explicit verdict, or -- because the verdict is a
+		// best-effort write racing a close -- the inference that being
+		// accepted and then dropped almost immediately, twice in a row, means
+		// losing a takeover war. Either way this loop ENDS: retrying is what
+		// turned one stale process into an all-afternoon 1-second flap.
+		if pc.evicted.Load() {
+			pm.concludeEvicted(peerName, "another "+peerName+" client took over this identity")
+			return
+		}
+		if time.Since(connectedAt) < quickEvictionWindow {
+			quickDeaths++
+			if quickDeaths >= quickEvictionLimit {
+				pm.concludeEvicted(peerName, fmt.Sprintf(
+					"connection accepted and dropped within %s, %d times in a row -- concluding another client took over (eviction verdict lost in flight)",
+					quickEvictionWindow, quickDeaths))
+				return
+			}
+		} else {
+			quickDeaths = 0
+		}
 
 		// Brief pause before reconnecting.
 		select {
@@ -210,6 +322,12 @@ func (pm *peerManager) consumeEvents(peerName string, pc *peerConn, done chan st
 				if pm.onAgentStatus != nil {
 					pm.onAgentStatus(ev.Name, ev.Beads, ev.Bead, ev.Text)
 				}
+			case identityTakenOverAction:
+				LogWarn("remote", "identity taken over", "peer", peerName, "reason", ev.Text)
+				pc.evicted.Store(true)
+				// Close now so waitForDisconnect returns promptly; managePeer
+				// reads the flag and terminates instead of redialing.
+				pc.Close()
 			case sessionNoticeAction:
 				if pm.onSessionNotice != nil {
 					LogInfo("remote", "session notice from window 1", "peer", peerName, "text", ev.Text)
@@ -305,6 +423,13 @@ func (pm *peerManager) waitForDisconnect(peerName string, pc *peerConn) {
 // SetOnSessionNotice registers the callback fired when window 1 broadcasts a
 // session-level notice, so the attached window can surface it locally
 // (ini-9ka.8).
+// SetOnEvicted registers the terminal-eviction callback (ini-jhm6).
+func (pm *peerManager) SetOnEvicted(fn func(peerName, reason string)) {
+	pm.cbMu.Lock()
+	pm.onEvicted = fn
+	pm.cbMu.Unlock()
+}
+
 func (pm *peerManager) SetOnSessionNotice(fn func(text string)) {
 	pm.onSessionNotice = fn
 }

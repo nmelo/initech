@@ -242,6 +242,13 @@ type TUI struct {
 	attentionSound string
 	chimeSeen      map[string]chimeState
 
+	// exitReason, when non-nil, is returned by Run after the screen is
+	// restored -- an operator-facing explanation for a self-initiated exit
+	// (ini-jhm6: an evicted window must SAY why it closed, in a sane shell,
+	// not paint it over a dying TUI). Set on the main goroutine before
+	// requesting quit.
+	exitReason error
+
 	// peerConnected is the last REPORTED connection state per peer, so notices
 	// fire on the transition rather than on every reconnect attempt (ini-1ch).
 	// The retry loop is by design; an unbounded stack of identical notices for
@@ -912,6 +919,19 @@ func Run(cfg Config) error {
 		pm.SetOnSessionNotice(func(text string) {
 			t.runOnMain(func() { t.surfaceSessionNotice(text) })
 		})
+		// Terminal eviction (ini-jhm6): another process took this window's
+		// identity. Surface the reason as Run's return value -- printed after
+		// screen.Fini restores the terminal -- and quit. Deliberately NO
+		// project-root writes on this path (the civ rule): the winner owns
+		// the session state now.
+		pm.SetOnEvicted(func(peerName, reason string) {
+			t.runOnMain(func() {
+				t.exitReason = fmt.Errorf(
+					"another %s took over this identity — this window is closing; rerun initech --window with the same number here to take it back (%s)",
+					peerName, reason)
+			})
+			t.requestQuit()
+		})
 		// Stream-on-create: when a daemon announces a new agent stream
 		// (configure_agent → stream_added), append the new RemotePane to
 		// the live grid via runOnMain so it shows up in the next render.
@@ -1031,7 +1051,7 @@ func Run(cfg Config) error {
 				t.applyLayout()
 			}
 		case <-t.quitCh:
-			return nil
+			return t.exitReason
 		}
 		// Drain all remote panes (visible or hidden) so network data doesn't
 		// accumulate in dataCh when a pane is hidden from the layout.
@@ -1107,6 +1127,11 @@ func autoGrid(n int) (cols, rows int) {
 // When GridExplicit is true the user chose dimensions via :grid CxR or
 // Alt+2/Alt+3. In that case we skip the auto-recalculation so peer updates
 // and hot-adds don't overwrite the user's choice.
+// requestQuit closes quitCh exactly once, from any goroutine.
+func (t *TUI) requestQuit() {
+	t.quitOnce.Do(func() { close(t.quitCh) })
+}
+
 func (t *TUI) recalcGrid(force bool) {
 	if force && t.layoutState.Mode != LayoutLive {
 		t.layoutState.Mode = LayoutGrid

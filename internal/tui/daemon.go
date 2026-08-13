@@ -573,14 +573,7 @@ func (d *Daemon) handleConnection(conn net.Conn) {
 			d.clientSessions = make(map[string]*yamux.Session)
 			d.clientCtrlMu = make(map[string]*sync.Mutex)
 		}
-		if oldSession, exists := d.clientSessions[hello.PeerName]; exists {
-			LogWarn("daemon", "evicting stale client", "peer", hello.PeerName)
-			// Close the yamux session: all its streams error immediately,
-			// MultiSink auto-removes dead writers, and the old handleConnection
-			// goroutine unwinds. This prevents blocked writes from starving
-			// the new client of PTY bytes.
-			go oldSession.Close()
-		}
+		d.evictExistingLocked(hello.PeerName, conn.RemoteAddr().String())
 		d.clients[hello.PeerName] = ctrl
 		d.clientSessions[hello.PeerName] = session
 		d.clientCtrlMu[hello.PeerName] = &sync.Mutex{}
@@ -1030,6 +1023,41 @@ func (d *Daemon) handleSetFleetState(line []byte) ControlResp {
 		return ControlResp{ID: cmd.ID, Error: err.Error()}
 	}
 	return ControlResp{ID: cmd.ID, OK: true, Action: "set_fleet_state_ok", Target: cmd.Name}
+}
+
+// evictExistingLocked hands the window identity to a newcomer: the OLD
+// client under peerName gets the identity_taken_over verdict on its control
+// stream, then its session is closed. Caller holds sessionsMu.
+//
+// TELLING the evicted client WHY is the whole fix (ini-jhm6): without a
+// verdict, an eviction is indistinguishable from a transient drop, and the
+// 1ch reconnect loop rightly treats those as retryable -- so the evicted
+// client redialed, won the identity back, evicted the newcomer, forever: a
+// 1-second connect/disconnect war between two undead windows. The verdict is
+// what lets the loser CONCLUDE it lost.
+//
+// The 200ms delay before close is the verdict's flush window (measured: the
+// war test flaked 3/8 without it -- yamux teardown discards stream data still
+// buffered at close). Invisible to the newcomer, whose handshake proceeds
+// concurrently. Delivery stays best-effort BY THE TRANSPORT'S NATURE; the
+// client's quick-death inference is the backstop for the remainder.
+func (d *Daemon) evictExistingLocked(peerName, newcomerAddr string) {
+	oldSession, exists := d.clientSessions[peerName]
+	if !exists {
+		return
+	}
+	LogWarn("daemon", "evicting stale client", "peer", peerName)
+	if oldCtrl := d.clients[peerName]; oldCtrl != nil {
+		if mu := d.clientCtrlMu[peerName]; mu != nil {
+			mu.Lock()
+			writeJSON(oldCtrl, ControlResp{ //nolint:errcheck // best-effort goodbye on a dying conn
+				Action: identityTakenOverAction,
+				Text:   fmt.Sprintf("identity %q taken over by a new connection from %s", peerName, newcomerAddr),
+			})
+			mu.Unlock()
+		}
+	}
+	time.AfterFunc(200*time.Millisecond, func() { oldSession.Close() })
 }
 
 // consolef writes a human-facing notice to the daemon's console, if it has

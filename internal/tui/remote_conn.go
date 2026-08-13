@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/hashicorp/yamux"
@@ -26,6 +27,11 @@ type peerConn struct {
 	mux     *ControlMux
 	panesMu sync.Mutex // Protects panes slice (mutated by stream_added handler).
 	panes   []PaneView
+	// evicted is set by the control-event handler when the server's
+	// identity_taken_over verdict arrives (ini-jhm6), and read by managePeer
+	// after the session dies to decide terminal-vs-retry. Atomic because the
+	// writer is the mux consumer goroutine and the reader is the manager.
+	evicted atomic.Bool
 }
 
 // Close releases connection resources: control mux, yamux session (which
