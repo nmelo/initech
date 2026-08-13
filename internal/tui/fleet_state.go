@@ -490,6 +490,39 @@ func (t *TUI) applyFleetStateCmd(cmd FleetStateCmd) error {
 	if cmd.Name == "" {
 		return fmt.Errorf("name is required")
 	}
+	// MARSHALLED ONTO THE MAIN LOOP (ini-8od). This is called from the daemon's
+	// per-connection goroutine (handleSetFleetState), while window 1's own
+	// keybindings drive the identical path from the main loop. Both mutate
+	// FleetState's plain maps AND, via applyFleetProjection, t.layoutState --
+	// which the render loop reads every frame. Two unsynchronised writers to a
+	// Go map can panic the process outright, and panicking window 1 takes the
+	// whole fleet's display with it.
+	//
+	// A mutex on FleetState was the alternative and is weaker: it would guard
+	// the maps it owns and leave the PROJECTION race untouched, since
+	// applyFleetProjection writes t.layoutState and the renderer reads it. The
+	// main loop is already the single writer of everything downstream of this
+	// call, so handing it the mutation keeps one writer instead of adding a
+	// lock that the next unguarded reader would silently step around -- the
+	// same reasoning as the t.panes dispatch (ini-a1e.30).
+	//
+	// runOnMain executes inline when the caller IS the main goroutine, so
+	// window 1's local keypresses do not deadlock on themselves.
+	var err error
+	if !t.runOnMain(func() { err = t.applyFleetStateField(cmd) }) {
+		// The session is shutting down and the mutation never ran. Reporting
+		// success here would tell a secondary window its change applied when
+		// nothing was written -- the operator believing state changed when it
+		// did not is the failure this codebase keeps refusing to ship.
+		return fmt.Errorf("window 1 is shutting down; %s change for %q was not applied", cmd.Field, cmd.Name)
+	}
+	return err
+}
+
+// applyFleetStateField is the switch itself, split out so it always runs on the
+// main goroutine (see applyFleetStateCmd). Never call it directly from a
+// non-main goroutine.
+func (t *TUI) applyFleetStateField(cmd FleetStateCmd) error {
 	switch cmd.Field {
 	case "hidden":
 		return t.setHidden(cmd.Name, cmd.On)
