@@ -24,6 +24,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -382,6 +383,35 @@ func (t *TUI) applyFleetProjection() {
 	t.layoutState.Hidden = t.fleet.HiddenMap()
 	t.layoutState.Protected = t.fleet.ProtectedMap()
 	t.layoutState.LivePinned = t.fleet.LivePinnedMap()
+
+	// KEY TRANSLATION for follower windows (ini-6m4, the committed rig's
+	// catch). Fleet state is stored under the key WINDOW 1 uses for an agent
+	// -- the plain name, since window 1 owns local panes. A follower views
+	// those same agents as remotes, whose paneKey is "window1:<name>", and
+	// every consumer of these maps looks up by paneKey. Without translation
+	// the follower re-reads the store correctly and then MISSES ON EVERY
+	// LOOKUP -- window 1 hides pmm, the file says pmm, and window 2 asks
+	// about window1:pmm. The store's key space is canonical; the projection,
+	// which is per-window derived state, is where this window's view of those
+	// keys belongs. Both forms are kept: harmless on window 1 (no pane keys
+	// carry the prefix) and correct everywhere else.
+	for k, v := range t.layoutState.Hidden {
+		t.layoutState.Hidden[WindowOnePeerName+":"+k] = v
+	}
+	for k, v := range t.layoutState.Protected {
+		t.layoutState.Protected[WindowOnePeerName+":"+k] = v
+	}
+	for k, v := range t.layoutState.LivePinned {
+		t.layoutState.LivePinned[WindowOnePeerName+":"+k] = v
+	}
+}
+
+// fleetStoreKey maps a pane key to the key the FLEET STORE uses: window 1's
+// name for the agent. A follower toggling "window1:pmm" must write "pmm", or
+// the store accumulates one entry per window identity for the same agent and
+// windows disagree about which one is real.
+func fleetStoreKey(key string) string {
+	return strings.TrimPrefix(key, WindowOnePeerName+":")
 }
 
 // refreshFleetIfFollower re-reads the fleet store on a window that does not own
@@ -439,6 +469,7 @@ func (t *TUI) mutateFleet(action string, apply func(*FleetState) error) error {
 // setHidden, setProtected, setLiveSlot and clearHidden are the write seam every
 // keybinding and IPC path routes through.
 func (t *TUI) setHidden(key string, hidden bool) error {
+	key = fleetStoreKey(key)
 	if !t.isFleetAuthority() {
 		if err := t.sendFleetStateCmd("hidden", key, hidden, 0); err != nil {
 			t.noticeFleetWriteFailed("hidden "+key, err)
@@ -450,6 +481,7 @@ func (t *TUI) setHidden(key string, hidden bool) error {
 }
 
 func (t *TUI) setProtected(key string, protected bool) error {
+	key = fleetStoreKey(key)
 	if !t.isFleetAuthority() {
 		if err := t.sendFleetStateCmd("protected", key, protected, 0); err != nil {
 			t.noticeFleetWriteFailed("protected "+key, err)
@@ -461,6 +493,7 @@ func (t *TUI) setProtected(key string, protected bool) error {
 }
 
 func (t *TUI) setLiveSlot(key string, slot int, pinned bool) error {
+	key = fleetStoreKey(key)
 	if !t.isFleetAuthority() {
 		if err := t.sendFleetStateCmd("live_pinned", key, pinned, slot); err != nil {
 			t.noticeFleetWriteFailed("pin "+key, err)

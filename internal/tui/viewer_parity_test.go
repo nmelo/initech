@@ -1,0 +1,141 @@
+package tui
+
+// The two ini-6m4 guards the first delivery DESCRIBED but never committed
+// (qa1's narrow FAIL): the tiers gate on a viewer, and the follower's
+// fleet-state re-read on modal open. Landed here with their mutations re-run
+// against these committed forms -- a described mutation result transfers to
+// nothing.
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/nmelo/initech/internal/config"
+)
+
+// TestAgentsTiersActive_ViewerRendersTiers pins the tier gate (ini-6m4
+// symptom 1). The old predicate asked WindowListen != "" -- but viewerProject
+// deliberately CLEARS WindowListen, because a viewer serves nothing. So a
+// secondary window could never render monitor tiers BY CONSTRUCTION, while
+// window 1 rendered them from the same assignment data. The question the gate
+// must ask is "is this fleet multi-window?", which is true for the process
+// that serves it AND for the process that is one.
+func TestAgentsTiersActive_ViewerRendersTiers(t *testing.T) {
+	cases := []struct {
+		name string
+		proj *config.Project
+		want bool
+	}{
+		{"window 1 of a multi-window fleet (serves)", &config.Project{WindowListen: ":7500"}, true},
+		{"secondary window (is one; WindowListen deliberately empty)", &config.Project{PeerName: "window-2"}, true},
+		{"ordinary single-window session", &config.Project{}, false},
+		{"nil project", nil, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			tui := newTestTUI()
+			tui.project = tc.proj
+			if got := tui.agentsTiersActive(); got != tc.want {
+				t.Errorf("agentsTiersActive = %v, want %v -- a viewer whose gate reads "+
+					"WindowListen shows a flat modal while window 1 shows tiers from the "+
+					"same assignment data", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestOpenAgentsModal_FollowerRereadsFleetState pins the staleness fix
+// (ini-6m4 symptom 3, measured live: hide in window 1, and window 2's modal
+// still showed [x] even after close-and-reopen). A follower window loads
+// fleet-state.yaml once at startup and nothing pushes changes to it, so the
+// modal MUST re-read the store when it opens -- multi-window is same-machine
+// by construction, and the file is the sync channel.
+func TestOpenAgentsModal_FollowerRereadsFleetState(t *testing.T) {
+	root := t.TempDir()
+	os.MkdirAll(filepath.Join(root, ".initech"), 0o755)
+	statePath := filepath.Join(root, ".initech", "fleet-state.yaml")
+	os.WriteFile(statePath, []byte("hidden: []\n"), 0o644)
+
+	tui := newTestTUI(testPane("pmm"))
+	tui.projectRoot = root
+	tui.windowID = "window-2" // follower
+	tui.fleetState()          // startup load: nothing hidden
+
+	if tui.layoutState.Hidden["pmm"] {
+		t.Fatal("setup: pmm hidden before window 1 hid it")
+	}
+
+	// Window 1 hides pmm: on a follower that arrives as a CHANGED FILE, not a
+	// method call -- write it exactly as window 1's store does.
+	os.WriteFile(statePath, []byte("hidden:\n    - pmm\n"), 0o644)
+
+	tui.openAgentsModal()
+
+	if !tui.layoutState.Hidden["pmm"] {
+		t.Fatal("the follower's modal opened on its STARTUP snapshot: window 1's hide is " +
+			"invisible, and a toggle from this modal would un-hide what window 1 hid -- " +
+			"a lost update via UI rather than via race")
+	}
+}
+
+// TestOpenAgentsModal_AuthorityKeepsItsOwnState pins the other half: window 1
+// OWNS fleet state, its in-memory copy IS the truth, and re-reading the file
+// on modal open would discard any not-yet-persisted state and turn every
+// modal open into a needless disk read. The refresh is follower-only.
+func TestOpenAgentsModal_AuthorityKeepsItsOwnState(t *testing.T) {
+	root := t.TempDir()
+	tui := newTestTUI(testPane("pmm"))
+	tui.projectRoot = root
+	tui.windowID = WindowOne // the authority
+	before := tui.fleetState()
+
+	tui.openAgentsModal()
+
+	if tui.fleet != before {
+		t.Fatal("window 1 dropped its fleet store on modal open; the authority's memory is " +
+			"the truth and must not be replaced by a file re-read")
+	}
+}
+
+// TestFleetProjection_TranslatesKeysForFollowerLookups pins the committed
+// rig's catch: the fleet store keys agents the way WINDOW 1 names them (plain
+// names), while a follower's panes key as "window1:<name>" -- so the follower
+// re-read the store correctly and then missed on every lookup, which is the
+// operator's all-[x] modal by a second road. The projection carries both key
+// forms; the write path normalizes back to the store's form.
+func TestFleetProjection_TranslatesKeysForFollowerLookups(t *testing.T) {
+	root := t.TempDir()
+	os.MkdirAll(filepath.Join(root, ".initech"), 0o755)
+	os.WriteFile(filepath.Join(root, ".initech", "fleet-state.yaml"),
+		[]byte("hidden:\n    - pmm\n"), 0o644)
+
+	tui := newTestTUI()
+	tui.projectRoot = root
+	tui.windowID = "window-2"
+	tui.fleetState()
+
+	if !tui.layoutState.Hidden["window1:pmm"] {
+		t.Fatal("the projection carries only the store's key form; every paneKey-keyed lookup " +
+			"on a follower misses, so window 1's hide is invisible no matter how fresh the read")
+	}
+	if !tui.layoutState.Hidden["pmm"] {
+		t.Fatal("the store's own key form was dropped by translation; window 1's lookups would miss")
+	}
+}
+
+// TestFleetStoreKey_NormalizesFollowerWrites pins the reverse direction: a
+// follower toggling "window1:pmm" must reach the store as "pmm", or the store
+// grows one entry per window identity for the same agent.
+func TestFleetStoreKey_NormalizesFollowerWrites(t *testing.T) {
+	if got := fleetStoreKey("window1:pmm"); got != "pmm" {
+		t.Errorf("fleetStoreKey(window1:pmm) = %q, want pmm", got)
+	}
+	if got := fleetStoreKey("pmm"); got != "pmm" {
+		t.Errorf("fleetStoreKey(pmm) = %q, want pmm (window 1's own writes pass through)", got)
+	}
+	if got := fleetStoreKey("workbench:eng1"); got != "workbench:eng1" {
+		t.Errorf("fleetStoreKey(workbench:eng1) = %q; cross-machine keys are NOT window-1 "+
+			"aliases and must survive untouched", got)
+	}
+}
