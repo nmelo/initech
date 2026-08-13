@@ -8,7 +8,7 @@ EXPECTED_ASSETS := checksums.txt initech_darwin_amd64.tar.gz initech_darwin_arm6
 LDFLAGS := -s -w -X github.com/nmelo/initech/cmd.Version=$(VERSION)
 REQUIRE_RELEASE_VERSION = test -n "$(VERSION)" && case "$(VERSION)" in v*) ;; *) echo "VERSION must start with v, got $(VERSION)" >&2; exit 1 ;; esac
 
-.PHONY: build test test-full integration vet lint test-census lint-test-names lint-test-names-self-test clean release check install-hooks release-tag release-wait release-assets release-verify release-ship
+.PHONY: build test test-full integration vet lint test-census lint-test-names lint-test-names-self-test clean release check install-hooks hooks-check release-tag release-wait release-assets release-verify release-ship
 
 build:
 	go build -ldflags "$(LDFLAGS)" -o initech .
@@ -66,7 +66,7 @@ clean:
 test-census:
 	@go run ./scripts/testcensus
 
-check: vet vet-windows test-census lint-test-names test
+check: hooks-check vet vet-windows test-census lint-test-names test
 
 release:
 	@set -eu; \
@@ -145,9 +145,46 @@ release-verify: release-wait release-assets
 release-ship: test release-tag release-verify
 	@echo "Mechanical release steps completed for $(VERSION)"
 
+# Activation, not installation (ini-3nzc): the hook itself is VERSIONED at
+# scripts/hooks/pre-commit -- one source of truth instead of a copy per clone
+# that 6 of 8 fleet checkouts never made. This target just points git at it.
 install-hooks:
-	@GIT_DIR=$$(git rev-parse --git-dir) && \
-	  mkdir -p "$$GIT_DIR/hooks" && \
-	  printf '#!/bin/sh\nmake check\n' > "$$GIT_DIR/hooks/pre-commit" && \
-	  chmod +x "$$GIT_DIR/hooks/pre-commit" && \
-	  echo "pre-commit hook installed at $$GIT_DIR/hooks/pre-commit"
+	@git config core.hooksPath scripts/hooks && \
+	  echo "core.hooksPath -> scripts/hooks (versioned pre-commit active)"
+
+# hooks-check (ini-3nzc): fails make check loudly when the invoking checkout
+# has no hook wiring. WIRING check only -- cheap enough to run every time.
+# The INVOCATION proof (a failing hook must block a commit) lives in
+# internal/git's hook tests and in the per-checkout acceptance probe; an
+# installed-but-never-invoked hook is the presence-trap in git costume.
+#
+# Two accepted wirings: core.hooksPath -> scripts/hooks (the ini-3nzc way),
+# or an executable pre-commit in the resolved hooks dir (grandfathered hand
+# installs). NOTE the submodule trap in the failure text: src/.git here is a
+# FILE, so the hooks dir lives under .git/modules/<agent>/src/hooks in the
+# WORKSPACE repo -- six agents read "install the hook", looked at src/.git,
+# and reasonably concluded hooks were not installable.
+hooks-check:
+	@if [ "$$(git config core.hooksPath)" = "scripts/hooks" ]; then \
+	  :; \
+	elif [ -x "$$(git rev-parse --git-path hooks)/pre-commit" ]; then \
+	  :; \
+	else \
+	  echo ""; \
+	  echo "hooks-check: THIS CHECKOUT HAS NO PRE-COMMIT HOOK WIRING."; \
+	  echo ""; \
+	  echo "  Commits here can push code that fails 'make check' (this is how a"; \
+	  echo "  release-gating red main shipped: ini-3nzc). Fix, one command:"; \
+	  echo ""; \
+	  echo "      make install-hooks"; \
+	  echo ""; \
+	  echo "  (Sets core.hooksPath to the VERSIONED scripts/hooks. Note: src/.git"; \
+	  echo "  is a gitfile in this fleet's submodule layout -- the old hooks dir is"; \
+	  echo "  at .git/modules/<agent>/src/hooks in the workspace repo, which is why"; \
+	  echo "  looking for src/.git/hooks made hooks seem uninstallable.)"; \
+	  echo ""; \
+	  echo "  Then verify INVOCATION, not presence: point core.hooksPath at a dir"; \
+	  echo "  whose pre-commit is 'exit 1' and confirm an empty commit is BLOCKED,"; \
+	  echo "  then run make install-hooks again."; \
+	  exit 1; \
+	fi

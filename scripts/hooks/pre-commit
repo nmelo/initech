@@ -1,0 +1,19 @@
+#!/bin/sh
+# Versioned pre-commit hook (ini-3nzc). Activated per-clone by
+# `git config core.hooksPath scripts/hooks` — which `make install-hooks` does,
+# and which the scaffold does automatically for checkouts it creates.
+#
+# One source of truth: the old install copied this content into each clone's
+# hooks dir, and 6 of 8 fleet checkouts simply never ran the copy step. A
+# versioned hook can change fleet-wide in one commit; activation is one local
+# config bit that the tooling sets.
+#
+# ENV SCRUB, learned from this hook's own first invocation, which correctly
+# BLOCKED the commit that introduced it: git exports GIT_DIR / GIT_INDEX_FILE
+# etc. while running hooks, and everything the check suite spawns inherits
+# them — nested git in tests operates on the WRONG repo ("core.bare and
+# core.worktree do not make sense"), and go build's VCS stamping fails the
+# same way. Scrubbing here fixes the class for every current and future test
+# that shells out to git, instead of requiring each test to remember.
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_PREFIX GIT_COMMON_DIR GIT_OBJECT_DIRECTORY
+make check

@@ -44,6 +44,22 @@ func AddSubmodule(runner iexec.Runner, repoDir, url, subPath string) error {
 	if err != nil {
 		return fmt.Errorf("git submodule add %s: %w", subPath, err)
 	}
+	// Activate the repo's versioned pre-commit hook in the fresh checkout
+	// (ini-3nzc). git config is per-clone and cannot be committed, so every
+	// clone needs this one bit set -- and "run make install-hooks once" was
+	// measured NOT HAPPENING in 6 of 8 fleet checkouts, each of which could
+	// then push commits that fail make check. Setting it here, at the single
+	// chokepoint that creates agent checkouts, closes the class for every
+	// future clone with no human in the loop.
+	//
+	// Best-effort by design: a repo without scripts/hooks (older pin, foreign
+	// repo) gets a dangling hooksPath, which git treats as "no hooks" -- the
+	// same state as before this call, not a new failure. So a config error
+	// warns rather than failing a submodule add that already succeeded.
+	if _, err := runner.RunInDir(filepath.Join(repoDir, subPath),
+		"git", "config", "core.hooksPath", "scripts/hooks"); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: could not activate pre-commit hooks in %s: %v\n", subPath, err)
+	}
 	return nil
 }
 

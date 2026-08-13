@@ -62,6 +62,22 @@ make check              # Vet + lint-test-names + test
 make release            # goreleaser release
 ```
 
+## Pre-commit hook (ini-3nzc)
+
+The pre-commit hook is VERSIONED at `scripts/hooks/pre-commit` and activated
+per-clone by `git config core.hooksPath scripts/hooks` — which `make
+install-hooks` runs, and which the scaffold sets automatically for checkouts
+it creates. `make check` fails loudly (hooks-check) in any checkout with no
+wiring.
+
+Submodule trap, recorded because it cost a red main: in this fleet's layout
+`src/.git` is a FILE (gitdir pointer), so the legacy per-clone hooks dir is
+at `.git/modules/<agent>/src/hooks` in the WORKSPACE repo — looking for
+`src/.git/hooks/` makes hooks seem uninstallable, which is how 6 of 8
+checkouts ended up unhooked. Verify INVOCATION, not presence: point
+core.hooksPath at a dir whose pre-commit is `exit 1`, confirm an empty commit
+is BLOCKED, then `make install-hooks` again.
+
 ## Test naming policy (ini-ybe.1)
 
 Test names must describe the contract being verified, not the absence of a crash. Suffixes `_NoOp`, `_NoPanic`, `_DoesNotPanic`, `_Smoke` are rejected by `make lint-test-names` (also runs in CI). Either add a real assertion (preferred) or pick a name describing what the test verifies — e.g. `TestRender_HandlesNarrowTerminal` instead of `TestRender_NarrowNoPanic`. If a test legitimately verifies a no-op contract AND has assertions proving the no-op, add `// lint:test-name-allow <reason>` directly above the function. Use sparingly. Background: the repo audit found ~5% of tests assert nothing; coverage % stays high while mutation kill rate stays near zero, and naming is the cheapest cultural lever to stop new instances accumulating.

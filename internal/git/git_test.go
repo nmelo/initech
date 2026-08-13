@@ -65,8 +65,9 @@ func TestAddSubmodule(t *testing.T) {
 		t.Fatalf("AddSubmodule: %v", err)
 	}
 
-	if len(fake.Calls) != 1 {
-		t.Fatalf("expected 1 call, got %d", len(fake.Calls))
+	// add + hooks activation (ini-3nzc): two calls are the contract now.
+	if len(fake.Calls) != 2 {
+		t.Fatalf("expected 2 calls (submodule add, hooksPath activation), got %d", len(fake.Calls))
 	}
 	call := fake.Calls[0]
 	if !strings.Contains(call, "git submodule add") {
@@ -188,8 +189,9 @@ func TestAddSubmodule_NormalizesURL(t *testing.T) {
 		t.Fatalf("AddSubmodule: %v", err)
 	}
 
-	if len(fake.Calls) != 1 {
-		t.Fatalf("expected 1 call, got %d", len(fake.Calls))
+	// add + hooks activation (ini-3nzc).
+	if len(fake.Calls) != 2 {
+		t.Fatalf("expected 2 calls (submodule add, hooksPath activation), got %d", len(fake.Calls))
 	}
 	call := fake.Calls[0]
 	if !strings.Contains(call, "git@github.com:nmelo/initech.git") {
@@ -266,4 +268,38 @@ func TestCleanFailedSubmodule_NoArtifacts(t *testing.T) {
 
 	// Should not panic or error. The git config call happens regardless
 	// (best-effort), so we just verify no crash.
+}
+
+// TestAddSubmodule_ActivatesVersionedHooks pins ini-3nzc's structural half:
+// every checkout the scaffold creates gets core.hooksPath set, in the new
+// submodule's own directory, after the add. "Run make install-hooks once per
+// checkout" was measured not happening in 6 of 8 fleet checkouts; the
+// chokepoint that creates checkouts is where the class closes.
+func TestAddSubmodule_ActivatesVersionedHooks(t *testing.T) {
+	fake := &iexec.FakeRunner{}
+	if err := AddSubmodule(fake, "/repo", "github.com/nmelo/initech", "eng9/src"); err != nil {
+		t.Fatalf("AddSubmodule: %v", err)
+	}
+
+	addIdx, cfgIdx := -1, -1
+	for i, c := range fake.Calls {
+		if strings.Contains(c, "git submodule add") {
+			addIdx = i
+		}
+		if strings.Contains(c, "git config core.hooksPath scripts/hooks") {
+			cfgIdx = i
+			if !strings.HasPrefix(c, "/repo/eng9/src|") {
+				t.Errorf("hooksPath configured outside the new submodule: %q -- setting it on the "+
+					"WORKSPACE repo would point the workspace at a hooks dir it does not have", c)
+			}
+		}
+	}
+	if cfgIdx == -1 {
+		t.Fatal("AddSubmodule never set core.hooksPath; a fresh checkout starts life unhooked, " +
+			"which is the 6-of-8 audit finding recreated for every future clone")
+	}
+	if addIdx == -1 || cfgIdx < addIdx {
+		t.Errorf("hooksPath set before the submodule add (call %d < %d); there is no checkout "+
+			"to configure yet", cfgIdx, addIdx)
+	}
 }
