@@ -120,11 +120,20 @@ var overriddenTerminalEnv = []string{
 //	VSCODE_GIT_ASKPASS_MAIN=<a Cursor path>   -> OSC 777 in 10.4s   (was 90s silent)
 //	__CFBundleIdentifier=com.jetbrains.<x>    -> OSC 777 in 11.1s   (was 90s silent)
 //	VisualStudioVersion=17.0                  -> OSC 777 in 10.4s   (was 90s silent)
+//	VSCODE_GIT_ASKPASS_MAIN=<a Windsurf path> -> OSC 777 in 9.7s    (was 90s silent)
 //	__CFBundleIdentifier, NO injection        -> silent, dialog reached (control)
+//	<a Windsurf path>, NO injection           -> silent, dialog reached (control)
 //
-// The control row is what keeps the three above meaningful: it proves the
+// The control rows are what keep the rescues meaningful: they prove the
 // markers still suppress, so the rescues are measuring the injection rather
 // than a resolution change that quietly stopped shadowing on its own.
+//
+// The Windsurf rows exist because v2.7.0's public chime-dead claim named FOUR
+// hosts while ini-m2e had measured three -- Windsurf was inferred from the
+// shared askpass mechanism (m2e measured a Cursor path, which shadows, and a
+// plain VS Code path, which does not, so the inference was not free). It is
+// now measured in both directions and the claim and the evidence name the
+// same four hosts.
 //
 // This does NOT make the list above safe to grow carelessly -- the injection is
 // skipped whenever the operator has chosen a channel themselves, and those

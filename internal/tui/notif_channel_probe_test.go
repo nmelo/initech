@@ -337,6 +337,7 @@ func TestNotifChannel_ShadowedHostsRescued(t *testing.T) {
 		{"cursor askpass", "VSCODE_GIT_ASKPASS_MAIN=/Applications/Cursor.app/Contents/Resources/app/extensions/git/dist/askpass-main.js"},
 		{"jetbrains bundle id", "__CFBundleIdentifier=com.jetbrains.pycharm"},
 		{"visual studio", "VisualStudioVersion=17.0"},
+		{"windsurf askpass", "VSCODE_GIT_ASKPASS_MAIN=/Applications/Windsurf.app/Contents/Resources/app/extensions/git/dist/askpass-main.js"},
 	}
 	for _, m := range markers {
 		t.Run(m.name, func(t *testing.T) {
@@ -367,11 +368,29 @@ observed channel: %s  (%s)`, m.name, m.env, got.channel, got.payload)
 func TestNotifChannel_ShadowMarkerStillSuppressesWithoutInjection(t *testing.T) {
 	requireNotifProbe(t)
 
-	got := runNotifCell(t, notifCell{
-		env: []string{"__CFBundleIdentifier=com.jetbrains.pycharm"},
-	}, 75*time.Second)
-	t.Logf("BASELINE jetbrains marker, no injection -> channel=%s after %s payload=%q",
-		got.channel, got.elapsed.Round(time.Millisecond), got.payload)
+	// Two markers, not one: the JetBrains bundle id is the env-marker case,
+	// and the Windsurf askpass path is the host whose breakage was PUBLICLY
+	// CLAIMED in the v2.7.0 notes but never measured (ini-m2e measured Cursor
+	// and plain VS Code askpass paths; a Windsurf-flavored one was inferred
+	// from the shared mechanism). Measuring it here makes the retirement text
+	// able to say "measured" for every host it names.
+	markers := []struct {
+		name string
+		env  string
+	}{
+		{"jetbrains bundle id", "__CFBundleIdentifier=com.jetbrains.pycharm"},
+		{"windsurf askpass", "VSCODE_GIT_ASKPASS_MAIN=/Applications/Windsurf.app/Contents/Resources/app/extensions/git/dist/askpass-main.js"},
+	}
+	for _, m := range markers {
+		t.Run(m.name, func(t *testing.T) { assertMarkerStillSuppresses(t, m.name, m.env) })
+	}
+}
+
+func assertMarkerStillSuppresses(t *testing.T, name, env string) {
+	t.Helper()
+	got := runNotifCell(t, notifCell{env: []string{env}}, 75*time.Second)
+	t.Logf("BASELINE %s, no injection -> channel=%s after %s payload=%q",
+		name, got.channel, got.elapsed.Round(time.Millisecond), got.payload)
 	if got.channel == "ghostty" {
 		t.Fatalf(`THE SHADOW MARKER NO LONGER SUPPRESSES.
 

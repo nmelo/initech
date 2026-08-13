@@ -119,7 +119,13 @@ func hasSettingsFlag(args []string) bool {
 // overrides a deliberate user preference, which is the one outcome the
 // operator decision forbids.
 func operatorSetNotifChannel(workDir string) bool {
-	for _, p := range notifSettingsPaths(workDir) {
+	paths, ok := notifSettingsPaths(workDir, runtime.GOOS)
+	if !ok {
+		// The user tier could not be located at all, so absence cannot be
+		// verified. Same asymmetry as an unreadable file: decline to inject.
+		return true
+	}
+	for _, p := range paths {
 		set, err := settingsFileSetsNotifChannel(p)
 		if err != nil {
 			return true // fail closed
@@ -131,24 +137,83 @@ func operatorSetNotifChannel(workDir string) bool {
 	return false
 }
 
-// notifSettingsPaths lists every settings file Claude's resolution honors,
-// for the given agent working directory.
-func notifSettingsPaths(workDir string) []string {
-	var paths []string
+// homeEnvVar is the environment variable that names the home directory on the
+// given OS. It mirrors Go's os.UserHomeDir AND Node's os.homedir, which agree:
+// Windows reads USERPROFILE and consults HOME not at all.
+//
+// This is measured, not assumed, and it corrects the obvious guess. The
+// Windows CI failure that reopened ini-2fd looked like initech resolving the
+// user tier in a POSIX-shaped way, but Claude Code resolves it as
+// CLAUDE_CONFIG_DIR || join(homedir(), ".claude") -- and on Windows that
+// homedir is USERPROFILE, exactly what Go returns. The two agree on every
+// platform. What was actually broken was the TEST, which set HOME and so
+// relocated nothing on Windows, plus the three fail-open holes below.
+func homeEnvVar(goos string) string {
+	switch goos {
+	case "windows":
+		return "USERPROFILE"
+	case "plan9":
+		return "home"
+	default:
+		return "HOME"
+	}
+}
 
-	switch runtime.GOOS {
+// managedSettingsPath is the OS-specific managed/policy settings file.
+// Measured from the shipped 2.1.231 bundle, which selects:
+//
+//	macos -> /Library/Application Support/ClaudeCode
+//	windows -> C:\Program Files\ClaudeCode
+//	default -> /etc/claude-code
+//
+// The Windows arm was missing entirely before ini-2fd's reopen.
+func managedSettingsPath(goos string) string {
+	switch goos {
 	case "darwin":
-		paths = append(paths, "/Library/Application Support/ClaudeCode/managed-settings.json")
-	case "linux":
-		paths = append(paths, "/etc/claude-code/managed-settings.json")
+		return filepath.Join("/Library/Application Support/ClaudeCode", "managed-settings.json")
+	case "windows":
+		return filepath.Join(`C:\Program Files\ClaudeCode`, "managed-settings.json")
+	default:
+		return filepath.Join("/etc/claude-code", "managed-settings.json")
 	}
+}
 
-	if home, err := os.UserHomeDir(); err == nil && home != "" {
-		paths = append(paths,
-			filepath.Join(home, ".claude", "settings.json"),
-			filepath.Join(home, ".claude", "remote-settings.json"),
-		)
+// userConfigDir resolves the directory Claude reads USER settings from, the
+// way the shipped bundle does: CLAUDE_CONFIG_DIR when set, otherwise
+// <home>/.claude. When CLAUDE_CONFIG_DIR is set it IS the config directory,
+// not the parent of one.
+//
+// The bool is false when the directory cannot be determined, which callers
+// MUST treat as "the operator may have set a channel we cannot see". Returning
+// a best-effort path here, or silently skipping the tier as the first version
+// did, fails OPEN: the injection then lands on top of a user-set channel,
+// which is the one outcome the operator decision forbids.
+func userConfigDir(goos string) (string, bool) {
+	if d := strings.TrimSpace(os.Getenv("CLAUDE_CONFIG_DIR")); d != "" {
+		return d, true
 	}
+	home := strings.TrimSpace(os.Getenv(homeEnvVar(goos)))
+	if home == "" {
+		return "", false
+	}
+	return filepath.Join(home, ".claude"), true
+}
+
+// notifSettingsPaths lists every settings file Claude's resolution honors, for
+// the given agent working directory. ok is false when the user tier cannot be
+// located, so the caller can fail closed rather than check a short list and
+// conclude absence from it.
+func notifSettingsPaths(workDir, goos string) ([]string, bool) {
+	paths := []string{managedSettingsPath(goos)}
+
+	cfgDir, ok := userConfigDir(goos)
+	if !ok {
+		return nil, false
+	}
+	paths = append(paths,
+		filepath.Join(cfgDir, "settings.json"),
+		filepath.Join(cfgDir, "remote-settings.json"),
+	)
 
 	if workDir != "" {
 		if abs, err := filepath.Abs(workDir); err == nil {
@@ -165,7 +230,7 @@ func notifSettingsPaths(workDir string) []string {
 			}
 		}
 	}
-	return paths
+	return paths, true
 }
 
 // settingsFileSetsNotifChannel reports whether one settings file sets a

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -19,17 +20,28 @@ func writeSettings(t *testing.T, dir, name, body string) {
 	}
 }
 
-// isolateHome points HOME at an empty temp dir so the developer's own
-// ~/.claude/settings.json cannot decide the outcome of these tests. Without
+// isolateHome points the USER settings tier at an empty temp dir so the
+// developer's own settings cannot decide the outcome of these tests. Without
 // it, anyone who has set preferredNotifChannel would see every injection test
 // silently invert -- and it would look like a code failure.
-func isolateHome(t *testing.T) {
+//
+// It sets HOME *and* USERPROFILE *and* clears CLAUDE_CONFIG_DIR, because the
+// home variable differs per OS. Setting only HOME is what made
+// TestNotifChannelArgs_RespectsChannelInUserSettings pass on macOS/Linux and
+// FAIL on Windows CI (ini-2fd reopen): on Windows the tier resolves from
+// USERPROFILE, so the test relocated nothing and the check read the real
+// machine's settings.
+func isolateHome(t *testing.T) string {
 	t.Helper()
-	t.Setenv("HOME", t.TempDir())
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("CLAUDE_CONFIG_DIR", "")
+	return home
 }
 
 func TestNotifChannelArgs_InjectsChannelWhenOperatorSetNone(t *testing.T) {
-	isolateHome(t)
+	_ = isolateHome(t)
 	dir := t.TempDir()
 
 	got := NotifChannelArgs(dir, []string{"claude", "--continue"})
@@ -52,7 +64,7 @@ func TestNotifChannelArgs_InjectsChannelWhenOperatorSetNone(t *testing.T) {
 // composition rule: two --settings flags do not merge, the later replaces the
 // earlier wholesale. Appending ours would discard the operator's entire blob.
 func TestNotifChannelArgs_StandsDownWhenOperatorPassesSettings(t *testing.T) {
-	isolateHome(t)
+	_ = isolateHome(t)
 	dir := t.TempDir()
 
 	for _, args := range [][]string{
@@ -77,7 +89,7 @@ func TestNotifChannelArgs_RespectsChannelInEverySettingsTier(t *testing.T) {
 	}
 	for _, tier := range tiers {
 		t.Run(tier.name, func(t *testing.T) {
-			isolateHome(t)
+			_ = isolateHome(t)
 			dir := t.TempDir()
 			writeSettings(t, dir, tier.file, `{"preferredNotifChannel":"terminal_bell"}`)
 
@@ -94,8 +106,7 @@ func TestNotifChannelArgs_RespectsChannelInEverySettingsTier(t *testing.T) {
 // ~/.claude/settings.json also breaks the child's auth, so the live cell was
 // inconclusive by its own control. The tier is covered here instead.
 func TestNotifChannelArgs_RespectsChannelInUserSettings(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
+	home := isolateHome(t)
 	writeSettings(t, home, "settings.json", `{"preferredNotifChannel":"iterm2"}`)
 
 	if got := NotifChannelArgs(t.TempDir(), []string{"claude"}); got != nil {
@@ -108,7 +119,7 @@ func TestNotifChannelArgs_RespectsChannelInUserSettings(t *testing.T) {
 // file lives at <root>. Checking only the working directory would miss the
 // settings of the very repo the agent is working in.
 func TestNotifChannelArgs_RespectsChannelInAnAncestorProject(t *testing.T) {
-	isolateHome(t)
+	_ = isolateHome(t)
 	root := t.TempDir()
 	writeSettings(t, root, "settings.json", `{"preferredNotifChannel":"kitty"}`)
 	role := filepath.Join(root, "eng1")
@@ -125,7 +136,7 @@ func TestNotifChannelArgs_RespectsChannelInAnAncestorProject(t *testing.T) {
 // wrongly injecting overrides a deliberate preference, wrongly declining costs
 // a chime. A file we cannot parse must be read as "the operator set something".
 func TestNotifChannelArgs_FailsClosedOnUnreadableSettings(t *testing.T) {
-	isolateHome(t)
+	_ = isolateHome(t)
 	dir := t.TempDir()
 	writeSettings(t, dir, "settings.json", `{"preferredNotifChannel": TRUNCATED`)
 
@@ -140,7 +151,7 @@ func TestNotifChannelArgs_FailsClosedOnUnreadableSettings(t *testing.T) {
 // unrelated keys must not be mistaken for a channel choice, or the fix would
 // silently skip most real projects.
 func TestNotifChannelArgs_InjectsWhenSettingsExistWithoutAChannel(t *testing.T) {
-	isolateHome(t)
+	_ = isolateHome(t)
 	dir := t.TempDir()
 	writeSettings(t, dir, "settings.json", `{"permissions":{"ask":["Bash"]}}`)
 
@@ -153,7 +164,7 @@ func TestNotifChannelArgs_InjectsWhenSettingsExistWithoutAChannel(t *testing.T) 
 // not a choice, and treating it as one would strand the operator with the
 // dead chime this bead exists to fix.
 func TestNotifChannelArgs_IgnoresEmptyChannelValue(t *testing.T) {
-	isolateHome(t)
+	_ = isolateHome(t)
 	dir := t.TempDir()
 	writeSettings(t, dir, "settings.json", `{"preferredNotifChannel":"  "}`)
 
@@ -173,5 +184,143 @@ func TestNotifChannelSettings_MatchesTheMeasuredFlagShape(t *testing.T) {
 	}
 	if !strings.Contains(got, pinnedTermProgram) {
 		t.Errorf("blob %s does not carry the pinned identity %q", got, pinnedTermProgram)
+	}
+}
+
+// TestHomeEnvVar_IsTheRightVariablePerOS pins the per-OS resolution on EVERY
+// platform, not only the one running the test. This is the assertion that
+// would have caught the ini-2fd Windows failure on a macOS developer machine:
+// the tier's home variable is a property of the target OS, so it must be
+// testable without being on that OS.
+func TestHomeEnvVar_IsTheRightVariablePerOS(t *testing.T) {
+	for goos, want := range map[string]string{
+		"windows": "USERPROFILE",
+		"darwin":  "HOME",
+		"linux":   "HOME",
+		"plan9":   "home",
+	} {
+		if got := homeEnvVar(goos); got != want {
+			t.Errorf("homeEnvVar(%q) = %q, want %q -- Claude resolves the user tier from "+
+				"CLAUDE_CONFIG_DIR || join(homedir(), \".claude\"), and homedir reads this "+
+				"variable; disagreeing means the absence check reads a different file than "+
+				"Claude does and fails OPEN over a user-set channel", goos, got, want)
+		}
+	}
+}
+
+// TestManagedSettingsPath_IsTheRightPathPerOS pins the managed/policy path for
+// every OS from the same measurement. The Windows arm was missing entirely
+// until the ini-2fd reopen, so this exists to keep it from going missing again.
+func TestManagedSettingsPath_IsTheRightPathPerOS(t *testing.T) {
+	for goos, want := range map[string]string{
+		"darwin":  "/Library/Application Support/ClaudeCode",
+		"windows": `C:\Program Files\ClaudeCode`,
+		"linux":   "/etc/claude-code",
+	} {
+		got := managedSettingsPath(goos)
+		if !strings.HasPrefix(got, want) || !strings.HasSuffix(got, "managed-settings.json") {
+			t.Errorf("managedSettingsPath(%q) = %q, want %q + managed-settings.json", goos, got, want)
+		}
+	}
+}
+
+// TestUserConfigDir_HonorsClaudeConfigDir: an operator who relocates their
+// Claude config takes the user settings tier with them. Ignoring this variable
+// meant reading a settings file the operator does not use, concluding "no
+// channel set", and injecting over whatever they had chosen -- a fail-open on
+// every platform, not just Windows.
+func TestUserConfigDir_HonorsClaudeConfigDir(t *testing.T) {
+	isolateHome(t)
+	custom := t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", custom)
+
+	got, ok := userConfigDir("darwin")
+	if !ok || got != custom {
+		t.Fatalf("userConfigDir = (%q, %v), want (%q, true); CLAUDE_CONFIG_DIR IS the config "+
+			"directory, not the parent of one", got, ok, custom)
+	}
+}
+
+func TestNotifChannelArgs_RespectsChannelUnderClaudeConfigDir(t *testing.T) {
+	isolateHome(t)
+	custom := t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", custom)
+	if err := os.WriteFile(filepath.Join(custom, "settings.json"),
+		[]byte(`{"preferredNotifChannel":"iterm2"}`), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	if got := NotifChannelArgs(t.TempDir(), []string{"claude"}); got != nil {
+		t.Errorf("injected %q over a channel set in a relocated CLAUDE_CONFIG_DIR", got)
+	}
+}
+
+// TestNotifChannelArgs_FailsClosedWhenUserTierUnlocatable is the third
+// fail-open hole: when neither CLAUDE_CONFIG_DIR nor the OS home variable is
+// set, the user tier cannot be read at all. The first version skipped it
+// silently and injected, which is precisely "override a channel we could not
+// see". Not finding the tier must count as "they set one".
+func TestNotifChannelArgs_FailsClosedWhenUserTierUnlocatable(t *testing.T) {
+	t.Setenv("CLAUDE_CONFIG_DIR", "")
+	t.Setenv("HOME", "")
+	t.Setenv("USERPROFILE", "")
+
+	if _, ok := userConfigDir(runtime.GOOS); ok {
+		t.Fatal("userConfigDir claimed success with no home variable set; the rest of this " +
+			"test cannot exercise the unlocatable path")
+	}
+	if got := NotifChannelArgs(t.TempDir(), []string{"claude"}); got != nil {
+		t.Errorf("injected %q while the user settings tier was unlocatable; absence was never "+
+			"verified, so this overrides a channel the operator may well have set", got)
+	}
+}
+
+// TestNotifSettingsPaths_WindowsReadsUserProfileNotHome reproduces the exact
+// ini-2fd CI failure from a non-Windows machine, which is the whole point:
+// HOME and USERPROFILE point at DIFFERENT directories, and the Windows
+// resolution must follow USERPROFILE. A check that followed HOME would look at
+// a directory Claude never reads, find no channel, and inject over whatever
+// the operator actually set.
+func TestNotifSettingsPaths_WindowsReadsUserProfileNotHome(t *testing.T) {
+	posixHome := t.TempDir()
+	windowsHome := t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", "")
+	t.Setenv("HOME", posixHome)
+	t.Setenv("USERPROFILE", windowsHome)
+
+	paths, ok := notifSettingsPaths(t.TempDir(), "windows")
+	if !ok {
+		t.Fatal("windows resolution reported the user tier unlocatable with USERPROFILE set")
+	}
+	joined := strings.Join(paths, "\n")
+	if !strings.Contains(joined, filepath.Join(windowsHome, ".claude", "settings.json")) {
+		t.Errorf("windows resolution never looks under USERPROFILE (%q):\n%s", windowsHome, joined)
+	}
+	if strings.Contains(joined, filepath.Join(posixHome, ".claude", "settings.json")) {
+		t.Errorf("windows resolution reads the POSIX HOME (%q), a directory Claude does not "+
+			"consult on Windows:\n%s", posixHome, joined)
+	}
+
+	// And the mirror: POSIX resolution must follow HOME, not USERPROFILE.
+	posixPaths, ok := notifSettingsPaths(t.TempDir(), "linux")
+	if !ok {
+		t.Fatal("posix resolution reported the user tier unlocatable with HOME set")
+	}
+	posixJoined := strings.Join(posixPaths, "\n")
+	if !strings.Contains(posixJoined, filepath.Join(posixHome, ".claude", "settings.json")) {
+		t.Errorf("posix resolution never looks under HOME (%q):\n%s", posixHome, posixJoined)
+	}
+}
+
+// TestNotifSettingsPaths_WindowsIncludesTheManagedPolicyFile keeps the Windows
+// managed arm present; it was absent entirely before the reopen.
+func TestNotifSettingsPaths_WindowsIncludesTheManagedPolicyFile(t *testing.T) {
+	isolateHome(t)
+	paths, ok := notifSettingsPaths(t.TempDir(), "windows")
+	if !ok {
+		t.Fatal("windows resolution reported the user tier unlocatable")
+	}
+	if !strings.Contains(strings.Join(paths, "\n"), `C:\Program Files\ClaudeCode`) {
+		t.Errorf("windows resolution omits the managed policy file:\n%s", strings.Join(paths, "\n"))
 	}
 }
