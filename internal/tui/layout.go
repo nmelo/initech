@@ -550,13 +550,8 @@ func SaveLayoutForWindow(projectRoot, windowID string, state LayoutState) error 
 	// .tmp and rename over each other, cross-contaminating final files that
 	// look independent by name (ini-9ka.3).
 	final := layoutPathFor(projectRoot, windowID)
-	tmp := final + ".tmp"
-	if err := os.WriteFile(tmp, data, 0600); err != nil {
-		return fmt.Errorf("write temp layout: %w", err)
-	}
-	if err := os.Rename(tmp, final); err != nil {
-		os.Remove(tmp)
-		return fmt.Errorf("rename layout: %w", err)
+	if err := writeFileAtomic(final, data, 0600); err != nil {
+		return fmt.Errorf("write layout: %w", err)
 	}
 	return nil
 }

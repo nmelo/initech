@@ -241,13 +241,8 @@ func (fs *FleetState) save() error {
 	}
 
 	final := fleetStatePath(fs.root)
-	tmp := final + ".tmp"
-	if err := os.WriteFile(tmp, data, 0600); err != nil {
-		return fmt.Errorf("write temp fleet state: %w", err)
-	}
-	if err := os.Rename(tmp, final); err != nil {
-		os.Remove(tmp)
-		return fmt.Errorf("rename fleet state: %w", err)
+	if err := writeFileAtomic(final, data, 0600); err != nil {
+		return fmt.Errorf("write fleet state: %w", err)
 	}
 	return nil
 }

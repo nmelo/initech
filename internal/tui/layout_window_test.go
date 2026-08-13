@@ -258,13 +258,31 @@ func TestSaveLayoutForWindow_ConcurrentWritesDoNotCorrupt(t *testing.T) {
 	root := t.TempDir()
 	panes := windowTestPanes
 
-	var wg sync.WaitGroup
-	for i := 0; i < 20; i++ {
-		wg.Add(2)
-		go func() { defer wg.Done(); SaveLayoutForWindow(root, "one", windowLayoutState(3, 2, LayoutGrid)) }()
-		go func() { defer wg.Done(); SaveLayoutForWindow(root, "two", windowLayoutState(6, 1, LayoutFocus)) }()
+	// ROUNDS, not one burst (ini-g9x). This test went green on Windows for
+	// months and then failed the one run that gated a release: a single burst
+	// of concurrent writes is a single roll of the dice, so a real race shows
+	// up as "flaky CI" rather than as a bug. Re-running the burst and
+	// re-asserting after each round turns one roll into many, which is what
+	// makes the failure reproducible enough to be fixed rather than re-run.
+	// Cheap: the whole test is milliseconds.
+	for round := 0; round < 25; round++ {
+		var wg sync.WaitGroup
+		for i := 0; i < 20; i++ {
+			wg.Add(2)
+			go func() { defer wg.Done(); SaveLayoutForWindow(root, "one", windowLayoutState(3, 2, LayoutGrid)) }()
+			go func() { defer wg.Done(); SaveLayoutForWindow(root, "two", windowLayoutState(6, 1, LayoutFocus)) }()
+		}
+		wg.Wait()
+
+		// Assert INSIDE the loop: a corruption that a later round overwrites
+		// with a good file would otherwise pass unnoticed.
+		if _, ok := LoadLayoutForWindow(root, "one", panes); !ok {
+			t.Fatalf("round %d: window one failed to load after concurrent writes (corrupt or missing file)", round)
+		}
+		if _, ok := LoadLayoutForWindow(root, "two", panes); !ok {
+			t.Fatalf("round %d: window two failed to load after concurrent writes (corrupt or missing file)", round)
+		}
 	}
-	wg.Wait()
 
 	got1, ok := LoadLayoutForWindow(root, "one", panes)
 	if !ok {

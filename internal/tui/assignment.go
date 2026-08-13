@@ -156,13 +156,8 @@ func (a *WindowAssignment) save() error {
 	}
 
 	final := assignmentPath(a.root)
-	tmp := final + ".tmp"
-	if err := os.WriteFile(tmp, data, 0600); err != nil {
-		return fmt.Errorf("write temp assignment: %w", err)
-	}
-	if err := os.Rename(tmp, final); err != nil {
-		os.Remove(tmp)
-		return fmt.Errorf("rename assignment: %w", err)
+	if err := writeFileAtomic(final, data, 0600); err != nil {
+		return fmt.Errorf("write assignment: %w", err)
 	}
 	return nil
 }
