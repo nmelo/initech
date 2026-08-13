@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gdamore/tcell/v2"
 
@@ -699,7 +700,41 @@ func (t *TUI) agentsMoveGroupToNextWindow() {
 	if err := assign.MoveGroup(group, next); err != nil {
 		t.noticeAssignmentWriteFailed("move group "+group, err)
 		LogWarn("agents", "move group to next window failed", "group", group, "window", next, "err", err)
+		return
 	}
+	// Monitor number for the notice: position in the tier order, recomputed
+	// AFTER the move so a brand-new window (appended past the end) gets the
+	// number the tiers will actually display for it.
+	t.noticeGroupMoved(group, next, agentsWindowOrder(assign, t.layoutState.Groups))
+	// RE-LAY OUT NOW (ini-xq4r): the move changed which panes this window
+	// renders, and nothing else triggers a layout in grid mode -- without this
+	// the store, the modal and the notice all update while the PANES stay
+	// where they were until some unrelated event re-plans. This is the half
+	// of the live bug the unit tests could not see: they called the predicate
+	// directly, so the missing trigger between "store changed" and "predicate
+	// consulted" was invisible. Same-frame with the notice, which is what
+	// AC 4's mid-glance rule promises.
+	t.recalcGrid(false)
+	t.applyLayout()
+}
+
+// noticeGroupMoved raises the exactly-one session notice per assignment move
+// (ini-xq4r AC 4): a group leaving the window the operator is watching must be
+// explained in the moment, or panes silently vanish mid-glance. Session-level
+// (no pane attached) and fanned out to every attached window, the same shape
+// as the fold-back notices -- the notice renders where the panes disappeared
+// FROM, not only where the move was made.
+func (t *TUI) noticeGroupMoved(group, dest string, order []string) {
+	monitor := 0
+	for i, w := range order {
+		if w == dest {
+			monitor = i + 1
+			break
+		}
+	}
+	detail := fmt.Sprintf("%s → monitor %d", group, monitor)
+	EmitEvent(t.agentEvents, AgentEvent{Type: EventGroupMoved, Detail: detail, Time: time.Now()})
+	t.windowSrv.broadcastSessionNotice(detail)
 }
 
 // agentsNextWindowID returns an identity for a window that does not exist yet,
@@ -707,7 +742,10 @@ func (t *TUI) agentsMoveGroupToNextWindow() {
 // and validated by the same canonical rule every other window identity uses.
 func agentsNextWindowID(existing []string) string {
 	for n := 2; ; n++ {
-		candidate := "window" + strconv.Itoa(n)
+		// WindowPeerName, NEVER a local "window"+n: the synthesized identity
+		// must be the one a viewer launched with --window N actually presents,
+		// or the assignment names a window that can never attach (ini-xq4r).
+		candidate := WindowPeerName(n)
 		taken := false
 		for _, w := range existing {
 			if w == candidate {

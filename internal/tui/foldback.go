@@ -176,6 +176,32 @@ func (t *TUI) visiblePanesForWindow() []PaneView {
 	return out
 }
 
+// liveTickInputs derives the live rotation's universe for THIS window: its
+// assigned panes minus hidden, plus the pin set intersected with that universe
+// (ini-xq4r AC 3). Pins are GLOBAL state and survive a move -- the agent
+// re-pins wherever it now renders -- but the OLD window's slot must release,
+// or a dangling reservation rotates nothing forever. Re-derived every tick
+// from (global state ∩ window set), never mutated, so there is no per-window
+// pin state to fall out of sync.
+func (t *TUI) liveTickInputs() ([]PaneView, map[string]int) {
+	windowPanes := t.visiblePanesForWindow()
+	livePanes := make([]PaneView, 0, len(windowPanes))
+	inWindow := make(map[string]bool, len(windowPanes))
+	for _, p := range windowPanes {
+		inWindow[paneKey(p)] = true
+		if !t.layoutState.Hidden[paneKey(p)] {
+			livePanes = append(livePanes, p)
+		}
+	}
+	pinned := make(map[string]int, len(t.layoutState.LivePinned))
+	for k, slot := range t.layoutState.LivePinned {
+		if inWindow[k] {
+			pinned[k] = slot
+		}
+	}
+	return livePanes, pinned
+}
+
 // connectedWindowSet reports which secondary windows are attached right now.
 //
 // Window 1 reads it from its own listener. A SECONDARY window has no listener
@@ -240,6 +266,34 @@ func (t *TUI) surfaceSessionNotice(text string) {
 		Detail: text,
 		Time:   time.Now(),
 	})
+	// A session notice means the session's SHAPE changed -- and for a follower
+	// that includes assignment moves made on window 1 (ini-xq4r): its cached
+	// WindowAssignment is a startup snapshot, so without this reload the
+	// follower's pane plan filters on a stale store forever and a moved group
+	// never arrives. Event-driven on the existing notice plumbing rather than
+	// polling the file per layout tick; the notice and the plan change land
+	// together, which is also what AC 4's mid-glance rule wants.
+	t.reloadAssignmentIfFollower()
+}
+
+// reloadAssignmentIfFollower re-reads the assignment store on a window that
+// does not own it, mirroring refreshFleetIfFollower one store over. Window 1's
+// in-memory assignment IS the truth (it writes through MoveGroup, which
+// persists on every change), so the authority never reloads.
+func (t *TUI) reloadAssignmentIfFollower() {
+	if t.windowID == WindowOne || t.projectRoot == "" {
+		return
+	}
+	a, err := LoadAssignment(t.projectRoot)
+	if err != nil {
+		// Keep the cached store: a transient read error must not blank this
+		// window's plan. The next notice retries.
+		LogWarn("assignment", "follower reload failed; keeping cached store", "err", err)
+		return
+	}
+	t.assignment = a
+	t.recalcGrid(false)
+	t.applyLayout()
 }
 
 // isSecondaryWindowIdentity reports whether a peer_name is one the --window

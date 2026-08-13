@@ -64,9 +64,12 @@ func TestSixM4Rig_ViewerModalParityAndReplaySurvival(t *testing.T) {
 	os.WriteFile(filepath.Join(root, "initech.yaml"), []byte(cfg), 0o644)
 
 	os.MkdirAll(filepath.Join(root, ".initech"), 0o755)
-	// The operator's arrangement: eng on monitor 2.
-	os.WriteFile(filepath.Join(root, ".initech", "assignments.yaml"),
-		[]byte("group_window:\n    eng: window-2\n"), 0o644)
+	// The assignment is DELIBERATELY NOT SEEDED here. Hand-writing the store
+	// with "window-2" is exactly how ini-xq4r hid: the rig wrote the correct
+	// identity form the modal's generator never produced, so six beads of
+	// fixes shipped over a store the real UI could not create. The placement
+	// leg below assigns eng via the modal's real m key instead -- the full
+	// loop modal-writes -> store -> viewer-filters -> panes move.
 	// Divergent saved orders on BOTH windows.
 	os.WriteFile(filepath.Join(root, ".initech", "layout.yaml"),
 		[]byte("grid: 4x2\nmode: grid\norder:\n    - eng2\n    - eng1\n    - qa1\n    - pm\n    - growth\n    - shipper\n    - pmm\n    - super\n"), 0o644)
@@ -137,6 +140,53 @@ func TestSixM4Rig_ViewerModalParityAndReplaySurvival(t *testing.T) {
 		p.Write([]byte("agents\r"))
 		time.Sleep(2500 * time.Millisecond)
 	}
+	// ── PLACEMENT (ini-xq4r): assign eng via the REAL modal ─────────
+	// Select eng1 (the '/' search reaches it by name) and press m: the group
+	// moves to a NEW second window identity produced by the modal's own
+	// generator -- the form under test.
+	// The seeded window-1 layout order puts eng2 first, so the modal's
+	// DEFAULT selection is already an eng agent -- 'm' with no navigation
+	// moves the eng group. (A first draft navigated by '/' search; search
+	// mode intercepts every subsequent rune, so the 'm' was swallowed into
+	// the search buffer and no move ever happened -- the rig then correctly
+	// reported 'assignment moved nothing', which was true of the RIG.)
+	openModal(w1pty)
+	w1pty.Write([]byte("m"))
+	time.Sleep(2 * time.Second)
+	if b, err := os.ReadFile(filepath.Join(root, ".initech", "assignments.yaml")); err == nil {
+		t.Logf("assignments.yaml after m: %q", string(b))
+	} else {
+		t.Logf("assignments.yaml after m: UNREADABLE (%v) -- the move never persisted", err)
+	}
+	t.Logf("W1 MODAL after m:\n%s", strings.Join(nonEmpty(snapRows(w1emu)), "\n"))
+	w1pty.Write([]byte("\x1b")) // close the modal so the pane area is readable
+	time.Sleep(2 * time.Second)
+
+	w2pane := strings.Join(nonEmpty(snapRows(w2emu)), "\n")
+	// RENDERED-pane evidence only: pane titles and the window bar both print
+	// " N name " (index, space, name) -- the overlay prints "○ host:name" and
+	// the modal "[x] name", so this regexp matches exactly the surfaces that
+	// mean "this window RENDERS this agent". The first draft of this assertion
+	// used bare Contains and matched window 2's OVERLAY (a fleet surface that
+	// legitimately lists everything), passing while the pane area was empty.
+	engRendered := regexp.MustCompile(` \d+ eng[12] `)
+	// Window 2's rendered evidence is pane CONTENT, not chrome: remote panes
+	// do not draw the " N name " title local panes do (measured from the
+	// dump), but each agent's Claude session prints its workspace path, which
+	// ends in the agent's directory. A window rendering /eng1 and /eng2
+	// content is rendering the eng panes.
+	for _, marker := range []string{"/eng1", "/eng2"} {
+		if !strings.Contains(w2pane, marker) {
+			t.Errorf("window 2's pane area shows no %s content after the modal move -- "+
+				"assignment moved the modal, not the panes (ini-xq4r)\nW2:\n%s", marker, w2pane)
+		}
+	}
+	w1pane := strings.Join(nonEmpty(snapRows(w1emu)), "\n")
+	if hits := engRendered.FindAllString(w1pane, -1); len(hits) > 0 {
+		t.Errorf("window 1 still renders eng pane titles %v while window 2 is connected and "+
+			"owns the group -- 'exactly one window' violated", hits)
+	}
+
 	openModal(w1pty)
 	openModal(w2pty)
 

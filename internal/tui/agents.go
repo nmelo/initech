@@ -36,6 +36,11 @@ func (t *TUI) openAgentsModal() {
 	// renders marks that disagree with window 1 and invites a toggle made on a
 	// false premise (ini-6m4).
 	t.refreshFleetIfFollower()
+	// Same boundary, other store (ini-xq4r): the notice-driven reload covers
+	// the live path, but a dropped notice (channel full) would leave this
+	// modal showing a stale tier layout -- the exact 6m4 staleness bug one
+	// store over. The modal is the decision surface; it opens on truth.
+	t.reloadAssignmentIfFollower()
 	t.agents.active = true
 	t.agents.selected = 0
 	t.agents.moving = false

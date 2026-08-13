@@ -334,12 +334,16 @@ func (t *TUI) applyLayout() {
 	// Exclude manually hidden panes so the engine only scores and assigns
 	// agents that the operator wants visible. Hidden means hidden.
 	if t.layoutState.Mode == LayoutLive && t.liveEngine != nil {
-		livePanes := make([]PaneView, 0, len(t.panes))
-		for _, p := range t.panes {
-			if !t.layoutState.Hidden[paneKey(p)] {
-				livePanes = append(livePanes, p)
-			}
-		}
+		// The live rotation's universe is THIS WINDOW'S panes (assignment-
+		// aware, ini-xq4r AC 3), minus hidden. Feeding t.panes rotated agents
+		// that had moved to another window; worse, a PIN for a departed agent
+		// held its slot forever -- a dangling reservation rotating nothing.
+		// The pin itself is global and survives the move (it re-applies where
+		// the agent now renders); only this window's slot releases, which is
+		// why engine.Pinned is re-derived per tick as global-state ∩ this
+		// window's pane set rather than mutated anywhere.
+		livePanes, pinned := t.liveTickInputs()
+		t.liveEngine.Pinned = pinned
 		LogInfo("applyLayout", "live-tick-input", "total", len(t.panes), "visible", len(livePanes))
 		prev := make([]string, len(t.liveEngine.Slots))
 		copy(prev, t.liveEngine.Slots)
@@ -1186,6 +1190,12 @@ func (t *TUI) handlePeerUpdate(peerName string, newPanes []PaneView, connected b
 	// Drop the top modal's cached rows: a peer update can both shrink and
 	// reorder t.panes, so the cached rows no longer describe it (ini-6gjg).
 	t.topReconcile()
+	// A (re)connect is a shape change this window slept through: reload the
+	// assignment so a move made while detached is filtered from the first
+	// frame (ini-xq4r). No-op on window 1, which owns the store.
+	if connected {
+		t.reloadAssignmentIfFollower()
+	}
 	// Group the NEW panes BEFORE any layout runs (ini-6m4). visiblePanesForWindow
 	// resolves each pane's window through GroupOf; panes that arrived in this
 	// update have no entry yet, and an unknown pane defaults to window 1 -- so a

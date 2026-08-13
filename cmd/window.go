@@ -56,8 +56,11 @@ func checkWindowOneReachable(addr string, n int) error {
 // is used as a map key for client routing and as a filename component for
 // per-window layout state (ini-9ka.3), so a name that failed validation would
 // fail somewhere far away from here.
+// Delegates to tui.WindowPeerName -- the single generator for window
+// identities (ini-xq4r). Two independent literals for one identity family is
+// how "window2" (modal) and "window-2" (viewer) drifted.
 func windowPeerName(n int) string {
-	return fmt.Sprintf("window-%d", n)
+	return tui.WindowPeerName(n)
 }
 
 // viewerProject derives the Project a secondary window runs with, from the

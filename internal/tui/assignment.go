@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 
 	"gopkg.in/yaml.v3"
 )
@@ -39,6 +40,31 @@ const WindowOne = ""
 // that could disagree was ini-1ch, where window 1 advertised "" against a
 // client expecting "window1" and every attach failed the handshake.
 const WindowOnePeerName = "window1"
+
+// WindowPeerName returns the canonical identity of window n -- the ONE string
+// that names it in the assignment store, on the wire, and in the connected-
+// window registry. The family is IRREGULAR by history: window1 (no hyphen,
+// ini-1ch's wire name) then window-2, window-3 (cmd/window.go's viewer
+// identities). That irregularity is exactly why two independent generators
+// drifted (ini-xq4r): the agents modal synthesized the plausible regular form
+// "window2" for a viewer that presents "window-2", so the viewer never matched
+// its own assignment -- it planned zero panes while window 1's orphan rule,
+// correctly, kept everything for a window that as far as it could tell never
+// attached. Every producer of a window identity MUST call this; cmd/window.go
+// delegates here.
+func WindowPeerName(n int) string {
+	if n <= 1 {
+		return WindowOnePeerName
+	}
+	return fmt.Sprintf("window-%d", n)
+}
+
+// legacyWindowIDRe matches the assignment identities the pre-xq4r modal
+// generator produced ("window2", "window3", ...). Only that generator ever
+// wrote this form -- window 1 is "window1" (matched and left alone via
+// WindowPeerName) and viewers are "window-N" -- so normalizing it on load
+// cannot clobber a legitimate custom identity.
+var legacyWindowIDRe = regexp.MustCompile(`^window([2-9][0-9]*)$`)
 
 // persistentAssignment is the on-disk shape. Only NON-default assignments are
 // stored: a group absent from the map is on window 1. This keeps a fresh
@@ -122,6 +148,14 @@ func LoadAssignment(projectRoot string) (*WindowAssignment, error) {
 		return nil, fmt.Errorf("parse assignment store: %w", err)
 	}
 	for group, window := range pa.GroupWindow {
+		// Heal stores written by the pre-xq4r generator: "window2" named a
+		// window that could never attach (viewers present "window-2"), so the
+		// group's panes rendered nowhere. One-time, logged, save-on-next-move.
+		if m := legacyWindowIDRe.FindStringSubmatch(window); m != nil {
+			healed := "window-" + m[1]
+			LogInfo("assignment", "normalized legacy window identity", "group", group, "from", window, "to", healed)
+			window = healed
+		}
 		// Drop entries that could not have been written by MoveGroup. A
 		// hand-edited or truncated store should degrade to the default for
 		// the bad entries rather than propagate an invalid window identity

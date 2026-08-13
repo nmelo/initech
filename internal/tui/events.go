@@ -37,6 +37,7 @@ const (
 	EventWindowFoldback                          // A secondary window went away; its agents now render in window 1 (ini-9ka.7).
 	EventWindowRestored                          // A secondary window reattached; its agents went back to it.
 	EventAssignmentWriteRefused                  // A window-assignment change could not be saved (ini-9ka.9).
+	EventGroupMoved                              // A group was assigned to a different window (ini-xq4r).
 )
 
 // String returns a human-readable label for the event type.
@@ -82,6 +83,8 @@ func (e EventType) String() string {
 		return "window-foldback"
 	case EventWindowRestored:
 		return "window-restored"
+	case EventGroupMoved:
+		return "group_moved"
 	case EventAssignmentWriteRefused:
 		return "assignment-write-refused"
 	case EventLiveSwap:

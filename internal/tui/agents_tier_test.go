@@ -73,7 +73,7 @@ func TestAgentsTiers_SingleWindowEmitsNoTierGeometry(t *testing.T) {
 // the spec's double rule, when more than one window is configured.
 func TestAgentsTiers_RenderShowsMonitorHeaders(t *testing.T) {
 	tui, _ := tierTUI(t, true, "super", "eng1", "qa1")
-	if err := tui.agentsAssignment().MoveGroup("eng", "window2"); err != nil {
+	if err := tui.agentsAssignment().MoveGroup("eng", "window-2"); err != nil {
 		t.Fatal(err)
 	}
 	tui.renderAgentsGrid()
@@ -115,7 +115,7 @@ func screenText(t *testing.T, tui *TUI) string {
 // which is the tautology the AC is written to avoid.
 func TestAgentsTiers_RenderedPositionsMatchComputedGeometry(t *testing.T) {
 	tui, _ := tierTUI(t, true, "super", "pm", "eng1", "eng2", "qa1", "qa2")
-	if err := tui.agentsAssignment().MoveGroup("qa", "window2"); err != nil {
+	if err := tui.agentsAssignment().MoveGroup("qa", "window-2"); err != nil {
 		t.Fatal(err)
 	}
 	tui.renderAgentsGrid()
@@ -171,7 +171,7 @@ func tierRowText(t *testing.T, tui *TUI, y, x, count int) string {
 // content height the same walk reports.
 func TestAgentsGridWalk_HeightMatchesPositions(t *testing.T) {
 	tui, _ := tierTUI(t, true, "super", "pm", "eng1", "eng2", "eng3", "qa1")
-	if err := tui.agentsAssignment().MoveGroup("eng", "window2"); err != nil {
+	if err := tui.agentsAssignment().MoveGroup("eng", "window-2"); err != nil {
 		t.Fatal(err)
 	}
 	sw, sh := tui.screen.Size()
@@ -264,7 +264,7 @@ func TestAgentsTiers_MoveGroupInertWhenSingleWindow(t *testing.T) {
 func TestAgentsTiers_GrabAcrossTierMovesWindowImplicitly(t *testing.T) {
 	tui, _ := tierTUI(t, true, "super", "eng1", "qa1")
 	assign := tui.agentsAssignment()
-	if err := assign.MoveGroup("qa", "window2"); err != nil {
+	if err := assign.MoveGroup("qa", "window-2"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -276,8 +276,8 @@ func TestAgentsTiers_GrabAcrossTierMovesWindowImplicitly(t *testing.T) {
 	// The grab: eng1's band changes to qa, which lives on window2.
 	tui.layoutState.GroupOf[eng1] = "qa"
 
-	if got := assign.WindowOfAgent(eng1, tui.layoutState.GroupOf); got != "window2" {
-		t.Errorf("after grabbing eng1 into qa, its window = %q, want window2 (window follows group)", got)
+	if got := assign.WindowOfAgent(eng1, tui.layoutState.GroupOf); got != "window-2" {
+		t.Errorf("after grabbing eng1 into qa, its window = %q, want window-2 (window follows group)", got)
 	}
 }
 
@@ -289,22 +289,22 @@ func TestAgentsTiers_GrabAcrossTierMovesWindowImplicitly(t *testing.T) {
 // WINDOW-2 group, which is the case that would silently default to window 1.
 func TestAgentsTiers_CreateGroupLandsOnSelectionWindow(t *testing.T) {
 	tui, root := tierTUI(t, true, "super", "eng1", "qa1")
-	if err := tui.agentsAssignment().MoveGroup("qa", "window2"); err != nil {
+	if err := tui.agentsAssignment().MoveGroup("qa", "window-2"); err != nil {
 		t.Fatal(err)
 	}
 	selectAgent(t, tui, "qa1") // selection sits on a window-2 group
 
 	tui.agentsCreateGroup("triage")
 
-	if got := tui.agentsAssignment().WindowOfGroup("triage"); got != "window2" {
-		t.Errorf("new group landed on %q, want window2 (the window the selection was in)", got)
+	if got := tui.agentsAssignment().WindowOfGroup("triage"); got != "window-2" {
+		t.Errorf("new group landed on %q, want window-2 (the window the selection was in)", got)
 	}
 	onDisk, err := LoadAssignment(root)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := onDisk.WindowOfGroup("triage"); got != "window2" {
-		t.Errorf("on-disk window for the new group = %q, want window2", got)
+	if got := onDisk.WindowOfGroup("triage"); got != "window-2" {
+		t.Errorf("on-disk window for the new group = %q, want window-2", got)
 	}
 }
 
@@ -330,13 +330,13 @@ func TestAgentsTiers_CreateGroupOnWindowOneStoresNothing(t *testing.T) {
 // that label were ever recreated.
 func TestAgentsTiers_EmptyGroupCreatedOnWindowTwoVanishesOnClose(t *testing.T) {
 	tui, root := tierTUI(t, true, "super", "eng1", "qa1")
-	if err := tui.agentsAssignment().MoveGroup("qa", "window2"); err != nil {
+	if err := tui.agentsAssignment().MoveGroup("qa", "window-2"); err != nil {
 		t.Fatal(err)
 	}
 	selectAgent(t, tui, "qa1")
 
 	tui.agentsCreateGroup("triage")
-	if got := tui.agentsAssignment().WindowOfGroup("triage"); got != "window2" {
+	if got := tui.agentsAssignment().WindowOfGroup("triage"); got != "window-2" {
 		t.Fatalf("precondition: new group should be on window2, got %q", got)
 	}
 
@@ -368,7 +368,7 @@ func TestAgentsTiers_EmptyGroupCreatedOnWindowTwoVanishesOnClose(t *testing.T) {
 // readable while results dim.
 func TestAgentsTiers_SearchDimsInPlaceAcrossTiers(t *testing.T) {
 	tui, _ := tierTUI(t, true, "super", "eng1", "eng2", "qa1")
-	if err := tui.agentsAssignment().MoveGroup("qa", "window2"); err != nil {
+	if err := tui.agentsAssignment().MoveGroup("qa", "window-2"); err != nil {
 		t.Fatal(err)
 	}
 	tui.agents.searching = true
