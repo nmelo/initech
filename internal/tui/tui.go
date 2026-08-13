@@ -926,9 +926,13 @@ func Run(cfg Config) error {
 		// the session state now.
 		pm.SetOnEvicted(func(peerName, reason string) {
 			t.runOnMain(func() {
+				// Name the TAKEN IDENTITY (this window's own, e.g. window-2),
+				// not the server label the manager dialed (qa1's wording
+				// FAIL: "another window1 took over" told the operator the
+				// wrong window changed hands).
 				t.exitReason = fmt.Errorf(
 					"another %s took over this identity — this window is closing; rerun initech --window with the same number here to take it back (%s)",
-					peerName, reason)
+					t.windowID, reason)
 			})
 			t.requestQuit()
 		})

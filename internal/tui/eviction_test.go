@@ -93,6 +93,13 @@ func (srv *evictionWarServer) handle(conn net.Conn, script string) {
 		// Lives past quickEvictionWindow, then dies: a real session ending,
 		// which must RESET the inference counter.
 		time.Sleep(quickEvictionWindow + time.Second)
+	case "hold-then-verdict":
+		// Lives past quickEvictionWindow, THEN is evicted with the verdict.
+		// The death is not quick, so the inference is UNAVAILABLE by
+		// construction -- only the verdict layer can conclude this one.
+		time.Sleep(quickEvictionWindow + time.Second)
+		writeJSON(ctrl, ControlResp{Action: identityTakenOverAction, Text: "taken over by test"})
+		time.Sleep(300 * time.Millisecond)
 	case "drop":
 		// fall through to the deferred close: accepted-then-dropped.
 	}
@@ -148,6 +155,37 @@ func TestEvictionWar_VerdictIsTerminal(t *testing.T) {
 	if got := srv.count(); got != atConclusion {
 		t.Fatalf("client connected again AFTER concluding eviction (%d -> %d) -- the conclusion "+
 			"did not end the loop, which is the war continuing politely", atConclusion, got)
+	}
+}
+
+// TestEvictionWar_VerdictAloneConcludesALongSession is the verdict layer's
+// OWN assertion -- qa1's narrow FAIL, and my own xq4r layer-masking rule
+// biting this bead: every other war script leaves quick deaths available, so
+// the N=2 inference concluded every scenario and a verdict-dead mutant
+// (evicted never set) passed the ENTIRE suite. Here the session is held past
+// quickEvictionWindow before the verdict arrives: the death is not quick,
+// the inference cannot fire, and only the verdict can end the loop. The
+// second script is "hold" so a redialing mutant parks instead of concluding
+// by any other road.
+func TestEvictionWar_VerdictAloneConcludesALongSession(t *testing.T) {
+	srv := startEvictionWarServer(t, "hold-then-verdict", "hold")
+	evicted, stop := evictionPM(t, srv)
+	defer stop()
+
+	select {
+	case reason := <-evicted:
+		if !strings.Contains(reason, "window1") {
+			t.Errorf("verdict-driven conclusion %q does not name the peer", reason)
+		}
+	case <-time.After(quickEvictionWindow + 10*time.Second):
+		t.Fatal("a long-lived session that received the eviction verdict never concluded -- " +
+			"the verdict layer is dead and only the inference has been passing these tests " +
+			"(layer-masking: the outer guard eating the inner's evidence)")
+	}
+	time.Sleep(3 * time.Second)
+	if got := srv.count(); got != 1 {
+		t.Fatalf("client connected %d times, want exactly 1 -- with the death not quick, a "+
+			"redial means the verdict was ignored", got)
 	}
 }
 
