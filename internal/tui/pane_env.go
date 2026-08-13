@@ -109,9 +109,26 @@ var overriddenTerminalEnv = []string{
 // NOTE ON WHAT THIS BUYS: Cursor sets CURSOR_TRACE_ID *and* the askpass path, so
 // removing the first does not by itself restore tier-1 for a real Cursor host --
 // measured, the askpass marker alone still suppresses. This removes one lie for
-// free; it is not a fix for the Cursor population. The measured fix for the kept
-// three is forcing the notification channel rather than fighting the input list
-// (ini-m2e records that lever and its trade-offs).
+// free; it is not a fix for the Cursor population.
+//
+// THE KEPT THREE ARE NOW RESCUED WITHOUT BEING REMOVED (ini-2fd). Forcing
+// preferredNotifChannel bypasses the terminal-identity resolution entirely, so
+// these variables keep their real jobs AND tier-1 works. Measured at Claude
+// Code 2.1.231 with the injected channel, each marker applied one at a time on
+// top of the pin (notif_channel_probe_test.go):
+//
+//	VSCODE_GIT_ASKPASS_MAIN=<a Cursor path>   -> OSC 777 in 10.4s   (was 90s silent)
+//	__CFBundleIdentifier=com.jetbrains.<x>    -> OSC 777 in 11.1s   (was 90s silent)
+//	VisualStudioVersion=17.0                  -> OSC 777 in 10.4s   (was 90s silent)
+//	__CFBundleIdentifier, NO injection        -> silent, dialog reached (control)
+//
+// The control row is what keeps the three above meaningful: it proves the
+// markers still suppress, so the rescues are measuring the injection rather
+// than a resolution change that quietly stopped shadowing on its own.
+//
+// This does NOT make the list above safe to grow carelessly -- the injection is
+// skipped whenever the operator has chosen a channel themselves, and those
+// operators still depend on the scrub. See notif_channel.go.
 var shadowingIdentityEnv = []string{
 	"CURSOR_TRACE_ID",
 }

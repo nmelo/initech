@@ -55,6 +55,18 @@ func buildRemoteConfigureAgentCmd(roleName string, project *config.Project, remo
 		}
 	}
 
+	// NO notification-channel injection here, deliberately (ini-2fd).
+	//
+	// The local pane builder injects preferredNotifChannel only after
+	// confirming the operator's own settings resolution specifies none --
+	// which requires READING their settings files. Those files live on the
+	// REMOTE host, and this builder cannot see them. Injecting blind would
+	// override an explicit choice made on that machine, which is the one
+	// outcome the operator decision forbids; skipping leaves remote agents on
+	// the pre-fix behaviour, which is the status quo rather than a regression.
+	//
+	// Closing this needs a way to read the remote's settings over the control
+	// channel, tracked separately rather than decided here.
 	root := remote.EffectiveRoot(project.Name)
 	dir := path.Join(root, roleName)
 	if hasOverride && ov.Dir != "" {

@@ -271,6 +271,10 @@ func buildAgentPaneConfig(roleName string, proj *config.Project) (tui.PaneConfig
 	ov, hasOverride := proj.RoleOverrides[roleName]
 
 	var argv []string
+	// isClaude gates the notification-channel injection below: a --settings
+	// flag is Claude's, and appending it to codex or a mock agent would be a
+	// syntax error rather than a fix (ini-2fd).
+	isClaude := false
 	if mock := os.Getenv("INITECH_MOCK_AGENT"); mock != "" {
 		argv = []string{mock}
 	} else {
@@ -279,6 +283,7 @@ func buildAgentPaneConfig(roleName string, proj *config.Project) (tui.PaneConfig
 		if hasOverride && len(ov.Command) > 0 {
 			argv = append(argv, ov.Command...)
 		} else {
+			isClaude = true
 			if len(proj.ClaudeCommand) > 0 {
 				argv = append(argv, proj.ClaudeCommand...)
 			} else {
@@ -301,6 +306,16 @@ func buildAgentPaneConfig(roleName string, proj *config.Project) (tui.PaneConfig
 
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
 		return tui.PaneConfig{}, fmt.Errorf("role %q directory does not exist: %s", roleName, dir)
+	}
+
+	// Force Claude's notification channel so tier-1 attention detection does
+	// not depend on a terminal-identity resolution that host IDE markers can
+	// hijack (ini-2fd). NotifChannelArgs stands down when the operator passes
+	// their own --settings or has already chosen a channel, so this is
+	// unconditional-when-absent, not a silent override. It goes after the
+	// role's claude_args so the arguments it inspects are the final ones.
+	if isClaude {
+		argv = append(argv, tui.NotifChannelArgs(dir, argv)...)
 	}
 
 	var env []string

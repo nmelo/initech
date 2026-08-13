@@ -35,6 +35,7 @@
 
 # ── Drive a real PTY (creack/pty is Unix-only in this usage) ──────────
 internal/tui/attention_emitter_probe_test.go  windows  # live OSC 777 probe spawns a real Claude Code under a PTY via creack/pty
+internal/tui/notif_channel_probe_test.go      windows  # live notification-channel matrix spawns a real Claude Code under a PTY via creack/pty; its portable half (screen render, silence diagnosis) lives untagged in notif_probe_diagnosis_test.go
 internal/tui/census_zerochange_test.go        windows  # builds and runs the real binary under a PTY to capture the startup census
 internal/tui/rolesless_boot_test.go           windows  # boots the real binary under a PTY
 
