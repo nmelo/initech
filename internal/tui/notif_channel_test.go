@@ -211,15 +211,38 @@ func TestHomeEnvVar_IsTheRightVariablePerOS(t *testing.T) {
 // TestManagedSettingsPath_IsTheRightPathPerOS pins the managed/policy path for
 // every OS from the same measurement. The Windows arm was missing entirely
 // until the ini-2fd reopen, so this exists to keep it from going missing again.
+// It asserts EXACT strings, separators included. An earlier version built
+// these with filepath.Join and compared prefixes, which passed on macOS and
+// Linux and failed on the Windows CI leg with
+// "\Library\Application Support\ClaudeCode\..." -- Join uses the separator of
+// the platform the test is RUNNING on, not the one the path describes. A
+// per-OS path constant has to read the same from every machine or it is not
+// pinning anything.
 func TestManagedSettingsPath_IsTheRightPathPerOS(t *testing.T) {
 	for goos, want := range map[string]string{
-		"darwin":  "/Library/Application Support/ClaudeCode",
-		"windows": `C:\Program Files\ClaudeCode`,
-		"linux":   "/etc/claude-code",
+		"darwin":  "/Library/Application Support/ClaudeCode/managed-settings.json",
+		"windows": `C:\Program Files\ClaudeCode\managed-settings.json`,
+		"linux":   "/etc/claude-code/managed-settings.json",
 	} {
-		got := managedSettingsPath(goos)
-		if !strings.HasPrefix(got, want) || !strings.HasSuffix(got, "managed-settings.json") {
-			t.Errorf("managedSettingsPath(%q) = %q, want %q + managed-settings.json", goos, got, want)
+		if got := managedSettingsPath(goos); got != want {
+			t.Errorf("managedSettingsPath(%q) = %q, want %q", goos, got, want)
+		}
+	}
+}
+
+// TestManagedSettingsPath_UsesEachOSsOwnSeparator guards the class rather than
+// the three instances: whatever these constants become, a Windows path must
+// not carry forward slashes and a POSIX path must not carry backslashes, on
+// whichever platform the suite happens to run.
+func TestManagedSettingsPath_UsesEachOSsOwnSeparator(t *testing.T) {
+	if p := managedSettingsPath("windows"); strings.Contains(p, "/") {
+		t.Errorf("windows managed path %q contains a forward slash; it was probably built with "+
+			"filepath.Join on a POSIX host", p)
+	}
+	for _, goos := range []string{"darwin", "linux"} {
+		if p := managedSettingsPath(goos); strings.Contains(p, `\`) {
+			t.Errorf("%s managed path %q contains a backslash; it was probably built with "+
+				"filepath.Join on a Windows host", goos, p)
 		}
 	}
 }

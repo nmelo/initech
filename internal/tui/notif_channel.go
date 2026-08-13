@@ -167,14 +167,21 @@ func homeEnvVar(goos string) string {
 //	default -> /etc/claude-code
 //
 // The Windows arm was missing entirely before ini-2fd's reopen.
+//
+// These are written as LITERALS rather than built with filepath.Join, because
+// Join uses the separator of the platform the code is RUNNING on, not the one
+// it is describing. Joining produced "\Library\Application Support\..." for
+// the darwin arm when the test ran on the Windows CI leg -- a path no machine
+// has. A fixed absolute path for a named OS is a constant, so it is written
+// as one.
 func managedSettingsPath(goos string) string {
 	switch goos {
 	case "darwin":
-		return filepath.Join("/Library/Application Support/ClaudeCode", "managed-settings.json")
+		return "/Library/Application Support/ClaudeCode/managed-settings.json"
 	case "windows":
-		return filepath.Join(`C:\Program Files\ClaudeCode`, "managed-settings.json")
+		return `C:\Program Files\ClaudeCode\managed-settings.json`
 	default:
-		return filepath.Join("/etc/claude-code", "managed-settings.json")
+		return "/etc/claude-code/managed-settings.json"
 	}
 }
 
@@ -188,6 +195,11 @@ func managedSettingsPath(goos string) string {
 // a best-effort path here, or silently skipping the tier as the first version
 // did, fails OPEN: the injection then lands on top of a user-set channel,
 // which is the one outcome the operator decision forbids.
+// Unlike managedSettingsPath, this one joins HOST-native inputs (an env var's
+// value), so filepath.Join is correct here: in production goos is runtime.GOOS
+// and the separators match. When simulating another OS in a test, compare
+// against a filepath.Join-built expectation rather than a foreign literal --
+// the goos argument selects which VARIABLE is read, not which separator.
 func userConfigDir(goos string) (string, bool) {
 	if d := strings.TrimSpace(os.Getenv("CLAUDE_CONFIG_DIR")); d != "" {
 		return d, true
