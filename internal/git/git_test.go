@@ -288,7 +288,10 @@ func TestAddSubmodule_ActivatesVersionedHooks(t *testing.T) {
 		}
 		if strings.Contains(c, "git config core.hooksPath scripts/hooks") {
 			cfgIdx = i
-			if !strings.HasPrefix(c, "/repo/eng9/src|") {
+			// filepath.Join, not a literal: on Windows the dir renders as
+			// \repo\eng9\src, and asserting the Unix form fails the test on
+			// a correct implementation (this exact red happened on CI).
+			if !strings.HasPrefix(c, filepath.Join("/repo", "eng9/src")+"|") {
 				t.Errorf("hooksPath configured outside the new submodule: %q -- setting it on the "+
 					"WORKSPACE repo would point the workspace at a hooks dir it does not have", c)
 			}
