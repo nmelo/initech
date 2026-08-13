@@ -176,6 +176,28 @@ func (t *TUI) visiblePanesForWindow() []PaneView {
 	return out
 }
 
+// emptyViewerHint is the operator-decided copy for a secondary window that
+// owns no groups (ini-9fn, decision 2026-08-13 via pm). PM-OWNED STRING --
+// render it verbatim, never paraphrase, and if it must appear anywhere else it
+// references THIS constant (the one-copy rule from the consent prompt). The
+// alternatives were decided against out loud: bare empty reads as broken
+// (the operator lived through a crash loop that looked exactly like it), and
+// auto-assignment would mean initech deciding his monitor layout for him.
+const emptyViewerHint = "no groups assigned to this window — press Alt+a to assign"
+
+// viewerOwnsNoGroups reports whether this window is a secondary with NOTHING
+// assigned to it -- the one state the empty-viewer hint describes. Two
+// entrances, one state (ini-xq4r's grooming cross-reference): a first attach
+// before any assignment, and the last group being moved away. Deliberately
+// NOT len(plan)==0, which is also true pre-connect and when every assigned
+// pane is hidden -- in those states the hint's copy would be a lie.
+func (t *TUI) viewerOwnsNoGroups() bool {
+	if t.windowID == WindowOne || t.assignment == nil || len(t.panes) == 0 {
+		return false
+	}
+	return len(t.assignment.GroupsForWindow(t.windowID, t.layoutState.Groups)) == 0
+}
+
 // liveTickInputs derives the live rotation's universe for THIS window: its
 // assigned panes minus hidden, plus the pin set intersected with that universe
 // (ini-xq4r AC 3). Pins are GLOBAL state and survive a move -- the agent

@@ -7,10 +7,12 @@ package tui
 // modal over an unmoved fleet passed every gate.
 
 import (
-	"github.com/nmelo/initech/internal/config"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+
+	"github.com/nmelo/initech/internal/config"
 )
 
 // placementTUIs builds window 1 (local panes) and window 2 (remote panes) over
@@ -278,5 +280,113 @@ func TestFleetSurfaces_StayWholeFleet(t *testing.T) {
 	if total != 8 {
 		t.Fatalf("window 2's modal sees %d agents, want the whole fleet (8): fleet surfaces are "+
 			"whole-fleet by operator decision; only the PANE plan filters by assignment", total)
+	}
+}
+
+// ── ini-9fn: the empty-viewer hint ──────────────────────────────────
+//
+// One render state, two entrances (ini-xq4r's cross-reference): a first attach
+// before anything is assigned, and the last group being moved away. The
+// operator decided the shape out loud: ONE dim hint line, never bare-empty
+// (post-crash-loop, a black window reads as a broken one), never auto-assign
+// (initech does not decide his monitor layout).
+
+// TestViewerOwnsNoGroups_BothEntrancesOneState pins the condition across both
+// ways of arriving at emptiness, and the vanish the moment a group arrives.
+func TestViewerOwnsNoGroups_BothEntrancesOneState(t *testing.T) {
+	// Entrance 1: first attach, nothing ever assigned.
+	_, w2, a := placementTUIs(t, "group_window: {}\n")
+	if !w2.viewerOwnsNoGroups() {
+		t.Fatal("first attach with nothing assigned: the hint condition is false, so the " +
+			"operator gets the bare black window he explicitly rejected")
+	}
+
+	// A group arrives: the hint vanishes with no state to clear.
+	if err := a.MoveGroup("eng", "window-2"); err != nil {
+		t.Fatal(err)
+	}
+	if w2.viewerOwnsNoGroups() {
+		t.Fatal("a group is assigned and the hint condition is still true; the hint would " +
+			"cover live panes")
+	}
+
+	// Entrance 2: the last group moves away again.
+	if err := a.MoveGroup("eng", WindowOne); err != nil {
+		t.Fatal(err)
+	}
+	if !w2.viewerOwnsNoGroups() {
+		t.Fatal("last group moved away: same state as first attach, and the hint condition " +
+			"must be true by derivation, not by someone remembering to set it")
+	}
+}
+
+// TestViewerOwnsNoGroups_NeverLies pins the states where the copy would be
+// false and the hint must therefore not show: window 1 (it renders orphans and
+// its own agents; 'no groups assigned' is not its vocabulary), a viewer before
+// its panes arrive (the fleet is not known yet, and 'press Alt+a' over a
+// connecting screen misdirects), and a viewer whose assigned panes are all
+// hidden (groups ARE assigned; hidden is a different fact with different
+// copy ownership).
+func TestViewerOwnsNoGroups_NeverLies(t *testing.T) {
+	w1, w2, _ := placementTUIs(t, "group_window:\n    eng: window-2\n")
+
+	if w1.viewerOwnsNoGroups() {
+		t.Error("window 1 claims to be an unassigned viewer")
+	}
+	// Window 1 with EVERY group assigned away is the discriminating case: it
+	// owns nothing by the store's arithmetic, and the hint must still never
+	// show there -- window 1 renders orphans and is the fallback surface, so
+	// "no groups assigned" is not its vocabulary. (Mutation-found: dropping
+	// the windowID gate passed the earlier w1 case because that w1 owned
+	// groups; only this one forces the gate to exist.)
+	w1bare, _, _ := placementTUIs(t, "group_window:\n    core: window-2\n    qa: window-2\n    eng: window-2\n")
+	if w1bare.viewerOwnsNoGroups() {
+		t.Error("window 1 with every group assigned away shows the viewer hint; window 1 is " +
+			"the orphan/fallback surface and never an 'unassigned viewer'")
+	}
+	if w2.viewerOwnsNoGroups() {
+		t.Error("a viewer WITH an assigned group shows the no-groups hint")
+	}
+
+	pre := newTestTUI() // viewer pre-connect: no panes yet
+	pre.windowID = "window-2"
+	pre.assignment = w2.assignment
+	if pre.viewerOwnsNoGroups() {
+		t.Error("a viewer with no panes (still connecting) shows the hint; the fleet is not " +
+			"known yet and the copy would misdirect")
+	}
+}
+
+// TestRenderEmptyViewerHint_DrawsTheDecidedCopyCentered renders through a real
+// simulation screen and asserts the PM-owned string appears verbatim -- the
+// one-copy rule: if the words drift from the constant, someone paraphrased.
+func TestRenderEmptyViewerHint_DrawsTheDecidedCopyCentered(t *testing.T) {
+	tui, screen := newTestTUIWithScreen()
+	tui.windowID = "window-2"
+	root := t.TempDir()
+	a, _ := LoadAssignment(root)
+	tui.assignment = a
+	tui.panes = []PaneView{&RemotePane{name: "super", host: WindowOnePeerName, alive: true}}
+	tui.ensureGroups(false)
+	// The lone group is assigned to window 1 (absent = window 1), so this
+	// viewer owns nothing and the hint must draw.
+	w, h := screen.Size()
+	tui.renderEmptyViewerHint(screen, w, h)
+	screen.Show()
+
+	row := make([]rune, 0, w)
+	for x := 0; x < w; x++ {
+		ch, _, _, _ := screen.GetContent(x, h/2)
+		row = append(row, ch)
+	}
+	// The DECIDED LITERAL, not the constant: comparing the render to
+	// emptyViewerHint would pass for any value of the constant, including a
+	// paraphrase -- the constant-on-both-sides tautology, caught by mutation
+	// here for the third time in this arc. The words below are Nelson's
+	// decision via pm; if this test fails on a copy change, the change is a
+	// re-decision and pm signs it here.
+	const decidedCopy = "no groups assigned to this window — press Alt+a to assign"
+	if got := strings.TrimSpace(string(row)); got != decidedCopy {
+		t.Fatalf("hint row = %q, want the pm-decided copy %q rendered verbatim", got, decidedCopy)
 	}
 }

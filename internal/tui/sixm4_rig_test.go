@@ -140,6 +140,16 @@ func TestSixM4Rig_ViewerModalParityAndReplaySurvival(t *testing.T) {
 		p.Write([]byte("agents\r"))
 		time.Sleep(2500 * time.Millisecond)
 	}
+	// ── EMPTY-VIEWER HINT (ini-9fn): before anything is assigned, window 2
+	// owns no groups and must show the operator-decided hint line -- not the
+	// bare black screen he explicitly rejected after living through a crash
+	// loop that looked exactly like it.
+	w2empty := strings.Join(nonEmpty(snapRows(w2emu)), "\n")
+	if !strings.Contains(w2empty, "no groups assigned to this window") {
+		t.Errorf("window 2 with nothing assigned shows no hint line -- the bare empty window "+
+			"the operator rejected\nW2:\n%s", w2empty)
+	}
+
 	// ── PLACEMENT (ini-xq4r): assign eng via the REAL modal ─────────
 	// Select eng1 (the '/' search reaches it by name) and press m: the group
 	// moves to a NEW second window identity produced by the modal's own
@@ -180,6 +190,12 @@ func TestSixM4Rig_ViewerModalParityAndReplaySurvival(t *testing.T) {
 			t.Errorf("window 2's pane area shows no %s content after the modal move -- "+
 				"assignment moved the modal, not the panes (ini-xq4r)\nW2:\n%s", marker, w2pane)
 		}
+	}
+	// The hint VANISHED the moment the group arrived (same frame class as the
+	// move notice; no state anyone has to clear).
+	if strings.Contains(w2pane, "no groups assigned to this window") {
+		t.Errorf("window 2 still shows the empty-viewer hint while rendering its assigned "+
+			"group -- the hint is covering live panes\nW2:\n%s", w2pane)
 	}
 	w1pane := strings.Join(nonEmpty(snapRows(w1emu)), "\n")
 	if hits := engRendered.FindAllString(w1pane, -1); len(hits) > 0 {

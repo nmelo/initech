@@ -8,6 +8,29 @@ import (
 	"github.com/gdamore/tcell/v2"
 )
 
+// renderEmptyViewerHint draws the single dim centered hint on a secondary
+// window that owns no groups (ini-9fn) -- agents-overlay voice, one line, and
+// it vanishes the moment a group arrives because the condition is derived
+// from the assignment store every frame rather than being state anything has
+// to remember to clear.
+func (t *TUI) renderEmptyViewerHint(s tcell.Screen, w, h int) {
+	if !t.viewerOwnsNoGroups() {
+		return
+	}
+	style := tcell.StyleDefault.Foreground(tcell.ColorGray).Background(trueBlack)
+	msg := []rune(emptyViewerHint)
+	x := (w - len(msg)) / 2
+	if x < 0 {
+		x = 0
+	}
+	y := h / 2
+	for i, ch := range msg {
+		if x+i < w {
+			s.SetContent(x+i, y, ch, nil, style)
+		}
+	}
+}
+
 func (t *TUI) render() {
 	t.renderCount++
 	if t.renderCount <= 5 || t.renderCount%150 == 0 {
@@ -46,6 +69,8 @@ func (t *TUI) render() {
 		s.Show()
 		return
 	}
+
+	t.renderEmptyViewerHint(s, w, h)
 
 	// Draw panes from the render plan. No visibility checks needed.
 	for i, pr := range t.plan.Panes {
