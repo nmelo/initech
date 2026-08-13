@@ -149,20 +149,43 @@ func TestFleetState_SecondaryCommandRacesWindowOneKeypress(t *testing.T) {
 			len(missingProtected), n, truncateKeys(missingProtected))
 	}
 
-	// The projection the renderer reads must agree with the store, since it is
-	// refreshed inside the same mutation and is the second thing the two
-	// goroutines were racing on. Presence, not cardinality: the projection
-	// legitimately carries each key in both its store form and its
-	// follower-lookup form ("window1:<name>") since ini-6m4's key translation,
-	// so an exact count would fail on a deliberate feature rather than a race.
+	// The projection the renderer reads must agree with the store EXACTLY:
+	// each key in its store form plus ONE "window1:" alias (ini-6m4's key
+	// translation) and nothing else. The exact set matters, and this test has
+	// already proven it twice over: its original count assertion caught the
+	// first translation loop inserting into the map it was ranging over
+	// (Go may visit keys added mid-iteration, so aliases were re-aliased into
+	// nondeterministic "window1:window1:x" junk -- 92 entries where 80
+	// belonged), and the interim presence-only weakening of this assertion
+	// would have let that junk ship. Cardinality + membership, not either alone.
 	tui.runOnMain(func() {
+		wantHidden := make(map[string]bool, 2*n)
+		wantProtected := make(map[string]bool, 2*n)
 		for i := 0; i < n; i++ {
-			if k := fmt.Sprintf("secondary-%d", i); !tui.layoutState.Hidden[k] {
+			for _, form := range []string{"", WindowOnePeerName + ":"} {
+				wantHidden[form+fmt.Sprintf("secondary-%d", i)] = true
+				wantProtected[form+fmt.Sprintf("local-%d", i)] = true
+			}
+		}
+		for k := range wantHidden {
+			if !tui.layoutState.Hidden[k] {
 				t.Errorf("projected Hidden missing %q -- the renderer would show a different "+
 					"fleet than the store holds", k)
 			}
-			if k := fmt.Sprintf("local-%d", i); !tui.layoutState.Protected[k] {
+		}
+		for k := range tui.layoutState.Hidden {
+			if !wantHidden[k] {
+				t.Errorf("projected Hidden carries unexpected key %q (alias junk or field crossover)", k)
+			}
+		}
+		for k := range wantProtected {
+			if !tui.layoutState.Protected[k] {
 				t.Errorf("projected Protected missing %q", k)
+			}
+		}
+		for k := range tui.layoutState.Protected {
+			if !wantProtected[k] {
+				t.Errorf("projected Protected carries unexpected key %q", k)
 			}
 		}
 	})

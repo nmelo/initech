@@ -395,15 +395,28 @@ func (t *TUI) applyFleetProjection() {
 	// which is per-window derived state, is where this window's view of those
 	// keys belongs. Both forms are kept: harmless on window 1 (no pane keys
 	// carry the prefix) and correct everywhere else.
-	for k, v := range t.layoutState.Hidden {
-		t.layoutState.Hidden[WindowOnePeerName+":"+k] = v
+	t.layoutState.Hidden = withWindowOneAliases(t.layoutState.Hidden)
+	t.layoutState.Protected = withWindowOneAliases(t.layoutState.Protected)
+	t.layoutState.LivePinned = withWindowOneAliases(t.layoutState.LivePinned)
+}
+
+// withWindowOneAliases returns m plus a "window1:<k>" alias for each store-form
+// key. A fresh map, never an in-place insert-while-ranging: the first version
+// inserted aliases into the map it was iterating, and Go's range may visit
+// keys added during iteration -- so aliases were themselves re-aliased into
+// nondeterministic "window1:window1:x" junk, in nondeterministic quantity.
+// The ini-8od count assertion caught it (92 entries where 80 belonged) and I
+// initially weakened the assertion instead of hearing it; the exact-set test
+// now pins both the aliasing and the absence of junk.
+func withWindowOneAliases[V any](m map[string]V) map[string]V {
+	out := make(map[string]V, len(m)*2)
+	for k, v := range m {
+		out[k] = v
+		if !strings.HasPrefix(k, WindowOnePeerName+":") {
+			out[WindowOnePeerName+":"+k] = v
+		}
 	}
-	for k, v := range t.layoutState.Protected {
-		t.layoutState.Protected[WindowOnePeerName+":"+k] = v
-	}
-	for k, v := range t.layoutState.LivePinned {
-		t.layoutState.LivePinned[WindowOnePeerName+":"+k] = v
-	}
+	return out
 }
 
 // fleetStoreKey maps a pane key to the key the FLEET STORE uses: window 1's
