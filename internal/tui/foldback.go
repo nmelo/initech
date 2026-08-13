@@ -398,3 +398,15 @@ func (t *TUI) applyAgentStatus(name string, beads []string, desc string) {
 		return
 	}
 }
+
+// isViewerSession reports whether this process is a secondary window rather
+// than the session owner.
+//
+// Nil-safe on purpose: cfg.Project is nil in several call paths (and in tests),
+// and every other read of it in Run is guarded. Round 1 of ini-civ dereferenced
+// it directly at the IPC guard, which happened to work only because the paths
+// that reach there always set it -- a nil panic waiting for the first caller
+// that does not.
+func isViewerSession(cfg Config) bool {
+	return cfg.Project != nil && isSecondaryWindowIdentity(cfg.Project.PeerName)
+}

@@ -10,11 +10,13 @@
 package tui
 
 import (
+	"fmt"
 	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -327,7 +329,19 @@ func TestWindowCLI_ViewerStartsWhileWindowOneOwnsTheIPCSocket(t *testing.T) {
 // runViewerUnderPTY launches `bin --window 2` in root under a PTY and returns
 // what it wrote. A PTY is required: the TUI creates a tcell screen at startup
 // and fails on /dev/tty long before reaching the code under test otherwise.
+//
+// exitSig chooses HOW the viewer dies, and that choice is load-bearing rather
+// than incidental. Round 1 of ini-civ used Kill only, which never runs the
+// signal handler -- so the test asserted the socket survived across an exit
+// path no operator takes, and missed that SIGHUP (closing the terminal, the
+// natural way to shut a second monitor) deleted it. A Kill teardown is a
+// signals-never-ran costume.
 func runViewerUnderPTY(t *testing.T, bin, root string, hold time.Duration) string {
+	t.Helper()
+	return runViewerUnderPTYSig(t, bin, root, hold, os.Kill)
+}
+
+func runViewerUnderPTYSig(t *testing.T, bin, root string, hold time.Duration, exitSig os.Signal) string {
 	t.Helper()
 	cmd := exec.Command(bin, "--window", "2")
 	cmd.Dir = root
@@ -344,6 +358,7 @@ func runViewerUnderPTY(t *testing.T, bin, root string, hold time.Duration) strin
 	}()
 
 	var seen strings.Builder
+	_ = exitSig
 	deadline := time.Now().Add(hold)
 	buf := make([]byte, 32*1024)
 	for time.Now().Before(deadline) {
@@ -356,5 +371,103 @@ func runViewerUnderPTY(t *testing.T, bin, root string, hold time.Duration) strin
 			continue
 		}
 	}
+
+	// Exit the way the caller asked, and give the handler time to run before
+	// the deferred Kill takes the process out from under it.
+	if exitSig != os.Kill {
+		_ = cmd.Process.Signal(exitSig)
+		deadline := time.Now().Add(3 * time.Second)
+		for time.Now().Before(deadline) {
+			if cmd.ProcessState != nil {
+				break
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
 	return seen.String()
+}
+
+// TestWindowCLI_ViewerSIGHUPLeavesWindowOnesSocketAndPIDAlone is ini-civ round
+// 2, and it exists because round 1's test could not see the bug it was written
+// to catch.
+//
+// SIGHUP is THE natural viewer exit: the operator closes the second monitor's
+// terminal window. installSignalHandlers os.Remove()s every path it was given
+// before os.Exit, and it was handed window 1's socket and PID file
+// unconditionally -- so the ordinary way to close a second window deleted the
+// live session's IPC socket. qa1 measured it on a real two-window rig: window 1
+// kept rendering while `initech status` reported nothing running and fleet
+// messaging was dead until restart.
+//
+// Round 1's test tore the viewer down with Process.Kill, which never runs the
+// handler, so it asserted survival across an exit path no operator takes. The
+// signal is the whole point here, not a detail of teardown.
+func TestWindowCLI_ViewerSIGHUPLeavesWindowOnesSocketAndPIDAlone(t *testing.T) {
+	root, err := os.MkdirTemp("", "civ2")
+	if err != nil {
+		t.Fatalf("temp root: %v", err)
+	}
+	defer os.RemoveAll(root)
+
+	for _, role := range []string{"super", "eng1"} {
+		if err := os.MkdirAll(filepath.Join(root, role), 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", role, err)
+		}
+		if err := os.WriteFile(filepath.Join(root, role, "CLAUDE.md"), []byte("# "+role+"\n"), 0o644); err != nil {
+			t.Fatalf("write CLAUDE.md: %v", err)
+		}
+	}
+
+	_, addr := startTestWindowServer(t, []*Pane{windowServerTestPane("super")})
+	cfgYAML := "project: civ2\nroot: " + root + "\nroles:\n    - super\n    - eng1\n" +
+		"claude_command:\n    - sleep\nclaude_args:\n    - \"300\"\n" +
+		"window_listen: \"" + addr + "\"\n"
+	if err := os.WriteFile(filepath.Join(root, "initech.yaml"), []byte(cfgYAML), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	// Window 1's live state: a socket that really accepts, and a PID file with
+	// a PID that is genuinely alive (this test process), so nothing downstream
+	// can dismiss either as stale.
+	dir := filepath.Join(root, ".initech")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatalf("mkdir .initech: %v", err)
+	}
+	sockPath := filepath.Join(dir, "initech.sock")
+	ln, err := net.Listen("unix", sockPath)
+	if err != nil {
+		t.Fatalf("bind window 1's socket: %v", err)
+	}
+	defer ln.Close()
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			c.Close()
+		}
+	}()
+
+	pidPath := filepath.Join(dir, pidFileName)
+	windowOnePID := fmt.Sprintf("%d\n", os.Getpid())
+	if err := os.WriteFile(pidPath, []byte(windowOnePID), 0o600); err != nil {
+		t.Fatalf("write window 1 PID file: %v", err)
+	}
+
+	runViewerUnderPTYSig(t, buildInitechBinary(t), root, 5*time.Second, syscall.SIGHUP)
+
+	if _, err := os.Stat(sockPath); err != nil {
+		t.Errorf("window 1's IPC socket was deleted by the viewer's SIGHUP exit (%v).\n"+
+			"Closing a second monitor's terminal must not kill the session's fleet messaging.", err)
+	}
+	got, err := os.ReadFile(pidPath)
+	if err != nil {
+		t.Fatalf("window 1's PID file was deleted by the viewer's SIGHUP exit: %v", err)
+	}
+	if string(got) != windowOnePID {
+		t.Errorf("window 1's PID file was overwritten: got %q, want %q -- a viewer must not "+
+			"claim the session's identity", strings.TrimSpace(string(got)), strings.TrimSpace(windowOnePID))
+	}
 }

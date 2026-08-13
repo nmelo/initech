@@ -530,6 +530,15 @@ func Run(cfg Config) error {
 	stderrCleanup := redirectStderr(cfg.ProjectRoot)
 	defer stderrCleanup()
 
+	// A secondary window is a VIEWER: it renders another window's agents and
+	// owns none of the project-root state that identifies a running session.
+	// The socket, the PID file and the signal-time cleanup of both are keyed on
+	// the PROJECT ROOT, not on the window, so every one of them is a way for a
+	// viewer to damage window 1's session from the same directory (ini-civ).
+	// Computed once, here, so the ownership question is asked in one place
+	// rather than rediscovered at each door.
+	viewer := isViewerSession(cfg)
+
 	screen, err := tcell.NewScreen()
 	if err != nil {
 		return fmt.Errorf("create screen: %w", err)
@@ -557,13 +566,29 @@ func Run(cfg Config) error {
 
 	// Check for unclean exit from a previous run before logging the start
 	// message, so the warning appears immediately before the new-session header.
-	checkPreviousCrash(cfg.ProjectRoot)
+	// Window 1 only: "did the previous session crash?" is the session owner's
+	// question, and checkPreviousCrash ANSWERS it by os.Remove()ing a PID file
+	// it judges stale. A viewer has no use for the answer and no business
+	// making that judgement about a file it does not own -- the fourth door on
+	// this bead, and the reason round 2 gates every project-root MUTATION in
+	// one place rather than fixing them as they are found (ini-civ).
+	if !viewer {
+		checkPreviousCrash(cfg.ProjectRoot)
+	}
 
 	LogInfo("tui", "starting", "version", cfg.Version, "pid", os.Getpid(), "agents", len(cfg.Agents), "verbose", cfg.Verbose)
 
 	// Write PID file. The deferred remove fires only on clean exits; an absent
 	// cleanup at startup means the previous run exited uncleanly.
-	pidCleanup := writePIDFile(cfg.ProjectRoot)
+	// A viewer must not write the PID file: the path is project-scoped, so it
+	// would overwrite window 1's PID with its own for as long as it runs, and
+	// its clean-exit cleanup would then DELETE the file outright -- leaving a
+	// live window 1 with no PID file at all, which is what `initech status` and
+	// `initech down` read to find the session (ini-civ round 2).
+	pidCleanup := func() {}
+	if !viewer {
+		pidCleanup = writePIDFile(cfg.ProjectRoot)
+	}
 	defer pidCleanup()
 
 	// Deferred exit log: fires on any return from Run() that is not os.Exit().
@@ -588,7 +613,18 @@ func Run(cfg Config) error {
 	quitCh := make(chan struct{})
 	sp := SocketPath(cfg.ProjectRoot, cfg.ProjectName)
 	pidPath := filepath.Join(cfg.ProjectRoot, ".initech", pidFileName)
-	sigCleanup := installSignalHandlers(screen, quitCh, sp, pidPath)
+	// A viewer passes NO cleanup paths. The handler os.Remove()s whatever it is
+	// given before os.Exit, and SIGHUP is the NATURAL viewer exit -- closing the
+	// terminal window. Handing it window 1's socket and PID file meant the
+	// ordinary way to close a second monitor deleted the live session's IPC
+	// socket: window 1 kept rendering while `initech status` reported nothing
+	// running and fleet messaging was dead until restart (ini-civ round 2,
+	// measured by qa1 on a real two-window rig).
+	cleanupPaths := []string{sp, pidPath}
+	if viewer {
+		cleanupPaths = nil
+	}
+	sigCleanup := installSignalHandlers(screen, quitCh, cleanupPaths...)
 	defer sigCleanup()
 
 	// Build layout state from config.
@@ -715,7 +751,7 @@ func Run(cfg Config) error {
 	// built from below. A viewer hosts no agents, so that loop is empty there,
 	// but keeping the value identical means window 1's behaviour is untouched.
 	sockPath := sp
-	if !isSecondaryWindowIdentity(cfg.Project.PeerName) {
+	if !viewer {
 		ipcCleanup, err := t.startIPC(sockPath)
 		if err != nil {
 			LogError("ipc", "socket bind failed", "path", sockPath, "err", err)
@@ -724,7 +760,7 @@ func Run(cfg Config) error {
 		LogInfo("ipc", "listening", "path", sockPath)
 		defer ipcCleanup()
 	} else {
-		LogInfo("ipc", "secondary window: not serving project IPC", "window", cfg.Project.PeerName)
+		LogInfo("ipc", "secondary window: not serving project IPC")
 	}
 
 	// Compute initial regions for pane creation. Reserve 2 rows below panes
