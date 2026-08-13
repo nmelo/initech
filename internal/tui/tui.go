@@ -690,15 +690,42 @@ func Run(cfg Config) error {
 		t.welcome = welcomeOverlay{active: true, expiresAt: time.Now().Add(10 * time.Second)}
 	}
 
-	// Start IPC socket server for inter-agent messaging.
+	// Start IPC socket server for inter-agent messaging -- WINDOW 1 ONLY.
+	//
+	// A secondary window hosts zero local agents. The IPC socket exists so an
+	// agent's own CLI (initech send/peek/bead) can reach the TUI that owns its
+	// PTY, and every one of those agents lives in window 1. There is nothing in
+	// a viewer for it to serve (ini-civ).
+	//
+	// Binding it here was fatal, not merely wasteful: the socket path is a
+	// property of the PROJECT ROOT, not of the window, so a viewer started from
+	// the same root collided with window 1's live socket and the single-instance
+	// guard refused to start -- telling the operator to run 'initech down',
+	// i.e. to kill the very fleet he was trying to get a second monitor onto.
+	//
+	// Skipping the CLEANUP matters as much as skipping the bind: ipcCleanup
+	// unlinks the socket file, and a viewer must never unlink window 1's socket
+	// on its way out. listenIPC also os.Remove()s a socket it finds
+	// undialable, so a viewer that ran this path during a momentary stall in
+	// window 1 would have deleted a socket that was about to work again.
+	//
+	// viewerProject already clears WindowListen with the comment "a viewer
+	// serves nothing"; this is the same rule applied to the listener it missed.
+	// sockPath stays defined for both windows: it is also what INITECH_SOCKET is
+	// built from below. A viewer hosts no agents, so that loop is empty there,
+	// but keeping the value identical means window 1's behaviour is untouched.
 	sockPath := sp
-	ipcCleanup, err := t.startIPC(sockPath)
-	if err != nil {
-		LogError("ipc", "socket bind failed", "path", sockPath, "err", err)
-		return fmt.Errorf("start IPC: %w", err)
+	if !isSecondaryWindowIdentity(cfg.Project.PeerName) {
+		ipcCleanup, err := t.startIPC(sockPath)
+		if err != nil {
+			LogError("ipc", "socket bind failed", "path", sockPath, "err", err)
+			return fmt.Errorf("start IPC: %w", err)
+		}
+		LogInfo("ipc", "listening", "path", sockPath)
+		defer ipcCleanup()
+	} else {
+		LogInfo("ipc", "secondary window: not serving project IPC", "window", cfg.Project.PeerName)
 	}
-	LogInfo("ipc", "listening", "path", sockPath)
-	defer ipcCleanup()
 
 	// Compute initial regions for pane creation. Reserve 2 rows below panes
 	// (spacer + tip line), matching what applyLayout will compute.

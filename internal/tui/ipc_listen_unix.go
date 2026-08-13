@@ -26,7 +26,20 @@ func listenIPC(socketPath string) (net.Listener, error) {
 		conn, dialErr := net.DialTimeout("unix", socketPath, 500*time.Millisecond)
 		if dialErr == nil {
 			conn.Close()
-			return nil, fmt.Errorf("session already running (socket %s is active). Use 'initech down' to stop it first", socketPath)
+			// Reachable ONLY from window 1's startup now: startIPC has a single
+			// caller and it sits behind the not-a-secondary-window branch
+			// (ini-civ). That matters for the wording -- "use initech down" was
+			// catastrophic advice when a viewer could land here, because it told
+			// the operator to kill the fleet he was trying to put on a second
+			// monitor.
+			//
+			// It names --window N because that is what the operator who hits
+			// this is usually reaching for: running plain `initech` a second
+			// time in the same project is what someone does when they want a
+			// second screen, and the old text sent them to tear the session down.
+			return nil, fmt.Errorf("a session is already running in this project (socket %s is active).\n"+
+				"To put another monitor on the SAME session, run 'initech --window 2' instead.\n"+
+				"To stop the running session first, run 'initech down'", socketPath)
 		}
 		os.Remove(socketPath)
 	}

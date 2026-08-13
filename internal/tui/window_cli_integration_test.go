@@ -10,12 +10,15 @@
 package tui
 
 import (
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/creack/pty"
 )
 
 // TestWindowCLI_MalformedConfigErrorsIdenticallyWithAndWithoutFlag is the
@@ -235,4 +238,123 @@ func waitForWindowGone(t *testing.T, ws *windowServer, name string) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	t.Fatalf("window %q still connected after 5s", name)
+}
+
+// TestWindowCLI_ViewerStartsWhileWindowOneOwnsTheIPCSocket is ini-civ's
+// regression, and it is deliberately the heaviest test in this file.
+//
+// WHY IT HAS TO RUN THE REAL BINARY. The bug was that a viewer fell through to
+// the common startup path and called startIPC, colliding with window 1's socket
+// -- so `initech --window 2` never started, on its first real-world invocation,
+// with an error telling the operator to run `initech down` and kill the fleet he
+// was trying to put on a second monitor. Every existing multi-window test in
+// this package drives startTestWindowServer and dialWindow DIRECTLY, below
+// tui.Run, so none of them ever executed the startup path where the collision
+// lives. A component-level rig cannot catch a composed-startup bug; that seam
+// has now bitten three times (predicate consumers, pane geometry, and this).
+//
+// So: a genuinely ACTIVE unix socket at the project's IPC path, a real window-1
+// listener to satisfy the reachability check, and the real binary launched with
+// --window 2 under a PTY.
+func TestWindowCLI_ViewerStartsWhileWindowOneOwnsTheIPCSocket(t *testing.T) {
+	// Short root: a unix socket path has a ~104 byte limit and t.TempDir()'s
+	// name is long enough to blow it (see this file's header note).
+	root, err := os.MkdirTemp("", "civ")
+	if err != nil {
+		t.Fatalf("temp root: %v", err)
+	}
+	defer os.RemoveAll(root)
+
+	for _, role := range []string{"super", "eng1"} {
+		if err := os.MkdirAll(filepath.Join(root, role), 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", role, err)
+		}
+		if err := os.WriteFile(filepath.Join(root, role, "CLAUDE.md"), []byte("# "+role+"\n"), 0o644); err != nil {
+			t.Fatalf("write CLAUDE.md: %v", err)
+		}
+	}
+
+	// Stand in for window 1's pane-stream listener so checkWindowOneReachable
+	// passes and startup proceeds to the part under test.
+	_, addr := startTestWindowServer(t, []*Pane{windowServerTestPane("super")})
+
+	cfgYAML := "project: civ\nroot: " + root + "\nroles:\n    - super\n    - eng1\n" +
+		"claude_command:\n    - sleep\nclaude_args:\n    - \"300\"\n" +
+		"window_listen: \"" + addr + "\"\n"
+	if err := os.WriteFile(filepath.Join(root, "initech.yaml"), []byte(cfgYAML), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	// WINDOW 1 OWNS THE IPC SOCKET. A real listener that really accepts -- the
+	// single-instance guard dials it, so a mere file would not reproduce the
+	// collision and the test would pass against the unfixed code.
+	sockPath := filepath.Join(root, ".initech", "initech.sock")
+	if err := os.MkdirAll(filepath.Dir(sockPath), 0o700); err != nil {
+		t.Fatalf("mkdir .initech: %v", err)
+	}
+	ln, err := net.Listen("unix", sockPath)
+	if err != nil {
+		t.Fatalf("bind window 1's socket: %v", err)
+	}
+	defer ln.Close()
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			c.Close()
+		}
+	}()
+
+	out := runViewerUnderPTY(t, buildInitechBinary(t), root, 6*time.Second)
+
+	for _, forbidden := range []string{"start IPC", "already running", "initech down"} {
+		if strings.Contains(out, forbidden) {
+			t.Errorf("viewer startup hit the window-1 IPC socket (found %q). A secondary window "+
+				"hosts zero local agents and must not serve project IPC.\n--- output ---\n%s",
+				forbidden, out)
+		}
+	}
+
+	// Teardown symmetry: the viewer must never unlink window 1's socket.
+	if _, err := os.Stat(sockPath); err != nil {
+		t.Errorf("window 1's IPC socket is gone after the viewer ran (%v) -- a viewer's exit "+
+			"cleanup must not remove a socket it does not own", err)
+	}
+}
+
+// runViewerUnderPTY launches `bin --window 2` in root under a PTY and returns
+// what it wrote. A PTY is required: the TUI creates a tcell screen at startup
+// and fails on /dev/tty long before reaching the code under test otherwise.
+func runViewerUnderPTY(t *testing.T, bin, root string, hold time.Duration) string {
+	t.Helper()
+	cmd := exec.Command(bin, "--window", "2")
+	cmd.Dir = root
+	cmd.Env = append(os.Environ(), "TERM=xterm-256color")
+
+	ptmx, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: 50, Cols: 160})
+	if err != nil {
+		t.Fatalf("start viewer under pty: %v", err)
+	}
+	defer func() {
+		_ = ptmx.Close()
+		_ = cmd.Process.Kill()
+		_, _ = cmd.Process.Wait()
+	}()
+
+	var seen strings.Builder
+	deadline := time.Now().Add(hold)
+	buf := make([]byte, 32*1024)
+	for time.Now().Before(deadline) {
+		_ = ptmx.SetReadDeadline(time.Now().Add(500 * time.Millisecond))
+		n, err := ptmx.Read(buf)
+		if n > 0 {
+			seen.Write(buf[:n])
+		}
+		if err != nil && n == 0 {
+			continue
+		}
+	}
+	return seen.String()
 }
