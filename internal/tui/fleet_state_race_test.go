@@ -151,14 +151,19 @@ func TestFleetState_SecondaryCommandRacesWindowOneKeypress(t *testing.T) {
 
 	// The projection the renderer reads must agree with the store, since it is
 	// refreshed inside the same mutation and is the second thing the two
-	// goroutines were racing on.
+	// goroutines were racing on. Presence, not cardinality: the projection
+	// legitimately carries each key in both its store form and its
+	// follower-lookup form ("window1:<name>") since ini-6m4's key translation,
+	// so an exact count would fail on a deliberate feature rather than a race.
 	tui.runOnMain(func() {
-		if got, want := len(tui.layoutState.Hidden), n; got != want {
-			t.Errorf("projected Hidden has %d entries, want %d -- the renderer would show a "+
-				"different fleet than the store holds", got, want)
-		}
-		if got, want := len(tui.layoutState.Protected), n; got != want {
-			t.Errorf("projected Protected has %d entries, want %d", got, want)
+		for i := 0; i < n; i++ {
+			if k := fmt.Sprintf("secondary-%d", i); !tui.layoutState.Hidden[k] {
+				t.Errorf("projected Hidden missing %q -- the renderer would show a different "+
+					"fleet than the store holds", k)
+			}
+			if k := fmt.Sprintf("local-%d", i); !tui.layoutState.Protected[k] {
+				t.Errorf("projected Protected missing %q", k)
+			}
 		}
 	})
 }

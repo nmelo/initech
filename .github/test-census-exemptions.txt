@@ -77,3 +77,11 @@ internal/tui/parity_test.go                   windows  # same hang: depends on s
 # buildInitechBinary platform-aware would trade a silent gap for a red CI leg
 # that tells us nothing new. Candidate for its own bead.
 internal/tui/window_cli_integration_test.go   windows  # inherited from buildInitechBinary (portable), but the test EXECUTES a binary built without a .exe suffix; runtime portability unverified
+
+# ── ini-6m4 composed acceptance rig ───
+# Genuine constraint, not propagation: the rig spawns two real initech windows
+# under PTYs (creack/pty, unix-only master API) and probes process liveness via
+# syscall.Signal(0). The unit halves of every guard it composes are in the
+# UNTAGGED viewer_parity_test.go / viewer_plan_test.go and run on all three
+# platforms; this file adds only the live two-window composition.
+internal/tui/sixm4_rig_test.go                windows  # PTY rig (creack/pty + signal-0 liveness probe); portable guard halves live untagged in viewer_parity_test.go
