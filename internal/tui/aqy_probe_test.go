@@ -56,10 +56,15 @@ func TestAQY_WindowOneScreenAcrossAttach(t *testing.T) {
 		"window_listen: \"127.0.0.1:7611\"\n"
 	os.WriteFile(filepath.Join(root, "initech.yaml"), []byte(cfg), 0o644)
 
-	// Build window 1 WITH THE RACE DETECTOR: the corruption looks like two
-	// goroutines driving tcell at once, and -race names them outright.
+	// Built WITHOUT -race. It was in here for the two-goroutines-driving-tcell
+	// hypothesis, which eng1 ran to ground (detector silent, corruption still
+	// reproduced) and which the root cause then refuted outright: the second
+	// writer was not a goroutine racing on Go memory, it was fmt.Fprintf to the
+	// file descriptor underneath tcell (ini-aqy). Race coverage for this package
+	// lives in `go test -race ./internal/tui/`; paying for it here bought a
+	// slower rig and no signal.
 	bin := filepath.Join(t.TempDir(), "initech-race")
-	build := exec.Command("go", "build", "-race", "-o", bin, ".")
+	build := exec.Command("go", "build", "-o", bin, ".")
 	build.Dir = "../.."
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("build -race: %v\n%s", err, out)
@@ -109,7 +114,14 @@ func TestAQY_WindowOneScreenAcrossAttach(t *testing.T) {
 		}
 	}()
 
-	time.Sleep(8 * time.Second)
+	// Wait for the screen to go STATIC before baselining. The welcome overlay
+	// expires into the consent prompt around t+10s, so a baseline at t+8s
+	// straddles that transition and every later snapshot then "differs" for a
+	// reason that has nothing to do with attaching -- measured, the no-attach
+	// control showed the same 12 rows as an attach. A guard that cannot tell
+	// legitimate content from corruption reports both, which is how it reads as
+	// broken when it is right and right when it is broken.
+	time.Sleep(20 * time.Second)
 	attachAt := markOffset()
 	before := snapRows(emu)
 	t.Logf("BEFORE attach:\n%s", strings.Join(nonEmpty(before), "\n"))

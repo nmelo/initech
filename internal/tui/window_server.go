@@ -105,6 +105,17 @@ func startWindowServer(project *config.Project, version string, panes []*Pane, s
 		// Window 1 owns fleet state; this is how a secondary's
 		// set_fleet_state reaches it (ini-9ka.10).
 		onFleetState: onFleetState,
+		// console DELIBERATELY LEFT NIL (ini-aqy). This Daemon runs inside the
+		// TUI process, where tcell owns the terminal. handleConnection's
+		// "Client connected: ..." notices are correct output for `initech
+		// serve`, which owns its stdout, and are DISPLAY CORRUPTION here: raw
+		// text plus a newline goes in underneath tcell, scrolls the terminal
+		// tcell believes it still knows, and every later differential update
+		// then paints into rows that have moved. That is the character-level
+		// interleaving the operator reported on window 1 when window 2
+		// attached. Measured in window 1's own PTY bytes: six "Client
+		// connected" lines after the attach, zero before, each landing
+		// immediately after tcell closed a synchronized frame.
 	}
 
 	// Attach a ring buffer + fan-out sink to each already-running pane. The

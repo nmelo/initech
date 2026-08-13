@@ -12,9 +12,11 @@
 package tui
 
 import (
+	"bytes"
 	"encoding/json"
 	"net"
 	"os"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -430,5 +432,89 @@ func TestWindowServer_WindowDisconnectLeavesOthersConnected(t *testing.T) {
 	defer c4.Close()
 	if ok.Action != "hello_ok" {
 		t.Errorf("server stopped accepting new windows after a disconnect: %q", ok.Action)
+	}
+}
+
+// TestWindowServer_ConsoleIsSilent is the cheap guard for ini-aqy, the
+// operator-visible bug that a 56-second rig caught and nothing else could.
+//
+// startWindowServer deliberately reuses Daemon.handleConnection, which prints
+// "Client connected: ..." to a console. That is correct output for `initech
+// serve`, which owns its terminal, and it is DISPLAY CORRUPTION inside the TUI:
+// the text lands on the file descriptor underneath tcell, its newline scrolls a
+// terminal tcell believes it still knows, and every later differential update
+// paints into rows that have moved. Measured in window 1's own PTY bytes: six
+// injected lines after an attach, zero before, each immediately after tcell
+// closed a synchronized frame.
+//
+// The nil console is what makes the shared handler safe to share, so it is
+// asserted here rather than left to the comment at the construction site.
+func TestWindowServer_ConsoleIsSilent(t *testing.T) {
+	panes := []*Pane{testPane("super")}
+	ws, cleanup, err := startWindowServer(testWindowProject("127.0.0.1:0"), "test", panes, func(f func()) { go f() }, nil)
+	if err != nil {
+		t.Fatalf("startWindowServer: %v", err)
+	}
+	defer cleanup()
+
+	if ws.daemon.console != nil {
+		t.Error("the window server's daemon has a console writer. Inside the TUI, tcell owns " +
+			"the terminal -- anything this daemon prints corrupts window 1's display (ini-aqy)")
+	}
+}
+
+// TestDaemonConsole_NilIsSilentAndSetWrites pins both halves of the contract,
+// so "nil means silent" cannot quietly become "nil panics" or "nil prints
+// anyway", and so the headless path's output is not silenced by accident.
+func TestDaemonConsole_NilIsSilentAndSetWrites(t *testing.T) {
+	var silent Daemon
+	silent.consolef("[%s] Client connected\n", "12:00") // must not panic
+	silent.consoleln("also silent")
+
+	var buf bytes.Buffer
+	loud := Daemon{console: &buf}
+	loud.consolef("[%s] Client connected\n", "12:00")
+	loud.consoleln("disconnected")
+
+	if got := buf.String(); !strings.Contains(got, "Client connected") || !strings.Contains(got, "disconnected") {
+		t.Errorf("console writer received %q; `initech serve` needs these notices -- the fix "+
+			"was to choose the destination, not to delete the output", got)
+	}
+}
+
+// TestTUIPackage_NeverWritesDirectlyToStdout is the guard that generalises
+// ini-aqy past the one call site that caused it.
+//
+// The bug was not "someone printed the wrong thing". It was that code written
+// for a process that owns its terminal got reused inside a process where tcell
+// owns it -- and nothing in the type system, the tests or the review noticed,
+// because a raw write to fd 1 is invisible to every layer above it. Any new
+// fmt.Fprint*(os.Stdout, ...) in this package is that same latent bug: harmless
+// until the function is called from the TUI, corrupting at a distance when it
+// is. Route it through Daemon.consolef (destination chosen by the caller) or
+// the logger.
+func TestTUIPackage_NeverWritesDirectlyToStdout(t *testing.T) {
+	entries, err := os.ReadDir(".")
+	if err != nil {
+		t.Fatalf("read package dir: %v", err)
+	}
+	writeRe := regexp.MustCompile(`fmt\.Fprint(f|ln)?\(os\.Stdout`)
+	for _, e := range entries {
+		name := e.Name()
+		if e.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		src, err := os.ReadFile(name)
+		if err != nil {
+			t.Fatalf("read %s: %v", name, err)
+		}
+		for i, line := range strings.Split(string(src), "\n") {
+			if writeRe.MatchString(line) {
+				t.Errorf("%s:%d writes directly to os.Stdout:\n    %s\n"+
+					"Inside the TUI this lands underneath tcell and corrupts the display "+
+					"(ini-aqy). Use Daemon.consolef, whose destination the caller chooses, "+
+					"or the logger.", name, i+1, strings.TrimSpace(line))
+			}
+		}
 	}
 }

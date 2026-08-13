@@ -58,6 +58,23 @@ type Daemon struct {
 	// rather than by a conditional inside the shared path (ini-z8o).
 	yamuxCfg *yamux.Config
 
+	// console receives the human-facing connection notices ("Client
+	// connected: ..."). NIL MEANS SILENT, and that is the whole point.
+	//
+	// `initech serve` is a headless process that owns its terminal, so it sets
+	// this to os.Stdout and the notices are the UI. startWindowServer runs this
+	// SAME code inside the TUI process, where tcell owns the terminal -- and
+	// there, printing is display corruption, not output (ini-aqy): raw text
+	// plus a newline goes in underneath tcell, scrolling the terminal that
+	// tcell believes it still knows the contents of. Every later differential
+	// update then paints into rows that have moved, which is the operator's
+	// character-interleaved window 1.
+	//
+	// A writer rather than a bool so the destination is explicit at every
+	// construction site: whoever builds a Daemon has to say where its console
+	// output goes, and "nowhere" is a thing you can only say on purpose.
+	console io.Writer
+
 	// onFleetState applies a secondary window's set_fleet_state command on
 	// window 1, the only writer (ini-9ka.10). Nil on a cross-machine daemon,
 	// which has no fleet state to own -- so the command is refused there
@@ -185,6 +202,9 @@ func RunDaemon(cfg DaemonConfig) error {
 		ringBufs:   make(map[string]*RingBuf),
 		multiSinks: make(map[string]*MultiSink),
 		ownership:  newAgentOwnership(),
+		// A headless serve owns its terminal, so the connection notices ARE
+		// the UI here. The window server deliberately leaves this nil.
+		console: os.Stdout,
 	}
 
 	// Start local IPC socket so agents can use 'initech send/peek'.
@@ -266,33 +286,33 @@ func RunDaemon(cfg DaemonConfig) error {
 	for i, p := range bannerPanes {
 		agentNames[i] = p.Name()
 	}
-	fmt.Fprintf(os.Stdout, "initech serve %s\n", cfg.Version)
-	fmt.Fprintf(os.Stdout, "  peer:    %s\n", cfg.Project.PeerName)
-	fmt.Fprintf(os.Stdout, "  listen:  %s (%s)\n", cfg.Project.Listen, ln.Addr().String())
+	d.consolef("initech serve %s\n", cfg.Version)
+	d.consolef("  peer:    %s\n", cfg.Project.PeerName)
+	d.consolef("  listen:  %s (%s)\n", cfg.Project.Listen, ln.Addr().String())
 	if len(agentNames) > 0 {
-		fmt.Fprintf(os.Stdout, "  agents:  %s (%d running)\n", strings.Join(agentNames, " "), len(agentNames))
+		d.consolef("  agents:  %s (%d running)\n", strings.Join(agentNames, " "), len(agentNames))
 	} else {
-		fmt.Fprintf(os.Stdout, "  agents:  (none)\n")
+		d.consolef("  agents:  (none)\n")
 	}
 	if sockPath != "" {
-		fmt.Fprintf(os.Stdout, "  socket:  %s\n", sockPath)
+		d.consolef("  socket:  %s\n", sockPath)
 	}
-	fmt.Fprintf(os.Stdout, "  pid:     %d\n", os.Getpid())
+	d.consolef("  pid:     %d\n", os.Getpid())
 
-	fmt.Fprintln(os.Stdout, "\nWaiting for connections... (Ctrl+C to stop)")
+	d.consoleln("\nWaiting for connections... (Ctrl+C to stop)")
 
 	for {
 		select {
 		case sig := <-sigCh:
 			LogInfo("daemon", "shutdown", "signal", sig.String())
-			fmt.Fprintf(os.Stdout, "[%s] Shutting down (%s)...\n",
+			d.consolef("[%s] Shutting down (%s)...\n",
 				time.Now().Format("15:04:05"), sig)
 			d.gracefulShutdown()
 			d.sessionsMu.Lock()
 			nClients := len(d.sessions)
 			d.sessionsMu.Unlock()
 			nAgents := len(d.snapshotPanes())
-			fmt.Fprintf(os.Stdout, "[%s] Disconnected %d client(s), stopped %d agent(s)\n",
+			d.consolef("[%s] Disconnected %d client(s), stopped %d agent(s)\n",
 				time.Now().Format("15:04:05"), nClients, nAgents)
 			return nil
 		case conn := <-connCh:
@@ -526,7 +546,7 @@ func (d *Daemon) handleConnection(conn net.Conn) {
 	// Validate token (constant-time comparison to prevent timing side-channel).
 	if d.project.Token != "" && subtle.ConstantTimeCompare([]byte(hello.Token), []byte(d.project.Token)) != 1 {
 		LogWarn("daemon", "auth failed", "peer", hello.PeerName)
-		fmt.Fprintf(os.Stdout, "[%s] Client rejected: %s (auth failed)\n",
+		d.consolef("[%s] Client rejected: %s (auth failed)\n",
 			time.Now().Format("15:04:05"), conn.RemoteAddr())
 		// Delay before responding to slow down brute-force token guessing.
 		time.Sleep(1 * time.Second)
@@ -538,7 +558,7 @@ func (d *Daemon) handleConnection(conn net.Conn) {
 	ctrl.SetReadDeadline(time.Time{})
 
 	LogInfo("daemon", "hello from", "peer", hello.PeerName, "version", hello.Version)
-	fmt.Fprintf(os.Stdout, "[%s] Client connected: %s (peer: %s)\n",
+	d.consolef("[%s] Client connected: %s (peer: %s)\n",
 		time.Now().Format("15:04:05"), conn.RemoteAddr(), hello.PeerName)
 
 	// Register client for host:agent routing. If a client with the same
@@ -670,7 +690,7 @@ func (d *Daemon) handleConnection(conn net.Conn) {
 	// Wait for streaming goroutines to finish.
 	wg.Wait()
 	LogInfo("daemon", "client disconnected")
-	fmt.Fprintf(os.Stdout, "[%s] Client disconnected: %s (peer: %s)\n",
+	d.consolef("[%s] Client disconnected: %s (peer: %s)\n",
 		time.Now().Format("15:04:05"), conn.RemoteAddr(), hello.PeerName)
 }
 
@@ -1010,4 +1030,24 @@ func (d *Daemon) handleSetFleetState(line []byte) ControlResp {
 		return ControlResp{ID: cmd.ID, Error: err.Error()}
 	}
 	return ControlResp{ID: cmd.ID, OK: true, Action: "set_fleet_state_ok", Target: cmd.Name}
+}
+
+// consolef writes a human-facing notice to the daemon's console, if it has
+// one. A nil console is SILENCE BY DESIGN, not a missing dependency: the window
+// server runs this code inside the TUI, where anything written to the terminal
+// lands underneath tcell and corrupts the display (ini-aqy).
+func (d *Daemon) consolef(format string, args ...any) {
+	if d == nil || d.console == nil {
+		return
+	}
+	fmt.Fprintf(d.console, format, args...)
+}
+
+// consoleln is consolef's Fprintln counterpart, with the same nil-is-silent
+// contract.
+func (d *Daemon) consoleln(args ...any) {
+	if d == nil || d.console == nil {
+		return
+	}
+	fmt.Fprintln(d.console, args...)
 }
