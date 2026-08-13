@@ -503,6 +503,28 @@ func validWindowID(windowID string) bool {
 	return windowID == "" || config.ValidPeerName(windowID)
 }
 
+// stampFleetThenApplyOrder stamps each local pane's fleet-canonical number
+// from its CREATION position, then applies the window's saved arrangement.
+//
+// The sequence is the contract (ini-6m4): panes arrive here in creation
+// (config) order, which is also what the window server snapshots and serves to
+// viewers as the ordered hello_ok list -- so every window's modal numbers from
+// the same sequence. Stamping AFTER the reorder would bake this window's saved
+// arrangement into the "canonical" numbers, quietly recreating the two-windows-
+// two-numberings bug whenever a layout file exists. One function rather than
+// two calls in Run so the order of the two steps is a testable property
+// instead of a line-adjacency hope.
+func stampFleetThenApplyOrder(panes []PaneView, order []string) {
+	for i, p := range panes {
+		if lp, ok := p.(*Pane); ok {
+			lp.SetFleetIdx(i)
+		}
+	}
+	if len(order) > 0 {
+		reorderPanes(panes, order)
+	}
+}
+
 // SaveLayout writes the layout state to .initech/layout.yaml using atomic write
 // (temp file + rename) to prevent corruption. Creates .initech/ if it doesn't exist.
 //

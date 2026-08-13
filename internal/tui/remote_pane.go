@@ -36,12 +36,16 @@ type RemotePane struct {
 	dataCh   chan []byte      // readLoop sends byte chunks here; Render drains and writes to emu.
 	mu       sync.Mutex
 	alive    bool
-	visible  bool
-	activity ActivityState
-	lastOut  time.Time
-	beadIDs  []string
-	sessDesc string
-	region   Region
+	fleetNum int // Fleet-canonical number PLUS ONE (ini-6m4); zero value = unknown. See fleetNumbered in pane.go.
+	// emuPanicked rate-limits the emulator-panic log to once per pane; the
+	// panic barrier in writeEmu keeps draining after a parser failure.
+	emuPanicked bool
+	visible     bool
+	activity    ActivityState
+	lastOut     time.Time
+	beadIDs     []string
+	sessDesc    string
+	region      Region
 
 	goWg sync.WaitGroup // Tracks readLoop goroutine. Close waits on this.
 
@@ -167,6 +171,11 @@ func (rp *RemotePane) SetVisible(v bool) {
 	defer rp.mu.Unlock()
 	rp.visible = v
 }
+
+// FleetIdx implements fleetNumbered: the position window 1 listed this agent
+// at in hello_ok, which is window 1's pane creation order -- the same sequence
+// window 1's own modal numbers by. -1 when the server predates the ordering.
+func (rp *RemotePane) FleetIdx() int { return rp.fleetNum - 1 }
 
 func (rp *RemotePane) IsAlive() bool {
 	rp.mu.Lock()
@@ -355,12 +364,43 @@ func (rp *RemotePane) DrainData() {
 	for drained < drainBudget {
 		select {
 		case chunk := <-rp.dataCh:
-			rp.emu.Write(chunk)
+			rp.writeEmu(chunk)
 			drained += len(chunk)
 		default:
 			return
 		}
 	}
+}
+
+// writeEmu feeds one chunk to the emulator with a panic barrier (ini-6m4).
+//
+// The emulator is a parser of bytes another process produced; a parser bug
+// must cost AT MOST one pane's rendering, never the window. Without this,
+// an out-of-range scroll operation in the vt fork (ini-w6z: 53-row Claude
+// replay into a 24-row buffer) panicked the whole viewer process, which then
+// relaunched and crashed again -- the operator's 'window 2 disconnects every
+// few seconds' was this loop.
+//
+// Deliberately does NOT mark the pane dead: waitForDisconnect treats an
+// all-dead pane set as a lost peer, so converting every panicking pane to
+// dead would tear down a healthy session and recreate the reconnect loop by
+// a different road (the ini-1ch shape). The pane stays alive with possibly
+// garbled content, the defect is logged once per pane, and later chunks keep
+// flowing -- rendering may recover, and the real fix is the fork's clamp.
+func (rp *RemotePane) writeEmu(chunk []byte) {
+	defer func() {
+		if r := recover(); r != nil {
+			rp.mu.Lock()
+			logIt := !rp.emuPanicked
+			rp.emuPanicked = true
+			rp.mu.Unlock()
+			if logIt {
+				LogError("remote-pane", "emulator panicked on remote bytes; pane rendering degraded, window unaffected",
+					"agent", rp.name, "host", rp.host, "panic", fmt.Sprint(r))
+			}
+		}
+	}()
+	rp.emu.Write(chunk)
 }
 
 // Render draws the remote pane with [R] badge in the ribbon title.

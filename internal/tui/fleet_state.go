@@ -384,6 +384,31 @@ func (t *TUI) applyFleetProjection() {
 	t.layoutState.LivePinned = t.fleet.LivePinnedMap()
 }
 
+// refreshFleetIfFollower re-reads the fleet store on a window that does not own
+// it, so its view reflects changes another window made (ini-6m4).
+//
+// Window 1 owns fleet-state.yaml and its in-memory copy IS the truth. A
+// secondary window only ever loaded the file once, at startup, and nothing
+// pushes updates to it -- so hiding an agent in window 1 left window 2's modal
+// still showing it visible, MEASURED even after closing and reopening the
+// modal. Worse than cosmetic: the operator would then toggle from window 2 on
+// a false premise and un-hide what window 1 had hidden.
+//
+// THE REFRESH BOUNDARY IS DELIBERATE AND NARROW: on modal open, and after this
+// window's own change is accepted by window 1. Multi-window is same-machine by
+// construction (both windows read the same project root; window_listen is a
+// loopback address), so re-reading the file is the whole mechanism -- no new
+// wire protocol, no per-frame stat. An OPEN modal does not live-update; that is
+// the documented boundary rather than an oversight, and the bead allows it. If
+// live refresh is wanted later, window 1 broadcasting on change is the shape.
+func (t *TUI) refreshFleetIfFollower() {
+	if t.isFleetAuthority() {
+		return
+	}
+	t.fleet = nil // force the next fleetState() to re-read from disk
+	t.fleetState()
+}
+
 // isFleetAuthority reports whether this TUI may write fleet state directly.
 // Window 1 owns the file; secondaries have no push channel and must command
 // window 1 instead (ini-9ka.8's topology fact).
@@ -557,6 +582,9 @@ func (t *TUI) sendFleetStateCmd(field, key string, on bool, slot int) error {
 	if !resp.OK {
 		return fmt.Errorf("window 1 refused %s: %s", field, resp.Error)
 	}
+	// Window 1 applied and persisted it; re-read so this window's own modal
+	// stops showing the pre-change state it just asked to change (ini-6m4).
+	t.refreshFleetIfFollower()
 	return nil
 }
 

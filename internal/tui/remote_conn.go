@@ -142,8 +142,15 @@ func connectPeer(peerName string, remote config.Remote, project *config.Project)
 	// Index the handshake's agent status by name so each RemotePane can be
 	// seeded with what the server already told us (ini-9ka.11).
 	statusByAgent := make(map[string]AgentStatus, len(helloOK.Agents))
-	for _, ag := range helloOK.Agents {
+	// The hello_ok agent list is ORDERED: it is window 1's pane creation order,
+	// snapshotted before any layout reordering. That position is the fleet's
+	// canonical pane number (ini-6m4) -- the one number both windows' modals
+	// display, so grab-by-number means the same agent everywhere regardless of
+	// how either window has arranged its own panes.
+	fleetIdxByAgent := make(map[string]int, len(helloOK.Agents))
+	for i, ag := range helloOK.Agents {
 		statusByAgent[ag.Name] = ag
+		fleetIdxByAgent[ag.Name] = i
 	}
 
 	// Accept yamux streams opened by the server (one per agent).
@@ -168,6 +175,9 @@ func connectPeer(peerName string, remote config.Remote, project *config.Project)
 		}
 
 		rp := NewRemotePane(agentName, serverPeerName, rawStream, mux, 80, 24)
+		if i, ok := fleetIdxByAgent[agentName]; ok {
+			rp.fleetNum = i + 1
+		}
 		// Apply the status the handshake ALREADY carried (ini-9ka.11). Before
 		// this, helloOK.Agents was received and handed only to
 		// pushRolesToPeer, so the bead arrived on the wire and was discarded --

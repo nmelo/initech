@@ -31,6 +31,11 @@ func (t *TUI) openAgentsModal() {
 	if t.assignment != nil && t.assignment.readOnly {
 		t.assignment = nil
 	}
+	// A follower window's fleet snapshot is from its startup; window 1 may have
+	// hidden or protected agents since. Re-read before showing the modal, or it
+	// renders marks that disagree with window 1 and invites a toggle made on a
+	// false premise (ini-6m4).
+	t.refreshFleetIfFollower()
 	t.agents.active = true
 	t.agents.selected = 0
 	t.agents.moving = false

@@ -939,10 +939,7 @@ func Run(cfg Config) error {
 		}
 	}
 
-	// Apply saved pane order from layout.yaml.
-	if len(t.layoutState.Order) > 0 {
-		reorderPanes(t.panes, t.layoutState.Order)
-	}
+	stampFleetThenApplyOrder(t.panes, t.layoutState.Order)
 
 	// Initialize live engine if the restored layout is in live mode.
 	// Without this, liveEngine is nil and applyLayout falls through to
@@ -1189,6 +1186,15 @@ func (t *TUI) handlePeerUpdate(peerName string, newPanes []PaneView, connected b
 	// Drop the top modal's cached rows: a peer update can both shrink and
 	// reorder t.panes, so the cached rows no longer describe it (ini-6gjg).
 	t.topReconcile()
+	// Group the NEW panes BEFORE any layout runs (ini-6m4). visiblePanesForWindow
+	// resolves each pane's window through GroupOf; panes that arrived in this
+	// update have no entry yet, and an unknown pane defaults to window 1 -- so a
+	// secondary window filtered out its OWN agents and planned zero panes on the
+	// operator's fleet ('total_panes=8' followed by 'plan_panes=0' in his log).
+	// Zero planned panes also meant no emulator ever got resized, which is what
+	// armed the replay crash (ini-w6z). Measured: the same state planned eng1+eng2
+	// correctly the moment ensureGroups had run.
+	t.ensureGroups(false)
 	LogInfo("peer-update", "panes-updated", "peer", peerName, "total_panes", len(kept))
 	t.recalcGrid(true)
 	LogInfo("peer-update", "done", "peer", peerName, "plan_panes", len(t.plan.Panes))

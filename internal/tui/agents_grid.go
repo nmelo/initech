@@ -273,7 +273,7 @@ func agentsGridLayoutCells(members map[string][]int, groups []string, innerX, fi
 // empty WindowListen is the only state a single-window fleet is ever in, so
 // this returns false and the walk emits today's layout unchanged.
 func (t *TUI) agentsTiersActive() bool {
-	return t.project != nil && t.project.WindowListen != ""
+	return t.project != nil && participatesInMultiWindow(t.project)
 }
 
 // agentsWindowOrder returns the window identities to render as tiers, in a
@@ -409,8 +409,10 @@ func (t *TUI) agentsMatched(paneIdx int) bool {
 	}
 	q := strings.ToLower(string(t.agents.searchBuf))
 	p := t.panes[paneIdx]
+	// Same number the cell displays (the FLEET number, ini-6m4) -- search and
+	// display disagreeing on what "3" means would be worse than either bug.
 	return strings.Contains(strings.ToLower(p.Name()), q) ||
-		strings.HasPrefix(strconv.Itoa(paneIdx+1), q)
+		strings.HasPrefix(strconv.Itoa(fleetIdxOf(p, paneIdx)+1), q)
 }
 
 // agentsMatchCells returns indices into cells (grid order) whose pane
@@ -1038,7 +1040,7 @@ func (t *TUI) renderAgentsGrid() {
 				x++
 			}
 		}
-		put(fmt.Sprintf("%3d ", c.paneIdx+1), numStyle)
+		put(fmt.Sprintf("%3d ", fleetIdxOf(t.panes[c.paneIdx], c.paneIdx)+1), numStyle)
 		put(vis+" ", boxStyle)
 		put(p.Name(), nameStyle)
 		// Pin/slot marker: '*' for an explicit live pin (matches the flat

@@ -27,6 +27,7 @@ package tui
 import (
 	"errors"
 	"fmt"
+	"github.com/nmelo/initech/internal/config"
 	"net"
 	"sort"
 	"strings"
@@ -249,6 +250,25 @@ func (t *TUI) surfaceSessionNotice(text string) {
 // peer_name is also set for ordinary cross-machine peers, and treating one of
 // those as a secondary window would make it render only its assigned groups
 // and silently drop the rest.
+// participatesInMultiWindow reports whether this process is part of a
+// multi-window fleet -- either because it SERVES one (window 1, which has a
+// WindowListen) or because it IS one (a secondary, whose identity says so).
+//
+// The distinction matters because the two roles are configured differently:
+// viewerProject deliberately clears WindowListen, since a viewer serves
+// nothing. Testing WindowListen alone therefore answers "am I window 1?", not
+// "is this fleet multi-window?" -- which is why a secondary window rendered no
+// monitor tiers at all while window 1 rendered them from the same assignment
+// data (ini-6m4). Named once here so the next reader of "is this multi-window"
+// cannot pick the wrong half again; tui.go's fleet/assignment loading already
+// used this exact pair inline.
+func participatesInMultiWindow(p *config.Project) bool {
+	if p == nil {
+		return false
+	}
+	return p.WindowListen != "" || isSecondaryWindowIdentity(p.PeerName)
+}
+
 func isSecondaryWindowIdentity(peerName string) bool {
 	return strings.HasPrefix(peerName, "window-")
 }

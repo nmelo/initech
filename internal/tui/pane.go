@@ -123,6 +123,37 @@ type PaneView interface {
 // bare name ("eng1"). Remote panes include the host prefix ("workbench:eng1").
 // This prevents name collisions when a local pane and remote pane share an
 // agent name (e.g. both have "eng1").
+// fleetNumbered is implemented by panes that carry a fleet-canonical number
+// (ini-6m4). The agents modal displays THIS number, not the pane's position in
+// t.panes: positions are per-window state (each window applies its own saved
+// order), so numbering by position gave two windows two numberings for the
+// same fleet, and grab-by-number would have acted on different agents per
+// window. The canonical order is window 1's pane creation order -- which the
+// window server snapshots BEFORE layout reordering and serves to viewers as
+// the ordered hello_ok agent list, so both sides can number from the same
+// sequence without a wire change.
+type fleetNumbered interface {
+	FleetIdx() int
+}
+
+// fleetIdxOf returns the pane's fleet-canonical index, falling back to the
+// caller's local index for panes that predate or don't carry one.
+func fleetIdxOf(p PaneView, localIdx int) int {
+	if fn, ok := p.(fleetNumbered); ok {
+		if i := fn.FleetIdx(); i >= 0 {
+			return i
+		}
+	}
+	return localIdx
+}
+
+// FleetIdx implements fleetNumbered. Negative means never stamped.
+func (p *Pane) FleetIdx() int { return p.fleetNum - 1 }
+
+// SetFleetIdx stamps the fleet-canonical number. Called once per pane, on the
+// main goroutine, at session start (creation order) or hot-add.
+func (p *Pane) SetFleetIdx(i int) { p.fleetNum = i + 1 }
+
 func paneKey(p PaneView) string {
 	if h := p.Host(); h != "" {
 		return h + ":" + p.Name()
@@ -136,63 +167,64 @@ var _ PaneView = (*Pane)(nil)
 // Pane represents a terminal pane backed by a PTY process.
 // It uses a SafeEmulator from charmbracelet/x/vt for terminal emulation.
 type Pane struct {
-	cfg               PaneConfig // Original config for restart.
-	name              string
-	ptmx              xpty.Pty
-	cmd               *exec.Cmd
-	pid               int // Cached PID from process start (avoids race with restart).
-	emu               *vt.SafeEmulator
-	mu                sync.Mutex
-	renderMu          sync.Mutex // Serializes readLoop writes with Render cell reads to prevent tearing.
-	sendMu            sync.Mutex // Serializes IPC send operations to prevent keystroke interleaving.
-	networkSink       io.Writer  // Optional: readLoop tees PTY bytes here for network streaming.
-	sinkMu            sync.Mutex // Protects networkSink assignment.
-	alive             bool
-	visible           bool              // Whether this pane is shown in the layout. Hidden panes keep running.
-	activity          ActivityState     // Current state: running when PTY bytes flowed recently, else idle.
-	lastOutputTime    time.Time         // Last time readLoop received bytes from the PTY.
-	tintUntil         time.Time         // Hold deadline for the running-pane background tint (ini-zmzg). Bumped while StateRunning; the tint shows until this passes, giving the bg its own hysteresis window decoupled from the 2s dot/KITT signal.
-	lastIdleNotify         time.Time     // Last time an EventAgentIdleWithBead was emitted.
-	idleWithBeadThreshold  time.Duration  // Silence duration before idle-with-bead fires. 0 = disabled.
-	idleBeadNotified       bool           // True after idle-with-bead fires. Reset when output resumes.
-	beadAssignedAt         time.Time      // When the current bead was assigned. Grace period starts here.
-	waitingSince      time.Time         // When the currently-open blocking dialog was first seen. Zero = not waiting.
-	waitingPreview    string            // What to show for this agent in the needs-input list. Empty is allowed.
-	waitingTier       WaitingTier       // Confidence in the current wait. Zero value is the SILENT tier, deliberately.
-	waitingModalSeen  bool              // The screen has confirmed this wait's dialog, so the screen may also retire it.
-	attn              *attentionSignal  // Mailbox the OSC 777 handler writes into. Leaf-locked; see attention_detect.go.
-	journal           []JournalEntry    // Ring buffer of recent JSONL entries (cap journalRingSize).
-	jsonlDir          string            // Directory to search for session JSONL files.
-	eventCh           chan<- AgentEvent // Emits detected semantic events to the TUI. May be nil.
-	safeGo            func(func())      // Launches a goroutine with panic recovery. Set by TUI after creation.
-	goWg              sync.WaitGroup    // Tracks goroutines launched by Start(). Wait in Close().
-	sessionDesc       string            // Session description extracted from cursor row.
-	beadIDs           []string          // Current bead IDs. Nil = no beads. First is primary.
-	beadTitle         string            // Bead title for top modal display.
-	stallReported     bool              // True after emitting stall event. Reset on new activity.
-	stuckReported     bool              // True after emitting stuck event. Reset on success.
-	dedupEvents       *dedup            // Dedup state for emitted events.
-	startedAt         time.Time         // When this pane's process was started. Used to filter stale JSONL.
-	scrollOffset          int           // Rows scrolled back from live view (0 = live).
-	resizeSettleFrames    int           // Render frames remaining to skip after resize.
-	resizeSettleDeadline  time.Time     // Hard deadline: skip content rendering until this time.
-	scrollAnchorLen   int               // Scrollback length when user last scrolled. Used to compensate for new output.
-	memoryRSS         int64             // RSS in kilobytes, updated by memory monitor goroutine.
-	suspended         bool              // True when auto-suspend policy has stopped this pane.
-	messageQueue      []QueuedMessage   // Messages waiting for resume or modal-close. Capped at maxMessageQueue.
-	modalDraining     bool              // True while a modal-close queue drain is in flight (guarded by p.mu).
-	protected         bool              // Protected agents are never auto-suspended.
-	resumeGrace       time.Time         // Until this time, post-resume grace period is active.
-	resumeMu          sync.Mutex        // Serializes concurrent resume attempts for this pane.
-	kittEpoch         time.Time         // Reference time for KITT scanner animation phase.
-	agentType         string            // Semantic agent type: claude-code, codex, or generic.
-	noBracketedPaste    bool              // True when injectText should use typed input instead of bracketed paste.
-	submitKey           string            // Key sequence to submit: "" or "enter" (Enter), "ctrl+enter" (Ctrl+Enter).
-	region              Region
-	activeRunStart      time.Time  // Set on idle->running edge, cleared on running->idle.
-	activeRunBytes      int64      // Bytes received since last idle->running edge.
-	lastMessageReceived time.Time  // Updated when injectText delivers a message to this pane.
-	lastEventTime       time.Time  // Updated when an AgentEvent fires for this pane.
+	cfg                   PaneConfig // Original config for restart.
+	name                  string
+	fleetNum              int // Fleet-canonical number PLUS ONE (ini-6m4); zero value = unstamped, so struct-literal construction (tests, fakes) falls back to local numbering instead of reading as "stamped at 0". See fleetNumbered.
+	ptmx                  xpty.Pty
+	cmd                   *exec.Cmd
+	pid                   int // Cached PID from process start (avoids race with restart).
+	emu                   *vt.SafeEmulator
+	mu                    sync.Mutex
+	renderMu              sync.Mutex // Serializes readLoop writes with Render cell reads to prevent tearing.
+	sendMu                sync.Mutex // Serializes IPC send operations to prevent keystroke interleaving.
+	networkSink           io.Writer  // Optional: readLoop tees PTY bytes here for network streaming.
+	sinkMu                sync.Mutex // Protects networkSink assignment.
+	alive                 bool
+	visible               bool              // Whether this pane is shown in the layout. Hidden panes keep running.
+	activity              ActivityState     // Current state: running when PTY bytes flowed recently, else idle.
+	lastOutputTime        time.Time         // Last time readLoop received bytes from the PTY.
+	tintUntil             time.Time         // Hold deadline for the running-pane background tint (ini-zmzg). Bumped while StateRunning; the tint shows until this passes, giving the bg its own hysteresis window decoupled from the 2s dot/KITT signal.
+	lastIdleNotify        time.Time         // Last time an EventAgentIdleWithBead was emitted.
+	idleWithBeadThreshold time.Duration     // Silence duration before idle-with-bead fires. 0 = disabled.
+	idleBeadNotified      bool              // True after idle-with-bead fires. Reset when output resumes.
+	beadAssignedAt        time.Time         // When the current bead was assigned. Grace period starts here.
+	waitingSince          time.Time         // When the currently-open blocking dialog was first seen. Zero = not waiting.
+	waitingPreview        string            // What to show for this agent in the needs-input list. Empty is allowed.
+	waitingTier           WaitingTier       // Confidence in the current wait. Zero value is the SILENT tier, deliberately.
+	waitingModalSeen      bool              // The screen has confirmed this wait's dialog, so the screen may also retire it.
+	attn                  *attentionSignal  // Mailbox the OSC 777 handler writes into. Leaf-locked; see attention_detect.go.
+	journal               []JournalEntry    // Ring buffer of recent JSONL entries (cap journalRingSize).
+	jsonlDir              string            // Directory to search for session JSONL files.
+	eventCh               chan<- AgentEvent // Emits detected semantic events to the TUI. May be nil.
+	safeGo                func(func())      // Launches a goroutine with panic recovery. Set by TUI after creation.
+	goWg                  sync.WaitGroup    // Tracks goroutines launched by Start(). Wait in Close().
+	sessionDesc           string            // Session description extracted from cursor row.
+	beadIDs               []string          // Current bead IDs. Nil = no beads. First is primary.
+	beadTitle             string            // Bead title for top modal display.
+	stallReported         bool              // True after emitting stall event. Reset on new activity.
+	stuckReported         bool              // True after emitting stuck event. Reset on success.
+	dedupEvents           *dedup            // Dedup state for emitted events.
+	startedAt             time.Time         // When this pane's process was started. Used to filter stale JSONL.
+	scrollOffset          int               // Rows scrolled back from live view (0 = live).
+	resizeSettleFrames    int               // Render frames remaining to skip after resize.
+	resizeSettleDeadline  time.Time         // Hard deadline: skip content rendering until this time.
+	scrollAnchorLen       int               // Scrollback length when user last scrolled. Used to compensate for new output.
+	memoryRSS             int64             // RSS in kilobytes, updated by memory monitor goroutine.
+	suspended             bool              // True when auto-suspend policy has stopped this pane.
+	messageQueue          []QueuedMessage   // Messages waiting for resume or modal-close. Capped at maxMessageQueue.
+	modalDraining         bool              // True while a modal-close queue drain is in flight (guarded by p.mu).
+	protected             bool              // Protected agents are never auto-suspended.
+	resumeGrace           time.Time         // Until this time, post-resume grace period is active.
+	resumeMu              sync.Mutex        // Serializes concurrent resume attempts for this pane.
+	kittEpoch             time.Time         // Reference time for KITT scanner animation phase.
+	agentType             string            // Semantic agent type: claude-code, codex, or generic.
+	noBracketedPaste      bool              // True when injectText should use typed input instead of bracketed paste.
+	submitKey             string            // Key sequence to submit: "" or "enter" (Enter), "ctrl+enter" (Ctrl+Enter).
+	region                Region
+	activeRunStart        time.Time // Set on idle->running edge, cleared on running->idle.
+	activeRunBytes        int64     // Bytes received since last idle->running edge.
+	lastMessageReceived   time.Time // Updated when injectText delivers a message to this pane.
+	lastEventTime         time.Time // Updated when an AgentEvent fires for this pane.
 
 	// lastAltScreen is the child's alt-screen state as of the most recent
 	// resize (ini-y97). Compared against p.emu.IsAltScreen() on every PTY
@@ -292,8 +324,9 @@ func NewPane(cfg PaneConfig, rows, cols int) (*Pane, error) {
 	}
 
 	p := &Pane{
-		cfg:              cfg,
-		name:             cfg.Name,
+		cfg:  cfg,
+		name: cfg.Name,
+
 		ptmx:             ptmx,
 		cmd:              cmd,
 		pid:              pid,
