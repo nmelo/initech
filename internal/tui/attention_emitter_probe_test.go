@@ -81,17 +81,49 @@ func TestAttentionOSC_LiveClaudeStillEmits(t *testing.T) {
 	}()
 
 	var seen strings.Builder
-	oscRe := regexp.MustCompile(`\x1b\]777;notify;[^\x07]*\x07`)
+	// DIALOG-SPECIFIC, not "any OSC 777" (ini-zfm). OSC 777 is Claude's general
+	// notification channel: it also carries the idle notification, login
+	// success, computer-use exits and more. A probe that accepted any notify
+	// would report the emitter healthy on a build that had stopped announcing
+	// dialogs entirely and was merely being chatty on a timer.
+	oscDialogRe := regexp.MustCompile(`\x1b\]777;notify;[^\x07]*Claude needs your permission\x07`)
+	oscAnyRe := regexp.MustCompile(`\x1b\]777;notify;[^\x07]*\x07`)
 	trustRe := regexp.MustCompile(`(?i)trust`)
 	trusted := false
 
-	deadline := time.Now().Add(90 * time.Second)
-	buf := make([]byte, 32*1024)
-	for time.Now().Before(deadline) {
-		_ = ptmx.SetReadDeadline(time.Now().Add(2 * time.Second))
-		n, err := ptmx.Read(buf)
-		if n > 0 {
-			seen.Write(buf[:n])
+	// Read on a goroutine and select on a timer rather than using
+	// ptmx.SetReadDeadline: on darwin a PTY master returns "file type does not
+	// support deadline" (measured, ini-zfm) and the error was being discarded,
+	// so Read then blocks with no deadline in effect. With continuous output
+	// that is invisible; the moment the session goes QUIET -- which is exactly
+	// what a stopped emitter looks like -- the loop parks forever and the test
+	// dies on the go test timeout instead of reporting this failure message.
+	chunks := make(chan []byte, 256)
+	go func() {
+		buf := make([]byte, 32*1024)
+		for {
+			n, err := ptmx.Read(buf)
+			if n > 0 {
+				cp := make([]byte, n)
+				copy(cp, buf[:n])
+				chunks <- cp
+			}
+			if err != nil {
+				close(chunks)
+				return
+			}
+		}
+	}()
+
+	deadline := time.After(90 * time.Second)
+collect:
+	for {
+		select {
+		case c, ok := <-chunks:
+			if !ok {
+				break collect // PTY closed; fall through to the report below.
+			}
+			seen.Write(c)
 			// Clear Claude's first-run directory-trust dialog so the run can
 			// reach the permission prompt.
 			if !trusted && trustRe.MatchString(seen.String()) {
@@ -99,15 +131,31 @@ func TestAttentionOSC_LiveClaudeStillEmits(t *testing.T) {
 				time.Sleep(500 * time.Millisecond)
 				_, _ = ptmx.Write([]byte("\r"))
 			}
-			if m := oscRe.FindString(seen.String()); m != "" {
+			if m := oscDialogRe.FindString(seen.String()); m != "" {
 				t.Logf("live emission observed: %q", m)
 				return // Guardrail satisfied.
 			}
+		case <-deadline:
+			break collect
 		}
-		if err != nil && n == 0 {
-			// Read deadline or EOF; keep going until the overall deadline.
-			continue
-		}
+	}
+
+	// Distinguish "the emitter went quiet" from "the emitter is alive but no
+	// longer announces dialogs" -- different failures with different owners.
+	if others := oscAnyRe.FindAllString(seen.String(), -1); len(others) > 0 {
+		t.Fatalf(`CLAUDE CODE EMITTED OSC 777, BUT NEVER FOR THE DIALOG.
+
+Notifications are still flowing, so the channel and the pane's terminal identity
+are both fine -- what changed is WHICH events Claude announces, or the wording of
+the dialog announcement that tier-1 keys on.
+
+Expected to contain: %q
+Observed instead:    %q
+
+If the dialog text was merely reworded, the allowlist in attention_detect.go
+(dialogNotifyTexts) needs the new wording ADDED from a capture -- do not widen it
+to accept any notification, which is the ini-zfm regression.`,
+			measuredOSC777, others)
 	}
 
 	t.Fatalf(`CLAUDE CODE NO LONGER EMITS OSC 777 ON A BLOCKING DIALOG.

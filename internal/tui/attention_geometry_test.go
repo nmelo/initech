@@ -199,3 +199,74 @@ func TestPaneHasModal_QuietPaneAtAnyDepthIsNotADialog(t *testing.T) {
 		}
 	}
 }
+
+// TestRefreshWaitingState_StaleRowRecovery answers the ini-zfm recovery
+// question by measurement rather than by reasoning about the gate: given a row
+// that was raised WITHOUT a dialog ever being on screen -- the phantom row
+// v2.7.0 put on the operator's display -- what actually retires it?
+//
+// This models the pre-fix raise deliberately (noteNotify directly, bypassing the
+// allowlist that now stops it) because the rows already on screen were created
+// by exactly that path, and the fix does not reach back in time to clear them.
+func TestRefreshWaitingState_StaleRowRecovery(t *testing.T) {
+	// A pane showing ordinary output: no dialog, and none ever seen.
+	stale := func(t *testing.T) *Pane {
+		t.Helper()
+		p := paneAtGeometry(t, 50, []string{"> ", "  ready"}, 16)
+		p.attn.noteNotify("Claude needs your permission")
+		p.refreshWaitingState()
+		if waiting, _, _ := p.WaitingInput(); !waiting {
+			t.Fatal("setup failed: no stale row to recover from")
+		}
+		return p
+	}
+
+	t.Run("ticking does not clear it -- this is the stuck state, reproduced", func(t *testing.T) {
+		p := stale(t)
+		for i := 0; i < 20; i++ {
+			p.refreshWaitingState()
+		}
+		if waiting, _, _ := p.WaitingInput(); !waiting {
+			t.Fatal("the stale row cleared on its own; if that were true ini-zfm would " +
+				"have healed itself instead of ticking to 4m39s")
+		}
+		if p.modalSeen() {
+			t.Error("modalSeen set with no dialog ever rendered")
+		}
+	})
+
+	t.Run("a real dialog, answered, clears it", func(t *testing.T) {
+		p := stale(t)
+		// The dialog arrives on the same pane.
+		below := make([]string, 16)
+		copy(below, composedPaneChrome)
+		body := append(append([]string{}, permissionPromptDialog...), below...)
+		if _, err := p.emu.Write([]byte("\x1b[2J\x1b[H" + strings.Join(body, "\r\n"))); err != nil {
+			t.Fatalf("paint dialog: %v", err)
+		}
+		p.refreshWaitingState()
+		if !p.modalSeen() {
+			t.Fatal("the screen did not confirm a rendered dialog, so the gate can never open")
+		}
+		// The operator answers it: dialog gone, chrome remains.
+		if _, err := p.emu.Write([]byte("\x1b[2J\x1b[H" + strings.Join(composedPaneChrome, "\r\n"))); err != nil {
+			t.Fatalf("paint answer: %v", err)
+		}
+		p.refreshWaitingState()
+		if waiting, _, _ := p.WaitingInput(); waiting {
+			t.Error("the stale row survived a real dialog being answered; then nothing short " +
+				"of restarting the agent would clear it")
+		}
+	})
+
+	t.Run("the agent exiting clears it", func(t *testing.T) {
+		p := stale(t)
+		p.mu.Lock()
+		p.alive = false
+		p.mu.Unlock()
+		p.refreshWaitingState()
+		if waiting, _, _ := p.WaitingInput(); waiting {
+			t.Error("the row outlived the agent")
+		}
+	})
+}

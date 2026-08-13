@@ -392,3 +392,60 @@ func reraiseWithDistinctWaitStart(t *testing.T, p *Pane, preview string) {
 		}
 	}
 }
+
+// TestAttentionChimes_IdleNotificationWouldHaveRungTheBell answers the ini-zfm
+// false-chime question by demonstration instead of by reading the code.
+//
+// The phantom row was raised at CHIME grade, because the raise path treats "the
+// application said so itself" as trustworthy -- correct for a dialog, and the
+// idle notification came through the same door. So every agent's turn-end rang
+// the operator's bell, and a stale row rang it AGAIN at the two-minute reminder,
+// for a dialog that never existed.
+//
+// The first half drives the PRE-FIX behaviour deliberately (noteNotify bypasses
+// the allowlist, exactly as the raise path did before ini-zfm) to show the bell
+// really did ring. The second half proves the fix silences it at the source.
+func TestAttentionChimes_IdleNotificationWouldHaveRungTheBell(t *testing.T) {
+	t.Run("pre-fix: the idle emission rings, then rings again at the reminder", func(t *testing.T) {
+		p := testPane("super")
+		p.attn = &attentionSignal{}
+		registerAttentionOSC(p)
+		tu, c := chimeTUI(p)
+		now := time.Now()
+
+		p.attn.noteNotify("Claude is waiting for your input") // the pre-fix raise
+		p.refreshWaitingState()
+		// Age the wait past the reminder threshold BEFORE the first tick, so the
+		// second tick is a genuine reminder rather than a new rising edge -- the
+		// distinction the chime bookkeeping draws on waitingSince.
+		p.mu.Lock()
+		p.waitingSince = now.Add(-chimeReminderDelay)
+		p.mu.Unlock()
+
+		if got := tu.attentionChimes(now); got != 1 {
+			t.Fatalf("rising edge chimed %d times, want 1 -- if this is 0 the false chime "+
+				"never happened and the DONE should say so", got)
+		}
+		// The row cannot clear (no dialog was ever on screen), so it survives to
+		// the reminder and makes noise a second time for a dialog that never was.
+		if got := tu.attentionChimes(now); got != 1 || c.n != 2 {
+			t.Errorf("reminder chimed %d times (chimer total %d), want 1 more", got, c.n)
+		}
+	})
+
+	t.Run("post-fix: the same emission through the real handler is silent", func(t *testing.T) {
+		p := testPane("super")
+		p.attn = &attentionSignal{}
+		registerAttentionOSC(p)
+		tu, c := chimeTUI(p)
+
+		if _, err := p.emu.Write([]byte(measuredOSC777Idle)); err != nil {
+			t.Fatalf("emulator write: %v", err)
+		}
+		p.refreshWaitingState()
+
+		if got := tu.attentionChimes(time.Now()); got != 0 || c.n != 0 {
+			t.Errorf("the idle notification rang the bell %d times (chimer %d), want silence", got, c.n)
+		}
+	})
+}

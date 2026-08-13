@@ -25,6 +25,17 @@ import "testing"
 // dialog opens. Byte-for-byte from the capture; do not "tidy" it.
 const measuredOSC777 = "\x1b]777;notify;Claude Code;Claude needs your permission\x07"
 
+// measuredOSC777Idle is the emission that caused ini-zfm: the SAME OSC command,
+// sent with NO dialog open, when a turn has been idle past
+// messageIdleNotifThresholdMs (60s by default).
+//
+// Captured 2026-08-13 from Claude Code 2.1.229 under a PTY: a prompt needing no
+// tools, run to completion, then left alone. One emission, at t+64s, byte-for-
+// byte as below. It is the negative control for every dialog fixture in this
+// file -- the discriminator between "a human must act" and "Claude is chatty"
+// is the message text, and nothing else on the wire carries it.
+const measuredOSC777Idle = "\x1b]777;notify;Claude Code;Claude is waiting for your input\x07"
+
 // TestAttentionOSC_FixtureMatchesTheMeasuredEmission feeds the captured bytes
 // through a real emulator with the real handler attached, and asserts the pane
 // ends up waiting at chime grade.
@@ -74,6 +85,71 @@ func TestAttentionOSC_IgnoresOtherOSCTraffic(t *testing.T) {
 
 		if waiting, _, _ := p.WaitingInput(); waiting {
 			t.Errorf("ordinary OSC traffic raised WaitingInput: %q", seq)
+		}
+	}
+}
+
+// TestAttentionOSC_IdleNotificationNeverRaises is the negative control this
+// feature was missing, and the reason ini-zfm happened (measured 2026-08-13,
+// Claude Code 2.1.229).
+//
+// OSC 777 is not the dialog signal the detector originally assumed. It is
+// Claude's general notification channel: a turn that ends with NO dialog open
+// emits measuredOSC777Idle at t+64s, on a 60s default threshold. Raising on it
+// gave every agent a needs-input row at turn-end -- empty preview, chime-grade,
+// and unclearable, because a row whose dialog was never on screen can never earn
+// its clear. The operator saw one tick to 4m39s next to an idle prompt.
+//
+// If this test ever goes green-to-red, tier-1 has gone back to raising on any
+// notification and the phantom row is back.
+func TestAttentionOSC_IdleNotificationNeverRaises(t *testing.T) {
+	p := testPane("super")
+	p.attn = &attentionSignal{}
+	registerAttentionOSC(p)
+
+	if _, err := p.emu.Write([]byte(measuredOSC777Idle)); err != nil {
+		t.Fatalf("emulator write: %v", err)
+	}
+	p.refreshWaitingState()
+
+	if waiting, _, _ := p.WaitingInput(); waiting {
+		t.Fatal("the MEASURED idle notification raised a needs-input row. No dialog is open " +
+			"when Claude sends this, so the row has an empty preview and can never clear -- " +
+			"and it is chime-grade, so it also rings the bell for nothing")
+	}
+}
+
+// TestAttentionOSC_UnknownNotificationsNeverRaise pins the ALLOWLIST shape
+// rather than the single text that caused the bug. Claude has ten notification
+// types and they all ride this one OSC command; a blocklist of today's idle
+// message would re-break on the next one they add.
+//
+// The texts below are the other dispatches found in the 2.1.229 binary. They are
+// NOT captures -- they are here to prove the DEFAULT is exclusion, which is the
+// property that survives a Claude upgrade.
+func TestAttentionOSC_UnknownNotificationsNeverRaise(t *testing.T) {
+	others := []string{
+		"Claude is waiting for your input",   // idle_prompt (measured)
+		"Claude Code login successful",       // auth_success
+		"Claude is done using your computer", // computer_use_exit
+		"eng1 needs permission for Bash",     // worker_permission_prompt (subagent, not this pane)
+		"",                                   // malformed payload with no message field
+		"Some notification type invented next quarter",
+	}
+	for _, msg := range others {
+		p := testPane("eng1")
+		p.attn = &attentionSignal{}
+		registerAttentionOSC(p)
+
+		if _, err := p.emu.Write([]byte("\x1b]777;notify;Claude Code;" + msg + "\x07")); err != nil {
+			t.Fatalf("emulator write: %v", err)
+		}
+		p.refreshWaitingState()
+
+		if waiting, _, _ := p.WaitingInput(); waiting {
+			t.Errorf("notification %q raised a needs-input row; only the measured dialog "+
+				"texts may raise, so that a new Claude notification type can cost a missed "+
+				"raise but never a false one", msg)
 		}
 	}
 }

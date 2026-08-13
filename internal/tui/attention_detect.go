@@ -112,9 +112,64 @@ func registerAttentionOSC(p *Pane) {
 		if !bytes.HasPrefix(payload, []byte(oscNotifyPrefix)) {
 			return false // Not a notification; let any other handler see it.
 		}
-		attn.noteNotify(notifyMessage(string(payload)))
+		msg := notifyMessage(string(payload))
+		if !raisesAttention(msg) {
+			// Consumed (it IS our sequence) but deliberately not raised.
+			return true
+		}
+		attn.noteNotify(msg)
 		return true
 	})
+}
+
+// dialogNotifyTexts is the ALLOWLIST of OSC 777 notify messages that mean a
+// human must act (ini-zfm).
+//
+// The bug this exists to prevent: OSC 777 is not the dialog signal it was taken
+// for. It is Claude's general notification channel, and MEASURED on 2026-08-13,
+// Claude Code 2.1.229, a turn that ended with NO dialog open emitted
+//
+//	ESC]777;notify;Claude Code;Claude is waiting for your input BEL
+//
+// at t+64s -- the idle notification, on a 60s default threshold
+// (messageIdleNotifThresholdMs). Raising on ANY notify therefore gave every
+// agent a needs-input row at turn-end, with an empty preview because there was
+// no dialog to read, and no way to clear it because the earned-clear gate
+// correctly refuses to retire a row whose dialog was never seen on screen. That
+// is the operator's 4m39s phantom row.
+//
+// ALLOWLIST, NOT BLOCKLIST, and the difference is the whole design. Excluding
+// the one known idle text would fix today's report and re-break the day Claude
+// adds another notification type -- and it has NINE more already:
+// agent_completed, agent_needs_input, auth_success ("Claude Code login
+// successful"), computer_use_enter/exit ("Claude is done using your computer"),
+// elicitation_complete/response, push_notification, worker_permission_prompt.
+// Every one of those rides the same OSC door. Unknown text is EXCLUDED, so a
+// new notification type can only ever cost a missed raise, never a false one.
+// This mirrors the hook tier, which allowlists permission_prompt (ini-2x8.4);
+// the two tiers now agree instead of disagreeing by accident.
+//
+// WHAT A MISS COSTS, so the tradeoff is not hidden: the permission dialog's text
+// is the dialog's own message prop, not a fixed constant, so a permission dialog
+// carrying custom text would not match here and would not raise at TIER 1. It
+// would still be caught by tier-2 screen detection and by the hook tier -- this
+// is the tier the layering exists to make fallible safely. A false chime has no
+// such backstop, which is why the asymmetry runs this way.
+var dialogNotifyTexts = map[string]bool{
+	// MEASURED, repeatedly, on 2.1.229: the permission dialog's default message.
+	"Claude needs your permission": true,
+	// DECOMPILED, not measured: the elicitation dialogs dispatch this text
+	// (notificationType elicitation_dialog / elicitation_url_dialog). Included
+	// because its call site IS a blocking dialog, so it cannot reproduce the
+	// idle-style false row; labelled so nobody mistakes it for a capture.
+	"Claude Code needs your input": true,
+}
+
+// raisesAttention reports whether a notify message is one of the measured
+// dialog texts. Everything else -- including the empty message a malformed
+// payload yields -- is excluded by design.
+func raisesAttention(message string) bool {
+	return dialogNotifyTexts[message]
 }
 
 // notifyMessage pulls the human-readable tail out of a notify payload:
