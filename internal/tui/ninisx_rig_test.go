@@ -30,9 +30,11 @@ package tui
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -42,7 +44,7 @@ import (
 )
 
 // nineISXRoot writes a project whose agents are shells, and returns its root.
-func nineISXRoot(t *testing.T, assignments string) string {
+func nineISXRoot(t *testing.T, assignments string) (root string, nonceAgent string) {
 	t.Helper()
 	root, err := os.MkdirTemp("", "9isxrig")
 	if err != nil {
@@ -50,14 +52,32 @@ func nineISXRoot(t *testing.T, assignments string) string {
 	}
 	t.Cleanup(func() { os.RemoveAll(root) })
 
-	roles := []string{"super", "pm", "qa1", "eng1", "eng2"}
+	port := rigReserveFreePort(t)
+
+	// DEFENSE 3 -- IDENTITY (ini-tcxe). One agent whose NAME carries this run's
+	// nonce, placed in the group window 2 owns so window 2 must render it in
+	// its own overlay. If this rig ever dials another run's window 1 -- the
+	// contamination that made an entire evening of measurements worthless --
+	// it renders THAT run's agents and this name is absent, so the rig aborts
+	// instead of reporting a confident verdict about someone else's process.
+	//
+	// The nonce IS the port: already unique among concurrently running rigs,
+	// already threaded to both processes, and it needs no clock or RNG. Two
+	// SEQUENTIAL runs can reuse a port, and that is fine -- a finished run
+	// cannot contaminate anything.
+	//
+	// "eng" prefix on purpose: groupFor keys off the eng*/qa* prefix, so this
+	// lands in the eng band, which is the group the fixtures assign to
+	// window 2.
+	nonceAgent = fmt.Sprintf("engnonce%d", port)
+	roles := []string{"super", "pm", "qa1", "eng1", "eng2", nonceAgent}
 	cfg := "project: ninisx\nroot: " + root + "\nroles:\n"
 	for _, r := range roles {
 		os.MkdirAll(filepath.Join(root, r), 0o755)
 		os.WriteFile(filepath.Join(root, r, "CLAUDE.md"), []byte("# "+r+"\n"), 0o644)
 		cfg += "    - " + r + "\n"
 	}
-	cfg += "window_listen: \"127.0.0.1:7629\"\nrole_overrides:\n"
+	cfg += fmt.Sprintf("window_listen: %q\nrole_overrides:\n", "127.0.0.1:"+strconv.Itoa(port))
 	for _, r := range roles {
 		cfg += "    " + r + ":\n        command: [\"sh\"]\n"
 	}
@@ -76,12 +96,89 @@ func nineISXRoot(t *testing.T, assignments string) string {
 	if assignments != "" {
 		os.WriteFile(filepath.Join(root, ".initech", "assignments.yaml"), []byte(assignments), 0o644)
 	}
-	return root
+	return root, nonceAgent
+}
+
+// nineISXListenAddr reads back the address this run reserved, so the rig can
+// prove its own window 1 is serving before any window 2 dials.
+func nineISXListenAddr(t *testing.T, root string) string {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join(root, "initech.yaml"))
+	if err != nil {
+		t.Fatalf("read config: %v", err)
+	}
+	for _, line := range strings.Split(string(b), "\n") {
+		if strings.HasPrefix(line, "window_listen:") {
+			return strings.Trim(strings.TrimSpace(strings.TrimPrefix(line, "window_listen:")), "\"")
+		}
+	}
+	t.Fatal("config has no window_listen")
+	return ""
+}
+
+// rigRequireServing is DEFENSE 2 (ini-tcxe): a rig whose server never came
+// up must not produce a verdict.
+//
+// Its limit is deliberate and is why defense 3 exists: a successful dial proves
+// SOMETHING is listening, never that it is OURS. Window 1's bind failure is
+// non-fatal in the PRODUCT by design (tui.go:893 -- a secondary window is an
+// enhancement and must not kill a session whose agents are already running),
+// which is correct and unchanged; the abort belongs here.
+func rigRequireServing(t *testing.T, addr string) {
+	t.Helper()
+	deadline := time.Now().Add(30 * time.Second)
+	for time.Now().Before(deadline) {
+		c, err := net.DialTimeout("tcp", addr, time.Second)
+		if err == nil {
+			c.Close()
+			return
+		}
+		time.Sleep(250 * time.Millisecond)
+	}
+	t.Fatalf("nothing is listening on %s: window 1 never started its server, so any verdict from "+
+		"this run would be about a fleet that does not exist", addr)
+}
+
+
+// rigReserveFreePort reserves a port for THIS rig run by binding :0, reading what
+// the kernel assigned, and releasing it.
+//
+// The first version hard-coded 127.0.0.1:7629, and that was not a style
+// problem -- it made the rig NON-REENTRANT, and the consequence is worse than a
+// failed bind. Whichever window 1 wins the port serves; the loser's window 2
+// then dials the WINNER'S process, which is running a different test root with
+// a different fixture. The result is a viewer rendering agents that do not
+// match the assertions, with no code defect required. eng1 and I both ran this
+// rig on one machine on the same evening, so BOTH our measurements from that
+// window are suspect -- including an attribution claim that reached super and a
+// screen capture of mine. A rig that silently measures another run's process is
+// not a slow test, it is a fabricated finding.
+//
+// A bind-then-release leaves a small race, and that is a deliberate trade: the
+// alternative is threading a resolved address from window 1 to window 2, but
+// the viewer dials what the CONFIG says, and the config must exist before
+// window 1 starts. An ephemeral port per run collapses the collision window
+// from "the whole evening" to "microseconds", which is the part that was
+// actually hurting.
+func rigReserveFreePort(t *testing.T) int {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("reserve port: %v", err)
+	}
+	port := ln.Addr().(*net.TCPAddr).Port
+	ln.Close()
+	return port
 }
 
 func nineISXBuild(t *testing.T) string {
 	t.Helper()
-	bin := filepath.Join(t.TempDir(), "initech-9isx")
+	// Named after its OWN test (ini-tcxe). Both composed rigs used to build a
+	// binary called initech-9isx, so pgrep could not tell one agent's rig
+	// process from another's -- which is how a peer reasonably read my live
+	// test process as their own leak and killed it. An identity that does not
+	// identify is the same defect as a port that is not exclusive.
+	bin := filepath.Join(t.TempDir(), "initech-ninisx-rig")
 	build := exec.Command("go", "build", "-o", bin, ".")
 	build.Dir = "../.."
 	if out, err := build.CombinedOutput(); err != nil {
@@ -143,14 +240,48 @@ func nineISXScreen(emu *vt.SafeEmulator) string {
 	return strings.Join(out, "\n")
 }
 
+
+// nineISXAwait polls a window's screen until cond holds, and reports how long
+// it took. Returns false on timeout.
+//
+// EVERY GATING CHECK IN THIS RIG GOES THROUGH IT, and that is a correctness
+// requirement rather than tidiness. The first version slept a fixed interval
+// and sampled once; it passed repeatedly and then failed once, on a run where
+// propagation took longer than the sleep. A single sample after a fixed sleep
+// measures the sampling instant, not the system -- the same error that produced
+// a phantom tier-1 gap in ini-zjhg and nearly had me contradict a peer's
+// verification here on one observation. A flaky rig is worse than no rig once
+// it is a ship gate: it teaches people to re-run until green, which is exactly
+// how a real red gets waved through.
+func nineISXAwait(emu *vt.SafeEmulator, cond func(string) bool, limit time.Duration) (time.Duration, bool) {
+	start := time.Now()
+	for time.Since(start) < limit {
+		if cond(nineISXScreen(emu)) {
+			return time.Since(start), true
+		}
+		time.Sleep(250 * time.Millisecond)
+	}
+	return limit, false
+}
+
 // nineISXAssert runs every AC 4/6/7/8/9 check against a live window-2 screen.
 // Shared by both startup orders so the two paths are held to identical
 // expectations rather than each getting the assertions its own quirks pass.
-func nineISXAssert(t *testing.T, label string, w1emu, w2emu *vt.SafeEmulator, w1pty, w2pty *os.File) {
+func nineISXAssert(t *testing.T, label, nonce string, w1emu, w2emu *vt.SafeEmulator, w1pty, w2pty *os.File) {
 	t.Helper()
 
 	w2 := nineISXScreen(w2emu)
 	t.Logf("%s — WINDOW 2 OVERLAY:\n%s", label, w2)
+
+	// DEFENSE 3, asserted BEFORE anything else (ini-tcxe): every verdict below
+	// is about the fleet on this screen, so first prove the screen is ours.
+	// Without this the rig will happily describe another run's process in
+	// convincing detail -- which is exactly what it did all through ini-x5ob.
+	if !strings.Contains(w2, nonce) {
+		t.Fatalf("%s: window 2 is not rendering THIS run's fleet -- the nonce agent %q is absent, so "+
+			"it dialed another window 1. Every assertion below would be a confident statement about "+
+			"someone else's process.\n%s", label, nonce, w2)
+	}
 
 	// AC1/AC2: no window prefix anywhere on the viewer's screen.
 	if strings.Contains(w2, WindowOnePeerName+":") {
@@ -231,18 +362,23 @@ func TestNineISXRig_ScopedOverlayBothStartupOrders(t *testing.T) {
 	// ── ORDER A: assigned BEFORE window 2 attaches ──────────────────
 	// The viewer meets a store that already describes its slice.
 	t.Run("assign-then-attach", func(t *testing.T) {
-		root := nineISXRoot(t, "group_window:\n    eng: window-2\n")
+		root, nonce := nineISXRoot(t, "group_window:\n    eng: window-2\n")
 		_, w1pty, w1emu := nineISXStart(t, bin, root)
 		time.Sleep(10 * time.Second)
 		w1pty.Write([]byte("n")) // decline the consent overlay
 		time.Sleep(2 * time.Second)
+		rigRequireServing(t, nineISXListenAddr(t, root))
 
 		_, w2pty, w2emu := nineISXStart(t, bin, root, "--window", "2")
 		time.Sleep(12 * time.Second)
 		w2pty.Write([]byte("n"))
-		time.Sleep(12 * time.Second)
+		if _, ok := nineISXAwait(w2emu, func(s string) bool {
+			return strings.Contains(s, "eng1") && strings.Contains(s, "eng2")
+		}, 30*time.Second); !ok {
+			t.Fatalf("window 2 never rendered the agents it owns\n%s", nineISXScreen(w2emu))
+		}
 
-		nineISXAssert(t, "assign-then-attach", w1emu, w2emu, w1pty, w2pty)
+		nineISXAssert(t, "assign-then-attach", nonce, w1emu, w2emu, w1pty, w2pty)
 	})
 
 	// ── ORDER B: window 2 attaches FIRST, assignment arrives after ──
@@ -251,11 +387,12 @@ func TestNineISXRig_ScopedOverlayBothStartupOrders(t *testing.T) {
 	// a move it did not make. A scoped surface computed once at attach is
 	// correct here at attach and wrong forever after.
 	t.Run("attach-then-assign", func(t *testing.T) {
-		root := nineISXRoot(t, "")
+		root, nonce := nineISXRoot(t, "")
 		_, w1pty, w1emu := nineISXStart(t, bin, root)
 		time.Sleep(10 * time.Second)
 		w1pty.Write([]byte("n"))
 		time.Sleep(2 * time.Second)
+		rigRequireServing(t, nineISXListenAddr(t, root))
 
 		_, w2pty, w2emu := nineISXStart(t, bin, root, "--window", "2")
 		time.Sleep(12 * time.Second)
@@ -268,13 +405,20 @@ func TestNineISXRig_ScopedOverlayBothStartupOrders(t *testing.T) {
 		w1pty.Write([]byte("`"))
 		time.Sleep(600 * time.Millisecond)
 		w1pty.Write([]byte("agents\r"))
-		time.Sleep(2500 * time.Millisecond)
-		t.Logf("W1 MODAL before m:\n%s", nineISXScreen(w1emu))
+		if _, ok := nineISXAwait(w1emu, func(s string) bool {
+			return strings.Contains(s, "initech agents")
+		}, 20*time.Second); !ok {
+			t.Fatalf("the agents modal never opened on window 1; the move cannot be driven\n%s",
+				nineISXScreen(w1emu))
+		}
 		w1pty.Write([]byte("m"))
-		time.Sleep(3 * time.Second)
-		t.Logf("W1 MODAL after m:\n%s", nineISXScreen(w1emu))
+		if _, ok := nineISXAwait(w1emu, func(s string) bool {
+			return strings.Contains(s, "monitor 2")
+		}, 20*time.Second); !ok {
+			t.Fatalf("the eng group never moved to a second monitor after 'm'; the rig drove the "+
+				"modal wrong rather than the product failing\n%s", nineISXScreen(w1emu))
+		}
 		w1pty.Write([]byte{0x1b}) // close the modal
-		time.Sleep(4 * time.Second)
 
 		// Assert the PRODUCT'S state, not the store file. An earlier draft
 		// read assignments.yaml and failed on its contents while window 1's own
@@ -293,11 +437,16 @@ func TestNineISXRig_ScopedOverlayBothStartupOrders(t *testing.T) {
 		// so on screen. Gating on a flapping precondition makes the rig report
 		// on connection stability while claiming to report on scoping.
 		// Window 2's own scope needs no such belief: a viewer scopes to itself.
-		if w2 := nineISXScreen(w2emu); !strings.Contains(w2, "eng1") {
+		took, ok := nineISXAwait(w2emu, func(s string) bool {
+			return strings.Contains(s, "eng1")
+		}, 30*time.Second)
+		if !ok {
 			t.Fatalf("attach-then-assign: window 2 never took ownership of the eng group after "+
-				"the move, so the scoping assertions below would prove nothing\n%s", w2)
+				"the move, so the scoping assertions below would prove nothing\n%s",
+				nineISXScreen(w2emu))
 		}
+		t.Logf("attach-then-assign: window 2 took ownership after %v", took.Round(time.Millisecond))
 
-		nineISXAssert(t, "attach-then-assign", w1emu, w2emu, w1pty, w2pty)
+		nineISXAssert(t, "attach-then-assign", nonce, w1emu, w2emu, w1pty, w2pty)
 	})
 }

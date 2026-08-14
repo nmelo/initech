@@ -22,10 +22,12 @@ package tui
 // cannot come from either window's local state agreeing by luck.
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -60,7 +62,11 @@ func TestSixM4Rig_ViewerModalParityAndReplaySurvival(t *testing.T) {
 	for _, r := range roles {
 		cfg += "    - " + r + "\n"
 	}
-	cfg += "window_listen: \"127.0.0.1:7617\"\n"
+	// Ephemeral per run (ini-tcxe). This rig carried the identical hard-coded
+	// port defect as the ninisx rig; it has not bitten only because two people
+	// have not run it at once yet, which is luck rather than a property.
+	sixm4Addr := "127.0.0.1:" + strconv.Itoa(rigReserveFreePort(t))
+	cfg += fmt.Sprintf("window_listen: %q\n", sixm4Addr)
 	os.WriteFile(filepath.Join(root, "initech.yaml"), []byte(cfg), 0o644)
 
 	os.MkdirAll(filepath.Join(root, ".initech"), 0o755)
@@ -80,7 +86,10 @@ func TestSixM4Rig_ViewerModalParityAndReplaySurvival(t *testing.T) {
 	os.WriteFile(filepath.Join(root, ".initech", "layout.yaml"),
 		[]byte("grid: 4x2\nmode: grid\norder:\n    - eng2\n    - eng1\n    - qa1\n    - pm\n    - growth\n    - shipper\n    - pmm\n    - super\n"), 0o644)
 
-	bin := filepath.Join(t.TempDir(), "initech-6m4")
+	// Named after its own test (ini-tcxe): rig binaries that share a name are
+	// indistinguishable to pgrep, which is how one agent's live test process
+	// got read as another's leak and killed.
+	bin := filepath.Join(t.TempDir(), "initech-sixm4-rig")
 	build := exec.Command("go", "build", "-o", bin, ".")
 	build.Dir = "../.."
 	if out, err := build.CombinedOutput(); err != nil {
@@ -122,6 +131,11 @@ func TestSixM4Rig_ViewerModalParityAndReplaySurvival(t *testing.T) {
 	time.Sleep(12 * time.Second)
 	w1pty.Write([]byte("n")) // decline the notification-hook consent overlay
 	time.Sleep(2 * time.Second)
+
+	// DEFENSE 2 (ini-tcxe): prove window 1 is actually serving before a viewer
+	// dials. Without it, a rig whose bind lost a race still produces a verdict
+	// -- about whichever process did win the port.
+	rigRequireServing(t, sixm4Addr)
 
 	w2, w2pty, w2emu := start("--window", "2")
 	defer func() { w2pty.Close(); w2.Process.Kill(); w2.Process.Wait() }()

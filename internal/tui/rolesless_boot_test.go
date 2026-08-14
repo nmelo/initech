@@ -12,6 +12,7 @@
 package tui
 
 import (
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -53,7 +54,7 @@ func TestRolesLessBoot_StartsIdleWithZeroLocalPanes(t *testing.T) {
 peer_name: window2
 remotes:
     window1:
-        addr: 127.0.0.1:59999
+        addr: 127.0.0.1:%d
 `
 	if err := os.WriteFile(filepath.Join(root, "initech.yaml"), []byte(cfg), 0o644); err != nil {
 		t.Fatalf("write config: %v", err)
@@ -146,15 +147,15 @@ func TestRolesLessBoot_BrokenRoleDirsStillFailWithRemotes(t *testing.T) {
 	// Roles ARE configured, but no matching workspace directories exist.
 	// Remotes are present too, so only the len(proj.Roles) check can tell
 	// this apart from the legitimate viewer case.
-	cfg := "project: brokenproj\nroot: " + root + `
+	cfg := fmt.Sprintf("project: brokenproj\nroot: "+root+`
 peer_name: window2
 roles:
     - eng1
     - eng2
 remotes:
     window1:
-        addr: 127.0.0.1:59999
-`
+        addr: 127.0.0.1:%d
+`, rigReserveFreePort(t))
 	if err := os.WriteFile(filepath.Join(root, "initech.yaml"), []byte(cfg), 0o644); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
