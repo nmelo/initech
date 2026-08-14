@@ -116,19 +116,21 @@ func paneScreenContains(p *Pane, s string) bool {
 // WHICH MUTANT THIS KILLS, stated because the two obvious ones are not equal.
 // Deleting the `return` so the wake ALSO falls through to SendKey does NOT
 // turn this test red -- and that is a property of the system, not a weakness
-// here: at keystroke time the pane is suspended, so its PTY is already closed,
-// and the write is discarded by the closed descriptor (eng2's ini-9imx PATH 2
-// finding -- Close() never nils ptmx, so the primitive's nil guard does not
-// fire and the error is dropped). Delivery is impossible on that path
-// regardless of the guard, so the trivial mutant is behaviourally equivalent.
+// here. Parking runs the FULL Pane.Close, which closes the PTY, closes the
+// emulator, and nils ptmx (pane.go, end of Close). A fall-through keystroke
+// therefore has nowhere to land: it dies in the already-closed pipeline. That
+// mutant is behaviourally equivalent, so no probe could distinguish it.
+//
+// (An earlier version of this comment blamed a closed-but-NOT-nil ptmx, citing
+// ini-9imx PATH 2. That was stale: 9imx's silent-loss path was a pane whose
+// ptmx survived Close, and ini-g7fl closed exactly that -- park nils it now.
+// Corrected after qa1 checked the claim against the source rather than the
+// comment, 2026-08-14.)
 //
 // The mutant this DOES kill is the realistic forgery: wake, then hand the
-// gesture to the RESPAWNED process. Verified -- that mutation turns this test
-// red. That is the shape a naive implementation actually takes ("wake it, then
-// pass the key through"), and it is the one the spec forbids.
-//
-// If ini-9imx's proposal to nil ptmx on Close lands, the trivial mutant stops
-// being masked and this test would catch both.
+// gesture to the RESPAWNED process, whose pipeline is open. Verified -- that
+// mutation turns this test red. It is the shape a naive implementation takes
+// ("wake it, then pass the key through"), and the one the spec forbids.
 func TestSuspendedPaneKeystrokeIsConsumedNotDelivered(t *testing.T) {
 	tui, p := newEchoPane(t, "eng1")
 
@@ -214,23 +216,94 @@ func TestRunningPaneKeystrokeIsStillDelivered(t *testing.T) {
 	}
 }
 
-// TestSuspendedPaneClickAndWheelDoNotWake is AC 4, asserted rather than
-// inferred from the key path's shape. Click focuses (ini-pzx0) and wheel
-// scrolls scrollback; neither is the wake gesture, and a mouse path that
-// happened to route through the same handler would wake on a stray scroll.
+// planned gives the TUI a render plan placing p in a known region, so a mouse
+// event at a coordinate inside that region actually REACHES the region-gated
+// branches of handleMouse.
+//
+// This exists because the first version of the AC 4 test had no plan at all:
+// handleMouse hit-tests against t.plan.Panes, an empty plan means the loop
+// body never executes, and the click landed on nothing. The test passed while
+// never visiting the code it claimed to exercise -- the reachability variant
+// of the vacuous guard (found by qa1, 2026-08-14).
+func planned(tui *TUI, p *Pane, r Region) {
+	tui.plan = RenderPlan{
+		Panes:   []PaneRender{{Pane: p, Region: r, Index: 1, Focused: false}},
+		ScreenW: r.X + r.W + 10,
+		ScreenH: r.Y + r.H + 10,
+	}
+	p.region = r
+}
+
+// TestMouseFixtureReachesTheRegionGatedPath is the REACHABILITY CONTROL for
+// the AC 4 test below, and it is the technique worth keeping: it asserts that
+// an in-region click is handled at all, by observing a side effect that only
+// the in-region branch produces (focus moves to the clicked pane).
+//
+// A no-wake assertion cannot distinguish "handled and correctly suppressed"
+// from "never reached". This test answers that question separately, so the
+// suppression test below is meaningful rather than merely green.
+func TestMouseFixtureReachesTheRegionGatedPath(t *testing.T) {
+	tui, p := newEchoPane(t, "eng1")
+	region := Region{X: 0, Y: 0, W: 40, H: 12}
+	planned(tui, p, region)
+	tui.layoutState.Focused = "someone-else"
+
+	tui.handleMouse(tcell.NewEventMouse(5, 5, tcell.Button1, tcell.ModNone))
+
+	if tui.layoutState.Focused != agentKey(p) {
+		t.Fatalf(`the in-region click was NOT handled: focus is %q, want %q.
+
+Every mouse assertion in this file depends on the click reaching the
+region-gated branch of handleMouse. If it does not, a "did not wake" result
+means the event landed on nothing -- which is how the first version of the
+AC 4 test passed without ever visiting the code under test.`,
+			tui.layoutState.Focused, agentKey(p))
+	}
+}
+
+// TestSuspendedPaneClickAndWheelDoNotWake is AC 4: click focuses per ini-pzx0
+// and wheel scrolls scrollback; neither is the wake gesture.
+//
+// Both halves are asserted. The NEGATIVE half (no wake) is the AC; the
+// POSITIVE half (the click focused, the wheel scrolled) is what proves the
+// event was handled rather than dropped -- without it, deleting the entire
+// mouse handler would make this test pass.
 func TestSuspendedPaneClickAndWheelDoNotWake(t *testing.T) {
 	tui, p := newEchoPane(t, "eng1")
-	parkPaneSuspended(p)
+	region := Region{X: 0, Y: 0, W: 40, H: 12}
+	planned(tui, p, region)
 
-	for _, ev := range []*tcell.EventMouse{
-		tcell.NewEventMouse(1, 1, tcell.Button1, tcell.ModNone),   // click
-		tcell.NewEventMouse(1, 1, tcell.WheelUp, tcell.ModNone),   // wheel up
-		tcell.NewEventMouse(1, 1, tcell.WheelDown, tcell.ModNone), // wheel down
-	} {
-		tui.handleMouse(ev)
+	// Give the pane scrollback so a wheel-up has somewhere to go.
+	for i := 0; i < 200; i++ {
+		p.emu.Write([]byte("line\r\n"))
 	}
-	time.Sleep(200 * time.Millisecond)
+	parkPaneSuspended(p)
+	tui.layoutState.Focused = "someone-else"
 
+	// CLICK, in region.
+	tui.handleMouse(tcell.NewEventMouse(5, 5, tcell.Button1, tcell.ModNone))
+	if tui.layoutState.Focused != agentKey(p) {
+		t.Error("an in-region click on a suspended pane did not FOCUS it; click must still " +
+			"focus (ini-pzx0), or the suppression has broken ordinary pane selection")
+	}
+
+	// WHEEL, in region.
+	p.mu.Lock()
+	before := p.scrollOffset
+	p.mu.Unlock()
+	tui.handleMouse(tcell.NewEventMouse(5, 5, tcell.WheelUp, tcell.ModNone))
+	p.mu.Lock()
+	afterWheel := p.scrollOffset
+	p.mu.Unlock()
+	if afterWheel == before {
+		t.Errorf("an in-region wheel on a suspended pane did not SCROLL it (offset stayed %d); "+
+			"wheel must still scroll scrollback, which is exactly what an operator does to "+
+			"read why an agent was parked", before)
+	}
+	tui.handleMouse(tcell.NewEventMouse(5, 5, tcell.WheelDown, tcell.ModNone))
+
+	// And NONE of it may wake the agent.
+	time.Sleep(200 * time.Millisecond)
 	cur, ok := tui.findLocalPane("eng1")
 	if !ok {
 		t.Fatal("pane vanished")

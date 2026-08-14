@@ -96,7 +96,7 @@ func TestOverlayDot_SuspendedIsBlueHollow(t *testing.T) {
 // TestRibbon_SuspendedShowsSusp verifies the ribbon badge marks suspended
 // panes AND names the wake gesture.
 //
-// The badge was "[susp: any key]" until ini-zffi. It now reads "[susp: any key]"
+// The badge was "[susp]" until ini-zffi. It now reads "[susp: any key]"
 // because a suspended pane is an empty state that must teach its own
 // affordance: the operator can bring it back with a single keystroke, and a
 // badge that only names the state leaves them with no way to discover that.
