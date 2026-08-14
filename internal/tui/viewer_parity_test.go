@@ -115,27 +115,45 @@ func TestFleetProjection_TranslatesKeysForFollowerLookups(t *testing.T) {
 	tui.windowID = "window-2"
 	tui.fleetState()
 
-	if !tui.layoutState.Hidden["window1:pmm"] {
-		t.Fatal("the projection carries only the store's key form; every paneKey-keyed lookup " +
-			"on a follower misses, so window 1's hide is invisible no matter how fresh the read")
-	}
+	// Since ini-yc03 the projection is CANONICAL-ONLY. The follower used to
+	// need a "window1:pmm" alias here because its lookups were keyed by the
+	// observer form; now every lookup goes through agentKey, so the canonical
+	// key is the only one that should exist -- and the alias must be ABSENT,
+	// or the doubling this bead removed has grown back.
 	if !tui.layoutState.Hidden["pmm"] {
-		t.Fatal("the store's own key form was dropped by translation; window 1's lookups would miss")
+		t.Fatal("window 1's hide is missing from the follower's projection under the agent's " +
+			"canonical identity, so the follower cannot see it at all")
+	}
+	if _, aliased := tui.layoutState.Hidden["window1:pmm"]; aliased {
+		t.Fatal("the projection carries an observer-relative alias again; canonical identity " +
+			"makes it unnecessary, and the doubling that produced it was itself a defect source")
 	}
 }
 
-// TestFleetStoreKey_NormalizesFollowerWrites pins the reverse direction: a
-// follower toggling "window1:pmm" must reach the store as "pmm", or the store
-// grows one entry per window identity for the same agent.
-func TestFleetStoreKey_NormalizesFollowerWrites(t *testing.T) {
-	if got := fleetStoreKey("window1:pmm"); got != "pmm" {
-		t.Errorf("fleetStoreKey(window1:pmm) = %q, want pmm", got)
+// TestFollowerWritesReachTheStoreCanonically pins the reverse direction, which
+// this suite has always asserted: a follower toggling an agent must reach the
+// store under the agent's canonical identity, or the store grows one entry per
+// window identity for the same agent.
+//
+// The contract is unchanged; its OWNER moved. fleetStoreKey normalized one
+// store's keys at the write site (a per-field fence); since ini-yc03 the
+// identity is canonical where it is computed, so the same guarantee is a
+// property of agentKey and holds for every fleet-scoped field at once.
+func TestFollowerWritesReachTheStoreCanonically(t *testing.T) {
+	// The same agent, as window 1 sees it and as a follower sees it.
+	windowOneView := &mockPaneView{name: "pmm"}
+	followerView := &mockPaneView{name: "pmm", host: WindowOnePeerName}
+	if got, want := agentKey(followerView), agentKey(windowOneView); got != want {
+		t.Errorf("follower resolves pmm to %q, window 1 to %q -- the store would grow one "+
+			"entry per window identity for one agent", got, want)
 	}
-	if got := fleetStoreKey("pmm"); got != "pmm" {
-		t.Errorf("fleetStoreKey(pmm) = %q, want pmm (window 1's own writes pass through)", got)
+	if got := agentKey(windowOneView); got != "pmm" {
+		t.Errorf("window 1's own key = %q, want pmm (it passes through unchanged)", got)
 	}
-	if got := fleetStoreKey("workbench:eng1"); got != "workbench:eng1" {
-		t.Errorf("fleetStoreKey(workbench:eng1) = %q; cross-machine keys are NOT window-1 "+
-			"aliases and must survive untouched", got)
+	// Cross-machine host prefixes are IDENTITY, not observer decoration.
+	crossMachine := &mockPaneView{name: "eng1", host: "workbench"}
+	if got := agentKey(crossMachine); got != "workbench:eng1" {
+		t.Errorf("agentKey(workbench/eng1) = %q; cross-machine keys are NOT window-1 aliases "+
+			"and must survive untouched", got)
 	}
 }

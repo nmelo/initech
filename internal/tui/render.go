@@ -79,7 +79,7 @@ func (t *TUI) render() {
 		pr.Pane.Render(s, pr.Focused, pr.Dimmed, pr.Index, sel)
 		// Live mode: draw [P] badge for pinned panes, right-aligned on ribbon.
 		if t.layoutState.Mode == LayoutLive {
-			pk := paneKey(pr.Pane)
+			pk := agentKey(pr.Pane)
 			if _, pinned := t.layoutState.LivePinned[pk]; pinned {
 				r := pr.Region
 				ribbonY := r.Y + r.H - 1
@@ -714,11 +714,11 @@ func (t *TUI) renderOverlay() {
 	maxNameLen := 0
 	hiddenCount := 0
 	for i, p := range t.panes {
-		vis := !t.layoutState.Hidden[paneKey(p)]
+		vis := !t.layoutState.Hidden[agentKey(p)]
 		act := p.Activity()
 		// Overlay shows activity state only; bead info is in the pane ribbon.
 		status := act.String()
-		pk := paneKey(p)
+		pk := agentKey(p)
 		pin := t.layoutState.Protected[pk]
 		if !pin {
 			_, pin = t.layoutState.LivePinned[pk]

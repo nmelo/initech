@@ -150,7 +150,7 @@ func (le *LiveEngine) Tick(panes []PaneView, now time.Time) []string {
 	// Log pane roster received by Tick.
 	names := make([]string, len(panes))
 	for i, p := range panes {
-		names[i] = paneKey(p)
+		names[i] = agentKey(p)
 	}
 	LogInfo("live-tick", "roster", "count", len(panes), "names", fmt.Sprintf("%v", names), "slots", numSlots)
 
@@ -175,7 +175,7 @@ func (le *LiveEngine) Tick(panes []PaneView, now time.Time) []string {
 	// Score unpinned, alive, non-suspended agents.
 	scores := make(map[string]ranked, len(panes))
 	for _, p := range panes {
-		pk := paneKey(p)
+		pk := agentKey(p)
 		if pinnedSet[pk] {
 			LogInfo("live-tick", "pinned (skip scoring)", "agent", pk, "slot", le.Pinned[pk])
 			continue
@@ -427,7 +427,7 @@ func (le *LiveEngine) TickAuto(panes []PaneView, now time.Time) []string {
 	}
 
 	for _, p := range panes {
-		pk := paneKey(p)
+		pk := agentKey(p)
 		s := convictionScore(p, now)
 		allScored = append(allScored, scored{pk, s})
 	}

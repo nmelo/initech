@@ -534,8 +534,8 @@ func TestRunInit_EmptyRepoSubmoduleCleanup(t *testing.T) {
 
 	restoreRunner := stubInitRunner(t, &fakeMultiRunner{
 		responses: []fakeResponse{
-			{output: "", err: nil},                                // git config --remove-section (CleanFailedSubmodule)
-			{output: "", err: fmt.Errorf("which bd: not found")},  // which bd
+			{output: "", err: nil},                               // git config --remove-section (CleanFailedSubmodule)
+			{output: "", err: fmt.Errorf("which bd: not found")}, // which bd
 		},
 	})
 	defer restoreRunner()
@@ -616,8 +616,8 @@ func TestRunInit_GenericSubmoduleFailureCleanup(t *testing.T) {
 
 	restoreRunner := stubInitRunner(t, &fakeMultiRunner{
 		responses: []fakeResponse{
-			{output: "", err: nil},                                // git config --remove-section
-			{output: "", err: fmt.Errorf("which bd: not found")},  // which bd
+			{output: "", err: nil},                               // git config --remove-section
+			{output: "", err: fmt.Errorf("which bd: not found")}, // which bd
 		},
 	})
 	defer restoreRunner()

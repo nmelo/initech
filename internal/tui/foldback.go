@@ -169,7 +169,7 @@ func (t *TUI) visiblePanesForWindow() []PaneView {
 
 	out := make([]PaneView, 0, len(t.panes))
 	for _, p := range t.panes {
-		if rendersInWindow(paneKey(p), t.windowID, t.assignment, groupOf, connected) {
+		if rendersInWindow(agentKey(p), t.windowID, t.assignment, groupOf, connected) {
 			out = append(out, p)
 		}
 	}
@@ -210,8 +210,8 @@ func (t *TUI) liveTickInputs() ([]PaneView, map[string]int) {
 	livePanes := make([]PaneView, 0, len(windowPanes))
 	inWindow := make(map[string]bool, len(windowPanes))
 	for _, p := range windowPanes {
-		inWindow[paneKey(p)] = true
-		if !t.layoutState.Hidden[paneKey(p)] {
+		inWindow[agentKey(p)] = true
+		if !t.layoutState.Hidden[agentKey(p)] {
 			livePanes = append(livePanes, p)
 		}
 	}
@@ -456,7 +456,7 @@ func (t *TUI) broadcastAgentStatusChanges() {
 		}
 		beads := p.BeadIDs()
 		desc := p.SessionDesc()
-		key := paneKey(p)
+		key := agentKey(p)
 		next := agentStatusSnapshot{beads: strings.Join(beads, "\x00"), desc: desc}
 		if prev, seen := t.agentStatus[key]; seen && prev == next {
 			continue

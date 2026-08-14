@@ -113,13 +113,13 @@ func computeLayout(state LayoutState, panes []PaneView, screenW, screenH int) Re
 	// Uses paneKey for uniqueness (host:name for remote, name for local).
 	paneIndex := make(map[string]int, len(panes))
 	for i, p := range panes {
-		paneIndex[paneKey(p)] = i + 1
+		paneIndex[agentKey(p)] = i + 1
 	}
 
 	// 1. Filter visible panes (preserve order).
 	visible := make([]PaneView, 0, len(panes))
 	for _, p := range panes {
-		if !state.Hidden[paneKey(p)] {
+		if !state.Hidden[agentKey(p)] {
 			visible = append(visible, p)
 		}
 	}
@@ -132,13 +132,13 @@ func computeLayout(state LayoutState, panes []PaneView, screenW, screenH int) Re
 	focus := state.Focused
 	focusValid := false
 	for _, p := range visible {
-		if paneKey(p) == focus {
+		if agentKey(p) == focus {
 			focusValid = true
 			break
 		}
 	}
 	if !focusValid {
-		focus = paneKey(visible[0])
+		focus = agentKey(visible[0])
 	}
 	plan.ValidatedFocus = focus
 
@@ -150,11 +150,11 @@ func computeLayout(state LayoutState, panes []PaneView, screenW, screenH int) Re
 		// Single pane: find the focused one, give it the full screen.
 		regions = []Region{{X: 0, Y: 0, W: screenW, H: screenH}}
 		for _, p := range visible {
-			if paneKey(p) == focus {
+			if agentKey(p) == focus {
 				plan.Panes = append(plan.Panes, PaneRender{
 					Pane:    p,
 					Region:  regions[0],
-					Index:   paneIndex[paneKey(p)],
+					Index:   paneIndex[agentKey(p)],
 					Focused: true,
 					Dimmed:  false,
 				})
@@ -176,7 +176,7 @@ func computeLayout(state LayoutState, panes []PaneView, screenW, screenH int) Re
 		reordered := make([]PaneView, 0, len(slotNames))
 		paneByKey := make(map[string]PaneView, len(visible))
 		for _, p := range visible {
-			paneByKey[paneKey(p)] = p
+			paneByKey[agentKey(p)] = p
 		}
 		for _, name := range slotNames {
 			if p, ok := paneByKey[name]; ok {
@@ -191,13 +191,13 @@ func computeLayout(state LayoutState, panes []PaneView, screenW, screenH int) Re
 		// focus is not in the live-visible set.
 		focusInLive := false
 		for _, p := range visible {
-			if paneKey(p) == focus {
+			if agentKey(p) == focus {
 				focusInLive = true
 				break
 			}
 		}
 		if !focusInLive && len(visible) > 0 {
-			focus = paneKey(visible[0])
+			focus = agentKey(visible[0])
 		}
 		liveCols, liveRows := state.GridCols, state.GridRows
 		if state.LiveAuto {
@@ -218,7 +218,7 @@ func computeLayout(state LayoutState, panes []PaneView, screenW, screenH int) Re
 		reordered := make([]PaneView, 0, len(visible))
 		var focusedPane PaneView
 		for _, p := range visible {
-			if paneKey(p) == focus {
+			if agentKey(p) == focus {
 				focusedPane = p
 			} else {
 				reordered = append(reordered, p)
@@ -238,7 +238,7 @@ func computeLayout(state LayoutState, panes []PaneView, screenW, screenH int) Re
 		if i >= len(regions) {
 			break
 		}
-		pk := paneKey(p)
+		pk := agentKey(p)
 		plan.Panes = append(plan.Panes, PaneRender{
 			Pane:    p,
 			Region:  regions[i],
@@ -665,6 +665,10 @@ func LoadLayoutForWindow(projectRoot, windowID string, paneKeys []string) (Layou
 	if err := yaml.Unmarshal(data, &pl); err != nil {
 		return LayoutState{}, false
 	}
+	// Canonicalize BEFORE any field is consumed. Healing later would leave
+	// every field that was already read carrying the aliased form -- which is
+	// how the order field escaped ini-qkwc's fence in the first place.
+	healed := normalizePersistedIdentities(&pl)
 
 	// Parse grid dimensions.
 	cols, rows, ok := parseGrid(pl.Grid, len(paneKeys))
@@ -747,7 +751,7 @@ func LoadLayoutForWindow(projectRoot, windowID string, paneKeys []string) (Layou
 	// modal. Bare wins a conflict (it is what window 1 writes today), logged
 	// once at WARN. Cross-machine host prefixes (workbench:eng1) are REAL
 	// distinct agents and pass through untouched.
-	normalized, healed := normalizeGroupOfKeys(pl.GroupOf)
+	normalized := pl.GroupOf
 
 	var groupOf map[string]string
 	memberCount := make(map[string]int)
@@ -863,7 +867,7 @@ func reorderPanes(panes []PaneView, order []string) {
 
 	byKey := make(map[string]PaneView, len(panes))
 	for _, p := range panes {
-		byKey[paneKey(p)] = p
+		byKey[agentKey(p)] = p
 	}
 	placed := make(map[string]bool, len(order))
 	idx := 0
@@ -876,7 +880,7 @@ func reorderPanes(panes []PaneView, order []string) {
 	}
 	// Append unspecified panes in their original slice order.
 	for _, p := range orig {
-		pk := paneKey(p)
+		pk := agentKey(p)
 		if !placed[pk] {
 			panes[idx] = p
 			placed[pk] = true
@@ -942,5 +946,88 @@ func LoadFleetScopedLayout(projectRoot string) (groups []string, groupOf map[str
 	if err := yaml.Unmarshal(data, &pl); err != nil {
 		return nil, nil, false
 	}
+	// Normalize in memory ONLY. Both loaders unmarshal the same file, so a
+	// canonicalization on one and not the other is the per-field-fence shape
+	// this bead removes -- but this loader must not PERSIST the result the way
+	// LoadLayoutForWindow does: followers call it, and a viewer writing
+	// project-root state is exactly what ini-la97 closed. Convergence is the
+	// authority's job, on its own load.
+	normalizePersistedIdentities(&pl)
 	return pl.Groups, pl.GroupOf, true
+}
+
+// normalizePersistedIdentities extends the ini-qkwc group_of heal to EVERY
+// identity-bearing field of the store (ini-yc03).
+//
+// qkwc healed group_of and left order untouched, and the class promptly walked
+// into the unfenced field: ini-i7fr froze a live store whose order was
+// entirely window1:-prefixed. Fencing one field at a time is the pattern this
+// bead ends, so the heal now covers the whole store and a new identity-bearing
+// field is added HERE rather than growing a second heal beside it.
+//
+// It reports whether anything changed, so the caller can apply ini-m495's
+// convergence rule: persist once, and the next load finds a clean file and
+// heals nothing. A heal that never persists re-heals and re-logs forever --
+// measured on the assignment store in ini-i7fr, where the same normalization
+// re-fired every two seconds for hours.
+//
+// Cross-machine host prefixes are DISTINCT agents and pass through untouched;
+// that boundary is drawn once, in canonicalStoreKey.
+func normalizePersistedIdentities(pl *PersistentLayout) bool {
+	healed := false
+	if out, h := normalizeGroupOfKeys(pl.GroupOf); h {
+		pl.GroupOf = out
+		healed = true
+	}
+	if out, h := normalizeKeyList(pl.Order); h {
+		pl.Order = out
+		healed = true
+	}
+	// The legacy global fields are dead data (ini-9ka.10) but are still PARSED
+	// for import-once, so an alias in them would be imported into live state.
+	for _, f := range []*[]string{&pl.Hidden, &pl.Protected, &pl.DepPinned} {
+		if out, h := normalizeKeyList(*f); h {
+			*f = out
+			healed = true
+		}
+	}
+	if len(pl.LivePinned) > 0 {
+		out := make(map[string]int, len(pl.LivePinned))
+		for k, v := range pl.LivePinned {
+			c := canonicalStoreKey(k)
+			if c != k {
+				healed = true
+			}
+			if _, dup := out[c]; !dup {
+				out[c] = v
+			}
+		}
+		pl.LivePinned = out
+	}
+	return healed
+}
+
+// normalizeKeyList canonicalizes a list of agent keys, preserving order and
+// collapsing the duplicates a strip can create (two forms of one agent become
+// one identity, and one slot in the arrangement rather than two).
+func normalizeKeyList(keys []string) ([]string, bool) {
+	if len(keys) == 0 {
+		return keys, false
+	}
+	out := make([]string, 0, len(keys))
+	seen := make(map[string]bool, len(keys))
+	healed := false
+	for _, k := range keys {
+		c := canonicalStoreKey(k)
+		if c != k {
+			healed = true
+		}
+		if seen[c] {
+			healed = true
+			continue
+		}
+		seen[c] = true
+		out = append(out, c)
+	}
+	return out, healed
 }

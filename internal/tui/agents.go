@@ -196,7 +196,7 @@ func (t *TUI) agentsLivePin(slot int) {
 		t.agents.error = fmt.Sprintf("slot %d does not exist (grid has %d slots)", slot, totalSlots)
 		return
 	}
-	name := paneKey(t.panes[t.agents.selected])
+	name := agentKey(t.panes[t.agents.selected])
 	// LivePinned is GLOBAL (ini-9ka.10). SetLiveSlot also evicts any other
 	// agent already holding this slot, so the "one agent per slot" rule lives
 	// in the store rather than being re-implemented at each call site.
@@ -300,7 +300,7 @@ func (t *TUI) agentsToggleVisibility() {
 	if t.agents.selected < 0 || t.agents.selected >= len(t.panes) {
 		return
 	}
-	name := paneKey(t.panes[t.agents.selected])
+	name := agentKey(t.panes[t.agents.selected])
 	if !t.toggleHidden(name) {
 		t.agents.error = "cannot hide last visible pane"
 	}
@@ -338,7 +338,7 @@ func (t *TUI) agentsToggleLivePin() {
 	if t.agents.selected < 0 || t.agents.selected >= len(t.panes) {
 		return
 	}
-	pk := paneKey(t.panes[t.agents.selected])
+	pk := agentKey(t.panes[t.agents.selected])
 
 	if _, pinned := t.layoutState.LivePinned[pk]; pinned {
 		if err := t.setLiveSlot(pk, 0, false); err != nil {
@@ -388,7 +388,7 @@ func (t *TUI) agentsToggleProtected() {
 	if t.agents.selected < 0 || t.agents.selected >= len(t.panes) {
 		return
 	}
-	name := paneKey(t.panes[t.agents.selected])
+	name := agentKey(t.panes[t.agents.selected])
 
 	protect := !t.layoutState.Protected[name]
 	if err := t.setProtected(name, protect); err != nil {
@@ -458,7 +458,7 @@ func (t *TUI) agentsReconcile() {
 func (t *TUI) agentsPersistOrder() {
 	order := make([]string, len(t.panes))
 	for i, p := range t.panes {
-		order[i] = paneKey(p)
+		order[i] = agentKey(p)
 	}
 	t.layoutState.Order = order
 	t.applyLayout()

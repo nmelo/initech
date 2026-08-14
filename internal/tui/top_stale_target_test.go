@@ -163,8 +163,8 @@ func TestTopResolveSelected_DistinguishesSameNameAcrossHosts(t *testing.T) {
 	tui.top.selected = 1 // the remote eng1 row
 	if idx, ok := tui.topResolveSelected(); !ok {
 		t.Fatal("resolve refused the remote eng1 row")
-	} else if paneKey(tui.panes[idx]) != "spark1:eng1" {
-		t.Errorf("resolved to %s, want spark1:eng1", paneKey(tui.panes[idx]))
+	} else if agentKey(tui.panes[idx]) != "spark1:eng1" {
+		t.Errorf("resolved to %s, want spark1:eng1", agentKey(tui.panes[idx]))
 	}
 
 	// Drop the local eng1. The rendered rows still list both, and the remote
@@ -173,8 +173,8 @@ func TestTopResolveSelected_DistinguishesSameNameAcrossHosts(t *testing.T) {
 	tui.panes = tui.panes[1:]
 	if idx, ok := tui.topResolveSelected(); !ok {
 		t.Fatal("resolve refused the remote eng1 after the local eng1 was removed")
-	} else if paneKey(tui.panes[idx]) != "spark1:eng1" {
-		t.Errorf("resolved to %s, want spark1:eng1", paneKey(tui.panes[idx]))
+	} else if agentKey(tui.panes[idx]) != "spark1:eng1" {
+		t.Errorf("resolved to %s, want spark1:eng1", agentKey(tui.panes[idx]))
 	}
 }
 

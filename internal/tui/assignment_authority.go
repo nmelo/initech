@@ -123,7 +123,7 @@ func (t *TUI) agentsPersistGrouping(agentName, label string) {
 	// and calling it here would only look like an attempted write.
 	order := make([]string, len(t.panes))
 	for i, p := range t.panes {
-		order[i] = paneKey(p)
+		order[i] = agentKey(p)
 	}
 	t.layoutState.Order = order
 	t.applyLayout()
@@ -182,7 +182,7 @@ func (t *TUI) applyGroupOfCmd(cmd GroupOfCmd) error {
 	if t.layoutState.GroupOf == nil {
 		t.layoutState.GroupOf = make(map[string]string)
 	}
-	t.layoutState.GroupOf[paneKey(target)] = cmd.Label
+	t.layoutState.GroupOf[agentKey(target)] = cmd.Label
 	seen := false
 	for _, g := range t.layoutState.Groups {
 		if g == cmd.Label {
@@ -251,7 +251,7 @@ func (t *TUI) refreshMembershipIfFollower() {
 	// the merge is order-independent with respect to ensureGroups.
 	for _, p := range t.panes {
 		if label, found := groupOf[p.Name()]; found {
-			t.layoutState.GroupOf[paneKey(p)] = label
+			t.layoutState.GroupOf[agentKey(p)] = label
 		}
 	}
 

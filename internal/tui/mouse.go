@@ -25,7 +25,7 @@ func (t *TUI) handleMouse(ev *tcell.EventMouse) {
 			if mx == dotCol && my >= agentStartY && my < agentStartY+t.overlayBounds.agentCount {
 				idx := my - agentStartY
 				if idx >= 0 && idx < len(t.panes) {
-					t.toggleHidden(paneKey(t.panes[idx]))
+					t.toggleHidden(agentKey(t.panes[idx]))
 					return
 				}
 			}
@@ -36,13 +36,13 @@ func (t *TUI) handleMouse(ev *tcell.EventMouse) {
 		// stale regions. Hidden check is a safety guard for stale plans.
 		for _, pr := range t.plan.Panes {
 			pv := pr.Pane
-			if t.layoutState.Hidden[paneKey(pv)] {
+			if t.layoutState.Hidden[agentKey(pv)] {
 				continue
 			}
 			r := pr.Region
 			if mx >= r.X && mx < r.X+r.W && my >= r.Y && my < r.Y+r.H {
-				if t.layoutState.Focused != paneKey(pv) {
-					t.layoutState.Focused = paneKey(pv)
+				if t.layoutState.Focused != agentKey(pv) {
+					t.layoutState.Focused = agentKey(pv)
 					t.applyLayout()
 				}
 				lx := mx - r.X
@@ -67,7 +67,7 @@ func (t *TUI) handleMouse(ev *tcell.EventMouse) {
 				// Find pane index in t.panes for selection tracking.
 				paneIdx := 0
 				for pi, pp := range t.panes {
-					if paneKey(pp) == paneKey(pv) {
+					if agentKey(pp) == agentKey(pv) {
 						paneIdx = pi
 						break
 					}
@@ -177,7 +177,7 @@ func (t *TUI) handleMouse(ev *tcell.EventMouse) {
 		for _, pr := range t.plan.Panes {
 			r := pr.Region
 			if mx >= r.X && mx < r.X+r.W && my >= r.Y && my < r.Y+r.H {
-				t.layoutState.Focused = paneKey(pr.Pane)
+				t.layoutState.Focused = agentKey(pr.Pane)
 				if p, ok := pr.Pane.(*Pane); ok {
 					if p.Emulator().IsAltScreen() {
 						ly := my - r.Y - 1 // -1: content starts below activity bar (ini-yah)
@@ -199,7 +199,7 @@ func (t *TUI) handleMouse(ev *tcell.EventMouse) {
 		for _, pr := range t.plan.Panes {
 			r := pr.Region
 			if mx >= r.X && mx < r.X+r.W && my >= r.Y && my < r.Y+r.H {
-				t.layoutState.Focused = paneKey(pr.Pane)
+				t.layoutState.Focused = agentKey(pr.Pane)
 				if p, ok := pr.Pane.(*Pane); ok {
 					if p.Emulator().IsAltScreen() {
 						ly := my - r.Y - 1 // -1: content starts below activity bar (ini-yah)

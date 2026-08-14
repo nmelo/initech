@@ -307,7 +307,7 @@ func findRegionOverlapsAndWidthMismatches(tui *TUI) []string {
 	var vs []visible
 	var problems []string
 	for _, pv := range tui.panes {
-		if tui.layoutState.Hidden[paneKey(pv)] {
+		if tui.layoutState.Hidden[agentKey(pv)] {
 			continue
 		}
 		r := pv.GetRegion()
@@ -788,7 +788,7 @@ func countScreenContaminationGeneric(tui *TUI, screen tcell.SimulationScreen, le
 	w, h := screen.Size()
 	regionOf := make(map[rune]Region)
 	for _, pv := range tui.panes {
-		if tui.layoutState.Hidden[paneKey(pv)] {
+		if tui.layoutState.Hidden[agentKey(pv)] {
 			continue
 		}
 		regionOf[rune(letters[pv.Name()])] = pv.GetRegion()
@@ -820,7 +820,7 @@ func countScreenContaminationRune(tui *TUI, screen tcell.SimulationScreen, marke
 	w, h := screen.Size()
 	regionOf := make(map[rune]Region)
 	for _, pv := range tui.panes {
-		if tui.layoutState.Hidden[paneKey(pv)] {
+		if tui.layoutState.Hidden[agentKey(pv)] {
 			continue
 		}
 		regionOf[markers[pv.Name()]] = pv.GetRegion()

@@ -24,7 +24,6 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -385,46 +384,20 @@ func (t *TUI) applyFleetProjection() {
 	t.layoutState.LivePinned = t.fleet.LivePinnedMap()
 
 	// KEY TRANSLATION for follower windows (ini-6m4, the committed rig's
-	// catch). Fleet state is stored under the key WINDOW 1 uses for an agent
-	// -- the plain name, since window 1 owns local panes. A follower views
-	// those same agents as remotes, whose paneKey is "window1:<name>", and
-	// every consumer of these maps looks up by paneKey. Without translation
-	// the follower re-reads the store correctly and then MISSES ON EVERY
-	// LOOKUP -- window 1 hides pmm, the file says pmm, and window 2 asks
-	// about window1:pmm. The store's key space is canonical; the projection,
-	// which is per-window derived state, is where this window's view of those
-	// keys belongs. Both forms are kept: harmless on window 1 (no pane keys
-	// carry the prefix) and correct everywhere else.
-	t.layoutState.Hidden = withWindowOneAliases(t.layoutState.Hidden)
-	t.layoutState.Protected = withWindowOneAliases(t.layoutState.Protected)
-	t.layoutState.LivePinned = withWindowOneAliases(t.layoutState.LivePinned)
-}
-
-// withWindowOneAliases returns m plus a "window1:<k>" alias for each store-form
-// key. A fresh map, never an in-place insert-while-ranging: the first version
-// inserted aliases into the map it was iterating, and Go's range may visit
-// keys added during iteration -- so aliases were themselves re-aliased into
-// nondeterministic "window1:window1:x" junk, in nondeterministic quantity.
-// The ini-8od count assertion caught it (92 entries where 80 belonged) and I
-// initially weakened the assertion instead of hearing it; the exact-set test
-// now pins both the aliasing and the absence of junk.
-func withWindowOneAliases[V any](m map[string]V) map[string]V {
-	out := make(map[string]V, len(m)*2)
-	for k, v := range m {
-		out[k] = v
-		if !strings.HasPrefix(k, WindowOnePeerName+":") {
-			out[WindowOnePeerName+":"+k] = v
-		}
-	}
-	return out
-}
-
-// fleetStoreKey maps a pane key to the key the FLEET STORE uses: window 1's
-// name for the agent. A follower toggling "window1:pmm" must write "pmm", or
-// the store accumulates one entry per window identity for the same agent and
-// windows disagree about which one is real.
-func fleetStoreKey(key string) string {
-	return strings.TrimPrefix(key, WindowOnePeerName+":")
+	// catch). Fleet state is stored under the agent's CANONICAL identity, and
+	// since ini-yc03 every consumer of these maps looks up by that same
+	// identity -- so the projection needs no translation at all.
+	//
+	// This is where the per-field fence used to live. A follower's panes are
+	// remotes whose observer form is "window1:<name>", so before the identity
+	// edge was canonical these maps were DOUBLED, carrying both forms, or the
+	// follower re-read the store correctly and then missed on every lookup.
+	// That doubling was itself a defect source: aliases were inserted into the
+	// map being ranged over, and Go may visit keys added during iteration, so
+	// they got re-aliased into nondeterministic "window1:window1:x" junk in
+	// nondeterministic quantity (92 entries where 80 belonged, caught by
+	// ini-8od's count assertion). Canonical identity removes the need for the
+	// alias, and with it that whole class.
 }
 
 // refreshFleetIfFollower re-reads the fleet store on a window that does not own
@@ -482,7 +455,6 @@ func (t *TUI) mutateFleet(action string, apply func(*FleetState) error) error {
 // setHidden, setProtected, setLiveSlot and clearHidden are the write seam every
 // keybinding and IPC path routes through.
 func (t *TUI) setHidden(key string, hidden bool) error {
-	key = fleetStoreKey(key)
 	if !t.isFleetAuthority() {
 		if err := t.sendFleetStateCmd("hidden", key, hidden, 0); err != nil {
 			t.noticeFleetWriteFailed("hidden "+key, err)
@@ -494,7 +466,6 @@ func (t *TUI) setHidden(key string, hidden bool) error {
 }
 
 func (t *TUI) setProtected(key string, protected bool) error {
-	key = fleetStoreKey(key)
 	if !t.isFleetAuthority() {
 		if err := t.sendFleetStateCmd("protected", key, protected, 0); err != nil {
 			t.noticeFleetWriteFailed("protected "+key, err)
@@ -506,7 +477,6 @@ func (t *TUI) setProtected(key string, protected bool) error {
 }
 
 func (t *TUI) setLiveSlot(key string, slot int, pinned bool) error {
-	key = fleetStoreKey(key)
 	if !t.isFleetAuthority() {
 		if err := t.sendFleetStateCmd("live_pinned", key, pinned, slot); err != nil {
 			t.noticeFleetWriteFailed("pin "+key, err)

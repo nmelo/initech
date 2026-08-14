@@ -268,7 +268,7 @@ func TestAgentsTiers_GrabAcrossTierMovesWindowImplicitly(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	eng1 := paneKey(tui.panes[1])
+	eng1 := agentKey(tui.panes[1])
 	if got := assign.WindowOfAgent(eng1, tui.layoutState.GroupOf); got != WindowOne {
 		t.Fatalf("eng1 starts on %q, want window 1", got)
 	}

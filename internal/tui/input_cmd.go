@@ -389,7 +389,7 @@ func (t *TUI) completionCandidates(cmd string) []string {
 	// All pane names.
 	names := make([]string, len(t.panes))
 	for i, p := range t.panes {
-		names[i] = paneKey(p)
+		names[i] = agentKey(p)
 	}
 	return names
 }
@@ -628,7 +628,7 @@ func (t *TUI) cmdFocus(parts []string) bool {
 		t.cmd.error = fmt.Sprintf("unknown agent %q", name)
 		return false
 	}
-	t.layoutState.Focused = paneKey(pv)
+	t.layoutState.Focused = agentKey(pv)
 	t.layoutState.Mode = LayoutFocus
 	t.layoutState.GridExplicit = false
 	t.layoutState.Zoomed = false
@@ -676,7 +676,7 @@ func (t *TUI) cmdLayout(parts []string) bool {
 		}
 		keys := make([]string, len(t.panes))
 		for i, p := range t.panes {
-			keys[i] = paneKey(p)
+			keys[i] = agentKey(p)
 		}
 		t.layoutState = DefaultLayoutState(keys)
 		t.applyLayout()
@@ -837,7 +837,7 @@ func (t *TUI) cmdPin(parts []string) bool {
 		return false
 	}
 	// Global (ini-9ka.10); one-agent-per-slot eviction lives in SetLiveSlot.
-	if err := t.setLiveSlot(paneKey(pv), slot, true); err != nil {
+	if err := t.setLiveSlot(agentKey(pv), slot, true); err != nil {
 		t.cmd.error = err.Error()
 		return false
 	}

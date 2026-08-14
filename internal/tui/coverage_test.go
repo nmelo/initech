@@ -923,7 +923,7 @@ func TestHandleMouseSelectionOnRemotePane(t *testing.T) {
 	rp.emu.Write([]byte("remote content here\r\n"))
 	tui.panes[0] = rp
 	// Pre-set focus to avoid applyLayout (which would resize the nil-mux RemotePane).
-	tui.layoutState.Focused = paneKey(rp)
+	tui.layoutState.Focused = agentKey(rp)
 	// Rebuild plan so pr.Pane points to the RemotePane (not the old *Pane).
 	tui.plan = computeLayout(tui.layoutState, tui.panes, 120, 40)
 	_ = s

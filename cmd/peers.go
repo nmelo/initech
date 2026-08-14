@@ -18,7 +18,7 @@ var peersCmd = &cobra.Command{
 A bare agent name is enough to send to any agent listed here, on any machine.
 Use host:agent syntax when the same agent name appears under more than one
 peer and you need to pick which one.`,
-	RunE:  runPeers,
+	RunE: runPeers,
 }
 
 func init() {

@@ -154,11 +154,51 @@ func (p *Pane) FleetIdx() int { return p.fleetNum - 1 }
 // main goroutine, at session start (creation order) or hot-add.
 func (p *Pane) SetFleetIdx(i int) { p.fleetNum = i + 1 }
 
-func paneKey(p PaneView) string {
-	if h := p.Host(); h != "" {
-		return h + ":" + p.Name()
+// agentKey is THE ONE NAMED TRANSLATION EDGE (ini-yc03): the single place a
+// pane's observer-relative form becomes the agent's canonical identity, and
+// the only identity any fleet-scoped structure may be keyed by.
+//
+// WHAT IS OBSERVER-RELATIVE AND WHAT IS IDENTITY. A pane's host prefix means
+// two different things depending on which host it names:
+//
+//   - The WINDOW-1 ALIAS is presentation. A viewer reaches window 1's agents
+//     through a peer literally named "window1", so the same agent is "eng1" to
+//     window 1 and "window1:eng1" to a viewer. That prefix describes the
+//     OBSERVER, not the agent, and is stripped here.
+//   - A REAL CROSS-MACHINE HOST is identity. "workbench:eng1" and a local
+//     "eng1" are different agents on different machines, and stripping that
+//     prefix would collapse them into one. It survives.
+//
+// WHY THE EDGE IS THE IDENTITY FUNCTION ITSELF rather than a translator called
+// at each boundary: ini-6m4, xq4r, qkwc and i7fr were four fences around four
+// fields while the divergence boundary spanned every field, present and
+// future. A per-call translation is another fence. Making the identity
+// canonical at the point it is COMPUTED means every structure downstream is
+// canonical by construction, and a new fleet-scoped field cannot forget to
+// translate because there is nothing left to translate.
+//
+// This generalizes fleetStoreKey, which performed exactly this strip for the
+// fleet store alone -- one field's fence, now the whole boundary.
+// observerAliasPrefix is THE ONE PLACE the window-1 observer alias is spelled.
+// Every strip goes through canonicalStoreKey and every identity through
+// agentKey, so a second spelling of this prefix anywhere is a second
+// translation edge -- which ini-yc03's source guard fails on.
+const observerAliasPrefix = WindowOnePeerName + ":"
+
+// canonicalStoreKey is the string-level form of agentKey's rule, for keys read
+// off disk or the wire where no PaneView exists. It strips the window-1
+// observer alias and nothing else: a real cross-machine host prefix is part of
+// the agent's identity and survives.
+func canonicalStoreKey(key string) string {
+	return strings.TrimPrefix(key, observerAliasPrefix)
+}
+
+func agentKey(p PaneView) string {
+	h := p.Host()
+	if h == "" || h == WindowOnePeerName {
+		return p.Name()
 	}
-	return p.Name()
+	return h + ":" + p.Name()
 }
 
 // Compile-time assertion: Pane implements PaneView.

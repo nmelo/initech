@@ -106,7 +106,7 @@ func TestViewerMustNotWriteAssignmentStoreDirectly(t *testing.T) {
 	// that moves the store mutator behind a capability type.
 	sel := -1
 	for i, p := range viewer.panes {
-		if viewer.layoutState.GroupOf[paneKey(p)] != "" {
+		if viewer.layoutState.GroupOf[agentKey(p)] != "" {
 			sel = i
 			break
 		}

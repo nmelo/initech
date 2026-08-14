@@ -80,7 +80,7 @@ func connectPeer(peerName string, remote config.Remote, project *config.Project)
 	}
 	hello := HelloMsg{
 		Action:   "hello",
-		Version:  1,
+		Version:  ProtocolVersion,
 		Token:    token,
 		PeerName: project.PeerName,
 	}

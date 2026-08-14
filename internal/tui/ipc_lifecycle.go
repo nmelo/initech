@@ -337,7 +337,7 @@ func (t *TUI) removePane(name string) error {
 	t.runOnMain(func() {
 		idx := -1
 		for i, p := range t.panes {
-			if paneKey(p) == name || p.Name() == name {
+			if agentKey(p) == name || p.Name() == name {
 				idx = i
 				break
 			}
@@ -352,7 +352,7 @@ func (t *TUI) removePane(name string) error {
 		}
 
 		p := t.panes[idx]
-		pk := paneKey(p)
+		pk := agentKey(p)
 		p.Close()
 
 		// Remove from slice without leaving gaps.

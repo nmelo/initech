@@ -529,7 +529,7 @@ func TestSendCommand_SlowButLegitimateResume_Succeeds(t *testing.T) {
 	skipWindows(t)
 	origCall := ipcCallTimeout
 	origSend := sendActionTimeout
-	ipcCallTimeout = 50 * time.Millisecond    // simulates the old, too-short shared deadline
+	ipcCallTimeout = 50 * time.Millisecond     // simulates the old, too-short shared deadline
 	sendActionTimeout = 300 * time.Millisecond // simulates the fixed, resume-aware deadline
 	t.Cleanup(func() { ipcCallTimeout = origCall; sendActionTimeout = origSend })
 

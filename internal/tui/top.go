@@ -29,7 +29,7 @@ func (t *TUI) refreshTopData() {
 	prevKey := t.topSelectedKey()
 	entries := make([]topEntry, len(t.panes))
 	for i, pv := range t.panes {
-		pk := paneKey(pv)
+		pk := agentKey(pv)
 		e := topEntry{
 			Name:   pv.Name(),
 			Key:    pk,
@@ -119,7 +119,7 @@ func (t *TUI) topResolveSelected() (int, bool) {
 		return -1, false
 	}
 	for i, pv := range t.panes {
-		if paneKey(pv) == key {
+		if agentKey(pv) == key {
 			return i, true
 		}
 	}

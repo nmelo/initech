@@ -99,7 +99,7 @@ func (t *TUI) attentionChimes(now time.Time) int {
 		if !waiting {
 			continue
 		}
-		key := paneKey(p)
+		key := agentKey(p)
 		live[key] = true
 
 		// Tier gate. A list-only detection is visible and silent; it never
@@ -158,7 +158,7 @@ func (t *TUI) reconcileChimeState(now time.Time) {
 		if !waiting {
 			continue
 		}
-		key := paneKey(p)
+		key := agentKey(p)
 		live[key] = true
 		if st, seen := t.chimeSeen[key]; !seen || !st.since.Equal(since) {
 			// Mark the reminder spent: a wait that began while sound was off has

@@ -176,13 +176,13 @@ func (t *TUI) cycleFocus(delta int) {
 		n := len(t.plan.Panes)
 		cur := 0
 		for i, pr := range t.plan.Panes {
-			if paneKey(pr.Pane) == t.layoutState.Focused {
+			if agentKey(pr.Pane) == t.layoutState.Focused {
 				cur = i
 				break
 			}
 		}
 		next := (cur + delta + n) % n
-		t.layoutState.Focused = paneKey(t.plan.Panes[next].Pane)
+		t.layoutState.Focused = agentKey(t.plan.Panes[next].Pane)
 		t.applyLayout()
 		return
 	}
@@ -193,7 +193,7 @@ func (t *TUI) cycleFocus(delta int) {
 	}
 	cur := 0
 	for i, p := range t.panes {
-		if paneKey(p) == t.layoutState.Focused {
+		if agentKey(p) == t.layoutState.Focused {
 			cur = i
 			break
 		}
@@ -201,8 +201,8 @@ func (t *TUI) cycleFocus(delta int) {
 	next := cur
 	for i := 0; i < n; i++ {
 		next = (next + delta + n) % n
-		if !t.layoutState.Hidden[paneKey(t.panes[next])] {
-			t.layoutState.Focused = paneKey(t.panes[next])
+		if !t.layoutState.Hidden[agentKey(t.panes[next])] {
+			t.layoutState.Focused = agentKey(t.panes[next])
 			t.applyLayout()
 			return
 		}
@@ -213,7 +213,7 @@ func (t *TUI) cycleFocus(delta int) {
 func (t *TUI) findPaneByName(name string) PaneView {
 	// First try exact paneKey match (handles "workbench:eng1" for remote).
 	for _, p := range t.panes {
-		if paneKey(p) == name {
+		if agentKey(p) == name {
 			return p
 		}
 	}
@@ -230,7 +230,7 @@ func (t *TUI) findPaneByName(name string) PaneView {
 func (t *TUI) visibleCountFromState() int {
 	n := 0
 	for _, p := range t.panes {
-		if !t.layoutState.Hidden[paneKey(p)] {
+		if !t.layoutState.Hidden[agentKey(p)] {
 			n++
 		}
 	}

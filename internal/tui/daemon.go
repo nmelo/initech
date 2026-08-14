@@ -114,6 +114,18 @@ type Daemon struct {
 // ── Protocol messages ───────────────────────────────────────────────
 
 // HelloMsg is sent by the client to initiate the handshake.
+// ProtocolVersion is the window/peer control protocol version. Bump it when a
+// wire form changes in a way an older peer would MISREAD rather than reject --
+// including how fleet-scoped state is keyed, since that changes the protocol's
+// meaning while leaving its shape intact.
+//
+// Not bumped by ini-yc03: that bead made in-memory and on-disk identity
+// canonical, and measurement of every identity-bearing wire field (hello_ok
+// agent names, set_fleet_state, set_group_of, set_group_window, the ipc pane
+// list) showed all of them already canonical or carrying no agent identity. A
+// bump would have fenced peers against a change that did not happen.
+const ProtocolVersion = 1
+
 type HelloMsg struct {
 	Action   string `json:"action"`    // "hello"
 	Version  int    `json:"version"`   // Protocol version (1).
@@ -570,6 +582,26 @@ func (d *Daemon) handleConnection(conn net.Conn) {
 	// Handshake complete: clear the deadline for normal operation.
 	ctrl.SetReadDeadline(time.Time{})
 
+	// PROTOCOL VERSION GATE (ini-yc03). The version was carried and LOGGED but
+	// never checked, so a mixed-version pair proceeded and diverged silently
+	// -- the failure mode this fleet has now paid for four times. Fleet-scoped
+	// identity is part of the protocol's meaning, not just its shape: a peer
+	// that keys fleet state differently produces two truths for one fleet, and
+	// the operator sees it as a display bug rather than a version mismatch.
+	//
+	// Refusing is the conservative direction. A refused attach is loud,
+	// immediate, and names its own fix; a silent divergence is the thing this
+	// whole bead sequence exists to end.
+	if hello.Version != ProtocolVersion {
+		LogWarn("daemon", "refusing peer with mismatched protocol version",
+			"peer", hello.PeerName, "theirs", hello.Version, "ours", ProtocolVersion)
+		writeJSON(ctrl, ErrorMsg{Action: "error", Error: fmt.Sprintf(
+			"protocol version mismatch: this session speaks v%d, the attaching window speaks v%d. "+
+				"Both windows must run the same initech version; upgrade the older one and retry.",
+			ProtocolVersion, hello.Version)})
+		return
+	}
+
 	LogInfo("daemon", "hello from", "peer", hello.PeerName, "version", hello.Version)
 	d.consolef("[%s] Client connected: %s (peer: %s)\n",
 		time.Now().Format("15:04:05"), conn.RemoteAddr(), hello.PeerName)
@@ -622,7 +654,7 @@ func (d *Daemon) handleConnection(conn net.Conn) {
 	// Send hello_ok.
 	if err := writeJSON(ctrl, HelloOKMsg{
 		Action:   "hello_ok",
-		Version:  1,
+		Version:  ProtocolVersion,
 		PeerName: d.project.PeerName,
 		Agents:   agents,
 	}); err != nil {

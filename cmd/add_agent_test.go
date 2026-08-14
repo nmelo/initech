@@ -90,12 +90,12 @@ func TestRunAddAgent_CustomFlag_RejectsBadIdentifier(t *testing.T) {
 	t.Cleanup(func() { addAgentCustom = false })
 
 	cases := []string{
-		"Marketing",   // uppercase
-		"1marketing",  // leads with digit
-		"market.ing",  // dot
-		"market ing",  // space
-		"data_eng",    // underscore
-		"",            // empty
+		"Marketing",  // uppercase
+		"1marketing", // leads with digit
+		"market.ing", // dot
+		"market ing", // space
+		"data_eng",   // underscore
+		"",           // empty
 	}
 
 	for _, name := range cases {

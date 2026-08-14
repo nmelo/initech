@@ -149,23 +149,27 @@ func TestFleetState_SecondaryCommandRacesWindowOneKeypress(t *testing.T) {
 			len(missingProtected), n, truncateKeys(missingProtected))
 	}
 
-	// The projection the renderer reads must agree with the store EXACTLY:
-	// each key in its store form plus ONE "window1:" alias (ini-6m4's key
-	// translation) and nothing else. The exact set matters, and this test has
-	// already proven it twice over: its original count assertion caught the
-	// first translation loop inserting into the map it was ranging over
-	// (Go may visit keys added mid-iteration, so aliases were re-aliased into
+	// The projection the renderer reads must agree with the store EXACTLY --
+	// cardinality AND membership, not either alone. This test has already
+	// proven that shape twice over: its original count assertion caught the
+	// translation loop inserting into the map it was ranging over (Go may
+	// visit keys added mid-iteration, so aliases were re-aliased into
 	// nondeterministic "window1:window1:x" junk -- 92 entries where 80
-	// belonged), and the interim presence-only weakening of this assertion
-	// would have let that junk ship. Cardinality + membership, not either alone.
+	// belonged), and the interim presence-only weakening would have let that
+	// junk ship.
+	//
+	// SINCE ini-yc03 THE EXPECTED SET IS CANONICAL-ONLY. It used to be each
+	// key in its store form PLUS one "window1:" alias, because lookups were
+	// keyed by the observer form. Identity is canonical at the point it is
+	// computed now, so the alias is not merely unnecessary -- its presence
+	// would mean the doubling has grown back, and this assertion is the thing
+	// that would catch it. The contract is unchanged and strictly stronger.
 	tui.runOnMain(func() {
-		wantHidden := make(map[string]bool, 2*n)
-		wantProtected := make(map[string]bool, 2*n)
+		wantHidden := make(map[string]bool, n)
+		wantProtected := make(map[string]bool, n)
 		for i := 0; i < n; i++ {
-			for _, form := range []string{"", WindowOnePeerName + ":"} {
-				wantHidden[form+fmt.Sprintf("secondary-%d", i)] = true
-				wantProtected[form+fmt.Sprintf("local-%d", i)] = true
-			}
+			wantHidden[fmt.Sprintf("secondary-%d", i)] = true
+			wantProtected[fmt.Sprintf("local-%d", i)] = true
 		}
 		for k := range wantHidden {
 			if !tui.layoutState.Hidden[k] {

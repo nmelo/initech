@@ -41,7 +41,7 @@ func topTestTUI(entries []topEntry) (*TUI, tcell.SimulationScreen) {
 	// position (ini-6gjg), see resolvable rows.
 	for i := range entries {
 		if entries[i].Key == "" {
-			entries[i].Key = paneKey(panes[i])
+			entries[i].Key = agentKey(panes[i])
 		}
 	}
 

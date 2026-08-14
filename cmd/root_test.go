@@ -92,8 +92,8 @@ func TestRunTUI_PassesConfigToTUI(t *testing.T) {
 	dir := shortProjectDir(t)
 	mustWriteFile(t, filepath.Join(dir, "eng1", "CLAUDE.md"), "# eng1")
 	cfg := &config.Project{
-		Name: "demo",
-		Root: dir,
+		Name:  "demo",
+		Root:  dir,
 		Roles: []string{"eng1"},
 		Resource: config.ResourceConfig{
 			AutoSuspend:       true,
@@ -157,8 +157,8 @@ func TestRunTUI_AutoSuspendFlagOverridesConfig(t *testing.T) {
 	dir := shortProjectDir(t)
 	mustWriteFile(t, filepath.Join(dir, "eng1", "CLAUDE.md"), "# eng1")
 	cfg := &config.Project{
-		Name: "demo",
-		Root: dir,
+		Name:  "demo",
+		Root:  dir,
 		Roles: []string{"eng1"},
 		Resource: config.ResourceConfig{
 			AutoSuspend: false,

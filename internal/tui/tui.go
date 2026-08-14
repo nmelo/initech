@@ -317,7 +317,7 @@ type TUI struct {
 func (t *TUI) logPanesMutation(site string, oldLen int) {
 	names := make([]string, len(t.panes))
 	for i, p := range t.panes {
-		names[i] = paneKey(p)
+		names[i] = agentKey(p)
 	}
 	LogInfo("panes-mutation", site, "old", oldLen, "new", len(t.panes), "names", fmt.Sprintf("%v", names))
 }
@@ -375,10 +375,10 @@ func (t *TUI) applyLayout() {
 	// changed. Live mode ticks applyLayout every second; clearing selection
 	// unconditionally makes click-drag copy impossible in live mode.
 	if t.sel.active && t.sel.pane < len(t.panes) {
-		pk := paneKey(t.panes[t.sel.pane])
+		pk := agentKey(t.panes[t.sel.pane])
 		stillValid := false
 		for _, pr := range t.plan.Panes {
-			if paneKey(pr.Pane) == pk && pr.Region == t.panes[t.sel.pane].GetRegion() {
+			if agentKey(pr.Pane) == pk && pr.Region == t.panes[t.sel.pane].GetRegion() {
 				stillValid = true
 				break
 			}
@@ -499,7 +499,7 @@ func (t *TUI) saveLayoutIfConfigured() {
 	// Snapshot current pane order into layoutState before persisting.
 	t.layoutState.Order = make([]string, len(t.panes))
 	for i, p := range t.panes {
-		t.layoutState.Order[i] = paneKey(p)
+		t.layoutState.Order[i] = agentKey(p)
 	}
 	if err := SaveLayout(t.projectRoot, t.layoutState); err != nil {
 		LogWarn("layout", "save failed", "err", err)
@@ -512,7 +512,7 @@ func (t *TUI) saveLayoutIfConfigured() {
 func (t *TUI) focusedPane() PaneView {
 	key := t.layoutState.Focused
 	for _, p := range t.panes {
-		if paneKey(p) == key {
+		if agentKey(p) == key {
 			return p
 		}
 	}
@@ -973,7 +973,7 @@ func Run(cfg Config) error {
 
 	// Sync pinned state from layout to panes.
 	for _, p := range t.panes {
-		if t.layoutState.Protected[paneKey(p)] {
+		if t.layoutState.Protected[agentKey(p)] {
 			if lp, ok := p.(*Pane); ok {
 				lp.SetProtected(true)
 			}
@@ -1205,7 +1205,7 @@ func (t *TUI) handlePeerUpdate(peerName string, newPanes []PaneView, connected b
 
 	for _, p := range newPanes {
 		if vp, ok := p.(interface{ SetVisible(bool) }); ok {
-			vp.SetVisible(!t.layoutState.Hidden[paneKey(p)])
+			vp.SetVisible(!t.layoutState.Hidden[agentKey(p)])
 		}
 	}
 	kept = append(kept, newPanes...)
@@ -1276,7 +1276,7 @@ func (t *TUI) handlePeerUpdate(peerName string, newPanes []PaneView, connected b
 // it adds a single new one to the end of the list.
 func (t *TUI) handlePeerPaneAdded(peerName string, pane PaneView) {
 	if vp, ok := pane.(interface{ SetVisible(bool) }); ok {
-		vp.SetVisible(!t.layoutState.Hidden[paneKey(pane)])
+		vp.SetVisible(!t.layoutState.Hidden[agentKey(pane)])
 	}
 	oldLen := len(t.panes)
 	t.panes = append(t.panes, pane)

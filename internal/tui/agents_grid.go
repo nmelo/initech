@@ -71,7 +71,7 @@ func (t *TUI) ensureGroups(persist bool) {
 	}
 	changed := false
 	for _, p := range t.panes {
-		key := paneKey(p)
+		key := agentKey(p)
 		if existing, ok := t.layoutState.GroupOf[key]; ok {
 			// DEAD-GROUP RULE, runtime half (ini-qkwc AC3): an entry pointing
 			// at a group missing from Groups must surface the group, not
@@ -108,7 +108,7 @@ func (t *TUI) ensureGroups(persist bool) {
 func (t *TUI) agentsGroupMembers() map[string][]int {
 	members := make(map[string][]int)
 	for i, p := range t.panes {
-		label, ok := t.layoutState.GroupOf[paneKey(p)]
+		label, ok := t.layoutState.GroupOf[agentKey(p)]
 		if !ok {
 			label = "core"
 		}
@@ -491,7 +491,7 @@ func (t *TUI) agentsMoveH(delta int) {
 	if sel < 0 || sel >= len(t.panes) {
 		return
 	}
-	label := t.layoutState.GroupOf[paneKey(t.panes[sel])]
+	label := t.layoutState.GroupOf[agentKey(t.panes[sel])]
 	band := members[label]
 	pos := -1
 	for i, pi := range band {
@@ -580,7 +580,7 @@ func (t *TUI) agentsMoveV(cells []gridCell, delta int) {
 		}
 		t.panes = append(t.panes[:insertAt], append([]PaneView{ag}, t.panes[insertAt:]...)...)
 		t.agents.selected = insertAt
-		t.layoutState.GroupOf[paneKey(ag)] = label
+		t.layoutState.GroupOf[agentKey(ag)] = label
 		t.agentsPersistGrouping(ag.Name(), label)
 		return
 	}
@@ -605,7 +605,7 @@ func (t *TUI) agentsMoveV(cells []gridCell, delta int) {
 	}
 	t.panes = append(t.panes[:insertAt], append([]PaneView{ag}, t.panes[insertAt:]...)...)
 	t.agents.selected = insertAt
-	t.layoutState.GroupOf[paneKey(ag)] = best.group
+	t.layoutState.GroupOf[agentKey(ag)] = best.group
 	t.agentsPersistGrouping(ag.Name(), best.group)
 }
 
@@ -619,7 +619,7 @@ func (t *TUI) agentsCreateGroup(name string) {
 	t.ensureGroups(false)
 	afterIdx := len(t.layoutState.Groups) - 1
 	if sel := t.agents.selected; sel >= 0 && sel < len(t.panes) {
-		curLabel := t.layoutState.GroupOf[paneKey(t.panes[sel])]
+		curLabel := t.layoutState.GroupOf[agentKey(t.panes[sel])]
 		for i, g := range t.layoutState.Groups {
 			if g == curLabel {
 				afterIdx = i
@@ -659,7 +659,7 @@ func (t *TUI) agentsSelectedWindow() string {
 	if sel < 0 || sel >= len(t.panes) {
 		return WindowOne
 	}
-	return t.agentsAssignment().WindowOfAgent(paneKey(t.panes[sel]), t.layoutState.GroupOf)
+	return t.agentsAssignment().WindowOfAgent(agentKey(t.panes[sel]), t.layoutState.GroupOf)
 }
 
 // agentsMoveGroupToNextWindow implements `m`: move the selected agent's WHOLE
@@ -678,7 +678,7 @@ func (t *TUI) agentsMoveGroupToNextWindow() {
 	if sel < 0 || sel >= len(t.panes) {
 		return
 	}
-	group, ok := t.layoutState.GroupOf[paneKey(t.panes[sel])]
+	group, ok := t.layoutState.GroupOf[agentKey(t.panes[sel])]
 	if !ok || group == "" {
 		return
 	}
@@ -1019,7 +1019,7 @@ func (t *TUI) renderAgentsGrid() {
 
 	for _, c := range cells {
 		p := t.panes[c.paneIdx]
-		pk := paneKey(p)
+		pk := agentKey(p)
 		isSel := c.paneIdx == t.agents.selected
 		dimmed := t.agents.searching && !t.agentsMatched(c.paneIdx)
 		hidden := t.layoutState.Hidden[pk]

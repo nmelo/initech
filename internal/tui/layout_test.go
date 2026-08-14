@@ -842,8 +842,8 @@ func TestHandlePeerUpdateRespectsSavedRemoteKeys(t *testing.T) {
 	if len(tui.panes) != 2 {
 		t.Fatalf("panes = %d, want 2", len(tui.panes))
 	}
-	if paneKey(tui.panes[0]) != "workbench:intern" {
-		t.Fatalf("remote pane should be reordered into saved position, got first=%q", paneKey(tui.panes[0]))
+	if agentKey(tui.panes[0]) != "workbench:intern" {
+		t.Fatalf("remote pane should be reordered into saved position, got first=%q", agentKey(tui.panes[0]))
 	}
 	if !tui.layoutState.Hidden["workbench:intern"] {
 		t.Fatalf("saved hidden remote key lost after peer update: %v", tui.layoutState.Hidden)
@@ -854,7 +854,7 @@ func TestHandlePeerUpdateRespectsSavedRemoteKeys(t *testing.T) {
 	if tui.visibleCountFromState() != 1 {
 		t.Fatalf("visibleCountFromState = %d, want 1 with remote pane still hidden", tui.visibleCountFromState())
 	}
-	if len(tui.plan.Panes) != 1 || paneKey(tui.plan.Panes[0].Pane) != "super" {
+	if len(tui.plan.Panes) != 1 || agentKey(tui.plan.Panes[0].Pane) != "super" {
 		t.Fatalf("visible panes after peer update = %v, want only super visible", len(tui.plan.Panes))
 	}
 }

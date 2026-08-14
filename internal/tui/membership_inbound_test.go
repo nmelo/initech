@@ -51,7 +51,7 @@ func TestRestartedViewerHoldsFleetMembership(t *testing.T) {
 		var got string
 		for _, p := range viewer.panes {
 			if p.Name() == c.agent {
-				got = viewer.layoutState.GroupOf[paneKey(p)]
+				got = viewer.layoutState.GroupOf[agentKey(p)]
 			}
 		}
 		if got != c.want {
@@ -79,7 +79,7 @@ func TestViewerSeesMembershipItNeverChanged(t *testing.T) {
 	var got string
 	for _, p := range viewer.panes {
 		if p.Name() == "eng2" {
-			got = viewer.layoutState.GroupOf[paneKey(p)]
+			got = viewer.layoutState.GroupOf[agentKey(p)]
 		}
 	}
 	if got != "qa" {

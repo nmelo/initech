@@ -68,6 +68,7 @@ internal/roles/selector_unit_test.go          windows  # undefined: buildDisplay
 # itself works on Windows is a PRODUCT question, filed separately -- these tests
 # hanging is the symptom, not the whole finding.
 internal/tui/window_server_test.go            windows  # tui package hangs 600s on windows CI: goroutines stuck in startWindowServer TCP Accept (run 31651424793)
+internal/tui/protocol_version_test.go         windows  # drives window_server_test.go's startTestWindowServer, which hangs the tui package on windows CI (run 31651424793); the portable half lives untagged in protocol_version_portable_test.go
 internal/tui/parity_test.go                   windows  # same hang: depends on startTestWindowServer, which is what parks in Accept
 
 # ── Compiles for Windows, but RUNTIME portability is genuinely doubtful ───

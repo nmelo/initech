@@ -111,7 +111,7 @@ func (t *TUI) AllPanes() ([]PaneInfo, bool) {
 				Host:     p.Host(),
 				Activity: p.Activity().String(),
 				Alive:    p.IsAlive(),
-				Visible:  !t.layoutState.Hidden[paneKey(p)],
+				Visible:  !t.layoutState.Hidden[agentKey(p)],
 			}
 		}
 	})
@@ -501,7 +501,7 @@ func (t *TUI) handleIPCPatrol(conn net.Conn, req IPCRequest) {
 				Activity: p.Activity().String(),
 				Bead:     p.BeadID(),
 				Alive:    p.IsAlive(),
-				Visible:  !t.layoutState.Hidden[paneKey(p)],
+				Visible:  !t.layoutState.Hidden[agentKey(p)],
 				Content:  peekContent(p, lines),
 			}
 		}
