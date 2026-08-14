@@ -30,16 +30,26 @@ import (
 
 // ── AC1/AC2/AC11: the two prefix families ───────────────────────────
 
-// waitingRemotePane is a RemotePane that also reports a wait, so the attention
-// list can be exercised through the same PaneView the viewer really holds.
-type waitingRemotePane struct {
-	*RemotePane
-	since   time.Time
-	preview string
-}
-
-func (w *waitingRemotePane) WaitingInput() (bool, time.Time, string) {
-	return !w.since.IsZero(), w.since, w.preview
+// markRemoteWaiting puts a REAL RemotePane into the waiting state, through the
+// same ApplyWaiting the wire path uses.
+//
+// It replaces a test-local wrapper that gave RemotePane a WaitingInput method
+// of its own -- and that wrapper was hiding the defect ini-35ak later found.
+// RemotePane did NOT implement waitingPane in the product, so waitingRows and
+// the chime skipped every remote pane BEFORE scoping was ever consulted:
+// attention could not cross the wire at all. My AC7 test was green the whole
+// time, because its fixture could do something the product could not.
+//
+// That is the verified-parts-never-ran-the-product class, in a test I wrote to
+// prove a non-negotiable AC. A fixture MORE capable than the type it stands in
+// for does not test that type; it tests the fixture. Now that the capability is
+// real, the test drives the real one.
+func markRemoteWaiting(rp *RemotePane, preview string) {
+	rp.ApplyWaiting(WaitingState{
+		Waiting:     true,
+		SinceMillis: time.Now().UnixMilli(),
+		Preview:     preview,
+	})
 }
 
 // TestPaneDisplayName_DropsWindowAliasKeepsMachineHost is the AC2 fixture: BOTH
@@ -203,7 +213,7 @@ func TestAttentionIsNeverScoped_WaitingAgentOnAnotherWindowStillListed(t *testin
 	if !ok {
 		t.Fatalf("fixture pane is %T, want *RemotePane", w2.panes[target])
 	}
-	w2.panes[target] = &waitingRemotePane{RemotePane: rp, since: time.Now(), preview: "Claude needs your permission"}
+	markRemoteWaiting(rp, "Claude needs your permission")
 
 	// Precondition: this agent IS scoped out of window 2's display surfaces.
 	scopedIn := false
@@ -237,7 +247,7 @@ func TestAttentionIsNeverScoped_WaitingAgentOnAnotherWindowStillListed(t *testin
 func TestAttentionList_DropsWindowAliasPrefix(t *testing.T) {
 	_, w2, _ := placementTUIs(t, "group_window: {}\n")
 	rp := w2.panes[0].(*RemotePane)
-	w2.panes[0] = &waitingRemotePane{RemotePane: rp, since: time.Now(), preview: "waiting"}
+	markRemoteWaiting(rp, "waiting")
 
 	rows := w2.waitingRows()
 	if len(rows) != 1 {
@@ -255,11 +265,9 @@ func TestAttentionList_DropsWindowAliasPrefix(t *testing.T) {
 // the attention list: the prefix that carries information survives here too.
 func TestAttentionList_KeepsCrossMachineHost(t *testing.T) {
 	_, w2, _ := placementTUIs(t, "group_window: {}\n")
-	w2.panes = []PaneView{&waitingRemotePane{
-		RemotePane: &RemotePane{name: "intern", host: "workbench", alive: true},
-		since:      time.Now(),
-		preview:    "waiting",
-	}}
+	remote := &RemotePane{name: "intern", host: "workbench", alive: true}
+	markRemoteWaiting(remote, "waiting")
+	w2.panes = []PaneView{remote}
 
 	rows := w2.waitingRows()
 	if len(rows) != 1 || rows[0].Name != "workbench:intern" {
