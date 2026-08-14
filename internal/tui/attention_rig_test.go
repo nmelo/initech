@@ -103,13 +103,13 @@ func TestAttentionRig_QuestionOnWindow1ReachesWindow2(t *testing.T) {
 	bin := nineISXBuild(t)
 	root := x5obRoot(t, "", port)
 
-	_, w1pty, w1emu := nineISXStart(t, bin, root)
+	_, w1pty, w1emu, _ := nineISXStart(t, bin, root)
 	time.Sleep(10 * time.Second)
 	w1pty.Write([]byte("n")) // decline the consent overlay
 	time.Sleep(2 * time.Second)
 	x5obProvesOwnBinary(t, root, port)
 
-	_, w2pty, w2emu := nineISXStart(t, bin, root, "--window", "2")
+	_, w2pty, w2emu, _ := nineISXStart(t, bin, root, "--window", "2")
 	time.Sleep(12 * time.Second)
 	w2pty.Write([]byte("n"))
 	time.Sleep(2 * time.Second)
@@ -173,7 +173,7 @@ func TestAttentionRig_WaitAlreadyInProgressWhenWindow2Attaches(t *testing.T) {
 	bin := nineISXBuild(t)
 	root := x5obRoot(t, "", port)
 
-	_, w1pty, w1emu := nineISXStart(t, bin, root)
+	_, w1pty, w1emu, _ := nineISXStart(t, bin, root)
 	time.Sleep(10 * time.Second)
 	w1pty.Write([]byte("n"))
 	time.Sleep(2 * time.Second)
@@ -187,7 +187,7 @@ func TestAttentionRig_WaitAlreadyInProgressWhenWindow2Attaches(t *testing.T) {
 			"nothing\n%s", nineISXScreen(w1emu))
 	}
 
-	_, w2pty, w2emu := nineISXStart(t, bin, root, "--window", "2")
+	_, w2pty, w2emu, _ := nineISXStart(t, bin, root, "--window", "2")
 	time.Sleep(12 * time.Second)
 	w2pty.Write([]byte("n"))
 	time.Sleep(3 * time.Second)

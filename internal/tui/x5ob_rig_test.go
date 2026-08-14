@@ -227,13 +227,13 @@ func TestX5obRig_AssignThenAttach(t *testing.T) {
 	bin := nineISXBuild(t)
 	root := x5obRoot(t, "group_window:\n    eng: window-2\n", port)
 
-	_, w1pty, w1emu := nineISXStart(t, bin, root)
+	_, w1pty, w1emu, _ := nineISXStart(t, bin, root)
 	time.Sleep(10 * time.Second)
 	w1pty.Write([]byte("n")) // decline the consent overlay
 	time.Sleep(2 * time.Second)
 	x5obProvesOwnBinary(t, root, port)
 
-	_, _, w2emu := nineISXStart(t, bin, root, "--window", "2")
+	_, _, w2emu, _ := nineISXStart(t, bin, root, "--window", "2")
 	time.Sleep(12 * time.Second)
 
 	x5obEvidence(t, root)
@@ -279,13 +279,13 @@ func TestX5obRig_AttachThenAssign(t *testing.T) {
 	bin := nineISXBuild(t)
 	root := x5obRoot(t, "", port)
 
-	_, w1pty, w1emu := nineISXStart(t, bin, root)
+	_, w1pty, w1emu, _ := nineISXStart(t, bin, root)
 	time.Sleep(10 * time.Second)
 	w1pty.Write([]byte("n"))
 	time.Sleep(2 * time.Second)
 	x5obProvesOwnBinary(t, root, port)
 
-	_, w2pty, w2emu := nineISXStart(t, bin, root, "--window", "2")
+	_, w2pty, w2emu, _ := nineISXStart(t, bin, root, "--window", "2")
 	time.Sleep(12 * time.Second)
 	w2pty.Write([]byte("n"))
 	time.Sleep(2 * time.Second)
@@ -337,13 +337,13 @@ func TestX5obRig_ReattachIsReserved(t *testing.T) {
 	bin := nineISXBuild(t)
 	root := x5obRoot(t, "group_window:\n    eng: window-2\n", port)
 
-	_, w1pty, w1emu := nineISXStart(t, bin, root)
+	_, w1pty, w1emu, _ := nineISXStart(t, bin, root)
 	time.Sleep(10 * time.Second)
 	w1pty.Write([]byte("n"))
 	time.Sleep(2 * time.Second)
 	x5obProvesOwnBinary(t, root, port)
 
-	w2cmd, w2pty, w2emu := nineISXStart(t, bin, root, "--window", "2")
+	w2cmd, w2pty, w2emu, _ := nineISXStart(t, bin, root, "--window", "2")
 	time.Sleep(12 * time.Second)
 	if before := x5obAgentsIn(nineISXScreen(w2emu)); !before["eng1"] {
 		t.Fatalf("window 2 never took its agents on the FIRST attach (set: %s); the reattach "+
@@ -356,7 +356,7 @@ func TestX5obRig_ReattachIsReserved(t *testing.T) {
 	w2cmd.Process.Wait()
 	time.Sleep(6 * time.Second)
 
-	_, _, w2bemu := nineISXStart(t, bin, root, "--window", "2")
+	_, _, w2bemu, _ := nineISXStart(t, bin, root, "--window", "2")
 	time.Sleep(14 * time.Second)
 
 	x5obEvidence(t, root)

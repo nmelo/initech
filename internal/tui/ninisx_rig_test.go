@@ -36,6 +36,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -191,7 +192,6 @@ func rigRequireServing(t *testing.T, addr string) {
 		"this run would be about a fleet that does not exist", addr)
 }
 
-
 // rigReserveFreePort reserves a port for THIS rig run by binding :0, reading what
 // the kernel assigned, and releasing it.
 //
@@ -239,7 +239,13 @@ func nineISXBuild(t *testing.T) string {
 	return bin
 }
 
-func nineISXStart(t *testing.T, bin, root string, args ...string) (*exec.Cmd, *os.File, *vt.SafeEmulator) {
+// nineISXStart returns the window's process, its PTY, its emulator, and a
+// reader for the RAW bytes the window wrote.
+//
+// Raw bytes matter for one assertion only: the chime is screen.Beep(), a BEL
+// byte through tcell's own writer, so "did this window ring" is answerable from
+// the stream and from nowhere else. The emulator consumes it.
+func nineISXStart(t *testing.T, bin, root string, args ...string) (*exec.Cmd, *os.File, *vt.SafeEmulator, func() string) {
 	t.Helper()
 	c := newCmd(bin, root, args...)
 	p, err := pty.StartWithSize(c, &pty.Winsize{Rows: 44, Cols: 130})
@@ -247,6 +253,8 @@ func nineISXStart(t *testing.T, bin, root string, args ...string) (*exec.Cmd, *o
 		t.Fatalf("start %v: %v", args, err)
 	}
 	emu := vt.NewSafeEmulator(130, 44)
+	var rawMu sync.Mutex
+	var raw []byte
 	go func() {
 		b := make([]byte, 4096)
 		for {
@@ -260,6 +268,9 @@ func nineISXStart(t *testing.T, bin, root string, args ...string) (*exec.Cmd, *o
 		for {
 			n, err := p.Read(buf)
 			if n > 0 {
+				rawMu.Lock()
+				raw = append(raw, buf[:n]...)
+				rawMu.Unlock()
 				emu.Write(buf[:n])
 			}
 			if err != nil {
@@ -268,7 +279,12 @@ func nineISXStart(t *testing.T, bin, root string, args ...string) (*exec.Cmd, *o
 		}
 	}()
 	t.Cleanup(func() { p.Close(); c.Process.Kill(); c.Process.Wait() })
-	return c, p, emu
+	rawOf := func() string {
+		rawMu.Lock()
+		defer rawMu.Unlock()
+		return string(raw)
+	}
+	return c, p, emu, rawOf
 }
 
 // nineISXScreen snapshots at THIS rig's real dimensions.
@@ -292,7 +308,6 @@ func nineISXScreen(emu *vt.SafeEmulator) string {
 	return strings.Join(out, "\n")
 }
 
-
 // nineISXAwait polls a window's screen until cond holds, and reports how long
 // it took. Returns false on timeout.
 //
@@ -315,7 +330,6 @@ func nineISXAwait(emu *vt.SafeEmulator, cond func(string) bool, limit time.Durat
 	}
 	return limit, false
 }
-
 
 // nineISXOwnedByWindow2 is the set this rig ASSIGNED to window 2 -- derived
 // from the fixture's own inputs, never a hardcoded count, so it stays true if
@@ -462,13 +476,13 @@ func TestNineISXRig_ScopedOverlayBothStartupOrders(t *testing.T) {
 	// The viewer meets a store that already describes its slice.
 	t.Run("assign-then-attach", func(t *testing.T) {
 		root, nonce := nineISXRoot(t, "group_window:\n    eng: window-2\n")
-		_, w1pty, w1emu := nineISXStart(t, bin, root)
+		_, w1pty, w1emu, _ := nineISXStart(t, bin, root)
 		time.Sleep(10 * time.Second)
 		w1pty.Write([]byte("n")) // decline the consent overlay
 		time.Sleep(2 * time.Second)
 		rigRequireServing(t, nineISXListenAddr(t, root))
 
-		_, w2pty, w2emu := nineISXStart(t, bin, root, "--window", "2")
+		_, w2pty, w2emu, _ := nineISXStart(t, bin, root, "--window", "2")
 		time.Sleep(12 * time.Second)
 		w2pty.Write([]byte("n"))
 		if _, ok := nineISXAwait(w2emu, func(s string) bool {
@@ -487,13 +501,13 @@ func TestNineISXRig_ScopedOverlayBothStartupOrders(t *testing.T) {
 	// correct here at attach and wrong forever after.
 	t.Run("attach-then-assign", func(t *testing.T) {
 		root, nonce := nineISXRoot(t, "")
-		_, w1pty, w1emu := nineISXStart(t, bin, root)
+		_, w1pty, w1emu, _ := nineISXStart(t, bin, root)
 		time.Sleep(10 * time.Second)
 		w1pty.Write([]byte("n"))
 		time.Sleep(2 * time.Second)
 		rigRequireServing(t, nineISXListenAddr(t, root))
 
-		_, w2pty, w2emu := nineISXStart(t, bin, root, "--window", "2")
+		_, w2pty, w2emu, _ := nineISXStart(t, bin, root, "--window", "2")
 		time.Sleep(12 * time.Second)
 		w2pty.Write([]byte("n"))
 		time.Sleep(2 * time.Second)
@@ -548,4 +562,91 @@ func TestNineISXRig_ScopedOverlayBothStartupOrders(t *testing.T) {
 
 		nineISXAssert(t, "attach-then-assign", nonce, w1emu, w2emu, w1pty, w2pty)
 	})
+}
+
+// TestNineISXRig_AttentionCrossesScoping is ini-9isx AC7 at the venue the AC
+// named: with DISPLAY SCOPING ACTIVE, an agent that enters needs-input on
+// window 1 must appear in window 2's needs-input list — and must never ring
+// there.
+//
+// WHY THIS IS NOT A DUPLICATE of ini-35ak's TestAttentionRig_Question...: that
+// rig proves the wire carries a wait at all, on a fleet with NO group
+// assignment, so window 2 is not scoping anything away. This one asserts the
+// separate invariant: the agent is one window 2 deliberately DOES NOT SHOW, and
+// its wait must cross anyway. Attention is never scoped (docs/spec.md), and the
+// only way that can fail is if someone routes the attention list through
+// visiblePanesForWindow — which is a one-line change nobody would notice.
+//
+// THE SOUND HALF, per the canon amended at cb1cbb2: sight everywhere, sound
+// ONCE. The chime is screen.Beep(), a real BEL through tcell's writer, so
+// "window 2 did not ring" is answerable from its raw stream. The two halves
+// together are also each other's control: the row PROVES the wire worked, so
+// the silence cannot be the feature being dead.
+//
+// Window 1's own BEL is deliberately NOT asserted as the positive control. The
+// dialog the agent emits ends in BEL itself (OSC 777's terminator), so a BEL in
+// window 1's stream cannot distinguish a chime from the agent's own byte. An
+// assertion that cannot tell those apart would pass either way.
+func TestNineISXRig_AttentionCrossesScoping(t *testing.T) {
+	if os.Getenv("INITECH_9ISX") != "1" {
+		t.Skip("set INITECH_9ISX=1 to run the composed two-window rig for ini-9isx")
+	}
+	bin := nineISXBuild(t)
+	root, nonce := nineISXRoot(t, "group_window:\n    eng: window-2\n")
+
+	_, w1pty, w1emu, _ := nineISXStart(t, bin, root)
+	time.Sleep(10 * time.Second)
+	w1pty.Write([]byte("n"))
+	time.Sleep(2 * time.Second)
+	rigRequireServing(t, nineISXListenAddr(t, root))
+
+	_, w2pty, w2emu, w2raw := nineISXStart(t, bin, root, "--window", "2")
+	time.Sleep(12 * time.Second)
+	w2pty.Write([]byte("n"))
+	if _, ok := nineISXAwait(w2emu, func(s string) bool {
+		return strings.Contains(s, nonce)
+	}, 30*time.Second); !ok {
+		t.Fatalf("window 2 never rendered its own fleet; the attention assertions would be "+
+			"about a window that is not working\n%s", nineISXScreen(w2emu))
+	}
+
+	// PRECONDITION: super is window 1's, and window 2 scopes it OUT. Without
+	// this the test would prove only what ini-35ak already proves.
+	w2 := nineISXScreen(w2emu)
+	if strings.Contains(w2, "super") {
+		t.Fatalf("window 2 is displaying super, so nothing here tests attention SURVIVING "+
+			"scoping\n%s", w2)
+	}
+	if pre := attentionAgents(w2); len(pre) != 0 {
+		t.Fatalf("window 2 already lists %v as waiting before any dialog opened", pre)
+	}
+
+	// Raise a real dialog on window 1's focused pane (super -- first in this
+	// window's plan), through the agent itself, exactly as ini-35ak does it.
+	w1pty.Write([]byte(x5obRaiseDialog + "\r"))
+
+	if _, ok := nineISXAwait(w1emu, func(s string) bool {
+		return len(attentionAgents(s)) > 0
+	}, 30*time.Second); !ok {
+		t.Fatalf("window 1 never raised the wait itself, so nothing could have crossed the "+
+			"wire; this is a rig fault, not a scoping finding\n%s", nineISXScreen(w1emu))
+	}
+
+	// SIGHT: it must reach window 2 even though window 2 does not display super.
+	if _, ok := nineISXAwait(w2emu, func(s string) bool {
+		return len(attentionAgents(s)) > 0
+	}, 30*time.Second); !ok {
+		t.Errorf("AN AGENT WAITING ON THE OPERATOR IS INVISIBLE FROM WINDOW 2. Display scoping "+
+			"reached into the attention list: window 2 hides super's PANE by design, and has "+
+			"therefore hidden the fact that super is blocked. The operator looking at this "+
+			"monitor would never learn it.\nWINDOW 2:\n%s\nWINDOW 1:\n%s",
+			nineISXScreen(w2emu), nineISXScreen(w1emu))
+	}
+
+	// SOUND: once per host. Window 2 must not have rung.
+	if bells := strings.Count(w2raw(), "\a"); bells != 0 {
+		t.Errorf("window 2 rang %d time(s). The canon amended at cb1cbb2 is sight everywhere, "+
+			"sound ONCE -- a fleet on two monitors must not chime twice for one question.",
+			bells)
+	}
 }
