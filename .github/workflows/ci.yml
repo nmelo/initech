@@ -126,6 +126,59 @@ jobs:
         with:
           go-version-file: go.mod
 
+      # ── GROWTH POLICY (ini-uv2c) ──────────────────────────────────
+      #
+      # This job grew 235s -> 334s in one evening via two CORRECT additions.
+      # Neither was a mistake; the problem is that a selector is a LIST, so it
+      # extends without anyone deciding to. A budget reached by accretion is a
+      # budget nobody chose. Three rules, decided rather than defaulted:
+      #
+      # 1. THE BUDGET IS POSITIONAL, NOT ABSOLUTE. This job is main-only and
+      #    runs parallel to the matrix, so while it is shorter than the SLOWEST
+      #    OTHER LEG it costs nothing on the critical path, and growth under
+      #    that ceiling is free. The run that EXCEEDS it is what puts this job
+      #    on the critical path, and that run triggers a deliberate trim/split
+      #    decision by super -- never an automatic drop.
+      #    AS OF THIS COMMIT: this job ~334s, slowest other leg ~174s
+      #    (full-suite). IT IS ALREADY OVER. Recorded rather than absorbed:
+      #    this is precisely the condition rule 1 says to decide about, and a
+      #    policy whose first act is to look away from its own trigger is not a
+      #    policy.
+      #
+      # 2. TRIM BY INVARIANT DEDUPLICATION, never by dropping coverage (eng1's
+      #    principle, adopted). Two legs proving the SAME invariant merge. Legs
+      #    proving DISTINCT invariants are never dropped for time -- especially
+      #    canon-named ones: "attention is never scoped" and "the wire carries a
+      #    wait at all" are different laws, and trimming one to save a minute
+      #    buys the minute with a law.
+      #
+      # 3. EVERY ADDITION NAMES THE INVARIANT IT UNIQUELY PROVES, beside it.
+      #    That is what converts accretion into decisions: a leg that cannot
+      #    name a unique invariant is a merge candidate on arrival, and the
+      #    naming happens while the author still knows the answer.
+      #
+      # CURRENT LEGS AND THE INVARIANT EACH UNIQUELY PROVES (retro-annotated):
+      #   NineISXRig_ScopedOverlayBothStartupOrders
+      #     A window displays its OWN slice and DISCLOSES what it hides
+      #     (parity-of-facts with disclosed scoping), in both startup orders.
+      #   NineISXRig_AttentionCrossesScoping
+      #     ATTENTION IS NEVER SCOPED: a wait on an agent this window does not
+      #     display still reaches its list -- and rings only once per host.
+      #   X5obRig_AssignThenAttach / _AttachThenAssign
+      #     Window 1 is the single computer of ownership: every agent renders in
+      #     exactly one window, whichever order the windows started in.
+      #   X5obRig_ReattachIsReserved
+      #     Ownership is RE-SERVED on reattach: a viewer that dropped and came
+      #     back is told again rather than living on a stale copy.
+      #   AttentionRig_QuestionOnWindow1ReachesWindow2
+      #     The wire carries a wait AT ALL: observe, encode, send, decode, draw.
+      #     Distinct from AttentionCrossesScoping, which ASSUMES the wire works
+      #     and asks whether scoping suppresses what it carried.
+      #   AttentionRig_WaitAlreadyInProgressWhenWindow2Attaches
+      #     LATE ATTACH: a wait already in progress reaches a window that was
+      #     not there for the transition -- a path no broadcast can serve.
+      #   TestAQY_WindowOneScreenAcrossAttach
+      #     A viewer attaching does not corrupt window 1's own screen.
       - name: Composed multi-window rigs (real binaries, real PTYs)
         env:
           INITECH_9ISX: "1"
