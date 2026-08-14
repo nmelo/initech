@@ -87,3 +87,48 @@ jobs:
 
       - name: Test (full, no -short)
         run: make test-full
+
+  # THE COMPOSED RIGS (ini-jlo2), on main only.
+  #
+  # WHY THIS EXISTS: ini-x5ob passed vet, the full short suite and per-leg CI on
+  # all three platforms, and rendered window 2 completely blank. An env-gated rig
+  # caught it; nothing in CI could have, because nothing sets the env var. The
+  # ship gates added this week cover RELEASES; this covers the window between a
+  # push and the next cut, which is where other agents rebase onto the damage.
+  #
+  # WHY ONLY THESE THREE. The dividing line is not slowness, it is Claude: the
+  # 6M4/ZJHG/ALTPROBE/LIVEPROBE/OSC_PROBE/NOTIF_PROBE rigs spawn a real Claude,
+  # which a runner has no auth or budget for and which is a nondeterministic
+  # third-party TUI as a fixture. Those stay ship-gate-only permanently -- that
+  # is a decision, not an oversight, and it is written here so it is not
+  # re-opened. INITECH_9IMX is Claude-free but costs ~250s on its own, more than
+  # these three combined, because its waits are real agent respawns rather than
+  # sleeps that could be polled away; excluded on cost, revisit if it gets
+  # cheaper.
+  #
+  # WHY MAIN-ONLY AND NOT PRs: this bead is about the main window specifically,
+  # and per-branch runs would triple the cost to cover a window the ship gates
+  # already backstop.
+  #
+  # WHY NOT A NIGHTLY: the damage model is "other agents rebase onto it", which
+  # happens in minutes. A nightly would have caught tonight's regression
+  # tomorrow.
+  #
+  # Ubuntu only: these are unix-PTY rigs that do not run on windows anyway, and
+  # the point is covering the composed CLAIM, not every OS.
+  composed-rigs:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Composed multi-window rigs (real binaries, real PTYs)
+        env:
+          INITECH_9ISX: "1"
+          INITECH_X5OB: "1"
+          INITECH_AQY: "1"
+        run: go test ./internal/tui/ -count=1 -timeout 900s -run 'NineISXRig|X5obRig|TestAQY_'

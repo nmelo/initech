@@ -27,6 +27,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"testing"
@@ -35,6 +36,32 @@ import (
 	"github.com/charmbracelet/x/vt"
 	"github.com/creack/pty"
 )
+
+// aqyStableRows masks the fields that tick on their own, so a comparison across
+// a 35-second window measures the ATTACH and not the passage of time.
+//
+// Measured today (ini-jlo2), this probe was RED on main and had been silently:
+// the status bar carries a wall clock, so "before" and "after" differed by
+//
+//	"... Grid 2x1 · Bat 100% · 18:56"  ->  "... Bat 100% · 18:57"
+//
+// It therefore failed whenever a run crossed a minute boundary, which over a
+// 35-second comparison is most of the time. That is a probe reporting on the
+// clock while claiming to report on window 1's screen -- the instrument
+// comparing a field that changes for reasons unrelated to its claim.
+//
+// The row is MASKED rather than dropped: the status bar can still carry a real
+// regression (a lost grid label, a vanished hint), and dropping the row would
+// trade a false red for a blind spot. Only the self-ticking fields go.
+var aqyTickingFields = regexp.MustCompile(`\d{1,2}:\d{2}|Bat\s+\d+%`)
+
+func aqyStableRows(rows []string) []string {
+	out := make([]string, len(rows))
+	for i, r := range rows {
+		out[i] = aqyTickingFields.ReplaceAllString(r, "<ticking>")
+	}
+	return out
+}
 
 func TestAQY_WindowOneScreenAcrossAttach(t *testing.T) {
 	if os.Getenv("INITECH_AQY") != "1" {
@@ -123,7 +150,7 @@ func TestAQY_WindowOneScreenAcrossAttach(t *testing.T) {
 	// broken when it is right and right when it is broken.
 	time.Sleep(20 * time.Second)
 	attachAt := markOffset()
-	before := snapRows(emu)
+	before := aqyStableRows(snapRows(emu))
 	t.Logf("BEFORE attach:\n%s", strings.Join(nonEmpty(before), "\n"))
 
 	if os.Getenv("AQY_NO_ATTACH") == "" {
@@ -151,7 +178,7 @@ func TestAQY_WindowOneScreenAcrossAttach(t *testing.T) {
 	var after []string
 	for _, d := range []time.Duration{2, 3, 5, 10, 15} {
 		time.Sleep(d * time.Second)
-		after = snapRows(emu)
+		after = aqyStableRows(snapRows(emu))
 		bad := 0
 		for i := range before {
 			if before[i] != after[i] {
