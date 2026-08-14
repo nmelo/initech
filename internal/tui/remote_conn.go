@@ -32,6 +32,12 @@ type peerConn struct {
 	// after the session dies to decide terminal-vs-retry. Atomic because the
 	// writer is the mux consumer goroutine and the reader is the manager.
 	evicted atomic.Bool
+	// helloOwner is the ownership map window 1 served in the handshake
+	// (ini-x5ob). Carried on the connection so the manager can apply it the
+	// moment the peer is established -- before the panes are handed over, so
+	// this window plans its agents on the first frame instead of rendering
+	// nothing until the first broadcast arrives.
+	helloOwner map[string]string
 }
 
 // Close releases connection resources: control mux, yamux session (which
@@ -224,5 +230,5 @@ func connectPeer(peerName string, remote config.Remote, project *config.Project)
 		LogInfo("remote", "push complete", "peer", peerName, "configured", configured, "stopped", stopped)
 	}
 
-	return &peerConn{session: session, mux: mux, panes: panes}, nil
+	return &peerConn{session: session, mux: mux, panes: panes, helloOwner: helloOK.Owner}, nil
 }

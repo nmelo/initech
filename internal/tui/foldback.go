@@ -34,41 +34,14 @@ import (
 	"time"
 )
 
-// rendersInWindow reports whether windowID should render the given agent,
-// given the current assignment and the set of currently-attached secondary
-// windows. This is the single source of truth for "which window shows this
-// agent", read by the render path and by fold-back alike.
+// OWNERSHIP IS NO LONGER DECIDED HERE (ini-x5ob). rendersInWindow used to
+// answer "does this window render this agent" independently in every process,
+// over three inputs each process kept its own copy of -- which is why the
+// partition was not exclusive and failed in both directions (double and hole).
+// It is deleted rather than deprecated: while it existed, a future call site
+// could reintroduce a second computer of ownership, and the invariant this bug
+// purchased is that ownership has exactly ONE. See partition_authority.go.
 //
-// connected holds the identities of attached SECONDARY windows. Window 1 is
-// never in it: window 1 is the session itself, so if it is gone there is
-// nothing left to render into.
-//
-// The two branches are deliberately asymmetric, because the windows are:
-//
-//   - A secondary window renders exactly what is assigned to it, and only
-//     while it is itself attached. The liveness check is what stops a
-//     disconnected window from still "claiming" its agents and leaving them
-//     rendered by nobody.
-//   - Window 1 renders what is assigned to it, PLUS anything whose assigned
-//     window is not attached. That is fold-back, and it is stated as a
-//     property of window 1 rather than an event so it cannot be missed.
-//
-// Together those make "exactly one window renders each agent" true in every
-// liveness state, which is the invariant AC 5 turns on.
-func rendersInWindow(agentKey, windowID string, a *WindowAssignment, groupOf map[string]string, connected map[string]bool) bool {
-	if a == nil {
-		// No assignment store: single-window behavior, window 1 shows all.
-		return windowID == WindowOne
-	}
-	assigned := a.WindowOfAgent(agentKey, groupOf)
-
-	if windowID != WindowOne {
-		return assigned == windowID && connected[windowID]
-	}
-	// Window 1: its own agents, plus orphans from any window that is gone.
-	return assigned == WindowOne || !connected[assigned]
-}
-
 // foldedBackAgents returns the agents currently folded back into window 1 --
 // those assigned to a secondary window that is not attached. Used to raise the
 // session-level notice, and to answer "what is window 1 covering for right
@@ -153,7 +126,7 @@ func (t *windowLivenessTracker) observe(connected map[string]bool) (gone, return
 }
 
 // visiblePanesForWindow filters the TUI's panes down to those this window
-// should render, consulting rendersInWindow with the current assignment and
+// should render, consulting the served ownership map with the current
 // the live connected-window set (ini-9ka.6 wires what ini-9ka.7 decided).
 //
 // Returns the pane list unchanged when no assignment store is loaded, which
@@ -161,15 +134,38 @@ func (t *windowLivenessTracker) observe(connected map[string]bool) (gone, return
 // the same slice it always did. That keeps multi-monitor from being a second
 // code path for users who never enabled it.
 func (t *TUI) visiblePanesForWindow() []PaneView {
+	// A SECONDARY WINDOW RENDERS SERVED OWNERSHIP AND DERIVES NOTHING
+	// (ini-x5ob). Its assignment copy and its connected set are no longer
+	// ownership inputs: window 1 is the single computer, and consulting local
+	// copies here is exactly what made the partition non-exclusive in both
+	// directions. A viewer that has not been served yet renders nothing rather
+	// than guessing -- guessing is the behaviour that produced the double.
+	if !t.isFleetAuthority() {
+		if !t.ownershipServed {
+			return nil
+		}
+		out := make([]PaneView, 0, len(t.panes))
+		for _, p := range t.panes {
+			if t.paneOwnership[agentKey(p)] == t.windowID {
+				out = append(out, p)
+			}
+		}
+		return out
+	}
+
 	if t.assignment == nil {
 		return t.panes
 	}
-	connected := t.connectedWindowSet()
-	groupOf := t.layoutState.GroupOf
-
+	// Window 1 uses its OWN computation -- it is the authority, and waiting on
+	// a round trip through its own server would make it the last window to
+	// learn its own decision.
+	owner := t.paneOwnership
+	if owner == nil {
+		owner = computePaneOwnership(t.panes, t.assignment, t.layoutState.GroupOf, t.connectedWindowSet())
+	}
 	out := make([]PaneView, 0, len(t.panes))
 	for _, p := range t.panes {
-		if rendersInWindow(agentKey(p), t.windowID, t.assignment, groupOf, connected) {
+		if owner[agentKey(p)] == WindowOne {
 			out = append(out, p)
 		}
 	}
@@ -515,4 +511,30 @@ func (t *TUI) applyAgentStatus(name string, beads []string, desc string) {
 // that does not.
 func isViewerSession(cfg Config) bool {
 	return cfg.Project != nil && isSecondaryWindowIdentity(cfg.Project.PeerName)
+}
+
+// broadcastPaneOwnership pushes window 1's ownership decision to every
+// attached window (ini-x5ob). Same channel and same best-effort-per-recipient
+// reasoning as broadcastSessionNotice: a window whose control stream is
+// already broken is about to be detected as disconnected anyway, and failing
+// the whole broadcast because one recipient died would strand the windows that
+// are still there.
+//
+// A LOST PUSH IS NOT A HOLE HERE, which is the point of the design. Ownership
+// is re-served on every change and at hello, and a window that has not been
+// served renders nothing rather than deriving a guess -- so the failure mode
+// of a dropped message is "this window is briefly empty", never "two windows
+// disagree about who owns an agent".
+func (w *windowServer) broadcastPaneOwnership(owner map[string]string) {
+	if w == nil || w.daemon == nil {
+		return
+	}
+	w.daemon.sessionsMu.Lock()
+	ctrls := append([]net.Conn(nil), w.daemon.ctrlConns...)
+	w.daemon.sessionsMu.Unlock()
+
+	for _, ctrl := range ctrls {
+		writeJSON(ctrl, ControlResp{Action: paneOwnershipAction, Owner: owner}) //nolint:errcheck
+	}
+	LogDebug("window-server", "pane ownership broadcast", "windows", len(ctrls), "agents", len(owner))
 }

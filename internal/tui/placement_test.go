@@ -48,7 +48,7 @@ func planNames(t *testing.T, tui *TUI, connected map[string]bool) []string {
 	t.Helper()
 	var out []string
 	for _, p := range tui.panes {
-		if rendersInWindow(agentKey(p), tui.windowID, tui.assignment, tui.layoutState.GroupOf, connected) {
+		if ownerOfAgent(agentKey(p), tui.assignment, tui.layoutState.GroupOf, connected) == tui.windowID {
 			out = append(out, p.Name())
 		}
 	}
@@ -164,7 +164,7 @@ func TestPlacement_HiddenWinsBothOrders(t *testing.T) {
 			}
 			visible2 := 0
 			for _, p := range w2.panes {
-				if rendersInWindow(agentKey(p), w2.windowID, a, w2.layoutState.GroupOf, conn) &&
+				if (ownerOfAgent(agentKey(p), a, w2.layoutState.GroupOf, conn) == w2.windowID) &&
 					!w2.layoutState.Hidden[agentKey(p)] {
 					visible2++
 				}

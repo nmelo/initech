@@ -103,7 +103,7 @@ func TestWindowWedge_SigstoppedWindowFoldsBackWithinBound(t *testing.T) {
 
 	helper := startWedgeHelper(t, addr)
 	waitForClients(t, ws, 1)
-	if rendersInWindow("eng1", WindowOne, a, groupOf, ws.connectedWindows()) {
+	if ownerOfAgent("eng1", a, groupOf, ws.connectedWindows()) == WindowOne {
 		t.Fatal("window 1 rendered window2's agent while the helper was healthy")
 	}
 
@@ -116,7 +116,7 @@ func TestWindowWedge_SigstoppedWindowFoldsBackWithinBound(t *testing.T) {
 	deadline := 15 * time.Second
 	folded := false
 	for time.Since(start) < deadline+3*time.Second {
-		if rendersInWindow("eng1", WindowOne, a, groupOf, ws.connectedWindows()) {
+		if ownerOfAgent("eng1", a, groupOf, ws.connectedWindows()) == WindowOne {
 			folded = true
 			break
 		}
@@ -155,7 +155,7 @@ func TestWindowWedge_TransientStallDoesNotFoldBack(t *testing.T) {
 	// Give the session a moment to prove it survived rather than to recover.
 	time.Sleep(1 * time.Second)
 
-	if rendersInWindow("eng1", WindowOne, a, groupOf, ws.connectedWindows()) {
+	if ownerOfAgent("eng1", a, groupOf, ws.connectedWindows()) == WindowOne {
 		t.Errorf("a 5s transient stall folded back -- the tuning is too eager (min time-to-drop is %v)", windowConnectionWriteTimeout)
 	}
 	if got := len(ws.connectedWindows()); got != 1 {
@@ -179,12 +179,12 @@ func TestWindowWedge_RecoveredWedgeReattachesCleanly(t *testing.T) {
 	// Wait out the drop.
 	start := time.Now()
 	for time.Since(start) < 18*time.Second {
-		if rendersInWindow("eng1", WindowOne, a, groupOf, ws.connectedWindows()) {
+		if ownerOfAgent("eng1", a, groupOf, ws.connectedWindows()) == WindowOne {
 			break
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	if !rendersInWindow("eng1", WindowOne, a, groupOf, ws.connectedWindows()) {
+	if !(ownerOfAgent("eng1", a, groupOf, ws.connectedWindows()) == WindowOne) {
 		t.Fatal("precondition: wedged window was never dropped")
 	}
 	_ = helper.Process.Signal(syscall.SIGCONT)
@@ -196,7 +196,7 @@ func TestWindowWedge_RecoveredWedgeReattachesCleanly(t *testing.T) {
 	defer session.Close()
 	waitForClients(t, ws, 1)
 
-	if rendersInWindow("eng1", WindowOne, a, groupOf, ws.connectedWindows()) {
+	if ownerOfAgent("eng1", a, groupOf, ws.connectedWindows()) == WindowOne {
 		t.Error("after reattach, window 1 still renders window2's agent -- the split did not restore")
 	}
 	// Assignment is untouched by the whole wedge/recover cycle.

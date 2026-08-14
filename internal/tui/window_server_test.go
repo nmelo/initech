@@ -54,7 +54,7 @@ func testWindowProject(listen string) *config.Project {
 // plus its address, registering cleanup.
 func startTestWindowServer(t *testing.T, panes []*Pane) (*windowServer, string) {
 	t.Helper()
-	ws, cleanup, err := startWindowServer(testWindowProject("127.0.0.1:0"), "test", panes, func(f func()) { go f() }, nil, nil, nil)
+	ws, cleanup, err := startWindowServer(testWindowProject("127.0.0.1:0"), "test", panes, func(f func()) { go f() }, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("startWindowServer: %v", err)
 	}
@@ -104,7 +104,7 @@ func dialWindow(t *testing.T, addr, peerName string) (*yamux.Session, net.Conn, 
 func TestWindowServer_NotStartedWithoutWindowListen(t *testing.T) {
 	panes := []*Pane{windowServerTestPane("a")}
 
-	ws, cleanup, err := startWindowServer(testWindowProject(""), "test", panes, func(f func()) { go f() }, nil, nil, nil)
+	ws, cleanup, err := startWindowServer(testWindowProject(""), "test", panes, func(f func()) { go f() }, nil, nil, nil, nil)
 	if err == nil {
 		if cleanup != nil {
 			cleanup()
@@ -243,7 +243,7 @@ func TestWindowServer_CollidingPeerNameEvictsPrior(t *testing.T) {
 // gone.
 func TestWindowServer_CleanupStopsListenerAndDetachesSinks(t *testing.T) {
 	panes := []*Pane{windowServerTestPane("eng1")}
-	ws, cleanup, err := startWindowServer(testWindowProject("127.0.0.1:0"), "test", panes, func(f func()) { go f() }, nil, nil, nil)
+	ws, cleanup, err := startWindowServer(testWindowProject("127.0.0.1:0"), "test", panes, func(f func()) { go f() }, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("startWindowServer: %v", err)
 	}
@@ -451,7 +451,7 @@ func TestWindowServer_WindowDisconnectLeavesOthersConnected(t *testing.T) {
 // asserted here rather than left to the comment at the construction site.
 func TestWindowServer_ConsoleIsSilent(t *testing.T) {
 	panes := []*Pane{testPane("super")}
-	ws, cleanup, err := startWindowServer(testWindowProject("127.0.0.1:0"), "test", panes, func(f func()) { go f() }, nil, nil, nil)
+	ws, cleanup, err := startWindowServer(testWindowProject("127.0.0.1:0"), "test", panes, func(f func()) { go f() }, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("startWindowServer: %v", err)
 	}

@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -34,7 +35,8 @@ func (t *TUI) renderEmptyViewerHint(s tcell.Screen, w, h int) {
 func (t *TUI) render() {
 	t.renderCount++
 	if t.renderCount <= 5 || t.renderCount%150 == 0 {
-		LogInfo("render", "enter", "frame", t.renderCount, "plan_panes", len(t.plan.Panes))
+		LogInfo("render", "enter", "frame", t.renderCount,
+			"plan_panes", len(t.plan.Panes), "plan_set", planPaneSet(t.plan))
 	}
 	s := t.screen
 
@@ -990,4 +992,24 @@ func (t *TUI) renderOverlay() {
 		s.SetContent(px+i, botRow, '\u2500', nil, borderStyle)
 	}
 	s.SetContent(px+panelW-1, botRow, '\u256f', nil, borderStyle)
+}
+
+// planPaneSet renders a render plan's membership as a sorted, comparable SET
+// of canonical agent identities.
+//
+// Counts cannot distinguish stale membership from correct membership, and that
+// blindness has now cost two triages. ini-x5ob's report is the clean example:
+// the pre-move and post-move memberships were BOTH four panes, so every log
+// line said plan_panes=4 whether the window had re-planned or not, and nothing
+// in the record could tell the two apart. A set can.
+func planPaneSet(plan RenderPlan) string {
+	if len(plan.Panes) == 0 {
+		return "(none)"
+	}
+	names := make([]string, 0, len(plan.Panes))
+	for _, pr := range plan.Panes {
+		names = append(names, agentKey(pr.Pane))
+	}
+	sort.Strings(names)
+	return strings.Join(names, ",")
 }
