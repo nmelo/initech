@@ -37,4 +37,3 @@ func (t *TUI) handleHelpKey(ev *tcell.EventKey) bool {
 	}
 	return false
 }
-

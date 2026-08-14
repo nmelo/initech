@@ -167,8 +167,12 @@ var _ PaneView = (*Pane)(nil)
 // Pane represents a terminal pane backed by a PTY process.
 // It uses a SafeEmulator from charmbracelet/x/vt for terminal emulation.
 type Pane struct {
-	cfg                   PaneConfig // Original config for restart.
-	name                  string
+	cfg  PaneConfig // Original config for restart.
+	name string
+	// onSuspendedMessage fires when SendText queues for a suspended pane
+	// (ini-g7fl): the TUI wires it to resume-on-message, because the pane
+	// cannot respawn itself and entry points must not each remember to.
+	onSuspendedMessage    func(*Pane)
 	fleetNum              int // Fleet-canonical number PLUS ONE (ini-6m4); zero value = unstamped, so struct-literal construction (tests, fakes) falls back to local numbering instead of reading as "stamped at 0". See fleetNumbered.
 	ptmx                  xpty.Pty
 	cmd                   *exec.Cmd
@@ -813,11 +817,48 @@ func (p *Pane) AgentType() string { return p.agentType }
 func (p *Pane) SendText(text string, enter bool) {
 	p.mu.Lock()
 	p.lastMessageReceived = time.Now()
+	suspended := p.suspended
+	cb := p.onSuspendedMessage
 	p.mu.Unlock()
+
+	// SUSPENSION GUARD AT THE PRIMITIVE (ini-g7fl). A suspended pane's
+	// process is gone and its PTY is closed; writing there is silent loss.
+	// The guard lived only in the IPC handler, and three other entry points
+	// (forward_send, the daemon's two send sites) called this primitive
+	// directly -- window-2 and cross-machine sends to a suspended agent
+	// vanished with success reported upstream (ini-9imx, measured). Guarding
+	// HERE means every present and future caller inherits queue-on-suspended
+	// without knowing suspension exists: structural, not per-caller vigilance.
+	if suspended {
+		if dropped := p.EnqueueMessage(text, enter); dropped {
+			EmitEvent(p.eventCh, AgentEvent{
+				Type:   EventAgentStalled,
+				Pane:   p.name,
+				Detail: "Message queue full, oldest message dropped.",
+				Time:   time.Now(),
+			})
+		}
+		// Resume-on-message, via the callback the TUI wires at pane
+		// creation/adoption -- the pane cannot resume itself (respawn needs
+		// TUI state), and entry points must not each remember to trigger it.
+		if cb != nil {
+			cb(p)
+		}
+		return
+	}
 	waitForCodexReadyIfNeeded(p)
 	p.sendMu.Lock()
 	defer p.sendMu.Unlock()
 	sendPaneTextLocked(p, text, enter)
+}
+
+// SetOnSuspendedMessage wires the resume-on-message trigger (ini-g7fl). Called
+// by the TUI when it adopts a pane; fired (on the caller's goroutine) when a
+// message arrives for a suspended pane, after the message is safely queued.
+func (p *Pane) SetOnSuspendedMessage(fn func(*Pane)) {
+	p.mu.Lock()
+	p.onSuspendedMessage = fn
+	p.mu.Unlock()
 }
 
 // sendSubmitKey sends the appropriate submit key sequence to an emulator
@@ -1305,6 +1346,7 @@ func (p *Pane) Close() {
 	p.mu.Unlock()
 
 	// Close PTY first so readLoop's ptmx.Read() errors out immediately.
+	// (The field is nil'd at the END of Close, after goWg.Wait -- see below.)
 	if p.ptmx != nil {
 		p.ptmx.Close()
 	}
@@ -1333,6 +1375,17 @@ func (p *Pane) Close() {
 	if p.emu != nil {
 		p.emu.Close()
 	}
+	// NIL THE PTY LAST (ini-g7fl), after every goroutine that read it has
+	// exited: a closed-but-not-nil ptmx made later writes vanish into the
+	// dead descriptor with the error discarded -- sendPaneTextLocked's
+	// nil-guard existed and never fired (measured: queue=0, ptmx_nil=false,
+	// message gone). With the field nil, any dead-pane write path that slips
+	// past the suspension guard hits the explicit early-return instead of a
+	// silent discard. The suspend path holds sendMu across this entire Close,
+	// so no send can interleave with the teardown it serializes against.
+	p.mu.Lock()
+	p.ptmx = nil
+	p.mu.Unlock()
 }
 
 // tcellKeyToUV translates a tcell key event to a charmbracelet KeyPressEvent.

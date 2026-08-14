@@ -851,6 +851,7 @@ func Run(cfg Config) error {
 		}
 		p.region = r
 		p.eventCh = t.agentEvents
+		t.wireSuspendResume(p)
 		p.safeGo = t.safeGo
 		p.idleWithBeadThreshold = beadThreshold
 		p.Start()
@@ -918,16 +919,7 @@ func Run(cfg Config) error {
 			t.runOnMain(func() {
 				t.handlePeerUpdate(peerName, panes, connected)
 			})
-		}, func(target, text string, enter bool) error {
-			// Deliver forwarded message to local pane.
-			var pv PaneView
-			t.runOnMain(func() { pv = t.findPaneByName(target) })
-			if pv == nil {
-				return fmt.Errorf("agent %q not found", target)
-			}
-			pv.SendText(text, enter)
-			return nil
-		}, t.quitCh)
+		}, t.deliverForwardedSend, t.quitCh)
 		// Session notices broadcast by window 1 must render here too
 		// (ini-9ka.8): they describe the session's shape changing, not one
 		// agent's activity.
@@ -1152,6 +1144,23 @@ func autoGrid(n int) (cols, rows int) {
 // When GridExplicit is true the user chose dimensions via :grid CxR or
 // Alt+2/Alt+3. In that case we skip the auto-recalculation so peer updates
 // and hot-adds don't overwrite the user's choice.
+// deliverForwardedSend delivers a message forwarded from another window or
+// machine to a local pane. Extracted from the peer-manager closure so the
+// entry point is testable BY NAME (ini-g7fl, the i7fr lesson: a guard proven
+// at one site says nothing about a site that does not route through it --
+// this was one of the three sites that bypassed the suspension guard and
+// silently lost window-2-originated sends). The suspension safety itself
+// lives in SendText, which this inherits like every other caller.
+func (t *TUI) deliverForwardedSend(target, text string, enter bool) error {
+	var pv PaneView
+	t.runOnMain(func() { pv = t.findPaneByName(target) })
+	if pv == nil {
+		return fmt.Errorf("agent %q not found", target)
+	}
+	pv.SendText(text, enter)
+	return nil
+}
+
 // requestQuit closes quitCh exactly once, from any goroutine.
 func (t *TUI) requestQuit() {
 	t.quitOnce.Do(func() { close(t.quitCh) })

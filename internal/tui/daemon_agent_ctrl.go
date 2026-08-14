@@ -48,7 +48,7 @@ type RestartAgentCmd struct {
 // it. Used to enforce that only the owning client can stop/restart an agent.
 type agentOwnership struct {
 	mu     sync.Mutex
-	owners map[string]string  // agent name -> client peer name
+	owners map[string]string     // agent name -> client peer name
 	cfgs   map[string]PaneConfig // agent name -> last-pushed config (for restart)
 }
 

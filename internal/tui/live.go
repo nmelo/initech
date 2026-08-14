@@ -597,4 +597,3 @@ func liveTickSlots(panes []PaneView, pinned map[string]int, numSlots int) []stri
 	le := NewLiveEngine(numSlots, pinned, nil)
 	return le.Tick(panes, time.Now())
 }
-

@@ -296,6 +296,7 @@ func (t *TUI) restartPane(fp *Pane) error {
 		return err
 	}
 	p.eventCh = t.agentEvents
+	t.wireSuspendResume(p)
 	p.safeGo = t.safeGo
 	p.protected = fp.protected
 	p.Start()

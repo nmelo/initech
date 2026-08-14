@@ -11,9 +11,9 @@ import (
 	"time"
 	"unicode/utf8"
 
+	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
-	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/gdamore/tcell/v2"
 )
 

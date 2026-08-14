@@ -30,8 +30,8 @@ type ControlMux struct {
 	pendingMu sync.Mutex
 	pending   map[string]chan ControlResp // Request ID -> response channel.
 
-	events    chan ControlResp  // Unsolicited server-pushed messages (no ID).
-	done      chan struct{}     // Closed when readLoop exits.
+	events    chan ControlResp // Unsolicited server-pushed messages (no ID).
+	done      chan struct{}    // Closed when readLoop exits.
 	onRequest RequestHandler   // Handler for incoming commands (ID + Action). May be nil.
 }
 
@@ -218,8 +218,8 @@ func (m *ControlMux) readLoop() {
 				reply.ID = resp.ID
 				data, _ := json.Marshal(reply)
 				m.writeMu.Lock()
-				m.conn.Write(data)           //nolint:errcheck
-				m.conn.Write([]byte("\n"))    //nolint:errcheck
+				m.conn.Write(data)         //nolint:errcheck
+				m.conn.Write([]byte("\n")) //nolint:errcheck
 				m.writeMu.Unlock()
 			}
 		} else {

@@ -574,6 +574,15 @@ func (t *TUI) handleIPCBead(conn net.Conn, req IPCRequest) {
 		return
 	}
 	if !pv.IsAlive() {
+		// SUSPENDED IS NOT DEAD (ini-g7fl): the old message said "restart it",
+		// which fights resume-on-message -- a restart discards the queue and
+		// the suspension bookkeeping. Name the state and the designed remedy.
+		if pv.IsSuspended() {
+			writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf(
+				"pane %q is suspended; it resumes on message (initech send %s ...) and the bead can be set then",
+				req.Target, req.Target)})
+			return
+		}
 		// A dead pane's process has exited; silently "succeeding" here would
 		// mean the bead display update is lost the moment the pane is
 		// restarted (NewPane starts with no bead state), indistinguishable

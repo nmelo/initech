@@ -15,6 +15,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -343,6 +344,33 @@ type QueuedMessage struct {
 	Time  time.Time
 }
 
+// wireSuspendResume gives a pane its resume-on-message trigger (ini-g7fl):
+// when SendText queues for a suspended pane, the TUI resumes it ON A
+// GOROUTINE -- resumePane blocks for the full respawn (waitForInit up to
+// 30s), and SendText is reachable from the main loop, where an inline resume
+// would freeze the display for that long. resumePane's resumeMu + re-check
+// make concurrent triggers safe; the queue already holds the message, so an
+// async resume delivers it exactly as the synchronous IPC path does.
+//
+// Called from every pane-adoption site. If a future adoption site forgets,
+// the message still QUEUES (the primitive guards unconditionally) and is
+// delivered on the next resume from any trigger -- degraded to delayed, never
+// to lost.
+func (t *TUI) wireSuspendResume(p *Pane) {
+	p.SetOnSuspendedMessage(func(pane *Pane) {
+		run := t.safeGo
+		if run == nil {
+			run = func(fn func()) { go fn() }
+		}
+		run(func() {
+			if err := t.resumePane(pane, "queued message"); err != nil {
+				LogError("resource", "resume-on-message failed; messages remain queued",
+					"agent", pane.name, "err", err)
+			}
+		})
+	})
+}
+
 // EnqueueMessage appends a message to the pane's queue. If the queue is at
 // capacity (maxMessageQueue), the oldest message is dropped. Returns true if
 // a message was dropped to make room.
@@ -506,6 +534,7 @@ func (t *TUI) resumePane(pane *Pane, senderName string) error {
 			if p == pane {
 				np.region = pane.region
 				np.eventCh = t.agentEvents
+				t.wireSuspendResume(np)
 				np.safeGo = t.safeGo
 				np.protected = pane.protected
 				if len(pane.beadIDs) > 0 {
@@ -538,6 +567,35 @@ func (t *TUI) resumePane(pane *Pane, senderName string) error {
 		LogWarn("resource", "resume init timeout", "agent", np.name, "err", err)
 		// Agent started but may be slow. Continue with queue drain anyway
 		// since the process is alive even if Claude hasn't fully initialized.
+	}
+
+	// DRAIN ONLY INTO A LIVING PROCESS (ini-g7fl edge, caught by its own
+	// test): a respawn whose exec failed leaves a structurally-complete pane
+	// with a dead child, and draining into it delivered every queued message
+	// to a corpse -- silent loss THROUGH the recovery path, the exact shape
+	// the whole fix exists to end. If the new pane is not alive, the messages
+	// go back on ITS queue and it is marked suspended, so the next send (any
+	// entry point) retriggers resume; the caller gets an error, so the IPC
+	// path reports honestly instead of "resumed and delivered".
+	// IsAlive alone lags (it flips when readLoop sees EOF); the process
+	// itself is the authority. An exec-failed child produces OUTPUT (the
+	// shell's error text), so waitForInit returning success proves nothing
+	// about health -- signal 0 does.
+	dead := !np.IsAlive()
+	if !dead && np.cmd != nil && np.cmd.Process != nil {
+		if err := np.cmd.Process.Signal(syscall.Signal(0)); err != nil {
+			dead = true
+		}
+	}
+	if dead {
+		np.mu.Lock()
+		np.messageQueue = append(np.messageQueue, msgs...)
+		np.suspended = true
+		np.activity = StateSuspended
+		np.mu.Unlock()
+		LogError("resource", "resume produced a dead process; messages re-queued",
+			"agent", agentName, "queued", len(msgs))
+		return fmt.Errorf("resume %s: process died during startup; %d message(s) remain queued", agentName, len(msgs))
 	}
 
 	// Deliver queued messages with gaps.

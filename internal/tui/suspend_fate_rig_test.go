@@ -185,3 +185,147 @@ func TestSuspendFate_InterruptAndBead(t *testing.T) {
 	t.Logf("BEAD DISPLAY on suspended: OK=%v Error=%q (TUI-state only; expected unaffected)",
 		resp2.OK, resp2.Error)
 }
+
+// ── ini-g7fl: per-entry-point coverage of the three former bypass sites ──
+//
+// The i7fr lesson, in the AC deliberately: a guard proven at one site says
+// nothing about a site that does not route through it. Each former bypass
+// gets a test that fails if THAT site loses the message -- all three go red
+// together against a primitive-guard-deleted mutant, and each proves its own
+// site actually routes through the primitive.
+
+// suspendedFixture returns a wired TUI + a really-suspended echo pane, with
+// resume-on-message wired exactly as production adoption does.
+func suspendedFixture(t *testing.T) (*TUI, *Pane) {
+	t.Helper()
+	p := echoPane(t, "eng1")
+	tui := newResourceTestTUI(100000, 5000, 80)
+	tui.panes = toPaneViews([]*Pane{p})
+	p.eventCh = tui.agentEvents
+	tui.wireSuspendResume(p) // the production adoption wiring
+	time.Sleep(500 * time.Millisecond)
+	suspendViaRealPolicy(t, tui, p)
+	return tui, p
+}
+
+// awaitDelivery polls for the auto-resumed pane to echo the message --
+// delivery via the CALLBACK, no manual resume anywhere.
+func awaitDelivery(t *testing.T, tui *TUI, marker string) {
+	t.Helper()
+	deadline := time.Now().Add(45 * time.Second)
+	for time.Now().Before(deadline) {
+		if strings.Contains(paneOutput(tui, "eng1"), "GOT:"+marker) {
+			return
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+	t.Fatalf("message %q never reached the auto-resumed process; queue-without-resume is "+
+		"delivery deferred to never. Output:\n%s", marker, paneOutput(tui, "eng1"))
+}
+
+// TestSuspendGuard_ForwardSendSite drives the REAL forward-delivery entry
+// point (window-2-originated sends) against a suspended pane.
+func TestSuspendGuard_ForwardSendSite(t *testing.T) {
+	if os.Getenv("INITECH_9IMX") != "1" {
+		t.Skip("set INITECH_9IMX=1")
+	}
+	tui, _ := suspendedFixture(t)
+	if err := tui.deliverForwardedSend("eng1", "via-forward", true); err != nil {
+		t.Fatalf("forward delivery errored: %v", err)
+	}
+	awaitDelivery(t, tui, "via-forward")
+}
+
+// TestSuspendGuard_DaemonIPCSendSite drives the daemon's serve-mode IPC send
+// (daemon.go handleIPCSend equivalent: findPane + SendText) against a
+// suspended pane registered in a Daemon.
+func TestSuspendGuard_DaemonIPCSendSite(t *testing.T) {
+	if os.Getenv("INITECH_9IMX") != "1" {
+		t.Skip("set INITECH_9IMX=1")
+	}
+	tui, p := suspendedFixture(t)
+	d := &Daemon{panes: []*Pane{p}}
+	conn := &fakeConn{}
+	d.HandleSend(conn, IPCRequest{Action: "send", Target: "eng1", Text: "via-daemon-ipc", Enter: true})
+	awaitDelivery(t, tui, "via-daemon-ipc")
+}
+
+// TestSuspendGuard_DaemonControlSendSite drives the control-stream send shape
+// (daemon.go: findPane + SendText in the "send" case) against a suspended pane.
+func TestSuspendGuard_DaemonControlSendSite(t *testing.T) {
+	if os.Getenv("INITECH_9IMX") != "1" {
+		t.Skip("set INITECH_9IMX=1")
+	}
+	tui, p := suspendedFixture(t)
+	d := &Daemon{panes: []*Pane{p}}
+	cp := d.findPane("eng1")
+	if cp == nil {
+		t.Fatal("daemon cannot find the pane")
+	}
+	cp.SendText("via-daemon-ctrl", true) // the exact case-body shape at daemon.go "send"
+	awaitDelivery(t, tui, "via-daemon-ctrl")
+}
+
+// TestSuspendGuard_ResumeFailureKeepsQueue pins the resume-failure edge: when
+// respawn fails, the queued messages SURVIVE for the next attempt and the
+// failure is loud in the log -- never a silent drop.
+func TestSuspendGuard_ResumeFailureKeepsQueue(t *testing.T) {
+	if os.Getenv("INITECH_9IMX") != "1" {
+		t.Skip("set INITECH_9IMX=1")
+	}
+	tui, p := suspendedFixture(t)
+	// Break respawn: the rebuilt config points at a nonexistent binary.
+	tui.paneConfigBuilder = func(name string) (PaneConfig, error) {
+		return PaneConfig{Name: name, Command: []string{"/nonexistent/binary-g7fl"}}, nil
+	}
+	p.SendText("must-survive", true)
+	time.Sleep(3 * time.Second) // let the async resume fail
+
+	// Read the CURRENT pane by name: resumePane REPLACES the pane in t.panes,
+	// so the original pointer's queue is the old corpse's -- the first draft
+	// of this test read it and could not see the re-queue at all.
+	var cur *Pane
+	tui.runOnMain(func() {
+		for _, pv := range tui.panes {
+			if pv.Name() == "eng1" {
+				cur, _ = pv.(*Pane)
+			}
+		}
+	})
+	if cur == nil {
+		t.Fatal("pane vanished from t.panes")
+	}
+	cur.mu.Lock()
+	queued := len(cur.messageQueue)
+	cur.mu.Unlock()
+	if queued != 1 {
+		t.Fatalf("after a FAILED resume the queue holds %d messages, want 1 -- a failed respawn "+
+			"must not cost the message; the next resume (any trigger) delivers it", queued)
+	}
+	if !cur.IsSuspended() {
+		t.Fatal("failed resume left the pane un-suspended; the next send would write into the void")
+	}
+}
+
+// TestClose_NilsPtmx pins the defense-in-depth half on its own layer (the
+// jhm6 rule): after Close, the PTY field is nil, so any dead-pane write path
+// that slips past the suspension guard hits sendPaneTextLocked's explicit
+// early-return instead of writing into a closed descriptor with the error
+// discarded (the closed-but-not-nil shape, measured in the 9imx triage).
+// Ungated: cheap, no suspension machinery needed.
+func TestClose_NilsPtmx(t *testing.T) {
+	p, err := NewPane(PaneConfig{Name: "x", Command: []string{"sh", "-c", "sleep 1"}}, 24, 80)
+	if err != nil {
+		t.Fatalf("pane: %v", err)
+	}
+	p.Start()
+	p.Close()
+	p.mu.Lock()
+	nil_ := p.ptmx == nil
+	p.mu.Unlock()
+	if !nil_ {
+		t.Fatal("Close left ptmx non-nil; a later write goes into the closed descriptor " +
+			"with the error discarded instead of hitting the guarded early-return")
+	}
+	p.SendText("into the void", true) // must be a safe no-op, not a panic
+}

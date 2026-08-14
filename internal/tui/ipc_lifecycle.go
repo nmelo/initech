@@ -108,6 +108,7 @@ func (t *TUI) handleIPCStart(conn net.Conn, req IPCRequest) {
 	}
 	np.region = old.region
 	np.eventCh = t.agentEvents
+	t.wireSuspendResume(np)
 	np.safeGo = t.safeGo
 	np.protected = old.IsProtected()
 	// Replace in t.panes on main; re-verify index is still valid.
@@ -190,6 +191,7 @@ func (t *TUI) handleIPCRestart(conn net.Conn, req IPCRequest) {
 	}
 	np.region = old.region
 	np.eventCh = t.agentEvents
+	t.wireSuspendResume(np)
 	np.safeGo = t.safeGo
 	np.protected = old.IsProtected()
 	// Replace in t.panes on main; re-verify index is still valid.
@@ -293,6 +295,7 @@ func (t *TUI) addPane(name string) error {
 		return fmt.Errorf("create pane %q: %w", name, err)
 	}
 	p.eventCh = t.agentEvents
+	t.wireSuspendResume(p)
 	p.safeGo = t.safeGo
 
 	// Append to t.panes on main; re-verify uniqueness in case of concurrent add.
@@ -435,6 +438,16 @@ func (t *TUI) handleIPCInterrupt(conn net.Conn, req IPCRequest) {
 		return
 	}
 
+	// Suspension named FIRST (ini-g7fl): the pre-fix shape reported OK for an
+	// interrupt against a nonexistent process (closed-but-not-nil ptmx passed
+	// the guard and the write vanished). With suspension distinct from death,
+	// the sender learns the actual state and the actual remedy.
+	if pane.IsSuspended() {
+		writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf(
+			"agent %q is suspended; nothing to interrupt (it resumes on message: initech send %s ...)",
+			req.Target, req.Target)})
+		return
+	}
 	pane.sendMu.Lock()
 	if pane.ptmx == nil {
 		pane.sendMu.Unlock()
