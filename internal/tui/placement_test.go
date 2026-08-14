@@ -41,11 +41,6 @@ func placementTUIs(t *testing.T, storeYAML string) (*TUI, *TUI, *WindowAssignmen
 		w2.panes = append(w2.panes, &RemotePane{name: n, host: WindowOnePeerName, alive: true})
 	}
 	w2.ensureGroups(false)
-	// SERVED OWNERSHIP (ini-x5ob): window 1 computes, window 2 is served. A
-	// viewer no longer derives ownership from its own assignment copy, so the
-	// fixture models the handshake. The assertions in this file are unchanged.
-	w2.applyServedPaneOwnership(
-		computePaneOwnership(w2.panes, a, w2.layoutState.GroupOf, map[string]bool{WindowPeerName(2): true}))
 	return w1, w2, a
 }
 
@@ -53,7 +48,7 @@ func planNames(t *testing.T, tui *TUI, connected map[string]bool) []string {
 	t.Helper()
 	var out []string
 	for _, p := range tui.panes {
-		if ownerOfAgent(agentKey(p), tui.assignment, tui.layoutState.GroupOf, connected) == tui.windowID {
+		if rendersInWindow(agentKey(p), tui.windowID, tui.assignment, tui.layoutState.GroupOf, connected) {
 			out = append(out, p.Name())
 		}
 	}
@@ -169,7 +164,7 @@ func TestPlacement_HiddenWinsBothOrders(t *testing.T) {
 			}
 			visible2 := 0
 			for _, p := range w2.panes {
-				if (ownerOfAgent(agentKey(p), a, w2.layoutState.GroupOf, conn) == w2.windowID) &&
+				if rendersInWindow(agentKey(p), w2.windowID, a, w2.layoutState.GroupOf, conn) &&
 					!w2.layoutState.Hidden[agentKey(p)] {
 					visible2++
 				}

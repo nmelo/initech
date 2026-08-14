@@ -10,14 +10,6 @@
 // there is no intermediate state where an agent belongs to no window (AC 5).
 package tui
 
-// OWNERSHIP MOVED, THE CONTRACTS DID NOT (ini-x5ob). These tests asserted the
-// fold-back rules against rendersInWindow, which every process used to
-// evaluate for itself -- the non-exclusivity that produced both the double and
-// the hole. That predicate is deleted; the same rules now live in
-// ownerOfAgent, which only the authority evaluates. Each assertion below is
-// repointed, not rewritten: "does this window render this agent" is now "is
-// this window the computed owner".
-
 import (
 	"net"
 	"os"
@@ -64,11 +56,11 @@ func TestFoldback_AgentOnConnectedWindowIsNotRenderedByWindowOne(t *testing.T) {
 	a, groupOf, _ := foldbackFixture(t)
 	connected := map[string]bool{"window2": true}
 
-	if ownerOfAgent("eng1", a, groupOf, connected) == WindowOne {
+	if rendersInWindow("eng1", WindowOne, a, groupOf, connected) {
 		t.Error("window 1 rendered an agent assigned to a CONNECTED window2; that agent belongs to window 2 and would be duplicated on both monitors")
 	}
 	// The agents genuinely on window 1 must still render.
-	if !(ownerOfAgent("super", a, groupOf, connected) == WindowOne) {
+	if !rendersInWindow("super", WindowOne, a, groupOf, connected) {
 		t.Error("window 1 stopped rendering its own agent")
 	}
 }
@@ -80,7 +72,7 @@ func TestFoldback_DisconnectedWindowsAgentsRenderInWindowOne(t *testing.T) {
 	a, groupOf, _ := foldbackFixture(t)
 	connected := map[string]bool{} // window2 gone -- close or crash, same state
 
-	if !(ownerOfAgent("eng1", a, groupOf, connected) == WindowOne) {
+	if !rendersInWindow("eng1", WindowOne, a, groupOf, connected) {
 		t.Error("agent assigned to a disconnected window2 did not fold back into window 1; it would be running invisible, which is the state this epic exists to prevent")
 	}
 }
@@ -102,7 +94,7 @@ func TestFoldback_EveryAgentRendersInExactlyOneWindow(t *testing.T) {
 		for agent := range groupOf {
 			count := 0
 			for _, w := range windows {
-				if ownerOfAgent(agent, a, groupOf, connected) == w {
+				if rendersInWindow(agent, w, a, groupOf, connected) {
 					count++
 				}
 			}
@@ -128,8 +120,8 @@ func TestFoldback_ReattachRestoresWithoutTouchingAssignment(t *testing.T) {
 	// Disconnect, render a frame's worth of decisions, reattach.
 	for _, connected := range []map[string]bool{{}, {"window2": true}} {
 		for agent := range groupOf {
-			_ = (ownerOfAgent(agent, a, groupOf, connected) == WindowOne)
-			_ = (ownerOfAgent(agent, a, groupOf, connected) == "window2")
+			_ = rendersInWindow(agent, WindowOne, a, groupOf, connected)
+			_ = rendersInWindow(agent, "window2", a, groupOf, connected)
 		}
 	}
 
@@ -147,10 +139,10 @@ func TestFoldback_ReattachRestoresWithoutTouchingAssignment(t *testing.T) {
 	}
 
 	// And the reattached window renders its own agents again.
-	if !(ownerOfAgent("eng1", a, groupOf, map[string]bool{"window2": true}) == "window2") {
+	if !rendersInWindow("eng1", "window2", a, groupOf, map[string]bool{"window2": true}) {
 		t.Error("reattached window2 does not render its own agent")
 	}
-	if ownerOfAgent("eng1", a, groupOf, map[string]bool{"window2": true}) == WindowOne {
+	if rendersInWindow("eng1", WindowOne, a, groupOf, map[string]bool{"window2": true}) {
 		t.Error("window 1 still renders window2's agent after reattach; the fold-back did not release it")
 	}
 }
@@ -162,10 +154,10 @@ func TestFoldback_OnlyWindowOneAbsorbsDisconnectedAgents(t *testing.T) {
 	a, groupOf, _ := foldbackFixture(t)
 	connected := map[string]bool{"window3": true} // window2 gone, window3 up
 
-	if ownerOfAgent("eng1", a, groupOf, connected) == "window3" {
+	if rendersInWindow("eng1", "window3", a, groupOf, connected) {
 		t.Error("window3 absorbed a disconnected window's agent; only window 1 folds back, otherwise the agent appears on two monitors")
 	}
-	if !(ownerOfAgent("eng1", a, groupOf, connected) == WindowOne) {
+	if !rendersInWindow("eng1", WindowOne, a, groupOf, connected) {
 		t.Error("window 1 did not absorb the disconnected window's agent")
 	}
 }
@@ -209,7 +201,7 @@ func waitForFoldback(t *testing.T, ws *windowServer, a *WindowAssignment, groupO
 	const budget = 2 * time.Second
 	start := time.Now()
 	for time.Since(start) < budget {
-		if ownerOfAgent("eng1", a, groupOf, ws.connectedWindows()) == WindowOne {
+		if rendersInWindow("eng1", WindowOne, a, groupOf, ws.connectedWindows()) {
 			return time.Since(start)
 		}
 		time.Sleep(5 * time.Millisecond)
@@ -229,7 +221,7 @@ func TestFoldback_CleanCloseFoldsAgentIntoWindowOne(t *testing.T) {
 	// While attached, window 1 must NOT be rendering window2's agent -- this
 	// is the half that is red without the predicate, and it is what makes the
 	// fold-back assertion below mean something.
-	if ownerOfAgent("eng1", a, groupOf, ws.connectedWindows()) == WindowOne {
+	if rendersInWindow("eng1", WindowOne, a, groupOf, ws.connectedWindows()) {
 		t.Fatal("window 1 rendered window2's agent while window2 was attached")
 	}
 
@@ -261,7 +253,7 @@ func TestFoldback_CrashFoldsAgentIntoWindowOne(t *testing.T) {
 	defer func() { _ = helper.Process.Kill() }()
 
 	waitForClients(t, ws, 1)
-	if ownerOfAgent("eng1", a, groupOf, ws.connectedWindows()) == WindowOne {
+	if rendersInWindow("eng1", WindowOne, a, groupOf, ws.connectedWindows()) {
 		t.Fatal("window 1 rendered window2's agent while the helper window was attached")
 	}
 

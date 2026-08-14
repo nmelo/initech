@@ -187,6 +187,7 @@ func zjhgClearComposer(p *Pane) {
 	time.Sleep(400 * time.Millisecond)
 }
 
+
 // zjhgTrustVisible reports whether the fresh-workspace trust prompt is on
 // screen, by its own literal rather than by the predicate under measurement.
 func zjhgTrustVisible(p *Pane) bool {

@@ -38,19 +38,6 @@ func TestHandlePeerUpdate_NewRemotePanesAreGroupedBeforeLayout(t *testing.T) {
 		panes[i] = &RemotePane{name: n, host: "window1", alive: true}
 	}
 
-	// SERVED OWNERSHIP ARRIVES FIRST (ini-x5ob). The guarantee this test buys
-	// is unchanged -- a viewer must plan its agents on the frame it receives
-	// them, because zero planned panes resizes no emulator and that is what
-	// armed the ini-w6z replay crash. What changed is WHERE the answer comes
-	// from: the viewer no longer derives ownership from its own assignment
-	// copy (that derivation is exactly what produced ini-x5ob's double and
-	// hole), so the fixture models the handshake, which serves ownership
-	// BEFORE the panes are handed over. Production does the same, in
-	// managePeer, for this precise reason.
-	groupOf := map[string]string{"eng1": "eng", "eng2": "eng"}
-	tui.applyServedPaneOwnership(
-		computePaneOwnership(panes, a, groupOf, map[string]bool{"window-2": true}))
-
 	tui.handlePeerUpdate("window1", panes, true)
 
 	vis := tui.visiblePanesForWindow()

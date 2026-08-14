@@ -368,14 +368,6 @@ func scopedOverlayTUI(t *testing.T) (*TUI, tcell.SimulationScreen) {
 	tui, s := newTestTUIWithScreen("super", "pm", "qa1", "eng1", "eng2")
 	tui.projectRoot, tui.windowID, tui.assignment = root, WindowPeerName(2), a
 	tui.ensureGroups(false)
-	// SERVED OWNERSHIP (ini-x5ob). These surfaces show "this window's agents",
-	// and since ownership became window 1's single computation a viewer no
-	// longer derives that from its own assignment copy -- deriving it is what
-	// produced the double and the hole. The fixture therefore models what the
-	// handshake does in production: window 1 computes, the viewer is served.
-	// The assertions below are unchanged; only where the answer comes from is.
-	tui.applyServedPaneOwnership(
-		computePaneOwnership(tui.panes, a, tui.layoutState.GroupOf, map[string]bool{WindowPeerName(2): true}))
 	return tui, s
 }
 

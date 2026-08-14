@@ -94,11 +94,6 @@ type Daemon struct {
 	// the state's scope, not its file.
 	onGroupOf func(GroupOfCmd) error
 
-	// paneOwnership returns window 1's current ownership decision, for the
-	// hello handshake (ini-x5ob). Nil on a cross-machine daemon, which owns no
-	// window partition -- an attaching peer there simply gets no map.
-	paneOwnership func() map[string]string
-
 	// Active client sessions for graceful shutdown.
 	sessionsMu sync.Mutex
 	sessions   []*yamux.Session
@@ -144,17 +139,6 @@ type HelloOKMsg struct {
 	Version  int           `json:"version"`   // Protocol version (1).
 	PeerName string        `json:"peer_name"` // Server's peer name.
 	Agents   []AgentStatus `json:"agents"`    // Current agent states.
-	// Owner carries window 1's pane-ownership decision AT ATTACH (ini-x5ob).
-	//
-	// Serving it in the handshake, rather than leaving it to the first
-	// broadcast, closes a window that would otherwise be real: a viewer
-	// renders nothing until served (it derives no fallback, by design), so an
-	// attach that had to wait for a round trip would plan ZERO panes for a
-	// frame -- and zero planned panes means no emulator is resized, which is
-	// the state that armed the ini-w6z replay crash. The guarantee ini-6m4
-	// bought (a viewer plans its agents immediately on attach) is preserved by
-	// making the answer arrive with the agent list, not after it.
-	Owner map[string]string `json:"owner,omitempty"`
 }
 
 // AgentStatus describes an agent's state for the hello handshake.
@@ -204,23 +188,18 @@ type ControlCmd struct {
 // ControlResp is the response to a control command. It also carries unsolicited
 // server-pushed commands (e.g. forward_send, stream_added) when Action is set.
 type ControlResp struct {
-	ID       string `json:"id,omitempty"` // Echoed from request for correlation.
-	OK       bool   `json:"ok"`
-	Error    string `json:"error,omitempty"`
-	Data     string `json:"data,omitempty"`
-	Action   string `json:"action,omitempty"`    // Set for unsolicited commands (e.g. "forward_send", "stream_added").
-	Target   string `json:"target,omitempty"`    // Agent name for forward_send.
-	Text     string `json:"text,omitempty"`      // Message text for forward_send.
-	Enter    bool   `json:"enter,omitempty"`     // Append Enter for forward_send.
-	StreamID uint32 `json:"stream_id,omitempty"` // yamux stream ID for stream_added.
-	// Owner carries window 1's pane-ownership decision (ini-x5ob): canonical
-	// agent key -> owning window id. Rides the same unsolicited-control-event
-	// channel as session_notice, because it is the same kind of fact: the
-	// session's shape as the AUTHORITY sees it.
-	Owner map[string]string `json:"owner,omitempty"`
-	Name  string            `json:"name,omitempty"`  // Agent name for stream_added / agent_status.
-	Beads []string          `json:"beads,omitempty"` // All beads an agent holds (ini-9ka.11 agent_status).
-	Bead  string            `json:"bead,omitempty"`  // Primary bead only; wire compatibility for peers predating Beads.
+	ID       string   `json:"id,omitempty"` // Echoed from request for correlation.
+	OK       bool     `json:"ok"`
+	Error    string   `json:"error,omitempty"`
+	Data     string   `json:"data,omitempty"`
+	Action   string   `json:"action,omitempty"`    // Set for unsolicited commands (e.g. "forward_send", "stream_added").
+	Target   string   `json:"target,omitempty"`    // Agent name for forward_send.
+	Text     string   `json:"text,omitempty"`      // Message text for forward_send.
+	Enter    bool     `json:"enter,omitempty"`     // Append Enter for forward_send.
+	StreamID uint32   `json:"stream_id,omitempty"` // yamux stream ID for stream_added.
+	Name     string   `json:"name,omitempty"`      // Agent name for stream_added / agent_status.
+	Beads    []string `json:"beads,omitempty"`     // All beads an agent holds (ini-9ka.11 agent_status).
+	Bead     string   `json:"bead,omitempty"`      // Primary bead only; wire compatibility for peers predating Beads.
 }
 
 // RunDaemon starts the headless daemon. Blocks until SIGINT/SIGTERM.
@@ -672,18 +651,12 @@ func (d *Daemon) handleConnection(conn net.Conn) {
 		}
 	}
 
-	// Send hello_ok, carrying window 1's ownership decision so the attaching
-	// window can plan its panes on the very first frame (ini-x5ob).
-	var owner map[string]string
-	if d.paneOwnership != nil {
-		owner = d.paneOwnership()
-	}
+	// Send hello_ok.
 	if err := writeJSON(ctrl, HelloOKMsg{
 		Action:   "hello_ok",
 		Version:  ProtocolVersion,
 		PeerName: d.project.PeerName,
 		Agents:   agents,
-		Owner:    owner,
 	}); err != nil {
 		LogWarn("daemon", "failed to send hello_ok", "err", err)
 		return

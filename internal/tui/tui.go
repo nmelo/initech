@@ -200,22 +200,9 @@ type TUI struct {
 	// there rather than a new code path. The assignment store itself is the
 	// shared `assignment` field declared above (ini-9ka.4/.5) -- one store per
 	// session, read by both the modal and the render filter.
-	windowID string
-
-	// paneOwnership is the ownership map: canonical agent key -> owning window
-	// id (ini-x5ob). On window 1 it is the authority's own computation; on a
-	// secondary it is what window 1 served, and it is the ONLY thing that
-	// window consults to decide which panes it renders.
-	paneOwnership map[string]string
-	// ownershipServed records whether a secondary has ever been served an
-	// ownership map. Before that it renders nothing rather than guessing.
-	ownershipServed bool
-	// lastServedTo is the attached-window set at the last ownership broadcast,
-	// so a newly attached window is served even when the map itself did not
-	// change (window 1 only).
-	lastServedTo map[string]bool
-	windowSrv    *windowServer
-	liveness     *windowLivenessTracker
+	windowID  string
+	windowSrv *windowServer
+	liveness  *windowLivenessTracker
 
 	// agentStatus is the last bead/description broadcast per agent, so window
 	// 1 emits only on genuine change (ini-9ka.11). Descriptions are
@@ -358,15 +345,6 @@ func (t *TUI) logPanesMutation(site string, oldLen int) {
 // and resizes panes whose regions changed. The bottom row is reserved
 // for the persistent status bar and excluded from pane layout.
 func (t *TUI) applyLayout() {
-	// PUBLISH BEFORE PLANNING (ini-x5ob). Window 1 recomputes ownership here,
-	// on the path every layout change already runs through, and serves it when
-	// it differs. Placing it at the one seam that ALWAYS runs -- rather than
-	// at each of the several mutation sites -- is what makes a missed trigger
-	// structurally impossible: any change that could alter ownership must
-	// re-plan, and re-planning republishes. It is cheap: a map build and a
-	// comparison, no I/O, and the broadcast fires only on difference.
-	t.publishPaneOwnership()
-
 	var w, h int
 	if t.screen != nil {
 		w, h = t.screen.Size()
@@ -911,7 +889,7 @@ func Run(cfg Config) error {
 	// no artifact, no output -- so single-window sessions run today's code
 	// path rather than a new one that merely behaves the same.
 	if cfg.Project != nil && cfg.Project.WindowListen != "" {
-		ws, wsCleanup, err := startWindowServer(cfg.Project, cfg.Version, localPanes(t.panes), t.safeGo, t.applyFleetStateCmd, t.applyGroupWindowCmd, t.applyGroupOfCmd, t.currentPaneOwnership)
+		ws, wsCleanup, err := startWindowServer(cfg.Project, cfg.Version, localPanes(t.panes), t.safeGo, t.applyFleetStateCmd, t.applyGroupWindowCmd, t.applyGroupOfCmd)
 		if err != nil {
 			// Non-fatal: a secondary window is an enhancement, and failing to
 			// bind it must not take down a session whose agents are already
@@ -972,12 +950,6 @@ func Run(cfg Config) error {
 		})
 		pm.SetOnSessionNotice(func(text string) {
 			t.runOnMain(func() { t.surfaceSessionNotice(text) })
-		})
-		// Ownership is served, never derived (ini-x5ob). Marshalled onto the
-		// main loop for the same reason every other peer callback is: it
-		// mutates render state.
-		pm.SetOnPaneOwnership(func(owner map[string]string) {
-			t.runOnMain(func() { t.applyServedPaneOwnership(owner) })
 		})
 		// Terminal eviction (ini-jhm6): another process took this window's
 		// identity. Surface the reason as Run's return value -- printed after
@@ -1314,8 +1286,7 @@ func (t *TUI) handlePeerUpdate(peerName string, newPanes []PaneView, connected b
 	t.ensureGroups(false)
 	LogInfo("peer-update", "panes-updated", "peer", peerName, "total_panes", len(kept))
 	t.recalcGrid(true)
-	LogInfo("peer-update", "done", "peer", peerName,
-		"plan_panes", len(t.plan.Panes), "plan_set", planPaneSet(t.plan))
+	LogInfo("peer-update", "done", "peer", peerName, "plan_panes", len(t.plan.Panes))
 }
 
 // handlePeerPaneAdded inserts a single remote pane into the TUI when the

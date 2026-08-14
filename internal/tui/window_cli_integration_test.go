@@ -174,7 +174,7 @@ func TestWindowCLI_ThreeWindowsAttachDetachReattach(t *testing.T) {
 		connected := ws.connectedWindows()
 		for agent, wantWin := range want {
 			for _, win := range []string{WindowOne, "window-2", "window-3"} {
-				got := (ownerOfAgent(agent, a, groupOf, connected) == win)
+				got := rendersInWindow(agent, win, a, groupOf, connected)
 				if want := win == wantWin; got != want {
 					t.Errorf("%s: rendersInWindow(%q, %q) = %v, want %v (expected owner %q, connected=%v)",
 						stage, agent, win, got, want, wantWin, connected)
