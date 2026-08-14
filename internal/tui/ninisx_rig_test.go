@@ -316,6 +316,48 @@ func nineISXAwait(emu *vt.SafeEmulator, cond func(string) bool, limit time.Durat
 	return limit, false
 }
 
+
+// nineISXOwnedByWindow2 is the set this rig ASSIGNED to window 2 -- derived
+// from the fixture's own inputs, never a hardcoded count, so it stays true if
+// the fixture grows.
+func nineISXOwnedByWindow2(nonce string) []string {
+	return []string{"eng1", "eng2", nonce}
+}
+
+// nineISXRequireOwnedAreRendered is the standing invariant guard (eng1's
+// suggestion out of ini-2pce): a window must RENDER exactly the agents it OWNS.
+//
+// It states the invariant directly instead of via a list of names that only
+// holds for this fixture, and it converts an entire class from archaeology into
+// a one-run failure. ini-2pce is the case in point: the viewer held a correct
+// ownership map naming three agents and rendered none, and answering "why" took
+// two engineers, three wrong mechanisms and a preserved log. This assertion
+// would have said "owns 3, renders 0" on the first run.
+//
+// The failure it is built for is SILENT BY CONSTRUCTION: the viewer read the
+// handshake preamble by POSITION, and because JSON ignores unknown fields, any
+// control frame parsed "successfully" as a stream map with no streams. Nothing
+// errored. Zero panes is indistinguishable from an empty fleet unless something
+// asserts the two numbers against each other.
+func nineISXRequireOwnedAreRendered(t *testing.T, label, screen string, owned []string) {
+	t.Helper()
+	var missing []string
+	for _, name := range owned {
+		if !strings.Contains(screen, name) {
+			missing = append(missing, name)
+		}
+	}
+	if len(missing) == 0 {
+		return
+	}
+	t.Errorf("%s: window 2 OWNS %d agents (%s) and RENDERS %d of them -- missing %s. A window that "+
+		"holds ownership and shows nothing is the ini-2pce shape, and it is silent by construction: "+
+		"zero panes looks exactly like an empty fleet unless the two numbers are asserted against "+
+		"each other.\n%s",
+		label, len(owned), strings.Join(owned, ","), len(owned)-len(missing),
+		strings.Join(missing, ","), screen)
+}
+
 // nineISXAssert runs every AC 4/6/7/8/9 check against a live window-2 screen.
 // Shared by both startup orders so the two paths are held to identical
 // expectations rather than each getting the assertions its own quirks pass.
@@ -334,6 +376,11 @@ func nineISXAssert(t *testing.T, label, nonce string, w1emu, w2emu *vt.SafeEmula
 			"it dialed another window 1. Every assertion below would be a confident statement about "+
 			"someone else's process.\n%s", label, nonce, w2)
 	}
+
+	// THE OWNERSHIP INVARIANT, asserted before the display ACs: every check
+	// below describes what window 2 shows, and this one asks whether it shows
+	// what it owns at all.
+	nineISXRequireOwnedAreRendered(t, label, w2, nineISXOwnedByWindow2(nonce))
 
 	// AC1/AC2: no window prefix anywhere on the viewer's screen.
 	if strings.Contains(w2, WindowOnePeerName+":") {
