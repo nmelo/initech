@@ -341,6 +341,25 @@ func sendPaneTextLocked(pane *Pane, text string, enter bool) {
 		stashed = true
 	}
 
+	// Belt baseline (ini-zjhg), sampled AFTER the stash because the stash is
+	// itself a composer edit. hasComposer false means no prompt glyph anywhere
+	// on screen -- a plain shell, a booting agent, a pane whose UI we do not
+	// model -- and the belt stands down for those rather than blocking their
+	// submits. That is a stated choice, not an oversight: every Claude dialog
+	// this guards against is an option picker and therefore HAS a glyph, so a
+	// glyph-free screen is not the dangerous state.
+	//
+	// SCOPED TO THE MEASURED FAMILY, chosen out loud rather than inherited. The
+	// echo behaviour the belt depends on was measured on Claude Code's
+	// bracketed-paste path and nowhere else. Codex, OpenCode and generic raw
+	// panes were NOT measured, and a precondition on unmeasured rendering is
+	// how a safety check becomes a delivery regression -- the specific harm AC
+	// item 2 of ini-zjhg forbids. Those families keep layer 1 (which covers
+	// codex-native confirm dialogs via the "enter to confirm" pattern) until
+	// someone measures their composers and widens this deliberately.
+	beltApplies := !pane.noBracketedPaste
+	tailBefore, hasComposer := composerTail(pane)
+
 	if useCodexBracketedPaste {
 		var buf []byte
 		buf = append(buf, "\x1b[200~"...)
@@ -369,6 +388,22 @@ func sendPaneTextLocked(pane *Pane, text string, enter bool) {
 	}
 
 	if !enter {
+		return
+	}
+
+	// NEVER-SUBMIT BELT (ini-zjhg), layer 2 of two. Layer 1 (the modal guard
+	// above) decided this pane had no dialog; if it was wrong, the body has just
+	// been swallowed by a picker and the submit key below would ANSWER it. So
+	// the submit is conditional on positive evidence that the body reached a
+	// composer, which is evidence layer 1 never consults.
+	//
+	// The constraint this must not violate: a CORRECT drain still delivers a
+	// complete, actionable message. Text sitting unsubmitted in a composer is
+	// delayed delivery, not delivery. That is why the belt is a positive check
+	// on our own echo rather than a blanket withholding of the terminator --
+	// in the normal case it passes and the submit goes out unchanged.
+	if beltApplies && hasComposer && !composerAcceptedBody(pane, tailBefore) {
+		withholdSubmit(pane, text, mode)
 		return
 	}
 
@@ -452,19 +487,94 @@ func waitForCodexReadyIfNeeded(pane *Pane) {
 // Used as a lightweight retry signal: if content remains after Enter, it was
 // likely swallowed during paste processing.
 func promptHasContent(p *Pane) bool {
+	tail, found := composerTail(p)
+	return found && tail != ""
+}
+
+// composerTail returns the text after the pane's lowest prompt glyph, and
+// whether such a glyph exists at all.
+//
+// MEASURED CAVEAT, and it is the reason the never-submit belt is a DELTA on
+// this value rather than a test of it (ini-zjhg, real Claude 2.1.232): a glyph
+// on screen does not mean a composer. Claude's option pickers use the same \u276f as
+// their SELECTION CURSOR, so an open trust prompt returns tail
+// "1. Yes, I trust this folder" -- non-empty, and promptHasContent answers true
+// with no composer anywhere on screen. Anything that reads this as "the app is
+// accepting typed input" is reading a dialog as a prompt.
+//
+// What DOES discriminate, from the same capture: whether the tail CHANGES when
+// we write a body. Composer, small body: "" -> "zjhg-small-body". Composer,
+// 2KB body: "" -> "[Pasted text #1 +39 lines]" (Claude collapses large pastes,
+// so matching the body text itself would false-negative exactly the big
+// messages agents send). Open dialog: unchanged, and nothing on screen moved --
+// the picker swallowed the paste silently.
+func composerTail(p *Pane) (string, bool) {
 	cols := p.emu.Width()
 	rows := p.emu.Height()
 	for row := rows - 1; row >= 0; row-- {
 		// RowText copies the row under a single lock, so a torn read here
-		// cannot flip the submit-retry decision (ini-wizq).
+		// cannot flip the submit decision (ini-wizq).
 		text := p.emu.RowText(row, cols)
 		for _, prompt := range []string{"\u276f", "\u203a", ">"} {
 			if idx := strings.LastIndex(text, prompt); idx >= 0 {
-				return strings.TrimSpace(text[idx+len(prompt):]) != ""
+				return strings.TrimSpace(text[idx+len(prompt):]), true
 			}
 		}
 	}
-	return false
+	return "", false
+}
+
+// composerEchoWindow bounds how long the belt waits for the body to appear in
+// the composer before concluding it was swallowed. Measured body-to-composer
+// latency was under one poll interval on real Claude; the window is generous
+// against a slow render because the cost of being wrong is asymmetric -- too
+// short withholds a legitimate submit (delayed delivery), too long only delays
+// the submit of a message that was going to be submitted anyway.
+const composerEchoWindow = 1500 * time.Millisecond
+
+// composerEchoPoll is the belt's sampling interval within that window.
+const composerEchoPoll = 50 * time.Millisecond
+
+// composerAcceptedBody reports whether the body we just wrote visibly landed in
+// a composer -- the never-submit belt of ini-zjhg.
+//
+// It deliberately asks a question the modal guard never asks. The guard asks
+// "is a dialog present?", from the application's declaration and from the
+// screen; this asks "did MY OWN text land somewhere that accepts text?". The
+// two fail under different conditions, which is the entire point of having
+// both: a dialog that is open but scrolled out defeats the screen term of the
+// guard and is caught here, because a picker swallows the paste and the
+// composer never changes. Neither layer can see the other's failure.
+//
+// A false answer here costs a stray unsubmitted line. A false answer the other
+// way costs an operator's question answered by a machine.
+func composerAcceptedBody(p *Pane, before string) bool {
+	deadline := time.Now().Add(composerEchoWindow)
+	for {
+		// A vanished glyph counts as NOT accepted: the comparison is only
+		// meaningful against a composer that is still there to have accepted it.
+		if after, found := composerTail(p); found && after != before {
+			return true
+		}
+		if time.Now().After(deadline) {
+			return false
+		}
+		time.Sleep(composerEchoPoll)
+	}
+}
+
+// withholdSubmit records a submit the belt refused to send.
+func withholdSubmit(pane *Pane, text, mode string) {
+	preview := text
+	if len(preview) > 60 {
+		preview = preview[:57] + "..."
+	}
+	LogDebug("inject", "submit WITHHELD: body never reached a composer", "pane", pane.Name(), "mode", mode)
+	EmitEvent(pane.eventCh, AgentEvent{
+		Type:   EventMessageSent,
+		Pane:   pane.Name(),
+		Detail: "submit withheld (body did not reach the composer; a dialog may be open): " + preview,
+	})
 }
 
 func sendCodexSubmit(pane *Pane, queue bool) string {

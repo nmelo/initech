@@ -407,6 +407,15 @@ func TestDrainModalQueue_RedeliversAfterModalCloses(t *testing.T) {
 				ptyMu.Lock()
 				ptyBytes = append(ptyBytes, buf[:n]...)
 				ptyMu.Unlock()
+				// Model the child RENDERING what it received (ini-zjhg).
+				// Every real agent echoes a pasted body into its composer;
+				// a fixture that accepts input and paints nothing is a state
+				// no Claude pane reaches, and leaving it that way would make
+				// this test assert that a submit fires into a composer that
+				// never showed the text -- the forged-answer shape itself.
+				if body, ok := bracketedPasteBody(buf[:n]); ok {
+					_, _ = emu.Write([]byte(body))
+				}
 			}
 			if err != nil && !os.IsTimeout(err) {
 				return
@@ -477,4 +486,21 @@ func TestMaybeDrainModalQueue_RetainsWhileModalOpen(t *testing.T) {
 	if p.QueueLen() != 1 {
 		t.Errorf("queue should be retained while modal open, got %d", p.QueueLen())
 	}
+}
+
+// bracketedPasteBody extracts the payload of a bracketed-paste sequence, so a
+// PTY fixture can model the child rendering what it was pasted (ini-zjhg).
+// Reports false when the chunk carries no complete paste.
+func bracketedPasteBody(chunk []byte) (string, bool) {
+	s := string(chunk)
+	start := strings.Index(s, "\x1b[200~")
+	if start < 0 {
+		return "", false
+	}
+	rest := s[start+len("\x1b[200~"):]
+	end := strings.Index(rest, "\x1b[201~")
+	if end < 0 {
+		return "", false
+	}
+	return rest[:end], true
 }

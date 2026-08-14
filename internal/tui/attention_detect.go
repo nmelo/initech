@@ -192,6 +192,12 @@ func (p *Pane) refreshWaitingState() {
 	}
 
 	if notified, _ := p.attn.takeNotify(); notified {
+		// Latch the send guard's dialog state from the same declaration
+		// (ini-zjhg). This is the only RAISE point: the application saying so
+		// is the precise signal, which is why the chime is allowed to trust it.
+		// The latch and the row diverge from here on -- the row clears from the
+		// screen, the guard's latch clears only on operator input.
+		p.latchDialogOpen()
 		// Raise. Preview starts empty: OSC 777's message is the same generic
 		// "Claude needs your permission" for a question and for an approval, so
 		// it says nothing worth showing. Real text comes from the screen below,
@@ -210,11 +216,20 @@ func (p *Pane) refreshWaitingState() {
 	if !p.alivePane() {
 		// The process is gone; nobody is waiting on an answer any more. Without
 		// this the row would outlive the agent with no way to retire it.
+		//
+		// The dialog latch goes with it (ini-zjhg). Death is the one close this
+		// pane will never see operator input for, so it is also the one way an
+		// input-cleared latch could otherwise pin the queue open forever.
+		p.noteOperatorInput()
 		p.ClearWaitingInput()
 		return
 	}
 
-	onScreen := paneHasModal(p)
+	// The SCREEN term only, never the union (ini-zjhg). This consumer's whole
+	// clear rule is "the screen has earned the right to retire this row"; asking
+	// the union would ask a question that includes the latch, and the latch is
+	// designed never to answer no on its own.
+	onScreen := paneShowsModalOnScreen(p)
 	if onScreen {
 		p.markModalSeen()
 		// Upgrade the row's text now that the dialog is actually rendered. Costs

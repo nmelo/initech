@@ -276,6 +276,18 @@ type Pane struct {
 	// PTY/emulator resize each requires. Zero value (false) matches a
 	// freshly-started shell, which is not in alt-screen mode.
 	lastAltScreen bool
+
+	// dialogOpen latches an application-declared blocking dialog (ini-zjhg).
+	// Raised from OSC 777, cleared by operator input; see modal_detect.go for
+	// why the guard reads this rather than the attention row, and why the clear
+	// is input-driven rather than screen-driven.
+	//
+	// A plain bool, deliberately: the attention MAILBOX (p.attn) is a pointer
+	// that a directly-constructed Pane can leave nil, and a guard with an
+	// optional dependency has an "absent" branch that silently degrades to the
+	// old screen-only behaviour. A value field has no absent case to fall back
+	// through -- the zero value is simply "no dialog declared".
+	dialogOpen bool
 }
 
 // Region defines a rectangular area on screen (outer bounds including border).
@@ -477,6 +489,13 @@ func (p *Pane) responseLoop() {
 // SendKey translates a tcell key event into a charmbracelet KeyPressEvent
 // and sends it through the emulator, which encodes it for the PTY.
 func (p *Pane) SendKey(ev *tcell.EventKey) {
+	// The operator is acting on this pane, which is the only way an open dialog
+	// gets answered -- so retire the dialog latch (ini-zjhg). This is the
+	// operator input path; injected message bytes go straight to the PTY and do
+	// NOT come through here, which is what keeps a drain from clearing the latch
+	// that is gating it.
+	p.noteOperatorInput()
+
 	// Shift+Enter: write CSI-u encoded ESC[13;2u directly to the PTY in a
 	// single atomic Write call. Claude Code's ink parser (parse-keypress.ts)
 	// has a CSI_U_RE regex that decodes this as Shift+Enter, which inserts a
@@ -691,6 +710,11 @@ func effectiveEmuRows(visibleRows int) int {
 // coordinates translated to emulator coordinates. The emulator silently
 // drops the event if the child process hasn't enabled mouse reporting.
 func (p *Pane) ForwardMouse(ev uv.MouseEvent) {
+	// Operator input, same as SendKey: it retires the dialog latch (ini-zjhg).
+	// A click is a live candidate for answering a dialog outright -- ini-zjhg AC
+	// item 4 measures whether it selects an option row directly -- so it must
+	// not be treated as more innocent than a keystroke.
+	p.noteOperatorInput()
 	p.emu.SendMouse(ev)
 }
 
