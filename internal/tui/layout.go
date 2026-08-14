@@ -572,6 +572,9 @@ func SaveLayoutForWindow(projectRoot, windowID string, state LayoutState) error 
 	// .tmp and rename over each other, cross-contaminating final files that
 	// look independent by name (ini-9ka.3).
 	final := layoutPathFor(projectRoot, windowID)
+	i7frLogWithStack("layout.save", "windowID", windowID, "path", final,
+		"order", i7frKeys(state.Order), "groups", i7frKeys(state.Groups),
+		"group_of", i7frMap(state.GroupOf))
 	if err := writeFileAtomic(final, data, 0600); err != nil {
 		return fmt.Errorf("write layout: %w", err)
 	}
@@ -616,6 +619,9 @@ func LoadLayoutForWindow(projectRoot, windowID string, paneKeys []string) (Layou
 	if err := yaml.Unmarshal(data, &pl); err != nil {
 		return LayoutState{}, false
 	}
+	i7frLog("layout.load.file", "windowID", windowID, "path", layoutPathFor(projectRoot, windowID),
+		"file_order", i7frKeys(pl.Order), "file_groups", i7frKeys(pl.Groups),
+		"file_group_of", i7frMap(pl.GroupOf), "paneKeys", i7frKeys(paneKeys))
 
 	// Parse grid dimensions.
 	cols, rows, ok := parseGrid(pl.Grid, len(paneKeys))
@@ -705,6 +711,11 @@ func LoadLayoutForWindow(projectRoot, windowID string, paneKeys []string) (Layou
 			groups = append(groups, label)
 		}
 	}
+
+	i7frLog("layout.load.derived", "windowID", windowID,
+		"kept_order", i7frKeys(order), "kept_groups", i7frKeys(groups),
+		"kept_group_of", i7frMap(groupOf),
+		"dropped_group_labels", i7frDroppedLabels(pl.Groups, groups, memberCount))
 
 	return LayoutState{
 		Mode:         mode,

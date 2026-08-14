@@ -147,12 +147,14 @@ func LoadAssignment(projectRoot string) (*WindowAssignment, error) {
 	if err := yaml.Unmarshal(data, &pa); err != nil {
 		return nil, fmt.Errorf("parse assignment store: %w", err)
 	}
+	i7frLog("assign.load.file", "path", assignmentPath(projectRoot), "group_window", i7frMap(pa.GroupWindow))
 	for group, window := range pa.GroupWindow {
 		// Heal stores written by the pre-xq4r generator: "window2" named a
 		// window that could never attach (viewers present "window-2"), so the
 		// group's panes rendered nowhere. One-time, logged, save-on-next-move.
 		if m := legacyWindowIDRe.FindStringSubmatch(window); m != nil {
 			healed := "window-" + m[1]
+			i7frLog("assign.heal", "group", group, "from", window, "to", healed, "persisted", false)
 			LogInfo("assignment", "normalized legacy window identity", "group", group, "from", window, "to", healed)
 			window = healed
 		}
@@ -190,6 +192,7 @@ func (a *WindowAssignment) save() error {
 	}
 
 	final := assignmentPath(a.root)
+	i7frLogWithStack("assign.save", "path", final, "group_window", i7frMap(a.groupWindow))
 	if err := writeFileAtomic(final, data, 0600); err != nil {
 		return fmt.Errorf("write assignment: %w", err)
 	}

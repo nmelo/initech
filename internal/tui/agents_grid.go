@@ -81,6 +81,7 @@ func (t *TUI) ensureGroups(persist bool) {
 		if !seen[label] {
 			t.layoutState.Groups = append(t.layoutState.Groups, label)
 			seen[label] = true
+			i7frLog("ensureGroups.appended", "label", label, "paneKey", key)
 		}
 	}
 	if changed && persist {
@@ -274,7 +275,9 @@ func agentsGridLayoutCells(members map[string][]int, groups []string, innerX, fi
 // empty WindowListen is the only state a single-window fleet is ever in, so
 // this returns false and the walk emits today's layout unchanged.
 func (t *TUI) agentsTiersActive() bool {
-	return t.project != nil && participatesInMultiWindow(t.project)
+	active := t.project != nil && participatesInMultiWindow(t.project)
+	i7frLog("tiers.gate", "projectNil", t.project == nil, "active", active)
+	return active
 }
 
 // agentsWindowOrder returns the window identities to render as tiers, in a
@@ -304,12 +307,17 @@ func agentsWindowOrder(assign *WindowAssignment, groups []string) []string {
 func (t *TUI) agentsTierGroups(assign *WindowAssignment, tiersActive bool) []tierGroup {
 	groups := t.layoutState.Groups
 	if !tiersActive || assign == nil {
+		i7frLog("tiers.derive", "tiersActive", tiersActive, "assignNil", assign == nil,
+			"universe", i7frKeys(groups), "result", "single-untiered-windowOne")
 		return []tierGroup{{windowID: WindowOne, groups: groups}}
 	}
 	var out []tierGroup
 	for _, w := range agentsWindowOrder(assign, groups) {
-		out = append(out, tierGroup{windowID: w, groups: assign.GroupsForWindow(w, groups)})
+		g := assign.GroupsForWindow(w, groups)
+		i7frLog("tiers.derive.window", "window", w, "groups", i7frKeys(g))
+		out = append(out, tierGroup{windowID: w, groups: g})
 	}
+	i7frLog("tiers.derive", "tiersActive", true, "universe", i7frKeys(groups), "tierCount", len(out))
 	return out
 }
 
