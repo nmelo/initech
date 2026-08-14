@@ -37,6 +37,8 @@ import (
 	"time"
 
 	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/charmbracelet/x/vt"
+	"github.com/gdamore/tcell/v2"
 )
 
 // zjhgClaudePane starts a real interactive Claude in an isolated temp dir.
@@ -464,4 +466,126 @@ func zjhgFirstDiff(a, b string) string {
 		return "(no row-level differences)"
 	}
 	return strings.Join(out, "\n")
+}
+
+// TestPZX0Rig_FocusFirstOnARealPermissionDialog is the ini-pzx0 live leg: the
+// end-to-end claim, on a REAL open permission dialog, through the REAL mouse
+// entry point.
+//
+// The unit tests in mouse_focus_test.go prove no bytes leave the TUI for a
+// first click, and "no bytes reach the child" does imply "the child cannot
+// act". This exists because that implication is exactly the kind of reasoning
+// ini-543b punished: the whole bug was discovered by measuring a click that was
+// assumed harmless. So the first click is checked against a dialog that is
+// genuinely open and genuinely answerable, and then the second click is
+// required to actually answer it -- proving the protection is a DELAY, not a
+// wall.
+//
+// Run: INITECH_ZJHG=1 go test ./internal/tui/ -run PZX0Rig -v -timeout 900s
+func TestPZX0Rig_FocusFirstOnARealPermissionDialog(t *testing.T) {
+	if os.Getenv("INITECH_ZJHG") != "1" {
+		t.Skip("set INITECH_ZJHG=1 to run the real-Claude focus-first leg for ini-pzx0")
+	}
+	if _, err := exec.LookPath("claude"); err != nil {
+		t.Skip("claude not on PATH")
+	}
+
+	p := zjhgClaudePane(t)
+	dialogUp := func() bool {
+		return isModalPrompt(emulatorBottomText(p.emu, modalScanWholePane))
+	}
+
+	// Trust prompt -> composer.
+	if _, ok := zjhgWait(func() bool { return zjhgTrustVisible(p) }, 60*time.Second); !ok {
+		t.Fatalf("no trust dialog appeared.\n%s", zjhgScreen(p))
+	}
+	_, _ = p.ptmx.Write([]byte("\r"))
+	if _, ok := zjhgWait(func() bool {
+		return !zjhgTrustVisible(p) && strings.Contains(zjhgScreen(p), "❯")
+	}, 90*time.Second); !ok {
+		t.Fatalf("no composer after the trust dialog.\n%s", zjhgScreen(p))
+	}
+
+	// A real permission prompt, the fixture this bead REQUIRES. The trust
+	// dialog above is inert to clicks (measured N=2) and would produce a
+	// confident false negative here.
+	sendPaneTextLocked(p, "Run the bash command: echo zjhg-probe", true)
+	if _, ok := zjhgWait(dialogUp, 180*time.Second); !ok {
+		t.Fatalf("no permission dialog; the leg cannot run (rig fault, not a product finding).\n%s",
+			zjhgScreen(p))
+	}
+	t.Log("real permission dialog open")
+
+	// Wrap the live pane in a TUI so clicks travel the product path.
+	dummy := &Pane{name: "other", emu: vt.NewSafeEmulator(80, 24), alive: true, visible: true}
+	views := []PaneView{p, dummy}
+	ls := DefaultLayoutState([]string{p.Name(), "other"})
+	tui := &TUI{panes: views, layoutState: ls, lastW: 200, lastH: 60}
+	tui.plan = computeLayout(ls, views, 200, 58)
+	ls.Focused = agentKey(dummy)
+	tui.layoutState = ls
+
+	// Locate the "1. Yes" row and invert forwardMouseEvent's translation:
+	// emuY = startRow + (ly - renderOffset), and my = region.Y + 1 + ly.
+	clickOptionRow := func() (int, int, bool) {
+		emuRow := -1
+		cols, rows := p.emu.Width(), p.emu.Height()
+		for r := 0; r < rows; r++ {
+			if strings.Contains(p.emu.RowText(r, cols), "1. Yes") {
+				emuRow = r
+				break
+			}
+		}
+		if emuRow < 0 {
+			return 0, 0, false
+		}
+		var region Region
+		for _, pr := range tui.plan.Panes {
+			if agentKey(pr.Pane) == agentKey(p) {
+				region = pr.Region
+			}
+		}
+		startRow, renderOffset := p.contentOffset()
+		ly := emuRow - startRow + renderOffset
+		return region.X + 4, region.Y + 1 + ly, true
+	}
+
+	mx, my, ok := clickOptionRow()
+	if !ok {
+		t.Fatalf("could not locate the option row.\n%s", zjhgScreen(p))
+	}
+
+	// FIRST CLICK on the unfocused pane: focuses only.
+	tui.handleMouse(tcell.NewEventMouse(mx, my, tcell.Button1, tcell.ModNone))
+	tui.handleMouse(tcell.NewEventMouse(mx, my, tcell.ButtonNone, tcell.ModNone))
+	time.Sleep(3 * time.Second)
+
+	if !dialogUp() {
+		t.Fatalf("THE FIRST CLICK ANSWERED A REAL PERMISSION DIALOG. focus-first is not holding on "+
+			"the live fixture, whatever the unit tests say.\n%s", zjhgScreen(p))
+	}
+	if strings.Contains(zjhgScreen(p), "zjhg-probe\n") && !dialogUp() {
+		t.Error("the tool call ran on the first click")
+	}
+	if tui.layoutState.Focused != agentKey(p) {
+		t.Errorf("the first click did not focus the pane; focused=%q", tui.layoutState.Focused)
+	}
+	t.Log("first click: dialog still open, pane focused — focus-first holds on a live dialog")
+
+	// SECOND CLICK, now focused: this MUST answer it. A protection that never
+	// lets the operator act is a different bug, not a fix.
+	mx, my, ok = clickOptionRow()
+	if !ok {
+		t.Fatalf("option row vanished before the second click.\n%s", zjhgScreen(p))
+	}
+	tui.handleMouse(tcell.NewEventMouse(mx, my, tcell.Button1, tcell.ModNone))
+	tui.handleMouse(tcell.NewEventMouse(mx, my, tcell.ButtonNone, tcell.ModNone))
+
+	if _, ok := zjhgWait(func() bool { return !dialogUp() }, 20*time.Second); !ok {
+		t.Errorf("the SECOND click did not answer the dialog. The operator was told 'click again to "+
+			"act'; if the second click is inert the rule has cost them the ability to answer at "+
+			"all.\n%s", zjhgScreen(p))
+	} else {
+		t.Log("second click: dialog answered — the rule delays action, it does not prevent it")
+	}
 }

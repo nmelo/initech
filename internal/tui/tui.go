@@ -131,6 +131,17 @@ type mouseSelection struct {
 	endY         int
 	startRow     int // contentOffset snapshot at mouse-down.
 	renderOffset int
+
+	// swallowed records that this gesture's press was NOT forwarded to the
+	// child because the pane was unfocused at the time (ini-pzx0, focus-first).
+	// It is the GESTURE's memory, and it has to be, because the alternative --
+	// re-testing "is this pane focused" in the drag and release cases -- splits
+	// the pair exactly when the rule fires: focus lands at press, so by release
+	// the pane IS focused and the release would forward alone. A child that
+	// validates press/release identity before completing a click then sees an
+	// orphan release, which is the ini-82k mismatched-pair defect from the
+	// other side. Decided once, at press; obeyed by every event after it.
+	swallowed bool
 }
 
 // TUI is the main terminal multiplexer. It owns the tcell screen,

@@ -41,10 +41,27 @@ func (t *TUI) handleMouse(ev *tcell.EventMouse) {
 			}
 			r := pr.Region
 			if mx >= r.X && mx < r.X+r.W && my >= r.Y && my < r.Y+r.H {
-				if t.layoutState.Focused != agentKey(pv) {
+				// FOCUS FIRST, EVERYWHERE (ini-pzx0, Nelson's decision). The
+				// first click on an unfocused pane focuses it and NOTHING else;
+				// click again to act. Captured BEFORE the focus mutation below,
+				// because one line later this answer is always false.
+				//
+				// Measured motivation, not a theoretical hardening: a forwarded
+				// click landing on a real permission dialog's option row ANSWERS
+				// it -- dialog gone, command run, no keystroke involved. So the
+				// operator who clicked a pane merely to look at it could approve
+				// a tool call they never read. The dialog-AWARE alternative was
+				// considered and declined by the operator, for a reason this
+				// bead is itself the evidence for: recognition-bounded
+				// protection inherits every gap in the recogniser, and the same
+				// click is inert on Claude's trust prompt and live on its
+				// permission prompt.
+				wasUnfocused := t.layoutState.Focused != agentKey(pv)
+				if wasUnfocused {
 					t.layoutState.Focused = agentKey(pv)
 					t.applyLayout()
 				}
+				t.sel.swallowed = wasUnfocused
 				lx := mx - r.X
 				ly := my - r.Y
 				// Forward click to child PTY (local panes only).
@@ -54,7 +71,9 @@ func (t *TUI) handleMouse(ev *tcell.EventMouse) {
 					if ly < 0 {
 						ly = 0
 					}
-					t.forwardMouseEvent(p, lx, ly, uv.MouseLeft, false, false, ev.Modifiers())
+					if !t.sel.swallowed {
+						t.forwardMouseEvent(p, lx, ly, uv.MouseLeft, false, false, ev.Modifiers())
+					}
 					sr, ro = p.contentOffset()
 				} else {
 					if ly < 0 {
@@ -115,7 +134,12 @@ func (t *TUI) handleMouse(ev *tcell.EventMouse) {
 			if ly >= rows {
 				ly = rows - 1
 			}
-			if p, ok := pv.(*Pane); ok {
+			// A drag that began with a swallowed press stays swallowed through
+			// its motion (ini-pzx0). Selection tracking below is deliberately
+			// NOT gated: swallowing governs what the CHILD sees, not what the
+			// TUI does, so drag-to-select still works on a pane the operator
+			// has only just focused.
+			if p, ok := pv.(*Pane); ok && !t.sel.swallowed {
 				t.forwardMouseEvent(p, lx, ly, uv.MouseLeft, true, false, ev.Modifiers())
 			}
 			t.sel.endX = lx
@@ -138,7 +162,11 @@ func (t *TUI) handleMouse(ev *tcell.EventMouse) {
 			if ly < 0 {
 				ly = 0
 			}
-			if p, ok := pv.(*Pane); ok {
+			// The other half of the pair (ini-pzx0). If the press was swallowed
+			// this release is too -- unconditionally, from the gesture's own
+			// memory rather than from a fresh focus test, which by now would
+			// answer "focused" and forward an orphan.
+			if p, ok := pv.(*Pane); ok && !t.sel.swallowed {
 				// uv.MouseLeft, not uv.MouseNone (ini-82k): this release
 				// always follows a Button1 press (t.sel.active is only set
 				// there), so the button that's being released is always
@@ -157,8 +185,21 @@ func (t *TUI) handleMouse(ev *tcell.EventMouse) {
 			}
 		}
 		t.copySelection()
-		LogDebug("mouse", "release", "sel_start", fmt.Sprintf("(%d,%d)", t.sel.startX, t.sel.startY), "sel_end", fmt.Sprintf("(%d,%d)", t.sel.endX, t.sel.endY))
+		LogDebug("mouse", "release", "sel_start", fmt.Sprintf("(%d,%d)", t.sel.startX, t.sel.startY), "sel_end", fmt.Sprintf("(%d,%d)", t.sel.endX, t.sel.endY),
+			"swallowed", t.sel.swallowed)
 		t.sel.active = false
+		// sel.swallowed is deliberately NOT reset here. It does not need to be:
+		// the press case assigns it unconditionally on every gesture, and it is
+		// only ever read from the drag and release cases, both of which are
+		// gated on sel.active -- which only the press case sets. So the flag
+		// cannot be read before the press that wrote it.
+		//
+		// The first cut of this fix did reset it, and mutation testing caught
+		// the line as dead: deleting it killed no test, because nothing can
+		// observe the difference. A redundant clear is not free -- it advertises
+		// an invariant that does not exist ("the flag might be stale") and
+		// invites the next reader to rely on the clear instead of the
+		// assignment. The invariant that actually holds is stated above.
 
 	case ev.Buttons()&tcell.Button2 != 0:
 		// Middle click: forward to focused pane only.
