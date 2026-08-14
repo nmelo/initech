@@ -93,8 +93,15 @@ func TestOverlayDot_SuspendedIsBlueHollow(t *testing.T) {
 	}
 }
 
-// TestRibbon_SuspendedShowsSusp verifies the ribbon badge shows [susp] for
-// suspended panes.
+// TestRibbon_SuspendedShowsSusp verifies the ribbon badge marks suspended
+// panes AND names the wake gesture.
+//
+// The badge was "[susp: any key]" until ini-zffi. It now reads "[susp: any key]"
+// because a suspended pane is an empty state that must teach its own
+// affordance: the operator can bring it back with a single keystroke, and a
+// badge that only names the state leaves them with no way to discover that.
+// The original assertion (suspended panes are visibly suspended) is unchanged
+// and still checked -- only the string it looks for grew.
 func TestRibbon_SuspendedShowsSusp(t *testing.T) {
 	emu := vt.NewSafeEmulator(40, 10)
 	s := tcell.NewSimulationScreen("")
@@ -111,15 +118,15 @@ func TestRibbon_SuspendedShowsSusp(t *testing.T) {
 	}
 	p.Render(s, false, false, 1, Selection{})
 
-	// Ribbon is at row r.Y + r.H - 1 = 10. Scan for "[susp]".
+	// Ribbon is at row r.Y + r.H - 1 = 10. Scan for "[susp: any key]".
 	var buf strings.Builder
 	for x := 0; x < 40; x++ {
 		c, _, _ := s.Get(x, 10)
 		buf.WriteString(c)
 	}
 	ribbon := buf.String()
-	if !strings.Contains(ribbon, "[susp]") {
-		t.Errorf("ribbon = %q, want to contain '[susp]'", ribbon)
+	if !strings.Contains(ribbon, "[susp: any key]") {
+		t.Errorf("ribbon = %q, want to contain '[susp: any key]'", ribbon)
 	}
 }
 
@@ -150,7 +157,7 @@ func TestRibbon_DeadNotSuspendedShowsDead(t *testing.T) {
 	if !strings.Contains(ribbon, "[dead]") {
 		t.Errorf("ribbon = %q, want to contain '[dead]'", ribbon)
 	}
-	if strings.Contains(ribbon, "[susp]") {
+	if strings.Contains(ribbon, "[susp: any key]") {
 		t.Errorf("ribbon = %q, should NOT contain '[susp]' for non-suspended dead pane", ribbon)
 	}
 }

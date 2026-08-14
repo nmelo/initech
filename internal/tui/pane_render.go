@@ -78,8 +78,20 @@ func (p *Pane) Render(screen tcell.Screen, focused bool, dimmed bool, index int,
 
 	// Pane badge: "N name" with optional status indicators.
 	title := fmt.Sprintf(" %d %s ", index, p.name)
-	if p.IsSuspended() {
-		title = fmt.Sprintf(" %d %s [susp] ", index, p.name)
+	if p.IsWaking() {
+		// A wake is in flight. The pane must visibly change the MOMENT the
+		// gesture lands (ini-zffi): the respawn takes ~1.1s, and a pane that
+		// sat on [susp] for that long would read as a keystroke that was
+		// ignored, inviting the operator to press again.
+		title = fmt.Sprintf(" %d %s [waking...] ", index, p.name)
+		titleStyle = tcell.StyleDefault.Background(trueBlack).Foreground(tcell.ColorYellow).Bold(true)
+	} else if p.IsSuspended() {
+		// The badge NAMES THE GESTURE rather than only the state: an empty
+		// state that does not teach its own affordance leaves the operator
+		// with a parked pane and no idea it is one keystroke from alive
+		// (ini-zffi discoverability AC). Kept terse -- a ribbon is as narrow
+		// as the pane, and a hint that truncates teaches nothing.
+		title = fmt.Sprintf(" %d %s [susp: any key] ", index, p.name)
 		titleStyle = tcell.StyleDefault.Background(trueBlack).Foreground(tcell.ColorDodgerBlue).Bold(true)
 	} else if !p.IsAlive() {
 		title = fmt.Sprintf(" %d %s [dead] ", index, p.name)

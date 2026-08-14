@@ -140,6 +140,10 @@ func (t *TUI) HandleExtended(conn net.Conn, req IPCRequest, rawJSON []byte) bool
 		t.handleIPCRemove(conn, req)
 	case "interrupt":
 		t.handleIPCInterrupt(conn, req)
+	case "resume":
+		t.handleIPCResume(conn, req)
+	case "suspend":
+		t.handleIPCSuspend(conn, req)
 	case "attention":
 		t.handleIPCAttention(conn, req)
 	case "emit_event":

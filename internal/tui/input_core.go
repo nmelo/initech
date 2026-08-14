@@ -157,11 +157,56 @@ func (t *TUI) handleKey(ev *tcell.EventKey) bool {
 		}
 	}
 
-	// Everything else goes to the focused pane.
+	// Everything else goes to the focused pane -- unless that pane is
+	// SUSPENDED, in which case the keystroke is the wake gesture and is
+	// CONSUMED, never delivered (ini-zffi).
+	//
+	// The gesture spends itself on the state change, the same principle as
+	// ini-pzx0's focus-click decision. Delivering it as well would forge input
+	// the operator never aimed at the agent: they pressed a key at a parked
+	// pane to bring it back, not to type into whatever prompt the respawned
+	// process happens to show. This return is what makes "consumed" true --
+	// the key cannot reach SendKey on this branch, rather than being skipped
+	// by a condition further down that a later edit could reorder.
 	if fp := t.focusedPane(); fp != nil {
+		if p, ok := fp.(*Pane); ok && p.IsSuspended() {
+			t.wakeSuspendedPaneFromKeystroke(p)
+			return false
+		}
 		fp.SendKey(ev)
 	}
 	return false
+}
+
+// wakeSuspendedPaneFromKeystroke resumes a pane the operator pressed a key at.
+//
+// Off the main goroutine: resumePane blocks for the full respawn (~1.1s
+// measured on real Claude, ini-g7fl), and holding the input path for that long
+// would freeze the display mid-gesture. The spec accepts the synchronous wake
+// but the UI must stay alive while it happens, so the pane shows it is waking
+// and the operator sees the gesture land immediately.
+func (t *TUI) wakeSuspendedPaneFromKeystroke(p *Pane) {
+	p.mu.Lock()
+	if p.waking {
+		p.mu.Unlock()
+		return // Already waking from an earlier keystroke; further keys are still consumed.
+	}
+	p.waking = true
+	p.mu.Unlock()
+
+	t.safeGo(func() {
+		defer func() {
+			p.mu.Lock()
+			p.waking = false
+			p.mu.Unlock()
+		}()
+		if err := t.resumePane(p, "keystroke"); err != nil {
+			// Inherits g7fl: the queue survives, and the failure is loud
+			// rather than a pane that silently stays parked.
+			LogError("resource", "keystroke wake failed", "agent", p.Name(), "err", err)
+			t.noticeWakeFailed(p.Name(), err)
+		}
+	})
 }
 
 func (t *TUI) handleResize() {

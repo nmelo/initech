@@ -110,6 +110,34 @@ func (t *TUI) pollAllRSS() {
 	}
 }
 
+// parkPaneSuspended is THE suspension primitive: the one place a pane enters
+// the suspended state, used by the memory-pressure loop and by the operator's
+// `initech suspend` alike (ini-zffi).
+//
+// ONE MECHANISM, NOT TWO. The spec requires a manually suspended agent to be
+// indistinguishable from an auto-suspended one, with all three wake paths
+// behaving identically against both origins. Two call sites each assembling
+// "the same" state is exactly how that guarantee erodes -- the pane carries no
+// origin flag precisely so there is nothing to diverge on, and the way to keep
+// that true is for there to be one sequence rather than two that agree today.
+//
+// The sequence itself is load-bearing and predates this bead: Close() runs
+// under sendMu so a racing send is serialized rather than interleaved (the
+// ini-9imx transition-race finding), and BOTH suspended and activity are set
+// because updateActivity would otherwise see alive=false + suspended=false and
+// derive StateDead instead of StateSuspended.
+//
+// Caller must be on the main goroutine: Close() touches TUI state.
+func parkPaneSuspended(pane *Pane) {
+	pane.sendMu.Lock()
+	pane.Close()
+	pane.sendMu.Unlock()
+	pane.mu.Lock()
+	pane.suspended = true
+	pane.activity = StateSuspended
+	pane.mu.Unlock()
+}
+
 // suspendCandidate holds the data needed to rank and suspend an agent.
 // suspendEligible reports whether a pane may be auto-suspended under memory
 // pressure. Extracted from the pressure loop so the rules can be asserted
@@ -224,15 +252,7 @@ func (t *TUI) checkSuspendPolicy() {
 		// drives the overlay/ribbon display. Without setting suspended=true,
 		// updateActivity would see alive=false + suspended=false and derive
 		// StateDead instead of StateSuspended.
-		t.runOnMain(func() {
-			victim.pane.sendMu.Lock()
-			victim.pane.Close()
-			victim.pane.sendMu.Unlock()
-			victim.pane.mu.Lock()
-			victim.pane.suspended = true
-			victim.pane.activity = StateSuspended
-			victim.pane.mu.Unlock()
-		})
+		t.runOnMain(func() { parkPaneSuspended(victim.pane) })
 
 		// Update available memory estimate (actual poll happens next cycle).
 		avail += freedKB

@@ -3,6 +3,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -85,11 +86,22 @@ Commands (via ` + "`" + ` modal):
 	RunE: runTUI,
 }
 
+// exitCoder lets a command distinguish a truthful NO-OP from a failure by
+// carrying its own exit code (ini-zffi). `initech resume` on an agent that is
+// already running is not breakage the operator must fix, but it is not success
+// either, and a script needs to tell those apart without parsing prose.
+type exitCoder interface{ ExitCode() int }
+
 // Execute runs the root command.
 func Execute() {
 	if err := executeRoot(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		exitRoot(1)
+		code := 1
+		var ec exitCoder
+		if errors.As(err, &ec) {
+			code = ec.ExitCode()
+		}
+		exitRoot(code)
 	}
 }
 

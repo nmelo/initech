@@ -256,6 +256,7 @@ type Pane struct {
 	memoryRSS             int64             // RSS in kilobytes, updated by memory monitor goroutine.
 	suspended             bool              // True when auto-suspend policy has stopped this pane.
 	messageQueue          []QueuedMessage   // Messages waiting for resume or modal-close. Capped at maxMessageQueue.
+	waking                bool              // A wake is in flight (ini-zffi). Guards against a burst of keystrokes each launching a respawn, and drives the "waking" pane display.
 	modalDraining         bool              // True while a modal-close queue drain is in flight (guarded by p.mu).
 	protected             bool              // Protected agents are never auto-suspended.
 	resumeGrace           time.Time         // Until this time, post-resume grace period is active.
@@ -1538,3 +1539,23 @@ func tcellKeyToUV(ev *tcell.EventKey) uv.KeyPressEvent {
 
 // Ensure io.Writer is implemented (used by readLoop calling emu.Write).
 var _ io.Writer = (*vt.SafeEmulator)(nil)
+
+// QueuedMessageCount reports how many messages are waiting for this pane to
+// resume. Read before a wake so a success message can name what the operator's
+// action actually delivered: resumePane drains the queue as part of waking, so
+// counting afterwards always reports zero (ini-zffi).
+func (p *Pane) QueuedMessageCount() int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return len(p.messageQueue)
+}
+
+// IsWaking reports whether a wake is currently in flight for this pane
+// (ini-zffi). The display uses it so a parked pane visibly changes the moment
+// the operator's gesture lands, rather than sitting on "[suspended]" for the
+// ~1.1s the respawn takes and looking like the keystroke was ignored.
+func (p *Pane) IsWaking() bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.waking
+}

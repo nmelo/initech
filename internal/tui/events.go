@@ -24,7 +24,8 @@ const (
 	EventAgentStuck                              // Extended inactivity or error loop detected.
 	EventAgentIdleWithBead                       // Agent went running->idle while holding a bead.
 	EventAgentSuspended                          // Agent auto-suspended by resource pressure policy.
-	EventAgentResumed                            // Agent resumed from suspension (triggered by message).
+	EventAgentResumed                            // Agent resumed from suspension (by queued message, keystroke, or `initech resume` -- ini-zffi made the trigger plural).
+	EventAgentWakeFailed                         // A wake attempt failed; the message queue is preserved (ini-zffi).
 	EventMessageSent                             // Message delivered to an agent via IPC send.
 	EventAgentStarted                            // Agent pane started via IPC.
 	EventAgentStopped                            // Agent pane stopped via IPC.
@@ -87,6 +88,8 @@ func (e EventType) String() string {
 		return "group_moved"
 	case EventAssignmentWriteRefused:
 		return "assignment-write-refused"
+	case EventAgentWakeFailed:
+		return "wake-failed"
 	case EventLiveSwap:
 		return "live_swap"
 	}
