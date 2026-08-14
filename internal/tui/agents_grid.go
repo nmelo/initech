@@ -105,9 +105,23 @@ func (t *TUI) ensureGroups(persist bool) {
 // Panes with no GroupOf entry are defensively bucketed into "core" rather
 // than dropped from the grid; ensureGroups should make this unreachable in
 // normal operation, but a render must never silently lose an agent.
+//
+// Members are SCOPED to this window unless the modal is expanded (ini-9isx
+// AC5). The scope is decided by visiblePanesForWindow -- the same primitive the
+// layout and the overlay use -- so all three surfaces answer "whose agent is
+// this" identically rather than each deriving it.
+//
+// Indices remain indices into t.panes, deliberately: selection, moves, and
+// fleet numbering all address panes by that index, and re-basing them onto a
+// filtered slice would make every one of those an off-by-scope bug waiting for
+// the first group to move.
 func (t *TUI) agentsGroupMembers() map[string][]int {
+	inScope := t.agentsScopeSet()
 	members := make(map[string][]int)
 	for i, p := range t.panes {
+		if inScope != nil && !inScope[agentKey(p)] {
+			continue
+		}
 		label, ok := t.layoutState.GroupOf[agentKey(p)]
 		if !ok {
 			label = "core"
@@ -115,6 +129,23 @@ func (t *TUI) agentsGroupMembers() map[string][]int {
 		members[label] = append(members[label], i)
 	}
 	return members
+}
+
+// agentsScopeSet returns the agent keys this modal may show, or nil for "no
+// scope" — which is both the expanded view and every single-window session.
+func (t *TUI) agentsScopeSet() map[string]bool {
+	if t.agents.expanded {
+		return nil
+	}
+	scoped := t.visiblePanesForWindow()
+	if len(scoped) == len(t.panes) {
+		return nil // Nothing is out of scope; skip the map entirely.
+	}
+	set := make(map[string]bool, len(scoped))
+	for _, p := range scoped {
+		set[agentKey(p)] = true
+	}
+	return set
 }
 
 // agentsGridPerRow computes cells-per-row: the widest band's member count,
@@ -947,6 +978,22 @@ func (t *TUI) renderAgentsGrid() {
 	for i, ch := range title {
 		if tx+i >= startX+1 && tx+i < startX+boxW-1 {
 			s.SetContent(tx+i, startY, ch, nil, titleStyle)
+		}
+	}
+
+	// Scope disclosure into the BOTTOM border, mirroring the title's use of
+	// the top one (ini-9isx AC6). Placed on the border rather than in a
+	// content row because it needs no vertical budget and therefore cannot be
+	// squeezed out by a tall fleet -- a disclosure that disappears under load
+	// is the one that matters least when it is there and most when it is not.
+	if note := t.agentsScopeNote(); note != "" {
+		nx := startX + 2
+		// Rune-indexed for the same reason as the overlay's line: the note
+		// carries "·", and a byte index smears it across the border.
+		for i, ch := range []rune(note) {
+			if nx+i >= startX+1 && nx+i < startX+boxW-1 {
+				s.SetContent(nx+i, startY+boxH-1, ch, nil, labelStyle)
+			}
 		}
 	}
 

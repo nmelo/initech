@@ -99,6 +99,14 @@ type agentsModal struct {
 	// visual language. Mutually exclusive with searching.
 	creatingGroup bool
 	groupNameBuf  []rune
+
+	// expanded lifts this window's display scope for the modal (ini-9isx):
+	// the default view is this window's own agents, and 'a' reveals the whole
+	// fleet arranged by window so agents can be moved between monitors. It is
+	// VIEW state and nothing else -- moves still route through window-1
+	// authority (la97), and it resets on close so a window never reopens in a
+	// state the operator did not choose this time.
+	expanded bool
 }
 
 // welcomeOverlay is shown once on first launch, then never again.

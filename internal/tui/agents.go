@@ -48,7 +48,12 @@ func (t *TUI) openAgentsModal() {
 	// bands over window 1's real groups (qa1).
 	t.refreshMembershipIfFollower()
 	t.agents.active = true
-	t.agents.selected = 0
+	t.agents.expanded = false
+	// Anchor onto an agent this window actually shows (ini-9isx). Index 0 of
+	// t.panes need not be in this window's scope, and a selection with no cell
+	// on screen makes every navigation key compute against a cell that is not
+	// there.
+	t.agents.selected = t.agentsFirstInScopeIdx()
 	t.agents.moving = false
 	t.agents.error = ""
 	t.agents.searching = false
@@ -67,6 +72,11 @@ func (t *TUI) closeAgentsModal() {
 	t.agents.creatingGroup = false
 	t.agents.groupNameBuf = nil
 	t.agents.active = false
+	// Scope resets on close (ini-9isx AC5): the expanded view is a deliberate
+	// act for a cross-monitor move, not a preference. Persisting it would mean
+	// a window silently reopening unscoped -- which looks exactly like the
+	// scoping feature having failed.
+	t.agents.expanded = false
 	t.agentsPruneEmptyGroups()
 }
 
@@ -150,6 +160,9 @@ func (t *TUI) handleAgentsKey(ev *tcell.EventKey) bool {
 			return false
 		case 'm':
 			t.agentsMoveGroupToNextWindow()
+			return false
+		case 'a':
+			t.agentsToggleExpanded()
 			return false
 		case 'A':
 			t.agentsRevealAll()
@@ -401,6 +414,47 @@ func (t *TUI) agentsToggleProtected() {
 		lp.SetProtected(protect)
 	}
 	t.saveLayoutIfConfigured()
+}
+
+// agentsToggleExpanded lifts or restores this window's display scope in the
+// modal (ini-9isx AC5). Expanded shows the whole fleet under the existing
+// per-window tiers, which is what makes a cross-monitor move possible from a
+// secondary window: you cannot grab what you cannot see.
+//
+// Selection is re-anchored, not preserved by index: collapsing while a
+// selection sits on another window's agent would leave the cursor addressing a
+// pane with no cell on screen, and every navigation key would then compute
+// against a cell that is not there.
+func (t *TUI) agentsToggleExpanded() {
+	t.agents.expanded = !t.agents.expanded
+	t.agents.moving = false
+	if t.screen == nil {
+		// No geometry available (headless): re-anchor by scope alone.
+		t.agents.selected = t.agentsFirstInScopeIdx()
+		return
+	}
+	cells := t.agentsCurrentCells()
+	if agentsCellForPane(cells, t.agents.selected) != nil {
+		return
+	}
+	if len(cells) > 0 {
+		t.agents.selected = cells[0].paneIdx
+	}
+}
+
+// agentsFirstInScopeIdx returns the t.panes index of the first agent this
+// window's modal shows, or 0 when nothing is scoped out.
+func (t *TUI) agentsFirstInScopeIdx() int {
+	inScope := t.agentsScopeSet()
+	if inScope == nil {
+		return 0
+	}
+	for i, p := range t.panes {
+		if inScope[agentKey(p)] {
+			return i
+		}
+	}
+	return 0
 }
 
 // agentsRevealAll unhides all agents.

@@ -105,3 +105,11 @@ internal/tui/suspend_fate_rig_test.go        windows  # real-PTY suspension fate
 # where that TUI and a PTY master both exist; the guard halves it informs are
 # untagged and run on all three platforms.
 internal/tui/zjhg_rig_test.go                windows  # real-Claude dialog measurement rig (gated INITECH_ZJHG=1)
+
+# ── ini-9isx composed two-window rig ───
+# Genuine constraint: spawns two REAL initech binaries under PTYs (creack/pty,
+# unix-only master API) and asserts on window 2's rendered screen. Gated
+# INITECH_9ISX=1. The predicates it composes are untagged and run on all three
+# platforms in window_display_test.go; this file adds only the live two-window
+# composition that AC10 requires.
+internal/tui/ninisx_rig_test.go              windows  # composed two-window PTY rig (gated INITECH_9ISX=1)

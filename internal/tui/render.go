@@ -710,10 +710,18 @@ func drawField(s tcell.Screen, x, y, width int, text string, style tcell.Style) 
 func (t *TUI) renderOverlay() {
 	s := t.screen
 
-	agents := make([]AgentInfo, len(t.panes))
+	// SCOPED TO THIS WINDOW (ini-9isx AC4), through the same primitive the
+	// layout uses -- so "which agents are this window's" is one fact with one
+	// answer, not two lists that can drift. In a single-window session, or with
+	// every group on this window, it returns the whole fleet and nothing below
+	// changes.
+	scoped := t.visiblePanesForWindow()
+	scopeHidden, scopeWhere := t.scopeDisclosure()
+
+	agents := make([]AgentInfo, len(scoped))
 	maxNameLen := 0
 	hiddenCount := 0
-	for i, p := range t.panes {
+	for i, p := range scoped {
 		vis := !t.layoutState.Hidden[agentKey(p)]
 		act := p.Activity()
 		// Overlay shows activity state only; bead info is in the pane ribbon.
@@ -723,11 +731,11 @@ func (t *TUI) renderOverlay() {
 		if !pin {
 			_, pin = t.layoutState.LivePinned[pk]
 		}
-		remote := p.Host() != ""
-		displayName := p.Name()
-		if remote {
-			displayName = p.Host() + ":" + p.Name()
-		}
+		// Window-alias prefixes are dropped, cross-machine hosts kept, and the
+		// [R] badge now means what it says -- another MACHINE, not another
+		// window of this fleet (ini-9isx AC1/AC2).
+		remote := paneIsRemoteMachine(p)
+		displayName := paneDisplayName(p)
 		_, livePin := t.layoutState.LivePinned[pk]
 		agents[i] = AgentInfo{Name: displayName, Status: status, Activity: act, Visible: vis, Protected: t.layoutState.Protected[pk], LivePinned: livePin, Remote: remote}
 		nameLen := len(displayName)
@@ -761,6 +769,32 @@ func (t *TUI) renderOverlay() {
 	panelH := len(agents) + 2
 	if summaryRow {
 		panelH++
+	}
+
+	// SCOPE DISCLOSURE (ini-9isx AC6) -- a spec requirement, not decoration.
+	// A scoped surface that does not say what it is hiding is
+	// indistinguishable from the accidental divergence the parity invariant
+	// exists to kill, so this line is part of what makes the scoping legal.
+	//
+	// It names alt+a then a, and not a bare key, because bare runes at top
+	// level are the FOCUSED AGENT'S input -- binding one here would steal a
+	// keystroke from every agent, which is the forged-input class ini-pzx0
+	// just closed. Naming a key that does nothing from this surface would be
+	// worse than naming two that work.
+	scopeLine := ""
+	if scopeHidden > 0 {
+		scopeLine = fmt.Sprintf(" +%d %s · alt+a then a shows all", scopeHidden, scopeWhere)
+		panelH++
+		// RUNES, not bytes. The line contains "·" (2 bytes), and the width
+		// budget here must agree with the draw loop below in the SAME unit --
+		// a byte count against a rune walk overflows the panel by one column
+		// per multi-byte rune and clips the tail. The composed two-window rig
+		// caught exactly that: window 2 drew "alt+a then a s" and the
+		// affordance the amended invariant REQUIRES ran off the screen. The
+		// unit fixture had panel slack and never showed it.
+		if w := len([]rune(scopeLine)) + 2; w > panelW {
+			panelW = w
+		}
 	}
 
 	sw, sh := s.Size()
@@ -922,6 +956,30 @@ func (t *TUI) renderOverlay() {
 				}
 			}
 			s.SetContent(px+panelW-1, sumRow, '\u2502', nil, borderStyle)
+		}
+	}
+
+	// Scope disclosure line, below the visible/hidden summary: the two count
+	// different things and must not be conflated. "hidden" is agents this
+	// window owns that the operator has hidden; this line is agents this
+	// window does not own at all.
+	if scopeLine != "" {
+		scopeRow := py + 1 + len(agents)
+		if summaryRow {
+			scopeRow++
+		}
+		if scopeRow+1 < py+panelH {
+			s.SetContent(px, scopeRow, '\u2502', nil, borderStyle)
+			for x := px + 1; x < px+panelW-1; x++ {
+				s.SetContent(x, scopeRow, ' ', nil, bgStyle)
+			}
+			scopeStyle := bgStyle.Foreground(tcell.ColorSilver)
+			for j, ch := range []rune(scopeLine) {
+				if px+1+j < px+panelW-1 {
+					s.SetContent(px+1+j, scopeRow, ch, nil, scopeStyle)
+				}
+			}
+			s.SetContent(px+panelW-1, scopeRow, '\u2502', nil, borderStyle)
 		}
 	}
 

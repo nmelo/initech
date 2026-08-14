@@ -493,7 +493,10 @@ func layoutPath(projectRoot string) string {
 // key prefix. Only viewer panes ever carry these hosts, and a viewer pane is
 // an alias of a window-1 agent, never a distinct one. Cross-machine hosts
 // (workbench:) are distinct agents and MUST NOT match.
-var windowAliasKeyRe = regexp.MustCompile(`^window(?:1|-?[0-9]+):(.+)$`)
+// Built from windowAliasHostPattern (window_display.go) so the irregular
+// family has ONE spelling anchored two ways -- as a whole host there, as a key
+// prefix here -- rather than two patterns that can drift apart (ini-9isx).
+var windowAliasKeyRe = regexp.MustCompile(`^` + windowAliasHostPattern + `:(.+)$`)
 
 // normalizeGroupOfKeys collapses window-alias-prefixed group_of keys onto the
 // canonical bare agent name. Bare wins a conflict (logged once per agent at

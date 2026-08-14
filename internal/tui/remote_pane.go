@@ -420,10 +420,23 @@ func (rp *RemotePane) Render(screen tcell.Screen, focused bool, dimmed bool, ind
 		titleStyle = tcell.StyleDefault.Background(trueBlack).Foreground(tcell.ColorTeal).Bold(true)
 	}
 
-	displayName := rp.host + ":" + rp.name
-	title := fmt.Sprintf(" %d %s [R] ", index, displayName)
+	// THE RIBBON IS THE THIRD DISPLAY SITE of the window-alias prefix, and the
+	// one a text search for the composition pattern does not find, because it
+	// builds the name here rather than at the surface that draws it (ini-9isx
+	// AC1 names overlay, modal AND ribbon). The composed two-window rig is what
+	// found it: window 2's ribbon read "1 window1:eng1 [R]" while its overlay
+	// was already clean.
+	displayName := paneDisplayName(rp)
+	badge := " [R] "
+	if !paneIsRemoteMachine(rp) {
+		// Same correction as the overlay's badge: an agent reached through
+		// window 1 is not on another machine, and saying so twice over (prefix
+		// and badge) was the clutter compounded.
+		badge = " "
+	}
+	title := fmt.Sprintf(" %d %s%s", index, displayName, badge)
 	if !rp.IsAlive() {
-		title = fmt.Sprintf(" %d %s [R][dead] ", index, displayName)
+		title = fmt.Sprintf(" %d %s%s[dead] ", index, displayName, badge)
 		titleStyle = tcell.StyleDefault.Background(trueBlack).Foreground(tcell.ColorRed).Bold(true)
 	}
 

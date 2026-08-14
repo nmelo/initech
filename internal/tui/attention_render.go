@@ -27,11 +27,15 @@ func (t *TUI) waitingRows() []WaitingRow {
 		if !waiting {
 			continue
 		}
-		name := p.Name()
-		if host := p.Host(); host != "" {
-			name = host + ":" + name
-		}
-		rows = append(rows, WaitingRow{Name: name, Preview: preview, Since: since})
+		// paneDisplayName drops the window-1 observer alias and keeps a real
+		// cross-machine host (ini-9isx). The list itself stays FLEET-WIDE:
+		// this loop walks t.panes, never the window-scoped set, because
+		// attention is never scoped -- an agent waiting on the operator must
+		// be discoverable from every window, whichever monitor it renders on.
+		// That is a normative rule in docs/spec.md, not an implementation
+		// convenience, and it is the one thing display scoping must never
+		// reach into.
+		rows = append(rows, WaitingRow{Name: paneDisplayName(p), Preview: preview, Since: since})
 	}
 	return rows
 }

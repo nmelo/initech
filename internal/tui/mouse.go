@@ -24,8 +24,16 @@ func (t *TUI) handleMouse(ev *tcell.EventMouse) {
 			agentStartY := t.overlayBounds.y + 1
 			if mx == dotCol && my >= agentStartY && my < agentStartY+t.overlayBounds.agentCount {
 				idx := my - agentStartY
-				if idx >= 0 && idx < len(t.panes) {
-					t.toggleHidden(agentKey(t.panes[idx]))
+				// Index the SAME list the overlay drew (ini-9isx). The overlay
+				// is window-scoped, so t.panes[idx] is a different agent than
+				// the row under the cursor the moment any group lives on
+				// another window -- the click would silently hide a bystander,
+				// on a surface whose whole purpose is showing you what is
+				// where. Row N of the drawn list must resolve to entry N of
+				// the drawn list.
+				rows := t.visiblePanesForWindow()
+				if idx >= 0 && idx < len(rows) {
+					t.toggleHidden(agentKey(rows[idx]))
 					return
 				}
 			}
