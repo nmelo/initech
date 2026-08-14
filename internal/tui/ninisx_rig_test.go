@@ -117,13 +117,30 @@ func nineISXListenAddr(t *testing.T, root string) string {
 }
 
 // rigRequireServing is DEFENSE 2 (ini-tcxe): a rig whose server never came
-// up must not produce a verdict.
+// up must not produce a verdict. It catches TOTAL failure -- nothing listening
+// at all -- and nothing more.
 //
-// Its limit is deliberate and is why defense 3 exists: a successful dial proves
-// SOMETHING is listening, never that it is OURS. Window 1's bind failure is
-// non-fatal in the PRODUCT by design (tui.go:893 -- a secondary window is an
-// enhancement and must not kill a session whose agents are already running),
-// which is correct and unchanged; the abort belongs here.
+// ITS LIMIT IS MEASURED, not assumed, and it is sharper than I first wrote it.
+// A mutant that genuinely holds the reserved port (listener kept referenced so
+// it cannot be finalized away) makes window 1 fail to bind -- and this check
+// PASSES, because the dial connects to the very socket that did the blocking.
+// The run still aborts, but downstream, when window 2 cannot render the agents
+// it owns. So this function must never be described as proving window 1 is
+// serving: it proves something is.
+//
+// That is precisely why the bead asked for three INDEPENDENT defenses rather
+// than one good one. Identity is defense 3's job and only defense 3's: a fleet
+// can only be rendered by a process that speaks the handshake, so a dumb socket
+// cannot fake it.
+//
+// (The first attempt at that mutant was INVALID and briefly looked like a
+// survivor: it dropped ln.Close() but kept no reference, so the listener was
+// finalized and the port was never actually held. An invalid mutant proves
+// nothing -- it just runs the unmutated scenario with extra steps.)
+//
+// Window 1's bind failure is non-fatal in the PRODUCT by design (tui.go:893 --
+// a secondary window is an enhancement and must not kill a session whose agents
+// are already running), which is correct and unchanged; the abort belongs here.
 func rigRequireServing(t *testing.T, addr string) {
 	t.Helper()
 	deadline := time.Now().Add(30 * time.Second)
