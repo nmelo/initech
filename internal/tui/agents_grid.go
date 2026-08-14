@@ -72,7 +72,17 @@ func (t *TUI) ensureGroups(persist bool) {
 	changed := false
 	for _, p := range t.panes {
 		key := paneKey(p)
-		if _, ok := t.layoutState.GroupOf[key]; ok {
+		if existing, ok := t.layoutState.GroupOf[key]; ok {
+			// DEAD-GROUP RULE, runtime half (ini-qkwc AC3): an entry pointing
+			// at a group missing from Groups must surface the group, not
+			// swallow the agent -- the modal renders bands from Groups, so a
+			// referenced-but-unlisted label made its members vanish from the
+			// viewer while window 1 showed them.
+			if !seen[existing] {
+				t.layoutState.Groups = append(t.layoutState.Groups, existing)
+				seen[existing] = true
+				changed = true
+			}
 			continue
 		}
 		label := groupFor(p.Name())

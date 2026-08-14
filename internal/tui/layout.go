@@ -11,6 +11,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/nmelo/initech/internal/config"
@@ -503,6 +505,48 @@ func validWindowID(windowID string) bool {
 	return windowID == "" || config.ValidPeerName(windowID)
 }
 
+// windowAliasKeyRe matches group_of keys written under the WINDOW-ALIAS
+// family -- xq4r's exact irregular trio (window1:, window-N:, windowN:) as a
+// key prefix. Only viewer panes ever carry these hosts, and a viewer pane is
+// an alias of a window-1 agent, never a distinct one. Cross-machine hosts
+// (workbench:) are distinct agents and MUST NOT match.
+var windowAliasKeyRe = regexp.MustCompile(`^window(?:1|-?[0-9]+):(.+)$`)
+
+// normalizeGroupOfKeys collapses window-alias-prefixed group_of keys onto the
+// canonical bare agent name. Bare wins a conflict (logged once per agent at
+// WARN, naming both values); an agent present ONLY under a prefixed key keeps
+// its group under the bare name rather than being dropped.
+func normalizeGroupOfKeys(in map[string]string) (map[string]string, bool) {
+	if len(in) == 0 {
+		return in, false
+	}
+	out := make(map[string]string, len(in))
+	healed := false
+	// Bare keys first, so the conflict rule is order-independent.
+	for k, v := range in {
+		if !windowAliasKeyRe.MatchString(k) {
+			out[k] = v
+		}
+	}
+	for k, v := range in {
+		m := windowAliasKeyRe.FindStringSubmatch(k)
+		if m == nil {
+			continue
+		}
+		healed = true
+		bare := m[1]
+		if existing, ok := out[bare]; ok {
+			if existing != v {
+				LogWarn("layout", "group_of identity-family conflict; bare key wins",
+					"agent", bare, "bare_group", existing, "aliased_group", v, "aliased_key", k)
+			}
+			continue
+		}
+		out[bare] = v
+	}
+	return out, healed
+}
+
 // stampFleetThenApplyOrder stamps each local pane's fleet-canonical number
 // from its CREATION position, then applies the window's saved arrangement.
 //
@@ -543,6 +587,11 @@ func SaveLayoutForWindow(projectRoot, windowID string, state LayoutState) error 
 	if !validWindowID(windowID) {
 		return fmt.Errorf("invalid window id %q: must contain only letters, digits, or hyphens", windowID)
 	}
+	// WRITE GUARD (ini-qkwc AC4): no window-alias key ever persists again,
+	// regardless of which future caller built the map. Read-side healing
+	// without this is a leak with a mop -- a viewer whose paneKeys carry the
+	// window1: host would re-contaminate its file on every save.
+	normalizedGroupOf, _ := normalizeGroupOfKeys(state.GroupOf)
 	pl := PersistentLayout{
 		Grid:         fmt.Sprintf("%dx%d", state.GridCols, state.GridRows),
 		GridExplicit: state.GridExplicit,
@@ -550,7 +599,7 @@ func SaveLayoutForWindow(projectRoot, windowID string, state LayoutState) error 
 		Order:        state.Order,
 		LiveAuto:     state.LiveAuto,
 		Groups:       state.Groups,
-		GroupOf:      state.GroupOf,
+		GroupOf:      normalizedGroupOf,
 	}
 	// Hidden/Protected/LivePinned are deliberately NOT written: they are
 	// session-global and live in fleet-state.yaml (ini-9ka.10). A layout file
@@ -688,9 +737,21 @@ func LoadLayoutForWindow(projectRoot, windowID string, paneKeys []string) (Layou
 	// the same "no empty bands surface" invariant the agents-grid modal
 	// enforces on close, applied here too since a stale-key filter is
 	// exactly the other way a band can end up empty (ini-2rc).
+	// NORMALIZE THE IDENTITY FAMILY FIRST (ini-qkwc, the xq4r class one store
+	// over): group_of may hold window-alias-prefixed keys ("window1:eng1")
+	// alongside bare ones, written by a viewer whose paneKeys carry the host
+	// alias. Those are the SAME agents, not distinct ones -- and resolving
+	// them per-window split the fleet: window 1 read the bare family, window
+	// 2 read the prefixed family, and agents whose prefixed keys pointed at a
+	// group absent from the groups list silently vanished from the viewer's
+	// modal. Bare wins a conflict (it is what window 1 writes today), logged
+	// once at WARN. Cross-machine host prefixes (workbench:eng1) are REAL
+	// distinct agents and pass through untouched.
+	normalized, healed := normalizeGroupOfKeys(pl.GroupOf)
+
 	var groupOf map[string]string
 	memberCount := make(map[string]int)
-	for name, label := range pl.GroupOf {
+	for name, label := range normalized {
 		if shouldKeepPersistedPaneKey(name, known) {
 			if groupOf == nil {
 				groupOf = make(map[string]string)
@@ -700,9 +761,38 @@ func LoadLayoutForWindow(projectRoot, windowID string, paneKeys []string) (Layou
 		}
 	}
 	var groups []string
+	inGroups := make(map[string]bool)
 	for _, label := range pl.Groups {
 		if memberCount[label] > 0 {
 			groups = append(groups, label)
+			inGroups[label] = true
+		}
+	}
+	// DEAD-GROUP RULE (ini-qkwc AC3, surfacing chosen over swallowing): a
+	// group referenced by a surviving group_of entry but absent from the
+	// groups list is APPENDED, sorted for stability -- the operator grouped
+	// those agents deliberately, and the alternative was agents silently
+	// missing from the modal.
+	var resurfaced []string
+	for label, n := range memberCount {
+		if n > 0 && !inGroups[label] {
+			resurfaced = append(resurfaced, label)
+		}
+	}
+	sort.Strings(resurfaced)
+	groups = append(groups, resurfaced...)
+
+	// PERSIST THE HEAL ONCE (ini-m495's rule applied to this store): the
+	// loading window owns its layout file, so writing the normalized form
+	// back is per-window property, not shared session state -- civ satisfied
+	// by ownership. Without this the heal re-runs and re-logs on every load
+	// forever, and the disk form never converges.
+	if healed {
+		pl.GroupOf = normalized
+		if data, err := yaml.Marshal(&pl); err == nil {
+			if err := writeFileAtomic(layoutPathFor(projectRoot, windowID), data, 0600); err != nil {
+				LogWarn("layout", "could not persist group_of heal; will re-heal next load", "err", err)
+			}
 		}
 	}
 

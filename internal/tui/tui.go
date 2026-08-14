@@ -883,6 +883,11 @@ func Run(cfg Config) error {
 			if isSecondaryWindowIdentity(cfg.Project.PeerName) {
 				t.windowID = cfg.Project.PeerName
 			}
+			// The authority persists any legacy-identity heal ONCE
+			// (ini-m495); a viewer's load stays read-only per civ.
+			if t.windowID == WindowOne {
+				a.PersistHealIfNeeded()
+			}
 			t.liveness = newWindowLivenessTracker()
 			LogInfo("window", "multi-monitor rendering active", "window_id", t.windowID)
 		}

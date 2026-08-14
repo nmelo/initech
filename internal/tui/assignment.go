@@ -82,6 +82,11 @@ type persistentAssignment struct {
 // immediately, and a model that relies on the caller remembering to save is a
 // footgun for the modal UI (ini-9ka.5) that will drive it.
 type WindowAssignment struct {
+	// healed records that LoadAssignment normalized a legacy identity, so the
+	// authority can persist the healed form ONCE (ini-m495): without the
+	// persist, the heal and its log re-ran on every load forever -- observed
+	// live firing each reconnect cycle for hours.
+	healed      bool
 	root        string
 	groupWindow map[string]string
 
@@ -134,6 +139,9 @@ func assignmentPath(projectRoot string) string {
 // apart.
 func LoadAssignment(projectRoot string) (*WindowAssignment, error) {
 	a := &WindowAssignment{root: projectRoot, groupWindow: map[string]string{}}
+	// a.healed is set below when a legacy identity was normalized; the load
+	// itself stays read-only (viewers call it, and the civ rule forbids their
+	// writing shared state). The AUTHORITY persists via PersistHealIfNeeded.
 
 	data, err := os.ReadFile(assignmentPath(projectRoot))
 	if err != nil {
@@ -152,9 +160,10 @@ func LoadAssignment(projectRoot string) (*WindowAssignment, error) {
 		// window that could never attach (viewers present "window-2"), so the
 		// group's panes rendered nowhere. One-time, logged, save-on-next-move.
 		if m := legacyWindowIDRe.FindStringSubmatch(window); m != nil {
-			healed := "window-" + m[1]
-			LogInfo("assignment", "normalized legacy window identity", "group", group, "from", window, "to", healed)
-			window = healed
+			normalized := "window-" + m[1]
+			LogInfo("assignment", "normalized legacy window identity", "group", group, "from", window, "to", normalized)
+			window = normalized
+			a.healed = true
 		}
 		// Drop entries that could not have been written by MoveGroup. A
 		// hand-edited or truncated store should degrade to the default for
@@ -194,6 +203,24 @@ func (a *WindowAssignment) save() error {
 		return fmt.Errorf("write assignment: %w", err)
 	}
 	return nil
+}
+
+// PersistHealIfNeeded writes the healed store to disk, once, on the window
+// that OWNS the file (ini-m495). Viewers never call this -- LoadAssignment is
+// deliberately read-only because they share it, and the civ rule forbids a
+// viewer writing shared session state. A read-only fallback store never
+// persists either (its save refuses, which is correct: the operator's real
+// state is still in the unreadable file).
+func (a *WindowAssignment) PersistHealIfNeeded() {
+	if a == nil || !a.healed || a.readOnly {
+		return
+	}
+	if err := a.save(); err != nil {
+		LogWarn("assignment", "could not persist identity heal; will re-heal next load", "err", err)
+		return
+	}
+	a.healed = false
+	LogInfo("assignment", "persisted legacy identity heal")
 }
 
 // MoveGroup assigns a group to a window and persists immediately. Moving a
