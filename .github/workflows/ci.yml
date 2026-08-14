@@ -131,4 +131,9 @@ jobs:
           INITECH_9ISX: "1"
           INITECH_X5OB: "1"
           INITECH_AQY: "1"
-        run: go test ./internal/tui/ -count=1 -timeout 900s -run 'NineISXRig|X5obRig|TestAQY_'
+          # ini-35ak's composed rig: a question opening on window 1 must reach
+          # window 2. Added here rather than left env-gated-and-unrun, which is
+          # the shape ini-jlo2 exists to close -- a rig nobody runs is
+          # documentation.
+          INITECH_35AK: "1"
+        run: go test ./internal/tui/ -count=1 -timeout 900s -run 'NineISXRig|X5obRig|AttentionRig|TestAQY_'

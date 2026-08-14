@@ -356,7 +356,7 @@ func TestParity_AgentStatusBroadcastCarriesAllBeads(t *testing.T) {
 	waitForClients(t, ws, 1)
 
 	want := []string{"ini-aaa", "ini-bbb", "ini-ccc"}
-	ws.broadcastAgentStatus("eng1", want, "three beads in flight")
+	ws.broadcastAgentStatus("eng1", want, "three beads in flight", WaitingState{})
 
 	c2.SetReadDeadline(time.Now().Add(5 * time.Second))
 	scanner := NewIPCScanner(c2)

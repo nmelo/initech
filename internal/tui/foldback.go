@@ -493,6 +493,11 @@ const agentStatusAction = "agent_status"
 type agentStatusSnapshot struct {
 	beads string // Joined, for cheap comparison only -- the wire carries the slice.
 	desc  string
+	// waiting is part of the compared state so BOTH EDGES fire (ini-35ak): a
+	// raise and a CLEAR are the same detector seeing a different value, not a
+	// clear path bolted on beside a raise path. A clear that is a special case
+	// is how a stale row survives an answered dialog.
+	waiting WaitingState
 }
 
 // broadcastAgentStatusChanges pushes per-agent bead/description updates to
@@ -524,19 +529,20 @@ func (t *TUI) broadcastAgentStatusChanges() {
 		beads := p.BeadIDs()
 		desc := p.SessionDesc()
 		key := agentKey(p)
-		next := agentStatusSnapshot{beads: strings.Join(beads, "\x00"), desc: desc}
+		ws := waitingStateOf(p)
+		next := agentStatusSnapshot{beads: strings.Join(beads, "\x00"), desc: desc, waiting: ws}
 		if prev, seen := t.agentStatus[key]; seen && prev == next {
 			continue
 		}
 		t.agentStatus[key] = next
-		t.windowSrv.broadcastAgentStatus(p.Name(), beads, desc)
+		t.windowSrv.broadcastAgentStatus(p.Name(), beads, desc, ws)
 	}
 }
 
 // broadcastAgentStatus pushes one agent's state to every attached window.
 // Best-effort per recipient, for the same reason as broadcastSessionNotice: a
 // window whose stream is already broken is about to be detected as gone.
-func (w *windowServer) broadcastAgentStatus(name string, beads []string, desc string) {
+func (w *windowServer) broadcastAgentStatus(name string, beads []string, desc string, ws WaitingState) {
 	if w == nil || w.daemon == nil {
 		return
 	}
@@ -550,24 +556,26 @@ func (w *windowServer) broadcastAgentStatus(name string, beads []string, desc st
 	}
 	for _, ctrl := range ctrls {
 		writeJSON(ctrl, ControlResp{ //nolint:errcheck
-			Action: agentStatusAction,
-			Name:   name,
-			Beads:  beads,
-			Bead:   primary, // Wire compatibility, same as AgentStatus.
-			Text:   desc,
+			Action:       agentStatusAction,
+			Name:         name,
+			Beads:        beads,
+			Bead:         primary, // Wire compatibility, same as AgentStatus.
+			Text:         desc,
+			WaitingState: ws,
 		})
 	}
 }
 
 // applyAgentStatus updates the named remote pane from a broadcast (ini-9ka.11).
 // The receiving half of broadcastAgentStatus.
-func (t *TUI) applyAgentStatus(name string, beads []string, desc string) {
+func (t *TUI) applyAgentStatus(name string, beads []string, desc string, ws WaitingState) {
 	for _, pv := range t.panes {
 		rp, ok := pv.(*RemotePane)
 		if !ok || rp.Name() != name {
 			continue
 		}
 		rp.ApplyStatus(beads, desc)
+		rp.ApplyWaiting(ws)
 		return
 	}
 }

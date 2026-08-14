@@ -45,7 +45,13 @@ type RemotePane struct {
 	lastOut     time.Time
 	beadIDs     []string
 	sessDesc    string
-	region      Region
+
+	// waiting is window 1's needs-input state for this agent, pushed over the
+	// wire (ini-35ak). A viewer never derives it: it cannot see the agent's
+	// PTY, so the authority that watches the dialog is the only process that
+	// can know.
+	waiting WaitingState
+	region  Region
 
 	goWg sync.WaitGroup // Tracks readLoop goroutine. Close waits on this.
 
@@ -548,6 +554,33 @@ func (rp *RemotePane) Close() {
 // an operator must see, so this must not treat empty as "no update". Callers
 // that mean "no update" simply do not call. The slice is copied so a caller
 // reusing its buffer cannot mutate this pane's state afterwards.
+// WaitingInput reports the needs-input state window 1 pushed for this agent,
+// satisfying waitingPane (ini-35ak).
+//
+// THIS METHOD IS THE BEAD. waitingRows and shouldChime both do p.(waitingPane)
+// and skip anything that does not implement it, so before this existed every
+// remote pane was skipped BEFORE scoping was ever consulted -- which is why a
+// viewer had never chimed or listed a window-1 agent in any release. The walk
+// itself needed no change; it only needed remote panes to be able to answer.
+//
+// Returns the same shape as *Pane's: a zero time when not waiting.
+func (rp *RemotePane) WaitingInput() (bool, time.Time, string) {
+	rp.mu.Lock()
+	defer rp.mu.Unlock()
+	return rp.waiting.Waiting, rp.waiting.Since(), rp.waiting.Preview
+}
+
+// ApplyWaiting records what window 1 last said about this agent's wait.
+//
+// Assignment, not merge: the authority's latest word is the whole truth, and
+// the CLEAR edge is just a WaitingState whose Waiting is false. Treating the
+// clear as a special case is how a stale row survives an answered dialog.
+func (rp *RemotePane) ApplyWaiting(ws WaitingState) {
+	rp.mu.Lock()
+	defer rp.mu.Unlock()
+	rp.waiting = ws
+}
+
 func (rp *RemotePane) ApplyStatus(beads []string, desc string) {
 	rp.mu.Lock()
 	defer rp.mu.Unlock()

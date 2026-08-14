@@ -74,7 +74,7 @@ type peerManager struct {
 	// onAgentStatus is called when window 1 broadcasts an agent's observed
 	// state (ini-9ka.11). primary is AgentStatus.Bead, used only when beads is
 	// empty because the peer predates the plural field.
-	onAgentStatus func(name string, beads []string, primary, desc string)
+	onAgentStatus func(name string, beads []string, primary, desc string, ws WaitingState)
 	// onForwardSend is called when a daemon pushes a forward_send command
 	// through the control stream. The TUI delivers the message to the
 	// local pane named by target. Returns an error if the pane doesn't exist.
@@ -335,7 +335,7 @@ func (pm *peerManager) consumeEvents(peerName string, pc *peerConn, done chan st
 				}
 			case agentStatusAction:
 				if pm.onAgentStatus != nil {
-					pm.onAgentStatus(ev.Name, ev.Beads, ev.Bead, ev.Text)
+					pm.onAgentStatus(ev.Name, ev.Beads, ev.Bead, ev.Text, ev.WaitingState)
 				}
 			case identityTakenOverAction:
 				LogWarn("remote", "identity taken over", "peer", peerName, "reason", ev.Text)
@@ -461,7 +461,8 @@ func (pm *peerManager) SetOnPaneOwnership(fn func(owner map[string]string)) {
 }
 
 // SetOnAgentStatus registers the callback fired when window 1 broadcasts an
-// agent's bead/description state (ini-9ka.11).
-func (pm *peerManager) SetOnAgentStatus(fn func(name string, beads []string, primary, desc string)) {
+// agent's bead/description state (ini-9ka.11) and its needs-input state
+// (ini-35ak).
+func (pm *peerManager) SetOnAgentStatus(fn func(name string, beads []string, primary, desc string, ws WaitingState)) {
 	pm.onAgentStatus = fn
 }

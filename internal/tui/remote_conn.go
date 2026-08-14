@@ -200,6 +200,13 @@ func connectPeer(peerName string, remote config.Remote, project *config.Project)
 				beads = []string{st.Bead}
 			}
 			rp.ApplyStatus(beads, st.Desc)
+			// And the needs-input state (ini-35ak), for the same reason the
+			// bead was seeded here: a window that attaches while an agent is
+			// ALREADY waiting must show it on its first frame. Without this
+			// the viewer stays blind until the next TRANSITION, which for a
+			// question already on screen may never come -- the operator
+			// answers it, and window 2 never knew to tell anyone.
+			rp.ApplyWaiting(st.WaitingState)
 		}
 		rp.Start()
 		panes = append(panes, rp)

@@ -63,6 +63,21 @@ func (t *TUI) render() {
 		}
 	}
 
+	// PUSH WAITING TRANSITIONS TO VIEWERS (ini-35ak).
+	//
+	// Here, immediately after the refresh above, because a dialog opening is
+	// not an input event: nothing the operator does causes it, so nothing
+	// calls applyLayout, which is where this change-check used to run alone.
+	// That is exactly the defect class ini-x5ob cost us -- window 1 having no
+	// event for something it alone can observe.
+	//
+	// This is CHANGE-GATED, not per-frame: broadcastAgentStatusChanges
+	// compares each local agent's state against the last one it sent and
+	// writes only on a difference, so the wire sees one frame when a wait
+	// starts and one when it ends, not one per render. It also returns
+	// immediately in a single-window session, where there is nobody to tell.
+	t.broadcastAgentStatusChanges()
+
 	s.Clear()
 
 	if t.eventLogM.active {

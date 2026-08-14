@@ -176,7 +176,54 @@ type HelloOKMsg struct {
 }
 
 // AgentStatus describes an agent's state for the hello handshake.
+// WaitingState is window 1's view of one agent's needs-input state as it
+// crosses the wire (ini-35ak).
+//
+// It exists because waitingRows and shouldChime gate on the waitingPane
+// interface, RemotePane could not implement it, and so every remote pane was
+// skipped BEFORE scoping was consulted -- a viewer had structurally never
+// chimed or listed a window-1 agent, in any release, while docs/spec.md
+// canonizes that attention is never scoped.
+//
+// Embedded rather than nested so the JSON stays flat, and defined ONCE so the
+// handshake seed and the change broadcast cannot drift into two encodings of
+// one concept.
+//
+// SinceMillis is window 1's clock, and the viewer never recomputes it. Chime
+// bookkeeping compares the instant a wait began (since.Equal(since)) to decide
+// whether a wait is new, so a timestamp that moved on every broadcast would
+// re-announce the same wait on every status frame.
+type WaitingState struct {
+	Waiting     bool   `json:"waiting,omitempty"`
+	SinceMillis int64  `json:"waiting_since_ms,omitempty"`
+	Preview     string `json:"waiting_preview,omitempty"`
+}
+
+// Since reconstructs the wait's start instant. Zero when not waiting, which is
+// what *Pane reports too, so both kinds answer WaitingInput identically.
+func (w WaitingState) Since() time.Time {
+	if w.SinceMillis == 0 {
+		return time.Time{}
+	}
+	return time.UnixMilli(w.SinceMillis)
+}
+
+// waitingStateOf reads a pane's needs-input state for the wire. Panes that
+// cannot detect a dialog report nothing, exactly as they do locally.
+func waitingStateOf(p PaneView) WaitingState {
+	wp, ok := p.(waitingPane)
+	if !ok {
+		return WaitingState{}
+	}
+	waiting, since, preview := wp.WaitingInput()
+	if !waiting {
+		return WaitingState{}
+	}
+	return WaitingState{Waiting: true, SinceMillis: since.UnixMilli(), Preview: preview}
+}
+
 type AgentStatus struct {
+	WaitingState
 	Name     string   `json:"name"`
 	Alive    bool     `json:"alive"`
 	Activity string   `json:"activity"`
@@ -236,9 +283,15 @@ type ControlResp struct {
 	// channel as session_notice, because it is the same kind of fact: the
 	// session's shape as the AUTHORITY sees it.
 	Owner map[string]string `json:"owner,omitempty"`
-	Name  string            `json:"name,omitempty"`  // Agent name for stream_added / agent_status.
-	Beads []string          `json:"beads,omitempty"` // All beads an agent holds (ini-9ka.11 agent_status).
-	Bead  string            `json:"bead,omitempty"`  // Primary bead only; wire compatibility for peers predating Beads.
+	// WaitingState rides agent_status (ini-35ak). Same wire and same envelope
+	// as ownership, deliberately a DIFFERENT payload: Owner is the partition,
+	// which is scoped state, while attention is never scoped. Carrying
+	// attention on the ownership frame would fire partition updates on every
+	// dialog and couple the two in the one direction the spec forbids.
+	WaitingState
+	Name  string   `json:"name,omitempty"`  // Agent name for stream_added / agent_status.
+	Beads []string `json:"beads,omitempty"` // All beads an agent holds (ini-9ka.11 agent_status).
+	Bead  string   `json:"bead,omitempty"`  // Primary bead only; wire compatibility for peers predating Beads.
 }
 
 // RunDaemon starts the headless daemon. Blocks until SIGINT/SIGTERM.
@@ -681,12 +734,17 @@ func (d *Daemon) handleConnection(conn net.Conn) {
 	agents := make([]AgentStatus, len(panesSnap))
 	for i, p := range panesSnap {
 		agents[i] = AgentStatus{
-			Name:     p.Name(),
-			Alive:    p.IsAlive(),
-			Activity: p.Activity().String(),
-			Bead:     p.BeadID(),
-			Beads:    p.BeadIDs(),
-			Desc:     p.SessionDesc(),
+			// Seeded at the handshake so a window attaching while an agent is
+			// ALREADY waiting shows it on its first frame, instead of staying
+			// blind until the next transition (ini-9ka.11's precedent, and the
+			// same late-attach correctness).
+			WaitingState: waitingStateOf(p),
+			Name:         p.Name(),
+			Alive:        p.IsAlive(),
+			Activity:     p.Activity().String(),
+			Bead:         p.BeadID(),
+			Beads:        p.BeadIDs(),
+			Desc:         p.SessionDesc(),
 		}
 	}
 
