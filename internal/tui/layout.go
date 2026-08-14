@@ -15,7 +15,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/nmelo/initech/internal/config"
 	"gopkg.in/yaml.v3"
 )
 
@@ -469,40 +468,24 @@ func layoutDir(projectRoot string) string {
 	return filepath.Join(projectRoot, ".initech")
 }
 
-// layoutPath returns the full path to .initech/layout.yaml.
+// layoutPath returns THE layout file for a project: one file, project-scoped.
+//
+// A VIEWER'S ARRANGEMENT IS SESSION-SCOPED BY DESIGN and starts fresh on every
+// attach. That is a decision, not a gap: ini-9ka.3 added a per-window layout
+// file API, ini-i7fr's census then proved those files were never written or
+// read in ANY release (the only writer resolved the empty window identity, so
+// every window shared this one path), and on 2026-08-13 the operator chose to
+// make reality official rather than build the memory. The dated reversal, with
+// the declined alternative named, is recorded in
+// pm/specs/multi-monitor-windows.md; the retirement is ini-qodm.
+//
+// So there is no per-window layout file, no window identity in this path, and
+// nothing to migrate. What a viewer DOES keep across a restart is fleet-scoped
+// state -- band membership and group assignment -- which lives in the
+// authority's stores and reaches the viewer by the follower read path
+// (ini-la97). Arrangement is the part that resets.
 func layoutPath(projectRoot string) string {
 	return filepath.Join(layoutDir(projectRoot), "layout.yaml")
-}
-
-// layoutPathFor returns the layout file path for a given window identity.
-//
-// The empty identity is window 1 and resolves to the original
-// .initech/layout.yaml, unchanged in both path and format. That is what makes
-// upgrades safe without a migration step: an existing project's layout.yaml
-// from any prior release is simply adopted in place as window 1's file, so
-// there is no rename, copy, or rewrite that could lose it partway (ini-9ka.3).
-//
-// Other windows get .initech/layout-<windowID>.yaml. windowID must already
-// have passed validWindowID; callers reject invalid identities before reaching
-// here rather than sanitizing, so a traversal attempt is a refusal, not a
-// silently rewritten path.
-func layoutPathFor(projectRoot, windowID string) string {
-	if windowID == "" {
-		return layoutPath(projectRoot)
-	}
-	return filepath.Join(layoutDir(projectRoot), "layout-"+windowID+".yaml")
-}
-
-// validWindowID reports whether windowID is safe to embed in a layout
-// filename. The empty identity (window 1) is always valid. Everything else
-// must satisfy the canonical peer-name rule (config.ValidPeerName), which
-// admits only letters, digits, and hyphens — so separators, dots, and ".."
-// are rejected and the resulting path cannot escape .initech. Deliberately
-// reuses the existing validator rather than defining a second regex here,
-// since two independently-maintained rules for the same identity is how they
-// drift apart.
-func validWindowID(windowID string) bool {
-	return windowID == "" || config.ValidPeerName(windowID)
 }
 
 // windowAliasKeyRe matches group_of keys written under the WINDOW-ALIAS
@@ -572,21 +555,8 @@ func stampFleetThenApplyOrder(panes []PaneView, order []string) {
 // SaveLayout writes the layout state to .initech/layout.yaml using atomic write
 // (temp file + rename) to prevent corruption. Creates .initech/ if it doesn't exist.
 //
-// Equivalent to SaveLayoutForWindow with the window-1 identity; kept as the
-// project-scoped entry point every existing caller already uses.
+// The layout file is ONE file per project (ini-qodm).
 func SaveLayout(projectRoot string, state LayoutState) error {
-	return SaveLayoutForWindow(projectRoot, "", state)
-}
-
-// SaveLayoutForWindow writes the layout state for one window identity, so N
-// windows over the same project each persist independently instead of
-// clobbering a single shared file on every layout change (ini-9ka.3). The
-// empty windowID is window 1 and writes the original .initech/layout.yaml.
-// Returns an error for an unsafe windowID rather than sanitizing it.
-func SaveLayoutForWindow(projectRoot, windowID string, state LayoutState) error {
-	if !validWindowID(windowID) {
-		return fmt.Errorf("invalid window id %q: must contain only letters, digits, or hyphens", windowID)
-	}
 	// WRITE GUARD (ini-qkwc AC4): no window-alias key ever persists again,
 	// regardless of which future caller built the map. Read-side healing
 	// without this is a leak with a mop -- a viewer whose paneKeys carry the
@@ -620,7 +590,7 @@ func SaveLayoutForWindow(projectRoot, windowID string, state LayoutState) error 
 	// windows saving concurrently would otherwise stage through the same
 	// .tmp and rename over each other, cross-contaminating final files that
 	// look independent by name (ini-9ka.3).
-	final := layoutPathFor(projectRoot, windowID)
+	final := layoutPath(projectRoot)
 	if err := writeFileAtomic(final, data, 0600); err != nil {
 		return fmt.Errorf("write layout: %w", err)
 	}
@@ -633,27 +603,9 @@ func SaveLayoutForWindow(projectRoot, windowID string, state LayoutState) error 
 // and order preferences, while stale local-only names are filtered out.
 // Returns false if the file doesn't exist, is empty, contains invalid YAML,
 // or would result in all currently known panes hidden.
-// Equivalent to LoadLayoutForWindow with the window-1 identity; kept as the
-// project-scoped entry point every existing caller already uses.
+// The layout file is ONE file per project (ini-qodm).
 func LoadLayout(projectRoot string, paneKeys []string) (LayoutState, bool) {
-	return LoadLayoutForWindow(projectRoot, "", paneKeys)
-}
-
-// LoadLayoutForWindow reads one window identity's layout file and merges it
-// into a LayoutState, with the same filtering and migration behavior as
-// LoadLayout (ini-9ka.3). The empty windowID is window 1 and reads the
-// original .initech/layout.yaml, so a file written by any prior release loads
-// unchanged after upgrade. Returns false for an unsafe windowID, and for the
-// same reasons LoadLayout does: missing, empty, invalid, or all-hidden.
-//
-// Reads exactly one file and consults no other state — in particular it does
-// not read group-to-window assignment (ini-9ka.4), so the two persistence
-// concerns round-trip independently and neither can corrupt the other.
-func LoadLayoutForWindow(projectRoot, windowID string, paneKeys []string) (LayoutState, bool) {
-	if !validWindowID(windowID) {
-		return LayoutState{}, false
-	}
-	data, err := os.ReadFile(layoutPathFor(projectRoot, windowID))
+	data, err := os.ReadFile(layoutPath(projectRoot))
 	if err != nil {
 		return LayoutState{}, false
 	}
@@ -794,7 +746,7 @@ func LoadLayoutForWindow(projectRoot, windowID string, paneKeys []string) (Layou
 	if healed {
 		pl.GroupOf = normalized
 		if data, err := yaml.Marshal(&pl); err == nil {
-			if err := writeFileAtomic(layoutPathFor(projectRoot, windowID), data, 0600); err != nil {
+			if err := writeFileAtomic(layoutPath(projectRoot), data, 0600); err != nil {
 				LogWarn("layout", "could not persist group_of heal; will re-heal next load", "err", err)
 			}
 		}
@@ -830,21 +782,9 @@ func shouldKeepPersistedPaneKey(name string, known map[string]bool) bool {
 // DeleteLayout removes .initech/layout.yaml. Returns nil if the file
 // doesn't exist (idempotent).
 //
-// Equivalent to DeleteLayoutForWindow with the window-1 identity; kept as the
-// project-scoped entry point every existing caller already uses.
+// The layout file is ONE file per project (ini-qodm).
 func DeleteLayout(projectRoot string) error {
-	return DeleteLayoutForWindow(projectRoot, "")
-}
-
-// DeleteLayoutForWindow removes one window identity's layout file, leaving
-// other windows' layouts intact (ini-9ka.3). Idempotent: returns nil if the
-// file does not exist. Returns an error for an unsafe windowID rather than
-// deleting a path derived from it.
-func DeleteLayoutForWindow(projectRoot, windowID string) error {
-	if !validWindowID(windowID) {
-		return fmt.Errorf("invalid window id %q: must contain only letters, digits, or hyphens", windowID)
-	}
-	err := os.Remove(layoutPathFor(projectRoot, windowID))
+	err := os.Remove(layoutPath(projectRoot))
 	if err != nil && !os.IsNotExist(err) {
 		return err
 	}
@@ -925,7 +865,7 @@ func stringToLayoutMode(s string) LayoutMode {
 // the band universe and the agent -> band map, exactly as persisted, under
 // their canonical bare-name keys.
 //
-// It deliberately does NOT go through LoadLayoutForWindow. That path filters
+// It deliberately does NOT go through LoadLayout. That path filters
 // persisted keys against the caller's own known pane keys, which is correct for
 // adopting an ARRANGEMENT (a stale local name should not linger) and actively
 // wrong for reading FLEET state: a viewer's pane keys are alias-prefixed
@@ -949,7 +889,7 @@ func LoadFleetScopedLayout(projectRoot string) (groups []string, groupOf map[str
 	// Normalize in memory ONLY. Both loaders unmarshal the same file, so a
 	// canonicalization on one and not the other is the per-field-fence shape
 	// this bead removes -- but this loader must not PERSIST the result the way
-	// LoadLayoutForWindow does: followers call it, and a viewer writing
+	// LoadLayout does: followers call it, and a viewer writing
 	// project-root state is exactly what ini-la97 closed. Convergence is the
 	// authority's job, on its own load.
 	normalizePersistedIdentities(&pl)

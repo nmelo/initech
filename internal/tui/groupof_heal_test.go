@@ -41,7 +41,7 @@ func writeQkwcLayout(t *testing.T, windowID, content string) string {
 	t.Helper()
 	root := t.TempDir()
 	os.MkdirAll(filepath.Join(root, ".initech"), 0o755)
-	os.WriteFile(layoutPathFor(root, windowID), []byte(content), 0o644)
+	os.WriteFile(layoutPath(root), []byte(content), 0o644)
 	return root
 }
 
@@ -52,7 +52,7 @@ func TestLoadLayout_HealsMixedIdentityFamilies(t *testing.T) {
 	root := writeQkwcLayout(t, "", qkwcSeed)
 	panes := []string{"eng1", "eng2", "qa1"}
 
-	st, ok := LoadLayoutForWindow(root, "", panes)
+	st, ok := LoadLayout(root, panes)
 	if !ok {
 		t.Fatal("seeded layout failed to load")
 	}
@@ -81,7 +81,7 @@ groups:
 group_of:
     "window1:growth": marketing
 `)
-	st, ok := LoadLayoutForWindow(root, "", []string{"growth"})
+	st, ok := LoadLayout(root, []string{"growth"})
 	if !ok {
 		t.Fatal("layout failed to load")
 	}
@@ -113,7 +113,7 @@ groups:
 group_of:
     "workbench:eng1": core
 `)
-	st, ok := LoadLayoutForWindow(root, "", []string{"workbench:eng1"})
+	st, ok := LoadLayout(root, []string{"workbench:eng1"})
 	if !ok {
 		t.Fatal("layout failed to load")
 	}
@@ -130,10 +130,10 @@ func TestLoadLayout_HealPersistsOnce(t *testing.T) {
 	root := writeQkwcLayout(t, "", qkwcSeed)
 	panes := []string{"eng1", "eng2", "qa1"}
 
-	if _, ok := LoadLayoutForWindow(root, "", panes); !ok {
+	if _, ok := LoadLayout(root, panes); !ok {
 		t.Fatal("first load failed")
 	}
-	data, err := os.ReadFile(layoutPathFor(root, ""))
+	data, err := os.ReadFile(layoutPath(root))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -155,10 +155,10 @@ func TestSaveLayout_WriteGuardNormalizes(t *testing.T) {
 	st.Groups = []string{"qa"}
 	st.GroupOf = map[string]string{"window1:eng1": "qa"} // dirty, in memory only
 
-	if err := SaveLayoutForWindow(root, "", st); err != nil {
+	if err := SaveLayout(root, st); err != nil {
 		t.Fatal(err)
 	}
-	data, err := os.ReadFile(layoutPathFor(root, ""))
+	data, err := os.ReadFile(layoutPath(root))
 	if err != nil {
 		t.Fatal(err)
 	}

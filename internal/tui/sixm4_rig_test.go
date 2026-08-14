@@ -18,7 +18,7 @@ package tui
 //
 //	INITECH_6M4=1 go test ./internal/tui/ -run TestSixM4Rig -v -count=1 -timeout 500s
 //
-// It seeds DIVERGENT saved pane orders on BOTH windows, so numbering agreement
+// It seeds a saved pane order for the session, so numbering agreement
 // cannot come from either window's local state agreeing by luck.
 
 import (
@@ -70,11 +70,15 @@ func TestSixM4Rig_ViewerModalParityAndReplaySurvival(t *testing.T) {
 	// fixes shipped over a store the real UI could not create. The placement
 	// leg below assigns eng via the modal's real m key instead -- the full
 	// loop modal-writes -> store -> viewer-filters -> panes move.
-	// Divergent saved orders on BOTH windows.
+	// A saved order for the session. The rig used to ALSO seed a
+	// layout-window-2.yaml to give the two windows "divergent saved orders" --
+	// but nothing ever read that file, in this rig or in any release, so the
+	// divergence it described never existed and every assertion below keys off
+	// window 1's order. ini-qodm retired the per-window surface and the inert
+	// fixture with it: a viewer's arrangement is session-scoped by design and
+	// starts fresh on attach.
 	os.WriteFile(filepath.Join(root, ".initech", "layout.yaml"),
 		[]byte("grid: 4x2\nmode: grid\norder:\n    - eng2\n    - eng1\n    - qa1\n    - pm\n    - growth\n    - shipper\n    - pmm\n    - super\n"), 0o644)
-	os.WriteFile(filepath.Join(root, ".initech", "layout-window-2.yaml"),
-		[]byte("grid: 4x2\nmode: grid\norder:\n    - qa1\n    - super\n    - eng1\n    - pm\n    - eng2\n    - pmm\n    - growth\n    - shipper\n"), 0o644)
 
 	bin := filepath.Join(t.TempDir(), "initech-6m4")
 	build := exec.Command("go", "build", "-o", bin, ".")

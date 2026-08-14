@@ -142,7 +142,7 @@ func TestHealIsIdempotentAndSilentOnSecondLoad(t *testing.T) {
 // pull opposite ways, so neither quietly wins.
 //
 // ini-m495 says a heal must PERSIST or it re-heals forever, and
-// LoadLayoutForWindow does exactly that. ini-la97 says a viewer never writes
+// LoadLayout does exactly that. ini-la97 says a viewer never writes
 // project-root state. LoadFleetScopedLayout is the FOLLOWER's read path, so it
 // normalizes in memory and leaves the file alone; convergence is the
 // authority's job on its own load. Getting this backwards would put a store

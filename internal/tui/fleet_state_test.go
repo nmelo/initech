@@ -377,13 +377,16 @@ func TestFleetState_ThreeStoresArePairwiseIndependent(t *testing.T) {
 		want []string
 	}{
 		{"layout", func(t *testing.T, root string) {
-			if err := SaveLayoutForWindow(root, "two", LayoutState{Mode: LayoutGrid, GridCols: 3, GridRows: 2}); err != nil {
+			// ONE file per project since ini-qodm: the per-window layout files
+			// were never written or read in any release, and the operator
+			// retired the feature rather than build it.
+			if err := SaveLayout(root, LayoutState{Mode: LayoutGrid, GridCols: 3, GridRows: 2}); err != nil {
 				t.Fatal(err)
 			}
-			if _, ok := LoadLayoutForWindow(root, "two", []string{"eng1"}); !ok {
+			if _, ok := LoadLayout(root, []string{"eng1"}); !ok {
 				t.Fatal("layout load failed")
 			}
-		}, []string{"layout-two.yaml"}},
+		}, []string{"layout.yaml"}},
 
 		{"assignment", func(t *testing.T, root string) {
 			a, err := LoadAssignment(root, WindowOne)

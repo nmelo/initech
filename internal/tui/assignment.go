@@ -14,6 +14,7 @@ package tui
 import (
 	"errors"
 	"fmt"
+	"github.com/nmelo/initech/internal/config"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -138,6 +139,23 @@ func newFallbackAssignment(root string) *WindowAssignment {
 		groupWindow: map[string]string{},
 		readOnly:    true,
 	}
+}
+
+// validWindowID reports whether a window identity is one this fleet may use.
+// It admits only letters, digits, and hyphens (the canonical peer-name rule),
+// so separators and dot segments are refused rather than sanitized.
+//
+// It lived in layout.go until ini-qodm, because a window identity used to be
+// embedded in a per-window layout FILENAME and the rule was doing double duty
+// as path-traversal defense. That surface is retired -- layout is one file per
+// project -- so the rule now has exactly one consumer, the assignment store's
+// window identities, and lives beside it.
+//
+// Deliberately reuses config.ValidPeerName rather than defining a second
+// regex: two independently-maintained rules for one identity is how they
+// drift apart.
+func validWindowID(windowID string) bool {
+	return windowID == "" || config.ValidPeerName(windowID)
 }
 
 // assignmentPath returns the full path to .initech/assignments.yaml.
