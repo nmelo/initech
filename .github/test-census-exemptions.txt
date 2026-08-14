@@ -70,6 +70,7 @@ internal/roles/selector_unit_test.go          windows  # undefined: buildDisplay
 internal/tui/window_server_test.go            windows  # tui package hangs 600s on windows CI: goroutines stuck in startWindowServer TCP Accept (run 31651424793)
 internal/tui/protocol_version_test.go         windows  # drives window_server_test.go's startTestWindowServer, which hangs the tui package on windows CI (run 31651424793); the portable half lives untagged in protocol_version_portable_test.go
 internal/tui/qodm_starts_fresh_test.go        windows  # composed two-process retirement check: drives startTestWindowServer plus a real viewer under a PTY (creack/pty), both unavailable on the windows leg
+internal/tui/manual_suspend_test.go           windows  # live-PTY wake fixture is a unix shell pipeline (sh -c printf/cat); on windows the child dies at once and every wake assertion fails for an unrelated reason (run 31804800234). Decision logic stays untagged in manual_suspend_portable_test.go
 internal/tui/parity_test.go                   windows  # same hang: depends on startTestWindowServer, which is what parks in Accept
 
 # ── Compiles for Windows, but RUNTIME portability is genuinely doubtful ───
