@@ -158,10 +158,23 @@ func TestSuspendFate_DirectSendTextPath(t *testing.T) {
 	}
 }
 
-// TestSuspendFate_InterruptAndBead is matrix rows 3-4: interrupt targets the
-// PTY (fate on a suspended pane recorded); bead display is TUI state only and
-// should be unaffected by suspension.
-func TestSuspendFate_InterruptAndBead(t *testing.T) {
+// TestSuspendFate_InterruptAndBeadNameSuspendedStateAndRemedy is matrix rows
+// 3-4, and it is a GATE on ini-g7fl deliverable #3 (feedback truth): both
+// surfaces must name the SUSPENDED state and the resume-on-message remedy, not
+// merely fail.
+//
+// It was Logf-only when it shipped, and qa1's compile-verified mutant -- delete
+// the IsSuspended branch in handleIPCInterrupt -- survived the whole suite while
+// the response silently degraded to the generic "is not running". A test that
+// prints the very string that is allowed to rot is a camera, not a gate: the
+// vacuous-guard family in test form. Two lessons kept as assertions rather than
+// as prose: each cell asserts the suspended-aware CONTENT (so the mutant dies),
+// AND asserts the generic fallback text is ABSENT (so a future refactor cannot
+// satisfy the first check by appending "suspended" to the wrong message).
+//
+// Renamed from TestSuspendFate_InterruptAndBead: the old name claimed exactly
+// the cells it did not discriminate.
+func TestSuspendFate_InterruptAndBeadNameSuspendedStateAndRemedy(t *testing.T) {
 	if os.Getenv("INITECH_9IMX") != "1" {
 		t.Skip("set INITECH_9IMX=1")
 	}
@@ -171,19 +184,57 @@ func TestSuspendFate_InterruptAndBead(t *testing.T) {
 	time.Sleep(500 * time.Millisecond)
 	suspendViaRealPolicy(t, tui, p)
 
+	// Row 3: interrupt. The degraded form under qa1's mutant is
+	// "agent eng1 is not running" -- true of a corpse, wrong for a pane that
+	// resumes on its next message, and it points the operator at a restart that
+	// would discard the queue.
 	conn := &fakeConn{}
 	tui.handleIPCInterrupt(conn, IPCRequest{Action: "interrupt", Target: "eng1"})
 	var resp IPCResponse
-	json.Unmarshal(conn.written[:conn.findNewline()], &resp)
-	t.Logf("INTERRUPT on suspended: OK=%v Error=%q Data=%q -- an interrupt for a process that "+
-		"does not exist", resp.OK, resp.Error, resp.Data)
+	if err := json.Unmarshal(conn.written[:conn.findNewline()], &resp); err != nil {
+		t.Fatalf("unparseable interrupt response %q: %v", conn.written, err)
+	}
+	t.Logf("INTERRUPT on suspended: OK=%v Error=%q", resp.OK, resp.Error)
+	if resp.OK {
+		t.Errorf("interrupt on a suspended pane reported OK=true: there is no process to interrupt, "+
+			"so this is the false-success shape ini-g7fl removed. Error=%q", resp.Error)
+	}
+	if !strings.Contains(resp.Error, "suspended") {
+		t.Errorf("interrupt feedback does not name the SUSPENDED state, so the operator cannot tell "+
+			"a resumable pane from a dead one. Got %q", resp.Error)
+	}
+	if !strings.Contains(resp.Error, "resumes on message") {
+		t.Errorf("interrupt feedback does not name the resume-on-message remedy, which is the whole "+
+			"point of distinguishing suspended from dead. Got %q", resp.Error)
+	}
+	if strings.Contains(resp.Error, "is not running") {
+		t.Errorf("interrupt feedback degraded to the generic not-running text (qa1's surviving mutant "+
+			"is back). Got %q", resp.Error)
+	}
 
+	// Row 4: bead display. Degraded form: "is not alive ...; restart it", which
+	// prescribes exactly the action that discards the queue.
 	conn2 := &fakeConn{}
 	tui.handleIPCBead(conn2, IPCRequest{Action: "bead", Target: "eng1", Text: "ini-test"})
 	var resp2 IPCResponse
-	json.Unmarshal(conn2.written[:conn2.findNewline()], &resp2)
-	t.Logf("BEAD DISPLAY on suspended: OK=%v Error=%q (TUI-state only; expected unaffected)",
-		resp2.OK, resp2.Error)
+	if err := json.Unmarshal(conn2.written[:conn2.findNewline()], &resp2); err != nil {
+		t.Fatalf("unparseable bead response %q: %v", conn2.written, err)
+	}
+	t.Logf("BEAD DISPLAY on suspended: OK=%v Error=%q", resp2.OK, resp2.Error)
+	if resp2.OK {
+		t.Errorf("bead display on a suspended pane reported OK=true; the display state is frozen "+
+			"during suspension, so a silent success is a lie. Error=%q", resp2.Error)
+	}
+	if !strings.Contains(resp2.Error, "suspended") {
+		t.Errorf("bead-display feedback does not name the SUSPENDED state. Got %q", resp2.Error)
+	}
+	if !strings.Contains(resp2.Error, "resumes on message") {
+		t.Errorf("bead-display feedback does not name the resume-on-message remedy. Got %q", resp2.Error)
+	}
+	if strings.Contains(resp2.Error, "restart it") {
+		t.Errorf("bead-display feedback still prescribes a restart, which discards the queue and the "+
+			"suspension bookkeeping -- the exact advice ini-g7fl replaced. Got %q", resp2.Error)
+	}
 }
 
 // ── ini-g7fl: per-entry-point coverage of the three former bypass sites ──
