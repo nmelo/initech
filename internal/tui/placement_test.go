@@ -41,6 +41,11 @@ func placementTUIs(t *testing.T, storeYAML string) (*TUI, *TUI, *WindowAssignmen
 		w2.panes = append(w2.panes, &RemotePane{name: n, host: WindowOnePeerName, alive: true})
 	}
 	w2.ensureGroups(false)
+	// SERVED OWNERSHIP (ini-x5ob): window 1 computes, window 2 is served. A
+	// viewer no longer derives ownership from its own assignment copy, so the
+	// fixture models the handshake. The assertions in this file are unchanged.
+	w2.applyServedPaneOwnership(
+		computePaneOwnership(w2.panes, a, w2.layoutState.GroupOf, map[string]bool{WindowPeerName(2): true}))
 	return w1, w2, a
 }
 
