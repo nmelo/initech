@@ -51,6 +51,29 @@ func nineISXRoot(t *testing.T, assignments string) (root string, nonceAgent stri
 		t.Fatalf("temp: %v", err)
 	}
 	t.Cleanup(func() { os.RemoveAll(root) })
+	// EVIDENCE OUTLIVES THE FIXTURE (ini-tcxe). Registered AFTER the RemoveAll
+	// above so LIFO runs it FIRST: a rig that deletes its own root on failure
+	// destroys the only artifact that can tell a slow path from a dead one.
+	// That is the same instrument-width defect as a narrow capture -- the run
+	// reports "it was blank" and cannot say why.
+	t.Cleanup(func() {
+		if !t.Failed() {
+			return
+		}
+		for _, name := range []string{"initech.log", "crash.log"} {
+			b, err := os.ReadFile(filepath.Join(root, ".initech", name))
+			if err != nil {
+				t.Logf("FAILURE ARTIFACT %s: unreadable (%v)", name, err)
+				continue
+			}
+			lines := strings.Split(strings.TrimRight(string(b), "\n"), "\n")
+			if len(lines) > 120 {
+				lines = lines[len(lines)-120:]
+			}
+			t.Logf("FAILURE ARTIFACT %s (last %d lines):\n%s", name, len(lines),
+				strings.Join(lines, "\n"))
+		}
+	})
 
 	port := rigReserveFreePort(t)
 
