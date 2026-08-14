@@ -5,6 +5,7 @@
 package tui
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -32,6 +33,12 @@ type peerConn struct {
 	// after the session dies to decide terminal-vs-retry. Atomic because the
 	// writer is the mux consumer goroutine and the reader is the manager.
 	evicted atomic.Bool
+	// helloOwner is the ownership map window 1 served in the handshake
+	// (ini-x5ob). Carried on the connection so the manager can apply it the
+	// moment the peer is established -- before the panes are handed over, so
+	// this window plans its agents on the first frame instead of rendering
+	// nothing until the first broadcast arrives.
+	helloOwner map[string]string
 }
 
 // Close releases connection resources: control mux, yamux session (which
@@ -125,17 +132,11 @@ func connectPeer(peerName string, remote config.Remote, project *config.Project)
 		return nil, fmt.Errorf("peer_name mismatch: expected %q, got %q", peerName, serverPeerName)
 	}
 
-	// Read stream_map.
-	if !scanner.Scan() {
+	streamMap, err := readStreamMap(scanner, peerName, &helloOK)
+	if err != nil {
 		ctrl.Close()
 		session.Close()
-		return nil, fmt.Errorf("no stream_map response")
-	}
-	var streamMap StreamMapMsg
-	if err := json.Unmarshal(scanner.Bytes(), &streamMap); err != nil {
-		ctrl.Close()
-		session.Close()
-		return nil, fmt.Errorf("invalid stream_map: %w", err)
+		return nil, err
 	}
 
 	// Create a single ControlMux for all RemotePanes from this peer.
@@ -224,5 +225,61 @@ func connectPeer(peerName string, remote config.Remote, project *config.Project)
 		LogInfo("remote", "push complete", "peer", peerName, "configured", configured, "stopped", stopped)
 	}
 
-	return &peerConn{session: session, mux: mux, panes: panes}, nil
+	return &peerConn{session: session, mux: mux, panes: panes, helloOwner: helloOK.Owner}, nil
+}
+
+// readStreamMap reads control frames until the stream map arrives, matching on
+// ACTION rather than on position (ini-x5ob).
+//
+// The previous form took whatever frame came next and unmarshalled it as a
+// StreamMapMsg. JSON ignores unknown fields, so ANY other control frame parsed
+// "successfully" into a StreamMapMsg with a nil Streams map, and the caller
+// then built ZERO panes without a single error -- a viewer holding a correct
+// ownership map and showing an empty monitor, permanently, because one
+// unrelated message overtook one expected message. Nothing retried.
+//
+// It was reachable because window 1 broadcasts on its own events and one of
+// those events is a window attaching -- precisely the gap between hello_ok and
+// stream_map. Measured at 4 failures in 6 composed runs before the fix.
+//
+// An ownership frame arriving here is kept rather than dropped: it is NEWER
+// than the one hello_ok carried, so it replaces it.
+func readStreamMap(scanner *bufio.Scanner, peerName string, helloOK *HelloOKMsg) (StreamMapMsg, error) {
+	var streamMap StreamMapMsg
+	const maxPreamble = 64 // a bound, not an expectation
+	for i := 0; i < maxPreamble; i++ {
+		if !scanner.Scan() {
+			return streamMap, fmt.Errorf("no stream_map response")
+		}
+		var probe struct {
+			Action string `json:"action"`
+		}
+		if err := json.Unmarshal(scanner.Bytes(), &probe); err != nil {
+			// Names the stream map deliberately: this is the point in the
+			// handshake where it is expected, and an unparseable frame here
+			// is indistinguishable from a malformed stream map from the
+			// caller's side. Keeping that wording also keeps the pre-existing
+			// contract test meaningful rather than editing it to match new
+			// prose.
+			return streamMap, fmt.Errorf("invalid stream_map (unparseable control frame): %w", err)
+		}
+		switch probe.Action {
+		case "stream_map":
+			if err := json.Unmarshal(scanner.Bytes(), &streamMap); err != nil {
+				return streamMap, fmt.Errorf("invalid stream_map: %w", err)
+			}
+			return streamMap, nil
+		case paneOwnershipAction:
+			var ev ControlResp
+			if err := json.Unmarshal(scanner.Bytes(), &ev); err == nil && ev.Owner != nil && helloOK != nil {
+				helloOK.Owner = ev.Owner
+				LogInfo("remote", "ownership arrived before stream_map; kept",
+					"peer", peerName, "agents", len(ev.Owner))
+			}
+		default:
+			LogInfo("remote", "skipping control frame before stream_map",
+				"peer", peerName, "action", probe.Action)
+		}
+	}
+	return streamMap, fmt.Errorf("no stream_map in the first %d control frames", maxPreamble)
 }

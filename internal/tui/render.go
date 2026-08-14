@@ -2,23 +2,24 @@ package tui
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/gdamore/tcell/v2"
 )
 
-// renderEmptyViewerHint draws the single dim centered hint on a secondary
-// window that owns no groups (ini-9fn) -- agents-overlay voice, one line, and
-// it vanishes the moment a group arrives because the condition is derived
-// from the assignment store every frame rather than being state anything has
-// to remember to clear.
+// renderEmptyViewerHint draws the single dim centered sentence explaining why
+// a secondary window is showing nothing (ini-9fn, retriggered by ini-x5ob).
+// Agents-overlay voice, one line, and it vanishes the moment a pane arrives
+// because the condition is derived from the plan every frame rather than
+// being state anything has to remember to clear.
 func (t *TUI) renderEmptyViewerHint(s tcell.Screen, w, h int) {
-	if !t.viewerOwnsNoGroups() {
+	msg := []rune(t.viewerEmptyExplanation())
+	if len(msg) == 0 {
 		return
 	}
 	style := tcell.StyleDefault.Foreground(tcell.ColorGray).Background(trueBlack)
-	msg := []rune(emptyViewerHint)
 	x := (w - len(msg)) / 2
 	if x < 0 {
 		x = 0
@@ -34,7 +35,8 @@ func (t *TUI) renderEmptyViewerHint(s tcell.Screen, w, h int) {
 func (t *TUI) render() {
 	t.renderCount++
 	if t.renderCount <= 5 || t.renderCount%150 == 0 {
-		LogInfo("render", "enter", "frame", t.renderCount, "plan_panes", len(t.plan.Panes))
+		LogInfo("render", "enter", "frame", t.renderCount,
+			"plan_panes", len(t.plan.Panes), "plan_set", planPaneSet(t.plan))
 	}
 	s := t.screen
 
@@ -990,4 +992,24 @@ func (t *TUI) renderOverlay() {
 		s.SetContent(px+i, botRow, '\u2500', nil, borderStyle)
 	}
 	s.SetContent(px+panelW-1, botRow, '\u256f', nil, borderStyle)
+}
+
+// planPaneSet renders a render plan's membership as a sorted, comparable SET
+// of canonical agent identities.
+//
+// Counts cannot distinguish stale membership from correct membership, and that
+// blindness has now cost two triages. ini-x5ob's report is the clean example:
+// the pre-move and post-move memberships were BOTH four panes, so every log
+// line said plan_panes=4 whether the window had re-planned or not, and nothing
+// in the record could tell the two apart. A set can.
+func planPaneSet(plan RenderPlan) string {
+	if len(plan.Panes) == 0 {
+		return "(none)"
+	}
+	names := make([]string, 0, len(plan.Panes))
+	for _, pr := range plan.Panes {
+		names = append(names, agentKey(pr.Pane))
+	}
+	sort.Strings(names)
+	return strings.Join(names, ",")
 }

@@ -94,6 +94,29 @@ type Daemon struct {
 	// the state's scope, not its file.
 	onGroupOf func(GroupOfCmd) error
 
+	// paneOwnership returns window 1's current ownership decision, for the
+	// hello handshake (ini-x5ob). Nil on a cross-machine daemon, which owns no
+	// window partition -- an attaching peer there simply gets no map.
+	paneOwnership func(peer string) map[string]string
+
+	// onWindowAttached fires AFTER a secondary window's hello_ok is written,
+	// on a goroutine of its own so the handshake never waits on the main loop.
+	//
+	// This exists because window 1 had no event for "a viewer attached" at all
+	// (ini-x5ob). applyLayout -- which is what recomputes and re-serves the
+	// ownership map -- is driven entirely by input: keys, the agents grid,
+	// layout presets, a follower's reload. None of those fire when a window
+	// dials in. So a fleet started in the ASSIGN-THEN-ATTACH order computed
+	// ownership once, while no viewer was connected (everything correctly
+	// folded back to window 1), served that map at the handshake, and never
+	// recomputed: window 2 rendered nothing, including its own agents.
+	//
+	// The hello_ok map is a head start, not the guarantee. This is the
+	// guarantee, and it is deliberately an EVENT rather than a poll -- a
+	// per-frame republish was tried and rejected: it puts a broadcast on the
+	// render path, where it can stall the loop it is trying to keep current.
+	onWindowAttached func(peer string)
+
 	// Active client sessions for graceful shutdown.
 	sessionsMu sync.Mutex
 	sessions   []*yamux.Session
@@ -139,6 +162,17 @@ type HelloOKMsg struct {
 	Version  int           `json:"version"`   // Protocol version (1).
 	PeerName string        `json:"peer_name"` // Server's peer name.
 	Agents   []AgentStatus `json:"agents"`    // Current agent states.
+	// Owner carries window 1's pane-ownership decision AT ATTACH (ini-x5ob).
+	//
+	// Serving it in the handshake, rather than leaving it to the first
+	// broadcast, closes a window that would otherwise be real: a viewer
+	// renders nothing until served (it derives no fallback, by design), so an
+	// attach that had to wait for a round trip would plan ZERO panes for a
+	// frame -- and zero planned panes means no emulator is resized, which is
+	// the state that armed the ini-w6z replay crash. The guarantee ini-6m4
+	// bought (a viewer plans its agents immediately on attach) is preserved by
+	// making the answer arrive with the agent list, not after it.
+	Owner map[string]string `json:"owner,omitempty"`
 }
 
 // AgentStatus describes an agent's state for the hello handshake.
@@ -188,18 +222,23 @@ type ControlCmd struct {
 // ControlResp is the response to a control command. It also carries unsolicited
 // server-pushed commands (e.g. forward_send, stream_added) when Action is set.
 type ControlResp struct {
-	ID       string   `json:"id,omitempty"` // Echoed from request for correlation.
-	OK       bool     `json:"ok"`
-	Error    string   `json:"error,omitempty"`
-	Data     string   `json:"data,omitempty"`
-	Action   string   `json:"action,omitempty"`    // Set for unsolicited commands (e.g. "forward_send", "stream_added").
-	Target   string   `json:"target,omitempty"`    // Agent name for forward_send.
-	Text     string   `json:"text,omitempty"`      // Message text for forward_send.
-	Enter    bool     `json:"enter,omitempty"`     // Append Enter for forward_send.
-	StreamID uint32   `json:"stream_id,omitempty"` // yamux stream ID for stream_added.
-	Name     string   `json:"name,omitempty"`      // Agent name for stream_added / agent_status.
-	Beads    []string `json:"beads,omitempty"`     // All beads an agent holds (ini-9ka.11 agent_status).
-	Bead     string   `json:"bead,omitempty"`      // Primary bead only; wire compatibility for peers predating Beads.
+	ID       string `json:"id,omitempty"` // Echoed from request for correlation.
+	OK       bool   `json:"ok"`
+	Error    string `json:"error,omitempty"`
+	Data     string `json:"data,omitempty"`
+	Action   string `json:"action,omitempty"`    // Set for unsolicited commands (e.g. "forward_send", "stream_added").
+	Target   string `json:"target,omitempty"`    // Agent name for forward_send.
+	Text     string `json:"text,omitempty"`      // Message text for forward_send.
+	Enter    bool   `json:"enter,omitempty"`     // Append Enter for forward_send.
+	StreamID uint32 `json:"stream_id,omitempty"` // yamux stream ID for stream_added.
+	// Owner carries window 1's pane-ownership decision (ini-x5ob): canonical
+	// agent key -> owning window id. Rides the same unsolicited-control-event
+	// channel as session_notice, because it is the same kind of fact: the
+	// session's shape as the AUTHORITY sees it.
+	Owner map[string]string `json:"owner,omitempty"`
+	Name  string            `json:"name,omitempty"`  // Agent name for stream_added / agent_status.
+	Beads []string          `json:"beads,omitempty"` // All beads an agent holds (ini-9ka.11 agent_status).
+	Bead  string            `json:"bead,omitempty"`  // Primary bead only; wire compatibility for peers predating Beads.
 }
 
 // RunDaemon starts the headless daemon. Blocks until SIGINT/SIGTERM.
@@ -651,12 +690,18 @@ func (d *Daemon) handleConnection(conn net.Conn) {
 		}
 	}
 
-	// Send hello_ok.
+	// Send hello_ok, carrying window 1's ownership decision so the attaching
+	// window can plan its panes on the very first frame (ini-x5ob).
+	var owner map[string]string
+	if d.paneOwnership != nil {
+		owner = d.paneOwnership(hello.PeerName)
+	}
 	if err := writeJSON(ctrl, HelloOKMsg{
 		Action:   "hello_ok",
 		Version:  ProtocolVersion,
 		PeerName: d.project.PeerName,
 		Agents:   agents,
+		Owner:    owner,
 	}); err != nil {
 		LogWarn("daemon", "failed to send hello_ok", "err", err)
 		return
@@ -708,6 +753,23 @@ func (d *Daemon) handleConnection(conn net.Conn) {
 	}{"replay_done"}); err != nil {
 		LogWarn("daemon", "failed to send replay_done", "err", err)
 		return
+	}
+
+	// NOW tell the TUI a window attached -- after replay_done, i.e. after the
+	// whole positional preamble (hello_ok, stream_map, replay_start,
+	// replay_done) is on the wire.
+	//
+	// This used to fire immediately after hello_ok, which put a broadcast into
+	// the exact gap between hello_ok and stream_map. The client read the next
+	// frame and unmarshalled it as the stream map, got an empty one, and built
+	// no panes -- a blank monitor holding a correct ownership map. The client
+	// side is now robust to out-of-order frames, but the ordering is fixed
+	// here too: a handshake in progress is not a good moment to broadcast at
+	// the window it is still setting up, whatever the receiver tolerates.
+	//
+	// Still off this goroutine: the handshake must never wait on the main loop.
+	if d.onWindowAttached != nil && isSecondaryWindowIdentity(hello.PeerName) {
+		go d.onWindowAttached(hello.PeerName)
 	}
 
 	// Phase 2: start live streaming goroutines (upstream keystrokes +
