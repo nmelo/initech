@@ -386,3 +386,40 @@ func renderPermissionPrompt(emu *vt.SafeEmulator) {
 		_, _ = emu.Write([]byte(row))
 	}
 }
+
+// TestZJHG_BeltPassesWithOperatorTextAlreadyInTheComposer is the ini-4bf2
+// regression, and it lives HERE rather than beside the test that caught the bug
+// because this file is not skipped by -short.
+//
+// That placement is the actual lesson of ini-4bf2. The belt's delivery-
+// regression direction WAS tested — TestInjectText_StashSkipsRetry went red the
+// moment the belt shipped — but that test skips under -short, and both `make
+// test` and CI run -short. A red suite existed for two releases and no gate
+// could see it. A guard nobody runs is not a guard.
+//
+// The state under test is the one the belt's original measurement did not
+// cover: the operator has half-typed text in the composer when a message
+// arrives. Measured on real Claude (INITECH_ZJHG rig, twice): the send path
+// stashes, which EMPTIES the composer before the body is sampled, so the tail
+// does change and the submit goes out; the stash is restored only afterwards.
+// This fixture reproduces that shape -- prior content, then a body that
+// actually renders -- and asserts the message is both delivered and SUBMITTED.
+func TestZJHG_BeltPassesWithOperatorTextAlreadyInTheComposer(t *testing.T) {
+	r := newZJHGRig(t, true)
+	// The operator's own half-written text, plus a prompt glyph, exactly as the
+	// composer looks mid-sentence.
+	_, _ = r.emu.Write([]byte("\x1b[2J\x1b[24;1H❯ half written thought"))
+
+	r.p.SendText("payload-F", true)
+	time.Sleep(bracketedPasteSubmitDelay + 700*time.Millisecond)
+
+	raw, enters := r.bytes()
+	if !strings.Contains(raw, "\x1b[200~payload-F\x1b[201~") {
+		t.Errorf("the body was never delivered with operator text already in the composer; PTY got %q", raw)
+	}
+	if enters == 0 {
+		t.Errorf("the belt WITHHELD a legitimate submit because the composer was not empty when the "+
+			"message arrived. That is the delivery-regression direction ini-zjhg AC item 2 forbids, "+
+			"and it is the exact shape of ini-4bf2. PTY %q", raw)
+	}
+}

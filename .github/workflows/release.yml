@@ -20,8 +20,12 @@ jobs:
         with:
           go-version-file: go.mod
 
+      # test-full, not test: `make test` is -short, which skips the PTY
+      # integration suite. ini-4bf2 shipped in v2.7.9 and v2.8.0 behind exactly
+      # that gap -- a test that WAS red, in a half no gate ran. A ship gate that
+      # cannot see half the suite is not a ship gate for that half.
       - name: Run tests
-        run: make test
+        run: make test-full
 
   release:
     needs: [test]

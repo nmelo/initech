@@ -61,3 +61,29 @@ jobs:
 
       - name: Test
         run: go test ./... -count=1 -short
+
+  # THE NON-SHORT SUITE, on one platform (ini-4bf2).
+  #
+  # Every other leg above runs -short, and so does `make test`, and so did the
+  # release gate. That is not an oversight -- -short skips slow PTY integration
+  # tests and takes the local loop from ~55s to ~14s, which is worth having.
+  # What was missing is that NOTHING ran the other half. A belt regression
+  # (ini-4bf2) reddened TestInjectText_StashSkipsRetry the moment it shipped,
+  # the test did its job, and no gate could see it: main carried a red full
+  # suite through v2.7.9 AND v2.8.0 because every gate wore the same blindfold.
+  #
+  # One platform, not the matrix: the tests this adds are unix-PTY integration
+  # tests that do not run on windows anyway, and the point is coverage of the
+  # skipped HALF, not of every OS. Gated rigs stay opt-in behind their env vars,
+  # so this leg does not spawn Claude sessions.
+  full-suite:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Test (full, no -short)
+        run: make test-full

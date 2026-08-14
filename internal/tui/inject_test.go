@@ -464,6 +464,36 @@ func TestInjectText_StashSkipsRetry(t *testing.T) {
 		}
 	}()
 
+	// Model the child RENDERING the body it is pasted (ini-4bf2). Without this
+	// the fixture describes a child that accepts input and paints nothing --
+	// a state no real agent reaches, and the one state in which the ini-zjhg
+	// belt correctly withholds a submit, because "my text never appeared
+	// anywhere" is exactly what it is built to detect.
+	//
+	// MEASURED before changing this, on real Claude 2.1.232, twice: with the
+	// operator's own half-typed text in the composer, a message arriving on
+	// this same path IS submitted (26ms), and the composer afterwards holds the
+	// restored stash. The stash empties the composer before the body is sampled
+	// and the restore lands after the submit, so the tail does change. The
+	// product is correct on this path; what was wrong was a fixture that put
+	// the POST-submit restored text in place BEFORE the send and then never
+	// rendered the body.
+	go func() {
+		buf := make([]byte, 512)
+		for {
+			tty.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
+			n, err := tty.Read(buf)
+			if n > 0 {
+				if body, ok := bracketedPasteBody(buf[:n]); ok {
+					_, _ = emu.Write([]byte(body))
+				}
+			}
+			if err != nil && !os.IsTimeout(err) {
+				return
+			}
+		}
+	}()
+
 	p := &Pane{
 		name:           "eng1",
 		emu:            emu,

@@ -588,3 +588,71 @@ func TestPZX0Rig_FocusFirstOnARealPermissionDialog(t *testing.T) {
 		t.Log("second click: dialog answered — the rule delays action, it does not prevent it")
 	}
 }
+
+// TestZJHGRig_StashPathStillSubmits is the ini-4bf2 measurement: does the
+// never-submit belt withhold a legitimate PRIMARY submit when the operator has
+// half-typed text in the composer and a message arrives?
+//
+// This is the path zjhg's own measurement did not cover, and it is the
+// delivery-regression direction its AC forbade, so it gets measured on real
+// Claude rather than argued about. The unit fixture cannot answer it: it has no
+// child, so nothing ever renders the body, and it simulates the POST-submit
+// restored text at the PRE-send moment.
+//
+// The sequence under test is the real one: operator types, a message arrives,
+// sendPaneTextLocked fires Ctrl+S (stash), writes the body, and must submit.
+func TestZJHGRig_StashPathStillSubmits(t *testing.T) {
+	if os.Getenv("INITECH_ZJHG") != "1" {
+		t.Skip("set INITECH_ZJHG=1 to run the real-Claude stash-path measurement for ini-4bf2")
+	}
+	if _, err := exec.LookPath("claude"); err != nil {
+		t.Skip("claude not on PATH")
+	}
+
+	p := zjhgClaudePane(t)
+	if _, ok := zjhgWait(func() bool { return zjhgTrustVisible(p) }, 60*time.Second); !ok {
+		t.Fatalf("no trust dialog appeared.\n%s", zjhgScreen(p))
+	}
+	_, _ = p.ptmx.Write([]byte("\r"))
+	if _, ok := zjhgWait(func() bool {
+		return !zjhgTrustVisible(p) && strings.Contains(zjhgScreen(p), "❯")
+	}, 90*time.Second); !ok {
+		t.Fatalf("no composer after the trust dialog.\n%s", zjhgScreen(p))
+	}
+	zjhgClearComposer(p)
+
+	// THE OPERATOR IS MID-SENTENCE. Typed one character at a time, as a human
+	// types -- a bracketed paste would be a different input path and would not
+	// reproduce the state the bug report describes.
+	for _, ch := range []byte("half written thought") {
+		_, _ = p.ptmx.Write([]byte{ch})
+		time.Sleep(30 * time.Millisecond)
+	}
+	time.Sleep(1500 * time.Millisecond)
+	tailWithOperatorText, _ := composerTail(p)
+	t.Logf("composer BEFORE the send (operator's own text): %q", tailWithOperatorText)
+	if !strings.Contains(tailWithOperatorText, "half written") {
+		t.Fatalf("the operator's typed text never reached the composer; the rig cannot measure "+
+			"the stash path.\n%s", zjhgScreen(p))
+	}
+
+	// A message arrives on the real send path: stash, body, submit.
+	sendPaneTextLocked(p, "zjhg-stash-probe-message", true)
+
+	// The submit is observable by its effect: Claude accepts the message and
+	// starts a turn, so the composer no longer holds our body.
+	submitted, ok := zjhgWait(func() bool {
+		screen := zjhgScreen(p)
+		return strings.Contains(screen, "zjhg-stash-probe-message") &&
+			!strings.Contains(zjhgComposerRow(p), "zjhg-stash-probe-message")
+	}, 30*time.Second)
+
+	t.Logf("STASH PATH: submitted=%v after %v; composer row now %q",
+		ok, submitted.Round(time.Millisecond), zjhgComposerRow(p))
+	t.Logf("screen after the send:\n%s", zjhgScreen(p))
+	if !ok {
+		t.Errorf("THE BELT WITHHELD A LEGITIMATE SUBMIT on the stash path: the message reached the " +
+			"composer and was never sent. This is the delivery-regression direction ini-zjhg AC " +
+			"item 2 forbade, and it is a real product defect rather than a fixture artifact.")
+	}
+}
