@@ -296,6 +296,7 @@ func (t *TUI) surfaceSessionNotice(text string) {
 	// polling the file per layout tick; the notice and the plan change land
 	// together, which is also what AC 4's mid-glance rule wants.
 	t.reloadAssignmentIfFollower()
+	t.refreshMembershipIfFollower()
 }
 
 // reloadAssignmentIfFollower re-reads the assignment store on a window that

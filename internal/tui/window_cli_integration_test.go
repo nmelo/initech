@@ -554,6 +554,14 @@ func TestWindowCLI_ViewerTouchesNoProjectRootStore(t *testing.T) {
 		before[name] = body
 	}
 
+	// Since ini-la97 round 2 this rig also exercises the INBOUND membership
+	// path: a viewer now re-reads the fleet-scoped fields on connect and on
+	// modal open. That makes these decoys load-bearing in a second way -- a
+	// read path that writes is exactly what they exist to catch, and the
+	// obvious way to break one is to "refresh" by round-tripping through the
+	// writer. The seeded decoys are canonically keyed, so the refresh really
+	// does consume them rather than skipping over unreadable content.
+	//
 	// `a` opens the agents modal, whose open calls ensureGroups(persist=true)
 	// -- the operator action behind ini-i7fr's measured viewer write.
 	//

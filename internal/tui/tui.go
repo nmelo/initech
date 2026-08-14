@@ -1254,6 +1254,7 @@ func (t *TUI) handlePeerUpdate(peerName string, newPanes []PaneView, connected b
 	// frame (ini-xq4r). No-op on window 1, which owns the store.
 	if connected {
 		t.reloadAssignmentIfFollower()
+		t.refreshMembershipIfFollower()
 	}
 	// Group the NEW panes BEFORE any layout runs (ini-6m4). visiblePanesForWindow
 	// resolves each pane's window through GroupOf; panes that arrived in this

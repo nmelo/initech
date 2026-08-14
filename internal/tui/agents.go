@@ -41,6 +41,12 @@ func (t *TUI) openAgentsModal() {
 	// modal showing a stale tier layout -- the exact 6m4 staleness bug one
 	// store over. The modal is the decision surface; it opens on truth.
 	t.reloadAssignmentIfFollower()
+	// Third store, same boundary (ini-la97 round 2). Membership is fleet-scoped
+	// and window 1 may have regrouped since this window attached, so the modal
+	// -- the decision surface -- opens on truth for membership too, not just
+	// for fleet marks and tiers. Without this a viewer renders default role
+	// bands over window 1's real groups (qa1).
+	t.refreshMembershipIfFollower()
 	t.agents.active = true
 	t.agents.selected = 0
 	t.agents.moving = false

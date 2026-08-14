@@ -916,3 +916,31 @@ func stringToLayoutMode(s string) LayoutMode {
 		return LayoutGrid
 	}
 }
+
+// LoadFleetScopedLayout reads ONLY the fleet-scoped fields of the layout store:
+// the band universe and the agent -> band map, exactly as persisted, under
+// their canonical bare-name keys.
+//
+// It deliberately does NOT go through LoadLayoutForWindow. That path filters
+// persisted keys against the caller's own known pane keys, which is correct for
+// adopting an ARRANGEMENT (a stale local name should not linger) and actively
+// wrong for reading FLEET state: a viewer's pane keys are alias-prefixed
+// presentation identities, so the filter drops every canonically-keyed
+// membership entry and the viewer sees no membership at all (ini-la97 round 2,
+// found by qa1). Fleet-scoped state is read as written; the caller maps it onto
+// its own panes by canonical name.
+//
+// Read-only by construction: it opens the file and returns values. ok is false
+// for a missing, empty, or unparseable store, so a caller can keep what it has
+// rather than blanking on a transient failure.
+func LoadFleetScopedLayout(projectRoot string) (groups []string, groupOf map[string]string, ok bool) {
+	data, err := os.ReadFile(layoutPath(projectRoot))
+	if err != nil || len(strings.TrimSpace(string(data))) == 0 {
+		return nil, nil, false
+	}
+	var pl PersistentLayout
+	if err := yaml.Unmarshal(data, &pl); err != nil {
+		return nil, nil, false
+	}
+	return pl.Groups, pl.GroupOf, true
+}

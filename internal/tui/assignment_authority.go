@@ -152,6 +152,10 @@ func (t *TUI) sendGroupOfCmd(agentName, label string) error {
 	if !resp.OK {
 		return fmt.Errorf("window 1 refused the regroup: %s", resp.Error)
 	}
+	// Window 1 applied and persisted it; re-read so this window shows what the
+	// authority actually recorded rather than what it optimistically drew --
+	// the same follower refresh sendFleetStateCmd and sendGroupWindowCmd do.
+	t.refreshMembershipIfFollower()
 	return nil
 }
 
@@ -191,4 +195,82 @@ func (t *TUI) applyGroupOfCmd(cmd GroupOfCmd) error {
 	}
 	t.saveLayoutIfConfigured()
 	return nil
+}
+
+// ---------- inbound fleet-scoped membership (ini-la97 round 2) ----------
+
+// refreshMembershipIfFollower re-reads the FLEET-SCOPED fields of the layout
+// store on a window that does not own it, mirroring refreshFleetIfFollower and
+// reloadAssignmentIfFollower one store over.
+//
+// Round 1 of ini-la97 routed membership viewer -> window 1 and closed every
+// viewer write path, but gave the viewer no way to LEARN what window 1 holds.
+// A restarted viewer therefore fell back to default role bands while window 1
+// held the real groups, and an agent the viewer never regrouped disagreed from
+// first attach (qa1, 2026-08-14). Closing the write door without opening a read
+// door leaves the same two-truths state this bead exists to end.
+//
+// WHY RE-READING THE FILE IS THE WHOLE MECHANISM, and not a new channel:
+// multi-window is same-machine by construction -- both windows read the same
+// project root -- which is exactly the reasoning refreshFleetIfFollower records
+// for hidden/protected. This is that proven pattern applied to the fleet-scoped
+// half of layout.yaml.
+//
+// WHY THERE IS NO KEY TRANSLATION HERE: the store's canonical key is the bare
+// agent name, and every pane already exposes precisely that as Name(). The
+// lookup uses the canonical identity the systemdesign invariant designates,
+// leaving paneKey as what that invariant calls it -- a view-scoped presentation
+// identity, never persisted and now never consulted for fleet-scoped lookup.
+// No second identity generator is introduced.
+//
+// ARRANGEMENT IS DELIBERATELY NOT READ. Order, grid and mode are viewer-local
+// and session-scoped (pm's routing-boundary ruling); adopting window 1's
+// arrangement here would undo the starts-fresh behavior that ruling preserves.
+func (t *TUI) refreshMembershipIfFollower() {
+	// The authority never reloads: it is the only writer, so its in-memory
+	// copy IS the truth and a reload could only introduce a second one. This
+	// is the never-rereads premise held true by construction, not by habit.
+	if t.isFleetAuthority() || t.projectRoot == "" {
+		return
+	}
+	groups, groupOf, ok := LoadFleetScopedLayout(t.projectRoot)
+	if !ok {
+		// No store yet, or unreadable. Keep what this window already shows: a
+		// transient read failure must not blank the viewer's membership, the
+		// same choice reloadAssignmentIfFollower makes.
+		return
+	}
+
+	if t.layoutState.GroupOf == nil {
+		t.layoutState.GroupOf = make(map[string]string)
+	}
+	// MERGE with the store winning, rather than replacing wholesale. Replacing
+	// would erase entries for panes the store does not know about, and merging
+	// the other way would let ensureGroups' role DEFAULTS outrank window 1's
+	// real membership -- which is the very defect being fixed. Store wins, so
+	// the merge is order-independent with respect to ensureGroups.
+	for _, p := range t.panes {
+		if label, found := groupOf[p.Name()]; found {
+			t.layoutState.GroupOf[paneKey(p)] = label
+		}
+	}
+
+	// Adopt window 1's band universe too. Membership is not only the per-agent
+	// map: a label this window does not list is a band with members and no
+	// tier, which renders nowhere at all (the ini-i7fr orphan shape).
+	seen := make(map[string]bool, len(groups))
+	adopted := make([]string, 0, len(groups)+len(t.layoutState.Groups))
+	for _, g := range groups {
+		if !seen[g] {
+			seen[g] = true
+			adopted = append(adopted, g)
+		}
+	}
+	for _, g := range t.layoutState.Groups {
+		if !seen[g] {
+			seen[g] = true
+			adopted = append(adopted, g)
+		}
+	}
+	t.layoutState.Groups = adopted
 }
