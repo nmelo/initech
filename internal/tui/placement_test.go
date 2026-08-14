@@ -41,6 +41,11 @@ func placementTUIs(t *testing.T, storeYAML string) (*TUI, *TUI, *WindowAssignmen
 		w2.panes = append(w2.panes, &RemotePane{name: n, host: WindowOnePeerName, alive: true})
 	}
 	w2.ensureGroups(false)
+	// SERVED OWNERSHIP (ini-x5ob): window 1 computes, window 2 is served. A
+	// viewer no longer derives ownership from its own assignment copy, so the
+	// fixture models the handshake. The assertions in this file are unchanged.
+	w2.applyServedPaneOwnership(
+		computePaneOwnership(w2.panes, a, w2.layoutState.GroupOf, map[string]bool{WindowPeerName(2): true}))
 	return w1, w2, a
 }
 
@@ -48,7 +53,7 @@ func planNames(t *testing.T, tui *TUI, connected map[string]bool) []string {
 	t.Helper()
 	var out []string
 	for _, p := range tui.panes {
-		if rendersInWindow(agentKey(p), tui.windowID, tui.assignment, tui.layoutState.GroupOf, connected) {
+		if ownerOfAgent(agentKey(p), tui.assignment, tui.layoutState.GroupOf, connected) == tui.windowID {
 			out = append(out, p.Name())
 		}
 	}
@@ -164,7 +169,7 @@ func TestPlacement_HiddenWinsBothOrders(t *testing.T) {
 			}
 			visible2 := 0
 			for _, p := range w2.panes {
-				if rendersInWindow(agentKey(p), w2.windowID, a, w2.layoutState.GroupOf, conn) &&
+				if (ownerOfAgent(agentKey(p), a, w2.layoutState.GroupOf, conn) == w2.windowID) &&
 					!w2.layoutState.Hidden[agentKey(p)] {
 					visible2++
 				}
@@ -319,69 +324,132 @@ func TestFleetSurfaces_ScopedByDefaultWholeFleetOnExpand(t *testing.T) {
 // (post-crash-loop, a black window reads as a broken one), never auto-assign
 // (initech does not decide his monitor layout).
 
-// TestViewerOwnsNoGroups_BothEntrancesOneState pins the condition across both
-// ways of arriving at emptiness, and the vanish the moment a group arrives.
-func TestViewerOwnsNoGroups_BothEntrancesOneState(t *testing.T) {
+// serveViewer models the handshake AND the plan that follows it: window 1
+// computes ownership, the viewer is served it, and the viewer plans exactly
+// what it owns. Both halves are the fixture's job. Serving without planning is
+// the broken state itself, not a shortcut for setting one up.
+func serveViewer(t *testing.T, w *TUI, a *WindowAssignment) {
+	t.Helper()
+	owner := computePaneOwnership(w.panes, a, w.layoutState.GroupOf,
+		map[string]bool{w.windowID: true})
+	w.applyServedPaneOwnership(owner)
+	w.plan = RenderPlan{}
+	for _, p := range w.panes {
+		if owner[agentKey(p)] == w.windowID {
+			w.plan.Panes = append(w.plan.Panes, PaneRender{})
+		}
+	}
+}
+
+// TestViewerEmptyExplanation_BothEntrancesOneState pins the condition across
+// both ways of arriving at emptiness, and the vanish the moment a group
+// arrives.
+//
+// Retargeted from viewerOwnsNoGroups by ini-x5ob, deliberately and with the
+// intent preserved: the two entrances and the vanish are still the contract.
+// What changed is the SOURCE. The old predicate read the assignment while the
+// panes came from served ownership, so the hint could stay silent about a plan
+// it was written to explain -- which is exactly what it did on the operator's
+// screen. The trigger is now the plan.
+func TestViewerEmptyExplanation_BothEntrancesOneState(t *testing.T) {
 	// Entrance 1: first attach, nothing ever assigned.
 	_, w2, a := placementTUIs(t, "group_window: {}\n")
-	if !w2.viewerOwnsNoGroups() {
-		t.Fatal("first attach with nothing assigned: the hint condition is false, so the " +
-			"operator gets the bare black window he explicitly rejected")
+	serveViewer(t, w2, a)
+	if got := w2.viewerEmptyExplanation(); got != emptyViewerHint {
+		t.Fatalf("first attach with nothing assigned explains itself as %q, want the "+
+			"no-groups copy: the operator gets the bare black window he explicitly "+
+			"rejected", got)
 	}
 
 	// A group arrives: the hint vanishes with no state to clear.
 	if err := mustAssignWriter(t, a).MoveGroup("eng", "window-2"); err != nil {
 		t.Fatal(err)
 	}
-	if w2.viewerOwnsNoGroups() {
-		t.Fatal("a group is assigned and the hint condition is still true; the hint would " +
-			"cover live panes")
+	serveViewer(t, w2, a)
+	if got := w2.viewerEmptyExplanation(); got != "" {
+		t.Fatalf("a group is assigned and rendering, and the window still explains itself "+
+			"as %q; the hint would cover live panes", got)
 	}
 
 	// Entrance 2: the last group moves away again.
 	if err := mustAssignWriter(t, a).MoveGroup("eng", WindowOne); err != nil {
 		t.Fatal(err)
 	}
-	if !w2.viewerOwnsNoGroups() {
-		t.Fatal("last group moved away: same state as first attach, and the hint condition " +
-			"must be true by derivation, not by someone remembering to set it")
+	serveViewer(t, w2, a)
+	if got := w2.viewerEmptyExplanation(); got != emptyViewerHint {
+		t.Fatalf("last group moved away explains itself as %q, want the no-groups copy: "+
+			"same state as first attach, and it must hold by derivation rather than by "+
+			"someone remembering to set it", got)
 	}
 }
 
-// TestViewerOwnsNoGroups_NeverLies pins the states where the copy would be
-// false and the hint must therefore not show: window 1 (it renders orphans and
-// its own agents; 'no groups assigned' is not its vocabulary), a viewer before
-// its panes arrive (the fleet is not known yet, and 'press Alt+a' over a
-// connecting screen misdirects), and a viewer whose assigned panes are all
-// hidden (groups ARE assigned; hidden is a different fact with different
-// copy ownership).
-func TestViewerOwnsNoGroups_NeverLies(t *testing.T) {
-	w1, w2, _ := placementTUIs(t, "group_window:\n    eng: window-2\n")
+// TestViewerEmptyExplanation_NeverLies pins the states where each sentence
+// would be false. Window 1 never speaks either (it renders orphans and is the
+// fallback surface), a viewer that has not been served says it is WAITING
+// rather than claiming nothing is assigned, and a viewer that owns agents and
+// is somehow rendering none says nothing at all -- that is a defect, and
+// reassuring copy over a defect is worse than silence.
+func TestViewerEmptyExplanation_NeverLies(t *testing.T) {
+	w1, w2, a := placementTUIs(t, "group_window:\n    eng: window-2\n")
 
-	if w1.viewerOwnsNoGroups() {
-		t.Error("window 1 claims to be an unassigned viewer")
+	if got := w1.viewerEmptyExplanation(); got != "" {
+		t.Errorf("window 1 explains itself as %q; it is never an unassigned viewer", got)
 	}
 	// Window 1 with EVERY group assigned away is the discriminating case: it
-	// owns nothing by the store's arithmetic, and the hint must still never
-	// show there -- window 1 renders orphans and is the fallback surface, so
-	// "no groups assigned" is not its vocabulary. (Mutation-found: dropping
-	// the windowID gate passed the earlier w1 case because that w1 owned
-	// groups; only this one forces the gate to exist.)
+	// owns nothing by the store's arithmetic, and must still stay silent.
+	// (Mutation-found: dropping the windowID gate passed the earlier w1 case
+	// because that w1 owned groups; only this one forces the gate to exist.)
 	w1bare, _, _ := placementTUIs(t, "group_window:\n    core: window-2\n    qa: window-2\n    eng: window-2\n")
-	if w1bare.viewerOwnsNoGroups() {
-		t.Error("window 1 with every group assigned away shows the viewer hint; window 1 is " +
-			"the orphan/fallback surface and never an 'unassigned viewer'")
-	}
-	if w2.viewerOwnsNoGroups() {
-		t.Error("a viewer WITH an assigned group shows the no-groups hint")
+	if got := w1bare.viewerEmptyExplanation(); got != "" {
+		t.Errorf("window 1 with every group assigned away explains itself as %q; window 1 "+
+			"is the orphan/fallback surface", got)
 	}
 
-	pre := newTestTUI() // viewer pre-connect: no panes yet
-	pre.windowID = "window-2"
-	pre.assignment = w2.assignment
-	if pre.viewerOwnsNoGroups() {
-		t.Error("a viewer with no panes (still connecting) shows the hint; the fleet is not " +
-			"known yet and the copy would misdirect")
+	serveViewer(t, w2, a)
+	if got := w2.viewerEmptyExplanation(); got != "" {
+		t.Errorf("a viewer WITH an assigned group rendering panes explains itself as %q", got)
+	}
+
+	// UNSERVED, and this is the case the old predicate got wrong: the
+	// assignment says this window owns eng, so the old reading concluded
+	// "not empty" and stayed silent while the window rendered nothing.
+	unserved := newTestTUI()
+	unserved.windowID = "window-2"
+	unserved.assignment = a
+	unserved.panes = append(unserved.panes, &RemotePane{name: "eng1", host: WindowOnePeerName, alive: true})
+	if got := unserved.viewerEmptyExplanation(); got != unservedViewerHint {
+		t.Errorf("an unserved viewer explains itself as %q, want the waiting copy -- the "+
+			"assignment naming this window is exactly why the old predicate stayed "+
+			"silent over a blank screen", got)
+	}
+
+	// STILL RECEIVING PANES: served correctly, owns agents, but none have
+	// arrived yet. This is the state that left the operator staring at a bare
+	// window on eng2's heavier rig -- ownership lands on the handshake in one
+	// message while panes come separately over per-agent streams, and under
+	// load the gap is seconds. It is a wait, and it must say so.
+	connecting := newTestTUI()
+	connecting.windowID = "window-2"
+	connecting.assignment = a
+	connecting.applyServedPaneOwnership(map[string]string{"eng1": "window-2"})
+	if got := connecting.viewerEmptyExplanation(); got != unservedViewerHint {
+		t.Errorf("a served viewer whose panes have not arrived explains itself as %q, want "+
+			"the waiting copy: silence here is the bare unexplained window", got)
+	}
+
+	// Owns agents, HAS them, renders none: silence, because either sentence
+	// would be a lie that papers over a defect.
+	// Owns agents, HAS them, and still plans none. The panes matter: a viewer
+	// with no panes at all is merely still receiving them, which is a wait and
+	// not a defect, and says so. This one has the pane and drew nothing.
+	owning := newTestTUI()
+	owning.windowID = "window-2"
+	owning.assignment = a
+	owning.panes = append(owning.panes, &RemotePane{name: "eng1", host: WindowOnePeerName, alive: true})
+	owning.applyServedPaneOwnership(map[string]string{"eng1": "window-2"})
+	if got := owning.viewerEmptyExplanation(); got != "" {
+		t.Errorf("a viewer that owns agents but renders none explains itself as %q; that "+
+			"state is a bug and must surface as one, not as copy", got)
 	}
 }
 
@@ -396,6 +464,14 @@ func TestRenderEmptyViewerHint_DrawsTheDecidedCopyCentered(t *testing.T) {
 	tui.assignment = a
 	tui.panes = []PaneView{&RemotePane{name: "super", host: WindowOnePeerName, alive: true}}
 	tui.ensureGroups(false)
+	// SERVED, and served NOTHING (ini-x5ob). "You own nothing" is an answer
+	// window 1 gives; a viewer that has never been served has no basis to
+	// claim it, and now says so with a different sentence. This fixture must
+	// therefore model a viewer that HAS been told, or it renders the waiting
+	// line and this test asserts the wrong empty state. The decided-copy
+	// assertion below is untouched.
+	tui.applyServedPaneOwnership(
+		computePaneOwnership(tui.panes, a, tui.layoutState.GroupOf, map[string]bool{"window-2": true}))
 	// The lone group is assigned to window 1 (absent = window 1), so this
 	// viewer owns nothing and the hint must draw.
 	w, h := screen.Size()

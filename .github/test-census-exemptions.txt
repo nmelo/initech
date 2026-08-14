@@ -71,6 +71,7 @@ internal/tui/window_server_test.go            windows  # tui package hangs 600s 
 internal/tui/protocol_version_test.go         windows  # drives window_server_test.go's startTestWindowServer, which hangs the tui package on windows CI (run 31651424793); the portable half lives untagged in protocol_version_portable_test.go
 internal/tui/qodm_starts_fresh_test.go        windows  # composed two-process retirement check: drives startTestWindowServer plus a real viewer under a PTY (creack/pty), both unavailable on the windows leg
 internal/tui/manual_suspend_test.go           windows  # live-PTY wake fixture is a unix shell pipeline (sh -c printf/cat); on windows the child dies at once and every wake assertion fails for an unrelated reason (run 31804800234). Decision logic stays untagged in manual_suspend_portable_test.go
+internal/tui/x5ob_composed_test.go            windows  # composed ownership leg drives startWindowServer TCP accept, which hangs the tui package on windows CI (run 31651424793)
 internal/tui/parity_test.go                   windows  # same hang: depends on startTestWindowServer, which is what parks in Accept
 
 # ── Compiles for Windows, but RUNTIME portability is genuinely doubtful ───
@@ -113,3 +114,4 @@ internal/tui/zjhg_rig_test.go                windows  # real-Claude dialog measu
 # platforms in window_display_test.go; this file adds only the live two-window
 # composition that AC10 requires.
 internal/tui/ninisx_rig_test.go              windows  # composed two-window PTY rig (gated INITECH_9ISX=1)
+internal/tui/x5ob_rig_test.go                windows  # composed two-window PTY rig (gated INITECH_X5OB=1)

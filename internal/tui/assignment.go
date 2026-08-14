@@ -327,6 +327,18 @@ func (a *WindowAssignment) moveGroup(group, windowID string) error {
 // WindowOfGroup returns the window a group is assigned to. Any group with no
 // explicit entry -- including one never seen before -- is on window 1, so this
 // always returns exactly one window and never reports "unassigned".
+// GroupWindows returns a COPY of the group -> window mapping, for callers
+// that must resolve ownership off the main goroutine (ini-x5ob). A copy, not
+// the map: the store keeps mutating under the authority's own edits, and a
+// shared reference would be a data race dressed as an accessor.
+func (a *WindowAssignment) GroupWindows() map[string]string {
+	out := make(map[string]string, len(a.groupWindow))
+	for g, w := range a.groupWindow {
+		out[g] = w
+	}
+	return out
+}
+
 func (a *WindowAssignment) WindowOfGroup(group string) string {
 	if w, ok := a.groupWindow[group]; ok {
 		return w

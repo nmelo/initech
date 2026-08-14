@@ -52,6 +52,11 @@ type peerManager struct {
 	// changing -- a window folding back or reattaching -- rather than one
 	// agent's activity, so every attached window renders them.
 	onSessionNotice func(text string)
+
+	// onPaneOwnership delivers window 1's ownership decision (ini-x5ob). It is
+	// how a secondary learns which panes it renders; it derives nothing
+	// itself.
+	onPaneOwnership func(owner map[string]string)
 	// onEvicted is called AT MOST ONCE, when this client concludes another
 	// process has taken over its window identity -- either by the server's
 	// explicit verdict or by inference from consecutive immediate evictions
@@ -198,6 +203,16 @@ func (pm *peerManager) managePeer(peerName string, remote config.Remote) {
 		attempt = 0
 		connectedAt := time.Now()
 		LogInfo("remote", "connected", "peer", peerName, "agents", len(pc.panes))
+		// OWNERSHIP BEFORE PANES (ini-x5ob). A window renders only what it has
+		// been served, so applying the handshake's ownership map first is what
+		// lets it plan its agents on the very first frame. Handing over the
+		// panes first would leave a frame with panes and no ownership -- zero
+		// planned panes, which is the state that armed the ini-w6z replay
+		// crash and the guarantee ini-6m4 bought.
+		if pm.onPaneOwnership != nil && pc.helloOwner != nil {
+			LogInfo("remote", "pane ownership at handshake", "peer", peerName, "agents", len(pc.helloOwner))
+			pm.onPaneOwnership(pc.helloOwner)
+		}
 		pm.onPanesChanged(peerName, pc.panes, true)
 
 		// Start heartbeat: ping every 30s. On failure, close the session
@@ -328,6 +343,11 @@ func (pm *peerManager) consumeEvents(peerName string, pc *peerConn, done chan st
 				// Close now so waitForDisconnect returns promptly; managePeer
 				// reads the flag and terminates instead of redialing.
 				pc.Close()
+			case paneOwnershipAction:
+				if pm.onPaneOwnership != nil {
+					LogInfo("remote", "pane ownership from window 1", "peer", peerName, "agents", len(ev.Owner))
+					pm.onPaneOwnership(ev.Owner)
+				}
 			case sessionNoticeAction:
 				if pm.onSessionNotice != nil {
 					LogInfo("remote", "session notice from window 1", "peer", peerName, "text", ev.Text)
@@ -432,6 +452,12 @@ func (pm *peerManager) SetOnEvicted(fn func(peerName, reason string)) {
 
 func (pm *peerManager) SetOnSessionNotice(fn func(text string)) {
 	pm.onSessionNotice = fn
+}
+
+// SetOnPaneOwnership registers the callback fired when window 1 serves its
+// ownership decision (ini-x5ob).
+func (pm *peerManager) SetOnPaneOwnership(fn func(owner map[string]string)) {
+	pm.onPaneOwnership = fn
 }
 
 // SetOnAgentStatus registers the callback fired when window 1 broadcasts an

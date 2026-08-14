@@ -34,41 +34,14 @@ import (
 	"time"
 )
 
-// rendersInWindow reports whether windowID should render the given agent,
-// given the current assignment and the set of currently-attached secondary
-// windows. This is the single source of truth for "which window shows this
-// agent", read by the render path and by fold-back alike.
+// OWNERSHIP IS NO LONGER DECIDED HERE (ini-x5ob). rendersInWindow used to
+// answer "does this window render this agent" independently in every process,
+// over three inputs each process kept its own copy of -- which is why the
+// partition was not exclusive and failed in both directions (double and hole).
+// It is deleted rather than deprecated: while it existed, a future call site
+// could reintroduce a second computer of ownership, and the invariant this bug
+// purchased is that ownership has exactly ONE. See partition_authority.go.
 //
-// connected holds the identities of attached SECONDARY windows. Window 1 is
-// never in it: window 1 is the session itself, so if it is gone there is
-// nothing left to render into.
-//
-// The two branches are deliberately asymmetric, because the windows are:
-//
-//   - A secondary window renders exactly what is assigned to it, and only
-//     while it is itself attached. The liveness check is what stops a
-//     disconnected window from still "claiming" its agents and leaving them
-//     rendered by nobody.
-//   - Window 1 renders what is assigned to it, PLUS anything whose assigned
-//     window is not attached. That is fold-back, and it is stated as a
-//     property of window 1 rather than an event so it cannot be missed.
-//
-// Together those make "exactly one window renders each agent" true in every
-// liveness state, which is the invariant AC 5 turns on.
-func rendersInWindow(agentKey, windowID string, a *WindowAssignment, groupOf map[string]string, connected map[string]bool) bool {
-	if a == nil {
-		// No assignment store: single-window behavior, window 1 shows all.
-		return windowID == WindowOne
-	}
-	assigned := a.WindowOfAgent(agentKey, groupOf)
-
-	if windowID != WindowOne {
-		return assigned == windowID && connected[windowID]
-	}
-	// Window 1: its own agents, plus orphans from any window that is gone.
-	return assigned == WindowOne || !connected[assigned]
-}
-
 // foldedBackAgents returns the agents currently folded back into window 1 --
 // those assigned to a secondary window that is not attached. Used to raise the
 // session-level notice, and to answer "what is window 1 covering for right
@@ -153,7 +126,7 @@ func (t *windowLivenessTracker) observe(connected map[string]bool) (gone, return
 }
 
 // visiblePanesForWindow filters the TUI's panes down to those this window
-// should render, consulting rendersInWindow with the current assignment and
+// should render, consulting the served ownership map with the current
 // the live connected-window set (ini-9ka.6 wires what ini-9ka.7 decided).
 //
 // Returns the pane list unchanged when no assignment store is loaded, which
@@ -161,15 +134,38 @@ func (t *windowLivenessTracker) observe(connected map[string]bool) (gone, return
 // the same slice it always did. That keeps multi-monitor from being a second
 // code path for users who never enabled it.
 func (t *TUI) visiblePanesForWindow() []PaneView {
+	// A SECONDARY WINDOW RENDERS SERVED OWNERSHIP AND DERIVES NOTHING
+	// (ini-x5ob). Its assignment copy and its connected set are no longer
+	// ownership inputs: window 1 is the single computer, and consulting local
+	// copies here is exactly what made the partition non-exclusive in both
+	// directions. A viewer that has not been served yet renders nothing rather
+	// than guessing -- guessing is the behaviour that produced the double.
+	if !t.isFleetAuthority() {
+		if !t.ownershipServed {
+			return nil
+		}
+		out := make([]PaneView, 0, len(t.panes))
+		for _, p := range t.panes {
+			if t.paneOwnership[agentKey(p)] == t.windowID {
+				out = append(out, p)
+			}
+		}
+		return out
+	}
+
 	if t.assignment == nil {
 		return t.panes
 	}
-	connected := t.connectedWindowSet()
-	groupOf := t.layoutState.GroupOf
-
+	// Window 1 uses its OWN computation -- it is the authority, and waiting on
+	// a round trip through its own server would make it the last window to
+	// learn its own decision.
+	owner := t.paneOwnership
+	if owner == nil {
+		owner = computePaneOwnership(t.panes, t.assignment, t.layoutState.GroupOf, t.connectedWindowSet())
+	}
 	out := make([]PaneView, 0, len(t.panes))
 	for _, p := range t.panes {
-		if rendersInWindow(agentKey(p), t.windowID, t.assignment, groupOf, connected) {
+		if owner[agentKey(p)] == WindowOne {
 			out = append(out, p)
 		}
 	}
@@ -185,17 +181,88 @@ func (t *TUI) visiblePanesForWindow() []PaneView {
 // auto-assignment would mean initech deciding his monitor layout for him.
 const emptyViewerHint = "no groups assigned to this window — press Alt+a to assign"
 
+// unservedViewerHint is the operator-decided copy for a secondary window that
+// has not yet been told what it owns (ini-x5ob; pm ruling 2026-08-14).
+// PM-OWNED STRING — render it verbatim and reference THIS constant anywhere it
+// must appear, the same one-copy rule emptyViewerHint carries.
+//
+// WHY AN ANNOUNCED BLANK RATHER THAN A SILENT ONE, which is the whole point of
+// the addition: since ownership is served, a viewer with no served answer
+// renders nothing rather than guessing — and a silently empty window 2 looks
+// EXACTLY like the vanished-pane symptom this bead exists to fix. It would
+// also contradict what v2.7.9 shipped: that a viewer which cannot reach
+// window 1 tells you. Announcing the reason turns an ambiguous blank into a
+// status the operator can act on, and extends that claim instead of denying it.
+//
+// The declined alternative was rendering STALE panes with a warning notice:
+// that reintroduces exactly the two-truths state — a window showing agents it
+// may no longer own — which is the class this bead closed.
+const unservedViewerHint = "waiting for window 1 — it decides which agents appear here; reconnecting"
+
 // viewerOwnsNoGroups reports whether this window is a secondary with NOTHING
 // assigned to it -- the one state the empty-viewer hint describes. Two
 // entrances, one state (ini-xq4r's grooming cross-reference): a first attach
 // before any assignment, and the last group being moved away. Deliberately
 // NOT len(plan)==0, which is also true pre-connect and when every assigned
 // pane is hidden -- in those states the hint's copy would be a lie.
-func (t *TUI) viewerOwnsNoGroups() bool {
-	if t.windowID == WindowOne || t.assignment == nil || len(t.panes) == 0 {
-		return false
+// viewerEmptyExplanation returns the sentence a secondary window must show
+// when it is rendering no panes, or "" when it must stay silent.
+//
+// ONE FUNCTION, ONE QUESTION (ini-x5ob, eng2's invariant). This replaces
+// viewerOwnsNoGroups and viewerAwaitsOwnership, which answered "why is this
+// window empty" from two DIFFERENT sources: the hint read the ASSIGNMENT
+// while the panes came from the SERVED ownership. That is the
+// two-consumers-one-question shape, and it produced the worst possible
+// screen -- window 2 rendering nothing while the hint, consulting the
+// assignment, concluded the window owned groups and stayed silent. A bare
+// unexplained window is the exact state ini-9fn exists to prevent, and the
+// operator has said so.
+//
+// The TRIGGER is therefore the plan -- the thing the operator can actually
+// see -- and the served map only chooses WHICH true sentence to say:
+//
+//	not served yet          -> waiting for window 1
+//	served, owns nothing    -> no groups assigned to this window
+//	served, owns something  -> silence, deliberately (see below)
+//
+// The third case is a window that OWNS agents and is still rendering none.
+// That is not a state to explain to the operator; it is a defect, and either
+// sentence would be a lie that papers over it. It is logged instead, loudly,
+// so it surfaces as the bug it is rather than as reassuring copy.
+func (t *TUI) viewerEmptyExplanation() string {
+	if t.windowID == WindowOne || len(t.plan.Panes) > 0 {
+		return ""
 	}
-	return len(t.assignment.GroupsForWindow(t.windowID, t.layoutState.Groups)) == 0
+	// Not told yet, or told but nothing has arrived: both are "waiting", and
+	// the second is NOT the defect branch below. A viewer can be served its
+	// partition on the handshake -- fast, one message -- and still have no
+	// panes for a while, because the panes come separately over per-agent
+	// streams. Under load that gap is seconds, and classifying it as a defect
+	// left the window bare and silent for the whole of it. Measured on eng2's
+	// six-agent rig, which is heavier than this file's own and reached the
+	// state repeatedly.
+	if !t.ownershipServed || len(t.panes) == 0 {
+		return unservedViewerHint
+	}
+	if len(ownershipKeysFor(t.paneOwnership, t.windowID)) == 0 {
+		return emptyViewerHint
+	}
+	// The fields are the fork this state actually poses: whether the panes are
+	// ABSENT (they never arrived, and the window is really still waiting) or
+	// PRESENT-BUT-UNPLANNED (they arrived and the plan dropped them, which is
+	// a planning defect). "owned" alone cannot tell those apart, and the first
+	// person to hit this in the field spent a round trip discovering that.
+	var have []string
+	for _, p := range t.panes {
+		have = append(have, agentKey(p))
+	}
+	sort.Strings(have)
+	LogWarn("ownership", "viewer owns agents but is rendering none",
+		"window", t.windowID,
+		"owned", joinKeys(ownershipKeysFor(t.paneOwnership, t.windowID)),
+		"panes_present", strings.Join(have, ","),
+		"plan_panes", len(t.plan.Panes))
+	return ""
 }
 
 // liveTickInputs derives the live rotation's universe for THIS window: its
@@ -515,4 +582,30 @@ func (t *TUI) applyAgentStatus(name string, beads []string, desc string) {
 // that does not.
 func isViewerSession(cfg Config) bool {
 	return cfg.Project != nil && isSecondaryWindowIdentity(cfg.Project.PeerName)
+}
+
+// broadcastPaneOwnership pushes window 1's ownership decision to every
+// attached window (ini-x5ob). Same channel and same best-effort-per-recipient
+// reasoning as broadcastSessionNotice: a window whose control stream is
+// already broken is about to be detected as disconnected anyway, and failing
+// the whole broadcast because one recipient died would strand the windows that
+// are still there.
+//
+// A LOST PUSH IS NOT A HOLE HERE, which is the point of the design. Ownership
+// is re-served on every change and at hello, and a window that has not been
+// served renders nothing rather than deriving a guess -- so the failure mode
+// of a dropped message is "this window is briefly empty", never "two windows
+// disagree about who owns an agent".
+func (w *windowServer) broadcastPaneOwnership(owner map[string]string) {
+	if w == nil || w.daemon == nil {
+		return
+	}
+	w.daemon.sessionsMu.Lock()
+	ctrls := append([]net.Conn(nil), w.daemon.ctrlConns...)
+	w.daemon.sessionsMu.Unlock()
+
+	for _, ctrl := range ctrls {
+		writeJSON(ctrl, ControlResp{Action: paneOwnershipAction, Owner: owner}) //nolint:errcheck
+	}
+	LogDebug("window-server", "pane ownership broadcast", "windows", len(ctrls), "agents", len(owner))
 }
