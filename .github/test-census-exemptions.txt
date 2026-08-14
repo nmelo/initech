@@ -86,3 +86,10 @@ internal/tui/window_cli_integration_test.go   windows  # inherited from buildIni
 # UNTAGGED viewer_parity_test.go / viewer_plan_test.go and run on all three
 # platforms; this file adds only the live two-window composition.
 internal/tui/sixm4_rig_test.go                windows  # PTY rig (creack/pty + signal-0 liveness probe); portable guard halves live untagged in viewer_parity_test.go
+
+# ── ini-9imx triage rig ───
+# Genuine constraint: spawns real PTY processes (creack/pty via NewPane's unix
+# path) to measure message fate against a really-suspended pane. Findings
+# generator, gated INITECH_9IMX=1; its DirectSendText leg fails by design
+# while the bypass loss is open.
+internal/tui/suspend_fate_rig_test.go        windows  # real-PTY suspension fate rig (gated INITECH_9IMX=1)
