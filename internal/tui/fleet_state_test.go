@@ -386,14 +386,14 @@ func TestFleetState_ThreeStoresArePairwiseIndependent(t *testing.T) {
 		}, []string{"layout-two.yaml"}},
 
 		{"assignment", func(t *testing.T, root string) {
-			a, err := LoadAssignment(root)
+			a, err := LoadAssignment(root, WindowOne)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := a.MoveGroup("eng", "window2"); err != nil {
+			if err := mustAssignWriter(t, a).MoveGroup("eng", "window2"); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := LoadAssignment(root); err != nil {
+			if _, err := LoadAssignment(root, WindowOne); err != nil {
 				t.Fatal(err)
 			}
 		}, []string{"assignments.yaml"}},

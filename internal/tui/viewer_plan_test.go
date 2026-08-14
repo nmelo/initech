@@ -22,7 +22,7 @@ func TestHandlePeerUpdate_NewRemotePanesAreGroupedBeforeLayout(t *testing.T) {
 	os.MkdirAll(filepath.Join(root, ".initech"), 0o755)
 	os.WriteFile(filepath.Join(root, ".initech", "assignments.yaml"),
 		[]byte("group_window:\n    eng: window-2\n"), 0o644)
-	a, err := LoadAssignment(root)
+	a, err := LoadAssignment(root, WindowOne)
 	if err != nil {
 		t.Fatal(err)
 	}

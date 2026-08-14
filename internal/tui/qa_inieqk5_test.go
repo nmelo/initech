@@ -80,7 +80,7 @@ func TestOverlayDot_SuspendedIsBlueHollow(t *testing.T) {
 	found := false
 	for x := sw - 30; x < sw; x++ {
 		c, style, _ := s.Get(x, 2) // row 2 = first agent row (py=1, +1)
-		if c == "\u25cb" {                   // hollow dot
+		if c == "\u25cb" {         // hollow dot
 			fg, _, _ := style.Decompose()
 			if fg == tcell.ColorDodgerBlue {
 				found = true

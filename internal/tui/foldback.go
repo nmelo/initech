@@ -306,7 +306,7 @@ func (t *TUI) reloadAssignmentIfFollower() {
 	if t.windowID == WindowOne || t.projectRoot == "" {
 		return
 	}
-	a, err := LoadAssignment(t.projectRoot)
+	a, err := LoadAssignment(t.projectRoot, t.windowID)
 	if err != nil {
 		// Keep the cached store: a transient read error must not blank this
 		// window's plan. The next notice retries.

@@ -102,9 +102,9 @@ func TestLiveRegionScroll_ClippedContentRecoverable(t *testing.T) {
 // emulator grows to 3x the visible height, capped at 300, never below visible.
 func TestEffectiveEmuRows(t *testing.T) {
 	cases := []struct{ visible, want int }{
-		{10, 30},  // confirmed-repro pane: 3x covers a ~25-30 row modal
-		{14, 42},  // typical small multi-pane
-		{1, 3},    // floor
+		{10, 30},   // confirmed-repro pane: 3x covers a ~25-30 row modal
+		{14, 42},   // typical small multi-pane
+		{1, 3},     // floor
 		{100, 300}, // 3x=300 exactly at cap
 		{150, 300}, // capped
 		{400, 400}, // never smaller than visible (huge pane: no growth, no shrink)

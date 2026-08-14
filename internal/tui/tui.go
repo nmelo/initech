@@ -480,6 +480,22 @@ func (t *TUI) saveLayoutIfConfigured() {
 	if t.projectRoot == "" {
 		return
 	}
+	// THE GUARD IN THE PRIMITIVE (ini-la97). This is the only production
+	// writer of layout.yaml, so gating here means a viewer process carries no
+	// write path to project-root layout state at all -- docs/systemdesign.md's
+	// single-writer architecture face, and the reason ini-i7fr's cascade
+	// started here (a viewer rewriting window 1's file in the viewer's own key
+	// space through this very call).
+	//
+	// A viewer losing its ARRANGEMENT here is intended, not collateral:
+	// arrangement is viewer-local and session-scoped, and starts fresh on
+	// reattach (pm ruling 2026-08-14; retirement tracked in ini-qodm). The
+	// FLEET-SCOPED half of this file -- groups and group_of -- does not just
+	// get dropped for a viewer: it routes to window 1 instead, via
+	// agentsPersistGrouping.
+	if !t.isFleetAuthority() {
+		return
+	}
 	// Snapshot current pane order into layoutState before persisting.
 	t.layoutState.Order = make([]string, len(t.panes))
 	for i, p := range t.panes {
@@ -853,7 +869,7 @@ func Run(cfg Config) error {
 	// no artifact, no output -- so single-window sessions run today's code
 	// path rather than a new one that merely behaves the same.
 	if cfg.Project != nil && cfg.Project.WindowListen != "" {
-		ws, wsCleanup, err := startWindowServer(cfg.Project, cfg.Version, localPanes(t.panes), t.safeGo, t.applyFleetStateCmd)
+		ws, wsCleanup, err := startWindowServer(cfg.Project, cfg.Version, localPanes(t.panes), t.safeGo, t.applyFleetStateCmd, t.applyGroupWindowCmd, t.applyGroupOfCmd)
 		if err != nil {
 			// Non-fatal: a secondary window is an enhancement, and failing to
 			// bind it must not take down a session whose agents are already
@@ -872,7 +888,7 @@ func Run(cfg Config) error {
 	// Left nil otherwise, which is what makes visiblePanesForWindow a no-op
 	// for ordinary single-window sessions.
 	if cfg.Project != nil && (cfg.Project.WindowListen != "" || isSecondaryWindowIdentity(cfg.Project.PeerName)) {
-		if a, err := LoadAssignment(cfg.ProjectRoot); err != nil {
+		if a, err := LoadAssignment(cfg.ProjectRoot, t.windowID); err != nil {
 			// A corrupt store must not take down the session: fall back to
 			// single-window rendering (window 1 shows everything) rather than
 			// refusing to start with agents already running.

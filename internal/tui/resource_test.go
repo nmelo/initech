@@ -184,10 +184,15 @@ func newResourceTestTUI(total, avail int64, threshold int) *TUI {
 
 func newResourceTestPane(name string, alive bool, activity ActivityState, beadID string, lastOutput time.Time) *Pane {
 	return &Pane{
-		name:           name,
-		alive:          alive,
-		activity:       activity,
-		beadIDs:        func() []string { if beadID == "" { return nil }; return []string{beadID} }(),
+		name:     name,
+		alive:    alive,
+		activity: activity,
+		beadIDs: func() []string {
+			if beadID == "" {
+				return nil
+			}
+			return []string{beadID}
+		}(),
 		lastOutputTime: lastOutput,
 		memoryRSS:      500000, // 500 MB default
 	}

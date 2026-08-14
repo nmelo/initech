@@ -84,7 +84,7 @@ type windowServer struct {
 //
 // Returns a cleanup func that stops accepting and detaches the sinks. Callers
 // must only invoke this when project.WindowListen is non-empty.
-func startWindowServer(project *config.Project, version string, panes []*Pane, safeGo func(func()), onFleetState func(FleetStateCmd) error) (*windowServer, func(), error) {
+func startWindowServer(project *config.Project, version string, panes []*Pane, safeGo func(func()), onFleetState func(FleetStateCmd) error, onGroupWindow func(GroupWindowCmd) error, onGroupOf func(GroupOfCmd) error) (*windowServer, func(), error) {
 	if project == nil || project.WindowListen == "" {
 		return nil, nil, fmt.Errorf("startWindowServer called without a WindowListen address (single-window fleets must not reach here)")
 	}
@@ -122,6 +122,11 @@ func startWindowServer(project *config.Project, version string, panes []*Pane, s
 		// Window 1 owns fleet state; this is how a secondary's
 		// set_fleet_state reaches it (ini-9ka.10).
 		onFleetState: onFleetState,
+		// Window 1 is likewise the only writer of window assignments and of
+		// band membership; these are how a secondary's routed mutations
+		// reach it (ini-la97).
+		onGroupWindow: onGroupWindow,
+		onGroupOf:     onGroupOf,
 		// console DELIBERATELY LEFT NIL (ini-aqy). This Daemon runs inside the
 		// TUI process, where tcell owns the terminal. handleConnection's
 		// "Client connected: ..." notices are correct output for `initech

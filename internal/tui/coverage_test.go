@@ -49,9 +49,9 @@ func TestTerminalSize(t *testing.T) {
 		{"normal", Region{0, 0, 80, 24}, 80, 22},
 		{"small", Region{0, 0, 80, 5}, 80, 3},
 		{"min_height_3", Region{0, 0, 80, 3}, 80, 1},
-		{"min_height_2", Region{0, 0, 80, 2}, 80, 1},  // H-2=0 clamped to 1
-		{"min_height_1", Region{0, 0, 80, 1}, 80, 1},  // H-2=-1 clamped to 1
-		{"zero_width", Region{0, 0, 0, 10}, 1, 8},     // W=0 clamped to 1
+		{"min_height_2", Region{0, 0, 80, 2}, 80, 1}, // H-2=0 clamped to 1
+		{"min_height_1", Region{0, 0, 80, 1}, 80, 1}, // H-2=-1 clamped to 1
+		{"zero_width", Region{0, 0, 0, 10}, 1, 8},    // W=0 clamped to 1
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

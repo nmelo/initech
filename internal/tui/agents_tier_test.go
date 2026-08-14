@@ -73,7 +73,7 @@ func TestAgentsTiers_SingleWindowEmitsNoTierGeometry(t *testing.T) {
 // the spec's double rule, when more than one window is configured.
 func TestAgentsTiers_RenderShowsMonitorHeaders(t *testing.T) {
 	tui, _ := tierTUI(t, true, "super", "eng1", "qa1")
-	if err := tui.agentsAssignment().MoveGroup("eng", "window-2"); err != nil {
+	if err := mustAssignWriter(t, tui.agentsAssignment()).MoveGroup("eng", "window-2"); err != nil {
 		t.Fatal(err)
 	}
 	tui.renderAgentsGrid()
@@ -115,7 +115,7 @@ func screenText(t *testing.T, tui *TUI) string {
 // which is the tautology the AC is written to avoid.
 func TestAgentsTiers_RenderedPositionsMatchComputedGeometry(t *testing.T) {
 	tui, _ := tierTUI(t, true, "super", "pm", "eng1", "eng2", "qa1", "qa2")
-	if err := tui.agentsAssignment().MoveGroup("qa", "window-2"); err != nil {
+	if err := mustAssignWriter(t, tui.agentsAssignment()).MoveGroup("qa", "window-2"); err != nil {
 		t.Fatal(err)
 	}
 	tui.renderAgentsGrid()
@@ -171,7 +171,7 @@ func tierRowText(t *testing.T, tui *TUI, y, x, count int) string {
 // content height the same walk reports.
 func TestAgentsGridWalk_HeightMatchesPositions(t *testing.T) {
 	tui, _ := tierTUI(t, true, "super", "pm", "eng1", "eng2", "eng3", "qa1")
-	if err := tui.agentsAssignment().MoveGroup("eng", "window-2"); err != nil {
+	if err := mustAssignWriter(t, tui.agentsAssignment()).MoveGroup("eng", "window-2"); err != nil {
 		t.Fatal(err)
 	}
 	sw, sh := tui.screen.Size()
@@ -215,7 +215,7 @@ func TestAgentsTiers_MoveGroupCyclesWindows(t *testing.T) {
 	}
 
 	// Persisted immediately (ini-9ka.4's MoveGroup writes on every call).
-	onDisk, err := LoadAssignment(root)
+	onDisk, err := LoadAssignment(root, WindowOne)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -252,7 +252,7 @@ func TestAgentsTiers_MoveGroupInertWhenSingleWindow(t *testing.T) {
 	if got := tui.agentsAssignment().WindowOfGroup("eng"); got != WindowOne {
 		t.Errorf("m moved eng to %q on a single-window fleet, want no change", got)
 	}
-	if _, err := LoadAssignment(root); err != nil {
+	if _, err := LoadAssignment(root, WindowOne); err != nil {
 		t.Fatalf("assignment store unreadable: %v", err)
 	}
 }
@@ -264,7 +264,7 @@ func TestAgentsTiers_MoveGroupInertWhenSingleWindow(t *testing.T) {
 func TestAgentsTiers_GrabAcrossTierMovesWindowImplicitly(t *testing.T) {
 	tui, _ := tierTUI(t, true, "super", "eng1", "qa1")
 	assign := tui.agentsAssignment()
-	if err := assign.MoveGroup("qa", "window-2"); err != nil {
+	if err := mustAssignWriter(t, assign).MoveGroup("qa", "window-2"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -289,7 +289,7 @@ func TestAgentsTiers_GrabAcrossTierMovesWindowImplicitly(t *testing.T) {
 // WINDOW-2 group, which is the case that would silently default to window 1.
 func TestAgentsTiers_CreateGroupLandsOnSelectionWindow(t *testing.T) {
 	tui, root := tierTUI(t, true, "super", "eng1", "qa1")
-	if err := tui.agentsAssignment().MoveGroup("qa", "window-2"); err != nil {
+	if err := mustAssignWriter(t, tui.agentsAssignment()).MoveGroup("qa", "window-2"); err != nil {
 		t.Fatal(err)
 	}
 	selectAgent(t, tui, "qa1") // selection sits on a window-2 group
@@ -299,7 +299,7 @@ func TestAgentsTiers_CreateGroupLandsOnSelectionWindow(t *testing.T) {
 	if got := tui.agentsAssignment().WindowOfGroup("triage"); got != "window-2" {
 		t.Errorf("new group landed on %q, want window-2 (the window the selection was in)", got)
 	}
-	onDisk, err := LoadAssignment(root)
+	onDisk, err := LoadAssignment(root, WindowOne)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -330,7 +330,7 @@ func TestAgentsTiers_CreateGroupOnWindowOneStoresNothing(t *testing.T) {
 // that label were ever recreated.
 func TestAgentsTiers_EmptyGroupCreatedOnWindowTwoVanishesOnClose(t *testing.T) {
 	tui, root := tierTUI(t, true, "super", "eng1", "qa1")
-	if err := tui.agentsAssignment().MoveGroup("qa", "window-2"); err != nil {
+	if err := mustAssignWriter(t, tui.agentsAssignment()).MoveGroup("qa", "window-2"); err != nil {
 		t.Fatal(err)
 	}
 	selectAgent(t, tui, "qa1")
@@ -351,7 +351,7 @@ func TestAgentsTiers_EmptyGroupCreatedOnWindowTwoVanishesOnClose(t *testing.T) {
 	if got := tui.agentsAssignment().WindowOfGroup("triage"); got != WindowOne {
 		t.Errorf("pruned group still assigned to %q -- a stale row would resurface it on recreate", got)
 	}
-	onDisk, err := LoadAssignment(root)
+	onDisk, err := LoadAssignment(root, WindowOne)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -368,7 +368,7 @@ func TestAgentsTiers_EmptyGroupCreatedOnWindowTwoVanishesOnClose(t *testing.T) {
 // readable while results dim.
 func TestAgentsTiers_SearchDimsInPlaceAcrossTiers(t *testing.T) {
 	tui, _ := tierTUI(t, true, "super", "eng1", "eng2", "qa1")
-	if err := tui.agentsAssignment().MoveGroup("qa", "window-2"); err != nil {
+	if err := mustAssignWriter(t, tui.agentsAssignment()).MoveGroup("qa", "window-2"); err != nil {
 		t.Fatal(err)
 	}
 	tui.agents.searching = true

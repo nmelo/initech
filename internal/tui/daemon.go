@@ -81,6 +81,19 @@ type Daemon struct {
 	// rather than silently accepted.
 	onFleetState func(FleetStateCmd) error
 
+	// onGroupWindow applies a secondary window's set_group_window command on
+	// window 1, the only writer of the assignment store (ini-la97). Nil on a
+	// cross-machine daemon, which owns no assignment store -- so the command
+	// is refused there rather than silently accepted, exactly as
+	// onFleetState is.
+	onGroupWindow func(GroupWindowCmd) error
+
+	// onGroupOf applies a secondary window's set_group_of command on window 1,
+	// the only writer of band membership (ini-la97). Membership is
+	// fleet-scoped state that lives in layout.yaml; the routing boundary is
+	// the state's scope, not its file.
+	onGroupOf func(GroupOfCmd) error
+
 	// Active client sessions for graceful shutdown.
 	sessionsMu sync.Mutex
 	sessions   []*yamux.Session
@@ -868,6 +881,16 @@ func (d *Daemon) handleControlStream(ctrl net.Conn, scanner *bufio.Scanner, peer
 				return
 			}
 
+		case "set_group_window":
+			if !respond(cmd.ID, d.handleSetGroupWindow(line)) {
+				return
+			}
+
+		case "set_group_of":
+			if !respond(cmd.ID, d.handleSetGroupOf(line)) {
+				return
+			}
+
 		default:
 			if !respond(cmd.ID, ControlResp{Error: fmt.Sprintf("unknown action %q", cmd.Action)}) {
 				return
@@ -1023,6 +1046,39 @@ func (d *Daemon) handleSetFleetState(line []byte) ControlResp {
 		return ControlResp{ID: cmd.ID, Error: err.Error()}
 	}
 	return ControlResp{ID: cmd.ID, OK: true, Action: "set_fleet_state_ok", Target: cmd.Name}
+}
+
+// handleSetGroupWindow applies a secondary window's group move on window 1
+// (ini-la97). Like fleet state, the authority rule is about who WRITES the
+// store, not who may ask: any attached window may request a move.
+func (d *Daemon) handleSetGroupWindow(line []byte) ControlResp {
+	var cmd GroupWindowCmd
+	if err := json.Unmarshal(line, &cmd); err != nil {
+		return ControlResp{Error: fmt.Sprintf("invalid set_group_window payload: %v", err)}
+	}
+	if d.onGroupWindow == nil {
+		return ControlResp{ID: cmd.ID, Error: "this session does not own window assignments"}
+	}
+	if err := d.onGroupWindow(cmd); err != nil {
+		return ControlResp{ID: cmd.ID, Error: err.Error()}
+	}
+	return ControlResp{ID: cmd.ID, OK: true, Action: "set_group_window_ok", Target: cmd.Group}
+}
+
+// handleSetGroupOf applies a secondary window's band-membership change on
+// window 1 (ini-la97).
+func (d *Daemon) handleSetGroupOf(line []byte) ControlResp {
+	var cmd GroupOfCmd
+	if err := json.Unmarshal(line, &cmd); err != nil {
+		return ControlResp{Error: fmt.Sprintf("invalid set_group_of payload: %v", err)}
+	}
+	if d.onGroupOf == nil {
+		return ControlResp{ID: cmd.ID, Error: "this session does not own band membership"}
+	}
+	if err := d.onGroupOf(cmd); err != nil {
+		return ControlResp{ID: cmd.ID, Error: err.Error()}
+	}
+	return ControlResp{ID: cmd.ID, OK: true, Action: "set_group_of_ok", Target: cmd.Agent}
 }
 
 // evictExistingLocked hands the window identity to a newcomer: the OLD

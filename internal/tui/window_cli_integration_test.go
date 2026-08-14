@@ -148,15 +148,15 @@ func TestWindowCLI_HelpAdvertisesTheFlag(t *testing.T) {
 // re-verifying the transport that ini-9ka.2 already pinned.
 func TestWindowCLI_ThreeWindowsAttachDetachReattach(t *testing.T) {
 	root := t.TempDir()
-	a, err := LoadAssignment(root)
+	a, err := LoadAssignment(root, WindowOne)
 	if err != nil {
 		t.Fatalf("LoadAssignment: %v", err)
 	}
 	// core stays on window 1; eng -> window-2; qa -> window-3.
-	if err := a.MoveGroup("eng", "window-2"); err != nil {
+	if err := mustAssignWriter(t, a).MoveGroup("eng", "window-2"); err != nil {
 		t.Fatalf("MoveGroup eng: %v", err)
 	}
-	if err := a.MoveGroup("qa", "window-3"); err != nil {
+	if err := mustAssignWriter(t, a).MoveGroup("qa", "window-3"); err != nil {
 		t.Fatalf("MoveGroup qa: %v", err)
 	}
 	groupOf := map[string]string{"super": "core", "eng1": "eng", "qa1": "qa"}
@@ -341,7 +341,20 @@ func runViewerUnderPTY(t *testing.T, bin, root string, hold time.Duration) strin
 	return runViewerUnderPTYSig(t, bin, root, hold, os.Kill)
 }
 
+// runViewerUnderPTYKeysSig is runViewerUnderPTYSig with keystrokes sent once
+// the viewer has settled, so a test can exercise an operator action rather
+// than only an attach-and-exit lifecycle.
+func runViewerUnderPTYKeysSig(t *testing.T, bin, root string, hold time.Duration, keys string, exitSig os.Signal) string {
+	t.Helper()
+	return runViewerUnderPTYCommon(t, bin, root, hold, keys, exitSig)
+}
+
 func runViewerUnderPTYSig(t *testing.T, bin, root string, hold time.Duration, exitSig os.Signal) string {
+	t.Helper()
+	return runViewerUnderPTYCommon(t, bin, root, hold, "", exitSig)
+}
+
+func runViewerUnderPTYCommon(t *testing.T, bin, root string, hold time.Duration, keys string, exitSig os.Signal) string {
 	t.Helper()
 	cmd := exec.Command(bin, "--window", "2")
 	cmd.Dir = root
@@ -361,7 +374,13 @@ func runViewerUnderPTYSig(t *testing.T, bin, root string, hold time.Duration, ex
 	_ = exitSig
 	deadline := time.Now().Add(hold)
 	buf := make([]byte, 32*1024)
+	var keysSent bool
+	keyAt := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
+		if keys != "" && !keysSent && time.Now().After(keyAt) {
+			_, _ = ptmx.Write([]byte(keys))
+			keysSent = true
+		}
 		_ = ptmx.SetReadDeadline(time.Now().Add(500 * time.Millisecond))
 		n, err := ptmx.Read(buf)
 		if n > 0 {
@@ -469,5 +488,107 @@ func TestWindowCLI_ViewerSIGHUPLeavesWindowOnesSocketAndPIDAlone(t *testing.T) {
 	if string(got) != windowOnePID {
 		t.Errorf("window 1's PID file was overwritten: got %q, want %q -- a viewer must not "+
 			"claim the session's identity", strings.TrimSpace(string(got)), strings.TrimSpace(windowOnePID))
+	}
+}
+
+// TestWindowCLI_ViewerTouchesNoProjectRootStore is ini-la97's non-contact
+// proof, and it extends the ini-civ SIGHUP suite above rather than duplicating
+// it: same real two-process rig, same natural exit path (the operator closes
+// the second monitor's terminal), one more class of state asserted.
+//
+// civ proved a viewer leaves window 1's SOCKET and PID FILE alone. The stores
+// were never in that assertion, and ini-i7fr then measured a viewer rewriting
+// window 1's layout.yaml. The decoys here are the tripwire: every project-root
+// store is seeded with known bytes that no correct viewer has any reason to
+// touch, and any contact at all -- write, rewrite, atomic-replace, or delete
+// on exit -- shows up as a byte difference.
+//
+// Byte comparison rather than "does it still parse" is deliberate, the same
+// reasoning as the read-only fallback suite: the i7fr write produced a
+// perfectly valid file. Only the bytes distinguish untouched from rewritten.
+func TestWindowCLI_ViewerTouchesNoProjectRootStore(t *testing.T) {
+	root, err := os.MkdirTemp("", "la97")
+	if err != nil {
+		t.Fatalf("temp root: %v", err)
+	}
+	defer os.RemoveAll(root)
+
+	for _, role := range []string{"super", "eng1"} {
+		if err := os.MkdirAll(filepath.Join(root, role), 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", role, err)
+		}
+		if err := os.WriteFile(filepath.Join(root, role, "CLAUDE.md"), []byte("# "+role+"\n"), 0o644); err != nil {
+			t.Fatalf("write CLAUDE.md: %v", err)
+		}
+	}
+
+	_, addr := startTestWindowServer(t, []*Pane{windowServerTestPane("super")})
+	cfgYAML := "project: la97\nroot: " + root + "\nroles:\n    - super\n    - eng1\n" +
+		"claude_command:\n    - sleep\nclaude_args:\n    - \"300\"\n" +
+		"window_listen: \"" + addr + "\"\n"
+	if err := os.WriteFile(filepath.Join(root, "initech.yaml"), []byte(cfgYAML), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	dir := filepath.Join(root, ".initech")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatalf("mkdir .initech: %v", err)
+	}
+
+	// The decoys. Deliberately NOT what this fleet would produce: window-9 and
+	// the sentinel labels exist nowhere in the config, so if a viewer ever
+	// rewrites one of these from its own in-memory model the content changes
+	// visibly rather than coincidentally matching.
+	decoys := map[string]string{
+		"layout.yaml": "grid: 4x2\nmode: grid\norder:\n    - la97-sentinel\n" +
+			"groups:\n    - la97-decoy\ngroup_of:\n    la97-sentinel: la97-decoy\n",
+		"assignments.yaml": "group_window:\n    la97-decoy: window-9\n",
+		"fleet-state.yaml": "hidden:\n    - la97-sentinel\n",
+	}
+	before := map[string]string{}
+	for name, body := range decoys {
+		p := filepath.Join(dir, name)
+		if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+			t.Fatalf("seed %s: %v", name, err)
+		}
+		before[name] = body
+	}
+
+	// `a` opens the agents modal, whose open calls ensureGroups(persist=true)
+	// -- the operator action behind ini-i7fr's measured viewer write.
+	//
+	// WHAT THIS TEST DOES AND DOES NOT PROVE, measured rather than assumed:
+	// it proves a real viewer PROCESS leaves every project-root store
+	// byte-identical across a full attach/interact/SIGHUP-exit lifecycle. It
+	// does NOT by itself prove the authority guard has teeth: with the guard
+	// deliberately removed this rig still writes nothing, so the subprocess
+	// is not reliably reaching the write path (verified by mutation, both
+	// with and without the keystroke). The guard's teeth are in the
+	// in-process tests, which DO kill that mutant --
+	// TestViewerMustNotWriteLayoutStore and
+	// TestGroupOfSeam_ViewerDoesNotPersistMembershipItself. Recorded here
+	// rather than left for a reader to discover, because a decoy suite that
+	// looks like a guard and is not is worse than no decoy suite.
+	runViewerUnderPTYKeysSig(t, buildInitechBinary(t), root, 5*time.Second, "a", syscall.SIGHUP)
+
+	for name := range decoys {
+		p := filepath.Join(dir, name)
+		got, err := os.ReadFile(p)
+		if err != nil {
+			t.Errorf("%s was DELETED by the viewer's lifecycle: %v", name, err)
+			continue
+		}
+		if string(got) != before[name] {
+			t.Errorf(`A VIEWER TOUCHED %s.
+
+A viewer process carries no write path to project-root state (docs/spec.md,
+Single-writer). Any difference here is contact -- including an atomic replace
+that happens to produce equivalent YAML.
+
+before:
+%s
+after:
+%s`, name, before[name], string(got))
+		}
 	}
 }

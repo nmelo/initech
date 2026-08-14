@@ -22,7 +22,7 @@ func placementTUIs(t *testing.T, storeYAML string) (*TUI, *TUI, *WindowAssignmen
 	root := t.TempDir()
 	os.MkdirAll(filepath.Join(root, ".initech"), 0o755)
 	os.WriteFile(filepath.Join(root, ".initech", "assignments.yaml"), []byte(storeYAML), 0o644)
-	a, err := LoadAssignment(root)
+	a, err := LoadAssignment(root, WindowOne)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -144,7 +144,7 @@ func TestPlacement_HiddenWinsBothOrders(t *testing.T) {
 				}
 			}
 			move := func() {
-				if err := a.MoveGroup("eng", "window-2"); err != nil {
+				if err := mustAssignWriter(t, a).MoveGroup("eng", "window-2"); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -193,7 +193,7 @@ func TestLiveTickInputs_ReleasesSlotsOfDepartedGroup(t *testing.T) {
 		t.Fatal("setup: eng1's pin absent before the move")
 	}
 
-	if err := a.MoveGroup("eng", "window-2"); err != nil {
+	if err := mustAssignWriter(t, a).MoveGroup("eng", "window-2"); err != nil {
 		t.Fatal(err)
 	}
 	// Window 2 connects; eng leaves window 1's plan. Simulate the connected
@@ -302,7 +302,7 @@ func TestViewerOwnsNoGroups_BothEntrancesOneState(t *testing.T) {
 	}
 
 	// A group arrives: the hint vanishes with no state to clear.
-	if err := a.MoveGroup("eng", "window-2"); err != nil {
+	if err := mustAssignWriter(t, a).MoveGroup("eng", "window-2"); err != nil {
 		t.Fatal(err)
 	}
 	if w2.viewerOwnsNoGroups() {
@@ -311,7 +311,7 @@ func TestViewerOwnsNoGroups_BothEntrancesOneState(t *testing.T) {
 	}
 
 	// Entrance 2: the last group moves away again.
-	if err := a.MoveGroup("eng", WindowOne); err != nil {
+	if err := mustAssignWriter(t, a).MoveGroup("eng", WindowOne); err != nil {
 		t.Fatal(err)
 	}
 	if !w2.viewerOwnsNoGroups() {
@@ -364,7 +364,7 @@ func TestRenderEmptyViewerHint_DrawsTheDecidedCopyCentered(t *testing.T) {
 	tui, screen := newTestTUIWithScreen()
 	tui.windowID = "window-2"
 	root := t.TempDir()
-	a, _ := LoadAssignment(root)
+	a, _ := LoadAssignment(root, WindowOne)
 	tui.assignment = a
 	tui.panes = []PaneView{&RemotePane{name: "super", host: WindowOnePeerName, alive: true}}
 	tui.ensureGroups(false)

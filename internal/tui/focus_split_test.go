@@ -460,7 +460,7 @@ func TestFocusSplit_HideRenderedScreenNoCrossContamination(t *testing.T) {
 	tui.render()           // baseline frame, before any hide
 
 	tui.toggleHidden("c") // triggers a reflow: rightCount 4 -> 3, shape changes
-	tui.render()           // the critical frame: freshly-resized panes are mid-settle
+	tui.render()          // the critical frame: freshly-resized panes are mid-settle
 
 	w, h := screen.Size()
 	// For every screen cell, if it shows a letter belonging to a pane whose

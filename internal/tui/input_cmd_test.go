@@ -14,8 +14,8 @@ func cmdTUI(buf string) *TUI {
 	return t
 }
 
-func cmdBuf(t *TUI) string  { return string(t.cmd.buf) }
-func cmdCur(t *TUI) int     { return t.cmd.cursor }
+func cmdBuf(t *TUI) string { return string(t.cmd.buf) }
+func cmdCur(t *TUI) int    { return t.cmd.cursor }
 
 func key(k tcell.Key) *tcell.EventKey {
 	return tcell.NewEventKey(k, 0, 0)

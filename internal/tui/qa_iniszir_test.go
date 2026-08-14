@@ -253,4 +253,3 @@ func TestRender_AppWrappedScrollback_PaddedToCurrentWidth_ini_szir(t *testing.T)
 			len(pollutionSurvived), preview)
 	}
 }
-

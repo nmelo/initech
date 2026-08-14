@@ -28,14 +28,14 @@ const (
 // windows. No default or auto path can produce this.
 func assignFixture(t *testing.T, root string) *WindowAssignment {
 	t.Helper()
-	a, err := LoadAssignment(root)
+	a, err := LoadAssignment(root, WindowOne)
 	if err != nil {
 		t.Fatalf("LoadAssignment: %v", err)
 	}
-	if err := a.MoveGroup("eng", winTwo); err != nil {
+	if err := mustAssignWriter(t, a).MoveGroup("eng", winTwo); err != nil {
 		t.Fatalf("MoveGroup eng: %v", err)
 	}
-	if err := a.MoveGroup("qa", winThree); err != nil {
+	if err := mustAssignWriter(t, a).MoveGroup("qa", winThree); err != nil {
 		t.Fatalf("MoveGroup qa: %v", err)
 	}
 	return a
@@ -46,7 +46,7 @@ func assignFixture(t *testing.T, root string) *WindowAssignment {
 // window 1 and nothing is unassigned.
 func TestAssignment_FreshProjectDefaultsAllGroupsToWindowOne(t *testing.T) {
 	root := t.TempDir()
-	a, err := LoadAssignment(root)
+	a, err := LoadAssignment(root, WindowOne)
 	if err != nil {
 		t.Fatalf("LoadAssignment on a fresh project: %v", err)
 	}
@@ -73,7 +73,7 @@ func TestAssignment_RoundTripsAcrossRestart(t *testing.T) {
 	assignFixture(t, root)
 
 	// Restart: discard everything in memory, read from disk.
-	reloaded, err := LoadAssignment(root)
+	reloaded, err := LoadAssignment(root, WindowOne)
 	if err != nil {
 		t.Fatalf("LoadAssignment after restart: %v", err)
 	}
@@ -94,15 +94,15 @@ func TestAssignment_RoundTripsAcrossRestart(t *testing.T) {
 // forget. Asserted by re-reading from disk, not by inspecting memory.
 func TestAssignment_MoveGroupPersistsImmediately(t *testing.T) {
 	root := t.TempDir()
-	a, err := LoadAssignment(root)
+	a, err := LoadAssignment(root, WindowOne)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := a.MoveGroup("eng", winTwo); err != nil {
+	if err := mustAssignWriter(t, a).MoveGroup("eng", winTwo); err != nil {
 		t.Fatalf("MoveGroup: %v", err)
 	}
 
-	onDisk, err := LoadAssignment(root)
+	onDisk, err := LoadAssignment(root, WindowOne)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -117,10 +117,10 @@ func TestAssignment_MoveGroupBackToWindowOne(t *testing.T) {
 	root := t.TempDir()
 	a := assignFixture(t, root)
 
-	if err := a.MoveGroup("eng", WindowOne); err != nil {
+	if err := mustAssignWriter(t, a).MoveGroup("eng", WindowOne); err != nil {
 		t.Fatalf("MoveGroup back to window 1: %v", err)
 	}
-	onDisk, err := LoadAssignment(root)
+	onDisk, err := LoadAssignment(root, WindowOne)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -197,7 +197,7 @@ func TestAssignment_AnswersForDisconnectedWindow(t *testing.T) {
 	// Window "two" is now GONE. Fold-back's read: which groups did it own?
 	// There is deliberately no liveness argument to pass -- the store cannot
 	// know or care that the window disconnected.
-	reloaded, err := LoadAssignment(root)
+	reloaded, err := LoadAssignment(root, WindowOne)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -263,7 +263,7 @@ func TestAssignment_IndependentOfLayoutState(t *testing.T) {
 			tc.setup(t, root)
 			assignFixture(t, root)
 
-			reloaded, err := LoadAssignment(root)
+			reloaded, err := LoadAssignment(root, WindowOne)
 			if err != nil {
 				t.Fatalf("LoadAssignment with %s: %v", tc.name, err)
 			}
@@ -306,7 +306,7 @@ func TestAssignment_DoesNotTouchLayoutFiles(t *testing.T) {
 	}
 
 	assignFixture(t, root)
-	if _, err := LoadAssignment(root); err != nil {
+	if _, err := LoadAssignment(root, WindowOne); err != nil {
 		t.Fatal(err)
 	}
 
@@ -338,12 +338,12 @@ func TestAssignment_DoesNotTouchLayoutFiles(t *testing.T) {
 // a traversal attempt is refused rather than sanitized.
 func TestAssignment_RejectsUnsafeWindowIdentity(t *testing.T) {
 	root := t.TempDir()
-	a, err := LoadAssignment(root)
+	a, err := LoadAssignment(root, WindowOne)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, bad := range []string{"../escape", "a/b", "a:b", "..", ".", "with space", "dot.name"} {
-		if err := a.MoveGroup("eng", bad); err == nil {
+		if err := mustAssignWriter(t, a).MoveGroup("eng", bad); err == nil {
 			t.Errorf("MoveGroup to window %q should be rejected", bad)
 		}
 		if got := a.WindowOfGroup("eng"); got != WindowOne {
@@ -356,11 +356,11 @@ func TestAssignment_RejectsUnsafeWindowIdentity(t *testing.T) {
 // must be non-empty, or an unlabeled agent could silently claim a window.
 func TestAssignment_EmptyGroupRejected(t *testing.T) {
 	root := t.TempDir()
-	a, err := LoadAssignment(root)
+	a, err := LoadAssignment(root, WindowOne)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := a.MoveGroup("", winTwo); err == nil {
+	if err := mustAssignWriter(t, a).MoveGroup("", winTwo); err == nil {
 		t.Error("MoveGroup with an empty group label should be rejected")
 	}
 }
@@ -377,7 +377,7 @@ func TestLoadAssignment_CorruptStoreIsAnError(t *testing.T) {
 	if err := os.WriteFile(assignmentPath(root), []byte("{{{ not: [valid yaml"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := LoadAssignment(root); err == nil {
+	if _, err := LoadAssignment(root, WindowOne); err == nil {
 		t.Error("LoadAssignment on a corrupt store should error, not silently default to window 1")
 	}
 }

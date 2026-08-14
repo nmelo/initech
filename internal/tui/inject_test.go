@@ -17,7 +17,9 @@ import (
 // TestInjectText_BracketedPaste verifies that injectText wraps the text in
 // bracketed paste markers (ESC[200~ / ESC[201~) and writes directly to the PTY.
 func TestInjectText_BracketedPaste(t *testing.T) {
-	if runtime.GOOS == "windows" { t.Skip("test uses Unix pipes") }
+	if runtime.GOOS == "windows" {
+		t.Skip("test uses Unix pipes")
+	}
 	ptmx, tty, err := pty.Open()
 	if err != nil {
 		t.Fatalf("pty.Open: %v", err)
@@ -70,7 +72,9 @@ func TestInjectText_BracketedPaste(t *testing.T) {
 // TestInjectText_CtrlS_StillSent verifies that Ctrl+S stash is still sent
 // through the emulator before the bracketed paste.
 func TestInjectText_CtrlS_StillSent(t *testing.T) {
-	if runtime.GOOS == "windows" { t.Skip("test uses Unix pipes") }
+	if runtime.GOOS == "windows" {
+		t.Skip("test uses Unix pipes")
+	}
 	ptmx, tty, err := pty.Open()
 	if err != nil {
 		t.Fatalf("pty.Open: %v", err)
@@ -287,7 +291,9 @@ func TestPromptHasContent_CodexPromptGlyph(t *testing.T) {
 }
 
 func TestPaneSendText_CodexQueuesWithTabWhileRunning(t *testing.T) {
-	if runtime.GOOS == "windows" { t.Skip("test uses Unix pipes") }
+	if runtime.GOOS == "windows" {
+		t.Skip("test uses Unix pipes")
+	}
 	ptmx, tty, err := pty.Open()
 	if err != nil {
 		t.Fatalf("pty.Open: %v", err)

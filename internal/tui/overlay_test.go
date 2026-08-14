@@ -152,7 +152,7 @@ func TestOverlayDotClick_OnlyDotColumnIsTarget(t *testing.T) {
 	tui.renderOverlay()
 
 	nameCol := tui.overlayBounds.x + 4 // name starts here, not the dot
-	eng1Row := tui.overlayBounds.y + 1  // agent index 0
+	eng1Row := tui.overlayBounds.y + 1 // agent index 0
 
 	tui.handleMouse(tcell.NewEventMouse(nameCol, eng1Row, tcell.Button1, 0))
 

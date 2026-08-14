@@ -59,12 +59,19 @@ func TestFallbackStore_MoveGroupLeavesTheCorruptFileByteIdentical(t *testing.T) 
 	tui := &TUI{projectRoot: root}
 	a := tui.agentsAssignment()
 
-	err := a.MoveGroup("eng", "window-2")
-	if err == nil {
-		t.Fatal("MoveGroup succeeded against a fallback store; it would have overwritten the operator's arrangement")
-	}
-	if !errors.Is(err, ErrAssignmentReadOnly) {
-		t.Errorf("error = %v, want ErrAssignmentReadOnly so callers can distinguish a refusal from a validation failure", err)
+	// Since ini-la97 the refusal happens one step EARLIER and more strongly:
+	// a fallback store yields no mutation capability at all, so there is no
+	// value on which MoveGroup can be called. Assert that, then assert the
+	// primitive still refuses if a writer is somehow obtained -- the two
+	// layers the bead asks for (capability, plus the guard in the primitive).
+	if w, ok := a.Writer(); ok {
+		err := w.MoveGroup("eng", "window-2")
+		if err == nil {
+			t.Fatal("MoveGroup succeeded against a fallback store; it would have overwritten the operator's arrangement")
+		}
+		if !errors.Is(err, ErrAssignmentReadOnly) {
+			t.Errorf("error = %v, want ErrAssignmentReadOnly so callers can distinguish a refusal from a validation failure", err)
+		}
 	}
 	if after := hashFile(t, root); after != before {
 		t.Errorf("the corrupt file was modified.\n  before: %s\n  after:  %s\nA fallback must never write the file it failed to read", before, after)
@@ -79,9 +86,12 @@ func TestFallbackStore_RefusesEveryWindowIdentity(t *testing.T) {
 	root, before := corruptStore(t)
 	a := (&TUI{projectRoot: root}).agentsAssignment()
 
-	for _, target := range []string{"window-2", "window-3", WindowOne} {
-		if err := a.MoveGroup("eng", target); !errors.Is(err, ErrAssignmentReadOnly) {
-			t.Errorf("MoveGroup(eng, %q) error = %v, want ErrAssignmentReadOnly", target, err)
+	w, ok := a.Writer()
+	if ok {
+		for _, target := range []string{"window-2", "window-3", WindowOne} {
+			if err := w.MoveGroup("eng", target); !errors.Is(err, ErrAssignmentReadOnly) {
+				t.Errorf("MoveGroup(eng, %q) error = %v, want ErrAssignmentReadOnly", target, err)
+			}
 		}
 	}
 	if after := hashFile(t, root); after != before {
@@ -132,17 +142,17 @@ func TestFallbackStore_KeepsItsRootRatherThanBlankingIt(t *testing.T) {
 // save on every edit, which is .4's contract.
 func TestHealthyStore_StillPersistsNormally(t *testing.T) {
 	root := t.TempDir()
-	a, err := LoadAssignment(root)
+	a, err := LoadAssignment(root, WindowOne)
 	if err != nil {
 		t.Fatalf("LoadAssignment on a fresh project: %v", err)
 	}
 	if a.readOnly {
 		t.Fatal("a healthy store was marked read-only")
 	}
-	if err := a.MoveGroup("eng", "window-2"); err != nil {
+	if err := mustAssignWriter(t, a).MoveGroup("eng", "window-2"); err != nil {
 		t.Fatalf("MoveGroup on a healthy store: %v", err)
 	}
-	reloaded, err := LoadAssignment(root)
+	reloaded, err := LoadAssignment(root, WindowOne)
 	if err != nil {
 		t.Fatalf("reload: %v", err)
 	}

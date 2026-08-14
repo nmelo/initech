@@ -102,12 +102,27 @@ type WindowAssignment struct {
 	// error into quiet erasure one interaction later. A corrupt file is not
 	// an absent file, and the fallback must not treat it as one.
 	readOnly bool
+
+	// authority records whether the PROCESS that loaded this store may write
+	// it: true only for window 1. Bound at load, not asked at each call site,
+	// because a store that does not know whether it may be written is a store
+	// every future caller has to remember to check (docs/systemdesign.md: the
+	// guard lives in the primitive, never the entry points).
+	authority bool
 }
 
 // ErrAssignmentReadOnly is returned when a write is attempted against a
 // fallback store. Callers match on it to tell "your move was refused because
 // the store is unreadable" apart from an ordinary validation failure, so the
 // operator can be told the difference.
+// ErrAssignmentNotAuthority is returned when a window that is not the primary
+// attempts to write the assignment store. It mirrors ErrFleetStateNotAuthority
+// one store over: docs/spec.md's Single-writer invariant says the primary is
+// the sole writer of fleet-global state and a viewer requests mutations
+// through window 1, so a viewer reaching this error means a routing seam was
+// bypassed -- the message names the route rather than just refusing.
+var ErrAssignmentNotAuthority = errors.New("only window 1 writes window assignments; secondary windows must send set_group_window")
+
 var ErrAssignmentReadOnly = errors.New("assignment store is unreadable; window assignments cannot be changed until .initech/assignments.yaml is repaired or deleted")
 
 // newFallbackAssignment builds the read-only store used when the real one
@@ -137,8 +152,12 @@ func assignmentPath(projectRoot string) string {
 // "fresh project" would silently present as a successful reset while losing
 // the operator's real arrangement -- the caller needs to be able to tell those
 // apart.
-func LoadAssignment(projectRoot string) (*WindowAssignment, error) {
-	a := &WindowAssignment{root: projectRoot, groupWindow: map[string]string{}}
+func LoadAssignment(projectRoot, windowID string) (*WindowAssignment, error) {
+	a := &WindowAssignment{
+		root:        projectRoot,
+		groupWindow: map[string]string{},
+		authority:   windowID == WindowOne,
+	}
 	// a.healed is set below when a legacy identity was normalized; the load
 	// itself stays read-only (viewers call it, and the civ rule forbids their
 	// writing shared state). The AUTHORITY persists via PersistHealIfNeeded.
@@ -187,6 +206,15 @@ func (a *WindowAssignment) save() error {
 	if a.readOnly {
 		return ErrAssignmentReadOnly
 	}
+	// THE GUARD IN THE PRIMITIVE. Every mutation reaches the file through
+	// here, so a viewer cannot write the store by any route -- present or
+	// future, keybinding or IPC-applied -- without going through a window
+	// that holds the authority. Checked here rather than at the call sites
+	// for the same reason mutateFleet does it: entry points cannot bypass
+	// what they never implement.
+	if !a.authority {
+		return ErrAssignmentNotAuthority
+	}
 	dir := layoutDir(a.root)
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return fmt.Errorf("create .initech/: %w", err)
@@ -227,7 +255,30 @@ func (a *WindowAssignment) PersistHealIfNeeded() {
 // group to WindowOne removes its entry, since absence is how window 1 is
 // represented. Returns an error without mutating anything if the group label
 // is empty or the window identity is unsafe.
-func (a *WindowAssignment) MoveGroup(group, windowID string) error {
+// AssignmentWriter is the CAPABILITY to mutate the assignment store. It exists
+// so the dangerous call is unsayable rather than merely refused: a viewer
+// cannot obtain one, so there is no value in a viewer on which MoveGroup can
+// be called. The bool guard in save() stays underneath for the paths the type
+// system cannot reach -- window 1 applying a routed mutation on behalf of a
+// viewer still goes through the primitive.
+type AssignmentWriter struct{ a *WindowAssignment }
+
+// Writer returns the mutation capability, or ok=false when this process is not
+// the primary window. Callers that hold no writer have no way to express a
+// write, which is the point.
+func (a *WindowAssignment) Writer() (*AssignmentWriter, bool) {
+	if a == nil || !a.authority {
+		return nil, false
+	}
+	return &AssignmentWriter{a: a}, true
+}
+
+// MoveGroup assigns a group to a window and persists immediately.
+func (w *AssignmentWriter) MoveGroup(group, windowID string) error {
+	return w.a.moveGroup(group, windowID)
+}
+
+func (a *WindowAssignment) moveGroup(group, windowID string) error {
 	if group == "" {
 		return fmt.Errorf("group label must not be empty")
 	}

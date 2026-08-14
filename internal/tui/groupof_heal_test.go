@@ -183,7 +183,7 @@ func TestLoadAssignment_HealPersistsOnAuthorityOnly(t *testing.T) {
 	os.WriteFile(path, []byte(legacy), 0o644)
 
 	// A viewer loads: heal in memory, file untouched.
-	a, err := LoadAssignment(root)
+	a, err := LoadAssignment(root, WindowOne)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -203,7 +203,7 @@ func TestLoadAssignment_HealPersistsOnAuthorityOnly(t *testing.T) {
 	}
 
 	// Idempotence: the next load has nothing to heal.
-	a2, err := LoadAssignment(root)
+	a2, err := LoadAssignment(root, WindowOne)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -228,7 +228,7 @@ func TestPersistHealIfNeeded_Refusals(t *testing.T) {
 
 	// Unhealed store: no write at all.
 	os.WriteFile(path, []byte("group_window:\n    qa: window-2\n"), 0o644)
-	a, err := LoadAssignment(root)
+	a, err := LoadAssignment(root, WindowOne)
 	if err != nil {
 		t.Fatal(err)
 	}

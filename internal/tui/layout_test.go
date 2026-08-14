@@ -827,12 +827,12 @@ func TestSaveLayoutIfConfiguredWritesFile(t *testing.T) {
 func TestHandlePeerUpdateRespectsSavedRemoteKeys(t *testing.T) {
 	tui := newTestTUI(testPane("super"))
 	tui.layoutState = LayoutState{
-		Mode:     LayoutGrid,
-		GridCols: 1,
-		GridRows: 1,
-		Focused:  "super",
-		Hidden:   map[string]bool{"workbench:intern": true},
-		Order:    []string{"workbench:intern", "super"},
+		Mode:      LayoutGrid,
+		GridCols:  1,
+		GridRows:  1,
+		Focused:   "super",
+		Hidden:    map[string]bool{"workbench:intern": true},
+		Order:     []string{"workbench:intern", "super"},
 		Protected: map[string]bool{},
 	}
 

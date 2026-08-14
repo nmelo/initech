@@ -24,12 +24,12 @@ type mockPaneView struct {
 	lastOutputTime time.Time
 }
 
-func (m *mockPaneView) Name() string                   { return m.name }
-func (m *mockPaneView) Host() string                   { return m.host }
-func (m *mockPaneView) IsAlive() bool                  { return m.alive }
-func (m *mockPaneView) IsSuspended() bool              { return m.suspended }
-func (m *mockPaneView) IsProtected() bool               { return m.pinned }
-func (m *mockPaneView) BeadID() string                 { return m.beadID }
+func (m *mockPaneView) Name() string      { return m.name }
+func (m *mockPaneView) Host() string      { return m.host }
+func (m *mockPaneView) IsAlive() bool     { return m.alive }
+func (m *mockPaneView) IsSuspended() bool { return m.suspended }
+func (m *mockPaneView) IsProtected() bool { return m.pinned }
+func (m *mockPaneView) BeadID() string    { return m.beadID }
 func (m *mockPaneView) BeadIDs() []string {
 	if m.beadID == "" {
 		return nil
@@ -44,18 +44,18 @@ func (m *mockPaneView) LastEventTime() time.Time       { return m.eventTime }
 func (m *mockPaneView) LastOutputTime() time.Time      { return m.lastOutputTime }
 
 // Unused PaneView methods.
-func (m *mockPaneView) SessionDesc() string                                          { return "" }
-func (m *mockPaneView) AgentType() string                                            { return "" }
-func (m *mockPaneView) SubmitKey() string                                            { return "" }
-func (m *mockPaneView) SetBead(id, title string)                                     {}
-func (m *mockPaneView) SetBeads(ids []string)                                        {}
-func (m *mockPaneView) SendKey(_ *tcell.EventKey)                                    {}
-func (m *mockPaneView) SendText(_ string, _ bool)                                    {}
-func (m *mockPaneView) Render(_ tcell.Screen, _ bool, _ bool, _ int, _ Selection)    {}
-func (m *mockPaneView) Resize(_, _ int)                                              {}
-func (m *mockPaneView) Close()                                                       {}
-func (m *mockPaneView) GetRegion() Region                                            { return Region{} }
-func (m *mockPaneView) Emulator() *vt.SafeEmulator                                  { return nil }
+func (m *mockPaneView) SessionDesc() string                                       { return "" }
+func (m *mockPaneView) AgentType() string                                         { return "" }
+func (m *mockPaneView) SubmitKey() string                                         { return "" }
+func (m *mockPaneView) SetBead(id, title string)                                  {}
+func (m *mockPaneView) SetBeads(ids []string)                                     {}
+func (m *mockPaneView) SendKey(_ *tcell.EventKey)                                 {}
+func (m *mockPaneView) SendText(_ string, _ bool)                                 {}
+func (m *mockPaneView) Render(_ tcell.Screen, _ bool, _ bool, _ int, _ Selection) {}
+func (m *mockPaneView) Resize(_, _ int)                                           {}
+func (m *mockPaneView) Close()                                                    {}
+func (m *mockPaneView) GetRegion() Region                                         { return Region{} }
+func (m *mockPaneView) Emulator() *vt.SafeEmulator                                { return nil }
 
 // Compile-time check: mockPaneView satisfies PaneView.
 var _ PaneView = (*mockPaneView)(nil)
@@ -401,7 +401,7 @@ func TestLiveEngine_HoldTimeExpiryAllowsSwap(t *testing.T) {
 	tick2 := now.Add(15 * time.Second)
 	panes := []PaneView{
 		&mockPaneView{name: "eng1", alive: true, activity: StateIdle, beadID: "ini-a"},                                            // score 30
-		&mockPaneView{name: "eng2", alive: true, activity: StateIdle},                                                              // score 0
+		&mockPaneView{name: "eng2", alive: true, activity: StateIdle},                                                             // score 0
 		&mockPaneView{name: "eng3", alive: true, beadID: "ini-b", activity: StateRunning, runStart: tick2.Add(-10 * time.Second)}, // score 50
 	}
 	slots := le.Tick(panes, tick2)
@@ -455,7 +455,7 @@ func TestLiveEngine_HysteresisMarginRequired(t *testing.T) {
 	// But margin: 45 - 30 = 15 < 20. Not enough to displace.
 	tick2 := now.Add(15 * time.Second)
 	panes := []PaneView{
-		&mockPaneView{name: "eng1", alive: true, activity: StateIdle, beadID: "ini-a"},                          // score 30
+		&mockPaneView{name: "eng1", alive: true, activity: StateIdle, beadID: "ini-a"},                      // score 30
 		&mockPaneView{name: "eng2", alive: true, activity: StateIdle, beadID: "ini-b", runBytes: 11 * 1024}, // score 45
 	}
 	slots := le.Tick(panes, tick2)
@@ -478,7 +478,7 @@ func TestLiveEngine_HysteresisKeepThreshold(t *testing.T) {
 	// eng2 has score 50 (bead + running). >= claim threshold.
 	tick2 := now.Add(15 * time.Second)
 	panes := []PaneView{
-		&mockPaneView{name: "eng1", alive: true, activity: StateIdle}, // score 0 (event expired)
+		&mockPaneView{name: "eng1", alive: true, activity: StateIdle},                                                             // score 0 (event expired)
 		&mockPaneView{name: "eng2", alive: true, beadID: "ini-b", activity: StateRunning, runStart: tick2.Add(-10 * time.Second)}, // score 50
 	}
 	slots := le.Tick(panes, tick2)
@@ -527,9 +527,9 @@ func TestLiveEngine_OneSwapPerTick_MultipleEligible(t *testing.T) {
 	// After hold: all occupants drop to 0. Three challengers qualify.
 	tick2 := now.Add(15 * time.Second)
 	panes := []PaneView{
-		&mockPaneView{name: "eng1", alive: true, activity: StateIdle}, // score 0 (event expired)
-		&mockPaneView{name: "eng2", alive: true, activity: StateIdle}, // score 0
-		&mockPaneView{name: "eng3", alive: true, activity: StateIdle}, // score 0
+		&mockPaneView{name: "eng1", alive: true, activity: StateIdle},                                                             // score 0 (event expired)
+		&mockPaneView{name: "eng2", alive: true, activity: StateIdle},                                                             // score 0
+		&mockPaneView{name: "eng3", alive: true, activity: StateIdle},                                                             // score 0
 		&mockPaneView{name: "hot1", alive: true, beadID: "ini-a", activity: StateRunning, runStart: tick2.Add(-10 * time.Second)}, // score 50
 		&mockPaneView{name: "hot2", alive: true, beadID: "ini-b", activity: StateRunning, runStart: tick2.Add(-10 * time.Second)}, // score 50
 		&mockPaneView{name: "hot3", alive: true, beadID: "ini-c", activity: StateRunning, runStart: tick2.Add(-10 * time.Second)}, // score 50
@@ -629,8 +629,8 @@ func TestLiveEngine_OccupantNotChallengerForOwnSlot(t *testing.T) {
 	// pmm should be the challenger, not the occupant challenging itself.
 	tick2 := now.Add(15 * time.Second)
 	panes := []PaneView{
-		&mockPaneView{name: "eng1", alive: true, activity: StateIdle, beadID: "ini-a"}, // score 30
-		&mockPaneView{name: "pm", alive: true, activity: StateIdle, beadID: "ini-b"},   // score 30
+		&mockPaneView{name: "eng1", alive: true, activity: StateIdle, beadID: "ini-a"},                                                                                     // score 30
+		&mockPaneView{name: "pm", alive: true, activity: StateIdle, beadID: "ini-b"},                                                                                       // score 30
 		&mockPaneView{name: "pmm", alive: true, beadID: "ini-c", activity: StateRunning, runStart: tick2.Add(-10 * time.Second), msgReceived: tick2.Add(-5 * time.Second)}, // score 30+20+25=75
 	}
 	slots := le.Tick(panes, tick2)
@@ -683,7 +683,7 @@ func TestLiveEngine_EmptySlotFillNotLimitedBySwapCap(t *testing.T) {
 	panes := []PaneView{
 		&mockPaneView{name: "eng1", alive: true, beadID: "ini-a", activity: StateRunning, runStart: now.Add(-10 * time.Second)}, // score 50
 		&mockPaneView{name: "eng2", alive: true, activity: StateIdle, beadID: "ini-b"},                                          // score 30
-		&mockPaneView{name: "eng3", alive: true, activity: StateIdle},                                                            // score 0
+		&mockPaneView{name: "eng3", alive: true, activity: StateIdle},                                                           // score 0
 	}
 	le := NewLiveEngine(3, nil, nil)
 	slots := le.Tick(panes, now)
@@ -731,8 +731,8 @@ func TestTick_DisplacementByScoreNotYamlOrder(t *testing.T) {
 	// Roles order: eng1 before eng3. eng1 has lower score.
 	// One dynamic slot occupied by a weak agent that will be displaced.
 	panes := []PaneView{
-		&mockPaneView{name: "weak", alive: true, activity: StateIdle}, // score 0 (below keep)
-		&mockPaneView{name: "eng1", alive: true, activity: StateIdle, beadID: "bb-1"},                                                  // score 30
+		&mockPaneView{name: "weak", alive: true, activity: StateIdle},                                                                           // score 0 (below keep)
+		&mockPaneView{name: "eng1", alive: true, activity: StateIdle, beadID: "bb-1"},                                                           // score 30
 		&mockPaneView{name: "eng3", alive: true, activity: StateRunning, beadID: "bb-3", runStart: now.Add(-10 * time.Second), runBytes: 20000}, // score 65
 	}
 	le := NewLiveEngine(1, nil, []string{"eng1", "eng2", "eng3"})
@@ -816,8 +816,8 @@ func TestTick_CxR_DisplacementStillWorks(t *testing.T) {
 	// After hold: eng1/eng2 drop to 0. qa1 arrives with score 50.
 	tick2 := now.Add(15 * time.Second)
 	panes := []PaneView{
-		&mockPaneView{name: "eng1", alive: true, activity: StateIdle},                                                             // score 0
-		&mockPaneView{name: "eng2", alive: true, activity: StateIdle},                                                             // score 0
+		&mockPaneView{name: "eng1", alive: true, activity: StateIdle},                                                            // score 0
+		&mockPaneView{name: "eng2", alive: true, activity: StateIdle},                                                            // score 0
 		&mockPaneView{name: "qa1", alive: true, beadID: "ini-a", activity: StateRunning, runStart: tick2.Add(-10 * time.Second)}, // score 50
 	}
 	slots := le.Tick(panes, tick2)
@@ -843,9 +843,9 @@ func TestFillEmpty_HighestScoreFirst(t *testing.T) {
 	pinned := map[string]int{"super": 0}
 	panes := []PaneView{
 		&mockPaneView{name: "super", alive: true, activity: StateIdle},
-		&mockPaneView{name: "eng1", alive: true, activity: StateIdle, beadID: "bb-1"},                                                          // score 30
-		&mockPaneView{name: "eng2", alive: true, activity: StateIdle, beadID: "bb-2"},                                                          // score 30
-		&mockPaneView{name: "qa1", alive: true, activity: StateIdle, beadID: "bb-q"},                                                           // score 30
+		&mockPaneView{name: "eng1", alive: true, activity: StateIdle, beadID: "bb-1"},                                                              // score 30
+		&mockPaneView{name: "eng2", alive: true, activity: StateIdle, beadID: "bb-2"},                                                              // score 30
+		&mockPaneView{name: "qa1", alive: true, activity: StateIdle, beadID: "bb-q"},                                                               // score 30
 		&mockPaneView{name: "shipper", alive: true, activity: StateRunning, beadID: "bb-s", runStart: now.Add(-10 * time.Second), runBytes: 20000}, // score 65
 	}
 	le := NewLiveEngine(4, pinned, roles) // super pinned + 3 dynamic
@@ -896,7 +896,7 @@ func TestDisplayOrder_AfterScoreBasedFill(t *testing.T) {
 	pinned := map[string]int{"super": 0}
 	panes := []PaneView{
 		&mockPaneView{name: "super", alive: true, activity: StateIdle},
-		&mockPaneView{name: "eng1", alive: true, activity: StateIdle, beadID: "bb-1"},                                                          // score 30
+		&mockPaneView{name: "eng1", alive: true, activity: StateIdle, beadID: "bb-1"},                                                              // score 30
 		&mockPaneView{name: "shipper", alive: true, activity: StateRunning, beadID: "bb-s", runStart: now.Add(-10 * time.Second), runBytes: 20000}, // score 65
 	}
 	le := NewLiveEngine(3, pinned, roles) // super + 2 dynamic
@@ -1392,7 +1392,7 @@ func TestTick_StrongOccupantStillNeedsClaimThreshold(t *testing.T) {
 	// After hold: challenger with volume (score 15). Meets keepThreshold but not claimThreshold.
 	tick2 := now.Add(15 * time.Second)
 	panes := []PaneView{
-		&mockPaneView{name: "eng1", alive: true, activity: StateIdle, beadID: "ini-a"},     // score 30
+		&mockPaneView{name: "eng1", alive: true, activity: StateIdle, beadID: "ini-a"},    // score 30
 		&mockPaneView{name: "datasc", alive: true, activity: StateIdle, runBytes: 918357}, // score 15
 	}
 	slots := le.Tick(panes, tick2)
@@ -1415,7 +1415,7 @@ func TestTick_PinnedProtectedFromWeakDisplacement(t *testing.T) {
 
 	tick2 := now.Add(15 * time.Second)
 	panes := []PaneView{
-		&mockPaneView{name: "super", alive: true, activity: StateIdle},                                                               // score 0, pinned
+		&mockPaneView{name: "super", alive: true, activity: StateIdle},                                                           // score 0, pinned
 		&mockPaneView{name: "hot", alive: true, beadID: "ini-a", activity: StateRunning, runStart: tick2.Add(-10 * time.Second)}, // score 50
 	}
 	slots := le.Tick(panes, tick2)
@@ -1440,7 +1440,7 @@ func TestTick_BeadlessAgentDisplacesIdleWithBead(t *testing.T) {
 	// Beadless agent with recent dispatch (score 25) should displace.
 	tick2 := now.Add(15 * time.Second)
 	panes := []PaneView{
-		&mockPaneView{name: "eng1", alive: false, beadID: "ini-a"},                                              // score 0 (dead)
+		&mockPaneView{name: "eng1", alive: false, beadID: "ini-a"},                                                // score 0 (dead)
 		&mockPaneView{name: "intern", alive: true, activity: StateIdle, msgReceived: tick2.Add(-5 * time.Second)}, // score 25 (no bead)
 	}
 	slots := le.Tick(panes, tick2)

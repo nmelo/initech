@@ -29,11 +29,11 @@ import (
 func foldbackFixture(t *testing.T) (*WindowAssignment, map[string]string, []string) {
 	t.Helper()
 	root := t.TempDir() // no unix socket here, so t.TempDir() is safe
-	a, err := LoadAssignment(root)
+	a, err := LoadAssignment(root, WindowOne)
 	if err != nil {
 		t.Fatalf("LoadAssignment: %v", err)
 	}
-	if err := a.MoveGroup("eng", "window2"); err != nil {
+	if err := mustAssignWriter(t, a).MoveGroup("eng", "window2"); err != nil {
 		t.Fatalf("MoveGroup: %v", err)
 	}
 	groupOf := map[string]string{
@@ -177,11 +177,11 @@ func TestFoldback_OnlyWindowOneAbsorbsDisconnectedAgents(t *testing.T) {
 func foldbackServerFixture(t *testing.T) (*windowServer, string, *WindowAssignment, map[string]string) {
 	t.Helper()
 	root := t.TempDir()
-	a, err := LoadAssignment(root)
+	a, err := LoadAssignment(root, WindowOne)
 	if err != nil {
 		t.Fatalf("LoadAssignment: %v", err)
 	}
-	if err := a.MoveGroup("eng", "window2"); err != nil {
+	if err := mustAssignWriter(t, a).MoveGroup("eng", "window2"); err != nil {
 		t.Fatalf("MoveGroup: %v", err)
 	}
 	groupOf := map[string]string{"eng1": "eng", "super": "core"}
@@ -380,11 +380,11 @@ func TestFoldedBackAgents_ListsOnlyOrphansInCallerOrder(t *testing.T) {
 func TestApplyLayout_ExcludesPanesOwnedByAConnectedWindow(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("super", "eng1")
 	root := t.TempDir()
-	a, err := LoadAssignment(root)
+	a, err := LoadAssignment(root, WindowOne)
 	if err != nil {
 		t.Fatalf("LoadAssignment: %v", err)
 	}
-	if err := a.MoveGroup("eng", "window-2"); err != nil {
+	if err := mustAssignWriter(t, a).MoveGroup("eng", "window-2"); err != nil {
 		t.Fatalf("MoveGroup: %v", err)
 	}
 	tui.assignment = a
@@ -433,7 +433,7 @@ func TestApplyLayout_SingleWindowSessionRendersEveryPane(t *testing.T) {
 func TestNoticeWindowTransitions_RaisesFoldbackAndRestoreEvents(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("eng1")
 	root := t.TempDir()
-	a, _ := LoadAssignment(root)
+	a, _ := LoadAssignment(root, WindowOne)
 	tui.assignment = a
 	tui.windowID = WindowOne
 	tui.liveness = newWindowLivenessTracker()

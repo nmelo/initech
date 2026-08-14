@@ -231,7 +231,8 @@ func TestLiveRegionClip_AskUserQuestion(t *testing.T) {
 // at the visible bottom, no blank-row drift) and (b) a previously-clipped
 // AskUserQuestion modal is now captured in the taller emulator and recoverable
 // by scrolling.
-//   INITECH_LIVEPROBE=fix go test ./internal/tui/ -run TestLiveRegionFix -v -count=1 -timeout 180s
+//
+//	INITECH_LIVEPROBE=fix go test ./internal/tui/ -run TestLiveRegionFix -v -count=1 -timeout 180s
 func TestLiveRegionFix_AskUserQuestionScrollable(t *testing.T) {
 	if os.Getenv("INITECH_LIVEPROBE") != "fix" {
 		t.Skip("set INITECH_LIVEPROBE=fix to run the real-claude increment-1 gate")

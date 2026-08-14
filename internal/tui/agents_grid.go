@@ -332,7 +332,7 @@ func (t *TUI) agentsAssignment() *WindowAssignment {
 	if t.assignment != nil {
 		return t.assignment
 	}
-	a, err := LoadAssignment(t.projectRoot)
+	a, err := LoadAssignment(t.projectRoot, t.windowID)
 	if err != nil {
 		// READ-ONLY fallback (ini-9ka.9). The store is unreadable, not
 		// absent -- the operator's real arrangement is still in that file,
@@ -581,7 +581,7 @@ func (t *TUI) agentsMoveV(cells []gridCell, delta int) {
 		t.panes = append(t.panes[:insertAt], append([]PaneView{ag}, t.panes[insertAt:]...)...)
 		t.agents.selected = insertAt
 		t.layoutState.GroupOf[paneKey(ag)] = label
-		t.agentsPersistOrder()
+		t.agentsPersistGrouping(ag.Name(), label)
 		return
 	}
 	if !t.agents.moving {
@@ -606,7 +606,7 @@ func (t *TUI) agentsMoveV(cells []gridCell, delta int) {
 	t.panes = append(t.panes[:insertAt], append([]PaneView{ag}, t.panes[insertAt:]...)...)
 	t.agents.selected = insertAt
 	t.layoutState.GroupOf[paneKey(ag)] = best.group
-	t.agentsPersistOrder()
+	t.agentsPersistGrouping(ag.Name(), best.group)
 }
 
 // ---------- group lifecycle ----------
@@ -644,7 +644,7 @@ func (t *TUI) agentsCreateGroup(name string) {
 	// Only non-default windows need a stored row; window 1 is absence
 	// (ini-9ka.4), so creating on window 1 correctly writes nothing.
 	if targetWindow != WindowOne {
-		if err := t.agentsAssignment().MoveGroup(name, targetWindow); err != nil {
+		if err := t.moveGroupToWindow(name, targetWindow); err != nil {
 			t.noticeAssignmentWriteFailed("assign new group "+name, err)
 			LogWarn("agents", "assigning new group to the selection's window failed",
 				"group", name, "window", targetWindow, "err", err)
@@ -707,7 +707,7 @@ func (t *TUI) agentsMoveGroupToNextWindow() {
 		}
 	}
 	next := windows[(idx+1)%len(windows)]
-	if err := assign.MoveGroup(group, next); err != nil {
+	if err := t.moveGroupToWindow(group, next); err != nil {
 		t.noticeAssignmentWriteFailed("move group "+group, err)
 		LogWarn("agents", "move group to next window failed", "group", group, "window", next, "err", err)
 		return
@@ -805,7 +805,7 @@ func (t *TUI) agentsPruneEmptyGroups() {
 		if assign.WindowOfGroup(g) == WindowOne {
 			continue // Nothing stored for a window-1 group.
 		}
-		if err := assign.MoveGroup(g, WindowOne); err != nil {
+		if err := t.moveGroupToWindow(g, WindowOne); err != nil {
 			LogWarn("agents", "clearing assignment for pruned group failed", "group", g, "err", err)
 		}
 	}
