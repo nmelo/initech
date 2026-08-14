@@ -60,18 +60,30 @@ func nineISXRoot(t *testing.T, assignments string) (root string, nonceAgent stri
 		if !t.Failed() {
 			return
 		}
+		// PRESERVE the artifact, do not merely print a window of it. The first
+		// cut logged the last 120 lines, which at render cadence is under four
+		// seconds -- enough to say what the state was at teardown and unable to
+		// say when it started. "Rendered then stopped" and "never rendered"
+		// are different bugs with different owners, and a tail cannot tell them
+		// apart. Copying the whole file out means the next question about this
+		// run can be asked after the run.
+		dest := os.Getenv("INITECH_RIG_ARTIFACTS")
+		if dest == "" {
+			dest = os.TempDir()
+		}
 		for _, name := range []string{"initech.log", "crash.log"} {
 			b, err := os.ReadFile(filepath.Join(root, ".initech", name))
 			if err != nil {
-				t.Logf("FAILURE ARTIFACT %s: unreadable (%v)", name, err)
+				continue
+			}
+			out := filepath.Join(dest, fmt.Sprintf("rig-%s-%s", filepath.Base(root), name))
+			if werr := os.WriteFile(out, b, 0o644); werr != nil {
+				t.Logf("FAILURE ARTIFACT %s: could not preserve (%v)", name, werr)
 				continue
 			}
 			lines := strings.Split(strings.TrimRight(string(b), "\n"), "\n")
-			if len(lines) > 120 {
-				lines = lines[len(lines)-120:]
-			}
-			t.Logf("FAILURE ARTIFACT %s (last %d lines):\n%s", name, len(lines),
-				strings.Join(lines, "\n"))
+			t.Logf("FAILURE ARTIFACT %s: %d lines PRESERVED at %s\n  FIRST: %s\n  LAST:  %s",
+				name, len(lines), out, lines[0], lines[len(lines)-1])
 		}
 	})
 
