@@ -59,7 +59,9 @@ func testTUIWithPanes(names ...string) *TUI {
 	ls := DefaultLayoutState(nil)
 	ls.Hidden = make(map[string]bool)
 	ls.Protected = make(map[string]bool)
-	return &TUI{panes: toPaneViews(panes), layoutState: ls}
+	// quitCh non-nil to match production (Run always makes one); quit-path
+	// tests would otherwise panic on close of nil channel.
+	return &TUI{panes: toPaneViews(panes), layoutState: ls, quitCh: make(chan struct{})}
 }
 
 func TestCompletionCandidates_Default(t *testing.T) {

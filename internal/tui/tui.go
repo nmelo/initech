@@ -1115,6 +1115,15 @@ func Run(cfg Config) error {
 		}
 	}()
 
+	// Guard the hallway, not the doors: whatever path exits the event loop
+	// (IPC quit, keyboard :quit, eviction, a future return, a panic), quitCh
+	// must be closed before the cleanup defers above start waiting — they
+	// wait on goroutines whose only exit signal is that channel. Defers run
+	// LIFO, so registering this AFTER them makes it run FIRST at unwind.
+	// requestQuit is idempotent (quitOnce), so paths that already closed it
+	// are unaffected.
+	defer t.requestQuit()
+
 	// Start memory monitor when auto-suspend is enabled.
 	if t.autoSuspend {
 		t.startMemoryMonitor()

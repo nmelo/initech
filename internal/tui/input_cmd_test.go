@@ -288,3 +288,28 @@ func TestCmdKey_BacktickNonEmptyInserts(t *testing.T) {
 		t.Errorf("buf = %q, want %q", cmdBuf(tui), "a`")
 	}
 }
+
+// ── ini-ap3i: keyboard quit must close quitCh ────────────────────────
+//
+// Quit has two doors: the IPC action (which closes quitCh at ipc.go) and the
+// keyboard :quit command (which returned true up to a bare `return nil` in the
+// event loop). On the keyboard path NOTHING closed quitCh, so every
+// shutdown-aware select in the codebase — managePeer's backoff, runOnMain's
+// two quit cases, waitForDisconnect — stayed armed on an open channel while
+// the cleanup defers waited out their full 3s/4s timeouts. Observed live
+// 2026-08-15 (pid 27051): hostage managePeer:window1 stuck in runOnMain
+// against a main loop that had already left the building.
+func TestExecuteConfirmedQuit_ClosesQuitCh(t *testing.T) {
+	tui := newTestTUI()
+	tui.quitCh = make(chan struct{})
+	tui.cmd.pendingConfirm = "quit"
+
+	if !tui.executeConfirmed() {
+		t.Fatal("confirmed quit must return true to exit the event loop")
+	}
+	select {
+	case <-tui.quitCh:
+	default:
+		t.Fatal("confirmed :quit did not close quitCh — shutdown-aware goroutines never learn the app is quitting and the cleanup waits burn their full timeouts")
+	}
+}

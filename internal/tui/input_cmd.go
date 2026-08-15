@@ -172,6 +172,12 @@ func (t *TUI) executeConfirmed() bool {
 	}
 	switch parts[0] {
 	case "quit":
+		// Close quitCh BEFORE returning true: the shutdown defers in Run wait
+		// on goroutines (managePeer, runOnMain callers) whose only exit signal
+		// is this channel. The IPC quit path closes it in requestQuit; the
+		// keyboard path must too, or every keyboard quit burns the full
+		// cleanup timeouts against goroutines that were never told.
+		t.requestQuit()
 		// Show immediate feedback before the multi-second shutdown.
 		if t.screen != nil {
 			sw, sh := t.screen.Size()

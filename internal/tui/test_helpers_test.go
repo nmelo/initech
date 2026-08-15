@@ -75,7 +75,9 @@ func newTestTUI(panes ...*Pane) *TUI {
 	for i, p := range panes {
 		views[i] = p
 	}
-	return &TUI{panes: views, layoutState: ls}
+	// quitCh is always non-nil in production (made in Run); a nil one makes
+	// any quit-path test panic on close instead of testing anything.
+	return &TUI{panes: views, layoutState: ls, quitCh: make(chan struct{})}
 }
 
 // newTestTUIWithScreen creates a TUI with a 120x40 SimulationScreen.
