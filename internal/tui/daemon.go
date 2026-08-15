@@ -38,6 +38,13 @@ type DaemonConfig struct {
 	Agents  []PaneConfig
 	Version string
 	Verbose bool
+	// BuildAgent constructs a PaneConfig for a role named in the project
+	// config — the same builder boot uses — so reload_agents can spawn roles
+	// added to initech.yaml after startup WITHOUT a daemon bounce (ini-ap3i:
+	// the headless daemon's only lifecycle event was boot, so every roster
+	// change cost every running session on the machine). Nil in zero-config
+	// mode, where there is no config to reload; the verb refuses honestly.
+	BuildAgent func(role string, proj *config.Project) (PaneConfig, error)
 }
 
 // Daemon manages headless agent panes and streams them to a yamux client.
@@ -47,6 +54,8 @@ type Daemon struct {
 	ringBufs   map[string]*RingBuf   // Per-pane ring buffer keyed by agent name.
 	multiSinks map[string]*MultiSink // Per-pane fan-out sink keyed by agent name.
 	lastSizes  map[string][2]int     // Last viewer-applied {rows, cols} per agent — survives restarts (ini-ap3i).
+	buildAgent func(role string, proj *config.Project) (PaneConfig, error) // See DaemonConfig.BuildAgent.
+	sockPath   string                // IPC socket path, for env injection into reload-spawned agents.
 	ownership  *agentOwnership       // Tracks which client pushed which agent (zero-config remote).
 	project    *config.Project
 	listener   net.Listener
@@ -320,6 +329,7 @@ func RunDaemon(cfg DaemonConfig) error {
 		ringBufs:   make(map[string]*RingBuf),
 		multiSinks: make(map[string]*MultiSink),
 		ownership:  newAgentOwnership(),
+		buildAgent: cfg.BuildAgent,
 		// A headless serve owns its terminal, so the connection notices ARE
 		// the UI here. The window server deliberately leaves this nil.
 		console: os.Stdout,
@@ -335,6 +345,7 @@ func RunDaemon(cfg DaemonConfig) error {
 		defer ipcCleanup()
 		LogInfo("daemon", "IPC socket", "path", sockPath)
 	}
+	d.sockPath = sockPath
 
 	// Inject INITECH_SOCKET and INITECH_AGENT into every agent's environment.
 	for i := range cfg.Agents {
@@ -1036,6 +1047,11 @@ func (d *Daemon) handleControlStream(ctrl net.Conn, scanner *bufio.Scanner, peer
 
 		case "restart_agent":
 			if !respond(cmd.ID, d.handleRestartAgent(line, peerName)) {
+				return
+			}
+
+		case "reload_agents":
+			if !respond(cmd.ID, d.handleReloadAgents(cmd.ID, peerName)) {
 				return
 			}
 

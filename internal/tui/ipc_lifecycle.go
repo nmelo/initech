@@ -20,6 +20,47 @@ var agentNameRe = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
 
 const maxAgentNameLen = 64
 
+// handleIPCReload forwards reload_agents to a connected peer's daemon: the
+// bounce-free "your config changed, spawn the new roles" verb (ini-ap3i).
+// Target is the PEER name (machine), not an agent.
+func (t *TUI) handleIPCReload(conn net.Conn, req IPCRequest) {
+	if req.Target == "" {
+		writeIPCResponse(conn, IPCResponse{Error: "target is required (a peer name, e.g. support)"})
+		return
+	}
+	var mux *ControlMux
+	if !t.runOnMain(func() {
+		for _, p := range t.panes {
+			if rp, ok := p.(*RemotePane); ok && paneIsRemoteMachine(rp) && rp.Host() == req.Target {
+				mux = rp.Mux()
+				return
+			}
+		}
+	}) {
+		writeIPCResponse(conn, IPCResponse{Error: "TUI shutting down"})
+		return
+	}
+	if mux == nil {
+		writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf(
+			"reload %q: no connected agents from that peer — the machine is unreachable or has never attached, nothing was done", req.Target)})
+		return
+	}
+	LogInfo("remote-lifecycle", "forwarding", "action", "reload", "machine", req.Target)
+	resp, err := mux.RequestRaw(struct {
+		Action string `json:"action"`
+	}{"reload_agents"})
+	LogInfo("remote-lifecycle", "response", "action", "reload", "machine", req.Target, "ok", err == nil && resp.OK, "err", fmt.Sprint(err), "remoteErr", resp.Error)
+	if err != nil {
+		writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("reload on machine %q: %v", req.Target, err)})
+		return
+	}
+	if !resp.OK {
+		writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("machine %q: %s", req.Target, resp.Error)})
+		return
+	}
+	writeIPCResponse(conn, IPCResponse{OK: true, Data: fmt.Sprintf("machine %s: %s", req.Target, resp.Target)})
+}
+
 // remoteLifecycleIfRemote forwards a lifecycle action to the owning peer's
 // daemon when the target names a remote-machine agent (support:super). Returns
 // true if the target was remote and a response was written — the caller stops

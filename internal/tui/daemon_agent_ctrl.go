@@ -5,6 +5,7 @@
 package tui
 
 import (
+	"github.com/nmelo/initech/internal/config"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -227,6 +228,84 @@ type yamuxStreamLike interface {
 }
 
 // handleStopAgent stops a previously-pushed agent. Verifies ownership.
+
+// handleReloadAgents re-reads the project config and spawns any roles that are
+// configured but not running — the bounce-free path for roster growth
+// (ini-ap3i). Deliberately spawn-only: a role REMOVED from config is reported
+// but not killed, because reload means "catch up", and killing is a decision
+// the stop verb already owns. Each spawned agent is announced to every
+// connected client via the existing stream_added flow, so it appears in their
+// windows within seconds.
+func (d *Daemon) handleReloadAgents(id, peerName string) ControlResp {
+	if d.buildAgent == nil {
+		return ControlResp{ID: id, Error: "reload_agents: this daemon runs zero-config (no initech.yaml to reload)"}
+	}
+	cfgPath, err := config.Discover(d.project.Root)
+	if err != nil {
+		return ControlResp{ID: id, Error: fmt.Sprintf("reload_agents: discover config: %v", err)}
+	}
+	proj, err := config.Load(cfgPath)
+	if err != nil {
+		return ControlResp{ID: id, Error: fmt.Sprintf("reload_agents: reload config: %v", err)}
+	}
+
+	running := map[string]bool{}
+	d.panesMu.Lock()
+	for _, p := range d.panes {
+		running[p.Name()] = true
+	}
+	d.panesMu.Unlock()
+
+	var added, failed, extra []string
+	configured := map[string]bool{}
+	for _, role := range proj.Roles {
+		configured[role] = true
+		if running[role] {
+			continue
+		}
+		pcfg, err := d.buildAgent(role, proj)
+		if err != nil {
+			LogWarn("daemon", "reload: build agent failed", "role", role, "err", err)
+			failed = append(failed, role)
+			continue
+		}
+		if d.sockPath != "" {
+			pcfg.Env = append(pcfg.Env, "INITECH_SOCKET="+d.sockPath)
+		}
+		pcfg.Env = append(pcfg.Env, "INITECH_AGENT="+pcfg.Name)
+		if err := d.startPushedPane(pcfg); err != nil {
+			LogWarn("daemon", "reload: spawn failed", "role", role, "err", err)
+			failed = append(failed, role)
+			continue
+		}
+		// Announce to every connected client (stream_added), best-effort.
+		d.sessionsMu.Lock()
+		owners := make([]string, 0, len(d.clients))
+		for o := range d.clients {
+			owners = append(owners, o)
+		}
+		d.sessionsMu.Unlock()
+		for _, o := range owners {
+			if err := d.allocateStreamForPushedPane(role, o); err != nil {
+				LogWarn("daemon", "reload: announce failed", "role", role, "client", o, "err", err)
+			}
+		}
+		added = append(added, role)
+		LogInfo("daemon", "agent spawned by reload", "name", role, "requested_by", peerName)
+	}
+	for name := range running {
+		if !configured[name] {
+			extra = append(extra, name)
+		}
+	}
+	if len(failed) > 0 {
+		return ControlResp{ID: id, Error: fmt.Sprintf(
+			"reload_agents: spawned %v but FAILED %v (see daemon log); running-but-deconfigured (not touched): %v", added, failed, extra)}
+	}
+	return ControlResp{ID: id, OK: true, Action: "reload_agents_ok",
+		Target: fmt.Sprintf("spawned %v; deconfigured-but-running (not touched): %v", added, extra)}
+}
+
 // lifecycleAuthority resolves whether "owner" may lifecycle agent "name" and
 // which config a respawn should use. Two regimes, deliberately different
 // (ini-ap3i, operator-verified session 2026-08-15):

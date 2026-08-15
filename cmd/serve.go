@@ -77,10 +77,11 @@ func runServeWithConfig(cmd *cobra.Command, cfgPath string) error {
 	}
 
 	return tui.RunDaemon(tui.DaemonConfig{
-		Project: proj,
-		Agents:  agents,
-		Version: Version,
-		Verbose: verbose,
+		Project:    proj,
+		Agents:     agents,
+		Version:    Version,
+		Verbose:    verbose,
+		BuildAgent: buildAgentPaneConfig,
 	})
 }
 

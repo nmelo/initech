@@ -130,6 +130,8 @@ func (t *TUI) HandleExtended(conn net.Conn, req IPCRequest, rawJSON []byte) bool
 		t.handleIPCStart(conn, req)
 	case "restart":
 		t.handleIPCRestart(conn, req)
+	case "reload":
+		t.handleIPCReload(conn, req)
 	case "bead":
 		t.handleIPCBead(conn, req)
 	case "patrol":
