@@ -600,6 +600,30 @@ func (p *Pane) Resize(rows, cols int) {
 	p.resizeLocked(rows, cols)
 }
 
+// ResizeExact sizes the PTY and emulator to exactly rows x cols, with no
+// scrollback growth factor. The 3x inflation exists so a LOCAL renderer can
+// window scrolling content (see resizeLocked); a headless daemon has no
+// renderer — its viewers do — and inflating there means the child paints its
+// bottom rows (Claude's composer) at a height the viewer's true-sized
+// emulator does not have: the input box vanished behind the hub's chrome
+// (ini-ap3i, operator-observed 2026-08-15). Two emulators sharing one byte
+// stream must share one size belief, and the viewer's is the true one.
+func (p *Pane) ResizeExact(rows, cols int) {
+	p.renderMu.Lock()
+	defer p.renderMu.Unlock()
+	if rows < 1 {
+		rows = 1
+	}
+	cols = effectiveEmuCols(cols)
+	if p.ptmx != nil {
+		p.ptmx.Resize(cols, rows)
+	}
+	p.emu.Resize(cols, rows)
+	p.resizeSettleFrames = resizeSettleCount
+	p.resizeSettleDeadline = time.Now().Add(resizeSettleDuration)
+	p.lastAltScreen = p.emu.IsAltScreen()
+}
+
 // resizeLocked performs the actual PTY/emulator resize to fit the given
 // VISIBLE rows/cols. Caller must hold renderMu.
 //

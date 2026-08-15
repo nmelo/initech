@@ -55,6 +55,7 @@ type Daemon struct {
 	multiSinks map[string]*MultiSink // Per-pane fan-out sink keyed by agent name.
 	lastSizes  map[string][2]int     // Last viewer-applied {rows, cols} per agent — survives restarts (ini-ap3i).
 	buildAgent func(role string, proj *config.Project) (PaneConfig, error) // See DaemonConfig.BuildAgent.
+	headless   bool // True for `initech serve` (no local renderer); resizes tell children exact truth.
 	sockPath   string                // IPC socket path, for env injection into reload-spawned agents.
 	ownership  *agentOwnership       // Tracks which client pushed which agent (zero-config remote).
 	project    *config.Project
@@ -331,6 +332,7 @@ func RunDaemon(cfg DaemonConfig) error {
 		multiSinks: make(map[string]*MultiSink),
 		ownership:  newAgentOwnership(),
 		buildAgent: cfg.BuildAgent,
+		headless:   true,
 		// A headless serve owns its terminal, so the connection notices ARE
 		// the UI here. The window server deliberately leaves this nil.
 		console: os.Stdout,
@@ -988,7 +990,11 @@ func (d *Daemon) handleControlStream(ctrl net.Conn, scanner *bufio.Scanner, peer
 				continue
 			}
 			if cmd.Rows > 0 && cmd.Cols > 0 {
-				p.Resize(cmd.Rows, cmd.Cols)
+				if d.headless {
+					p.ResizeExact(cmd.Rows, cmd.Cols)
+				} else {
+					p.Resize(cmd.Rows, cmd.Cols)
+				}
 				d.panesMu.Lock()
 				if d.lastSizes == nil {
 					d.lastSizes = make(map[string][2]int)
