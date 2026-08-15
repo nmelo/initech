@@ -281,8 +281,20 @@ func (d *Daemon) handleStopAgent(line []byte, owner string) ControlResp {
 		return *refusal
 	}
 
-	d.removePane(cmd.Name)
-	d.ownership.release(cmd.Name)
+	// Two stop semantics, matching the two ownership regimes (found LIVE in
+	// the ini-ap3i verification: stop-then-restart on a self-started agent
+	// said "not found" — stop had DELETED the pane, leaving the agent
+	// remotely unrecoverable since start_agent does not exist on this wire):
+	//   - PUSHED agents: stop = decommission (remove pane + release), the
+	//     zero-config contract, unchanged.
+	//   - SELF-STARTED agents: stop = stop the PROCESS, keep the pane — the
+	//     same meaning stop has locally — so restart can bring it back.
+	if _, pushed := d.ownership.config(cmd.Name); pushed {
+		d.removePane(cmd.Name)
+		d.ownership.release(cmd.Name)
+	} else if p := d.findPane(cmd.Name); p != nil {
+		p.Close()
+	}
 	LogInfo("daemon", "agent stopped by peer", "name", cmd.Name, "peer", owner)
 	return ControlResp{ID: cmd.ID, OK: true, Action: "stop_agent_ok", Target: cmd.Name}
 }
