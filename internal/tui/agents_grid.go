@@ -19,9 +19,32 @@ import (
 	"github.com/nmelo/initech/internal/roles"
 )
 
+// gridCellW is " NN [x] name*•  " -- uniform per frame so columns align across
+// bands, but SIZED to the longest display name each frame instead of a fixed
+// 17: host-qualified names (support:super) were silently clipped at the cell
+// boundary (operator-observed 2026-08-15), and a name the operator cannot read
+// is a disclosure the modal is not making. Recomputed at the top of
+// agentsFrameGeometry -- the one walk -- so render, hit-testing and search all
+// agree on the same cell width.
+var gridCellW = 17
+
+const gridCellWMin = 17
+
+func agentsGridCellWFor(panes []PaneView) int {
+	w := gridCellWMin
+	for _, p := range panes {
+		// "%3d " (4) + "[x] " (4) + name + pin/protect markers (2) — which
+		// reproduces the historical 17 exactly for a 7-char name (shipper),
+		// so short fleets render byte-identically to the golden.
+		if need := 8 + len(paneDisplayName(p)) + 2; need > w {
+			w = need
+		}
+	}
+	return w
+}
+
 // Grid layout constants (spec section "Layout rules", operator-tuned).
 const (
-	gridCellW     = 17 // " NN [x] name*•  " -- fixed so columns align across bands.
 	gridMaxPerRow = 6  // Groups larger than this wrap into a multi-line band.
 	gridBandLead  = 1  // Blank line before each group label.
 	gridLabelGap  = 1  // Blank line between the label and its cell row(s).
@@ -84,6 +107,9 @@ func (t *TUI) ensureGroups(persist bool) {
 				changed = true
 			}
 			continue
+		}
+		if paneIsRemoteMachine(p) {
+			continue // Machine sections are derived per frame, never persisted.
 		}
 		label := groupFor(p.Name())
 		t.layoutState.GroupOf[key] = label
@@ -154,9 +180,20 @@ func (t *TUI) groupMembersIn(inScope map[string]bool) map[string][]int {
 		if inScope != nil && !inScope[agentKey(p)] {
 			continue
 		}
-		label, ok := t.layoutState.GroupOf[agentKey(p)]
-		if !ok {
-			label = "core"
+		var label string
+		if paneIsRemoteMachine(p) {
+			// A remote machine's agent belongs to no local monitor band: it
+			// renders under a section named for its MACHINE (honest placement
+			// until relaying exists -- the modal claiming monitor 2 for a pane
+			// window 2 does not hold was the lie ini-ap3i closes). Derived,
+			// never persisted: GroupOf stays free of guessed entries.
+			label = machineTierPrefix + p.Host()
+		} else {
+			var ok bool
+			label, ok = t.layoutState.GroupOf[agentKey(p)]
+			if !ok {
+				label = "core"
+			}
 		}
 		members[label] = append(members[label], i)
 	}
@@ -282,7 +319,11 @@ func agentsGridWalk(members map[string][]int, tiers []tierGroup, tiersActive boo
 		}
 		for _, label := range tg.groups {
 			y += gridBandLead
-			g.bands = append(g.bands, bandLabel{label: label, y: y})
+			bandName := label
+			if h, ok := strings.CutPrefix(label, machineTierPrefix); ok {
+				bandName = h
+			}
+			g.bands = append(g.bands, bandLabel{label: bandName, y: y})
 
 			agentIdxs := members[label]
 			for ai, paneIdx := range agentIdxs {
@@ -371,11 +412,35 @@ func agentsWindowOrder(assign *WindowAssignment, groups []string) []string {
 func (t *TUI) agentsTierGroups(assign *WindowAssignment, tiersActive bool) []tierGroup {
 	groups := t.layoutState.Groups
 	if !tiersActive || assign == nil {
-		return []tierGroup{{windowID: WindowOne, groups: groups}}
+		// Machine sections render in the untiered (single-window) modal too --
+		// a remote agent invisible in a single-window session would be the
+		// same collapse one door over.
+		return append([]tierGroup{{windowID: WindowOne, groups: groups}}, t.agentsMachineTiers()...)
 	}
 	var out []tierGroup
 	for _, w := range agentsWindowOrder(assign, groups) {
 		out = append(out, tierGroup{windowID: w, groups: assign.GroupsForWindow(w, groups)})
+	}
+	return append(out, t.agentsMachineTiers()...)
+}
+
+// machineTierPrefix marks a band/tier as a remote MACHINE section rather than
+// a monitor: derived from pane hosts each frame, never stored, never movable
+// with m (a machine is not a monitor you can send agents to -- yet).
+const machineTierPrefix = "machine:"
+
+// agentsMachineTiers returns one tier per distinct remote machine, in first-
+// seen pane order, each holding its single host band.
+func (t *TUI) agentsMachineTiers() []tierGroup {
+	var out []tierGroup
+	seen := map[string]bool{}
+	for _, p := range t.panes {
+		if !paneIsRemoteMachine(p) || seen[p.Host()] {
+			continue
+		}
+		seen[p.Host()] = true
+		label := machineTierPrefix + p.Host()
+		out = append(out, tierGroup{windowID: label, groups: []string{label}})
 	}
 	return out
 }
@@ -408,6 +473,7 @@ func (t *TUI) agentsAssignment() *WindowAssignment {
 // current frame. Every consumer -- render, navigation, cell lookup -- goes
 // through here, so they cannot disagree about where anything is (ini-9ka.5).
 func (t *TUI) agentsFrameGeometry(sw, sh int, searching bool) (agentsGridBox, agentsGridGeometry) {
+	gridCellW = agentsGridCellWFor(t.panes)
 	members := t.agentsGroupMembers()
 	tiersActive := t.agentsTiersActive()
 	tiers := t.agentsTierGroups(t.agentsAssignment(), tiersActive)
@@ -485,7 +551,11 @@ func (t *TUI) agentsFlatInsertionForEmptyBand(members map[string][]int, targetLa
 // now enforced by a shared code path instead of a shared intention.
 func (t *TUI) agentsGridNumber(idx int) int {
 	p := t.panes[idx]
-	if fn, ok := p.(fleetNumbered); ok {
+	if fn, ok := p.(fleetNumbered); ok && !paneIsRemoteMachine(p) {
+		// A remote MACHINE's pane arrives stamped in ITS fleet's number space
+		// (it is #1 over there); rendering that number here collided with a
+		// local agent's. Foreign stamps are ignored and remote panes number
+		// after the local fleet like any unstamped pane.
 		if i := fn.FleetIdx(); i >= 0 {
 			return i
 		}
@@ -495,7 +565,7 @@ func (t *TUI) agentsGridNumber(idx int) int {
 	// collides with a stamped number.
 	maxStamped := -1
 	for _, q := range t.panes {
-		if fn, ok := q.(fleetNumbered); ok {
+		if fn, ok := q.(fleetNumbered); ok && !paneIsRemoteMachine(q) {
 			if i := fn.FleetIdx(); i > maxStamped {
 				maxStamped = i
 			}
@@ -505,7 +575,7 @@ func (t *TUI) agentsGridNumber(idx int) int {
 	for j := 0; j < idx; j++ {
 		q := t.panes[j]
 		fn, ok := q.(fleetNumbered)
-		if !ok || fn.FleetIdx() < 0 {
+		if !ok || fn.FleetIdx() < 0 || paneIsRemoteMachine(q) {
 			rank++
 		}
 	}
@@ -1108,6 +1178,9 @@ func (t *TUI) renderAgentsGrid() {
 	// unrepresentable rather than merely absent (ini-9ka.5).
 	for _, tl := range geo.tiers {
 		lab := fmt.Sprintf("══ monitor %d ", tl.index)
+		if h, ok := strings.CutPrefix(tl.windowID, machineTierPrefix); ok {
+			lab = fmt.Sprintf("══ %s (remote machine) ", h)
+		}
 		x := innerX
 		for _, ch := range lab {
 			if x < startX+boxW-1 {
