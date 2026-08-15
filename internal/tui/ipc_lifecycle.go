@@ -20,9 +20,75 @@ var agentNameRe = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
 
 const maxAgentNameLen = 64
 
+// remoteLifecycleIfRemote forwards a lifecycle action to the owning peer's
+// daemon when the target names a remote-machine agent (support:super). Returns
+// true if the target was remote and a response was written — the caller stops
+// either way. The daemon side has carried stop_agent/restart_agent for its
+// zero-config flow all along (daemon_agent_ctrl.go); this is the hub-side
+// routing that was missing: "initech restart support:super" said pane-not-
+// found while the wire underneath spoke the verb fluently (ini-ap3i's
+// operator-verified session, 2026-08-15).
+//
+// Honesty rules (ini-om0's lesson, one command over): a disconnected peer or a
+// remote rejection is an ERROR named to the operator, never a silent success —
+// and every success names WHICH MACHINE acted, because a lifecycle verb that
+// might act locally or an ocean away must never leave that ambiguous.
+func (t *TUI) remoteLifecycleIfRemote(conn net.Conn, req IPCRequest, action string) bool {
+	var rp *RemotePane
+	if !t.runOnMain(func() {
+		for _, p := range t.panes {
+			r, ok := p.(*RemotePane)
+			if ok && paneIsRemoteMachine(r) && paneDisplayName(r) == req.Target {
+				rp = r
+				return
+			}
+		}
+	}) {
+		writeIPCResponse(conn, IPCResponse{Error: "TUI shutting down"})
+		return true
+	}
+	if rp == nil {
+		return false // Not a remote target; caller proceeds locally.
+	}
+	host := rp.Host()
+	mux := rp.Mux()
+	if mux == nil {
+		writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf(
+			"%s %q: peer %q is not connected — the remote daemon is unreachable, nothing was done", action, req.Target, host)})
+		return true
+	}
+	var cmd any
+	switch action {
+	case "stop":
+		cmd = StopAgentCmd{Action: "stop_agent", Name: rp.Name()}
+	case "restart":
+		cmd = RestartAgentCmd{Action: "restart_agent", Name: rp.Name()}
+	default:
+		writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf(
+			"%s %q: remote daemons support stop and restart only (no start_agent on the wire) — use restart to respawn", action, req.Target)})
+		return true
+	}
+	resp, err := mux.RequestRaw(cmd)
+	if err != nil {
+		writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf(
+			"%s %q on machine %q: send failed: %v", action, req.Target, host, err)})
+		return true
+	}
+	if !resp.OK {
+		writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf(
+			"%s %q: machine %q refused: %s", action, req.Target, host, resp.Error)})
+		return true
+	}
+	writeIPCResponse(conn, IPCResponse{OK: true, Data: fmt.Sprintf("%s %s on machine %s", action, rp.Name(), host)})
+	return true
+}
+
 func (t *TUI) handleIPCStop(conn net.Conn, req IPCRequest) {
 	if req.Target == "" {
 		writeIPCResponse(conn, IPCResponse{Error: "target is required"})
+		return
+	}
+	if t.remoteLifecycleIfRemote(conn, req, "stop") {
 		return
 	}
 	var pane *Pane
@@ -53,6 +119,9 @@ func (t *TUI) handleIPCStop(conn net.Conn, req IPCRequest) {
 func (t *TUI) handleIPCStart(conn net.Conn, req IPCRequest) {
 	if req.Target == "" {
 		writeIPCResponse(conn, IPCResponse{Error: "target is required"})
+		return
+	}
+	if t.remoteLifecycleIfRemote(conn, req, "start") {
 		return
 	}
 	// Find the pane pointer and index on main to avoid races on t.panes.
@@ -135,6 +204,9 @@ func (t *TUI) handleIPCStart(conn net.Conn, req IPCRequest) {
 func (t *TUI) handleIPCRestart(conn net.Conn, req IPCRequest) {
 	if req.Target == "" {
 		writeIPCResponse(conn, IPCResponse{Error: "target is required"})
+		return
+	}
+	if t.remoteLifecycleIfRemote(conn, req, "restart") {
 		return
 	}
 	// Find the pane pointer and index on main to avoid races on t.panes.
