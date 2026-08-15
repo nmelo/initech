@@ -172,6 +172,24 @@ func (t *TUI) agentsFleetGroupMembers() map[string][]int {
 	return t.groupMembersIn(nil)
 }
 
+// agentsBandLabelOf is the ONE answer to "which band is this pane in".
+// The renderer and the arrow-key navigation both ask it — tonight's arrow
+// bug (ini-ap3i: left/right dead inside the machine section) was the two of
+// them deriving the answer separately: render used the machine label, nav
+// looked up GroupOf where remote panes deliberately have no entry, found an
+// empty band, and returned. Two derivations of one fact, the month's most
+// expensive class; this function is the fix shaped as the doctrine demands.
+func (t *TUI) agentsBandLabelOf(p PaneView) string {
+	if paneIsRemoteMachine(p) {
+		return machineTierPrefix + p.Host()
+	}
+	label, ok := t.layoutState.GroupOf[agentKey(p)]
+	if !ok {
+		return "core"
+	}
+	return label
+}
+
 // groupMembersIn is the one walk both questions use. inScope nil means the
 // whole fleet.
 func (t *TUI) groupMembersIn(inScope map[string]bool) map[string][]int {
@@ -180,22 +198,7 @@ func (t *TUI) groupMembersIn(inScope map[string]bool) map[string][]int {
 		if inScope != nil && !inScope[agentKey(p)] {
 			continue
 		}
-		var label string
-		if paneIsRemoteMachine(p) {
-			// A remote machine's agent belongs to no local monitor band: it
-			// renders under a section named for its MACHINE (honest placement
-			// until relaying exists -- the modal claiming monitor 2 for a pane
-			// window 2 does not hold was the lie ini-ap3i closes). Derived,
-			// never persisted: GroupOf stays free of guessed entries.
-			label = machineTierPrefix + p.Host()
-		} else {
-			var ok bool
-			label, ok = t.layoutState.GroupOf[agentKey(p)]
-			if !ok {
-				label = "core"
-			}
-		}
-		members[label] = append(members[label], i)
+		members[t.agentsBandLabelOf(p)] = append(members[t.agentsBandLabelOf(p)], i)
 	}
 	return members
 }
@@ -659,7 +662,7 @@ func (t *TUI) agentsMoveH(delta int) {
 	if sel < 0 || sel >= len(t.panes) {
 		return
 	}
-	label := t.layoutState.GroupOf[agentKey(t.panes[sel])]
+	label := t.agentsBandLabelOf(t.panes[sel])
 	band := members[label]
 	pos := -1
 	for i, pi := range band {

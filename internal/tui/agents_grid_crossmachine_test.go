@@ -73,3 +73,24 @@ func TestAgentsGrid_SearchMatchesTheDisplayedName(t *testing.T) {
 		t.Error("search for 'support' matched local super — over-broad match")
 	}
 }
+
+// TestAgentsGrid_ArrowsMoveWithinMachineBand pins the band-label unification:
+// left/right were dead inside the machine section because navigation derived
+// the band from GroupOf (where remote panes deliberately have no entry) while
+// the renderer derived the machine label — two derivations of one fact.
+func TestAgentsGrid_ArrowsMoveWithinMachineBand(t *testing.T) {
+	tui := newTestTUI()
+	a := &RemotePane{name: "super", host: "support", alive: true}
+	b := &RemotePane{name: "pm", host: "support", alive: true}
+	tui.panes = append(tui.panes, a, b)
+
+	tui.agents.selected = 0
+	tui.agentsMoveH(1)
+	if tui.agents.selected != 1 {
+		t.Fatalf("right arrow did not move within the machine band: selected=%d want 1", tui.agents.selected)
+	}
+	tui.agentsMoveH(-1)
+	if tui.agents.selected != 0 {
+		t.Fatalf("left arrow did not move back: selected=%d want 0", tui.agents.selected)
+	}
+}
