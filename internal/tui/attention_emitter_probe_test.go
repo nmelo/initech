@@ -51,12 +51,23 @@ func TestAttentionOSC_LiveClaudeStillEmits(t *testing.T) {
 	}
 	// Force an approval prompt regardless of the operator's own allowlist,
 	// which would otherwise auto-approve the very dialog we came to observe.
-	settings := `{"permissions":{"ask":["Bash"],"allow":[],"deny":[]}}`
-	if err := os.WriteFile(dir+"/.claude/settings.json", []byte(settings), 0o644); err != nil {
+	//
+	// THE SPAWN FORM IS LOAD-BEARING AND WAS THE CAUSE OF ini-d7a7. The
+	// original -- an argv prompt plus a project-local .claude/settings.json --
+	// stopped reaching a dialog on Claude 2.1.233, so this probe reported
+	// "no OSC 777" and was read as the emitter having died upstream. Measured
+	// side by side on that build, three runs each: this form emits the notify
+	// every time; the old one reaches no dialog at all and therefore emits
+	// nothing to observe. An explicit --settings ask rule with
+	// --permission-mode default, and the request TYPED rather than passed as
+	// argv, is the form that holds.
+	settingsPath := dir + "/probe-settings.json"
+	if err := os.WriteFile(settingsPath,
+		[]byte(`{"permissions":{"ask":["Bash"],"defaultMode":"default"}}`), 0o644); err != nil {
 		t.Fatalf("write settings: %v", err)
 	}
 
-	cmd := exec.Command("claude", "Run the shell command: date +%s")
+	cmd := exec.Command("claude", "--permission-mode", "default", "--settings", settingsPath)
 	cmd.Dir = dir
 	// agentBaseEnv, NOT os.Environ(): the probe must build its child's terminal
 	// identity exactly the way real panes do (ini-g0h), or it measures an
@@ -130,6 +141,10 @@ collect:
 				trusted = true
 				time.Sleep(500 * time.Millisecond)
 				_, _ = ptmx.Write([]byte("\r"))
+				go func() {
+					time.Sleep(6 * time.Second)
+					_, _ = ptmx.Write([]byte("Run the shell command: date +%s\r"))
+				}()
 			}
 			if m := oscDialogRe.FindString(seen.String()); m != "" {
 				t.Logf("live emission observed: %q", m)
@@ -138,6 +153,33 @@ collect:
 		case <-deadline:
 			break collect
 		}
+	}
+
+	// FIRST: did a dialog happen AT ALL? (ini-d7a7)
+	//
+	// Without this the probe cannot tell "Claude stopped announcing dialogs"
+	// from "my fixture never produced one", and it reports the first when it
+	// means the second -- which is exactly what happened: a P1 was raised
+	// against upstream on the strength of this probe's red, and the emitter was
+	// working the whole time. A tripwire that returns the same red for
+	// "upstream broke" and "I broke" will keep spending P1 attention on itself.
+	//
+	// The product's OWN matcher answers it, which is deliberate on two counts:
+	// it is whitespace- and ANSI-robust where an ad-hoc substring search is not
+	// (my first three attempts at this check all false-negatived on a capture
+	// whose OSC proved the dialog was open), and using it means a red here also
+	// implicates tier 2, which is information rather than noise.
+	if !isModalPrompt(seen.String()) {
+		t.Fatalf(`RIG FAULT, NOT AN EMITTER FINDING: this probe never reached a dialog.
+
+No blocking dialog appeared in %d bytes of output, so the absence of OSC 777
+says NOTHING about whether Claude still announces dialogs -- there was nothing
+to announce. Fix the fixture before drawing any conclusion about the emitter.
+
+This failure mode is ini-d7a7: the previous spawn form (argv prompt + project
+.claude/settings.json) silently stopped producing a permission prompt on Claude
+2.1.233, and this probe's red was read as "tier-1 detection is dead upstream".
+It was not. Check the spawn form first.`, seen.Len())
 	}
 
 	// Distinguish "the emitter went quiet" from "the emitter is alive but no
