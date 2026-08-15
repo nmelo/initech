@@ -320,7 +320,18 @@ func (d *Daemon) handleRestartAgent(line []byte, owner string) ControlResp {
 	}
 
 	LogInfo("daemon", "agent restarting by peer", "name", cmd.Name, "peer", owner)
+	// Preserve the multisink across the remove/start pair: removePane deletes
+	// it (correct for decommission), but a RESTART must keep attached viewer
+	// streams alive — see startPushedPane's reuse comment.
+	d.panesMu.Lock()
+	keepSink := d.multiSinks[cmd.Name]
+	d.panesMu.Unlock()
 	d.removePane(cmd.Name)
+	if keepSink != nil {
+		d.panesMu.Lock()
+		d.multiSinks[cmd.Name] = keepSink
+		d.panesMu.Unlock()
+	}
 	if err := d.startPushedPane(cfg); err != nil {
 		d.ownership.release(cmd.Name)
 		return ControlResp{ID: cmd.ID, Error: fmt.Sprintf("restart agent: %v", err)}
@@ -392,11 +403,27 @@ func (d *Daemon) startPushedPane(cfg PaneConfig) error {
 	if d.multiSinks == nil {
 		d.multiSinks = make(map[string]*MultiSink)
 	}
+	// REUSE an existing multisink: connected clients' live streams are Add'd
+	// to it dynamically, and replacing the sink on restart ORPHANED every one
+	// of them — the hub's view froze at the last frame while the agent worked
+	// on invisibly, and the operator typed blind into a screen that never
+	// updated (ini-ap3i, observed live 2026-08-15). The ring buffer is
+	// swapped fresh (replay should show the NEW process's screen, not the
+	// old one's tail) but the sink — and with it every attached viewer —
+	// carries over.
 	rb := NewRingBuf(DefaultRingBufSize)
+	ms, existing := d.multiSinks[cfg.Name]
+	if existing {
+		if oldRB := d.ringBufs[cfg.Name]; oldRB != nil {
+			ms.Remove(oldRB)
+		}
+		ms.Add(rb)
+	} else {
+		ms = NewMultiSink()
+		ms.Add(rb)
+		d.multiSinks[cfg.Name] = ms
+	}
 	d.ringBufs[cfg.Name] = rb
-	ms := NewMultiSink()
-	ms.Add(rb)
-	d.multiSinks[cfg.Name] = ms
 	p.SetNetworkSink(ms)
 	d.panes = append(d.panes, p)
 	d.panesMu.Unlock()
