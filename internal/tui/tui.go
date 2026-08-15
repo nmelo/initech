@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"strings"
 	"fmt"
 	"log/slog"
 	"os"
@@ -1060,7 +1061,8 @@ func Run(cfg Config) error {
 			select {
 			case <-done:
 			case <-time.After(3 * time.Second):
-				LogWarn("tui", "peerManager wait timed out after 3s, forcing exit")
+				LogWarn("tui", "peerManager wait timed out after 3s, forcing exit",
+					"hostages", strings.Join(pm.activeLabels(), ", "))
 			}
 		}()
 	}

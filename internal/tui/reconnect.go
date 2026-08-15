@@ -4,6 +4,7 @@
 package tui
 
 import (
+	"sort"
 	"fmt"
 	"sync"
 	"time"
@@ -51,6 +52,9 @@ type peerManager struct {
 	// onPaneRemoved is called when a daemon announces an agent's removal
 	// (reload --prune), so the TUI drops the pane live.
 	onPaneRemoved func(peerName, agentName string)
+
+	activeMu sync.Mutex
+	active   map[string]int // Label -> count of live peer goroutines (shutdown diagnostics).
 	// onSessionNotice is called when window 1 broadcasts a session-level
 	// notice (ini-9ka.8). Session notices describe the session's shape
 	// changing -- a window folding back or reattaching -- rather than one
@@ -177,10 +181,43 @@ func (pm *peerManager) wait() {
 	pm.wg.Wait()
 }
 
+// activeLabels returns the labels of peer goroutines still running — logged
+// when the shutdown wait times out, so a slow quit names its hostages instead
+// of being re-diagnosed by guesswork (the 9gvn observability rule, applied to
+// our own teardown).
+func (pm *peerManager) activeLabels() []string {
+	pm.activeMu.Lock()
+	defer pm.activeMu.Unlock()
+	var out []string
+	for l, n := range pm.active {
+		out = append(out, fmt.Sprintf("%s x%d", l, n))
+	}
+	sort.Strings(out)
+	return out
+}
+
+func (pm *peerManager) trackActive(label string) func() {
+	pm.activeMu.Lock()
+	if pm.active == nil {
+		pm.active = map[string]int{}
+	}
+	pm.active[label]++
+	pm.activeMu.Unlock()
+	return func() {
+		pm.activeMu.Lock()
+		pm.active[label]--
+		if pm.active[label] <= 0 {
+			delete(pm.active, label)
+		}
+		pm.activeMu.Unlock()
+	}
+}
+
 // managePeer runs the connect/reconnect loop for a single remote peer.
 // It exits when pm.quit is closed.
 func (pm *peerManager) managePeer(peerName string, remote config.Remote) {
 	defer pm.wg.Done()
+	defer pm.trackActive("managePeer:" + peerName)()
 
 	attempt := 0
 	// Consecutive immediate evictions infer a lost takeover verdict
@@ -260,6 +297,16 @@ func (pm *peerManager) managePeer(peerName string, remote config.Remote) {
 		LogWarn("remote", "disconnected", "peer", peerName)
 		pm.onPanesChanged(peerName, nil, false)
 
+		// OUR OWN QUIT is not an eviction investigation. The verdict sweep
+		// below is a mandatory 1-second wait built for real disconnects; on
+		// shutdown it was a third of the measured 3s quit tax, spent reading
+		// tea leaves about a session WE closed on purpose (ini-ap3i).
+		select {
+		case <-pm.quit:
+			return
+		default:
+		}
+
 		// Sweep for a verdict that raced the teardown (ini-jhm6): the verdict
 		// is written just before the server closes the session, so it can sit
 		// parsed-but-undelivered in the mux's event buffer at the moment
@@ -267,7 +314,10 @@ func (pm *peerManager) managePeer(peerName string, remote config.Remote) {
 		// eviction reads as transient. MEASURED by the war test: the verdict
 		// path redialed once before this sweep existed. Bounded, not polite:
 		// the reader has already seen the bytes or never will.
-		pm.sweepEvictionVerdict(pc, time.Second)
+		func() {
+			defer pm.trackActive("sweepEvictionVerdict:" + peerName)()
+			pm.sweepEvictionVerdict(pc, time.Second)
+		}()
 
 		// EVICTION IS TERMINAL (ini-jhm6). Two exits, one conclusion:
 		// the server's explicit verdict, or -- because the verdict is a
@@ -433,6 +483,7 @@ func (pm *peerManager) handleAgentRemoved(peerName string, pc *peerConn, ev Cont
 // waitForDisconnect blocks until all panes from a peer are dead (yamux
 // session closed) or pm.quit fires.
 func (pm *peerManager) waitForDisconnect(peerName string, pc *peerConn) {
+	defer pm.trackActive("waitForDisconnect:" + peerName)()
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 
