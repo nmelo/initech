@@ -117,3 +117,12 @@ internal/tui/ninisx_rig_test.go              windows  # composed two-window PTY 
 internal/tui/x5ob_rig_test.go                windows  # composed two-window PTY rig (gated INITECH_X5OB=1)
 internal/tui/attention_rig_test.go           windows  # composed two-window PTY rig (gated INITECH_X5OB=1)
 internal/tui/attention_wire_net_test.go      windows  # unix-only window-server helpers; portable cells stay in attention_wire_test.go
+
+# ── ini-d7a7 emitter diagnostic ───
+# Genuine constraint: spawns a real Claude under a PTY (creack/pty, unix-only)
+# and reports EVERY OSC sequence it emits. Gated INITECH_D7A7=1. It is the
+# diagnostic companion to the standing tripwire: the tripwire answers yes/no,
+# this answers "what changed", which is the question a Claude bump actually
+# raises. Keeping it means the next bump is a 4-minute measurement rather than
+# a P1 investigation.
+internal/tui/d7a7_measure_test.go            windows  # live-Claude OSC emitter diagnostic (gated INITECH_D7A7=1)
