@@ -128,6 +128,14 @@ func (t *TUI) agentsGroupMembers() map[string][]int {
 // monitor -- and it acts on that answer by deleting the band's window
 // assignment.
 //
+// SAME DOCTRINE AS zjhg's paneHasModal / paneShowsModalOnScreen split, and
+// worth reading together: there the two consumers had opposite RISK
+// asymmetries (a stale attention row is a visible nuisance; a stale "no
+// dialog" is a forged answer), so the eager screen predicate and the
+// conservative latch stayed separate. Here they have opposite SCOPES. Same
+// rule either way -- when two callers want different answers in the edge
+// case, they get two names, never a union.
+//
 // Sharing one predicate cost a release: after a band moved to window 2, window
 // 1 saw zero members for it, concluded it was extinct, and erased the very
 // assignment that had moved it -- silently, to disk, surviving restart. The
