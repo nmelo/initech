@@ -364,6 +364,19 @@ func (t *TUI) surfaceSessionNotice(text string) {
 	// together, which is also what AC 4's mid-glance rule wants.
 	t.reloadAssignmentIfFollower()
 	t.refreshMembershipIfFollower()
+	// The FLEET store (hidden/protected/pins) needs the same treatment the
+	// assignment store gets above — re-read AND re-project AND re-plan. The
+	// broadcast half of "window 1 broadcasting on change is the shape"
+	// (refreshFleetIfFollower's own comment) landed in mutateFleet; this is
+	// the receive half. Without it window 2 logged the notice ten times while
+	// its modal and panes kept rendering the startup snapshot
+	// (operator-observed, 2026-08-15): a doorbell nobody answers.
+	if !t.isFleetAuthority() {
+		t.refreshFleetIfFollower()
+		t.applyFleetProjection()
+		t.recalcGrid(false)
+		t.applyLayout()
+	}
 }
 
 // reloadAssignmentIfFollower re-reads the assignment store on a window that
