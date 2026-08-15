@@ -3,6 +3,7 @@
 package tui
 
 import (
+	"syscall"
 	"fmt"
 	"io"
 	"os"
@@ -1458,11 +1459,33 @@ func (p *Pane) Close() {
 			pw.CloseWithError(io.EOF)
 		}
 	}
-	if p.cmd != nil {
-		if p.cmd.Process != nil {
-			p.cmd.Process.Kill()
+	// BUSY-ONLY GRACE (ini-ap3i, operator-decided 2026-08-15): a RUNNING
+	// agent gets SIGTERM and up to 2s before the kill, so an in-flight child
+	// command (a git push, a file write) can finish or die cleanly instead of
+	// being orphaned mid-operation. IDLE agents — the overwhelmingly common
+	// case at quit — keep the instant kill: Claude Code persists its
+	// transcript incrementally, so there is nothing to save, and a blanket
+	// grace would re-add the multi-second quit tax measured and removed the
+	// same evening. If SIGTERM is unsupported (Windows) the grace is skipped
+	// rather than waited out.
+	var waited chan struct{}
+	if p.cmd != nil && p.cmd.Process != nil {
+		if p.Activity() == StateRunning {
+			if err := p.cmd.Process.Signal(syscall.SIGTERM); err == nil {
+				waited = make(chan struct{})
+				go func() { p.cmd.Wait(); close(waited) }() //nolint:errcheck
+				select {
+				case <-waited:
+				case <-time.After(2 * time.Second):
+				}
+			}
 		}
-		p.cmd.Wait()
+		p.cmd.Process.Kill() //nolint:errcheck // No-op if the grace already reaped it.
+		if waited != nil {
+			<-waited
+		} else {
+			p.cmd.Wait() //nolint:errcheck
+		}
 	}
 
 	// Wait for all goroutines started by Start() to exit before touching

@@ -1094,15 +1094,24 @@ func Run(cfg Config) error {
 		// many panes are stuck on dead yamux sessions simultaneously.
 		done := make(chan struct{})
 		go func() {
+			// PARALLEL closes (ini-ap3i): with the busy-only SIGTERM grace in
+			// Pane.Close, serial closes would pay one grace PER busy agent;
+			// parallel closes pay max one grace total.
+			var cwg sync.WaitGroup
 			for _, p := range t.panes {
-				p.Close()
+				cwg.Add(1)
+				go func(pv PaneView) {
+					defer cwg.Done()
+					pv.Close()
+				}(p)
 			}
+			cwg.Wait()
 			close(done)
 		}()
 		select {
 		case <-done:
-		case <-time.After(3 * time.Second):
-			LogWarn("tui", "pane cleanup timed out after 3s, forcing exit")
+		case <-time.After(4 * time.Second):
+			LogWarn("tui", "pane cleanup timed out after 4s, forcing exit")
 		}
 	}()
 
