@@ -25,6 +25,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/x/vt"
 	"github.com/creack/pty"
 )
 
@@ -91,6 +92,35 @@ func TestAttentionOSC_LiveClaudeStillEmits(t *testing.T) {
 		_, _ = cmd.Process.Wait()
 	}()
 
+	// SCREEN TRUTH, not the byte stream (ini-d7a7 round 2, qa1's FAIL).
+	//
+	// The dialog-reached discriminator below consults the product's matcher,
+	// which is right -- but it was being fed the RAW PTY stream, and 2.1.233
+	// renders spacing with cursor moves, so the dialog's words never appear
+	// contiguously in the bytes at all. isModalPrompt was therefore FALSE
+	// whenever it was consulted, even with the dialog plainly open, and the
+	// probe answered RIG FAULT for every failure -- including a genuine
+	// upstream emission loss, which it would have blamed on the fixture and
+	// routed the next engineer away from upstream.
+	//
+	// isModalPrompt was built for EMULATED rows (paneHasModal feeds it
+	// emulatorBottomText); this feeds it the same thing. Right matcher, right
+	// input: the fifth instrument-width instance of this arc, and the one
+	// where the instrument was correct and its FEED was not.
+	emu := vt.NewSafeEmulator(120, 40)
+	go func() {
+		b := make([]byte, 4096)
+		for {
+			if _, err := emu.Read(b); err != nil {
+				return
+			}
+		}
+	}()
+	// Latched during the run, not sampled at the end: a dialog that rendered
+	// and was then answered or scrolled away still HAPPENED, and the question
+	// this discriminator asks is whether the fixture ever produced one.
+	dialogSeen := false
+
 	var seen strings.Builder
 	// DIALOG-SPECIFIC, not "any OSC 777" (ini-zfm). OSC 777 is Claude's general
 	// notification channel: it also carries the idle notification, login
@@ -135,6 +165,10 @@ collect:
 				break collect // PTY closed; fall through to the report below.
 			}
 			seen.Write(c)
+			emu.Write(c)
+			if !dialogSeen && probeShowsPermissionDialog(emu) {
+				dialogSeen = true
+			}
 			// Clear Claude's first-run directory-trust dialog so the run can
 			// reach the permission prompt.
 			if !trusted && trustRe.MatchString(seen.String()) {
@@ -164,12 +198,15 @@ collect:
 	// working the whole time. A tripwire that returns the same red for
 	// "upstream broke" and "I broke" will keep spending P1 attention on itself.
 	//
-	// The product's OWN matcher answers it, which is deliberate on two counts:
-	// it is whitespace- and ANSI-robust where an ad-hoc substring search is not
-	// (my first three attempts at this check all false-negatived on a capture
-	// whose OSC proved the dialog was open), and using it means a red here also
-	// implicates tier 2, which is information rather than noise.
-	if !isModalPrompt(seen.String()) {
+	// The product's OWN matcher answers it, over the EMULATED SCREEN, and both
+	// halves are load-bearing. The matcher is whitespace- and ANSI-robust where
+	// an ad-hoc substring search is not (three ad-hoc attempts all
+	// false-negatived on captures whose OSC proved the dialog was open), and
+	// using it means a red here also implicates tier 2 -- information rather
+	// than noise. The FEED is what round 2 fixed: fed the raw stream, this
+	// matcher answered false with the dialog open, so this branch swallowed
+	// every other failure below it.
+	if !dialogSeen {
 		t.Fatalf(`RIG FAULT, NOT AN EMITTER FINDING: this probe never reached a dialog.
 
 No blocking dialog appeared in %d bytes of output, so the absence of OSC 777
@@ -219,3 +256,34 @@ Observed %d bytes of PTY output containing no such sequence.`,
 }
 
 // compile-time: the probe uses the same emulator type the panes use.
+
+// probeShowsPermissionDialog reports whether the PERMISSION prompt -- the one
+// tier-1 announces -- is on the emulated screen.
+//
+// NARROWER THAN isModalPrompt ON PURPOSE, and the narrowing was bought by a
+// mutant. isModalPrompt answers "is A blocking modal showing", which is the
+// right question for the send guard and the wrong one here: Claude's
+// first-run TRUST prompt is also a blocking modal, so a broken fixture that
+// only ever reaches the trust screen satisfied it. The old-spawn mutant then
+// stopped reporting RIG FAULT and began accusing upstream instead -- the exact
+// false-accusation direction ini-d7a7 exists to close, reintroduced by fixing
+// the feed without narrowing the question.
+//
+// It still uses the product's own normaliser (compactPromptText over the
+// EMULATED rows), so it keeps the robustness that raw-byte and ANSI-stripped
+// searches lack: 2.1.233 renders spacing with cursor moves, and only a
+// normaliser built against real captures survives that.
+func probeShowsPermissionDialog(emu *vt.SafeEmulator) bool {
+	text := compactPromptText(strings.ToLower(emulatorBottomText(emu, modalScanWholePane)))
+	for _, pattern := range []string{
+		"do you want to proceed",
+		"yes, and don't ask again",
+		"yes, and dont ask again",
+		"no, and tell claude",
+	} {
+		if strings.Contains(text, compactPromptText(pattern)) {
+			return true
+		}
+	}
+	return false
+}
