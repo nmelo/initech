@@ -740,10 +740,28 @@ func (t *TUI) renderOverlay() {
 	scoped := t.visiblePanesForWindow()
 	scopeHidden, scopeWhere := t.scopeDisclosure()
 
-	agents := make([]AgentInfo, len(scoped))
+	// Display order: locals in arrangement order, then remote machines
+	// alphabetically, each block in arrival order — the operator-chosen rule,
+	// shared with the modal's machine tiers (orderPanesForDisplay).
+	ordered := make([]PaneView, 0, len(scoped))
+	for _, idx := range orderPanesForDisplay(scoped) {
+		ordered = append(ordered, scoped[idx])
+	}
+	scoped = ordered
+
+	agents := make([]AgentInfo, 0, len(scoped)+2)
 	maxNameLen := 0
 	hiddenCount := 0
-	for i, p := range scoped {
+	lastMachine := ""
+	for _, p := range scoped {
+		// A thin divider row opens each remote machine's block.
+		if paneIsRemoteMachine(p) && p.Host() != lastMachine {
+			lastMachine = p.Host()
+			agents = append(agents, AgentInfo{Name: p.Host(), Divider: true})
+			if dl := len(p.Host()) + 4; dl > maxNameLen {
+				maxNameLen = dl
+			}
+		}
 		vis := !t.layoutState.Hidden[agentKey(p)]
 		act := p.Activity()
 		// Overlay shows activity state only; bead info is in the pane ribbon.
@@ -769,7 +787,7 @@ func (t *TUI) renderOverlay() {
 		remote := paneIsRemoteMachine(p)
 		displayName := paneDisplayName(p)
 		_, livePin := t.layoutState.LivePinned[pk]
-		agents[i] = AgentInfo{Name: displayName, Status: status, Activity: act, Visible: vis, Protected: t.layoutState.Protected[pk], LivePinned: livePin, Remote: remote}
+		agents = append(agents, AgentInfo{Name: displayName, Status: status, Activity: act, Visible: vis, Protected: t.layoutState.Protected[pk], LivePinned: livePin, Remote: remote})
 		nameLen := len(displayName)
 		if remote {
 			nameLen += 4 // " [R]"
@@ -880,6 +898,23 @@ func (t *TUI) renderOverlay() {
 			s.SetContent(x, row, ' ', nil, bgStyle)
 		}
 
+		if a.Divider {
+			// "- machine -" rule, dim, spanning the panel: twelve remote rows
+			// read as "the support machine" instead of a wall of prefixes.
+			divStyle := bgStyle.Foreground(tcell.ColorGray)
+			col := px + 2
+			for _, ch := range "\u2500 " + a.Name + " " {
+				if col < px+panelW-1 {
+					s.SetContent(col, row, ch, nil, divStyle)
+				}
+				col++
+			}
+			for col < px+panelW-1 {
+				s.SetContent(col, row, '\u2500', nil, divStyle)
+				col++
+			}
+			continue
+		}
 		// Status dot (color per actual activity state, not display text).
 		dot := '\u25cf'
 		var dotColor tcell.Color

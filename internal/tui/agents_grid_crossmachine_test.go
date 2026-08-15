@@ -94,3 +94,23 @@ func TestAgentsGrid_ArrowsMoveWithinMachineBand(t *testing.T) {
 		t.Fatalf("left arrow did not move back: selected=%d want 0", tui.agents.selected)
 	}
 }
+
+// TestOverlayOrder_LocalsThenMachinesAlphabetical pins the operator-chosen
+// display order (2026-08-15): locals in arrangement order first, then one
+// block per remote machine, machines alphabetical, blocks in arrival order.
+func TestOverlayOrder_LocalsThenMachinesAlphabetical(t *testing.T) {
+	panes := []PaneView{
+		&RemotePane{name: "z1", host: "zeta", alive: true},
+		&Pane{name: "super"},
+		&RemotePane{name: "a1", host: "alpha", alive: true},
+		&Pane{name: "pm"},
+		&RemotePane{name: "z2", host: "zeta", alive: true},
+	}
+	got := orderPanesForDisplay(panes)
+	want := []int{1, 3, 2, 0, 4} // super, pm, alpha:a1, zeta:z1, zeta:z2
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("display order = %v, want %v (locals first, machines alphabetical, arrival within)", got, want)
+		}
+	}
+}

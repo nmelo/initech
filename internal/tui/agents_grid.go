@@ -435,14 +435,20 @@ const machineTierPrefix = "machine:"
 // agentsMachineTiers returns one tier per distinct remote machine, in first-
 // seen pane order, each holding its single host band.
 func (t *TUI) agentsMachineTiers() []tierGroup {
-	var out []tierGroup
 	seen := map[string]bool{}
+	var machines []string
 	for _, p := range t.panes {
-		if !paneIsRemoteMachine(p) || seen[p.Host()] {
-			continue
+		if paneIsRemoteMachine(p) && !seen[p.Host()] {
+			seen[p.Host()] = true
+			machines = append(machines, p.Host())
 		}
-		seen[p.Host()] = true
-		label := machineTierPrefix + p.Host()
+	}
+	// Alphabetical, matching the overlay's machine order (one ordering rule
+	// for both surfaces — see orderPanesForDisplay).
+	sort.Strings(machines)
+	var out []tierGroup
+	for _, m := range machines {
+		label := machineTierPrefix + m
 		out = append(out, tierGroup{windowID: label, groups: []string{label}})
 	}
 	return out

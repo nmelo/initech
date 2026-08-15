@@ -20,6 +20,7 @@ package tui
 // every window. Nothing here is called from those paths.
 
 import (
+	"sort"
 	"regexp"
 )
 
@@ -76,6 +77,37 @@ func paneDisplayName(p PaneView) string {
 func paneIsRemoteMachine(p PaneView) bool {
 	host := p.Host()
 	return host != "" && !isWindowAliasHost(host)
+}
+
+
+// orderPanesForDisplay returns pane indices in the fleet's display order —
+// the ONE ordering the overlay uses and the modal's machine tiers agree with
+// (operator-chosen, 2026-08-15): this window's local agents first in their
+// arrangement order, then one block per remote MACHINE, machines alphabetical,
+// each block in its arrival order. Before this, the overlay was saved-slot
+// plus arrival order, which read as random the moment one remote had an old
+// saved slot and its eleven siblings did not.
+func orderPanesForDisplay(panes []PaneView) []int {
+	var locals []int
+	byMachine := map[string][]int{}
+	var machines []string
+	for i, p := range panes {
+		if paneIsRemoteMachine(p) {
+			h := p.Host()
+			if _, seen := byMachine[h]; !seen {
+				machines = append(machines, h)
+			}
+			byMachine[h] = append(byMachine[h], i)
+			continue
+		}
+		locals = append(locals, i)
+	}
+	sort.Strings(machines)
+	out := locals
+	for _, m := range machines {
+		out = append(out, byMachine[m]...)
+	}
+	return out
 }
 
 // windowDisplayLabel renders a window identity for the operator: "window 1",

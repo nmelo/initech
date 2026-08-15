@@ -32,6 +32,7 @@ type AgentInfo struct {
 	Protected  bool // True when agent is protected from auto-suspend.
 	LivePinned bool // True when agent is pinned to a live mode slot.
 	Remote     bool // True for agents on remote peers.
+	Divider    bool // True for a machine-divider row (Name holds the machine); not an agent.
 }
 
 // cmdModal holds command modal state.
