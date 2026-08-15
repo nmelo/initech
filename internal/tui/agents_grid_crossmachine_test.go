@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -112,5 +114,73 @@ func TestOverlayOrder_LocalsThenMachinesAlphabetical(t *testing.T) {
 		if got[i] != want[i] {
 			t.Fatalf("display order = %v, want %v (locals first, machines alphabetical, arrival within)", got, want)
 		}
+	}
+}
+
+// ── ini-ap3i: remote panes never carry a persisted group ─────────────
+//
+// The operator grab-moved support:pm into a monitor-2 band; the write path
+// persisted group_of: {support:pm: core}. Window 1 then skipped it (core is
+// window 2's group) and window 2 cannot draw it (no stream — the relay is the
+// deferred feature), so the agent rendered NOWHERE (observed 2026-08-15).
+// ensureGroups' remote-skip only prevented NEW assignments; existing entries
+// survived every frame. The rule has three halves: the healer purges entries
+// on sight, the loader refuses them from disk, and the write sites never
+// create them.
+func TestEnsureGroups_PurgesRemotePaneEntries(t *testing.T) {
+	tui := newTestTUI()
+	tui.panes = append(tui.panes, &RemotePane{name: "pm", host: "support", alive: true})
+	tui.layoutState.GroupOf = map[string]string{"support:pm": "core"}
+	tui.layoutState.Groups = []string{"core"}
+
+	tui.ensureGroups(false)
+
+	if g, ok := tui.layoutState.GroupOf["support:pm"]; ok {
+		t.Errorf("ensureGroups kept remote pane group entry %q — routes the pane to a window with no stream for it", g)
+	}
+}
+
+func TestLoadLayout_DropsCrossMachineGroupEntries(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, ".initech"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	yaml := `grid: 2x1
+mode: grid
+order:
+    - super
+    - support:pm
+groups:
+    - core
+group_of:
+    super: core
+    support:pm: core
+`
+	if err := os.WriteFile(filepath.Join(dir, ".initech", "layout.yaml"), []byte(yaml), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	ls, ok := LoadLayout(dir, []string{"super", "support:pm"})
+	if !ok {
+		t.Fatal("LoadLayout rejected a valid layout")
+	}
+	if _, has := ls.GroupOf["support:pm"]; has {
+		t.Error("loader kept cross-machine group_of entry — stale placement resurrects the vanishing-pane bug on every restart")
+	}
+	if ls.GroupOf["super"] != "core" {
+		t.Errorf("loader dropped a LOCAL group entry: got %q, want core", ls.GroupOf["super"])
+	}
+}
+
+func TestSetPaneGroup_RefusesRemotePane(t *testing.T) {
+	tui := newTestTUI()
+	rp := &RemotePane{name: "pm", host: "support", alive: true}
+	tui.panes = append(tui.panes, rp)
+	tui.layoutState.GroupOf = map[string]string{}
+
+	tui.setPaneGroup(rp, "core")
+
+	if _, ok := tui.layoutState.GroupOf["support:pm"]; ok {
+		t.Error("setPaneGroup wrote a group for a remote-machine pane")
 	}
 }

@@ -711,6 +711,14 @@ func LoadLayout(projectRoot string, paneKeys []string) (LayoutState, bool) {
 	var groupOf map[string]string
 	memberCount := make(map[string]int)
 	for name, label := range normalized {
+		// Cross-machine keys never load a group: machine sections are derived
+		// per frame, and a persisted group routes the pane to a window that
+		// has no stream for it — it renders NOWHERE (support:pm, 2026-08-15).
+		// Window-alias keys were normalized to bare above, so any ':' left
+		// here is a real machine prefix.
+		if strings.Contains(name, ":") {
+			continue
+		}
 		if shouldKeepPersistedPaneKey(name, known) {
 			if groupOf == nil {
 				groupOf = make(map[string]string)

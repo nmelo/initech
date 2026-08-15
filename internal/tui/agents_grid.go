@@ -95,6 +95,18 @@ func (t *TUI) ensureGroups(persist bool) {
 	changed := false
 	for _, p := range t.panes {
 		key := agentKey(p)
+		if paneIsRemoteMachine(p) {
+			// READ half of "machine sections are derived, never persisted":
+			// a group entry for a remote pane — hand-placed via grab-move or
+			// stale from before the write half — routes it to a window that
+			// has no stream for it, and it renders NOWHERE (support:pm,
+			// 2026-08-15). Purge on sight, not just skip.
+			if _, ok := t.layoutState.GroupOf[key]; ok {
+				delete(t.layoutState.GroupOf, key)
+				changed = true
+			}
+			continue
+		}
 		if existing, ok := t.layoutState.GroupOf[key]; ok {
 			// DEAD-GROUP RULE, runtime half (ini-qkwc AC3): an entry pointing
 			// at a group missing from Groups must surface the group, not
@@ -107,9 +119,6 @@ func (t *TUI) ensureGroups(persist bool) {
 				changed = true
 			}
 			continue
-		}
-		if paneIsRemoteMachine(p) {
-			continue // Machine sections are derived per frame, never persisted.
 		}
 		label := groupFor(p.Name())
 		t.layoutState.GroupOf[key] = label
@@ -757,8 +766,7 @@ func (t *TUI) agentsMoveV(cells []gridCell, delta int) {
 		}
 		t.panes = append(t.panes[:insertAt], append([]PaneView{ag}, t.panes[insertAt:]...)...)
 		t.agents.selected = insertAt
-		t.layoutState.GroupOf[agentKey(ag)] = label
-		t.agentsPersistGrouping(ag.Name(), label)
+		t.setPaneGroup(ag, label)
 		return
 	}
 	if !t.agents.moving {
@@ -782,8 +790,20 @@ func (t *TUI) agentsMoveV(cells []gridCell, delta int) {
 	}
 	t.panes = append(t.panes[:insertAt], append([]PaneView{ag}, t.panes[insertAt:]...)...)
 	t.agents.selected = insertAt
-	t.layoutState.GroupOf[agentKey(ag)] = best.group
-	t.agentsPersistGrouping(ag.Name(), best.group)
+	t.setPaneGroup(ag, best.group)
+}
+
+// setPaneGroup records a pane's band assignment and persists it. Remote-
+// machine panes never get one — their band is the machine section, derived
+// per frame, and a persisted group would route them to a window that has no
+// stream for them (support:pm rendered nowhere, 2026-08-15). The grab still
+// reorders them within their machine band; only the group write is refused.
+func (t *TUI) setPaneGroup(ag PaneView, label string) {
+	if paneIsRemoteMachine(ag) {
+		return
+	}
+	t.layoutState.GroupOf[agentKey(ag)] = label
+	t.agentsPersistGrouping(ag.Name(), label)
 }
 
 // ---------- group lifecycle ----------
