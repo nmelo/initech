@@ -163,6 +163,9 @@ type TUI struct {
 	// ownershipSnap is the partition decision's inputs, frozen by the main
 	// loop so the daemon's connection goroutines can answer a handshake
 	// without waiting on it (ini-x5ob).
+	// lastModalMaint rate-limits the modal guard's housekeeping (ini-9gvn).
+	lastModalMaint time.Time
+
 	ownershipMu   sync.Mutex
 	ownershipSnap *ownershipInputs
 

@@ -116,6 +116,7 @@ internal/tui/zjhg_rig_test.go                windows  # real-Claude dialog measu
 internal/tui/ninisx_rig_test.go              windows  # composed two-window PTY rig (gated INITECH_9ISX=1)
 internal/tui/x5ob_rig_test.go                windows  # composed two-window PTY rig (gated INITECH_X5OB=1)
 internal/tui/attention_rig_test.go           windows  # composed two-window PTY rig (gated INITECH_X5OB=1)
+internal/tui/ninegvn_rig_test.go             windows  # composed PTY rig for the modal-defer guard (gated INITECH_9GVN=1)
 internal/tui/attention_wire_net_test.go      windows  # unix-only window-server helpers; portable cells stay in attention_wire_test.go
 
 # ── ini-d7a7 emitter diagnostic ───

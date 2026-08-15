@@ -63,6 +63,11 @@ func (t *TUI) render() {
 		}
 	}
 
+	// Modal-guard housekeeping: corroborate or heal latches, and retry held
+	// mail on panes that are producing no output (ini-9gvn). Rate-limited
+	// internally to once a second.
+	t.modalMaintenance(time.Now())
+
 	// PUSH WAITING TRANSITIONS TO VIEWERS (ini-35ak).
 	//
 	// Here, immediately after the refresh above, because a dialog opening is
@@ -743,6 +748,16 @@ func (t *TUI) renderOverlay() {
 		act := p.Activity()
 		// Overlay shows activity state only; bead info is in the pane ribbon.
 		status := act.String()
+		// HELD MAIL IS A VISIBLE FACT (ini-9gvn AC3). Deferred messages were
+		// invisible everywhere: the fleet simply looked idle while ~30 minutes
+		// of coordination sat in queues, and the operator had no surface that
+		// said so. Rendered next to activity because "idle" and "idle holding
+		// two messages" are different states and only one of them is fine.
+		if lp, ok := p.(*Pane); ok {
+			if held := lp.QueuedMessageCount(); held > 0 {
+				status = fmt.Sprintf("%s · %d held", status, held)
+			}
+		}
 		pk := agentKey(p)
 		pin := t.layoutState.Protected[pk]
 		if !pin {

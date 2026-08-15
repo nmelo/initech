@@ -9,7 +9,11 @@ package tui
 // destructive defaults the operator never saw (ini-2jpo). When paneHasModal is
 // true the send is deferred and re-delivered once the modal closes.
 
-import "strings"
+import (
+	"regexp"
+	"strings"
+	"time"
+)
 
 // modalScanWholePane makes the modal scan cover EVERY rendered row of the pane
 // rather than a fixed count of bottom rows.
@@ -123,7 +127,74 @@ func paneShowsModalOnScreen(p *Pane) bool {
 	if p == nil || p.emu == nil {
 		return false
 	}
-	return isModalPrompt(emulatorBottomText(p.emu, modalScanWholePane))
+	return screenShowsLiveDialog(emulatorBottomText(p.emu, modalScanWholePane))
+}
+
+// screenShowsLiveDialog distinguishes a DIALOG from a QUOTATION of one
+// (ini-9gvn): the prompt's words must be there AND something must be there to
+// answer.
+//
+// MEASURED FROM THE LIVE SPECIMEN. An agent's pane containing prose ABOUT a
+// dialog held the whole fleet's mail for ~30 minutes: every send to it
+// deferred with "target has a modal open" while nothing was open. The pane
+// read "eDoyouwanttoproceed?." -- a report about compactPromptText quoting its
+// own compacted output -- and since isModalPrompt compacts whitespace out of
+// BOTH sides, that prose contains "doyouwanttoproceed" exactly. The matcher
+// was tripped by a bug report about the matcher.
+//
+// The discriminator is the ANSWER AFFORDANCE, because that is what a dialog
+// has and a description of one does not: a real blocking prompt always offers
+// something to choose. Verified against both real artifacts -- the captured
+// specimen has no option row and no option vocabulary anywhere on screen,
+// while a live 2.1.233 permission dialog renders "Do you want to proceed?"
+// directly above "❯ 1. Yes".
+//
+// THE SCAN REGION IS DELIBERATELY UNCHANGED. Narrowing to the bottom rows
+// would also have fixed the specimen, and it is the one change this file
+// already documents as harmful: a real dialog gets pushed up by footer and
+// padding, and a screen face that cannot see it answers a false NO -- which
+// forges an operator response. The asymmetry rule (ini-2jpo) permits removing
+// false positives only in ways that cannot add false negatives, so the fix
+// adds a REQUIREMENT about content rather than a limit on where we look.
+//
+// KNOWN RESIDUAL, stated rather than papered over: prose that quotes a dialog
+// VERBATIM, options and all, still defers. That is the asymmetry working as
+// designed -- uncertain defers -- and it is why ini-9gvn also gives the queue
+// a re-check and the latch a self-heal, so an over-cautious defer costs a
+// short delay instead of a stalled fleet.
+func screenShowsLiveDialog(text string) bool {
+	if !isModalPrompt(text) {
+		return false
+	}
+	return screenOffersAnswer(text)
+}
+
+// answerOptionRow matches a rendered choice line: an optional selection marker,
+// a number, a separator, then text. Line-anchored, because a choice is a ROW in
+// a dialog while a quotation wraps it into a paragraph.
+var answerOptionRow = regexp.MustCompile(`(?m)^\s*[❯>»]?\s*\d+[.)]\s+\S`)
+
+// answerVocabulary are the answer affordances a dialog renders that are not
+// numbered rows. Compacted before comparison, like every other matcher here.
+var answerVocabulary = []string{
+	"yes, and",     // "Yes, and don't ask again"
+	"no, and tell", // "No, and tell Claude what to do differently"
+	"enter to confirm",
+	"esc to cancel",
+}
+
+// screenOffersAnswer reports whether the screen shows something to answer WITH.
+func screenOffersAnswer(text string) bool {
+	if answerOptionRow.MatchString(text) {
+		return true
+	}
+	compacted := compactPromptText(strings.ToLower(text))
+	for _, v := range answerVocabulary {
+		if strings.Contains(compacted, compactPromptText(v)) {
+			return true
+		}
+	}
+	return false
 }
 
 // ── The dialog latch (ini-zjhg) ─────────────────────────────────────
@@ -148,8 +219,56 @@ func paneShowsModalOnScreen(p *Pane) bool {
 // latchDialogOpen records that the application declared a blocking dialog.
 func (p *Pane) latchDialogOpen() {
 	p.mu.Lock()
-	p.dialogOpen = true
+	if !p.dialogOpen {
+		p.dialogOpen = true
+		p.dialogOpenAt = time.Now()
+		p.dialogCorroborated = false
+	}
 	p.mu.Unlock()
+}
+
+// latchCorroborationWindow is how long a declared dialog has to be SEEN before
+// the latch is treated as a false raise (ini-9gvn). Generous on purpose: a real
+// dialog renders within a frame or two of its announcement, so anything this
+// old that sight has never confirmed is not a dialog anyone can answer.
+const latchCorroborationWindow = 90 * time.Second
+
+// noteDialogSighting records that the screen has confirmed the latched dialog.
+// This is what makes the latch trustworthy: a raise corroborated by sight keeps
+// the earned-clear rule and is never downgraded on a timer.
+func (p *Pane) noteDialogSighting() {
+	p.mu.Lock()
+	if p.dialogOpen {
+		p.dialogCorroborated = true
+	}
+	p.mu.Unlock()
+}
+
+// auditDialogLatch downgrades a latch that sight has never corroborated,
+// reporting whether it did (ini-9gvn AC4).
+//
+// A FALSE RAISE MUST BE SELF-HEALING, NOT OPERATOR-HEALING. noteOperatorInput
+// is the only other clear, so before this the sole cure for a phantom was the
+// operator typing into the pane -- which an unattended fleet cannot do, and
+// which is why a restart did not fix the live specimen.
+//
+// It never touches a CORROBORATED latch. That distinction is the whole safety
+// argument: this heals raises that were never real, and leaves real dialogs to
+// the earned clear. Downgrading on age alone would forge an operator answer
+// into a dialog that is genuinely open, which is the failure this guard exists
+// to prevent.
+func (p *Pane) auditDialogLatch(now time.Time) bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if !p.dialogOpen || p.dialogCorroborated {
+		return false
+	}
+	if p.dialogOpenAt.IsZero() || now.Sub(p.dialogOpenAt) < latchCorroborationWindow {
+		return false
+	}
+	p.dialogOpen = false
+	p.dialogOpenAt = time.Time{}
+	return true
 }
 
 // noteOperatorInput clears the dialog latch: the operator has acted on this
@@ -166,4 +285,49 @@ func (p *Pane) dialogLatched() bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.dialogOpen
+}
+
+// modalMaintenance is the once-a-second housekeeping the modal guard needs to
+// be self-correcting rather than operator-correcting (ini-9gvn).
+//
+// Three jobs, all of which the guard previously left undone:
+//   - SIGHT corroborates a latch, so a real dialog keeps its earned clear.
+//   - An uncorroborated latch is downgraded, loudly, so a false raise heals
+//     itself instead of holding the fleet's mail until someone types.
+//   - A deferred queue is retried WITHOUT the recipient producing output.
+//     Deferral used to drain only from readLoop, so an idle pane held mail
+//     indefinitely -- the fleet looked stalled and nothing was wrong with it.
+//
+// Rate-limited rather than per-frame: this walks panes and reads screens, and
+// there is no reason to do that at render cadence.
+func (t *TUI) modalMaintenance(now time.Time) {
+	if now.Sub(t.lastModalMaint) < time.Second {
+		return
+	}
+	t.lastModalMaint = now
+
+	for _, pv := range t.panes {
+		p, ok := pv.(*Pane)
+		if !ok {
+			continue // Remote panes are maintained by the window that owns them.
+		}
+		if paneShowsModalOnScreen(p) {
+			p.noteDialogSighting()
+		}
+		if p.auditDialogLatch(now) {
+			LogWarn("modal", "latch downgraded: a declared dialog was never seen on screen",
+				"pane", p.Name(), "window", latchCorroborationWindow)
+			EmitEvent(p.eventCh, AgentEvent{
+				Type:   EventMessageSent,
+				Pane:   p.Name(),
+				Detail: "held mail released: a declared dialog never appeared",
+				Time:   now,
+			})
+		}
+		if p.QueuedMessageCount() > 0 && !paneHasModal(p) {
+			// safeGo because the drain paces itself between messages; the main
+			// loop must not wait on it.
+			t.safeGo(p.drainModalQueue)
+		}
+	}
 }

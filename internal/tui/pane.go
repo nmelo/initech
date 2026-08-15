@@ -289,6 +289,14 @@ type Pane struct {
 	// old screen-only behaviour. A value field has no absent case to fall back
 	// through -- the zero value is simply "no dialog declared".
 	dialogOpen bool
+	// dialogOpenAt is when the latch was raised, and dialogCorroborated records
+	// whether SIGHT has confirmed it since (ini-9gvn). A latch raised falsely can
+	// never earn its clear -- no dialog ever renders to be seen closing -- so
+	// without these it is permanent, survives a restart, and holds the fleet's
+	// mail forever. Measured live: eng2's pane deferred every send for ~30
+	// minutes and through a restart.
+	dialogOpenAt       time.Time
+	dialogCorroborated bool
 }
 
 // Region defines a rectangular area on screen (outer bounds including border).

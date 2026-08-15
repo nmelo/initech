@@ -315,7 +315,11 @@ func sendPaneTextLocked(pane *Pane, text string, enter bool) {
 		if len(preview) > 60 {
 			preview = preview[:57] + "..."
 		}
-		LogDebug("inject", "deferred: modal open", "pane", pane.Name(), "enter", enter, "queue_dropped", dropped)
+		// INFO, not Debug (ini-9gvn): the live incident left ZERO trace in a
+		// 7.8MB fleet log because this was the only record and it was below the
+		// default level. A message the fleet is holding is not debug detail.
+		LogInfo("inject", "deferred: modal open", "pane", pane.Name(), "enter", enter,
+			"queued", pane.QueuedMessageCount(), "queue_dropped", dropped)
 		EmitEvent(pane.eventCh, AgentEvent{
 			Type:   EventMessageSent,
 			Pane:   pane.Name(),
