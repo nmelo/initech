@@ -116,7 +116,31 @@ func (t *TUI) ensureGroups(persist bool) {
 // filtered slice would make every one of those an off-by-scope bug waiting for
 // the first group to move.
 func (t *TUI) agentsGroupMembers() map[string][]int {
-	inScope := t.agentsScopeSet()
+	return t.groupMembersIn(t.agentsScopeSet())
+}
+
+// agentsFleetGroupMembers is the same membership question asked of the WHOLE
+// FLEET, ignoring this window's display scope (ini-l5sy).
+//
+// TWO CONSUMERS, OPPOSITE NEEDS, SO TWO NAMES. The modal renders what this
+// window shows, so it must ask the scoped question. The pruner decides whether
+// a band still EXISTS, which is a fact about the fleet and not about one
+// monitor -- and it acts on that answer by deleting the band's window
+// assignment.
+//
+// Sharing one predicate cost a release: after a band moved to window 2, window
+// 1 saw zero members for it, concluded it was extinct, and erased the very
+// assignment that had moved it -- silently, to disk, surviving restart. The
+// operator's monitor arrangement was destroyed by closing the modal. The
+// pruner was correct when it was written (ini-9ka.5); scoping changed the
+// meaning of "empty" underneath it.
+func (t *TUI) agentsFleetGroupMembers() map[string][]int {
+	return t.groupMembersIn(nil)
+}
+
+// groupMembersIn is the one walk both questions use. inScope nil means the
+// whole fleet.
+func (t *TUI) groupMembersIn(inScope map[string]bool) map[string][]int {
 	members := make(map[string][]int)
 	for i, p := range t.panes {
 		if inScope != nil && !inScope[agentKey(p)] {
@@ -815,7 +839,9 @@ func (t *TUI) agentsPruneEmptyGroups() {
 	if len(t.layoutState.Groups) == 0 {
 		return
 	}
-	members := t.agentsGroupMembers()
+	// THE FLEET question, never the scoped one: a band rendering on another
+	// monitor is elsewhere, not extinct (ini-l5sy).
+	members := t.agentsFleetGroupMembers()
 	var kept []string
 	var pruned []string
 	for _, g := range t.layoutState.Groups {

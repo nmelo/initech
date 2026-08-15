@@ -229,15 +229,37 @@ func TestSixM4Rig_ViewerModalParityAndReplaySurvival(t *testing.T) {
 	w1screen := strings.Join(w1rows, "\n")
 	w2screen := strings.Join(w2rows, "\n")
 
-	// ── 2. Tiers on BOTH windows ────────────────────────────────────
+	// ── 2. DEFAULT view: tiered, SCOPED, and disclosed ──────────────
+	//
+	// Rewritten for the operator-approved ini-9isx behaviour (canon: scoping
+	// is a display decision about WHICH facts to show, never a divergence in
+	// WHAT the facts are, and a scoped surface MUST disclose its scope).
+	//
+	// The TIER HEADERS are NOT scoped and both windows show both: the
+	// structure is a fleet fact. Only the agents under them are this window's.
+	// That distinction is what the previous version of this rig could not
+	// express, and it is why its failure was read as "the viewer tier gate is
+	// off" when the gate was on the whole time (ini-l5sy).
 	for _, tier := range []string{"monitor 1", "monitor 2"} {
 		if !strings.Contains(w1screen, tier) {
 			t.Errorf("window 1's modal is missing the %q tier header", tier)
 		}
 		if !strings.Contains(w2screen, tier) {
 			t.Errorf("window 2's modal is missing the %q tier header -- the viewer's tier "+
-				"gate is off again (WindowListen is empty on a viewer BY CONSTRUCTION)", tier)
+				"gate is off (WindowListen is empty on a viewer BY CONSTRUCTION)", tier)
 		}
+	}
+
+	// DISCLOSED SCOPE: a count of what is hidden and where it lives. Silent
+	// scoping is indistinguishable from the accidental divergence the parity
+	// invariant exists to kill, so the disclosure is load-bearing, not chrome.
+	if !strings.Contains(w1screen, "+2 on window 2") {
+		t.Errorf("window 1's modal does not disclose the 2 agents it is hiding on window 2"+
+			"\nW1:\n%s", w1screen)
+	}
+	if !strings.Contains(w2screen, "+6 on window 1") {
+		t.Errorf("window 2's modal does not disclose the 6 agents it is hiding on window 1"+
+			"\nW2:\n%s", w2screen)
 	}
 
 	// ── 3. Fleet numbering agrees, despite divergent local orders ───
@@ -249,10 +271,30 @@ func TestSixM4Rig_ViewerModalParityAndReplaySurvival(t *testing.T) {
 		}
 		return m
 	}
-	n1, n2 := numbersOf(w1screen), numbersOf(w2screen)
+
+	// The DEFAULT view lists only this window's own agents -- 6 and 2, not 8
+	// and 8. Asserting 8 here is what the pre-9isx rig did, and it is the
+	// assertion that went red at the v2.9.0 cut for the RIGHT reason:
+	// the product had changed, by operator decision.
+	dn1, dn2 := numbersOf(w1screen), numbersOf(w2screen)
+	if len(dn1) != 6 || len(dn2) != 2 {
+		t.Fatalf("default modal lists %d/%d agents (want 6 on window 1, 2 on window 2)"+
+			"\nW1:\n%s\nW2:\n%s", len(dn1), len(dn2), w1screen, w2screen)
+	}
+
+	// EXPANDED is where the whole fleet lives, and therefore where numbering
+	// parity is checkable at all: 'a' lifts this window's display scope so a
+	// cross-monitor move is possible ("you cannot grab what you cannot see").
+	w1pty.Write([]byte("a"))
+	w2pty.Write([]byte("a"))
+	time.Sleep(2500 * time.Millisecond)
+	w1exp := strings.Join(nonEmpty(snapRows(w1emu)), "\n")
+	w2exp := strings.Join(nonEmpty(snapRows(w2emu)), "\n")
+
+	n1, n2 := numbersOf(w1exp), numbersOf(w2exp)
 	if len(n1) != len(roles) || len(n2) != len(roles) {
-		t.Fatalf("modal parse found %d/%d numbered agents (want %d each)\nW1:\n%s\nW2:\n%s",
-			len(n1), len(n2), len(roles), w1screen, w2screen)
+		t.Fatalf("EXPANDED modal parse found %d/%d numbered agents (want %d each)\nW1:\n%s\nW2:\n%s",
+			len(n1), len(n2), len(roles), w1exp, w2exp)
 	}
 	for agent, num := range n1 {
 		if n2[agent] != num {
@@ -277,6 +319,13 @@ func TestSixM4Rig_ViewerModalParityAndReplaySurvival(t *testing.T) {
 	w2pty.Write([]byte("\x1b")) // close
 	time.Sleep(1500 * time.Millisecond)
 	openModal(w2pty)
+	// EXPANDED, because the hidden agent is one of WINDOW 1's: window 2's
+	// default modal legitimately does not list it, so a default-view assertion
+	// here would test the scope rather than the propagation it names. This is
+	// the other pre-9isx assertion in this file; it never fired only because
+	// the count check above Fatal'd first (ini-l5sy audit).
+	w2pty.Write([]byte("a"))
+	time.Sleep(2000 * time.Millisecond)
 	if !strings.Contains(strings.Join(nonEmpty(snapRows(w2emu)), "\n"), "[ ] "+hiddenAgent) {
 		t.Errorf("window 1 hid %s, and window 2's REOPENED modal still shows it visible -- "+
 			"the follower is reading its startup fleet-state snapshot, and a toggle from "+
