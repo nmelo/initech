@@ -25,7 +25,8 @@ sessions. Roles removed from config are reported but left running; use
 		if err != nil {
 			return err
 		}
-		resp, err := ipcCallSocket(sockPath, tui.IPCRequest{Action: "reload", Target: args[0]})
+		prune, _ := cmd.Flags().GetBool("prune")
+		resp, err := ipcCallSocket(sockPath, tui.IPCRequest{Action: "reload", Target: args[0], Prune: prune})
 		if err != nil {
 			return fmt.Errorf("reload %s: %w", args[0], err)
 		}
@@ -38,5 +39,6 @@ sessions. Roles removed from config are reported but left running; use
 }
 
 func init() {
+	reloadCmd.Flags().Bool("prune", false, "Also remove self-started agents no longer in config (pushed agents are never pruned)")
 	rootCmd.AddCommand(reloadCmd)
 }

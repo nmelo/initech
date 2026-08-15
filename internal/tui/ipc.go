@@ -31,6 +31,7 @@ type IPCRequest struct {
 	Text   string `json:"text"`   // Text to inject (for send).
 	Lines  int    `json:"lines"`  // Number of lines to return (for peek, 0 = all).
 	Enter  bool   `json:"enter"`  // Append Enter after text (for send).
+	Prune  bool   `json:"prune,omitempty"` // reload: also remove deconfigured self-started agents.
 }
 
 // IPCResponse is the JSON structure returned by the TUI socket.

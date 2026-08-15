@@ -1036,6 +1036,21 @@ func Run(cfg Config) error {
 				t.handlePeerPaneAdded(peerName, pane)
 			})
 		})
+		// Removal twin: a pruned agent's pane leaves the grid live.
+		pm.SetOnPaneRemoved(func(peerName, agentName string) {
+			t.runOnMain(func() {
+				for i, p := range t.panes {
+					rp, ok := p.(*RemotePane)
+					if ok && rp.Host() == peerName && rp.Name() == agentName {
+						t.panes = append(t.panes[:i], t.panes[i+1:]...)
+						t.logPanesMutation("peer-pane-removed", len(t.panes)+1)
+						break
+					}
+				}
+				t.recalcGrid(false)
+				t.applyLayout()
+			})
+		})
 		defer func() {
 			done := make(chan struct{})
 			go func() {

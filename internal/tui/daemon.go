@@ -274,6 +274,7 @@ type ControlCmd struct {
 	Lines  int    `json:"lines,omitempty"`
 	Rows   int    `json:"rows,omitempty"`
 	Cols   int    `json:"cols,omitempty"`
+	Prune  bool   `json:"prune,omitempty"` // reload_agents: also remove self-started agents no longer in config.
 }
 
 // ControlResp is the response to a control command. It also carries unsolicited
@@ -1051,7 +1052,7 @@ func (d *Daemon) handleControlStream(ctrl net.Conn, scanner *bufio.Scanner, peer
 			}
 
 		case "reload_agents":
-			if !respond(cmd.ID, d.handleReloadAgents(cmd.ID, peerName)) {
+			if !respond(cmd.ID, d.handleReloadAgents(cmd.ID, peerName, cmd.Prune)) {
 				return
 			}
 

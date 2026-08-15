@@ -5,6 +5,7 @@
 package tui
 
 import (
+	"net"
 	"github.com/nmelo/initech/internal/config"
 	"encoding/json"
 	"fmt"
@@ -236,7 +237,7 @@ type yamuxStreamLike interface {
 // the stop verb already owns. Each spawned agent is announced to every
 // connected client via the existing stream_added flow, so it appears in their
 // windows within seconds.
-func (d *Daemon) handleReloadAgents(id, peerName string) ControlResp {
+func (d *Daemon) handleReloadAgents(id, peerName string, prune bool) ControlResp {
 	if d.buildAgent == nil {
 		return ControlResp{ID: id, Error: "reload_agents: this daemon runs zero-config (no initech.yaml to reload)"}
 	}
@@ -293,17 +294,68 @@ func (d *Daemon) handleReloadAgents(id, peerName string) ControlResp {
 		added = append(added, role)
 		LogInfo("daemon", "agent spawned by reload", "name", role, "requested_by", peerName)
 	}
+	var pruned, kept []string
 	for name := range running {
-		if !configured[name] {
-			extra = append(extra, name)
+		if configured[name] {
+			continue
 		}
+		if !prune {
+			extra = append(extra, name)
+			continue
+		}
+		// PRUNE (ini-ap3i, operator-directed): remove self-started agents that
+		// left the config. PUSHED agents are never pruned — they are not in
+		// config by definition and belong to whoever pushed them; killing
+		// another client's agents because OUR config lacks them would be
+		// cross-tenant collateral.
+		if _, isPushed := d.ownership.config(name); isPushed {
+			kept = append(kept, name)
+			continue
+		}
+		d.removePane(name)
+		d.broadcastAgentRemoved(name)
+		pruned = append(pruned, name)
+		LogInfo("daemon", "agent pruned by reload", "name", name, "requested_by", peerName)
 	}
 	if len(failed) > 0 {
 		return ControlResp{ID: id, Error: fmt.Sprintf(
-			"reload_agents: spawned %v but FAILED %v (see daemon log); running-but-deconfigured (not touched): %v", added, failed, extra)}
+			"reload_agents: spawned %v but FAILED %v (see daemon log); pruned %v; not touched: %v", added, failed, pruned, append(extra, kept...))}
+	}
+	if prune {
+		return ControlResp{ID: id, OK: true, Action: "reload_agents_ok",
+			Target: fmt.Sprintf("spawned %v; pruned %v; pushed-agents kept: %v", added, pruned, kept)}
 	}
 	return ControlResp{ID: id, OK: true, Action: "reload_agents_ok",
 		Target: fmt.Sprintf("spawned %v; deconfigured-but-running (not touched): %v", added, extra)}
+}
+
+// broadcastAgentRemoved tells every connected client an agent's pane is gone,
+// so their windows drop it live — the removal twin of stream_added, which is
+// why shrinking used to need a reconnect: additions pushed, removals never did.
+func (d *Daemon) broadcastAgentRemoved(name string) {
+	d.sessionsMu.Lock()
+	type cw struct {
+		ctrl net.Conn
+		mu   *sync.Mutex
+	}
+	var writers []cw
+	for o, c := range d.clients {
+		writers = append(writers, cw{ctrl: c, mu: d.clientCtrlMu[o]})
+	}
+	d.sessionsMu.Unlock()
+	msg := struct {
+		Action string `json:"action"`
+		Name   string `json:"name"`
+	}{"agent_removed", name}
+	for _, w := range writers {
+		if w.mu != nil {
+			w.mu.Lock()
+		}
+		writeJSON(w.ctrl, msg) //nolint:errcheck
+		if w.mu != nil {
+			w.mu.Unlock()
+		}
+	}
 }
 
 // lifecycleAuthority resolves whether "owner" may lifecycle agent "name" and

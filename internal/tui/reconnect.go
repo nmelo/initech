@@ -47,6 +47,10 @@ type peerManager struct {
 	// mid-session via stream_added (after a configure_agent push). The
 	// TUI appends the pane to its existing list for that peer.
 	onPaneAdded func(peerName string, pane PaneView)
+
+	// onPaneRemoved is called when a daemon announces an agent's removal
+	// (reload --prune), so the TUI drops the pane live.
+	onPaneRemoved func(peerName, agentName string)
 	// onSessionNotice is called when window 1 broadcasts a session-level
 	// notice (ini-9ka.8). Session notices describe the session's shape
 	// changing -- a window folding back or reattaching -- rather than one
@@ -104,6 +108,11 @@ func newPeerManager(project *config.Project, onChange func(string, []PaneView, b
 // stream-on-create (configure_agent → stream_added) mid-session.
 func (pm *peerManager) SetOnPaneAdded(fn func(peerName string, pane PaneView)) {
 	pm.onPaneAdded = fn
+}
+
+// SetOnPaneRemoved registers the removal twin of SetOnPaneAdded.
+func (pm *peerManager) SetOnPaneRemoved(fn func(peerName, agentName string)) {
+	pm.onPaneRemoved = fn
 }
 
 // wait blocks until all peer goroutines have exited.
@@ -355,6 +364,8 @@ func (pm *peerManager) consumeEvents(peerName string, pc *peerConn, done chan st
 				}
 			case "stream_added":
 				pm.handleStreamAdded(peerName, pc, ev)
+			case "agent_removed":
+				pm.handleAgentRemoved(peerName, pc, ev)
 			}
 		case <-pc.mux.Done():
 			return
@@ -390,6 +401,33 @@ func (pm *peerManager) handleStreamAdded(peerName string, pc *peerConn, ev Contr
 	pc.panesMu.Unlock()
 	LogInfo("remote", "stream-on-create attached", "peer", peerName, "agent", ev.Name)
 	pm.onPaneAdded(peerName, rp)
+}
+
+// handleAgentRemoved drops the named RemotePane after the daemon pruned it —
+// the removal twin of handleStreamAdded. The pane closes and the TUI callback
+// removes it from the live grid; no reconnect required.
+func (pm *peerManager) handleAgentRemoved(peerName string, pc *peerConn, ev ControlResp) {
+	if ev.Name == "" {
+		LogWarn("remote", "agent_removed missing name", "peer", peerName)
+		return
+	}
+	pc.panesMu.Lock()
+	var removed PaneView
+	for i, rp := range pc.panes {
+		if rp.Name() == ev.Name {
+			removed = rp
+			pc.panes = append(pc.panes[:i], pc.panes[i+1:]...)
+			break
+		}
+	}
+	pc.panesMu.Unlock()
+	if c, ok := removed.(interface{ Close() }); ok && removed != nil {
+		c.Close()
+	}
+	LogInfo("remote", "agent removed by daemon", "peer", peerName, "agent", ev.Name)
+	if pm.onPaneRemoved != nil {
+		pm.onPaneRemoved(peerName, ev.Name)
+	}
 }
 
 // waitForDisconnect blocks until all panes from a peer are dead (yamux

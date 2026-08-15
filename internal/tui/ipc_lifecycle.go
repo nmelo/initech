@@ -48,7 +48,8 @@ func (t *TUI) handleIPCReload(conn net.Conn, req IPCRequest) {
 	LogInfo("remote-lifecycle", "forwarding", "action", "reload", "machine", req.Target)
 	resp, err := mux.RequestRaw(struct {
 		Action string `json:"action"`
-	}{"reload_agents"})
+		Prune  bool   `json:"prune,omitempty"`
+	}{"reload_agents", req.Prune})
 	LogInfo("remote-lifecycle", "response", "action", "reload", "machine", req.Target, "ok", err == nil && resp.OK, "err", fmt.Sprint(err), "remoteErr", resp.Error)
 	if err != nil {
 		writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("reload on machine %q: %v", req.Target, err)})
