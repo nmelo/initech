@@ -46,6 +46,7 @@ type Daemon struct {
 	panesMu    sync.Mutex            // Protects panes/ringBufs/multiSinks for hot-add/remove via control commands.
 	ringBufs   map[string]*RingBuf   // Per-pane ring buffer keyed by agent name.
 	multiSinks map[string]*MultiSink // Per-pane fan-out sink keyed by agent name.
+	lastSizes  map[string][2]int     // Last viewer-applied {rows, cols} per agent — survives restarts (ini-ap3i).
 	ownership  *agentOwnership       // Tracks which client pushed which agent (zero-config remote).
 	project    *config.Project
 	listener   net.Listener
@@ -976,6 +977,12 @@ func (d *Daemon) handleControlStream(ctrl net.Conn, scanner *bufio.Scanner, peer
 			}
 			if cmd.Rows > 0 && cmd.Cols > 0 {
 				p.Resize(cmd.Rows, cmd.Cols)
+				d.panesMu.Lock()
+				if d.lastSizes == nil {
+					d.lastSizes = make(map[string][2]int)
+				}
+				d.lastSizes[cmd.Target] = [2]int{cmd.Rows, cmd.Cols}
+				d.panesMu.Unlock()
 			}
 			if !respond(cmd.ID, ControlResp{OK: true}) {
 				return

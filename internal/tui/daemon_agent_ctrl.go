@@ -392,7 +392,20 @@ func writeIfChanged(path, content string, mode os.FileMode) error {
 // startPushedPane creates a Pane, wires the per-agent ring buffer + multisink,
 // and starts the process. Used by configure_agent and restart_agent.
 func (d *Daemon) startPushedPane(cfg PaneConfig) error {
-	p, err := NewPane(cfg, 24, 80)
+	// Spawn at the last size a viewer applied, not the 24x80 default: a
+	// remote RESTART otherwise brings the new process up in a tiny terminal
+	// while every attached viewer renders a large pane — the agent paints a
+	// 24-row screen into their region and the display reads as scattered
+	// fragments (ini-ap3i, observed live 2026-08-15). Using the recorded
+	// size also makes the fresh process's first full paint match the
+	// viewers' geometry immediately.
+	rows, cols := 24, 80
+	d.panesMu.Lock()
+	if sz, ok := d.lastSizes[cfg.Name]; ok {
+		rows, cols = sz[0], sz[1]
+	}
+	d.panesMu.Unlock()
+	p, err := NewPane(cfg, rows, cols)
 	if err != nil {
 		return err
 	}
