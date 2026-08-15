@@ -227,6 +227,43 @@ type yamuxStreamLike interface {
 }
 
 // handleStopAgent stops a previously-pushed agent. Verifies ownership.
+// lifecycleAuthority resolves whether "owner" may lifecycle agent "name" and
+// which config a respawn should use. Two regimes, deliberately different
+// (ini-ap3i, operator-verified session 2026-08-15):
+//
+//   - PUSHED agents (ownership record exists): only the pushing client may
+//     touch them — the existing rule, unchanged. Its config is the pushed one.
+//   - SELF-STARTED agents (no ownership record — spawned from the daemon's own
+//     initech.yaml at boot): any TOKEN-AUTHENTICATED peer may stop/restart
+//     them. The token is the fleet's authority credential; a hub that may read
+//     the agent's screen and type into it but not respawn it after a config
+//     fix is an inconsistent trust boundary — tonight's PATH incident needed a
+//     full daemon bounce for exactly this gap. Respawn config comes from the
+//     live pane itself, and NO ownership record is created: a restart does not
+//     convert a self-started agent into a pushed one.
+func (d *Daemon) lifecycleAuthority(name, owner string) (PaneConfig, *ControlResp) {
+	if prev, exists := func() (string, bool) {
+		d.ownership.mu.Lock()
+		defer d.ownership.mu.Unlock()
+		pr, ok := d.ownership.owners[name]
+		return pr, ok
+	}(); exists {
+		if prev != owner {
+			return PaneConfig{}, &ControlResp{Error: fmt.Sprintf("agent %q is owned by %q, not %q", name, prev, owner)}
+		}
+		cfg, ok := d.ownership.config(name)
+		if !ok {
+			return PaneConfig{}, &ControlResp{Error: fmt.Sprintf("no saved config for %q", name)}
+		}
+		return cfg, nil
+	}
+	p := d.findPane(name)
+	if p == nil {
+		return PaneConfig{}, &ControlResp{Error: fmt.Sprintf("agent %q not found", name)}
+	}
+	return p.cfg, nil
+}
+
 func (d *Daemon) handleStopAgent(line []byte, owner string) ControlResp {
 	var cmd StopAgentCmd
 	if err := json.Unmarshal(line, &cmd); err != nil {
@@ -236,19 +273,17 @@ func (d *Daemon) handleStopAgent(line []byte, owner string) ControlResp {
 		return ControlResp{ID: cmd.ID, Error: "name is required"}
 	}
 
-	p := d.findPane(cmd.Name)
-	if p == nil {
+	if p := d.findPane(cmd.Name); p == nil {
 		return ControlResp{ID: cmd.ID, Error: fmt.Sprintf("agent %q not found", cmd.Name)}
 	}
-	if prev, ok := d.ownership.verify(cmd.Name, owner); !ok {
-		return ControlResp{
-			ID:    cmd.ID,
-			Error: fmt.Sprintf("agent %q is owned by %q, not %q", cmd.Name, prev, owner),
-		}
+	if _, refusal := d.lifecycleAuthority(cmd.Name, owner); refusal != nil {
+		refusal.ID = cmd.ID
+		return *refusal
 	}
 
 	d.removePane(cmd.Name)
 	d.ownership.release(cmd.Name)
+	LogInfo("daemon", "agent stopped by peer", "name", cmd.Name, "peer", owner)
 	return ControlResp{ID: cmd.ID, OK: true, Action: "stop_agent_ok", Target: cmd.Name}
 }
 
@@ -266,18 +301,13 @@ func (d *Daemon) handleRestartAgent(line []byte, owner string) ControlResp {
 	if p := d.findPane(cmd.Name); p == nil {
 		return ControlResp{ID: cmd.ID, Error: fmt.Sprintf("agent %q not found", cmd.Name)}
 	}
-	if prev, ok := d.ownership.verify(cmd.Name, owner); !ok {
-		return ControlResp{
-			ID:    cmd.ID,
-			Error: fmt.Sprintf("agent %q is owned by %q, not %q", cmd.Name, prev, owner),
-		}
+	cfg, refusal := d.lifecycleAuthority(cmd.Name, owner)
+	if refusal != nil {
+		refusal.ID = cmd.ID
+		return *refusal
 	}
 
-	cfg, ok := d.ownership.config(cmd.Name)
-	if !ok {
-		return ControlResp{ID: cmd.ID, Error: fmt.Sprintf("no saved config for %q", cmd.Name)}
-	}
-
+	LogInfo("daemon", "agent restarting by peer", "name", cmd.Name, "peer", owner)
 	d.removePane(cmd.Name)
 	if err := d.startPushedPane(cfg); err != nil {
 		d.ownership.release(cmd.Name)

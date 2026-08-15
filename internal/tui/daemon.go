@@ -929,6 +929,10 @@ func (d *Daemon) handleControlStream(ctrl net.Conn, scanner *bufio.Scanner, peer
 			}
 			continue
 		}
+		// One line per command, always: tonight's restart_agent timeout was
+		// diagnosed blind because neither end logged the wire (the 9gvn
+		// zero-deferral-records lesson, one channel over).
+		LogInfo("daemon", "control cmd", "action", cmd.Action, "peer", peerName, "id", cmd.ID)
 
 		switch cmd.Action {
 		case "send":

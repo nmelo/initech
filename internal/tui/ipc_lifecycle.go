@@ -68,7 +68,9 @@ func (t *TUI) remoteLifecycleIfRemote(conn net.Conn, req IPCRequest, action stri
 			"%s %q: remote daemons support stop and restart only (no start_agent on the wire) — use restart to respawn", action, req.Target)})
 		return true
 	}
+	LogInfo("remote-lifecycle", "forwarding", "action", action, "agent", rp.Name(), "machine", host)
 	resp, err := mux.RequestRaw(cmd)
+	LogInfo("remote-lifecycle", "response", "action", action, "machine", host, "ok", err == nil && resp.OK, "err", fmt.Sprint(err), "remoteErr", resp.Error)
 	if err != nil {
 		writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf(
 			"%s %q on machine %q: send failed: %v", action, req.Target, host, err)})
