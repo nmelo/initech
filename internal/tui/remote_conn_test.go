@@ -377,3 +377,22 @@ func TestPeerConnClose_NilSafe(t *testing.T) {
 	var pc peerConn
 	pc.Close()
 }
+
+// TestWaitForDisconnect_QuitFiresPromptly pins the fix for the 3s quit tax:
+// waitForDisconnect's doc always promised a pm.quit exit; the select never had
+// it, so pm.wait() timed out on every single shutdown (24/24 measured).
+func TestWaitForDisconnect_QuitFiresPromptly(t *testing.T) {
+	quit := make(chan struct{})
+	pm := &peerManager{quit: quit}
+	done := make(chan struct{})
+	go func() {
+		pm.waitForDisconnect("support", &peerConn{})
+		close(done)
+	}()
+	close(quit)
+	select {
+	case <-done:
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("waitForDisconnect did not exit within 500ms of quit — the shutdown tax is back")
+	}
+}

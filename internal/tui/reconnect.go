@@ -453,6 +453,12 @@ func (pm *peerManager) waitForDisconnect(peerName string, pc *peerConn) {
 		select {
 		case <-closed:
 			return
+		case <-pm.quit:
+			// The doc above always promised this exit; the select never had it
+			// (ini-ap3i). Without it, quit drained every goroutine except this
+			// one, pm.wait() could never succeed, and EVERY quit burned the
+			// full 3s forced-exit timeout — 24 of 24 in one evening's log.
+			return
 		case <-ticker.C:
 			pc.panesMu.Lock()
 			panes := append([]PaneView(nil), pc.panes...)
