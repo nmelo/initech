@@ -161,9 +161,6 @@ func (t *TUI) handleAgentsKey(ev *tcell.EventKey) bool {
 		case 'm':
 			t.agentsMoveGroupToNextWindow()
 			return false
-		case 'a':
-			t.agentsToggleExpanded()
-			return false
 		case 'A':
 			t.agentsRevealAll()
 			return false

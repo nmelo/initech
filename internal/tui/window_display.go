@@ -20,7 +20,6 @@ package tui
 // every window. Nothing here is called from those paths.
 
 import (
-	"fmt"
 	"regexp"
 )
 
@@ -142,12 +141,9 @@ func (t *TUI) scopeDisclosure() (hidden int, where string) {
 // operator is looking at agents this window does not own, and the way back is
 // the same key. A one-way hint is how a mode becomes a trap.
 func (t *TUI) agentsScopeNote() string {
-	hidden, where := t.scopeDisclosure()
-	if hidden == 0 {
-		return ""
-	}
-	if t.agents.expanded {
-		return fmt.Sprintf(" showing all %d · a scopes to this window ", len(t.panes))
-	}
-	return fmt.Sprintf(" +%d %s · a shows all ", hidden, where)
+	// The modal always shows the whole fleet (operator decision 2026-08-15,
+	// revising the ini-9isx gate choice), so it is never a scoped surface and
+	// never carries a disclosure line. The OVERLAY remains scoped and keeps
+	// its own disclosure in render.go.
+	return ""
 }

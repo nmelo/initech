@@ -1,0 +1,75 @@
+package tui
+
+import (
+	"regexp"
+	"strings"
+	"testing"
+)
+
+// ── ini-ap3i: the two-families rule applied to the GRID ─────────────
+//
+// The overlay, needs-input list, and ribbon all learned in ini-9isx that a
+// window alias is presentation (stripped) while a cross-machine host is
+// identity (kept). The agents grid never went through paneDisplayName, so a
+// remote peer's agent rendered as its bare local namesake: support:super
+// showed as a second "super", and — because cross-machine panes attach after
+// stampFleetThenApplyOrder and carry no fleet number — it fell back to its
+// slice index and COLLIDED with a stamped agent's number (two rows both
+// numbered 1, observed live by the operator on 2026-08-15).
+
+// TestAgentsGrid_CrossMachineAgentKeepsHostAndUniqueNumber renders the real
+// grid and reads the screen back: the remote agent must appear under its
+// host-qualified name, and no grid number may name two different agents.
+func TestAgentsGrid_CrossMachineAgentKeepsHostAndUniqueNumber(t *testing.T) {
+	tui, _ := tierTUI(t, false, "super", "eng1")
+	// Locals carry served fleet numbers, as in production (stampFleetThenApplyOrder).
+	for i, p := range tui.panes {
+		if lp, ok := p.(*Pane); ok {
+			lp.SetFleetIdx(i)
+		}
+	}
+	// A cross-machine peer attaches later and is never stamped.
+	tui.panes = append(tui.panes, &RemotePane{name: "super", host: "support", alive: true})
+
+	tui.renderAgentsGrid()
+	out := screenText(t, tui)
+
+	if !strings.Contains(out, "support:super") {
+		t.Errorf("grid collapsed the cross-machine agent onto its local namesake — "+
+			"want support:super rendered, got:\n%s", out)
+	}
+
+	// No number names two agents: number-addressed search and grab depend on it.
+	rows := regexp.MustCompile(`(\d+) \[.\] ([A-Za-z0-9:_-]+)`).FindAllStringSubmatch(out, -1)
+	if len(rows) < 3 {
+		t.Fatalf("expected at least 3 numbered rows, parsed %d from:\n%s", len(rows), out)
+	}
+	byNum := map[string]string{}
+	for _, m := range rows {
+		num, name := m[1], m[2]
+		if prev, ok := byNum[num]; ok && prev != name {
+			t.Errorf("grid number %s names two different agents (%q and %q)", num, prev, name)
+		}
+		byNum[num] = name
+	}
+}
+
+// TestAgentsGrid_SearchMatchesTheDisplayedName pins search to the same string
+// the cell displays (the search site's own comment: search and display
+// disagreeing would be worse than either bug). "support" must find the remote
+// agent; pre-fix it matched nothing because search read the bare Name().
+func TestAgentsGrid_SearchMatchesTheDisplayedName(t *testing.T) {
+	tui, _ := tierTUI(t, false, "super", "eng1")
+	tui.panes = append(tui.panes, &RemotePane{name: "super", host: "support", alive: true})
+	remoteIdx := len(tui.panes) - 1
+
+	tui.agents.searching = true
+	tui.agents.searchBuf = []rune("support")
+
+	if !tui.agentsMatched(remoteIdx) {
+		t.Error("search for 'support' does not match support:super — search is not reading the displayed name")
+	}
+	if tui.agentsMatched(0) {
+		t.Error("search for 'support' matched local super — over-broad match")
+	}
+}

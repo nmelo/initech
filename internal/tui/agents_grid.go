@@ -166,18 +166,12 @@ func (t *TUI) groupMembersIn(inScope map[string]bool) map[string][]int {
 // agentsScopeSet returns the agent keys this modal may show, or nil for "no
 // scope" — which is both the expanded view and every single-window session.
 func (t *TUI) agentsScopeSet() map[string]bool {
-	if t.agents.expanded {
-		return nil
-	}
-	scoped := t.visiblePanesForWindow()
-	if len(scoped) == len(t.panes) {
-		return nil // Nothing is out of scope; skip the map entirely.
-	}
-	set := make(map[string]bool, len(scoped))
-	for _, p := range scoped {
-		set[agentKey(p)] = true
-	}
-	return set
+	// Operator decision, 2026-08-15 (revises the ini-9isx gate choice): the
+	// MODAL always shows the whole fleet — it is the management surface, and
+	// the operator never wants to press a key to see what he can grab. The
+	// hover OVERLAY remains scoped per window; only the modal's default
+	// changed. The expanded flag and 'a' toggle are retired with it.
+	return nil
 }
 
 // agentsGridPerRow computes cells-per-row: the widest band's member count,
@@ -477,6 +471,47 @@ func (t *TUI) agentsFlatInsertionForEmptyBand(members map[string][]int, targetLa
 // search buffer. Empty buffer (or not searching) matches everything. Names
 // match by case-insensitive substring; pane numbers by prefix, so typing
 // "1" reaches pane 1 and 10-19 before a second digit disambiguates.
+// agentsGridNumber returns the number the grid shows (and search accepts) for
+// t.panes[idx], zero-based. Stamped fleet numbers pass through untouched so
+// every window's modal numbers local agents from the same served sequence
+// (ini-6m4). Panes with NO stamp — cross-machine peers, which attach after
+// stampFleetThenApplyOrder and are not *Pane — get deterministic numbers
+// AFTER the stamped range instead of falling back to their local slice index,
+// which collided with a stamped agent's number (ini-ap3i: support:super and
+// local super both showed "1"; a shared number with a different agent breaks
+// number-addressed search and grab). One function serves both the number cell
+// and agentsMatched because search and display disagreeing on what "3" means
+// would be worse than either bug — same sentence as the search site's comment,
+// now enforced by a shared code path instead of a shared intention.
+func (t *TUI) agentsGridNumber(idx int) int {
+	p := t.panes[idx]
+	if fn, ok := p.(fleetNumbered); ok {
+		if i := fn.FleetIdx(); i >= 0 {
+			return i
+		}
+	}
+	// Unstamped: number past the highest stamped index, in pane order among
+	// the unstamped, so the result is stable within a session and never
+	// collides with a stamped number.
+	maxStamped := -1
+	for _, q := range t.panes {
+		if fn, ok := q.(fleetNumbered); ok {
+			if i := fn.FleetIdx(); i > maxStamped {
+				maxStamped = i
+			}
+		}
+	}
+	rank := 0
+	for j := 0; j < idx; j++ {
+		q := t.panes[j]
+		fn, ok := q.(fleetNumbered)
+		if !ok || fn.FleetIdx() < 0 {
+			rank++
+		}
+	}
+	return maxStamped + 1 + rank
+}
+
 func (t *TUI) agentsMatched(paneIdx int) bool {
 	if !t.agents.searching || len(t.agents.searchBuf) == 0 {
 		return true
@@ -485,8 +520,8 @@ func (t *TUI) agentsMatched(paneIdx int) bool {
 	p := t.panes[paneIdx]
 	// Same number the cell displays (the FLEET number, ini-6m4) -- search and
 	// display disagreeing on what "3" means would be worse than either bug.
-	return strings.Contains(strings.ToLower(p.Name()), q) ||
-		strings.HasPrefix(strconv.Itoa(fleetIdxOf(p, paneIdx)+1), q)
+	return strings.Contains(strings.ToLower(paneDisplayName(p)), q) ||
+		strings.HasPrefix(strconv.Itoa(t.agentsGridNumber(paneIdx)+1), q)
 }
 
 // agentsMatchCells returns indices into cells (grid order) whose pane
@@ -1169,9 +1204,9 @@ func (t *TUI) renderAgentsGrid() {
 				x++
 			}
 		}
-		put(fmt.Sprintf("%3d ", fleetIdxOf(t.panes[c.paneIdx], c.paneIdx)+1), numStyle)
+		put(fmt.Sprintf("%3d ", t.agentsGridNumber(c.paneIdx)+1), numStyle)
 		put(vis+" ", boxStyle)
-		put(p.Name(), nameStyle)
+		put(paneDisplayName(p), nameStyle)
 		// Pin/slot marker: '*' for an explicit live pin (matches the flat
 		// modal's [P] semantics), '◦' for live-mode auto-displayed-but-
 		// unpinned (today's D:N). Exact glyph is an implementation choice

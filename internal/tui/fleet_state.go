@@ -449,6 +449,15 @@ func (t *TUI) mutateFleet(action string, apply func(*FleetState) error) error {
 		return err
 	}
 	t.applyFleetProjection()
+	// Ring the doorbell IN THE PRIMITIVE, not in the keybindings: every
+	// fleet-state change — hidden, protected, pins, and whatever field comes
+	// next — announces to the other windows, whose surfaceSessionNotice
+	// handler re-reads the stores and re-plans. Before this line, moves
+	// announced (noticeGroupMoved) but a hide written on window 1 was
+	// invisible to an already-open window-2 modal until its next refresh
+	// seam (operator-observed, 2026-08-15). Announcing per-path is how that
+	// class recurs; announcing here is how it ends.
+	t.windowSrv.broadcastSessionNotice("fleet display changed: " + action)
 	return nil
 }
 
