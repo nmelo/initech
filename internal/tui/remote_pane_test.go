@@ -421,3 +421,36 @@ func TestShiftEnter_PTY_Atomicity(t *testing.T) {
 func newKeyEvent(r rune) *tcell.EventKey {
 	return tcell.NewEventKey(tcell.KeyRune, r, tcell.ModNone)
 }
+
+// Viewer windows dropped the Alt modifier on rune keys: local panes translate
+// through tcellKeyToUV (ModAlt carried, meta-encoded for the child) while
+// RemotePane.SendKey wrote the bare rune — so Claude Code's Option+P model
+// selector worked on window 1 and was dead on window 2 (operator, 2026-08-16).
+// Third member of the two-implementations-of-one-translation family.
+func TestRemotePaneSendKey_AltRuneCarriesMeta(t *testing.T) {
+	client, server := net.Pipe()
+	defer client.Close()
+	defer server.Close()
+	rp := &RemotePane{name: "eng1", host: "window1", alive: true, stream: client}
+
+	got := make(chan []byte, 1)
+	go func() {
+		buf := make([]byte, 8)
+		n, _ := server.Read(buf)
+		got <- buf[:n]
+	}()
+	rp.SendKey(tcell.NewEventKey(tcell.KeyRune, 'p', tcell.ModAlt))
+	if b := <-got; string(b) != "\x1bp" {
+		t.Fatalf("Alt+p reached the agent as %q, want ESC-prefixed \"\\x1bp\" — the meta modifier was dropped", b)
+	}
+
+	go func() {
+		buf := make([]byte, 8)
+		n, _ := server.Read(buf)
+		got <- buf[:n]
+	}()
+	rp.SendKey(tcell.NewEventKey(tcell.KeyRune, 'p', tcell.ModNone))
+	if b := <-got; string(b) != "p" {
+		t.Fatalf("plain p reached the agent as %q — the fix must not meta-encode unmodified runes", b)
+	}
+}

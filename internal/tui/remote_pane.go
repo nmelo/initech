@@ -298,7 +298,16 @@ const networkWriteTimeout = 3 * time.Second
 func (rp *RemotePane) SendKey(ev *tcell.EventKey) {
 	var b []byte
 	if ev.Key() == tcell.KeyRune {
-		b = []byte(string(ev.Rune()))
+		if ev.Modifiers()&tcell.ModAlt != 0 {
+			// Meta-encode Alt+rune (ESC prefix), matching what the local
+			// pane's tcellKeyToUV path puts on the child's PTY. Writing the
+			// bare rune here dropped the modifier: Claude Code's Option+P
+			// model selector worked on window 1 and was dead on every viewer
+			// (operator, 2026-08-16).
+			b = []byte("\x1b" + string(ev.Rune()))
+		} else {
+			b = []byte(string(ev.Rune()))
+		}
 	} else if ev.Key() == tcell.KeyEnter && ev.Modifiers()&tcell.ModShift != 0 {
 		// Shift+Enter: CSI-u encoded. See Pane.SendKey for rationale.
 		b = []byte("\x1b[13;2u")
