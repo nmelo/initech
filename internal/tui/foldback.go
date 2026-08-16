@@ -593,9 +593,23 @@ func (t *TUI) applyAgentStatus(name string, beads []string, desc string, ws Wait
 		if !ok || rp.Name() != name {
 			continue
 		}
+		wasSuspended := rp.IsSuspended()
 		rp.ApplyStatus(beads, desc)
 		rp.ApplyWaiting(ws)
 		rp.ApplySuspended(suspended)
+		// WAKE-EDGE GEOMETRY REASSERTION. A wake respawns the pane at
+		// whatever size the LAST writer left on its emulator — and both
+		// windows write sizes (measured 2026-08-15: window 2 set 37x110,
+		// window 1's layout overwrote to 36x104 twelve seconds later, the
+		// spawn inherited window 1's numbers; the garbled run was 76-vs-37).
+		// Rather than arbitrate the writers, the viewer re-sends ITS size on
+		// the wake edge it already receives, so the child snaps to the
+		// displaying window's truth within one resize round-trip of booting.
+		if wasSuspended && !suspended {
+			if cols, rows := rp.region.TerminalSize(); rows > 1 && cols > 1 {
+				rp.Resize(rows, cols)
+			}
+		}
 		return
 	}
 }

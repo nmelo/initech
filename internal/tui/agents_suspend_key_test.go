@@ -281,3 +281,29 @@ func TestRemotePaneRender_SuspendedBadge(t *testing.T) {
 		t.Fatalf("viewer ribbon does not show the suspended state the authority broadcast; got:\n%s", out)
 	}
 }
+
+// The wake races window geometry: the respawn sizes itself from whatever
+// window last touched the pane (measured: window 2 set 37x110 at 21:12:29,
+// window 1's layout re-sized to 36x104 by :41, spawn inherited window 1's
+// numbers — near-agreement that run; 76-vs-37 the garbled run). Instead of
+// arbitrating the writers, the VIEWER reasserts its geometry on the wake
+// edge it already receives, so the child snaps to the displaying window's
+// truth within one resize round-trip of booting.
+func TestApplyAgentStatus_WakeEdgeReassertsGeometry(t *testing.T) {
+	tui := newTestTUI()
+	rp := &RemotePane{
+		name: "eng2", host: "window1", alive: true,
+		emu:    vt.NewSafeEmulator(80, 24), // stale belief
+		region: Region{X: 0, Y: 0, W: 112, H: 41},
+	}
+	tui.panes = append(tui.panes, rp)
+
+	tui.applyAgentStatus("eng2", nil, "", WaitingState{}, true)  // park
+	tui.applyAgentStatus("eng2", nil, "", WaitingState{}, false) // wake edge
+
+	wantCols, wantRows := rp.region.TerminalSize()
+	if rp.emu.Width() != wantCols || rp.emu.Height() != wantRows {
+		t.Fatalf("wake edge did not reassert viewer geometry: emu %dx%d, want %dx%d",
+			rp.emu.Width(), rp.emu.Height(), wantCols, wantRows)
+	}
+}
