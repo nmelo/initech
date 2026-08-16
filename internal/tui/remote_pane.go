@@ -65,6 +65,10 @@ type RemotePane struct {
 	resizeTimer *time.Timer
 	pendingRows int
 	pendingCols int
+
+	// lastLoggedH/W gate the render-region trace to changes only.
+	lastLoggedH int
+	lastLoggedW int
 }
 
 // Mux exposes the shared control multiplexer for this RemotePane's peer
@@ -433,6 +437,16 @@ func (rp *RemotePane) Render(screen tcell.Screen, focused bool, dimmed bool, ind
 	}
 
 	s := &clampedScreen{Screen: screen, r: r}
+
+	// Change-gated geometry trace (post-wake garble instrumentation): the
+	// region this pane is DRAWN at vs the emulator it draws FROM. A split
+	// between this and the last "viewer resize" line is the defect.
+	if r.H != rp.lastLoggedH || r.W != rp.lastLoggedW {
+		rp.lastLoggedH, rp.lastLoggedW = r.H, r.W
+		LogInfo("remote", "render region", "agent", rp.name, "host", rp.host,
+			"region_h", r.H, "region_w", r.W,
+			"emu_h", rp.emu.Height(), "emu_w", rp.emu.Width())
+	}
 
 	// Badge style: remote panes use teal to distinguish from local.
 	var titleStyle tcell.Style
