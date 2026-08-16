@@ -270,22 +270,20 @@ drain:
 	}
 }
 
-// TestFleetSurfaces_ScopedByDefaultWholeFleetOnExpand replaces the former
-// TestFleetSurfaces_StayWholeFleet, and the replacement is a DECISION CHANGE,
-// not a fix to a broken test.
+// TestFleetSurfaces_AlwaysWholeFleet replaces
+// TestFleetSurfaces_ScopedByDefaultWholeFleetOnExpand, and the replacement is
+// a DECISION CHANGE for the second time on this exact surface — the previous
+// test's own comment documents the first (StayWholeFleet → ScopedByDefault,
+// ini-9isx). On 2026-08-15 the operator reversed ini-9isx live ("why do I
+// need to press 'a' to show all, I never asked for that" → always show the
+// whole fleet), so the modal is unscoped from every window, in both expanded
+// states — expansion is a no-op on membership, kept only so a stale saved
+// flag cannot change what the operator sees.
 //
-// The old test pinned "the agents modal shows the whole fleet from every
-// window" as a decided behavior, and it was one -- until ini-9isx, where the
-// operator decided the opposite for a 39-agent fleet on two monitors and pm
-// amended docs/spec.md's parity invariant to permit deliberate, DISCLOSED
-// display scoping. A test that pins a superseded decision is not a guard; it is
-// a claim about what the product does that is no longer true.
-//
-// What the old test was PROTECTING survives here and is the second half of this
-// one: the whole fleet must still be reachable from a secondary window, or
-// cross-monitor moves become impossible. It moved from "always shown" to "one
-// key away, and the key is disclosed on screen".
-func TestFleetSurfaces_ScopedByDefaultWholeFleetOnExpand(t *testing.T) {
+// What every version of this test protects survives: the whole fleet must be
+// reachable from a secondary window, or cross-monitor moves are impossible.
+// It is now always shown, no key away.
+func TestFleetSurfaces_AlwaysWholeFleet(t *testing.T) {
 	_, w2, _ := placementTUIs(t, "group_window:\n    eng: window-2\n")
 
 	count := func() int {
@@ -296,23 +294,19 @@ func TestFleetSurfaces_ScopedByDefaultWholeFleetOnExpand(t *testing.T) {
 		return total
 	}
 
-	// Default: window 2 owns the eng group only.
-	if got := count(); got != 2 {
-		t.Fatalf("window 2's modal shows %d agents, want only its own 2 (eng1, eng2): an unscoped "+
-			"default is the clutter ini-9isx exists to remove", got)
+	if got := count(); got != 8 {
+		t.Fatalf("window 2's modal shows %d agents, want the whole fleet (8): the operator "+
+			"reversed ini-9isx's scoped default on 2026-08-15", got)
 	}
-
-	// Expanded: the whole fleet, so a cross-monitor move has something to grab.
 	w2.agents.expanded = true
 	if got := count(); got != 8 {
-		t.Fatalf("the EXPANDED modal shows %d agents, want the whole fleet (8): without this the "+
-			"operator cannot move a group to another monitor from a secondary window", got)
+		t.Fatalf("expanded modal shows %d agents, want 8: expansion must be a membership no-op "+
+			"now that the default is already the whole fleet", got)
 	}
-
-	// And back, because a mode you cannot leave is a trap.
 	w2.agents.expanded = false
-	if got := count(); got != 2 {
-		t.Fatalf("collapsing did not restore the window scope; modal shows %d, want 2", got)
+	if got := count(); got != 8 {
+		t.Fatalf("collapsing changed membership to %d, want 8: the expanded flag is inert now — "+
+			"there is no scoped mode to fall back into", got)
 	}
 }
 

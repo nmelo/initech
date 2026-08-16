@@ -833,7 +833,11 @@ func (t *TUI) renderOverlay() {
 	// worse than naming two that work.
 	scopeLine := ""
 	if scopeHidden > 0 {
-		scopeLine = fmt.Sprintf(" +%d %s · alt+a then a shows all", scopeHidden, scopeWhere)
+		// "alt+a shows all", not "alt+a then a": the modal is always
+		// whole-fleet as of the operator's 2026-08-15 reversal of ini-9isx's
+		// scoped default — opening it IS showing all, and advertising a
+		// second keypress that no longer does anything teaches a phantom.
+		scopeLine = fmt.Sprintf(" +%d %s · alt+a shows all", scopeHidden, scopeWhere)
 		panelH++
 		// RUNES, not bytes. The line contains "·" (2 bytes), and the width
 		// budget here must agree with the draw loop below in the SAME unit --

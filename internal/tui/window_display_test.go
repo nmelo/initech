@@ -120,43 +120,36 @@ func TestWindowAliasFamily_OneSpellingTwoAnchors(t *testing.T) {
 
 // ── AC4/AC6/AC9: scoping and its disclosure ─────────────────────────
 
-// TestScopeDisclosure_CountsAndNamesTheOtherWindow is AC6's substance: the
-// count of what is hidden and where it is.
-func TestScopeDisclosure_CountsAndNamesTheOtherWindow(t *testing.T) {
+// TestScopeDisclosure_OverlayCountsModalSilent replaces the two
+// TestScopeDisclosure_* tests as a DECISION CHANGE (the operator reversed
+// ini-9isx's scoped modal on 2026-08-15: the modal always shows the whole
+// fleet). What survives, split by surface:
+//
+//   - The OVERLAY still scopes to this window's panes, so its disclosure —
+//     how many agents are elsewhere and where — is still load-bearing, and
+//     its hint must name a key sequence that actually works ("alt+a shows
+//     all", not the defunct "alt+a then a").
+//   - The MODAL hides nothing, so it discloses nothing: the note is empty in
+//     both expanded states. An unscoped surface drawing a scope line would
+//     be the inverse lie.
+func TestScopeDisclosure_OverlayCountsModalSilent(t *testing.T) {
 	_, w2, _ := placementTUIs(t, "group_window:\n    eng: window-2\n")
 
 	hidden, where := w2.scopeDisclosure()
 	if hidden != 6 {
-		t.Errorf("window 2 hides %d agents, want 6 (8 total minus its own 2)", hidden)
+		t.Errorf("window 2's overlay hides %d agents, want 6 (8 total minus its own 2)", hidden)
 	}
 	if where != "on window 1" {
-		t.Errorf("disclosure says %q; the operator needs to know WHERE the hidden agents are, "+
-			"and they are all on window 1", where)
+		t.Errorf("disclosure says %q; the operator needs to know WHERE the other agents are", where)
 	}
 
-	note := w2.agentsScopeNote()
-	if !strings.Contains(note, "6") {
-		t.Errorf("the modal's disclosure %q does not carry the hidden COUNT; a scoped surface that "+
-			"does not say what it hides fails the amended parity invariant by definition", note)
+	if note := w2.agentsScopeNote(); note != "" {
+		t.Errorf("the modal is always whole-fleet but drew scope note %q — an unscoped surface "+
+			"must not claim to hide anything", note)
 	}
-	if !strings.Contains(note, "a shows all") {
-		t.Errorf("the modal's disclosure %q does not NAME the expand key; the invariant requires "+
-			"the affordance that reveals the scope, not just an admission that one exists", note)
-	}
-}
-
-// TestScopeDisclosure_ExpandedStateNamesTheWayBack: a mode the operator cannot
-// tell they are in, or cannot leave, is a trap.
-func TestScopeDisclosure_ExpandedStateNamesTheWayBack(t *testing.T) {
-	_, w2, _ := placementTUIs(t, "group_window:\n    eng: window-2\n")
 	w2.agents.expanded = true
-
-	note := w2.agentsScopeNote()
-	if !strings.Contains(note, "showing all") {
-		t.Errorf("expanded disclosure %q does not say the view is unscoped", note)
-	}
-	if !strings.Contains(note, "a scopes to this window") {
-		t.Errorf("expanded disclosure %q does not name the way back", note)
+	if note := w2.agentsScopeNote(); note != "" {
+		t.Errorf("expanded modal drew scope note %q, want none", note)
 	}
 }
 
