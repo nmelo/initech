@@ -1290,6 +1290,13 @@ func (t *TUI) renderAgentsGrid() {
 			if p.Activity() == StateRunning {
 				nameStyle = base.Bold(true)
 			}
+			// The selection bar must not erase the suspended signal — the
+			// operator reads state exactly where they toggle it, and the
+			// selected agent is the one they are about to toggle (the very
+			// first live use of s produced "is eng2 really suspended?").
+			if p.Activity() == StateSuspended {
+				nameStyle = base.Italic(true)
+			}
 			if hidden {
 				nameStyle = nameStyle.Italic(true)
 			}
