@@ -1050,6 +1050,11 @@ func (d *Daemon) handleControlStream(ctrl net.Conn, scanner *bufio.Scanner, peer
 				d.lastSizes[cmd.Target] = [2]int{cmd.Rows, cmd.Cols}
 				d.panesMu.Unlock()
 			}
+			if p != nil {
+				LogInfo("daemon", "resize applied", "agent", cmd.Target, "peer", peerName,
+					"req_rows", cmd.Rows, "req_cols", cmd.Cols,
+					"emu_h", p.emu.Height(), "emu_w", p.emu.Width(), "headless", d.headless)
+			}
 			if !respond(cmd.ID, ControlResp{OK: true}) {
 				return
 			}

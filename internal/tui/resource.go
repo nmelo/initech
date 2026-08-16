@@ -628,6 +628,8 @@ func (t *TUI) resumePane(pane *Pane, senderName string) error {
 		}
 	}
 	// Create new pane process off-main (may fork/exec).
+	LogInfo("resource", "resume spawn size", "agent", agentName,
+		"rows", rows, "cols", cols, "emu_h", pane.emu.Height(), "emu_w", pane.emu.Width())
 	np, err := NewPane(cfg, rows, cols)
 	if err != nil {
 		LogError("resource", "resume failed", "agent", pane.name, "err", err)

@@ -193,7 +193,13 @@ func (rp *RemotePane) IsAlive() bool {
 	return rp.alive
 }
 
-func (rp *RemotePane) IsSuspended() bool              { return false }
+// IsSuspended reports the authority's broadcast state (ApplySuspended) — it
+// was a hardcoded false before suspension crossed the window boundary.
+func (rp *RemotePane) IsSuspended() bool {
+	rp.mu.Lock()
+	defer rp.mu.Unlock()
+	return rp.suspended
+}
 func (rp *RemotePane) IsProtected() bool              { return false }
 func (rp *RemotePane) AgentType() string              { return "" } // Remote panes do not currently expose daemon-side agent type.
 func (rp *RemotePane) SubmitKey() string              { return "" } // Remote panes use daemon-side config.
@@ -507,6 +513,8 @@ func (rp *RemotePane) sendResize(rows, cols int) {
 	if rp.mux == nil {
 		return
 	}
+	LogInfo("remote", "viewer resize", "agent", rp.name, "host", rp.host,
+		"rows", rows, "cols", cols, "viewer_emu_h", rp.emu.Height(), "viewer_emu_w", rp.emu.Width())
 	_, err := rp.mux.Request(ControlCmd{
 		Action: "resize",
 		Target: rp.name,
