@@ -138,6 +138,94 @@ func parkPaneSuspended(pane *Pane) {
 	pane.mu.Unlock()
 }
 
+// parkPaneRecorded is the TUI-level park: THE primitive above, plus the
+// fleet-state record that survives restarts. The record is what makes the
+// next launch cold-park this agent instead of booting it (persisted
+// suspension — hover, 2026-08-15: a 39-agent launch spent its storm booting
+// agents that memory pressure had deliberately parked, then re-shed them at
+// 2 per 10s). Both park call sites — the pressure loop and `initech
+// suspend` — go through here, preserving the one-mechanism guarantee.
+//
+// Caller must be on the main goroutine (same contract as the primitive).
+func (t *TUI) parkPaneRecorded(pane *Pane) {
+	parkPaneSuspended(pane)
+	if err := t.fleetState().SetSuspended(agentKey(pane), true); err != nil {
+		// The pane IS parked; only the restart memory failed. Loud, not fatal.
+		LogWarn("resource", "suspension not persisted; agent will boot on next launch",
+			"agent", pane.name, "err", err)
+	}
+}
+
+// ── Launch planning ─────────────────────────────────────────────────
+
+// spawnMode is an agent's launch decision.
+type spawnMode int
+
+const (
+	spawnLive      spawnMode = iota // boot now, in the startup loop
+	spawnStaggered                  // cold-park now, booted by the stagger walker
+	spawnParked                     // cold-park and stay parked (persisted suspension)
+)
+
+// startupLiveBatch is how many agents boot synchronously at launch; the rest
+// are staggered. Small on purpose: each claude boot wants CPUs and a
+// transcript parse, and the operator is watching exactly then.
+const startupLiveBatch = 4
+
+// staggerBatch/staggerInterval pace the walker: staggerBatch boots per
+// interval. 39 agents ≈ 18s to full fleet instead of one 90ms burst.
+const (
+	staggerBatch    = 4
+	staggerInterval = 2 * time.Second
+)
+
+// startupSpawnPlan decides each agent's launch mode. Persisted suspension
+// wins over position — a parked agent never boots just because it sorts
+// early. The first liveBatch non-suspended agents (config order, so super/pm
+// lead) boot immediately; the rest are staggered.
+func startupSpawnPlan(names []string, suspended map[string]bool, liveBatch int) []spawnMode {
+	plan := make([]spawnMode, len(names))
+	live := 0
+	for i, n := range names {
+		switch {
+		case suspended[n]:
+			plan[i] = spawnParked
+		case live < liveBatch:
+			plan[i] = spawnLive
+			live++
+		default:
+			plan[i] = spawnStaggered
+		}
+	}
+	return plan
+}
+
+// staggerStartPanes boots cold-parked panes in batches of staggerBatch per
+// staggerInterval. Every boot goes through resumePane, the same path as all
+// other wakes — so an agent that receives a message mid-stagger wakes
+// immediately via resume-on-message, and the walker's later attempt is a
+// no-op (resumePane rechecks IsSuspended under resumeMu).
+func (t *TUI) staggerStartPanes(pending []*Pane) {
+	for i, p := range pending {
+		if i%staggerBatch == 0 {
+			select {
+			case <-t.quitCh:
+				return
+			case <-time.After(staggerInterval):
+			}
+		}
+		select {
+		case <-t.quitCh:
+			return
+		default:
+		}
+		if err := t.resumePane(p, "startup stagger"); err != nil {
+			LogWarn("resource", "staggered start failed", "agent", p.Name(), "err", err)
+		}
+	}
+	LogInfo("resource", "staggered startup complete", "panes", len(pending))
+}
+
 // suspendCandidate holds the data needed to rank and suspend an agent.
 // suspendEligible reports whether a pane may be auto-suspended under memory
 // pressure. Extracted from the pressure loop so the rules can be asserted
@@ -252,7 +340,7 @@ func (t *TUI) checkSuspendPolicy() {
 		// drives the overlay/ribbon display. Without setting suspended=true,
 		// updateActivity would see alive=false + suspended=false and derive
 		// StateDead instead of StateSuspended.
-		t.runOnMain(func() { parkPaneSuspended(victim.pane) })
+		t.runOnMain(func() { t.parkPaneRecorded(victim.pane) })
 
 		// Update available memory estimate (actual poll happens next cycle).
 		avail += freedKB
@@ -562,6 +650,15 @@ func (t *TUI) resumePane(pane *Pane, senderName string) error {
 					copy(np.beadIDs, pane.beadIDs)
 				}
 				np.beadTitle = pane.beadTitle
+				// Carried explicitly: the spawn stagger routes EVERY deferred
+				// agent through this path, so a dropped field here is no
+				// longer an edge case — it is the fleet's default boot path.
+				np.idleWithBeadThreshold = pane.idleWithBeadThreshold
+				// Clear the persisted suspension: this agent is awake, so the
+				// next launch must boot it again.
+				if err := t.fleetState().SetSuspended(agentKey(np), false); err != nil {
+					LogWarn("resource", "failed to clear persisted suspension", "agent", np.name, "err", err)
+				}
 				np.Start()
 				t.panes[i] = np
 				t.applyLayout()

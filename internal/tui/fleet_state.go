@@ -34,6 +34,7 @@ import (
 type persistentFleetState struct {
 	Hidden     []string       `yaml:"hidden,omitempty"`
 	Protected  []string       `yaml:"protected,omitempty"`
+	Suspended  []string       `yaml:"suspended,omitempty"`
 	LivePinned map[string]int `yaml:"live_pinned,omitempty"`
 }
 
@@ -44,6 +45,7 @@ type FleetState struct {
 	root       string
 	hidden     map[string]bool
 	protected  map[string]bool
+	suspended  map[string]bool
 	livePinned map[string]int
 
 	// readOnly marks a FALLBACK store synthesized because the real file could
@@ -88,6 +90,7 @@ func newFleetState(root string) *FleetState {
 		root:       root,
 		hidden:     map[string]bool{},
 		protected:  map[string]bool{},
+		suspended:  map[string]bool{},
 		livePinned: map[string]int{},
 	}
 }
@@ -147,6 +150,11 @@ func LoadFleetState(projectRoot string) (*FleetState, error) {
 	for _, k := range pfs.Protected {
 		if k != "" {
 			fs.protected[k] = true
+		}
+	}
+	for _, k := range pfs.Suspended {
+		if k != "" {
+			fs.suspended[k] = true
 		}
 	}
 	for k, slot := range pfs.LivePinned {
@@ -232,8 +240,12 @@ func (fs *FleetState) save() error {
 	for k := range fs.protected {
 		pfs.Protected = append(pfs.Protected, k)
 	}
+	for k := range fs.suspended {
+		pfs.Suspended = append(pfs.Suspended, k)
+	}
 	sort.Strings(pfs.Hidden)
 	sort.Strings(pfs.Protected)
+	sort.Strings(pfs.Suspended)
 
 	data, err := yaml.Marshal(&pfs)
 	if err != nil {
@@ -251,6 +263,31 @@ func (fs *FleetState) save() error {
 
 // IsHidden reports whether the pane key is hidden fleet-wide.
 func (fs *FleetState) IsHidden(key string) bool { return fs.hidden[key] }
+
+// IsSuspended reports whether the pane key was suspended when last recorded.
+// Read at launch: a suspended agent cold-parks (pane, no process) instead of
+// booting, so launch cost tracks ACTIVE agents, not fleet size (hover, 39
+// agents: one launch drove load to 216 rebooting agents that were parked).
+func (fs *FleetState) IsSuspended(key string) bool { return fs.suspended[key] }
+
+// SuspendedMap returns a COPY of the suspended set for launch planning.
+func (fs *FleetState) SuspendedMap() map[string]bool { return copyBoolMap(fs.suspended) }
+
+// SetSuspended records or clears the persisted suspension for a pane key.
+// A no-op when the value already matches, so the resume path (which clears
+// unconditionally) does not rewrite the file on every staggered start.
+func (fs *FleetState) SetSuspended(key string, suspended bool) error {
+	if fs.suspended[key] == suspended {
+		return nil
+	}
+	return fs.mutate(func() {
+		if suspended {
+			fs.suspended[key] = true
+		} else {
+			delete(fs.suspended, key)
+		}
+	})
+}
 
 // IsProtected reports whether the pane key is protected from auto-suspend.
 func (fs *FleetState) IsProtected(key string) bool { return fs.protected[key] }
@@ -339,12 +376,13 @@ func (fs *FleetState) mutate(apply func()) error {
 	}
 	prevHidden := copyBoolMap(fs.hidden)
 	prevProtected := copyBoolMap(fs.protected)
+	prevSuspended := copyBoolMap(fs.suspended)
 	prevLive := fs.LivePinnedMap()
 
 	apply()
 
 	if err := fs.save(); err != nil {
-		fs.hidden, fs.protected, fs.livePinned = prevHidden, prevProtected, prevLive
+		fs.hidden, fs.protected, fs.suspended, fs.livePinned = prevHidden, prevProtected, prevSuspended, prevLive
 		return err
 	}
 	return nil

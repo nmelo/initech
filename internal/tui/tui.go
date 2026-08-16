@@ -889,28 +889,68 @@ func Run(cfg Config) error {
 		t.chime = screenChimer{screen: t.screen}
 	}
 
-	// Create panes.
+	// Create panes. Launch cost must track ACTIVE agents, not fleet size
+	// (hover, 2026-08-15: 39 concurrent `claude --continue` boots in one 90ms
+	// burst — +17GB RSS, load 3→216 for ninety seconds). Two rules, one
+	// primitive: agents whose suspension was persisted cold-park (pane, no
+	// process) and stay parked; everyone past the first batch cold-parks and
+	// is booted by the stagger walker below. All wakes go through resumePane,
+	// so a message to a not-yet-booted agent wakes it immediately — the
+	// stagger delays idle boots, never work.
+	suspendedAtExit := t.fleetState().SuspendedMap()
+	names := make([]string, len(cfg.Agents))
+	for i := range cfg.Agents {
+		names[i] = cfg.Agents[i].Name
+	}
+	plan := startupSpawnPlan(names, suspendedAtExit, startupLiveBatch)
+	var staggered []*Pane
 	for i, acfg := range cfg.Agents {
 		r := regions[i%len(regions)]
 		cols, rows := r.TerminalSize()
-		p, err := NewPane(acfg, rows, cols)
-		if err != nil {
-			LogError("pane", "launch failed", "name", acfg.Name, "err", err)
-			for _, existing := range t.panes {
-				existing.Close()
+		var p *Pane
+		if plan[i] == spawnLive {
+			live, err := NewPane(acfg, rows, cols)
+			if err != nil {
+				LogError("pane", "launch failed", "name", acfg.Name, "err", err)
+				for _, existing := range t.panes {
+					existing.Close()
+				}
+				return fmt.Errorf("create pane %q: %w", acfg.Name, err)
 			}
-			return fmt.Errorf("create pane %q: %w", acfg.Name, err)
+			p = live
+		} else {
+			p = NewParkedPane(acfg, rows, cols)
 		}
 		p.region = r
 		p.eventCh = t.agentEvents
 		t.wireSuspendResume(p)
 		p.safeGo = t.safeGo
 		p.idleWithBeadThreshold = beadThreshold
-		p.Start()
+		if plan[i] == spawnLive {
+			p.Start()
+		} else if plan[i] == spawnStaggered {
+			staggered = append(staggered, p)
+		}
 		old := len(t.panes)
 		t.panes = append(t.panes, p)
 		t.logPanesMutation("create-pane", old)
-		LogDebug("pane", "created", "name", acfg.Name, "dir", acfg.Dir)
+		LogDebug("pane", "created", "name", acfg.Name, "dir", acfg.Dir, "mode", plan[i])
+	}
+	liveN, parkedN := 0, 0
+	for _, m := range plan {
+		switch m {
+		case spawnLive:
+			liveN++
+		case spawnParked:
+			parkedN++
+		}
+	}
+	if parkedN > 0 || len(staggered) > 0 {
+		LogInfo("pane", "launch plan",
+			"live", liveN, "staggered", len(staggered), "parked", parkedN)
+	}
+	if len(staggered) > 0 {
+		t.safeGo(func() { t.staggerStartPanes(staggered) })
 	}
 
 	// Multi-monitor: serve the pane-stream protocol in-process so secondary

@@ -418,6 +418,43 @@ func NewPane(cfg PaneConfig, rows, cols int) (*Pane, error) {
 	return p, nil
 }
 
+// NewParkedPane builds a pane in the suspended state WITHOUT starting a
+// process: no fork, no PTY, no goroutines — construction cost is one emulator
+// allocation. It is byte-for-byte the state parkPaneSuspended leaves behind
+// (suspended=true, activity=StateSuspended, dead child), so every existing
+// wake path — queued message, keystroke, `initech resume` — works on it
+// unchanged via resumePane, which replaces the pane wholesale.
+//
+// Used at launch for agents whose suspension was persisted across the restart
+// and for agents deferred by the spawn stagger. Cannot fail: there is nothing
+// to exec.
+func NewParkedPane(cfg PaneConfig, rows, cols int) *Pane {
+	emu := vt.NewSafeEmulator(cols, rows)
+	agentType := cfg.AgentType
+	if agentType == "" {
+		agentType = config.AgentTypeClaudeCode
+	}
+	submitKey := cfg.SubmitKey
+	if submitKey == "" {
+		submitKey = config.DefaultSubmitKey(agentType)
+	}
+	return &Pane{
+		cfg:              cfg,
+		name:             cfg.Name,
+		emu:              emu,
+		alive:            false,
+		visible:          true,
+		suspended:        true,
+		activity:         StateSuspended,
+		dedupEvents:      newDedup(),
+		kittEpoch:        time.Now(),
+		agentType:        agentType,
+		noBracketedPaste: cfg.NoBracketedPaste,
+		submitKey:        submitKey,
+		attn:             &attentionSignal{},
+	}
+}
+
 // Start launches the pane's background goroutines (PTY reader, response loop,
 // JSONL watcher). Must be called after safeGo and eventCh are wired. If safeGo
 // is nil, falls back to bare goroutine launches.

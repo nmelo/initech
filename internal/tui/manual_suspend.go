@@ -87,7 +87,7 @@ func (t *TUI) suspendAgent(name string) error {
 	if act := pane.Activity(); act != StateIdle {
 		return &ErrNotSuspendable{Agent: name, State: describeActivity(act)}
 	}
-	t.runOnMain(func() { parkPaneSuspended(pane) })
+	t.runOnMain(func() { t.parkPaneRecorded(pane) })
 	return nil
 }
 
