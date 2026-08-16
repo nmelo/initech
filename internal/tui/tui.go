@@ -997,9 +997,31 @@ func Run(cfg Config) error {
 		if err != nil {
 			// Non-fatal: a secondary window is an enhancement, and failing to
 			// bind it must not take down a session whose agents are already
-			// running. Surfaced in the log rather than as a startup abort.
+			// running. That decision stands.
+			//
+			// WHAT CHANGED (ini-ikz3) IS PROMINENCE, NOT FATALITY. This was a
+			// log line, and a log line is invisible to an operator looking at a
+			// TUI. When hover's bind lost :9300 to initech, hover's session
+			// looked completely healthy -- and hover's own window 2 then
+			// attached to INITECH and rendered its agents. The operator had no
+			// way to know the bind had failed, so the only visible symptom was
+			// the wrong fleet on screen.
+			//
+			// A failure whose only symptom appears somewhere else, later,
+			// belongs on screen at the moment it happens. The port is named
+			// because "already in use" is the overwhelmingly likely cause and
+			// the fix is choosing another one.
 			LogError("window-server", "failed to start; secondary windows cannot attach",
 				"addr", cfg.Project.WindowListen, "err", err)
+			EmitEvent(t.agentEvents, AgentEvent{
+				Type: EventAssignmentWriteRefused,
+				Detail: fmt.Sprintf(
+					"window server could NOT bind %s (%v) — secondary windows cannot attach to "+
+						"this project. If another project is listening there, give this one a "+
+						"different window_listen port.",
+					cfg.Project.WindowListen, err),
+				Time: time.Now(),
+			})
 		} else {
 			defer wsCleanup()
 			t.windowSrv = ws

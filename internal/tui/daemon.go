@@ -165,6 +165,11 @@ type HelloMsg struct {
 	Version  int    `json:"version"`   // Protocol version (1).
 	Token    string `json:"token"`     // Auth token.
 	PeerName string `json:"peer_name"` // Client's peer name.
+	// Project is the fleet this window belongs to (ini-ikz3). Carried because
+	// a port is not an identity: two projects configured on the same
+	// window_listen produced a viewer of one fleet rendering the agents of
+	// another, with keystrokes going to a different project's agents.
+	Project string `json:"project"`
 }
 
 // HelloOKMsg is the server's response to a successful hello.
@@ -172,6 +177,7 @@ type HelloOKMsg struct {
 	Action   string        `json:"action"`    // "hello_ok"
 	Version  int           `json:"version"`   // Protocol version (1).
 	PeerName string        `json:"peer_name"` // Server's peer name.
+	Project  string        `json:"project"`   // Server's fleet (ini-ikz3).
 	Agents   []AgentStatus `json:"agents"`    // Current agent states.
 	// Owner carries window 1's pane-ownership decision AT ATTACH (ini-x5ob).
 	//
@@ -712,6 +718,44 @@ func (d *Daemon) handleConnection(conn net.Conn) {
 		return
 	}
 
+	// PROJECT IDENTITY GATE (ini-ikz3). A PORT IS NOT AN IDENTITY.
+	//
+	// Observed live: hover and initech were both configured window_listen
+	// :9300. initech's server bound first; hover's bind failed non-fatally (by
+	// design), and hover's --window 2 then dialed 9300, completed this
+	// handshake, and rendered INITECH's six agents under hover's band headers.
+	// Silent cross-project attachment is not a display bug -- keystrokes typed
+	// in that viewer go to another project's agents.
+	//
+	// Same shape and same reasoning as the version gate above: refusing is the
+	// conservative direction, because a refused attach is loud, immediate and
+	// names its own fix, while a silent cross-attach is indistinguishable from
+	// a working session until someone types into it.
+	//
+	// An EMPTY project from the client is refused too, and that is deliberate:
+	// config validation REQUIRES a project name, so every correctly configured
+	// build sends one. Empty therefore means an older initech, and the message
+	// says so rather than leaving the operator to guess.
+	//
+	// Refusing this CONNECTION never touches the serving session: this returns
+	// from one connection handler, and window 1 keeps serving everyone else.
+	if hello.Project != d.project.Name {
+		theirs := hello.Project
+		hint := fmt.Sprintf("this is %q's session; %q's window server is not listening here. "+
+			"Two projects are almost certainly configured on the same window_listen port -- "+
+			"give them different ports.", d.project.Name, theirs)
+		if theirs == "" {
+			hint = fmt.Sprintf("this is %q's session, and the attaching window sent no project "+
+				"identity, which means it is running an older initech. Upgrade it.", d.project.Name)
+		}
+		LogWarn("daemon", "refusing viewer from a different project",
+			"peer", hello.PeerName, "theirs", theirs, "ours", d.project.Name)
+		d.consolef("[%s] Client REJECTED: %s (project %q, not %q)\n",
+			time.Now().Format("15:04:05"), conn.RemoteAddr(), theirs, d.project.Name)
+		writeJSON(ctrl, ErrorMsg{Action: "error", Error: hint})
+		return
+	}
+
 	LogInfo("daemon", "hello from", "peer", hello.PeerName, "version", hello.Version)
 	d.consolef("[%s] Client connected: %s (peer: %s)\n",
 		time.Now().Format("15:04:05"), conn.RemoteAddr(), hello.PeerName)
@@ -776,6 +820,7 @@ func (d *Daemon) handleConnection(conn net.Conn) {
 		Action:   "hello_ok",
 		Version:  ProtocolVersion,
 		PeerName: d.project.PeerName,
+		Project:  d.project.Name,
 		Agents:   agents,
 		Owner:    owner,
 	}); err != nil {

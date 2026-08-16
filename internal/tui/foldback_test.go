@@ -296,7 +296,7 @@ func TestFoldbackHelperAttachAndIdle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("helper open ctrl: %v", err)
 	}
-	if err := writeJSON(ctrl, HelloMsg{Action: "hello", Version: 1, PeerName: "window2"}); err != nil {
+	if err := writeJSON(ctrl, HelloMsg{Project: "winproj", Action: "hello", Version: 1, PeerName: "window2"}); err != nil {
 		t.Fatalf("helper hello: %v", err)
 	}
 	// Single reader on the control stream, per the IPCScanner double-reader

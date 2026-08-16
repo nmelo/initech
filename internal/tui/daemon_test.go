@@ -58,7 +58,7 @@ func TestDaemonHelloHandshake(t *testing.T) {
 
 	// Send hello.
 	hello := HelloMsg{
-		Action:   "hello",
+		Project: "test", Action: "hello",
 		Version:  1,
 		Token:    "test-token",
 		PeerName: "testclient",
@@ -120,7 +120,7 @@ func TestDaemonAuthFailure(t *testing.T) {
 	defer ctrl.Close()
 
 	// Send hello with wrong token.
-	hello := HelloMsg{Action: "hello", Version: 1, Token: "wrong-token", PeerName: "bad"}
+	hello := HelloMsg{Project: "test", Action: "hello", Version: 1, Token: "wrong-token", PeerName: "bad"}
 	data, _ := json.Marshal(hello)
 	ctrl.Write(data)
 	ctrl.Write([]byte("\n"))
@@ -176,7 +176,7 @@ func TestDaemonControlSend(t *testing.T) {
 	ctrl, _ := clientSession.Open()
 
 	// Hello (no token).
-	hello := HelloMsg{Action: "hello", Version: 1, PeerName: "client"}
+	hello := HelloMsg{Project: "test", Action: "hello", Version: 1, PeerName: "client"}
 	data, _ := json.Marshal(hello)
 	ctrl.Write(data)
 	ctrl.Write([]byte("\n"))

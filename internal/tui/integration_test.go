@@ -158,7 +158,7 @@ func connectTestClient(t *testing.T, addr, peerName, token string) (*testClient,
 
 	// Send hello.
 	writeJSON(ctrl, HelloMsg{
-		Action:   "hello",
+		Project: "test", Action: "hello",
 		Version:  1,
 		Token:    token,
 		PeerName: peerName,
@@ -297,7 +297,7 @@ func TestInteg_HelloRejectsInvalidToken(t *testing.T) {
 	ctrl, _ := session.Open()
 	defer ctrl.Close()
 
-	writeJSON(ctrl, HelloMsg{Action: "hello", Version: 1, Token: "wrong", PeerName: "bad"})
+	writeJSON(ctrl, HelloMsg{Project: "test", Action: "hello", Version: 1, Token: "wrong", PeerName: "bad"})
 
 	scanner := bufio.NewScanner(ctrl)
 	if !scanner.Scan() {

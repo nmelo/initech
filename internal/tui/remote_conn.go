@@ -90,6 +90,7 @@ func connectPeer(peerName string, remote config.Remote, project *config.Project)
 		Version:  ProtocolVersion,
 		Token:    token,
 		PeerName: project.PeerName,
+		Project:  project.Name, // ini-ikz3: a port is not an identity.
 	}
 	if err := writeJSON(ctrl, hello); err != nil {
 		ctrl.Close()
@@ -123,6 +124,23 @@ func connectPeer(peerName string, remote config.Remote, project *config.Project)
 		ctrl.Close()
 		session.Close()
 		return nil, fmt.Errorf("unexpected response action: %q", helloOK.Action)
+	}
+
+	// PROJECT IDENTITY, CLIENT SIDE (ini-ikz3). The server refuses a mismatched
+	// viewer, and this checks the same fact from the other end.
+	//
+	// Both directions on purpose: the server's refusal protects the SERVER's
+	// fleet from a stranger, and this protects THIS window from rendering a
+	// stranger's fleet. They are different harms with different victims, and a
+	// window that trusted the server's silence would still be one upgrade-skew
+	// away from displaying another project's agents as its own.
+	if helloOK.Project != "" && project.Name != "" && helloOK.Project != project.Name {
+		ctrl.Close()
+		session.Close()
+		return nil, fmt.Errorf(
+			"refusing to attach: %s is serving project %q, but this window belongs to %q. "+
+				"Two projects are almost certainly sharing a window_listen port",
+			remote.Addr, helloOK.Project, project.Name)
 	}
 
 	serverPeerName := helloOK.PeerName

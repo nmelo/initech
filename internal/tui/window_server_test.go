@@ -79,7 +79,7 @@ func dialWindow(t *testing.T, addr, peerName string) (*yamux.Session, net.Conn, 
 	if err != nil {
 		t.Fatalf("open control stream: %v", err)
 	}
-	if err := writeJSON(ctrl, HelloMsg{Action: "hello", Version: 1, PeerName: peerName}); err != nil {
+	if err := writeJSON(ctrl, HelloMsg{Project: "winproj", Action: "hello", Version: 1, PeerName: peerName}); err != nil {
 		t.Fatalf("send hello: %v", err)
 	}
 	ctrl.SetReadDeadline(time.Now().Add(5 * time.Second))
