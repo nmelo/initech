@@ -158,6 +158,12 @@ func (t *TUI) handleAgentsKey(ev *tcell.EventKey) bool {
 		case 'P':
 			t.agentsToggleProtected()
 			return false
+		case 's':
+			t.agentsToggleSuspend()
+			return false
+		case 'S':
+			t.agentsToggleSuspendGroup()
+			return false
 		case 'm':
 			t.agentsMoveGroupToNextWindow()
 			return false

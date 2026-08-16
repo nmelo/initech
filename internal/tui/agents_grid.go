@@ -55,7 +55,10 @@ const (
 // The longest of the modal's footer variants -- used both to render the
 // footer and as boxW's minimum width floor, so a narrow fleet never
 // truncates its own keybinding help.
-const agentsHelpText = " Arrows move  Space hide  Enter grab  p pin  P protect  / search  g group  A all  R reset  Esc close"
+// Width budget: boxW floors at len(agentsHelpText)+4 and caps at the screen,
+// so this line must stay ≤ ~114 chars or "Esc close" clips on a 120-col
+// terminal. "s/S suspend" = s parks/wakes the agent, S its whole band.
+const agentsHelpText = " Arrows move  Space hide  Enter grab  p pin  P protect  s/S suspend  / search  g group  A all  R reset  Esc close"
 
 // groupFor computes the seed band for a pane name with no GroupOf entry yet,
 // reusing roles.RoleFamilyOf's eng*/qa* prefix classification (already the
@@ -1259,6 +1262,11 @@ func (t *TUI) renderAgentsGrid() {
 			nameStyle = bgStyle.Foreground(tcell.ColorGreen)
 		case StateDead:
 			nameStyle = bgStyle.Foreground(tcell.ColorGray)
+		case StateSuspended:
+			// Parked: distinct from idle silver, dead gray, and hidden's
+			// italic — the modal's s/S keys toggle this state, so it must
+			// read back from the same screen.
+			nameStyle = bgStyle.Foreground(tcell.NewRGBColor(100, 140, 190))
 		}
 		numStyle := bgStyle.Foreground(tcell.ColorSilver)
 		boxStyle := bgStyle.Foreground(tcell.ColorSilver)

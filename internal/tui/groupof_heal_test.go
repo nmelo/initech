@@ -102,24 +102,40 @@ group_of:
 	}
 }
 
-// TestLoadLayout_CrossMachineKeysUntouched pins the family boundary: a real
-// remote host prefix is a DISTINCT agent, not an alias, and the over-broad
-// strip-any-colon mutation must die here (the fleetStoreKey lesson).
-func TestLoadLayout_CrossMachineKeysUntouched(t *testing.T) {
+// TestLoadLayout_CrossMachineGroupKeysDroppedWhole pins BOTH halves of the
+// family boundary as it stands after the remote-group rule (2026-08-15,
+// support:pm rendered nowhere):
+//
+//  1. A cross-machine group_of entry is DROPPED — remote panes never carry a
+//     persisted group, because a group routes them to a window that has no
+//     stream for them. (This replaced the earlier "passes through untouched"
+//     doctrine; the operator approved remote agents displaying on window 1
+//     only, in their machine section.)
+//  2. It is dropped WHOLE, never normalized onto the local name — the
+//     over-broad strip-any-colon mutation must still die here (the
+//     fleetStoreKey lesson): workbench:eng1 is a DISTINCT agent, and its
+//     group must not leak onto a local eng1.
+func TestLoadLayout_CrossMachineGroupKeysDroppedWhole(t *testing.T) {
 	root := writeQkwcLayout(t, "", `grid: 2x2
 mode: grid
 groups:
     - core
 group_of:
     "workbench:eng1": core
+    eng1: core
 `)
-	st, ok := LoadLayout(root, []string{"workbench:eng1"})
+	st, ok := LoadLayout(root, []string{"workbench:eng1", "eng1"})
 	if !ok {
 		t.Fatal("layout failed to load")
 	}
-	if got := st.GroupOf["workbench:eng1"]; got != "core" {
-		t.Fatalf("cross-machine key was normalized away (GroupOf[workbench:eng1] = %q); "+
-			"workbench:eng1 is a DISTINCT agent, not a window alias", got)
+	if got, has := st.GroupOf["workbench:eng1"]; has {
+		t.Fatalf("cross-machine group entry survived the load (GroupOf[workbench:eng1] = %q); "+
+			"a persisted group routes a remote pane to a window that cannot draw it", got)
+	}
+	// The identity tripwire: dropping must not have become renaming. The
+	// local eng1 keeps ITS OWN entry and only its own.
+	if got := st.GroupOf["eng1"]; got != "core" {
+		t.Fatalf("local eng1's group entry damaged by the cross-machine drop: %q", got)
 	}
 }
 
