@@ -13,7 +13,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 )
 
@@ -62,17 +61,14 @@ func checkPreviousCrash(projectRoot string) {
 		return
 	}
 
-	// Signal 0 checks existence without sending a real signal.
-	// ESRCH = process not found; any other error means it exists (or EPERM).
-	proc, err := os.FindProcess(pid)
-	if err != nil {
-		// On Unix, FindProcess never errors. Treat as missing.
-		LogWarn("pid", "previous instance exited without clean shutdown", "pid", pid)
-		os.Remove(path)
-		querySystemLog(pid)
-		return
-	}
-	if err := proc.Signal(syscall.Signal(0)); err != nil {
+	// EXISTENCE, ASKED PER-PLATFORM (ini-uop2). This used to be
+	// Signal(0) inline, which on Windows always errors regardless of the
+	// process -- so a RUNNING previous instance was read as an unclean exit,
+	// its pid file was deleted, and the single-instance guard was defeated on
+	// that platform. pidExists asks each OS a question it can answer: signal 0
+	// on unix (EPERM counts as exists -- the pid may not be ours), a process
+	// handle on Windows.
+	if !pidExists(pid) {
 		// Process is gone and didn't clean up the PID file → unclean exit.
 		LogWarn("pid", "previous instance exited without clean shutdown", "pid", pid)
 		os.Remove(path)

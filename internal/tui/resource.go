@@ -15,7 +15,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 )
 
@@ -705,11 +704,14 @@ func (t *TUI) resumePane(pane *Pane, senderName string) error {
 	// itself is the authority. An exec-failed child produces OUTPUT (the
 	// shell's error text), so waitForInit returning success proves nothing
 	// about health -- signal 0 does.
+	// PLATFORM-SPLIT PROBE (ini-uop2). Signal(0) is a liveness check on unix
+	// and NOT A CHECK AT ALL on Windows, where Go returns EWINDOWS for every
+	// signal but Kill without consulting the process -- so this answered
+	// "dead" for every living pane and made wake a one-way door for Windows
+	// operators. Unix behaviour is byte-identical to before.
 	dead := !np.IsAlive()
-	if !dead && np.cmd != nil && np.cmd.Process != nil {
-		if err := np.cmd.Process.Signal(syscall.Signal(0)); err != nil {
-			dead = true
-		}
+	if !dead && np.cmd != nil && np.cmd.Process != nil && !childProcessAlive(np.cmd.Process) {
+		dead = true
 	}
 	if dead {
 		np.mu.Lock()
