@@ -3,7 +3,6 @@
 package tui
 
 import (
-	"syscall"
 	"fmt"
 	"io"
 	"os"
@@ -11,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 	"unicode"
 
@@ -1526,6 +1526,14 @@ func (p *Pane) Close() {
 	// grace would re-add the multi-second quit tax measured and removed the
 	// same evening. If SIGTERM is unsupported (Windows) the grace is skipped
 	// rather than waited out.
+	//
+	// THIS SIGNAL ERROR MEANS "CAPABILITY UNSUPPORTED", NOT "PROCESS DEAD",
+	// and the distinction is why this site is correct while resumePane's was
+	// not (ini-uop2). Reading the same error as liveness is what made every
+	// Windows wake report a dead process; here the error only skips an
+	// optional grace and the Kill/Wait below still run. Verified as intended,
+	// unchanged by uop2, and deliberately NOT given a Windows grace path in
+	// that bead.
 	var waited chan struct{}
 	if p.cmd != nil && p.cmd.Process != nil {
 		if p.Activity() == StateRunning {
