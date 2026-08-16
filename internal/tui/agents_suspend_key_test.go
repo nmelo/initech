@@ -4,7 +4,29 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/charmbracelet/x/vt"
+	"github.com/gdamore/tcell/v2"
 )
+
+// simScreenText flattens a bare SimulationScreen to text (screenText wants a
+// full TUI; the ribbon render tests drive a pane directly).
+func simScreenText(s tcell.SimulationScreen) string {
+	var b strings.Builder
+	cells, w, h := s.GetContents()
+	for y := 0; y < h; y++ {
+		for x := 0; x < w; x++ {
+			c := cells[y*w+x]
+			if len(c.Runes) > 0 {
+				b.WriteRune(c.Runes[0])
+			} else {
+				b.WriteByte(' ')
+			}
+		}
+		b.WriteByte('\n')
+	}
+	return b.String()
+}
 
 // ── ini-ap3i follow-on: suspend/wake from the agents modal ────────────
 //
@@ -181,5 +203,81 @@ func TestApplyAgentStatus_CarriesSuspended(t *testing.T) {
 	tui.applyAgentStatus("eng2", nil, "", WaitingState{}, false)
 	if rp.Activity() == StateSuspended {
 		t.Fatal("agent_status with suspended=false did not clear the displayed state")
+	}
+}
+
+// ── the wake gesture and the stream must survive a pane replacement ────
+//
+// The window server wires each pane's output sink ONCE at startup, to the
+// pane OBJECTS that exist then — and resumePane REPLACES the object. Post-
+// wake, the new pane had no sink (window 2 saw a frozen screen) and the
+// input pump still held the dead pane (window 2's keystrokes vanished).
+// Found pulling on "the footer doesn't say suspended in window 2": the
+// footer names a gesture ("any key"), the gesture has to work from there,
+// and it could not have.
+func TestPane_WakeOnStreamInput(t *testing.T) {
+	p := NewParkedPane(PaneConfig{Name: "eng2"}, 10, 40)
+	fired := make(chan struct{}, 1)
+	p.SetOnSuspendedMessage(func(*Pane) { fired <- struct{}{} })
+
+	if !p.WakeOnStreamInput() {
+		t.Fatal("stream input at a suspended pane must be swallowed as a wake gesture")
+	}
+	select {
+	case <-fired:
+	default:
+		t.Fatal("wake hook did not fire — window 2's keystroke would be silently dropped")
+	}
+
+	live, err := NewPane(PaneConfig{Name: "x", Command: []string{"sh", "-c", "sleep 5"}}, 10, 40)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer live.Close()
+	if live.WakeOnStreamInput() {
+		t.Fatal("live pane input must flow to the PTY, not be swallowed")
+	}
+}
+
+func TestDaemon_ReplaceLocalPane_KeepsSinkAndIdentity(t *testing.T) {
+	old := NewParkedPane(PaneConfig{Name: "eng2"}, 10, 40)
+	d := &Daemon{
+		panes:      []*Pane{old},
+		ringBufs:   map[string]*RingBuf{},
+		multiSinks: map[string]*MultiSink{},
+	}
+	ms := NewMultiSink()
+	d.multiSinks["eng2"] = ms
+
+	np := NewParkedPane(PaneConfig{Name: "eng2"}, 10, 40)
+	d.ReplaceLocalPane(np)
+
+	if got := d.currentPane("eng2"); got != np {
+		t.Fatal("daemon still serves the dead pane object — window 2's input pumps into a corpse")
+	}
+	np.sinkMu.Lock()
+	sink := np.networkSink
+	np.sinkMu.Unlock()
+	if sink != ms {
+		t.Fatal("replacement pane not wired to the EXISTING MultiSink — attached windows lose the stream on every wake")
+	}
+}
+
+func TestRemotePaneRender_SuspendedBadge(t *testing.T) {
+	s := tcell.NewSimulationScreen("")
+	s.Init()
+	s.SetSize(60, 10)
+	rp := &RemotePane{
+		name: "eng2", host: "window1", alive: true,
+		emu:    vt.NewSafeEmulator(58, 8),
+		region: Region{X: 0, Y: 0, W: 60, H: 10},
+	}
+	rp.ApplySuspended(true)
+
+	rp.Render(s, false, false, 2, Selection{})
+	s.Show()
+	out := simScreenText(s)
+	if !strings.Contains(out, "susp") {
+		t.Fatalf("viewer ribbon does not show the suspended state the authority broadcast; got:\n%s", out)
 	}
 }

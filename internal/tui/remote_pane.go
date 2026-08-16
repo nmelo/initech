@@ -451,7 +451,13 @@ func (rp *RemotePane) Render(screen tcell.Screen, focused bool, dimmed bool, ind
 		badge = " "
 	}
 	title := fmt.Sprintf(" %d %s%s", index, displayName, badge)
-	if !rp.IsAlive() {
+	if rp.Activity() == StateSuspended {
+		// Same badge, same taught gesture as the local ribbon: the stream
+		// pump swallows input at a suspended pane as a wake (ini-zffi's
+		// discoverability AC applies wherever the pane is rendered).
+		title = fmt.Sprintf(" %d %s%s[susp: any key] ", index, displayName, badge)
+		titleStyle = tcell.StyleDefault.Background(trueBlack).Foreground(tcell.ColorDodgerBlue).Bold(true)
+	} else if !rp.IsAlive() {
 		title = fmt.Sprintf(" %d %s%s[dead] ", index, displayName, badge)
 		titleStyle = tcell.StyleDefault.Background(trueBlack).Foreground(tcell.ColorRed).Bold(true)
 	}

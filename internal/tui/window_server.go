@@ -196,6 +196,15 @@ func startWindowServer(project *config.Project, version string, panes []*Pane, s
 	return ws, cleanup, nil
 }
 
+// ReplacePane hands the server a pane's post-wake successor (see
+// Daemon.ReplaceLocalPane). Nil-safe: single-window sessions have no server.
+func (w *windowServer) ReplacePane(np *Pane) {
+	if w == nil || w.daemon == nil {
+		return
+	}
+	w.daemon.ReplaceLocalPane(np)
+}
+
 // Addr returns the address the window listener is bound to. Useful for tests
 // and for discovery once ini-9ka.6 wires the CLI.
 func (w *windowServer) Addr() string {

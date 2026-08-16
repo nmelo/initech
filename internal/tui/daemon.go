@@ -904,16 +904,61 @@ func (d *Daemon) streamAgentLive(p *Pane, stream net.Conn) {
 		LogWarn("daemon", "no MultiSink for agent", "agent", p.Name())
 	}
 
-	// Upstream: client keystrokes -> PTY.
+	// Upstream: client keystrokes -> PTY. Resolved BY NAME per read, never
+	// through the pane pointer captured at attach: a suspend/wake cycle
+	// REPLACES the pane object (resumePane), and a pump holding the old
+	// pointer writes every later keystroke into a corpse's nil PTY.
+	name := p.Name()
 	buf := make([]byte, 4096)
 	for {
 		n, err := stream.Read(buf)
 		if err != nil {
 			return // Client disconnected.
 		}
-		if p.ptmx != nil {
-			p.ptmx.Write(buf[:n])
+		cur := d.currentPane(name)
+		if cur == nil {
+			continue
 		}
+		if cur.WakeOnStreamInput() {
+			continue // Swallowed as a wake gesture, same as a local keystroke.
+		}
+		if cur.ptmx != nil {
+			cur.ptmx.Write(buf[:n])
+		}
+	}
+}
+
+// currentPane returns the pane currently serving name, under panesMu. The
+// input pump re-resolves per read because ReplaceLocalPane swaps objects;
+// findPane is lock-free and only safe on paths that cannot race a swap.
+func (d *Daemon) currentPane(name string) *Pane {
+	d.panesMu.Lock()
+	defer d.panesMu.Unlock()
+	for _, p := range d.panes {
+		if p.Name() == name {
+			return p
+		}
+	}
+	return nil
+}
+
+// ReplaceLocalPane swaps the served pane object for its same-named successor
+// after a suspend/wake cycle, re-wiring the successor to the EXISTING
+// MultiSink so every attached window keeps its stream (the ring buffer and
+// client connections live in the sink, not the pane). Without this, sinks
+// wired once at server start die with the first replaced pane and a woken
+// agent goes dark in every other window.
+func (d *Daemon) ReplaceLocalPane(np *Pane) {
+	d.panesMu.Lock()
+	defer d.panesMu.Unlock()
+	for i, p := range d.panes {
+		if p.Name() == np.Name() {
+			d.panes[i] = np
+			break
+		}
+	}
+	if ms := d.multiSinks[np.Name()]; ms != nil {
+		np.SetNetworkSink(ms)
 	}
 }
 

@@ -987,6 +987,27 @@ func (p *Pane) SendText(text string, enter bool) {
 	sendPaneTextLocked(p, text, enter)
 }
 
+// WakeOnStreamInput is the remote twin of wakeSuspendedPaneFromKeystroke's
+// swallow-and-wake: input arriving over a window stream at a suspended pane
+// is a WAKE GESTURE, not text — the process is gone and its PTY is closed,
+// so writing would be silent loss, and delivering the bytes post-wake would
+// forge input the operator aimed at a parked pane, not at whatever prompt
+// the respawned process shows. Returns true when the input was consumed as
+// a gesture; the pump must not write it anywhere.
+func (p *Pane) WakeOnStreamInput() bool {
+	p.mu.Lock()
+	suspended := p.suspended
+	cb := p.onSuspendedMessage
+	p.mu.Unlock()
+	if !suspended {
+		return false
+	}
+	if cb != nil {
+		cb(p)
+	}
+	return true
+}
+
 // SetOnSuspendedMessage wires the resume-on-message trigger (ini-g7fl). Called
 // by the TUI when it adopts a pane; fired (on the caller's goroutine) when a
 // message arrives for a suspended pane, after the message is safely queued.

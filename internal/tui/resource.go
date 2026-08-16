@@ -661,6 +661,10 @@ func (t *TUI) resumePane(pane *Pane, senderName string) error {
 				}
 				np.Start()
 				t.panes[i] = np
+				// The window server serves pane OBJECTS; hand it the
+				// successor or every attached window loses this agent's
+				// stream and input on the first wake.
+				t.windowSrv.ReplacePane(np)
 				t.applyLayout()
 				replaced = true
 
