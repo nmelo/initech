@@ -1429,7 +1429,12 @@ func (t *TUI) handlePeerUpdate(peerName string, newPanes []PaneView, connected b
 	// correctly the moment ensureGroups had run.
 	t.ensureGroups(false)
 	LogInfo("peer-update", "panes-updated", "peer", peerName, "total_panes", len(kept))
-	t.recalcGrid(true)
+	// recalcGrid WITHOUT force: force evicts any non-Live mode back to Grid,
+	// and this path is AMBIENT — a sleeping remote machine's reconnect loop
+	// lands here every couple of seconds, which bounced the operator out of
+	// Focus mode repeatedly (live report, 2026-08-15). A network event is
+	// never a mode decision.
+	t.recalcGrid(false)
 	LogInfo("peer-update", "done", "peer", peerName,
 		"plan_panes", len(t.plan.Panes), "plan_set", planPaneSet(t.plan))
 }
@@ -1452,7 +1457,9 @@ func (t *TUI) handlePeerPaneAdded(peerName string, pane PaneView) {
 		Type:   EventPeerConnected,
 		Detail: fmt.Sprintf("%s: %s pushed", peerName, pane.Name()),
 	})
-	t.recalcGrid(true)
+	// Same rule as handlePeerUpdate: a pushed pane arriving is ambient, not
+	// a mode decision — never force the operator out of Focus.
+	t.recalcGrid(false)
 	LogInfo("peer-pane-added", "done", "peer", peerName, "agent", pane.Name())
 }
 

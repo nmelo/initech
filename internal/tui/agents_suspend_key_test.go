@@ -307,3 +307,38 @@ func TestApplyAgentStatus_WakeEdgeReassertsGeometry(t *testing.T) {
 			rp.emu.Width(), rp.emu.Height(), wantCols, wantRows)
 	}
 }
+
+// ── ambient peer events must not change the operator's layout mode ────
+//
+// Operator, live (2026-08-15): Focus mode (Option+F) "keeps bouncing back
+// to Grid 3x2 by itself". Mechanism: handlePeerUpdate fires on every peer
+// event — and a sleeping remote machine's reconnect loop fires one every
+// couple of seconds — and its recalcGrid(true) FORCE-evicts any non-Live
+// mode back to Grid. force conflates "recompute grid dims" with "exit the
+// operator's chosen mode"; a network event is never a mode decision.
+// Released behavior (v2.9.0 window attaches did it too), made constant by
+// remote machines.
+func TestPeerUpdate_PreservesFocusMode(t *testing.T) {
+	tui := newTestTUI(&Pane{name: "super", visible: true})
+	tui.layoutState.Mode = LayoutFocus
+	tui.layoutState.Focused = "super"
+
+	tui.handlePeerUpdate("support", nil, false) // the reconnect-loop shape
+
+	if tui.layoutState.Mode != LayoutFocus {
+		t.Fatalf("a peer event changed the layout mode to %v — ambient events must never "+
+			"override an operator UI choice", tui.layoutState.Mode)
+	}
+}
+
+func TestPeerPaneAdded_PreservesFocusMode(t *testing.T) {
+	tui := newTestTUI(&Pane{name: "super", visible: true})
+	tui.layoutState.Mode = LayoutFocus
+	tui.layoutState.Focused = "super"
+
+	tui.handlePeerPaneAdded("support", &RemotePane{name: "temp", host: "support", alive: true})
+
+	if tui.layoutState.Mode != LayoutFocus {
+		t.Fatalf("a pushed pane changed the layout mode to %v", tui.layoutState.Mode)
+	}
+}
