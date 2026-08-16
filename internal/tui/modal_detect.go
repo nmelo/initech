@@ -130,6 +130,36 @@ func paneShowsModalOnScreen(p *Pane) bool {
 	return screenShowsLiveDialog(emulatorBottomText(p.emu, modalScanWholePane))
 }
 
+// paneScreenShowsDialogText is the BROAD screen face: are a dialog's words
+// rendered, whether or not anything is currently there to answer.
+//
+// THE THIRD CONSUMER OF THIS QUESTION, and it needs the opposite answer from
+// the send guard (ini-ynrp). The attention row's clear is EARNED: a row only
+// retires once the screen has PROVED it can see the dialog (markModalSeen),
+// because "no modal visible" otherwise means "our patterns do not match this
+// dialog" rather than "the operator answered". Feed that rule a narrow
+// predicate and a dialog it cannot recognise never earns its clear, so the row
+// is permanent -- which is precisely what ini-9gvn's affordance requirement did
+// composed: an announced dialog with no options rendered, was never sighted,
+// and its row outlived the answer in every window.
+//
+// WHY BROAD IS SAFE HERE, though it is not safe for the send guard: a row only
+// exists because an OSC 777 DECLARED a dialog, so the words being on screen
+// while a row is up means the dialog is there. Prose alone cannot raise a row.
+// The send guard has no such precondition -- it must answer for any pane at any
+// time -- which is why it keeps the affordance requirement and this does not.
+//
+// Same doctrine as zjhg's paneHasModal/paneShowsModalOnScreen split (opposite
+// RISK asymmetries) and l5sy's scoped/fleet members split (opposite SCOPES):
+// when consumers want different answers in the edge case, they get their own
+// names, never a union.
+func paneScreenShowsDialogText(p *Pane) bool {
+	if p == nil || p.emu == nil {
+		return false
+	}
+	return isModalPrompt(emulatorBottomText(p.emu, modalScanWholePane))
+}
+
 // screenShowsLiveDialog distinguishes a DIALOG from a QUOTATION of one
 // (ini-9gvn): the prompt's words must be there AND something must be there to
 // answer.

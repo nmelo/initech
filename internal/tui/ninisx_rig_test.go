@@ -34,6 +34,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -444,9 +445,23 @@ func nineISXAssert(t *testing.T, label, nonce string, w1emu, w2emu *vt.SafeEmula
 	// reporting on its own.
 	w1 := nineISXScreen(w1emu)
 	t.Logf("%s — WINDOW 1:\n%s", label, w1)
+	// COUNTED IN THE OVERLAY, by the overlay's OWN marker (ini-ynrp).
+	//
+	// This used to be a bare Contains over window 1's whole screen, which was
+	// right while the modal was scoped too. The operator reversed that
+	// (2026-08-15, reconciled in 6b796ed): the MODAL is whole-fleet from every
+	// window now, so it legitimately lists eng1/eng2 here, and a whole-screen
+	// search reported the OVERLAY for what the modal said. The overlay is the
+	// surface that still scopes, and it prints "● name" where the modal prints
+	// "[x] name" -- a distinction this file already relies on elsewhere.
+	//
+	// Determined before changing: window 1's overlay was CORRECT at the failing
+	// run (super/pm/qa1 listed, "+3 on window 2" disclosed). The assertion was
+	// stale, not the product.
 	w1Planned := 0
 	for _, own := range []string{"eng1", "eng2"} {
-		if strings.Contains(w1, own) {
+		listed := regexp.MustCompile(`[\x{25cf}\x{25cb}]\s+` + regexp.QuoteMeta(own) + `\b`)
+		if listed.MatchString(w1) {
 			w1Planned++
 		}
 	}

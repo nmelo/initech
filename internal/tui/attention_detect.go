@@ -229,7 +229,11 @@ func (p *Pane) refreshWaitingState() {
 	// clear rule is "the screen has earned the right to retire this row"; asking
 	// the union would ask a question that includes the latch, and the latch is
 	// designed never to answer no on its own.
-	onScreen := paneShowsModalOnScreen(p)
+	// The BROAD screen face, not the send guard's (ini-ynrp). This consumer
+	// licenses the row's clear; a narrow face here means a dialog the guard
+	// does not recognise can never retire its row, and the operator is sent to
+	// a monitor where nothing is waiting.
+	onScreen := paneScreenShowsDialogText(p)
 	if onScreen {
 		p.markModalSeen()
 		// Upgrade the row's text now that the dialog is actually rendered. Costs

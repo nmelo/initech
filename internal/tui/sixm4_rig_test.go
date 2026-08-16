@@ -229,17 +229,19 @@ func TestSixM4Rig_ViewerModalParityAndReplaySurvival(t *testing.T) {
 	w1screen := strings.Join(w1rows, "\n")
 	w2screen := strings.Join(w2rows, "\n")
 
-	// ── 2. DEFAULT view: tiered, SCOPED, and disclosed ──────────────
+	// ── 2. The modal is TIERED and WHOLE-FLEET from every window ────
 	//
-	// Rewritten for the operator-approved ini-9isx behaviour (canon: scoping
-	// is a display decision about WHICH facts to show, never a divergence in
-	// WHAT the facts are, and a scoped surface MUST disclose its scope).
+	// THIRD DECISION ON THIS SURFACE, each recorded in the assertion it
+	// replaced: StayWholeFleet -> ScopedByDefault (ini-9isx) ->
+	// AlwaysWholeFleet (operator, 2026-08-15: "why do I need to press a to
+	// show all, I never asked for that"). This block previously asserted the
+	// scoped 6/2 default that ini-l5sy reconciled it to; the operator reversed
+	// that, so the modal is unscoped from every window and the expanded flag is
+	// inert on membership (ini-ynrp, mirroring 6b796ed's unit reconciles).
 	//
-	// The TIER HEADERS are NOT scoped and both windows show both: the
-	// structure is a fleet fact. Only the agents under them are this window's.
-	// That distinction is what the previous version of this rig could not
-	// express, and it is why its failure was read as "the viewer tier gate is
-	// off" when the gate was on the whole time (ini-l5sy).
+	// The TIER HEADERS survive every one of those turns, because they were
+	// never the scoping: they are a fleet fact about which monitor an agent
+	// lives on, and both windows show both.
 	for _, tier := range []string{"monitor 1", "monitor 2"} {
 		if !strings.Contains(w1screen, tier) {
 			t.Errorf("window 1's modal is missing the %q tier header", tier)
@@ -250,16 +252,24 @@ func TestSixM4Rig_ViewerModalParityAndReplaySurvival(t *testing.T) {
 		}
 	}
 
-	// DISCLOSED SCOPE: a count of what is hidden and where it lives. Silent
-	// scoping is indistinguishable from the accidental divergence the parity
-	// invariant exists to kill, so the disclosure is load-bearing, not chrome.
-	if !strings.Contains(w1screen, "+2 on window 2") {
-		t.Errorf("window 1's modal does not disclose the 2 agents it is hiding on window 2"+
-			"\nW1:\n%s", w1screen)
-	}
-	if !strings.Contains(w2screen, "+6 on window 1") {
-		t.Errorf("window 2's modal does not disclose the 6 agents it is hiding on window 1"+
-			"\nW2:\n%s", w2screen)
+	// AND IT CLAIMS TO HIDE NOTHING. An unscoped surface that still prints
+	// "+N on window M" is worse than a wrong count: it teaches the operator
+	// that something is missing and offers a keypress that no longer does
+	// anything. The overlay keeps its disclosure -- the overlay still scopes --
+	// which is why this assertion names the MODAL specifically.
+	// Matched INSIDE THE MODAL'S OWN BOTTOM BORDER, never anywhere on screen.
+	// The full-pane capture also carries the agents OVERLAY, which still scopes
+	// and still discloses -- by design, and it is a different surface. A
+	// whole-screen search for "+N on window M" reports the modal for the
+	// overlay's line, which is what the first version of this assertion did.
+	scopeNote := regexp.MustCompile("\u2514\u2500 \\+\\d+ on window \\d")
+	for _, w := range []struct {
+		name, screen string
+	}{{"window 1", w1screen}, {"window 2", w2screen}} {
+		if hit := scopeNote.FindString(w.screen); hit != "" {
+			t.Errorf("%s's modal footer still discloses a scope it no longer has (%q); an "+
+				"unscoped surface must not claim to hide anything\n%s", w.name, hit, w.screen)
+		}
 	}
 
 	// ── 3. Fleet numbering agrees, despite divergent local orders ───
@@ -272,19 +282,21 @@ func TestSixM4Rig_ViewerModalParityAndReplaySurvival(t *testing.T) {
 		return m
 	}
 
-	// The DEFAULT view lists only this window's own agents -- 6 and 2, not 8
-	// and 8. Asserting 8 here is what the pre-9isx rig did, and it is the
-	// assertion that went red at the v2.9.0 cut for the RIGHT reason:
-	// the product had changed, by operator decision.
 	dn1, dn2 := numbersOf(w1screen), numbersOf(w2screen)
-	if len(dn1) != 6 || len(dn2) != 2 {
-		t.Fatalf("default modal lists %d/%d agents (want 6 on window 1, 2 on window 2)"+
-			"\nW1:\n%s\nW2:\n%s", len(dn1), len(dn2), w1screen, w2screen)
+	if len(dn1) != len(roles) || len(dn2) != len(roles) {
+		t.Fatalf("default modal lists %d/%d agents (want %d each -- the modal is unscoped "+
+			"from every window)\nW1:\n%s\nW2:\n%s", len(dn1), len(dn2), len(roles), w1screen, w2screen)
+	}
+	for agent, num := range dn1 {
+		if dn2[agent] != num {
+			t.Errorf("agent %s is number %s in window 1 but %s in window 2 -- grab-by-number "+
+				"acts on different agents per window\nW1 numbers: %v\nW2 numbers: %v\nW1:\n%s\nW2:\n%s",
+				agent, num, dn2[agent], dn1, dn2, w1screen, w2screen)
+		}
 	}
 
-	// EXPANDED is where the whole fleet lives, and therefore where numbering
-	// parity is checkable at all: 'a' lifts this window's display scope so a
-	// cross-monitor move is possible ("you cannot grab what you cannot see").
+	// EXPANDED IS INERT ON MEMBERSHIP now, and this leg is what proves it
+	// rather than assuming it: the same whole fleet before and after 'a'.
 	w1pty.Write([]byte("a"))
 	w2pty.Write([]byte("a"))
 	time.Sleep(2500 * time.Millisecond)
@@ -292,8 +304,12 @@ func TestSixM4Rig_ViewerModalParityAndReplaySurvival(t *testing.T) {
 	w2exp := strings.Join(nonEmpty(snapRows(w2emu)), "\n")
 
 	n1, n2 := numbersOf(w1exp), numbersOf(w2exp)
+	t.Logf("NUMBERING default  w1=%v w2=%v", dn1, dn2)
+	t.Logf("NUMBERING expanded w1=%v w2=%v", n1, n2)
 	if len(n1) != len(roles) || len(n2) != len(roles) {
-		t.Fatalf("EXPANDED modal parse found %d/%d numbered agents (want %d each)\nW1:\n%s\nW2:\n%s",
+		t.Fatalf("EXPANDED modal lists %d/%d agents (want %d each). Expanded is inert on "+
+			"membership now, so this differing from the default view means the flag still "+
+			"moves something it should not.\nW1:\n%s\nW2:\n%s",
 			len(n1), len(n2), len(roles), w1exp, w2exp)
 	}
 	for agent, num := range n1 {
