@@ -652,6 +652,7 @@ func (t *TUI) resumePane(pane *Pane, senderName string) error {
 					copy(np.beadIDs, pane.beadIDs)
 				}
 				np.beadTitle = pane.beadTitle
+				carryFleetIdentity(np, pane)
 				// Carried explicitly: the spawn stagger routes EVERY deferred
 				// agent through this path, so a dropped field here is no
 				// longer an edge case — it is the fleet's default boot path.
@@ -767,4 +768,31 @@ func (t *TUI) waitForInit(pane *Pane) error {
 			return fmt.Errorf("TUI shutting down")
 		}
 	}
+}
+
+// carryFleetIdentity moves the fleet-canonical number onto a REPLACEMENT pane
+// (ini-hbfp).
+//
+// Respawning replaces the *Pane object, and the replacement is built fresh --
+// so every piece of identity the old pane carried has to be moved across by
+// hand right here. fleetNum was the one nobody moved: the list above copies
+// region, protected, beads and thresholds, and the stamp silently stayed at
+// zero.
+//
+// WHAT THAT COST: an unstamped pane falls into agentsGridNumber's fallback and
+// is renumbered AFTER the stamped range, in this window's local pane order. So
+// window 1 renumbered every staggered agent it respawned while window 2 --
+// which re-derives numbers from the ordered hello_ok list on each connect --
+// kept the canonical ones. Number 5 meant a different agent on each monitor,
+// which is precisely the harm ini-6m4 canonized against, and grab-by-number
+// and number-addressed search both act on it.
+//
+// A named function rather than one more assignment in the list, because the
+// list is what failed: this one has a test, and the next reader looking for
+// "what must survive a respawn" has somewhere to add to.
+func carryFleetIdentity(np, old *Pane) {
+	if np == nil || old == nil {
+		return
+	}
+	np.fleetNum = old.fleetNum
 }

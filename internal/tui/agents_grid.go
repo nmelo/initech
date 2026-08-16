@@ -45,10 +45,10 @@ func agentsGridCellWFor(panes []PaneView) int {
 
 // Grid layout constants (spec section "Layout rules", operator-tuned).
 const (
-	gridMaxPerRow = 6  // Groups larger than this wrap into a multi-line band.
-	gridBandLead  = 1  // Blank line before each group label.
-	gridLabelGap  = 1  // Blank line between the label and its cell row(s).
-	gridTierLead  = 1  // Blank line before each monitor-tier header (ini-9ka.5).
+	gridMaxPerRow = 6 // Groups larger than this wrap into a multi-line band.
+	gridBandLead  = 1 // Blank line before each group label.
+	gridLabelGap  = 1 // Blank line between the label and its cell row(s).
+	gridTierLead  = 1 // Blank line before each monitor-tier header (ini-9ka.5).
 )
 
 // agentsHelpText is the default (non-searching, non-group-creating) footer.
