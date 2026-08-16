@@ -51,6 +51,10 @@ type RemotePane struct {
 	// PTY, so the authority that watches the dialog is the only process that
 	// can know.
 	waiting WaitingState
+	// suspended is the authority's word that this agent is parked
+	// (agent_status broadcast) — without it a parked agent's silent stream
+	// reads as idle in every window but the one that parked it.
+	suspended bool
 	region  Region
 
 	goWg sync.WaitGroup // Tracks readLoop goroutine. Close waits on this.
@@ -201,6 +205,12 @@ func (rp *RemotePane) LastEventTime() time.Time       { return time.Time{} }
 func (rp *RemotePane) Activity() ActivityState {
 	rp.mu.Lock()
 	defer rp.mu.Unlock()
+	// Suspension is the authority's word (agent_status), checked before the
+	// recency heuristics: a parked agent produces no output, which reads as
+	// idle — precisely the misread that hid eng2's state from window 2.
+	if rp.suspended {
+		return StateSuspended
+	}
 	// Derive idle from output recency, same as local panes.
 	if !rp.alive {
 		return StateDead
@@ -579,6 +589,15 @@ func (rp *RemotePane) ApplyWaiting(ws WaitingState) {
 	rp.mu.Lock()
 	defer rp.mu.Unlock()
 	rp.waiting = ws
+}
+
+// ApplySuspended records the authority's word on whether this agent is
+// parked. Assignment both edges, same doctrine as ApplyWaiting: a wake is
+// the same detector seeing false, not a clear path beside a park path.
+func (rp *RemotePane) ApplySuspended(suspended bool) {
+	rp.mu.Lock()
+	defer rp.mu.Unlock()
+	rp.suspended = suspended
 }
 
 func (rp *RemotePane) ApplyStatus(beads []string, desc string) {

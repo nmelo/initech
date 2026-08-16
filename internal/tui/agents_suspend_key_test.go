@@ -146,3 +146,40 @@ func TestAgentsToggleSuspendGroup_WakesAllWhenAllParked(t *testing.T) {
 	}
 	t.Fatalf("S on an all-parked band did not wake both members (modal msg: %q)", tui.agents.error)
 }
+
+// ── suspension must cross the window boundary ─────────────────────────
+//
+// Window 2 renders window 1's agents from RemotePanes fed by agent_status
+// broadcasts. Suspension was not on that wire, so a parked agent kept its
+// last screen and read as idle in every other window ("window 2 doesn't
+// show it as suspended", operator, 2026-08-15). agent_status is the channel
+// BUILT for observed agent state — suspended rides it like beads and
+// waiting do.
+func TestRemotePane_AppliedSuspensionShowsInActivity(t *testing.T) {
+	rp := &RemotePane{name: "eng2", host: "window1", alive: true}
+
+	rp.ApplySuspended(true)
+	if rp.Activity() != StateSuspended {
+		t.Fatalf("suspended remote pane reports %v, want StateSuspended — the viewer window renders this state", rp.Activity())
+	}
+
+	rp.ApplySuspended(false)
+	if rp.Activity() == StateSuspended {
+		t.Fatal("cleared suspension still reports StateSuspended — a woken agent would look parked in other windows forever")
+	}
+}
+
+func TestApplyAgentStatus_CarriesSuspended(t *testing.T) {
+	tui := newTestTUI()
+	rp := &RemotePane{name: "eng2", host: "window1", alive: true}
+	tui.panes = append(tui.panes, rp)
+
+	tui.applyAgentStatus("eng2", nil, "", WaitingState{}, true)
+	if rp.Activity() != StateSuspended {
+		t.Fatal("agent_status with suspended=true did not park the remote pane's displayed state")
+	}
+	tui.applyAgentStatus("eng2", nil, "", WaitingState{}, false)
+	if rp.Activity() == StateSuspended {
+		t.Fatal("agent_status with suspended=false did not clear the displayed state")
+	}
+}

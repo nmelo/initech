@@ -356,7 +356,7 @@ func TestParity_AgentStatusBroadcastCarriesAllBeads(t *testing.T) {
 	waitForClients(t, ws, 1)
 
 	want := []string{"ini-aaa", "ini-bbb", "ini-ccc"}
-	ws.broadcastAgentStatus("eng1", want, "three beads in flight", WaitingState{})
+	ws.broadcastAgentStatus("eng1", want, "three beads in flight", WaitingState{}, true)
 
 	c2.SetReadDeadline(time.Now().Add(5 * time.Second))
 	scanner := NewIPCScanner(c2)
@@ -375,6 +375,9 @@ func TestParity_AgentStatusBroadcastCarriesAllBeads(t *testing.T) {
 		}
 		if len(got.Beads) != len(want) {
 			t.Errorf("wire carried %d beads (%v), want %d (%v) -- truncation here shows a wrong-but-populated ribbon", len(got.Beads), got.Beads, len(want), want)
+		}
+		if !got.Suspended {
+			t.Error("suspended did not cross the wire — a parked agent reads as idle in every other window")
 		}
 		if got.Bead != "ini-aaa" {
 			t.Errorf("compat primary = %q, want ini-aaa", got.Bead)

@@ -303,6 +303,9 @@ type ControlResp struct {
 	WaitingState
 	Name  string   `json:"name,omitempty"`  // Agent name for stream_added / agent_status.
 	Beads []string `json:"beads,omitempty"` // All beads an agent holds (ini-9ka.11 agent_status).
+	// Suspended rides agent_status: a parked agent must read as parked in
+	// every window, not only the one that parked it (2026-08-15).
+	Suspended bool `json:"suspended,omitempty"`
 	Bead  string   `json:"bead,omitempty"`  // Primary bead only; wire compatibility for peers predating Beads.
 }
 

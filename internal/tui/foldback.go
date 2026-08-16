@@ -511,6 +511,10 @@ type agentStatusSnapshot struct {
 	// clear path bolted on beside a raise path. A clear that is a special case
 	// is how a stale row survives an answered dialog.
 	waiting WaitingState
+	// suspended is compared the same both-edges way: park and wake are one
+	// detector seeing different values (2026-08-15, "window 2 doesn't show
+	// it as suspended").
+	suspended bool
 }
 
 // broadcastAgentStatusChanges pushes per-agent bead/description updates to
@@ -543,19 +547,20 @@ func (t *TUI) broadcastAgentStatusChanges() {
 		desc := p.SessionDesc()
 		key := agentKey(p)
 		ws := waitingStateOf(p)
-		next := agentStatusSnapshot{beads: strings.Join(beads, "\x00"), desc: desc, waiting: ws}
+		susp := p.IsSuspended()
+		next := agentStatusSnapshot{beads: strings.Join(beads, "\x00"), desc: desc, waiting: ws, suspended: susp}
 		if prev, seen := t.agentStatus[key]; seen && prev == next {
 			continue
 		}
 		t.agentStatus[key] = next
-		t.windowSrv.broadcastAgentStatus(p.Name(), beads, desc, ws)
+		t.windowSrv.broadcastAgentStatus(p.Name(), beads, desc, ws, susp)
 	}
 }
 
 // broadcastAgentStatus pushes one agent's state to every attached window.
 // Best-effort per recipient, for the same reason as broadcastSessionNotice: a
 // window whose stream is already broken is about to be detected as gone.
-func (w *windowServer) broadcastAgentStatus(name string, beads []string, desc string, ws WaitingState) {
+func (w *windowServer) broadcastAgentStatus(name string, beads []string, desc string, ws WaitingState, suspended bool) {
 	if w == nil || w.daemon == nil {
 		return
 	}
@@ -575,13 +580,14 @@ func (w *windowServer) broadcastAgentStatus(name string, beads []string, desc st
 			Bead:         primary, // Wire compatibility, same as AgentStatus.
 			Text:         desc,
 			WaitingState: ws,
+			Suspended:    suspended,
 		})
 	}
 }
 
 // applyAgentStatus updates the named remote pane from a broadcast (ini-9ka.11).
 // The receiving half of broadcastAgentStatus.
-func (t *TUI) applyAgentStatus(name string, beads []string, desc string, ws WaitingState) {
+func (t *TUI) applyAgentStatus(name string, beads []string, desc string, ws WaitingState, suspended bool) {
 	for _, pv := range t.panes {
 		rp, ok := pv.(*RemotePane)
 		if !ok || rp.Name() != name {
@@ -589,6 +595,7 @@ func (t *TUI) applyAgentStatus(name string, beads []string, desc string, ws Wait
 		}
 		rp.ApplyStatus(beads, desc)
 		rp.ApplyWaiting(ws)
+		rp.ApplySuspended(suspended)
 		return
 	}
 }

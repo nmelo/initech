@@ -982,6 +982,15 @@ func Run(cfg Config) error {
 						// recurse.
 						t.publishPaneOwnership()
 						t.applyLayout()
+						// Forget the last-broadcast agent_status snapshots so
+						// the next render re-broadcasts every agent's state.
+						// The diff-based broadcast only fires on CHANGE, and a
+						// suspended agent changes nothing ever again — a
+						// window attaching after the park would otherwise
+						// never learn it (the same blindness the operator hit
+						// live between two already-open windows, one layer
+						// later).
+						t.agentStatus = nil
 					})
 				})
 			})
@@ -1037,11 +1046,11 @@ func Run(cfg Config) error {
 		// Session notices broadcast by window 1 must render here too
 		// (ini-9ka.8): they describe the session's shape changing, not one
 		// agent's activity.
-		pm.SetOnAgentStatus(func(name string, beads []string, primary, desc string, ws WaitingState) {
+		pm.SetOnAgentStatus(func(name string, beads []string, primary, desc string, ws WaitingState, suspended bool) {
 			if len(beads) == 0 && primary != "" {
 				beads = []string{primary} // Peer predates the plural field.
 			}
-			t.runOnMain(func() { t.applyAgentStatus(name, beads, desc, ws) })
+			t.runOnMain(func() { t.applyAgentStatus(name, beads, desc, ws, suspended) })
 		})
 		pm.SetOnSessionNotice(func(text string) {
 			t.runOnMain(func() { t.surfaceSessionNotice(text) })
