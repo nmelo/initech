@@ -752,7 +752,14 @@ func (t *TUI) resumePane(pane *Pane, senderName string) error {
 	}
 
 	detail := fmt.Sprintf("Resumed %s (message from %s)", agentName, senderName)
-	if len(msgs) > 0 && sawOutput {
+	// NOT gated on sawOutput, deliberately: the delivery loop above runs
+	// unconditionally, so a silent child's messages ARE delivered and the
+	// event must say so. sawOutput answers "did the child speak?" (the
+	// quiescence wait's question); this line answers "did we deliver?" —
+	// different questions that happened to have textually identical
+	// predicates, which is how round 2 gave them one answer (shipper's
+	// f5bab05 review). Two questions, two answers.
+	if len(msgs) > 0 {
 		detail += fmt.Sprintf(", delivered %d queued", len(msgs))
 	}
 

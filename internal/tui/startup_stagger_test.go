@@ -257,3 +257,41 @@ func TestResumePane_SilentChildDeliversPromptly(t *testing.T) {
 	}
 	t.Fatal("silent child never received its queued message")
 }
+
+// TWO QUESTIONS, TWO ANSWERS (shipper's f5bab05 review finding): "did the
+// child speak?" gates the quiescence WAIT; "did we deliver messages?" gates
+// the resume EVENT's text. Round 2 applied one edit to both textually
+// identical predicates, so a silent child's messages were delivered and the
+// event stayed quiet about it — while the log line beside it still reported
+// them, leaving two surfaces disagreeing about one wake. On the release whose
+// notes say delivered means delivered, under-reporting a delivery is the
+// wrong direction to be wrong in.
+func TestResumePane_EventReportsDeliveryForSilentChild(t *testing.T) {
+	if testing.Short() {
+		t.Skip("30s: waitForInit's timeout on a mute child; runs in the full suite")
+	}
+	tui := newTestTUI()
+	tui.agentEvents = make(chan AgentEvent, 64)
+	parked := NewParkedPane(PaneConfig{
+		Name:    "eng9",
+		Command: []string{"sh", "-c", `stty -echo; while read l; do echo "GOT:$l"; done`},
+	}, 20, 60)
+	tui.panes = append(tui.panes, parked)
+	parked.EnqueueMessage("PROBE-EVENT", true)
+
+	if err := tui.resumePane(parked, "super"); err != nil {
+		t.Fatalf("resume failed: %v", err)
+	}
+	defer tui.panes[0].(*Pane).Close()
+
+	select {
+	case ev := <-tui.agentEvents:
+		if !strings.Contains(ev.Detail, "delivered 1 queued") {
+			t.Fatalf("resume event = %q; the message WAS delivered, so the event must say so — "+
+				"a delivery the event stays quiet about is the same class of untruth as a "+
+				"loss the log calls delivered", ev.Detail)
+		}
+	default:
+		t.Fatal("no resume event emitted")
+	}
+}
