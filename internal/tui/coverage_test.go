@@ -1166,6 +1166,20 @@ func TestProjectBadge_TopLeftAlwaysAndOverlayTitleBare(t *testing.T) {
 	if !strings.Contains(full, "Agents") {
 		t.Error("overlay title lost its 'Agents' label")
 	}
+
+	// qa1's cell-3 catch: byte-indexed drawing holes the badge on any
+	// multi-byte rune. Columns must be sequential for non-ASCII names.
+	tui.projectName = "café-proj"
+	tui.layoutState.Overlay = false
+	tui.render()
+	got := ""
+	for x := 0; x < 12; x++ {
+		mainc, _, _ := s.Get(x, 0)
+		got += mainc
+	}
+	if !strings.Contains(got, "café-proj") {
+		t.Errorf("non-ASCII project name drawn with holes or shift; row 0 = %q", got)
+	}
 }
 
 func TestRenderOverlayTitleFallsBackWithoutProjectName(t *testing.T) {

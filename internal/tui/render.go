@@ -1099,10 +1099,16 @@ func (t *TUI) renderProjectBadge() {
 	style := tcell.StyleDefault.Background(tcell.ColorDodgerBlue).Foreground(tcell.ColorBlack).Bold(true)
 	label := " " + t.projectName + " "
 	sw, _ := t.screen.Size()
-	for i, ch := range label {
-		if i >= sw {
+	// Explicit column counter: range over a string yields BYTE offsets, and a
+	// multi-byte rune in the project name (café, 日本語 — Validate constrains
+	// none of this) left a hole at the second byte's position and shifted the
+	// tail right (qa1, ini-ug62 cell 3).
+	col := 0
+	for _, ch := range label {
+		if col >= sw {
 			break
 		}
-		t.screen.SetContent(i, 0, ch, nil, style)
+		t.screen.SetContent(col, 0, ch, nil, style)
+		col++
 	}
 }
