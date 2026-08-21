@@ -202,3 +202,58 @@ cat`
 	t.Fatal("queued message never reached the child — it was delivered into boot and flushed, " +
 		"the silent-loss-through-the-recovery-path shape g7fl exists to end")
 }
+
+// The twin of the slow-boot cell, and the one that would have caught round 1
+// in the FAST suite instead of an env-gated rig CI does not run (shipper's
+// 9IMX bisect, ini-hbj4 round 2): a child that produces NO output has no boot
+// to settle, so the quiescence gate must not apply to it. Round 1 waited the
+// full 15s cap on silent children and pushed the auto-resume path past the
+// suspend-guard rig's deadline. Asserted as a DEADLINE, since the defect was
+// purely one of elapsed time — delivery always did happen, just too late.
+func TestResumePane_SilentChildDeliversPromptly(t *testing.T) {
+	// Costs waitForInit's full 30s: a mute child never produces the first byte
+	// that ends it. That timeout is PRE-EXISTING and out of this bead's scope
+	// — the assertion below is scoped to the gate's own contribution. Excluded
+	// from -short so the fast suite stays fast; it runs in make test-full and
+	// in CI's full-suite leg, which is already a wider net than the env-gated
+	// rig that caught round 1.
+	if testing.Short() {
+		t.Skip("30s: waitForInit's timeout on a mute child; runs in the full suite")
+	}
+	tui := newTestTUI()
+	// Mute until spoken to, then echo — the rig fixture's shape exactly.
+	parked := NewParkedPane(PaneConfig{
+		Name:    "eng9",
+		Command: []string{"sh", "-c", `stty -echo; while read l; do echo "GOT:$l"; done`},
+	}, 20, 60)
+	tui.panes = append(tui.panes, parked)
+	parked.EnqueueMessage("PROBE-SILENT", true)
+
+	start := time.Now()
+	if err := tui.resumePane(parked, "test"); err != nil {
+		t.Fatalf("resume failed: %v", err)
+	}
+	np := tui.panes[0].(*Pane)
+	defer np.Close()
+
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		np.renderMu.Lock()
+		text := emulatorBottomText(np.emu, np.emu.Height())
+		np.renderMu.Unlock()
+		if strings.Contains(text, "GOT:PROBE-SILENT") {
+			// Scoped to the GATE's contribution: waitForInit's 30s is
+			// pre-existing and unavoidable for a mute child, so the budget is
+			// that plus a small margin. Round 1 (gate applied to silent
+			// children) landed at ~45s and reds here; the fix lands at ~30s.
+			budget := resumeTimeout + 5*time.Second
+			if elapsed := time.Since(start); elapsed > budget {
+				t.Fatalf("silent child delivered after %v (budget %v) — it burned the quiescence "+
+					"cap it has no boot output to satisfy", elapsed, budget)
+			}
+			return
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	t.Fatal("silent child never received its queued message")
+}

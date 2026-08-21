@@ -686,7 +686,9 @@ func (t *TUI) resumePane(pane *Pane, senderName string) error {
 	np.SetResumeGrace(time.Now().Add(resumeGraceDuration))
 
 	// Wait for the agent to initialize: poll for PTY output activity.
+	sawOutput := true
 	if err := t.waitForInit(np); err != nil {
+		sawOutput = false
 		LogWarn("resource", "resume init timeout", "agent", np.name, "err", err)
 		// Agent started but may be slow. Continue with queue drain anyway
 		// since the process is alive even if Claude hasn't fully initialized.
@@ -727,7 +729,14 @@ func (t *TUI) resumePane(pane *Pane, senderName string) error {
 	// Deliver ONLY INTO A LISTENING PROCESS (ini-hbj4, the timing half of
 	// g7fl's liveness half): wait for boot output to settle first. Gated on
 	// msgs so message-less wakes (startup stagger) pay nothing.
-	if len(msgs) > 0 {
+	// ONLY A CHILD THAT SPOKE HAS SOMETHING TO SETTLE (ini-hbj4 round 2,
+	// shipper's 9IMX bisect). waitForInit already gave every pane its full
+	// 30s to produce a first byte; a pane that produced NONE has no boot
+	// output to quiesce, so waiting burns the whole 15s cap for nothing and
+	// pushed the auto-resume path from ~31s to ~45s — past the suspend-guard
+	// rig's own deadline. Silent children (the rig's read-echo fixture, and
+	// any agent that starts mute) deliver exactly as they did before hbj4.
+	if len(msgs) > 0 && sawOutput {
 		if !t.waitForOutputQuiescence(np, resumeQuiesceStable, resumeQuiesceCap) {
 			LogWarn("resource", "delivering queued messages without quiescence (cap or quit)",
 				"agent", agentName, "queued", len(msgs))
@@ -743,7 +752,7 @@ func (t *TUI) resumePane(pane *Pane, senderName string) error {
 	}
 
 	detail := fmt.Sprintf("Resumed %s (message from %s)", agentName, senderName)
-	if len(msgs) > 0 {
+	if len(msgs) > 0 && sawOutput {
 		detail += fmt.Sprintf(", delivered %d queued", len(msgs))
 	}
 
