@@ -175,9 +175,17 @@ func TestResumePane_QueuedMessageSurvivesSlowBoot(t *testing.T) {
 	// moment they are WRITTEN, delivered or not — the instrument could not see
 	// the loss (caught interrogating this test's own first green). Claude runs
 	// raw/no-echo, so no-echo is also the faithful fidelity.
+	// The flush runs CONCURRENTLY with the chatter, deliberately: a child that
+	// flushes AFTER going quiet cannot be defended by a quiescence gate at all
+	// (quiescence would fire mid-flush), and that shape is not Claude's — Claude
+	// flushes at raw-mode entry while still rendering. Modelling it concurrently
+	// makes the margin STRUCTURAL (delivery lands resumeQuiesceStable after the
+	// last output, the flush ended with it) instead of the ~200ms accident that
+	// passed on darwin and lost the race on CI's runners.
 	boot := `stty -echo
-for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do echo booting-$i; sleep 0.1; done
+(for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do echo booting-$i; sleep 0.1; done) &
 while read -t 1 -r junk; do :; done
+wait
 cat`
 	parked := NewParkedPane(PaneConfig{Name: "eng9", Command: []string{"bash", "-c", boot}}, 20, 60)
 	tui.panes = append(tui.panes, parked)
@@ -189,7 +197,10 @@ cat`
 	np := tui.panes[0].(*Pane)
 	defer np.Close()
 
-	deadline := time.Now().Add(8 * time.Second)
+	// Generous window: CI runners are slower and loaded, and this test's claim
+	// is "the message ARRIVES", not "within 8s" — a tight poll deadline turns a
+	// slow runner into a false silent-loss report.
+	deadline := time.Now().Add(30 * time.Second)
 	for time.Now().Before(deadline) {
 		np.renderMu.Lock()
 		text := emulatorBottomText(np.emu, np.emu.Height())
@@ -236,7 +247,11 @@ func TestResumePane_SilentChildDeliversPromptly(t *testing.T) {
 	np := tui.panes[0].(*Pane)
 	defer np.Close()
 
-	deadline := time.Now().Add(10 * time.Second)
+	// Poll well past the budget: the ASSERTION is the elapsed-time budget
+	// below, so the poll window only needs to be long enough to observe
+	// arrival on a loaded CI runner. A tight window reported "never received"
+	// on CI's full-suite leg for a message that was merely late.
+	deadline := time.Now().Add(30 * time.Second)
 	for time.Now().Before(deadline) {
 		np.renderMu.Lock()
 		text := emulatorBottomText(np.emu, np.emu.Height())
