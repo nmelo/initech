@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"github.com/mattn/go-runewidth"
 	"sort"
 	"strings"
 	"time"
@@ -1099,16 +1100,18 @@ func (t *TUI) renderProjectBadge() {
 	style := tcell.StyleDefault.Background(tcell.ColorDodgerBlue).Foreground(tcell.ColorBlack).Bold(true)
 	label := " " + t.projectName + " "
 	sw, _ := t.screen.Size()
-	// Explicit column counter: range over a string yields BYTE offsets, and a
-	// multi-byte rune in the project name (café, 日本語 — Validate constrains
-	// none of this) left a hole at the second byte's position and shifted the
-	// tail right (qa1, ini-ug62 cell 3).
+	// Column accounting has two layers, each bought separately: range over a
+	// string yields BYTE offsets (café holed the box — qa1, ini-ug62 cell 3),
+	// and a rune is not a column (日本語 is three runes across SIX columns —
+	// shipper, at the gate). runewidth is what attention.go already uses for
+	// exactly this; the badge was the odd one out.
 	col := 0
 	for _, ch := range label {
-		if col >= sw {
+		w := runewidth.RuneWidth(ch)
+		if col+w > sw {
 			break
 		}
 		t.screen.SetContent(col, 0, ch, nil, style)
-		col++
+		col += w
 	}
 }
