@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -156,4 +157,48 @@ func TestParkPaneRecorded_PersistsSuspension(t *testing.T) {
 	if !fs.IsSuspended("seo") {
 		t.Error("park did not persist — next launch would boot this agent")
 	}
+}
+
+// ── ini-hbj4: wake-on-message must not deliver into boot ──────────────
+//
+// Live-measured (operator-requested verification, 2026-08-21): a control
+// send to a live pane delivered; the wake path lost the message 2/2 —
+// resumePane drained right after waitForInit, which fires on FIRST output,
+// while Claude Code with a large --continue transcript is still booting and
+// flushes stdin at raw-mode entry. The fixture reproduces that shape
+// faithfully (real-workload doctrine): boot chatter long enough to make
+// first-output readiness a lie, an explicit stdin flush at the readiness
+// boundary, then a child that echoes what it reads.
+func TestResumePane_QueuedMessageSurvivesSlowBoot(t *testing.T) {
+	tui := newTestTUI()
+	// stty -echo first: with tty echo on, injected bytes appear on screen the
+	// moment they are WRITTEN, delivered or not — the instrument could not see
+	// the loss (caught interrogating this test's own first green). Claude runs
+	// raw/no-echo, so no-echo is also the faithful fidelity.
+	boot := `stty -echo
+for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do echo booting-$i; sleep 0.1; done
+while read -t 1 -r junk; do :; done
+cat`
+	parked := NewParkedPane(PaneConfig{Name: "eng9", Command: []string{"bash", "-c", boot}}, 20, 60)
+	tui.panes = append(tui.panes, parked)
+	parked.EnqueueMessage("PROBE-SURVIVES-BOOT", true)
+
+	if err := tui.resumePane(parked, "test"); err != nil {
+		t.Fatalf("resume failed: %v", err)
+	}
+	np := tui.panes[0].(*Pane)
+	defer np.Close()
+
+	deadline := time.Now().Add(8 * time.Second)
+	for time.Now().Before(deadline) {
+		np.renderMu.Lock()
+		text := emulatorBottomText(np.emu, np.emu.Height())
+		np.renderMu.Unlock()
+		if strings.Contains(text, "PROBE-SURVIVES-BOOT") {
+			return
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	t.Fatal("queued message never reached the child — it was delivered into boot and flushed, " +
+		"the silent-loss-through-the-recovery-path shape g7fl exists to end")
 }

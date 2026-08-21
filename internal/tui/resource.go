@@ -724,6 +724,16 @@ func (t *TUI) resumePane(pane *Pane, senderName string) error {
 		return fmt.Errorf("resume %s: process died during startup; %d message(s) remain queued", agentName, len(msgs))
 	}
 
+	// Deliver ONLY INTO A LISTENING PROCESS (ini-hbj4, the timing half of
+	// g7fl's liveness half): wait for boot output to settle first. Gated on
+	// msgs so message-less wakes (startup stagger) pay nothing.
+	if len(msgs) > 0 {
+		if !t.waitForOutputQuiescence(np, resumeQuiesceStable, resumeQuiesceCap) {
+			LogWarn("resource", "delivering queued messages without quiescence (cap or quit)",
+				"agent", agentName, "queued", len(msgs))
+		}
+	}
+
 	// Deliver queued messages with gaps.
 	for _, msg := range msgs {
 		t.injectText(np, msg.Text, msg.Enter)
@@ -749,6 +759,39 @@ func (t *TUI) resumePane(pane *Pane, senderName string) error {
 	})
 
 	return nil
+}
+
+// Quiescence gate for the queued-message drain (ini-hbj4): a wake delivers
+// only after the child has stopped producing output for resumeQuiesceStable,
+// because "produced its first output" is not "accepting input" — Claude Code
+// with a large --continue transcript renders for seconds and flushes stdin at
+// raw-mode entry, eating anything delivered early (live-measured 2/2 loss;
+// the same wake delivered fine months of transcript ago). Quiescence over
+// chrome-matching: agent-agnostic, no coupling to any footer string.
+const (
+	resumeQuiesceStable = 600 * time.Millisecond
+	resumeQuiesceCap    = 15 * time.Second
+)
+
+// waitForOutputQuiescence blocks until the pane has produced no PTY output
+// for stable (true), or cap/quit expires (false). Callers deliver either way
+// — a cap expiry is a loud log, never a dropped message.
+func (t *TUI) waitForOutputQuiescence(pane *Pane, stable, cap time.Duration) bool {
+	deadline := time.Now().Add(cap)
+	for {
+		last := pane.LastOutputTime()
+		if !last.IsZero() && time.Since(last) >= stable {
+			return true
+		}
+		if time.Now().After(deadline) {
+			return false
+		}
+		select {
+		case <-t.quitCh:
+			return false
+		case <-time.After(50 * time.Millisecond):
+		}
+	}
 }
 
 // waitForInit polls a newly started pane for signs of initialization.
