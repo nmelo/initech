@@ -159,6 +159,12 @@ func (t *TUI) render() {
 		t.renderOverlay()
 	}
 
+	// Project badge is ALWAYS on, independent of the overlay: the operator
+	// hides the agents panel and still needs to know which project's window
+	// this is when several are open across monitors (2026-08-21). It replaced
+	// the name in the overlay's title, which vanished with the overlay.
+	t.renderProjectBadge()
+
 	// Help modal (centered floating box, like welcome).
 	if t.help.active {
 		t.renderHelp()
@@ -877,10 +883,9 @@ func (t *TUI) renderOverlay() {
 
 	// Top border with title (rounded corners).
 	s.SetContent(px, py, '\u256d', nil, borderStyle)
+	// The project name lives in the standing top-left badge now, not here —
+	// a title that disappears with the overlay cannot be the orientation cue.
 	title := " Agents "
-	if t.projectName != "" {
-		title = " Agents (" + t.projectName + ") "
-	}
 	for i := 1; i < panelW-1; i++ {
 		ch := '\u2500'
 		if i-1 < len(title) {
@@ -1081,4 +1086,23 @@ func planPaneSet(plan RenderPlan) string {
 	}
 	sort.Strings(names)
 	return strings.Join(names, ",")
+}
+
+// renderProjectBadge draws a small standing box with the project name in the
+// window's top-left corner (operator spec, 2026-08-21: blue background). It
+// renders whether or not the overlay is visible — it exists precisely for the
+// overlay-hidden case, as the orientation cue between many project windows.
+func (t *TUI) renderProjectBadge() {
+	if t.projectName == "" || t.screen == nil {
+		return
+	}
+	style := tcell.StyleDefault.Background(tcell.ColorDodgerBlue).Foreground(tcell.ColorBlack).Bold(true)
+	label := " " + t.projectName + " "
+	sw, _ := t.screen.Size()
+	for i, ch := range label {
+		if i >= sw {
+			break
+		}
+		t.screen.SetContent(i, 0, ch, nil, style)
+	}
 }

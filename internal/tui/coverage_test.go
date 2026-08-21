@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -1118,28 +1119,52 @@ func TestRenderOverlayWithHiddenPanes(t *testing.T) {
 	// Should not panic, and overlay should show all panes.
 }
 
-func TestRenderOverlayTitleShowsProjectName(t *testing.T) {
-	// ini-bfs: overlay title should show "Agents (name)" when projectName is set.
+// TestProjectBadge_TopLeftAlwaysAndOverlayTitleBare replaces
+// TestRenderOverlayTitleShowsProjectName as a DECISION CHANGE (operator,
+// 2026-08-21): the project name moves from the overlay's title — which
+// vanishes with the overlay — to a small standing badge in the top-left
+// corner, because the name is the orientation cue between windows of many
+// projects and must survive hiding the agents panel. ini-bfs's protected
+// interest (the name is visible somewhere) survives, strengthened: it is now
+// visible even with the overlay OFF.
+func TestProjectBadge_TopLeftAlwaysAndOverlayTitleBare(t *testing.T) {
 	tui, s := newTestTUIWithScreen("eng1")
 	tui.projectName = "myproject"
+
+	// Overlay HIDDEN — the case the badge exists for.
+	tui.layoutState.Overlay = false
+	tui.render()
+	row0 := ""
+	for x := 0; x < 20; x++ {
+		mainc, _, _ := s.Get(x, 0)
+		row0 += mainc
+	}
+	if !strings.Contains(row0, "myproject") {
+		t.Fatalf("top-left badge missing with overlay hidden; row 0 = %q", row0)
+	}
+	_, _, badgeStyle, _ := s.GetContent(1, 0)
+	_, bg, _ := badgeStyle.Decompose()
+	if bg != tcell.ColorDodgerBlue {
+		t.Errorf("badge background = %v, want DodgerBlue (operator spec: blue box)", bg)
+	}
+
+	// Overlay SHOWN — the title no longer carries the name (the badge does).
 	tui.layoutState.Overlay = true
 	tui.render()
-
-	// Scan the screen for the project name characters.
 	sw, sh := s.Size()
-	found := false
-outer:
+	full := ""
 	for y := 0; y < sh; y++ {
 		for x := 0; x < sw; x++ {
 			mainc, _, _ := s.Get(x, y)
-			if mainc == "m" { // first char of "myproject"
-				found = true
-				break outer
-			}
+			full += mainc
 		}
+		full += "\n"
 	}
-	if !found {
-		t.Error("overlay title should contain project name 'myproject'")
+	if strings.Contains(full, "(myproject)") {
+		t.Error("overlay title still carries the parenthesized project name — it moved to the badge")
+	}
+	if !strings.Contains(full, "Agents") {
+		t.Error("overlay title lost its 'Agents' label")
 	}
 }
 
