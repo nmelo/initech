@@ -447,11 +447,21 @@ func readExemptions(path string) (map[string]string, error) {
 		if env == "" {
 			continue
 		}
-		if !found || strings.TrimSpace(reason) == "" {
+		reason = strings.TrimSpace(reason)
+		if !found || reason == "" {
 			return nil, fmt.Errorf("%s: exemption %q has no reason. An exemption without a reason is "+
 				"an accident with a comment character in it", path, env)
 		}
-		out[env] = strings.TrimSpace(reason)
+		// super's condition on the ini-0lko ruling, enforced rather than
+		// remembered: "dropped" decays into "forgotten" the moment a line says
+		// only WHY CI skips it and not WHEN a human runs it instead. Requiring
+		// the trigger in the parser means the next person to drop a rig cannot
+		// leave that half out quietly.
+		if !strings.Contains(reason, "RUN:") {
+			return nil, fmt.Errorf("%s: exemption %q states no run trigger. Add \"RUN: <when, and who>\" "+
+				"to the reason -- a dropped rig with no trigger is a forgotten one", path, env)
+		}
+		out[env] = reason
 	}
 	return out, nil
 }
