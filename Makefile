@@ -4,7 +4,22 @@ COMMIT ?= HEAD
 REPO ?= nmelo/initech
 RELEASE_WORKFLOW ?= Release
 FORMULA ?= initech
-EXPECTED_ASSETS := checksums.txt initech_darwin_amd64.tar.gz initech_darwin_arm64.tar.gz initech_linux_amd64.tar.gz initech_linux_arm64.tar.gz
+# The two windows tarballs were MISSING here while .goreleaser.yaml has built
+# them all along (goos darwin/linux/windows x goarch amd64/arm64, no ignore
+# block) -- so release-assets, which checks that each EXPECTED asset exists and
+# never that published EQUALS expected, would print "Release assets verified"
+# with windows users getting nothing. Found by shipper, verified independently
+# at origin/main before changing. Adding them is a fact correction, not a
+# behaviour change.
+#
+# Still a SUBSET check on purpose. Equality against a HAND-MAINTAINED list is
+# worse than subset against one in a specific way: every legitimate matrix
+# change reds the gate until someone edits this file, trading a silent miss for
+# a noisy false alarm on someone else's schedule -- the same argument that
+# dropped the Claude-measuring probes from the release gate. Equality belongs
+# with DERIVATION from the goreleaser matrix (ini-ojvm); shipper derives and
+# asserts it by hand at gate time until that lands.
+EXPECTED_ASSETS := checksums.txt initech_darwin_amd64.tar.gz initech_darwin_arm64.tar.gz initech_linux_amd64.tar.gz initech_linux_arm64.tar.gz initech_windows_amd64.tar.gz initech_windows_arm64.tar.gz
 LDFLAGS := -s -w -X github.com/nmelo/initech/cmd.Version=$(VERSION)
 REQUIRE_RELEASE_VERSION = test -n "$(VERSION)" && case "$(VERSION)" in v*) ;; *) echo "VERSION must start with v, got $(VERSION)" >&2; exit 1 ;; esac
 
