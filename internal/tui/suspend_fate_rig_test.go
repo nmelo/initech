@@ -195,8 +195,12 @@ func childLiveness(t *testing.T, tui *TUI, name, nonce string) liveness {
 	}
 	realAlive := childProcessAlive(proc)
 	flagAlive := pv.IsAlive()
-	t.Logf("LIVENESS CONTEXT for %s: signal0=%v cachedFlag=%v suspended=%v capturedBytes=%d",
-		name, realAlive, flagAlive, pv.IsSuspended(), len(paneOutput(tui, name)))
+	// The shell is named in the output on purpose: a diagnostic that varies
+	// the shell and does not WITNESS which one ran leaves its own conclusion
+	// resting on an env var being honoured. Cheap to log, and it is the
+	// load-bearing link when this rig is used to argue a platform finding.
+	t.Logf("LIVENESS CONTEXT for %s: shell=%s signal0=%v cachedFlag=%v suspended=%v capturedBytes=%d",
+		name, shellForFixture(), realAlive, flagAlive, pv.IsSuspended(), len(paneOutput(tui, name)))
 	if realAlive != flagAlive {
 		t.Logf("LIVENESS DISAGREEMENT for %s: signal0=%v but cached alive flag=%v. Neither "+
 			"'no process' nor 'not reading' -- the flag disagrees with the process, which is "+
