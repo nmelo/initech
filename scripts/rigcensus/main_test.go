@@ -229,7 +229,7 @@ jobs:
 func TestRun_ExemptionWithReasonSatisfiesTheCensus(t *testing.T) {
 	dir, wf, ex := writeCensusFixture(t, oneGatedRig, `
 jobs: {}
-`, "INITECH_NEWRIG  # needs a live authenticated claude. RUN: on a Claude bump, by whoever bumps\n")
+`, "INITECH_NEWRIG  # needs a live authenticated claude. TRIGGER: on a Claude bump, by whoever bumps\n")
 	if err := run(dir, wf, ex, false); err != nil {
 		t.Fatalf("documented exemption rejected: %v", err)
 	}

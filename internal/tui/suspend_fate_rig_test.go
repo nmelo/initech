@@ -87,6 +87,71 @@ func paneOutput(tui *TUI, name string) string {
 	return out
 }
 
+// childLiveness answers the one question an ABSENCE of output cannot: is the
+// child alive and READING, or was there never a process for the message to
+// reach? Without this, "the pane printed nothing" is consistent with both a
+// real delivery loss and a rig whose child never came back -- and a rig that
+// cannot tell those apart reports the second as the first, which is a
+// manufactured finding.
+//
+// The probe is a nonce echoed back with the GOT: prefix. That prefix is
+// content ONLY THE CHILD CAN PRODUCE: terminal echo reproduces the input line
+// verbatim, never a transformation of it, so a GOT: hit cannot be the
+// terminal answering on the child's behalf. This is the confound that put
+// ini-hbj4's darwin greens in doubt (its fixture asserted injected bytes
+// merely APPEARED, which local echo satisfies with the child receiving
+// nothing); the prefix shape is immune to it.
+//
+// Tri-state on purpose. A SUSPENDED pane queues the probe instead of
+// delivering it, so silence there means nothing at all -- collapsing that into
+// "dead" would invent a rig fault out of correct behavior.
+type liveness int
+
+const (
+	livenessReading   liveness = iota // child answered the probe: alive and consuming input
+	livenessSilent                    // pane running, child did not answer: no reader
+	livenessSuspended                 // pane suspended: the probe was queued, verdict impossible
+)
+
+func (l liveness) String() string {
+	switch l {
+	case livenessReading:
+		return "child answered the probe (alive and reading)"
+	case livenessSuspended:
+		return "pane is SUSPENDED, so the probe was queued -- inconclusive by construction"
+	default:
+		return "child did NOT answer the probe (no live reader)"
+	}
+}
+
+func childLiveness(t *testing.T, tui *TUI, name, nonce string) liveness {
+	t.Helper()
+	var pv PaneView
+	tui.runOnMain(func() {
+		for _, cand := range tui.panes {
+			if cand.Name() == name {
+				pv = cand
+			}
+		}
+	})
+	if pv == nil {
+		return livenessSilent
+	}
+	if pv.IsSuspended() {
+		return livenessSuspended
+	}
+	probe := "liveness-" + nonce
+	pv.SendText(probe, true)
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if strings.Contains(paneOutput(tui, name), "GOT:"+probe) {
+			return livenessReading
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	return livenessSilent
+}
+
 // TestSuspendFate_IPCSendPath is matrix row 1: `initech send` to a suspended
 // agent, via the real handler. Designed behavior: queue + resume-on-message +
 // an honest "resumed and delivered" response. The assertions verify the
@@ -111,8 +176,19 @@ func TestSuspendFate_IPCSendPath(t *testing.T) {
 	t.Logf("RESPawned pane output:\n%s", out)
 
 	if resp.OK && !strings.Contains(out, "GOT:hello-after-suspend") {
-		t.Errorf("FINDING: sender told %q but the message never reached the resumed process -- "+
-			"success-reported loss, the worst shape", resp.Data)
+		// "success-reported loss" is a strong claim and an empty capture does
+		// not support it on its own: no output is equally consistent with the
+		// child never having respawned. Discriminate before claiming (ini-0lko).
+		switch live := childLiveness(t, tui, "eng1", "ipcsend"); live {
+		case livenessReading:
+			t.Errorf("FINDING (product): sender told %q but the message never reached the resumed "+
+				"process, and the child IS alive and reading -- a liveness probe sent afterwards "+
+				"came back. Success-reported loss, the worst shape.", resp.Data)
+		default:
+			t.Errorf("RIG FAULT, not a product finding: sender told %q and the message did not "+
+				"appear, but %s. An absent line proves nothing about delivery when nothing was "+
+				"listening.", resp.Data, live)
+		}
 	}
 	if !resp.OK {
 		t.Logf("FINDING: send to suspended agent FAILS with %q (loud, at least -- but deliver/report "+
@@ -270,8 +346,19 @@ func awaitDelivery(t *testing.T, tui *TUI, marker string) {
 		}
 		time.Sleep(500 * time.Millisecond)
 	}
-	t.Fatalf("message %q never reached the auto-resumed process; queue-without-resume is "+
-		"delivery deferred to never. Output:\n%s", marker, paneOutput(tui, "eng1"))
+	// The capture is empty or wrong. Before calling that a delivery failure,
+	// establish that there was a live reader to deliver TO (ini-0lko).
+	switch live := childLiveness(t, tui, "eng1", marker); live {
+	case livenessReading:
+		t.Fatalf("FINDING (product): message %q never reached the auto-resumed process, and the "+
+			"child IS alive and reading -- a liveness probe sent afterwards came back. So the "+
+			"message was genuinely lost, not merely unobserved. queue-without-resume is delivery "+
+			"deferred to never. Output:\n%s", marker, paneOutput(tui, "eng1"))
+	default:
+		t.Fatalf("RIG FAULT, not a product finding: message %q never arrived, but %s. This rig "+
+			"cannot speak to delivery when there is no reader to deliver to -- fix the rig before "+
+			"reading anything into this. Output:\n%s", marker, live, paneOutput(tui, "eng1"))
+	}
 }
 
 // TestSuspendGuard_ForwardSendSite drives the REAL forward-delivery entry
