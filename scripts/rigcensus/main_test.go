@@ -364,6 +364,14 @@ func TestRun_ExemptionWithoutRunTriggerIsRejected(t *testing.T) {
 
 // A leftover exemption claims a decision about something that no longer exists,
 // and the next reader trusts it.
+//
+// THE FIXTURE CARRIES A TRIGGER ON PURPOSE. Without one, readExemptions
+// rejects the line for the missing trigger -- and that error ALSO names
+// INITECH_LONG_GONE, so this test passed while never reaching the stale check
+// at all. It rotted that way the day the TRIGGER requirement was added
+// upstream of it: a guard added in front of a test can hollow the test out
+// without touching it, and the suite stays green. Found by re-running the
+// mutation matrix on a verified-clean baseline.
 func TestRun_StaleExemptionFails(t *testing.T) {
 	dir, wf, ex := writeCensusFixture(t, oneGatedRig, `
 jobs:
@@ -373,7 +381,7 @@ jobs:
         env:
           INITECH_NEWRIG: "1"
         run: go test -run 'TestNewRig_Composed' ./...
-`, "INITECH_LONG_GONE  # deleted two releases ago\n")
+`, "INITECH_LONG_GONE  # deleted two releases ago. TRIGGER: never, it is gone\n")
 	err := run(dir, wf, ex, "", false)
 	if err == nil || !strings.Contains(err.Error(), "INITECH_LONG_GONE") {
 		t.Fatalf("stale exemption not reported: %v", err)
