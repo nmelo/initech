@@ -2,10 +2,16 @@
 #
 # Read by scripts/rigcensus (make check). Anything gated and NOT listed here
 # fails the build, so this file is the complete record of what CI does not
-# cover and why. Format: ENV_VAR  # reason
+# cover and why. Format: ENV_VAR  # what it is. RUN: when a human runs it, and who.
 #
 # An exemption is a DECISION. If you are adding a line here because wiring the
 # rig is awkward, wire the rig.
+#
+# EVERY LINE STATES A RUN TRIGGER (super's condition on the ini-0lko ruling):
+# not just why CI does not run it, but WHEN a human does, and who. "Dropped"
+# decays into "forgotten" the moment a line says only why. The census prints
+# these on every `make check -v`, so the trigger stays in front of people
+# instead of living in a bead nobody reopens.
 
 # ── ITEM 3 (ini-0lko): THE CREDENTIAL DECISION — DROPPED, NOT PROVISIONED ───
 #
@@ -19,17 +25,22 @@
 # release schedule trains people to ignore it.
 #
 # WHAT THE OPERATOR GETS INSTEAD, so this is a trade and not a hole: these stay
-# human-run diagnostics, run when bumping Claude. The gate no longer CLAIMS
-# them, which is the thing the ruling forbade — a check a human runs by hand
-# must not be counted by a machine.
-INITECH_6M4         # spawns 8 real Claude sessions; two-window modal parity. Human-run on a Claude bump.
-INITECH_ZJHG        # real-Claude dialog measurement (composer echo, click-answers-dialog). Human-run.
-INITECH_OSC_PROBE   # real-Claude OSC 777 tripwire. Human-run on a Claude bump; see ini-d7a7.
-INITECH_D7A7        # real-Claude OSC emitter diagnostic; answers "what changed" on a bump.
-INITECH_ALTPROBE    # real-Claude alt-screen probe.
-INITECH_ALTPROBE_VIM # real-vim alt-screen control for the above.
-INITECH_LIVEPROBE   # real-Claude live-region probe; needs a specific value (=askq), not just 1.
-INITECH_NOTIF_PROBE # real-Claude notification-channel probe.
+# human-run diagnostics with a named trigger. The gate no longer CLAIMS them,
+# which is the thing the ruling forbade — a check a human runs by hand must not
+# be counted by a machine.
+#
+# RUN TRIGGER FOR THIS WHOLE BLOCK: a Claude version bump. Whoever bumps Claude
+# runs them, against the new version, before the fleet moves to it. That is the
+# only event that can invalidate what they measure — they assert things about
+# Claude's TUI, so Claude changing is the trigger and nothing else is.
+INITECH_6M4         # spawns 8 real Claude sessions; two-window modal parity. RUN: on a Claude bump, by whoever bumps.
+INITECH_ZJHG        # real-Claude dialog measurement (composer echo, click-answers-dialog). RUN: on a Claude bump, by whoever bumps.
+INITECH_OSC_PROBE   # real-Claude OSC 777 tripwire; see ini-d7a7. RUN: on a Claude bump, by whoever bumps.
+INITECH_D7A7        # real-Claude OSC emitter diagnostic; answers "what changed". RUN: on a Claude bump, by whoever bumps.
+INITECH_ALTPROBE    # real-Claude alt-screen probe. RUN: on a Claude bump, by whoever bumps.
+INITECH_ALTPROBE_VIM # real-vim alt-screen control for the above. RUN: on a Claude bump, by whoever bumps.
+INITECH_LIVEPROBE   # real-Claude live-region probe; needs a specific value (=askq), not just 1. RUN: on a Claude bump, by whoever bumps.
+INITECH_NOTIF_PROBE # real-Claude notification-channel probe. RUN: on a Claude bump, by whoever bumps.
 
 # ── NOT RIGS AT ALL: helper subprocesses ───────────────────────────────────
 #
@@ -38,6 +49,10 @@ INITECH_NOTIF_PROBE # real-Claude notification-channel probe.
 # from a rig by inspection, and deliberately does not try: a heuristic that
 # guessed would fail silently the first time someone wrote a gate it did not
 # expect. A human says which it is, here.
-INITECH_FOLDBACK_HELPER  # child process of TestFoldback_CrashFoldsAgentIntoWindowOne; runs as its subprocess.
-INITECH_LIVENESS_HELPER  # child process of TestChildProcessAlive_*; never run directly.
-INITECH_FOLDBACK_ADDR    # address handed to the foldback helper child; not a gate of its own.
+#
+# RUN TRIGGER FOR THIS BLOCK: every CI run already, indirectly — the parent test
+# re-execs the binary with the var set. Nobody runs these by hand, and a line
+# here going unrun is not a gap, it is the design.
+INITECH_FOLDBACK_HELPER  # child process of TestFoldback_CrashFoldsAgentIntoWindowOne. RUN: by its parent test, every CI run.
+INITECH_LIVENESS_HELPER  # child process of TestChildProcessAlive_*. RUN: by its parent test, every CI run.
+INITECH_FOLDBACK_ADDR    # address handed to the foldback helper child; not a gate of its own. RUN: set by the parent test, every CI run.

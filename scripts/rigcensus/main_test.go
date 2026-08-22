@@ -229,7 +229,7 @@ jobs:
 func TestRun_ExemptionWithReasonSatisfiesTheCensus(t *testing.T) {
 	dir, wf, ex := writeCensusFixture(t, oneGatedRig, `
 jobs: {}
-`, "INITECH_NEWRIG  # needs a live authenticated claude; run by hand on a bump\n")
+`, "INITECH_NEWRIG  # needs a live authenticated claude. RUN: on a Claude bump, by whoever bumps\n")
 	if err := run(dir, wf, ex, false); err != nil {
 		t.Fatalf("documented exemption rejected: %v", err)
 	}
@@ -241,6 +241,18 @@ func TestRun_ExemptionWithoutReasonIsRejected(t *testing.T) {
 	err := run(dir, wf, ex, false)
 	if err == nil || !strings.Contains(err.Error(), "no reason") {
 		t.Fatalf("reasonless exemption accepted: %v", err)
+	}
+}
+
+// An exemption that says why CI skips it but never says when a human runs it
+// instead is how "dropped" turns into "forgotten". super's condition on the
+// ini-0lko ruling, enforced in the parser rather than left to memory.
+func TestRun_ExemptionWithoutRunTriggerIsRejected(t *testing.T) {
+	dir, wf, ex := writeCensusFixture(t, oneGatedRig, "jobs: {}\n",
+		"INITECH_NEWRIG  # needs a live authenticated claude, cannot run on a runner\n")
+	err := run(dir, wf, ex, false)
+	if err == nil || !strings.Contains(err.Error(), "run trigger") {
+		t.Fatalf("triggerless exemption accepted: %v", err)
 	}
 }
 
