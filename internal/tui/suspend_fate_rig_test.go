@@ -109,8 +109,10 @@ type liveness int
 
 const (
 	livenessReading   liveness = iota // child answered the probe: alive and consuming input
-	livenessSilent                    // pane running, child did not answer: no reader
+	livenessSilent                    // process alive, did not answer: running but not reading
 	livenessSuspended                 // pane suspended: the probe was queued, verdict impossible
+	livenessNoProcess                 // pane exists but its process is NOT alive: nothing respawned
+	livenessNoPane                    // no pane by that name at all: the fixture itself is wrong
 )
 
 func (l liveness) String() string {
@@ -119,8 +121,14 @@ func (l liveness) String() string {
 		return "child answered the probe (alive and reading)"
 	case livenessSuspended:
 		return "pane is SUSPENDED, so the probe was queued -- inconclusive by construction"
+	case livenessNoProcess:
+		return "the pane's process is NOT ALIVE -- nothing was respawned, so this is about the " +
+			"respawn path, not about delivery"
+	case livenessNoPane:
+		return "there is no pane by that name at all -- the fixture is wrong, not the product"
 	default:
-		return "child did NOT answer the probe (no live reader)"
+		return "the process IS alive but did not answer the probe -- respawned and not reading, " +
+			"which points at the fixture's shell loop rather than at delivery"
 	}
 }
 
@@ -135,10 +143,21 @@ func childLiveness(t *testing.T, tui *TUI, name, nonce string) liveness {
 		}
 	})
 	if pv == nil {
-		return livenessSilent
+		return livenessNoPane
 	}
+	// "No live reader" has two very different causes and the verdict is
+	// useless without knowing which: the PRODUCT failed to respawn a process
+	// at all, or it respawned one that is not consuming input (a fixture whose
+	// shell loop does not survive the respawn on this platform). IsAlive
+	// answers the first; the probe answers the second. Log both, because the
+	// gap between them is where a rig fault and a P1 look identical.
+	t.Logf("LIVENESS CONTEXT for %s: alive=%v suspended=%v capturedBytes=%d",
+		name, pv.IsAlive(), pv.IsSuspended(), len(paneOutput(tui, name)))
 	if pv.IsSuspended() {
 		return livenessSuspended
+	}
+	if !pv.IsAlive() {
+		return livenessNoProcess
 	}
 	probe := "liveness-" + nonce
 	pv.SendText(probe, true)
