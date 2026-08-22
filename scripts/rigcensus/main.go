@@ -425,6 +425,13 @@ type funcFacts struct {
 	envs  []string
 	skips bool
 	calls []string
+	// condSkipCalls are functions called inside the CONDITION of an if whose
+	// BODY skips (ini-9jch): `if readsEnv() != "1" { t.Skip(...) }` where
+	// readsEnv is a separate helper that only returns the value. This is the
+	// structural signal that a call's return value feeds THIS skip, without
+	// requiring readsEnv to skip itself -- the shape a plain "does F skip"
+	// flag on F cannot express.
+	condSkipCalls []string
 }
 
 // gatesByTest resolves each Test function's gates, following calls to helpers
@@ -436,8 +443,27 @@ func gatesByTest(f *ast.File) map[string][]string {
 		if !ok || fn.Body == nil {
 			continue
 		}
-		envs, skips, calls := scanFunc(fn.Body)
-		facts[fn.Name.Name] = &funcFacts{envs: envs, skips: skips, calls: calls}
+		envs, skips, calls, condSkipCalls := scanFunc(fn.Body)
+		facts[fn.Name.Name] = &funcFacts{envs: envs, skips: skips, calls: calls, condSkipCalls: condSkipCalls}
+	}
+
+	// A function called inside a skip-guarding IF-CONDITION is known, by that
+	// structural position, to feed the skip decision -- so its reachable envs
+	// are folded into the enclosing function's OWN envs directly, regardless
+	// of whether that helper skips itself. This is deliberately narrower than
+	// "credit everything reachable from a skipping test": it only pulls in
+	// envs from a call that sits where a skip predicate sits, so a config
+	// knob read elsewhere in the same function (INITECH_RIG_ARTIFACTS picking
+	// an output directory, not gating anything) is untouched. The first,
+	// broader version of this fix DID credit everything reachable and it
+	// mis-flagged three real config knobs against the actual repo inventory
+	// (INITECH_9IMX_SHELL, INITECH_RIG_ARTIFACTS, INITECH_X5OB_ARTIFACTS) --
+	// pinned in TestGatesByTest_UnrelatedHelperOutsideTheConditionStaysAKnob
+	// so that regression cannot come back silently.
+	for _, fx := range facts {
+		for _, c := range fx.condSkipCalls {
+			fx.envs = append(fx.envs, allReachableEnvs(c, facts, map[string]bool{})...)
+		}
 	}
 
 	// Skipping propagates through calls: a test that calls requireNotifProbe
@@ -496,12 +522,82 @@ func gatesByTest(f *ast.File) map[string][]string {
 	return gatesOf
 }
 
-// scanFunc reports the INITECH_* vars a function reads, whether it skips, and
-// the functions it calls.
-func scanFunc(body *ast.BlockStmt) (envs []string, skips bool, calls []string) {
+// allReachableEnvs walks every function reachable from name and returns their
+// combined envs, UNCONDITIONALLY -- unlike resolve() in gatesByTest, it does
+// not require each function on the path to skip itself. Only called from a
+// condSkipCalls entry, whose caller has already established (structurally,
+// by the call's position inside a skip-guarding if-condition) that this walk
+// is relevant; it is not applied to a test's whole call tree, which is what
+// keeps a config knob read by an unrelated helper from being credited too.
+func allReachableEnvs(name string, facts map[string]*funcFacts, seen map[string]bool) []string {
+	fx, ok := facts[name]
+	if !ok || seen[name] {
+		return nil
+	}
+	seen[name] = true
+	out := append([]string(nil), fx.envs...)
+	for _, c := range fx.calls {
+		out = append(out, allReachableEnvs(c, facts, seen)...)
+	}
+	return out
+}
+
+// bodySkips reports whether a block calls t.Skip/Skipf/SkipNow anywhere
+// within it, including nested statements.
+func bodySkips(body *ast.BlockStmt) bool {
+	found := false
+	ast.Inspect(body, func(n ast.Node) bool {
+		call, ok := n.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		sel, ok := call.Fun.(*ast.SelectorExpr)
+		if !ok {
+			return true
+		}
+		switch sel.Sel.Name {
+		case "Skip", "Skipf", "SkipNow":
+			found = true
+		}
+		return true
+	})
+	return found
+}
+
+// scanFunc reports the INITECH_* vars a function reads, whether it skips, the
+// functions it calls, and which of those calls sit inside the CONDITION of an
+// if whose body skips.
+func scanFunc(body *ast.BlockStmt) (envs []string, skips bool, calls []string, condSkipCalls []string) {
 	seen := map[string]bool{}
 	called := map[string]bool{}
+	condCalled := map[string]bool{}
 	ast.Inspect(body, func(n ast.Node) bool {
+		if ifs, ok := n.(*ast.IfStmt); ok && ifs.Body != nil && bodySkips(ifs.Body) {
+			// THE THREE-HOP SHAPE (ini-9jch): `if readsEnv() != "1" {
+			// t.Skip(...) }` where readsEnv is a separate helper that only
+			// returns the value. readsEnv never skips itself, so the
+			// per-function skip flag elsewhere in this file cannot see it --
+			// this is the one place that structural position (called where a
+			// skip predicate sits) stands in for real dataflow analysis.
+			var conds []ast.Node
+			if ifs.Cond != nil {
+				conds = append(conds, ifs.Cond)
+			}
+			if ifs.Init != nil {
+				conds = append(conds, ifs.Init)
+			}
+			for _, cnode := range conds {
+				ast.Inspect(cnode, func(cn ast.Node) bool {
+					if call, ok := cn.(*ast.CallExpr); ok {
+						if id, ok := call.Fun.(*ast.Ident); ok && !condCalled[id.Name] {
+							condCalled[id.Name] = true
+							condSkipCalls = append(condSkipCalls, id.Name)
+						}
+					}
+					return true
+				})
+			}
+		}
 		call, ok := n.(*ast.CallExpr)
 		if !ok {
 			return true
@@ -520,7 +616,7 @@ func scanFunc(body *ast.BlockStmt) (envs []string, skips bool, calls []string) {
 		switch sel.Sel.Name {
 		case "Skip", "Skipf", "SkipNow":
 			skips = true
-		case "Getenv":
+		case "Getenv", "LookupEnv":
 			if len(call.Args) != 1 {
 				return true
 			}
@@ -540,7 +636,7 @@ func scanFunc(body *ast.BlockStmt) (envs []string, skips bool, calls []string) {
 		return true
 	})
 	sort.Strings(envs)
-	return envs, skips, calls
+	return envs, skips, calls, condSkipCalls
 }
 
 // runSelectorRe pulls the -run value out of a step's shell command.

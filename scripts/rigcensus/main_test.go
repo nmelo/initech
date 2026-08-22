@@ -113,6 +113,112 @@ func TestSplit_Rig(t *testing.T) { requireRig(t) }
 	}
 }
 
+// ini-9jch: os.LookupEnv is a real, idiomatic form of "read this env var" and
+// was invisible to the scanner, which recognized only os.Getenv. Isolated
+// from the three-hop shape below: this is a single function that reads via
+// LookupEnv and skips ITSELF, so it proves the recognition fix alone.
+func TestGatesByTest_LookupEnvIsRecognizedAsAGate(t *testing.T) {
+	got := parseGates(t, `package tui
+import ("os"; "testing")
+func TestLookup_Rig(t *testing.T) {
+	v, _ := os.LookupEnv("INITECH_LOOKUP")
+	if v != "1" { t.Skip("off") }
+}
+`)
+	if envs := got["TestLookup_Rig"]; len(envs) != 1 || envs[0] != "INITECH_LOOKUP" {
+		t.Fatalf("LookupEnv gate not recognized: got %v", envs)
+	}
+}
+
+// ini-9jch: THE gap this bead exists to close. Unlike
+// TestGatesByTest_HelperReadsEnvAndDelegatesTheSkipDeeper (env read directly
+// in the SAME function as the if-condition, skip delegated one hop deeper),
+// this is the OPPOSITE split: the skip is LOCAL to the outer function's own
+// if-body, and the env READ is delegated to a separate helper that only
+// RETURNS the value -- the helper never calls Skip itself, so the
+// per-function skip flag that gates every other shape in this file cannot
+// see it. Structural fix: a call inside the CONDITION of a skip-guarding if
+// gets its reachable envs folded in regardless of whether it skips.
+func TestGatesByTest_ThreeHopSplitSkipInCallerReadInSeparateHelper(t *testing.T) {
+	got := parseGates(t, `package tui
+import ("os"; "testing")
+func readSplitEnv() string {
+	v, _ := os.LookupEnv("INITECH_THREEHOP")
+	return v
+}
+func requireThreeHop(t *testing.T) {
+	if readSplitEnv() != "1" { t.Skip("off") }
+}
+func TestThreeHop_Rig(t *testing.T) { requireThreeHop(t) }
+`)
+	if envs := got["TestThreeHop_Rig"]; len(envs) != 1 || envs[0] != "INITECH_THREEHOP" {
+		t.Fatalf("three-hop split gate not resolved: got %v", envs)
+	}
+}
+
+// The narrow fix must not become the broad one it replaced: a config knob
+// read by an UNRELATED helper that merely happens to share a call tree with
+// a skipping test must stay invisible, because it is never called from
+// INSIDE the skip-guarding if-condition. This is the regression the first,
+// rejected version of this fix produced (INITECH_RIG_ARTIFACTS and siblings
+// wrongly flagged as gates against the real repo) -- pinned here so it
+// cannot come back silently.
+func TestGatesByTest_UnrelatedHelperOutsideTheConditionStaysAKnob(t *testing.T) {
+	got := parseGates(t, `package tui
+import ("os"; "testing")
+func pickArtifactDir() string {
+	return os.Getenv("INITECH_ARTIFACTS")
+}
+func TestKnob_Rig(t *testing.T) {
+	if os.Getenv("INITECH_REALGATE") != "1" { t.Skip("off") }
+	dir := pickArtifactDir()
+	_ = dir
+}
+`)
+	envs := got["TestKnob_Rig"]
+	for _, e := range envs {
+		if e == "INITECH_ARTIFACTS" {
+			t.Fatalf("unrelated config knob (read outside the skip condition) credited as a gate: got %v", envs)
+		}
+	}
+	found := false
+	for _, e := range envs {
+		if e == "INITECH_REALGATE" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("the real gate was lost alongside the knob: got %v", envs)
+	}
+}
+
+// The condSkipCalls signal is keyed on the IF-BODY actually skipping, not on
+// mere presence inside an if-condition. Found by mutating bodySkips to always
+// report true (a valid, vet-clean mutant that survived every other test in
+// this file): a call inside the condition of an ORDINARY if -- one whose body
+// does nothing with Skip -- must not have its envs folded in, or every
+// conditional env read in the codebase becomes a false gate.
+func TestGatesByTest_CallInNonSkippingIfConditionStaysAKnob(t *testing.T) {
+	got := parseGates(t, `package tui
+import ("os"; "testing")
+func pickMode() string {
+	return os.Getenv("INITECH_MODE")
+}
+func TestOrdinary_Rig(t *testing.T) {
+	if os.Getenv("INITECH_REALGATE") != "1" { t.Skip("off") }
+	if pickMode() == "fast" {
+		_ = 1
+	}
+}
+`)
+	envs := got["TestOrdinary_Rig"]
+	for _, e := range envs {
+		if e == "INITECH_MODE" {
+			t.Fatalf("a call inside a NON-skipping if's condition was credited as a gate: got %v", envs)
+		}
+	}
+}
+
 func writeCensusFixture(t *testing.T, testSrc, workflow, exemptions string) (dir, wf, ex string) {
 	t.Helper()
 	root := t.TempDir()
