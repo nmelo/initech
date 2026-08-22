@@ -52,8 +52,14 @@ jobs:
       # `env:` but left out of the selector (caught by a human reading a diff).
       # This step reads THIS file and the test inventory and derives the answer,
       # so the next unwired rig fails the build instead of going quiet.
-      # Static (parse-only), so one leg answers for all three.
-      - name: Rig census (every gated rig is run by CI or exempted)
+      # ini-nvpg: this same run now checks a SECOND inventory -- Makefile
+      # targets. A target nothing invokes is the Makefile's version of a gated
+      # rig nobody runs, and `make test-race` was exactly that: written
+      # deliberately, in no gate, with 7 data races behind it (ini-4cfl).
+      #
+      # Static (parse-only), so one leg answers for all. (Was "all three" until
+      # ini-ibsm left macOS the only tested platform.)
+      - name: Census (every gated rig and every make target is invoked or exempted)
         run: go run ./scripts/rigcensus -v
 
       # ini-47w: witness WHICH tests this platform actually compiled, by name.

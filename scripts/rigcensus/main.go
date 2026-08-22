@@ -101,6 +101,14 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+	// Second inventory, same rule (ini-nvpg): a target nothing invokes is a
+	// gated rig nobody runs.
+	if err := runTargetCensus(defaultMakefile,
+		[]string{*workflow, ".github/workflows/release.yml", "scripts/hooks/pre-commit"},
+		targetExemptionsPath, *verbose); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
 }
 
 func run(testDir, workflow, exemptionsFile, quarantineFile string, verbose bool) error {

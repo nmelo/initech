@@ -1,0 +1,32 @@
+# Make targets that nothing automatically invokes, each with the reason and the
+# TRIGGER saying when a human runs it.
+#
+# Read by scripts/rigcensus (make check). Format: TARGET  # what it is. TRIGGER: when, and who.
+#
+# A developer-convenience target is not a violation -- `make build` is meant to
+# be typed by a person. The point of the file is that the DECISION is visible:
+# someone stated that this target is human-invoked, rather than it merely
+# happening to be unreferenced. That distinction is the whole bead: `make
+# test-race` looked exactly like `make build` from the outside, and one of them
+# was a gate nobody ran.
+
+build          # compile the binary for local use; CI builds directly rather than through this. TRIGGER: by hand, whenever a developer wants a binary.
+clean          # delete the built binary. TRIGGER: by hand.
+install-hooks  # point core.hooksPath at scripts/hooks. TRIGGER: once per checkout, by whoever clones; the scaffold does it automatically for checkouts it creates.
+lint           # golangci-lint over the tree; not in a gate because the linter is not a required dev dependency. TRIGGER: by hand, before a large refactor.
+
+# integration's -run selector is HAND-MAINTAINED, which is the rot class this
+# census exists to catch -- and it is redundant with test-full, which runs the
+# whole suite without -short and therefore already covers every test named
+# here. Kept for hand use rather than deleted, but recorded so the redundancy
+# is visible to whoever next reaches for it.
+integration    # a hand-picked subset, superseded by test-full. TRIGGER: by hand, when someone wants that subset without the full run.
+
+# The release chain. Invoked by shipper during a release, in order, not by any
+# gate -- a release is a human-initiated event by design.
+release        # goreleaser build and publish. TRIGGER: shipper, per release.
+release-tag    # create and push the tag. TRIGGER: shipper, per release.
+release-wait   # wait for the release workflow to finish. TRIGGER: shipper, per release.
+release-assets # verify the published assets exist. TRIGGER: shipper, per release.
+release-verify # release-wait plus release-assets. TRIGGER: shipper, per release.
+release-ship   # the whole chain: test, tag, verify. TRIGGER: shipper, per release.

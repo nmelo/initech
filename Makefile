@@ -109,7 +109,11 @@ test-census:
 rig-census:
 	@go run ./scripts/rigcensus
 
-check: hooks-check vet vet-windows vet-linux test-census rig-census lint-test-names test
+# lint-test-names-self-test is IN the gate (ini-nvpg): it costs 0.18s and it is
+# the only thing that verifies the lint script guarding every test name in the
+# repo. A self-test that nothing runs is the defect this census exists to find,
+# and exempting it would have recorded the gap instead of closing it.
+check: hooks-check vet vet-windows vet-linux test-census rig-census lint-test-names lint-test-names-self-test test
 
 release:
 	@set -eu; \
