@@ -1,0 +1,43 @@
+# Env-gated rigs that CI deliberately does NOT run, each with the reason.
+#
+# Read by scripts/rigcensus (make check). Anything gated and NOT listed here
+# fails the build, so this file is the complete record of what CI does not
+# cover and why. Format: ENV_VAR  # reason
+#
+# An exemption is a DECISION. If you are adding a line here because wiring the
+# rig is awkward, wire the rig.
+
+# ── ITEM 3 (ini-0lko): THE CREDENTIAL DECISION — DROPPED, NOT PROVISIONED ───
+#
+# These rigs spawn a real, authenticated `claude` and cannot run on a runner.
+# The bead offered two options: provision a credential in CI, or drop them from
+# the gate. DROPPED, and the reasoning is on the bead — in short: provisioning
+# puts a live account token in CI secrets and bills real sessions on every push
+# to prove things about a THIRD-PARTY TUI that changes without our involvement.
+# ini-d7a7 is the evidence: a Claude release moved and our probe reported the
+# emitter dead when it was healthy. A gate that red-flags on someone else's
+# release schedule trains people to ignore it.
+#
+# WHAT THE OPERATOR GETS INSTEAD, so this is a trade and not a hole: these stay
+# human-run diagnostics, run when bumping Claude. The gate no longer CLAIMS
+# them, which is the thing the ruling forbade — a check a human runs by hand
+# must not be counted by a machine.
+INITECH_6M4         # spawns 8 real Claude sessions; two-window modal parity. Human-run on a Claude bump.
+INITECH_ZJHG        # real-Claude dialog measurement (composer echo, click-answers-dialog). Human-run.
+INITECH_OSC_PROBE   # real-Claude OSC 777 tripwire. Human-run on a Claude bump; see ini-d7a7.
+INITECH_D7A7        # real-Claude OSC emitter diagnostic; answers "what changed" on a bump.
+INITECH_ALTPROBE    # real-Claude alt-screen probe.
+INITECH_ALTPROBE_VIM # real-vim alt-screen control for the above.
+INITECH_LIVEPROBE   # real-Claude live-region probe; needs a specific value (=askq), not just 1.
+INITECH_NOTIF_PROBE # real-Claude notification-channel probe.
+
+# ── NOT RIGS AT ALL: helper subprocesses ───────────────────────────────────
+#
+# These have a gate's exact SHAPE — Getenv then t.Skip — because a test that
+# re-execs itself as a child skips in the parent. rigcensus cannot tell them
+# from a rig by inspection, and deliberately does not try: a heuristic that
+# guessed would fail silently the first time someone wrote a gate it did not
+# expect. A human says which it is, here.
+INITECH_FOLDBACK_HELPER  # child process of TestFoldback_CrashFoldsAgentIntoWindowOne; runs as its subprocess.
+INITECH_LIVENESS_HELPER  # child process of TestChildProcessAlive_*; never run directly.
+INITECH_FOLDBACK_ADDR    # address handed to the foldback helper child; not a gate of its own.
