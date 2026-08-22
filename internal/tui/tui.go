@@ -251,7 +251,15 @@ type TUI struct {
 	// the Go memory model gives every write made before the close a
 	// happens-before edge over everything observed after the corresponding
 	// receive, which a raw poll of an unlocked slice cannot provide.
-	onWakeComplete func()
+	//
+	// onWakeCompleteMu guards THIS FIELD, not t.panes -- it exists because a
+	// timed-out waitForAsyncWake nils the hook from the test goroutine (in a
+	// defer) while a still-running wake goroutine may concurrently read and
+	// call it, which -race correctly calls a data race even though it is
+	// harmless in practice. Set/fire only through setOnWakeComplete and
+	// fireOnWakeComplete below; never touch the field directly.
+	onWakeComplete   func()
+	onWakeCompleteMu sync.Mutex
 
 	cmd       cmdModal       // Command input bar.
 	top       topModal       // Activity monitor overlay.
@@ -368,6 +376,31 @@ type TUI struct {
 	// Option+F specifically; holds what to restore on toggle-off. See
 	// focus_split.go.
 	focusSplitPrev *focusSplitSnapshot
+}
+
+// setOnWakeComplete installs (or, with nil, clears) the test-only wake-done
+// hook under onWakeCompleteMu. Callers must go through this rather than
+// assigning t.onWakeComplete directly (ini-4cfl follow-up) -- the direct
+// assignment used to run concurrently with fireOnWakeComplete's read on a
+// timed-out test, which -race calls correctly even though nothing observable
+// broke: the mutex is the two-line fix over widening the lock's blast radius
+// to t.panes itself, which stays deliberately unlocked.
+func (t *TUI) setOnWakeComplete(fn func()) {
+	t.onWakeCompleteMu.Lock()
+	t.onWakeComplete = fn
+	t.onWakeCompleteMu.Unlock()
+}
+
+// fireOnWakeComplete calls the wake-done hook if one is installed. Safe to
+// call whether or not a hook is set (production never sets one) and safe to
+// race against a concurrent setOnWakeComplete(nil).
+func (t *TUI) fireOnWakeComplete() {
+	t.onWakeCompleteMu.Lock()
+	fn := t.onWakeComplete
+	t.onWakeCompleteMu.Unlock()
+	if fn != nil {
+		fn()
+	}
 }
 
 // logPanesMutation is temporary DEBUG logging. Logs every mutation of t.panes

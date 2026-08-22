@@ -212,9 +212,19 @@ func (p *fakeRemotePaneView) Close()                {}
 // slice read can never be.
 func waitForAsyncWake(t *testing.T, tui *TUI, trigger func(), timeout time.Duration) {
 	t.Helper()
-	done := make(chan struct{})
-	tui.onWakeComplete = func() { close(done) }
-	defer func() { tui.onWakeComplete = nil }()
+	// Buffered + non-blocking send, not close(done): close panics on a
+	// second fire, and a second fire is exactly what a bug in the
+	// double-resolution guard (ini-vpwg's compare-and-clear) would produce.
+	// The hook must survive being called more than once without turning a
+	// real defect into a test-harness panic that obscures it.
+	done := make(chan struct{}, 1)
+	tui.setOnWakeComplete(func() {
+		select {
+		case done <- struct{}{}:
+		default:
+		}
+	})
+	defer tui.setOnWakeComplete(nil)
 	trigger()
 	select {
 	case <-done:

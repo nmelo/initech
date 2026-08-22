@@ -199,9 +199,7 @@ func (t *TUI) wakeSuspendedPaneFromKeystroke(p *Pane) {
 			p.mu.Lock()
 			p.waking = false
 			p.mu.Unlock()
-			if t.onWakeComplete != nil {
-				t.onWakeComplete()
-			}
+			t.fireOnWakeComplete()
 		}()
 		if err := t.resumePane(p, "keystroke"); err != nil {
 			// Inherits g7fl: the queue survives, and the failure is loud
