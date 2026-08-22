@@ -153,7 +153,7 @@ jobs:
           INITECH_OTHER: "1"
         run: go test -run 'OtherRig' ./...
 `, "")
-	err := run(dir, wf, ex, false)
+	err := run(dir, wf, ex, "", false)
 	if err == nil {
 		t.Fatal("unwired gated rig passed the census; the whole tool is inert")
 	}
@@ -174,7 +174,7 @@ jobs:
           INITECH_NEWRIG: "1"
         run: go test -run 'SomeOtherRig' ./...
 `, "")
-	if err := run(dir, wf, ex, false); err == nil {
+	if err := run(dir, wf, ex, "", false); err == nil {
 		t.Fatal("env-without-selector counted as coverage; that is exactly the 35AK near-miss")
 	}
 }
@@ -188,7 +188,7 @@ jobs:
       - name: Rigs
         run: go test -run 'TestNewRig_Composed' ./...
 `, "")
-	if err := run(dir, wf, ex, false); err == nil {
+	if err := run(dir, wf, ex, "", false); err == nil {
 		t.Fatal("selector-without-env counted as coverage; the rig would skip")
 	}
 }
@@ -203,7 +203,7 @@ jobs:
           INITECH_NEWRIG: "1"
         run: go test -run 'TestNewRig_Composed' ./...
 `, "")
-	if err := run(dir, wf, ex, false); err != nil {
+	if err := run(dir, wf, ex, "", false); err != nil {
 		t.Fatalf("correctly wired rig reported uncovered: %v", err)
 	}
 }
@@ -221,7 +221,7 @@ jobs:
           INITECH_NEWRIG: "1"
         run: go test -short -run 'TestNewRig_Composed' ./...
 `, "")
-	if err := run(dir, wf, ex, false); err == nil {
+	if err := run(dir, wf, ex, "", false); err == nil {
 		t.Fatal("-short step counted as rig coverage")
 	}
 }
@@ -230,7 +230,7 @@ func TestRun_ExemptionWithReasonSatisfiesTheCensus(t *testing.T) {
 	dir, wf, ex := writeCensusFixture(t, oneGatedRig, `
 jobs: {}
 `, "INITECH_NEWRIG  # needs a live authenticated claude. TRIGGER: on a Claude bump, by whoever bumps\n")
-	if err := run(dir, wf, ex, false); err != nil {
+	if err := run(dir, wf, ex, "", false); err != nil {
 		t.Fatalf("documented exemption rejected: %v", err)
 	}
 }
@@ -238,7 +238,7 @@ jobs: {}
 // An exemption without a reason is an accident with a comment character in it.
 func TestRun_ExemptionWithoutReasonIsRejected(t *testing.T) {
 	dir, wf, ex := writeCensusFixture(t, oneGatedRig, "jobs: {}\n", "INITECH_NEWRIG\n")
-	err := run(dir, wf, ex, false)
+	err := run(dir, wf, ex, "", false)
 	if err == nil || !strings.Contains(err.Error(), "no reason") {
 		t.Fatalf("reasonless exemption accepted: %v", err)
 	}
@@ -250,7 +250,7 @@ func TestRun_ExemptionWithoutReasonIsRejected(t *testing.T) {
 func TestRun_ExemptionWithoutRunTriggerIsRejected(t *testing.T) {
 	dir, wf, ex := writeCensusFixture(t, oneGatedRig, "jobs: {}\n",
 		"INITECH_NEWRIG  # needs a live authenticated claude, cannot run on a runner\n")
-	err := run(dir, wf, ex, false)
+	err := run(dir, wf, ex, "", false)
 	if err == nil || !strings.Contains(err.Error(), "run trigger") {
 		t.Fatalf("triggerless exemption accepted: %v", err)
 	}
@@ -268,7 +268,7 @@ jobs:
           INITECH_NEWRIG: "1"
         run: go test -run 'TestNewRig_Composed' ./...
 `, "INITECH_LONG_GONE  # deleted two releases ago\n")
-	err := run(dir, wf, ex, false)
+	err := run(dir, wf, ex, "", false)
 	if err == nil || !strings.Contains(err.Error(), "INITECH_LONG_GONE") {
 		t.Fatalf("stale exemption not reported: %v", err)
 	}
@@ -282,6 +282,7 @@ func TestRun_RepositoryInventoryIsFullyCovered(t *testing.T) {
 		filepath.Join(root, "internal", "tui"),
 		filepath.Join(root, ".github", "workflows", "ci.yml"),
 		filepath.Join(root, ".github", "rig-census-exemptions.txt"),
+		filepath.Join(root, ".github", "rig-quarantine.txt"),
 		false,
 	)
 	if err != nil {
@@ -303,4 +304,125 @@ func repoRoot(t *testing.T) string {
 	}
 	t.Fatal("go.mod not found above the test's working directory")
 	return ""
+}
+
+// --- quarantine: WIRED, RUNNING, NOT GATING, and it cannot outlive its bead ---
+
+// wiredWorkflow runs INITECH_NEWRIG in a step, which is what quarantine
+// requires and exemption forbids.
+const wiredWorkflow = `
+jobs:
+  composed-rigs:
+    steps:
+      - name: Quarantined rigs
+        continue-on-error: true
+        env:
+          INITECH_NEWRIG: "1"
+        run: go test -run 'TestNewRig_Composed' ./...
+`
+
+func withBeadState(t *testing.T, fn func(string) (bool, bool, string)) {
+	t.Helper()
+	prev := beadStateFn
+	beadStateFn = fn
+	t.Cleanup(func() { beadStateFn = prev })
+}
+
+func openBead(string) (bool, bool, string)    { return true, true, "open" }
+func closedBead(string) (bool, bool, string)  { return false, true, "closed" }
+func missingBead(string) (bool, bool, string) { return false, true, "no such bead" }
+func unknownBead(string) (bool, bool, string) { return false, false, "bd not on PATH" }
+
+func writeQuarantine(t *testing.T, body string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "quarantine.txt")
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func TestRun_QuarantinedRigWiredWithOpenBeadPasses(t *testing.T) {
+	withBeadState(t, openBead)
+	dir, wf, ex := writeCensusFixture(t, oneGatedRig, wiredWorkflow, "")
+	q := writeQuarantine(t, "INITECH_NEWRIG  # BEAD: ini-8mrq known failure\n")
+	if err := run(dir, wf, ex, q, false); err != nil {
+		t.Fatalf("wired quarantine against an open bead rejected: %v", err)
+	}
+}
+
+// The property that makes quarantine honest rather than a hole.
+func TestRun_QuarantineAgainstClosedBeadFails(t *testing.T) {
+	withBeadState(t, closedBead)
+	dir, wf, ex := writeCensusFixture(t, oneGatedRig, wiredWorkflow, "")
+	q := writeQuarantine(t, "INITECH_NEWRIG  # BEAD: ini-8mrq known failure\n")
+	err := run(dir, wf, ex, q, false)
+	if err == nil || !strings.Contains(err.Error(), "ini-8mrq") {
+		t.Fatalf("quarantine survived its bead being closed: %v", err)
+	}
+}
+
+func TestRun_QuarantineAgainstMissingBeadFails(t *testing.T) {
+	withBeadState(t, missingBead)
+	dir, wf, ex := writeCensusFixture(t, oneGatedRig, wiredWorkflow, "")
+	q := writeQuarantine(t, "INITECH_NEWRIG  # BEAD: ini-gone known failure\n")
+	if err := run(dir, wf, ex, q, false); err == nil {
+		t.Fatal("quarantine accepted against a bead that does not exist")
+	}
+}
+
+// bd absent is NOT evidence the bead is bad -- it is evidence we did not
+// measure. The run passes and says so; turning it into a failure would be the
+// "couldn't measure" / "measured bad" conflation.
+func TestRun_QuarantineWithUnverifiableBeadPassesAndSaysSo(t *testing.T) {
+	withBeadState(t, unknownBead)
+	dir, wf, ex := writeCensusFixture(t, oneGatedRig, wiredWorkflow, "")
+	q := writeQuarantine(t, "INITECH_NEWRIG  # BEAD: ini-8mrq known failure\n")
+	if err := run(dir, wf, ex, q, true); err != nil {
+		t.Fatalf("unverifiable bead treated as a bad bead: %v", err)
+	}
+}
+
+// A quarantined rig nobody runs is an exemption in disguise: its failure would
+// be invisible, which defeats the entire point of the state.
+func TestRun_QuarantinedRigThatNoStepRunsFails(t *testing.T) {
+	withBeadState(t, openBead)
+	dir, wf, ex := writeCensusFixture(t, oneGatedRig, "jobs: {}\n", "")
+	q := writeQuarantine(t, "INITECH_NEWRIG  # BEAD: ini-8mrq known failure\n")
+	err := run(dir, wf, ex, q, false)
+	if err == nil || !strings.Contains(err.Error(), "NO CI step runs it") {
+		t.Fatalf("quarantine accepted for a rig no step runs: %v", err)
+	}
+}
+
+// Exempt and quarantined are different states and a rig cannot be both.
+func TestRun_RigBothExemptAndQuarantinedFails(t *testing.T) {
+	withBeadState(t, openBead)
+	dir, wf, ex := writeCensusFixture(t, oneGatedRig, wiredWorkflow,
+		"INITECH_NEWRIG  # needs a live claude. TRIGGER: on a Claude bump\n")
+	q := writeQuarantine(t, "INITECH_NEWRIG  # BEAD: ini-8mrq known failure\n")
+	err := run(dir, wf, ex, q, false)
+	if err == nil || !strings.Contains(err.Error(), "BOTH") {
+		t.Fatalf("a rig was allowed to be exempt and quarantined at once: %v", err)
+	}
+}
+
+func TestRun_QuarantineNamingNoBeadIsRejected(t *testing.T) {
+	withBeadState(t, openBead)
+	dir, wf, ex := writeCensusFixture(t, oneGatedRig, wiredWorkflow, "")
+	q := writeQuarantine(t, "INITECH_NEWRIG  # it is flaky, ignore for now\n")
+	err := run(dir, wf, ex, q, false)
+	if err == nil || !strings.Contains(err.Error(), "names no bead") {
+		t.Fatalf("quarantine without a bead accepted: %v", err)
+	}
+}
+
+func TestRun_StaleQuarantineFails(t *testing.T) {
+	withBeadState(t, openBead)
+	dir, wf, ex := writeCensusFixture(t, oneGatedRig, wiredWorkflow, "")
+	q := writeQuarantine(t, "INITECH_NEWRIG  # BEAD: ini-8mrq ok\nINITECH_LONG_GONE  # BEAD: ini-8mrq stale\n")
+	err := run(dir, wf, ex, q, false)
+	if err == nil || !strings.Contains(err.Error(), "INITECH_LONG_GONE") {
+		t.Fatalf("stale quarantine not reported: %v", err)
+	}
 }
