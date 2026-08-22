@@ -8,7 +8,7 @@ EXPECTED_ASSETS := checksums.txt initech_darwin_amd64.tar.gz initech_darwin_arm6
 LDFLAGS := -s -w -X github.com/nmelo/initech/cmd.Version=$(VERSION)
 REQUIRE_RELEASE_VERSION = test -n "$(VERSION)" && case "$(VERSION)" in v*) ;; *) echo "VERSION must start with v, got $(VERSION)" >&2; exit 1 ;; esac
 
-.PHONY: build test test-full integration vet lint test-census lint-test-names lint-test-names-self-test clean release check install-hooks hooks-check release-tag release-wait release-assets release-verify release-ship
+.PHONY: build test test-full integration vet lint test-census rig-census lint-test-names lint-test-names-self-test clean release check install-hooks hooks-check release-tag release-wait release-assets release-verify release-ship
 
 build:
 	go build -ldflags "$(LDFLAGS)" -o initech .
@@ -66,7 +66,16 @@ clean:
 test-census:
 	@go run ./scripts/testcensus
 
-check: hooks-check vet vet-windows test-census lint-test-names test
+# ini-0lko: fail when an env-gated rig exists that no CI job runs. Sits beside
+# test-census for the same reason -- it answers a question about the INVENTORY
+# statically, so it belongs at commit time. The composed-rigs job names each rig
+# twice (an env: block and a -run selector) and both lists are hand-maintained;
+# INITECH_9IMX was never in either for its whole life while the job reported
+# green. Derive the answer instead of trusting the list.
+rig-census:
+	@go run ./scripts/rigcensus
+
+check: hooks-check vet vet-windows test-census rig-census lint-test-names test
 
 release:
 	@set -eu; \

@@ -39,3 +39,9 @@ coverage.out
 # Claude Code config (per-developer; CLAUDE.md, TOKF.md, settings.json,
 # and the worktrees subfolder all live here)
 .claude/
+
+# Tool binaries left behind by `go build ./...` in a scripts dir. Each is named
+# after its directory, so they are invisible in `git status` right up until they
+# turn up staged in a 4MB diff.
+/scripts/rigcensus/rigcensus
+/scripts/testcensus/testcensus

@@ -46,6 +46,19 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: go run ./scripts/testcensus
 
+      # ini-0lko: fail when an env-gated rig exists that no CI job runs. The
+      # composed-rigs job names every rig TWICE -- an `env:` block and a `-run`
+      # selector -- and a rig runs only when both mention it. Both lists are
+      # hand-maintained, which is how INITECH_9IMX went un-run for its entire
+      # life while the job reported green, and how INITECH_35AK was wired into
+      # `env:` but left out of the selector (caught by a human reading a diff).
+      # This step reads THIS file and the test inventory and derives the answer,
+      # so the next unwired rig fails the build instead of going quiet.
+      # Static (parse-only), so one leg answers for all three.
+      - name: Rig census (every gated rig is run by CI or exempted)
+        if: matrix.os == 'ubuntu-latest'
+        run: go run ./scripts/rigcensus -v
+
       # ini-47w: witness WHICH tests this platform actually compiled, by name.
       # Build constraints silently remove whole suites from a leg -- a portable
       # helper parked in a '//go:build !windows' file drags every consumer out
@@ -184,9 +197,78 @@ jobs:
           INITECH_9ISX: "1"
           INITECH_X5OB: "1"
           INITECH_AQY: "1"
+          # ini-0lko: 9IMX is the rig that caught the wake-delivery regression
+          # which would otherwise have shipped in v2.11.1 -- and it had NEVER
+          # been in CI. 9GVN was written, gated, and never wired. Both were
+          # found by rigcensus, not by anyone remembering.
+          #   9IMX  a message to a SUSPENDED agent is queued and delivered on
+          #         wake, at every entry point, never silently dropped.
+          #   9GVN  a pane QUOTING dialog text does not hold the fleet's mail;
+          #         a real dialog still does.
+          INITECH_9IMX: "1"
+          INITECH_9GVN: "1"
           # ini-35ak's composed rig: a question opening on window 1 must reach
           # window 2. Added here rather than left env-gated-and-unrun, which is
           # the shape ini-jlo2 exists to close -- a rig nobody runs is
           # documentation.
           INITECH_35AK: "1"
-        run: go test ./internal/tui/ -count=1 -timeout 900s -run 'NineISXRig|X5obRig|AttentionRig|TestAQY_'
+        run: go test ./internal/tui/ -count=1 -timeout 900s -run 'NineISXRig|X5obRig|AttentionRig|TestAQY_|NineGVNRig|TestSuspendFate|TestSuspendGuard'
+
+  # ITEM 2 (ini-0lko): the CENSUS leg. Builds the real binary; no Claude needed.
+  #
+  # CI set INITECH_CENSUS exactly zero times before this bead, so the
+  # zero-change census — the check that a single-window fleet renders
+  # byte-identically to the shipped release — was a thing a human ran or did
+  # not. Its own job rather than a line in composed-rigs because it proves a
+  # different KIND of thing (the CLI surface and the rendered census) and would
+  # otherwise be trimmed alongside rigs it has nothing to do with.
+  #
+  #   TestCensus_        a single-window fleet renders exactly as the release did
+  #   TestRolesLessBoot_ a pure viewer boots with zero local agents
+  #   TestWindowCLI_     the --window CLI surface: attach, detach, reattach, and
+  #                      a viewer touching no project-root store
+  census-leg:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Census and window-CLI integration
+        env:
+          INITECH_CENSUS: "1"
+        run: go test ./internal/tui/ -count=1 -timeout 900s -run 'TestCensus_|TestRolesLessBoot_|TestWindowCLI_'
+
+  # ITEM 5 (ini-0lko): the SAME composed rigs, on macOS.
+  #
+  # Before this, NO rig ran on macOS anywhere: the macos matrix leg is -short,
+  # which skips every gated rig by construction. That is not a theoretical gap —
+  # ini-hbj4 passed darwin and failed linux all four rounds, so a fleet whose
+  # rigs only ever run on one OS is measuring one OS and reporting on two.
+  #
+  # It duplicates the ubuntu leg's selector deliberately: the invariants are the
+  # same, the PLATFORM is the variable, and that is exactly the case where
+  # duplication is the point rather than a merge candidate under the ini-uv2c
+  # dedup rule.
+  composed-rigs-macos:
+    if: github.event_name == 'push'
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Composed multi-window rigs (macOS)
+        env:
+          INITECH_9ISX: "1"
+          INITECH_X5OB: "1"
+          INITECH_AQY: "1"
+          INITECH_35AK: "1"
+          INITECH_9IMX: "1"
+          INITECH_9GVN: "1"
+        run: go test ./internal/tui/ -count=1 -timeout 900s -run 'NineISXRig|X5obRig|AttentionRig|TestAQY_|NineGVNRig|TestSuspendFate|TestSuspendGuard'
