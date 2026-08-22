@@ -2,7 +2,12 @@
 #
 # Read by scripts/rigcensus (make check). Anything gated and NOT listed here
 # fails the build, so this file is the complete record of what CI does not
-# cover and why. Format: ENV_VAR  # what it is. RUN: when a human runs it, and who.
+# cover and why. Format: ENV_VAR  # what it is. TRIGGER: when a human runs it, and who.
+#
+# The TRIGGER: token is REQUIRED and enforced by the parser -- a line with a
+# reason and no trigger fails the build. For a rig permanently outside CI the
+# trigger is the only property that matters, so it is the one that must not be
+# checkable by eye alone.
 #
 # An exemption is a DECISION. If you are adding a line here because wiring the
 # rig is awkward, wire the rig.
@@ -33,14 +38,35 @@
 # runs them, against the new version, before the fleet moves to it. That is the
 # only event that can invalidate what they measure — they assert things about
 # Claude's TUI, so Claude changing is the trigger and nothing else is.
-INITECH_6M4         # spawns 8 real Claude sessions; two-window modal parity. RUN: on a Claude bump, by whoever bumps.
-INITECH_ZJHG        # real-Claude dialog measurement (composer echo, click-answers-dialog). RUN: on a Claude bump, by whoever bumps.
-INITECH_OSC_PROBE   # real-Claude OSC 777 tripwire; see ini-d7a7. RUN: on a Claude bump, by whoever bumps.
-INITECH_D7A7        # real-Claude OSC emitter diagnostic; answers "what changed". RUN: on a Claude bump, by whoever bumps.
-INITECH_ALTPROBE    # real-Claude alt-screen probe. RUN: on a Claude bump, by whoever bumps.
-INITECH_ALTPROBE_VIM # real-vim alt-screen control for the above. RUN: on a Claude bump, by whoever bumps.
-INITECH_LIVEPROBE   # real-Claude live-region probe; needs a specific value (=askq), not just 1. RUN: on a Claude bump, by whoever bumps.
-INITECH_NOTIF_PROBE # real-Claude notification-channel probe. RUN: on a Claude bump, by whoever bumps.
+INITECH_ZJHG        # real-Claude dialog measurement (composer echo, click-answers-dialog). TRIGGER: on a Claude bump, by whoever bumps.
+INITECH_OSC_PROBE   # real-Claude OSC 777 tripwire; see ini-d7a7. TRIGGER: on a Claude bump, by whoever bumps.
+INITECH_D7A7        # real-Claude OSC emitter diagnostic; answers "what changed". TRIGGER: on a Claude bump, by whoever bumps.
+INITECH_ALTPROBE    # real-Claude alt-screen probe. TRIGGER: on a Claude bump, by whoever bumps.
+INITECH_ALTPROBE_VIM # real-vim alt-screen control for the above. TRIGGER: on a Claude bump, by whoever bumps.
+INITECH_LIVEPROBE   # real-Claude live-region probe; needs a specific value (=askq), not just 1. TRIGGER: on a Claude bump, by whoever bumps.
+INITECH_NOTIF_PROBE # real-Claude notification-channel probe. TRIGGER: on a Claude bump, by whoever bumps.
+
+# ── NOT DROPPED: STAYS ON SHIPPER'S RELEASE GATE, EVERY RELEASE ────────────
+#
+# 6M4 is not in the block above and the argument that emptied that block does
+# not reach it. Those probes measure CLAUDE: shipper ran the OSC probe nine
+# times across five releases and got the identical observation every time,
+# never varying with our code -- gating a release on it was a category error.
+# 6M4 uses a real Claude as a CHILD to assert OUR two-window modal parity and
+# replay survival. It measures US. One word, "real-Claude", grouped them; the
+# measurement splits them.
+#
+# Its trigger is deliberately NOT a condition. A hand-remembered "run it when
+# the modal path changes" would guard, by memory, the exact doctrine that
+# exists because memory failed: CLAUDE.md makes a composed run a ship gate,
+# bought with five post-release P1s from the multi-window cascade, and 6M4 is
+# the ONLY composed rig with a real Claude child -- every other one uses a
+# fixture child. Narrow it to a condition and the composed run becomes the
+# thing nobody ran. It costs 72 seconds per release.
+#
+# This is honest under the operator's ruling: he forbade a gate CLAIMING a
+# check nobody runs, not a check CI genuinely cannot perform.
+INITECH_6M4  # spawns 8 real Claude sessions; asserts OUR two-window modal parity and replay survival. Cannot run in CI (needs a live authenticated Claude). TRIGGER: shipper's release gate, EVERY release, human-run -- MUST NOT become condition-based or trigger-narrowed.
 
 # ── NOT RIGS AT ALL: helper subprocesses ───────────────────────────────────
 #
@@ -53,6 +79,6 @@ INITECH_NOTIF_PROBE # real-Claude notification-channel probe. RUN: on a Claude b
 # RUN TRIGGER FOR THIS BLOCK: every CI run already, indirectly — the parent test
 # re-execs the binary with the var set. Nobody runs these by hand, and a line
 # here going unrun is not a gap, it is the design.
-INITECH_FOLDBACK_HELPER  # child process of TestFoldback_CrashFoldsAgentIntoWindowOne. RUN: by its parent test, every CI run.
-INITECH_LIVENESS_HELPER  # child process of TestChildProcessAlive_*. RUN: by its parent test, every CI run.
-INITECH_FOLDBACK_ADDR    # address handed to the foldback helper child; not a gate of its own. RUN: set by the parent test, every CI run.
+INITECH_FOLDBACK_HELPER  # child process of TestFoldback_CrashFoldsAgentIntoWindowOne. TRIGGER: by its parent test, every CI run.
+INITECH_LIVENESS_HELPER  # child process of TestChildProcessAlive_*. TRIGGER: by its parent test, every CI run.
+INITECH_FOLDBACK_ADDR    # address handed to the foldback helper child; not a gate of its own. TRIGGER: set by the parent test, every CI run.

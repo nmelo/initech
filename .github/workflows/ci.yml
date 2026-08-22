@@ -197,6 +197,15 @@ jobs:
       #     not there for the transition -- a path no broadcast can serve.
       #   TestAQY_WindowOneScreenAcrossAttach
       #     A viewer attaching does not corrupt window 1's own screen.
+      # ini-0lko: name the rigs this leg SELECTED, before running them. A rig
+      # job that prints only "ok" witnesses a duration, not a test list -- and
+      # this leg's whole purpose is that a specific set of rigs ran. Without
+      # this, a selector that silently matches nothing is indistinguishable
+      # from a green run, which is the exact failure the census exists to stop
+      # one level up. -list compiles and enumerates without running.
+      - name: Witness which rigs this leg selected
+        run: go test ./internal/tui/ -list 'NineISXRig|X5obRig|AttentionRig|TestAQY_|NineGVNRig|TestSuspendFate|TestSuspendGuard'
+
       - name: Composed multi-window rigs (real binaries, real PTYs)
         env:
           INITECH_9ISX: "1"
@@ -242,6 +251,10 @@ jobs:
         with:
           go-version-file: go.mod
 
+      # ini-0lko: same witness for the census leg -- name what it selected.
+      - name: Witness which census tests this leg selected
+        run: go test ./internal/tui/ -list 'TestCensus_|TestRolesLessBoot_|TestWindowCLI_'
+
       - name: Census and window-CLI integration
         env:
           INITECH_CENSUS: "1"
@@ -267,6 +280,15 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
+
+      # ini-0lko: name the rigs this leg SELECTED, before running them. A rig
+      # job that prints only "ok" witnesses a duration, not a test list -- and
+      # this leg's whole purpose is that a specific set of rigs ran. Without
+      # this, a selector that silently matches nothing is indistinguishable
+      # from a green run, which is the exact failure the census exists to stop
+      # one level up. -list compiles and enumerates without running.
+      - name: Witness which rigs this leg selected
+        run: go test ./internal/tui/ -list 'NineISXRig|X5obRig|AttentionRig|TestAQY_|NineGVNRig|TestSuspendFate|TestSuspendGuard'
 
       - name: Composed multi-window rigs (macOS)
         env:

@@ -457,8 +457,8 @@ func readExemptions(path string) (map[string]string, error) {
 		// only WHY CI skips it and not WHEN a human runs it instead. Requiring
 		// the trigger in the parser means the next person to drop a rig cannot
 		// leave that half out quietly.
-		if !strings.Contains(reason, "RUN:") {
-			return nil, fmt.Errorf("%s: exemption %q states no run trigger. Add \"RUN: <when, and who>\" "+
+		if !strings.Contains(reason, "TRIGGER:") {
+			return nil, fmt.Errorf("%s: exemption %q states no run trigger. Add \"TRIGGER: <when, and who>\" "+
 				"to the reason -- a dropped rig with no trigger is a forgotten one", path, env)
 		}
 		out[env] = reason
