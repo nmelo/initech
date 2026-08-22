@@ -45,3 +45,5 @@ coverage.out
 # turn up staged in a 4MB diff.
 /scripts/rigcensus/rigcensus
 /scripts/testcensus/testcensus
+/rigcensus
+/testcensus

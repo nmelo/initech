@@ -14,7 +14,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v5
@@ -24,26 +24,24 @@ jobs:
           go-version-file: go.mod
 
       - name: Build
-        run: go build -ldflags "-s -w" -o initech${{ matrix.os == 'windows-latest' && '.exe' || '' }} .
+        run: go build -ldflags "-s -w" -o initech .
 
       - name: Vet
         run: go vet ./...
 
       # ini-ybe.1: reject test names admitting "we just call it and see if
-      # it crashes" intent. Linux-only — content check, no value running 3x.
+      # it crashes" intent. A content check — one leg answers for all.
       # No user input interpolated; matrix.os is workflow-defined, script
       # path is static.
       - name: Lint test names
-        if: matrix.os == 'ubuntu-latest'
         run: bash scripts/lint-test-names.sh
 
       # ini-2x8.8: fail when a test file compiles on one platform and not
       # another without a declared exemption. Static (`go list` applies build
       # constraints without running anything), so one leg answers for all three
-      # -- same reason lint-test-names is ubuntu-only. Also runs in `make check`
+      # -- one leg answers for all. Also runs in `make check`
       # at commit time; this is the backstop for a push that skipped it.
       - name: Test census (cross-platform suite parity)
-        if: matrix.os == 'ubuntu-latest'
         run: go run ./scripts/testcensus
 
       # ini-0lko: fail when an env-gated rig exists that no CI job runs. The
@@ -56,7 +54,6 @@ jobs:
       # so the next unwired rig fails the build instead of going quiet.
       # Static (parse-only), so one leg answers for all three.
       - name: Rig census (every gated rig is run by CI or exempted)
-        if: matrix.os == 'ubuntu-latest'
         run: go run ./scripts/rigcensus -v
 
       # ini-47w: witness WHICH tests this platform actually compiled, by name.
@@ -90,7 +87,7 @@ jobs:
   # skipped HALF, not of every OS. Gated rigs stay opt-in behind their env vars,
   # so this leg does not spawn Claude sessions.
   full-suite:
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v5
 
@@ -101,130 +98,6 @@ jobs:
       - name: Test (full, no -short)
         run: make test-full
 
-  # THE COMPOSED RIGS (ini-jlo2), on main only.
-  #
-  # WHY THIS EXISTS: ini-x5ob passed vet, the full short suite and per-leg CI on
-  # all three platforms, and rendered window 2 completely blank. An env-gated rig
-  # caught it; nothing in CI could have, because nothing sets the env var. The
-  # ship gates added this week cover RELEASES; this covers the window between a
-  # push and the next cut, which is where other agents rebase onto the damage.
-  #
-  # WHY ONLY THESE THREE. The dividing line is not slowness, it is Claude: the
-  # 6M4/ZJHG/ALTPROBE/LIVEPROBE/OSC_PROBE/NOTIF_PROBE rigs spawn a real Claude,
-  # which a runner has no auth or budget for and which is a nondeterministic
-  # third-party TUI as a fixture. Those stay ship-gate-only permanently -- that
-  # is a decision, not an oversight, and it is written here so it is not
-  # re-opened. INITECH_9IMX is Claude-free but costs ~250s on its own, more than
-  # these three combined, because its waits are real agent respawns rather than
-  # sleeps that could be polled away; excluded on cost, revisit if it gets
-  # cheaper.
-  #
-  # WHY MAIN-ONLY AND NOT PRs: this bead is about the main window specifically,
-  # and per-branch runs would triple the cost to cover a window the ship gates
-  # already backstop.
-  #
-  # WHY NOT A NIGHTLY: the damage model is "other agents rebase onto it", which
-  # happens in minutes. A nightly would have caught tonight's regression
-  # tomorrow.
-  #
-  # Ubuntu only: these are unix-PTY rigs that do not run on windows anyway, and
-  # the point is covering the composed CLAIM, not every OS.
-  composed-rigs:
-    if: github.event_name == 'push'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-
-      - uses: actions/setup-go@v6
-        with:
-          go-version-file: go.mod
-
-      # ── GROWTH POLICY (ini-uv2c) ──────────────────────────────────
-      #
-      # This job grew 235s -> 334s in one evening via two CORRECT additions.
-      # Neither was a mistake; the problem is that a selector is a LIST, so it
-      # extends without anyone deciding to. A budget reached by accretion is a
-      # budget nobody chose. Three rules, decided rather than defaulted:
-      #
-      # 1. THE BUDGET IS POSITIONAL, NOT ABSOLUTE. This job is main-only and
-      #    runs parallel to the matrix, so while it is shorter than the SLOWEST
-      #    OTHER LEG it costs nothing on the critical path, and growth under
-      #    that ceiling is free. The run that EXCEEDS it is what puts this job
-      #    on the critical path, and that run triggers a deliberate trim/split
-      #    decision by super -- never an automatic drop.
-      #    AS OF THIS COMMIT: this job ~334s, slowest other leg ~174s
-      #    (full-suite). IT IS ALREADY OVER. Recorded rather than absorbed:
-      #    this is precisely the condition rule 1 says to decide about, and a
-      #    policy whose first act is to look away from its own trigger is not a
-      #    policy.
-      #
-      # 2. TRIM BY INVARIANT DEDUPLICATION, never by dropping coverage (eng1's
-      #    principle, adopted). Two legs proving the SAME invariant merge. Legs
-      #    proving DISTINCT invariants are never dropped for time -- especially
-      #    canon-named ones: "attention is never scoped" and "the wire carries a
-      #    wait at all" are different laws, and trimming one to save a minute
-      #    buys the minute with a law.
-      #
-      # 3. EVERY ADDITION NAMES THE INVARIANT IT UNIQUELY PROVES, beside it.
-      #    That is what converts accretion into decisions: a leg that cannot
-      #    name a unique invariant is a merge candidate on arrival, and the
-      #    naming happens while the author still knows the answer.
-      #
-      # CURRENT LEGS AND THE INVARIANT EACH UNIQUELY PROVES (retro-annotated):
-      #   NineISXRig_ScopedOverlayBothStartupOrders
-      #     A window displays its OWN slice and DISCLOSES what it hides
-      #     (parity-of-facts with disclosed scoping), in both startup orders.
-      #   NineISXRig_AttentionCrossesScoping
-      #     ATTENTION IS NEVER SCOPED: a wait on an agent this window does not
-      #     display still reaches its list -- and rings only once per host.
-      #   X5obRig_AssignThenAttach / _AttachThenAssign
-      #     Window 1 is the single computer of ownership: every agent renders in
-      #     exactly one window, whichever order the windows started in.
-      #   X5obRig_ReattachIsReserved
-      #     Ownership is RE-SERVED on reattach: a viewer that dropped and came
-      #     back is told again rather than living on a stale copy.
-      #   AttentionRig_QuestionOnWindow1ReachesWindow2
-      #     The wire carries a wait AT ALL: observe, encode, send, decode, draw.
-      #     Distinct from AttentionCrossesScoping, which ASSUMES the wire works
-      #     and asks whether scoping suppresses what it carried.
-      #   AttentionRig_WaitAlreadyInProgressWhenWindow2Attaches
-      #     LATE ATTACH: a wait already in progress reaches a window that was
-      #     not there for the transition -- a path no broadcast can serve.
-      #   TestAQY_WindowOneScreenAcrossAttach
-      #     A viewer attaching does not corrupt window 1's own screen.
-      # ini-0lko: name the rigs this leg SELECTED, before running them. A rig
-      # job that prints only "ok" witnesses a duration, not a test list -- and
-      # this leg's whole purpose is that a specific set of rigs ran. Without
-      # this, a selector that silently matches nothing is indistinguishable
-      # from a green run, which is the exact failure the census exists to stop
-      # one level up. -list compiles and enumerates without running.
-      - name: Witness which rigs this leg selected
-        run: go test ./internal/tui/ -list 'NineISXRig|X5obRig|AttentionRig|TestAQY_|NineGVNRig|TestSuspendFate|TestSuspendGuard'
-
-      # QUARANTINED (ini-0lko): these rigs RUN on every push and their failures
-      # are visible in this log, but they do not gate the build -- they fail for
-      # a known product reason with its own open bead, ini-8mrq (the respawned
-      # pane's stdio not reaching the child on ubuntu runners).
-      #
-      # This is NOT an exemption and must not be read as one. An exempt rig does
-      # not run at all; these run every time, and the rig census FAILS THE BUILD
-      # if ini-8mrq is ever closed or goes missing while this step exists. That
-      # is the property that stops a quarantine outliving its reason -- delete
-      # this step and the entry together when 8mrq is fixed.
-      - name: QUARANTINED rigs (run, visible, non-gating - ini-8mrq)
-        continue-on-error: true
-        env:
-          INITECH_9GVN: "1"
-          INITECH_9IMX: "1"
-        run: go test ./internal/tui/ -count=1 -timeout 900s -run 'NineGVNRig|TestSuspendFate|TestSuspendGuard'
-
-      - name: Composed multi-window rigs (real binaries, real PTYs)
-        env:
-          INITECH_9ISX: "1"
-          INITECH_X5OB: "1"
-          INITECH_AQY: "1"
-          INITECH_35AK: "1"
-        run: go test ./internal/tui/ -count=1 -timeout 900s -run 'NineISXRig|X5obRig|AttentionRig|TestAQY_'
 
   # ITEM 2 (ini-0lko): the CENSUS leg. Builds the real binary; no Claude needed.
   #
@@ -241,7 +114,7 @@ jobs:
   #                      a viewer touching no project-root store
   census-leg:
     if: github.event_name == 'push'
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v5
 
@@ -262,14 +135,14 @@ jobs:
   #
   # Before this, NO rig ran on macOS anywhere: the macos matrix leg is -short,
   # which skips every gated rig by construction. That is not a theoretical gap —
-  # ini-hbj4 passed darwin and failed linux all four rounds, so a fleet whose
-  # rigs only ever run on one OS is measuring one OS and reporting on two.
+  # ini-hbj4 passed darwin and failed linux all four rounds, which is why this
+  # leg was created. Under ini-ibsm linux is no longer tested at all, so the
+  # asymmetry that motivated it is gone -- what remains is that the rigs need a
+  # tested platform to run on, and macOS is it.
   #
-  # It duplicates the ubuntu leg's selector deliberately: the invariants are the
-  # same, the PLATFORM is the variable, and that is exactly the case where
-  # duplication is the point rather than a merge candidate under the ini-uv2c
-  # dedup rule.
-  composed-rigs-macos:
+  # ini-ibsm: this WAS the macOS twin of an ubuntu leg. macOS is now the only
+  # tested platform, so it is simply the rig leg.
+  composed-rigs:
     if: github.event_name == 'push'
     runs-on: macos-latest
     steps:
@@ -288,27 +161,17 @@ jobs:
       - name: Witness which rigs this leg selected
         run: go test ./internal/tui/ -list 'NineISXRig|X5obRig|AttentionRig|TestAQY_|NineGVNRig|TestSuspendFate|TestSuspendGuard'
 
-      # QUARANTINED (ini-0lko): these rigs RUN on every push and their failures
-      # are visible in this log, but they do not gate the build -- they fail for
-      # a known product reason with its own open bead, ini-8mrq (the respawned
-      # pane's stdio not reaching the child on ubuntu runners).
-      #
-      # This is NOT an exemption and must not be read as one. An exempt rig does
-      # not run at all; these run every time, and the rig census FAILS THE BUILD
-      # if ini-8mrq is ever closed or goes missing while this step exists. That
-      # is the property that stops a quarantine outliving its reason -- delete
-      # this step and the entry together when 8mrq is fixed.
-      - name: QUARANTINED rigs (run, visible, non-gating - ini-8mrq)
-        continue-on-error: true
-        env:
-          INITECH_9GVN: "1"
-          INITECH_9IMX: "1"
-        run: go test ./internal/tui/ -count=1 -timeout 900s -run 'NineGVNRig|TestSuspendFate|TestSuspendGuard'
-
-      - name: Composed multi-window rigs (macOS)
+      - name: Composed multi-window rigs (real binaries, real PTYs)
         env:
           INITECH_9ISX: "1"
           INITECH_X5OB: "1"
           INITECH_AQY: "1"
           INITECH_35AK: "1"
-        run: go test ./internal/tui/ -count=1 -timeout 900s -run 'NineISXRig|X5obRig|AttentionRig|TestAQY_'
+          # ini-ibsm: 9GVN and 9IMX were quarantined against ini-8mrq, which was
+          # an ubuntu-only sh-fixture failure. macOS is the tested platform now
+          # and both PASS here, so they gate like any other rig -- the
+          # quarantine is removed rather than carried forward pointing at a
+          # failure no tested platform sees.
+          INITECH_9GVN: "1"
+          INITECH_9IMX: "1"
+        run: go test ./internal/tui/ -count=1 -timeout 900s -run 'NineISXRig|X5obRig|AttentionRig|TestAQY_|NineGVNRig|TestSuspendFate|TestSuspendGuard'

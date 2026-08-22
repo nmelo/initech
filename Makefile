@@ -8,7 +8,7 @@ EXPECTED_ASSETS := checksums.txt initech_darwin_amd64.tar.gz initech_darwin_arm6
 LDFLAGS := -s -w -X github.com/nmelo/initech/cmd.Version=$(VERSION)
 REQUIRE_RELEASE_VERSION = test -n "$(VERSION)" && case "$(VERSION)" in v*) ;; *) echo "VERSION must start with v, got $(VERSION)" >&2; exit 1 ;; esac
 
-.PHONY: build test test-full integration vet lint test-census rig-census lint-test-names lint-test-names-self-test clean release check install-hooks hooks-check release-tag release-wait release-assets release-verify release-ship
+.PHONY: build test test-full integration vet vet-linux lint test-census rig-census lint-test-names lint-test-names-self-test clean release check install-hooks hooks-check release-tag release-wait release-assets release-verify release-ship
 
 build:
 	go build -ldflags "$(LDFLAGS)" -o initech .
@@ -40,6 +40,17 @@ vet:
 # beats catching it at TAG time in CI, which is where it cost a release cut.
 vet-windows:
 	GOOS=windows GOARCH=amd64 go vet ./...
+
+# ini-ibsm: we stopped TESTING linux and windows; we did not stop SHIPPING
+# them. Test execution on those platforms is gone, so the only thing standing
+# between main and "does not compile for a platform we publish binaries for"
+# is a cross-compile check. The ubuntu CI leg used to provide that for linux
+# incidentally; removing it would have silently dropped linux compile coverage
+# altogether, which is a worse failure than not testing it -- main could go
+# un-buildable for linux and nothing would say so until a release.
+# Costs seconds, catches build breakage rather than behaviour.
+vet-linux:
+	GOOS=linux GOARCH=amd64 go vet ./...
 
 lint:
 	golangci-lint run ./...
@@ -75,7 +86,7 @@ test-census:
 rig-census:
 	@go run ./scripts/rigcensus
 
-check: hooks-check vet vet-windows test-census rig-census lint-test-names test
+check: hooks-check vet vet-windows vet-linux test-census rig-census lint-test-names test
 
 release:
 	@set -eu; \
