@@ -171,8 +171,12 @@ func TestMultiSink_KeepsWriterAfterTransientTimeout(t *testing.T) {
 				t.Fatalf("writer dropped after a TRANSIENT timeout — window 2's pane stops " +
 					"updating for the life of the attach while window 1 shows it running")
 			}
-			if len(w.got) != 2 || w.got[1] != "after" {
-				t.Fatalf("writer stopped receiving after the hitch: got %v", w.got)
+			// CONTRACT CHANGE with the all-or-drop fix (hover garble): the
+			// hitched chunk is now RETRIED and delivered, not dropped — the
+			// original assertion encoded lossy-keep, which is the byte gap
+			// that tore escape sequences. All three chunks must arrive.
+			if len(w.got) != 3 || w.got[1] != "during-the-hitch" || w.got[2] != "after" {
+				t.Fatalf("transient hitch lost or reordered data: got %v", w.got)
 			}
 		})
 	}
@@ -186,5 +190,65 @@ func TestMultiSink_StillDropsFinishedWriter(t *testing.T) {
 	if ms.Len() != 0 {
 		t.Fatal("a writer whose pipe is closed IS finished and must be dropped — " +
 			"keeping it would leak a dead client forever")
+	}
+}
+
+// ── hover window-2 GARBLE (operator, 2026-08-22) — the freeze fix's own gap ──
+//
+// yamux Stream.Write sends in segments and returns (total, err) — a transient
+// timeout can fire AFTER part of the chunk is on the wire. v2.11.2's fix kept
+// the writer and continued with the NEXT chunk, so the unsent remainder became
+// a byte gap mid-stream: torn escape sequences, garbled viewer panes (the
+// screenshot's overstruck chrome). Freeze traded for corruption.
+//
+// Correct semantics: a transient timeout RETRIES THE REMAINDER — the viewer
+// gets everything, late. Only persistent failure drops the writer; a stream
+// with a gap in it is worse than no stream, because the z8o keepalive can
+// recover a dropped window but nothing recovers a torn escape sequence.
+type partialWriter struct {
+	fails int // remaining Write calls that fail (after writing half)
+	err   error
+	got   []byte
+	calls int
+}
+
+func (p *partialWriter) Write(b []byte) (int, error) {
+	p.calls++
+	if p.fails > 0 {
+		p.fails--
+		n := len(b) / 2
+		p.got = append(p.got, b[:n]...)
+		return n, p.err
+	}
+	p.got = append(p.got, b...)
+	return len(b), nil
+}
+
+func TestMultiSink_TransientTimeoutRetriesRemainder_NoByteGap(t *testing.T) {
+	w := &partialWriter{fails: 1, err: yamux.ErrConnectionWriteTimeout}
+	ms := NewMultiSink()
+	ms.Add(w)
+
+	ms.Write([]byte("\x1b[31mRED\x1b[0m")) // torn mid-escape if the gap survives
+
+	if got := string(w.got); got != "\x1b[31mRED\x1b[0m" {
+		t.Fatalf("byte gap after transient timeout: writer received %q — a torn escape "+
+			"sequence garbles the viewer until the next full repaint", got)
+	}
+	if ms.Len() != 1 {
+		t.Fatal("writer dropped after a recovered transient timeout")
+	}
+}
+
+func TestMultiSink_PersistentTimeoutDropsWriter(t *testing.T) {
+	w := &partialWriter{fails: 99, err: yamux.ErrConnectionWriteTimeout}
+	ms := NewMultiSink()
+	ms.Add(w)
+
+	ms.Write([]byte("data"))
+
+	if ms.Len() != 0 {
+		t.Fatal("writer kept through PERSISTENT timeouts — an unbounded retry loop " +
+			"stalls the fan-out for every other window")
 	}
 }

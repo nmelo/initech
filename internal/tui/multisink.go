@@ -67,7 +67,7 @@ func (ms *MultiSink) Write(p []byte) (int, error) {
 	// Write to all without holding the lock.
 	var dead []io.Writer
 	for _, w := range snapshot {
-		if _, err := w.Write(p); err != nil && !transientWriteErr(err) {
+		if !writeComplete(w, p) {
 			dead = append(dead, w)
 		}
 	}
@@ -111,4 +111,41 @@ func transientWriteErr(err error) bool {
 	}
 	var ne net.Error
 	return errors.As(err, &ne) && ne.Timeout()
+}
+
+// maxTransientRetries bounds the remainder-retry loop. Each yamux write
+// attempt already carries the session's ConnectionWriteTimeout (7s for window
+// sessions), so 2 retries tolerates ~21s of stall before the writer is
+// declared finished — past the z8o keepalive's own 12s wedge-detection, so a
+// genuinely wedged window is dead by session teardown before we give up here.
+const maxTransientRetries = 2
+
+// writeComplete delivers p to w in full or reports the writer finished.
+//
+// ALL-OR-DROP, NEVER A GAP (operator's hover garble, 2026-08-22): yamux
+// Stream.Write sends in segments and returns (total, err), so a transient
+// timeout can fire with part of the chunk already on the wire. v2.11.2 kept
+// the writer and moved on to the NEXT chunk — the unsent remainder became a
+// byte gap mid-stream, tearing escape sequences and garbling the viewer
+// until its next full repaint. Freeze traded for corruption, strictly worse:
+// the keepalive can recover a dropped window, nothing recovers a torn
+// escape sequence. A transient timeout therefore retries the REMAINDER
+// (late but complete); only persistent failure or a terminal error drops.
+func writeComplete(w io.Writer, p []byte) bool {
+	buf := p
+	for attempt := 0; ; attempt++ {
+		n, err := w.Write(buf)
+		if n > 0 {
+			buf = buf[n:]
+		}
+		if err == nil {
+			if len(buf) == 0 {
+				return true
+			}
+			continue // short write without error: keep going (io.Writer contract edge)
+		}
+		if !transientWriteErr(err) || attempt >= maxTransientRetries {
+			return false
+		}
+	}
 }
