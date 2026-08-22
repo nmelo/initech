@@ -25,12 +25,12 @@ const (
 
 // IPCRequest is the JSON structure sent by CLI commands to the TUI socket.
 type IPCRequest struct {
-	Action string `json:"action"` // "send", "peek", "list", "peers_query"
-	Target string `json:"target"` // Role name (for send/peek).
-	Host   string `json:"host"`   // Remote peer name (for cross-machine send). Empty = local.
-	Text   string `json:"text"`   // Text to inject (for send).
-	Lines  int    `json:"lines"`  // Number of lines to return (for peek, 0 = all).
-	Enter  bool   `json:"enter"`  // Append Enter after text (for send).
+	Action string `json:"action"`          // "send", "peek", "list", "peers_query"
+	Target string `json:"target"`          // Role name (for send/peek).
+	Host   string `json:"host"`            // Remote peer name (for cross-machine send). Empty = local.
+	Text   string `json:"text"`            // Text to inject (for send).
+	Lines  int    `json:"lines"`           // Number of lines to return (for peek, 0 = all).
+	Enter  bool   `json:"enter"`           // Append Enter after text (for send).
 	Prune  bool   `json:"prune,omitempty"` // reload: also remove deconfigured self-started agents.
 }
 
@@ -574,12 +574,25 @@ func composerAcceptedBody(p *Pane, before string) bool {
 	}
 }
 
-// withholdSubmit records a submit the belt refused to send.
+// withholdSubmit records a submit the belt refused to send, and ARMS a retry
+// for it (ini-vpwg). Before this, withholding was the end of the story: the
+// body sat in the composer, the submit never went, and nothing re-delivered
+// it -- a message the fleet was holding with no holder.
 func withholdSubmit(pane *Pane, text, mode string) {
 	preview := text
 	if len(preview) > 60 {
 		preview = preview[:57] + "..."
 	}
+	tail, _ := composerTail(pane)
+	pane.mu.Lock()
+	pane.pendingSubmit = &pendingSubmit{
+		marker:         submitMarker(text),
+		preview:        preview,
+		mode:           mode,
+		tailAtWithhold: tail,
+		deadline:       time.Now().Add(withheldSubmitWindow),
+	}
+	pane.mu.Unlock()
 	// INFO, not Debug (ini-vpwg, applying the rule ini-9gvn already bought).
 	// The comment twenty lines up in this file states it for the modal-guard
 	// path: a message the fleet is holding is not debug detail, because the
@@ -591,7 +604,7 @@ func withholdSubmit(pane *Pane, text, mode string) {
 	EmitEvent(pane.eventCh, AgentEvent{
 		Type:   EventMessageSent,
 		Pane:   pane.Name(),
-		Detail: "submit withheld (body did not reach the composer; a dialog may be open): " + preview,
+		Detail: "submit withheld, awaiting composer repaint (body did not reach the composer; a dialog may be open): " + preview,
 	})
 }
 
@@ -933,4 +946,98 @@ func (t *TUI) handleIPCAttention(conn net.Conn, req IPCRequest) {
 	}
 	t.runOnMain(func() { lp.SetWaitingInputTier(req.Text, WaitingTierChime) })
 	writeIPCResponse(conn, IPCResponse{OK: true})
+}
+
+// pendingSubmit is a submit the never-submit belt withheld, held until the
+// composer repaints (ini-vpwg).
+//
+// THE WITHHELD THING IS THE SUBMIT, SO THE RETRY IS THE SUBMIT. The body is
+// already sitting in the composer; re-pasting it would double-deliver, which
+// is why the modal guard's enqueue-the-whole-message shape is wrong here and
+// was correctly left out rather than forgotten.
+type pendingSubmit struct {
+	marker         string    // A distinctive slice of our text, to prove the composer still holds OURS.
+	preview        string    // For operator-facing records.
+	mode           string    // Injection mode, for the log.
+	tailAtWithhold string    // The composer tail when we withheld: "nothing has changed yet".
+	deadline       time.Time // Bounded: we do not wait forever.
+}
+
+// withheldSubmitWindow bounds how long a withheld submit waits for the
+// composer to repaint. Generous, because the state it is waiting out is a BUSY
+// agent and the alternative to waiting is surfacing a message the operator
+// then has to re-send by hand.
+const withheldSubmitWindow = 60 * time.Second
+
+// submitMarker returns a distinctive slice of the text to look for in the
+// composer later. The LAST line is used because the composer tail is one row,
+// and a bounded slice because a long paste wraps and only its end stays on the
+// tail row.
+func submitMarker(text string) string {
+	lines := strings.Split(strings.TrimRight(text, "\n"), "\n")
+	last := strings.TrimSpace(lines[len(lines)-1])
+	r := []rune(last)
+	if len(r) > 24 {
+		r = r[len(r)-24:]
+	}
+	return string(r)
+}
+
+// maybeRetryWithheldSubmit is called on every chunk of pane output. It sends a
+// withheld submit ONLY when the composer provably still holds our text, and
+// otherwise surfaces rather than guessing.
+func (p *Pane) maybeRetryWithheldSubmit() {
+	p.mu.Lock()
+	ps := p.pendingSubmit
+	p.mu.Unlock()
+	if ps == nil {
+		return
+	}
+
+	tail, found := composerTail(p)
+	switch {
+	case found && ps.marker != "" && strings.Contains(tail, ps.marker):
+		// PROVABLE: our text is in the composer. Send the submit, nothing else.
+		p.clearPendingSubmit()
+		sendSubmitKey(p.emu, p.submitKey)
+		LogInfo("inject", "withheld submit DELIVERED: composer repainted holding our text",
+			"pane", p.name, "mode", ps.mode, "text", ps.preview)
+		EmitEvent(p.eventCh, AgentEvent{
+			Type:   EventMessageSent,
+			Pane:   p.name,
+			Detail: "delivered after the composer repainted: " + ps.preview,
+		})
+	case found && tail == ps.tailAtWithhold:
+		// Nothing has changed yet. Keep waiting, but not forever.
+		if time.Now().After(ps.deadline) {
+			p.surfaceUndeliveredSubmit(ps, "the composer never repainted")
+		}
+	default:
+		// The composer changed to something that is NOT ours, or vanished. We
+		// genuinely do not know whether our text is still there, and a submit
+		// sent into an unknown composer is a FORGED submit -- the exact thing
+		// the belt exists to prevent. Do not guess; surface.
+		p.surfaceUndeliveredSubmit(ps, "the composer no longer holds our text")
+	}
+}
+
+func (p *Pane) clearPendingSubmit() {
+	p.mu.Lock()
+	p.pendingSubmit = nil
+	p.mu.Unlock()
+}
+
+// surfaceUndeliveredSubmit reports a message we could not deliver and could not
+// prove the fate of. Loud on purpose: at this point the honest statement is "we
+// do not know", and the operator is the only one who can resolve it.
+func (p *Pane) surfaceUndeliveredSubmit(ps *pendingSubmit, why string) {
+	p.clearPendingSubmit()
+	LogInfo("inject", "withheld submit NOT DELIVERED", "pane", p.name, "mode", ps.mode,
+		"reason", why, "text", ps.preview)
+	EmitEvent(p.eventCh, AgentEvent{
+		Type:   EventAgentStalled,
+		Pane:   p.name,
+		Detail: "message NOT delivered (" + why + "), re-send it: " + ps.preview,
+		Time:   time.Now(),
+	})
 }

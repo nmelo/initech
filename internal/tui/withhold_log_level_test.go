@@ -5,7 +5,15 @@ import (
 	"log/slog"
 	"strings"
 	"testing"
+
+	"github.com/charmbracelet/x/vt"
 )
+
+// withholdTestPane is a pane with a real emulator but no child: enough for the
+// belt's bookkeeping, which reads the composer.
+func withholdTestPane(name string) *Pane {
+	return &Pane{name: name, emu: vt.NewSafeEmulator(80, 24)}
+}
 
 // captureLogs installs a buffer-backed logger at DEBUG level (so nothing is
 // filtered out by the capture itself) and restores the previous one.
@@ -32,7 +40,7 @@ func captureLogs(t *testing.T) *bytes.Buffer {
 // re-delivers it.
 func TestWithholdSubmit_LogsAtInfoSoTheHeldMessageSurvivesTheDefaultLevel(t *testing.T) {
 	buf := captureLogs(t)
-	pane := &Pane{name: "eng1"}
+	pane := withholdTestPane("eng1")
 
 	withholdSubmit(pane, "a message the fleet is holding", "bracketed")
 
@@ -69,7 +77,7 @@ func recordContaining(t *testing.T, out, marker string) string {
 // cannot act on.
 func TestWithholdSubmit_NamesTheMessageItIsHolding(t *testing.T) {
 	buf := captureLogs(t)
-	withholdSubmit(&Pane{name: "eng1"}, "deploy the thing", "bracketed")
+	withholdSubmit(withholdTestPane("eng1"), "deploy the thing", "bracketed")
 	if out := buf.String(); !strings.Contains(out, "eng1") {
 		t.Errorf("withheld-submit record does not name the pane: %q", out)
 	}

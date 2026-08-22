@@ -257,6 +257,7 @@ type Pane struct {
 	memoryRSS             int64             // RSS in kilobytes, updated by memory monitor goroutine.
 	suspended             bool              // True when auto-suspend policy has stopped this pane.
 	messageQueue          []QueuedMessage   // Messages waiting for resume or modal-close. Capped at maxMessageQueue.
+	pendingSubmit         *pendingSubmit    // A submit the belt withheld, waiting for the composer to repaint (ini-vpwg).
 	waking                bool              // A wake is in flight (ini-zffi). Guards against a burst of keystrokes each launching a respawn, and drives the "waking" pane display.
 	modalDraining         bool              // True while a modal-close queue drain is in flight (guarded by p.mu).
 	protected             bool              // Protected agents are never auto-suspended.
@@ -498,6 +499,13 @@ func (p *Pane) readLoop() {
 			// now that the latest output is on screen and the modal may have
 			// closed (ini-7txh). Cheap no-op when the queue is empty.
 			p.maybeDrainModalQueue()
+
+			// A submit the belt withheld waits here for the composer to
+			// repaint (ini-vpwg). Same hook as the modal drain and for the
+			// same reason: new output IS the repaint, so this is the moment
+			// the composer's state is worth re-reading. Cheap no-op when
+			// nothing is pending.
+			p.maybeRetryWithheldSubmit()
 
 			// Tee to network sink if connected. Separate from emu.Write so
 			// network backpressure cannot stall local rendering.
