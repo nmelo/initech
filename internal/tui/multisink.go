@@ -4,13 +4,17 @@
 package tui
 
 import (
+	"errors"
 	"io"
+	"net"
 	"sync"
+
+	"github.com/hashicorp/yamux"
 )
 
-// MultiSink writes to all registered writers. Dead writers (those that
-// return errors) are automatically removed. All methods are safe for
-// concurrent use.
+// MultiSink writes to all registered writers. Writers that are FINISHED are
+// removed automatically; writers that merely timed out are kept. All methods
+// are safe for concurrent use.
 type MultiSink struct {
 	mu      sync.Mutex
 	writers []io.Writer
@@ -63,7 +67,7 @@ func (ms *MultiSink) Write(p []byte) (int, error) {
 	// Write to all without holding the lock.
 	var dead []io.Writer
 	for _, w := range snapshot {
-		if _, err := w.Write(p); err != nil {
+		if _, err := w.Write(p); err != nil && !transientWriteErr(err) {
 			dead = append(dead, w)
 		}
 	}
@@ -82,4 +86,29 @@ func (ms *MultiSink) Write(p []byte) (int, error) {
 		ms.mu.Unlock()
 	}
 	return len(p), nil
+}
+
+// transientWriteErr reports whether a failed write means "this writer was
+// busy" rather than "this writer is finished".
+//
+// THE DISTINCTION IS LOAD-BEARING (operator, 2026-08-22: window 2 panes
+// silently stopping while window 1 showed the agent running). These writers
+// are yamux streams to attached windows, registered ONCE at attach and never
+// re-added — so removing one on a recoverable error freezes that pane for the
+// life of the attach. yamux returns two such errors, and they are shaped
+// differently on purpose: ErrTimeout is a *NetError (Timeout() true) from a
+// stream deadline, while ErrConnectionWriteTimeout is a plain sentinel raised
+// when the session's send window stays full past ConnectionWriteTimeout — 7s
+// for window sessions, which one chatty agent and one slow render can reach.
+//
+// Not policing wedged clients here is deliberate, not an omission: the window
+// server's keepalive already detects and drops a genuinely wedged window
+// within 15s (ini-z8o), and that mechanism can tell "wedged" from "busy"
+// because it asks the session rather than inferring from one write.
+func transientWriteErr(err error) bool {
+	if errors.Is(err, yamux.ErrConnectionWriteTimeout) {
+		return true
+	}
+	var ne net.Error
+	return errors.As(err, &ne) && ne.Timeout()
 }

@@ -2,8 +2,11 @@ package tui
 
 import (
 	"errors"
+	"io"
 	"sync"
 	"testing"
+
+	"github.com/hashicorp/yamux"
 )
 
 type testWriter struct {
@@ -111,5 +114,77 @@ func TestMultiSink_ConcurrentWrites(t *testing.T) {
 
 	if len(w.String()) != 100 {
 		t.Errorf("len = %d, want 100", len(w.String()))
+	}
+}
+
+// ── window 2 panes silently stop updating (operator, 2026-08-22) ──────
+//
+// MultiSink removed a writer on ANY error, permanently, and nothing ever
+// re-adds one — streamAgentLive registers a window's stream once, at attach.
+// But the writers here are yamux streams, and yamux returns TRANSIENT write
+// timeouts that leave the stream perfectly usable: ErrTimeout (a *NetError,
+// Timeout() true) from a stream deadline, and ErrConnectionWriteTimeout (a
+// plain sentinel) when the session's send window stays full past
+// ConnectionWriteTimeout — 7s for window sessions. One slow moment in window
+// 2 (a burst from a chatty agent, a render hitch) and that pane's stream is
+// dropped for the life of the attach: window 1 shows the agent running,
+// window 2's panel never updates again, and only reattaching fixes it.
+//
+// Policing genuinely wedged windows is NOT this type's job: the window
+// server's keepalive already detects and drops them (ini-z8o, <=15s). A
+// fan-out writer that cannot tell "this client is finished" from "this
+// client was briefly busy" must keep the client.
+type flakyWriter struct {
+	writes int
+	failOn int
+	err    error
+	got    []string
+}
+
+func (f *flakyWriter) Write(p []byte) (int, error) {
+	f.writes++
+	if f.writes == f.failOn {
+		return 0, f.err
+	}
+	f.got = append(f.got, string(p))
+	return len(p), nil
+}
+
+func TestMultiSink_KeepsWriterAfterTransientTimeout(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		err  error
+	}{
+		{"stream deadline (net.Error timeout)", yamux.ErrTimeout},
+		{"session send window full", yamux.ErrConnectionWriteTimeout},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			w := &flakyWriter{failOn: 2, err: tc.err}
+			ms := NewMultiSink()
+			ms.Add(w)
+
+			ms.Write([]byte("before"))
+			ms.Write([]byte("during-the-hitch")) // transient failure
+			ms.Write([]byte("after"))
+
+			if ms.Len() != 1 {
+				t.Fatalf("writer dropped after a TRANSIENT timeout — window 2's pane stops " +
+					"updating for the life of the attach while window 1 shows it running")
+			}
+			if len(w.got) != 2 || w.got[1] != "after" {
+				t.Fatalf("writer stopped receiving after the hitch: got %v", w.got)
+			}
+		})
+	}
+}
+
+func TestMultiSink_StillDropsFinishedWriter(t *testing.T) {
+	w := &flakyWriter{failOn: 1, err: io.ErrClosedPipe}
+	ms := NewMultiSink()
+	ms.Add(w)
+	ms.Write([]byte("x"))
+	if ms.Len() != 0 {
+		t.Fatal("a writer whose pipe is closed IS finished and must be dropped — " +
+			"keeping it would leak a dead client forever")
 	}
 }
