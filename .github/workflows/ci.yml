@@ -98,6 +98,19 @@ jobs:
       - name: Test (full, no -short)
         run: make test-full
 
+      # ini-4cfl: `make test-race` existed, unrun by any gate, and 7 data
+      # races accumulated invisibly in the suspend/wake path -- resumePane's
+      # async pane-swap (resource.go) writing t.panes while a test's own
+      # goroutine polled it directly, the same "the gate reports on less than
+      # the claim" shape as ini-4bf2's -short blind spot. Its own step so a
+      # race-only failure is diagnosable without conflating it with the plain
+      # full-suite step above. Not in `make check` (the pre-commit gate):
+      # -race roughly doubles the wall clock, and the per-commit cost is the
+      # wrong place to pay it -- the same reasoning ini-0lko used to move slow
+      # rig coverage into CI rather than local hooks.
+      - name: Test (race detector)
+        run: make test-race
+
 
   # ITEM 2 (ini-0lko): the CENSUS leg. Builds the real binary; no Claude needed.
   #

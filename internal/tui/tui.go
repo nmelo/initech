@@ -238,6 +238,21 @@ type TUI struct {
 	// Set from Config.PaneConfigBuilder. Nil disables the add command.
 	paneConfigBuilder func(name string) (PaneConfig, error)
 
+	// onWakeComplete, if set, fires after an async wake dispatched via
+	// wakePanesInBackground or wakeSuspendedPaneFromKeystroke finishes ALL
+	// its work, including the t.panes mutation inside resumePane (ini-4cfl).
+	// Nil in production: zero cost, zero behavior change -- the real UI
+	// re-renders on its own next frame and never needs to be told. It exists
+	// because t.panes has no lock (by design: production confines every
+	// touch to the single main goroutine via runOnMain, so none is needed),
+	// and a TEST polling t.panes from ITS OWN goroutine while this background
+	// goroutine writes it has no other race-free way to know the write has
+	// happened. A channel close on this hook IS that synchronization point --
+	// the Go memory model gives every write made before the close a
+	// happens-before edge over everything observed after the corresponding
+	// receive, which a raw poll of an unlocked slice cannot provide.
+	onWakeComplete func()
+
 	cmd       cmdModal       // Command input bar.
 	top       topModal       // Activity monitor overlay.
 	eventLogM eventLogModal  // Event log history modal.

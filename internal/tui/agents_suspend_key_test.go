@@ -85,17 +85,16 @@ func TestAgentsToggleSuspend_WakesSuspended(t *testing.T) {
 	tui.panes = append(tui.panes, parked)
 	tui.agents.selected = 0
 
-	tui.agentsToggleSuspend()
+	// waitForAsyncWake, not a poll loop (ini-4cfl): t.panes has no lock, and
+	// this test's own goroutine reading it while the background wake writes
+	// it is the exact race -race caught here.
+	waitForAsyncWake(t, tui, tui.agentsToggleSuspend, 3*time.Second)
 
-	deadline := time.Now().Add(3 * time.Second)
-	for time.Now().Before(deadline) {
-		if np, ok := tui.panes[0].(*Pane); ok && np != parked && !np.IsSuspended() {
-			defer np.Close()
-			return
-		}
-		time.Sleep(50 * time.Millisecond)
+	np, ok := tui.panes[0].(*Pane)
+	if !ok || np == parked || np.IsSuspended() {
+		t.Fatalf("s on a suspended agent did not wake it (modal msg: %q)", tui.agents.error)
 	}
-	t.Fatalf("s on a suspended agent did not wake it (modal msg: %q)", tui.agents.error)
+	t.Cleanup(func() { np.Close() })
 }
 
 func TestAgentsToggleSuspend_RemoteIsHonestlyRefused(t *testing.T) {
@@ -146,27 +145,23 @@ func TestAgentsToggleSuspendGroup_WakesAllWhenAllParked(t *testing.T) {
 	tui.layoutState.Groups = []string{"eng"}
 	tui.agents.selected = 0
 
-	tui.agentsToggleSuspendGroup()
+	// waitForAsyncWake, not a poll loop (ini-4cfl): wakePanesInBackground
+	// waking the whole group is one dispatch, so its single onWakeComplete
+	// fires only after BOTH members have been replaced in tui.panes.
+	waitForAsyncWake(t, tui, tui.agentsToggleSuspendGroup, 4*time.Second)
 
-	deadline := time.Now().Add(4 * time.Second)
-	for time.Now().Before(deadline) {
-		awake := 0
-		for _, pv := range tui.panes {
-			if np, ok := pv.(*Pane); ok && !np.IsSuspended() {
+	awake := 0
+	for _, pv := range tui.panes {
+		if np, ok := pv.(*Pane); ok {
+			t.Cleanup(func() { np.Close() })
+			if !np.IsSuspended() {
 				awake++
 			}
 		}
-		if awake == 2 {
-			for _, pv := range tui.panes {
-				if np, ok := pv.(*Pane); ok {
-					defer np.Close()
-				}
-			}
-			return
-		}
-		time.Sleep(50 * time.Millisecond)
 	}
-	t.Fatalf("S on an all-parked band did not wake both members (modal msg: %q)", tui.agents.error)
+	if awake != 2 {
+		t.Fatalf("S on an all-parked band did not wake both members (awake=%d, modal msg: %q)", awake, tui.agents.error)
+	}
 }
 
 // ── suspension must cross the window boundary ─────────────────────────

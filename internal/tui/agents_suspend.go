@@ -115,5 +115,8 @@ func (t *TUI) wakePanesInBackground(panes []*Pane, trigger string) {
 				LogWarn("resource", "modal wake failed", "agent", p.Name(), "err", err)
 			}
 		}
+		if t.onWakeComplete != nil {
+			t.onWakeComplete()
+		}
 	})
 }

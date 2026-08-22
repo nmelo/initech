@@ -3,6 +3,7 @@ package tui
 import (
 	"os"
 	"os/exec"
+	"testing"
 	"time"
 
 	"github.com/charmbracelet/x/vt"
@@ -191,3 +192,33 @@ func (p *fakeRemotePaneView) Render(screen tcell.Screen, focused bool, dimmed bo
 }
 func (p *fakeRemotePaneView) Resize(rows, cols int) {}
 func (p *fakeRemotePaneView) Close()                {}
+
+// waitForAsyncWake dispatches an async wake (any trigger that ends up calling
+// wakePanesInBackground or wakeSuspendedPaneFromKeystroke) and blocks until it
+// has FULLY finished, including the t.panes mutation inside resumePane
+// (ini-4cfl).
+//
+// WHY THIS EXISTS RATHER THAN A POLL LOOP: t.panes has no lock, by design --
+// production confines every touch to the single main goroutine via
+// runOnMain, so none is needed there. A test's own goroutine polling
+// tui.panes (or findLocalPane, which ranges over it) while this background
+// goroutine writes it is a genuine data race, not a benign one: -race caught
+// it as 7 warnings across 3 tests once the gate could see it (previously
+// invisible, since `make test` runs -short with no -race). The fix is not a
+// tighter poll, because no poll interval makes an unsynchronized read safe --
+// it is giving the test a REAL synchronization point. tui.onWakeComplete is
+// exactly that: a channel close IS a happens-before edge over everything the
+// writing goroutine did before it, per the Go memory model, which a raw
+// slice read can never be.
+func waitForAsyncWake(t *testing.T, tui *TUI, trigger func(), timeout time.Duration) {
+	t.Helper()
+	done := make(chan struct{})
+	tui.onWakeComplete = func() { close(done) }
+	defer func() { tui.onWakeComplete = nil }()
+	trigger()
+	select {
+	case <-done:
+	case <-time.After(timeout):
+		t.Fatal("async wake did not complete within the timeout -- onWakeComplete never fired")
+	}
+}

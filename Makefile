@@ -23,7 +23,7 @@ EXPECTED_ASSETS := checksums.txt initech_darwin_amd64.tar.gz initech_darwin_arm6
 LDFLAGS := -s -w -X github.com/nmelo/initech/cmd.Version=$(VERSION)
 REQUIRE_RELEASE_VERSION = test -n "$(VERSION)" && case "$(VERSION)" in v*) ;; *) echo "VERSION must start with v, got $(VERSION)" >&2; exit 1 ;; esac
 
-.PHONY: build test test-full integration vet vet-linux lint test-census rig-census lint-test-names lint-test-names-self-test clean release check install-hooks hooks-check release-tag release-wait release-assets release-verify release-ship
+.PHONY: build test test-full test-race integration vet vet-linux lint test-census rig-census lint-test-names lint-test-names-self-test clean release check install-hooks hooks-check release-tag release-wait release-assets release-verify release-ship
 
 build:
 	go build -ldflags "$(LDFLAGS)" -o initech .
@@ -34,6 +34,14 @@ test:
 test-full:
 	go test ./... -count=1
 
+# test-race existed, unrun by any gate, for long enough that 7 data races
+# accumulated invisibly in the suspend/wake path -- the ini-4bf2 shape again:
+# a check nobody runs is not a check. Deliberately NOT in `check` (the
+# pre-commit gate): -race roughly doubles the suite's wall clock (measured
+# ~209s vs ~120s for the plain full run), and per-commit cost is the wrong
+# place to pay it, per the same reasoning that moved slow rig coverage into
+# CI (ini-0lko) rather than local hooks. It runs in CI's full-suite job
+# instead, where the cost is real but off the critical path of every commit.
 test-race:
 	go test ./... -count=1 -race
 

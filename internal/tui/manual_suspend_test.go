@@ -153,22 +153,20 @@ func TestSuspendedPaneKeystrokeIsConsumedNotDelivered(t *testing.T) {
 	}
 
 	// The wake gesture: a printable key that would be unmistakable if echoed.
-	tui.handleKey(tcell.NewEventKey(tcell.KeyRune, 'Q', tcell.ModNone))
+	//
+	// waitForAsyncWake, not a poll loop (ini-4cfl): t.panes has no lock, and
+	// this test's own goroutine reading it (via findLocalPane, which ranges
+	// over t.panes) while the keystroke-triggered background wake writes it
+	// -- resumePane replaces the pane object, so the poll cannot watch the
+	// pre-suspend pointer either -- is the exact shape -race caught here.
+	// onWakeComplete fires only after resumePane has returned, which means
+	// the t.panes swap has already happened with a real happens-before edge,
+	// so the single findLocalPane call below is race-free by construction
+	// rather than by timing.
+	waitForAsyncWake(t, tui, func() {
+		tui.handleKey(tcell.NewEventKey(tcell.KeyRune, 'Q', tcell.ModNone))
+	}, 20*time.Second)
 
-	// The keystroke must have triggered a wake, and the wake must COMPLETE --
-	// otherwise the delivery check below runs at a moment when a delivered key
-	// could not have arrived either, and its silence would prove nothing.
-	// Poll the TUI's CURRENT pane, never the pre-suspend pointer: resumePane
-	// replaces the pane object, so the old one stays suspended forever and a
-	// loop watching it would time out no matter how well the wake worked.
-	deadline = time.Now().Add(20 * time.Second)
-	for time.Now().Before(deadline) {
-		cur, ok := tui.findLocalPane("eng1")
-		if ok && !cur.IsSuspended() && !cur.IsWaking() {
-			break
-		}
-		time.Sleep(20 * time.Millisecond)
-	}
 	if cur, ok := tui.findLocalPane("eng1"); !ok || cur.IsSuspended() {
 		t.Fatal("a keystroke into a suspended pane did not wake it")
 	}
