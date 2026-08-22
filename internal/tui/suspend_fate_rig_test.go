@@ -27,13 +27,26 @@ import (
 	"time"
 )
 
+// shellForFixture picks the shell the echo fixture runs under. It is a
+// VARIABLE so the fixture can be isolated as a cause: on ubuntu /bin/sh is
+// dash, on macOS it is bash in POSIX mode, and running the identical fixture
+// under bash on the SAME runner makes the shell the only thing that changed
+// (shipper's discriminator, ini-0lko). Defaults to sh, which is what this rig
+// has always used.
+func shellForFixture() string {
+	if sh := os.Getenv("INITECH_9IMX_SHELL"); sh != "" {
+		return sh
+	}
+	return "sh"
+}
+
 // echoPane starts a REAL PTY process that echoes each input line as GOT:<line>,
 // so message arrival is observable in the emulator.
 func echoPane(t *testing.T, name string) *Pane {
 	t.Helper()
 	p, err := NewPane(PaneConfig{
 		Name:    name,
-		Command: []string{"sh", "-c", `while read l; do echo "GOT:$l"; done`},
+		Command: []string{shellForFixture(), "-c", `while read l; do echo "GOT:$l"; done`},
 	}, 24, 80)
 	if err != nil {
 		t.Fatalf("start echo pane: %v", err)
@@ -131,8 +144,16 @@ func (l liveness) String() string {
 	case livenessNoPane:
 		return "there is no pane by that name at all -- the fixture is wrong, not the product"
 	default:
-		return "the process IS alive but did not answer the probe -- respawned and not reading, " +
-			"which points at the fixture's shell loop rather than at delivery"
+		// Deliberately does NOT pick between the two remaining owners. Alive
+		// and silent is equally consistent with a fixture shell that is not
+		// echoing (dash vs bash) and with a respawned PTY that is not wired to
+		// the child's stdio on this platform -- and the second would be a real
+		// product defect. Naming one here would decide by assertion what only a
+		// discriminating run can decide.
+		return "the process IS ALIVE and did not answer the probe -- so it respawned and is not " +
+			"reading. Two candidates remain and this rig cannot separate them: the fixture's " +
+			"shell loop, or the respawned PTY not reaching the child's stdio. Run the same " +
+			"fixture under a different shell on the same runner to tell them apart"
 	}
 }
 

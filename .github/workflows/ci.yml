@@ -206,6 +206,22 @@ jobs:
       - name: Witness which rigs this leg selected
         run: go test ./internal/tui/ -list 'NineISXRig|X5obRig|AttentionRig|TestAQY_|NineGVNRig|TestSuspendFate|TestSuspendGuard'
 
+      # ini-0lko DIAGNOSTIC, temporary: the 9IMX fixture is ALIVE but silent on
+      # ubuntu (signal0=true, capturedBytes=0) and passes on macOS.
+      # Alive-and-silent has two candidate owners -- the fixture's shell
+      # (ubuntu /bin/sh is dash, macOS is bash in POSIX mode) or the respawned
+      # PTY not reaching the child's stdio, which would be a product defect.
+      # Re-running the IDENTICAL fixture under bash on the SAME runner makes
+      # the shell the only variable, which is dispositive either way.
+      # continue-on-error because this step ASKS a question; it does not assert
+      # an invariant, and a diagnostic must never gate. Remove once answered.
+      - name: DIAGNOSTIC - same fixture under bash (isolates the shell)
+        continue-on-error: true
+        env:
+          INITECH_9IMX: "1"
+          INITECH_9IMX_SHELL: bash
+        run: go test ./internal/tui/ -count=1 -timeout 300s -run 'TestSuspendGuard_ForwardSendSite'
+
       - name: Composed multi-window rigs (real binaries, real PTYs)
         env:
           INITECH_9ISX: "1"
