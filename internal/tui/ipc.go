@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/nmelo/initech/internal/config"
@@ -1085,6 +1086,13 @@ const minProvenRunes = 12
 // it asks whether our text is present in the block at all, not where. A proof
 // that depends on an unmeasured layout detail is a proof that breaks silently
 // when the layout changes.
+//
+// A second reason, measured by eng2: the tail scan stops at the lowest row
+// containing ">" ANYWHERE, so a continuation row that happens to contain a ">"
+// becomes the "prompt" row and this block starts MID-BODY. Asking presence
+// rather than position is what makes that harmless -- the proof survives a
+// composer layout nobody has fully characterised, which is the property to
+// preserve if this is ever rewritten.
 func composerBlock(p *Pane) ([]string, bool) {
 	tail, row, found := composerTailAt(p)
 	if !found {
@@ -1100,21 +1108,47 @@ func composerBlock(p *Pane) ([]string, bool) {
 
 // provenRunes counts how many runes of OUR body are visible in the composer.
 //
-// The rows are joined WITHOUT a separator on purpose: a wrapped line is split
-// across rows without anything being inserted, so concatenating rebuilds it
-// and a long line still matches. Each distinct body line is counted once.
+// WHITESPACE IS STRIPPED FROM BOTH SIDES BEFORE COMPARING, and that is not
+// tidiness -- it is the fix for a delivery bug eng2 found (review of bc92fdb).
+// Wrapping splits a line without inserting anything, so joining the rows with
+// no separator rebuilds it; but composerBlock must TrimSpace each row, because
+// RowText pads to the pane width, and when the split lands exactly ON A SPACE
+// the trim then deletes a character the wrap left in place. Concatenation no
+// longer rebuilds the line, the line proves ZERO -- provenRunes is
+// all-or-nothing per line -- and a single long line surfaces as undelivered
+// while sitting plainly in the operator's composer, where a re-send gives the
+// agent the message twice.
+//
+// Comparing space-stripped forms cannot be broken by WHERE the split lands,
+// which is a property of the text and the pane width that nobody measured and
+// nothing guarantees. It also makes the trim above harmless rather than
+// load-bearing. The cost is that a body line's weight is now its non-blank
+// rune count, which is the more honest measure anyway: spaces are the cheapest
+// thing for a coincidence to supply.
 func provenRunes(rows, bodyLines []string) int {
-	joined := strings.Join(rows, "")
+	joined := stripSpace(strings.Join(rows, ""))
 	seen := make(map[string]bool, len(bodyLines))
 	n := 0
 	for _, line := range bodyLines {
-		if seen[line] || !strings.Contains(joined, line) {
+		line = stripSpace(line)
+		if line == "" || seen[line] || !strings.Contains(joined, line) {
 			continue
 		}
 		seen[line] = true
 		n += len([]rune(line))
 	}
 	return n
+}
+
+// stripSpace removes every whitespace rune, so a comparison cannot depend on
+// where a terminal chose to wrap.
+func stripSpace(s string) string {
+	return strings.Map(func(r rune) rune {
+		if unicode.IsSpace(r) {
+			return -1
+		}
+		return r
+	}, s)
 }
 
 // composerProvesOurPaste reports whether the repainted composer is provably

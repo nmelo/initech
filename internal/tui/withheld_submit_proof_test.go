@@ -445,3 +445,42 @@ func TestProof_AWrappedLineIsStillOurLine(t *testing.T) {
 			"our text and the proof cannot see it because the rows were rejoined wrong")
 	}
 }
+
+// TestProof_ALineThatWrapsOnASpaceIsStillOurLine is eng2's finding against
+// bc92fdb, and it is the one wrap that the no-separator join does NOT survive.
+//
+// Wrapping splits a line without inserting anything -- true -- but composerBlock
+// must TrimSpace every row, because RowText pads to the pane width. When the
+// split lands exactly on a space, the trim then DELETES a character the wrap
+// left in place, and concatenation no longer rebuilds the line. Mid-word wraps
+// are unaffected, which is why every other cell here passes.
+//
+// It fails safe, and it still had to be fixed: provenRunes is all-or-nothing
+// per line, so a SINGLE-LINE body that wraps this way proves zero runes and
+// surfaces -- telling the operator a message was not delivered while it sits
+// plainly on their screen. They re-send, and the agent now has it twice. One
+// long line, far under the collapse threshold, is most of what this fleet
+// sends; the messages in this review are that shape.
+func TestProof_ALineThatWrapsOnASpaceIsStillOurLine(t *testing.T) {
+	// The pane is 120 columns and the prompt takes two, so the 119th rune of
+	// the body lands at the wrap boundary. Put the space there.
+	body := strings.Repeat("a", 118) + " tail-words-after-the-wrap"
+	for _, pad := range []int{0, 1} { // straddle any off-by-one in the wrap
+		p, submits, _ := proofPane(t)
+		b := strings.Repeat("a", 118+pad) + " tail-words-after-the-wrap"
+		if pad == 0 {
+			b = body
+		}
+		armWithheld(p, b)
+		p.emu.Write([]byte("❯ " + b))
+
+		p.maybeRetryWithheldSubmit()
+		select {
+		case <-submits:
+		case <-time.After(time.Second):
+			t.Fatalf("a single-line body that wrapped ON A SPACE (pad %d) proved nothing, "+
+				"so the operator is told a message failed while it is visibly in the "+
+				"composer -- and a re-send delivers it twice", pad)
+		}
+	}
+}
