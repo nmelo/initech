@@ -336,6 +336,13 @@ func (t *TUI) modalMaintenance(now time.Time) {
 	}
 	t.lastModalMaint = now
 
+	// A withheld submit is bounded here for the same reason the deferred queue
+	// below is drained here: both resolve on pane OUTPUT, and a quiet pane
+	// produces none (ini-vpwg finding 4 is ini-9gvn's third job, one path
+	// over). Nothing about it is modal-specific -- it lives here because this
+	// is the fleet's once-a-second, output-independent tick.
+	t.sweepWithheldSubmits(now)
+
 	for _, pv := range t.panes {
 		p, ok := pv.(*Pane)
 		if !ok {

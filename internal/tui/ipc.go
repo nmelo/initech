@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
@@ -587,12 +588,31 @@ func withholdSubmit(pane *Pane, text, mode string) {
 	pane.mu.Lock()
 	pane.pendingSubmit = &pendingSubmit{
 		marker:         submitMarker(text),
+		lines:          countBodyLines(text),
+		withheldAt:     time.Now(),
 		preview:        preview,
 		mode:           mode,
 		tailAtWithhold: tail,
 		deadline:       time.Now().Add(withheldSubmitWindow),
 	}
 	pane.mu.Unlock()
+
+	// THE DEADLINE IS ENFORCED BY sweepWithheldSubmits, NOT FROM HERE, and
+	// that is the whole point (ini-vpwg, finding 4, found by eng2 against
+	// their own code). The retry hook runs on pane OUTPUT, so an agent that
+	// withholds and then goes quiet -- crashed, wedged, or simply finished --
+	// never re-enters it, never reaches its own deadline, and holds the
+	// message forever: this bead's exact sin, reintroduced one level down by
+	// the mechanism meant to fix it.
+	//
+	// A per-withhold time.AfterFunc would also fire without output and was
+	// the first repair written here. The sweep replaced it because it guards
+	// the CLASS rather than the instance: every pane holding a pendingSubmit
+	// is bounded, however that field came to be set, so a future arming path
+	// that forgets to start a clock is bounded anyway. A timer armed beside
+	// each write is a rule someone has to remember; a sweep is a rule the
+	// structure keeps.
+
 	// INFO, not Debug (ini-vpwg, applying the rule ini-9gvn already bought).
 	// The comment twenty lines up in this file states it for the modal-guard
 	// path: a message the fleet is holding is not debug detail, because the
@@ -957,6 +977,8 @@ func (t *TUI) handleIPCAttention(conn net.Conn, req IPCRequest) {
 // was correctly left out rather than forgotten.
 type pendingSubmit struct {
 	marker         string    // A distinctive slice of our text, to prove the composer still holds OURS.
+	lines          int       // Our body's line count, to corroborate a COLLAPSED paste (ini-vpwg repair).
+	withheldAt     time.Time // When we withheld, so the operator is told how long a message waited.
 	preview        string    // For operator-facing records.
 	mode           string    // Injection mode, for the log.
 	tailAtWithhold string    // The composer tail when we withheld: "nothing has changed yet".
@@ -967,7 +989,12 @@ type pendingSubmit struct {
 // composer to repaint. Generous, because the state it is waiting out is a BUSY
 // agent and the alternative to waiting is surfacing a message the operator
 // then has to re-send by hand.
-const withheldSubmitWindow = 60 * time.Second
+// Raised from 60s (ini-vpwg repair): the state this waits out is a genuinely
+// BUSY agent, measured -- a live Claude writing a 600-word essay does not
+// repaint its composer for the belt's whole window -- and a turn that runs
+// tools routinely outlasts a minute. The surface message states how long the
+// message actually waited, so a generous bound does not become a silent one.
+const withheldSubmitWindow = 5 * time.Minute
 
 // submitMarker returns a distinctive slice of the text to look for in the
 // composer later. The LAST line is used because the composer tail is one row,
@@ -983,6 +1010,96 @@ func submitMarker(text string) string {
 	return string(r)
 }
 
+// collapsedPaste matches Claude's collapsed-paste marker and captures the line
+// count it exposes: "[Pasted text #1 +39 lines]".
+var collapsedPaste = regexp.MustCompile(`\[Pasted text #\d+ \+(\d+) lines?\]`)
+
+// collapsedPasteLineOffset is MEASURED, not guessed (eng1, live Claude
+// 2.1.233, 2026-08-22): a 60-line body renders as "[Pasted text #1 +59
+// lines]". The count Claude prints is our line count MINUS ONE.
+//
+// This is why the tolerance below is one -- it is the convention, not slop. If
+// a future Claude prints a different count, this comment is the instruction:
+// RE-MEASURE the offset, do not widen the tolerance. Widening starts accepting
+// other people's pastes, which is the forged submit this whole path exists to
+// avoid.
+const collapsedPasteLineOffset = 1
+
+// minMarkerRunes is the shortest text slice we will accept as proof by
+// CONTAINMENT.
+//
+// Bought by a reproduction (eng1 review, corroborated by eng2): a body ending
+// in a short final line -- "...\nthanks" -- yielded the marker "thanks", and
+// an operator typing "no thanks, I will do it myself" satisfied
+// strings.Contains and had their half-written line submitted for them. The
+// trigger is a short FINAL LINE, not a short message, and fleet messages
+// routinely end with a short sign-off on its own line, so it is more reachable
+// than it looks.
+//
+// Short markers are not rejected outright -- that would surface every brief
+// message -- they are held to a STRICTER test below: the composer must hold
+// our line and nothing else.
+const minMarkerRunes = 12
+
+// composerProvesOurPaste reports whether the repainted composer is provably
+// holding OUR body (ini-vpwg repair).
+//
+// THE TRANSITION IS REQUIRED, not just the state: a tail equal to the one we
+// withheld on proves nothing, and a placeholder that was already sitting there
+// from an earlier paste is not evidence of ours.
+//
+// TWO PROOFS, because Claude renders a paste two different ways:
+//   - SMALL paste: the composer echoes our text, so our own marker appears.
+//   - LARGE paste: Claude COLLAPSES it to "[Pasted text #N +M lines]" and our
+//     text is nowhere on the row. Requiring the marker there rejected our own
+//     paste as somebody else's and surfaced every long message -- measured
+//     against the landed code before this repair.
+func composerProvesOurPaste(tail string, ps *pendingSubmit) bool {
+	if tail == ps.tailAtWithhold {
+		return false // Nothing has repainted; this is the keep-waiting case.
+	}
+	if ps.marker != "" {
+		if len([]rune(ps.marker)) >= minMarkerRunes {
+			if strings.Contains(tail, ps.marker) {
+				return true
+			}
+		} else if strings.TrimSpace(tail) == ps.marker {
+			// A short marker proves ownership only if it is the WHOLE tail.
+			return true
+		}
+	}
+	m := collapsedPaste.FindStringSubmatch(tail)
+	if m == nil {
+		return false
+	}
+	shown, err := strconv.Atoi(m[1])
+	if err != nil {
+		// Corroboration could not run; say so rather than let a reader believe
+		// a size check happened. The collapsed shape is still our evidence.
+		LogInfo("inject", "collapsed paste line count unparseable; size corroboration SKIPPED",
+			"shown", m[1])
+		return true
+	}
+	// "A paste landed" becomes "a paste of OUR SIZE landed" for one comparison.
+	//
+	// EXACT, not within-a-line-or-two. The first version allowed a slack of
+	// one and a mutant that zeroed collapsedPasteLineOffset survived every
+	// test in the suite: the slack was wide enough to swallow the very
+	// constant it was corroborating, which makes the measurement unfalsifiable
+	// and admits a neighbouring paste that is not ours. If Claude ever counts
+	// differently, this stops proving and we SURFACE -- the safe direction --
+	// and the fix is to re-measure the offset, never to widen this.
+	if ps.lines-collapsedPasteLineOffset != shown {
+		return false // Somebody else's paste is in the composer.
+	}
+	return true
+}
+
+// countBodyLines counts the lines of a body as Claude would see them.
+func countBodyLines(text string) int {
+	return len(strings.Split(strings.TrimRight(text, "\n"), "\n"))
+}
+
 // maybeRetryWithheldSubmit is called on every chunk of pane output. It sends a
 // withheld submit ONLY when the composer provably still holds our text, and
 // otherwise surfaces rather than guessing.
@@ -994,18 +1111,54 @@ func (p *Pane) maybeRetryWithheldSubmit() {
 		return
 	}
 
+	// THE LOCK SPANS THE CHECK AND THE WRITE (ini-vpwg repair, finding 3).
+	// This runs on the readLoop goroutine; sendSubmitKey used to be called
+	// with no send lock at all, so a concurrent sender could be mid-bracketed
+	// paste on this pane when the submit landed -- inside somebody else's
+	// half-written body. Its sibling hook one line up (maybeDrainModalQueue)
+	// re-delivers through SendText, which DOES take sendMu; this one did not.
+	//
+	// TryLock, NOT Lock, and this fork was decided rather than defaulted.
+	//
+	//   Lock     -> correct every time, but blocks the readLoop behind a
+	//               sender that can hold sendMu through a whole bracketed
+	//               paste. readLoop is what feeds the emulator, so that is a
+	//               RENDER STALL on this pane: we would trade a forged submit
+	//               for a frozen screen.
+	//   TryLock  -> never stalls rendering, but the retry cannot run at the
+	//               moment output arrives while a sender holds the lock. A
+	//               SILENTLY SKIPPED RETRY WOULD BE THIS BEAD'S OWN BUG AGAIN,
+	//               so it is only safe with a re-arm path.
+	//
+	// TryLock is chosen because the re-arm path exists and is cheap: the
+	// pending submit is NOT cleared here, so the very next chunk of output
+	// retries it, and output is exactly what a repainting composer produces.
+	// The case with no further output at all -- the one a re-arm cannot cover,
+	// and the one where a declined round would otherwise compound with a
+	// deadline that never fires -- is covered by sweepWithheldSubmits, which
+	// runs off the maintenance tick and needs the pane to say nothing.
+	if !p.sendMu.TryLock() {
+		return
+	}
+	defer p.sendMu.Unlock()
+
 	tail, found := composerTail(p)
 	switch {
-	case found && ps.marker != "" && strings.Contains(tail, ps.marker):
+	case found && composerProvesOurPaste(tail, ps):
 		// PROVABLE: our text is in the composer. Send the submit, nothing else.
-		p.clearPendingSubmit()
+		// Claim it first: if the sweep already reported this message as
+		// undelivered, sending it now would make that report a lie.
+		if !p.takePendingSubmit(ps) {
+			return
+		}
 		sendSubmitKey(p.emu, p.submitKey)
 		LogInfo("inject", "withheld submit DELIVERED: composer repainted holding our text",
 			"pane", p.name, "mode", ps.mode, "text", ps.preview)
 		EmitEvent(p.eventCh, AgentEvent{
-			Type:   EventMessageSent,
-			Pane:   p.name,
-			Detail: "delivered after the composer repainted: " + ps.preview,
+			Type: EventMessageSent,
+			Pane: p.name,
+			Detail: "delivered after the composer repainted (" +
+				time.Since(ps.withheldAt).Round(time.Second).String() + " held): " + ps.preview,
 		})
 	case found && tail == ps.tailAtWithhold:
 		// Nothing has changed yet. Keep waiting, but not forever.
@@ -1027,17 +1180,62 @@ func (p *Pane) clearPendingSubmit() {
 	p.mu.Unlock()
 }
 
+// takePendingSubmit claims a withheld submit for exactly one resolver.
+//
+// There are now two paths that can resolve a message -- the output hook and
+// the sweep -- and a plain "read it, then clear it" lets both act on the same
+// pendingSubmit: the operator gets told a message was NOT delivered by one
+// path while the other is delivering it. Compare-and-clear under the pane lock
+// makes resolution a single atomic event; the loser does nothing at all.
+func (p *Pane) takePendingSubmit(ps *pendingSubmit) bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.pendingSubmit != ps {
+		return false
+	}
+	p.pendingSubmit = nil
+	return true
+}
+
+// sweepWithheldSubmits enforces the withheld-submit deadline on panes that are
+// producing no output (ini-vpwg, finding 4).
+//
+// It deliberately does NOT try to deliver: delivery needs proof from a
+// repainted composer, and a pane that has said nothing has offered none. The
+// only honest act at the deadline is to tell the operator.
+func (t *TUI) sweepWithheldSubmits(now time.Time) {
+	for _, pv := range t.panes {
+		p, ok := pv.(*Pane)
+		if !ok {
+			continue
+		}
+		p.mu.Lock()
+		ps := p.pendingSubmit
+		p.mu.Unlock()
+		if ps == nil || now.Before(ps.deadline) {
+			continue
+		}
+		p.surfaceUndeliveredSubmit(ps, "the pane produced no further output")
+	}
+}
+
 // surfaceUndeliveredSubmit reports a message we could not deliver and could not
 // prove the fate of. Loud on purpose: at this point the honest statement is "we
 // do not know", and the operator is the only one who can resolve it.
 func (p *Pane) surfaceUndeliveredSubmit(ps *pendingSubmit, why string) {
-	p.clearPendingSubmit()
+	if !p.takePendingSubmit(ps) {
+		return // Another resolver got there first; one message, one report.
+	}
+	waited := time.Since(ps.withheldAt).Round(time.Second)
 	LogInfo("inject", "withheld submit NOT DELIVERED", "pane", p.name, "mode", ps.mode,
-		"reason", why, "text", ps.preview)
+		"reason", why, "waited", waited, "text", ps.preview)
 	EmitEvent(p.eventCh, AgentEvent{
-		Type:   EventAgentStalled,
-		Pane:   p.name,
-		Detail: "message NOT delivered (" + why + "), re-send it: " + ps.preview,
+		Type: EventAgentStalled,
+		Pane: p.name,
+		// The WAIT is in the message: a bound that is generous still leaves the
+		// operator needing to know a message sat for 90s rather than arriving
+		// late for no stated reason (super, 2026-08-22).
+		Detail: "message NOT delivered after " + waited.String() + " (" + why + "), re-send it: " + ps.preview,
 		Time:   time.Now(),
 	})
 }
