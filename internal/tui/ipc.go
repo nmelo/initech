@@ -580,7 +580,14 @@ func withholdSubmit(pane *Pane, text, mode string) {
 	if len(preview) > 60 {
 		preview = preview[:57] + "..."
 	}
-	LogDebug("inject", "submit WITHHELD: body never reached a composer", "pane", pane.Name(), "mode", mode)
+	// INFO, not Debug (ini-vpwg, applying the rule ini-9gvn already bought).
+	// The comment twenty lines up in this file states it for the modal-guard
+	// path: a message the fleet is holding is not debug detail, because the
+	// live 9gvn incident left ZERO trace in a 7.8MB fleet log when its only
+	// record sat below the default level. THIS path holds a message in a worse
+	// way than that one -- the body is already in the composer and nothing
+	// re-delivers it -- and it was logging at Debug.
+	LogInfo("inject", "submit WITHHELD: body never reached a composer", "pane", pane.Name(), "mode", mode)
 	EmitEvent(pane.eventCh, AgentEvent{
 		Type:   EventMessageSent,
 		Pane:   pane.Name(),
