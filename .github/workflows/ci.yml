@@ -2,12 +2,7 @@ name: CI
 
 on:
   push:
-    # TEMPORARY (ini-0lko, removed before delivery): this branch adds three rig
-    # jobs that have never executed on a GitHub runner. They are gated
-    # `if: github.event_name == 'push'` and CI only fires on main, so a PR would
-    # SKIP exactly the jobs under test and the first real run would be on main.
-    # Witness them here instead.
-    branches: [main, fix/0lko-rig-coverage]
+    branches: [main]
   pull_request:
     branches: [main]
 
