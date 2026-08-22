@@ -1075,6 +1075,31 @@ const collapsedPasteLineOffset = 1
 // a coincidence is not a plausible explanation. A message whose entire visible
 // content is below this floor -- a body that is just "ok" -- cannot be proven
 // by anything on screen, and SURFACES rather than being guessed at.
+//
+// TWELVE STAYS, and its collision classes are recorded here rather than
+// designed around (eng2 raised the number and then argued against moving it;
+// super agreed). Twelve runes of coincidence is implausible for prose. Two
+// ways it can still be reached, both measured:
+//
+//   - THE SAME COMMAND. Both sides of this fleet type the same things, so a
+//     body line like "git pull --rebase" can be satisfied by an operator
+//     typing that command while our paste was withheld. This was reachable
+//     before the space-stripping and is the dominant case.
+//   - ACROSS WORD BOUNDARIES. provenRunes compares SPACE-STRIPPED forms, so
+//     the colliding text need not contain our line as written -- only its
+//     non-blank runes, contiguously and in order. Measured: our line "git
+//     pull --rebase" against a composer reading "we should legit pull
+//     --rebase-this later" proves 15 runes, because "legit pull" supplies
+//     "gitpull". Recorded because a reader will assume word boundaries
+//     constrain this, BECAUSE THEY NORMALLY DO. Order is still required (a
+//     scrambled composer proves 0) and unrelated text proves 0, so the
+//     widening is contiguity, not arbitrary matching.
+//
+// The widening is accepted, not overlooked: it is narrower than the
+// same-command case above, and the alternative to stripping is the delivery
+// bug it fixed, which fires on ordinary traffic rather than on a coincidence.
+// If this ever bites, the answer is MORE EVIDENCE, not a bigger number --
+// raising the floor trades a rare forge for routine surfacing.
 const minProvenRunes = 12
 
 // composerBlock returns the composer's visible text: the prompt row's content
