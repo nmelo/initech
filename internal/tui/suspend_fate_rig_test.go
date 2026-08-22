@@ -111,7 +111,8 @@ const (
 	livenessReading   liveness = iota // child answered the probe: alive and consuming input
 	livenessSilent                    // process alive, did not answer: running but not reading
 	livenessSuspended                 // pane suspended: the probe was queued, verdict impossible
-	livenessNoProcess                 // pane exists but its process is NOT alive: nothing respawned
+	livenessNoProcess                 // no process was ever spawned: implicates the respawn path
+	livenessExited                    // a process WAS spawned and has already exited: implicates the fixture
 	livenessNoPane                    // no pane by that name at all: the fixture itself is wrong
 )
 
@@ -122,8 +123,11 @@ func (l liveness) String() string {
 	case livenessSuspended:
 		return "pane is SUSPENDED, so the probe was queued -- inconclusive by construction"
 	case livenessNoProcess:
-		return "the pane's process is NOT ALIVE -- nothing was respawned, so this is about the " +
-			"respawn path, not about delivery"
+		return "NO process was ever spawned (nil pid) -- this is about the respawn path, not " +
+			"about delivery and not about the fixture"
+	case livenessExited:
+		return "a process WAS spawned and has already EXITED -- the respawn worked and the child " +
+			"quit, which points at the fixture's shell loop rather than at the product"
 	case livenessNoPane:
 		return "there is no pane by that name at all -- the fixture is wrong, not the product"
 	default:
@@ -145,19 +149,51 @@ func childLiveness(t *testing.T, tui *TUI, name, nonce string) liveness {
 	if pv == nil {
 		return livenessNoPane
 	}
-	// "No live reader" has two very different causes and the verdict is
-	// useless without knowing which: the PRODUCT failed to respawn a process
-	// at all, or it respawned one that is not consuming input (a fixture whose
-	// shell loop does not survive the respawn on this platform). IsAlive
-	// answers the first; the probe answers the second. Log both, because the
-	// gap between them is where a rig fault and a P1 look identical.
-	t.Logf("LIVENESS CONTEXT for %s: alive=%v suspended=%v capturedBytes=%d",
-		name, pv.IsAlive(), pv.IsSuspended(), len(paneOutput(tui, name)))
+	// "No live reader" has causes with DIFFERENT OWNERS and the verdict is
+	// useless without knowing which: the product respawned no process at all,
+	// or it respawned one that is not consuming input (a fixture whose shell
+	// loop does not survive respawn on this platform).
+	//
+	// IsAlive() CANNOT ARBITRATE THAT. It returns the cached p.alive field --
+	// a flag our own code writes -- not an observation of the process, so a
+	// child can be alive and reading while the flag says dead, and a verdict
+	// built on it would name an owner on the strength of our bookkeeping
+	// (shipper's read on ini-0lko; verified at pane.go IsAlive and
+	// liveness_unix.go). childProcessAlive is the real question: signal 0 to
+	// the pid we spawned. Both are logged, because when they DISAGREE that is
+	// a third cause with a third owner -- state management, not delivery and
+	// not the fixture -- and it would otherwise hide behind whichever one the
+	// verdict happened to read.
+	var proc *os.Process
+	if lp, ok := pv.(*Pane); ok {
+		lp.mu.Lock()
+		if lp.cmd != nil {
+			proc = lp.cmd.Process
+		}
+		lp.mu.Unlock()
+	}
+	realAlive := childProcessAlive(proc)
+	flagAlive := pv.IsAlive()
+	t.Logf("LIVENESS CONTEXT for %s: signal0=%v cachedFlag=%v suspended=%v capturedBytes=%d",
+		name, realAlive, flagAlive, pv.IsSuspended(), len(paneOutput(tui, name)))
+	if realAlive != flagAlive {
+		t.Logf("LIVENESS DISAGREEMENT for %s: signal0=%v but cached alive flag=%v. Neither "+
+			"'no process' nor 'not reading' -- the flag disagrees with the process, which is "+
+			"state management and owned by neither.", name, realAlive, flagAlive)
+	}
 	if pv.IsSuspended() {
 		return livenessSuspended
 	}
-	if !pv.IsAlive() {
-		return livenessNoProcess
+	// A shell whose read loop EXITS also answers signal 0 with "dead", so
+	// "not alive" alone would blame the respawn path for a fixture that
+	// spawned fine and then quit -- the exact misattribution this split
+	// exists to prevent, one level down. A non-nil pid means something WAS
+	// spawned; only a nil one implicates the respawn path itself.
+	if !realAlive {
+		if proc == nil {
+			return livenessNoProcess
+		}
+		return livenessExited
 	}
 	probe := "liveness-" + nonce
 	pv.SendText(probe, true)
