@@ -47,12 +47,14 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -66,6 +68,7 @@ const (
 	defaultTestDir  = "internal/tui"
 	defaultWorkflow = ".github/workflows/ci.yml"
 	exemptionsPath  = ".github/rig-census-exemptions.txt"
+	quarantinePath  = ".github/rig-quarantine.txt"
 	gateEnvPrefix   = "INITECH_"
 )
 
@@ -90,16 +93,17 @@ func main() {
 	testDir := flag.String("dir", defaultTestDir, "directory of gated tests")
 	workflow := flag.String("workflow", defaultWorkflow, "CI workflow to read coverage from")
 	exemptions := flag.String("exemptions", exemptionsPath, "path to the exemption file")
+	quarantineF := flag.String("quarantine", quarantinePath, "path to the quarantine file")
 	verbose := flag.Bool("v", false, "list every gate and where it runs")
 	flag.Parse()
 
-	if err := run(*testDir, *workflow, *exemptions, *verbose); err != nil {
+	if err := run(*testDir, *workflow, *exemptions, *quarantineF, *verbose); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-func run(testDir, workflow, exemptionsFile string, verbose bool) error {
+func run(testDir, workflow, exemptionsFile, quarantineFile string, verbose bool) error {
 	gates, err := findGates(testDir)
 	if err != nil {
 		return err
@@ -112,20 +116,82 @@ func run(testDir, workflow, exemptionsFile string, verbose bool) error {
 	if err != nil {
 		return err
 	}
+	quar, err := readQuarantine(quarantineFile)
+	if err != nil {
+		return err
+	}
+	var problems []string
 
 	var uncovered []gate
 	covered := map[string]string{}
 	for _, g := range gates {
-		if where, ok := coveredBy(g, steps); ok {
+		where, isRun := coveredBy(g, steps)
+		q, isQuar := quar[g.Env]
+		_, isExempt := exempt[g.Env]
+
+		if isQuar && isExempt {
+			problems = append(problems, fmt.Sprintf("%s is BOTH exempted and quarantined. Those "+
+				"are different states -- exempt means CI does not run it, quarantined means CI "+
+				"runs it and ignores the result -- and a rig cannot be both. Pick one.", g.Env))
+			continue
+		}
+
+		if isQuar {
+			// A quarantined rig that is not actually wired is just an
+			// exemption with a bead stapled to it. The whole point of the
+			// state is that the rig RUNS and its failure stays visible.
+			if !isRun {
+				problems = append(problems, fmt.Sprintf("%s is quarantined but NO CI step runs it. "+
+					"Quarantine means WIRED, RUNNING, NOT GATING -- if it does not run, its "+
+					"failure is invisible and the entry is an exemption in disguise. Wire it "+
+					"(env block AND -run selector, in a step that does not gate) or exempt it "+
+					"honestly.", g.Env))
+				continue
+			}
+			open, known, detail := beadStateFn(q.Bead)
+			switch {
+			case !known:
+				covered[g.Env] = fmt.Sprintf("QUARANTINED against %s (%s) — runs at %s, does not gate. "+
+					"BEAD STATE NOT VERIFIED HERE: %s", q.Bead, detail, where, detail)
+			case !open:
+				problems = append(problems, fmt.Sprintf("%s is quarantined against %s, which is %s. "+
+					"A quarantine outlives its reason the moment its bead does -- either the rig "+
+					"is fixed and the entry goes, or the bead should not be closed.",
+					g.Env, q.Bead, detail))
+			default:
+				covered[g.Env] = fmt.Sprintf("QUARANTINED against %s (%s) — runs at %s, does not gate",
+					q.Bead, detail, where)
+			}
+			continue
+		}
+
+		if isRun {
 			covered[g.Env] = where
 			continue
 		}
-		if _, ok := exempt[g.Env]; ok {
+		if isExempt {
 			covered[g.Env] = "EXEMPT: " + exempt[g.Env]
 			continue
 		}
 		uncovered = append(uncovered, g)
 	}
+
+	// A quarantine entry for a gate that no longer exists is stale for the
+	// same reason a stale exemption is: it states a decision about something
+	// that is not there, and the next reader trusts it.
+	for env := range quar {
+		found := false
+		for _, g := range gates {
+			if g.Env == env {
+				found = true
+			}
+		}
+		if !found {
+			problems = append(problems, fmt.Sprintf("%s is quarantined but no such gate exists any "+
+				"more. Remove the line from %s.", env, quarantinePath))
+		}
+	}
+	sort.Strings(problems)
 
 	if verbose {
 		names := make([]string, 0, len(covered))
@@ -156,9 +222,10 @@ func run(testDir, workflow, exemptionsFile string, verbose bool) error {
 	}
 	sort.Strings(stale)
 
-	if len(uncovered) == 0 && len(stale) == 0 {
-		fmt.Printf("  OK: %d env-gated rigs, all run by CI or exempted (%d exemption(s), all still applicable)\n",
-			len(gates), len(exempt))
+	if len(uncovered) == 0 && len(stale) == 0 && len(problems) == 0 {
+		fmt.Printf("  OK: %d env-gated rigs, all run by CI, exempted or quarantined "+
+			"(%d exemption(s), %d quarantine(d), all still applicable)\n",
+			len(gates), len(exempt), len(quar))
 		return nil
 	}
 
@@ -180,11 +247,136 @@ func run(testDir, workflow, exemptionsFile string, verbose bool) error {
 		fmt.Fprintf(&b, "it in %s with a REASON, so the next reader finds a decision\n", exemptionsPath)
 		fmt.Fprintf(&b, "instead of an accident.\n")
 	}
+	for _, pr := range problems {
+		fmt.Fprintf(&b, "\nQUARANTINE PROBLEM: %s\n", pr)
+	}
 	if len(stale) > 0 {
 		fmt.Fprintf(&b, "\nSTALE EXEMPTION: %s\n", strings.Join(stale, ", "))
 		fmt.Fprintf(&b, "Exempted in %s but no such gate exists any more. Remove the line.\n", exemptionsPath)
 	}
 	return fmt.Errorf("%s", b.String())
+}
+
+// quarantine is a rig that RUNS but does not GATE, because it fails for a
+// KNOWN product reason that has its own open bead.
+//
+// IT IS NOT A LOOSER EXEMPTION AND MUST NOT BORROW ITS VOCABULARY. An exempt
+// rig does not run at all; a quarantined one runs on every push, prints its
+// failure into the log, and is held off the build's verdict. The two answer
+// different questions and collapsing them would turn the exemption file into
+// the place failing rigs go to be forgotten -- which is the precise thing that
+// file exists to prevent.
+//
+// The property that makes quarantine honest rather than a hole is that it
+// CANNOT OUTLIVE ITS TICKET SILENTLY: every entry names a bead, and the census
+// fails when that bead is missing or closed. A plain temporary exemption has no
+// such property, which is why one was refused here (super's ruling, ini-0lko).
+type quarantine struct {
+	Env    string
+	Bead   string
+	Reason string
+}
+
+// beadRe matches the bead id a quarantine entry must name.
+var beadRe = regexp.MustCompile(`BEAD:\s*([a-z]+-[a-z0-9]+)`)
+
+// readQuarantine parses "ENV  # BEAD: <id> reason" lines.
+func readQuarantine(path string) (map[string]quarantine, error) {
+	out := map[string]quarantine{}
+	raw, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return out, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("read %s: %w", path, err)
+	}
+	for _, line := range strings.Split(string(raw), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		env, reason, found := strings.Cut(line, "#")
+		env = strings.TrimSpace(env)
+		reason = strings.TrimSpace(reason)
+		if env == "" {
+			continue
+		}
+		if !found || reason == "" {
+			return nil, fmt.Errorf("%s: quarantine %q has no reason", path, env)
+		}
+		m := beadRe.FindStringSubmatch(reason)
+		if m == nil {
+			return nil, fmt.Errorf("%s: quarantine %q names no bead. Every quarantine entry must "+
+				"carry \"BEAD: <id>\" -- a quarantine without a ticket is an exemption wearing a "+
+				"different word, and it is the ticket that stops it outliving its reason", path, env)
+		}
+		out[env] = quarantine{Env: env, Bead: m[1], Reason: reason}
+	}
+	return out, nil
+}
+
+// findBeadsDir walks up from the working directory looking for a .beads
+// directory. Returns "" when there is none.
+func findBeadsDir() string {
+	dir, err := os.Getwd()
+	if err != nil {
+		return ""
+	}
+	for i := 0; i < 8; i++ {
+		cand := filepath.Join(dir, ".beads")
+		if fi, err := os.Stat(cand); err == nil && fi.IsDir() {
+			return cand
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+	return ""
+}
+
+// beadStateFn is the bead lookup, swappable so tests can exercise the
+// closed/missing/unverifiable branches without a beads database present.
+var beadStateFn = beadState
+
+// beadState asks bd whether the named bead exists and is still open.
+//
+// known=false means bd could not be consulted at all (it is not installed --
+// CI runners have no beads database, which lives outside this repo). That is
+// reported out loud rather than passed silently: an unverifiable check that
+// prints "OK" is worse than one that says it did not run. The enforcing venue
+// is `make check`, which every commit passes through via the pre-commit hook.
+func beadState(id string) (open, known bool, detail string) {
+	if _, err := exec.LookPath("bd"); err != nil {
+		return false, false, "bd not on PATH"
+	}
+	cmd := exec.Command("bd", "show", id, "--json")
+	// The beads database lives ABOVE this repo (the agent workspace owns it,
+	// the source checkout does not), so bd's own upward discovery stops at the
+	// git root and finds nothing. Point it at the first .beads we find walking
+	// up. Without this the check fails to RUN and, read carelessly, a failure
+	// to run looks exactly like a failing bead.
+	if dir := findBeadsDir(); dir != "" {
+		cmd.Env = append(os.Environ(), "BEADS_DIR="+dir)
+	}
+	out, err := cmd.Output()
+	if err != nil {
+		// bd exists but could not answer. That is NOT evidence the bead is
+		// closed or missing -- it is evidence we did not measure. Reporting it
+		// as a bad bead would be the "couldn't measure" / "measured bad"
+		// conflation this tool exists to stop elsewhere.
+		return false, false, "bd could not answer (" + err.Error() + ")"
+	}
+	var rows []struct {
+		ID     string `json:"id"`
+		Status string `json:"status"`
+	}
+	if err := json.Unmarshal(out, &rows); err != nil || len(rows) == 0 {
+		return false, true, "no such bead"
+	}
+	st := rows[0].Status
+	return st != "closed", true, st
 }
 
 // findGates parses every _test.go in dir and returns the gates it finds.
