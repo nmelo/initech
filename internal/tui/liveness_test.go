@@ -6,8 +6,16 @@ package tui
 // because every test that exercised the probe was unix-only: vet
 // cross-compiles, but cross-compiled tests cannot RUN, so a probe that is not
 // a probe on Windows passed every commit-time guard and shipped in v2.9.0.
-// These cells run on the Windows CI leg, which is the only place the question
-// can actually be asked.
+//
+// STALE PREMISE CORRECTED (ini-ibsm, 2026-08-22). This comment used to say
+// these cells run on the Windows CI leg, "the only place the question can
+// actually be asked". THERE IS NO WINDOWS LEG ANY MORE -- macOS is the only
+// tested platform; linux and windows still SHIP, untested and
+// community-maintained. So nothing currently executes the Windows branch of
+// childProcessAlive, and the backstop that caught the v2.9.0 defect no longer
+// exists. These cells stay untagged and stay honest: they are ready for a leg
+// that may return, and until one does, the Windows probe is unverified by
+// anything except review. Do not read their presence as coverage.
 //
 // They spawn the test binary itself as a helper, which is the stdlib's own
 // pattern for "a real process, on any OS" -- no sleep(1), no timeout.exe, no

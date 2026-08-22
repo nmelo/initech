@@ -1,10 +1,12 @@
 package tui
 
-// DELIBERATELY UNTAGGED. os.Pipe and the emulator are portable and none of
-// these cells touch a tty, so there is no reason for message delivery -- the
-// product's most load-bearing path -- to go unexercised on the Windows leg.
-// ini-uop2 is the standing lesson: a probe that was not a probe on Windows
-// shipped for a release because every test that exercised it was unix-only.
+// DELIBERATELY UNTAGGED, and NOT because another platform runs these: as of
+// ini-ibsm macOS is the only tested platform, so a !windows tag would cost no
+// CI run today. It is untagged because os.Pipe and the emulator are portable
+// and no cell here touches a tty -- a build constraint that nothing requires
+// is a false statement about where the code works, and it hides the file from
+// the cross-platform census that would otherwise notice the asymmetry. If a
+// platform leg ever returns, these run unchanged.
 
 // What a repainted composer PROVES (ini-vpwg repair, eng1 on eng2's design).
 //
