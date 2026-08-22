@@ -55,15 +55,7 @@ func proofPane(t *testing.T) (*Pane, <-chan []byte, <-chan AgentEvent) {
 
 func armWithheld(p *Pane, body string) {
 	p.mu.Lock()
-	p.pendingSubmit = &pendingSubmit{
-		marker:         submitMarker(body),
-		lines:          countBodyLines(body),
-		preview:        "preview",
-		mode:           "bracketed",
-		tailAtWithhold: "",
-		withheldAt:     time.Now(),
-		deadline:       time.Now().Add(time.Minute),
-	}
+	p.pendingSubmit = newPendingSubmit(body, "bracketed", "")
 	p.mu.Unlock()
 }
 
@@ -136,37 +128,82 @@ func TestProof_ShortFinalLineDoesNotForgeASubmit(t *testing.T) {
 	assertSurfaced(t, events)
 }
 
-// TestProof_ShortFinalLineStillDeliversWhenItIsTheWholeTail is the other half:
-// the floor must not silently stop delivering brief messages. A short marker
-// is held to a STRICTER test, not refused.
-func TestProof_ShortFinalLineStillDeliversWhenItIsTheWholeTail(t *testing.T) {
+// TestProof_ShortFinalLineAloneIsNotProof REPLACES a cell that asserted the
+// opposite, and the replacement is the finding (eng2, against 1529dca).
+//
+// That cell required the composer to hold our short final line and NOTHING
+// else, and called the result delivery. But our own paste of "thanks" and the
+// operator typing "thanks" are byte-identical on that row -- strictness is not
+// disambiguation. The old cell was passing on an assumption, so it had to be
+// replaced rather than softened: with only six runes of our body visible there
+// is no proof available, and the honest act is to surface.
+func TestProof_ShortFinalLineAloneIsNotProof(t *testing.T) {
+	p, submits, events := proofPane(t)
+	armWithheld(p, "here is the long body of the message\nthanks")
+
+	p.emu.Write([]byte("❯ thanks")) // could be ours; could be the operator's
+
+	p.maybeRetryWithheldSubmit()
+	select {
+	case b := <-submits:
+		t.Fatalf("FORGED SUBMIT (%q). The belt withheld because it suspected a DIALOG "+
+			"swallowed our paste, so this is the belt answering a picker on the "+
+			"operator's behalf with whatever short word was on the row.", string(b))
+	case <-time.After(400 * time.Millisecond):
+	}
+	assertSurfaced(t, events)
+}
+
+// TestProof_TheWholeBodyOnScreenIsProof is the other half, and the reason the
+// fix is multi-row corroboration rather than refusing short final lines: when
+// the composer shows enough of our body, a coincidence stops being a plausible
+// explanation and the message is delivered.
+func TestProof_TheWholeBodyOnScreenIsProof(t *testing.T) {
 	p, submits, _ := proofPane(t)
 	armWithheld(p, "here is the long body of the message\nthanks")
 
-	p.emu.Write([]byte("❯ thanks"))
-	p.maybeRetryWithheldSubmit()
+	// Claude puts the first line on the prompt row and the rest beneath it.
+	p.emu.Write([]byte("❯ here is the long body of the message\r\nthanks"))
 
+	p.maybeRetryWithheldSubmit()
 	select {
 	case <-submits:
 	case <-time.After(time.Second):
-		t.Fatal("a brief message whose text IS the whole composer was not delivered; the " +
-			"marker floor has turned into a refusal to deliver short messages")
+		t.Fatal("a composer visibly holding our entire body was not accepted as proof; " +
+			"corroborating more than one row is what makes short sign-offs deliverable " +
+			"at all, and without it every such message surfaces")
 	}
+}
+
+// TestProof_ABodyTooShortToProveSurfaces is super's fallback: where there is
+// no evidence to corroborate WITH -- a body that is just "ok" -- multi-row
+// proof degrades silently back into the assumption. That case surfaces.
+//
+// It costs delivery on the briefest messages, and that is the trade taken
+// deliberately: the operator is told, and told what to re-send.
+func TestProof_ABodyTooShortToProveSurfaces(t *testing.T) {
+	p, submits, events := proofPane(t)
+	armWithheld(p, "ok")
+
+	p.emu.Write([]byte("❯ ok"))
+
+	p.maybeRetryWithheldSubmit()
+	select {
+	case b := <-submits:
+		t.Fatalf("submitted (%q) on a two-rune body: there is nothing on that screen "+
+			"that our paste can produce and the operator cannot", string(b))
+	case <-time.After(400 * time.Millisecond):
+	}
+	assertSurfaced(t, events)
 }
 
 // TestProof_RequiresTheTransition pins that a placeholder already present when
 // we withheld is not evidence of our paste.
 func TestProof_RequiresTheTransition(t *testing.T) {
 	p, submits, _ := proofPane(t)
-	body := longBody(60)
+	// The placeholder was ALREADY there when we withheld.
 	p.mu.Lock()
-	p.pendingSubmit = &pendingSubmit{
-		marker: submitMarker(body), lines: countBodyLines(body),
-		preview: "preview", mode: "bracketed",
-		tailAtWithhold: "[Pasted text #1 +59 lines]", // already there when we withheld
-		withheldAt:     time.Now(),
-		deadline:       time.Now().Add(time.Minute),
-	}
+	p.pendingSubmit = newPendingSubmit(longBody(60), "bracketed", "[Pasted text #1 +59 lines]")
 	p.mu.Unlock()
 
 	p.emu.Write([]byte("❯ [Pasted text #1 +59 lines]"))
@@ -248,14 +285,9 @@ func TestProof_QuietPaneStillResolves(t *testing.T) {
 	p, submits, events := proofPane(t)
 	tui := &TUI{panes: []PaneView{p}, quitCh: make(chan struct{})}
 
-	body := longBody(60)
 	p.mu.Lock()
-	p.pendingSubmit = &pendingSubmit{
-		marker: submitMarker(body), lines: countBodyLines(body),
-		preview: "preview", mode: "bracketed", tailAtWithhold: "",
-		withheldAt: time.Now(),
-		deadline:   time.Now().Add(30 * time.Second),
-	}
+	p.pendingSubmit = newPendingSubmit(longBody(60), "bracketed", "")
+	p.pendingSubmit.deadline = time.Now().Add(30 * time.Second)
 	p.mu.Unlock()
 
 	// The pane produces NO output from here on. Not one byte.
@@ -367,5 +399,49 @@ func TestProof_AMessageIsClaimedByExactlyOneResolver(t *testing.T) {
 	case <-events:
 	case <-time.After(time.Second):
 		t.Fatal("instrument check failed: no report even for a held message")
+	}
+}
+
+// TestProof_EvidenceBelowThePromptRowCounts is what makes the multi-row read
+// load-bearing rather than decorative.
+//
+// Claude puts the first line of a body on the prompt row and the rest beneath
+// it, so a body that opens with a short line -- a greeting, a name, a bead id
+// -- has almost none of its evidence on that row. Reading one row would
+// surface it; reading the block proves it. Every other delivery cell here
+// would pass with the block reader gutted, because their first line is long
+// enough on its own.
+func TestProof_EvidenceBelowThePromptRowCounts(t *testing.T) {
+	p, submits, _ := proofPane(t)
+	armWithheld(p, "hi\nhere is the long body of the message")
+
+	p.emu.Write([]byte("❯ hi\r\nhere is the long body of the message"))
+
+	p.maybeRetryWithheldSubmit()
+	select {
+	case <-submits:
+	case <-time.After(time.Second):
+		t.Fatal("a body whose evidence sits BELOW the prompt row was not proven; any " +
+			"message opening with a short line is undeliverable when only one row is read")
+	}
+}
+
+// TestProof_AWrappedLineIsStillOurLine pins why the rows are joined with no
+// separator: wrapping splits a line across rows without inserting anything, so
+// concatenating rebuilds it. Joining with a newline would break every message
+// containing a line longer than the pane is wide -- paths, URLs, commands.
+func TestProof_AWrappedLineIsStillOurLine(t *testing.T) {
+	p, submits, _ := proofPane(t)
+	long := "/Users/nmelo/Desktop/Projects/initech/" + strings.Repeat("deep-path-segment/", 12)
+	armWithheld(p, long)
+
+	p.emu.Write([]byte("❯ " + long)) // 120-column pane: this wraps
+
+	p.maybeRetryWithheldSubmit()
+	select {
+	case <-submits:
+	case <-time.After(time.Second):
+		t.Fatal("a line that WRAPPED was not recognised as ours; the composer is showing " +
+			"our text and the proof cannot see it because the rows were rejoined wrong")
 	}
 }

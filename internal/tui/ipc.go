@@ -521,6 +521,13 @@ func promptHasContent(p *Pane) bool {
 // messages agents send). Open dialog: unchanged, and nothing on screen moved --
 // the picker swallowed the paste silently.
 func composerTail(p *Pane) (string, bool) {
+	text, _, found := composerTailAt(p)
+	return text, found
+}
+
+// composerTailAt is composerTail plus the row the prompt was found on, which
+// the block reader needs and the tail readers do not.
+func composerTailAt(p *Pane) (string, int, bool) {
 	cols := p.emu.Width()
 	rows := p.emu.Height()
 	for row := rows - 1; row >= 0; row-- {
@@ -529,11 +536,11 @@ func composerTail(p *Pane) (string, bool) {
 		text := p.emu.RowText(row, cols)
 		for _, prompt := range []string{"\u276f", "\u203a", ">"} {
 			if idx := strings.LastIndex(text, prompt); idx >= 0 {
-				return strings.TrimSpace(text[idx+len(prompt):]), true
+				return strings.TrimSpace(text[idx+len(prompt):]), row, true
 			}
 		}
 	}
-	return "", false
+	return "", 0, false
 }
 
 // composerEchoWindow bounds how long the belt waits for the body to appear in
@@ -580,21 +587,10 @@ func composerAcceptedBody(p *Pane, before string) bool {
 // body sat in the composer, the submit never went, and nothing re-delivered
 // it -- a message the fleet was holding with no holder.
 func withholdSubmit(pane *Pane, text, mode string) {
-	preview := text
-	if len(preview) > 60 {
-		preview = preview[:57] + "..."
-	}
 	tail, _ := composerTail(pane)
+	ps := newPendingSubmit(text, mode, tail)
 	pane.mu.Lock()
-	pane.pendingSubmit = &pendingSubmit{
-		marker:         submitMarker(text),
-		lines:          countBodyLines(text),
-		withheldAt:     time.Now(),
-		preview:        preview,
-		mode:           mode,
-		tailAtWithhold: tail,
-		deadline:       time.Now().Add(withheldSubmitWindow),
-	}
+	pane.pendingSubmit = ps
 	pane.mu.Unlock()
 
 	// THE DEADLINE IS ENFORCED BY sweepWithheldSubmits, NOT FROM HERE, and
@@ -624,7 +620,7 @@ func withholdSubmit(pane *Pane, text, mode string) {
 	EmitEvent(pane.eventCh, AgentEvent{
 		Type:   EventMessageSent,
 		Pane:   pane.Name(),
-		Detail: "submit withheld, awaiting composer repaint (body did not reach the composer; a dialog may be open): " + preview,
+		Detail: "submit withheld, awaiting composer repaint (body did not reach the composer; a dialog may be open): " + ps.preview,
 	})
 }
 
@@ -976,7 +972,7 @@ func (t *TUI) handleIPCAttention(conn net.Conn, req IPCRequest) {
 // is why the modal guard's enqueue-the-whole-message shape is wrong here and
 // was correctly left out rather than forgotten.
 type pendingSubmit struct {
-	marker         string    // A distinctive slice of our text, to prove the composer still holds OURS.
+	bodyLines      []string  // Our body's distinct non-blank lines, the evidence a composer must show to prove it holds OURS.
 	lines          int       // Our body's line count, to corroborate a COLLAPSED paste (ini-vpwg repair).
 	withheldAt     time.Time // When we withheld, so the operator is told how long a message waited.
 	preview        string    // For operator-facing records.
@@ -1000,14 +996,48 @@ const withheldSubmitWindow = 5 * time.Minute
 // composer later. The LAST line is used because the composer tail is one row,
 // and a bounded slice because a long paste wraps and only its end stays on the
 // tail row.
-func submitMarker(text string) string {
-	lines := strings.Split(strings.TrimRight(text, "\n"), "\n")
-	last := strings.TrimSpace(lines[len(lines)-1])
-	r := []rune(last)
-	if len(r) > 24 {
-		r = r[len(r)-24:]
+// newPendingSubmit derives everything a withheld submit needs from the body,
+// in ONE place.
+//
+// A constructor rather than a struct literal at each arming site, because this
+// fleet has now paid three times for the same mechanism: a replacement object
+// beside a hand-written list of fields to carry over is a silent-omission
+// machine, and the omission type-checks. A future arming path gets the
+// evidence and the bound whether or not its author remembered them.
+func newPendingSubmit(text, mode, tailAtWithhold string) *pendingSubmit {
+	preview := text
+	if len(preview) > 60 {
+		preview = preview[:57] + "..."
 	}
-	return string(r)
+	now := time.Now()
+	return &pendingSubmit{
+		bodyLines:      bodyEvidenceLines(text),
+		lines:          countBodyLines(text),
+		withheldAt:     now,
+		preview:        preview,
+		mode:           mode,
+		tailAtWithhold: tailAtWithhold,
+		deadline:       now.Add(withheldSubmitWindow),
+	}
+}
+
+// bodyEvidenceLines is the body reduced to what a composer could show us back:
+// distinct, non-blank, trimmed lines.
+//
+// Blank lines are dropped because they are satisfied by any composer at all,
+// and evidence that anything satisfies is not evidence.
+func bodyEvidenceLines(text string) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, line := range strings.Split(text, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || seen[line] {
+			continue
+		}
+		seen[line] = true
+		out = append(out, line)
+	}
+	return out
 }
 
 // collapsedPaste matches Claude's collapsed-paste marker and captures the line
@@ -1025,21 +1055,67 @@ var collapsedPaste = regexp.MustCompile(`\[Pasted text #\d+ \+(\d+) lines?\]`)
 // avoid.
 const collapsedPasteLineOffset = 1
 
-// minMarkerRunes is the shortest text slice we will accept as proof by
-// CONTAINMENT.
+// minProvenRunes is how much of OUR OWN text must be visible in the composer
+// before we will call it proof.
 //
-// Bought by a reproduction (eng1 review, corroborated by eng2): a body ending
-// in a short final line -- "...\nthanks" -- yielded the marker "thanks", and
-// an operator typing "no thanks, I will do it myself" satisfied
-// strings.Contains and had their half-written line submitted for them. The
-// trigger is a short FINAL LINE, not a short message, and fleet messages
-// routinely end with a short sign-off on its own line, so it is more reachable
-// than it looks.
+// THIS IS A FLOOR ON EVIDENCE, NOT ON MESSAGE LENGTH, and the difference is
+// the whole finding (eng2, against 1529dca). A body ending "...\nthanks"
+// yielded a six-rune marker, and the branch that handled it required the
+// composer to hold that and nothing else. Strictness is not disambiguation:
+// our own paste of "thanks" and the OPERATOR typing "thanks" produce a
+// BYTE-IDENTICAL row, so no inspection of it can tell them apart. The branch
+// read as a proof and was an assumption -- and it assumed in the state where
+// the belt suspected a DIALOG had swallowed our paste, which makes a wrong
+// answer the belt answering a picker on the operator's behalf. The words that
+// collide are "ok", "done", "thanks": the ones both sides use.
 //
-// Short markers are not rejected outright -- that would surface every brief
-// message -- they are held to a STRICTER test below: the composer must hold
-// our line and nothing else.
-const minMarkerRunes = 12
+// So we no longer ask "is our last line on the last row". We ask how much of
+// our body is visible ANYWHERE in the composer, and require enough of it that
+// a coincidence is not a plausible explanation. A message whose entire visible
+// content is below this floor -- a body that is just "ok" -- cannot be proven
+// by anything on screen, and SURFACES rather than being guessed at.
+const minProvenRunes = 12
+
+// composerBlock returns the composer's visible text: the prompt row's content
+// followed by every row beneath it.
+//
+// Deliberately layout-agnostic. Claude puts the first line of a multi-line
+// body on the prompt row and the rest below it, so "the last row" is not where
+// our last line lives -- but the proof below never needs to know that, because
+// it asks whether our text is present in the block at all, not where. A proof
+// that depends on an unmeasured layout detail is a proof that breaks silently
+// when the layout changes.
+func composerBlock(p *Pane) ([]string, bool) {
+	tail, row, found := composerTailAt(p)
+	if !found {
+		return nil, false
+	}
+	rows := []string{tail}
+	cols := p.emu.Width()
+	for r := row + 1; r < p.emu.Height(); r++ {
+		rows = append(rows, strings.TrimSpace(p.emu.RowText(r, cols)))
+	}
+	return rows, true
+}
+
+// provenRunes counts how many runes of OUR body are visible in the composer.
+//
+// The rows are joined WITHOUT a separator on purpose: a wrapped line is split
+// across rows without anything being inserted, so concatenating rebuilds it
+// and a long line still matches. Each distinct body line is counted once.
+func provenRunes(rows, bodyLines []string) int {
+	joined := strings.Join(rows, "")
+	seen := make(map[string]bool, len(bodyLines))
+	n := 0
+	for _, line := range bodyLines {
+		if seen[line] || !strings.Contains(joined, line) {
+			continue
+		}
+		seen[line] = true
+		n += len([]rune(line))
+	}
+	return n
+}
 
 // composerProvesOurPaste reports whether the repainted composer is provably
 // holding OUR body (ini-vpwg repair).
@@ -1049,24 +1125,18 @@ const minMarkerRunes = 12
 // from an earlier paste is not evidence of ours.
 //
 // TWO PROOFS, because Claude renders a paste two different ways:
-//   - SMALL paste: the composer echoes our text, so our own marker appears.
+//   - SMALL paste: the composer echoes our text, so enough of our own body
+//     is visible somewhere in it to rule out coincidence.
 //   - LARGE paste: Claude COLLAPSES it to "[Pasted text #N +M lines]" and our
-//     text is nowhere on the row. Requiring the marker there rejected our own
+//     text is nowhere in the block. Requiring our text there rejected our own
 //     paste as somebody else's and surfaced every long message -- measured
 //     against the landed code before this repair.
-func composerProvesOurPaste(tail string, ps *pendingSubmit) bool {
+func composerProvesOurPaste(p *Pane, tail string, ps *pendingSubmit) bool {
 	if tail == ps.tailAtWithhold {
 		return false // Nothing has repainted; this is the keep-waiting case.
 	}
-	if ps.marker != "" {
-		if len([]rune(ps.marker)) >= minMarkerRunes {
-			if strings.Contains(tail, ps.marker) {
-				return true
-			}
-		} else if strings.TrimSpace(tail) == ps.marker {
-			// A short marker proves ownership only if it is the WHOLE tail.
-			return true
-		}
+	if rows, ok := composerBlock(p); ok && provenRunes(rows, ps.bodyLines) >= minProvenRunes {
+		return true
 	}
 	m := collapsedPaste.FindStringSubmatch(tail)
 	if m == nil {
@@ -1144,7 +1214,7 @@ func (p *Pane) maybeRetryWithheldSubmit() {
 
 	tail, found := composerTail(p)
 	switch {
-	case found && composerProvesOurPaste(tail, ps):
+	case found && composerProvesOurPaste(p, tail, ps):
 		// PROVABLE: our text is in the composer. Send the submit, nothing else.
 		// Claim it first: if the sweep already reported this message as
 		// undelivered, sending it now would make that report a lie.
