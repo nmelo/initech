@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/charmbracelet/x/vt"
 )
 
 func queuedPane(t *testing.T, n int) *Pane {
@@ -165,5 +167,139 @@ func TestRestart_TheRealRestartPathCarriesTheMail(t *testing.T) {
 		t.Fatalf("the restarted pane holds %d of 4 deferred messages.\n\n"+
 			"This is the reported outage: mail deferred behind a modal is destroyed by "+
 			"a restart, with no notice to senders or recipient.", got)
+	}
+}
+
+// TestRestart_DrainModalQueueItselfPopsOneAtATime closes a reachability gap
+// found while sampling this bead's own mutations, not asserted by anything
+// else here: TestRestart_MidDrainLosesAtMostTheMessageInFlight drives
+// PopQueuedMessage directly, never drainModalQueue -- so reverting
+// drainModalQueue to its pre-fix shape (msgs := p.DrainQueue(); for _, m
+// := range msgs {...}) survives the ENTIRE existing suite, including that
+// cell. Verified live: applied that exact revert, every other cell in this
+// file still passed. PopQueuedMessage has no other production caller, so a
+// regression there is invisible to every test that only drives the
+// primitive and not the function that is supposed to call it one message
+// at a time.
+//
+// This drives drainModalQueue itself and takes the SAME sendMu restartPane
+// takes, at the point a real concurrent restart would: sendMu can only be
+// acquired here once drainModalQueue's first SendText call has released
+// it, which is while the drain is sleeping between message 1 and message
+// 2. At that instant a correct (pop-one-at-a-time) drain has exactly 2
+// messages left; the reverted (pop-everything-up-front) shape has 0.
+func TestRestart_DrainModalQueueItselfPopsOneAtATime(t *testing.T) {
+	p := queuedPane(t, 3)
+	// SendText's stash-on-submit path reaches into p.emu (ini-gd0); the
+	// bare queuedPane fixture has none, since most cells here never send
+	// through SendText at all -- this one does, so it needs a real target.
+	p.emu = vt.NewSafeEmulator(80, 24)
+	// The emulator's internal response pipe (DA/DSR queries) needs a
+	// reader or a Write into it blocks forever -- the same requirement
+	// RemotePane's responseLoop exists for. Without this the drain
+	// goroutine below never returns and the test hangs (found live).
+	go func() {
+		buf := make([]byte, 256)
+		for {
+			if _, err := p.emu.Read(buf); err != nil {
+				return
+			}
+		}
+	}()
+
+	go p.drainModalQueue()
+
+	// Wait for evidence the first pop happened (this read does not need
+	// sendMu -- QueuedMessageCount only touches p.mu), so the sendMu
+	// acquisition below lands after message 1's send, not before it.
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) && p.QueuedMessageCount() == 3 {
+		time.Sleep(time.Millisecond)
+	}
+	if p.QueuedMessageCount() == 3 {
+		t.Fatal("drainModalQueue never popped anything within the deadline")
+	}
+
+	p.sendMu.Lock()
+	remaining := p.QueuedMessageCount()
+	p.sendMu.Unlock()
+
+	if remaining == 0 {
+		t.Fatal("drainModalQueue had already emptied the queue by the time the first send " +
+			"released sendMu -- it popped everything up front instead of one message at a " +
+			"time, which is exactly the regression that destroyed mail mid-restart " +
+			"(restartPane's own carry takes this same lock at this same point)")
+	}
+	if remaining != 2 {
+		t.Errorf("remaining = %d right after the first send, want 2 (one popped and sent, "+
+			"two still queued where a concurrent restart's carry would find them)", remaining)
+	}
+
+	// Let the drain finish so nothing leaks past the test.
+	deadline = time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) && p.QueuedMessageCount() > 0 {
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+// TestRestart_ARealFreshlySpawnedPaneActuallyDeliversTheCarriedQueue closes
+// eng1's own named gap: every cell above proves the queue LANDS on the new
+// pane object; none proves the readLoop-triggered drain actually POPS AND
+// SENDS it once the new process is genuinely running.
+// TestRestart_TheRealRestartPathCarriesTheMail spawns /bin/cat, which
+// produces NO output of its own -- so maybeDrainModalQueue's only call site
+// (pane.go:510, fired from readLoop on PTY output) can never trigger for
+// it, and that cell can only prove the carry landed, never that delivery
+// happens. This spawns `sh`, which prints its own prompt unprompted, so
+// the drain fires from the real process's real output with nothing here
+// calling maybeDrainModalQueue directly -- the claim eng1 flagged as
+// "argued from ini-9gvn's drain, not driven in a test."
+func TestRestart_ARealFreshlySpawnedPaneActuallyDeliversTheCarriedQueue(t *testing.T) {
+	// NoBracketedPaste: true, or SendText's stash-on-submit (ini-gd0/ini-a9d8)
+	// sends a real Ctrl+S to `sh` before the message -- which a plain shell's
+	// tty sees as XOFF flow control, not a stash gesture, and freezes ALL
+	// further output permanently. Found live: the first version of this test
+	// used a bare PaneConfig and every assertion below failed against a
+	// process that never printed anything past its own startup prompt again.
+	fp, err := NewPane(PaneConfig{
+		Name: "eng2", Command: []string{"sh"}, NoBracketedPaste: true,
+	}, 24, 80)
+	if err != nil {
+		t.Fatalf("NewPane: %v", err)
+	}
+	fp.Start()
+	t.Cleanup(fp.Close)
+
+	const marker = "DELIVERED_MARKER_9X2"
+	fp.EnqueueMessage("echo "+marker, true)
+
+	tui := &TUI{panes: []PaneView{fp}, agentEvents: make(chan AgentEvent, 16), quitCh: make(chan struct{})}
+	if err := tui.restartPane(fp); err != nil {
+		t.Fatalf("restartPane: %v", err)
+	}
+
+	np, ok := tui.panes[0].(*Pane)
+	if !ok {
+		t.Fatal("pane slot does not hold a local pane after restart")
+	}
+	t.Cleanup(np.Close)
+
+	// Poll rather than sleep-once: this is waiting on a REAL process's own
+	// startup timing, not a fixed delay this test controls.
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) && np.QueuedMessageCount() > 0 {
+		time.Sleep(50 * time.Millisecond)
+	}
+	if got := np.QueuedMessageCount(); got != 0 {
+		t.Fatalf("the carried message is still queued after waiting for the restarted "+
+			"process's own output to trigger delivery (%d remain) -- the queue reaches the "+
+			"new pane but the tick that is supposed to drain it never fires", got)
+	}
+
+	// Draining and delivering are different claims -- SendText could pop and
+	// discard. Confirm the text actually reached the restarted process.
+	if screen := np.emu.Render(); !strings.Contains(screen, marker) {
+		t.Fatalf("the carried message drained from the queue but never reached the "+
+			"restarted process's screen: %q", screen)
 	}
 }
