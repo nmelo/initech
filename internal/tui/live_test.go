@@ -44,13 +44,19 @@ func (m *mockPaneView) LastEventTime() time.Time       { return m.eventTime }
 func (m *mockPaneView) LastOutputTime() time.Time      { return m.lastOutputTime }
 
 // Unused PaneView methods.
-func (m *mockPaneView) SessionDesc() string                                       { return "" }
-func (m *mockPaneView) AgentType() string                                         { return "" }
-func (m *mockPaneView) SubmitKey() string                                         { return "" }
-func (m *mockPaneView) SetBead(id, title string)                                  {}
-func (m *mockPaneView) SetBeads(ids []string)                                     {}
-func (m *mockPaneView) SendKey(_ *tcell.EventKey)                                 {}
-func (m *mockPaneView) SendText(_ string, _ bool)                                 {}
+func (m *mockPaneView) SessionDesc() string       { return "" }
+func (m *mockPaneView) AgentType() string         { return "" }
+func (m *mockPaneView) SubmitKey() string         { return "" }
+func (m *mockPaneView) SetBead(id, title string)  {}
+func (m *mockPaneView) SetBeads(ids []string)     {}
+func (m *mockPaneView) SendKey(_ *tcell.EventKey) {}
+func (m *mockPaneView) SendText(_ string, _ bool) {}
+
+// FlushPaste is a no-op here: this mock exists for liveness/visibility cells
+// that never paste. It is deliberately LESS capable than the real types rather
+// than more (ini-9isx) -- a stand-in that can do something the product cannot
+// certifies a capability nobody has. The paste cells use their own recorder.
+func (m *mockPaneView) FlushPaste(_ []byte)                                       {}
 func (m *mockPaneView) Render(_ tcell.Screen, _ bool, _ bool, _ int, _ Selection) {}
 func (m *mockPaneView) Resize(_, _ int)                                           {}
 func (m *mockPaneView) Close()                                                    {}

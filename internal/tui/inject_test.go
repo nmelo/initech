@@ -71,6 +71,14 @@ func TestInjectText_BracketedPaste(t *testing.T) {
 
 // TestInjectText_CtrlS_StillSent verifies that Ctrl+S stash is still sent
 // through the emulator before the bracketed paste.
+//
+// enter=true since ini-a9d8, and the guard is UNCHANGED in intent. The stash
+// is now conditional on enter, because Claude restores stashed text only after
+// a SUBMIT -- so stashing on a send that never submits strands what the
+// operator was composing (a paste into a viewer window is the first caller
+// that never submits). This cell was written by ini-6l9j to prove the stash
+// survived the switch to bracketed paste; that guarantee now lives on the
+// submitting path, so the cell asks for it there rather than being deleted.
 func TestInjectText_CtrlS_StillSent(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("test uses Unix pipes")
@@ -85,15 +93,22 @@ func TestInjectText_CtrlS_StillSent(t *testing.T) {
 	emu := vt.NewSafeEmulator(80, 24)
 	// Collect emulator output to verify Ctrl+S was sent.
 	ctrlSCh := make(chan bool, 1)
+	// KEEPS DRAINING after the hit. Returning here stops the only reader of
+	// the emulator, and a submitting send writes more to it afterwards (the
+	// submit key) -- with nobody reading, that write blocks and the whole
+	// package hangs rather than failing. Measured: this test wedged for 600s
+	// when ini-a9d8 pointed it at enter=true.
 	go func() {
 		buf := make([]byte, 256)
+		seen := false
 		for {
 			n, err := emu.Read(buf)
-			if n > 0 {
+			if n > 0 && !seen {
 				for _, b := range buf[:n] {
 					if b == 0x13 { // Ctrl+S
+						seen = true
 						ctrlSCh <- true
-						return
+						break
 					}
 				}
 			}
@@ -106,7 +121,7 @@ func TestInjectText_CtrlS_StillSent(t *testing.T) {
 	p := &Pane{name: "eng1", emu: emu, alive: true, ptmx: &filePty{ptmx}}
 	tui := &TUI{agentEvents: make(chan AgentEvent, 8)}
 
-	go tui.injectText(p, "hi", false)
+	go tui.injectText(p, "hi", true)
 
 	select {
 	case <-ctrlSCh:

@@ -347,8 +347,17 @@ func sendPaneTextLocked(pane *Pane, text string, enter bool) {
 	// message doesn't corrupt text the user was composing (ini-gd0). Codex/raw
 	// panes skip this because they inject directly to the PTY instead of through
 	// the emulator keystroke path.
+	//
+	// ONLY WHEN WE ARE GOING TO SUBMIT (ini-a9d8). Claude restores stashed
+	// text after a SUBMIT, so stashing on a send that never submits strands
+	// what the operator typed: paste into a viewer window routes through here
+	// with enter=false, and an operator who had typed "review this: " before
+	// pasting would lose it. Today they lose the paste; inheriting the stash
+	// unconditionally would have made the fix worse than the bug for them.
+	// Safe by construction: no caller passed enter=false before a9d8, so this
+	// condition changes no existing behaviour.
 	stashed := false
-	if !pane.noBracketedPaste {
+	if !pane.noBracketedPaste && enter {
 		pane.emu.SendKey(uv.KeyPressEvent(uv.Key{Code: 's', Mod: uv.ModCtrl}))
 		time.Sleep(75 * time.Millisecond)
 		stashed = true

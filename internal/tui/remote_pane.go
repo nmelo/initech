@@ -55,7 +55,7 @@ type RemotePane struct {
 	// (agent_status broadcast) — without it a parked agent's silent stream
 	// reads as idle in every window but the one that parked it.
 	suspended bool
-	region  Region
+	region    Region
 
 	goWg sync.WaitGroup // Tracks readLoop goroutine. Close waits on this.
 
@@ -646,4 +646,55 @@ func (rp *RemotePane) ApplyStatus(beads []string, desc string) {
 		rp.beadIDs = append([]string(nil), beads...)
 	}
 	rp.sessDesc = desc
+}
+
+// FlushPaste delivers a buffered paste to the agent on the far side,
+// UNSUBMITTED (ini-a9d8).
+//
+// It goes through the daemon's send handler rather than writing bracketed
+// paste bytes straight to rp.stream the way SendKey does, and that choice is
+// the load-bearing one. Writing the stream directly would look more like
+// local paste and would BYPASS the suspension guard that ini-g7fl moved down
+// into SendText precisely so no entry point has to remember it -- which is the
+// ini-9imx defect exactly: a caller that skips the primitive loses the guard
+// and reports success while the text vanishes. Routing through "send"
+// inherits the suspension queue and the modal deferral for free.
+//
+// enter is false and must stay false: a paste lands in the composer and the
+// operator presses enter themselves. That also keeps this clear of ini-vpwg's
+// never-submit belt, which lives below "if !enter { return }" in
+// sendPaneTextLocked and is unreachable by construction from here.
+func (rp *RemotePane) FlushPaste(content []byte) {
+	if len(content) == 0 {
+		return
+	}
+	text := string(content)
+	// Fire-and-forget for the same reason SendText is: a network round trip on
+	// the main goroutine would freeze rendering and input.
+	go func() {
+		resp, err := rp.mux.Request(ControlCmd{
+			Action: "send",
+			Target: rp.name,
+			Text:   text,
+			Enter:  false,
+		})
+		if err != nil {
+			LogWarn("remote", "paste failed in transit", "agent", rp.name,
+				"bytes", len(text), "err", err)
+			return
+		}
+		// THE RESPONSE IS READ, not discarded. The daemon rejects a send whose
+		// target is unknown or whose body exceeds maxSendTextLen (64 KB) by
+		// returning ControlResp{Error} with a nil transport error -- so
+		// throwing the response away, as SendText does, discards a >64KB paste
+		// exactly as silently as the bug this fixes. A swallowed paste is the
+		// same invisibility class as a withheld submit (ini-9gvn), so it is
+		// loud or it is a repeat of the same defect.
+		if resp.Error != "" {
+			LogWarn("remote", "PASTE NOT DELIVERED", "agent", rp.name,
+				"bytes", len(text), "reason", resp.Error)
+			return
+		}
+		LogInfo("remote", "paste delivered to viewer pane", "agent", rp.name, "bytes", len(text))
+	}()
 }

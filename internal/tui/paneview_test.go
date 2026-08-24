@@ -173,21 +173,35 @@ func TestPaneView_SendText(t *testing.T) {
 
 	emu := vt.NewSafeEmulator(80, 24)
 	readDone := make(chan []byte, 1)
+	// Reports the first read and then KEEPS DRAINING: a submitting send writes
+	// the submit key to the emulator after the stash, and if this goroutine
+	// returns there is no reader left, so that write blocks forever (ini-a9d8
+	// measured a 600s package hang).
 	go func() {
 		var got []byte
 		buf := make([]byte, 256)
-		for len(got) < 1 {
+		sent := false
+		for {
 			n, err := emu.Read(buf)
-			got = append(got, buf[:n]...)
+			if n > 0 && !sent {
+				got = append(got, buf[:n]...)
+				readDone <- got
+				sent = true
+			}
 			if err != nil {
-				break
+				if !sent {
+					readDone <- got
+				}
+				return
 			}
 		}
-		readDone <- got
 	}()
 
 	p := &Pane{name: "eng1", emu: emu, alive: true, ptmx: &filePty{ptmx}}
-	p.SendText("hi", false)
+	// enter=true since ini-a9d8: the stash this cell asserts is now conditional
+	// on submitting, because nothing restores it otherwise. The PTY assertion
+	// below is unchanged either way -- the body is written identically.
+	p.SendText("hi", true)
 
 	buf := make([]byte, 256)
 	tty.SetReadDeadline(time.Now().Add(time.Second))

@@ -181,13 +181,18 @@ func (p *fakeRemotePaneView) SetBeads(ids []string) {
 }
 func (p *fakeRemotePaneView) SendKey(ev *tcell.EventKey)       {}
 func (p *fakeRemotePaneView) SendText(text string, enter bool) {}
-func (p *fakeRemotePaneView) AgentType() string                { return "" }
-func (p *fakeRemotePaneView) SubmitKey() string                { return "" }
-func (p *fakeRemotePaneView) ActiveRunStart() time.Time        { return time.Time{} }
-func (p *fakeRemotePaneView) ActiveRunBytes() int64            { return 0 }
-func (p *fakeRemotePaneView) LastMessageReceived() time.Time   { return time.Time{} }
-func (p *fakeRemotePaneView) LastEventTime() time.Time         { return time.Time{} }
-func (p *fakeRemotePaneView) SetVisible(v bool)                { p.visible = v }
+
+// FlushPaste satisfies the contract without pretending to deliver anything
+// (ini-a9d8). Under-capable on purpose: a fake that appears to paste would let
+// a cell certify a delivery path the product never ran.
+func (p *fakeRemotePaneView) FlushPaste(content []byte)      {}
+func (p *fakeRemotePaneView) AgentType() string              { return "" }
+func (p *fakeRemotePaneView) SubmitKey() string              { return "" }
+func (p *fakeRemotePaneView) ActiveRunStart() time.Time      { return time.Time{} }
+func (p *fakeRemotePaneView) ActiveRunBytes() int64          { return 0 }
+func (p *fakeRemotePaneView) LastMessageReceived() time.Time { return time.Time{} }
+func (p *fakeRemotePaneView) LastEventTime() time.Time       { return time.Time{} }
+func (p *fakeRemotePaneView) SetVisible(v bool)              { p.visible = v }
 func (p *fakeRemotePaneView) Render(screen tcell.Screen, focused bool, dimmed bool, index int, sel Selection) {
 }
 func (p *fakeRemotePaneView) Resize(rows, cols int) {}

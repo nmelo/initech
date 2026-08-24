@@ -109,6 +109,14 @@ type PaneView interface {
 	SetBeads(ids []string)
 	SendKey(ev *tcell.EventKey)
 	SendText(text string, enter bool)
+	// FlushPaste delivers a buffered bracketed paste to the agent, UNSUBMITTED.
+	//
+	// On the contract rather than reached by type assertion (ini-a9d8): the
+	// assertion in handlePaste silently discarded every paste into a viewer
+	// window for two years, because a *RemotePane simply failed it and there
+	// was nothing to notice. A method here cannot be skipped by a new pane
+	// kind -- it will not compile without an answer.
+	FlushPaste(content []byte)
 	AgentType() string
 	SubmitKey() string // "" or "enter" (default), "ctrl+enter".
 	ActiveRunStart() time.Time

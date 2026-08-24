@@ -34,13 +34,13 @@ func (t *TUI) handlePaste(start bool) {
 	if fp == nil {
 		return
 	}
-	lp, ok := fp.(*Pane)
-	if !ok {
-		// Remote panes don't support paste flush (no local ptmx).
-		return
-	}
-
-	lp.FlushPaste(t.pasteBuf)
+	// No type assertion here (ini-a9d8). This used to assert to *Pane and
+	// return when that failed -- "remote panes don't support paste flush (no
+	// local ptmx)" -- which was true about the ptmx and wrong about the pane:
+	// a viewer's pane has no PTY but it HAS a control channel that carries
+	// text. Every pane in a second window is a *RemotePane, so the entire
+	// buffer was dropped with no delivery, no error and no log.
+	fp.FlushPaste(t.pasteBuf)
 }
 
 // bufferPasteKey appends a key event's character to the paste buffer.
