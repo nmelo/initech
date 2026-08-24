@@ -822,10 +822,13 @@ func (t *TUI) setPaneGroup(ag PaneView, label string) {
 // variant -- it is the same blank-name-shaped edge the empty-name check
 // already handles) does so before calling this, not inside it.
 //
-// The ONE check both places that can introduce a new label call (agents.go's
-// create-group prompt, and assignment_authority.go's applyGroupOfCmd): two
-// independent duplicate checks is how this bug shipped a route that only
-// covered one of them.
+// The ONE check every place that can introduce a new label calls. It had two
+// consumers when ini-9y3s added it -- the create-group prompt and
+// applyGroupOfCmd -- and ini-fn77 deleted the second along with the rest of
+// the follower group-command path. The rule it encodes is unchanged and the
+// next label-introducing path belongs here rather than growing its own copy:
+// two independent duplicate checks is how that bug shipped a route covering
+// only one of them.
 func groupNameExists(groups []string, name string) bool {
 	for _, g := range groups {
 		if g == name {

@@ -122,7 +122,7 @@ type WindowAssignment struct {
 // the sole writer of fleet-global state and a viewer requests mutations
 // through window 1, so a viewer reaching this error means a routing seam was
 // bypassed -- the message names the route rather than just refusing.
-var ErrAssignmentNotAuthority = errors.New("only window 1 writes window assignments; secondary windows must send set_group_window")
+var ErrAssignmentNotAuthority = errors.New("only window 1 writes window assignments")
 
 var ErrAssignmentReadOnly = errors.New("assignment store is unreadable; window assignments cannot be changed until .initech/assignments.yaml is repaired or deleted")
 

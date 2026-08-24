@@ -88,7 +88,7 @@ func TestX5obComposed_MoveAfterReattachReachesTheViewer(t *testing.T) {
 	ws, cleanup, err := startWindowServer(
 		testWindowProject("127.0.0.1:0"), "test",
 		[]*Pane{windowServerTestPane("eng1"), windowServerTestPane("super")},
-		func(f func()) { go f() }, nil, nil, nil,
+		func(f func()) { go f() }, nil,
 		func(string) map[string]string {
 			return computePaneOwnership(panes, a, groupOf, map[string]bool{"window-2": true})
 		}, nil)

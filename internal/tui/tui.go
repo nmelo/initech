@@ -1,11 +1,11 @@
 package tui
 
 import (
-	"strings"
 	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -1010,7 +1010,7 @@ func Run(cfg Config) error {
 	// no artifact, no output -- so single-window sessions run today's code
 	// path rather than a new one that merely behaves the same.
 	if cfg.Project != nil && cfg.Project.WindowListen != "" {
-		ws, wsCleanup, err := startWindowServer(cfg.Project, cfg.Version, localPanes(t.panes), t.safeGo, t.applyFleetStateCmd, t.applyGroupWindowCmd, t.applyGroupOfCmd, t.currentPaneOwnership,
+		ws, wsCleanup, err := startWindowServer(cfg.Project, cfg.Version, localPanes(t.panes), t.safeGo, t.applyFleetStateCmd, t.currentPaneOwnership,
 			// Republish on window 1's OWN loop once the newcomer is
 			// registered, so it is served the partition that includes it
 			// (ini-x5ob). safeGo first: runOnMain waits for the main loop,

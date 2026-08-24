@@ -24,6 +24,7 @@ import (
 	"github.com/charmbracelet/x/vt"
 	"github.com/hashicorp/yamux"
 
+	"bufio"
 	"github.com/nmelo/initech/internal/config"
 )
 
@@ -54,7 +55,7 @@ func testWindowProject(listen string) *config.Project {
 // plus its address, registering cleanup.
 func startTestWindowServer(t *testing.T, panes []*Pane) (*windowServer, string) {
 	t.Helper()
-	ws, cleanup, err := startWindowServer(testWindowProject("127.0.0.1:0"), "test", panes, func(f func()) { go f() }, nil, nil, nil, nil, nil)
+	ws, cleanup, err := startWindowServer(testWindowProject("127.0.0.1:0"), "test", panes, func(f func()) { go f() }, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("startWindowServer: %v", err)
 	}
@@ -104,7 +105,7 @@ func dialWindow(t *testing.T, addr, peerName string) (*yamux.Session, net.Conn, 
 func TestWindowServer_NotStartedWithoutWindowListen(t *testing.T) {
 	panes := []*Pane{windowServerTestPane("a")}
 
-	ws, cleanup, err := startWindowServer(testWindowProject(""), "test", panes, func(f func()) { go f() }, nil, nil, nil, nil, nil)
+	ws, cleanup, err := startWindowServer(testWindowProject(""), "test", panes, func(f func()) { go f() }, nil, nil, nil)
 	if err == nil {
 		if cleanup != nil {
 			cleanup()
@@ -243,7 +244,7 @@ func TestWindowServer_CollidingPeerNameEvictsPrior(t *testing.T) {
 // gone.
 func TestWindowServer_CleanupStopsListenerAndDetachesSinks(t *testing.T) {
 	panes := []*Pane{windowServerTestPane("eng1")}
-	ws, cleanup, err := startWindowServer(testWindowProject("127.0.0.1:0"), "test", panes, func(f func()) { go f() }, nil, nil, nil, nil, nil)
+	ws, cleanup, err := startWindowServer(testWindowProject("127.0.0.1:0"), "test", panes, func(f func()) { go f() }, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("startWindowServer: %v", err)
 	}
@@ -451,7 +452,7 @@ func TestWindowServer_WindowDisconnectLeavesOthersConnected(t *testing.T) {
 // asserted here rather than left to the comment at the construction site.
 func TestWindowServer_ConsoleIsSilent(t *testing.T) {
 	panes := []*Pane{testPane("super")}
-	ws, cleanup, err := startWindowServer(testWindowProject("127.0.0.1:0"), "test", panes, func(f func()) { go f() }, nil, nil, nil, nil, nil)
+	ws, cleanup, err := startWindowServer(testWindowProject("127.0.0.1:0"), "test", panes, func(f func()) { go f() }, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("startWindowServer: %v", err)
 	}
@@ -515,6 +516,72 @@ func TestTUIPackage_NeverWritesDirectlyToStdout(t *testing.T) {
 					"(ini-aqy). Use Daemon.consolef, whose destination the caller chooses, "+
 					"or the logger.", name, i+1, strings.TrimSpace(line))
 			}
+		}
+	}
+}
+
+// TestWindowServer_ARemovedCommandGetsTheUnknownReply is the one real
+// requirement the ini-fn77 protocol change carries.
+//
+// set_group_of and set_group_window were deleted with the follower paths that
+// sent them. Nothing in this tree sends them any more, but the server must
+// still ANSWER a command it does not recognise -- with the unknown-action
+// reply, not a panic and not a hang. A control channel that stops responding
+// to one message stops responding to the client's subsequent ones too, so the
+// failure would not look like "unsupported command", it would look like the
+// window freezing.
+func TestWindowServer_ARemovedCommandGetsTheUnknownReply(t *testing.T) {
+	panes := []*Pane{windowServerTestPane("eng1")}
+	_, addr := startTestWindowServer(t, panes)
+
+	session, ctrl, _ := dialWindow(t, addr, "window2")
+	defer session.Close()
+	defer ctrl.Close()
+
+	// ONE reader for the whole exchange, and match on OUR id. The control
+	// channel also carries server-pushed traffic (replay_start/replay_done
+	// arrive unsolicited right after attach), so reading "the next line" reads
+	// somebody else's message -- the first version of this cell did exactly
+	// that and reported the removed commands as ACCEPTED. A fresh bufio.Reader
+	// per iteration would also silently discard whatever it had buffered.
+	r := bufio.NewReader(ctrl)
+	for _, removed := range []string{"set_group_of", "set_group_window"} {
+		id := "probe-" + removed
+		cmd, _ := json.Marshal(map[string]string{
+			"id": id, "action": removed, "agent": "eng1", "label": "qa",
+		})
+		ctrl.SetWriteDeadline(time.Now().Add(2 * time.Second))
+		if _, err := ctrl.Write(append(cmd, '\n')); err != nil {
+			t.Fatalf("write %s: %v", removed, err)
+		}
+
+		var resp ControlResp
+		deadline := time.Now().Add(5 * time.Second)
+		for {
+			if time.Now().After(deadline) {
+				t.Fatalf("%s got no reply carrying its id: a control channel that stops "+
+					"answering one command stops answering the next, so this reads as the "+
+					"window freezing rather than as an unsupported command", removed)
+			}
+			ctrl.SetReadDeadline(deadline)
+			line, err := r.ReadBytes('\n')
+			if err != nil {
+				t.Fatalf("%s read: %v", removed, err)
+			}
+			var got ControlResp
+			if json.Unmarshal(line, &got) != nil || got.ID != id {
+				continue // server-pushed traffic, not our answer
+			}
+			resp = got
+			break
+		}
+
+		if resp.Error == "" {
+			t.Errorf("%s was ACCEPTED (%+v); the handler is gone, so accepting it means "+
+				"something else is answering to that name", removed, resp)
+		}
+		if !strings.Contains(resp.Error, "unknown action") {
+			t.Errorf("%s replied %q, want the unknown-action reply", removed, resp.Error)
 		}
 	}
 }

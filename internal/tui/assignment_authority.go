@@ -17,17 +17,6 @@ package tui
 // refusal to the operator instead of applying the move locally -- applying it
 // locally is precisely the two-truths state ini-i7fr traced.
 
-import "fmt"
-
-// GroupWindowCmd is a secondary window's request that window 1 move a group.
-// It mirrors FleetStateCmd: the secondary asks, the authority writes.
-type GroupWindowCmd struct {
-	ID     string `json:"id,omitempty"`
-	Action string `json:"action"` // "set_group_window"
-	Group  string `json:"group"`  // Band label being moved.
-	Window string `json:"window"` // Destination window identity.
-}
-
 // moveGroupToWindow is the seam. Every group move -- the `m` keybinding, new
 // group creation, pruning a group back to window 1 -- reaches the store
 // through here.
@@ -43,34 +32,7 @@ func (t *TUI) moveGroupToWindow(group, windowID string) error {
 	return writer.MoveGroup(group, windowID)
 }
 
-// applyGroupWindowCmd is window 1's side: it applies a secondary's routed
-// request through the same seam every local keybinding uses, so a routed move
-// and a local move are the same write with the same guard.
-func (t *TUI) applyGroupWindowCmd(cmd GroupWindowCmd) error {
-	if cmd.Group == "" {
-		return fmt.Errorf("set_group_window: empty group")
-	}
-	return t.moveGroupToWindow(cmd.Group, cmd.Window)
-}
-
 // ---------- fleet-scoped layout membership (ini-la97, pm ruling 2026-08-14) ----------
-
-// GroupOfCmd is a secondary window's request that window 1 record an agent's
-// band membership. Membership is FLEET-SCOPED state that happens to live in
-// layout.yaml; the routing boundary is the scope of the state, never the file
-// it sits in, so this routes exactly as an assignment move does.
-//
-// Agent is the CANONICAL identity -- the bare agent name. A viewer's own pane
-// keys are window-prefixed presentation identities, and docs/systemdesign.md
-// is explicit that prefixed forms must never be persisted; sending the bare
-// name lets window 1 apply the change in its own key space without this
-// message becoming a second identity family on the wire.
-type GroupOfCmd struct {
-	ID     string `json:"id,omitempty"`
-	Action string `json:"action"` // "set_group_of"
-	Agent  string `json:"agent"`  // Bare agent name.
-	Label  string `json:"label"`  // Band label.
-}
 
 // agentsPersistGrouping is the seam for a band-membership change made in the
 // modal. Window 1 persists directly; a viewer routes the fleet-scoped fact and
@@ -89,40 +51,6 @@ type GroupOfCmd struct {
 // could ever run.
 func (t *TUI) agentsPersistGrouping(agentName, label string) {
 	t.agentsPersistOrder()
-}
-
-// applyGroupOfCmd is window 1's side: it records the membership change against
-// window 1's OWN pane key for that agent, adds the label to the band universe
-// if it is new, and persists through the same primitive a local regroup uses.
-func (t *TUI) applyGroupOfCmd(cmd GroupOfCmd) error {
-	if cmd.Agent == "" || cmd.Label == "" {
-		return fmt.Errorf("set_group_of: agent and label are both required")
-	}
-	if !t.isFleetAuthority() {
-		return ErrAssignmentNotAuthority
-	}
-	var target PaneView
-	for _, p := range t.panes {
-		if p.Name() == cmd.Agent {
-			target = p
-			break
-		}
-	}
-	if target == nil {
-		return fmt.Errorf("set_group_of: no agent named %q in this fleet", cmd.Agent)
-	}
-	if t.layoutState.GroupOf == nil {
-		t.layoutState.GroupOf = make(map[string]string)
-	}
-	t.layoutState.GroupOf[agentKey(target)] = cmd.Label
-	// ini-9y3s: shared with agents.go's create-group prompt, so a label this
-	// path introduces and one the operator types by hand are checked by the
-	// same rule rather than two rules that can drift.
-	if !groupNameExists(t.layoutState.Groups, cmd.Label) {
-		t.layoutState.Groups = append(t.layoutState.Groups, cmd.Label)
-	}
-	t.saveLayoutIfConfigured()
-	return nil
 }
 
 // ---------- inbound fleet-scoped membership (ini-la97 round 2) ----------
