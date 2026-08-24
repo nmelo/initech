@@ -37,7 +37,38 @@ import (
 // call blocks until readLoop's matching stream.Read (and its send-or-drop)
 // completes, which lets the test control the exact chunk boundaries readLoop
 // sees without needing to drain concurrently.
+//
+// QUARANTINED, PREMISE FALSIFIED (eng2, ini-dr03; exposed by ini-a9d8).
+//
+// The parenthetical above -- "(and its send-or-drop)" -- is not true.
+// net.Pipe's Write unblocks when a READ CONSUMES THE BYTES; it does not wait
+// for anything the reader goroutine does afterwards. readLoop's select (send
+// to dataCh, or evict-then-send) runs AFTER its Read returns and is entirely
+// unsynchronised with the test's next Write. So this cell does not control
+// how many chunks are in the channel at the moment of eviction -- only the
+// order bytes are handed to Read. Its arithmetic (73 chunks written, 9
+// evicted, MARKER at index 10) holds only while the scheduler happens to let
+// readLoop finish its select before the next Write lands.
+//
+// It was load-sensitive from its first commit rather than broken by anyone.
+// Measured while attributing an unrelated failure: the cell passes alone and
+// fails under the full package; it also fails with ini-a9d8's commit REVERTED
+// entirely, so the commit that exposed it is not the commit that broke it.
+// Two attempts to reduce ambient load changed WHEN it failed, not whether --
+// which is what a false timing premise looks like from the outside.
+//
+// The MECHANISM it demonstrates is real and is not in question. ini-dr03
+// removes drop-oldest (an evicted chunk marks the pane desynced and requests
+// a ring-buffer replay), and inverts this cell as part of that work: same
+// setup, asserting a resync instead of a tear, with dataCh driven to the full
+// state EXPLICITLY rather than raced into it. Its substance is eng2's to
+// rewrite; nothing here touches what it asserts.
 func TestRemotePaneReadLoop_ChannelFullDropsOldestChunkTearsEscapeSequence(t *testing.T) {
+	t.Skip("ini-dr03: stated premise false -- net.Pipe synchronises Read, not " +
+		"readLoop's subsequent send-or-drop, so the eviction index is scheduler-" +
+		"dependent. Quarantined, not deleted: dr03 inverts this cell with " +
+		"explicitly-driven state and unskips it.")
+
 	server, client := net.Pipe()
 	defer server.Close()
 	ctrlS, ctrlC := net.Pipe()
