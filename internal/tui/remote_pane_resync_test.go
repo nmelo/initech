@@ -104,15 +104,26 @@ func TestRemotePane_ResetDiscardsBufferedChunksAndClearsTheScreen(t *testing.T) 
 	if !strings.Contains(rp.emu.Render(), "STALE-CONTENT") {
 		t.Fatal("fixture failed: the emulator never showed the stale content it is supposed to lose")
 	}
-	fillDataCh(rp, 10)
+	// Distinctive content, because "the channel is empty afterwards" does NOT
+	// distinguish DISCARDED from APPLIED -- DrainData's normal loop empties it
+	// either way, and a mutant that skipped the discard survived an
+	// emptiness assertion. What must be true is that these bytes never reached
+	// the screen.
+	for i := 0; i < 10; i++ {
+		rp.dataCh <- []byte("BUFFERED-STALE")
+	}
 	rp.mu.Lock()
 	rp.resetPending = true
 	rp.mu.Unlock()
 
 	rp.DrainData()
 
+	if got := rp.emu.Render(); strings.Contains(got, "BUFFERED-STALE") {
+		t.Errorf("reset APPLIED the buffered chunks instead of discarding them; they land "+
+			"after the replay and re-corrupt the pane: %q", got)
+	}
 	if n := len(rp.dataCh); n != 0 {
-		t.Errorf("reset left %d buffered chunks; they would apply after the replay", n)
+		t.Errorf("reset left %d buffered chunks", n)
 	}
 	if got := rp.emu.Render(); strings.Contains(got, "STALE-CONTENT") {
 		t.Errorf("reset did not clear the screen, so the replay lands on top of older bytes: %q", got)
