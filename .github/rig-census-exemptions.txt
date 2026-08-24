@@ -39,6 +39,7 @@
 # only event that can invalidate what they measure — they assert things about
 # Claude's TUI, so Claude changing is the trigger and nothing else is.
 INITECH_ZJHG        # real-Claude dialog measurement (composer echo, click-answers-dialog). TRIGGER: on a Claude bump, by whoever bumps.
+INITECH_GBQC        # real-Claude latch-clear measurement; reuses zjhg's rig. TRIGGER: on a Claude bump, by whoever bumps.
 INITECH_OSC_PROBE   # real-Claude OSC 777 tripwire; see ini-d7a7. TRIGGER: on a Claude bump, by whoever bumps.
 INITECH_D7A7        # real-Claude OSC emitter diagnostic; answers "what changed". TRIGGER: on a Claude bump, by whoever bumps.
 INITECH_ALTPROBE    # real-Claude alt-screen probe. TRIGGER: on a Claude bump, by whoever bumps.
