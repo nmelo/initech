@@ -757,6 +757,80 @@ func TestAgentsModal_CreateGroupEmptyNameRejected(t *testing.T) {
 	}
 }
 
+// TestAgentsModal_CreateGroupExactDuplicateRejected is ini-9y3s's core AC:
+// two groups sharing a label make every by-name lookup resolve to the
+// first, so create/rename/move/delete on "the second one" silently act on
+// the first -- a routing corruption, not a cosmetic annoyance.
+func TestAgentsModal_CreateGroupExactDuplicateRejected(t *testing.T) {
+	tui, _ := newTestTUIWithScreen("super", "eng1", "qa1")
+	tui.openAgentsModal()
+	before := append([]string(nil), tui.layoutState.Groups...)
+	if !groupNameExists(before, "eng") {
+		t.Fatalf("precondition: %v should already contain \"eng\"", before)
+	}
+
+	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyRune, 'g', 0))
+	for _, r := range "eng" {
+		tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyRune, r, 0))
+	}
+	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyEnter, 0, 0))
+
+	if !tui.agents.creatingGroup {
+		t.Error("a duplicate name should not close the prompt, same as an empty one")
+	}
+	if tui.agents.error == "" {
+		t.Error("a duplicate name should set a visible notice, same surface as the empty-name rejection")
+	}
+	if len(tui.layoutState.Groups) != len(before) {
+		t.Errorf("groups changed on duplicate-name Enter: %v -> %v", before, tui.layoutState.Groups)
+	}
+}
+
+// TestAgentsModal_CreateGroupCaseVariantIsNotADuplicate pins the spec's
+// explicit instruction: case variants ("Eng" vs "eng") are DIFFERENT names,
+// never folded together.
+func TestAgentsModal_CreateGroupCaseVariantIsNotADuplicate(t *testing.T) {
+	tui, _ := newTestTUIWithScreen("super", "eng1", "qa1")
+	tui.openAgentsModal()
+	if !groupNameExists(tui.layoutState.Groups, "eng") {
+		t.Fatalf("precondition: %v should already contain \"eng\"", tui.layoutState.Groups)
+	}
+
+	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyRune, 'g', 0))
+	for _, r := range "Eng" {
+		tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyRune, r, 0))
+	}
+	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyEnter, 0, 0))
+
+	if tui.agents.creatingGroup {
+		t.Error("\"Eng\" should be accepted as a distinct name from \"eng\", not rejected as a duplicate")
+	}
+	if !groupNameExists(tui.layoutState.Groups, "Eng") {
+		t.Errorf("groups = %v, want it to contain \"Eng\" as its own band", tui.layoutState.Groups)
+	}
+}
+
+// TestAgentsModal_CreateGroupWhitespaceVariantIsNotADuplicate: internal
+// whitespace is part of the name, never collapsed for comparison.
+func TestAgentsModal_CreateGroupWhitespaceVariantIsNotADuplicate(t *testing.T) {
+	tui, _ := newTestTUIWithScreen("super", "eng1", "qa1")
+	tui.openAgentsModal()
+	tui.layoutState.Groups = append(tui.layoutState.Groups, "eng team")
+
+	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyRune, 'g', 0))
+	for _, r := range "eng  team" { // two spaces, not one
+		tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyRune, r, 0))
+	}
+	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyEnter, 0, 0))
+
+	if tui.agents.creatingGroup {
+		t.Error("\"eng  team\" (two spaces) should be accepted as distinct from \"eng team\" (one), not rejected")
+	}
+	if !groupNameExists(tui.layoutState.Groups, "eng  team") {
+		t.Errorf("groups = %v, want it to contain \"eng  team\" as its own band", tui.layoutState.Groups)
+	}
+}
+
 func TestAgentsModal_CreateGroupEscCancels(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("eng1")
 	tui.openAgentsModal()

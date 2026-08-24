@@ -190,6 +190,35 @@ func TestApplyGroupOfCmd_AuthorityRecordsARoutedRegroup(t *testing.T) {
 	}
 }
 
+// TestApplyGroupOfCmd_DoesNotDuplicateAnExistingLabel (ini-9y3s): a routed
+// regroup onto a label window 1 already has must not add a SECOND "Groups"
+// entry with the same name -- the exact mechanism that made every
+// subsequent by-name lookup for that label resolve to the wrong occurrence.
+// This path had its own ad hoc dedup before this bead; the fix routes it
+// through the same groupNameExists check the create-group prompt uses,
+// this test locks the (unchanged) observable behavior in.
+func TestApplyGroupOfCmd_DoesNotDuplicateAnExistingLabel(t *testing.T) {
+	root := seedProjectRoot(t)
+	tui := authorityTUI(t, root, "super", "eng1", "eng2")
+	tui.ensureGroups(false)
+	if !groupNameExists(tui.layoutState.Groups, "eng") {
+		t.Fatalf("precondition: %v should already contain \"eng\"", tui.layoutState.Groups)
+	}
+	before := len(tui.layoutState.Groups)
+
+	if err := tui.applyGroupOfCmd(GroupOfCmd{Agent: "eng2", Label: "eng"}); err != nil {
+		t.Fatalf("applyGroupOfCmd: %v", err)
+	}
+
+	if got := tui.layoutState.GroupOf["eng2"]; got != "eng" {
+		t.Errorf("GroupOf[eng2] = %q, want eng", got)
+	}
+	if len(tui.layoutState.Groups) != before {
+		t.Errorf("Groups grew from a regroup onto an EXISTING label: %d -> %d (%v)",
+			before, len(tui.layoutState.Groups), tui.layoutState.Groups)
+	}
+}
+
 // TestApplyGroupOfCmd_RefusesOnANonAuthority: the apply path is reachable only
 // on window 1. A secondary that somehow received the command must refuse.
 func TestApplyGroupOfCmd_RefusesOnANonAuthority(t *testing.T) {

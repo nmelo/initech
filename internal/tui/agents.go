@@ -292,6 +292,14 @@ func (t *TUI) handleAgentsGroupNameKey(ev *tcell.EventKey) bool {
 			t.agents.error = "group name cannot be empty"
 			return false
 		}
+		// ini-9y3s: two groups sharing a label make every by-name lookup
+		// resolve to the first, so create/rename/move/delete on "the second
+		// one" silently act on the first instead -- not cosmetic, a routing
+		// corruption. Case-sensitive exact match only; "Eng" is not "eng".
+		if groupNameExists(t.layoutState.Groups, name) {
+			t.agents.error = fmt.Sprintf("a group named %q already exists", name)
+			return false
+		}
 		t.agentsCreateGroup(name)
 		t.agents.creatingGroup = false
 		t.agents.groupNameBuf = nil

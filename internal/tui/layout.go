@@ -930,6 +930,10 @@ func normalizePersistedIdentities(pl *PersistentLayout) bool {
 		pl.GroupOf = out
 		healed = true
 	}
+	if out, h := dedupeGroupLabels(pl.Groups); h {
+		pl.Groups = out
+		healed = true
+	}
 	if out, h := normalizeKeyList(pl.Order); h {
 		pl.Order = out
 		healed = true
@@ -979,6 +983,44 @@ func normalizeKeyList(keys []string) ([]string, bool) {
 		}
 		seen[c] = true
 		out = append(out, c)
+	}
+	return out, healed
+}
+
+// dedupeGroupLabels removes later occurrences of a duplicate group label,
+// keeping the first (ini-9y3s).
+//
+// EVERY LOOKUP ALREADY RESOLVES TO THE FIRST OCCURRENCE, which is the bug:
+// two bands sharing a label make create/rename/move/delete on "the second
+// one" silently act on the first instead. So there is nothing to merge that
+// is not already merged -- GroupOf is a flat agent -> label STRING map with
+// no field recording which physical band an agent was dropped into, so no
+// agent can be identified as belonging to the LATER occurrence specifically;
+// every agent pointing at the label already resolves to whichever occurrence
+// sorts first. The later list entry is therefore not a band with members
+// waiting to be recovered, it is an EMPTY duplicate nobody could have
+// populated -- dropped rather than renamed to a phantom "<name> (2)" that
+// would sit in the modal with nothing in it and nothing that could ever
+// reach it (operator + super decision, ini-9y3s).
+//
+// CASE-SENSITIVE, NO WHITESPACE FOLDING: matches groupNameExists exactly,
+// on purpose -- "Eng" and "eng" are different labels, never collapsed.
+func dedupeGroupLabels(groups []string) ([]string, bool) {
+	if len(groups) == 0 {
+		return groups, false
+	}
+	out := make([]string, 0, len(groups))
+	seen := make(map[string]bool, len(groups))
+	healed := false
+	for _, g := range groups {
+		if seen[g] {
+			healed = true
+			LogWarn("layout", "duplicate group name merged into the first occurrence",
+				"group", g)
+			continue
+		}
+		seen[g] = true
+		out = append(out, g)
 	}
 	return out, healed
 }

@@ -183,14 +183,10 @@ func (t *TUI) applyGroupOfCmd(cmd GroupOfCmd) error {
 		t.layoutState.GroupOf = make(map[string]string)
 	}
 	t.layoutState.GroupOf[agentKey(target)] = cmd.Label
-	seen := false
-	for _, g := range t.layoutState.Groups {
-		if g == cmd.Label {
-			seen = true
-			break
-		}
-	}
-	if !seen {
+	// ini-9y3s: shared with agents.go's create-group prompt, so a label this
+	// path introduces and one the operator types by hand are checked by the
+	// same rule rather than two rules that can drift.
+	if !groupNameExists(t.layoutState.Groups, cmd.Label) {
 		t.layoutState.Groups = append(t.layoutState.Groups, cmd.Label)
 	}
 	t.saveLayoutIfConfigured()

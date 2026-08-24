@@ -382,6 +382,109 @@ func TestLayoutPersistence_PrunesGroupEmptiedByStaleKeyFilter(t *testing.T) {
 	}
 }
 
+// TestLoadLayout_DuplicateGroupNamesAreRepairedAndAgentsPreserved (ini-9y3s):
+// a layout.yaml already holding two "eng" entries -- the operator has some
+// today -- must load to a UNIQUE name list with every agent still present.
+// GroupOf has no field distinguishing which physical band an agent was
+// dropped into, so both eng1 and eng2 already resolve to "eng" before and
+// after the repair; what changes is the duplicate LIST ENTRY, which is
+// dropped (super's call: an empty phantom "eng (2)" nobody could ever
+// populate is worse than naming the merge and removing it).
+func TestLoadLayout_DuplicateGroupNamesAreRepairedAndAgentsPreserved(t *testing.T) {
+	dir := t.TempDir()
+	state := LayoutState{
+		Mode:     LayoutGrid,
+		GridCols: 2, GridRows: 2,
+		Groups:  []string{"core", "eng", "eng"},
+		GroupOf: map[string]string{"super": "core", "eng1": "eng", "eng2": "eng"},
+	}
+	if err := SaveLayout(dir, state); err != nil {
+		t.Fatalf("SaveLayout: %v", err)
+	}
+
+	loaded, ok := LoadLayout(dir, []string{"super", "eng1", "eng2"})
+	if !ok {
+		t.Fatal("LoadLayout returned ok=false")
+	}
+
+	count := 0
+	for _, g := range loaded.Groups {
+		if g == "eng" {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Errorf("Groups = %v, want exactly one \"eng\" after repair", loaded.Groups)
+	}
+	if len(loaded.Groups) != 2 {
+		t.Errorf("Groups = %v, want length 2 (core, eng) -- no phantom renamed entry", loaded.Groups)
+	}
+
+	// NO AGENT LOST: the count before/after check the AC names explicitly.
+	for _, name := range []string{"super", "eng1", "eng2"} {
+		if _, ok := loaded.GroupOf[name]; !ok {
+			t.Errorf("GroupOf lost %q after duplicate-group repair: %v", name, loaded.GroupOf)
+		}
+	}
+	if loaded.GroupOf["eng1"] != "eng" || loaded.GroupOf["eng2"] != "eng" {
+		t.Errorf("GroupOf after repair = %v, want eng1 and eng2 both still \"eng\"", loaded.GroupOf)
+	}
+
+	// PERSIST THE HEAL ONCE: a second load of the same directory must find
+	// an already-clean file, not re-discover the same duplicate every time.
+	reloaded, ok2 := LoadLayout(dir, []string{"super", "eng1", "eng2"})
+	if !ok2 {
+		t.Fatal("re-load after the persisted heal returned ok=false")
+	}
+	count2 := 0
+	for _, g := range reloaded.Groups {
+		if g == "eng" {
+			count2++
+		}
+	}
+	if count2 != 1 || len(reloaded.Groups) != 2 {
+		t.Errorf("re-loaded Groups = %v, want the heal to have persisted (still [core eng])", reloaded.Groups)
+	}
+}
+
+// TestLoadFleetScopedLayout_DuplicateGroupNamesAreRepairedInMemory
+// (ini-9y3s): window 2's read-only loader must not diverge from window 1's
+// after a repair. Since LoadFleetScopedLayout never persists (that store's
+// own documented contract -- "convergence is the authority's job, on its
+// own load"), this proves the in-memory repair alone, independent of
+// whether window 1 has healed the file on disk yet: dedupeGroupLabels is a
+// deterministic function of input order, so both loaders converge on the
+// same result without coordinating.
+func TestLoadFleetScopedLayout_DuplicateGroupNamesAreRepairedInMemory(t *testing.T) {
+	dir := t.TempDir()
+	state := LayoutState{
+		Mode:     LayoutGrid,
+		GridCols: 2, GridRows: 2,
+		Groups:  []string{"core", "eng", "eng"},
+		GroupOf: map[string]string{"super": "core", "eng1": "eng", "eng2": "eng"},
+	}
+	if err := SaveLayout(dir, state); err != nil {
+		t.Fatalf("SaveLayout: %v", err)
+	}
+
+	groups, groupOf, ok := LoadFleetScopedLayout(dir)
+	if !ok {
+		t.Fatal("LoadFleetScopedLayout returned ok=false")
+	}
+	count := 0
+	for _, g := range groups {
+		if g == "eng" {
+			count++
+		}
+	}
+	if count != 1 || len(groups) != 2 {
+		t.Errorf("groups = %v, want exactly [core eng] (deduped in memory)", groups)
+	}
+	if groupOf["eng1"] != "eng" || groupOf["eng2"] != "eng" {
+		t.Errorf("groupOf = %v, want eng1 and eng2 both still \"eng\"", groupOf)
+	}
+}
+
 // ---------- the PoC's own near-miss: no-matches must read the CURRENT frame ----------
 
 // TestAgentsSearch_NoMatchesReadsCurrentFrame_NotStaleFrame is the spec's
