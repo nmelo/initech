@@ -374,7 +374,7 @@ func (rp *RemotePane) SendText(text string, enter bool) {
 	// The mux.Request has a 10s timeout; running it synchronously on the
 	// main goroutine would freeze all rendering and input handling.
 	go func() {
-		_, err := rp.mux.Request(ControlCmd{
+		resp, err := rp.mux.Request(ControlCmd{
 			Action: "send",
 			Target: rp.name,
 			Text:   text,
@@ -382,6 +382,30 @@ func (rp *RemotePane) SendText(text string, enter bool) {
 		})
 		if err != nil {
 			LogWarn("remote", "send failed", "agent", rp.name, "err", err)
+			return
+		}
+		// THE RESPONSE IS READ, not discarded (ini-33zx). The daemon rejects a
+		// send whose target is unknown or whose body exceeds maxSendTextLen
+		// (64 KB) with ControlResp{Error} and a NIL transport error, so
+		// checking err alone reports every such rejection as a success. That
+		// is the invisibility class this fleet keeps paying for -- the
+		// withheld submit (ini-9gvn) and the swallowed viewer paste (ini-a9d8)
+		// are the same shape -- and it covers every cross-window send,
+		// including a forwarded one to a mistyped agent name.
+		if resp.Error != "" {
+			// INFO, not Debug: a message the fleet did not deliver is not
+			// debug detail (the ini-9gvn rule). This is the record that makes
+			// a mistyped agent name or an oversize body visible at all.
+			//
+			// LOG ONLY, and the gap is stated rather than left to be noticed:
+			// the bead also asks for an event-log entry, but RemotePane has no
+			// event channel and neither construction site (remote_conn.go,
+			// reconnect.go) has a TUI in scope to take one from. Wiring one
+			// means threading it through the peer-connection setup, which is
+			// wider than this fix. ini-a9d8's FlushPaste hit the same wall and
+			// shipped log-only for the same reason.
+			LogInfo("remote", "SEND NOT DELIVERED", "agent", rp.name,
+				"bytes", len(text), "enter", enter, "reason", resp.Error)
 		}
 	}()
 }
