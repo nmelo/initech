@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"log/slog"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/charmbracelet/x/vt"
@@ -15,11 +16,54 @@ func withholdTestPane(name string) *Pane {
 	return &Pane{name: name, emu: vt.NewSafeEmulator(80, 24)}
 }
 
-// captureLogs installs a buffer-backed logger at DEBUG level (so nothing is
-// filtered out by the capture itself) and restores the previous one.
-func captureLogs(t *testing.T) *bytes.Buffer {
+// safeLogBuffer is a concurrency-safe sink for captured logs.
+//
+// THE HELPER IS THE SYNCHRONISATION POINT, not each test that reads it.
+// Production logs from goroutines it owns -- a fire-and-forget paste logs its
+// failure on its own goroutine -- so the slog handler writes this buffer
+// concurrently with any test that reads it. bytes.Buffer is not safe for that,
+// and the defect is in the FIXTURE: the product is doing exactly what it
+// should.
+//
+// POLLING DOES NOT FIX IT, and that is the shape worth remembering. The author
+// of the racing cell SAW the hazard and wrote it down -- "the log lands on a
+// goroutine and a bare read races it" -- then answered it by polling until the
+// text appeared. Polling fixes the TIMING (reading too early) and leaves the
+// MEMORY MODEL untouched; it converts one unsynchronised read into many.
+// Timing mitigations answer "will I see it yet"; synchronisation answers "is
+// this defined at all". A noticed hazard answered with the wrong KIND of fix
+// is more dangerous than an unnoticed one, because the comment makes the cell
+// look considered.
+//
+// Guarding here fixes the class: no future test that captures logs from a
+// goroutine can race on this buffer, whether or not its author thinks about it.
+type safeLogBuffer struct {
+	mu sync.Mutex
+	b  bytes.Buffer
+}
+
+func (s *safeLogBuffer) Write(p []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.Write(p)
+}
+
+// String reads under the SAME lock the writer takes. Verified load-bearing:
+// with this lock removed, -race reports 4 warnings on
+// TestPaste_ARejectedPasteIsNotSilent -- the exact count shipper measured at
+// the v2.11.5 cut.
+func (s *safeLogBuffer) String() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.String()
+}
+
+// captureLogs installs a logger at DEBUG level (so nothing is filtered out by
+// the capture itself) writing to a concurrency-safe buffer, and restores the
+// previous logger.
+func captureLogs(t *testing.T) *safeLogBuffer {
 	t.Helper()
-	buf := &bytes.Buffer{}
+	buf := &safeLogBuffer{}
 	appLogger.mu.Lock()
 	prev := appLogger.logger
 	appLogger.logger = slog.New(slog.NewTextHandler(buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
