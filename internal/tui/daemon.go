@@ -54,13 +54,20 @@ type Daemon struct {
 	ringBufs   map[string]*RingBuf   // Per-pane ring buffer keyed by agent name.
 	multiSinks map[string]*MultiSink // Per-pane fan-out sink keyed by agent name.
 	lastSizes  map[string][2]int     // Last viewer-applied {rows, cols} per agent — survives restarts (ini-ap3i).
-	buildAgent func(role string, proj *config.Project) (PaneConfig, error) // See DaemonConfig.BuildAgent.
-	headless   bool // True for `initech serve` (no local renderer); resizes tell children exact truth.
-	sockPath   string                // IPC socket path, for env injection into reload-spawned agents.
-	ownership  *agentOwnership       // Tracks which client pushed which agent (zero-config remote).
-	project    *config.Project
-	listener   net.Listener
-	version    string
+
+	// liveStreams is the per-(peer, agent) client stream, so a mid-session
+	// resync can replay to THE REQUESTING WINDOW ONLY (ini-dr03). Replaying
+	// through the MultiSink would send one window's recovery to every window,
+	// resetting panes that were never desynced.
+	liveStreams map[string]map[string]*syncStream
+	streamsMu   sync.Mutex
+	buildAgent  func(role string, proj *config.Project) (PaneConfig, error) // See DaemonConfig.BuildAgent.
+	headless    bool                                                        // True for `initech serve` (no local renderer); resizes tell children exact truth.
+	sockPath    string                                                      // IPC socket path, for env injection into reload-spawned agents.
+	ownership   *agentOwnership                                             // Tracks which client pushed which agent (zero-config remote).
+	project     *config.Project
+	listener    net.Listener
+	version     string
 
 	// yamuxCfg overrides the transport config for sessions this daemon
 	// accepts. Nil means yamux.DefaultConfig() -- the WAN-sized defaults
@@ -305,8 +312,8 @@ type ControlResp struct {
 	Beads []string `json:"beads,omitempty"` // All beads an agent holds (ini-9ka.11 agent_status).
 	// Suspended rides agent_status: a parked agent must read as parked in
 	// every window, not only the one that parked it (2026-08-15).
-	Suspended bool `json:"suspended,omitempty"`
-	Bead  string   `json:"bead,omitempty"`  // Primary bead only; wire compatibility for peers predating Beads.
+	Suspended bool   `json:"suspended,omitempty"`
+	Bead      string `json:"bead,omitempty"` // Primary bead only; wire compatibility for peers predating Beads.
 }
 
 // RunDaemon starts the headless daemon. Blocks until SIGINT/SIGTERM.
@@ -856,7 +863,7 @@ func (d *Daemon) handleConnection(conn net.Conn) {
 		go func(p *Pane, s net.Conn) {
 			defer wg.Done()
 			defer s.Close()
-			d.streamAgentLive(p, s)
+			d.streamAgentLive(p, s, hello.PeerName)
 		}(as.pane, as.stream)
 	}
 
@@ -887,17 +894,86 @@ func (d *Daemon) replayToStream(p *Pane, stream net.Conn) {
 	}
 }
 
+// registerLiveStream records the stream serving one agent for one peer.
+func (d *Daemon) registerLiveStream(peer, agent string, ss *syncStream) {
+	d.streamsMu.Lock()
+	defer d.streamsMu.Unlock()
+	if d.liveStreams == nil {
+		d.liveStreams = map[string]map[string]*syncStream{}
+	}
+	if d.liveStreams[peer] == nil {
+		d.liveStreams[peer] = map[string]*syncStream{}
+	}
+	d.liveStreams[peer][agent] = ss
+}
+
+func (d *Daemon) unregisterLiveStream(peer, agent string) {
+	d.streamsMu.Lock()
+	defer d.streamsMu.Unlock()
+	if m := d.liveStreams[peer]; m != nil {
+		delete(m, agent)
+		if len(m) == 0 {
+			delete(d.liveStreams, peer)
+		}
+	}
+}
+
+func (d *Daemon) liveStreamFor(peer, agent string) *syncStream {
+	d.streamsMu.Lock()
+	defer d.streamsMu.Unlock()
+	if m := d.liveStreams[peer]; m != nil {
+		return m[agent]
+	}
+	return nil
+}
+
+// handleResync replays one agent's ring buffer to the REQUESTING peer only
+// (ini-dr03). The viewer asks for this after evicting a buffered chunk, having
+// already discarded what it held and cleared its screen, so the snapshot it
+// receives is the whole truth rather than history layered over newer bytes.
+func (d *Daemon) handleResync(agent, peer string) ControlResp {
+	p := d.currentPane(agent)
+	if p == nil {
+		return ControlResp{Error: "no such agent: " + agent}
+	}
+	ss := d.liveStreamFor(peer, agent)
+	if ss == nil {
+		return ControlResp{Error: "no live stream for " + agent + " on " + peer}
+	}
+	rb := d.ringBufFor(agent)
+	if rb == nil {
+		return ControlResp{Error: "no ring buffer for " + agent}
+	}
+	snap := rb.Snapshot()
+	// ONE Write through the wrapper: atomic with respect to live fan-out on
+	// this stream, so the replay cannot be spliced into a live chunk.
+	n, err := ss.Write(snap)
+	if err != nil {
+		LogWarn("daemon", "resync replay failed", "agent", agent, "peer", peer, "err", err)
+		return ControlResp{Error: err.Error()}
+	}
+	LogInfo("daemon", "RESYNC replayed to a desynced viewer", "agent", agent, "peer", peer, "bytes", n)
+	return ControlResp{OK: true}
+}
+
 // streamAgentLive wires bidirectional live PTY streaming between a pane and
 // a yamux stream. Adds the stream to the pane's MultiSink for downstream
 // fan-out. Reads upstream keystrokes until the client disconnects.
-func (d *Daemon) streamAgentLive(p *Pane, stream net.Conn) {
+func (d *Daemon) streamAgentLive(p *Pane, stream net.Conn, peerName string) {
 	ms := d.multiSinkFor(p.Name()) // snapshot the ref under a short lock, then stream unlocked
 
+	// Wrapped so a mid-session replay cannot interleave with live fan-out on
+	// this stream (ini-dr03). Add and Remove must use the SAME value: Remove
+	// compares by identity.
+	ss := newSyncStream(stream)
+	d.registerLiveStream(peerName, p.Name(), ss)
+	defer d.unregisterLiveStream(peerName, p.Name())
+
 	if ms != nil {
-		ms.Add(stream)
+		ms.Add(ss)
 		LogDebug("daemon", "stream added to MultiSink", "agent", p.Name(), "sink_writers", ms.Len())
 		defer func() {
-			ms.Remove(stream)
+			ms.Remove(ss)
 			LogDebug("daemon", "stream removed from MultiSink", "agent", p.Name())
 		}()
 	} else {
@@ -1094,6 +1170,11 @@ func (d *Daemon) handleControlStream(ctrl net.Conn, scanner *bufio.Scanner, peer
 
 		case "ping":
 			respond(cmd.ID, ControlResp{OK: true, Data: "pong"})
+
+		case "resync":
+			if !respond(cmd.ID, d.handleResync(cmd.Target, peerName)) {
+				return
+			}
 
 		case "configure_agent":
 			if !respond(cmd.ID, d.handleConfigureAgent(line, peerName)) {

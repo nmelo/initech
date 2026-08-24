@@ -149,3 +149,29 @@ func writeComplete(w io.Writer, p []byte) bool {
 		}
 	}
 }
+
+// syncStream serializes writes to ONE client stream.
+//
+// MultiSink.Write snapshots its writer list under lock and then writes
+// LOCK-FREE, deliberately, so a slow writer cannot stall Add/Remove. Live
+// fan-out is therefore serialized only by there being a single producer
+// goroutine per pane. A mid-session replay (ini-dr03) is issued from the
+// control goroutine and would be a SECOND concurrent writer to the same
+// stream, free to interleave mid-chunk -- producing the torn escape sequence
+// this bead exists to remove, from a new direction.
+//
+// At ATTACH this cannot happen: replayToStream runs before streamAgentLive
+// adds the stream to the MultiSink. Mid-session there is no such ordering, so
+// the ordering is made explicit here instead of assumed.
+type syncStream struct {
+	mu sync.Mutex
+	w  net.Conn
+}
+
+func newSyncStream(w net.Conn) *syncStream { return &syncStream{w: w} }
+
+func (s *syncStream) Write(p []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.w.Write(p)
+}

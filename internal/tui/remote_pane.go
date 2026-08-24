@@ -40,11 +40,18 @@ type RemotePane struct {
 	// emuPanicked rate-limits the emulator-panic log to once per pane; the
 	// panic barrier in writeEmu keeps draining after a parser failure.
 	emuPanicked bool
-	visible     bool
-	activity    ActivityState
-	lastOut     time.Time
-	beadIDs     []string
-	sessDesc    string
+
+	// Desync/resync state (ini-dr03). readLoop sets these; DrainData, which
+	// runs on the main goroutine that OWNS emu, acts on them. readLoop must
+	// never touch emu itself.
+	resyncPending bool      // a request is in flight; coalesces a burst into one
+	resetPending  bool      // main goroutine must clear emu before applying more bytes
+	lastResync    time.Time // rate-limit floor, so sustained load cannot storm
+	visible       bool
+	activity      ActivityState
+	lastOut       time.Time
+	beadIDs       []string
+	sessDesc      string
 
 	// waiting is window 1's needs-input state for this agent, pushed over the
 	// wire (ini-35ak). A viewer never derives it: it cannot see the agent's
@@ -124,9 +131,22 @@ func (rp *RemotePane) readLoop() {
 			select {
 			case rp.dataCh <- chunk:
 			default:
-				// Channel full: drop oldest to make room (backpressure).
-				// Safe: single writer goroutine guarantees no concurrent
-				// push between drain and insert.
+				// CHANNEL FULL. Dropping the oldest chunk silently is the
+				// defect ini-dr03 removes: a chunk boundary is a NETWORK READ
+				// boundary, not a terminal-grammar one, so an evicted chunk
+				// can carry away the first half of a CSI sequence and leave
+				// the second half to render as literal text. Measured
+				// reachable under ordinary chatty-agent output (qa1).
+				//
+				// We still evict rather than block. REFUSING TO READ IS
+				// BACKPRESSURE, which propagates through yamux to the
+				// daemon's MultiSink writer; post-v2.11.3 a persistently
+				// timing-out writer is dropped after ~21s and nothing re-adds
+				// a dropped stream. That is the v2.11.2 FREEZE, reintroduced
+				// from the receive side -- the reason backpressure was
+				// rejected for this bead. Liveness is preserved here and
+				// correctness is restored by the resync below.
+				rp.noteDesync()
 				select {
 				case <-rp.dataCh:
 				default:
@@ -389,11 +409,99 @@ func (rp *RemotePane) SendText(text string, enter bool) {
 	}()
 }
 
+// minResyncInterval is the floor between two resync requests for one pane.
+//
+// COALESCING IS REQUIRED, not an optimisation (ini-dr03 edge case). The
+// condition that evicts a chunk is a burst, and a burst evicts many chunks --
+// one request per eviction would send hundreds, and every replay is a full
+// ring-buffer snapshot written back down the same stream, which is itself a
+// large write that helps fill the channel again. Requesting per eviction turns
+// a corrupted pane into a resync storm that sustains its own cause.
+const minResyncInterval = 2 * time.Second
+
+// noteDesync records that a chunk was evicted and asks the daemon to replay.
+//
+// Called from readLoop, so it must not block and must not touch emu: it sets
+// flags and hands the request to its own goroutine. A blocking request here
+// would stall stream consumption, which is backpressure by another name.
+func (rp *RemotePane) noteDesync() {
+	rp.mu.Lock()
+	if rp.resyncPending || time.Since(rp.lastResync) < minResyncInterval {
+		rp.mu.Unlock()
+		return
+	}
+	rp.resyncPending = true
+	rp.resetPending = true
+	rp.lastResync = time.Now()
+	rp.mu.Unlock()
+
+	// INFO, not Debug (ini-dr03 edge case, and the ini-9gvn rule it inherits):
+	// a silent resync loop is the same invisibility class as a withheld
+	// submit -- the pane looks fine, the operator sees a flicker, and nothing
+	// in the log says the viewer lost bytes.
+	LogInfo("remote", "pane DESYNCED: buffered chunk evicted, requesting replay",
+		"agent", rp.name, "host", rp.host)
+	go rp.requestResync()
+}
+
+// requestResync asks the daemon to replay this agent's ring buffer to us.
+func (rp *RemotePane) requestResync() {
+	defer func() {
+		rp.mu.Lock()
+		rp.resyncPending = false
+		rp.mu.Unlock()
+	}()
+	if rp.mux == nil {
+		return
+	}
+	// The CONTROL channel, never the data stream: the data stream's upstream
+	// direction is raw keystrokes into the agent's PTY, so a request sent
+	// there would be TYPED BY THE AGENT.
+	if _, err := rp.mux.Request(ControlCmd{Action: "resync", Target: rp.name}); err != nil {
+		LogWarn("remote", "resync request failed; pane stays desynced until the next eviction",
+			"agent", rp.name, "err", err)
+		return
+	}
+	LogInfo("remote", "resync requested", "agent", rp.name)
+}
+
+// discardBuffered empties dataCh without applying it.
+func (rp *RemotePane) discardBuffered() int {
+	n := 0
+	for {
+		select {
+		case <-rp.dataCh:
+			n++
+		default:
+			return n
+		}
+	}
+}
+
 // DrainData moves pending byte chunks from dataCh into the emulator. Called
 // by the TUI main loop for ALL remote panes (visible or hidden) so hidden
 // panes don't accumulate stale data. Budget limits bytes per call to prevent
 // stalls when the ring buffer replays megabytes into a new pane.
 func (rp *RemotePane) DrainData() {
+	// A resync was requested: the replay coming down the stream is HISTORY,
+	// and applying history on top of newer bytes is the stale-replay case
+	// (ini-dr03 edge case). Rather than order the two, hold NOTHING -- drop
+	// what is buffered and clear the screen, so whatever arrives next is the
+	// whole truth. The daemon snapshots after our request reaches it, so the
+	// snapshot contains everything written before that moment and anything
+	// later arrives later on the same FIFO stream.
+	rp.mu.Lock()
+	reset := rp.resetPending
+	rp.resetPending = false
+	rp.mu.Unlock()
+	if reset {
+		dropped := rp.discardBuffered()
+		// RIS. The emulator has no Reset method, so the reset goes through
+		// the parser the same way a real terminal would receive it.
+		rp.writeEmu([]byte("\x1bc"))
+		LogInfo("remote", "pane RESET for replay", "agent", rp.name, "chunks_discarded", dropped)
+	}
+
 	const drainBudget = 128 * 1024 // 128KB per pane per tick.
 	drained := 0
 	for drained < drainBudget {
