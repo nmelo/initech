@@ -117,47 +117,6 @@ func TestMoveGroupSeam_UnreachableAuthorityDeclines(t *testing.T) {
 	}
 }
 
-// TestGroupOfSeam_ViewerDoesNotPersistMembershipItself covers the fleet-scoped
-// half of layout.yaml (pm ruling: the boundary is the state's SCOPE, not the
-// file). A viewer's regroup must not touch the file; it routes instead.
-func TestGroupOfSeam_ViewerDoesNotPersistMembershipItself(t *testing.T) {
-	root := seedProjectRoot(t)
-	path := filepath.Join(root, ".initech", "layout.yaml")
-	before, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("read seed: %v", err)
-	}
-
-	viewer := viewerTUI(t, root, "super", "eng1")
-	viewer.agentEvents = make(chan AgentEvent, 8)
-	viewer.ensureGroups(false)
-	viewer.agentsPersistGrouping("eng1", "core") // no mux: routing must fail, visibly
-
-	after, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("read after: %v", err)
-	}
-	if string(before) != string(after) {
-		t.Errorf("a viewer's regroup wrote layout.yaml directly:\nbefore:\n%s\nafter:\n%s", before, after)
-	}
-
-	// Not writing is only half the contract. The invariant says the viewer
-	// DECLINES -- a silent no-op would lose the operator's regroup with no
-	// feedback, which is indistinguishable from it having worked. This
-	// assertion is what makes the test about ROUTING rather than about the
-	// layout guard that also happens to stop the write: a mutation making the
-	// viewer persist locally instead of routing survives without it.
-	select {
-	case ev := <-viewer.agentEvents:
-		if ev.Type != EventAssignmentWriteRefused {
-			t.Errorf("viewer emitted %v, want a visible refusal of the regroup", ev.Type)
-		}
-	default:
-		t.Error("a viewer that could not reach window 1 silently dropped the operator's regroup; " +
-			"the invariant requires it to decline, not to no-op")
-	}
-}
-
 // TestApplyGroupOfCmd_AuthorityRecordsARoutedRegroup is window 1's side of the
 // route: the fleet-wide effect pm's QA observable calls for.
 func TestApplyGroupOfCmd_AuthorityRecordsARoutedRegroup(t *testing.T) {

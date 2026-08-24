@@ -32,13 +32,6 @@ type GroupWindowCmd struct {
 // group creation, pruning a group back to window 1 -- reaches the store
 // through here.
 func (t *TUI) moveGroupToWindow(group, windowID string) error {
-	if !t.isFleetAuthority() {
-		if err := t.sendGroupWindowCmd(group, windowID); err != nil {
-			t.noticeAssignmentWriteFailed("move group "+group, err)
-			return err
-		}
-		return nil
-	}
 	writer, ok := t.agentsAssignment().Writer()
 	if !ok {
 		// The authority could not obtain a writer: the store is a read-only
@@ -48,32 +41,6 @@ func (t *TUI) moveGroupToWindow(group, windowID string) error {
 		return err
 	}
 	return writer.MoveGroup(group, windowID)
-}
-
-// sendGroupWindowCmd asks window 1 to apply a group move on this secondary's
-// behalf, then re-reads so this window's own modal stops showing the state it
-// just asked to change -- the same follower refresh sendFleetStateCmd does.
-//
-// A secondary with no route to window 1 returns an error rather than writing:
-// declining is the invariant's required behavior.
-func (t *TUI) sendGroupWindowCmd(group, windowID string) error {
-	mux := t.windowOneMux()
-	if mux == nil {
-		return fmt.Errorf("not connected to window 1; the move of group %q was not applied", group)
-	}
-	resp, err := mux.RequestRaw(GroupWindowCmd{
-		Action: "set_group_window",
-		Group:  group,
-		Window: windowID,
-	})
-	if err != nil {
-		return fmt.Errorf("send group move to window 1: %w", err)
-	}
-	if !resp.OK {
-		return fmt.Errorf("window 1 refused the group move: %s", resp.Error)
-	}
-	t.reloadAssignmentIfFollower()
-	return nil
 }
 
 // applyGroupWindowCmd is window 1's side: it applies a secondary's routed
@@ -113,50 +80,15 @@ type GroupOfCmd struct {
 // invariant prohibits -- that clause is about writing state. The viewer's
 // GroupOf is in-memory presentation and is never persisted; the durable fact
 // is the one window 1 writes on its behalf.
+// agentsPersistGrouping persists a membership change made from the agents
+// modal.
+//
+// The follower half is GONE (ini-fn77): its only reachable caller was
+// setPaneGroup, which is agents-modal drag/drop, and the modal is main-window
+// only now. What remains is the authority path, which is the only one that
+// could ever run.
 func (t *TUI) agentsPersistGrouping(agentName, label string) {
-	if t.isFleetAuthority() {
-		t.agentsPersistOrder()
-		return
-	}
-	// Arrangement is viewer-local: recompute and apply it in memory, but do
-	// not persist it -- saveLayoutIfConfigured refuses for a viewer anyway,
-	// and calling it here would only look like an attempted write.
-	order := make([]string, len(t.panes))
-	for i, p := range t.panes {
-		order[i] = agentKey(p)
-	}
-	t.layoutState.Order = order
-	t.applyLayout()
-
-	if err := t.sendGroupOfCmd(agentName, label); err != nil {
-		t.noticeAssignmentWriteFailed("regroup "+agentName, err)
-	}
-}
-
-// sendGroupOfCmd asks window 1 to record a membership change on this
-// secondary's behalf. An unreachable window 1 returns an error rather than
-// applying anything durable: the viewer declines, it never improvises.
-func (t *TUI) sendGroupOfCmd(agentName, label string) error {
-	mux := t.windowOneMux()
-	if mux == nil {
-		return fmt.Errorf("not connected to window 1; the regroup of %q was not applied fleet-wide", agentName)
-	}
-	resp, err := mux.RequestRaw(GroupOfCmd{
-		Action: "set_group_of",
-		Agent:  agentName,
-		Label:  label,
-	})
-	if err != nil {
-		return fmt.Errorf("send regroup to window 1: %w", err)
-	}
-	if !resp.OK {
-		return fmt.Errorf("window 1 refused the regroup: %s", resp.Error)
-	}
-	// Window 1 applied and persisted it; re-read so this window shows what the
-	// authority actually recorded rather than what it optimistically drew --
-	// the same follower refresh sendFleetStateCmd and sendGroupWindowCmd do.
-	t.refreshMembershipIfFollower()
-	return nil
+	t.agentsPersistOrder()
 }
 
 // applyGroupOfCmd is window 1's side: it records the membership change against
