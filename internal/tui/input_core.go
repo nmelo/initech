@@ -333,18 +333,30 @@ func (t *TUI) restartPane(fp *Pane) error {
 	// Serialize with any in-flight IPC send before closing.
 	// Without this lock, handleIPCSend may be mid-sleep inside its retry loop
 	// (holding sendMu) while Close() tears down the PTY underneath it.
+	// The deferred queue is taken UNDER THE SAME LOCK that serialises against
+	// an in-flight send, and before Close, so nothing can enqueue onto a pane
+	// that is about to stop existing (ini-1z6i).
 	fp.sendMu.Lock()
+	carried := fp.DrainQueue()
 	fp.Close()
 	fp.sendMu.Unlock()
 
 	p, err := NewPane(fp.cfg, rows, cols)
 	if err != nil {
+		// The mail is in hand and the replacement never came up. Putting it
+		// back is the whole reason this branch exists: returning here with
+		// `carried` on the stack is the same silent discard the bead is about.
+		restoreQueueAfterFailedRestart(fp, carried)
 		return err
 	}
 	p.eventCh = t.agentEvents
 	t.wireSuspendResume(p)
 	p.safeGo = t.safeGo
 	p.protected = fp.protected
+	// Carried BEFORE Start so the maintenance tick can find the mail the
+	// moment the pane is up. Nothing here delivers: the modal latch does not
+	// survive the Pane, so the tick's drain is unblocked by construction.
+	giveQueueToRestartedPane(p, carried)
 	p.Start()
 	t.panes[idx] = p
 	t.applyLayout()

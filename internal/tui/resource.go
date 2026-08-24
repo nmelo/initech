@@ -505,6 +505,24 @@ func (p *Pane) EnqueueMessage(text string, enter bool) bool {
 //
 // Thread-safe (guards p.mu): called both from the main goroutine (resume) and
 // from the pane read/drain goroutine (modal-close re-delivery, ini-7txh).
+// PopQueuedMessage removes and returns the head of the queue.
+//
+// Exists so a drain holds ONE message at a time (ini-1z6i). drainModalQueue
+// used to pop the whole queue and then release sendMu between sends, so a
+// restart mid-drain destroyed everything already popped -- unreachable by the
+// carry, because it lived in a local slice. Popping per message bounds the
+// loss to the single message actually in flight.
+func (p *Pane) PopQueuedMessage() (QueuedMessage, bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if len(p.messageQueue) == 0 {
+		return QueuedMessage{}, false
+	}
+	m := p.messageQueue[0]
+	p.messageQueue = p.messageQueue[1:]
+	return m, true
+}
+
 func (p *Pane) DrainQueue() []QueuedMessage {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -566,10 +584,19 @@ func (p *Pane) drainModalQueue() {
 	if paneHasModal(p) {
 		return // a modal reopened before the drain ran; leave the queue intact.
 	}
-	msgs := p.DrainQueue()
-	for i, m := range msgs {
+	// ONE AT A TIME (ini-1z6i). This used to DrainQueue() the lot and then
+	// release sendMu between sends, so a restart part-way through destroyed
+	// every message already popped -- they lived in a local slice where
+	// restartPane's carry could not reach them. Holding one keeps the rest in
+	// the queue, which is the only durable record of mail we have accepted and
+	// not yet delivered.
+	for {
+		m, ok := p.PopQueuedMessage()
+		if !ok {
+			return
+		}
 		p.SendText(m.Text, m.Enter)
-		if i < len(msgs)-1 {
+		if p.QueuedMessageCount() > 0 {
 			time.Sleep(queueDrainInterval)
 		}
 	}
