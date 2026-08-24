@@ -178,7 +178,7 @@ jobs:
       # from a green run, which is the exact failure the census exists to stop
       # one level up. -list compiles and enumerates without running.
       - name: Witness which rigs this leg selected
-        run: go test ./internal/tui/ -list 'NineISXRig|X5obRig|AttentionRig|TestAQY_|NineGVNRig|TestSuspendFate|TestSuspendGuard|A9d8Rig|Dr03Rig'
+        run: go test ./internal/tui/ -list 'NineISXRig|X5obRig|AttentionRig|TestAQY_|NineGVNRig|TestSuspendFate|TestSuspendGuard|A9d8Rig|Dr03Rig|FN77Rig'
 
       - name: Composed multi-window rigs (real binaries, real PTYs)
         env:
@@ -195,4 +195,5 @@ jobs:
           INITECH_9IMX: "1"
           INITECH_A9D8: "1"
           INITECH_DR03: "1"
-        run: go test ./internal/tui/ -count=1 -timeout 900s -run 'NineISXRig|X5obRig|AttentionRig|TestAQY_|NineGVNRig|TestSuspendFate|TestSuspendGuard|A9d8Rig|Dr03Rig'
+          INITECH_FN77: "1"
+        run: go test ./internal/tui/ -count=1 -timeout 900s -run 'NineISXRig|X5obRig|AttentionRig|TestAQY_|NineGVNRig|TestSuspendFate|TestSuspendGuard|A9d8Rig|Dr03Rig|FN77Rig'
