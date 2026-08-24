@@ -36,6 +36,10 @@ type paneInfo struct {
 	Activity string `json:"activity"`
 	Alive    bool   `json:"alive"`
 	Visible  bool   `json:"visible"`
+
+	ModalLatched bool `json:"modal_latched,omitempty"`
+	ModalAgeSec  int  `json:"modal_age_sec,omitempty"`
+	QueuedCount  int  `json:"queued_count,omitempty"`
 }
 
 func runStatus(cmd *cobra.Command, args []string) error {
@@ -141,6 +145,15 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		}
 		if !pi.Visible {
 			status += " " + color.Dim("[hidden]")
+		}
+		// The latch is why mail stops moving, so it shows up where someone
+		// looks when mail stops moving (ini-gbqc). Age and depth, because
+		// "modal" alone cannot separate a dialog opened a second ago from one
+		// that has held four messages for hours -- which is the case the live
+		// report was, and it took a human peeking at the pane to see it.
+		if pi.ModalLatched {
+			status += " " + color.Yellow(fmt.Sprintf("[modal %s, %d queued]",
+				shortDur(pi.ModalAgeSec), pi.QueuedCount))
 		}
 
 		// For remote panes, use host:name as display name.
@@ -281,4 +294,16 @@ func getBeadAssignments(runner iexec.Runner) map[string]beadInfo {
 	}
 
 	return result
+}
+
+// shortDur renders a latch age compactly: 47m, 2h, 8s.
+func shortDur(sec int) string {
+	switch {
+	case sec >= 3600:
+		return fmt.Sprintf("%dh", sec/3600)
+	case sec >= 60:
+		return fmt.Sprintf("%dm", sec/60)
+	default:
+		return fmt.Sprintf("%ds", sec)
+	}
 }

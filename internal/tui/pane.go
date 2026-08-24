@@ -265,6 +265,7 @@ type Pane struct {
 	memoryRSS             int64             // RSS in kilobytes, updated by memory monitor goroutine.
 	suspended             bool              // True when auto-suspend policy has stopped this pane.
 	messageQueue          []QueuedMessage   // Messages waiting for resume or modal-close. Capped at maxMessageQueue.
+	idlePromptSince       time.Time         // When the pane last began rendering its idle composer (ini-gbqc).
 	pendingSubmit         *pendingSubmit    // A submit the belt withheld, waiting for the composer to repaint (ini-vpwg).
 	waking                bool              // A wake is in flight (ini-zffi). Guards against a burst of keystrokes each launching a respawn, and drives the "waking" pane display.
 	modalDraining         bool              // True while a modal-close queue drain is in flight (guarded by p.mu).

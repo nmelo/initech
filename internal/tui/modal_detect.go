@@ -301,6 +301,80 @@ func (p *Pane) auditDialogLatch(now time.Time) bool {
 	return true
 }
 
+// idlePromptStableWindow is how long a pane must render its normal idle
+// composer before a CORROBORATED latch is cleared on that evidence.
+//
+// Five ticks of modalMaintenance. Long enough that a transient repaint between
+// two dialogs is not read as a return to rest; short enough that mail held
+// behind a dialog that closed itself moves in seconds rather than hours (the
+// live specimen deferred for HOURS).
+const idlePromptStableWindow = 5 * time.Second
+
+// paneShowsIdleComposer reports POSITIVE evidence that the pane is at rest:
+// its prompt is on screen AND no dialog is rendered.
+//
+// THE ASYMMETRY OF ini-2jpo IS PRESERVED BY REQUIRING THE PROMPT, and that is
+// the whole safety argument. A dialog that merely SCROLLED OUT OF VIEW shows
+// neither a dialog nor an idle prompt, so this returns false and the latch
+// stands -- absence of a dialog is still never treated as proof it closed.
+// What clears the latch is not "I cannot see a dialog" but "I can see the
+// application redrawn at its resting state", which a blocking modal does not
+// permit. Different KIND of evidence, not a weaker threshold on the same kind.
+func paneShowsIdleComposer(p *Pane) bool {
+	if p == nil || p.emu == nil {
+		return false
+	}
+	if paneShowsModalOnScreen(p) {
+		return false
+	}
+	_, hasPrompt := composerTail(p)
+	return hasPrompt
+}
+
+// observeIdlePrompt records whether the pane is at rest right now and returns
+// how long it has been continuously so. Zero when it is not.
+func (p *Pane) observeIdlePrompt(now time.Time, idle bool) time.Duration {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if !idle {
+		p.idlePromptSince = time.Time{}
+		return 0
+	}
+	if p.idlePromptSince.IsZero() {
+		p.idlePromptSince = now
+	}
+	return now.Sub(p.idlePromptSince)
+}
+
+// auditCorroboratedLatch clears a latch that sight CORROBORATED, on positive
+// evidence that the dialog is gone (ini-gbqc).
+//
+// auditDialogLatch deliberately never touches a corroborated latch, and that
+// reasoning holds for AGE: downgrading because time passed would forge an
+// operator answer into a dialog that is genuinely open. It does not cover
+// POSITIVE EVIDENCE. Before this, a corroborated latch had exactly one clear --
+// an operator keystroke into that pane -- so a dialog closed any other way
+// (the harness resolving its own AskUserQuestion, a permission prompt
+// auto-resolving under bypass, a timeout, a /compact redraw) left the pane
+// deferring every message forever. Measured on the live fleet: mail held for
+// HOURS behind a flag whose dialog was long gone, worked around by bypassing
+// the agent entirely.
+func (p *Pane) auditCorroboratedLatch(stableFor time.Duration) bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if !p.dialogOpen || !p.dialogCorroborated {
+		return false
+	}
+	if stableFor < idlePromptStableWindow {
+		return false
+	}
+	p.dialogOpen = false
+	p.dialogCorroborated = false
+	p.dialogOpenAt = time.Time{}
+	p.idlePromptSince = time.Time{}
+	return true
+}
+
 // noteOperatorInput clears the dialog latch: the operator has acted on this
 // pane, which is the only way a dialog gets answered. Called from the operator
 // input paths only.
@@ -308,6 +382,17 @@ func (p *Pane) noteOperatorInput() {
 	p.mu.Lock()
 	p.dialogOpen = false
 	p.mu.Unlock()
+}
+
+// latchAge reports how long the dialog latch has been raised, and whether it
+// is raised at all. For telling a sender "just dialoged" from "stuck".
+func (p *Pane) latchAge(now time.Time) (time.Duration, bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if !p.dialogOpen || p.dialogOpenAt.IsZero() {
+		return 0, p.dialogOpen
+	}
+	return now.Sub(p.dialogOpenAt), true
 }
 
 // dialogLatched reports whether a declared dialog is still believed open.
@@ -350,6 +435,21 @@ func (t *TUI) modalMaintenance(now time.Time) {
 		}
 		if paneShowsModalOnScreen(p) {
 			p.noteDialogSighting()
+		}
+		// POSITIVE-EVIDENCE CLEAR for a corroborated latch (ini-gbqc). Runs
+		// before the age audit so the two stay legibly separate: this one
+		// heals a REAL dialog that closed without operator input; that one
+		// heals a raise that was never real.
+		stable := p.observeIdlePrompt(now, paneShowsIdleComposer(p))
+		if p.auditCorroboratedLatch(stable) {
+			LogInfo("modal", "latch cleared: pane returned to its idle prompt",
+				"pane", p.Name(), "stable_for", stable, "queued", p.QueuedMessageCount())
+			EmitEvent(p.eventCh, AgentEvent{
+				Type:   EventMessageSent,
+				Pane:   p.Name(),
+				Detail: "held mail released: pane returned to prompt",
+				Time:   now,
+			})
 		}
 		if p.auditDialogLatch(now) {
 			LogWarn("modal", "latch downgraded: a declared dialog was never seen on screen",

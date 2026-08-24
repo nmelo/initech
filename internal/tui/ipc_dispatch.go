@@ -17,6 +17,11 @@ type PaneInfo struct {
 	Activity string `json:"activity"`
 	Alive    bool   `json:"alive"`
 	Visible  bool   `json:"visible"`
+
+	// Modal-latch visibility (ini-gbqc): omitted entirely when no latch is up.
+	ModalLatched bool `json:"modal_latched,omitempty"`
+	ModalAgeSec  int  `json:"modal_age_sec,omitempty"`
+	QueuedCount  int  `json:"queued_count,omitempty"`
 }
 
 // IPCHost provides the runtime-specific capabilities needed by the shared

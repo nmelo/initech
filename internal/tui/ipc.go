@@ -116,6 +116,18 @@ func (t *TUI) AllPanes() ([]PaneInfo, bool) {
 				Alive:    p.IsAlive(),
 				Visible:  !t.layoutState.Hidden[agentKey(p)],
 			}
+			// The latch is why mail stops moving, so it belongs where someone
+			// looks when mail stops moving (ini-gbqc). Age and depth, not a
+			// bare flag: the live incident was diagnosed by a human peeking at
+			// a pane because status could not say a dialog had been up for
+			// hours with four messages behind it.
+			if lp, ok := p.(*Pane); ok {
+				if age, latched := lp.latchAge(time.Now()); latched {
+					panes[i].ModalLatched = true
+					panes[i].ModalAgeSec = int(age.Seconds())
+					panes[i].QueuedCount = lp.QueuedMessageCount()
+				}
+			}
 		}
 	})
 	return panes, ok
@@ -255,15 +267,26 @@ func (t *TUI) handleIPCSend(conn net.Conn, req IPCRequest) {
 	// (ini-7txh). Best-effort for the response only — sendPaneTextLocked is
 	// authoritative for the actual defer/queue and emits its own operator event.
 	modalDeferred := false
+	// Age and depth travel with the deferral (ini-gbqc): "deferred" alone
+	// cannot tell a sender a dialog opened a second ago from one that has held
+	// their mail for hours, and the second is the case worth acting on. The
+	// live report was hours of silent deferral, diagnosed only by a human
+	// peeking at the pane.
+	var latchAge time.Duration
+	var queuedDepth int
 	if lp, ok := pv.(*Pane); ok {
-		t.runOnMain(func() { modalDeferred = paneHasModal(lp) })
+		t.runOnMain(func() {
+			modalDeferred = paneHasModal(lp)
+			latchAge, _ = lp.latchAge(time.Now())
+			queuedDepth = lp.QueuedMessageCount()
+		})
 	}
 
 	// Normal path: deliver via PaneView.SendText (works for local and remote).
 	pv.SendText(req.Text, req.Enter)
 
 	if modalDeferred {
-		writeIPCResponse(conn, IPCResponse{OK: true, Data: "deferred (modal open)"})
+		writeIPCResponse(conn, IPCResponse{OK: true, Data: deferredMsg(req.Target, latchAge, queuedDepth)})
 		return
 	}
 
@@ -1376,4 +1399,14 @@ func (p *Pane) surfaceUndeliveredSubmit(ps *pendingSubmit, why string) {
 		Detail: "message NOT delivered after " + waited.String() + " (" + why + "), re-send it: " + ps.preview,
 		Time:   time.Now(),
 	})
+}
+
+// deferredMsg renders a deferral a sender can act on: how long the latch has
+// been up and how much mail is behind it.
+func deferredMsg(target string, age time.Duration, queued int) string {
+	if age <= 0 {
+		return fmt.Sprintf("deferred to %s — modal open, %d queued", target, queued)
+	}
+	return fmt.Sprintf("deferred to %s — modal open %s, %d queued",
+		target, age.Round(time.Minute), queued)
 }
