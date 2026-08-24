@@ -123,3 +123,27 @@ func TestLatch_ReleaseIsAnnounced(t *testing.T) {
 		t.Errorf("the release left no record at default level: %q", out)
 	}
 }
+
+// An UNCORROBORATED latch belongs to auditDialogLatch's window, not to this
+// path, and the distinction is load-bearing. A dialog declared over OSC 777
+// has not rendered yet, so the pane still shows the PREVIOUS idle prompt --
+// clearing on that would drop the latch for a dialog that is about to appear,
+// which is the forged answer this guard exists to prevent. Found by mutant:
+// removing the corroboration check left every other cell green.
+func TestLatch_UncorroboratedLatchIsNotClearedByThisPath(t *testing.T) {
+	p := latchedPane(t)
+	p.mu.Lock()
+	p.dialogCorroborated = false // declared, not yet seen
+	p.dialogOpenAt = time.Now()  // just raised, inside the corroboration window
+	p.mu.Unlock()
+	showIdlePrompt(p) // the screen the dialog has not yet painted over
+
+	now := time.Now()
+	var stable time.Duration
+	for i := 0; i <= 30; i++ {
+		stable = p.observeIdlePrompt(now.Add(time.Duration(i)*time.Second), paneShowsIdleComposer(p))
+	}
+	if p.auditCorroboratedLatch(stable) {
+		t.Error("cleared a latch sight never corroborated: a dialog still painting would lose its guard")
+	}
+}
