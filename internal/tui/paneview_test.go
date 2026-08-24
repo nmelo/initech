@@ -177,11 +177,18 @@ func TestPaneView_SendText(t *testing.T) {
 	// the submit key to the emulator after the stash, and if this goroutine
 	// returns there is no reader left, so that write blocks forever (ini-a9d8
 	// measured a 600s package hang).
+	drainDone := make(chan struct{})
+	t.Cleanup(func() { close(drainDone) })
 	go func() {
 		var got []byte
 		buf := make([]byte, 256)
 		sent := false
 		for {
+			select {
+			case <-drainDone:
+				return
+			default:
+			}
 			n, err := emu.Read(buf)
 			if n > 0 && !sent {
 				got = append(got, buf[:n]...)
@@ -193,6 +200,10 @@ func TestPaneView_SendText(t *testing.T) {
 					readDone <- got
 				}
 				return
+			}
+			if n == 0 {
+				// Never spin on an empty read: see the note in inject_test.go.
+				time.Sleep(2 * time.Millisecond)
 			}
 		}
 	}()

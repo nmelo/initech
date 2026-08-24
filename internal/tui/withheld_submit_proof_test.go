@@ -38,15 +38,35 @@ func proofPane(t *testing.T) (*Pane, <-chan []byte, <-chan AgentEvent) {
 	p.eventCh = events
 
 	submits := make(chan []byte, 8)
+	drainDone := make(chan struct{})
+	t.Cleanup(func() { close(drainDone) })
 	go func() {
 		buf := make([]byte, 4096)
 		for {
+			select {
+			case <-drainDone:
+				return
+			default:
+			}
 			n, err := p.emu.Read(buf)
 			if n > 0 {
-				submits <- append([]byte(nil), buf[:n]...)
+				select {
+				case submits <- append([]byte(nil), buf[:n]...):
+				case <-drainDone:
+					return
+				}
 			}
 			if err != nil {
 				return
+			}
+			if n == 0 {
+				// AN EMPTY READ MUST NOT SPIN, and this drain must not
+				// OUTLIVE its test. Both were true here and cost a red main
+				// (ini-a9d8): every cell passed alone, and the accumulated
+				// drains from earlier cells were still running during a
+				// timing-sensitive eviction test later in the package, which
+				// went red with nobody having touched it.
+				time.Sleep(2 * time.Millisecond)
 			}
 		}
 	}()

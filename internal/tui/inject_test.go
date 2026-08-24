@@ -98,10 +98,17 @@ func TestInjectText_CtrlS_StillSent(t *testing.T) {
 	// submit key) -- with nobody reading, that write blocks and the whole
 	// package hangs rather than failing. Measured: this test wedged for 600s
 	// when ini-a9d8 pointed it at enter=true.
+	drainDone := make(chan struct{})
+	t.Cleanup(func() { close(drainDone) })
 	go func() {
 		buf := make([]byte, 256)
 		seen := false
 		for {
+			select {
+			case <-drainDone:
+				return
+			default:
+			}
 			n, err := emu.Read(buf)
 			if n > 0 && !seen {
 				for _, b := range buf[:n] {
@@ -114,6 +121,14 @@ func TestInjectText_CtrlS_StillSent(t *testing.T) {
 			}
 			if err != nil {
 				return
+			}
+			if n == 0 {
+				// An empty read must not become a spin. Reading in a tight
+				// loop burns a core for the rest of the package and perturbs
+				// timing-sensitive cells elsewhere -- ini-a9d8 turned
+				// 91kj's drop-oldest eviction test red exactly this way,
+				// while every cell passed in isolation.
+				time.Sleep(2 * time.Millisecond)
 			}
 		}
 	}()
