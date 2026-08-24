@@ -485,6 +485,90 @@ func TestLoadFleetScopedLayout_DuplicateGroupNamesAreRepairedInMemory(t *testing
 	}
 }
 
+// TestDedupeGroupLabels_CaseVariantsAreNotFolded (eng1's review of 9952b3c,
+// found via a mutant folding case): the load-time repair must apply the
+// SAME case-sensitive exact-match rule the creation-time check already
+// pins (TestAgentsModal_CreateGroupCaseVariantIsNotADuplicate) -- "eng" and
+// "ENG" are two real, distinct bands, not a duplicate of each other. This
+// direction is the destructive one: creation only ever REFUSES a name,
+// but the load repair DROPS an entry and LoadLayout PERSISTS the result --
+// a case-folding regression here silently deletes a real band with real
+// members, on disk, exactly what the AC's "never silently drop a band"
+// forbids.
+//
+// A naive case-insensitive dedup passes when the lowercase form comes
+// LAST ("Eng","eng" -> unaffected, since "eng" already seen as itself)
+// but destroys the SET when the lowercase form comes FIRST -- the ordering
+// eng1's demonstration used, kept here for the same reason.
+func TestDedupeGroupLabels_CaseVariantsAreNotFolded(t *testing.T) {
+	in := []string{"eng", "ENG", "core"}
+	out, healed := dedupeGroupLabels(in)
+
+	if healed {
+		t.Errorf("dedupeGroupLabels(%v) healed=true, want false -- \"eng\" and \"ENG\" are "+
+			"different labels, nothing here is a duplicate", in)
+	}
+	if len(out) != 3 {
+		t.Fatalf("dedupeGroupLabels(%v) = %v, want all 3 labels preserved", in, out)
+	}
+	for _, want := range in {
+		if !groupNameExists(out, want) {
+			t.Errorf("dedupeGroupLabels(%v) = %v, lost %q", in, out, want)
+		}
+	}
+}
+
+// TestLoadLayout_CaseVariantGroupsSurviveTheRepairAndPersist is a full-path
+// integration check, NOT a second cell discriminating eng1's case-folding
+// mutant -- checked, not assumed: the same mutant applied to
+// dedupeGroupLabels (fold the comparison key, keep the stored string exact)
+// does NOT red this test. It survives because LoadLayout's own pre-existing
+// dead-group rule (ini-qkwc) independently re-appends any label a surviving
+// GroupOf entry still points to but the groups list lacks -- so for any
+// group with real members, that rule masks a case-folding regression in
+// dedupeGroupLabels before it ever reaches this test's assertions. Kept
+// anyway as a normal-path integration check (case-distinct groups load,
+// persist, and reload correctly); TestDedupeGroupLabels_CaseVariantsAreNotFolded
+// is the cell that actually pins the mutant, by testing the function directly.
+func TestLoadLayout_CaseVariantGroupsSurviveTheRepairAndPersist(t *testing.T) {
+	dir := t.TempDir()
+	state := LayoutState{
+		Mode:     LayoutGrid,
+		GridCols: 2, GridRows: 2,
+		Groups:  []string{"eng", "ENG", "core"},
+		GroupOf: map[string]string{"eng1": "eng", "eng2": "ENG", "super": "core"},
+	}
+	if err := SaveLayout(dir, state); err != nil {
+		t.Fatalf("SaveLayout: %v", err)
+	}
+
+	loaded, ok := LoadLayout(dir, []string{"eng1", "eng2", "super"})
+	if !ok {
+		t.Fatal("LoadLayout returned ok=false")
+	}
+	if len(loaded.Groups) != 3 {
+		t.Fatalf("Groups = %v, want all 3 case-distinct labels preserved", loaded.Groups)
+	}
+	for _, want := range []string{"eng", "ENG", "core"} {
+		if !groupNameExists(loaded.Groups, want) {
+			t.Errorf("Groups = %v, lost %q", loaded.Groups, want)
+		}
+	}
+	if loaded.GroupOf["eng1"] != "eng" || loaded.GroupOf["eng2"] != "ENG" {
+		t.Errorf("GroupOf = %v, want eng1=eng and eng2=ENG kept distinct", loaded.GroupOf)
+	}
+
+	// PERSISTED distinctly, not just computed distinctly in memory.
+	reloaded, ok2 := LoadLayout(dir, []string{"eng1", "eng2", "super"})
+	if !ok2 {
+		t.Fatal("re-load returned ok=false")
+	}
+	if len(reloaded.Groups) != 3 {
+		t.Errorf("re-loaded Groups = %v, want all 3 still present after persistence",
+			reloaded.Groups)
+	}
+}
+
 // ---------- the PoC's own near-miss: no-matches must read the CURRENT frame ----------
 
 // TestAgentsSearch_NoMatchesReadsCurrentFrame_NotStaleFrame is the spec's
