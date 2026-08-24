@@ -19,6 +19,18 @@ package tui
 //	INITECH_6M4=1 go test ./internal/tui/ -run TestSixM4Rig -v -count=1 -timeout 500s
 //
 // It seeds a saved pane order for the session, so numbering agreement
+// SUBJECT MOVED FOR WINDOW 2 (ini-fn77). The agents modal is main-window only
+// now, so this rig no longer compares two modals: window 1 keeps its modal
+// assertions (tier headers, whole-fleet membership, no false scope
+// disclosure, expanded-is-inert), and WINDOW 2'S HALF IS THE OVERLAY -- the
+// surface a viewer still has. What was dropped outright is cross-window
+// NUMBERING PARITY, because grab-by-number is a modal affordance and there is
+// no second numbering to agree with; it is not replaced by a weaker check.
+// What was KEPT, re-pointed rather than deleted, is the propagation claim:
+// window 1 hides an agent, window 2 must learn about it. The function name
+// still says ModalParity and is left alone deliberately -- shipper's
+// every-release gate invokes it by name.
+
 // cannot come from either window's local state agreeing by luck.
 
 import (
@@ -221,13 +233,15 @@ func TestSixM4Rig_ViewerModalParityAndReplaySurvival(t *testing.T) {
 			"owns the group -- 'exactly one window' violated", hits)
 	}
 
+	// WINDOW 1 ONLY (ini-fn77): the agents modal is main-window only, so there
+	// is no second modal to compare against. Window 2's half of this rig moved
+	// to the OVERLAY, which is what a viewer still has.
 	openModal(w1pty)
-	openModal(w2pty)
 
 	w1rows := nonEmpty(snapRows(w1emu))
 	w2rows := nonEmpty(snapRows(w2emu))
 	w1screen := strings.Join(w1rows, "\n")
-	w2screen := strings.Join(w2rows, "\n")
+	_ = w2rows // window 2 has no modal to compare; its half of this rig is the overlay below
 
 	// ── 2. The modal is TIERED and WHOLE-FLEET from every window ────
 	//
@@ -246,10 +260,6 @@ func TestSixM4Rig_ViewerModalParityAndReplaySurvival(t *testing.T) {
 		if !strings.Contains(w1screen, tier) {
 			t.Errorf("window 1's modal is missing the %q tier header", tier)
 		}
-		if !strings.Contains(w2screen, tier) {
-			t.Errorf("window 2's modal is missing the %q tier header -- the viewer's tier "+
-				"gate is off (WindowListen is empty on a viewer BY CONSTRUCTION)", tier)
-		}
 	}
 
 	// AND IT CLAIMS TO HIDE NOTHING. An unscoped surface that still prints
@@ -265,7 +275,7 @@ func TestSixM4Rig_ViewerModalParityAndReplaySurvival(t *testing.T) {
 	scopeNote := regexp.MustCompile("\u2514\u2500 \\+\\d+ on window \\d")
 	for _, w := range []struct {
 		name, screen string
-	}{{"window 1", w1screen}, {"window 2", w2screen}} {
+	}{{"window 1", w1screen}} {
 		if hit := scopeNote.FindString(w.screen); hit != "" {
 			t.Errorf("%s's modal footer still discloses a scope it no longer has (%q); an "+
 				"unscoped surface must not claim to hide anything\n%s", w.name, hit, w.screen)
@@ -282,42 +292,33 @@ func TestSixM4Rig_ViewerModalParityAndReplaySurvival(t *testing.T) {
 		return m
 	}
 
-	dn1, dn2 := numbersOf(w1screen), numbersOf(w2screen)
-	if len(dn1) != len(roles) || len(dn2) != len(roles) {
-		t.Fatalf("default modal lists %d/%d agents (want %d each -- the modal is unscoped "+
-			"from every window)\nW1:\n%s\nW2:\n%s", len(dn1), len(dn2), len(roles), w1screen, w2screen)
+	// CROSS-WINDOW NUMBERING PARITY IS GONE (ini-fn77) and is not replaced:
+	// grab-by-number is a modal affordance, and window 2 has no modal, so
+	// there is no second numbering for the two to agree or disagree about.
+	// What remains is that window 1's modal is whole-fleet.
+	dn1 := numbersOf(w1screen)
+	if len(dn1) != len(roles) {
+		t.Fatalf("window 1's modal lists %d agents (want %d -- the modal is whole-fleet)"+
+			"\nW1:\n%s", len(dn1), len(roles), w1screen)
 	}
-	for agent, num := range dn1 {
-		if dn2[agent] != num {
-			t.Errorf("agent %s is number %s in window 1 but %s in window 2 -- grab-by-number "+
-				"acts on different agents per window\nW1 numbers: %v\nW2 numbers: %v\nW1:\n%s\nW2:\n%s",
-				agent, num, dn2[agent], dn1, dn2, w1screen, w2screen)
-		}
-	}
-
-	// EXPANDED IS INERT ON MEMBERSHIP now, and this leg is what proves it
-	// rather than assuming it: the same whole fleet before and after 'a'.
+	// EXPANDED IS INERT ON MEMBERSHIP, and this leg proves it rather than
+	// assuming it: the same whole fleet before and after 'a'. Window 1 only
+	// since ini-fn77 -- the expanded toggle lives inside the modal, so a
+	// viewer has no expanded state to compare.
 	w1pty.Write([]byte("a"))
-	w2pty.Write([]byte("a"))
 	time.Sleep(2500 * time.Millisecond)
 	w1exp := strings.Join(nonEmpty(snapRows(w1emu)), "\n")
-	w2exp := strings.Join(nonEmpty(snapRows(w2emu)), "\n")
 
-	n1, n2 := numbersOf(w1exp), numbersOf(w2exp)
-	t.Logf("NUMBERING default  w1=%v w2=%v", dn1, dn2)
-	t.Logf("NUMBERING expanded w1=%v w2=%v", n1, n2)
-	if len(n1) != len(roles) || len(n2) != len(roles) {
-		t.Fatalf("EXPANDED modal lists %d/%d agents (want %d each). Expanded is inert on "+
-			"membership now, so this differing from the default view means the flag still "+
-			"moves something it should not.\nW1:\n%s\nW2:\n%s",
-			len(n1), len(n2), len(roles), w1exp, w2exp)
+	n1 := numbersOf(w1exp)
+	t.Logf("NUMBERING default  w1=%v", dn1)
+	t.Logf("NUMBERING expanded w1=%v", n1)
+	if len(n1) != len(roles) {
+		t.Fatalf("EXPANDED modal lists %d agents (want %d). Expanded is inert on membership "+
+			"now, so differing from the default view means the flag still moves something "+
+			"it should not.\nW1:\n%s", len(n1), len(roles), w1exp)
 	}
-	for agent, num := range n1 {
-		if n2[agent] != num {
-			t.Errorf("agent %s is number %s in window 1 but %s in window 2 -- grab-by-number "+
-				"acts on different agents per window", agent, num, n2[agent])
-		}
-	}
+	w1pty.Write([]byte("a")) // back to the default view
+	time.Sleep(1500 * time.Millisecond)
 
 	// ── 4. A hide in window 1 reaches window 2's reopened modal ─────
 	w1pty.Write([]byte("\x1b[C")) // select the second cell
@@ -332,19 +333,33 @@ func TestSixM4Rig_ViewerModalParityAndReplaySurvival(t *testing.T) {
 	}
 	hiddenAgent := hit[1]
 
-	w2pty.Write([]byte("\x1b")) // close
-	time.Sleep(1500 * time.Millisecond)
-	openModal(w2pty)
-	// EXPANDED, because the hidden agent is one of WINDOW 1's: window 2's
-	// default modal legitimately does not list it, so a default-view assertion
-	// here would test the scope rather than the propagation it names. This is
-	// the other pre-9isx assertion in this file; it never fired only because
-	// the count check above Fatal'd first (ini-l5sy audit).
-	w2pty.Write([]byte("a"))
-	time.Sleep(2000 * time.Millisecond)
-	if !strings.Contains(strings.Join(nonEmpty(snapRows(w2emu)), "\n"), "[ ] "+hiddenAgent) {
-		t.Errorf("window 1 hid %s, and window 2's REOPENED modal still shows it visible -- "+
-			"the follower is reading its startup fleet-state snapshot, and a toggle from "+
-			"window 2 would un-hide what window 1 hid", hiddenAgent)
+	// WINDOW 2 LEARNS ABOUT IT ON ITS OVERLAY (ini-fn77 re-scope).
+	//
+	// This leg used to reopen window 2's agents MODAL and look for the hidden
+	// agent there. The modal is main-window only now, so that surface is gone
+	// -- but the PROPAGATION it was testing is not, and it is the half worth
+	// gating: a viewer must not go on rendering a fleet state window 1 has
+	// changed. The overlay is where a viewer observes it, and it is a surface
+	// window 2 still has. Measured, not assumed: the overlay marks the hidden
+	// agent "○ eng1 [h]" and footers "1 visible, 1 hidden".
+	w1pty.Write([]byte("\x1b")) // close window 1's modal so nothing overlaps
+	time.Sleep(2500 * time.Millisecond)
+	w2after := strings.Join(nonEmpty(snapRows(w2emu)), "\n")
+
+	marked := regexp.MustCompile(`\x{25cb} ` + hiddenAgent + ` \[h\]`)
+	if !marked.MatchString(w2after) {
+		t.Errorf("window 1 hid %s and window 2's overlay does not mark it hidden -- the "+
+			"viewer is rendering its startup fleet-state snapshot, so the two windows "+
+			"disagree about what the fleet looks like\nW2:\n%s", hiddenAgent, w2after)
+	}
+	// SPECIFICITY: the marker must belong to the hidden agent, not decorate
+	// every row. Without this, an overlay that marked everything would pass.
+	other := "eng2"
+	if hiddenAgent == other {
+		other = "eng1"
+	}
+	if regexp.MustCompile(`\x{25cb} ` + other + ` \[h\]`).MatchString(w2after) {
+		t.Errorf("window 2's overlay marks %s hidden too, but only %s was hidden -- the "+
+			"marker is not reporting per-agent state\nW2:\n%s", other, hiddenAgent, w2after)
 	}
 }
