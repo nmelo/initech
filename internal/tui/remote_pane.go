@@ -128,31 +128,8 @@ func (rp *RemotePane) readLoop() {
 			// this channel and writes to the emulator (zero contention).
 			chunk := make([]byte, n)
 			copy(chunk, buf[:n])
-			select {
-			case rp.dataCh <- chunk:
-			default:
-				// CHANNEL FULL. Dropping the oldest chunk silently is the
-				// defect ini-dr03 removes: a chunk boundary is a NETWORK READ
-				// boundary, not a terminal-grammar one, so an evicted chunk
-				// can carry away the first half of a CSI sequence and leave
-				// the second half to render as literal text. Measured
-				// reachable under ordinary chatty-agent output (qa1).
-				//
-				// We still evict rather than block. REFUSING TO READ IS
-				// BACKPRESSURE, which propagates through yamux to the
-				// daemon's MultiSink writer; post-v2.11.3 a persistently
-				// timing-out writer is dropped after ~21s and nothing re-adds
-				// a dropped stream. That is the v2.11.2 FREEZE, reintroduced
-				// from the receive side -- the reason backpressure was
-				// rejected for this bead. Liveness is preserved here and
-				// correctness is restored by the resync below.
-				rp.noteDesync()
-				select {
-				case <-rp.dataCh:
-				default:
-				}
-				rp.dataCh <- chunk
-			}
+			rp.pushChunk(chunk)
+
 			now := time.Now()
 			rp.mu.Lock()
 			rp.lastOut = now
@@ -407,6 +384,40 @@ func (rp *RemotePane) SendText(text string, enter bool) {
 			LogWarn("remote", "send failed", "agent", rp.name, "err", err)
 		}
 	}()
+}
+
+// pushChunk buffers one chunk for the render loop.
+//
+// EXTRACTED FROM readLoop SO A TEST CAN DRIVE THE REAL PATH (qa1's suggestion,
+// ini-dr03). A cell that calls noteDesync directly proves what noteDesync
+// does, not that eviction CALLS it -- measured: with the call removed from
+// here, such a cell stayed GREEN. Driving pushChunk on a full channel
+// exercises the branch production runs, sequentially, with nothing to race.
+//
+// CHANNEL FULL. Dropping the oldest chunk silently is the defect ini-dr03
+// removes: a chunk boundary is a NETWORK READ boundary, not a terminal-grammar
+// one, so an evicted chunk can carry away the first half of a CSI sequence and
+// leave the second half to render as literal text. Measured reachable under
+// ordinary chatty-agent output (qa1).
+//
+// We still evict rather than block. REFUSING TO READ IS BACKPRESSURE, which
+// propagates through yamux to the daemon's MultiSink writer; post-v2.11.3 a
+// persistently timing-out writer is dropped after ~21s and nothing re-adds a
+// dropped stream. That is the v2.11.2 FREEZE, reintroduced from the receive
+// side -- the reason backpressure was rejected for this bead. Liveness is
+// preserved here; correctness is restored by the resync.
+func (rp *RemotePane) pushChunk(chunk []byte) {
+	select {
+	case rp.dataCh <- chunk:
+		return
+	default:
+	}
+	rp.noteDesync()
+	select {
+	case <-rp.dataCh:
+	default:
+	}
+	rp.dataCh <- chunk
 }
 
 // minResyncInterval is the floor between two resync requests for one pane.

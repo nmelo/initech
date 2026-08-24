@@ -45,7 +45,11 @@ func TestRemotePane_EvictionMarksDesyncedInsteadOfTearingSilently(t *testing.T) 
 	captureLogs(t)
 	fillDataCh(rp, cap(rp.dataCh))
 
-	rp.noteDesync()
+	// Drive the REAL push-or-evict path, not noteDesync directly. Calling the
+	// helper proves what the helper does; it does not prove eviction calls it.
+	// Measured: with the call removed from pushChunk, a noteDesync-calling
+	// cell stayed green (qa1's extraction is what makes this reachable).
+	rp.pushChunk([]byte("the chunk that overflows"))
 
 	rp.mu.Lock()
 	pending, reset := rp.resyncPending, rp.resetPending
@@ -64,8 +68,16 @@ func TestRemotePane_EvictionMarksDesyncedInsteadOfTearingSilently(t *testing.T) 
 func TestRemotePane_BurstOfEvictionsRequestsExactlyOneResync(t *testing.T) {
 	rp := resyncPane(t)
 	captureLogs(t)
-	for i := 0; i < 200; i++ {
-		rp.noteDesync()
+	// qa1 measured the overflow threshold at 100-300 small writes in
+	// single-digit milliseconds. Their instruction, and it is the same margin
+	// lesson the quarantined cell taught: treat that as a FLOOR, not a target.
+	// It is one machine's number -- right order of magnitude, not a portable
+	// constant across runners and hardware -- so a cell sitting just past 300
+	// would be as environment-sensitive as the thing it replaces. Comfortably
+	// over gets the mechanism without gambling on the margin.
+	const burst = 1000
+	for i := 0; i < burst; i++ {
+		rp.pushChunk([]byte("x"))
 	}
 	rp.mu.Lock()
 	last := rp.lastResync
@@ -73,7 +85,7 @@ func TestRemotePane_BurstOfEvictionsRequestsExactlyOneResync(t *testing.T) {
 	// A second request inside the floor must be refused. lastResync moving
 	// would mean each eviction re-armed it.
 	time.Sleep(20 * time.Millisecond)
-	rp.noteDesync()
+	rp.pushChunk([]byte("x"))
 	rp.mu.Lock()
 	again := rp.lastResync
 	rp.mu.Unlock()
