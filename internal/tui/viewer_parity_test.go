@@ -45,40 +45,6 @@ func TestAgentsTiersActive_ViewerRendersTiers(t *testing.T) {
 	}
 }
 
-// TestOpenAgentsModal_FollowerRereadsFleetState pins the staleness fix
-// (ini-6m4 symptom 3, measured live: hide in window 1, and window 2's modal
-// still showed [x] even after close-and-reopen). A follower window loads
-// fleet-state.yaml once at startup and nothing pushes changes to it, so the
-// modal MUST re-read the store when it opens -- multi-window is same-machine
-// by construction, and the file is the sync channel.
-func TestOpenAgentsModal_FollowerRereadsFleetState(t *testing.T) {
-	root := t.TempDir()
-	os.MkdirAll(filepath.Join(root, ".initech"), 0o755)
-	statePath := filepath.Join(root, ".initech", "fleet-state.yaml")
-	os.WriteFile(statePath, []byte("hidden: []\n"), 0o644)
-
-	tui := newTestTUI(testPane("pmm"))
-	tui.projectRoot = root
-	tui.windowID = "window-2" // follower
-	tui.fleetState()          // startup load: nothing hidden
-
-	if tui.layoutState.Hidden["pmm"] {
-		t.Fatal("setup: pmm hidden before window 1 hid it")
-	}
-
-	// Window 1 hides pmm: on a follower that arrives as a CHANGED FILE, not a
-	// method call -- write it exactly as window 1's store does.
-	os.WriteFile(statePath, []byte("hidden:\n    - pmm\n"), 0o644)
-
-	tui.openAgentsModal()
-
-	if !tui.layoutState.Hidden["pmm"] {
-		t.Fatal("the follower's modal opened on its STARTUP snapshot: window 1's hide is " +
-			"invisible, and a toggle from this modal would un-hide what window 1 hid -- " +
-			"a lost update via UI rather than via race")
-	}
-}
-
 // TestOpenAgentsModal_AuthorityKeepsItsOwnState pins the other half: window 1
 // OWNS fleet state, its in-memory copy IS the truth, and re-reading the file
 // on modal open would discard any not-yet-persisted state and turn every

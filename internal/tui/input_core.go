@@ -72,8 +72,17 @@ func (t *TUI) handleKey(ev *tcell.EventKey) bool {
 	// Clear any lingering error message on next keypress.
 	t.cmd.error = ""
 
-	// Backtick opens the command modal.
+	// Backtick opens the command modal -- IN THE MAIN WINDOW ONLY (ini-fn77).
+	//
+	// In a child window it is SWALLOWED: no modal, no notice, and NOT
+	// forwarded to the focused agent. Forwarding was considered and rejected
+	// by the operator: it would let a window-2 user type a backtick into a
+	// composer, which a window-1 user cannot do, so the two windows would
+	// disagree about what the key means.
 	if ev.Key() == tcell.KeyRune && ev.Rune() == '`' && ev.Modifiers() == 0 {
+		if !t.isFleetAuthority() {
+			return false
+		}
 		t.cmd.active = true
 		t.cmd.buf = t.cmd.buf[:0]
 		t.cmd.cursor = 0

@@ -20,10 +20,26 @@ import (
 	"unicode"
 
 	"github.com/gdamore/tcell/v2"
+	"time"
 )
 
 // openAgentsModal initializes and opens the agent management modal.
 func (t *TUI) openAgentsModal() {
+	// FLEET MANAGEMENT IS THE MAIN WINDOW'S (ini-fn77, operator decision).
+	//
+	// Gated HERE rather than at each opener, so the keybinding, ":agents",
+	// and any future entry point are covered by construction -- the same
+	// reason mutateFleet enforces the authority at the mutation point instead
+	// of trusting call sites. isFleetAuthority is the existing predicate; a
+	// second notion of "main window" is exactly what this must not add.
+	//
+	// A notice, never silence: a chord that does nothing reads as a broken
+	// build (ini-162m), and the operator has to be able to learn WHY.
+	if !t.isFleetAuthority() {
+		t.noticeMainWindowOnly("The agents panel")
+		return
+	}
+
 	// Drop a read-only fallback store so a repaired assignments.yaml is
 	// picked up on the next modal open rather than requiring a restart
 	// (ini-9ka.9). Only the fallback is dropped: a healthy cached store is
@@ -533,4 +549,15 @@ func (t *TUI) agentsPersistOrder() {
 // renderAgents draws the centered floating agent management modal.
 func (t *TUI) renderAgents() {
 	t.renderAgentsGrid()
+}
+
+// noticeMainWindowOnly tells a child window where a fleet-management surface
+// lives (ini-fn77). Child windows are viewers: look, focus, type into agents,
+// scroll. Managing the fleet belongs to the one window that owns its state.
+func (t *TUI) noticeMainWindowOnly(what string) {
+	EmitEvent(t.agentEvents, AgentEvent{
+		Type:   EventAssignmentWriteRefused,
+		Detail: what + " is available in the main window only.",
+		Time:   time.Now(),
+	})
 }
