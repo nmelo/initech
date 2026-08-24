@@ -79,8 +79,13 @@ func TestRestart_ASpawnFailureKeepsTheMailAndSaysSo(t *testing.T) {
 			"for a pane that never came up and has nowhere else to live",
 			old.QueuedMessageCount())
 	}
-	if !strings.Contains(logs.String(), "restart failed") {
-		t.Error("a failed restart holding mail left no record at default level")
+	// Asserts on text ONLY THE WARNING emits. "restart failed" alone is
+	// satisfied by EmitEvent's own debug line, which logs the event Detail --
+	// so the first version of this cell passed with the warning downgraded to
+	// Debug, and a mutant proving it survived.
+	if !strings.Contains(logs.String(), "messages kept on the old pane") {
+		t.Error("a failed restart holding mail left no WARNING; the operator learns " +
+			"nothing at default log level about mail stranded on a dead pane")
 	}
 }
 
@@ -122,5 +127,43 @@ func TestRestart_AnEmptyQueueCarriesNothingAndLogsNothing(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 	if strings.Contains(logs.String(), "carried") {
 		t.Errorf("an ordinary restart logged about mail it did not have: %q", logs.String())
+	}
+}
+
+// TestRestart_TheRealRestartPathCarriesTheMail drives restartPane itself.
+//
+// Written because a mutant deleting restartPane's call to the carry SURVIVED
+// every cell above: they drove the helper, and nothing drove the wiring. A
+// tested helper the product forgets to call is the same outage with better
+// test output.
+func TestRestart_TheRealRestartPathCarriesTheMail(t *testing.T) {
+	fp, err := NewPane(PaneConfig{Name: "eng2", Command: []string{"/bin/cat"}}, 24, 80)
+	if err != nil {
+		t.Fatalf("NewPane: %v", err)
+	}
+	fp.Start()
+	t.Cleanup(fp.Close)
+
+	for i := 0; i < 4; i++ {
+		fp.EnqueueMessage("deferred "+string(rune('A'+i)), true)
+	}
+
+	tui := &TUI{panes: []PaneView{fp}, agentEvents: make(chan AgentEvent, 16), quitCh: make(chan struct{})}
+	if err := tui.restartPane(fp); err != nil {
+		t.Fatalf("restartPane: %v", err)
+	}
+
+	np, ok := tui.panes[0].(*Pane)
+	if !ok {
+		t.Fatal("pane slot does not hold a local pane after restart")
+	}
+	t.Cleanup(np.Close)
+	if np == fp {
+		t.Fatal("restart did not replace the pane; this cell would pass trivially")
+	}
+	if got := np.QueuedMessageCount(); got != 4 {
+		t.Fatalf("the restarted pane holds %d of 4 deferred messages.\n\n"+
+			"This is the reported outage: mail deferred behind a modal is destroyed by "+
+			"a restart, with no notice to senders or recipient.", got)
 	}
 }
