@@ -145,6 +145,8 @@ func (t *TUI) handleAgentEvent(ev AgentEvent) {
 	if ev.Time.IsZero() {
 		ev.Time = time.Now()
 	}
+	// The send path's late verdicts on a reply ride this stream (ini-3wkl.6).
+	t.noteInboxDeliveryEvent(ev)
 
 	// Update lastEventTime on the source pane for conviction scoring.
 	if ev.Pane != "" {

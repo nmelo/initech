@@ -157,9 +157,13 @@ type mouseSelection struct {
 // TUI is the main terminal multiplexer. It owns the tcell screen,
 // a set of terminal panes, and handles input routing, layout, and rendering.
 type TUI struct {
-	inboxOnce    sync.Once
-	inboxStore   *Inbox
-	postTeaching postTeachingState
+	inboxOnce sync.Once
+	// inboxOutstanding maps an agent to the inbox items whose delivery verdict
+	// may still be corrected by a late report from the send path (ini-3wkl.6).
+	inboxOutstanding   map[string][]string
+	inboxOutstandingMu sync.Mutex
+	inboxStore         *Inbox
+	postTeaching       postTeachingState
 
 	screen      tcell.Screen
 	panes       []PaneView

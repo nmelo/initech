@@ -420,6 +420,7 @@ func (t *TUI) inboxPanelStore() inboxReader {
 // openInboxPanel opens the panel and anchors the selection on the first item.
 func (t *TUI) openInboxPanel() {
 	t.inbox.active = true
+	t.wireInboxDelivery()
 	t.inbox.note = ""
 	t.inbox.detailScroll = 0
 	t.inbox.replyBuf = nil
