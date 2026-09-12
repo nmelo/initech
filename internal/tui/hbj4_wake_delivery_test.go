@@ -54,7 +54,7 @@ func TestResumePane_FixtureDistinguishesDeliveredFromEchoed(t *testing.T) {
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
 		np.renderMu.Lock()
-		text := emulatorBottomText(np.emu, np.emu.Height())
+		text := emulatorBottomTextBlocking(np.emu, np.emu.Height())
 		np.renderMu.Unlock()
 		sawBare = sawBare || strings.Contains(text, "PROBE-ECHO-ONLY")
 		sawGot = sawGot || strings.Contains(text, "GOT:PROBE-ECHO-ONLY")
@@ -123,7 +123,7 @@ while read -r l; do echo "GOT:$l"; done`
 	deadline := time.Now().Add(30 * time.Second)
 	for time.Now().Before(deadline) {
 		np.renderMu.Lock()
-		text := emulatorBottomText(np.emu, np.emu.Height())
+		text := emulatorBottomTextBlocking(np.emu, np.emu.Height())
 		np.renderMu.Unlock()
 		if strings.Contains(text, "GOT:PROBE-SURVIVES-BOOT") {
 			return
@@ -174,7 +174,7 @@ func TestResumePane_SilentChildDeliversPromptly(t *testing.T) {
 	deadline := time.Now().Add(30 * time.Second)
 	for time.Now().Before(deadline) {
 		np.renderMu.Lock()
-		text := emulatorBottomText(np.emu, np.emu.Height())
+		text := emulatorBottomTextBlocking(np.emu, np.emu.Height())
 		np.renderMu.Unlock()
 		if strings.Contains(text, "GOT:PROBE-SILENT") {
 			// Scoped to the GATE's contribution: waitForInit's 30s is
