@@ -134,7 +134,7 @@ func TestPostIPC_TeachingsAggregateAndResetWithPaneProcess(t *testing.T) {
 	}
 	got := app.applyPostRequest(IPCRequest{Action: "post", Text: "update docs?"}, first, now)
 	joined := strings.Join(got.Notices, "\n")
-	for _, condition := range []string{"dismiss", "operator", "--default"} {
+	for _, condition := range []string{"Dismissed means no", "you now have 6 items waiting", "--default"} {
 		if !strings.Contains(joined, condition) {
 			t.Errorf("lost simultaneous %s teaching: %+v", condition, got)
 		}
@@ -247,12 +247,10 @@ func TestPostIPC_CheckReportsDeliverySeparatelyFromAnswer(t *testing.T) {
 			if err := app.inboxState().Answer(result.ID, "yes"); err != nil {
 				t.Fatal(err)
 			}
-			// D owns recording delivery callbacks. Supply that later outcome
-			// in this read-path fixture without asserting how Answer initializes it.
-			ib := app.inboxState()
-			ib.mu.Lock()
-			ib.items[0].DeliveryStatus = status
-			ib.mu.Unlock()
+			// D owns the callback; use A's public write to supply its outcome.
+			if err := app.inboxState().SetDeliveryStatus(result.ID, status); err != nil {
+				t.Fatal(err)
+			}
 			response := app.applyPostRequest(IPCRequest{Action: "post_check", ItemID: result.ID}, identity, time.Now())
 			expected := status
 			if expected == "" {
