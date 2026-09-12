@@ -36,6 +36,23 @@ func replyTUI(t *testing.T, panes ...*Pane) *TUI {
 	tui := newTestTUI(panes...)
 	tui.projectRoot = root
 	tui.windowID = WindowOne
+	// JOIN THE DELIVERIES BEFORE THE TEMP DIR GOES (ini-5rvq). Registered
+	// immediately after t.TempDir(), so under t.Cleanup's LIFO order it runs
+	// AFTER any cleanup the test adds (a close(release) that unblocks a parked
+	// wake) and BEFORE TempDir's RemoveAll. Without it, a delivery goroutine
+	// writing inbox.yaml races RemoveAll walking the same directory: 0% alone,
+	// 30-40% under the full suite's load (qa2). A real happens-before edge,
+	// never a sleep; the deadline below only names a goroutine that never
+	// finishes, it is not the synchronization.
+	t.Cleanup(func() {
+		joined := make(chan struct{})
+		go func() { tui.inboxDeliveries.Wait(); close(joined) }()
+		select {
+		case <-joined:
+		case <-time.After(10 * time.Second):
+			t.Error("a reply delivery goroutine never finished; it would still be writing when the temp dir is removed")
+		}
+	})
 	return tui
 }
 
@@ -564,5 +581,53 @@ func TestInboxPanel_EnterAndAcceptReachTheDeliverySeam(t *testing.T) {
 	awaitStatus(t, tui, withDefault.ID, InboxDelivered)
 	if got := checkLine(t, tui, withDefault.ID); !strings.Contains(got, "go with your default: do the thing") {
 		t.Errorf("`a` did not reach the seam: --check = %q", got)
+	}
+}
+
+// THE FIXTURE JOINS DELIVERIES BEFORE THE TEMP DIR IS REMOVED (ini-5rvq).
+//
+// The flake this guards was load-dependent: 30-40% in the full suite, never
+// alone, so a repeat-the-suite check can only ever say "not seen this time".
+// This cell turns the property into something observable on every run.
+//
+// A delivery released in cleanup that finishes AFTER t.TempDir's RemoveAll
+// does not fail quietly: Inbox.save does MkdirAll and an atomic write, so it
+// RECREATES .initech/ inside the removed root; one that lands mid-walk makes
+// RemoveAll fail. So: run the parked-wake shape in a subtest, then -- after
+// every one of its cleanups has run -- join the delivery and require that the
+// subtest passed and the root is gone. With the join in replyTUI both hold by
+// construction. Without it, a late write shows up here as a recreated root or
+// a failed subtest.
+func TestReplyTUI_JoinsDeliveriesBeforeTheTempDirIsRemoved(t *testing.T) {
+	var tui *TUI
+	var root string
+	ok := t.Run("parked_wake_released_in_cleanup", func(t *testing.T) {
+		release := make(chan struct{})
+		p := &Pane{name: "eng1", suspended: true, eventCh: make(chan AgentEvent, 8)}
+		p.SetOnSuspendedMessage(func(*Pane) { <-release })
+		tui = replyTUI(t, p)
+		root = tui.projectRoot
+		item := postItem(t, tui, "eng1", "question", "")
+		// Registered after replyTUI, so under LIFO it runs BEFORE the fixture's
+		// join -- the exact order that raced.
+		t.Cleanup(func() { close(release) })
+		if err := tui.ReplyToInboxItem(item.ID, "answer"); err != nil {
+			t.Fatalf("reply: %v", err)
+		}
+	})
+	if !ok {
+		t.Fatal("the subtest failed during cleanup: a delivery was still writing when its temp dir was removed")
+	}
+
+	joined := make(chan struct{})
+	go func() { tui.inboxDeliveries.Wait(); close(joined) }()
+	select {
+	case <-joined:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the delivery goroutine never finished")
+	}
+	if _, err := os.Stat(root); !os.IsNotExist(err) {
+		t.Errorf("the temp root %s exists after its RemoveAll (stat err=%v): a delivery wrote into it "+
+			"after the directory was removed, so the fixture did not join before removal", root, err)
 	}
 }

@@ -136,11 +136,16 @@ func (t *TUI) answerInboxItem(id string, compose func(InboxItem) string) error {
 	_ = ib.SetDeliveryStatus(id, inboxDeliverySending)
 	t.noteInboxOutstanding(item.Agent, id)
 
-	run := t.safeGo
-	if run == nil {
-		run = func(fn func()) { go fn() }
-	}
-	run(func() { t.deliverInboxReply(id, item.Agent, text) })
+	// Add on THIS goroutine, before the launch: the count must exist before
+	// the delivery can run, or a waiter could see zero and proceed while the
+	// goroutine is about to start (ini-5rvq). Nothing in production waits on
+	// this; it is the edge a test joins so it never removes a directory the
+	// delivery is still writing into.
+	t.inboxDeliveries.Add(1)
+	t.safeGo(func() {
+		defer t.inboxDeliveries.Done()
+		t.deliverInboxReply(id, item.Agent, text)
+	})
 	return nil
 }
 

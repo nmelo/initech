@@ -162,8 +162,11 @@ type TUI struct {
 	// may still be corrected by a late report from the send path (ini-3wkl.6).
 	inboxOutstanding   map[string][]string
 	inboxOutstandingMu sync.Mutex
-	inboxStore         *Inbox
-	postTeaching       postTeachingState
+	// inboxDeliveries counts in-flight reply deliveries, so a caller can join
+	// them (ini-5rvq). Nothing in production waits on it.
+	inboxDeliveries sync.WaitGroup
+	inboxStore      *Inbox
+	postTeaching    postTeachingState
 
 	screen      tcell.Screen
 	panes       []PaneView
