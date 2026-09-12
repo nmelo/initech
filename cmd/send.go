@@ -105,16 +105,18 @@ var allowDevDelivery bool
 // deliberately are NOT in this set, so read-only commands keep their current
 // behavior unchanged (ini-grg3 AC).
 var deliveryEffectActions = map[string]bool{
-	"send":       true,
-	"restart":    true,
-	"stop":       true,
-	"quit":       true,
-	"interrupt":  true,
-	"bead":       true,
-	"start":      true,
-	"add":        true,
-	"remove":     true,
-	"emit_event": true,
+	"post":          true,
+	"post_withdraw": true,
+	"send":          true,
+	"restart":       true,
+	"stop":          true,
+	"quit":          true,
+	"interrupt":     true,
+	"bead":          true,
+	"start":         true,
+	"add":           true,
+	"remove":        true,
+	"emit_event":    true,
 }
 
 // isDevBuild reports whether this binary looks like a local, uncommitted-tree
