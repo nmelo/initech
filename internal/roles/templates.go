@@ -3,6 +3,103 @@ package roles
 // SuperTemplate is the CLAUDE.md template for the supervisor/coordinator role.
 // The supervisor owns session-level coordination: dispatching work, monitoring
 // agents, resolving blockers, and managing the bead lifecycle.
+// OperatorInboxGuide documents `initech post` — the operator's inbox — for
+// every role template. Spliced into all twelve templates rather than copied
+// into each, so the five rules below exist exactly once: twelve
+// hand-maintained copies is a silent-omission machine, and the rendered-
+// template tests assert every rule for every role so a trim cannot land
+// quietly.
+//
+// THIS TEXT IS THE GUARD, not decoration (ini-3wkl.1). The rule that matters
+// most — post with a default and keep going — is agent behaviour, and no
+// assertion in this repo can observe an agent choosing to keep working.
+// `--default` and the inbox panel's one-key accept make the tool SHAPE the
+// rule, which is the most the code can do; the rest is these sentences. An
+// unwritten rule is a guard that does not exist.
+//
+// Spec: pm/specs/operator-inbox.md in the WORKSPACE repo
+// nmelo/initech-workspace at c3a3795 (the code repo has no docs/), abuse
+// table and teaching table.
+const OperatorInboxGuide = `
+### The operator's inbox: ` + "`" + `initech post` + "`" + `
+
+` + "`" + `initech post` + "`" + ` hands the operator something and returns immediately. You keep
+working — nothing waits on it. Use it for the thing you would otherwise block
+on, or bury in your own pane and hope someone reads.
+
+` + "`" + "``" + `
+initech post "should I update both docs?" --default "update both"
+initech post "6M4 rig is flaky on my branch — filed ini-xyz" --chime
+initech post --check p7      # unread | seen | answered: <text> | dismissed
+initech post --mine          # your items and their states
+initech post --withdraw p7   # you resolved it yourself; take it back
+initech post -f note.md      # multi-line body (--stdin also works)
+` + "`" + "``" + `
+
+- ` + "`" + `--default "<text>"` + "`" + ` — what you will do if no answer comes. The operator sees
+  it under your item and can accept it with one key, so stating a default
+  costs them less than answering.
+- ` + "`" + `--chime` + "`" + ` — ring once on arrival. Silent otherwise.
+- ` + "`" + `--check <id>` + "`" + ` — the item's state, including the reply text if answered.
+- ` + "`" + `--mine` + "`" + ` — every item you posted, with its state.
+- ` + "`" + `--withdraw <id>` + "`" + ` — remove an item you resolved yourself.
+- ` + "`" + `--stdin` + "`" + ` / ` + "`" + `-f <file>` + "`" + ` — multi-line bodies, and any body with backticks or
+  $VAR in it. A post body is a double-quoted shell string like every other
+  message body: unquoted, the shell eats those before initech sees them.
+
+**Five rules. They are why the channel stays worth opening.**
+
+1. **Post with a default and keep going.** A question you can answer yourself
+   badly still gets posted — with the answer you are going to use. Then use
+   it. Do not wait, do not check, do not stall the bead. Dismiss means go with
+   your default; so does silence.
+2. **Only what the operator alone can decide or know.** Status goes to your
+   pane or to super. Coordination goes to super. Permission for a tool action
+   goes to the permission dialog. None of those belong here, and each one you
+   post makes the inbox less likely to be opened.
+3. **Dismissed means no.** Do not re-ask, do not rephrase and re-post. Go with
+   the default you stated.
+4. **Chime only when your work is stopped on the answer, or something is at
+   risk.** A chime you did not need is a chime the operator learns to ignore.
+5. **Never poll ` + "`" + `--check` + "`" + ` in a loop.** The reply is delivered to your pane. Check
+   at most when you would otherwise have asked again — a missed reply
+   (suspended, restarted) is what ` + "`" + `--check` + "`" + ` is for, not a progress bar.
+
+#### Worked example
+
+**A question you can proceed past.** Mid-bead, the docs live in two places and
+you are not sure the operator wants both touched:
+
+` + "`" + "``" + `
+$ initech post "docs live in README and docs/flags.md — update both?" --default "update both"
+posted p7
+` + "`" + "``" + `
+
+You do not wait. You update both — exactly what your default said — and carry
+on with the bead. Twenty minutes later, while you are writing tests, the reply
+lands in your pane:
+
+` + "`" + "``" + `
+re "docs live in README and docs/flags.md — update both?" — just the README, docs/flags.md is generated
+` + "`" + "``" + `
+
+Now reconcile: the operator's answer replaces your default. Revert the
+generated file, and say so in your DONE comment so the change is traceable to
+the answer. Had the reply matched what you did, you would note nothing and
+keep going. Had it never come, your default stands — that is what it is for.
+
+**A heads-up that expects nothing back.** No question, so no ` + "`" + `--default` + "`" + `:
+
+` + "`" + "``" + `
+$ initech post "6M4 rig is flaky on my branch — filed ini-xyz, not blocking the cut"
+posted p8
+` + "`" + "``" + `
+
+That is the whole interaction. You do not check it and you do not wait for a
+reply. If it is dismissed unread, the item did its job: the operator had the
+chance to care and did not need to.
+`
+
 const SuperTemplate = `# CLAUDE.md
 
 ## Identity
@@ -199,6 +296,7 @@ Use ` + "`" + `initech send` + "`" + ` and ` + "`" + `initech peek` + "`" + ` fo
 **Check all agents:** ` + "`" + `initech status` + "`" + `
 **Bulk peek:** ` + "`" + `initech patrol` + "`" + `
 
+` + OperatorInboxGuide + `
 ## Tools
 
 **Dispatch and completion:**
@@ -367,6 +465,7 @@ Use ` + "`" + `initech send` + "`" + ` and ` + "`" + `initech peek` + "`" + ` fo
 **Escalate blockers:** ` + "`" + `initech send super "[from {{role_name}}] BLOCKED on <id>: <reason>"` + "`" + `
 **Always report completion.** When you finish any task, message super immediately. Super cannot see your work unless you tell them.
 
+` + OperatorInboxGuide + `
 ## Tech Stack
 
 {{tech_stack}}
@@ -524,6 +623,7 @@ Use ` + "`" + `initech send` + "`" + ` and ` + "`" + `initech peek` + "`" + ` fo
 **Report verdicts:** ` + "`" + `initech send super "[from {{role_name}}] <id>: PASS/FAIL. <summary>"` + "`" + `
 **Escalate questions:** ` + "`" + `initech send super "[from {{role_name}}] QUESTION on <id>: <question>"` + "`" + `
 **Always report completion.** When you finish any task, message super immediately. Super cannot see your work unless you tell them.
+` + OperatorInboxGuide + `
 `
 
 // PMTemplate is the CLAUDE.md template for the product manager role.
@@ -645,6 +745,7 @@ Use ` + "`" + `initech send` + "`" + ` and ` + "`" + `initech peek` + "`" + ` fo
 **Receive work:** Direction from the operator, requests from super.
 **Report:** ` + "`" + `initech send super "[from {{role_name}}] <message>"` + "`" + `
 **Always report completion.** When you finish any task, message super immediately.
+` + OperatorInboxGuide + `
 `
 
 // ArchTemplate is the CLAUDE.md template for the architect role.
@@ -733,6 +834,7 @@ Use ` + "`" + `initech send` + "`" + ` and ` + "`" + `initech peek` + "`" + ` fo
 **Receive work:** Direction from the operator, requests from super.
 **Report:** ` + "`" + `initech send super "[from {{role_name}}] <message>"` + "`" + `
 **Always report completion.** When you finish any task, message super immediately.
+` + OperatorInboxGuide + `
 `
 
 // SecTemplate is the CLAUDE.md template for the security role.
@@ -821,6 +923,7 @@ Use ` + "`" + `initech send` + "`" + ` and ` + "`" + `initech peek` + "`" + ` fo
 **Receive work:** Dispatches from super.
 **Report findings:** ` + "`" + `initech send super "[from {{role_name}}] <finding-summary>"` + "`" + `
 **Always report completion.** When you finish any task, message super immediately.
+` + OperatorInboxGuide + `
 `
 
 // ShipperTemplate is the CLAUDE.md template for the release/shipper role.
@@ -907,6 +1010,7 @@ Use ` + "`" + `initech send` + "`" + ` and ` + "`" + `initech peek` + "`" + ` fo
 **Receive work:** Release directives from super.
 **Report:** ` + "`" + `initech send super "[from {{role_name}}] <release-status>"` + "`" + `
 **Always report completion.** When you finish any task, message super immediately.
+` + OperatorInboxGuide + `
 `
 
 // PMMTemplate is the CLAUDE.md template for the product marketing role.
@@ -985,6 +1089,7 @@ Use ` + "`" + `initech send` + "`" + ` and ` + "`" + `initech peek` + "`" + ` fo
 **Receive work:** Direction from the operator, product context from PM.
 **Report:** ` + "`" + `initech send super "[from {{role_name}}] <message>"` + "`" + `
 **Always report completion.** When you finish any task, message super immediately.
+` + OperatorInboxGuide + `
 `
 
 // WriterTemplate is the CLAUDE.md template for the technical writer role.
@@ -1059,6 +1164,7 @@ Use ` + "`" + `initech send` + "`" + ` and ` + "`" + `initech peek` + "`" + ` fo
 **Receive work:** Dispatches from super.
 **Report:** ` + "`" + `initech send super "[from {{role_name}}] <message>"` + "`" + `
 **Always report completion.** When you finish any task, message super immediately.
+` + OperatorInboxGuide + `
 `
 
 // OpsTemplate is the CLAUDE.md template for the operations role.
@@ -1131,6 +1237,7 @@ Use ` + "`" + `initech send` + "`" + ` and ` + "`" + `initech peek` + "`" + ` fo
 **Receive work:** Dispatches from super.
 **Report:** ` + "`" + `initech send super "[from {{role_name}}] <message>"` + "`" + `
 **Always report completion.** When you finish any task, message super immediately.
+` + OperatorInboxGuide + `
 `
 
 // GrowthTemplate is the CLAUDE.md template for the growth engineer role.
@@ -1209,6 +1316,7 @@ Use ` + "`" + `initech send` + "`" + ` and ` + "`" + `initech peek` + "`" + ` fo
 **Receive work:** Dispatches from super, data requests from PM.
 **Report:** ` + "`" + `initech send super "[from {{role_name}}] <message>"` + "`" + `
 **Always report completion.** When you finish any task, message super immediately.
+` + OperatorInboxGuide + `
 `
 
 // InternTemplate is the CLAUDE.md template for the intern/research role.
@@ -1298,4 +1406,5 @@ Use ` + "`" + `initech send` + "`" + ` and ` + "`" + `initech peek` + "`" + ` fo
 **Receive work:** Dispatches from super.
 **Report findings:** ` + "`" + `initech send super "[from {{role_name}}] <summary>"` + "`" + `
 **Always report completion.** When you finish any task, message super immediately.
+` + OperatorInboxGuide + `
 `
