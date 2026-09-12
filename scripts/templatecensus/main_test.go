@@ -243,14 +243,24 @@ func TestExemptionsFile_PostExemptionNamesItsRemovalTrigger(t *testing.T) {
 // internal/roles only, which is sound exactly while every agent-facing file
 // initech writes comes from a roles.* constant.
 //
-// internal/scaffold is the writer, so this parses it and asserts every
-// template it hands to roles.Render (and every template TemplateForRole
-// returns) is a roles.* selector rather than a locally-defined string. Add a
-// local template to the scaffold — a prompt, a generated doc, a new file for
-// agents — and this reds, pointing at the census that would otherwise have
-// gone blind to it. (shipper's review note on ini-j0er: the next person needs
-// to meet the assumption AT THE CODE, not when a taught verb ships
-// unchecked.)
+// ASSERTED AS A POSITIVE — every template the scaffold renders IS a roles.*
+// selector, and anything else offends whatever its type. The first version of
+// this guard asked the negative ("does this look like a template literal?"),
+// and shipper mutated it before believing it: it killed a long string LITERAL
+// and MISSED a package-level CONST, because an *ast.Ident matched neither the
+// roles.* branch nor the 40-character literal branch and fell through clean.
+// Shipper took that end to end — agent-facing text from a local const,
+// teaching an unregistered verb, passed this guard, passed the verb census,
+// and passed make check-fast. The guard covered the form nobody writes and
+// missed the one everybody writes: a multi-kilobyte template is always a
+// const, which is how internal/roles itself is written (ini-35a1).
+//
+// A positive assertion has no threshold to tune and no type list to keep
+// current, so it cannot be escaped by a form nobody thought of — which is
+// exactly how the negative one was escaped. It is deliberately stricter than
+// today's code: a legitimate local helper reds too, and for text that reaches
+// agents that is the right default. Such an entry needs an exemption with a
+// TRIGGER, like every other census in this family.
 func TestScaffold_RendersOnlyRolesTemplates(t *testing.T) {
 	root, err := repoRoot()
 	if err != nil {
@@ -262,45 +272,166 @@ func TestScaffold_RendersOnlyRolesTemplates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	for _, off := range scaffoldTemplateOffenders(fset, f, path) {
+		t.Errorf("the scaffold renders agent-facing text that does NOT come from internal/roles:\n  %s\n\n"+
+			"The template-verb census scans internal/roles only, so text sourced elsewhere is never checked for\n"+
+			"unregistered verbs — an agent can be handed a command that does not exist. Move the text into\n"+
+			"internal/roles, or widen scanDir in this package and say so in the package comment.", off)
+	}
+}
 
-	// Every string-valued expression that names a template: the elements of
-	// the docTemplates literal and TemplateForRole's returns. Both are
-	// selector expressions today (roles.PRDTemplate, roles.SuperTemplate...).
-	var offenders []string
-	checkTemplateExpr := func(e ast.Expr, what string) {
-		sel, ok := e.(*ast.SelectorExpr)
-		if ok {
+// scaffoldTemplateOffenders returns every scaffold-rendered template
+// expression that is not a roles.* selector, located for the error message.
+//
+// Scoped to the two places the scaffold names a template — the docTemplates
+// table and TemplateForRole's returns — rather than every return in the file,
+// because a positive assertion applied file-wide would flag writeFile's
+// ordinary string returns and the guard would be disabled within a week.
+// Split out from the test so the guard's own tests can drive it over planted
+// sources.
+func scaffoldTemplateOffenders(fset *token.FileSet, f *ast.File, path string) []string {
+	var out []string
+	check := func(e ast.Expr, what string) {
+		if sel, ok := e.(*ast.SelectorExpr); ok {
 			if pkg, ok := sel.X.(*ast.Ident); ok && pkg.Name == "roles" {
 				return
 			}
 		}
-		// Anything that is not roles.Something and looks like template text.
-		if lit, ok := e.(*ast.BasicLit); ok && lit.Kind == token.STRING && len(lit.Value) > 40 {
-			offenders = append(offenders, fmt.Sprintf("%s:%d %s is a locally-defined template string", path, fset.Position(e.Pos()).Line, what))
-		}
+		out = append(out, fmt.Sprintf("%s:%d %s is %s, not a roles.* template",
+			path, fset.Position(e.Pos()).Line, what, exprKind(e)))
 	}
 
-	ast.Inspect(f, func(n ast.Node) bool {
-		switch x := n.(type) {
-		case *ast.CompositeLit:
-			// The docTemplates table: {filename, template} pairs.
-			for _, elt := range x.Elts {
-				if cl, ok := elt.(*ast.CompositeLit); ok && len(cl.Elts) == 2 {
-					checkTemplateExpr(cl.Elts[1], "a docTemplates entry")
-				}
-			}
-		case *ast.ReturnStmt:
-			for _, r := range x.Results {
-				checkTemplateExpr(r, "a TemplateForRole return")
-			}
+	for _, decl := range f.Decls {
+		fd, ok := decl.(*ast.FuncDecl)
+		if !ok || fd.Body == nil {
+			continue
 		}
-		return true
-	})
+		if fd.Name.Name == "TemplateForRole" {
+			ast.Inspect(fd.Body, func(n ast.Node) bool {
+				ret, ok := n.(*ast.ReturnStmt)
+				if !ok {
+					return true
+				}
+				for _, r := range ret.Results {
+					check(r, "a TemplateForRole return")
+				}
+				return true
+			})
+		}
+		ast.Inspect(fd.Body, func(n ast.Node) bool {
+			cl, ok := n.(*ast.CompositeLit)
+			if !ok {
+				return true
+			}
+			for _, elt := range cl.Elts {
+				pair, ok := elt.(*ast.CompositeLit)
+				if !ok || len(pair.Elts) != 2 {
+					continue
+				}
+				if lit, ok := pair.Elts[0].(*ast.BasicLit); !ok || lit.Kind != token.STRING {
+					continue
+				}
+				check(pair.Elts[1], "a docTemplates entry")
+			}
+			return true
+		})
+	}
+	return out
+}
 
-	if len(offenders) > 0 {
-		t.Errorf("the scaffold renders agent-facing text that does NOT come from internal/roles:\n  %s\n\n"+
-			"The template-verb census scans internal/roles only, so text sourced elsewhere is never checked for\n"+
-			"unregistered verbs. Either move it into internal/roles, or widen scanDir in this package and say so\n"+
-			"in the package comment.", strings.Join(offenders, "\n  "))
+// exprKind names what an offending expression IS, so the failure says why it
+// was rejected rather than only that it was.
+func exprKind(e ast.Expr) string {
+	switch x := e.(type) {
+	case *ast.Ident:
+		return "the identifier " + x.Name + " (a local const or var)"
+	case *ast.BasicLit:
+		return "a string literal"
+	case *ast.SelectorExpr:
+		return "a selector on another package"
+	case *ast.CallExpr:
+		return "a function call"
+	default:
+		return fmt.Sprintf("a %T", e)
+	}
+}
+
+// parseScaffoldSource runs the guard over planted source text.
+func parseScaffoldSource(t *testing.T, src string) []string {
+	t.Helper()
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, "scaffold.go", src, 0)
+	if err != nil {
+		t.Fatalf("parse fixture: %v", err)
+	}
+	return scaffoldTemplateOffenders(fset, f, "scaffold.go")
+}
+
+// scaffoldFixture builds a scaffold-shaped source whose docTemplates table
+// carries one planted entry beside a legitimate roles.* one.
+func scaffoldFixture(entry, extra string) string {
+	return "package scaffold\n\n" + extra + "\n\nfunc Run() {\n" +
+		"\tdocTemplates := []struct{ filename, template string }{\n" +
+		"\t\t{\"probe.md\", " + entry + "},\n" +
+		"\t\t{\"prd.md\", roles.PRDTemplate},\n\t}\n\t_ = docTemplates\n}\n"
+}
+
+// Every form agent-facing text can enter the scaffold by without coming from
+// internal/roles. The package-level const referenced by identifier is
+// shipper's M3 and the form anyone would actually write; the short literal is
+// M2, which the 40-character floor used to wave through. The threshold is
+// gone, not raised.
+func TestScaffoldGuard_RejectsEveryNonRolesTemplateForm(t *testing.T) {
+	long := `"` + strings.Repeat("x", 80) + `"`
+	for _, tc := range []struct{ name, entry, extra string }{
+		{"a package-level const by identifier (shipper's M3)", "localProbeTemplate",
+			`const localProbeTemplate = "Run initech notarealverb to publish."`},
+		{"a short string literal (M2, under the old 40-char floor)", `"short text"`, ""},
+		{"a long string literal (M1, the only form the old guard caught)", long, ""},
+		{"a package-level var", "localProbeVar", `var localProbeVar = "text"`},
+		{"a function call", "buildTemplate()", `func buildTemplate() string { return "text" }`},
+		{"a selector on another package", "othertmpl.Doc", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			offenders := parseScaffoldSource(t, scaffoldFixture(tc.entry, tc.extra))
+			if len(offenders) != 1 {
+				t.Fatalf("got %d offenders, want exactly 1 (the planted entry): %v", len(offenders), offenders)
+			}
+			if !strings.Contains(offenders[0], "scaffold.go:") {
+				t.Errorf("offender %q does not name file and line", offenders[0])
+			}
+		})
+	}
+}
+
+// The positive side: roles.* entries and returns pass, in both places the
+// scaffold names a template.
+func TestScaffoldGuard_AcceptsRolesTemplatesInBothPlaces(t *testing.T) {
+	src := scaffoldFixture("roles.SpecTemplate", "") +
+		"\nfunc TemplateForRole(name string) string {\n\tif name == \"super\" {\n\t\treturn roles.SuperTemplate\n\t}\n\treturn roles.EngTemplate\n}\n"
+	if offenders := parseScaffoldSource(t, src); len(offenders) != 0 {
+		t.Errorf("roles.* entries were rejected: %v", offenders)
+	}
+}
+
+// A TemplateForRole return that is not a roles.* template offends too: the
+// role CLAUDE.md path is as agent-facing as the docs path.
+func TestScaffoldGuard_RejectsANonRolesTemplateForRoleReturn(t *testing.T) {
+	src := "package scaffold\n\nconst localRole = \"Run initech notarealverb.\"\n\n" +
+		"func TemplateForRole(name string) string {\n\tif name == \"super\" {\n\t\treturn localRole\n\t}\n\treturn roles.EngTemplate\n}\n"
+	offenders := parseScaffoldSource(t, src)
+	if len(offenders) != 1 || !strings.Contains(offenders[0], "TemplateForRole return") {
+		t.Fatalf("offenders = %v, want exactly the local return", offenders)
+	}
+}
+
+// Ordinary string returns elsewhere in the file are NOT templates: a
+// file-wide positive assertion would flag writeFile's returns, and a guard
+// that cries wolf on unrelated code gets disabled.
+func TestScaffoldGuard_IgnoresOrdinaryStringReturnsElsewhere(t *testing.T) {
+	src := "package scaffold\n\nfunc writeFile(dir string) (string, error) {\n\treturn \"/tmp/some/path\", nil\n}\n\n" +
+		"func RenderRootCLAUDE() string {\n\treturn \"# a root file\"\n}\n"
+	if offenders := parseScaffoldSource(t, src); len(offenders) != 0 {
+		t.Errorf("ordinary string returns were flagged as templates: %v", offenders)
 	}
 }
