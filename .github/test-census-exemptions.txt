@@ -141,3 +141,4 @@ internal/tui/attention_wire_net_test.go      windows  # unix-only window-server 
 # raises. Keeping it means the next bump is a 4-minute measurement rather than
 # a P1 investigation.
 internal/tui/d7a7_measure_test.go            windows  # live-Claude OSC emitter diagnostic (gated INITECH_D7A7=1)
+internal/tui/p39_real_screen_test.go        windows  # drives initech render on tcell's real terminfo screen over a creack/pty pair (tcell.NewDevTtyFromDev has no Windows build); its portable half (frameScreen unit cells) lives untagged in frame_screen_test.go

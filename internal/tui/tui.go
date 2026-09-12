@@ -835,7 +835,7 @@ func Run(cfg Config) error {
 
 	initW, initH := screen.Size()
 	t := &TUI{
-		screen:            screen,
+		screen:            newFrameScreen(screen), // ini-p39: unchanged frames cost the terminal nothing
 		layoutState:       layoutState,
 		layoutPresets:     layoutPresets,
 		lastW:             initW,
