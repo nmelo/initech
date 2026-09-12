@@ -713,7 +713,9 @@ func (t *TUI) resumePane(pane *Pane, senderName string) error {
 	np.SetResumeGrace(time.Now().Add(resumeGraceDuration))
 
 	// Wait for the agent to initialize: poll for PTY output activity.
+	sawOutput := true
 	if err := t.waitForInit(np); err != nil {
+		sawOutput = false
 		LogWarn("resource", "resume init timeout", "agent", np.name, "err", err)
 		// Agent started but may be slow. Continue with queue drain anyway
 		// since the process is alive even if Claude hasn't fully initialized.
@@ -751,6 +753,31 @@ func (t *TUI) resumePane(pane *Pane, senderName string) error {
 		return fmt.Errorf("resume %s: process died during startup; %d message(s) remain queued", agentName, len(msgs))
 	}
 
+	// DELIVER ONLY INTO A LISTENING PROCESS (ini-hbj4, the timing half of
+	// g7fl's liveness half): wait for boot output to settle first. Gated on
+	// msgs so message-less wakes (startup stagger) pay nothing.
+	//
+	// ONLY A CHILD THAT SPOKE HAS SOMETHING TO SETTLE (ini-hbj4 round 2,
+	// shipper's 9IMX bisect). waitForInit already gave every pane its full
+	// 30s to produce a first byte; a pane that produced NONE has no boot
+	// output to quiesce, so waiting burns the whole 15s cap for nothing and
+	// pushed the auto-resume path from ~31s to ~45s -- past the suspend-guard
+	// rig's own deadline. Silent children (the rig's read-echo fixture, and
+	// any agent that starts mute) deliver exactly as they did before hbj4.
+	//
+	// RE-LANDED 2026-09-12 against a darwin instrument that can tell delivered
+	// from echoed (the fixture asserts GOT:, content only a reading child can
+	// produce). The four August reverts were linux/windows CI reds on the
+	// fixtures; those legs are untested by ruling now (ini-ibsm), and the
+	// original darwin loss -- live-measured 2/2 on the operator's fleet --
+	// is what this closes.
+	if len(msgs) > 0 && sawOutput {
+		if !t.waitForOutputQuiescence(np, resumeQuiesceStable, resumeQuiesceCap) {
+			LogWarn("resource", "delivering queued messages without quiescence (cap or quit)",
+				"agent", agentName, "queued", len(msgs))
+		}
+	}
+
 	// Deliver queued messages with gaps.
 	for _, msg := range msgs {
 		t.injectText(np, msg.Text, msg.Enter)
@@ -759,6 +786,13 @@ func (t *TUI) resumePane(pane *Pane, senderName string) error {
 		}
 	}
 
+	// NOT gated on sawOutput, deliberately (ini-hbj4 round 3): the delivery
+	// loop above runs unconditionally, so a silent child's messages ARE
+	// delivered and the event must say so. sawOutput answers "did the child
+	// speak?" (the quiescence wait's question); this line answers "did we
+	// deliver?" -- different questions that happened to have textually
+	// identical predicates, which is how round 2 gave them one answer
+	// (shipper's f5bab05 review). Two questions, two answers.
 	detail := fmt.Sprintf("Resumed %s (message from %s)", agentName, senderName)
 	if len(msgs) > 0 {
 		detail += fmt.Sprintf(", delivered %d queued", len(msgs))
@@ -776,6 +810,39 @@ func (t *TUI) resumePane(pane *Pane, senderName string) error {
 	})
 
 	return nil
+}
+
+// Quiescence gate for the queued-message drain (ini-hbj4): a wake delivers
+// only after the child has stopped producing output for resumeQuiesceStable,
+// because "produced its first output" is not "accepting input" -- Claude Code
+// with a large --continue transcript renders for seconds and flushes stdin at
+// raw-mode entry, eating anything delivered early (live-measured 2/2 loss;
+// the same wake delivered fine months of transcript ago). Quiescence over
+// chrome-matching: agent-agnostic, no coupling to any footer string.
+const (
+	resumeQuiesceStable = 600 * time.Millisecond
+	resumeQuiesceCap    = 15 * time.Second
+)
+
+// waitForOutputQuiescence blocks until the pane has produced no PTY output
+// for stable (true), or cap/quit expires (false). Callers deliver either way
+// -- a cap expiry is a loud log, never a dropped message.
+func (t *TUI) waitForOutputQuiescence(pane *Pane, stable, cap time.Duration) bool {
+	deadline := time.Now().Add(cap)
+	for {
+		last := pane.LastOutputTime()
+		if !last.IsZero() && time.Since(last) >= stable {
+			return true
+		}
+		if time.Now().After(deadline) {
+			return false
+		}
+		select {
+		case <-t.quitCh:
+			return false
+		case <-time.After(50 * time.Millisecond):
+		}
+	}
 }
 
 // waitForInit polls a newly started pane for signs of initialization.
