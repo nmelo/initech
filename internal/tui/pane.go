@@ -532,8 +532,15 @@ func (p *Pane) readLoop() {
 			// nothing is pending.
 			p.maybeRetryWithheldSubmit()
 
-			// Tee to network sink if connected. Separate from emu.Write so
-			// network backpressure cannot stall local rendering.
+			// Tee to network sink if connected. AFTER emu.Write, so this
+			// chunk is on window 1's screen before any window 2 sees it --
+			// but the sink is synchronous in this loop body, so the NEXT
+			// chunk waits behind it: a slow-but-alive window 2 holds window
+			// 1's rendering of this pane for up to writeComplete's retry
+			// bound (14s, multisink.go), a wedged one until the z8o
+			// keepalive drops it (12s). The trade -- a late chunk over a
+			// torn one -- is deliberate (ini-tk7z); per-writer async fan-out
+			// is parked pending a design call.
 			p.sinkMu.Lock()
 			sink := p.networkSink
 			p.sinkMu.Unlock()
@@ -1268,8 +1275,10 @@ func (p *Pane) GetRegion() Region {
 
 // SetNetworkSink sets the writer that receives a copy of all PTY output.
 // Used by the daemon to stream bytes to a connected client. The sink
-// receives bytes after the emulator, so network backpressure cannot stall
-// local rendering.
+// receives each chunk after the emulator has it, and readLoop blocks on the
+// sink before reading the next chunk: a slow sink delays window 1's NEXT
+// frame of this pane by up to writeComplete's bound (14s, multisink.go). It
+// never tears or reorders what window 1 shows (ini-tk7z).
 func (p *Pane) SetNetworkSink(w io.Writer) {
 	p.sinkMu.Lock()
 	p.networkSink = w
