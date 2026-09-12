@@ -160,6 +160,13 @@ func TestExtractSelectionText_ScrollbackMode_IsRaceFreeAgainstLivePTYOutput(t *t
 // Peek output must be readable text, never garbage from a torn string header.
 // Every rune the child emits is printable ASCII, so any control byte or
 // replacement char in the output means a read observed a corrupted cell.
+//
+// Reads through peekContentBlocking -- the form initech peek and the daemon
+// take (ini-oxnl). The main-loop form gives up on a held pane by design
+// (psjt; TestPeekContent_DoesNotBlockOnAHeldEmulator), and against this
+// never-pausing child Linux never yields the lock inside its 250ms try, so
+// asserting the payload through it measured the scheduler, not the read
+// (v2.13.0 release run 34702544631, red 2/2 on ubuntu, green on macOS).
 func TestPeekContent_ReturnsUncorruptedTextDuringLiveOutput(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("windows: noisyPane hardcodes /bin/sh (peek_race_test.go:34); see TestPeekContent_IsRaceFreeAgainstLivePTYOutput for the full reason")
@@ -170,7 +177,7 @@ func TestPeekContent_ReturnsUncorruptedTextDuringLiveOutput(t *testing.T) {
 	sawPayload := false
 	deadline := time.Now().Add(900 * time.Millisecond)
 	for time.Now().Before(deadline) {
-		out := peekContent(p, 20)
+		out := peekContentBlocking(p, 20)
 		if strings.Contains(out, payload) {
 			sawPayload = true
 		}

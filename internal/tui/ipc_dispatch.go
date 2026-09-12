@@ -70,7 +70,9 @@ func dispatchIPC(h IPCHost, conn net.Conn, req IPCRequest, rawJSON []byte) {
 			writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("pane %q not found", req.Target)})
 			return
 		}
-		writeIPCResponse(conn, IPCResponse{OK: true, Data: peekContent(pv, req.Lines)})
+		// IPC handler goroutine: may wait on the pane (ini-oxnl), so a burst
+		// returns the screen rather than "unreadable".
+		writeIPCResponse(conn, IPCResponse{OK: true, Data: peekContentBlocking(pv, req.Lines)})
 
 	case "list":
 		panes, ok := h.AllPanes()

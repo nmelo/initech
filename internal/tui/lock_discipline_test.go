@@ -41,7 +41,7 @@ var lockedEmulatorMethods = map[string]bool{
 // blockingScreenReaders wait for the lock by design; their callers are part
 // of the inventory.
 var blockingScreenReaders = map[string]bool{
-	"emuRowsBlocking": true, "emulatorBottomTextBlocking": true,
+	"emuRowsBlocking": true, "emulatorBottomTextBlocking": true, "peekContentBlocking": true,
 }
 
 // lockingCallAllowlist maps an enclosing function ("Type.method" or "func")
@@ -64,6 +64,13 @@ var lockingCallAllowlist = map[string]string{
 	"paneShowsIdleComposer":      "send goroutine (modal queue drain)",
 	"Pane.isCodexReadyForSend":   "send goroutine (codex readiness poll)",
 	"Pane.waitForCodexReady":     "send goroutine (codex readiness poll)",
+
+	// Peek for callers that answer one request on their own goroutine and
+	// may wait (ini-oxnl). The main-loop peek (:peek, patrol) stays on the
+	// bounded try in peekContent; see mainLoopFunctions below.
+	"peekContentBlocking":        "the blocking peek primitive",
+	"dispatchIPC":                "IPC handler goroutine (initech peek)",
+	"Daemon.handleControlStream": "daemon control goroutine (cross-machine peek)",
 
 	// The region owners: they take the lock with a bounded try and hand out
 	// the unlocked handle. This is where the guarantee lives.
@@ -212,5 +219,33 @@ func TestLockDiscipline_ScanSeesTheShapesItClaimsTo(t *testing.T) {
 		if !hit {
 			t.Errorf("scan did not see the locking call in %s", fn)
 		}
+	}
+}
+
+// mainLoopFunctions run on the UI main goroutine. None may call a blocking
+// screen reader: the allowlist above says WHERE waiting is acceptable, this
+// says where it never is, so a main-loop caller cannot be admitted by adding
+// itself to the allowlist (ini-oxnl).
+var mainLoopFunctions = map[string]string{
+	"TUI.cmdPatrol":            ":patrol runs on the main loop",
+	"TUI.handleIPCPatrol":      "patrol's peek runs under runOnMain",
+	"TUI.render":               "the frame",
+	"Pane.Render":              "the frame",
+	"TUI.handleKey":            "input on the main loop",
+	"TUI.handleMouse":          "input on the main loop",
+	"TUI.extractSelectionText": "mouse-up copy on the main loop",
+}
+
+func TestLockDiscipline_MainLoopFunctionsNeverUseABlockingReader(t *testing.T) {
+	var offenders []string
+	for _, c := range scanLockingCalls(t) {
+		if why, isMain := mainLoopFunctions[c.fn]; isMain {
+			offenders = append(offenders, fmt.Sprintf("%s:%d %s in %s (%s)", c.file, c.line, c.what, c.fn, why))
+		}
+	}
+	sort.Strings(offenders)
+	if len(offenders) > 0 {
+		t.Errorf("main-loop functions taking or waiting on a pane's emulator lock (ini-psjt, ini-oxnl); "+
+			"use peekContent / withScreen (bounded try), never the blocking form:\n  %s", strings.Join(offenders, "\n  "))
 	}
 }

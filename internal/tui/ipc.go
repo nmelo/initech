@@ -710,20 +710,46 @@ func (t *TUI) handleIPCPatrol(conn net.Conn, req IPCRequest) {
 // emulator. Returns the content as a string with newline-separated lines.
 // If lines <= 0, returns all non-blank content.
 func peekContent(p PaneView, lines int) string {
-	// Reached from the main loop (:peek, patrol under runOnMain) as well as
-	// IPC/daemon goroutines, so it may not wait on the pane (ini-psjt): a pane
-	// whose lock stays held for peekTryBudget reports that instead of content.
+	// Reached from the main loop (:peek, patrol under runOnMain), so it may
+	// not wait on the pane (ini-psjt): a pane whose lock stays held for
+	// peekTryBudget reports that instead of content. Callers on a goroutine
+	// that MAY wait use peekContentBlocking.
 	var allLines []string
 	if !withEmulator(p.Emulator(), peekTryBudget, func(e *vt.Emulator) { allLines = readScreenRows(e) }) {
 		return peekUnreadable + "\n"
 	}
+	return peekLastLines(allLines, lines)
+}
+
+// peekContentBlocking is peekContent for callers that may WAIT on the pane:
+// the IPC "peek" handler (initech peek) and the daemon's cross-machine peek,
+// both on their own goroutines. It reads row by row under the emulator's
+// lock -- the v2.12.0 read, no torn cells -- and waits for a writer rather
+// than giving up.
+//
+// WHY TWO FORMS (ini-oxnl): psjt's bounded try protects the MAIN LOOP from
+// parking behind a wedged pane. Applied to every caller, it also made peek
+// on Linux answer "pane unreadable" for the whole of an agent's sustained
+// output burst -- the scheduler there never yields a gap the 250ms try can
+// win, while macOS does (v2.13.0 release run 34702544631). A goroutine that
+// exists to answer one request has no display to protect and may wait; the
+// lock-discipline inventory keeps the two forms on the right callers.
+func peekContentBlocking(p PaneView, lines int) string {
+	emu := p.Emulator()
+	if emu == nil {
+		return ""
+	}
+	return peekLastLines(emuRowsBlocking(emu), lines)
+}
+
+// peekLastLines trims trailing blanks and keeps the last N rows -- the one
+// formatting both peek forms share, so their output cannot diverge.
+func peekLastLines(allLines []string, lines int) string {
 	for i := range allLines {
 		allLines[i] = strings.TrimRight(allLines[i], " ")
 	}
-	emuRows := len(allLines)
-
 	// Strip trailing blank lines.
-	contentEnd := emuRows
+	contentEnd := len(allLines)
 	for contentEnd > 0 && allLines[contentEnd-1] == "" {
 		contentEnd--
 	}
