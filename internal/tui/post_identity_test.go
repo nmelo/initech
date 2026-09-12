@@ -53,8 +53,13 @@ func TestPostIdentity_UnrelatedAndCyclicProcessesRefused(t *testing.T) {
 }
 
 func TestPostIdentity_WindowsTCPRefusal(t *testing.T) {
+	// Independent spec copy: changing the production constant must fail this AC.
+	const want = "post is not available on Windows in this release: initech cannot identify which agent is posting over this transport"
+	if postWindowsRefusal != want {
+		t.Errorf("Windows refusal constant = %q, want %q", postWindowsRefusal, want)
+	}
 	err := postPlatformError("windows")
-	if err == nil || err.Error() != postWindowsRefusal {
+	if err == nil || err.Error() != want {
 		t.Fatalf("Windows refusal = %v", err)
 	}
 	if runtime.GOOS == "windows" {
@@ -62,7 +67,7 @@ func TestPostIdentity_WindowsTCPRefusal(t *testing.T) {
 		response := postTestResponse(t, func(conn net.Conn) {
 			app.handleIPCPost(conn, IPCRequest{Action: "post", Text: "hello"}, []byte(`{"action":"post","text":"hello"}`))
 		})
-		if response.OK || response.Error != postWindowsRefusal || app.inboxStore != nil {
+		if response.OK || response.Error != want || app.inboxStore != nil {
 			t.Fatalf("Windows recorded or guessed: %+v", response)
 		}
 	}

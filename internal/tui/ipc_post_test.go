@@ -55,6 +55,11 @@ func TestPostRequest_RejectsSuppliedIdentity(t *testing.T) {
 }
 
 func TestPostIPC_AllStatesAndOwnerWithdrawal(t *testing.T) {
+	// Independent spec copy: changing the production constant must fail this AC.
+	const wantUnread = "unread — your reply will be delivered to your pane; no need to poll"
+	if inboxUnreadStatus != wantUnread {
+		t.Errorf("unread status constant = %q, want %q", inboxUnreadStatus, wantUnread)
+	}
 	app := &TUI{}
 	id := postIdentity{"eng3", "process-1"}
 	now := time.Now()
@@ -65,7 +70,7 @@ func TestPostIPC_AllStatesAndOwnerWithdrawal(t *testing.T) {
 	check := func() IPCResponse {
 		return app.applyPostRequest(IPCRequest{Action: "post_check", ItemID: "p1"}, id, now)
 	}
-	if got := check(); got.Data != inboxUnreadStatus {
+	if got := check(); got.Data != wantUnread {
 		t.Fatalf("unread: %+v", got)
 	}
 	if err := app.inboxState().Transition("p1", InboxSeen, actorOperator); err != nil {
