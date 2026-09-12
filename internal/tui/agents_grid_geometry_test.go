@@ -143,6 +143,26 @@ func TestAgentsGridColumnsPerRow_CapsAt6AndWraps_1To8Groups(t *testing.T) {
 	}
 }
 
+// TestAgentsGridColumnsPerRow_WrapThresholdIsSix pins the operator's decided
+// wrap threshold (ini-w771, "KEEP the column-wrap default") to the literal
+// value 6, independent of gridMaxPerRow itself.
+//
+// TestAgentsGridColumnsPerRow_CapsAt6AndWraps_1To8Groups derives its own
+// expected value FROM gridMaxPerRow ("wantPerRow = gridMaxPerRow" when
+// n > gridMaxPerRow), so it cannot discriminate a change to the constant's
+// value: any gridMaxPerRow >= 8 makes that test's own cap unreachable for
+// n in [1,8] and it passes vacuously. TestAgentsGridColumnsPerRow_ShrinksForNarrowTerminal
+// hardcodes 6 too, but only ever exercises exactly 6 groups, so a widened cap
+// is never the binding constraint there either. Neither test can tell 6 from
+// 60. This one hardcodes 7 groups and the literal 6 on both sides.
+func TestAgentsGridColumnsPerRow_WrapThresholdIsSix(t *testing.T) {
+	groups := []string{"a", "b", "c", "d", "e", "f", "g"}
+	tiers := untieredTiers(groups)
+	if got := agentsGridColumnsPerRow(tiers, 1000); got != 6 {
+		t.Fatalf("7 groups on a wide terminal: perRow = %d, want 6 (the operator's decided threshold)", got)
+	}
+}
+
 // A genuinely narrow terminal shrinks columns below the content cap, never
 // below one.
 func TestAgentsGridColumnsPerRow_ShrinksForNarrowTerminal(t *testing.T) {
