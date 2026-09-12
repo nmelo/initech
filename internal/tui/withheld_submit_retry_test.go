@@ -54,7 +54,7 @@ func retryPane(t *testing.T) (*Pane, *vt.SafeEmulator, *submitWatcher, chan Agen
 	t.Helper()
 	emu := vt.NewSafeEmulator(80, 24)
 	ch := make(chan AgentEvent, 16)
-	p := &Pane{name: "eng1", emu: emu, eventCh: ch}
+	p := &Pane{name: "eng1", emu: emu, eventCh: ch, claudeVersion: measuredOnlyVersionProbe()}
 	return p, emu, watchSubmits(emu), ch
 }
 

@@ -654,8 +654,14 @@ func (t *TUI) renderNotifications() {
 			text = fmt.Sprintf("[%s] %s", n.event.Pane, n.event.Detail)
 		}
 		runes := []rune(text)
-		if len(runes) > maxW-2 {
-			runes = append(runes[:maxW-3], '\u2026')
+		noticeW := maxW
+		if strings.HasPrefix(n.event.Detail, undeliveredSubmitPrefix) {
+			// The usual 50-column cap hides the running/measured version pair
+			// that makes this failure diagnosable (ini-oikz).
+			noticeW = min(100, sw-2)
+		}
+		if len(runes) > noticeW-2 {
+			runes = append(runes[:noticeW-3], '\u2026')
 		}
 		toastW := len(runes) + 2 // 1 char padding on each side.
 		x := sw - toastW - 1

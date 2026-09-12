@@ -278,18 +278,19 @@ type Pane struct {
 	lastEmuCols, lastEmuRows       int               // Emulator size last seen under its lock (ini-psjt); emuSize's fallback.
 	lastFrame                      []frameCell       // Content region as last drawn; replayed while the pane cannot be read.
 	lastFrameCols, lastFrameRows   int
-	lastStartRow, lastRenderOffset int            // contentOffset as last computed under the lock.
-	lastMaxScroll                  int            // maxScrollOffset as last computed under the lock.
-	pendingResize                  *[2]int        // rows, cols the main loop could not apply yet; retried each frame.
-	pendingSubmit                  *pendingSubmit // A submit the belt withheld, waiting for the composer to repaint (ini-vpwg).
-	waking                         bool           // A wake is in flight (ini-zffi). Guards against a burst of keystrokes each launching a respawn, and drives the "waking" pane display.
-	modalDraining                  bool           // True while a modal-close queue drain is in flight (guarded by p.mu).
-	protected                      bool           // Protected agents are never auto-suspended.
-	resumeGrace                    time.Time      // Until this time, post-resume grace period is active.
-	kittEpoch                      time.Time      // Reference time for KITT scanner animation phase.
-	agentType                      string         // Semantic agent type: claude-code, codex, or generic.
-	noBracketedPaste               bool           // True when injectText should use typed input instead of bracketed paste.
-	submitKey                      string         // Key sequence to submit: "" or "enter" (Enter), "ctrl+enter" (Ctrl+Enter).
+	lastStartRow, lastRenderOffset int                 // contentOffset as last computed under the lock.
+	lastMaxScroll                  int                 // maxScrollOffset as last computed under the lock.
+	pendingResize                  *[2]int             // rows, cols the main loop could not apply yet; retried each frame.
+	pendingSubmit                  *pendingSubmit      // A submit the belt withheld, waiting for the composer to repaint (ini-vpwg).
+	claudeVersion                  *claudeVersionProbe // Nil uses the process/session cache; tests may isolate the lookup.
+	waking                         bool                // A wake is in flight (ini-zffi). Guards against a burst of keystrokes each launching a respawn, and drives the "waking" pane display.
+	modalDraining                  bool                // True while a modal-close queue drain is in flight (guarded by p.mu).
+	protected                      bool                // Protected agents are never auto-suspended.
+	resumeGrace                    time.Time           // Until this time, post-resume grace period is active.
+	kittEpoch                      time.Time           // Reference time for KITT scanner animation phase.
+	agentType                      string              // Semantic agent type: claude-code, codex, or generic.
+	noBracketedPaste               bool                // True when injectText should use typed input instead of bracketed paste.
+	submitKey                      string              // Key sequence to submit: "" or "enter" (Enter), "ctrl+enter" (Ctrl+Enter).
 	region                         Region
 	activeRunStart                 time.Time // Set on idle->running edge, cleared on running->idle.
 	activeRunBytes                 int64     // Bytes received since last idle->running edge.
