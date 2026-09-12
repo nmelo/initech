@@ -21,18 +21,57 @@ package tui
 // whole subject is the fleet-management CHORD GATE (backtick/Option+A),
 // which never reads agent output. Both WINDOWS are the real built binary.
 //
-// Run: INITECH_FN77=1 go test ./internal/tui/ -run FN77Rig -v -timeout 300s
+// Run: INITECH_FN77=1 make test GOFLAGS='-run=FN77Rig -v -timeout=300s'
 
 import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/charmbracelet/x/vt"
 )
+
+// nineISXStart/Screen use 44 rows, so only row 42 is the authority footer.
+// Preserve its PID/start time and all other screen content; only elapsed time
+// is unrelated to whether the backtick was swallowed (ini-1klk).
+var fn77ViewerAge = regexp.MustCompile(`(?m)^(42\| main PID \d+ \| started \S+ \| age )\d+(?:h\d+m\d+s|m\d+s|s)$`)
+
+func fn77ScreenWithoutViewerAge(screen string) string {
+	return fn77ViewerAge.ReplaceAllString(screen, "${1}<elapsed>")
+}
+
+func TestFN77ScreenComparison_IgnoresOnlyAuthorityAge(t *testing.T) {
+	const footer = "42| main PID 321 | started 2026-09-12T12:00:00Z | age 26s"
+	const before = " 0| shell ready\n" + footer + "\n43| status"
+	for _, age := range []string{"28s", "1m0s", "2h3m4s"} {
+		after := strings.Replace(before, "age 26s", "age "+age, 1)
+		if fn77ScreenWithoutViewerAge(before) != fn77ScreenWithoutViewerAge(after) {
+			t.Fatalf("clock change to %s changed the comparison", age)
+		}
+	}
+	for name, after := range map[string]string{
+		"PID":           strings.Replace(before, "PID 321", "PID 654", 1),
+		"start time":    strings.Replace(before, "12:00:00Z", "12:00:01Z", 1),
+		"forwarded key": strings.Replace(before, "shell ready", "shell ready`", 1),
+		"modal":         before + "\n20| command modal",
+		"notice":        before + "\n41| main-window-only notice",
+		"disconnected":  strings.Replace(before, footer, "42| main: disconnected", 1),
+	} {
+		if fn77ScreenWithoutViewerAge(before) == fn77ScreenWithoutViewerAge(after) {
+			t.Errorf("masked meaningful %s change", name)
+		}
+	}
+	// Even an identical-looking line in agent output is not the footer.
+	otherRow := strings.Replace(before, "42|", " 5|", 1)
+	changed := strings.Replace(otherRow, "age 26s", "age 28s", 1)
+	if fn77ScreenWithoutViewerAge(otherRow) == fn77ScreenWithoutViewerAge(changed) {
+		t.Fatal("masked agent output outside the authority footer")
+	}
+}
 
 func TestFN77Rig_ChildWindowLosesFleetManagementChords(t *testing.T) {
 	if os.Getenv("INITECH_FN77") != "1" {
@@ -69,12 +108,13 @@ func TestFN77Rig_ChildWindowLosesFleetManagementChords(t *testing.T) {
 	// ── WINDOW 2, BACKTICK: swallowed, not forwarded, no notice ─────────
 	// Asserted as a screen-content diff (not a raw-byte diff, which would
 	// false-positive on the housekeeping ticker's redraws of unchanged
-	// state) -- before and after must render identically.
+	// state). Mask only the live authority age: the two-second observation
+	// window advances that clock even when the key has no effect.
 	before := nineISXScreen(w2emu)
 	w2pty.Write([]byte("`"))
 	time.Sleep(2 * time.Second)
 	after := nineISXScreen(w2emu)
-	if before != after {
+	if fn77ScreenWithoutViewerAge(before) != fn77ScreenWithoutViewerAge(after) {
 		t.Fatalf("window 2's screen changed after a backtick keypress; the AC requires it be "+
 			"swallowed with no modal, no notice, and nothing forwarded to the pane\nBEFORE:\n%s\n"+
 			"AFTER:\n%s", before, after)

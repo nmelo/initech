@@ -633,6 +633,9 @@ func (t *TUI) renderNotifications() {
 	// Stack from the bottom-right, above the command/error bar.
 	// Reserve 1 row at the bottom for the command bar.
 	baseY := sh - 2
+	if !t.isFleetAuthority() {
+		baseY-- // Keep viewer toasts above the persistent authority footer (ini-1klk).
+	}
 	maxW := 50
 	if maxW > sw-2 {
 		maxW = sw - 2
