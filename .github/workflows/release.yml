@@ -9,8 +9,19 @@ permissions:
   contents: write
 
 jobs:
+  # THE GATE RUNS ON THE PLATFORM WE TEST. macOS is the only tested platform
+  # since ini-ibsm (operator ruling, 2026-08-22: linux ships but is
+  # community-maintained -- "if someone wants it they need to sign up to
+  # maintain and test it themselves"). ci.yml moved every leg to macos-latest
+  # in v2.11.4; this job was missed, so on 2026-09-12 v2.13.0's tag was blocked
+  # by a 900ms-deadline timing test on ubuntu (peek_race_test.go) while CI at
+  # the same sha was 4/4 green on macOS (ini-govx). Do not re-add an ubuntu
+  # test job here as "more coverage": a red leg nobody is signed up to act on
+  # is a gate on an untested platform, not coverage. The release job below
+  # stays on ubuntu-latest deliberately -- it cross-compiles every goos/goarch
+  # and tests nothing, and stop-testing is not stop-shipping.
   test:
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v5
         with:
