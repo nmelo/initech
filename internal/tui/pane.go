@@ -266,6 +266,8 @@ type Pane struct {
 	suspended             bool              // True when auto-suspend policy has stopped this pane.
 	messageQueue          []QueuedMessage   // Messages waiting for resume or modal-close. Capped at maxMessageQueue.
 	idlePromptSince       time.Time         // When the pane last began rendering its idle composer (ini-gbqc).
+	screenSkipSince       time.Time         // When the main loop first found this pane's emulator lock held (ini-psjt).
+	screenSkipLogged      time.Time         // Last time that skip was logged; rate-limits the record.
 	pendingSubmit         *pendingSubmit    // A submit the belt withheld, waiting for the composer to repaint (ini-vpwg).
 	waking                bool              // A wake is in flight (ini-zffi). Guards against a burst of keystrokes each launching a respawn, and drives the "waking" pane display.
 	modalDraining         bool              // True while a modal-close queue drain is in flight (guarded by p.mu).
@@ -1047,18 +1049,49 @@ func sendSubmitKey(emu *vt.SafeEmulator, key string) {
 }
 
 func emulatorBottomText(emu *vt.SafeEmulator, lines int) string {
-	cols := emu.Width()
-	rows := emu.Height()
-	if lines <= 0 || lines > rows {
-		lines = rows
-	}
-	start := rows - lines
+	return bottomTextFromRows(emuRows(emu), lines)
+}
 
-	var buf strings.Builder
-	for row := start; row < rows; row++ {
+// emuRows reads every row of the screen, BLOCKING on the emulator's lock.
+// For callers that may wait on a pane. The main loop may not: see
+// tryScreenRows.
+func emuRows(emu *vt.SafeEmulator) []string {
+	cols := emu.Width()
+	height := emu.Height()
+	rows := make([]string, height)
+	for y := 0; y < height; y++ {
 		// RowText copies the row under a single lock, so this cannot observe
 		// a torn cell from a concurrent readLoop write (ini-wizq).
-		buf.WriteString(strings.TrimRight(emu.RowText(row, cols), " "))
+		rows[y] = emu.RowText(y, cols)
+	}
+	return rows
+}
+
+// tryScreenRows reads a pane's screen WITHOUT BLOCKING, or reports false when
+// the emulator's lock is held (ini-psjt).
+//
+// The main loop reads every local pane's screen once a second in
+// modalMaintenance. Through the blocking accessors, one pane whose lock was
+// held by a stalled writer parked the main loop behind it -- hover's window
+// froze for 30+ hours behind a single keystroke whose pipe write never
+// completed. A pane with no emulator (suspended) reads as an empty screen, as
+// it always has.
+func tryScreenRows(p *Pane) ([]string, bool) {
+	if p == nil || p.emu == nil {
+		return nil, true
+	}
+	return p.emu.TryRows()
+}
+
+// bottomTextFromRows joins the last lines of a screen, trailing spaces
+// trimmed, one row per line.
+func bottomTextFromRows(rows []string, lines int) string {
+	if lines <= 0 || lines > len(rows) {
+		lines = len(rows)
+	}
+	var buf strings.Builder
+	for _, row := range rows[len(rows)-lines:] {
+		buf.WriteString(strings.TrimRight(row, " "))
 		buf.WriteByte('\n')
 	}
 	return buf.String()

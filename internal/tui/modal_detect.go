@@ -127,7 +127,12 @@ func paneShowsModalOnScreen(p *Pane) bool {
 	if p == nil || p.emu == nil {
 		return false
 	}
-	return screenShowsLiveDialog(emulatorBottomText(p.emu, modalScanWholePane))
+	return screenShowsModal(emuRows(p.emu))
+}
+
+// screenShowsModal is paneShowsModalOnScreen over an already-read screen.
+func screenShowsModal(rows []string) bool {
+	return screenShowsLiveDialog(bottomTextFromRows(rows, modalScanWholePane))
 }
 
 // paneScreenShowsDialogText is the BROAD screen face: are a dialog's words
@@ -324,10 +329,15 @@ func paneShowsIdleComposer(p *Pane) bool {
 	if p == nil || p.emu == nil {
 		return false
 	}
-	if paneShowsModalOnScreen(p) {
+	return screenShowsIdleComposer(emuRows(p.emu))
+}
+
+// screenShowsIdleComposer is paneShowsIdleComposer over an already-read screen.
+func screenShowsIdleComposer(rows []string) bool {
+	if screenShowsModal(rows) {
 		return false
 	}
-	_, hasPrompt := composerTail(p)
+	_, _, hasPrompt := composerTailFromRows(rows)
 	return hasPrompt
 }
 
@@ -395,6 +405,37 @@ func (p *Pane) latchAge(now time.Time) (time.Duration, bool) {
 	return now.Sub(p.dialogOpenAt), true
 }
 
+// screenSkipLogEvery rate-limits the "emulator lock held" record. Once per
+// tick would be a log line per second per wedged pane; never would be the
+// invisibility class this fleet keeps paying for (ini-9gvn).
+const screenSkipLogEvery = 30 * time.Second
+
+// noteScreenSkipped records that the main loop could not read this pane's
+// screen because its emulator lock was held, and says so at INFO, rate-limited.
+func (p *Pane) noteScreenSkipped(now time.Time) {
+	p.mu.Lock()
+	if p.screenSkipSince.IsZero() {
+		p.screenSkipSince = now
+	}
+	since := p.screenSkipSince
+	log := now.Sub(p.screenSkipLogged) >= screenSkipLogEvery
+	if log {
+		p.screenSkipLogged = now
+	}
+	p.mu.Unlock()
+	if log {
+		LogInfo("modal", "screen read SKIPPED: emulator lock held, pane unmaintained this tick",
+			"pane", p.name, "held_for", now.Sub(since).Round(time.Second))
+	}
+}
+
+// noteScreenRead clears the skip record once a read succeeds.
+func (p *Pane) noteScreenRead() {
+	p.mu.Lock()
+	p.screenSkipSince = time.Time{}
+	p.mu.Unlock()
+}
+
 // dialogLatched reports whether a declared dialog is still believed open.
 func (p *Pane) dialogLatched() bool {
 	p.mu.Lock()
@@ -433,14 +474,28 @@ func (t *TUI) modalMaintenance(now time.Time) {
 		if !ok {
 			continue // Remote panes are maintained by the window that owns them.
 		}
-		if paneShowsModalOnScreen(p) {
+		// ONE NON-BLOCKING READ PER PANE PER TICK (ini-psjt). Everything below
+		// that looks at the screen looks at this snapshot. Through the blocking
+		// accessors, a single pane whose emulator lock was held by a stalled
+		// writer parked the main loop -- hover's window, 30+ hours, 11,779
+		// watchdog dumps -- because the lock was taken here, on the goroutine
+		// that renders every other pane. A held lock now costs this pane one
+		// tick, and the skip is recorded so a wedged pane is visible rather
+		// than silently unmaintained.
+		rows, ok := tryScreenRows(p)
+		if !ok {
+			p.noteScreenSkipped(now)
+			continue
+		}
+		p.noteScreenRead()
+		if screenShowsModal(rows) {
 			p.noteDialogSighting()
 		}
 		// POSITIVE-EVIDENCE CLEAR for a corroborated latch (ini-gbqc). Runs
 		// before the age audit so the two stay legibly separate: this one
 		// heals a REAL dialog that closed without operator input; that one
 		// heals a raise that was never real.
-		stable := p.observeIdlePrompt(now, paneShowsIdleComposer(p))
+		stable := p.observeIdlePrompt(now, screenShowsIdleComposer(rows))
 		if p.auditCorroboratedLatch(stable) {
 			LogInfo("modal", "latch cleared: pane returned to its idle prompt",
 				"pane", p.Name(), "stable_for", stable, "queued", p.QueuedMessageCount())
@@ -461,7 +516,7 @@ func (t *TUI) modalMaintenance(now time.Time) {
 				Time:   now,
 			})
 		}
-		if p.QueuedMessageCount() > 0 && !paneHasModal(p) {
+		if p.QueuedMessageCount() > 0 && !p.dialogLatched() && !screenShowsModal(rows) {
 			// safeGo because the drain paces itself between messages; the main
 			// loop must not wait on it.
 			t.safeGo(p.drainModalQueue)

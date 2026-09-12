@@ -561,12 +561,16 @@ func composerTail(p *Pane) (string, bool) {
 // composerTailAt is composerTail plus the row the prompt was found on, which
 // the block reader needs and the tail readers do not.
 func composerTailAt(p *Pane) (string, int, bool) {
-	cols := p.emu.Width()
-	rows := p.emu.Height()
-	for row := rows - 1; row >= 0; row-- {
-		// RowText copies the row under a single lock, so a torn read here
-		// cannot flip the submit decision (ini-wizq).
-		text := p.emu.RowText(row, cols)
+	// emuRows copies each row under a lock, so a torn read here cannot flip
+	// the submit decision (ini-wizq). This BLOCKS on the emulator; the main
+	// loop uses composerTailFromRows over a tryScreenRows snapshot instead.
+	return composerTailFromRows(emuRows(p.emu))
+}
+
+// composerTailFromRows is composerTailAt over an already-read screen.
+func composerTailFromRows(rows []string) (string, int, bool) {
+	for row := len(rows) - 1; row >= 0; row-- {
+		text := rows[row]
 		for _, prompt := range []string{"\u276f", "\u203a", ">"} {
 			if idx := strings.LastIndex(text, prompt); idx >= 0 {
 				return strings.TrimSpace(text[idx+len(prompt):]), row, true
