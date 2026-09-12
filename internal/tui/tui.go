@@ -167,6 +167,13 @@ type TUI struct {
 	// without waiting on it (ini-x5ob).
 	// lastModalMaint rate-limits the modal guard's housekeeping (ini-9gvn).
 	lastModalMaint time.Time
+	// lastEmptyViewerWarn is the key of the last empty-viewer DEFECT state we
+	// warned about (ini-4dzh). The warning fires when the key changes and is
+	// cleared whenever the viewer is not in the defect state, so an unchanged
+	// defect logs once, a changed one logs again, and a re-entry after
+	// recovery logs again. Transitions, not frames: the operator's hover log
+	// held 148,513 identical lines from the per-frame version.
+	lastEmptyViewerWarn string
 
 	ownershipMu   sync.Mutex
 	ownershipSnap *ownershipInputs

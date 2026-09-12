@@ -276,16 +276,65 @@ func unplannedViewerHint(unrendered int) string {
 // see -- and the served map only chooses WHICH true sentence to say:
 //
 //	not served yet          -> waiting for window 1
-//	served, owns nothing    -> no groups assigned to this window
+//	served, owns nothing    -> no agents are assigned to this window
 //	served, owns something  -> silence, deliberately (see below)
 //
 // The third case is a window that OWNS agents and is still rendering none.
 // That is not a state to explain to the operator; it is a defect, and either
 // sentence would be a lie that papers over it. It is logged instead, loudly,
 // so it surfaces as the bug it is rather than as reassuring copy.
+// viewerEmptyDefect describes the one empty-viewer state that IS a defect --
+// owned, present, unhidden, and still unplanned -- with the counts a single
+// log line needs to carry (ini-4dzh AC3).
+type viewerEmptyDefect struct {
+	owned, present          []string
+	hidden, absent, visible int
+	planned                 int
+}
+
+// key identifies the defect state for change detection. Two frames with the
+// same key are the same incident; a different key is a new one.
+func (d viewerEmptyDefect) key() string {
+	return fmt.Sprintf("%s|%s|h%d|a%d|v%d|p%d",
+		strings.Join(d.owned, ","), strings.Join(d.present, ","),
+		d.hidden, d.absent, d.visible, d.planned)
+}
+
+// viewerEmptyExplanation returns the sentence a secondary window shows when
+// it renders no panes, and warns -- ON TRANSITIONS, NOT FRAMES (ini-4dzh) --
+// when that emptiness is the genuine planning defect.
+//
+// THE GATE LIVES HERE, ONCE. Classification is the pure function below; this
+// wrapper owns the only piece of state. The key is cleared on every
+// non-defect result rather than at each of classification's returns, because
+// a per-return clear is a carry-over list: the next return someone adds would
+// forget it, and a re-entry after recovery would go silent.
 func (t *TUI) viewerEmptyExplanation() string {
+	hint, defect := t.classifyViewerEmpty()
+	if defect == nil {
+		t.lastEmptyViewerWarn = ""
+		return hint
+	}
+	if k := defect.key(); k != t.lastEmptyViewerWarn {
+		LogWarn("ownership", "viewer owns agents but is rendering none",
+			"window", t.windowID,
+			"owned", strings.Join(defect.owned, ","),
+			"panes_present", strings.Join(defect.present, ","),
+			"hidden", defect.hidden,
+			"absent", defect.absent,
+			"visible", defect.visible,
+			"plan_panes", defect.planned)
+		t.lastEmptyViewerWarn = k
+	}
+	return hint
+}
+
+// classifyViewerEmpty is the pure half: it decides which of the five states
+// the viewer is in and returns the hint for it, plus a defect descriptor
+// when -- and only when -- the state is the planning defect.
+func (t *TUI) classifyViewerEmpty() (string, *viewerEmptyDefect) {
 	if t.windowID == WindowOne || len(t.plan.Panes) > 0 {
-		return ""
+		return "", nil
 	}
 	// Not told yet, or told but nothing has arrived: both are "waiting", and
 	// the second is NOT the defect branch below. A viewer can be served its
@@ -296,10 +345,10 @@ func (t *TUI) viewerEmptyExplanation() string {
 	// six-agent rig, which is heavier than this file's own and reached the
 	// state repeatedly.
 	if !t.ownershipServed || len(t.panes) == 0 {
-		return unservedViewerHint
+		return unservedViewerHint, nil
 	}
 	if len(ownershipKeysFor(t.paneOwnership, t.windowID)) == 0 {
-		return emptyViewerHint
+		return emptyViewerHint, nil
 	}
 	// THE OWNED SET PARTITIONS INTO THREE, and which part is non-empty is the
 	// whole question (ini-uz42). "owned" alone cannot tell them apart, and the
@@ -340,24 +389,22 @@ func (t *TUI) viewerEmptyExplanation() string {
 
 	// Every owned agent is here and hidden: the legal all-hidden state.
 	if hiddenCount == len(owned) {
-		return allHiddenViewerHint(len(owned))
+		return allHiddenViewerHint(len(owned)), nil
 	}
 	// Some have not arrived, and nothing that HAS arrived is visible. A single
 	// visible arrival would have produced a non-empty plan and no hint at all.
 	if absentCount > 0 && visibleCount == 0 {
-		return awaitingArrivalsViewerHint(absentCount, len(owned))
+		return awaitingArrivalsViewerHint(absentCount, len(owned)), nil
 	}
 
-	// Present, unhidden, and still unplanned. The warning lives HERE and only
-	// here, so it fires on the state that is actually wrong.
-	LogWarn("ownership", "viewer owns agents but is rendering none",
-		"window", t.windowID,
-		"owned", joinKeys(owned),
-		"panes_present", strings.Join(have, ","),
-		"hidden", hiddenCount,
-		"absent", absentCount,
-		"plan_panes", len(t.plan.Panes))
-	return unplannedViewerHint(visibleCount)
+	// Present, unhidden, and still unplanned: the one state that is actually
+	// wrong. The warning for it is the wrapper's, gated on this descriptor
+	// changing, so an unchanged defect logs once rather than once per frame.
+	return unplannedViewerHint(visibleCount), &viewerEmptyDefect{
+		owned: owned, present: have,
+		hidden: hiddenCount, absent: absentCount, visible: visibleCount,
+		planned: len(t.plan.Panes),
+	}
 }
 
 // liveTickInputs derives the live rotation's universe for THIS window: its
