@@ -599,6 +599,10 @@ func (d *Daemon) HandleSend(conn net.Conn, req IPCRequest) {
 }
 
 func (d *Daemon) HandleExtended(conn net.Conn, req IPCRequest, rawJSON []byte) bool {
+	if isPostAction(req.Action) {
+		writeIPCResponse(conn, IPCResponse{Error: "post is not served by a remote daemon in this release; post from an agent in the operator's local fleet"})
+		return true
+	}
 	return false
 }
 

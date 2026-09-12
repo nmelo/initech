@@ -28,17 +28,21 @@ const (
 
 // IPCRequest is the JSON structure sent by CLI commands to the TUI socket.
 type IPCRequest struct {
-	Action string `json:"action"`          // "send", "peek", "list", "peers_query"
-	Target string `json:"target"`          // Role name (for send/peek).
-	Host   string `json:"host"`            // Remote peer name (for cross-machine send). Empty = local.
-	Text   string `json:"text"`            // Text to inject (for send).
-	Lines  int    `json:"lines"`           // Number of lines to return (for peek, 0 = all).
-	Enter  bool   `json:"enter"`           // Append Enter after text (for send).
-	Prune  bool   `json:"prune,omitempty"` // reload: also remove deconfigured self-started agents.
+	Action      string `json:"action"`                 // "send", "peek", "list", "peers_query"
+	Target      string `json:"target"`                 // Role name (for send/peek).
+	Host        string `json:"host"`                   // Remote peer name (for cross-machine send). Empty = local.
+	Text        string `json:"text"`                   // Text to inject (for send).
+	Lines       int    `json:"lines"`                  // Number of lines to return (for peek, 0 = all).
+	Enter       bool   `json:"enter"`                  // Append Enter after text (for send).
+	Prune       bool   `json:"prune,omitempty"`        // reload: also remove deconfigured self-started agents.
+	ItemID      string `json:"item_id,omitempty"`      // Inbox item, distinct from control request correlation.
+	DefaultText string `json:"default_text,omitempty"` // Proposed action absent an operator reply.
+	Chime       bool   `json:"chime,omitempty"`        // Request one inbox arrival chime.
 }
 
 // IPCResponse is the JSON structure returned by the TUI socket.
 type IPCResponse struct {
+	Notices    []string          `json:"notices,omitempty"` // Teaching lines, printed after the normal result; never overwrite another detector.
 	WindowPort *WindowPortStatus `json:"window_port,omitempty"`
 	OK         bool              `json:"ok"`
 	Error      string            `json:"error,omitempty"`
@@ -46,7 +50,7 @@ type IPCResponse struct {
 }
 
 // SocketPath returns the IPC endpoint path for a project. On Unix this is a
-// domain socket inside .initech/; on Windows it is a named pipe.
+// domain socket inside .initech/; on Windows a port file names a loopback TCP endpoint.
 func SocketPath(projectRoot, projectName string) string {
 	return socketPath(projectRoot, projectName)
 }
@@ -141,6 +145,8 @@ func (t *TUI) HandleSend(conn net.Conn, req IPCRequest) {
 
 func (t *TUI) HandleExtended(conn net.Conn, req IPCRequest, rawJSON []byte) bool {
 	switch req.Action {
+	case "post", "post_check", "post_mine", "post_withdraw":
+		t.handleIPCPost(conn, req, rawJSON)
 	case "stop":
 		t.handleIPCStop(conn, req)
 	case "start":

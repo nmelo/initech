@@ -214,28 +214,6 @@ func TestLoadExemptions_AcceptsATriggeredExemptionAndSkipsComments(t *testing.T)
 	}
 }
 
-// The exemption shipped today must name the bead that removes it, so the
-// coupling is readable in the tree and not only in a person's memory.
-func TestExemptionsFile_PostExemptionNamesItsRemovalTrigger(t *testing.T) {
-	root, err := repoRoot()
-	if err != nil {
-		t.Skip("module root unavailable")
-	}
-	raw, err := os.ReadFile(filepath.Join(root, exemptionsPath))
-	if err != nil {
-		t.Fatal(err)
-	}
-	text := string(raw)
-	if !strings.Contains(text, "post ") {
-		t.Fatal("the post exemption is gone; if child B landed, delete it and this test with it")
-	}
-	for _, want := range []string{"TRIGGER:", "child B"} {
-		if !strings.Contains(text, want) {
-			t.Errorf("the post exemption does not mention %q", want)
-		}
-	}
-}
-
 // ── the scope assumption ────────────────────────────────────────────
 
 // TestScaffold_RendersOnlyRolesTemplates makes this census's scope
