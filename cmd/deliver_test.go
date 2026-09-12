@@ -38,24 +38,24 @@ func stubBdFns(t *testing.T) {
 	t.Helper()
 	isolateFromProject(t)
 	origShow := bdShowBeadFn
-	origUpdate := bdUpdateStatusFn
+	origUpdate := bdUpdateBeadFn
 	origComment := bdCommentAddFn
 	origTitle := bdShowTitleFn
-	origClaim := bdUpdateClaimFn
+	origClaim := bdDispatchFn
 	origLifecycle := lifecycle.ConfigGetFn
 	t.Cleanup(func() {
 		bdShowBeadFn = origShow
-		bdUpdateStatusFn = origUpdate
+		bdUpdateBeadFn = origUpdate
 		bdCommentAddFn = origComment
 		bdShowTitleFn = origTitle
-		bdUpdateClaimFn = origClaim
+		bdDispatchFn = origClaim
 		lifecycle.ConfigGetFn = origLifecycle
 	})
 	bdShowBeadFn = func(id string) (string, string, string, error) { return id, "", "in_progress", nil }
-	bdUpdateStatusFn = func(id, status string) error { return nil }
+	bdUpdateBeadFn = func(id string, w beadWrite) error { return nil }
 	bdCommentAddFn = func(id, author, comment string) error { return nil }
 	bdShowTitleFn = func(id string) (string, error) { return id, nil }
-	bdUpdateClaimFn = func(id, agent string) error { return nil }
+	bdDispatchFn = func(id, agent, status string, recordImplementer bool) error { return nil }
 	lifecycle.ConfigGetFn = func(key string) (string, error) {
 		// Default initech chain: [open, in_progress] + custom + [closed].
 		return "ready_for_qa,in_qa,qa_passed,ready_to_ship", nil
@@ -92,8 +92,8 @@ func TestRunDeliver_PassSuccess(t *testing.T) {
 		return "Fix the login bug", "eng1", "in_progress", nil
 	}
 	var updatedStatus string
-	bdUpdateStatusFn = func(id, status string) error {
-		updatedStatus = status
+	bdUpdateBeadFn = func(id string, w beadWrite) error {
+		updatedStatus = w.Status
 		return nil
 	}
 
@@ -113,8 +113,11 @@ func TestRunDeliver_PassSuccess(t *testing.T) {
 	if updatedStatus != "ready_for_qa" {
 		t.Errorf("expected status update to ready_for_qa, got %q", updatedStatus)
 	}
-	if !strings.Contains(stderr.String(), "delivered ini-abc: in_progress -> ready_for_qa (ready for QA)") {
-		t.Errorf("stderr = %q, want confirmation message naming the actual transition (ini-j2lb)", stderr.String())
+	// The summary names the transition (ini-j2lb) AND, since ini-1fb9, the
+	// table row that produced it and what happened to the assignee — so a
+	// surprising write can be traced to a rule instead of guessed at.
+	if !strings.Contains(stderr.String(), "delivered ini-abc: in_progress -> ready_for_qa [implementer handoff, assignee cleared] (ready for QA)") {
+		t.Errorf("stderr = %q, want confirmation message naming the actual transition and the rule (ini-j2lb, ini-1fb9)", stderr.String())
 	}
 }
 
@@ -136,8 +139,8 @@ func TestRunDeliver_FailMode(t *testing.T) {
 		return nil
 	}
 	var statusWritten string
-	bdUpdateStatusFn = func(id, status string) error {
-		statusWritten = status
+	bdUpdateBeadFn = func(id string, w beadWrite) error {
+		statusWritten = w.Status
 		return nil
 	}
 
@@ -223,7 +226,7 @@ func TestRunDeliver_StatusUpdateError(t *testing.T) {
 	bdShowBeadFn = func(id string) (string, string, string, error) {
 		return "Fix it", "eng1", "in_progress", nil
 	}
-	bdUpdateStatusFn = func(id, status string) error {
+	bdUpdateBeadFn = func(id string, w beadWrite) error {
 		return fmt.Errorf("bd update failed: permission denied")
 	}
 
@@ -259,7 +262,7 @@ func TestRunDeliver_AssigneeMismatch_FailsLoudly(t *testing.T) {
 		return "Fix it", "eng2", "in_progress", nil
 	}
 	statusWritten := false
-	bdUpdateStatusFn = func(id, status string) error {
+	bdUpdateBeadFn = func(id string, w beadWrite) error {
 		statusWritten = true
 		return nil
 	}
@@ -315,7 +318,7 @@ func TestRunDeliver_CASConflict_NoMisleadingSuccess(t *testing.T) {
 		return "Fix it", "eng1", "ready_for_qa", nil // someone else already advanced it
 	}
 	statusWritten := false
-	bdUpdateStatusFn = func(id, status string) error {
+	bdUpdateBeadFn = func(id string, w beadWrite) error {
 		statusWritten = true
 		return nil
 	}
@@ -581,7 +584,7 @@ func TestRunDeliver_QA_MissingVerdictRejected(t *testing.T) {
 	resetDeliverFlags(t)
 
 	statusUpdated := false
-	bdUpdateStatusFn = func(id, status string) error {
+	bdUpdateBeadFn = func(id string, w beadWrite) error {
 		statusUpdated = true
 		return nil
 	}
@@ -760,8 +763,9 @@ func TestRunDeliver_Eng_RegressionTemplates(t *testing.T) {
 		if report != want {
 			t.Errorf("report = %q\n want = %q", report, want)
 		}
-		if !strings.Contains(stderr, "delivered ini-test: in_progress -> ready_for_qa (ready for QA) -> super") {
-			t.Errorf("stderr = %q, want 'delivered ini-test: in_progress -> ready_for_qa (ready for QA) -> super'", stderr)
+		want = "delivered ini-test: in_progress -> ready_for_qa [implementer handoff, assignee cleared] (ready for QA) -> super"
+		if !strings.Contains(stderr, want) {
+			t.Errorf("stderr = %q\n want = %q", stderr, want)
 		}
 	})
 
@@ -869,7 +873,7 @@ func TestSelectTemplate(t *testing.T) {
 // runDeliverWithStatus is like runDeliverWith but also lets the caller seed the
 // bead's current status — needed for outer-guard tests (qa_passed/closed) and
 // for asserting which status value gets written by the family branch. Returns
-// the status value written by bdUpdateStatusFn (empty string if never called),
+// the status value written by bdUpdateBeadFn (empty string if never called),
 // the IPC requests captured during the run, the stderr buffer, and any error.
 func runDeliverWithStatus(t *testing.T, agent, beadTitle, beadStatus string, args ...string) (writtenStatus string, requests []tui.IPCRequest, stderr string, err error) {
 	t.Helper()
@@ -879,8 +883,8 @@ func runDeliverWithStatus(t *testing.T, agent, beadTitle, beadStatus string, arg
 	bdShowBeadFn = func(id string) (string, string, string, error) {
 		return beadTitle, agent, beadStatus, nil
 	}
-	bdUpdateStatusFn = func(id, status string) error {
-		writtenStatus = status
+	bdUpdateBeadFn = func(id string, w beadWrite) error {
+		writtenStatus = w.Status
 		return nil
 	}
 
@@ -1148,24 +1152,24 @@ func stubBdFnsWithRoster(t *testing.T, rosterRoles []string) {
 	t.Helper()
 	isolateFromProjectWithRoster(t, rosterRoles)
 	origShow := bdShowBeadFn
-	origUpdate := bdUpdateStatusFn
+	origUpdate := bdUpdateBeadFn
 	origComment := bdCommentAddFn
 	origTitle := bdShowTitleFn
-	origClaim := bdUpdateClaimFn
+	origClaim := bdDispatchFn
 	origLifecycle := lifecycle.ConfigGetFn
 	t.Cleanup(func() {
 		bdShowBeadFn = origShow
-		bdUpdateStatusFn = origUpdate
+		bdUpdateBeadFn = origUpdate
 		bdCommentAddFn = origComment
 		bdShowTitleFn = origTitle
-		bdUpdateClaimFn = origClaim
+		bdDispatchFn = origClaim
 		lifecycle.ConfigGetFn = origLifecycle
 	})
 	bdShowBeadFn = func(id string) (string, string, string, error) { return id, "", "in_progress", nil }
-	bdUpdateStatusFn = func(id, status string) error { return nil }
+	bdUpdateBeadFn = func(id string, w beadWrite) error { return nil }
 	bdCommentAddFn = func(id, author, comment string) error { return nil }
 	bdShowTitleFn = func(id string) (string, error) { return id, nil }
-	bdUpdateClaimFn = func(id, agent string) error { return nil }
+	bdDispatchFn = func(id, agent, status string, recordImplementer bool) error { return nil }
 	lifecycle.ConfigGetFn = func(key string) (string, error) {
 		return "ready_for_qa,in_qa,qa_passed,ready_to_ship", nil
 	}
@@ -1346,8 +1350,8 @@ func runDeliverFromStatus(t *testing.T, agent, startStatus string, args ...strin
 	bdShowBeadFn = func(id string) (string, string, string, error) {
 		return "bead-title", agent, startStatus, nil
 	}
-	bdUpdateStatusFn = func(id, status string) error {
-		statusWritten = status
+	bdUpdateBeadFn = func(id string, w beadWrite) error {
+		statusWritten = w.Status
 		return nil
 	}
 	bdCommentAddFn = func(id, author, body string) error {
@@ -1391,10 +1395,15 @@ func TestDeliver_FullLifecycleWalk_Forward(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.from+"_to_"+tt.to, func(t *testing.T) {
-			// QA-family agent uses --verdict so validateDeliverFlags accepts
-			// the call regardless of starting state. The status write is
-			// purely lifecycle-driven now (role doesn't gate it).
-			got, _, err := runDeliverFromStatus(t, "qa1", tt.from, "--verdict", "PASS")
+			// An IMPLEMENTER caller, deliberately: since ini-1fb9 the status
+			// write is role-aware again, and a QA verdict is a statement
+			// about the work rather than a step along the chain (it writes
+			// qa_passed or sends the bead back to its implementer, whatever
+			// state it is in). The plain chain walk this test covers is the
+			// table's FALLBACK row, and an implementer delivering without a
+			// verdict is what reaches it. The QA cells have their own tests
+			// in deliver_lifecycle_test.go.
+			got, _, err := runDeliverFromStatus(t, "eng1", tt.from)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -1421,7 +1430,7 @@ func TestDeliver_FailWalksBack(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.from+"_back_to_"+tt.to, func(t *testing.T) {
-			got, comments, err := runDeliverFromStatus(t, "qa1", tt.from, "--verdict", "FAIL", "--reason", "regression found")
+			got, comments, err := runDeliverFromStatus(t, "eng1", tt.from, "--fail", "--reason", "regression found")
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -1495,8 +1504,8 @@ func TestDeliver_CustomLifecycle(t *testing.T) {
 		return "Some change", "eng1", "design_review", nil
 	}
 	var statusWritten string
-	bdUpdateStatusFn = func(id, status string) error {
-		statusWritten = status
+	bdUpdateBeadFn = func(id string, w beadWrite) error {
+		statusWritten = w.Status
 		return nil
 	}
 

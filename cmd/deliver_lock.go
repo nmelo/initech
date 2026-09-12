@@ -93,6 +93,14 @@ func acquireDeliverLock(beadID string) (release func(), err error) {
 // before the first caller's write lands, reopening the exact race this
 // guards against.
 func compareAndSetBeadStatus(beadID, expectedStatus, newStatus string) error {
+	return compareAndSetBeadWrite(beadID, expectedStatus, beadWrite{Status: newStatus})
+}
+
+// compareAndSetBeadWrite is compareAndSetBeadStatus for a full write: the
+// status plus whatever the lifecycle transition said to do with the assignee
+// and the implementer record (ini-1fb9). One bd update under the lock, so a
+// concurrent delivery cannot land between the status and the assignee.
+func compareAndSetBeadWrite(beadID, expectedStatus string, w beadWrite) error {
 	release, err := acquireDeliverLock(beadID)
 	if err != nil {
 		return err
@@ -106,5 +114,5 @@ func compareAndSetBeadStatus(beadID, expectedStatus, newStatus string) error {
 	if current != expectedStatus {
 		return fmt.Errorf("bead %s status changed from %q to %q since it was read — concurrent delivery? re-run deliver to act on the current state", beadID, expectedStatus, current)
 	}
-	return bdUpdateStatusFn(beadID, newStatus)
+	return bdUpdateBeadFn(beadID, w)
 }

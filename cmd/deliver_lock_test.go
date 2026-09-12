@@ -33,25 +33,25 @@ func (s *fakeBdStore) show(id string) (string, string, string, error) {
 	return "title", "assignee", s.status, nil
 }
 
-func (s *fakeBdStore) update(id, status string) error {
+func (s *fakeBdStore) update(id string, w beadWrite) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.status = status
+	s.status = w.Status
 	s.writeCount.Add(1)
 	return nil
 }
 
-// wireFakeBdStore points bdShowBeadFn/bdUpdateStatusFn at store and restores
+// wireFakeBdStore points bdShowBeadFn/bdUpdateBeadFn at store and restores
 // the originals on test cleanup.
 func wireFakeBdStore(t *testing.T, store *fakeBdStore) {
 	t.Helper()
-	origShow, origUpdate := bdShowBeadFn, bdUpdateStatusFn
+	origShow, origUpdate := bdShowBeadFn, bdUpdateBeadFn
 	t.Cleanup(func() {
 		bdShowBeadFn = origShow
-		bdUpdateStatusFn = origUpdate
+		bdUpdateBeadFn = origUpdate
 	})
 	bdShowBeadFn = store.show
-	bdUpdateStatusFn = store.update
+	bdUpdateBeadFn = store.update
 }
 
 // isolateDeliverLockDir points deliverLockDir at a fresh temp directory for
@@ -133,7 +133,7 @@ func TestCompareAndSetBeadStatus_ConcurrentDelivery_ExactlyOneAdvances(t *testin
 
 // TestCompareAndSetBeadStatus_SingleCaller_NoRegression pins the "no
 // behavior change for the normal single-deliver path" AC: one caller, no
-// contention, succeeds exactly as bdUpdateStatusFn alone used to.
+// contention, succeeds exactly as bdUpdateBeadFn alone used to.
 func TestCompareAndSetBeadStatus_SingleCaller_NoRegression(t *testing.T) {
 	isolateDeliverLockDir(t)
 	store := newFakeBdStore("in_progress")

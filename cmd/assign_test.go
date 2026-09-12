@@ -163,7 +163,7 @@ func TestRunAssign_SingleBeadSuccess(t *testing.T) {
 
 	bdShowTitleFn = func(id string) (string, error) { return "Fix the bug", nil }
 	var claimedID, claimedAgent string
-	bdUpdateClaimFn = func(id, agent string) error {
+	bdDispatchFn = func(id, agent, status string, recordImplementer bool) error {
 		claimedID = id
 		claimedAgent = agent
 		return nil
@@ -282,7 +282,7 @@ func TestRunAssign_DeduplicatesBeads(t *testing.T) {
 
 	var claimCount int
 	bdShowTitleFn = func(id string) (string, error) { return "Task", nil }
-	bdUpdateClaimFn = func(id, agent string) error {
+	bdDispatchFn = func(id, agent, status string, recordImplementer bool) error {
 		claimCount++
 		return nil
 	}
@@ -334,7 +334,7 @@ func TestRunAssign_ClaimFailure(t *testing.T) {
 	resetAssignFlags(t)
 
 	bdShowTitleFn = func(id string) (string, error) { return "Task", nil }
-	bdUpdateClaimFn = func(id, agent string) error {
+	bdDispatchFn = func(id, agent, status string, recordImplementer bool) error {
 		return fmt.Errorf("bd update failed: locked")
 	}
 

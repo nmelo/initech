@@ -22,7 +22,7 @@ and initech send in one command. Counterpart to initech assign.
 
   initech deliver ini-abc                              # eng: mark ready_for_qa, report to super
   initech deliver ini-abc -m "DONE: <body>"            # eng: success + DONE comment on bead
-  initech deliver ini-abc --fail --reason "tests fail"  # eng: stay in_progress, report failure
+  initech deliver ini-abc --fail --reason "tests fail"  # eng: walk back a step, report failure
   initech deliver ini-abc --verdict PASS                # qa: report PASS verdict
   initech deliver ini-abc --verdict FAIL --reason X     # qa: report FAIL verdict
   initech deliver ini-abc --to qa1                      # report to qa1 instead of super
@@ -45,6 +45,13 @@ Unknown roles error rather than silently using the engineer template.
   - If a caller already ran bd comments add manually before deliver, an
     -m on the same call will produce a duplicate comment; engineers are
     expected to pick one path.
+
+The status and the assignee are ONE write, chosen by the lifecycle
+transition table (internal/lifecycle), never by this command:
+  implementer handoff      -> ready_for_qa, assignee CLEARED
+  --verdict PASS (qa)      -> qa_passed, assignee kept
+  --verdict FAIL (qa)      -> in_progress, assignee set to the bead's implementer
+  anything else            -> one step along the lifecycle chain, assignee kept
 
 Fail-fast ordering: input validation first (rejects bad flag combos before
 any side effects), bd operations second (durable state), TUI bead clear
@@ -74,7 +81,7 @@ var (
 
 func init() {
 	deliverCmd.Flags().BoolVar(&deliverPass, "pass", false, "Mark ready_for_qa (default behavior)")
-	deliverCmd.Flags().BoolVar(&deliverFail, "fail", false, "Stay in_progress, report failure")
+	deliverCmd.Flags().BoolVar(&deliverFail, "fail", false, "Report failure: walk the bead back one lifecycle step (a QA FAIL returns it to its implementer)")
 	deliverCmd.Flags().StringVar(&deliverReason, "reason", "", "Failure reason (used with --fail or --verdict FAIL)")
 	deliverCmd.Flags().StringVar(&deliverTo, "to", "super", "Agent to report to (default: super)")
 	deliverCmd.Flags().StringVarP(&deliverMessage, "message", "m", "", "Custom note appended to the chat report; on success, also written as a bd comment on the bead")
@@ -139,24 +146,61 @@ func runDeliver(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("cannot determine bead lifecycle: %w (configure bd's status.custom or check that bd is reachable)", err)
 	}
 
-	// Family is read but not used for the status decision anymore. Keep the
-	// reference so future role-aware policies (e.g., audit-only roles) can
-	// re-enable it without changing the function signature.
-	_ = family
-
+	// THE TABLE DECIDES, not this function (ini-1fb9). What to write for
+	// (family, current state, verdict) — including what happens to the
+	// assignee — comes from lifecycle.Deliver; nothing here picks a status.
+	// The previous code did the opposite: it walked the chain and ignored
+	// family entirely, which is why a QA FAIL wrote the implementer's
+	// handoff state (GitHub #33) and why nothing ever cleared the assignee
+	// (#32).
+	verdictFor := lifecycle.VerdictNone
+	switch {
+	case isFail:
+		verdictFor = lifecycle.VerdictFail
+	case verdict == "PASS":
+		verdictFor = lifecycle.VerdictPass
+	}
+	tr, canMove := lifecycle.Deliver(family, status, verdictFor, chain)
+	if !canMove {
+		if isFail {
+			fmt.Fprintf(cmd.ErrOrStderr(), "deliver --fail no-op for %s: nothing to write from state %q for role %s\n", beadID, status, agentOrUnknown(agent))
+		} else {
+			fmt.Fprintf(cmd.ErrOrStderr(), "deliver no-op for %s: nothing to write from state %q for role %s\n", beadID, status, agentOrUnknown(agent))
+		}
+		return nil
+	}
 	// target is the resulting status once the write below succeeds; it's
 	// named in the final success line (ini-j2lb AC: report the actual
 	// transition, not a generic "delivered").
-	var target string
-	if isFail {
-		var canMove bool
-		target, canMove = lifecycle.PrevState(chain, status)
-		if !canMove {
-			fmt.Fprintf(cmd.ErrOrStderr(), "deliver --fail no-op for %s: bead is at initial state %q (no previous step in lifecycle)\n", beadID, status)
-			return nil
+	target := tr.Status
+
+	write := beadWrite{Status: target}
+	switch tr.Assignee {
+	case lifecycle.AssigneeClear:
+		write.SetAssignee = true
+		write.Assignee = ""
+	case lifecycle.AssigneeImplementer:
+		// Hand the bead back to whoever built it. With no recorded
+		// implementer the assignee is CLEARED and the caller told why —
+		// never silently left with the reviewer, which is the half of #33
+		// that blocked the implementer's re-claim.
+		impl, err := bdBeadImplementerFn(beadID)
+		if err != nil {
+			fmt.Fprintf(cmd.ErrOrStderr(), "warning: could not read %s's implementer (%s); leaving it unassigned\n", beadID, err)
 		}
-		// Walk back AND record the reason. Comment first so the audit
-		// captures the intent even if the status write fails afterwards.
+		write.SetAssignee = true
+		write.Assignee = impl
+		if impl == "" {
+			fmt.Fprintf(cmd.ErrOrStderr(), "note: %s records no implementer, so it goes back unassigned — dispatch it with 'initech assign <agent> %s'\n", beadID, beadID)
+		}
+	}
+	if tr.RecordImplementer && agent != "" {
+		write.Implementer = agent
+	}
+
+	if isFail {
+		// Record the reason before the state write, so the audit captures
+		// the intent even if the write fails afterwards.
 		reason := deliverReason
 		if reason == "" {
 			reason = "no reason provided"
@@ -164,19 +208,9 @@ func runDeliver(cmd *cobra.Command, args []string) error {
 		if err := bdCommentAddFn(beadID, agent, "FAILED: "+reason); err != nil {
 			fmt.Fprintf(cmd.ErrOrStderr(), "warning: bd comment failed: %s\n", err)
 		}
-		if err := compareAndSetBeadStatus(beadID, status, target); err != nil {
-			return err
-		}
-	} else {
-		var canMove bool
-		target, canMove = lifecycle.NextState(chain, status)
-		if !canMove {
-			fmt.Fprintf(cmd.ErrOrStderr(), "deliver no-op for %s: bead is at terminal state %q\n", beadID, status)
-			return nil
-		}
-		if err := compareAndSetBeadStatus(beadID, status, target); err != nil {
-			return err
-		}
+	}
+	if err := compareAndSetBeadWrite(beadID, status, write); err != nil {
+		return err
 	}
 
 	// Step 2.5: On the success path, if -m was provided, write the body as
@@ -238,7 +272,8 @@ func runDeliver(cmd *cobra.Command, args []string) error {
 	emitIPCEvent(agentOrUnknown(agent), beadID, "bead_delivered", tpl.IPCSummary)
 
 	// Output summary.
-	fmt.Fprintf(cmd.ErrOrStderr(), "delivered %s: %s -> %s (%s) -> %s\n", beadID, status, target, tpl.SummarySuffix, deliverTo)
+	fmt.Fprintf(cmd.ErrOrStderr(), "delivered %s: %s -> %s [%s, assignee %s] (%s) -> %s\n",
+		beadID, status, target, tr.Why, tr.Assignee, tpl.SummarySuffix, deliverTo)
 	return nil
 }
 
@@ -271,16 +306,70 @@ func bdShowBeadImpl(beadID string) (title, assignee, status string, err error) {
 	return t, beads[0].Assignee, beads[0].Status, nil
 }
 
-// bdUpdateStatusFn is the default implementation. Tests override this.
-var bdUpdateStatusFn = bdUpdateStatusImpl
+// beadWrite is ONE bd update: the status the transition asked for, plus the
+// assignee and implementer fields it asked to change. They travel together
+// because they are one decision (ini-1fb9): GitHub #32 shipped because the
+// status write and the assignee write lived in different places and one of
+// them lived nowhere. Applied inside the deliver lock so a concurrent
+// delivery cannot interleave between the two fields.
+type beadWrite struct {
+	Status string
+	// SetAssignee writes Assignee; an empty Assignee clears it.
+	SetAssignee bool
+	Assignee    string
+	// Implementer, when non-empty, records who built the bead so a later QA
+	// FAIL can hand it back to them.
+	Implementer string
+}
 
-// bdUpdateStatusImpl runs bd update to set bead status.
-func bdUpdateStatusImpl(beadID, status string) error {
-	out, err := exec.Command("bd", "update", beadID, "--status", status).CombinedOutput()
+// bdUpdateBeadFn is the default implementation. Tests override this.
+var bdUpdateBeadFn = bdUpdateBeadImpl
+
+// bdUpdateBeadImpl runs one bd update carrying every field the transition
+// asked for.
+func bdUpdateBeadImpl(beadID string, w beadWrite) error {
+	args := []string{"update", beadID, "--status", w.Status}
+	if w.SetAssignee {
+		args = append(args, "--assignee", w.Assignee)
+	}
+	if w.Implementer != "" {
+		args = append(args, "--set-metadata", implementerKey+"="+w.Implementer)
+	}
+	out, err := exec.Command("bd", args...).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("bd update failed: %s", strings.TrimSpace(string(out)))
 	}
 	return nil
+}
+
+// implementerKey is the bd metadata key recording which agent built a bead.
+// Written at the two moments that know it — the implementer dispatch and the
+// implementer handoff — and read back when a QA FAIL has to hand the bead
+// back (ini-1fb9). bd metadata round-trips through `bd show --json` and
+// survives later status and assignee writes (measured, bd 1.0.5).
+const implementerKey = "initech_implementer"
+
+// bdBeadImplementerFn is the default implementation. Tests override this.
+var bdBeadImplementerFn = bdBeadImplementerImpl
+
+// bdBeadImplementerImpl reads the recorded implementer, or "" when the bead
+// has none — a bead whose handoff predates this recording, which the caller
+// must report rather than paper over.
+func bdBeadImplementerImpl(beadID string) (string, error) {
+	out, err := exec.Command("bd", "show", beadID, "--json").CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("bead %s not found: %s", beadID, strings.TrimSpace(string(out)))
+	}
+	var beads []struct {
+		Metadata map[string]string `json:"metadata"`
+	}
+	if err := json.Unmarshal(out, &beads); err != nil {
+		return "", fmt.Errorf("parse bd output: %w", err)
+	}
+	if len(beads) == 0 {
+		return "", nil
+	}
+	return beads[0].Metadata[implementerKey], nil
 }
 
 // bdCommentAddFn is the default implementation. Tests override this.

@@ -6,6 +6,8 @@ import (
 	"os/exec"
 	"strings"
 
+	"github.com/nmelo/initech/internal/lifecycle"
+	"github.com/nmelo/initech/internal/roles"
 	"github.com/nmelo/initech/internal/tui"
 	"github.com/spf13/cobra"
 )
@@ -19,6 +21,12 @@ command. Auto-generates a dispatch message from bead titles.
   initech assign eng1 ini-abc
   initech assign eng1 ini-abc ini-def ini-ghi
   initech assign eng2 ini-xyz --message "Focus on the error handling edge cases."
+
+The status written comes from the lifecycle transition table
+(internal/lifecycle), keyed by the TARGET's role:
+  a validator (qa*)        -> in_qa
+  anyone else              -> in_progress, recording them as the implementer
+so a dispatched bead never misreports what is happening to it.
 
 Multiple beads are claimed individually (partial failures are logged and
 skipped), then dispatched as one consolidated message. Exit 0 if at least
@@ -57,12 +65,23 @@ func bdShowTitleImpl(beadID string) (string, error) {
 	return beads[0].Title, nil
 }
 
-// bdUpdateClaimFn is the default implementation. Tests override this.
-var bdUpdateClaimFn = bdUpdateClaimImpl
+// bdDispatchFn is the default implementation. Tests override this.
+var bdDispatchFn = bdDispatchImpl
 
-// bdUpdateClaimImpl runs bd update to set status and assignee.
-func bdUpdateClaimImpl(beadID, agent string) error {
-	out, err := exec.Command("bd", "update", beadID, "--status", "in_progress", "--assignee", agent).CombinedOutput()
+// bdDispatchImpl writes the dispatch the lifecycle table asked for: the
+// target status for this role, the assignee, and — for an implementer
+// dispatch — the record of who is building the bead.
+//
+// It does NOT use `bd update --claim`, and that is deliberate: --claim is
+// refused on a ready_for_qa bead ("issue not claimable", measured on bd
+// 1.0.5), which is exactly the state a validator receives beads in (GitHub
+// #34). An explicit status+assignee write succeeds from any state.
+func bdDispatchImpl(beadID, agent, status string, recordImplementer bool) error {
+	args := []string{"update", beadID, "--status", status, "--assignee", agent}
+	if recordImplementer {
+		args = append(args, "--set-metadata", implementerKey+"="+agent)
+	}
+	out, err := exec.Command("bd", args...).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("bd update failed: %s", strings.TrimSpace(string(out)))
 	}
@@ -105,7 +124,22 @@ func runAssign(cmd *cobra.Command, args []string) error {
 	}
 	beadIDs = unique
 
-	// Process each bead: show + claim. Failures logged and skipped.
+	// THE TABLE DECIDES the dispatch state, not this command (ini-1fb9).
+	// assign used to write in_progress whatever the target's role, so a
+	// validator dispatch misreported the bead from dispatch until the
+	// validator self-corrected (GitHub #34). Keyed by the TARGET's family:
+	// the roster load is best-effort, since eng*/qa* classify on their
+	// prefix alone and an unclassifiable name lands on the implementer row,
+	// which is the behaviour assign has always had for it.
+	roster, _ := loadProjectRoster()
+	family := roles.RoleFamilyOfWithRoster(agent, roster)
+
+	// Process each bead: show + dispatch. Failures logged and skipped.
+	//
+	// bd FIRST, TUI SECOND, and the order is load-bearing: a bead whose bd
+	// write is refused is skipped here and never reaches the TUI pointer or
+	// the dispatch message, so a refusal cannot leave the bead half-updated
+	// (pointer set, state unchanged).
 	var successes []assignResult
 	var failures []string
 	for _, id := range beadIDs {
@@ -115,7 +149,8 @@ func runAssign(cmd *cobra.Command, args []string) error {
 			failures = append(failures, id)
 			continue
 		}
-		if err := bdUpdateClaimFn(id, agent); err != nil {
+		tr := lifecycle.Dispatch(family, "")
+		if err := bdDispatchFn(id, agent, tr.Status, tr.RecordImplementer); err != nil {
 			fmt.Fprintf(cmd.ErrOrStderr(), "warning: %s: %s\n", id, err)
 			failures = append(failures, id)
 			continue
