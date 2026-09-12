@@ -142,3 +142,22 @@ func TestTargetCensus_RepositoryInventoryIsFullyCovered(t *testing.T) {
 		t.Fatalf("live Makefile census failed:\n%v", err)
 	}
 }
+
+// An exemption states a human trigger; a human running that target runs its
+// prerequisites too, so they are covered by the same trigger (ini-7ts2:
+// `check` left the hook for a human trigger and `test` sits under it).
+func TestTargetCensus_PrerequisiteOfAnExemptedTargetIsCovered(t *testing.T) {
+	mk, ci, ex := writeTargetFixture(t, "check: suite\n\techo hi\n\nsuite:\n\tgo test ./...\n", "", "check  # TRIGGER: by hand before push\n")
+	if err := runTargetCensus(mk, []string{ci}, ex, false); err != nil {
+		t.Fatalf("a prerequisite of an exempted target was reported uncovered: %v", err)
+	}
+}
+
+// The walk from an exemption does not extend to targets it does not reach.
+func TestTargetCensus_ExemptionDoesNotCoverUnrelatedTargets(t *testing.T) {
+	mk, ci, ex := writeTargetFixture(t, "check: suite\n\techo hi\n\nsuite:\n\tgo test ./...\n\nstray:\n\techo no\n", "", "check  # TRIGGER: by hand before push\n")
+	err := runTargetCensus(mk, []string{ci}, ex, false)
+	if err == nil || !strings.Contains(err.Error(), "stray") {
+		t.Fatalf("an unrelated target was covered by someone else's exemption: %v", err)
+	}
+}

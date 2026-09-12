@@ -58,17 +58,29 @@ Every bug-fix PR must include a test that fails on `main` and passes with the fi
 ```bash
 make build              # Build binary
 make test               # Run all tests
-make check              # Vet + lint-test-names + test
+make check-fast         # What the pre-commit hook runs: build + vets + lints + censuses, no tests (seconds)
+make check              # check-fast + the -short suite; REQUIRED after every rebase, before every push
 make release            # goreleaser release
 ```
 
-## Pre-commit hook (ini-3nzc)
+## Pre-commit hook (ini-3nzc, ini-7ts2)
 
 The pre-commit hook is VERSIONED at `scripts/hooks/pre-commit` and activated
 per-clone by `git config core.hooksPath scripts/hooks` — which `make
 install-hooks` runs, and which the scaffold sets automatically for checkouts
-it creates. `make check` fails loudly (hooks-check) in any checkout with no
-wiring.
+it creates. Both `make check-fast` and `make check` fail loudly (hooks-check)
+in any checkout with no wiring.
+
+The hook runs `make check-fast` (ini-7ts2): compile, the three vets, the two
+lints, the two censuses — ~3.5s warm, ~30s after a cache clean — and NO
+product tests. What commit time uniquely catches is a commit that does not
+compile (ac12e59); the suite at commit time was duplicated by the post-rebase
+`make check` and by CI, and could never catch what those catch (rebase
+collisions, gated rigs, races). So the suite runs in exactly one place before
+push: `make check` after `git pull --rebase`, immediately before `git push`
+— that rule is unchanged and is now the ONLY pre-push run of the tests. The
+hook file says why in its own comment; do not put `test` back in it without
+answering that comment.
 
 Submodule trap, recorded because it cost a red main: in this fleet's layout
 `src/.git` is a FILE (gitdir pointer), so the legacy per-clone hooks dir is

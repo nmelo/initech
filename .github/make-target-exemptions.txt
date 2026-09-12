@@ -30,3 +30,4 @@ release-wait   # wait for the release workflow to finish. TRIGGER: shipper, per 
 release-assets # verify the published assets exist. TRIGGER: shipper, per release.
 release-verify # release-wait plus release-assets. TRIGGER: shipper, per release.
 release-ship   # the whole chain: test, tag, verify. TRIGGER: shipper, per release.
+check          # the full gate: everything in check-fast plus the -short suite. Not wired to the hook since ini-7ts2 (the hook runs check-fast). TRIGGER: every engineer, after every git pull --rebase and immediately before every git push (root CLAUDE.md rule); the only run that sees the tree actually being pushed.
