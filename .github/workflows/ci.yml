@@ -2,7 +2,13 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    # release/** (ini-cctz, the first release cut from a branch): for a push
+    # GitHub reads this file FROM THE PUSHED COMMIT, so a release branch runs
+    # CI only if the branch itself carries this line — a fix on main alone runs
+    # nothing for it. And it must be a PUSH trigger: two jobs below gate on
+    # github.event_name == 'push', so a pull_request run shows a short job set,
+    # and a PR into main runs on the merge ref rather than the branch sha.
+    branches: [main, 'release/**']
   pull_request:
     branches: [main]
 
