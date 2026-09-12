@@ -1,0 +1,21 @@
+{
+  "captured_utc": "2026-09-12T13:00:44.621530+00:00",
+  "baseline": "694985fad0ab3cf7d97f6ecc06c6a52adce3c325",
+  "files": {
+    "assignments.yaml": {
+      "sha256": "cd7f991beda1aa2e788f6151a6163b0275a8a96b532ae531e43fe5c9ce897eb2",
+      "mtime_ns": 1789152059236964948,
+      "bytes": 89
+    },
+    "layout.yaml": {
+      "sha256": "a8f8e4e83c5939fc5d77e43ce7b322f45052149798b092096b53c0c5e797515b",
+      "mtime_ns": 1789158325767218691,
+      "bytes": 1253
+    },
+    "fleet-state.yaml": {
+      "sha256": "445d22b5b2281e2ef4d174005472c47654ddd7f33717b1fb0af77795cb0bab1b",
+      "mtime_ns": 1789158325760717981,
+      "bytes": 963
+    }
+  }
+}

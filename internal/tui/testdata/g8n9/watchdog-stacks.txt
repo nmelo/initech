@@ -1,0 +1,189 @@
+=== RENDER WATCHDOG ===
+Time:      2026-09-12T09:02:21-04:00
+Version:   2.12.0
+Go:        go1.25.0
+Stale for: 15s
+Diagnosis: No render completed in 15s. Main loop is likely blocked.
+
+
+
+goroutine 1 [sync.RWMutex.RLock, 1026 minutes]:
+sync.runtime_SemacquireRWMutexR(0x4e?, 0x80?, 0x14000114618?)
+	/opt/hostedtoolcache/go/1.25.0/x64/src/runtime/sema.go:100 +0x28
+sync.(*RWMutex).RLock(...)
+	/opt/hostedtoolcache/go/1.25.0/x64/src/sync/rwmutex.go:74
+github.com/charmbracelet/x/vt.(*SafeEmulator).Width(0x14022b1b7c0)
+	/home/runner/go/pkg/mod/github.com/nmelo/x/vt@v0.0.0-20260813133007-4049f44604fe/safe_emulator.go:226 +0x74
+github.com/nmelo/initech/internal/tui.emulatorBottomText(0x14022b1b7c0, 0x0)
+	/home/runner/work/initech/initech/internal/tui/pane.go:1050 +0x28
+github.com/nmelo/initech/internal/tui.paneShowsModalOnScreen(0x140002e6408?)
+	/home/runner/work/initech/initech/internal/tui/modal_detect.go:130 +0x2c
+github.com/nmelo/initech/internal/tui.(*TUI).modalMaintenance(0x140001bb808, {0x6?, 0x100bead01?, 0x1012458c0?})
+	/home/runner/work/initech/initech/internal/tui/modal_detect.go:436 +0xf4
+github.com/nmelo/initech/internal/tui.(*TUI).render(0x140001bb808)
+	/home/runner/work/initech/initech/internal/tui/render.go:70 +0x25c
+github.com/nmelo/initech/internal/tui.Run({{0x140001bd508, 0x29, 0x29}, {0x140001d05d7, 0x5}, {0x1400002c660, 0x23}, 0x0, 0x0, {0x100ceab20, ...}, ...})
+	/home/runner/work/initech/initech/internal/tui/tui.go:1296 +0x273c
+github.com/nmelo/initech/cmd.runTUI(0x10123e6c0, {0x100be5ec3?, 0x4?, 0x100be5de3?})
+	/home/runner/work/initech/initech/cmd/root.go:263 +0x778
+github.com/spf13/cobra.(*Command).execute(0x10123e6c0, {0x1400001e080, 0x0, 0x0})
+	/home/runner/go/pkg/mod/github.com/spf13/cobra@v1.10.2/command.go:1015 +0x7d4
+github.com/spf13/cobra.(*Command).ExecuteC(0x10123e6c0)
+	/home/runner/go/pkg/mod/github.com/spf13/cobra@v1.10.2/command.go:1148 +0x350
+github.com/spf13/cobra.(*Command).Execute(...)
+	/home/runner/go/pkg/mod/github.com/spf13/cobra@v1.10.2/command.go:1071
+github.com/nmelo/initech/cmd.init.func10()
+	/home/runner/work/initech/initech/cmd/root.go:34 +0x24
+github.com/nmelo/initech/cmd.Execute()
+	/home/runner/work/initech/initech/cmd/root.go:97 +0x28
+main.main()
+	/home/runner/work/initech/initech/main.go:7 +0x1c
+
+goroutine 42613 [select, 1026 minutes]:
+io.(*pipe).write(0x1400dd10540, {0x14017168310, 0x1, 0x8})
+	/opt/hostedtoolcache/go/1.25.0/x64/src/io/pipe.go:86 +0x194
+io.(*PipeWriter).Write(0x0?, {0x14017168310?, 0x1?, 0x1?})
+	/opt/hostedtoolcache/go/1.25.0/x64/src/io/pipe.go:161 +0x24
+io.WriteString({0x100e1ee80, 0x1400dd10540}, {0x100ceaba0?, 0x100ceaba0?})
+	/opt/hostedtoolcache/go/1.25.0/x64/src/io/io.go:318 +0xa8
+github.com/charmbracelet/x/vt.(*Emulator).SendKey(0x1401fd7b508, {0x100e20dc8, 0x100ceb8a0})
+	/home/runner/go/pkg/mod/github.com/nmelo/x/vt@v0.0.0-20260813133007-4049f44604fe/key.go:300 +0x1480
+github.com/charmbracelet/x/vt.(*SafeEmulator).SendKey(0x14022b1b7c0, {0x100e20dc8, 0x100ceb8a0})
+	/home/runner/go/pkg/mod/github.com/nmelo/x/vt@v0.0.0-20260813133007-4049f44604fe/safe_emulator.go:151 +0x70
+github.com/nmelo/initech/internal/tui.sendSubmitKey(0x100be7736?, {0x0?, 0x100be7748?})
+	/home/runner/work/initech/initech/internal/tui/pane.go:1045 +0x7c
+github.com/nmelo/initech/internal/tui.sendPaneTextLocked(0x14010e97008, {0x14017e04900, 0x46a}, 0x1)
+	/home/runner/work/initech/initech/internal/tui/ipc.go:490 +0xbb8
+github.com/nmelo/initech/internal/tui.(*TUI).injectText(0x140001bb808?, 0x14010e97008, {0x14017e04900, 0x46a}, 0x1)
+	/home/runner/work/initech/initech/internal/tui/ipc.go:512 +0x1a4
+github.com/nmelo/initech/internal/tui.(*TUI).resumePane(0x140001bb808, 0x140002e6808, {0x100bf090f, 0x10})
+	/home/runner/work/initech/initech/internal/tui/resource.go:756 +0xc04
+github.com/nmelo/initech/internal/tui.(*TUI).handleIPCSend(0x140001bb808, {0x100e27480, 0x1400e23ef50}, {{0x1401977e5e8, 0x4}, {0x1401977e5f0, 0xa}, {0x0, 0x0}, {0x14017e04900, ...}, ...})
+	/home/runner/work/initech/initech/internal/tui/ipc.go:257 +0x1e8
+github.com/nmelo/initech/internal/tui.(*TUI).HandleSend(0x1400e23ef50?, {0x100e27480?, 0x1400e23ef50?}, {{0x1401977e5e8, 0x4}, {0x1401977e5f0, 0xa}, {0x0, 0x0}, {0x14017e04900, ...}, ...})
+	/home/runner/work/initech/initech/internal/tui/ipc.go:137 +0x50
+github.com/nmelo/initech/internal/tui.dispatchIPC({0x100e23c28, 0x140001bb808}, {0x100e27480, 0x1400e23ef50}, {{0x1401977e5e8, 0x4}, {0x1401977e5f0, 0xa}, {0x0, 0x0}, ...}, ...)
+	/home/runner/work/initech/initech/internal/tui/ipc_dispatch.go:57 +0x258
+github.com/nmelo/initech/internal/tui.(*TUI).handleIPCConn(0x140001bb808, {0x100e27480, 0x1400e23ef50})
+	/home/runner/work/initech/initech/internal/tui/ipc.go:96 +0x2cc
+github.com/nmelo/initech/internal/tui.(*TUI).startIPC.func1.1()
+	/home/runner/work/initech/initech/internal/tui/ipc.go:66 +0x24
+github.com/nmelo/initech/internal/tui.(*TUI).safeGo.func1()
+	/home/runner/work/initech/initech/internal/tui/crash.go:34 +0x4c
+created by github.com/nmelo/initech/internal/tui.(*TUI).safeGo in goroutine 50
+	/home/runner/work/initech/initech/internal/tui/crash.go:18 +0x68
+
+goroutine 42614 [sync.Mutex.Lock, 1026 minutes]:
+internal/sync.runtime_SemacquireMutex(0x0?, 0xb7?, 0x97?)
+	/opt/hostedtoolcache/go/1.25.0/x64/src/runtime/sema.go:95 +0x28
+internal/sync.(*Mutex).lockSlow(0x14022b1b7c8)
+	/opt/hostedtoolcache/go/1.25.0/x64/src/internal/sync/mutex.go:149 +0x170
+internal/sync.(*Mutex).Lock(...)
+	/opt/hostedtoolcache/go/1.25.0/x64/src/internal/sync/mutex.go:70
+sync.(*Mutex).Lock(...)
+	/opt/hostedtoolcache/go/1.25.0/x64/src/sync/mutex.go:46
+sync.(*RWMutex).Lock(0x14022b1b7c8)
+	/opt/hostedtoolcache/go/1.25.0/x64/src/sync/rwmutex.go:150 +0x6c
+github.com/charmbracelet/x/vt.(*SafeEmulator).Write(0x14022b1b7c0, {0x1400e88a000, 0x97, 0x8000})
+	/home/runner/go/pkg/mod/github.com/nmelo/x/vt@v0.0.0-20260813133007-4049f44604fe/safe_emulator.go:28 +0x48
+github.com/nmelo/initech/internal/tui.(*Pane).readLoop(0x14010e97008)
+	/home/runner/work/initech/initech/internal/tui/pane.go:503 +0x1e0
+github.com/nmelo/initech/internal/tui.(*Pane).Start.func2()
+	/home/runner/work/initech/initech/internal/tui/pane.go:483 +0x4c
+github.com/nmelo/initech/internal/tui.(*TUI).safeGo.func1()
+	/home/runner/work/initech/initech/internal/tui/crash.go:34 +0x4c
+created by github.com/nmelo/initech/internal/tui.(*TUI).safeGo in goroutine 1
+	/home/runner/work/initech/initech/internal/tui/crash.go:18 +0x68
+
+=== RENDER WATCHDOG ===
+Time:      2026-09-12T09:02:36-04:00
+Version:   2.12.0
+Go:        go1.25.0
+Stale for: 15s
+Diagnosis: No render completed in 15s. Main loop is likely blocked.
+
+
+
+goroutine 1 [sync.RWMutex.RLock, 1855 minutes]:
+sync.runtime_SemacquireRWMutexR(0x0?, 0x0?, 0x14000506618?)
+	/opt/hostedtoolcache/go/1.25.0/x64/src/runtime/sema.go:100 +0x28
+sync.(*RWMutex).RLock(...)
+	/opt/hostedtoolcache/go/1.25.0/x64/src/sync/rwmutex.go:74
+github.com/charmbracelet/x/vt.(*SafeEmulator).Width(0x14019d3eb80)
+	/home/runner/go/pkg/mod/github.com/nmelo/x/vt@v0.0.0-20260813133007-4049f44604fe/safe_emulator.go:226 +0x74
+github.com/nmelo/initech/internal/tui.emulatorBottomText(0x14019d3eb80, 0x0)
+	/home/runner/work/initech/initech/internal/tui/pane.go:1050 +0x28
+github.com/nmelo/initech/internal/tui.paneShowsModalOnScreen(0x140150bf008?)
+	/home/runner/work/initech/initech/internal/tui/modal_detect.go:130 +0x2c
+github.com/nmelo/initech/internal/tui.(*TUI).modalMaintenance(0x140001b2a08, {0x6?, 0x104ac2d01?, 0x10511d8c0?})
+	/home/runner/work/initech/initech/internal/tui/modal_detect.go:436 +0xf4
+github.com/nmelo/initech/internal/tui.(*TUI).render(0x140001b2a08)
+	/home/runner/work/initech/initech/internal/tui/render.go:70 +0x25c
+github.com/nmelo/initech/internal/tui.Run({{0x140001b5508, 0x29, 0x29}, {0x140001c85d7, 0x5}, {0x1400002c660, 0x23}, 0x0, 0x0, {0x104bc2b20, ...}, ...})
+	/home/runner/work/initech/initech/internal/tui/tui.go:1296 +0x273c
+github.com/nmelo/initech/cmd.runTUI(0x1051166c0, {0x104abdec3?, 0x4?, 0x104abdde3?})
+	/home/runner/work/initech/initech/cmd/root.go:263 +0x778
+github.com/spf13/cobra.(*Command).execute(0x1051166c0, {0x1400001e080, 0x0, 0x0})
+	/home/runner/go/pkg/mod/github.com/spf13/cobra@v1.10.2/command.go:1015 +0x7d4
+github.com/spf13/cobra.(*Command).ExecuteC(0x1051166c0)
+	/home/runner/go/pkg/mod/github.com/spf13/cobra@v1.10.2/command.go:1148 +0x350
+github.com/spf13/cobra.(*Command).Execute(...)
+	/home/runner/go/pkg/mod/github.com/spf13/cobra@v1.10.2/command.go:1071
+github.com/nmelo/initech/cmd.init.func10()
+	/home/runner/work/initech/initech/cmd/root.go:34 +0x24
+github.com/nmelo/initech/cmd.Execute()
+	/home/runner/work/initech/initech/cmd/root.go:97 +0x28
+main.main()
+	/home/runner/work/initech/initech/main.go:7 +0x1c
+
+goroutine 5814 [select, 1855 minutes]:
+io.(*pipe).write(0x14020900600, {0x1401ac5e468, 0x1, 0x8})
+	/opt/hostedtoolcache/go/1.25.0/x64/src/io/pipe.go:86 +0x194
+io.(*PipeWriter).Write(0x105104fd0?, {0x1401ac5e468?, 0x1?, 0x1?})
+	/opt/hostedtoolcache/go/1.25.0/x64/src/io/pipe.go:161 +0x24
+io.WriteString({0x104cf6e80, 0x14020900600}, {0x104bc1580?, 0x1?})
+	/opt/hostedtoolcache/go/1.25.0/x64/src/io/io.go:318 +0xa8
+github.com/charmbracelet/x/vt.(*Emulator).SendKey(0x1402986c008, {0x104cf8dc8, 0x104bc3850})
+	/home/runner/go/pkg/mod/github.com/nmelo/x/vt@v0.0.0-20260813133007-4049f44604fe/key.go:300 +0x1480
+github.com/charmbracelet/x/vt.(*SafeEmulator).SendKey(0x14019d3eb80, {0x104cf8dc8, 0x104bc3850})
+	/home/runner/go/pkg/mod/github.com/nmelo/x/vt@v0.0.0-20260813133007-4049f44604fe/safe_emulator.go:151 +0x70
+github.com/nmelo/initech/internal/tui.sendPaneTextLocked(0x1401a434408, {0x1401eba8180, 0xbd}, 0x1)
+	/home/runner/work/initech/initech/internal/tui/ipc.go:384 +0x2c8
+github.com/nmelo/initech/internal/tui.(*Pane).SendText(0x1401a434408, {0x1401eba8180, 0xbd}, 0x1)
+	/home/runner/work/initech/initech/internal/tui/pane.go:1004 +0x294
+github.com/nmelo/initech/internal/tui.(*TUI).handleIPCSend(0x140001b2a08, {0x104cff480, 0x140125ac030}, {{0x1401763de90, 0x4}, {0x1401763de94, 0x7}, {0x0, 0x0}, {0x1401eba8180, ...}, ...})
+	/home/runner/work/initech/initech/internal/tui/ipc.go:286 +0x350
+github.com/nmelo/initech/internal/tui.(*TUI).HandleSend(0x140125ac030?, {0x104cff480?, 0x140125ac030?}, {{0x1401763de90, 0x4}, {0x1401763de94, 0x7}, {0x0, 0x0}, {0x1401eba8180, ...}, ...})
+	/home/runner/work/initech/initech/internal/tui/ipc.go:137 +0x50
+github.com/nmelo/initech/internal/tui.dispatchIPC({0x104cfbc28, 0x140001b2a08}, {0x104cff480, 0x140125ac030}, {{0x1401763de90, 0x4}, {0x1401763de94, 0x7}, {0x0, 0x0}, ...}, ...)
+	/home/runner/work/initech/initech/internal/tui/ipc_dispatch.go:57 +0x258
+github.com/nmelo/initech/internal/tui.(*TUI).handleIPCConn(0x140001b2a08, {0x104cff480, 0x140125ac030})
+	/home/runner/work/initech/initech/internal/tui/ipc.go:96 +0x2cc
+github.com/nmelo/initech/internal/tui.(*TUI).startIPC.func1.1()
+	/home/runner/work/initech/initech/internal/tui/ipc.go:66 +0x24
+github.com/nmelo/initech/internal/tui.(*TUI).safeGo.func1()
+	/home/runner/work/initech/initech/internal/tui/crash.go:34 +0x4c
+created by github.com/nmelo/initech/internal/tui.(*TUI).safeGo in goroutine 49
+	/home/runner/work/initech/initech/internal/tui/crash.go:18 +0x68
+
+goroutine 4092 [sync.Mutex.Lock, 1831 minutes]:
+internal/sync.runtime_SemacquireMutex(0x0?, 0x78?, 0x64?)
+	/opt/hostedtoolcache/go/1.25.0/x64/src/runtime/sema.go:95 +0x28
+internal/sync.(*Mutex).lockSlow(0x14019d3eb88)
+	/opt/hostedtoolcache/go/1.25.0/x64/src/internal/sync/mutex.go:149 +0x170
+internal/sync.(*Mutex).Lock(...)
+	/opt/hostedtoolcache/go/1.25.0/x64/src/internal/sync/mutex.go:70
+sync.(*Mutex).Lock(...)
+	/opt/hostedtoolcache/go/1.25.0/x64/src/sync/mutex.go:46
+sync.(*RWMutex).Lock(0x14019d3eb88)
+	/opt/hostedtoolcache/go/1.25.0/x64/src/sync/rwmutex.go:150 +0x6c
+github.com/charmbracelet/x/vt.(*SafeEmulator).Write(0x14019d3eb80, {0x1401be2c000, 0x64, 0x8000})
+	/home/runner/go/pkg/mod/github.com/nmelo/x/vt@v0.0.0-20260813133007-4049f44604fe/safe_emulator.go:28 +0x48
+github.com/nmelo/initech/internal/tui.(*Pane).readLoop(0x1401a434408)
+	/home/runner/work/initech/initech/internal/tui/pane.go:503 +0x1e0
+github.com/nmelo/initech/internal/tui.(*Pane).Start.func2()
+	/home/runner/work/initech/initech/internal/tui/pane.go:483 +0x4c
+github.com/nmelo/initech/internal/tui.(*TUI).safeGo.func1()
+	/home/runner/work/initech/initech/internal/tui/crash.go:34 +0x4c
+created by github.com/nmelo/initech/internal/tui.(*TUI).safeGo in goroutine 1
+	/home/runner/work/initech/initech/internal/tui/crash.go:18 +0x68

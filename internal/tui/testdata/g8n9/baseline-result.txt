@@ -1,0 +1,23 @@
+Production baseline: 694985fad0ab3cf7d97f6ecc06c6a52adce3c325
+Command: make test GOFLAGS="-run=TestG8N9 -v" (preserved probe installed)
+Exit: 2
+TUI package output excerpt follows; other packages had no selected tests.
+
+=== RUN   TestG8N9_AllHiddenViewerExplainsItsEmptyPlan
+    g8n9_contract_probe_test.go:20: 10 owned streams are hidden: viewer stays silently blank instead of explaining the empty plan
+--- FAIL: TestG8N9_AllHiddenViewerExplainsItsEmptyPlan (0.00s)
+=== RUN   TestG8N9_UnchangedEmptyStateDoesNotWarnEveryFrame
+    g8n9_contract_probe_test.go:39: unchanged hidden state emitted 30 identical defect warnings in 30 frames; want <= 1
+--- FAIL: TestG8N9_UnchangedEmptyStateDoesNotWarnEveryFrame (0.00s)
+=== RUN   TestG8N9_HiddenProjectionExplainsOwnedButUnplanned
+=== RUN   TestG8N9_HiddenProjectionExplainsOwnedButUnplanned/captured_stores
+    g8n9_investigation_test.go:94: streams=41 owned=eng1,eng2,eng3,eng4,eng5,pm,qa1,qa2,qa3,super hidden_owned=10 plan=0
+    g8n9_investigation_test.go:120: controls: unhide eng1 -> eng1; clear hidden -> eng1,eng2,eng3,eng4,eng5,pm,qa1,qa2,qa3,super
+=== RUN   TestG8N9_HiddenProjectionExplainsOwnedButUnplanned/logged_eight_ownership_control
+    g8n9_investigation_test.go:94: streams=41 owned=eng1,eng2,eng3,eng4,eng5,qa1,qa2,qa3 hidden_owned=8 plan=0
+    g8n9_investigation_test.go:120: controls: unhide eng1 -> eng1; clear hidden -> eng1,eng2,eng3,eng4,eng5,qa1,qa2,qa3
+--- PASS: TestG8N9_HiddenProjectionExplainsOwnedButUnplanned (0.00s)
+    --- PASS: TestG8N9_HiddenProjectionExplainsOwnedButUnplanned/captured_stores (0.00s)
+    --- PASS: TestG8N9_HiddenProjectionExplainsOwnedButUnplanned/logged_eight_ownership_control (0.00s)
+FAIL
+FAIL	github.com/nmelo/initech/internal/tui	0.413s
