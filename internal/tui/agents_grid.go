@@ -1,10 +1,17 @@
-// agents_grid.go implements the grouped 2-D grid agents modal (ini-2rc),
-// replacing the flat Alt+a list. Groups are function bands (core/eng/qa/...)
-// laid out top-to-bottom; within a band, agents lay out left-to-right,
-// wrapping at gridMaxPerRow. Design is spec-pinned (pm/specs/agents-grid-modal.md
-// at df005fe) and operator-approved verbatim against a running PoC
-// (~/Desktop/agent-grid-poc) -- layout constants, styling, and behavior below
-// port that PoC's algorithms, not a reinterpretation of them.
+// agents_grid.go implements the grouped 2-D grid agents modal (ini-2rc,
+// transposed by ini-w771), replacing the flat Alt+a list. A GROUP IS A COLUMN:
+// its agents stack top-to-bottom, one per row, under a "─ name ───" header
+// drawn at column width. A MONITOR IS A BAND: "══ monitor N ══" headers stack
+// top-to-bottom, each holding its groups side by side as columns; a band is as
+// tall as its tallest group. When a band has more than gridMaxPerRow groups the
+// rest start a second column-row inside the band, one blank line between.
+// Remote machines render as their own bands, one column each.
+//
+// Design is spec-pinned (pm/specs/agents-grid-modal.md, section "Orientation
+// reversal", workspace commit 7d7cb8b9 -- operator decision 2026-09-12 from an
+// approved ASCII mockup; the superseded horizontal layout is kept on record
+// there). Cell format, styles, search, keys and monitors-as-bands are the
+// shipped ones; only the orientation and the arrow semantics turned.
 package tui
 
 import (
@@ -30,7 +37,11 @@ var gridCellW = 17
 
 const gridCellWMin = 17
 
-func agentsGridCellWFor(panes []PaneView) int {
+// agentsGridCellWFor sizes the cell (and therefore the column) to the longest
+// display name AND the longest group label: a column header "─ name ─" wider
+// than its column would bleed into the neighbour column's header, so a long
+// group name widens every column the same way a long agent name does.
+func agentsGridCellWFor(panes []PaneView, groups []string) int {
 	w := gridCellWMin
 	for _, p := range panes {
 		// "%3d " (4) + "[x] " (4) + name + pin/protect markers (2) — which
@@ -40,14 +51,20 @@ func agentsGridCellWFor(panes []PaneView) int {
 			w = need
 		}
 	}
+	for _, g := range groups {
+		// "─ " (2) + label + " " (1) + one column gutter (1).
+		if need := len([]rune(g)) + 4; need > w {
+			w = need
+		}
+	}
 	return w
 }
 
 // Grid layout constants (spec section "Layout rules", operator-tuned).
 const (
-	gridMaxPerRow = 6 // Groups larger than this wrap into a multi-line band.
-	gridBandLead  = 1 // Blank line before each group label.
-	gridLabelGap  = 1 // Blank line between the label and its cell row(s).
+	gridMaxPerRow = 6 // Columns (groups) per column-row; more wrap into a second column-row inside the band.
+	gridBandLead  = 1 // Blank line before each column-row's header row.
+	gridLabelGap  = 1 // Blank line between the header row and its cell rows.
 	gridTierLead  = 1 // Blank line before each monitor-tier header (ini-9ka.5).
 )
 
@@ -226,15 +243,15 @@ func (t *TUI) agentsScopeSet() map[string]bool {
 	return nil
 }
 
-// agentsGridPerRow computes cells-per-row: the widest band's member count,
-// capped at gridMaxPerRow, further shrunk if the terminal itself is too
-// narrow to fit that many 17-column cells (spec: "content-sized modal,
-// never terminal-proportional" -- the cap comes from content first, the
+// agentsGridColumnsPerRow computes columns-per-row: the widest band's GROUP
+// count, capped at gridMaxPerRow, further shrunk if the terminal itself is
+// too narrow to fit that many cells (spec: "content-sized modal, never
+// terminal-proportional" -- the cap comes from content first, the
 // terminal-width shrink is a fallback for genuinely small terminals only).
-func agentsGridPerRow(members map[string][]int, groups []string, screenW int) int {
+func agentsGridColumnsPerRow(tiers []tierGroup, screenW int) int {
 	widest := 1
-	for _, label := range groups {
-		if n := len(members[label]); n > widest {
+	for _, tg := range tiers {
+		if n := len(tg.groups); n > widest {
 			widest = n
 		}
 	}
@@ -249,20 +266,24 @@ func agentsGridPerRow(members map[string][]int, groups []string, screenW int) in
 }
 
 // gridCell is one occupied cell in the computed grid: which pane it shows
-// and where it sits, both physically (x, y) and logically (line -- the
-// global cell-row index used by vertical navigation, label/blank rows
-// excluded so ↑↓ only ever lands on a cell row).
+// and where it sits, both physically (x, y) and logically. line is the global
+// cell-row index used by vertical navigation (header/blank rows excluded, so
+// ↑↓ only ever land on a cell row); col is the column within its column-row;
+// colRow is the global column-row index, so colRow±1 is the adjacent
+// column-row -- inside the same band when it wrapped, otherwise the next band.
 type gridCell struct {
 	paneIdx int // index into t.panes
 	group   string
 	x, y    int
 	line    int
+	col     int
+	colRow  int
 }
 
-// bandLabel is a rendered group rule: its label and the row it occupies.
-type bandLabel struct {
+// colHeader is a rendered group column header: its label and where it sits.
+type colHeader struct {
 	label string
-	y     int
+	x, y  int
 }
 
 // tierLabel is a rendered monitor-tier header: the window it names and the row
@@ -273,12 +294,21 @@ type tierLabel struct {
 	y        int
 }
 
-// lineInfo describes one navigable cell-line: which band owns it and whether
-// that band is empty. Indexed by the global line number vertical navigation
-// uses, so a line lookup is an index rather than a second walk.
-type lineInfo struct {
+// slotInfo is one column position on a cell line: which group owns it,
+// whether that group is empty (a header over a blank row, no gridCell), and
+// its x. Empty slots are how a grabbed agent lands in a freshly created group.
+type slotInfo struct {
 	label   string
 	isEmpty bool
+	x       int
+}
+
+// lineInfo describes one navigable cell line: the column-row it belongs to
+// and the slots (columns) that column-row has. Indexed by the global line
+// number, so a slot lookup is an index rather than a second walk.
+type lineInfo struct {
+	colRow int
+	slots  []slotInfo
 }
 
 // agentsGridGeometry is the SINGLE source of truth for modal geometry: every
@@ -296,7 +326,7 @@ type lineInfo struct {
 // merely absent -- it cannot be written.
 type agentsGridGeometry struct {
 	cells        []gridCell
-	bands        []bandLabel
+	headers      []colHeader
 	tiers        []tierLabel
 	lines        []lineInfo
 	contentLines int
@@ -311,19 +341,28 @@ type tierGroup struct {
 }
 
 // agentsGridWalk computes all modal geometry in one pass. innerX/firstY are
-// the modal's interior origin and perRow is from agentsGridPerRow; callers
-// that only need the height (box sizing) pass a zero origin and read
+// the modal's interior origin and perRow is from agentsGridColumnsPerRow;
+// callers that only need the height (box sizing) pass a zero origin and read
 // contentLines, so height and positions can never come from different
 // accounting.
 //
+// Per tier (monitor band): optional tier header, then the tier's groups in
+// column-rows of at most perRow. Each column-row is: blank lead, one header
+// row holding every column's "─ name ─" rule, blank gap, then as many cell
+// rows as its tallest group (minimum one, so an empty group still reserves a
+// landing slot). Cells are emitted in reading order -- column-row, column,
+// row -- which is the order search steps through matches.
+//
 // tiers carries the window grouping. When tiersActive is false it holds
-// exactly one entry whose groups are rendered with no tier header, which is
-// today's single-window layout byte-for-byte: no tier lead, no header row,
-// identical band rhythm.
+// exactly one entry whose groups are rendered with no tier header.
 func agentsGridWalk(members map[string][]int, tiers []tierGroup, tiersActive bool, innerX, firstY, perRow int) agentsGridGeometry {
 	var g agentsGridGeometry
+	if perRow < 1 {
+		perRow = 1
+	}
 	y := firstY + 1
 	line := 0
+	colRow := 0
 	startY := y
 
 	for ti, tg := range tiers {
@@ -332,36 +371,49 @@ func agentsGridWalk(members map[string][]int, tiers []tierGroup, tiersActive boo
 			g.tiers = append(g.tiers, tierLabel{windowID: tg.windowID, index: ti + 1, y: y})
 			y++
 		}
-		for _, label := range tg.groups {
+		for start := 0; start < len(tg.groups); start += perRow {
+			end := start + perRow
+			if end > len(tg.groups) {
+				end = len(tg.groups)
+			}
+			chunk := tg.groups[start:end]
+
 			y += gridBandLead
-			bandName := label
-			if h, ok := strings.CutPrefix(label, machineTierPrefix); ok {
-				bandName = h
-			}
-			g.bands = append(g.bands, bandLabel{label: bandName, y: y})
+			headerY := y
+			cellY := headerY + 1 + gridLabelGap
+			rows := 1
+			slots := make([]slotInfo, len(chunk))
+			for ci, label := range chunk {
+				x := innerX + ci*gridCellW
+				bandName := label
+				if h, ok := strings.CutPrefix(label, machineTierPrefix); ok {
+					bandName = h
+				}
+				g.headers = append(g.headers, colHeader{label: bandName, x: x, y: headerY})
 
-			agentIdxs := members[label]
-			for ai, paneIdx := range agentIdxs {
-				col := ai % perRow
-				row := ai / perRow
-				g.cells = append(g.cells, gridCell{
-					paneIdx: paneIdx,
-					group:   label,
-					x:       innerX + col*gridCellW,
-					y:       y + 1 + gridLabelGap + row,
-					line:    line + row,
-				})
-			}
-
-			rows := (len(agentIdxs) + perRow - 1) / perRow
-			if rows < 1 {
-				rows = 1
+				agentIdxs := members[label]
+				slots[ci] = slotInfo{label: label, isEmpty: len(agentIdxs) == 0, x: x}
+				for ai, paneIdx := range agentIdxs {
+					g.cells = append(g.cells, gridCell{
+						paneIdx: paneIdx,
+						group:   label,
+						x:       x,
+						y:       cellY + ai,
+						line:    line + ai,
+						col:     ci,
+						colRow:  colRow,
+					})
+				}
+				if len(agentIdxs) > rows {
+					rows = len(agentIdxs)
+				}
 			}
 			for r := 0; r < rows; r++ {
-				g.lines = append(g.lines, lineInfo{label: label, isEmpty: len(agentIdxs) == 0})
+				g.lines = append(g.lines, lineInfo{colRow: colRow, slots: slots})
 			}
 			y += 1 + gridLabelGap + rows
 			line += rows
+			colRow++
 		}
 	}
 
@@ -494,7 +546,7 @@ func (t *TUI) agentsAssignment() *WindowAssignment {
 // current frame. Every consumer -- render, navigation, cell lookup -- goes
 // through here, so they cannot disagree about where anything is (ini-9ka.5).
 func (t *TUI) agentsFrameGeometry(sw, sh int, searching bool) (agentsGridBox, agentsGridGeometry) {
-	gridCellW = agentsGridCellWFor(t.panes)
+	gridCellW = agentsGridCellWFor(t.panes, t.layoutState.Groups)
 	members := t.agentsGroupMembers()
 	tiersActive := t.agentsTiersActive()
 	tiers := t.agentsTierGroups(t.agentsAssignment(), tiersActive)
@@ -515,23 +567,33 @@ func agentsCellForPane(cells []gridCell, paneIdx int) *gridCell {
 	return nil
 }
 
-// agentsLineBand walks the same per-band line/row accounting
-// agentsGridLayoutCells uses (each band reserves ceil(n/perRow) lines,
-// minimum 1 even when n==0) and reports which band owns the given line and
-// whether that band is empty. A band with zero members still reserves
-// exactly one line -- visible in the grid as a label with a blank row
-// beneath it -- but agentsGridLayoutCells emits no gridCell for it, so
-// agentsMoveV's normal cell scan can never find a landing point there on
-// its own. This is the lookup that lets it recognize "this line is real,
-// it's just an empty band" instead of treating the line as unreachable.
-// It is now a pure INDEX into the walk's per-line output rather than a second
-// walk of its own -- the accounting lives in agentsGridWalk only (ini-9ka.5).
-func agentsLineBand(geo agentsGridGeometry, targetLine int) (label string, isEmpty bool, ok bool) {
-	if targetLine < 0 || targetLine >= len(geo.lines) {
-		return "", false, false
+// agentsSlotAt reports the column slot at (line, col): which group owns that
+// column position and whether it is empty. An empty group reserves exactly
+// one cell row under its header -- visible as a header with a blank row
+// beneath -- but agentsGridWalk emits no gridCell for it, so the normal cell
+// scans can never find a landing point there on their own. This is the
+// lookup that lets a grab recognise "this column is real, it is just empty".
+// A pure INDEX into the walk's per-line output, never a second walk.
+func agentsSlotAt(geo agentsGridGeometry, line, col int) (slotInfo, bool) {
+	if line < 0 || line >= len(geo.lines) {
+		return slotInfo{}, false
 	}
-	li := geo.lines[targetLine]
-	return li.label, li.isEmpty, true
+	slots := geo.lines[line].slots
+	if col < 0 || col >= len(slots) {
+		return slotInfo{}, false
+	}
+	return slots[col], true
+}
+
+// agentsCellAt returns the cell at a logical position, or nil.
+func agentsCellAt(cells []gridCell, colRow, col, line int) *gridCell {
+	for i := range cells {
+		c := &cells[i]
+		if c.colRow == colRow && c.col == col && c.line == line {
+			return c
+		}
+	}
+	return nil
 }
 
 // agentsFlatInsertionForEmptyBand returns the t.panes index at which a sole
@@ -668,48 +730,78 @@ func (t *TUI) agentsMatchNav(cells []gridCell, delta int) {
 
 // ---------- navigation + grab ----------
 
-// agentsMoveH moves the selection (or, while grabbed, the agent itself)
-// left/right within its band. Grabbing swaps the two panes' positions in
-// t.panes directly: since within-band order IS t.panes' relative order (no
-// separate per-band list), swapping adjacent same-band panes in t.panes is
-// exactly a same-band cell swap.
+// agentsMoveH moves the selection (or, while grabbed, the agent itself) to
+// the adjacent group COLUMN in the same column-row, landing on the nearest
+// row: the same row when the target column has it, otherwise that column's
+// last row. Stops at the column-row's ends. Grabbed, this is how membership
+// is edited: the agent is spliced into t.panes at the destination cell's own
+// position (taking over its slot, pushing it and everything after it in that
+// group one row down) and its GroupOf reassigned -- the shipped cross-band
+// grab mechanics, rotated a quarter turn. An empty column (a group fresh
+// from g) is a valid grabbed destination and a no-op for plain navigation.
 func (t *TUI) agentsMoveH(delta int) {
 	t.ensureGroups(true)
-	members := t.agentsGroupMembers()
 	sel := t.agents.selected
-	if sel < 0 || sel >= len(t.panes) {
+	if sel < 0 || sel >= len(t.panes) || t.screen == nil {
 		return
 	}
-	label := t.agentsBandLabelOf(t.panes[sel])
-	band := members[label]
-	pos := -1
-	for i, pi := range band {
-		if pi == sel {
-			pos = i
+	sw, sh := t.screen.Size()
+	_, geo := t.agentsFrameGeometry(sw, sh, t.agents.searching || t.agents.creatingGroup)
+	cells := geo.cells
+	cur := agentsCellForPane(cells, sel)
+	if cur == nil {
+		return
+	}
+	targetCol := cur.col + delta
+	slot, ok := agentsSlotAt(geo, cur.line, targetCol)
+	if !ok {
+		return // Column-row end: ←→ never wrap into the next column-row (↑↓ own that crossing).
+	}
+
+	// Nearest row: same line if the column has it, else its last row. Every
+	// column in a column-row starts on the same first line, so a non-empty
+	// column always has a cell at or above cur.line.
+	var best *gridCell
+	for i := range cells {
+		c := &cells[i]
+		if c.colRow != cur.colRow || c.col != targetCol {
+			continue
+		}
+		if c.line == cur.line {
+			best = c
 			break
 		}
+		if c.line < cur.line && (best == nil || c.line > best.line) {
+			best = c
+		}
 	}
-	if pos < 0 {
+	if best == nil {
+		if !slot.isEmpty || !t.agents.moving {
+			return
+		}
+		t.agentsGrabIntoEmptyColumn(sel, slot.label)
 		return
 	}
-	npos := pos + delta
-	if npos < 0 || npos >= len(band) {
+	if !t.agents.moving {
+		t.agents.selected = best.paneIdx
 		return
 	}
-	other := band[npos]
-	if t.agents.moving {
-		t.panes[sel], t.panes[other] = t.panes[other], t.panes[sel]
-		t.agentsPersistOrder()
-	}
-	t.agents.selected = other
+	t.agentsGrabSplice(sel, best.paneIdx, best.group, false)
 }
 
-// agentsMoveV moves to the nearest cell (by x-distance) on the adjacent
-// visual line, across band boundaries. While grabbed, crossing into a
-// different band's line reassigns the agent's group -- this is the spec's
-// "grab across bands edits group membership" mechanism: moveV both splices
-// t.panes (so the new band's relative order includes the agent at the right
-// spot) and reassigns GroupOf.
+// agentsMoveV moves within the selected agent's COLUMN: ↑↓ step to the
+// adjacent agent of the same group and stop at the column's ends within the
+// band -- a short column never hops sideways into a neighbour column's cells.
+// At a column's end, ↑↓ continue into the adjacent column-row (the band's own
+// wrapped row, or the next/previous monitor band) and land on the nearest
+// column by x: its top agent when descending, its bottom agent when ascending.
+//
+// Grabbed, ↑↓ swap the agent with its neighbour in the same group (order edit,
+// persisted through agentsPersistOrder). At the group's end the grabbed agent
+// is carried into the adjacent band's nearest column (membership edit) --
+// operator-accepted interpretation I3 on ini-w771: without it a single agent
+// could not reach a group on another monitor at all, since ←→ only see the
+// columns of one band and m moves whole groups.
 func (t *TUI) agentsMoveV(cells []gridCell, delta int) {
 	sel := t.agents.selected
 	if sel < 0 || sel >= len(t.panes) {
@@ -719,73 +811,106 @@ func (t *TUI) agentsMoveV(cells []gridCell, delta int) {
 	if cur == nil {
 		return
 	}
-	targetLine := cur.line + delta
+	if next := agentsCellAt(cells, cur.colRow, cur.col, cur.line+delta); next != nil {
+		if t.agents.moving {
+			// Within-group order IS t.panes' relative order (no separate
+			// per-group list), so swapping the two panes' positions is
+			// exactly a same-column cell swap.
+			t.panes[sel], t.panes[next.paneIdx] = t.panes[next.paneIdx], t.panes[sel]
+			t.agentsPersistOrder()
+		}
+		t.agents.selected = next.paneIdx
+		return
+	}
+	t.agentsContinueToColumnRow(cells, cur, delta)
+}
+
+// agentsContinueToColumnRow handles ↑↓ leaving a column's end: select (or,
+// grabbed, carry into) the nearest column of the adjacent column-row.
+func (t *TUI) agentsContinueToColumnRow(cells []gridCell, cur *gridCell, delta int) {
+	sel := t.agents.selected
+	targetColRow := cur.colRow + delta
 	var best *gridCell
 	bestDist := 1 << 30
 	for i := range cells {
 		c := &cells[i]
-		if c.line != targetLine {
+		if c.colRow != targetColRow {
 			continue
 		}
 		d := c.x - cur.x
 		if d < 0 {
 			d = -d
 		}
-		if d < bestDist {
+		// Nearest column; within it the edge row we enter from -- top when
+		// descending, bottom when ascending.
+		closer := d < bestDist
+		sameColBetterRow := d == bestDist && best != nil &&
+			((delta > 0 && c.line < best.line) || (delta < 0 && c.line > best.line))
+		if closer || sameColBetterRow {
 			bestDist = d
 			best = c
 		}
 	}
 	if best == nil {
-		// The normal scan finds nothing when targetLine belongs to an empty
-		// band: agentsGridLayoutCells reserves the line (so it renders, with
-		// a label and a blank row) but emits no gridCell for it, since there
-		// are no members to place. Plain navigation has nothing to select
-		// there, so it stays put. Grabbed, this is the only way to populate
-		// a freshly-created group at all -- without it, 'g' can create a
-		// band the shipped UI can never put an agent into.
+		// No cell in that column-row: it does not exist (band edge, no-op),
+		// or every column there is empty. Grabbed, an empty column is the
+		// only way to populate a group created on another monitor.
 		if !t.agents.moving || t.screen == nil {
 			return
 		}
-		// Recompute perRow via the same agentsGridBoxDims every other caller
-		// uses (render, agentsCurrentCells) -- not a second formula, the
-		// same one, so this can't drift from what built `cells` in the
-		// first place.
-		members := t.agentsGroupMembers()
 		sw, sh := t.screen.Size()
 		_, geo := t.agentsFrameGeometry(sw, sh, t.agents.searching || t.agents.creatingGroup)
-		label, isEmpty, ok := agentsLineBand(geo, targetLine)
-		if !ok || !isEmpty {
+		var slot *slotInfo
+		for li := range geo.lines {
+			if geo.lines[li].colRow != targetColRow {
+				continue
+			}
+			for si := range geo.lines[li].slots {
+				sl := &geo.lines[li].slots[si]
+				d := sl.x - cur.x
+				if d < 0 {
+					d = -d
+				}
+				if sl.isEmpty && d < bestDist {
+					bestDist = d
+					slot = sl
+				}
+			}
+			break
+		}
+		if slot == nil {
 			return
 		}
-		ag := t.panes[sel]
-		insertAt := t.agentsFlatInsertionForEmptyBand(members, label)
-		t.panes = append(t.panes[:sel], t.panes[sel+1:]...)
-		if insertAt > sel {
-			insertAt--
-		}
-		if insertAt > len(t.panes) {
-			insertAt = len(t.panes)
-		}
-		t.panes = append(t.panes[:insertAt], append([]PaneView{ag}, t.panes[insertAt:]...)...)
-		t.agents.selected = insertAt
-		t.setPaneGroup(ag, label)
+		t.agentsGrabIntoEmptyColumn(sel, slot.label)
 		return
 	}
 	if !t.agents.moving {
 		t.agents.selected = best.paneIdx
 		return
 	}
+	t.agentsGrabSplice(sel, best.paneIdx, best.group, delta < 0)
+}
 
-	// Grabbed: splice sel out of t.panes and back in at the destination
-	// cell's own (post-removal) position, matching the PoC's moveV exactly
-	// -- the moved agent takes over the destination's old slot, pushing the
-	// destination and everything after it in that band one position later.
+// agentsGrabSplice carries the grabbed pane at sel into the group of the cell
+// showing destPaneIdx: spliced out of t.panes and back in at the
+// destination's own (post-removal) position -- BEFORE it (taking over its
+// slot) or, when after is set, immediately AFTER it (entering a column from
+// below lands at its bottom). Then reassigns the group. Refused for remote
+// machine panes and for machine bands: a machine section is derived from
+// pane hosts each frame and is never a group an agent can be filed under
+// (setPaneGroup would refuse the write, leaving a reorder that renders
+// nowhere different -- better to not move at all).
+func (t *TUI) agentsGrabSplice(sel, destPaneIdx int, group string, after bool) {
 	ag := t.panes[sel]
-	destPaneIdx := best.paneIdx
-	t.panes = append(t.panes[:sel], t.panes[sel+1:]...)
+	if paneIsRemoteMachine(ag) || strings.HasPrefix(group, machineTierPrefix) {
+		return
+	}
 	insertAt := destPaneIdx
-	if destPaneIdx > sel {
+	if after {
+		insertAt++
+	}
+	t.panes = append(t.panes[:sel], t.panes[sel+1:]...)
+	if insertAt > sel {
 		insertAt--
 	}
 	if insertAt > len(t.panes) {
@@ -793,7 +918,32 @@ func (t *TUI) agentsMoveV(cells []gridCell, delta int) {
 	}
 	t.panes = append(t.panes[:insertAt], append([]PaneView{ag}, t.panes[insertAt:]...)...)
 	t.agents.selected = insertAt
-	t.setPaneGroup(ag, best.group)
+	t.setPaneGroup(ag, group)
+}
+
+// agentsGrabIntoEmptyColumn files the grabbed pane at sel as the sole member
+// of the empty group label, inserting it into t.panes where a band-filtered
+// read of the flat order will place it (agentsFlatInsertionForEmptyBand).
+// Grabbed, this is the only way to populate a freshly-created group at all --
+// without it, g can create a column the shipped UI can never put an agent
+// into (the ini-2rc qa1 regression, rotated).
+func (t *TUI) agentsGrabIntoEmptyColumn(sel int, label string) {
+	ag := t.panes[sel]
+	if paneIsRemoteMachine(ag) || strings.HasPrefix(label, machineTierPrefix) {
+		return
+	}
+	members := t.agentsGroupMembers()
+	insertAt := t.agentsFlatInsertionForEmptyBand(members, label)
+	t.panes = append(t.panes[:sel], t.panes[sel+1:]...)
+	if insertAt > sel {
+		insertAt--
+	}
+	if insertAt > len(t.panes) {
+		insertAt = len(t.panes)
+	}
+	t.panes = append(t.panes[:insertAt], append([]PaneView{ag}, t.panes[insertAt:]...)...)
+	t.agents.selected = insertAt
+	t.setPaneGroup(ag, label)
 }
 
 // setPaneGroup records a pane's band assignment and persists it. Remote-
@@ -1062,10 +1212,7 @@ type agentsGridBox struct {
 // the / search bar and the g group-creation prompt -- both take the same
 // one-row slot under the top border.
 func agentsGridBoxDims(members map[string][]int, groups []string, tiers []tierGroup, tiersActive bool, sw, sh int, searching bool) agentsGridBox {
-	perRow := agentsGridPerRow(members, groups, sw)
-	if perRow < 1 {
-		perRow = 1
-	}
+	perRow := agentsGridColumnsPerRow(tiers, sw)
 	innerW := perRow * gridCellW
 	boxW := innerW + 4
 	// Floor boxW at the footer text's own width plus margin: a fleet small
@@ -1251,17 +1398,25 @@ func (t *TUI) renderAgentsGrid() {
 			s.SetContent(x, tl.y, '═', nil, tierStyle)
 		}
 	}
-	for _, bl := range geo.bands {
-		lab := fmt.Sprintf("─ %s ", bl.label)
-		x := innerX
+	// Column headers: each "─ name ───" rule is drawn at ITS column's x and
+	// at column width (cell width minus a one-column gutter -- the same
+	// width as the selection bar), so a header never runs into its
+	// neighbour's.
+	for _, h := range geo.headers {
+		lab := fmt.Sprintf("─ %s ", h.label)
+		x := h.x
+		end := h.x + gridCellW - 1
+		if end > startX+boxW-2 {
+			end = startX + boxW - 2
+		}
 		for _, ch := range lab {
-			if x < startX+boxW-1 {
-				s.SetContent(x, bl.y, ch, nil, labelStyle)
+			if x < end {
+				s.SetContent(x, h.y, ch, nil, labelStyle)
 			}
 			x++
 		}
-		for ; x < startX+boxW-2; x++ {
-			s.SetContent(x, bl.y, '─', nil, labelStyle)
+		for ; x < end; x++ {
+			s.SetContent(x, h.y, '─', nil, labelStyle)
 		}
 	}
 

@@ -8,20 +8,20 @@ import (
 	"testing"
 )
 
-// Byte-for-byte single-window regression for ini-9ka.5.
+// Byte-for-byte single-window snapshot of the agents modal.
 //
-// The AC requires that a single-window fleet's modal is UNCHANGED by the
-// monitor-tier work -- proven against today's modal, not "looks right". The
-// golden file this compares against was captured from CURRENT MAIN
-// (8796e44, before any rendering change in this bead) by running:
+// HISTORY: captured for ini-9ka.5 from the pre-tier main (8796e44) to prove
+// the monitor-tier work left a single-window fleet's modal UNCHANGED.
+// REGENERATED DELIBERATELY for ini-w771 (2026-09-12), which transposed the
+// grid on the operator's decision: groups are now columns of agents laid side
+// by side, so the shipped horizontal golden could not survive by design. The
+// current file pins the TRANSPOSED shape -- column headers at column width,
+// band height = tallest group, the 17-column cell format unchanged -- and any
+// future failure of this test means the single-window modal changed again,
+// which is the finding. Regenerate only for a spec-backed change:
 //
 //	go test ./internal/tui/ -run TestAgentsGrid_SingleWindowGolden -update-golden
 //
-// Capturing it from a branch that already contained the change would only
-// prove the code agrees with itself, which is not what "unchanged" means.
-// Regenerating it is therefore a deliberate act that must be justified: if
-// this test fails, the single-window modal changed, and that is the finding.
-
 // agentsGoldenFleet is a fleet spanning all three seeded bands (core/eng/qa)
 // with more than one row in a band, so the golden covers band leads, label
 // rows, multi-row wrapping, and the footer -- not just a trivial one-band case.
@@ -62,8 +62,8 @@ func agentsGoldenPath() string {
 }
 
 // TestAgentsGrid_SingleWindowGolden is the byte-for-byte regression. With one
-// window configured, the rendered modal must equal the golden captured from
-// main before the tier work.
+// window configured, the rendered modal must equal the golden (see the file
+// comment for what it pins and when it was last regenerated).
 func TestAgentsGrid_SingleWindowGolden(t *testing.T) {
 	got := renderAgentsGridToString(t, agentsGoldenFleet...)
 
@@ -91,7 +91,7 @@ func TestAgentsGrid_SingleWindowGolden(t *testing.T) {
 	// is the property a cross-platform golden actually needs (ini-vfk).
 	want := strings.ReplaceAll(string(raw), "\r\n", "\n")
 	if got != want {
-		t.Errorf("single-window modal changed.\n--- want (golden, captured from main) ---\n%s\n--- got ---\n%s\n%s",
+		t.Errorf("single-window modal changed.\n--- want (golden) ---\n%s\n--- got ---\n%s\n%s",
 			want, got, firstDiffLine(want, got))
 	}
 }

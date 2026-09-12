@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -80,61 +79,6 @@ func TestAgentsModal_CloseRemovesEmptyGroup(t *testing.T) {
 		if g == "empty-band" {
 			t.Error("empty band should be removed when the modal closes")
 		}
-	}
-}
-
-// TestAgentsModal_NavigateVertical_AcrossBands uses a 3-family fleet (core,
-// eng, qa each seed to their own band) so Down/Up actually crosses bands --
-// a same-family fleet lands in one band and Down has nothing to move to.
-func TestAgentsModal_NavigateVertical_AcrossBands(t *testing.T) {
-	tui, s := newTestTUIWithScreen("super", "eng1", "qa1")
-	tui.openAgentsModal()
-	if got := tui.layoutState.GroupOf["super"]; got != "core" {
-		t.Fatalf("precondition: super should seed to core, got %q", got)
-	}
-
-	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyDown, 0, 0))
-	if got := tui.panes[tui.agents.selected].Name(); got != "eng1" {
-		t.Errorf("after Down from core: selected = %q, want eng1", got)
-	}
-	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyDown, 0, 0))
-	if got := tui.panes[tui.agents.selected].Name(); got != "qa1" {
-		t.Errorf("after Down x2: selected = %q, want qa1", got)
-	}
-	// Down past the last band is a no-op.
-	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyDown, 0, 0))
-	if got := tui.panes[tui.agents.selected].Name(); got != "qa1" {
-		t.Errorf("Down past last band: selected = %q, want qa1 (unchanged)", got)
-	}
-	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyUp, 0, 0))
-	if got := tui.panes[tui.agents.selected].Name(); got != "eng1" {
-		t.Errorf("after Up: selected = %q, want eng1", got)
-	}
-	_ = s
-}
-
-// TestAgentsModal_NavigateHorizontal_WithinBand: same-family agents share
-// one band and lay out left-to-right; Right/Left moves among them.
-func TestAgentsModal_NavigateHorizontal_WithinBand(t *testing.T) {
-	tui, _ := newTestTUIWithScreen("eng1", "eng2", "eng3")
-	tui.openAgentsModal()
-
-	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyRight, 0, 0))
-	if got := tui.panes[tui.agents.selected].Name(); got != "eng2" {
-		t.Errorf("after Right: selected = %q, want eng2", got)
-	}
-	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyRight, 0, 0))
-	if got := tui.panes[tui.agents.selected].Name(); got != "eng3" {
-		t.Errorf("after Right x2: selected = %q, want eng3", got)
-	}
-	// Right past the band's end is a no-op.
-	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyRight, 0, 0))
-	if got := tui.panes[tui.agents.selected].Name(); got != "eng3" {
-		t.Errorf("Right past band end: selected = %q, want eng3 (unchanged)", got)
-	}
-	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyLeft, 0, 0))
-	if got := tui.panes[tui.agents.selected].Name(); got != "eng2" {
-		t.Errorf("after Left: selected = %q, want eng2", got)
 	}
 }
 
@@ -382,9 +326,11 @@ func TestAgentsModal_InterceptsKeysWhenActive(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("super", "eng1")
 	tui.openAgentsModal()
 
-	tui.handleKey(tcell.NewEventKey(tcell.KeyDown, 0, 0))
+	// Right: super's core column sits beside eng's (ini-w771 transposed the
+	// grid); the point here is routing, not the direction.
+	tui.handleKey(tcell.NewEventKey(tcell.KeyRight, 0, 0))
 	if got := tui.panes[tui.agents.selected].Name(); got != "eng1" {
-		t.Errorf("handleKey should route Down to agents modal: selected = %q, want eng1", got)
+		t.Errorf("handleKey should route Right to agents modal: selected = %q, want eng1", got)
 	}
 }
 
@@ -439,50 +385,6 @@ func TestAgentsModal_EnterGrabDrop(t *testing.T) {
 	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyEnter, 0, 0))
 	if tui.agents.moving {
 		t.Error("Enter again should stop moving mode")
-	}
-}
-
-func TestAgentsModal_ReorderViaGrab_WithinBand(t *testing.T) {
-	tui, _ := newTestTUIWithScreen("eng1", "eng2", "eng3")
-	tui.openAgentsModal()
-
-	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyEnter, 0, 0))
-	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyRight, 0, 0))
-	if tui.panes[0].Name() != "eng2" || tui.panes[1].Name() != "eng1" {
-		t.Errorf("after move right: order = [%s, %s, %s], want [eng2, eng1, eng3]",
-			tui.panes[0].Name(), tui.panes[1].Name(), tui.panes[2].Name())
-	}
-	if tui.agents.selected != 1 {
-		t.Errorf("selected = %d, want 1", tui.agents.selected)
-	}
-
-	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyEnter, 0, 0))
-	if tui.agents.moving {
-		t.Error("should have dropped after Enter")
-	}
-	if len(tui.layoutState.Order) != 3 || tui.layoutState.Order[0] != "eng2" {
-		t.Errorf("persisted order = %v, want [eng2, eng1, eng3]", tui.layoutState.Order)
-	}
-}
-
-// TestAgentsModal_ReorderViaGrab_AcrossBands is ini-2rc's core new
-// mechanism: grabbing an agent and moving it into a different band's line
-// reassigns its group, not just its position.
-func TestAgentsModal_ReorderViaGrab_AcrossBands(t *testing.T) {
-	tui, _ := newTestTUIWithScreen("super", "eng1")
-	tui.openAgentsModal()
-	if got := tui.layoutState.GroupOf["super"]; got != "core" {
-		t.Fatalf("precondition: super should be in core, got %q", got)
-	}
-
-	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyEnter, 0, 0)) // grab super
-	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyDown, 0, 0))  // carry into eng's line
-
-	if got := tui.layoutState.GroupOf["super"]; got != "eng" {
-		t.Errorf("super's group after cross-band grab = %q, want eng", got)
-	}
-	if got := tui.panes[tui.agents.selected].Name(); got != "super" {
-		t.Errorf("selection should follow the grabbed agent, got %q", got)
 	}
 }
 
@@ -845,25 +747,5 @@ func TestAgentsModal_CreateGroupEscCancels(t *testing.T) {
 	}
 	if len(tui.layoutState.Groups) != len(before) {
 		t.Errorf("groups changed after Esc-canceled creation: %v -> %v", before, tui.layoutState.Groups)
-	}
-}
-
-// TestAgentsModal_NavigatesFullFleetWithoutScrolling confirms the
-// content-sized grid handles a full 23-agent fleet by growing the box, not
-// by scrolling (spec: "as big as it needs to be, no bigger" -- there is no
-// viewport concept in this design at all, unlike the flat modal it
-// replaces).
-func TestAgentsModal_NavigatesFullFleetWithoutScrolling(t *testing.T) {
-	names := make([]string, 23)
-	for i := range names {
-		names[i] = fmt.Sprintf("qa%d", i+1)
-	}
-	tui, _ := newTestTUIWithScreen(names...)
-	tui.openAgentsModal()
-	for i := 0; i < 22; i++ {
-		tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyRight, 0, 0))
-	}
-	if got := tui.panes[tui.agents.selected].Name(); got != "qa23" {
-		t.Errorf("after 22 Rights across a 23-member single band: selected = %q, want qa23", got)
 	}
 }

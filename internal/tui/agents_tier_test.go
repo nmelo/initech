@@ -133,11 +133,11 @@ func TestAgentsTiers_RenderedPositionsMatchComputedGeometry(t *testing.T) {
 			t.Errorf("tier row y=%d reads %q, want a monitor header at the computed position", tl.y, got)
 		}
 	}
-	// Every computed band label row must carry that band's rule.
-	for _, bl := range geo.bands {
-		want := "─ " + bl.label + " "
-		if got := tierRowText(t, tui, bl.y, box.innerX, box.boxW); !strings.HasPrefix(got, want) {
-			t.Errorf("band row y=%d reads %q, want prefix %q", bl.y, got, want)
+	// Every computed column header must carry that group's rule at ITS x.
+	for _, h := range geo.headers {
+		want := "─ " + h.label + " "
+		if got := tierRowText(t, tui, h.y, h.x, gridCellW); !strings.HasPrefix(got, want) {
+			t.Errorf("header at (%d,%d) reads %q, want prefix %q", h.x, h.y, got, want)
 		}
 	}
 	// Every computed cell must carry its agent's number at its computed x/y.
@@ -184,9 +184,9 @@ func TestAgentsGridWalk_HeightMatchesPositions(t *testing.T) {
 			lowest = c.y
 		}
 	}
-	for _, bl := range geo.bands {
-		if bl.y > lowest {
-			lowest = bl.y
+	for _, h := range geo.headers {
+		if h.y > lowest {
+			lowest = h.y
 		}
 	}
 	for _, tl := range geo.tiers {

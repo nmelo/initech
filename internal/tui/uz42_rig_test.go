@@ -58,18 +58,21 @@ func TestUZ42Rig_AllHiddenExplanationAndRecoveryRoundTrip(t *testing.T) {
 	}, 20*time.Second); !ok {
 		t.Fatalf("modal never opened\n%s", nineISXScreen(w1emu))
 	}
-	down, right, space := []byte("\x1b[B"), []byte("\x1b[C"), []byte(" ")
+	// Transposed grid (ini-w771): groups are COLUMNS. From super, Down walks
+	// core (super -> pm); at core's end the next Down continues into monitor
+	// 2's nearest column, eng, landing on eng1; further Downs walk eng.
+	down, space := []byte("\x1b[B"), []byte(" ")
 	w1pty.Write(down)
 	time.Sleep(200 * time.Millisecond)
 	w1pty.Write(down)
 	time.Sleep(200 * time.Millisecond)
 	w1pty.Write(space) // hide eng1
 	time.Sleep(300 * time.Millisecond)
-	w1pty.Write(right)
+	w1pty.Write(down)
 	time.Sleep(200 * time.Millisecond)
 	w1pty.Write(space) // hide eng2
 	time.Sleep(300 * time.Millisecond)
-	w1pty.Write(right)
+	w1pty.Write(down)
 	time.Sleep(200 * time.Millisecond)
 	w1pty.Write(space) // hide the nonce agent
 	time.Sleep(300 * time.Millisecond)
@@ -110,12 +113,12 @@ func TestUZ42Rig_AllHiddenExplanationAndRecoveryRoundTrip(t *testing.T) {
 	}
 	t.Log("window 2's own dot-click unhid eng1: pane renders, all-hidden hint cleared")
 
-	// RE-HIDE FROM WINDOW 1: cursor is on the nonce cell (two Rights from
-	// eng1); move back and toggle.
-	left := []byte("\x1b[D")
-	w1pty.Write(left)
+	// RE-HIDE FROM WINDOW 1: cursor is on the nonce cell (two Downs from
+	// eng1 in the eng column); move back up and toggle.
+	up := []byte("\x1b[A")
+	w1pty.Write(up)
 	time.Sleep(200 * time.Millisecond)
-	w1pty.Write(left)
+	w1pty.Write(up)
 	time.Sleep(200 * time.Millisecond)
 	w1pty.Write(space) // re-hide eng1
 	time.Sleep(300 * time.Millisecond)

@@ -91,7 +91,7 @@ func TestAgentsMatchCells_ReturnsGridOrderIndices(t *testing.T) {
 	sw, _ := s.Size()
 
 	members := tui.agentsGroupMembers()
-	perRow := agentsGridPerRow(members, tui.layoutState.Groups, sw)
+	perRow := agentsGridColumnsPerRow(untieredTiers(tui.layoutState.Groups), sw)
 	cells := agentsGridLayoutCells(members, tui.layoutState.Groups, 4, 0, perRow)
 
 	mc := tui.agentsMatchCells(cells)
@@ -113,7 +113,7 @@ func TestAgentsEnsureMatchSelected_SnapsToFirstMatch(t *testing.T) {
 	sw, _ := s.Size()
 
 	members := tui.agentsGroupMembers()
-	perRow := agentsGridPerRow(members, tui.layoutState.Groups, sw)
+	perRow := agentsGridColumnsPerRow(untieredTiers(tui.layoutState.Groups), sw)
 	cells := agentsGridLayoutCells(members, tui.layoutState.Groups, 4, 0, perRow)
 
 	tui.agents.searching = true

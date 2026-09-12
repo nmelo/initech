@@ -76,6 +76,16 @@ func (t *TUI) openAgentsModal() {
 	t.agents.creatingGroup = false
 	t.agents.groupNameBuf = nil
 	t.ensureGroups(true)
+	// Then onto the TOP-LEFT cell in reading order (ini-w771): with monitors,
+	// t.panes[0] can be an agent whose group renders on monitor 2 while the
+	// first cell on screen is on monitor 1, and the first arrow press would
+	// start from a place the operator never saw as "first". Geometry needs
+	// the groups ensured above; headless callers keep the scope anchor.
+	if t.screen != nil {
+		if cells := t.agentsCurrentCells(); len(cells) > 0 {
+			t.agents.selected = cells[0].paneIdx
+		}
+	}
 }
 
 // closeAgentsModal exits the modal, pruning any band left empty by a grab
