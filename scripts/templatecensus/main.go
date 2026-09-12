@@ -42,23 +42,16 @@
 // reading the whole surface costs zero exemptions and removes the convention
 // entirely. Scan everything; resolve everything.
 //
-// # THE SCOPE ASSUMPTION, STATED SO IT IS INHERITED
+// # SCAFFOLD OUTPUT
 //
-// This census scans internal/roles and nothing else, which rests on an
-// assumption worth meeting here rather than discovering later: EVERY
-// agent-facing file initech writes is rendered from a roles.* constant.
-// internal/scaffold is the only writer — it renders docs/{prd,spec,
-// systemdesign,roadmap}.md and each role's CLAUDE.md, and every template it
-// passes to roles.Render is a roles.* symbol (asserted by
-// TestScaffold_RendersOnlyRolesTemplates in this package's tests, so the
-// assumption fails loudly instead of silently widening).
-//
-// If you are adding agent-facing text somewhere else — a new package, a
-// generated doc, a prompt embedded in cmd/ — that assumption stops holding
-// and this census goes blind to your text. Add the directory to the scan,
-// or say in that test why the text is not agent-facing. A census whose scope
-// nobody restates is a census that quietly stops covering what it claims.
-// (shipper's review note on ini-j0er.)
+// The source census is supplemented by running the scaffold for roles.Catalog
+// and walking every file it writes. This catches instructions from any writer,
+// including static text that never passes through roles.Render (ini-zfbb).
+// Named template constants must also appear in the generated output; otherwise
+// a smaller fixture could silently omit the very instructions being checked.
+// This replaces the former static scaffold guard, whose source-shape selectors
+// repeatedly missed new writers. The output check runs in the CLI census, so
+// make check-fast enforces it as well as make test.
 //
 // Deliberately NOT scanned: cobra help strings in cmd/. They mention initech
 // verbs constantly and are shown to a HUMAN at a terminal, not rendered into
@@ -132,6 +125,10 @@ func run(exemptionsFile string, verbose bool) error {
 	}
 	if len(mentions) == 0 {
 		return fmt.Errorf("found no `initech <verb>` mentions in %s at all — the scanner is broken, not the templates clean", scanDir)
+	}
+
+	if err := checkScaffold(root, verbose); err != nil {
+		return err
 	}
 
 	registered := map[string]bool{}
