@@ -242,6 +242,15 @@ type TUI struct {
 	// Set from Config.PaneConfigBuilder. Nil disables the add command.
 	paneConfigBuilder func(name string) (PaneConfig, error)
 
+	// resumeLocks serializes resumePane per pane IDENTITY (name), not per
+	// object (ini-x23q): a resume replaces the *Pane in t.panes, so callers
+	// holding the old pointer -- the IPC lookup, the window pump, a SendText
+	// callback -- would otherwise each serialize on a different object and
+	// race the swap. Lazily populated, never pruned: one small mutex per
+	// agent name for the life of the TUI.
+	resumeLocksMu sync.Mutex
+	resumeLocks   map[string]*sync.Mutex
+
 	// onWakeComplete, if set, fires after an async wake dispatched via
 	// wakePanesInBackground or wakeSuspendedPaneFromKeystroke finishes ALL
 	// its work, including the t.panes mutation inside resumePane (ini-4cfl).

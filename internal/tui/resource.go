@@ -15,6 +15,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -203,7 +204,7 @@ func startupSpawnPlan(names []string, suspended map[string]bool, liveBatch int) 
 // staggerInterval. Every boot goes through resumePane, the same path as all
 // other wakes — so an agent that receives a message mid-stagger wakes
 // immediately via resume-on-message, and the walker's later attempt is a
-// no-op (resumePane rechecks IsSuspended under resumeMu).
+// no-op (resumePane rechecks IsSuspended under the per-name resume lock).
 func (t *TUI) staggerStartPanes(pending []*Pane) {
 	for i, p := range pending {
 		if i%staggerBatch == 0 {
@@ -455,9 +456,15 @@ type QueuedMessage struct {
 // when SendText queues for a suspended pane, the TUI resumes it ON A
 // GOROUTINE -- resumePane blocks for the full respawn (waitForInit up to
 // 30s), and SendText is reachable from the main loop, where an inline resume
-// would freeze the display for that long. resumePane's resumeMu + re-check
-// make concurrent triggers safe; the queue already holds the message, so an
-// async resume delivers it exactly as the synchronous IPC path does.
+// would freeze the display for that long. resumePane serializes triggers on
+// the pane NAME and forwards a stale trigger's mail to the live pane
+// (ini-x23q); the queue already holds the message, so an async resume
+// delivers it exactly as the synchronous IPC path does.
+//
+// A failure here is a real one -- the spawn failed or the process died --
+// and the mail is already re-queued for the next trigger. It is surfaced to
+// the operator as a notification, not only a log line: a message that
+// silently stays queued is the loss this path exists to prevent (ini-x23q).
 //
 // Called from every pane-adoption site. If a future adoption site forgets,
 // the message still QUEUES (the primitive guards unconditionally) and is
@@ -471,8 +478,16 @@ func (t *TUI) wireSuspendResume(p *Pane) {
 		}
 		run(func() {
 			if err := t.resumePane(pane, "queued message"); err != nil {
+				queued := pane.QueuedMessageCount()
 				LogError("resource", "resume-on-message failed; messages remain queued",
-					"agent", pane.name, "err", err)
+					"agent", pane.name, "queued", queued, "err", err)
+				EmitEvent(t.agentEvents, AgentEvent{
+					Type: EventAgentStalled,
+					Pane: pane.name,
+					Detail: fmt.Sprintf("Resume failed: %v. %d message(s) still queued; the next message retries.",
+						err, queued),
+					Time: time.Now(),
+				})
 			}
 		})
 	})
@@ -612,25 +627,84 @@ const resumeTimeout = 30 * time.Second
 // resumed pane. Gives Claude time to process each message.
 const queueDrainInterval = 500 * time.Millisecond
 
+// resumeLockFor returns the per-name resume lock for agentName (ini-x23q).
+func (t *TUI) resumeLockFor(agentName string) *sync.Mutex {
+	t.resumeLocksMu.Lock()
+	defer t.resumeLocksMu.Unlock()
+	if t.resumeLocks == nil {
+		t.resumeLocks = make(map[string]*sync.Mutex)
+	}
+	mu, ok := t.resumeLocks[agentName]
+	if !ok {
+		mu = &sync.Mutex{}
+		t.resumeLocks[agentName] = mu
+	}
+	return mu
+}
+
 // resumePane respawns a suspended pane and drains its message queue.
-// Called from the IPC send handler when a message targets a suspended agent.
-// Blocks until the agent is initialized and all queued messages are delivered,
-// or returns an error if the respawn fails. On failure the message queue is
+// Called from the IPC send handler when a message targets a suspended agent,
+// and from wireSuspendResume's callback when SendText queues on one. Blocks
+// until the agent is initialized and all queued messages are delivered, or
+// returns an error if the respawn fails. On failure the message queue is
 // preserved for the next attempt.
 //
-// Concurrent calls for the same pane are serialized by pane.resumeMu: the
-// first caller performs the resume, subsequent callers re-check the suspended
-// state and find the pane already alive.
+// ONE RESUME PER PANE NAME, AND THE LOSER FORWARDS (ini-x23q). Concurrent
+// triggers are serialized on the pane's IDENTITY (t.resumeLockFor), not on
+// the object: a resume REPLACES the *Pane in t.panes, so a second trigger
+// that arrived holding the old pointer -- the IPC lookup, the window pump,
+// a SendText callback fired mid-swap -- used to re-check the OLD object's
+// suspended flag (never cleared, correctly: its PTY is closed), spawn a
+// second process, fail "pane not found in list" and strand whatever it had
+// queued on the dead object (qa3, 2026-09-12, shipper). Now, under the name
+// lock, the trigger first resolves the CURRENT object for the name: if it is
+// a different object, a winner already resumed -- the trigger hands its
+// stale queue to the live pane and returns; if it is this object and alive,
+// nothing to do; only "this object, still suspended" performs the resume.
 func (t *TUI) resumePane(pane *Pane, senderName string) error {
-	pane.resumeMu.Lock()
-	defer pane.resumeMu.Unlock()
+	agentName := pane.name
+	lock := t.resumeLockFor(agentName)
+	lock.Lock()
+	defer lock.Unlock()
 
-	// Re-check: another concurrent sender may have already resumed this pane.
+	var current *Pane
+	if !t.runOnMain(func() {
+		for _, pv := range t.panes {
+			if lp, ok := pv.(*Pane); ok && lp.name == agentName {
+				current = lp
+				break
+			}
+		}
+	}) {
+		return fmt.Errorf("resume %s: TUI shutting down", agentName)
+	}
+	if current == nil {
+		// Removed from the fleet. The queue on the object is untouched.
+		return fmt.Errorf("resume %s: pane not found in list", agentName)
+	}
+	if current != pane {
+		// Stale pointer: the swap already happened. Hand over rather than
+		// fail -- the mail is the point of the resume.
+		msgs := pane.DrainQueue()
+		LogInfo("resource", "resume trigger held a replaced pane; handing its mail to the live pane",
+			"agent", agentName, "trigger", senderName, "queued_msgs", len(msgs))
+		for i, m := range msgs {
+			// SendText delivers if the live pane is up, or queues and
+			// re-triggers (on its own goroutine, which waits on this same
+			// name lock) if the winner's process died and it is parked again.
+			current.SendText(m.Text, m.Enter)
+			if i < len(msgs)-1 {
+				time.Sleep(queueDrainInterval)
+			}
+		}
+		return nil
+	}
+	// Re-check: another trigger may have already resumed this very object
+	// -- or it was never parked.
 	if !pane.IsSuspended() {
 		return nil
 	}
 
-	agentName := pane.name
 	LogInfo("resource", "resuming agent", "agent", agentName, "trigger", senderName)
 
 	// Get old dimensions with fallback for dead panes.
@@ -653,6 +727,13 @@ func (t *TUI) resumePane(pane *Pane, senderName string) error {
 			)
 			cfg = fresh
 		}
+	}
+	// The successor must carry the SAME identity, or the per-name
+	// serialization above cannot find it: a config with no Name (tests, an
+	// ad-hoc caller) would otherwise swap in a nameless pane and every later
+	// trigger for agentName would report it removed.
+	if cfg.Name == "" {
+		cfg.Name = agentName
 	}
 	// Create new pane process off-main (may fork/exec).
 	LogInfo("resource", "resume spawn size", "agent", agentName,
@@ -706,6 +787,9 @@ func (t *TUI) resumePane(pane *Pane, senderName string) error {
 	})
 
 	if !replaced {
+		// Removed from the fleet between the resolve above and the swap.
+		// The queue was only drained inside the found branch, so the mail
+		// is still on the object.
 		np.Close()
 		return fmt.Errorf("resume %s: pane not found in list", pane.name)
 	}

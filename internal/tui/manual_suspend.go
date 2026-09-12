@@ -7,7 +7,7 @@ package tui
 // Both are thin: parking goes through parkPaneSuspended and waking through
 // resumePane, so a manually suspended agent is the same state an auto-suspend
 // produces and a commanded wake inherits ini-g7fl's resume-failure semantics
-// (queue preserved on failure, resumeMu serialization, concurrent-wake
+// (queue preserved on failure, per-name resume-lock serialization, concurrent-wake
 // re-check). The spec's "indistinguishable from auto" and "wake failure keeps
 // the queue" are properties of reusing those primitives rather than behaviors
 // re-implemented here.

@@ -887,11 +887,18 @@ func TestResumePane_ConcurrentResume(t *testing.T) {
 		}()
 	}
 
-	// Both should succeed (first resumes, second finds it already not suspended).
+	// Both must succeed: the first resumes, the second resolves the live
+	// successor by NAME and finds nothing to do. This used to t.Skipf on
+	// error "expected in some test envs" -- and the error it skipped over
+	// was "pane not found in list", the ini-x23q race itself, hidden behind
+	// a skip for the life of the bug. A failure here is a failure.
 	for i := 0; i < 2; i++ {
 		if err := <-errs; err != nil {
-			t.Skipf("resumePane failed (expected in some test envs): %v", err)
+			t.Fatalf("concurrent resumePane failed: %v", err)
 		}
+	}
+	if tui.panes[0].(*Pane) == p || !tui.panes[0].(*Pane).IsAlive() {
+		t.Fatal("no live successor in t.panes after two concurrent resumes")
 	}
 }
 
