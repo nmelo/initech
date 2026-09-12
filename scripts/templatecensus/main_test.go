@@ -1,6 +1,8 @@
 package main
 
 import (
+	"fmt"
+	"go/ast"
 	"go/parser"
 	"go/token"
 	"os"
@@ -231,5 +233,74 @@ func TestExemptionsFile_PostExemptionNamesItsRemovalTrigger(t *testing.T) {
 		if !strings.Contains(text, want) {
 			t.Errorf("the post exemption does not mention %q", want)
 		}
+	}
+}
+
+// ── the scope assumption ────────────────────────────────────────────
+
+// TestScaffold_RendersOnlyRolesTemplates makes this census's scope
+// assumption fail loudly instead of widening in silence: the census scans
+// internal/roles only, which is sound exactly while every agent-facing file
+// initech writes comes from a roles.* constant.
+//
+// internal/scaffold is the writer, so this parses it and asserts every
+// template it hands to roles.Render (and every template TemplateForRole
+// returns) is a roles.* selector rather than a locally-defined string. Add a
+// local template to the scaffold — a prompt, a generated doc, a new file for
+// agents — and this reds, pointing at the census that would otherwise have
+// gone blind to it. (shipper's review note on ini-j0er: the next person needs
+// to meet the assumption AT THE CODE, not when a taught verb ships
+// unchecked.)
+func TestScaffold_RendersOnlyRolesTemplates(t *testing.T) {
+	root, err := repoRoot()
+	if err != nil {
+		t.Skip("module root unavailable")
+	}
+	path := filepath.Join(root, "internal/scaffold/scaffold.go")
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, path, nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Every string-valued expression that names a template: the elements of
+	// the docTemplates literal and TemplateForRole's returns. Both are
+	// selector expressions today (roles.PRDTemplate, roles.SuperTemplate...).
+	var offenders []string
+	checkTemplateExpr := func(e ast.Expr, what string) {
+		sel, ok := e.(*ast.SelectorExpr)
+		if ok {
+			if pkg, ok := sel.X.(*ast.Ident); ok && pkg.Name == "roles" {
+				return
+			}
+		}
+		// Anything that is not roles.Something and looks like template text.
+		if lit, ok := e.(*ast.BasicLit); ok && lit.Kind == token.STRING && len(lit.Value) > 40 {
+			offenders = append(offenders, fmt.Sprintf("%s:%d %s is a locally-defined template string", path, fset.Position(e.Pos()).Line, what))
+		}
+	}
+
+	ast.Inspect(f, func(n ast.Node) bool {
+		switch x := n.(type) {
+		case *ast.CompositeLit:
+			// The docTemplates table: {filename, template} pairs.
+			for _, elt := range x.Elts {
+				if cl, ok := elt.(*ast.CompositeLit); ok && len(cl.Elts) == 2 {
+					checkTemplateExpr(cl.Elts[1], "a docTemplates entry")
+				}
+			}
+		case *ast.ReturnStmt:
+			for _, r := range x.Results {
+				checkTemplateExpr(r, "a TemplateForRole return")
+			}
+		}
+		return true
+	})
+
+	if len(offenders) > 0 {
+		t.Errorf("the scaffold renders agent-facing text that does NOT come from internal/roles:\n  %s\n\n"+
+			"The template-verb census scans internal/roles only, so text sourced elsewhere is never checked for\n"+
+			"unregistered verbs. Either move it into internal/roles, or widen scanDir in this package and say so\n"+
+			"in the package comment.", strings.Join(offenders, "\n  "))
 	}
 }

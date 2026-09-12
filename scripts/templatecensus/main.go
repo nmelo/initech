@@ -42,6 +42,29 @@
 // reading the whole surface costs zero exemptions and removes the convention
 // entirely. Scan everything; resolve everything.
 //
+// # THE SCOPE ASSUMPTION, STATED SO IT IS INHERITED
+//
+// This census scans internal/roles and nothing else, which rests on an
+// assumption worth meeting here rather than discovering later: EVERY
+// agent-facing file initech writes is rendered from a roles.* constant.
+// internal/scaffold is the only writer — it renders docs/{prd,spec,
+// systemdesign,roadmap}.md and each role's CLAUDE.md, and every template it
+// passes to roles.Render is a roles.* symbol (asserted by
+// TestScaffold_RendersOnlyRolesTemplates in this package's tests, so the
+// assumption fails loudly instead of silently widening).
+//
+// If you are adding agent-facing text somewhere else — a new package, a
+// generated doc, a prompt embedded in cmd/ — that assumption stops holding
+// and this census goes blind to your text. Add the directory to the scan,
+// or say in that test why the text is not agent-facing. A census whose scope
+// nobody restates is a census that quietly stops covering what it claims.
+// (shipper's review note on ini-j0er.)
+//
+// Deliberately NOT scanned: cobra help strings in cmd/. They mention initech
+// verbs constantly and are shown to a HUMAN at a terminal, not rendered into
+// an agent's instructions, so an unregistered verb there is a typo in help
+// text rather than an agent told to run a command that errors.
+//
 // # WHERE THE REGISTERED SET COMES FROM
 //
 // cmd.RegisteredVerbs(), which walks the cobra command tree — not a grep for
