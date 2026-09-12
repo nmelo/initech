@@ -80,8 +80,8 @@ func TestUZ42Rig_AllHiddenExplanationAndRecoveryRoundTrip(t *testing.T) {
 	// so it never lists eng agents at all -- the modal itself, which is
 	// whole-fleet, is the surface that shows their checkboxes.
 	if _, ok := nineISXAwait(w1emu, func(s string) bool {
-		return strings.Contains(s, "4 [ ] eng1") && strings.Contains(s, "5 [ ] eng2") &&
-			strings.Contains(s, "6 [ ] engnonce")
+		return strings.Contains(s, "4 [h] eng1") && strings.Contains(s, "5 [h] eng2") &&
+			strings.Contains(s, "6 [h] engnonce")
 	}, 10*time.Second); !ok {
 		t.Fatalf("window 1's modal never showed all three eng agents unchecked (hidden)\n%s",
 			nineISXScreen(w1emu))
@@ -123,7 +123,7 @@ func TestUZ42Rig_AllHiddenExplanationAndRecoveryRoundTrip(t *testing.T) {
 	w1pty.Write(space) // re-hide eng1
 	time.Sleep(300 * time.Millisecond)
 	if _, ok := nineISXAwait(w1emu, func(s string) bool {
-		return strings.Contains(s, "4 [ ] eng1")
+		return strings.Contains(s, "4 [h] eng1")
 	}, 10*time.Second); !ok {
 		t.Fatalf("window 1's modal never confirmed eng1 re-hidden\n%s", nineISXScreen(w1emu))
 	}
