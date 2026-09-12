@@ -548,17 +548,28 @@ func (ib *Inbox) openCountLocked(agent string) int {
 	return n
 }
 
-// teachLocked returns the teaching line for whichever condition this post
+// teachLocked returns the teaching lines for whichever conditions this post
 // triggered, at most once per condition per run.
 //
-// ONE LINE, NOT TWO. If a post both repeats a dismissal and crosses the
-// threshold, the re-post line wins: it is the more specific correction, and
-// stacking two teaching lines on one command is the nagging the spec's
-// principle exists to avoid.
+// EVERY FIRED CONDITION GETS ITS LINE. The first version of this returned only
+// one -- the re-post line "winning" over a simultaneous threshold crossing --
+// and the reasoning was wrong in a way worth recording, because it reads
+// plausible: the spec's anti-nagging principle is about repeating THE SAME
+// rule, not about two DIFFERENT rules each firing once. AC 15 says each
+// detected condition produces its line.
+//
+// The consequence was worse than a missing line (found by eng3 integrating B,
+// measured before fixing): the suppressed condition was never latched, and
+// because the threshold teaches on the CROSSING, the crossing had already
+// passed by the next post. The agent was never told it crossed -- not on that
+// post, not later, not in any run. A dropped teaching line is not a delayed
+// one.
 func (ib *Inbox) teachLocked(it InboxItem, runKey string) string {
+	var lines []string
 	if it.RePostOfDismissed && ib.latchLocked(runKey, it.Agent, "repost") {
-		return fmt.Sprintf("posted %s — this matches an item the operator dismissed. "+
-			"Dismissed means no: go with your stated default rather than re-asking.", it.ID)
+		lines = append(lines, fmt.Sprintf("posted %s — this matches an item the operator "+
+			"dismissed. Dismissed means no: go with your stated default rather than "+
+			"re-asking.", it.ID))
 	}
 	// The CROSSING, not the level: only the post that takes the agent from
 	// below the threshold to at-or-above it teaches. A later post at 7 open
@@ -573,12 +584,12 @@ func (ib *Inbox) teachLocked(it InboxItem, runKey string) string {
 	// is the nagging the latch exists to prevent.
 	if n := ib.openCountLocked(it.Agent); n == inboxOpenThreshold+1 &&
 		ib.latchLocked(runKey, it.Agent, "threshold") {
-		return fmt.Sprintf("posted %s — you now have %d items waiting on the operator. "+
-			"This inbox is for what only the operator can decide or know; status goes to "+
-			"your pane or super, and a question you can decide yourself should state a "+
-			"default and proceed.", it.ID, n)
+		lines = append(lines, fmt.Sprintf("posted %s — you now have %d items waiting on "+
+			"the operator. This inbox is for what only the operator can decide or know; "+
+			"status goes to your pane or super, and a question you can decide yourself "+
+			"should state a default and proceed.", it.ID, n))
 	}
-	return ""
+	return strings.Join(lines, "\n")
 }
 
 // latchLocked reports whether this condition may still teach, and latches it.

@@ -594,3 +594,56 @@ func TestInbox_WithdrawIsOwnerCheckedUnderOneLock(t *testing.T) {
 		t.Errorf("state after withdraw is %q", it.State)
 	}
 }
+
+// TestInbox_BothConditionsOnOnePostEachGetTheirLine is eng3's integration
+// finding, reproduced here in the store that owns the defect.
+//
+// A post can BOTH repeat a dismissal and cross the threshold. The first
+// version returned only the re-post line, and the loss was permanent rather
+// than deferred: the threshold condition was never latched, and because it
+// teaches on the CROSSING, the crossing had already passed by the next post.
+// Measured before the fix -- the agent was never told it crossed, in that run
+// or any other.
+func TestInbox_BothConditionsOnOnePostEachGetTheirLine(t *testing.T) {
+	ib := mustLoadInbox(t, inboxRoot(t))
+	first := mustPost(t, ib, "eng2", "same question", "run1").ID
+	if err := ib.Transition(first, InboxDismissed, actorOperator); err != nil {
+		t.Fatal(err)
+	}
+	for ib.OpenCount("eng2") < inboxOpenThreshold {
+		mustPost(t, ib, "eng2", "filler", "run1")
+	}
+
+	both := mustPost(t, ib, "eng2", "same question", "run1")
+	if !strings.Contains(both.Notice, "Dismissed means no") {
+		t.Errorf("the re-post line is missing: %q", both.Notice)
+	}
+	if !strings.Contains(both.Notice, "items waiting on the operator") {
+		t.Errorf("the THRESHOLD line is missing from a post that crossed it: %q.\n\n"+
+			"It is not deferred, it is gone: the crossing happens once, so a post above "+
+			"the threshold later says nothing and the agent is never told", both.Notice)
+	}
+	if lines := strings.Count(both.Notice, "\n") + 1; lines != 2 {
+		t.Errorf("expected two lines, got %d: %q", lines, both.Notice)
+	}
+}
+
+// TestInbox_EachConditionStillLatchesIndependently: firing together must not
+// leave either condition able to fire twice.
+func TestInbox_EachConditionStillLatchesIndependently(t *testing.T) {
+	ib := mustLoadInbox(t, inboxRoot(t))
+	first := mustPost(t, ib, "eng2", "same question", "run1").ID
+	if err := ib.Transition(first, InboxDismissed, actorOperator); err != nil {
+		t.Fatal(err)
+	}
+	for ib.OpenCount("eng2") < inboxOpenThreshold {
+		mustPost(t, ib, "eng2", "filler", "run1")
+	}
+	mustPost(t, ib, "eng2", "same question", "run1") // both fire
+
+	again := mustPost(t, ib, "eng2", "same question", "run1")
+	if again.Notice != "" {
+		t.Errorf("a condition taught twice in one run after firing alongside another: %q",
+			again.Notice)
+	}
+}
