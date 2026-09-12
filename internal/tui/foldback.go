@@ -179,7 +179,13 @@ func (t *TUI) visiblePanesForWindow() []PaneView {
 // alternatives were decided against out loud: bare empty reads as broken
 // (the operator lived through a crash loop that looked exactly like it), and
 // auto-assignment would mean initech deciding his monitor layout for him.
-const emptyViewerHint = "no groups assigned to this window — press Alt+a to assign"
+//
+// REWORDED FOR ini-uz42: it used to end "press Alt+a to assign". ini-fn77
+// made the agents panel main-window only, so in the one window that shows
+// this hint that keypress now produces a main-window-only notice -- the copy
+// sent the operator to a dead end it had created. It names the window that
+// can act instead.
+const emptyViewerHint = "no agents are assigned to this window — assign some from the main window's Agents panel"
 
 // unservedViewerHint is the operator-decided copy for a secondary window that
 // has not yet been told what it owns (ini-x5ob; pm ruling 2026-08-14).
@@ -198,6 +204,54 @@ const emptyViewerHint = "no groups assigned to this window — press Alt+a to as
 // that reintroduces exactly the two-truths state — a window showing agents it
 // may no longer own — which is the class this bead closed.
 const unservedViewerHint = "waiting for window 1 — it decides which agents appear here; reconnecting"
+
+// allHiddenViewerHint is the copy for a viewer whose owned agents are ALL
+// globally hidden (ini-uz42, pm 2026-09-12). PM-OWNED STRING -- render it
+// verbatim; the count is the only substitution.
+//
+// THE LOCAL RECOVERY COMES FIRST ON PURPOSE. The blank window already holds a
+// working unhide control: the overlay (Option+s) lists every OWNED pane
+// including hidden ones, marks them, and a dot-click routes the unhide
+// through window 1. It is one click away in the window the operator is
+// already looking at, so it leads; the main window's Agents panel is the
+// second route for an operator who prefers it.
+//
+// This state is LEGAL, not a defect. Before uz42 it fell through to the
+// unplanned-defect branch, which returned "" -- so the operator got a blank
+// window and the log got a warning about a state the product had entered
+// correctly.
+func allHiddenViewerHint(owned int) string {
+	if owned == 1 {
+		return "the 1 agent assigned here is hidden — click its dot in the overlay (Option+s) to unhide, or use the main window's Agents panel"
+	}
+	return fmt.Sprintf("all %d agents assigned here are hidden — click their dots in the overlay (Option+s) to unhide, or use the main window's Agents panel", owned)
+}
+
+// awaitingArrivalsViewerHint is the copy for a viewer that owns more agents
+// than have arrived, where every one that HAS arrived is hidden (ini-uz42).
+// PM-OWNED STRING -- verbatim, counts substituted.
+//
+// If any arrived agent were visible the plan would be non-empty and no hint
+// would render at all, which is why this state only exists when the arrived
+// subset is entirely hidden.
+func awaitingArrivalsViewerHint(missing, owned int) string {
+	return fmt.Sprintf("waiting for %d of %d assigned agents to arrive from window 1", missing, owned)
+}
+
+// unplannedViewerHint is the copy for the one state here that IS a defect:
+// agents are owned, present and not hidden, and the plan still dropped them
+// (ini-uz42). PM-OWNED STRING -- verbatim, count substituted.
+//
+// It must never be a blank screen. That is ini-x5ob canon applied to the
+// failing case: an unserved viewer renders an announced empty state rather
+// than an unexplained blank, and a DEFECTIVE one is held to the same rule --
+// an operator staring at nothing cannot tell a bug from an empty fleet.
+func unplannedViewerHint(unrendered int) string {
+	if unrendered == 1 {
+		return "1 agent assigned here is not rendering — this is a bug; details are in the log"
+	}
+	return fmt.Sprintf("%d agents assigned here are not rendering — this is a bug; details are in the log", unrendered)
+}
 
 // viewerOwnsNoGroups reports whether this window is a secondary with NOTHING
 // assigned to it -- the one state the empty-viewer hint describes. Two
@@ -247,22 +301,63 @@ func (t *TUI) viewerEmptyExplanation() string {
 	if len(ownershipKeysFor(t.paneOwnership, t.windowID)) == 0 {
 		return emptyViewerHint
 	}
-	// The fields are the fork this state actually poses: whether the panes are
-	// ABSENT (they never arrived, and the window is really still waiting) or
-	// PRESENT-BUT-UNPLANNED (they arrived and the plan dropped them, which is
-	// a planning defect). "owned" alone cannot tell those apart, and the first
-	// person to hit this in the field spent a round trip discovering that.
+	// THE OWNED SET PARTITIONS INTO THREE, and which part is non-empty is the
+	// whole question (ini-uz42). "owned" alone cannot tell them apart, and the
+	// first person to hit this in the field spent a round trip discovering it:
+	//
+	//   present + hidden   -- legal. The operator hid them; nothing is wrong.
+	//   absent             -- legal. The stream has not arrived from window 1
+	//                         yet; under load that gap is seconds.
+	//   present + visible  -- the DEFECT. They arrived, nothing hides them,
+	//                         and the plan dropped them anyway.
+	//
+	// Before this, all three returned "" and all three logged the warning. The
+	// two legal states are the common ones, so the operator got a blank window
+	// for a fleet he had hidden himself, and the log got a flood about correct
+	// behaviour (the two largest sources of ini-4dzh's flood, removed here at
+	// the source rather than rate-limited downstream).
+	owned := ownershipKeysFor(t.paneOwnership, t.windowID)
+	present := make(map[string]bool, len(t.panes))
 	var have []string
 	for _, p := range t.panes {
-		have = append(have, agentKey(p))
+		k := agentKey(p)
+		present[k] = true
+		have = append(have, k)
 	}
 	sort.Strings(have)
+
+	hiddenCount, visibleCount, absentCount := 0, 0, 0
+	for _, k := range owned {
+		switch {
+		case !present[k]:
+			absentCount++
+		case t.layoutState.Hidden[k]:
+			hiddenCount++
+		default:
+			visibleCount++
+		}
+	}
+
+	// Every owned agent is here and hidden: the legal all-hidden state.
+	if hiddenCount == len(owned) {
+		return allHiddenViewerHint(len(owned))
+	}
+	// Some have not arrived, and nothing that HAS arrived is visible. A single
+	// visible arrival would have produced a non-empty plan and no hint at all.
+	if absentCount > 0 && visibleCount == 0 {
+		return awaitingArrivalsViewerHint(absentCount, len(owned))
+	}
+
+	// Present, unhidden, and still unplanned. The warning lives HERE and only
+	// here, so it fires on the state that is actually wrong.
 	LogWarn("ownership", "viewer owns agents but is rendering none",
 		"window", t.windowID,
-		"owned", joinKeys(ownershipKeysFor(t.paneOwnership, t.windowID)),
+		"owned", joinKeys(owned),
 		"panes_present", strings.Join(have, ","),
+		"hidden", hiddenCount,
+		"absent", absentCount,
 		"plan_panes", len(t.plan.Panes))
-	return ""
+	return unplannedViewerHint(visibleCount)
 }
 
 // liveTickInputs derives the live rotation's universe for THIS window: its

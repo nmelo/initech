@@ -483,7 +483,11 @@ func TestRenderEmptyViewerHint_DrawsTheDecidedCopyCentered(t *testing.T) {
 	// here for the third time in this arc. The words below are Nelson's
 	// decision via pm; if this test fails on a copy change, the change is a
 	// re-decision and pm signs it here.
-	const decidedCopy = "no groups assigned to this window — press Alt+a to assign"
+	//
+	// RE-DECIDED by pm's product pass on ini-uz42 (2026-09-12): the old copy
+	// ended "press Alt+a to assign", which ini-fn77 made a dead end in the one
+	// window that shows this hint. The new sentence names the window that can.
+	const decidedCopy = "no agents are assigned to this window — assign some from the main window's Agents panel"
 	if got := strings.TrimSpace(string(row)); got != decidedCopy {
 		t.Fatalf("hint row = %q, want the pm-decided copy %q rendered verbatim", got, decidedCopy)
 	}
