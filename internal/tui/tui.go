@@ -290,8 +290,14 @@ type TUI struct {
 	eventLogM eventLogModal  // Event log history modal.
 	help      helpModal      // Help reference card modal.
 	agents    agentsModal    // Agent management modal.
+	inbox     inboxPanel     // Operator inbox panel (ini-3wkl.4).
 	quickGrid quickGridModal // Quick grid/live dimension popup (Option+G/L).
 	welcome   welcomeOverlay // First-launch keybinding hints.
+
+	// inboxSeenWarned keeps a refused seen-write (a secondary window, before
+	// child F routes it to window 1) to ONE log line rather than one per
+	// keystroke -- the ini-4dzh lesson, applied before it can bite.
+	inboxSeenWarned bool
 
 	// attentionConsent is the one-time attention-hooks consent question for
 	// EXISTING projects (ini-2x8.6). Window 1 only.

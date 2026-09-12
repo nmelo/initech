@@ -31,6 +31,7 @@ func getHelpLines() []string {
 			"  " + m + "+g            Quick grid popup: type columns, then rows",
 			"  " + m + "+l            Quick live popup: type columns, then rows",
 			"  " + m + "+a            Agent management modal",
+			"  " + m + "+i            Operator inbox: items agents posted for you",
 			"  " + m + "+z            Zoom/unzoom focused pane",
 			"  " + m + "+f            Focus split: focused pane left, grid right (toggle)",
 			"  " + m + "+s            Toggle agent overlay",
