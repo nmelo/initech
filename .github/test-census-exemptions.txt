@@ -129,6 +129,7 @@ internal/tui/a9d8_rig_test.go                windows  # composed real-binary/rea
 internal/tui/dr03_rig_test.go                windows  # composed two-window real-burst rig (gated INITECH_DR03=1)
 internal/tui/fn77_rig_test.go                windows  # composed two-window PTY rig (gated INITECH_FN77=1)
 internal/tui/uz42_rig_test.go                windows  # composed two-window PTY rig (gated INITECH_UZ42=1)
+internal/tui/z5uw_composed_rig_test.go       windows  # composed two-main/viewer bind-conflict PTY rig (gated INITECH_Z5UW=1)
 internal/tui/ninegvn_rig_test.go             windows  # composed PTY rig for the modal-defer guard (gated INITECH_9GVN=1)
 internal/tui/attention_wire_net_test.go      windows  # unix-only window-server helpers; portable cells stay in attention_wire_test.go
 
