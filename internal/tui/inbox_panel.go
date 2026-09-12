@@ -78,18 +78,11 @@ type inboxPanel struct {
 // what the operator needs to still see — and it is the same set the store
 // refuses to prune (spec: "prune never deletes an undelivered answer").
 //
-// Stated as a default in the PLAN rather than guessed silently: pm's rework
-// says the delivery status is visible in the DETAIL PANE, which can only be
-// true of an item still in the list.
+// Derive this from the store rule so the panel cannot hide an answer that
+// startup must preserve. TestInboxRetention_RealStoreAndPanelAgree checks
+// the shared rule against persistence and an independent retention contract.
 func inboxOpenForOperator(it InboxItem) bool {
-	switch it.State {
-	case InboxUnread, InboxSeen:
-		return true
-	case InboxAnswered:
-		return it.DeliveryStatus != InboxDelivered
-	default:
-		return false
-	}
+	return !inboxPrunable(it)
 }
 
 // inboxListFor returns the items the panel lists, oldest first — largest
