@@ -335,15 +335,40 @@ func TestSixM4Rig_ViewerModalParityAndReplaySurvival(t *testing.T) {
 	// the hide: the modal draws the hidden marker "[ ] eng1" only if the hide
 	// landed there. Not conditional -- if the hidden agent is anything else,
 	// the fixture failed and says so.
+	// WAIT FOR STATE, NOT FOR TIME. The first version slept 600ms after the
+	// search and 3s after the hide, then read once. Green here; red 2/2 for
+	// shipper at the same sha, with a large transcript on the machine --
+	// the guard below fired ("hide did not take effect"), which is the
+	// fixture refusing to assert past a setup that had not happened yet.
+	// A fixed sleep is a bet on the other machine's speed; a poll with a
+	// generous deadline is not.
 	w1pty.Write([]byte("/eng1\r")) // search to eng1, keep the selection
-	time.Sleep(600 * time.Millisecond)
+	time.Sleep(1500 * time.Millisecond)
 	w1pty.Write([]byte(" ")) // hide the selected agent
-	time.Sleep(3 * time.Second)
 
-	hiddenRe := regexp.MustCompile(`\[ \] (\w+)`)
-	hit := hiddenRe.FindStringSubmatch(strings.Join(nonEmpty(snapRows(w1emu)), "\n"))
+	// The modal marks a hidden agent "[h]" since ini-68qv (e9c0eca); it was
+	// "[ ]" before. This regexp asserted the OLD marker and went red the
+	// moment 68qv landed -- which was between the run that reported this
+	// leg green and the push that landed it, because make check excludes
+	// env-gated rigs and the rig was not re-run after the rebase. Shipper
+	// then saw it red 4/4 at both hbj4 arms, which is what a broken
+	// assertion looks like from outside: environment-independent, and
+	// unmoved by product changes elsewhere.
+	hiddenRe := regexp.MustCompile(`\[h\] (\w+)`)
+	var hit []string
+	hideDeadline := time.Now().Add(15 * time.Second)
+	for time.Now().Before(hideDeadline) {
+		hit = hiddenRe.FindStringSubmatch(strings.Join(nonEmpty(snapRows(w1emu)), "\n"))
+		if hit != nil {
+			break
+		}
+		time.Sleep(250 * time.Millisecond)
+	}
 	if hit == nil {
-		t.Fatal("window 1's hide did not take effect in its own modal; the rig cannot test propagation")
+		t.Fatalf("window 1's hide did not take effect in its own modal within 15s; the rig "+
+			"cannot test propagation. If eng1 is listed but unhidden, the search+space "+
+			"mechanics did not land; if the modal is not visible, it closed.\nW1:\n%s",
+			strings.Join(nonEmpty(snapRows(w1emu)), "\n"))
 	}
 	hiddenAgent := hit[1]
 	if hiddenAgent != "eng1" {
