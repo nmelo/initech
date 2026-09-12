@@ -48,6 +48,33 @@ const (
 	InboxWithdrawn InboxState = "withdrawn"
 )
 
+// InboxDelivered is the one delivery status that lets an answered item be
+// pruned. Any other value -- including blank -- means the reply has not been
+// confirmed into the agent's pane.
+const InboxDelivered = "delivered"
+
+// inboxPrunable reports whether a terminal item may be removed at startup.
+//
+// TERMINAL-BY-STATUS IS NOT TERMINAL-BY-DELIVERY (pm 1ad837b, from eng3's
+// adversarial read, and it is a correction to what I shipped). An ANSWERED
+// item whose delivery is not confirmed survives every prune and every down,
+// because its stored reply may be the ONLY COPY of the operator's answer: the
+// spec's own edge case says a reply to a dead or stopped agent is retrievable
+// via --check when it returns, and "when it returns" can be a later session.
+// Pruning it on the next startup destroys the answer before the agent it was
+// written for could ever read it.
+//
+// Dismissed and withdrawn prune regardless -- nothing was ever sent for them.
+func inboxPrunable(it InboxItem) bool {
+	if !inboxTerminal(it.State) {
+		return false
+	}
+	if it.State == InboxAnswered && it.DeliveryStatus != InboxDelivered {
+		return false
+	}
+	return true
+}
+
 // inboxTerminal reports whether a state is terminal -- the states pruned at
 // startup. Answered, dismissed and withdrawn are all "the operator or the
 // agent is done with this"; only unread and seen are open.
@@ -101,9 +128,15 @@ type InboxItem struct {
 	Chime       bool       `yaml:"chime,omitempty"`
 	State       InboxState `yaml:"state"`
 	ReplyText   string     `yaml:"reply_text,omitempty"`
-	Created     time.Time  `yaml:"created"`
-	Seen        time.Time  `yaml:"seen,omitempty"`
-	Closed      time.Time  `yaml:"closed,omitempty"`
+
+	// DeliveryStatus is the SEND PATH's own verdict on the reply, in its
+	// vocabulary -- never the panel's word. Blank means unconfirmed, never
+	// delivered. Child B formats it for --check, child D updates it; the
+	// field lives here because the PRUNE depends on it (below).
+	DeliveryStatus string    `yaml:"delivery_status,omitempty"`
+	Created        time.Time `yaml:"created"`
+	Seen           time.Time `yaml:"seen,omitempty"`
+	Closed         time.Time `yaml:"closed,omitempty"`
 
 	// RePostOfDismissed marks an item whose first line matches one the
 	// operator dismissed. Persisted with the item because the operator's row
@@ -241,7 +274,7 @@ func LoadInbox(projectRoot string, authority bool) (*Inbox, error) {
 	}
 
 	for _, it := range pi.Items {
-		if !inboxTerminal(it.State) {
+		if !inboxPrunable(it) {
 			ib.items = append(ib.items, it)
 		}
 	}
@@ -462,21 +495,34 @@ func (ib *Inbox) Post(it InboxItem, runKey string) (InboxPostResult, error) {
 	return res, nil
 }
 
+// inboxSimilarityKey normalises a first line for the re-post comparison:
+// lowercased, whitespace RUNS COLLAPSED TO ONE SPACE, trimmed.
+//
+// ITS OWN NAME, NOT compactPromptText, and pm amended the spec to say so
+// (1ad837b). The modal detector's normaliser drops ALL whitespace and keeps
+// case: it serves a different consumer, and borrowing it makes "now here"
+// match "nowhere", because with every space gone the two are the same string.
+// That is a FALSE re-post marker, which tells the operator to ignore something
+// he should read -- the exact harm this detection is supposed to avoid. Two
+// consumers wanting different answers get two named functions.
+//
+// I shipped the borrowed version in b4b4a9b; this replaces it.
+func inboxSimilarityKey(firstLine string) string {
+	return strings.ToLower(strings.Join(strings.Fields(firstLine), " "))
+}
+
 // matchesDismissedLocked reports whether this post repeats one the operator
 // DISMISSED.
 //
-// SIMILARITY IS THE EXISTING PRODUCTION NORMALISER on the FIRST LINE ONLY
-// (compactPromptText, pane.go), compared case-insensitively -- the normaliser
-// strips whitespace but does not lowercase, and the spec's default is
-// case-insensitive, so both halves are applied. Nothing cleverer for v1: a
-// false "(re-post of a dismissed item)" tells the operator to ignore something
-// he should READ, which is worse than a missed marker.
+// Nothing cleverer than the normaliser above for v1: a false "(re-post of a
+// dismissed item)" tells the operator to ignore something he should READ,
+// which is worse than a missed marker.
 //
 // DISMISSED ONLY, NEVER ANSWERED. An answered item was engaged with; repeating
 // it is not the abuse this marks, and flagging it would teach the agent that
 // asking again after an answer is misuse.
 func (ib *Inbox) matchesDismissedLocked(candidate InboxItem) bool {
-	want := compactPromptText(candidate.FirstLine())
+	want := inboxSimilarityKey(candidate.FirstLine())
 	if want == "" {
 		return false
 	}
@@ -484,7 +530,7 @@ func (ib *Inbox) matchesDismissedLocked(candidate InboxItem) bool {
 		if it.State != InboxDismissed || it.Agent != candidate.Agent {
 			continue
 		}
-		if strings.EqualFold(compactPromptText(it.FirstLine()), want) {
+		if inboxSimilarityKey(it.FirstLine()) == want {
 			return true
 		}
 	}
@@ -543,6 +589,25 @@ func (ib *Inbox) latchLocked(runKey, agent, condition string) bool {
 	}
 	ib.taught[k] = true
 	return true
+}
+
+// SetDeliveryStatus records the send path's own verdict on a reply.
+//
+// Child D owns the values and when they change; the store owns only that the
+// field moves through the same guarded write as everything else, because the
+// PRUNE reads it -- a status written around the store would prune an answer
+// the agent never got.
+func (ib *Inbox) SetDeliveryStatus(id, status string) error {
+	ib.mu.Lock()
+	defer ib.mu.Unlock()
+	return ib.mutate(func() error {
+		it, err := ib.findLocked(id)
+		if err != nil {
+			return err
+		}
+		it.DeliveryStatus = status
+		return nil
+	})
 }
 
 // ── reads ────────────────────────────────────────────────────────────

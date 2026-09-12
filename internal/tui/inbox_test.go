@@ -162,6 +162,13 @@ func TestInbox_TerminalItemsArePrunedAtStartup(t *testing.T) {
 	if err := ib.Answer(answered, "yes"); err != nil {
 		t.Fatal(err)
 	}
+	// CONFIRMED DELIVERED, or this item would correctly SURVIVE the prune:
+	// terminal-by-status is not terminal-by-delivery (PM rework blocker 3).
+	// Without this line the cell asserts the pre-rework rule, which is how the
+	// first version of this suite locked the bug in place.
+	if err := ib.SetDeliveryStatus(answered, InboxDelivered); err != nil {
+		t.Fatal(err)
+	}
 	if err := ib.Transition(dismissed, InboxDismissed, actorOperator); err != nil {
 		t.Fatal(err)
 	}
@@ -410,24 +417,134 @@ func TestInbox_AnswerStoresTheReplyText(t *testing.T) {
 	}
 }
 
-// TestInbox_AnswerTextSurvivesAReload: the reply is the record an agent reads
-// when it missed the pane message, so it has to outlive the session that sent
-// it.
-func TestInbox_AnswerTextSurvivesAReload(t *testing.T) {
+// TestInbox_AnUndeliveredAnswerSurvivesTheStartupPrune is the PM rework's
+// blocker 3, and AC 6's amended half, in its own words: "answer, kill before
+// delivery, restart, --check still returns the text".
+//
+// TERMINAL-BY-STATUS IS NOT TERMINAL-BY-DELIVERY. An answered item whose reply
+// never reached the agent holds the ONLY COPY of what the operator said. The
+// spec's edge case promises that reply is retrievable when a dead or stopped
+// agent returns, and "when it returns" can be a later session -- so pruning it
+// on the next startup destroys the answer before its reader ever existed.
+//
+// THIS CELL REPLACES ONE THAT ASSERTED THE OPPOSITE. The version I shipped in
+// b4b4a9b said "Answered is terminal, so it is pruned on the NEXT load" and
+// checked exactly that, which locked the pre-rework behaviour into the suite
+// (qa1's finding, and the sharper half of it: a test can hold a bug in place
+// more firmly than the code does).
+func TestInbox_AnUndeliveredAnswerSurvivesTheStartupPrune(t *testing.T) {
 	root := inboxRoot(t)
 	ib := mustLoadInbox(t, root)
 	id := mustPost(t, ib, "eng2", "question", "run1").ID
 	if err := ib.Answer(id, "the answer"); err != nil {
 		t.Fatal(err)
 	}
-	// Answered is terminal, so it is pruned on the NEXT load -- the reply is
-	// readable for the life of this session, which is the spec's contract.
-	it, _ := ib.Item(id)
-	if it.ReplyText != "the answer" {
-		t.Errorf("reply text %q in the live session", it.ReplyText)
+	// No delivery confirmation: blank is unconfirmed, never delivered. This is
+	// the crash-before-delivery shape -- nothing else happens to the store.
+
+	reloaded := mustLoadInbox(t, root)
+	it, ok := reloaded.Item(id)
+	if !ok {
+		t.Fatal("an answered-but-UNDELIVERED item was pruned on restart. Its reply was " +
+			"the only copy of the operator's answer, and the agent it was written for " +
+			"can never read it -- the failure class this whole epic exists to end")
 	}
+	if it.ReplyText != "the answer" {
+		t.Errorf("the item survived but its reply text did not: %q", it.ReplyText)
+	}
+}
+
+// TestInbox_ADeliveredAnswerIsPruned is the other direction, without which the
+// carve-out could simply never prune answered items at all.
+func TestInbox_ADeliveredAnswerIsPruned(t *testing.T) {
+	root := inboxRoot(t)
+	ib := mustLoadInbox(t, root)
+	id := mustPost(t, ib, "eng2", "question", "run1").ID
+	if err := ib.Answer(id, "the answer"); err != nil {
+		t.Fatal(err)
+	}
+	if err := ib.SetDeliveryStatus(id, InboxDelivered); err != nil {
+		t.Fatal(err)
+	}
+
 	if _, ok := mustLoadInbox(t, root).Item(id); ok {
-		t.Error("an answered item survived the startup prune")
+		t.Error("an answer CONFIRMED delivered survived the prune; the inbox would keep " +
+			"every resolved item forever")
+	}
+}
+
+// TestInbox_DismissedAndWithdrawnPruneRegardless: nothing was ever sent for
+// them, so delivery has no bearing.
+func TestInbox_DismissedAndWithdrawnPruneRegardless(t *testing.T) {
+	root := inboxRoot(t)
+	ib := mustLoadInbox(t, root)
+	dismissed := mustPost(t, ib, "eng2", "a", "run1").ID
+	withdrawn := mustPost(t, ib, "eng2", "b", "run1").ID
+	if err := ib.Transition(dismissed, InboxDismissed, actorOperator); err != nil {
+		t.Fatal(err)
+	}
+	if err := ib.Transition(withdrawn, InboxWithdrawn, actorAgent); err != nil {
+		t.Fatal(err)
+	}
+
+	next := mustLoadInbox(t, root)
+	for _, id := range []string{dismissed, withdrawn} {
+		if _, ok := next.Item(id); ok {
+			t.Errorf("%s survived the prune; delivery status has no bearing on an item "+
+				"whose reply was never sent", id)
+		}
+	}
+}
+
+// ── AC 13 amended: the similarity rule, and the two cases that define it ──
+
+// TestInbox_SimilarityMatchesAcrossCase is the first of pm's two named cases.
+func TestInbox_SimilarityMatchesAcrossCase(t *testing.T) {
+	ib := mustLoadInbox(t, inboxRoot(t))
+	first := mustPost(t, ib, "eng2", "Update docs?", "run1").ID
+	if err := ib.Transition(first, InboxDismissed, actorOperator); err != nil {
+		t.Fatal(err)
+	}
+	second := mustPost(t, ib, "eng2", "update docs?", "run1").ID
+	if it, _ := ib.Item(second); !it.RePostOfDismissed {
+		t.Error("'update docs?' was not matched against dismissed 'Update docs?'; the rule " +
+			"is lowercased, so case alone must not hide a re-post")
+	}
+}
+
+// TestInbox_SimilarityRespectsWordBoundaries is pm's second case and the one
+// that made the borrowed normaliser wrong.
+//
+// compactPromptText DROPS whitespace rather than collapsing it, so "now here"
+// and "nowhere" both became "nowhere" and a different question was marked as a
+// re-post. A false marker tells the operator to IGNORE something he should
+// read, which the bead's own design principle calls worse than a missed marker.
+func TestInbox_SimilarityRespectsWordBoundaries(t *testing.T) {
+	ib := mustLoadInbox(t, inboxRoot(t))
+	first := mustPost(t, ib, "eng2", "nowhere", "run1").ID
+	if err := ib.Transition(first, InboxDismissed, actorOperator); err != nil {
+		t.Fatal(err)
+	}
+	second := mustPost(t, ib, "eng2", "now here", "run1").ID
+	if it, _ := ib.Item(second); it.RePostOfDismissed {
+		t.Error("'now here' was matched against dismissed 'nowhere'. Dropping whitespace " +
+			"instead of collapsing it to a boundary makes two different questions the " +
+			"same string, and the operator is told to ignore one he has never seen")
+	}
+}
+
+// TestInbox_SimilarityCollapsesRunsAndTrims keeps the rest of the rule honest:
+// runs collapse to one space, and leading/trailing space does not matter.
+func TestInbox_SimilarityCollapsesRunsAndTrims(t *testing.T) {
+	ib := mustLoadInbox(t, inboxRoot(t))
+	first := mustPost(t, ib, "eng2", "  update   both   docs?  ", "run1").ID
+	if err := ib.Transition(first, InboxDismissed, actorOperator); err != nil {
+		t.Fatal(err)
+	}
+	second := mustPost(t, ib, "eng2", "Update both docs?", "run1").ID
+	if it, _ := ib.Item(second); !it.RePostOfDismissed {
+		t.Error("whitespace runs and trimming changed the match; the rule collapses runs " +
+			"to one space and trims")
 	}
 }
 
