@@ -221,7 +221,7 @@ func TestTier2_MustReadRenderedRowsNotRawPTYBytes(t *testing.T) {
 	if _, err := p.emu.Write([]byte(stream)); err != nil {
 		t.Fatalf("write: %v", err)
 	}
-	if !paneHasTier2Dialog(p) {
+	if rows, _ := tryScreenRows(p); !screenHasTier2Dialog(rows) {
 		t.Error("tier-2 missed a word-positioned codex dialog -- it must read the emulator's " +
 			"rendered rows, never the raw PTY byte stream")
 	}

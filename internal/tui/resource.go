@@ -634,7 +634,8 @@ func (t *TUI) resumePane(pane *Pane, senderName string) error {
 	LogInfo("resource", "resuming agent", "agent", agentName, "trigger", senderName)
 
 	// Get old dimensions with fallback for dead panes.
-	cols, rows := pane.emu.Width(), pane.emu.Height()
+	rawCols, rawRows := pane.emuSize() // never waits on the pane (ini-psjt)
+	cols, rows := rawCols, rawRows
 	if cols < 10 {
 		cols = 80
 	}
@@ -655,7 +656,7 @@ func (t *TUI) resumePane(pane *Pane, senderName string) error {
 	}
 	// Create new pane process off-main (may fork/exec).
 	LogInfo("resource", "resume spawn size", "agent", agentName,
-		"rows", rows, "cols", cols, "emu_h", pane.emu.Height(), "emu_w", pane.emu.Width())
+		"rows", rows, "cols", cols, "emu_h", rawRows, "emu_w", rawCols)
 	np, err := NewPane(cfg, rows, cols)
 	if err != nil {
 		LogError("resource", "resume failed", "agent", pane.name, "err", err)

@@ -216,7 +216,7 @@ func zjhgPhase1TrustDialog(t *testing.T) {
 	p := zjhgClaudePane(t)
 
 	dialogUp := func() bool {
-		return isModalPrompt(emulatorBottomText(p.emu, modalScanWholePane))
+		return isModalPrompt(emulatorBottomTextBlocking(p.emu, modalScanWholePane))
 	}
 
 	// D0: the trust-folder dialog.
@@ -322,7 +322,7 @@ func zjhgRowContaining(p *Pane, needle string) int {
 func zjhgPhase2ComposerAndPermissionDialog(t *testing.T) {
 	p := zjhgClaudePane(t)
 	dialogUp := func() bool {
-		return isModalPrompt(emulatorBottomText(p.emu, modalScanWholePane))
+		return isModalPrompt(emulatorBottomTextBlocking(p.emu, modalScanWholePane))
 	}
 	trustUp := func() bool {
 		return strings.Contains(zjhgScreen(p), "Yes, I trust this folder")
@@ -491,7 +491,7 @@ func TestPZX0Rig_FocusFirstOnARealPermissionDialog(t *testing.T) {
 
 	p := zjhgClaudePane(t)
 	dialogUp := func() bool {
-		return isModalPrompt(emulatorBottomText(p.emu, modalScanWholePane))
+		return isModalPrompt(emulatorBottomTextBlocking(p.emu, modalScanWholePane))
 	}
 
 	// Trust prompt -> composer.

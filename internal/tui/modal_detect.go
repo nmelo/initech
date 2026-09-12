@@ -81,7 +81,7 @@ func isModalPrompt(text string) bool {
 }
 
 // paneHasModal reports whether the pane is currently showing a blocking Claude
-// Code modal. It reads the emulator's bottom rows via emulatorBottomText,
+// Code modal. It reads the emulator's bottom rows via emulatorBottomTextBlocking,
 // which uses SafeEmulator.RowText — NOT the raw pointer-returning CellAt.
 // SafeEmulator.CellAt is NOT safe for concurrent reads: it releases its lock
 // before returning a pointer into the live buffer, so a caller dereferencing
@@ -127,7 +127,7 @@ func paneShowsModalOnScreen(p *Pane) bool {
 	if p == nil || p.emu == nil {
 		return false
 	}
-	return screenShowsModal(emuRows(p.emu))
+	return screenShowsModal(emuRowsBlocking(p.emu))
 }
 
 // screenShowsModal is paneShowsModalOnScreen over an already-read screen.
@@ -135,7 +135,7 @@ func screenShowsModal(rows []string) bool {
 	return screenShowsLiveDialog(bottomTextFromRows(rows, modalScanWholePane))
 }
 
-// paneScreenShowsDialogText is the BROAD screen face: are a dialog's words
+// screenShowsDialogText is the BROAD screen face: are a dialog's words
 // rendered, whether or not anything is currently there to answer.
 //
 // THE THIRD CONSUMER OF THIS QUESTION, and it needs the opposite answer from
@@ -158,11 +158,8 @@ func screenShowsModal(rows []string) bool {
 // RISK asymmetries) and l5sy's scoped/fleet members split (opposite SCOPES):
 // when consumers want different answers in the edge case, they get their own
 // names, never a union.
-func paneScreenShowsDialogText(p *Pane) bool {
-	if p == nil || p.emu == nil {
-		return false
-	}
-	return isModalPrompt(emulatorBottomText(p.emu, modalScanWholePane))
+func screenShowsDialogText(rows []string) bool {
+	return isModalPrompt(bottomTextFromRows(rows, modalScanWholePane))
 }
 
 // screenShowsLiveDialog distinguishes a DIALOG from a QUOTATION of one
@@ -329,7 +326,7 @@ func paneShowsIdleComposer(p *Pane) bool {
 	if p == nil || p.emu == nil {
 		return false
 	}
-	return screenShowsIdleComposer(emuRows(p.emu))
+	return screenShowsIdleComposer(emuRowsBlocking(p.emu))
 }
 
 // screenShowsIdleComposer is paneShowsIdleComposer over an already-read screen.
@@ -411,8 +408,9 @@ func (p *Pane) latchAge(now time.Time) (time.Duration, bool) {
 const screenSkipLogEvery = 30 * time.Second
 
 // noteScreenSkipped records that the main loop could not read this pane's
-// screen because its emulator lock was held, and says so at INFO, rate-limited.
-func (p *Pane) noteScreenSkipped(now time.Time) {
+// screen because its emulator lock was held, and says so at INFO, rate-limited
+// across all readers (render, attention, modal, resize).
+func (p *Pane) noteScreenSkipped(now time.Time, reader string) {
 	p.mu.Lock()
 	if p.screenSkipSince.IsZero() {
 		p.screenSkipSince = now
@@ -424,8 +422,8 @@ func (p *Pane) noteScreenSkipped(now time.Time) {
 	}
 	p.mu.Unlock()
 	if log {
-		LogInfo("modal", "screen read SKIPPED: emulator lock held, pane unmaintained this tick",
-			"pane", p.name, "held_for", now.Sub(since).Round(time.Second))
+		LogInfo("screen", "screen read SKIPPED: emulator lock held; pane keeps its last state",
+			"pane", p.name, "reader", reader, "held_for", now.Sub(since).Round(time.Second))
 	}
 }
 
@@ -484,7 +482,7 @@ func (t *TUI) modalMaintenance(now time.Time) {
 		// than silently unmaintained.
 		rows, ok := tryScreenRows(p)
 		if !ok {
-			p.noteScreenSkipped(now)
+			p.noteScreenSkipped(now, "modal")
 			continue
 		}
 		p.noteScreenRead()

@@ -509,7 +509,12 @@ func (t *TUI) applyLayout() {
 			cols, rows := pr.Region.TerminalSize()
 			LogInfo("applyLayout", "resizing pane", "idx", i, "name", pr.Pane.Name(),
 				"oldRows", oldRows, "oldCols", oldCols, "newRows", rows, "newCols", cols)
-			pr.Pane.Resize(rows, cols)
+			if lp, ok := pr.Pane.(*Pane); ok {
+				// Main loop: never wait on the pane (ini-psjt).
+				lp.resizeFromMainLoop(rows, cols)
+			} else {
+				pr.Pane.Resize(rows, cols)
+			}
 			LogInfo("applyLayout", "resize done", "idx", i, "name", pr.Pane.Name())
 		}
 	}

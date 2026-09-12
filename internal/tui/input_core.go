@@ -331,8 +331,7 @@ func (t *TUI) restartPane(fp *Pane) error {
 	if idx < 0 {
 		return fmt.Errorf("pane not found")
 	}
-	cols := fp.emu.Width()
-	rows := fp.emu.Height()
+	cols, rows := fp.emuSize() // never waits on the pane (ini-psjt)
 	if cols < 10 {
 		cols = 80
 	}

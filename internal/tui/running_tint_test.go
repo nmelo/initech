@@ -168,7 +168,7 @@ func TestRenderCellRow_TintsDefaultBgPreservesColored(t *testing.T) {
 	screen.SetSize(20, 5)
 	cs := &clampedScreen{Screen: screen, r: Region{X: 0, Y: 0, W: 20, H: 5}}
 
-	renderCellRow(cs, emu, 0, 0, 0, 2, false, runningTintColor)
+	renderCellRow(cs, emu.Emulator, 0, 0, 0, 2, false, runningTintColor)
 	screen.Show()
 
 	_, _, styleA, _ := screen.GetContent(0, 0)

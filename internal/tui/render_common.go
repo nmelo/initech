@@ -83,9 +83,9 @@ func renderRibbon(s *clampedScreen, r Region, title string, titleStyle tcell.Sty
 // tint is the running-pane background wash applied to default-bg cells only
 // (tcell.ColorDefault = no tint). Tint is applied before dimming so it survives
 // the unfocused-pane dim (dimStyle preserves bg).
-func renderCellRow(s *clampedScreen, emu *vt.SafeEmulator, x, y, emuRow, cols int, dimmed bool, tint tcell.Color) {
+func renderCellRow(s *clampedScreen, e *vt.Emulator, x, y, emuRow, cols int, dimmed bool, tint tcell.Color) {
 	for c := 0; c < cols; c++ {
-		cell := emu.CellAt(c, emuRow)
+		cell := e.CellAt(c, emuRow)
 		ch, style := uvCellToTcell(cell)
 		style = tintStyle(style, tint)
 		if dimmed {
@@ -97,26 +97,26 @@ func renderCellRow(s *clampedScreen, emu *vt.SafeEmulator, x, y, emuRow, cols in
 
 // renderCells draws terminal content from the emulator, starting at emuStartRow.
 // tint applies the running-pane background wash to default-bg cells.
-func renderCells(s *clampedScreen, r Region, emu *vt.SafeEmulator, dimmed bool, emuStartRow int, tint tcell.Color) {
+func renderCells(s *clampedScreen, r Region, e *vt.Emulator, dimmed bool, emuStartRow int, tint tcell.Color) {
 	innerCols, innerRows := r.InnerSize()
-	emuRows := emu.Height()
+	emuRows := e.Height()
 	for row := 0; row < innerRows; row++ {
 		emuRow := emuStartRow + row
 		if emuRow < 0 || emuRow >= emuRows {
 			continue
 		}
-		renderCellRow(s, emu, r.X, r.Y+row, emuRow, innerCols, dimmed, tint)
+		renderCellRow(s, e, r.X, r.Y+row, emuRow, innerCols, dimmed, tint)
 	}
 }
 
 // renderSelection draws the yellow selection highlight over cells in the
 // selected range. emuStartRow is the emulator row that maps to visual row 0.
-func renderSelection(s *clampedScreen, r Region, emu *vt.SafeEmulator, sel Selection, dimmed bool, emuStartRow int) {
+func renderSelection(s *clampedScreen, r Region, e *vt.Emulator, sel Selection, dimmed bool, emuStartRow int) {
 	if !sel.Active {
 		return
 	}
 	innerCols, innerRows := r.InnerSize()
-	emuRows := emu.Height()
+	emuRows := e.Height()
 
 	r0, c0, r1, c1 := sel.StartY, sel.StartX, sel.EndY, sel.EndX
 	if r0 > r1 || (r0 == r1 && c0 > c1) {
@@ -144,7 +144,7 @@ func renderSelection(s *clampedScreen, r Region, emu *vt.SafeEmulator, sel Selec
 			ec = innerCols
 		}
 		for col := sc; col < ec; col++ {
-			cell := emu.CellAt(col, emuRow)
+			cell := e.CellAt(col, emuRow)
 			ch := ' '
 			if cell != nil && cell.Content != "" {
 				ch = []rune(cell.Content)[0]
@@ -157,13 +157,13 @@ func renderSelection(s *clampedScreen, r Region, emu *vt.SafeEmulator, sel Selec
 // renderSelectionVirtual renders the selection highlight in scrollback mode,
 // using the pane's virtualCellAt to read from the combined scrollback + screen
 // buffer. viewTop is the virtual row at the top of the visible window.
-func renderSelectionVirtual(s *clampedScreen, r Region, p *Pane, sel Selection, dimmed bool, viewTop int) {
+func renderSelectionVirtual(s *clampedScreen, r Region, e *vt.Emulator, sel Selection, dimmed bool, viewTop int) {
 	if !sel.Active {
 		return
 	}
 	innerCols, innerRows := r.InnerSize()
-	scrollbackLen := p.emu.ScrollbackLen()
-	totalVirtual := scrollbackLen + p.emu.Height()
+	scrollbackLen := e.ScrollbackLen()
+	totalVirtual := scrollbackLen + e.Height()
 
 	r0, c0, r1, c1 := sel.StartY, sel.StartX, sel.EndY, sel.EndX
 	if r0 > r1 || (r0 == r1 && c0 > c1) {
@@ -191,7 +191,7 @@ func renderSelectionVirtual(s *clampedScreen, r Region, p *Pane, sel Selection, 
 			ec = innerCols
 		}
 		for col := sc; col < ec; col++ {
-			cell := p.virtualCellAt(col, vRow)
+			cell := virtualCellOn(e, col, vRow)
 			ch := ' '
 			if cell != nil && cell.Content != "" {
 				ch = []rune(cell.Content)[0]
@@ -203,17 +203,17 @@ func renderSelectionVirtual(s *clampedScreen, r Region, p *Pane, sel Selection, 
 
 // renderCursor draws the cursor block if focused and no selection is active.
 // emuStartRow is the emulator row that maps to visual row 0.
-func renderCursor(s *clampedScreen, r Region, emu *vt.SafeEmulator, focused bool, sel Selection, emuStartRow int) {
+func renderCursor(s *clampedScreen, r Region, e *vt.Emulator, focused bool, sel Selection, emuStartRow int) {
 	if !focused || sel.Active {
 		return
 	}
 	innerCols, innerRows := r.InnerSize()
-	pos := emu.CursorPosition()
+	pos := e.CursorPosition()
 	visRow := pos.Y - emuStartRow
 	if pos.X >= 0 && pos.X < innerCols && visRow >= 0 && visRow < innerRows {
 		cx := r.X + pos.X
 		cy := r.Y + visRow
-		cell := emu.CellAt(pos.X, pos.Y)
+		cell := e.CellAt(pos.X, pos.Y)
 		ch, _ := uvCellToTcell(cell)
 		cursorStyle := tcell.StyleDefault.Background(tcell.ColorWhite).Foreground(tcell.ColorBlack)
 		s.SetContent(cx, cy, ch, nil, cursorStyle)

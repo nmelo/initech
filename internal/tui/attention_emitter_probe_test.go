@@ -274,7 +274,7 @@ Observed %d bytes of PTY output containing no such sequence.`,
 // searches lack: 2.1.233 renders spacing with cursor moves, and only a
 // normaliser built against real captures survives that.
 func probeShowsPermissionDialog(emu *vt.SafeEmulator) bool {
-	text := compactPromptText(strings.ToLower(emulatorBottomText(emu, modalScanWholePane)))
+	text := compactPromptText(strings.ToLower(emulatorBottomTextBlocking(emu, modalScanWholePane)))
 	for _, pattern := range []string{
 		"do you want to proceed",
 		"yes, and don't ask again",

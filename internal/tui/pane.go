@@ -221,68 +221,74 @@ type Pane struct {
 	// onSuspendedMessage fires when SendText queues for a suspended pane
 	// (ini-g7fl): the TUI wires it to resume-on-message, because the pane
 	// cannot respawn itself and entry points must not each remember to.
-	onSuspendedMessage    func(*Pane)
-	fleetNum              int // Fleet-canonical number PLUS ONE (ini-6m4); zero value = unstamped, so struct-literal construction (tests, fakes) falls back to local numbering instead of reading as "stamped at 0". See fleetNumbered.
-	ptmx                  xpty.Pty
-	cmd                   *exec.Cmd
-	pid                   int // Cached PID from process start (avoids race with restart).
-	emu                   *vt.SafeEmulator
-	mu                    sync.Mutex
-	renderMu              sync.Mutex // Serializes readLoop writes with Render cell reads to prevent tearing.
-	sendMu                sync.Mutex // Serializes IPC send operations to prevent keystroke interleaving.
-	networkSink           io.Writer  // Optional: readLoop tees PTY bytes here for network streaming.
-	sinkMu                sync.Mutex // Protects networkSink assignment.
-	alive                 bool
-	visible               bool              // Whether this pane is shown in the layout. Hidden panes keep running.
-	activity              ActivityState     // Current state: running when PTY bytes flowed recently, else idle.
-	lastOutputTime        time.Time         // Last time readLoop received bytes from the PTY.
-	tintUntil             time.Time         // Hold deadline for the running-pane background tint (ini-zmzg). Bumped while StateRunning; the tint shows until this passes, giving the bg its own hysteresis window decoupled from the 2s dot/KITT signal.
-	lastIdleNotify        time.Time         // Last time an EventAgentIdleWithBead was emitted.
-	idleWithBeadThreshold time.Duration     // Silence duration before idle-with-bead fires. 0 = disabled.
-	idleBeadNotified      bool              // True after idle-with-bead fires. Reset when output resumes.
-	beadAssignedAt        time.Time         // When the current bead was assigned. Grace period starts here.
-	waitingSince          time.Time         // When the currently-open blocking dialog was first seen. Zero = not waiting.
-	waitingPreview        string            // What to show for this agent in the needs-input list. Empty is allowed.
-	waitingTier           WaitingTier       // Confidence in the current wait. Zero value is the SILENT tier, deliberately.
-	waitingModalSeen      bool              // The screen has confirmed this wait's dialog, so the screen may also retire it.
-	attn                  *attentionSignal  // Mailbox the OSC 777 handler writes into. Leaf-locked; see attention_detect.go.
-	journal               []JournalEntry    // Ring buffer of recent JSONL entries (cap journalRingSize).
-	jsonlDir              string            // Directory to search for session JSONL files.
-	eventCh               chan<- AgentEvent // Emits detected semantic events to the TUI. May be nil.
-	safeGo                func(func())      // Launches a goroutine with panic recovery. Set by TUI after creation.
-	goWg                  sync.WaitGroup    // Tracks goroutines launched by Start(). Wait in Close().
-	sessionDesc           string            // Session description extracted from cursor row.
-	beadIDs               []string          // Current bead IDs. Nil = no beads. First is primary.
-	beadTitle             string            // Bead title for top modal display.
-	stallReported         bool              // True after emitting stall event. Reset on new activity.
-	stuckReported         bool              // True after emitting stuck event. Reset on success.
-	dedupEvents           *dedup            // Dedup state for emitted events.
-	startedAt             time.Time         // When this pane's process was started. Used to filter stale JSONL.
-	scrollOffset          int               // Rows scrolled back from live view (0 = live).
-	resizeSettleFrames    int               // Render frames remaining to skip after resize.
-	resizeSettleDeadline  time.Time         // Hard deadline: skip content rendering until this time.
-	scrollAnchorLen       int               // Scrollback length when user last scrolled. Used to compensate for new output.
-	memoryRSS             int64             // RSS in kilobytes, updated by memory monitor goroutine.
-	suspended             bool              // True when auto-suspend policy has stopped this pane.
-	messageQueue          []QueuedMessage   // Messages waiting for resume or modal-close. Capped at maxMessageQueue.
-	idlePromptSince       time.Time         // When the pane last began rendering its idle composer (ini-gbqc).
-	screenSkipSince       time.Time         // When the main loop first found this pane's emulator lock held (ini-psjt).
-	screenSkipLogged      time.Time         // Last time that skip was logged; rate-limits the record.
-	pendingSubmit         *pendingSubmit    // A submit the belt withheld, waiting for the composer to repaint (ini-vpwg).
-	waking                bool              // A wake is in flight (ini-zffi). Guards against a burst of keystrokes each launching a respawn, and drives the "waking" pane display.
-	modalDraining         bool              // True while a modal-close queue drain is in flight (guarded by p.mu).
-	protected             bool              // Protected agents are never auto-suspended.
-	resumeGrace           time.Time         // Until this time, post-resume grace period is active.
-	resumeMu              sync.Mutex        // Serializes concurrent resume attempts for this pane.
-	kittEpoch             time.Time         // Reference time for KITT scanner animation phase.
-	agentType             string            // Semantic agent type: claude-code, codex, or generic.
-	noBracketedPaste      bool              // True when injectText should use typed input instead of bracketed paste.
-	submitKey             string            // Key sequence to submit: "" or "enter" (Enter), "ctrl+enter" (Ctrl+Enter).
-	region                Region
-	activeRunStart        time.Time // Set on idle->running edge, cleared on running->idle.
-	activeRunBytes        int64     // Bytes received since last idle->running edge.
-	lastMessageReceived   time.Time // Updated when injectText delivers a message to this pane.
-	lastEventTime         time.Time // Updated when an AgentEvent fires for this pane.
+	onSuspendedMessage             func(*Pane)
+	fleetNum                       int // Fleet-canonical number PLUS ONE (ini-6m4); zero value = unstamped, so struct-literal construction (tests, fakes) falls back to local numbering instead of reading as "stamped at 0". See fleetNumbered.
+	ptmx                           xpty.Pty
+	cmd                            *exec.Cmd
+	pid                            int // Cached PID from process start (avoids race with restart).
+	emu                            *vt.SafeEmulator
+	mu                             sync.Mutex
+	renderMu                       sync.Mutex // Serializes readLoop writes with Render cell reads to prevent tearing.
+	sendMu                         sync.Mutex // Serializes IPC send operations to prevent keystroke interleaving.
+	networkSink                    io.Writer  // Optional: readLoop tees PTY bytes here for network streaming.
+	sinkMu                         sync.Mutex // Protects networkSink assignment.
+	alive                          bool
+	visible                        bool              // Whether this pane is shown in the layout. Hidden panes keep running.
+	activity                       ActivityState     // Current state: running when PTY bytes flowed recently, else idle.
+	lastOutputTime                 time.Time         // Last time readLoop received bytes from the PTY.
+	tintUntil                      time.Time         // Hold deadline for the running-pane background tint (ini-zmzg). Bumped while StateRunning; the tint shows until this passes, giving the bg its own hysteresis window decoupled from the 2s dot/KITT signal.
+	lastIdleNotify                 time.Time         // Last time an EventAgentIdleWithBead was emitted.
+	idleWithBeadThreshold          time.Duration     // Silence duration before idle-with-bead fires. 0 = disabled.
+	idleBeadNotified               bool              // True after idle-with-bead fires. Reset when output resumes.
+	beadAssignedAt                 time.Time         // When the current bead was assigned. Grace period starts here.
+	waitingSince                   time.Time         // When the currently-open blocking dialog was first seen. Zero = not waiting.
+	waitingPreview                 string            // What to show for this agent in the needs-input list. Empty is allowed.
+	waitingTier                    WaitingTier       // Confidence in the current wait. Zero value is the SILENT tier, deliberately.
+	waitingModalSeen               bool              // The screen has confirmed this wait's dialog, so the screen may also retire it.
+	attn                           *attentionSignal  // Mailbox the OSC 777 handler writes into. Leaf-locked; see attention_detect.go.
+	journal                        []JournalEntry    // Ring buffer of recent JSONL entries (cap journalRingSize).
+	jsonlDir                       string            // Directory to search for session JSONL files.
+	eventCh                        chan<- AgentEvent // Emits detected semantic events to the TUI. May be nil.
+	safeGo                         func(func())      // Launches a goroutine with panic recovery. Set by TUI after creation.
+	goWg                           sync.WaitGroup    // Tracks goroutines launched by Start(). Wait in Close().
+	sessionDesc                    string            // Session description extracted from cursor row.
+	beadIDs                        []string          // Current bead IDs. Nil = no beads. First is primary.
+	beadTitle                      string            // Bead title for top modal display.
+	stallReported                  bool              // True after emitting stall event. Reset on new activity.
+	stuckReported                  bool              // True after emitting stuck event. Reset on success.
+	dedupEvents                    *dedup            // Dedup state for emitted events.
+	startedAt                      time.Time         // When this pane's process was started. Used to filter stale JSONL.
+	scrollOffset                   int               // Rows scrolled back from live view (0 = live).
+	resizeSettleFrames             int               // Render frames remaining to skip after resize.
+	resizeSettleDeadline           time.Time         // Hard deadline: skip content rendering until this time.
+	scrollAnchorLen                int               // Scrollback length when user last scrolled. Used to compensate for new output.
+	memoryRSS                      int64             // RSS in kilobytes, updated by memory monitor goroutine.
+	suspended                      bool              // True when auto-suspend policy has stopped this pane.
+	messageQueue                   []QueuedMessage   // Messages waiting for resume or modal-close. Capped at maxMessageQueue.
+	idlePromptSince                time.Time         // When the pane last began rendering its idle composer (ini-gbqc).
+	screenSkipSince                time.Time         // When the main loop first found this pane's emulator lock held (ini-psjt).
+	screenSkipLogged               time.Time         // Last time that skip was logged; rate-limits the record.
+	lastEmuCols, lastEmuRows       int               // Emulator size last seen under its lock (ini-psjt); emuSize's fallback.
+	lastFrame                      []frameCell       // Content region as last drawn; replayed while the pane cannot be read.
+	lastFrameCols, lastFrameRows   int
+	lastStartRow, lastRenderOffset int            // contentOffset as last computed under the lock.
+	lastMaxScroll                  int            // maxScrollOffset as last computed under the lock.
+	pendingResize                  *[2]int        // rows, cols the main loop could not apply yet; retried each frame.
+	pendingSubmit                  *pendingSubmit // A submit the belt withheld, waiting for the composer to repaint (ini-vpwg).
+	waking                         bool           // A wake is in flight (ini-zffi). Guards against a burst of keystrokes each launching a respawn, and drives the "waking" pane display.
+	modalDraining                  bool           // True while a modal-close queue drain is in flight (guarded by p.mu).
+	protected                      bool           // Protected agents are never auto-suspended.
+	resumeGrace                    time.Time      // Until this time, post-resume grace period is active.
+	resumeMu                       sync.Mutex     // Serializes concurrent resume attempts for this pane.
+	kittEpoch                      time.Time      // Reference time for KITT scanner animation phase.
+	agentType                      string         // Semantic agent type: claude-code, codex, or generic.
+	noBracketedPaste               bool           // True when injectText should use typed input instead of bracketed paste.
+	submitKey                      string         // Key sequence to submit: "" or "enter" (Enter), "ctrl+enter" (Ctrl+Enter).
+	region                         Region
+	activeRunStart                 time.Time // Set on idle->running edge, cleared on running->idle.
+	activeRunBytes                 int64     // Bytes received since last idle->running edge.
+	lastMessageReceived            time.Time // Updated when injectText delivers a message to this pane.
+	lastEventTime                  time.Time // Updated when an AgentEvent fires for this pane.
 
 	// lastAltScreen is the child's alt-screen state as of the most recent
 	// resize (ini-y97). Compared against p.emu.IsAltScreen() on every PTY
@@ -405,10 +411,11 @@ func NewPane(cfg PaneConfig, rows, cols int) (*Pane, error) {
 		cfg:  cfg,
 		name: cfg.Name,
 
-		ptmx:             ptmx,
-		cmd:              cmd,
-		pid:              pid,
-		emu:              emu,
+		ptmx:        ptmx,
+		cmd:         cmd,
+		pid:         pid,
+		emu:         emu,
+		lastEmuCols: cols, lastEmuRows: rows, // emuSize fallback before the first locked read (ini-psjt)
 		alive:            true,
 		visible:          true,
 		activity:         StateIdle,
@@ -451,9 +458,10 @@ func NewParkedPane(cfg PaneConfig, rows, cols int) *Pane {
 		submitKey = config.DefaultSubmitKey(agentType)
 	}
 	return &Pane{
-		cfg:              cfg,
-		name:             cfg.Name,
-		emu:              emu,
+		cfg:         cfg,
+		name:        cfg.Name,
+		emu:         emu,
+		lastEmuCols: cols, lastEmuRows: rows, // emuSize fallback before the first locked read (ini-psjt)
 		alive:            false,
 		visible:          true,
 		suspended:        true,
@@ -676,6 +684,7 @@ func (p *Pane) ResizeExact(rows, cols int) {
 		p.ptmx.Resize(cols, rows)
 	}
 	p.emu.Resize(cols, rows)
+	p.noteEmuSize(cols, rows)
 	p.resizeSettleFrames = resizeSettleCount
 	p.resizeSettleDeadline = time.Now().Add(resizeSettleDuration)
 	p.lastAltScreen = p.emu.IsAltScreen()
@@ -704,8 +713,18 @@ func (p *Pane) ResizeExact(rows, cols int) {
 //     matter how the render path windows it. The child must be told the
 //     truth (ini-y97).
 func (p *Pane) resizeLocked(rows, cols int) {
+	p.emu.Lock()
+	defer p.emu.Unlock()
+	p.resizeUnder(p.emu.Emulator, rows, cols)
+}
+
+// resizeUnder is the resize itself. Caller holds renderMu AND the emulator's
+// write lock; e is the unlocked view (ini-psjt). The main loop reaches it
+// through resizeFromMainLoop, which never waits for either lock; readLoop and
+// the daemon reach it through resizeLocked, which does.
+func (p *Pane) resizeUnder(e *vt.Emulator, rows, cols int) {
 	emuRows := rows
-	if !p.emu.IsAltScreen() {
+	if !e.IsAltScreen() {
 		emuRows = effectiveEmuRows(rows)
 	}
 	// Clamp cols to a sane bound (ini-hup3): an out-of-range column count from a
@@ -717,10 +736,35 @@ func (p *Pane) resizeLocked(rows, cols int) {
 	if p.ptmx != nil {
 		p.ptmx.Resize(cols, emuRows)
 	}
-	p.emu.Resize(cols, emuRows)
+	e.Resize(cols, emuRows)
 	p.resizeSettleFrames = resizeSettleCount
 	p.resizeSettleDeadline = time.Now().Add(resizeSettleDuration)
-	p.lastAltScreen = p.emu.IsAltScreen()
+	p.lastAltScreen = e.IsAltScreen()
+	p.noteEmuSize(cols, emuRows)
+}
+
+// resizeFromMainLoop is Resize for the UI main loop: it never waits on the
+// pane (ini-psjt). A resize the pane cannot take right now -- its writer is
+// wedged holding the emulator -- is remembered and retried at the top of every
+// frame by applyPendingResize, and applied the moment the lock frees. Until
+// then the pane keeps drawing its last frame; a wedged pane would not have
+// repainted into the new size anyway.
+func (p *Pane) resizeFromMainLoop(rows, cols int) {
+	if p.withScreenWrite(func(e *vt.Emulator) { p.resizeUnder(e, rows, cols) }) {
+		p.pendingResize = nil
+		return
+	}
+	p.pendingResize = &[2]int{rows, cols}
+	p.noteScreenSkipped(time.Now(), "resize")
+}
+
+// applyPendingResize retries a resize the main loop could not apply. Main
+// loop only.
+func (p *Pane) applyPendingResize() {
+	if p.pendingResize == nil {
+		return
+	}
+	p.resizeFromMainLoop(p.pendingResize[0], p.pendingResize[1])
 }
 
 // checkAltScreenTransition detects a change in the child's alt-screen mode
@@ -812,8 +856,18 @@ func (p *Pane) ForwardMouse(ev uv.MouseEvent) {
 // value the view window would extend past the top of the virtual buffer
 // (scrollback + screen). The formula is scrollbackLen + emuHeight - termRows.
 func (p *Pane) maxScrollOffset() int {
-	scrollbackLen := p.emu.ScrollbackLen()
-	emuHeight := p.emu.Height()
+	var max int
+	if p.withScreen(func(e *vt.Emulator) { max = p.maxScrollOffsetOn(e) }) {
+		return max
+	}
+	return p.lastMaxScroll
+}
+
+// maxScrollOffsetOn is maxScrollOffset inside a withScreen region (ini-psjt).
+// Remembers its answer for the non-blocking wrapper's fallback.
+func (p *Pane) maxScrollOffsetOn(e *vt.Emulator) int {
+	scrollbackLen := e.ScrollbackLen()
+	emuHeight := e.Height()
 	termRows := emuHeight
 	if p.region.H > 2 {
 		_, termRows = p.region.TerminalSize()
@@ -822,6 +876,7 @@ func (p *Pane) maxScrollOffset() int {
 	if max < 0 {
 		max = 0
 	}
+	p.lastMaxScroll = max
 	return max
 }
 
@@ -829,14 +884,19 @@ func (p *Pane) maxScrollOffset() int {
 // lines added since the user scrolled. Must be called before any cell drawing
 // so the view window uses the corrected offset.
 func (p *Pane) applyScrollAnchor() {
+	p.withScreen(p.applyScrollAnchorOn)
+}
+
+// applyScrollAnchorOn is applyScrollAnchor inside a withScreen region.
+func (p *Pane) applyScrollAnchorOn(e *vt.Emulator) {
 	if p.scrollOffset > 0 && p.scrollAnchorLen > 0 {
-		delta := p.emu.ScrollbackLen() - p.scrollAnchorLen
+		delta := e.ScrollbackLen() - p.scrollAnchorLen
 		if delta > 0 {
 			p.scrollOffset += delta
-			p.scrollAnchorLen = p.emu.ScrollbackLen()
+			p.scrollAnchorLen = e.ScrollbackLen()
 		}
 	}
-	if max := p.maxScrollOffset(); p.scrollOffset > max {
+	if max := p.maxScrollOffsetOn(e); p.scrollOffset > max {
 		p.scrollOffset = max
 	}
 }
@@ -848,12 +908,22 @@ func (p *Pane) applyScrollAnchor() {
 //
 // Usage: emuRow = startRow + (screenRow - renderOffset)
 func (p *Pane) contentOffset() (startRow, renderOffset int) {
-	if p.emu.IsAltScreen() {
+	if p.withScreen(func(e *vt.Emulator) { startRow, renderOffset = p.contentOffsetOn(e) }) {
+		return startRow, renderOffset
+	}
+	return p.lastStartRow, p.lastRenderOffset
+}
+
+// contentOffsetOn is contentOffset inside a withScreen region (ini-psjt).
+// Remembers its answer for the non-blocking wrapper's fallback.
+func (p *Pane) contentOffsetOn(e *vt.Emulator) (startRow, renderOffset int) {
+	defer func() { p.lastStartRow, p.lastRenderOffset = startRow, renderOffset }()
+	if e.IsAltScreen() {
 		return 0, 0
 	}
 	if p.scrollOffset > 0 {
-		scrollbackLen := p.emu.ScrollbackLen()
-		totalVirtual := scrollbackLen + p.emu.Height()
+		scrollbackLen := e.ScrollbackLen()
+		totalVirtual := scrollbackLen + e.Height()
 		_, termRows := p.region.TerminalSize()
 		viewBottom := totalVirtual - p.scrollOffset
 		if viewBottom < 0 {
@@ -874,7 +944,7 @@ func (p *Pane) contentOffset() (startRow, renderOffset int) {
 	// off the bottom window. Scanning the whole screen finds the true last drawn
 	// row. For a non-taller emulator (emuHeight==termRows) the result is
 	// identical: contentEnd<=termRows, so startRow stays 0.
-	scanEnd := p.emu.Height() - 1
+	scanEnd := e.Height() - 1
 	if scanEnd < 0 {
 		scanEnd = 0
 	}
@@ -882,12 +952,11 @@ func (p *Pane) contentOffset() (startRow, renderOffset int) {
 	for row := scanEnd; row >= 0; row-- {
 		empty := true
 		for col := 0; col < innerCols; col++ {
-			// CellValueAt copies under lock (ini-wizq): contentOffset is
-			// called both under p.renderMu (from Render) and with no lock at
-			// all (from mouse.go on every mouse event), so it cannot rely on
-			// the caller holding renderMu.
-			cell, ok := p.emu.CellValueAt(col, row)
-			if ok && cell.Content != "" && cell.Content != " " {
+			// A pointer read is safe here: withScreen holds the emulator's
+			// read lock for the whole region (ini-psjt supersedes ini-wizq's
+			// value copy, which existed because this once ran unlocked).
+			cell := e.CellAt(col, row)
+			if cell != nil && cell.Content != "" && cell.Content != " " {
 				empty = false
 				break
 			}
@@ -928,33 +997,18 @@ func (p *Pane) Emulator() *vt.SafeEmulator {
 	return p.emu
 }
 
-// virtualCellAt returns the cell at virtual row vRow (scrollback + screen
-// combined). vRow in [0, scrollbackLen) reads from scrollback; vRow in
+// virtualCellOn returns the cell at virtual row vRow (scrollback + screen
+// combined) from the unlocked emulator inside a withScreen/withEmulator
+// region. vRow in [0, scrollbackLen) reads from scrollback; vRow in
 // [scrollbackLen, scrollbackLen+emuRows) reads from the live screen buffer.
-//
-// The returned pointer aliases live emulator/scrollback memory (ini-wizq): safe
-// only under a lock that excludes concurrent Write/Reflow, which today means
-// p.renderMu. Render (via renderSelectionVirtual) holds renderMu, so its use
-// there is correct. Any other caller must use virtualCellValueAt instead.
-func (p *Pane) virtualCellAt(col, vRow int) *uv.Cell {
-	scrollbackLen := p.emu.ScrollbackLen()
+// The pointer aliases live emulator memory and is valid only inside the
+// region (ini-wizq, ini-psjt).
+func virtualCellOn(e *vt.Emulator, col, vRow int) *uv.Cell {
+	scrollbackLen := e.ScrollbackLen()
 	if vRow < scrollbackLen {
-		return p.emu.ScrollbackCellAt(col, vRow)
+		return e.ScrollbackCellAt(col, vRow)
 	}
-	return p.emu.CellAt(col, vRow-scrollbackLen)
-}
-
-// virtualCellValueAt is the lock-free-safe counterpart to virtualCellAt: it
-// returns a COPY of the cell, safe to read without holding renderMu or any
-// other lock (ini-wizq). Use this from any caller that is not already
-// serialized against emulator writes by renderMu — e.g. the mouse selection
-// copy path, which runs on the main goroutine without renderMu.
-func (p *Pane) virtualCellValueAt(col, vRow int) (uv.Cell, bool) {
-	scrollbackLen := p.emu.ScrollbackLen()
-	if vRow < scrollbackLen {
-		return p.emu.ScrollbackCellValueAt(col, vRow)
-	}
-	return p.emu.CellValueAt(col, vRow-scrollbackLen)
+	return e.CellAt(col, vRow-scrollbackLen)
 }
 
 // SubmitKey returns the configured submit key sequence for this pane.
@@ -1048,14 +1102,18 @@ func sendSubmitKey(emu *vt.SafeEmulator, key string) {
 	}
 }
 
-func emulatorBottomText(emu *vt.SafeEmulator, lines int) string {
-	return bottomTextFromRows(emuRows(emu), lines)
+// emulatorBottomTextBlocking joins the bottom lines of the screen, WAITING for
+// the emulator's lock. For the send path, which should wait for the screen.
+// Never the main loop: see screen_read.go, and the allowlist in
+// lock_discipline_test.go that names every caller of this function.
+func emulatorBottomTextBlocking(emu *vt.SafeEmulator, lines int) string {
+	return bottomTextFromRows(emuRowsBlocking(emu), lines)
 }
 
-// emuRows reads every row of the screen, BLOCKING on the emulator's lock.
-// For callers that may wait on a pane. The main loop may not: see
-// tryScreenRows.
-func emuRows(emu *vt.SafeEmulator) []string {
+// emuRowsBlocking reads every row of the screen, WAITING for the emulator's
+// lock. Same contract as emulatorBottomTextBlocking; the main loop reads
+// through tryScreenRows instead.
+func emuRowsBlocking(emu *vt.SafeEmulator) []string {
 	cols := emu.Width()
 	height := emu.Height()
 	rows := make([]string, height)
@@ -1065,22 +1123,6 @@ func emuRows(emu *vt.SafeEmulator) []string {
 		rows[y] = emu.RowText(y, cols)
 	}
 	return rows
-}
-
-// tryScreenRows reads a pane's screen WITHOUT BLOCKING, or reports false when
-// the emulator's lock is held (ini-psjt).
-//
-// The main loop reads every local pane's screen once a second in
-// modalMaintenance. Through the blocking accessors, one pane whose lock was
-// held by a stalled writer parked the main loop behind it -- hover's window
-// froze for 30+ hours behind a single keystroke whose pipe write never
-// completed. A pane with no emulator (suspended) reads as an empty screen, as
-// it always has.
-func tryScreenRows(p *Pane) ([]string, bool) {
-	if p == nil || p.emu == nil {
-		return nil, true
-	}
-	return p.emu.TryRows()
 }
 
 // bottomTextFromRows joins the last lines of a screen, trailing spaces
@@ -1162,7 +1204,7 @@ func (p *Pane) isCodexReadyForSend() bool {
 	}
 
 	p.renderMu.Lock()
-	text := emulatorBottomText(p.emu, p.emu.Height())
+	text := emulatorBottomTextBlocking(p.emu, p.emu.Height())
 	p.renderMu.Unlock()
 	return isCodexReadyPrompt(text)
 }
@@ -1173,7 +1215,7 @@ func (p *Pane) waitForCodexReady(timeout time.Duration) bool {
 	var readySince time.Time
 	for {
 		p.renderMu.Lock()
-		text := emulatorBottomText(p.emu, p.emu.Height())
+		text := emulatorBottomTextBlocking(p.emu, p.emu.Height())
 		p.renderMu.Unlock()
 		if isCodexTrustPrompt(text) && !trustAccepted && p.ptmx != nil {
 			_, _ = p.ptmx.Write([]byte("\r"))
@@ -1520,10 +1562,17 @@ func removeArg(args []string, flag string) []string {
 // ScrollUp moves the viewport up (into scrollback history) by n rows.
 func (p *Pane) ScrollUp(n int) {
 	p.scrollOffset += n
-	if max := p.maxScrollOffset(); p.scrollOffset > max {
-		p.scrollOffset = max
+	read := p.withScreen(func(e *vt.Emulator) {
+		if max := p.maxScrollOffsetOn(e); p.scrollOffset > max {
+			p.scrollOffset = max
+		}
+		p.scrollAnchorLen = e.ScrollbackLen()
+	})
+	if !read && p.scrollOffset > p.lastMaxScroll {
+		// Pane unreadable (ini-psjt): clamp to the last known bound, keep the
+		// anchor; a wedged pane's scrollback is not growing.
+		p.scrollOffset = p.lastMaxScroll
 	}
-	p.scrollAnchorLen = p.emu.ScrollbackLen()
 }
 
 // ScrollDown moves the viewport down (toward live output) by n rows.

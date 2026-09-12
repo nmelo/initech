@@ -643,9 +643,13 @@ func (rp *RemotePane) Render(screen tcell.Screen, focused bool, dimmed bool, ind
 
 	_, innerRows := r.InnerSize()
 	emuStartRow := rp.emu.Height() - innerRows
-	renderCells(s, r, rp.emu, dimmed, emuStartRow, tcell.ColorDefault)
-	renderSelection(s, r, rp.emu, sel, dimmed, emuStartRow)
-	renderCursor(s, r, rp.emu, focused, sel, emuStartRow)
+	// The viewer emulator is written only on this goroutine, so the try never
+	// fails; going through withEmulator keeps one rule for every render.
+	withEmulator(rp.emu, screenTryBudget, func(e *vt.Emulator) {
+		renderCells(s, r, e, dimmed, emuStartRow, tcell.ColorDefault)
+		renderSelection(s, r, e, sel, dimmed, emuStartRow)
+		renderCursor(s, r, e, focused, sel, emuStartRow)
+	})
 }
 
 // Resize updates the local emulator immediately and debounces the control

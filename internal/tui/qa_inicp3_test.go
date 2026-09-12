@@ -15,7 +15,7 @@ func TestRowContainsStatusBar_WithSeparator(t *testing.T) {
 	emu.Write([]byte("\033[5;1H")) // Move to row 5 (0-indexed: 4)
 	emu.Write([]byte("mode \u2502 model \u2502 cost"))
 
-	if !rowContainsStatusBar(emu, 4, 40) {
+	if !rowContainsStatusBar(emu.Emulator, 4, 40) {
 		t.Error("rowContainsStatusBar should return true for row with │")
 	}
 }
@@ -27,7 +27,7 @@ func TestRowContainsStatusBar_WithoutSeparator(t *testing.T) {
 	emu.Write([]byte("\033[3;1H")) // Move to row 3 (0-indexed: 2)
 	emu.Write([]byte("/model sonnet"))
 
-	if rowContainsStatusBar(emu, 2, 40) {
+	if rowContainsStatusBar(emu.Emulator, 2, 40) {
 		t.Error("rowContainsStatusBar should return false for input row without │")
 	}
 }
@@ -35,7 +35,7 @@ func TestRowContainsStatusBar_WithoutSeparator(t *testing.T) {
 // rowContainsStatusBar should return false for an empty row.
 func TestRowContainsStatusBar_EmptyRow(t *testing.T) {
 	emu := vt.NewSafeEmulator(40, 10)
-	if rowContainsStatusBar(emu, 0, 40) {
+	if rowContainsStatusBar(emu.Emulator, 0, 40) {
 		t.Error("rowContainsStatusBar should return false for empty row")
 	}
 }
@@ -46,7 +46,7 @@ func TestRowContainsStatusBar_PipeNotSeparator(t *testing.T) {
 	emu.Write([]byte("\033[1;1H"))
 	emu.Write([]byte("echo hello | grep hello"))
 
-	if rowContainsStatusBar(emu, 0, 40) {
+	if rowContainsStatusBar(emu.Emulator, 0, 40) {
 		t.Error("pipe | (U+007C) should not trigger status bar detection")
 	}
 }
@@ -64,7 +64,7 @@ func TestCUFHeuristic_InputRowNotFiltered(t *testing.T) {
 	emu.Write([]byte("\033[90monnet\033[0m")) // Colored (dim gray) ghost text
 
 	// Row 4 has no │, so rowContainsStatusBar returns false.
-	if rowContainsStatusBar(emu, 4, 40) {
+	if rowContainsStatusBar(emu.Emulator, 4, 40) {
 		t.Fatal("input row should not be detected as status bar")
 	}
 
@@ -88,7 +88,7 @@ func TestCUFHeuristic_StatusBarRowFiltered(t *testing.T) {
 	emu.Write([]byte("\033[36mmode\033[0m \u2502 \033[36mmodel\033[0m"))
 
 	// This row DOES contain │.
-	if !rowContainsStatusBar(emu, 4, 40) {
+	if !rowContainsStatusBar(emu.Emulator, 4, 40) {
 		t.Fatal("status bar row should be detected")
 	}
 }
@@ -97,7 +97,7 @@ func TestCUFHeuristic_StatusBarRowFiltered(t *testing.T) {
 func TestRowContainsStatusBar_ZeroCols(t *testing.T) {
 	emu := vt.NewSafeEmulator(40, 10)
 	// Should return false without panicking.
-	if rowContainsStatusBar(emu, 0, 0) {
+	if rowContainsStatusBar(emu.Emulator, 0, 0) {
 		t.Error("should return false for zero cols")
 	}
 }
@@ -108,7 +108,7 @@ func TestRowContainsStatusBar_LastRow(t *testing.T) {
 	emu.Write([]byte("\033[10;1H")) // Move to last row (0-indexed: 9)
 	emu.Write([]byte("text \u2502 more"))
 
-	if !rowContainsStatusBar(emu, 9, 40) {
+	if !rowContainsStatusBar(emu.Emulator, 9, 40) {
 		t.Error("should detect │ on last row of emulator")
 	}
 }

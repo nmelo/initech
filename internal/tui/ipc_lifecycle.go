@@ -194,7 +194,7 @@ func (t *TUI) handleIPCStart(conn net.Conn, req IPCRequest) {
 		return
 	}
 	// Create the new pane off-main (may fork/exec).
-	cols, rows := old.emu.Width(), old.emu.Height()
+	cols, rows := old.emuSize() // never waits on the pane (ini-psjt)
 	// Dead panes may report zero dimensions; use sensible defaults.
 	if cols < 10 {
 		cols = 80
@@ -276,7 +276,7 @@ func (t *TUI) handleIPCRestart(conn net.Conn, req IPCRequest) {
 	}
 	// Close the old pane off-main; sendMu serialises concurrent sends.
 	old.sendMu.Lock()
-	cols, rows := old.emu.Width(), old.emu.Height()
+	cols, rows := old.emuSize() // never waits on the pane (ini-psjt)
 	// Dead panes may report zero dimensions; use sensible defaults.
 	if cols < 10 {
 		cols = 80

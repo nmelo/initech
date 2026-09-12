@@ -113,12 +113,34 @@ func (p *Pane) Render(screen tcell.Screen, focused bool, dimmed bool, index int,
 	cr := Region{X: r.X, Y: r.Y + 1, W: r.W, H: r.H - 1}
 	termCols, termRows := cr.InnerSize()
 
-	// Hold renderMu for the entire cell-reading phase to prevent tearing
-	// from concurrent readLoop writes (ini-45m) and resize buffer
-	// reorganization (ini-ipr). Read emuRows inside the lock so it matches
-	// the buffer state we'll be reading from.
-	p.renderMu.Lock()
+	// Everything below reads the emulator, and the main loop may not wait on
+	// it (ini-psjt): the read phase runs inside withScreen against the
+	// unlocked Emulator, with renderMu and the read lock held for the whole
+	// phase so nothing tears (ini-45m, ini-ipr). A pane whose locks stay held
+	// keeps its last frame and, after screenFrozenAfter, says why.
+	p.applyPendingResize()
+	now := time.Now()
+	drewContent := false
+	read := p.withScreen(func(e *vt.Emulator) {
+		drewContent = p.renderContent(s, cr, e, focused, dimmed, sel, tint, termCols, termRows)
+	})
+	if !read {
+		p.noteScreenSkipped(now, "render")
+		p.replayFrame(s, cr, termCols, termRows, now)
+		return
+	}
+	p.noteScreenRead()
+	if drewContent {
+		p.cacheFrame(s, cr, termCols, termRows)
+	}
+}
 
+// renderContent draws the content region from the emulator. Caller holds
+// renderMu and the emulator's read lock through withScreen; e is the
+// unlocked view, and nothing in here may take the emulator's lock again.
+// Reports false when content was suppressed (resize settling), so the frame
+// cache keeps the last real content.
+func (p *Pane) renderContent(s *clampedScreen, cr Region, e *vt.Emulator, focused, dimmed bool, sel Selection, tint tcell.Color, termCols, termRows int) bool {
 	// After a resize, suppress content rendering for multiple frames and a
 	// minimum wall-clock duration to let the child process redraw into the
 	// new dimensions (ini-yah). Without this, stale content from the
@@ -127,21 +149,20 @@ func (p *Pane) Render(screen tcell.Screen, focused bool, dimmed bool, index int,
 		if p.resizeSettleFrames > 0 {
 			p.resizeSettleFrames--
 		}
-		p.renderMu.Unlock()
-		return
+		return false
 	}
 
-	emuRows := p.emu.Height()
+	emuRows := e.Height()
 
 	// Compensate scrollOffset for new output before any cell drawing.
-	p.applyScrollAnchor()
+	p.applyScrollAnchorOn(e)
 
 	// Compute view-window mapping (single source of truth for both paths).
-	startRow, renderOffset := p.contentOffset()
+	startRow, renderOffset := p.contentOffsetOn(e)
 
 	if p.scrollOffset > 0 {
 		// Scrollback mode: render from the combined scrollback + screen buffer.
-		scrollbackLen := p.emu.ScrollbackLen()
+		scrollbackLen := e.ScrollbackLen()
 		viewTop := startRow
 		viewBottom := viewTop + termRows
 		totalVirtual := scrollbackLen + emuRows
@@ -157,9 +178,9 @@ func (p *Pane) Render(screen tcell.Screen, focused bool, dimmed bool, index int,
 			for col := 0; col < termCols; col++ {
 				var cell *uv.Cell
 				if vRow < scrollbackLen {
-					cell = p.emu.ScrollbackCellAt(col, vRow)
+					cell = e.ScrollbackCellAt(col, vRow)
 				} else {
-					cell = p.emu.CellAt(col, vRow-scrollbackLen)
+					cell = e.CellAt(col, vRow-scrollbackLen)
 				}
 				ch, style := uvCellToTcell(cell)
 				style = tintStyle(style, tint)
@@ -173,15 +194,15 @@ func (p *Pane) Render(screen tcell.Screen, focused bool, dimmed bool, index int,
 
 	if p.scrollOffset == 0 {
 		// Live mode: anchor content to the bottom of the pane.
-		pos := p.emu.CursorPosition()
+		pos := e.CursorPosition()
 
-		if !p.emu.IsAltScreen() {
+		if !e.IsAltScreen() {
 			// Extract the cursor row text as the session description.
 			// Only update if non-empty (resizes temporarily clear the cursor row).
 			if pos.Y < emuRows {
 				var desc strings.Builder
 				for col := 0; col < termCols; col++ {
-					cell := p.emu.CellAt(col, pos.Y)
+					cell := e.CellAt(col, pos.Y)
 					if cell != nil && cell.Content != "" {
 						desc.WriteString(cell.Content)
 					} else {
@@ -208,22 +229,22 @@ func (p *Pane) Render(screen tcell.Screen, focused bool, dimmed bool, index int,
 				continue
 			}
 
-			if emuRow >= statusZoneStart && emuRow <= pos.Y && rowContainsStatusBar(p.emu, emuRow, termCols) {
-				renderStatusBarRow(s, p.emu, cr.X, cr.Y+row, emuRow, termCols, dimmed, tint)
+			if emuRow >= statusZoneStart && emuRow <= pos.Y && rowContainsStatusBar(e, emuRow, termCols) {
+				renderStatusBarRow(s, e, cr.X, cr.Y+row, emuRow, termCols, dimmed, tint)
 			} else {
-				renderCellRow(s, p.emu, cr.X, cr.Y+row, emuRow, termCols, dimmed, tint)
+				renderCellRow(s, e, cr.X, cr.Y+row, emuRow, termCols, dimmed, tint)
 			}
 		}
 	}
 
 	if p.scrollOffset > 0 {
-		renderSelectionVirtual(s, cr, p, sel, dimmed, startRow)
+		renderSelectionVirtual(s, cr, e, sel, dimmed, startRow)
 	} else {
-		renderSelection(s, cr, p.emu, sel, dimmed, startRow-renderOffset)
-		renderCursor(s, cr, p.emu, focused, sel, startRow-renderOffset)
+		renderSelection(s, cr, e, sel, dimmed, startRow-renderOffset)
+		renderCursor(s, cr, e, focused, sel, startRow-renderOffset)
 	}
 
-	p.renderMu.Unlock()
+	return true
 }
 
 // renderActivityBar draws a 1-row activity indicator on the top edge of the
@@ -286,13 +307,13 @@ type cufCellInfo struct {
 // allocation. Grows to the widest pane and stays there.
 var cufCells []cufCellInfo
 
-func renderStatusBarRow(s *clampedScreen, emu *vt.SafeEmulator, screenX, screenY, emuRow, cols int, dimmed bool, tint tcell.Color) {
+func renderStatusBarRow(s *clampedScreen, e *vt.Emulator, screenX, screenY, emuRow, cols int, dimmed bool, tint tcell.Color) {
 	if cap(cufCells) < cols {
 		cufCells = make([]cufCellInfo, cols*2)
 	}
 	cells := cufCells[:cols]
 	for col := 0; col < cols; col++ {
-		cell := emu.CellAt(col, emuRow)
+		cell := e.CellAt(col, emuRow)
 		ch, style := uvCellToTcell(cell)
 		cells[col] = cufCellInfo{ch, style, cell != nil && cell.Style.Fg != nil}
 	}
@@ -349,9 +370,9 @@ func dimColor(c tcell.Color) tcell.Color {
 // drawing character │ (U+2502), which is the definitive marker for Claude Code's
 // status bar. Used to restrict the CUF bleed-through heuristic to status bar
 // rows only, preventing it from blanking typed text on input rows.
-func rowContainsStatusBar(emu *vt.SafeEmulator, row, cols int) bool {
+func rowContainsStatusBar(e *vt.Emulator, row, cols int) bool {
 	for col := 0; col < cols; col++ {
-		cell := emu.CellAt(col, row)
+		cell := e.CellAt(col, row)
 		if cell != nil {
 			for _, r := range cell.Content {
 				if r == '│' {

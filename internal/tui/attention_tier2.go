@@ -19,7 +19,10 @@ package tui
 // raw-stream scan for speed would silently break codex detection, which is why
 // there is a test pinning it.
 
-import "strings"
+import (
+	"strings"
+	"time"
+)
 
 // tier2DialogPatterns are lowercased, whitespace-compacted substrings that mark
 // a blocking dialog on a pane with no tier-1 signal.
@@ -96,7 +99,13 @@ func (p *Pane) refreshTier2WaitingState() {
 		return
 	}
 
-	if paneHasTier2Dialog(p) {
+	rows, ok := tryScreenRows(p)
+	if !ok {
+		// Cannot read is not "no dialog" (ini-psjt): keep the row as it is.
+		p.noteScreenSkipped(time.Now(), "attention")
+		return
+	}
+	if screenHasTier2Dialog(rows) {
 		// Silent tier, explicitly. Passing WaitingTierListOnly rather than
 		// relying on the zero value keeps the intent legible at the call site.
 		p.SetWaitingInputTier(tier2PreviewText, WaitingTierListOnly)
@@ -112,13 +121,8 @@ func (p *Pane) refreshTier2WaitingState() {
 	}
 }
 
-// paneHasTier2Dialog reads the pane's rendered bottom rows and tests them.
-// Uses emulatorBottomText (SafeEmulator.RowText, which copies under the lock)
-// rather than CellAt, which returns a pointer into the live buffer and races a
-// concurrent Write.
-func paneHasTier2Dialog(p *Pane) bool {
-	if p == nil || p.emu == nil {
-		return false
-	}
-	return hasTier2Dialog(emulatorBottomText(p.emu, modalScanWholePane))
+// screenHasTier2Dialog tests a screen's bottom rows, already copied by
+// tryScreenRows (ini-psjt) so that nothing here touches the live buffer.
+func screenHasTier2Dialog(rows []string) bool {
+	return hasTier2Dialog(bottomTextFromRows(rows, modalScanWholePane))
 }

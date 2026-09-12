@@ -39,6 +39,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/nmelo/initech/internal/config"
 )
@@ -233,12 +234,19 @@ func (p *Pane) refreshWaitingState() {
 	// licenses the row's clear; a narrow face here means a dialog the guard
 	// does not recognise can never retire its row, and the operator is sent to
 	// a monitor where nothing is waiting.
-	onScreen := paneScreenShowsDialogText(p)
+	rows, ok := tryScreenRows(p)
+	if !ok {
+		// Cannot read is not "not on screen" (ini-psjt): the row and the latch
+		// keep their state until the screen can be read again.
+		p.noteScreenSkipped(time.Now(), "attention")
+		return
+	}
+	onScreen := screenShowsDialogText(rows)
 	if onScreen {
 		p.markModalSeen()
 		// Upgrade the row's text now that the dialog is actually rendered. Costs
 		// nothing when the text has not changed and does not disturb the clock.
-		if preview := p.waitingPreviewText(); preview != "" {
+		if preview := waitingPreviewFromRows(rows); preview != "" {
 			p.SetWaitingInputTier(preview, WaitingTierChime)
 		}
 		return
@@ -288,10 +296,16 @@ var bashCommandRe = regexp.MustCompile(`(?m)^\s*(Bash command|Bash)\s*$`)
 // staked on OSC 777, which is exact. Only the row's text comes from here, so a
 // miss costs a less informative row, never a false chime and never a missed one.
 func (p *Pane) waitingPreviewText() string {
-	if p == nil || p.emu == nil {
+	rows, ok := tryScreenRows(p)
+	if !ok {
 		return ""
 	}
-	text := emulatorBottomText(p.emu, modalScanWholePane)
+	return waitingPreviewFromRows(rows)
+}
+
+// waitingPreviewFromRows is waitingPreviewText over a screen already read.
+func waitingPreviewFromRows(rows []string) string {
+	text := bottomTextFromRows(rows, modalScanWholePane)
 	if text == "" {
 		return ""
 	}

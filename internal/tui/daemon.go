@@ -1114,9 +1114,10 @@ func (d *Daemon) handleControlStream(ctrl net.Conn, scanner *bufio.Scanner, peer
 				d.panesMu.Unlock()
 			}
 			if p != nil {
+				pCols, pRows := p.emuSize()
 				LogInfo("daemon", "resize applied", "agent", cmd.Target, "peer", peerName,
 					"req_rows", cmd.Rows, "req_cols", cmd.Cols,
-					"emu_h", p.emu.Height(), "emu_w", p.emu.Width(), "headless", d.headless)
+					"emu_h", pRows, "emu_w", pCols, "headless", d.headless)
 			}
 			if !respond(cmd.ID, ControlResp{OK: true}) {
 				return

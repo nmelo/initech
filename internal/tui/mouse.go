@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"github.com/charmbracelet/x/vt"
 	"os/exec"
 	"strings"
 
@@ -443,20 +444,33 @@ func (t *TUI) extractSelectionText() string {
 
 	startRow := t.sel.startRow
 	renderOffset := t.sel.renderOffset
-	emu := pv.Emulator()
-	emuRows := emu.Height()
 
 	// In scrollback mode, startRow is a virtual row (scrollback + screen
-	// combined). Use virtualCellAt for correct cell lookup.
+	// combined). Use virtualCellOn for correct cell lookup.
 	scrollback := false
-	var localPane *Pane
 	if lp, ok := pv.(*Pane); ok && lp.scrollOffset > 0 {
 		scrollback = true
-		localPane = lp
 	}
-	totalVirtual := emu.ScrollbackLen() + emuRows
 
+	// Main goroutine: never wait on the pane (ini-psjt). The whole copy runs
+	// under the emulator's read lock, so pointer reads cannot tear (ini-wizq);
+	// an unreadable pane copies nothing rather than parking the window.
 	var buf strings.Builder
+	read := withEmulator(pv.Emulator(), screenTryBudget, func(e *vt.Emulator) {
+		t.copySelectionOn(e, &buf, r0, c0, r1, c1, cols, startRow, renderOffset, scrollback)
+	})
+	if !read {
+		LogInfo("mouse", "selection copy SKIPPED: emulator lock held", "pane", pv.Name())
+		return ""
+	}
+	return buf.String()
+}
+
+// copySelectionOn writes the selected cells into buf from the unlocked
+// emulator inside a withEmulator region.
+func (t *TUI) copySelectionOn(e *vt.Emulator, buf *strings.Builder, r0, c0, r1, c1, cols, startRow, renderOffset int, scrollback bool) {
+	emuRows := e.Height()
+	totalVirtual := e.ScrollbackLen() + emuRows
 	for row := r0; row <= r1; row++ {
 		vRow := startRow + (row - renderOffset)
 		if scrollback {
@@ -483,19 +497,13 @@ func (t *TUI) extractSelectionText() string {
 
 		var line strings.Builder
 		for col := startCol; col < endCol; col++ {
-			// Value-copying accessors, not the pointer-returning
-			// virtualCellAt/CellAt: this runs on the main goroutine without
-			// p.renderMu, so a pointer read here would race readLoop's
-			// concurrent emulator write and could put torn garbage on the
-			// operator's clipboard (ini-wizq).
-			var cell uv.Cell
-			var ok bool
+			var cell *uv.Cell
 			if scrollback {
-				cell, ok = localPane.virtualCellValueAt(col, vRow)
+				cell = virtualCellOn(e, col, vRow)
 			} else {
-				cell, ok = emu.CellValueAt(col, vRow)
+				cell = e.CellAt(col, vRow)
 			}
-			if ok && cell.Content != "" {
+			if cell != nil && cell.Content != "" {
 				line.WriteString(cell.Content)
 			} else {
 				line.WriteByte(' ')
@@ -509,6 +517,4 @@ func (t *TUI) extractSelectionText() string {
 			buf.WriteByte('\n')
 		}
 	}
-
-	return buf.String()
 }

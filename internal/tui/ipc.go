@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/charmbracelet/x/vt"
 	"io"
 	"net"
 	"os"
@@ -564,7 +565,7 @@ func composerTailAt(p *Pane) (string, int, bool) {
 	// emuRows copies each row under a lock, so a torn read here cannot flip
 	// the submit decision (ini-wizq). This BLOCKS on the emulator; the main
 	// loop uses composerTailFromRows over a tryScreenRows snapshot instead.
-	return composerTailFromRows(emuRows(p.emu))
+	return composerTailFromRows(emuRowsBlocking(p.emu))
 }
 
 // composerTailFromRows is composerTailAt over an already-read screen.
@@ -708,18 +709,17 @@ func (t *TUI) handleIPCPatrol(conn net.Conn, req IPCRequest) {
 // emulator. Returns the content as a string with newline-separated lines.
 // If lines <= 0, returns all non-blank content.
 func peekContent(p PaneView, lines int) string {
-	emu := p.Emulator()
-	cols := emu.Width()
-	emuRows := emu.Height()
-
-	allLines := make([]string, emuRows)
-	for row := 0; row < emuRows; row++ {
-		// RowText copies the row under a single lock, so this cannot observe
-		// a torn cell from a concurrent readLoop write (ini-wizq). peekContent
-		// is reached from IPC/daemon handler goroutines and the main-loop
-		// patrol/:peek paths, none of which hold p.renderMu.
-		allLines[row] = strings.TrimRight(emu.RowText(row, cols), " ")
+	// Reached from the main loop (:peek, patrol under runOnMain) as well as
+	// IPC/daemon goroutines, so it may not wait on the pane (ini-psjt): a pane
+	// whose lock stays held for peekTryBudget reports that instead of content.
+	var allLines []string
+	if !withEmulator(p.Emulator(), peekTryBudget, func(e *vt.Emulator) { allLines = readScreenRows(e) }) {
+		return peekUnreadable + "\n"
 	}
+	for i := range allLines {
+		allLines[i] = strings.TrimRight(allLines[i], " ")
+	}
+	emuRows := len(allLines)
 
 	// Strip trailing blank lines.
 	contentEnd := emuRows

@@ -36,7 +36,7 @@ import (
 
 // renderAskUserQuestionModal paints a representative Claude Code AskUserQuestion
 // modal into the bottom rows of emu, so that any future modal detector built on
-// emulatorBottomText() has a realistic signature to match. The exact glyphs do
+// emulatorBottomTextBlocking() has a realistic signature to match. The exact glyphs do
 // not affect current behavior — sendPaneTextLocked never reads the screen — but
 // they document what the send path is blindly driving over.
 func renderAskUserQuestionModal(emu *vt.SafeEmulator) {
