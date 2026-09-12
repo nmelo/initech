@@ -1,0 +1,412 @@
+Selected verbatim records, prefixed with original filename and 1-based line number.
+Nonempty target-set transitions omit the blank viewer stream; they are NOT process-ID attribution.
+
+initech.log.1:1: time=2026-09-10T13:24:23.012-04:00 level=INFO msg="[tui] starting" version=2.12.0 pid=51035 agents=41 verbose=false
+initech.log.1:50: time=2026-09-10T13:24:23.027-04:00 level=INFO msg="[ownership] recomputed" window1=ae,ba,bizdev,content,drone-datasets,drone-skills,eng1,eng2,eng3,eng4,eng5,finance,graff,growth,it,legal,mktg,mktgapollo,mktgclay,mktgcos,mktgdata,mktgdata2,mktgeng,mktgops,mktgweb,ops,pm,pmm,qa1,qa2,qa3,revgen,revops,sec,seo,shipper,social,super,video,website,writer
+initech.log.1:88: time=2026-09-10T13:24:23.049-04:00 level=INFO msg="[render] enter" frame=1 plan_panes=14 plan_set=content,eng1,eng2,eng3,eng4,eng5,growth,mktg,mktgcos,pm,seo,super,website,writer
+initech.log.1:1086: time=2026-09-10T13:33:03.795-04:00 level=INFO msg="[applyLayout] layout applied" panes=8 w=352 h=88
+initech.log.1:1087: time=2026-09-10T13:33:03.795-04:00 level=INFO msg="[applyLayout] resizing pane" idx=1 name=super oldRows=42 oldCols=70 newRows=42 newCols=52
+initech.log.1:1089: time=2026-09-10T13:33:03.796-04:00 level=INFO msg="[applyLayout] resizing pane" idx=2 name=eng1 oldRows=42 oldCols=70 newRows=42 newCols=52
+initech.log.1:1091: time=2026-09-10T13:33:03.796-04:00 level=INFO msg="[applyLayout] resizing pane" idx=3 name=eng2 oldRows=42 oldCols=70 newRows=42 newCols=52
+initech.log.1:1093: time=2026-09-10T13:33:03.796-04:00 level=INFO msg="[applyLayout] resizing pane" idx=4 name=eng3 oldRows=42 oldCols=70 newRows=42 newCols=53
+initech.log.1:1095: time=2026-09-10T13:33:03.796-04:00 level=INFO msg="[applyLayout] resizing pane" idx=5 name=eng4 oldRows=42 oldCols=70 newRows=42 newCols=70
+initech.log.1:1097: time=2026-09-10T13:33:03.796-04:00 level=INFO msg="[applyLayout] resizing pane" idx=6 name=eng5 oldRows=42 oldCols=70 newRows=42 newCols=70
+initech.log.1:1099: time=2026-09-10T13:33:03.796-04:00 level=INFO msg="[applyLayout] resizing pane" idx=7 name=growth oldRows=27 oldCols=52 newRows=42 newCols=70
+initech.log.1:1102: time=2026-09-10T13:33:03.797-04:00 level=INFO msg="[applyLayout] layout applied" panes=8 w=352 h=88
+initech.log.1:1104: time=2026-09-10T13:33:05.672-04:00 level=INFO msg="[render] enter" frame=16050 plan_panes=8 plan_set=eng1,eng2,eng3,eng4,eng5,growth,pm,super
+initech.log.1:1106: time=2026-09-10T13:33:08.152-04:00 level=INFO msg="[applyLayout] layout applied" panes=7 w=352 h=88
+initech.log.1:1107: time=2026-09-10T13:33:08.152-04:00 level=INFO msg="[applyLayout] resizing pane" idx=1 name=super oldRows=42 oldCols=52 newRows=42 newCols=70
+initech.log.1:1109: time=2026-09-10T13:33:08.153-04:00 level=INFO msg="[applyLayout] resizing pane" idx=2 name=eng2 oldRows=42 oldCols=52 newRows=42 newCols=70
+initech.log.1:1111: time=2026-09-10T13:33:08.153-04:00 level=INFO msg="[applyLayout] resizing pane" idx=3 name=eng3 oldRows=42 oldCols=53 newRows=42 newCols=70
+initech.log.1:1114: time=2026-09-10T13:33:08.153-04:00 level=INFO msg="[applyLayout] layout applied" panes=7 w=352 h=88
+initech.log.1:1116: time=2026-09-10T13:33:08.484-04:00 level=INFO msg="[applyLayout] layout applied" panes=6 w=352 h=88
+initech.log.1:1117: time=2026-09-10T13:33:08.484-04:00 level=INFO msg="[applyLayout] resizing pane" idx=2 name=eng3 oldRows=42 oldCols=70 newRows=42 newCols=70
+initech.log.1:1119: time=2026-09-10T13:33:08.484-04:00 level=INFO msg="[applyLayout] resizing pane" idx=3 name=eng4 oldRows=42 oldCols=70 newRows=42 newCols=70
+initech.log.1:1121: time=2026-09-10T13:33:08.484-04:00 level=INFO msg="[applyLayout] resizing pane" idx=4 name=eng5 oldRows=42 oldCols=70 newRows=42 newCols=105
+initech.log.1:1123: time=2026-09-10T13:33:08.484-04:00 level=INFO msg="[applyLayout] resizing pane" idx=5 name=growth oldRows=42 oldCols=70 newRows=42 newCols=106
+initech.log.1:1126: time=2026-09-10T13:33:08.484-04:00 level=INFO msg="[applyLayout] layout applied" panes=6 w=352 h=88
+initech.log.1:1128: time=2026-09-10T13:33:08.713-04:00 level=INFO msg="[applyLayout] layout applied" panes=5 w=352 h=88
+initech.log.1:1129: time=2026-09-10T13:33:08.713-04:00 level=INFO msg="[applyLayout] resizing pane" idx=1 name=super oldRows=42 oldCols=70 newRows=42 newCols=105
+initech.log.1:1131: time=2026-09-10T13:33:08.714-04:00 level=INFO msg="[applyLayout] resizing pane" idx=2 name=eng4 oldRows=42 oldCols=70 newRows=42 newCols=106
+initech.log.1:1134: time=2026-09-10T13:33:08.714-04:00 level=INFO msg="[applyLayout] layout applied" panes=5 w=352 h=88
+initech.log.1:1136: time=2026-09-10T13:33:08.948-04:00 level=INFO msg="[applyLayout] layout applied" panes=4 w=352 h=88
+initech.log.1:1137: time=2026-09-10T13:33:08.948-04:00 level=INFO msg="[applyLayout] resizing pane" idx=2 name=eng5 oldRows=42 oldCols=105 newRows=42 newCols=106
+initech.log.1:1139: time=2026-09-10T13:33:08.948-04:00 level=INFO msg="[applyLayout] resizing pane" idx=3 name=growth oldRows=42 oldCols=106 newRows=42 newCols=212
+initech.log.1:1142: time=2026-09-10T13:33:08.948-04:00 level=INFO msg="[applyLayout] layout applied" panes=4 w=352 h=88
+initech.log.1:1144: time=2026-09-10T13:33:09.464-04:00 level=INFO msg="[applyLayout] layout applied" panes=3 w=352 h=88
+initech.log.1:1145: time=2026-09-10T13:33:09.464-04:00 level=INFO msg="[applyLayout] resizing pane" idx=1 name=super oldRows=42 oldCols=105 newRows=86 newCols=105
+initech.log.1:1147: time=2026-09-10T13:33:09.464-04:00 level=INFO msg="[applyLayout] resizing pane" idx=2 name=growth oldRows=42 oldCols=212 newRows=86 newCols=106
+initech.log.1:1150: time=2026-09-10T13:33:09.464-04:00 level=INFO msg="[applyLayout] layout applied" panes=3 w=352 h=88
+initech.log.1:1152: time=2026-09-10T13:33:09.622-04:00 level=INFO msg="[render] enter" frame=16200 plan_panes=3 plan_set=growth,pm,super
+initech.log.1:1849: time=2026-09-10T14:01:31.811-04:00 level=INFO msg="[tui] starting" version=2.12.0 pid=49006 agents=41 verbose=false
+initech.log.1:1896: time=2026-09-10T14:01:31.823-04:00 level=ERROR msg="[window-server] failed to start; secondary windows cannot attach" addr=127.0.0.1:9301 err="window listener on 127.0.0.1:9301: listen tcp 127.0.0.1:9301: bind: address already in use"
+initech.log.1:1898: time=2026-09-10T14:01:31.824-04:00 level=INFO msg="[ownership] recomputed" window1=ae,ba,bizdev,content,drone-datasets,drone-skills,eng1,eng2,eng3,eng4,eng5,finance,graff,growth,it,legal,mktg,mktgapollo,mktgclay,mktgcos,mktgdata,mktgdata2,mktgeng,mktgops,mktgweb,ops,pm,pmm,qa1,qa2,qa3,revgen,revops,sec,seo,shipper,social,super,video,website,writer
+initech.log.1:31146: time=2026-09-11T12:00:00.921-04:00 level=INFO msg="[tui] starting" version=2.12.0 pid=71903 agents=41 verbose=false
+initech.log.1:31193: time=2026-09-11T12:00:00.939-04:00 level=ERROR msg="[window-server] failed to start; secondary windows cannot attach" addr=127.0.0.1:9301 err="window listener on 127.0.0.1:9301: listen tcp 127.0.0.1:9301: bind: address already in use"
+initech.log.1:31195: time=2026-09-11T12:00:00.940-04:00 level=INFO msg="[ownership] recomputed" window1=ae,ba,bizdev,content,drone-datasets,drone-skills,eng1,eng2,eng3,eng4,eng5,finance,graff,growth,it,legal,mktg,mktgapollo,mktgclay,mktgcos,mktgdata,mktgdata2,mktgeng,mktgops,mktgweb,ops,pm,pmm,qa1,qa2,qa3,revgen,revops,sec,seo,shipper,social,super,video,website,writer
+initech.log.1:32379: time=2026-09-11T12:27:26.216-04:00 level=INFO msg="[tui] starting" version=2.12.0 pid=69124 agents=41 verbose=false
+initech.log.1:32426: time=2026-09-11T12:27:26.232-04:00 level=ERROR msg="[window-server] failed to start; secondary windows cannot attach" addr=127.0.0.1:9301 err="window listener on 127.0.0.1:9301: listen tcp 127.0.0.1:9301: bind: address already in use"
+initech.log.1:32428: time=2026-09-11T12:27:26.233-04:00 level=INFO msg="[ownership] recomputed" window1=ae,ba,bizdev,content,drone-datasets,drone-skills,eng1,eng2,eng3,eng4,eng5,finance,graff,growth,it,legal,mktg,mktgapollo,mktgclay,mktgcos,mktgdata,mktgdata2,mktgeng,mktgops,mktgweb,ops,pm,pmm,qa1,qa2,qa3,revgen,revops,sec,seo,shipper,social,super,video,website,writer
+initech.log.1:33574: time=2026-09-11T12:39:52.632-04:00 level=INFO msg="[applyLayout] layout applied" panes=7 w=314 h=78
+initech.log.1:33575: time=2026-09-11T12:39:52.632-04:00 level=INFO msg="[applyLayout] resizing pane" idx=2 name=eng1 oldRows=6 oldCols=78 newRows=37 newCols=62
+initech.log.1:33577: time=2026-09-11T12:39:52.632-04:00 level=INFO msg="[applyLayout] resizing pane" idx=3 name=mktg oldRows=37 oldCols=62 newRows=37 newCols=63
+initech.log.1:33579: time=2026-09-11T12:39:52.632-04:00 level=INFO msg="[applyLayout] resizing pane" idx=4 name=mktgcos oldRows=37 oldCols=63 newRows=37 newCols=62
+initech.log.1:33581: time=2026-09-11T12:39:52.633-04:00 level=INFO msg="[applyLayout] resizing pane" idx=5 name=growth oldRows=37 oldCols=94 newRows=37 newCols=62
+initech.log.1:33583: time=2026-09-11T12:39:52.633-04:00 level=INFO msg="[applyLayout] resizing pane" idx=6 name=seo oldRows=37 oldCols=94 newRows=37 newCols=63
+initech.log.1:33586: time=2026-09-11T12:39:52.633-04:00 level=INFO msg="[applyLayout] layout applied" panes=7 w=314 h=78
+initech.log.1:33588: time=2026-09-11T12:39:52.979-04:00 level=INFO msg="[applyLayout] layout applied" panes=8 w=314 h=78
+initech.log.1:33589: time=2026-09-11T12:39:52.979-04:00 level=INFO msg="[applyLayout] resizing pane" idx=1 name=pm oldRows=37 oldCols=62 newRows=37 newCols=47
+initech.log.1:33591: time=2026-09-11T12:39:52.979-04:00 level=INFO msg="[applyLayout] resizing pane" idx=2 name=eng1 oldRows=37 oldCols=62 newRows=37 newCols=46
+initech.log.1:33593: time=2026-09-11T12:39:52.979-04:00 level=INFO msg="[applyLayout] resizing pane" idx=3 name=eng2 oldRows=5 oldCols=78 newRows=37 newCols=46
+initech.log.1:33595: time=2026-09-11T12:39:52.979-04:00 level=INFO msg="[applyLayout] resizing pane" idx=4 name=mktg oldRows=37 oldCols=63 newRows=37 newCols=47
+initech.log.1:33598: time=2026-09-11T12:39:52.980-04:00 level=INFO msg="[applyLayout] layout applied" panes=8 w=314 h=78
+initech.log.1:33600: time=2026-09-11T12:39:53.192-04:00 level=INFO msg="[applyLayout] layout applied" panes=9 w=314 h=78
+initech.log.1:33601: time=2026-09-11T12:39:53.192-04:00 level=INFO msg="[applyLayout] resizing pane" idx=4 name=eng3 oldRows=5 oldCols=78 newRows=37 newCols=47
+initech.log.1:33603: time=2026-09-11T12:39:53.192-04:00 level=INFO msg="[applyLayout] resizing pane" idx=5 name=mktg oldRows=37 oldCols=47 newRows=37 newCols=47
+initech.log.1:33605: time=2026-09-11T12:39:53.193-04:00 level=INFO msg="[applyLayout] resizing pane" idx=6 name=mktgcos oldRows=37 oldCols=62 newRows=37 newCols=46
+initech.log.1:33607: time=2026-09-11T12:39:53.193-04:00 level=INFO msg="[applyLayout] resizing pane" idx=7 name=growth oldRows=37 oldCols=62 newRows=37 newCols=46
+initech.log.1:33609: time=2026-09-11T12:39:53.193-04:00 level=INFO msg="[applyLayout] resizing pane" idx=8 name=seo oldRows=37 oldCols=63 newRows=37 newCols=47
+initech.log.1:33612: time=2026-09-11T12:39:53.194-04:00 level=INFO msg="[applyLayout] layout applied" panes=9 w=314 h=78
+initech.log.1:33614: time=2026-09-11T12:39:53.444-04:00 level=INFO msg="[applyLayout] layout applied" panes=10 w=314 h=78
+initech.log.1:33615: time=2026-09-11T12:39:53.444-04:00 level=INFO msg="[applyLayout] resizing pane" idx=1 name=pm oldRows=37 oldCols=47 newRows=24 newCols=62
+initech.log.1:33617: time=2026-09-11T12:39:53.444-04:00 level=INFO msg="[applyLayout] resizing pane" idx=2 name=eng1 oldRows=37 oldCols=46 newRows=24 newCols=62
+initech.log.1:33619: time=2026-09-11T12:39:53.445-04:00 level=INFO msg="[applyLayout] resizing pane" idx=3 name=eng2 oldRows=37 oldCols=46 newRows=24 newCols=63
+initech.log.1:33621: time=2026-09-11T12:39:53.445-04:00 level=INFO msg="[applyLayout] resizing pane" idx=4 name=eng3 oldRows=37 oldCols=47 newRows=24 newCols=62
+initech.log.1:33623: time=2026-09-11T12:39:53.445-04:00 level=INFO msg="[applyLayout] resizing pane" idx=5 name=eng4 oldRows=5 oldCols=77 newRows=24 newCols=62
+initech.log.1:33625: time=2026-09-11T12:39:53.445-04:00 level=INFO msg="[applyLayout] resizing pane" idx=6 name=mktg oldRows=37 oldCols=47 newRows=24 newCols=63
+initech.log.1:33627: time=2026-09-11T12:39:53.445-04:00 level=INFO msg="[applyLayout] resizing pane" idx=7 name=mktgcos oldRows=37 oldCols=46 newRows=24 newCols=62
+initech.log.1:33629: time=2026-09-11T12:39:53.445-04:00 level=INFO msg="[applyLayout] resizing pane" idx=8 name=growth oldRows=37 oldCols=46 newRows=24 newCols=62
+initech.log.1:33631: time=2026-09-11T12:39:53.447-04:00 level=INFO msg="[applyLayout] resizing pane" idx=9 name=seo oldRows=37 oldCols=47 newRows=24 newCols=63
+initech.log.1:33634: time=2026-09-11T12:39:53.447-04:00 level=INFO msg="[applyLayout] layout applied" panes=10 w=314 h=78
+initech.log.1:33636: time=2026-09-11T12:39:53.689-04:00 level=INFO msg="[applyLayout] layout applied" panes=11 w=314 h=78
+initech.log.1:33637: time=2026-09-11T12:39:53.689-04:00 level=INFO msg="[applyLayout] resizing pane" idx=1 name=pm oldRows=24 oldCols=62 newRows=24 newCols=47
+initech.log.1:33639: time=2026-09-11T12:39:53.690-04:00 level=INFO msg="[applyLayout] resizing pane" idx=2 name=eng1 oldRows=24 oldCols=62 newRows=24 newCols=46
+initech.log.1:33641: time=2026-09-11T12:39:53.690-04:00 level=INFO msg="[applyLayout] resizing pane" idx=3 name=eng2 oldRows=24 oldCols=63 newRows=24 newCols=46
+initech.log.1:33643: time=2026-09-11T12:39:53.690-04:00 level=INFO msg="[applyLayout] resizing pane" idx=4 name=eng3 oldRows=24 oldCols=62 newRows=24 newCols=47
+initech.log.1:33645: time=2026-09-11T12:39:53.690-04:00 level=INFO msg="[applyLayout] resizing pane" idx=5 name=eng4 oldRows=24 oldCols=62 newRows=24 newCols=47
+initech.log.1:33647: time=2026-09-11T12:39:53.690-04:00 level=INFO msg="[applyLayout] resizing pane" idx=6 name=eng5 oldRows=5 oldCols=78 newRows=24 newCols=46
+initech.log.1:33649: time=2026-09-11T12:39:53.690-04:00 level=INFO msg="[applyLayout] resizing pane" idx=7 name=mktg oldRows=24 oldCols=63 newRows=24 newCols=46
+initech.log.1:33651: time=2026-09-11T12:39:53.690-04:00 level=INFO msg="[applyLayout] resizing pane" idx=8 name=mktgcos oldRows=24 oldCols=62 newRows=24 newCols=47
+initech.log.1:33653: time=2026-09-11T12:39:53.691-04:00 level=INFO msg="[applyLayout] resizing pane" idx=9 name=growth oldRows=24 oldCols=62 newRows=24 newCols=94
+initech.log.1:33655: time=2026-09-11T12:39:53.691-04:00 level=INFO msg="[applyLayout] resizing pane" idx=10 name=seo oldRows=24 oldCols=63 newRows=24 newCols=94
+initech.log.1:33658: time=2026-09-11T12:39:53.692-04:00 level=INFO msg="[applyLayout] layout applied" panes=11 w=314 h=78
+initech.log.1:33660: time=2026-09-11T12:39:54.567-04:00 level=INFO msg="[render] enter" frame=23100 plan_panes=11 plan_set=eng1,eng2,eng3,eng4,eng5,growth,mktg,mktgcos,pm,seo,super
+initech.log.1:36560: time=2026-09-11T13:16:21.271-04:00 level=INFO msg="[render] enter" frame=89400 plan_panes=12 plan_set=ae,eng1,eng2,eng3,eng4,eng5,growth,mktg,mktgcos,pm,seo,super
+initech.log.1:36574: time=2026-09-11T13:16:24.910-04:00 level=INFO msg="[applyLayout] layout applied" panes=11 w=314 h=78
+initech.log.1:36575: time=2026-09-11T13:16:24.910-04:00 level=INFO msg="[applyLayout] resizing pane" idx=6 name=eng5 oldRows=24 oldCols=46 newRows=24 newCols=46
+initech.log.1:36577: time=2026-09-11T13:16:24.910-04:00 level=INFO msg="[applyLayout] resizing pane" idx=7 name=mktg oldRows=24 oldCols=47 newRows=24 newCols=46
+initech.log.1:36579: time=2026-09-11T13:16:24.910-04:00 level=INFO msg="[applyLayout] resizing pane" idx=8 name=mktgcos oldRows=24 oldCols=62 newRows=24 newCols=47
+initech.log.1:36581: time=2026-09-11T13:16:24.911-04:00 level=INFO msg="[applyLayout] resizing pane" idx=9 name=growth oldRows=24 oldCols=62 newRows=24 newCols=94
+initech.log.1:36583: time=2026-09-11T13:16:24.912-04:00 level=INFO msg="[applyLayout] resizing pane" idx=10 name=seo oldRows=24 oldCols=63 newRows=24 newCols=94
+initech.log.1:36586: time=2026-09-11T13:16:24.912-04:00 level=INFO msg="[applyLayout] layout applied" panes=11 w=314 h=78
+initech.log.1:36588: time=2026-09-11T13:16:25.065-04:00 level=INFO msg="[render] enter" frame=89550 plan_panes=11 plan_set=ae,eng1,eng2,eng3,eng5,growth,mktg,mktgcos,pm,seo,super
+initech.log.1:36590: time=2026-09-11T13:16:25.215-04:00 level=INFO msg="[applyLayout] layout applied" panes=10 w=314 h=78
+initech.log.1:36591: time=2026-09-11T13:16:25.215-04:00 level=INFO msg="[applyLayout] resizing pane" idx=1 name=super oldRows=24 oldCols=47 newRows=24 newCols=62
+initech.log.1:36593: time=2026-09-11T13:16:25.215-04:00 level=INFO msg="[applyLayout] resizing pane" idx=2 name=pm oldRows=24 oldCols=46 newRows=24 newCols=62
+initech.log.1:36595: time=2026-09-11T13:16:25.217-04:00 level=INFO msg="[applyLayout] resizing pane" idx=3 name=eng1 oldRows=24 oldCols=46 newRows=24 newCols=63
+initech.log.1:36597: time=2026-09-11T13:16:25.218-04:00 level=INFO msg="[applyLayout] resizing pane" idx=4 name=eng2 oldRows=24 oldCols=47 newRows=24 newCols=62
+initech.log.1:36599: time=2026-09-11T13:16:25.219-04:00 level=INFO msg="[applyLayout] resizing pane" idx=5 name=eng3 oldRows=24 oldCols=47 newRows=24 newCols=62
+initech.log.1:36601: time=2026-09-11T13:16:25.220-04:00 level=INFO msg="[applyLayout] resizing pane" idx=6 name=mktg oldRows=24 oldCols=46 newRows=24 newCols=63
+initech.log.1:36603: time=2026-09-11T13:16:25.220-04:00 level=INFO msg="[applyLayout] resizing pane" idx=7 name=mktgcos oldRows=24 oldCols=47 newRows=24 newCols=62
+initech.log.1:36605: time=2026-09-11T13:16:25.221-04:00 level=INFO msg="[applyLayout] resizing pane" idx=8 name=growth oldRows=24 oldCols=94 newRows=24 newCols=62
+initech.log.1:36607: time=2026-09-11T13:16:25.222-04:00 level=INFO msg="[applyLayout] resizing pane" idx=9 name=seo oldRows=24 oldCols=94 newRows=24 newCols=63
+initech.log.1:36610: time=2026-09-11T13:16:25.222-04:00 level=INFO msg="[applyLayout] layout applied" panes=10 w=314 h=78
+initech.log.1:36618: time=2026-09-11T13:16:28.628-04:00 level=INFO msg="[render] enter" frame=89700 plan_panes=10 plan_set=ae,eng1,eng2,eng3,growth,mktg,mktgcos,pm,seo,super
+initech.log.1:37172: time=2026-09-11T13:20:02.621-04:00 level=INFO msg="[render] enter" frame=97200 plan_panes=8 plan_set=ae,eng1,eng2,eng3,growth,mktg,mktgcos,seo
+initech.log.1:37192: time=2026-09-11T13:20:04.298-04:00 level=INFO msg="[applyLayout] layout applied" panes=9 w=314 h=78
+initech.log.1:37193: time=2026-09-11T13:20:04.298-04:00 level=INFO msg="[applyLayout] resizing pane" idx=2 name=eng1 oldRows=37 oldCols=47 newRows=37 newCols=46
+initech.log.1:37195: time=2026-09-11T13:20:04.300-04:00 level=INFO msg="[applyLayout] resizing pane" idx=3 name=eng2 oldRows=37 oldCols=46 newRows=37 newCols=46
+initech.log.1:37197: time=2026-09-11T13:20:04.300-04:00 level=INFO msg="[applyLayout] resizing pane" idx=4 name=eng3 oldRows=37 oldCols=46 newRows=37 newCols=47
+initech.log.1:37199: time=2026-09-11T13:20:04.301-04:00 level=INFO msg="[applyLayout] resizing pane" idx=5 name=mktg oldRows=37 oldCols=47 newRows=37 newCols=47
+initech.log.1:37201: time=2026-09-11T13:20:04.301-04:00 level=INFO msg="[applyLayout] resizing pane" idx=6 name=mktgcos oldRows=37 oldCols=62 newRows=37 newCols=46
+initech.log.1:37203: time=2026-09-11T13:20:04.301-04:00 level=INFO msg="[applyLayout] resizing pane" idx=7 name=growth oldRows=37 oldCols=62 newRows=37 newCols=46
+initech.log.1:37205: time=2026-09-11T13:20:04.302-04:00 level=INFO msg="[applyLayout] resizing pane" idx=8 name=seo oldRows=37 oldCols=63 newRows=37 newCols=47
+initech.log.1:37208: time=2026-09-11T13:20:04.303-04:00 level=INFO msg="[applyLayout] layout applied" panes=9 w=314 h=78
+initech.log.1:37210: time=2026-09-11T13:20:04.804-04:00 level=INFO msg="[applyLayout] layout applied" panes=8 w=314 h=78
+initech.log.1:37211: time=2026-09-11T13:20:04.804-04:00 level=INFO msg="[applyLayout] resizing pane" idx=1 name=eng1 oldRows=37 oldCols=46 newRows=37 newCols=47
+initech.log.1:37213: time=2026-09-11T13:20:04.805-04:00 level=INFO msg="[applyLayout] resizing pane" idx=2 name=eng2 oldRows=37 oldCols=46 newRows=37 newCols=46
+initech.log.1:37215: time=2026-09-11T13:20:04.805-04:00 level=INFO msg="[applyLayout] resizing pane" idx=3 name=eng3 oldRows=37 oldCols=47 newRows=37 newCols=46
+initech.log.1:37217: time=2026-09-11T13:20:04.806-04:00 level=INFO msg="[applyLayout] resizing pane" idx=4 name=mktg oldRows=37 oldCols=47 newRows=37 newCols=47
+initech.log.1:37219: time=2026-09-11T13:20:04.806-04:00 level=INFO msg="[applyLayout] resizing pane" idx=5 name=mktgcos oldRows=37 oldCols=46 newRows=37 newCols=62
+initech.log.1:37221: time=2026-09-11T13:20:04.807-04:00 level=INFO msg="[applyLayout] resizing pane" idx=6 name=growth oldRows=37 oldCols=46 newRows=37 newCols=62
+initech.log.1:37223: time=2026-09-11T13:20:04.808-04:00 level=INFO msg="[applyLayout] resizing pane" idx=7 name=seo oldRows=37 oldCols=47 newRows=37 newCols=63
+initech.log.1:37226: time=2026-09-11T13:20:04.809-04:00 level=INFO msg="[applyLayout] layout applied" panes=8 w=314 h=78
+initech.log.1:37228: time=2026-09-11T13:20:05.193-04:00 level=INFO msg="[applyLayout] layout applied" panes=7 w=314 h=78
+initech.log.1:37229: time=2026-09-11T13:20:05.193-04:00 level=INFO msg="[applyLayout] resizing pane" idx=1 name=eng2 oldRows=37 oldCols=46 newRows=37 newCols=62
+initech.log.1:37231: time=2026-09-11T13:20:05.196-04:00 level=INFO msg="[applyLayout] resizing pane" idx=2 name=eng3 oldRows=37 oldCols=46 newRows=37 newCols=62
+initech.log.1:37233: time=2026-09-11T13:20:05.197-04:00 level=INFO msg="[applyLayout] resizing pane" idx=3 name=mktg oldRows=37 oldCols=47 newRows=37 newCols=63
+initech.log.1:37236: time=2026-09-11T13:20:05.200-04:00 level=INFO msg="[applyLayout] layout applied" panes=7 w=314 h=78
+initech.log.1:37250: time=2026-09-11T13:20:05.502-04:00 level=INFO msg="[applyLayout] layout applied" panes=6 w=314 h=78
+initech.log.1:37251: time=2026-09-11T13:20:05.502-04:00 level=INFO msg="[applyLayout] resizing pane" idx=1 name=eng3 oldRows=37 oldCols=62 newRows=37 newCols=62
+initech.log.1:37253: time=2026-09-11T13:20:05.502-04:00 level=INFO msg="[applyLayout] resizing pane" idx=2 name=mktg oldRows=37 oldCols=63 newRows=37 newCols=62
+initech.log.1:37255: time=2026-09-11T13:20:05.503-04:00 level=INFO msg="[applyLayout] resizing pane" idx=3 name=mktgcos oldRows=37 oldCols=62 newRows=37 newCols=63
+initech.log.1:37257: time=2026-09-11T13:20:05.503-04:00 level=INFO msg="[applyLayout] resizing pane" idx=4 name=growth oldRows=37 oldCols=62 newRows=37 newCols=94
+initech.log.1:37259: time=2026-09-11T13:20:05.504-04:00 level=INFO msg="[applyLayout] resizing pane" idx=5 name=seo oldRows=37 oldCols=63 newRows=37 newCols=94
+initech.log.1:37262: time=2026-09-11T13:20:05.505-04:00 level=INFO msg="[applyLayout] layout applied" panes=6 w=314 h=78
+initech.log.1:37282: time=2026-09-11T13:20:06.173-04:00 level=INFO msg="[applyLayout] layout applied" panes=5 w=314 h=78
+initech.log.1:37283: time=2026-09-11T13:20:06.173-04:00 level=INFO msg="[applyLayout] resizing pane" idx=1 name=mktg oldRows=37 oldCols=62 newRows=37 newCols=94
+initech.log.1:37285: time=2026-09-11T13:20:06.174-04:00 level=INFO msg="[applyLayout] resizing pane" idx=2 name=mktgcos oldRows=37 oldCols=63 newRows=37 newCols=94
+initech.log.1:37288: time=2026-09-11T13:20:06.175-04:00 level=INFO msg="[applyLayout] layout applied" panes=5 w=314 h=78
+initech.log.1:37302: time=2026-09-11T13:20:06.677-04:00 level=INFO msg="[render] enter" frame=97350 plan_panes=5 plan_set=ae,growth,mktg,mktgcos,seo
+initech.log.1:46291: time=2026-09-11T14:40:08.935-04:00 level=INFO msg="[tui] starting" version=2.12.0 pid=73909 agents=0 verbose=false
+initech.log.1:46298: time=2026-09-11T14:40:08.941-04:00 level=INFO msg="[daemon] hello from" peer=window-2 version=1
+initech.log.1:46320: time=2026-09-11T14:40:08.973-04:00 level=INFO msg="[ownership] served" window=window-2 mine=eng1,eng2,eng3,eng4,eng5,qa1,qa2,qa3
+initech.log.1:46752: time=2026-09-11T14:40:18.256-04:00 level=INFO msg="[render] enter" frame=248400 plan_panes=8 plan_set=ae,bizdev,eng1,mktg,mktgcos,pm,pmm,super
+initech.log.1:46948: time=2026-09-11T14:40:22.777-04:00 level=INFO msg="[render] enter" frame=248550 plan_panes=5 plan_set=ae,bizdev,mktg,mktgcos,pmm
+initech.log.1:49273: time=2026-09-11T14:41:29.449-04:00 level=INFO msg="[tui] starting" version=2.12.0 pid=77070 agents=0 verbose=false
+initech.log.1:49280: time=2026-09-11T14:41:29.451-04:00 level=INFO msg="[daemon] hello from" peer=window-2 version=1
+initech.log.1:49302: time=2026-09-11T14:41:29.467-04:00 level=INFO msg="[ownership] served" window=window-2 mine=eng1,eng2,eng3,eng4,eng5,qa1,qa2,qa3
+initech.log.1:49619: time=2026-09-11T14:41:38.171-04:00 level=INFO msg="[applyLayout] layout applied" panes=8 w=314 h=78
+initech.log.1:49620: time=2026-09-11T14:41:38.171-04:00 level=INFO msg="[applyLayout] resizing pane" idx=1 name=super oldRows=37 oldCols=62 newRows=37 newCols=47
+initech.log.1:49622: time=2026-09-11T14:41:38.174-04:00 level=INFO msg="[applyLayout] resizing pane" idx=2 name=pm oldRows=37 oldCols=62 newRows=37 newCols=46
+initech.log.1:49625: time=2026-09-11T14:41:38.177-04:00 level=INFO msg="[applyLayout] resizing pane" idx=4 name=mktg oldRows=37 oldCols=63 newRows=37 newCols=47
+initech.log.1:49628: time=2026-09-11T14:41:38.182-04:00 level=INFO msg="[applyLayout] layout applied" panes=8 w=314 h=78
+initech.log.1:49637: time=2026-09-11T14:41:38.423-04:00 level=INFO msg="[applyLayout] layout applied" panes=9 w=314 h=78
+initech.log.1:49638: time=2026-09-11T14:41:38.423-04:00 level=INFO msg="[applyLayout] resizing pane" idx=5 name=mktg oldRows=37 oldCols=47 newRows=37 newCols=47
+initech.log.1:49640: time=2026-09-11T14:41:38.423-04:00 level=INFO msg="[applyLayout] resizing pane" idx=6 name=mktgcos oldRows=37 oldCols=62 newRows=37 newCols=46
+initech.log.1:49642: time=2026-09-11T14:41:38.429-04:00 level=INFO msg="[applyLayout] resizing pane" idx=7 name=bizdev oldRows=37 oldCols=62 newRows=37 newCols=46
+initech.log.1:49644: time=2026-09-11T14:41:38.431-04:00 level=INFO msg="[applyLayout] resizing pane" idx=8 name=pmm oldRows=37 oldCols=63 newRows=37 newCols=47
+initech.log.1:49647: time=2026-09-11T14:41:38.434-04:00 level=INFO msg="[applyLayout] layout applied" panes=9 w=314 h=78
+initech.log.1:49656: time=2026-09-11T14:41:38.661-04:00 level=INFO msg="[applyLayout] layout applied" panes=10 w=314 h=78
+initech.log.1:49657: time=2026-09-11T14:41:38.661-04:00 level=INFO msg="[applyLayout] resizing pane" idx=1 name=super oldRows=37 oldCols=47 newRows=24 newCols=62
+initech.log.1:49659: time=2026-09-11T14:41:38.662-04:00 level=INFO msg="[applyLayout] resizing pane" idx=2 name=pm oldRows=37 oldCols=46 newRows=24 newCols=62
+initech.log.1:49661: time=2026-09-11T14:41:38.663-04:00 level=INFO msg="[applyLayout] resizing pane" idx=3 name=eng1 oldRows=37 oldCols=46 newRows=24 newCols=63
+initech.log.1:49663: time=2026-09-11T14:41:38.665-04:00 level=INFO msg="[applyLayout] resizing pane" idx=4 name=eng2 oldRows=37 oldCols=47 newRows=24 newCols=62
+initech.log.1:49665: time=2026-09-11T14:41:38.666-04:00 level=INFO msg="[applyLayout] resizing pane" idx=5 name=eng3 oldRows=37 oldCols=62 newRows=24 newCols=62
+initech.log.1:49667: time=2026-09-11T14:41:38.666-04:00 level=INFO msg="[applyLayout] resizing pane" idx=6 name=mktg oldRows=37 oldCols=47 newRows=24 newCols=63
+initech.log.1:49669: time=2026-09-11T14:41:38.670-04:00 level=INFO msg="[applyLayout] resizing pane" idx=7 name=mktgcos oldRows=37 oldCols=46 newRows=24 newCols=62
+initech.log.1:49672: time=2026-09-11T14:41:38.675-04:00 level=INFO msg="[applyLayout] resizing pane" idx=8 name=bizdev oldRows=37 oldCols=46 newRows=24 newCols=62
+initech.log.1:49674: time=2026-09-11T14:41:38.677-04:00 level=INFO msg="[applyLayout] resizing pane" idx=9 name=pmm oldRows=37 oldCols=47 newRows=24 newCols=63
+initech.log.1:49677: time=2026-09-11T14:41:38.683-04:00 level=INFO msg="[applyLayout] layout applied" panes=10 w=314 h=78
+initech.log.1:49684: time=2026-09-11T14:41:38.869-04:00 level=INFO msg="[render] enter" frame=300 plan_panes=0 plan_set=(none)
+initech.log.1:49688: time=2026-09-11T14:41:38.904-04:00 level=INFO msg="[applyLayout] layout applied" panes=11 w=314 h=78
+initech.log.1:49689: time=2026-09-11T14:41:38.904-04:00 level=INFO msg="[applyLayout] resizing pane" idx=1 name=super oldRows=24 oldCols=62 newRows=24 newCols=47
+initech.log.1:49691: time=2026-09-11T14:41:38.905-04:00 level=INFO msg="[applyLayout] resizing pane" idx=2 name=pm oldRows=24 oldCols=62 newRows=24 newCols=46
+initech.log.1:49693: time=2026-09-11T14:41:38.907-04:00 level=INFO msg="[applyLayout] resizing pane" idx=3 name=eng1 oldRows=24 oldCols=63 newRows=24 newCols=46
+initech.log.1:49695: time=2026-09-11T14:41:38.909-04:00 level=INFO msg="[applyLayout] resizing pane" idx=4 name=eng2 oldRows=24 oldCols=62 newRows=24 newCols=47
+initech.log.1:49697: time=2026-09-11T14:41:38.910-04:00 level=INFO msg="[applyLayout] resizing pane" idx=5 name=eng3 oldRows=24 oldCols=62 newRows=24 newCols=47
+initech.log.1:49699: time=2026-09-11T14:41:38.912-04:00 level=INFO msg="[applyLayout] resizing pane" idx=7 name=mktg oldRows=24 oldCols=63 newRows=24 newCols=46
+initech.log.1:49701: time=2026-09-11T14:41:38.915-04:00 level=INFO msg="[applyLayout] resizing pane" idx=8 name=mktgcos oldRows=24 oldCols=62 newRows=24 newCols=47
+initech.log.1:49703: time=2026-09-11T14:41:38.919-04:00 level=INFO msg="[applyLayout] resizing pane" idx=9 name=bizdev oldRows=24 oldCols=62 newRows=24 newCols=94
+initech.log.1:49705: time=2026-09-11T14:41:38.921-04:00 level=INFO msg="[applyLayout] resizing pane" idx=10 name=pmm oldRows=24 oldCols=63 newRows=24 newCols=94
+initech.log.1:49708: time=2026-09-11T14:41:38.922-04:00 level=INFO msg="[applyLayout] layout applied" panes=11 w=314 h=78
+initech.log.1:49734: time=2026-09-11T14:41:39.477-04:00 level=INFO msg="[applyLayout] layout applied" panes=12 w=314 h=78
+initech.log.1:49735: time=2026-09-11T14:41:39.477-04:00 level=INFO msg="[applyLayout] resizing pane" idx=7 name=eng5 oldRows=24 oldCols=46 newRows=24 newCols=46
+initech.log.1:49737: time=2026-09-11T14:41:39.477-04:00 level=INFO msg="[applyLayout] resizing pane" idx=8 name=mktg oldRows=24 oldCols=46 newRows=24 newCols=47
+initech.log.1:49739: time=2026-09-11T14:41:39.483-04:00 level=INFO msg="[applyLayout] resizing pane" idx=9 name=mktgcos oldRows=24 oldCols=47 newRows=24 newCols=62
+initech.log.1:49741: time=2026-09-11T14:41:39.490-04:00 level=INFO msg="[applyLayout] resizing pane" idx=10 name=bizdev oldRows=24 oldCols=94 newRows=24 newCols=62
+initech.log.1:49743: time=2026-09-11T14:41:39.492-04:00 level=INFO msg="[applyLayout] resizing pane" idx=11 name=pmm oldRows=24 oldCols=94 newRows=24 newCols=63
+initech.log.1:49746: time=2026-09-11T14:41:39.495-04:00 level=INFO msg="[applyLayout] layout applied" panes=12 w=314 h=78
+initech.log.1:49763: time=2026-09-11T14:41:39.966-04:00 level=INFO msg="[render] enter" frame=251100 plan_panes=12 plan_set=ae,bizdev,eng1,eng2,eng3,eng4,eng5,mktg,mktgcos,pm,pmm,super
+initech.log.1:49877: time=2026-09-11T14:41:43.596-04:00 level=INFO msg="[render] enter" frame=251250 plan_panes=12 plan_set=ae,bizdev,eng1,eng2,eng3,eng4,eng5,mktg,mktgcos,pm,pmm,super
+initech.log.1:49884: time=2026-09-11T14:41:43.786-04:00 level=INFO msg="[render] enter" frame=450 plan_panes=0 plan_set=(none)
+initech.log.1:49911: time=2026-09-11T14:41:44.589-04:00 level=INFO msg="[applyLayout] layout applied" panes=12 w=314 h=78
+initech.log.1:49912: time=2026-09-11T14:41:44.589-04:00 level=INFO msg="[applyLayout] resizing pane" idx=0 name=eng4 oldRows=24 oldCols=46 newRows=76 newCols=124
+initech.log.1:49914: time=2026-09-11T14:41:44.589-04:00 level=INFO msg="[applyLayout] resizing pane" idx=6 name=eng5 oldRows=24 oldCols=46 newRows=24 newCols=46
+initech.log.1:49916: time=2026-09-11T14:41:44.589-04:00 level=INFO msg="[applyLayout] resizing pane" idx=7 name=mktg oldRows=24 oldCols=47 newRows=24 newCols=46
+initech.log.1:49918: time=2026-09-11T14:41:44.593-04:00 level=INFO msg="[applyLayout] resizing pane" idx=8 name=mktgcos oldRows=24 oldCols=62 newRows=24 newCols=47
+initech.log.1:49920: time=2026-09-11T14:41:44.601-04:00 level=INFO msg="[applyLayout] resizing pane" idx=9 name=ae oldRows=76 oldCols=124 newRows=24 newCols=62
+initech.log.1:49998: time=2026-09-11T14:41:46.863-04:00 level=INFO msg="[render] enter" frame=251400 plan_panes=12 plan_set=ae,bizdev,eng1,eng2,eng3,eng4,eng5,mktg,mktgcos,pm,pmm,super
+initech.log.1:50056: time=2026-09-11T14:41:48.737-04:00 level=INFO msg="[render] enter" frame=600 plan_panes=0 plan_set=(none)
+initech.log.1:50071: time=2026-09-11T14:41:49.139-04:00 level=INFO msg="[render] enter" frame=251550 plan_panes=12 plan_set=ae,bizdev,eng1,eng2,eng3,eng4,eng5,mktg,mktgcos,pm,pmm,super
+initech.log.1:50123: time=2026-09-11T14:41:50.578-04:00 level=INFO msg="[applyLayout] layout applied" panes=11 w=314 h=78
+initech.log.1:50124: time=2026-09-11T14:41:50.578-04:00 level=INFO msg="[applyLayout] resizing pane" idx=1 name=pm oldRows=24 oldCols=46 newRows=24 newCols=47
+initech.log.1:50126: time=2026-09-11T14:41:50.581-04:00 level=INFO msg="[applyLayout] resizing pane" idx=2 name=eng1 oldRows=24 oldCols=46 newRows=24 newCols=46
+initech.log.1:50128: time=2026-09-11T14:41:50.581-04:00 level=INFO msg="[applyLayout] resizing pane" idx=3 name=eng2 oldRows=24 oldCols=47 newRows=24 newCols=46
+initech.log.1:50130: time=2026-09-11T14:41:50.583-04:00 level=INFO msg="[applyLayout] resizing pane" idx=4 name=eng3 oldRows=24 oldCols=47 newRows=24 newCols=47
+initech.log.1:50132: time=2026-09-11T14:41:50.583-04:00 level=INFO msg="[applyLayout] resizing pane" idx=5 name=eng5 oldRows=24 oldCols=46 newRows=24 newCols=47
+initech.log.1:50134: time=2026-09-11T14:41:50.583-04:00 level=INFO msg="[applyLayout] resizing pane" idx=6 name=mktg oldRows=24 oldCols=46 newRows=24 newCols=46
+initech.log.1:50136: time=2026-09-11T14:41:50.583-04:00 level=INFO msg="[applyLayout] resizing pane" idx=7 name=mktgcos oldRows=24 oldCols=47 newRows=24 newCols=46
+initech.log.1:50139: time=2026-09-11T14:41:50.593-04:00 level=INFO msg="[applyLayout] resizing pane" idx=8 name=ae oldRows=24 oldCols=62 newRows=24 newCols=47
+initech.log.1:50141: time=2026-09-11T14:41:50.601-04:00 level=INFO msg="[applyLayout] resizing pane" idx=9 name=bizdev oldRows=24 oldCols=62 newRows=24 newCols=94
+initech.log.1:50143: time=2026-09-11T14:41:50.603-04:00 level=INFO msg="[applyLayout] resizing pane" idx=10 name=pmm oldRows=24 oldCols=63 newRows=24 newCols=94
+initech.log.1:50146: time=2026-09-11T14:41:50.604-04:00 level=INFO msg="[applyLayout] layout applied" panes=11 w=314 h=78
+initech.log.1:50156: time=2026-09-11T14:41:50.860-04:00 level=INFO msg="[applyLayout] layout applied" panes=10 w=314 h=78
+initech.log.1:50157: time=2026-09-11T14:41:50.860-04:00 level=INFO msg="[applyLayout] resizing pane" idx=1 name=eng1 oldRows=24 oldCols=46 newRows=24 newCols=62
+initech.log.1:50159: time=2026-09-11T14:41:50.862-04:00 level=INFO msg="[applyLayout] resizing pane" idx=2 name=eng2 oldRows=24 oldCols=46 newRows=24 newCols=62
+initech.log.1:50161: time=2026-09-11T14:41:50.863-04:00 level=INFO msg="[applyLayout] resizing pane" idx=3 name=eng3 oldRows=24 oldCols=47 newRows=24 newCols=63
+initech.log.1:50163: time=2026-09-11T14:41:50.866-04:00 level=INFO msg="[applyLayout] resizing pane" idx=4 name=eng5 oldRows=24 oldCols=47 newRows=24 newCols=62
+initech.log.1:50165: time=2026-09-11T14:41:50.866-04:00 level=INFO msg="[applyLayout] resizing pane" idx=5 name=mktg oldRows=24 oldCols=46 newRows=24 newCols=62
+initech.log.1:50167: time=2026-09-11T14:41:50.869-04:00 level=INFO msg="[applyLayout] resizing pane" idx=6 name=mktgcos oldRows=24 oldCols=46 newRows=24 newCols=63
+initech.log.1:50169: time=2026-09-11T14:41:50.873-04:00 level=INFO msg="[applyLayout] resizing pane" idx=7 name=ae oldRows=24 oldCols=47 newRows=24 newCols=62
+initech.log.1:50171: time=2026-09-11T14:41:50.877-04:00 level=INFO msg="[applyLayout] resizing pane" idx=8 name=bizdev oldRows=24 oldCols=94 newRows=24 newCols=62
+initech.log.1:50173: time=2026-09-11T14:41:50.878-04:00 level=INFO msg="[applyLayout] resizing pane" idx=9 name=pmm oldRows=24 oldCols=94 newRows=24 newCols=63
+initech.log.1:50176: time=2026-09-11T14:41:50.880-04:00 level=INFO msg="[applyLayout] layout applied" panes=10 w=314 h=78
+initech.log.1:50201: time=2026-09-11T14:41:51.636-04:00 level=INFO msg="[applyLayout] layout applied" panes=9 w=314 h=78
+initech.log.1:50202: time=2026-09-11T14:41:51.636-04:00 level=INFO msg="[applyLayout] resizing pane" idx=1 name=eng2 oldRows=24 oldCols=62 newRows=37 newCols=47
+initech.log.1:50204: time=2026-09-11T14:41:51.638-04:00 level=INFO msg="[applyLayout] resizing pane" idx=2 name=eng3 oldRows=24 oldCols=63 newRows=37 newCols=46
+initech.log.1:50206: time=2026-09-11T14:41:51.640-04:00 level=INFO msg="[applyLayout] resizing pane" idx=3 name=eng5 oldRows=24 oldCols=62 newRows=37 newCols=46
+initech.log.1:50208: time=2026-09-11T14:41:51.640-04:00 level=INFO msg="[applyLayout] resizing pane" idx=4 name=mktg oldRows=24 oldCols=62 newRows=37 newCols=47
+initech.log.1:50211: time=2026-09-11T14:41:51.643-04:00 level=INFO msg="[applyLayout] resizing pane" idx=5 name=mktgcos oldRows=24 oldCols=63 newRows=37 newCols=47
+initech.log.1:50213: time=2026-09-11T14:41:51.647-04:00 level=INFO msg="[applyLayout] resizing pane" idx=6 name=ae oldRows=24 oldCols=62 newRows=37 newCols=46
+initech.log.1:50215: time=2026-09-11T14:41:51.651-04:00 level=INFO msg="[applyLayout] resizing pane" idx=7 name=bizdev oldRows=24 oldCols=62 newRows=37 newCols=46
+initech.log.1:50217: time=2026-09-11T14:41:51.653-04:00 level=INFO msg="[applyLayout] resizing pane" idx=8 name=pmm oldRows=24 oldCols=63 newRows=37 newCols=47
+initech.log.1:50220: time=2026-09-11T14:41:51.654-04:00 level=INFO msg="[applyLayout] layout applied" panes=9 w=314 h=78
+initech.log.1:50230: time=2026-09-11T14:41:51.911-04:00 level=INFO msg="[applyLayout] layout applied" panes=8 w=314 h=78
+initech.log.1:50231: time=2026-09-11T14:41:51.911-04:00 level=INFO msg="[applyLayout] resizing pane" idx=1 name=eng3 oldRows=37 oldCols=46 newRows=37 newCols=47
+initech.log.1:50233: time=2026-09-11T14:41:51.913-04:00 level=INFO msg="[applyLayout] resizing pane" idx=2 name=eng5 oldRows=37 oldCols=46 newRows=37 newCols=46
+initech.log.1:50235: time=2026-09-11T14:41:51.913-04:00 level=INFO msg="[applyLayout] resizing pane" idx=3 name=mktg oldRows=37 oldCols=47 newRows=37 newCols=46
+initech.log.1:50237: time=2026-09-11T14:41:51.917-04:00 level=INFO msg="[applyLayout] resizing pane" idx=4 name=mktgcos oldRows=37 oldCols=47 newRows=37 newCols=47
+initech.log.1:50239: time=2026-09-11T14:41:51.917-04:00 level=INFO msg="[applyLayout] resizing pane" idx=5 name=ae oldRows=37 oldCols=46 newRows=37 newCols=62
+initech.log.1:50241: time=2026-09-11T14:41:51.925-04:00 level=INFO msg="[applyLayout] resizing pane" idx=6 name=bizdev oldRows=37 oldCols=46 newRows=37 newCols=62
+initech.log.1:50243: time=2026-09-11T14:41:51.927-04:00 level=INFO msg="[applyLayout] resizing pane" idx=7 name=pmm oldRows=37 oldCols=47 newRows=37 newCols=63
+initech.log.1:50246: time=2026-09-11T14:41:51.930-04:00 level=INFO msg="[applyLayout] layout applied" panes=8 w=314 h=78
+initech.log.1:50254: time=2026-09-11T14:41:52.119-04:00 level=INFO msg="[applyLayout] layout applied" panes=7 w=314 h=78
+initech.log.1:50255: time=2026-09-11T14:41:52.119-04:00 level=INFO msg="[applyLayout] resizing pane" idx=1 name=eng5 oldRows=37 oldCols=46 newRows=37 newCols=62
+initech.log.1:50257: time=2026-09-11T14:41:52.119-04:00 level=INFO msg="[applyLayout] resizing pane" idx=2 name=mktg oldRows=37 oldCols=46 newRows=37 newCols=62
+initech.log.1:50259: time=2026-09-11T14:41:52.125-04:00 level=INFO msg="[applyLayout] resizing pane" idx=3 name=mktgcos oldRows=37 oldCols=47 newRows=37 newCols=63
+initech.log.1:50262: time=2026-09-11T14:41:52.132-04:00 level=INFO msg="[applyLayout] layout applied" panes=7 w=314 h=78
+initech.log.1:50271: time=2026-09-11T14:41:52.349-04:00 level=INFO msg="[applyLayout] layout applied" panes=6 w=314 h=78
+initech.log.1:50272: time=2026-09-11T14:41:52.349-04:00 level=INFO msg="[applyLayout] resizing pane" idx=0 name=eng5 oldRows=37 oldCols=62 newRows=76 newCols=124
+initech.log.1:50274: time=2026-09-11T14:41:52.350-04:00 level=INFO msg="[applyLayout] resizing pane" idx=1 name=mktg oldRows=37 oldCols=62 newRows=37 newCols=62
+initech.log.1:50276: time=2026-09-11T14:41:52.350-04:00 level=INFO msg="[applyLayout] resizing pane" idx=2 name=mktgcos oldRows=37 oldCols=63 newRows=37 newCols=62
+initech.log.1:50278: time=2026-09-11T14:41:52.354-04:00 level=INFO msg="[applyLayout] resizing pane" idx=3 name=ae oldRows=37 oldCols=62 newRows=37 newCols=63
+initech.log.1:50280: time=2026-09-11T14:41:52.358-04:00 level=INFO msg="[applyLayout] resizing pane" idx=4 name=bizdev oldRows=37 oldCols=62 newRows=37 newCols=94
+initech.log.1:50282: time=2026-09-11T14:41:52.360-04:00 level=INFO msg="[applyLayout] resizing pane" idx=5 name=pmm oldRows=37 oldCols=63 newRows=37 newCols=94
+initech.log.1:50285: time=2026-09-11T14:41:52.362-04:00 level=INFO msg="[applyLayout] layout applied" panes=6 w=314 h=78
+initech.log.1:50294: time=2026-09-11T14:41:52.577-04:00 level=INFO msg="[applyLayout] layout applied" panes=5 w=314 h=78
+initech.log.1:50295: time=2026-09-11T14:41:52.577-04:00 level=INFO msg="[applyLayout] resizing pane" idx=0 name=mktg oldRows=37 oldCols=62 newRows=76 newCols=124
+initech.log.1:50297: time=2026-09-11T14:41:52.580-04:00 level=INFO msg="[applyLayout] resizing pane" idx=1 name=mktgcos oldRows=37 oldCols=62 newRows=37 newCols=94
+initech.log.1:50299: time=2026-09-11T14:41:52.583-04:00 level=INFO msg="[applyLayout] resizing pane" idx=2 name=ae oldRows=37 oldCols=63 newRows=37 newCols=94
+initech.log.1:50302: time=2026-09-11T14:41:52.587-04:00 level=INFO msg="[applyLayout] layout applied" panes=5 w=314 h=78
+initech.log.1:50327: time=2026-09-11T14:41:53.343-04:00 level=INFO msg="[render] enter" frame=251700 plan_panes=5 plan_set=ae,bizdev,mktg,mktgcos,pmm
+initech.log.1:50338: time=2026-09-11T14:41:53.653-04:00 level=INFO msg="[render] enter" frame=750 plan_panes=0 plan_set=(none)
+initech.log.1:206888: time=2026-09-11T16:00:13.714-04:00 level=INFO msg="[daemon] hello from" peer=window-2 version=1
+initech.log:1: time=2026-09-11T16:00:02.016-04:00 level=INFO msg="[tui] starting" version=2.12.0 pid=4458 agents=41 verbose=false
+initech.log:48: time=2026-09-11T16:00:02.030-04:00 level=ERROR msg="[window-server] failed to start; secondary windows cannot attach" addr=127.0.0.1:9301 err="window listener on 127.0.0.1:9301: listen tcp 127.0.0.1:9301: bind: address already in use"
+initech.log:50: time=2026-09-11T16:00:02.030-04:00 level=INFO msg="[ownership] recomputed" window1=ae,ba,bizdev,content,drone-datasets,drone-skills,eng1,eng2,eng3,eng4,eng5,finance,graff,growth,it,legal,mktg,mktgapollo,mktgclay,mktgcos,mktgdata,mktgdata2,mktgeng,mktgops,mktgweb,ops,pm,pmm,qa1,qa2,qa3,revgen,revops,sec,seo,shipper,social,super,video,website,writer
+initech.log:72: time=2026-09-11T16:00:02.050-04:00 level=INFO msg="[render] enter" frame=1 plan_panes=6 plan_set=ae,mktg,mktgcos,mktgdata,mktgeng,pmm
+initech.log:171: time=2026-09-11T16:00:13.704-04:00 level=INFO msg="[tui] starting" version=2.12.0 pid=7278 agents=0 verbose=false
+initech.log:197: time=2026-09-11T16:00:13.751-04:00 level=INFO msg="[ownership] served" window=window-2 mine=eng1,eng2,eng3,eng4,eng5,qa1,qa2,qa3
+initech.log:555: time=2026-09-11T16:00:21.049-04:00 level=INFO msg="[render] enter" frame=600 plan_panes=7 plan_set=ae,eng1,mktg,mktgcos,mktgdata,mktgeng,pmm
+initech.log:764: time=2026-09-11T16:00:25.944-04:00 level=INFO msg="[render] enter" frame=750 plan_panes=6 plan_set=ae,mktg,mktgcos,mktgdata,mktgeng,pmm
+initech.log:936: time=2026-09-11T16:00:29.831-04:00 level=INFO msg="[applyLayout] layout applied" panes=41 w=374 h=96
+initech.log:967: time=2026-09-11T16:00:30.933-04:00 level=INFO msg="[render] enter" frame=900 plan_panes=41 plan_set=ae,ba,bizdev,content,drone-datasets,drone-skills,eng1,eng2,eng3,eng4,eng5,finance,graff,growth,it,legal,mktg,mktgapollo,mktgclay,mktgcos,mktgdata,mktgdata2,mktgeng,mktgops,mktgweb,ops,pm,pmm,qa1,qa2,qa3,revgen,revops,sec,seo,shipper,social,super,video,website,writer
+initech.log:995: time=2026-09-11T16:00:31.421-04:00 level=INFO msg="[applyLayout] layout applied" panes=41 w=374 h=96
+initech.log:2852: time=2026-09-11T16:00:43.102-04:00 level=INFO msg="[applyLayout] layout applied" panes=10 w=374 h=96
+initech.log:2853: time=2026-09-11T16:00:43.102-04:00 level=INFO msg="[applyLayout] resizing pane" idx=8 name=drone-skills oldRows=30 oldCols=124 newRows=30 newCols=186
+initech.log:2855: time=2026-09-11T16:00:43.102-04:00 level=INFO msg="[applyLayout] resizing pane" idx=9 name=drone-datasets oldRows=30 oldCols=124 newRows=30 newCols=187
+initech.log:2858: time=2026-09-11T16:00:43.102-04:00 level=INFO msg="[applyLayout] layout applied" panes=10 w=374 h=96
+initech.log:2867: time=2026-09-11T16:00:43.319-04:00 level=INFO msg="[applyLayout] layout applied" panes=9 w=374 h=96
+initech.log:2868: time=2026-09-11T16:00:43.319-04:00 level=INFO msg="[applyLayout] resizing pane" idx=0 name=eng1 oldRows=30 oldCols=93 newRows=30 newCols=124
+initech.log:2870: time=2026-09-11T16:00:43.319-04:00 level=INFO msg="[applyLayout] resizing pane" idx=1 name=eng2 oldRows=30 oldCols=93 newRows=30 newCols=124
+initech.log:2872: time=2026-09-11T16:00:43.320-04:00 level=INFO msg="[applyLayout] resizing pane" idx=2 name=eng3 oldRows=30 oldCols=92 newRows=30 newCols=124
+initech.log:2874: time=2026-09-11T16:00:43.320-04:00 level=INFO msg="[applyLayout] resizing pane" idx=3 name=eng4 oldRows=30 oldCols=93 newRows=30 newCols=124
+initech.log:2876: time=2026-09-11T16:00:43.321-04:00 level=INFO msg="[applyLayout] resizing pane" idx=4 name=eng5 oldRows=30 oldCols=93 newRows=30 newCols=124
+initech.log:2878: time=2026-09-11T16:00:43.321-04:00 level=INFO msg="[applyLayout] resizing pane" idx=5 name=qa1 oldRows=30 oldCols=93 newRows=30 newCols=124
+initech.log:2880: time=2026-09-11T16:00:43.322-04:00 level=INFO msg="[applyLayout] resizing pane" idx=6 name=qa2 oldRows=30 oldCols=92 newRows=30 newCols=124
+initech.log:2882: time=2026-09-11T16:00:43.322-04:00 level=INFO msg="[applyLayout] resizing pane" idx=7 name=qa3 oldRows=30 oldCols=93 newRows=30 newCols=124
+initech.log:2884: time=2026-09-11T16:00:43.323-04:00 level=INFO msg="[applyLayout] resizing pane" idx=8 name=drone-datasets oldRows=30 oldCols=187 newRows=30 newCols=124
+initech.log:2887: time=2026-09-11T16:00:43.323-04:00 level=INFO msg="[applyLayout] layout applied" panes=9 w=374 h=96
+initech.log:2894: time=2026-09-11T16:00:43.500-04:00 level=INFO msg="[render] enter" frame=1350 plan_panes=9 plan_set=drone-datasets,eng1,eng2,eng3,eng4,eng5,qa1,qa2,qa3
+initech.log:2897: time=2026-09-11T16:00:43.538-04:00 level=INFO msg="[applyLayout] layout applied" panes=8 w=374 h=96
+initech.log:2898: time=2026-09-11T16:00:43.538-04:00 level=INFO msg="[applyLayout] resizing pane" idx=0 name=eng1 oldRows=30 oldCols=124 newRows=46 newCols=93
+initech.log:2900: time=2026-09-11T16:00:43.538-04:00 level=INFO msg="[applyLayout] resizing pane" idx=1 name=eng2 oldRows=30 oldCols=124 newRows=46 newCols=93
+initech.log:2902: time=2026-09-11T16:00:43.538-04:00 level=INFO msg="[applyLayout] resizing pane" idx=2 name=eng3 oldRows=30 oldCols=124 newRows=46 newCols=92
+initech.log:2904: time=2026-09-11T16:00:43.539-04:00 level=INFO msg="[applyLayout] resizing pane" idx=3 name=eng4 oldRows=30 oldCols=124 newRows=46 newCols=93
+initech.log:2906: time=2026-09-11T16:00:43.539-04:00 level=INFO msg="[applyLayout] resizing pane" idx=4 name=eng5 oldRows=30 oldCols=124 newRows=46 newCols=93
+initech.log:2908: time=2026-09-11T16:00:43.539-04:00 level=INFO msg="[applyLayout] resizing pane" idx=5 name=qa1 oldRows=30 oldCols=124 newRows=46 newCols=93
+initech.log:2910: time=2026-09-11T16:00:43.539-04:00 level=INFO msg="[applyLayout] resizing pane" idx=6 name=qa2 oldRows=30 oldCols=124 newRows=46 newCols=92
+initech.log:2912: time=2026-09-11T16:00:43.539-04:00 level=INFO msg="[applyLayout] resizing pane" idx=7 name=qa3 oldRows=30 oldCols=124 newRows=46 newCols=93
+initech.log:2915: time=2026-09-11T16:00:43.540-04:00 level=INFO msg="[applyLayout] layout applied" panes=8 w=374 h=96
+initech.log:2932: time=2026-09-11T16:00:43.777-04:00 level=INFO msg="[applyLayout] layout applied" panes=9 w=374 h=96
+initech.log:2933: time=2026-09-11T16:00:43.777-04:00 level=INFO msg="[applyLayout] resizing pane" idx=0 name=eng1 oldRows=46 oldCols=93 newRows=30 newCols=124
+initech.log:2935: time=2026-09-11T16:00:43.777-04:00 level=INFO msg="[applyLayout] resizing pane" idx=1 name=eng2 oldRows=46 oldCols=93 newRows=30 newCols=124
+initech.log:2937: time=2026-09-11T16:00:43.777-04:00 level=INFO msg="[applyLayout] resizing pane" idx=2 name=eng3 oldRows=46 oldCols=92 newRows=30 newCols=124
+initech.log:2939: time=2026-09-11T16:00:43.778-04:00 level=INFO msg="[applyLayout] resizing pane" idx=3 name=eng4 oldRows=46 oldCols=93 newRows=30 newCols=124
+initech.log:2941: time=2026-09-11T16:00:43.778-04:00 level=INFO msg="[applyLayout] resizing pane" idx=4 name=eng5 oldRows=46 oldCols=93 newRows=30 newCols=124
+initech.log:2943: time=2026-09-11T16:00:43.778-04:00 level=INFO msg="[applyLayout] resizing pane" idx=5 name=qa1 oldRows=46 oldCols=93 newRows=30 newCols=124
+initech.log:2945: time=2026-09-11T16:00:43.779-04:00 level=INFO msg="[applyLayout] resizing pane" idx=6 name=qa2 oldRows=46 oldCols=92 newRows=30 newCols=124
+initech.log:2947: time=2026-09-11T16:00:43.779-04:00 level=INFO msg="[applyLayout] resizing pane" idx=7 name=qa3 oldRows=46 oldCols=93 newRows=30 newCols=124
+initech.log:2950: time=2026-09-11T16:00:43.779-04:00 level=INFO msg="[applyLayout] layout applied" panes=9 w=374 h=96
+initech.log:2970: time=2026-09-11T16:00:44.377-04:00 level=INFO msg="[applyLayout] layout applied" panes=8 w=374 h=96
+initech.log:2971: time=2026-09-11T16:00:44.377-04:00 level=INFO msg="[applyLayout] resizing pane" idx=0 name=eng1 oldRows=30 oldCols=124 newRows=46 newCols=93
+initech.log:2973: time=2026-09-11T16:00:44.377-04:00 level=INFO msg="[applyLayout] resizing pane" idx=1 name=eng2 oldRows=30 oldCols=124 newRows=46 newCols=93
+initech.log:2975: time=2026-09-11T16:00:44.378-04:00 level=INFO msg="[applyLayout] resizing pane" idx=2 name=eng3 oldRows=30 oldCols=124 newRows=46 newCols=92
+initech.log:2977: time=2026-09-11T16:00:44.378-04:00 level=INFO msg="[applyLayout] resizing pane" idx=3 name=eng4 oldRows=30 oldCols=124 newRows=46 newCols=93
+initech.log:2979: time=2026-09-11T16:00:44.378-04:00 level=INFO msg="[applyLayout] resizing pane" idx=4 name=eng5 oldRows=30 oldCols=124 newRows=46 newCols=93
+initech.log:2981: time=2026-09-11T16:00:44.378-04:00 level=INFO msg="[applyLayout] resizing pane" idx=5 name=qa1 oldRows=30 oldCols=124 newRows=46 newCols=93
+initech.log:2983: time=2026-09-11T16:00:44.378-04:00 level=INFO msg="[applyLayout] resizing pane" idx=6 name=qa2 oldRows=30 oldCols=124 newRows=46 newCols=92
+initech.log:2985: time=2026-09-11T16:00:44.379-04:00 level=INFO msg="[applyLayout] resizing pane" idx=7 name=qa3 oldRows=30 oldCols=124 newRows=46 newCols=93
+initech.log:2988: time=2026-09-11T16:00:44.379-04:00 level=INFO msg="[applyLayout] layout applied" panes=8 w=374 h=96
+initech.log:3029: time=2026-09-11T16:00:45.669-04:00 level=INFO msg="[applyLayout] layout applied" panes=7 w=374 h=96
+initech.log:3030: time=2026-09-11T16:00:45.669-04:00 level=INFO msg="[applyLayout] resizing pane" idx=0 name=eng2 oldRows=46 oldCols=93 newRows=46 newCols=93
+initech.log:3032: time=2026-09-11T16:00:45.669-04:00 level=INFO msg="[applyLayout] resizing pane" idx=1 name=eng3 oldRows=46 oldCols=92 newRows=46 newCols=93
+initech.log:3034: time=2026-09-11T16:00:45.669-04:00 level=INFO msg="[applyLayout] resizing pane" idx=2 name=eng4 oldRows=46 oldCols=93 newRows=46 newCols=92
+initech.log:3036: time=2026-09-11T16:00:45.669-04:00 level=INFO msg="[applyLayout] resizing pane" idx=3 name=eng5 oldRows=46 oldCols=93 newRows=46 newCols=93
+initech.log:3038: time=2026-09-11T16:00:45.669-04:00 level=INFO msg="[applyLayout] resizing pane" idx=4 name=qa1 oldRows=46 oldCols=93 newRows=46 newCols=124
+initech.log:3040: time=2026-09-11T16:00:45.669-04:00 level=INFO msg="[applyLayout] resizing pane" idx=5 name=qa2 oldRows=46 oldCols=92 newRows=46 newCols=124
+initech.log:3042: time=2026-09-11T16:00:45.669-04:00 level=INFO msg="[applyLayout] resizing pane" idx=6 name=qa3 oldRows=46 oldCols=93 newRows=46 newCols=124
+initech.log:3045: time=2026-09-11T16:00:45.670-04:00 level=INFO msg="[applyLayout] layout applied" panes=7 w=374 h=96
+initech.log:3055: time=2026-09-11T16:00:45.935-04:00 level=INFO msg="[applyLayout] layout applied" panes=6 w=374 h=96
+initech.log:3056: time=2026-09-11T16:00:45.935-04:00 level=INFO msg="[applyLayout] resizing pane" idx=0 name=eng3 oldRows=46 oldCols=93 newRows=46 newCols=124
+initech.log:3058: time=2026-09-11T16:00:45.935-04:00 level=INFO msg="[applyLayout] resizing pane" idx=1 name=eng4 oldRows=46 oldCols=92 newRows=46 newCols=124
+initech.log:3060: time=2026-09-11T16:00:45.936-04:00 level=INFO msg="[applyLayout] resizing pane" idx=2 name=eng5 oldRows=46 oldCols=93 newRows=46 newCols=124
+initech.log:3063: time=2026-09-11T16:00:45.936-04:00 level=INFO msg="[applyLayout] layout applied" panes=6 w=374 h=96
+initech.log:3072: time=2026-09-11T16:00:46.180-04:00 level=INFO msg="[applyLayout] layout applied" panes=5 w=374 h=96
+initech.log:3073: time=2026-09-11T16:00:46.180-04:00 level=INFO msg="[applyLayout] resizing pane" idx=0 name=eng4 oldRows=46 oldCols=124 newRows=46 newCols=124
+initech.log:3075: time=2026-09-11T16:00:46.180-04:00 level=INFO msg="[applyLayout] resizing pane" idx=1 name=eng5 oldRows=46 oldCols=124 newRows=46 newCols=124
+initech.log:3077: time=2026-09-11T16:00:46.180-04:00 level=INFO msg="[applyLayout] resizing pane" idx=2 name=qa1 oldRows=46 oldCols=124 newRows=46 newCols=124
+initech.log:3079: time=2026-09-11T16:00:46.180-04:00 level=INFO msg="[applyLayout] resizing pane" idx=3 name=qa2 oldRows=46 oldCols=124 newRows=46 newCols=186
+initech.log:3081: time=2026-09-11T16:00:46.181-04:00 level=INFO msg="[applyLayout] resizing pane" idx=4 name=qa3 oldRows=46 oldCols=124 newRows=46 newCols=187
+initech.log:3084: time=2026-09-11T16:00:46.181-04:00 level=INFO msg="[applyLayout] layout applied" panes=5 w=374 h=96
+initech.log:3093: time=2026-09-11T16:00:46.409-04:00 level=INFO msg="[applyLayout] layout applied" panes=4 w=374 h=96
+initech.log:3094: time=2026-09-11T16:00:46.410-04:00 level=INFO msg="[applyLayout] resizing pane" idx=0 name=eng5 oldRows=46 oldCols=124 newRows=46 newCols=186
+initech.log:3096: time=2026-09-11T16:00:46.411-04:00 level=INFO msg="[applyLayout] resizing pane" idx=1 name=qa1 oldRows=46 oldCols=124 newRows=46 newCols=187
+initech.log:3099: time=2026-09-11T16:00:46.411-04:00 level=INFO msg="[applyLayout] layout applied" panes=4 w=374 h=96
+initech.log:3109: time=2026-09-11T16:00:46.648-04:00 level=INFO msg="[applyLayout] layout applied" panes=3 w=374 h=96
+initech.log:3110: time=2026-09-11T16:00:46.648-04:00 level=INFO msg="[applyLayout] resizing pane" idx=0 name=qa1 oldRows=46 oldCols=187 newRows=46 newCols=186
+initech.log:3112: time=2026-09-11T16:00:46.648-04:00 level=INFO msg="[applyLayout] resizing pane" idx=1 name=qa2 oldRows=46 oldCols=186 newRows=46 newCols=187
+initech.log:3114: time=2026-09-11T16:00:46.648-04:00 level=INFO msg="[applyLayout] resizing pane" idx=2 name=qa3 oldRows=46 oldCols=187 newRows=46 newCols=374
+initech.log:3117: time=2026-09-11T16:00:46.649-04:00 level=INFO msg="[applyLayout] layout applied" panes=3 w=374 h=96
+initech.log:3126: time=2026-09-11T16:00:46.904-04:00 level=INFO msg="[applyLayout] layout applied" panes=4 w=374 h=96
+initech.log:3127: time=2026-09-11T16:00:46.904-04:00 level=INFO msg="[applyLayout] resizing pane" idx=1 name=qa1 oldRows=46 oldCols=186 newRows=46 newCols=187
+initech.log:3129: time=2026-09-11T16:00:46.905-04:00 level=INFO msg="[applyLayout] resizing pane" idx=2 name=qa2 oldRows=46 oldCols=187 newRows=46 newCols=186
+initech.log:3131: time=2026-09-11T16:00:46.905-04:00 level=INFO msg="[applyLayout] resizing pane" idx=3 name=qa3 oldRows=46 oldCols=374 newRows=46 newCols=187
+initech.log:3134: time=2026-09-11T16:00:46.905-04:00 level=INFO msg="[applyLayout] layout applied" panes=4 w=374 h=96
+initech.log:3149: time=2026-09-11T16:00:47.337-04:00 level=INFO msg="[render] enter" frame=1050 plan_panes=0 plan_set=(none)
+initech.log:3164: time=2026-09-11T16:00:47.757-04:00 level=INFO msg="[render] enter" frame=1500 plan_panes=4 plan_set=eng5,qa1,qa2,qa3
+initech.log:3187: time=2026-09-11T16:00:48.455-04:00 level=INFO msg="[applyLayout] layout applied" panes=3 w=374 h=96
+initech.log:3188: time=2026-09-11T16:00:48.455-04:00 level=INFO msg="[applyLayout] resizing pane" idx=1 name=qa2 oldRows=46 oldCols=186 newRows=46 newCols=187
+initech.log:3190: time=2026-09-11T16:00:48.455-04:00 level=INFO msg="[applyLayout] resizing pane" idx=2 name=qa3 oldRows=46 oldCols=187 newRows=46 newCols=374
+initech.log:3193: time=2026-09-11T16:00:48.457-04:00 level=INFO msg="[applyLayout] layout applied" panes=3 w=374 h=96
+initech.log:3204: time=2026-09-11T16:00:48.735-04:00 level=INFO msg="[applyLayout] layout applied" panes=2 w=374 h=96
+initech.log:3205: time=2026-09-11T16:00:48.735-04:00 level=INFO msg="[applyLayout] resizing pane" idx=0 name=eng5 oldRows=46 oldCols=186 newRows=94 newCols=186
+initech.log:3207: time=2026-09-11T16:00:48.736-04:00 level=INFO msg="[applyLayout] resizing pane" idx=1 name=qa3 oldRows=46 oldCols=374 newRows=94 newCols=187
+initech.log:3210: time=2026-09-11T16:00:48.737-04:00 level=INFO msg="[applyLayout] layout applied" panes=2 w=374 h=96
+initech.log:3222: time=2026-09-11T16:00:49.071-04:00 level=INFO msg="[applyLayout] layout applied" panes=1 w=374 h=96
+initech.log:3223: time=2026-09-11T16:00:49.071-04:00 level=INFO msg="[applyLayout] resizing pane" idx=0 name=eng5 oldRows=94 oldCols=186 newRows=94 newCols=374
+initech.log:3226: time=2026-09-11T16:00:49.075-04:00 level=INFO msg="[applyLayout] layout applied" panes=1 w=374 h=96
+initech.log:3329: time=2026-09-11T16:00:52.212-04:00 level=INFO msg="[render] enter" frame=1650 plan_panes=1 plan_set=eng5
+initech.log:3333: time=2026-09-11T16:00:52.287-04:00 level=INFO msg="[render] enter" frame=1200 plan_panes=0 plan_set=(none)
+initech.log:3789: time=2026-09-11T16:01:06.336-04:00 level=INFO msg="[render] enter" frame=2100 plan_panes=1 plan_set=eng5
+initech.log:3797: time=2026-09-11T16:01:06.513-04:00 level=INFO msg="[applyLayout] layout applied" panes=2 w=374 h=96
+initech.log:3798: time=2026-09-11T16:01:06.513-04:00 level=INFO msg="[applyLayout] resizing pane" idx=0 name=eng1 oldRows=46 oldCols=93 newRows=94 newCols=186
+initech.log:3800: time=2026-09-11T16:01:06.514-04:00 level=INFO msg="[applyLayout] resizing pane" idx=1 name=eng5 oldRows=94 oldCols=374 newRows=94 newCols=187
+initech.log:3803: time=2026-09-11T16:01:06.514-04:00 level=INFO msg="[applyLayout] layout applied" panes=2 w=374 h=96
+initech.log:3821: time=2026-09-11T16:01:07.071-04:00 level=INFO msg="[render] enter" frame=1650 plan_panes=0 plan_set=(none)
+initech.log:3836: time=2026-09-11T16:01:07.498-04:00 level=INFO msg="[applyLayout] layout applied" panes=1 w=374 h=96
+initech.log:3837: time=2026-09-11T16:01:07.498-04:00 level=INFO msg="[applyLayout] resizing pane" idx=0 name=eng1 oldRows=94 oldCols=186 newRows=94 newCols=374
+initech.log:3841: time=2026-09-11T16:01:07.502-04:00 level=INFO msg="[applyLayout] layout applied" panes=1 w=374 h=96
+initech.log:3941: time=2026-09-11T16:01:10.759-04:00 level=INFO msg="[render] enter" frame=2250 plan_panes=1 plan_set=eng1
+initech.log:3948: time=2026-09-11T16:01:10.920-04:00 level=INFO msg="[applyLayout] layout applied" panes=1 w=374 h=96
+initech.log:3955: time=2026-09-11T16:01:11.094-04:00 level=INFO msg="[applyLayout] layout applied" panes=1 w=374 h=96
+initech.log:3963: time=2026-09-11T16:01:11.277-04:00 level=INFO msg="[applyLayout] layout applied" panes=1 w=374 h=96
+initech.log:3970: time=2026-09-11T16:01:11.431-04:00 level=INFO msg="[applyLayout] layout applied" panes=1 w=374 h=96
+initech.log:3976: time=2026-09-11T16:01:11.581-04:00 level=INFO msg="[applyLayout] layout applied" panes=1 w=374 h=96
+initech.log:3985: time=2026-09-11T16:01:11.820-04:00 level=INFO msg="[applyLayout] layout applied" panes=1 w=374 h=96
+initech.log:5462: time=2026-09-11T16:02:08.312-04:00 level=INFO msg="[render] enter" frame=4200 plan_panes=5 plan_set=ae,eng1,mktg,pm,super
+initech.log:5464: time=2026-09-11T16:02:08.627-04:00 level=INFO msg="[applyLayout] layout applied" panes=4 w=374 h=96
+initech.log:5465: time=2026-09-11T16:02:08.627-04:00 level=INFO msg="[applyLayout] resizing pane" idx=0 name=pm oldRows=46 oldCols=124 newRows=46 newCols=186
+initech.log:5467: time=2026-09-11T16:02:08.627-04:00 level=INFO msg="[applyLayout] resizing pane" idx=1 name=eng1 oldRows=46 oldCols=124 newRows=46 newCols=187
+initech.log:5470: time=2026-09-11T16:02:08.628-04:00 level=INFO msg="[applyLayout] layout applied" panes=4 w=374 h=96
+initech.log:5472: time=2026-09-11T16:02:08.935-04:00 level=INFO msg="[applyLayout] layout applied" panes=3 w=374 h=96
+initech.log:5473: time=2026-09-11T16:02:08.935-04:00 level=INFO msg="[applyLayout] resizing pane" idx=0 name=eng1 oldRows=46 oldCols=187 newRows=46 newCols=186
+initech.log:5475: time=2026-09-11T16:02:08.935-04:00 level=INFO msg="[applyLayout] resizing pane" idx=1 name=mktg oldRows=46 oldCols=186 newRows=46 newCols=187
+initech.log:5477: time=2026-09-11T16:02:08.936-04:00 level=INFO msg="[applyLayout] resizing pane" idx=2 name=ae oldRows=46 oldCols=187 newRows=46 newCols=374
+initech.log:5480: time=2026-09-11T16:02:08.936-04:00 level=INFO msg="[applyLayout] layout applied" panes=3 w=374 h=96
+initech.log:5482: time=2026-09-11T16:02:09.286-04:00 level=INFO msg="[applyLayout] layout applied" panes=2 w=374 h=96
+initech.log:5483: time=2026-09-11T16:02:09.286-04:00 level=INFO msg="[applyLayout] resizing pane" idx=0 name=mktg oldRows=46 oldCols=187 newRows=94 newCols=186
+initech.log:5485: time=2026-09-11T16:02:09.287-04:00 level=INFO msg="[applyLayout] resizing pane" idx=1 name=ae oldRows=46 oldCols=374 newRows=94 newCols=187
+initech.log:5488: time=2026-09-11T16:02:09.288-04:00 level=INFO msg="[applyLayout] layout applied" panes=2 w=374 h=96
+initech.log:5490: time=2026-09-11T16:02:11.193-04:00 level=INFO msg="[render] enter" frame=4350 plan_panes=2 plan_set=ae,mktg

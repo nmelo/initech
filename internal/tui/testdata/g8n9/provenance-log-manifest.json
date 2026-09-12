@@ -1,0 +1,30 @@
+{
+  "captured_utc": "2026-09-12T13:17:36.182996+00:00",
+  "interval": "2026-09-10T13:24:00 through 2026-09-11T16:25:59 -04:00",
+  "logs": {
+    "initech.log.1": {
+      "bytes": 75181628,
+      "sha256": "6e18a05132ddac33279b0df3197abfe465e8764ccf088b1864f0f03667d84b3c",
+      "interval_level_counts": {
+        "INFO": 54528,
+        "ERROR": 7363,
+        "WARN": 145415
+      },
+      "hide_input_keyword_match_lines": [],
+      "control_actions": {
+        "ping": 161
+      }
+    },
+    "initech.log": {
+      "bytes": 7896961,
+      "sha256": "5636a53d0f2e0280bd338b2767ad76772f060561a8c1580476c05974b770ec59",
+      "interval_level_counts": {
+        "INFO": 4252,
+        "ERROR": 1,
+        "WARN": 3100
+      },
+      "hide_input_keyword_match_lines": [],
+      "control_actions": {}
+    }
+  }
+}
