@@ -16,4 +16,22 @@
 # same way. Scrubbing here fixes the class for every current and future test
 # that shells out to git, instead of requiring each test to remember.
 unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_PREFIX GIT_COMMON_DIR GIT_OBJECT_DIRECTORY
-make check
+#
+# WHY check-fast AND NOT check (ini-7ts2, operator decision 2026-09-12): this
+# hook used to run the full `make check`, ~2.5 minutes, on every commit. What
+# commit time catches that nothing else would within minutes is a commit that
+# does not COMPILE reaching main (ac12e59) -- and that is seconds of build and
+# vet. The tests it also ran were duplicated twice over: by `make check` after
+# the rebase (the only run that sees the tree actually being pushed; the hook
+# fires BEFORE the rebase, so a collision is invisible to it by construction)
+# and by CI at the pushed sha. What tests here could never catch: rebase
+# collisions, env-gated rigs, races (-race is CI-only). One engineer paid five
+# post-rebase cycles landing one fix while main moved; the hook's copy of the
+# suite was the part that bought nothing. The lints and censuses stay: they
+# are the guards for silent-omission classes (a test tagged off a platform, a
+# rig nobody runs, a target nothing invokes) and cost about a second.
+#
+# THE SUITE STILL RUNS BEFORE EVERY PUSH: `make check` after `git pull
+# --rebase`, immediately before `git push` -- root CLAUDE.md, unchanged. Do not
+# put `test` back here "for safety" without answering the paragraph above.
+make check-fast

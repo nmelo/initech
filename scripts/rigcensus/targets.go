@@ -169,6 +169,16 @@ func runTargetCensus(makefile string, invokerPaths []string, exemptionsFile stri
 	if err != nil {
 		return err
 	}
+	// An exemption declares a TRIGGER: a human runs that target by hand. A
+	// human running it runs everything it reaches, so its prerequisites are
+	// covered by the same trigger (ini-7ts2: `check` moved off the hook to a
+	// human trigger, and `test` under it must not need a second declaration
+	// saying the same thing).
+	for name, reason := range exempt {
+		if _, ok := targets[name]; ok {
+			roots[name] = append(roots[name], "exemption ("+reason+")")
+		}
+	}
 	covered := reachable(targets, roots)
 
 	var uncovered []string

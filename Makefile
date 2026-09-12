@@ -23,7 +23,7 @@ EXPECTED_ASSETS := checksums.txt initech_darwin_amd64.tar.gz initech_darwin_arm6
 LDFLAGS := -s -w -X github.com/nmelo/initech/cmd.Version=$(VERSION)
 REQUIRE_RELEASE_VERSION = test -n "$(VERSION)" && case "$(VERSION)" in v*) ;; *) echo "VERSION must start with v, got $(VERSION)" >&2; exit 1 ;; esac
 
-.PHONY: build test test-full test-race integration vet vet-linux lint test-census rig-census lint-test-names lint-test-names-self-test clean release check install-hooks hooks-check release-tag release-wait release-assets release-verify release-ship
+.PHONY: build test test-full test-race integration vet vet-linux lint test-census rig-census lint-test-names lint-test-names-self-test clean release check check-fast install-hooks hooks-check release-tag release-wait release-assets release-verify release-ship
 
 build:
 	go build -ldflags "$(LDFLAGS)" -o initech .
@@ -114,6 +114,16 @@ rig-census:
 # repo. A self-test that nothing runs is the defect this census exists to find,
 # and exempting it would have recorded the gap instead of closing it.
 check: hooks-check vet vet-windows vet-linux test-census rig-census lint-test-names lint-test-names-self-test test
+
+# check-fast is what the pre-commit hook runs (ini-7ts2): everything in
+# `check` that is static -- compile, the three vets, the two lints, the two
+# censuses -- and NO product tests. Seconds, not minutes. The suite is not
+# gone from the loop; it moved to where it was already being run: `make check`
+# after every rebase and immediately before every push (root CLAUDE.md rule,
+# unchanged), and CI at the pushed sha. The hook comment in
+# scripts/hooks/pre-commit says why. `check` itself is unchanged.
+check-fast: hooks-check vet vet-windows vet-linux test-census rig-census lint-test-names lint-test-names-self-test
+	go build ./...
 
 release:
 	@set -eu; \
