@@ -31,11 +31,15 @@ func uz42Viewer(t *testing.T) (*TUI, []string) {
 	return w2, owned
 }
 
-// TestG8N9_AllHiddenViewerExplainsItsEmptyPlan is ini-g8n9's probe, promoted.
+// TestUZ42_AllHiddenViewerExplainsItsEmptyPlan pins the VERBATIM copy on a
+// synthetic fixture. eng3's TestG8N9_AllHiddenViewerExplainsItsEmptyPlan
+// (g8n9_contract_probe_test.go) is the promoted investigation probe and runs
+// on the captured hover state instead; it asserts the classification, not the
+// words. Both are kept: one records operator evidence, one pins the decision.
 //
 // The operator hid every agent assigned to this window. That is a legal state
 // he created on purpose, and the window went black and silent about it.
-func TestG8N9_AllHiddenViewerExplainsItsEmptyPlan(t *testing.T) {
+func TestUZ42_AllHiddenViewerExplainsItsEmptyPlan(t *testing.T) {
 	w2, owned := uz42Viewer(t)
 	for _, k := range owned {
 		w2.layoutState.Hidden[k] = true
