@@ -534,7 +534,7 @@ func TestNineISXRig_ScopedOverlayBothStartupOrders(t *testing.T) {
 		time.Sleep(600 * time.Millisecond)
 		w1pty.Write([]byte("agents\r"))
 		if _, ok := nineISXAwait(w1emu, func(s string) bool {
-			return strings.Contains(s, "initech agents")
+			return strings.Contains(s, agentsModalTitle)
 		}, 20*time.Second); !ok {
 			t.Fatalf("the agents modal never opened on window 1; the move cannot be driven\n%s",
 				nineISXScreen(w1emu))

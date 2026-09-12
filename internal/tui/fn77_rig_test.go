@@ -98,7 +98,7 @@ func TestFN77Rig_ChildWindowLosesFleetManagementChords(t *testing.T) {
 	// anything.
 	w1pty.Write([]byte{0x1b, 'a'})
 	if _, ok := nineISXAwait(w1emu, func(s string) bool {
-		return strings.Contains(s, "initech agents")
+		return strings.Contains(s, agentsModalTitle)
 	}, 20*time.Second); !ok {
 		t.Fatalf("Option+A did not open the agents modal in window 1 -- the gate must not "+
 			"cost the main window the feature\n%s", nineISXScreen(w1emu))
@@ -132,7 +132,7 @@ func TestFN77Rig_ChildWindowLosesFleetManagementChords(t *testing.T) {
 			"that does nothing and says nothing reads as a broken build (ini-162m)\n%s",
 			nineISXScreen(w2emu))
 	}
-	if s := nineISXScreen(w2emu); strings.Contains(s, "initech agents") {
+	if s := nineISXScreen(w2emu); strings.Contains(s, agentsModalTitle) {
 		t.Fatalf("the agents modal opened in window 2 despite the notice; fleet management is "+
 			"the main window's\n%s", s)
 	}
@@ -192,7 +192,7 @@ func TestFN77Rig_OverlayDotClickFromAChildWindowStillHidesAnAgent(t *testing.T) 
 	fn77Click(w2pty, col, row)
 
 	if _, ok := nineISXAwait(w2emu, func(s string) bool {
-		return strings.Contains(s, "eng1 [h]")
+		return strings.Contains(s, "eng1 "+hiddenBoxMarker)
 	}, 20*time.Second); !ok {
 		t.Fatalf("window 2's own overlay never marked eng1 hidden after its own dot click -- "+
 			"the fleet-state follower channel eng1's DONE comment flagged as unmeasured "+

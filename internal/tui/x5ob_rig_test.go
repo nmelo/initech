@@ -200,8 +200,14 @@ func x5obNeverBareAndSilent(t *testing.T, label, screen string, agents map[strin
 	if len(agents) > 0 {
 		return
 	}
-	if strings.Contains(screen, "waiting for window 1") ||
-		strings.Contains(screen, "no groups assigned") {
+	// References the product's own hint constants (ini-6e97), not copies of
+	// their text: this check still named "no groups assigned", the text
+	// emptyViewerHint carried before ini-uz42 reworded it. Dormant here only
+	// because none of this rig's three call sites currently hit the
+	// zero-agents branch -- the same defect class as the two that DID break
+	// 6M4, just not yet triggered.
+	if strings.Contains(screen, unservedViewerHint) ||
+		strings.Contains(screen, emptyViewerHint) {
 		return
 	}
 	t.Errorf("%s: window 2 shows no agents AND no explanation -- the bare unexplained "+

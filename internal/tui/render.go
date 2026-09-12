@@ -994,10 +994,12 @@ func (t *TUI) renderOverlay() {
 				col++
 			}
 		}
-		// Hidden marker.
+		// Hidden marker -- the same glyph the agents modal draws
+		// (hiddenBoxMarker, agents_grid.go), one definition instead of two
+		// copies that happened to agree (ini-6e97).
 		if !a.Visible {
 			markerStyle := bgStyle.Foreground(tcell.ColorDarkGray)
-			for _, ch := range " [h]" {
+			for _, ch := range " " + hiddenBoxMarker {
 				if col < px+panelW-1 {
 					s.SetContent(col, row, ch, nil, markerStyle)
 				}

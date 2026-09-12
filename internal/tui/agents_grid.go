@@ -68,6 +68,23 @@ const (
 	gridTierLead  = 1 // Blank line before each monitor-tier header (ini-9ka.5).
 )
 
+// agentsModalTitle is the modal's own title, spelled out in exactly one place
+// (ini-6e97) so a composed rig asserting "the modal opened" references this
+// identifier instead of copying the string -- a copy is exactly what silently
+// broke ini-6m4, twice, on a text change nobody thought to check a rig for.
+const agentsModalTitle = " initech agents "
+
+// visibleBoxMarker and hiddenBoxMarker are the modal's per-agent visibility
+// box (ini-68qv changed the hidden one from "[ ]" to "[h]" without any rig
+// noticing until shipper hit the gate). render.go's overlay draws the same
+// hidden glyph in its own marker and reads hiddenBoxMarker rather than
+// keeping an independent copy, so the glyph has exactly one definition
+// instead of two that happened to agree.
+const (
+	visibleBoxMarker = "[x]"
+	hiddenBoxMarker  = "[h]"
+)
+
 // agentsHelpText is the default (non-searching, non-group-creating) footer.
 // The longest of the modal's footer variants -- used both to render the
 // footer and as boxW's minimum width floor, so a narrow fleet never
@@ -1329,7 +1346,7 @@ func (t *TUI) renderAgentsGrid() {
 		s.SetContent(startX+boxW-1, y, '│', nil, borderStyle)
 	}
 
-	title := " initech agents "
+	title := agentsModalTitle
 	if t.agents.moving && t.agents.selected >= 0 && t.agents.selected < len(t.panes) {
 		title = fmt.Sprintf(" moving %s ", t.panes[t.agents.selected].Name())
 	}
@@ -1539,9 +1556,9 @@ func (t *TUI) renderAgentsGrid() {
 		// colour, hidden is the glyph. The grid spec's line "hidden = italic
 		// + gray + [ ]" chose the box over per-cell words for density; [h]
 		// keeps the density and changes only that line's letter.
-		vis := "[x]"
+		vis := visibleBoxMarker
 		if hidden {
-			vis = "[h]"
+			vis = hiddenBoxMarker
 		}
 		x := c.x
 		put := func(str string, st tcell.Style) {
