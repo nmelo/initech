@@ -1,0 +1,12 @@
+# Verbs a role template teaches that the binary does not register yet, each
+# with the reason and the TRIGGER saying when the line goes away.
+#
+# Read by scripts/templatecensus (make template-census, in check-fast).
+# Format: VERB  # what it is. TRIGGER: when, and who removes this.
+#
+# A TRIGGER is required — the tool refuses an exemption without one. And an
+# exemption that has done its job FAILS the census as stale, so the line
+# cannot outlive its reason: when the command registers, this file must give
+# it up in the same commit.
+
+post  # ini-3wkl child B registers `initech post`; child G (ini-3wkl.1) shipped the templates that teach it first, deliberately, with shipper holding the release coupling by hand. TRIGGER: delete this line in the commit that lands child B — the census fails as stale until you do, which is the coupling expressed as code instead of as someone's memory.

@@ -45,7 +45,7 @@ initech post -f note.md      # multi-line body (--stdin also works)
 - ` + "`" + `--withdraw <id>` + "`" + ` — remove an item you resolved yourself.
 - ` + "`" + `--stdin` + "`" + ` / ` + "`" + `-f <file>` + "`" + ` — multi-line bodies, and any body with backticks or
   $VAR in it. A post body is a double-quoted shell string like every other
-  message body: unquoted, the shell eats those before initech sees them.
+  message body: unquoted, the shell eats those before they ever reach initech.
 
 **Five rules. They are why the channel stays worth opening.**
 
