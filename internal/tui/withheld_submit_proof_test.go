@@ -36,6 +36,7 @@ func proofPane(t *testing.T) (*Pane, <-chan []byte, <-chan AgentEvent) {
 	p.emu = vt.NewSafeEmulator(120, 40)
 	events := make(chan AgentEvent, 8)
 	p.eventCh = events
+	p.claudeVersion = measuredOnlyVersionProbe()
 
 	submits := make(chan []byte, 8)
 	drainDone := make(chan struct{})

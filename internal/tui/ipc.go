@@ -1093,6 +1093,10 @@ var collapsedPaste = regexp.MustCompile(`\[Pasted text #\d+ \+(\d+) lines?\]`)
 // avoid.
 const collapsedPasteLineOffset = 1
 
+// collapsedPasteMeasuredVersion must change alongside the offset's measurement
+// above. Surfaced failures name this version so a stale proof is diagnosable.
+const collapsedPasteMeasuredVersion = "2.1.233"
+
 // minProvenRunes is how much of OUR OWN text must be visible in the composer
 // before we will call it proof.
 //
@@ -1395,14 +1399,26 @@ func (p *Pane) surfaceUndeliveredSubmit(ps *pendingSubmit, why string) {
 	waited := time.Since(ps.withheldAt).Round(time.Second)
 	LogInfo("inject", "withheld submit NOT DELIVERED", "pane", p.name, "mode", ps.mode,
 		"reason", why, "waited", waited, "text", ps.preview)
-	EmitEvent(p.eventCh, AgentEvent{
+	event := AgentEvent{
 		Type: EventAgentStalled,
 		Pane: p.name,
 		// The WAIT is in the message: a bound that is generous still leaves the
 		// operator needing to know a message sat for 90s rather than arriving
 		// late for no stated reason (super, 2026-08-22).
-		Detail: "message NOT delivered after " + waited.String() + " (" + why + "), re-send it: " + ps.preview,
+		Detail: "after " + waited.String() + " (" + why + "), re-send it: " + ps.preview,
 		Time:   time.Now(),
+	}
+	// This can run on readLoop while sendMu is held, or on maintenance. The
+	// version lookup must not hold either caller up. Capture the event/channel
+	// now, so asynchronous reporting never reads mutable pane state.
+	probe := p.claudeVersion
+	if probe == nil {
+		probe = sessionClaudeVersion
+	}
+	events := p.eventCh
+	probe.report(func(versions string) {
+		event.Detail = undeliveredSubmitPrefix + versions + ") " + event.Detail
+		EmitEvent(events, event)
 	})
 }
 

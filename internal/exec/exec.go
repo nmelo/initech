@@ -14,9 +14,11 @@
 package exec
 
 import (
+	"context"
 	"fmt"
 	"os/exec"
 	"strings"
+	"time"
 )
 
 // Runner executes external commands. Implementations must be safe for
@@ -35,6 +37,20 @@ type Runner interface {
 // DefaultRunner shells out to real binaries via os/exec.
 // Safe for concurrent use (each call creates an independent exec.Cmd).
 type DefaultRunner struct{}
+
+// RunContext executes a command with cancellation, bounding the wait for output
+// pipes too (a descendant can inherit them after the command itself exits).
+// Runner remains unchanged; callers opt into this method when they need a bound.
+func (r *DefaultRunner) RunContext(ctx context.Context, name string, args ...string) (string, error) {
+	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.WaitDelay = 100 * time.Millisecond
+	out, err := cmd.CombinedOutput()
+	output := strings.TrimSpace(string(out))
+	if err != nil {
+		return output, fmt.Errorf("%s %s: %w\n%s", name, strings.Join(args, " "), err, output)
+	}
+	return output, nil
+}
 
 // Run executes a command in the caller's working directory.
 func (r *DefaultRunner) Run(name string, args ...string) (string, error) {
