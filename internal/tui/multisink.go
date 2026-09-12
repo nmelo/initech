@@ -51,9 +51,14 @@ func (ms *MultiSink) Len() int {
 	return len(ms.writers)
 }
 
-// Write sends p to all registered writers. Writers that return errors are
-// removed automatically (dead client cleanup). Returns len(p), nil to
-// satisfy io.Writer (the caller should not stall on downstream failures).
+// Write sends p to all registered writers. Writers that are FINISHED are
+// removed automatically (dead client cleanup); writers that merely timed out
+// are retried on the remainder. Returns len(p), nil to satisfy io.Writer: a
+// downstream failure never fails the caller, but a downstream STALL does
+// reach it -- each slow writer can hold this call for up to writeComplete's
+// bound (see maxTransientRetries), and the sole production caller is
+// Pane.readLoop, so that bound is how long a slow-but-alive window can hold
+// window 1's rendering of the pane (ini-tk7z).
 //
 // The writer list is snapshot'd under lock, then writes happen lock-free.
 // This prevents a slow/blocked writer from holding the lock and stalling
@@ -113,12 +118,35 @@ func transientWriteErr(err error) bool {
 	return errors.As(err, &ne) && ne.Timeout()
 }
 
-// maxTransientRetries bounds the remainder-retry loop. Each yamux write
-// attempt already carries the session's ConnectionWriteTimeout (7s for window
-// sessions), so 2 retries tolerates ~21s of stall before the writer is
-// declared finished — past the z8o keepalive's own 12s wedge-detection, so a
-// genuinely wedged window is dead by session teardown before we give up here.
-const maxTransientRetries = 2
+// maxTransientRetries bounds the remainder-retry loop, and with it the
+// longest one chunk can hold Pane.readLoop -- and therefore window 1's
+// emulator, fed by the same loop body -- for a slow-but-alive window
+// (ini-tk7z). Each attempt already carries the session's
+// ConnectionWriteTimeout (windowConnectionWriteTimeout, 7s), so the worst
+// case is (maxTransientRetries+1) × 7s:
+//
+//	1 retry  → 14s   (this value)
+//	2 retries → 21s  (v2.11.3–v2.12.x)
+//
+// Two constraints, verified by TestWriteComplete_StallBound against the
+// constants rather than this comment: the bound must stay ABOVE the z8o
+// keepalive's worst-case wedge detection (windowKeepAliveInterval +
+// windowConnectionWriteTimeout = 12s), so a genuinely wedged window is torn
+// down by the session before we give up on it here and "wedged" is never
+// mistaken for "busy" by one write; and it should be as small as that
+// ordering allows, because it is precisely the slow-but-alive window -- the
+// one keepalive will NOT drop -- that spends the whole budget.
+const maxTransientRetries = 1
+
+// maxZeroProgressWrites caps consecutive Write calls that return (0, nil):
+// no progress and no error, which violates the io.Writer contract ("must
+// return a non-nil error if it returns n < len(p)"). Without a cap such a
+// writer spins writeComplete forever (qa1 probed it with a goroutine+timeout
+// harness, ini-tk7z). Unreachable with today's writers -- yamux.Stream,
+// RingBuf and syncStream all honour the contract -- so this is a fence for
+// a future writer type, not a live spin. A short write WITH progress is not
+// capped: progress bounds it.
+const maxZeroProgressWrites = 4
 
 // writeComplete delivers p to w in full or reports the writer finished.
 //
@@ -133,16 +161,26 @@ const maxTransientRetries = 2
 // (late but complete); only persistent failure or a terminal error drops.
 func writeComplete(w io.Writer, p []byte) bool {
 	buf := p
+	zeroProgress := 0
 	for attempt := 0; ; attempt++ {
 		n, err := w.Write(buf)
 		if n > 0 {
 			buf = buf[n:]
+			zeroProgress = 0
 		}
 		if err == nil {
 			if len(buf) == 0 {
 				return true
 			}
-			continue // short write without error: keep going (io.Writer contract edge)
+			// Short write without error (io.Writer contract edge): keep
+			// going while it makes progress; a writer making none is finished.
+			if n == 0 {
+				zeroProgress++
+				if zeroProgress >= maxZeroProgressWrites {
+					return false
+				}
+			}
+			continue
 		}
 		if !transientWriteErr(err) || attempt >= maxTransientRetries {
 			return false
