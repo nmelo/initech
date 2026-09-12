@@ -175,7 +175,7 @@ func TestSixM4Rig_ViewerModalParityAndReplaySurvival(t *testing.T) {
 	// bare black screen he explicitly rejected after living through a crash
 	// loop that looked exactly like it.
 	w2empty := strings.Join(nonEmpty(snapRows(w2emu)), "\n")
-	if !strings.Contains(w2empty, "no groups assigned to this window") {
+	if !strings.Contains(w2empty, "no agents are assigned to this window") {
 		t.Errorf("window 2 with nothing assigned shows no hint line -- the bare empty window "+
 			"the operator rejected\nW2:\n%s", w2empty)
 	}
@@ -223,7 +223,7 @@ func TestSixM4Rig_ViewerModalParityAndReplaySurvival(t *testing.T) {
 	}
 	// The hint VANISHED the moment the group arrived (same frame class as the
 	// move notice; no state anyone has to clear).
-	if strings.Contains(w2pane, "no groups assigned to this window") {
+	if strings.Contains(w2pane, "no agents are assigned to this window") {
 		t.Errorf("window 2 still shows the empty-viewer hint while rendering its assigned "+
 			"group -- the hint is covering live panes\nW2:\n%s", w2pane)
 	}
@@ -320,10 +320,24 @@ func TestSixM4Rig_ViewerModalParityAndReplaySurvival(t *testing.T) {
 	w1pty.Write([]byte("a")) // back to the default view
 	time.Sleep(1500 * time.Millisecond)
 
-	// ── 4. A hide in window 1 reaches window 2's reopened modal ─────
-	w1pty.Write([]byte("\x1b[C")) // select the second cell
-	time.Sleep(400 * time.Millisecond)
-	w1pty.Write([]byte(" ")) // hide it
+	// ── 4. A hide in window 1 reaches window 2 ──────────────────────
+	//
+	// HIDE A WINDOW-2-OWNED AGENT, DELIBERATELY. This used to hide "the second
+	// cell" and read back whichever agent that was. When fn77 re-pointed the
+	// window-2 half of this leg at the OVERLAY, that became order-dependent:
+	// the overlay lists only window-2-OWNED panes, and "second cell" is
+	// whichever agent window 1's modal orders second -- eng1 on the run that
+	// went green, pm (window 1's) on the run that did not. The old leg
+	// survived the same ambiguity only because it opened window 2's modal
+	// EXPANDED, the whole-fleet view. So the target is now chosen by name
+	// through the modal's own search ("/" + name + Enter moves the selection
+	// to the match and keeps it), and the selection is VERIFIED AS TEXT after
+	// the hide: the modal draws the hidden marker "[ ] eng1" only if the hide
+	// landed there. Not conditional -- if the hidden agent is anything else,
+	// the fixture failed and says so.
+	w1pty.Write([]byte("/eng1\r")) // search to eng1, keep the selection
+	time.Sleep(600 * time.Millisecond)
+	w1pty.Write([]byte(" ")) // hide the selected agent
 	time.Sleep(3 * time.Second)
 
 	hiddenRe := regexp.MustCompile(`\[ \] (\w+)`)
@@ -332,6 +346,12 @@ func TestSixM4Rig_ViewerModalParityAndReplaySurvival(t *testing.T) {
 		t.Fatal("window 1's hide did not take effect in its own modal; the rig cannot test propagation")
 	}
 	hiddenAgent := hit[1]
+	if hiddenAgent != "eng1" {
+		t.Fatalf("FIXTURE: the modal search landed the hide on %q, not eng1. eng1 is the "+
+			"window-2-owned target this leg needs; any other agent is not on window 2's "+
+			"overlay and the propagation assertion below would be asking the wrong surface\n%s",
+			hiddenAgent, strings.Join(nonEmpty(snapRows(w1emu)), "\n"))
+	}
 
 	// WINDOW 2 LEARNS ABOUT IT ON ITS OVERLAY (ini-fn77 re-scope).
 	//
