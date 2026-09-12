@@ -140,8 +140,115 @@ func TestAgentsModal_RenderShowsVisibilityCheckbox(t *testing.T) {
 	if !strings.Contains(allText, "[x]") {
 		t.Error("rendered output missing [x] for visible agent")
 	}
-	if !strings.Contains(allText, "[ ]") {
-		t.Error("rendered output missing [ ] for hidden agent")
+	// Hidden is [h] since ini-68qv: an empty box read as "on that monitor"
+	// when the monitor rendered nothing.
+	if !strings.Contains(allText, "[h]") {
+		t.Error("rendered output missing [h] for hidden agent")
+	}
+	if strings.Contains(allText, "[ ]") {
+		t.Error("rendered output still shows the old [ ] hidden marker")
+	}
+}
+
+// locateCells returns the grid cells for the named agents, found through the
+// same layout function renderAgentsGrid uses -- a hand-derived offset would
+// silently stop testing anything if the fleet or the box origin changed.
+func locateCells(t *testing.T, tui *TUI, s tcell.SimulationScreen, names ...string) map[string]gridCell {
+	t.Helper()
+	sw, sh := s.Size()
+	members := tui.agentsGroupMembers()
+	box := agentsGridBoxDims(members, tui.layoutState.Groups, untieredTiers(tui.layoutState.Groups), false, sw, sh, false)
+	cells := agentsGridLayoutCells(members, tui.layoutState.Groups, box.innerX, box.startY, box.perRow)
+	out := map[string]gridCell{}
+	for _, c := range cells {
+		out[tui.panes[c.paneIdx].Name()] = c
+	}
+	for _, n := range names {
+		if _, ok := out[n]; !ok {
+			t.Fatalf("could not locate cell for %s", n)
+		}
+	}
+	return out
+}
+
+// gridRowText reads one grid cell's row as text.
+func gridRowText(s tcell.SimulationScreen, c gridCell) string {
+	return readScreenRect(s, c.x, c.y, gridCellW, 1)
+}
+
+// The marker is on the HIDDEN agent's own row and nowhere else: a whole-screen
+// Contains would pass with the glyph on the wrong row.
+func TestAgentsModal_HiddenMarkerIsOnTheHiddenAgentsRow(t *testing.T) {
+	tui, s := newTestTUIWithScreen("eng1", "eng2")
+	tui.layoutState.Hidden["eng2"] = true
+	tui.openAgentsModal()
+	tui.render()
+	cells := locateCells(t, tui, s, "eng1", "eng2")
+
+	if got := gridRowText(s, cells["eng2"]); !strings.Contains(got, "[h] eng2") {
+		t.Errorf("hidden agent's row does not carry [h]: %q", got)
+	}
+	if got := gridRowText(s, cells["eng1"]); !strings.Contains(got, "[x] eng1") || strings.Contains(got, "[h]") {
+		t.Errorf("visible agent's row is wrong: %q", got)
+	}
+}
+
+// Unhide: the marker goes away on the next render.
+func TestAgentsModal_UnhidingRemovesTheMarker(t *testing.T) {
+	tui, s := newTestTUIWithScreen("eng1", "eng2")
+	tui.layoutState.Hidden["eng2"] = true
+	tui.openAgentsModal()
+	tui.render()
+	cells := locateCells(t, tui, s, "eng2")
+	if got := gridRowText(s, cells["eng2"]); !strings.Contains(got, "[h]") {
+		t.Fatalf("fixture failed: hidden row has no marker to remove: %q", got)
+	}
+
+	tui.layoutState.Hidden["eng2"] = false
+	tui.render()
+	if got := gridRowText(s, cells["eng2"]); !strings.Contains(got, "[x] eng2") || strings.Contains(got, "[h]") {
+		t.Errorf("after unhiding, the row still reads hidden: %q", got)
+	}
+}
+
+// Hidden AND suspended both show: hidden is the glyph, suspended is the name's
+// colour. Neither may erase the other.
+func TestAgentsModal_HiddenAndSuspendedBothMarked(t *testing.T) {
+	tui, s := newTestTUIWithScreen("eng1", "eng2")
+	tui.layoutState.Hidden["eng2"] = true
+	// The REAL model, not the derived field: render() recomputes activity on
+	// every frame, and updateActivity derives StateSuspended only from
+	// !alive && suspended -- the production suspend site Closes the pane
+	// (alive=false) before setting the flag, because a suspended pane's
+	// process is gone. A "suspended" pane with a live process is a state the
+	// product never produces, and it rendered as idle.
+	var p *Pane
+	for _, pv := range tui.panes {
+		if pv.Name() == "eng2" {
+			p = pv.(*Pane)
+		}
+	}
+	p.mu.Lock()
+	p.alive = false
+	p.suspended = true
+	p.activity = StateSuspended
+	p.mu.Unlock()
+	tui.openAgentsModal()
+	tui.render()
+	cells := locateCells(t, tui, s, "eng2")
+
+	c := cells["eng2"]
+	if got := gridRowText(s, c); !strings.Contains(got, "[h] eng2") {
+		t.Errorf("suspended+hidden row lost the hidden glyph: %q", got)
+	}
+	nameColOffset := 4 + 4 // "%3d " + "[h] "
+	_, _, st, _ := s.GetContent(c.x+nameColOffset, c.y)
+	fg, _, attrs := st.Decompose()
+	if fg != tcell.NewRGBColor(100, 140, 190) {
+		t.Errorf("suspended+hidden row lost the suspended colour: fg=%v", fg)
+	}
+	if attrs&tcell.AttrItalic == 0 {
+		t.Error("suspended+hidden row lost the hidden italic")
 	}
 }
 
@@ -747,5 +854,39 @@ func TestAgentsModal_CreateGroupEscCancels(t *testing.T) {
 	}
 	if len(tui.layoutState.Groups) != len(before) {
 		t.Errorf("groups changed after Esc-canceled creation: %v -> %v", before, tui.layoutState.Groups)
+	}
+}
+
+// The state that produced a blank monitor -- every agent on a monitor hidden
+// -- is said on the monitor's own header row; one visible agent and it is
+// not. Monitor 1 never says it while it has a visible agent.
+func TestAgentsModal_MonitorSaysAllHiddenOnlyWhenEveryAgentIs(t *testing.T) {
+	tui, _ := tierTUI(t, true, "super", "eng1", "eng2", "qa1")
+	if err := mustAssignWriter(t, tui.agentsAssignment()).MoveGroup("eng", "window-2"); err != nil {
+		t.Fatal(err)
+	}
+	tui.layoutState.Hidden["eng1"] = true
+	tui.layoutState.Hidden["eng2"] = true
+	tui.renderAgentsGrid()
+	out := screenText(t, tui)
+	if !strings.Contains(out, "══ monitor 2 (2 agents, all hidden)") {
+		t.Errorf("monitor with every agent hidden does not say so:\n%s", out)
+	}
+	if strings.Contains(out, "══ monitor 1 (") {
+		t.Errorf("monitor 1 has visible agents and must not say all hidden:\n%s", out)
+	}
+
+	tui.layoutState.Hidden["eng1"] = false
+	tui.renderAgentsGrid()
+	if out := screenText(t, tui); strings.Contains(out, "all hidden") {
+		t.Errorf("monitor with a visible agent still says all hidden:\n%s", out)
+	}
+}
+
+// An empty monitor is never "all hidden": there is nothing to explain.
+func TestTierAllHidden_EmptyTierIsNotAllHidden(t *testing.T) {
+	tui := newTestTUI()
+	if n, all := tui.tierAllHidden(map[string][]int{"eng": nil}, []string{"eng", "qa"}); all || n != 0 {
+		t.Errorf("empty tier reported (%d, %v), want (0, false)", n, all)
 	}
 }

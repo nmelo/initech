@@ -290,7 +290,8 @@ type colHeader struct {
 // it occupies. Empty unless tiers are active (more than one window configured).
 type tierLabel struct {
 	windowID string
-	index    int // 1-based monitor number as displayed.
+	index    int      // 1-based monitor number as displayed.
+	groups   []string // the tier's group keys, for member lookup at draw time (ini-68qv)
 	y        int
 }
 
@@ -368,7 +369,7 @@ func agentsGridWalk(members map[string][]int, tiers []tierGroup, tiersActive boo
 	for ti, tg := range tiers {
 		if tiersActive {
 			y += gridTierLead
-			g.tiers = append(g.tiers, tierLabel{windowID: tg.windowID, index: ti + 1, y: y})
+			g.tiers = append(g.tiers, tierLabel{windowID: tg.windowID, index: ti + 1, groups: tg.groups, y: y})
 			y++
 		}
 		for start := 0; start < len(tg.groups); start += perRow {
@@ -489,6 +490,22 @@ func (t *TUI) agentsTierGroups(assign *WindowAssignment, tiersActive bool) []tie
 		out = append(out, tierGroup{windowID: w, groups: assign.GroupsForWindow(w, groups)})
 	}
 	return append(out, t.agentsMachineTiers()...)
+}
+
+// tierAllHidden reports how many panes a monitor tier's groups hold and
+// whether every one of them is hidden. An empty tier is never "all hidden":
+// there is nothing to explain.
+func (t *TUI) tierAllHidden(members map[string][]int, groups []string) (int, bool) {
+	n := 0
+	for _, g := range groups {
+		for _, i := range members[g] {
+			n++
+			if !t.layoutState.Hidden[agentKey(t.panes[i])] {
+				return n, false
+			}
+		}
+	}
+	return n, n > 0
 }
 
 // machineTierPrefix marks a band/tier as a remote MACHINE section rather than
@@ -1382,8 +1399,22 @@ func (t *TUI) renderAgentsGrid() {
 	// computed. No y is advanced here: this loop reads geometry, it does not
 	// re-derive it, which is what makes a drawn/computed divergence
 	// unrepresentable rather than merely absent (ini-9ka.5).
+	// A monitor whose EVERY agent is hidden says so on its own header row
+	// (ini-68qv). That state produced a blank monitor on hover: the panel
+	// listed the whole eng group under monitor 2, monitor 2 rendered nothing,
+	// and nothing on the panel said why. Drawn on the row the walk already
+	// reserved for the header, so geometry is untouched (ini-9ka.5). Remote
+	// machines are left alone: the bead scopes remote-machine rows unchanged.
+	members := t.agentsGroupMembers()
 	for _, tl := range geo.tiers {
 		lab := fmt.Sprintf("══ monitor %d ", tl.index)
+		if n, allHidden := t.tierAllHidden(members, tl.groups); allHidden {
+			noun := "agents"
+			if n == 1 {
+				noun = "agent"
+			}
+			lab = fmt.Sprintf("══ monitor %d (%d %s, all hidden) ", tl.index, n, noun)
+		}
 		if h, ok := strings.CutPrefix(tl.windowID, machineTierPrefix); ok {
 			lab = fmt.Sprintf("══ %s (remote machine) ", h)
 		}
@@ -1455,7 +1486,15 @@ func (t *TUI) renderAgentsGrid() {
 		pStyle := pinStyle
 		prStyle := protStyle
 		if hidden {
-			nameStyle = nameStyle.Italic(true).Foreground(tcell.ColorGray)
+			// Hidden is italic (and [h] in the box). It also grays the name,
+			// per the grid spec -- EXCEPT for a suspended agent (ini-68qv):
+			// suspended is the name's colour and nothing else, the modal's
+			// own s/S keys toggle it, and graying it here made a hidden
+			// parked agent read as merely hidden. Both states show now.
+			nameStyle = nameStyle.Italic(true)
+			if p.Activity() != StateSuspended {
+				nameStyle = nameStyle.Foreground(tcell.ColorGray)
+			}
 		}
 		if dimmed {
 			nameStyle, numStyle, boxStyle, pStyle, prStyle = dimStyle, dimStyle, dimStyle, dimStyle, dimStyle
@@ -1490,9 +1529,19 @@ func (t *TUI) renderAgentsGrid() {
 			}
 		}
 
+		// Hidden is [h], the overlay's glyph (render.go ' [h]'), in the slot
+		// the operator already reads as the visibility axis (ini-68qv). The
+		// operator's confusion on hover was exactly this: an agent listed
+		// under monitor 2 with an empty box read as "on monitor 2", and the
+		// monitor rendered nothing. Same 3-character box, so the cell budget
+		// and the golden are untouched; the name keeps its gray italic, so a
+		// hidden AND suspended agent shows both -- suspended is the name's
+		// colour, hidden is the glyph. The grid spec's line "hidden = italic
+		// + gray + [ ]" chose the box over per-cell words for density; [h]
+		// keeps the density and changes only that line's letter.
 		vis := "[x]"
 		if hidden {
-			vis = "[ ]"
+			vis = "[h]"
 		}
 		x := c.x
 		put := func(str string, st tcell.Style) {
