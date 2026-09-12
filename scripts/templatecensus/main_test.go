@@ -272,7 +272,11 @@ func TestScaffold_RendersOnlyRolesTemplates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, off := range scaffoldTemplateOffenders(fset, f, path) {
+	offenders, err := scaffoldTemplateOffenders(fset, f, path)
+	if err != nil {
+		t.Fatalf("the guard could not read its subject: %v", err)
+	}
+	for _, off := range offenders {
 		t.Errorf("the scaffold renders agent-facing text that does NOT come from internal/roles:\n  %s\n\n"+
 			"The template-verb census scans internal/roles only, so text sourced elsewhere is never checked for\n"+
 			"unregistered verbs — an agent can be handed a command that does not exist. Move the text into\n"+
@@ -283,13 +287,32 @@ func TestScaffold_RendersOnlyRolesTemplates(t *testing.T) {
 // scaffoldTemplateOffenders returns every scaffold-rendered template
 // expression that is not a roles.* selector, located for the error message.
 //
-// Scoped to the two places the scaffold names a template — the docTemplates
-// table and TemplateForRole's returns — rather than every return in the file,
-// because a positive assertion applied file-wide would flag writeFile's
-// ordinary string returns and the guard would be disabled within a week.
-// Split out from the test so the guard's own tests can drive it over planted
-// sources.
-func scaffoldTemplateOffenders(fset *token.FileSet, f *ast.File, path string) []string {
+// SITE SELECTION IS TOTAL TOO, and that is the second half of this guard's
+// history (ini-35a1). Inverting the VALUE check — anything that is not a
+// roles.* selector offends, whatever its type — left the SELECTOR a pattern
+// match: a docTemplates entry was recognised by requiring a string-literal
+// filename, so writing the filename as a const skipped the pair before the
+// total value check ever ran (shipper's E1, confirmed end to end: guard,
+// census and check-fast green with an unregistered verb). The enumeration had
+// not disappeared; it had moved from "which expression types are templates"
+// to "which composite literals are entries". A total check behind a heuristic
+// selector is only as total as the selector.
+//
+// So an entry is an entry by its POSITION IN THE STRUCTURE — the second
+// element of a pair inside the docTemplates table, whatever either element
+// looks like — and the table is found by its name rather than by its shape.
+// Scoped to that named table and to TemplateForRole's returns, not to every
+// two-element composite in the file: file-wide, ordinary pairs elsewhere in
+// scaffold.go would red, and a guard that cries wolf on unrelated code gets
+// disabled.
+//
+// AND IT REFUSES TO PASS WITHOUT ITS SUBJECT. If the table or the function
+// cannot be found — renamed, moved, restructured — this returns an error
+// rather than zero offenders. Silence cannot distinguish "nothing to report"
+// from "I could not look", and a guard that answers the first while meaning
+// the second is the failure this whole thread has been about. Renaming
+// docTemplates used to make it pass vacuously.
+func scaffoldTemplateOffenders(fset *token.FileSet, f *ast.File, path string) ([]string, error) {
 	var out []string
 	check := func(e ast.Expr, what string) {
 		if sel, ok := e.(*ast.SelectorExpr); ok {
@@ -301,12 +324,14 @@ func scaffoldTemplateOffenders(fset *token.FileSet, f *ast.File, path string) []
 			path, fset.Position(e.Pos()).Line, what, exprKind(e)))
 	}
 
+	var sawTable, sawTemplateForRole bool
 	for _, decl := range f.Decls {
 		fd, ok := decl.(*ast.FuncDecl)
 		if !ok || fd.Body == nil {
 			continue
 		}
 		if fd.Name.Name == "TemplateForRole" {
+			sawTemplateForRole = true
 			ast.Inspect(fd.Body, func(n ast.Node) bool {
 				ret, ok := n.(*ast.ReturnStmt)
 				if !ok {
@@ -318,26 +343,50 @@ func scaffoldTemplateOffenders(fset *token.FileSet, f *ast.File, path string) []
 				return true
 			})
 		}
+		// The docTemplates table, found by NAME. Every pair inside it is an
+		// entry; the second element is its template, whatever the first
+		// element is.
 		ast.Inspect(fd.Body, func(n ast.Node) bool {
-			cl, ok := n.(*ast.CompositeLit)
+			as, ok := n.(*ast.AssignStmt)
 			if !ok {
 				return true
 			}
-			for _, elt := range cl.Elts {
-				pair, ok := elt.(*ast.CompositeLit)
-				if !ok || len(pair.Elts) != 2 {
+			for i, lhs := range as.Lhs {
+				id, ok := lhs.(*ast.Ident)
+				if !ok || id.Name != scaffoldTableName || i >= len(as.Rhs) {
 					continue
 				}
-				if lit, ok := pair.Elts[0].(*ast.BasicLit); !ok || lit.Kind != token.STRING {
+				cl, ok := as.Rhs[i].(*ast.CompositeLit)
+				if !ok {
 					continue
 				}
-				check(pair.Elts[1], "a docTemplates entry")
+				sawTable = true
+				for _, elt := range cl.Elts {
+					pair, ok := elt.(*ast.CompositeLit)
+					if !ok || len(pair.Elts) != 2 {
+						out = append(out, fmt.Sprintf("%s:%d an entry in %s is not a {filename, template} pair; this guard cannot read it",
+							path, fset.Position(elt.Pos()).Line, scaffoldTableName))
+						continue
+					}
+					check(pair.Elts[1], "a "+scaffoldTableName+" entry")
+				}
 			}
 			return true
 		})
 	}
-	return out
+
+	switch {
+	case !sawTable:
+		return nil, fmt.Errorf("no %s table found in %s: this guard checks the templates the scaffold renders, and it cannot find them. If the table was renamed or restructured, update scaffoldTableName and this comment — do not delete the guard, which is what passing silently would amount to", scaffoldTableName, path)
+	case !sawTemplateForRole:
+		return nil, fmt.Errorf("no TemplateForRole function found in %s: the role CLAUDE.md path is as agent-facing as the docs path, and this guard just lost sight of it", path)
+	}
+	return out, nil
 }
+
+// scaffoldTableName is the scaffold's table of agent-facing documents. Named
+// here so the guard fails loudly when it changes rather than passing blind.
+const scaffoldTableName = "docTemplates"
 
 // exprKind names what an offending expression IS, so the failure says why it
 // was rejected rather than only that it was.
@@ -364,16 +413,40 @@ func parseScaffoldSource(t *testing.T, src string) []string {
 	if err != nil {
 		t.Fatalf("parse fixture: %v", err)
 	}
-	return scaffoldTemplateOffenders(fset, f, "scaffold.go")
+	offenders, err := scaffoldTemplateOffenders(fset, f, "scaffold.go")
+	if err != nil {
+		t.Fatalf("guard could not read the fixture: %v", err)
+	}
+	return offenders
+}
+
+// parseScaffoldSourceErr is parseScaffoldSource for the cases where the guard
+// is EXPECTED to refuse: it returns the error instead of failing the test.
+func parseScaffoldSourceErr(t *testing.T, src string) error {
+	t.Helper()
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, "scaffold.go", src, 0)
+	if err != nil {
+		t.Fatalf("parse fixture: %v", err)
+	}
+	_, gerr := scaffoldTemplateOffenders(fset, f, "scaffold.go")
+	return gerr
 }
 
 // scaffoldFixture builds a scaffold-shaped source whose docTemplates table
 // carries one planted entry beside a legitimate roles.* one.
 func scaffoldFixture(entry, extra string) string {
+	return scaffoldFixtureNamed(`"probe.md"`, entry, extra)
+}
+
+// scaffoldFixtureNamed builds the same fixture with the FILENAME element
+// under test too, since the filename's shape is what E1 escaped through.
+func scaffoldFixtureNamed(filename, entry, extra string) string {
 	return "package scaffold\n\n" + extra + "\n\nfunc Run() {\n" +
-		"\tdocTemplates := []struct{ filename, template string }{\n" +
-		"\t\t{\"probe.md\", " + entry + "},\n" +
-		"\t\t{\"prd.md\", roles.PRDTemplate},\n\t}\n\t_ = docTemplates\n}\n"
+		"\t" + scaffoldTableName + " := []struct{ filename, template string }{\n" +
+		"\t\t{" + filename + ", " + entry + "},\n" +
+		"\t\t{\"prd.md\", roles.PRDTemplate},\n\t}\n\t_ = " + scaffoldTableName + "\n}\n" +
+		"\nfunc TemplateForRole(name string) string {\n\treturn roles.EngTemplate\n}\n"
 }
 
 // Every form agent-facing text can enter the scaffold by without coming from
@@ -407,8 +480,7 @@ func TestScaffoldGuard_RejectsEveryNonRolesTemplateForm(t *testing.T) {
 // The positive side: roles.* entries and returns pass, in both places the
 // scaffold names a template.
 func TestScaffoldGuard_AcceptsRolesTemplatesInBothPlaces(t *testing.T) {
-	src := scaffoldFixture("roles.SpecTemplate", "") +
-		"\nfunc TemplateForRole(name string) string {\n\tif name == \"super\" {\n\t\treturn roles.SuperTemplate\n\t}\n\treturn roles.EngTemplate\n}\n"
+	src := scaffoldFixture("roles.SpecTemplate", "")
 	if offenders := parseScaffoldSource(t, src); len(offenders) != 0 {
 		t.Errorf("roles.* entries were rejected: %v", offenders)
 	}
@@ -418,6 +490,7 @@ func TestScaffoldGuard_AcceptsRolesTemplatesInBothPlaces(t *testing.T) {
 // role CLAUDE.md path is as agent-facing as the docs path.
 func TestScaffoldGuard_RejectsANonRolesTemplateForRoleReturn(t *testing.T) {
 	src := "package scaffold\n\nconst localRole = \"Run initech notarealverb.\"\n\n" +
+		"func Run() {\n\t" + scaffoldTableName + " := []struct{ filename, template string }{\n\t\t{\"prd.md\", roles.PRDTemplate},\n\t}\n\t_ = " + scaffoldTableName + "\n}\n\n" +
 		"func TemplateForRole(name string) string {\n\tif name == \"super\" {\n\t\treturn localRole\n\t}\n\treturn roles.EngTemplate\n}\n"
 	offenders := parseScaffoldSource(t, src)
 	if len(offenders) != 1 || !strings.Contains(offenders[0], "TemplateForRole return") {
@@ -429,9 +502,86 @@ func TestScaffoldGuard_RejectsANonRolesTemplateForRoleReturn(t *testing.T) {
 // file-wide positive assertion would flag writeFile's returns, and a guard
 // that cries wolf on unrelated code gets disabled.
 func TestScaffoldGuard_IgnoresOrdinaryStringReturnsElsewhere(t *testing.T) {
-	src := "package scaffold\n\nfunc writeFile(dir string) (string, error) {\n\treturn \"/tmp/some/path\", nil\n}\n\n" +
+	src := scaffoldFixture("roles.SpecTemplate", "") +
+		"\nfunc writeFile(dir string) (string, error) {\n\treturn \"/tmp/some/path\", nil\n}\n\n" +
 		"func RenderRootCLAUDE() string {\n\treturn \"# a root file\"\n}\n"
 	if offenders := parseScaffoldSource(t, src); len(offenders) != 0 {
 		t.Errorf("ordinary string returns were flagged as templates: %v", offenders)
+	}
+}
+
+// E1 (shipper's residual on ini-35a1): the FILENAME written as a const
+// instead of a string literal. The value check was total, but the SELECTOR
+// required a string-literal filename, so the pair was skipped before the
+// value was ever examined — an unregistered verb in agent-facing text passed
+// the guard, the census and check-fast, reached a different way.
+func TestScaffoldGuard_RejectsAnEntryWhoseFilenameIsAConst(t *testing.T) {
+	src := scaffoldFixtureNamed("probeName", "localProbe",
+		"const probeName = \"probe.md\"\nconst localProbe = \"Run initech notarealverb to publish.\"")
+	offenders := parseScaffoldSource(t, src)
+	if len(offenders) != 1 {
+		t.Fatalf("got %d offenders, want 1 — a const filename must not let the entry skip the value check: %v", len(offenders), offenders)
+	}
+	if !strings.Contains(offenders[0], "localProbe") {
+		t.Errorf("offender %q does not name the template it rejected", offenders[0])
+	}
+}
+
+// The filename's shape must be irrelevant: whatever it is, the entry is still
+// an entry and its template is still checked.
+func TestScaffoldGuard_ChecksTheTemplateWhateverTheFilenameIs(t *testing.T) {
+	for _, filename := range []string{
+		`"probe.md"`,      // a literal
+		"probeName",       // a const or var
+		"nameFor(role)",   // a call
+		"cfg.DocName",     // a field
+		`"probe" + ".md"`, // an expression
+	} {
+		t.Run(filename, func(t *testing.T) {
+			src := scaffoldFixtureNamed(filename, "localProbe",
+				"const probeName = \"probe.md\"\nconst localProbe = \"text\"\nfunc nameFor(r string) string { return r }\nvar cfg struct{ DocName string }")
+			if offenders := parseScaffoldSource(t, src); len(offenders) != 1 {
+				t.Errorf("filename %s: got %d offenders, want 1: %v", filename, len(offenders), offenders)
+			}
+		})
+	}
+}
+
+// THE GUARD MUST REFUSE TO PASS WITHOUT ITS SUBJECT. Renaming the table used
+// to make it report zero offenders and pass — silence that reads as "nothing
+// wrong" while meaning "I could not look". This is the failure mode the whole
+// ini-35a1 thread is about, applied to the guard itself.
+func TestScaffoldGuard_RefusesWhenItCannotFindWhatItChecks(t *testing.T) {
+	for _, tc := range []struct{ name, src, want string }{
+		{
+			"the table was renamed",
+			"package scaffold\n\nfunc Run() {\n\tprojectDocs := []struct{ filename, template string }{\n\t\t{\"prd.md\", roles.PRDTemplate},\n\t}\n\t_ = projectDocs\n}\n\nfunc TemplateForRole(n string) string { return roles.EngTemplate }\n",
+			"no docTemplates table found",
+		},
+		{
+			"TemplateForRole was renamed",
+			"package scaffold\n\nfunc Run() {\n\t" + scaffoldTableName + " := []struct{ filename, template string }{\n\t\t{\"prd.md\", roles.PRDTemplate},\n\t}\n\t_ = " + scaffoldTableName + "\n}\n",
+			"no TemplateForRole function found",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := parseScaffoldSourceErr(t, tc.src)
+			if err == nil {
+				t.Fatal("the guard passed while unable to find what it checks — the exact silence it exists to prevent")
+			}
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Errorf("err = %q, want it to name %q", err, tc.want)
+			}
+		})
+	}
+}
+
+// An entry that is not a two-element pair is reported rather than skipped:
+// the guard says it cannot read the structure instead of quietly passing it.
+func TestScaffoldGuard_ReportsAnEntryItCannotRead(t *testing.T) {
+	src := "package scaffold\n\nfunc Run() {\n\t" + scaffoldTableName + " := []struct{ a, b, c string }{\n\t\t{\"prd.md\", \"x\", \"y\"},\n\t}\n\t_ = " + scaffoldTableName + "\n}\n\nfunc TemplateForRole(n string) string { return roles.EngTemplate }\n"
+	offenders := parseScaffoldSource(t, src)
+	if len(offenders) != 1 || !strings.Contains(offenders[0], "cannot read it") {
+		t.Fatalf("offenders = %v, want one entry reported as unreadable", offenders)
 	}
 }
