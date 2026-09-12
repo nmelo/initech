@@ -331,3 +331,48 @@ func TestRunStatus_IPCError(t *testing.T) {
 	var req tui.IPCRequest
 	waitATRequest(t, reqCh, &req)
 }
+
+func TestRunStatus_WindowPortBindState(t *testing.T) {
+	skipWindows(t)
+	defer disableColor(t)()
+	root := shortProjectDir(t)
+	defer chdirForTest(t, root)()
+	sock := filepath.Join(root, "status.sock")
+	t.Setenv("INITECH_SOCKET", sock)
+	for _, state := range []string{"failed", "listening", "disabled"} {
+		t.Run(state, func(t *testing.T) {
+			var port *tui.WindowPortStatus
+			if state != "disabled" {
+				port = &tui.WindowPortStatus{State: state, Address: "127.0.0.1:9301", Reason: "address already in use", Main: tui.AuthorityIdentity{PID: 456, StartedAt: time.Now()}, Holder: &tui.PortHolder{PID: 123, Name: "initech", StartedAt: time.Now().Add(-time.Hour)}}
+			}
+			response, err := json.Marshal(tui.IPCResponse{OK: true, Data: "[]", WindowPort: port})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer startMultiIPCServer(t, sock, map[string]string{"list": string(response), "peers_query": `{"ok":true,"data":"[]"}`})()
+			var out bytes.Buffer
+			command := &cobra.Command{}
+			command.SetOut(&out)
+			if err := runStatus(command, nil); err != nil {
+				t.Fatal(err)
+			}
+			if state == "disabled" {
+				if strings.Contains(out.String(), "Window port:") {
+					t.Fatal(out.String())
+				}
+				return
+			}
+			want := []string{"Window port:", "127.0.0.1:9301"}
+			if state == "failed" {
+				want = append(want, "FAILED", "address already in use", "PID 123", "restart this main")
+			} else {
+				want = append(want, "listening", "main PID 456")
+			}
+			for _, text := range want {
+				if !strings.Contains(out.String(), text) {
+					t.Fatalf("missing %q: %s", text, out.String())
+				}
+			}
+		})
+	}
+}

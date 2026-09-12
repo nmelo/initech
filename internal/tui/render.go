@@ -205,6 +205,7 @@ func (t *TUI) render() {
 	// Persistent status bar at the bottom of the screen.
 	t.renderStatusBar()
 
+	t.renderWindowConnectionStatus()
 	s.Show()
 
 	// Stamp the watchdog heartbeat so it knows we're alive.

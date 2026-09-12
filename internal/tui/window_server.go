@@ -109,6 +109,7 @@ func startWindowServer(project *config.Project, version string, panes []*Pane, s
 	d := &Daemon{
 		project:        &serving,
 		version:        version,
+		authority:      &processAuthority,
 		ringBufs:       make(map[string]*RingBuf),
 		multiSinks:     make(map[string]*MultiSink),
 		ownership:      newAgentOwnership(),
@@ -250,4 +251,19 @@ func (w *windowServer) connectedWindows() map[string]bool {
 		out[peer] = true
 	}
 	return out
+}
+
+// startWindowListener wires the startup listener result to the owning TUI.
+func (t *TUI) startWindowListener(project *config.Project, version string, attached func(string)) func() {
+	if project == nil || project.WindowListen == "" {
+		return func() {}
+	}
+	ws, cleanup, err := startWindowServer(project, version, localPanes(t.panes), t.safeGo, t.applyFleetStateCmd, t.currentPaneOwnership, attached)
+	if err != nil {
+		t.recordWindowBind(project.WindowListen, err)
+		return func() {}
+	}
+	t.windowSrv = ws
+	t.recordWindowBind(ws.Addr(), nil)
+	return cleanup
 }

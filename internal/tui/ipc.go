@@ -39,9 +39,10 @@ type IPCRequest struct {
 
 // IPCResponse is the JSON structure returned by the TUI socket.
 type IPCResponse struct {
-	OK    bool   `json:"ok"`
-	Error string `json:"error,omitempty"`
-	Data  string `json:"data,omitempty"` // Pane content for peek, pane list for list.
+	WindowPort *WindowPortStatus `json:"window_port,omitempty"`
+	OK         bool              `json:"ok"`
+	Error      string            `json:"error,omitempty"`
+	Data       string            `json:"data,omitempty"` // Pane content for peek, pane list for list.
 }
 
 // SocketPath returns the IPC endpoint path for a project. On Unix this is a
