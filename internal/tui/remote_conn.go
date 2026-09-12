@@ -24,10 +24,11 @@ const connectTimeout = 5 * time.Second
 // The caller must call Close() when the connection is no longer needed
 // to release the yamux session, control mux, and underlying TCP connection.
 type peerConn struct {
-	session *yamux.Session
-	mux     *ControlMux
-	panesMu sync.Mutex // Protects panes slice (mutated by stream_added handler).
-	panes   []PaneView
+	authority *AuthorityIdentity
+	session   *yamux.Session
+	mux       *ControlMux
+	panesMu   sync.Mutex // Protects panes slice (mutated by stream_added handler).
+	panes     []PaneView
 	// evicted is set by the control-event handler when the server's
 	// identity_taken_over verdict arrives (ini-jhm6), and read by managePeer
 	// after the session dies to decide terminal-vs-retry. Atomic because the
@@ -232,7 +233,7 @@ func connectPeer(peerName string, remote config.Remote, project *config.Project)
 		LogInfo("remote", "push complete", "peer", peerName, "configured", configured, "stopped", stopped)
 	}
 
-	return &peerConn{session: session, mux: mux, panes: panes, helloOwner: helloOK.Owner}, nil
+	return &peerConn{session: session, mux: mux, panes: panes, helloOwner: helloOK.Owner, authority: helloOK.Authority}, nil
 }
 
 // readStreamMap reads control frames until the stream map arrives, matching on

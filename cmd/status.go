@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/nmelo/initech/internal/color"
 	iexec "github.com/nmelo/initech/internal/exec"
@@ -113,6 +114,14 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	}
 	header += ")"
 	fmt.Fprintf(out, "\n%s\n\n", color.Bold(header))
+
+	if resp.WindowPort != nil {
+		fmt.Fprintln(out, resp.WindowPort.Summary(time.Now()))
+		fmt.Fprintln(out)
+	} else if p != nil && p.WindowListen != "" {
+		fmt.Fprintln(out, "Window port: state unavailable (server does not report it)")
+		fmt.Fprintln(out)
+	}
 
 	// Header row: cyan, padded before coloring so alignment holds.
 	// Include HOST column only when remotes are present.

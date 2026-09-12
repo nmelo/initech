@@ -79,7 +79,11 @@ func dispatchIPC(h IPCHost, conn net.Conn, req IPCRequest, rawJSON []byte) {
 			return
 		}
 		data, _ := json.Marshal(panes)
-		writeIPCResponse(conn, IPCResponse{OK: true, Data: string(data)})
+		response := IPCResponse{OK: true, Data: string(data)}
+		if source, ok := h.(interface{ WindowPortSnapshot() *WindowPortStatus }); ok {
+			response.WindowPort = source.WindowPortSnapshot()
+		}
+		writeIPCResponse(conn, response)
 
 	default:
 		if !h.HandleExtended(conn, req, rawJSON) {

@@ -4,8 +4,8 @@
 package tui
 
 import (
-	"sort"
 	"fmt"
+	"sort"
 	"sync"
 	"time"
 
@@ -34,7 +34,8 @@ func backoff(attempt int) time.Duration {
 // peerManager manages the connection lifecycle for all remote peers.
 // It owns a goroutine per peer that handles connect/reconnect.
 type peerManager struct {
-	project *config.Project
+	onAuthority func(string, *AuthorityIdentity)
+	project     *config.Project
 	// onPanesChanged is called (on any goroutine) when remote panes are
 	// added or go offline. The callback receives the peer name and the
 	// new set of PaneViews for that peer (nil = all offline).
@@ -94,12 +95,15 @@ type peerManager struct {
 // newPeerManager creates a manager and starts a goroutine per remote peer.
 // All connections (initial and reconnect) happen in the background so the
 // TUI renders immediately without blocking on network I/O.
-func newPeerManager(project *config.Project, onChange func(string, []PaneView, bool), onFwd func(string, string, bool) error, quit chan struct{}) *peerManager {
+func newPeerManager(project *config.Project, onChange func(string, []PaneView, bool), onFwd func(string, string, bool) error, quit chan struct{}, onAuthority ...func(string, *AuthorityIdentity)) *peerManager {
 	pm := &peerManager{
 		project:        project,
 		onPanesChanged: onChange,
 		onForwardSend:  onFwd,
 		quit:           quit,
+	}
+	if len(onAuthority) > 0 {
+		pm.onAuthority = onAuthority[0]
 	}
 	for peerName, remote := range project.Remotes {
 		pm.wg.Add(1)
@@ -258,6 +262,9 @@ func (pm *peerManager) managePeer(peerName string, remote config.Remote) {
 		if pm.onPaneOwnership != nil && pc.helloOwner != nil {
 			LogInfo("remote", "pane ownership at handshake", "peer", peerName, "agents", len(pc.helloOwner))
 			pm.onPaneOwnership(pc.helloOwner)
+		}
+		if pm.onAuthority != nil {
+			pm.onAuthority(peerName, pc.authority)
 		}
 		pm.onPanesChanged(peerName, pc.panes, true)
 

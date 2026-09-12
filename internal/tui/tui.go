@@ -211,7 +211,11 @@ type TUI struct {
 	// there rather than a new code path. The assignment store itself is the
 	// shared `assignment` field declared above (ini-9ka.4/.5) -- one store per
 	// session, read by both the modal and the render filter.
-	windowID string
+	windowID          string
+	windowPort        WindowPortStatus
+	inspectPortHolder func(string) *PortHolder
+	viewerAuthority   *AuthorityIdentity
+	viewerConnected   bool
 
 	// paneOwnership is the ownership map: canonical agent key -> owning window
 	// id (ini-x5ob). On window 1 it is the authority's own computation; on a
@@ -1010,7 +1014,7 @@ func Run(cfg Config) error {
 	// no artifact, no output -- so single-window sessions run today's code
 	// path rather than a new one that merely behaves the same.
 	if cfg.Project != nil && cfg.Project.WindowListen != "" {
-		ws, wsCleanup, err := startWindowServer(cfg.Project, cfg.Version, localPanes(t.panes), t.safeGo, t.applyFleetStateCmd, t.currentPaneOwnership,
+		wsCleanup := t.startWindowListener(cfg.Project, cfg.Version,
 			// Republish on window 1's OWN loop once the newcomer is
 			// registered, so it is served the partition that includes it
 			// (ini-x5ob). safeGo first: runOnMain waits for the main loop,
@@ -1042,16 +1046,7 @@ func Run(cfg Config) error {
 					})
 				})
 			})
-		if err != nil {
-			// Non-fatal: a secondary window is an enhancement, and failing to
-			// bind it must not take down a session whose agents are already
-			// running. Surfaced in the log rather than as a startup abort.
-			LogError("window-server", "failed to start; secondary windows cannot attach",
-				"addr", cfg.Project.WindowListen, "err", err)
-		} else {
-			defer wsCleanup()
-			t.windowSrv = ws
-		}
+		defer wsCleanup()
 	}
 
 	// Multi-monitor render state (ini-9ka.6). Loaded only when this session
@@ -1088,9 +1083,15 @@ func Run(cfg Config) error {
 	if cfg.Project != nil && len(cfg.Project.Remotes) > 0 {
 		pm := newPeerManager(cfg.Project, func(peerName string, panes []PaneView, connected bool) {
 			t.runOnMain(func() {
+				if !connected && peerName == WindowOnePeerName {
+					t.viewerConnected = false
+					t.viewerAuthority = nil
+				}
 				t.handlePeerUpdate(peerName, panes, connected)
 			})
-		}, t.deliverForwardedSend, t.quitCh)
+		}, t.deliverForwardedSend, t.quitCh, func(peer string, a *AuthorityIdentity) {
+			t.runOnMain(func() { t.applyWindowAuthority(peer, a) })
+		})
 		// Session notices broadcast by window 1 must render here too
 		// (ini-9ka.8): they describe the session's shape changing, not one
 		// agent's activity.

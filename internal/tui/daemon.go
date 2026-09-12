@@ -49,6 +49,7 @@ type DaemonConfig struct {
 
 // Daemon manages headless agent panes and streams them to a yamux client.
 type Daemon struct {
+	authority  *AuthorityIdentity
 	panes      []*Pane
 	panesMu    sync.Mutex            // Protects panes/ringBufs/multiSinks for hot-add/remove via control commands.
 	ringBufs   map[string]*RingBuf   // Per-pane ring buffer keyed by agent name.
@@ -163,10 +164,11 @@ type HelloMsg struct {
 
 // HelloOKMsg is the server's response to a successful hello.
 type HelloOKMsg struct {
-	Action   string        `json:"action"`    // "hello_ok"
-	Version  int           `json:"version"`   // Protocol version (1).
-	PeerName string        `json:"peer_name"` // Server's peer name.
-	Agents   []AgentStatus `json:"agents"`    // Current agent states.
+	Authority *AuthorityIdentity `json:"authority,omitempty"`
+	Action    string             `json:"action"`    // "hello_ok"
+	Version   int                `json:"version"`   // Protocol version (1).
+	PeerName  string             `json:"peer_name"` // Server's peer name.
+	Agents    []AgentStatus      `json:"agents"`    // Current agent states.
 	// Owner carries window 1's pane-ownership decision AT ATTACH (ini-x5ob).
 	//
 	// Serving it in the handshake, rather than leaving it to the first
@@ -767,11 +769,12 @@ func (d *Daemon) handleConnection(conn net.Conn) {
 		owner = d.paneOwnership(hello.PeerName)
 	}
 	if err := writeJSON(ctrl, HelloOKMsg{
-		Action:   "hello_ok",
-		Version:  ProtocolVersion,
-		PeerName: d.project.PeerName,
-		Agents:   agents,
-		Owner:    owner,
+		Action:    "hello_ok",
+		Version:   ProtocolVersion,
+		PeerName:  d.project.PeerName,
+		Agents:    agents,
+		Authority: d.authority,
+		Owner:     owner,
 	}); err != nil {
 		LogWarn("daemon", "failed to send hello_ok", "err", err)
 		return
