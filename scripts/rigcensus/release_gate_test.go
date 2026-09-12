@@ -29,7 +29,10 @@ func TestReleaseGate_TestJobRunsOnTheTestedPlatform(t *testing.T) {
 	} else if got != "macos-latest" {
 		t.Fatalf("release.yml test job runs on %q, want macos-latest: the release gate must run on the tested platform (ini-ibsm, ini-govx)", got)
 	}
-	testStep := regexp.MustCompile(`(?m)^\s+run: make test`)
+	// Anchored to the WHOLE step (shipper, ini-govx review): a prefix match
+	// on "make test" also accepted a downgrade to plain `make test`, which is
+	// exactly the -short half-suite gap ini-4bf2 shipped behind twice.
+	testStep := regexp.MustCompile(`(?m)^\s+run: make test-full\s*$`)
 	for job, os := range runsOn {
 		if os == "ubuntu-latest" && job != "release" {
 			t.Errorf("job %q runs on ubuntu-latest; only the goreleaser build job may", job)
