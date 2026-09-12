@@ -471,22 +471,73 @@ func (t *TUI) agentsTiersActive() bool {
 }
 
 // agentsWindowOrder returns the window identities to render as tiers, in a
-// stable order: window 1 first, then any other window that owns at least one
-// group, sorted. Sorted rather than first-seen so the tier order cannot shift
-// between frames as group membership changes.
-func agentsWindowOrder(assign *WindowAssignment, groups []string) []string {
+// stable order: window 1 first, then the rest sorted.
+//
+// THE UNION OF ASSIGNED AND CONNECTED, not assignments alone (ini-cctz). It
+// used to walk groups and collect assign.WindowOfGroup, so a window that is
+// CONNECTED but has nothing assigned contributed no band and could not be
+// seen at all: the operator had three windows attached and a panel showing
+// two, with no way to tell "window 3 has nothing assigned" from "window 3
+// never connected". Those are different facts they act on differently, and a
+// panel that shows neither is the "the window is there but tells you
+// nothing" shape one surface over from ini-z5uw's bind-failure notice.
+//
+// Both halves are kept, deliberately: a window that is ASSIGNED but not
+// connected still renders, because its groups still belong to it and folding
+// them out of the panel would hide where they live. So a band appears when a
+// window has groups, or is connected, or both — and the header says which
+// (see the tier-label render).
+//
+// Sorted rather than first-seen so the tier order cannot shift between frames
+// as group membership or connections change.
+func agentsWindowOrder(assign *WindowAssignment, groups []string, connected map[string]bool) []string {
 	order := []string{WindowOne}
 	seen := map[string]bool{WindowOne: true}
 	var others []string
-	for _, g := range groups {
-		w := assign.WindowOfGroup(g)
-		if !seen[w] {
-			seen[w] = true
-			others = append(others, w)
+	add := func(w string) {
+		if w == "" || seen[w] {
+			return
 		}
+		seen[w] = true
+		others = append(others, w)
+	}
+	for _, g := range groups {
+		add(assign.WindowOfGroup(g))
+	}
+	for w := range connected {
+		add(w)
 	}
 	sort.Strings(others)
 	return append(order, others...)
+}
+
+// agentsWindowStatus describes what a rendered band's window IS, which the
+// header states because the two states below call for different operator
+// actions: one is a place to move groups to, the other is a window whose
+// groups are currently folded back.
+type agentsWindowStatus int
+
+const (
+	windowNormal         agentsWindowStatus = iota // has groups and is connected (or is window 1)
+	windowConnectedEmpty                           // attached, nothing assigned: a place to move groups TO
+	windowAssignedAbsent                           // has groups, not attached: its agents are folded back
+)
+
+// agentsWindowStatusOf classifies one window for the band header. Window 1 is
+// always normal: it is this process, it is by definition present, and a
+// "not connected" note about the window you are looking at would be nonsense.
+func agentsWindowStatusOf(windowID string, groupCount int, connected map[string]bool) agentsWindowStatus {
+	if windowID == WindowOne {
+		return windowNormal
+	}
+	switch {
+	case groupCount == 0 && connected[windowID]:
+		return windowConnectedEmpty
+	case groupCount > 0 && !connected[windowID]:
+		return windowAssignedAbsent
+	default:
+		return windowNormal
+	}
 }
 
 // agentsTierGroups partitions groups by window for rendering. When tiers are
@@ -503,7 +554,7 @@ func (t *TUI) agentsTierGroups(assign *WindowAssignment, tiersActive bool) []tie
 		return append([]tierGroup{{windowID: WindowOne, groups: groups}}, t.agentsMachineTiers()...)
 	}
 	var out []tierGroup
-	for _, w := range agentsWindowOrder(assign, groups) {
+	for _, w := range agentsWindowOrder(assign, groups, t.connectedWindowSet()) {
 		out = append(out, tierGroup{windowID: w, groups: assign.GroupsForWindow(w, groups)})
 	}
 	return append(out, t.agentsMachineTiers()...)
@@ -1095,7 +1146,10 @@ func (t *TUI) agentsMoveGroupToNextWindow() {
 	}
 
 	assign := t.agentsAssignment()
-	windows := agentsWindowOrder(assign, t.layoutState.Groups)
+	// nil connected set, deliberately: ini-cctz is display-only, and the move
+	// cycle already offers one slot past the last assigned window, so moving
+	// TO a connected-but-empty window works today. Unchanged here.
+	windows := agentsWindowOrder(assign, t.layoutState.Groups, nil)
 
 	// A brand-new window is offered ONLY when the group is currently on
 	// window 1. Offering one from every window would make the cycle
@@ -1126,7 +1180,7 @@ func (t *TUI) agentsMoveGroupToNextWindow() {
 	// Monitor number for the notice: position in the tier order, recomputed
 	// AFTER the move so a brand-new window (appended past the end) gets the
 	// number the tiers will actually display for it.
-	t.noticeGroupMoved(group, next, agentsWindowOrder(assign, t.layoutState.Groups))
+	t.noticeGroupMoved(group, next, agentsWindowOrder(assign, t.layoutState.Groups, t.connectedWindowSet()))
 	// RE-LAY OUT NOW (ini-xq4r): the move changed which panes this window
 	// renders, and nothing else triggers a layout in grid mode -- without this
 	// the store, the modal and the notice all update while the PANES stay
@@ -1423,6 +1477,7 @@ func (t *TUI) renderAgentsGrid() {
 	// reserved for the header, so geometry is untouched (ini-9ka.5). Remote
 	// machines are left alone: the bead scopes remote-machine rows unchanged.
 	members := t.agentsGroupMembers()
+	connected := t.connectedWindowSet()
 	for _, tl := range geo.tiers {
 		lab := fmt.Sprintf("══ monitor %d ", tl.index)
 		if n, allHidden := t.tierAllHidden(members, tl.groups); allHidden {
@@ -1431,6 +1486,24 @@ func (t *TUI) renderAgentsGrid() {
 				noun = "agent"
 			}
 			lab = fmt.Sprintf("══ monitor %d (%d %s, all hidden) ", tl.index, n, noun)
+		}
+		// A band with no agents under it must say WHY (ini-cctz). Connected
+		// with nothing assigned is an invitation -- a place to move groups to
+		// -- while assigned but absent means those groups' agents are folded
+		// back into window 1 right now. The operator acts differently on
+		// each, and before this the panel showed neither: a connected window
+		// with nothing assigned had no band at all.
+		// The all-hidden label (ini-68qv) is the more specific fact about what
+		// is on that monitor, so it keeps precedence where it applies.
+		if _, allHidden := t.tierAllHidden(members, tl.groups); allHidden {
+			// fall through to draw the all-hidden label unchanged
+		} else {
+			switch agentsWindowStatusOf(tl.windowID, len(tl.groups), connected) {
+			case windowConnectedEmpty:
+				lab = fmt.Sprintf("══ monitor %d (connected, nothing assigned — move a group here with m) ", tl.index)
+			case windowAssignedAbsent:
+				lab = fmt.Sprintf("══ monitor %d (not connected — its agents are folded into monitor 1) ", tl.index)
+			}
 		}
 		if h, ok := strings.CutPrefix(tl.windowID, machineTierPrefix); ok {
 			lab = fmt.Sprintf("══ %s (remote machine) ", h)
