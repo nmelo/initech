@@ -175,7 +175,11 @@ func TestSixM4Rig_ViewerModalParityAndReplaySurvival(t *testing.T) {
 	// bare black screen he explicitly rejected after living through a crash
 	// loop that looked exactly like it.
 	w2empty := strings.Join(nonEmpty(snapRows(w2emu)), "\n")
-	if !strings.Contains(w2empty, "no agents are assigned to this window") {
+	// References the product's own emptyViewerHint (ini-6e97) rather than a
+	// copy of its text: ini-uz42 changed this string on 2026-09-12 and this
+	// rig, asserting the OLD copy, went red on main invisibly to make check
+	// (6M4 needs a real claude binary, so it only runs at the release gate).
+	if !strings.Contains(w2empty, emptyViewerHint) {
 		t.Errorf("window 2 with nothing assigned shows no hint line -- the bare empty window "+
 			"the operator rejected\nW2:\n%s", w2empty)
 	}
@@ -223,7 +227,7 @@ func TestSixM4Rig_ViewerModalParityAndReplaySurvival(t *testing.T) {
 	}
 	// The hint VANISHED the moment the group arrived (same frame class as the
 	// move notice; no state anyone has to clear).
-	if strings.Contains(w2pane, "no agents are assigned to this window") {
+	if strings.Contains(w2pane, emptyViewerHint) {
 		t.Errorf("window 2 still shows the empty-viewer hint while rendering its assigned "+
 			"group -- the hint is covering live panes\nW2:\n%s", w2pane)
 	}
@@ -283,7 +287,14 @@ func TestSixM4Rig_ViewerModalParityAndReplaySurvival(t *testing.T) {
 	}
 
 	// ── 3. Fleet numbering agrees, despite divergent local orders ───
-	numRe := regexp.MustCompile(`(\d+) \[[x ]\] (\w+)`)
+	// Marker alternation from the product's own constants (ini-6e97), not a
+	// hand-written char class -- the class [x ] silently stopped matching a
+	// hidden agent's box the day ini-68qv changed it from "[ ]" to "[h]".
+	// This call site is not currently reachable with any pane hidden (the
+	// hide happens later in this rig), so it was not yet a live break, but it
+	// is the same landmine.
+	numRe := regexp.MustCompile(`(\d+) (?:` + regexp.QuoteMeta(visibleBoxMarker) + `|` +
+		regexp.QuoteMeta(hiddenBoxMarker) + `) (\w+)`)
 	numbersOf := func(screen string) map[string]string {
 		m := map[string]string{}
 		for _, hit := range numRe.FindAllStringSubmatch(screen, -1) {
@@ -354,7 +365,12 @@ func TestSixM4Rig_ViewerModalParityAndReplaySurvival(t *testing.T) {
 	// then saw it red 4/4 at both hbj4 arms, which is what a broken
 	// assertion looks like from outside: environment-independent, and
 	// unmoved by product changes elsewhere.
-	hiddenRe := regexp.MustCompile(`\[h\] (\w+)`)
+	//
+	// References hiddenBoxMarker (ini-6e97) rather than a fresh copy of the
+	// glyph -- the fix above was itself the second time this exact literal
+	// broke this rig; a third glyph change should move this pattern for
+	// free instead of costing another diagnostic round.
+	hiddenRe := regexp.MustCompile(regexp.QuoteMeta(hiddenBoxMarker) + ` (\w+)`)
 	var hit []string
 	hideDeadline := time.Now().Add(15 * time.Second)
 	for time.Now().Before(hideDeadline) {
@@ -391,7 +407,7 @@ func TestSixM4Rig_ViewerModalParityAndReplaySurvival(t *testing.T) {
 	time.Sleep(2500 * time.Millisecond)
 	w2after := strings.Join(nonEmpty(snapRows(w2emu)), "\n")
 
-	marked := regexp.MustCompile(`\x{25cb} ` + hiddenAgent + ` \[h\]`)
+	marked := regexp.MustCompile(`\x{25cb} ` + hiddenAgent + ` ` + regexp.QuoteMeta(hiddenBoxMarker))
 	if !marked.MatchString(w2after) {
 		t.Errorf("window 1 hid %s and window 2's overlay does not mark it hidden -- the "+
 			"viewer is rendering its startup fleet-state snapshot, so the two windows "+
@@ -403,7 +419,7 @@ func TestSixM4Rig_ViewerModalParityAndReplaySurvival(t *testing.T) {
 	if hiddenAgent == other {
 		other = "eng1"
 	}
-	if regexp.MustCompile(`\x{25cb} ` + other + ` \[h\]`).MatchString(w2after) {
+	if regexp.MustCompile(`\x{25cb} ` + other + ` ` + regexp.QuoteMeta(hiddenBoxMarker)).MatchString(w2after) {
 		t.Errorf("window 2's overlay marks %s hidden too, but only %s was hidden -- the "+
 			"marker is not reporting per-agent state\nW2:\n%s", other, hiddenAgent, w2after)
 	}
