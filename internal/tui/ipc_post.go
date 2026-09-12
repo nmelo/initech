@@ -141,6 +141,12 @@ func (t *TUI) applyPostRequest(req IPCRequest, identity postIdentity, now time.T
 		if result.Notice != "" {
 			resp.Notices = append(resp.Notices, result.Notice)
 		}
+		// The bell, and the line the limiter alone can write (ini-3wkl.5).
+		// Suppression is of the SOUND only -- the item is already posted and
+		// already lists, whatever this returns.
+		if _, notice := t.chimeForInboxPost(identity, req.Chime, result.ID, now); notice != "" {
+			resp.Notices = append(resp.Notices, notice)
+		}
 		if strings.HasSuffix(strings.TrimSpace(req.Text), "?") && strings.TrimSpace(req.DefaultText) == "" && t.postTeaching.once(identity, "question-without-default") {
 			resp.Notices = append(resp.Notices, inboxQuestionTeaching)
 		}

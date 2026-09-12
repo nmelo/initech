@@ -331,6 +331,10 @@ type TUI struct {
 	chime          Chimer
 	attentionSound string
 	chimeSeen      map[string]chimeState
+	// inboxChimes rate-limits the INBOX bell per agent (ini-3wkl.5). Separate
+	// from chimeSeen on purpose: that map is keyed to waiting episodes and
+	// carries the 2-minute reminder, which an inbox item must never inherit.
+	inboxChimes inboxChimeLimiter
 
 	// exitReason, when non-nil, is returned by Run after the screen is
 	// restored -- an operator-facing explanation for a self-initiated exit
