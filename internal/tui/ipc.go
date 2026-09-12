@@ -358,7 +358,7 @@ func sendPaneTextLocked(pane *Pane, text string, enter bool) {
 	}
 
 	useCodexBracketedPaste := pane.noBracketedPaste && pane.AgentType() == config.AgentTypeCodex
-	codexQueueSubmit := pane.AgentType() == config.AgentTypeCodex && pane.Activity() == StateRunning
+	codexQueueSubmit := codexShouldQueueSubmit(pane)
 	mode := "bracketed"
 	if pane.noBracketedPaste {
 		mode = "raw"
@@ -520,7 +520,7 @@ func waitForCodexReadyIfNeeded(pane *Pane) {
 	if pane.ptmx == nil {
 		return
 	}
-	codexQueueSubmit := pane.AgentType() == config.AgentTypeCodex && pane.Activity() == StateRunning
+	codexQueueSubmit := codexShouldQueueSubmit(pane)
 	if config.IsCodexLikeAgentType(pane.AgentType()) && !codexQueueSubmit {
 		ready := pane.waitForCodexReady(codexReadyTimeout)
 		LogDebug("inject", "codex ready wait", "pane", pane.Name(), "ready", ready, "timeout_ms", codexReadyTimeout.Milliseconds())

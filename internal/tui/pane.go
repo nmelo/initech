@@ -221,23 +221,30 @@ type Pane struct {
 	// onSuspendedMessage fires when SendText queues for a suspended pane
 	// (ini-g7fl): the TUI wires it to resume-on-message, because the pane
 	// cannot respawn itself and entry points must not each remember to.
-	onSuspendedMessage             func(*Pane)
-	fleetNum                       int // Fleet-canonical number PLUS ONE (ini-6m4); zero value = unstamped, so struct-literal construction (tests, fakes) falls back to local numbering instead of reading as "stamped at 0". See fleetNumbered.
-	ptmx                           xpty.Pty
-	cmd                            *exec.Cmd
-	pid                            int // Cached PID from process start (avoids race with restart).
-	emu                            *vt.SafeEmulator
-	mu                             sync.Mutex
-	renderMu                       sync.Mutex // Serializes readLoop writes with Render cell reads to prevent tearing.
-	sendMu                         sync.Mutex // Serializes IPC send operations to prevent keystroke interleaving.
-	networkSink                    io.Writer  // Optional: readLoop tees PTY bytes here for network streaming.
-	sinkMu                         sync.Mutex // Protects networkSink assignment.
-	alive                          bool
-	visible                        bool              // Whether this pane is shown in the layout. Hidden panes keep running.
-	activity                       ActivityState     // Current state: running when PTY bytes flowed recently, else idle.
-	lastOutputTime                 time.Time         // Last time readLoop received bytes from the PTY.
-	tintUntil                      time.Time         // Hold deadline for the running-pane background tint (ini-zmzg). Bumped while StateRunning; the tint shows until this passes, giving the bg its own hysteresis window decoupled from the 2s dot/KITT signal.
-	lastIdleNotify                 time.Time         // Last time an EventAgentIdleWithBead was emitted.
+	onSuspendedMessage func(*Pane)
+	fleetNum           int // Fleet-canonical number PLUS ONE (ini-6m4); zero value = unstamped, so struct-literal construction (tests, fakes) falls back to local numbering instead of reading as "stamped at 0". See fleetNumbered.
+	ptmx               xpty.Pty
+	cmd                *exec.Cmd
+	pid                int // Cached PID from process start (avoids race with restart).
+	emu                *vt.SafeEmulator
+	mu                 sync.Mutex
+	renderMu           sync.Mutex // Serializes readLoop writes with Render cell reads to prevent tearing.
+	sendMu             sync.Mutex // Serializes IPC send operations to prevent keystroke interleaving.
+	networkSink        io.Writer  // Optional: readLoop tees PTY bytes here for network streaming.
+	sinkMu             sync.Mutex // Protects networkSink assignment.
+	alive              bool
+	visible            bool          // Whether this pane is shown in the layout. Hidden panes keep running.
+	activity           ActivityState // Current state: running when PTY bytes flowed recently, else idle.
+	lastOutputTime     time.Time     // Last time readLoop received bytes from the PTY.
+	tintUntil          time.Time     // Hold deadline for the running-pane background tint (ini-zmzg). Bumped while StateRunning; the tint shows until this passes, giving the bg its own hysteresis window decoupled from the 2s dot/KITT signal.
+	lastIdleNotify     time.Time     // Last time an EventAgentIdleWithBead was emitted.
+	// Screen-signature activity (ini-lnnk, Codex only): when the signature
+	// first said idle -- the idle-with-bead clock for a pane whose bytes never
+	// stop -- and the once-per-transition record of which rule decided the
+	// state.
+	sigIdleSince                   time.Time
+	activityTransitions            int
+	activityDecidedBy              string
 	idleWithBeadThreshold          time.Duration     // Silence duration before idle-with-bead fires. 0 = disabled.
 	idleBeadNotified               bool              // True after idle-with-bead fires. Reset when output resumes.
 	beadAssignedAt                 time.Time         // When the current bead was assigned. Grace period starts here.
@@ -1198,8 +1205,26 @@ func (p *Pane) isCodexReadyForSend() bool {
 	p.mu.Lock()
 	alive := p.alive
 	lastOutput := p.lastOutputTime
+	agentType := p.agentType
 	p.mu.Unlock()
-	if !alive || time.Since(lastOutput) < ptyIdleTimeout {
+	if !alive {
+		return false
+	}
+	if paneUsesCodexScreenActivity(agentType) {
+		// Codex's idle prompt animates, so the byte-silence gate below never
+		// opens for it and every direct send would wait out codexReadyTimeout
+		// (ini-lnnk). The screen signature IS the ready check: composer at
+		// rest, no Working line, no startup screen.
+		p.renderMu.Lock()
+		rows := emuRowsBlocking(p.emu)
+		p.renderMu.Unlock()
+		if state, ok := codexScreenSignature(rows); ok {
+			return state == StateIdle
+		}
+		// No 0.154.0 signature on screen: the legacy rule (byte silence, then
+		// the last-line composer check, which also accepts a plain ">").
+	}
+	if time.Since(lastOutput) < ptyIdleTimeout {
 		return false
 	}
 

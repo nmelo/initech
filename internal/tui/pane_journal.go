@@ -213,12 +213,27 @@ func (p *Pane) effectiveIdleTimeout() time.Duration {
 	return ptyIdleTimeout
 }
 
-// updateActivity derives activity state from PTY output recency.
-// Called per pane on every render tick. The activity state (Running/Idle)
-// uses ptyIdleTimeout (2s/15s) for responsive UI indicators. The
-// idle-with-bead notification uses a separate, longer threshold (default
-// 60s) to avoid false positives during normal thinking pauses (ini-hu2).
+// updateActivity derives activity state. Called per pane on every render
+// tick. claude-code and generic panes use PTY output recency (ptyIdleTimeout
+// for the responsive UI indicators); Codex panes use the screen signature
+// (codexScreenSignature), because Codex's idle prompt animates and byte
+// recency reads it as running forever (ini-lnnk). The idle-with-bead
+// notification uses a separate, longer threshold (default 60s) measured over
+// byte silence for byte-recency panes and over signature-idle time for Codex.
+//
+// The Codex screen is read with tryScreenRows BEFORE p.mu is taken: it takes
+// only the emulator's lock and never blocks (ini-psjt: the main loop must not
+// park behind a pane whose writer stalled). A busy lock reads as "no
+// signature", which holds the last state for one tick.
 func (p *Pane) updateActivity() {
+	useSig := paneUsesCodexScreenActivity(p.agentType)
+	sigState, sigOK := StateRunning, false
+	if useSig {
+		if rows, ok := tryScreenRows(p); ok {
+			sigState, sigOK = codexScreenSignature(rows)
+		}
+	}
+
 	p.mu.Lock()
 	now := time.Now()
 
@@ -229,10 +244,12 @@ func (p *Pane) updateActivity() {
 		} else {
 			p.activity = StateDead
 		}
+		p.recordActivityTransition(prev, activityByLiveness)
 		p.mu.Unlock()
 		return
 	}
 	silenceDur := now.Sub(p.lastOutputTime)
+	decidedBy := activityByByteRecency
 	switch {
 	case !p.waitingSince.IsZero():
 		// Waiting on the operator OUTRANKS byte recency, and the order here is
@@ -244,11 +261,50 @@ func (p *Pane) updateActivity() {
 		// whole point of this state is that it is NOT derived from byte flow, so
 		// nothing derived from byte flow may overwrite it.
 		p.activity = StateWaitingInput
+		decidedBy = activityByWaitingInput
+	case useSig:
+		decidedBy = activityByCodexScreen
+		switch {
+		case sigOK:
+			p.activity = sigState
+		case silenceDur >= p.effectiveIdleTimeout():
+			// No signature but the bytes stopped long ago: idle, whatever the
+			// screen shows. Byte silence stays SUFFICIENT for idle (a Codex
+			// build that stops animating, or a frame the signature does not
+			// know, must not read as running forever -- that is this bug in
+			// the other direction); it is just no longer NECESSARY.
+			p.activity = StateIdle
+			decidedBy = activityByByteRecency
+		case p.activity != StateRunning && p.activity != StateIdle:
+			// Nothing to hold: a dialog just closed, or the pane is new (the
+			// zero state). Running until the screen says otherwise -- the
+			// same default a fresh pane has always had.
+			p.activity = StateRunning
+		default:
+			// Neither signature, bytes still flowing: hold the last state
+			// (pm's table, row 4) rather than flap on a transient frame.
+		}
+		// The idle-with-bead clock cannot be byte silence alone for a pane
+		// whose bytes never stop (AC4): while idle it is the LONGER of byte
+		// silence and time since the signature first said idle; running
+		// clears it.
+		if p.activity == StateIdle {
+			if p.sigIdleSince.IsZero() {
+				p.sigIdleSince = now
+			}
+			if sigIdle := now.Sub(p.sigIdleSince); sigIdle > silenceDur {
+				silenceDur = sigIdle
+			}
+		} else {
+			p.sigIdleSince = time.Time{}
+			silenceDur = 0
+		}
 	case silenceDur < p.effectiveIdleTimeout():
 		p.activity = StateRunning
 	default:
 		p.activity = StateIdle
 	}
+	p.recordActivityTransition(prev, decidedBy)
 
 	// Track conviction scoring edges.
 	if prev != StateRunning && p.activity == StateRunning {
@@ -307,6 +363,19 @@ func (p *Pane) updateActivity() {
 	if idleEvent != nil {
 		EmitEvent(p.eventCh, *idleEvent)
 	}
+}
+
+// recordActivityTransition logs ONE line per state change naming the rule
+// that decided it -- never per frame (the ini-4dzh lesson: an unbounded
+// per-tick log line is a disk-filling bug wearing a diagnostic's clothes).
+// Caller holds p.mu.
+func (p *Pane) recordActivityTransition(prev ActivityState, by string) {
+	if p.activity == prev {
+		return
+	}
+	p.activityTransitions++
+	p.activityDecidedBy = by
+	LogInfo("activity", "state changed", "pane", p.name, "from", prev, "to", p.activity, "by", by)
 }
 
 // runDetectors runs all event detectors (completion, stall, stuck) and emits

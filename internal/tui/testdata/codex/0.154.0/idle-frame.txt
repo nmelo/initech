@@ -1,0 +1,45 @@
+  │ … +3 lines
+  └ delivered to super
+
+• Ran initech deliver ini-z5uw --to qa3
+  │ -m 'QA ROUTING: Super reassigned
+  │ full-tier verification from qa1 to
+  │ … +12 lines
+  └ delivered ini-z5uw: ready_for_qa ->
+    in_qa (ready for QA) -> qa3
+
+• Ran bd dolt push
+  └ Push complete.
+
+─────────────────────────────────────────
+
+• Delivered ini-z5uw to qa3 for full-tier
+  QA at 9bc2029. Bead is in_qa; qa1 and
+  super notified.
+
+─────────────────────────────────────────
+
+
+› [from super] Received. QA is qa3, not
+  qa1 (my routing note was queued behind
+  your work) — nothing for you to redo.
+  One process point for the landing: QA
+  tests your branch sha 9bc2029; on PASS
+  you rebase onto origin/main, run make
+  check AFTER the rebase, push to main,
+  and report the MAIN sha to me and qa3
+  — the cut takes only what is on main.
+  Until then, stay idle; ini-p39
+  (repaint perf) is your next and I will
+  send it after z5uw lands.
+
+
+• Understood. I’ll stay idle until qa3
+  passes 9bc2029, then rebase onto main,
+  run make check, push to main, and
+  report the landed SHA to you and qa3.
+
+                         ⢀
+› Ask Codex to do anything         ⠈
+      ⠠⢀⠐                 ⠄
+  gpt-6-astra medium · Context 71% left …
