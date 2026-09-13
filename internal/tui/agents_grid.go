@@ -1146,10 +1146,16 @@ func (t *TUI) agentsMoveGroupToNextWindow() {
 	}
 
 	assign := t.agentsAssignment()
-	// nil connected set, deliberately: ini-cctz is display-only, and the move
-	// cycle already offers one slot past the last assigned window, so moving
-	// TO a connected-but-empty window works today. Unchanged here.
-	windows := agentsWindowOrder(assign, t.layoutState.Groups, nil)
+	// The SAME list the panel renders (ini-9e7x): assigned windows UNION
+	// connected ones. ini-cctz passed nil here on the claim that the fresh
+	// slot appended below already reached a connected-but-empty window. It
+	// could not: that slot is appended at the END and only from window 1,
+	// whose next stop is index 1 — window 2 whenever any second window is
+	// assigned. So with groups on 1 and 2 and a third window attached, the
+	// band said "move a group here with m" and m cycled 1<->2 forever. The
+	// hint and the key must read one list, or the hint promises what the key
+	// cannot do.
+	windows := agentsWindowOrder(assign, t.layoutState.Groups, t.connectedWindowSet())
 
 	// A brand-new window is offered ONLY when the group is currently on
 	// window 1. Offering one from every window would make the cycle
