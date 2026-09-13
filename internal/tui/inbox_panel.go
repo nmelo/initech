@@ -194,10 +194,55 @@ func inboxNameWidth(items []InboxItem, r inboxReader) int {
 // ── rendering ───────────────────────────────────────────────────────
 
 const (
-	inboxBoxW       = 72
+	// The panel takes ~3/4 of the terminal each way (ini-qgij): the operator
+	// reads and replies here, and at 72 columns it was a popup in the middle
+	// of a 2000px terminal — list rows truncated at ~60 chars, the body
+	// wrapped at ~65. The floors below are what a SMALL terminal gets: at
+	// 80x24 both exceed the terminal, so the margin clamp wins and the panel
+	// is the whole screen minus margins (76x22); at 100x30 it is 80x24.
+	inboxMinBoxW    = 80
+	inboxMinBoxH    = 24
 	inboxListRows   = 8 // rows of list before the divider
 	inboxChromeRows = 4 // top border, divider, footer, bottom border
 )
+
+// inboxBoxWidth is the frame width for a terminal sw columns wide: three
+// quarters, never below the floor, never past the terminal minus a 2-cell
+// margin each side.
+func inboxBoxWidth(sw int) int {
+	w := sw * 3 / 4
+	if w < inboxMinBoxW {
+		w = inboxMinBoxW
+	}
+	if w > sw-4 {
+		w = sw - 4
+	}
+	if w < 24 {
+		w = 24
+	}
+	return w
+}
+
+// inboxBoxHeight is the frame height for a terminal sh rows tall holding
+// content that needs `need` rows: three quarters, never below the floor, and
+// never below what the content needs (ini-vkcd's grow rule) — up to the
+// terminal minus a 1-row margin each side, past which the detail gives way.
+func inboxBoxHeight(sh, need int) int {
+	h := sh * 3 / 4
+	if h < inboxMinBoxH {
+		h = inboxMinBoxH
+	}
+	if h < need {
+		h = need
+	}
+	if h > sh-2 {
+		h = sh - 2
+	}
+	if h < 8 {
+		h = 8
+	}
+	return h
+}
 
 // renderInboxPanel draws the panel in the modal register the agents grid and
 // the help card share (RGB(20,20,20) surface, Gray border, DodgerBlue title),
@@ -213,13 +258,7 @@ func (t *TUI) renderInboxPanel() {
 	}
 	sw, sh := s.Size()
 
-	boxW := inboxBoxW
-	if sw-4 < boxW {
-		boxW = sw - 4
-	}
-	if boxW < 24 {
-		boxW = 24
-	}
+	boxW := inboxBoxWidth(sw)
 	items := inboxListFor(r)
 	rows := len(items)
 	if rows > inboxListRows {
@@ -245,13 +284,7 @@ func (t *TUI) renderInboxPanel() {
 	if len(items) > 0 {
 		detail = t.inboxDetailLines(items[sel], now, boxW-4, -1)
 	}
-	boxH := rows + inboxChromeRows + persistRows + len(detail)
-	if sh-2 < boxH {
-		boxH = sh - 2
-	}
-	if boxH < 8 {
-		boxH = 8
-	}
+	boxH := inboxBoxHeight(sh, rows+inboxChromeRows+persistRows+len(detail))
 	if len(items) > 0 {
 		detail = t.inboxDetailLines(items[sel], now, boxW-4, boxH-inboxChromeRows-persistRows-rows)
 	}
@@ -604,7 +637,9 @@ func (t *TUI) handleInboxCommandKey(ev *tcell.EventKey, r inboxReader, items []I
 			// be refused by the store's chokepoint in every window but one.
 			if err := t.inboxAct(inboxOpDismiss, it.ID, ""); err != nil {
 				t.inbox.note = "could not dismiss: " + err.Error()
+				return false
 			}
+			t.advanceInboxSelection(items, it.ID, true)
 		}
 		return false
 	}
@@ -647,6 +682,7 @@ func (t *TUI) handleInboxReplyKey(ev *tcell.EventKey, items []InboxItem) bool {
 		}
 		t.inbox.replyBuf = nil
 		t.inbox.replying = false
+		t.advanceInboxSelection(items, it.ID, false)
 		return false
 	case tcell.KeyBackspace, tcell.KeyBackspace2:
 		if n := len(t.inbox.replyBuf); n > 0 {
@@ -712,6 +748,47 @@ func (t *TUI) acceptInboxDefault(items []InboxItem) {
 		return
 	}
 	t.inbox.onAccept(it.ID)
+	t.advanceInboxSelection(items, it.ID, false)
+}
+
+// advanceInboxSelection moves the selection to the item after the one just
+// acted on (ini-qgij, super's scope add). Before this, a/d/Enter left the
+// selected ID where it was: on an item that had just left the list after a
+// dismiss, or on the answered item. inboxSelectedIndex then fell back to row
+// 0 for DISPLAY while selectedInboxItem, by ID, found nothing — the detail
+// showed one item and r said "that item is gone". The operator had to press
+// Down before every r.
+//
+// items is the list BEFORE the act, and the next item is taken from it by ID,
+// so this holds on a child window too, where the act is routed to window 1
+// and lands asynchronously. When there is no next item: an answered item is
+// still listed until delivery is confirmed, so it stays selected; a dismissed
+// item is gone, so the previous one is selected, or nothing when it was the
+// only one. The new selection is marked seen, exactly as Down would.
+func (t *TUI) advanceInboxSelection(items []InboxItem, actedID string, removed bool) {
+	idx := -1
+	for i, it := range items {
+		if it.ID == actedID {
+			idx = i
+			break
+		}
+	}
+	if idx < 0 {
+		return
+	}
+	switch {
+	case idx+1 < len(items):
+		t.inbox.selected = items[idx+1].ID
+	case !removed:
+		return
+	case idx > 0:
+		t.inbox.selected = items[idx-1].ID
+	default:
+		t.inbox.selected = ""
+		return
+	}
+	t.inbox.detailScroll = 0
+	t.markInboxSeen(t.inbox.selected)
 }
 
 // moveInboxSelection moves by delta and marks the new item seen.

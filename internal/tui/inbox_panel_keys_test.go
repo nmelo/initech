@@ -275,3 +275,90 @@ func TestInboxPanel_FooterShowsTheKeysOfTheCurrentMode(t *testing.T) {
 		t.Errorf("reply-mode footer still offers the command keys:\n%s", got)
 	}
 }
+
+// ── ini-qgij scope add: the selection advances after an act ────────
+
+// threeItemInbox stubs the two delivery hooks so an act changes nothing but
+// the selection, and returns the panel with the FIRST item selected.
+func threeItemInbox(t *testing.T) (*TUI, []InboxItem) {
+	t.Helper()
+	items := []InboxItem{
+		inboxItemAt("p1", "eng1", "first question", 3*time.Minute),
+		inboxItemAt("p2", "eng2", "second question", 2*time.Minute),
+		inboxItemAt("p3", "eng3", "third question", time.Minute),
+	}
+	for i := range items {
+		items[i].DefaultText = "yes"
+	}
+	tui, _ := inboxTUI(t, items...)
+	tui.inbox.onAccept = func(string) {}
+	tui.inbox.onReply = func(string, string) {}
+	tui.openInboxPanel()
+	if tui.inbox.selected != "p1" {
+		t.Fatalf("fixture: selection is %q, want p1", tui.inbox.selected)
+	}
+	return tui, items
+}
+
+// Before the fix a, d and Enter left the selection on the acted item (gone
+// after a dismiss), so the detail fell back to row 0 while r said "that item
+// is gone" — Down was needed before every r.
+func TestInboxPanel_AcceptDismissAndReplyAdvanceToTheNextItem(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		act  func(*TUI)
+	}{
+		{"accept", func(tui *TUI) { inboxType(tui, "a") }},
+		{"dismiss", func(tui *TUI) { inboxType(tui, "d") }},
+		{"reply", func(tui *TUI) { inboxType(tui, "r"); inboxType(tui, "done"); inboxKey(tui, tcell.KeyEnter) }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tui, _ := threeItemInbox(t)
+			tc.act(tui)
+			if tui.inbox.note != "" {
+				t.Fatalf("the act itself failed: %q", tui.inbox.note)
+			}
+			if tui.inbox.selected != "p2" {
+				t.Fatalf("after %s the selection is %q, want the next item p2", tc.name, tui.inbox.selected)
+			}
+			// The advanced selection is real: r acts on it without a gone-note.
+			inboxType(tui, "r")
+			if tui.inbox.note == inboxItemGone || !tui.inbox.replying {
+				t.Errorf("r after %s did not open a reply on the next item (note=%q replying=%v)", tc.name, tui.inbox.note, tui.inbox.replying)
+			}
+		})
+	}
+}
+
+// A dismissed last item has no next: the previous one is selected. An
+// answered last item is still listed until delivery confirms, so it stays.
+func TestInboxPanel_ActOnTheLastItemFallsBackSensibly(t *testing.T) {
+	tui, _ := threeItemInbox(t)
+	tui.inbox.selected = "p3"
+	inboxType(tui, "d")
+	if tui.inbox.selected != "p2" {
+		t.Errorf("dismissing the last item selected %q, want the previous item p2", tui.inbox.selected)
+	}
+
+	tui, _ = threeItemInbox(t)
+	tui.inbox.selected = "p3"
+	inboxType(tui, "a")
+	if tui.inbox.selected != "p3" {
+		t.Errorf("accepting the last item moved the selection to %q; the item is still listed and should stay selected", tui.inbox.selected)
+	}
+}
+
+// Dismissing the only item leaves nothing selected — and no stale-ID note on
+// the next keypress, since there is nothing to act on.
+func TestInboxPanel_DismissingTheOnlyItemLeavesNothingSelected(t *testing.T) {
+	tui, s := inboxTUI(t, inboxItemAt("p1", "eng1", "only question", time.Minute))
+	tui.openInboxPanel()
+	inboxType(tui, "d")
+	if tui.inbox.selected != "" {
+		t.Errorf("selection after dismissing the only item = %q, want none", tui.inbox.selected)
+	}
+	tui.renderInboxPanel()
+	if got := inboxScreen(t, s); !strings.Contains(got, "nothing posted") {
+		t.Errorf("empty panel does not show the empty state:\n%s", got)
+	}
+}

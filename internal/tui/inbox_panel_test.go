@@ -596,3 +596,109 @@ func TestInboxPanel_ListRowStaysSingleLineWhileTheDetailWraps(t *testing.T) {
 		t.Errorf("the full body appears %d times, want exactly once (detail pane only):\n%s", n, got)
 	}
 }
+
+// ── ini-qgij: the panel is ~3/4 of the terminal, floored, clamped ──
+
+// inboxFrame locates the panel's border on the sim screen and returns its
+// width and height, measured from the corner runes rather than from the
+// sizing constants — the claim is about what the operator sees.
+func inboxFrame(t *testing.T, s tcell.SimulationScreen) (w, h int) {
+	t.Helper()
+	sw, sh := s.Size()
+	tlX, tlY, brX, brY := -1, -1, -1, -1
+	for y := 0; y < sh; y++ {
+		for x := 0; x < sw; x++ {
+			ch, _, _, _ := s.GetContent(x, y)
+			switch ch {
+			case '╭':
+				tlX, tlY = x, y
+			case '╯':
+				brX, brY = x, y
+			}
+		}
+	}
+	if tlX < 0 || brX < 0 {
+		t.Fatalf("no panel frame on screen:\n%s", inboxScreen(t, s))
+	}
+	return brX - tlX + 1, brY - tlY + 1
+}
+
+func TestInboxPanel_SpansThreeQuartersOfAWideTerminal(t *testing.T) {
+	it := inboxItemAt("p1", "eng1", inboxLongBody, time.Minute)
+	it.DefaultText = inboxLongDefault
+	tui, s := inboxTUI(t, it)
+	s.SetSize(200, 60)
+	tui.openInboxPanel()
+	tui.renderInboxPanel()
+	if w, h := inboxFrame(t, s); w != 150 || h != 45 {
+		t.Errorf("frame = %dx%d on 200x60, want 150x45", w, h)
+	}
+	got := inboxScreen(t, s)
+	if strings.Contains(got, "more lines not shown") {
+		t.Errorf("the long item needed a give-way row on a wide terminal:\n%s", got)
+	}
+	if !strings.Contains(inboxPaneText(got), inboxLongBody) {
+		t.Errorf("the long body is not fully visible:\n%s", got)
+	}
+}
+
+// The floors: a terminal below them gets the whole thing minus margins.
+func TestInboxPanel_SmallTerminalsGetTheWholeScreenMinusMargins(t *testing.T) {
+	for _, tc := range []struct{ sw, sh, wantW, wantH int }{
+		{80, 24, 76, 22},
+		{100, 30, 80, 24},
+		{120, 40, 90, 30},
+	} {
+		tui, s := inboxTUI(t, inboxItemAt("p1", "eng1", inboxLongBody, time.Minute))
+		s.SetSize(tc.sw, tc.sh)
+		tui.openInboxPanel()
+		tui.renderInboxPanel()
+		if w, h := inboxFrame(t, s); w != tc.wantW || h != tc.wantH {
+			t.Errorf("frame = %dx%d on %dx%d, want %dx%d", w, h, tc.sw, tc.sh, tc.wantW, tc.wantH)
+		}
+	}
+}
+
+// At 80x24 the whole surface still fits: list row, detail, prompt and the
+// footer keys, nothing clipped.
+func TestInboxPanel_At80x24ListDetailPromptAndFooterAllFit(t *testing.T) {
+	it := inboxItemAt("p1", "eng1", inboxLongBody, time.Minute)
+	it.DefaultText = inboxLongDefault
+	tui, s := inboxTUI(t, it)
+	s.SetSize(80, 24)
+	tui.openInboxPanel()
+	tui.renderInboxPanel()
+	got := inboxScreen(t, s)
+	for _, want := range []string{"eng1 · 1m ago", "> _", "r reply", "Esc close"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("80x24 panel is missing %q:\n%s", want, got)
+		}
+	}
+	if !strings.Contains(inboxPaneText(got), "default: "+inboxLongDefault) {
+		t.Errorf("80x24 panel clips the default:\n%s", got)
+	}
+}
+
+// The panel is centred: equal margins each side within one cell.
+func TestInboxPanel_IsCentred(t *testing.T) {
+	tui, s := inboxTUI(t, inboxItemAt("p1", "eng1", "short", time.Minute))
+	s.SetSize(200, 60)
+	tui.openInboxPanel()
+	tui.renderInboxPanel()
+	sw, sh := s.Size()
+	var tlX, tlY int
+	for y := 0; y < sh; y++ {
+		for x := 0; x < sw; x++ {
+			if ch, _, _, _ := s.GetContent(x, y); ch == '╭' {
+				tlX, tlY = x, y
+			}
+		}
+	}
+	w, h := inboxFrame(t, s)
+	if dx := (sw - w) - 2*tlX; dx < -1 || dx > 1 {
+		t.Errorf("horizontal margins differ by %d cells (left %d, frame %d of %d)", dx, tlX, w, sw)
+	}
+	if dy := (sh - h) - 2*tlY; dy < -1 || dy > 1 {
+		t.Errorf("vertical margins differ by %d rows (top %d, frame %d of %d)", dy, tlY, h, sh)
+	}
+}
