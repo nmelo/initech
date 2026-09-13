@@ -84,7 +84,7 @@ type windowServer struct {
 //
 // Returns a cleanup func that stops accepting and detaches the sinks. Callers
 // must only invoke this when project.WindowListen is non-empty.
-func startWindowServer(project *config.Project, version string, panes []*Pane, safeGo func(func()), onFleetState func(FleetStateCmd) error, paneOwnership func(peer string) map[string]string, onWindowAttached func(string)) (*windowServer, func(), error) {
+func startWindowServer(project *config.Project, version string, panes []*Pane, safeGo func(func()), onFleetState func(FleetStateCmd) error, onInboxCmd func(InboxCmd) error, paneOwnership func(peer string) map[string]string, onWindowAttached func(string)) (*windowServer, func(), error) {
 	if project == nil || project.WindowListen == "" {
 		return nil, nil, fmt.Errorf("startWindowServer called without a WindowListen address (single-window fleets must not reach here)")
 	}
@@ -123,6 +123,8 @@ func startWindowServer(project *config.Project, version string, panes []*Pane, s
 		// Window 1 owns fleet state; this is how a secondary's
 		// set_fleet_state reaches it (ini-9ka.10).
 		onFleetState: onFleetState,
+		// And the inbox's routed acts, the same way (ini-3wkl.7).
+		onInboxCmd: onInboxCmd,
 		// Window 1 is likewise the only writer of window assignments and of
 		// band membership; these are how a secondary's routed mutations
 		// reach it (ini-la97).
@@ -258,7 +260,7 @@ func (t *TUI) startWindowListener(project *config.Project, version string, attac
 	if project == nil || project.WindowListen == "" {
 		return func() {}
 	}
-	ws, cleanup, err := startWindowServer(project, version, localPanes(t.panes), t.safeGo, t.applyFleetStateCmd, t.currentPaneOwnership, attached)
+	ws, cleanup, err := startWindowServer(project, version, localPanes(t.panes), t.safeGo, t.applyFleetStateCmd, t.applyInboxCmd, t.currentPaneOwnership, attached)
 	if err != nil {
 		t.recordWindowBind(project.WindowListen, err)
 		return func() {}

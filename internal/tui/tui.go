@@ -166,7 +166,12 @@ type TUI struct {
 	// them (ini-5rvq). Nothing in production waits on it.
 	inboxDeliveries sync.WaitGroup
 	inboxStore      *Inbox
-	postTeaching    postTeachingState
+	// inboxStoreMu guards inboxStore's identity and lastInboxRefresh: a child
+	// window replaces the store on refresh while other goroutines read it
+	// (ini-3wkl.7).
+	inboxStoreMu     sync.Mutex
+	lastInboxRefresh time.Time
+	postTeaching     postTeachingState
 
 	screen      tcell.Screen
 	panes       []PaneView
@@ -1146,6 +1151,11 @@ func Run(cfg Config) error {
 		pm.SetOnSessionNotice(func(text string) {
 			t.runOnMain(func() { t.surfaceSessionNotice(text) })
 		})
+		// The inbox's own doorbell (ini-3wkl.7): re-read the inbox, and
+		// nothing else -- never the session notice's layout re-plan.
+		pm.SetOnInboxChanged(func() {
+			t.runOnMain(t.refreshInboxIfFollower)
+		})
 		// Ownership is served, never derived (ini-x5ob). Marshalled onto the
 		// main loop for the same reason every other peer callback is: it
 		// mutates render state.
@@ -1317,6 +1327,8 @@ func Run(cfg Config) error {
 				t.welcome.active = false
 			}
 			t.rotateTip()
+			// The inbox staleness floor for a child window (ini-3wkl.7).
+			t.refreshInboxOnCadence(time.Now())
 			if t.layoutState.Mode == LayoutLive && time.Since(t.lastLiveTick) >= time.Second {
 				t.lastLiveTick = time.Now()
 				t.applyLayout()

@@ -100,6 +100,11 @@ type Daemon struct {
 	// rather than silently accepted.
 	onFleetState func(FleetStateCmd) error
 
+	// onInboxCmd applies a secondary window's inbox act on window 1, the only
+	// writer (ini-3wkl.7). Nil on a cross-machine daemon, which owns no inbox,
+	// so the command is refused there rather than silently accepted.
+	onInboxCmd func(InboxCmd) error
+
 	// paneOwnership returns window 1's current ownership decision, for the
 	// hello handshake (ini-x5ob). Nil on a cross-machine daemon, which owns no
 	// window partition -- an attaching peer there simply gets no map.
@@ -1194,6 +1199,11 @@ func (d *Daemon) handleControlStream(ctrl net.Conn, scanner *bufio.Scanner, peer
 
 		case "set_fleet_state":
 			if !respond(cmd.ID, d.handleSetFleetState(line)) {
+				return
+			}
+
+		case "inbox_cmd":
+			if !respond(cmd.ID, d.handleInboxCmd(line)) {
 				return
 			}
 

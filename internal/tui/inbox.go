@@ -190,6 +190,20 @@ type Inbox struct {
 	// agent's RUN, never its name: a restarted agent has fresh context and is
 	// taught again, a long-running one is never re-taught on a new item.
 	taught map[string]bool
+
+	// onChange rings after every successful write (ini-3wkl.7). IN THE
+	// PRIMITIVE, the mutateFleet rule: every mutation announces, so no new
+	// path can forget to. Called under mu, so it MUST NOT block or call back
+	// into the store.
+	onChange func()
+}
+
+// SetOnChange registers the store's change hook. Set once, before the store is
+// shared.
+func (ib *Inbox) SetOnChange(fn func()) {
+	ib.mu.Lock()
+	defer ib.mu.Unlock()
+	ib.onChange = fn
 }
 
 // ErrInboxReadOnly is returned when a write is attempted against a fallback
@@ -286,7 +300,15 @@ func LoadInbox(projectRoot string, authority bool) (*Inbox, error) {
 	// load, and a store that says it pruned but did not is worse than one that
 	// never pruned. A read-only or memory-only store skips it by save()'s own
 	// rules, which is correct -- neither can persist anything.
-	if len(ib.items) != len(pi.Items) {
+	//
+	// ONLY THE AUTHORITY PRUNES THE FILE (ini-3wkl.7). save() checks readOnly
+	// and memoryOnly but not authority -- authority lives in mutate, and this
+	// call bypasses mutate. Measured before the fix: a child window's load
+	// rewrote inbox.yaml (189 -> 11 bytes), a §291 violation at every child
+	// startup that a follower refresh cadence would have repeated every 30s. A
+	// follower still drops the pruned items from its own view, which is what
+	// it lists; the file is window 1's to rewrite.
+	if authority && len(ib.items) != len(pi.Items) {
 		_ = ib.save()
 	}
 	return ib, nil
@@ -348,7 +370,13 @@ func (ib *Inbox) mutate(apply func() error) error {
 	if err := apply(); err != nil {
 		return err
 	}
-	return ib.save()
+	if err := ib.save(); err != nil {
+		return err
+	}
+	if ib.onChange != nil {
+		ib.onChange()
+	}
+	return nil
 }
 
 // ── the state machine ────────────────────────────────────────────────

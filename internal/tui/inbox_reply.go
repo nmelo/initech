@@ -83,14 +83,17 @@ func quoteInboxFirstLine(item InboxItem) string {
 func (t *TUI) wireInboxDelivery() {
 	if t.inbox.onReply == nil {
 		t.inbox.onReply = func(id, reply string) {
-			if err := t.ReplyToInboxItem(id, reply); err != nil {
+			// inboxAct, not ReplyToInboxItem: from a child window the act
+			// routes to window 1, which owns the store AND the agent's pane
+			// (ini-3wkl.7).
+			if err := t.inboxAct(inboxOpReply, id, reply); err != nil {
 				t.inbox.note = "could not reply: " + err.Error()
 			}
 		}
 	}
 	if t.inbox.onAccept == nil {
 		t.inbox.onAccept = func(id string) {
-			if err := t.AcceptInboxDefault(id); err != nil {
+			if err := t.inboxAct(inboxOpAccept, id, ""); err != nil {
 				t.inbox.note = "could not accept: " + err.Error()
 			}
 		}

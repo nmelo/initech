@@ -51,17 +51,30 @@ func isPostAction(action string) bool {
 	return false
 }
 
-// inboxState loads once per TUI, never once per query. Child F owns its follower
-// refresh mechanism; loading a snapshot must never act as a new fleet session.
+// inboxState loads once per TUI, never once per query; loading a snapshot must
+// never act as a new fleet session.
+//
+// The POINTER is guarded (ini-3wkl.7): a child window's refresh replaces the
+// store on the main loop while the IPC goroutine and the render loop read it.
+// On window 1 the store never changes identity; it rings the doorbell instead.
 func (t *TUI) inboxState() *Inbox {
 	t.inboxOnce.Do(func() {
-		ib, err := LoadInbox(t.projectRoot, t.isFleetAuthority())
+		authority := t.isFleetAuthority()
+		ib, err := LoadInbox(t.projectRoot, authority)
 		if err != nil {
 			LogWarn("inbox", "load failed; refusing writes", "err", err)
-			ib = newFallbackInbox(t.projectRoot, t.isFleetAuthority())
+			ib = newFallbackInbox(t.projectRoot, authority)
 		}
+		if authority {
+			ib.SetOnChange(t.ringInboxDoorbell)
+		}
+		t.inboxStoreMu.Lock()
 		t.inboxStore = ib
+		t.lastInboxRefresh = time.Now()
+		t.inboxStoreMu.Unlock()
 	})
+	t.inboxStoreMu.Lock()
+	defer t.inboxStoreMu.Unlock()
 	return t.inboxStore
 }
 

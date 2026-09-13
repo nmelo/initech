@@ -449,6 +449,9 @@ func (t *TUI) openInboxPanel() {
 	t.inbox.note = ""
 	t.inbox.detailScroll = 0
 	t.inbox.replyBuf = nil
+	// OPEN ON TRUTH (ini-3wkl.7 AC 5). The cadence bounds a child's staleness;
+	// this keeps the moment the operator looks from spending any of it.
+	t.refreshInboxIfFollower()
 	r := t.inboxPanelStore()
 	if r == nil {
 		return
@@ -463,9 +466,9 @@ func (t *TUI) openInboxPanel() {
 // construction: the corner count is DERIVED from the store on every render,
 // so there is no cached number that could lag this write.
 //
-// A secondary window is not the authority and its write is refused; that is
-// child F's routing to add, and the panel must still render. Logged once
-// rather than per keystroke.
+// A secondary window routes the act to window 1 (ini-3wkl.7). Seen is not the
+// operator's act the way a reply is, so a failure is logged once rather than
+// shown per keystroke.
 func (t *TUI) markInboxSeen(id string) {
 	r := t.inboxPanelStore()
 	if r == nil {
@@ -475,7 +478,7 @@ func (t *TUI) markInboxSeen(id string) {
 	if !ok || it.State != InboxUnread {
 		return
 	}
-	if err := r.Transition(id, InboxSeen, actorOperator); err != nil {
+	if err := t.inboxAct(inboxOpSeen, id, ""); err != nil {
 		if !t.inboxSeenWarned {
 			t.inboxSeenWarned = true
 			LogWarn("inbox", "could not mark an item seen from this window", "id", id, "err", err)
@@ -531,7 +534,10 @@ func (t *TUI) handleInboxCommandKey(ev *tcell.EventKey, r inboxReader, items []I
 				t.inbox.note = inboxItemGone
 				return false
 			}
-			if err := r.Transition(it.ID, InboxDismissed, actorOperator); err != nil {
+			// Routed, not written here (ini-3wkl.7): from a child window the
+			// dismiss goes to window 1, the only writer. r.Transition would
+			// be refused by the store's chokepoint in every window but one.
+			if err := t.inboxAct(inboxOpDismiss, it.ID, ""); err != nil {
 				t.inbox.note = "could not dismiss: " + err.Error()
 			}
 		}
