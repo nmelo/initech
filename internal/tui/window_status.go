@@ -121,15 +121,34 @@ func (t *TUI) viewerAuthorityText() string {
 	return fmt.Sprintf("main PID %d | started %s | %s", a.PID, a.StartedAt.Format(time.RFC3339), processAge(a.StartedAt, time.Now()))
 }
 
+// identityLineVisible reports whether this window draws the identity line: a
+// viewer that has it toggled on. Window 1 never draws it.
+func (t *TUI) identityLineVisible() bool {
+	return !t.isFleetAuthority() && t.identityLineShown
+}
+
+// toggleIdentityLine is Option+w (ini-evdn). In a viewer it flips the line
+// for this window's session. The main window has no line to show, so it says
+// so on the footer instead of doing nothing (ini-162m), and changes no state.
+func (t *TUI) toggleIdentityLine() {
+	if t.isFleetAuthority() {
+		t.cmd.error = "identity line is for viewer windows"
+		return
+	}
+	t.identityLineShown = !t.identityLineShown
+}
+
 // renderWindowConnectionStatus runs after transient overlays so a failed bind
-// stays visible for the entire session. The viewer uses the reserved spacer row.
+// stays visible for the entire session. A viewer showing its identity line
+// (ini-evdn) draws it in the layout's spacer row; hidden, the row stays the
+// plain spacer every window has.
 func (t *TUI) renderWindowConnectionStatus() {
 	s := t.screen
 	w, h := s.Size()
 	if w < 1 || h < 1 {
 		return
 	}
-	if !t.isFleetAuthority() {
+	if t.identityLineVisible() {
 		style := tcell.StyleDefault.Background(tcell.NewRGBColor(30, 30, 30)).Foreground(tcell.ColorYellow)
 		y := h - 2
 		if y < 0 {

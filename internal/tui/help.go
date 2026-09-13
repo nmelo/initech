@@ -35,6 +35,7 @@ func getHelpLines() []string {
 			"  " + m + "+z            Zoom/unzoom focused pane",
 			"  " + m + "+f            Focus split: focused pane left, grid right (toggle)",
 			"  " + m + "+s            Toggle agent overlay",
+			"  " + m + "+w            Show/hide which main this viewer is attached to (viewer windows)",
 			"  " + m + "+q            Quit",
 			"",
 			"Suspended agents",

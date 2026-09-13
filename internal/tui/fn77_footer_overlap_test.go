@@ -20,6 +20,7 @@ func TestFN77Viewer_ManagementNoticeSurvivesAuthorityFooter(t *testing.T) {
 	u.windowID = "window-2"
 	u.viewerConnected = true
 	u.viewerAuthority = &AuthorityIdentity{PID: 123, StartedAt: time.Now().UTC()}
+	u.identityLineShown = true // hidden by default since ini-evdn; Option+w shows it
 	u.agentEvents = make(chan AgentEvent, 4)
 	u.handleKey(tcell.NewEventKey(tcell.KeyRune, 'a', tcell.ModAlt))
 	select {
@@ -55,6 +56,7 @@ func TestFN77Notices_StackAboveViewerFooterAndKeepMainPosition(t *testing.T) {
 			u.windowID = window
 			u.viewerConnected = true
 			u.viewerAuthority = &AuthorityIdentity{PID: 123, StartedAt: time.Now().UTC()}
+			u.identityLineShown = true // hidden by default since ini-evdn; Option+w shows it
 			u.notifications = []notification{
 				{event: AgentEvent{Detail: "older notice"}},
 				{event: AgentEvent{Detail: "newer notice"}},
