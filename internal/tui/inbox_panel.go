@@ -55,6 +55,11 @@ type inboxPanel struct {
 	// detailScroll is the first body line shown in the detail pane.
 	detailScroll int
 	replyBuf     []rune
+	// replying is REPLY MODE (spec 8b0db47, ini-qmbi). The panel opens in
+	// COMMAND mode. Without the split, every 'a' accepted and every 'd'
+	// dismissed before any rune reached replyBuf: typing "add a flag" accepted
+	// the default, dismissed the item, and left "  flg" behind.
+	replying bool
 	// note is a transient footer line (e.g. why `a` did nothing). Cleared on
 	// the next key, like the agents modal's error.
 	note string
@@ -166,9 +171,13 @@ const (
 	// inboxEmptyLine teaches the affordance on the first open, so an operator
 	// who has never seen an item learns how they arrive instead of reading a
 	// blank box.
-	inboxEmptyLine = `nothing posted — agents post with: initech post "…"`
-	inboxFooter    = " Enter send   a accept default   d dismiss   ↑↓ select   Esc close "
-	inboxNoDefault = "no default on this item"
+	inboxEmptyLine       = `nothing posted — agents post with: initech post "…"`
+	inboxFooterCommand   = " r reply   a accept default   d dismiss   ↑↓ select   Esc close "
+	inboxFooterReply     = " Enter send   Esc cancel reply   ↑↓ select "
+	inboxEmptyReply      = "type a reply"
+	inboxItemGone        = "that item is gone (answered or dismissed elsewhere); your draft is kept"
+	inboxNothingSelected = "nothing selected"
+	inboxNoDefault       = "no default on this item"
 )
 
 // inboxNameWidth is the padding width: the longest name-with-count present,
@@ -378,7 +387,10 @@ func (t *TUI) drawInboxDetail(it InboxItem, now time.Time, y int, put func(int, 
 // did nothing) in its place when there is one — never silence.
 func (t *TUI) drawInboxFooter(startX, y, boxW int, put func(int, string, tcell.Style)) {
 	style := tcell.StyleDefault.Background(tcell.NewRGBColor(20, 20, 20)).Foreground(tcell.ColorGray)
-	text := inboxFooter
+	text := inboxFooterCommand
+	if t.inbox.replying {
+		text = inboxFooterReply
+	}
 	if t.inbox.note != "" {
 		text = " " + t.inbox.note + " "
 	}
@@ -389,6 +401,18 @@ func (t *TUI) drawInboxFooter(startX, y, boxW int, put func(int, string, tcell.S
 // falling back to the first item. The selection is held as an ID, not an
 // index, so an item answered from another window cannot silently move the
 // operator's cursor onto a different one.
+// selectedInboxItem resolves the selection by ITEM ID. Re-indexing sent the
+// operator's reply to whatever had taken that row's place when the selected
+// item left the list -- a different item, and a different agent (ini-qmbi).
+func (t *TUI) selectedInboxItem(items []InboxItem) (InboxItem, bool) {
+	for _, it := range items {
+		if it.ID == t.inbox.selected {
+			return it, true
+		}
+	}
+	return InboxItem{}, false
+}
+
 func (t *TUI) inboxSelectedIndex(items []InboxItem) int {
 	for i, it := range items {
 		if it.ID == t.inbox.selected {
@@ -420,6 +444,7 @@ func (t *TUI) inboxPanelStore() inboxReader {
 // openInboxPanel opens the panel and anchors the selection on the first item.
 func (t *TUI) openInboxPanel() {
 	t.inbox.active = true
+	t.inbox.replying = false
 	t.wireInboxDelivery()
 	t.inbox.note = ""
 	t.inbox.detailScroll = 0
@@ -470,6 +495,15 @@ func (t *TUI) handleInboxKey(ev *tcell.EventKey) bool {
 	}
 	items := inboxListFor(r)
 
+	if t.inbox.replying {
+		return t.handleInboxReplyKey(ev, items)
+	}
+	return t.handleInboxCommandKey(ev, r, items)
+}
+
+// handleInboxCommandKey is the panel's COMMAND mode: the keys act, and no
+// rune reaches the reply line.
+func (t *TUI) handleInboxCommandKey(ev *tcell.EventKey, r inboxReader, items []InboxItem) bool {
 	switch ev.Key() {
 	case tcell.KeyEscape:
 		t.inbox.active = false
@@ -481,14 +515,67 @@ func (t *TUI) handleInboxKey(ev *tcell.EventKey) bool {
 		t.moveInboxSelection(items, 1)
 		return false
 	case tcell.KeyEnter:
-		if len(items) == 0 {
+		// Enter on the selected row enters reply mode: it is the key everyone
+		// tries first, and a dead Enter is a dead end (spec 8b0db47).
+		t.enterInboxReplyMode(items)
+		return false
+	case tcell.KeyRune:
+		switch ev.Rune() {
+		case 'r':
+			t.enterInboxReplyMode(items)
+		case 'a':
+			t.acceptInboxDefault(items)
+		case 'd':
+			it, ok := t.selectedInboxItem(items)
+			if !ok {
+				t.inbox.note = inboxItemGone
+				return false
+			}
+			if err := r.Transition(it.ID, InboxDismissed, actorOperator); err != nil {
+				t.inbox.note = "could not dismiss: " + err.Error()
+			}
+		}
+		return false
+	}
+	return false
+}
+
+// handleInboxReplyKey is REPLY MODE: every printable rune goes to the reply
+// line, and only the keys the spec lists pass through.
+func (t *TUI) handleInboxReplyKey(ev *tcell.EventKey, items []InboxItem) bool {
+	switch ev.Key() {
+	case tcell.KeyEscape:
+		// Two-stage Esc, as the agents modal's search: discard the draft and
+		// return to command mode. It does not close the panel.
+		t.inbox.replyBuf = nil
+		t.inbox.replying = false
+		return false
+	case tcell.KeyUp:
+		t.moveInboxSelection(items, -1)
+		return false
+	case tcell.KeyDown:
+		t.moveInboxSelection(items, 1)
+		return false
+	case tcell.KeyEnter:
+		if len(t.inbox.replyBuf) == 0 {
+			// Nothing to send is not an act: an empty reply would answer the
+			// item with empty text, the same hole the accept seam's rule
+			// closes. Stay in reply mode and say so.
+			t.inbox.note = inboxEmptyReply
 			return false
 		}
-		id := items[t.inboxSelectedIndex(items)].ID
+		it, ok := t.selectedInboxItem(items)
+		if !ok {
+			// The item left the list under the operator. Keep the draft: it is
+			// the only copy of what they typed.
+			t.inbox.note = inboxItemGone
+			return false
+		}
 		if t.inbox.onReply != nil {
-			t.inbox.onReply(id, string(t.inbox.replyBuf))
+			t.inbox.onReply(it.ID, string(t.inbox.replyBuf))
 		}
 		t.inbox.replyBuf = nil
+		t.inbox.replying = false
 		return false
 	case tcell.KeyBackspace, tcell.KeyBackspace2:
 		if n := len(t.inbox.replyBuf); n > 0 {
@@ -496,23 +583,37 @@ func (t *TUI) handleInboxKey(ev *tcell.EventKey) bool {
 		}
 		return false
 	case tcell.KeyRune:
-		switch ev.Rune() {
-		case 'a':
-			t.acceptInboxDefault(items)
-			return false
-		case 'd':
-			if len(items) > 0 {
-				id := items[t.inboxSelectedIndex(items)].ID
-				if err := r.Transition(id, InboxDismissed, actorOperator); err != nil {
-					t.inbox.note = "could not dismiss: " + err.Error()
-				}
-			}
-			return false
-		}
 		t.inbox.replyBuf = append(t.inbox.replyBuf, ev.Rune())
 		return false
 	}
 	return false
+}
+
+// enterInboxReplyMode starts composing on the selected item.
+func (t *TUI) enterInboxReplyMode(items []InboxItem) {
+	if _, ok := t.selectedInboxItem(items); !ok {
+		t.inbox.note = inboxNothingSelected
+		return
+	}
+	t.inbox.replying = true
+}
+
+// appendInboxPaste routes a paste into the reply line rather than the pane
+// behind the panel (spec 8b0db47). A paste is composing intent, so it also
+// enters reply mode -- MY CHOICE, stated: the spec says a paste goes to the
+// reply line but not which mode it lands in, and text dropped into a line the
+// operator is not editing would be invisible.
+func (t *TUI) appendInboxPaste(text string) {
+	if text == "" {
+		return
+	}
+	items := inboxListFor(t.inboxPanelStore())
+	if _, ok := t.selectedInboxItem(items); !ok {
+		t.inbox.note = inboxNothingSelected
+		return
+	}
+	t.inbox.replying = true
+	t.inbox.replyBuf = append(t.inbox.replyBuf, []rune(text)...)
 }
 
 // acceptInboxDefault is the `a` key (seam 2). An item WITH a default invokes
@@ -523,7 +624,11 @@ func (t *TUI) acceptInboxDefault(items []InboxItem) {
 	if len(items) == 0 {
 		return
 	}
-	it := items[t.inboxSelectedIndex(items)]
+	it, ok := t.selectedInboxItem(items)
+	if !ok {
+		t.inbox.note = inboxItemGone
+		return
+	}
 	if it.DefaultText == "" {
 		t.inbox.note = inboxNoDefault
 		return
