@@ -127,16 +127,21 @@ func run(exemptionsFile string, verbose bool) error {
 		return fmt.Errorf("found no `initech <verb>` mentions in %s at all — the scanner is broken, not the templates clean", scanDir)
 	}
 
-	if err := checkScaffold(root, verbose); err != nil {
-		return err
-	}
-
+	// BOTH SETS FIRST, then every check (ini-pacn). The scaffold check used to
+	// run before these existed and built its own registered set, so it never
+	// consulted the exemption file — a staged verb with a valid TRIGGERed
+	// exemption still reddened the build, which is the one sanctioned way past
+	// this guard.
 	registered := map[string]bool{}
 	for _, v := range cmd.RegisteredVerbs() {
 		registered[v] = true
 	}
 	exempt, err := loadExemptions(filepath.Join(root, exemptionsFile))
 	if err != nil {
+		return err
+	}
+
+	if err := checkScaffold(root, verbose, registered, exempt); err != nil {
 		return err
 	}
 

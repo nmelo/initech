@@ -17,7 +17,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/nmelo/initech/cmd"
 	"github.com/nmelo/initech/internal/config"
 	"github.com/nmelo/initech/internal/roles"
 	"github.com/nmelo/initech/internal/scaffold"
@@ -26,7 +25,16 @@ import (
 // checkScaffold checks the artifact, independent of how its writers are coded.
 // It covers a fresh default scaffold with every catalog role, not user-supplied
 // overrides or arbitrary future conditional configurations.
-func checkScaffold(root string, verbose bool) error {
+// registered and exempt are passed IN rather than rebuilt here (ini-pacn).
+// This check used to build its own registered set and never saw the exemption
+// file at all, so a verb staged ahead of its command — with a valid TRIGGERed
+// exemption, the sanctioned path ini-j0er exists to support — still reddened
+// the build. It failed CLOSED, so nothing was unsafe; what was missing was the
+// escape hatch, and a guard with no sanctioned path is a guard someone
+// comments out. One caller now loads both sets once and hands them to every
+// check, so the output check and the template census cannot disagree about
+// which verbs are allowed.
+func checkScaffold(root string, verbose bool, registered, exempt map[string]bool) error {
 	dir, err := os.MkdirTemp("", "initech-templatecensus-")
 	if err != nil {
 		return err
@@ -48,11 +56,7 @@ func checkScaffold(root string, verbose bool) error {
 	if err != nil {
 		return err
 	}
-	registered := map[string]bool{}
-	for _, v := range cmd.RegisteredVerbs() {
-		registered[v] = true
-	}
-	count, err := checkOutputVerbs(files, registered)
+	count, err := checkOutputVerbs(files, registered, exempt)
 	if err != nil {
 		return err
 	}
@@ -103,14 +107,19 @@ func readScaffoldOutput(dir string) (map[string]string, error) {
 	return files, nil
 }
 
-func checkOutputVerbs(files map[string]string, registered map[string]bool) (int, error) {
+// checkOutputVerbs fails on a verb the scaffolded output teaches that this
+// binary does not register AND no TRIGGERed exemption covers. The exemption
+// is the staged-landing path: templates may teach a command that lands in a
+// later commit, and the exemption goes stale — failing the census — the moment
+// that command registers (ini-pacn, keeping ini-j0er's self-cleaning property).
+func checkOutputVerbs(files map[string]string, registered, exempt map[string]bool) (int, error) {
 	var failures []string
 	count := 0
 	for path, text := range files {
 		for _, loc := range verbPattern.FindAllStringSubmatchIndex(text, -1) {
 			count++
 			verb := text[loc[2]:loc[3]]
-			if !registered[verb] {
+			if !registered[verb] && !exempt[verb] {
 				failures = append(failures, fmt.Sprintf("%s:%d: initech %s is not registered", path, 1+strings.Count(text[:loc[0]], "\n"), verb))
 			}
 		}

@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/nmelo/initech/cmd"
+
 	"github.com/nmelo/initech/internal/config"
 	"github.com/nmelo/initech/internal/roles"
 	"github.com/nmelo/initech/internal/scaffold"
@@ -34,7 +36,7 @@ func TestScaffoldOutput_WalksAdditionalFilesAndReportsVerbs(t *testing.T) {
 	if len(files) != 3 {
 		t.Fatalf("read %d files, want all 3", len(files))
 	}
-	count, err := checkOutputVerbs(files, map[string]bool{"status": true})
+	count, err := checkOutputVerbs(files, map[string]bool{"status": true}, nil)
 	if count != 3 || err == nil {
 		t.Fatalf("count=%d err=%v", count, err)
 	}
@@ -43,7 +45,7 @@ func TestScaffoldOutput_WalksAdditionalFilesAndReportsVerbs(t *testing.T) {
 			t.Errorf("%v does not name %s", err, want)
 		}
 	}
-	count, err = checkOutputVerbs(files, map[string]bool{"status": true, "notarealverb": true, "anothermissingverb": true})
+	count, err = checkOutputVerbs(files, map[string]bool{"status": true, "notarealverb": true, "anothermissingverb": true}, nil)
 	if count != 3 || err != nil {
 		t.Fatalf("registered output: count=%d err=%v", count, err)
 	}
@@ -56,7 +58,7 @@ func TestScaffoldOutput_RefusesEmptyOrUnreadableSubjects(t *testing.T) {
 	if _, err := readScaffoldOutput(filepath.Join(t.TempDir(), "missing")); err == nil {
 		t.Fatal("missing root passed")
 	}
-	if _, err := checkOutputVerbs(map[string]string{"CLAUDE.md": "no commands"}, nil); err == nil {
+	if _, err := checkOutputVerbs(map[string]string{"CLAUDE.md": "no commands"}, nil, nil); err == nil {
 		t.Fatal("zero mentions passed")
 	}
 }
@@ -150,4 +152,75 @@ func TestTemplateCoverage_CatalogRolesReachEveryRealTemplate(t *testing.T) {
 		}
 	}
 	t.Logf("catalog=%d templates=%d files=%d", len(p.Roles), len(templates), len(files))
+}
+
+// ── the staged-landing path (ini-pacn) ──────────────────────────────
+//
+// shipper's repro, reviewing ini-zfbb: a verb staged ahead of its command,
+// carrying a valid TRIGGERed exemption, still reddened the build because this
+// check ran before the exemptions loaded and built its own registered set. It
+// failed CLOSED — nothing unsafe — but it removed the only sanctioned way
+// past the guard, and a guard with no sanctioned path is one somebody
+// comments out. The G-before-B case (templates taught `post` before
+// cmd/post.go existed) is exactly this, and it happened today.
+
+func TestCheckOutputVerbs_AStagedVerbWithAnExemptionPasses(t *testing.T) {
+	files := map[string]string{"docs/spec.md": "run initech futureverb to do the thing"}
+	count, err := checkOutputVerbs(files, map[string]bool{"status": true}, map[string]bool{"futureverb": true})
+	if err != nil {
+		t.Fatalf("a staged verb with a valid exemption reddened the build: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("count = %d, want 1", count)
+	}
+}
+
+func TestCheckOutputVerbs_TheSameStagedVerbWithoutAnExemptionFailsNamingTheFile(t *testing.T) {
+	files := map[string]string{"docs/spec.md": "run initech futureverb to do the thing"}
+	_, err := checkOutputVerbs(files, map[string]bool{"status": true}, nil)
+	if err == nil {
+		t.Fatal("an unregistered, unexempted verb passed — the guard's whole subject")
+	}
+	if !strings.Contains(err.Error(), "docs/spec.md") || !strings.Contains(err.Error(), "futureverb") {
+		t.Errorf("error %q must name the file and the verb", err)
+	}
+}
+
+// An exemption covers ONE verb, not the check: a second unregistered verb in
+// the same output still fails.
+func TestCheckOutputVerbs_AnExemptionDoesNotSilenceOtherVerbs(t *testing.T) {
+	files := map[string]string{"docs/spec.md": "initech futureverb then initech alsomissing"}
+	_, err := checkOutputVerbs(files, map[string]bool{}, map[string]bool{"futureverb": true})
+	if err == nil || !strings.Contains(err.Error(), "alsomissing") {
+		t.Fatalf("err = %v, want the unexempted verb still named", err)
+	}
+}
+
+// The empty-subject refusals survive the new parameter: an exemption map must
+// not turn "I read nothing" into a pass.
+func TestCheckOutputVerbs_StillRefusesAnEmptySubjectWithExemptions(t *testing.T) {
+	if _, err := checkOutputVerbs(map[string]string{"CLAUDE.md": "no commands"}, nil, map[string]bool{"futureverb": true}); err == nil {
+		t.Error("no taught verbs at all passed while an exemption was present")
+	}
+}
+
+// The ordering itself, asserted through checkScaffold on the real tree: with
+// the exemption list threaded in, a staged verb is tolerated; the same call
+// with no exemptions is the shipped behaviour. This is the cell that reds if
+// someone moves the exemption load back below checkScaffold.
+func TestCheckScaffold_HonoursTheExemptionListItIsGiven(t *testing.T) {
+	root, err := repoRoot()
+	if err != nil {
+		t.Skip("module root unavailable")
+	}
+	registered := map[string]bool{}
+	for _, v := range cmd.RegisteredVerbs() {
+		registered[v] = true
+	}
+	if err := checkScaffold(root, false, registered, map[string]bool{"futureverb": true}); err != nil {
+		t.Fatalf("checkScaffold rejected the tree while carrying an exemption: %v", err)
+	}
+	if err := checkScaffold(root, false, registered, nil); err != nil {
+		t.Fatalf("checkScaffold rejected the clean tree with no exemptions: %v", err)
+	}
 }
