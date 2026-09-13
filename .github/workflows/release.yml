@@ -41,6 +41,12 @@ jobs:
   release:
     needs: [test]
     runs-on: ubuntu-latest
+    # One publisher across ALL tag/branch lines. Do not cancel an active release
+    # between its GitHub publication and its Homebrew formula update.
+    concurrency:
+      group: release-publish
+      cancel-in-progress: false
+      queue: max
     steps:
       - uses: actions/checkout@v5
         with:

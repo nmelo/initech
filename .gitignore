@@ -3,6 +3,7 @@ initech
 initech-tui
 *.exe
 dist/
+.release-promotion-*
 
 # OS artifacts
 .DS_Store

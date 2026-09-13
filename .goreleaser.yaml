@@ -2,6 +2,13 @@ version: 2
 
 project_name: initech
 
+# Query the remote tag inventory even for local releases. The file is outside
+# dist because GoReleaser cleans dist AFTER before hooks, and is keyed by tag
+# so a skipped hook cannot silently reuse another release's decision.
+before:
+  hooks:
+    - go run ./scripts/releasepolicy -tag {{ .Tag }} -output .release-promotion-{{ .Tag }}
+
 changelog:
   sort: asc
   filters:
@@ -46,9 +53,11 @@ release:
     name: initech
   draft: false
   prerelease: auto
+  make_latest: '{{ trim (mustReadFile (printf ".release-promotion-%s" .Tag)) }}'
 
 brews:
-  - repository:
+  - skip_upload: '{{ ne (trim (mustReadFile (printf ".release-promotion-%s" .Tag))) "true" }}'
+    repository:
       owner: nmelo
       name: homebrew-tap
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
