@@ -65,8 +65,10 @@ import (
 )
 
 const (
-	defaultTestDir  = "internal/tui"
-	defaultWorkflow = ".github/workflows/ci.yml"
+	defaultTestDir = "internal/tui"
+	// Comma-separated: per-push CI and the nightly/on-demand rigs workflow
+	// (ini-i4uj). A rig invoked in either counts as invoked.
+	defaultWorkflow = ".github/workflows/ci.yml,.github/workflows/rigs.yml"
 	exemptionsPath  = ".github/rig-census-exemptions.txt"
 	quarantinePath  = ".github/rig-quarantine.txt"
 	gateEnvPrefix   = "INITECH_"
@@ -91,7 +93,7 @@ type ciStep struct {
 
 func main() {
 	testDir := flag.String("dir", defaultTestDir, "directory of gated tests")
-	workflow := flag.String("workflow", defaultWorkflow, "CI workflow to read coverage from")
+	workflow := flag.String("workflow", defaultWorkflow, "CI workflow(s) to read coverage from, comma-separated")
 	exemptions := flag.String("exemptions", exemptionsPath, "path to the exemption file")
 	quarantineF := flag.String("quarantine", quarantinePath, "path to the quarantine file")
 	verbose := flag.Bool("v", false, "list every gate and where it runs")
@@ -104,7 +106,7 @@ func main() {
 	// Second inventory, same rule (ini-nvpg): a target nothing invokes is a
 	// gated rig nobody runs.
 	if err := runTargetCensus(defaultMakefile,
-		[]string{*workflow, ".github/workflows/release.yml", "scripts/hooks/pre-commit"},
+		append(strings.Split(*workflow, ","), ".github/workflows/release.yml", "scripts/hooks/pre-commit"),
 		targetExemptionsPath, *verbose); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
@@ -116,9 +118,13 @@ func run(testDir, workflow, exemptionsFile, quarantineFile string, verbose bool)
 	if err != nil {
 		return err
 	}
-	steps, err := findCISteps(workflow)
-	if err != nil {
-		return err
+	var steps []ciStep
+	for _, wf := range strings.Split(workflow, ",") {
+		more, err := findCISteps(wf)
+		if err != nil {
+			return err
+		}
+		steps = append(steps, more...)
 	}
 	exempt, err := readExemptions(exemptionsFile)
 	if err != nil {

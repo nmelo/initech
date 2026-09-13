@@ -394,7 +394,9 @@ func TestRun_RepositoryInventoryIsFullyCovered(t *testing.T) {
 	root := repoRoot(t)
 	err := run(
 		filepath.Join(root, "internal", "tui"),
-		filepath.Join(root, ".github", "workflows", "ci.yml"),
+		// Both workflows (ini-i4uj): the rigs moved to rigs.yml.
+		filepath.Join(root, ".github", "workflows", "ci.yml")+","+
+			filepath.Join(root, ".github", "workflows", "rigs.yml"),
 		filepath.Join(root, ".github", "rig-census-exemptions.txt"),
 		filepath.Join(root, ".github", "rig-quarantine.txt"),
 		false,

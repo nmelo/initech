@@ -132,6 +132,7 @@ func TestTargetCensus_RepositoryInventoryIsFullyCovered(t *testing.T) {
 		filepath.Join(root, "Makefile"),
 		[]string{
 			filepath.Join(root, ".github", "workflows", "ci.yml"),
+			filepath.Join(root, ".github", "workflows", "rigs.yml"),
 			filepath.Join(root, ".github", "workflows", "release.yml"),
 			filepath.Join(root, "scripts", "hooks", "pre-commit"),
 		},
