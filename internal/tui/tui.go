@@ -901,6 +901,7 @@ func Run(cfg Config) error {
 	// would size its grid for the full fleet and render empty cells.
 	// GridExplicit is respected inside recalcGrid, so an operator's chosen
 	// CxR is still not overridden.
+	t.sizeLoadedGridToVisible()
 	t.recalcGrid(false)
 
 	// One-time attention-hooks consent for an EXISTING project (ini-2x8.6).
@@ -1397,6 +1398,14 @@ func autoGrid(n int) (cols, rows int) {
 	default:
 		cols = 4
 		rows = (n + cols - 1) / cols
+		// Over 40 panes, four columns would need more rows than any grid may
+		// have (ini-g242). Widen instead, so every result is one the loader
+		// reads back. Unchanged for n <= 40.
+		if rows > maxGridDim {
+			cols, rows = clampGrid((n+maxGridDim-1)/maxGridDim, 0)
+			rows = (n + cols - 1) / cols
+			cols, rows = clampGrid(cols, rows)
+		}
 		return
 	}
 }
@@ -1434,6 +1443,23 @@ func (t *TUI) deliverForwardedSend(target, text string, enter bool) error {
 // requestQuit closes quitCh exactly once, from any goroutine.
 func (t *TUI) requestQuit() {
 	t.quitOnce.Do(func() { close(t.quitCh) })
+}
+
+// sizeLoadedGridToVisible re-sizes a freshly loaded grid from the panes that
+// will actually render, in EVERY mode except live (ini-g242).
+//
+// recalcGrid does this too, but only in grid and live modes: in any other mode
+// it returns early, so a grid LoadLayout sized by counting hidden agents as
+// visible survived startup and was saved. That is how a 41-agent fleet with 26
+// hidden wrote 4x11. Live mode is left alone: its grid is a viewport, smaller
+// than the fleet on purpose. An explicit CxR is the operator's and is kept.
+func (t *TUI) sizeLoadedGridToVisible() {
+	if t.layoutState.GridExplicit || t.layoutState.Mode == LayoutLive {
+		return
+	}
+	if vis := t.visibleCountFromState(); vis > 0 {
+		t.layoutState.GridCols, t.layoutState.GridRows = autoGrid(vis)
+	}
 }
 
 func (t *TUI) recalcGrid(force bool) {

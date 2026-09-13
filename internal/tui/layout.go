@@ -555,6 +555,13 @@ func stampFleetThenApplyOrder(panes []PaneView, order []string) {
 	}
 }
 
+// formatGrid renders a grid for disk through clampGrid, so no caller -- present
+// or future -- writes one the next load rejects (ini-g242).
+func formatGrid(cols, rows int) string {
+	c, r := clampGrid(cols, rows)
+	return fmt.Sprintf("%dx%d", c, r)
+}
+
 // SaveLayout writes the layout state to .initech/layout.yaml using atomic write
 // (temp file + rename) to prevent corruption. Creates .initech/ if it doesn't exist.
 //
@@ -566,7 +573,7 @@ func SaveLayout(projectRoot string, state LayoutState) error {
 	// window1: host would re-contaminate its file on every save.
 	normalizedGroupOf, _ := normalizeGroupOfKeys(state.GroupOf)
 	pl := PersistentLayout{
-		Grid:         fmt.Sprintf("%dx%d", state.GridCols, state.GridRows),
+		Grid:         formatGrid(state.GridCols, state.GridRows),
 		GridExplicit: state.GridExplicit,
 		Mode:         layoutModeToString(state.Mode),
 		Order:        state.Order,
@@ -626,9 +633,15 @@ func LoadLayout(projectRoot string, paneKeys []string) (LayoutState, bool) {
 	healed := normalizePersistedIdentities(&pl)
 
 	// Parse grid dimensions.
+	// A GRID THE LOADER CANNOT USE LOSES ONLY THE GRID (ini-g242). This used
+	// to return false, and a false here discards the WHOLE file -- groups,
+	// membership, order and mode -- to be replaced by role-catalog defaults.
+	// The operator lost six hand-built groups that way on every other restart.
+	// The grid is the one field that is always recomputable; nothing else is.
 	cols, rows, ok := parseGrid(pl.Grid, len(paneKeys))
 	if !ok {
-		return LayoutState{}, false
+		LogWarn("layout", "saved grid unreadable; recomputing it and keeping the rest of the layout", "grid", pl.Grid)
+		cols, rows = autoGrid(len(paneKeys))
 	}
 
 	// Build known pane set for filtering stale references.
