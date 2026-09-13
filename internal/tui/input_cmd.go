@@ -882,6 +882,26 @@ func (t *TUI) cmdUnpin(parts []string) bool {
 }
 
 // parseGrid parses "CxR" or just "C" (auto-calculating rows from numPanes).
+// maxGridDim is the largest column or row count a grid may have. ONE limit for
+// every reader and writer (ini-g242): parseGrid rejected rows above 10 while
+// autoGrid happily produced 4x11 for 41 agents, so a saved grid could be one
+// the next load refused -- and a refused grid used to discard the whole layout.
+const maxGridDim = 10
+
+// clampGrid bounds a grid to what parseGrid accepts.
+func clampGrid(cols, rows int) (int, int) {
+	clamp := func(v int) int {
+		if v < 1 {
+			return 1
+		}
+		if v > maxGridDim {
+			return maxGridDim
+		}
+		return v
+	}
+	return clamp(cols), clamp(rows)
+}
+
 func parseGrid(s string, numPanes int) (cols, rows int, ok bool) {
 	s = strings.ToLower(s)
 	if strings.Contains(s, "x") {
@@ -891,14 +911,14 @@ func parseGrid(s string, numPanes int) (cols, rows int, ok bool) {
 		}
 		c, err1 := strconv.Atoi(parts[0])
 		r, err2 := strconv.Atoi(parts[1])
-		if err1 != nil || err2 != nil || c < 1 || r < 1 || c > 10 || r > 10 {
+		if err1 != nil || err2 != nil || c < 1 || r < 1 || c > maxGridDim || r > maxGridDim {
 			return 0, 0, false
 		}
 		return c, r, true
 	}
 	// Just a column count; auto-calculate rows.
 	c, err := strconv.Atoi(s)
-	if err != nil || c < 1 || c > 10 {
+	if err != nil || c < 1 || c > maxGridDim {
 		return 0, 0, false
 	}
 	r := (numPanes + c - 1) / c
