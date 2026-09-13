@@ -159,6 +159,11 @@ func (t *TUI) handleKey(ev *tcell.EventKey) bool {
 					t.openInboxPanel()
 				}
 				return false
+			case 'w':
+				// The viewer's main-identity line (ini-evdn): hidden by
+				// default, shown or hidden per window for the session.
+				t.toggleIdentityLine()
+				return false
 			case 'g':
 				t.openQuickGrid(false)
 				return false

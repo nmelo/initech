@@ -118,7 +118,22 @@ func TestZ5uwRig_HeldPortNoticeAndViewerIdentity(t *testing.T) {
 
 	// A viewer attached over window B's config dials window_listen, which
 	// main A -- not B -- actually answers. The footer must name A.
-	cmdV, _, emuV, _ := nineISXStart(t, bin, rootB, "--window", "2")
+	cmdV, ptyV, emuV, _ := nineISXStart(t, bin, rootB, "--window", "2")
+	// Since ini-evdn the identity line is hidden by default and Option+w
+	// (ESC w on a raw PTY) shows it. Wait for the viewer to render its
+	// agent and confirm the line is absent. A viewer currently opens the
+	// attention-consent prompt unseen and its first key answers it (the fn77
+	// rig sends one for the same reason), so defer it with a lone Esc --
+	// which records no answer -- before toggling the line on.
+	if _, ok := nineISXAwait(emuV, func(s string) bool { return strings.Contains(s, "eng1") }, 30*time.Second); !ok {
+		t.Fatalf("viewer never rendered its agent within 30s; last screen:\n%s", nineISXScreen(emuV))
+	}
+	if strings.Contains(z5uwFlatScreen(emuV), "main PID") {
+		t.Fatalf("viewer shows the identity line before Option+w; it is hidden by default (ini-evdn)\n%s", nineISXScreen(emuV))
+	}
+	ptyV.Write([]byte{0x1b})
+	time.Sleep(time.Second)
+	ptyV.Write([]byte{0x1b, 'w'})
 	elapsedV, ok := nineISXAwait(emuV, func(string) bool {
 		return strings.Contains(z5uwFlatScreen(emuV), fmt.Sprintf("main PID %d", pidA))
 	}, 30*time.Second)

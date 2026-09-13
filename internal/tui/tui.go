@@ -239,6 +239,10 @@ type TUI struct {
 	inspectPortHolder func(string) *PortHolder
 	viewerAuthority   *AuthorityIdentity
 	viewerConnected   bool
+	// identityLineShown is whether a viewer draws its main-identity line
+	// (ini-evdn). Per window, off at start, flipped by Option+w, never
+	// persisted.
+	identityLineShown bool
 
 	// paneOwnership is the ownership map: canonical agent key -> owning window
 	// id (ini-x5ob). On window 1 it is the authority's own computation; on a

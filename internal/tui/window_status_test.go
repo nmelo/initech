@@ -123,6 +123,7 @@ func TestWindowAuthority_HandshakeFeedsViewerAndReplacesOldIdentity(t *testing.T
 	viewer := newTestTUI()
 	viewer.screen = s
 	viewer.windowID = "window-2"
+	viewer.identityLineShown = true // opt-in since ini-evdn
 	viewer.applyWindowAuthority(WindowOnePeerName, pc.authority)
 	viewer.renderWindowConnectionStatus()
 	text := readScreenRect(s, 0, 28, 140, 1)
