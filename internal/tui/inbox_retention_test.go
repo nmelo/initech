@@ -240,9 +240,9 @@ func assertInboxRetentionItems(t *testing.T, where string, items []InboxItem, wa
 	}
 }
 
-// A persisted state from a newer binary is already protected from pruning.
-// Deriving visibility also keeps that retained item visible to the operator.
-func TestInboxRetention_UnknownPersistedStateRemainsVisible(t *testing.T) {
+// Unknown persisted states are outside the declared state machine. Preserve
+// the original boundary: the store retains them, but the panel omits them.
+func TestInboxRetention_UnknownPersistedStateKeepsLegacyBoundary(t *testing.T) {
 	root := inboxRoot(t)
 	data := "next_id: 2\nitems:\n  - id: p1\n    agent: eng3\n    body: question from a newer version\n    state: future-state-not-in-this-binary\n"
 	if err := os.WriteFile(inboxPath(root), []byte(data), 0600); err != nil {
@@ -257,7 +257,7 @@ func TestInboxRetention_UnknownPersistedStateRemainsVisible(t *testing.T) {
 		t.Fatalf("fixture state changed: %+v", item)
 	}
 	listed := inboxListFor(store)
-	if len(listed) != 1 || listed[0].ID != "p1" {
-		t.Fatalf("store retained the future item but panel hid it: %+v", listed)
+	if len(listed) != 0 {
+		t.Fatalf("panel must preserve its original omission of unknown states: %+v", listed)
 	}
 }

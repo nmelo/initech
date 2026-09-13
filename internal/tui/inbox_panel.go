@@ -75,14 +75,16 @@ type inboxPanel struct {
 // inboxOpenForOperator reports whether an item belongs in the operator's
 // list. Open items always; an ANSWERED item stays until the send path has
 // confirmed delivery, because an answer the agent never received is exactly
-// what the operator needs to still see — and it is the same set the store
-// refuses to prune (spec: "prune never deletes an undelivered answer").
+// what the operator needs to still see. For declared states this is the set
+// the store refuses to prune (spec: "prune never deletes an undelivered answer").
 //
-// Derive this from the store rule so the panel cannot hide an answer that
-// startup must preserve. TestInboxRetention_RealStoreAndPanelAgree checks
-// the shared rule against persistence and an independent retention contract.
+// Derive the declared-state rule from the store. Preserve the existing
+// boundary for unknown persisted states: retained by the store, omitted here.
+// TestInboxRetention_RealStoreAndPanelAgree checks the shared rule against
+// persistence and an independent retention contract.
 func inboxOpenForOperator(it InboxItem) bool {
-	return !inboxPrunable(it)
+	_, known := inboxTransitions[it.State]
+	return known && !inboxPrunable(it)
 }
 
 // inboxListFor returns the items the panel lists, oldest first — largest
