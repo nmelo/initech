@@ -397,11 +397,17 @@ func TestInboxPanel_LongBodyScrollsWhileTheRowShowsOneLine(t *testing.T) {
 	tui.openInboxPanel()
 	tui.renderInboxPanel()
 	got := inboxScreen(t, s)
-	if !strings.Contains(got, "more lines") {
-		t.Errorf("a 40-line body does not report that it scrolls:\n%s", got)
+	// The box grows to fit the body up to the screen's maximum (ini-vkcd); a
+	// 40-line body on a 40-row screen exceeds it, so the body gives way and a
+	// row says how much is hidden. Never a silent clip.
+	if !strings.Contains(got, "more lines not shown") {
+		t.Errorf("a 40-line body does not report how much is hidden:\n%s", got)
 	}
-	if strings.Count(got, "body line") > 4 {
-		t.Errorf("the detail pane rendered the whole body rather than a window:\n%s", got)
+	if strings.Count(got, "body line") >= 40 {
+		t.Errorf("the detail pane rendered the whole body rather than fitting the screen:\n%s", got)
+	}
+	if !strings.Contains(got, "> _") {
+		t.Errorf("the reply prompt gave way to the body; it must never:\n%s", got)
 	}
 }
 
@@ -442,5 +448,151 @@ func TestInboxPanel_ChordAppearsInTheHelpCard(t *testing.T) {
 	}
 	if !found {
 		t.Error("the inbox chord is not in the help card")
+	}
+}
+
+// inboxPaneText joins the panel's rows into one line so a claim like "the
+// full text is visible" can be checked as a substring, in order, rather than
+// word by word. Word-wrap breaks at spaces, so a body written with single
+// spaces reads back exactly from its rows.
+func inboxPaneText(screen string) string {
+	var parts []string
+	for _, line := range strings.Split(screen, "\n") {
+		line = strings.Trim(line, " \u2502")
+		if line != "" {
+			parts = append(parts, line)
+		}
+	}
+	return strings.Join(parts, " ")
+}
+
+// inboxRowOf returns the first screen row containing needle, or -1.
+func inboxRowOf(screen, needle string) int {
+	for i, line := range strings.Split(screen, "\n") {
+		if strings.Contains(line, needle) {
+			return i
+		}
+	}
+	return -1
+}
+
+const inboxLongBody = "the operator asked whether the composed run should stay on the per-push path or move off it entirely so that only the rigs and the race detector run nightly while everything else keeps running per push as it does today"
+const inboxLongDefault = "move only the rigs and the race detector to nightly and keep every other check on the per-push path exactly as it is now"
+
+// TestInboxPanel_WrapsTheItemTextAndTheDefault is the ini-vkcd regression:
+// the operator's first try of v2.14.0 showed the question and its default each
+// clipped at the panel edge on one row, lower half of the panel empty. Both
+// are longer than the pane here; every word of both must be on screen, in
+// order, with the reply prompt below them.
+func TestInboxPanel_WrapsTheItemTextAndTheDefault(t *testing.T) {
+	it := inboxItemAt("p1", "eng1", inboxLongBody, time.Minute)
+	it.DefaultText = inboxLongDefault
+	tui, s := inboxTUI(t, it)
+	tui.openInboxPanel()
+	tui.renderInboxPanel()
+	got := inboxScreen(t, s)
+	text := inboxPaneText(got)
+	if !strings.Contains(text, inboxLongBody) {
+		t.Errorf("the full item text is not visible in order:\n%s", got)
+	}
+	if !strings.Contains(text, "default: "+inboxLongDefault) {
+		t.Errorf("the full default is not visible in order:\n%s", got)
+	}
+	if strings.Contains(got, "more lines not shown") {
+		t.Errorf("a body that fits reported hidden lines:\n%s", got)
+	}
+	def, prompt := inboxRowOf(got, "default: "), inboxRowOf(got, "> _")
+	if def < 0 || prompt < 0 || prompt <= def+1 {
+		t.Errorf("reply prompt row %d must sit under the wrapped default starting at row %d:\n%s", prompt, def, got)
+	}
+}
+
+// At 80 columns the pane is narrower and wraps into more rows; nothing may be
+// clipped there either (AC edge case).
+func TestInboxPanel_At80ColumnsNothingIsClipped(t *testing.T) {
+	it := inboxItemAt("p1", "eng1", inboxLongBody, time.Minute)
+	it.DefaultText = inboxLongDefault
+	tui, s := inboxTUI(t, it)
+	s.SetSize(80, 24)
+	tui.openInboxPanel()
+	tui.renderInboxPanel()
+	got := inboxScreen(t, s)
+	text := inboxPaneText(got)
+	if !strings.Contains(text, inboxLongBody) || !strings.Contains(text, "default: "+inboxLongDefault) {
+		t.Errorf("at 80 columns the item text or default is clipped:\n%s", got)
+	}
+	if !strings.Contains(got, "> _") {
+		t.Errorf("at 80 columns the reply prompt is missing:\n%s", got)
+	}
+}
+
+// A single token wider than the pane (a URL, a path) breaks at width; the
+// pieces read back as the whole token.
+func TestInboxPanel_BreaksALongTokenAtWidthInsteadOfClipping(t *testing.T) {
+	token := "https://example.invalid/" + strings.Repeat("segment/", 20) + "end"
+	it := inboxItemAt("p1", "eng1", "see "+token, time.Minute)
+	tui, s := inboxTUI(t, it)
+	tui.openInboxPanel()
+	tui.renderInboxPanel()
+	got := inboxScreen(t, s)
+	joined := strings.ReplaceAll(inboxPaneText(got), " ", "")
+	if !strings.Contains(joined, token) {
+		t.Errorf("the long token did not survive wrapping intact:\n%s", got)
+	}
+}
+
+// An item with no default has no default line (AC edge case).
+func TestInboxPanel_NoDefaultMeansNoDefaultLine(t *testing.T) {
+	tui, s := inboxTUI(t, inboxItemAt("p1", "eng1", inboxLongBody, time.Minute))
+	tui.openInboxPanel()
+	tui.renderInboxPanel()
+	if got := inboxScreen(t, s); strings.Contains(got, "default:") {
+		t.Errorf("an item with no default rendered a default line:\n%s", got)
+	}
+}
+
+// When the box is already at the screen's maximum and the text still does not
+// fit, the BODY gives way and says so; the default and the reply prompt never
+// do, since the default is what `a` commits to and the prompt is where the
+// answer goes.
+func TestInboxPanel_OverflowHidesBodyRowsLoudlyAndKeepsTheDefaultAndPrompt(t *testing.T) {
+	body := strings.TrimSuffix(strings.Repeat("body line\n", 30), "\n")
+	it := inboxItemAt("p1", "eng1", body, time.Minute)
+	it.DefaultText = inboxLongDefault
+	tui, s := inboxTUI(t, it)
+	s.SetSize(80, 16)
+	tui.openInboxPanel()
+	tui.renderInboxPanel()
+	got := inboxScreen(t, s)
+	if !strings.Contains(got, "more lines not shown") {
+		t.Errorf("overflow was silent:\n%s", got)
+	}
+	if !strings.Contains(inboxPaneText(got), "default: "+inboxLongDefault) {
+		t.Errorf("the default gave way to the body:\n%s", got)
+	}
+	if !strings.Contains(got, "> _") {
+		t.Errorf("the reply prompt gave way to the body:\n%s", got)
+	}
+}
+
+// The list row above the divider keeps its single-line ellipsis; wrapping is
+// the detail pane's behaviour only (AC edge case).
+func TestInboxPanel_ListRowStaysSingleLineWhileTheDetailWraps(t *testing.T) {
+	it := inboxItemAt("p1", "eng1", inboxLongBody, time.Minute)
+	tui, s := inboxTUI(t, it)
+	tui.openInboxPanel()
+	tui.renderInboxPanel()
+	got := inboxScreen(t, s)
+	// Anchor on the agent line, not on a run of "─": the top border is made
+	// of the same rune and matched first when this test was first written.
+	agentLine := inboxRowOf(got, "eng1 · 1m ago")
+	first := inboxRowOf(got, "the operator asked")
+	if agentLine < 0 || first < 0 || first >= agentLine {
+		t.Fatalf("expected the list row (ellipsized) above the detail pane starting at row %d, got first mention at %d:\n%s", agentLine, first, got)
+	}
+	// The full body appears exactly once across the pane — in the detail —
+	// while the list row carries only an ellipsized prefix of it.
+	if n := strings.Count(inboxPaneText(got), inboxLongBody); n != 1 {
+		t.Errorf("the full body appears %d times, want exactly once (detail pane only):\n%s", n, got)
 	}
 }

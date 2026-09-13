@@ -228,12 +228,32 @@ func (t *TUI) renderInboxPanel() {
 	if rows < 1 {
 		rows = 1 // the empty-state line occupies one row
 	}
-	boxH := rows + inboxChromeRows + inboxDetailRows
+	// The persistence warning wraps too: it clipped at the edge in the same
+	// panel, and the operator must be able to read WHY replies are session-only.
+	var persistLines []string
+	if reason := r.PersistenceReason(); reason != "" {
+		persistLines = wrapToWidth(InboxNotPersistingPrefix+reason, boxW-4)
+	}
+	persistRows := len(persistLines)
+	now := time.Now()
+	sel := t.inboxSelectedIndex(items)
+	// The detail pane is laid out BEFORE the box is sized (ini-vkcd): the box
+	// grows to fit the wrapped text, up to the screen's allowed maximum, and
+	// only then does anything give way. A fixed detail height is what left the
+	// lower half of the panel empty while the question was clipped on one row.
+	var detail []inboxDetailLine
+	if len(items) > 0 {
+		detail = t.inboxDetailLines(items[sel], now, boxW-4, -1)
+	}
+	boxH := rows + inboxChromeRows + persistRows + len(detail)
 	if sh-2 < boxH {
 		boxH = sh - 2
 	}
 	if boxH < 8 {
 		boxH = 8
+	}
+	if len(items) > 0 {
+		detail = t.inboxDetailLines(items[sel], now, boxW-4, boxH-inboxChromeRows-persistRows-rows)
 	}
 	startX, startY := (sw-boxW)/2, (sh-boxH)/2
 	if startX < 0 {
@@ -297,8 +317,8 @@ func (t *TUI) renderInboxPanel() {
 	// save: the operator must know their replies are session-only BEFORE
 	// they type one, not after a restart loses them. A owns the condition
 	// and the wording; this renders it (ini-3wkl.4 AC 7).
-	if reason := r.PersistenceReason(); reason != "" {
-		put(y, InboxNotPersistingPrefix+reason, warn)
+	for _, line := range persistLines {
+		put(y, line, warn)
 		y++
 	}
 
@@ -310,9 +330,7 @@ func (t *TUI) renderInboxPanel() {
 		return
 	}
 
-	now := time.Now()
 	width := inboxNameWidth(items, r)
-	sel := t.inboxSelectedIndex(items)
 	for i, it := range items {
 		if i >= inboxListRows {
 			break
@@ -333,49 +351,101 @@ func (t *TUI) renderInboxPanel() {
 		s.SetContent(x, y, '─', nil, border)
 	}
 	y++
-	t.drawInboxDetail(items[sel], now, y, put, bg, dim)
+	t.drawInboxDetail(detail, y, put, bg, dim)
 	t.drawInboxFooter(startX, startY+boxH-2, boxW, put)
 }
 
-// inboxDetailRows is the detail pane's height: agent line, body window,
-// default line, delivery line, reply line.
-const inboxDetailRows = 8
+// inboxDetailLine is one screen row of the detail pane, already wrapped.
+type inboxDetailLine struct {
+	text string
+	dim  bool
+}
 
-// drawInboxDetail renders the selected item: who, how long ago, the body
-// (scrolling, so a 40-line post does not need the row to grow), the default
-// the agent stated, what the send path says about delivery, and the reply
-// line the operator types into.
-func (t *TUI) drawInboxDetail(it InboxItem, now time.Time, y int, put func(int, string, tcell.Style), bg, dim tcell.Style) {
-	put(y, fmt.Sprintf("%s · %s ago", it.Agent, inboxAgeText(it.Created, now)), dim)
-	y++
+// inboxDetailLines lays out the selected item as display rows: who and how
+// long ago, the body, the default the agent stated, what the send path says
+// about delivery, and the reply line the operator types into.
+//
+// Every part is WORD-WRAPPED at width (ini-vkcd). The operator's first try of
+// v2.14.0 showed the question and its default each clipped at the panel edge
+// on one row while half the panel sat empty — he could not read the question,
+// and accepting the default meant committing to text he could not read either.
+// wrapToWidth breaks a token wider than the pane (a URL, a path) rather than
+// clipping it.
+//
+// avail < 0 means unbounded: the caller measures the full height first and
+// grows the box to it. When the box is already at its maximum and the text
+// still does not fit, the BODY gives way, replaced by a row that says how much
+// is not shown. The agent line, the default, the delivery verdict and the
+// reply prompt never give way: the default is exactly what `a` commits to, and
+// the prompt is where the answer goes. Nothing is dropped silently.
+func (t *TUI) inboxDetailLines(it InboxItem, now time.Time, width, avail int) []inboxDetailLine {
+	wrap := func(text string, dim bool) []inboxDetailLine {
+		segs := wrapToWidth(text, width)
+		if len(segs) == 0 {
+			segs = []string{""} // a blank paragraph line keeps its row
+		}
+		out := make([]inboxDetailLine, 0, len(segs))
+		for _, seg := range segs {
+			out = append(out, inboxDetailLine{text: seg, dim: dim})
+		}
+		return out
+	}
 
-	body := strings.Split(it.Body, "\n")
-	const bodyRows = 3
+	head := wrap(fmt.Sprintf("%s · %s ago", it.Agent, inboxAgeText(it.Created, now)), true)
+
+	paragraphs := strings.Split(strings.TrimRight(it.Body, "\n"), "\n")
 	start := t.inbox.detailScroll
-	if start > len(body)-1 {
-		start = len(body) - 1
+	if start > len(paragraphs)-1 {
+		start = len(paragraphs) - 1
 	}
 	if start < 0 {
 		start = 0
 	}
-	for i := 0; i < bodyRows && start+i < len(body); i++ {
-		put(y, body[start+i], bg)
-		y++
-	}
-	if len(body) > bodyRows {
-		put(y, fmt.Sprintf("  … %d more lines (↑↓ scrolls the body when an item is open)", len(body)-bodyRows), dim)
-		y++
+	var body []inboxDetailLine
+	for _, p := range paragraphs[start:] {
+		body = append(body, wrap(p, false)...)
 	}
 
+	var tail []inboxDetailLine
 	if it.DefaultText != "" {
-		put(y, "default: "+it.DefaultText, dim)
-		y++
+		tail = append(tail, wrap("default: "+it.DefaultText, true)...)
 	}
 	if line := inboxDeliveryLine(it); line != "" {
-		put(y, line, dim)
+		tail = append(tail, wrap(line, true)...)
+	}
+	tail = append(tail, wrap("> "+string(t.inbox.replyBuf)+"_", false)...)
+
+	if avail >= 0 && len(head)+len(body)+len(tail) > avail {
+		room := avail - len(head) - len(tail) - 1 // one row says what is hidden
+		if room < 0 {
+			room = 0
+		}
+		if room > len(body) {
+			room = len(body)
+		}
+		hidden := len(body) - room
+		body = append(body[:room:room], inboxDetailLine{
+			text: fmt.Sprintf("… %d more lines not shown", hidden),
+			dim:  true,
+		})
+	}
+
+	lines := make([]inboxDetailLine, 0, len(head)+len(body)+len(tail))
+	lines = append(lines, head...)
+	lines = append(lines, body...)
+	return append(lines, tail...)
+}
+
+// drawInboxDetail draws rows laid out by inboxDetailLines.
+func (t *TUI) drawInboxDetail(lines []inboxDetailLine, y int, put func(int, string, tcell.Style), bg, dim tcell.Style) {
+	for _, l := range lines {
+		st := bg
+		if l.dim {
+			st = dim
+		}
+		put(y, l.text, st)
 		y++
 	}
-	put(y, "> "+string(t.inbox.replyBuf)+"_", bg)
 }
 
 // drawInboxFooter renders the key legend, and the transient note (why `a`
