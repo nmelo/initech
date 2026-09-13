@@ -65,8 +65,10 @@ const InboxDelivered = "delivered"
 // written for could ever read it.
 //
 // Dismissed and withdrawn prune regardless -- nothing was ever sent for them.
-// inboxOpenForOperator is this predicate's complement. The real-store contract
-// is pinned by TestInboxRetention_RealStoreAndPanelAgree.
+// inboxOpenForOperator is this predicate's complement for declared states.
+// Unknown persisted states retain their existing boundary: kept here, hidden
+// by the panel. TestInboxRetention_RealStoreAndPanelAgree pins the real-store
+// contract, and the adjacent unknown-state test pins that boundary.
 func inboxPrunable(it InboxItem) bool {
 	if !inboxTerminal(it.State) {
 		return false
