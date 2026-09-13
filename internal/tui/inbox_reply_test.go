@@ -430,7 +430,6 @@ func TestInboxReply_KeypressDoesNotWaitForDelivery(t *testing.T) {
 	p.SetOnSuspendedMessage(func(*Pane) { <-release }) // a wake that blocks, as a real respawn does
 	tui := replyTUI(t, p)
 	item := postItem(t, tui, "eng1", "question", "")
-	t.Cleanup(func() { close(release) })
 
 	done := make(chan error, 1)
 	go func() { done <- tui.ReplyToInboxItem(item.ID, "answer") }()
@@ -449,6 +448,17 @@ func TestInboxReply_KeypressDoesNotWaitForDelivery(t *testing.T) {
 	}
 	if stored.DeliveryStatus == InboxDelivered {
 		t.Error("an in-flight delivery was reported delivered")
+	}
+
+	// RELEASE AND WAIT HERE, NOT IN CLEANUP. Releasing the wake from t.Cleanup
+	// let the delivery goroutine write the item's status while TempDir was
+	// already removing the store, so the test failed in cleanup with
+	// "directory not empty" -- measured 5 runs in 50 at 95f7bb7, before
+	// ini-3wkl.7 touched anything. The write is part of what this test drives,
+	// so it belongs inside the test.
+	close(release)
+	if got := awaitStatus(t, tui, item.ID, inboxDeliveryQueuedSuspended); got != inboxDeliveryQueuedSuspended {
+		t.Errorf("after the wake was released the status is %q, want %q", got, inboxDeliveryQueuedSuspended)
 	}
 }
 
