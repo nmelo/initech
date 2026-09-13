@@ -2,7 +2,6 @@ package tui
 
 import (
 	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -29,31 +28,13 @@ import (
 // replyTUI builds a TUI with a real inbox store over a temp root.
 func replyTUI(t *testing.T, panes ...*Pane) *TUI {
 	t.Helper()
-	root := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(root, ".initech"), 0o700); err != nil {
-		t.Fatalf("mkdir: %v", err)
-	}
+	f := inboxFixtureFor(t)
 	tui := newTestTUI(panes...)
-	tui.projectRoot = root
+	tui.projectRoot = f.root
 	tui.windowID = WindowOne
-	// JOIN THE DELIVERIES BEFORE THE TEMP DIR GOES (ini-5rvq). Registered
-	// immediately after t.TempDir(), so under t.Cleanup's LIFO order it runs
-	// AFTER any cleanup the test adds (a close(release) that unblocks a parked
-	// wake) and BEFORE TempDir's RemoveAll. Without it, a delivery goroutine
-	// writing inbox.yaml races RemoveAll walking the same directory: 0% alone,
-	// 30-40% under the full suite's load (qa2). A real happens-before edge,
-	// never a sleep; the deadline below only names a goroutine that never
-	// finishes, it is not the synchronization.
-	t.Cleanup(func() {
-		joined := make(chan struct{})
-		go func() { tui.inboxDeliveries.Wait(); close(joined) }()
-		select {
-		case <-joined:
-		case <-time.After(10 * time.Second):
-			t.Error("a reply delivery goroutine never finished; it would still be writing when the temp dir is removed")
-		}
-	})
-	return tui
+	// Joined by the fixture before the root is removed (ini-yxlh), which
+	// replaces the join this constructor used to carry itself (ini-5rvq).
+	return f.track(tui)
 }
 
 // postItem puts an item in the store the way child B's post does.
@@ -430,6 +411,9 @@ func TestInboxReply_KeypressDoesNotWaitForDelivery(t *testing.T) {
 	p.SetOnSuspendedMessage(func(*Pane) { <-release }) // a wake that blocks, as a real respawn does
 	tui := replyTUI(t, p)
 	item := postItem(t, tui, "eng1", "question", "")
+	// Released in cleanup: registered after the fixture, so it runs before the
+	// fixture's join (ini-yxlh), which replaces 87b17a0's in-body release.
+	t.Cleanup(func() { close(release) })
 
 	done := make(chan error, 1)
 	go func() { done <- tui.ReplyToInboxItem(item.ID, "answer") }()
@@ -450,16 +434,6 @@ func TestInboxReply_KeypressDoesNotWaitForDelivery(t *testing.T) {
 		t.Error("an in-flight delivery was reported delivered")
 	}
 
-	// RELEASE AND WAIT HERE, NOT IN CLEANUP. Releasing the wake from t.Cleanup
-	// let the delivery goroutine write the item's status while TempDir was
-	// already removing the store, so the test failed in cleanup with
-	// "directory not empty" -- measured 5 runs in 50 at 95f7bb7, before
-	// ini-3wkl.7 touched anything. The write is part of what this test drives,
-	// so it belongs inside the test.
-	close(release)
-	if got := awaitStatus(t, tui, item.ID, inboxDeliveryQueuedSuspended); got != inboxDeliveryQueuedSuspended {
-		t.Errorf("after the wake was released the status is %q, want %q", got, inboxDeliveryQueuedSuspended)
-	}
 }
 
 // PRUNE COUPLING with child A: only a confirmed delivery lets an answered

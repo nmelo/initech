@@ -16,11 +16,9 @@ import (
 
 func inboxRoot(t *testing.T) string {
 	t.Helper()
-	root := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(root, ".initech"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	return root
+	// The fixture's root, so any goroutine this test later starts is joined
+	// before the root is removed (ini-yxlh).
+	return inboxFixtureFor(t).root
 }
 
 func mustLoadInbox(t *testing.T, root string) *Inbox {

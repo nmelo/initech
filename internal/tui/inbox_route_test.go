@@ -9,7 +9,6 @@ package tui
 // pass every assertion below while the product wrote nothing.
 
 import (
-	"bufio"
 	"encoding/json"
 	"net"
 	"os"
@@ -24,38 +23,29 @@ import (
 
 func routeWindowOne(t *testing.T, root string) *TUI {
 	t.Helper()
-	return &TUI{
+	return inboxFixtureFor(t).track(&TUI{
 		projectRoot: root,
 		windowID:    WindowOne,
 		project:     &config.Project{Name: "rig", Root: root},
-	}
+	})
 }
 
 func routeChild(t *testing.T, root string) *TUI {
 	t.Helper()
-	return &TUI{
+	return inboxFixtureFor(t).track(&TUI{
 		projectRoot: root,
 		windowID:    "window-2",
 		project:     &config.Project{Name: "rig", Root: root, PeerName: "window-2"},
-	}
+	})
 }
 
 // linkToWindowOne gives a child the control path a real viewer has: a
 // RemotePane carrying a ControlMux whose far end is window 1's own daemon
 // handler, wired to window 1's applyInboxCmd exactly as startWindowServer
-// wires it in production.
+// wires it in production. The fixture owns the stream goroutine (ini-yxlh).
 func linkToWindowOne(t *testing.T, child, w1 *TUI) {
 	t.Helper()
-	clientConn, serverConn := net.Pipe()
-	t.Cleanup(func() { clientConn.Close(); serverConn.Close() })
-
-	d := &Daemon{onInboxCmd: w1.applyInboxCmd}
-	go d.handleControlStream(serverConn, bufio.NewScanner(serverConn), "window-2")
-
-	mux := NewControlMux(clientConn)
-	// No stream and no Start(): this pane exists to carry the mux, which is
-	// how windowOneMux finds the connection to window 1.
-	child.panes = append(child.panes, NewRemotePane("eng1", "window1", nil, mux, 80, 24))
+	inboxFixtureFor(t).linkDaemon(child, &Daemon{onInboxCmd: w1.applyInboxCmd})
 }
 
 func routePost(t *testing.T, w1 *TUI, agent, body, def string) InboxPostResult {
@@ -468,11 +458,9 @@ func TestInboxRoute_ARefusalFromWindowOneIsShownNotSwallowed(t *testing.T) {
 	item := routePost(t, w1, "eng2", "which schema?", "")
 
 	child := routeChild(t, root)
-	clientConn, serverConn := net.Pipe()
-	t.Cleanup(func() { clientConn.Close(); serverConn.Close() })
-	d := &Daemon{} // onInboxCmd nil: a daemon that does not own the inbox.
-	go d.handleControlStream(serverConn, bufio.NewScanner(serverConn), "window-2")
-	child.panes = []PaneView{NewRemotePane("eng1", "window1", nil, NewControlMux(clientConn), 80, 24)}
+	// onInboxCmd nil: a daemon that does not own the inbox. Owned by the
+	// fixture like every other link (ini-yxlh).
+	inboxFixtureFor(t).linkDaemon(child, &Daemon{})
 
 	child.wireInboxDelivery()
 	child.inbox.onReply(item.ID, "use the v2 schema")
