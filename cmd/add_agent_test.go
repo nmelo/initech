@@ -732,3 +732,93 @@ func TestRunAddAgent_TypoRoleRejected(t *testing.T) {
 		t.Errorf("error = %q, want mention of 'Numbered families' so operators see the qa\\d+/eng\\d+ shape", msg)
 	}
 }
+
+// TestRunAddAgent_HiredAgentHasNoUnrenderedPlaceholders is ini-rg12's own
+// verification step as a test: hire an agent into a project and assert the
+// CLAUDE.md it wrote has no "{{" left and names the configured stack.
+//
+// Both halves matter. The configured project proves hire reads the project
+// keys (the bug report's symptom was an agent reading "{{tech_stack}}" as its
+// tech stack); the bare project proves the unconfigured path — which is what
+// every project `initech init` creates today — writes the unset text rather
+// than the placeholder or an invented stack.
+func TestRunAddAgent_HiredAgentHasNoUnrenderedPlaceholders(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		techStack string
+		buildCmd  string
+		testCmd   string
+		wantIn    string
+	}{
+		{name: "configured", techStack: "Go 1.25", buildCmd: "make build", testCmd: "make test", wantIn: "Go 1.25"},
+		{name: "unconfigured", wantIn: "initech.yaml"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			p := &config.Project{
+				Name:      "test",
+				Root:      root,
+				Roles:     []string{"pm"},
+				Beads:     config.BeadsConfig{Enabled: boolPtr(false)},
+				TechStack: tc.techStack,
+				BuildCmd:  tc.buildCmd,
+				TestCmd:   tc.testCmd,
+			}
+			if err := config.Write(filepath.Join(root, "initech.yaml"), p); err != nil {
+				t.Fatalf("write config: %v", err)
+			}
+			if err := os.MkdirAll(filepath.Join(root, "pm"), 0755); err != nil {
+				t.Fatal(err)
+			}
+			chdirTemp(t, root)
+
+			origRunner := newAddAgentRunner
+			newAddAgentRunner = func() iexec.Runner { return &iexec.FakeRunner{} }
+			t.Cleanup(func() { newAddAgentRunner = origRunner })
+
+			var buf bytes.Buffer
+			addAgentCmd.SetOut(&buf)
+			t.Cleanup(func() { addAgentCmd.SetOut(nil) })
+
+			if err := runAddAgent(addAgentCmd, []string{"eng9"}); err != nil {
+				t.Fatalf("hire eng9: %v", err)
+			}
+
+			raw, err := os.ReadFile(filepath.Join(root, "eng9", "CLAUDE.md"))
+			if err != nil {
+				t.Fatalf("eng9/CLAUDE.md not written: %v", err)
+			}
+			md := string(raw)
+			if strings.Contains(md, "{{") {
+				for i, line := range strings.Split(md, "\n") {
+					if strings.Contains(line, "{{") {
+						t.Errorf("eng9/CLAUDE.md line %d still holds a placeholder: %s", i+1, line)
+					}
+				}
+			}
+			stack := techStackSection(t, md)
+			if !strings.Contains(stack, tc.wantIn) {
+				t.Errorf("Tech Stack section = %q, want it to contain %q", stack, tc.wantIn)
+			}
+		})
+	}
+}
+
+// techStackSection returns the body of the CLAUDE.md "## Tech Stack" heading,
+// so the assertion reads the section the bug was reported against rather than
+// the whole document — a match anywhere else in a 200-line file would not be
+// evidence about the Tech Stack section at all.
+func techStackSection(t *testing.T, md string) string {
+	t.Helper()
+	_, after, found := strings.Cut(md, "## Tech Stack\n")
+	if !found {
+		t.Fatal("CLAUDE.md has no '## Tech Stack' heading; the assertion has no subject")
+	}
+	if next := strings.Index(after, "\n## "); next >= 0 {
+		after = after[:next]
+	}
+	if strings.TrimSpace(after) == "" {
+		t.Fatal("Tech Stack section is empty; the assertion has no subject")
+	}
+	return after
+}

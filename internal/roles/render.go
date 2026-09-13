@@ -1,6 +1,7 @@
 package roles
 
 import (
+	"fmt"
 	"regexp"
 	"strings"
 )
@@ -45,4 +46,29 @@ func Render(tmpl string, vars RenderVars) string {
 // Useful when a template uses custom variables not in RenderVars.
 func RenderString(tmpl string, key, value string) string {
 	return strings.ReplaceAll(tmpl, "{{"+key+"}}", value)
+}
+
+// UnrenderedPlaceholders returns one short excerpt per remaining "{{" site in
+// text, as "line N: snippet". Empty result means the text is safe to write.
+//
+// The scan is for the LITERAL "{{", deliberately not for varPattern. Render is
+// lenient by contract — an empty value leaves its placeholder intact — so the
+// thing that reaches disk is precisely the placeholder the renderer did NOT
+// substitute, and a malformed one ("{{ tech_stack }}", "{{build-cmd}}") is
+// exactly as broken in an agent's instructions as a well-formed one while
+// matching no variable pattern at all. A guard that sees only what the renderer
+// sees cannot catch what the renderer missed (ini-rg12).
+func UnrenderedPlaceholders(text string) []string {
+	var found []string
+	for i, line := range strings.Split(text, "\n") {
+		if !strings.Contains(line, "{{") {
+			continue
+		}
+		snippet := strings.TrimSpace(line)
+		if len(snippet) > 80 {
+			snippet = snippet[:80] + "..."
+		}
+		found = append(found, fmt.Sprintf("line %d: %s", i+1, snippet))
+	}
+	return found
 }

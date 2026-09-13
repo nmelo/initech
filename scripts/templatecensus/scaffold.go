@@ -52,12 +52,29 @@ func checkScaffold(root string, verbose bool, registered, exempt map[string]bool
 	if _, err := scaffold.Run(p, scaffold.Options{}); err != nil {
 		return fmt.Errorf("scaffold census: %w", err)
 	}
+	return checkScaffoldOutput(dir, root, p, verbose, registered, exempt)
+}
+
+// checkScaffoldOutput runs every check over an already-scaffolded directory.
+// Split out of checkScaffold so a test can drive the WHOLE chain against a
+// directory it prepared, rather than each check in isolation (ini-rg12).
+//
+// That split is not cosmetic. Testing a check function directly proves the
+// check works; it proves nothing about whether anything calls it, and deleting
+// the call from checkScaffold is invisible to such a test — verified by mutation
+// while writing this. The directory seam also lets a test stage the one case
+// this census exists for: a file on disk that scaffold's own write guard never
+// saw, because some future writer used os.WriteFile directly.
+func checkScaffoldOutput(dir, root string, p *config.Project, verbose bool, registered, exempt map[string]bool) error {
 	files, err := readScaffoldOutput(dir)
 	if err != nil {
 		return err
 	}
 	count, err := checkOutputVerbs(files, registered, exempt)
 	if err != nil {
+		return err
+	}
+	if err := checkOutputPlaceholders(files); err != nil {
 		return err
 	}
 	templates, err := templateConstants(filepath.Join(root, scanDir))
@@ -68,7 +85,7 @@ func checkScaffold(root string, verbose bool, registered, exempt map[string]bool
 		return err
 	}
 	if verbose {
-		fmt.Printf("  scaffold: %d roles, %d templates, %d files, %d mentions\n", len(names), len(templates), len(files), count)
+		fmt.Printf("  scaffold: %d roles, %d templates, %d files, %d mentions\n", len(p.Roles), len(templates), len(files), count)
 	}
 	return nil
 }
@@ -134,6 +151,29 @@ func checkOutputVerbs(files map[string]string, registered, exempt map[string]boo
 	return count, nil
 }
 
+// checkOutputPlaceholders fails on any scaffolded file that still holds a "{{"
+// template variable (ini-rg12). It reads the map readScaffoldOutput already
+// produced rather than walking disk again, so it inherits that walk's property:
+// a NEW writer is covered without remembering to register itself anywhere.
+//
+// The census project deliberately configures no tech_stack/build_cmd/test_cmd,
+// which is the exact shape of every project `initech init` creates today — so
+// this check exercises the unconfigured path, the one that shipped literal
+// "{{tech_stack}}" into every agent's instructions.
+func checkOutputPlaceholders(files map[string]string) error {
+	var failures []string
+	for path, text := range files {
+		for _, left := range roles.UnrenderedPlaceholders(text) {
+			failures = append(failures, fmt.Sprintf("%s: %s", path, left))
+		}
+	}
+	if len(failures) > 0 {
+		sort.Strings(failures)
+		return fmt.Errorf("scaffold output has unrendered template variables:\n  %s", strings.Join(failures, "\n  "))
+	}
+	return nil
+}
+
 // templateConstants derives the inventory from the package's *Template
 // constants (the roles package naming contract), rather than a second role
 // list. Type checking resolves concatenated constants and shared fragments.
@@ -190,18 +230,25 @@ func checkTemplateCoverage(templates, files map[string]string, p *config.Project
 	if len(templates) == 0 {
 		return fmt.Errorf("template coverage: empty template inventory")
 	}
-	vars := roles.RenderVars{ProjectName: p.Name, ProjectRoot: p.Root}
 	var missing []string
 	for name, tmpl := range templates {
-		rendered := roles.Render(tmpl, vars)
 		found := false
 		for _, role := range p.Roles {
+			// Rendered per role through the shared resolver, not through a
+			// hand-built RenderVars: this check compares rendered text against
+			// what scaffold.Run actually wrote, so a second copy of the
+			// variable rules here would make the census disagree with the
+			// scaffold and report every role template as unreached (ini-rg12).
+			rendered := roles.Render(tmpl, scaffold.RenderVarsFor(p, p.Root, role))
 			text, exists := files[role+"/CLAUDE.md"]
 			if exists && text == roles.RenderString(rendered, "role_name", role) && rendered != "" {
 				found = true
 			}
 		}
 		if !strings.HasPrefix(tmpl, "# CLAUDE.md") {
+			// Document templates are role-independent; scaffold.Run renders
+			// them once with project name and root only.
+			rendered := roles.Render(tmpl, roles.RenderVars{ProjectName: p.Name, ProjectRoot: p.Root})
 			for _, text := range files {
 				if text == rendered && rendered != "" {
 					found = true

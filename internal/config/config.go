@@ -47,6 +47,19 @@ type Project struct {
 	Beads         BeadsConfig             `yaml:"beads,omitempty"`
 	Resource      ResourceConfig          `yaml:"resource,omitempty"`
 	Roles         []string                `yaml:"roles"`
+
+	// TechStack, BuildCmd and TestCmd fill the {{tech_stack}}, {{build_cmd}}
+	// and {{test_cmd}} placeholders in every role's CLAUDE.md. Before ini-rg12
+	// the ONLY source for these was a per-role role_overrides block, so a
+	// project that never wrote one scaffolded literal "{{tech_stack}}" into
+	// every agent's instructions. These are the project-wide answer; a
+	// role_overrides entry still wins for a single agent. Left empty, the
+	// scaffold writes text saying so and naming these keys — it never writes
+	// the placeholder, and never guesses a stack.
+	TechStack string `yaml:"tech_stack,omitempty"`
+	BuildCmd  string `yaml:"build_cmd,omitempty"`
+	TestCmd   string `yaml:"test_cmd,omitempty"`
+
 	ClaudeCommand []string                `yaml:"claude_command,omitempty"`
 	ClaudeArgs    []string                `yaml:"claude_args,omitempty"`
 	RoleOverrides map[string]RoleOverride `yaml:"role_overrides,omitempty"`

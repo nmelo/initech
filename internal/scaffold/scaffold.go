@@ -115,19 +115,10 @@ func Run(p *config.Project, opts Options) ([]string, error) {
 			return nil, fmt.Errorf("create %s/.claude/: %w", roleName, err)
 		}
 
-		// CLAUDE.md from template
-		roleVars := vars
-		if ov, ok := p.RoleOverrides[roleName]; ok {
-			if ov.TechStack != "" {
-				roleVars.TechStack = ov.TechStack
-			}
-			if ov.BuildCmd != "" {
-				roleVars.BuildCmd = ov.BuildCmd
-			}
-			if ov.TestCmd != "" {
-				roleVars.TestCmd = ov.TestCmd
-			}
-		}
+		// CLAUDE.md from template. RenderVarsFor is shared with the hire path
+		// and the remote push builder so all three resolve identically
+		// (ini-rg12).
+		roleVars := RenderVarsFor(p, p.Root, roleName)
 		tmpl := TemplateForRole(roleName)
 		content := roles.Render(tmpl, roleVars)
 		content = roles.RenderString(content, "role_name", roleName)
@@ -198,8 +189,22 @@ func TemplateForRole(name string) string {
 
 // writeFile writes content to a file, respecting idempotency.
 // Returns the full path if written, empty string if skipped.
+//
+// Content that still holds a "{{" placeholder is REFUSED, not warned about
+// (ini-rg12). Every file the scaffold writes is instructions an agent will read
+// and act on, so a surviving placeholder is not cosmetic: an agent told its
+// tech stack is "{{tech_stack}}" has been handed a false fact with no way to
+// notice. The check sits here, at the single write chokepoint, rather than in
+// each caller — that is what makes it total. A template variable added later
+// and wired up nowhere fails the scaffold loudly instead of shipping holes into
+// every agent in the fleet, which is how this bug survived long enough to be
+// found by hand-auditing agent files.
 func writeFile(dir, name, content string, force bool) (string, error) {
 	path := filepath.Join(dir, name)
+	if left := roles.UnrenderedPlaceholders(content); len(left) > 0 {
+		return "", fmt.Errorf("refusing to write %s with unrendered template variables:\n  %s",
+			name, strings.Join(left, "\n  "))
+	}
 	if !force {
 		if _, err := os.Stat(path); err == nil {
 			return "", nil // file exists, skip

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/nmelo/initech/internal/config"
+	"github.com/nmelo/initech/internal/roles"
 	"github.com/nmelo/initech/internal/tui"
 )
 
@@ -142,5 +143,76 @@ func TestBuildRemoteConfigureAgentCmd_RoleCommandOverride(t *testing.T) {
 	}
 	if strings.Contains(strings.Join(cfg2.Command, " "), "--continue") {
 		t.Errorf("codex-agent should NOT have claude_args appended: %v", cfg2.Command)
+	}
+}
+
+// TestBuildRemoteConfigureAgentCmd_PushesNoUnrenderedPlaceholders covers the
+// third writer ini-rg12 found. This builder had its own copy of the
+// role_overrides-only variable resolution, so a project with no overrides
+// pushed literal "{{tech_stack}}" to another machine — the same defect as the
+// local scaffold, and harder to notice from this side since nothing on the
+// sending host ever shows the file.
+func TestBuildRemoteConfigureAgentCmd_PushesNoUnrenderedPlaceholders(t *testing.T) {
+	proj := &config.Project{Name: "test", Roles: []string{"eng9"}}
+	cmd, err := buildRemoteConfigureAgentCmd("eng9", proj, config.Remote{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for _, doc := range []struct{ what, text string }{
+		{"ClaudeMD", cmd.ClaudeMD},
+		{"RootClaudeMD", cmd.RootClaudeMD},
+	} {
+		if left := roles.UnrenderedPlaceholders(doc.text); len(left) > 0 {
+			t.Errorf("%s holds unrendered placeholders: %v", doc.what, left)
+		}
+	}
+	if !strings.Contains(cmd.ClaudeMD, "## Tech Stack") {
+		t.Fatal("ClaudeMD has no Tech Stack section; this fixture proves nothing about the variables")
+	}
+}
+
+// TestBuildRemoteConfigureAgentCmd_ResolvesVariablesLikeTheLocalScaffold pins
+// the shared resolver: a remote agent and a local one in the same project must
+// read the same stack and commands. Two independent copies of the precedence
+// rules is what let them drift apart in the first place.
+func TestBuildRemoteConfigureAgentCmd_ResolvesVariablesLikeTheLocalScaffold(t *testing.T) {
+	proj := &config.Project{
+		Name:      "test",
+		Roles:     []string{"eng9"},
+		TechStack: "Go 1.25",
+		BuildCmd:  "make build",
+		TestCmd:   "make test",
+	}
+	cmd, err := buildRemoteConfigureAgentCmd("eng9", proj, config.Remote{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for _, want := range []string{"Go 1.25", "make build", "make test"} {
+		if !strings.Contains(cmd.ClaudeMD, want) {
+			t.Errorf("ClaudeMD does not contain %q; the remote builder is not reading the project keys", want)
+		}
+	}
+}
+
+// TestBuildRemoteConfigureAgentCmd_RefusesToPushAnUnrenderablePayload reaches
+// the guard rather than asserting around it. A config with no project name
+// leaves {{project_name}} in the rendered template — Render is lenient by
+// contract for an empty value — and pushing that to another machine hands a
+// remote agent instructions with a hole in them.
+//
+// The sibling tests above assert the payload is clean, which is true whether or
+// not the guard exists; only a payload that actually trips it can prove the
+// refusal is wired.
+func TestBuildRemoteConfigureAgentCmd_RefusesToPushAnUnrenderablePayload(t *testing.T) {
+	proj := &config.Project{Roles: []string{"eng9"}} // no Name
+	_, err := buildRemoteConfigureAgentCmd("eng9", proj, config.Remote{})
+	if err == nil {
+		t.Fatal("builder pushed a payload holding {{project_name}}")
+	}
+	if !strings.Contains(err.Error(), "project_name") {
+		t.Errorf("error = %q, want it to name the unrendered variable", err.Error())
+	}
+	if !strings.Contains(err.Error(), "eng9") {
+		t.Errorf("error = %q, want it to name the role whose document is broken", err.Error())
 	}
 }

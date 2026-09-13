@@ -1,8 +1,10 @@
 package cmd
 
 import (
+	"fmt"
 	"os"
 	"path"
+	"strings"
 
 	"github.com/nmelo/initech/internal/config"
 	"github.com/nmelo/initech/internal/roles"
@@ -75,20 +77,29 @@ func buildRemoteConfigureAgentCmd(roleName string, project *config.Project, remo
 
 	agentType, noBracketedPaste, submitKey := resolvePaneBehavior(ov)
 
-	roleVars := roles.RenderVars{ProjectName: project.Name, ProjectRoot: root}
-	if hasOverride {
-		if ov.TechStack != "" {
-			roleVars.TechStack = ov.TechStack
-		}
-		if ov.BuildCmd != "" {
-			roleVars.BuildCmd = ov.BuildCmd
-		}
-		if ov.TestCmd != "" {
-			roleVars.TestCmd = ov.TestCmd
-		}
-	}
+	// Shared with scaffold.Run so a remote agent's CLAUDE.md resolves exactly
+	// as the same role's local one does; root differs because the remote has
+	// its own directory layout, which is why it is a parameter (ini-rg12).
+	roleVars := scaffold.RenderVarsFor(project, root, roleName)
 	claudeMD := roles.Render(scaffold.TemplateForRole(roleName), roleVars)
 	claudeMD = roles.RenderString(claudeMD, "role_name", roleName)
+	rootMD := scaffold.RenderRootCLAUDE(project)
+	// This writer does not go through scaffold's writeFile, so it repeats the
+	// refusal here. Pushing a placeholder to another machine is the same defect
+	// as writing one locally, and harder to notice from this side. Both
+	// documents are checked rather than only the role one: the root document
+	// interpolates the project name, and deciding by hand which strings "cannot"
+	// contain a placeholder is how the original three writers each convinced
+	// themselves they did not need a check.
+	for _, doc := range []struct{ what, text string }{
+		{roleName + "/CLAUDE.md", claudeMD},
+		{"CLAUDE.md", rootMD},
+	} {
+		if left := roles.UnrenderedPlaceholders(doc.text); len(left) > 0 {
+			return tui.ConfigureAgentCmd{}, fmt.Errorf("refusing to push %s with unrendered template variables:\n  %s",
+				doc.what, strings.Join(left, "\n  "))
+		}
+	}
 
 	return tui.ConfigureAgentCmd{
 		Command:          argv,
@@ -97,6 +108,6 @@ func buildRemoteConfigureAgentCmd(roleName string, project *config.Project, remo
 		NoBracketedPaste: noBracketedPaste,
 		SubmitKey:        submitKey,
 		ClaudeMD:         claudeMD,
-		RootClaudeMD:     scaffold.RenderRootCLAUDE(project),
+		RootClaudeMD:     rootMD,
 	}, nil
 }

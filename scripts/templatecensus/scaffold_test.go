@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 
@@ -222,5 +223,91 @@ func TestCheckScaffold_HonoursTheExemptionListItIsGiven(t *testing.T) {
 	}
 	if err := checkScaffold(root, false, registered, nil); err != nil {
 		t.Fatalf("checkScaffold rejected the clean tree with no exemptions: %v", err)
+	}
+}
+
+// TestCheckOutputPlaceholders_FailsNamingTheFileAndLine is ini-rg12's census
+// half. The check reads the map readScaffoldOutput already built, so it must
+// behave on a hand-made map exactly as it does on a real scaffold.
+func TestCheckOutputPlaceholders_FailsNamingTheFileAndLine(t *testing.T) {
+	err := checkOutputPlaceholders(map[string]string{
+		"eng1/CLAUDE.md": "## Tech Stack\n\n{{tech_stack}}\n",
+		"qa1/CLAUDE.md":  "## Tech Stack\n\nGo 1.25\n",
+	})
+	if err == nil {
+		t.Fatal("checkOutputPlaceholders accepted output holding {{tech_stack}}")
+	}
+	for _, want := range []string{"eng1/CLAUDE.md", "line 3", "tech_stack"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error = %q, want it to contain %q", err.Error(), want)
+		}
+	}
+	if strings.Contains(err.Error(), "qa1/CLAUDE.md") {
+		t.Errorf("error = %q, want the clean file left out", err.Error())
+	}
+}
+
+// TestCheckOutputPlaceholders_AcceptsFullyRenderedOutput is the other
+// direction: a check that failed on everything would pass the test above while
+// making the census useless.
+func TestCheckOutputPlaceholders_AcceptsFullyRenderedOutput(t *testing.T) {
+	if err := checkOutputPlaceholders(map[string]string{
+		"eng1/CLAUDE.md": "## Tech Stack\n\nGo 1.25\n\nBuild: `make build`\n",
+		"docs/prd.md":    "# demo PRD\n\nfunc f() { x := 1 }\n",
+	}); err != nil {
+		t.Errorf("checkOutputPlaceholders rejected clean output: %v", err)
+	}
+}
+
+// TestCheckScaffoldOutput_FailsOnAPlaceholderThatBypassedTheWriteGuard drives
+// the WHOLE census chain, not the placeholder check in isolation: it proves
+// checkScaffoldOutput actually calls it. The two tests above would all pass
+// with the call deleted from the chain — confirmed by mutation, which is why
+// this one exists.
+//
+// The staged file is written with os.WriteFile, deliberately bypassing
+// scaffold's writeFile guard. That is the exact scenario this census covers
+// that the guard cannot: a future writer that does not go through the
+// chokepoint. A placeholder from a normal writer never reaches disk at all,
+// so staging one through writeFile would be impossible by construction.
+func TestCheckScaffoldOutput_FailsOnAPlaceholderThatBypassedTheWriteGuard(t *testing.T) {
+	root, err := repoRoot()
+	if err != nil {
+		t.Skip("module root unavailable")
+	}
+	registered := map[string]bool{}
+	for _, v := range cmd.RegisteredVerbs() {
+		registered[v] = true
+	}
+	names := make([]string, 0, len(roles.Catalog))
+	for name := range roles.Catalog {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	dir := t.TempDir()
+	p := &config.Project{Name: "census-project", Root: dir, Roles: names}
+	if _, err := scaffold.Run(p, scaffold.Options{}); err != nil {
+		t.Fatalf("scaffold: %v", err)
+	}
+	// Standing control: without the staged file the same chain passes, so a
+	// failure below is attributable to the placeholder and not to the fixture.
+	if err := checkScaffoldOutput(dir, root, p, false, registered, nil); err != nil {
+		t.Fatalf("clean scaffold output rejected: %v", err)
+	}
+
+	rogue := filepath.Join(dir, names[0], "NOTES.md")
+	if err := os.WriteFile(rogue, []byte("# Notes\n\nDeploy: {{deploy_cmd}}\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	err = checkScaffoldOutput(dir, root, p, false, registered, nil)
+	if err == nil {
+		t.Fatal("checkScaffoldOutput passed output holding an unrendered placeholder")
+	}
+	if !strings.Contains(err.Error(), "deploy_cmd") {
+		t.Errorf("error = %q, want it to name the offending variable", err.Error())
+	}
+	if !strings.Contains(err.Error(), "NOTES.md") {
+		t.Errorf("error = %q, want it to name the offending file", err.Error())
 	}
 }
