@@ -161,35 +161,9 @@ func (p *Pane) renderContent(s *clampedScreen, cr Region, e *vt.Emulator, focuse
 	startRow, renderOffset := p.contentOffsetOn(e)
 
 	if p.scrollOffset > 0 {
-		// Scrollback mode: render from the combined scrollback + screen buffer.
-		scrollbackLen := e.ScrollbackLen()
-		viewTop := startRow
-		viewBottom := viewTop + termRows
-		totalVirtual := scrollbackLen + emuRows
-		if viewBottom > totalVirtual {
-			viewBottom = totalVirtual
-		}
-
-		for row := 0; row < termRows; row++ {
-			vRow := viewTop + row
-			if vRow >= viewBottom {
-				continue
-			}
-			for col := 0; col < termCols; col++ {
-				var cell *uv.Cell
-				if vRow < scrollbackLen {
-					cell = e.ScrollbackCellAt(col, vRow)
-				} else {
-					cell = e.CellAt(col, vRow-scrollbackLen)
-				}
-				ch, style := uvCellToTcell(cell)
-				style = tintStyle(style, tint)
-				if dimmed {
-					style = dimStyle(style)
-				}
-				s.SetContent(cr.X+col, cr.Y+row, ch, nil, style)
-			}
-		}
+		// Scrollback mode: render from the combined scrollback + screen
+		// buffer, by the rule every pane kind uses (ini-di8h).
+		renderScrollbackRows(s, cr, e, dimmed, tint, startRow, termCols, termRows)
 	}
 
 	if p.scrollOffset == 0 {

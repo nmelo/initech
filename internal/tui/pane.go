@@ -117,6 +117,16 @@ type PaneView interface {
 	// was nothing to notice. A method here cannot be skipped by a new pane
 	// kind -- it will not compile without an answer.
 	FlushPaste(content []byte)
+	// ScrollUp/ScrollDown/InScrollback/ForwardWheel are the wheel contract
+	// (ini-di8h). On the interface for the same reason FlushPaste is: the
+	// wheel arms in mouse.go asserted *Pane, so every viewer window silently
+	// had no scrolling at all.
+	ScrollUp(n int)
+	ScrollDown(n int)
+	InScrollback() bool
+	// ForwardWheel sends one wheel notch to a fullscreen child at pane-local
+	// content coordinates; the child scrolls itself (ini-i3v).
+	ForwardWheel(lx, ly int, up bool, mods tcell.ModMask)
 	AgentType() string
 	SubmitKey() string // "" or "enter" (default), "ctrl+enter".
 	ActiveRunStart() time.Time
@@ -866,6 +876,28 @@ func (p *Pane) ForwardMouse(ev uv.MouseEvent) {
 	p.emu.SendMouse(ev)
 }
 
+// ForwardWheel translates pane-local content coordinates to emulator
+// coordinates and sends a wheel event to a fullscreen child (ini-i3v): it
+// owns and repaints its whole grid, so initech's job is to deliver the
+// input, not interpret it. The emulator drops the event silently if the
+// child never enabled mouse reporting.
+func (p *Pane) ForwardWheel(lx, ly int, up bool, mods tcell.ModMask) {
+	startRow, renderOffset := p.contentOffset()
+	emuY := startRow + (ly - renderOffset)
+	if emuY < 0 {
+		emuY = 0
+	}
+	emuX := lx
+	if emuX < 0 {
+		emuX = 0
+	}
+	button := uv.MouseWheelUp
+	if !up {
+		button = uv.MouseWheelDown
+	}
+	p.ForwardMouse(uv.MouseWheelEvent{X: emuX, Y: emuY, Button: button, Mod: uvKeyMods(mods)})
+}
+
 // maxScrollOffset returns the largest meaningful scrollOffset. Beyond this
 // value the view window would extend past the top of the virtual buffer
 // (scrollback + screen). The formula is scrollbackLen + emuHeight - termRows.
@@ -880,16 +912,11 @@ func (p *Pane) maxScrollOffset() int {
 // maxScrollOffsetOn is maxScrollOffset inside a withScreen region (ini-psjt).
 // Remembers its answer for the non-blocking wrapper's fallback.
 func (p *Pane) maxScrollOffsetOn(e *vt.Emulator) int {
-	scrollbackLen := e.ScrollbackLen()
-	emuHeight := e.Height()
-	termRows := emuHeight
+	termRows := e.Height()
 	if p.region.H > 2 {
 		_, termRows = p.region.TerminalSize()
 	}
-	max := scrollbackLen + emuHeight - termRows
-	if max < 0 {
-		max = 0
-	}
+	max := maxScrollOffsetFor(e, termRows)
 	p.lastMaxScroll = max
 	return max
 }
@@ -936,18 +963,8 @@ func (p *Pane) contentOffsetOn(e *vt.Emulator) (startRow, renderOffset int) {
 		return 0, 0
 	}
 	if p.scrollOffset > 0 {
-		scrollbackLen := e.ScrollbackLen()
-		totalVirtual := scrollbackLen + e.Height()
 		_, termRows := p.region.TerminalSize()
-		viewBottom := totalVirtual - p.scrollOffset
-		if viewBottom < 0 {
-			viewBottom = 0
-		}
-		viewTop := viewBottom - termRows
-		if viewTop < 0 {
-			viewTop = 0
-		}
-		return viewTop, 0
+		return scrollbackViewTop(e, termRows, p.scrollOffset), 0
 	}
 
 	innerCols, termRows := p.region.TerminalSize()

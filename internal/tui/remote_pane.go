@@ -49,9 +49,14 @@ type RemotePane struct {
 	lastResync    time.Time // rate-limit floor, so sustained load cannot storm
 	visible       bool
 	activity      ActivityState
-	lastOut       time.Time
-	beadIDs       []string
-	sessDesc      string
+	// scroll is this window's own position in the pane's history (ini-di8h).
+	// A viewer holds the same history window 1 does -- its emulator is fed
+	// the same bytes -- so the scroll rule is the shared one, and the
+	// position is local: nothing is persisted or sent upstream.
+	scroll   scrollAnchor
+	lastOut  time.Time
+	beadIDs  []string
+	sessDesc string
 
 	// waiting is window 1's needs-input state for this agent, pushed over the
 	// wire (ini-35ak). A viewer never derives it: it cannot see the agent's
@@ -623,6 +628,10 @@ func (rp *RemotePane) Render(screen tcell.Screen, focused bool, dimmed bool, ind
 		badge = " "
 	}
 	title := fmt.Sprintf(" %d %s%s", index, displayName, badge)
+	if rp.scroll.offset > 0 {
+		title = fmt.Sprintf(" %d %s%s[+%d] ", index, displayName, badge, rp.scroll.offset)
+		titleStyle = tcell.StyleDefault.Background(trueBlack).Foreground(tcell.ColorYellow).Bold(true)
+	}
 	if rp.Activity() == StateSuspended {
 		// Same badge, same taught gesture as the local ribbon: the stream
 		// pump swallows input at a suspended pane as a wake (ini-zffi's
@@ -646,10 +655,72 @@ func (rp *RemotePane) Render(screen tcell.Screen, focused bool, dimmed bool, ind
 	// The viewer emulator is written only on this goroutine, so the try never
 	// fails; going through withEmulator keeps one rule for every render.
 	withEmulator(rp.emu, screenTryBudget, func(e *vt.Emulator) {
+		innerCols, _ := r.InnerSize()
+		// Compensate for output that arrived while the operator reads, then
+		// draw history instead of the live tail (ini-di8h). Same rule, same
+		// step, same live-return as window 1.
+		rp.scroll.compensate(e, innerRows)
+		if rp.scroll.offset > 0 {
+			renderScrollbackRows(s, r, e, dimmed, tcell.ColorDefault, scrollbackViewTop(e, innerRows, rp.scroll.offset), innerCols, innerRows)
+			return
+		}
 		renderCells(s, r, e, dimmed, emuStartRow, tcell.ColorDefault)
 		renderSelection(s, r, e, sel, dimmed, emuStartRow)
 		renderCursor(s, r, e, focused, sel, emuStartRow)
 	})
+}
+
+// ScrollUp moves this window's view into the pane's history (ini-di8h).
+func (rp *RemotePane) ScrollUp(n int) {
+	_, termRows := rp.region.InnerSize()
+	rp.scroll.up(n, rp.emu.Emulator, termRows)
+}
+
+// ScrollDown moves the view back toward live output; at the bottom it is live.
+func (rp *RemotePane) ScrollDown(n int) {
+	rp.scroll.down(n)
+}
+
+// InScrollback reports whether this window is showing history.
+func (rp *RemotePane) InScrollback() bool { return rp.scroll.offset > 0 }
+
+// ForwardWheel hands one wheel notch to a fullscreen child (ini-di8h). The
+// viewer does not encode the mouse bytes itself: it names the pane and the
+// emulator-space position, and window 1's own pane sends the event through
+// the same ForwardMouse its own wheel uses. One encoder, and one check of
+// whether the child enabled mouse reporting -- in the process that owns the
+// child. Fire-and-forget like sendResize: a dropped notch is a notch, not a
+// broken pane.
+func (rp *RemotePane) ForwardWheel(lx, ly int, up bool, mods tcell.ModMask) {
+	if rp.mux == nil {
+		return
+	}
+	cmd := rp.wheelCmd(lx, ly, up, mods)
+	go func() {
+		if _, err := rp.mux.Request(cmd); err != nil {
+			LogDebug("remote", "wheel forward failed (fire-and-forget)", "agent", rp.name, "err", err)
+		}
+	}()
+}
+
+// wheelCmd builds the control command for one wheel notch. Y is translated
+// from pane-local content rows to emulator rows here, in the window that
+// knows its own geometry; the daemon applies it to the child's emulator,
+// which is the same size because the viewer's resize drives it.
+func (rp *RemotePane) wheelCmd(lx, ly int, up bool, mods tcell.ModMask) ControlCmd {
+	_, innerRows := rp.region.InnerSize()
+	emuY := rp.emu.Height() - innerRows + ly
+	if emuY < 0 {
+		emuY = 0
+	}
+	if lx < 0 {
+		lx = 0
+	}
+	wheel := "up"
+	if !up {
+		wheel = "down"
+	}
+	return ControlCmd{Action: "mouse", Target: rp.name, X: lx, Y: emuY, Wheel: wheel, Mods: int(uvKeyMods(mods))}
 }
 
 // Resize updates the local emulator immediately and debounces the control

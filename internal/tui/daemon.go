@@ -16,6 +16,7 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"fmt"
+	uv "github.com/charmbracelet/ultraviolet"
 	"io"
 	"log/slog"
 	"net"
@@ -277,6 +278,25 @@ type ControlCmd struct {
 	Rows   int    `json:"rows,omitempty"`
 	Cols   int    `json:"cols,omitempty"`
 	Prune  bool   `json:"prune,omitempty"` // reload_agents: also remove self-started agents no longer in config.
+	// Wheel input from a viewer window (ini-di8h). X/Y are emulator-space
+	// coordinates the viewer computed from its own emulator, which is the
+	// same size as the child's; Wheel is "up" or "down"; Mods carries the
+	// modifiers the child would have seen.
+	X     int    `json:"x,omitempty"`
+	Y     int    `json:"y,omitempty"`
+	Wheel string `json:"wheel,omitempty"`
+	Mods  int    `json:"mods,omitempty"`
+}
+
+// wheelEventFromCmd builds the wheel event a "mouse" control command asks
+// for (ini-di8h). Anything that is not "down" is an up notch, so a command
+// from an older or garbled peer scrolls back rather than toward live.
+func wheelEventFromCmd(cmd ControlCmd) uv.MouseWheelEvent {
+	button := uv.MouseWheelUp
+	if cmd.Wheel == "down" {
+		button = uv.MouseWheelDown
+	}
+	return uv.MouseWheelEvent{X: cmd.X, Y: cmd.Y, Button: button, Mod: uv.KeyMod(cmd.Mods)}
 }
 
 // ControlResp is the response to a control command. It also carries unsolicited
@@ -1132,6 +1152,23 @@ func (d *Daemon) handleControlStream(ctrl net.Conn, scanner *bufio.Scanner, peer
 					"req_rows", cmd.Rows, "req_cols", cmd.Cols,
 					"emu_h", pRows, "emu_w", pCols, "headless", d.headless)
 			}
+			if !respond(cmd.ID, ControlResp{OK: true}) {
+				return
+			}
+
+		case "mouse":
+			// A viewer's wheel over a fullscreen child (ini-di8h). The event is
+			// sent by the pane that OWNS the child, through the same
+			// ForwardMouse window 1's own wheel uses: one encoder, and one
+			// check of whether the child enabled mouse reporting.
+			p := d.findPane(cmd.Target)
+			if p == nil {
+				if !respond(cmd.ID, ControlResp{Error: fmt.Sprintf("agent %q not found", cmd.Target)}) {
+					return
+				}
+				continue
+			}
+			p.ForwardMouse(wheelEventFromCmd(cmd))
 			if !respond(cmd.ID, ControlResp{OK: true}) {
 				return
 			}

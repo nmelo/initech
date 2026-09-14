@@ -195,8 +195,12 @@ func (p *fakeRemotePaneView) LastEventTime() time.Time       { return time.Time{
 func (p *fakeRemotePaneView) SetVisible(v bool)              { p.visible = v }
 func (p *fakeRemotePaneView) Render(screen tcell.Screen, focused bool, dimmed bool, index int, sel Selection) {
 }
-func (p *fakeRemotePaneView) Resize(rows, cols int) {}
-func (p *fakeRemotePaneView) Close()                {}
+func (p *fakeRemotePaneView) Resize(rows, cols int)                                {}
+func (p *fakeRemotePaneView) ScrollUp(n int)                                       {}
+func (p *fakeRemotePaneView) ScrollDown(n int)                                     {}
+func (p *fakeRemotePaneView) InScrollback() bool                                   { return false }
+func (p *fakeRemotePaneView) ForwardWheel(lx, ly int, up bool, mods tcell.ModMask) {}
+func (p *fakeRemotePaneView) Close()                                               {}
 
 // waitForAsyncWake dispatches an async wake (any trigger that ends up calling
 // wakePanesInBackground or wakeSuspendedPaneFromKeystroke) and blocks until it

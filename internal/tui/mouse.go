@@ -228,17 +228,7 @@ func (t *TUI) handleMouse(ev *tcell.EventMouse) {
 			r := pr.Region
 			if mx >= r.X && mx < r.X+r.W && my >= r.Y && my < r.Y+r.H {
 				t.layoutState.Focused = agentKey(pr.Pane)
-				if p, ok := pr.Pane.(*Pane); ok {
-					if p.Emulator().IsAltScreen() {
-						ly := my - r.Y - 1 // -1: content starts below activity bar (ini-yah)
-						if ly < 0 {
-							ly = 0
-						}
-						t.forwardWheelEvent(p, mx-r.X, ly, uv.MouseWheelUp, ev.Modifiers())
-					} else {
-						p.ScrollUp(3)
-					}
-				}
+				t.wheelPane(pr.Pane, mx-r.X, my-r.Y, true, ev.Modifiers())
 				return
 			}
 		}
@@ -250,17 +240,7 @@ func (t *TUI) handleMouse(ev *tcell.EventMouse) {
 			r := pr.Region
 			if mx >= r.X && mx < r.X+r.W && my >= r.Y && my < r.Y+r.H {
 				t.layoutState.Focused = agentKey(pr.Pane)
-				if p, ok := pr.Pane.(*Pane); ok {
-					if p.Emulator().IsAltScreen() {
-						ly := my - r.Y - 1 // -1: content starts below activity bar (ini-yah)
-						if ly < 0 {
-							ly = 0
-						}
-						t.forwardWheelEvent(p, mx-r.X, ly, uv.MouseWheelDown, ev.Modifiers())
-					} else {
-						p.ScrollDown(3)
-					}
-				}
+				t.wheelPane(pr.Pane, mx-r.X, my-r.Y, false, ev.Modifiers())
 				return
 			}
 		}
@@ -303,39 +283,31 @@ func (t *TUI) forwardMouseEvent(p *Pane, lx, ly int, button uv.MouseButton, isMo
 	}
 }
 
-// forwardWheelEvent translates pane-local content coordinates to emulator
-// coordinates and sends a wheel event to an alt-screen child (ini-i3v): a
-// fullscreen program owns and repaints its whole grid, so it does its own
-// scrolling -- initech's job in alt-screen mode is to deliver the input, not
-// interpret it. The emulator silently drops the event if the child hasn't
-// enabled mouse reporting, same as forwardMouseEvent. A separate function
-// from forwardMouseEvent (rather than an added parameter) because
-// uv.MouseWheelEvent is a distinct event type from Click/Motion/Release, and
-// forwardMouseEvent's four existing call sites (click/drag/release) are a
-// regression-risk area this bead must not touch.
-func (t *TUI) forwardWheelEvent(p *Pane, lx, ly int, button uv.MouseButton, mods tcell.ModMask) {
-	startRow, renderOffset := p.contentOffset()
-	emuY := startRow + (ly - renderOffset)
-	emuX := lx
-	if emuY < 0 {
-		emuY = 0
+// wheelPane applies one wheel notch to a pane by the rule its child implies
+// (ini-i3v, ini-di8h): a fullscreen child owns its grid and is sent the
+// event to scroll itself; any other child ignores the wheel, so the pane's
+// own history moves instead. Reached through PaneView, so a viewer window
+// gets both rules rather than neither -- the wheel arms used to assert
+// *Pane, which is why scrolling was window 1's alone.
+func (t *TUI) wheelPane(pv PaneView, lx, ly int, up bool, mods tcell.ModMask) {
+	if _, isLocal := pv.(*Pane); isLocal {
+		ly-- // content starts below the activity bar (ini-yah)
 	}
-	if emuX < 0 {
-		emuX = 0
+	if ly < 0 {
+		ly = 0
 	}
-
-	var mod uv.KeyMod
-	if mods&tcell.ModShift != 0 {
-		mod |= uv.ModShift
+	if lx < 0 {
+		lx = 0
 	}
-	if mods&tcell.ModAlt != 0 {
-		mod |= uv.ModAlt
+	if pv.Emulator().IsAltScreen() {
+		pv.ForwardWheel(lx, ly, up, mods)
+		return
 	}
-	if mods&tcell.ModCtrl != 0 {
-		mod |= uv.ModCtrl
+	if up {
+		pv.ScrollUp(wheelScrollRows)
+		return
 	}
-
-	p.ForwardMouse(uv.MouseWheelEvent{X: emuX, Y: emuY, Button: button, Mod: mod})
+	pv.ScrollDown(wheelScrollRows)
 }
 
 // forwardMouseToFocused forwards a mouse event to the focused pane if the

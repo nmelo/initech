@@ -81,6 +81,8 @@ var lockingCallAllowlist = map[string]string{
 	// (DrainData); no other goroutine ever holds its lock, so a locked read
 	// there cannot wait.
 	"RemotePane.writeEmu":   "main goroutine only; no cross-goroutine holder",
+	"RemotePane.ScrollUp":   "main goroutine only; no cross-goroutine holder",
+	"RemotePane.wheelCmd":   "main goroutine only; no cross-goroutine holder",
 	"RemotePane.Render":     "main goroutine only; no cross-goroutine holder",
 	"RemotePane.Resize":     "main goroutine only; no cross-goroutine holder",
 	"RemotePane.sendResize": "main goroutine only; no cross-goroutine holder",

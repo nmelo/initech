@@ -59,6 +59,10 @@ func (m *mockPaneView) SendText(_ string, _ bool) {}
 func (m *mockPaneView) FlushPaste(_ []byte)                                       {}
 func (m *mockPaneView) Render(_ tcell.Screen, _ bool, _ bool, _ int, _ Selection) {}
 func (m *mockPaneView) Resize(_, _ int)                                           {}
+func (m *mockPaneView) ScrollUp(_ int)                                            {}
+func (m *mockPaneView) ScrollDown(_ int)                                          {}
+func (m *mockPaneView) InScrollback() bool                                        { return false }
+func (m *mockPaneView) ForwardWheel(_, _ int, _ bool, _ tcell.ModMask)            {}
 func (m *mockPaneView) Close()                                                    {}
 func (m *mockPaneView) GetRegion() Region                                         { return Region{} }
 func (m *mockPaneView) Emulator() *vt.SafeEmulator                                { return nil }
