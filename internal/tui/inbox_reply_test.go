@@ -615,3 +615,56 @@ func TestReplyTUI_JoinsDeliveriesBeforeTheTempDirIsRemoved(t *testing.T) {
 			"after the directory was removed, so the fixture did not join before removal", root, err)
 	}
 }
+
+// ── ini-33ma: the belt's late success confirms the reply ───────────────
+
+// the event exactly as the belt emits it when a withheld submit goes out
+// (ipc.go): EventMessageSent, the shared prefix, the held duration, a preview.
+func di33maLateSuccess(pane string) AgentEvent {
+	return AgentEvent{Type: EventMessageSent, Pane: pane,
+		Detail: deliveredLateSubmitPrefix + "3s held): re \"question\" — answer", Time: time.Now()}
+}
+
+func TestInboxReply_LateSubmitSuccessMarksTheReplyDelivered(t *testing.T) {
+	p := &Pane{name: "eng1", suspended: true, eventCh: make(chan AgentEvent, 8)}
+	p.SetOnSuspendedMessage(func(*Pane) {})
+	tui := replyTUI(t, p)
+	item := postItem(t, tui, "eng1", "question", "")
+	if err := tui.ReplyToInboxItem(item.ID, "answer"); err != nil {
+		t.Fatalf("reply: %v", err)
+	}
+	awaitStatus(t, tui, item.ID, inboxDeliveryQueuedSuspended)
+
+	tui.handleAgentEvent(di33maLateSuccess("eng1"))
+
+	stored, _ := tui.inboxState().Item(item.ID)
+	if stored.DeliveryStatus != InboxDelivered {
+		t.Fatalf("delivery status = %q, want %q: the belt's late success never reached the item",
+			stored.DeliveryStatus, InboxDelivered)
+	}
+	if !inboxPrunable(stored) || inboxOpenForOperator(stored) {
+		t.Fatalf("a delivered reply still lists / will not prune: %+v", stored)
+	}
+}
+
+func TestInboxReply_OrdinaryMessageEventDoesNotConfirmAReply(t *testing.T) {
+	p := &Pane{name: "eng1", suspended: true, eventCh: make(chan AgentEvent, 8)}
+	p.SetOnSuspendedMessage(func(*Pane) {})
+	tui := replyTUI(t, p)
+	item := postItem(t, tui, "eng1", "question", "")
+	if err := tui.ReplyToInboxItem(item.ID, "answer"); err != nil {
+		t.Fatalf("reply: %v", err)
+	}
+	awaitStatus(t, tui, item.ID, inboxDeliveryQueuedSuspended)
+
+	// An ordinary send on the same pane is not a verdict on the reply.
+	tui.handleAgentEvent(AgentEvent{Type: EventMessageSent, Pane: "eng1", Detail: "from super: hello", Time: time.Now()})
+	if stored, _ := tui.inboxState().Item(item.ID); stored.DeliveryStatus != inboxDeliveryQueuedSuspended {
+		t.Fatalf("an ordinary message event changed the reply's status to %q", stored.DeliveryStatus)
+	}
+	// ...and the outstanding delivery is still there for the real verdict.
+	tui.handleAgentEvent(di33maLateSuccess("eng1"))
+	if stored, _ := tui.inboxState().Item(item.ID); stored.DeliveryStatus != InboxDelivered {
+		t.Fatalf("the real late success after an ordinary event left status %q", stored.DeliveryStatus)
+	}
+}

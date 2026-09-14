@@ -304,7 +304,24 @@ func (t *TUI) setInboxDeliveryKeepOutstanding(id, status string) {
 // new callback means the inbox learns what the path already tells everyone
 // else, instead of the path learning about the inbox.
 func (t *TUI) noteInboxDeliveryEvent(ev AgentEvent) {
-	if ev.Type != EventAgentStalled || ev.Pane == "" {
+	if ev.Pane == "" {
+		return
+	}
+	// The belt's late SUCCESS travels as EventMessageSent (ini-33ma). A
+	// reply typed into a busy agent and submitted a moment later is the
+	// ordinary case for an agent mid-turn; unmapped, it stayed "typed,
+	// awaiting submit" and, never confirmed, never pruned. Only this detail:
+	// every other message event is an ordinary send, not a verdict on a reply.
+	if ev.Type == EventMessageSent {
+		if !strings.HasPrefix(ev.Detail, deliveredLateSubmitPrefix) {
+			return
+		}
+		if id, ok := t.takeInboxOutstanding(ev.Pane); ok {
+			t.setInboxDeliveryKeepOutstanding(id, InboxDelivered)
+		}
+		return
+	}
+	if ev.Type != EventAgentStalled {
 		return
 	}
 	var status string

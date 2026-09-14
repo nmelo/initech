@@ -15,6 +15,12 @@ const claudeVersionTimeout = 500 * time.Millisecond
 // Shared with the toast renderer, which reserves space for this diagnostic.
 const undeliveredSubmitPrefix = "NOT delivered ("
 
+// deliveredLateSubmitPrefix opens the belt's report that a withheld submit
+// went out after all. Shared with the inbox, which confirms the reply on it
+// (ini-33ma): a literal on each side is how the success report went unheard
+// while the failure report, already shared, was mapped.
+const deliveredLateSubmitPrefix = "delivered after the composer repainted ("
+
 // One TUI/daemon session runs per process. Sharing this lazy cache covers all
 // panes, including replacements, without adding any work to pane startup.
 var sessionClaudeVersion = newClaudeVersionProbe((&iexec.DefaultRunner{}).RunContext)

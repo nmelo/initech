@@ -1359,7 +1359,7 @@ func (p *Pane) maybeRetryWithheldSubmit() {
 		EmitEvent(p.eventCh, AgentEvent{
 			Type: EventMessageSent,
 			Pane: p.name,
-			Detail: "delivered after the composer repainted (" +
+			Detail: deliveredLateSubmitPrefix +
 				time.Since(ps.withheldAt).Round(time.Second).String() + " held): " + ps.preview,
 		})
 	case found && tail == ps.tailAtWithhold:
