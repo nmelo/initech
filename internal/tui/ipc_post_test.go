@@ -85,6 +85,12 @@ func TestPostIPC_AllStatesAndOwnerWithdrawal(t *testing.T) {
 	if got := check(); !strings.HasPrefix(got.Data, "answered: the answer\nwith a second line") {
 		t.Fatalf("answer: %+v", got)
 	}
+	// A DELIVERED answer still refuses withdrawal. Since ini-djcp an
+	// undelivered one does not -- blank delivery means unconfirmed -- which
+	// TestPostIPC_WithdrawsAnAnsweredItemWhoseReplyWasNotDelivered covers.
+	if err := app.inboxState().SetDeliveryStatus("p1", InboxDelivered); err != nil {
+		t.Fatal(err)
+	}
 	refused := app.applyPostRequest(IPCRequest{Action: "post_withdraw", ItemID: "p1"}, id, now)
 	if refused.OK || !strings.Contains(refused.Error, "already answered: the answer") {
 		t.Fatalf("terminal withdrawal: %+v", refused)
@@ -265,5 +271,27 @@ func TestPostIPC_CheckReportsDeliverySeparatelyFromAnswer(t *testing.T) {
 				t.Fatalf("delivery status: %+v", response)
 			}
 		})
+	}
+}
+
+// TestPostIPC_WithdrawsAnAnsweredItemWhoseReplyWasNotDelivered is ini-djcp's
+// agent half end to end: the poster clears an item whose answer the send path
+// reported undeliverable, through the same request --withdraw sends.
+func TestPostIPC_WithdrawsAnAnsweredItemWhoseReplyWasNotDelivered(t *testing.T) {
+	app := &TUI{}
+	id := postIdentity{"eng3", "process-1"}
+	now := time.Now()
+	if post := app.applyPostRequest(IPCRequest{Action: "post", Text: "hello"}, id, now); !post.OK || post.Data != "posted p1" {
+		t.Fatalf("post: %+v", post)
+	}
+	if err := app.inboxState().Answer("p1", "the answer"); err != nil {
+		t.Fatal(err)
+	}
+	if err := app.inboxState().SetDeliveryStatus("p1", inboxDeliveryNotDeliveredPrefix+"after 5s (the composer no longer holds our text)"); err != nil {
+		t.Fatal(err)
+	}
+	got := app.applyPostRequest(IPCRequest{Action: "post_withdraw", ItemID: "p1"}, id, now)
+	if !got.OK || got.Data != "withdrawn p1" {
+		t.Fatalf("withdraw of an undelivered answer: %+v", got)
 	}
 }

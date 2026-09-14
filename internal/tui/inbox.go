@@ -116,9 +116,17 @@ var inboxTransitions = map[InboxState]map[InboxState]inboxActor{
 		InboxDismissed: actorOperator,
 		InboxWithdrawn: actorAgent,
 	},
-	// Terminal states have no outgoing transitions. Listed explicitly rather
-	// than omitted so a reader sees the decision instead of an absence.
-	InboxAnswered:  {},
+	// An answered item can still be cleared while its reply is NOT confirmed
+	// delivered (ini-djcp). inboxPrunable keeps such an item through every
+	// startup and every down, so without these two moves a reply known to be
+	// undeliverable could never leave the inbox. applyTransition refuses both
+	// once the reply is delivered: a delivered answer leaves on its own.
+	InboxAnswered: {
+		InboxDismissed: actorOperator,
+		InboxWithdrawn: actorAgent,
+	},
+	// Dismissed and withdrawn have no outgoing transitions. Listed explicitly
+	// rather than omitted so a reader sees the decision instead of an absence.
 	InboxDismissed: {},
 	InboxWithdrawn: {},
 }
@@ -399,6 +407,12 @@ func (ib *Inbox) applyTransition(it *InboxItem, to InboxState, by inboxActor, no
 	if allowed != by {
 		return fmt.Errorf("%w: %s -> %s is the %s's act, not the %s's",
 			ErrInboxBadTransition, it.State, to, allowed, by)
+	}
+	// The answered row is conditional on delivery (ini-djcp): the same test
+	// inboxPrunable uses, so whatever the prune keeps, the operator can clear,
+	// and whatever the prune removes was never stuck.
+	if it.State == InboxAnswered && it.DeliveryStatus == InboxDelivered {
+		return fmt.Errorf("%w: %s -> %s: the reply was delivered", ErrInboxBadTransition, it.State, to)
 	}
 	it.State = to
 	switch {

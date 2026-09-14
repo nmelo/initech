@@ -645,3 +645,80 @@ func TestInbox_EachConditionStillLatchesIndependently(t *testing.T) {
 			again.Notice)
 	}
 }
+
+// ── ini-djcp: an answer that was never delivered can still be cleared ───
+
+// djcpUndelivered are the answered-but-unconfirmed shapes seen in the field:
+// blank (never confirmed), nayutal's p9 (typed, awaiting submit) and p8 (the
+// belt gave up).
+var djcpUndelivered = map[string]string{
+	"blank":             "",
+	"awaiting submit":   inboxDeliveryAwaitingSubmit,
+	"belt gave up (p8)": inboxDeliveryNotDeliveredPrefix + "after 5s (the composer no longer holds our text)",
+}
+
+func djcpAnswered(t *testing.T, ib *Inbox, status string) string {
+	t.Helper()
+	id := mustPost(t, ib, "eng2", "body", "run1").ID
+	if err := ib.Answer(id, "the reply"); err != nil {
+		t.Fatal(err)
+	}
+	if err := ib.SetDeliveryStatus(id, status); err != nil {
+		t.Fatal(err)
+	}
+	return id
+}
+
+func TestInbox_AnsweredButUndeliveredCanBeDismissedByTheOperator(t *testing.T) {
+	for name, status := range djcpUndelivered {
+		t.Run(name, func(t *testing.T) {
+			root := inboxRoot(t)
+			ib := mustLoadInbox(t, root)
+			id := djcpAnswered(t, ib, status)
+			if item, _ := ib.Item(id); item.ReplyText != "the reply" {
+				t.Fatalf("reply text not kept on the stuck item: %+v", item)
+			}
+			if err := ib.Transition(id, InboxWithdrawn, actorOperator); err == nil {
+				t.Fatal("the operator withdrew an answered item; withdraw is the agent's act")
+			}
+			if err := ib.Transition(id, InboxDismissed, actorOperator); err != nil {
+				t.Fatalf("dismiss refused for delivery %q: %v", status, err)
+			}
+			if _, ok := mustLoadInbox(t, root).Item(id); ok {
+				t.Fatal("a dismissed-after-failure item survived the next load")
+			}
+		})
+	}
+}
+
+func TestInbox_AnsweredButUndeliveredCanBeWithdrawnByItsPoster(t *testing.T) {
+	for name, status := range djcpUndelivered {
+		t.Run(name, func(t *testing.T) {
+			ib := mustLoadInbox(t, inboxRoot(t))
+			id := djcpAnswered(t, ib, status)
+			if err := ib.Transition(id, InboxDismissed, actorAgent); err == nil {
+				t.Fatal("an agent dismissed an answered item; dismiss is the operator's act")
+			}
+			if err := ib.Withdraw(id, "eng2"); err != nil {
+				t.Fatalf("withdraw refused for delivery %q: %v", status, err)
+			}
+			if item, _ := ib.Item(id); item.State != InboxWithdrawn {
+				t.Fatalf("state after withdraw = %q", item.State)
+			}
+		})
+	}
+}
+
+func TestInbox_AnsweredAndDeliveredStillRefusesDismissAndWithdraw(t *testing.T) {
+	ib := mustLoadInbox(t, inboxRoot(t))
+	id := djcpAnswered(t, ib, InboxDelivered)
+	if err := ib.Transition(id, InboxDismissed, actorOperator); err == nil {
+		t.Fatal("a delivered answer was dismissed")
+	}
+	if err := ib.Withdraw(id, "eng2"); err == nil {
+		t.Fatal("a delivered answer was withdrawn")
+	}
+	if item, _ := ib.Item(id); item.State != InboxAnswered {
+		t.Fatalf("delivered answer moved to %q", item.State)
+	}
+}
