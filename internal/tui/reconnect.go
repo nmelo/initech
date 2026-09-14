@@ -62,6 +62,11 @@ type peerManager struct {
 	// agent's activity, so every attached window renders them.
 	onSessionNotice func(text string)
 
+	// disconnectPoll is waitForDisconnect's pane-liveness poll. Zero means the
+	// production 2s. A FIELD, not a package variable, so a test can shorten it
+	// without mutating state a leftover reconnect goroutine reads (ini-u1q7).
+	disconnectPoll time.Duration
+
 	// onInboxChanged is window 1's inbox doorbell (ini-3wkl.7). Its OWN
 	// callback, never onSessionNotice: that one re-plans the layout, and a
 	// post must not.
@@ -500,7 +505,11 @@ func (pm *peerManager) handleAgentRemoved(peerName string, pc *peerConn, ev Cont
 // session closed) or pm.quit fires.
 func (pm *peerManager) waitForDisconnect(peerName string, pc *peerConn) {
 	defer pm.trackActive("waitForDisconnect:" + peerName)()
-	ticker := time.NewTicker(2 * time.Second)
+	poll := pm.disconnectPoll
+	if poll <= 0 {
+		poll = 2 * time.Second
+	}
+	ticker := time.NewTicker(poll)
 	defer ticker.Stop()
 
 	// The yamux session is the authority on whether the CONNECTION is alive.

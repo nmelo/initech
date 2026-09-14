@@ -24,7 +24,9 @@ import (
 // The window itself was the evidence nobody had: window 1's log showed repeated
 // "client disconnected" for a client that was never gone.
 func TestWaitForDisconnect_EmptyPaneSetIsNotDeath(t *testing.T) {
-	pm := &peerManager{quit: make(chan struct{})}
+	// A short poll, not a skip (ini-u1q7): the subject is the tick's logic, so
+	// the test keeps running it -- now 25 ticks instead of two and a half.
+	pm := &peerManager{quit: make(chan struct{}), disconnectPoll: 20 * time.Millisecond}
 	pc := &peerConn{} // connected, zero agents assigned to this window
 
 	done := make(chan struct{})
@@ -33,15 +35,15 @@ func TestWaitForDisconnect_EmptyPaneSetIsNotDeath(t *testing.T) {
 		close(done)
 	}()
 
-	// Well past the 2s liveness tick: if an empty set still reads as death,
-	// this returns almost immediately.
+	// Well past the liveness tick (25 of them): if an empty set still reads as
+	// death, this returns almost immediately.
 	select {
 	case <-done:
 		t.Fatal("waitForDisconnect returned for a peer with NO panes. " +
 			"\"every pane is dead\" is vacuously true over an empty set, so a window with no " +
 			"agents assigned tears down a perfectly healthy connection and reconnects forever " +
 			"(ini-1ch)")
-	case <-time.After(5 * time.Second):
+	case <-time.After(25 * pm.disconnectPoll):
 	}
 
 	close(pm.quit)
@@ -57,7 +59,7 @@ func TestWaitForDisconnect_EmptyPaneSetIsNotDeath(t *testing.T) {
 // genuinely dead peer connected forever and is the failure the vacuous check
 // was presumably written to prevent.
 func TestWaitForDisconnect_AllPanesDeadStillEnds(t *testing.T) {
-	pm := &peerManager{quit: make(chan struct{})}
+	pm := &peerManager{quit: make(chan struct{}), disconnectPoll: 20 * time.Millisecond}
 	dead := testPane("eng1")
 	dead.mu.Lock()
 	dead.alive = false

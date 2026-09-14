@@ -83,6 +83,15 @@ func normalizeCensusDoc(s string) string {
 // dir and returns its path.
 func buildInitechBinary(t *testing.T) string {
 	t.Helper()
+	// SKIPPED UNDER -short (ini-u1q7). Every caller builds the real binary and
+	// drives it under a PTY for 10-15s; four did so unconditionally, costing
+	// make check 52s. Skipping HERE rather than per test means a future
+	// binary-building test is covered too. The full suite (CI full-suite, make
+	// test-full) still runs every caller, and the env-gated census leg does
+	// not pass -short.
+	if testing.Short() {
+		t.Skip("builds and runs the real initech binary; runs in the full suite, skipped under -short")
+	}
 	dir := t.TempDir()
 	bin := filepath.Join(dir, "initech")
 	cmd := exec.Command("go", "build", "-o", bin, ".")

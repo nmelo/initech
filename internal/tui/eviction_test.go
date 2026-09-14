@@ -34,6 +34,13 @@ type evictionWarServer struct {
 
 func startEvictionWarServer(t *testing.T, scripts ...string) *evictionWarServer {
 	t.Helper()
+	// SKIPPED UNDER -short (ini-u1q7). These drive the REAL reconnect loop
+	// against a real TCP server on the production quickEvictionWindow (5s),
+	// 39s across five tests. Shortening that window would mean changing the
+	// reconnect loop to speed up a test; the full suite runs them instead.
+	if testing.Short() {
+		t.Skip("runs the real reconnect loop on the production eviction window; runs in the full suite, skipped under -short")
+	}
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("listen: %v", err)

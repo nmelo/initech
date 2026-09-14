@@ -295,6 +295,12 @@ func TestAttentionChimes_OncePerHost(t *testing.T) {
 // cannot reach: they apply state to a pane that already exists, while this one
 // asserts the pane is BORN with what the handshake carried.
 func TestConnectPeer_SeedsWaitingFromTheHandshake(t *testing.T) {
+	// SKIPPED UNDER -short (ini-u1q7): a real TCP peer session whose teardown
+	// costs 4s. Its six siblings on the same server helper are instant, so the
+	// skip is here and not in the helper.
+	if testing.Short() {
+		t.Skip("real TCP peer session with a 4s teardown; runs in the full suite, skipped under -short")
+	}
 	started := time.Now().Add(-90 * time.Second)
 	srv := startRemotePeerServer(t, remotePeerServerConfig{
 		firstResponse: HelloOKMsg{

@@ -67,10 +67,24 @@ func hammer(n int, d time.Duration, fn func()) {
 	wg.Wait()
 }
 
+// skipRaceOnlyUnderShort skips a test whose ONLY verdict is the race
+// detector's (ini-u1q7). These tests make no assertion of their own: they
+// stream live PTY output for about a second so -race can observe concurrent
+// access. make check never runs -race, so under -short they cost a second each
+// and can detect nothing. The race job (make test-race, no -short) and the full
+// suite still run them.
+func skipRaceOnlyUnderShort(t *testing.T) {
+	t.Helper()
+	if testing.Short() {
+		t.Skip("race-detector-only test with no assertions of its own; runs under make test-race and the full suite, skipped under -short")
+	}
+}
+
 // peekContent is reached from the IPC peek handler, the daemon control peek
 // handler, handleIPCPatrol and the :peek command. None of
 // them hold renderMu, so all of them raced readLoop.
 func TestPeekContent_IsRaceFreeAgainstLivePTYOutput(t *testing.T) {
+	skipRaceOnlyUnderShort(t)
 	if runtime.GOOS == "windows" {
 		t.Skip("windows: noisyPane hardcodes /bin/sh as the pane's command (peek_race_test.go:34) to produce continuous PTY output for the race detector; needs a cross-platform equivalent (e.g. a small Go helper binary), product code's own shell resolution is unaffected (pane_cmd_unix.go / pane_cmd_windows.go already split)")
 	}
@@ -82,6 +96,7 @@ func TestPeekContent_IsRaceFreeAgainstLivePTYOutput(t *testing.T) {
 // read there fires a spurious duplicate Enter (submitting the operator's
 // unfinished prompt, the ini-vxw hazard) or swallows a message.
 func TestPromptHasContent_IsRaceFreeAgainstLivePTYOutput(t *testing.T) {
+	skipRaceOnlyUnderShort(t)
 	if runtime.GOOS == "windows" {
 		t.Skip("windows: noisyPane hardcodes /bin/sh (peek_race_test.go:34); see TestPeekContent_IsRaceFreeAgainstLivePTYOutput for the full reason")
 	}
@@ -93,6 +108,7 @@ func TestPromptHasContent_IsRaceFreeAgainstLivePTYOutput(t *testing.T) {
 // doc comment used to claim SafeEmulator was safe for concurrent reads, which
 // is what licensed the whole family of unsynchronized readers.
 func TestPaneHasModal_IsRaceFreeAgainstLivePTYOutput(t *testing.T) {
+	skipRaceOnlyUnderShort(t)
 	if runtime.GOOS == "windows" {
 		t.Skip("windows: noisyPane hardcodes /bin/sh (peek_race_test.go:34); see TestPeekContent_IsRaceFreeAgainstLivePTYOutput for the full reason")
 	}
@@ -103,6 +119,7 @@ func TestPaneHasModal_IsRaceFreeAgainstLivePTYOutput(t *testing.T) {
 // The selection-copy path (mouse.go) walks cells to build clipboard text. A
 // torn read puts garbage on the operator's clipboard.
 func TestSelectionCopy_IsRaceFreeAgainstLivePTYOutput(t *testing.T) {
+	skipRaceOnlyUnderShort(t)
 	if runtime.GOOS == "windows" {
 		t.Skip("windows: noisyPane hardcodes /bin/sh (peek_race_test.go:34); see TestPeekContent_IsRaceFreeAgainstLivePTYOutput for the full reason")
 	}
@@ -123,6 +140,7 @@ func TestSelectionCopy_IsRaceFreeAgainstLivePTYOutput(t *testing.T) {
 // with no renderMu. This exercises the REAL function, in both live-screen and
 // scrollback-mode branches, against a live producing PTY.
 func TestExtractSelectionText_IsRaceFreeAgainstLivePTYOutput(t *testing.T) {
+	skipRaceOnlyUnderShort(t)
 	if runtime.GOOS == "windows" {
 		t.Skip("windows: noisyPane hardcodes /bin/sh (peek_race_test.go:34); see TestPeekContent_IsRaceFreeAgainstLivePTYOutput for the full reason")
 	}
@@ -141,6 +159,7 @@ func TestExtractSelectionText_IsRaceFreeAgainstLivePTYOutput(t *testing.T) {
 // 0) by scrolling the pane up first, so the copy path reads from the combined
 // scrollback+screen buffer while readLoop keeps writing to the live screen.
 func TestExtractSelectionText_ScrollbackMode_IsRaceFreeAgainstLivePTYOutput(t *testing.T) {
+	skipRaceOnlyUnderShort(t)
 	if runtime.GOOS == "windows" {
 		t.Skip("windows: noisyPane hardcodes /bin/sh (peek_race_test.go:34); see TestPeekContent_IsRaceFreeAgainstLivePTYOutput for the full reason")
 	}
