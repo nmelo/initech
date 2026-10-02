@@ -125,6 +125,7 @@ func ResolvePresets(raw map[string]string) (presets [presetSlots]LayoutPreset, w
 // toggle-off-to-grid behavior of the old hardcoded handler. Out-of-range slots
 // are a no-op. Mirrors the apply + persist tail every layout shortcut runs.
 func (t *TUI) applyLayoutPreset(slot int) {
+	t.clearLiveFocus() // any Option+N leaves the live focus split (ini-92wm)
 	if slot < 0 || slot >= len(t.layoutPresets) {
 		return
 	}
@@ -176,6 +177,7 @@ func (t *TUI) applyLayoutPreset(slot int) {
 // It is a direct set, not a toggle; leave live by pressing any static Alt+M.
 // Out-of-range slots are a no-op.
 func (t *TUI) applyLayoutPresetLive(slot int) {
+	t.clearLiveFocus() // any Shift+Option+N leaves the live focus split (ini-92wm)
 	if slot < 0 || slot >= len(t.layoutPresets) {
 		return
 	}

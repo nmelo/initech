@@ -143,6 +143,12 @@ func (t *TUI) handleKey(ev *tcell.EventKey) bool {
 			case 'f':
 				t.toggleFocusSplit()
 				return false
+			case 'F':
+				// Option+Shift+F: the live focus split (ini-92wm). The
+				// shifted rune arrives as 'F' with ModAlt; the Shift+Alt+digit
+				// intercept above takes digits only, so this is reachable.
+				t.toggleLiveFocusSplit()
+				return false
 			case 'a':
 				if t.agents.active {
 					t.agents.active = false

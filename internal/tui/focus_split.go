@@ -41,11 +41,20 @@ type focusSplitSnapshot struct {
 // Mode == LayoutLive, in Run's render loop) and resumes correctly if the
 // split is later toggled off back into live mode, with no re-init needed.
 func (t *TUI) toggleFocusSplit() {
+	// Inside the live focus split, Option+f drops to the static Focus split
+	// with the right grid frozen (ini-92wm rule 4).
+	if t.liveFocus != nil {
+		t.freezeLiveFocusToFocusSplit()
+		return
+	}
 	if t.visibleCountFromState() <= 1 {
 		return
 	}
 
 	if t.layoutState.Mode == Layout2Col {
+		// Leaving a Focus split also ends a frozen live-focus right set.
+		t.layoutState.RightSetActive = false
+		t.layoutState.RightSet = nil
 		if t.focusSplitPrev == nil {
 			t.layoutState.Mode = LayoutGrid
 		} else {

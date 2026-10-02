@@ -426,6 +426,9 @@ type TUI struct {
 	// Option+F specifically; holds what to restore on toggle-off. See
 	// focus_split.go.
 	focusSplitPrev *focusSplitSnapshot
+	// liveFocus is the live focus split's session-only state (ini-92wm);
+	// nil when the mode is off.
+	liveFocus *liveFocusState
 }
 
 // setOnWakeComplete installs (or, with nil, clears) the test-only wake-done
@@ -511,6 +514,10 @@ func (t *TUI) applyLayout() {
 		}
 		t.onLiveSwap(prev, t.liveEngine.Slots)
 	}
+
+	// Live focus split (ini-92wm): refresh its right grid from the same
+	// engine type and inputs as the live tick above.
+	t.tickLiveFocus(time.Now())
 
 	// Raise fold-back / restore notices before computing the plan, so the
 	// notice and the pane movement it describes land in the same frame
@@ -656,7 +663,7 @@ func (t *TUI) saveLayoutIfConfigured() {
 	for i, p := range t.panes {
 		t.layoutState.Order[i] = agentKey(p)
 	}
-	if err := SaveLayout(t.projectRoot, t.layoutState); err != nil {
+	if err := SaveLayout(t.projectRoot, t.persistableLayout()); err != nil {
 		LogWarn("layout", "save failed", "err", err)
 	}
 }
@@ -1334,7 +1341,7 @@ func Run(cfg Config) error {
 			t.rotateTip()
 			// The inbox staleness floor for a child window (ini-3wkl.7).
 			t.refreshInboxOnCadence(time.Now())
-			if t.layoutState.Mode == LayoutLive && time.Since(t.lastLiveTick) >= time.Second {
+			if (t.layoutState.Mode == LayoutLive || t.liveFocus != nil) && time.Since(t.lastLiveTick) >= time.Second {
 				t.lastLiveTick = time.Now()
 				t.applyLayout()
 			}
@@ -1632,6 +1639,28 @@ func calcMainVertical(n, screenW, screenH int) []Region {
 	}
 	return regions
 }
+
+// calcLiveFocusSplit is calcMainVertical with one difference: the left
+// column keeps the Focus split's 40% even when nothing is on the right. The
+// live focus split's right side is often empty (no other agent working), and
+// a held pane that jumped to full width every time the fleet went quiet would
+// be the layout moving under the operator for no action of theirs (ini-92wm).
+func calcLiveFocusSplit(n, screenW, screenH int) []Region {
+	if n > 1 {
+		return calcMainVertical(n, screenW, screenH)
+	}
+	if n < 1 {
+		return nil
+	}
+	leftW := screenW*40/100 - 1 // the same gutter column calcMainVertical reserves
+	if leftW < 1 {
+		leftW = 1
+	}
+	return []Region{{X: 0, Y: 0, W: leftW, H: screenH}}
+}
+
+// liveFocusRightX is where the live focus split's right region starts.
+func liveFocusRightX(screenW int) int { return screenW * 40 / 100 }
 
 // render draws all visible panes, the overlay, and the command modal.
 // It consumes the pre-computed RenderPlan without making layout decisions.

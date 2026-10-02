@@ -68,6 +68,15 @@ type LayoutState struct {
 	// for ordering, Groups/GroupOf is a pure additive layer on top of it.
 	Groups  []string          `yaml:"groups,omitempty"`
 	GroupOf map[string]string `yaml:"group_of,omitempty"`
+
+	// Live focus split (ini-92wm, Option+Shift+F). When RightSetActive is
+	// true in Layout2Col, the right column holds exactly RightSet (in order)
+	// instead of every other pane, and the left column keeps its 40% even
+	// when RightSet is empty. The live focus split refreshes RightSet each
+	// tick; Option+f inside it freezes the set. Session-only: neither field
+	// is in PersistentLayout, and the tags say so.
+	RightSet       []string `yaml:"-"`
+	RightSetActive bool     `yaml:"-"`
 }
 
 // RenderPlan is the complete set of instructions for one frame.
@@ -222,6 +231,29 @@ func computeLayout(state LayoutState, panes []PaneView, screenW, screenH int) Re
 			} else {
 				reordered = append(reordered, p)
 			}
+		}
+		if state.RightSetActive {
+			// Live focus split (ini-92wm): the right column is RightSet only,
+			// in its order. A pane not in the set is simply not drawn — it is
+			// still listed in the agents overlay and status, as a live
+			// eviction is.
+			byKey := make(map[string]PaneView, len(reordered))
+			for _, p := range reordered {
+				byKey[agentKey(p)] = p
+			}
+			right := make([]PaneView, 0, len(state.RightSet))
+			for _, k := range state.RightSet {
+				if p, ok := byKey[k]; ok {
+					right = append(right, p)
+				}
+			}
+			visible = right
+			if focusedPane != nil {
+				visible = append([]PaneView{focusedPane}, right...)
+			}
+			n = len(visible)
+			regions = calcLiveFocusSplit(n, screenW, screenH)
+			break
 		}
 		if focusedPane != nil {
 			visible = append([]PaneView{focusedPane}, reordered...)

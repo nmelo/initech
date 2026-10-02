@@ -106,6 +106,16 @@ type LiveEngine struct {
 	Pinned     map[string]int // Agent name -> fixed slot index.
 	RolesOrder []string       // Config roles list for stable ordering in auto mode.
 	holdUntil  []time.Time    // Per-slot hold expiry; slot cannot change until this time.
+
+	// Eligible, when set, replaces the conviction-score threshold in
+	// TickAuto as the test for which panes WANT a slot. Everything else is
+	// unchanged: the hold (dwell) still keeps a pane that stopped qualifying,
+	// one change still happens per tick, and a pane missing from the input
+	// still leaves at once. Live mode never sets it. The live focus split
+	// (ini-92wm) sets it to "the pane is running" — the overlay dot's
+	// signal — so its right grid is the working agents, under live's own
+	// anti-flicker rules rather than a second scheduler with its own.
+	Eligible func(PaneView) bool
 }
 
 // NewLiveEngine creates a LiveEngine with the given number of slots
@@ -417,8 +427,9 @@ func (le *LiveEngine) Tick(panes []PaneView, now time.Time) []string {
 func (le *LiveEngine) TickAuto(panes []PaneView, now time.Time) []string {
 	// Score all panes.
 	type scored struct {
-		name  string
-		score int
+		name     string
+		score    int
+		eligible bool
 	}
 	var allScored []scored
 	pinnedNames := make(map[string]bool, len(le.Pinned))
@@ -429,7 +440,11 @@ func (le *LiveEngine) TickAuto(panes []PaneView, now time.Time) []string {
 	for _, p := range panes {
 		pk := agentKey(p)
 		s := convictionScore(p, now)
-		allScored = append(allScored, scored{pk, s})
+		ok := s >= liveKeepThreshold
+		if le.Eligible != nil {
+			ok = le.Eligible(p)
+		}
+		allScored = append(allScored, scored{pk, s, ok})
 	}
 
 	// Build current visible set from le.Slots.
@@ -455,7 +470,7 @@ func (le *LiveEngine) TickAuto(panes []PaneView, now time.Time) []string {
 			wantVisible[s.name] = true
 			continue
 		}
-		if s.score >= liveKeepThreshold {
+		if s.eligible {
 			wantVisible[s.name] = true
 			continue
 		}

@@ -33,6 +33,30 @@ func (t *TUI) renderEmptyViewerHint(s tcell.Screen, w, h int) {
 	}
 }
 
+// renderLiveFocusEmptyHint draws one line in the live focus split's right
+// region when nobody else is working (ini-92wm rule 8). The region would
+// otherwise be blank, and a blank 60% of the screen reads as a broken layout
+// rather than a quiet fleet. Drawn before the panes, and only when the plan
+// holds the held pane alone, so it never sits under a pane.
+func (t *TUI) renderLiveFocusEmptyHint(s tcell.Screen, w, h int) {
+	if !t.layoutState.RightSetActive || t.layoutState.Mode != Layout2Col || len(t.plan.Panes) != 1 {
+		return
+	}
+	msg := []rune(liveFocusNoneWorking)
+	left := liveFocusRightX(w)
+	x := left + (w-left-len(msg))/2
+	if x < left {
+		x = left
+	}
+	y := (h - 2) / 2 // centred on the pane area, which reserves the bottom two rows
+	style := tcell.StyleDefault.Foreground(tcell.ColorGray).Background(trueBlack)
+	for i, ch := range msg {
+		if x+i < w {
+			s.SetContent(x+i, y, ch, nil, style)
+		}
+	}
+}
+
 func (t *TUI) render() {
 	t.renderCount++
 	if t.renderCount <= 5 || t.renderCount%150 == 0 {
@@ -94,6 +118,7 @@ func (t *TUI) render() {
 	}
 
 	t.renderEmptyViewerHint(s, w, h)
+	t.renderLiveFocusEmptyHint(s, w, h)
 
 	// Draw panes from the render plan. No visibility checks needed.
 	for i, pr := range t.plan.Panes {

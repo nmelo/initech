@@ -34,6 +34,7 @@ func getHelpLines() []string {
 			"  " + m + "+i            Operator inbox: items agents posted for you",
 			"  " + m + "+z            Zoom/unzoom focused pane",
 			"  " + m + "+f            Focus split: focused pane left, grid right (toggle)",
+			"  Shift+" + m + "+f      Focus split with a live right grid: working agents only (toggle)",
 			"  " + m + "+s            Toggle agent overlay",
 			"  " + m + "+w            Show/hide which main this viewer is attached to (viewer windows)",
 			"  " + m + "+q            Quit",
