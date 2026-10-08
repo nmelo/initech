@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os/exec"
 	"strings"
@@ -239,16 +240,25 @@ func emitIPCEvent(agent, beadID, eventType, detail string) {
 
 // buildDispatchMessage creates the dispatch text sent to the agent.
 // preflightSendReady asks the TUI whether a send to agent would be delivered
-// now; the TUI waits on the agent's startup gate before answering. Only an
-// explicit "still starting" stops the assign. Anything it cannot judge --
-// no TUI, an older TUI without the action, a cross-machine target -- proceeds
-// exactly as assign always has, and the dispatch send reports its own fate.
+// now; the TUI waits on the agent's startup gate before answering. Two
+// answers stop the assign: an explicit "still starting", and NO ANSWER in
+// time -- a TUI that cannot answer within its own settle bound cannot be
+// trusted to deliver either (qa2: a timeout read as "go ahead" claimed the
+// bead anyway). What it cannot judge -- no TUI at all, an older TUI without
+// the action, a cross-machine target -- proceeds exactly as assign always
+// has, and the dispatch send reports its own fate.
 func preflightSendReady(agent, host string) error {
 	if host != "" {
 		return nil
 	}
 	resp, err := ipcCall(tui.IPCRequest{Action: "send_ready", Target: agent})
-	if err != nil || resp.OK {
+	if err != nil {
+		if errors.Is(err, errIPCTimeout) {
+			return fmt.Errorf("nothing assigned: %s could not be confirmed ready to receive (%v)\nRetry when it is ready (initech peek %s).", agent, err, agent)
+		}
+		return nil
+	}
+	if resp.OK {
 		return nil
 	}
 	if strings.HasPrefix(resp.Error, tui.ErrPaneStillStarting.Error()) {

@@ -1119,8 +1119,14 @@ const startupGateWindow = 60 * time.Second
 // Variables only so a test can shorten them; nothing in production writes.
 var (
 	startupSettleStable = resumeQuiesceStable
-	startupSettleCap    = resumeQuiesceCap
+	startupSettleCap    = StartupSettleBound
 )
+
+// StartupSettleBound is the longest a send, or a send_ready query, waits for
+// a booting agent to settle before answering. Exported so a CLI client sets
+// its own deadline from the server's number rather than a copy of it: a
+// client that gives up first reads silence as "go ahead" (ini-i35w, qa2).
+const StartupSettleBound = resumeQuiesceCap
 
 // awaitStartupSettled waits, once per pane, for the child to go quiet after
 // it starts, by the same rule the wake drain uses (ini-hbj4: produced first

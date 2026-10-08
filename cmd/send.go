@@ -350,6 +350,28 @@ var ipcCallTimeout = 10 * time.Second
 // margin, not a measured figure). Total 42.5s, rounded up to 45s.
 var sendActionTimeout = 45 * time.Second
 
+// sendReadyActionTimeout is the deadline for "send_ready" (ini-i35w). Its
+// handler waits up to tui.StartupSettleBound for a booting agent to settle,
+// so the client must outwait that, or it times out first and the caller
+// cannot tell "still starting" from "no answer" (qa2's FAIL: a 10s client
+// against a 15s server). Margin covers runOnMain and the response write.
+var sendReadyActionTimeout = tui.StartupSettleBound + 10*time.Second
+
+// errIPCTimeout marks an IPC call whose response never arrived in time, so a
+// caller can tell "the TUI did not answer" from "there is no TUI".
+var errIPCTimeout = errors.New("timed out waiting for TUI response")
+
+// ipcDeadlineFor is how long a call waits for its response, by action.
+func ipcDeadlineFor(action string) time.Duration {
+	switch action {
+	case "send":
+		return sendActionTimeout
+	case "send_ready":
+		return sendReadyActionTimeout
+	}
+	return ipcCallTimeout
+}
+
 // ipcCallSocket sends a request to the TUI's IPC endpoint at the given path.
 // Uses tui.DialIPC which handles Unix sockets on POSIX and TCP via .port file
 // on Windows.
@@ -385,11 +407,9 @@ func ipcCallSocket(sockPath string, req tui.IPCRequest) (*tui.IPCResponse, error
 	// can't know in advance whether this send will hit a suspended pane and
 	// block server-side on resumePane for up to resumeTimeout. Every other
 	// action keeps the short ipcCallTimeout, since none has a comparable
-	// legitimate long wait (enumerated on the bead).
-	deadline := ipcCallTimeout
-	if req.Action == "send" {
-		deadline = sendActionTimeout
-	}
+	// legitimate long wait (enumerated on the bead) -- except send_ready,
+	// which waits on a booting agent's settle by design (ini-i35w).
+	deadline := ipcDeadlineFor(req.Action)
 	conn.SetDeadline(time.Now().Add(deadline))
 
 	data, _ := json.Marshal(req)
@@ -400,7 +420,7 @@ func ipcCallSocket(sockPath string, req tui.IPCRequest) (*tui.IPCResponse, error
 	if !scanner.Scan() {
 		if err := scanner.Err(); err != nil {
 			if ne, ok := err.(net.Error); ok && ne.Timeout() {
-				return nil, fmt.Errorf("timed out waiting for TUI response after %s — the session may be stalled or unresponsive", deadline)
+				return nil, fmt.Errorf("%w after %s — the session may be stalled or unresponsive", errIPCTimeout, deadline)
 			}
 			return nil, fmt.Errorf("read response: %w", err)
 		}
