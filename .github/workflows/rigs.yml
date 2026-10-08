@@ -92,7 +92,10 @@ jobs:
           INITECH_X5OB: "1"
           INITECH_FN77: "1"
           INITECH_A9D8: "1"
-        run: go test ./internal/tui/ -count=1 -timeout 900s -run 'X5obRig|FN77Rig|A9d8Rig'
+        # -v so the log NAMES every rig that ran: without it a skipped rig is
+        # invisible and a shard reports a vacuous green (shipper, reviewing
+        # 2d2f909 -- the first dispatch had zero PASS/SKIP lines to check).
+        run: go test ./internal/tui/ -count=1 -v -timeout 900s -run 'X5obRig|FN77Rig|A9d8Rig'
 
   composed-rigs-shard2:
     # ~183s measured: SuspendGuard 98.1s + AQY 55.9s + UZ42 29.2s
@@ -117,7 +120,10 @@ jobs:
           INITECH_9IMX: "1"
           INITECH_AQY: "1"
           INITECH_UZ42: "1"
-        run: go test ./internal/tui/ -count=1 -timeout 900s -run 'TestSuspendGuard|TestAQY_|UZ42Rig'
+        # -v so the log NAMES every rig that ran: without it a skipped rig is
+        # invisible and a shard reports a vacuous green (shipper, reviewing
+        # 2d2f909 -- the first dispatch had zero PASS/SKIP lines to check).
+        run: go test ./internal/tui/ -count=1 -v -timeout 900s -run 'TestSuspendGuard|TestAQY_|UZ42Rig'
 
   composed-rigs-shard3:
     # ~179s measured: 9ISX 79.7s + Dr03 56.0s + 9GVN 35.6s + Z5UW 7.2s
@@ -143,7 +149,10 @@ jobs:
           INITECH_DR03: "1"
           INITECH_9GVN: "1"
           INITECH_Z5UW: "1"
-        run: go test ./internal/tui/ -count=1 -timeout 900s -run 'NineISXRig|Dr03Rig|NineGVNRig|TestZ5uwRig'
+        # -v so the log NAMES every rig that ran: without it a skipped rig is
+        # invisible and a shard reports a vacuous green (shipper, reviewing
+        # 2d2f909 -- the first dispatch had zero PASS/SKIP lines to check).
+        run: go test ./internal/tui/ -count=1 -v -timeout 900s -run 'NineISXRig|Dr03Rig|NineGVNRig|TestZ5uwRig'
 
   composed-rigs-shard4:
     # ~173s measured: Attention 73.0s + SuspendFate 65.7s + Inbox7 34.1s
@@ -168,4 +177,7 @@ jobs:
           INITECH_35AK: "1"
           INITECH_9IMX: "1"
           INITECH_3WKL7: "1"
-        run: go test ./internal/tui/ -count=1 -timeout 900s -run 'AttentionRig|TestSuspendFate|Inbox7Rig'
+        # -v so the log NAMES every rig that ran: without it a skipped rig is
+        # invisible and a shard reports a vacuous green (shipper, reviewing
+        # 2d2f909 -- the first dispatch had zero PASS/SKIP lines to check).
+        run: go test ./internal/tui/ -count=1 -v -timeout 900s -run 'AttentionRig|TestSuspendFate|Inbox7Rig'
