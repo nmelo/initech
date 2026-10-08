@@ -72,6 +72,10 @@ jobs:
   composed-rigs-shard1:
     # ~189s measured: X5OB 108.7s + FN77 54.9s + A9D8 25.2s
     runs-on: ${{ github.event_name != 'pull_request' && vars.MAC_RUNNER || 'macos-latest' }}
+    # ini-8k1o: every job that can land on the self-hosted Mac carries a
+    # timeout, or a wedged rig holds a runner to GitHub 6h cap. Measured ~3
+    # min; 10 is ~3x headroom. (shipper caught this missing on 2d2f909.)
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
 
@@ -93,6 +97,10 @@ jobs:
   composed-rigs-shard2:
     # ~183s measured: SuspendGuard 98.1s + AQY 55.9s + UZ42 29.2s
     runs-on: ${{ github.event_name != 'pull_request' && vars.MAC_RUNNER || 'macos-latest' }}
+    # ini-8k1o: every job that can land on the self-hosted Mac carries a
+    # timeout, or a wedged rig holds a runner to GitHub 6h cap. Measured ~3
+    # min; 10 is ~3x headroom. (shipper caught this missing on 2d2f909.)
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
 
@@ -114,6 +122,10 @@ jobs:
   composed-rigs-shard3:
     # ~179s measured: 9ISX 79.7s + Dr03 56.0s + 9GVN 35.6s + Z5UW 7.2s
     runs-on: ${{ github.event_name != 'pull_request' && vars.MAC_RUNNER || 'macos-latest' }}
+    # ini-8k1o: every job that can land on the self-hosted Mac carries a
+    # timeout, or a wedged rig holds a runner to GitHub 6h cap. Measured ~3
+    # min; 10 is ~3x headroom. (shipper caught this missing on 2d2f909.)
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
 
@@ -136,6 +148,10 @@ jobs:
   composed-rigs-shard4:
     # ~173s measured: Attention 73.0s + SuspendFate 65.7s + Inbox7 34.1s
     runs-on: ${{ github.event_name != 'pull_request' && vars.MAC_RUNNER || 'macos-latest' }}
+    # ini-8k1o: every job that can land on the self-hosted Mac carries a
+    # timeout, or a wedged rig holds a runner to GitHub 6h cap. Measured ~3
+    # min; 10 is ~3x headroom. (shipper caught this missing on 2d2f909.)
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
 
