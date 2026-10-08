@@ -302,6 +302,7 @@ func TestX5obRig_AttachThenAssign(t *testing.T) {
 	time.Sleep(600 * time.Millisecond)
 	w1pty.Write([]byte("agents\r"))
 	time.Sleep(2500 * time.Millisecond)
+	rigEnterAgentsList(w1pty) // the panel opens in its search box (ini-hxtg)
 	w1pty.Write([]byte("m"))
 	time.Sleep(3 * time.Second)
 	w1pty.Write([]byte{0x1b}) // close the modal

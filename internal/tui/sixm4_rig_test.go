@@ -169,6 +169,7 @@ func TestSixM4Rig_ViewerModalParityAndReplaySurvival(t *testing.T) {
 		time.Sleep(600 * time.Millisecond)
 		p.Write([]byte("agents\r"))
 		time.Sleep(2500 * time.Millisecond)
+		rigEnterAgentsList(p) // the panel opens in its search box (ini-hxtg)
 	}
 	// ── EMPTY-VIEWER HINT (ini-9fn): before anything is assigned, window 2
 	// owns no groups and must show the operator-decided hint line -- not the

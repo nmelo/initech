@@ -58,6 +58,7 @@ func TestUZ42Rig_AllHiddenExplanationAndRecoveryRoundTrip(t *testing.T) {
 	}, 20*time.Second); !ok {
 		t.Fatalf("modal never opened\n%s", nineISXScreen(w1emu))
 	}
+	rigEnterAgentsList(w1pty) // the panel opens in its search box (ini-hxtg)
 	// Transposed grid (ini-w771): groups are COLUMNS. From super, Down walks
 	// core (super -> pm); at core's end the next Down continues into monitor
 	// 2's nearest column, eng, landing on eng1; further Downs walk eng.

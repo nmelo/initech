@@ -321,6 +321,17 @@ func nineISXScreen(emu *vt.SafeEmulator) string {
 // verification here on one observation. A flaky rig is worse than no rig once
 // it is a ship gate: it teaches people to re-run until green, which is exactly
 // how a real red gets waved through.
+// rigEnterAgentsList leaves the Agents panel's search box for the list. Since
+// ini-hxtg the panel opens with the box focused, so a rig that presses list
+// keys (m, Space, arrows) right after opening would TYPE them into the filter.
+// One Down, with nothing typed, moves the focus to the list and leaves the
+// selection where it was — the rig then drives the list exactly as before.
+// The same open-into-list step the unit tests take through openAgentsList.
+func rigEnterAgentsList(p *os.File) {
+	p.Write([]byte("\x1b[B"))
+	time.Sleep(400 * time.Millisecond)
+}
+
 func nineISXAwait(emu *vt.SafeEmulator, cond func(string) bool, limit time.Duration) (time.Duration, bool) {
 	start := time.Now()
 	for time.Since(start) < limit {
@@ -539,6 +550,7 @@ func TestNineISXRig_ScopedOverlayBothStartupOrders(t *testing.T) {
 			t.Fatalf("the agents modal never opened on window 1; the move cannot be driven\n%s",
 				nineISXScreen(w1emu))
 		}
+		rigEnterAgentsList(w1pty)
 		w1pty.Write([]byte("m"))
 		if _, ok := nineISXAwait(w1emu, func(s string) bool {
 			return strings.Contains(s, "monitor 2")
