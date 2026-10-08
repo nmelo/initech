@@ -47,20 +47,31 @@ jobs:
       - name: Test (race detector)
         run: make test-race
 
-  # ITEM 5 (ini-0lko): the SAME composed rigs, on macOS.
+  # THE COMPOSED RIGS, SHARDED BY MEASURED TIME (ini-q6dp).
   #
-  # Before this, NO rig ran on macOS anywhere: the macos matrix leg is -short,
-  # which skips every gated rig by construction. That is not a theoretical gap —
-  # ini-hbj4 passed darwin and failed linux all four rounds, which is why this
-  # leg was created. Under ini-ibsm linux is no longer tested at all, so the
-  # asymmetry that motivated it is gone -- what remains is that the rigs need a
-  # tested platform to run on, and macOS is it.
+  # One go test ran all 13 selectors serially: 12.8 min on every release gate.
+  # Measured per rig with -v (eng1, 2026-10-08; pm measured the same totals
+  # independently): 723s serial, largest single rig 108.7s, largest single test
+  # 56.0s. NO rig dominates, so the fix is sharding rather than clock injection.
   #
-  # ini-ibsm: this WAS the macOS twin of an ubuntu leg. macOS is now the only
-  # tested platform, so it is simply the rig leg.
-  composed-rigs:
+  # Balanced longest-processing-time-first, not by count: 189/183/179/173s, so
+  # the gate costs the longest shard (~3 min) instead of the sum.
+  #
+  # THE UNION IS ASSERTED, NOT TRUSTED: scripts/rigcensus requires, per rig,
+  # some step that BOTH sets its env gate and selects one of its tests
+  # (coveredBy). A rig dropped from every shard is therefore uncovered and
+  # fails the build -- verified by dropping one and watching the census fail.
+  # That is why these are four explicit jobs with LITERAL selectors and not a
+  # matrix: a matrix leaves "${{ matrix.selector }}" in the run string, which
+  # the census would read as a regex matching nothing.
+  #
+  # Each shard sets only the gates its own rigs need (INITECH_9IMX appears in
+  # two shards because SuspendGuard and SuspendFate share one gate). Shards are
+  # separate jobs, and every rig builds its binary and root under its own
+  # t.TempDir, so no shard shares a temp dir or a binary name with another.
+  composed-rigs-shard1:
+    # ~189s measured: X5OB 108.7s + FN77 54.9s + A9D8 25.2s
     runs-on: ${{ github.event_name != 'pull_request' && vars.MAC_RUNNER || 'macos-latest' }}
-    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
 
@@ -68,32 +79,77 @@ jobs:
         with:
           go-version-file: go.mod
 
-      # ini-0lko: name the rigs this leg SELECTED, before running them. A rig
-      # job that prints only "ok" witnesses a duration, not a test list -- and
-      # this leg's whole purpose is that a specific set of rigs ran. Without
-      # this, a selector that silently matches nothing is indistinguishable
-      # from a green run, which is the exact failure the census exists to stop
-      # one level up. -list compiles and enumerates without running.
-      - name: Witness which rigs this leg selected
-        run: go test ./internal/tui/ -list 'NineISXRig|X5obRig|AttentionRig|TestAQY_|NineGVNRig|TestSuspendFate|TestSuspendGuard|A9d8Rig|Dr03Rig|FN77Rig|UZ42Rig|TestZ5uwRig|Inbox7Rig'
+      # ini-0lko: name what this shard selected, before running it.
+      - name: Witness which rigs this shard selected
+        run: go test ./internal/tui/ -list 'X5obRig|FN77Rig|A9d8Rig'
+
+      - name: Composed multi-window rigs (real binaries, real PTYs)
+        env:
+          INITECH_X5OB: "1"
+          INITECH_FN77: "1"
+          INITECH_A9D8: "1"
+        run: go test ./internal/tui/ -count=1 -timeout 900s -run 'X5obRig|FN77Rig|A9d8Rig'
+
+  composed-rigs-shard2:
+    # ~183s measured: SuspendGuard 98.1s + AQY 55.9s + UZ42 29.2s
+    runs-on: ${{ github.event_name != 'pull_request' && vars.MAC_RUNNER || 'macos-latest' }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      # ini-0lko: name what this shard selected, before running it.
+      - name: Witness which rigs this shard selected
+        run: go test ./internal/tui/ -list 'TestSuspendGuard|TestAQY_|UZ42Rig'
+
+      - name: Composed multi-window rigs (real binaries, real PTYs)
+        env:
+          INITECH_9IMX: "1"
+          INITECH_AQY: "1"
+          INITECH_UZ42: "1"
+        run: go test ./internal/tui/ -count=1 -timeout 900s -run 'TestSuspendGuard|TestAQY_|UZ42Rig'
+
+  composed-rigs-shard3:
+    # ~179s measured: 9ISX 79.7s + Dr03 56.0s + 9GVN 35.6s + Z5UW 7.2s
+    runs-on: ${{ github.event_name != 'pull_request' && vars.MAC_RUNNER || 'macos-latest' }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      # ini-0lko: name what this shard selected, before running it.
+      - name: Witness which rigs this shard selected
+        run: go test ./internal/tui/ -list 'NineISXRig|Dr03Rig|NineGVNRig|TestZ5uwRig'
 
       - name: Composed multi-window rigs (real binaries, real PTYs)
         env:
           INITECH_9ISX: "1"
-          INITECH_X5OB: "1"
-          INITECH_AQY: "1"
-          INITECH_35AK: "1"
-          # ini-ibsm: 9GVN and 9IMX were quarantined against ini-8mrq, which was
-          # an ubuntu-only sh-fixture failure. macOS is the tested platform now
-          # and both PASS here, so they gate like any other rig -- the
-          # quarantine is removed rather than carried forward pointing at a
-          # failure no tested platform sees.
-          INITECH_9GVN: "1"
-          INITECH_9IMX: "1"
-          INITECH_A9D8: "1"
           INITECH_DR03: "1"
-          INITECH_FN77: "1"
-          INITECH_UZ42: "1"
+          INITECH_9GVN: "1"
           INITECH_Z5UW: "1"
+        run: go test ./internal/tui/ -count=1 -timeout 900s -run 'NineISXRig|Dr03Rig|NineGVNRig|TestZ5uwRig'
+
+  composed-rigs-shard4:
+    # ~173s measured: Attention 73.0s + SuspendFate 65.7s + Inbox7 34.1s
+    runs-on: ${{ github.event_name != 'pull_request' && vars.MAC_RUNNER || 'macos-latest' }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      # ini-0lko: name what this shard selected, before running it.
+      - name: Witness which rigs this shard selected
+        run: go test ./internal/tui/ -list 'AttentionRig|TestSuspendFate|Inbox7Rig'
+
+      - name: Composed multi-window rigs (real binaries, real PTYs)
+        env:
+          INITECH_35AK: "1"
+          INITECH_9IMX: "1"
           INITECH_3WKL7: "1"
-        run: go test ./internal/tui/ -count=1 -timeout 900s -run 'NineISXRig|X5obRig|AttentionRig|TestAQY_|NineGVNRig|TestSuspendFate|TestSuspendGuard|A9d8Rig|Dr03Rig|FN77Rig|UZ42Rig|TestZ5uwRig|Inbox7Rig'
+        run: go test ./internal/tui/ -count=1 -timeout 900s -run 'AttentionRig|TestSuspendFate|Inbox7Rig'
