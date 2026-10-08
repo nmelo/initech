@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"time"
+	"unicode"
 
 	"github.com/gdamore/tcell/v2"
 )
@@ -101,9 +102,24 @@ func (t *TUI) handleKey(ev *tcell.EventKey) bool {
 		// so without this guard a shifted press would misfire the static
 		// preset (violating the fail-safe requirement). A shifted non-digit or
 		// out-of-range rune falls through and never fires a preset.
-		if ev.Modifiers()&tcell.ModShift != 0 && ev.Key() == tcell.KeyRune {
-			if r := ev.Rune(); r >= '1' && r <= '7' {
-				t.applyLayoutPresetLive(int(r - '1'))
+		//
+		// Shifted letters are resolved here too, by the same rule, for the
+		// same reason (ini-77ys): Option+Shift+F reaches us in more than one
+		// shape. Ghostty speaks the kitty keyboard protocol that tcell asks
+		// for, and kitty reports the UNSHIFTED key with a Shift flag
+		// (CSI 102;4u -> 'f' + Shift|Alt) — which fell into the static
+		// switch's case 'f' and toggled the plain Focus split, so v2.15.0's
+		// headline chord did the wrong thing in the operator's terminal.
+		// Legacy ESC-prefix terminals send 'F' with Alt and no Shift flag;
+		// modifyOtherKeys sends 'F' with Shift|Alt. altShiftedRune folds all
+		// three into one answer.
+		if base, shifted := altShiftedRune(ev); shifted {
+			switch {
+			case base >= '1' && base <= '7':
+				t.applyLayoutPresetLive(int(base - '1'))
+				return false
+			case base == 'f':
+				t.toggleLiveFocusSplit()
 				return false
 			}
 		}
@@ -142,12 +158,6 @@ func (t *TUI) handleKey(ev *tcell.EventKey) bool {
 				return false
 			case 'f':
 				t.toggleFocusSplit()
-				return false
-			case 'F':
-				// Option+Shift+F: the live focus split (ini-92wm). The
-				// shifted rune arrives as 'F' with ModAlt; the Shift+Alt+digit
-				// intercept above takes digits only, so this is reachable.
-				t.toggleLiveFocusSplit()
 				return false
 			case 'a':
 				if t.agents.active {
@@ -245,6 +255,30 @@ func (t *TUI) wakeSuspendedPaneFromKeystroke(p *Pane) {
 func (t *TUI) handleResize() {
 	t.screen.Sync()
 	t.applyLayout()
+}
+
+// altShiftedRune reports the base (unshifted, lowercase) rune of an Alt chord
+// and whether Shift was part of it, across the encodings real terminals send:
+//
+//	kitty CSI-u (Ghostty, kitty, WezTerm): 'f' with Shift|Alt
+//	xterm modifyOtherKeys:                 'F' with Shift|Alt
+//	legacy ESC prefix (Terminal.app):      'F' with Alt, no Shift flag
+//
+// Only letters can carry Shift in the rune's case; a digit is shifted only
+// when the Shift flag says so, which is exactly the rule the Shift+Alt+digit
+// presets have used since ini-era4. Non-rune keys are never shifted chords.
+func altShiftedRune(ev *tcell.EventKey) (rune, bool) {
+	if ev.Key() != tcell.KeyRune || ev.Modifiers()&tcell.ModAlt == 0 {
+		return 0, false
+	}
+	r := ev.Rune()
+	if ev.Modifiers()&tcell.ModShift != 0 {
+		return unicode.ToLower(r), true
+	}
+	if unicode.IsUpper(r) {
+		return unicode.ToLower(r), true
+	}
+	return r, false
 }
 
 func (t *TUI) cycleFocus(delta int) {
