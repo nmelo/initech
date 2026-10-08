@@ -1,10 +1,14 @@
 name: Rigs
 
-# ini-i4uj: the composed rigs and the race detector run NIGHTLY ON MAIN and ON
-# DEMAND, not on every push. Over 100 runs they stopped zero product regressions
-# per push (their catches came when first written and run by hand), while the
-# rig job alone was 708s of a 12-14 minute push run on the 10x-billed macOS
-# runner. The operator retired per-feature rigs as a gate (2026-09-13).
+# ini-i4uj took the composed rigs and the race detector OFF every push: on the
+# 10x-billed GitHub macOS runner the rig job alone was 708s of a 12-14 minute
+# push run. Since ini-8k1o (self-hosted runners on the operator's Mac) and
+# ini-q6dp (rigs sharded four ways, ~4 min each) they are back on every PUSH TO
+# MAIN (operator, 2026-10-08): they now run free on the Mac, a push-sized burst
+# of 3 CI + 5 rig jobs peaked at load 10.65 there, and a regression is caught at
+# the commit that made it instead of at the next nightly run. Not on PRs or
+# branches -- pull_request never reaches the Mac (see ci.yml). Cost: when CI and
+# rigs fire together on 4 runners, CI jobs can queue a few minutes behind rigs.
 #
 # A SEPARATE FILE, not jobs in ci.yml behind an event condition: shipper's
 # release gate derives the expected job set from ci.yml and asserts a push run
@@ -15,6 +19,8 @@ name: Rigs
 # scripts/rigcensus reads this file as well as ci.yml, so a rig invoked here
 # still counts as invoked.
 on:
+  push:
+    branches: [main]
   schedule:
     - cron: '0 7 * * *'
   workflow_dispatch:
