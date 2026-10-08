@@ -913,9 +913,17 @@ const (
 // for stable (true), or cap/quit expires (false). Callers deliver either way
 // -- a cap expiry is a loud log, never a dropped message.
 func (t *TUI) waitForOutputQuiescence(pane *Pane, stable, cap time.Duration) bool {
+	return waitForQuiescence(pane.LastOutputTime, stable, cap, t.quitCh)
+}
+
+// waitForQuiescence is the ini-hbj4 rule over any output clock: true once the
+// clock has stood still for stable, false at cap or when quit closes. A nil
+// quit never fires. Shared by the wake drain and the startup send gate
+// (ini-i35w) so the two cannot disagree about when a child is listening.
+func waitForQuiescence(lastOutput func() time.Time, stable, cap time.Duration, quit <-chan struct{}) bool {
 	deadline := time.Now().Add(cap)
 	for {
-		last := pane.LastOutputTime()
+		last := lastOutput()
 		if !last.IsZero() && time.Since(last) >= stable {
 			return true
 		}
@@ -923,7 +931,7 @@ func (t *TUI) waitForOutputQuiescence(pane *Pane, stable, cap time.Duration) boo
 			return false
 		}
 		select {
-		case <-t.quitCh:
+		case <-quit:
 			return false
 		case <-time.After(50 * time.Millisecond):
 		}

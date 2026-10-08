@@ -189,6 +189,17 @@ func (t *TUI) handleIPCStart(conn net.Conn, req IPCRequest) {
 		writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("pane %q not found. To create a new pane, use: initech add %s", req.Target, req.Target)})
 		return
 	}
+	// A SUSPENDED agent is not a stopped one (ini-i35w). Its process is gone,
+	// so it fails IsAlive below and start used to cold-spawn it -- dropping
+	// the mail queued while it was parked and the bead ids, both of which
+	// resume carries over. Refused, and the right verb named, rather than
+	// silently resumed: start's contract is stopped agents, and a start that
+	// quietly resumed would also deliver queued mail the caller never asked
+	// about.
+	if old.IsSuspended() {
+		writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("%s is suspended — use initech resume %s", req.Target, req.Target)})
+		return
+	}
 	if old.IsAlive() {
 		writeIPCResponse(conn, IPCResponse{OK: true, Data: "already running"})
 		return

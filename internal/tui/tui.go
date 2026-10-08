@@ -1443,6 +1443,13 @@ func (t *TUI) deliverForwardedSend(target, text string, enter bool) error {
 	if pv == nil {
 		return fmt.Errorf("agent %q not found", target)
 	}
+	// The forwarding window is waiting on this error (ini-i35w): refuse a
+	// pane still booting rather than let its child eat the text.
+	if lp, ok := pv.(*Pane); ok {
+		if err := lp.awaitStartupSettled(); err != nil {
+			return err
+		}
+	}
 	pv.SendText(text, enter)
 	return nil
 }

@@ -134,6 +134,14 @@ func runAssign(cmd *cobra.Command, args []string) error {
 	roster, _ := loadProjectRoster()
 	family := roles.RoleFamilyOfWithRoster(agent, roster)
 
+	// Is the agent able to receive the dispatch right now? Asked BEFORE any bd
+	// write (ini-i35w), so a claim never outlives an undelivered message: an
+	// agent still booting after initech start used to end up with a claimed,
+	// in_progress bead and no message, and the board said someone was working.
+	if err := preflightSendReady(agent, host); err != nil {
+		return err
+	}
+
 	// Process each bead: show + dispatch. Failures logged and skipped.
 	//
 	// bd FIRST, TUI SECOND, and the order is load-bearing: a bead whose bd
@@ -230,6 +238,25 @@ func emitIPCEvent(agent, beadID, eventType, detail string) {
 }
 
 // buildDispatchMessage creates the dispatch text sent to the agent.
+// preflightSendReady asks the TUI whether a send to agent would be delivered
+// now; the TUI waits on the agent's startup gate before answering. Only an
+// explicit "still starting" stops the assign. Anything it cannot judge --
+// no TUI, an older TUI without the action, a cross-machine target -- proceeds
+// exactly as assign always has, and the dispatch send reports its own fate.
+func preflightSendReady(agent, host string) error {
+	if host != "" {
+		return nil
+	}
+	resp, err := ipcCall(tui.IPCRequest{Action: "send_ready", Target: agent})
+	if err != nil || resp.OK {
+		return nil
+	}
+	if strings.HasPrefix(resp.Error, tui.ErrPaneStillStarting.Error()) {
+		return fmt.Errorf("nothing assigned: %s\nRetry when %s is ready (initech peek %s).", resp.Error, agent, agent)
+	}
+	return nil
+}
+
 func buildDispatchMessage(successes []assignResult, message string) string {
 	if len(successes) == 1 {
 		// Single bead: compact format (backwards compatible).
