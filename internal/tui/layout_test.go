@@ -962,7 +962,7 @@ func TestAgentsModalHideSavesLayout(t *testing.T) {
 	tui.projectRoot = root
 
 	// Hide eng2 via agents modal (select row 2, toggle visibility).
-	tui.openAgentsModal()
+	openAgentsList(tui)
 	tui.agents.selected = 2 // eng2
 	tui.agentsToggleVisibility()
 
@@ -996,7 +996,7 @@ func TestAgentsModalUnhideSavesLayout(t *testing.T) {
 	tui.projectRoot = root
 
 	// Unhide eng1 via agents modal.
-	tui.openAgentsModal()
+	openAgentsList(tui)
 	tui.agents.selected = 1 // eng1
 	tui.agentsToggleVisibility()
 
@@ -1057,7 +1057,7 @@ func TestAgentsModalRevealAllSavesLayout(t *testing.T) {
 	tui.projectRoot = root
 
 	// Reveal all via agents modal.
-	tui.openAgentsModal()
+	openAgentsList(tui)
 	tui.agentsRevealAll()
 
 	got, ok := LoadLayout(root, []string{"super", "eng1", "eng2"})

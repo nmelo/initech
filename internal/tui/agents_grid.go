@@ -92,6 +92,12 @@ const (
 // Width budget: boxW floors at len(agentsHelpText)+4 and caps at the screen,
 // so this line must stay ≤ ~114 chars or "Esc close" clips on a 120-col
 // terminal. "s/S suspend" = s parks/wakes the agent, S its whole band.
+// agentsSearchHelpText is the footer while the search box has focus — which
+// is how the panel opens (ini-hxtg), so it is the first thing the operator
+// reads. It names the way out of the box, because arrows no longer step
+// matches from here: Down leaves for the list.
+const agentsSearchHelpText = " type to filter  Down list  Esc close"
+
 const agentsHelpText = " Arrows move  Space hide  Enter grab  p pin  P protect  s/S suspend  / search  g group  A all  R reset  Esc close"
 
 // groupFor computes the seed band for a pane name with no GroupOf entry yet,
@@ -751,7 +757,9 @@ func (t *TUI) agentsGridNumber(idx int) int {
 }
 
 func (t *TUI) agentsMatched(paneIdx int) bool {
-	if !t.agents.searching || len(t.agents.searchBuf) == 0 {
+	// The filter is the BUFFER, not the box (ini-hxtg): it stays applied
+	// after Down/Enter leaves the box for the list.
+	if !t.agentsFilterActive() {
 		return true
 	}
 	q := strings.ToLower(string(t.agents.searchBuf))
@@ -760,6 +768,19 @@ func (t *TUI) agentsMatched(paneIdx int) bool {
 	// display disagreeing on what "3" means would be worse than either bug.
 	return strings.Contains(strings.ToLower(paneDisplayName(p)), q) ||
 		strings.HasPrefix(strconv.Itoa(t.agentsGridNumber(paneIdx)+1), q)
+}
+
+// agentsFilterActive reports whether a search term is set. Since ini-hxtg the
+// term outlives the search box: leaving the box for the list keeps it, and
+// the list's arrows then step only through matches.
+func (t *TUI) agentsFilterActive() bool { return len(t.agents.searchBuf) > 0 }
+
+// agentsBarRow reports whether the row under the title is in use — the search
+// bar (box focused, or a filter set) or the new-group prompt. Leaving the box
+// with a filter set must not reflow the grid, so the row stays reserved
+// exactly as long as the bar is drawn.
+func (t *TUI) agentsBarRow() bool {
+	return t.agents.searching || t.agentsFilterActive() || t.agents.creatingGroup
 }
 
 // agentsMatchCells returns indices into cells (grid order) whose pane
@@ -831,7 +852,7 @@ func (t *TUI) agentsMoveH(delta int) {
 		return
 	}
 	sw, sh := t.screen.Size()
-	_, geo := t.agentsFrameGeometry(sw, sh, t.agents.searching || t.agents.creatingGroup)
+	_, geo := t.agentsFrameGeometry(sw, sh, t.agentsBarRow())
 	cells := geo.cells
 	cur := agentsCellForPane(cells, sel)
 	if cur == nil {
@@ -944,7 +965,7 @@ func (t *TUI) agentsContinueToColumnRow(cells []gridCell, cur *gridCell, delta i
 			return
 		}
 		sw, sh := t.screen.Size()
-		_, geo := t.agentsFrameGeometry(sw, sh, t.agents.searching || t.agents.creatingGroup)
+		_, geo := t.agentsFrameGeometry(sw, sh, t.agentsBarRow())
 		var slot *slotInfo
 		for li := range geo.lines {
 			if geo.lines[li].colRow != targetColRow {
@@ -1370,7 +1391,7 @@ func (t *TUI) renderAgentsGrid() {
 	sw, sh := s.Size()
 
 	t.ensureGroups(true)
-	box, geo := t.agentsFrameGeometry(sw, sh, t.agents.searching || t.agents.creatingGroup)
+	box, geo := t.agentsFrameGeometry(sw, sh, t.agentsBarRow())
 	boxW, boxH, startX, startY := box.boxW, box.boxH, box.startX, box.startY
 
 	bgStyle := tcell.StyleDefault.Background(tcell.NewRGBColor(20, 20, 20)).Foreground(tcell.ColorSilver)
@@ -1453,8 +1474,15 @@ func (t *TUI) renderAgentsGrid() {
 			}
 			x++
 		}
-	} else if t.agents.searching {
-		bar := fmt.Sprintf(" / %s_", string(t.agents.searchBuf))
+	} else if t.agents.searching || t.agentsFilterActive() {
+		// The cursor marks where typing goes: only while the box has focus.
+		// In the list the bar stays, without it, so the operator can see the
+		// filter the arrows are honouring.
+		cursor := ""
+		if t.agents.searching {
+			cursor = "_"
+		}
+		bar := fmt.Sprintf(" / %s%s", string(t.agents.searchBuf), cursor)
 		x := innerX - 1
 		for _, ch := range bar {
 			if x >= startX+1 && x < startX+boxW-1 {
@@ -1551,7 +1579,7 @@ func (t *TUI) renderAgentsGrid() {
 		p := t.panes[c.paneIdx]
 		pk := agentKey(p)
 		isSel := c.paneIdx == t.agents.selected
-		dimmed := t.agents.searching && !t.agentsMatched(c.paneIdx)
+		dimmed := t.agentsFilterActive() && !t.agentsMatched(c.paneIdx)
 		hidden := t.layoutState.Hidden[pk]
 		protected := t.layoutState.Protected[pk]
 		_, livePinned := t.layoutState.LivePinned[pk]
@@ -1683,7 +1711,7 @@ func (t *TUI) renderAgentsGrid() {
 
 	help := agentsHelpText
 	if t.agents.searching {
-		help = " type to filter  Arrows next/prev match  Space hide  Enter keep  Esc cancel"
+		help = agentsSearchHelpText
 	}
 	if t.agents.creatingGroup {
 		help = " type a name  Enter create  Esc cancel"

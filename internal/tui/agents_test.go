@@ -42,7 +42,7 @@ func TestAgentsModal_AltAToggles(t *testing.T) {
 
 func TestAgentsModal_CloseEsc(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("eng1")
-	tui.openAgentsModal()
+	openAgentsList(tui)
 	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyEscape, 0, 0))
 	if tui.agents.active {
 		t.Error("agents modal should close on Esc")
@@ -51,7 +51,7 @@ func TestAgentsModal_CloseEsc(t *testing.T) {
 
 func TestAgentsModal_CloseQ(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("eng1")
-	tui.openAgentsModal()
+	openAgentsList(tui)
 	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyRune, 'q', 0))
 	if tui.agents.active {
 		t.Error("agents modal should close on q")
@@ -60,7 +60,7 @@ func TestAgentsModal_CloseQ(t *testing.T) {
 
 func TestAgentsModal_CloseBacktick(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("eng1")
-	tui.openAgentsModal()
+	openAgentsList(tui)
 	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyRune, '`', 0))
 	if tui.agents.active {
 		t.Error("agents modal should close on backtick")
@@ -71,7 +71,7 @@ func TestAgentsModal_CloseBacktick(t *testing.T) {
 // a band left empty by a grab disappears when the modal closes.
 func TestAgentsModal_CloseRemovesEmptyGroup(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("super", "eng1")
-	tui.openAgentsModal()
+	openAgentsList(tui)
 	tui.layoutState.Groups = append(tui.layoutState.Groups, "empty-band")
 	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyEscape, 0, 0))
 
@@ -106,7 +106,7 @@ func TestAgentsModal_RenderShowsAllAgents(t *testing.T) {
 	tui.panes[2].(*Pane).activity = StateRunning
 	tui.panes[2].(*Pane).lastOutputTime = time.Now()
 
-	tui.openAgentsModal()
+	openAgentsList(tui)
 	tui.render()
 
 	sw, sh := s.Size()
@@ -131,7 +131,7 @@ func TestAgentsModal_RenderShowsAllAgents(t *testing.T) {
 func TestAgentsModal_RenderShowsVisibilityCheckbox(t *testing.T) {
 	tui, s := newTestTUIWithScreen("eng1", "eng2")
 	tui.layoutState.Hidden["eng2"] = true
-	tui.openAgentsModal()
+	openAgentsList(tui)
 	tui.render()
 
 	sw, sh := s.Size()
@@ -181,7 +181,7 @@ func gridRowText(s tcell.SimulationScreen, c gridCell) string {
 func TestAgentsModal_HiddenMarkerIsOnTheHiddenAgentsRow(t *testing.T) {
 	tui, s := newTestTUIWithScreen("eng1", "eng2")
 	tui.layoutState.Hidden["eng2"] = true
-	tui.openAgentsModal()
+	openAgentsList(tui)
 	tui.render()
 	cells := locateCells(t, tui, s, "eng1", "eng2")
 
@@ -197,7 +197,7 @@ func TestAgentsModal_HiddenMarkerIsOnTheHiddenAgentsRow(t *testing.T) {
 func TestAgentsModal_UnhidingRemovesTheMarker(t *testing.T) {
 	tui, s := newTestTUIWithScreen("eng1", "eng2")
 	tui.layoutState.Hidden["eng2"] = true
-	tui.openAgentsModal()
+	openAgentsList(tui)
 	tui.render()
 	cells := locateCells(t, tui, s, "eng2")
 	if got := gridRowText(s, cells["eng2"]); !strings.Contains(got, "[h]") {
@@ -233,7 +233,7 @@ func TestAgentsModal_HiddenAndSuspendedBothMarked(t *testing.T) {
 	p.suspended = true
 	p.activity = StateSuspended
 	p.mu.Unlock()
-	tui.openAgentsModal()
+	openAgentsList(tui)
 	tui.render()
 	cells := locateCells(t, tui, s, "eng2")
 
@@ -260,7 +260,7 @@ func TestAgentsModal_HiddenAndSuspendedBothMarked(t *testing.T) {
 func TestAgentsModal_RenderHiddenAgentNameItalic(t *testing.T) {
 	tui, s := newTestTUIWithScreen("eng1", "eng2")
 	tui.layoutState.Hidden["eng2"] = true
-	tui.openAgentsModal()
+	openAgentsList(tui)
 	tui.render()
 
 	sw, sh := s.Size()
@@ -298,7 +298,7 @@ func TestAgentsModal_RenderHiddenAgentNameItalic(t *testing.T) {
 func TestAgentsModal_RenderShowsProtectMarker(t *testing.T) {
 	tui, s := newTestTUIWithScreen("eng1", "eng2")
 	tui.layoutState.Protected = map[string]bool{"eng1": true}
-	tui.openAgentsModal()
+	openAgentsList(tui)
 	tui.render()
 
 	sw, sh := s.Size()
@@ -312,7 +312,7 @@ func TestAgentsModal_RenderShowsProtectMarker(t *testing.T) {
 func TestAgentsModal_RenderShowsLivePinMarker(t *testing.T) {
 	tui, s := newTestTUIWithScreen("eng1", "eng2")
 	tui.layoutState.LivePinned = map[string]int{"eng2": 0}
-	tui.openAgentsModal()
+	openAgentsList(tui)
 	tui.render()
 
 	sw, sh := s.Size()
@@ -332,7 +332,7 @@ func TestAgentsModal_RenderLiveModeDisplayedMarker(t *testing.T) {
 	tui.layoutState.Mode = LayoutLive
 	tui.layoutState.LivePinned = map[string]int{"pm": 1}
 	tui.layoutState.LiveSlots = []string{"super", "pm"}
-	tui.openAgentsModal()
+	openAgentsList(tui)
 	tui.render()
 
 	sw, sh := s.Size()
@@ -348,7 +348,7 @@ func TestAgentsModal_RenderLiveModeDisplayedMarker(t *testing.T) {
 
 func TestAgentsModal_RenderIsFloating(t *testing.T) {
 	tui, s := newTestTUIWithScreen("eng1", "eng2")
-	tui.openAgentsModal()
+	openAgentsList(tui)
 	tui.render()
 
 	sw, sh := s.Size()
@@ -370,7 +370,7 @@ func TestAgentsModal_RenderIsFloating(t *testing.T) {
 
 func TestAgentsModal_RenderHelpLine(t *testing.T) {
 	tui, s := newTestTUIWithScreen("eng1")
-	tui.openAgentsModal()
+	openAgentsList(tui)
 	tui.render()
 
 	sw, sh := s.Size()
@@ -385,7 +385,7 @@ func TestAgentsModal_CloseDoesNotCorruptLayout(t *testing.T) {
 	origMode := tui.layoutState.Mode
 	origFocused := tui.layoutState.Focused
 
-	tui.openAgentsModal()
+	openAgentsList(tui)
 	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyRight, 0, 0))
 	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyEscape, 0, 0))
 
@@ -408,7 +408,7 @@ func TestAgentsModal_EmptyPaneList(t *testing.T) {
 
 func TestAgentsModal_HandleKeyReturnsFalse(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("eng1")
-	tui.openAgentsModal()
+	openAgentsList(tui)
 
 	keys := []*tcell.EventKey{
 		tcell.NewEventKey(tcell.KeyUp, 0, 0),
@@ -431,7 +431,7 @@ func TestAgentsModal_HandleKeyReturnsFalse(t *testing.T) {
 
 func TestAgentsModal_InterceptsKeysWhenActive(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("super", "eng1")
-	tui.openAgentsModal()
+	openAgentsList(tui)
 
 	// Right: super's core column sits beside eng's (ini-w771 transposed the
 	// grid); the point here is routing, not the direction.
@@ -445,7 +445,7 @@ func TestAgentsModal_InterceptsKeysWhenActive(t *testing.T) {
 
 func TestAgentsModal_SpaceToggleVisibility(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("eng1", "eng2")
-	tui.openAgentsModal()
+	openAgentsList(tui)
 
 	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyRune, ' ', 0))
 	if !tui.layoutState.Hidden["eng1"] {
@@ -459,7 +459,7 @@ func TestAgentsModal_SpaceToggleVisibility(t *testing.T) {
 
 func TestAgentsModal_SpaceLastVisibleGuard(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("eng1")
-	tui.openAgentsModal()
+	openAgentsList(tui)
 
 	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyRune, ' ', 0))
 	if tui.layoutState.Hidden["eng1"] {
@@ -473,7 +473,7 @@ func TestAgentsModal_SpaceLastVisibleGuard(t *testing.T) {
 func TestAgentsModal_SpaceLastVisibleGuardMultiple(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("eng1", "eng2")
 	tui.layoutState.Hidden = map[string]bool{"eng2": true}
-	tui.openAgentsModal()
+	openAgentsList(tui)
 
 	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyRune, ' ', 0))
 	if tui.layoutState.Hidden["eng1"] {
@@ -483,7 +483,7 @@ func TestAgentsModal_SpaceLastVisibleGuardMultiple(t *testing.T) {
 
 func TestAgentsModal_EnterGrabDrop(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("eng1", "eng2")
-	tui.openAgentsModal()
+	openAgentsList(tui)
 
 	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyEnter, 0, 0))
 	if !tui.agents.moving {
@@ -497,7 +497,7 @@ func TestAgentsModal_EnterGrabDrop(t *testing.T) {
 
 func TestAgentsModal_ProtectToggle(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("eng1", "eng2")
-	tui.openAgentsModal()
+	openAgentsList(tui)
 
 	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyRune, 'P', 0))
 	if !tui.layoutState.Protected["eng1"] {
@@ -514,7 +514,7 @@ func TestAgentsModal_LivePinToggle(t *testing.T) {
 	tui.layoutState.Mode = LayoutLive
 	tui.layoutState.LivePinned = make(map[string]int)
 	tui.layoutState.LiveSlots = []string{"eng1", "eng2"}
-	tui.openAgentsModal()
+	openAgentsList(tui)
 
 	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyRune, 'p', 0))
 	if _, pinned := tui.layoutState.LivePinned["eng1"]; !pinned {
@@ -529,7 +529,7 @@ func TestAgentsModal_LivePinToggle(t *testing.T) {
 func TestAgentsModal_LivePinRequiresLiveMode(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("eng1", "eng2")
 	tui.layoutState.Mode = LayoutGrid
-	tui.openAgentsModal()
+	openAgentsList(tui)
 
 	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyRune, 'p', 0))
 	if tui.agents.error == "" {
@@ -544,7 +544,7 @@ func TestAgentsModal_MultiPinDoesNotEvictSlot0(t *testing.T) {
 	tui.layoutState.GridRows = 1
 	tui.layoutState.LivePinned = make(map[string]int)
 	tui.layoutState.LiveSlots = []string{"eng1", "eng2"}
-	tui.openAgentsModal()
+	openAgentsList(tui)
 
 	tui.agents.selected = 0
 	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyRune, 'p', 0))
@@ -569,7 +569,7 @@ func TestAgentsModal_AllSlotsPinnedShowsError(t *testing.T) {
 	tui.layoutState.GridRows = 1
 	tui.layoutState.LivePinned = map[string]int{"eng1": 0, "eng2": 1}
 	tui.layoutState.LiveSlots = []string{"eng1", "eng2"}
-	tui.openAgentsModal()
+	openAgentsList(tui)
 
 	tui.agents.selected = 2
 	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyRune, 'p', 0))
@@ -584,7 +584,7 @@ func TestAgentsModal_AllSlotsPinnedShowsError(t *testing.T) {
 func TestAgentsModal_RevealAll(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("eng1", "eng2", "eng3")
 	tui.layoutState.Hidden = map[string]bool{"eng1": true, "eng3": true}
-	tui.openAgentsModal()
+	openAgentsList(tui)
 
 	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyRune, 'A', 0))
 	for _, name := range []string{"eng1", "eng2", "eng3"} {
@@ -597,7 +597,7 @@ func TestAgentsModal_RevealAll(t *testing.T) {
 func TestAgentsModal_ResetOrder(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("eng1", "eng2", "eng3")
 	tui.project = &config.Project{Roles: []string{"eng3", "eng1", "eng2"}}
-	tui.openAgentsModal()
+	openAgentsList(tui)
 
 	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyRune, 'R', 0))
 
@@ -613,7 +613,7 @@ func TestAgentsModal_ResetOrder(t *testing.T) {
 func TestAgentsModal_ResetOrderNoConfig(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("eng1", "eng2")
 	tui.project = nil
-	tui.openAgentsModal()
+	openAgentsList(tui)
 
 	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyRune, 'R', 0))
 	if tui.agents.error == "" {
@@ -623,7 +623,7 @@ func TestAgentsModal_ResetOrderNoConfig(t *testing.T) {
 
 func TestAgentsModal_ErrorClearsOnNextKey(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("eng1")
-	tui.openAgentsModal()
+	openAgentsList(tui)
 
 	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyRune, ' ', 0))
 	if tui.agents.error == "" {
@@ -637,7 +637,7 @@ func TestAgentsModal_ErrorClearsOnNextKey(t *testing.T) {
 
 func TestAgentsModal_EscCancelsMoving(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("eng1", "eng2")
-	tui.openAgentsModal()
+	openAgentsList(tui)
 
 	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyEnter, 0, 0))
 	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyEscape, 0, 0))
@@ -651,7 +651,7 @@ func TestAgentsModal_EscCancelsMoving(t *testing.T) {
 
 func TestAgentsModal_EscTwiceClosesAfterCancelingMoving(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("eng1", "eng2")
-	tui.openAgentsModal()
+	openAgentsList(tui)
 
 	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyEnter, 0, 0))
 	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyEscape, 0, 0)) // cancels grab
@@ -663,7 +663,7 @@ func TestAgentsModal_EscTwiceClosesAfterCancelingMoving(t *testing.T) {
 
 func TestAgentsModal_RenderMovingTitle(t *testing.T) {
 	tui, s := newTestTUIWithScreen("eng1", "eng2")
-	tui.openAgentsModal()
+	openAgentsList(tui)
 	tui.agents.moving = true
 	tui.render()
 
@@ -676,7 +676,7 @@ func TestAgentsModal_RenderMovingTitle(t *testing.T) {
 
 func TestAgentsModal_RenderErrorLine(t *testing.T) {
 	tui, s := newTestTUIWithScreen("eng1")
-	tui.openAgentsModal()
+	openAgentsList(tui)
 	tui.agents.error = "test error message"
 	tui.render()
 
@@ -691,7 +691,7 @@ func TestAgentsModal_RenderErrorLine(t *testing.T) {
 
 func TestAgentsModal_CreateGroupViaG(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("eng1", "eng2")
-	tui.openAgentsModal()
+	openAgentsList(tui)
 	before := len(tui.layoutState.Groups)
 
 	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyRune, 'g', 0))
@@ -725,7 +725,7 @@ func TestAgentsModal_CreateGroupViaG(t *testing.T) {
 // not always at the end of the list.
 func TestAgentsModal_CreateGroupInsertsAfterCurrentBand(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("super", "eng1", "qa1")
-	tui.openAgentsModal()
+	openAgentsList(tui)
 	if diff := tui.layoutState.Groups; len(diff) != 3 || diff[0] != "core" || diff[1] != "eng" || diff[2] != "qa" {
 		t.Fatalf("precondition: groups = %v, want [core eng qa]", diff)
 	}
@@ -752,7 +752,7 @@ func TestAgentsModal_CreateGroupInsertsAfterCurrentBand(t *testing.T) {
 
 func TestAgentsModal_CreateGroupEmptyNameRejected(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("eng1")
-	tui.openAgentsModal()
+	openAgentsList(tui)
 	before := append([]string(nil), tui.layoutState.Groups...)
 
 	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyRune, 'g', 0))
@@ -772,7 +772,7 @@ func TestAgentsModal_CreateGroupEmptyNameRejected(t *testing.T) {
 // the first -- a routing corruption, not a cosmetic annoyance.
 func TestAgentsModal_CreateGroupExactDuplicateRejected(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("super", "eng1", "qa1")
-	tui.openAgentsModal()
+	openAgentsList(tui)
 	before := append([]string(nil), tui.layoutState.Groups...)
 	if !groupNameExists(before, "eng") {
 		t.Fatalf("precondition: %v should already contain \"eng\"", before)
@@ -800,7 +800,7 @@ func TestAgentsModal_CreateGroupExactDuplicateRejected(t *testing.T) {
 // never folded together.
 func TestAgentsModal_CreateGroupCaseVariantIsNotADuplicate(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("super", "eng1", "qa1")
-	tui.openAgentsModal()
+	openAgentsList(tui)
 	if !groupNameExists(tui.layoutState.Groups, "eng") {
 		t.Fatalf("precondition: %v should already contain \"eng\"", tui.layoutState.Groups)
 	}
@@ -823,7 +823,7 @@ func TestAgentsModal_CreateGroupCaseVariantIsNotADuplicate(t *testing.T) {
 // whitespace is part of the name, never collapsed for comparison.
 func TestAgentsModal_CreateGroupWhitespaceVariantIsNotADuplicate(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("super", "eng1", "qa1")
-	tui.openAgentsModal()
+	openAgentsList(tui)
 	tui.layoutState.Groups = append(tui.layoutState.Groups, "eng team")
 
 	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyRune, 'g', 0))
@@ -842,7 +842,7 @@ func TestAgentsModal_CreateGroupWhitespaceVariantIsNotADuplicate(t *testing.T) {
 
 func TestAgentsModal_CreateGroupEscCancels(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("eng1")
-	tui.openAgentsModal()
+	openAgentsList(tui)
 	before := append([]string(nil), tui.layoutState.Groups...)
 
 	tui.handleAgentsKey(tcell.NewEventKey(tcell.KeyRune, 'g', 0))
@@ -889,4 +889,15 @@ func TestTierAllHidden_EmptyTierIsNotAllHidden(t *testing.T) {
 	if n, all := tui.tierAllHidden(map[string][]int{"eng": nil}, []string{"eng", "qa"}); all || n != 0 {
 		t.Errorf("empty tier reported (%d, %v), want (0, false)", n, all)
 	}
+}
+
+// openAgentsList opens the agents panel and leaves the search box for the
+// list, for tests about LIST keys. The panel opens with the box focused since
+// ini-hxtg; those tests predate that and press list keys straight away, so
+// they go through here instead of each re-learning the new entry state.
+// Setting the flag directly rather than pressing Down: Down from the box needs
+// screen geometry, and most of these fixtures are headless.
+func openAgentsList(tui *TUI) {
+	tui.openAgentsModal()
+	tui.agents.searching = false
 }

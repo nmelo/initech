@@ -62,7 +62,7 @@ func TestChords_BacktickIsSwallowedInAChildWindow(t *testing.T) {
 // reads as broken (ini-162m), so the child window gets a notice.
 func TestChords_AgentsPanelIsMainWindowOnlyAndSaysSo(t *testing.T) {
 	tui := chordTUI(t, "window-2")
-	tui.openAgentsModal()
+	openAgentsList(tui)
 
 	if tui.agents.active {
 		t.Fatal("the agents panel opened in a child window")
@@ -72,7 +72,7 @@ func TestChords_AgentsPanelIsMainWindowOnlyAndSaysSo(t *testing.T) {
 
 func TestChords_AgentsPanelStillOpensInTheMainWindow(t *testing.T) {
 	tui := chordTUI(t, WindowOne)
-	tui.openAgentsModal()
+	openAgentsList(tui)
 	if !tui.agents.active {
 		t.Fatal("the agents panel did not open in the main window")
 	}

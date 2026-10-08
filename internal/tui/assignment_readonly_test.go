@@ -179,7 +179,7 @@ func TestOpenAgentsModal_DropsFallbackSoRepairTakesEffect(t *testing.T) {
 		t.Fatalf("repair store: %v", err)
 	}
 
-	tui.openAgentsModal()
+	openAgentsList(tui)
 
 	a := tui.agentsAssignment()
 	if a.readOnly {
@@ -201,7 +201,7 @@ func TestOpenAgentsModal_KeepsAHealthyCachedStore(t *testing.T) {
 		t.Fatal("precondition: fresh project should load a healthy store")
 	}
 
-	tui.openAgentsModal()
+	openAgentsList(tui)
 
 	if tui.assignment != first {
 		t.Error("a healthy cached store was dropped on modal open; this would re-read the file on every open")

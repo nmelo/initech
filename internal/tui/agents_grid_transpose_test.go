@@ -31,7 +31,7 @@ func pressAgents(tui *TUI, k tcell.Key) {
 // when there is no adjacent band (single window: every group is in one band).
 func TestAgentsTranspose_DownWalksColumnAndStopsAtEnd(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("eng1", "eng2", "eng3")
-	tui.openAgentsModal()
+	openAgentsList(tui)
 
 	pressAgents(tui, tcell.KeyDown)
 	if got := selectedName(tui); got != "eng2" {
@@ -55,7 +55,7 @@ func TestAgentsTranspose_DownWalksColumnAndStopsAtEnd(t *testing.T) {
 // at the band's ends.
 func TestAgentsTranspose_RightMovesToAdjacentColumn(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("super", "eng1", "qa1")
-	tui.openAgentsModal()
+	openAgentsList(tui)
 	if got := tui.layoutState.GroupOf["super"]; got != "core" {
 		t.Fatalf("precondition: super should seed to core, got %q", got)
 	}
@@ -82,7 +82,7 @@ func TestAgentsTranspose_RightMovesToAdjacentColumn(t *testing.T) {
 // on the target column's last row (I6).
 func TestAgentsTranspose_SidewaysLandsOnNearestRow(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("super", "pm", "eng1", "eng2", "eng3")
-	tui.openAgentsModal()
+	openAgentsList(tui)
 
 	selectAgent(t, tui, "eng3") // eng column, row 2
 	pressAgents(tui, tcell.KeyLeft)
@@ -102,7 +102,7 @@ func TestAgentsTranspose_NavigatesFullColumnWithoutScrolling(t *testing.T) {
 		names[i] = fmt.Sprintf("qa%d", i+1)
 	}
 	tui, _ := newTestTUIWithScreen(names...)
-	tui.openAgentsModal()
+	openAgentsList(tui)
 	for i := 0; i < 22; i++ {
 		pressAgents(tui, tcell.KeyDown)
 	}
@@ -119,7 +119,7 @@ func TestAgentsTranspose_DownAtColumnEndContinuesToNextBand(t *testing.T) {
 	if err := mustAssignWriter(t, tui.agentsAssignment()).MoveGroup("qa", "window-2"); err != nil {
 		t.Fatal(err)
 	}
-	tui.openAgentsModal()
+	openAgentsList(tui)
 
 	selectAgent(t, tui, "pm") // core column, bottom, monitor 1
 	pressAgents(tui, tcell.KeyDown)
@@ -145,7 +145,7 @@ func TestAgentsTranspose_DownAtColumnEndContinuesToNextBand(t *testing.T) {
 // Grabbed up/down swaps within the group and persists the order.
 func TestAgentsTranspose_GrabDownSwapsWithinGroup(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("eng1", "eng2", "eng3")
-	tui.openAgentsModal()
+	openAgentsList(tui)
 
 	pressAgents(tui, tcell.KeyEnter)
 	pressAgents(tui, tcell.KeyDown)
@@ -172,7 +172,7 @@ func TestAgentsTranspose_GrabDownSwapsWithinGroup(t *testing.T) {
 // membership is edited now.
 func TestAgentsTranspose_GrabRightCarriesIntoAdjacentGroup(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("super", "eng1")
-	tui.openAgentsModal()
+	openAgentsList(tui)
 	if got := tui.layoutState.GroupOf["super"]; got != "core" {
 		t.Fatalf("precondition: super should be in core, got %q", got)
 	}
@@ -205,7 +205,7 @@ func TestAgentsTranspose_GrabRightCarriesIntoAdjacentGroup(t *testing.T) {
 // carries it. (What was already moved stays moved: same as today's grab.)
 func TestAgentsTranspose_EscCancelsGrab_NoFurtherCarry(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("super", "eng1", "qa1")
-	tui.openAgentsModal()
+	openAgentsList(tui)
 
 	pressAgents(tui, tcell.KeyEnter)
 	pressAgents(tui, tcell.KeyEscape)
@@ -226,7 +226,7 @@ func TestAgentsTranspose_EscCancelsGrab_NoFurtherCarry(t *testing.T) {
 // append.
 func TestAgentsTranspose_GrabLeftSplicesAtNearestRow(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("super", "pm", "shipper", "eng1", "eng2")
-	tui.openAgentsModal()
+	openAgentsList(tui)
 
 	selectAgent(t, tui, "eng2") // row 1 of eng
 	pressAgents(tui, tcell.KeyEnter)
@@ -251,7 +251,7 @@ func TestAgentsTranspose_GrabLeftSplicesAtNearestRow(t *testing.T) {
 // Right skips it.
 func TestAgentsTranspose_GrabRightIntoFreshlyCreatedEmptyGroup(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("super", "pmm")
-	tui.openAgentsModal()
+	openAgentsList(tui)
 	selectAgent(t, tui, "pmm")
 	tui.agentsCreateGroup("mkt")
 	if got := tui.layoutState.Groups; len(got) != 2 || got[1] != "mkt" {
@@ -292,7 +292,7 @@ func TestAgentsTranspose_GrabDownAtColumnEndCarriesIntoNextBand(t *testing.T) {
 	if err := mustAssignWriter(t, tui.agentsAssignment()).MoveGroup("qa", "window-2"); err != nil {
 		t.Fatal(err)
 	}
-	tui.openAgentsModal()
+	openAgentsList(tui)
 	selectAgent(t, tui, "eng1")
 
 	pressAgents(tui, tcell.KeyEnter)
@@ -323,7 +323,7 @@ func TestAgentsTranspose_GrabDownRefusesMachineBand(t *testing.T) {
 	tui.panes = append(tui.panes,
 		&RemotePane{name: "super", host: "support", alive: true},
 		&RemotePane{name: "pm", host: "support", alive: true})
-	tui.openAgentsModal()
+	openAgentsList(tui)
 	selectAgent(t, tui, "eng1")
 
 	// Plain Down reaches the machine band (it is navigable)...
@@ -352,7 +352,7 @@ func TestAgentsTranspose_ArrowsMoveVerticallyWithinMachineBand(t *testing.T) {
 	tui.panes = append(tui.panes,
 		&RemotePane{name: "super", host: "support", alive: true},
 		&RemotePane{name: "pm", host: "support", alive: true})
-	tui.openAgentsModal()
+	openAgentsList(tui)
 	selectAgent(t, tui, "super")
 	pressAgents(tui, tcell.KeyDown)
 	if got := selectedName(tui); got != "pm" {
@@ -370,7 +370,7 @@ func TestAgentsTranspose_ArrowsMoveVerticallyWithinMachineBand(t *testing.T) {
 // row top-to-bottom -- column-major, not pane order.
 func TestAgentsTranspose_SearchStepsInColumnMajorOrder(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("super", "eng1", "pm", "eng2")
-	tui.openAgentsModal()
+	openAgentsList(tui)
 	cells := tui.agentsCurrentCells()
 	var order []string
 	for _, c := range cells {
@@ -394,7 +394,7 @@ func TestAgentsTranspose_OpensOnFirstCellInReadingOrder(t *testing.T) {
 	if err := mustAssignWriter(t, tui.agentsAssignment()).MoveGroup("eng", "window-2"); err != nil {
 		t.Fatal(err)
 	}
-	tui.openAgentsModal()
+	openAgentsList(tui)
 	cells := tui.agentsCurrentCells()
 	if len(cells) == 0 {
 		t.Fatal("no cells")

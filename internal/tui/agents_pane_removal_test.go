@@ -23,7 +23,7 @@ func didNotPanic(f func()) (ok bool) {
 // surface: the persisted selected index itself.
 func TestAgentsSearch_RenderSurvivesPaneRemoval(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("eng1", "eng2", "qa1")
-	tui.openAgentsModal()
+	openAgentsList(tui)
 	tui.agents.searching = true
 	tui.agents.searchBuf = nil
 	tui.agents.selected = 2 // last valid index before the shrink

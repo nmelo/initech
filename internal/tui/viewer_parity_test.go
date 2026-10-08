@@ -56,7 +56,7 @@ func TestOpenAgentsModal_AuthorityKeepsItsOwnState(t *testing.T) {
 	tui.windowID = WindowOne // the authority
 	before := tui.fleetState()
 
-	tui.openAgentsModal()
+	openAgentsList(tui)
 
 	if tui.fleet != before {
 		t.Fatal("window 1 dropped its fleet store on modal open; the authority's memory is " +

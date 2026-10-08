@@ -91,11 +91,6 @@ type agentsModal struct {
 	error     string // Inline error message (e.g., "cannot hide last visible pane").
 	searching bool   // True when / has been pressed and search is active.
 	searchBuf []rune // Current search input.
-	// preSearchSelected is the selection at the moment / was pressed,
-	// restored on Esc (spec: "Esc restores the pre-search selection").
-	// Enter deliberately does NOT restore it -- Enter keeps the selection
-	// the search reached.
-	preSearchSelected int
 
 	// Group creation (ini-2rc): 'g' opens a name prompt in the search bar's
 	// visual language. Mutually exclusive with searching.

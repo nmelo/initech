@@ -1245,7 +1245,7 @@ func TestAgentsModalHideUnhide(t *testing.T) {
 	tui := newTestTUI(a, b)
 
 	// Hide eng1 via agents modal.
-	tui.openAgentsModal()
+	openAgentsList(tui)
 	tui.agents.selected = 1 // eng1
 	tui.agentsToggleVisibility()
 	if !tui.layoutState.Hidden["eng1"] {
@@ -1269,7 +1269,7 @@ func TestAgentsModalHideUnhide(t *testing.T) {
 func TestAgentsModalHideLastPane(t *testing.T) {
 	a := testPane("super")
 	tui := newTestTUI(a)
-	tui.openAgentsModal()
+	openAgentsList(tui)
 	tui.agents.selected = 0
 	tui.agentsToggleVisibility()
 	if tui.layoutState.Hidden["super"] {

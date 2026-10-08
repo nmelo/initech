@@ -71,7 +71,10 @@ func (t *TUI) openAgentsModal() {
 	t.agents.selected = t.agentsFirstInScopeIdx()
 	t.agents.moving = false
 	t.agents.error = ""
-	t.agents.searching = false
+	// Opens with the search box focused (ini-hxtg): the operator types an
+	// agent's name straight away instead of pressing / first. Down or Enter
+	// leaves for the list.
+	t.agents.searching = true
 	t.agents.searchBuf = nil
 	t.agents.creatingGroup = false
 	t.agents.groupNameBuf = nil
@@ -135,6 +138,13 @@ func (t *TUI) handleAgentsKey(ev *tcell.EventKey) bool {
 			t.agents.moving = false
 			return false
 		}
+		// Esc never closes the panel while a search term is set (operator
+		// amendment on ini-hxtg): the first Esc clears the term, staying in
+		// the list; only an Esc with no term closes.
+		if t.agentsFilterActive() {
+			t.agents.searchBuf = nil
+			return false
+		}
 		t.closeAgentsModal()
 		return false
 
@@ -142,29 +152,38 @@ func (t *TUI) handleAgentsKey(ev *tcell.EventKey) bool {
 		t.agents.moving = !t.agents.moving
 		return false
 
-	case tcell.KeyLeft:
-		t.agentsMoveH(-1)
-		return false
-
-	case tcell.KeyRight:
-		t.agentsMoveH(1)
-		return false
-
-	case tcell.KeyUp:
-		t.agentsMoveV(t.agentsCurrentCells(), -1)
-		return false
-
-	case tcell.KeyDown:
-		t.agentsMoveV(t.agentsCurrentCells(), 1)
+	case tcell.KeyLeft, tcell.KeyRight, tcell.KeyUp, tcell.KeyDown:
+		// With a filter set, arrows step only through MATCHES (ini-hxtg)
+		// — unless an agent is grabbed: a grab's destination is a GROUP,
+		// and the filter says nothing about which groups exist, so a
+		// grabbed move stays spatial exactly as without a filter.
+		if t.agentsFilterActive() && !t.agents.moving {
+			delta := 1
+			if ev.Key() == tcell.KeyLeft || ev.Key() == tcell.KeyUp {
+				delta = -1
+			}
+			t.agentsMatchNav(t.agentsCurrentCells(), delta)
+			return false
+		}
+		switch ev.Key() {
+		case tcell.KeyLeft:
+			t.agentsMoveH(-1)
+		case tcell.KeyRight:
+			t.agentsMoveH(1)
+		case tcell.KeyUp:
+			t.agentsMoveV(t.agentsCurrentCells(), -1)
+		case tcell.KeyDown:
+			t.agentsMoveV(t.agentsCurrentCells(), 1)
+		}
 		return false
 
 	case tcell.KeyRune:
 		switch ev.Rune() {
 		case '/':
+			// Back to the box, KEEPING the term (ini-hxtg): / is how the
+			// operator edits the filter the list is honouring.
 			t.agents.searching = true
-			t.agents.searchBuf = nil
 			t.agents.moving = false
-			t.agents.preSearchSelected = t.agents.selected
 			return false
 		case 'g':
 			t.agents.creatingGroup = true
@@ -223,7 +242,7 @@ func (t *TUI) handleAgentsKey(ev *tcell.EventKey) bool {
 func (t *TUI) agentsCurrentCells() []gridCell {
 	sw, sh := t.screen.Size()
 	t.ensureGroups(false)
-	_, geo := t.agentsFrameGeometry(sw, sh, t.agents.searching || t.agents.creatingGroup)
+	_, geo := t.agentsFrameGeometry(sw, sh, t.agentsBarRow())
 	return geo.cells
 }
 
@@ -251,42 +270,59 @@ func (t *TUI) agentsLivePin(slot int) {
 	t.saveLayoutIfConfigured()
 }
 
-// handleAgentsSearchKey processes keys while in search mode. The grid DIMS
-// non-matches in place rather than filtering rows out (spec: the spatial
-// layout is what's being navigated, so it must not reflow under the query).
-// Space (hide) is intercepted before the generic printable-rune case so it
-// acts on the selection instead of typing into the query; p is NOT
-// intercepted, since names contain the letter p and typing must win there.
+// handleAgentsSearchKey processes keys while the search box has focus — the
+// state the panel opens in (ini-hxtg). The grid DIMS non-matches in place
+// rather than filtering rows out (spec: the spatial layout is what's being
+// navigated, so it must not reflow under the query). Space (hide) is
+// intercepted before the generic printable-rune case so it acts on the
+// selection instead of typing into the query; p is NOT intercepted, since
+// names contain the letter p and typing must win there.
+//
+// Leaving the box keeps the term: the filter then belongs to the list, whose
+// arrows step only through matches (handleAgentsKey).
 func (t *TUI) handleAgentsSearchKey(ev *tcell.EventKey) bool {
 	cells := t.agentsCurrentCells()
 	switch {
 	case ev.Key() == tcell.KeyEscape:
-		t.agents.searching = false
-		t.agents.searchBuf = nil
-		t.agents.selected = t.agents.preSearchSelected // Esc restores pre-search selection.
+		// Esc with a term clears it and stays in the box; only Esc with no
+		// term closes the panel (operator amendment on ini-hxtg).
+		if t.agentsFilterActive() {
+			t.agents.searchBuf = nil
+			return false
+		}
+		t.closeAgentsModal()
 		return false
 
 	case ev.Key() == tcell.KeyEnter:
+		// Into the list, on the FIRST agent in reading order — the first
+		// match when a term is set — and the panel stays open.
+		if mc := t.agentsMatchCells(cells); len(mc) > 0 {
+			t.agents.selected = cells[mc[0]].paneIdx
+		}
 		t.agents.searching = false
-		t.agents.searchBuf = nil // keep the selection the search reached
+		return false
+
+	case ev.Key() == tcell.KeyDown || ev.Key() == tcell.KeyLeft || ev.Key() == tcell.KeyRight:
+		// Into the list, keeping the term and the selection the term
+		// reached. A term with no match has nothing to land on: stay in the
+		// box so the operator can correct it.
+		if t.agentsFilterActive() && len(t.agentsMatchCells(cells)) == 0 {
+			return false
+		}
+		t.agentsEnsureMatchSelected(cells)
+		t.agents.searching = false
+		return false
+
+	case ev.Key() == tcell.KeyUp:
+		// Nothing above the box.
 		return false
 
 	case ev.Key() == tcell.KeyBackspace || ev.Key() == tcell.KeyBackspace2:
-		if len(t.agents.searchBuf) == 0 {
-			t.agents.searching = false
-			t.agents.selected = t.agents.preSearchSelected // same as Esc from an empty query.
+		if !t.agentsFilterActive() {
 			return false
 		}
 		t.agents.searchBuf = t.agents.searchBuf[:len(t.agents.searchBuf)-1]
 		t.agentsEnsureMatchSelected(cells)
-		return false
-
-	case ev.Key() == tcell.KeyLeft || ev.Key() == tcell.KeyUp:
-		t.agentsMatchNav(cells, -1)
-		return false
-
-	case ev.Key() == tcell.KeyRight || ev.Key() == tcell.KeyDown:
-		t.agentsMatchNav(cells, 1)
 		return false
 
 	case ev.Rune() == ' ':

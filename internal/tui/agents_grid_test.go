@@ -329,7 +329,7 @@ func TestLoadLayout_CaseVariantGroupsSurviveTheRepairAndPersist(t *testing.T) {
 // check does not.
 func TestAgentsSearch_NoMatchesReadsCurrentFrame_NotStaleFrame(t *testing.T) {
 	tui, s := newTestTUIWithScreen("eng1")
-	tui.openAgentsModal()
+	openAgentsList(tui)
 	tui.agents.searching = true
 	tui.agents.searchBuf = []rune("eng2")
 
@@ -386,7 +386,7 @@ func TestAgentsSearch_NoMatchesReadsCurrentFrame_NotStaleFrame(t *testing.T) {
 // passing merely because the indicator never renders at all.
 func TestAgentsSearch_NoMatchesTextAppearsWhenTrulyZero(t *testing.T) {
 	tui, s := newTestTUIWithScreen("eng1", "eng2")
-	tui.openAgentsModal()
+	openAgentsList(tui)
 	tui.agents.searching = true
 	tui.agents.searchBuf = []rune("zzz")
 	tui.render()

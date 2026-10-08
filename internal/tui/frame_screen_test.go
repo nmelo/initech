@@ -185,7 +185,7 @@ func TestFrameScreen_RenderedFrameIsIdenticalThroughTheBuffer(t *testing.T) {
 			}
 		}
 		tui.layoutState.Hidden["qa2"] = true
-		tui.openAgentsModal()
+		openAgentsList(tui)
 	}
 	bare, bareSim := newTestTUIWithScreen(names...)
 	paint(bare)
