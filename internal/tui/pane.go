@@ -3,6 +3,7 @@
 package tui
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -275,6 +276,7 @@ type Pane struct {
 	stuckReported                  bool              // True after emitting stuck event. Reset on success.
 	dedupEvents                    *dedup            // Dedup state for emitted events.
 	startedAt                      time.Time         // When this pane's process was started. Used to filter stale JSONL.
+	startupSettled                 bool              // The child has been seen quiet once since it started; sends wait for that, once (ini-i35w). Guarded by mu.
 	scrollOffset                   int               // Rows scrolled back from live view (0 = live).
 	resizeSettleFrames             int               // Render frames remaining to skip after resize.
 	resizeSettleDeadline           time.Time         // Hard deadline: skip content rendering until this time.
@@ -1085,10 +1087,62 @@ func (p *Pane) SendText(text string, enter bool) {
 		}
 		return
 	}
+	// STARTUP GATE (ini-i35w): a child that is still booting is not listening.
+	// Claude with a --continue transcript renders for seconds and flushes
+	// stdin at raw-mode entry, so text that lands early is eaten. Every caller
+	// waits here, bounded. On expiry this DELIVERS ANYWAY with a loud log,
+	// the ini-hbj4 contract: many callers pop a message from a queue first,
+	// and refusing here would drop it. Callers with a sender waiting on the
+	// answer check awaitStartupSettled themselves BEFORE calling this, and
+	// refuse with nothing popped and nothing written.
+	if err := p.awaitStartupSettled(); err != nil {
+		LogWarn("send", "delivering into a pane that never settled after start (cap reached)",
+			"pane", p.name, "err", err)
+	}
 	waitForCodexReadyIfNeeded(p)
 	p.sendMu.Lock()
 	defer p.sendMu.Unlock()
 	sendPaneTextLocked(p, text, enter)
+}
+
+// ErrPaneStillStarting reports an agent that has not settled since its
+// process started. A sender-facing entry point that gets it refuses the send
+// and writes nothing to the pane.
+var ErrPaneStillStarting = errors.New("not delivered — agent still starting")
+
+// startupGateWindow bounds when a pane counts as starting. Past it, a pane
+// still producing output is busy, not booting, and a send to a busy agent is
+// the submit belt's business, never a reason to wait here.
+const startupGateWindow = 60 * time.Second
+
+// The gate's own clock, the wake drain's values by default (ini-hbj4).
+// Variables only so a test can shorten them; nothing in production writes.
+var (
+	startupSettleStable = resumeQuiesceStable
+	startupSettleCap    = resumeQuiesceCap
+)
+
+// awaitStartupSettled waits, once per pane, for the child to go quiet after
+// it starts, by the same rule the wake drain uses (ini-hbj4: produced first
+// output is not accepting input). Once seen settled the gate is open for
+// good, so ordinary sends to an agent mid-turn are never delayed by it.
+func (p *Pane) awaitStartupSettled() error {
+	p.mu.Lock()
+	settled := p.startupSettled
+	started := p.startedAt
+	p.mu.Unlock()
+	if settled || p.ptmx == nil {
+		return nil // no live child to wait for: the send path reports that itself
+	}
+	if started.IsZero() || time.Since(started) >= startupGateWindow ||
+		waitForQuiescence(p.LastOutputTime, startupSettleStable, startupSettleCap, nil) {
+		p.mu.Lock()
+		p.startupSettled = true
+		p.mu.Unlock()
+		return nil
+	}
+	return fmt.Errorf("%w: %s started %s ago and has not gone quiet for %s; resend when it is ready",
+		ErrPaneStillStarting, p.name, time.Since(started).Round(time.Second), startupSettleStable)
 }
 
 // WakeOnStreamInput is the remote twin of wakeSuspendedPaneFromKeystroke's

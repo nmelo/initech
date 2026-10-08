@@ -151,6 +151,8 @@ func (t *TUI) HandleExtended(conn net.Conn, req IPCRequest, rawJSON []byte) bool
 		t.handleIPCStop(conn, req)
 	case "start":
 		t.handleIPCStart(conn, req)
+	case "send_ready":
+		t.handleIPCSendReady(conn, req)
 	case "restart":
 		t.handleIPCRestart(conn, req)
 	case "reload":
@@ -200,6 +202,35 @@ func NewIPCScanner(r io.Reader) *bufio.Scanner {
 	s := bufio.NewScanner(r)
 	s.Buffer(make([]byte, 0, IPCScanBufSize), IPCScanBufSize)
 	return s
+}
+
+// handleIPCSendReady answers whether a send to the target would be delivered
+// now, waiting on the same startup gate a send waits on (ini-i35w). assign
+// asks this BEFORE it claims anything, so a booting agent never ends up with
+// a claimed bead and no message. Only a local pane can be judged here: a
+// suspended one is fine (the send queues and wakes it), and a remote target
+// is applied by the window that owns it.
+func (t *TUI) handleIPCSendReady(conn net.Conn, req IPCRequest) {
+	if req.Target == "" {
+		writeIPCResponse(conn, IPCResponse{Error: "target is required"})
+		return
+	}
+	var pv PaneView
+	if !t.runOnMain(func() { pv = t.findPaneByName(req.Target) }) {
+		writeIPCResponse(conn, IPCResponse{Error: "TUI shutting down"})
+		return
+	}
+	if pv == nil {
+		writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("pane %q not found", req.Target)})
+		return
+	}
+	if lp, ok := pv.(*Pane); ok && !lp.IsSuspended() {
+		if err := lp.awaitStartupSettled(); err != nil {
+			writeIPCResponse(conn, IPCResponse{Error: err.Error()})
+			return
+		}
+	}
+	writeIPCResponse(conn, IPCResponse{OK: true})
 }
 
 func (t *TUI) handleIPCSend(conn net.Conn, req IPCRequest) {
@@ -268,6 +299,18 @@ func (t *TUI) handleIPCSend(conn net.Conn, req IPCRequest) {
 		}
 		writeIPCResponse(conn, IPCResponse{OK: true, Data: `"resumed and delivered"`})
 		return
+	}
+
+	// A sender is waiting on this answer, so a pane still booting REFUSES here,
+	// before anything is written (ini-i35w): text sent into a booting Claude
+	// is eaten while the sender is told it was delivered. initech send and
+	// assign then exit non-zero, and assign rolls its claim back.
+	if lp, ok := pv.(*Pane); ok {
+		if err := lp.awaitStartupSettled(); err != nil {
+			LogInfo("ipc", "SEND NOT DELIVERED", "target", req.Target, "reason", err)
+			writeIPCResponse(conn, IPCResponse{Error: err.Error()})
+			return
+		}
 	}
 
 	// Detect a Claude modal on the local target before delivery so the sender is

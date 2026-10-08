@@ -298,6 +298,13 @@ func TestRestart_ARealFreshlySpawnedPaneActuallyDeliversTheCarriedQueue(t *testi
 
 	// Draining and delivering are different claims -- SendText could pop and
 	// discard. Confirm the text actually reached the restarted process.
+	// Polled, not read once: since ini-i35w a send to a pane that has not
+	// settled since its start waits for the child to go quiet first, so the
+	// text lands shortly AFTER it leaves the queue -- which is the point.
+	screenDeadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(screenDeadline) && !strings.Contains(np.emu.Render(), marker) {
+		time.Sleep(50 * time.Millisecond)
+	}
 	if screen := np.emu.Render(); !strings.Contains(screen, marker) {
 		t.Fatalf("the carried message drained from the queue but never reached the "+
 			"restarted process's screen: %q", screen)
