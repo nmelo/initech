@@ -22,9 +22,11 @@ on:
 permissions:
   contents: read
 
+# Runner selection and the MAC_RUNNER revert: see the header of ci.yml (ini-8k1o).
 jobs:
   race:
-    runs-on: macos-latest
+    runs-on: ${{ github.event_name != 'pull_request' && vars.MAC_RUNNER || 'macos-latest' }}
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
 
@@ -57,7 +59,8 @@ jobs:
   # ini-ibsm: this WAS the macOS twin of an ubuntu leg. macOS is now the only
   # tested platform, so it is simply the rig leg.
   composed-rigs:
-    runs-on: macos-latest
+    runs-on: ${{ github.event_name != 'pull_request' && vars.MAC_RUNNER || 'macos-latest' }}
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
 

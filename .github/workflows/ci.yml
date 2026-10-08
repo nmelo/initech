@@ -15,13 +15,26 @@ on:
 permissions:
   contents: read
 
+# RUNNER SELECTION (ini-8k1o). Push, schedule and dispatch jobs run on the
+# operator's Mac -- self-hosted runners labelled nmbp14, arm64 macOS, the same
+# arch as GitHub's macos-latest -- when the repo variable MAC_RUNNER holds that
+# label. pull_request runs ALWAYS stay on GitHub-hosted macos-latest: the repo is
+# public, and a fork's PR must never execute on the operator's machine. With
+# MAC_RUNNER unset, every job falls back to macos-latest.
+#
+# REVERT when the Mac is away: `gh variable delete MAC_RUNNER --repo nmelo/initech`
+# -- no commit, takes effect on the next run. (Code revert, one line per job:
+# replace the runs-on expression with macos-latest.) Delete the variable BEFORE
+# the Mac goes away: timeout-minutes counts only once a job STARTS, so a job
+# queued for an offline self-hosted runner waits (up to 24h) instead of failing.
+#
+# No concurrency group, deliberately: a group cancels older PENDING runs, so a
+# burst of pushes would leave intermediate shas with no CI, and the release gate
+# needs a green run AT the cut sha. Each runner already runs one job at a time.
 jobs:
   build-and-test:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [macos-latest]
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ github.event_name != 'pull_request' && vars.MAC_RUNNER || 'macos-latest' }}
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
 
@@ -37,8 +50,7 @@ jobs:
 
       # ini-ybe.1: reject test names admitting "we just call it and see if
       # it crashes" intent. A content check — one leg answers for all.
-      # No user input interpolated; matrix.os is workflow-defined, script
-      # path is static.
+      # No user input interpolated; the script path is static.
       - name: Lint test names
         run: bash scripts/lint-test-names.sh
 
@@ -99,7 +111,8 @@ jobs:
   # skipped HALF, not of every OS. Gated rigs stay opt-in behind their env vars,
   # so this leg does not spawn Claude sessions.
   full-suite:
-    runs-on: macos-latest
+    runs-on: ${{ github.event_name != 'pull_request' && vars.MAC_RUNNER || 'macos-latest' }}
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v5
 
@@ -125,7 +138,8 @@ jobs:
   #                      a viewer touching no project-root store
   census-leg:
     if: github.event_name == 'push'
-    runs-on: macos-latest
+    runs-on: ${{ github.event_name != 'pull_request' && vars.MAC_RUNNER || 'macos-latest' }}
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
 

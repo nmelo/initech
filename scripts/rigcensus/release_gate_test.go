@@ -26,8 +26,8 @@ func TestReleaseGate_TestJobRunsOnTheTestedPlatform(t *testing.T) {
 	}
 	if got, ok := runsOn["test"]; !ok {
 		t.Fatalf("release.yml has no test job; jobs found: %v", runsOn)
-	} else if got != "macos-latest" {
-		t.Fatalf("release.yml test job runs on %q, want macos-latest: the release gate must run on the tested platform (ini-ibsm, ini-govx)", got)
+	} else if got != "macos-latest" && got != macRunnerSelector {
+		t.Fatalf("release.yml test job runs on %q, want macos-latest or the guarded MAC_RUNNER selector: the release gate must run on the tested platform (ini-ibsm, ini-govx, ini-8k1o)", got)
 	}
 	// Anchored to the WHOLE step (shipper, ini-govx review): a prefix match
 	// on "make test" also accepted a downgrade to plain `make test`, which is

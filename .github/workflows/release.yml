@@ -8,6 +8,7 @@ on:
 permissions:
   contents: write
 
+# Runner selection and the MAC_RUNNER revert: see the header of ci.yml (ini-8k1o).
 jobs:
   # THE GATE RUNS ON THE PLATFORM WE TEST. macOS is the only tested platform
   # since ini-ibsm (operator ruling, 2026-08-22: linux ships but is
@@ -21,7 +22,8 @@ jobs:
   # stays on ubuntu-latest deliberately -- it cross-compiles every goos/goarch
   # and tests nothing, and stop-testing is not stop-shipping.
   test:
-    runs-on: macos-latest
+    runs-on: ${{ github.event_name != 'pull_request' && vars.MAC_RUNNER || 'macos-latest' }}
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v5
         with:
