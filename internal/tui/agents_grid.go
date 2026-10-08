@@ -1610,13 +1610,17 @@ func (t *TUI) renderAgentsGrid() {
 		pStyle := pinStyle
 		prStyle := protStyle
 		if hidden {
-			// Hidden is italic (and [h] in the box). It also grays the name,
-			// per the grid spec -- EXCEPT for a suspended agent (ini-68qv):
-			// suspended is the name's colour and nothing else, the modal's
-			// own s/S keys toggle it, and graying it here made a hidden
-			// parked agent read as merely hidden. Both states show now.
+			// Hidden is italic and [h] in the box — nothing else. The name's
+			// colour stays the agent's STATE (ini-kuga), so a hidden agent
+			// that is working reads green here exactly as its overlay dot
+			// does. Greying every state but suspended (ini-68qv's exception)
+			// meant a hidden WORKING agent read as hidden-and-idle; with most
+			// of a fleet hidden that hid nearly all of the work from the
+			// panel. Only the idle case keeps the grid spec's grey — it is
+			// the one state whose own colour (silver) would otherwise make a
+			// hidden row look visible at a glance.
 			nameStyle = nameStyle.Italic(true)
-			if p.Activity() != StateSuspended {
+			if p.Activity() == StateIdle {
 				nameStyle = nameStyle.Foreground(tcell.ColorGray)
 			}
 		}

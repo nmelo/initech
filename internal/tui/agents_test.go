@@ -901,3 +901,64 @@ func openAgentsList(tui *TUI) {
 	tui.openAgentsModal()
 	tui.agents.searching = false
 }
+
+// ── ini-kuga: hidden is [h] + italics only; the colour is the state ──
+
+// hiddenStateRowStyle renders the panel with eng2 hidden and its activity
+// driven through the REAL model — byte recency, the way the product decides
+// running vs idle — and returns eng2's name-cell colour and attributes.
+func hiddenStateRowStyle(t *testing.T, hidden bool, lastOutput time.Time) (tcell.Color, tcell.AttrMask) {
+	t.Helper()
+	tui, s := newTestTUIWithScreen("eng1", "eng2")
+	tui.layoutState.Hidden["eng2"] = hidden
+	for _, pv := range tui.panes {
+		if pv.Name() == "eng2" {
+			p := pv.(*Pane)
+			p.mu.Lock()
+			p.lastOutputTime = lastOutput
+			p.mu.Unlock()
+		}
+	}
+	openAgentsList(tui)
+	tui.agents.selected = 0 // keep the selection bar off eng2: it restyles the row
+	tui.render()
+	c := locateCells(t, tui, s, "eng2")["eng2"]
+	nameColOffset := 4 + 4 // "%3d " + "[h] "
+	_, _, st, _ := s.GetContent(c.x+nameColOffset, c.y)
+	fg, _, attrs := st.Decompose()
+	return fg, attrs
+}
+
+// The operator's report (qa4 on hover): a hidden agent that is WORKING read
+// grey in the panel while the overlay showed it green. Hidden must not mask
+// running.
+func TestAgentsModal_HiddenWorkingAgentIsGreenItalic(t *testing.T) {
+	fg, attrs := hiddenStateRowStyle(t, true, time.Now())
+	if fg != tcell.ColorGreen {
+		t.Errorf("hidden+working name fg = %v, want green (the state colour)", fg)
+	}
+	if attrs&tcell.AttrItalic == 0 {
+		t.Error("hidden+working name lost the hidden italic")
+	}
+}
+
+// Hidden-and-idle keeps today's grey italic: the spec's "hidden greys the
+// name" now applies to the idle case only.
+func TestAgentsModal_HiddenIdleAgentStaysGreyItalic(t *testing.T) {
+	fg, attrs := hiddenStateRowStyle(t, true, time.Now().Add(-time.Hour))
+	if fg != tcell.ColorGray {
+		t.Errorf("hidden+idle name fg = %v, want gray", fg)
+	}
+	if attrs&tcell.AttrItalic == 0 {
+		t.Error("hidden+idle name lost the hidden italic")
+	}
+}
+
+// Control: the same working agent, not hidden, is green with no italic — so
+// the cell above is reading the hidden branch, not an unrelated default.
+func TestAgentsModal_VisibleWorkingAgentIsGreenUpright(t *testing.T) {
+	fg, attrs := hiddenStateRowStyle(t, false, time.Now())
+	if fg != tcell.ColorGreen || attrs&tcell.AttrItalic != 0 {
+		t.Errorf("visible+working name fg=%v italic=%v, want green upright", fg, attrs&tcell.AttrItalic != 0)
+	}
+}
