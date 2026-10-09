@@ -11,20 +11,20 @@
 
 
 
- ┌───────────────────────────────────────────────── initech agents ──────────────────────────────────────────────────┐
- │                                                                                                                   │
- │ ─ core ───────── ─ eng ────────── ─ qa ───────────                                                                │
- │                                                                                                                   │
- │   1 [x] super•     4 [x] eng1      11 [x] qa1                                                                     │
- │   2 [x] pm         5 [x] eng2      12 [x] qa2                                                                     │
- │   3 [x] shipper    6 [x] eng3      13 [x] qa3                                                                     │
- │                    7 [x] eng4                                                                                     │
- │                    8 [x] eng5                                                                                     │
- │                    9 [x] eng6                                                                                     │
- │                   10 [x] eng7                                                                                     │
- │                                                                                                                   │
- │ Arrows move  Space hide  Enter grab  p pin  P protect  s/S suspend  g group  < > band  A all  R reset  Esc close  │
- └───────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+   ┌──────────────────────────────────────────────── initech agents ────────────────────────────────────────────────┐
+   │                                                                                                                │
+   │ ─ core ───────── ─ eng ────────── ─ qa ───────────                                                             │
+   │                                                                                                                │
+   │   1 [x] super•     4 [x] eng1      11 [x] qa1                                                                  │
+   │   2 [x] pm         5 [x] eng2      12 [x] qa2                                                                  │
+   │   3 [x] shipper    6 [x] eng3      13 [x] qa3                                                                  │
+   │                    7 [x] eng4                                                                                  │
+   │                    8 [x] eng5                                                                                  │
+   │                    9 [x] eng6                                                                                  │
+   │                   10 [x] eng7                                                                                  │
+   │                                                                                                                │
+   │ Space hide  Enter grab  p pin  P protect  s/S suspend  / search  g group  < > band  A all  R reset  Esc close  │
+   └────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 
 
 

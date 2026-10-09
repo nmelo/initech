@@ -98,7 +98,7 @@ const (
 // moves as the list would from the first agent (ini-chxy).
 const agentsSearchHelpText = " type to filter  Arrows list  Esc close"
 
-const agentsHelpText = " Arrows move  Space hide  Enter grab  p pin  P protect  s/S suspend  g group  < > band  A all  R reset  Esc close"
+const agentsHelpText = " Space hide  Enter grab  p pin  P protect  s/S suspend  / search  g group  < > band  A all  R reset  Esc close"
 
 // groupFor computes the seed band for a pane name with no GroupOf entry yet,
 // reusing roles.RoleFamilyOf's eng*/qa* prefix classification (already the
