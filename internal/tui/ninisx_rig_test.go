@@ -324,11 +324,13 @@ func nineISXScreen(emu *vt.SafeEmulator) string {
 // rigEnterAgentsList leaves the Agents panel's search box for the list. Since
 // ini-hxtg the panel opens with the box focused, so a rig that presses list
 // keys (m, Space, arrows) right after opening would TYPE them into the filter.
-// One Down, with nothing typed, moves the focus to the list and leaves the
-// selection where it was — the rig then drives the list exactly as before.
-// The same open-into-list step the unit tests take through openAgentsList.
+// One Up, with nothing typed, moves the focus to the list on the first agent
+// — where the panel opened — without moving (ini-chxy: Down, Left and Right
+// from the box now also move, so Up is the step-in that leaves the selection
+// alone). The rig then drives the list exactly as before. The same
+// open-into-list step the unit tests take through openAgentsList.
 func rigEnterAgentsList(p *os.File) {
-	p.Write([]byte("\x1b[B"))
+	p.Write([]byte("\x1b[A"))
 	time.Sleep(400 * time.Millisecond)
 }
 

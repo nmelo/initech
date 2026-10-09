@@ -127,8 +127,6 @@ func TestAgentsEnsureMatchSelected_SnapsToFirstMatch(t *testing.T) {
 	}
 }
 
-
-
 func TestAgentsSearch_BackspaceRemovesRune(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("eng1", "qa1")
 	tui.agents.active = true
@@ -148,8 +146,6 @@ func TestAgentsSearch_BackspaceRemovesRune(t *testing.T) {
 		t.Error("'e' should still match eng1")
 	}
 }
-
-
 
 // TestAgentsSearch_SpaceHidesMidSearch is a spec-explicit behavior: Space
 // works mid-search (hides the selection) rather than typing a space into
@@ -266,17 +262,102 @@ func TestAgentsSearch_DownLeftRightEnterTheListKeepingTheFilter(t *testing.T) {
 	}
 }
 
-// Item 3: Up from the box does nothing; with an empty box, Down enters the
-// list as today with nothing filtered.
-func TestAgentsSearch_UpIsInertAndEmptyDownIsTheUnfilteredList(t *testing.T) {
-	tui := searchTUI(t)
-	agentsKey(tui, tcell.KeyUp)
-	if !tui.agents.searching {
-		t.Error("Up left the box; there is nothing above it")
+// ── ini-chxy: an arrow from the box steps in AND moves ─────────────
+
+// chxyTUI is a fleet of six in two role groups, so the grid has more than
+// one row and more than one column and every arrow has somewhere to go.
+func chxyTUI(t *testing.T) *TUI {
+	t.Helper()
+	tui, _ := newTestTUIWithScreen("eng1", "eng2", "eng3", "qa1", "qa2", "super")
+	tui.openAgentsModal()
+	return tui
+}
+
+// chxyListLanding is where key k lands when pressed from the FIRST agent
+// (first match) in the list — Enter, then k — the reference the box must
+// equal.
+func chxyListLanding(t *testing.T, term string, k tcell.Key) string {
+	t.Helper()
+	ref := chxyTUI(t)
+	agentsType(ref, term)
+	agentsKey(ref, tcell.KeyEnter)
+	agentsKey(ref, k)
+	return agentsSelName(ref)
+}
+
+// AC1, no filter: each of Down, Left and Right from the box lands exactly
+// where the same key lands from the first agent in the list, with the list
+// focused. Down and Right must actually move (the old rule stopped on the
+// first agent); Left from the first agent has nowhere to go (agentsMoveH
+// stops at a row end), so it lands on the first agent.
+func TestAgentsSearch_ArrowFromTheEmptyBoxLandsWhereTheListWouldFromTheFirstAgent(t *testing.T) {
+	for _, tc := range []struct {
+		k     tcell.Key
+		moves bool
+	}{{tcell.KeyDown, true}, {tcell.KeyRight, true}, {tcell.KeyLeft, false}} {
+		tui := chxyTUI(t)
+		cells := tui.agentsCurrentCells()
+		first := tui.panes[cells[0].paneIdx].Name()
+		agentsKey(tui, tc.k)
+		got, want := agentsSelName(tui), chxyListLanding(t, "", tc.k)
+		if got != want {
+			t.Errorf("%v from the box landed on %s; from the first agent in the list it lands on %s", tc.k, got, want)
+		}
+		if tui.agents.searching {
+			t.Errorf("%v from the box kept the box focused", tc.k)
+		}
+		if moved := got != first; moved != tc.moves {
+			t.Errorf("%v from the box: moved=%v (on %s, first %s), want moved=%v", tc.k, moved, got, first, tc.moves)
+		}
+	}
+}
+
+// AC1, filter with several matches: Down from the box is the SECOND match,
+// as Down from the first match in the list is.
+func TestAgentsSearch_DownFromTheBoxWithSeveralMatchesLandsOnTheSecondMatch(t *testing.T) {
+	tui := chxyTUI(t)
+	agentsType(tui, "eng")
+	cells := tui.agentsCurrentCells()
+	mc := tui.agentsMatchCells(cells)
+	if len(mc) < 2 {
+		t.Fatalf("fixture: %d eng matches, want several", len(mc))
 	}
 	agentsKey(tui, tcell.KeyDown)
-	if tui.agents.searching || tui.agentsFilterActive() {
-		t.Errorf("empty-box Down: searching=%v filter=%v, want the unfiltered list", tui.agents.searching, tui.agentsFilterActive())
+	second := tui.panes[cells[mc[1]].paneIdx].Name()
+	if got := agentsSelName(tui); got != second || got != chxyListLanding(t, "eng", tcell.KeyDown) {
+		t.Errorf("Down with eng matches landed on %s, want the second match %s", got, second)
+	}
+	if tui.agents.searching || string(tui.agents.searchBuf) != "eng" {
+		t.Errorf("searching=%v buf=%q, want the list with eng kept", tui.agents.searching, string(tui.agents.searchBuf))
+	}
+}
+
+// AC1, filter with one match: Down has nowhere to move, so it lands on that
+// match with the list focused.
+func TestAgentsSearch_DownFromTheBoxWithOneMatchLandsOnIt(t *testing.T) {
+	tui := chxyTUI(t)
+	agentsType(tui, "super")
+	agentsKey(tui, tcell.KeyDown)
+	if tui.agents.searching || agentsSelName(tui) != "super" {
+		t.Errorf("one match: searching=%v selected=%s, want the list on super", tui.agents.searching, agentsSelName(tui))
+	}
+}
+
+// AC2: Up from the box steps into the list on the first agent — the first
+// match with a filter — without moving.
+func TestAgentsSearch_UpFromTheBoxStepsInOnTheFirstAgentWithoutMoving(t *testing.T) {
+	for _, term := range []string{"", "qa"} {
+		tui := chxyTUI(t)
+		agentsType(tui, term)
+		cells := tui.agentsCurrentCells()
+		first := tui.panes[cells[tui.agentsMatchCells(cells)[0]].paneIdx].Name()
+		agentsKey(tui, tcell.KeyUp)
+		if tui.agents.searching || agentsSelName(tui) != first {
+			t.Errorf("term %q: Up gave searching=%v selected=%s, want the list on %s", term, tui.agents.searching, agentsSelName(tui), first)
+		}
+		if string(tui.agents.searchBuf) != term {
+			t.Errorf("term %q: Up changed the term to %q", term, string(tui.agents.searchBuf))
+		}
 	}
 }
 
@@ -285,9 +366,11 @@ func TestAgentsSearch_UpIsInertAndEmptyDownIsTheUnfilteredList(t *testing.T) {
 func TestAgentsSearch_ZeroMatchesKeepsArrowsInTheBox(t *testing.T) {
 	tui := searchTUI(t)
 	agentsType(tui, "zzz")
-	agentsKey(tui, tcell.KeyDown)
-	if !tui.agents.searching {
-		t.Error("Down with zero matches left the box")
+	for _, k := range []tcell.Key{tcell.KeyDown, tcell.KeyLeft, tcell.KeyRight, tcell.KeyUp} {
+		agentsKey(tui, k)
+		if !tui.agents.searching || string(tui.agents.searchBuf) != "zzz" {
+			t.Errorf("%v with zero matches: searching=%v buf=%q, want the box with zzz kept", k, tui.agents.searching, string(tui.agents.searchBuf))
+		}
 	}
 }
 
@@ -441,12 +524,13 @@ func TestAgentsSearch_HiddenOnlyMatchIsSelectable(t *testing.T) {
 
 // The filter is drawn while it is set, in the box and in the list, and the
 // box footer names the way out.
-func TestAgentsSearch_FilterStaysVisibleInTheListAndTheBoxFooterNamesDown(t *testing.T) {
+func TestAgentsSearch_FilterStaysVisibleInTheListAndTheBoxFooterNamesArrows(t *testing.T) {
 	tui, _ := newTestTUIWithScreen("eng1", "eng2", "qa1", "super")
 	tui.openAgentsModal()
 	tui.renderAgentsGrid()
-	if got := screenText(t, tui); !strings.Contains(got, "Down list") {
-		t.Errorf("box footer does not name Down:\n%s", got)
+	// ini-chxy: every arrow leaves the box, so the footer names arrows, not Down.
+	if got := screenText(t, tui); !strings.Contains(got, "Arrows list") || strings.Contains(got, "Down list") {
+		t.Errorf("box footer does not name the arrows:\n%s", got)
 	}
 	agentsType(tui, "eng")
 	agentsKey(tui, tcell.KeyDown)

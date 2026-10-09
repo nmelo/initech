@@ -72,8 +72,8 @@ func (t *TUI) openAgentsModal() {
 	t.agents.moving = false
 	t.agents.error = ""
 	// Opens with the search box focused (ini-hxtg): the operator types an
-	// agent's name straight away instead of pressing / first. Down or Enter
-	// leaves for the list.
+	// agent's name straight away instead of pressing / first. An arrow or
+	// Enter leaves for the list (ini-chxy: Down/Left/Right also move).
 	t.agents.searching = true
 	t.agents.searchBuf = nil
 	t.agents.creatingGroup = false
@@ -302,20 +302,23 @@ func (t *TUI) handleAgentsSearchKey(ev *tcell.EventKey) bool {
 		t.agents.searching = false
 		return false
 
-	case ev.Key() == tcell.KeyDown || ev.Key() == tcell.KeyLeft || ev.Key() == tcell.KeyRight:
-		// Into the list, keeping the term and the selection the term
-		// reached. A term with no match has nothing to land on: stay in the
-		// box so the operator can correct it.
-		if t.agentsFilterActive() && len(t.agentsMatchCells(cells)) == 0 {
+	case ev.Key() == tcell.KeyDown || ev.Key() == tcell.KeyLeft || ev.Key() == tcell.KeyRight || ev.Key() == tcell.KeyUp:
+		// An arrow steps into the list on the first agent (first match)
+		// AND moves, so the first arrow after opening is not spent leaving
+		// the box (ini-chxy). The move is the list's own handling of the
+		// same key from there. Up only steps in: nothing is above the
+		// first agent. A term with no match has nothing to land on: stay
+		// in the box so the operator can correct it.
+		mc := t.agentsMatchCells(cells)
+		if len(mc) == 0 {
 			return false
 		}
-		t.agentsEnsureMatchSelected(cells)
+		t.agents.selected = cells[mc[0]].paneIdx
 		t.agents.searching = false
-		return false
-
-	case ev.Key() == tcell.KeyUp:
-		// Nothing above the box.
-		return false
+		if ev.Key() == tcell.KeyUp {
+			return false
+		}
+		return t.handleAgentsKey(ev)
 
 	case ev.Key() == tcell.KeyBackspace || ev.Key() == tcell.KeyBackspace2:
 		if !t.agentsFilterActive() {

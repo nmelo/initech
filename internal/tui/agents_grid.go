@@ -94,9 +94,9 @@ const (
 // terminal. "s/S suspend" = s parks/wakes the agent, S its whole band.
 // agentsSearchHelpText is the footer while the search box has focus — which
 // is how the panel opens (ini-hxtg), so it is the first thing the operator
-// reads. It names the way out of the box, because arrows no longer step
-// matches from here: Down leaves for the list.
-const agentsSearchHelpText = " type to filter  Down list  Esc close"
+// reads. It names the way out of the box: any arrow steps into the list and
+// moves as the list would from the first agent (ini-chxy).
+const agentsSearchHelpText = " type to filter  Arrows list  Esc close"
 
 const agentsHelpText = " Arrows move  Space hide  Enter grab  p pin  P protect  s/S suspend  / search  g group  A all  R reset  Esc close"
 
