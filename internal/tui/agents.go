@@ -211,6 +211,18 @@ func (t *TUI) handleAgentsKey(ev *tcell.EventKey) bool {
 		case 'm':
 			t.agentsMoveGroupToNextWindow()
 			return false
+		case '<', '>':
+			// Band order (ini-mchr). Inert during a grab: the grab owns
+			// movement until it is dropped.
+			if t.agents.moving {
+				return false
+			}
+			dir := 1
+			if ev.Rune() == '<' {
+				dir = -1
+			}
+			t.agentsMoveBand(dir)
+			return false
 		case 'A':
 			t.agentsRevealAll()
 			return false

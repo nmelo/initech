@@ -54,7 +54,7 @@ func getHelpLines() []string {
 			"  live [CxR|auto]  Live mode: CxR = fixed grid, auto = auto-size.",
 			"  pin <a> <slot>   Pin agent to live slot (0-based).",
 			"  unpin <slot>     Unpin slot, make it dynamic.",
-			"  agents           Manage visibility, order, and pinning (" + m + "+a). (main window only)",
+			"  agents           Manage visibility, order, grouping and pinning (" + m + "+a). (main window only)",
 			"  layout reset     Reset to auto-calculated defaults.",
 			"  restart (r)      Kill and relaunch focused pane.",
 			"  patrol           Bulk peek all agents.",

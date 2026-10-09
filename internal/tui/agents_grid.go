@@ -98,7 +98,7 @@ const (
 // moves as the list would from the first agent (ini-chxy).
 const agentsSearchHelpText = " type to filter  Arrows list  Esc close"
 
-const agentsHelpText = " Arrows move  Space hide  Enter grab  p pin  P protect  s/S suspend  / search  g group  A all  R reset  Esc close"
+const agentsHelpText = " Arrows move  Space hide  Enter grab  p pin  P protect  s/S suspend  g group  < > band  A all  R reset  Esc close"
 
 // groupFor computes the seed band for a pane name with no GroupOf entry yet,
 // reusing roles.RoleFamilyOf's eng*/qa* prefix classification (already the
@@ -1133,6 +1133,52 @@ func (t *TUI) agentsCreateGroup(name string) {
 				"group", name, "window", targetWindow, "err", err)
 		}
 	}
+}
+
+// agentsMoveBand implements < and > (ini-mchr): move the band holding the
+// selected agent one place left (dir -1) or right (dir +1) AS DRAWN. With
+// windows, a band is drawn among its own window's bands only, so the
+// neighbour is the next band of the SAME window; the two labels swap their
+// slots in the groups list and every other band, including other windows',
+// keeps its slot. No neighbour (first or last band) is a silent no-op. The
+// selection is a pane index and GroupOf is untouched, so the highlight moves
+// with the band and members keep their order.
+func (t *TUI) agentsMoveBand(dir int) {
+	sel := t.agents.selected
+	if sel < 0 || sel >= len(t.panes) {
+		return
+	}
+	t.ensureGroups(false)
+	band := t.layoutState.GroupOf[agentKey(t.panes[sel])]
+	if band == "" {
+		return
+	}
+	siblings := t.layoutState.Groups
+	if assign := t.agentsAssignment(); t.agentsTiersActive() && assign != nil {
+		siblings = assign.GroupsForWindow(assign.WindowOfGroup(band), t.layoutState.Groups)
+	}
+	at := -1
+	for i, g := range siblings {
+		if g == band {
+			at = i
+			break
+		}
+	}
+	if at < 0 || at+dir < 0 || at+dir >= len(siblings) {
+		return
+	}
+	neighbour := siblings[at+dir]
+	groups := append([]string(nil), t.layoutState.Groups...)
+	for i, g := range groups {
+		switch g {
+		case band:
+			groups[i] = neighbour
+		case neighbour:
+			groups[i] = band
+		}
+	}
+	t.layoutState.Groups = groups
+	t.saveLayoutIfConfigured()
 }
 
 // agentsSelectedWindow returns the window the current selection's group is
