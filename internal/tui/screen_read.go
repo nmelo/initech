@@ -200,6 +200,34 @@ func (p *Pane) cacheFrame(s *clampedScreen, cr Region, cols, rows int) {
 	}
 }
 
+// drawSettleFrame draws the last cached body while a resized pane settles
+// (ini-206s): clipped and BOTTOM-ANCHORED to the new region, because the
+// bottom of a pane is where the operator is looking (the prompt, the newest
+// output). Shrinking keeps the bottom rows and left columns that fit; growing
+// puts the old body at the bottom with the rows above it blank.
+//
+// ini-yah's guarantee is untouched, structurally: the screen's back buffer is
+// cleared at the start of every frame (render.go), so this snapshot exists
+// only in frames whose body is suppressed anyway, and the first frame after
+// the settle window is the emulator's real content. A pane with no cached
+// body draws nothing, as before.
+func (p *Pane) drawSettleFrame(s *clampedScreen, cr Region, cols, rows int) {
+	oc, or := p.lastFrameCols, p.lastFrameRows
+	if oc <= 0 || or <= 0 || len(p.lastFrame) != oc*or {
+		return
+	}
+	w := min(cols, oc)
+	n := min(rows, or)
+	for i := 0; i < n; i++ {
+		src := or - n + i
+		dst := rows - n + i
+		for col := 0; col < w; col++ {
+			fc := p.lastFrame[src*oc+col]
+			s.SetContent(cr.X+col, cr.Y+dst, fc.ch, nil, fc.style)
+		}
+	}
+}
+
 // replayFrame draws the cached content region for a pane that could not be
 // read this frame, and after screenFrozenAfter of that, says why on its
 // bottom row. A wedged pane's content is not changing, so its last frame is

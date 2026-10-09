@@ -132,6 +132,13 @@ func (p *Pane) Render(screen tcell.Screen, focused bool, dimmed bool, index int,
 	p.noteScreenRead()
 	if drewContent {
 		p.cacheFrame(s, cr, termCols, termRows)
+	} else {
+		// Settling after a resize (ini-yah) draws no body, and in the live
+		// focus split every membership change resizes every right pane, so
+		// the whole right side went black for ~160 ms (ini-206s). Show the
+		// last drawn body instead; the cache is not updated, so it stays the
+		// last REAL body.
+		p.drawSettleFrame(s, cr, termCols, termRows)
 	}
 }
 
