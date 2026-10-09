@@ -414,9 +414,14 @@ func (t *TUI) toggleHidden(name string) bool {
 
 // agentsToggleLivePin toggles the live mode slot pin for the selected agent.
 // If the agent is already live-pinned, removes the pin. If not, pins it to
-// its current slot (or the first available slot). Only active in live mode.
+// its current slot (or the first available slot).
+//
+// Active in live mode AND in the live focus split (ini-sbhq): there is one pin
+// store, and the split's right grid honours it the way live mode does. The
+// static focus split and every other mode still refuse, because nothing there
+// reads the store.
 func (t *TUI) agentsToggleLivePin() {
-	if t.layoutState.Mode != LayoutLive {
+	if t.layoutState.Mode != LayoutLive && t.liveFocus == nil {
 		t.agents.error = "live pin requires live mode"
 		return
 	}
@@ -439,7 +444,7 @@ func (t *TUI) agentsToggleLivePin() {
 			}
 		}
 		if slot < 0 {
-			numSlots := t.layoutState.GridCols * t.layoutState.GridRows
+			numSlots := t.liveSlotCount()
 			occupied := make(map[int]bool, len(t.layoutState.LivePinned))
 			for _, v := range t.layoutState.LivePinned {
 				occupied[v] = true
@@ -466,6 +471,20 @@ func (t *TUI) agentsToggleLivePin() {
 	}
 	t.applyLayout()
 	t.saveLayoutIfConfigured()
+}
+
+// liveSlotCount is how many slots a new live pin may choose from.
+//
+// In the live focus split the right grid is auto-sized and has no slot
+// positions, so the number comes from the LIVE grid the operator entered from
+// (the split's snapshot), keeping the pin a slot live mode can place when he
+// returns. Entered from any other mode, the current grid is the only grid
+// there is.
+func (t *TUI) liveSlotCount() int {
+	if lf := t.liveFocus; lf != nil && lf.prev.mode == LayoutLive {
+		return lf.prev.gridCols * lf.prev.gridRows
+	}
+	return t.layoutState.GridCols * t.layoutState.GridRows
 }
 
 // agentsToggleProtected toggles the auto-suspend protection for the selected pane.
