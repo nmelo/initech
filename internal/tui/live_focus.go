@@ -156,7 +156,28 @@ func (t *TUI) tickLiveFocus(now time.Time) {
 		t.clearLiveFocus()
 		return
 	}
+	t.syncLiveFocusPins()
 	t.layoutState.RightSet = t.liveFocus.engine.TickAuto(t.liveFocusInputs(), now)
+}
+
+// syncLiveFocusPins hands the split's engine the live pins (ini-sbhq).
+//
+// One store, re-derived every tick the way live mode does it (applyLayout,
+// tui.go): the global LivePinned intersected with this window. So a pin from
+// the panel, from the pin command, or carried in from live mode all reach
+// the right grid with no wiring of their own. Entry needs no call of its own:
+// toggleLiveFocusSplit ends in applyLayout, whose tick lands here before the
+// first frame (a sync in seedLiveFocus was an equivalent mutant -- removing
+// it changed nothing -- so it is not there). TickAuto then treats a pinned agent as always wanted and
+// adds it at once, whatever its state.
+//
+// The focused pane and hidden agents need no rule here: liveFocusInputs
+// leaves both out of the engine's input, and the engine only places agents
+// it is given -- so a focused pinned agent stays left and a hidden one is not
+// drawn.
+func (t *TUI) syncLiveFocusPins() {
+	_, pinned := t.liveTickInputs()
+	t.liveFocus.engine.Pinned = pinned
 }
 
 // layoutSnapshot captures the value-typed layout fields Option+f restores.
