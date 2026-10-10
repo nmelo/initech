@@ -150,7 +150,14 @@ func runOne(s rigSpec, mode, work string) *runResult {
 	}
 
 	os.RemoveAll(s.root)
+	// Keep the run's initech.log beside the profiles before the root goes:
+	// a table row is only as good as the evidence that can be re-read.
 	defer os.RemoveAll(s.root)
+	defer func() {
+		if b, err := os.ReadFile(filepath.Join(s.root, ".initech", "initech.log")); err == nil {
+			os.WriteFile(filepath.Join(work, fmt.Sprintf("initech-n%d-%s.log", s.panes, mode)), b, 0o600)
+		}
+	}()
 	must(os.MkdirAll(filepath.Join(s.root, "shell"), 0o755), "make the root")
 	for i := 1; i < s.panes; i++ {
 		must(os.MkdirAll(filepath.Join(s.root, fmt.Sprintf("r%03d", i)), 0o755), "make a role dir")
