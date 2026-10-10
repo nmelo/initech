@@ -164,7 +164,13 @@ type TUI struct {
 	// inboxStoreMu guards inboxStore's identity and lastInboxRefresh: a child
 	// window replaces the store on refresh while other goroutines read it
 	// (ini-3wkl.7).
-	inboxStoreMu     sync.Mutex
+	inboxStoreMu sync.Mutex
+	// perf is the always-on self-measurement's current minute (ini-pqdy.1).
+	// Main goroutine only.
+	perf perfRecorder
+	// perfEmit receives each finished minute; nil means emitPerfLine on its
+	// own goroutine. Tests set it to capture the snapshot.
+	perfEmit         func(perfSnapshot)
 	lastInboxRefresh time.Time
 	postTeaching     postTeachingState
 
@@ -1337,7 +1343,8 @@ func Run(cfg Config) error {
 			LogInfo("main-loop", "op.fn returned, closing done channel")
 			close(op.done)
 			LogInfo("main-loop", "done channel closed, about to render")
-		case <-ticker.C:
+		case tick := <-ticker.C:
+			t.perfObserveTick(tick)
 			// Periodic housekeeping (runs even if no events arrive).
 			t.pruneNotifications()
 			t.pruneConfirmation()

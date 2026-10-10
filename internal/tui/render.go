@@ -57,7 +57,15 @@ func (t *TUI) renderLiveFocusEmptyHint(s tcell.Screen, w, h int) {
 	}
 }
 
+// render draws one frame and records its cost (ini-pqdy.1): entry to after
+// Show, on every exit path of renderFrame.
 func (t *TUI) render() {
+	start := time.Now()
+	t.renderFrame()
+	t.perfObserveFrame(start)
+}
+
+func (t *TUI) renderFrame() {
 	t.renderCount++
 	if t.renderCount <= 5 || t.renderCount%150 == 0 {
 		LogInfo("render", "enter", "frame", t.renderCount,

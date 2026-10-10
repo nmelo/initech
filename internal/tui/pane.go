@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 	"unicode"
@@ -254,43 +255,47 @@ type Pane struct {
 	// first said idle -- the idle-with-bead clock for a pane whose bytes never
 	// stop -- and the once-per-transition record of which rule decided the
 	// state.
-	sigIdleSince                   time.Time
-	activityTransitions            int
-	activityDecidedBy              string
-	idleWithBeadThreshold          time.Duration     // Silence duration before idle-with-bead fires. 0 = disabled.
-	idleBeadNotified               bool              // True after idle-with-bead fires. Reset when output resumes.
-	beadAssignedAt                 time.Time         // When the current bead was assigned. Grace period starts here.
-	waitingSince                   time.Time         // When the currently-open blocking dialog was first seen. Zero = not waiting.
-	waitingPreview                 string            // What to show for this agent in the needs-input list. Empty is allowed.
-	waitingTier                    WaitingTier       // Confidence in the current wait. Zero value is the SILENT tier, deliberately.
-	waitingModalSeen               bool              // The screen has confirmed this wait's dialog, so the screen may also retire it.
-	attn                           *attentionSignal  // Mailbox the OSC 777 handler writes into. Leaf-locked; see attention_detect.go.
-	journal                        []JournalEntry    // Ring buffer of recent JSONL entries (cap journalRingSize).
-	jsonlDir                       string            // Directory to search for session JSONL files.
-	eventCh                        chan<- AgentEvent // Emits detected semantic events to the TUI. May be nil.
-	safeGo                         func(func())      // Launches a goroutine with panic recovery. Set by TUI after creation.
-	goWg                           sync.WaitGroup    // Tracks goroutines launched by Start(). Wait in Close().
-	sessionDesc                    string            // Session description extracted from cursor row.
-	beadIDs                        []string          // Current bead IDs. Nil = no beads. First is primary.
-	beadTitle                      string            // Bead title for top modal display.
-	stallReported                  bool              // True after emitting stall event. Reset on new activity.
-	stuckReported                  bool              // True after emitting stuck event. Reset on success.
-	dedupEvents                    *dedup            // Dedup state for emitted events.
-	startedAt                      time.Time         // When this pane's process was started. Used to filter stale JSONL.
-	startupSettled                 bool              // The child has been seen quiet once since it started; sends wait for that, once (ini-i35w). Guarded by mu.
-	scrollOffset                   int               // Rows scrolled back from live view (0 = live).
-	resizeSettleFrames             int               // Render frames remaining to skip after resize.
-	resizeSettleDeadline           time.Time         // Hard deadline: skip content rendering until this time.
-	scrollAnchorLen                int               // Scrollback length when user last scrolled. Used to compensate for new output.
-	memoryRSS                      int64             // RSS in kilobytes, updated by memory monitor goroutine.
-	suspended                      bool              // True when auto-suspend policy has stopped this pane.
-	messageQueue                   []QueuedMessage   // Messages waiting for resume or modal-close. Capped at maxMessageQueue.
-	idlePromptSince                time.Time         // When the pane last began rendering its idle composer (ini-gbqc).
-	screenSkipSince                time.Time         // When the main loop first found this pane's emulator lock held (ini-psjt).
-	screenSkipLogged               time.Time         // Last time that skip was logged; rate-limits the record.
-	lastEmuCols, lastEmuRows       int               // Emulator size last seen under its lock (ini-psjt); emuSize's fallback.
-	lastFrame                      []frameCell       // Content region as last drawn; replayed while the pane cannot be read.
-	lastFrameCols, lastFrameRows   int
+	sigIdleSince                 time.Time
+	activityTransitions          int
+	activityDecidedBy            string
+	idleWithBeadThreshold        time.Duration     // Silence duration before idle-with-bead fires. 0 = disabled.
+	idleBeadNotified             bool              // True after idle-with-bead fires. Reset when output resumes.
+	beadAssignedAt               time.Time         // When the current bead was assigned. Grace period starts here.
+	waitingSince                 time.Time         // When the currently-open blocking dialog was first seen. Zero = not waiting.
+	waitingPreview               string            // What to show for this agent in the needs-input list. Empty is allowed.
+	waitingTier                  WaitingTier       // Confidence in the current wait. Zero value is the SILENT tier, deliberately.
+	waitingModalSeen             bool              // The screen has confirmed this wait's dialog, so the screen may also retire it.
+	attn                         *attentionSignal  // Mailbox the OSC 777 handler writes into. Leaf-locked; see attention_detect.go.
+	journal                      []JournalEntry    // Ring buffer of recent JSONL entries (cap journalRingSize).
+	jsonlDir                     string            // Directory to search for session JSONL files.
+	eventCh                      chan<- AgentEvent // Emits detected semantic events to the TUI. May be nil.
+	safeGo                       func(func())      // Launches a goroutine with panic recovery. Set by TUI after creation.
+	goWg                         sync.WaitGroup    // Tracks goroutines launched by Start(). Wait in Close().
+	sessionDesc                  string            // Session description extracted from cursor row.
+	beadIDs                      []string          // Current bead IDs. Nil = no beads. First is primary.
+	beadTitle                    string            // Bead title for top modal display.
+	stallReported                bool              // True after emitting stall event. Reset on new activity.
+	stuckReported                bool              // True after emitting stuck event. Reset on success.
+	dedupEvents                  *dedup            // Dedup state for emitted events.
+	startedAt                    time.Time         // When this pane's process was started. Used to filter stale JSONL.
+	startupSettled               bool              // The child has been seen quiet once since it started; sends wait for that, once (ini-i35w). Guarded by mu.
+	scrollOffset                 int               // Rows scrolled back from live view (0 = live).
+	resizeSettleFrames           int               // Render frames remaining to skip after resize.
+	resizeSettleDeadline         time.Time         // Hard deadline: skip content rendering until this time.
+	scrollAnchorLen              int               // Scrollback length when user last scrolled. Used to compensate for new output.
+	memoryRSS                    int64             // RSS in kilobytes, updated by memory monitor goroutine.
+	suspended                    bool              // True when auto-suspend policy has stopped this pane.
+	messageQueue                 []QueuedMessage   // Messages waiting for resume or modal-close. Capped at maxMessageQueue.
+	idlePromptSince              time.Time         // When the pane last began rendering its idle composer (ini-gbqc).
+	screenSkipSince              time.Time         // When the main loop first found this pane's emulator lock held (ini-psjt).
+	screenSkipLogged             time.Time         // Last time that skip was logged; rate-limits the record.
+	lastEmuCols, lastEmuRows     int               // Emulator size last seen under its lock (ini-psjt); emuSize's fallback.
+	lastFrame                    []frameCell       // Content region as last drawn; replayed while the pane cannot be read.
+	lastFrameCols, lastFrameRows int
+	// perfBytes and perfEmuNs are this pane's PTY bytes read and time spent in
+	// emu.Write since the last perf minute (ini-pqdy.1). readLoop adds; the
+	// main loop swaps them to zero at each minute.
+	perfBytes, perfEmuNs           atomic.Int64
 	lastStartRow, lastRenderOffset int                 // contentOffset as last computed under the lock.
 	lastMaxScroll                  int                 // maxScrollOffset as last computed under the lock.
 	pendingResize                  *[2]int             // rows, cols the main loop could not apply yet; retried each frame.
@@ -540,8 +545,17 @@ func (p *Pane) readLoop() {
 			p.activeRunBytes += int64(n)
 			p.mu.Unlock()
 
+			// Self-measurement (ini-pqdy.1): bytes read and time in emu.Write.
+			var w0 time.Time
+			if perfExtras() {
+				p.perfBytes.Add(int64(n))
+				w0 = time.Now()
+			}
 			p.renderMu.Lock()
 			p.emu.Write(data)
+			if perfExtras() {
+				p.perfEmuNs.Add(int64(time.Since(w0)))
+			}
 			p.checkAltScreenTransition()
 			p.renderMu.Unlock()
 
