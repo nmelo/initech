@@ -62,8 +62,14 @@ func runReplay(cmd *cobra.Command, args []string) error {
 	defer stop()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
+	// The reader is taken HERE, on the command's own goroutine (ini-m3tc). The
+	// watcher outlives the command -- it blocks on stdin until the pane closes
+	// -- so calling cmd.InOrStdin() inside it read cobra's state after the
+	// command returned, racing whoever touches the command next (the race
+	// detector caught it at the v2.19.0 gate).
+	in := cmd.InOrStdin()
 	go func() {
-		_, _ = io.Copy(io.Discard, cmd.InOrStdin())
+		_, _ = io.Copy(io.Discard, in)
 		cancel()
 	}()
 
