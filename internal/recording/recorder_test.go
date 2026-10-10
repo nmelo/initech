@@ -9,13 +9,17 @@ import (
 )
 
 // memSink is an io.WriteCloser over a buffer. When gate is non-nil every
-// Write after the first waits for it, so a test can stall the disk.
+// Write after the first waits for it, so a test can stall the disk; entered
+// (when non-nil) is closed the moment the first such Write begins, so the
+// test can KNOW the writer goroutine is parked on the disk rather than hope.
 type memSink struct {
-	mu     sync.Mutex
-	buf    bytes.Buffer
-	gate   chan struct{}
-	writes int
-	fail   bool
+	mu        sync.Mutex
+	buf       bytes.Buffer
+	gate      chan struct{}
+	entered   chan struct{}
+	enterOnce sync.Once
+	writes    int
+	fail      bool
 }
 
 func (m *memSink) Write(p []byte) (int, error) {
@@ -25,6 +29,9 @@ func (m *memSink) Write(p []byte) (int, error) {
 	gate, fail := m.gate, m.fail
 	m.mu.Unlock()
 	if gate != nil && n > 1 {
+		if m.entered != nil {
+			m.enterOnce.Do(func() { close(m.entered) })
+		}
 		<-gate
 	}
 	if fail && n > 1 {
@@ -79,22 +86,38 @@ func TestRecorder_RecordsOutputAndRealResizesInOrder(t *testing.T) {
 
 // A stalled disk never blocks the read loop: Output returns at once, chunks
 // beyond the queue are dropped, and the trailer carries the count.
+//
+// The stall is made certain before the flood (ini-pqdy.6): one chunk goes
+// first, and the test waits until the writer has drained it and is parked
+// inside the disk's Write. Without that wait the writer can keep pace with
+// the sender (it did under -race), buffering everything in memory, and
+// correctly drop nothing -- a fixture that never stalled, not a recorder
+// that failed to drop.
 func TestRecorder_StalledDiskNeverBlocksAndCountsDrops(t *testing.T) {
-	sink := &memSink{gate: make(chan struct{})}
+	sink := &memSink{gate: make(chan struct{}), entered: make(chan struct{})}
 	r, err := NewRecorder(sink, Header{Pane: "eng1", Cols: 80, Rows: 24})
 	if err != nil {
 		t.Fatal(err)
 	}
-	const sent = recorderQueue * 3
+	r.Output([]byte("first"))
+	select {
+	case <-sink.entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the writer never reached the disk with the first chunk")
+	}
+	const flood = recorderQueue * 3
+	const sent = flood + 1
 	start := time.Now()
-	for i := 0; i < sent; i++ {
+	for i := 0; i < flood; i++ {
 		r.Output([]byte("chunk"))
 	}
 	if d := time.Since(start); d > time.Second {
-		t.Fatalf("%d Output calls against a stalled disk took %v; the read loop would have blocked", sent, d)
+		t.Fatalf("%d Output calls against a stalled disk took %v; the read loop would have blocked", flood, d)
 	}
-	if r.Dropped() == 0 {
-		t.Fatal("nothing dropped although the disk never took a byte past the header")
+	// The writer is parked holding "first"; the queue takes exactly
+	// recorderQueue more and every chunk past that is dropped.
+	if got, want := r.Dropped(), uint64(flood-recorderQueue); got != want {
+		t.Fatalf("dropped %d, want %d (flood %d minus a full queue of %d)", got, want, flood, recorderQueue)
 	}
 	close(sink.gate)
 	if err := r.Close(); err != nil {
