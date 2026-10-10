@@ -69,7 +69,8 @@ type Options struct {
 	Offset time.Duration
 	// Scale divides every interval: 2 plays twice as fast. Zero means 1.
 	Scale float64
-	// Loop starts again from Offset when a pass ends.
+	// Loop plays the recording again when a pass ends. Passes after the first
+	// start from the beginning: Offset shifts only the first (see Offset).
 	Loop bool
 	// StopAfter ends the replay after this much wall time. Zero means never.
 	StopAfter time.Duration

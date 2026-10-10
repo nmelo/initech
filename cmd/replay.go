@@ -41,7 +41,7 @@ var replayCmd = &cobra.Command{
 func init() {
 	replayCmd.Flags().DurationVar(&replayOffset, "offset", 0, "Start playback at this recording time; earlier output is skipped")
 	replayCmd.Flags().Float64Var(&replayScale, "scale", 1, "Divide every interval by this (2 plays twice as fast)")
-	replayCmd.Flags().BoolVar(&replayLoop, "loop", false, "Start again from --offset when the recording ends")
+	replayCmd.Flags().BoolVar(&replayLoop, "loop", false, "Play the recording again when it ends; passes after the first start from the beginning (--offset only shifts the first)")
 	replayCmd.Flags().DurationVar(&replayStopAfter, "stop-after", 0, "Exit after this much wall time (0 = never)")
 	rootCmd.AddCommand(replayCmd)
 }
