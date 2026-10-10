@@ -36,6 +36,8 @@ var (
 	flagRoot   = flag.String("root", "", "run root (short: a Unix socket path over ~100 chars fails); default /tmp/iq-rig-<user>")
 	flagCols   = flag.Int("cols", 200, "TUI width")
 	flagRows   = flag.Int("rows", 60, "TUI height")
+	flagBin    = flag.String("bin", "", "use this initech binary instead of building one (a lab host with no Go or checkout); needs -sha")
+	flagSHA    = flag.String("sha", "", "the commit -bin was built from; named on the table")
 	flagLocal  = flag.Bool("local", false, "a dev Mac that runs other claude sessions: record the host-wide claude count instead of failing on it; claude under the rig's TUI still fails the run")
 )
 
@@ -44,24 +46,32 @@ func main() {
 	if *flagRoot == "" {
 		*flagRoot = "/tmp/iq-rig-" + os.Getenv("USER")
 	}
-	top, err := exec.Command("git", "rev-parse", "--show-toplevel").Output()
-	must(err, "find the repo root")
-	repo := strings.TrimSpace(string(top))
-	shaB, err := exec.Command("git", "-C", repo, "rev-parse", "--short", "HEAD").Output()
-	must(err, "read the sha")
-	sha := strings.TrimSpace(string(shaB))
-	dirty := ""
-	if st, _ := exec.Command("git", "-C", repo, "status", "--porcelain", "--untracked-files=no").Output(); len(st) > 0 {
-		dirty = "+uncommitted"
-	}
-
 	work, err := os.MkdirTemp("", "iq-rig-work-")
 	must(err, "make a work dir")
-	bin := filepath.Join(work, "initech")
-	build := exec.Command("go", "build", "-o", bin, ".")
-	build.Dir = repo
-	if out, err := build.CombinedOutput(); err != nil {
-		fail("build initech at %s: %v\n%s", sha, err, out)
+	var sha, bin string
+	if *flagBin != "" {
+		// A lab host: no Go, no checkout. The binary was built elsewhere from
+		// a named commit, and the table names that commit.
+		if *flagSHA == "" {
+			fail("-bin needs -sha: the table must name the commit the binary was built from")
+		}
+		sha, bin = *flagSHA+" (prebuilt)", *flagBin
+	} else {
+		top, err := exec.Command("git", "rev-parse", "--show-toplevel").Output()
+		must(err, "find the repo root")
+		repo := strings.TrimSpace(string(top))
+		shaB, err := exec.Command("git", "-C", repo, "rev-parse", "--short", "HEAD").Output()
+		must(err, "read the sha")
+		sha = strings.TrimSpace(string(shaB))
+		if st, _ := exec.Command("git", "-C", repo, "status", "--porcelain", "--untracked-files=no").Output(); len(st) > 0 {
+			sha += "+uncommitted"
+		}
+		bin = filepath.Join(work, "initech")
+		build := exec.Command("go", "build", "-o", bin, ".")
+		build.Dir = repo
+		if out, err := build.CombinedOutput(); err != nil {
+			fail("build initech at %s: %v\n%s", sha, err, out)
+		}
 	}
 
 	rec, recSet := *flagRec, ""
@@ -76,7 +86,7 @@ func main() {
 	must(err, "read the recording")
 
 	host, _ := os.Hostname()
-	meta := tableMeta{sha: sha + dirty, host: host + " (" + runtime.GOOS + "/" + runtime.GOARCH + ")", recSet: recSet,
+	meta := tableMeta{sha: sha, host: host + " (" + runtime.GOOS + "/" + runtime.GOARCH + ")", recSet: recSet,
 		idle: *flagIdle, replay: *flagReplay, cols: *flagCols, rows: *flagRows, profiles: work}
 	var rows []tableRow
 	failed := false
