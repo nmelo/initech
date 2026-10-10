@@ -348,10 +348,15 @@ func (r *runResult) rows() []tableRow {
 			keys: summarize(r.keys[ph]), keyMiss: r.keyMiss[ph], ext: summarize(r.ext[ph]), extMiss: r.extMiss[ph],
 			accW: summarize(r.accW[ph]), wEcho: summarize(r.wEcho[ph]),
 			census: fmt.Sprintf("tree %d/%d/%d, host %d/%d/%d%s", r.claudeBefore, r.claudeMax, r.claudeAfter, r.hostBefore, r.hostMax, r.hostAfter, localNote()), runnerBusy: r.runnerBusy}
+		var rb int64
 		for _, m := range r.perf[ph] {
+			rb += m.readBytes
 			row.p99s = append(row.p99s, m.p99)
 			row.frameMax = max(row.frameMax, m.max)
 			row.missed += m.missed
+		}
+		if len(r.perf[ph]) > 0 {
+			row.readKBMin = float64(rb) / 1024 / float64(len(r.perf[ph]))
 		}
 		out = append(out, row)
 	}

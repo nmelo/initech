@@ -73,7 +73,7 @@ func TestSyntheticRecording_RoundTripsThroughTheRealReader(t *testing.T) {
 
 func TestParseLog_PerfLinesAndMarkerStamps(t *testing.T) {
 	log := strings.Join([]string{
-		`time=2026-10-10T09:55:23.322-04:00 level=INFO msg="[perf] minute" mode=full window_s=60 frames=1834 p50_us=2262 p95_us=18101 p99_us=36203 max_us=77514 missed_ticks=11 pane_io="a=1/2,b=3/4"`,
+		`time=2026-10-10T09:55:23.322-04:00 level=INFO msg="[perf] minute" mode=full window_s=60 frames=1834 p50_us=2262 p95_us=18101 p99_us=36203 max_us=77514 missed_ticks=11 read_bytes=190247 pane_io="a=1/2,b=3/4"`,
 		`time=2026-10-10T09:55:24.000-04:00 level=INFO msg="[perf] marker accepted" pane=shell marker=IQPERF-1`,
 		`time=2026-10-10T09:55:24.012-04:00 level=INFO msg="[perf] marker written" pane=shell marker=IQPERF-1`,
 		`time=2026-10-10T09:55:24.030-04:00 level=INFO msg="[perf] marker echoed" pane=shell marker=IQPERF-1`,
@@ -86,7 +86,7 @@ func TestParseLog_PerfLinesAndMarkerStamps(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(mins) != 1 || mins[0].frames != 1834 || mins[0].p99 != 36203*time.Microsecond || mins[0].missed != 11 {
+	if len(mins) != 1 || mins[0].frames != 1834 || mins[0].p99 != 36203*time.Microsecond || mins[0].missed != 11 || mins[0].readBytes != 190247 {
 		t.Errorf("perf minutes = %+v", mins)
 	}
 	m := marks["IQPERF-1"]

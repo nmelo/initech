@@ -176,6 +176,7 @@ var kvRe = regexp.MustCompile(`(\w+)=("[^"]*"|\S+)`)
 type perfMinute struct {
 	at                 time.Time
 	frames, missed     int
+	readBytes          int64 // PTY bytes all local panes read that minute: proof the load ran
 	p50, p95, p99, max time.Duration
 }
 
@@ -210,7 +211,8 @@ func parseLog(path string) ([]perfMinute, map[string]*markerStamps, error) {
 		num := func(k string) int { v, _ := strconv.Atoi(kv[k]); return v }
 		switch {
 		case strings.Contains(line, `msg="[perf] minute"`):
-			mins = append(mins, perfMinute{at: at, frames: num("frames"), missed: num("missed_ticks"),
+			rb, _ := strconv.ParseInt(kv["read_bytes"], 10, 64)
+			mins = append(mins, perfMinute{at: at, frames: num("frames"), missed: num("missed_ticks"), readBytes: rb,
 				p50: us("p50_us"), p95: us("p95_us"), p99: us("p99_us"), max: us("max_us")})
 		case strings.Contains(line, `msg="[perf] marker `):
 			tok := kv["marker"]
@@ -265,6 +267,7 @@ type tableRow struct {
 	p99s                   []time.Duration
 	frameMax               time.Duration
 	missed                 int
+	readKBMin              float64 // mean PTY KB read per minute in this phase
 	keys, ext, accW, wEcho dist
 	keyMiss, extMiss       int
 	census                 string
@@ -277,10 +280,11 @@ func renderTable(m tableMeta, rows []tableRow) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "## Efficiency baseline at %s\n\n", m.sha)
 	fmt.Fprintf(&b, "- host: %s\n- recording set: %s\n- phases: %s idle, then %s replay; TUI %dx%d in a rig-owned PTY\n", m.host, m.recSet, m.idle, m.replay, m.cols, m.rows)
+	b.WriteString("- read KB/min is the PTY input initech itself counted (ini-pqdy.1's read_bytes): it shows the replay load actually arrived, so a flat frame cost cannot be an idle phase measured twice.\n")
 	b.WriteString("- fixture limits: N panes = 1 focused bash shell + N-1 replayers (`initech replay`, generic roles, never claude). Keystroke echo and delivery go to the bash shell, so they measure initech's own path, not an agent's. Frame cost is ini-pqdy.1's per-minute line (p99 per minute listed; buckets are 41% wide). ms throughout: p50 / p95 / p99 / max (n).\n")
 	fmt.Fprintf(&b, "- CPU profiles (replay phase): %s\n\n", m.profiles)
-	b.WriteString("| N | mode | phase | frame p99 per minute | frame max | missed ticks | key echo | delivery, external | in-app accepted->written | in-app written->echoed | claude before/during/after | runner job | verdict |\n")
-	b.WriteString("|---|---|---|---|---|---|---|---|---|---|---|---|---|\n")
+	b.WriteString("| N | mode | phase | read KB/min | frame p99 per minute | frame max | missed ticks | key echo | delivery, external | in-app accepted->written | in-app written->echoed | claude before/during/after | runner job | verdict |\n")
+	b.WriteString("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n")
 	ms := func(d time.Duration) string { return strconv.FormatFloat(float64(d)/1e6, 'f', 1, 64) }
 	for _, r := range rows {
 		var p []string
@@ -302,8 +306,12 @@ func renderTable(m tableMeta, rows []tableRow) string {
 		if r.runnerBusy {
 			runner = "ACTIVE"
 		}
-		fmt.Fprintf(&b, "| %d | %s | %s | %s | %s | %d | %s | %s | %s | %s | %s | %s | %s |\n",
-			r.n, r.mode, r.phase, pp, ms(r.frameMax), r.missed, key, ext, r.accW, r.wEcho, r.census, runner, r.verdict)
+		kb := "n/a"
+		if len(r.p99s) > 0 {
+			kb = strconv.FormatFloat(r.readKBMin, 'f', 1, 64)
+		}
+		fmt.Fprintf(&b, "| %d | %s | %s | %s | %s | %s | %d | %s | %s | %s | %s | %s | %s | %s |\n",
+			r.n, r.mode, r.phase, kb, pp, ms(r.frameMax), r.missed, key, ext, r.accW, r.wEcho, r.census, runner, r.verdict)
 	}
 	return b.String()
 }
