@@ -57,10 +57,37 @@ func TestFileOpener_ALoopReopensTheFileEachPass(t *testing.T) {
 	path := writeFixture(t)
 	clk := &fakeClock{now: time.Unix(1000, 0)}
 	var out bytes.Buffer
-	if err := Play(context.Background(), FileOpener(path), &out, Options{Loop: true, StopAfter: 35 * time.Millisecond}, clk); err != nil {
+	if err := Play(context.Background(), FileOpener(path), &out, Options{Loop: true, StopAfter: 250 * time.Millisecond}, clk); err != nil {
 		t.Fatal(err)
 	}
 	if n := bytes.Count(out.Bytes(), []byte("ab")); n < 2 {
 		t.Fatalf("looped %d pass(es) over the file, want at least 2: %q", n, out.String())
+	}
+}
+
+// A looping pass lasts until the recording's END (the trailer), not just its
+// last output, so the silent tail is kept. The trailer is put at 300ms, past
+// the 100ms floor, so pass 2 starting at 300ms can only come from reading it.
+func TestFileOpener_ALoopingPassLastsUntilTheRecordingsEnd(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "tail"+recording.FileExt)
+	f, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w, err := recording.NewWriter(f, recording.Header{Version: recording.Version, Pane: "eng1", Start: time.Now(), Cols: 80, Rows: 24})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = w.Output(0, []byte("a"))
+	_ = w.Output(10*time.Millisecond, []byte("b"))
+	_ = w.Trailer(300*time.Millisecond, 0)
+	f.Close()
+	clk := &fakeClock{now: time.Unix(1000, 0)}
+	sw := &stampWriter{clk: clk, start: clk.now}
+	if err := Play(context.Background(), FileOpener(path), sw, Options{Loop: true, StopAfter: 400 * time.Millisecond}, clk); err != nil {
+		t.Fatal(err)
+	}
+	if len(sw.at) < 3 || sw.at[2] != 300*time.Millisecond {
+		t.Fatalf("writes at %v; pass 2 must start at the trailer (300ms), not at the last output or the floor", sw.at)
 	}
 }

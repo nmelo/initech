@@ -30,6 +30,24 @@ type Source interface {
 	Next() (Chunk, error)
 }
 
+// Ender is optionally implemented by a Source that knows where the recording
+// ENDS -- the trailer's time, which can fall after the last output. A looping
+// replay waits that long before the next pass, so each pass lasts as long as
+// the recording did, silent tail included.
+type Ender interface {
+	End() (time.Duration, bool)
+}
+
+// ErrNothingToLoop is returned when --loop is asked of a recording with no
+// output at all. Looping it could never write anything; that is a rig
+// misconfiguration, so it is reported rather than run (ini-pqdy.3, qa2).
+var ErrNothingToLoop = errors.New("replay: the recording has no output to loop")
+
+// minLoopPass is the shortest a looping pass may last. A recording whose
+// output all shares one timestamp would otherwise loop without ever
+// sleeping: a hot loop flooding the pane (ini-pqdy.3, qa2).
+const minLoopPass = 100 * time.Millisecond
+
 // Opener starts a fresh pass over the recording. Called once per pass, so a
 // looping replay re-reads from the beginning.
 type Opener func() (Source, error)
@@ -43,8 +61,11 @@ type Clock interface {
 
 // Options shape a replay.
 type Options struct {
-	// Offset starts playback at this recording time. Earlier chunks are
-	// skipped, which is how a rig staggers panes over one recording.
+	// Offset starts the FIRST pass at this recording time; earlier chunks
+	// are skipped. Later passes of a loop play the whole recording, so the
+	// offset is a phase shift: that is how a rig staggers panes over one
+	// recording while each pane still plays all of it, and why an offset past
+	// the end means a late start rather than a pass that plays nothing.
 	Offset time.Duration
 	// Scale divides every interval: 2 plays twice as fast. Zero means 1.
 	Scale float64
@@ -82,12 +103,14 @@ func Play(ctx context.Context, open Opener, out io.Writer, o Options, clk Clock)
 		}
 		return ctx.Err() != nil
 	}
+	offset := o.Offset
 	for {
 		src, err := open()
 		if err != nil {
 			return err
 		}
 		start := clk.Now()
+		wrote := false
 		for {
 			c, err := src.Next()
 			if errors.Is(err, io.EOF) {
@@ -96,23 +119,40 @@ func Play(ctx context.Context, open Opener, out io.Writer, o Options, clk Clock)
 			if err != nil {
 				return err
 			}
-			if c.At < o.Offset {
+			if c.At < offset {
 				continue
 			}
-			target := start.Add(time.Duration(float64(c.At-o.Offset) / scale))
+			target := start.Add(time.Duration(float64(c.At-offset) / scale))
 			if waitUntil(target) {
 				return nil
 			}
 			if _, err := out.Write(c.Data); err != nil {
 				return err
 			}
+			wrote = true
 		}
 		if !o.Loop {
 			return nil
 		}
-		if ctx.Err() != nil || (!deadline.IsZero() && !clk.Now().Before(deadline)) {
+		if !wrote && offset == 0 {
+			// A whole pass from the start wrote nothing: there is no output
+			// in this recording, and looping it would spin (qa2).
+			return ErrNothingToLoop
+		}
+		// The pass lasts until the recording's end when the source knows it,
+		// and never less than minLoopPass, so no loop runs without sleeping.
+		passEnd := start.Add(minLoopPass)
+		if e, ok := src.(Ender); ok {
+			if end, known := e.End(); known && end > offset {
+				if t := start.Add(time.Duration(float64(end-offset) / scale)); t.After(passEnd) {
+					passEnd = t
+				}
+			}
+		}
+		if waitUntil(passEnd) {
 			return nil
 		}
+		offset = 0
 	}
 }
 
