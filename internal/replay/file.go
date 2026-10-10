@@ -3,6 +3,7 @@ package replay
 import (
 	"errors"
 	"io"
+	"time"
 
 	"github.com/nmelo/initech/internal/recording"
 )
@@ -24,7 +25,15 @@ func FileOpener(path string) Opener {
 	}
 }
 
-type fileSource struct{ r *recording.Reader }
+type fileSource struct {
+	r      *recording.Reader
+	end    time.Duration
+	hasEnd bool
+}
+
+// End reports the trailer's time once the pass has reached it, so a looping
+// replay keeps the recording's silent tail.
+func (s *fileSource) End() (time.Duration, bool) { return s.end, s.hasEnd }
 
 func (s *fileSource) Next() (Chunk, error) {
 	for {
@@ -40,6 +49,7 @@ func (s *fileSource) Next() (Chunk, error) {
 		case recording.KindOutput:
 			return Chunk{At: rec.At, Data: rec.Data}, nil
 		case recording.KindTrailer:
+			s.end, s.hasEnd = rec.At, true
 			s.r.Close()
 			return Chunk{}, io.EOF
 		}
