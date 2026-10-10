@@ -334,6 +334,15 @@ func (t *TUI) handleIPCSend(conn net.Conn, req IPCRequest) {
 	}
 
 	// Normal path: deliver via PaneView.SendText (works for local and remote).
+	//
+	// The efficiency rig's delivery probe (ini-pqdy.4): a send carrying an
+	// IQPERF token is stamped as accepted, armed BEFORE the write so its echo
+	// cannot race ahead, and stamped again once written. Local panes only.
+	marker := perfMarkerToken(req.Text)
+	if lp, ok := pv.(*Pane); ok && marker != "" {
+		LogInfo("perf", "marker accepted", "pane", req.Target, "marker", marker)
+		lp.armPerfMarker(marker)
+	}
 	pv.SendText(req.Text, req.Enter)
 
 	if modalDeferred {
@@ -482,6 +491,10 @@ func sendPaneTextLocked(pane *Pane, text string, enter bool) {
 		n, err := pane.ptmx.Write(buf)
 		LogDebug("inject", "body written", "pane", pane.Name(), "mode", mode, "bytes", n, "err", err)
 	}
+	// The delivery probe's "written" stamp (ini-pqdy.4) belongs HERE, at the
+	// body's PTY write, not after SendText returns: SendText goes on to wait
+	// before the submit, and the child echoes the body as soon as it lands.
+	notePerfMarkerWritten(pane, text)
 
 	if !enter {
 		return

@@ -295,7 +295,10 @@ type Pane struct {
 	// perfBytes and perfEmuNs are this pane's PTY bytes read and time spent in
 	// emu.Write since the last perf minute (ini-pqdy.1). readLoop adds; the
 	// main loop swaps them to zero at each minute.
-	perfBytes, perfEmuNs           atomic.Int64
+	perfBytes, perfEmuNs atomic.Int64
+	// perfMarker is armed by a send carrying an IQPERF token (ini-pqdy.4);
+	// readLoop logs the echo and disarms. Nil almost always.
+	perfMarker                     atomic.Pointer[perfMarkerArm]
 	lastStartRow, lastRenderOffset int                 // contentOffset as last computed under the lock.
 	lastMaxScroll                  int                 // maxScrollOffset as last computed under the lock.
 	pendingResize                  *[2]int             // rows, cols the main loop could not apply yet; retried each frame.
@@ -539,6 +542,9 @@ func (p *Pane) readLoop() {
 			// Recording first, exactly as read (ini-pqdy.2). Copies and
 			// queues; never blocks this loop. No-op when recording is off.
 			p.rec.Output(data)
+			// The efficiency rig's delivery probe (ini-pqdy.4); one atomic
+			// load when no send carrying a marker is in flight.
+			p.checkPerfMarker(data)
 
 			p.mu.Lock()
 			p.lastOutputTime = time.Now()
