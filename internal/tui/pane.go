@@ -546,12 +546,16 @@ func (p *Pane) readLoop() {
 			p.mu.Unlock()
 
 			// Self-measurement (ini-pqdy.1): bytes read and time in emu.Write.
-			var w0 time.Time
+			// The clock starts AFTER renderMu is held, so the figure is the
+			// write itself and not the wait for the render loop to let go.
 			if perfExtras() {
 				p.perfBytes.Add(int64(n))
-				w0 = time.Now()
 			}
 			p.renderMu.Lock()
+			var w0 time.Time
+			if perfExtras() {
+				w0 = time.Now()
+			}
 			p.emu.Write(data)
 			if perfExtras() {
 				p.perfEmuNs.Add(int64(time.Since(w0)))
