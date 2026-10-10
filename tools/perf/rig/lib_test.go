@@ -86,7 +86,7 @@ func TestParseLog_PerfLinesAndMarkerStamps(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(mins) != 1 || mins[0].frames != 1834 || mins[0].p99 != 36203*time.Microsecond || mins[0].missed != 11 || mins[0].readBytes != 190247 {
+	if len(mins) != 1 || mins[0].frames != 1834 || mins[0].p99 != 36203*time.Microsecond || mins[0].missed != 11 || mins[0].readBytes != 190247 || mins[0].activePanes != 2 {
 		t.Errorf("perf minutes = %+v", mins)
 	}
 	m := marks["IQPERF-1"]

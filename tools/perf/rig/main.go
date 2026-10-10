@@ -127,6 +127,7 @@ type runResult struct {
 	claudeBefore, claudeMax, claudeAfter int
 	runnerBusy                           bool
 	leftovers                            int
+	wake                                 time.Duration // time to bring every pane up before measuring
 	profile                              string
 }
 
@@ -209,6 +210,28 @@ func runOne(s rigSpec, mode, work string) *runResult {
 		ptmx.Write([]byte{0x1b}) // and dismiss the welcome
 		time.Sleep(time.Second)
 		ptmx.Write([]byte{0x15}) // clear anything that reached the shell instead
+
+		// Wake the whole fleet before measuring: initech's startup stagger
+		// resumes held-back panes one at a time, ~20 s each for a generic
+		// pane, so at N=25 only ~6 would be running in a 3-minute run. A
+		// message wakes a parked pane at once and wakes run in parallel; the
+		// replayer drops what it reads, so one character is harmless.
+		woke := time.Now()
+		var wg sync.WaitGroup
+		for i := 1; i < s.panes; i++ {
+			wg.Add(1)
+			go func(name string) {
+				defer wg.Done()
+				c := exec.Command(s.bin, "send", "--allow-dev-delivery", "--no-enter", name, ".")
+				c.Dir = s.root
+				c.Env = append(rigEnv(), "INITECH_SOCKET="+filepath.Join(s.root, ".initech", "initech.sock"))
+				c.Run()
+			}(fmt.Sprintf("r%03d", i))
+		}
+		wg.Wait()
+		r.wake = time.Since(woke)
+		must(os.WriteFile(s.startFile(), nil, 0o600), "write the start file")
+		tStart = time.Now() // the measured phases begin with every pane awake
 
 		tIdleEnd := tStart.Add(s.idle)
 		tEnd := tIdleEnd.Add(s.replay)
@@ -350,14 +373,19 @@ func runOne(s rigSpec, mode, work string) *runResult {
 
 func (r *runResult) rows() []tableRow {
 	var out []tableRow
+	verdict := r.verdict
+	if r.wake > 0 {
+		verdict += fmt.Sprintf(" (fleet up in %s)", r.wake.Round(time.Second))
+	}
 	for _, ph := range []string{"idle", "replay"} {
-		row := tableRow{n: r.n, mode: r.mode, phase: ph, verdict: r.verdict,
+		row := tableRow{n: r.n, mode: r.mode, phase: ph, verdict: verdict,
 			keys: summarize(r.keys[ph]), keyMiss: r.keyMiss[ph], ext: summarize(r.ext[ph]), extMiss: r.extMiss[ph],
 			accW: summarize(r.accW[ph]), wEcho: summarize(r.wEcho[ph]),
 			census: fmt.Sprintf("tree %d/%d/%d, host %d/%d/%d%s", r.claudeBefore, r.claudeMax, r.claudeAfter, r.hostBefore, r.hostMax, r.hostAfter, localNote()), runnerBusy: r.runnerBusy}
 		var rb int64
 		for _, m := range r.perf[ph] {
 			rb += m.readBytes
+			row.activeMax = max(row.activeMax, m.activePanes)
 			row.p99s = append(row.p99s, m.p99)
 			row.frameMax = max(row.frameMax, m.max)
 			row.missed += m.missed
