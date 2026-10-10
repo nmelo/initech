@@ -20,6 +20,7 @@ import (
 	"github.com/charmbracelet/x/xpty"
 	"github.com/gdamore/tcell/v2"
 	"github.com/nmelo/initech/internal/config"
+	"github.com/nmelo/initech/internal/recording"
 )
 
 // ActivityState describes what an agent is doing based on JSONL session tailing.
@@ -335,6 +336,10 @@ type Pane struct {
 	// minutes and through a restart.
 	dialogOpenAt       time.Time
 	dialogCorroborated bool
+
+	// PTY output recording (ini-pqdy.2); nil when recording is off. Written
+	// once in NewPane, read by readLoop and Close.
+	rec *recording.Recorder
 }
 
 // Region defines a rectangular area on screen (outer bounds including border).
@@ -453,6 +458,9 @@ func NewPane(cfg PaneConfig, rows, cols int) (*Pane, error) {
 	// race, not just a timing question.
 	registerAttentionOSC(p)
 
+	// Recording (ini-pqdy.2): nil unless the session started with it on.
+	p.rec = openPaneRecorder(cfg.Name, cols, rows)
+
 	return p, nil
 }
 
@@ -522,6 +530,10 @@ func (p *Pane) readLoop() {
 		n, err := p.ptmx.Read(buf)
 		if n > 0 {
 			data := buf[:n]
+
+			// Recording first, exactly as read (ini-pqdy.2). Copies and
+			// queues; never blocks this loop. No-op when recording is off.
+			p.rec.Output(data)
 
 			p.mu.Lock()
 			p.lastOutputTime = time.Now()
@@ -1767,6 +1779,8 @@ func (p *Pane) Close() {
 	// Wait for all goroutines started by Start() to exit before touching
 	// emu or ptmx fields, preventing data races detected by the race detector.
 	p.goWg.Wait()
+	// readLoop has exited, so nothing records after this.
+	closePaneRecorder(p.name, p.rec)
 	// responseLoop has exited; safe to call emu.Close() now.
 	if p.emu != nil {
 		p.emu.Close()

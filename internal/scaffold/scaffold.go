@@ -270,6 +270,9 @@ bin/
 # Local agent config
 */.mcp.json
 
+# PTY recordings (initech --record): raw agent output, never committed
+*.irec
+
 # OS artifacts
 .DS_Store
 `

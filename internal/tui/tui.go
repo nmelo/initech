@@ -700,6 +700,7 @@ type Config struct {
 	PaneConfigBuilder  func(name string) (PaneConfig, error) // Optional factory for hot-add. Nil disables add command.
 	Project            *config.Project                       // Full project config. Used for remote peer connections.
 	OnAttentionConsent func(granted bool)                    // Persists the one-time consent answer (ini-2x8.6). Nil disables the modal's write-back.
+	RecordDir          string                                // Non-empty: record every local pane's output under this directory (ini-pqdy.2). Empty: off.
 }
 
 // DefaultConfig returns a config with standard shell-only agents.
@@ -728,6 +729,17 @@ func Run(cfg Config) error {
 	// Computed once, here, so the ownership question is asked in one place
 	// rather than rediscovered at each door.
 	viewer := isViewerSession(cfg)
+
+	// PTY recording (ini-pqdy.2), before any pane spawns so every pane is
+	// recorded from its first byte. A viewer owns no panes: nothing to record.
+	// A directory that cannot be made fails the launch here, before the
+	// screen takes the terminal, so the error is readable.
+	if cfg.RecordDir != "" && !viewer {
+		if _, err := startRecordingSession(cfg.RecordDir, time.Now()); err != nil {
+			return err
+		}
+		defer stopRecordingSession()
+	}
 
 	screen, err := tcell.NewScreen()
 	if err != nil {

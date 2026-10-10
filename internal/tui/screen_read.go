@@ -161,6 +161,9 @@ func (p *Pane) noteEmuSize(cols, rows int) {
 	p.mu.Lock()
 	p.lastEmuCols, p.lastEmuRows = cols, rows
 	p.mu.Unlock()
+	// Every size change passes through here; the recorder writes only real
+	// changes (ini-pqdy.2).
+	p.rec.Resize(cols, rows)
 }
 
 // emuSize returns the emulator's columns and rows without waiting on it: the

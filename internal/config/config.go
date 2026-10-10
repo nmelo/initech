@@ -78,6 +78,12 @@ type Project struct {
 	// default tint.
 	RunningPaneTint string `yaml:"running_pane_tint,omitempty"`
 
+	// RecordDir turns on PTY recording (ini-pqdy.2): every local pane's
+	// output, with timing and size changes, is written under this directory,
+	// one folder per session. Empty = off. The --record flag overrides it. A
+	// leading ~/ is the user's home.
+	RecordDir string `yaml:"record_dir,omitempty"`
+
 	IdleWithBeadThreshold *int `yaml:"idle_with_bead_threshold,omitempty"` // Seconds of silence before idle-with-bead fires. nil = 60, 0 = disabled.
 
 	// Attention configures the needs-input surface: the top-left list of agents

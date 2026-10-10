@@ -28,6 +28,7 @@ var (
 	autoSuspend bool
 	pprofAddr   string
 	windowNum   int
+	recordDir   string
 )
 
 var (
@@ -109,6 +110,8 @@ func init() {
 	rootCmd.Flags().BoolVar(&resetLayout, "reset-layout", false, "Ignore saved layout and start with auto-calculated defaults")
 	rootCmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Enable DEBUG-level logging to .initech/initech.log")
 	rootCmd.Flags().BoolVar(&autoSuspend, "auto-suspend", false, "Enable automatic agent suspension under memory pressure")
+	rootCmd.Flags().StringVar(&recordDir, "record", "", "Record every pane's output with timing to `DIR` (bare --record: "+recordFlagDefaultHint+"). Off by default; also the record_dir config key")
+	rootCmd.Flags().Lookup("record").NoOptDefVal = recordFlagDefault
 	rootCmd.Flags().StringVar(&pprofAddr, "pprof", "", "Start pprof HTTP server on the given localhost address (e.g. localhost:6060)")
 	rootCmd.Flags().IntVar(&windowNum, "window", 0, "Attach as secondary window N of a running session, showing only the groups assigned to it. Closing it folds its agents back into window 1; rerunning restores them to this window.")
 	rootCmd.PersistentFlags().BoolVar(&noColor, "no-color", false, "Disable colored output")
@@ -260,6 +263,11 @@ func runTUI(cmd *cobra.Command, args []string) error {
 		go func() { _ = serveHTTP(ln, nil) }()
 	}
 
+	recDir, err := resolveRecordDir(cmd.Flags().Changed("record"), recordDir, proj.RecordDir)
+	if err != nil {
+		return err
+	}
+
 	return tuiRun(tui.Config{
 		Agents:             agents,
 		ProjectName:        proj.Name,
@@ -272,6 +280,7 @@ func runTUI(cmd *cobra.Command, args []string) error {
 		Project:            proj,
 		PaneConfigBuilder:  buildReloadingPaneConfigBuilder(cfgPath, buildAgentPaneConfig),
 		OnAttentionConsent: attentionConsentRecorder(cfgPath, proj),
+		RecordDir:          recDir,
 	})
 }
 
