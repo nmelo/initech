@@ -77,6 +77,7 @@ var (
 	deliverMessage string
 	deliverVerdict string
 	deliverAs      string
+	deliverReport  bool
 )
 
 func init() {
@@ -85,6 +86,7 @@ func init() {
 	deliverCmd.Flags().StringVar(&deliverReason, "reason", "", "Failure reason (used with --fail or --verdict FAIL)")
 	deliverCmd.Flags().StringVar(&deliverTo, "to", "super", "Agent to report to (default: super)")
 	deliverCmd.Flags().StringVarP(&deliverMessage, "message", "m", "", "Custom note appended to the chat report; on success, also written as a bd comment on the bead")
+	deliverCmd.Flags().BoolVar(&deliverReport, "report", false, "Report this step even when the same agent acts next (by default only hand-offs, verdicts, failures and the final close report)")
 	deliverCmd.Flags().StringVar(&deliverVerdict, "verdict", "", "QA verdict: PASS or FAIL (required for qa* roles)")
 	deliverCmd.Flags().StringVar(&deliverAs, "as", "", "Override caller role (default: INITECH_AGENT env var)")
 	rootCmd.AddCommand(deliverCmd)
@@ -249,8 +251,16 @@ func runDeliver(cmd *cobra.Command, args []string) error {
 	displayTitle := truncateTitle(title, 80)
 	tpl := selectTemplate(family, isFail, verdict, deliverReason, displayTitle, agent)
 
-	// Step 4: Send report to recipient.
-	report := fmt.Sprintf("[from %s] %s: %s", agentOrUnknown(agent), beadID, tpl.ReportText)
+	// Step 4: Send report to recipient -- only when the step changes who acts
+	// next (ini-r5ne). A skip-QA bead walked to closed by one agent used to
+	// send the same "delivered" four or five times, each a super turn, and
+	// the repeats read to the operator like a stuck agent.
+	send, closed := deliverReportFor(tr, chain, isFail, verdict, deliverReport)
+	reportText := tpl.ReportText
+	if closed {
+		reportText = "closed: " + displayTitle
+	}
+	report := fmt.Sprintf("[from %s] %s: %s", agentOrUnknown(agent), beadID, reportText)
 	if deliverMessage != "" {
 		report += ". " + deliverMessage
 	}
@@ -262,7 +272,10 @@ func runDeliver(cmd *cobra.Command, args []string) error {
 		Text:   report,
 		Enter:  true,
 	}
-	if resp, err := ipcCall(sendReq); err != nil {
+	reportedTo := deliverTo
+	if !send {
+		reportedTo = "(no report: same agent continues; --report sends one)"
+	} else if resp, err := ipcCall(sendReq); err != nil {
 		fmt.Fprintf(cmd.ErrOrStderr(), "warning: report failed, notify %s manually: %s\n", deliverTo, err)
 	} else if !resp.OK {
 		fmt.Fprintf(cmd.ErrOrStderr(), "warning: report failed: %s\n", resp.Error)
@@ -273,8 +286,19 @@ func runDeliver(cmd *cobra.Command, args []string) error {
 
 	// Output summary.
 	fmt.Fprintf(cmd.ErrOrStderr(), "delivered %s: %s -> %s [%s, assignee %s] (%s) -> %s\n",
-		beadID, status, target, tr.Why, tr.Assignee, tpl.SummarySuffix, deliverTo)
+		beadID, status, target, tr.Why, tr.Assignee, tpl.SummarySuffix, reportedTo)
 	return nil
+}
+
+// deliverReportFor decides whether a delivered step reports, and whether it
+// is the final close (ini-r5ne). It reports when someone else acts next: a
+// hand-off (the table moves the assignee), a QA verdict, any --fail, or the
+// chain's last state, which reports once and says "closed". A same-agent
+// lifecycle walk step (assignee kept, not terminal) is silent unless forced.
+func deliverReportFor(tr lifecycle.Transition, chain []string, isFail bool, verdict string, forced bool) (send, closed bool) {
+	closed = len(chain) > 0 && tr.Status == chain[len(chain)-1]
+	send = forced || isFail || verdict != "" || closed || tr.Assignee != lifecycle.AssigneeKeep
+	return send, closed
 }
 
 // bdShowBeadFn is the default implementation of bdShowBead. Tests override this.

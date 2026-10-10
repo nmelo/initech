@@ -72,7 +72,9 @@ func resetDeliverFlags(t *testing.T) {
 	deliverMessage = ""
 	deliverVerdict = ""
 	deliverAs = ""
+	deliverReport = false
 	t.Cleanup(func() {
+		deliverReport = false
 		deliverFail = false
 		deliverPass = false
 		deliverReason = ""
