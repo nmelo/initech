@@ -2,6 +2,7 @@ package tui
 
 import (
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -94,9 +95,9 @@ func TestConfirmSubmit_NoComposerOnScreenIsNeverTaken(t *testing.T) {
 // ── ini-nma5 AC 2: the retry ─────────────────────────────────────────
 
 // nma5Enters counts the Enters the pane sends; fake Claude reacts to them.
-func nma5Enters(t *testing.T, submits <-chan []byte, onEnter func(n int)) *int {
+func nma5Enters(t *testing.T, submits <-chan []byte, onEnter func(n int)) *atomic.Int32 {
 	t.Helper()
-	n := 0
+	var n atomic.Int32
 	done := make(chan struct{})
 	t.Cleanup(func() { close(done) })
 	go func() {
@@ -106,8 +107,7 @@ func nma5Enters(t *testing.T, submits <-chan []byte, onEnter func(n int)) *int {
 				return
 			case b := <-submits:
 				if len(b) > 0 && (b[len(b)-1] == '\r' || b[len(b)-1] == '\n') {
-					n++
-					onEnter(n)
+					onEnter(int(n.Add(1)))
 				}
 			}
 		}
@@ -133,8 +133,8 @@ func TestSubmitRetry_ATakenEnterIsNotRepeated(t *testing.T) {
 	sendSubmitKey(p.emu, p.submitKey)
 	confirmAndRetrySubmit(p, newPendingSubmit(nma5Body, "bracketed", ""))
 	time.Sleep(50 * time.Millisecond)
-	if *n != 1 {
-		t.Fatalf("sent %d Enters for a submit taken first time, want 1", *n)
+	if n.Load() != 1 {
+		t.Fatalf("sent %d Enters for a submit taken first time, want 1", n.Load())
 	}
 	if ev, got := nma5Undelivered(events, 100*time.Millisecond); got {
 		t.Fatalf("reported %q for a delivered submit", ev.Detail)
@@ -154,8 +154,8 @@ func TestSubmitRetry_ASwallowedEnterIsResentOnceAndDelivered(t *testing.T) {
 	sendSubmitKey(p.emu, p.submitKey)
 	confirmAndRetrySubmit(p, newPendingSubmit(nma5Body, "bracketed", ""))
 	time.Sleep(50 * time.Millisecond)
-	if *n != 2 {
-		t.Fatalf("sent %d Enters, want 2 (the Enter and one resend)", *n)
+	if n.Load() != 2 {
+		t.Fatalf("sent %d Enters, want 2 (the Enter and one resend)", n.Load())
 	}
 	if ev, got := nma5Undelivered(events, 100*time.Millisecond); got {
 		t.Fatalf("reported %q although the resend was taken", ev.Detail)
@@ -181,8 +181,8 @@ func TestSubmitRetry_ASecondMissIsSurfacedWithinTwoSeconds(t *testing.T) {
 	if !strings.HasPrefix(ev.Detail, undeliveredSubmitPrefix) || !strings.Contains(ev.Detail, "Enter not taken twice") {
 		t.Fatalf("surfaced %q, want the NOT delivered report naming the cause", ev.Detail)
 	}
-	if *n != 2 {
-		t.Fatalf("sent %d Enters, want exactly 2 (never a third)", *n)
+	if n.Load() != 2 {
+		t.Fatalf("sent %d Enters, want exactly 2 (never a third)", n.Load())
 	}
 }
 
@@ -195,8 +195,8 @@ func TestSubmitRetry_NoComposerVisiblePressesNothing(t *testing.T) {
 	sendSubmitKey(p.emu, p.submitKey)
 	confirmAndRetrySubmit(p, newPendingSubmit(nma5Body, "bracketed", ""))
 	time.Sleep(50 * time.Millisecond)
-	if *n != 1 {
-		t.Fatalf("sent %d Enters with no composer visible, want only the original 1", *n)
+	if n.Load() != 1 {
+		t.Fatalf("sent %d Enters with no composer visible, want only the original 1", n.Load())
 	}
 	if ev, got := nma5Undelivered(events, 100*time.Millisecond); got {
 		t.Fatalf("reported %q for an unknown outcome", ev.Detail)

@@ -384,12 +384,22 @@ func TestDrainModalQueue_RedeliversAfterModalCloses(t *testing.T) {
 			n, err := emu.Read(buf)
 			if n > 0 {
 				emuMu.Lock()
+				took := false
 				for _, b := range buf[:n] {
 					if b == '\r' {
 						enterCount++
+						took = true
 					}
 				}
 				emuMu.Unlock()
+				// Model the child TAKING the submit: a real Claude clears its
+				// composer on the Enter. Without this the fixture is a child that
+				// never takes an Enter, and since ini-nma5 the send path correctly
+				// resends once into a composer that still holds our body. Own
+				// goroutine: this one drains the emulator's responses.
+				if took {
+					go emu.Write([]byte("\x1b[2J\x1b[24;1H❯ "))
+				}
 			}
 			if err != nil {
 				return

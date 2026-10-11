@@ -480,13 +480,24 @@ func TestInjectText_StashSkipsRetry(t *testing.T) {
 		for {
 			n, err := emu.Read(buf)
 			if n > 0 {
+				took := false
 				emuMu.Lock()
 				for _, b := range buf[:n] {
 					if b == '\r' {
 						enterCount++
+						took = true
 					}
 				}
 				emuMu.Unlock()
+				// Model the submit as real Claude does it: the composer clears and
+				// the operator's stashed draft is RESTORED into it. That restored
+				// draft is exactly what ini-vxw protects, and since ini-nma5 the
+				// retry is decided by OUR body, not by any content, so a composer
+				// holding only the operator's draft must not trigger a resend.
+				// Own goroutine: this one drains the emulator's responses.
+				if took {
+					go emu.Write([]byte("\x1b[24;1H\x1b[2K\u276f some typed text"))
+				}
 			}
 			if err != nil {
 				return
@@ -552,8 +563,8 @@ func TestInjectText_StashSkipsRetry(t *testing.T) {
 	got := enterCount
 	emuMu.Unlock()
 
-	// With stash active, retry is skipped: exactly 1 Enter (the initial submit).
-	// Before the fix, this would be 2 (initial + retry hitting restored text).
+	// The restored draft is the operator's, not ours: exactly 1 Enter (the
+	// initial submit). A retry keyed on any content would make this 2 (ini-vxw).
 	if got != 1 {
 		t.Errorf("Enter count = %d, want 1 (retry should be skipped when stash active)", got)
 	}
