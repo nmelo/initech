@@ -555,38 +555,38 @@ func sendPaneTextLocked(pane *Pane, text string, enter bool) {
 	time.Sleep(bracketedPasteSubmitDelay)
 	LogDebug("inject", "submit", "pane", pane.Name(), "mode", mode, "method", "emulator", "delay_ms", bracketedPasteSubmitDelay.Milliseconds())
 	sendSubmitKey(pane.emu, pane.submitKey)
-	confirmSubmit(pane, newPendingSubmit(text, mode, ""), time.Now())
+	confirmAndRetrySubmit(pane, newPendingSubmit(text, mode, ""))
 
-	// Single retry for large pastes where Enter was swallowed. Skip when a
-	// stash was active because Claude Code auto-restores stashed text into the
-	// prompt after submit, making promptHasContent a false positive that would
-	// submit the operator's unfinished text (ini-vxw).
-	if pane.IsAlive() && !stashed {
-		time.Sleep(bracketedPasteSubmitDelay)
-		if promptHasContent(pane) {
-			LogDebug("inject", "submit retry", "pane", pane.Name(), "mode", mode, "method", "emulator")
-			sendSubmitKey(pane.emu, pane.submitKey)
-		}
-	}
 }
 
 // submitConfirmWindow is how long the send path watches the composer after
 // the Enter for OUR body to leave it (ini-nma5). Claude clears a taken
 // submit within a frame or two; the window is generous for a loaded host.
-// A variable so tests can shorten it.
-var submitConfirmWindow = 1500 * time.Millisecond
+// Two windows (the Enter, then one resend) keep a second miss surfaced
+// within ~2s (AC 2). A variable so tests can shorten it.
+var submitConfirmWindow = 1000 * time.Millisecond
+
+// submitOutcome is what confirmSubmit saw.
+type submitOutcome int
+
+const (
+	submitTaken submitOutcome = iota
+	submitNotTaken
+	submitUnknown
+)
 
 // confirmSubmit watches the composer after the Enter and logs ONE Info
 // outcome line, so how often a submit is lost becomes readable from the
 // operator's own log (it logged at Debug before, and the log runs at Info).
-// It reports whether the submit was taken.
+// It reports the outcome: taken, not taken (our body is provably still in
+// the composer), or unknown (no composer visible, so nothing is pressed).
 //
 // OUR BODY, NOT ANY TEXT: after a submit, Claude restores the operator's
 // stashed draft into the composer, so "the composer has content" is not
 // evidence the Enter was lost -- that is why the old retry was gated off
 // after a stash. A screen with no composer at all is UNKNOWN, never taken:
 // a redraw caught mid-frame must not read as a delivery.
-func confirmSubmit(pane *Pane, ps *pendingSubmit, sentAt time.Time) bool {
+func confirmSubmit(pane *Pane, ps *pendingSubmit, sentAt time.Time) submitOutcome {
 	deadline := sentAt.Add(submitConfirmWindow)
 	sawComposer := false
 	for {
@@ -596,21 +596,39 @@ func confirmSubmit(pane *Pane, ps *pendingSubmit, sentAt time.Time) bool {
 			if !submitStillHeld(pane, tail, ps) {
 				LogInfo("inject", "submitted: composer cleared", "pane", pane.Name(), "mode", ps.mode,
 					"ms", time.Since(sentAt).Milliseconds(), "text", ps.preview)
-				return true
+				return submitTaken
 			}
 		}
 		if time.Now().After(deadline) {
 			if !sawComposer {
 				LogInfo("inject", "submit outcome UNKNOWN: no composer visible", "pane", pane.Name(),
 					"mode", ps.mode, "waited_ms", time.Since(sentAt).Milliseconds(), "text", ps.preview)
-				return false
+				return submitUnknown
 			}
 			LogInfo("inject", "SUBMIT NOT TAKEN: composer still holds our text", "pane", pane.Name(),
 				"mode", ps.mode, "waited_ms", time.Since(sentAt).Milliseconds(), "text", ps.preview,
 				"composer", composerSnapshot(pane))
-			return false
+			return submitNotTaken
 		}
 		time.Sleep(composerEchoPoll)
+	}
+}
+
+// confirmAndRetrySubmit watches the Enter land; if the composer provably
+// still holds OUR body it resends Enter ONCE, and a second miss is surfaced
+// as NOT delivered, within about two seconds (ini-nma5 AC 2). An unknown
+// outcome (no composer visible) presses nothing: a blind Enter could answer
+// a dialog. This replaces the old !stashed retry, which never ran on this
+// path because every submitting send stashes.
+func confirmAndRetrySubmit(pane *Pane, ps *pendingSubmit) {
+	if confirmSubmit(pane, ps, time.Now()) != submitNotTaken {
+		return
+	}
+	LogInfo("inject", "submit retry: Enter not taken, resending once", "pane", pane.Name(), "mode", ps.mode, "text", ps.preview)
+	sendSubmitKey(pane.emu, pane.submitKey)
+	if confirmSubmit(pane, ps, time.Now()) == submitNotTaken {
+		pane.emitUndeliveredSubmit(ps, "Enter not taken twice; the text is still in the composer",
+			time.Since(ps.withheldAt).Round(time.Second))
 	}
 }
 
@@ -1572,6 +1590,14 @@ func (p *Pane) surfaceUndeliveredSubmit(ps *pendingSubmit, why string) {
 	waited := time.Since(ps.withheldAt).Round(time.Second)
 	LogInfo("inject", "withheld submit NOT DELIVERED", "pane", p.name, "mode", ps.mode,
 		"reason", why, "waited", waited, "text", ps.preview)
+	p.emitUndeliveredSubmit(ps, why, waited)
+}
+
+// emitUndeliveredSubmit is the operator-facing half of an undelivered report:
+// the "NOT delivered (...)" event the toast, the event log and the inbox all
+// read. Shared by the belt and the submit confirmation (ini-nma5) so both
+// speak one format.
+func (p *Pane) emitUndeliveredSubmit(ps *pendingSubmit, why string, waited time.Duration) {
 	event := AgentEvent{
 		Type: EventAgentStalled,
 		Pane: p.name,
