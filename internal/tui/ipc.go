@@ -497,6 +497,7 @@ func sendPaneTextLocked(pane *Pane, text string, enter bool) {
 	notePerfMarkerWritten(pane, text)
 
 	if !enter {
+		LogInfo("inject", "typed, no submit requested", "pane", pane.Name(), "mode", mode, "bytes", len(text))
 		return
 	}
 
@@ -520,6 +521,7 @@ func sendPaneTextLocked(pane *Pane, text string, enter bool) {
 		time.Sleep(codexBracketedSubmitDelay)
 		method := sendCodexSubmit(pane, codexQueueSubmit)
 		LogDebug("inject", "submit", "pane", pane.Name(), "mode", mode, "method", method, "delay_ms", codexBracketedSubmitDelay.Milliseconds())
+		LogInfo("inject", "submit sent, unconfirmed", "pane", pane.Name(), "mode", mode, "why", "no composer check for this agent type")
 		if pane.IsAlive() && !stashed {
 			// Retry only when no stash was active. After a stash, Claude Code
 			// auto-restores the stashed text into the prompt, making
@@ -539,6 +541,7 @@ func sendPaneTextLocked(pane *Pane, text string, enter bool) {
 		// full PTY/TUI pipeline; use a larger margin here.
 		time.Sleep(rawSubmitDelay)
 		LogDebug("inject", "submit", "pane", pane.Name(), "mode", mode, "method", "pty-enter", "delay_ms", rawSubmitDelay.Milliseconds())
+		LogInfo("inject", "submit sent, unconfirmed", "pane", pane.Name(), "mode", mode, "why", "no composer check for this agent type")
 		if config.IsCodexLikeAgentType(pane.AgentType()) && pane.submitKey != "ctrl+enter" {
 			_, _ = pane.ptmx.Write([]byte("\r"))
 			return
@@ -552,6 +555,7 @@ func sendPaneTextLocked(pane *Pane, text string, enter bool) {
 	time.Sleep(bracketedPasteSubmitDelay)
 	LogDebug("inject", "submit", "pane", pane.Name(), "mode", mode, "method", "emulator", "delay_ms", bracketedPasteSubmitDelay.Milliseconds())
 	sendSubmitKey(pane.emu, pane.submitKey)
+	confirmSubmit(pane, newPendingSubmit(text, mode, ""), time.Now())
 
 	// Single retry for large pastes where Enter was swallowed. Skip when a
 	// stash was active because Claude Code auto-restores stashed text into the
@@ -564,6 +568,79 @@ func sendPaneTextLocked(pane *Pane, text string, enter bool) {
 			sendSubmitKey(pane.emu, pane.submitKey)
 		}
 	}
+}
+
+// submitConfirmWindow is how long the send path watches the composer after
+// the Enter for OUR body to leave it (ini-nma5). Claude clears a taken
+// submit within a frame or two; the window is generous for a loaded host.
+// A variable so tests can shorten it.
+var submitConfirmWindow = 1500 * time.Millisecond
+
+// confirmSubmit watches the composer after the Enter and logs ONE Info
+// outcome line, so how often a submit is lost becomes readable from the
+// operator's own log (it logged at Debug before, and the log runs at Info).
+// It reports whether the submit was taken.
+//
+// OUR BODY, NOT ANY TEXT: after a submit, Claude restores the operator's
+// stashed draft into the composer, so "the composer has content" is not
+// evidence the Enter was lost -- that is why the old retry was gated off
+// after a stash. A screen with no composer at all is UNKNOWN, never taken:
+// a redraw caught mid-frame must not read as a delivery.
+func confirmSubmit(pane *Pane, ps *pendingSubmit, sentAt time.Time) bool {
+	deadline := sentAt.Add(submitConfirmWindow)
+	sawComposer := false
+	for {
+		tail, found := composerTail(pane)
+		if found {
+			sawComposer = true
+			if !submitStillHeld(pane, tail, ps) {
+				LogInfo("inject", "submitted: composer cleared", "pane", pane.Name(), "mode", ps.mode,
+					"ms", time.Since(sentAt).Milliseconds(), "text", ps.preview)
+				return true
+			}
+		}
+		if time.Now().After(deadline) {
+			if !sawComposer {
+				LogInfo("inject", "submit outcome UNKNOWN: no composer visible", "pane", pane.Name(),
+					"mode", ps.mode, "waited_ms", time.Since(sentAt).Milliseconds(), "text", ps.preview)
+				return false
+			}
+			LogInfo("inject", "SUBMIT NOT TAKEN: composer still holds our text", "pane", pane.Name(),
+				"mode", ps.mode, "waited_ms", time.Since(sentAt).Milliseconds(), "text", ps.preview,
+				"composer", composerSnapshot(pane))
+			return false
+		}
+		time.Sleep(composerEchoPoll)
+	}
+}
+
+// submitStillHeld reports whether the composer still shows our body after an
+// Enter. The belt's proof, plus a short-body form: under minProvenRunes the
+// rune proof can never fire, so a short message is held when its whole
+// whitespace-stripped body is in the composer block.
+func submitStillHeld(p *Pane, tail string, ps *pendingSubmit) bool {
+	if composerHoldsOurBody(p, tail, ps) {
+		return true
+	}
+	body := stripSpace(strings.Join(ps.bodyLines, ""))
+	if body == "" || len([]rune(body)) >= minProvenRunes {
+		return false
+	}
+	rows, ok := composerBlock(p)
+	return ok && strings.Contains(stripSpace(strings.Join(rows, "")), body)
+}
+
+// composerSnapshot is the composer block for a log line, bounded.
+func composerSnapshot(p *Pane) string {
+	rows, ok := composerBlock(p)
+	if !ok {
+		return "(no composer)"
+	}
+	s := strings.TrimSpace(strings.Join(rows, " | "))
+	if len(s) > 240 {
+		s = s[:240] + "..."
+	}
+	return s
 }
 
 func (t *TUI) injectText(pane *Pane, text string, enter bool) {
@@ -1323,6 +1400,14 @@ func composerProvesOurPaste(p *Pane, tail string, ps *pendingSubmit) bool {
 	if tail == ps.tailAtWithhold {
 		return false // Nothing has repainted; this is the keep-waiting case.
 	}
+	return composerHoldsOurBody(p, tail, ps)
+}
+
+// composerHoldsOurBody is composerProvesOurPaste's content proof without the
+// transition requirement: does the composer, right now, show OUR body? The
+// belt needs the transition; the submit confirmation (ini-nma5) needs only
+// the state, so the proof is shared and the belt's behaviour is unchanged.
+func composerHoldsOurBody(p *Pane, tail string, ps *pendingSubmit) bool {
 	if rows, ok := composerBlock(p); ok && provenRunes(rows, ps.bodyLines) >= minProvenRunes {
 		return true
 	}
