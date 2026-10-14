@@ -85,7 +85,7 @@ func TestRenderCharter_EvidenceDeltasLandInTheirRoles(t *testing.T) {
 		"eng": {
 			"bd comments add <id> --author eng \"DONE:",
 			"the five items of Delivering in the root",
-			"initech deliver <id> -m \"<headline",
+			"initech deliver <id> --to <QA pair> -m \"<headline",
 		},
 		"qa": {
 			"actual output, not adjectives",

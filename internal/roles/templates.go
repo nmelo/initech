@@ -185,6 +185,10 @@ Not all beads need QA:
 - **Parallelize across domains.** Independent beads touching different packages go to different engineers.
 - **Don't queue on a busy eng when another is idle.** Waiting for the "right" eng while work sits undone is worse than context-building cost.
 
+### QA Is Not Yours to Route
+
+Engineers send ready work to sec and their QA pair directly (QA pairs in the root CLAUDE.md). Step in only when a bead sits in ready_for_qa unclaimed: ` + "`" + `bd list --status ready_for_qa` + "`" + `.
+
 ### Never Queue While Busy
 
 Do not send an agent their next task while they're mid-work. It bleeds into active context. Hold the task and dispatch after they report completion.
@@ -419,12 +423,13 @@ Source code: {{project_root}}/{{role_name}}/src/
 6. Commit, then push: ` + "`" + `git push` + "`" + ` (separate step, not optional. QA pulls from the remote.)
 7. **Comment the DONE on the bead** with the five items of Delivering in the root (fires-check, reachability, skip count, code review, QA steps):
    ` + "`" + `bd comments add <id> --author {{role_name}} "DONE: <what>. Fires-check: <red, then green>. Reachability: <entry point>. Skips: <count, which, artifact>. CODE REVIEW: <each finding fixed or dismissed>. QA steps: <command, expected, criterion>. Commit: <hash>"` + "`" + `
-8. **Deliver with the headline only:** ` + "`" + `initech deliver <id> -m "<headline, five lines at most>"` + "`" + `
+8. **Deliver to your QA pair with the headline only:** ` + "`" + `initech deliver <id> --to <QA pair> -m "<headline, five lines at most>"` + "`" + `
+   QA pair: the QA pairs table in the root CLAUDE.md; if your pair is busy, the first free QA takes it. A sensitive change also goes to sec at the same moment, same sha: ` + "`" + `initech send sec '[from {{role_name}}] <title> (<id>) ready, sha <hash>'` + "`" + `.
    Or if something failed: ` + "`" + `initech deliver <id> --fail --reason "<what went wrong>"` + "`" + `
 
 Fallback (if initech deliver is unavailable):
 1. ` + "`" + `bd update <id> --status ready_for_qa` + "`" + `
-2. ` + "`" + `initech send super "[from {{role_name}}] <id>: ready for QA. Commit: <hash>"` + "`" + `
+2. ` + "`" + `initech send <QA pair> "[from {{role_name}}] <id>: ready for QA. Commit: <hash>"` + "`" + `
 3. ` + "`" + `initech bead --clear` + "`" + `
 
 ## Verification Before Completion
@@ -529,7 +534,7 @@ The same rule applies to bead comments: ` + "`" + `bd comments add` + "`" + ` mu
 
 ## Workflow
 
-1. Receive bead for QA from super
+1. Work arrives from the engineers you pair with (QA pairs table in the root CLAUDE.md), or from any engineer whose pair is busy. Free with nothing assigned: ` + "`" + `bd list --status ready_for_qa` + "`" + `, take the oldest unclaimed bead its own QA pair is not already on, claim it, and tell super in one line. Never wait idle while one is unclaimed.
 2. Claim and report bead to TUI:
    ` + "`" + `bd update <id> --status in_qa --assignee {{role_name}}` + "`" + `
    ` + "`" + `initech bead <id>` + "`" + `
@@ -541,9 +546,10 @@ The same rule applies to bead comments: ` + "`" + `bd comments add` + "`" + ` mu
 8. Comment verdict on the bead. PASS or FAIL MUST be the first word:
    ` + "`" + `bd comments add <id> --author {{role_name}} "PASS: all AC met. <evidence>"` + "`" + `
    ` + "`" + `bd comments add <id> --author {{role_name}} "FAIL: AC #N not met. <evidence>"` + "`" + `
-9. Deliver with verdict (deliver handles the qa_passed status transition for PASS):
+9. Tell the engineer, then super, one line each, verdict first: ` + "`" + `initech send <engineer> "[from {{role_name}}] PASS: <title> (<id>), sha <hash>"` + "`" + `, then deliver the verdict, which reports to super and handles the qa_passed status transition for PASS:
    ` + "`" + `initech deliver <id> --verdict PASS` + "`" + `
    ` + "`" + `initech deliver <id> --verdict FAIL --reason "AC #N not met: <details>"` + "`" + `
+10. The fix for a FAIL you found comes back to you, and you check it against your original repro before the bead closes.
 
 Fallback (if initech deliver is unavailable):
 1. ` + "`" + `bd update <id> --status qa_passed` + "`" + ` (or in_progress for FAIL)

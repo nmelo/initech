@@ -50,12 +50,14 @@ You decide what to build
   -> PM grooms it into bead(s) with acceptance criteria
     -> Super dispatches to an engineer
       -> Engineer comments PLAN, implements, writes tests, comments DONE
-        -> Super routes to QA (or skips for low-risk changes)
-          -> QA verifies, passes or fails
+        -> Engineer hands it straight to its QA pair (not through super)
+          -> QA verifies, sends PASS or FAIL to the engineer and super
             -> You close the bead (or it bounces back for rework)
 ```
 
 Every step has a handoff. Messages between agents flow through `initech send`. Every transition is tracked in beads (`bd`). Nothing is invisible.
+
+Agents on the same bead talk to each other directly and post everything on the bead; super reads the bead and steps in when a ready bead sits unclaimed. The root `CLAUDE.md` holds a **QA pairs** table that `initech init` generates from the roles list: engineers are split into blocks, one per QA, with any extra engineers going to the first QAs. If your pair is busy, the first free QA takes the work. With no QA role, the table says super grades. Edit the table to change pairs. `initech add-agent` of an eng or qa role re-renders the table and says so, unless you edited it, in which case it leaves the table alone and tells you to add the new agent's pair yourself.
 
 ### What the Operator Does at Each Step
 

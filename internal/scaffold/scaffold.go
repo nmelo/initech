@@ -243,7 +243,7 @@ func RenderRootCLAUDE(p *config.Project) string {
 	}
 	b.WriteString("\n")
 	for _, sec := range roles.RootSections() {
-		b.WriteString(sec)
+		b.WriteString(roles.RenderString(sec, "qa_pairs_table", roles.RenderQAPairsBlock(p.Roles)))
 		b.WriteString("\n")
 	}
 	return strings.TrimRight(b.String(), "\n") + "\n"

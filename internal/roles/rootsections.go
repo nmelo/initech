@@ -93,9 +93,23 @@ pm sets one tier per bead at grooming:
 A LIGHT bead that touches a security surface, a public artifact or data leaving the system is mis-tiered: send it back to pm.
 `
 
-// RootQAPairsSection is how ready work reaches QA.
+// RootQAPairsSection is how ready work reaches QA: straight from the
+// engineer to its QA pair, never through super; who messages whom while a
+// bead is in flight; and the pairs table, which RenderRootCLAUDE generates
+// from the roles list in place of {{qa_pairs_table}}.
 const RootQAPairsSection = `## QA pairs
-`
+
+### Speed
+
+When a change is ready (pushed; for a sensitive change, its review branch with CI green on that sha), send it to your QA pair, and to sec if it is sensitive, at the same moment, directly, not through super: ` + "`" + `initech deliver <id> --to <pair>` + "`" + `. If your pair is busy, the first free QA takes it. Merge the moment the needed verdicts are on the bead. Only a P0 interrupts work in progress.
+
+### Messaging between agents on a bead
+
+Agents on the same bead talk directly and post everything on the bead. The implementer sends the sha to its QA pair (and to sec and shipper where the rules say so); pm, sec and arch send a ruling straight to the implementer and to each other; super reads it on the bead. Message super for: a DONE or a verdict (super closes), a blocker that needs a decision outside the bead, anything for the operator, a hold, a finding outside your bead, an idle or stuck agent, a new dispatch. When unsure, include super.
+
+Each engineer hands ready work to the QA named in this table, generated from the roles list; the project may edit it.
+
+{{qa_pairs_table}}`
 
 // RootFilingClosingSection is who files beads and who closes them.
 const RootFilingClosingSection = `## Filing and closing

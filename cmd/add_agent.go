@@ -203,6 +203,9 @@ func runAddAgent(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("update config: %w", err)
 	}
 	fmt.Fprintf(out, "  %s Updated %s\n", color.Green("✓"), color.Bold("initech.yaml"))
+	if fam := roles.RoleFamilyOf(roleName); fam == roles.FamilyEng || fam == roles.FamilyQA {
+		updateRootQAPairs(out, p.Root, p.Roles[:len(p.Roles)-1], p.Roles, roleName)
+	}
 
 	if tryHotAdd(out, roleName) {
 		fmt.Fprintf(out, "\n%s added and activated.\n", color.CyanBold(roleName))
@@ -210,6 +213,33 @@ func runAddAgent(cmd *cobra.Command, args []string) error {
 		fmt.Fprintf(out, "\n%s added. Restart initech to activate.\n", color.CyanBold(roleName))
 	}
 	return nil
+}
+
+// updateRootQAPairs re-renders the generated QA pairs table in the project's
+// root CLAUDE.md after an eng or qa role is added, and says what it did. A
+// table the project edited by hand, or a root without the generated table,
+// is left alone with a note to add the pair by hand; failures here warn and
+// never fail the add, since the agent is already scaffolded and registered.
+func updateRootQAPairs(out io.Writer, root string, oldRoles, newRoles []string, roleName string) {
+	path := filepath.Join(root, "CLAUDE.md")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		fmt.Fprintf(out, "  %s Could not read CLAUDE.md to update the QA pairs table: %v\n", color.Yellow("!"), err)
+		return
+	}
+	doc, res := roles.ReplaceQAPairsBlock(string(data), oldRoles, newRoles)
+	switch res {
+	case roles.PairsUpdated:
+		if err := os.WriteFile(path, []byte(doc), 0644); err != nil {
+			fmt.Fprintf(out, "  %s Could not write CLAUDE.md QA pairs table: %v\n", color.Yellow("!"), err)
+			return
+		}
+		fmt.Fprintf(out, "  %s Re-rendered the QA pairs table in %s\n", color.Green("✓"), color.Bold("CLAUDE.md"))
+	case roles.PairsEdited:
+		fmt.Fprintf(out, "  %s The QA pairs table in CLAUDE.md was edited by hand; left as is. Add %s's pair yourself.\n", color.Yellow("!"), roleName)
+	case roles.PairsMissing:
+		fmt.Fprintf(out, "  %s CLAUDE.md has no generated QA pairs table; add %s's pair by hand.\n", color.Yellow("!"), roleName)
+	}
 }
 
 // tryHotAdd attempts to add the agent to a running TUI session via IPC.
