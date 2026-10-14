@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 	"unicode"
+	"unicode/utf8"
 
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/nmelo/initech/internal/config"
@@ -667,7 +668,7 @@ func submitStillHeld(p *Pane, tail string, ps *pendingSubmit) bool {
 // match. Not the collapsed placeholder, which needs the transition to mean
 // anything (composerProvesOurPaste).
 func bodyTextVisible(p *Pane, ps *pendingSubmit) bool {
-	rows, ok := composerBlock(p)
+	rows, ok := composerRegion(p)
 	if !ok {
 		return false
 	}
@@ -677,6 +678,52 @@ func bodyTextVisible(p *Pane, ps *pendingSubmit) bool {
 	body := stripSpace(strings.Join(ps.bodyLines, ""))
 	return body != "" && len([]rune(body)) < minProvenRunes &&
 		strings.Contains(stripSpace(strings.Join(rows, "")), body)
+}
+
+// composerRegion is the composer block, or -- when Claude's ❯ row has
+// scrolled off the top of a short pane under a long wrapped body -- the rows
+// above Claude's bottom rule (ini-cg8y). Measured: in a 10-row pane a
+// one-paragraph message wrapped to six rows pushed the ❯ row off screen, the
+// finder saw no composer, and the belt withheld a body sitting in plain
+// view. Used ONLY for positive evidence that our own text is there; the
+// tail comparison still needs the ❯ row.
+func composerRegion(p *Pane) ([]string, bool) {
+	if rows, ok := composerBlock(p); ok {
+		return rows, true
+	}
+	return ruleBoundedRegion(emuRowsBlocking(p.emu))
+}
+
+// ruleBoundedRegion returns the rows between the last full-width rule on
+// screen (Claude's composer bottom border) and the rule before it, or the
+// top of the screen when that one has scrolled off.
+func ruleBoundedRegion(rows []string) ([]string, bool) {
+	isRule := func(s string) bool {
+		t := strings.TrimSpace(s)
+		return utf8.RuneCountInString(t) >= 10 && strings.Trim(t, "\u2500") == ""
+	}
+	bottom := -1
+	for i := len(rows) - 1; i >= 0; i-- {
+		if isRule(rows[i]) {
+			bottom = i
+			break
+		}
+	}
+	if bottom <= 0 {
+		return nil, false
+	}
+	top := 0
+	for i := bottom - 1; i >= 0; i-- {
+		if isRule(rows[i]) {
+			top = i + 1
+			break
+		}
+	}
+	var region []string
+	for _, r := range rows[top:bottom] {
+		region = append(region, strings.TrimSpace(r))
+	}
+	return region, len(region) > 0
 }
 
 // composerSnapshot is the composer block for a log line, bounded.
@@ -833,13 +880,13 @@ func composerAcceptedBody(p *Pane, before string, ps *pendingSubmit) (accepted b
 		after, found := composerTail(p)
 		if found {
 			lastTail = after
-			// Two kinds of evidence, either sufficient: the row changed, or
-			// OUR text is provably in the composer block (ini-cg8y). A picker
-			// swallows the paste, so neither holds for one: the zjhg safety
-			// is untouched.
-			if after != before || bodyTextVisible(p, ps) {
-				return true, lastTail
-			}
+		}
+		// Two kinds of evidence, either sufficient: the ❯ row changed, or OUR
+		// text is provably in the composer region (ini-cg8y) -- including a
+		// composer whose ❯ row scrolled off a short pane. A picker swallows
+		// the paste, so neither holds for one: the zjhg safety is untouched.
+		if (found && after != before) || bodyTextVisible(p, ps) {
+			return true, lastTail
 		}
 		if time.Now().After(deadline) {
 			return false, lastTail
@@ -1586,7 +1633,7 @@ func (p *Pane) maybeRetryWithheldSubmit() {
 	// collapsed-placeholder proof, where an earlier paste's placeholder could
 	// look like ours; our own runes cannot. Requiring it here is why the retry
 	// delivered 0 times in a month while bodies sat in the composer.
-	case found && (composerProvesOurPaste(p, tail, ps) || bodyTextVisible(p, ps)):
+	case (found && composerProvesOurPaste(p, tail, ps)) || bodyTextVisible(p, ps):
 		// PROVABLE: our text is in the composer. Send the submit, nothing else.
 		// Claim it first: if the sweep already reported this message as
 		// undelivered, sending it now would make that report a lie.
@@ -1654,7 +1701,7 @@ func (p *Pane) settlePendingSubmit() {
 		return
 	}
 	tail, found := composerTail(p)
-	if found && (composerProvesOurPaste(p, tail, ps) || bodyTextVisible(p, ps)) {
+	if (found && composerProvesOurPaste(p, tail, ps)) || bodyTextVisible(p, ps) {
 		if p.deliverWithheldSubmit(ps, "settled by the next send, our text still in the composer") {
 			// Let Claude take it before the next send's stash and paste.
 			time.Sleep(bracketedPasteSubmitDelay)
