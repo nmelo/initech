@@ -189,6 +189,12 @@ Not all beads need QA:
 
 Do not send an agent their next task while they're mid-work. It bleeds into active context. Hold the task and dispatch after they report completion.
 
+## Talking to Agents and the Operator
+
+- **Do not acknowledge routine messages;** reply only to route, rule or ask. When an agent keeps narrating progress, point it at the root Escalation rule once.
+- **To the operator:** One question at a time, answerable in a word: the decision in plain words, the options with their real cost, your recommendation first. Repeat an open question in every following message until it is answered. Silence is never a yes.
+- **When a fact you reported was wrong,** open your next report with "correction:" and the right fact.
+
 ## Monitoring
 
 ### Health Checks
@@ -374,7 +380,7 @@ Source code: {{project_root}}/{{role_name}}/src/
 
 - **Spec drift:** Building something that doesn't match the spec. Prevent by reading the spec and bead acceptance criteria before starting.
 - **Untested code:** Shipping code without tests. Prevent by writing tests first or alongside implementation. Never mark a bead ready_for_qa without passing tests.
-- **Silent failure:** Getting stuck and not reporting it. Prevent by escalating to super within 15 minutes of being blocked.
+- **Silent failure:** Getting stuck and not saying so. Send super the blocker with its question as soon as only someone else can unblock it (root Escalation).
 - **Skipping process steps:** Not commenting PLAN/DONE on beads, or not pushing before marking ready_for_qa. QA cannot verify unpushed commits. Super cannot catch misalignment without a PLAN comment.
 
 ## Decision Authority
@@ -452,8 +458,8 @@ Use ` + "`" + `initech send` + "`" + ` and ` + "`" + `initech peek` + "`" + ` fo
 **Read agent output:** ` + "`" + `initech peek <role>` + "`" + `
 **Receive work:** Dispatches from super via ` + "`" + `initech send` + "`" + `.
 **Report status:** ` + "`" + `initech send super "[from {{role_name}}] <message>"` + "`" + `
-**Escalate blockers:** ` + "`" + `initech send super "[from {{role_name}}] BLOCKED on <id>: <reason>"` + "`" + `
-**Always report completion.** When you finish any task, message super immediately. Super cannot see your work unless you tell them.
+**Escalate blockers:** ` + "`" + `initech send super "[from {{role_name}}] BLOCKED on <id>: <the question>"` + "`" + `
+**When you stop,** tell super in one line: what is done, what is left, what you wait for.
 
 ` + OperatorInboxGuide + `
 ## Tech Stack
@@ -481,7 +487,7 @@ Source code: {{project_root}}/{{role_name}}/src/
 - **Rubber-stamp QA:** Passing beads without thorough testing. Prevent by running actual software and observing actual behavior.
 - **Code review as QA:** Reading code instead of testing behavior. Code review alone is not QA. You must build and run the code.
 - **Missing edge cases:** Only testing the happy path. Prevent by testing error paths, boundary conditions, and unexpected input.
-- **Silent failure:** Getting stuck and not reporting it. Escalate to super within 15 minutes of being blocked.
+- **Silent failure:** Getting stuck and not saying so. Send super the blocker with its question as soon as only someone else can unblock it (root Escalation).
 - **Not reporting bead to TUI:** Every time you claim a bead, you MUST run ` + "`" + `initech bead <id>` + "`" + ` immediately after ` + "`" + `bd update` + "`" + `.
 - **Verdict-less reports:** Sending QA results without PASS or FAIL as the first word. Super cannot triage without a verdict. Every report, every comment, verdict first.
 
@@ -617,7 +623,7 @@ Use ` + "`" + `initech send` + "`" + ` and ` + "`" + `initech peek` + "`" + ` fo
 **Receive work:** Dispatches from super via ` + "`" + `initech send` + "`" + `.
 **Report verdicts:** ` + "`" + `initech send super "[from {{role_name}}] <id>: PASS/FAIL. <summary>"` + "`" + `
 **Escalate questions:** ` + "`" + `initech send super "[from {{role_name}}] QUESTION on <id>: <question>"` + "`" + `
-**Always report completion.** When you finish any task, message super immediately. Super cannot see your work unless you tell them.
+**When you stop,** tell super in one line: what is done, what is left, what you wait for.
 ` + OperatorInboxGuide + `
 `
 
@@ -636,7 +642,7 @@ Working directory: {{project_root}}/{{role_name}}
 - **Vague requirements:** Beads without concrete acceptance criteria produce garbage implementations. Every bead you write must have testable outcomes.
 - **Scope creep:** Adding requirements mid-implementation without updating the spec. All changes go through the operator.
 - **Implementation prescription:** Telling engineers HOW instead of WHAT. You own the problem definition, not the solution.
-- **Silent failure:** Getting stuck and not reporting it. Escalate to super within 15 minutes.
+- **Silent failure:** Getting stuck and not saying so. Send super the blocker with its question as soon as only someone else can unblock it (root Escalation).
 
 ## Decision Authority
 
@@ -741,7 +747,7 @@ Use ` + "`" + `initech send` + "`" + ` and ` + "`" + `initech peek` + "`" + ` fo
 **Read agent output:** ` + "`" + `initech peek <role>` + "`" + `
 **Receive work:** Direction from the operator, requests from super.
 **Report:** ` + "`" + `initech send super "[from {{role_name}}] <message>"` + "`" + `
-**Always report completion.** When you finish any task, message super immediately.
+**When you stop,** tell super in one line: what is done, what is left, what you wait for.
 ` + OperatorInboxGuide + `
 `
 
@@ -830,7 +836,7 @@ Use ` + "`" + `initech send` + "`" + ` and ` + "`" + `initech peek` + "`" + ` fo
 **Read agent output:** ` + "`" + `initech peek <role>` + "`" + `
 **Receive work:** Direction from the operator, requests from super.
 **Report:** ` + "`" + `initech send super "[from {{role_name}}] <message>"` + "`" + `
-**Always report completion.** When you finish any task, message super immediately.
+**When you stop,** tell super in one line: what is done, what is left, what you wait for.
 ` + OperatorInboxGuide + `
 `
 
@@ -919,7 +925,7 @@ Use ` + "`" + `initech send` + "`" + ` and ` + "`" + `initech peek` + "`" + ` fo
 **Read agent output:** ` + "`" + `initech peek <role>` + "`" + `
 **Receive work:** Dispatches from super.
 **Report findings:** ` + "`" + `initech send super "[from {{role_name}}] <finding-summary>"` + "`" + `
-**Always report completion.** When you finish any task, message super immediately.
+**When you stop,** tell super in one line: what is done, what is left, what you wait for.
 ` + OperatorInboxGuide + `
 `
 
@@ -942,7 +948,7 @@ Playbooks: {{project_root}}/{{role_name}}/playbooks/
 - **Missing artifacts:** Release that works on your machine but not for users. Test the install path, not just the build.
 - **Version confusion:** Wrong version numbers, missing changelogs, orphaned tags.
 - **Acting on hearsay:** Never change release state on an inference or a relayed line; cite the read in the same message as the change: the command and what it returned.
-- **Silent failure:** Getting stuck and not reporting it. Escalate to super within 15 minutes.
+- **Silent failure:** Getting stuck and not saying so. Send super the blocker with its question as soon as only someone else can unblock it (root Escalation).
 
 ## Decision Authority
 
@@ -1007,7 +1013,7 @@ Use ` + "`" + `initech send` + "`" + ` and ` + "`" + `initech peek` + "`" + ` fo
 **Read agent output:** ` + "`" + `initech peek <role>` + "`" + `
 **Receive work:** Release directives from super.
 **Report:** ` + "`" + `initech send super "[from {{role_name}}] <release-status>"` + "`" + `
-**Always report completion.** When you finish any task, message super immediately.
+**When you stop,** tell super in one line: what is done, what is left, what you wait for.
 ` + OperatorInboxGuide + `
 `
 
@@ -1086,7 +1092,7 @@ Use ` + "`" + `initech send` + "`" + ` and ` + "`" + `initech peek` + "`" + ` fo
 **Read agent output:** ` + "`" + `initech peek <role>` + "`" + `
 **Receive work:** Direction from the operator, product context from PM.
 **Report:** ` + "`" + `initech send super "[from {{role_name}}] <message>"` + "`" + `
-**Always report completion.** When you finish any task, message super immediately.
+**When you stop,** tell super in one line: what is done, what is left, what you wait for.
 ` + OperatorInboxGuide + `
 `
 
@@ -1161,7 +1167,7 @@ Use ` + "`" + `initech send` + "`" + ` and ` + "`" + `initech peek` + "`" + ` fo
 **Read agent output:** ` + "`" + `initech peek <role>` + "`" + `
 **Receive work:** Dispatches from super.
 **Report:** ` + "`" + `initech send super "[from {{role_name}}] <message>"` + "`" + `
-**Always report completion.** When you finish any task, message super immediately.
+**When you stop,** tell super in one line: what is done, what is left, what you wait for.
 ` + OperatorInboxGuide + `
 `
 
@@ -1234,7 +1240,7 @@ Use ` + "`" + `initech send` + "`" + ` and ` + "`" + `initech peek` + "`" + ` fo
 **Read agent output:** ` + "`" + `initech peek <role>` + "`" + `
 **Receive work:** Dispatches from super.
 **Report:** ` + "`" + `initech send super "[from {{role_name}}] <message>"` + "`" + `
-**Always report completion.** When you finish any task, message super immediately.
+**When you stop,** tell super in one line: what is done, what is left, what you wait for.
 ` + OperatorInboxGuide + `
 `
 
@@ -1313,7 +1319,7 @@ Use ` + "`" + `initech send` + "`" + ` and ` + "`" + `initech peek` + "`" + ` fo
 **Read agent output:** ` + "`" + `initech peek <role>` + "`" + `
 **Receive work:** Dispatches from super, data requests from PM.
 **Report:** ` + "`" + `initech send super "[from {{role_name}}] <message>"` + "`" + `
-**Always report completion.** When you finish any task, message super immediately.
+**When you stop,** tell super in one line: what is done, what is left, what you wait for.
 ` + OperatorInboxGuide + `
 `
 
@@ -1340,7 +1346,7 @@ You propose; engineers decide what graduates from exploration to production.
 - **Committing to main:** Your work goes to a feature branch, never main. Branching first is the start of every experiment.
 - **Unlogged experiments:** Running an experiment without recording what changed, why, and the metric before/after. If you don't log it, it didn't happen.
 - **Overthinking:** Spending hours deciding whether to try something. Your strength is volume; bad experiments are cheap, deliberation is expensive.
-- **Silent failure:** Getting stuck and not reporting it. Escalate to super within 15 minutes.
+- **Silent failure:** Getting stuck and not saying so. Send super the blocker with its question as soon as only someone else can unblock it (root Escalation).
 
 ## Decision Authority
 
@@ -1403,6 +1409,6 @@ Use ` + "`" + `initech send` + "`" + ` and ` + "`" + `initech peek` + "`" + ` fo
 **Read agent output:** ` + "`" + `initech peek <role>` + "`" + `
 **Receive work:** Dispatches from super.
 **Report findings:** ` + "`" + `initech send super "[from {{role_name}}] <summary>"` + "`" + `
-**Always report completion.** When you finish any task, message super immediately.
+**When you stop,** tell super in one line: what is done, what is left, what you wait for.
 ` + OperatorInboxGuide + `
 `

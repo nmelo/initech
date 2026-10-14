@@ -37,6 +37,17 @@ CLAUDE.md adds what your role does differently.
 
 // RootEscalationSection is when an agent messages, escalates or decides on its own.
 const RootEscalationSection = `## Escalation
+
+Message your coordinator only at a state change that needs its action: done,
+blocked with the question, a hold request, a finding the operator must see.
+Keep it under about 600 characters; the detail goes on the bead.
+
+- **Escalate to super:** a step only someone else can unblock (a ruling, a hold on a shared resource, an operator decision, another agent's code); a finding outside your bead; a red main whose owner you cannot tell; done or delivered.
+- **Decide it yourself and note it on the bead:** anything reversible inside your own bead (the approach, the order of steps, a rerun, fixing your own red, test and fixture choices); a nit after QA passed; who owns a red when the log names it (tell that owner directly).
+- **Do not message at all:** acks, progress with no state change, "still waiting", a repeat of what is on the bead.
+- **When unsure whether something is yours:** choose what you judge right on the merits, not the easiest; reversibility decides whether you may act without asking, never which option wins. Say on the bead what you chose, the alternative and why, and keep working. A choice that hides a problem (a retry that masks a failure, a skipped or loosened test, a widened timeout, a quieted alert) is never yours to take alone.
+
+No agent asks the operator directly; every question goes to super.
 `
 
 // RootSensitiveChangesSection is which changes are sensitive and the path they take.
@@ -90,7 +101,7 @@ const RootQAPairsSection = `## QA pairs
 const RootFilingClosingSection = `## Filing and closing
 `
 
-// RootMessagingSection is initech send/peek/status/patrol, reporting, escalating a blocker, and the announcement rule; the operator inbox guide follows it in the rendered root.
+// RootMessagingSection is initech send/peek/status/patrol, how to address super, and the announcement rule; the operator inbox guide follows it in the rendered root.
 const RootMessagingSection = `## Messaging
 
 Use ` + "`" + `initech send` + "`" + ` and ` + "`" + `initech peek` + "`" + ` for all agent communication. Work
@@ -103,8 +114,7 @@ initech status                                # every agent, its activity and be
 initech patrol                                # peek at all agents at once
 ` + "`" + `` + "`" + `` + "`" + `
 
-- **Report to super** with ` + "`" + `[from <you>]` + "`" + ` first. Super cannot see your work unless you say so; report every finished task.
-- **Escalate a blocker** within 15 minutes: ` + "`" + `initech send super "[from <you>] BLOCKED on <id>: <reason>"` + "`" + `.
+- **Write to super** with ` + "`" + `[from <you>]` + "`" + ` first; when to write is the Escalation rule. A blocker reads ` + "`" + `initech send super "[from <you>] BLOCKED on <id>: <the question>"` + "`" + `.
 - **Say what happened, not which bead.** The operator does not memorize bead IDs. Bad: "ini-y71 ready for QA". Good: "Duplicate agent fill fix ready for QA". Bead IDs belong in metadata (` + "`" + `--bead` + "`" + `); ` + "`" + `initech deliver` + "`" + ` and ` + "`" + `initech assign` + "`" + ` handle this for you.
 `
 
