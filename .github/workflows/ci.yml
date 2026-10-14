@@ -28,9 +28,20 @@ permissions:
 # the Mac goes away: timeout-minutes counts only once a job STARTS, so a job
 # queued for an offline self-hosted runner waits (up to 24h) instead of failing.
 #
-# No concurrency group, deliberately: a group cancels older PENDING runs, so a
-# burst of pushes would leave intermediate shas with no CI, and the release gate
-# needs a green run AT the cut sha. Each runner already runs one job at a time.
+# CONCURRENCY: a burst of main pushes queued one full run per push on the
+# self-hosted runners and starved release-branch runs, so superseded main runs
+# are cancelled. An intermediate main sha may therefore have no completed run; a
+# release cut at such a sha re-runs its cancelled run (gh run rerun <id>), which
+# runs at that same sha.
+concurrency:
+  # Only pushes to main share a group, so a newer main push cancels the older
+  # main run, queued or running. Every other run -- release/** pushes, pull
+  # requests, schedule, dispatch -- gets its own group (its run id) and is never
+  # cancelled or replaced: GitHub also drops an older PENDING run in a shared
+  # group even with cancel-in-progress off, so per-run is the only "never".
+  group: ${{ github.workflow }}-${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') && 'main-push' || github.run_id }}
+  cancel-in-progress: true
+
 jobs:
   build-and-test:
     runs-on: ${{ github.event_name != 'pull_request' && vars.MAC_RUNNER || 'macos-latest' }}

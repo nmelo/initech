@@ -28,6 +28,12 @@ on:
 permissions:
   contents: read
 
+# Concurrency: the same rule as ci.yml (see its header). Only main pushes share
+# a group and cancel each other; schedule, dispatch and any other run has its own.
+concurrency:
+  group: ${{ github.workflow }}-${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') && 'main-push' || github.run_id }}
+  cancel-in-progress: true
+
 # Runner selection and the MAC_RUNNER revert: see the header of ci.yml (ini-8k1o).
 jobs:
   race:
