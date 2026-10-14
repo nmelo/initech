@@ -211,6 +211,10 @@ If an agent is ignoring instructions or running a process you need to abort:
 2. If still running: ` + "`" + `initech interrupt <agent> --hard` + "`" + ` (sends Ctrl+C, kills shell command)
 3. If unresponsive after both: ` + "`" + `initech restart <agent> --bead <id>` + "`" + `
 
+### Holding the Evidence Bar
+
+A DONE claiming beyond its evidence, or a miss that repeats after the lesson was written, is named to the operator by agent, with a recommendation. Praise work that sets the bar.
+
 ### Crash Diagnosis
 
 If an agent dies or the TUI crashes:
@@ -405,16 +409,12 @@ Source code: {{project_root}}/{{role_name}}/src/
 3. **Comment PLAN before writing any code:**
    ` + "`" + `bd comments add <id> --author {{role_name}} "PLAN: <summary>. 1. <step>. 2. <step>. Files: <paths>. Test: <approach>"` + "`" + `
 4. Write unit tests FIRST or alongside implementation. No bead ships without tests. **For bug-fix beads (type=bug), the new test must be a regression test: write it first, watch it FAIL on the unpatched code, then write the fix and watch it pass.** Name the test so future readers can map it back to the bug (e.g. ` + "`" + `TestRunDeliver_QaPassed_FullNoOp` + "`" + `). PR template has a checkbox for this — reviewers verify the test is new, not pre-existing.
-5. Run all tests: ` + "`" + `{{test_cmd}}` + "`" + ` (must pass, zero failures)
-6. Verify before completion (see checklist below).
-7. Commit: ` + "`" + `git add <files> && git commit -m "<message>"` + "`" + `
-8. Push: ` + "`" + `git push` + "`" + ` (separate step, not optional. QA pulls from the remote.)
-9. **Deliver with DONE message** — one command, lands the comment on the bead AND reports to super:
-   ` + "`" + `initech deliver <id> -m "DONE: <what>. Tests: <added>. Commit: <hash>"` + "`" + `
+5. Run all tests: ` + "`" + `{{test_cmd}}` + "`" + ` (must pass, zero failures). Note the skip count.
+6. Commit, then push: ` + "`" + `git push` + "`" + ` (separate step, not optional. QA pulls from the remote.)
+7. **Comment the DONE on the bead** with the five items of Delivering in the root (fires-check, reachability, skip count, code review, QA steps):
+   ` + "`" + `bd comments add <id> --author {{role_name}} "DONE: <what>. Fires-check: <red, then green>. Reachability: <entry point>. Skips: <count, which, artifact>. CODE REVIEW: <each finding fixed or dismissed>. QA steps: <command, expected, criterion>. Commit: <hash>"` + "`" + `
+8. **Deliver with the headline only:** ` + "`" + `initech deliver <id> -m "<headline, five lines at most>"` + "`" + `
    Or if something failed: ` + "`" + `initech deliver <id> --fail --reason "<what went wrong>"` + "`" + `
-
-   Two-step fallback (if -m doesn't fit your DONE body, e.g. very long content):
-   ` + "`" + `bd comments add <id> --author {{role_name}} "DONE: <body>"` + "`" + ` then ` + "`" + `initech deliver <id>` + "`" + `
 
 Fallback (if initech deliver is unavailable):
 1. ` + "`" + `bd update <id> --status ready_for_qa` + "`" + `
@@ -423,17 +423,7 @@ Fallback (if initech deliver is unavailable):
 
 ## Verification Before Completion
 
-No completion claims without fresh verification evidence.
-
-Before marking any bead ready_for_qa or reporting DONE to super:
-1. Run ` + "`" + `make test` + "`" + ` - paste the FULL output showing all packages pass
-2. Run ` + "`" + `make build` + "`" + ` - confirm exit 0
-3. If the bead has behavioral AC: run the binary and verify the behavior
-4. Include the verification output in your DONE comment
-
-Never say "all tests pass" without showing the output in the same message. "Should pass" or "tests were passing earlier" is not verification. Stale evidence is not evidence.
-
-This applies to EVERY bead, no exceptions.
+What a DONE carries and how a claim is verified are Evidence in the root CLAUDE.md. This applies to EVERY bead, no exceptions.
 
 ## Announcement Rule
 
@@ -573,6 +563,11 @@ For each acceptance criterion:
 
 ## Verdict Rules
 
+- Per criterion, actual output, not adjectives: paste the relevant lines.
+- **Verified versus trusted:** say which claims you reproduced and which you accepted from the DONE's cited artifacts.
+- **The tier sets the work** (Evidence tiers in the root). FULL: reproduce the fires-check, the reachability and the by-hand run. LIGHT: open every cited run, confirm red and green at the pinned sha, check reachability against the diff, confirm the skip counts. A LIGHT bead that touches a security surface, a public artifact or data leaving the system goes back to pm as mis-tiered.
+- A DONE whose own artifact contradicts its own sentence is a named finding in the verdict: evidence-contradicts-claim. A contradiction the engineer reported first is not charged; a true but narrow claim is a bound.
+- Keep the Pre-Mortem Review risks in the verdict, apart from the AC results.
 - All acceptance criteria met AND unit tests pass AND no critical bugs = PASS
 - One unmet criterion = FAIL
 - Unit tests failing = FAIL (even if behavior looks correct)
@@ -688,6 +683,8 @@ Every bead you create or review must include these sections:
 
 **How to verify** (required):
   Observable evidence a QA tester can check without reading the implementation. Not just "it works." Concrete steps: do X, verify Y.
+
+**Evidence tier:** (required) FULL (the default), LIGHT or NONE, per Evidence tiers in the root. A bead that touches a security surface, a public artifact or data leaving the system is never LIGHT: that is mis-tiered.
 
 **Ship-It Gate** (run before marking a bead ready for dispatch):
 1. Can eng implement this without asking clarifying questions?
@@ -944,6 +941,7 @@ Playbooks: {{project_root}}/{{role_name}}/playbooks/
 - **Premature release:** Shipping before all beads are verified. The bead board is the hard gate.
 - **Missing artifacts:** Release that works on your machine but not for users. Test the install path, not just the build.
 - **Version confusion:** Wrong version numbers, missing changelogs, orphaned tags.
+- **Acting on hearsay:** Never change release state on an inference or a relayed line; cite the read in the same message as the change: the command and what it returned.
 - **Silent failure:** Getting stuck and not reporting it. Escalate to super within 15 minutes.
 
 ## Decision Authority

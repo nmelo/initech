@@ -47,16 +47,39 @@ const RootSensitiveChangesSection = `## Sensitive changes
 const RootDocsGateSection = `## Docs gate
 `
 
-// RootEvidenceSection is what a DONE and a verdict must carry.
+// RootEvidenceSection is how a claim is verified, what a DONE carries, and the evidence tiers pm sets at grooming.
 const RootEvidenceSection = `## Evidence
 
-No completion claim without fresh verification evidence. Before reporting DONE:
-1. Run the tests and include the output showing they pass.
-2. Run the build and confirm it exits 0.
-3. If the bead has behavioural acceptance criteria, run the software and check the behaviour.
-4. Put that evidence in the DONE comment.
+### Verification rules
 
-"Should pass" and "passed earlier" are not evidence.
+- Never make a decision, finding or claim from code you have not just fetched: ` + "`" + `git fetch origin` + "`" + `, then read origin/main (` + "`" + `git show origin/main:<path>` + "`" + `), never a working tree.
+- Verify by effect, never by a ledger, a name or a comment: read the live object, run the probe, grep the served bytes.
+- Before trusting a search that found nothing, run the same key against a case where the thing is known to exist.
+- A negative assertion needs a positive twin: an element that renders nothing must not pass.
+- "Green" means CI-green on the exact sha.
+- Report a commit as landed only after ` + "`" + `git merge-base --is-ancestor <sha> origin/main` + "`" + ` says so.
+- A fix on disk does not reach a running process: restart it, then verify from the restarted context.
+- When you change what a value means, audit every place that draws a conclusion from its absence.
+
+### Delivering
+
+A DONE carries its own evidence, on the bead:
+1. **Fires-check.** For every new or modified test or guard, the red that proves it can fail, then the green. A change with no test names the evidence that stands in for one.
+2. **Reachability.** The change runs from the production entry point on the live path; a new field arrives at its consumer.
+3. **Skip count.** For every suite cited, how many tests skipped and what they are, cited to an artifact that contains the counts.
+4. **Code review.** A ` + "`" + `CODE REVIEW:` + "`" + ` line listing each finding as fixed, or dismissed with the reason.
+5. **QA steps.** Executable steps: the exact command, the expected result, and which criterion each covers.
+
+Vague evidence ("suite green", "tested on device") goes back like missing evidence. A DONE whose own artifact contradicts its own sentence is named by the grader as evidence-contradicts-claim; a contradiction the author reports first is never charged. A claim that is true but narrow is a bound, not a contradiction. The full DONE goes on the bead; ` + "`" + `initech deliver -m` + "`" + ` carries only its headline, five lines at most.
+
+### Evidence tiers
+
+pm sets one tier per bead at grooming:
+- **FULL** (default): QA reproduces the fires-check, the reachability and the by-hand run.
+- **LIGHT**: QA verifies the cited runs and artifacts instead of re-running them: opens every run id, confirms red and green at the pinned sha, checks reachability against the diff, confirms the skip counts.
+- **NONE**: every criterion is a readback of deployed state or a CI run; super opens the cited runs and closes.
+
+A LIGHT bead that touches a security surface, a public artifact or data leaving the system is mis-tiered: send it back to pm.
 `
 
 // RootQAPairsSection is how ready work reaches QA.

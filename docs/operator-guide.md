@@ -54,13 +54,13 @@ Every step has a handoff. Messages between agents flow through `initech send`. E
 
 **Closing beads.** Only you close beads. When QA passes and the work looks right, `bd close <id>`. This signals the team that the work is accepted.
 
-### Tiered QA
+### Evidence Tiers
 
-Not everything needs full QA. Super applies these tiers automatically, but understanding them helps you intervene when needed:
+PM sets an evidence tier on each bead when grooming it. It decides how much of the engineer's evidence QA re-runs:
 
-- **Full QA** (visual verification): P1 bugs, UI changes, new features.
-- **Light QA** (tests + code review): P2/P3 bugs, internal changes, refactors.
-- **Skip QA** (engineer tests are enough): Doc fixes, template changes, dead code removal, one-line constant changes.
+- **FULL** (the default): QA reproduces the engineer's red-then-green test run, checks the change runs from the real entry point, and runs it by hand.
+- **LIGHT**: QA checks the runs and artifacts the engineer cited instead of re-running them. A bead that touches security, a public artifact or data leaving the system is never LIGHT.
+- **NONE**: every criterion is a readback of deployed state or a CI run; super opens the cited runs and closes the bead.
 
 ## Reading the TUI
 
@@ -211,9 +211,9 @@ Engineers are required to:
 1. **Comment PLAN** before writing code (numbered steps, files, test approach)
 2. **Write tests** alongside implementation
 3. **Push to git** before marking ready_for_qa
-4. **Comment DONE** with what changed, what tests were added, and the commit hash
+4. **Comment DONE** with its evidence: each new test shown failing before the fix and passing after, proof the change runs from the real entry point, the skip count of every test suite cited, the code-review findings and what happened to each, and exact steps QA can run
 
-If you see a bead marked `ready_for_qa` without a DONE comment or without a pushed commit, send it back. QA can't verify work that isn't documented or isn't in the repo.
+If you see a bead marked `ready_for_qa` without a DONE comment, with a DONE that says only "tests pass", or without a pushed commit, send it back. QA can't verify work that isn't documented or isn't in the repo.
 
 ### Common bd Commands
 
