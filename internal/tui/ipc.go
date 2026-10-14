@@ -425,6 +425,9 @@ func sendPaneTextLocked(pane *Pane, text string, enter bool) {
 		return
 	}
 
+	// A withheld submit gets its fate before this send touches the composer.
+	pane.settlePendingSubmit()
+
 	useCodexBracketedPaste := pane.noBracketedPaste && pane.AgentType() == config.AgentTypeCodex
 	codexQueueSubmit := codexShouldQueueSubmit(pane)
 	mode := "bracketed"
@@ -522,7 +525,7 @@ func sendPaneTextLocked(pane *Pane, text string, enter bool) {
 	// on our own echo rather than a blanket withholding of the terminator --
 	// in the normal case it passes and the submit goes out unchanged.
 	if beltApplies && hasComposer {
-		if accepted, lastTail := composerAcceptedBody(pane, tailBefore); !accepted {
+		if accepted, lastTail := composerAcceptedBody(pane, tailBefore, newPendingSubmit(text, mode, "")); !accepted {
 			withholdSubmit(pane, text, mode, tailBefore, lastTail)
 			return
 		}
@@ -659,6 +662,23 @@ func submitStillHeld(p *Pane, tail string, ps *pendingSubmit) bool {
 	return ok && strings.Contains(stripSpace(strings.Join(rows, "")), body)
 }
 
+// bodyTextVisible reports whether OUR body's own text is in the composer
+// block: the rune proof, or for a body under the proof floor the whole-body
+// match. Not the collapsed placeholder, which needs the transition to mean
+// anything (composerProvesOurPaste).
+func bodyTextVisible(p *Pane, ps *pendingSubmit) bool {
+	rows, ok := composerBlock(p)
+	if !ok {
+		return false
+	}
+	if provenRunes(rows, ps.bodyLines) >= minProvenRunes {
+		return true
+	}
+	body := stripSpace(strings.Join(ps.bodyLines, ""))
+	return body != "" && len([]rune(body)) < minProvenRunes &&
+		strings.Contains(stripSpace(strings.Join(rows, "")), body)
+}
+
 // composerSnapshot is the composer block for a log line, bounded.
 func composerSnapshot(p *Pane) string {
 	rows, ok := composerBlock(p)
@@ -745,12 +765,22 @@ func composerTailAt(p *Pane) (string, int, bool) {
 }
 
 // composerTailFromRows is composerTailAt over an already-read screen.
+//
+// CLAUDE'S ❯ WINS when the screen has one (ini-cg8y). Claude draws hint rows
+// BELOW its composer with the › glyph -- "› stashed" whenever its stash
+// holds something -- and a lowest-glyph-of-any-kind rule read that hint as
+// the composer. Measured: once a withheld body was stashed, every later send
+// compared "stashed" to "stashed", was withheld, and the agent received
+// nothing. › and > stay as fallbacks for screens with no ❯ at all (Codex's
+// own prompt is ›).
 func composerTailFromRows(rows []string) (string, int, bool) {
-	for row := len(rows) - 1; row >= 0; row-- {
-		text := rows[row]
-		for _, prompt := range []string{"\u276f", "\u203a", ">"} {
-			if idx := strings.LastIndex(text, prompt); idx >= 0 {
-				return strings.TrimSpace(text[idx+len(prompt):]), row, true
+	for _, glyphs := range [][]string{{"\u276f"}, {"\u203a", ">"}} {
+		for row := len(rows) - 1; row >= 0; row-- {
+			text := rows[row]
+			for _, prompt := range glyphs {
+				if idx := strings.LastIndex(text, prompt); idx >= 0 {
+					return strings.TrimSpace(text[idx+len(prompt):]), row, true
+				}
 			}
 		}
 	}
@@ -764,6 +794,19 @@ func composerTailFromRows(rows []string) (string, int, bool) {
 // short withholds a legitimate submit (delayed delivery), too long only delays
 // the submit of a message that was going to be submitted anyway.
 const composerEchoWindow = 1500 * time.Millisecond
+
+// beltEchoWindow is composerEchoWindow stretched by the main loop's lag
+// (ini-cg8y): the window was measured on a light loop, and a loop missing
+// dozens of ticks a minute delivers the echo late. One extra window per 30
+// missed ticks in the last minute, capped at 3x.
+func beltEchoWindow() time.Duration {
+	missed := loopMissedLastMinute.Load()
+	scale := 1 + float64(missed)/30
+	if scale > 3 {
+		scale = 3
+	}
+	return time.Duration(float64(composerEchoWindow) * scale)
+}
 
 // composerEchoPoll is the belt's sampling interval within that window.
 const composerEchoPoll = 50 * time.Millisecond
@@ -781,8 +824,8 @@ const composerEchoPoll = 50 * time.Millisecond
 //
 // A false answer here costs a stray unsubmitted line. A false answer the other
 // way costs an operator's question answered by a machine.
-func composerAcceptedBody(p *Pane, before string) (accepted bool, lastTail string) {
-	deadline := time.Now().Add(composerEchoWindow)
+func composerAcceptedBody(p *Pane, before string, ps *pendingSubmit) (accepted bool, lastTail string) {
+	deadline := time.Now().Add(beltEchoWindow())
 	lastTail = "(no composer)"
 	for {
 		// A vanished glyph counts as NOT accepted: the comparison is only
@@ -790,7 +833,11 @@ func composerAcceptedBody(p *Pane, before string) (accepted bool, lastTail strin
 		after, found := composerTail(p)
 		if found {
 			lastTail = after
-			if after != before {
+			// Two kinds of evidence, either sufficient: the row changed, or
+			// OUR text is provably in the composer block (ini-cg8y). A picker
+			// swallows the paste, so neither holds for one: the zjhg safety
+			// is untouched.
+			if after != before || bodyTextVisible(p, ps) {
 				return true, lastTail
 			}
 		}
@@ -842,7 +889,7 @@ func withholdSubmit(pane *Pane, text, mode, tailBefore, lastPolled string) {
 	LogInfo("inject", "submit WITHHELD: body never reached a composer", "pane", pane.Name(), "mode", mode,
 		"tail_before", logSnippet(tailBefore), "last_polled", logSnippet(lastPolled),
 		"composer", composerSnapshot(pane), "body_in_block", found && submitStillHeld(pane, tail, ps),
-		"echo_window_ms", composerEchoWindow.Milliseconds(), "loop_missed_last_min", loopMissedLastMinute.Load())
+		"echo_window_ms", beltEchoWindow().Milliseconds(), "loop_missed_last_min", loopMissedLastMinute.Load())
 	EmitEvent(pane.eventCh, AgentEvent{
 		Type:   EventMessageSent,
 		Pane:   pane.Name(),
@@ -1535,22 +1582,15 @@ func (p *Pane) maybeRetryWithheldSubmit() {
 
 	tail, found := composerTail(p)
 	switch {
-	case found && composerProvesOurPaste(p, tail, ps):
+	// OUR TEXT VISIBLE needs no transition (ini-cg8y): the transition guards the
+	// collapsed-placeholder proof, where an earlier paste's placeholder could
+	// look like ours; our own runes cannot. Requiring it here is why the retry
+	// delivered 0 times in a month while bodies sat in the composer.
+	case found && (composerProvesOurPaste(p, tail, ps) || bodyTextVisible(p, ps)):
 		// PROVABLE: our text is in the composer. Send the submit, nothing else.
 		// Claim it first: if the sweep already reported this message as
 		// undelivered, sending it now would make that report a lie.
-		if !p.takePendingSubmit(ps) {
-			return
-		}
-		sendSubmitKey(p.emu, p.submitKey)
-		LogInfo("inject", "withheld submit DELIVERED: composer repainted holding our text",
-			"pane", p.name, "mode", ps.mode, "text", ps.preview)
-		EmitEvent(p.eventCh, AgentEvent{
-			Type: EventMessageSent,
-			Pane: p.name,
-			Detail: deliveredLateSubmitPrefix +
-				time.Since(ps.withheldAt).Round(time.Second).String() + " held): " + ps.preview,
-		})
+		p.deliverWithheldSubmit(ps, "composer repainted holding our text")
 	case found && tail == ps.tailAtWithhold:
 		// Nothing has changed yet. Keep waiting, but not forever.
 		if time.Now().After(ps.deadline) {
@@ -1563,6 +1603,61 @@ func (p *Pane) maybeRetryWithheldSubmit() {
 		// the belt exists to prevent. Do not guess; surface.
 		p.surfaceUndeliveredSubmit(ps, "the composer no longer holds our text")
 	}
+}
+
+// deliverWithheldSubmit sends a withheld submit whose body is provably in the
+// composer, and records it as DELIVERED -- the one fate line, in the one
+// event format the toast, event log and inbox read. Caller holds sendMu.
+// Claimed first: if another resolver already reported it, sending now would
+// make that report a lie.
+func (p *Pane) deliverWithheldSubmit(ps *pendingSubmit, how string) bool {
+	if !p.takePendingSubmit(ps) {
+		return false
+	}
+	sendSubmitKey(p.emu, p.submitKey)
+	LogInfo("inject", "withheld submit DELIVERED: "+how,
+		"pane", p.name, "mode", ps.mode, "waited", time.Since(ps.withheldAt).Round(time.Second), "text", ps.preview)
+	EmitEvent(p.eventCh, AgentEvent{
+		Type: EventMessageSent,
+		Pane: p.name,
+		Detail: deliveredLateSubmitPrefix +
+			time.Since(ps.withheldAt).Round(time.Second).String() + " held): " + ps.preview,
+	})
+	return true
+}
+
+// settlePendingSubmit gives a withheld submit its fate before the next send
+// reaches the composer (ini-cg8y, AC 2). Before this the next send simply
+// carried on: a second withhold overwrote the first with no fate line, and
+// the new paste changed the composer under the old retry, which then
+// reported a FALSE "no longer holds our text". The next send's stash would
+// also tuck a stranded body away as a draft that is never sent.
+// So: if OUR old body is provably still in the composer it is delivered
+// now; otherwise it is SUPERSEDED, reported not delivered. Exactly one
+// terminal line either way. Caller holds sendMu.
+func (p *Pane) settlePendingSubmit() {
+	p.mu.Lock()
+	ps := p.pendingSubmit
+	p.mu.Unlock()
+	if ps == nil {
+		return
+	}
+	tail, found := composerTail(p)
+	if found && (composerProvesOurPaste(p, tail, ps) || bodyTextVisible(p, ps)) {
+		if p.deliverWithheldSubmit(ps, "settled by the next send, our text still in the composer") {
+			// Let Claude take it before the next send's stash and paste.
+			time.Sleep(bracketedPasteSubmitDelay)
+		}
+		return
+	}
+	if !p.takePendingSubmit(ps) {
+		return
+	}
+	waited := time.Since(ps.withheldAt).Round(time.Second)
+	LogInfo("inject", "withheld submit SUPERSEDED: a later send arrived before it could be delivered",
+		"pane", p.name, "mode", ps.mode, "waited", waited, "text", ps.preview,
+		"tail_now", logSnippet(tail), "composer", composerSnapshot(p))
+	p.emitUndeliveredSubmit(ps, "superseded by a later send before its submit went out", waited)
 }
 
 func (p *Pane) clearPendingSubmit() {
