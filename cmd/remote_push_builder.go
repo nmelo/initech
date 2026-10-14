@@ -80,9 +80,7 @@ func buildRemoteConfigureAgentCmd(roleName string, project *config.Project, remo
 	// Shared with scaffold.Run so a remote agent's CLAUDE.md resolves exactly
 	// as the same role's local one does; root differs because the remote has
 	// its own directory layout, which is why it is a parameter (ini-rg12).
-	roleVars := scaffold.RenderVarsFor(project, root, roleName)
-	claudeMD := roles.Render(scaffold.TemplateForRole(roleName), roleVars)
-	claudeMD = roles.RenderString(claudeMD, "role_name", roleName)
+	claudeMD := scaffold.RenderCharter(project, root, roleName)
 	rootMD := scaffold.RenderRootCLAUDE(project)
 	// This writer does not go through scaffold's writeFile, so it repeats the
 	// refusal here. Pushing a placeholder to another machine is the same defect

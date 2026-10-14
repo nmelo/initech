@@ -18,10 +18,16 @@ func TestSuperTemplate_Renders(t *testing.T) {
 
 	// Verify key sections exist
 	sections := []string{"Identity", "Critical Failure Modes", "Decision Authority",
-		"Dispatching Work", "Monitoring", "Communication", "Bead Lifecycle", "Project Documents", "Tools"}
+		"Dispatching Work", "Monitoring", "Managing the Agent Roster"}
 	for _, s := range sections {
 		if !strings.Contains(out, s) {
 			t.Errorf("missing section: %s", s)
+		}
+	}
+	// Shared sections live in the root CLAUDE.md now (ini-vby5.1).
+	for _, s := range []string{"## Communication", "## Bead Lifecycle", "## Project Documents", "## Tools", "## Learning Protocol"} {
+		if strings.Contains(out, s) {
+			t.Errorf("super still carries %q; it belongs in the root CLAUDE.md", s)
 		}
 	}
 }
@@ -49,7 +55,7 @@ func TestEngTemplate_Renders(t *testing.T) {
 	}
 
 	sections := []string{"Identity", "Critical Failure Modes", "Decision Authority",
-		"Workflow", "Verification Before Completion", "Code Quality", "Communication", "Tech Stack"}
+		"Workflow", "Code Quality", "Tech Stack"}
 	for _, s := range sections {
 		if !strings.Contains(out, s) {
 			t.Errorf("missing section: %s", s)
@@ -66,7 +72,7 @@ func TestQATemplate_Renders(t *testing.T) {
 	}
 
 	sections := []string{"Identity", "Critical Failure Modes", "Workflow",
-		"Verdict Rules", "Communication"}
+		"Verdict Rules", "Adversarial Testing", "Pre-Mortem Review"}
 	for _, s := range sections {
 		if !strings.Contains(out, s) {
 			t.Errorf("missing section: %s", s)
@@ -110,7 +116,7 @@ func TestAllRoleTemplates_Render(t *testing.T) {
 				t.Errorf("%s: missing identity string %q", tt.name, tt.contains)
 			}
 			// All templates should have these core sections
-			for _, section := range []string{"Identity", "Communication"} {
+			for _, section := range []string{"Identity", "Decision Authority", "Workflow"} {
 				if !strings.Contains(out, section) {
 					t.Errorf("%s: missing section %q", tt.name, section)
 				}
@@ -209,14 +215,14 @@ func containsPhrase(haystack, phrase string) bool {
 	return strings.Contains(flattenWhitespace(haystack), flattenWhitespace(phrase))
 }
 
-// communicationSection returns the rendered template's "## Communication"
-// section: from its heading to the next top-level heading, or to the end.
+// communicationSection returns the root's "## Messaging" section: from its
+// heading to the next top-level heading, or to the end.
 func communicationSection(t *testing.T, role, out string) string {
 	t.Helper()
-	const heading = "## Communication"
+	const heading = "## Messaging"
 	i := strings.Index(out, heading)
 	if i < 0 {
-		t.Fatalf("%s: no Communication section", role)
+		t.Fatalf("%s: no Messaging section", role)
 	}
 	rest := out[i+len(heading):]
 	if j := strings.Index(rest, "\n## "); j >= 0 {
@@ -225,10 +231,19 @@ func communicationSection(t *testing.T, role, out string) string {
 	return rest
 }
 
+// rootCommunicationText is the root CLAUDE.md's Messaging section as
+// scaffold.RenderRootCLAUDE assembles it. The inbox guide lives there once
+// (ini-vby5.1), so the guide's tests run against it rather than every role;
+// scaffold's tests assert the rendered root carries it exactly once and no
+// charter carries it at all.
+func rootCommunicationText() map[string]string {
+	return map[string]string{"root": RootMessagingSection + OperatorInboxGuide}
+}
+
 // AC 1: the rendered template documents initech post with all six flags.
 func TestOperatorInboxGuide_EveryRoleDocumentsPostAndItsFlags(t *testing.T) {
 	flags := []string{"--default", "--chime", "--check", "--mine", "--withdraw", "--stdin", "-f "}
-	for role, tmpl := range allRoleTemplates() {
+	for role, tmpl := range rootCommunicationText() {
 		t.Run(role, func(t *testing.T) {
 			out := renderForRole(t, tmpl)
 			if !strings.Contains(out, "initech post") {
@@ -252,7 +267,7 @@ func TestOperatorInboxGuide_EveryRoleCarriesAllFiveRules(t *testing.T) {
 		{"when to chime", "Chime only when your work is stopped on the answer"},
 		{"never poll", "Never poll"},
 	}
-	for role, tmpl := range allRoleTemplates() {
+	for role, tmpl := range rootCommunicationText() {
 		out := renderForRole(t, tmpl)
 		for _, r := range rules {
 			t.Run(role+"/"+r.name, func(t *testing.T) {
@@ -268,7 +283,7 @@ func TestOperatorInboxGuide_EveryRoleCarriesAllFiveRules(t *testing.T) {
 // one shape teaches one shape (pm grooming): a question that proceeds on its
 // default with the reply arriving later, AND a heads-up expecting nothing.
 func TestOperatorInboxGuide_WorkedExampleCarriesBothShapes(t *testing.T) {
-	for role, tmpl := range allRoleTemplates() {
+	for role, tmpl := range rootCommunicationText() {
 		t.Run(role, func(t *testing.T) {
 			out := renderForRole(t, tmpl)
 			if !containsPhrase(out, "Worked example") {
@@ -305,15 +320,42 @@ func TestOperatorInboxGuide_WorkedExampleCarriesBothShapes(t *testing.T) {
 // earlier section too, so a document-wide check would pass for a guide
 // appended to the end of the file.
 func TestOperatorInboxGuide_SitsWithTheOtherCommunicationTools(t *testing.T) {
-	for role, tmpl := range allRoleTemplates() {
+	for role, tmpl := range rootCommunicationText() {
 		t.Run(role, func(t *testing.T) {
 			section := communicationSection(t, role, renderForRole(t, tmpl))
 			if !strings.Contains(section, "initech post") {
-				t.Errorf("%s: the inbox guide is not in the Communication section", role)
+				t.Errorf("%s: the inbox guide is not in the Messaging section", role)
 			}
 			if !strings.Contains(section, "initech send") {
-				t.Errorf("%s: the Communication section does not mention initech send; the guide is meant to sit beside it", role)
+				t.Errorf("%s: the Messaging section does not mention initech send; the guide is meant to sit beside it", role)
 			}
 		})
+	}
+}
+
+// ini-vby5.1: a role template carries only the role's delta. The shared
+// sections live in the root CLAUDE.md, so none of their text may reappear in
+// any role.
+func TestRoleTemplates_CarryNoSharedSections(t *testing.T) {
+	shared := []string{
+		"## Communication", "## Announcement Rule", "## Tools",
+		"initech post", "### The operator's inbox",
+		"describe WHAT happened, not WHICH bead", "Say what happened, not which bead",
+	}
+	for role, tmpl := range allRoleTemplates() {
+		for _, s := range shared {
+			if strings.Contains(tmpl, s) {
+				t.Errorf("%s's template still carries %q; it belongs in the root CLAUDE.md", role, s)
+			}
+		}
+	}
+}
+
+func TestRoleTemplates_OpenWithThePointerToTheRoot(t *testing.T) {
+	const pointer = "The root CLAUDE.md applies to you; this file adds only what {{role_name}} does differently."
+	for role, tmpl := range allRoleTemplates() {
+		if !strings.HasPrefix(tmpl, "# CLAUDE.md\n\n"+pointer+"\n") {
+			t.Errorf("%s's template does not open with the pointer to the root", role)
+		}
 	}
 }

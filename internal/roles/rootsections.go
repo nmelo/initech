@@ -124,7 +124,7 @@ initech patrol                                # peek at all agents at once
 - **Single quotes around the body.** Double quotes let the shell expand backticks and ` + "`" + `$VAR` + "`" + `, and the message arrives mangled with no error. A body that must contain a single quote, or is long, goes through ` + "`" + `--stdin` + "`" + ` or ` + "`" + `-f <file>` + "`" + `.
 - **Start with ` + "`" + `[from <you>]` + "`" + `.** Under about 600 characters; the detail goes on the bead. A ` + "`" + `-m` + "`" + ` on ` + "`" + `initech deliver` + "`" + ` over about 600 characters can wedge the receiving pane.
 - **Every send is checked for submission:** if the Enter was not taken, it is pressed once more. A send reported as not taken, you resend.
-- **Write to super** when the Escalation rule says to. A blocker reads ` + "`" + `initech send super '[from <you>] BLOCKED on <id>: <the question>'` + "`" + `.
+- **Write to super** when the Escalation rule says to. **When you stop,** tell super in one line: what is done, what is left, what you wait for. A blocker reads ` + "`" + `initech send super '[from <you>] BLOCKED on <id>: <the question>'` + "`" + `.
 
 ### Shape
 

@@ -119,10 +119,7 @@ func Run(p *config.Project, opts Options) ([]string, error) {
 		// CLAUDE.md from template. RenderVarsFor is shared with the hire path
 		// and the remote push builder so all three resolve identically
 		// (ini-rg12).
-		roleVars := RenderVarsFor(p, p.Root, roleName)
-		tmpl := TemplateForRole(roleName)
-		content := roles.Render(tmpl, roleVars)
-		content = roles.RenderString(content, "role_name", roleName)
+		content := RenderCharter(p, p.Root, roleName)
 
 		if path, err := writeFile(roleDir, "CLAUDE.md", content, opts.Force); err != nil {
 			return nil, err
@@ -151,41 +148,63 @@ func Run(p *config.Project, opts Options) ([]string, error) {
 	return created, nil
 }
 
+// templatesByName maps a template name to its CLAUDE.md template. The name is
+// what a charter's generated header cites (ini-vby5.1).
+var templatesByName = map[string]string{
+	"super":   roles.SuperTemplate,
+	"pm":      roles.PMTemplate,
+	"arch":    roles.ArchTemplate,
+	"sec":     roles.SecTemplate,
+	"shipper": roles.ShipperTemplate,
+	"pmm":     roles.PMMTemplate,
+	"writer":  roles.WriterTemplate,
+	"ops":     roles.OpsTemplate,
+	"growth":  roles.GrowthTemplate,
+	"intern":  roles.InternTemplate,
+	"eng":     roles.EngTemplate,
+	"qa":      roles.QATemplate,
+}
+
+// TemplateNameForRole returns the name of the template a role renders from.
+// Numbered variants share one template (eng1, eng2 -> eng; qa1 -> qa);
+// unknown roles fall back to eng.
+func TemplateNameForRole(name string) string {
+	if _, ok := templatesByName[name]; ok && name != "eng" && name != "qa" {
+		return name
+	}
+	if strings.HasPrefix(name, "qa") {
+		return "qa"
+	}
+	return "eng"
+}
+
 // TemplateForRole returns the appropriate CLAUDE.md template for a role.
 // Matches against known role prefixes (eng1, eng2 both match eng).
 // Falls back to EngTemplate for unknown roles.
 func TemplateForRole(name string) string {
-	switch name {
-	case "super":
-		return roles.SuperTemplate
-	case "pm":
-		return roles.PMTemplate
-	case "arch":
-		return roles.ArchTemplate
-	case "sec":
-		return roles.SecTemplate
-	case "shipper":
-		return roles.ShipperTemplate
-	case "pmm":
-		return roles.PMMTemplate
-	case "writer":
-		return roles.WriterTemplate
-	case "ops":
-		return roles.OpsTemplate
-	case "growth":
-		return roles.GrowthTemplate
-	case "intern":
-		return roles.InternTemplate
-	default:
-		// Numbered variants: eng1->Eng, qa1->QA, qa2->QA, qa3->QA
-		if strings.HasPrefix(name, "qa") {
-			return roles.QATemplate
-		}
-		if strings.HasPrefix(name, "eng") {
-			return roles.EngTemplate
-		}
-		return roles.EngTemplate
+	return templatesByName[TemplateNameForRole(name)]
+}
+
+// RenderCharter renders a role's CLAUDE.md: the generated header (template
+// name and body hash) followed by the role template rendered for this
+// project. Scaffold, add-agent --regen and the remote push builder all render
+// through here, so the three cannot drift (ini-vby5.1, ini-rg12).
+func RenderCharter(p *config.Project, root, roleName string) string {
+	body := roles.Render(TemplateForRole(roleName), RenderVarsFor(p, root, roleName))
+	body = roles.RenderString(body, "role_name", roleName)
+	return roles.CharterHeader(TemplateNameForRole(roleName), roleName, body) + body
+}
+
+// WriteCharter renders and writes roleName's CLAUDE.md, replacing any file
+// already there. The caller decides whether replacing is allowed (add-agent
+// --regen checks the header hash first). Goes through writeFile so the
+// unrendered-placeholder refusal applies here too.
+func WriteCharter(p *config.Project, roleName string) (string, error) {
+	roleDir := filepath.Join(p.Root, roleName)
+	if err := os.MkdirAll(roleDir, 0755); err != nil {
+		return "", fmt.Errorf("create %s/: %w", roleName, err)
 	}
+	return writeFile(roleDir, "CLAUDE.md", RenderCharter(p, p.Root, roleName), true)
 }
 
 // writeFile writes content to a file, respecting idempotency.

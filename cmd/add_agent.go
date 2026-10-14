@@ -22,6 +22,8 @@ var newAddAgentRunner = func() iexec.Runner { return &iexec.DefaultRunner{} }
 
 var addAgentList bool
 var addAgentCustom bool
+var addAgentRegen bool
+var addAgentForce bool
 
 var addAgentCmd = &cobra.Command{
 	Use:     "add-agent <name>",
@@ -49,9 +51,17 @@ Restart initech (or run 'initech' in a new session) to activate the new agent.
 
 Hiring an agent also rewrites the root CLAUDE.md's roles block (the lines
 that name sec and arch only when the fleet has them); the rest of the root
-is left as it is.`, knownRoleNames())
+is left as it is.
+
+--regen rewrites an existing agent's CLAUDE.md from its template, for a
+project whose templates changed (a newer initech). It refuses a CLAUDE.md
+that was edited after it was generated, or one with no generated header,
+unless --force is given. Shared rules live in the project-root CLAUDE.md,
+which 'initech init --force' rewrites.`, knownRoleNames())
 	addAgentCmd.Flags().BoolVarP(&addAgentList, "list", "l", false, "List all agents and their install status")
 	addAgentCmd.Flags().BoolVar(&addAgentCustom, "custom", false, "Allow a custom role name outside the catalog (must match ^[a-z][a-z0-9-]{0,31}$)")
+	addAgentCmd.Flags().BoolVar(&addAgentRegen, "regen", false, "Rewrite an existing agent's CLAUDE.md from its template")
+	addAgentCmd.Flags().BoolVar(&addAgentForce, "force", false, "With --regen: overwrite a CLAUDE.md that was edited by hand")
 	addAgentCmd.ValidArgsFunction = completeAddAgent
 	rootCmd.AddCommand(addAgentCmd)
 }
@@ -94,6 +104,9 @@ func runAddAgent(cmd *cobra.Command, args []string) error {
 	}
 
 	roleName := args[0]
+	if addAgentRegen {
+		return runAddAgentRegen(out, roleName, addAgentForce)
+	}
 	runner := newAddAgentRunner()
 
 	if !roles.IsValidRoleName(roleName) {
@@ -262,6 +275,52 @@ func refreshRootRoleBlock(out io.Writer, p *config.Project) {
 	case changed:
 		fmt.Fprintf(out, "  %s Updated %s\n", color.Green("✓"), color.Bold("CLAUDE.md (roles block)"))
 	}
+}
+
+// runAddAgentRegen rewrites an existing agent's CLAUDE.md from its template
+// (ini-vby5.1). A charter whose body no longer matches its generated header's
+// hash was edited by hand, and one with no header predates headers or was
+// written by hand: both are refused unless force, so a regenerate never
+// silently discards an operator's edits.
+func runAddAgentRegen(out io.Writer, roleName string, force bool) error {
+	wd, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("get working directory: %w", err)
+	}
+	cfgPath, err := config.Discover(wd)
+	if err != nil {
+		return fmt.Errorf("no initech.yaml found. Run 'initech init' first")
+	}
+	p, err := config.Load(cfgPath)
+	if err != nil {
+		return fmt.Errorf("load config: %w", err)
+	}
+	known := false
+	for _, r := range p.Roles {
+		known = known || r == roleName
+	}
+	if !known {
+		return fmt.Errorf("agent %q is not in this project; --regen rewrites an existing agent's CLAUDE.md", roleName)
+	}
+
+	path := filepath.Join(p.Root, roleName, "CLAUDE.md")
+	if data, err := os.ReadFile(path); err == nil && !force {
+		_, hasHeader, unedited := roles.ParseCharter(string(data))
+		switch {
+		case !hasHeader:
+			return fmt.Errorf("%s has no generated header (written by hand, or before headers existed); rerun with --force to overwrite it", path)
+		case !unedited:
+			return fmt.Errorf("%s was edited after it was generated; rerun with --force to overwrite the edits", path)
+		}
+	} else if err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("read %s: %w", path, err)
+	}
+
+	if _, err := scaffold.WriteCharter(p, roleName); err != nil {
+		return err
+	}
+	fmt.Fprintf(out, "  %s %s\n", color.Green("✓"), color.Blue(roleName+"/CLAUDE.md regenerated"))
+	return nil
 }
 
 // tryHotAdd attempts to add the agent to a running TUI session via IPC.

@@ -10,6 +10,17 @@ The README covers installation, configuration, command reference, and architectu
 
 If you haven't set up a project yet: `mkdir myproject && cd myproject && initech init`. The init wizard walks you through project name, repo URL, and an interactive role selector. Start with the Standard preset (super, pm, eng1, eng2, qa1, qa2, shipper). You can add or remove agents later.
 
+### The Files Your Agents Read
+
+`initech init` writes one root `CLAUDE.md` at the project root and one `CLAUDE.md` per agent in its directory. Every agent reads both.
+
+- **The root `CLAUDE.md` is the shared rulebook.** It holds what applies to every agent: the project documents, the roles, how work moves through beads, communication (including the operator's inbox), the shared-machine rules, the `bd` commands and the learning protocol. A rule that applies to everyone is written here once.
+- **An agent's own `CLAUDE.md` carries only what that role does differently:** its identity, failure modes, decision authority and workflow. It opens by pointing at the root.
+
+Each agent's `CLAUDE.md` starts with a two-line generated header naming the template it came from and a hash of its contents. `initech add-agent <role> --regen` rewrites that agent's `CLAUDE.md` from the current template, for example after upgrading initech. It refuses a file you edited after it was generated, or one with no header, and says why; add `--force` to overwrite it anyway.
+
+Nothing changes in an existing project on its own. Its files change only when you rerun `initech init --force` (which rewrites the root and every agent's `CLAUDE.md`) or `initech add-agent <role> --regen`.
+
 ### What Happens on Launch
 
 Run `initech` (no subcommand) from your project root. The TUI starts all agents simultaneously. Each agent gets its own PTY running Claude Code with the flags from your `initech.yaml`.

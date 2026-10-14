@@ -241,7 +241,10 @@ func checkTemplateCoverage(templates, files map[string]string, p *config.Project
 			// scaffold and report every role template as unreached (ini-rg12).
 			rendered := roles.Render(tmpl, scaffold.RenderVarsFor(p, p.Root, role))
 			text, exists := files[role+"/CLAUDE.md"]
-			if exists && text == roles.RenderString(rendered, "role_name", role) && rendered != "" {
+			// A charter opens with a generated header (ini-vby5.1); the
+			// template reaches the file if the body under it matches.
+			body, _, _ := roles.ParseCharter(text)
+			if exists && body == roles.RenderString(rendered, "role_name", role) && rendered != "" {
 				found = true
 			}
 		}
