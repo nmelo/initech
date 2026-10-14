@@ -220,36 +220,33 @@ func writeFile(dir, name, content string, force bool) (string, error) {
 // project config. Exported (ini-om0) so the remote-push builder can render
 // the same content sent to a zero-config remote daemon as configure_agent's
 // RootClaudeMD field, without duplicating this project-summary logic.
+//
+// The root is the fleet's shared rulebook (ini-vby5.1): every rule that
+// applies to all roles lives here once, and each role's CLAUDE.md carries
+// only its delta. Sections, in order: Project documents, Roles, then
+// roles.RootSections(), one per shared rule.
 func RenderRootCLAUDE(p *config.Project) string {
-	var content string
-	content += "# " + p.Name + "\n\n"
-	content += "## Project Documents\n\n"
-	content += "| Document | Question | Contains |\n"
-	content += "|----------|----------|----------|\n"
-	content += "| `docs/prd.md` | **Why** does this exist? | Problem statement, users, success criteria, journeys |\n"
-	content += "| `docs/spec.md` | **What** does this do? | Requirements, behaviors, acceptance criteria |\n"
-	content += "| `docs/systemdesign.md` | **How** does this work? | Architecture, packages, interfaces, build order |\n"
-	content += "| `docs/roadmap.md` | **When/Who** does what get built? | Phases, milestones, gates, agent allocation |\n"
-	content += "\n"
-	content += "## Roles\n\n"
+	var b strings.Builder
+	b.WriteString("# " + p.Name + "\n\n")
+	b.WriteString("This file applies to every agent in the fleet. Each agent's own CLAUDE.md adds only what that role does differently.\n\n")
+	b.WriteString("## Project Documents\n\n")
+	b.WriteString("| Document | Question | Contains |\n")
+	b.WriteString("|----------|----------|----------|\n")
+	b.WriteString("| `docs/prd.md` | **Why** does this exist? | Problem statement, users, success criteria, journeys |\n")
+	b.WriteString("| `docs/spec.md` | **What** does this do? | Requirements, behaviors, acceptance criteria |\n")
+	b.WriteString("| `docs/systemdesign.md` | **How** does this work? | Architecture, packages, interfaces, build order |\n")
+	b.WriteString("| `docs/roadmap.md` | **When/Who** does what get built? | Phases, milestones, gates, agent allocation |\n")
+	b.WriteString("\n")
+	b.WriteString("## Roles\n\n")
 	for _, r := range p.Roles {
-		content += "- `" + r + "/` - " + r + " agent directory\n"
+		b.WriteString("- `" + r + "/` - " + roles.RoleSummary(r) + "\n")
 	}
-	content += "\n"
-	content += "## Issue Tracking\n\n"
-	content += "Uses beads (`bd` CLI). All work is tracked as beads.\n\n"
-	content += "```bash\n"
-	content += "bd ready            # See unblocked work\n"
-	content += "bd list             # See all beads\n"
-	content += "bd show <id>        # Bead details\n"
-	content += "bd update <id> --status <status>  # Transition bead\n"
-	content += "```\n\n"
-	content += "## Communication\n\n"
-	content += "```bash\n"
-	content += "initech send <agent> \"message\"   # Send message to an agent\n"
-	content += "initech peek <agent>              # Read agent terminal output\n"
-	content += "```\n"
-	return content
+	b.WriteString("\n")
+	for _, sec := range roles.RootSections() {
+		b.WriteString(sec)
+		b.WriteString("\n")
+	}
+	return strings.TrimRight(b.String(), "\n") + "\n"
 }
 
 const gitignoreContent = `# Source code lives in submodules
