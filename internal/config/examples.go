@@ -48,6 +48,11 @@ var configExamples = []configExample{
 # Background tint behind running panes; the trained fleets use a lighter grey than the default:
 # running_pane_tint: '#1e2022'
 `},
+	{"typing_hold_quiet_s", `
+# A message to a pane you are typing in waits until you pause (0 turns the hold off):
+# typing_hold_quiet_s: 2   # seconds without a keystroke before it goes
+# typing_hold_max_s: 15    # longest a message waits, then it goes anyway
+`},
 	{"role_overrides", `
 # Per-role flags REPLACE claude_args above for that role, so repeat them; a model, or a per-agent settings file:
 # role_overrides:

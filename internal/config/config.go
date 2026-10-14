@@ -499,11 +499,7 @@ func addYAMLComments(yamlStr string) string {
 			result = append(result, "# use 0.0.0.0:PORT to accept remote connections (default: localhost only)")
 		}
 	}
-	out := strings.Join(result, "\n")
-	if !strings.Contains(out, "typing_hold_quiet_s:") && !strings.Contains(out, "typing_hold_max_s:") {
-		out = strings.TrimRight(out, "\n") + "\n" + typingHoldTemplate
-	}
-	return out
+	return strings.Join(result, "\n")
 }
 
 func expandHome(path string) string {

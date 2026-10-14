@@ -82,8 +82,8 @@ func TestAppendMissingExamples_KeepsEveryExistingByteAndIsIdempotent(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n != 2 {
-		t.Errorf("added %d examples, want 2 (claude_command, role_overrides; claude_args is live, resource commented)", n)
+	if n != 3 {
+		t.Errorf("added %d examples, want 3 (claude_command, typing_hold_quiet_s, role_overrides; claude_args is live, resource commented)", n)
 	}
 	b, _ := os.ReadFile(path)
 	got := string(b)
@@ -94,7 +94,8 @@ func TestAppendMissingExamples_KeepsEveryExistingByteAndIsIdempotent(t *testing.
 	if strings.Contains(added, "# claude_args:") || strings.Contains(added, "# resource:") {
 		t.Errorf("examples added for keys the file already has:\n%s", added)
 	}
-	if !strings.Contains(added, "# claude_command:") || !strings.Contains(added, "# role_overrides:") {
+	if !strings.Contains(added, "# claude_command:") || !strings.Contains(added, "# role_overrides:") ||
+		!strings.Contains(added, "# typing_hold_quiet_s:") {
 		t.Errorf("missing examples not added:\n%s", added)
 	}
 	if n, _ := AppendMissingExamples(path); n != 0 {

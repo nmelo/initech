@@ -51,6 +51,7 @@ When initech changes `initech.yaml` (the hooks answer, `initech add-agent`, `ini
 | `claude_args` | Flags for every Claude agent, e.g. `[--continue, --dangerously-skip-permissions]` to resume the last session and skip permission prompts. | Agents should pick up where they left off and work unattended. |
 | `resource.auto_suspend`, `resource.pressure_threshold` | Parks idle agents when memory use passes the threshold (a percentage). Off when absent. | The machine runs more agents than its memory comfortably holds. |
 | `running_pane_tint` | Background tint behind panes that are working. The default is `#0c120e`; trained fleets use `#1e2022`, a lighter grey. `none` turns it off. | The default tint is too faint on your display. |
+| `typing_hold_quiet_s`, `typing_hold_max_s` | How long a message to a pane you are typing in waits for you to pause, and the longest it waits. See [Typing hold](#typing-hold). | The default 2 s pause or 15 s cap does not fit how you type. |
 | `role_overrides.<role>.claude_args` | Flags for one role. They REPLACE `claude_args` for that role, so repeat the shared flags, then add e.g. `--model <model>` or `--settings <path>` for a per-agent settings file. | One role needs a different model or its own settings. |
 
 ## The Dispatch Cycle

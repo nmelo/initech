@@ -52,36 +52,47 @@ func TestTypingHold_FallsBackPerKeyWithOneWarningEach(t *testing.T) {
 	}
 }
 
-func TestWrite_ShowsTheTypingHoldKeysCommentedOutAndKeepsSetValues(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "initech.yaml")
-	p := &Project{Name: "p", Root: dir, Roles: []string{"eng1"}}
+func TestExamples_ShowTheTypingHoldKeysUntilOneIsSet(t *testing.T) {
+	all := MissingExamples("")
+	for _, want := range []string{"# typing_hold_quiet_s: 2", "# typing_hold_max_s: 15"} {
+		if !strings.Contains(all, want) {
+			t.Fatalf("a new initech.yaml lacks %q:\n%s", want, all)
+		}
+	}
+	if strings.Contains(MissingExamples("typing_hold_quiet_s: 4\n"), "typing_hold") {
+		t.Fatal("example added beside a set value")
+	}
+
+	// Uncommented, the example is the defaults, with no warning.
+	var live []string
+	for _, line := range strings.Split(all, "\n") {
+		if strings.HasPrefix(line, "# typing_hold_") {
+			live = append(live, strings.TrimPrefix(line, "# "))
+		}
+	}
+	q, m, w := loadTypingHold(t, strings.Join(live, "\n")+"\n")
+	if q != 2 || m != 15 || len(w) != 0 {
+		t.Fatalf("uncommented example: quiet %d max %d warnings %q", q, m, w)
+	}
+}
+
+func TestWrite_KeepsATypingHoldValueAndItsComment(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "initech.yaml")
+	src := "project: p\nroot: /tmp/p\nroles:\n  - eng1\n# hold longer here\ntyping_hold_quiet_s: 4\n"
+	if err := os.WriteFile(path, []byte(src), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	p := mustLoad(t, path)
+	p.Roles = append(p.Roles, "eng2")
 	if err := Write(path, p); err != nil {
 		t.Fatal(err)
 	}
 	data, _ := os.ReadFile(path)
-	for _, want := range []string{"# typing_hold_quiet_s: 2", "# typing_hold_max_s: 15"} {
-		if !strings.Contains(string(data), want) {
-			t.Fatalf("generated initech.yaml lacks %q:\n%s", want, data)
-		}
+	if !strings.Contains(string(data), "# hold longer here\ntyping_hold_quiet_s: 4") {
+		t.Fatalf("rewrite lost the value or its comment:\n%s", data)
 	}
-	if q, m, w := mustLoad(t, path).TypingHold(); q != 2 || m != 15 || len(w) != 0 {
-		t.Fatalf("commented keys changed the settings: %d %d %q", q, m, w)
-	}
-
-	// A set value survives a rewrite, and the template is not added beside it.
-	if err := os.WriteFile(path, append(data, []byte("typing_hold_quiet_s: 4\n")...), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if err := Write(path, mustLoad(t, path)); err != nil {
-		t.Fatal(err)
-	}
-	data, _ = os.ReadFile(path)
-	if q, _, _ := mustLoad(t, path).TypingHold(); q != 4 {
-		t.Fatalf("rewrite lost typing_hold_quiet_s: 4:\n%s", data)
-	}
-	if strings.Contains(string(data), "# typing_hold_quiet_s") {
-		t.Fatalf("template written beside a set value:\n%s", data)
+	if q, _, w := mustLoad(t, path).TypingHold(); q != 4 || len(w) != 0 {
+		t.Fatalf("after rewrite: quiet %d warnings %q", q, w)
 	}
 }
 
