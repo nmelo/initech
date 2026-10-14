@@ -180,7 +180,10 @@ typing_hold_max_s: 20
 A value that is negative, not a whole number, or a max below the quiet time is ignored: that
 key uses its default (a max below the quiet time becomes the quiet time if the default is still
 shorter) and the log names the key and the value. Typing in any window counts,
-mouse input does not.
+mouse input does not. Your own pastes, from any window, are never held.
+
+For a send to an agent on another machine, the sending machine sizes its wait from its own
+`typing_hold_max_s`, so give both machines the same value.
 
 ## Troubleshooting
 

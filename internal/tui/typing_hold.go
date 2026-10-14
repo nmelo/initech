@@ -165,3 +165,72 @@ func isMouseOrFocusReport(b []byte) bool {
 	return bytes.HasPrefix(b, []byte("\x1b[<")) || bytes.HasPrefix(b, []byte("\x1b[M")) ||
 		bytes.Equal(b, []byte("\x1b[I")) || bytes.Equal(b, []byte("\x1b[O"))
 }
+
+// deliverOffReader delivers a control-stream send on its own goroutine, so a
+// message held for the operator's typing never stalls the stream's reader and
+// every other request on the connection. Sends to one target stay in order.
+func (d *Daemon) deliverOffReader(sends *targetSerializer, p *Pane, cmd ControlCmd, respond func(string, ControlResp) bool) {
+	id, text, enter, operator := cmd.ID, cmd.Text, cmd.Enter, cmd.Operator
+	sends.Run(cmd.Target, func() {
+		if operator {
+			p.SendOperatorText(text, enter)
+		} else {
+			p.SendText(text, enter)
+		}
+		respond(id, ControlResp{OK: true})
+	})
+}
+
+// forwardSendWait is how long a forward waits for its peer to confirm: the
+// base budget, plus any cap above the default (this machine's setting is the
+// stand-in for the peer's; the guide asks for the same value on both).
+func forwardSendWait() time.Duration {
+	return forwardSendTimeout + holdCapAboveDefault()
+}
+
+// sendReplyWait is how long a viewer waits for the reply to a send it made
+// through the control stream: the reply comes after any typing hold.
+func sendReplyWait() time.Duration {
+	return 45*time.Second + holdCapAboveDefault()
+}
+
+func holdCapAboveDefault() time.Duration {
+	return max(0, currentTypingHold().max-config.DefaultTypingHoldMaxS*time.Second)
+}
+
+// targetSerializer runs functions one at a time per key, in submission order,
+// each key on its own goroutine that exits when its queue drains.
+type targetSerializer struct {
+	mu    sync.Mutex
+	queue map[string][]func()
+}
+
+func newTargetSerializer() *targetSerializer {
+	return &targetSerializer{queue: map[string][]func(){}}
+}
+
+// Run queues fn behind earlier work for key and returns at once.
+func (s *targetSerializer) Run(key string, fn func()) {
+	s.mu.Lock()
+	q, running := s.queue[key]
+	s.queue[key] = append(q, fn)
+	s.mu.Unlock()
+	if running {
+		return
+	}
+	go func() {
+		for {
+			s.mu.Lock()
+			q := s.queue[key]
+			if len(q) == 0 {
+				delete(s.queue, key)
+				s.mu.Unlock()
+				return
+			}
+			f := q[0]
+			s.queue[key] = q[1:]
+			s.mu.Unlock()
+			f()
+		}
+	}()
+}

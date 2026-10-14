@@ -286,6 +286,10 @@ type ControlCmd struct {
 	Y     int    `json:"y,omitempty"`
 	Wheel string `json:"wheel,omitempty"`
 	Mods  int    `json:"mods,omitempty"`
+
+	// Operator marks a send carrying the operator's own input (a paste from a
+	// viewer window): it is typing, never held by the typing hold.
+	Operator bool `json:"operator,omitempty"`
 }
 
 // wheelEventFromCmd builds the wheel event a "mouse" control command asks
@@ -1067,9 +1071,21 @@ func (d *Daemon) ReplaceLocalPane(np *Pane) {
 func (d *Daemon) handleControlStream(ctrl net.Conn, scanner *bufio.Scanner, peerName string) {
 	// respond writes a ControlResp with the request's ID echoed back for
 	// correlation. Returns false if the write fails (dead control stream).
+	// Writes go under the connection's write lock: sends answer from their
+	// own goroutines (deliverOffReader), and forwards write here too.
+	d.sessionsMu.Lock()
+	wmu := d.clientCtrlMu[peerName]
+	d.sessionsMu.Unlock()
+	if wmu == nil {
+		wmu = &sync.Mutex{}
+	}
+	sends := newTargetSerializer()
 	respond := func(id string, resp ControlResp) bool {
 		resp.ID = id
-		if err := writeJSON(ctrl, resp); err != nil {
+		wmu.Lock()
+		err := writeJSON(ctrl, resp)
+		wmu.Unlock()
+		if err != nil {
 			LogWarn("daemon", "control stream write failed", "err", err)
 			return false
 		}
@@ -1111,10 +1127,7 @@ func (d *Daemon) handleControlStream(ctrl net.Conn, scanner *bufio.Scanner, peer
 				}
 				continue
 			}
-			p.SendText(cmd.Text, cmd.Enter)
-			if !respond(cmd.ID, ControlResp{OK: true}) {
-				return
-			}
+			d.deliverOffReader(sends, p, cmd, respond)
 
 		case "peek":
 			p := d.findPane(cmd.Target)
@@ -1192,10 +1205,7 @@ func (d *Daemon) handleControlStream(ctrl net.Conn, scanner *bufio.Scanner, peer
 				}
 				continue
 			}
-			p.SendText(cmd.Text, cmd.Enter)
-			if !respond(cmd.ID, ControlResp{OK: true}) {
-				return
-			}
+			d.deliverOffReader(sends, p, cmd, respond)
 
 		case "peers_query":
 			snap := d.snapshotPanes()
@@ -1362,7 +1372,7 @@ func (d *Daemon) forwardToClient(peerName string, ctrl net.Conn, mu *sync.Mutex,
 	select {
 	case resp := <-ch:
 		return resp, nil
-	case <-time.After(forwardSendTimeout):
+	case <-time.After(forwardSendWait()):
 		return ControlResp{}, fmt.Errorf("peer %s: forward_send timeout", peerName)
 	}
 }

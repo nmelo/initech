@@ -30,19 +30,21 @@ type ControlMux struct {
 	pendingMu sync.Mutex
 	pending   map[string]chan ControlResp // Request ID -> response channel.
 
-	events    chan ControlResp // Unsolicited server-pushed messages (no ID).
-	done      chan struct{}    // Closed when readLoop exits.
-	onRequest RequestHandler   // Handler for incoming commands (ID + Action). May be nil.
+	events    chan ControlResp  // Unsolicited server-pushed messages (no ID).
+	done      chan struct{}     // Closed when readLoop exits.
+	onRequest RequestHandler    // Handler for incoming commands (ID + Action). May be nil.
+	requests  *targetSerializer // Runs incoming commands off readLoop, in order per target.
 }
 
 // NewControlMux creates a multiplexer for the given control stream connection
 // and starts the background reader goroutine.
 func NewControlMux(conn net.Conn) *ControlMux {
 	m := &ControlMux{
-		conn:    conn,
-		pending: make(map[string]chan ControlResp),
-		events:  make(chan ControlResp, 32),
-		done:    make(chan struct{}),
+		conn:     conn,
+		pending:  make(map[string]chan ControlResp),
+		events:   make(chan ControlResp, 32),
+		done:     make(chan struct{}),
+		requests: newTargetSerializer(),
 	}
 	go m.readLoop()
 	return m
@@ -85,9 +87,18 @@ func (m *ControlMux) Request(cmd ControlCmd) (ControlResp, error) {
 		return resp, nil
 	case <-m.done:
 		return ControlResp{}, fmt.Errorf("control stream closed")
-	case <-time.After(10 * time.Second):
+	case <-time.After(requestWait(cmd.Action)):
 		return ControlResp{}, fmt.Errorf("request timeout")
 	}
+}
+
+// requestWait is how long a request waits for its reply. A send is answered
+// only after delivery, which may first wait out the typing hold.
+func requestWait(action string) time.Duration {
+	if action == "send" || action == "forward_send" {
+		return sendReplyWait()
+	}
+	return 10 * time.Second
 }
 
 // RequestRaw sends an arbitrary JSON-encodable payload on the control stream
@@ -214,13 +225,19 @@ func (m *ControlMux) readLoop() {
 				// Incoming command from the remote end (ID + Action, no
 				// pending caller). Dispatch to the request handler and
 				// write the response back with the same ID.
-				reply := m.onRequest(resp)
-				reply.ID = resp.ID
-				data, _ := json.Marshal(reply)
-				m.writeMu.Lock()
-				m.conn.Write(data)         //nolint:errcheck
-				m.conn.Write([]byte("\n")) //nolint:errcheck
-				m.writeMu.Unlock()
+				// Off this loop: a forwarded send may wait out the typing
+				// hold, and this is the sole reader for every reply on the
+				// connection. Same-target commands keep their order.
+				req := resp
+				m.requests.Run(req.Target, func() {
+					reply := m.onRequest(req)
+					reply.ID = req.ID
+					data, _ := json.Marshal(reply)
+					m.writeMu.Lock()
+					m.conn.Write(data)         //nolint:errcheck
+					m.conn.Write([]byte("\n")) //nolint:errcheck
+					m.writeMu.Unlock()
+				})
 			}
 		} else {
 			// Unsolicited event: send to the events channel (non-blocking).

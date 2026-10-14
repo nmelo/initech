@@ -891,10 +891,11 @@ func (rp *RemotePane) FlushPaste(content []byte) {
 	// the main goroutine would freeze rendering and input.
 	go func() {
 		resp, err := rp.mux.Request(ControlCmd{
-			Action: "send",
-			Target: rp.name,
-			Text:   text,
-			Enter:  false,
+			Action:   "send",
+			Target:   rp.name,
+			Text:     text,
+			Enter:    false,
+			Operator: true, // the operator's own paste: never held behind their typing
 		})
 		if err != nil {
 			LogWarn("remote", "paste failed in transit", "agent", rp.name,

@@ -496,3 +496,246 @@ func awaitHoldTimer(t *testing.T, clk *fakeHoldClock) {
 		t.Fatal("the message was not held")
 	}
 }
+
+// controlDaemon serves a daemon control stream over a pipe for one pane.
+func controlDaemon(t *testing.T, p *Pane) (send func(ControlCmd), replies <-chan ControlResp) {
+	t.Helper()
+	d := &Daemon{panes: []*Pane{p}, ringBufs: map[string]*RingBuf{}, multiSinks: map[string]*MultiSink{},
+		project: &config.Project{PeerName: "w1"}}
+	server, client := net.Pipe()
+	t.Cleanup(func() { client.Close(); server.Close() })
+	go d.handleControlStream(server, bufio.NewScanner(server), "window2")
+	out := make(chan ControlResp, 8)
+	go func() {
+		sc := bufio.NewScanner(client)
+		for sc.Scan() {
+			var r ControlResp
+			if json.Unmarshal(sc.Bytes(), &r) == nil {
+				out <- r
+			}
+		}
+	}()
+	return func(c ControlCmd) {
+		data, _ := json.Marshal(c)
+		if _, err := client.Write(append(data, '\n')); err != nil {
+			t.Errorf("write %s: %v", c.Action, err)
+		}
+	}, out
+}
+
+func heldPaneOnPipe(t *testing.T) (*Pane, *os.File, *fakeHoldClock) {
+	t.Helper()
+	p, r := i35wFreshPane(t, "eng2")
+	clk := newFakeHoldClock()
+	p.holdClk = clk
+	p.mu.Lock()
+	p.startupSettled = true
+	p.mu.Unlock()
+	clk.typedAgo(p, time.Second)
+	return p, r, clk
+}
+
+func awaitReply(t *testing.T, replies <-chan ControlResp, id string) ControlResp {
+	t.Helper()
+	deadline := time.After(3 * time.Second)
+	for {
+		select {
+		case r := <-replies:
+			if r.ID == id {
+				return r
+			}
+		case <-deadline:
+			t.Fatalf("no reply to %s", id)
+		}
+	}
+}
+
+// Review finding: a held send ran on the control stream's only reader and
+// stalled every other request on the connection for the length of the hold.
+func TestControlStream_AHeldSendDoesNotStallOtherRequests(t *testing.T) {
+	withTypingHold(t, 2*time.Second, 15*time.Second)
+	p, r, clk := heldPaneOnPipe(t)
+	send, replies := controlDaemon(t, p)
+
+	send(ControlCmd{ID: "s1", Action: "send", Target: "eng2", Text: "MARKER_UIBP_HELD", Enter: true})
+	awaitHoldTimer(t, clk)
+	send(ControlCmd{ID: "q1", Action: "peers_query"})
+	if resp := awaitReply(t, replies, "q1"); !resp.OK {
+		t.Fatalf("peers_query answered %+v while a send was held", resp)
+	}
+	clk.Advance(time.Second)
+	if got := readPipeUntil(t, r, "MARKER_UIBP_HELD", 2*time.Second); !strings.Contains(got, "MARKER_UIBP_HELD") {
+		t.Fatalf("held send never delivered: %q", got)
+	}
+	if resp := awaitReply(t, replies, "s1"); !resp.OK {
+		t.Fatalf("send answered %+v", resp)
+	}
+}
+
+// Review finding: window 2's paste went through the hold, so the operator's
+// own paste waited behind their own typing.
+func TestControlStream_AnOperatorPasteIsNeverHeld(t *testing.T) {
+	withTypingHold(t, 2*time.Second, 15*time.Second)
+	p, r, _ := heldPaneOnPipe(t) // typed a second ago
+	send, replies := controlDaemon(t, p)
+
+	send(ControlCmd{ID: "p1", Action: "send", Target: "eng2", Text: "PASTED_BY_OPERATOR", Operator: true})
+	if got := readPipeUntil(t, r, "PASTED_BY_OPERATOR", 2*time.Second); !strings.Contains(got, "PASTED_BY_OPERATOR") {
+		t.Fatalf("the operator's paste was held: pane got %q", got)
+	}
+	if resp := awaitReply(t, replies, "p1"); !resp.OK {
+		t.Fatalf("paste answered %+v", resp)
+	}
+	if _, typed := p.sinceOperatorKey(p.holdClockOrReal().Now()); !typed {
+		t.Fatal("the operator's paste did not count as typing")
+	}
+}
+
+// Review finding: a pane suspended while a message waited got it written to
+// its closed PTY, reported delivered.
+func TestTypingHold_APaneSuspendedDuringTheHoldQueuesTheMessage(t *testing.T) {
+	withTypingHold(t, 2*time.Second, 15*time.Second)
+	p, r, clk := heldPaneOnPipe(t)
+	woke := make(chan struct{}, 1)
+	p.SetOnSuspendedMessage(func(*Pane) { woke <- struct{}{} })
+
+	sent := make(chan struct{})
+	go func() { p.SendText("MARKER_UIBP_SUSP", true); close(sent) }()
+	awaitHoldTimer(t, clk)
+	p.mu.Lock()
+	p.suspended = true
+	p.mu.Unlock()
+	clk.Advance(time.Second)
+	select {
+	case <-sent:
+	case <-time.After(2 * time.Second):
+		t.Fatal("send never returned")
+	}
+	if p.QueuedMessageCount() != 1 {
+		t.Fatalf("queued = %d, want the message kept for the wake", p.QueuedMessageCount())
+	}
+	select {
+	case <-woke:
+	default:
+		t.Fatal("suspended pane was not woken for the message")
+	}
+	if got := readPipeFor(t, r, 100*time.Millisecond); got != "" {
+		t.Fatalf("wrote %q to a suspended pane", got)
+	}
+}
+
+func TestTargetSerializer_KeepsOrderPerTargetAndRunsTargetsIndependently(t *testing.T) {
+	s := newTargetSerializer()
+	gate := make(chan struct{})
+	var mu sync.Mutex
+	var order []string
+	note := func(v string) { mu.Lock(); order = append(order, v); mu.Unlock() }
+	bDone := make(chan struct{})
+	s.Run("a", func() { <-gate; note("a1") })
+	s.Run("a", func() { note("a2") })
+	s.Run("b", func() { note("b1"); close(bDone) })
+	select {
+	case <-bDone:
+	case <-time.After(2 * time.Second):
+		t.Fatal("target b waited behind a blocked target a")
+	}
+	time.Sleep(50 * time.Millisecond) // room for a wrongly concurrent a2 to run
+	mu.Lock()
+	early := strings.Join(order, ",")
+	mu.Unlock()
+	if strings.Contains(early, "a2") {
+		t.Fatalf("a2 ran while a1 was still running: %s", early)
+	}
+	close(gate)
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		mu.Lock()
+		n := len(order)
+		mu.Unlock()
+		if n == 3 {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if strings.Join(order, ",") != "b1,a1,a2" {
+		t.Fatalf("order = %v, want b1,a1,a2", order)
+	}
+}
+
+// The viewer's mux reads every reply on one loop: a forwarded send that waits
+// out a hold must not keep the viewer's other requests from their replies,
+// and a send's own reply is waited for past the hold.
+func TestControlMux_AnIncomingSendDoesNotBlockRepliesToOtherRequests(t *testing.T) {
+	local, remote := net.Pipe()
+	t.Cleanup(func() { local.Close(); remote.Close() })
+	m := NewControlMux(local)
+	held := make(chan struct{})
+	t.Cleanup(func() { close(held) })
+	m.SetRequestHandler(func(req ControlResp) ControlResp { <-held; return ControlResp{OK: true} })
+
+	// The remote end pushes a forward_send, then answers whatever the viewer asks.
+	go func() {
+		data, _ := json.Marshal(ControlResp{ID: "fwd1", Action: "forward_send", Target: "eng2", Text: "x"})
+		remote.Write(append(data, '\n')) //nolint:errcheck
+		sc := bufio.NewScanner(remote)
+		for sc.Scan() {
+			var c ControlCmd
+			if json.Unmarshal(sc.Bytes(), &c) == nil && c.Action == "peers_query" {
+				reply, _ := json.Marshal(ControlResp{ID: c.ID, OK: true})
+				remote.Write(append(reply, '\n')) //nolint:errcheck
+			}
+		}
+	}()
+	done := make(chan error, 1)
+	go func() { _, err := m.Request(ControlCmd{Action: "peers_query"}); done <- err }()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("a held incoming send blocked the reply to another request")
+	}
+	if requestWait("send") < 45*time.Second || requestWait("peek") != 10*time.Second {
+		t.Fatalf("waits: send %s, peek %s", requestWait("send"), requestWait("peek"))
+	}
+}
+
+func TestFlushPaste_MarksTheSendAsTheOperatorsOwnInput(t *testing.T) {
+	local, remote := net.Pipe()
+	t.Cleanup(func() { local.Close(); remote.Close() })
+	rp := &RemotePane{name: "eng2", mux: NewControlMux(local)}
+	got := make(chan ControlCmd, 1)
+	go func() {
+		sc := bufio.NewScanner(remote)
+		if sc.Scan() {
+			var c ControlCmd
+			_ = json.Unmarshal(sc.Bytes(), &c)
+			got <- c
+			reply, _ := json.Marshal(ControlResp{ID: c.ID, OK: true})
+			remote.Write(append(reply, '\n')) //nolint:errcheck
+		}
+	}()
+	rp.FlushPaste([]byte("pasted text"))
+	select {
+	case c := <-got:
+		if c.Action != "send" || !c.Operator || c.Enter {
+			t.Fatalf("paste sent as %+v, want an operator send without Enter", c)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("paste never sent")
+	}
+}
+
+func TestForwardSendWait_GrowsWithACapAboveTheDefault(t *testing.T) {
+	withTypingHold(t, 2*time.Second, 15*time.Second)
+	if forwardSendWait() != forwardSendTimeout {
+		t.Fatalf("default cap: %s, want %s", forwardSendWait(), forwardSendTimeout)
+	}
+	withTypingHold(t, 2*time.Second, 60*time.Second)
+	if want := forwardSendTimeout + 45*time.Second; forwardSendWait() != want || sendReplyWait() != 90*time.Second {
+		t.Fatalf("60s cap: forward %s (want %s), reply %s (want 90s)", forwardSendWait(), want, sendReplyWait())
+	}
+}

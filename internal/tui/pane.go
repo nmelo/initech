@@ -243,13 +243,6 @@ type Pane struct {
 	mu                 sync.Mutex
 	renderMu           sync.Mutex // Serializes readLoop writes with Render cell reads to prevent tearing.
 	sendMu             sync.Mutex // Serializes IPC send operations to prevent keystroke interleaving.
-
-	// Typing hold (typing_hold.go): when the operator last typed here, the
-	// FIFO of messages waiting for a quiet gap, how many wait, and the clock.
-	lastOperatorKey atomic.Int64
-	hold            holdLine
-	heldCount       atomic.Int32
-	holdClk         holdClock
 	networkSink        io.Writer  // Optional: readLoop tees PTY bytes here for network streaming.
 	sinkMu             sync.Mutex // Protects networkSink assignment.
 	alive              bool
@@ -360,6 +353,13 @@ type Pane struct {
 	// modal guard can put it back at the front instead of re-queueing it as
 	// new mail (ini-1898). Guarded by mu.
 	redelivering *QueuedMessage
+
+	// Typing hold (typing_hold.go): when the operator last typed here, the
+	// FIFO of messages waiting for a quiet gap, how many wait, and the clock.
+	lastOperatorKey atomic.Int64
+	hold            holdLine
+	heldCount       atomic.Int32
+	holdClk         holdClock
 }
 
 // Region defines a rectangular area on screen (outer bounds including border).
@@ -1106,8 +1106,57 @@ func (p *Pane) AgentType() string { return p.agentType }
 // suppression. The Codex ready-wait runs before acquiring sendMu so it does
 // not block concurrent sends.
 func (p *Pane) SendText(text string, enter bool) {
+	p.sendText(text, enter, true)
+}
+
+// SendOperatorText delivers text the operator produced (a paste from another
+// window): it counts as typing and never waits in the typing hold, so the
+// operator's own input is not held behind their own keystrokes.
+func (p *Pane) SendOperatorText(text string, enter bool) {
+	p.noteOperatorKey()
+	p.sendText(text, enter, false)
+}
+
+func (p *Pane) sendText(text string, enter, hold bool) {
 	p.mu.Lock()
 	p.lastMessageReceived = time.Now()
+	p.mu.Unlock()
+
+	if p.queueIfSuspended(text, enter) {
+		return
+	}
+	// STARTUP GATE (ini-i35w): a child that is still booting is not listening.
+	// Claude with a --continue transcript renders for seconds and flushes
+	// stdin at raw-mode entry, so text that lands early is eaten. Every caller
+	// waits here, bounded. On expiry this DELIVERS ANYWAY with a loud log,
+	// the ini-hbj4 contract: many callers pop a message from a queue first,
+	// and refusing here would drop it. Callers with a sender waiting on the
+	// answer check awaitStartupSettled themselves BEFORE calling this, and
+	// refuse with nothing popped and nothing written.
+	if err := p.awaitStartupSettled(); err != nil {
+		LogWarn("send", "delivering into a pane that never settled after start (cap reached)",
+			"pane", p.name, "err", err)
+	}
+	waitForCodexReadyIfNeeded(p)
+	if hold {
+		// TYPING HOLD: wait for the operator to pause before touching the
+		// composer. The turn is held through delivery so held messages go in
+		// order. A pane suspended while the message waited queues it instead.
+		release := p.waitTypingHold()
+		defer release()
+		if p.queueIfSuspended(text, enter) {
+			return
+		}
+	}
+	p.sendMu.Lock()
+	defer p.sendMu.Unlock()
+	sendPaneTextLocked(p, text, enter)
+}
+
+// queueIfSuspended queues a message for a suspended pane and wakes it,
+// reporting whether it did.
+func (p *Pane) queueIfSuspended(text string, enter bool) bool {
+	p.mu.Lock()
 	suspended := p.suspended
 	cb := p.onSuspendedMessage
 	p.mu.Unlock()
@@ -1135,28 +1184,9 @@ func (p *Pane) SendText(text string, enter bool) {
 		if cb != nil {
 			cb(p)
 		}
-		return
+		return true
 	}
-	// STARTUP GATE (ini-i35w): a child that is still booting is not listening.
-	// Claude with a --continue transcript renders for seconds and flushes
-	// stdin at raw-mode entry, so text that lands early is eaten. Every caller
-	// waits here, bounded. On expiry this DELIVERS ANYWAY with a loud log,
-	// the ini-hbj4 contract: many callers pop a message from a queue first,
-	// and refusing here would drop it. Callers with a sender waiting on the
-	// answer check awaitStartupSettled themselves BEFORE calling this, and
-	// refuse with nothing popped and nothing written.
-	if err := p.awaitStartupSettled(); err != nil {
-		LogWarn("send", "delivering into a pane that never settled after start (cap reached)",
-			"pane", p.name, "err", err)
-	}
-	waitForCodexReadyIfNeeded(p)
-	// TYPING HOLD: wait for the operator to pause before touching the
-	// composer. The turn is held through delivery so held messages go in order.
-	release := p.waitTypingHold()
-	defer release()
-	p.sendMu.Lock()
-	defer p.sendMu.Unlock()
-	sendPaneTextLocked(p, text, enter)
+	return false
 }
 
 // ErrPaneStillStarting reports an agent that has not settled since its
