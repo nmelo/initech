@@ -147,3 +147,23 @@ func TestSendPath_SettlesAPendingSubmitBeforeTheNextSend(t *testing.T) {
 		t.Fatal("the send path left the earlier withhold without a fate")
 	}
 }
+
+// Safety: a withheld submit is never delivered while a dialog is on screen,
+// even if the dialog shows text matching our body.
+func TestWithheldRetry_NeverDeliversIntoADialogShowingOurText(t *testing.T) {
+	p, submits, _ := proofPane(t)
+	renderAskUserQuestionModal(p.emu)
+	p.emu.Write([]byte("\r\n❯ " + cg8yBody))
+	if !paneHasModal(p) {
+		t.Fatal("fixture: the dialog is not detected")
+	}
+	ps := newPendingSubmit(cg8yBody, "bracketed", "")
+	p.pendingSubmit = ps
+	p.maybeRetryWithheldSubmit()
+	p.settlePendingSubmit()
+	select {
+	case b := <-submits:
+		t.Fatalf("pressed %q into an open dialog", b)
+	case <-time.After(200 * time.Millisecond):
+	}
+}

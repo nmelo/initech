@@ -1611,6 +1611,17 @@ func (p *Pane) maybeRetryWithheldSubmit() {
 // Claimed first: if another resolver already reported it, sending now would
 // make that report a lie.
 func (p *Pane) deliverWithheldSubmit(ps *pendingSubmit, how string) bool {
+	// NEVER INTO A DIALOG (ini-cg8y, from a security review of this change).
+	// The retry runs on pane output with no modal guard of its own, and it
+	// now delivers on our text being visible rather than on a row change.
+	// A dialog that happens to show text matching our body -- a permission
+	// prompt quoting a command, say -- must never be answered by this Enter.
+	// So layer 1 is consulted here, at the one place a withheld submit is
+	// sent: with a dialog up we keep waiting, and the deadline sweep still
+	// bounds the wait.
+	if paneHasModal(p) {
+		return false
+	}
 	if !p.takePendingSubmit(ps) {
 		return false
 	}
