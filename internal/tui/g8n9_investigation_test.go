@@ -103,7 +103,7 @@ func TestG8N9_HiddenProjectionExplainsOwnedButUnplanned(t *testing.T) {
 				t.Fatal(err)
 			}
 			u.refreshFleetIfFollower()
-			u.recalcGrid(false)
+			u.recalcGrid()
 			if got := planPaneSet(u.plan); got != "eng1" {
 				t.Fatalf("unhide eng1 plan = %q, want eng1", got)
 			}
@@ -114,7 +114,7 @@ func TestG8N9_HiddenProjectionExplainsOwnedButUnplanned(t *testing.T) {
 				t.Fatal(err)
 			}
 			u.refreshFleetIfFollower()
-			u.recalcGrid(false)
+			u.recalcGrid()
 			if got := planPaneSet(u.plan); got != tc.owned {
 				t.Fatalf("clear hidden plan = %q, want %s", got, tc.owned)
 			}

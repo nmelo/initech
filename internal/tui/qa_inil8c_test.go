@@ -293,9 +293,9 @@ func TestRecalcGrid_CommonCounts(t *testing.T) {
 		}
 		tui := &TUI{
 			panes:       toPaneViews(panes),
-			layoutState: LayoutState{GridCols: 1, GridRows: 1},
+			layoutState: LayoutState{Mode: LayoutGrid, GridCols: 1, GridRows: 1},
 		}
-		tui.recalcGrid(true)
+		tui.recalcGrid()
 		if tui.layoutState.GridCols != tt.wantCols || tui.layoutState.GridRows != tt.wantRows {
 			t.Errorf("recalcGrid(%d visible) = %dx%d, want %dx%d",
 				tt.visible,

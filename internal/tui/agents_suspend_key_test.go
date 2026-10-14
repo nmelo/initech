@@ -308,7 +308,7 @@ func TestApplyAgentStatus_WakeEdgeReassertsGeometry(t *testing.T) {
 // Operator, live (2026-08-15): Focus mode (Option+F) "keeps bouncing back
 // to Grid 3x2 by itself". Mechanism: handlePeerUpdate fires on every peer
 // event — and a sleeping remote machine's reconnect loop fires one every
-// couple of seconds — and its recalcGrid(true) FORCE-evicts any non-Live
+// couple of seconds — and its recalcGrid(true) (force, removed in ini-2p91) FORCE-evicted any non-Live
 // mode back to Grid. force conflates "recompute grid dims" with "exit the
 // operator's chosen mode"; a network event is never a mode decision.
 // Released behavior (v2.9.0 window attaches did it too), made constant by

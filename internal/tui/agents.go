@@ -421,7 +421,7 @@ func (t *TUI) toggleHidden(name string) bool {
 	if err := t.setHidden(name, hide); err != nil {
 		return false
 	}
-	t.recalcGrid(false)
+	t.recalcGrid()
 	t.applyLayout()
 	t.saveLayoutIfConfigured()
 	return true
@@ -568,7 +568,7 @@ func (t *TUI) agentsRevealAll() {
 	if err := t.clearHidden(); err != nil {
 		return
 	}
-	t.recalcGrid(false)
+	t.recalcGrid()
 	t.applyLayout()
 	t.saveLayoutIfConfigured()
 }

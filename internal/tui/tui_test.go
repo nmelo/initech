@@ -1649,7 +1649,7 @@ func TestRecalcGridNoScreen(t *testing.T) {
 	tui.layoutState.Mode = LayoutGrid
 
 	// Should not panic with nil screen.
-	tui.recalcGrid(false)
+	tui.recalcGrid()
 	if tui.layoutState.GridCols != 2 || tui.layoutState.GridRows != 2 {
 		t.Errorf("recalcGrid(3 panes): cols=%d rows=%d, want 2x2", tui.layoutState.GridCols, tui.layoutState.GridRows)
 	}
@@ -1662,7 +1662,7 @@ func TestRecalcGridNonGridLayout(t *testing.T) {
 	tui.layoutState.GridCols = 5
 	tui.layoutState.GridRows = 5
 
-	tui.recalcGrid(false)
+	tui.recalcGrid()
 	// Non-grid layout should not change grid dimensions.
 	if tui.layoutState.GridCols != 5 || tui.layoutState.GridRows != 5 {
 		t.Errorf("non-grid recalcGrid changed dims: cols=%d rows=%d", tui.layoutState.GridCols, tui.layoutState.GridRows)

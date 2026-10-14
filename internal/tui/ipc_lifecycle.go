@@ -434,12 +434,7 @@ func (t *TUI) addPane(name string) error {
 			return
 		}
 		p.Start()
-		oldLen := len(t.panes)
-		t.panes = append(t.panes, p)
-		t.logPanesMutation("hot-add", oldLen)
-		// Recalculate grid for the new visible pane count.
-		t.recalcGrid(true)
-		t.saveLayoutIfConfigured()
+		t.insertPane(p)
 	})
 	if finalErr != nil {
 		return finalErr
@@ -451,6 +446,17 @@ func (t *TUI) addPane(name string) error {
 		Detail: "Added " + name + " to session",
 	})
 	return nil
+}
+
+// insertPane appends a started pane to the fleet and re-plans the layout.
+// Main goroutine only. Split from addPane so the layout contract can be
+// tested without a PTY.
+func (t *TUI) insertPane(p PaneView) {
+	oldLen := len(t.panes)
+	t.panes = append(t.panes, p)
+	t.logPanesMutation("hot-add", oldLen)
+	t.recalcGrid()
+	t.saveLayoutIfConfigured()
 }
 
 // removePane kills the named pane and removes it from the running TUI.
@@ -480,6 +486,7 @@ func (t *TUI) removePane(name string) error {
 
 		p := t.panes[idx]
 		pk := agentKey(p)
+		nextFocus := t.focusAfterRemoving(pk)
 		p.Close()
 
 		// Remove from slice without leaving gaps.
@@ -501,12 +508,13 @@ func (t *TUI) removePane(name string) error {
 		if err := t.setHidden(pk, false); err != nil {
 			LogWarn("fleet", "could not clear hidden state for removed pane", "pane", pk, "err", err)
 		}
-		// If this was the focused pane, clear focus so applyLayout snaps to next visible.
+		// If this was the focused pane (the focused, zoomed or left pane),
+		// focus moves to the next pane; the mode stays (ini-2p91).
 		if t.layoutState.Focused == pk {
-			t.layoutState.Focused = ""
+			t.layoutState.Focused = nextFocus
 		}
 
-		t.recalcGrid(true)
+		t.recalcGrid()
 		t.saveLayoutIfConfigured()
 	})
 	if removeErr != nil {
@@ -519,6 +527,28 @@ func (t *TUI) removePane(name string) error {
 		Detail: "Removed " + name + " from session",
 	})
 	return nil
+}
+
+// focusAfterRemoving names the pane focus moves to when key is removed: the
+// next visible pane after it in display order, wrapping to the first. Empty
+// when key is the only visible pane; applyLayout then snaps to the first.
+// Main goroutine only; call before key leaves t.panes.
+func (t *TUI) focusAfterRemoving(key string) string {
+	var visible []string
+	at := -1
+	for _, p := range t.visiblePanesForWindow() {
+		k := agentKey(p)
+		if k == key {
+			at = len(visible)
+		}
+		if k == key || !t.layoutState.Hidden[k] {
+			visible = append(visible, k)
+		}
+	}
+	if at < 0 || len(visible) < 2 {
+		return ""
+	}
+	return visible[(at+1)%len(visible)]
 }
 
 // handleIPCInterrupt sends a raw control byte (Escape or Ctrl+C) to

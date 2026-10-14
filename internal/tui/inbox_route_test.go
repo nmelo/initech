@@ -269,7 +269,8 @@ func TestInboxRoute_ADoorbellDoesNotReplanTheLayout(t *testing.T) {
 	// plan has zero panes, and a zero-pane plan cannot show panes moving. The
 	// first draft compared two empty plans and called it byte-identical.
 	child.applyServedPaneOwnership(map[string]string{"eng1": "window-2", "eng2": "window-2"})
-	child.recalcGrid(true)
+	child.layoutState.Mode = LayoutGrid
+	child.recalcGrid()
 	child.applyLayout()
 	if n := len(child.plan.Panes); n != 2 {
 		t.Fatalf("setup: the child's plan has %d panes, want 2 -- an arrangement with nothing "+

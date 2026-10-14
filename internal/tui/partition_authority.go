@@ -233,7 +233,7 @@ func (t *TUI) applyServedPaneOwnership(owner map[string]string) {
 	t.ownershipServed = true
 	LogInfo("ownership", "served",
 		"window", t.windowID, "mine", joinKeys(ownershipKeysFor(owner, t.windowID)))
-	t.recalcGrid(false)
+	t.recalcGrid()
 	t.applyLayout()
 }
 

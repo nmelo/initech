@@ -516,7 +516,7 @@ func (t *TUI) surfaceSessionNotice(text string) {
 	if !t.isFleetAuthority() {
 		t.refreshFleetIfFollower()
 		t.applyFleetProjection()
-		t.recalcGrid(false)
+		t.recalcGrid()
 		t.applyLayout()
 	}
 }
@@ -537,7 +537,7 @@ func (t *TUI) reloadAssignmentIfFollower() {
 		return
 	}
 	t.assignment = a
-	t.recalcGrid(false)
+	t.recalcGrid()
 	t.applyLayout()
 }
 

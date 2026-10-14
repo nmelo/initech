@@ -922,7 +922,7 @@ func Run(cfg Config) error {
 	// GridExplicit is respected inside recalcGrid, so an operator's chosen
 	// CxR is still not overridden.
 	t.sizeLoadedGridToVisible()
-	t.recalcGrid(false)
+	t.recalcGrid()
 
 	// One-time attention-hooks consent for an EXISTING project (ini-2x8.6).
 	// Window 1 only; a project that already recorded an answer sees nothing,
@@ -1223,7 +1223,7 @@ func Run(cfg Config) error {
 						break
 					}
 				}
-				t.recalcGrid(false)
+				t.recalcGrid()
 				t.applyLayout()
 			})
 		})
@@ -1490,10 +1490,13 @@ func (t *TUI) sizeLoadedGridToVisible() {
 	}
 }
 
-func (t *TUI) recalcGrid(force bool) {
-	if force && t.layoutState.Mode != LayoutLive {
-		t.layoutState.Mode = LayoutGrid
-	} else if t.layoutState.Mode != LayoutGrid && t.layoutState.Mode != LayoutLive {
+// recalcGrid re-plans the layout after the fleet changed shape: an agent
+// added or removed, a remote machine connecting, a pane hidden or shown.
+// It NEVER changes the layout mode (ini-2p91): focus, zoom, main and the live
+// focus split stay as the operator left them. Only a grid whose size is not
+// the operator's (no explicit CxR) is re-sized to fit the visible panes.
+func (t *TUI) recalcGrid() {
+	if t.layoutState.Mode != LayoutGrid && t.layoutState.Mode != LayoutLive {
 		t.applyLayout()
 		return
 	}
@@ -1595,7 +1598,7 @@ func (t *TUI) handlePeerUpdate(peerName string, newPanes []PaneView, connected b
 	// lands here every couple of seconds, which bounced the operator out of
 	// Focus mode repeatedly (live report, 2026-08-15). A network event is
 	// never a mode decision.
-	t.recalcGrid(false)
+	t.recalcGrid()
 	LogInfo("peer-update", "done", "peer", peerName,
 		"plan_panes", len(t.plan.Panes), "plan_set", planPaneSet(t.plan))
 }
@@ -1620,7 +1623,7 @@ func (t *TUI) handlePeerPaneAdded(peerName string, pane PaneView) {
 	})
 	// Same rule as handlePeerUpdate: a pushed pane arriving is ambient, not
 	// a mode decision — never force the operator out of Focus.
-	t.recalcGrid(false)
+	t.recalcGrid()
 	LogInfo("peer-pane-added", "done", "peer", peerName, "agent", pane.Name())
 }
 

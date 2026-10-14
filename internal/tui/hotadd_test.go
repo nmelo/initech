@@ -364,26 +364,29 @@ func TestRecalcGrid(t *testing.T) {
 	tui := &TUI{
 		panes: toPaneViews([]*Pane{testPane("a"), testPane("b"), testPane("c")}),
 		layoutState: LayoutState{
+			Mode:     LayoutGrid,
 			GridCols: 1,
 			GridRows: 1,
 		},
 	}
 
-	tui.recalcGrid(true)
+	tui.recalcGrid()
 
 	// autoGrid(3) should give 2x2.
 	if tui.layoutState.GridCols != 2 || tui.layoutState.GridRows != 2 {
 		t.Errorf("grid = %dx%d, want 2x2", tui.layoutState.GridCols, tui.layoutState.GridRows)
 	}
 	if tui.layoutState.Mode != LayoutGrid {
-		t.Error("mode should be LayoutGrid after recalcGrid")
+		t.Error("mode should stay LayoutGrid after recalcGrid")
 	}
 
-	// recalcGrid(true) preserves LayoutLive (live mode manages its own slots).
-	tui.layoutState.Mode = LayoutLive
-	tui.recalcGrid(true)
-	if tui.layoutState.Mode != LayoutLive {
-		t.Error("recalcGrid(true) should preserve LayoutLive")
+	// recalcGrid never changes the mode (ini-2p91): live and focus survive.
+	for _, m := range []LayoutMode{LayoutLive, LayoutFocus, Layout2Col} {
+		tui.layoutState.Mode = m
+		tui.recalcGrid()
+		if tui.layoutState.Mode != m {
+			t.Errorf("recalcGrid changed mode %v to %v", m, tui.layoutState.Mode)
+		}
 	}
 }
 
@@ -392,12 +395,13 @@ func TestRecalcGrid_HiddenExcluded(t *testing.T) {
 		panes: toPaneViews([]*Pane{testPane("a"), testPane("b"), testPane("c")}),
 		layoutState: LayoutState{
 			Hidden:   map[string]bool{"c": true},
+			Mode:     LayoutGrid,
 			GridCols: 1,
 			GridRows: 1,
 		},
 	}
 
-	tui.recalcGrid(true)
+	tui.recalcGrid()
 
 	// Only 2 visible; autoGrid(2) = 2x1.
 	if tui.layoutState.GridCols != 2 || tui.layoutState.GridRows != 1 {

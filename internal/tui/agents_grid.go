@@ -1262,7 +1262,7 @@ func (t *TUI) agentsMoveGroupToNextWindow() {
 	// directly, so the missing trigger between "store changed" and "predicate
 	// consulted" was invisible. Same-frame with the notice, which is what
 	// AC 4's mid-glance rule promises.
-	t.recalcGrid(false)
+	t.recalcGrid()
 	t.applyLayout()
 }
 
