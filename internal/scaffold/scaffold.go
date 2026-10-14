@@ -101,6 +101,27 @@ func Run(p *config.Project, opts Options) ([]string, error) {
 		}
 	}
 
+	// Fleet files (ini-vby5.13). They hold the project's own history and
+	// procedures, so they are written only when missing: init --force never
+	// replaces them.
+	for _, ff := range []struct{ dir, name, content string }{
+		{"fleet", "lessons.md", roles.FleetLessonsTemplate},
+		{"fleet", "reference.md", roles.FleetReferenceTemplate},
+		{"skills", "README.md", roles.SkillsReadmeTemplate},
+	} {
+		dir := filepath.Join(p.Root, ff.dir)
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			return nil, fmt.Errorf("create %s/: %w", ff.dir, err)
+		}
+		if path, err := writeFile(dir, ff.name, ff.content, false); err != nil {
+			return nil, err
+		} else if path != "" {
+			rel := ff.dir + "/" + ff.name
+			progress("Creating " + rel)
+			created = append(created, rel)
+		}
+	}
+
 	// Role directories
 	for _, roleName := range p.Roles {
 		def := roles.LookupRole(roleName)
@@ -256,6 +277,9 @@ func RenderRootCLAUDE(p *config.Project) string {
 	b.WriteString("| `docs/spec.md` | **What** does this do? | Requirements, behaviors, acceptance criteria |\n")
 	b.WriteString("| `docs/systemdesign.md` | **How** does this work? | Architecture, packages, interfaces, build order |\n")
 	b.WriteString("| `docs/roadmap.md` | **When/Who** does what get built? | Phases, milestones, gates, agent allocation |\n")
+	b.WriteString("| `fleet/lessons.md` | **Why** is a rule there? | The incident behind each rule |\n")
+	b.WriteString("| `fleet/reference.md` | **Where** is it? | Commands, QA pairs, who owns which area |\n")
+	b.WriteString("| `skills/` | **How** is a repeated step done? | One skill per repeated procedure |\n")
 	b.WriteString("\n")
 	b.WriteString("## Roles\n\n")
 	for _, r := range p.Roles {

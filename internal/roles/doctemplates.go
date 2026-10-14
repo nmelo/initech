@@ -4,6 +4,8 @@ package roles
 // Sections contain HTML comment prompts that agents replace with content.
 const PRDTemplate = `# {{project_name}} PRD
 
+Present tense, target state, no change history. Each line lives in exactly one document.
+
 The "why" document. Problem statement, users, success criteria, journeys. Hard cap: 5000 lines.
 
 ---
@@ -64,6 +66,8 @@ The "why" document. Problem statement, users, success criteria, journeys. Hard c
 // SpecTemplate is the scaffolded docs/spec.md for new projects.
 const SpecTemplate = `# {{project_name}} Spec
 
+Present tense, target state, no change history. Each line lives in exactly one document.
+
 The "what" document. Requirements, behaviors, acceptance criteria. Hard cap: 5000 lines.
 
 ---
@@ -94,6 +98,8 @@ The "what" document. Requirements, behaviors, acceptance criteria. Hard cap: 500
 
 // SystemDesignTemplate is the scaffolded docs/systemdesign.md for new projects.
 const SystemDesignTemplate = `# {{project_name}} System Design
+
+Present tense, target state, no change history. Each line lives in exactly one document.
 
 The "how" document. Architecture, packages, interfaces, build order. Hard cap: 5000 lines.
 
@@ -132,6 +138,8 @@ The "how" document. Architecture, packages, interfaces, build order. Hard cap: 5
 // This is the only document template with pre-filled content because the
 // discovery and design phase is the same for every project.
 const RoadmapTemplate = `# {{project_name}} Roadmap
+
+Present tense, target state, no change history. Each line lives in exactly one document.
 
 Strategic sequencing: milestones, phases, success gates. Hard cap: 5000 lines.
 

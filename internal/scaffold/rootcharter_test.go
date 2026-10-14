@@ -30,7 +30,7 @@ func TestRenderRootCLAUDE_CarriesEverySharedSectionOnceInOrder(t *testing.T) {
 	order := []string{
 		"## Project Documents", "## Roles", "## How we work",
 		"## Escalation\n", "## Sensitive changes\n", "## Docs gate\n", "## Evidence\n",
-		"## QA pairs\n", "## Filing and closing\n", "## Messaging\n", "### The operator's inbox",
+		"## QA pairs\n", "## Filing and closing\n", "## Messaging\n",
 		"## Budget\n", "## Shared machine\n", "## Fleet files\n", "## Beads\n", "## Learning protocol\n",
 	}
 	last := -1
@@ -44,7 +44,7 @@ func TestRenderRootCLAUDE_CarriesEverySharedSectionOnceInOrder(t *testing.T) {
 		}
 		last = at
 	}
-	for _, rule := range []string{"Post with a default and keep going", "Say what happened, not which bead", "Never `pkill -f`", "Push before marking ready_for_qa"} {
+	for _, rule := range []string{"Say what happened, not which bead", "Never `pkill -f`", "Push before marking ready_for_qa"} {
 		if strings.Count(root, rule) != 1 {
 			t.Errorf("root carries %q %d times, want once", rule, strings.Count(root, rule))
 		}

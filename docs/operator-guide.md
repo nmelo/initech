@@ -14,7 +14,8 @@ If you haven't set up a project yet: `mkdir myproject && cd myproject && initech
 
 `initech init` writes one root `CLAUDE.md` at the project root and one `CLAUDE.md` per agent in its directory. Every agent reads both.
 
-- **The root `CLAUDE.md` is the shared rulebook.** It holds what applies to every agent: the project documents, the roles, how work moves through beads, communication (including the operator's inbox), the shared-machine rules, the `bd` commands and the learning protocol. A rule that applies to everyone is written here once.
+- **The root `CLAUDE.md` is the shared rulebook.** It holds what applies to every agent: the project documents, the roles, how work moves through beads, escalation, which changes are sensitive, the docs line every commit carries, evidence, QA pairs, who files and who closes beads, messaging, budget, the shared-machine rules and the learning protocol. A rule that applies to everyone is written here once.
+- **`fleet/` and `skills/` hold what the rules point at.** `fleet/lessons.md` holds the incident behind each rule, `fleet/reference.md` the commands and the operator's inbox guide (`initech post`), and `skills/` one skill per repeated procedure, kept by super. `initech init` creates them once and never overwrites them, even with `--force`.
 - **An agent's own `CLAUDE.md` carries only what that role does differently:** its identity, failure modes, decision authority and workflow. It opens by pointing at the root.
 
 Each agent's `CLAUDE.md` starts with a two-line generated header naming the template it came from and a hash of its contents. `initech add-agent <role> --regen` rewrites that agent's `CLAUDE.md` from the current template, for example after upgrading initech. It refuses a file you edited after it was generated, or one with no header, and says why; add `--force` to overwrite it anyway.
@@ -63,7 +64,7 @@ You decide what to build
       -> Engineer comments PLAN, implements, writes tests, comments DONE
         -> Engineer hands it straight to its QA pair when the root says QA tests it (a sensitive change, a new user flow, a P1 fix)
           -> QA verifies, sends PASS or FAIL to the engineer and super
-            -> You close the bead (or it bounces back for rework)
+            -> Super closes the bead on evidence it checked itself (or it bounces back for rework)
 ```
 
 Every step has a handoff. Messages between agents flow through `initech send`. Every transition is tracked in beads (`bd`). Nothing is invisible.
@@ -78,7 +79,7 @@ Agents on the same bead talk to each other directly and post everything on the b
 
 **Deciding.** Super will present decisions as structured options: "Option A does X, option B does Y, I recommend A because Z." Pick one and move on. If you need more info, ask. Don't let decisions sit.
 
-**Closing beads.** Only you close beads. When QA passes and the work looks right, `bd close <id>`. This signals the team that the work is accepted.
+**New beads.** Every bead exists because you said yes: pm drafts the proposal, super asks you one question, pm files on your yes. Super closes beads once the engineer and QA are done and the change is merged, after checking the evidence itself.
 
 ### Sensitive Changes
 
@@ -240,8 +241,8 @@ open -> in_progress -> ready_for_qa -> in_qa -> qa_passed -> closed
 - **in_progress**: An engineer claimed it and is working
 - **ready_for_qa**: Engineer finished, pushed code, ready for QA verification
 - **in_qa**: QA is actively testing
-- **qa_passed**: QA verified, waiting for operator to close
-- **closed**: Done, accepted by the operator
+- **qa_passed**: QA verified, waiting for super to close
+- **closed**: Done; super checked the evidence and closed it
 
 ### What You Should See on Each Bead
 
@@ -259,7 +260,7 @@ If you see a bead marked `ready_for_qa` without a DONE comment, with a DONE that
 bd ready            # Beads ready for work (no blockers)
 bd list --status in_progress   # What's actively being worked on
 bd show <id>        # Full bead details with comments
-bd close <id>       # Accept and close (operator only)
+bd close <id>       # Close (super, on evidence it checked)
 ```
 
 ## Tips

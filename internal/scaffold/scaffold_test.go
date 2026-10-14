@@ -72,6 +72,9 @@ func TestRun_CreatesFiles(t *testing.T) {
 		"docs/spec.md",
 		"docs/systemdesign.md",
 		"docs/roadmap.md",
+		"fleet/lessons.md",
+		"fleet/reference.md",
+		"skills/README.md",
 		"super/CLAUDE.md",
 		"eng1/CLAUDE.md",
 		"qa1/CLAUDE.md",
@@ -240,5 +243,34 @@ func TestRun_Force(t *testing.T) {
 	data, _ := os.ReadFile(filepath.Join(root, "CLAUDE.md"))
 	if string(data) == "custom" {
 		t.Error("force should overwrite existing files")
+	}
+}
+
+// ini-vby5.13: the fleet files hold the project's own history and
+// procedures, so init --force rewrites the charters but never them.
+func TestRun_ForceKeepsFleetFiles(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "project")
+	p := testProject(root)
+	if _, err := Run(p, Options{}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	mine := map[string]string{
+		"fleet/lessons.md":   "# Lessons\n\nours\n",
+		"fleet/reference.md": "# Fleet reference\n\nours\n",
+		"skills/README.md":   "# Skills\n\nours\n",
+	}
+	for f, body := range mine {
+		if err := os.WriteFile(filepath.Join(root, f), []byte(body), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := Run(p, Options{Force: true}); err != nil {
+		t.Fatalf("Run --force: %v", err)
+	}
+	for f, body := range mine {
+		got, err := os.ReadFile(filepath.Join(root, f))
+		if err != nil || string(got) != body {
+			t.Errorf("%s was rewritten by init --force", f)
+		}
 	}
 }

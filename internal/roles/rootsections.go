@@ -26,7 +26,7 @@ CLAUDE.md adds what your role does differently.
 - Comment a PLAN on the bead before writing code: numbered steps, files, how you will test.
 - Write tests with the code. A bug fix gets a regression test that fails before the fix and passes after.
 - Push before marking ready_for_qa. QA pulls from the remote; an unpushed commit does not exist for them.
-- Finish with ` + "`" + `initech deliver <id>` + "`" + `: it moves the bead one step, clears the TUI and reports to super. Only QA moves a bead to qa_passed; only the operator closes beads.
+- Finish with ` + "`" + `initech deliver <id>` + "`" + `: it moves the bead one step, clears the TUI and reports to super. Only QA moves a bead to qa_passed; only super closes beads (Filing and closing).
 `
 
 // RootEscalationSection is when an agent messages, escalates or decides on its own.
@@ -46,6 +46,12 @@ No agent asks the operator directly; every question goes to super.
 
 // RootDocsGateSection is the docs line every commit carries.
 const RootDocsGateSection = `## Docs gate
+
+The project documents live in ` + "`" + `docs/` + "`" + ` at the workspace root. Every commit to the product repo carries a docs line: ` + "`" + `docs: <doc> §<section>` + "`" + ` naming the section it edited (` + "`" + `docs: spec §3.2` + "`" + `), or ` + "`" + `docs: no change, <reason>` + "`" + `.
+- "No change" is true only when nothing a reader relies on changed. A new or changed limit, timeout, cap, name, message, field or error state goes in the doc that describes it.
+- The engineer who builds the change edits that section in the same change, never "pm later".
+- Docs are present tense and target state: no dates, bead ids, rulings or change history; a decision changes the sentence it affects, the same day; each line lives in exactly one document.
+- pm owns product rulings and arch the system shape; they review the doc edits at close.
 `
 
 // RootEvidenceSection is how a claim is verified, what a DONE carries, and the evidence tiers pm sets at grooming.
@@ -101,8 +107,15 @@ Each engineer hands ready work to the QA named in this table, generated from the
 
 {{qa_pairs_table}}`
 
-// RootFilingClosingSection is who files beads and who closes them.
+// RootFilingClosingSection is who files beads and who closes them, and how
+// a bead is titled and referred to.
 const RootFilingClosingSection = `## Filing and closing
+
+- Every bead exists because the operator said yes: pm drafts the proposal (the bead, why, a recommendation, the alternatives), super asks the operator one question, pm files on the yes. pm may file a P0/P1 defect at once and say so. Only pm runs ` + "`" + `bd create` + "`" + `.
+- A finding inside in-flight work stays on that bead; a finding outside your bead is one line to super, who reports it to pm.
+- Super closes a bead once the engineer and QA are done and the change is merged on main, on evidence super checked itself; closing never waits for a release. Engineers deliver; they do not close. A second ` + "`" + `initech deliver` + "`" + ` on a delivered bead walks it further.
+- Priority is the true severity, never inflated.
+- **Titles are for the operator:** ` + "`" + `<area>: <plain-English outcome or symptom>` + "`" + `, ten words or fewer after the area, no acronyms, tool, class or spec names. Everywhere else, refer to work by title with the id in parentheses, "Hot-add keeps the layout (ini-2p91)", never the bare id.
 `
 
 // RootMessagingSection is sending safely, the shape of a message, peeking before and after, and the announcement rule; the operator inbox guide follows it in the rendered root.
@@ -130,12 +143,13 @@ initech patrol                                # peek at all agents at once
 
 **Summary** (one or two sentences: what you did) + **Outcome** (one or two sentences: complete / passed / failed / blocked / needs-input / partial, and what the reader must do), then at most three bullets. Five lines at most, or start with "Long report because: <reason>". No recaps, file lists, narration, pleasantries or "on it".
 
-**Say what happened, not which bead.** The operator does not memorize bead IDs. Bad: "ini-y71 ready for QA". Good: "Duplicate agent fill fix ready for QA". Bead IDs belong in metadata (` + "`" + `--bead` + "`" + `); ` + "`" + `initech deliver` + "`" + ` and ` + "`" + `initech assign` + "`" + ` handle this for you.
+**Say what happened, not which bead.** Refer to work by its title with the id in parentheses (Filing and closing), never a bare id. Bad: "ini-y71 ready for QA". Good: "Duplicate agent fill fix (ini-y71) ready for QA". Bead IDs also go in metadata (` + "`" + `--bead` + "`" + `); ` + "`" + `initech deliver` + "`" + ` and ` + "`" + `initech assign` + "`" + ` handle this for you.
 
 ### Before and after
 
 - Before messaging an agent you have not heard from: ` + "`" + `initech peek <agent> -n 5` + "`" + `.
 - After a dispatch, peek within two minutes to confirm the agent picked it up.
+- The operator's inbox, ` + "`" + `initech post` + "`" + `, and its five rules are in ` + "`" + `fleet/reference.md` + "`" + `.
 `
 
 // RootBudgetSection is who may spend more time and tokens, and when.
@@ -155,37 +169,34 @@ Spending time and tokens for better software. We want robust, correct and secure
 const RootSharedMachineSection = `## Shared machine
 
 Other agents, and often other projects, run on this machine.
-
-- **Never leave a process running when your turn ends.** Servers, load generators and rigs run in the foreground or under a timeout; stop what you started, by PID.
-- **Never ` + "`" + `pkill -f` + "`" + `.** It matches other agents' processes, and over ssh it can match its own shell. Kill by PID.
-- **Never print other processes' full command lines** (` + "`" + `ps aux` + "`" + `, ` + "`" + `pgrep -fl` + "`" + `): other agents' shells carry secrets. Use PIDs and process names.
+- Never ` + "`" + `pkill -f` + "`" + ` or ` + "`" + `killall` + "`" + `: pattern kills hit other agents' processes; stop only PIDs you started. Never print full command lines (` + "`" + `ps aux` + "`" + `, ` + "`" + `pgrep -fl` + "`" + `): another agent's shell can carry secrets; use ` + "`" + `ps -o pid=,comm=` + "`" + `.
+- Before a heavy step (build, full suite, rig) read ` + "`" + `sysctl -n vm.loadavg` + "`" + ` (Linux: ` + "`" + `cat /proc/loadavg` + "`" + `) and wait while the 5-minute average is above 30. Locally run the tests for what you changed; full suites run in CI.
+- Never leave a process running when your turn ends; stop what you started, by PID.
+- Never send synthetic input to the operator's screen (keystroke automation, screen control, activating his windows). Drive a TUI in a detached session or a PTY you own; browser checks are headless scripts that exit.
+- **Waiting:** never block your session on a wait: no foreground command that sleeps, polls or runs over about two minutes. A wait for one outcome is a background command whose loop exits on every terminal state; a watch that reports each event is a Monitor that also matches the failures. Long jobs run in the background with output in a file. Never wait in series for what can run in parallel.
+- **Secrets:** never read a secret value; check presence or a digest and print only the verdict. A leak into a transcript cannot be scrubbed: say so in the same message; super and sec decide on rotation. Never paste keys, licences or tokens into beads, messages or sessions. A key never travels on a command line or through a pipe into an interpreter: use a file with mode 600 or an environment variable, deleted after.
+- **Destructive commands:** ` + "`" + `rm -rf` + "`" + ` on a variable path is guarded: ` + "`" + `"${VAR:?}"` + "`" + `. Never put a glob, a ` + "`" + `$(...)` + "`" + ` or a path you have not just listed into rm, mv or ` + "`" + `find -delete` + "`" + `. A safety prompt that stops a delete is right: never answer yes; re-issue it in the safe form or leave the files and note them on the bead. Read exit codes unpiped (` + "`" + `cmd; echo $?` + "`" + `). Never force-push; undo with a revert commit.
+<!-- Opt-in, for a fleet that has found background agents unreliable; move it out of this comment to adopt it: No subagents. Do the work yourself in your own session; never start subagents, teammates or workflows: they get stuck and nobody sees it. A required review is done by you in your own session. -->
 `
 
 // RootFleetFilesSection is the fleet files beside the charters and what goes in each.
 const RootFleetFilesSection = `## Fleet files
+
+- ` + "`" + `fleet/lessons.md` + "`" + `: the incident behind each rule. Charters carry no history; a correction edits the sentence it contradicts and the story goes here.
+- ` + "`" + `fleet/reference.md` + "`" + `: commands, the QA pairs and who owns which area.
+- ` + "`" + `skills/` + "`" + `: one skill per repeated multi-step procedure, written and maintained by super. Tell super when a step is wrong or missing.
 `
 
 // RootBeadsSection is the bd commands every role uses.
 const RootBeadsSection = `## Beads
 
-Uses beads (` + "`" + `bd` + "`" + ` CLI). All work is tracked as beads; no markdown TODO lists.
-
-` + "`" + `` + "`" + `` + "`" + `bash
-bd ready                                 # unblocked work
-bd list                                  # all beads
-bd show <id>                             # bead details and comments
-bd update <id> --status <status>         # transition a bead
-bd comments add <id> --author <you> "…"  # PLAN, DONE, verdicts
-` + "`" + `` + "`" + `` + "`" + `
+Uses beads (` + "`" + `bd` + "`" + ` CLI). All work is tracked as beads; no markdown TODO lists. The commands are in ` + "`" + `fleet/reference.md` + "`" + `.
 `
 
 // RootLearningSection is how a correction becomes a durable edit.
 const RootLearningSection = `## Learning protocol
 
-When the operator or super corrects you, or the work reveals a process gap:
-1. Apply the correction immediately.
-2. Decide where the gap is: your CLAUDE.md, this root file, or a spec.
-3. Edit that file so the lesson persists. A correction edits the sentence it contradicts.
+When the operator or super corrects you, or the work reveals a process gap, apply the correction now and tell super if a charter or this file should change; super edits the template. A correction edits the sentence it contradicts; the story behind it goes to ` + "`" + `fleet/lessons.md` + "`" + `.
 `
 
 // RootSections returns the shared sections in render order for a fleet of
@@ -201,7 +212,7 @@ func RootSections(roleNames []string) []string {
 		RootEvidenceSection,
 		RootQAPairsSection,
 		RootFilingClosingSection,
-		RootMessagingSection + OperatorInboxGuide,
+		RootMessagingSection,
 		RootBudgetSection,
 		RootSharedMachineSection,
 		RootFleetFilesSection,

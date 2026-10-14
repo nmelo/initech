@@ -17,8 +17,8 @@ func TestSuperTemplate_Renders(t *testing.T) {
 	}
 
 	// Verify key sections exist
-	sections := []string{"Identity", "Critical Failure Modes", "Decision Authority",
-		"Dispatching Work", "Monitoring", "Managing the Agent Roster"}
+	sections := []string{"Identity", "Critical Failure Modes", "What Goes to the Operator",
+		"Dispatching Work", "Patrol", "Managing the Agent Roster"}
 	for _, s := range sections {
 		if !strings.Contains(out, s) {
 			t.Errorf("missing section: %s", s)
@@ -231,13 +231,12 @@ func communicationSection(t *testing.T, role, out string) string {
 	return rest
 }
 
-// rootCommunicationText is the root CLAUDE.md's Messaging section as
-// scaffold.RenderRootCLAUDE assembles it. The inbox guide lives there once
-// (ini-vby5.1), so the guide's tests run against it rather than every role;
-// scaffold's tests assert the rendered root carries it exactly once and no
-// charter carries it at all.
+// rootCommunicationText is where the inbox guide lives: the scaffolded
+// fleet/reference.md (ini-vby5.13; it left the root to keep the root under its
+// line cap). The guide's tests run against it rather than every role;
+// scaffold's tests assert no charter carries it.
 func rootCommunicationText() map[string]string {
-	return map[string]string{"root": RootMessagingSection + OperatorInboxGuide}
+	return map[string]string{"fleet/reference.md": FleetReferenceTemplate}
 }
 
 // AC 1: the rendered template documents initech post with all six flags.
@@ -309,25 +308,6 @@ func TestOperatorInboxGuide_WorkedExampleCarriesBothShapes(t *testing.T) {
 				if !containsPhrase(out, marker) {
 					t.Errorf("%s: the heads-up shape is missing %q", role, marker)
 				}
-			}
-		})
-	}
-}
-
-// The guide sits WITH the other communication tools, where an agent reading
-// about messaging will meet it (spec: "document initech post beside initech
-// send"). Scoped to the section: most templates mention initech send in an
-// earlier section too, so a document-wide check would pass for a guide
-// appended to the end of the file.
-func TestOperatorInboxGuide_SitsWithTheOtherCommunicationTools(t *testing.T) {
-	for role, tmpl := range rootCommunicationText() {
-		t.Run(role, func(t *testing.T) {
-			section := communicationSection(t, role, renderForRole(t, tmpl))
-			if !strings.Contains(section, "initech post") {
-				t.Errorf("%s: the inbox guide is not in the Messaging section", role)
-			}
-			if !strings.Contains(section, "initech send") {
-				t.Errorf("%s: the Messaging section does not mention initech send; the guide is meant to sit beside it", role)
 			}
 		})
 	}
