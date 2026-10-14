@@ -51,3 +51,45 @@ func TestTypingHold_FallsBackPerKeyWithOneWarningEach(t *testing.T) {
 		})
 	}
 }
+
+func TestWrite_ShowsTheTypingHoldKeysCommentedOutAndKeepsSetValues(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "initech.yaml")
+	p := &Project{Name: "p", Root: dir, Roles: []string{"eng1"}}
+	if err := Write(path, p); err != nil {
+		t.Fatal(err)
+	}
+	data, _ := os.ReadFile(path)
+	for _, want := range []string{"# typing_hold_quiet_s: 2", "# typing_hold_max_s: 15"} {
+		if !strings.Contains(string(data), want) {
+			t.Fatalf("generated initech.yaml lacks %q:\n%s", want, data)
+		}
+	}
+	if q, m, w := mustLoad(t, path).TypingHold(); q != 2 || m != 15 || len(w) != 0 {
+		t.Fatalf("commented keys changed the settings: %d %d %q", q, m, w)
+	}
+
+	// A set value survives a rewrite, and the template is not added beside it.
+	if err := os.WriteFile(path, append(data, []byte("typing_hold_quiet_s: 4\n")...), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := Write(path, mustLoad(t, path)); err != nil {
+		t.Fatal(err)
+	}
+	data, _ = os.ReadFile(path)
+	if q, _, _ := mustLoad(t, path).TypingHold(); q != 4 {
+		t.Fatalf("rewrite lost typing_hold_quiet_s: 4:\n%s", data)
+	}
+	if strings.Contains(string(data), "# typing_hold_quiet_s") {
+		t.Fatalf("template written beside a set value:\n%s", data)
+	}
+}
+
+func mustLoad(t *testing.T, path string) *Project {
+	t.Helper()
+	p, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return p
+}

@@ -361,11 +361,32 @@ var sendReadyActionTimeout = tui.StartupSettleBound + 10*time.Second
 // caller can tell "the TUI did not answer" from "there is no TUI".
 var errIPCTimeout = errors.New("timed out waiting for TUI response")
 
+// sendDeadline is the send budget given the target project's typing-hold
+// cap: a message held for the operator's typing waits up to the cap and is
+// then delivered, so the sender must outwait both. The default cap plus
+// typingHoldMargin fits inside the resume-aware 45s already, and the resume
+// path never holds, so only a cap above the default extends the budget, by
+// the difference.
+func sendDeadline(holdMaxS int) time.Duration {
+	extra := time.Duration(holdMaxS-config.DefaultTypingHoldMaxS) * time.Second
+	return sendActionTimeout + max(0, extra)
+}
+
+// typingHoldMaxBestEffort reads typing_hold_max_s from the project found
+// from cwd, or the default when there is none.
+func typingHoldMaxBestEffort() int {
+	if p := discoverProjectBestEffort(); p != nil {
+		_, m, _ := p.TypingHold()
+		return m
+	}
+	return config.DefaultTypingHoldMaxS
+}
+
 // ipcDeadlineFor is how long a call waits for its response, by action.
 func ipcDeadlineFor(action string) time.Duration {
 	switch action {
 	case "send":
-		return sendActionTimeout
+		return sendDeadline(typingHoldMaxBestEffort())
 	case "send_ready":
 		return sendReadyActionTimeout
 	}

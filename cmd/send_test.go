@@ -595,3 +595,18 @@ func TestSendCommand_NoSocket(t *testing.T) {
 		t.Fatal("expected error when no socket available")
 	}
 }
+
+// ini-uibp (15 = the default typing_hold_max_s): a message held for typing waits up to
+// typing_hold_max_s, so the sender's budget grows with a cap above the default
+// and never shrinks below the resume-aware budget.
+func TestSendDeadline_GrowsWithATypingHoldCapAboveTheDefault(t *testing.T) {
+	if got := sendDeadline(15); got != sendActionTimeout {
+		t.Fatalf("default cap: %s, want the unchanged %s", got, sendActionTimeout)
+	}
+	if got := sendDeadline(5); got != sendActionTimeout {
+		t.Fatalf("smaller cap: %s, want the unchanged %s", got, sendActionTimeout)
+	}
+	if got, want := sendDeadline(60), sendActionTimeout+45*time.Second; got != want {
+		t.Fatalf("60s cap: %s, want %s", got, want)
+	}
+}

@@ -1322,6 +1322,12 @@ func (d *Daemon) deliverForwardResp(line []byte) bool {
 	return true
 }
 
+// forwardSendTimeout bounds the wait for a peer to confirm a forwarded send.
+// The peer delivers through its own typing hold (up to typing_hold_max_s,
+// default 15s) and submit belt, so the wait must outlast both; it stays under
+// the sender's 45s budget so the sender hears this error, not its own timeout.
+var forwardSendTimeout = 40 * time.Second
+
 // forwardToClient sends a forward_send command to a client's control stream
 // and waits for the client to confirm delivery. The command carries an ID;
 // the client's ControlMux dispatches it to its onRequest handler, which
@@ -1356,7 +1362,7 @@ func (d *Daemon) forwardToClient(peerName string, ctrl net.Conn, mu *sync.Mutex,
 	select {
 	case resp := <-ch:
 		return resp, nil
-	case <-time.After(5 * time.Second):
+	case <-time.After(forwardSendTimeout):
 		return ControlResp{}, fmt.Errorf("peer %s: forward_send timeout", peerName)
 	}
 }

@@ -13,6 +13,13 @@ const (
 	DefaultTypingHoldMaxS   = 15
 )
 
+// typingHoldTemplate is written into a generated initech.yaml that does not
+// set the keys, so the settings are discoverable where they are changed.
+const typingHoldTemplate = `# An agent message to a pane you are typing in waits until you pause.
+# typing_hold_quiet_s: 2   # seconds without a keystroke before it goes; 0 turns the hold off
+# typing_hold_max_s: 15    # longest a message waits, then it goes anyway
+`
+
 // RawSeconds keeps a seconds value exactly as written, so a malformed value
 // reaches TypingHold (which falls back with a warning) instead of failing the
 // whole load.
