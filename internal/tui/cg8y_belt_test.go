@@ -167,3 +167,48 @@ func TestWithheldRetry_NeverDeliversIntoADialogShowingOurText(t *testing.T) {
 	case <-time.After(200 * time.Millisecond):
 	}
 }
+
+// Run 2: in a 10-row pane the wrapped body pushed Claude's ❯ row off the top
+// of the screen; the rows above the bottom rule still hold our text.
+func cg8yScrolledOffScreen(withRule bool) string {
+	words := strings.Fields(cg8yBody)
+	s := "\x1b[2J\x1b[H"
+	for i := 0; i < len(words); i += 3 {
+		end := min(i+3, len(words))
+		s += strings.Join(words[i:end], " ") + "\r\n"
+	}
+	if withRule {
+		s += "────────────────────────────────────\r\n"
+	}
+	return s + "  status line"
+}
+
+func TestBelt_AcceptsOurWrappedBodyWhenThePromptRowScrolledOff(t *testing.T) {
+	p, _, _ := proofPane(t)
+	p.emu.Write([]byte(cg8yScrolledOffScreen(true)))
+	if _, found := composerTail(p); found {
+		t.Fatal("fixture invalid: a prompt glyph is on screen")
+	}
+	accepted, _ := composerAcceptedBody(p, "", newPendingSubmit(cg8yBody, "bracketed", ""))
+	if !accepted {
+		t.Fatal("belt withheld a body sitting above the composer's bottom rule")
+	}
+}
+
+// Negative control: with no rule there is no composer evidence at all, and
+// the belt must still withhold rather than guess.
+func TestBelt_WithholdsWhenNeitherPromptNorRuleIsOnScreen(t *testing.T) {
+	p, _, _ := proofPane(t)
+	p.emu.Write([]byte(cg8yScrolledOffScreen(false)))
+	if bodyTextVisible(p, newPendingSubmit(cg8yBody, "bracketed", "")) {
+		t.Fatal("text on a screen with no composer frame counted as composer evidence")
+	}
+}
+
+func TestRuleBoundedRegion_StopsAtThePreviousRule(t *testing.T) {
+	rows := []string{"old output", "──────────────", "line one", "line two", "──────────────", "status"}
+	got, ok := ruleBoundedRegion(rows)
+	if !ok || strings.Join(got, "|") != "line one|line two" {
+		t.Fatalf("region = %q (ok %v)", got, ok)
+	}
+}

@@ -60,6 +60,7 @@ var lockingCallAllowlist = map[string]string{
 	"emulatorBottomTextBlocking": "the blocking primitive",
 	"composerTailAt":             "send goroutine (injectText under sendMu)",
 	"composerBlock":              "send goroutine (injectText under sendMu)",
+	"composerRegion":             "send goroutine and the withheld-submit retry, both under sendMu (ini-cg8y)",
 	"paneShowsModalOnScreen":     "send goroutine (paneHasModal before a send)",
 	"paneShowsIdleComposer":      "send goroutine (modal queue drain)",
 	"Pane.isCodexReadyForSend":   "send goroutine (codex readiness poll)",
