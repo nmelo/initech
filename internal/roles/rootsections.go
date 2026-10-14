@@ -124,6 +124,15 @@ initech patrol                                # peek at all agents at once
 
 // RootBudgetSection is who may spend more time and tokens, and when.
 const RootBudgetSection = `## Budget
+
+Spending time and tokens for better software. We want robust, correct and secure software; our currency is time and tokens. Who may spend more:
+
+- **Always spend, no asking:** security and access (fail closed, the feed-it-nothing tests, the mutation table), anything that could lose or corrupt data or money, a defect you found in your own change, and the tests that prove your change by effect.
+- **Your call, inside the bead:** making the code you touch more robust (error paths, timeouts, limits, an extra edge-case test), up to about a quarter more than the step's time box. Say on the bead what you added and why.
+- **Not your call; tell super:** past that budget, anything outside the code the bead touches (a refactor, a neighbour's bug, a performance push beyond the bead's target), new tooling for a one-off, or another polish pass after QA passed. That is a new bead or the "bigger" line; super routes it and decides the time and tokens up to its line, and large trades go to the operator. Money is never an agent's or super's call.
+- **Proof costs too:** size a proof to the failure it guards against, and take it the cheapest way that would still catch it. A heavier check, or one on production load, states its reason on the bead first.
+- **Always save:** do not re-measure what is already known, do not rerun without a hypothesis, prefer a reviewed one-off fix to new tooling, skip review on small ordinary changes, and do not reopen a bead for post-pass nits. Idle is fine; do not invent work when your bead is done. Push back on work that does not pay for itself, in one sentence with the cost, to whoever gave it to you; silence is the failure.
+- Do the tier you were asked for, not more. Reports are five lines or fewer unless blocked. A finding outside your bead is one line on the bead. Do not re-ask a closed question.
 `
 
 // RootSharedMachineSection is the rules for a machine other agents and projects share.
