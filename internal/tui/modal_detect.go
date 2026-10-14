@@ -514,10 +514,14 @@ func (t *TUI) modalMaintenance(now time.Time) {
 				Time:   now,
 			})
 		}
+		// GIVE UP LOUDLY, NEVER SILENTLY (ini-1898): a dead pane's mail and
+		// mail held past the deadline are reported, not retried forever.
+		p.resolveHeldMail(now)
 		if p.QueuedMessageCount() > 0 && !p.dialogLatched() && !screenShowsModal(rows) {
-			// safeGo because the drain paces itself between messages; the main
-			// loop must not wait on it.
-			t.safeGo(p.drainModalQueue)
+			// Its own goroutine because the drain paces itself between
+			// messages; single-flight so a tick never starts a second drain
+			// beside one already running.
+			p.startModalDrain()
 		}
 	}
 }

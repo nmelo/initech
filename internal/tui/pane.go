@@ -348,6 +348,11 @@ type Pane struct {
 	// PTY output recording (ini-pqdy.2); nil when recording is off. Written
 	// once in NewPane, read by readLoop and Close.
 	rec *recording.Recorder
+
+	// The held message a drain is handing to the send path right now, so the
+	// modal guard can put it back at the front instead of re-queueing it as
+	// new mail (ini-1898). Guarded by mu.
+	redelivering *QueuedMessage
 }
 
 // Region defines a rectangular area on screen (outer bounds including border).

@@ -398,7 +398,16 @@ func sendPaneTextLocked(pane *Pane, text string, enter bool) {
 	// is gone, so they pass straight through; if a modal reopens mid-drain the
 	// message is safely re-enqueued rather than lost.
 	if paneHasModal(pane) {
-		dropped := pane.EnqueueMessage(text, enter)
+		// A drain re-delivering mail it already holds (ini-1898): back to the
+		// front with its original time, quietly. The "deferred" line below is
+		// logged once per message, when it is first held.
+		if m, ok := pane.takeRedelivery(text, enter); ok {
+			pane.requeueFront(m)
+			LogDebug("inject", "held message still held: dialog open", "pane", pane.Name(),
+				"held_for", time.Since(m.Time).Round(time.Second))
+			return
+		}
+		dropped := pane.enqueueHeld(text, enter)
 		preview := text
 		if len(preview) > 60 {
 			preview = preview[:57] + "..."

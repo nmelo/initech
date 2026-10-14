@@ -450,6 +450,10 @@ type QueuedMessage struct {
 	Text  string
 	Enter bool
 	Time  time.Time
+	// HeldForDialog marks a message deferred because a dialog was open
+	// (ini-7txh), as opposed to mail queued for a suspended pane. Only held
+	// messages are subject to heldMessageDeadline (ini-1898).
+	HeldForDialog bool
 }
 
 // wireSuspendResume gives a pane its resume-on-message trigger (ini-g7fl):
@@ -500,6 +504,11 @@ func (t *TUI) wireSuspendResume(p *Pane) {
 // Thread-safe (guards p.mu): called both from the main goroutine (suspended
 // resume path) and from the send goroutine (modal-deferred sends, ini-7txh).
 func (p *Pane) EnqueueMessage(text string, enter bool) bool {
+	return p.enqueue(QueuedMessage{Text: text, Enter: enter, Time: time.Now()})
+}
+
+// enqueue appends m, dropping the oldest message at capacity.
+func (p *Pane) enqueue(m QueuedMessage) bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	dropped := false
@@ -507,11 +516,7 @@ func (p *Pane) EnqueueMessage(text string, enter bool) bool {
 		p.messageQueue = p.messageQueue[1:]
 		dropped = true
 	}
-	p.messageQueue = append(p.messageQueue, QueuedMessage{
-		Text:  text,
-		Enter: enter,
-		Time:  time.Now(),
-	})
+	p.messageQueue = append(p.messageQueue, m)
 	return dropped
 }
 
@@ -568,6 +573,14 @@ func (p *Pane) maybeDrainModalQueue() {
 	if paneHasModal(p) {
 		return // still blocked; wait for the modal to close.
 	}
+	p.startModalDrain()
+}
+
+// startModalDrain runs drainModalQueue on its own goroutine unless one is
+// already running for this pane. Every drain trigger (readLoop and the
+// maintenance tick) goes through here, so two drains never pop the same
+// queue at once (ini-1898).
+func (p *Pane) startModalDrain() {
 	p.mu.Lock()
 	if p.modalDraining {
 		p.mu.Unlock()
@@ -605,12 +618,33 @@ func (p *Pane) drainModalQueue() {
 	// restartPane's carry could not reach them. Holding one keeps the rest in
 	// the queue, which is the only durable record of mail we have accepted and
 	// not yet delivered.
+	//
+	// STOP WHEN A MESSAGE IS RE-HELD (ini-1898). The dialog is checked before
+	// every pop, and a message the send path hands back (the dialog came back
+	// between that check and the send) returns to the FRONT of the queue with
+	// its original time and ends this drain. Before, it went to the back, the
+	// loop popped it again after queueDrainInterval, and a dialog that never
+	// closed -- a dead pane's -- spun the drain at 2/s for hours, logging a
+	// fresh "deferred" line each pass.
 	for {
+		// A dead pane's mail is the maintenance tick's to report
+		// (resolveHeldMail); handing it to a closed PTY would lose it silently.
+		if paneHasModal(p) || !p.IsAlive() {
+			return
+		}
 		m, ok := p.PopQueuedMessage()
 		if !ok {
 			return
 		}
+		p.beginRedelivery(m)
 		p.SendText(m.Text, m.Enter)
+		if !p.endRedelivery() {
+			return // re-held at the front: the dialog is back; wait for it.
+		}
+		if m.HeldForDialog && !p.IsSuspended() {
+			LogInfo("inject", "held message delivered", "pane", p.name,
+				"waited", time.Since(m.Time).Round(time.Second))
+		}
 		if p.QueuedMessageCount() > 0 {
 			time.Sleep(queueDrainInterval)
 		}

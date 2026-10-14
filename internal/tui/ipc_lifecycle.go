@@ -487,6 +487,12 @@ func (t *TUI) removePane(name string) error {
 		p := t.panes[idx]
 		pk := agentKey(p)
 		nextFocus := t.focusAfterRemoving(pk)
+		// Mail the pane still holds goes nowhere once it is removed: report
+		// it rather than drop it with the pane (ini-1898).
+		if lp, ok := p.(*Pane); ok {
+			lp.surfaceHeldMail(lp.takeQueued(func(QueuedMessage) bool { return true }),
+				"the agent was removed", time.Now())
+		}
 		p.Close()
 
 		// Remove from slice without leaving gaps.
