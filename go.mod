@@ -1,6 +1,8 @@
 module github.com/nmelo/initech
 
-go 1.25.0
+go 1.26
+
+toolchain go1.26.9
 
 require (
 	github.com/charmbracelet/ultraviolet v0.0.0-20260303162955-0b88c25f3fff
@@ -12,6 +14,7 @@ require (
 	github.com/hashicorp/yamux v0.1.2
 	github.com/mattn/go-runewidth v0.0.23
 	github.com/spf13/cobra v1.10.2
+	golang.org/x/sys v0.47.0
 	golang.org/x/term v0.45.0
 	gopkg.in/yaml.v3 v3.0.1
 )
@@ -35,7 +38,6 @@ require (
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	golang.org/x/exp v0.0.0-20250813145105-42675adae3e6 // indirect
 	golang.org/x/sync v0.20.0 // indirect
-	golang.org/x/sys v0.47.0 // indirect
 	golang.org/x/text v0.37.0 // indirect
 )
 
