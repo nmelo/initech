@@ -19,6 +19,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
@@ -89,6 +90,12 @@ func (h *perfHist) quantile(q float64) time.Duration {
 	}
 	return h.max
 }
+
+// loopMissedLastMinute is the main loop's missed ticks in the last finished
+// minute, published for the send path's belt (ini-cg8y): the belt waits on
+// screen reads the loop delivers, and a loop missing dozens of ticks a minute
+// delivers them late. Written at the roll, read from any goroutine.
+var loopMissedLastMinute atomic.Uint64
 
 // perfRecorder accumulates one minute. Main goroutine only.
 type perfRecorder struct {
@@ -296,6 +303,7 @@ func (t *TUI) perfMaybeRoll(now time.Time) {
 	if !ok {
 		return
 	}
+	loopMissedLastMinute.Store(s.missed)
 	s.paneCount = len(t.panes)
 	if perfExtras() {
 		for _, pv := range t.panes {

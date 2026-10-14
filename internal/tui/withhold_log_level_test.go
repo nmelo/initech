@@ -86,7 +86,7 @@ func TestWithholdSubmit_LogsAtInfoSoTheHeldMessageSurvivesTheDefaultLevel(t *tes
 	buf := captureLogs(t)
 	pane := withholdTestPane("eng1")
 
-	withholdSubmit(pane, "a message the fleet is holding", "bracketed")
+	withholdSubmit(pane, "a message the fleet is holding", "bracketed", "", "")
 
 	// Scope the assertion to the WITHHELD record. The buffer also holds the
 	// event-emit line, which is legitimately DEBUG -- asserting over the whole
@@ -121,7 +121,7 @@ func recordContaining(t *testing.T, out, marker string) string {
 // cannot act on.
 func TestWithholdSubmit_NamesTheMessageItIsHolding(t *testing.T) {
 	buf := captureLogs(t)
-	withholdSubmit(withholdTestPane("eng1"), "deploy the thing", "bracketed")
+	withholdSubmit(withholdTestPane("eng1"), "deploy the thing", "bracketed", "", "")
 	if out := buf.String(); !strings.Contains(out, "eng1") {
 		t.Errorf("withheld-submit record does not name the pane: %q", out)
 	}
