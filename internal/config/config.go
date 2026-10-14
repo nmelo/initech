@@ -86,6 +86,12 @@ type Project struct {
 
 	IdleWithBeadThreshold *int `yaml:"idle_with_bead_threshold,omitempty"` // Seconds of silence before idle-with-bead fires. nil = 60, 0 = disabled.
 
+	// Typing hold: an agent message to a pane the operator is typing in waits
+	// for a quiet gap. Raw nodes so a malformed value falls back with a
+	// warning instead of failing the load; read them through TypingHold.
+	TypingHoldQuietS *RawSeconds `yaml:"typing_hold_quiet_s,omitempty"`
+	TypingHoldMaxS   *RawSeconds `yaml:"typing_hold_max_s,omitempty"`
+
 	// Attention configures the needs-input surface: the top-left list of agents
 	// blocked on the operator, and the chime that announces them (ini-2x8).
 	Attention AttentionConfig `yaml:"attention,omitempty"`

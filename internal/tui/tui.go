@@ -990,6 +990,10 @@ func Run(cfg Config) error {
 		)
 	}
 
+	if cfg.Project != nil {
+		applyTypingHold(cfg.Project)
+	}
+
 	// Compute idle-with-bead threshold from config (default 60s).
 	beadThreshold := defaultIdleWithBeadThreshold
 	if cfg.Project != nil {

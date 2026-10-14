@@ -338,6 +338,7 @@ func RunDaemon(cfg DaemonConfig) error {
 	}
 	logCleanup := InitLogger(cfg.Project.Root, logLevel)
 	defer logCleanup()
+	applyTypingHold(cfg.Project)
 
 	LogInfo("daemon", "starting",
 		"peer_name", cfg.Project.PeerName,
@@ -1016,6 +1017,9 @@ func (d *Daemon) streamAgentLive(p *Pane, stream net.Conn, peerName string) {
 		}
 		if cur.WakeOnStreamInput() {
 			continue // Swallowed as a wake gesture, same as a local keystroke.
+		}
+		if !isMouseOrFocusReport(buf[:n]) {
+			cur.noteOperatorKey() // typing in another window holds messages too
 		}
 		if cur.ptmx != nil {
 			cur.ptmx.Write(buf[:n])

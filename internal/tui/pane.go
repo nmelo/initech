@@ -243,6 +243,13 @@ type Pane struct {
 	mu                 sync.Mutex
 	renderMu           sync.Mutex // Serializes readLoop writes with Render cell reads to prevent tearing.
 	sendMu             sync.Mutex // Serializes IPC send operations to prevent keystroke interleaving.
+
+	// Typing hold (typing_hold.go): when the operator last typed here, the
+	// FIFO of messages waiting for a quiet gap, how many wait, and the clock.
+	lastOperatorKey atomic.Int64
+	hold            holdLine
+	heldCount       atomic.Int32
+	holdClk         holdClock
 	networkSink        io.Writer  // Optional: readLoop tees PTY bytes here for network streaming.
 	sinkMu             sync.Mutex // Protects networkSink assignment.
 	alive              bool
@@ -636,6 +643,7 @@ func (p *Pane) SendKey(ev *tcell.EventKey) {
 	// NOT come through here, which is what keeps a drain from clearing the latch
 	// that is gating it.
 	p.noteOperatorInput()
+	p.noteOperatorKey()
 
 	// Shift+Enter: write CSI-u encoded ESC[13;2u directly to the PTY in a
 	// single atomic Write call. Claude Code's ink parser (parse-keypress.ts)
@@ -668,6 +676,7 @@ func (p *Pane) SendPaste(start bool) {
 	if p.ptmx == nil {
 		return
 	}
+	p.noteOperatorKey()
 	if start {
 		p.ptmx.Write([]byte("\x1b[200~")) //nolint:errcheck
 	} else {
@@ -1141,6 +1150,10 @@ func (p *Pane) SendText(text string, enter bool) {
 			"pane", p.name, "err", err)
 	}
 	waitForCodexReadyIfNeeded(p)
+	// TYPING HOLD: wait for the operator to pause before touching the
+	// composer. The turn is held through delivery so held messages go in order.
+	release := p.waitTypingHold()
+	defer release()
 	p.sendMu.Lock()
 	defer p.sendMu.Unlock()
 	sendPaneTextLocked(p, text, enter)

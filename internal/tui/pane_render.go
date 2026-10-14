@@ -101,6 +101,11 @@ func (p *Pane) Render(screen tcell.Screen, focused bool, dimmed bool, index int,
 		titleStyle = tcell.StyleDefault.Background(trueBlack).Foreground(tcell.ColorYellow).Bold(true)
 	}
 
+	if p.HeldMessages() > 0 {
+		// Mail waiting for the operator to pause typing (typing hold).
+		title = strings.TrimSuffix(title, " ") + " \u2709 "
+	}
+
 	renderRibbon(s, r, title, titleStyle, p.BeadID(), p.BeadTitle(), running)
 
 	// Activity bar at r.Y (top edge). Drawn before content so it is always
