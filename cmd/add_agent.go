@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -44,7 +45,11 @@ For roles outside the catalog (e.g. "marketing", "designer", "dba"), pass
 ^[a-z][a-z0-9-]{0,31}$. Custom roles receive sensible defaults: Autonomous
 permission, no src submodule, no playbooks.
 
-Restart initech (or run 'initech' in a new session) to activate the new agent.`, knownRoleNames())
+Restart initech (or run 'initech' in a new session) to activate the new agent.
+
+Hiring an agent also rewrites the root CLAUDE.md's roles block (the lines
+that name sec and arch only when the fleet has them); the rest of the root
+is left as it is.`, knownRoleNames())
 	addAgentCmd.Flags().BoolVarP(&addAgentList, "list", "l", false, "List all agents and their install status")
 	addAgentCmd.Flags().BoolVar(&addAgentCustom, "custom", false, "Allow a custom role name outside the catalog (must match ^[a-z][a-z0-9-]{0,31}$)")
 	addAgentCmd.ValidArgsFunction = completeAddAgent
@@ -206,6 +211,7 @@ func runAddAgent(cmd *cobra.Command, args []string) error {
 	if fam := roles.RoleFamilyOf(roleName); fam == roles.FamilyEng || fam == roles.FamilyQA {
 		updateRootQAPairs(out, p.Root, p.Roles[:len(p.Roles)-1], p.Roles, roleName)
 	}
+	refreshRootRoleBlock(out, p)
 
 	if tryHotAdd(out, roleName) {
 		fmt.Fprintf(out, "\n%s added and activated.\n", color.CyanBold(roleName))
@@ -239,6 +245,22 @@ func updateRootQAPairs(out io.Writer, root string, oldRoles, newRoles []string, 
 		fmt.Fprintf(out, "  %s The QA pairs table in CLAUDE.md was edited by hand; left as is. Add %s's pair yourself.\n", color.Yellow("!"), roleName)
 	case roles.PairsMissing:
 		fmt.Fprintf(out, "  %s CLAUDE.md has no generated QA pairs table; add %s's pair by hand.\n", color.Yellow("!"), roleName)
+	}
+}
+
+// refreshRootRoleBlock re-renders the root CLAUDE.md lines that depend on the
+// roles list (sec and arch, ini-vby5.3) after a hire or fire has been written
+// to initech.yaml. The roles change is already done, so a root that cannot be
+// refreshed is reported, never an error.
+func refreshRootRoleBlock(out io.Writer, p *config.Project) {
+	changed, err := scaffold.RefreshRootRoleBlock(p)
+	switch {
+	case errors.Is(err, scaffold.ErrNoRootRoleBlock):
+		fmt.Fprintf(out, "  %s Root CLAUDE.md has no generated roles block; its sec and arch lines were not updated (initech init --force rewrites it)\n", color.Yellow("!"))
+	case err != nil:
+		fmt.Fprintf(out, "  %s Could not update root CLAUDE.md: %v\n", color.Yellow("!"), err)
+	case changed:
+		fmt.Fprintf(out, "  %s Updated %s\n", color.Green("✓"), color.Bold("CLAUDE.md (roles block)"))
 	}
 }
 

@@ -12,7 +12,7 @@ package roles
 // rules never touches the same lines. They are constants in this package, not
 // in scaffold, so scripts/templatecensus checks every initech verb they teach.
 
-// RootHowWeWorkSection is the bead lifecycle and QA tiers every role follows.
+// RootHowWeWorkSection is the bead lifecycle every role follows. Which path a change takes, and when QA tests it, is RootSensitiveChangesSection.
 const RootHowWeWorkSection = `## How we work
 
 Every unit of work is a bead. These rules apply to every role; your own
@@ -27,12 +27,6 @@ CLAUDE.md adds what your role does differently.
 - Write tests with the code. A bug fix gets a regression test that fails before the fix and passes after.
 - Push before marking ready_for_qa. QA pulls from the remote; an unpushed commit does not exist for them.
 - Finish with ` + "`" + `initech deliver <id>` + "`" + `: it moves the bead one step, clears the TUI and reports to super. Only QA moves a bead to qa_passed; only the operator closes beads.
-
-### QA tiers
-
-- **Full QA:** P1 bugs, rendering and UI changes, new user-facing features.
-- **Light QA (tests plus a read of the change):** P2/P3 fixes, internal changes, refactors with test coverage.
-- **Skip QA:** template text, doc fixes, mechanical and constant changes.
 `
 
 // RootEscalationSection is when an agent messages, escalates or decides on its own.
@@ -48,10 +42,6 @@ Keep it under about 600 characters; the detail goes on the bead.
 - **When unsure whether something is yours:** choose what you judge right on the merits, not the easiest; reversibility decides whether you may act without asking, never which option wins. Say on the bead what you chose, the alternative and why, and keep working. A choice that hides a problem (a retry that masks a failure, a skipped or loosened test, a widened timeout, a quieted alert) is never yours to take alone.
 
 No agent asks the operator directly; every question goes to super.
-`
-
-// RootSensitiveChangesSection is which changes are sensitive and the path they take.
-const RootSensitiveChangesSection = `## Sensitive changes
 `
 
 // RootDocsGateSection is the docs line every commit carries.
@@ -173,14 +163,15 @@ When the operator or super corrects you, or the work reveals a process gap:
 3. Edit that file so the lesson persists. A correction edits the sentence it contradicts.
 `
 
-// RootSections returns the shared sections in render order. The operator
-// inbox guide is part of Messaging: it renders straight after that section's
-// text, where an agent reading about messages meets it.
-func RootSections() []string {
+// RootSections returns the shared sections in render order for a fleet of
+// roleNames. The operator inbox guide is part of Messaging: it renders
+// straight after that section's text, where an agent reading about messages
+// meets it. Sensitive changes names sec and arch only when the fleet has them.
+func RootSections(roleNames []string) []string {
 	return []string{
 		RootHowWeWorkSection,
 		RootEscalationSection,
-		RootSensitiveChangesSection,
+		RootSensitiveChangesSection + "\n" + RootRoleBlock(hasRole(roleNames, "sec"), hasRole(roleNames, "arch")),
 		RootDocsGateSection,
 		RootEvidenceSection,
 		RootQAPairsSection,

@@ -50,7 +50,7 @@ You decide what to build
   -> PM grooms it into bead(s) with acceptance criteria
     -> Super dispatches to an engineer
       -> Engineer comments PLAN, implements, writes tests, comments DONE
-        -> Engineer hands it straight to its QA pair (not through super)
+        -> Engineer hands it straight to its QA pair when the root says QA tests it (a sensitive change, a new user flow, a P1 fix)
           -> QA verifies, sends PASS or FAIL to the engineer and super
             -> You close the bead (or it bounces back for rework)
 ```
@@ -68,6 +68,12 @@ Agents on the same bead talk to each other directly and post everything on the b
 **Deciding.** Super will present decisions as structured options: "Option A does X, option B does Y, I recommend A because Z." Pick one and move on. If you need more info, ask. Don't let decisions sit.
 
 **Closing beads.** Only you close beads. When QA passes and the work looks right, `bd close <id>`. This signals the team that the work is accepted.
+
+### Sensitive Changes
+
+One question sets how much review a change gets: is it sensitive? The root `CLAUDE.md` defines it (money; sign-in, access or credentials; a database or stored-data migration; a data format between components) and has one line you edit to add your project's own areas. A sensitive change gets a ruling before code, a short-lived `review/<bead-id>` branch, a mutation table, and QA's verdict (and sec's, when you have a sec agent) on its branch head before it merges. Everything else goes straight to main; QA tests it on main only when it is a new user flow or a P1 fix. An engineer who finds the spec silent or the bead bigger than written says so in one line before the PLAN, and the bead stops until someone answers.
+
+These rules name only the roles your fleet has: without a `sec` agent, pm rules on a sensitive change alone; without an `arch` agent, a `bigger:` line goes to super. They sit between two `<!-- initech:roles ... -->` markers in the root. Hiring or firing an agent (`initech add-agent`, `initech delete-agent`) rewrites the text between the markers and nothing else, so your own edits to the root stay. A root without the markers is left alone and the command says so.
 
 ### Evidence Tiers
 

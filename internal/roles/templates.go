@@ -171,13 +171,10 @@ If initech assign is unavailable (e.g., bd not installed), use the manual 3-step
 2. ` + "`" + `initech bead --agent <agent> <id>` + "`" + `
 3. ` + "`" + `initech send <agent> "[from super] <id>: <title>. Read bd show <id> for full AC."` + "`" + `
 
-### QA Routing (Tiered)
+### QA and Stopped Beads
 
-Not all beads need QA:
-
-**Full QA:** P1 bugs, rendering/UI changes, new user-facing features.
-**Light QA (make test + code review):** P2/P3 bug fixes, internal changes, refactors with test coverage.
-**Skip QA:** Template text updates, doc fixes, mechanical changes, constant changes.
+- **QA follows the one rule in the root** (Sensitive changes). You do not choose a QA depth per bead.
+- **A ` + "`" + `bigger:` + "`" + ` line goes to arch at once.** Without arch, you rule on it or ask the operator. A ` + "`" + `doc gap:` + "`" + ` line goes to pm.
 
 ### Engineer Selection
 
@@ -408,7 +405,14 @@ Source code: {{project_root}}/{{role_name}}/src/
 - Modify specs, PRDs, or architecture docs
 - Close beads
 - Skip tests
-- Push directly to main without QA
+- Merge a sensitive change to main without its verdicts on the bead
+
+## Before the PLAN, and Sensitive Changes
+
+- Before the PLAN, read the code the bead touches and post exactly one line on the bead: ` + "`" + `as specified` + "`" + `, ` + "`" + `doc gap: <what the spec does not say>` + "`" + ` or ` + "`" + `bigger: because <X>` + "`" + `. The root's Sensitive changes section says where each goes; the last two stop the bead.
+- Sensitive (the root's list): work on ` + "`" + `review/<bead-id>` + "`" + `, never on main; post the mutation table before review; hand the same SHA to every reviewer the root names at once; merge only with their verdicts on the bead for that SHA; then delete the branch and say 0 refs remain.
+- Not sensitive: straight to main.
+- Never call work ready without CI green on that exact sha.
 
 ## Workflow
 
@@ -539,7 +543,7 @@ The same rule applies to bead comments: ` + "`" + `bd comments add` + "`" + ` mu
    ` + "`" + `bd update <id> --status in_qa --assignee {{role_name}}` + "`" + `
    ` + "`" + `initech bead <id>` + "`" + `
 3. Read the bead acceptance criteria carefully
-4. Pull latest code: ` + "`" + `cd src && git pull origin main` + "`" + `
+4. Pull latest code (a sensitive change: check out its branch head instead): ` + "`" + `cd src && git pull origin main` + "`" + `
 5. Build: ` + "`" + `cd src && {{build_cmd}}` + "`" + `
 6. Verify unit tests pass: ` + "`" + `cd src && {{test_cmd}}` + "`" + `
 7. Test each acceptance criterion independently by running the binary
@@ -572,6 +576,11 @@ For each acceptance criterion:
 2. Show the command you ran
 3. Show the output you observed
 4. State whether it matches the expected behavior
+
+## What QA Tests
+
+- A sensitive change is tested on its branch head before merge with a full adversarial pass. Your verdict names the SHA it covers.
+- Everything else is tested on main only when it is a new user flow or a P1 fix.
 
 ## Verdict Rules
 
@@ -711,6 +720,10 @@ If you cannot answer yes to all three, the bead is not groomed. Improve it befor
 - Listing feature names without user scenarios
 - Missing empty state or error state specifications
 
+## Rulings Before Code
+
+- A sensitive change (the root's list) gets a ruling before code. When the fleet has sec: Post your half, wait for sec's, and one joint ruling reaches the engineer; disagreement goes to super. Without sec you rule alone and name the security conditions on the bead. An engineer's ` + "`" + `doc gap:` + "`" + ` line stops the bead until you answer it on the bead.
+
 ## Workflow
 
 1. Receive task from super
@@ -808,6 +821,11 @@ Working directory: {{project_root}}/{{role_name}}
 - Domain model, API contracts
 - Research findings
 
+## Bigger Verdicts
+
+- An engineer's ` + "`" + `bigger:` + "`" + ` line reaches you through super and stops the bead. Rule on the bead: build as written, reshape it, or split it. You give that verdict; you are never a standing gate on ordinary changes.
+- When super or pm asks, one structural review of a change that touches two components, a migration, a stream or a cache.
+
 ## Workflow
 
 1. Receive task from super
@@ -896,6 +914,11 @@ Working directory: {{project_root}}/{{role_name}}
 - Security model, threat models
 - Vulnerability triage with enrichment
 - Detection effectiveness reviews
+
+## Sensitive Changes
+
+- Every sensitive change (the root's list) gets one joint ruling from you and pm before code. Post your half: your conditions, written so they can be quoted verbatim on the bead.
+- You verdict the branch head SHA when QA does. No fail-closed test on the head means no approval.
 
 ## Workflow
 
