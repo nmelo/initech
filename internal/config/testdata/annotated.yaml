@@ -1,0 +1,22 @@
+# initech.yaml for the demo fleet. Hand-annotated; keep these notes.
+project: demo   # the project name
+
+# where the agents live
+root: __ROOT__
+
+# Agents, in my order
+roles:
+  - super     # dispatcher
+  - eng1
+
+  # the QA side
+  - qa1
+token: ghp_FAKEtoken0123456789abcdefABCDEF   # rotated monthly
+role_overrides:
+  eng1:
+    claude_args: [--model, opus]
+  qa1:
+    tech_stack: Go   # qa tests in Go
+beads:
+  enabled: false
+my_unknown_key: keep me

@@ -40,7 +40,9 @@ You'll see a grid of panes. Each pane is a live Claude Code session. The floatin
 
 ## What a Trained Fleet Sets
 
-`initech init` ends a new `initech.yaml` with commented-out examples of the settings experienced fleets add by hand. None of them takes effect until you remove the `#`. `initech init --force` on an existing project adds only the examples the file does not already have, live or commented, and changes no line you wrote; a plain `initech init` on an existing project adds nothing. One exception to both: if the file has no `attention.hooks` answer yet, init asks the consent question and records the answer by rewriting the file, which drops its comments.
+`initech init` ends a new `initech.yaml` with commented-out examples of the settings experienced fleets add by hand. None of them takes effect until you remove the `#`. `initech init --force` on an existing project adds only the examples the file does not already have, live or commented, and changes no line you wrote; a plain `initech init` on an existing project adds nothing. One exception to both: if the file has no `attention.hooks` answer yet, init asks the consent question and adds that one key.
+
+When initech changes `initech.yaml` (the hooks answer, `initech add-agent`, `initech delete-agent`), it re-reads the file and changes only the lines of the keys it means to change. Your comments, blank lines, key order and keys initech does not know stay exactly as they are; a new key goes at the end of its section, and a removed role takes only its own lines. A list written on one line (`roles: [a, b]`) is rewritten as one item per line when it changes, and a comment on that line goes with it. If the file does not parse, or a change cannot be made safely (for example a value that comes from a YAML merge key), initech leaves the file untouched and names the key and line to change by hand. Two initech commands writing the file at once both land.
 
 | Key | What it does | Set it when |
 |-----|--------------|-------------|

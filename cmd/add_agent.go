@@ -216,8 +216,19 @@ func runAddAgent(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	p.Roles = append(p.Roles, roleName)
-	if err := config.Write(cfgPath, p); err != nil {
+	// p was loaded before the scaffold and the clone; re-read the file and
+	// add only this role, so a change made meanwhile is not reverted. What
+	// was written becomes p, so the root re-render below sees it.
+	if err := config.Update(cfgPath, func(cur *config.Project) error {
+		for _, r := range cur.Roles {
+			if r == roleName {
+				return fmt.Errorf("agent %q already exists in this project", roleName)
+			}
+		}
+		cur.Roles = append(cur.Roles, roleName)
+		p = cur
+		return nil
+	}); err != nil {
 		return fmt.Errorf("update config: %w", err)
 	}
 	fmt.Fprintf(out, "  %s Updated %s\n", color.Green("✓"), color.Bold("initech.yaml"))

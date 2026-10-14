@@ -454,25 +454,31 @@ func Validate(p *Project) error {
 	return nil
 }
 
-// Write serializes a Project to YAML and writes it to the given path. The
-// file holds auth tokens (cross-machine token) so it must
-// stay readable only by the owner. os.WriteFile's perm arg is the CREATE
-// mode and is ignored if the file already exists, so an existing 0644 file
-// would keep its loose perms after a rewrite — the explicit Chmod after
-// WriteFile is the belt-and-suspenders that closes that gap (ini-45h).
+// Write saves p to path. A new file is written whole, owner-only (0600: it
+// can hold auth tokens). An existing file is edited in place: only the keys
+// whose values differ from what the file holds now change, and every other
+// line (comments, blank lines, key order, keys initech does not know) stays
+// as it was; see yamledit.go. A file that does not parse, or an edit that
+// cannot be made safely, is refused and the file is left untouched. The
+// file's mode is kept, except that group and world bits are always cleared.
+//
+// A caller that has held p across a prompt or a long step should use Update,
+// which re-reads the file first, so it never reverts a change made meanwhile.
 func Write(path string, p *Project) error {
-	data, err := yaml.Marshal(p)
-	if err != nil {
-		return fmt.Errorf("marshal config: %w", err)
-	}
-	out := addYAMLComments(string(data))
-	if err := os.WriteFile(path, []byte(out), 0o600); err != nil {
-		return err
-	}
-	if err := os.Chmod(path, 0o600); err != nil {
-		return fmt.Errorf("set initech.yaml permissions: %w", err)
-	}
-	return nil
+	return withConfigLock(path, func(target string) error {
+		src, err := os.ReadFile(target)
+		if os.IsNotExist(err) {
+			data, err := yaml.Marshal(p)
+			if err != nil {
+				return fmt.Errorf("marshal config: %w", err)
+			}
+			return replaceFile(target, []byte(addYAMLComments(string(data))), 0o600)
+		}
+		if err != nil {
+			return fmt.Errorf("read config: %w", err)
+		}
+		return writeEdited(target, src, p)
+	})
 }
 
 // addYAMLComments injects helpful comments after specific fields in the

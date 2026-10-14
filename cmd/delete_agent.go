@@ -53,24 +53,33 @@ func runDeleteAgent(cmd *cobra.Command, args []string) error {
 	}
 
 	found := false
-	var newRoles []string
 	for _, r := range p.Roles {
 		if r == roleName {
 			found = true
-			continue
 		}
-		newRoles = append(newRoles, r)
 	}
 	if !found {
 		return fmt.Errorf("agent %q not found in initech.yaml roles", roleName)
 	}
 
-	p.Roles = newRoles
-	if p.RoleOverrides != nil {
-		delete(p.RoleOverrides, roleName)
-	}
-
-	if err := config.Write(cfgPath, p); err != nil {
+	// Remove the role from the file as it is now, not from the copy loaded
+	// above, so a change made in between is not reverted. What was written
+	// becomes p, so the root re-render below sees it.
+	if err := config.Update(cfgPath, func(cur *config.Project) error {
+		kept := cur.Roles[:0:0]
+		for _, r := range cur.Roles {
+			if r != roleName {
+				kept = append(kept, r)
+			}
+		}
+		if len(kept) == len(cur.Roles) {
+			return fmt.Errorf("agent %q not found in initech.yaml roles", roleName)
+		}
+		cur.Roles = kept
+		delete(cur.RoleOverrides, roleName)
+		p = cur
+		return nil
+	}); err != nil {
 		return fmt.Errorf("update config: %w", err)
 	}
 	fmt.Fprintf(out, "  %s Removed %s from %s\n", color.Green("✓"), color.Bold(roleName), color.Bold("initech.yaml"))

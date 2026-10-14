@@ -103,15 +103,21 @@ func runInit(cmd *cobra.Command, args []string) error {
 	// consent install into directories that do not exist yet, silently doing
 	// nothing on the very run the operator said yes.
 	if maybeAskAttentionConsent(p, out) {
-		if err := config.Write(cfgPath, p); err != nil {
+		// Re-read and set only the answer: the file may have changed while
+		// the question waited on the operator.
+		if err := config.Update(cfgPath, func(cur *config.Project) error {
+			cur.Attention.Hooks = p.Attention.Hooks
+			return nil
+		}); err != nil {
 			return fmt.Errorf("record attention consent: %w", err)
 		}
 	}
 
-	// Commented examples of what a trained fleet sets (ini-vby5.12). LAST,
-	// after every config.Write above: Write regenerates the file and would
-	// drop them. A plain init on an existing project leaves the file alone;
-	// --force adds only the examples it is missing, never touching a value.
+	// Commented examples of what a trained fleet sets (ini-vby5.12). The
+	// writes above keep comments (config.Write edits only changed keys), so
+	// the order does not matter. A plain init on an existing project leaves
+	// the file alone; --force adds only the examples it is missing, never
+	// touching a value.
 	if freshConfig || initForce {
 		n, err := config.AppendMissingExamples(cfgPath)
 		if err != nil {

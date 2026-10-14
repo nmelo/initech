@@ -129,7 +129,12 @@ func attentionConsentRecorder(cfgPath string, proj *config.Project) func(bool) {
 		return nil
 	}
 	return func(granted bool) {
-		if err := config.Write(cfgPath, proj); err != nil {
+		// proj was loaded when the TUI started; re-read the file and set only
+		// the answer, so edits made to it since then survive.
+		if err := config.Update(cfgPath, func(cur *config.Project) error {
+			cur.Attention.Hooks = &granted
+			return nil
+		}); err != nil {
 			tui.LogWarn("attention", "could not record hook consent", "err", err)
 			return
 		}
