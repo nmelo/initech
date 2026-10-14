@@ -156,6 +156,32 @@ These are the commands you'll use most. The full list is in the README.
 
 `top` (or `ps`) opens a process table. Press `p` to pin/unpin agents (pinned agents are never auto-suspended). Press `r` to restart, `k` to kill, `h` to hide/show. Arrow keys to navigate.
 
+## Configuration
+
+Settings live in `initech.yaml` at the project root and are read at startup.
+
+### Typing hold
+
+When an agent sends a message to a pane you are typing in, the message waits until you pause,
+so your draft is not stashed and restored mid-word. While a message waits, the pane's ribbon
+shows a ✉ mark. Messages to the same pane go one after another, in the order they arrived.
+The sender's `initech send` returns once the message is actually delivered.
+
+| Key | Default | Meaning |
+|-----|---------|---------|
+| `typing_hold_quiet_s` | `2` | Seconds without a keystroke in that pane before a waiting message goes. `0` turns the hold off: messages go at once. |
+| `typing_hold_max_s` | `15` | The longest a message waits; then it goes even if you are still typing. Must be at least `typing_hold_quiet_s`. |
+
+```yaml
+typing_hold_quiet_s: 3
+typing_hold_max_s: 20
+```
+
+A value that is negative, not a whole number, or a max below the quiet time is ignored: that
+key uses its default (a max below the quiet time becomes the quiet time if the default is still
+shorter) and the log names the key and the value. Typing in any window counts,
+mouse input does not.
+
 ## Troubleshooting
 
 ### Agent Not Responding
