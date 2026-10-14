@@ -212,3 +212,22 @@ func TestRuleBoundedRegion_StopsAtThePreviousRule(t *testing.T) {
 		t.Fatalf("region = %q (ok %v)", got, ok)
 	}
 }
+
+// The fallback region is positive evidence only when no dialog is up: a
+// dialog that quotes our text above a rule must never read as our composer.
+func TestBelt_FallbackRegionIsIgnoredWhileADialogIsOpen(t *testing.T) {
+	p, _, _ := proofPane(t)
+	p.emu.Write([]byte(cg8yScrolledOffScreen(true)))
+	p.mu.Lock()
+	p.dialogOpen = true // a latched dialog whose box has scrolled out of view
+	p.mu.Unlock()
+	if !paneHasModal(p) {
+		t.Fatal("fixture: the dialog is not detected")
+	}
+	if _, found := composerTail(p); found {
+		t.Fatal("fixture invalid: a prompt glyph is on screen")
+	}
+	if accepted, _ := composerAcceptedBody(p, "", newPendingSubmit(cg8yBody, "bracketed", "")); accepted {
+		t.Fatal("belt accepted text above a rule while a dialog is open")
+	}
+}

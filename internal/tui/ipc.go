@@ -686,10 +686,14 @@ func bodyTextVisible(p *Pane, ps *pendingSubmit) bool {
 // one-paragraph message wrapped to six rows pushed the ❯ row off screen, the
 // finder saw no composer, and the belt withheld a body sitting in plain
 // view. Used ONLY for positive evidence that our own text is there; the
-// tail comparison still needs the ❯ row.
+// tail comparison still needs the ❯ row. Never while a dialog is up: a
+// dialog quoting our text above a rule must not read as our composer.
 func composerRegion(p *Pane) ([]string, bool) {
 	if rows, ok := composerBlock(p); ok {
 		return rows, true
+	}
+	if paneHasModal(p) {
+		return nil, false
 	}
 	return ruleBoundedRegion(emuRowsBlocking(p.emu))
 }
