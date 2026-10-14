@@ -83,7 +83,7 @@ func TestWithheldSubmit_DeliversOnceTheComposerRepaintsHoldingOurText(t *testing
 	captureLogs(t)
 
 	composerShowing(emu, "") // busy agent: composer present, body not rendered
-	withholdSubmit(p, "deploy the thing", "bracketed")
+	withholdSubmit(p, "deploy the thing", "bracketed", "", "")
 	if p.pendingSubmit == nil {
 		t.Fatal("withholding did not arm a retry, so nothing can ever deliver it")
 	}
@@ -113,7 +113,7 @@ func TestWithheldSubmit_NeverForgesASubmitWhenTheComposerChanged(t *testing.T) {
 	captureLogs(t)
 
 	composerShowing(emu, "")
-	withholdSubmit(p, "deploy the thing", "bracketed")
+	withholdSubmit(p, "deploy the thing", "bracketed", "", "")
 	drainRetryEvents(ch)
 
 	// The operator started typing, or the agent cleared and reused the composer.
@@ -139,7 +139,7 @@ func TestWithheldSubmit_KeepsWaitingWhileTheComposerHasNotRepainted(t *testing.T
 	captureLogs(t)
 
 	composerShowing(emu, "")
-	withholdSubmit(p, "deploy the thing", "bracketed")
+	withholdSubmit(p, "deploy the thing", "bracketed", "", "")
 	p.maybeRetryWithheldSubmit()
 
 	time.Sleep(100 * time.Millisecond)
@@ -157,7 +157,7 @@ func TestWithheldSubmit_GivesUpLoudlyAfterTheWindow(t *testing.T) {
 	captureLogs(t)
 
 	composerShowing(emu, "")
-	withholdSubmit(p, "deploy the thing", "bracketed")
+	withholdSubmit(p, "deploy the thing", "bracketed", "", "")
 	drainRetryEvents(ch)
 
 	p.mu.Lock()
@@ -209,7 +209,7 @@ func TestWithheldSubmit_RetryNeverRewritesTheBodyToThePTY(t *testing.T) {
 	watchSubmits(emu)
 
 	composerShowing(emu, "")
-	withholdSubmit(p, "deploy the thing", "bracketed")
+	withholdSubmit(p, "deploy the thing", "bracketed", "", "")
 	composerShowing(emu, "deploy the thing")
 	p.maybeRetryWithheldSubmit()
 	time.Sleep(200 * time.Millisecond)

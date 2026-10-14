@@ -521,9 +521,11 @@ func sendPaneTextLocked(pane *Pane, text string, enter bool) {
 	// delayed delivery, not delivery. That is why the belt is a positive check
 	// on our own echo rather than a blanket withholding of the terminator --
 	// in the normal case it passes and the submit goes out unchanged.
-	if beltApplies && hasComposer && !composerAcceptedBody(pane, tailBefore) {
-		withholdSubmit(pane, text, mode)
-		return
+	if beltApplies && hasComposer {
+		if accepted, lastTail := composerAcceptedBody(pane, tailBefore); !accepted {
+			withholdSubmit(pane, text, mode, tailBefore, lastTail)
+			return
+		}
 	}
 
 	if useCodexBracketedPaste {
@@ -663,9 +665,16 @@ func composerSnapshot(p *Pane) string {
 	if !ok {
 		return "(no composer)"
 	}
-	s := strings.TrimSpace(strings.Join(rows, " | "))
-	if len(s) > 240 {
-		s = s[:240] + "..."
+	return logSnippet(strings.Join(rows, " | "))
+}
+
+// logSnippet bounds composer text written to the log to the preview's
+// length (60), so a log line never carries more of a message than the
+// preview field already does (ini-cg8y).
+func logSnippet(s string) string {
+	s = strings.TrimSpace(s)
+	if r := []rune(s); len(r) > 60 {
+		return string(r[:57]) + "..."
 	}
 	return s
 }
@@ -772,16 +781,21 @@ const composerEchoPoll = 50 * time.Millisecond
 //
 // A false answer here costs a stray unsubmitted line. A false answer the other
 // way costs an operator's question answered by a machine.
-func composerAcceptedBody(p *Pane, before string) bool {
+func composerAcceptedBody(p *Pane, before string) (accepted bool, lastTail string) {
 	deadline := time.Now().Add(composerEchoWindow)
+	lastTail = "(no composer)"
 	for {
 		// A vanished glyph counts as NOT accepted: the comparison is only
 		// meaningful against a composer that is still there to have accepted it.
-		if after, found := composerTail(p); found && after != before {
-			return true
+		after, found := composerTail(p)
+		if found {
+			lastTail = after
+			if after != before {
+				return true, lastTail
+			}
 		}
 		if time.Now().After(deadline) {
-			return false
+			return false, lastTail
 		}
 		time.Sleep(composerEchoPoll)
 	}
@@ -791,8 +805,8 @@ func composerAcceptedBody(p *Pane, before string) bool {
 // for it (ini-vpwg). Before this, withholding was the end of the story: the
 // body sat in the composer, the submit never went, and nothing re-delivered
 // it -- a message the fleet was holding with no holder.
-func withholdSubmit(pane *Pane, text, mode string) {
-	tail, _ := composerTail(pane)
+func withholdSubmit(pane *Pane, text, mode, tailBefore, lastPolled string) {
+	tail, found := composerTail(pane)
 	ps := newPendingSubmit(text, mode, tail)
 	pane.mu.Lock()
 	pane.pendingSubmit = ps
@@ -821,7 +835,14 @@ func withholdSubmit(pane *Pane, text, mode string) {
 	// record sat below the default level. THIS path holds a message in a worse
 	// way than that one -- the body is already in the composer and nothing
 	// re-delivers it -- and it was logging at Debug.
-	LogInfo("inject", "submit WITHHELD: body never reached a composer", "pane", pane.Name(), "mode", mode)
+	// WHAT WAS COMPARED, so a withhold can be judged from the log (ini-cg8y):
+	// body_in_block says whether OUR text was in fact anywhere in the composer
+	// block at this moment -- true here is a FALSE withhold. Rows are bounded
+	// to the preview's length: no more of the body than the log already has.
+	LogInfo("inject", "submit WITHHELD: body never reached a composer", "pane", pane.Name(), "mode", mode,
+		"tail_before", logSnippet(tailBefore), "last_polled", logSnippet(lastPolled),
+		"composer", composerSnapshot(pane), "body_in_block", found && submitStillHeld(pane, tail, ps),
+		"echo_window_ms", composerEchoWindow.Milliseconds(), "loop_missed_last_min", loopMissedLastMinute.Load())
 	EmitEvent(pane.eventCh, AgentEvent{
 		Type:   EventMessageSent,
 		Pane:   pane.Name(),
@@ -1597,8 +1618,12 @@ func (p *Pane) surfaceUndeliveredSubmit(ps *pendingSubmit, why string) {
 		return // Another resolver got there first; one message, one report.
 	}
 	waited := time.Since(ps.withheldAt).Round(time.Second)
+	tail, found := composerTail(p)
 	LogInfo("inject", "withheld submit NOT DELIVERED", "pane", p.name, "mode", ps.mode,
-		"reason", why, "waited", waited, "text", ps.preview)
+		"reason", why, "waited", waited, "text", ps.preview,
+		"tail_at_withhold", logSnippet(ps.tailAtWithhold), "tail_now", logSnippet(tail),
+		"composer", composerSnapshot(p), "body_in_block", found && submitStillHeld(p, tail, ps),
+		"loop_missed_last_min", loopMissedLastMinute.Load())
 	p.emitUndeliveredSubmit(ps, why, waited)
 }
 
