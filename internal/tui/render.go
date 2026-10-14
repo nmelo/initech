@@ -465,6 +465,50 @@ func (b *statusBarBuilder) drawSep(s tcell.Screen, x, y, sw int) int {
 // ambient state (mode, battery, clock) on
 // the right. Subtle dark background with dim text. Keyboard shortcuts live
 // in the help modal (?) and the rotating tips, not on this bar.
+// modeLabel names the layout mode the operator chose, in the help overlay's
+// words, and reports whether it is a live mode (drawn green). Layout2Col
+// carries three modes (ini-jo5v): the live focus split (liveFocus set), the
+// Option+f focus split (focusSplitPrev set: the snapshot Option+f restores on
+// exit, which main never takes) and main. No state is added to tell them
+// apart; a split restored from a saved layout has no snapshot and reads
+// Main, as Option+f then treats it.
+func (t *TUI) modeLabel() (label string, live bool) {
+	ls := t.layoutState
+	switch ls.Mode {
+	case LayoutLive:
+		live = true
+		if ls.LiveAuto {
+			label = fmt.Sprintf("Live Auto (%d)", len(ls.LiveSlots))
+		} else {
+			label = "Live"
+			if ls.GridCols > 0 && ls.GridRows > 0 {
+				label = fmt.Sprintf("Live %dx%d", ls.GridCols, ls.GridRows)
+			}
+		}
+	case LayoutGrid:
+		label = "Grid"
+		if ls.GridCols > 0 && ls.GridRows > 0 {
+			label = fmt.Sprintf("Grid %dx%d", ls.GridCols, ls.GridRows)
+		}
+	case LayoutFocus:
+		label = "Focus"
+	case Layout2Col:
+		switch {
+		case t.liveFocus != nil:
+			live = true
+			label = fmt.Sprintf("Live focus (%d)", len(ls.RightSet))
+		case t.focusSplitPrev != nil:
+			label = "Focus split"
+		default:
+			label = "Main"
+		}
+	}
+	if ls.Zoomed {
+		label += " (zoomed)"
+	}
+	return label, live
+}
+
 func (t *TUI) renderHints() {
 	_, sh := t.screen.Size()
 	b := newStatusBarBuilder()
@@ -483,37 +527,12 @@ func (t *TUI) renderHints() {
 	// --- App state ---
 
 	// Layout mode label.
-	{
-		var modeLabel string
-		modeStyle := b.barStyle
-		switch t.layoutState.Mode {
-		case LayoutLive:
-			modeStyle = b.barStyle.Foreground(tcell.ColorGreen)
-			if t.layoutState.LiveAuto {
-				n := len(t.layoutState.LiveSlots)
-				modeLabel = fmt.Sprintf("Live Auto (%d)", n)
-			} else {
-				modeLabel = "Live"
-				if t.layoutState.GridCols > 0 && t.layoutState.GridRows > 0 {
-					modeLabel = fmt.Sprintf("Live %dx%d", t.layoutState.GridCols, t.layoutState.GridRows)
-				}
-			}
-		case LayoutGrid:
-			modeLabel = "Grid"
-			if t.layoutState.GridCols > 0 && t.layoutState.GridRows > 0 {
-				modeLabel = fmt.Sprintf("Grid %dx%d", t.layoutState.GridCols, t.layoutState.GridRows)
-			}
-		case LayoutFocus:
-			modeLabel = "Focus"
-		case Layout2Col:
-			modeLabel = "Main"
+	if label, live := t.modeLabel(); label != "" {
+		style := b.barStyle
+		if live {
+			style = b.barStyle.Foreground(tcell.ColorGreen)
 		}
-		if t.layoutState.Zoomed {
-			modeLabel += " (zoomed)"
-		}
-		if modeLabel != "" {
-			b.addRight(modeLabel, modeStyle)
-		}
+		b.addRight(label, style)
 	}
 
 	// --- System state ---
