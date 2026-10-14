@@ -346,7 +346,7 @@ bd list                               # See all beads
 ## Communication
 
 ` + "```" + `bash
-initech send <agent> "message"    # Send message to an agent
+initech send <agent> 'message'    # Send message to an agent
 initech peek <agent>              # Read agent terminal output
 ` + "```" + `
 `

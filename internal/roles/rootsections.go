@@ -105,21 +105,37 @@ Each engineer hands ready work to the QA named in this table, generated from the
 const RootFilingClosingSection = `## Filing and closing
 `
 
-// RootMessagingSection is initech send/peek/status/patrol, how to address super, and the announcement rule; the operator inbox guide follows it in the rendered root.
+// RootMessagingSection is sending safely, the shape of a message, peeking before and after, and the announcement rule; the operator inbox guide follows it in the rendered root.
 const RootMessagingSection = `## Messaging
 
 Use ` + "`" + `initech send` + "`" + ` and ` + "`" + `initech peek` + "`" + ` for all agent communication. Work
 arrives from super unless your CLAUDE.md says otherwise.
 
 ` + "`" + `` + "`" + `` + "`" + `bash
-initech send <role> "[from <you>] <message>"   # message an agent
-initech peek <role>                           # read an agent's terminal
+initech send <role> '[from <you>] <message>'   # message an agent
+initech send <role> -f <file>                 # a long body, or one with a single quote (or --stdin)
+initech peek <role> -n 5                      # read an agent's terminal
 initech status                                # every agent, its activity and bead
 initech patrol                                # peek at all agents at once
 ` + "`" + `` + "`" + `` + "`" + `
 
-- **Write to super** with ` + "`" + `[from <you>]` + "`" + ` first; when to write is the Escalation rule. A blocker reads ` + "`" + `initech send super "[from <you>] BLOCKED on <id>: <the question>"` + "`" + `.
-- **Say what happened, not which bead.** The operator does not memorize bead IDs. Bad: "ini-y71 ready for QA". Good: "Duplicate agent fill fix ready for QA". Bead IDs belong in metadata (` + "`" + `--bead` + "`" + `); ` + "`" + `initech deliver` + "`" + ` and ` + "`" + `initech assign` + "`" + ` handle this for you.
+### Sending
+
+- **Single quotes around the body.** Double quotes let the shell expand backticks and ` + "`" + `$VAR` + "`" + `, and the message arrives mangled with no error. A body that must contain a single quote, or is long, goes through ` + "`" + `--stdin` + "`" + ` or ` + "`" + `-f <file>` + "`" + `.
+- **Start with ` + "`" + `[from <you>]` + "`" + `.** Under about 600 characters; the detail goes on the bead. A ` + "`" + `-m` + "`" + ` on ` + "`" + `initech deliver` + "`" + ` over about 600 characters can wedge the receiving pane.
+- **Every send is checked for submission:** if the Enter was not taken, it is pressed once more. A send reported as not taken, you resend.
+- **Write to super** when the Escalation rule says to. A blocker reads ` + "`" + `initech send super '[from <you>] BLOCKED on <id>: <the question>'` + "`" + `.
+
+### Shape
+
+**Summary** (one or two sentences: what you did) + **Outcome** (one or two sentences: complete / passed / failed / blocked / needs-input / partial, and what the reader must do), then at most three bullets. Five lines at most, or start with "Long report because: <reason>". No recaps, file lists, narration, pleasantries or "on it".
+
+**Say what happened, not which bead.** The operator does not memorize bead IDs. Bad: "ini-y71 ready for QA". Good: "Duplicate agent fill fix ready for QA". Bead IDs belong in metadata (` + "`" + `--bead` + "`" + `); ` + "`" + `initech deliver` + "`" + ` and ` + "`" + `initech assign` + "`" + ` handle this for you.
+
+### Before and after
+
+- Before messaging an agent you have not heard from: ` + "`" + `initech peek <agent> -n 5` + "`" + `.
+- After a dispatch, peek within two minutes to confirm the agent picked it up.
 `
 
 // RootBudgetSection is who may spend more time and tokens, and when.

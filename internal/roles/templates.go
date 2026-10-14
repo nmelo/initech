@@ -169,7 +169,7 @@ This single command claims the bead, registers it in the TUI, and dispatches to 
 If initech assign is unavailable (e.g., bd not installed), use the manual 3-step pattern:
 1. ` + "`" + `bd update <id> --status in_progress --assignee <agent>` + "`" + `
 2. ` + "`" + `initech bead --agent <agent> <id>` + "`" + `
-3. ` + "`" + `initech send <agent> "[from super] <id>: <title>. Read bd show <id> for full AC."` + "`" + `
+3. ` + "`" + `initech send <agent> '[from super] <id>: <title>. Read bd show <id> for full AC.'` + "`" + `
 
 ### QA and Stopped Beads
 
@@ -210,7 +210,7 @@ bd list --status in_progress          # Active work
 
 If an agent is stuck (no progress in 15-20 minutes):
 1. ` + "`" + `initech peek <agent>` + "`" + ` to see what's happening
-2. ` + "`" + `initech send <agent> "status check: what are you working on?"` + "`" + `
+2. ` + "`" + `initech send <agent> 'status check: what are you working on?'` + "`" + `
 3. If unresponsive: ` + "`" + `initech restart <agent> --bead <id>` + "`" + `
 
 If an agent is ignoring instructions or running a process you need to abort:
@@ -258,7 +258,7 @@ Bead IDs belong in metadata (--bead flag), not in message text. initech deliver 
 4. Dispatch ready beads to appropriate agents
 
 ### End of Day
-1. ` + "`" + `initech send <agent> "landing the plane: commit, push, update beads"` + "`" + ` to all agents
+1. ` + "`" + `initech send <agent> 'landing the plane: commit, push, update beads'` + "`" + ` to all agents
 2. Verify all in-progress beads have accurate status
 3. Report to the operator: what shipped, what's in flight, any blockers
 
@@ -302,7 +302,7 @@ When an agent produces poor output, read their CLAUDE.md first. Is the gap in th
 
 Use ` + "`" + `initech send` + "`" + ` and ` + "`" + `initech peek` + "`" + ` for all agent communication.
 
-**Send a message:** ` + "`" + `initech send <role> "<message>"` + "`" + `
+**Send a message:** ` + "`" + `initech send <role> '<message>'` + "`" + `
 **Read agent output:** ` + "`" + `initech peek <role>` + "`" + `
 **Check all agents:** ` + "`" + `initech status` + "`" + `
 **Bulk peek:** ` + "`" + `initech patrol` + "`" + `
@@ -315,7 +315,7 @@ Use ` + "`" + `initech send` + "`" + ` and ` + "`" + `initech peek` + "`" + ` fo
 - ` + "`" + `initech deliver <bead-id>` + "`" + ` - atomic completion (status + clear + report)
 
 **Agent communication:**
-- ` + "`" + `initech send <agent> "message"` + "`" + ` - send message to an agent
+- ` + "`" + `initech send <agent> 'message'` + "`" + ` - send message to an agent
 - ` + "`" + `initech peek <agent>` + "`" + ` - read agent terminal output
 - ` + "`" + `initech clear <agent>` + "`" + ` - send /clear to reset an agent's conversation context
 
@@ -433,7 +433,7 @@ Source code: {{project_root}}/{{role_name}}/src/
 
 Fallback (if initech deliver is unavailable):
 1. ` + "`" + `bd update <id> --status ready_for_qa` + "`" + `
-2. ` + "`" + `initech send <QA pair> "[from {{role_name}}] <id>: ready for QA. Commit: <hash>"` + "`" + `
+2. ` + "`" + `initech send <QA pair> '[from {{role_name}}] <what you did>, commit <hash>. Outcome: ready for QA.'` + "`" + `
 3. ` + "`" + `initech bead --clear` + "`" + `
 
 ## Verification Before Completion
@@ -463,11 +463,11 @@ Bead IDs belong in metadata (--bead flag), not in message text. initech deliver 
 Use ` + "`" + `initech send` + "`" + ` and ` + "`" + `initech peek` + "`" + ` for all agent communication.
 
 **Check who's busy:** ` + "`" + `initech status` + "`" + ` (shows all agents, their activity, and current bead)
-**Send a message:** ` + "`" + `initech send <role> "<message>"` + "`" + `
+**Send a message:** ` + "`" + `initech send <role> '<message>'` + "`" + `
 **Read agent output:** ` + "`" + `initech peek <role>` + "`" + `
 **Receive work:** Dispatches from super via ` + "`" + `initech send` + "`" + `.
-**Report status:** ` + "`" + `initech send super "[from {{role_name}}] <message>"` + "`" + `
-**Escalate blockers:** ` + "`" + `initech send super "[from {{role_name}}] BLOCKED on <id>: <the question>"` + "`" + `
+**Report status:** ` + "`" + `initech send super '[from {{role_name}}] <what you did>. Outcome: <complete / blocked / partial>; <what the reader does>.'` + "`" + `
+**Escalate blockers:** ` + "`" + `initech send super '[from {{role_name}}] BLOCKED on <id>: <the question>'` + "`" + `
 **When you stop,** tell super in one line: what is done, what is left, what you wait for.
 
 ` + OperatorInboxGuide + `
@@ -527,12 +527,12 @@ Source code: {{project_root}}/{{role_name}}/src/
 Your report to super MUST start with PASS or FAIL. Not the bead title, not a summary, not "I tested X and found Y." PASS or FAIL first, then evidence. Super cannot act without a clear verdict.
 
 **Correct:**
-` + "`" + `initech send super "[from {{role_name}}] PASS: live mode swap renders correctly, all 4 AC met"` + "`" + `
-` + "`" + `initech send super "[from {{role_name}}] FAIL: AC #2 not met, hidden agents still counted in N"` + "`" + `
+` + "`" + `initech send super '[from {{role_name}}] Live mode swap: all 4 AC met at <sha>. Outcome: PASS; ready to close.'` + "`" + `
+` + "`" + `initech send super '[from {{role_name}}] Live mode swap: AC #2 not met, hidden agents still counted in N. Outcome: FAIL; back to the engineer, repro on the bead.'` + "`" + `
 
 **Wrong:**
-` + "`" + `initech send super "[from {{role_name}}] Tested the live mode swap fix, looks good"` + "`" + `
-` + "`" + `initech send super "[from {{role_name}}] ini-abc: Found issue with AC #2"` + "`" + `
+` + "`" + `initech send super '[from {{role_name}}] Tested the live mode swap fix, looks good'` + "`" + `
+` + "`" + `initech send super '[from {{role_name}}] ini-abc: Found issue with AC #2'` + "`" + `
 
 The same rule applies to bead comments: ` + "`" + `bd comments add` + "`" + ` must start with PASS or FAIL.
 
@@ -550,14 +550,14 @@ The same rule applies to bead comments: ` + "`" + `bd comments add` + "`" + ` mu
 8. Comment verdict on the bead. PASS or FAIL MUST be the first word:
    ` + "`" + `bd comments add <id> --author {{role_name}} "PASS: all AC met. <evidence>"` + "`" + `
    ` + "`" + `bd comments add <id> --author {{role_name}} "FAIL: AC #N not met. <evidence>"` + "`" + `
-9. Tell the engineer, then super, one line each, verdict first: ` + "`" + `initech send <engineer> "[from {{role_name}}] PASS: <title> (<id>), sha <hash>"` + "`" + `, then deliver the verdict, which reports to super and handles the qa_passed status transition for PASS:
+9. Tell the engineer, then super, one line each, verdict first: ` + "`" + `initech send <engineer> '[from {{role_name}}] PASS: <title> (<id>), sha <hash>'` + "`" + `, then deliver the verdict, which reports to super and handles the qa_passed status transition for PASS:
    ` + "`" + `initech deliver <id> --verdict PASS` + "`" + `
    ` + "`" + `initech deliver <id> --verdict FAIL --reason "AC #N not met: <details>"` + "`" + `
 10. The fix for a FAIL you found comes back to you, and you check it against your original repro before the bead closes.
 
 Fallback (if initech deliver is unavailable):
 1. ` + "`" + `bd update <id> --status qa_passed` + "`" + ` (or in_progress for FAIL)
-2. ` + "`" + `initech send super "[from {{role_name}}] <id>: PASS/FAIL. <summary>"` + "`" + `
+2. ` + "`" + `initech send super '[from {{role_name}}] <what you verified>. Outcome: PASS or FAIL; <what the reader does next>.'` + "`" + `
 3. ` + "`" + `initech bead --clear` + "`" + `
 
 ## Announcement Rule
@@ -633,11 +633,11 @@ Before writing your verdict, do a 5-minute pre-mortem analysis using ONLY the di
 
 Use ` + "`" + `initech send` + "`" + ` and ` + "`" + `initech peek` + "`" + ` for all agent communication.
 
-**Send a message:** ` + "`" + `initech send <role> "<message>"` + "`" + `
+**Send a message:** ` + "`" + `initech send <role> '<message>'` + "`" + `
 **Read agent output:** ` + "`" + `initech peek <role>` + "`" + `
 **Receive work:** Dispatches from super via ` + "`" + `initech send` + "`" + `.
-**Report verdicts:** ` + "`" + `initech send super "[from {{role_name}}] <id>: PASS/FAIL. <summary>"` + "`" + `
-**Escalate questions:** ` + "`" + `initech send super "[from {{role_name}}] QUESTION on <id>: <question>"` + "`" + `
+**Report verdicts:** ` + "`" + `initech send super '[from {{role_name}}] <what you verified>. Outcome: PASS or FAIL; <what the reader does next>.'` + "`" + `
+**Escalate questions:** ` + "`" + `initech send super '[from {{role_name}}] QUESTION on <id>: <question>'` + "`" + `
 **When you stop,** tell super in one line: what is done, what is left, what you wait for.
 ` + OperatorInboxGuide + `
 `
@@ -739,7 +739,7 @@ When dispatching work directly (rare, usually super dispatches):
 
 Fallback (if initech deliver is unavailable):
 1. ` + "`" + `bd update <id> --status ready_for_qa` + "`" + `
-2. ` + "`" + `initech send super "[from {{role_name}}] <id>: done"` + "`" + `
+2. ` + "`" + `initech send super '[from {{role_name}}] <id>: done'` + "`" + `
 3. ` + "`" + `initech bead --clear` + "`" + `
 
 ## Announcement Rule
@@ -762,10 +762,10 @@ Bead IDs belong in metadata (--bead flag), not in message text. initech deliver 
 Use ` + "`" + `initech send` + "`" + ` and ` + "`" + `initech peek` + "`" + ` for all agent communication.
 
 **Check who's busy:** ` + "`" + `initech status` + "`" + `
-**Send a message:** ` + "`" + `initech send <role> "<message>"` + "`" + `
+**Send a message:** ` + "`" + `initech send <role> '<message>'` + "`" + `
 **Read agent output:** ` + "`" + `initech peek <role>` + "`" + `
 **Receive work:** Direction from the operator, requests from super.
-**Report:** ` + "`" + `initech send super "[from {{role_name}}] <message>"` + "`" + `
+**Report:** ` + "`" + `initech send super '[from {{role_name}}] <message>'` + "`" + `
 **When you stop,** tell super in one line: what is done, what is left, what you wait for.
 ` + OperatorInboxGuide + `
 `
@@ -839,7 +839,7 @@ Working directory: {{project_root}}/{{role_name}}
 
 Fallback (if initech deliver is unavailable):
 1. ` + "`" + `bd update <id> --status ready_for_qa` + "`" + `
-2. ` + "`" + `initech send super "[from {{role_name}}] <id>: done"` + "`" + `
+2. ` + "`" + `initech send super '[from {{role_name}}] <id>: done'` + "`" + `
 3. ` + "`" + `initech bead --clear` + "`" + `
 
 ## Announcement Rule
@@ -856,10 +856,10 @@ Bead IDs belong in metadata (--bead flag), not in message text. initech deliver 
 Use ` + "`" + `initech send` + "`" + ` and ` + "`" + `initech peek` + "`" + ` for all agent communication.
 
 **Check who's busy:** ` + "`" + `initech status` + "`" + `
-**Send a message:** ` + "`" + `initech send <role> "<message>"` + "`" + `
+**Send a message:** ` + "`" + `initech send <role> '<message>'` + "`" + `
 **Read agent output:** ` + "`" + `initech peek <role>` + "`" + `
 **Receive work:** Direction from the operator, requests from super.
-**Report:** ` + "`" + `initech send super "[from {{role_name}}] <message>"` + "`" + `
+**Report:** ` + "`" + `initech send super '[from {{role_name}}] <message>'` + "`" + `
 **When you stop,** tell super in one line: what is done, what is left, what you wait for.
 ` + OperatorInboxGuide + `
 `
@@ -933,7 +933,7 @@ Working directory: {{project_root}}/{{role_name}}
 
 Fallback (if initech deliver is unavailable):
 1. ` + "`" + `bd update <id> --status ready_for_qa` + "`" + `
-2. ` + "`" + `initech send super "[from {{role_name}}] <id>: done"` + "`" + `
+2. ` + "`" + `initech send super '[from {{role_name}}] <id>: done'` + "`" + `
 3. ` + "`" + `initech bead --clear` + "`" + `
 
 ## Announcement Rule
@@ -950,10 +950,10 @@ Bead IDs belong in metadata (--bead flag), not in message text. initech deliver 
 Use ` + "`" + `initech send` + "`" + ` and ` + "`" + `initech peek` + "`" + ` for all agent communication.
 
 **Check who's busy:** ` + "`" + `initech status` + "`" + `
-**Send a message:** ` + "`" + `initech send <role> "<message>"` + "`" + `
+**Send a message:** ` + "`" + `initech send <role> '<message>'` + "`" + `
 **Read agent output:** ` + "`" + `initech peek <role>` + "`" + `
 **Receive work:** Dispatches from super.
-**Report findings:** ` + "`" + `initech send super "[from {{role_name}}] <finding-summary>"` + "`" + `
+**Report findings:** ` + "`" + `initech send super '[from {{role_name}}] <finding-summary>'` + "`" + `
 **When you stop,** tell super in one line: what is done, what is left, what you wait for.
 ` + OperatorInboxGuide + `
 `
@@ -1021,7 +1021,7 @@ Playbooks: {{project_root}}/{{role_name}}/playbooks/
 
 Fallback (if initech deliver is unavailable):
 1. ` + "`" + `bd update <id> --status ready_for_qa` + "`" + `
-2. ` + "`" + `initech send super "[from {{role_name}}] <version> released"` + "`" + `
+2. ` + "`" + `initech send super '[from {{role_name}}] <version> released'` + "`" + `
 3. ` + "`" + `initech bead --clear` + "`" + `
 
 ## Announcement Rule
@@ -1038,10 +1038,10 @@ Bead IDs belong in metadata (--bead flag), not in message text. initech deliver 
 Use ` + "`" + `initech send` + "`" + ` and ` + "`" + `initech peek` + "`" + ` for all agent communication.
 
 **Check who's busy:** ` + "`" + `initech status` + "`" + `
-**Send a message:** ` + "`" + `initech send <role> "<message>"` + "`" + `
+**Send a message:** ` + "`" + `initech send <role> '<message>'` + "`" + `
 **Read agent output:** ` + "`" + `initech peek <role>` + "`" + `
 **Receive work:** Release directives from super.
-**Report:** ` + "`" + `initech send super "[from {{role_name}}] <release-status>"` + "`" + `
+**Report:** ` + "`" + `initech send super '[from {{role_name}}] <release-status>'` + "`" + `
 **When you stop,** tell super in one line: what is done, what is left, what you wait for.
 ` + OperatorInboxGuide + `
 `
@@ -1100,7 +1100,7 @@ Working directory: {{project_root}}/{{role_name}}
 
 Fallback (if initech deliver is unavailable):
 1. ` + "`" + `bd update <id> --status ready_for_qa` + "`" + `
-2. ` + "`" + `initech send super "[from {{role_name}}] <id>: draft ready"` + "`" + `
+2. ` + "`" + `initech send super '[from {{role_name}}] <id>: draft ready'` + "`" + `
 3. ` + "`" + `initech bead --clear` + "`" + `
 
 ## Announcement Rule
@@ -1117,10 +1117,10 @@ Bead IDs belong in metadata (--bead flag), not in message text. initech deliver 
 Use ` + "`" + `initech send` + "`" + ` and ` + "`" + `initech peek` + "`" + ` for all agent communication.
 
 **Check who's busy:** ` + "`" + `initech status` + "`" + `
-**Send a message:** ` + "`" + `initech send <role> "<message>"` + "`" + `
+**Send a message:** ` + "`" + `initech send <role> '<message>'` + "`" + `
 **Read agent output:** ` + "`" + `initech peek <role>` + "`" + `
 **Receive work:** Direction from the operator, product context from PM.
-**Report:** ` + "`" + `initech send super "[from {{role_name}}] <message>"` + "`" + `
+**Report:** ` + "`" + `initech send super '[from {{role_name}}] <message>'` + "`" + `
 **When you stop,** tell super in one line: what is done, what is left, what you wait for.
 ` + OperatorInboxGuide + `
 `
@@ -1175,7 +1175,7 @@ Working directory: {{project_root}}/{{role_name}}
 
 Fallback (if initech deliver is unavailable):
 1. ` + "`" + `bd update <id> --status ready_for_qa` + "`" + `
-2. ` + "`" + `initech send super "[from {{role_name}}] <id>: done"` + "`" + `
+2. ` + "`" + `initech send super '[from {{role_name}}] <id>: done'` + "`" + `
 3. ` + "`" + `initech bead --clear` + "`" + `
 
 ## Announcement Rule
@@ -1192,10 +1192,10 @@ Bead IDs belong in metadata (--bead flag), not in message text. initech deliver 
 Use ` + "`" + `initech send` + "`" + ` and ` + "`" + `initech peek` + "`" + ` for all agent communication.
 
 **Check who's busy:** ` + "`" + `initech status` + "`" + `
-**Send a message:** ` + "`" + `initech send <role> "<message>"` + "`" + `
+**Send a message:** ` + "`" + `initech send <role> '<message>'` + "`" + `
 **Read agent output:** ` + "`" + `initech peek <role>` + "`" + `
 **Receive work:** Dispatches from super.
-**Report:** ` + "`" + `initech send super "[from {{role_name}}] <message>"` + "`" + `
+**Report:** ` + "`" + `initech send super '[from {{role_name}}] <message>'` + "`" + `
 **When you stop,** tell super in one line: what is done, what is left, what you wait for.
 ` + OperatorInboxGuide + `
 `
@@ -1248,7 +1248,7 @@ Playbooks: {{project_root}}/{{role_name}}/playbooks/
 
 Fallback (if initech deliver is unavailable):
 1. ` + "`" + `bd update <id> --status ready_for_qa` + "`" + `
-2. ` + "`" + `initech send super "[from {{role_name}}] <id>: done"` + "`" + `
+2. ` + "`" + `initech send super '[from {{role_name}}] <id>: done'` + "`" + `
 3. ` + "`" + `initech bead --clear` + "`" + `
 
 ## Announcement Rule
@@ -1265,10 +1265,10 @@ Bead IDs belong in metadata (--bead flag), not in message text. initech deliver 
 Use ` + "`" + `initech send` + "`" + ` and ` + "`" + `initech peek` + "`" + ` for all agent communication.
 
 **Check who's busy:** ` + "`" + `initech status` + "`" + `
-**Send a message:** ` + "`" + `initech send <role> "<message>"` + "`" + `
+**Send a message:** ` + "`" + `initech send <role> '<message>'` + "`" + `
 **Read agent output:** ` + "`" + `initech peek <role>` + "`" + `
 **Receive work:** Dispatches from super.
-**Report:** ` + "`" + `initech send super "[from {{role_name}}] <message>"` + "`" + `
+**Report:** ` + "`" + `initech send super '[from {{role_name}}] <message>'` + "`" + `
 **When you stop,** tell super in one line: what is done, what is left, what you wait for.
 ` + OperatorInboxGuide + `
 `
@@ -1327,7 +1327,7 @@ Source code: {{project_root}}/{{role_name}}/src/
 
 Fallback (if initech deliver is unavailable):
 1. ` + "`" + `bd update <id> --status ready_for_qa` + "`" + `
-2. ` + "`" + `initech send super "[from {{role_name}}] <id>: done"` + "`" + `
+2. ` + "`" + `initech send super '[from {{role_name}}] <id>: done'` + "`" + `
 3. ` + "`" + `initech bead --clear` + "`" + `
 
 ## Announcement Rule
@@ -1344,10 +1344,10 @@ Bead IDs belong in metadata (--bead flag), not in message text. initech deliver 
 Use ` + "`" + `initech send` + "`" + ` and ` + "`" + `initech peek` + "`" + ` for all agent communication.
 
 **Check who's busy:** ` + "`" + `initech status` + "`" + `
-**Send a message:** ` + "`" + `initech send <role> "<message>"` + "`" + `
+**Send a message:** ` + "`" + `initech send <role> '<message>'` + "`" + `
 **Read agent output:** ` + "`" + `initech peek <role>` + "`" + `
 **Receive work:** Dispatches from super, data requests from PM.
-**Report:** ` + "`" + `initech send super "[from {{role_name}}] <message>"` + "`" + `
+**Report:** ` + "`" + `initech send super '[from {{role_name}}] <message>'` + "`" + `
 **When you stop,** tell super in one line: what is done, what is left, what you wait for.
 ` + OperatorInboxGuide + `
 `
@@ -1417,7 +1417,7 @@ You propose; engineers decide what graduates from exploration to production.
 
 Fallback (if initech deliver is unavailable):
 1. ` + "`" + `bd update <id> --status ready_for_qa` + "`" + `
-2. ` + "`" + `initech send super "[from {{role_name}}] <id>: experiments done. Branch: <name>"` + "`" + `
+2. ` + "`" + `initech send super '[from {{role_name}}] <id>: experiments done. Branch: <name>'` + "`" + `
 3. ` + "`" + `initech bead --clear` + "`" + `
 
 ## Announcement Rule
@@ -1434,10 +1434,10 @@ Bead IDs belong in metadata (--bead flag), not in message text. initech deliver 
 Use ` + "`" + `initech send` + "`" + ` and ` + "`" + `initech peek` + "`" + ` for all agent communication.
 
 **Check who's busy:** ` + "`" + `initech status` + "`" + `
-**Send a message:** ` + "`" + `initech send <role> "<message>"` + "`" + `
+**Send a message:** ` + "`" + `initech send <role> '<message>'` + "`" + `
 **Read agent output:** ` + "`" + `initech peek <role>` + "`" + `
 **Receive work:** Dispatches from super.
-**Report findings:** ` + "`" + `initech send super "[from {{role_name}}] <summary>"` + "`" + `
+**Report findings:** ` + "`" + `initech send super '[from {{role_name}}] <summary>'` + "`" + `
 **When you stop,** tell super in one line: what is done, what is left, what you wait for.
 ` + OperatorInboxGuide + `
 `
