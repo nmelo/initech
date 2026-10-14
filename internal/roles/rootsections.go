@@ -26,7 +26,7 @@ CLAUDE.md adds what your role does differently.
 - Comment a PLAN on the bead before writing code: numbered steps, files, how you will test.
 - Write tests with the code. A bug fix gets a regression test that fails before the fix and passes after.
 - Push before marking ready_for_qa. QA pulls from the remote; an unpushed commit does not exist for them.
-- Finish with ` + "`" + `initech deliver <id>` + "`" + `: it moves the bead one step, clears the TUI and reports to super. Only QA moves a bead to qa_passed; only the operator closes beads.
+- Finish with ` + "`" + `initech deliver <id>` + "`" + `: it moves the bead one step, clears the TUI and reports to super. Only QA moves a bead to qa_passed; only super closes beads (Filing and closing).
 
 ### QA tiers
 
@@ -111,8 +111,15 @@ Each engineer hands ready work to the QA named in this table, generated from the
 
 {{qa_pairs_table}}`
 
-// RootFilingClosingSection is who files beads and who closes them.
+// RootFilingClosingSection is who files beads and who closes them, and how
+// a bead is titled and referred to.
 const RootFilingClosingSection = `## Filing and closing
+
+- Every bead exists because the operator said yes: pm drafts the proposal (the bead, why, a recommendation, the alternatives), super asks the operator one question, pm files on the yes. pm may file a P0/P1 defect at once and say so. Only pm runs ` + "`" + `bd create` + "`" + `.
+- A finding inside in-flight work stays on that bead; a finding outside your bead is one line to super, who reports it to pm.
+- Super closes a bead once the engineer and QA are done and the change is merged on main, on evidence super checked itself; closing never waits for a release. Engineers deliver; they do not close. A second ` + "`" + `initech deliver` + "`" + ` on a delivered bead walks it further.
+- Priority is the true severity, never inflated.
+- **Titles are for the operator:** ` + "`" + `<area>: <plain-English outcome or symptom>` + "`" + `, ten words or fewer after the area, no acronyms, tool, class or spec names. Everywhere else, refer to work by title with the id in parentheses, "Hot-add keeps the layout (ini-2p91)", never the bare id.
 `
 
 // RootMessagingSection is initech send/peek/status/patrol, how to address super, and the announcement rule; the operator inbox guide follows it in the rendered root.
@@ -129,7 +136,7 @@ initech patrol                                # peek at all agents at once
 ` + "`" + `` + "`" + `` + "`" + `
 
 - **Write to super** with ` + "`" + `[from <you>]` + "`" + ` first; when to write is the Escalation rule. A blocker reads ` + "`" + `initech send super "[from <you>] BLOCKED on <id>: <the question>"` + "`" + `.
-- **Say what happened, not which bead.** The operator does not memorize bead IDs. Bad: "ini-y71 ready for QA". Good: "Duplicate agent fill fix ready for QA". Bead IDs belong in metadata (` + "`" + `--bead` + "`" + `); ` + "`" + `initech deliver` + "`" + ` and ` + "`" + `initech assign` + "`" + ` handle this for you.
+- **Say what happened, not which bead.** Refer to work by its title with the id in parentheses (titles in Filing and closing), never a bare id. Bad: "ini-y71 ready for QA". Good: "Duplicate agent fill fix (ini-y71) ready for QA". Bead IDs also go in metadata (` + "`" + `--bead` + "`" + `); ` + "`" + `initech deliver` + "`" + ` and ` + "`" + `initech assign` + "`" + ` handle this for you.
 `
 
 // RootBudgetSection is who may spend more time and tokens, and when.

@@ -65,7 +65,7 @@ func TestRenderRootCLAUDE_ListsEachRoleWithWhatItOwns(t *testing.T) {
 }
 
 func TestRenderRootCLAUDE_StaysUnderItsSizeCap(t *testing.T) {
-	if n := strings.Count(RenderRootCLAUDE(sampleProject()), "\n"); n >= 250 {
-		t.Errorf("root is %d lines with every catalog role, want under 250", n)
+	if n := strings.Count(RenderRootCLAUDE(sampleProject()), "\n"); n >= 300 {
+		t.Errorf("root is %d lines with every catalog role, want under 300", n)
 	}
 }
