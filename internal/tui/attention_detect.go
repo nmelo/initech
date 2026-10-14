@@ -192,13 +192,13 @@ func (p *Pane) refreshWaitingState() {
 		return
 	}
 
-	if notified, _ := p.attn.takeNotify(); notified {
+	if notified, notice := p.attn.takeNotify(); notified {
 		// Latch the send guard's dialog state from the same declaration
 		// (ini-zjhg). This is the only RAISE point: the application saying so
 		// is the precise signal, which is why the chime is allowed to trust it.
 		// The latch and the row diverge from here on -- the row clears from the
 		// screen, the guard's latch clears only on operator input.
-		p.latchDialogOpen()
+		p.latchDialogOpen(notice)
 		// Raise. Preview starts empty: OSC 777's message is the same generic
 		// "Claude needs your permission" for a question and for an approval, so
 		// it says nothing worth showing. Real text comes from the screen below,
@@ -221,7 +221,7 @@ func (p *Pane) refreshWaitingState() {
 		// The dialog latch goes with it (ini-zjhg). Death is the one close this
 		// pane will never see operator input for, so it is also the one way an
 		// input-cleared latch could otherwise pin the queue open forever.
-		p.noteOperatorInput()
+		p.clearDialogLatch("the pane's process exited")
 		p.ClearWaitingInput()
 		return
 	}

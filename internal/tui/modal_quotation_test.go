@@ -96,7 +96,7 @@ func TestScreenOffersAnswer_BothHalvesAreRequired(t *testing.T) {
 // must be self-healing, not operator-healing.
 func TestAuditDialogLatch_UncorroboratedRaiseHealsItself(t *testing.T) {
 	p := testPane("eng2")
-	p.latchDialogOpen()
+	p.latchDialogOpen("Claude needs your permission")
 	if !p.dialogLatched() {
 		t.Fatal("precondition: the latch did not raise")
 	}
@@ -129,7 +129,7 @@ func TestAuditDialogLatch_UncorroboratedRaiseHealsItself(t *testing.T) {
 // harm the guard exists to prevent.
 func TestAuditDialogLatch_SightedDialogIsNeverDowngraded(t *testing.T) {
 	p := testPane("eng1")
-	p.latchDialogOpen()
+	p.latchDialogOpen("Claude needs your permission")
 	p.noteDialogSighting() // the screen confirmed it
 
 	if p.auditDialogLatch(time.Now().Add(10 * latchCorroborationWindow)) {
@@ -191,7 +191,7 @@ func TestModalMaintenance_HeldMailStaysHeldWhileADialogIsOpen(t *testing.T) {
 	tui := newTestTUI()
 	p := testPane("eng1")
 	tui.panes = []PaneView{p}
-	p.latchDialogOpen()
+	p.latchDialogOpen("Claude needs your permission")
 	p.noteDialogSighting() // a REAL dialog: declared and seen
 
 	p.EnqueueMessage("[from super] do not paste this into a picker", true)

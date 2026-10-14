@@ -130,9 +130,97 @@ func paneShowsModalOnScreen(p *Pane) bool {
 	return screenShowsModal(emuRowsBlocking(p.emu))
 }
 
-// screenShowsModal is paneShowsModalOnScreen over an already-read screen.
+// screenShowsModal is paneShowsModalOnScreen over an already-read screen. It
+// reads only the live dialog region (liveDialogRows), never the transcript.
 func screenShowsModal(rows []string) bool {
-	return screenShowsLiveDialog(bottomTextFromRows(rows, modalScanWholePane))
+	return screenShowsLiveDialog(bottomTextFromRows(liveDialogRows(rows), modalScanWholePane))
+}
+
+// composerFrameMaxRows bounds how tall a composer (prompt plus wrapped lines)
+// may be when looking for its frame.
+const composerFrameMaxRows = 20
+
+// liveDialogRows returns the rows where an OPEN dialog can be drawn: those
+// below the lowest composer frame, or every row when there is no frame.
+//
+// MEASURED (Claude Code 2.1.299, a real permission prompt): an open dialog
+// REPLACES the composer -- the bottom of the screen is the dialog, with no
+// composer below it. At rest the bottom is the composer frame: a ─ rule, the
+// ❯ prompt row (and its wrapped lines), a ─ rule. So dialog words ABOVE a
+// composer frame are transcript: an agent quoting a dialog, printing a test
+// fixture, reporting on one. Reading them as a dialog held mail at a bare
+// prompt for minutes (the 9gvn class, from a new source).
+//
+// THE ASYMMETRY IS KEPT BY THE FALLBACK. No composer frame on screen -- a
+// real open dialog, the startup trust prompt, a codex pane, a screen we do not
+// recognise -- means every row is read, exactly as before. The narrowing
+// applies only when the screen positively shows Claude at its prompt.
+//
+// The LOWEST frame, scanning up from the bottom: the live composer is the one
+// nearest the bottom; a frame-shaped block higher up is history.
+//
+// A DIALOG ENDING RIGHT ABOVE THE FRAME STILL COUNTS. Every dialog measured on
+// 2.1.299 replaces the composer, in default and in bypass-with-ask mode alike;
+// but an older layout (ini-t6n's composed run) put the input box under an open
+// permission prompt. So when the last non-blank row above the frame offers an
+// answer (an option row, "Esc to cancel", "Enter to confirm"), the whole pane
+// is read as before. Transcript ends with Claude's own lines ("✻ … done"),
+// not with a dialog's answer row, so quoted dialogs above it are still skipped.
+func liveDialogRows(rows []string) []string {
+	for bottom := len(rows) - 1; bottom >= 2; bottom-- {
+		if !isComposerRule(rows[bottom]) {
+			continue
+		}
+		top := bottom - 1
+		for top > 0 && bottom-top <= composerFrameMaxRows && !isComposerRule(rows[top]) {
+			top--
+		}
+		if top <= 0 || top == bottom-1 || !isComposerRule(rows[top]) {
+			continue
+		}
+		if !isComposerPromptRow(rows[top+1]) {
+			continue
+		}
+		if answerRowJustAbove(rows, top) {
+			return rows
+		}
+		return rows[bottom+1:]
+	}
+	return rows
+}
+
+// answerRowJustAbove reports whether the last non-blank row above row index
+// frameTop offers an answer: the shape of a dialog drawn above the input box.
+func answerRowJustAbove(rows []string, frameTop int) bool {
+	for i := frameTop - 1; i >= 0; i-- {
+		if strings.TrimSpace(rows[i]) == "" {
+			continue
+		}
+		return screenOffersAnswer(rows[i])
+	}
+	return false
+}
+
+// isComposerRule reports a full-width horizontal rule: a row of '─' only,
+// at least composerRuleMinRunes long. Dashed separators (╌) inside a dialog
+// do not count.
+func isComposerRule(row string) bool {
+	t := strings.TrimSpace(row)
+	if len([]rune(t)) < composerRuleMinRunes {
+		return false
+	}
+	return strings.Trim(t, "\u2500") == ""
+}
+
+// composerRuleMinRunes keeps a short rule inside rendered output (a table, an
+// insight box) from passing for the composer's full-width frame.
+const composerRuleMinRunes = 40
+
+// isComposerPromptRow reports the composer's first row: the ❯ prompt glyph at
+// the start of the row. A dialog's selection cursor ("❯ 1. Yes") never sits
+// directly under a full-width rule, which is what the frame check adds.
+func isComposerPromptRow(row string) bool {
+	return strings.HasPrefix(strings.TrimLeft(row, " "), "\u276f")
 }
 
 // screenShowsDialogText is the BROAD screen face: are a dialog's words
@@ -249,14 +337,24 @@ func screenOffersAnswer(text string) bool {
 // refreshWaitingState: a pane whose process is gone has nobody waiting on it.
 
 // latchDialogOpen records that the application declared a blocking dialog.
-func (p *Pane) latchDialogOpen() {
+func (p *Pane) latchDialogOpen(notice string) {
 	p.mu.Lock()
-	if !p.dialogOpen {
+	raised := !p.dialogOpen
+	if raised {
 		p.dialogOpen = true
 		p.dialogOpenAt = time.Now()
 		p.dialogCorroborated = false
 	}
+	queued := len(p.messageQueue)
 	p.mu.Unlock()
+	if raised {
+		// The notice text only, and only an allowlisted one: never anything a
+		// tool or a message could put on the line.
+		if !raisesAttention(notice) {
+			notice = "(unlisted notice)"
+		}
+		LogInfo("modal", "dialog latch raised", "pane", p.name, "source", "OSC 777", "notice", notice, "queued", queued)
+	}
 }
 
 // latchCorroborationWindow is how long a declared dialog has to be SEEN before
@@ -270,10 +368,14 @@ const latchCorroborationWindow = 90 * time.Second
 // the earned-clear rule and is never downgraded on a timer.
 func (p *Pane) noteDialogSighting() {
 	p.mu.Lock()
+	first := p.dialogOpen && !p.dialogCorroborated
 	if p.dialogOpen {
 		p.dialogCorroborated = true
 	}
 	p.mu.Unlock()
+	if first {
+		LogInfo("modal", "dialog latch corroborated", "pane", p.name, "source", "screen")
+	}
 }
 
 // auditDialogLatch downgrades a latch that sight has never corroborated,
@@ -353,8 +455,9 @@ func (p *Pane) observeIdlePrompt(now time.Time, idle bool) time.Duration {
 	return now.Sub(p.idlePromptSince)
 }
 
-// auditCorroboratedLatch clears a latch that sight CORROBORATED, on positive
-// evidence that the dialog is gone (ini-gbqc).
+// auditIdleLatch clears the latch on positive evidence that the dialog is
+// gone: the pane at its idle prompt, continuously, for idlePromptStableWindow
+// (ini-gbqc).
 //
 // auditDialogLatch deliberately never touches a corroborated latch, and that
 // reasoning holds for AGE: downgrading because time passed would forge an
@@ -366,13 +469,25 @@ func (p *Pane) observeIdlePrompt(now time.Time, idle bool) time.Duration {
 // deferring every message forever. Measured on the live fleet: mail held for
 // HOURS behind a flag whose dialog was long gone, worked around by bypassing
 // the agent entirely.
-func (p *Pane) auditCorroboratedLatch(stableFor time.Duration) bool {
+//
+// IT CLEARS AN UNCORROBORATED LATCH TOO, counting only idle time AFTER the
+// raise. A dialog declared over OSC 777 paints within a frame or two, so a
+// pane that has then sat at its idle prompt, with nothing in the live dialog
+// region, for idlePromptStableWindow is not showing a dialog: the declaration
+// came from text echoed into the pane, not from an open dialog. Idle time
+// from BEFORE the raise never counts -- the screen a dialog has not yet
+// painted over is exactly that -- so the window starts at the raise.
+func (p *Pane) auditIdleLatch(now time.Time) bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if !p.dialogOpen || !p.dialogCorroborated {
+	if !p.dialogOpen || p.idlePromptSince.IsZero() {
 		return false
 	}
-	if stableFor < idlePromptStableWindow {
+	since := p.idlePromptSince
+	if since.Before(p.dialogOpenAt) {
+		since = p.dialogOpenAt
+	}
+	if now.Sub(since) < idlePromptStableWindow {
 		return false
 	}
 	p.dialogOpen = false
@@ -386,9 +501,18 @@ func (p *Pane) auditCorroboratedLatch(stableFor time.Duration) bool {
 // pane, which is the only way a dialog gets answered. Called from the operator
 // input paths only.
 func (p *Pane) noteOperatorInput() {
+	p.clearDialogLatch("operator input")
+}
+
+// clearDialogLatch drops the latch and, if it was raised, says why once.
+func (p *Pane) clearDialogLatch(by string) {
 	p.mu.Lock()
+	was := p.dialogOpen
 	p.dialogOpen = false
 	p.mu.Unlock()
+	if was {
+		LogInfo("modal", "dialog latch cleared", "pane", p.name, "by", by)
+	}
 }
 
 // latchAge reports how long the dialog latch has been raised, and whether it
@@ -489,14 +613,15 @@ func (t *TUI) modalMaintenance(now time.Time) {
 		if screenShowsModal(rows) {
 			p.noteDialogSighting()
 		}
-		// POSITIVE-EVIDENCE CLEAR for a corroborated latch (ini-gbqc). Runs
-		// before the age audit so the two stay legibly separate: this one
-		// heals a REAL dialog that closed without operator input; that one
-		// heals a raise that was never real.
+		// POSITIVE-EVIDENCE CLEAR (ini-gbqc): the pane at its idle prompt for
+		// the window, counted from the raise. Runs before the age audit, which
+		// remains the backstop for a raise the screen can neither confirm nor
+		// refute (no prompt and no dialog visible).
 		stable := p.observeIdlePrompt(now, screenShowsIdleComposer(rows))
-		if p.auditCorroboratedLatch(stable) {
-			LogInfo("modal", "latch cleared: pane returned to its idle prompt",
-				"pane", p.Name(), "stable_for", stable, "queued", p.QueuedMessageCount())
+		if p.auditIdleLatch(now) {
+			LogInfo("modal", "dialog latch cleared",
+				"pane", p.Name(), "by", "idle prompt (latch cleared: pane returned to its idle prompt)",
+				"stable_for", stable, "queued", p.QueuedMessageCount())
 			EmitEvent(p.eventCh, AgentEvent{
 				Type:   EventMessageSent,
 				Pane:   p.Name(),
@@ -505,7 +630,7 @@ func (t *TUI) modalMaintenance(now time.Time) {
 			})
 		}
 		if p.auditDialogLatch(now) {
-			LogWarn("modal", "latch downgraded: a declared dialog was never seen on screen",
+			LogWarn("modal", "dialog latch cleared: a declared dialog was never seen on screen (latch downgraded)",
 				"pane", p.Name(), "window", latchCorroborationWindow)
 			EmitEvent(p.eventCh, AgentEvent{
 				Type:   EventMessageSent,

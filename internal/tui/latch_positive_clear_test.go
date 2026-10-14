@@ -40,11 +40,16 @@ func TestLatch_IdlePromptClearsACorroboratedLatch(t *testing.T) {
 		t.Fatal("fixture failed: the pane is not latched to begin with")
 	}
 	// Stable across the window, one observation per maintenance tick.
+	p.mu.Lock()
+	p.dialogOpenAt = now // raised at the start of the observations
+	p.mu.Unlock()
 	var stable time.Duration
+	last := now
 	for i := 0; i <= int(idlePromptStableWindow/time.Second); i++ {
-		stable = p.observeIdlePrompt(now.Add(time.Duration(i)*time.Second), paneShowsIdleComposer(p))
+		last = now.Add(time.Duration(i) * time.Second)
+		stable = p.observeIdlePrompt(last, paneShowsIdleComposer(p))
 	}
-	if !p.auditCorroboratedLatch(stable) {
+	if !p.auditIdleLatch(last) {
 		t.Fatalf("a corroborated latch survived %s of idle prompt; mail stays held forever", stable)
 	}
 	if paneHasModal(p) {
@@ -60,11 +65,12 @@ func TestLatch_ScrolledAwayDialogDoesNotClear(t *testing.T) {
 	showNothing(p)
 	now := time.Now()
 
-	var stable time.Duration
+	last := now
 	for i := 0; i <= 30; i++ { // far past the window
-		stable = p.observeIdlePrompt(now.Add(time.Duration(i)*time.Second), paneShowsIdleComposer(p))
+		last = now.Add(time.Duration(i) * time.Second)
+		p.observeIdlePrompt(last, paneShowsIdleComposer(p))
 	}
-	if p.auditCorroboratedLatch(stable) {
+	if p.auditIdleLatch(last) {
 		t.Error("FORGED: a scrolled-away dialog was declared closed on the absence of a dialog")
 	}
 	if !paneHasModal(p) {
@@ -96,8 +102,8 @@ func TestLatch_MomentaryPromptDoesNotClear(t *testing.T) {
 	p := latchedPane(t)
 	showIdlePrompt(p)
 	now := time.Now()
-	stable := p.observeIdlePrompt(now, true)
-	if p.auditCorroboratedLatch(stable) {
+	p.observeIdlePrompt(now, true)
+	if p.auditIdleLatch(now) {
 		t.Error("one observation of a prompt cleared the latch; a repaint between dialogs would do it")
 	}
 }
@@ -124,26 +130,36 @@ func TestLatch_ReleaseIsAnnounced(t *testing.T) {
 	}
 }
 
-// An UNCORROBORATED latch belongs to auditDialogLatch's window, not to this
-// path, and the distinction is load-bearing. A dialog declared over OSC 777
-// has not rendered yet, so the pane still shows the PREVIOUS idle prompt --
-// clearing on that would drop the latch for a dialog that is about to appear,
-// which is the forged answer this guard exists to prevent. Found by mutant:
-// removing the corroboration check left every other cell green.
-func TestLatch_UncorroboratedLatchIsNotClearedByThisPath(t *testing.T) {
+// An UNCORROBORATED latch is cleared by the idle prompt too (ini-0g5s), but
+// only by idle time AFTER the raise. A dialog declared over OSC 777 may not
+// have painted yet, so the pane can still show the previous idle prompt: that
+// screen must never count. Inside the window after the raise the latch stands;
+// past it, with the prompt idle and no dialog painted, the raise was not a
+// dialog and the mail goes.
+func TestLatch_UncorroboratedLatchClearsOnlyOnIdleTimeAfterTheRaise(t *testing.T) {
 	p := latchedPane(t)
-	p.mu.Lock()
-	p.dialogCorroborated = false // declared, not yet seen
-	p.dialogOpenAt = time.Now()  // just raised, inside the corroboration window
-	p.mu.Unlock()
-	showIdlePrompt(p) // the screen the dialog has not yet painted over
-
-	now := time.Now()
-	var stable time.Duration
+	showIdlePrompt(p) // the screen the dialog has not (yet) painted over
+	base := time.Now()
+	// Idle for a long time BEFORE the raise.
 	for i := 0; i <= 30; i++ {
-		stable = p.observeIdlePrompt(now.Add(time.Duration(i)*time.Second), paneShowsIdleComposer(p))
+		p.observeIdlePrompt(base.Add(time.Duration(i)*time.Second), paneShowsIdleComposer(p))
 	}
-	if p.auditCorroboratedLatch(stable) {
-		t.Error("cleared a latch sight never corroborated: a dialog still painting would lose its guard")
+	raise := base.Add(30 * time.Second)
+	p.mu.Lock()
+	p.dialogCorroborated = false // declared, not seen
+	p.dialogOpenAt = raise
+	p.mu.Unlock()
+
+	for i := 1; i < int(idlePromptStableWindow/time.Second); i++ {
+		at := raise.Add(time.Duration(i) * time.Second)
+		p.observeIdlePrompt(at, paneShowsIdleComposer(p))
+		if p.auditIdleLatch(at) {
+			t.Fatalf("cleared %ds after the raise, counting idle time from before it: a dialog still painting would lose its guard", i)
+		}
+	}
+	at := raise.Add(idlePromptStableWindow)
+	p.observeIdlePrompt(at, paneShowsIdleComposer(p))
+	if !p.auditIdleLatch(at) {
+		t.Error("an unconfirmed latch survived a full window of idle prompt after the raise; quoted dialog text holds mail")
 	}
 }

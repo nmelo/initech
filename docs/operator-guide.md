@@ -252,6 +252,8 @@ Recovery: `initech send <agent> "You were working on <bead-id>. Run bd show <bea
 - The message was delivered but the agent is mid-work and hasn't processed it
 - The message appeared as text input but the agent needs Enter pressed (add `--enter` if not default)
 - The agent's Claude session is in a state where it can't read terminal input (rare, restart fixes it)
+- The agent has a dialog open (a permission prompt or a question). initech holds the message instead of typing into the dialog, says `deferred (modal open)`, and delivers it once the dialog closes. A dialog counts as open only when it is drawn where Claude draws a live one: below the transcript, in place of the input box. Dialog wording quoted in the transcript above an idle input box does not hold mail. A dialog announced by the agent but never drawn stops holding mail once the input box has sat idle for 5 seconds after the announcement. Each change is logged at Info as `dialog latch raised`, `dialog latch corroborated` or `dialog latch cleared`, with what caused it.
+- A held message that cannot be delivered (the agent's process exited, the agent was removed, or a dialog stayed open for 10 minutes) is reported as `NOT delivered (...)` in a toast, the event log and the inbox, with how long it waited. Re-send it.
 
 When initech cannot see the message in the agent's input box, it holds back the Enter instead of
 guessing, keeps checking, and logs exactly one outcome for that message: `withheld submit DELIVERED`

@@ -29,15 +29,18 @@ func heldMailPane(t *testing.T, name string) (*Pane, chan AgentEvent, *os.File) 
 	p.startupSettled = true
 	// Real panes run responseLoop to drain the emulator's replies; without a
 	// reader the send path's keystrokes (the stash) block forever.
+	// The reader and the cleanup hold THIS emulator, not the field: a test
+	// may swap p.emu for a larger screen afterwards.
+	emu := p.emu
 	go func() {
 		buf := make([]byte, 256)
 		for {
-			if _, err := p.emu.Read(buf); err != nil {
+			if _, err := emu.Read(buf); err != nil {
 				return
 			}
 		}
 	}()
-	t.Cleanup(func() { p.emu.Close() })
+	t.Cleanup(func() { emu.Close() })
 	return p, events, r
 }
 
@@ -79,7 +82,7 @@ func TestHeldMail_DrainStopsWhenTheDialogComesBackInsteadOfSpinning(t *testing.T
 	done := make(chan struct{})
 	go func() { p.drainModalQueue(); close(done) }()
 	time.Sleep(100 * time.Millisecond) // the drain has popped and is in the startup wait
-	p.latchDialogOpen()
+	p.latchDialogOpen("Claude needs your permission")
 	p.noteDialogSighting()
 
 	select {
@@ -110,7 +113,7 @@ func TestHeldMail_DeadPaneReportsEachMessageOnceThenGoesQuiet(t *testing.T) {
 	tui := newTestTUI()
 	p, events, _ := heldMailPane(t, "eng3")
 	tui.panes = []PaneView{p}
-	p.latchDialogOpen()
+	p.latchDialogOpen("Claude needs your permission")
 	p.noteDialogSighting()
 	p.SendText("[from super] one", true)
 	p.SendText("[from super] two", true)
@@ -174,7 +177,7 @@ func TestHeldMail_DeadlineReportsTheWaitOnALivePane(t *testing.T) {
 	tui := newTestTUI()
 	p, events, _ := heldMailPane(t, "eng3")
 	tui.panes = []PaneView{p}
-	p.latchDialogOpen()
+	p.latchDialogOpen("Claude needs your permission")
 	p.noteDialogSighting()
 	start := time.Now()
 	p.enqueue(QueuedMessage{Text: "[from pm] notes pinned", Enter: true, Time: start, HeldForDialog: true})
@@ -203,7 +206,7 @@ func TestHeldMail_DeadlineReportsTheWaitOnALivePane(t *testing.T) {
 func TestHeldMail_DeferredThenDeliveredIsTwoInfoLines(t *testing.T) {
 	logs := captureLogs(t)
 	p, _, _ := heldMailPane(t, "eng3")
-	p.latchDialogOpen()
+	p.latchDialogOpen("Claude needs your permission")
 	p.noteDialogSighting()
 	p.SendText("[from super] go", true)
 	p.mu.Lock()
