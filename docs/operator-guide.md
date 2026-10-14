@@ -188,6 +188,12 @@ Recovery: `initech send <agent> "You were working on <bead-id>. Run bd show <bea
 - The message appeared as text input but the agent needs Enter pressed (add `--enter` if not default)
 - The agent's Claude session is in a state where it can't read terminal input (rare, restart fixes it)
 
+When initech cannot see the message in the agent's input box, it holds back the Enter instead of
+guessing, keeps checking, and logs exactly one outcome for that message: `withheld submit DELIVERED`
+(the text was found and submitted), `withheld submit SUPERSEDED` (a later send reached the agent
+first and this one was reported not delivered), or `withheld submit NOT DELIVERED`. It never presses
+Enter while a dialog or option picker is open. A NOT DELIVERED or SUPERSEDED message needs to be resent.
+
 ## The Bead Workflow
 
 Beads (`bd`) are the work tracking system. Every unit of work is a bead.
