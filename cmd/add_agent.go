@@ -266,14 +266,15 @@ func updateRootQAPairs(out io.Writer, root string, oldRoles, newRoles []string, 
 // to initech.yaml. The roles change is already done, so a root that cannot be
 // refreshed is reported, never an error.
 func refreshRootRoleBlock(out io.Writer, p *config.Project) {
-	changed, err := scaffold.RefreshRootRoleBlock(p)
+	changed, err := scaffold.RefreshRootRoleBlocks(p)
+	if changed {
+		fmt.Fprintf(out, "  %s Updated %s\n", color.Green("✓"), color.Bold("CLAUDE.md (roles blocks)"))
+	}
 	switch {
 	case errors.Is(err, scaffold.ErrNoRootRoleBlock):
-		fmt.Fprintf(out, "  %s Root CLAUDE.md has no generated roles block; its sec and arch lines were not updated (initech init --force rewrites it)\n", color.Yellow("!"))
+		fmt.Fprintf(out, "  %s Root CLAUDE.md is missing a generated roles block; its sec and arch lines there were not updated (initech init --force rewrites it)\n", color.Yellow("!"))
 	case err != nil:
 		fmt.Fprintf(out, "  %s Could not update root CLAUDE.md: %v\n", color.Yellow("!"), err)
-	case changed:
-		fmt.Fprintf(out, "  %s Updated %s\n", color.Green("✓"), color.Bold("CLAUDE.md (roles block)"))
 	}
 }
 

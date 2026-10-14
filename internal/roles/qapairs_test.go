@@ -61,7 +61,7 @@ func TestRenderQAPairsBlock_TableMatchesRoster(t *testing.T) {
 
 func TestRenderQAPairsBlock_NoQARoleNamesWhoGrades(t *testing.T) {
 	out := RenderQAPairsBlock([]string{"super", "eng1", "eng2", "eng3"})
-	if !strings.Contains(out, "no QA role: super grades or the operator adds one") {
+	if !strings.Contains(out, "no QA role: the engineer's DONE evidence is the gate") {
 		t.Errorf("no-QA roster must say who grades:\n%s", out)
 	}
 	if strings.Contains(out, "| eng1") {

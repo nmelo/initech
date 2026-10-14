@@ -244,7 +244,10 @@ func checkTemplateCoverage(templates, files map[string]string, p *config.Project
 			// A charter opens with a generated header (ini-vby5.1); the
 			// template reaches the file if the body under it matches.
 			body, _, _ := roles.ParseCharter(text)
-			if exists && body == roles.RenderString(rendered, "role_name", role) && rendered != "" {
+			// Charters keep only the role conditions the fleet satisfies
+			// (ini-vby5), as scaffold.RenderCharter does.
+			want := roles.ApplyRoleConditions(roles.RenderString(rendered, "role_name", role), p.Roles)
+			if exists && body == want && rendered != "" {
 				found = true
 			}
 		}

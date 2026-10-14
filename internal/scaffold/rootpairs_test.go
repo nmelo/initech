@@ -28,7 +28,7 @@ func TestRenderRootCLAUDE_QAPairsAndDirectRouting(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			out := RenderRootCLAUDE(&config.Project{Name: "p", Roles: tc.roles})
-			for _, h := range []string{"\n## QA pairs\n", "\n### Speed\n", "\n### Messaging between agents on a bead\n"} {
+			for _, h := range []string{"\n## QA pairs\n", "\n### Speed\n", "\n### Between agents on a bead\n"} {
 				if n := strings.Count(out, h); n != 1 {
 					t.Errorf("heading %q appears %d times, want 1", h, n)
 				}
@@ -44,7 +44,7 @@ func TestRenderRootCLAUDE_QAPairsAndDirectRouting(t *testing.T) {
 			if strings.Contains(out, "{{qa_pairs_table}}") {
 				t.Errorf("pairs placeholder left unrendered")
 			}
-			if has := strings.Contains(out, "no QA role: super grades or the operator adds one"); has != tc.noQALine {
+			if has := strings.Contains(out, "no QA role: the engineer's DONE evidence is the gate"); has != tc.noQALine {
 				t.Errorf("no-QA line present = %v, want %v", has, tc.noQALine)
 			}
 		})

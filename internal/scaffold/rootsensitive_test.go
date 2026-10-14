@@ -11,9 +11,10 @@ import (
 	"github.com/nmelo/initech/internal/roles"
 )
 
-// ini-vby5.3: one question decides the path of every change. The root names
-// only the roles the fleet has (pm ruling): sec and arch lines change with the
-// roles list, and hiring or firing re-renders them.
+// ini-vby5.3: the root and the charters name only the roles the fleet has
+// (pm ruling; end pass): sentences that name sec or arch are role blocks in
+// the root and role conditions in the charters, and hiring or firing
+// re-renders the root's blocks.
 
 func projectWith(roleNames ...string) *config.Project {
 	return &config.Project{Name: "acme", Root: "/work/acme", Roles: roleNames}
@@ -21,39 +22,75 @@ func projectWith(roleNames ...string) *config.Project {
 
 var standardFleet = []string{"super", "pm", "eng1", "eng2", "qa1", "qa2", "shipper"}
 
-func TestRenderRootCLAUDE_NamesOnlyTheRolesTheFleetHas(t *testing.T) {
+// renderFleet is the root and every charter a fleet of roleNames gets.
+func renderFleet(roleNames []string) map[string]string {
+	p := projectWith(roleNames...)
+	out := map[string]string{"root": RenderRootCLAUDE(p)}
+	for _, r := range roleNames {
+		out[r] = RenderCharter(p, p.Root, r)
+	}
+	return out
+}
+
+func TestRenderedFleet_NamesSecAndArchOnlyWhenTheFleetHasThem(t *testing.T) {
 	cases := []struct {
-		name    string
-		extra   []string
-		want    []string
-		mustNot []string
+		extra     []string
+		sec, arch bool
 	}{
-		{"no sec no arch", nil,
-			[]string{"pm rules on the approach alone", "QA gets the branch head", "goes to super, who rules or asks the operator"},
-			[]string{"sec", "arch"}},
-		{"sec", []string{"sec"},
-			[]string{"one joint ruling from pm and sec", "sec's conditions quoted verbatim", "sec and QA get the same SHA at once", "goes back to sec and QA"},
-			[]string{"pm rules on the approach alone", "arch"}},
-		{"arch", []string{"arch"},
-			[]string{"goes to arch through super", "ask arch for one structural review"},
-			[]string{"sec", "goes to super, who rules"}},
-		{"sec and arch", []string{"sec", "arch"},
-			[]string{"one joint ruling from pm and sec", "goes to arch through super"},
-			[]string{"pm rules on the approach alone", "goes to super, who rules"}},
+		{nil, false, false}, {[]string{"sec"}, true, false}, {[]string{"arch"}, false, true}, {[]string{"sec", "arch"}, true, true},
 	}
 	for _, c := range cases {
-		root := RenderRootCLAUDE(projectWith(append(append([]string{}, standardFleet...), c.extra...)...))
-		block := roleBlockOf(t, root)
-		for _, w := range c.want {
-			if !strings.Contains(block, w) {
-				t.Errorf("%s: block missing %q", c.name, w)
+		fleet := append(append([]string{}, standardFleet...), c.extra...)
+		named := map[string]bool{}
+		for file, text := range renderFleet(fleet) {
+			for _, role := range []string{"sec", "arch"} {
+				if containsWord(text, role) {
+					named[role] = true
+					if !hasRoleName(fleet, role) {
+						t.Errorf("fleet %v: %s names %s, which the fleet does not have", c.extra, file, role)
+					}
+				}
+			}
+			if strings.Contains(text, "{{") {
+				t.Errorf("fleet %v: %s has an unrendered marker", c.extra, file)
 			}
 		}
-		for _, n := range c.mustNot {
-			if containsWord(block, n) {
-				t.Errorf("%s: block mentions %q, which this fleet does not have", c.name, n)
-			}
+		// Positive twin: a fleet that has the role is told about it.
+		if named["sec"] != c.sec || named["arch"] != c.arch {
+			t.Errorf("fleet %v: named sec=%v arch=%v, want sec=%v arch=%v", c.extra, named["sec"], named["arch"], c.sec, c.arch)
 		}
+	}
+}
+
+func TestRenderRootCLAUDE_NoQAFleetIsNotSentToAQAPair(t *testing.T) {
+	noQA := RenderRootCLAUDE(projectWith("super", "pm", "eng1", "eng2"))
+	if strings.Contains(noQA, "your QA pair") || strings.Contains(noQA, "QA's verdict") {
+		t.Error("a fleet with no QA role is told to send work to QA")
+	}
+	if !strings.Contains(RenderRootCLAUDE(projectWith(standardFleet...)), "send it to your QA pair") {
+		t.Error("a fleet with QA is not told to send work to its QA pair")
+	}
+}
+
+func hasRoleName(roleNames []string, role string) bool {
+	for _, r := range roleNames {
+		if r == role {
+			return true
+		}
+	}
+	return false
+}
+
+func TestApplyRoleConditions_KeepsOnlyTheMatchingSpans(t *testing.T) {
+	in := "a{{if sec}} sec{{end}}{{if !sec}} nosec{{end}}\n{{if arch}}line\n{{end}}z"
+	if got := roles.ApplyRoleConditions(in, []string{"sec"}); got != "a sec\nz" {
+		t.Errorf("with sec: %q", got)
+	}
+	if got := roles.ApplyRoleConditions(in, []string{"arch"}); got != "a nosec\nline\nz" {
+		t.Errorf("with arch: %q", got)
+	}
+	if got := roles.ApplyRoleConditions(in, nil); got != "a nosec\nz" {
+		t.Errorf("fed nothing: %q", got)
 	}
 }
 
@@ -69,85 +106,118 @@ func writeRoot(t *testing.T, roleNames ...string) (*config.Project, string) {
 	return p, path
 }
 
-func TestRefreshRootRoleBlock_HiringSecRewritesTheBlock(t *testing.T) {
+// outsideBlocks is root with every role block's contents removed, so two
+// roots can be compared on what the project owns.
+func outsideBlocks(t *testing.T, root string) string {
+	t.Helper()
+	for _, name := range roles.RoleBlockNames {
+		i, j := strings.Index(root, roles.RoleBlockBegin(name)), strings.Index(root, roles.RoleBlockEnd(name))
+		if i < 0 || j < i {
+			t.Fatalf("root has no %s block", name)
+		}
+		root = root[:i] + root[j:]
+	}
+	return root
+}
+
+func TestRefreshRootRoleBlocks_HiringRewritesTheBlocksAndKeepsProjectEdits(t *testing.T) {
 	p, path := writeRoot(t, standardFleet...)
-	edited := strings.Replace(readFile(t, path), "This project also treats ", "This project also treats billing exports and ", 1)
+	edited := readFile(t, path)
+	edited = strings.Replace(edited, "(none yet)", "billing exports", 1)
+	edited = strings.Replace(edited, "Time box each step to 10-15 minutes", "Time box each step to 20 minutes", 1)
 	edited += "\n## Our own notes\n\nkept\n"
 	os.WriteFile(path, []byte(edited), 0644)
 
-	p.Roles = append(p.Roles, "sec")
-	changed, err := RefreshRootRoleBlock(p)
+	p.Roles = append(append([]string{}, standardFleet...), "sec", "arch")
+	changed, err := RefreshRootRoleBlocks(p)
 	if err != nil || !changed {
-		t.Fatalf("RefreshRootRoleBlock = %v, %v; want changed", changed, err)
+		t.Fatalf("RefreshRootRoleBlocks = %v, %v; want changed", changed, err)
 	}
 	got := readFile(t, path)
-	if !strings.Contains(roleBlockOf(t, got), "one joint ruling from pm and sec") {
-		t.Error("hiring sec did not put sec into the rendered block")
+	if outsideBlocks(t, got) != outsideBlocks(t, edited) {
+		t.Error("text outside the blocks changed; a project's own edits must survive a hire")
 	}
-	if strings.Contains(got, "pm rules on the approach alone") {
-		t.Error("the no-sec line survived hiring sec")
+	if !strings.Contains(got, "- `sec/` - ") {
+		t.Error("the Roles list does not name the hired sec")
 	}
-	before, after := splitAroundBlock(t, edited)
-	gotBefore, gotAfter := splitAroundBlock(t, got)
-	if before != gotBefore || after != gotAfter {
-		t.Error("text outside the block changed; a project's own edits must survive")
+	want := RenderRootCLAUDE(p)
+	for _, name := range roles.RoleBlockNames {
+		if !strings.Contains(got, roles.RenderRoleBlock(name, p.Roles)) || !strings.Contains(want, roles.RenderRoleBlock(name, p.Roles)) {
+			t.Errorf("block %s does not match a fleet with sec and arch", name)
+		}
 	}
 }
 
-func TestRefreshRootRoleBlock_FiringSecRewritesTheBlockBack(t *testing.T) {
+func TestRefreshRootRoleBlocks_FiringRewritesTheBlocksBack(t *testing.T) {
 	p, path := writeRoot(t, append(append([]string{}, standardFleet...), "sec", "arch")...)
 	p.Roles = standardFleet
-	changed, err := RefreshRootRoleBlock(p)
+	changed, err := RefreshRootRoleBlocks(p)
 	if err != nil || !changed {
-		t.Fatalf("RefreshRootRoleBlock = %v, %v; want changed", changed, err)
+		t.Fatalf("RefreshRootRoleBlocks = %v, %v; want changed", changed, err)
 	}
-	// Only the block is re-rendered; the Roles list above it is outside.
-	if got := readFile(t, path); roleBlockOf(t, got) != roleBlockOf(t, RenderRootCLAUDE(p)) {
-		t.Error("firing sec and arch did not give the block a fleet without them would get")
+	got := readFile(t, path)
+	for _, name := range roles.RoleBlockNames {
+		if !strings.Contains(got, roles.RenderRoleBlock(name, standardFleet)) {
+			t.Errorf("block %s does not match a fleet without sec and arch", name)
+		}
 	}
 }
 
-func TestRefreshRootRoleBlock_UnchangedRolesLeaveFileAlone(t *testing.T) {
+func TestRefreshRootRoleBlocks_UnchangedRolesLeaveFileAlone(t *testing.T) {
 	p, path := writeRoot(t, standardFleet...)
 	before := readFile(t, path)
-	changed, err := RefreshRootRoleBlock(p)
+	changed, err := RefreshRootRoleBlocks(p)
 	if err != nil || changed {
-		t.Fatalf("RefreshRootRoleBlock = %v, %v; want unchanged", changed, err)
+		t.Fatalf("RefreshRootRoleBlocks = %v, %v; want unchanged", changed, err)
 	}
 	if readFile(t, path) != before {
 		t.Error("file rewritten although nothing changed")
 	}
 }
 
-func TestRefreshRootRoleBlock_FedNothingTouchesNothing(t *testing.T) {
-	// No root file: nothing to refresh, nothing created.
+func TestRefreshRootRoleBlocks_FedNothingTouchesNothing(t *testing.T) {
 	p := projectWith(standardFleet...)
 	p.Root = t.TempDir()
-	if changed, err := RefreshRootRoleBlock(p); err != nil || changed {
+	if changed, err := RefreshRootRoleBlocks(p); err != nil || changed {
 		t.Fatalf("missing root: got %v, %v; want false, nil", changed, err)
 	}
 	if _, err := os.Stat(filepath.Join(p.Root, "CLAUDE.md")); !os.IsNotExist(err) {
 		t.Fatal("refresh created a root CLAUDE.md")
 	}
-	// A hand-written root with no markers, one marker, or markers out of
-	// order: refused with ErrNoRootRoleBlock, file byte-identical.
+	b, e := roles.RoleBlockBegin("bigger"), roles.RoleBlockEnd("bigger")
 	for name, body := range map[string]string{
 		"empty":      "",
 		"no markers": "# mine\n\nhand written\n",
-		"begin only": "# mine\n" + roles.RootRoleBlockBegin + "\nx\n",
-		"end only":   "# mine\n" + roles.RootRoleBlockEnd + "\n",
-		"end first":  roles.RootRoleBlockEnd + "\nx\n" + roles.RootRoleBlockBegin + "\n",
-		"two begins": roles.RootRoleBlockBegin + "\n" + roles.RootRoleBlockBegin + "\n" + roles.RootRoleBlockEnd + "\n",
+		"begin only": "# mine\n" + b + "\nx\n",
+		"end only":   "# mine\n" + e + "\n",
+		"end first":  e + "\nx\n" + b + "\n",
+		"two begins": b + "\n" + b + "\n" + e + "\n",
 	} {
 		path := filepath.Join(p.Root, "CLAUDE.md")
 		os.WriteFile(path, []byte(body), 0644)
-		changed, err := RefreshRootRoleBlock(p)
+		changed, err := RefreshRootRoleBlocks(p)
 		if changed || !errors.Is(err, ErrNoRootRoleBlock) {
 			t.Errorf("%s: got %v, %v; want false, ErrNoRootRoleBlock", name, changed, err)
 		}
 		if readFile(t, path) != body {
 			t.Errorf("%s: file changed", name)
 		}
+	}
+}
+
+func TestRefreshRootRoleBlocks_OneBlockMissingStillRefreshesTheOthers(t *testing.T) {
+	p, path := writeRoot(t, standardFleet...)
+	root := readFile(t, path)
+	i, j := strings.Index(root, roles.RoleBlockBegin("docs-owners")), strings.Index(root, roles.RoleBlockEnd("docs-owners"))
+	root = root[:i] + root[j+len(roles.RoleBlockEnd("docs-owners")):]
+	os.WriteFile(path, []byte(root), 0644)
+	p.Roles = append(append([]string{}, standardFleet...), "arch")
+	changed, err := RefreshRootRoleBlocks(p)
+	if !changed || !errors.Is(err, ErrNoRootRoleBlock) {
+		t.Fatalf("got %v, %v; want changed and ErrNoRootRoleBlock", changed, err)
+	}
+	if !strings.Contains(readFile(t, path), roles.RenderRoleBlock("bigger", p.Roles)) {
+		t.Error("the well-formed bigger block was not refreshed")
 	}
 }
 
@@ -158,24 +228,6 @@ func readFile(t *testing.T, path string) string {
 		t.Fatal(err)
 	}
 	return string(b)
-}
-
-func roleBlockOf(t *testing.T, root string) string {
-	t.Helper()
-	i, j := strings.Index(root, roles.RootRoleBlockBegin), strings.Index(root, roles.RootRoleBlockEnd)
-	if i < 0 || j < i {
-		t.Fatalf("root has no role block")
-	}
-	return root[i:j]
-}
-
-func splitAroundBlock(t *testing.T, root string) (string, string) {
-	t.Helper()
-	i, j := strings.Index(root, roles.RootRoleBlockBegin), strings.Index(root, roles.RootRoleBlockEnd)
-	if i < 0 || j < i {
-		t.Fatalf("root has no role block")
-	}
-	return root[:i], root[j:]
 }
 
 // containsWord reports whether w appears as a whole word (so "sec" does not

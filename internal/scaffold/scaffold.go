@@ -213,6 +213,7 @@ func TemplateForRole(name string) string {
 func RenderCharter(p *config.Project, root, roleName string) string {
 	body := roles.Render(TemplateForRole(roleName), RenderVarsFor(p, root, roleName))
 	body = roles.RenderString(body, "role_name", roleName)
+	body = roles.ApplyRoleConditions(body, p.Roles)
 	return roles.CharterHeader(TemplateNameForRole(roleName), roleName, body) + body
 }
 
@@ -282,10 +283,7 @@ func RenderRootCLAUDE(p *config.Project) string {
 	b.WriteString("| `skills/` | **How** is a repeated step done? | One skill per repeated procedure |\n")
 	b.WriteString("\n")
 	b.WriteString("## Roles\n\n")
-	for _, r := range p.Roles {
-		b.WriteString("- `" + r + "/` - " + roles.RoleSummary(r) + "\n")
-	}
-	b.WriteString("\n")
+	b.WriteString(roles.RenderRoleBlock("roles-list", p.Roles) + "\n\n")
 	for _, sec := range roles.RootSections(p.Roles) {
 		b.WriteString(roles.RenderString(sec, "qa_pairs_table", roles.RenderQAPairsBlock(p.Roles)))
 		b.WriteString("\n")
@@ -293,29 +291,21 @@ func RenderRootCLAUDE(p *config.Project) string {
 	return strings.TrimRight(b.String(), "\n") + "\n"
 }
 
-// hasRole reports whether the project has an agent named role exactly.
-func hasRole(p *config.Project, role string) bool {
-	for _, r := range p.Roles {
-		if r == role {
-			return true
-		}
-	}
-	return false
-}
-
-// ErrNoRootRoleBlock means the root CLAUDE.md has no single, well-formed
+// ErrNoRootRoleBlock means the root CLAUDE.md lacks at least one well-formed
 // role block (one begin marker, then one end marker): it was written by hand
-// or before the block existed. The file is left as it is.
+// or before the block existed. Blocks that are well formed are still
+// refreshed; the rest of the file is left as it is.
 var ErrNoRootRoleBlock = errors.New("root CLAUDE.md has no generated roles block")
 
-// RefreshRootRoleBlock re-renders the roles block of <p.Root>/CLAUDE.md for
-// p's current roles: the lines that name sec and arch only when the fleet has
-// them (ini-vby5.3). Only the text between the markers changes; everything
-// outside them is the project's own and is kept byte for byte. A missing
-// root is not an error (nothing to refresh); a root without a well-formed
-// block returns ErrNoRootRoleBlock untouched. Reports whether it rewrote the
-// file. add-agent and delete-agent call it after the roles list changes.
-func RefreshRootRoleBlock(p *config.Project) (bool, error) {
+// RefreshRootRoleBlocks re-renders every named role block of
+// <p.Root>/CLAUDE.md for p's current roles: the sentences that name sec and
+// arch only when the fleet has them (ini-vby5.3). Only the text between each
+// block's markers changes; everything outside them is the project's own and
+// is kept byte for byte. A missing root is not an error (nothing to refresh);
+// a block that is missing or malformed is skipped and reported as
+// ErrNoRootRoleBlock. Reports whether it rewrote the file. add-agent and
+// delete-agent call it after the roles list changes.
+func RefreshRootRoleBlocks(p *config.Project) (bool, error) {
 	path := filepath.Join(p.Root, "CLAUDE.md")
 	data, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
@@ -325,20 +315,24 @@ func RefreshRootRoleBlock(p *config.Project) (bool, error) {
 		return false, fmt.Errorf("read %s: %w", path, err)
 	}
 	old := string(data)
-	begin, end := roles.RootRoleBlockBegin, roles.RootRoleBlockEnd
-	i, j := strings.Index(old, begin), strings.Index(old, end)
-	if i < 0 || j < i || strings.Count(old, begin) != 1 || strings.Count(old, end) != 1 {
-		return false, ErrNoRootRoleBlock
+	updated := old
+	var missing error
+	for _, name := range roles.RoleBlockNames {
+		begin, end := roles.RoleBlockBegin(name), roles.RoleBlockEnd(name)
+		i, j := strings.Index(updated, begin), strings.Index(updated, end)
+		if i < 0 || j < i || strings.Count(updated, begin) != 1 || strings.Count(updated, end) != 1 {
+			missing = ErrNoRootRoleBlock
+			continue
+		}
+		updated = updated[:i] + roles.RenderRoleBlock(name, p.Roles) + updated[j+len(end):]
 	}
-	block := roles.RootRoleBlock(hasRole(p, "sec"), hasRole(p, "arch"))
-	updated := old[:i] + block[:len(block)-1] + old[j+len(end):]
 	if updated == old {
-		return false, nil
+		return false, missing
 	}
 	if err := os.WriteFile(path, []byte(updated), 0644); err != nil {
 		return false, fmt.Errorf("write %s: %w", path, err)
 	}
-	return true, nil
+	return true, missing
 }
 
 const gitignoreContent = `# Source code lives in submodules

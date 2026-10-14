@@ -54,7 +54,7 @@ func QAPairs(roles []string) []QAPair {
 
 // RenderQAPairsBlock renders the generated pairs table for a roster, fenced
 // by QAPairsBegin/QAPairsEnd and ending in a newline. A roster with no QA
-// role says who grades instead; one with no engineers says the table fills
+// role says what gates a bead instead; one with no engineers says the table fills
 // in as they are added. RenderRootCLAUDE puts it in place of
 // {{qa_pairs_table}} in RootQAPairsSection.
 func RenderQAPairsBlock(roles []string) string {
@@ -68,7 +68,7 @@ func RenderQAPairsBlock(roles []string) string {
 			b.WriteString("| " + strings.Join(p.Engineers, ", ") + " | " + p.QA + " |\n")
 		}
 	case hasFamily(roles, FamilyEng):
-		b.WriteString("There is no QA role: super grades or the operator adds one.\n")
+		b.WriteString("There is no QA role: the engineer's DONE evidence is the gate, and super closes on it after checking it (super never grades).\n")
 	default:
 		b.WriteString("No engineer roles yet; the table fills in as they are added.\n")
 	}
