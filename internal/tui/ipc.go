@@ -672,12 +672,10 @@ func bodyTextVisible(p *Pane, ps *pendingSubmit) bool {
 	if !ok {
 		return false
 	}
-	if provenRunes(rows, ps.bodyLines) >= minProvenRunes {
-		return true
-	}
-	body := stripSpace(strings.Join(ps.bodyLines, ""))
-	return body != "" && len([]rune(body)) < minProvenRunes &&
-		strings.Contains(stripSpace(strings.Join(rows, "")), body)
+	// Rune proof only. No short-body form: unlike submitStillHeld, a wrong
+	// yes here presses Enter, and a short body is text the operator could
+	// have typed.
+	return provenRunes(rows, ps.bodyLines) >= minProvenRunes
 }
 
 // composerRegion is the composer block, or -- when Claude's ❯ row has
@@ -1775,11 +1773,17 @@ func (p *Pane) surfaceUndeliveredSubmit(ps *pendingSubmit, why string) {
 		return // Another resolver got there first; one message, one report.
 	}
 	waited := time.Since(ps.withheldAt).Round(time.Second)
-	tail, found := composerTail(p)
+	// The screen fields are diagnostics: a pane with no screen still gets its
+	// report (ini-cg8y).
+	tail, found, composer, inBlock := "", false, "(no screen)", false
+	if p.emu != nil {
+		tail, found = composerTail(p)
+		composer, inBlock = composerSnapshot(p), found && submitStillHeld(p, tail, ps)
+	}
 	LogInfo("inject", "withheld submit NOT DELIVERED", "pane", p.name, "mode", ps.mode,
 		"reason", why, "waited", waited, "text", ps.preview,
 		"tail_at_withhold", logSnippet(ps.tailAtWithhold), "tail_now", logSnippet(tail),
-		"composer", composerSnapshot(p), "body_in_block", found && submitStillHeld(p, tail, ps),
+		"composer", composer, "body_in_block", inBlock,
 		"loop_missed_last_min", loopMissedLastMinute.Load())
 	p.emitUndeliveredSubmit(ps, why, waited)
 }
