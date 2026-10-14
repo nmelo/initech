@@ -167,6 +167,17 @@ const composerFrameMaxRows = 20
 // is read as before. Transcript ends with Claude's own lines ("✻ … done"),
 // not with a dialog's answer row, so quoted dialogs above it are still skipped.
 func liveDialogRows(rows []string) []string {
+	top, bottom, ok := lowestComposerFrame(rows)
+	if !ok || answerRowJustAbove(rows, top) {
+		return rows
+	}
+	return rows[bottom+1:]
+}
+
+// lowestComposerFrame finds the composer frame nearest the bottom: a ─ rule
+// at top, the ❯ prompt row under it, a ─ rule at bottom, at most
+// composerFrameMaxRows apart. ok is false when there is none.
+func lowestComposerFrame(rows []string) (top, bottom int, ok bool) {
 	for bottom := len(rows) - 1; bottom >= 2; bottom-- {
 		if !isComposerRule(rows[bottom]) {
 			continue
@@ -181,12 +192,9 @@ func liveDialogRows(rows []string) []string {
 		if !isComposerPromptRow(rows[top+1]) {
 			continue
 		}
-		if answerRowJustAbove(rows, top) {
-			return rows
-		}
-		return rows[bottom+1:]
+		return top, bottom, true
 	}
-	return rows
+	return 0, 0, false
 }
 
 // answerRowJustAbove reports whether the last non-blank row above row index
@@ -432,12 +440,25 @@ func paneShowsIdleComposer(p *Pane) bool {
 }
 
 // screenShowsIdleComposer is paneShowsIdleComposer over an already-read screen.
+//
+// THE PROMPT MUST BE THE COMPOSER FRAME, not any ❯ on screen (ini-0g5s).
+// A dialog's own selection cursor ("❯ 1. Yes") is a ❯ too, and a dialog whose
+// wording the matchers do not know (a Write-file prompt: "Do you want to
+// create w.txt?") reads as no dialog, so "no dialog + a ❯" called an open
+// dialog idle and the latch cleared under it. Idle now needs Claude's measured
+// resting shape: the lowest composer frame, nothing below it offering an
+// answer (a fake frame inside a dialog's preview has the options under it),
+// and no answer row right above it (the older layout with the input box under
+// a live dialog).
 func screenShowsIdleComposer(rows []string) bool {
 	if screenShowsModal(rows) {
 		return false
 	}
-	_, _, hasPrompt := composerTailFromRows(rows)
-	return hasPrompt
+	top, bottom, ok := lowestComposerFrame(rows)
+	if !ok || answerRowJustAbove(rows, top) {
+		return false
+	}
+	return !screenOffersAnswer(strings.Join(rows[bottom+1:], "\n"))
 }
 
 // observeIdlePrompt records whether the pane is at rest right now and returns

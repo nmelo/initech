@@ -373,3 +373,108 @@ func TestLiveDialogRegion_FakeFrameInsideADialogDoesNotHideIt(t *testing.T) {
 		t.Error("a fake frame directly above the question hid an open dialog")
 	}
 }
+
+// writeFileDialog is qa2's capture of a real Write-file permission dialog
+// (Claude Code 2.1.299, default mode), path made generic. Its question is
+// wording the matchers do not know, its own selection cursor is a ❯, and the
+// file preview carries a fake composer frame.
+var writeFileDialog = []string{
+	"⏺ Write(w.txt)",
+	"",
+	composerRuleText,
+	" Create file",
+	" ../tmp/w.txt",
+	"",
+	"╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌",
+	"  1 first line",
+	"  2 ────────────────────────────────────────────────────────────",
+	"  3 ❯ fake prompt",
+	"  4 ────────────────────────────────────────────────────────────",
+	"  5 last line",
+	"╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌",
+	" Do you want to create w.txt?",
+	" ❯ 1. Yes",
+	"   2. Yes, and switch to accept edits (auto-approve file edits and common file commands) for this session (shift+tab)",
+	"   3. No",
+	"",
+	" Esc to cancel · Tab to amend",
+}
+
+// qa2's FAIL as a cell: an unconfirmed latch on a real Write dialog must hold
+// through the idle window and past it. The dialog's "❯ 1. Yes" is not an idle
+// prompt, so nothing clears it but the existing 90 s heal or an answer.
+func TestLiveDialogRegion_RealWriteDialogKeepsItsLatch(t *testing.T) {
+	tui := newTestTUI()
+	p, _, _ := heldMailPane(t, "qa2")
+	p.emu = claudeScreen(t, 40, writeFileDialog)
+	tui.panes = []PaneView{p}
+	if screenShowsIdleComposer(screenOf(p.emu)) {
+		t.Fatal("an open Write dialog reads as an idle composer")
+	}
+	p.latchDialogOpen("Claude needs your permission")
+	raise := time.Now()
+	p.mu.Lock()
+	p.dialogOpenAt = raise
+	p.mu.Unlock()
+	for s := 0; s <= 30; s++ {
+		tui.lastModalMaint = time.Time{}
+		tui.modalMaintenance(raise.Add(time.Duration(s) * time.Second))
+		if !p.dialogLatched() {
+			t.Fatalf("the latch on an open Write dialog cleared %ds after the raise; the next send lands in it", s)
+		}
+	}
+	if !paneHasModal(p) {
+		t.Error("a send to a pane with an open Write dialog would not defer")
+	}
+}
+
+// The same dialog with the fake frame in a preview that has no line numbers:
+// the options under the fake frame keep it from passing for an idle composer.
+func TestLiveDialogRegion_FakeFrameInAPreviewIsNotIdle(t *testing.T) {
+	lines := []string{
+		composerRuleText,
+		" Bash command",
+		composerRuleText,
+		"❯ ",
+		composerRuleText,
+		" Do you want to run this?",
+		" ❯ 1. Yes",
+		"   2. No",
+		" Esc to cancel · Tab to amend",
+	}
+	if screenShowsIdleComposer(screenOf(claudeScreen(t, 40, lines))) {
+		t.Error("a fake frame with answer rows below it read as Claude at rest")
+	}
+}
+
+// Positive twin: Claude's real resting screen, after Esc closed the prompt,
+// is idle, so the latch clear still has something to see.
+func TestLiveDialogRegion_RealRestingScreenIsIdle(t *testing.T) {
+	for _, tc := range []struct {
+		file string
+		rows int
+	}{
+		{"claude_permission_default_40_after_esc.raw", 40},
+		{"claude_permission_bypass_ask_50_after_esc.raw", 50},
+	} {
+		if !screenShowsIdleComposer(replayFixture(t, tc.file, tc.rows)) {
+			t.Errorf("%s: Claude's real resting screen is not read as idle", tc.file)
+		}
+	}
+}
+
+// The older layout (input box under a live dialog) with wording the matchers
+// do not know: the dialog check misses it, so the answer row right above the
+// frame is what keeps it from reading as idle.
+func TestLiveDialogRegion_UnknownDialogAboveTheComposerIsNotIdle(t *testing.T) {
+	lines := []string{
+		" Do you want to create w.txt?",
+		" ❯ 1. Yes",
+		"   2. No",
+		"",
+	}
+	lines = append(lines, composerAtRest...)
+	if screenShowsIdleComposer(screenOf(claudeScreen(t, 40, lines))) {
+		t.Error("a dialog drawn above the input box read as Claude at rest")
+	}
+}

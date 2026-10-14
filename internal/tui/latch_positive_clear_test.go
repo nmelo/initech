@@ -21,7 +21,9 @@ func latchedPane(t *testing.T) *Pane {
 
 // showIdlePrompt paints the pane's normal resting composer.
 func showIdlePrompt(p *Pane) {
-	_, _ = p.emu.Write([]byte("\x1b[2J\x1b[24;1H❯ "))
+	// Claude's measured resting shape: the composer frame (ini-0g5s: a bare ❯
+	// is also a dialog's selection cursor, so it no longer counts as idle).
+	_, _ = p.emu.Write([]byte("\x1b[2J\x1b[22;1H" + composerRuleText[:p.emu.Width()*3] + "\r\n❯ \r\n" + composerRuleText[:p.emu.Width()*3]))
 }
 
 // showNothing paints a screen with neither a dialog nor a prompt: the
