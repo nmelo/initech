@@ -58,6 +58,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 	// Load or create config
 	cfgPath := filepath.Join(wd, "initech.yaml")
 	var p *config.Project
+	freshConfig := false
 
 	if _, err := os.Stat(cfgPath); err == nil {
 		p, err = config.Load(cfgPath)
@@ -66,10 +67,11 @@ func runInit(cmd *cobra.Command, args []string) error {
 		}
 		fmt.Fprintln(out, color.Green("\u2713")+" Loaded existing "+color.Bold("initech.yaml"))
 	} else {
-		p, err = interactiveSetup(wd)
+		p, err = initSetup(wd)
 		if err != nil {
 			return err
 		}
+		freshConfig = true
 		if err := config.Write(cfgPath, p); err != nil {
 			return err
 		}
@@ -103,6 +105,20 @@ func runInit(cmd *cobra.Command, args []string) error {
 	if maybeAskAttentionConsent(p, out) {
 		if err := config.Write(cfgPath, p); err != nil {
 			return fmt.Errorf("record attention consent: %w", err)
+		}
+	}
+
+	// Commented examples of what a trained fleet sets (ini-vby5.12). LAST,
+	// after every config.Write above: Write regenerates the file and would
+	// drop them. A plain init on an existing project leaves the file alone;
+	// --force adds only the examples it is missing, never touching a value.
+	if freshConfig || initForce {
+		n, err := config.AppendMissingExamples(cfgPath)
+		if err != nil {
+			return fmt.Errorf("add config examples: %w", err)
+		}
+		if n > 0 {
+			fmt.Fprintf(out, "  %s %s\n", color.Green("\u2713"), color.Dim(fmt.Sprintf("Added %d commented example(s) to initech.yaml", n)))
 		}
 	}
 
@@ -255,6 +271,10 @@ func runInit(cmd *cobra.Command, args []string) error {
 
 	return nil
 }
+
+// initSetup builds a new project's config; a variable so tests can skip the
+// interactive prompts.
+var initSetup = interactiveSetup
 
 func interactiveSetup(wd string) (*config.Project, error) {
 	reader := bufio.NewReader(os.Stdin)
