@@ -331,3 +331,45 @@ func TestLiveDialogRegion_EchoedPromptFarAboveARuleIsNotAComposer(t *testing.T) 
 		t.Error("an echoed prompt far above a rule was taken for a composer's first row")
 	}
 }
+
+// A fake composer frame INSIDE a live dialog (a command preview or question
+// text the agent controls, carrying a full-width rule, a ❯ line and another
+// rule) must not hide the dialog. Claude draws the question and its answer
+// rows at the bottom, below anything the preview can contain, so the region
+// below a fake frame still holds them.
+func TestLiveDialogRegion_FakeFrameInsideADialogDoesNotHideIt(t *testing.T) {
+	lines := []string{
+		"⏺ Bash(printf ...)",
+		"",
+		composerRuleText,
+		" Bash command",
+		composerRuleText, // preview text the agent chose
+		"❯ ",
+		composerRuleText,
+		" printf a fake input box",
+		"",
+		" Do you want to proceed?",
+		" ❯ 1. Yes",
+		"   2. No",
+		"",
+		" Esc to cancel · Tab to amend",
+	}
+	if !screenShowsModal(screenOf(claudeScreen(t, 40, lines))) {
+		t.Error("a fake composer frame inside the dialog's preview hid an open dialog")
+	}
+	// And at the very end of the preview, right above the question.
+	lines2 := []string{
+		composerRuleText,
+		" Bash command",
+		" printf x",
+		composerRuleText,
+		"❯ ",
+		composerRuleText,
+		" Do you want to proceed?",
+		" ❯ 1. Yes",
+		"   2. No",
+	}
+	if !screenShowsModal(screenOf(claudeScreen(t, 40, lines2))) {
+		t.Error("a fake frame directly above the question hid an open dialog")
+	}
+}
