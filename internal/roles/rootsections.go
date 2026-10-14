@@ -26,7 +26,7 @@ CLAUDE.md adds what your role does differently.
 - Comment a PLAN on the bead before writing code: numbered steps, files, how you will test.
 - Write tests with the code. A bug fix gets a regression test that fails before the fix and passes after.
 - Push before marking ready_for_qa. QA pulls from the remote; an unpushed commit does not exist for them.
-- Finish with ` + "`" + `initech deliver <id>` + "`" + `, to the agent QA pairs names below: it moves the bead one step, clears the TUI and tells whoever acts next. Only QA moves a bead to qa_passed; only super closes beads (Filing and closing).
+- Finish with ` + "`" + `initech deliver <id>` + "`" + ` (the QA pairs section says who receives it): it moves the bead one step, clears the TUI and tells whoever acts next. Where the fleet has QA, only QA moves a bead to qa_passed; only super closes beads (Filing and closing).
 `
 
 // RootEscalationSection is when an agent messages, escalates or decides on its own.
@@ -100,7 +100,7 @@ const RootQAPairsSection = `## QA pairs
 {{roles:handoff}}
 Merge the moment the needed verdicts are on the bead. Only a P0 interrupts work in progress.
 
-Each engineer hands ready work to the QA named in this table, generated from the roles list; the project may edit it.
+The table below is generated from the roles list; the project may edit it.
 
 {{qa_pairs_table}}`
 
@@ -110,7 +110,7 @@ const RootFilingClosingSection = `## Filing and closing
 
 - Every bead exists because the operator said yes: pm drafts the proposal (the bead, why, a recommendation, the alternatives), super asks the operator one question, pm files on the yes. pm may file a P0/P1 defect at once and say so. Only pm runs ` + "`" + `bd create` + "`" + `.
 - A finding inside in-flight work stays on that bead; a finding outside your bead is one line to super, who reports it to pm.
-- Super closes a bead once the engineer and QA are done and the change is merged on main, on evidence super checked itself; closing never waits for a release. Engineers deliver; they do not close. Deliver once per hand-off; never repeat it to re-report, since each deliver walks the bead one more step.
+- Super closes a bead once the engineer is done, the fleet's QA (if it has one) has passed it, and the change is merged on main, on evidence super checked itself; closing never waits for a release. Engineers deliver; they do not close. Deliver once per hand-off; never repeat it to re-report, since each deliver walks the bead one more step.
 - Priority is the true severity, never inflated.
 - **Titles are for the operator:** ` + "`" + `<area>: <plain-English outcome or symptom>` + "`" + `, ten words or fewer after the area, no acronyms, tool, class or spec names. Everywhere else, refer to work by title with the id in parentheses, "Login survives a restart (app-42)", never the bare id.
 `

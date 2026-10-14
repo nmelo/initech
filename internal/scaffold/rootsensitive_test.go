@@ -63,9 +63,16 @@ func TestRenderedFleet_NamesSecAndArchOnlyWhenTheFleetHasThem(t *testing.T) {
 }
 
 func TestRenderRootCLAUDE_NoQAFleetIsNotSentToAQAPair(t *testing.T) {
-	noQA := RenderRootCLAUDE(projectWith("super", "pm", "eng1", "eng2"))
-	if strings.Contains(noQA, "your QA pair") || strings.Contains(noQA, "QA's verdict") {
-		t.Error("a fleet with no QA role is told to send work to QA")
+	p := projectWith("super", "pm", "eng1", "eng2")
+	noQA := RenderRootCLAUDE(p) + RenderCharter(p, p.Root, "super")
+	for _, assumes := range []string{"your QA pair", "QA's verdict", "Only QA moves", "QA are done", "QA has passed it", "QA is not yours to route", "hands ready work to the QA"} {
+		if strings.Contains(noQA, assumes) {
+			t.Errorf("a fleet with no QA role is told %q", assumes)
+		}
+	}
+	std := projectWith(standardFleet...)
+	if !strings.Contains(RenderCharter(std, std.Root, "super"), "QA is not yours to route") {
+		t.Error("super in a fleet with QA lost its QA-routing line")
 	}
 	if !strings.Contains(RenderRootCLAUDE(projectWith(standardFleet...)), "send it to your QA pair") {
 		t.Error("a fleet with QA is not told to send work to its QA pair")
@@ -91,6 +98,10 @@ func TestApplyRoleConditions_KeepsOnlyTheMatchingSpans(t *testing.T) {
 	}
 	if got := roles.ApplyRoleConditions(in, nil); got != "a nosec\nz" {
 		t.Errorf("fed nothing: %q", got)
+	}
+	// "qa" is the QA family: qa1 counts, an exact "qa" role is not needed.
+	if got := roles.ApplyRoleConditions("{{if qa}}Q{{end}}{{if !qa}}N{{end}}", []string{"qa2"}); got != "Q" {
+		t.Errorf("qa family: %q", got)
 	}
 }
 

@@ -125,7 +125,7 @@ Working directory: {{project_root}}/{{role_name}}
 - **Never queue while busy.** Hold an agent's next task until it reports done; a message mid-work bleeds into its context.
 - **QA follows the one rule in the root** (Sensitive changes). You do not choose a QA depth per bead.
 - **A ` + "`" + `bigger:` + "`" + ` line** {{if arch}}goes to arch at once{{end}}{{if !arch}}is yours: rule on it or ask the operator{{end}}. A ` + "`" + `doc gap:` + "`" + ` line goes to pm.
-- **QA is not yours to route.** Engineers send ready work to their QA pair{{if sec}} (and to sec, when sensitive){{end}} directly (QA pairs in the root CLAUDE.md). Step in only when a bead sits in ready_for_qa unclaimed: ` + "`" + `bd list --status ready_for_qa` + "`" + `.
+{{if qa}}- **QA is not yours to route.** Engineers send ready work to their QA pair, and a sensitive change to its other reviewers, directly (QA pairs in the root CLAUDE.md). Step in only when a bead sits in ready_for_qa unclaimed: ` + "`" + `bd list --status ready_for_qa` + "`" + `.{{end}}{{if !qa}}- **There is no QA role:** check each DONE's evidence yourself before closing (Closing below); a bead in ready_for_qa is waiting on you.{{end}}
 
 ## What Goes to the Operator
 
@@ -143,7 +143,7 @@ Working directory: {{project_root}}/{{role_name}}
 
 ## Closing
 
-You close a bead once the engineer and QA are done and it is merged, never held for a release. Before closing: a positive marker on the served artifact, checked yourself (never the deliverer's claim, never the defect's absence); the CI conclusion read, not the job colour; the docs line opened at the section it names (a reflex or false "no change" goes back to the author). An epic's status follows its children.
+You close a bead once the engineer is done, {{if qa}}QA has passed it{{end}}{{if !qa}}you have checked its DONE evidence (there is no QA role){{end}}, and it is merged, never held for a release. Before closing: a positive marker on the served artifact, checked yourself (never the deliverer's claim, never the defect's absence); the CI conclusion read, not the job colour; the docs line opened at the section it names (a reflex or false "no change" goes back to the author). An epic's status follows its children.
 
 ## Standing Practice
 

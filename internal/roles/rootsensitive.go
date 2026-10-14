@@ -147,7 +147,7 @@ func hasRole(roleNames []string, role string) bool {
 }
 
 // roleCondition matches {{if <role>}}...{{end}} and {{if !<role>}}...{{end}}
-// spans (no nesting).
+// spans (no nesting). The role "qa" means any QA role (qa1, qa2, ...).
 var roleCondition = regexp.MustCompile(`(?s)\{\{if (!?)([a-z][a-z0-9-]*)\}\}(.*?)\{\{end\}\}`)
 
 // ApplyRoleConditions keeps the text of each {{if <role>}}...{{end}} span
@@ -158,7 +158,11 @@ var roleCondition = regexp.MustCompile(`(?s)\{\{if (!?)([a-z][a-z0-9-]*)\}\}(.*?
 func ApplyRoleConditions(text string, roleNames []string) string {
 	return roleCondition.ReplaceAllStringFunc(text, func(m string) string {
 		g := roleCondition.FindStringSubmatch(m)
-		if hasRole(roleNames, g[2]) != (g[1] == "!") {
+		has := hasRole(roleNames, g[2])
+		if g[2] == "qa" {
+			has = hasFamily(roleNames, FamilyQA) // any QA role: qa1, qa2, ...
+		}
+		if has != (g[1] == "!") {
 			return g[3]
 		}
 		return ""
