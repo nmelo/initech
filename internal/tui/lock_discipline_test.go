@@ -50,6 +50,7 @@ var lockingCallAllowlist = map[string]string{
 	// The writer side. readLoop is the goroutine that holds the lock in
 	// hover's cycle; it may wait on itself.
 	"Pane.readLoop":                 "readLoop goroutine: the writer itself",
+	"memprobeEmit":                  "RIG-ONLY (ini-38nc, never on main): its own goroutine, once a minute",
 	"Pane.checkAltScreenTransition": "readLoop goroutine, under renderMu after Write",
 	"Pane.resizeLocked":             "readLoop (alt-screen transition) and daemon Resize; the main loop uses resizeFromMainLoop",
 	"Pane.ResizeExact":              "daemon control goroutine (headless sizing)",

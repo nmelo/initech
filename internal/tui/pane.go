@@ -575,6 +575,7 @@ func (p *Pane) readLoop() {
 				w0 = time.Now()
 			}
 			p.emu.Write(data)
+			memprobeWrite(data) // RIG-ONLY (ini-38nc), never on main
 			if perfExtras() {
 				p.perfEmuNs.Add(int64(time.Since(w0)))
 			}

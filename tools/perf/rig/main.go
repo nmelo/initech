@@ -38,6 +38,7 @@ var (
 	flagRows   = flag.Int("rows", 60, "TUI height")
 	flagBin    = flag.String("bin", "", "use this initech binary instead of building one (a lab host with no Go or checkout); needs -sha")
 	flagSHA    = flag.String("sha", "", "the commit -bin was built from; named on the table")
+	flagHeap   = flag.String("heap", "", "RIG-ONLY (ini-38nc): comma-separated offsets into the replay phase (e.g. 30m,60m) at which to save a heap profile taken after a forced collection")
 	flagLocal  = flag.Bool("local", false, "a dev Mac that runs other claude sessions: record the host-wide claude count instead of failing on it; claude under the rig's TUI still fails the run")
 )
 
@@ -255,6 +256,30 @@ func runOne(s rigSpec, mode, work string) *runResult {
 				r.profile = profile
 			}
 		}()
+
+		// RIG-ONLY (ini-38nc): heap profiles at fixed offsets into the
+		// replay phase. ?gc=1 collects first, so inuse_space is live heap.
+		for _, off := range strings.Split(*flagHeap, ",") {
+			d, err := time.ParseDuration(strings.TrimSpace(off))
+			if err != nil || d <= 0 {
+				continue
+			}
+			go func(d time.Duration) {
+				time.Sleep(time.Until(tIdleEnd.Add(d)))
+				if time.Now().After(tEnd) {
+					return
+				}
+				resp, err := http.Get(fmt.Sprintf("http://localhost:%d/debug/pprof/heap?gc=1", port))
+				if err != nil {
+					return
+				}
+				defer resp.Body.Close()
+				if f, err := os.Create(filepath.Join(work, fmt.Sprintf("heap-n%d-%s-%s.pb.gz", s.panes, mode, d))); err == nil {
+					io.Copy(f, resp.Body)
+					f.Close()
+				}
+			}(d)
+		}
 
 		rng := rand.New(rand.NewSource(int64(s.panes)))
 		const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"

@@ -304,6 +304,7 @@ func (t *TUI) perfMaybeRoll(now time.Time) {
 		return
 	}
 	loopMissedLastMinute.Store(s.missed)
+	t.memprobeRoll() // RIG-ONLY (ini-38nc), never on main
 	s.paneCount = len(t.panes)
 	if perfExtras() {
 		for _, pv := range t.panes {
