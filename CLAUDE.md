@@ -8,7 +8,7 @@ Initech is a TUI-based multi-agent orchestrator. It manages PTY-based agent pane
 
 ## Tech Stack
 
-- Language: Go 1.26
+- Language: Go 1.27
 - Dependencies: cobra (CLI), yaml.v3 (config), charmbracelet/ultraviolet + x/vt (terminal emulation), tcell (TUI), creack/pty (PTY management)
 - Issue tracking: beads (bd CLI)
 

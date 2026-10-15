@@ -29,7 +29,7 @@ Every bug-fix PR must include a test that fails on `main` and passes with the fi
 
 ## Development Setup
 
-Requires Go 1.25+.
+Requires Go 1.27+.
 
 ```bash
 git clone https://github.com/nmelo/initech.git
