@@ -27,19 +27,20 @@ import (
 )
 
 var (
-	flagN      = flag.String("n", "10", "comma-separated pane counts (each: 1 focused shell + N-1 replayers)")
-	flagIdle   = flag.Duration("idle", 60*time.Second, "idle phase before the replayers start")
-	flagReplay = flag.Duration("replay", 120*time.Second, "replay phase")
-	flagRec    = flag.String("rec", "", "shape-only recording to replay; empty = a rig-generated synthetic one")
-	flagModes  = flag.String("modes", "staggered,burst", "staggered offsets, aligned burst, or both")
-	flagOut    = flag.String("out", "", "also write the table to this file")
-	flagRoot   = flag.String("root", "", "run root (short: a Unix socket path over ~100 chars fails); default /tmp/iq-rig-<user>")
-	flagCols   = flag.Int("cols", 200, "TUI width")
-	flagRows   = flag.Int("rows", 60, "TUI height")
-	flagBin    = flag.String("bin", "", "use this initech binary instead of building one (a lab host with no Go or checkout); needs -sha")
-	flagSHA    = flag.String("sha", "", "the commit -bin was built from; named on the table")
-	flagHeap   = flag.String("heap", "", "RIG-ONLY (ini-38nc): comma-separated offsets into the replay phase (e.g. 30m,60m) at which to save a heap profile taken after a forced collection")
-	flagLocal  = flag.Bool("local", false, "a dev Mac that runs other claude sessions: record the host-wide claude count instead of failing on it; claude under the rig's TUI still fails the run")
+	flagN           = flag.String("n", "10", "comma-separated pane counts (each: 1 focused shell + N-1 replayers)")
+	flagIdle        = flag.Duration("idle", 60*time.Second, "idle phase before the replayers start")
+	flagReplay      = flag.Duration("replay", 120*time.Second, "replay phase")
+	flagRec         = flag.String("rec", "", "shape-only recording to replay; empty = a rig-generated synthetic one")
+	flagModes       = flag.String("modes", "staggered,burst", "staggered offsets, aligned burst, or both")
+	flagOut         = flag.String("out", "", "also write the table to this file")
+	flagRoot        = flag.String("root", "", "run root (short: a Unix socket path over ~100 chars fails); default /tmp/iq-rig-<user>")
+	flagCols        = flag.Int("cols", 200, "TUI width")
+	flagRows        = flag.Int("rows", 60, "TUI height")
+	flagBin         = flag.String("bin", "", "use this initech binary instead of building one (a lab host with no Go or checkout); needs -sha")
+	flagSHA         = flag.String("sha", "", "the commit -bin was built from; named on the table")
+	flagAllowRunner = flag.Bool("allow-runner", false, "RIG-ONLY (ini-38nc): run even while a CI runner job is active (heap levels are not timing; timings from such a run are not evidence)")
+	flagHeap        = flag.String("heap", "", "RIG-ONLY (ini-38nc): comma-separated offsets into the replay phase (e.g. 30m,60m) at which to save a heap profile taken after a forced collection")
+	flagLocal       = flag.Bool("local", false, "a dev Mac that runs other claude sessions: record the host-wide claude count instead of failing on it; claude under the rig's TUI still fails the run")
 )
 
 func main() {
@@ -139,7 +140,7 @@ func runOne(s rigSpec, mode, work string) *runResult {
 
 	waitForLoad(30)
 	r.runnerBusy = countNamed(psComm(), "Runner.Worker") > 0
-	if r.runnerBusy {
+	if r.runnerBusy && !*flagAllowRunner {
 		r.verdict = "SKIPPED: a CI runner job is active"
 		return r
 	}
