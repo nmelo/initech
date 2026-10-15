@@ -972,8 +972,6 @@ func waitForQuiescence(lastOutput func() time.Time, stable, cap time.Duration, q
 	}
 }
 
-// waitForInit polls a newly started pane for signs of initialization.
-// Returns nil when PTY output is detected, or an error after resumeTimeout.
 // spawnPane creates a resumed agent's successor pane: NewPane unless a test
 // set t.paneSpawner.
 func (t *TUI) spawnPane(cfg PaneConfig, rows, cols int) (*Pane, error) {
@@ -983,6 +981,8 @@ func (t *TUI) spawnPane(cfg PaneConfig, rows, cols int) (*Pane, error) {
 	return NewPane(cfg, rows, cols)
 }
 
+// waitForInit polls a newly started pane for signs of initialization.
+// Returns nil when PTY output is detected, or an error after resumeTimeout.
 func (t *TUI) waitForInit(pane *Pane) error {
 	deadline := time.After(resumeTimeout)
 	tick := time.NewTicker(250 * time.Millisecond)
