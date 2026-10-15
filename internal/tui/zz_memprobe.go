@@ -28,7 +28,9 @@ func memprobeWrite(b []byte) {
 	if !memprobeLeakOn {
 		return
 	}
-	c := append([]byte(nil), b...)
+	// 64x the read, so a working instrument cannot miss it beside scrollback.
+	c := make([]byte, 64*len(b))
+	copy(c, b)
 	memprobeMu.Lock()
 	memprobeLeak = append(memprobeLeak, c)
 	memprobeMu.Unlock()
