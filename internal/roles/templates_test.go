@@ -339,3 +339,13 @@ func TestRoleTemplates_OpenWithThePointerToTheRoot(t *testing.T) {
 		}
 	}
 }
+
+// ini-1q3x: supers avoided assign for fold-ins and untracked work, so the TUI
+// never learned of them. The generated super charter says to use it for
+// every hand-off to an engineer.
+func TestSuperTemplate_UsesAssignForEveryHandOffToAnEngineer(t *testing.T) {
+	const want = "Use `initech assign` for every hand-off to an engineer, including fold-ins, re-dispatches and work with no bead."
+	if !strings.Contains(SuperTemplate, want) {
+		t.Errorf("SuperTemplate is missing the line %q", want)
+	}
+}

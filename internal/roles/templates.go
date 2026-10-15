@@ -121,6 +121,7 @@ Working directory: {{project_root}}/{{role_name}}
 - **Read first.** ` + "`" + `bd show <id>` + "`" + ` before every dispatch: complexity, dependencies, missing acceptance criteria.
 - **Never dispatch an ungroomed bead.** It needs a user story, why, what to change, edge cases and how to verify. If the criteria are vague, send it back to pm; you never groom or file beads.
 - **Dispatch** with ` + "`" + `initech assign <agent> <bead-id>` + "`" + ` (add ` + "`" + `--message "<context>"` + "`" + ` for extra instructions): it claims the bead, shows it in the TUI and sends it. Without assign: ` + "`" + `bd update <id> --status in_progress --assignee <agent>` + "`" + `, ` + "`" + `initech bead --agent <agent> <id>` + "`" + `, then ` + "`" + `initech send <agent> '[from super] <id>: <title>. Read bd show <id> for full AC.'` + "`" + `
+- Use ` + "`" + `initech assign` + "`" + ` for every hand-off to an engineer, including fold-ins, re-dispatches and work with no bead.
 - **Pick the engineer.** Prefer the one with recent context in that area; spread independent beads across engineers; never leave work waiting on a busy engineer while another is idle.
 - **Never queue while busy.** Hold an agent's next task until it reports done; a message mid-work bleeds into its context.
 - **QA follows the one rule in the root** (Sensitive changes). You do not choose a QA depth per bead.
