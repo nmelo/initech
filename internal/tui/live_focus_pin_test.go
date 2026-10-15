@@ -163,3 +163,88 @@ func TestLiveFocusPin_ADigitInTheSplitPinsNothing(t *testing.T) {
 		t.Errorf("a digit in the split pinned d to a slot: %v", tui.layoutState.LivePinned)
 	}
 }
+
+// ini-x0x4: in the live focus split a pinned agent is drawn on the right only
+// while it is not suspended. The pin store is untouched by suspend and wake.
+
+func setSuspendedForTest(tui *TUI, name string, on bool) {
+	for _, p := range tui.panes {
+		if p.Name() == name {
+			lp := p.(*Pane)
+			lp.mu.Lock()
+			lp.suspended = on
+			lp.mu.Unlock()
+		}
+	}
+}
+
+func TestLiveFocusPin_ASuspendedPinnedAgentLeavesTheRightAndComesBackOnWake(t *testing.T) {
+	tui := liveFocusTUI(t)
+	pinBefore(t, tui, "d")
+	altShiftF(tui)
+	if !onRight(tui, "d") {
+		t.Fatalf("setup: pinned d not on the right: %v", tui.layoutState.RightSet)
+	}
+
+	setSuspendedForTest(tui, "d", true)
+	tui.tickLiveFocus(time.Now().Add(time.Second))
+	if onRight(tui, "d") {
+		t.Fatalf("suspended pinned d is still on the right one tick later: %v", tui.layoutState.RightSet)
+	}
+	if _, ok := tui.layoutState.LivePinned["d"]; !ok {
+		t.Fatal("suspending d dropped its pin; the pin store must be untouched")
+	}
+
+	setSuspendedForTest(tui, "d", false)
+	tui.tickLiveFocus(time.Now().Add(2 * time.Second))
+	if got := tui.layoutState.RightSet; len(got) == 0 || got[0] != "d" {
+		t.Fatalf("woken pinned d is not back first on the right one tick later: %v", got)
+	}
+}
+
+func TestLiveFocusPin_APinnedAgentSuspendedBeforeEntryIsNotOnTheRightAtEntry(t *testing.T) {
+	tui := liveFocusTUI(t)
+	pinBefore(t, tui, "d")
+	setSuspendedForTest(tui, "d", true)
+
+	altShiftF(tui)
+
+	if onRight(tui, "d") {
+		t.Errorf("d was pinned and suspended before entry; it must not be on the right at entry: %v", tui.layoutState.RightSet)
+	}
+}
+
+// The twin: a pinned agent that is idle but not suspended still holds the right.
+func TestLiveFocusPin_APinnedIdleAgentThatIsNotSuspendedStaysOnTheRight(t *testing.T) {
+	tui := liveFocusTUI(t) // d is idle
+	pinBefore(t, tui, "d")
+	altShiftF(tui)
+	setSuspendedForTest(tui, "c", true) // a different agent suspends
+
+	tui.tickLiveFocus(time.Now().Add(time.Second))
+
+	if !onRight(tui, "d") {
+		t.Errorf("pinned idle d left the right grid without being suspended: %v", tui.layoutState.RightSet)
+	}
+	// c is not pinned: suspending it changes nothing the split did before.
+	if !onRight(tui, "c") {
+		t.Errorf("unpinned c left the right grid on suspend; only pinned agents changed: %v", tui.layoutState.RightSet)
+	}
+}
+
+// Plain live mode is unchanged: a pinned suspended agent keeps its fixed slot.
+func TestLivePin_PlainLiveModeKeepsAPinnedSuspendedAgentInItsSlot(t *testing.T) {
+	tui := liveFocusTUI(t)
+	tui.layoutState.Mode = LayoutLive
+	tui.layoutState.LiveAuto = false
+	tui.layoutState.GridExplicit = true
+	tui.layoutState.LivePinned = map[string]int{"d": 0}
+	tui.initLiveEngine(0)
+	setSuspendedForTest(tui, "d", true)
+
+	tui.applyLayout()
+
+	if got := tui.layoutState.LiveSlots; len(got) == 0 || got[0] != "d" {
+		t.Errorf("plain live: pinned suspended d lost slot 0: %v", got)
+	}
+}

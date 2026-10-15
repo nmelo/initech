@@ -132,14 +132,27 @@ func (t *TUI) seedLiveFocus(now time.Time) {
 // (this window's panes, hidden ones excluded) minus the held pane. Excluding
 // a pane from the input is how live removes it at once, so a pane hidden
 // mid-mode leaves on the next frame, not after the hold (rule 7).
+//
+// A pinned agent that is suspended is left out too (ini-x0x4): a pin holds a
+// tile for an agent that can act, and a suspended one shows a frozen pane.
+// Leaving it out of the input, rather than unpinning it in the engine, is
+// what makes it leave on the next tick (the engine drops a missing pane at
+// once, past hold and one-change-per-tick) and come back on the tick after
+// it wakes (the pinned add path). The pin store is never touched, and plain
+// live mode reads liveTickInputs, so its fixed pinned slots are unchanged.
 func (t *TUI) liveFocusInputs() []PaneView {
-	panes, _ := t.liveTickInputs()
+	panes, pinned := t.liveTickInputs()
 	held := t.layoutState.Focused
 	out := panes[:0:0]
 	for _, p := range panes {
-		if agentKey(p) != held {
-			out = append(out, p)
+		k := agentKey(p)
+		if k == held {
+			continue
 		}
+		if _, isPinned := pinned[k]; isPinned && p.IsSuspended() {
+			continue
+		}
+		out = append(out, p)
 	}
 	return out
 }
@@ -169,7 +182,8 @@ func (t *TUI) tickLiveFocus(now time.Time) {
 // toggleLiveFocusSplit ends in applyLayout, whose tick lands here before the
 // first frame (a sync in seedLiveFocus was an equivalent mutant -- removing
 // it changed nothing -- so it is not there). TickAuto then treats a pinned agent as always wanted and
-// adds it at once, whatever its state.
+// adds it at once, whatever its state -- except suspended, which
+// liveFocusInputs leaves out of the input (ini-x0x4).
 //
 // The focused pane and hidden agents need no rule here: liveFocusInputs
 // leaves both out of the engine's input, and the engine only places agents

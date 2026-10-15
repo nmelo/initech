@@ -135,6 +135,10 @@ Toasts appear in the bottom-right and auto-dismiss after 10 seconds.
 
 Press backtick, type `log` or `events`. This shows the last 60 minutes of detected events in a scrollable list. Useful when you step away and come back: "what happened while I was gone?"
 
+### Live Focus Split
+
+Option+Shift+F holds the focused agent on the left and shows the working agents on the right. A pinned agent stays on the right whatever it is doing, except while it is suspended; it comes back when it wakes, still pinned.
+
 ## Key Commands Quick Reference
 
 These are the commands you'll use most. The full list is in the README.
