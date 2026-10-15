@@ -3,6 +3,7 @@ package tui
 import (
 	"os"
 	"os/exec"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -18,6 +19,34 @@ func (f *filePty) Resize(int, int) error   { return nil }
 func (f *filePty) Size() (int, int, error) { return 80, 24, nil }
 func (f *filePty) Name() string            { return "test" }
 func (f *filePty) Start(*exec.Cmd) error   { return nil }
+
+// fakePaneSpawner is a TUI.paneSpawner that wakes an agent with no process
+// behind it: the production NewParkedPane, set alive and awake like a fresh
+// NewPane, reading from a pipe that has already said "up". So readLoop
+// records output and waitForInit returns at its first tick, with no fork/exec
+// for machine load to delay. calls counts the panes it made.
+func fakePaneSpawner(t *testing.T, calls *atomic.Int32) func(PaneConfig, int, int) (*Pane, error) {
+	t.Helper()
+	return func(cfg PaneConfig, rows, cols int) (*Pane, error) {
+		r, w, err := os.Pipe()
+		if err != nil {
+			return nil, err
+		}
+		if _, err := w.WriteString("up\r\n"); err != nil {
+			r.Close()
+			w.Close()
+			return nil, err
+		}
+		t.Cleanup(func() { w.Close() }) // Pane.Close closes the read end
+		p := NewParkedPane(cfg, rows, cols)
+		p.ptmx = &filePty{r}
+		p.alive = true
+		p.suspended = false
+		p.activity = StateIdle
+		calls.Add(1)
+		return p, nil
+	}
+}
 
 // testPane creates a minimal Pane for testing (no PTY or process).
 // Includes a SafeEmulator so layout, render, and visibility tests work.

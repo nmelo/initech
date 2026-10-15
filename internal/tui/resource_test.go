@@ -812,6 +812,43 @@ func TestResumePane_SetsGracePeriod(t *testing.T) {
 	}
 }
 
+// TestResumePane_DefaultSpawnerStartsARealProcess is the positive twin of the
+// suspend-key tests' fake spawner: a TUI built the production way (paneSpawner
+// never set) wakes an agent through NewPane, and the slot ends up holding a
+// new pane with a live child process. Real fork/exec, so full suite only; it
+// fails on an error rather than skipping, unlike the older resume tests here.
+func TestResumePane_DefaultSpawnerStartsARealProcess(t *testing.T) {
+	if testing.Short() {
+		t.Skip("starts a real process; runs in the full suite")
+	}
+	p := newEmuPane("eng1", 80, 24)
+	p.cfg.Command = []string{"/bin/sh", "-c", "echo ready; sleep 5"}
+	p.suspended = true
+	tui := &TUI{
+		panes:       toPaneViews([]*Pane{p}),
+		quitCh:      make(chan struct{}),
+		agentEvents: make(chan AgentEvent, 64),
+	}
+	if tui.paneSpawner != nil {
+		t.Fatal("a TUI built without a spawner has one")
+	}
+
+	if err := tui.resumePane(p, "test"); err != nil {
+		t.Fatalf("default wake failed: %v", err)
+	}
+	np, ok := tui.panes[0].(*Pane)
+	if !ok || np == p {
+		t.Fatal("the slot does not hold a new pane after the wake")
+	}
+	t.Cleanup(func() { np.Close() })
+	if np.IsSuspended() {
+		t.Error("the new pane is still suspended")
+	}
+	if np.cmd == nil || np.cmd.Process == nil || !childProcessAlive(np.cmd.Process) {
+		t.Error("the default wake did not start a live child process (NewPane not used)")
+	}
+}
+
 func TestResumePane_EmitsEvent(t *testing.T) {
 	p := newEmuPane("eng1", 80, 24)
 	p.cfg.Command = []string{"/bin/sh", "-c", "echo ready; sleep 1"}

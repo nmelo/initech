@@ -270,6 +270,12 @@ type TUI struct {
 	// Set from Config.PaneConfigBuilder. Nil disables the add command.
 	paneConfigBuilder func(name string) (PaneConfig, error)
 
+	// paneSpawner creates the successor pane when resumePane wakes an agent.
+	// Nil (always, in production) means NewPane, which starts the configured
+	// process. Tests set it to wake through the real swap path without
+	// starting a process. Read through spawnPane.
+	paneSpawner func(cfg PaneConfig, rows, cols int) (*Pane, error)
+
 	// resumeLocks serializes resumePane per pane IDENTITY (name), not per
 	// object (ini-x23q): a resume replaces the *Pane in t.panes, so callers
 	// holding the old pointer -- the IPC lookup, the window pump, a SendText

@@ -2,6 +2,7 @@ package tui
 
 import (
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -81,6 +82,10 @@ func TestAgentsToggleSuspend_ParksAndRecords(t *testing.T) {
 
 func TestAgentsToggleSuspend_WakesSuspended(t *testing.T) {
 	tui := newTestTUI()
+	// A fake successor: the real wake path (resumePane's swap) with no real
+	// process, whose start time under load used to miss this test's window.
+	var spawned atomic.Int32
+	tui.paneSpawner = fakePaneSpawner(t, &spawned)
 	parked := NewParkedPane(PaneConfig{Name: "seo", Command: []string{"sh", "-c", "echo up; sleep 5"}}, 10, 40)
 	tui.panes = append(tui.panes, parked)
 	tui.agents.selected = 0
@@ -95,6 +100,9 @@ func TestAgentsToggleSuspend_WakesSuspended(t *testing.T) {
 		t.Fatalf("s on a suspended agent did not wake it (modal msg: %q)", tui.agents.error)
 	}
 	t.Cleanup(func() { np.Close() })
+	if n := spawned.Load(); n != 1 {
+		t.Errorf("the wake made %d pane(s) through the test spawner, want 1", n)
+	}
 }
 
 func TestAgentsToggleSuspend_RemoteIsHonestlyRefused(t *testing.T) {
@@ -138,6 +146,8 @@ func TestAgentsToggleSuspendGroup_ParksIdleSkipsBusy(t *testing.T) {
 
 func TestAgentsToggleSuspendGroup_WakesAllWhenAllParked(t *testing.T) {
 	tui := newTestTUI()
+	var spawned atomic.Int32
+	tui.paneSpawner = fakePaneSpawner(t, &spawned)
 	a := NewParkedPane(PaneConfig{Name: "eng1", Command: []string{"sh", "-c", "echo up; sleep 5"}}, 10, 40)
 	b := NewParkedPane(PaneConfig{Name: "eng2", Command: []string{"sh", "-c", "echo up; sleep 5"}}, 10, 40)
 	tui.panes = append(tui.panes, a, b)
@@ -161,6 +171,9 @@ func TestAgentsToggleSuspendGroup_WakesAllWhenAllParked(t *testing.T) {
 	}
 	if awake != 2 {
 		t.Fatalf("S on an all-parked band did not wake both members (awake=%d, modal msg: %q)", awake, tui.agents.error)
+	}
+	if n := spawned.Load(); n != 2 {
+		t.Errorf("the wake made %d pane(s) through the test spawner, want 2", n)
 	}
 }
 

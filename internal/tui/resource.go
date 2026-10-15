@@ -772,7 +772,7 @@ func (t *TUI) resumePane(pane *Pane, senderName string) error {
 	// Create new pane process off-main (may fork/exec).
 	LogInfo("resource", "resume spawn size", "agent", agentName,
 		"rows", rows, "cols", cols, "emu_h", rawRows, "emu_w", rawCols)
-	np, err := NewPane(cfg, rows, cols)
+	np, err := t.spawnPane(cfg, rows, cols)
 	if err != nil {
 		LogError("resource", "resume failed", "agent", pane.name, "err", err)
 		return fmt.Errorf("resume %s: %w", pane.name, err)
@@ -974,6 +974,15 @@ func waitForQuiescence(lastOutput func() time.Time, stable, cap time.Duration, q
 
 // waitForInit polls a newly started pane for signs of initialization.
 // Returns nil when PTY output is detected, or an error after resumeTimeout.
+// spawnPane creates a resumed agent's successor pane: NewPane unless a test
+// set t.paneSpawner.
+func (t *TUI) spawnPane(cfg PaneConfig, rows, cols int) (*Pane, error) {
+	if t.paneSpawner != nil {
+		return t.paneSpawner(cfg, rows, cols)
+	}
+	return NewPane(cfg, rows, cols)
+}
+
 func (t *TUI) waitForInit(pane *Pane) error {
 	deadline := time.After(resumeTimeout)
 	tick := time.NewTicker(250 * time.Millisecond)
