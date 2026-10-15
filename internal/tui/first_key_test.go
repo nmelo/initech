@@ -200,3 +200,57 @@ func TestFirstLaunch_IfBothAreEverUp_TheConsentQuestionIsOnTop(t *testing.T) {
 		t.Errorf("the consent question is covered by the welcome:\n%s", out)
 	}
 }
+
+// welcomePasteRecorder records each paste flushed to the pane; everything else is
+// the real pane's.
+type welcomePasteRecorder struct {
+	*Pane
+	pastes []string
+}
+
+func (p *welcomePasteRecorder) FlushPaste(b []byte) { p.pastes = append(p.pastes, string(b)) }
+
+func welcomePasteTUI(t *testing.T, hooksAnswered bool) (*TUI, *welcomePasteRecorder) {
+	t.Helper()
+	tui, _, _ := firstKeyTUI(t, "")
+	if hooksAnswered {
+		tui.project.Attention.Hooks = new(bool)
+	}
+	rec := &welcomePasteRecorder{Pane: tui.panes[0].(*Pane)}
+	tui.panes[0] = rec
+	return tui, rec
+}
+
+// pasteThrough drives a bracketed paste through handleEvent, the path tcell's real
+// events take.
+func pasteThrough(tui *TUI, text string) {
+	tui.handleEvent(tcell.NewEventPaste(true))
+	for _, r := range text {
+		tui.handleEvent(runeKey(r))
+	}
+	tui.handleEvent(tcell.NewEventPaste(false))
+}
+
+func TestWelcome_PasteDismissesItAndReachesThePaneWhole(t *testing.T) {
+	tui, rec := welcomePasteTUI(t, true)
+	tui.startFirstLaunchOverlays(true)
+	pasteThrough(tui, "seq 3")
+	if tui.welcome.active {
+		t.Error("the paste did not dismiss the welcome")
+	}
+	if len(rec.pastes) != 1 || rec.pastes[0] != "seq 3" {
+		t.Errorf("pane got pastes %q, want exactly one %q", rec.pastes, "seq 3")
+	}
+}
+
+func TestConsentQuestion_PasteNeverReachesThePane(t *testing.T) {
+	tui, rec := welcomePasteTUI(t, false)
+	tui.startFirstLaunchOverlays(true)
+	pasteThrough(tui, "y")
+	if len(rec.pastes) != 0 {
+		t.Errorf("a paste made while the consent question was open reached the pane: %q", rec.pastes)
+	}
+	if !tui.attentionConsent.active || tui.project.Attention.Hooks != nil {
+		t.Error("a paste answered or closed the consent question")
+	}
+}

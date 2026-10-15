@@ -26,7 +26,7 @@ Nothing changes in an existing project on its own. Its files change only when yo
 
 Run `initech` (no subcommand) from your project root. The TUI starts all agents simultaneously. Each agent gets its own PTY running Claude Code with the flags from your `initech.yaml`.
 
-On a project's first launch, a welcome box lists the main shortcuts for 10 seconds, after the consent question if that is due. The key that dismisses it still counts: a letter reaches the focused pane and a shortcut does its action. Escape only dismisses it.
+On a project's first launch, a welcome box lists the main shortcuts for 10 seconds, after the consent question if that is due. The key or paste that dismisses it still counts: a letter or a paste reaches the focused pane and a shortcut does its action. Escape only dismisses it.
 
 You'll see a grid of panes. Each pane is a live Claude Code session. The floating overlay panel in the top-right shows all agents with activity indicators. Within 10-30 seconds, agents initialize and their prompts appear.
 

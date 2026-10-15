@@ -33,6 +33,11 @@ func (t *TUI) handlePaste(start bool) {
 		t.appendInboxPaste(string(t.pasteBuf))
 		return
 	}
+	// A paste dismisses the welcome and goes on to the focused pane whole, as a
+	// key does (ini-foft): the welcome is a hint, not a question.
+	if t.welcome.active {
+		t.welcome.active = false
+	}
 	// Drop paste if a modal is active. Modals expect typed input, not bulk paste.
 	if t.modalActive() {
 		return
@@ -79,6 +84,7 @@ func (t *TUI) bufferPasteKey(ev *tcell.EventKey) {
 // modalActive returns true if any modal overlay is currently intercepting input.
 func (t *TUI) modalActive() bool {
 	return t.welcome.active ||
+		t.attentionConsent.active ||
 		t.help.active ||
 		t.eventLogM.active ||
 		t.top.active ||
