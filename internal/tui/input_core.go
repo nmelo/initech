@@ -34,10 +34,16 @@ func (t *TUI) handleKey(ev *tcell.EventKey) bool {
 		return false
 	}
 
-	// Welcome overlay: dismiss on any keypress.
+	// Welcome overlay: any key dismisses it, and the key is then handled as if
+	// the welcome had not been up -- a letter reaches the focused pane, a
+	// shortcut does its action -- so the first key typed into a fresh window
+	// is never lost. Escape only dismisses: forwarded, it would pair with the
+	// operator's next key in a shell like bash 3.2 and lose that key instead.
 	if t.welcome.active {
 		t.welcome.active = false
-		return false
+		if ev.Key() == tcell.KeyEscape {
+			return false
+		}
 	}
 
 	// Help modal intercepts all input when active.

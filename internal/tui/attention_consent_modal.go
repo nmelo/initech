@@ -8,6 +8,8 @@
 package tui
 
 import (
+	"time"
+
 	"github.com/gdamore/tcell/v2"
 	"github.com/nmelo/initech/internal/hooks"
 )
@@ -49,10 +51,30 @@ const (
 // blocks a headless invocation" structural for this surface: serve, send, peek
 // and viewer windows have no modal loop at all.
 func (t *TUI) shouldAskAttentionConsent() bool {
-	if t.project == nil || t.windowID != WindowOne {
+	// A viewer is identified by its peer name before Run resolves windowID,
+	// and the question is asked at startup, so both are checked.
+	if t.project == nil || t.windowID != WindowOne || isSecondaryWindowIdentity(t.project.PeerName) {
 		return false
 	}
 	return !t.project.Attention.HooksAnswered()
+}
+
+// startFirstLaunchOverlays raises the overlays a window opens with: the
+// consent question when this window should ask it, and the welcome hints on a
+// first launch (no saved layout). Run calls it once at startup.
+func (t *TUI) startFirstLaunchOverlays(firstLaunch bool) {
+	t.maybeStartAttentionConsent()
+	if !firstLaunch {
+		return
+	}
+	// One overlay at a time: a key may only answer what is on screen. While
+	// the consent question is open the welcome waits, and its time starts
+	// when the question closes (applyAttentionConsent).
+	if t.attentionConsent.active {
+		t.welcome = welcomeOverlay{waiting: true}
+		return
+	}
+	t.welcome = welcomeOverlay{active: true, expiresAt: time.Now().Add(welcomeDuration)}
 }
 
 // maybeStartAttentionConsent raises the modal if this window should ask.
@@ -90,6 +112,9 @@ func (t *TUI) handleAttentionConsentKey(ev *tcell.EventKey) bool {
 // records NOTHING, which is what keeps the tri-state at unset.
 func (t *TUI) applyAttentionConsent(answer AttentionConsentAnswer) {
 	t.attentionConsent.active = false
+	if t.welcome.waiting {
+		t.welcome = welcomeOverlay{active: true, expiresAt: time.Now().Add(welcomeDuration)}
+	}
 	if answer == AttentionConsentDeferred || t.project == nil {
 		return
 	}

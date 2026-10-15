@@ -26,6 +26,8 @@ Nothing changes in an existing project on its own. Its files change only when yo
 
 Run `initech` (no subcommand) from your project root. The TUI starts all agents simultaneously. Each agent gets its own PTY running Claude Code with the flags from your `initech.yaml`.
 
+On a project's first launch, a welcome box lists the main shortcuts for 10 seconds, after the consent question if that is due. The key that dismisses it still counts: a letter reaches the focused pane and a shortcut does its action. Escape only dismisses it.
+
 You'll see a grid of panes. Each pane is a live Claude Code session. The floating overlay panel in the top-right shows all agents with activity indicators. Within 10-30 seconds, agents initialize and their prompts appear.
 
 ### Your First Five Minutes
@@ -46,7 +48,7 @@ When initech changes `initech.yaml` (the hooks answer, `initech add-agent`, `ini
 
 | Key | What it does | Set it when |
 |-----|--------------|-------------|
-| `attention.hooks` | Installs the notification hook that tells initech an agent is waiting on you. Written by the consent question at init (`true` for yes, `false` for no) and never asked again. | You answered the init question; change it by hand to switch. |
+| `attention.hooks` | Installs the notification hook that tells initech an agent is waiting on you. Written by the consent question (`true` for yes, `false` for no): at init, or for a project without an answer, on screen the first time window 1 starts, where any key other than `y` or `n` asks again next start. A `--window` viewer never asks. Once answered it is never asked again. | You answered the init question; change it by hand to switch. |
 | `claude_command` | Replaces the `claude` command for every agent, e.g. `[env, SOME_VAR=1, claude]` to set an environment variable. | Every agent needs the same wrapper or environment. |
 | `claude_args` | Flags for every Claude agent, e.g. `[--continue, --dangerously-skip-permissions]` to resume the last session and skip permission prompts. | Agents should pick up where they left off and work unattended. |
 | `resource.auto_suspend`, `resource.pressure_threshold` | Parks idle agents when memory use passes the threshold (a percentage). Off when absent. | The machine runs more agents than its memory comfortably holds. |

@@ -106,10 +106,16 @@ type agentsModal struct {
 	expanded bool
 }
 
+// welcomeDuration is how long the welcome hints stay up before they dismiss themselves.
+const welcomeDuration = 10 * time.Second
+
 // welcomeOverlay is shown once on first launch, then never again.
 type welcomeOverlay struct {
 	active    bool
 	expiresAt time.Time
+	// waiting is set when the welcome is due but the consent question is
+	// open; the welcome becomes active when that question closes.
+	waiting bool
 }
 
 // quickGridModal holds state for the Option+G / Option+L quick-dimension
@@ -934,12 +940,7 @@ func Run(cfg Config) error {
 	// Window 1 only; a project that already recorded an answer sees nothing,
 	// which is what keeps this bead's census claim true.
 	t.onAttentionConsent = cfg.OnAttentionConsent
-	t.maybeStartAttentionConsent()
-
-	// Show welcome overlay on first launch (no saved layout).
-	if firstLaunch {
-		t.welcome = welcomeOverlay{active: true, expiresAt: time.Now().Add(10 * time.Second)}
-	}
+	t.startFirstLaunchOverlays(firstLaunch)
 
 	// Start IPC socket server for inter-agent messaging -- WINDOW 1 ONLY.
 	//

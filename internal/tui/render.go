@@ -222,15 +222,17 @@ func (t *TUI) renderFrame() {
 		t.renderQuickGrid()
 	}
 
-	// One-time consent question (ini-2x8.6). Drawn ABOVE the welcome overlay:
-	// it is a question awaiting an answer, not a hint that times out.
-	if t.attentionConsent.active {
-		t.renderAttentionConsent()
-	}
-
 	// Welcome overlay on first launch (centered, auto-dismisses).
 	if t.welcome.active {
 		t.renderWelcome()
+	}
+
+	// One-time consent question (ini-2x8.6). Drawn ABOVE the welcome overlay,
+	// since it takes keys first: it is a question awaiting an answer, not a
+	// hint that times out. startFirstLaunchOverlays keeps the two from being
+	// up together; this order is what holds if they ever are.
+	if t.attentionConsent.active {
+		t.renderAttentionConsent()
 	}
 
 	// Toast notifications (skip during command modal to avoid overlap).
