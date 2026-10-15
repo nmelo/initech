@@ -217,10 +217,7 @@ func (t *TUI) handleIPCStart(conn net.Conn, req IPCRequest) {
 	cfg := old.cfg
 	if t.paneConfigBuilder != nil {
 		if fresh, err := t.paneConfigBuilder(req.Target); err == nil {
-			fresh.Env = append(fresh.Env,
-				"INITECH_SOCKET="+t.sockPath,
-				"INITECH_AGENT="+req.Target,
-			)
+			fresh.Env = append(fresh.Env, agentIdentityEnv(req.Target, t.sockPath)...)
 			cfg = fresh
 		}
 	}
@@ -302,10 +299,7 @@ func (t *TUI) handleIPCRestart(conn net.Conn, req IPCRequest) {
 	cfg := old.cfg
 	if t.paneConfigBuilder != nil {
 		if fresh, err := t.paneConfigBuilder(req.Target); err == nil {
-			fresh.Env = append(fresh.Env,
-				"INITECH_SOCKET="+t.sockPath,
-				"INITECH_AGENT="+req.Target,
-			)
+			fresh.Env = append(fresh.Env, agentIdentityEnv(req.Target, t.sockPath)...)
 			cfg = fresh
 		}
 	}
@@ -397,10 +391,7 @@ func (t *TUI) addPane(name string) error {
 	}
 
 	// Inject runtime env vars the TUI manages.
-	cfg.Env = append(cfg.Env,
-		"INITECH_SOCKET="+t.sockPath,
-		"INITECH_AGENT="+name,
-	)
+	cfg.Env = append(cfg.Env, agentIdentityEnv(name, t.sockPath)...)
 
 	// Temporary dimensions; applyLayout will resize to the correct region.
 	rows, cols := 24, 80

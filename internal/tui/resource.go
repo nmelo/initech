@@ -755,10 +755,7 @@ func (t *TUI) resumePane(pane *Pane, senderName string) error {
 	cfg := pane.cfg
 	if t.paneConfigBuilder != nil {
 		if fresh, err := t.paneConfigBuilder(agentName); err == nil {
-			fresh.Env = append(fresh.Env,
-				"INITECH_SOCKET="+t.sockPath,
-				"INITECH_AGENT="+agentName,
-			)
+			fresh.Env = append(fresh.Env, agentIdentityEnv(agentName, t.sockPath)...)
 			cfg = fresh
 		}
 	}

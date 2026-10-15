@@ -991,10 +991,7 @@ func Run(cfg Config) error {
 
 	// Inject the socket path and agent name into every agent's environment.
 	for i := range cfg.Agents {
-		cfg.Agents[i].Env = append(cfg.Agents[i].Env,
-			"INITECH_SOCKET="+sockPath,
-			"INITECH_AGENT="+cfg.Agents[i].Name,
-		)
+		cfg.Agents[i].Env = append(cfg.Agents[i].Env, agentIdentityEnv(cfg.Agents[i].Name, sockPath)...)
 	}
 
 	if cfg.Project != nil {

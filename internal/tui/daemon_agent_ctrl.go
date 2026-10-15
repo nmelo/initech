@@ -270,10 +270,11 @@ func (d *Daemon) handleReloadAgents(id, peerName string, prune bool) ControlResp
 			failed = append(failed, role)
 			continue
 		}
+		var sock []string
 		if d.sockPath != "" {
-			pcfg.Env = append(pcfg.Env, "INITECH_SOCKET="+d.sockPath)
+			sock = append(sock, d.sockPath)
 		}
-		pcfg.Env = append(pcfg.Env, "INITECH_AGENT="+pcfg.Name)
+		pcfg.Env = append(pcfg.Env, agentIdentityEnv(pcfg.Name, sock...)...)
 		if err := d.startPushedPane(pcfg); err != nil {
 			LogWarn("daemon", "reload: spawn failed", "role", role, "err", err)
 			failed = append(failed, role)

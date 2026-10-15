@@ -387,10 +387,11 @@ func RunDaemon(cfg DaemonConfig) error {
 
 	// Inject INITECH_SOCKET and INITECH_AGENT into every agent's environment.
 	for i := range cfg.Agents {
+		var sock []string
 		if sockPath != "" {
-			cfg.Agents[i].Env = append(cfg.Agents[i].Env, "INITECH_SOCKET="+sockPath)
+			sock = append(sock, sockPath)
 		}
-		cfg.Agents[i].Env = append(cfg.Agents[i].Env, "INITECH_AGENT="+cfg.Agents[i].Name)
+		cfg.Agents[i].Env = append(cfg.Agents[i].Env, agentIdentityEnv(cfg.Agents[i].Name, sock...)...)
 	}
 
 	// Create and start agent panes with ring buffers and multi-sinks.
