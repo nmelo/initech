@@ -106,7 +106,8 @@ func (p *Pane) Render(screen tcell.Screen, focused bool, dimmed bool, index int,
 		title = strings.TrimSuffix(title, " ") + " \u2709 "
 	}
 
-	renderRibbon(s, r, title, titleStyle, p.BeadID(), p.BeadTitle(), running)
+	beadLabel, beadTitle := ribbonBeadLabel(p.BeadID(), p.BeadTitle(), p.NoBeadWork())
+	renderRibbon(s, r, title, titleStyle, beadLabel, beadTitle, running)
 
 	// Activity bar at r.Y (top edge). Drawn before content so it is always
 	// present even when content rendering is suppressed during resize settling.

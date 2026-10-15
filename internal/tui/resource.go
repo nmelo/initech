@@ -794,6 +794,8 @@ func (t *TUI) resumePane(pane *Pane, senderName string) error {
 					copy(np.beadIDs, pane.beadIDs)
 				}
 				np.beadTitle = pane.beadTitle
+				// The no-bead marker wakes with the pane, as its beads do.
+				np.noBeadWork = pane.noBeadWork
 				carryFleetIdentity(np, pane)
 				// Carried explicitly: the spawn stagger routes EVERY deferred
 				// agent through this path, so a dropped field here is no

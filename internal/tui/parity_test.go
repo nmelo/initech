@@ -282,7 +282,7 @@ func TestParity_RemotePaneBeadStateSyncsFromWindowOne(t *testing.T) {
 	// wrong-but-POPULATED ribbon, which is harder to spot than the empty
 	// field this bead fixed.
 	want := []string{"ini-aaa", "ini-bbb", "ini-ccc"}
-	rp.ApplyStatus(want, "reviewing the parity matrix")
+	rp.ApplyStatus(want, "", "reviewing the parity matrix")
 
 	got := rp.BeadIDs()
 	if len(got) != len(want) {
@@ -308,17 +308,17 @@ func TestParity_RemotePaneBeadStateSyncsFromWindowOne(t *testing.T) {
 func TestParity_AgentStatusClearPropagates(t *testing.T) {
 	rp := &RemotePane{name: "eng1", alive: true}
 
-	rp.ApplyStatus([]string{"ini-aaa", "ini-bbb"}, "working")
+	rp.ApplyStatus([]string{"ini-aaa", "ini-bbb"}, "", "working")
 	if len(rp.BeadIDs()) != 2 {
 		t.Fatalf("precondition: expected 2 beads, got %v", rp.BeadIDs())
 	}
 
-	rp.ApplyStatus([]string{"ini-ccc"}, "different work") // change
+	rp.ApplyStatus([]string{"ini-ccc"}, "", "different work") // change
 	if got := rp.BeadIDs(); len(got) != 1 || got[0] != "ini-ccc" {
 		t.Errorf("after change, BeadIDs() = %v, want [ini-ccc]", got)
 	}
 
-	rp.ApplyStatus(nil, "") // clear
+	rp.ApplyStatus(nil, "", "") // clear
 	if got := rp.BeadIDs(); len(got) != 0 {
 		t.Errorf("after clear, BeadIDs() = %v, want empty -- empty must be applied, not treated as 'no update'", got)
 	}
@@ -333,7 +333,7 @@ func TestParity_AgentStatusClearPropagates(t *testing.T) {
 func TestParity_ApplyStatusCopiesTheSlice(t *testing.T) {
 	rp := &RemotePane{name: "eng1", alive: true}
 	buf := []string{"ini-aaa", "ini-bbb"}
-	rp.ApplyStatus(buf, "d")
+	rp.ApplyStatus(buf, "", "d")
 
 	buf[0] = "MUTATED"
 	if got := rp.BeadIDs(); got[0] != "ini-aaa" {
@@ -356,7 +356,7 @@ func TestParity_AgentStatusBroadcastCarriesAllBeads(t *testing.T) {
 	waitForClients(t, ws, 1)
 
 	want := []string{"ini-aaa", "ini-bbb", "ini-ccc"}
-	ws.broadcastAgentStatus("eng1", want, "three beads in flight", WaitingState{}, true)
+	ws.broadcastAgentStatus("eng1", want, "", "three beads in flight", WaitingState{}, true)
 
 	c2.SetReadDeadline(time.Now().Add(5 * time.Second))
 	scanner := NewIPCScanner(c2)

@@ -24,6 +24,11 @@ type PaneInfo struct {
 	// dropping the others.
 	Beads []string `json:"beads"`
 
+	// NoBead is the no-bead marker's words when the pane is working without a
+	// bead (Beads is then empty); omitted otherwise. initech status shows it
+	// where a bead id would go.
+	NoBead string `json:"no_bead,omitempty"`
+
 	// Modal-latch visibility (ini-gbqc): omitted entirely when no latch is up.
 	ModalLatched bool `json:"modal_latched,omitempty"`
 	ModalAgeSec  int  `json:"modal_age_sec,omitempty"`

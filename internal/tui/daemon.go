@@ -243,6 +243,9 @@ type AgentStatus struct {
 	Bead     string   `json:"bead,omitempty"`  // PRIMARY bead only. Kept populated for wire compatibility with peers that predate Beads; new consumers must read Beads.
 	Beads    []string `json:"beads,omitempty"` // ALL beads the agent holds (ini-9ka.11). Agents routinely hold several; reading Bead alone silently truncates to one, which displays as wrong-but-populated rather than empty.
 	Desc     string   `json:"desc,omitempty"`  // Session description (ini-9ka.11).
+	// NoBead is the no-bead marker's words for an agent working without a
+	// bead; omitted when none. An older window ignores it and shows no marker.
+	NoBead string `json:"no_bead,omitempty"`
 }
 
 // StreamMapMsg tells the client which yamux stream ID maps to which agent.
@@ -332,6 +335,9 @@ type ControlResp struct {
 	// every window, not only the one that parked it (2026-08-15).
 	Suspended bool   `json:"suspended,omitempty"`
 	Bead      string `json:"bead,omitempty"` // Primary bead only; wire compatibility for peers predating Beads.
+	// NoBead rides agent_status beside Beads: the no-bead marker's words, so
+	// every window shows the same ribbon. Omitted when none.
+	NoBead string `json:"no_bead,omitempty"`
 }
 
 // RunDaemon starts the headless daemon. Blocks until SIGINT/SIGTERM.
@@ -578,6 +584,7 @@ func (d *Daemon) AllPanes() ([]PaneInfo, bool) {
 			Alive:    p.IsAlive(),
 			Visible:  true,
 			Beads:    ribbonBeads(p),
+			NoBead:   p.NoBeadWork(),
 		}
 	}
 	return panes, true
@@ -793,6 +800,7 @@ func (d *Daemon) handleConnection(conn net.Conn) {
 			Activity:     p.Activity().String(),
 			Bead:         p.BeadID(),
 			Beads:        p.BeadIDs(),
+			NoBead:       p.NoBeadWork(),
 			Desc:         p.SessionDesc(),
 		}
 	}

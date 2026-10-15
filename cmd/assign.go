@@ -14,7 +14,7 @@ import (
 )
 
 var assignCmd = &cobra.Command{
-	Use:   "assign <agent> <bead-id> [<bead-id>...]",
+	Use:   "assign <agent> [<bead-id>...] [-m <message>]",
 	Short: "Claim beads, register in the TUI, and dispatch to an agent",
 	Long: `Atomic dispatch: combines bd update, initech bead, and initech send in one
 command. Auto-generates a dispatch message from bead titles.
@@ -23,6 +23,12 @@ command. Auto-generates a dispatch message from bead titles.
   initech assign eng1 ini-abc ini-def ini-ghi     Several beads in one message
   initech assign eng1 ini-abc -m "fold ini-x in"  Fold-in: eng1 already has ini-abc
   initech assign eng3 ini-abc --move              Take ini-abc from the agent working on it
+  initech assign eng3 -m "bump main to 0.28.0"    No bead: small work with no ticket
+
+With no bead, -m is required and is the whole message: it is delivered
+exactly as initech send would deliver it, nothing is written to bd, and the
+agent's ribbon shows "no bead" and the message's first words until the next
+bead is registered for it (assign or initech bead) or initech bead --clear.
 
 assign looks at each bead before writing it:
   already with this agent  -> fold-in: no bd write; the ribbon gains the bead
@@ -44,7 +50,7 @@ skipped), then dispatched as one consolidated message. Exit 0 if at least
 one bead succeeds, exit 1 if all fail.
 
 Requires bd and a running initech TUI.`,
-	Args: cobra.MinimumNArgs(2),
+	Args: assignArgs,
 	RunE: runAssign,
 	// Execute prints the returned error once; cobra's own "Error:" copy would
 	// make a refusal two lines.
@@ -55,7 +61,7 @@ var assignMessage string
 var assignMove bool
 
 func init() {
-	assignCmd.Flags().StringVarP(&assignMessage, "message", "m", "", "Custom instructions appended to the dispatch message")
+	assignCmd.Flags().StringVarP(&assignMessage, "message", "m", "", "Custom instructions appended to the dispatch message; with no bead, the whole message")
 	assignCmd.Flags().BoolVar(&assignMove, "move", false, "Reassign a bead another agent is working on (it leaves their ribbon and they are told)")
 	rootCmd.AddCommand(assignCmd)
 }
@@ -169,6 +175,18 @@ func classifyAssign(id, target, status, assignee, dispatchStatus string, move bo
 	return assignDecision{kind: assignDispatch}
 }
 
+// assignArgs requires an agent, and then at least one bead or a non-blank
+// -m: assign with neither has nothing to dispatch.
+func assignArgs(cmd *cobra.Command, args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("assign needs an agent, then bead ids or -m \"message\"")
+	}
+	if len(args) == 1 && strings.TrimSpace(assignMessage) == "" {
+		return fmt.Errorf("assign %s: give bead ids, or -m \"message\" for work with no bead", args[0])
+	}
+	return nil
+}
+
 func runAssign(cmd *cobra.Command, args []string) error {
 	// Past argument parsing, a failure is about the beads, not the usage.
 	cmd.SilenceUsage = true
@@ -180,6 +198,10 @@ func runAssign(cmd *cobra.Command, args []string) error {
 	if idx := strings.Index(agent, ":"); idx >= 0 {
 		host = agent[:idx]
 		agent = agent[idx+1:]
+	}
+
+	if len(beadIDs) == 0 {
+		return assignNoBead(cmd.ErrOrStderr(), agent, host, assignMessage)
 	}
 
 	// Deduplicate bead IDs.

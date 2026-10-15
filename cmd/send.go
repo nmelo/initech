@@ -178,12 +178,19 @@ func runSend(cmd *cobra.Command, args []string) error {
 		target = target[idx+1:]
 	}
 
+	return deliverText(cmd.ErrOrStderr(), target, host, text, !sendNoEnter)
+}
+
+// deliverText is initech send's delivery: one send request to the TUI and
+// the same report on w. assign's no-bead dispatch goes through it too, so
+// that message is delivered and reported exactly as initech send would.
+func deliverText(w io.Writer, target, host, text string, enter bool) error {
 	req := tui.IPCRequest{
 		Action: "send",
 		Target: target,
 		Host:   host,
 		Text:   text,
-		Enter:  !sendNoEnter,
+		Enter:  enter,
 	}
 
 	resp, err := ipcCall(req)
@@ -196,11 +203,11 @@ func runSend(cmd *cobra.Command, args []string) error {
 
 	switch {
 	case host != "":
-		fmt.Fprintf(cmd.ErrOrStderr(), "delivered to %s:%s\n", host, target)
+		fmt.Fprintf(w, "delivered to %s:%s\n", host, target)
 	case strings.Contains(resp.Data, "deferred"):
-		fmt.Fprintf(cmd.ErrOrStderr(), "deferred to %s — target has a modal open; will deliver when it closes\n", target)
+		fmt.Fprintf(w, "deferred to %s — target has a modal open; will deliver when it closes\n", target)
 	default:
-		fmt.Fprintf(cmd.ErrOrStderr(), "delivered to %s\n", target)
+		fmt.Fprintf(w, "delivered to %s\n", target)
 	}
 	return nil
 }

@@ -56,6 +56,7 @@ type RemotePane struct {
 	scroll   scrollAnchor
 	lastOut  time.Time
 	beadIDs  []string
+	noBead   string // No-bead marker words (see Pane.SetNoBeadWork); "" when none.
 	sessDesc string
 
 	// waiting is window 1's needs-input state for this agent, pushed over the
@@ -261,6 +262,7 @@ func (rp *RemotePane) BeadIDs() []string {
 
 func (rp *RemotePane) SetBead(id, title string) {
 	rp.mu.Lock()
+	rp.noBead = ""
 	if id == "" {
 		rp.beadIDs = nil
 	} else {
@@ -271,6 +273,7 @@ func (rp *RemotePane) SetBead(id, title string) {
 
 func (rp *RemotePane) SetBeads(ids []string) {
 	rp.mu.Lock()
+	rp.noBead = ""
 	if len(ids) == 0 {
 		rp.beadIDs = nil
 	} else {
@@ -648,7 +651,8 @@ func (rp *RemotePane) Render(screen tcell.Screen, focused bool, dimmed bool, ind
 	// running square (ini-z9a3) reuses that exact tint signal by design, so
 	// it's local-only for the same reason here — never a fabricated parallel
 	// "running" notion for remote panes.
-	renderRibbon(s, r, title, titleStyle, rp.BeadID(), "", false)
+	beadLabel, beadTitle := ribbonBeadLabel(rp.BeadID(), "", rp.NoBeadWork())
+	renderRibbon(s, r, title, titleStyle, beadLabel, beadTitle, false)
 
 	_, innerRows := r.InnerSize()
 	emuStartRow := rp.emu.Height() - innerRows
@@ -855,15 +859,33 @@ func (rp *RemotePane) ApplySuspended(suspended bool) {
 	rp.suspended = suspended
 }
 
-func (rp *RemotePane) ApplyStatus(beads []string, desc string) {
+func (rp *RemotePane) ApplyStatus(beads []string, noBead, desc string) {
 	rp.mu.Lock()
 	defer rp.mu.Unlock()
 	if len(beads) == 0 {
 		rp.beadIDs = nil
 	} else {
 		rp.beadIDs = append([]string(nil), beads...)
+		noBead = "" // Never both: a bead ends the marker.
 	}
+	rp.noBead = noBead
 	rp.sessDesc = desc
+}
+
+// SetNoBeadWork marks this agent as working without a bead (see
+// Pane.SetNoBeadWork).
+func (rp *RemotePane) SetNoBeadWork(words string) {
+	rp.mu.Lock()
+	defer rp.mu.Unlock()
+	rp.beadIDs = nil
+	rp.noBead = words
+}
+
+// NoBeadWork returns the no-bead marker's words, or "".
+func (rp *RemotePane) NoBeadWork() string {
+	rp.mu.Lock()
+	defer rp.mu.Unlock()
+	return rp.noBead
 }
 
 // FlushPaste delivers a buffered paste to the agent on the far side,

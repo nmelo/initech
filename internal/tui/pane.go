@@ -274,6 +274,7 @@ type Pane struct {
 	sessionDesc                  string            // Session description extracted from cursor row.
 	beadIDs                      []string          // Current bead IDs. Nil = no beads. First is primary.
 	beadTitle                    string            // Bead title for top modal display.
+	noBeadWork                   string            // First words of work dispatched with no bead; "" when none. Never set alongside beadIDs.
 	stallReported                bool              // True after emitting stall event. Reset on new activity.
 	stuckReported                bool              // True after emitting stuck event. Reset on success.
 	dedupEvents                  *dedup            // Dedup state for emitted events.
@@ -1544,6 +1545,7 @@ func (p *Pane) BeadTitle() string {
 func (p *Pane) SetBead(id, title string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	p.noBeadWork = "" // Any bead registration, a clear included, ends the no-bead marker.
 	if id == "" {
 		p.beadIDs = nil
 	} else {
@@ -1560,6 +1562,7 @@ func (p *Pane) SetBead(id, title string) {
 func (p *Pane) SetBeads(ids []string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	p.noBeadWork = ""
 	if len(ids) == 0 {
 		p.beadIDs = nil
 	} else {
@@ -1569,6 +1572,26 @@ func (p *Pane) SetBeads(ids []string) {
 		p.idleBeadNotified = false
 	}
 	p.beadTitle = ""
+}
+
+// SetNoBeadWork marks the pane as working without a bead: the ribbon shows
+// "no bead" and words (the first words of the dispatched message) instead of
+// a bead. It replaces any bead the pane showed, and ends the way a bead does:
+// the next SetBead/SetBeads, a clear included, removes it. It is never a bead
+// id, so BeadID and BeadIDs stay empty while it is set.
+func (p *Pane) SetNoBeadWork(words string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.beadIDs = nil
+	p.beadTitle = ""
+	p.noBeadWork = words
+}
+
+// NoBeadWork returns the no-bead marker's words, or "" when none is set.
+func (p *Pane) NoBeadWork() string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.noBeadWork
 }
 
 // RecentEntries returns a copy of the recent JSONL entries ring buffer.

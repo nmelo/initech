@@ -87,6 +87,8 @@ Agents on the same bead talk to each other directly and post everything on the b
 
 Several beads in one call each get their own rule; a refused bead is listed as failed, and the command fails only when every bead does. The event log records each dispatch, saying "fold-in" or "moved from" where it applies. Against an initech that does not report ribbons, a fold-in leaves the ribbon as it was and a move leaves the previous holder's ribbon alone, each with a warning; the message is still delivered.
 
+**Work with no bead.** `initech assign <agent> -m "..."` with no bead id dispatches a small job that has no ticket, so it is still visible. Nothing is written to bd. The message is delivered exactly as `initech send` delivers it, the -m text as given. Once it is accepted, the agent's ribbon shows `no bead` and the message's first words (cut at 80 characters, like a bead title), `initech status` shows the same words in the Bead column ahead of any bead bd still has assigned to that agent, and the event log records the dispatch with no bead id. The marker is shown in every window, wakes with a suspended agent, and ends the way a bead pointer does: the next bead registered for the agent (`initech assign` or `initech bead`) replaces it, and `initech bead --clear` removes it; it does not survive a TUI restart. `initech assign <agent>` with neither a bead nor -m is a usage error. An initech too old to know work with no bead leaves the ribbon as it was and assign warns; the message is still delivered.
+
 ### What the Operator Does at Each Step
 
 **Setting direction.** Tell super what you want. Be specific about the problem, not the solution. "Users can't paste images into agent panes" is better than "add EventPaste handling to tui.go". Let PM and arch figure out the how.
@@ -133,6 +135,7 @@ Each pane has a bottom ribbon showing:
 - **Pane number and name**: "1 super", "2 eng1"
 - **Status tag**: `[dead]` (process died), `[susp]` (suspended), `[+N]` (scrolled back N lines)
 - **Bead ID**: Shows after the name when the agent has claimed a bead
+- **No bead**: `no bead` and the first words of the message, for work dispatched with `initech assign <agent> -m "..."` and no bead
 
 ### Toast Notifications
 

@@ -204,11 +204,11 @@ func TestApplyAgentStatus_CarriesSuspended(t *testing.T) {
 	rp := &RemotePane{name: "eng2", host: "window1", alive: true}
 	tui.panes = append(tui.panes, rp)
 
-	tui.applyAgentStatus("eng2", nil, "", WaitingState{}, true)
+	tui.applyAgentStatus("eng2", nil, "", "", WaitingState{}, true)
 	if rp.Activity() != StateSuspended {
 		t.Fatal("agent_status with suspended=true did not park the remote pane's displayed state")
 	}
-	tui.applyAgentStatus("eng2", nil, "", WaitingState{}, false)
+	tui.applyAgentStatus("eng2", nil, "", "", WaitingState{}, false)
 	if rp.Activity() == StateSuspended {
 		t.Fatal("agent_status with suspended=false did not clear the displayed state")
 	}
@@ -306,8 +306,8 @@ func TestApplyAgentStatus_WakeEdgeReassertsGeometry(t *testing.T) {
 	}
 	tui.panes = append(tui.panes, rp)
 
-	tui.applyAgentStatus("eng2", nil, "", WaitingState{}, true)  // park
-	tui.applyAgentStatus("eng2", nil, "", WaitingState{}, false) // wake edge
+	tui.applyAgentStatus("eng2", nil, "", "", WaitingState{}, true)  // park
+	tui.applyAgentStatus("eng2", nil, "", "", WaitingState{}, false) // wake edge
 
 	wantCols, wantRows := rp.region.TerminalSize()
 	if rp.emu.Width() != wantCols || rp.emu.Height() != wantRows {

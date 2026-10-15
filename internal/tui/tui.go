@@ -1178,11 +1178,11 @@ func Run(cfg Config) error {
 		// Session notices broadcast by window 1 must render here too
 		// (ini-9ka.8): they describe the session's shape changing, not one
 		// agent's activity.
-		pm.SetOnAgentStatus(func(name string, beads []string, primary, desc string, ws WaitingState, suspended bool) {
+		pm.SetOnAgentStatus(func(name string, beads []string, primary, noBead, desc string, ws WaitingState, suspended bool) {
 			if len(beads) == 0 && primary != "" {
 				beads = []string{primary} // Peer predates the plural field.
 			}
-			t.runOnMain(func() { t.applyAgentStatus(name, beads, desc, ws, suspended) })
+			t.runOnMain(func() { t.applyAgentStatus(name, beads, noBead, desc, ws, suspended) })
 		})
 		pm.SetOnSessionNotice(func(text string) {
 			t.runOnMain(func() { t.surfaceSessionNotice(text) })

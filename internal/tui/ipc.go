@@ -123,6 +123,7 @@ func (t *TUI) AllPanes() ([]PaneInfo, bool) {
 				Alive:    p.IsAlive(),
 				Visible:  !t.layoutState.Hidden[agentKey(p)],
 				Beads:    ribbonBeads(p),
+				NoBead:   noBeadOf(p),
 			}
 			// The latch is why mail stops moving, so it belongs where someone
 			// looks when mail stops moving (ini-gbqc). Age and depth, not a
@@ -161,6 +162,8 @@ func (t *TUI) HandleExtended(conn net.Conn, req IPCRequest, rawJSON []byte) bool
 		t.handleIPCReload(conn, req)
 	case "bead":
 		t.handleIPCBead(conn, req)
+	case "no_bead":
+		t.handleIPCNoBead(conn, req)
 	case "patrol":
 		t.handleIPCPatrol(conn, req)
 	case "add":
@@ -1112,6 +1115,73 @@ func (t *TUI) handleIPCBead(conn net.Conn, req IPCRequest) {
 	} else {
 		pv.SetBead(text, "")
 	}
+	writeIPCResponse(conn, IPCResponse{OK: true})
+}
+
+// noBeadPane is a pane that can show the no-bead marker.
+type noBeadPane interface {
+	SetNoBeadWork(words string)
+	NoBeadWork() string
+}
+
+// noBeadOf returns pv's no-bead marker words, or "" for a pane without one.
+func noBeadOf(pv PaneView) string {
+	if nb, ok := pv.(noBeadPane); ok {
+		return nb.NoBeadWork()
+	}
+	return ""
+}
+
+// handleIPCNoBead marks a pane as working without a bead (initech assign
+// with -m and no bead): its ribbon shows "no bead" and the words in Text
+// until the next bead registration or clear. A separate action, not a form
+// of "bead", so an older TUI answers "unknown action" and leaves the ribbon
+// as it was instead of reading the words as a bead. Text is checked and the
+// pane state refused exactly as the bead action does.
+func (t *TUI) handleIPCNoBead(conn net.Conn, req IPCRequest) {
+	if req.Target == "" {
+		writeIPCResponse(conn, IPCResponse{Error: "target is required"})
+		return
+	}
+	if strings.TrimSpace(req.Text) == "" {
+		writeIPCResponse(conn, IPCResponse{Error: "no_bead needs the work's first words"})
+		return
+	}
+	if len(req.Text) > 256 {
+		writeIPCResponse(conn, IPCResponse{Error: "no_bead text too long (max 256 chars)"})
+		return
+	}
+	for _, ch := range req.Text {
+		if ch < 0x20 || ch == 0x7F {
+			writeIPCResponse(conn, IPCResponse{Error: "no_bead text contains control characters"})
+			return
+		}
+	}
+	var pv PaneView
+	if !t.runOnMain(func() { pv = t.findPaneByName(req.Target) }) {
+		writeIPCResponse(conn, IPCResponse{Error: "TUI shutting down"})
+		return
+	}
+	if pv == nil {
+		writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("pane %q not found", req.Target)})
+		return
+	}
+	if !pv.IsAlive() {
+		if pv.IsSuspended() {
+			writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf(
+				"pane %q is suspended; it resumes on message (initech send %s ...) and the bead can be set then",
+				req.Target, req.Target)})
+			return
+		}
+		writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("pane %q is not alive (agent process has exited); restart it before setting its bead", req.Target)})
+		return
+	}
+	nb, ok := pv.(noBeadPane)
+	if !ok {
+		writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("pane %q cannot show a no-bead marker", req.Target)})
+		return
+	}
+	nb.SetNoBeadWork(req.Text)
 	writeIPCResponse(conn, IPCResponse{OK: true})
 }
 

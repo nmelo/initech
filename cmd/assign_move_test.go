@@ -25,6 +25,18 @@ type q3xRig struct {
 	mu         sync.Mutex
 	reqs       []tui.IPCRequest
 	dispatched []string
+	// answers overrides the reply for an action (default: OK).
+	answers map[string]tui.IPCResponse
+}
+
+// answer makes the fake TUI reply resp to every request with action.
+func (r *q3xRig) answer(action string, resp tui.IPCResponse) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.answers == nil {
+		r.answers = map[string]tui.IPCResponse{}
+	}
+	r.answers[action] = resp
 }
 
 // q3xSetup wires the fake bd and a fake TUI socket. panes is the list reply;
@@ -77,6 +89,11 @@ func q3xSetup(t *testing.T, beads map[string]q3xBead, listData string) *q3xRig {
 			if req.Action == "list" {
 				resp.Data = listData
 			}
+			rig.mu.Lock()
+			if a, ok := rig.answers[req.Action]; ok {
+				resp = a
+			}
+			rig.mu.Unlock()
 			data, _ := json.Marshal(resp)
 			conn.Write(append(data, '\n'))
 			conn.Close()

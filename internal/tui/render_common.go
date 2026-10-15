@@ -25,6 +25,19 @@ var trueBlack = tcell.NewRGBColor(0, 0, 0)
 // color. Do not "fix" this back to red or to the literal tint RGB.
 var runningSquareStyle = tcell.StyleDefault.Background(trueBlack).Foreground(tcell.ColorGreen).Bold(true)
 
+// noBeadLabel is what the ribbon shows in a bead's place for work dispatched
+// with no bead. Words, never an id: nothing downstream may read it as one.
+const noBeadLabel = "no bead"
+
+// ribbonBeadLabel picks what the ribbon shows after the title: the bead and
+// its title, or, for work with no bead, "no bead" and the work's first words.
+func ribbonBeadLabel(beadID, beadTitle, noBead string) (string, string) {
+	if beadID == "" && noBead != "" {
+		return noBeadLabel, noBead
+	}
+	return beadID, beadTitle
+}
+
 // renderRibbon draws the bottom ribbon: solid black background, title badge,
 // and optional bead ID with title. running draws a full-height green block at
 // the ribbon's leading cell (reserved unconditionally by the col := r.X+1

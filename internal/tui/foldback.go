@@ -647,6 +647,8 @@ const agentStatusAction = "agent_status"
 // only on genuine change.
 type agentStatusSnapshot struct {
 	beads string // Joined, for cheap comparison only -- the wire carries the slice.
+	// noBead is the no-bead marker; a change to it is a change to the ribbon.
+	noBead string
 	desc  string
 	// waiting is part of the compared state so BOTH EDGES fire (ini-35ak): a
 	// raise and a CLEAR are the same detector seeing a different value, not a
@@ -686,23 +688,24 @@ func (t *TUI) broadcastAgentStatusChanges() {
 			continue // Only locally-owned agents are ours to report.
 		}
 		beads := p.BeadIDs()
+		noBead := p.NoBeadWork()
 		desc := p.SessionDesc()
 		key := agentKey(p)
 		ws := waitingStateOf(p)
 		susp := p.IsSuspended()
-		next := agentStatusSnapshot{beads: strings.Join(beads, "\x00"), desc: desc, waiting: ws, suspended: susp}
+		next := agentStatusSnapshot{beads: strings.Join(beads, "\x00"), noBead: noBead, desc: desc, waiting: ws, suspended: susp}
 		if prev, seen := t.agentStatus[key]; seen && prev == next {
 			continue
 		}
 		t.agentStatus[key] = next
-		t.windowSrv.broadcastAgentStatus(p.Name(), beads, desc, ws, susp)
+		t.windowSrv.broadcastAgentStatus(p.Name(), beads, noBead, desc, ws, susp)
 	}
 }
 
 // broadcastAgentStatus pushes one agent's state to every attached window.
 // Best-effort per recipient, for the same reason as broadcastSessionNotice: a
 // window whose stream is already broken is about to be detected as gone.
-func (w *windowServer) broadcastAgentStatus(name string, beads []string, desc string, ws WaitingState, suspended bool) {
+func (w *windowServer) broadcastAgentStatus(name string, beads []string, noBead, desc string, ws WaitingState, suspended bool) {
 	if w == nil || w.daemon == nil {
 		return
 	}
@@ -720,6 +723,7 @@ func (w *windowServer) broadcastAgentStatus(name string, beads []string, desc st
 			Name:         name,
 			Beads:        beads,
 			Bead:         primary, // Wire compatibility, same as AgentStatus.
+			NoBead:       noBead,
 			Text:         desc,
 			WaitingState: ws,
 			Suspended:    suspended,
@@ -729,14 +733,14 @@ func (w *windowServer) broadcastAgentStatus(name string, beads []string, desc st
 
 // applyAgentStatus updates the named remote pane from a broadcast (ini-9ka.11).
 // The receiving half of broadcastAgentStatus.
-func (t *TUI) applyAgentStatus(name string, beads []string, desc string, ws WaitingState, suspended bool) {
+func (t *TUI) applyAgentStatus(name string, beads []string, noBead, desc string, ws WaitingState, suspended bool) {
 	for _, pv := range t.panes {
 		rp, ok := pv.(*RemotePane)
 		if !ok || rp.Name() != name {
 			continue
 		}
 		wasSuspended := rp.IsSuspended()
-		rp.ApplyStatus(beads, desc)
+		rp.ApplyStatus(beads, noBead, desc)
 		rp.ApplyWaiting(ws)
 		rp.ApplySuspended(suspended)
 		// WAKE-EDGE GEOMETRY REASSERTION. A wake respawns the pane at

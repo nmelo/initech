@@ -41,6 +41,10 @@ type paneInfo struct {
 	ModalLatched bool `json:"modal_latched,omitempty"`
 	ModalAgeSec  int  `json:"modal_age_sec,omitempty"`
 	QueuedCount  int  `json:"queued_count,omitempty"`
+
+	// NoBead is the no-bead marker's words for an agent dispatched work with
+	// no bead (initech assign -m with no bead id); empty otherwise.
+	NoBead string `json:"no_bead,omitempty"`
 }
 
 func runStatus(cmd *cobra.Command, args []string) error {
@@ -171,7 +175,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 			displayName = pi.Host + ":" + pi.Name
 		}
 
-		if b, ok := beadMap[pi.Name]; ok {
+		if b, ok := beadMap[pi.Name]; ok && pi.NoBead == "" {
 			title := b.Title
 			if len(title) > 30 {
 				title = title[:27] + "..."
@@ -180,6 +184,16 @@ func runStatus(cmd *cobra.Command, args []string) error {
 			if pi.Alive {
 				status = statusColor(b.Status)
 			}
+		}
+		// Work with no bead shows in the bead's place. It wins over a bd
+		// assignment (that bead's id and status are not shown): it is the
+		// newer dispatch, and it is what the ribbon shows.
+		if pi.NoBead != "" {
+			words := pi.NoBead
+			if r := []rune(words); len(r) > 30 {
+				words = string(r[:27]) + "..."
+			}
+			bead = fmt.Sprintf("%s %s", color.Yellow("no bead"), color.Dim("("+words+")"))
 		}
 
 		if hasRemotes {
