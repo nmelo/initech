@@ -189,7 +189,7 @@ func dispatchWriteFor(t *testing.T, target string) (status string, recordImpleme
 	t.Helper()
 	stubBdFns(t)
 	resetAssignFlags(t)
-	bdShowTitleFn = func(id string) (string, error) { return "Some bead", nil }
+	assignTitles(func(id string) (string, error) { return "Some bead", nil })
 	bdDispatchFn = func(id, agent, st string, record bool) error {
 		status, recordImplementer = st, record
 		return nil
@@ -243,7 +243,7 @@ func TestRunAssign_ARefusedWriteNeverReachesTheTUIPointer(t *testing.T) {
 	skipWindows(t)
 	stubBdFns(t)
 	resetAssignFlags(t)
-	bdShowTitleFn = func(id string) (string, error) { return "Some bead", nil }
+	assignTitles(func(id string) (string, error) { return "Some bead", nil })
 	bdDispatchFn = func(id, agent, st string, record bool) error {
 		return errRefusedByBd
 	}

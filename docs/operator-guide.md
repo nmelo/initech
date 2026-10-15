@@ -74,6 +74,17 @@ Every step has a handoff. Messages between agents flow through `initech send`. E
 
 Agents on the same bead talk to each other directly and post everything on the bead; super reads the bead and steps in when a ready bead sits unclaimed. The root `CLAUDE.md` holds a **QA pairs** table that `initech init` generates from the roles list: engineers are split into blocks, one per QA, with any extra engineers going to the first QAs. If your pair is busy, the first free QA takes the work. With no QA role, the table says the engineer's DONE evidence is the gate and super closes on it after checking it; super never grades. Edit the table to change pairs. `initech add-agent` of an eng or qa role re-renders the table and says so, unless you edited it, in which case it leaves the table alone and tells you to add the new agent's pair yourself.
 
+### Dispatching with assign
+
+`initech assign <agent> <bead>... [-m "..."]` claims the beads in bd, shows them on the agent's ribbon and sends the agent one message. It looks at each bead first:
+
+- **Already with that agent** (assigned to it, in the status a dispatch would write: in progress, or in QA for a QA agent): a fold-in. bd is left as it is, the message is delivered, and the ribbon gains the bead if it lacks it while keeping the beads it already shows.
+- **In progress or in QA with another agent**: refused with one line naming who has it. `--move` reassigns it: the bead leaves the other agent's ribbon, and that agent is told in one line who moved it and to whom.
+- **Closed**: refused; follow-on work gets its own bead.
+- **Anything else**: dispatched, replacing the agent's ribbon with the beads of the call.
+
+Several beads in one call each get their own rule; a refused bead is listed as failed, and the command fails only when every bead does. The event log records each dispatch, saying "fold-in" or "moved from" where it applies. Against an initech that does not report ribbons, a fold-in leaves the ribbon as it was and a move leaves the previous holder's ribbon alone, each with a warning; the message is still delivered.
+
 ### What the Operator Does at Each Step
 
 **Setting direction.** Tell super what you want. Be specific about the problem, not the solution. "Users can't paste images into agent panes" is better than "add EventPaste handling to tui.go". Let PM and arch figure out the how.

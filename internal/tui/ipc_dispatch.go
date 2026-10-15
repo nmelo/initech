@@ -18,10 +18,26 @@ type PaneInfo struct {
 	Alive    bool   `json:"alive"`
 	Visible  bool   `json:"visible"`
 
+	// Beads is what the pane's ribbon shows, always sent ([] when empty) so a
+	// client can tell an empty ribbon from an older TUI that sends no field.
+	// assign reads it to add one bead to a ribbon or take one off it without
+	// dropping the others.
+	Beads []string `json:"beads"`
+
 	// Modal-latch visibility (ini-gbqc): omitted entirely when no latch is up.
 	ModalLatched bool `json:"modal_latched,omitempty"`
 	ModalAgeSec  int  `json:"modal_age_sec,omitempty"`
 	QueuedCount  int  `json:"queued_count,omitempty"`
+}
+
+// ribbonBeads is the pane's bead set for the list reply, never nil, so it
+// encodes as [] rather than null when the ribbon is empty.
+func ribbonBeads(p PaneView) []string {
+	ids := p.BeadIDs()
+	if ids == nil {
+		return []string{}
+	}
+	return ids
 }
 
 // IPCHost provides the runtime-specific capabilities needed by the shared

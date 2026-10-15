@@ -577,6 +577,7 @@ func (d *Daemon) AllPanes() ([]PaneInfo, bool) {
 			Activity: p.Activity().String(),
 			Alive:    p.IsAlive(),
 			Visible:  true,
+			Beads:    ribbonBeads(p),
 		}
 	}
 	return panes, true

@@ -66,7 +66,7 @@ func TestRunAssign_AnAgentStillStartingGetsNothingClaimed(t *testing.T) {
 	skipWindows(t)
 	stubBdFns(t)
 	resetAssignFlags(t)
-	bdShowTitleFn = func(id string) (string, error) { return "Fix the bug", nil }
+	assignTitles(func(id string) (string, error) { return "Fix the bug", nil })
 	dispatched := 0
 	bdDispatchFn = func(id, agent, status string, recordImplementer bool) error {
 		dispatched++
@@ -95,7 +95,7 @@ func TestRunAssign_AnOlderTUIWithoutSendReadyStillAssigns(t *testing.T) {
 	skipWindows(t)
 	stubBdFns(t)
 	resetAssignFlags(t)
-	bdShowTitleFn = func(id string) (string, error) { return "Fix the bug", nil }
+	assignTitles(func(id string) (string, error) { return "Fix the bug", nil })
 	dispatched := 0
 	bdDispatchFn = func(id, agent, status string, recordImplementer bool) error {
 		dispatched++
@@ -126,7 +126,7 @@ func TestRunAssign_APreflightTimeoutClaimsNothing(t *testing.T) {
 	old := sendReadyActionTimeout
 	sendReadyActionTimeout = 200 * time.Millisecond
 	t.Cleanup(func() { sendReadyActionTimeout = old })
-	bdShowTitleFn = func(id string) (string, error) { return "Fix the bug", nil }
+	assignTitles(func(id string) (string, error) { return "Fix the bug", nil })
 	dispatched := 0
 	bdDispatchFn = func(id, agent, status string, recordImplementer bool) error {
 		dispatched++

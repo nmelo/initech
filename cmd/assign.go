@@ -19,9 +19,19 @@ var assignCmd = &cobra.Command{
 	Long: `Atomic dispatch: combines bd update, initech bead, and initech send in one
 command. Auto-generates a dispatch message from bead titles.
 
-  initech assign eng1 ini-abc
-  initech assign eng1 ini-abc ini-def ini-ghi
-  initech assign eng2 ini-xyz --message "Focus on the error handling edge cases."
+  initech assign eng1 ini-abc                     First dispatch
+  initech assign eng1 ini-abc ini-def ini-ghi     Several beads in one message
+  initech assign eng1 ini-abc -m "fold ini-x in"  Fold-in: eng1 already has ini-abc
+  initech assign eng3 ini-abc --move              Take ini-abc from the agent working on it
+
+assign looks at each bead before writing it:
+  already with this agent  -> fold-in: no bd write; the ribbon gains the bead
+                              if it lacks it and keeps the others; the
+                              message is delivered
+  in progress or in QA     -> refused, naming who has it; --move reassigns it,
+  with another agent          takes it off that agent's ribbon and tells them
+  closed                   -> refused; follow-on work gets its own bead
+  anything else            -> dispatched
 
 The status written comes from the lifecycle transition table
 (internal/lifecycle), keyed by the TARGET's role:
@@ -36,12 +46,17 @@ one bead succeeds, exit 1 if all fail.
 Requires bd and a running initech TUI.`,
 	Args: cobra.MinimumNArgs(2),
 	RunE: runAssign,
+	// Execute prints the returned error once; cobra's own "Error:" copy would
+	// make a refusal two lines.
+	SilenceErrors: true,
 }
 
 var assignMessage string
+var assignMove bool
 
 func init() {
 	assignCmd.Flags().StringVarP(&assignMessage, "message", "m", "", "Custom instructions appended to the dispatch message")
+	assignCmd.Flags().BoolVar(&assignMove, "move", false, "Reassign a bead another agent is working on (it leaves their ribbon and they are told)")
 	rootCmd.AddCommand(assignCmd)
 }
 
@@ -101,9 +116,62 @@ func truncateTitle(title string, maxLen int) string {
 type assignResult struct {
 	id    string
 	title string
+	kind  assignKind
+	// holder is the agent a moved bead was taken from.
+	holder string
+}
+
+// assignKind is what assign does with one bead, decided from its bd state.
+type assignKind int
+
+const (
+	// assignDispatch writes the bead to the target, as assign always has.
+	assignDispatch assignKind = iota
+	// assignFoldIn: the bead is already with the target; no bd write.
+	assignFoldIn
+	// assignMoved: the bead is taken from another agent (--move).
+	assignMoved
+	// assignRefused: nothing is written; reason says why.
+	assignRefused
+)
+
+// assignDecision is classifyAssign's answer for one bead.
+type assignDecision struct {
+	kind   assignKind
+	holder string
+	reason string
+}
+
+// classifyAssign decides what assign does with a bead from what bd says about
+// it. dispatchStatus is the status the lifecycle table writes for the
+// target's role; a bead already in that status with the target is a fold-in.
+// A bead in progress or in QA with a DIFFERENT agent is never taken silently:
+// it is refused unless move is set. A closed bead is refused: follow-on work
+// gets its own bead. Everything else, including a bead bd reports no status
+// or assignee for, is dispatched exactly as before.
+func classifyAssign(id, target, status, assignee, dispatchStatus string, move bool) assignDecision {
+	if status == "closed" {
+		return assignDecision{kind: assignRefused, reason: fmt.Sprintf("%s is closed; follow-on work gets its own bead", id)}
+	}
+	if assignee == target && status == dispatchStatus {
+		return assignDecision{kind: assignFoldIn}
+	}
+	if (status == "in_progress" || status == "in_qa") && assignee != "" && assignee != target {
+		if !move {
+			where := "in progress"
+			if status == "in_qa" {
+				where = "in QA"
+			}
+			return assignDecision{kind: assignRefused, reason: fmt.Sprintf("%s is %s with %s; add --move to reassign", id, where, assignee)}
+		}
+		return assignDecision{kind: assignMoved, holder: assignee}
+	}
+	return assignDecision{kind: assignDispatch}
 }
 
 func runAssign(cmd *cobra.Command, args []string) error {
+	// Past argument parsing, a failure is about the beads, not the usage.
+	cmd.SilenceUsage = true
 	agent := args[0]
 	beadIDs := args[1:]
 
@@ -151,48 +219,50 @@ func runAssign(cmd *cobra.Command, args []string) error {
 	// (pointer set, state unchanged).
 	var successes []assignResult
 	var failures []string
+	var refusals []string
+	tr := lifecycle.Dispatch(family, "")
 	for _, id := range beadIDs {
-		title, err := bdShowTitleFn(id)
+		title, assignee, status, err := bdShowBeadFn(id)
 		if err != nil {
 			fmt.Fprintf(cmd.ErrOrStderr(), "warning: %s\n", err)
 			failures = append(failures, id)
 			continue
 		}
-		tr := lifecycle.Dispatch(family, "")
-		if err := bdDispatchFn(id, agent, tr.Status, tr.RecordImplementer); err != nil {
-			fmt.Fprintf(cmd.ErrOrStderr(), "warning: %s: %s\n", id, err)
+		d := classifyAssign(id, agent, status, assignee, tr.Status, assignMove)
+		if d.kind == assignRefused {
+			refusals = append(refusals, d.reason)
 			failures = append(failures, id)
 			continue
 		}
-		successes = append(successes, assignResult{id: id, title: truncateTitle(title, 80)})
+		if d.kind != assignFoldIn {
+			if err := bdDispatchFn(id, agent, tr.Status, tr.RecordImplementer); err != nil {
+				fmt.Fprintf(cmd.ErrOrStderr(), "warning: %s: %s\n", id, err)
+				failures = append(failures, id)
+				continue
+			}
+		}
+		successes = append(successes, assignResult{id: id, title: truncateTitle(title, 80), kind: d.kind, holder: d.holder})
 	}
 
 	if len(successes) == 0 {
+		// One refused bead is one line: the reason, with nothing else after it.
+		if len(beadIDs) == 1 && len(refusals) == 1 {
+			return errors.New(refusals[0])
+		}
+		for _, r := range refusals {
+			fmt.Fprintln(cmd.ErrOrStderr(), r)
+		}
 		return fmt.Errorf("no beads could be assigned")
 	}
+	for _, r := range refusals {
+		fmt.Fprintln(cmd.ErrOrStderr(), r)
+	}
 
-	// Register beads in TUI (cosmetic, warn on failure).
-	// Single bead: "id\ttitle" for ribbon display. Multi: "id1,id2" (no titles).
 	successIDs := make([]string, len(successes))
 	for i, s := range successes {
 		successIDs[i] = s.id
 	}
-	var beadText string
-	if len(successes) == 1 {
-		beadText = successes[0].id + "\t" + successes[0].title
-	} else {
-		beadText = strings.Join(successIDs, ",")
-	}
-	beadReq := tui.IPCRequest{
-		Action: "bead",
-		Target: agent,
-		Text:   beadText,
-	}
-	if resp, err := ipcCall(beadReq); err != nil {
-		fmt.Fprintf(cmd.ErrOrStderr(), "warning: could not register bead in TUI (is initech running?)\n")
-	} else if !resp.OK {
-		fmt.Fprintf(cmd.ErrOrStderr(), "warning: TUI bead registration: %s\n", resp.Error)
-	}
+	updateAssignRibbons(cmd.ErrOrStderr(), agent, host, successes)
 
 	// Build consolidated dispatch message.
 	dispatch := buildDispatchMessage(successes, assignMessage)
@@ -212,9 +282,20 @@ func runAssign(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("beads claimed but dispatch failed: %s\nRun: initech send %s to notify manually", resp.Error, agent)
 	}
 
+	// The previous holder of a moved bead hears it from initech, after the
+	// target has its message (best-effort: a warning, never a failed assign).
+	notifyMovedHolders(cmd.ErrOrStderr(), agent, successes)
+
 	// Emit events to TUI (fire and forget, one per bead).
 	for _, s := range successes {
-		emitIPCEvent(agent, s.id, "bead_assigned", fmt.Sprintf("assigned to %s: %s", agent, s.title))
+		detail := fmt.Sprintf("assigned to %s: %s", agent, s.title)
+		switch s.kind {
+		case assignFoldIn:
+			detail = fmt.Sprintf("fold-in, assigned to %s: %s", agent, s.title)
+		case assignMoved:
+			detail = fmt.Sprintf("moved from %s to %s: %s", s.holder, agent, s.title)
+		}
+		emitIPCEvent(agent, s.id, "bead_assigned", detail)
 	}
 
 	// Print summary to stderr.

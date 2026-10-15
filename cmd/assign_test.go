@@ -161,7 +161,7 @@ func TestRunAssign_SingleBeadSuccess(t *testing.T) {
 	stubBdFns(t)
 	resetAssignFlags(t)
 
-	bdShowTitleFn = func(id string) (string, error) { return "Fix the bug", nil }
+	assignTitles(func(id string) (string, error) { return "Fix the bug", nil })
 	var claimedID, claimedAgent string
 	bdDispatchFn = func(id, agent, status string, recordImplementer bool) error {
 		claimedID = id
@@ -197,7 +197,7 @@ func TestRunAssign_MultiBeadSuccess(t *testing.T) {
 	stubBdFns(t)
 	resetAssignFlags(t)
 
-	bdShowTitleFn = func(id string) (string, error) { return "Task " + id, nil }
+	assignTitles(func(id string) (string, error) { return "Task " + id, nil })
 
 	sockPath := startFakeIPC(t, tui.IPCResponse{OK: true})
 	t.Setenv("INITECH_SOCKET", sockPath)
@@ -221,12 +221,12 @@ func TestRunAssign_PartialFailure(t *testing.T) {
 	stubBdFns(t)
 	resetAssignFlags(t)
 
-	bdShowTitleFn = func(id string) (string, error) {
+	assignTitles(func(id string) (string, error) {
 		if id == "ini-bad" {
 			return "", fmt.Errorf("bead %s not found", id)
 		}
 		return "Task " + id, nil
-	}
+	})
 
 	sockPath := startFakeIPC(t, tui.IPCResponse{OK: true})
 	t.Setenv("INITECH_SOCKET", sockPath)
@@ -254,9 +254,9 @@ func TestRunAssign_AllFail(t *testing.T) {
 	stubBdFns(t)
 	resetAssignFlags(t)
 
-	bdShowTitleFn = func(id string) (string, error) {
+	assignTitles(func(id string) (string, error) {
 		return "", fmt.Errorf("bead %s not found", id)
-	}
+	})
 
 	sockPath := startFakeIPC(t, tui.IPCResponse{OK: true})
 	t.Setenv("INITECH_SOCKET", sockPath)
@@ -281,7 +281,7 @@ func TestRunAssign_DeduplicatesBeads(t *testing.T) {
 	resetAssignFlags(t)
 
 	var claimCount int
-	bdShowTitleFn = func(id string) (string, error) { return "Task", nil }
+	assignTitles(func(id string) (string, error) { return "Task", nil })
 	bdDispatchFn = func(id, agent, status string, recordImplementer bool) error {
 		claimCount++
 		return nil
@@ -309,7 +309,7 @@ func TestRunAssign_CrossMachineAgent(t *testing.T) {
 	stubBdFns(t)
 	resetAssignFlags(t)
 
-	bdShowTitleFn = func(id string) (string, error) { return "Task", nil }
+	assignTitles(func(id string) (string, error) { return "Task", nil })
 
 	sockPath := startFakeIPC(t, tui.IPCResponse{OK: true})
 	t.Setenv("INITECH_SOCKET", sockPath)
@@ -333,7 +333,7 @@ func TestRunAssign_ClaimFailure(t *testing.T) {
 	stubBdFns(t)
 	resetAssignFlags(t)
 
-	bdShowTitleFn = func(id string) (string, error) { return "Task", nil }
+	assignTitles(func(id string) (string, error) { return "Task", nil })
 	bdDispatchFn = func(id, agent, status string, recordImplementer bool) error {
 		return fmt.Errorf("bd update failed: locked")
 	}
@@ -357,7 +357,7 @@ func TestRunAssign_IPCDispatchFailure(t *testing.T) {
 	stubBdFns(t)
 	resetAssignFlags(t)
 
-	bdShowTitleFn = func(id string) (string, error) { return "Task", nil }
+	assignTitles(func(id string) (string, error) { return "Task", nil })
 
 	// IPC returns error on send.
 	sockPath := startFakeIPC(t, tui.IPCResponse{OK: false, Error: "agent not found"})
@@ -374,5 +374,14 @@ func TestRunAssign_IPCDispatchFailure(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "dispatch failed") {
 		t.Errorf("error = %q, want 'dispatch failed'", err.Error())
+	}
+}
+
+// assignTitles makes assign's bd read return f's title with no status or
+// assignee, which classifyAssign treats as a plain dispatch.
+func assignTitles(f func(id string) (string, error)) {
+	bdShowBeadFn = func(id string) (string, string, string, error) {
+		title, err := f(id)
+		return title, "", "", err
 	}
 }

@@ -122,6 +122,7 @@ func (t *TUI) AllPanes() ([]PaneInfo, bool) {
 				Activity: p.Activity().String(),
 				Alive:    p.IsAlive(),
 				Visible:  !t.layoutState.Hidden[agentKey(p)],
+				Beads:    ribbonBeads(p),
 			}
 			// The latch is why mail stops moving, so it belongs where someone
 			// looks when mail stops moving (ini-gbqc). Age and depth, not a
