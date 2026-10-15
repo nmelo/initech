@@ -5,7 +5,9 @@
 package tui
 
 import (
+	"io"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/charmbracelet/x/vt"
@@ -186,46 +188,66 @@ func TestRenderBadge_NoLayoutShift(t *testing.T) {
 	}
 }
 
-// TestRenderBadge_ClearsWithTintAfterHoldWindowElapses is a genuine
-// real-elapsed-time boundary test (ini-gb4j coverage gap: the existing tint
+// TestRenderBadge_ClearsWithTintAfterHoldWindowElapses is a real
+// elapsed-time boundary test (ini-gb4j coverage gap: the existing tint
 // hysteresis tests either fabricate an already-past tintUntil or only cover
 // a ~5s gap well inside the 12s hold window; neither observes the actual
-// boundary crossing in real time). Confirms AC verify item 2: ~12s after an
-// agent genuinely stops, the square clears at the same render call the
-// background tint clears — both read the exact same tintUntil field.
+// boundary crossing). Confirms AC verify item 2: ~12s after an agent
+// genuinely stops, the square clears at the same render call the background
+// tint clears — both read the exact same tintUntil field.
 //
-// Slow by design (waits out the real 12s tintHoldWindow); skipped in -short.
+// It runs in a synctest bubble: time.Now and time.Sleep share the bubble's
+// clock, so updateActivity stamps tintUntil from that clock and the sleep
+// below moves the same clock past it. The boundary is still crossed for real,
+// on the simulated clock, without spending 14 wall seconds. Skipped in
+// -short with the rest of the full-suite tests.
 func TestRenderBadge_ClearsWithTintAfterHoldWindowElapses(t *testing.T) {
 	if testing.Short() {
-		t.Skip("skipping real-elapsed tintHoldWindow boundary test in short mode")
+		t.Skip("skipping tintHoldWindow boundary test in short mode")
 	}
+	synctest.Test(t, func(t *testing.T) {
+		tui, s := newTestTUIWithScreen("a")
+		// The emulator drain goroutines belong to the bubble; end them so the
+		// bubble can finish.
+		t.Cleanup(func() { closeTestEmus(tui) })
+		tui.applyLayout()
+		tui.layoutState.Overlay = false
+		p := tui.panes[0].(*Pane)
 
-	tui, s := newTestTUIWithScreen("a")
-	tui.applyLayout()
-	tui.layoutState.Overlay = false
-	p := tui.panes[0].(*Pane)
+		// Real output, real updateActivity bump -- not a fabricated timestamp.
+		p.lastOutputTime = time.Now()
+		p.updateActivity()
+		tui.render()
 
-	// Real output, real updateActivity bump -- not a fabricated timestamp.
-	p.lastOutputTime = time.Now()
-	p.updateActivity()
-	tui.render()
+		if !runningSquareCell(s, p.region) {
+			t.Fatal("precondition failed: square should be lit immediately after real output")
+		}
+		if got := p.backgroundTint(); got != runningTintColor {
+			t.Fatalf("precondition failed: background tint should be lit immediately after real output, got %v", got)
+		}
 
-	if !runningSquareCell(s, p.region) {
-		t.Fatal("precondition failed: square should be lit immediately after real output")
-	}
-	if got := p.backgroundTint(); got != runningTintColor {
-		t.Fatalf("precondition failed: background tint should be lit immediately after real output, got %v", got)
-	}
+		// Wait out the hold window plus a margin for scheduling slack.
+		time.Sleep(tintHoldWindow + 2*time.Second)
+		tui.render()
 
-	// Wait out the real hold window plus a margin for scheduling slack.
-	time.Sleep(tintHoldWindow + 2*time.Second)
-	tui.render()
+		if runningSquareCell(s, p.region) {
+			t.Error("square should have cleared ~12s (tintHoldWindow) after output genuinely stopped")
+		}
+		if got := p.backgroundTint(); got != tcell.ColorDefault {
+			t.Errorf("background tint should have cleared at the same moment, got %v", got)
+		}
+	})
+}
 
-	if runningSquareCell(s, p.region) {
-		t.Error("square should have cleared ~12s (tintHoldWindow) after output genuinely stopped")
-	}
-	if got := p.backgroundTint(); got != tcell.ColorDefault {
-		t.Errorf("background tint should have cleared at the same moment, got %v", got)
+// closeTestEmus closes the input pipe of every local pane's emulator, which
+// ends the drain goroutine newTestTUIWithScreen started for it.
+func closeTestEmus(tui *TUI) {
+	for _, pv := range tui.panes {
+		if p, ok := pv.(*Pane); ok && p.emu != nil {
+			if w, ok := p.emu.InputPipe().(*io.PipeWriter); ok {
+				w.CloseWithError(io.EOF)
+			}
+		}
 	}
 }
 
