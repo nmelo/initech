@@ -86,6 +86,10 @@ type Project struct {
 
 	IdleWithBeadThreshold *int `yaml:"idle_with_bead_threshold,omitempty"` // Seconds of silence before idle-with-bead fires. nil = 60, 0 = disabled.
 
+	// Telemetry turns the daily anonymous usage ping on or off (ini-62tn).
+	// nil (key absent) = on, false = off. Read it through IsTelemetryEnabled.
+	Telemetry *bool `yaml:"telemetry,omitempty"`
+
 	// Typing hold: an agent message to a pane the operator is typing in waits
 	// for a quiet gap. Raw nodes so a malformed value falls back with a
 	// warning instead of failing the load; read them through TypingHold.
@@ -123,6 +127,13 @@ func (p *Project) GetIdleWithBeadThreshold() int {
 		return 60
 	}
 	return *p.IdleWithBeadThreshold
+}
+
+// IsTelemetryEnabled reports whether initech.yaml allows the usage ping.
+// True when the telemetry key is absent; DO_NOT_TRACK is checked by the
+// caller (usage.Enabled), not here.
+func (p *Project) IsTelemetryEnabled() bool {
+	return p.Telemetry == nil || *p.Telemetry
 }
 
 // Remote describes a remote initech peer for cross-machine coordination.

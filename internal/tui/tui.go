@@ -719,6 +719,7 @@ type Config struct {
 	Project            *config.Project                       // Full project config. Used for remote peer connections.
 	OnAttentionConsent func(granted bool)                    // Persists the one-time consent answer (ini-2x8.6). Nil disables the modal's write-back.
 	RecordDir          string                                // Non-empty: record every local pane's output under this directory (ini-pqdy.2). Empty: off.
+	AfterFirstFrame    func()                                // Run once, in the background, after the first frame is drawn; window 1 only (ini-62tn). Nil: nothing.
 }
 
 // DefaultConfig returns a config with standard shell-only agents.
@@ -1337,6 +1338,9 @@ func Run(cfg Config) error {
 
 	LogInfo("main-loop", "entering event loop", "ipcCh_cap", cap(t.ipcCh), "panes", len(t.panes))
 
+	// afterFirstFrame is cleared once handed off, so it starts at most once.
+	afterFirstFrame := cfg.AfterFirstFrame
+
 	for {
 		select {
 		case ev := <-eventCh:
@@ -1383,8 +1387,31 @@ func Run(cfg Config) error {
 			// never updates. Rendering unconditionally guarantees the screen
 			// reflects state changes within one event-loop cycle.
 			t.render()
+			if afterFirstFrame != nil {
+				startAfterFirstFrame(afterFirstFrame, viewer)
+				afterFirstFrame = nil
+			}
 		}
 	}
+}
+
+// startAfterFirstFrame runs fn in its own goroutine and returns at once: the
+// event loop never waits on it, and nothing waits on it at exit. A viewer
+// never runs it. A panic inside fn is dropped, never a TUI crash: the work
+// handed here (the usage ping) is optional by definition.
+func startAfterFirstFrame(fn func(), viewer bool) bool {
+	if fn == nil || viewer {
+		return false
+	}
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				LogDebug("after-first-frame", "dropped panic", "panic", fmt.Sprint(r))
+			}
+		}()
+		fn()
+	}()
+	return true
 }
 
 func (t *TUI) handleEvent(ev tcell.Event) bool {

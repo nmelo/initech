@@ -6,6 +6,8 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/nmelo/initech/internal/usage"
 )
 
 // ini-vby5.12 AC2: the generated text names no model, host, path or token.
@@ -64,7 +66,7 @@ func TestExamples_UncommentedTheyParseIntoTheirKeys(t *testing.T) {
 		t.Fatalf("uncommented examples do not load: %v\n%s", err, yaml)
 	}
 	if len(p.ClaudeCommand) == 0 || len(p.ClaudeArgs) == 0 || !p.Resource.AutoSuspend ||
-		p.Resource.PressureThreshold != 90 || len(p.RoleOverrides) != 2 || p.RunningPaneTint != "#1e2022" {
+		p.Resource.PressureThreshold != 90 || len(p.RoleOverrides) != 2 || p.RunningPaneTint != "#1e2022" || p.IsTelemetryEnabled() {
 		t.Errorf("uncommented examples did not set every key: %+v\n%s", p, yaml)
 	}
 }
@@ -82,8 +84,8 @@ func TestAppendMissingExamples_KeepsEveryExistingByteAndIsIdempotent(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n != 3 {
-		t.Errorf("added %d examples, want 3 (claude_command, typing_hold_quiet_s, role_overrides; claude_args is live, resource commented)", n)
+	if n != 4 {
+		t.Errorf("added %d examples, want 4 (claude_command, typing_hold_quiet_s, role_overrides, telemetry; claude_args is live, resource commented)", n)
 	}
 	b, _ := os.ReadFile(path)
 	got := string(b)
@@ -95,7 +97,7 @@ func TestAppendMissingExamples_KeepsEveryExistingByteAndIsIdempotent(t *testing.
 		t.Errorf("examples added for keys the file already has:\n%s", added)
 	}
 	if !strings.Contains(added, "# claude_command:") || !strings.Contains(added, "# role_overrides:") ||
-		!strings.Contains(added, "# typing_hold_quiet_s:") {
+		!strings.Contains(added, "# typing_hold_quiet_s:") || !strings.Contains(added, "# telemetry: false") {
 		t.Errorf("missing examples not added:\n%s", added)
 	}
 	if n, _ := AppendMissingExamples(path); n != 0 {
@@ -154,5 +156,19 @@ func TestHasTopLevelKey_LiveAndCommentedFormsOnly(t *testing.T) {
 		if got := hasTopLevelKey(tc.text, "claude_args"); got != tc.want {
 			t.Errorf("hasTopLevelKey(%q) = %v, want %v", tc.text, got, tc.want)
 		}
+	}
+}
+
+// ini-62tn: the generated file tells the user about the usage ping in the
+// same words init prints, right above the commented key that turns it off.
+func TestExamples_CarryTheUsageNotice(t *testing.T) {
+	text := MissingExamples("")
+	want := "# " + usage.Notice + "\n# telemetry: false\n"
+	if !strings.Contains(text, want) {
+		t.Fatalf("examples lack the usage notice and key:\n%s", text)
+	}
+	// Positive twin: a file that already sets telemetry gets no second copy.
+	if strings.Contains(MissingExamples("telemetry: true\n"), usage.Notice) {
+		t.Error("notice added to a file that already sets telemetry")
 	}
 }

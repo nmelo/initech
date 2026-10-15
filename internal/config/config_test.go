@@ -895,3 +895,30 @@ func TestValidate_ListenExplicitHostUnchanged(t *testing.T) {
 		}
 	}
 }
+
+// ini-62tn: telemetry absent means on; only an explicit false turns it off.
+func TestIsTelemetryEnabled_AbsentMeansOn(t *testing.T) {
+	no, yes := false, true
+	for _, c := range []struct {
+		v    *bool
+		want bool
+	}{{nil, true}, {&yes, true}, {&no, false}} {
+		if got := (&Project{Telemetry: c.v}).IsTelemetryEnabled(); got != c.want {
+			t.Errorf("Telemetry=%v: IsTelemetryEnabled = %v, want %v", c.v, got, c.want)
+		}
+	}
+}
+
+func TestLoad_TelemetryFalseRoundTrips(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "initech.yaml")
+	if err := os.WriteFile(path, []byte("project: demo\nroot: "+filepath.Dir(path)+"\nroles: [eng1]\ntelemetry: false\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	p, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.IsTelemetryEnabled() {
+		t.Fatal("telemetry: false loaded as enabled")
+	}
+}

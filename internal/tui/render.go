@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/gdamore/tcell/v2"
+	"github.com/nmelo/initech/internal/usage"
 )
 
 // renderEmptyViewerHint draws the single dim centered sentence explaining why
@@ -270,6 +271,10 @@ func (t *TUI) selectionForPane(p PaneView) Selection {
 }
 
 // renderWelcome draws a centered overlay with the top keybindings on first launch.
+// welcomeTextW is the welcome box's text width; the box adds a two-column
+// margin on each side.
+const welcomeTextW = 40
+
 func (t *TUI) renderWelcome() {
 	s := t.screen
 	sw, sh := s.Size()
@@ -286,10 +291,12 @@ func (t *TUI) renderWelcome() {
 		"",
 		"HINT: ask super how this project works",
 		"",
-		"Press any key to dismiss",
 	}
+	// The usage ping notice (ini-62tn), wrapped to the box's text width.
+	lines = append(lines, wrapToWidth(usage.Notice, welcomeTextW)...)
+	lines = append(lines, "", "Press any key to dismiss")
 
-	boxW := 44
+	boxW := welcomeTextW + 4
 	boxH := len(lines) + 2 // 1 padding top + bottom
 	startX := (sw - boxW) / 2
 	startY := (sh - boxH) / 2

@@ -15,6 +15,7 @@ import (
 	"github.com/nmelo/initech/internal/config"
 	"github.com/nmelo/initech/internal/roles"
 	"github.com/nmelo/initech/internal/tui"
+	"github.com/nmelo/initech/internal/usage"
 	"github.com/spf13/cobra"
 )
 
@@ -170,6 +171,9 @@ const colorizedUsageTemplate = `{{cyanBold "Usage:"}}
 {{- if .HasAvailableSubCommands}}
 
 Use "{{.CommandPath}} [command] --help" for more information about a command.
+{{end}}
+{{- if not .HasParent}}
+` + usage.Notice + `
 {{end}}`
 
 var versionCmd = &cobra.Command{
@@ -281,7 +285,25 @@ func runTUI(cmd *cobra.Command, args []string) error {
 		PaneConfigBuilder:  buildReloadingPaneConfigBuilder(cfgPath, buildAgentPaneConfig),
 		OnAttentionConsent: attentionConsentRecorder(cfgPath, proj),
 		RecordDir:          recDir,
+		AfterFirstFrame:    usagePingHook(proj, windowNum, os.Getenv),
 	})
+}
+
+// usagePingHook returns the daily anonymous usage ping for the TUI to run
+// after its first frame, or nil when it must not run: any --window viewer,
+// telemetry: false in initech.yaml, or DO_NOT_TRACK in the environment. Nil
+// means no client at all: no install id file, no request (ini-62tn). The
+// result of the ping is dropped; it never reaches the screen or stderr.
+func usagePingHook(proj *config.Project, window int, getenv func(string) string) func() {
+	if window != 0 || !usage.Enabled(proj.Telemetry, getenv) {
+		return nil
+	}
+	return func() {
+		_ = usage.Ping(usage.Options{
+			Version: Version,
+			Debug:   func(msg string, args ...any) { tui.LogDebug("usage", msg, args...) },
+		})
+	}
 }
 
 // buildAgentPaneConfig constructs a PaneConfig for the given role from the
