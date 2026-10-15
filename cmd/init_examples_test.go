@@ -10,6 +10,7 @@ import (
 
 	"github.com/nmelo/initech/internal/config"
 	"github.com/nmelo/initech/internal/scaffold"
+	"github.com/nmelo/initech/internal/usage"
 	"github.com/spf13/cobra"
 )
 
@@ -118,5 +119,39 @@ func TestInit_ForceKeepsEveryByteIncludingTokensAndOnlyAppends(t *testing.T) {
 	runInitForTest(t, dir, true)
 	if b2, _ := os.ReadFile(path); string(b2) != got {
 		t.Error("a second --force changed the file again")
+	}
+}
+
+// ini-62tn: the init run that writes initech.yaml prints the usage notice,
+// and the written file carries the same line above the commented key that
+// turns it off. A plain init on an existing project writes nothing and so
+// prints no notice (positive twin of the fresh case).
+func TestInit_TellsTheUserAboutTheUsagePing(t *testing.T) {
+	dir := t.TempDir()
+	out := runInitForTest(t, dir, false)
+	if !strings.Contains(out, usage.Notice) {
+		t.Fatalf("fresh init did not print the usage notice:\n%s", out)
+	}
+	b, err := os.ReadFile(filepath.Join(dir, "initech.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), "# "+usage.Notice+"\n# telemetry: false\n") {
+		t.Fatalf("initech.yaml lacks the commented notice and key:\n%s", b)
+	}
+	p, err := config.Load(filepath.Join(dir, "initech.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !p.IsTelemetryEnabled() {
+		t.Fatal("the commented example turned telemetry off")
+	}
+
+	other := t.TempDir()
+	if err := os.WriteFile(filepath.Join(other, "initech.yaml"), []byte("project: demo\nroot: "+other+"\nroles: [eng1]\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if out := runInitForTest(t, other, false); strings.Contains(out, usage.Notice) {
+		t.Errorf("plain init on an existing project printed the notice:\n%s", out)
 	}
 }

@@ -57,6 +57,7 @@ When initech changes `initech.yaml` (the hooks answer, `initech add-agent`, `ini
 | `running_pane_tint` | Background tint behind panes that are working. The default is `#0c120e`; trained fleets use `#1e2022`, a lighter grey. `none` turns it off. | The default tint is too faint on your display. |
 | `typing_hold_quiet_s`, `typing_hold_max_s` | How long a message to a pane you are typing in waits for you to pause, and the longest it waits. See [Typing hold](#typing-hold). | The default 2 s pause or 15 s cap does not fit how you type. |
 | `role_overrides.<role>.claude_args` | Flags for one role. They REPLACE `claude_args` for that role, so repeat the shared flags, then add e.g. `--model <model>` or `--settings <path>` for a per-agent settings file. | One role needs a different model or its own settings. |
+| `telemetry` | `false` turns off the daily anonymous usage ping. On when absent. See [Usage data](#usage-data). | You do not want initech to send it. |
 
 ## The Dispatch Cycle
 
@@ -207,6 +208,14 @@ mouse input does not. Your own pastes, from any window, are never held.
 
 For a send to an agent on another machine, the sending machine sizes its wait from its own
 `typing_hold_max_s`, so give both machines the same value.
+
+### Usage data
+
+initech sends one anonymous usage ping a day, so the maintainer knows how many installs there are and which versions they run. Window 1 sends it in the background after its first frame, at most once every 24 hours per install. A `--window` viewer, `initech serve` and the subcommands never send it. It carries exactly four things: a random install id, the initech version, the OS and the CPU architecture. It also asks PostHog not to derive a location from the request. It never carries names, paths, hostnames, roles, agent counts, project content or anything typed.
+
+The install id is made once and kept in `~/.config/initech/install_id` (`%LOCALAPPDATA%\initech\install_id` on Windows), with the time of the last successful ping in `last_ping` next to it. A ping that fails is dropped without a message, never delays startup or exit, and is tried again at the next start.
+
+To turn it off, set `telemetry: false` in `initech.yaml`, or set `DO_NOT_TRACK=1` in the environment; `DO_NOT_TRACK` wins over the file. Either one means no id file is made and nothing is sent.
 
 ## Troubleshooting
 

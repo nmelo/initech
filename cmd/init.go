@@ -16,6 +16,7 @@ import (
 	"github.com/nmelo/initech/internal/git"
 	"github.com/nmelo/initech/internal/roles"
 	"github.com/nmelo/initech/internal/scaffold"
+	"github.com/nmelo/initech/internal/usage"
 	"github.com/spf13/cobra"
 )
 
@@ -126,6 +127,9 @@ func runInit(cmd *cobra.Command, args []string) error {
 		if n > 0 {
 			fmt.Fprintf(out, "  %s %s\n", color.Green("\u2713"), color.Dim(fmt.Sprintf("Added %d commented example(s) to initech.yaml", n)))
 		}
+		// The usage ping is on by default, so the run that writes the file
+		// says so, in the same words the file now carries (ini-62tn).
+		fmt.Fprintf(out, "  %s %s\n", color.Dim("i"), usage.Notice)
 	}
 
 	// Initialize git

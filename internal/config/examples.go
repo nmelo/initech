@@ -5,6 +5,8 @@ import (
 	"os"
 	"regexp"
 	"strings"
+
+	"github.com/nmelo/initech/internal/usage"
 )
 
 // Commented examples initech init writes into initech.yaml (ini-vby5.12).
@@ -61,6 +63,7 @@ var configExamples = []configExample{
 #   <other-role>:
 #     claude_args: [--continue, --dangerously-skip-permissions, --settings, <path>]
 `},
+	{"telemetry", "\n# " + usage.Notice + "\n# telemetry: false\n"},
 }
 
 // hasTopLevelKey reports whether text sets key at the top level, live or
