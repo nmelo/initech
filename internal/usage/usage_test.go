@@ -12,6 +12,7 @@ import (
 	"reflect"
 	"runtime"
 	"sort"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -344,4 +345,20 @@ func captureStdio(t *testing.T, fn func()) string {
 	os.Stdout, os.Stderr = oldOut, oldErr
 	w.Close()
 	return <-done
+}
+
+// TestNotice_GoldenTextNamesAllFourThingsSent pins the one notice string the
+// user reads (init, the generated initech.yaml, the welcome box, --help). It
+// must name every property that leaves the machine; a new property needs this
+// text and the golden payload changed together.
+func TestNotice_GoldenTextNamesAllFourThingsSent(t *testing.T) {
+	const want = "initech sends one anonymous usage ping a day (version, OS, CPU architecture, a random install id). telemetry: false turns it off."
+	if Notice != want {
+		t.Fatalf("Notice = %q\nwant      %q", Notice, want)
+	}
+	for _, thing := range []string{"version", "OS", "CPU architecture", "random install id", "telemetry: false"} {
+		if !strings.Contains(Notice, thing) {
+			t.Errorf("Notice does not name %q", thing)
+		}
+	}
 }

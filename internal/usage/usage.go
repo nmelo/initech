@@ -218,4 +218,4 @@ func newID() (string, error) {
 // Notice is the one line that tells the user the ping exists. initech init,
 // the generated initech.yaml, the first-launch welcome box and --help all
 // print this text.
-const Notice = "initech sends one anonymous usage ping a day (version, OS, a random install id). telemetry: false turns it off."
+const Notice = "initech sends one anonymous usage ping a day (version, OS, CPU architecture, a random install id). telemetry: false turns it off."
