@@ -39,6 +39,7 @@ var (
 	flagBin         = flag.String("bin", "", "use this initech binary instead of building one (a lab host with no Go or checkout); needs -sha")
 	flagSHA         = flag.String("sha", "", "the commit -bin was built from; named on the table")
 	flagAllowRunner = flag.Bool("allow-runner", false, "RIG-ONLY (ini-38nc): run even while a CI runner job is active (heap levels are not timing; timings from such a run are not evidence)")
+	flagAlt         = flag.Bool("alt", false, "RIG-ONLY (ini-pqdy.9): the synthetic recording enters the alternate (fullscreen) screen before its first line")
 	flagHeap        = flag.String("heap", "", "RIG-ONLY (ini-38nc): comma-separated offsets into the replay phase (e.g. 30m,60m) at which to save a heap profile taken after a forced collection")
 	flagLocal       = flag.Bool("local", false, "a dev Mac that runs other claude sessions: record the host-wide claude count instead of failing on it; claude under the rig's TUI still fails the run")
 )
@@ -48,6 +49,7 @@ func main() {
 	if *flagRoot == "" {
 		*flagRoot = "/tmp/iq-rig-" + os.Getenv("USER")
 	}
+	synthAlt = *flagAlt // RIG-ONLY (ini-pqdy.9)
 	work, err := os.MkdirTemp("", "iq-rig-work-")
 	must(err, "make a work dir")
 	var sha, bin string

@@ -126,6 +126,9 @@ func checkRoles(yaml string) error {
 // writeSynthetic writes a deterministic recording: green lines at a fixed
 // rate with a periodic line redraw, shape-only. For local proof runs only; a
 // real run takes shape-only copies of the operator's recordings.
+// synthAlt is set from -alt (RIG-ONLY, ini-pqdy.9).
+var synthAlt bool
+
 func writeSynthetic(path string, dur time.Duration, cols, rows int) error {
 	f, err := os.Create(path)
 	if err != nil {
@@ -137,6 +140,12 @@ func writeSynthetic(path string, dur time.Duration, cols, rows int) error {
 		return err
 	}
 	line := "\x1b[32m" + strings.Repeat(string(recording.ShapeFiller), cols/2) + "\x1b[0m\r\n"
+	if synthAlt {
+		// RIG-ONLY (ini-pqdy.9): a fullscreen program's shape.
+		if err := w.Output(0, []byte("\x1b[?1049h")); err != nil {
+			return err
+		}
+	}
 	i := 0
 	for at := time.Duration(0); at < dur; at += 50 * time.Millisecond {
 		data := line
