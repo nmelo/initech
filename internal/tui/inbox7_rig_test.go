@@ -26,14 +26,22 @@ package tui
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
 )
 
-// inbox7Layout is window 2's screen with the two regions this bead changes on
-// purpose removed: row 0 (badge and inbox count) and the footer's elapsed age.
+// inbox7StatusClock is the status bar's HH:MM: the rightmost item of row 43,
+// the last row of the rig's 44-row screen. Pinned to that row and to the end
+// of it, so any other status-bar change still counts (ini-1eao).
+var inbox7StatusClock = regexp.MustCompile(`(?m)^(43\| .*\s)\d{2}:\d{2}$`)
+
+// inbox7Layout is window 2's screen with the regions that change without a
+// layout change removed: row 0 (badge and inbox count, which this bead
+// changes on purpose), the footer's elapsed age, and the status-bar clock.
 func inbox7Layout(screen string) string {
+	screen = inbox7StatusClock.ReplaceAllString(screen, "${1}<clock>")
 	lines := strings.Split(fn77ScreenWithoutViewerAge(screen), "\n")
 	if len(lines) > 0 {
 		lines = lines[1:]
@@ -169,4 +177,38 @@ func TestInbox7Rig_ChildWindowCountsAndRepliesWithoutMovingPanes(t *testing.T) {
 	b, _ := os.ReadFile(store)
 	t.Logf("window 1's store after window 2's reply:\n%s", b)
 	t.Logf("window 1's screen:\n%s", nineISXScreen(w1emu))
+}
+
+// The status bar's clock is the one other thing on window 2 that changes with
+// no post at all: a capture either side of a minute boundary read 21:58, then
+// 21:59 (rigs run 38992909828, shard 4). Only the HH:MM at the right edge of
+// row 43, the status bar of the rig's 44-row screen, is ignored; every other
+// status-bar change still counts.
+func TestInbox7Layout_IgnoresOnlyTheStatusBarClock(t *testing.T) {
+	const status = "43|  Press backtick to open the command bar      Grid 1x1 · Bat 100% · 21:58"
+	const before = " 0| ▌eng1 ✉ 1\n 5| agent output\n" + status
+	for _, clock := range []string{"21:59", "22:00", "00:00"} {
+		after := strings.Replace(before, "21:58", clock, 1)
+		if inbox7Layout(before) != inbox7Layout(after) {
+			t.Fatalf("the clock moving to %s changed the comparison", clock)
+		}
+	}
+	for name, after := range map[string]string{
+		"label":     strings.Replace(before, "command bar", "command line", 1),
+		"new badge": strings.Replace(before, "Grid 1x1 ·", "✉ 2 · Grid 1x1 ·", 1),
+		"grid":      strings.Replace(before, "Grid 1x1", "Grid 2x1", 1),
+		"battery":   strings.Replace(before, "Bat 100%", "Bat  99%", 1),
+		"output":    strings.Replace(before, "agent output", "agent output!", 1),
+		"no clock":  strings.Replace(before, " · 21:58", "", 1),
+		"extra row": before + "\n44| below the bar",
+	} {
+		if inbox7Layout(before) == inbox7Layout(after) {
+			t.Errorf("masked a meaningful %s change", name)
+		}
+	}
+	// A time at the end of any other row is agent output, not the clock.
+	other := strings.Replace(before, " 5| agent output", " 5| agent output 21:58", 1)
+	if inbox7Layout(other) == inbox7Layout(strings.Replace(other, "output 21:58", "output 21:59", 1)) {
+		t.Error("masked a time at the end of a row that is not the status bar")
+	}
 }
