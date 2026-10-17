@@ -298,6 +298,7 @@ func TestInboxReply_LatePathReportsUpdateTheDeliveryStatus(t *testing.T) {
 	}{
 		{"withheld submit surfaced", undeliveredSubmitPrefix + "claude 1.2) after 1m30s (the composer no longer holds our text), re-send it: hello", inboxDeliveryNotDeliveredPrefix + "after 1m30s (the composer no longer holds our text)"},
 		{"wake failed", "Resume failed: boom. 1 message(s) still queued; the next message retries.", inboxDeliveryWakeFailed},
+		{"submit could not be confirmed", unconfirmedSubmitPrefix + "claude 1.2) after 1s (our text was never seen in the box), re-send it if the agent did not get it: hello", inboxDeliveryUnconfirmedPrefix + "after 1s (our text was never seen in the box)"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -451,6 +452,7 @@ func TestInboxReply_OnlyConfirmedDeliveryLetsAnAnsweredItemPrune(t *testing.T) {
 		{inboxDeliveryNotRunning, false},
 		{inboxDeliveryNotDeliveredPrefix + "after 1m", false},
 		{inboxDeliveryWakeFailed, false},
+		{inboxDeliveryUnconfirmedPrefix + "after 1s", false},
 		{"", false},
 	} {
 		item := InboxItem{State: InboxAnswered, DeliveryStatus: tc.status}

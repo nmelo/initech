@@ -722,7 +722,8 @@ func (t *TUI) renderNotifications() {
 		}
 		runes := []rune(text)
 		noticeW := maxW
-		if strings.HasPrefix(n.event.Detail, undeliveredSubmitPrefix) {
+		if strings.HasPrefix(n.event.Detail, undeliveredSubmitPrefix) ||
+			strings.HasPrefix(n.event.Detail, unconfirmedSubmitPrefix) {
 			// The usual 50-column cap hides the running/measured version pair
 			// that makes this failure diagnosable (ini-oikz).
 			noticeW = min(100, sw-2)

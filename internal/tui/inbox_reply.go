@@ -43,6 +43,10 @@ const (
 	// initiative long after the keypress.
 	inboxDeliveryNotDeliveredPrefix = "not delivered — "
 	inboxDeliveryWakeFailed         = "wake failed — still queued"
+
+	// inboxDeliveryUnconfirmedPrefix is the late report that the send path
+	// could not see whether the submit was taken. Never read as delivered.
+	inboxDeliveryUnconfirmedPrefix = "could not confirm — "
 )
 
 // inboxReplyQuoteLen is how much of the item's first line the reply quotes.
@@ -328,6 +332,8 @@ func (t *TUI) noteInboxDeliveryEvent(ev AgentEvent) {
 	switch {
 	case strings.HasPrefix(ev.Detail, undeliveredSubmitPrefix):
 		status = inboxDeliveryNotDeliveredPrefix + inboxEventReason(ev.Detail)
+	case strings.HasPrefix(ev.Detail, unconfirmedSubmitPrefix):
+		status = inboxDeliveryUnconfirmedPrefix + inboxEventReason(ev.Detail)
 	case strings.HasPrefix(ev.Detail, "Resume failed:"):
 		status = inboxDeliveryWakeFailed
 	default:
@@ -344,12 +350,13 @@ func (t *TUI) noteInboxDeliveryEvent(ev AgentEvent) {
 // says what happened, without the re-send instruction meant for the operator.
 func inboxEventReason(detail string) string {
 	// The event reads "NOT delivered (<versions>) after <waited> (<why>),
-	// re-send it: <preview>". Keep the middle: the version parenthesis is the
+	// re-send it: <preview>", or the could-not-confirm form whose re-send
+	// clause is conditional. Keep the middle: the version parenthesis is the
 	// probe's, and the re-send instruction is addressed to the operator.
 	if i := strings.Index(detail, ") "); i >= 0 {
 		detail = detail[i+2:]
 	}
-	if i := strings.Index(detail, ", re-send it:"); i >= 0 {
+	if i := strings.Index(detail, ", re-send it"); i >= 0 {
 		detail = detail[:i]
 	}
 	return strings.TrimSpace(detail)

@@ -11,6 +11,7 @@ import (
 	"os"
 	"regexp"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -585,6 +586,12 @@ func sendPaneTextLocked(pane *Pane, text string, enter bool) {
 // within ~2s (AC 2). A variable so tests can shorten it.
 var submitConfirmWindow = 1000 * time.Millisecond
 
+// submitSampleMidpoint, when set, runs inside each confirmation sample
+// between the ❯-row read and the box read. Nil in production. Tests use it to
+// land a repaint exactly there, the tear the stable-sample check exists for,
+// which timing alone produces only by luck.
+var submitSampleMidpoint func()
+
 // submitOutcome is what confirmSubmit saw.
 type submitOutcome int
 
@@ -596,58 +603,125 @@ const (
 
 // confirmSubmit watches the composer after the Enter and logs ONE Info
 // outcome line, so how often a submit is lost becomes readable from the
-// operator's own log (it logged at Debug before, and the log runs at Info).
-// It reports the outcome: taken, not taken (our body is provably still in
-// the composer), or unknown (no composer visible, so nothing is pressed).
+// operator's own log. It reports the outcome: taken, not taken (our body is
+// provably still in the composer), or unknown.
+//
+// TAKEN IS A TRANSITION (ini-k3g2): our body must first be SEEN in the box,
+// then a later sample must show a composer that no longer holds it. The first
+// sample is taken right after the Enter is written, before Claude can have
+// read it, so it shows the box as the Enter found it. Confirming on the first
+// sample that could not prove our text was there counted a box that never
+// held it as a delivery: measured on a 52-agent fleet, 253 of 1,613 sends
+// confirmed at 0 ms and the retry almost never ran. Because samples are
+// composerEchoPoll (50 ms) apart, a confirmation can never come sooner than
+// that, which is also the fastest Claude takes an Enter and repaints.
 //
 // OUR BODY, NOT ANY TEXT: after a submit, Claude restores the operator's
 // stashed draft into the composer, so "the composer has content" is not
-// evidence the Enter was lost -- that is why the old retry was gated off
-// after a stash. A screen with no composer at all is UNKNOWN, never taken:
-// a redraw caught mid-frame must not read as a delivery.
+// evidence the Enter was lost. The pre-Enter acceptance check (the box
+// changed) is not consulted: it is not a sighting of our text.
 func confirmSubmit(pane *Pane, ps *pendingSubmit, sentAt time.Time) submitOutcome {
+	outcome, _ := watchSubmit(pane, ps, sentAt)
+	return outcome
+}
+
+// watchSubmit is confirmSubmit with the reason an UNKNOWN outcome gives the
+// operator.
+func watchSubmit(pane *Pane, ps *pendingSubmit, sentAt time.Time) (submitOutcome, string) {
 	deadline := sentAt.Add(submitConfirmWindow)
-	sawComposer := false
+	seen, sawComposer := false, false
+	var tail string
+	var found, held bool
 	for {
-		tail, found := composerTail(pane)
-		if found {
-			sawComposer = true
-			if !submitStillHeld(pane, tail, ps) {
+		// ONE FRAME PER SAMPLE. The reads below each copy the screen row by row,
+		// and a repaint landing between them assembles a sample from two
+		// frames: the ❯ row from before, the box from after. Measured in a fake
+		// 1 run in 5 confirmed "taken" from such a tear while the screen was
+		// changing to one with no composer at all. A sample counts only when
+		// the screen read the same before and after it; otherwise it is
+		// skipped, neither seen nor gone, and the next sample decides.
+		before := emuRowsBlocking(pane.emu)
+		sTail, sFound := composerTail(pane)
+		if submitSampleMidpoint != nil {
+			submitSampleMidpoint()
+		}
+		sHeld := submitSighted(pane, sTail, sFound, ps)
+		if slices.Equal(before, emuRowsBlocking(pane.emu)) {
+			tail, found, held = sTail, sFound, sHeld
+			if found {
+				sawComposer = true
+			}
+			if held {
+				seen = true
+			} else if seen && found {
 				LogInfo("inject", "submitted: composer cleared", "pane", pane.Name(), "mode", ps.mode,
-					"ms", time.Since(sentAt).Milliseconds(), "text", ps.preview)
-				return submitTaken
+					"ms", time.Since(sentAt).Milliseconds(), "text", ps.preview,
+					"composer", composerSnapshot(pane))
+				return submitTaken, ""
 			}
 		}
 		if time.Now().After(deadline) {
-			if !sawComposer {
-				LogInfo("inject", "submit outcome UNKNOWN: no composer visible", "pane", pane.Name(),
-					"mode", ps.mode, "waited_ms", time.Since(sentAt).Milliseconds(), "text", ps.preview)
-				return submitUnknown
+			if held {
+				LogInfo("inject", "SUBMIT NOT TAKEN: composer still holds our text", "pane", pane.Name(),
+					"mode", ps.mode, "waited_ms", time.Since(sentAt).Milliseconds(), "text", ps.preview,
+					"composer", composerSnapshot(pane))
+				return submitNotTaken, ""
 			}
-			LogInfo("inject", "SUBMIT NOT TAKEN: composer still holds our text", "pane", pane.Name(),
-				"mode", ps.mode, "waited_ms", time.Since(sentAt).Milliseconds(), "text", ps.preview,
-				"composer", composerSnapshot(pane))
-			return submitNotTaken
+			why := unconfirmedReason(tail, found, sawComposer, seen, ps)
+			LogInfo("inject", "submit outcome UNKNOWN: could not confirm", "pane", pane.Name(),
+				"mode", ps.mode, "reason", why, "waited_ms", time.Since(sentAt).Milliseconds(),
+				"text", ps.preview, "composer", composerSnapshot(pane))
+			return submitUnknown, why
 		}
 		time.Sleep(composerEchoPoll)
 	}
 }
 
+// submitSighted reports whether this sample positively shows OUR body in the
+// box: its own text (in the composer block, or in the rule-bounded region when
+// the ❯ row has scrolled off), the short-body whole match, or Claude's
+// collapsed placeholder with our exact line count.
+func submitSighted(p *Pane, tail string, found bool, ps *pendingSubmit) bool {
+	return (found && submitStillHeld(p, tail, ps)) || bodyTextVisible(p, ps)
+}
+
+// unconfirmedReason says, for the operator, why a submit could not be
+// confirmed either way.
+func unconfirmedReason(tail string, found, sawComposer, seen bool, ps *pendingSubmit) string {
+	switch {
+	case seen:
+		return "our text left the box but no composer was visible afterwards"
+	case !sawComposer:
+		return "no composer visible"
+	}
+	if m := collapsedPaste.FindStringSubmatch(tail); found && m != nil {
+		return "the box shows a collapsed paste of +" + m[1] + " lines; ours would read +" +
+			strconv.Itoa(ps.lines-collapsedPasteLineOffset) + ", a line count that does not match"
+	}
+	return "our text was never seen in the box"
+}
+
 // confirmAndRetrySubmit watches the Enter land; if the composer provably
 // still holds OUR body it resends Enter ONCE, and a second miss is surfaced
 // as NOT delivered, within about two seconds (ini-nma5 AC 2). An unknown
-// outcome (no composer visible) presses nothing: a blind Enter could answer
-// a dialog. This replaces the old !stashed retry, which never ran on this
-// path because every submitting send stashes.
+// outcome presses nothing (a blind Enter could answer a dialog) and is
+// surfaced as "could not confirm" (ini-k3g2): never counted as taken.
 func confirmAndRetrySubmit(pane *Pane, ps *pendingSubmit) {
-	if confirmSubmit(pane, ps, time.Now()) != submitNotTaken {
+	switch outcome, why := watchSubmit(pane, ps, time.Now()); outcome {
+	case submitTaken:
+		return
+	case submitUnknown:
+		pane.emitUnconfirmedSubmit(ps, why, time.Since(ps.withheldAt).Round(time.Second))
 		return
 	}
 	LogInfo("inject", "submit retry: Enter not taken, resending once", "pane", pane.Name(), "mode", ps.mode, "text", ps.preview)
 	sendSubmitKey(pane.emu, pane.submitKey)
-	if confirmSubmit(pane, ps, time.Now()) == submitNotTaken {
+	switch outcome, why := watchSubmit(pane, ps, time.Now()); outcome {
+	case submitNotTaken:
 		pane.emitUndeliveredSubmit(ps, "Enter not taken twice; the text is still in the composer",
 			time.Since(ps.withheldAt).Round(time.Second))
+	case submitUnknown:
+		pane.emitUnconfirmedSubmit(ps, why, time.Since(ps.withheldAt).Round(time.Second))
 	}
 }
 
@@ -1889,13 +1963,29 @@ func (p *Pane) surfaceUndeliveredSubmit(ps *pendingSubmit, why string) {
 // read. Shared by the belt and the submit confirmation (ini-nma5) so both
 // speak one format.
 func (p *Pane) emitUndeliveredSubmit(ps *pendingSubmit, why string, waited time.Duration) {
+	// The WAIT is in the message: a bound that is generous still leaves the
+	// operator needing to know a message sat for 90s rather than arriving
+	// late for no stated reason (super, 2026-08-22).
+	p.emitSubmitReport(undeliveredSubmitPrefix,
+		"after "+waited.String()+" ("+why+"), re-send it: "+ps.preview)
+}
+
+// emitUnconfirmedSubmit reports a submit whose fate the send path could not
+// see either way (ini-k3g2): the box never showed our text, or showed a
+// placeholder that is not ours. Not "NOT delivered" -- it may well have
+// arrived -- and never "delivered": the operator is the one who can look.
+func (p *Pane) emitUnconfirmedSubmit(ps *pendingSubmit, why string, waited time.Duration) {
+	p.emitSubmitReport(unconfirmedSubmitPrefix,
+		"after "+waited.String()+" ("+why+"), re-send it if the agent did not get it: "+ps.preview)
+}
+
+// emitSubmitReport sends one submit report event: the prefix, the measured
+// Claude version pair, then the detail.
+func (p *Pane) emitSubmitReport(prefix, detail string) {
 	event := AgentEvent{
-		Type: EventAgentStalled,
-		Pane: p.name,
-		// The WAIT is in the message: a bound that is generous still leaves the
-		// operator needing to know a message sat for 90s rather than arriving
-		// late for no stated reason (super, 2026-08-22).
-		Detail: "after " + waited.String() + " (" + why + "), re-send it: " + ps.preview,
+		Type:   EventAgentStalled,
+		Pane:   p.name,
+		Detail: detail,
 		Time:   time.Now(),
 	}
 	// This can run on readLoop while sendMu is held, or on maintenance. The
@@ -1907,7 +1997,7 @@ func (p *Pane) emitUndeliveredSubmit(ps *pendingSubmit, why string, waited time.
 	}
 	events := p.eventCh
 	probe.report(func(versions string) {
-		event.Detail = undeliveredSubmitPrefix + versions + ") " + event.Detail
+		event.Detail = prefix + versions + ") " + event.Detail
 		EmitEvent(events, event)
 	})
 }

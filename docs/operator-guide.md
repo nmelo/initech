@@ -296,6 +296,16 @@ guessing, keeps checking, and logs exactly one outcome for that message: `withhe
 first and this one was reported not delivered), or `withheld submit NOT DELIVERED`. It never presses
 Enter while a dialog or option picker is open. A NOT DELIVERED or SUPERSEDED message needs to be resent.
 
+After pressing Enter, initech counts a message as delivered only when it has seen the message in the
+agent's input box (its text, or Claude's `[Pasted text #N +M lines]` placeholder with the message's own
+line count) and then seen it leave. The log line is `submitted: composer cleared`, with how many
+milliseconds that took and what the box showed. If the message is still there after one second, initech
+presses Enter once more; if it is still there after that, it is reported as `NOT delivered (...)`. If
+initech could not recognise the message in the box at all (no input box on screen, a placeholder whose
+line count is not the message's, or other text only), it presses nothing and reports
+`could not confirm delivery (...)` in a toast, the event log and the inbox, with the reason. Check the
+agent's pane and re-send if the message is not there.
+
 ## The Bead Workflow
 
 Beads (`bd`) are the work tracking system. Every unit of work is a bead.

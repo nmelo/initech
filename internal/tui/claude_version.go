@@ -15,6 +15,10 @@ const claudeVersionTimeout = 500 * time.Millisecond
 // Shared with the toast renderer, which reserves space for this diagnostic.
 const undeliveredSubmitPrefix = "NOT delivered ("
 
+// unconfirmedSubmitPrefix opens the report for a submit whose fate the send
+// path could not see (ini-k3g2). Shared with the toast renderer and the inbox.
+const unconfirmedSubmitPrefix = "could not confirm delivery ("
+
 // deliveredLateSubmitPrefix opens the belt's report that a withheld submit
 // went out after all. Shared with the inbox, which confirms the reply on it
 // (ini-33ma): a literal on each side is how the success report went unheard

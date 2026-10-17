@@ -115,6 +115,17 @@ func nma5Enters(t *testing.T, submits <-chan []byte, onEnter func(n int)) *atomi
 	return &n
 }
 
+// nma5Repaint repaints the way Claude does after taking an Enter: not
+// instantly. A fake that cleared within microseconds of the Enter would
+// clear before the first sample, a box the confirmation never saw holding
+// our text (ini-k3g2), which no real Claude produces.
+func nma5Repaint(p *Pane, composer string) {
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		nma5Paint(p, composer)
+	}()
+}
+
 func nma5Undelivered(events <-chan AgentEvent, within time.Duration) (AgentEvent, bool) {
 	select {
 	case ev := <-events:
@@ -129,7 +140,7 @@ func TestSubmitRetry_ATakenEnterIsNotRepeated(t *testing.T) {
 	nma5Window(t, 300*time.Millisecond)
 	p, submits, events := proofPane(t)
 	nma5Paint(p, "❯ "+nma5Body)
-	n := nma5Enters(t, submits, func(int) { nma5Paint(p, "❯ ") })
+	n := nma5Enters(t, submits, func(int) { nma5Repaint(p, "❯ ") })
 	sendSubmitKey(p.emu, p.submitKey)
 	confirmAndRetrySubmit(p, newPendingSubmit(nma5Body, "bracketed", ""))
 	time.Sleep(50 * time.Millisecond)
@@ -148,7 +159,7 @@ func TestSubmitRetry_ASwallowedEnterIsResentOnceAndDelivered(t *testing.T) {
 	nma5Paint(p, "❯ "+nma5Body)
 	n := nma5Enters(t, submits, func(k int) {
 		if k >= 2 {
-			nma5Paint(p, "❯ ")
+			nma5Repaint(p, "❯ ")
 		}
 	})
 	sendSubmitKey(p.emu, p.submitKey)
@@ -186,7 +197,9 @@ func TestSubmitRetry_ASecondMissIsSurfacedWithinTwoSeconds(t *testing.T) {
 	}
 }
 
-// No composer visible: nothing is pressed blind, and nothing is reported.
+// No composer visible: nothing is pressed blind. Since ini-k3g2 the unknown
+// outcome is reported as "could not confirm" rather than passed over in
+// silence; it is never reported as NOT delivered.
 func TestSubmitRetry_NoComposerVisiblePressesNothing(t *testing.T) {
 	nma5Window(t, 200*time.Millisecond)
 	p, submits, events := proofPane(t)
@@ -198,7 +211,8 @@ func TestSubmitRetry_NoComposerVisiblePressesNothing(t *testing.T) {
 	if n.Load() != 1 {
 		t.Fatalf("sent %d Enters with no composer visible, want only the original 1", n.Load())
 	}
-	if ev, got := nma5Undelivered(events, 100*time.Millisecond); got {
-		t.Fatalf("reported %q for an unknown outcome", ev.Detail)
+	ev, got := nma5Undelivered(events, time.Second)
+	if !got || !strings.HasPrefix(ev.Detail, unconfirmedSubmitPrefix) || !strings.Contains(ev.Detail, "no composer visible") {
+		t.Fatalf("reported %q (got=%v), want the could-not-confirm report naming no composer", ev.Detail, got)
 	}
 }
