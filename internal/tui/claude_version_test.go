@@ -50,7 +50,7 @@ func TestClaudeVersion_OffsetMismatchSurfacesBothVersions(t *testing.T) {
 	}
 	p.maybeRetryWithheldSubmit()
 	ev := awaitVersionSurface(t, events)
-	for _, want := range []string{"measured against 2.1.233", "running 2.1.240", "re-send it:"} {
+	for _, want := range []string{"measured against " + collapsedPasteMeasuredVersion, "running 2.1.240", "re-send it:"} {
 		if !strings.Contains(ev.Detail, want) {
 			t.Fatalf("missing %q: %s", want, ev.Detail)
 		}
@@ -69,7 +69,7 @@ func TestClaudeVersion_OffsetMismatchSurfacesBothVersions(t *testing.T) {
 	u.notifications = []notification{{event: ev}}
 	u.renderNotifications()
 	visible := readScreenRect(s, 0, 22, 80, 1)
-	for _, version := range []string{"2.1.233", "2.1.240"} {
+	for _, version := range []string{collapsedPasteMeasuredVersion, "2.1.240"} {
 		if !strings.Contains(visible, version) {
 			t.Fatalf("toast clipped %s: %s", version, visible)
 		}
@@ -152,7 +152,7 @@ func TestClaudeVersion_MissingBinaryIsCachedAndReportsMeasuredOnly(t *testing.T)
 		p.emu.Write([]byte("❯ [Pasted text #1 +58 lines]"))
 		p.maybeRetryWithheldSubmit()
 		ev := awaitVersionSurface(t, events)
-		if !strings.Contains(ev.Detail, "measured against 2.1.233") || strings.Contains(ev.Detail, "running ") {
+		if !strings.Contains(ev.Detail, "measured against "+collapsedPasteMeasuredVersion) || strings.Contains(ev.Detail, "running ") {
 			t.Fatal(ev.Detail)
 		}
 	}
@@ -188,7 +188,7 @@ func TestClaudeVersion_HungLookupDoesNotHoldSendLockAndTimesOut(t *testing.T) {
 	}
 	p.sendMu.Unlock()
 	ev := awaitVersionSurface(t, events)
-	if !strings.Contains(ev.Detail, "measured against 2.1.233") || strings.Contains(ev.Detail, "running ") {
+	if !strings.Contains(ev.Detail, "measured against "+collapsedPasteMeasuredVersion) || strings.Contains(ev.Detail, "running ") {
 		t.Fatal(ev.Detail)
 	}
 }
@@ -205,7 +205,7 @@ func TestClaudeVersion_FailedOrUnparseableOutputDoesNotInventVersion(t *testing.
 		probe.report(func(s string) { got <- s })
 		select {
 		case s := <-got:
-			if s != "Claude measured against 2.1.233" {
+			if s != "Claude measured against "+collapsedPasteMeasuredVersion {
 				t.Fatal(s)
 			}
 		case <-time.After(time.Second):

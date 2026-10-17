@@ -225,3 +225,49 @@ func TestK3g2_OurBodyAboveTheRuleWithThePromptScrolledOffIsASighting(t *testing.
 		t.Fatalf("our wrapped body above the rule, then a cleared box: outcome %d, want taken", got)
 	}
 }
+
+// MEASURED on Claude 2.1.302 (eng2, this bead): the placeholder's +M is the
+// number of newline characters in the paste. A 40-line body ending in a
+// newline read "+40 lines", the same body without it "+39", and with two
+// "+41". A message sent from a file usually ends in a newline, and "lines
+// minus one" called every such placeholder someone else's.
+func TestK3g2_APlaceholderForABodyEndingInANewlineIsOurs(t *testing.T) {
+	nma5Window(t, time.Second)
+	p, _, _ := proofPane(t)
+	body := longBody(40) + "\n"
+	nma5Paint(p, "❯ [Pasted text #1 +40 lines]")
+	go func() { time.Sleep(150 * time.Millisecond); nma5Paint(p, "❯ ") }()
+	if got := confirmSubmit(p, newPendingSubmit(body, "bracketed", ""), time.Now()); got != submitTaken {
+		t.Fatalf("our placeholder (+40 for 40 newlines), then cleared: outcome %d, want taken", got)
+	}
+}
+
+// The reason comes from what was seen during the window, not only the last
+// sample: a mismatched placeholder that was submitted and cleared is still
+// the explanation the operator needs.
+func TestK3g2_AMismatchSeenEarlierIsTheReasonEvenAfterTheBoxClears(t *testing.T) {
+	nma5Window(t, 300*time.Millisecond)
+	p, _, events := proofPane(t)
+	nma5Paint(p, "❯ [Pasted text #1 +12 lines]")
+	go func() { time.Sleep(100 * time.Millisecond); nma5Paint(p, "❯ ") }()
+	confirmAndRetrySubmit(p, newPendingSubmit(longBody(40), "bracketed", ""))
+	ev, got := nma5Undelivered(events, time.Second)
+	if !got || !strings.Contains(ev.Detail, "+12") || !strings.Contains(ev.Detail, "+39") {
+		t.Fatalf("reported %q (got=%v), want the reason naming +12 shown and +39 expected", ev.Detail, got)
+	}
+}
+
+// Exact, not near: a placeholder one off ours either way is someone else's
+// paste. A tolerance of one would also have hidden the trailing-newline
+// miscount, which is exactly one off.
+func TestK3g2_APlaceholderOneOffOurCountIsNotOurs(t *testing.T) {
+	nma5Window(t, 200*time.Millisecond)
+	body := longBody(40) // 39 newlines
+	for _, shown := range []string{"+38", "+40"} {
+		p, _, _ := proofPane(t)
+		nma5Paint(p, "❯ [Pasted text #1 "+shown+" lines]")
+		if got := confirmSubmit(p, newPendingSubmit(body, "bracketed", ""), time.Now()); got != submitUnknown {
+			t.Fatalf("placeholder %s for a body with 39 newlines: outcome %d, want unknown", shown, got)
+		}
+	}
+}

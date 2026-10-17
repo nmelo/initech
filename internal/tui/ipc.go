@@ -630,7 +630,7 @@ func confirmSubmit(pane *Pane, ps *pendingSubmit, sentAt time.Time) submitOutcom
 func watchSubmit(pane *Pane, ps *pendingSubmit, sentAt time.Time) (submitOutcome, string) {
 	deadline := sentAt.Add(submitConfirmWindow)
 	seen, sawComposer := false, false
-	var tail string
+	var tail, mismatch string
 	var found, held bool
 	for {
 		// ONE FRAME PER SAMPLE. The reads below each copy the screen row by row,
@@ -651,6 +651,9 @@ func watchSubmit(pane *Pane, ps *pendingSubmit, sentAt time.Time) (submitOutcome
 			if found {
 				sawComposer = true
 			}
+			if !held && found && mismatch == "" {
+				mismatch = placeholderMismatch(tail, ps)
+			}
 			if held {
 				seen = true
 			} else if seen && found {
@@ -667,7 +670,7 @@ func watchSubmit(pane *Pane, ps *pendingSubmit, sentAt time.Time) (submitOutcome
 					"composer", composerSnapshot(pane))
 				return submitNotTaken, ""
 			}
-			why := unconfirmedReason(tail, found, sawComposer, seen, ps)
+			why := unconfirmedReason(mismatch, sawComposer, seen)
 			LogInfo("inject", "submit outcome UNKNOWN: could not confirm", "pane", pane.Name(),
 				"mode", ps.mode, "reason", why, "waited_ms", time.Since(sentAt).Milliseconds(),
 				"text", ps.preview, "composer", composerSnapshot(pane))
@@ -685,18 +688,29 @@ func submitSighted(p *Pane, tail string, found bool, ps *pendingSubmit) bool {
 	return (found && submitStillHeld(p, tail, ps)) || bodyTextVisible(p, ps)
 }
 
+// placeholderMismatch describes a collapsed placeholder in the box that is
+// not ours by its count, or "" when the tail holds none.
+func placeholderMismatch(tail string, ps *pendingSubmit) string {
+	m := collapsedPaste.FindStringSubmatch(tail)
+	if m == nil {
+		return ""
+	}
+	return "the box showed a collapsed paste of +" + m[1] + " lines; ours would read +" +
+		strconv.Itoa(ps.pasteCount) + ", a line count that does not match"
+}
+
 // unconfirmedReason says, for the operator, why a submit could not be
-// confirmed either way.
-func unconfirmedReason(tail string, found, sawComposer, seen bool, ps *pendingSubmit) string {
+// confirmed either way. mismatch is the first placeholder of another count
+// seen during the window: Claude may have taken it and cleared the box by the
+// end, and it is still the explanation.
+func unconfirmedReason(mismatch string, sawComposer, seen bool) string {
 	switch {
 	case seen:
 		return "our text left the box but no composer was visible afterwards"
+	case mismatch != "":
+		return mismatch
 	case !sawComposer:
 		return "no composer visible"
-	}
-	if m := collapsedPaste.FindStringSubmatch(tail); found && m != nil {
-		return "the box shows a collapsed paste of +" + m[1] + " lines; ours would read +" +
-			strconv.Itoa(ps.lines-collapsedPasteLineOffset) + ", a line count that does not match"
 	}
 	return "our text was never seen in the box"
 }
@@ -1490,7 +1504,7 @@ func (t *TUI) handleIPCAttention(conn net.Conn, req IPCRequest) {
 // was correctly left out rather than forgotten.
 type pendingSubmit struct {
 	bodyLines      []string  // Our body's distinct non-blank lines, the evidence a composer must show to prove it holds OURS.
-	lines          int       // Our body's line count, to corroborate a COLLAPSED paste (ini-vpwg repair).
+	pasteCount     int       // The +M a COLLAPSED paste of our body shows: its newline count (ini-vpwg, re-measured ini-k3g2).
 	withheldAt     time.Time // When we withheld, so the operator is told how long a message waited.
 	preview        string    // For operator-facing records.
 	mode           string    // Injection mode, for the log.
@@ -1529,7 +1543,7 @@ func newPendingSubmit(text, mode, tailAtWithhold string) *pendingSubmit {
 	now := time.Now()
 	return &pendingSubmit{
 		bodyLines:      bodyEvidenceLines(text),
-		lines:          countBodyLines(text),
+		pasteCount:     collapsedPasteCount(text),
 		withheldAt:     now,
 		preview:        preview,
 		mode:           mode,
@@ -1561,20 +1575,25 @@ func bodyEvidenceLines(text string) []string {
 // count it exposes: "[Pasted text #1 +39 lines]".
 var collapsedPaste = regexp.MustCompile(`\[Pasted text #\d+ \+(\d+) lines?\]`)
 
-// collapsedPasteLineOffset is MEASURED, not guessed (eng1, live Claude
-// 2.1.233, 2026-08-22): a 60-line body renders as "[Pasted text #1 +59
-// lines]". The count Claude prints is our line count MINUS ONE.
+// collapsedPasteCount is the +M Claude prints for a collapsed paste of text:
+// the number of newline characters in it. MEASURED, not guessed: on Claude
+// 2.1.302 one 40-line body read "+39 lines" with no trailing newline, "+40"
+// with one and "+41" with two; the first measurement (Claude 2.1.233, a
+// 60-line body with no trailing newline, "+59") fits the same rule. The rule
+// it replaces, "lines minus one" with trailing newlines trimmed, called every
+// placeholder for a message ending in a newline someone else's.
 //
-// This is why the tolerance below is one -- it is the convention, not slop. If
-// a future Claude prints a different count, this comment is the instruction:
-// RE-MEASURE the offset, do not widen the tolerance. Widening starts accepting
-// other people's pastes, which is the forged submit this whole path exists to
-// avoid.
-const collapsedPasteLineOffset = 1
+// The comparison against it is EXACT. If a future Claude prints a different
+// count, this comment is the instruction: RE-MEASURE, do not add a tolerance.
+// A tolerance starts accepting other people's pastes, which is the forged
+// submit this whole path exists to avoid.
+func collapsedPasteCount(text string) int {
+	return strings.Count(text, "\n")
+}
 
-// collapsedPasteMeasuredVersion must change alongside the offset's measurement
-// above. Surfaced failures name this version so a stale proof is diagnosable.
-const collapsedPasteMeasuredVersion = "2.1.233"
+// collapsedPasteMeasuredVersion must change alongside the measurement above.
+// Surfaced failures name this version so a stale proof is diagnosable.
+const collapsedPasteMeasuredVersion = "2.1.302"
 
 // minProvenRunes is how much of OUR OWN text must be visible in the composer
 // before we will call it proof.
@@ -1740,21 +1759,16 @@ func composerHoldsOurBody(p *Pane, tail string, ps *pendingSubmit) bool {
 	// "A paste landed" becomes "a paste of OUR SIZE landed" for one comparison.
 	//
 	// EXACT, not within-a-line-or-two. The first version allowed a slack of
-	// one and a mutant that zeroed collapsedPasteLineOffset survived every
-	// test in the suite: the slack was wide enough to swallow the very
-	// constant it was corroborating, which makes the measurement unfalsifiable
-	// and admits a neighbouring paste that is not ours. If Claude ever counts
-	// differently, this stops proving and we SURFACE -- the safe direction --
-	// and the fix is to re-measure the offset, never to widen this.
-	if ps.lines-collapsedPasteLineOffset != shown {
+	// one and a mutant that zeroed the then line offset survived every test in
+	// the suite: the slack was wide enough to swallow the very constant it was
+	// corroborating, which makes the measurement unfalsifiable and admits a
+	// neighbouring paste that is not ours. If Claude ever counts differently,
+	// this stops proving and we SURFACE -- the safe direction -- and the fix
+	// is to re-measure collapsedPasteCount, never to widen this.
+	if ps.pasteCount != shown {
 		return false // Somebody else's paste is in the composer.
 	}
 	return true
-}
-
-// countBodyLines counts the lines of a body as Claude would see them.
-func countBodyLines(text string) int {
-	return len(strings.Split(strings.TrimRight(text, "\n"), "\n"))
 }
 
 // maybeRetryWithheldSubmit is called on every chunk of pane output. It sends a
