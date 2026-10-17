@@ -42,6 +42,10 @@ type paneInfo struct {
 	ModalAgeSec  int  `json:"modal_age_sec,omitempty"`
 	QueuedCount  int  `json:"queued_count,omitempty"`
 
+	// Beads is the pane's ribbon; nil when the TUI sent no beads field (an
+	// older TUI), which turns the ribbon-versus-bd check off for the pane.
+	Beads *[]string `json:"beads"`
+
 	// NoBead is the no-bead marker's words for an agent dispatched work with
 	// no bead (initech assign -m with no bead id); empty otherwise.
 	NoBead string `json:"no_bead,omitempty"`
@@ -85,11 +89,11 @@ func runStatus(cmd *cobra.Command, args []string) error {
 
 	// Try to get bead assignments (skip when disabled).
 	runner := &iexec.DefaultRunner{}
-	var beadMap map[string]beadInfo
+	var beadMap map[string][]beadInfo
 	if beadsEnabled {
 		beadMap = getBeadAssignments(runner)
 	} else {
-		beadMap = make(map[string]beadInfo)
+		beadMap = make(map[string][]beadInfo)
 	}
 
 	// Build table.
@@ -175,7 +179,9 @@ func runStatus(cmd *cobra.Command, args []string) error {
 			displayName = pi.Host + ":" + pi.Name
 		}
 
-		if b, ok := beadMap[pi.Name]; ok && pi.NoBead == "" {
+		held := beadMap[pi.Name]
+		if len(held) > 0 && pi.NoBead == "" {
+			b := held[0]
 			title := b.Title
 			if len(title) > 30 {
 				title = title[:27] + "..."
@@ -194,6 +200,17 @@ func runStatus(cmd *cobra.Command, args []string) error {
 				words = string(r[:27]) + "..."
 			}
 			bead = fmt.Sprintf("%s %s", color.Yellow("no bead"), color.Dim("("+words+")"))
+		}
+		// bd is the truth for who holds a bead and the ribbon is a display
+		// of it: a ribbon that says something else is named next to bd's
+		// answer, so the stale pointer is visible instead of silently
+		// different (ini-jvrs).
+		if pi.Beads != nil && pi.NoBead == "" && !sameBeadSet(*pi.Beads, held) {
+			shown := "-"
+			if len(*pi.Beads) > 0 {
+				shown = strings.Join(*pi.Beads, ",")
+			}
+			bead += " " + color.Yellow("ribbon: "+shown)
 		}
 
 		if hasRemotes {
@@ -281,14 +298,31 @@ func mergeRemotePeers(sockPath string, panes []paneInfo) []paneInfo {
 	return panes
 }
 
-func getBeadAssignments(runner iexec.Runner) map[string]beadInfo {
-	result := make(map[string]beadInfo)
+// sameBeadSet reports whether a ribbon shows exactly the beads bd says the
+// agent holds, in any order.
+func sameBeadSet(ribbon []string, held []beadInfo) bool {
+	if len(ribbon) != len(held) {
+		return false
+	}
+	for _, b := range held {
+		if !containsString(ribbon, b.ID) {
+			return false
+		}
+	}
+	return true
+}
+
+// getBeadAssignments maps each agent to the beads bd says it holds: an
+// assignee set and a shown status (in_progress, ready_for_qa, in_qa), in bd's
+// order. qa_passed is left out: nobody is working the bead.
+func getBeadAssignments(runner iexec.Runner) map[string][]beadInfo {
+	result := make(map[string][]beadInfo)
 
 	if _, err := runner.Run("which", "bd"); err != nil {
 		return result
 	}
 
-	out, err := runner.Run("bd", "list", "--status", "in_progress", "--json")
+	out, err := runner.Run("bd", "list", "--status", strings.Join(shownStatuses, ","), "--json")
 	if err != nil {
 		out, err = runner.Run("bd", "list", "--json")
 		if err != nil {
@@ -311,8 +345,8 @@ func getBeadAssignments(runner iexec.Runner) map[string]beadInfo {
 	}
 
 	for _, b := range beads {
-		if b.Assignee != "" && (b.Status == "in_progress" || b.Status == "in_qa") {
-			result[b.Assignee] = b
+		if b.Assignee != "" && isShownStatus(b.Status) {
+			result[b.Assignee] = append(result[b.Assignee], b)
 		}
 	}
 

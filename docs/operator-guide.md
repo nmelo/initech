@@ -140,6 +140,10 @@ Each pane has a bottom ribbon showing:
 - **Bead ID**: Shows after the name when the agent has claimed a bead
 - **No bead**: `no bead` and the first words of the message, for work dispatched with `initech assign <agent> -m "..."` and no bead
 
+bd is the record of who holds a bead; the ribbon displays it and is moved by the commands that move bd. A claim (`bd update --assignee` plus `initech bead`, or `initech assign`) puts the bead on the agent's ribbon. `initech deliver` puts the ribbon where its bd write leaves the bead, never on the `--to` agent, who only gets the report: the bead comes off the deliverer's ribbon unless bd still has the deliverer holding it in progress, ready for QA or in QA (other beads on that ribbon stay); a QA FAIL that returns the bead to its implementer adds it to that agent's ribbon when the agent is a pane in this initech; a hand-off and a PASS set no other ribbon, so a QA agent's ribbon shows the bead once it claims it. deliver's last line ends with what happened to the ribbon: `ribbon cleared`, `ribbon set on <agent>`, `ribbon unchanged`, or `ribbon NOT updated: <reason>`; bd is written either way and the exit code does not change. The TUI log records one line for every ribbon write it receives, with the agent, the bead ids or `clear`, and the result.
+
+`initech status` reads bd for its Bead column: each agent bd names as assignee of a bead in progress, ready for QA or in QA shows that bead and its status (a bead at QA passed has no holder to show). When an agent's ribbon shows different beads from bd, the column shows bd's answer followed by `ribbon: <ids>` (`ribbon: -` for an empty ribbon), so a stale ribbon is visible; when they agree nothing is added.
+
 ### Toast Notifications
 
 Toasts appear in the bottom-right and auto-dismiss after 10 seconds.

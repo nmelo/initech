@@ -54,7 +54,7 @@ transition table (internal/lifecycle), never by this command:
   anything else            -> one step along the lifecycle chain, assignee kept
 
 Fail-fast ordering: input validation first (rejects bad flag combos before
-any side effects), bd operations second (durable state), TUI bead clear
+any side effects), bd operations second (durable state), ribbon update
 third (cosmetic), report last (notifications). A partial failure
 leaves the bead in the correct status even if notifications fail.
 
@@ -229,21 +229,9 @@ func runDeliver(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Step 3: Clear TUI bead display (cosmetic, warn on failure).
-	if agent != "" {
-		clearReq := tui.IPCRequest{
-			Action: "bead",
-			Target: agent,
-			Text:   "",
-		}
-		if resp, err := ipcCall(clearReq); err != nil {
-			fmt.Fprintf(cmd.ErrOrStderr(), "warning: could not clear TUI bead (is initech running?)\n")
-		} else if !resp.OK {
-			fmt.Fprintf(cmd.ErrOrStderr(), "warning: TUI bead clear: %s\n", resp.Error)
-		}
-	} else {
-		fmt.Fprintf(cmd.ErrOrStderr(), "warning: INITECH_AGENT not set, skipping TUI bead clear\n")
-	}
+	// Step 3: Move the ribbons with the bd write (cosmetic, warn on failure;
+	// the outcome is named on the summary line, ini-jvrs).
+	ribbonOutcome := deliverRibbons(cmd.ErrOrStderr(), agent, beadID, title, assignee, write)
 
 	// Step 3.5: Pick the per-family notification template. Both downstream
 	// paths (report, IPC) read from this single struct so they cannot drift
@@ -285,8 +273,8 @@ func runDeliver(cmd *cobra.Command, args []string) error {
 	emitIPCEvent(agentOrUnknown(agent), beadID, "bead_delivered", tpl.IPCSummary)
 
 	// Output summary.
-	fmt.Fprintf(cmd.ErrOrStderr(), "delivered %s: %s -> %s [%s, assignee %s] (%s) -> %s\n",
-		beadID, status, target, tr.Why, tr.Assignee, tpl.SummarySuffix, reportedTo)
+	fmt.Fprintf(cmd.ErrOrStderr(), "delivered %s: %s -> %s [%s, assignee %s] (%s) -> %s; %s\n",
+		beadID, status, target, tr.Why, tr.Assignee, tpl.SummarySuffix, reportedTo, ribbonOutcome)
 	return nil
 }
 

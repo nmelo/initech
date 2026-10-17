@@ -32,7 +32,7 @@ func TestRunStatus_LocalSessionWithoutHostColumn(t *testing.T) {
 	}
 	writeExecutable(t, filepath.Join(binDir, "bd"), `#!/bin/sh
 case "$*" in
-  "list --status in_progress --json")
+  "list --status in_progress,ready_for_qa,in_qa --json")
     cat <<'EOF'
 [{"id":"ini-s.1","title":"This title is intentionally longer than thirty characters","status":"in_progress","assignee":"eng1"}]
 EOF

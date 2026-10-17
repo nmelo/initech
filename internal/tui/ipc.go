@@ -1056,29 +1056,39 @@ func peekLastLines(allLines []string, lines int) string {
 }
 
 func (t *TUI) handleIPCBead(conn net.Conn, req IPCRequest) {
+	// One log line per call, refusals included, so a triage can tell from
+	// initech.log whether a ribbon write (a clear above all) arrived.
+	reply := func(resp IPCResponse) {
+		result := "ok"
+		if !resp.OK {
+			result = "refused: " + resp.Error
+		}
+		LogInfo("ipc", "bead action", "target", req.Target, "beads", beadsForLog(req.Text), "result", result)
+		writeIPCResponse(conn, resp)
+	}
 	if req.Target == "" {
-		writeIPCResponse(conn, IPCResponse{Error: "target is required (set INITECH_AGENT or use --agent)"})
+		reply(IPCResponse{Error: "target is required (set INITECH_AGENT or use --agent)"})
 		return
 	}
 	// Validate bead text before touching TUI state. Tab is allowed as the
 	// id\ttitle delimiter; other control characters are rejected.
 	if len(req.Text) > 256 {
-		writeIPCResponse(conn, IPCResponse{Error: "bead text too long (max 256 chars)"})
+		reply(IPCResponse{Error: "bead text too long (max 256 chars)"})
 		return
 	}
 	for _, ch := range req.Text {
 		if ch != '\t' && (ch < 0x20 || ch == 0x7F) {
-			writeIPCResponse(conn, IPCResponse{Error: "bead text contains control characters"})
+			reply(IPCResponse{Error: "bead text contains control characters"})
 			return
 		}
 	}
 	var pv PaneView
 	if !t.runOnMain(func() { pv = t.findPaneByName(req.Target) }) {
-		writeIPCResponse(conn, IPCResponse{Error: "TUI shutting down"})
+		reply(IPCResponse{Error: "TUI shutting down"})
 		return
 	}
 	if pv == nil {
-		writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("pane %q not found", req.Target)})
+		reply(IPCResponse{Error: fmt.Sprintf("pane %q not found", req.Target)})
 		return
 	}
 	if !pv.IsAlive() {
@@ -1086,7 +1096,7 @@ func (t *TUI) handleIPCBead(conn net.Conn, req IPCRequest) {
 		// which fights resume-on-message -- a restart discards the queue and
 		// the suspension bookkeeping. Name the state and the designed remedy.
 		if pv.IsSuspended() {
-			writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf(
+			reply(IPCResponse{Error: fmt.Sprintf(
 				"pane %q is suspended; it resumes on message (initech send %s ...) and the bead can be set then",
 				req.Target, req.Target)})
 			return
@@ -1095,7 +1105,7 @@ func (t *TUI) handleIPCBead(conn net.Conn, req IPCRequest) {
 		// mean the bead display update is lost the moment the pane is
 		// restarted (NewPane starts with no bead state), indistinguishable
 		// from the request never having been sent (ini-cs7).
-		writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("pane %q is not alive (agent process has exited); restart it before setting its bead", req.Target)})
+		reply(IPCResponse{Error: fmt.Sprintf("pane %q is not alive (agent process has exited); restart it before setting its bead", req.Target)})
 		return
 	}
 	// Parse bead text. Supports:
@@ -1115,7 +1125,22 @@ func (t *TUI) handleIPCBead(conn net.Conn, req IPCRequest) {
 	} else {
 		pv.SetBead(text, "")
 	}
-	writeIPCResponse(conn, IPCResponse{OK: true})
+	reply(IPCResponse{OK: true})
+}
+
+// beadsForLog renders a bead action's text for the log: "clear" for none,
+// the ids without the title otherwise, cut short if long.
+func beadsForLog(text string) string {
+	if text == "" {
+		return "clear"
+	}
+	if i := strings.IndexByte(text, '\t'); i >= 0 {
+		text = text[:i]
+	}
+	if r := []rune(text); len(r) > 80 {
+		text = string(r[:80]) + "..."
+	}
+	return text
 }
 
 // noBeadPane is a pane that can show the no-bead marker.
