@@ -39,6 +39,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -47,7 +48,87 @@ import (
 
 	"github.com/charmbracelet/x/vt"
 	"github.com/creack/pty"
+	"github.com/nmelo/initech/internal/config"
+	"github.com/nmelo/initech/internal/roles"
 )
+
+// sixm4RigRoles is the operator's role order: declaration order differs from
+// group order, which is what makes numbering divergence expressible at all.
+var sixm4RigRoles = []string{"super", "pmm", "shipper", "growth", "pm", "qa1", "eng1", "eng2"}
+
+// sixm4ModelFlagRe reads the --model value off a child's argv.
+var sixm4ModelFlagRe = regexp.MustCompile(`--model[ =](\S+)`)
+
+// sixm4RigConfig is the rig's initech.yaml. The fleet-level claude_args pins
+// every real Claude child to Haiku (ini-jxne), so the operator's Haiku rule
+// holds whatever the runner's shell exports. A fleet claude_args REPLACES the
+// catalog default rather than adding to it, and every rig role is Autonomous,
+// so the line repeats --dangerously-skip-permissions: the model is the only
+// thing it changes.
+func sixm4RigConfig(root, addr string, roleNames []string) string {
+	cfg := "project: sixm4\nroot: " + root + "\nroles:\n"
+	for _, r := range roleNames {
+		cfg += "    - " + r + "\n"
+	}
+	cfg += "claude_args: [\"--dangerously-skip-permissions\", \"--model\", \"haiku\"]\n"
+	cfg += fmt.Sprintf("window_listen: %q\n", addr)
+	return cfg
+}
+
+// TestSixM4RigConfig_PinsHaikuForEveryRole reads the rig's yaml back through
+// the real loader and resolves each role's flags the way cmd/root.go builds a
+// child's argv. It runs in make test: the rig itself only runs at release.
+func TestSixM4RigConfig_PinsHaikuForEveryRole(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "initech.yaml")
+	if err := os.WriteFile(path, []byte(sixm4RigConfig(root, "127.0.0.1:1", sixm4RigRoles)), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	proj, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("the rig's initech.yaml does not load: %v", err)
+	}
+	if !slices.Equal(proj.Roles, sixm4RigRoles) {
+		t.Fatalf("rig roles = %v, want %v", proj.Roles, sixm4RigRoles)
+	}
+	for _, r := range proj.Roles {
+		var roleArgs []string
+		if ov, ok := proj.RoleOverrides[r]; ok {
+			roleArgs = ov.ClaudeArgs
+		}
+		got := roles.ResolveClaudeArgs(r, proj.ClaudeArgs, roleArgs)
+		want := append(roles.ResolveClaudeArgs(r, nil, nil), "--model", "haiku")
+		if !slices.Equal(got, want) {
+			t.Errorf("%s starts claude with %q, want %q: its catalog flags plus --model haiku", r, got, want)
+		}
+	}
+}
+
+// rigChildModels tallies the --model flag on each process a window started.
+// The panes are its direct children (Setsid keeps the parent). The pane
+// banner cannot carry this: in the rig's fresh root every Claude stops at its
+// folder-trust prompt, before the banner that names the model. Only the flag
+// is reported, never a command line.
+func rigChildModels(pid int) string {
+	out, err := exec.Command("pgrep", "-P", strconv.Itoa(pid)).Output()
+	if err != nil {
+		return fmt.Sprintf("no children found: %v", err)
+	}
+	tally := map[string]int{}
+	for _, child := range strings.Fields(string(out)) {
+		args, err := exec.Command("ps", "-o", "args=", "-p", child).Output()
+		if err != nil {
+			tally["exited"]++
+			continue
+		}
+		if m := sixm4ModelFlagRe.FindStringSubmatch(string(args)); m != nil {
+			tally["--model "+m[1]]++
+		} else {
+			tally["no --model"]++
+		}
+	}
+	return fmt.Sprint(tally)
+}
 
 func TestSixM4Rig_ViewerModalParityAndReplaySurvival(t *testing.T) {
 	if os.Getenv("INITECH_6M4") != "1" {
@@ -63,23 +144,15 @@ func TestSixM4Rig_ViewerModalParityAndReplaySurvival(t *testing.T) {
 	}
 	defer os.RemoveAll(root)
 
-	// The operator's role order: declaration order differs from group order,
-	// which is what makes numbering divergence expressible at all.
-	roles := []string{"super", "pmm", "shipper", "growth", "pm", "qa1", "eng1", "eng2"}
-	for _, r := range roles {
+	for _, r := range sixm4RigRoles {
 		os.MkdirAll(filepath.Join(root, r), 0o755)
 		os.WriteFile(filepath.Join(root, r, "CLAUDE.md"), []byte("# "+r+"\n"), 0o644)
-	}
-	cfg := "project: sixm4\nroot: " + root + "\nroles:\n"
-	for _, r := range roles {
-		cfg += "    - " + r + "\n"
 	}
 	// Ephemeral per run (ini-tcxe). This rig carried the identical hard-coded
 	// port defect as the ninisx rig; it has not bitten only because two people
 	// have not run it at once yet, which is luck rather than a property.
 	sixm4Addr := "127.0.0.1:" + strconv.Itoa(rigReserveFreePort(t))
-	cfg += fmt.Sprintf("window_listen: %q\n", sixm4Addr)
-	os.WriteFile(filepath.Join(root, "initech.yaml"), []byte(cfg), 0o644)
+	os.WriteFile(filepath.Join(root, "initech.yaml"), []byte(sixm4RigConfig(root, sixm4Addr, sixm4RigRoles)), 0o644)
 
 	os.MkdirAll(filepath.Join(root, ".initech"), 0o755)
 	// The assignment is DELIBERATELY NOT SEEDED here. Hand-writing the store
@@ -148,6 +221,10 @@ func TestSixM4Rig_ViewerModalParityAndReplaySurvival(t *testing.T) {
 	// dials. Without it, a rig whose bind lost a race still produces a verdict
 	// -- about whichever process did win the port.
 	rigRequireServing(t, sixm4Addr)
+
+	// The log names the model the children run (ini-jxne). Log only, so the
+	// rig's assertions are unchanged.
+	t.Logf("MODEL (window 1's children): %s", rigChildModels(w1.Process.Pid))
 
 	w2, w2pty, w2emu := start("--window", "2")
 	defer func() { w2pty.Close(); w2.Process.Kill(); w2.Process.Wait() }()
@@ -309,9 +386,9 @@ func TestSixM4Rig_ViewerModalParityAndReplaySurvival(t *testing.T) {
 	// there is no second numbering for the two to agree or disagree about.
 	// What remains is that window 1's modal is whole-fleet.
 	dn1 := numbersOf(w1screen)
-	if len(dn1) != len(roles) {
+	if len(dn1) != len(sixm4RigRoles) {
 		t.Fatalf("window 1's modal lists %d agents (want %d -- the modal is whole-fleet)"+
-			"\nW1:\n%s", len(dn1), len(roles), w1screen)
+			"\nW1:\n%s", len(dn1), len(sixm4RigRoles), w1screen)
 	}
 	// EXPANDED IS INERT ON MEMBERSHIP, and this leg proves it rather than
 	// assuming it: the same whole fleet before and after 'a'. Window 1 only
@@ -324,10 +401,10 @@ func TestSixM4Rig_ViewerModalParityAndReplaySurvival(t *testing.T) {
 	n1 := numbersOf(w1exp)
 	t.Logf("NUMBERING default  w1=%v", dn1)
 	t.Logf("NUMBERING expanded w1=%v", n1)
-	if len(n1) != len(roles) {
+	if len(n1) != len(sixm4RigRoles) {
 		t.Fatalf("EXPANDED modal lists %d agents (want %d). Expanded is inert on membership "+
 			"now, so differing from the default view means the flag still moves something "+
-			"it should not.\nW1:\n%s", len(n1), len(roles), w1exp)
+			"it should not.\nW1:\n%s", len(n1), len(sixm4RigRoles), w1exp)
 	}
 	w1pty.Write([]byte("a")) // back to the default view
 	time.Sleep(1500 * time.Millisecond)
