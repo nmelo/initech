@@ -297,9 +297,12 @@ first and this one was reported not delivered), or `withheld submit NOT DELIVERE
 Enter while a dialog or option picker is open. A NOT DELIVERED or SUPERSEDED message needs to be resent.
 
 After pressing Enter, initech counts a message as delivered only when it has seen the message in the
-agent's input box (its text, or Claude's `[Pasted text #N +M lines]` placeholder where M is the number
-of line breaks in the message, a trailing one included) and then seen it leave. The log line is `submitted: composer cleared`, with how many
-milliseconds that took and what the box showed. If the message is still there after one second, initech
+agent's input box, before or after the Enter (its text, or Claude's `[Pasted text #N +M lines]`
+placeholder where M is the number of line breaks in the message, a trailing one included), and then
+seen it leave. A box that only changed is not a sighting. The log line is `submitted: composer cleared`,
+with how many milliseconds after the Enter the box was seen without the message, and what it showed;
+because the message is usually seen during the wait before the Enter, that can read under 50, including
+0. A box showing Claude's queued-message line or the operator's own restored draft counts as cleared. If the message is still there after one second, initech
 presses Enter once more; if it is still there after that, it is reported as `NOT delivered (...)`. If
 initech could not recognise the message in the box at all (no input box on screen, a placeholder with a
 different count, or other text only), it presses nothing and reports

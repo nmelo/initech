@@ -61,7 +61,7 @@ var lockingCallAllowlist = map[string]string{
 	"composerTailAt":             "send goroutine (injectText under sendMu)",
 	"composerBlock":              "send goroutine (injectText under sendMu)",
 	"composerRegion":             "send goroutine and the withheld-submit retry, both under sendMu (ini-cg8y)",
-	"watchSubmit":                "send goroutine (injectText under sendMu): the stable-sample frame reads (ini-k3g2)",
+	"submitSample":               "send goroutine (injectText under sendMu) and the pre-Enter sighter it starts and joins: the stable-sample frame reads (ini-k3g2, ini-pkin)",
 	"paneShowsModalOnScreen":     "send goroutine (paneHasModal before a send)",
 	"paneShowsIdleComposer":      "send goroutine (modal queue drain)",
 	"Pane.isCodexReadyForSend":   "send goroutine (codex readiness poll)",

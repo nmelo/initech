@@ -571,11 +571,17 @@ func sendPaneTextLocked(pane *Pane, text string, enter bool) {
 	}
 
 	// Bracketed paste mode: wait for Claude Code's paste completion
-	// (100ms PASTE_COMPLETION_TIMEOUT_MS) plus async rendering time.
+	// (100ms PASTE_COMPLETION_TIMEOUT_MS) plus async rendering time. The
+	// sighting looks for our body in the box during this wait, on its own
+	// goroutine; it is joined only after the Enter, so it cannot move or gate
+	// it (ini-pkin).
+	sighting := startPreEnterSighting(pane, newPendingSubmit(text, mode, ""))
 	time.Sleep(bracketedPasteSubmitDelay)
 	LogDebug("inject", "submit", "pane", pane.Name(), "mode", mode, "method", "emulator", "delay_ms", bracketedPasteSubmitDelay.Milliseconds())
 	sendSubmitKey(pane.emu, pane.submitKey)
-	confirmAndRetrySubmit(pane, newPendingSubmit(text, mode, ""))
+	ps := newPendingSubmit(text, mode, "")
+	ps.seenInBox = sighting.wait()
+	confirmAndRetrySubmit(pane, ps)
 
 }
 
@@ -607,14 +613,18 @@ const (
 // provably still in the composer), or unknown.
 //
 // TAKEN IS A TRANSITION (ini-k3g2): our body must first be SEEN in the box,
-// then a later sample must show a composer that no longer holds it. The first
-// sample is taken right after the Enter is written, before Claude can have
-// read it, so it shows the box as the Enter found it. Confirming on the first
-// sample that could not prove our text was there counted a box that never
-// held it as a delivery: measured on a 52-agent fleet, 253 of 1,613 sends
-// confirmed at 0 ms and the retry almost never ran. Because samples are
-// composerEchoPoll (50 ms) apart, a confirmation can never come sooner than
-// that, which is also the fastest Claude takes an Enter and repaints.
+// then a later sample must show a composer that no longer holds it.
+// Confirming on a sample that could not prove our text was ever there counted
+// a box that never held it as a delivery: measured on a 52-agent fleet, 253
+// of 1,613 sends confirmed at 0 ms and the retry almost never ran.
+//
+// THE SIGHTING MAY COME BEFORE THE ENTER (ini-pkin). ps.seenInBox carries a
+// sighting from the wait before the Enter (startPreEnterSighting), so the
+// first stable sample after it that shows a composer without our body
+// completes the transition, possibly at 0 ms. Without it, a busy agent lost
+// its one post-Enter sample of our text to a torn frame and Claude had
+// cleared the box by the next: measured, 325 of 1,413 sends ended unknown
+// and every one checked had been delivered.
 //
 // OUR BODY, NOT ANY TEXT: after a submit, Claude restores the operator's
 // stashed draft into the composer, so "the composer has content" is not
@@ -629,24 +639,12 @@ func confirmSubmit(pane *Pane, ps *pendingSubmit, sentAt time.Time) submitOutcom
 // operator.
 func watchSubmit(pane *Pane, ps *pendingSubmit, sentAt time.Time) (submitOutcome, string) {
 	deadline := sentAt.Add(submitConfirmWindow)
-	seen, sawComposer := false, false
+	seen, sawComposer := ps.seenInBox, false
 	var tail, mismatch string
 	var found, held bool
 	for {
-		// ONE FRAME PER SAMPLE. The reads below each copy the screen row by row,
-		// and a repaint landing between them assembles a sample from two
-		// frames: the ❯ row from before, the box from after. Measured in a fake
-		// 1 run in 5 confirmed "taken" from such a tear while the screen was
-		// changing to one with no composer at all. A sample counts only when
-		// the screen read the same before and after it; otherwise it is
-		// skipped, neither seen nor gone, and the next sample decides.
-		before := emuRowsBlocking(pane.emu)
-		sTail, sFound := composerTail(pane)
-		if submitSampleMidpoint != nil {
-			submitSampleMidpoint()
-		}
-		sHeld := submitSighted(pane, sTail, sFound, ps)
-		if slices.Equal(before, emuRowsBlocking(pane.emu)) {
+		sTail, sFound, sHeld, stable := submitSample(pane, ps)
+		if stable {
 			tail, found, held = sTail, sFound, sHeld
 			if found {
 				sawComposer = true
@@ -678,6 +676,66 @@ func watchSubmit(pane *Pane, ps *pendingSubmit, sentAt time.Time) (submitOutcome
 		}
 		time.Sleep(composerEchoPoll)
 	}
+}
+
+// submitSample reads the box once: the composer tail, whether a composer was
+// found, whether it shows OUR body (submitSighted), and whether the frame was
+// stable.
+//
+// ONE FRAME PER SAMPLE. The reads below each copy the screen row by row, and a
+// repaint landing between them assembles a sample from two frames: the ❯ row
+// from before, the box from after. Measured in a fake 1 run in 5 confirmed
+// "taken" from such a tear while the screen was changing to one with no
+// composer at all. A sample counts only when the screen read the same before
+// and after it; otherwise it is skipped, neither seen nor gone.
+func submitSample(pane *Pane, ps *pendingSubmit) (tail string, found, held, stable bool) {
+	before := emuRowsBlocking(pane.emu)
+	tail, found = composerTail(pane)
+	if submitSampleMidpoint != nil {
+		submitSampleMidpoint()
+	}
+	held = submitSighted(pane, tail, found, ps)
+	return tail, found, held, slices.Equal(before, emuRowsBlocking(pane.emu))
+}
+
+// preEnterSighting looks for OUR body in the box during the wait before the
+// Enter (ini-pkin). The body sits there untouched for the whole wait, which
+// is the one time a busy agent reliably shows it: after the Enter Claude
+// clears it within about one sample.
+type preEnterSighting struct {
+	stop chan struct{}
+	done chan struct{}
+	seen bool // written by the sampler before done closes
+}
+
+// startPreEnterSighting samples the box every composerEchoPoll until one
+// stable sample holds our body, with exactly the evidence the watch after the
+// Enter uses (submitSample). A box that merely changed is not a sighting.
+func startPreEnterSighting(pane *Pane, ps *pendingSubmit) *preEnterSighting {
+	s := &preEnterSighting{stop: make(chan struct{}), done: make(chan struct{})}
+	go func() {
+		defer close(s.done)
+		for {
+			if _, _, held, stable := submitSample(pane, ps); held && stable {
+				s.seen = true
+				return
+			}
+			select {
+			case <-s.stop:
+				return
+			case <-time.After(composerEchoPoll):
+			}
+		}
+	}()
+	return s
+}
+
+// wait stops the sampler and reports whether it saw our body. Called after
+// the Enter is written, so the Enter never waits on a screen read.
+func (s *preEnterSighting) wait() bool {
+	close(s.stop)
+	<-s.done
+	return s.seen
 }
 
 // submitSighted reports whether this sample positively shows OUR body in the
@@ -1509,6 +1567,7 @@ type pendingSubmit struct {
 	preview        string    // For operator-facing records.
 	mode           string    // Injection mode, for the log.
 	tailAtWithhold string    // The composer tail when we withheld: "nothing has changed yet".
+	seenInBox      bool      // Our body was already seen in the box before the watch began (ini-pkin).
 	deadline       time.Time // Bounded: we do not wait forever.
 }
 
