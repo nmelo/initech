@@ -338,3 +338,17 @@ func TestPkinWatch_ACarriedSightingNeverConfirmsAHeldOrMissingBox(t *testing.T) 
 		t.Fatalf("no composer: outcome %d, want unknown", got)
 	}
 }
+
+// A dialog that opened during the wait takes the Enter, and our body sits
+// under it, still unsent. The picker's ❯ row is not a composer: a carried
+// sighting must not read it as "the box cleared".
+func TestPkinWatch_ADialogAfterTheSightingIsNotTheBoxClearing(t *testing.T) {
+	nma5Window(t, 200*time.Millisecond)
+	p, _, _ := proofPane(t)
+	p.emu.Write([]byte("\x1b[2J\x1b[20;1HDo you want to proceed?\r\n❯ 1. Yes\r\n  2. No"))
+	ps := newPendingSubmit(nma5Body, "bracketed", "")
+	ps.seenInBox = true
+	if got := confirmSubmit(p, ps, time.Now()); got == submitTaken {
+		t.Fatal("a permission dialog on screen after the sighting: confirmed as taken")
+	}
+}

@@ -302,7 +302,8 @@ placeholder where M is the number of line breaks in the message, a trailing one 
 seen it leave. A box that only changed is not a sighting. The log line is `submitted: composer cleared`,
 with how many milliseconds after the Enter the box was seen without the message, and what it showed;
 because the message is usually seen during the wait before the Enter, that can read under 50, including
-0. A box showing Claude's queued-message line or the operator's own restored draft counts as cleared. If the message is still there after one second, initech
+0. A box showing Claude's queued-message line or the operator's own restored draft counts as cleared; a
+dialog on screen does not. If the message is still there after one second, initech
 presses Enter once more; if it is still there after that, it is reported as `NOT delivered (...)`. If
 initech could not recognise the message in the box at all (no input box on screen, a placeholder with a
 different count, or other text only), it presses nothing and reports

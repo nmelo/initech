@@ -688,9 +688,15 @@ func watchSubmit(pane *Pane, ps *pendingSubmit, sentAt time.Time) (submitOutcome
 // "taken" from such a tear while the screen was changing to one with no
 // composer at all. A sample counts only when the screen read the same before
 // and after it; otherwise it is skipped, neither seen nor gone.
+//
+// A DIALOG IS NOT A COMPOSER (ini-pkin). A picker's ❯ row reads like one, and
+// once a sighting is carried from before the Enter, "a composer without our
+// body" confirms. A dialog that opened during the wait takes the Enter while
+// our body sits under it, unsent; that must never read as the box clearing.
 func submitSample(pane *Pane, ps *pendingSubmit) (tail string, found, held, stable bool) {
 	before := emuRowsBlocking(pane.emu)
 	tail, found = composerTail(pane)
+	found = found && !paneHasModal(pane)
 	if submitSampleMidpoint != nil {
 		submitSampleMidpoint()
 	}
