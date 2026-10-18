@@ -36,7 +36,11 @@ type pkinFake struct {
 	busy    bool             // tear every post-Enter sample while the box holds our text
 	mu      sync.Mutex
 	writes  []pkinWrite
-	tearing atomic.Bool // between taking an Enter and clearing the box
+	samples atomic.Int32 // samples through the hook (busy only)
+	torn    atomic.Bool  // a sample after the sighter's was torn
+	taken   atomic.Bool  // an Enter was taken
+	cleared atomic.Bool
+	clear   sync.Once
 	enters  atomic.Int32
 	frame   atomic.Int32
 }
@@ -59,16 +63,36 @@ func (f *pkinFake) saw(b string) {
 	if strings.ContainsAny(b, "\r\n") {
 		n := int(f.enters.Add(1))
 		if f.takes(n) {
-			f.tearing.Store(true)
+			if f.busy {
+				f.taken.Store(true)
+				f.maybeClear()
+				return
+			}
 			// Claude takes an Enter within one sample (869 of 1,088 measured
 			// confirmations landed at 50-99 ms).
 			go func() {
 				time.Sleep(20 * time.Millisecond)
 				f.paint(f.after)
-				f.tearing.Store(false)
 			}()
 		}
 	}
+}
+
+// maybeClear clears a busy agent's box 20 ms after it has both taken an
+// Enter and had a sample torn, whichever came second. Never on a timer of
+// its own: on a loaded host a timer can clear the box before any sample ran,
+// and the fixture would no longer be a busy agent.
+func (f *pkinFake) maybeClear() {
+	if !f.taken.Load() || !f.torn.Load() {
+		return
+	}
+	f.clear.Do(func() {
+		go func() {
+			time.Sleep(20 * time.Millisecond)
+			f.paint(f.after)
+			f.cleared.Store(true)
+		}()
+	})
 }
 
 func (f *pkinFake) stream() (all string, bodyAt, enterAt time.Time) {
@@ -104,11 +128,17 @@ func pkinSendRig(t *testing.T, f *pkinFake) (*Pane, <-chan AgentEvent) {
 	if f.busy {
 		old := submitSampleMidpoint
 		submitSampleMidpoint = func() {
-			if f.tearing.Load() {
-				// A busy agent repaints every frame: its spinner moves
-				// between the two reads of each sample.
-				p.emu.Write([]byte("\x1b[30;1H✻ Working " + strconv.Itoa(int(f.frame.Add(1)))))
+			// The first sample is the sighter's, during the wait: the one
+			// stable frame a busy agent shows. Every later sample, which is
+			// the watch after the Enter, is torn by the spinner while the
+			// box holds our text. Counting samples, not reading when the
+			// fake saw the Enter, keeps that true under any scheduling.
+			if f.samples.Add(1) == 1 || f.cleared.Load() {
+				return
 			}
+			p.emu.Write([]byte("\x1b[30;1H✻ Working " + strconv.Itoa(int(f.frame.Add(1)))))
+			f.torn.Store(true)
+			f.maybeClear()
 		}
 		t.Cleanup(func() { submitSampleMidpoint = old })
 	}
