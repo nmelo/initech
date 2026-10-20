@@ -310,6 +310,17 @@ different count, or other text only), it presses nothing and reports
 `could not confirm delivery (...)` in a toast, the event log and the inbox, with the reason. Check the
 agent's pane and re-send if the message is not there.
 
+A reading of the box counts only when the box's own rows, from the `❯` row through its bottom border,
+read the same and in the same place before and after it; an answer streaming above the box, the spinner
+and the hint rows below it never spoil a reading. The log line for a message initech could not confirm,
+`submit outcome UNKNOWN: could not confirm`, counts what those readings saw:
+
+- `samples_before` is the number of readings taken during the wait before the Enter.
+- `samples_after` is the number taken after the Enter, a resend's included.
+- `torn` is how many changed while being read and were skipped.
+- `stable` is how many held still.
+- `sighted` is how many of the stable readings showed the message in the box.
+
 ## The Bead Workflow
 
 Beads (`bd`) are the work tracking system. Every unit of work is a bead.

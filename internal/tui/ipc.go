@@ -581,6 +581,7 @@ func sendPaneTextLocked(pane *Pane, text string, enter bool) {
 	sendSubmitKey(pane.emu, pane.submitKey)
 	ps := newPendingSubmit(text, mode, "")
 	ps.seenInBox = sighting.wait()
+	ps.census = sighting.census
 	confirmAndRetrySubmit(pane, ps)
 
 }
@@ -644,6 +645,8 @@ func watchSubmit(pane *Pane, ps *pendingSubmit, sentAt time.Time) (submitOutcome
 	var found, held bool
 	for {
 		sTail, sFound, sHeld, stable := submitSample(pane, ps)
+		ps.census.after++
+		ps.census.count(sHeld, stable)
 		if stable {
 			tail, found, held = sTail, sFound, sHeld
 			if found {
@@ -671,7 +674,9 @@ func watchSubmit(pane *Pane, ps *pendingSubmit, sentAt time.Time) (submitOutcome
 			why := unconfirmedReason(mismatch, sawComposer, seen)
 			LogInfo("inject", "submit outcome UNKNOWN: could not confirm", "pane", pane.Name(),
 				"mode", ps.mode, "reason", why, "waited_ms", time.Since(sentAt).Milliseconds(),
-				"text", ps.preview, "composer", composerSnapshot(pane))
+				"text", ps.preview, "composer", composerSnapshot(pane),
+				"samples_before", ps.census.before, "samples_after", ps.census.after,
+				"torn", ps.census.torn, "stable", ps.census.stable, "sighted", ps.census.sighted)
 			return submitUnknown, why
 		}
 		time.Sleep(composerEchoPoll)
@@ -686,8 +691,17 @@ func watchSubmit(pane *Pane, ps *pendingSubmit, sentAt time.Time) (submitOutcome
 // repaint landing between them assembles a sample from two frames: the ❯ row
 // from before, the box from after. Measured in a fake 1 run in 5 confirmed
 // "taken" from such a tear while the screen was changing to one with no
-// composer at all. A sample counts only when the screen read the same before
-// and after it; otherwise it is skipped, neither seen nor gone.
+// composer at all. A sample counts only when the composer rows read the same,
+// at the same place, before and after it; otherwise it is skipped, neither
+// seen nor gone.
+//
+// THE COMPOSER ROWS, NOT THE SCREEN (ini-s1kd). The sample's evidence lives
+// in the box (composerSpan), and a tear that matters changes the box. A busy
+// agent repaints its answer, spinner and status rows between any two reads,
+// and comparing the whole screen tore every sample of a streaming pane, before
+// the Enter as well as after: measured, 95 of 100 "could not confirm" in one
+// loaded morning read "our text was never seen in the box", and not one of
+// the 305 sends that morning was found still in a box.
 //
 // A DIALOG IS NOT A COMPOSER (ini-pkin). A picker's ❯ row reads like one, and
 // once a sighting is carried from before the Enter, "a composer without our
@@ -701,7 +715,83 @@ func submitSample(pane *Pane, ps *pendingSubmit) (tail string, found, held, stab
 		submitSampleMidpoint()
 	}
 	held = submitSighted(pane, tail, found, ps)
-	return tail, found, held, slices.Equal(before, emuRowsBlocking(pane.emu))
+	return tail, found, held, sameComposerSpan(before, emuRowsBlocking(pane.emu))
+}
+
+// sameComposerSpan reports whether two reads of the screen show the same
+// composer rows at the same place. A box that moved counts as changed: the
+// sample's inner reads index rows, and a moved box may have read rows of two
+// frames.
+func sameComposerSpan(a, b []string) bool {
+	topA, spanA := composerSpan(a)
+	topB, spanB := composerSpan(b)
+	return topA == topB && slices.Equal(spanA, spanB)
+}
+
+// composerSpan is where a sample's evidence sits on a screen: the prompt row
+// composerTailFromRows finds, through the first full-width rule below it
+// (Claude's bottom border, isComposerRule), or through the last row when none
+// follows; or, when the prompt row has scrolled off, the rows above the last
+// rule up to the rule before it, by ruleBoundedRegion's own rule test. top is
+// the first row's index, -1 when the screen has neither. Wherever a border is
+// not found the span runs on, which only ever compares more rows.
+func composerSpan(rows []string) (top int, span []string) {
+	if _, row, found := composerTailFromRows(rows); found {
+		end := len(rows)
+		for r := row + 1; r < len(rows); r++ {
+			if isComposerRule(rows[r]) {
+				end = r + 1
+				break
+			}
+		}
+		return row, rows[row:end]
+	}
+	bottom := -1
+	for r := len(rows) - 1; r >= 0; r-- {
+		if isRegionRule(rows[r]) {
+			bottom = r
+			break
+		}
+	}
+	if bottom <= 0 {
+		return -1, nil
+	}
+	top = 0
+	for r := bottom - 1; r >= 0; r-- {
+		if isRegionRule(rows[r]) {
+			top = r + 1
+			break
+		}
+	}
+	return top, rows[top : bottom+1]
+}
+
+// isRegionRule is ruleBoundedRegion's rule test: ten or more box-drawing
+// dashes and nothing else.
+func isRegionRule(s string) bool {
+	t := strings.TrimSpace(s)
+	return utf8.RuneCountInString(t) >= 10 && strings.Trim(t, "\u2500") == ""
+}
+
+// submitCensus counts what one send's samples saw (ini-s1kd), for the
+// UNKNOWN line. Reporting only: it decides nothing.
+type submitCensus struct {
+	before, after int // samples taken before and after the Enter
+	torn          int // samples whose composer rows changed while they were read
+	stable        int // samples whose composer rows held still
+	sighted       int // stable samples that showed our text
+}
+
+// count records one sample's verdict.
+func (c *submitCensus) count(held, stable bool) {
+	if !stable {
+		c.torn++
+		return
+	}
+	c.stable++
+	if held {
+		c.sighted++
+	}
 }
 
 // preEnterSighting looks for OUR body in the box during the wait before the
@@ -709,9 +799,10 @@ func submitSample(pane *Pane, ps *pendingSubmit) (tail string, found, held, stab
 // is the one time a busy agent reliably shows it: after the Enter Claude
 // clears it within about one sample.
 type preEnterSighting struct {
-	stop chan struct{}
-	done chan struct{}
-	seen bool // written by the sampler before done closes
+	stop   chan struct{}
+	done   chan struct{}
+	seen   bool         // written by the sampler before done closes
+	census submitCensus // likewise; read only after wait
 }
 
 // startPreEnterSighting samples the box every composerEchoPoll until one
@@ -722,7 +813,10 @@ func startPreEnterSighting(pane *Pane, ps *pendingSubmit) *preEnterSighting {
 	go func() {
 		defer close(s.done)
 		for {
-			if _, _, held, stable := submitSample(pane, ps); held && stable {
+			_, _, held, stable := submitSample(pane, ps)
+			s.census.before++
+			s.census.count(held, stable)
+			if held && stable {
 				s.seen = true
 				return
 			}
@@ -1567,14 +1661,15 @@ func (t *TUI) handleIPCAttention(conn net.Conn, req IPCRequest) {
 // is why the modal guard's enqueue-the-whole-message shape is wrong here and
 // was correctly left out rather than forgotten.
 type pendingSubmit struct {
-	bodyLines      []string  // Our body's distinct non-blank lines, the evidence a composer must show to prove it holds OURS.
-	pasteCount     int       // The +M a COLLAPSED paste of our body shows: its newline count (ini-vpwg, re-measured ini-k3g2).
-	withheldAt     time.Time // When we withheld, so the operator is told how long a message waited.
-	preview        string    // For operator-facing records.
-	mode           string    // Injection mode, for the log.
-	tailAtWithhold string    // The composer tail when we withheld: "nothing has changed yet".
-	seenInBox      bool      // Our body was already seen in the box before the watch began (ini-pkin).
-	deadline       time.Time // Bounded: we do not wait forever.
+	bodyLines      []string     // Our body's distinct non-blank lines, the evidence a composer must show to prove it holds OURS.
+	pasteCount     int          // The +M a COLLAPSED paste of our body shows: its newline count (ini-vpwg, re-measured ini-k3g2).
+	withheldAt     time.Time    // When we withheld, so the operator is told how long a message waited.
+	preview        string       // For operator-facing records.
+	mode           string       // Injection mode, for the log.
+	tailAtWithhold string       // The composer tail when we withheld: "nothing has changed yet".
+	seenInBox      bool         // Our body was already seen in the box before the watch began (ini-pkin).
+	census         submitCensus // What this send's samples saw, before the Enter and after, for the UNKNOWN line (ini-s1kd).
+	deadline       time.Time    // Bounded: we do not wait forever.
 }
 
 // withheldSubmitWindow bounds how long a withheld submit waits for the

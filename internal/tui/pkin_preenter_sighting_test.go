@@ -30,10 +30,11 @@ type pkinWrite struct {
 type pkinFake struct {
 	p       *Pane
 	body    string
-	shows   string           // the box once the paste ends; "" is "❯ " + body
-	after   string           // the box after a taken Enter
-	takes   func(n int) bool // whether Enter number n is taken
-	busy    bool             // tear every post-Enter sample while the box holds our text
+	shows   string                       // the box once the paste ends; "" is "❯ " + body
+	after   string                       // the box after a taken Enter
+	takes   func(n int) bool             // whether Enter number n is taken
+	busy    bool                         // tear every post-Enter sample while the box holds our text
+	screen  func(composer string) string // the whole screen around the box; nil draws the box alone at the top
 	mu      sync.Mutex
 	writes  []pkinWrite
 	samples atomic.Int32 // samples through the hook (busy only)
@@ -46,6 +47,10 @@ type pkinFake struct {
 }
 
 func (f *pkinFake) paint(composer string) {
+	if f.screen != nil {
+		f.p.emu.Write([]byte(f.screen(composer)))
+		return
+	}
 	f.p.emu.Write([]byte("\x1b[2J\x1b[H" + strings.Repeat("─", 40) + "\r\n" + composer + "\r\n" + strings.Repeat("─", 40)))
 }
 
@@ -130,13 +135,16 @@ func pkinSendRig(t *testing.T, f *pkinFake) (*Pane, <-chan AgentEvent) {
 		submitSampleMidpoint = func() {
 			// The first sample is the sighter's, during the wait: the one
 			// stable frame a busy agent shows. Every later sample, which is
-			// the watch after the Enter, is torn by the spinner while the
-			// box holds our text. Counting samples, not reading when the
-			// fake saw the Enter, keeps that true under any scheduling.
+			// the watch after the Enter, is torn while the box holds our
+			// text. Counting samples, not reading when the fake saw the
+			// Enter, keeps that true under any scheduling. The repaint lands
+			// on the box's bottom border: only the composer rows tear a
+			// sample (ini-s1kd), so a spinner elsewhere would leave these
+			// samples whole and the carried sighting untested.
 			if f.samples.Add(1) == 1 || f.cleared.Load() {
 				return
 			}
-			p.emu.Write([]byte("\x1b[30;1H✻ Working " + strconv.Itoa(int(f.frame.Add(1)))))
+			p.emu.Write([]byte("\x1b[3;45H✻ Working " + strconv.Itoa(int(f.frame.Add(1)))))
 			f.torn.Store(true)
 			f.maybeClear()
 		}
