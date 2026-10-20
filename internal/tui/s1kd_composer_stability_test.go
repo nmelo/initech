@@ -225,6 +225,13 @@ func TestS1kdComposerSpan_IsThePromptRowThroughTheBottomRule(t *testing.T) {
 	if top != 3 || strings.Join(span, "|") != "❯ hello|  world|"+s1kdRule {
 		t.Fatalf("got top %d span %q, want the prompt row through the bottom rule", top, span)
 	}
+	// A narrow pane draws a short border; the status row under it is still
+	// outside the span, so its repaints never tear a sample.
+	narrow := strings.Repeat("─", 30)
+	rows = []string{"● answer", narrow, "❯ hello", narrow, "  ⎇ main │ 14%"}
+	if top, span = composerSpan(rows); top != 2 || len(span) != 2 {
+		t.Fatalf("narrow pane: got top %d span %q, want the prompt row and its 30-dash border", top, span)
+	}
 	// The prompt row scrolled off: the rows between the last two rules.
 	rows = []string{"wrapped body line one", "wrapped body line two", s1kdRule, "  ⏵⏵ hint"}
 	if top, span = composerSpan(rows); top != 0 || len(span) != 3 {

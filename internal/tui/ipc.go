@@ -729,17 +729,22 @@ func sameComposerSpan(a, b []string) bool {
 }
 
 // composerSpan is where a sample's evidence sits on a screen: the prompt row
-// composerTailFromRows finds, through the first full-width rule below it
-// (Claude's bottom border, isComposerRule), or through the last row when none
-// follows; or, when the prompt row has scrolled off, the rows above the last
-// rule up to the rule before it, by ruleBoundedRegion's own rule test. top is
-// the first row's index, -1 when the screen has neither. Wherever a border is
-// not found the span runs on, which only ever compares more rows.
+// composerTailFromRows finds, through the first rule below it (Claude's bottom
+// border), or through the last row when none follows; or, when the prompt row
+// has scrolled off, the rows above the last rule up to the rule before it. top
+// is the first row's index, -1 when the screen has neither.
+//
+// One rule test for both, ruleBoundedRegion's (isRegionRule), not the
+// full-width isComposerRule: a pane narrower than its 40 runes draws a shorter
+// border, and a span that ran past it would take in the status row and tear
+// on its repaints. Scanning down from the prompt row, only our own body can
+// sit above the border; a dash line in it ends the span early, and the prompt
+// row, which changes whenever the box clears, is always in it.
 func composerSpan(rows []string) (top int, span []string) {
 	if _, row, found := composerTailFromRows(rows); found {
 		end := len(rows)
 		for r := row + 1; r < len(rows); r++ {
-			if isComposerRule(rows[r]) {
+			if isRegionRule(rows[r]) {
 				end = r + 1
 				break
 			}
