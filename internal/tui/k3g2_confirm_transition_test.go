@@ -62,14 +62,29 @@ func TestK3g2_SeenThenGoneIsTaken(t *testing.T) {
 }
 
 // AC4: Claude cannot take an Enter and repaint in under 50 ms, so a
-// confirmation that fast observed nothing. Even when the box does clear
-// that fast, the confirmation waits for a sample at or past the floor.
+// confirmation that fast observed nothing. Even when the box clears at the
+// very next sample after the sighting, the confirmation waits for a sample
+// at or past the floor.
+//
+// The clear is tied to sample order, not a timer. A 5 ms timer raced the
+// first sample, and on a loaded race runner it cleared the box mid-sample,
+// before the sighting: outcome unknown. The first sample is slowed here to
+// be that runner every time.
 func TestK3g2_NoConfirmationBeforeTheFiftyMillisecondFloor(t *testing.T) {
 	nma5Window(t, time.Second)
 	p, _, _ := proofPane(t)
 	nma5Paint(p, "❯ "+nma5Body)
+	samples := 0
+	submitSampleMidpoint = func() {
+		switch samples++; samples {
+		case 1:
+			time.Sleep(10 * time.Millisecond)
+		case 2:
+			nma5Paint(p, "❯ ")
+		}
+	}
+	t.Cleanup(func() { submitSampleMidpoint = nil })
 	start := time.Now()
-	go func() { time.Sleep(5 * time.Millisecond); nma5Paint(p, "❯ ") }()
 	if got := confirmSubmit(p, newPendingSubmit(nma5Body, "bracketed", ""), start); got != submitTaken {
 		t.Fatalf("seen, then cleared: outcome %d, want taken", got)
 	}
