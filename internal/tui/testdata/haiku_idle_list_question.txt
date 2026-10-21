@@ -1,0 +1,40 @@
+
+
+  Read 1 file
+
+⏺ Update(w.txt)
+  ⎿  User rejected update to w.txt
+      1 -hello
+      1   No newline at end of file
+      2 +world
+      3   No newline at end of file
+
+✻ Crunched for 3s · done 5:29 AM
+
+❯ Without using any tools, write a numbered list of 14 short tips for better sleep, one per line, then end by asking me
+  which one I want to try first?
+
+⏺ 1. Keep a consistent wake-up time, even on weekends.
+  2. Go to bed when you feel sleepy, not when you think you should.
+  3. Keep your bedroom cool, around 65–68°F (18–20°C).
+  4. Make the room dark, using blackout curtains or an eye mask.
+  5. Keep it quiet, or use earplugs or white noise.
+  6. Limit caffeine after noon.
+  7. Avoid alcohol close to bedtime, since it fragments sleep.
+  8. Stop heavy meals about two to three hours before bed.
+  9. Dim the lights and reduce screen use in the last hour.
+  10. Get bright daylight outside in the morning.
+  11. Exercise regularly, but finish vigorous workouts a few hours before bed.
+  12. Use the bed only for sleep and intimacy, not for work or scrolling.
+  13. If you can't fall asleep after about 20 minutes, get up and do something calm in dim light.
+  14. Write down worries before bed so they're less likely to keep you awake.
+
+  Which one do you want to try first?
+
+✻ Sautéed for 3s · done 5:29 AM
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ 
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Haiku 5.5 │ user │ 6% │ 22% ▓▓░░░░┃░░░ → 07:20 AM │ 87% ▓▓▓▓▓▓┃▓▓░
+  ⏸ manual mode on

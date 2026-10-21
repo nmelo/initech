@@ -1,0 +1,40 @@
+
+
+❯ Create a file named w.txt containing the single word hello. Use the Write tool.
+
+⏺ Write(w.txt)
+  ⎿  Wrote 1 line to w.txt
+      1 hello
+
+⏺ I created /tmp/project/w.txt with the single word hello using the Write tool.
+
+  ★ Insight ─────────────────────────────────────
+  Write creates the file, or replaces it entirely if it already exists. It doesn't append. That's why I passed the exact
+  content hello with no trailing newline. If you want one, add it to the content.
+  ─────────────────────────────────────────────────
+
+✻ Churned for 5s · done 5:29 AM
+
+❯ In w.txt change hello to world. Use the Edit tool.
+
+  Read 1 file
+
+⏺ Update(w.txt)
+  ⎿  User rejected update to w.txt
+      1 -hello
+      1   No newline at end of file
+      2 +world
+      3   No newline at end of file
+
+✻ Crunched for 3s · done 5:29 AM
+
+❯ Without using any tools, write a numbered list of 14 short tips for better sleep, one per line, then end by asking me
+  which one I want to try first?
+
+✽ Tinkering…
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ 
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Haiku 5.5 │ user │ 6% │ 22% ▓▓░░░░┃░░░ → 07:20 AM │ 87% ▓▓▓▓▓▓┃▓▓░
+  ⏸ manual mode on

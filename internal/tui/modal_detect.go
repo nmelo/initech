@@ -66,15 +66,76 @@ var modalPromptPatterns = []string{
 	// Enter into the highlighted option. The longer pattern was a guess that
 	// matched no dialog this fleet actually renders.
 	"enter to confirm",
+	// The Write/Edit permission prompt's second option (ini-zrdt), measured
+	// on Claude Code 2.1.299 and 2.1.306: "Yes, and switch to accept edits
+	// (auto-approve file edits ...)". Sufficient on its own; the prompt's
+	// question ("Do you want to create w.txt?") is wording no phrase above
+	// knows, which permissionPromptShape covers.
+	"yes, and switch to accept edits",
 }
 
 // isModalPrompt reports whether text (a slice of the pane's recent emulator
-// output) carries a blocking-modal signature.
+// output) carries a blocking-modal signature: one of the phrases above, or
+// the permission prompt's shape.
 func isModalPrompt(text string) bool {
 	compacted := compactPromptText(strings.ToLower(strings.ReplaceAll(text, "’", "'")))
 	for _, pattern := range modalPromptPatterns {
 		if strings.Contains(compacted, compactPromptText(pattern)) {
 			return true
+		}
+	}
+	return permissionPromptShape(text)
+}
+
+// optionOneRow is a picker's first option, with or without the cursor on it.
+var optionOneRow = regexp.MustCompile(`^\s*❯?\s*1[.)]\s+\S`)
+
+// cursorOptionRow is the picker's selected option: the ❯ cursor on a
+// numbered row. A composer's ❯ prompt is never followed by a number and a
+// separator.
+var cursorOptionRow = regexp.MustCompile(`^\s*❯\s*\d+[.)]\s+\S`)
+
+// permissionPromptMaxRows bounds how far below the first option the footer
+// may sit: the option list, its wrapped lines, and a blank row.
+const permissionPromptMaxRows = 30
+
+// permissionPromptShape reports Claude Code's permission prompt by its shape
+// rather than its words (ini-zrdt), measured from real Write and Edit prompts
+// (2.1.299, 2.1.306): a question ending in "?" on the line directly above a
+// numbered option list, one option carrying the ❯ cursor, and a footer below
+// offering "Esc to cancel". Every part is required. A numbered list in an
+// answer has no cursor on an option and no "Esc to cancel"; the resting
+// composer's ❯ is not on a numbered row; a full composer rule ends the search.
+func permissionPromptShape(text string) bool {
+	lines := strings.Split(text, "\n")
+	for i, line := range lines {
+		if !optionOneRow.MatchString(line) {
+			continue
+		}
+		question := ""
+		for k := i - 1; k >= 0; k-- {
+			if t := strings.TrimSpace(lines[k]); t != "" {
+				question = t
+				break
+			}
+		}
+		if !strings.HasSuffix(question, "?") {
+			continue
+		}
+		cursor := false
+		for j := i; j < len(lines) && j < i+permissionPromptMaxRows; j++ {
+			if isComposerRule(lines[j]) {
+				break
+			}
+			if cursorOptionRow.MatchString(lines[j]) {
+				cursor = true
+			}
+			if strings.Contains(strings.ToLower(lines[j]), "esc to cancel") {
+				if cursor {
+					return true
+				}
+				break
+			}
 		}
 	}
 	return false
