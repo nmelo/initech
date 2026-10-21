@@ -25,6 +25,11 @@ func skipInCI(t *testing.T) {
 
 // ── Test helpers ────────────────────────────────────────────────────
 
+// integTestToken is the token for tests whose subject is not auth. A daemon
+// with no token now accepts nobody (ini-cxia), so these no longer run
+// against a tokenless daemon; the auth tests use their own tokens.
+const integTestToken = "integ-test-token"
+
 // testDaemon holds a running daemon and its network address.
 type testDaemon struct {
 	daemon   *Daemon
@@ -312,8 +317,8 @@ func TestInteg_HelloRejectsInvalidToken(t *testing.T) {
 
 func TestInteg_PTYContentViaPeek(t *testing.T) {
 	skipInCI(t)
-	td := startTestDaemon(t, "", "eng1")
-	tc, _ := connectTestClient(t, td.addr, "client", "")
+	td := startTestDaemon(t, integTestToken, "eng1")
+	tc, _ := connectTestClient(t, td.addr, "client", integTestToken)
 	tc.readStreamMap(t)
 
 	// Wait for the agent to produce output (echo eng1-ready).
@@ -330,8 +335,8 @@ func TestInteg_PTYContentViaPeek(t *testing.T) {
 
 func TestInteg_KeyboardInput(t *testing.T) {
 	skipInCI(t)
-	td := startTestDaemon(t, "", "eng1")
-	tc, _ := connectTestClient(t, td.addr, "client", "")
+	td := startTestDaemon(t, integTestToken, "eng1")
+	tc, _ := connectTestClient(t, td.addr, "client", integTestToken)
 	tc.readStreamMap(t)
 
 	// Wait for agent to be ready.
@@ -353,8 +358,8 @@ func TestInteg_KeyboardInput(t *testing.T) {
 
 func TestInteg_SendViaControl(t *testing.T) {
 	skipInCI(t)
-	td := startTestDaemon(t, "", "eng1")
-	tc, _ := connectTestClient(t, td.addr, "client", "")
+	td := startTestDaemon(t, integTestToken, "eng1")
+	tc, _ := connectTestClient(t, td.addr, "client", integTestToken)
 	tc.readStreamMap(t)
 
 	resp := tc.sendControl(t, ControlCmd{Action: "send", Target: "eng1", Text: "control-msg"})
@@ -371,8 +376,8 @@ func TestInteg_SendViaControl(t *testing.T) {
 
 func TestInteg_ForwardSend(t *testing.T) {
 	skipInCI(t)
-	td := startTestDaemon(t, "", "eng1")
-	tc, _ := connectTestClient(t, td.addr, "client", "")
+	td := startTestDaemon(t, integTestToken, "eng1")
+	tc, _ := connectTestClient(t, td.addr, "client", integTestToken)
 	tc.readStreamMap(t)
 
 	time.Sleep(300 * time.Millisecond)
@@ -391,8 +396,8 @@ func TestInteg_ForwardSend(t *testing.T) {
 
 func TestInteg_PeersQuery(t *testing.T) {
 	skipInCI(t)
-	td := startTestDaemon(t, "", "eng1", "eng2")
-	tc, _ := connectTestClient(t, td.addr, "client", "")
+	td := startTestDaemon(t, integTestToken, "eng1", "eng2")
+	tc, _ := connectTestClient(t, td.addr, "client", integTestToken)
 	tc.readStreamMap(t)
 
 	resp := tc.sendControl(t, ControlCmd{Action: "peers_query"})
@@ -417,8 +422,8 @@ func TestInteg_PeersQuery(t *testing.T) {
 
 func TestInteg_PeekViaControl(t *testing.T) {
 	skipInCI(t)
-	td := startTestDaemon(t, "", "eng1")
-	tc, _ := connectTestClient(t, td.addr, "client", "")
+	td := startTestDaemon(t, integTestToken, "eng1")
+	tc, _ := connectTestClient(t, td.addr, "client", integTestToken)
 	tc.readStreamMap(t)
 
 	time.Sleep(500 * time.Millisecond)
@@ -435,8 +440,8 @@ func TestInteg_PeekViaControl(t *testing.T) {
 
 func TestInteg_ResizeViaControl(t *testing.T) {
 	skipInCI(t)
-	td := startTestDaemon(t, "", "eng1")
-	tc, _ := connectTestClient(t, td.addr, "client", "")
+	td := startTestDaemon(t, integTestToken, "eng1")
+	tc, _ := connectTestClient(t, td.addr, "client", integTestToken)
 	tc.readStreamMap(t)
 
 	resp := tc.sendControl(t, ControlCmd{Action: "resize", Target: "eng1", Rows: 40, Cols: 120})
@@ -461,12 +466,12 @@ func TestInteg_ResizeViaControl(t *testing.T) {
 
 func TestInteg_LivePTYBytesViaStream(t *testing.T) {
 	skipInCI(t)
-	td := startTestDaemon(t, "", "eng1")
+	td := startTestDaemon(t, integTestToken, "eng1")
 
 	// Wait for echo output to reach the ring buffer.
 	time.Sleep(500 * time.Millisecond)
 
-	tc, _ := connectTestClient(t, td.addr, "client", "")
+	tc, _ := connectTestClient(t, td.addr, "client", integTestToken)
 	tc.readStreamMap(t)
 
 	// Accept the agent stream opened by the daemon.
@@ -511,8 +516,8 @@ func TestInteg_RemotePaneImplementsPaneView(t *testing.T) {
 	skipInCI(t)
 	// Compile-time check is already in pane.go (var _ PaneView = (*RemotePane)(nil)).
 	// Runtime check: create a RemotePane from a real yamux stream.
-	td := startTestDaemon(t, "", "eng1")
-	tc, _ := connectTestClient(t, td.addr, "client", "")
+	td := startTestDaemon(t, integTestToken, "eng1")
+	tc, _ := connectTestClient(t, td.addr, "client", integTestToken)
 	sm := tc.readStreamMap(t)
 
 	// Accept one agent stream.
@@ -546,16 +551,16 @@ func TestInteg_RemotePaneImplementsPaneView(t *testing.T) {
 
 func TestInteg_MultiClient(t *testing.T) {
 	skipInCI(t)
-	td := startTestDaemon(t, "", "eng1")
+	td := startTestDaemon(t, integTestToken, "eng1")
 
 	// Wait for echo output.
 	time.Sleep(500 * time.Millisecond)
 
 	// Connect two clients simultaneously.
-	tc1, _ := connectTestClient(t, td.addr, "client1", "")
+	tc1, _ := connectTestClient(t, td.addr, "client1", integTestToken)
 	tc1.readStreamMap(t)
 
-	tc2, _ := connectTestClient(t, td.addr, "client2", "")
+	tc2, _ := connectTestClient(t, td.addr, "client2", integTestToken)
 	tc2.readStreamMap(t)
 
 	// Both clients should be able to peek.
@@ -596,8 +601,8 @@ func TestInteg_MultiClient(t *testing.T) {
 
 func TestInteg_GracefulShutdown(t *testing.T) {
 	skipInCI(t)
-	td := startTestDaemon(t, "", "eng1")
-	tc, _ := connectTestClient(t, td.addr, "client", "")
+	td := startTestDaemon(t, integTestToken, "eng1")
+	tc, _ := connectTestClient(t, td.addr, "client", integTestToken)
 	tc.readStreamMap(t)
 
 	// Close the listener to simulate shutdown signal path.

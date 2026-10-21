@@ -120,8 +120,12 @@ func evictionPM(t *testing.T, srv *evictionWarServer) (chan string, func()) {
 	quit := make(chan struct{})
 	evicted := make(chan string, 1)
 	pm := newPeerManager(
-		&config.Project{PeerName: "window-2", Token: "", Remotes: map[string]config.Remote{
-			"window1": {Addr: srv.addr},
+		// A configured token (ini-cxia): with none, window 2 reads the
+		// session token file and, with no project root, never dials. The
+		// fake server answers hello_ok to any token; the verdict is the
+		// subject here, not the handshake.
+		&config.Project{PeerName: "window-2", Remotes: map[string]config.Remote{
+			"window1": {Addr: srv.addr, Token: testWindowToken},
 		}},
 		func(string, []PaneView, bool) {},
 		nil, quit)
