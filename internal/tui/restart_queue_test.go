@@ -207,7 +207,8 @@ func TestRestart_DrainModalQueueItselfPopsOneAtATime(t *testing.T) {
 		}
 	}()
 
-	go p.drainModalQueue()
+	drained := make(chan struct{})
+	go func() { p.drainModalQueue(); close(drained) }()
 
 	// Wait for evidence the first pop happened (this read does not need
 	// sendMu -- QueuedMessageCount only touches p.mu), so the sendMu
@@ -235,10 +236,14 @@ func TestRestart_DrainModalQueueItselfPopsOneAtATime(t *testing.T) {
 			"two still queued where a concurrent restart's carry would find them)", remaining)
 	}
 
-	// Let the drain finish so nothing leaks past the test.
-	deadline = time.Now().Add(3 * time.Second)
-	for time.Now().Before(deadline) && p.QueuedMessageCount() > 0 {
-		time.Sleep(10 * time.Millisecond)
+	// Let the drain finish so nothing leaks past the test. Wait for the
+	// goroutine, not an empty queue: the queue empties when the last message
+	// is popped, while the drain is still sending it, and that send reads
+	// package hooks the next test swaps (a -race failure in the s1kd tests).
+	select {
+	case <-drained:
+	case <-time.After(10 * time.Second):
+		t.Fatal("drainModalQueue did not return within 10s")
 	}
 }
 
