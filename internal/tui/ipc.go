@@ -452,7 +452,7 @@ func sendPaneTextLocked(pane *Pane, text string, enter bool) {
 		// default level. A message the fleet is holding is not debug detail.
 		LogInfo("inject", "deferred: modal open", "pane", pane.Name(), "enter", enter,
 			"queued", pane.QueuedMessageCount(), "queue_dropped", dropped)
-		EmitEvent(pane.eventCh, AgentEvent{
+		pane.reportEvent(AgentEvent{
 			Type:   EventMessageSent,
 			Pane:   pane.Name(),
 			Detail: "deferred (modal open): " + preview,
@@ -1617,7 +1617,8 @@ func (t *TUI) forwardSendToRemote(conn net.Conn, req IPCRequest) {
 		writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("not delivered to %s:%s: %s", req.Host, req.Target, reason)})
 		return
 	}
-	writeIPCResponse(conn, IPCResponse{OK: true})
+	// Data carries the peer's deferral (ini-ei8l), as a local send's does.
+	writeIPCResponse(conn, IPCResponse{OK: true, Data: resp.Data})
 }
 
 // forwardInterruptToRemote sends interrupt host:agent to the peer as an
@@ -2117,7 +2118,7 @@ func (p *Pane) deliverWithheldSubmit(ps *pendingSubmit, how string) bool {
 	sendSubmitKey(p.emu, p.submitKey)
 	LogInfo("inject", "withheld submit DELIVERED: "+how,
 		"pane", p.name, "mode", ps.mode, "waited", time.Since(ps.withheldAt).Round(time.Second), "text", ps.preview)
-	EmitEvent(p.eventCh, AgentEvent{
+	p.reportEvent(AgentEvent{
 		Type: EventMessageSent,
 		Pane: p.name,
 		Detail: deliveredLateSubmitPrefix +
@@ -2271,10 +2272,10 @@ func (p *Pane) emitSubmitReport(prefix, detail string) {
 	if probe == nil {
 		probe = sessionClaudeVersion
 	}
-	events := p.eventCh
+	events, sink := p.eventCh, p.reportSink.Load()
 	probe.report(func(versions string) {
 		event.Detail = prefix + versions + ") " + event.Detail
-		EmitEvent(events, event)
+		deliverReport(events, sink, event)
 	})
 }
 

@@ -554,6 +554,7 @@ func (d *Daemon) startPushedPane(cfg PaneConfig) error {
 	if err != nil {
 		return err
 	}
+	d.adoptReports(p)
 	d.panesMu.Lock()
 	if d.ringBufs == nil {
 		d.ringBufs = make(map[string]*RingBuf)

@@ -75,7 +75,7 @@ func maintainModal(panes []PaneView, now time.Time, last *time.Time) {
 			LogInfo("modal", "dialog latch cleared",
 				"pane", p.Name(), "by", "idle prompt (latch cleared: pane returned to its idle prompt)",
 				"stable_for", stable, "queued", p.QueuedMessageCount())
-			EmitEvent(p.eventCh, AgentEvent{
+			p.reportEvent(AgentEvent{
 				Type:   EventMessageSent,
 				Pane:   p.Name(),
 				Detail: "held mail released: pane returned to prompt",
@@ -85,7 +85,7 @@ func maintainModal(panes []PaneView, now time.Time, last *time.Time) {
 		if p.auditDialogLatch(now) {
 			LogWarn("modal", "dialog latch cleared: a declared dialog was never seen on screen (latch downgraded)",
 				"pane", p.Name(), "window", latchCorroborationWindow)
-			EmitEvent(p.eventCh, AgentEvent{
+			p.reportEvent(AgentEvent{
 				Type:   EventMessageSent,
 				Pane:   p.Name(),
 				Detail: "held mail released: a declared dialog never appeared",

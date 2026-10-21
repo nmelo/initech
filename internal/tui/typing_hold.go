@@ -172,9 +172,15 @@ func isMouseOrFocusReport(b []byte) bool {
 func (d *Daemon) deliverOffReader(sends *targetSerializer, p *Pane, cmd ControlCmd, respond func(string, ControlResp) bool) {
 	id, text, enter, operator := cmd.ID, cmd.Text, cmd.Enter, cmd.Operator
 	sends.Run(cmd.Target, func() {
-		if operator {
+		switch {
+		case operator:
 			p.SendOperatorText(text, enter)
-		} else {
+		case d.serve:
+			// initech serve answers as the TUI does: refused, deferred or OK
+			// (ini-ei8l). Window 1's window server answers as before.
+			respond(id, servedSend(p, text, enter))
+			return
+		default:
 			p.SendText(text, enter)
 		}
 		respond(id, ControlResp{OK: true})

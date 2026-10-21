@@ -62,6 +62,12 @@ type Daemon struct {
 	maintainMu     sync.Mutex
 	lastModalMaint time.Time
 
+	// serve marks the daemon RunDaemon started (initech serve), never window
+	// 1's in-TUI one. Only it answers sends the way the TUI does and forwards
+	// its agents' delivery reports, through reportQ (ini-ei8l).
+	serve   bool
+	reportQ chan AgentEvent
+
 	// liveStreams is the per-(peer, agent) client stream, so a mid-session
 	// resync can replay to THE REQUESTING WINDOW ONLY (ini-dr03). Replaying
 	// through the MultiSink would send one window's recovery to every window,
@@ -168,6 +174,11 @@ type Daemon struct {
 // wire form changes in a way an older peer would MISREAD rather than reject --
 // including how fleet-scoped state is keyed, since that changes the protocol's
 // meaning while leaving its shape intact.
+//
+// Not bumped by ini-ei8l: agent_event is a new unsolicited action, which an
+// older client's consumeEvents switch passes over, and event_type and
+// event_time_ms are new omitempty fields an older client drops. Nothing an
+// older peer reads changes meaning.
 //
 // Not bumped by ini-yc03: that bead made in-memory and on-disk identity
 // canonical, and measurement of every identity-bearing wire field (hello_ok
@@ -353,6 +364,11 @@ type ControlResp struct {
 	// NoBead rides agent_status beside Beads: the no-bead marker's words, so
 	// every window shows the same ribbon. Omitted when none.
 	NoBead string `json:"no_bead,omitempty"`
+	// EventType and EventTimeMs ride agent_event with Name and Text (ini-ei8l):
+	// the report's type by its EventType name ("message" or "stalled") and
+	// when the daemon raised it.
+	EventType   string `json:"event_type,omitempty"`
+	EventTimeMs int64  `json:"event_time_ms,omitempty"`
 }
 
 // RunDaemon starts the headless daemon. Blocks until SIGINT/SIGTERM.
@@ -376,6 +392,8 @@ func RunDaemon(cfg DaemonConfig) error {
 	defer pidCleanup()
 
 	d := &Daemon{
+		serve:      true,
+		reportQ:    make(chan AgentEvent, reportQueueDepth),
 		project:    cfg.Project,
 		version:    cfg.Version,
 		ringBufs:   make(map[string]*RingBuf),
@@ -425,6 +443,7 @@ func RunDaemon(cfg DaemonConfig) error {
 		ms.Add(rb)
 		d.multiSinks[acfg.Name] = ms
 		p.SetNetworkSink(ms)
+		d.adoptReports(p)
 
 		p.Start()
 		d.panes = append(d.panes, p)
@@ -488,6 +507,8 @@ func RunDaemon(cfg DaemonConfig) error {
 	stopMaint := make(chan struct{})
 	defer close(stopMaint)
 	go d.runMaintenance(stopMaint, maintenanceFrameInterval)
+	// Their delivery reports go to the connected initech (ini-ei8l).
+	go d.runReportForwarder(stopMaint)
 
 	d.consoleln("\nWaiting for connections... (Ctrl+C to stop)")
 
@@ -692,6 +713,12 @@ func (d *Daemon) HandleSend(conn net.Conn, req IPCRequest) {
 		return
 	}
 	conn.SetReadDeadline(time.Time{})
+	if d.serve {
+		// The same answer the control stream gives (ini-ei8l).
+		resp := servedSend(p, req.Text, req.Enter)
+		writeIPCResponse(conn, IPCResponse{OK: resp.OK, Error: resp.Error, Data: resp.Data})
+		return
+	}
 	p.SendText(req.Text, req.Enter)
 	writeIPCResponse(conn, IPCResponse{OK: true})
 }

@@ -110,7 +110,7 @@ func (p *Pane) surfaceHeldMail(msgs []QueuedMessage, why string, now time.Time) 
 		}
 		LogInfo("inject", "held message NOT DELIVERED", "pane", p.name, "reason", why,
 			"waited", waited, "text", preview)
-		EmitEvent(p.eventCh, AgentEvent{
+		p.reportEvent(AgentEvent{
 			Type: EventAgentStalled,
 			Pane: p.name,
 			Detail: undeliveredSubmitPrefix + "held " + waited.String() + ", " + why +

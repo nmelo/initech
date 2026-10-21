@@ -1253,6 +1253,9 @@ func Run(cfg Config) error {
 		pm.SetOnSessionNotice(func(text string) {
 			t.runOnMain(func() { t.surfaceSessionNotice(text) })
 		})
+		// A serve daemon's delivery reports (ini-ei8l). Not wrapped in
+		// runOnMain: the handler looks the pane up on main itself.
+		pm.SetOnAgentEvent(t.onRemoteAgentEvent)
 		pm.SetOnWindowToken(func(missing bool) {
 			t.runOnMain(func() { t.windowTokenMissing = missing })
 		})

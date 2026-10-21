@@ -79,6 +79,10 @@ type peerManager struct {
 	// post must not.
 	onInboxChanged func()
 
+	// onAgentEvent is called with a serve daemon's delivery report for one of
+	// its agents (ini-ei8l), on this peer's event goroutine.
+	onAgentEvent func(peerName string, ev ControlResp)
+
 	// onPaneOwnership delivers window 1's ownership decision (ini-x5ob). It is
 	// how a secondary learns which panes it renders; it derives nothing
 	// itself.
@@ -460,6 +464,10 @@ func (pm *peerManager) consumeEvents(peerName string, pc *peerConn, done chan st
 					LogInfo("remote", "session notice from window 1", "peer", peerName, "text", ev.Text)
 					pm.onSessionNotice(ev.Text)
 				}
+			case agentEventAction:
+				if pm.onAgentEvent != nil {
+					pm.onAgentEvent(peerName, ev)
+				}
 			case streamAddedAction:
 				pm.handleStreamAdded(peerName, pc, ev)
 			case "agent_removed":
@@ -623,6 +631,11 @@ func (pm *peerManager) SetOnEvicted(fn func(peerName, reason string)) {
 
 func (pm *peerManager) SetOnSessionNotice(fn func(text string)) {
 	pm.onSessionNotice = fn
+}
+
+// SetOnAgentEvent registers the delivery-report callback (ini-ei8l).
+func (pm *peerManager) SetOnAgentEvent(fn func(peerName string, ev ControlResp)) {
+	pm.onAgentEvent = fn
 }
 
 // SetOnInboxChanged registers the inbox doorbell callback (ini-3wkl.7).

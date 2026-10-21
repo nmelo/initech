@@ -201,13 +201,16 @@ func deliverText(w io.Writer, target, host, text string, enter bool) error {
 		return fmt.Errorf("%s", resp.Error)
 	}
 
-	switch {
-	case host != "":
-		fmt.Fprintf(w, "delivered to %s:%s\n", host, target)
-	case strings.Contains(resp.Data, "deferred"):
-		fmt.Fprintf(w, "deferred to %s — target has a modal open; will deliver when it closes\n", target)
-	default:
-		fmt.Fprintf(w, "delivered to %s\n", target)
+	name := target
+	if host != "" {
+		name = host + ":" + target
+	}
+	// Deferred first: a remote agent's deferral reads as a local one's
+	// (ini-ei8l), never as delivered.
+	if strings.Contains(resp.Data, "deferred") {
+		fmt.Fprintf(w, "deferred to %s — target has a modal open; will deliver when it closes\n", name)
+	} else {
+		fmt.Fprintf(w, "delivered to %s\n", name)
 	}
 	return nil
 }

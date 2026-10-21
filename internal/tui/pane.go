@@ -298,6 +298,10 @@ type Pane struct {
 	// emu.Write since the last perf minute (ini-pqdy.1). readLoop adds; the
 	// main loop swaps them to zero at each minute.
 	perfBytes, perfEmuNs atomic.Int64
+	// reportSink receives this pane's delivery reports (hold, release, NOT
+	// DELIVERED) beside eventCh. Only a serve daemon's panes have one: it
+	// forwards them to the connected initech (ini-ei8l). Nil everywhere else.
+	reportSink atomic.Pointer[reportSinkFn]
 	// perfMarker is armed by a send carrying an IQPERF token (ini-pqdy.4);
 	// readLoop logs the echo and disarms. Nil almost always.
 	perfMarker                     atomic.Pointer[perfMarkerArm]
