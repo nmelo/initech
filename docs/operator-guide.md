@@ -186,6 +186,8 @@ Setting `window_listen` in `initech.yaml` (for example `window_listen: "127.0.0.
 
 `initech serve` runs a headless daemon that another machine's initech connects to. Its token is full access to every agent's terminal on that machine. The first run creates the token, stores it in `.initech/token` (mode 0600) and prints it once, in a snippet to paste into the other machine's `initech.yaml`. Later starts print where the token is stored, never its value, so a daemon run under a supervisor does not write the key into its log on every restart. `initech serve --show-token` prints the token again. `--token` still sets one for a run but is deprecated, and initech never echoes its value. Never use it in a shared shell, because other users can read command lines and shell history.
 
+Once connected, address an agent on the other machine as `host:agent`. `initech send host:agent "..."` and `initech interrupt host:agent` (Escape, or Ctrl+C with `--hard`) act on that machine's agent, never on a local agent of the same name, and report what that machine answered: a send it rejects, or one that fails on the way, prints "not delivered" with the reason and exits non-zero; an interrupt it cannot carry out prints "not interrupted" with the reason, and is never typed as text instead. `initech suspend` and `initech resume` work only on this machine's agents: `host:agent` is refused with "not supported on a remote agent", so run them on that machine. A `host` that names this machine works as a plain agent name.
+
 ## Key Commands Quick Reference
 
 These are the commands you'll use most. The full list is in the README.

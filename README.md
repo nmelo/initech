@@ -58,6 +58,7 @@ initech
 
 ```bash
 initech send <role> "message"    # Deliver text to an agent
+initech send host:role "message" # Deliver to an agent on another machine; reports its answer
 initech peek <role> [-n lines]   # Read agent terminal output
 initech patrol                   # All agents' output in one call
 initech status                   # Agent table: activity, bead, alive

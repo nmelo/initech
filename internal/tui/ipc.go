@@ -1588,24 +1588,72 @@ func (t *TUI) runOnMain(fn func()) bool {
 // forwardSendToRemote routes a send request to a remote peer by finding the
 // RemotePane with matching Host() and calling SendText. The RemotePane's
 // SendText sends the command over the yamux control stream to the daemon.
+//
+// The reply is the peer's (ini-58m8): OK only once the other machine accepted
+// the send, otherwise "not delivered" with the peer's error or the transport
+// failure. It used to answer OK before anyone had replied.
 func (t *TUI) forwardSendToRemote(conn net.Conn, req IPCRequest) {
-	var target PaneView
+	rp, errResp := t.findRemoteTarget(req)
+	if rp == nil {
+		writeIPCResponse(conn, errResp)
+		return
+	}
+	resp, err := rp.Request(ControlCmd{Action: "send", Text: req.Text, Enter: req.Enter})
+	if reason := peerFailure(resp, err); reason != "" {
+		writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("not delivered to %s:%s: %s", req.Host, req.Target, reason)})
+		return
+	}
+	writeIPCResponse(conn, IPCResponse{OK: true})
+}
+
+// forwardInterruptToRemote sends interrupt host:agent to the peer as an
+// interrupt control command (ini-58m8), never as a send: the peer writes
+// Escape, or Ctrl+C for "hard", to its own agent. A peer that does not know
+// the action answers "unknown action", which is returned as the error.
+func (t *TUI) forwardInterruptToRemote(conn net.Conn, req IPCRequest) {
+	rp, errResp := t.findRemoteTarget(req)
+	if rp == nil {
+		writeIPCResponse(conn, errResp)
+		return
+	}
+	resp, err := rp.Request(ControlCmd{Action: "interrupt", Text: req.Text})
+	if reason := peerFailure(resp, err); reason != "" {
+		writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("not interrupted (%s:%s): %s", req.Host, req.Target, reason)})
+		return
+	}
+	writeIPCResponse(conn, IPCResponse{OK: true})
+}
+
+// findRemoteTarget resolves host:agent to that peer's RemotePane, matching
+// host AND name. A missing one yields the error reply naming both.
+func (t *TUI) findRemoteTarget(req IPCRequest) (*RemotePane, IPCResponse) {
+	var target *RemotePane
 	t.runOnMain(func() {
 		for _, p := range t.panes {
-			if p.Host() == req.Host && p.Name() == req.Target {
-				target = p
+			if rp, ok := p.(*RemotePane); ok && rp.Host() == req.Host && rp.Name() == req.Target {
+				target = rp
 				return
 			}
 		}
 	})
 	if target == nil {
-		writeIPCResponse(conn, IPCResponse{
-			Error: fmt.Sprintf("agent %q not found on peer %q. Run 'initech peers' to see available targets.", req.Target, req.Host),
-		})
-		return
+		return nil, IPCResponse{Error: fmt.Sprintf("agent %q not found on peer %q. Run 'initech peers' to see available targets.", req.Target, req.Host)}
 	}
-	target.SendText(req.Text, req.Enter)
-	writeIPCResponse(conn, IPCResponse{OK: true})
+	return target, IPCResponse{}
+}
+
+// peerFailure is the reason a forwarded request failed, or "" when the peer
+// accepted it.
+func peerFailure(resp ControlResp, err error) string {
+	switch {
+	case err != nil:
+		return err.Error()
+	case resp.Error != "":
+		return resp.Error
+	case !resp.OK:
+		return "the peer did not accept the request"
+	}
+	return ""
 }
 
 // PeerInfo describes a peer and its agents for the peers_query response.

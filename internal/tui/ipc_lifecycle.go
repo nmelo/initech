@@ -585,7 +585,7 @@ func (t *TUI) handleIPCInterrupt(conn net.Conn, req IPCRequest) {
 			localPeerName = t.project.PeerName
 		}
 		if req.Host != localPeerName {
-			t.forwardSendToRemote(conn, req)
+			t.forwardInterruptToRemote(conn, req)
 			return
 		}
 	}

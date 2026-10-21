@@ -138,7 +138,12 @@ func TestHandleIPCPeers_NoPeerName(t *testing.T) {
 
 // ── forwardSendToRemote ─────────────────────────────────────────────
 
-func TestForwardSendToRemote_Found(t *testing.T) {
+// The agent is found, but its peer never answers: this control stream
+// absorbs the command and closes before any reply. A forwarded send now
+// waits for the peer (ini-58m8), so this is "not delivered", not the OK this
+// test asserted when forwardSendToRemote answered before anyone replied. The
+// accepted path is TestCrossMachine_AForwardedSendReturnsThePeersAnswer.
+func TestForwardSendToRemote_FoundButNoPeerReplyIsNotDelivered(t *testing.T) {
 	emu := vt.NewSafeEmulator(80, 24)
 	go func() {
 		buf := make([]byte, 256)
@@ -170,8 +175,8 @@ func TestForwardSendToRemote_Found(t *testing.T) {
 
 	var resp IPCResponse
 	json.Unmarshal(conn.written[:conn.findNewline()], &resp)
-	if !resp.OK {
-		t.Errorf("forward send should succeed, got error: %s", resp.Error)
+	if resp.OK || !strings.Contains(resp.Error, "not delivered to workbench:eng1") {
+		t.Errorf("a send no peer accepted: %+v, want not delivered", resp)
 	}
 }
 

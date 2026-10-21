@@ -1142,6 +1142,15 @@ func (d *Daemon) handleControlStream(ctrl net.Conn, scanner *bufio.Scanner, peer
 			}
 			d.deliverOffReader(sends, p, cmd, respond)
 
+		case "interrupt":
+			// interrupt host:agent from another machine (ini-58m8): write
+			// Escape, or Ctrl+C for "hard", to this daemon's own agent, with
+			// the local path's refusals. It arrived as a send of the text
+			// "hard" before this action existed.
+			if !respond(cmd.ID, d.interruptPane(cmd)) {
+				return
+			}
+
 		case "peek":
 			p := d.findPane(cmd.Target)
 			if p == nil {
@@ -1285,6 +1294,34 @@ func (d *Daemon) handleControlStream(ctrl net.Conn, scanner *bufio.Scanner, peer
 // "never modified after startup" assumption caused a fatal concurrent
 // map/slice access on reconnect (ini-sz46). No caller holds panesMu when
 // calling findPane, so the lock does not nest.
+// interruptPane writes Escape (or Ctrl+C when cmd.Text is "hard") to the
+// named agent's PTY. It mirrors the local interrupt (handleIPCInterrupt):
+// unknown, suspended and not-running agents are refused by name, never
+// reported interrupted. Duplicated rather than shared so the local path does
+// not change.
+func (d *Daemon) interruptPane(cmd ControlCmd) ControlResp {
+	p := d.findPane(cmd.Target)
+	if p == nil {
+		return ControlResp{Error: fmt.Sprintf("agent %q not found", cmd.Target)}
+	}
+	if p.IsSuspended() {
+		return ControlResp{Error: fmt.Sprintf("agent %q is suspended; nothing to interrupt", cmd.Target)}
+	}
+	b := byte(0x1B) // Escape
+	if cmd.Text == "hard" {
+		b = byte(0x03) // Ctrl+C
+	}
+	p.sendMu.Lock()
+	defer p.sendMu.Unlock()
+	if p.ptmx == nil {
+		return ControlResp{Error: fmt.Sprintf("agent %s is not running", cmd.Target)}
+	}
+	if _, err := p.ptmx.Write([]byte{b}); err != nil {
+		return ControlResp{Error: fmt.Sprintf("interrupt %s: %v", cmd.Target, err)}
+	}
+	return ControlResp{OK: true}
+}
+
 func (d *Daemon) findPane(name string) *Pane {
 	d.panesMu.Lock()
 	defer d.panesMu.Unlock()

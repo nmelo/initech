@@ -158,6 +158,10 @@ func (t *TUI) noticeWakeFailed(agent string, err error) {
 // is reported with its real state and OK=false, so a script can tell a no-op
 // from a wake.
 func (t *TUI) handleIPCResume(conn net.Conn, req IPCRequest) {
+	if msg := t.remoteSuspendRefusal("resume", req); msg != "" {
+		writeIPCResponse(conn, IPCResponse{OK: false, Error: msg})
+		return
+	}
 	delivered, err := t.resumeAgent(req.Target)
 	if err != nil {
 		writeIPCResponse(conn, IPCResponse{OK: false, Error: err.Error()})
@@ -177,6 +181,10 @@ func (t *TUI) handleIPCResume(conn net.Conn, req IPCRequest) {
 
 // handleIPCSuspend serves `initech suspend <agent>`.
 func (t *TUI) handleIPCSuspend(conn net.Conn, req IPCRequest) {
+	if msg := t.remoteSuspendRefusal("suspend", req); msg != "" {
+		writeIPCResponse(conn, IPCResponse{OK: false, Error: msg})
+		return
+	}
 	if err := t.suspendAgent(req.Target); err != nil {
 		writeIPCResponse(conn, IPCResponse{OK: false, Error: err.Error()})
 		return
@@ -185,4 +193,19 @@ func (t *TUI) handleIPCSuspend(conn net.Conn, req IPCRequest) {
 		OK:   true,
 		Data: fmt.Sprintf("suspended %s; it will wake on a message, a keystroke in its pane, or `initech resume %s`", req.Target, req.Target),
 	})
+}
+
+// remoteSuspendRefusal refuses suspend or resume of an agent on another
+// machine (ini-58m8): the daemon has no suspend of its own, and the handlers
+// below look agents up by name alone, so a host:agent request used to park or
+// wake the LOCAL agent of the same name. A host naming this machine resolves
+// locally, as before. Returns "" when the request is local.
+func (t *TUI) remoteSuspendRefusal(verb string, req IPCRequest) string {
+	if req.Host == "" {
+		return ""
+	}
+	if t.project != nil && req.Host == t.project.PeerName {
+		return ""
+	}
+	return fmt.Sprintf("%s is not supported on a remote agent; run initech %s %s on %s", verb, verb, req.Target, req.Host)
 }

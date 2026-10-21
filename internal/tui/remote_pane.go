@@ -374,6 +374,15 @@ func tcellKeyToANSI(ev *tcell.EventKey) []byte {
 	}
 }
 
+// Request sends one control command for this agent to its peer and waits for
+// the peer's reply, within the mux's request timeout (ini-58m8). It is for IPC
+// handlers, which run off the main loop and answer the CLI with whatever the
+// other machine said. Main-loop callers keep the fire-and-forget SendText.
+func (rp *RemotePane) Request(cmd ControlCmd) (ControlResp, error) {
+	cmd.Target = rp.name
+	return rp.mux.Request(cmd)
+}
+
 // SendText sends text to the remote agent via the control channel. This uses
 // the daemon's "send" command which injects text through the emulator path
 // (same as initech send), handling Ctrl+S stash and paste detection.

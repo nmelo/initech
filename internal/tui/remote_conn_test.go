@@ -18,6 +18,11 @@ type remotePeerServerConfig struct {
 	firstResponse any
 	streamMap     any
 	agentNames    []string
+	// onControl, when set, answers every control command after the stream
+	// map (ini-58m8): the returned reply is sent with the command's ID; nil
+	// sends no reply (a peer that never answers); a reply whose Action is
+	// "__close__" closes the connection instead.
+	onControl func(ControlCmd) *ControlResp
 }
 
 type remotePeerServer struct {
@@ -134,6 +139,28 @@ func (srv *remotePeerServer) serve(cfg remotePeerServerConfig) {
 	}
 	if err := writeServerMessage(ctrl, streamMap); err != nil {
 		srv.reportErr(err)
+		return
+	}
+
+	if cfg.onControl != nil {
+		for scanner.Scan() {
+			var cmd ControlCmd
+			if err := json.Unmarshal(scanner.Bytes(), &cmd); err != nil {
+				continue
+			}
+			resp := cfg.onControl(cmd)
+			if resp == nil {
+				continue
+			}
+			if resp.Action == "__close__" {
+				session.Close()
+				return
+			}
+			resp.ID = cmd.ID
+			if err := writeServerMessage(ctrl, resp); err != nil {
+				return
+			}
+		}
 		return
 	}
 
