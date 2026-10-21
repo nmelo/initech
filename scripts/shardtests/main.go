@@ -16,8 +16,12 @@
 // # HOW A TEST FINDS ITS SHARD
 //
 // Every test, example and fuzz target `go test -list` reports, per package, is
-// assigned to a shard by a stable hash of "package name". A new test therefore
-// lands in exactly one shard by construction and existing tests never move.
+// assigned to a shard by a stable hash of shardSalt plus "package.name". A new
+// test therefore lands in exactly one shard by construction and existing tests
+// never move. The salt only balances the shards: it is the one that spread the
+// measured test durations most evenly (a few tests run 10-26s), and it is
+// re-tuned the same way if a shard drifts past the target in shardSalt's
+// comment.
 // Each shard runs `go test -count=1 -json <pkg> -run '^(names)$'` per
 // package: the semantics of make test-full (no -short, the default timeout),
 // plus -json so each top-level result is a structured witness. The tool prints
@@ -58,10 +62,17 @@ type testID struct{ pkg, name string }
 
 func (t testID) String() string { return t.pkg + " " + t.name }
 
+// shardSalt balances the three shards. Chosen by summing each test's measured
+// duration (from a shard run's -json events) per shard for every salt from 0
+// to 399 and keeping the one with the smallest maximum. Re-tune it the same
+// way when a full-suite shard runs past two and a half minutes; any value is
+// correct, since the census proves the partition whatever the salt.
+const shardSalt = "304:"
+
 // shardOf returns the 1-based shard of t among n shards.
 func shardOf(t testID, n int) int {
 	h := fnv.New32a()
-	io.WriteString(h, t.pkg+"."+t.name)
+	io.WriteString(h, shardSalt+t.pkg+"."+t.name)
 	return int(h.Sum32()%uint32(n)) + 1
 }
 
