@@ -10,6 +10,8 @@ The README covers installation, configuration, command reference, and architectu
 
 If you haven't set up a project yet: `mkdir myproject && cd myproject && initech init`. The init wizard walks you through project name, repo URL, and an interactive role selector. Start with the Standard preset (super, pm, eng1, eng2, qa1, qa2, shipper). You can add or remove agents later.
 
+Re-running `initech init` in an existing project is safe for your files: it never deletes a role's existing `src/` directory. If a clone fails where `src/` already exists but is not a git checkout, init reports the failure, says the directory was left untouched, and leaves it as it is.
+
 ### The Files Your Agents Read
 
 `initech init` writes one root `CLAUDE.md` at the project root and one `CLAUDE.md` per agent in its directory. Every agent reads both.

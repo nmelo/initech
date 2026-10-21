@@ -140,9 +140,10 @@ func runInit(cmd *cobra.Command, args []string) error {
 
 	// Add submodules for roles that need src (parallel clones).
 	type cloneJob struct {
-		role    string
-		repoURL string
-		subPath string
+		role       string
+		repoURL    string
+		subPath    string
+		srcExisted bool // <role>/src was there before the clone (ini-r1wg)
 	}
 	var jobs []cloneJob
 	for _, roleName := range p.Roles {
@@ -164,7 +165,10 @@ func runInit(cmd *cobra.Command, args []string) error {
 		subPath := filepath.Join(roleName, "src")
 		gitRef := filepath.Join(p.Root, subPath, ".git")
 		if _, err := os.Stat(gitRef); err != nil {
-			jobs = append(jobs, cloneJob{role: roleName, repoURL: repoURL, subPath: subPath})
+			// Record whether <role>/src is already there: a failed clone
+			// cleans up only what the clone created (ini-r1wg).
+			_, srcErr := os.Stat(filepath.Join(p.Root, subPath))
+			jobs = append(jobs, cloneJob{role: roleName, repoURL: repoURL, subPath: subPath, srcExisted: srcErr == nil})
 		}
 	}
 
@@ -215,9 +219,17 @@ func runInit(cmd *cobra.Command, args []string) error {
 				}
 
 				// Clean up partial submodule artifacts before the next
-				// attempt. Removes index.lock, partial checkout dir, and
-				// .git/modules cache so the next submodule add starts clean.
-				git.CleanFailedSubmodule(runner, p.Root, job.subPath)
+				// attempt: index.lock, the .git/modules cache and, when the
+				// clone created it, the partial checkout dir. A <role>/src
+				// that was there before the clone is the operator's and is
+				// never deleted (ini-r1wg).
+				if job.srcExisted {
+					git.CleanFailedSubmoduleArtifacts(runner, p.Root, job.subPath)
+					fmt.Fprintf(out, "  %s %s\n", color.Yellow("!"),
+						color.Yellow(filepath.ToSlash(job.subPath)+" exists and is not a git checkout; left untouched"))
+				} else {
+					git.CleanFailedSubmodule(runner, p.Root, job.subPath)
+				}
 				failures++
 			}
 		}

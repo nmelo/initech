@@ -143,7 +143,16 @@ func IsEmptyRepoError(err error) bool {
 func CleanFailedSubmodule(runner iexec.Runner, repoDir, subPath string) {
 	// Remove partial checkout directory (fixes "does not have a commit checked out")
 	os.RemoveAll(filepath.Join(repoDir, subPath))
+	CleanFailedSubmoduleArtifacts(runner, repoDir, subPath)
+}
 
+// CleanFailedSubmoduleArtifacts removes what a failed git submodule add
+// leaves in the superproject -- the cached module clone, a partial
+// .gitmodules entry and index.lock -- and never the checkout directory
+// itself. Callers use it when subPath existed before the clone was tried:
+// that directory is the operator's, not the clone's, and must not be deleted
+// (ini-r1wg). Best-effort, like CleanFailedSubmodule.
+func CleanFailedSubmoduleArtifacts(runner iexec.Runner, repoDir, subPath string) {
 	// Remove cached module clone
 	os.RemoveAll(filepath.Join(repoDir, ".git", "modules", subPath))
 

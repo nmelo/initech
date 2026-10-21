@@ -526,7 +526,6 @@ func TestRunInit_EmptyRepoSubmoduleCleanup(t *testing.T) {
 
 	// Create .git dir and artifacts that a failed submodule add leaves behind.
 	os.MkdirAll(filepath.Join(dir, ".git", "modules", "eng1", "src"), 0755)
-	os.MkdirAll(filepath.Join(dir, "eng1", "src"), 0755)
 	os.WriteFile(filepath.Join(dir, ".git", "index.lock"), []byte("lock"), 0644)
 
 	restoreWD := chdirForTest(t, dir)
@@ -551,6 +550,10 @@ func TestRunInit_EmptyRepoSubmoduleCleanup(t *testing.T) {
 	origCommit := gitCommitAll
 	gitInit = func(r iexec.Runner, root string) error { return nil }
 	gitAddSubmodule = func(r iexec.Runner, root, repoURL, subPath string) error {
+		// The partial checkout is what the failed clone leaves, so it is
+		// created here, not before init: a src that existed before the
+		// clone is the operator's and is never deleted (ini-r1wg).
+		os.MkdirAll(filepath.Join(root, "eng1", "src"), 0755)
 		return fmt.Errorf("git submodule add eng1/src: fatal: You are on a branch yet to be born")
 	}
 	gitCommitAll = func(r iexec.Runner, root, message string) error { return nil }
