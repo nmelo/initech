@@ -249,6 +249,13 @@ func TestDaemonMaintenance_OneDefinitionOfMaintenance(t *testing.T) {
 	if !calls["RunDaemon"]["runMaintenance"] {
 		t.Error("RunDaemon does not start the maintenance ticker")
 	}
+	// Only RunDaemon: window 1's in-TUI daemon serves panes the render loop
+	// already maintains, and a second ticker there would run it twice.
+	for fn, callees := range calls {
+		if callees["runMaintenance"] && fn != "RunDaemon" {
+			t.Errorf("%s starts the daemon maintenance ticker; only RunDaemon may", fn)
+		}
+	}
 }
 
 // The tick runs on its own goroutine beside the daemon's others: sends from
