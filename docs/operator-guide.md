@@ -166,6 +166,14 @@ Option+Shift+F holds the focused agent on the left and shows the working agents 
 
 Both splits survive a restart of initech. Restarted from the live split, initech opens in the live split with the same agent on the left and the agents working now on the right; restarted from the plain Focus split (Option+f), it opens in the Focus split with the same agent on the left and every other agent on the right. Either way the second press goes back to the layout you were in before the split. If that agent is no longer in `initech.yaml`, or is hidden, initech opens in the layout underneath instead and logs a warning naming the agent. Leaving a split before the restart opens the layout underneath, as before. A second window starts without a split.
 
+### Live List Split
+
+Option+Shift+L (or `list` in the command bar) holds the focused agent on the left and shows the working agents on the right in a grid that never changes shape: four boxes across and three rows by default. The same agents qualify as in the live focus split: working agents and pinned agents, a pinned agent leaving while it is suspended, with the same one-change-per-second rule and ten-second hold. They fill the boxes in the Agents panel's order, left to right and top to bottom, so the grid reads like a list. When an agent stops, the agents after it move up a box to close the gap; when one starts, it takes its place in that order. A box with no agent shows a dim border and the word `waiting`.
+
+When more agents are working than there are boxes, the agents already in a box keep it and the others wait; when a box frees, the first waiting agent in the panel's order takes it. A pinned agent always gets a box.
+
+Inside the split, `grid 4xR` sets the number of rows, R from 1 to 6. Any other value leaves the grid as it is and the command bar says why. Pressing Option+Shift+L again goes back to the layout you were in before. From the Focus split or the live focus split it keeps the agent on the left, and pressing it again goes back to the layout from before the first split. Option+Shift+F inside it switches to the live focus split on the same agent; Option+f inside it does nothing. Like the other splits it survives a restart with the same agent on the left and the same number of rows.
+
 ## Key Commands Quick Reference
 
 These are the commands you'll use most. The full list is in the README.
@@ -177,6 +185,7 @@ These are the commands you'll use most. The full list is in the README.
 | See all agents at once | Alt+s (overlay toggle) |
 | Full-screen one pane | Alt+1 or `focus <name>` |
 | Back to grid | Alt+2, Alt+3, or `grid` |
+| Working agents in a fixed four-wide grid, panel order | Shift+Alt+L or `list` (then `grid 4xR` for rows) |
 | Zoom focused pane | Alt+z |
 | See what everyone is doing | `patrol` in command bar |
 | Process table (memory, PIDs) | `top` or `ps` |

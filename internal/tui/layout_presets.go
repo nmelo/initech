@@ -126,6 +126,7 @@ func ResolvePresets(raw map[string]string) (presets [presetSlots]LayoutPreset, w
 // are a no-op. Mirrors the apply + persist tail every layout shortcut runs.
 func (t *TUI) applyLayoutPreset(slot int) {
 	t.clearLiveFocus() // any Option+N leaves the live focus split (ini-92wm)
+	t.clearLiveList()  // and the live list split (ini-3g39)
 	if slot < 0 || slot >= len(t.layoutPresets) {
 		return
 	}
@@ -178,6 +179,7 @@ func (t *TUI) applyLayoutPreset(slot int) {
 // Out-of-range slots are a no-op.
 func (t *TUI) applyLayoutPresetLive(slot int) {
 	t.clearLiveFocus() // any Shift+Option+N leaves the live focus split (ini-92wm)
+	t.clearLiveList()  // and the live list split (ini-3g39)
 	if slot < 0 || slot >= len(t.layoutPresets) {
 		return
 	}

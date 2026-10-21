@@ -43,6 +43,9 @@ func (t *TUI) renderLiveFocusEmptyHint(s tcell.Screen, w, h int) {
 	if !t.layoutState.RightSetActive || t.layoutState.Mode != Layout2Col || len(t.plan.Panes) != 1 {
 		return
 	}
+	if t.layoutState.ListRows > 0 {
+		return // the live list split draws its own waiting boxes (ini-3g39)
+	}
 	msg := []rune(liveFocusNoneWorking)
 	left := liveFocusRightX(w)
 	x := left + (w-left-len(msg))/2
@@ -54,6 +57,41 @@ func (t *TUI) renderLiveFocusEmptyHint(s tcell.Screen, w, h int) {
 	for i, ch := range msg {
 		if x+i < w {
 			s.SetContent(x+i, y, ch, nil, style)
+		}
+	}
+}
+
+// renderWaitingTiles draws each live list box no agent fills (ini-3g39): a
+// dim border and the word "waiting" in its middle, so a box is never blank.
+func renderWaitingTiles(s tcell.Screen, tiles []Region) {
+	style := tcell.StyleDefault.Foreground(tcell.ColorGray).Background(trueBlack)
+	for _, r := range tiles {
+		if r.W < 2 || r.H < 2 {
+			continue
+		}
+		right, bottom := r.X+r.W-1, r.Y+r.H-1
+		for x := r.X + 1; x < right; x++ {
+			s.SetContent(x, r.Y, '─', nil, style)
+			s.SetContent(x, bottom, '─', nil, style)
+		}
+		for y := r.Y + 1; y < bottom; y++ {
+			s.SetContent(r.X, y, '│', nil, style)
+			s.SetContent(right, y, '│', nil, style)
+		}
+		s.SetContent(r.X, r.Y, '┌', nil, style)
+		s.SetContent(right, r.Y, '┐', nil, style)
+		s.SetContent(r.X, bottom, '└', nil, style)
+		s.SetContent(right, bottom, '┘', nil, style)
+		msg := []rune(liveListWaiting)
+		x := r.X + (r.W-len(msg))/2
+		if x <= r.X {
+			x = r.X + 1
+		}
+		y := r.Y + r.H/2
+		for i, ch := range msg {
+			if x+i < right {
+				s.SetContent(x+i, y, ch, nil, style)
+			}
 		}
 	}
 }
@@ -128,6 +166,7 @@ func (t *TUI) renderFrame() {
 
 	t.renderEmptyViewerHint(s, w, h)
 	t.renderLiveFocusEmptyHint(s, w, h)
+	renderWaitingTiles(s, t.plan.Waiting)
 
 	// Draw panes from the render plan. No visibility checks needed.
 	for i, pr := range t.plan.Panes {
@@ -503,6 +542,9 @@ func (t *TUI) modeLabel() (label string, live bool) {
 		label = "Focus"
 	case Layout2Col:
 		switch {
+		case t.liveList != nil:
+			live = true
+			label = fmt.Sprintf("Live list %dx%d (%d)", liveListCols, ls.ListRows, len(ls.RightSet))
 		case t.liveFocus != nil:
 			live = true
 			label = fmt.Sprintf("Live focus (%d)", len(ls.RightSet))

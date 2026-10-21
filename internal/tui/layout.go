@@ -77,6 +77,12 @@ type LayoutState struct {
 	// every save.
 	Split string `yaml:"-"`
 	Held  string `yaml:"-"`
+	// ListRows is the live list split's row count (ini-3g39). While the
+	// mode is on it is above 0, and with RightSetActive it makes the right
+	// column a fixed liveListCols x ListRows grid. LoadLayout reports the
+	// saved count here like Split and Held, and adoptLoadedSplit takes it
+	// off again; outside the mode it is always 0.
+	ListRows int `yaml:"-"`
 
 	// Live focus split (ini-92wm, Option+Shift+F). When RightSetActive is
 	// true in Layout2Col, the right column holds exactly RightSet (in order)
@@ -99,6 +105,10 @@ type RenderPlan struct {
 	// ValidatedFocus is the name of the pane that actually receives input.
 	// May differ from LayoutState.Focused if that pane is hidden.
 	ValidatedFocus string
+
+	// Waiting is the live list split's boxes no agent fills (ini-3g39),
+	// drawn as "waiting" tiles: a box is never left blank.
+	Waiting []Region
 }
 
 // PaneRender describes how to render a single pane.
@@ -255,6 +265,25 @@ func computeLayout(state LayoutState, panes []PaneView, screenW, screenH int) Re
 				if p, ok := byKey[k]; ok {
 					right = append(right, p)
 				}
+			}
+			if state.ListRows > 0 {
+				// Live list split (ini-3g39): the boxes are fixed by the row
+				// count, never by how many are filled; the ones left over
+				// are drawn as waiting tiles.
+				boxes := liveListCols * state.ListRows
+				if len(right) > boxes {
+					right = right[:boxes]
+				}
+				all := calcLiveListSplit(state.ListRows, screenW, screenH)
+				cells := all[1:]
+				visible, regions = right, cells[:len(right)]
+				if focusedPane != nil {
+					visible = append([]PaneView{focusedPane}, right...)
+					regions = append([]Region{all[0]}, regions...)
+				}
+				plan.Waiting = cells[len(right):]
+				n = len(visible)
+				break
 			}
 			visible = right
 			if focusedPane != nil {
@@ -507,14 +536,18 @@ type PersistentLayout struct {
 	// the one its second press restores. Last in the struct and omitempty, so
 	// a file saved with no split is byte for byte what v2.25.4 wrote, and an
 	// older initech reading a newer file ignores both (non-strict decode).
-	Split string `yaml:"split,omitempty"` // splitLive or splitFocus.
+	Split string `yaml:"split,omitempty"` // splitLive, splitFocus or splitList.
 	Held  string `yaml:"held,omitempty"`  // Pane key on the split's left.
+	// ListRows is the live list split's row count, written only while that
+	// split is on (ini-3g39). Absent means liveListDefaultRows.
+	ListRows int `yaml:"list_rows,omitempty"`
 }
 
 // The two splits layout.yaml can carry (ini-aa8a).
 const (
 	splitLive  = "live"  // Option+Shift+F, the live focus split.
 	splitFocus = "focus" // Option+f, the plain Focus split.
+	splitList  = "list"  // Option+Shift+L, the live list split (ini-3g39).
 )
 
 // layoutDir returns the .initech directory path under projectRoot.
@@ -636,6 +669,7 @@ func SaveLayout(projectRoot string, state LayoutState) error {
 		GroupOf:      normalizedGroupOf,
 		Split:        state.Split,
 		Held:         state.Held,
+		ListRows:     state.ListRows,
 	}
 	// Hidden/Protected/LivePinned are deliberately NOT written: they are
 	// session-global and live in fleet-state.yaml (ini-9ka.10). A layout file
@@ -847,6 +881,7 @@ func LoadLayout(projectRoot string, paneKeys []string) (LayoutState, bool) {
 		GroupOf:      groupOf,
 		Split:        pl.Split,
 		Held:         pl.Held,
+		ListRows:     pl.ListRows,
 	}, true
 }
 

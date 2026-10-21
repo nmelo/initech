@@ -1,0 +1,15 @@
+grid: 2x2
+grid_explicit: true
+order:
+    - eng1
+    - eng2
+    - qa1
+    - super
+mode: grid
+groups:
+    - eng
+    - qa
+group_of:
+    eng1: eng
+    eng2: eng
+    qa1: qa

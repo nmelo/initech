@@ -442,9 +442,16 @@ type TUI struct {
 	// liveFocus is the live focus split's state (ini-92wm); nil when the
 	// mode is off.
 	liveFocus *liveFocusState
-	// savedSplit and savedHeld are the split and held pane layout.yaml last
-	// got (ini-aa8a), so saveIfSplitMoved can tell when they changed.
+	// liveList is the live list split's state (ini-3g39); nil when off.
+	liveList *liveListState
+	// listRows is the live list's row count, kept for the session so a
+	// second entry uses the rows last set; 0 until first entry.
+	listRows int
+	// savedSplit, savedHeld and savedRows are the split, held pane and list
+	// rows layout.yaml last got (ini-aa8a, ini-3g39), so saveIfSplitMoved
+	// can tell when they changed.
 	savedSplit, savedHeld string
+	savedRows             int
 }
 
 // setOnWakeComplete installs (or, with nil, clears) the test-only wake-done
@@ -534,6 +541,8 @@ func (t *TUI) applyLayout() {
 	// Live focus split (ini-92wm): refresh its right grid from the same
 	// engine type and inputs as the live tick above.
 	t.tickLiveFocus(time.Now())
+	// Live list split (ini-3g39): the same, then placed in the fixed grid.
+	t.tickLiveList(time.Now())
 
 	// Raise fold-back / restore notices before computing the plan, so the
 	// notice and the pane movement it describes land in the same frame
@@ -683,7 +692,7 @@ func (t *TUI) saveLayoutIfConfigured() {
 	// Recorded even when the write fails: the failure is logged here once,
 	// and saveIfSplitMoved retrying it on every loop turn would only repeat
 	// the WARN.
-	t.savedSplit, t.savedHeld = ls.Split, ls.Held
+	t.savedSplit, t.savedHeld, t.savedRows = ls.Split, ls.Held, ls.ListRows
 	if err := SaveLayout(t.projectRoot, ls); err != nil {
 		LogWarn("layout", "save failed", "err", err)
 	}
@@ -696,12 +705,12 @@ func (t *TUI) saveLayoutIfConfigured() {
 // pair is then recorded as what layout.yaml holds, so a split that could not
 // be restored is written out without its keys on the loop's first turn.
 func (t *TUI) adoptLoadedSplit(viewer bool) {
-	split, held := t.layoutState.Split, t.layoutState.Held
-	t.layoutState.Split, t.layoutState.Held = "", ""
+	split, held, rows := t.layoutState.Split, t.layoutState.Held, t.layoutState.ListRows
+	t.layoutState.Split, t.layoutState.Held, t.layoutState.ListRows = "", "", 0
 	if !viewer {
-		t.restoreSavedSplit(split, held)
+		t.restoreSavedSplit(split, held, rows)
 	}
-	t.savedSplit, t.savedHeld = split, held
+	t.savedSplit, t.savedHeld, t.savedRows = split, held, rows
 }
 
 // saveIfSplitMoved saves the layout when the split, or the pane it holds on
@@ -714,7 +723,7 @@ func (t *TUI) saveIfSplitMoved() {
 	if t.projectRoot == "" || !t.isFleetAuthority() {
 		return
 	}
-	if ls := t.persistableLayout(); ls.Split != t.savedSplit || ls.Held != t.savedHeld {
+	if ls := t.persistableLayout(); ls.Split != t.savedSplit || ls.Held != t.savedHeld || ls.ListRows != t.savedRows {
 		t.saveLayoutIfConfigured()
 	}
 }
@@ -1408,7 +1417,7 @@ func Run(cfg Config) error {
 			t.rotateTip()
 			// The inbox staleness floor for a child window (ini-3wkl.7).
 			t.refreshInboxOnCadence(time.Now())
-			if (t.layoutState.Mode == LayoutLive || t.liveFocus != nil) && time.Since(t.lastLiveTick) >= time.Second {
+			if (t.layoutState.Mode == LayoutLive || t.liveFocus != nil || t.liveList != nil) && time.Since(t.lastLiveTick) >= time.Second {
 				t.lastLiveTick = time.Now()
 				t.applyLayout()
 			}

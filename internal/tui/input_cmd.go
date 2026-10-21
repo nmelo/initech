@@ -420,7 +420,7 @@ func longestCommonPrefix(strs []string) string {
 
 // commandNames lists all valid command keywords for fuzzy matching.
 var commandNames = []string{
-	"grid", "focus", "zoom", "panel", "main", "live", "pin", "unpin",
+	"grid", "focus", "zoom", "panel", "main", "live", "list", "pin", "unpin",
 	"layout", "restart", "patrol", "top", "add", "remove",
 	"log", "help", "quit", "events", "agents",
 	"remote-stop",
@@ -553,6 +553,10 @@ func (t *TUI) execCmd(cmd string) bool {
 		return t.cmdMain()
 	case "live":
 		return t.cmdLive(parts)
+	case "list":
+		t.toggleLiveListSplit()
+		t.saveLayoutIfConfigured()
+		return false
 	case "pin":
 		return t.cmdPin(parts)
 	case "unpin":
@@ -591,6 +595,10 @@ func (t *TUI) execCmd(cmd string) bool {
 // They receive the already-split parts and return true only to quit.
 
 func (t *TUI) cmdGrid(parts []string) bool {
+	// Inside the live list split, grid CxR sets the list's rows (ini-3g39).
+	if t.liveList != nil && len(parts) >= 2 {
+		return t.cmdListRows(parts[1])
+	}
 	if len(parts) < 2 {
 		visCount := t.visibleCountFromState()
 		c, r := autoGrid(visCount)

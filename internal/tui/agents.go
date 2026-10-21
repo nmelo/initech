@@ -436,7 +436,7 @@ func (t *TUI) toggleHidden(name string) bool {
 // static focus split and every other mode still refuse, because nothing there
 // reads the store.
 func (t *TUI) agentsToggleLivePin() {
-	if t.layoutState.Mode != LayoutLive && t.liveFocus == nil {
+	if t.layoutState.Mode != LayoutLive && t.liveFocus == nil && t.liveList == nil {
 		t.agents.error = "live pin requires live mode"
 		return
 	}
@@ -498,6 +498,9 @@ func (t *TUI) agentsToggleLivePin() {
 func (t *TUI) liveSlotCount() int {
 	if lf := t.liveFocus; lf != nil && lf.prev.mode == LayoutLive {
 		return lf.prev.gridCols * lf.prev.gridRows
+	}
+	if ll := t.liveList; ll != nil && ll.prev.mode == LayoutLive {
+		return ll.prev.gridCols * ll.prev.gridRows
 	}
 	return t.layoutState.GridCols * t.layoutState.GridRows
 }

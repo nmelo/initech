@@ -125,7 +125,14 @@ func (t *TUI) handleKey(ev *tcell.EventKey) bool {
 				t.applyLayoutPresetLive(int(base - '1'))
 				return false
 			case base == 'f':
+				if t.liveList != nil {
+					t.handLiveListToLiveFocus()
+					return false
+				}
 				t.toggleLiveFocusSplit()
+				return false
+			case base == 'l':
+				t.toggleLiveListSplit()
 				return false
 			}
 		}
@@ -163,6 +170,11 @@ func (t *TUI) handleKey(ev *tcell.EventKey) bool {
 				t.saveLayoutIfConfigured()
 				return false
 			case 'f':
+				// Inside the live list split Option+f does nothing: freezing
+				// the list is not built (ini-3g39).
+				if t.liveList != nil {
+					return false
+				}
 				t.toggleFocusSplit()
 				return false
 			case 'a':

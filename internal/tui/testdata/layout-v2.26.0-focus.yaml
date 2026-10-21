@@ -1,0 +1,10 @@
+grid: 3x2
+order:
+    - qa1
+    - super
+    - eng1
+    - eng2
+mode: live
+live_auto: true
+split: focus
+held: qa1
