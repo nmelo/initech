@@ -6,7 +6,6 @@ package tui
 import (
 	"fmt"
 	"net"
-	"os"
 	"strings"
 	"testing"
 	"time"
@@ -16,8 +15,8 @@ import (
 )
 
 func TestRemotePane_EndToEnd_EmulatorHasContent(t *testing.T) {
-	if os.Getenv("CI") != "" || testing.Short() {
-		t.Skip("integration test: requires PTY and daemon, run locally")
+	if testing.Short() {
+		t.Skip("starts a daemon with real PTY agents; -short skips process-spawning tests, and CI's full suite runs this")
 	}
 	if raceDetectorEnabled {
 		// ini-ls0c/ini-adb9: same shape as the other skips in this file --
@@ -38,10 +37,10 @@ func TestRemotePane_EndToEnd_EmulatorHasContent(t *testing.T) {
 	}
 
 	// Start a daemon with one agent that echoes identifiable output.
-	td := startTestDaemon(t, "", "eng1")
+	td := startTestDaemon(t, integTestToken, "eng1")
 
 	// Connect as a client.
-	tc, _ := connectTestClient(t, td.addr, "testclient", "")
+	tc, _ := connectTestClient(t, td.addr, "testclient", integTestToken)
 	sm := tc.readStreamMap(t)
 
 	if len(sm.Streams) == 0 {
@@ -154,8 +153,8 @@ done:
 // 9 panes (mix of agents) with heavy data flow, multiple render frames.
 // This catches the frame-5 stall caused by unbounded dataCh drain.
 func TestRemotePane_MultiPane_RenderDoesNotBlock(t *testing.T) {
-	if os.Getenv("CI") != "" || testing.Short() {
-		t.Skip("integration test: requires PTY and daemon, run locally")
+	if testing.Short() {
+		t.Skip("starts a daemon with real PTY agents; -short skips process-spawning tests, and CI's full suite runs this")
 	}
 	if raceDetectorEnabled {
 		// ini-ls0c / ini-adb9: each frame below must complete within
@@ -190,10 +189,10 @@ func TestRemotePane_MultiPane_RenderDoesNotBlock(t *testing.T) {
 
 	// Start a daemon with 5 agents (simulates multi-agent workbench).
 	agents := []string{"eng1", "eng2", "eng3", "qa1", "super"}
-	td := startTestDaemon(t, "", agents...)
+	td := startTestDaemon(t, integTestToken, agents...)
 
 	// Connect as a client.
-	tc, _ := connectTestClient(t, td.addr, "testclient", "")
+	tc, _ := connectTestClient(t, td.addr, "testclient", integTestToken)
 	sm := tc.readStreamMap(t)
 
 	if len(sm.Streams) != len(agents) {
