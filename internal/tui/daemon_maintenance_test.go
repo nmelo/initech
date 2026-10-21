@@ -17,11 +17,20 @@ import (
 // ran none of it: held mail waited forever on a quiet pane, deadlines were
 // never reported, dialog announcements were never read, Activity never moved.
 
+// daemonPane is a pane as RunDaemon builds it: no event channel, so every
+// outcome the tick emits must still go out without one.
+func daemonPane(t *testing.T) *Pane {
+	t.Helper()
+	p, _, _ := heldMailPane(t, "eng1")
+	p.eventCh = nil
+	return p
+}
+
 // dbqyHeld is a daemon hosting one pane with two messages held behind a
 // corroborated dialog, as two sends during a dialog leave them.
 func dbqyHeld(t *testing.T) (*Daemon, *Pane) {
 	t.Helper()
-	p, _, _ := heldMailPane(t, "eng1")
+	p := daemonPane(t)
 	p.latchDialogOpen("Claude needs your permission")
 	p.noteDialogSighting()
 	p.SendText("[from super] one", true)
@@ -76,7 +85,7 @@ func TestDaemonMaintenance_TheTickerRunDaemonStartsResolvesHeldMail(t *testing.T
 // Criterion 2: a withheld Enter past its deadline is reported, not kept.
 func TestDaemonMaintenance_AWithheldSubmitPastItsDeadlineIsReported(t *testing.T) {
 	logs := captureLogs(t)
-	p, _, _ := heldMailPane(t, "eng1")
+	p := daemonPane(t)
 	ps := newPendingSubmit("[from super] hello", "bracketed", "")
 	ps.deadline = time.Now().Add(-time.Second)
 	p.mu.Lock()
@@ -98,7 +107,7 @@ func TestDaemonMaintenance_AWithheldSubmitPastItsDeadlineIsReported(t *testing.T
 // raises the latch; the real prompt on screen corroborates it and holds
 // mail; the resting composer, held for the idle window, clears it.
 func TestDaemonMaintenance_DialogAnnouncementsAreRead(t *testing.T) {
-	p, _, _ := heldMailPane(t, "eng1")
+	p := daemonPane(t)
 	p.emu = claudeScreen(t, 40, zrdtScreen(t, "haiku_write_prompt.txt"))
 	p.attn = &attentionSignal{}
 	registerAttentionOSC(p)
@@ -128,7 +137,7 @@ func TestDaemonMaintenance_DialogAnnouncementsAreRead(t *testing.T) {
 // Criterion 4: Activity moves with output on the daemon, so the busy grace
 // on stop (Close grants it when Activity is running) and status read it.
 func TestDaemonMaintenance_ActivityFollowsOutput(t *testing.T) {
-	p, _, _ := heldMailPane(t, "eng1")
+	p := daemonPane(t)
 	d := &Daemon{panes: []*Pane{p}}
 	p.mu.Lock()
 	p.lastOutputTime = time.Now()
