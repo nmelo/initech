@@ -63,7 +63,14 @@ func z5uwRoot(t *testing.T, port int) string {
 		os.WriteFile(filepath.Join(root, r, "CLAUDE.md"), []byte("# "+r+"\n"), 0o644)
 		cfg += "    - " + r + "\n"
 	}
-	cfg += fmt.Sprintf("window_listen: %q\nrole_overrides:\n", "127.0.0.1:"+strconv.Itoa(port))
+	// Both mains share one configured token (ini-cxia). The viewer below is
+	// started from root B but is answered by main A, a different project
+	// directory; with no configured token it would look for root B's session
+	// token file, which B never wrote (it lost the bind), and correctly stay
+	// out. A token both configs carry is the supported way to share a
+	// window 1 across configs, and keeps this rig on its own question: which
+	// main the viewer names.
+	cfg += fmt.Sprintf("window_listen: %q\ntoken: %q\nrole_overrides:\n", "127.0.0.1:"+strconv.Itoa(port), "z5uw-rig-shared-token")
 	for _, r := range roles {
 		cfg += "    " + r + ":\n        command: [\"sh\"]\n"
 	}

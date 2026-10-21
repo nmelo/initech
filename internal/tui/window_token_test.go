@@ -347,3 +347,26 @@ func TestWindowToken_AProjectWithNoRootTouchesNoFile(t *testing.T) {
 		t.Fatalf("a .initech appeared in the working directory (err=%v)", err)
 	}
 }
+
+// A second window 1 that cannot bind the port (the first one holds it) must
+// leave the running window 1's token file alone. It wrote its own token
+// before binding and then deleted the file on the failed bind, so a window 2
+// could never reach the window 1 that was actually serving (found by
+// TestZ5uwRig_HeldPortNoticeAndViewerIdentity, rigs run 39539571521).
+func TestWindowToken_AWindowOneThatCannotBindLeavesTheRunningOnesToken(t *testing.T) {
+	ws, addr, proj, _ := startTokenlessWindowServer(t)
+	tokA := readTokenFile(t, proj.Root)
+
+	second := *proj
+	second.WindowListen = addr // already held by the first window 1
+	if _, _, err := startWindowServer(&second, "test", []*Pane{windowServerTestPane("eng1")}, func(f func()) { go f() }, nil, nil, nil, nil); err == nil {
+		t.Fatal("a second window 1 bound a port the first one holds")
+	}
+	b, err := os.ReadFile(windowTokenPath(proj.Root))
+	if err != nil || string(b) != tokA {
+		t.Fatalf("the failed second window 1 changed the running one's token file (err=%v, changed=%v)", err, string(b) != tokA)
+	}
+	if _, err := connectWindowTwo(t, proj, ws.Addr()); err != nil {
+		t.Fatalf("window 2 cannot reach the running window 1 after a failed second start: %v", err)
+	}
+}

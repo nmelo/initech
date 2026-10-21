@@ -112,15 +112,15 @@ func startWindowServer(project *config.Project, version string, panes []*Pane, s
 	// process of every user on the host -- read every pane and typed into
 	// every PTY. A configured token is served as before and nothing is
 	// written; otherwise this session's token goes to .initech/window-token
-	// (0600), where a secondary window reads it. A token that cannot be
-	// written means the listener does not start: fail closed.
+	// (0600), where a secondary window reads it. The file is written only
+	// after the bind below succeeds: a second window 1 that cannot bind (the
+	// first holds the port) must not replace, or on its way out delete, the
+	// running one's token. A token that cannot be written means the listener
+	// does not start: fail closed.
 	generatedToken := false
 	if serving.Token == "" {
 		tok, err := newWindowToken()
 		if err != nil {
-			return nil, nil, err
-		}
-		if err := writeWindowToken(project.Root, tok); err != nil {
 			return nil, nil, err
 		}
 		serving.Token = tok
@@ -188,10 +188,16 @@ func startWindowServer(project *config.Project, version string, panes []*Pane, s
 		for _, p := range panes {
 			p.ClearNetworkSink()
 		}
-		if generatedToken {
-			removeWindowToken(project.Root)
-		}
 		return nil, nil, fmt.Errorf("window listener on %s: %w", project.WindowListen, err)
+	}
+	if generatedToken {
+		if err := writeWindowToken(project.Root, serving.Token); err != nil {
+			ln.Close()
+			for _, p := range panes {
+				p.ClearNetworkSink()
+			}
+			return nil, nil, err
+		}
 	}
 	d.listener = ln
 
