@@ -285,9 +285,11 @@ func TestLiveFocus_HelpLineSitsBesideOptionF(t *testing.T) {
 	t.Fatal("no Option+f line in the help overlay")
 }
 
-// AC 6: nothing this mode does reaches layout.yaml — not its own entry and
-// exit, and not a save some OTHER action triggers while it is on.
-func TestLiveFocus_NeverWritesItsModeToLayoutYAML(t *testing.T) {
+// AC 6, as ini-aa8a changed it: while the mode is on, layout.yaml keeps the
+// layout UNDERNEATH it (never Layout2Col) and gains only the split and the
+// held pane, whichever path saves (the loop's own trigger, or an unrelated
+// action); leaving the mode puts the file back byte for byte.
+func TestLiveFocus_WritesOnlyTheSplitOverTheLayoutUnderneath(t *testing.T) {
 	tui := liveFocusTUI(t)
 	tui.projectRoot = t.TempDir()
 	// Settle first: the first applyLayout fills default groups, which would
@@ -300,15 +302,19 @@ func TestLiveFocus_NeverWritesItsModeToLayoutYAML(t *testing.T) {
 		t.Fatal(err)
 	}
 	altShiftF(tui)
+	tui.saveIfSplitMoved()
+	want := string(before) + "split: live\nheld: a\n"
+	if mid, _ := os.ReadFile(path); string(mid) != want {
+		t.Errorf("layout.yaml while the mode was on:\n%s\nwant:\n%s", mid, want)
+	}
 	tui.saveLayoutIfConfigured() // as an unrelated action would
-	mid, _ := os.ReadFile(path)
-	if string(mid) != string(before) {
-		t.Errorf("layout.yaml changed while the mode was on:\nbefore:\n%s\nafter:\n%s", before, mid)
+	if mid, _ := os.ReadFile(path); string(mid) != want {
+		t.Errorf("an unrelated save while the mode was on wrote:\n%s\nwant:\n%s", mid, want)
 	}
 	altShiftF(tui)
-	after, _ := os.ReadFile(path)
-	if string(after) != string(before) {
-		t.Errorf("layout.yaml changed across enter/exit:\nbefore:\n%s\nafter:\n%s", before, after)
+	tui.saveIfSplitMoved()
+	if after, _ := os.ReadFile(path); string(after) != string(before) {
+		t.Errorf("layout.yaml after leaving:\n%s\nwant as before:\n%s", after, before)
 	}
 }
 

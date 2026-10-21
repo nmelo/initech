@@ -439,9 +439,12 @@ type TUI struct {
 	// Option+F specifically; holds what to restore on toggle-off. See
 	// focus_split.go.
 	focusSplitPrev *focusSplitSnapshot
-	// liveFocus is the live focus split's session-only state (ini-92wm);
-	// nil when the mode is off.
+	// liveFocus is the live focus split's state (ini-92wm); nil when the
+	// mode is off.
 	liveFocus *liveFocusState
+	// savedSplit and savedHeld are the split and held pane layout.yaml last
+	// got (ini-aa8a), so saveIfSplitMoved can tell when they changed.
+	savedSplit, savedHeld string
 }
 
 // setOnWakeComplete installs (or, with nil, clears) the test-only wake-done
@@ -676,8 +679,43 @@ func (t *TUI) saveLayoutIfConfigured() {
 	for i, p := range t.panes {
 		t.layoutState.Order[i] = agentKey(p)
 	}
-	if err := SaveLayout(t.projectRoot, t.persistableLayout()); err != nil {
+	ls := t.persistableLayout()
+	// Recorded even when the write fails: the failure is logged here once,
+	// and saveIfSplitMoved retrying it on every loop turn would only repeat
+	// the WARN.
+	t.savedSplit, t.savedHeld = ls.Split, ls.Held
+	if err := SaveLayout(t.projectRoot, ls); err != nil {
 		LogWarn("layout", "save failed", "err", err)
+	}
+}
+
+// adoptLoadedSplit takes the split LoadLayout reported off layoutState and,
+// in window 1, restores it over the layout underneath (ini-aa8a). Run calls it
+// once, after the panes exist and before the first frame. A viewer never
+// restores one: its arrangement starts fresh on every attach (ini-qodm). The
+// pair is then recorded as what layout.yaml holds, so a split that could not
+// be restored is written out without its keys on the loop's first turn.
+func (t *TUI) adoptLoadedSplit(viewer bool) {
+	split, held := t.layoutState.Split, t.layoutState.Held
+	t.layoutState.Split, t.layoutState.Held = "", ""
+	if !viewer {
+		t.restoreSavedSplit(split, held)
+	}
+	t.savedSplit, t.savedHeld = split, held
+}
+
+// saveIfSplitMoved saves the layout when the split, or the pane it holds on
+// the left, differs from what layout.yaml last got (ini-aa8a). Entering and
+// leaving the live split, its drop to the Focus split, and every way focus
+// moves inside a split change them without saving; one comparison per loop
+// turn covers them all, where a save at each of those places would miss the
+// next one added.
+func (t *TUI) saveIfSplitMoved() {
+	if t.projectRoot == "" || !t.isFleetAuthority() {
+		return
+	}
+	if ls := t.persistableLayout(); ls.Split != t.savedSplit || ls.Held != t.savedHeld {
+		t.saveLayoutIfConfigured()
 	}
 }
 
@@ -1270,6 +1308,9 @@ func Run(cfg Config) error {
 		t.initLiveEngine(0)
 	}
 
+	// Put back the split the file was saved in (ini-aa8a).
+	t.adoptLoadedSplit(viewer)
+
 	// Now that panes exist, compute the full render plan.
 	t.applyLayout()
 	defer func() {
@@ -1377,6 +1418,7 @@ func Run(cfg Config) error {
 		// Drain all remote panes (visible or hidden) so network data doesn't
 		// accumulate in dataCh when a pane is hidden from the layout.
 		t.drainRemotePanes()
+		t.saveIfSplitMoved()
 		// Skip rendering while accumulating paste characters. The paste
 		// flush in handlePaste triggers a single render when complete.
 		// This turns O(N) renders into O(1) for large pastes.

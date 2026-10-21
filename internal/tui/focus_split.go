@@ -7,7 +7,8 @@ package tui
 
 // focusSplitSnapshot holds the layout state to restore when Option+F is
 // pressed again to exit the split. Deliberately NOT part of LayoutState
-// (which persists to layout.yaml — this is session-only) and deliberately
+// (layout.yaml gets it only as the layout underneath the split, derived by
+// persistableLayout, ini-aa8a) and deliberately
 // NOT a shallow copy of it: LayoutState carries maps/slices (Hidden,
 // Protected, Order, ColWeights...) that are reference types, so a shallow
 // copy would alias them and any mutation during the split (e.g. hiding a

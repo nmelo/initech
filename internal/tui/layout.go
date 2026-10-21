@@ -69,6 +69,15 @@ type LayoutState struct {
 	Groups  []string          `yaml:"groups,omitempty"`
 	GroupOf map[string]string `yaml:"group_of,omitempty"`
 
+	// Split and Held are the split this layout sits under as layout.yaml
+	// stores it (ini-aa8a): splitLive or splitFocus, and the pane key held on
+	// the left. They are never the live truth, which is t.liveFocus and
+	// t.focusSplitPrev: LoadLayout reports them from the file, Run restores
+	// the split from them once, and persistableLayout derives them afresh for
+	// every save.
+	Split string `yaml:"-"`
+	Held  string `yaml:"-"`
+
 	// Live focus split (ini-92wm, Option+Shift+F). When RightSetActive is
 	// true in Layout2Col, the right column holds exactly RightSet (in order)
 	// instead of every other pane, and the left column keeps its 40% even
@@ -493,7 +502,20 @@ type PersistentLayout struct {
 	LiveAuto   bool              `yaml:"live_auto,omitempty"`   // True = auto-size grid from active agent count.
 	Groups     []string          `yaml:"groups,omitempty"`      // Agents-grid band labels, in order.
 	GroupOf    map[string]string `yaml:"group_of,omitempty"`    // Pane key -> band label.
+	// Split and Held are written only while a split is on (ini-aa8a); mode,
+	// grid, grid_explicit and live_auto are then the layout UNDERNEATH it,
+	// the one its second press restores. Last in the struct and omitempty, so
+	// a file saved with no split is byte for byte what v2.25.4 wrote, and an
+	// older initech reading a newer file ignores both (non-strict decode).
+	Split string `yaml:"split,omitempty"` // splitLive or splitFocus.
+	Held  string `yaml:"held,omitempty"`  // Pane key on the split's left.
 }
+
+// The two splits layout.yaml can carry (ini-aa8a).
+const (
+	splitLive  = "live"  // Option+Shift+F, the live focus split.
+	splitFocus = "focus" // Option+f, the plain Focus split.
+)
 
 // layoutDir returns the .initech directory path under projectRoot.
 func layoutDir(projectRoot string) string {
@@ -612,6 +634,8 @@ func SaveLayout(projectRoot string, state LayoutState) error {
 		LiveAuto:     state.LiveAuto,
 		Groups:       state.Groups,
 		GroupOf:      normalizedGroupOf,
+		Split:        state.Split,
+		Held:         state.Held,
 	}
 	// Hidden/Protected/LivePinned are deliberately NOT written: they are
 	// session-global and live in fleet-state.yaml (ini-9ka.10). A layout file
@@ -821,6 +845,8 @@ func LoadLayout(projectRoot string, paneKeys []string) (LayoutState, bool) {
 		LiveAuto:     pl.LiveAuto,
 		Groups:       groups,
 		GroupOf:      groupOf,
+		Split:        pl.Split,
+		Held:         pl.Held,
 	}, true
 }
 

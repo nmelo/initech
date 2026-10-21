@@ -162,6 +162,8 @@ Press backtick, type `log` or `events`. This shows the last 60 minutes of detect
 
 Option+Shift+F holds the focused agent on the left and shows the working agents on the right. A pinned agent stays on the right whatever it is doing, except while it is suspended; it comes back when it wakes, still pinned.
 
+Both splits survive a restart of initech. Restarted from the live split, initech opens in the live split with the same agent on the left and the agents working now on the right; restarted from the plain Focus split (Option+f), it opens in the Focus split with the same agent on the left and every other agent on the right. Either way the second press goes back to the layout you were in before the split. If that agent is no longer in `initech.yaml`, or is hidden, initech opens in the layout underneath instead and logs a warning naming the agent. Leaving a split before the restart opens the layout underneath, as before. A second window starts without a split.
+
 ## Key Commands Quick Reference
 
 These are the commands you'll use most. The full list is in the README.

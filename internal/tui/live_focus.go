@@ -12,9 +12,9 @@ package tui
 
 import "time"
 
-// liveFocusState is the session-only state of an active live focus split.
-// Deliberately not in LayoutState, for the reason focusSplitSnapshot gives:
-// LayoutState persists and this mode never does.
+// liveFocusState is the state of an active live focus split. Not in
+// LayoutState, for the reason focusSplitSnapshot gives; what reaches
+// layout.yaml is derived from it by persistableLayout (ini-aa8a).
 type liveFocusState struct {
 	// prev is the layout to restore on exit — the layout active before the
 	// operator entered, or before Option+f when entered from a Focus split.
@@ -73,8 +73,8 @@ func (t *TUI) toggleLiveFocusSplit() {
 	t.layoutState.Zoomed = false
 	t.layoutState.RightSetActive = true
 	t.seedLiveFocus(time.Now())
-	// No save: this mode is session-only, and saveLayoutIfConfigured writes
-	// the snapshot in its place should anything else save meanwhile.
+	// No save here: the main loop's saveIfSplitMoved writes the split, as it
+	// does for its exit and its drop to the Focus split.
 	t.applyLayout()
 }
 
@@ -218,20 +218,81 @@ func (t *TUI) restoreLayoutSnapshot(prev focusSplitSnapshot) {
 	t.layoutState.Focused = prev.focused
 }
 
-// persistableLayout is the layout to write to layout.yaml. While the live
-// focus split is on, that is the SNAPSHOT's mode and grid, not Layout2Col:
-// the mode is session-only (AC 6), and gating this here means no save from
-// any path — a hide, an Option+z, an order change — can write it, rather than
-// relying on this file never calling save itself.
+// persistableLayout is the layout to write to layout.yaml. While a split is
+// on, mode and grid are the layout UNDERNEATH it (its snapshot, the one its
+// second press restores), never Layout2Col, and Split and Held name the split
+// and the pane on its left, so a restart puts the split back over that layout
+// (ini-aa8a). Every save goes through here, so a hide, an Option+z or an order
+// change writes the same thing. The :main preset is Layout2Col with no
+// snapshot and is written as itself: mode main, no split.
 func (t *TUI) persistableLayout() LayoutState {
 	ls := t.layoutState
-	if t.liveFocus != nil {
-		prev := t.liveFocus.prev
-		ls.Mode = prev.mode
-		ls.GridCols = prev.gridCols
-		ls.GridRows = prev.gridRows
-		ls.GridExplicit = prev.gridExplicit
-		ls.LiveAuto = prev.liveAuto
+	ls.Split, ls.Held = "", ""
+	var under *focusSplitSnapshot
+	switch {
+	case t.liveFocus != nil:
+		under, ls.Split = &t.liveFocus.prev, splitLive
+	case ls.Mode == Layout2Col && t.focusSplitPrev != nil:
+		under, ls.Split = t.focusSplitPrev, splitFocus
+	}
+	if under != nil {
+		ls.Held = ls.Focused
+		ls.Mode = under.mode
+		ls.GridCols = under.gridCols
+		ls.GridRows = under.gridRows
+		ls.GridExplicit = under.gridExplicit
+		ls.LiveAuto = under.liveAuto
 	}
 	return ls
+}
+
+// restoreSavedSplit puts back the split layout.yaml says this window was in
+// (ini-aa8a). LoadLayout has already applied the layout underneath; this
+// presses the same toggle the key does, with the saved pane held on the left,
+// so the live split seeds its right grid from the agents working now and the
+// Focus split shows every other pane. The held pane must be one of this
+// window's panes, matched by its exact key, and not hidden; a suspended pane
+// is still a pane. Anything else leaves the layout underneath standing, with
+// one WARN naming the agent: never a split with an empty left column.
+func (t *TUI) restoreSavedSplit(split, held string) {
+	if split == "" {
+		return
+	}
+	why := ""
+	switch {
+	case split != splitLive && split != splitFocus:
+		why = "unknown split"
+	case held == "":
+		why = "no held agent saved"
+	case !t.hasPaneKey(held):
+		why = "the held agent is not in this window"
+	case t.layoutState.Hidden[held]:
+		why = "the held agent is hidden"
+	case split == splitFocus && t.layoutState.Mode == Layout2Col:
+		why = "the layout underneath is already two columns"
+	case t.visibleCountFromState() <= 1:
+		why = "only one agent is visible"
+	}
+	if why != "" {
+		LogWarn("layout", "saved split not restored; opening the layout underneath",
+			"split", split, "held", held, "why", why)
+		return
+	}
+	t.layoutState.Focused = held
+	if split == splitLive {
+		t.toggleLiveFocusSplit()
+	} else {
+		t.toggleFocusSplit()
+	}
+	LogInfo("layout", "saved split restored", "split", split, "held", held)
+}
+
+// hasPaneKey reports whether this window has a pane with exactly this key.
+func (t *TUI) hasPaneKey(key string) bool {
+	for _, p := range t.panes {
+		if agentKey(p) == key {
+			return true
+		}
+	}
+	return false
 }

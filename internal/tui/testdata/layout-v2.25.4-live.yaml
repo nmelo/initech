@@ -1,0 +1,8 @@
+grid: 3x2
+order:
+    - super
+    - eng1
+    - eng2
+    - qa1
+mode: live
+live_auto: true
