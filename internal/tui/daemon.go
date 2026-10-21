@@ -1340,16 +1340,24 @@ func (d *Daemon) handleControlStream(ctrl net.Conn, scanner *bufio.Scanner, peer
 				continue
 			}
 			if cmd.Rows > 0 && cmd.Cols > 0 {
+				// Bounded here, before the pane and before lastSizes, which
+				// a restart spawns the new process at (ini-41br): a huge
+				// request stored raw would allocate on the next restart.
+				rows, cols, clamped := clampResizeRequest(cmd.Rows, cmd.Cols)
+				if clamped {
+					LogWarn("daemon", "resize request clamped", "agent", cmd.Target, "peer", peerName,
+						"requested_rows", cmd.Rows, "requested_cols", cmd.Cols, "rows", rows, "cols", cols)
+				}
 				if d.headless {
-					p.ResizeExact(cmd.Rows, cmd.Cols)
+					p.ResizeExact(rows, cols)
 				} else {
-					p.Resize(cmd.Rows, cmd.Cols)
+					p.Resize(rows, cols)
 				}
 				d.panesMu.Lock()
 				if d.lastSizes == nil {
 					d.lastSizes = make(map[string][2]int)
 				}
-				d.lastSizes[cmd.Target] = [2]int{cmd.Rows, cmd.Cols}
+				d.lastSizes[cmd.Target] = [2]int{rows, cols}
 				d.panesMu.Unlock()
 			}
 			if p != nil {

@@ -284,6 +284,7 @@ type Pane struct {
 	scrollOffset                 int               // Rows scrolled back from live view (0 = live).
 	resizeSettleFrames           int               // Render frames remaining to skip after resize.
 	resizeSettleDeadline         time.Time         // Hard deadline: skip content rendering until this time.
+	lastClampedResize            [2]int            // Last clamped resize request logged (rows, cols); under renderMu.
 	scrollAnchorLen              int               // Scrollback length when user last scrolled. Used to compensate for new output.
 	memoryRSS                    int64             // RSS in kilobytes, updated by memory monitor goroutine.
 	suspended                    bool              // True when auto-suspend policy has stopped this pane.
@@ -758,10 +759,7 @@ func (p *Pane) Resize(rows, cols int) {
 func (p *Pane) ResizeExact(rows, cols int) {
 	p.renderMu.Lock()
 	defer p.renderMu.Unlock()
-	if rows < 1 {
-		rows = 1
-	}
-	cols = effectiveEmuCols(cols)
+	rows, cols = p.clampResize(rows, cols)
 	if p.ptmx != nil {
 		p.ptmx.Resize(cols, rows)
 	}
@@ -805,16 +803,16 @@ func (p *Pane) resizeLocked(rows, cols int) {
 // through resizeFromMainLoop, which never waits for either lock; readLoop and
 // the daemon reach it through resizeLocked, which does.
 func (p *Pane) resizeUnder(e *vt.Emulator, rows, cols int) {
+	// Bound the request on both axes before anything is sized from it
+	// (ini-hup3 for columns, ini-41br for rows): an out-of-range count from a
+	// resize control message otherwise flows straight into the emulator's
+	// buffer, a makeslice panic or a multi-GB allocation in the process that
+	// owns every agent's PTY.
+	rows, cols = p.clampResize(rows, cols)
 	emuRows := rows
 	if !e.IsAltScreen() {
 		emuRows = effectiveEmuRows(rows)
 	}
-	// Clamp cols to a sane bound (ini-hup3): an out-of-range column count from a
-	// resize control message (e.g. cols=MaxInt32, or a large finite value)
-	// otherwise flows straight into the emulator buffer's make(Line, width),
-	// panicking with "makeslice: len out of range" or allocating multiple GB and
-	// OOMing the daemon. Mirrors the effectiveEmuRows cap on the row axis.
-	cols = effectiveEmuCols(cols)
 	if p.ptmx != nil {
 		p.ptmx.Resize(cols, emuRows)
 	}
@@ -891,6 +889,37 @@ const emuRowsCap = 300
 // unbounded memory in the emulator buffer (ini-hup3). Generous vs. real
 // terminals (~80-400 cols) while keeping a width x height buffer tiny.
 const emuColsCap = 1000
+
+// clampResizeRequest bounds a resize request to [1, emuRowsCap] rows and
+// [1, emuColsCap] columns, and reports whether it changed it (ini-41br). It
+// is the one clamp every resize passes: the daemon's resize handler,
+// ResizeExact and resizeUnder. Rows share emuRowsCap with the emulator's 3x
+// growth, so neither the emulator nor the PTY is ever taller than it. A
+// request above the cap is clamped, never refused: a viewer's own terminal
+// can legitimately be tall.
+func clampResizeRequest(rows, cols int) (int, int, bool) {
+	r, c := rows, effectiveEmuCols(cols)
+	if r < 1 {
+		r = 1
+	}
+	if r > emuRowsCap {
+		r = emuRowsCap
+	}
+	return r, c, r != rows || c != cols
+}
+
+// clampResize is clampResizeRequest for a pane, logging a clamped request
+// once: a repeat of the request it last logged (the main loop's retry of a
+// deferred resize) is not logged again. Caller holds renderMu.
+func (p *Pane) clampResize(rows, cols int) (int, int) {
+	r, c, clamped := clampResizeRequest(rows, cols)
+	if clamped && p.lastClampedResize != [2]int{rows, cols} {
+		p.lastClampedResize = [2]int{rows, cols}
+		LogWarn("pane", "resize request clamped", "agent", p.name,
+			"requested_rows", rows, "requested_cols", cols, "rows", r, "cols", c)
+	}
+	return r, c
+}
 
 // effectiveEmuCols clamps a requested column count to [1, emuColsCap].
 func effectiveEmuCols(cols int) int {
