@@ -29,7 +29,7 @@ func TestWindowListener_HeldPortPersistsNoticeAndWarnsOnce(t *testing.T) {
 	s.SetSize(180, 40)
 	u := newTestTUI()
 	u.screen = s
-	cleanup := u.startWindowListener(&config.Project{WindowListen: ln.Addr().String()}, "test", nil)
+	cleanup := u.startWindowListener(&config.Project{WindowListen: ln.Addr().String(), Token: testWindowToken}, "test", nil)
 	defer cleanup()
 	if u.windowSrv != nil {
 		t.Fatal("held port unexpectedly bound")

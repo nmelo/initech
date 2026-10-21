@@ -106,6 +106,27 @@ func startWindowServer(project *config.Project, version string, panes []*Pane, s
 	serving := *project
 	serving.PeerName = WindowOnePeerName
 
+	// WINDOW 1 ALWAYS SERVES WITH A TOKEN (ini-cxia). The hello check used
+	// to run only when the project had one, and nothing gave a TUI project
+	// one, so any process that could reach the port -- on loopback, every
+	// process of every user on the host -- read every pane and typed into
+	// every PTY. A configured token is served as before and nothing is
+	// written; otherwise this session's token goes to .initech/window-token
+	// (0600), where a secondary window reads it. A token that cannot be
+	// written means the listener does not start: fail closed.
+	generatedToken := false
+	if serving.Token == "" {
+		tok, err := newWindowToken()
+		if err != nil {
+			return nil, nil, err
+		}
+		if err := writeWindowToken(project.Root, tok); err != nil {
+			return nil, nil, err
+		}
+		serving.Token = tok
+		generatedToken = true
+	}
+
 	d := &Daemon{
 		project:        &serving,
 		version:        version,
@@ -167,6 +188,9 @@ func startWindowServer(project *config.Project, version string, panes []*Pane, s
 		for _, p := range panes {
 			p.ClearNetworkSink()
 		}
+		if generatedToken {
+			removeWindowToken(project.Root)
+		}
 		return nil, nil, fmt.Errorf("window listener on %s: %w", project.WindowListen, err)
 	}
 	d.listener = ln
@@ -191,6 +215,9 @@ func startWindowServer(project *config.Project, version string, panes []*Pane, s
 		ln.Close()
 		for _, p := range panes {
 			p.ClearNetworkSink()
+		}
+		if generatedToken {
+			removeWindowToken(project.Root)
 		}
 		LogInfo("window-server", "stopped")
 	}

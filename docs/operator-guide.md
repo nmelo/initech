@@ -174,6 +174,10 @@ When more agents are working than there are boxes, the agents already in a box k
 
 Inside the split, `grid 4xR` sets the number of rows, R from 1 to 6. Any other value leaves the grid as it is and the command bar says why. Pressing Option+Shift+L again goes back to the layout you were in before. From the Focus split or the live focus split it keeps the agent on the left, and pressing it again goes back to the layout from before the first split. Option+Shift+F inside it switches to the live focus split on the same agent; Option+f inside it does nothing. Like the other splits it survives a restart with the same agent on the left and the same number of rows.
 
+### Second Windows
+
+Setting `window_listen` in `initech.yaml` (for example `window_listen: "127.0.0.1:7500"`) lets window 1 serve more windows; `initech --window 2` opens one. Windows authenticate to window 1 with a token. When `initech.yaml` sets `token`, every window uses it. Otherwise window 1 generates a new token each time it starts and writes it to `.initech/window-token`, readable only by you (mode 0600); a window on the same machine reads it from there, and window 1 removes it when it exits. Window 1 refuses any connection without the right token. Never share or copy that file: whoever holds the token can read every agent's screen and type into it. Start window 1 first; a second window started before it shows "window 1 is not running here" and connects on its own once window 1 is up, including after a restart of window 1.
+
 ## Key Commands Quick Reference
 
 These are the commands you'll use most. The full list is in the README.

@@ -58,7 +58,7 @@ func TestWindowListener_StalePIDDoesNotPreventRealBind(t *testing.T) {
 	u := newTestTUI()
 	u.projectRoot = root
 	u.inspectPortHolder = func(string) *PortHolder { t.Fatal("inspection on successful bind"); return nil }
-	cleanup := u.startWindowListener(&config.Project{WindowListen: "127.0.0.1:0"}, "test", nil)
+	cleanup := u.startWindowListener(&config.Project{WindowListen: "127.0.0.1:0", Token: testWindowToken}, "test", nil)
 	defer cleanup()
 	if u.windowSrv == nil || u.windowPort.State != "listening" || u.windowPort.Address != u.windowSrv.Addr() {
 		t.Fatalf("bad bind result: %+v", u.windowPort)
@@ -101,12 +101,12 @@ func TestWindowStatus_IPCListCarriesBindFailure(t *testing.T) {
 
 func TestWindowAuthority_HandshakeFeedsViewerAndReplacesOldIdentity(t *testing.T) {
 	u := newTestTUI()
-	cleanup := u.startWindowListener(&config.Project{WindowListen: "127.0.0.1:0"}, "test", nil)
+	cleanup := u.startWindowListener(&config.Project{WindowListen: "127.0.0.1:0", Token: testWindowToken}, "test", nil)
 	defer cleanup()
 	if u.windowSrv == nil {
 		t.Fatal("server missing")
 	}
-	pc, err := connectPeer(WindowOnePeerName, config.Remote{Addr: u.windowSrv.Addr()}, &config.Project{PeerName: "window-2"})
+	pc, err := connectPeer(WindowOnePeerName, config.Remote{Addr: u.windowSrv.Addr(), Token: testWindowToken}, &config.Project{PeerName: "window-2"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -200,13 +200,13 @@ func TestWindowHolder_QueriesListenerInsteadOfPIDFile(t *testing.T) {
 
 func TestWindowAuthority_PeerManagerPublishesHandshakeIdentity(t *testing.T) {
 	u := newTestTUI()
-	defer u.startWindowListener(&config.Project{WindowListen: "127.0.0.1:0"}, "test", nil)()
+	defer u.startWindowListener(&config.Project{WindowListen: "127.0.0.1:0", Token: testWindowToken}, "test", nil)()
 	if u.windowSrv == nil {
 		t.Fatal("no listener")
 	}
 	identities := make(chan AuthorityIdentity, 1)
 	quit := make(chan struct{})
-	pm := newPeerManager(&config.Project{PeerName: "window-2", Remotes: map[string]config.Remote{WindowOnePeerName: {Addr: u.windowSrv.Addr()}}}, func(string, []PaneView, bool) {}, nil, quit, func(peer string, a *AuthorityIdentity) {
+	pm := newPeerManager(&config.Project{PeerName: "window-2", Remotes: map[string]config.Remote{WindowOnePeerName: {Addr: u.windowSrv.Addr(), Token: testWindowToken}}}, func(string, []PaneView, bool) {}, nil, quit, func(peer string, a *AuthorityIdentity) {
 		if peer == WindowOnePeerName && a != nil {
 			identities <- *a
 		}

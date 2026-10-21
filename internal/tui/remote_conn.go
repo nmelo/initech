@@ -58,6 +58,23 @@ func (pc *peerConn) Close() {
 // connectPeer establishes a yamux connection to a single remote peer, performs
 // the hello handshake, reads the stream map, and creates RemotePanes.
 func connectPeer(peerName string, remote config.Remote, project *config.Project) (*peerConn, error) {
+	// The hello's token. For window 1 with no configured token, read the
+	// session token file on EVERY attempt (ini-cxia): a window 1 restart
+	// writes a new token, and a cached read would be refused forever by the
+	// retry loop. No file means window 1 is not up: fail this attempt
+	// without dialling, and the loop tries again.
+	token := remote.Token
+	if token == "" {
+		token = project.Token
+	}
+	if token == "" && peerName == WindowOnePeerName {
+		tok, err := readWindowToken(project.Root)
+		if err != nil {
+			return nil, err
+		}
+		token = tok
+	}
+
 	// Dial TCP with OS-level keepalive to detect dead peers faster than
 	// the default 2-hour TCP keepalive. yamux has its own keepalive, but
 	// after kill -9 the TCP write may buffer locally without failing.
@@ -82,10 +99,6 @@ func connectPeer(peerName string, remote config.Remote, project *config.Project)
 	}
 
 	// Send hello.
-	token := remote.Token
-	if token == "" {
-		token = project.Token
-	}
 	hello := HelloMsg{
 		Action:   "hello",
 		Version:  ProtocolVersion,

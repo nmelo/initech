@@ -718,7 +718,10 @@ func (d *Daemon) handleConnection(conn net.Conn) {
 	}
 
 	// Validate token (constant-time comparison to prevent timing side-channel).
-	if d.project.Token != "" && subtle.ConstantTimeCompare([]byte(hello.Token), []byte(d.project.Token)) != 1 {
+	// FAIL CLOSED (ini-cxia): a daemon with no token accepts nobody. This was
+	// "if a token is set, check it", which let every hello through on a
+	// server that had none -- and comparing two empty strings would pass too.
+	if d.project.Token == "" || subtle.ConstantTimeCompare([]byte(hello.Token), []byte(d.project.Token)) != 1 {
 		LogWarn("daemon", "auth failed", "peer", hello.PeerName)
 		d.consolef("[%s] Client rejected: %s (auth failed)\n",
 			time.Now().Format("15:04:05"), conn.RemoteAddr())

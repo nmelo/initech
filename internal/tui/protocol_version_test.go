@@ -82,6 +82,7 @@ func TestHelloRefusesAMismatchedProtocolVersion(t *testing.T) {
 			defer conn.Close()
 
 			writeJSON(ctrl, HelloMsg{
+				Token:    testWindowToken,
 				Action:   "hello",
 				Version:  theirs,
 				PeerName: "window-2",
@@ -114,6 +115,7 @@ func TestHelloAcceptsAMatchingProtocolVersion(t *testing.T) {
 	defer conn.Close()
 
 	writeJSON(ctrl, HelloMsg{
+		Token:    testWindowToken,
 		Action:   "hello",
 		Version:  ProtocolVersion,
 		PeerName: "window-2",

@@ -259,6 +259,9 @@ type TUI struct {
 	// ownershipServed records whether a secondary has ever been served an
 	// ownership map. Before that it renders nothing rather than guessing.
 	ownershipServed bool
+	// windowTokenMissing: a secondary window's last attempt to reach window 1
+	// found no session token file (ini-cxia). Main goroutine only.
+	windowTokenMissing bool
 	// lastServedTo is the attached-window set at the last ownership broadcast,
 	// so a newly attached window is served even when the map itself did not
 	// change (window 1 only).
@@ -1231,6 +1234,9 @@ func Run(cfg Config) error {
 		})
 		pm.SetOnSessionNotice(func(text string) {
 			t.runOnMain(func() { t.surfaceSessionNotice(text) })
+		})
+		pm.SetOnWindowToken(func(missing bool) {
+			t.runOnMain(func() { t.windowTokenMissing = missing })
 		})
 		// The inbox's own doorbell (ini-3wkl.7): re-read the inbox, and
 		// nothing else -- never the session notice's layout re-plan.

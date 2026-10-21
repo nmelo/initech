@@ -148,7 +148,7 @@ func TestDaemonControlSend(t *testing.T) {
 		Root:     t.TempDir(),
 		PeerName: "testhost",
 		Mode:     "headless",
-		Token:    "",
+		Token:    "ctrl-send-token",
 		Roles:    []string{"eng1"},
 	}
 
@@ -175,8 +175,9 @@ func TestDaemonControlSend(t *testing.T) {
 
 	ctrl, _ := clientSession.Open()
 
-	// Hello (no token).
-	hello := HelloMsg{Action: "hello", Version: 1, PeerName: "client"}
+	// Hello with the daemon's token: a tokenless daemon accepts nobody
+	// (ini-cxia), so this test no longer runs against the old bypass.
+	hello := HelloMsg{Action: "hello", Version: 1, Token: "ctrl-send-token", PeerName: "client"}
 	data, _ := json.Marshal(hello)
 	ctrl.Write(data)
 	ctrl.Write([]byte("\n"))

@@ -205,6 +205,12 @@ const emptyViewerHint = "no agents are assigned to this window — assign some f
 // may no longer own — which is the class this bead closed.
 const unservedViewerHint = "waiting for window 1 — it decides which agents appear here; reconnecting"
 
+// noWindowOneHint replaces unservedViewerHint while no window token file
+// exists (ini-cxia): window 1 writes it at start, so its absence means window
+// 1 is not running on this machine, and "reconnecting" alone would hide that
+// the operator has to start it.
+const noWindowOneHint = "window 1 is not running here — start it first (initech); this window connects when it is up"
+
 // allHiddenViewerHint is the copy for a viewer whose owned agents are ALL
 // globally hidden (ini-uz42, pm 2026-09-12). PM-OWNED STRING -- render it
 // verbatim; the count is the only substitution.
@@ -345,6 +351,9 @@ func (t *TUI) classifyViewerEmpty() (string, *viewerEmptyDefect) {
 	// six-agent rig, which is heavier than this file's own and reached the
 	// state repeatedly.
 	if !t.ownershipServed || len(t.panes) == 0 {
+		if t.windowTokenMissing {
+			return noWindowOneHint, nil
+		}
 		return unservedViewerHint, nil
 	}
 	if len(ownershipKeysFor(t.paneOwnership, t.windowID)) == 0 {

@@ -4,6 +4,7 @@
 package tui
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 	"sync"
@@ -35,7 +36,11 @@ func backoff(attempt int) time.Duration {
 // It owns a goroutine per peer that handles connect/reconnect.
 type peerManager struct {
 	onAuthority func(string, *AuthorityIdentity)
-	project     *config.Project
+	// onWindowToken reports, after each attempt to reach window 1, whether
+	// it failed for want of the session token file (ini-cxia): the empty
+	// viewer then says to start window 1 instead of only "reconnecting".
+	onWindowToken func(missing bool)
+	project       *config.Project
 	// onPanesChanged is called (on any goroutine) when remote panes are
 	// added or go offline. The callback receives the peer name and the
 	// new set of PaneViews for that peer (nil = all offline).
@@ -245,6 +250,7 @@ func (pm *peerManager) managePeer(peerName string, remote config.Remote) {
 	for {
 		// Try to connect.
 		pc, err := connectPeer(peerName, remote, pm.project)
+		pm.noteWindowToken(peerName, err)
 		if err != nil {
 			LogWarn("remote", "connection failed", "peer", peerName, "attempt", attempt, "err", err)
 			pm.onPanesChanged(peerName, nil, false)
@@ -590,4 +596,17 @@ func (pm *peerManager) SetOnPaneOwnership(fn func(owner map[string]string)) {
 // (ini-35ak).
 func (pm *peerManager) SetOnAgentStatus(fn func(name string, beads []string, primary, noBead, desc string, ws WaitingState, suspended bool)) {
 	pm.onAgentStatus = fn
+}
+
+// SetOnWindowToken registers the callback told, after each attempt to reach
+// window 1, whether it failed for want of the session token file.
+func (pm *peerManager) SetOnWindowToken(fn func(missing bool)) { pm.onWindowToken = fn }
+
+// noteWindowToken reports one connect attempt's outcome to onWindowToken.
+// Only the window-1 peer has a token file; other peers are not reported.
+func (pm *peerManager) noteWindowToken(peerName string, err error) {
+	if pm.onWindowToken == nil || peerName != WindowOnePeerName {
+		return
+	}
+	pm.onWindowToken(errors.Is(err, errNoWindowToken))
 }
