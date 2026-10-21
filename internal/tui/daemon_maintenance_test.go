@@ -250,3 +250,49 @@ func TestDaemonMaintenance_OneDefinitionOfMaintenance(t *testing.T) {
 		t.Error("RunDaemon does not start the maintenance ticker")
 	}
 }
+
+// The tick runs on its own goroutine beside the daemon's others: sends from
+// IPC handlers, agent output, and the status and handshake reads. On the TUI
+// all of this ran on one goroutine, so this is what -race must see together.
+func TestDaemonMaintenance_TickBesideSendsOutputAndReads(t *testing.T) {
+	p := daemonPane(t)
+	d := &Daemon{panes: []*Pane{p}}
+	stop := make(chan struct{})
+	var wg sync.WaitGroup
+	run := func(f func(i int)) {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := 0; ; i++ {
+				select {
+				case <-stop:
+					return
+				default:
+				}
+				f(i)
+			}
+		}()
+	}
+	base := time.Now()
+	run(func(i int) { d.maintain(base.Add(time.Duration(i) * 300 * time.Millisecond)) })
+	run(func(i int) {
+		if i%50 == 0 {
+			p.latchDialogOpen("Claude needs your permission")
+		}
+		p.SendText("[from super] x", true)
+	})
+	run(func(int) { // readLoop's steps for one chunk of output
+		p.mu.Lock()
+		p.lastOutputTime = time.Now()
+		p.mu.Unlock()
+		p.renderMu.Lock()
+		p.emu.Write([]byte("tick\r\n"))
+		p.renderMu.Unlock()
+		p.maybeDrainModalQueue()
+		p.maybeRetryWithheldSubmit()
+	})
+	run(func(int) { _ = p.Activity(); _ = waitingStateOf(p); _ = p.QueuedMessageCount() })
+	time.Sleep(300 * time.Millisecond)
+	close(stop)
+	wg.Wait()
+}
