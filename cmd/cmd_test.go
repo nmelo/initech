@@ -386,7 +386,7 @@ func TestStatusColor(t *testing.T) {
 
 func TestGetBeadAssignments_NoBd(t *testing.T) {
 	r := &iexec.FakeRunner{Err: fmt.Errorf("not found")}
-	result := getBeadAssignments(r)
+	result := getBeadAssignments(r, "")
 	if len(result) != 0 {
 		t.Error("should return empty map when bd not found")
 	}
@@ -409,7 +409,7 @@ func TestGetBeadAssignments_JSONArray(t *testing.T) {
 	}
 	_ = callCount
 
-	result := getBeadAssignments(r)
+	result := getBeadAssignments(r, "")
 
 	if _, ok := result["eng1"]; !ok {
 		t.Error("eng1 should have a bead (in_progress)")
@@ -433,7 +433,7 @@ func TestGetBeadAssignments_JSONLines(t *testing.T) {
 		},
 	}
 
-	result := getBeadAssignments(r)
+	result := getBeadAssignments(r, "")
 	if len(result) != 2 {
 		t.Errorf("expected 2 assignments, got %d", len(result))
 	}

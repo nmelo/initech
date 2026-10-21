@@ -4,10 +4,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/nmelo/initech/internal/color"
+	"github.com/nmelo/initech/internal/config"
 	iexec "github.com/nmelo/initech/internal/exec"
 	"github.com/nmelo/initech/internal/tui"
 	"github.com/spf13/cobra"
@@ -80,11 +82,19 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("%s", resp.Error)
 	}
 	// A socket named by INITECH_SOCKET may be another project's: label the
-	// roster with the project behind it, which the reply names (ini-l8s5).
-	// An older TUI names none, and the folder's project stands as before.
-	if os.Getenv("INITECH_SOCKET") != "" && resp.Project != nil && resp.Project.Name != "" {
-		projName = resp.Project.Name
-		beadsEnabled = resp.Project.BeadsEnabled
+	// roster with the project behind it, which the reply names (ini-l8s5),
+	// and read the Bead column from that project's bd, in the root the reply
+	// names (ini-lg62). An older TUI names none: the folder's name stands,
+	// and the column says it cannot tell rather than show this folder's beads.
+	beadDir, beadNote := "", ""
+	if socketIsAnotherProject(sockPath, p) {
+		if resp.Project != nil && resp.Project.Name != "" {
+			projName = resp.Project.Name
+			beadsEnabled = resp.Project.BeadsEnabled
+		}
+		if resp.Project == nil || beadsEnabled {
+			beadDir, beadNote = socketBeadRoot(resp.Project)
+		}
 	}
 
 	var panes []paneInfo
@@ -98,8 +108,8 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	// Try to get bead assignments (skip when disabled).
 	runner := &iexec.DefaultRunner{}
 	var beadMap map[string][]beadInfo
-	if beadsEnabled {
-		beadMap = getBeadAssignments(runner)
+	if beadsEnabled && beadNote == "" {
+		beadMap = getBeadAssignments(runner, beadDir)
 	} else {
 		beadMap = make(map[string][]beadInfo)
 	}
@@ -213,7 +223,10 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		// of it: a ribbon that says something else is named next to bd's
 		// answer, so the stale pointer is visible instead of silently
 		// different (ini-jvrs).
-		if pi.Beads != nil && pi.NoBead == "" && !sameBeadSet(*pi.Beads, held) {
+		if beadNote != "" && pi.NoBead == "" {
+			bead = color.Dim(beadNote)
+		}
+		if pi.Beads != nil && pi.NoBead == "" && beadNote == "" && !sameBeadSet(*pi.Beads, held) {
 			shown := "-"
 			if len(*pi.Beads) > 0 {
 				shown = strings.Join(*pi.Beads, ",")
@@ -323,16 +336,24 @@ func sameBeadSet(ribbon []string, held []beadInfo) bool {
 // getBeadAssignments maps each agent to the beads bd says it holds: an
 // assignee set and a shown status (in_progress, ready_for_qa, in_qa), in bd's
 // order. qa_passed is left out: nobody is working the bead.
-func getBeadAssignments(runner iexec.Runner) map[string][]beadInfo {
+func getBeadAssignments(runner iexec.Runner, dir string) map[string][]beadInfo {
 	result := make(map[string][]beadInfo)
 
 	if _, err := runner.Run("which", "bd"); err != nil {
 		return result
 	}
 
-	out, err := runner.Run("bd", "list", "--status", strings.Join(shownStatuses, ","), "--json")
+	// Read-only: bd list, in dir when given (another project's root), else
+	// in the folder status runs in.
+	list := func(args ...string) (string, error) {
+		if dir != "" {
+			return runner.RunInDir(dir, "bd", args...)
+		}
+		return runner.Run("bd", args...)
+	}
+	out, err := list("list", "--status", strings.Join(shownStatuses, ","), "--json")
 	if err != nil {
-		out, err = runner.Run("bd", "list", "--json")
+		out, err = list("list", "--json")
 		if err != nil {
 			return result
 		}
@@ -362,6 +383,36 @@ func getBeadAssignments(runner iexec.Runner) map[string][]beadInfo {
 }
 
 // shortDur renders a latch age compactly: 47m, 2h, 8s.
+// beadNoteUnknown fills the Bead column when the socket's project cannot be
+// read: its initech did not say where it lives, or that folder is not here.
+const beadNoteUnknown = "(bd: unknown project)"
+
+// socketIsAnotherProject reports whether INITECH_SOCKET points away from the
+// project of the folder status runs in. Every agent's own INITECH_SOCKET
+// names its own fleet's socket, and that is no override.
+func socketIsAnotherProject(sockPath string, p *config.Project) bool {
+	if os.Getenv("INITECH_SOCKET") == "" {
+		return false
+	}
+	if p != nil && filepath.Clean(tui.SocketPath(p.Root, p.Name)) == filepath.Clean(sockPath) {
+		return false
+	}
+	return true
+}
+
+// socketBeadRoot is where to read the socket project's bd, or the note when
+// that is unknown: no project in the reply, no root, or a root not on this
+// machine.
+func socketBeadRoot(proj *tui.IPCProject) (dir, note string) {
+	if proj == nil || proj.Root == "" {
+		return "", beadNoteUnknown
+	}
+	if st, err := os.Stat(proj.Root); err != nil || !st.IsDir() {
+		return "", beadNoteUnknown
+	}
+	return proj.Root, ""
+}
+
 func shortDur(sec int) string {
 	switch {
 	case sec >= 3600:

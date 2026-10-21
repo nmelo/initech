@@ -58,6 +58,9 @@ type IPCResponse struct {
 type IPCProject struct {
 	Name         string `json:"name"`
 	BeadsEnabled bool   `json:"beads_enabled"`
+	// Root is the project's folder, where its bd database is read from
+	// (ini-lg62). Omitted when unknown.
+	Root string `json:"root,omitempty"`
 }
 
 // projectSnapshot is the IPCProject for a loaded project, nil without one.
@@ -65,7 +68,7 @@ func projectSnapshot(p *config.Project) *IPCProject {
 	if p == nil {
 		return nil
 	}
-	return &IPCProject{Name: p.Name, BeadsEnabled: p.Beads.IsEnabled()}
+	return &IPCProject{Name: p.Name, BeadsEnabled: p.Beads.IsEnabled(), Root: p.Root}
 }
 
 // ProjectSnapshot is the project this TUI serves, for the list reply.

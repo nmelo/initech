@@ -7,20 +7,21 @@ import (
 	"github.com/nmelo/initech/internal/config"
 )
 
-// ini-l8s5: the list reply names the project behind the socket, from the TUI
-// and from a serve daemon alike, so initech status run against another rig's
-// socket can label the roster with that rig.
+// ini-l8s5, ini-lg62: the list reply names the project behind the socket and
+// its root, from the TUI and from a serve daemon alike, so initech status run
+// against another rig's socket can label the roster with that rig and read
+// that rig's bd.
 func TestListReply_NamesTheProjectBehindTheSocket(t *testing.T) {
 	off := false
 	tuiHost := newTestTUI(testPane("eng1"))
-	tuiHost.project = &config.Project{Name: "other-rig"}
-	daemonHost := &Daemon{project: &config.Project{Name: "served-rig", Beads: config.BeadsConfig{Enabled: &off}}}
+	tuiHost.project = &config.Project{Name: "other-rig", Root: "/rigs/other"}
+	daemonHost := &Daemon{project: &config.Project{Name: "served-rig", Root: "/rigs/served", Beads: config.BeadsConfig{Enabled: &off}}}
 	for name, tc := range map[string]struct {
 		host IPCHost
 		want IPCProject
 	}{
-		"tui":    {tuiHost, IPCProject{Name: "other-rig", BeadsEnabled: true}},
-		"daemon": {daemonHost, IPCProject{Name: "served-rig", BeadsEnabled: false}},
+		"tui":    {tuiHost, IPCProject{Name: "other-rig", BeadsEnabled: true, Root: "/rigs/other"}},
+		"daemon": {daemonHost, IPCProject{Name: "served-rig", BeadsEnabled: false, Root: "/rigs/served"}},
 	} {
 		conn := &dispatchConn{}
 		dispatchIPC(tc.host, conn, IPCRequest{Action: "list"}, nil)
