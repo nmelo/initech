@@ -144,16 +144,26 @@ func jvrsHandoff(t *testing.T, list string, tweak func(*q3xRig)) (*q3xRig, strin
 	return rig, buf.String(), err
 }
 
-// No TUI at all: bd is written, the exit code is unchanged, and the summary
-// says the ribbon was not updated.
+// No TUI at all: bd is written, and the summary says the ribbon was not
+// updated. Deliver exits non-zero: with no TUI the hand-off report did not
+// reach the recipient either, and a success exit there is the parked-bead
+// shape ini-3x0d closed (this cell said "exit code unchanged" before it).
 func TestDeliver_NoTUINamesTheRibbonNotUpdated(t *testing.T) {
 	_, stderr, err := jvrsHandoff(t, "", func(*q3xRig) {
 		t.Setenv("INITECH_SOCKET", "/tmp/initech-jvrs-nobody-listens.sock")
 	})
-	if err != nil {
-		t.Fatalf("deliver: %v", err)
+	if err == nil || !strings.Contains(err.Error(), "was not delivered") {
+		t.Fatalf("deliver with no TUI: err = %v, want the undelivered hand-off", err)
 	}
-	if s := lastLine(stderr); !strings.Contains(s, "; ribbon NOT updated: ") {
+	// The returned error is printed after the summary, so the summary is no
+	// longer the last line: find it by its prefix.
+	var s string
+	for _, l := range strings.Split(stderr, "\n") {
+		if strings.HasPrefix(l, "delivered ") {
+			s = l
+		}
+	}
+	if !strings.Contains(s, "; ribbon NOT updated: ") {
 		t.Errorf("summary = %q, want ribbon NOT updated", s)
 	}
 }

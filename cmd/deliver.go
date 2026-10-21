@@ -261,21 +261,44 @@ func runDeliver(cmd *cobra.Command, args []string) error {
 		Enter:  true,
 	}
 	reportedTo := deliverTo
+	// reportFailed is why the hand-off report did not reach the recipient:
+	// the transport error, or the TUI's refusal (no such pane, a stopped
+	// agent, one still starting). The bead has moved either way; what the
+	// caller must not get is a success line for a hand-off nobody heard
+	// (ini-3x0d), the parked-bead shape assign already refuses.
+	var reportFailed string
 	if !send {
 		reportedTo = "(no report: same agent continues; --report sends one)"
 	} else if resp, err := ipcCall(sendReq); err != nil {
 		fmt.Fprintf(cmd.ErrOrStderr(), "warning: report failed, notify %s manually: %s\n", deliverTo, err)
+		reportFailed = err.Error()
 	} else if !resp.OK {
 		fmt.Fprintf(cmd.ErrOrStderr(), "warning: report failed: %s\n", resp.Error)
+		reportFailed = resp.Error
+	}
+	event := tpl.IPCSummary
+	if reportFailed != "" {
+		reportedTo = "report NOT sent to " + deliverTo + ": " + reportFailed
+		event += " (hand-off report NOT delivered to " + deliverTo + ")"
 	}
 
 	// Step 5: Emit event to TUI (fire and forget).
-	emitIPCEvent(agentOrUnknown(agent), beadID, "bead_delivered", tpl.IPCSummary)
+	emitIPCEvent(agentOrUnknown(agent), beadID, "bead_delivered", event)
 
 	// Output summary.
 	fmt.Fprintf(cmd.ErrOrStderr(), "delivered %s: %s -> %s [%s, assignee %s] (%s) -> %s; %s\n",
 		beadID, status, target, tr.Why, tr.Assignee, tpl.SummarySuffix, reportedTo, ribbonOutcome)
+	if reportFailed != "" {
+		return fmt.Errorf("bead moved to %s, but the hand-off to %s was not delivered: %s\nRun: initech send %s %s to notify manually",
+			target, deliverTo, reportFailed, deliverTo, shellSingleQuote(report))
+	}
 	return nil
+}
+
+// shellSingleQuote quotes s for a POSIX shell, so a printed command can be
+// pasted as it is: the whole text in single quotes, each embedded quote as '\”.
+func shellSingleQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
 // deliverReportFor decides whether a delivered step reports, and whether it
