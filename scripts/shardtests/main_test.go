@@ -201,3 +201,38 @@ func TestCensus_NothingNeverPasses(t *testing.T) {
 		t.Fatal("shards that listed and ran nothing passed the census")
 	}
 }
+
+// AC 4, at run time: a GOFLAGS carrying -short would make every shard short,
+// so the run refuses before it lists or runs anything.
+func TestRunShard_RefusesAShortGOFLAGS(t *testing.T) {
+	t.Setenv("GOFLAGS", "-short")
+	err := runShard([]string{"-shards", "3", "-shard", "1", "-out", t.TempDir(), "github.com/nmelo/initech/internal/color"})
+	if err == nil || !strings.Contains(err.Error(), "never runs -short") {
+		t.Fatalf("runShard with GOFLAGS=-short: %v, want a refusal", err)
+	}
+}
+
+// Feed it nothing: a shard that selects no tests fails, and never passes
+// empty. The shard is chosen so it is empty for this package.
+func TestRunShard_AShardWithNoTestsFails(t *testing.T) {
+	const pkg = "github.com/nmelo/initech/internal/color"
+	all, err := listAll([]string{pkg})
+	if err != nil || len(all) == 0 {
+		t.Fatalf("setup: listing %s: %v (%d tests)", pkg, err, len(all))
+	}
+	const n = 1000
+	used := map[int]bool{}
+	for _, id := range all {
+		used[shardOf(id, n)] = true
+	}
+	empty := 0
+	for k := 1; k <= n && empty == 0; k++ {
+		if !used[k] {
+			empty = k
+		}
+	}
+	err = runShard([]string{"-shards", fmt.Sprint(n), "-shard", fmt.Sprint(empty), "-out", t.TempDir(), pkg})
+	if err == nil || !strings.Contains(err.Error(), "selected no tests") {
+		t.Fatalf("an empty shard: %v, want it to fail", err)
+	}
+}
