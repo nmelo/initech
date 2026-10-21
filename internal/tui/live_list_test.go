@@ -328,8 +328,8 @@ func listRenderToString(t *testing.T, tui *TUI, s tcell.SimulationScreen) string
 	return b.String()
 }
 
-// Two agents working at 4x3: two boxes filled and ten waiting tiles, each
-// with a border and the word. Regenerate only deliberately:
+// Two agents working at 4x3: two boxes filled and ten empty boxes, which
+// draw nothing (ini-lpnu). Regenerate only deliberately:
 //
 //	go test ./internal/tui/ -run TestLiveList_WaitingBoxesGolden -update-golden
 func TestLiveList_WaitingBoxesGolden(t *testing.T) {
@@ -343,11 +343,12 @@ func TestLiveList_WaitingBoxesGolden(t *testing.T) {
 	tui.layoutState.Overlay = false
 	altShiftL(tui)
 	if len(tui.plan.Waiting) != 10 {
-		t.Fatalf("%d waiting tiles, want 10 (12 boxes, 2 agents)", len(tui.plan.Waiting))
+		t.Fatalf("%d empty boxes, want 10 (12 boxes, 2 agents)", len(tui.plan.Waiting))
 	}
 	got := listRenderToString(t, tui, s)
-	if n := strings.Count(got, liveListWaiting); n != 10 {
-		t.Errorf("%q drawn %d times, want 10:\n%s", liveListWaiting, n, got)
+	assertEmptyBoxesBlank(t, tui, s, "golden frame")
+	if strings.Contains(got, "waiting") {
+		t.Errorf("an empty box draws a label:\n%s", got)
 	}
 	path := filepath.Join("testdata", "live_list_4x3_two_agents.golden")
 	if updateGolden() {

@@ -108,8 +108,8 @@ type RenderPlan struct {
 	// drawn; applyLayout writes it back.
 	ValidatedFocus string
 
-	// Waiting is the live list split's boxes no agent fills (ini-3g39),
-	// drawn as "waiting" tiles: a box is never left blank.
+	// Waiting is the live list split's boxes no agent fills (ini-3g39). They
+	// keep their place in the fixed grid and draw nothing (ini-lpnu).
 	Waiting []Region
 }
 

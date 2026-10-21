@@ -26,9 +26,6 @@ const (
 	liveListDefaultRows = 3
 	// liveListMaxRows bounds `grid 4xR`.
 	liveListMaxRows = 6
-	// liveListWaiting is drawn in every box no agent fills. Never a blank
-	// box: a blank region reads as a broken layout.
-	liveListWaiting = "waiting"
 )
 
 // liveListState is the state of an active live list split, nil when off.

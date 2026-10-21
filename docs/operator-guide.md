@@ -174,7 +174,7 @@ Both splits survive a restart of initech. Restarted from the live split, initech
 
 ### Live List Split
 
-Option+Shift+L (or `list` in the command bar) holds the focused agent on the left and shows the working agents on the right in a grid that never changes shape: four boxes across and three rows by default. The same agents qualify as in the live focus split: working agents and pinned agents, a pinned agent leaving while it is suspended, with the same one-change-per-second rule and ten-second hold. They fill the boxes in the Agents panel's order, left to right and top to bottom, so the grid reads like a list. When an agent stops, the agents after it move up a box to close the gap; when one starts, it takes its place in that order. A box with no agent shows a dim border and the word `waiting`.
+Option+Shift+L (or `list` in the command bar) holds the focused agent on the left and shows the working agents on the right in a grid that never changes shape: four boxes across and three rows by default. The same agents qualify as in the live focus split: working agents and pinned agents, a pinned agent leaving while it is suspended, with the same one-change-per-second rule and ten-second hold. They fill the boxes in the Agents panel's order, left to right and top to bottom, so the grid reads like a list. When an agent stops, the agents after it move up a box to close the gap; when one starts, it takes its place in that order. A cell with no agent stays empty.
 
 When more agents are working than there are boxes, the agents already in a box keep it and the others wait; when a box frees, the first waiting agent in the panel's order takes it. A pinned agent always gets a box.
 

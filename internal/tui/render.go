@@ -44,7 +44,7 @@ func (t *TUI) renderLiveFocusEmptyHint(s tcell.Screen, w, h int) {
 		return
 	}
 	if t.layoutState.ListRows > 0 {
-		return // the live list split draws its own waiting boxes (ini-3g39)
+		return // the live list split leaves its empty boxes empty (ini-lpnu)
 	}
 	msg := []rune(liveFocusNoneWorking)
 	left := liveFocusRightX(w)
@@ -57,41 +57,6 @@ func (t *TUI) renderLiveFocusEmptyHint(s tcell.Screen, w, h int) {
 	for i, ch := range msg {
 		if x+i < w {
 			s.SetContent(x+i, y, ch, nil, style)
-		}
-	}
-}
-
-// renderWaitingTiles draws each live list box no agent fills (ini-3g39): a
-// dim border and the word "waiting" in its middle, so a box is never blank.
-func renderWaitingTiles(s tcell.Screen, tiles []Region) {
-	style := tcell.StyleDefault.Foreground(tcell.ColorGray).Background(trueBlack)
-	for _, r := range tiles {
-		if r.W < 2 || r.H < 2 {
-			continue
-		}
-		right, bottom := r.X+r.W-1, r.Y+r.H-1
-		for x := r.X + 1; x < right; x++ {
-			s.SetContent(x, r.Y, '─', nil, style)
-			s.SetContent(x, bottom, '─', nil, style)
-		}
-		for y := r.Y + 1; y < bottom; y++ {
-			s.SetContent(r.X, y, '│', nil, style)
-			s.SetContent(right, y, '│', nil, style)
-		}
-		s.SetContent(r.X, r.Y, '┌', nil, style)
-		s.SetContent(right, r.Y, '┐', nil, style)
-		s.SetContent(r.X, bottom, '└', nil, style)
-		s.SetContent(right, bottom, '┘', nil, style)
-		msg := []rune(liveListWaiting)
-		x := r.X + (r.W-len(msg))/2
-		if x <= r.X {
-			x = r.X + 1
-		}
-		y := r.Y + r.H/2
-		for i, ch := range msg {
-			if x+i < right {
-				s.SetContent(x+i, y, ch, nil, style)
-			}
 		}
 	}
 }
@@ -164,7 +129,6 @@ func (t *TUI) renderFrame() {
 
 	t.renderEmptyViewerHint(s, w, h)
 	t.renderLiveFocusEmptyHint(s, w, h)
-	renderWaitingTiles(s, t.plan.Waiting)
 
 	// Draw panes from the render plan. No visibility checks needed.
 	for i, pr := range t.plan.Panes {
