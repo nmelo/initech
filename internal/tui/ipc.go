@@ -907,6 +907,10 @@ func unconfirmedReason(mismatch string, sawComposer, seen bool) string {
 	return "our text was never seen in the box"
 }
 
+// submitRetryDialogReason is the could-not-confirm reason when the one resend
+// is withheld because a dialog is open (ini-ytxc).
+const submitRetryDialogReason = "dialog open at the retry"
+
 // confirmAndRetrySubmit watches the Enter land; if the composer provably
 // still holds OUR body it resends Enter ONCE, and a second miss is surfaced
 // as NOT delivered, within about two seconds (ini-nma5 AC 2). An unknown
@@ -918,6 +922,16 @@ func confirmAndRetrySubmit(pane *Pane, ps *pendingSubmit) {
 		return
 	case submitUnknown:
 		pane.emitUnconfirmedSubmit(ps, why, time.Since(ps.withheldAt).Round(time.Second))
+		return
+	}
+	// NEVER INTO A DIALOG (ini-ytxc), the guard deliverWithheldSubmit has:
+	// the verdict above rests on a sample up to one poll old, and a
+	// permission prompt that opened since would take this Enter and select
+	// its highlighted option. Checked at the moment of pressing; under a
+	// dialog nothing is pressed and the sender is told, never counted taken.
+	if paneHasModal(pane) {
+		LogInfo("inject", "submit retry withheld: dialog open", "pane", pane.Name(), "mode", ps.mode, "text", ps.preview)
+		pane.emitUnconfirmedSubmit(ps, submitRetryDialogReason, time.Since(ps.withheldAt).Round(time.Second))
 		return
 	}
 	LogInfo("inject", "submit retry: Enter not taken, resending once", "pane", pane.Name(), "mode", ps.mode, "text", ps.preview)

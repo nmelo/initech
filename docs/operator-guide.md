@@ -341,7 +341,10 @@ with how many milliseconds after the Enter the box was seen without the message,
 because the message is usually seen during the wait before the Enter, that can read under 50, including
 0. A box showing Claude's queued-message line or the operator's own restored draft counts as cleared; a
 dialog on screen does not. If the message is still there after one second, initech
-presses Enter once more; if it is still there after that, it is reported as `NOT delivered (...)`. If
+presses Enter once more; if it is still there after that, it is reported as `NOT delivered (...)`. That
+second Enter is never pressed while a dialog is open: initech checks at the moment it would press, and
+under a dialog it presses nothing and reports `could not confirm delivery (...)` with the reason
+`dialog open at the retry`. If
 initech could not recognise the message in the box at all (no input box on screen, a placeholder with a
 different count, or other text only), it presses nothing and reports
 `could not confirm delivery (...)` in a toast, the event log and the inbox, with the reason. Check the
