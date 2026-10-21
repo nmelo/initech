@@ -22,7 +22,7 @@ Re-running `initech init` in an existing project is safe for your files: it neve
 
 Each agent's `CLAUDE.md` starts with a two-line generated header naming the template it came from and a hash of its contents. `initech add-agent <role> --regen` rewrites that agent's `CLAUDE.md` from the current template, for example after upgrading initech. It refuses a file you edited after it was generated, or one with no header, and says why; add `--force` to overwrite it anyway.
 
-Nothing changes in an existing project on its own. Its files change only when you rerun `initech init --force` (which rewrites the root and every agent's `CLAUDE.md`) or `initech add-agent <role> --regen`.
+Nothing changes in an existing project on its own. Its files change only when you rerun `initech init --force` (which rewrites the root and every agent's `CLAUDE.md`) or `initech add-agent <role> --regen`. Your `docs/`, `AGENTS.md` and `.gitignore` are never rewritten: init creates them when they are missing, with or without `--force`, and otherwise leaves them as they are.
 
 ### What Happens on Launch
 

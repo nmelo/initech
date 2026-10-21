@@ -159,3 +159,17 @@ func TestRunInit_NoRoleDirectoryBehavesAsBefore(t *testing.T) {
 	}
 	indexLockGone(t, root)
 }
+
+// ini-0h7u AC 4: the --force help says what it rewrites and what it never
+// touches, rather than "Overwrite existing files".
+func TestInitForceHelp_NamesWhatItRewrites(t *testing.T) {
+	f := initCmd.Flags().Lookup("force")
+	if f == nil {
+		t.Fatal("init has no --force flag")
+	}
+	for _, want := range []string{"root and every agent's CLAUDE.md", "docs/", "AGENTS.md", ".gitignore", "never overwritten"} {
+		if !strings.Contains(f.Usage, want) {
+			t.Errorf("--force help %q does not mention %q", f.Usage, want)
+		}
+	}
+}

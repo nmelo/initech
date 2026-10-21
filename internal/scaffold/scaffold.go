@@ -45,7 +45,7 @@ func Run(p *config.Project, opts Options) ([]string, error) {
 	}
 
 	// .gitignore
-	if path, err := writeFile(p.Root, ".gitignore", gitignoreContent, opts.Force); err != nil {
+	if path, err := writeIfAbsent(p.Root, ".gitignore", gitignoreContent); err != nil {
 		return nil, err
 	} else if path != "" {
 		progress("Creating .gitignore")
@@ -62,7 +62,7 @@ func Run(p *config.Project, opts Options) ([]string, error) {
 	}
 
 	// AGENTS.md
-	if path, err := writeFile(p.Root, "AGENTS.md", agentsContent, opts.Force); err != nil {
+	if path, err := writeIfAbsent(p.Root, "AGENTS.md", agentsContent); err != nil {
 		return nil, err
 	} else if path != "" {
 		progress("Creating AGENTS.md")
@@ -93,7 +93,7 @@ func Run(p *config.Project, opts Options) ([]string, error) {
 
 	for _, dt := range docTemplates {
 		content := roles.Render(dt.template, vars)
-		if path, err := writeFile(docsDir, dt.filename, content, opts.Force); err != nil {
+		if path, err := writeIfAbsent(docsDir, dt.filename, content); err != nil {
 			return nil, err
 		} else if path != "" {
 			progress("Creating docs/" + dt.filename)
@@ -113,7 +113,7 @@ func Run(p *config.Project, opts Options) ([]string, error) {
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			return nil, fmt.Errorf("create %s/: %w", ff.dir, err)
 		}
-		if path, err := writeFile(dir, ff.name, ff.content, false); err != nil {
+		if path, err := writeIfAbsent(dir, ff.name, ff.content); err != nil {
 			return nil, err
 		} else if path != "" {
 			rel := ff.dir + "/" + ff.name
@@ -227,6 +227,17 @@ func WriteCharter(p *config.Project, roleName string) (string, error) {
 		return "", fmt.Errorf("create %s/: %w", roleName, err)
 	}
 	return writeFile(roleDir, "CLAUDE.md", RenderCharter(p, p.Root, roleName), true)
+}
+
+// writeIfAbsent writes a file only when it does not exist yet, force or not.
+// It is for every file the project owns once created: the product docs,
+// AGENTS.md, .gitignore and the fleet and skills files (ini-0h7u). init
+// --force rewrites exactly the charters the operator guide names, the root
+// CLAUDE.md and each agent's CLAUDE.md; those are the only callers of
+// writeFile with opts.Force. Routing the rest through this helper keeps a
+// new file from inheriting --force by copying the nearest writeFile call.
+func writeIfAbsent(dir, name, content string) (string, error) {
+	return writeFile(dir, name, content, false)
 }
 
 // writeFile writes content to a file, respecting idempotency.

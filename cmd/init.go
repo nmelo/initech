@@ -43,7 +43,7 @@ interactive prompts collect the project configuration.`,
 }
 
 func init() {
-	initCmd.Flags().BoolVar(&initForce, "force", false, "Overwrite existing files")
+	initCmd.Flags().BoolVar(&initForce, "force", false, "Rewrite the root and every agent's CLAUDE.md from the current templates, and add missing commented examples to initech.yaml; docs/, AGENTS.md, .gitignore, fleet/ and skills/ are never overwritten")
 	rootCmd.AddCommand(initCmd)
 }
 
