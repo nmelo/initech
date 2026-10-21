@@ -128,7 +128,7 @@ Keys always go to the highlighted pane, in every layout: whatever you type, past
 
 ### Activity Dots (Overlay Panel)
 
-The overlay (toggle with Alt+s) is your dashboard.
+The overlay (toggle with Alt+s, or `panel` in the command bar) is your dashboard. It comes back after a relaunch shown or hidden as you left it; a second window always starts with it shown.
 
 | Dot | Meaning |
 |-----|---------|

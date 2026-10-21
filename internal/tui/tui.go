@@ -720,6 +720,15 @@ func (t *TUI) adoptLoadedSplit(viewer bool) {
 	t.savedSplit, t.savedHeld, t.savedRows = split, held, rows
 }
 
+// adoptLoadedOverlay keeps the overlay as layout.yaml left it in window 1
+// (ini-ye1x). A viewer starts shown: its arrangement is session-scoped and
+// starts fresh on every attach (ini-qodm), and it never writes the file.
+func (t *TUI) adoptLoadedOverlay(viewer bool) {
+	if viewer {
+		t.layoutState.Overlay = true
+	}
+}
+
 // saveIfSplitMoved saves the layout when the split, or the pane it holds on
 // the left, differs from what layout.yaml last got (ini-aa8a). Entering and
 // leaving the live split, its drop to the Focus split, and every way focus
@@ -1344,8 +1353,10 @@ func Run(cfg Config) error {
 		t.initLiveEngine(0)
 	}
 
-	// Put back the split the file was saved in (ini-aa8a).
+	// Put back the split the file was saved in (ini-aa8a), and the overlay as
+	// it was left (ini-ye1x).
 	t.adoptLoadedSplit(viewer)
+	t.adoptLoadedOverlay(viewer)
 
 	// Now that panes exist, compute the full render plan.
 	t.applyLayout()

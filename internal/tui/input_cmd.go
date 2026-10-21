@@ -659,8 +659,9 @@ func (t *TUI) cmdZoom() bool {
 }
 
 func (t *TUI) cmdPanel() bool {
-	// Overlay toggle is deliberately not persisted (see Alt+s comment).
+	// Saved at once, as Alt+s does (ini-ye1x).
 	t.layoutState.Overlay = !t.layoutState.Overlay
+	t.saveLayoutIfConfigured()
 	return false
 }
 

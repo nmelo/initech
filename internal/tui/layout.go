@@ -535,8 +535,8 @@ func DefaultLayoutState(paneNames []string) LayoutState {
 // ── Layout Persistence ──────────────────────────────────────────────
 
 // PersistentLayout is the subset of LayoutState that survives sessions.
-// Focused pane is deliberately excluded (momentary choice, not a preference).
-// Overlay and weights are excluded (not layout-changing from the user's perspective).
+// Focused pane is deliberately excluded (momentary choice, not a preference),
+// and so are weights.
 type PersistentLayout struct {
 	Grid         string `yaml:"grid"`                    // e.g. "3x2"
 	GridExplicit bool   `yaml:"grid_explicit,omitempty"` // True = user chose CxR explicitly; don't auto-resize.
@@ -567,6 +567,10 @@ type PersistentLayout struct {
 	// ListRows is the live list split's row count, written only while that
 	// split is on (ini-3g39). Absent means liveListDefaultRows.
 	ListRows int `yaml:"list_rows,omitempty"`
+	// Overlay is whether the Agents overlay is shown (ini-ye1x). Every save
+	// writes it, true or false; a file without it (written before the key
+	// existed) loads shown, and an older initech ignores it.
+	Overlay *bool `yaml:"overlay,omitempty"`
 }
 
 // The two splits layout.yaml can carry (ini-aa8a).
@@ -696,6 +700,7 @@ func SaveLayout(projectRoot string, state LayoutState) error {
 		Split:        state.Split,
 		Held:         state.Held,
 		ListRows:     state.ListRows,
+		Overlay:      &state.Overlay,
 	}
 	// Hidden/Protected/LivePinned are deliberately NOT written: they are
 	// session-global and live in fleet-state.yaml (ini-9ka.10). A layout file
@@ -901,7 +906,7 @@ func LoadLayout(projectRoot string, paneKeys []string) (LayoutState, bool) {
 		Hidden:       hidden,
 		Protected:    protected,
 		Order:        order,
-		Overlay:      true, // Always start with overlay visible.
+		Overlay:      pl.Overlay == nil || *pl.Overlay, // Absent: shown (ini-ye1x).
 		LiveAuto:     pl.LiveAuto,
 		Groups:       groups,
 		GroupOf:      groupOf,

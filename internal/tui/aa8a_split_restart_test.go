@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -301,8 +302,11 @@ func TestAa8a_AV2254FileLoadsAsItDidThere(t *testing.T) {
 		if err := SaveLayout(out, aa8aGoldenInputs[name]); err != nil {
 			t.Fatal(err)
 		}
-		if b, _ := os.ReadFile(layoutPath(out)); string(b) != string(golden) {
-			t.Errorf("%s: saved\n%s\nwant v2.25.4's bytes\n%s", name, b, golden)
+		// v2.25.4's bytes plus the overlay key, which every save now writes
+		// last (ini-ye1x).
+		wantSaved := string(golden) + fmt.Sprintf("overlay: %v\n", aa8aGoldenInputs[name].Overlay)
+		if b, _ := os.ReadFile(layoutPath(out)); string(b) != wantSaved {
+			t.Errorf("%s: saved\n%s\nwant v2.25.4's bytes and the overlay key\n%s", name, b, wantSaved)
 		}
 	}
 }

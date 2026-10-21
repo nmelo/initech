@@ -159,10 +159,10 @@ func (t *TUI) handleKey(ev *tcell.EventKey) bool {
 				t.applyLayoutPreset(int(ev.Rune() - '1'))
 				return false
 			case 's':
-				// Overlay toggle is deliberately not persisted. It's a
-				// lightweight view preference (like scrollback position),
-				// not a structural layout change. Always starts visible.
+				// Saved at once, so a relaunch shows the overlay as it was
+				// left (ini-ye1x). A viewer's save is refused in the helper.
 				t.layoutState.Overlay = !t.layoutState.Overlay
+				t.saveLayoutIfConfigured()
 				return false
 			case 'z':
 				t.layoutState.Zoomed = !t.layoutState.Zoomed
