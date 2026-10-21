@@ -804,11 +804,10 @@ func (t *TUI) resumePane(pane *Pane, senderName string) error {
 					LogWarn("resource", "failed to clear persisted suspension", "agent", np.name, "err", err)
 				}
 				np.Start()
-				t.panes[i] = np
-				// The window server serves pane OBJECTS; hand it the
-				// successor or every attached window loses this agent's
+				// The window server serves pane OBJECTS; replacePane hands it
+				// the successor, or every attached window loses this agent's
 				// stream and input on the first wake.
-				t.windowSrv.ReplacePane(np)
+				t.replacePane(i, np)
 				t.applyLayout()
 				replaced = true
 

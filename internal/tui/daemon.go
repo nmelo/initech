@@ -1064,17 +1064,85 @@ func (d *Daemon) currentPane(name string) *Pane {
 // client connections live in the sink, not the pane). Without this, sinks
 // wired once at server start die with the first replaced pane and a woken
 // agent goes dark in every other window.
+//
+// A name the daemon does not serve yet is added instead (ini-813u): a pane
+// hot-added before window 1 restarted it would otherwise be dropped here
+// without a word, and no window would ever see it.
 func (d *Daemon) ReplaceLocalPane(np *Pane) {
 	d.panesMu.Lock()
-	defer d.panesMu.Unlock()
+	found := false
 	for i, p := range d.panes {
 		if p.Name() == np.Name() {
 			d.panes[i] = np
+			found = true
 			break
 		}
 	}
+	if !found {
+		d.panesMu.Unlock()
+		d.AddLocalPane(np)
+		return
+	}
+	defer d.panesMu.Unlock()
 	if ms := d.multiSinks[np.Name()]; ms != nil {
 		np.SetNetworkSink(ms)
+	}
+}
+
+// AddLocalPane serves a pane window 1 has just added (ini-813u): a ring
+// buffer and MultiSink like the panes wired at server start, the pane's
+// network sink, and a stream_added to every connected window -- the reload
+// path's announcement, so a second window lists and streams the new agent
+// without reconnecting. A name already served is replaced instead.
+func (d *Daemon) AddLocalPane(p *Pane) {
+	d.panesMu.Lock()
+	for _, existing := range d.panes {
+		if existing.Name() == p.Name() {
+			d.panesMu.Unlock()
+			d.ReplaceLocalPane(p)
+			return
+		}
+	}
+	rb := NewRingBuf(DefaultRingBufSize)
+	d.ringBufs[p.Name()] = rb
+	ms := NewMultiSink()
+	ms.Add(rb)
+	d.multiSinks[p.Name()] = ms
+	p.SetNetworkSink(ms)
+	d.panes = append(d.panes, p)
+	d.panesMu.Unlock()
+
+	d.sessionsMu.Lock()
+	var peers []string
+	for peer := range d.clientSessions {
+		peers = append(peers, peer)
+	}
+	d.sessionsMu.Unlock()
+	for _, peer := range peers {
+		if err := d.allocateStreamForPushedPane(p.Name(), peer); err != nil {
+			LogWarn("window-server", "announce added pane failed", "agent", p.Name(), "window", peer, "err", err)
+		}
+	}
+}
+
+// RemoveLocalPane stops serving the named pane (ini-813u) and tells every
+// connected window, which drops it live (agent_removed, the removal twin of
+// stream_added). A send for it then answers agent not found.
+func (d *Daemon) RemoveLocalPane(name string) {
+	d.panesMu.Lock()
+	found := false
+	for i, p := range d.panes {
+		if p.Name() == name {
+			d.panes = append(d.panes[:i], d.panes[i+1:]...)
+			found = true
+			break
+		}
+	}
+	delete(d.multiSinks, name)
+	delete(d.ringBufs, name)
+	d.panesMu.Unlock()
+	if found {
+		d.broadcastAgentRemoved(name)
 	}
 }
 

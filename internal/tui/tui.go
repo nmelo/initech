@@ -1133,7 +1133,7 @@ func Run(cfg Config) error {
 			staggered = append(staggered, p)
 		}
 		old := len(t.panes)
-		t.panes = append(t.panes, p)
+		t.appendPane(p)
 		t.logPanesMutation("create-pane", old)
 		LogDebug("pane", "created", "name", acfg.Name, "dir", acfg.Dir, "mode", plan[i])
 	}
@@ -1298,7 +1298,7 @@ func Run(cfg Config) error {
 				for i, p := range t.panes {
 					rp, ok := p.(*RemotePane)
 					if ok && rp.Host() == peerName && rp.Name() == agentName {
-						t.panes = append(t.panes[:i], t.panes[i+1:]...)
+						t.removePaneAt(i)
 						t.logPanesMutation("peer-pane-removed", len(t.panes)+1)
 						break
 					}
@@ -1675,7 +1675,7 @@ func (t *TUI) handlePeerUpdate(peerName string, newPanes []PaneView, connected b
 		}
 	}
 	oldLen := len(t.panes)
-	t.panes = kept
+	t.setRemotePanes(kept)
 	t.logPanesMutation("peer-update", oldLen)
 	if len(t.layoutState.Order) > 0 {
 		reorderPanes(t.panes, t.layoutState.Order)
@@ -1722,7 +1722,7 @@ func (t *TUI) handlePeerPaneAdded(peerName string, pane PaneView) {
 		vp.SetVisible(!t.layoutState.Hidden[agentKey(pane)])
 	}
 	oldLen := len(t.panes)
-	t.panes = append(t.panes, pane)
+	t.appendPane(pane)
 	t.logPanesMutation("peer-pane-added", oldLen)
 	if len(t.layoutState.Order) > 0 {
 		reorderPanes(t.panes, t.layoutState.Order)

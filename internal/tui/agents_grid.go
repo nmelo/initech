@@ -922,7 +922,7 @@ func (t *TUI) agentsMoveV(cells []gridCell, delta int) {
 			// Within-group order IS t.panes' relative order (no separate
 			// per-group list), so swapping the two panes' positions is
 			// exactly a same-column cell swap.
-			t.panes[sel], t.panes[next.paneIdx] = t.panes[next.paneIdx], t.panes[sel]
+			t.swapPanes(sel, next.paneIdx)
 			t.agentsPersistOrder()
 		}
 		t.agents.selected = next.paneIdx
@@ -1015,14 +1015,10 @@ func (t *TUI) agentsGrabSplice(sel, destPaneIdx int, group string, after bool) {
 	if after {
 		insertAt++
 	}
-	t.panes = append(t.panes[:sel], t.panes[sel+1:]...)
 	if insertAt > sel {
 		insertAt--
 	}
-	if insertAt > len(t.panes) {
-		insertAt = len(t.panes)
-	}
-	t.panes = append(t.panes[:insertAt], append([]PaneView{ag}, t.panes[insertAt:]...)...)
+	t.movePane(sel, insertAt)
 	t.agents.selected = insertAt
 	t.setPaneGroup(ag, group)
 }
@@ -1040,14 +1036,10 @@ func (t *TUI) agentsGrabIntoEmptyColumn(sel int, label string) {
 	}
 	members := t.agentsGroupMembers()
 	insertAt := t.agentsFlatInsertionForEmptyBand(members, label)
-	t.panes = append(t.panes[:sel], t.panes[sel+1:]...)
 	if insertAt > sel {
 		insertAt--
 	}
-	if insertAt > len(t.panes) {
-		insertAt = len(t.panes)
-	}
-	t.panes = append(t.panes[:insertAt], append([]PaneView{ag}, t.panes[insertAt:]...)...)
+	t.movePane(sel, insertAt)
 	t.agents.selected = insertAt
 	t.setPaneGroup(ag, label)
 }
