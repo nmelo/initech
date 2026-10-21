@@ -1407,7 +1407,7 @@ func Run(cfg Config) error {
 	go renderWatchdog(&t.lastRenderAt, 10*time.Second, t.projectRoot, t.version, t.quitCh)
 
 	// Render at ~30 fps.
-	ticker := time.NewTicker(33 * time.Millisecond)
+	ticker := time.NewTicker(maintenanceFrameInterval)
 	defer ticker.Stop()
 
 	LogInfo("main-loop", "entering event loop", "ipcCh_cap", cap(t.ipcCh), "panes", len(t.panes))

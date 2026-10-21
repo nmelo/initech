@@ -129,9 +129,7 @@ func (t *TUI) renderFrame() {
 			// state that updateActivity is about to rank against byte recency
 			// (ini-2x8.2). The other order would show the agent as running for
 			// one extra frame every time it starts waiting.
-			lp.refreshWaitingState()
-			lp.refreshTier2WaitingState()
-			lp.updateActivity()
+			maintainPaneFrame(lp)
 		}
 	}
 

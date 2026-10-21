@@ -2190,7 +2190,13 @@ func (p *Pane) takePendingSubmit(ps *pendingSubmit) bool {
 // repainted composer, and a pane that has said nothing has offered none. The
 // only honest act at the deadline is to tell the operator.
 func (t *TUI) sweepWithheldSubmits(now time.Time) {
-	for _, pv := range t.panes {
+	sweepWithheldSubmitsIn(t.panes, now)
+}
+
+// sweepWithheldSubmitsIn is sweepWithheldSubmits over a given pane list, so
+// a daemon's panes get the same bound (ini-dbqy).
+func sweepWithheldSubmitsIn(panes []PaneView, now time.Time) {
+	for _, pv := range panes {
 		p, ok := pv.(*Pane)
 		if !ok {
 			continue

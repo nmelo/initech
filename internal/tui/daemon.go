@@ -57,6 +57,11 @@ type Daemon struct {
 	multiSinks map[string]*MultiSink // Per-pane fan-out sink keyed by agent name.
 	lastSizes  map[string][2]int     // Last viewer-applied {rows, cols} per agent — survives restarts (ini-ap3i).
 
+	// maintainMu makes the maintenance tick single-flight and guards
+	// lastModalMaint, its once-a-second clock (ini-dbqy).
+	maintainMu     sync.Mutex
+	lastModalMaint time.Time
+
 	// liveStreams is the per-(peer, agent) client stream, so a mid-session
 	// resync can replay to THE REQUESTING WINDOW ONLY (ini-dr03). Replaying
 	// through the MultiSink would send one window's recovery to every window,
@@ -477,6 +482,13 @@ func RunDaemon(cfg DaemonConfig) error {
 	}
 	d.consolef("  pid:     %d\n", os.Getpid())
 
+	// The hosted agents get the same maintenance a TUI pane gets (ini-dbqy).
+	// RunDaemon only: inside the TUI the same Daemon type serves window 1's
+	// panes, which the render loop already maintains.
+	stopMaint := make(chan struct{})
+	defer close(stopMaint)
+	go d.runMaintenance(stopMaint, maintenanceFrameInterval)
+
 	d.consoleln("\nWaiting for connections... (Ctrl+C to stop)")
 
 	for {
@@ -498,6 +510,43 @@ func RunDaemon(cfg DaemonConfig) error {
 			go d.handleConnection(conn)
 		}
 	}
+}
+
+// runMaintenance ticks d.maintain every interval until stop closes.
+func (d *Daemon) runMaintenance(stop <-chan struct{}, interval time.Duration) {
+	tick := time.NewTicker(interval)
+	defer tick.Stop()
+	for {
+		select {
+		case <-stop:
+			return
+		case now := <-tick.C:
+			d.maintain(now)
+		}
+	}
+}
+
+// maintain runs one maintenance tick over the panes the daemon hosts: the
+// render loop's per-frame pass, then the once-a-second modal pass, through
+// the same functions the TUI calls (maintenance.go). Single-flight: a tick
+// that finds another still running is skipped, never run beside it.
+//
+// Outcomes are reported where the TUI would emit an event: the daemon's
+// panes have no event channel and no control message carries an AgentEvent
+// to a connected initech, so the daemon log line, which every outcome
+// already writes, is the report (ini-dbqy names the gap).
+func (d *Daemon) maintain(now time.Time) {
+	if !d.maintainMu.TryLock() {
+		return
+	}
+	defer d.maintainMu.Unlock()
+	panes := d.snapshotPanes()
+	views := make([]PaneView, 0, len(panes))
+	for _, p := range panes {
+		maintainPaneFrame(p)
+		views = append(views, p)
+	}
+	maintainModal(views, now, &d.lastModalMaint)
 }
 
 // gracefulShutdown notifies all connected clients and closes sessions.
