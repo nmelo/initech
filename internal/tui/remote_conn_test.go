@@ -23,6 +23,10 @@ type remotePeerServerConfig struct {
 	// sends no reply (a peer that never answers); a reply whose Action is
 	// "__close__" closes the connection instead.
 	onControl func(ControlCmd) *ControlResp
+	// afterMap, when set, is handed the server's session and control stream
+	// once the stream map is sent (ini-c5jv), so a test can open streams and
+	// announce them as window 1 does after attach.
+	afterMap func(session *yamux.Session, ctrl net.Conn)
 }
 
 type remotePeerServer struct {
@@ -139,6 +143,12 @@ func (srv *remotePeerServer) serve(cfg remotePeerServerConfig) {
 	}
 	if err := writeServerMessage(ctrl, streamMap); err != nil {
 		srv.reportErr(err)
+		return
+	}
+
+	if cfg.afterMap != nil {
+		cfg.afterMap(session, ctrl)
+		<-srv.closeCh
 		return
 	}
 

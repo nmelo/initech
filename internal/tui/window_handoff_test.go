@@ -11,9 +11,11 @@ package tui
 import (
 	"bufio"
 	"encoding/json"
+	"fmt"
 	"net"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -303,5 +305,122 @@ func TestWindowHandoff_NoServerAndAFailedSpawn(t *testing.T) {
 	}
 	if ws.daemon.currentPane("eng1") != keep || tui2.panes[0] != PaneView(keep) {
 		t.Fatal("a failed spawn changed what is listed or served")
+	}
+}
+
+// ini-c5jv AC 4: window 1 adding an agent and a peer's configure_agent each
+// open a stream and announce it on the same window's session. Under the
+// window's write lock the announcements leave in stream order (stream ids
+// are issued in open order, so the announced ids rise). The seam holds the
+// first open's announcement until the other has opened, which, without the
+// lock, sends the later stream's announcement first.
+func TestStreamAnnounce_ConcurrentAddsAnnounceInStreamOrder(t *testing.T) {
+	_, ws := handoffTUI(t, handoffCatPane(t))
+	d := ws.daemon
+	session, ctrl, _ := dialWindow(t, ws.Addr(), "window2")
+	defer session.Close()
+	defer ctrl.Close()
+	acceptStreams(t, session)
+
+	announced := make(chan uint32, 512)
+	go func() {
+		sc := NewIPCScanner(ctrl)
+		for sc.Scan() {
+			var m StreamAddedMsg
+			if json.Unmarshal(sc.Bytes(), &m) == nil && m.Action == streamAddedAction {
+				announced <- m.StreamID
+			}
+		}
+	}()
+
+	var calls atomic.Int32
+	var second chan struct{}
+	d.afterPushedStreamOpen = func(string) {
+		if calls.Add(1)%2 == 1 {
+			select {
+			case <-second:
+				time.Sleep(10 * time.Millisecond) // let the other announce first
+			case <-time.After(50 * time.Millisecond):
+			}
+			return
+		}
+		close(second)
+	}
+
+	const rounds = 100
+	var last uint32
+	for i := 0; i < rounds; i++ {
+		second = make(chan struct{})
+		addName, cfgName := fmt.Sprintf("add%d", i), fmt.Sprintf("cfg%d", i)
+		line, _ := json.Marshal(ConfigureAgentCmd{Action: "configure_agent", Name: cfgName, Command: []string{"/bin/cat"}})
+		start := make(chan struct{})
+		var wg sync.WaitGroup
+		wg.Add(2)
+		go func() { defer wg.Done(); <-start; d.AddLocalPane(testPane(addName)) }()
+		go func() {
+			defer wg.Done()
+			<-start
+			if resp := d.handleConfigureAgent(line, "window2"); !resp.OK {
+				t.Errorf("configure_agent %s: %+v", cfgName, resp)
+			}
+		}()
+		close(start)
+		wg.Wait()
+		for got := 0; got < 2; got++ {
+			select {
+			case id := <-announced:
+				if id <= last {
+					t.Fatalf("round %d: stream %d was announced after stream %d: announcements are out of stream order", i, id, last)
+				}
+				last = id
+			case <-time.After(5 * time.Second):
+				t.Fatalf("round %d: only %d of 2 announcements arrived", i, got)
+			}
+		}
+		d.removePane(cfgName)
+		d.RemoveLocalPane(addName)
+	}
+}
+
+// ini-c5jv: window 1's main loop never waits on a window's network write.
+// With a window's write lock held (a wedged window), adding and removing an
+// agent still return at once; the announcements go out once it frees.
+func TestStreamAnnounce_AddAndRemoveNeverWaitOnAWindow(t *testing.T) {
+	_, ws := handoffTUI(t, handoffCatPane(t))
+	d := ws.daemon
+	session, ctrl, _ := dialWindow(t, ws.Addr(), "window2")
+	defer session.Close()
+	defer ctrl.Close()
+	acceptStreams(t, session)
+	sc := NewIPCScanner(ctrl)
+
+	d.sessionsMu.Lock()
+	wmu := d.clientCtrlMu["window2"]
+	d.sessionsMu.Unlock()
+	if wmu == nil {
+		t.Fatal("setup: the window has no write lock")
+	}
+	// returnsAtOnce runs op with the window's write lock held, as a wedged
+	// window would hold it, and requires op to return regardless.
+	returnsAtOnce := func(what string, op func()) {
+		t.Helper()
+		wmu.Lock()
+		returned := make(chan struct{})
+		go func() { op(); close(returned) }()
+		select {
+		case <-returned:
+			wmu.Unlock()
+		case <-time.After(time.Second):
+			wmu.Unlock()
+			t.Fatalf("%s waited on a window's write lock: window 1's main loop would freeze", what)
+		}
+	}
+	returnsAtOnce("adding an agent", func() { d.AddLocalPane(testPane("eng9")) })
+	if _, ok := readControl(t, ctrl, sc, func(a, n string) bool { return a == streamAddedAction && n == "eng9" }); !ok {
+		t.Fatal("no stream_added for eng9 once the window freed")
+	}
+	returnsAtOnce("removing an agent", func() { d.RemoveLocalPane("eng9") })
+	if _, ok := readControl(t, ctrl, sc, func(a, n string) bool { return a == "agent_removed" && n == "eng9" }); !ok {
+		t.Fatal("no agent_removed for eng9 once the window freed")
 	}
 }

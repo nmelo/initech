@@ -34,6 +34,14 @@ type ControlMux struct {
 	done      chan struct{}     // Closed when readLoop exits.
 	onRequest RequestHandler    // Handler for incoming commands (ID + Action). May be nil.
 	requests  *targetSerializer // Runs incoming commands off readLoop, in order per target.
+
+	// stream_added announcements never share events' drop-oldest buffer: a
+	// lost one leaves an agent's stream unbound in this window (ini-c5jv).
+	// They queue here instead, unbounded (one entry per agent window 1 adds),
+	// and annReady signals that the queue is non-empty.
+	annMu    sync.Mutex
+	anns     []ControlResp
+	annReady chan struct{}
 }
 
 // NewControlMux creates a multiplexer for the given control stream connection
@@ -43,6 +51,7 @@ func NewControlMux(conn net.Conn) *ControlMux {
 		conn:     conn,
 		pending:  make(map[string]chan ControlResp),
 		events:   make(chan ControlResp, 32),
+		annReady: make(chan struct{}, 1),
 		done:     make(chan struct{}),
 		requests: newTargetSerializer(),
 	}
@@ -182,6 +191,33 @@ func (m *ControlMux) Close() {
 	m.conn.Close()
 }
 
+// streamAddedAction announces a stream window 1 opened for an agent it added.
+const streamAddedAction = "stream_added"
+
+// Announcements is signalled when stream_added announcements are waiting;
+// TakeAnnouncements returns them.
+func (m *ControlMux) Announcements() <-chan struct{} { return m.annReady }
+
+// TakeAnnouncements returns every queued stream_added in arrival order and
+// empties the queue.
+func (m *ControlMux) TakeAnnouncements() []ControlResp {
+	m.annMu.Lock()
+	defer m.annMu.Unlock()
+	out := m.anns
+	m.anns = nil
+	return out
+}
+
+func (m *ControlMux) queueAnnouncement(resp ControlResp) {
+	m.annMu.Lock()
+	m.anns = append(m.anns, resp)
+	m.annMu.Unlock()
+	select {
+	case m.annReady <- struct{}{}:
+	default: // already signalled; the consumer takes the whole queue
+	}
+}
+
 // readLoop reads JSON lines from the control stream and routes them to
 // waiting callers (by ID) or to the events channel (no ID).
 func (m *ControlMux) readLoop() {
@@ -239,6 +275,8 @@ func (m *ControlMux) readLoop() {
 					m.writeMu.Unlock()
 				})
 			}
+		} else if resp.Action == streamAddedAction {
+			m.queueAnnouncement(resp)
 		} else {
 			// Unsolicited event: send to the events channel (non-blocking).
 			select {

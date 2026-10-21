@@ -40,6 +40,9 @@ type peerConn struct {
 	// this window plans its agents on the first frame instead of rendering
 	// nothing until the first broadcast arrives.
 	helloOwner map[string]string
+	// binder pairs streams window 1 opens after attach with their
+	// stream_added by id (ini-c5jv). Set by consumeEvents; nil until then.
+	binder *streamBinder
 }
 
 // Close releases connection resources: control mux, yamux session (which

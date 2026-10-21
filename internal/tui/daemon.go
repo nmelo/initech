@@ -139,6 +139,16 @@ type Daemon struct {
 	clientSessions map[string]*yamux.Session // peer name -> yamux session
 	clientCtrlMu   map[string]*sync.Mutex    // per-client mutex for ctrl stream writes
 
+	// Stream-on-create (ini-c5jv). announceMu stands in for a window's write
+	// lock when it has none, so open-then-announce is always serialised.
+	// announcer runs window 1's per-window add and remove announcements off
+	// the caller (window 1's main goroutine), in order per agent.
+	// afterPushedStreamOpen is a test seam between open and announce.
+	announceMu            sync.Mutex
+	announcerOnce         sync.Once
+	announcer             *targetSerializer
+	afterPushedStreamOpen func(agent string)
+
 	// Pending forward request responses. forwardToClient registers a channel
 	// here before writing; handleControlStream delivers the response.
 	fwdPendingMu sync.Mutex
@@ -1112,17 +1122,30 @@ func (d *Daemon) AddLocalPane(p *Pane) {
 	d.panes = append(d.panes, p)
 	d.panesMu.Unlock()
 
+	// The windows attached now: one attaching later gets the agent from its
+	// own handshake. Announced off this goroutine (window 1's main loop),
+	// which must never wait on a window's network write.
 	d.sessionsMu.Lock()
 	var peers []string
 	for peer := range d.clientSessions {
 		peers = append(peers, peer)
 	}
 	d.sessionsMu.Unlock()
-	for _, peer := range peers {
-		if err := d.allocateStreamForPushedPane(p.Name(), peer); err != nil {
-			LogWarn("window-server", "announce added pane failed", "agent", p.Name(), "window", peer, "err", err)
+	name := p.Name()
+	d.announce(name, func() {
+		for _, peer := range peers {
+			if err := d.allocateStreamForPushedPane(name, peer); err != nil {
+				LogWarn("window-server", "announce added pane failed", "agent", name, "window", peer, "err", err)
+			}
 		}
-	}
+	})
+}
+
+// announce runs fn off the caller, after any earlier announcement for the
+// same agent, so a window hears an agent's add and removal in order.
+func (d *Daemon) announce(agent string, fn func()) {
+	d.announcerOnce.Do(func() { d.announcer = newTargetSerializer() })
+	d.announcer.Run(agent, fn)
 }
 
 // RemoveLocalPane stops serving the named pane (ini-813u) and tells every
@@ -1142,7 +1165,7 @@ func (d *Daemon) RemoveLocalPane(name string) {
 	delete(d.ringBufs, name)
 	d.panesMu.Unlock()
 	if found {
-		d.broadcastAgentRemoved(name)
+		d.announce(name, func() { d.broadcastAgentRemoved(name) })
 	}
 }
 

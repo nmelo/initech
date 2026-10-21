@@ -174,6 +174,11 @@ func (d *Daemon) handleConfigureAgent(line []byte, owner string) ControlResp {
 // pane's MultiSink, keystrokes back into its PTY), and sends a stream_added
 // control message so the client can attach a RemotePane.
 //
+// The open and the announcement happen under the window's control-write
+// lock, so on each session announcements leave in the order their streams
+// were opened (ini-c5jv). The viewer pairs them by stream id regardless; the
+// lock keeps the order honest for any viewer that does not.
+//
 // Returns nil if the owner is not currently connected (reconnect path will
 // handle it via hello_ok).
 func (d *Daemon) allocateStreamForPushedPane(agentName, owner string) error {
@@ -186,7 +191,17 @@ func (d *Daemon) allocateStreamForPushedPane(agentName, owner string) error {
 	if session == nil || ctrl == nil {
 		return nil // Owner disconnected; not an error.
 	}
+	if ctrlMu == nil {
+		ctrlMu = &d.announceMu
+	}
+	ctrlMu.Lock()
+	defer ctrlMu.Unlock()
 
+	// Checked under the lock: an agent removed meanwhile is not announced.
+	p := d.currentPane(agentName)
+	if p == nil {
+		return fmt.Errorf("agent %q is not served", agentName)
+	}
 	stream, err := session.Open()
 	if err != nil {
 		return fmt.Errorf("open yamux stream: %w", err)
@@ -197,31 +212,22 @@ func (d *Daemon) allocateStreamForPushedPane(agentName, owner string) error {
 		return fmt.Errorf("unexpected stream type")
 	}
 	streamID := ys.StreamID()
+	if d.afterPushedStreamOpen != nil {
+		d.afterPushedStreamOpen(agentName)
+	}
 
 	// Serve the stream both ways, exactly like a stream opened at attach:
 	// downstream PTY bytes through the pane's multisink, and the client's
 	// keystrokes upstream into the PTY. Output alone left a pushed agent
 	// watchable but untypeable in the other window (ini-813u).
-	p := d.currentPane(agentName)
-	if p == nil {
-		stream.Close()
-		return fmt.Errorf("agent %q is not served", agentName)
-	}
 	go func() {
 		defer stream.Close()
 		d.streamAgentLive(p, stream, owner)
 	}()
 
 	// Send stream_added on the control channel so the client opens a RemotePane.
-	msg := StreamAddedMsg{Action: "stream_added", StreamID: streamID, Name: agentName}
-	if ctrlMu != nil {
-		ctrlMu.Lock()
-		err = writeJSON(ctrl, msg)
-		ctrlMu.Unlock()
-	} else {
-		err = writeJSON(ctrl, msg)
-	}
-	if err != nil {
+	msg := StreamAddedMsg{Action: streamAddedAction, StreamID: streamID, Name: agentName}
+	if err := writeJSON(ctrl, msg); err != nil {
 		return fmt.Errorf("send stream_added: %w", err)
 	}
 	return nil

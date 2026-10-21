@@ -6,10 +6,12 @@ package tui
 import (
 	"errors"
 	"fmt"
+	"net"
 	"sort"
 	"sync"
 	"time"
 
+	"github.com/hashicorp/yamux"
 	"github.com/nmelo/initech/internal/config"
 )
 
@@ -406,9 +408,28 @@ func (pm *peerManager) heartbeat(peerName string, pc *peerConn, done chan struct
 //
 // Exits when mux.Done, the local done chan, or pm.quit fires.
 func (pm *peerManager) consumeEvents(peerName string, pc *peerConn, done chan struct{}) {
+	pc.binder = newStreamBinder(peerName, func(name string, stream net.Conn) {
+		pm.attachPushedStream(peerName, pc, name, stream)
+	})
+	// Streams are paired on THIS goroutine, like announcements and removals,
+	// so a pane can never be created after the removal that followed it.
+	accepted := make(chan *yamux.Stream)
+	stop := make(chan struct{})
+	defer close(stop)
+	defer pc.binder.close()
+	if pc.session != nil {
+		go acceptPushedStreams(pc.session, accepted, stop)
+	}
 	for {
 		select {
+		case s := <-accepted:
+			pc.binder.offerStream(s.StreamID(), s)
+		case <-pc.mux.Announcements():
+			pm.takeAnnouncements(peerName, pc)
 		case ev := <-pc.mux.Events():
+			// Announcements first: an agent_removed queued after a
+			// stream_added for the same agent must find it already handled.
+			pm.takeAnnouncements(peerName, pc)
 			switch ev.Action {
 			case "forward_send":
 				if pm.onForwardSend != nil {
@@ -439,7 +460,7 @@ func (pm *peerManager) consumeEvents(peerName string, pc *peerConn, done chan st
 					LogInfo("remote", "session notice from window 1", "peer", peerName, "text", ev.Text)
 					pm.onSessionNotice(ev.Text)
 				}
-			case "stream_added":
+			case streamAddedAction:
 				pm.handleStreamAdded(peerName, pc, ev)
 			case "agent_removed":
 				pm.handleAgentRemoved(peerName, pc, ev)
@@ -454,29 +475,50 @@ func (pm *peerManager) consumeEvents(peerName string, pc *peerConn, done chan st
 	}
 }
 
-// handleStreamAdded accepts a new yamux stream announced by stream_added,
-// creates a RemotePane bound to it, and calls onPaneAdded so the TUI inserts
-// the pane into the live grid.
+// takeAnnouncements hands every queued stream_added to handleStreamAdded,
+// in arrival order.
+func (pm *peerManager) takeAnnouncements(peerName string, pc *peerConn) {
+	for _, ev := range pc.mux.TakeAnnouncements() {
+		pm.handleStreamAdded(peerName, pc, ev)
+	}
+}
+
+// handleStreamAdded hands a stream_added to the binder, which pairs it with
+// the stream of the same id (ini-c5jv); the pane is created when both are in.
 func (pm *peerManager) handleStreamAdded(peerName string, pc *peerConn, ev ControlResp) {
 	if pm.onPaneAdded == nil {
 		LogWarn("remote", "stream_added but no onPaneAdded callback", "peer", peerName)
 		return
 	}
-	if ev.Name == "" {
-		LogWarn("remote", "stream_added missing name", "peer", peerName)
-		return
+	pc.binder.announce(ev.StreamID, ev.Name)
+}
+
+// acceptPushedStreams hands every stream window 1 opens after the
+// handshake to consumeEvents, until the session ends or stop closes.
+func acceptPushedStreams(session *yamux.Session, accepted chan<- *yamux.Stream, stop <-chan struct{}) {
+	for {
+		s, err := session.AcceptStream()
+		if err != nil {
+			return
+		}
+		select {
+		case accepted <- s:
+		case <-stop:
+			s.Close()
+			return
+		}
 	}
-	stream, err := pc.session.Accept()
-	if err != nil {
-		LogWarn("remote", "stream_added accept failed", "peer", peerName, "agent", ev.Name, "err", err)
-		return
-	}
-	rp := NewRemotePane(ev.Name, peerName, stream, pc.mux, 80, 24)
+}
+
+// attachPushedStream creates the RemotePane for a paired stream and calls
+// onPaneAdded so the TUI inserts it into the live grid.
+func (pm *peerManager) attachPushedStream(peerName string, pc *peerConn, name string, stream net.Conn) {
+	rp := NewRemotePane(name, peerName, stream, pc.mux, 80, 24)
 	rp.Start()
 	pc.panesMu.Lock()
 	pc.panes = append(pc.panes, rp)
 	pc.panesMu.Unlock()
-	LogInfo("remote", "stream-on-create attached", "peer", peerName, "agent", ev.Name)
+	LogInfo("remote", "stream-on-create attached", "peer", peerName, "agent", name)
 	pm.onPaneAdded(peerName, rp)
 }
 
@@ -487,6 +529,9 @@ func (pm *peerManager) handleAgentRemoved(peerName string, pc *peerConn, ev Cont
 	if ev.Name == "" {
 		LogWarn("remote", "agent_removed missing name", "peer", peerName)
 		return
+	}
+	if pc.binder != nil {
+		pc.binder.forget(ev.Name)
 	}
 	pc.panesMu.Lock()
 	var removed PaneView
