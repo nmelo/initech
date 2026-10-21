@@ -90,6 +90,8 @@ Agents on the same bead talk to each other directly and post everything on the b
 - **Closed**: refused; follow-on work gets its own bead.
 - **Anything else**: dispatched, replacing the agent's ribbon with the beads of the call.
 
+An agent that is stopped or whose process has exited gets nothing: no bead is claimed, and assign exits non-zero with the same reason `initech send` gives and the command that brings the agent back.
+
 Several beads in one call each get their own rule; a refused bead is listed as failed, and the command fails only when every bead does. The event log records each dispatch, saying "fold-in" or "moved from" where it applies. Against an initech that does not report ribbons, a fold-in leaves the ribbon as it was and a move leaves the previous holder's ribbon alone, each with a warning; the message is still delivered.
 
 **Work with no bead.** `initech assign <agent> -m "..."` with no bead id dispatches a small job that has no ticket, so it is still visible. Nothing is written to bd. The message is delivered exactly as `initech send` delivers it, the -m text as given. Once it is accepted, the agent's ribbon shows `no bead` and the message's first words (cut at 80 characters, like a bead title), `initech status` shows the same words in the Bead column ahead of any bead bd still has assigned to that agent, and the event log records the dispatch with no bead id. The marker is shown in every window, wakes with a suspended agent, and ends the way a bead pointer does: the next bead registered for the agent (`initech assign` or `initech bead`) replaces it, and `initech bead --clear` removes it; it does not survive a TUI restart. `initech assign <agent>` with neither a bead nor -m is a usage error. An initech too old to know work with no bead leaves the ribbon as it was and assign warns; the message is still delivered.
@@ -300,7 +302,12 @@ Recovery: `initech send <agent> "You were working on <bead-id>. Run bd show <bea
 
 ### Messages Not Arriving
 
-`initech send` returns immediately with OK or an error. If the agent doesn't react:
+`initech send` returns immediately with OK or an error. An agent whose process is not running gets
+nothing typed: the send fails, exits non-zero and prints why, with the command that brings the agent
+back. A stopped agent (after `initech stop`) reads `not delivered — agent not running: agent eng1 is
+stopped; start it with initech start eng1`; one whose process ended on its own reads `...agent eng1
+has exited; restart it with initech restart eng1`. A suspended agent is not refused: the send wakes it
+and is delivered. If the agent doesn't react:
 - The message was delivered but the agent is mid-work and hasn't processed it
 - The message appeared as text input but the agent needs Enter pressed (add `--enter` if not default)
 - The agent's Claude session is in a state where it can't read terminal input (rare, restart fixes it)

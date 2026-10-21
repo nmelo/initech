@@ -222,12 +222,24 @@ func (t *TUI) handleIPCSendReady(conn net.Conn, req IPCRequest) {
 		return
 	}
 	var pv PaneView
-	if !t.runOnMain(func() { pv = t.findPaneByName(req.Target) }) {
+	var notRunning error
+	if !t.runOnMain(func() {
+		pv = t.findPaneByName(req.Target)
+		if lp, ok := pv.(*Pane); ok {
+			notRunning = lp.notRunningReason()
+		}
+	}) {
 		writeIPCResponse(conn, IPCResponse{Error: "TUI shutting down"})
 		return
 	}
 	if pv == nil {
 		writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("pane %q not found", req.Target)})
+		return
+	}
+	// A stopped or exited agent is not ready, so assign claims nothing
+	// (ini-2s7q).
+	if notRunning != nil {
+		writeIPCResponse(conn, IPCResponse{Error: notRunning.Error()})
 		return
 	}
 	if lp, ok := pv.(*Pane); ok && !lp.IsSuspended() {
@@ -267,10 +279,18 @@ func (t *TUI) handleIPCSend(conn net.Conn, req IPCRequest) {
 	var pv PaneView
 	var concretePane *Pane
 	var queued bool
+	var notRunning error
 	if !t.runOnMain(func() {
 		pv = t.findPaneByName(req.Target)
 		if pv == nil {
 			return
+		}
+		// A process that is gone gets nothing typed and the sender is told
+		// (ini-2s7q). Read here, with the suspended check, on main.
+		if lp, ok := pv.(*Pane); ok {
+			if notRunning = lp.notRunningReason(); notRunning != nil {
+				return
+			}
 		}
 		if lp, ok := pv.(*Pane); ok && lp.suspended {
 			concretePane = lp
@@ -294,6 +314,11 @@ func (t *TUI) handleIPCSend(conn net.Conn, req IPCRequest) {
 	}
 	if pv == nil {
 		writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("pane %q not found", req.Target)})
+		return
+	}
+	if notRunning != nil {
+		LogInfo("ipc", "SEND NOT DELIVERED", "target", req.Target, "reason", notRunning)
+		writeIPCResponse(conn, IPCResponse{Error: notRunning.Error()})
 		return
 	}
 	if queued {
@@ -390,6 +415,10 @@ func (t *TUI) handleIPCSend(conn net.Conn, req IPCRequest) {
 // Safe to call from any goroutine.
 func sendPaneTextLocked(pane *Pane, text string, enter bool) {
 	if pane.ptmx == nil {
+		// Never silent (ini-2s7q): the IPC handler refuses a stopped or
+		// exited agent before reaching here, so a send arriving here was
+		// routed past that check and its text goes nowhere.
+		LogWarn("inject", "send dropped: pane has no PTY", "pane", pane.Name(), "text", logSnippet(text))
 		return
 	}
 

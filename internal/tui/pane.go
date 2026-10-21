@@ -246,6 +246,7 @@ type Pane struct {
 	networkSink        io.Writer  // Optional: readLoop tees PTY bytes here for network streaming.
 	sinkMu             sync.Mutex // Protects networkSink assignment.
 	alive              bool
+	closed             bool          // Set by Close: initech ended the process (stop, suspend, restart, quit), not the process exiting on its own (ini-2s7q).
 	visible            bool          // Whether this pane is shown in the layout. Hidden panes keep running.
 	activity           ActivityState // Current state: running when PTY bytes flowed recently, else idle.
 	lastOutputTime     time.Time     // Last time readLoop received bytes from the PTY.
@@ -1195,6 +1196,33 @@ func (p *Pane) queueIfSuspended(text string, enter bool) bool {
 // and writes nothing to the pane.
 var ErrPaneStillStarting = errors.New("not delivered — agent still starting")
 
+// ErrPaneNotRunning reports an agent whose process is not running: stopped
+// by initech, or exited on its own (ini-2s7q). A sender-facing entry point
+// that gets it refuses the send and writes nothing; the CLI matches the
+// prefix, as it does ErrPaneStillStarting's.
+var ErrPaneNotRunning = errors.New("not delivered — agent not running")
+
+// notRunningReason is the refusal for a send to this pane when its process is
+// not running, or nil when a send can go ahead (ini-2s7q).
+//
+// Only a process that is gone is refused. A starting pane is alive from the
+// fork in NewPane; a slow one stays alive; a suspended one (including a pane
+// parked by the spawn stagger) is not refused, because a send wakes it.
+// Callers read this on the main goroutine together with the suspended check:
+// parkPaneSuspended runs there too and sets alive=false and suspended=true in
+// one action, so a pane being suspended is never seen half-parked.
+func (p *Pane) notRunningReason() error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.alive || p.suspended {
+		return nil
+	}
+	if p.closed {
+		return fmt.Errorf("%w: agent %s is stopped; start it with initech start %s", ErrPaneNotRunning, p.name, p.name)
+	}
+	return fmt.Errorf("%w: agent %s has exited; restart it with initech restart %s", ErrPaneNotRunning, p.name, p.name)
+}
+
 // startupGateWindow bounds when a pane counts as starting. Past it, a pane
 // still producing output is busy, not booting, and a send to a busy agent is
 // the submit belt's business, never a reason to wait here.
@@ -1816,6 +1844,7 @@ func (p *Pane) Close() {
 	// Signal watchJSONL and readLoop to exit.
 	p.mu.Lock()
 	p.alive = false
+	p.closed = true
 	p.mu.Unlock()
 
 	// Close PTY first so readLoop's ptmx.Read() errors out immediately.

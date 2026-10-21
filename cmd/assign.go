@@ -367,6 +367,11 @@ func preflightSendReady(agent, host string) error {
 	if strings.HasPrefix(resp.Error, tui.ErrPaneStillStarting.Error()) {
 		return fmt.Errorf("nothing assigned: %s\nRetry when %s is ready (initech peek %s).", resp.Error, agent, agent)
 	}
+	// A stopped or exited agent (ini-2s7q): the reply names the command that
+	// brings it back.
+	if strings.HasPrefix(resp.Error, tui.ErrPaneNotRunning.Error()) {
+		return fmt.Errorf("nothing assigned: %s", resp.Error)
+	}
 	return nil
 }
 
