@@ -44,7 +44,12 @@ func runRestart(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("%s", resp.Error)
 	}
 
-	fmt.Fprintf(out, "Restarted %s.\n", roleName)
+	if resp.Data != "" {
+		// The messages held for the agent went to the new process (ini-f6kg).
+		fmt.Fprintf(out, "Restarted %s; %s.\n", roleName, resp.Data)
+	} else {
+		fmt.Fprintf(out, "Restarted %s.\n", roleName)
+	}
 
 	// Dispatch bead if requested.
 	if restartBead != "" {

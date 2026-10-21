@@ -283,7 +283,11 @@ func (t *TUI) handleIPCRestart(conn net.Conn, req IPCRequest) {
 		return
 	}
 	// Close the old pane off-main; sendMu serialises concurrent sends.
+	// The mail held for the agent is taken under the same lock, before
+	// Close, and carried to the new pane by the helpers the command-bar
+	// restart uses (queue_carry.go, ini-f6kg): one carry path, not two.
 	old.sendMu.Lock()
+	carried := old.DrainQueue()
 	cols, rows := old.emuSize() // never waits on the pane (ini-psjt)
 	// Dead panes may report zero dimensions; use sensible defaults.
 	if cols < 10 {
@@ -307,6 +311,7 @@ func (t *TUI) handleIPCRestart(conn net.Conn, req IPCRequest) {
 	np, err := NewPane(cfg, rows, cols)
 	if err != nil {
 		LogError("pane", "restart failed", "name", req.Target, "err", err)
+		restoreQueueAfterFailedRestart(old, carried)
 		writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("restart failed: %v", err)})
 		return
 	}
@@ -315,25 +320,41 @@ func (t *TUI) handleIPCRestart(conn net.Conn, req IPCRequest) {
 	t.wireSuspendResume(np)
 	np.safeGo = t.safeGo
 	np.protected = old.IsProtected()
+	// Carried before Start, as restartPane does: the new pane's maintenance
+	// drain delivers it by its normal path once the pane is up.
+	n := giveQueueToRestartedPane(np, carried)
 	// Replace in t.panes on main; re-verify index is still valid.
-	if !t.runOnMain(func() {
+	// replaced is read only when runOnMain reports the closure ran: on a
+	// shutdown it may still run later, and reading it then would race.
+	replaced := false
+	ran := t.runOnMain(func() {
 		if oldIdx < len(t.panes) && t.panes[oldIdx] == old {
 			np.Start()
 			t.panes[oldIdx] = np
 			t.applyLayout()
-		} else {
-			np.Close() // Index shifted; discard new pane.
+			replaced = true
 		}
-	}) {
-		np.Close() // TUI shutting down; clean up the new pane.
+	})
+	if !ran || !replaced {
+		// The new pane never went in: the mail goes back to the old pane, as
+		// for a spawn failure, rather than out with a pane nobody can see.
+		restoreQueueAfterFailedRestart(old, np.DrainQueue())
+		np.Close()
+		writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("restart of %s did not replace the pane (the pane list changed or the TUI is shutting down)", req.Target)})
+		return
 	}
-	LogInfo("pane", "restarted", "name", req.Target)
+	LogInfo("pane", "restarted", "name", req.Target, "carried", n)
+	detail, data := "Restarted "+req.Target, ""
+	if n > 0 {
+		data = fmt.Sprintf("carried %d held message(s)", n)
+		detail += " (" + data + ")"
+	}
 	EmitEvent(t.agentEvents, AgentEvent{
 		Type:   EventAgentRestarted,
 		Pane:   req.Target,
-		Detail: "Restarted " + req.Target,
+		Detail: detail,
 	})
-	writeIPCResponse(conn, IPCResponse{OK: true})
+	writeIPCResponse(conn, IPCResponse{OK: true, Data: data})
 }
 
 func (t *TUI) handleIPCAdd(conn net.Conn, req IPCRequest) {
