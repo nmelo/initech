@@ -170,7 +170,8 @@ func (d *Daemon) handleConfigureAgent(line []byte, owner string) ControlResp {
 }
 
 // allocateStreamForPushedPane opens a yamux stream on the named owner's
-// session, wires it to the new pane's MultiSink, and sends a stream_added
+// session, serves it like a stream opened at attach (output through the
+// pane's MultiSink, keystrokes back into its PTY), and sends a stream_added
 // control message so the client can attach a RemotePane.
 //
 // Returns nil if the owner is not currently connected (reconnect path will
@@ -197,13 +198,19 @@ func (d *Daemon) allocateStreamForPushedPane(agentName, owner string) error {
 	}
 	streamID := ys.StreamID()
 
-	// Wire the stream to the pane's multisink for downstream PTY bytes.
-	d.panesMu.Lock()
-	ms := d.multiSinks[agentName]
-	d.panesMu.Unlock()
-	if ms != nil {
-		ms.Add(stream)
+	// Serve the stream both ways, exactly like a stream opened at attach:
+	// downstream PTY bytes through the pane's multisink, and the client's
+	// keystrokes upstream into the PTY. Output alone left a pushed agent
+	// watchable but untypeable in the other window (ini-813u).
+	p := d.currentPane(agentName)
+	if p == nil {
+		stream.Close()
+		return fmt.Errorf("agent %q is not served", agentName)
 	}
+	go func() {
+		defer stream.Close()
+		d.streamAgentLive(p, stream, owner)
+	}()
 
 	// Send stream_added on the control channel so the client opens a RemotePane.
 	msg := StreamAddedMsg{Action: "stream_added", StreamID: streamID, Name: agentName}

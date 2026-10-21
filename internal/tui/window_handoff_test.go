@@ -13,10 +13,12 @@ import (
 	"encoding/json"
 	"net"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/gdamore/tcell/v2"
+	"github.com/hashicorp/yamux"
 )
 
 // handoffCatPane is a live /bin/cat pane named eng1.
@@ -164,20 +166,50 @@ func TestWindowHandoff_EveryReplacementReachesTheServer(t *testing.T) {
 }
 
 // readControl reads a second window's control stream until a message
-// matches want, or five seconds pass.
-func readControl(t *testing.T, ctrl net.Conn, sc *bufio.Scanner, want func(action, name string) bool) bool {
+// matches want, or five seconds pass, and returns that message's stream id.
+func readControl(t *testing.T, ctrl net.Conn, sc *bufio.Scanner, want func(action, name string) bool) (uint32, bool) {
 	t.Helper()
 	ctrl.SetReadDeadline(time.Now().Add(5 * time.Second))
 	for sc.Scan() {
 		var m struct {
-			Action string `json:"action"`
-			Name   string `json:"name"`
+			Action   string `json:"action"`
+			Name     string `json:"name"`
+			StreamID uint32 `json:"stream_id"`
 		}
 		if json.Unmarshal(sc.Bytes(), &m) == nil && want(m.Action, m.Name) {
-			return true
+			return m.StreamID, true
 		}
 	}
-	return false
+	return 0, false
+}
+
+// acceptStreams accepts every stream window 1 opens on a second window's
+// session, as the window does, so a test can type into one by its id.
+func acceptStreams(t *testing.T, session *yamux.Session) func(id uint32) net.Conn {
+	t.Helper()
+	var mu sync.Mutex
+	streams := map[uint32]net.Conn{}
+	go func() {
+		for {
+			s, err := session.AcceptStream()
+			if err != nil {
+				return
+			}
+			mu.Lock()
+			streams[s.StreamID()] = s
+			mu.Unlock()
+		}
+	}()
+	return func(id uint32) net.Conn {
+		var c net.Conn
+		handoffWaitFor(func() bool {
+			mu.Lock()
+			defer mu.Unlock()
+			c = streams[id]
+			return c != nil
+		}, 5*time.Second)
+		return c
+	}
 }
 
 func handoffCatPaneNamed(t *testing.T, name string) *Pane {
@@ -203,14 +235,28 @@ func TestWindowHandoff_AddedAndRemovedAgentsReachSecondWindows(t *testing.T) {
 	defer session.Close()
 	defer ctrl.Close()
 	sc := NewIPCScanner(ctrl)
+	streamByID := acceptStreams(t, session)
 
 	added := handoffCatPaneNamed(t, "eng2")
 	tui.insertPane(added)
 	if ws.daemon.currentPane("eng2") != added || !sinkOf(added) {
 		t.Fatal("a hot-added agent is not served to second windows")
 	}
-	if !readControl(t, ctrl, sc, func(a, n string) bool { return a == "stream_added" && n == "eng2" }) {
+	id, ok := readControl(t, ctrl, sc, func(a, n string) bool { return a == "stream_added" && n == "eng2" })
+	if !ok {
 		t.Fatal("the attached second window was never told about the added agent")
+	}
+	// Keys typed in the second window travel on the agent's stream, not the
+	// control stream a send uses: both must reach the added agent.
+	stream := streamByID(id)
+	if stream == nil {
+		t.Fatal("the stream announced for the added agent never arrived")
+	}
+	if _, err := stream.Write([]byte("KEY813\n")); err != nil {
+		t.Fatalf("type into the added agent's stream: %v", err)
+	}
+	if !handoffWaitFor(func() bool { return strings.Contains(emuText(added), "KEY813") }, 5*time.Second) {
+		t.Fatal("keys typed in the second window never reached the added agent")
 	}
 	if errText := viewerSend(t, ws.Addr(), "eng2", "ADD813"); errText != "" {
 		t.Fatalf("a send to the added agent from a second window failed: %s", errText)
@@ -225,7 +271,7 @@ func TestWindowHandoff_AddedAndRemovedAgentsReachSecondWindows(t *testing.T) {
 	if ws.daemon.currentPane("eng2") != nil {
 		t.Fatal("a removed agent is still served")
 	}
-	if !readControl(t, ctrl, sc, func(a, n string) bool { return a == "agent_removed" && n == "eng2" }) {
+	if _, ok := readControl(t, ctrl, sc, func(a, n string) bool { return a == "agent_removed" && n == "eng2" }); !ok {
 		t.Fatal("the attached second window was never told the agent was removed")
 	}
 	if errText := viewerSend(t, ws.Addr(), "eng2", "x"); !strings.Contains(errText, "not found") {
