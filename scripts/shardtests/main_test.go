@@ -113,14 +113,27 @@ func TestTestArgs_NeverShort(t *testing.T) {
 	}
 }
 
-func TestParseResults_ReadsTopLevelOnly(t *testing.T) {
-	out := "=== RUN   TestOne\n--- PASS: TestOne (0.01s)\n    --- PASS: TestOne/sub (0.00s)\n" +
-		"--- FAIL: TestTwo (0.20s)\n--- SKIP: TestThree (0.00s)\n    some log --- PASS: TestFake (0.00s)\n" +
-		"--- PASS: ExampleFour (0.00s)\n"
-	got := parseResults(strings.NewReader(out))
-	want := []string{"TestOne", "TestTwo", "TestThree", "ExampleFour"}
+// Results come from the JSON events, not the text: a test that prints a
+// prompt with no newline still counts (the census's first live run caught
+// eight such tests in cmd), a subtest is not top-level, and text that only
+// looks like a result line counts for nothing.
+func TestRelay_ReadsTopLevelResultsFromEvents(t *testing.T) {
+	ev := func(action, test, output string) string {
+		return fmt.Sprintf(`{"Action":%q,"Package":"example.com/a","Test":%q,"Output":%q}`, action, test, output) + "\n"
+	}
+	in := ev("run", "TestOne", "") + ev("output", "TestOne", "Project name [demo]: ") +
+		ev("output", "TestOne", "--- PASS: TestOne (0.00s)\n") + ev("pass", "TestOne", "") +
+		ev("pass", "TestOne/sub", "") + ev("fail", "TestTwo", "") + ev("skip", "TestThree", "") +
+		ev("output", "TestFour", "--- PASS: TestFake (0.00s)\n") + ev("pass", "TestFour", "") +
+		ev("pass", "ExampleFive", "") + ev("pass", "", "") + "not json at all\n"
+	var shown strings.Builder
+	got := relay(strings.NewReader(in), &shown)
+	want := []string{"TestOne", "TestTwo", "TestThree", "TestFour", "ExampleFive"}
 	if !slices.Equal(got, want) {
-		t.Fatalf("parseResults = %v, want %v", got, want)
+		t.Fatalf("relay = %v, want %v", got, want)
+	}
+	if !strings.Contains(shown.String(), "Project name [demo]: --- PASS: TestOne") || !strings.Contains(shown.String(), "not json at all") {
+		t.Fatalf("relay did not show the output as -v would:\n%s", shown.String())
 	}
 }
 

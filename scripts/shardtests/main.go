@@ -18,10 +18,15 @@
 // Every test, example and fuzz target `go test -list` reports, per package, is
 // assigned to a shard by a stable hash of "package name". A new test therefore
 // lands in exactly one shard by construction and existing tests never move.
-// Each shard runs `go test -count=1 -v <pkg> -run '^(names)$'` per package:
-// the semantics of make test-full (no -short, the default timeout), plus -v so
-// each top-level result line is a witness. No test reads testing.Verbose, so
-// -v changes the output only.
+// Each shard runs `go test -count=1 -json <pkg> -run '^(names)$'` per
+// package: the semantics of make test-full (no -short, the default timeout),
+// plus -json so each top-level result is a structured witness. The tool prints
+// every event's output, so the log reads like -v. A result is read from the
+// JSON event, never from the text: a test that prints a prompt with no newline
+// glues "--- PASS" onto the prompt, and a line-start parser misses it (the
+// census's first live run caught exactly that, eight tests in cmd). -json runs
+// the binary in the same verbose mode as -v, and no test reads
+// testing.Verbose, so it changes the output only.
 //
 // # WHAT THE CENSUS PROVES
 //
@@ -34,6 +39,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -109,22 +115,37 @@ func selectShard(all []testID, n, k int) map[string][]string {
 }
 
 // testArgs is the go test command for one package of a shard: make
-// test-full's semantics, -v for the witness lines, never -short.
+// test-full's semantics, -json for the witness events, never -short.
 func testArgs(pkg string, names []string) []string {
-	return []string{"test", "-count=1", "-v", pkg, "-run", "^(" + strings.Join(names, "|") + ")$"}
+	return []string{"test", "-count=1", "-json", pkg, "-run", "^(" + strings.Join(names, "|") + ")$"}
 }
 
-// resultLine matches a top-level result; subtests are indented.
-var resultLine = regexp.MustCompile(`^--- (PASS|FAIL|SKIP): ([A-Za-z0-9_]+) \(`)
+// testEvent is the part of a go test -json event the tool reads.
+type testEvent struct {
+	Action string
+	Test   string
+	Output string
+}
 
-// parseResults returns the top-level names that reported a result.
-func parseResults(r io.Reader) []string {
+// relay copies go test -json events from r: every event's output to w, so
+// the log reads like -v, and returns the top-level tests that reported a
+// result (pass, fail or skip). Subtests ("Parent/sub") are not top-level.
+func relay(r io.Reader, w io.Writer) []string {
 	var names []string
 	sc := bufio.NewScanner(r)
-	sc.Buffer(make([]byte, 0, 1<<16), 1<<22)
+	sc.Buffer(make([]byte, 0, 1<<16), 1<<24)
 	for sc.Scan() {
-		if m := resultLine.FindStringSubmatch(sc.Text()); m != nil {
-			names = append(names, m[2])
+		var ev testEvent
+		if json.Unmarshal(sc.Bytes(), &ev) != nil {
+			fmt.Fprintln(w, sc.Text()) // not an event: pass it through
+			continue
+		}
+		io.WriteString(w, ev.Output)
+		switch ev.Action {
+		case "pass", "fail", "skip":
+			if ev.Test != "" && !strings.Contains(ev.Test, "/") {
+				names = append(names, ev.Test)
+			}
 		}
 	}
 	return names
@@ -297,14 +318,19 @@ func runShard(args []string) error {
 		a := testArgs(pkg, names)
 		fmt.Printf("SHARD %d/%d: go %s  [%d tests]\n", *k, *n, strings.Join(a[:len(a)-1], " ")+" '^(...)$'", len(names))
 		cmd := exec.Command("go", a...)
-		var buf bytes.Buffer
-		cmd.Stdout = io.MultiWriter(os.Stdout, &buf)
 		cmd.Stderr = os.Stderr
-		if err := cmd.Run(); err != nil {
-			failed = append(failed, pkg)
+		stdout, err := cmd.StdoutPipe()
+		if err != nil {
+			return err
 		}
-		for _, name := range parseResults(&buf) {
+		if err := cmd.Start(); err != nil {
+			return err
+		}
+		for _, name := range relay(stdout, os.Stdout) {
 			executed = append(executed, testID{pkg, name})
+		}
+		if err := cmd.Wait(); err != nil {
+			failed = append(failed, pkg)
 		}
 	}
 	for path, ids := range map[string][]testID{"all.txt": all, "selected.txt": selected, "executed.txt": executed} {

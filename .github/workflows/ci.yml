@@ -228,9 +228,15 @@ jobs:
           go-version-file: go.mod
           cache: ${{ github.event_name == 'pull_request' }}
 
+      # Reads the three shard command lines themselves (the "run: go run" form
+      # only they use, never this step's own text) and requires all three, so
+      # it cannot pass by matching nothing.
       - name: No shard step runs -short
         run: |
-          if grep -n 'shardtests run' .github/workflows/ci.yml | grep -- 'short'; then
+          lines=$(grep -E '^ +run: go run \./scripts/shardtests run ' .github/workflows/ci.yml)
+          echo "$lines"
+          test "$(printf '%s\n' "$lines" | grep -c .)" -eq 3 || { echo "expected the 3 shard command lines"; exit 1; }
+          if printf '%s\n' "$lines" | grep -q short; then
             echo "a shard step runs -short: the full suite never does"; exit 1
           fi
 
