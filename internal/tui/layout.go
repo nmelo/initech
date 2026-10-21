@@ -102,8 +102,10 @@ type RenderPlan struct {
 	ScreenW  int
 	ScreenH  int
 
-	// ValidatedFocus is the name of the pane that actually receives input.
-	// May differ from LayoutState.Focused if that pane is hidden.
+	// ValidatedFocus is the name of the pane that actually receives input:
+	// always a pane this plan draws, the one drawn as focused (ini-mos5).
+	// May differ from LayoutState.Focused if that pane is hidden or not
+	// drawn; applyLayout writes it back.
 	ValidatedFocus string
 
 	// Waiting is the live list split's boxes no agent fills (ini-3g39),
@@ -167,7 +169,6 @@ func computeLayout(state LayoutState, panes []PaneView, screenW, screenH int) Re
 	if !focusValid {
 		focus = agentKey(visible[0])
 	}
-	plan.ValidatedFocus = focus
 
 	// 3. Compute regions based on layout mode.
 	var regions []Region
@@ -188,6 +189,7 @@ func computeLayout(state LayoutState, panes []PaneView, screenW, screenH int) Re
 				break
 			}
 		}
+		plan.ValidatedFocus = focus
 		return plan
 	}
 
@@ -315,6 +317,30 @@ func computeLayout(state LayoutState, panes []PaneView, screenW, screenH int) Re
 			Focused: pk == focus,
 			Dimmed:  pk != focus,
 		})
+	}
+
+	// 4b. THE PANE THAT GETS THE KEYS IS THE PANE DRAWN AS FOCUSED (ini-mos5).
+	// Focus was validated against the visible panes, but a mode may draw
+	// fewer: live evicts agents from its slots, and an explicit grid smaller
+	// than the fleet drops the panes past cols x rows. A focus left on an
+	// undrawn pane highlighted nothing (or another pane) while every key went
+	// to the undrawn one. So the focus is decided here, against what this
+	// plan draws: if the focused pane is not drawn, it moves to the first
+	// drawn pane, which is highlighted, and that value is what applyLayout
+	// writes back.
+	if len(plan.Panes) > 0 {
+		drawn := false
+		for _, pr := range plan.Panes {
+			if pr.Focused {
+				drawn = true
+				break
+			}
+		}
+		if !drawn {
+			plan.Panes[0].Focused, plan.Panes[0].Dimmed = true, false
+			focus = agentKey(plan.Panes[0].Pane)
+		}
+		plan.ValidatedFocus = focus
 	}
 
 	// 5. Compute dividers from region boundaries (per row).

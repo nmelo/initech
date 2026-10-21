@@ -78,6 +78,9 @@ func newTUIWithPipePane(t *testing.T) (*TUI, *os.File) {
 		agentEvents: make(chan AgentEvent, 8),
 		quitCh:      make(chan struct{}),
 	}
+	// A frame is drawn before any input, as in Run: keys and pastes go to
+	// the pane drawn as focused (ini-mos5).
+	tui.applyLayout()
 	return tui, r
 }
 
@@ -112,6 +115,7 @@ func TestBufferedPaste_NoBracketedPaste(t *testing.T) {
 		agentEvents: make(chan AgentEvent, 8),
 		quitCh:      make(chan struct{}),
 	}
+	tui.applyLayout() // a frame is drawn before input (ini-mos5)
 
 	tui.handleEvent(tcell.NewEventPaste(true))
 	for _, ch := range "world" {

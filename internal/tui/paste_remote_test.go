@@ -44,6 +44,9 @@ func pasteTUI(t *testing.T, pv PaneView) *TUI {
 	t.Helper()
 	tui := &TUI{panes: []PaneView{pv}, quitCh: make(chan struct{})}
 	tui.layoutState.Focused = agentKey(pv)
+	// A frame is drawn before any input, as in Run: keys and pastes go to
+	// the pane drawn as focused (ini-mos5).
+	tui.applyLayout()
 	return tui
 }
 

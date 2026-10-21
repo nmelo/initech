@@ -56,6 +56,9 @@ func firstKeyTUI(t *testing.T, peerName string) (*TUI, *keyCapture, *int) {
 	tui.project = &config.Project{Name: "test", Roles: []string{"a"}, PeerName: peerName}
 	recorded := 0
 	tui.onAttentionConsent = func(bool) { recorded++ }
+	// A frame is drawn before any input, as in Run: keys and pastes go to
+	// the pane drawn as focused (ini-mos5).
+	tui.applyLayout()
 	return tui, cap, &recorded
 }
 
@@ -218,6 +221,7 @@ func welcomePasteTUI(t *testing.T, hooksAnswered bool) (*TUI, *welcomePasteRecor
 	}
 	rec := &welcomePasteRecorder{Pane: tui.panes[0].(*Pane)}
 	tui.panes[0] = rec
+	tui.applyLayout() // re-plan after the swap, as a pane replacement does (ini-mos5)
 	return tui, rec
 }
 

@@ -227,7 +227,7 @@ func (t *TUI) handleMouse(ev *tcell.EventMouse) {
 		for _, pr := range t.plan.Panes {
 			r := pr.Region
 			if mx >= r.X && mx < r.X+r.W && my >= r.Y && my < r.Y+r.H {
-				t.layoutState.Focused = agentKey(pr.Pane)
+				t.focusFromWheel(pr.Pane)
 				t.wheelPane(pr.Pane, mx-r.X, my-r.Y, true, ev.Modifiers())
 				return
 			}
@@ -239,7 +239,7 @@ func (t *TUI) handleMouse(ev *tcell.EventMouse) {
 		for _, pr := range t.plan.Panes {
 			r := pr.Region
 			if mx >= r.X && mx < r.X+r.W && my >= r.Y && my < r.Y+r.H {
-				t.layoutState.Focused = agentKey(pr.Pane)
+				t.focusFromWheel(pr.Pane)
 				t.wheelPane(pr.Pane, mx-r.X, my-r.Y, false, ev.Modifiers())
 				return
 			}
@@ -310,10 +310,20 @@ func (t *TUI) wheelPane(pv PaneView, lx, ly int, up bool, mods tcell.ModMask) {
 	pv.ScrollDown(wheelScrollRows)
 }
 
+// focusFromWheel focuses the pane a wheel notch landed on and re-plans the
+// frame, as a click does (ini-mos5): setting the focus without a new plan
+// left the old pane highlighted while keys went to the wheeled one.
+func (t *TUI) focusFromWheel(pv PaneView) {
+	if k := agentKey(pv); t.layoutState.Focused != k {
+		t.layoutState.Focused = k
+		t.applyLayout()
+	}
+}
+
 // forwardMouseToFocused forwards a mouse event to the focused pane if the
 // click is within its region.
 func (t *TUI) forwardMouseToFocused(mx, my int, button uv.MouseButton, isMotion, isRelease bool, mods tcell.ModMask) {
-	fp := t.focusedPane()
+	fp := t.inputPane() // the pane drawn as focused (ini-mos5)
 	if fp == nil {
 		return
 	}

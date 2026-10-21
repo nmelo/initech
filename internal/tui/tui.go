@@ -573,8 +573,12 @@ func (t *TUI) applyLayout() {
 		}
 	}
 
-	// Write validated focus back to layoutState so it stays consistent.
+	// Write validated focus back to layoutState so it stays consistent: the
+	// pane that gets the keys is the pane drawn as focused (ini-mos5).
 	if t.plan.ValidatedFocus != "" {
+		if old := t.layoutState.Focused; old != "" && old != t.plan.ValidatedFocus {
+			LogInfo("layout", "focus moved to a drawn pane", "from", old, "to", t.plan.ValidatedFocus)
+		}
 		t.layoutState.Focused = t.plan.ValidatedFocus
 	}
 
@@ -729,6 +733,20 @@ func (t *TUI) saveIfSplitMoved() {
 	if ls := t.persistableLayout(); ls.Split != t.savedSplit || ls.Held != t.savedHeld || ls.ListRows != t.savedRows {
 		t.saveLayoutIfConfigured()
 	}
+}
+
+// inputPane is the pane operator input goes to: the one the last frame drew
+// as focused, or nil when nothing is drawn (ini-mos5). Keys, a paste and a
+// forwarded mouse event read this rather than layoutState.Focused, so input
+// can never reach a pane the operator cannot see, whatever path last changed
+// the focus without re-planning.
+func (t *TUI) inputPane() PaneView {
+	for _, pr := range t.plan.Panes {
+		if pr.Focused {
+			return pr.Pane
+		}
+	}
+	return nil
 }
 
 // focusedPane returns the currently focused pane, or nil.

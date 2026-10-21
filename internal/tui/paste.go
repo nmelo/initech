@@ -43,7 +43,7 @@ func (t *TUI) handlePaste(start bool) {
 		return
 	}
 
-	fp := t.focusedPane()
+	fp := t.inputPane() // the pane drawn as focused (ini-mos5)
 	if fp == nil {
 		return
 	}

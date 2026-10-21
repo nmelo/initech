@@ -228,7 +228,7 @@ func (t *TUI) handleKey(ev *tcell.EventKey) bool {
 	// process happens to show. This return is what makes "consumed" true --
 	// the key cannot reach SendKey on this branch, rather than being skipped
 	// by a condition further down that a later edit could reorder.
-	if fp := t.focusedPane(); fp != nil {
+	if fp := t.inputPane(); fp != nil {
 		if p, ok := fp.(*Pane); ok && p.IsSuspended() {
 			t.wakeSuspendedPaneFromKeystroke(p)
 			return false
@@ -300,9 +300,13 @@ func altShiftedRune(ev *tcell.EventKey) (rune, bool) {
 }
 
 func (t *TUI) cycleFocus(delta int) {
-	// In live mode, cycle through rendered panes only (skips evicted panes
-	// that are not on screen). In other modes, cycle all non-hidden panes.
-	if t.layoutState.Mode == LayoutLive && len(t.plan.Panes) > 0 {
+	// In live and grid modes, cycle through the drawn panes only: live evicts
+	// agents from its slots and an explicit grid smaller than the fleet drops
+	// the panes past it, and a step onto an undrawn pane sent the keys there
+	// (ini-mos5). In the other modes the focused pane is always the one drawn
+	// (full screen, zoomed, or the split's left column), so stepping through
+	// every non-hidden pane is how the operator chooses which one to draw.
+	if (t.layoutState.Mode == LayoutLive || t.layoutState.Mode == LayoutGrid) && !t.layoutState.Zoomed && len(t.plan.Panes) > 0 {
 		n := len(t.plan.Panes)
 		cur := 0
 		for i, pr := range t.plan.Panes {

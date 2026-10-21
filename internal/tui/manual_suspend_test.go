@@ -85,6 +85,9 @@ func newEchoPane(t *testing.T, name string) (*TUI, *Pane) {
 		// calling goroutine, which is what a test wants -- no main loop to
 		// pump, and the same code path production takes.
 	}
+	// A frame is drawn before any input, as in Run: keys and pastes go to
+	// the pane drawn as focused (ini-mos5).
+	tui.applyLayout()
 	return tui, p
 }
 
