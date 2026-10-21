@@ -236,7 +236,7 @@ func (t *TUI) handleIPCStart(conn net.Conn, req IPCRequest) {
 	if !t.runOnMain(func() {
 		if oldIdx < len(t.panes) && t.panes[oldIdx] == old {
 			np.Start()
-			t.panes[oldIdx] = np
+			t.replacePane(oldIdx, np)
 			t.applyLayout()
 		} else {
 			np.Close() // Index shifted; discard new pane.
@@ -330,7 +330,7 @@ func (t *TUI) handleIPCRestart(conn net.Conn, req IPCRequest) {
 	ran := t.runOnMain(func() {
 		if oldIdx < len(t.panes) && t.panes[oldIdx] == old {
 			np.Start()
-			t.panes[oldIdx] = np
+			t.replacePane(oldIdx, np)
 			t.applyLayout()
 			replaced = true
 		}
@@ -465,7 +465,7 @@ func (t *TUI) addPane(name string) error {
 // tested without a PTY.
 func (t *TUI) insertPane(p PaneView) {
 	oldLen := len(t.panes)
-	t.panes = append(t.panes, p)
+	t.appendPane(p)
 	t.logPanesMutation("hot-add", oldLen)
 	t.recalcGrid()
 	t.saveLayoutIfConfigured()
@@ -509,7 +509,7 @@ func (t *TUI) removePane(name string) error {
 
 		// Remove from slice without leaving gaps.
 		oldLen := len(t.panes)
-		t.panes = append(t.panes[:idx], t.panes[idx+1:]...)
+		t.removePaneAt(idx)
 		t.logPanesMutation("remove-pane", oldLen)
 		// Keep the agents-modal selection state valid against the shrunk pane
 		// set so a stale filtered/selected index can't crash the TUI

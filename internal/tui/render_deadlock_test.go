@@ -177,9 +177,9 @@ func TestRenderWithConnectedRemoteAddsPane(t *testing.T) {
 	tui.plan = computeLayout(tui.layoutState, tui.panes, 120, 39)
 
 	// Simulate a remote peer connecting with one agent.
-	remotePane := newEmuPane("eng2", 60, 39)
-	// Wrap in a minimal RemotePane-like PaneView (newEmuPane returns *Pane,
-	// which satisfies PaneView, good enough for this test).
+	// A peer update carries only that peer's remote panes; a local *Pane in
+	// it would be a change to the local set, which setRemotePanes refuses.
+	remotePane := newFakeRemotePaneView("eng2", "workbench")
 	tui.handlePeerUpdate("workbench", []PaneView{remotePane}, true)
 
 	if len(tui.panes) != 2 {

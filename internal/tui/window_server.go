@@ -239,6 +239,24 @@ func (w *windowServer) ReplacePane(np *Pane) {
 	w.daemon.ReplaceLocalPane(np)
 }
 
+// AddPane serves a pane window 1 has just added (see Daemon.AddLocalPane).
+// Nil-safe, like ReplacePane.
+func (w *windowServer) AddPane(p *Pane) {
+	if w == nil || w.daemon == nil {
+		return
+	}
+	w.daemon.AddLocalPane(p)
+}
+
+// RemovePane stops serving the named pane (see Daemon.RemoveLocalPane).
+// Nil-safe, like ReplacePane.
+func (w *windowServer) RemovePane(name string) {
+	if w == nil || w.daemon == nil {
+		return
+	}
+	w.daemon.RemoveLocalPane(name)
+}
+
 // Addr returns the address the window listener is bound to. Useful for tests
 // and for discovery once ini-9ka.6 wires the CLI.
 func (w *windowServer) Addr() string {

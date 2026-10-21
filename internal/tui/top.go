@@ -211,7 +211,7 @@ func (t *TUI) handleTopKey(ev *tcell.EventKey) bool {
 					np.safeGo = t.safeGo
 					np.protected = p.protected
 					np.Start()
-					t.panes[idx] = np
+					t.replacePane(idx, np)
 					t.applyLayout()
 				}
 				t.top.cacheTime = time.Time{}

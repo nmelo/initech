@@ -445,7 +445,7 @@ func (t *TUI) restartPane(fp *Pane) error {
 	// survive the Pane, so the tick's drain is unblocked by construction.
 	giveQueueToRestartedPane(p, carried)
 	p.Start()
-	t.panes[idx] = p
+	t.replacePane(idx, p)
 	t.applyLayout()
 	return nil
 }
