@@ -63,8 +63,11 @@ initech patrol                   # All agents' output in one call
 initech status                   # Agent table: activity, bead, alive
 initech restart <role>           # Kill and respawn an agent
 initech serve                    # Run headless daemon for remote connections
+initech serve --show-token       # Print the daemon's stored token
 initech peers                    # List connected machines and their agents
 ```
+
+`initech serve` prints its token once, when it creates it; later starts say where it is stored (`.initech/token`), and `initech serve --show-token` prints it again. Never pass the token with `--token` in a shared shell: other users can read command lines.
 
 Full CLI reference, configuration options, role catalog, and cross-machine setup: **[Operator Guide](docs/operator-guide.md)**
 

@@ -180,6 +180,10 @@ Inside the split, `grid 4xR` sets the number of rows, R from 1 to 6. Any other v
 
 Setting `window_listen` in `initech.yaml` (for example `window_listen: "127.0.0.1:7500"`) lets window 1 serve more windows; `initech --window 2` opens one. Windows authenticate to window 1 with a token. When `initech.yaml` sets `token`, every window uses it. Otherwise window 1 generates a new token each time it starts and writes it to `.initech/window-token`, readable only by you (mode 0600); a window on the same machine reads it from there, and window 1 removes it when it exits. Window 1 refuses any connection without the right token. Never share or copy that file: whoever holds the token can read every agent's screen and type into it. Start window 1 first; a second window started before it shows "window 1 is not running here" and connects on its own once window 1 is up, including after a restart of window 1.
 
+### Cross-Machine Daemon
+
+`initech serve` runs a headless daemon that another machine's initech connects to. Its token is full access to every agent's terminal on that machine. The first run creates the token, stores it in `.initech/token` (mode 0600) and prints it once, in a snippet to paste into the other machine's `initech.yaml`. Later starts print where the token is stored, never its value, so a daemon run under a supervisor does not write the key into its log on every restart. `initech serve --show-token` prints the token again. `--token` still sets one for a run but is deprecated, and initech never echoes its value. Never use it in a shared shell, because other users can read command lines and shell history.
+
 ## Key Commands Quick Reference
 
 These are the commands you'll use most. The full list is in the README.
