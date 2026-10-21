@@ -3,6 +3,7 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -77,6 +78,13 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	}
 	if !resp.OK {
 		return fmt.Errorf("%s", resp.Error)
+	}
+	// A socket named by INITECH_SOCKET may be another project's: label the
+	// roster with the project behind it, which the reply names (ini-l8s5).
+	// An older TUI names none, and the folder's project stands as before.
+	if os.Getenv("INITECH_SOCKET") != "" && resp.Project != nil && resp.Project.Name != "" {
+		projName = resp.Project.Name
+		beadsEnabled = resp.Project.BeadsEnabled
 	}
 
 	var panes []paneInfo

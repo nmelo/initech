@@ -46,10 +46,30 @@ type IPCRequest struct {
 type IPCResponse struct {
 	Notices    []string          `json:"notices,omitempty"` // Teaching lines, printed after the normal result; never overwrite another detector.
 	WindowPort *WindowPortStatus `json:"window_port,omitempty"`
+	Project    *IPCProject       `json:"project,omitempty"` // The serving process's project, on list (ini-l8s5).
 	OK         bool              `json:"ok"`
 	Error      string            `json:"error,omitempty"`
 	Data       string            `json:"data,omitempty"` // Pane content for peek, pane list for list.
 }
+
+// IPCProject names the project behind a socket, so a caller that reached it
+// through INITECH_SOCKET labels what it reads with that project rather than
+// its own folder's (ini-l8s5). An older server sends none.
+type IPCProject struct {
+	Name         string `json:"name"`
+	BeadsEnabled bool   `json:"beads_enabled"`
+}
+
+// projectSnapshot is the IPCProject for a loaded project, nil without one.
+func projectSnapshot(p *config.Project) *IPCProject {
+	if p == nil {
+		return nil
+	}
+	return &IPCProject{Name: p.Name, BeadsEnabled: p.Beads.IsEnabled()}
+}
+
+// ProjectSnapshot is the project this TUI serves, for the list reply.
+func (t *TUI) ProjectSnapshot() *IPCProject { return projectSnapshot(t.project) }
 
 // SocketPath returns the IPC endpoint path for a project. On Unix this is a
 // domain socket inside .initech/; on Windows a port file names a loopback TCP endpoint.

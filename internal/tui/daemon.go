@@ -655,6 +655,9 @@ func (d *Daemon) FindPaneView(name string) (PaneView, bool) {
 	return p, true
 }
 
+// ProjectSnapshot is the project this daemon serves, for the list reply.
+func (d *Daemon) ProjectSnapshot() *IPCProject { return projectSnapshot(d.project) }
+
 func (d *Daemon) AllPanes() ([]PaneInfo, bool) {
 	snap := d.snapshotPanes()
 	panes := make([]PaneInfo, len(snap))

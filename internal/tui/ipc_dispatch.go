@@ -106,6 +106,9 @@ func dispatchIPC(h IPCHost, conn net.Conn, req IPCRequest, rawJSON []byte) {
 		if source, ok := h.(interface{ WindowPortSnapshot() *WindowPortStatus }); ok {
 			response.WindowPort = source.WindowPortSnapshot()
 		}
+		if source, ok := h.(interface{ ProjectSnapshot() *IPCProject }); ok {
+			response.Project = source.ProjectSnapshot()
+		}
 		writeIPCResponse(conn, response)
 
 	default:
