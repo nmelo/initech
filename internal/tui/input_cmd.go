@@ -597,7 +597,7 @@ func (t *TUI) execCmd(cmd string) bool {
 func (t *TUI) cmdGrid(parts []string) bool {
 	// Inside the live list split, grid CxR sets the list's rows (ini-3g39).
 	if t.liveList != nil && len(parts) >= 2 {
-		return t.cmdListRows(parts[1])
+		return t.cmdListGrid(parts[1])
 	}
 	if len(parts) < 2 {
 		visCount := t.visibleCountFromState()

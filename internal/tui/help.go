@@ -53,7 +53,7 @@ func getHelpLines() []string {
 			"  panel            Toggle agent status overlay.",
 			"  main             Focused pane left (40%), grid of others right (60%).",
 			"  live [CxR|auto]  Live mode: CxR = fixed grid, auto = auto-size.",
-			"  list             Live list split on/off. Inside it, grid 4xR sets rows (1-6).",
+			"  list             Live list split on/off. Inside it, grid CxR sets the shape (1-6 each).",
 			"  pin <a> <slot>   Pin agent to live slot (0-based).",
 			"  unpin <slot>     Unpin slot, make it dynamic.",
 			"  agents           Manage visibility, order, grouping and pinning (" + m + "+a). (main window only)",

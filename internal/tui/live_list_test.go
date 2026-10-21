@@ -191,7 +191,7 @@ func TestLiveList_BoxesAreFixedWhateverTheCount(t *testing.T) {
 		names = append(names, "r"+string(rune('a'+i-1)))
 	}
 	panes := testPanes(names...)
-	want := calcLiveListSplit(3, 160, 45)
+	want := calcLiveListSplit(liveListDefaultCols, 3, 160, 45)
 	if len(want) != 13 {
 		t.Fatalf("calcLiveListSplit(3) gave %d regions, want 1+12", len(want))
 	}
@@ -380,7 +380,8 @@ func TestLiveList_GridSetsTheRows(t *testing.T) {
 		}
 	}
 	tui.execCmd("grid 4x2")
-	for _, bad := range []string{"4x0", "4x7", "5x3", "3x2", "4", "4x2x1", "abc"} {
+	// Columns other than four are valid since ini-3o4b (TestListCols_*).
+	for _, bad := range []string{"4x0", "4x7", "4", "4x2x1", "abc"} {
 		tui.cmd.error = ""
 		tui.execCmd("grid " + bad)
 		if tui.cmd.error == "" || tui.listRows != 2 || tui.layoutState.ListRows != 2 || tui.liveList == nil {

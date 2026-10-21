@@ -506,7 +506,11 @@ func (t *TUI) modeLabel() (label string, live bool) {
 		switch {
 		case t.liveList != nil:
 			live = true
-			label = fmt.Sprintf("Live list %dx%d (%d)", liveListCols, ls.ListRows, len(ls.RightSet))
+			cols := ls.ListCols
+			if cols < 1 {
+				cols = liveListDefaultCols
+			}
+			label = fmt.Sprintf("Live list %dx%d (%d)", cols, ls.ListRows, len(ls.RightSet))
 		case t.liveFocus != nil:
 			live = true
 			label = fmt.Sprintf("Live focus (%d)", len(ls.RightSet))

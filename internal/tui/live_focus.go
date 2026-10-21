@@ -227,12 +227,12 @@ func (t *TUI) restoreLayoutSnapshot(prev focusSplitSnapshot) {
 // snapshot and is written as itself: mode main, no split.
 func (t *TUI) persistableLayout() LayoutState {
 	ls := t.layoutState
-	ls.Split, ls.Held, ls.ListRows = "", "", 0
+	ls.Split, ls.Held, ls.ListRows, ls.ListCols = "", "", 0, 0
 	var under *focusSplitSnapshot
 	switch {
 	case t.liveList != nil:
 		// The live list split (ini-3g39) also writes its row count.
-		under, ls.Split, ls.ListRows = &t.liveList.prev, splitList, t.listRows
+		under, ls.Split, ls.ListRows, ls.ListCols = &t.liveList.prev, splitList, t.listRows, t.listCols
 	case t.liveFocus != nil:
 		under, ls.Split = &t.liveFocus.prev, splitLive
 	case ls.Mode == Layout2Col && t.focusSplitPrev != nil:
@@ -250,16 +250,16 @@ func (t *TUI) persistableLayout() LayoutState {
 }
 
 // restoreSavedSplit puts back the split layout.yaml says this window was in
-// (ini-aa8a). rows is the live list's saved row count (ini-3g39): absent
-// means liveListDefaultRows, and a count out of range is replaced by it with
-// a WARN. LoadLayout has already applied the layout underneath; this
+// (ini-aa8a). rows and cols are the live list's saved grid (ini-3g39,
+// ini-3o4b): absent means the default, and a count out of range is replaced
+// by the default with a WARN. LoadLayout has already applied the layout underneath; this
 // presses the same toggle the key does, with the saved pane held on the left,
 // so the live split seeds its right grid from the agents working now and the
 // Focus split shows every other pane. The held pane must be one of this
 // window's panes, matched by its exact key, and not hidden; a suspended pane
 // is still a pane. Anything else leaves the layout underneath standing, with
 // one WARN naming the agent: never a split with an empty left column.
-func (t *TUI) restoreSavedSplit(split, held string, rows int) {
+func (t *TUI) restoreSavedSplit(split, held string, rows, cols int) {
 	if split == "" {
 		return
 	}
@@ -294,7 +294,13 @@ func (t *TUI) restoreSavedSplit(split, held string, rows int) {
 			LogWarn("layout", "saved list rows out of range; using the default", "list_rows", rows, "default", liveListDefaultRows)
 			rows = liveListDefaultRows
 		}
-		t.listRows = rows
+		if cols == 0 {
+			cols = liveListDefaultCols
+		} else if cols < 1 || cols > liveListMaxCols {
+			LogWarn("layout", "saved list columns out of range; using the default", "list_cols", cols, "default", liveListDefaultCols)
+			cols = liveListDefaultCols
+		}
+		t.listRows, t.listCols = rows, cols
 		t.toggleLiveListSplit()
 	default:
 		t.toggleFocusSplit()

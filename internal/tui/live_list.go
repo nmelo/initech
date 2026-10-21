@@ -19,8 +19,11 @@ import (
 )
 
 const (
-	// liveListCols is the list's column count: four, fixed in this version.
-	liveListCols = 4
+	// liveListDefaultCols is the column count until the operator sets one
+	// with grid CxR, and what a saved list without list_cols means (ini-3o4b).
+	liveListDefaultCols = 4
+	// liveListMaxCols bounds the columns of `grid CxR`.
+	liveListMaxCols = 6
 	// liveListDefaultRows is the row count until the operator sets one, and
 	// what a saved list without list_rows means.
 	liveListDefaultRows = 3
@@ -80,12 +83,16 @@ func (t *TUI) toggleLiveListSplit() {
 	if t.listRows < 1 {
 		t.listRows = liveListDefaultRows
 	}
+	if t.listCols < 1 {
+		t.listCols = liveListDefaultCols
+	}
 
 	t.layoutState.Mode = Layout2Col
 	t.layoutState.GridExplicit = false
 	t.layoutState.Zoomed = false
 	t.layoutState.RightSetActive = true
 	t.layoutState.ListRows = t.listRows
+	t.layoutState.ListCols = t.listCols
 	t.seedLiveList(time.Now())
 	t.applyLayout()
 }
@@ -110,6 +117,7 @@ func (t *TUI) clearLiveList() {
 	t.layoutState.RightSetActive = false
 	t.layoutState.RightSet = nil
 	t.layoutState.ListRows = 0
+	t.layoutState.ListCols = 0
 }
 
 // handLiveListToLiveFocus implements Option+Shift+F inside the list: the
@@ -166,10 +174,11 @@ func (t *TUI) tickLiveList(now time.Time) {
 
 // placeLiveList puts the engine's set into boxes.
 func (t *TUI) placeLiveList(in []string, pinned map[string]int) {
-	shown := liveListPlace(in, t.agentsPanelOrder(), pinned, t.liveList.shown, liveListCols*t.listRows)
+	shown := liveListPlace(in, t.agentsPanelOrder(), pinned, t.liveList.shown, t.listCols*t.listRows)
 	t.liveList.shown = shown
 	t.layoutState.RightSet = shown
 	t.layoutState.ListRows = t.listRows
+	t.layoutState.ListCols = t.listCols
 }
 
 // liveListPlace decides which of the engine's agents get a box, and in what
@@ -277,42 +286,45 @@ func (t *TUI) agentsPanelOrder() []string {
 }
 
 // calcLiveListSplit lays out the live list split: the Focus split's 40% left
-// column, and on the right a fixed liveListCols x rows grid. It returns
-// 1+liveListCols*rows regions whatever the number of agents: region 0 is the
-// held pane's, the rest are the boxes in reading order. It deliberately does
-// not take the count, so no number of agents can resize a box.
-func calcLiveListSplit(rows, screenW, screenH int) []Region {
+// column, and on the right a fixed cols x rows grid. It returns 1+cols*rows
+// regions whatever the number of agents: region 0 is the held pane's, the
+// rest are the boxes in reading order. It deliberately does not take the
+// count, so no number of agents can resize a box.
+func calcLiveListSplit(cols, rows, screenW, screenH int) []Region {
 	if rows < 1 {
 		rows = liveListDefaultRows
+	}
+	if cols < 1 {
+		cols = liveListDefaultCols
 	}
 	leftW := screenW * 40 / 100
 	leftOwnedW := leftW - 1 // the gutter column calcMainVertical reserves
 	if leftOwnedW < 1 {
 		leftOwnedW = 1
 	}
-	boxes := liveListCols * rows
+	boxes := cols * rows
 	regions := make([]Region, 0, 1+boxes)
 	regions = append(regions, Region{X: 0, Y: 0, W: leftOwnedW, H: screenH})
-	for _, r := range gridRegions(liveListCols, rows, boxes, screenW-leftW, screenH, nil, nil) {
+	for _, r := range gridRegions(cols, rows, boxes, screenW-leftW, screenH, nil, nil) {
 		r.X += leftW
 		regions = append(regions, r)
 	}
 	return regions
 }
 
-// cmdListRows is `grid 4xR` inside the live list split: R rows, 1 to
-// liveListMaxRows, at once. Anything else leaves the grid as it is and says
-// why in the command bar.
-func (t *TUI) cmdListRows(arg string) bool {
+// cmdListGrid is `grid CxR` inside the live list split: C columns and R rows,
+// each 1 to 6 (ini-3o4b). Anything else leaves the grid as it is and says
+// why. The shape is kept for the session and saved with the split.
+func (t *TUI) cmdListGrid(arg string) bool {
 	var cols, rows int
 	var rest string
 	n, _ := fmt.Sscanf(arg+" end", "%dx%d %s", &cols, &rows, &rest)
-	if n != 3 || rest != "end" || cols != liveListCols || rows < 1 || rows > liveListMaxRows {
-		t.cmd.error = fmt.Sprintf("invalid grid %q for the live list: use 4xR with R from 1 to %d", arg, liveListMaxRows)
+	if n != 3 || rest != "end" || cols < 1 || cols > liveListMaxCols || rows < 1 || rows > liveListMaxRows {
+		t.cmd.error = fmt.Sprintf("invalid grid %q for the live list: use CxR with C and R from 1 to %d", arg, liveListMaxRows)
 		return false
 	}
-	t.listRows = rows
-	t.layoutState.ListRows = rows
+	t.listCols, t.listRows = cols, rows
+	t.layoutState.ListCols, t.layoutState.ListRows = cols, rows
 	t.applyLayout()
 	t.saveLayoutIfConfigured()
 	return false

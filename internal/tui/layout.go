@@ -77,12 +77,14 @@ type LayoutState struct {
 	// every save.
 	Split string `yaml:"-"`
 	Held  string `yaml:"-"`
-	// ListRows is the live list split's row count (ini-3g39). While the
-	// mode is on it is above 0, and with RightSetActive it makes the right
-	// column a fixed liveListCols x ListRows grid. LoadLayout reports the
-	// saved count here like Split and Held, and adoptLoadedSplit takes it
-	// off again; outside the mode it is always 0.
+	// ListRows and ListCols are the live list split's grid (ini-3g39,
+	// ini-3o4b). While the mode is on ListRows is above 0, and with
+	// RightSetActive they make the right column a fixed ListCols x ListRows
+	// grid (ListCols 0 means liveListDefaultCols). LoadLayout reports the
+	// saved values here like Split and Held, and adoptLoadedSplit takes them
+	// off again; outside the mode both are always 0.
 	ListRows int `yaml:"-"`
+	ListCols int `yaml:"-"`
 
 	// Live focus split (ini-92wm, Option+Shift+F). When RightSetActive is
 	// true in Layout2Col, the right column holds exactly RightSet (in order)
@@ -272,11 +274,15 @@ func computeLayout(state LayoutState, panes []PaneView, screenW, screenH int) Re
 				// Live list split (ini-3g39): the boxes are fixed by the row
 				// count, never by how many are filled; the ones left over
 				// are drawn as waiting tiles.
-				boxes := liveListCols * state.ListRows
+				cols := state.ListCols
+				if cols < 1 {
+					cols = liveListDefaultCols
+				}
+				boxes := cols * state.ListRows
 				if len(right) > boxes {
 					right = right[:boxes]
 				}
-				all := calcLiveListSplit(state.ListRows, screenW, screenH)
+				all := calcLiveListSplit(cols, state.ListRows, screenW, screenH)
 				cells := all[1:]
 				visible, regions = right, cells[:len(right)]
 				if focusedPane != nil {
@@ -567,6 +573,9 @@ type PersistentLayout struct {
 	// ListRows is the live list split's row count, written only while that
 	// split is on (ini-3g39). Absent means liveListDefaultRows.
 	ListRows int `yaml:"list_rows,omitempty"`
+	// ListCols is its column count, with the same lifecycle (ini-3o4b):
+	// written only while the split is on; absent means liveListDefaultCols.
+	ListCols int `yaml:"list_cols,omitempty"`
 	// Overlay is whether the Agents overlay is shown (ini-ye1x). Every save
 	// writes it, true or false; a file without it (written before the key
 	// existed) loads shown, and an older initech ignores it.
@@ -700,6 +709,7 @@ func SaveLayout(projectRoot string, state LayoutState) error {
 		Split:        state.Split,
 		Held:         state.Held,
 		ListRows:     state.ListRows,
+		ListCols:     state.ListCols,
 		Overlay:      &state.Overlay,
 	}
 	// Hidden/Protected/LivePinned are deliberately NOT written: they are
@@ -913,6 +923,7 @@ func LoadLayout(projectRoot string, paneKeys []string) (LayoutState, bool) {
 		Split:        pl.Split,
 		Held:         pl.Held,
 		ListRows:     pl.ListRows,
+		ListCols:     pl.ListCols,
 	}, true
 }
 
