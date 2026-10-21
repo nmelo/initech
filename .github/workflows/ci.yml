@@ -11,6 +11,11 @@ on:
     branches: [main, 'release/**']
   pull_request:
     branches: [main]
+  # For MEASURING a branch on the operator's Mac (ini-bus5): a review branch
+  # gets no push run and its pull_request run is on macos-latest, so this is
+  # how a change to this file is timed on the runner pool main uses. NOT A
+  # GATE: write-access only, and shipper's gate counts push runs only.
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -42,6 +47,11 @@ concurrency:
   group: ${{ github.workflow }}-${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') && 'main-push' || github.run_id }}
   cancel-in-progress: true
 
+# SPEED (ini-bus5), lever 1, CACHE: actions/setup-go's cache is on only for
+# pull_request. On the self-hosted Mac GOCACHE and the module cache persist on
+# disk between runs, so restoring and saving them cost about a minute per job
+# for nothing; macos-latest keeps nothing, so pull requests keep the cache.
+
 jobs:
   build-and-test:
     runs-on: ${{ github.event_name != 'pull_request' && vars.MAC_RUNNER || 'macos-latest' }}
@@ -52,6 +62,7 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
+          cache: ${{ github.event_name == 'pull_request' }}
 
       - name: Build
         run: go build -ldflags "-s -w" -o initech .
@@ -130,6 +141,7 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
+          cache: ${{ github.event_name == 'pull_request' }}
 
       - name: Test (full, no -short)
         run: make test-full
@@ -148,7 +160,7 @@ jobs:
   #   TestWindowCLI_     the --window CLI surface: attach, detach, reattach, and
   #                      a viewer touching no project-root store
   census-leg:
-    if: github.event_name == 'push'
+    if: github.event_name != 'pull_request'
     runs-on: ${{ github.event_name != 'pull_request' && vars.MAC_RUNNER || 'macos-latest' }}
     timeout-minutes: 10
     steps:
@@ -157,6 +169,7 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
+          cache: ${{ github.event_name == 'pull_request' }}
 
       # ini-0lko: same witness for the census leg -- name what it selected.
       - name: Witness which census tests this leg selected
