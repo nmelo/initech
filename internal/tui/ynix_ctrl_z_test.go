@@ -128,7 +128,12 @@ func TestCtrlZ_OtherControlKeysStillReachThePane(t *testing.T) {
 }
 
 // Criterion 1: a parked pane does not wake on Ctrl+Z; a letter still wakes
-// it, as before.
+// it, as before. The wake is read SYNCHRONOUSLY: wakeSuspendedPaneFromKeystroke
+// sets p.waking before it returns, so a check right after handleKey sees a
+// wake that started whatever the machine's load. The completion signal is
+// held back 400 ms, longer than the wait below, so the timing check alone can
+// never be what catches a wake (qa1, ini-ynix: under load a real wake outlasted
+// a 300 ms wait and the swallow-deleted mutant survived once).
 func TestCtrlZ_AParkedPaneStaysParked(t *testing.T) {
 	p := testPane("eng1")
 	tui := newTestTUI(p)
@@ -136,9 +141,20 @@ func TestCtrlZ_AParkedPaneStaysParked(t *testing.T) {
 	tui.applyLayout()
 	setSuspendedForTest(tui, "eng1", true)
 	woke := make(chan struct{}, 4)
-	tui.onWakeComplete = func() { woke <- struct{}{} }
-	for _, ev := range ynixCtrlZ() {
+	tui.onWakeComplete = func() {
+		time.Sleep(400 * time.Millisecond)
+		woke <- struct{}{}
+	}
+	waking := func() bool {
+		p.mu.Lock()
+		defer p.mu.Unlock()
+		return p.waking
+	}
+	for shape, ev := range ynixCtrlZ() {
 		tui.handleKey(ev)
+		if waking() {
+			t.Fatalf("%s started a wake of a parked pane", shape)
+		}
 	}
 	select {
 	case <-woke:
@@ -149,10 +165,13 @@ func TestCtrlZ_AParkedPaneStaysParked(t *testing.T) {
 		t.Fatal("the pane is no longer parked after Ctrl+Z")
 	}
 	tui.handleKey(tcell.NewEventKey(tcell.KeyRune, 'x', tcell.ModNone))
+	if !waking() {
+		t.Error("a letter at the parked pane did not start a wake")
+	}
 	select {
 	case <-woke:
-	case <-time.After(3 * time.Second):
-		t.Error("a letter at the parked pane did not start a wake")
+	case <-time.After(5 * time.Second):
+		t.Error("the wake a letter started never completed")
 	}
 }
 
