@@ -13,10 +13,23 @@ import (
 // and select its highlighted option.
 
 // ytxcHeld is a pane whose box keeps our body after the Enter, so the watch
-// ends NotTaken and the resend is due. dialogAtRetry latches a dialog from
-// the first sample after the window has passed: after the last sample the
-// verdict rests on, before the resend.
+// ends NotTaken and the resend is due. dialogAtRetry latches a dialog from the
+// first sample of the watch, so it is up at the moment of the resend however
+// the samples are paced. It does not change the verdict: the samples prove our
+// body by its text, which a latched dialog does not hide, so the watch still
+// ends NotTaken and the resend is still due; what the dialog decides is only
+// the guard at the moment of pressing. (It was latched only once the window
+// had passed by the clock, and a slow sample under the race detector could
+// end the watch before that latch: rigs 40096953732.)
 func ytxcHeld(t *testing.T, dialogAtRetry bool) (*Pane, func() int32, <-chan AgentEvent) {
+	return ytxcHeldPaced(t, dialogAtRetry, false)
+}
+
+// ytxcHeldPaced is ytxcHeld with an optional slow sample at the window's edge:
+// one sample that starts just before the window ends and finishes after the
+// watch's deadline, as a sample can under the race detector on a loaded CI
+// runner (rigs 40096953732).
+func ytxcHeldPaced(t *testing.T, dialogAtRetry, slowEdge bool) (*Pane, func() int32, <-chan AgentEvent) {
 	t.Helper()
 	window := 200 * time.Millisecond
 	nma5Window(t, window)
@@ -25,8 +38,14 @@ func ytxcHeld(t *testing.T, dialogAtRetry bool) (*Pane, func() int32, <-chan Age
 	n := nma5Enters(t, submits, func(int) {})
 	start := time.Now()
 	old := submitSampleMidpoint
+	slept := false
 	submitSampleMidpoint = func() {
-		if dialogAtRetry && time.Since(start) >= window {
+		if slowEdge && !slept && time.Since(start) >= window-60*time.Millisecond {
+			slept = true
+			time.Sleep(120 * time.Millisecond)
+			return
+		}
+		if dialogAtRetry {
 			p.latchDialogOpen("Claude needs your permission")
 		}
 	}
@@ -90,5 +109,21 @@ func TestRetryDialog_NoComposerPressesNothingMore(t *testing.T) {
 	}
 	if ev, got := nma5Undelivered(events, time.Second); !got || !strings.HasPrefix(ev.Detail, unconfirmedSubmitPrefix) {
 		t.Fatalf("reported %q (got=%v), want could not confirm", ev.Detail, got)
+	}
+}
+
+// The fixture under the slow sample that made rigs 40096953732 red: a sample
+// that starts just before the window ends and finishes after the deadline.
+// The dialog must still be up at the resend, and no second Enter written.
+func TestRetryDialog_ASlowSampleAtTheWindowEdgeStillGetsNoSecondEnter(t *testing.T) {
+	p, enters, events := ytxcHeldPaced(t, true, true)
+	sendSubmitKey(p.emu, p.submitKey)
+	confirmAndRetrySubmit(p, newPendingSubmit(nma5Body, "bracketed", ""))
+	time.Sleep(100 * time.Millisecond)
+	if got := enters(); got != 1 {
+		t.Fatalf("%d Enters written, want 1: a slow sample left the dialog unlatched at the resend", got)
+	}
+	if ev, got := nma5Undelivered(events, time.Second); !got || !strings.Contains(ev.Detail, "dialog open at the retry") {
+		t.Fatalf("reported %q (got=%v), want could not confirm, dialog open at the retry", ev.Detail, got)
 	}
 }
