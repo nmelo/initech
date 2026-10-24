@@ -228,6 +228,15 @@ func (t *TUI) handleKey(ev *tcell.EventKey) bool {
 	// process happens to show. This return is what makes "consumed" true --
 	// the key cannot reach SendKey on this branch, rather than being skipped
 	// by a condition further down that a later edit could reorder.
+	//
+	// Ctrl+Z is swallowed first (ini-ynix): one slip while reaching for Alt+z
+	// would otherwise put the terminal's suspend byte in front of the agent.
+	// It is forwarded nowhere, written nowhere and wakes nothing: a key that
+	// does nothing does nothing. tcell reports a kitty-style Ctrl+z as
+	// KeyCtrlZ too, so this one comparison covers every terminal.
+	if ev.Key() == tcell.KeyCtrlZ {
+		return false
+	}
 	if fp := t.inputPane(); fp != nil {
 		if p, ok := fp.(*Pane); ok && p.IsSuspended() {
 			t.wakeSuspendedPaneFromKeystroke(p)

@@ -903,15 +903,17 @@ func TestTcellKeyToUV(t *testing.T) {
 		// Shift+Tab is a distinct tcell key, lowered to KeyTab+ModShift.
 		{"shift+tab", tcell.KeyBacktab, 0, 0, uv.KeyTab, uv.ModShift, ""},
 
-		// Ctrl+letter: tcell.KeyCtrlA..KeyCtrlZ map to runes 'a'..'z' via
+		// Ctrl+letter: tcell.KeyCtrlA..KeyCtrlY map to runes 'a'..'y' via
 		// 'rune('a' + ev.Key() - tcell.KeyCtrlA)' with mod | uv.ModCtrl.
+		// Ctrl+Z maps to nothing (ini-ynix; TestCtrlZ_TheEncodersProduceNothing).
 		{"ctrl+a", tcell.KeyCtrlA, 0, tcell.ModCtrl, 'a', uv.ModCtrl, ""},
-		{"ctrl+z", tcell.KeyCtrlZ, 0, tcell.ModCtrl, 'z', uv.ModCtrl, ""},
+		{"ctrl+y", tcell.KeyCtrlY, 0, tcell.ModCtrl, 'y', uv.ModCtrl, ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ev := tcell.NewEventKey(tt.key, tt.r, tt.mod)
-			got := uv.Key(tcellKeyToUV(ev))
+			kpe, _ := tcellKeyToUV(ev)
+			got := uv.Key(kpe)
 			if got.Code != tt.wantCode {
 				t.Errorf("Code = %v, want %v", got.Code, tt.wantCode)
 			}
@@ -935,7 +937,8 @@ func TestTcellKeyToUV_FallbackSpace(t *testing.T) {
 	// KeyF13 isn't in the switch; pass every modifier so we can prove the
 	// fallback drops them.
 	ev := tcell.NewEventKey(tcell.KeyF13, 0, tcell.ModCtrl|tcell.ModAlt|tcell.ModShift)
-	got := uv.Key(tcellKeyToUV(ev))
+	kpe, _ := tcellKeyToUV(ev)
+	got := uv.Key(kpe)
 	if got.Code != uv.KeySpace {
 		t.Errorf("Code = %v, want uv.KeySpace", got.Code)
 	}

@@ -362,7 +362,9 @@ func tcellKeyToANSI(ev *tcell.EventKey) []byte {
 	case tcell.KeyCtrlD:
 		return []byte{0x04}
 	case tcell.KeyCtrlZ:
-		return []byte{0x1a}
+		// Never the suspend byte (ini-ynix): handleKey swallows Ctrl+Z, and
+		// this keeps a later reordering there from reviving it.
+		return nil
 	case tcell.KeyCtrlL:
 		return []byte{0x0c}
 	default:

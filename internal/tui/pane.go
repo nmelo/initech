@@ -644,6 +644,14 @@ func (p *Pane) responseLoop() {
 // SendKey translates a tcell key event into a charmbracelet KeyPressEvent
 // and sends it through the emulator, which encodes it for the PTY.
 func (p *Pane) SendKey(ev *tcell.EventKey) {
+	// A key with no encoding (Ctrl+Z, ini-ynix) is not input at all: nothing
+	// is written and nothing is noted. handleKey already swallows it; this is
+	// the second line, so a reordering there cannot revive the byte.
+	kpe, ok := tcellKeyToUV(ev)
+	if !ok {
+		return
+	}
+
 	// The operator is acting on this pane, which is the only way an open dialog
 	// gets answered -- so retire the dialog latch (ini-zjhg). This is the
 	// operator input path; injected message bytes go straight to the PTY and do
@@ -670,7 +678,6 @@ func (p *Pane) SendKey(ev *tcell.EventKey) {
 		}
 		return
 	}
-	kpe := tcellKeyToUV(ev)
 	p.emu.SendKey(kpe)
 }
 
@@ -1955,8 +1962,18 @@ func (p *Pane) Close() {
 	p.mu.Unlock()
 }
 
-// tcellKeyToUV translates a tcell key event to a charmbracelet KeyPressEvent.
-func tcellKeyToUV(ev *tcell.EventKey) uv.KeyPressEvent {
+// tcellKeyToUV translates a tcell key event to a charmbracelet KeyPressEvent,
+// or reports false for a key that must never reach a pane: Ctrl+Z, the
+// terminal's suspend byte (ini-ynix).
+func tcellKeyToUV(ev *tcell.EventKey) (uv.KeyPressEvent, bool) {
+	if ev.Key() == tcell.KeyCtrlZ {
+		return uv.KeyPressEvent{}, false
+	}
+	return keyEventToUV(ev), true
+}
+
+// keyEventToUV is tcellKeyToUV's mapping for every key a pane may receive.
+func keyEventToUV(ev *tcell.EventKey) uv.KeyPressEvent {
 	var mod uv.KeyMod
 	if ev.Modifiers()&tcell.ModCtrl != 0 {
 		mod |= uv.ModCtrl

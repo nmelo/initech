@@ -33,6 +33,7 @@ func getHelpLines() []string {
 			"  " + m + "+a            Agent management modal",
 			"  " + m + "+i            Operator inbox: items agents posted for you",
 			"  " + m + "+z            Zoom/unzoom focused pane",
+			"  Ctrl+z           Ignored in panes; zoom is " + m + "+z",
 			"  " + m + "+f            Focus split: focused pane left, grid right (toggle)",
 			"  Shift+" + m + "+f      Focus split with a live right grid: working agents only (toggle)",
 			"  Shift+" + m + "+l      Live list split: working agents in a fixed 4-wide grid, panel order (toggle)",

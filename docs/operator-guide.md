@@ -207,6 +207,7 @@ These are the commands you'll use most. The full list is in the README.
 | Back to grid | Alt+2, Alt+3, or `grid` |
 | Working agents in a fixed grid, panel order | Shift+Alt+L or `list` (then `grid CxR` for its shape) |
 | Zoom focused pane | Alt+z |
+| Ctrl+z in a pane | Ignored: nothing reaches the agent (zoom is Alt+z) |
 | See what everyone is doing | `patrol` in command bar |
 | Process table (memory, PIDs) | `top` or `ps` |
 | Restart a stuck agent | `restart` or `r` |
