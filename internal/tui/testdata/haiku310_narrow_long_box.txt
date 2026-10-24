@@ -1,0 +1,14 @@
+
+
+❯ reply with the single word ok
+
+⏺ ok
+
+✻ Brewed for 2s · done 8:04 AM
+
+──────────────────────────────────
+❯ the message is long enough to
+  wrap across several rows of a
+  narrow box.
+──────────────────────────────────
+  Haiku 5.5 │ <user> │ 6% │ 10% ▓…

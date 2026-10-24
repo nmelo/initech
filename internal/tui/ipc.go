@@ -900,7 +900,7 @@ func (s *preEnterSighting) wait() bool {
 // the ❯ row has scrolled off), the short-body whole match, or Claude's
 // collapsed placeholder with our exact line count.
 func submitSighted(p *Pane, tail string, found bool, ps *pendingSubmit) bool {
-	return (found && submitStillHeld(p, tail, ps)) || bodyTextVisible(p, ps)
+	return (found && submitStillHeld(p, tail, ps)) || bodyTextVisible(p, ps) || boxRunIsOurs(p, ps)
 }
 
 // placeholderMismatch describes a collapsed placeholder in the box that is
@@ -997,6 +997,33 @@ func bodyTextVisible(p *Pane, ps *pendingSubmit) bool {
 	// yes here presses Enter, and a short body is text the operator could
 	// have typed.
 	return provenRunes(rows, ps.bodyLines) >= minProvenRunes
+}
+
+// boxRunIsOurs reports whether everything the composer box shows is a run of
+// OUR body (ini-lvxw). Claude Code 2.1.310 caps the box at a few rows and
+// scrolls a long message inside it, keeping the end in view: in a narrow pane
+// the box starts mid-message, the start of our text is never on screen, and
+// provenRunes, which proves a body line only when the whole line is visible,
+// proves nothing. Here the box's whole visible text, the rows between its
+// two rules with the prompt glyph dropped, must appear contiguously in our
+// space-stripped body, and be at least minProvenRunes long. Any text in the
+// box that is not ours, and an empty box, prove nothing. Never under a
+// dialog, like the rule-bounded read it uses. VERDICT ONLY: submitSighted
+// reads it, so it decides taken or held after an Enter and the sighting
+// before it; nothing that decides whether to press Enter reads it.
+func boxRunIsOurs(p *Pane, ps *pendingSubmit) bool {
+	if paneHasModal(p) {
+		return false
+	}
+	rows, ok := ruleBoundedRegion(emuRowsBlocking(p.emu))
+	if !ok {
+		return false
+	}
+	run := strings.TrimPrefix(stripSpace(strings.Join(rows, "")), "\u276f")
+	if len([]rune(run)) < minProvenRunes {
+		return false
+	}
+	return strings.Contains(stripSpace(strings.Join(ps.bodyLines, "")), run)
 }
 
 // composerRegion is the composer block, or -- when Claude's ❯ row has

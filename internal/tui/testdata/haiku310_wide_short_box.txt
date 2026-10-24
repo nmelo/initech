@@ -1,0 +1,41 @@
+
+ ▐▛███▛█   Claude Code v2.1.310
+▝▜██████▀  Haiku 5.5 · Claude Max
+ ▝▝   ▝▝   /private/tmp/lvx.fJsK/a1
+
+⚠ 1 MCP server needs authentication · run /mcp
+
+❯ reply with the single word ok
+
+⏺ ok
+
+✻ Brewed for 2s · done 8:04 AM
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ [from super] short marker QZX310 in a wide box
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Haiku 5.5 │ <user> │ 6% │ 10% ▓░┃░░░░░░░ → 12:00 PM │ 9% ▓┃░░░░░░░░
+  ⏵⏵ auto mode on (shift+tab to cycle)
