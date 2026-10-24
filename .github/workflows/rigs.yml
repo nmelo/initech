@@ -28,6 +28,9 @@ concurrency:
   cancel-in-progress: true
 
 # Runner selection and the MAC_RUNNER revert: see the header of ci.yml (ini-8k1o).
+# setup-go's cache: on for pull requests only, as in ci.yml (see its CACHE
+# note). The Mac's slots share one Go build cache, and a restore unpacked into
+# it while another job compiles from it breaks that compile.
 jobs:
   race:
     runs-on: ${{ github.event_name != 'pull_request' && vars.MAC_RUNNER || 'macos-latest' }}
@@ -38,6 +41,7 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
+          cache: ${{ github.event_name == 'pull_request' }}
 
       # ini-4cfl: `make test-race` existed, unrun by any gate, and 7 data
       # races accumulated invisibly in the suspend/wake path -- resumePane's
@@ -87,6 +91,7 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
+          cache: ${{ github.event_name == 'pull_request' }}
 
       # ini-0lko: name what this shard selected, before running it.
       - name: Witness which rigs this shard selected
@@ -115,6 +120,7 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
+          cache: ${{ github.event_name == 'pull_request' }}
 
       # ini-0lko: name what this shard selected, before running it.
       - name: Witness which rigs this shard selected
@@ -143,6 +149,7 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
+          cache: ${{ github.event_name == 'pull_request' }}
 
       # ini-0lko: name what this shard selected, before running it.
       - name: Witness which rigs this shard selected
@@ -172,6 +179,7 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
+          cache: ${{ github.event_name == 'pull_request' }}
 
       # ini-0lko: name what this shard selected, before running it.
       - name: Witness which rigs this shard selected

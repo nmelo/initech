@@ -13,7 +13,8 @@ import (
 // itself so a change to the workflow that breaks it fails here as well as in
 // CI: every shard runs the tool with no -short; the census job needs every
 // shard and runs even when one failed; and setup-go's cache is on for pull
-// requests only.
+// requests only, in ci.yml and rigs.yml alike, since both land on the same
+// self-hosted runner.
 
 type workflow struct {
 	Jobs map[string]struct {
@@ -30,9 +31,11 @@ type workflow struct {
 
 const shards = 3
 
-func readCI(t *testing.T) workflow {
+func readCI(t *testing.T) workflow { return readWorkflow(t, "ci.yml") }
+
+func readWorkflow(t *testing.T, file string) workflow {
 	t.Helper()
-	data, err := os.ReadFile("../../.github/workflows/ci.yml")
+	data, err := os.ReadFile("../../.github/workflows/" + file)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,7 +44,7 @@ func readCI(t *testing.T) workflow {
 		t.Fatal(err)
 	}
 	if len(w.Jobs) == 0 {
-		t.Fatal("ci.yml parsed to no jobs: this test is not reading the workflow")
+		t.Fatalf("%s parsed to no jobs: this test is not reading the workflow", file)
 	}
 	return w
 }
@@ -117,22 +120,26 @@ func TestCIWorkflow_TheCensusNeedsEveryShardAndAlwaysRuns(t *testing.T) {
 }
 
 // AC 2, the cache lever: every setup-go has its cache on for pull requests
-// only, never on for the self-hosted runner.
-func TestCIWorkflow_SetupGoCachesOnlyOnPullRequests(t *testing.T) {
-	w := readCI(t)
-	var n int
-	for key, job := range w.Jobs {
-		for _, s := range job.Steps {
-			if !strings.HasPrefix(s.Uses, "actions/setup-go@") {
-				continue
-			}
-			n++
-			if got := s.With["cache"]; got != "${{ github.event_name == 'pull_request' }}" {
-				t.Errorf("%s: setup-go cache is %q, want on for pull_request only", key, got)
+// only, never on for the self-hosted runner. rigs.yml too: its jobs share the
+// runner's one Go build cache with CI's, and a restore there unlinks object
+// files under a compile running in another slot (the v2.34.0 rigs race job).
+func TestWorkflows_SetupGoCachesOnlyOnPullRequests(t *testing.T) {
+	for _, file := range []string{"ci.yml", "rigs.yml"} {
+		w := readWorkflow(t, file)
+		var n int
+		for key, job := range w.Jobs {
+			for _, s := range job.Steps {
+				if !strings.HasPrefix(s.Uses, "actions/setup-go@") {
+					continue
+				}
+				n++
+				if got := s.With["cache"]; got != "${{ github.event_name == 'pull_request' }}" {
+					t.Errorf("%s %s: setup-go cache is %q, want on for pull_request only", file, key, got)
+				}
 			}
 		}
-	}
-	if n == 0 {
-		t.Fatal("found no setup-go step: this test is not reading the workflow")
+		if n == 0 {
+			t.Errorf("%s: found no setup-go step: this test is not reading the workflow", file)
+		}
 	}
 }
