@@ -27,7 +27,7 @@ const (
 	// liveListDefaultRows is the row count until the operator sets one, and
 	// what a saved list without list_rows means.
 	liveListDefaultRows = 3
-	// liveListMaxRows bounds `grid 4xR`.
+	// liveListMaxRows bounds the rows of `grid CxR`.
 	liveListMaxRows = 6
 )
 

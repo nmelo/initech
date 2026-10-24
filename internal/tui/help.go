@@ -36,7 +36,7 @@ func getHelpLines() []string {
 			"  Ctrl+z           Ignored in panes; zoom is " + m + "+z",
 			"  " + m + "+f            Focus split: focused pane left, grid right (toggle)",
 			"  Shift+" + m + "+f      Focus split with a live right grid: working agents only (toggle)",
-			"  Shift+" + m + "+l      Live list split: working agents in a fixed 4-wide grid, panel order (toggle)",
+			"  Shift+" + m + "+l      Live list split: working agents in a fixed grid (4x3 until grid CxR), panel order (toggle)",
 			"  " + m + "+s            Toggle agent overlay",
 			"  " + m + "+w            Show/hide which main this viewer is attached to (viewer windows)",
 			"  " + m + "+q            Quit",
