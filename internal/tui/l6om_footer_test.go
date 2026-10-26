@@ -114,8 +114,9 @@ func TestFooter_ACutSegmentIsNotRead(t *testing.T) {
 		{"  Haiku 5.…", Footer{}},
 		// A cut segment before a separator: the line is not trusted.
 		{"  Haiku 5.… │ Personal │ 8% │ 1%", Footer{}},
-		// Not a percent at all.
-		{"  Haiku 5.5 │ Personal │ lots │ 1%", Footer{Model: l6omStr("Haiku 5.5")}},
+		// Not a percent: the first whole percent is the line's last
+		// segment, read since ini-gdym, and the name before it is "lots".
+		{"  Haiku 5.5 │ Personal │ lots │ 1%", Footer{ContextPercent: l6omInt(1), Model: l6omStr("Haiku 5.5"), User: l6omStr("lots")}},
 		{"  Haiku 5.5 │ Personal │ 140% │ 1%", Footer{Model: l6omStr("Haiku 5.5")}},
 	}
 	for _, c := range cases {

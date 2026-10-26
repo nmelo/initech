@@ -1,0 +1,30 @@
+
+           Claude Code v2.1.310
+ ▐▛███▛█   Haiku 5.5
+▝▜██████▀  Claude Max
+ ▝▝   ▝▝   /private/tmp/rig
+
+⚠ 3 MCP servers need authentication
+  · run /mcp
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────
+❯ 
+────────────────────────────────────
+  ⎇ main │ Haiku 5.5 │ Second │ 0…
+  ⏵⏵ auto mode on (shift+tab to

@@ -97,6 +97,12 @@ const statusSep = " │ "
 // contextSegment is the context-used segment: a whole percent, 0 to 100.
 var contextSegment = regexp.MustCompile(`^(\d{1,3})%$`)
 
+// cutContextSegment is the line's last segment when Claude cut the line
+// right after the percent: "0% │…", "0% …", "0%…", or the line ending at it.
+// MEASURED on 2.1.310 at 39, 38 and 37 columns (ini-gdym). The % sign is on
+// screen, so the number before it is whole; "8…", cut inside, is not this.
+var cutContextSegment = regexp.MustCompile(`^(\d{1,3})%( │…| …|…)?$`)
+
 // modelSegment is a segment that names a model: "Haiku 5.5", "Opus 5.5",
 // "Claude Sonnet 4.6".
 var modelSegment = regexp.MustCompile(`^(Claude )?(Haiku|Sonnet|Opus|Fable|Claude)( [A-Za-z]+)? \d+(\.\d+)*\b`)
@@ -122,13 +128,25 @@ func readStatusLine(row string, f *Footer) bool {
 		}
 	}
 	pct := -1
+	sawPercent := false
 	for i, s := range closed {
 		if m := contextSegment.FindStringSubmatch(s); m != nil {
+			sawPercent = true
 			if n, err := strconv.Atoi(m[1]); err == nil && n <= 100 {
 				pct = i
 				f.ContextPercent = &n
 			}
 			break
+		}
+	}
+	// The first percent-shaped segment decides: an earlier one, even out of
+	// range, leaves the cut last segment unread.
+	if !sawPercent {
+		if m := cutContextSegment.FindStringSubmatch(segs[len(segs)-1]); m != nil {
+			if n, err := strconv.Atoi(m[1]); err == nil && n <= 100 {
+				pct = len(closed)
+				f.ContextPercent = &n
+			}
 		}
 	}
 	limit := len(closed)
