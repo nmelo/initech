@@ -610,6 +610,7 @@ func TestHandleIPCSendResumesSuspended(t *testing.T) {
 func TestHandleIPCSendBypassesQueueWhenNotSuspended(t *testing.T) {
 	p := newEmuPane("eng1", 80, 24)
 	p.suspended = false
+	v69PipePTY(t, p)
 	tui := &TUI{panes: toPaneViews([]*Pane{p})}
 
 	server, client := net.Pipe()

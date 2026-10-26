@@ -86,6 +86,9 @@ func q3xSetup(t *testing.T, beads map[string]q3xBead, listData string) *q3xRig {
 				rig.mu.Unlock()
 			}
 			resp := tui.IPCResponse{OK: true}
+			if req.Action == "send" {
+				resp.Delivery = tui.DeliveryDelivered // today's TUI (ini-69fy)
+			}
 			if req.Action == "list" {
 				resp.Data = listData
 			}

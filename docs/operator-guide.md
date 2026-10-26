@@ -343,7 +343,30 @@ Recovery: `initech send <agent> "You were working on <bead-id>. Run bd show <bea
 
 ### Messages Not Arriving
 
-`initech send` returns immediately with OK or an error. An agent whose process is not running gets
+`initech send` waits until initech has seen what became of the message, about two seconds at most
+for an agent at its prompt, then prints one line and exits with its status:
+
+- `delivered to <agent>` (exit 0): the message was seen in the agent's input box and the box cleared.
+  A `--no-enter` send submits nothing and also reads delivered, as does a send that woke a suspended agent.
+- `not delivered to <agent>: <reason>` (exit 1): the message is still in the box after the Enter and
+  the one resend, or could not be typed at all.
+- `could not confirm delivery to <agent>: <reason>; peek the pane` (exit 2): initech could not tell
+  either way (the reasons are below). When initech held back the Enter, the reason is `submit withheld,
+  awaiting composer repaint; the TUI delivers it when the box repaints and reports`, and the outcome
+  arrives later as a toast. A running initech older than the command answers with `older initech
+  running; restart it for delivery verdicts`; an agent on a machine running an older initech, with
+  `older initech on <host>`.
+- `sent to <agent>, unconfirmed: no delivery check for this agent type` (exit 0): Codex, OpenCode and
+  generic agents have no input box initech can read, so nothing is checked.
+- `deferred to <agent> — target has a modal open; will deliver when it closes` (exit 0): see the dialog
+  bullet below.
+
+An agent on another machine, named `host:agent` or by a bare name that resolves there, gets the same
+answers from that machine. Other commands that type into an agent (`assign`, `deliver`'s report,
+`add`, `clear`, `restart`, `start`) treat not delivered as a failure and every other answer as sent;
+`assign <agent> -m` with no bead prints the send's line and exits as `initech send` does.
+
+An agent whose process is not running gets
 nothing typed: the send fails, exits non-zero and prints why, with the command that brings the agent
 back. A stopped agent (after `initech stop`) reads `not delivered — agent not running: agent eng1 is
 stopped; start it with initech start eng1`; one whose process ended on its own reads `...agent eng1

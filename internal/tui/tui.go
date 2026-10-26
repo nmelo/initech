@@ -1575,21 +1575,26 @@ func autoGrid(n int) (cols, rows int) {
 // this was one of the three sites that bypassed the suspension guard and
 // silently lost window-2-originated sends). The suspension safety itself
 // lives in SendText, which this inherits like every other caller.
-func (t *TUI) deliverForwardedSend(target, text string, enter bool) error {
+//
+// It returns the send's verdict (ini-69fy), which the forwarding window or
+// machine hands to its sender. A target this window relays on to another
+// machine answers nothing here: could not confirm.
+func (t *TUI) deliverForwardedSend(target, text string, enter bool) (SendVerdict, error) {
 	var pv PaneView
 	t.runOnMain(func() { pv = t.findPaneByName(target) })
 	if pv == nil {
-		return fmt.Errorf("agent %q not found", target)
+		return SendVerdict{}, fmt.Errorf("agent %q not found", target)
 	}
 	// The forwarding window is waiting on this error (ini-i35w): refuse a
 	// pane still booting rather than let its child eat the text.
 	if lp, ok := pv.(*Pane); ok {
 		if err := lp.awaitStartupSettled(); err != nil {
-			return err
+			return SendVerdict{}, err
 		}
+		return lp.SendTextVerdict(text, enter), nil
 	}
 	pv.SendText(text, enter)
-	return nil
+	return SendVerdict{DeliveryUnconfirmed, relayedVerdictReason}, nil
 }
 
 // requestQuit closes quitCh exactly once, from any goroutine.

@@ -177,11 +177,14 @@ func (d *Daemon) deliverOffReader(sends *targetSerializer, p *Pane, cmd ControlC
 			p.SendOperatorText(text, enter)
 		case d.serve:
 			// initech serve answers as the TUI does: refused, deferred or OK
-			// (ini-ei8l). Window 1's window server answers as before.
+			// (ini-ei8l), with the verdict (ini-69fy).
 			respond(id, servedSend(p, text, enter))
 			return
 		default:
-			p.SendText(text, enter)
+			// Window 1's window server refuses nothing it did not before,
+			// and answers with the verdict (ini-69fy).
+			respond(id, verdictSend(p, text, enter))
+			return
 		}
 		respond(id, ControlResp{OK: true})
 	})

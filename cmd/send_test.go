@@ -48,7 +48,7 @@ func startFakeIPC(t *testing.T, resp tui.IPCResponse) string {
 
 func TestSendCommand_LocalDeliveryConfirmation(t *testing.T) {
 	skipWindows(t)
-	sockPath := startFakeIPC(t, tui.IPCResponse{OK: true})
+	sockPath := startFakeIPC(t, tui.IPCResponse{OK: true, Delivery: tui.DeliveryDelivered})
 	t.Setenv("INITECH_SOCKET", sockPath)
 
 	var stdout, stderr bytes.Buffer
@@ -98,7 +98,7 @@ func TestSendCommand_ModalDeferredFeedback(t *testing.T) {
 
 func TestSendCommand_RemoteDeliveryConfirmation(t *testing.T) {
 	skipWindows(t)
-	sockPath := startFakeIPC(t, tui.IPCResponse{OK: true})
+	sockPath := startFakeIPC(t, tui.IPCResponse{OK: true, Delivery: tui.DeliveryDelivered})
 	t.Setenv("INITECH_SOCKET", sockPath)
 
 	var stdout, stderr bytes.Buffer
@@ -261,7 +261,7 @@ func resetSendBodyFlags(t *testing.T) {
 func TestSendCommand_StdinBodyArrivesVerbatim(t *testing.T) {
 	skipWindows(t)
 	resetSendBodyFlags(t)
-	sockPath, captured := startCapturingIPC(t, tui.IPCResponse{OK: true})
+	sockPath, captured := startCapturingIPC(t, tui.IPCResponse{OK: true, Delivery: tui.DeliveryDelivered})
 	t.Setenv("INITECH_SOCKET", sockPath)
 
 	body := "use `if: false` to disable the job\nand `make check` before `git push`\n"
@@ -294,7 +294,7 @@ func TestSendCommand_StdinBodyArrivesVerbatim(t *testing.T) {
 func TestSendCommand_FileBodyArrivesVerbatim(t *testing.T) {
 	skipWindows(t)
 	resetSendBodyFlags(t)
-	sockPath, captured := startCapturingIPC(t, tui.IPCResponse{OK: true})
+	sockPath, captured := startCapturingIPC(t, tui.IPCResponse{OK: true, Delivery: tui.DeliveryDelivered})
 	t.Setenv("INITECH_SOCKET", sockPath)
 
 	body := "draft for super:\n`initech deliver` walks one step; `bd close` is operator-only.\n"
@@ -321,7 +321,7 @@ func TestSendCommand_FileBodyArrivesVerbatim(t *testing.T) {
 func TestSendCommand_FileDashReadsStdin(t *testing.T) {
 	skipWindows(t)
 	resetSendBodyFlags(t)
-	sockPath, captured := startCapturingIPC(t, tui.IPCResponse{OK: true})
+	sockPath, captured := startCapturingIPC(t, tui.IPCResponse{OK: true, Delivery: tui.DeliveryDelivered})
 	t.Setenv("INITECH_SOCKET", sockPath)
 
 	body := "`-f -` must behave exactly like --stdin\n"
@@ -535,7 +535,7 @@ func TestSendCommand_SlowButLegitimateResume_Succeeds(t *testing.T) {
 
 	// Longer than the old shared deadline, comfortably inside the new one --
 	// exactly what a legitimate-but-slow resume looks like.
-	sockPath := startSlowFakeIPC(t, 150*time.Millisecond, tui.IPCResponse{OK: true})
+	sockPath := startSlowFakeIPC(t, 150*time.Millisecond, tui.IPCResponse{OK: true, Delivery: tui.DeliveryDelivered})
 	t.Setenv("INITECH_SOCKET", sockPath)
 
 	rootCmd.SetArgs([]string{"send", "eng2", "hello"})
@@ -562,7 +562,7 @@ func TestInterruptCommand_NonSendActionKeepsShortDeadline(t *testing.T) {
 
 	// Slower than ipcCallTimeout, faster than sendActionTimeout: if
 	// "interrupt" incorrectly got the send budget, this would succeed.
-	sockPath := startSlowFakeIPC(t, 300*time.Millisecond, tui.IPCResponse{OK: true})
+	sockPath := startSlowFakeIPC(t, 300*time.Millisecond, tui.IPCResponse{OK: true, Delivery: tui.DeliveryDelivered})
 	t.Setenv("INITECH_SOCKET", sockPath)
 
 	rootCmd.SetArgs([]string{"interrupt", "eng2"})

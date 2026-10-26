@@ -126,13 +126,14 @@ func TestServeSend_HeldSendIsAnsweredDeferred(t *testing.T) {
 	}
 }
 
-// The positive twin: no dialog, a plain OK, exactly as before.
-func TestServeSend_WithoutADialogTheAnswerIsAPlainOK(t *testing.T) {
+// The positive twin: no dialog, OK, not deferred, now carrying the send's
+// verdict (ini-69fy): this pane draws no box, so it cannot confirm.
+func TestServeSend_WithoutADialogTheAnswerIsOKWithItsVerdict(t *testing.T) {
 	p := daemonPane(t)
 	d := &Daemon{serve: true, panes: []*Pane{p}, clients: map[string]net.Conn{}, clientCtrlMu: map[string]*sync.Mutex{}}
 	client, server := ei8lConnect(t, d, "hub")
-	if resp := ei8lSend(t, d, client, server); !resp.OK || resp.Data != "" || resp.Error != "" {
-		t.Fatalf("answer %+v, want a plain OK", resp)
+	if resp := ei8lSend(t, d, client, server); !resp.OK || resp.Error != "" || resp.Delivery != DeliveryUnconfirmed || resp.Data != "no composer visible" {
+		t.Fatalf("answer %+v, want OK, could not confirm, no composer visible", resp)
 	}
 }
 
@@ -147,9 +148,10 @@ func TestServeSend_AStoppedAgentIsRefused(t *testing.T) {
 	}
 }
 
-// Window 1's window server is the same Daemon type without serve: it answers
-// as it always has, and its panes get no report sink.
-func TestServeSend_TheWindowServerAnswersAsBefore(t *testing.T) {
+// Window 1's window server is the same Daemon type without serve: its panes
+// get no report sink, and since ini-69fy (G7) it answers with the verdict, so
+// a send to an agent another window shows hears it too.
+func TestServeSend_TheWindowServerAnswersWithTheVerdict(t *testing.T) {
 	p := daemonPane(t)
 	p.latchDialogOpen("Claude needs your permission")
 	p.noteDialogSighting()
@@ -159,8 +161,8 @@ func TestServeSend_TheWindowServerAnswersAsBefore(t *testing.T) {
 		t.Error("a window-server pane got a report sink")
 	}
 	client, server := ei8lConnect(t, d, "hub")
-	if resp := ei8lSend(t, d, client, server); !resp.OK || resp.Data != "" {
-		t.Fatalf("window server answer %+v, want the plain OK it has always given", resp)
+	if resp := ei8lSend(t, d, client, server); !resp.OK || resp.Delivery != DeliveryDeferred || !strings.HasPrefix(resp.Data, "deferred to eng1 — modal open") {
+		t.Fatalf("window server answer %+v, want OK, deferred, the deferral words", resp)
 	}
 }
 
@@ -175,10 +177,11 @@ func TestForwardSendToRemote_PassesThePeersDeferral(t *testing.T) {
 	if !resp.OK || resp.Data != "deferred to eng1 — modal open, 1 queued" {
 		t.Fatalf("IPC answer %+v, want OK carrying the peer's deferral", resp)
 	}
-	// An older daemon answers a bare OK: the client is as it was.
+	// An older daemon answers a bare OK before its verdict (ini-69fy item
+	// 4): could not confirm, naming why, never delivered.
 	r.reply = func(ControlCmd) *ControlResp { return &ControlResp{OK: true} }
-	if resp := r.call(t, sendH, IPCRequest{Action: "send", Host: "workbench", Target: "eng1", Text: "hi", Enter: true}); !resp.OK || resp.Data != "" {
-		t.Fatalf("IPC answer %+v from an older daemon, want a bare OK", resp)
+	if resp := r.call(t, sendH, IPCRequest{Action: "send", Host: "workbench", Target: "eng1", Text: "hi", Enter: true}); !resp.OK || resp.Delivery != DeliveryUnconfirmed || resp.Data != "older initech on workbench" {
+		t.Fatalf("IPC answer %+v from an older daemon, want could not confirm, older initech on workbench", resp)
 	}
 }
 
@@ -322,9 +325,9 @@ func TestConsumeEvents_AClientWithoutTheHandlerPassesOver(t *testing.T) {
 	defer mux.Close()
 	forwarded := make(chan struct{})
 	done := make(chan struct{})
-	pm := &peerManager{quit: make(chan struct{}), onForwardSend: func(string, string, bool) error {
+	pm := &peerManager{quit: make(chan struct{}), onForwardSend: func(string, string, bool) (SendVerdict, error) {
 		close(forwarded)
-		return nil
+		return SendVerdict{}, nil
 	}}
 	go pm.consumeEvents("workbench", &peerConn{mux: mux}, done)
 	defer close(done)

@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -30,9 +31,14 @@ func noBeadWords(message string) string {
 // bead_assigned entry with no bead id. The marker is best-effort, like a bead
 // registration: a TUI that does not know the no_bead action (an older one)
 // refuses it and the ribbon is left as it was, with a warning.
+//
+// A send that could not confirm (ini-69fy) may well have arrived: the marker
+// is still set, and the could-not-confirm line and its exit status come last.
 func assignNoBead(w io.Writer, agent, host, message string) error {
-	if err := deliverText(w, agent, host, message, true); err != nil {
-		return err
+	sendErr := deliverText(w, agent, host, message, true)
+	var unconfirmed *unconfirmedSendError
+	if sendErr != nil && !errors.As(sendErr, &unconfirmed) {
+		return sendErr
 	}
 	words := noBeadWords(message)
 	resp, err := ipcCall(tui.IPCRequest{Action: "no_bead", Target: agent, Text: words})
@@ -45,5 +51,5 @@ func assignNoBead(w io.Writer, agent, host, message string) error {
 		fmt.Fprintf(w, "warning: %s's ribbon not updated: %s\n", agent, resp.Error)
 	}
 	emitIPCEvent(agent, "", "bead_assigned", "no bead, assigned to "+agent+": "+words)
-	return nil
+	return sendErr
 }

@@ -1152,6 +1152,12 @@ func (p *Pane) SendText(text string, enter bool) {
 	p.sendText(text, enter, true)
 }
 
+// SendTextVerdict is SendText for a caller waiting on the answer (ini-69fy):
+// it returns what the send learned about its own delivery.
+func (p *Pane) SendTextVerdict(text string, enter bool) SendVerdict {
+	return p.sendText(text, enter, true)
+}
+
 // SendOperatorText delivers text the operator produced (a paste from another
 // window): it counts as typing and never waits in the typing hold, so the
 // operator's own input is not held behind their own keystrokes.
@@ -1160,13 +1166,15 @@ func (p *Pane) SendOperatorText(text string, enter bool) {
 	p.sendText(text, enter, false)
 }
 
-func (p *Pane) sendText(text string, enter, hold bool) {
+// sendText delivers and returns the verdict. A message queued for a
+// suspended pane reads delivered: the wake it triggers delivers the queue.
+func (p *Pane) sendText(text string, enter, hold bool) SendVerdict {
 	p.mu.Lock()
 	p.lastMessageReceived = time.Now()
 	p.mu.Unlock()
 
 	if p.queueIfSuspended(text, enter) {
-		return
+		return SendVerdict{Outcome: DeliveryDelivered}
 	}
 	// STARTUP GATE (ini-i35w): a child that is still booting is not listening.
 	// Claude with a --continue transcript renders for seconds and flushes
@@ -1188,12 +1196,12 @@ func (p *Pane) sendText(text string, enter, hold bool) {
 		release := p.waitTypingHold()
 		defer release()
 		if p.queueIfSuspended(text, enter) {
-			return
+			return SendVerdict{Outcome: DeliveryDelivered}
 		}
 	}
 	p.sendMu.Lock()
 	defer p.sendMu.Unlock()
-	sendPaneTextLocked(p, text, enter)
+	return sendPaneTextLocked(p, text, enter)
 }
 
 // queueIfSuspended queues a message for a suspended pane and wakes it,

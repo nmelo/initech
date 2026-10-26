@@ -339,6 +339,7 @@ type ControlResp struct {
 	OK       bool   `json:"ok"`
 	Error    string `json:"error,omitempty"`
 	Data     string `json:"data,omitempty"`
+	Delivery string `json:"delivery,omitempty"`  // A send's verdict (ini-69fy); none from an older peer.
 	Action   string `json:"action,omitempty"`    // Set for unsolicited commands (e.g. "forward_send", "stream_added").
 	Target   string `json:"target,omitempty"`    // Agent name for forward_send.
 	Text     string `json:"text,omitempty"`      // Message text for forward_send.
@@ -708,11 +709,18 @@ func (d *Daemon) HandleSend(conn net.Conn, req IPCRequest) {
 			writeIPCResponse(conn, IPCResponse{Error: err.Error()})
 			return
 		}
-		if resp.Error != "" {
+		// The connected initech answers with its verdict (ini-69fy); one
+		// that answers OK with none answers before its verdict.
+		switch {
+		case resp.Delivery == DeliveryNotDelivered:
+			writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("not delivered to %s:%s: %s", req.Host, req.Target, resp.Error), Delivery: resp.Delivery, Data: resp.Error})
+		case resp.Error != "":
 			writeIPCResponse(conn, IPCResponse{Error: resp.Error})
-			return
+		case resp.Delivery != "":
+			writeIPCResponse(conn, IPCResponse{OK: true, Delivery: resp.Delivery, Data: resp.Data})
+		default:
+			writeIPCResponse(conn, IPCResponse{OK: true, Delivery: DeliveryUnconfirmed, Data: fmt.Sprintf(olderPeerVerdictFormat, req.Host)})
 		}
-		writeIPCResponse(conn, IPCResponse{OK: true})
 		return
 	}
 	p := d.findPane(req.Target)
@@ -724,14 +732,19 @@ func (d *Daemon) HandleSend(conn net.Conn, req IPCRequest) {
 		return
 	}
 	conn.SetReadDeadline(time.Time{})
+	// The same answer the control stream gives (ini-ei8l), with the verdict
+	// and the agent named as the TUI names it (ini-69fy).
+	var resp ControlResp
 	if d.serve {
-		// The same answer the control stream gives (ini-ei8l).
-		resp := servedSend(p, req.Text, req.Enter)
-		writeIPCResponse(conn, IPCResponse{OK: resp.OK, Error: resp.Error, Data: resp.Data})
+		resp = servedSend(p, req.Text, req.Enter)
+	} else {
+		resp = verdictSend(p, req.Text, req.Enter)
+	}
+	if resp.Delivery == DeliveryNotDelivered {
+		writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("not delivered to %s: %s", req.Target, resp.Error), Delivery: resp.Delivery, Data: resp.Error})
 		return
 	}
-	p.SendText(req.Text, req.Enter)
-	writeIPCResponse(conn, IPCResponse{OK: true})
+	writeIPCResponse(conn, IPCResponse{OK: resp.OK, Error: resp.Error, Data: resp.Data, Delivery: resp.Delivery})
 }
 
 func (d *Daemon) HandleExtended(conn net.Conn, req IPCRequest, rawJSON []byte) bool {

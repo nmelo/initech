@@ -694,6 +694,7 @@ func TestDaemonIPCSend_LocalDelivery(t *testing.T) {
 	}
 
 	p := newEmuPane("eng1", 80, 24)
+	v69PipePTY(t, p)
 	d := &Daemon{
 		project: proj,
 		panes:   []*Pane{p},
@@ -718,7 +719,8 @@ func TestDaemonIPCSend_LocalDelivery(t *testing.T) {
 	scanner.Scan()
 	var resp IPCResponse
 	json.Unmarshal(scanner.Bytes(), &resp)
-	if !resp.OK {
-		t.Errorf("local send should succeed, got: %s", resp.Error)
+	// A pane that draws no box cannot confirm (ini-69fy), and says so.
+	if !resp.OK || resp.Delivery != DeliveryUnconfirmed {
+		t.Errorf("local send: %+v, want OK carrying its verdict", resp)
 	}
 }

@@ -605,6 +605,7 @@ func TestHandleIPCSendUnknownTarget(t *testing.T) {
 
 func TestHandleIPCSendNoEnter(t *testing.T) {
 	p := newEmuPane("eng1", 80, 24)
+	v69PipePTY(t, p)
 	tui := &TUI{panes: toPaneViews([]*Pane{p})}
 
 	server, client := net.Pipe()
@@ -617,8 +618,8 @@ func TestHandleIPCSendNoEnter(t *testing.T) {
 	n, _ := client.Read(buf)
 	var resp IPCResponse
 	json.Unmarshal([]byte(strings.TrimSpace(string(buf[:n]))), &resp)
-	if !resp.OK {
-		t.Errorf("send without Enter should succeed: %s", resp.Error)
+	if !resp.OK || resp.Delivery != DeliveryDelivered {
+		t.Errorf("send without Enter: %+v, want delivered (ini-69fy G1)", resp)
 	}
 }
 

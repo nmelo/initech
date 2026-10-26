@@ -107,8 +107,9 @@ type peerManager struct {
 	onAgentStatus func(name string, beads []string, primary, noBead, desc string, ws WaitingState, suspended bool)
 	// onForwardSend is called when a daemon pushes a forward_send command
 	// through the control stream. The TUI delivers the message to the
-	// local pane named by target. Returns an error if the pane doesn't exist.
-	onForwardSend func(target, text string, enter bool) error
+	// local pane named by target. Returns the send's verdict (ini-69fy), or
+	// an error if the pane doesn't exist or refuses.
+	onForwardSend func(target, text string, enter bool) (SendVerdict, error)
 	quit          chan struct{}
 	wg            sync.WaitGroup
 }
@@ -116,7 +117,7 @@ type peerManager struct {
 // newPeerManager creates a manager and starts a goroutine per remote peer.
 // All connections (initial and reconnect) happen in the background so the
 // TUI renders immediately without blocking on network I/O.
-func newPeerManager(project *config.Project, onChange func(string, []PaneView, bool), onFwd func(string, string, bool) error, quit chan struct{}, onAuthority ...func(string, *AuthorityIdentity)) *peerManager {
+func newPeerManager(project *config.Project, onChange func(string, []PaneView, bool), onFwd func(string, string, bool) (SendVerdict, error), quit chan struct{}, onAuthority ...func(string, *AuthorityIdentity)) *peerManager {
 	pm := &peerManager{
 		project:        project,
 		onPanesChanged: onChange,
@@ -301,10 +302,13 @@ func (pm *peerManager) managePeer(peerName string, remote config.Remote) {
 		pc.mux.SetRequestHandler(func(req ControlResp) ControlResp {
 			if req.Action == "forward_send" && pm.onForwardSend != nil {
 				LogInfo("remote", "forward_send request", "peer", peerName, "target", req.Target)
-				if err := pm.onForwardSend(req.Target, req.Text, req.Enter); err != nil {
+				v, err := pm.onForwardSend(req.Target, req.Text, req.Enter)
+				if err != nil {
 					return ControlResp{Error: err.Error()}
 				}
-				return ControlResp{OK: true}
+				// The verdict rides the answer (ini-69fy); the deferral text
+				// is the TUI's own, so a deferred one carries the outcome only.
+				return verdictControlResp(v, "deferred to "+req.Target+" — modal open")
 			}
 			return ControlResp{Error: "unknown action"}
 		})

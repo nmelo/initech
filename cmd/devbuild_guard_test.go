@@ -133,7 +133,7 @@ func TestDevBuildGuard_AllowDevDeliveryFlagBypassesRefusal(t *testing.T) {
 	resetDevBuildGuardState(t)
 	Version = "dev"
 
-	sockPath := startFakeIPC(t, tui.IPCResponse{OK: true})
+	sockPath := startFakeIPC(t, tui.IPCResponse{OK: true, Delivery: tui.DeliveryDelivered})
 	t.Setenv("INITECH_SOCKET", sockPath)
 
 	var stdout, stderr bytes.Buffer
@@ -152,7 +152,7 @@ func TestDevBuildGuard_ReleaseVersionIsNotGated(t *testing.T) {
 	resetDevBuildGuardState(t)
 	Version = "v1.9.1" // what a real goreleaser+brew install carries.
 
-	sockPath := startFakeIPC(t, tui.IPCResponse{OK: true})
+	sockPath := startFakeIPC(t, tui.IPCResponse{OK: true, Delivery: tui.DeliveryDelivered})
 	t.Setenv("INITECH_SOCKET", sockPath)
 
 	var stdout, stderr bytes.Buffer

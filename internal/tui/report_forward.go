@@ -160,14 +160,15 @@ func servedSend(p *Pane, text string, enter bool) ControlResp {
 		LogInfo("daemon", "SEND NOT DELIVERED", "target", p.Name(), "reason", err)
 		return ControlResp{Error: err.Error()}
 	}
-	deferred := paneHasModal(p)
+	return verdictSend(p, text, enter)
+}
+
+// verdictSend delivers and answers with the send's verdict (ini-69fy), as
+// the TUI's own send does: window 1's window server and initech serve both.
+func verdictSend(p *Pane, text string, enter bool) ControlResp {
 	age, _ := p.latchAge(time.Now())
 	depth := p.QueuedMessageCount()
-	p.SendText(text, enter)
-	if deferred {
-		return ControlResp{OK: true, Data: deferredMsg(p.Name(), age, depth)}
-	}
-	return ControlResp{OK: true}
+	return verdictControlResp(p.SendTextVerdict(text, enter), deferredMsg(p.Name(), age, depth))
 }
 
 // onRemoteAgentEvent is the connected initech's side: a report from a serve

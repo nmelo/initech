@@ -50,7 +50,8 @@ type IPCResponse struct {
 	Project    *IPCProject       `json:"project,omitempty"` // The serving process's project, on list (ini-l8s5).
 	OK         bool              `json:"ok"`
 	Error      string            `json:"error,omitempty"`
-	Data       string            `json:"data,omitempty"` // Pane content for peek, pane list for list.
+	Data       string            `json:"data,omitempty"`     // Pane content for peek, pane list for list.
+	Delivery   string            `json:"delivery,omitempty"` // A send's verdict (ini-69fy): a Delivery* outcome, its reason in Data.
 }
 
 // IPCProject names the project behind a socket, so a caller that reached it
@@ -351,6 +352,13 @@ func (t *TUI) handleIPCSend(conn net.Conn, req IPCRequest) {
 		writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("pane %q not found", req.Target)})
 		return
 	}
+	// A bare name on another machine's or window's agent takes the host:agent
+	// route (ini-69fy G7): the owner answers with its own verdict. Its
+	// SendText answers nothing.
+	if rp, ok := pv.(*RemotePane); ok {
+		t.sendViaRemote(conn, rp, req)
+		return
+	}
 	if notRunning != nil {
 		LogInfo("ipc", "SEND NOT DELIVERED", "target", req.Target, "reason", notRunning)
 		writeIPCResponse(conn, IPCResponse{Error: notRunning.Error()})
@@ -363,7 +371,7 @@ func (t *TUI) handleIPCSend(conn net.Conn, req IPCRequest) {
 			writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("resume failed: %v", err)})
 			return
 		}
-		writeIPCResponse(conn, IPCResponse{OK: true, Data: `"resumed and delivered"`})
+		writeIPCResponse(conn, resumedSendReply())
 		return
 	}
 
@@ -379,11 +387,6 @@ func (t *TUI) handleIPCSend(conn net.Conn, req IPCRequest) {
 		}
 	}
 
-	// Detect a Claude modal on the local target before delivery so the sender is
-	// told the send was deferred rather than receiving a misleading "delivered"
-	// (ini-7txh). Best-effort for the response only — sendPaneTextLocked is
-	// authoritative for the actual defer/queue and emits its own operator event.
-	modalDeferred := false
 	// Age and depth travel with the deferral (ini-gbqc): "deferred" alone
 	// cannot tell a sender a dialog opened a second ago from one that has held
 	// their mail for hours, and the second is the case worth acting on. The
@@ -393,7 +396,6 @@ func (t *TUI) handleIPCSend(conn net.Conn, req IPCRequest) {
 	var queuedDepth int
 	if lp, ok := pv.(*Pane); ok {
 		t.runOnMain(func() {
-			modalDeferred = paneHasModal(lp)
 			latchAge, _ = lp.latchAge(time.Now())
 			queuedDepth = lp.QueuedMessageCount()
 		})
@@ -409,10 +411,24 @@ func (t *TUI) handleIPCSend(conn net.Conn, req IPCRequest) {
 		LogInfo("perf", "marker accepted", "pane", req.Target, "marker", marker)
 		lp.armPerfMarker(marker)
 	}
-	pv.SendText(req.Text, req.Enter)
-
-	if modalDeferred {
-		writeIPCResponse(conn, IPCResponse{OK: true, Data: deferredMsg(req.Target, latchAge, queuedDepth)})
+	// The reply waits for the verdict and carries it (ini-69fy): the send
+	// path decides it as it delivers, so a deferral is the send path's own
+	// (ini-7txh), not a guess made before it ran. A PaneView that is neither
+	// kind answers what it can: nothing checked.
+	verdict := SendVerdict{DeliveryUnchecked, uncheckedVerdictReason}
+	if lp, ok := pv.(*Pane); ok {
+		verdict = lp.SendTextVerdict(req.Text, req.Enter)
+	} else {
+		pv.SendText(req.Text, req.Enter)
+	}
+	resp := verdictIPCResponse(req.Target, verdict, deferredMsg(req.Target, latchAge, queuedDepth))
+	if verdict.Outcome == DeliveryNotDelivered {
+		LogInfo("ipc", "SEND NOT DELIVERED", "target", req.Target, "reason", verdict.Reason)
+		writeIPCResponse(conn, resp)
+		return
+	}
+	if verdict.Outcome == DeliveryDeferred {
+		writeIPCResponse(conn, resp)
 		return
 	}
 
@@ -428,7 +444,13 @@ func (t *TUI) handleIPCSend(conn net.Conn, req IPCRequest) {
 			Detail: "Message sent to " + req.Target + ": " + preview,
 		})
 	})
-	writeIPCResponse(conn, IPCResponse{OK: true})
+	writeIPCResponse(conn, resp)
+}
+
+// resumedSendReply answers a send that woke a suspended agent and delivered
+// its queue.
+func resumedSendReply() IPCResponse {
+	return IPCResponse{OK: true, Data: `"resumed and delivered"`, Delivery: DeliveryDelivered}
 }
 
 // injectText sends text into a pane's PTY. Two modes based on the pane's
@@ -448,13 +470,17 @@ func (t *TUI) handleIPCSend(conn net.Conn, req IPCRequest) {
 // and then submit separately.
 //
 // Safe to call from any goroutine.
-func sendPaneTextLocked(pane *Pane, text string, enter bool) {
+//
+// It returns the send's verdict (ini-69fy), each one decided where the path
+// already decides it: nothing about when anything is written or pressed
+// depends on the return.
+func sendPaneTextLocked(pane *Pane, text string, enter bool) SendVerdict {
 	if pane.ptmx == nil {
 		// Never silent (ini-2s7q): the IPC handler refuses a stopped or
 		// exited agent before reaching here, so a send arriving here was
 		// routed past that check and its text goes nowhere.
 		LogWarn("inject", "send dropped: pane has no PTY", "pane", pane.Name(), "text", logSnippet(text))
-		return
+		return SendVerdict{DeliveryNotDelivered, noPTYVerdictReason}
 	}
 
 	// Modal guard (ini-7txh): never paste a body or fire a submit into an open
@@ -475,7 +501,7 @@ func sendPaneTextLocked(pane *Pane, text string, enter bool) {
 			pane.requeueFront(m)
 			LogDebug("inject", "held message still held: dialog open", "pane", pane.Name(),
 				"held_for", time.Since(m.Time).Round(time.Second))
-			return
+			return SendVerdict{Outcome: DeliveryDeferred}
 		}
 		dropped := pane.enqueueHeld(text, enter)
 		preview := text
@@ -492,7 +518,7 @@ func sendPaneTextLocked(pane *Pane, text string, enter bool) {
 			Pane:   pane.Name(),
 			Detail: "deferred (modal open): " + preview,
 		})
-		return
+		return SendVerdict{Outcome: DeliveryDeferred}
 	}
 
 	// A withheld submit gets its fate before this send touches the composer.
@@ -580,7 +606,7 @@ func sendPaneTextLocked(pane *Pane, text string, enter bool) {
 
 	if !enter {
 		LogInfo("inject", "typed, no submit requested", "pane", pane.Name(), "mode", mode, "bytes", len(text))
-		return
+		return SendVerdict{Outcome: DeliveryDelivered}
 	}
 
 	// NEVER-SUBMIT BELT (ini-zjhg), layer 2 of two. Layer 1 (the modal guard
@@ -597,7 +623,7 @@ func sendPaneTextLocked(pane *Pane, text string, enter bool) {
 	if beltApplies && hasComposer {
 		if accepted, lastTail := composerAcceptedBody(pane, tailBefore, newPendingSubmit(text, mode, "")); !accepted {
 			withholdSubmit(pane, text, mode, tailBefore, lastTail)
-			return
+			return SendVerdict{DeliveryUnconfirmed, withheldVerdictReason}
 		}
 	}
 
@@ -616,7 +642,7 @@ func sendPaneTextLocked(pane *Pane, text string, enter bool) {
 				LogDebug("inject", "submit retry", "pane", pane.Name(), "mode", mode, "method", method)
 			}
 		}
-		return
+		return SendVerdict{DeliveryUnchecked, uncheckedVerdictReason}
 	}
 
 	if pane.noBracketedPaste {
@@ -628,10 +654,10 @@ func sendPaneTextLocked(pane *Pane, text string, enter bool) {
 		LogInfo("inject", "submit sent, unconfirmed", "pane", pane.Name(), "mode", mode, "why", "no composer check for this agent type")
 		if config.IsCodexLikeAgentType(pane.AgentType()) && pane.submitKey != "ctrl+enter" {
 			_, _ = pane.ptmx.Write([]byte("\r"))
-			return
+			return SendVerdict{DeliveryUnchecked, uncheckedVerdictReason}
 		}
 		sendSubmitKey(pane.emu, pane.submitKey)
-		return
+		return SendVerdict{DeliveryUnchecked, uncheckedVerdictReason}
 	}
 
 	// Bracketed paste mode: wait for Claude Code's paste completion
@@ -646,8 +672,7 @@ func sendPaneTextLocked(pane *Pane, text string, enter bool) {
 	ps := newPendingSubmit(text, mode, "")
 	ps.seenInBox = sighting.wait()
 	ps.census = sighting.census
-	confirmAndRetrySubmit(pane, ps)
-
+	return confirmAndRetrySubmit(pane, ps)
 }
 
 // submitConfirmWindow is how long the send path watches the composer after
@@ -951,13 +976,16 @@ const submitRetryDialogReason = "dialog open at the retry"
 // as NOT delivered, within about two seconds (ini-nma5 AC 2). An unknown
 // outcome presses nothing (a blind Enter could answer a dialog) and is
 // surfaced as "could not confirm" (ini-k3g2): never counted as taken.
-func confirmAndRetrySubmit(pane *Pane, ps *pendingSubmit) {
+//
+// It returns what it surfaced, for a sender waiting on the reply (ini-69fy):
+// the same outcome and reason as the toast, decided at the same moment.
+func confirmAndRetrySubmit(pane *Pane, ps *pendingSubmit) SendVerdict {
 	switch outcome, why := watchSubmit(pane, ps, time.Now()); outcome {
 	case submitTaken:
-		return
+		return SendVerdict{Outcome: DeliveryDelivered}
 	case submitUnknown:
 		pane.emitUnconfirmedSubmit(ps, why, time.Since(ps.withheldAt).Round(time.Second))
-		return
+		return SendVerdict{DeliveryUnconfirmed, why}
 	}
 	// NEVER INTO A DIALOG (ini-ytxc), the guard deliverWithheldSubmit has:
 	// the verdict above rests on a sample up to one poll old, and a
@@ -967,17 +995,19 @@ func confirmAndRetrySubmit(pane *Pane, ps *pendingSubmit) {
 	if paneHasModal(pane) {
 		LogInfo("inject", "submit retry withheld: dialog open", "pane", pane.Name(), "mode", ps.mode, "text", ps.preview)
 		pane.emitUnconfirmedSubmit(ps, submitRetryDialogReason, time.Since(ps.withheldAt).Round(time.Second))
-		return
+		return SendVerdict{DeliveryUnconfirmed, submitRetryDialogReason}
 	}
 	LogInfo("inject", "submit retry: Enter not taken, resending once", "pane", pane.Name(), "mode", ps.mode, "text", ps.preview)
 	sendSubmitKey(pane.emu, pane.submitKey)
 	switch outcome, why := watchSubmit(pane, ps, time.Now()); outcome {
 	case submitNotTaken:
-		pane.emitUndeliveredSubmit(ps, "Enter not taken twice; the text is still in the composer",
-			time.Since(ps.withheldAt).Round(time.Second))
+		pane.emitUndeliveredSubmit(ps, retryMissVerdictReason, time.Since(ps.withheldAt).Round(time.Second))
+		return SendVerdict{DeliveryNotDelivered, retryMissVerdictReason}
 	case submitUnknown:
 		pane.emitUnconfirmedSubmit(ps, why, time.Since(ps.withheldAt).Round(time.Second))
+		return SendVerdict{DeliveryUnconfirmed, why}
 	}
+	return SendVerdict{Outcome: DeliveryDelivered}
 }
 
 // submitStillHeld reports whether the composer still shows our body after an
@@ -1676,13 +1706,28 @@ func (t *TUI) forwardSendToRemote(conn net.Conn, req IPCRequest) {
 		writeIPCResponse(conn, errResp)
 		return
 	}
+	t.sendViaRemote(conn, rp, req)
+}
+
+// sendViaRemote sends to an agent another initech owns and answers with that
+// owner's verdict (ini-69fy). A peer that answers OK with no verdict answers
+// before its verdict, as initech did before ini-69fy: could not confirm,
+// never delivered. Its deferral still reads as one (ini-ei8l).
+func (t *TUI) sendViaRemote(conn net.Conn, rp *RemotePane, req IPCRequest) {
+	name := rp.Host() + ":" + rp.Name()
 	resp, err := rp.Request(ControlCmd{Action: "send", Text: req.Text, Enter: req.Enter})
 	if reason := peerFailure(resp, err); reason != "" {
-		writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("not delivered to %s:%s: %s", req.Host, req.Target, reason)})
+		writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("not delivered to %s: %s", name, reason), Delivery: resp.Delivery, Data: resp.Error})
 		return
 	}
-	// Data carries the peer's deferral (ini-ei8l), as a local send's does.
-	writeIPCResponse(conn, IPCResponse{OK: true, Data: resp.Data})
+	switch {
+	case resp.Delivery != "":
+		writeIPCResponse(conn, IPCResponse{OK: true, Delivery: resp.Delivery, Data: resp.Data})
+	case strings.Contains(resp.Data, "deferred"):
+		writeIPCResponse(conn, IPCResponse{OK: true, Delivery: DeliveryDeferred, Data: resp.Data})
+	default:
+		writeIPCResponse(conn, IPCResponse{OK: true, Delivery: DeliveryUnconfirmed, Data: fmt.Sprintf(olderPeerVerdictFormat, rp.Host())})
+	}
 }
 
 // forwardInterruptToRemote sends interrupt host:agent to the peer as an

@@ -77,12 +77,12 @@ func TestConsumeEvents_ForwardSend(t *testing.T) {
 	done := make(chan struct{})
 	pm := &peerManager{
 		quit: quit,
-		onForwardSend: func(target, text string, enter bool) error {
+		onForwardSend: func(target, text string, enter bool) (SendVerdict, error) {
 			gotTarget = target
 			gotText = text
 			gotEnter = enter
 			close(delivered)
-			return nil
+			return SendVerdict{}, nil
 		},
 	}
 

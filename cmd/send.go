@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -35,6 +36,18 @@ use the shell-safe input paths, or single quotes:
 
 The body from --stdin or -f is delivered byte-for-byte; the shell never
 re-evaluates it.
+
+Delivered means the message was seen in the agent's input box and taken.
+send waits for that (about two seconds), prints one line and exits with:
+
+  0  delivered to <agent>
+  1  not delivered to <agent>: <reason>
+  2  could not confirm delivery to <agent>: <reason>; peek the pane
+  0  sent to <agent>, unconfirmed: no delivery check for this agent type
+     (Codex, OpenCode and generic agents)
+  0  deferred to <agent> (a dialog is open; delivered when it closes)
+
+A refused send (no such agent, agent not running) exits 1 with the reason.
 
 A bare agent name resolves to any agent connected to this TUI, whether
 local or remote — no host prefix required:
@@ -178,12 +191,41 @@ func runSend(cmd *cobra.Command, args []string) error {
 		target = target[idx+1:]
 	}
 
+	// From here a failure is the send's answer, printed once as its own
+	// line: not a usage error, and not prefixed "Error:" (ini-69fy).
+	cmd.SilenceUsage, cmd.SilenceErrors = true, true
 	return deliverText(cmd.ErrOrStderr(), target, host, text, !sendNoEnter)
+}
+
+// exitUnconfirmed is initech send's exit status when it could not confirm
+// delivery either way (ini-69fy): distinct from delivered (0) and from not
+// delivered or refused (1), so a script can tell them apart.
+const exitUnconfirmed = 2
+
+// olderTUIVerdictReason is why a send could not confirm when the TUI that
+// answered is older than the CLI: it answers before its verdict.
+const olderTUIVerdictReason = "older initech running; restart it for delivery verdicts"
+
+// unconfirmedSendError is a send that could not confirm delivery: its line,
+// and exit status 2.
+type unconfirmedSendError struct{ line string }
+
+func (e *unconfirmedSendError) Error() string { return e.line }
+func (e *unconfirmedSendError) ExitCode() int { return exitUnconfirmed }
+
+func unconfirmedSend(name, reason string) error {
+	return &unconfirmedSendError{fmt.Sprintf("could not confirm delivery to %s: %s; peek the pane", name, reason)}
 }
 
 // deliverText is initech send's delivery: one send request to the TUI and
 // the same report on w. assign's no-bead dispatch goes through it too, so
 // that message is delivered and reported exactly as initech send would.
+//
+// The TUI answers after the submit verdict (ini-69fy): delivered (seen in the
+// box and taken) prints "delivered to"; not delivered comes back as the
+// TUI's error, "not delivered to <agent>: <reason>"; could not confirm is an
+// unconfirmedSendError. An agent type with no composer check prints "sent to
+// <agent>, unconfirmed", exit 0. A deferral reads as before.
 func deliverText(w io.Writer, target, host, text string, enter bool) error {
 	req := tui.IPCRequest{
 		Action: "send",
@@ -205,12 +247,23 @@ func deliverText(w io.Writer, target, host, text string, enter bool) error {
 	if host != "" {
 		name = host + ":" + target
 	}
+	switch {
 	// Deferred first: a remote agent's deferral reads as a local one's
-	// (ini-ei8l), never as delivered.
-	if strings.Contains(resp.Data, "deferred") {
+	// (ini-ei8l), never as delivered. An older TUI's deferral carries no
+	// verdict and is still a deferral.
+	case resp.Delivery == tui.DeliveryDeferred, resp.Delivery == "" && strings.Contains(resp.Data, "deferred"):
 		fmt.Fprintf(w, "deferred to %s — target has a modal open; will deliver when it closes\n", name)
-	} else {
+	case resp.Delivery == tui.DeliveryDelivered:
 		fmt.Fprintf(w, "delivered to %s\n", name)
+	case resp.Delivery == tui.DeliveryUnchecked:
+		fmt.Fprintf(w, "sent to %s, unconfirmed: %s\n", name, resp.Data)
+	case resp.Delivery == tui.DeliveryUnconfirmed:
+		return unconfirmedSend(name, resp.Data)
+	case resp.Delivery == "":
+		// An OK with no verdict is a TUI that answers before its verdict.
+		return unconfirmedSend(name, olderTUIVerdictReason)
+	default:
+		return unconfirmedSend(name, "unknown delivery verdict "+strconv.Quote(resp.Delivery))
 	}
 	return nil
 }
