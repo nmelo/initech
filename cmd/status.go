@@ -130,6 +130,25 @@ type accountJSON struct {
 	Model *string `json:"model"`
 }
 
+// tuiReadsNoScreens reports a TUI too old to read its panes' screens: it
+// listed at least one live pane and none carries banner. Since v2.35.0 a TUI
+// asked for detail sets banner on every live pane it reads, a generic agent
+// included ("none"); an older one never sends it. The project block is no
+// signal: it has been sent since v2.31.3. No live pane, nothing to judge.
+func tuiReadsNoScreens(panes []paneInfo) bool {
+	live := false
+	for _, pi := range panes {
+		if !pi.Alive {
+			continue
+		}
+		if pi.Banner != "" {
+			return false
+		}
+		live = true
+	}
+	return live
+}
+
 // agentState is the activity label as status --json reports it: an agent
 // whose process has exited is stopped, a suspended one suspended, and a label
 // outside running, idle and waiting is null.
@@ -251,6 +270,9 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("parse pane list: %w", err)
 	}
 
+	// Judged on the TUI's own panes, before peers are merged in here.
+	tuiTooOld := statusJSON && tuiReadsNoScreens(panes)
+
 	// Merge remote peer agents not already in the pane list.
 	panes = mergeRemotePeers(sockPath, panes)
 
@@ -267,6 +289,11 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	// --json reads beads where the table does: bd's answer, so the two never
 	// differ; the ribbon only when bd is off or gave no answer (ini-67k7).
 	if statusJSON {
+		// A page of nulls must not pass for agents with nothing to say
+		// (ini-r1u2): stderr only, so the JSON and the exit code stand.
+		if tuiTooOld {
+			fmt.Fprintln(cmd.ErrOrStderr(), "older initech running; restart it for status detail")
+		}
 		var fromBD map[string][]beadInfo
 		if bdAnswered {
 			fromBD = beadMap
