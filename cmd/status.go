@@ -175,7 +175,9 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		}
 		bead := "-"
 		status := statusColor(pi.Activity)
-		if !pi.Alive {
+		// A suspended agent is not alive either, but it is parked, not
+		// stopped: calling it stopped invites a second suspend or a restart.
+		if !pi.Alive && pi.Activity != "suspended" {
 			status = statusColor("stopped")
 		}
 		if !pi.Visible {
@@ -265,7 +267,7 @@ func statusColor(s string) string {
 	switch {
 	case s == "running" || s == "in_progress" || s == "qa_passed":
 		return color.Green(s)
-	case s == "idle" || s == "stopped":
+	case s == "idle" || s == "stopped" || s == "suspended":
 		return color.Dim(s)
 	case strings.HasPrefix(s, "stalled"):
 		return color.Yellow(s)
