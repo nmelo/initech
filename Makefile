@@ -23,7 +23,7 @@ EXPECTED_ASSETS := checksums.txt initech_darwin_amd64.tar.gz initech_darwin_arm6
 LDFLAGS := -s -w -X github.com/nmelo/initech/cmd.Version=$(VERSION)
 REQUIRE_RELEASE_VERSION = test -n "$(VERSION)" && case "$(VERSION)" in v*) ;; *) echo "VERSION must start with v, got $(VERSION)" >&2; exit 1 ;; esac
 
-.PHONY: build test test-full test-race integration vet vet-linux lint test-census rig-census template-census lint-test-names lint-test-names-self-test clean release check check-fast install-hooks hooks-check release-tag release-wait release-assets release-verify release-ship
+.PHONY: build test test-full test-race integration vet vet-linux lint test-census rig-census template-census short-census lint-test-names lint-test-names-self-test clean release check check-fast install-hooks hooks-check release-tag release-wait release-assets release-verify release-ship
 
 build:
 	go build -ldflags "$(LDFLAGS)" -o initech .
@@ -119,20 +119,28 @@ rig-census:
 template-census:
 	@go run ./scripts/templatecensus
 
+# ini-p2ve.2: fail when a testing.Short() use is anything but a skip guard.
+# CI runs the suite only without -short (the full-suite shards), which covers
+# every short test only while -short removes tests and never changes one. A
+# lighter variant under -short, or a test that runs only under -short, would
+# otherwise run in no CI job. Static, so it sits with the other censuses.
+short-census:
+	@go run ./scripts/shortcensus
+
 # lint-test-names-self-test is IN the gate (ini-nvpg): it costs 0.18s and it is
 # the only thing that verifies the lint script guarding every test name in the
 # repo. A self-test that nothing runs is the defect this census exists to find,
 # and exempting it would have recorded the gap instead of closing it.
-check: hooks-check vet vet-windows vet-linux test-census rig-census template-census lint-test-names lint-test-names-self-test test
+check: hooks-check vet vet-windows vet-linux test-census rig-census template-census short-census lint-test-names lint-test-names-self-test test
 
 # check-fast is what the pre-commit hook runs (ini-7ts2): everything in
-# `check` that is static -- compile, the three vets, the two lints, the two
+# `check` that is static -- compile, the three vets, the two lints, the four
 # censuses -- and NO product tests. Seconds, not minutes. The suite is not
 # gone from the loop; it moved to where it was already being run: `make check`
 # after every rebase and immediately before every push (root CLAUDE.md rule,
 # unchanged), and CI at the pushed sha. The hook comment in
 # scripts/hooks/pre-commit says why. `check` itself is unchanged.
-check-fast: hooks-check vet vet-windows vet-linux test-census rig-census template-census lint-test-names lint-test-names-self-test
+check-fast: hooks-check vet vet-windows vet-linux test-census rig-census template-census short-census lint-test-names lint-test-names-self-test
 	go build ./...
 
 release:

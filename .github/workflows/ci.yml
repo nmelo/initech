@@ -47,8 +47,8 @@ concurrency:
   group: ${{ github.workflow }}-${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') && 'main-push' || github.run_id }}
   cancel-in-progress: true
 
-# SPEED (ini-bus5): every release cut gates on this workflow, so its wall time
-# is release latency. Two levers, each measured on its own:
+# SPEED (ini-bus5, ini-p2ve): every release cut gates on this workflow, so its
+# wall time is release latency. Three levers, each measured on its own:
 #
 #   1. CACHE. actions/setup-go's cache is on only for pull_request. On the
 #      self-hosted Mac GOCACHE and the module cache persist on disk between
@@ -57,16 +57,29 @@ concurrency:
 #      (With MAC_RUNNER unset, push runs also fall back to macos-latest without
 #      a cache: slower, never wrong.)
 #   2. SHARDS. The non-short suite, the long pole at about seven minutes, runs
-#      as full-suite-1..3. scripts/shardtests lists every test, example and
+#      as full-suite-1..4. scripts/shardtests lists every test, example and
 #      fuzz target, gives each one shard by a stable hash of its package and
 #      name, and runs it with make test-full's semantics: -count=1, no -short.
+#   3. ONE RUN OF THE SUITE. build-and-test runs no tests: the build, vets,
+#      lints, censuses and the witness, in seconds. It used to run the suite a
+#      second time with -short, which only repeated work the shards do, since
+#      -short only skips tests. The short census keeps that true: every
+#      testing.Short() use must be a skip guard, so no test has a lighter
+#      variant, or a short-only life, that no job here would run. make check
+#      still runs the -short suite locally.
+#
+# Six jobs start together (build-and-test, full-suite-1..4, census-leg), one
+# per runner slot on the Mac; full-suite-census follows the shards. A seventh
+# job starting at once would queue for a slot.
 #
 # THE CENSUS is what keeps the faster gate from running less. full-suite-census
-# needs all three shards, runs even when one failed, and is red unless every
+# needs all four shards, runs even when one failed, and is red unless every
 # shard passed AND the shards' own records show that their selections are
 # disjoint, together equal the full test list, and every selected test
 # reported a result exactly once. A test outside every shard, a test in two
 # shards, a test that never ran and a shard that selected nothing each fail it.
+# Since no other job runs the suite, this census is what proves every test ran
+# on this push.
 # The release gate's expected job set is these job names, read from this file
 # at the cut (fleet/reference.md); keep job names equal to their keys (no
 # matrix), or that set-equality breaks.
@@ -134,15 +147,19 @@ jobs:
       - name: Witness tests present on this platform
         run: go test ./internal/tui/ -list '.*' -count=1
 
-      - name: Test
-        run: go test ./... -count=1 -short
+      # ini-p2ve.2: this job runs no tests. The suite runs once, without
+      # -short, in the full-suite shards, which covers every test -short would
+      # run only while every testing.Short() use is a skip guard. This census
+      # is red the day one is not (a lighter variant, a short-only test).
+      - name: Short census (every testing.Short() use is a skip guard)
+        run: go run ./scripts/shortcensus -v
 
-  # THE NON-SHORT SUITE, on one platform (ini-4bf2), in three shards (ini-bus5).
+  # THE NON-SHORT SUITE, on one platform (ini-4bf2), in four shards (ini-bus5,
+  # ini-p2ve). The only run of the test suite in this workflow.
   #
-  # Every other leg runs -short, and so does `make test`. That is not an
-  # oversight -- -short skips slow PTY integration tests and takes the local
-  # loop from ~55s to ~14s, which is worth having. What was missing is that
-  # NOTHING ran the other half. A belt regression (ini-4bf2) reddened
+  # `make test` runs -short. That is not an oversight -- -short skips slow PTY
+  # integration tests, which is worth having locally. What was missing once is
+  # that NOTHING ran the other half. A belt regression (ini-4bf2) reddened
   # TestInjectText_StashSkipsRetry the moment it shipped, the test did its job,
   # and no gate could see it: main carried a red full suite through v2.7.9 AND
   # v2.8.0 because every gate wore the same blindfold.
@@ -150,7 +167,7 @@ jobs:
   # One platform, not the matrix: the tests this adds are unix-PTY integration
   # tests that do not run on windows anyway, and the point is coverage of the
   # skipped HALF, not of every OS. Gated rigs stay opt-in behind their env vars,
-  # so these legs do not spawn Claude sessions. The three shards together run
+  # so these legs do not spawn Claude sessions. The four shards together run
   # what `make test-full` runs (see SPEED above); full-suite-census proves it.
   full-suite-1:
     runs-on: ${{ github.event_name != 'pull_request' && vars.MAC_RUNNER || 'macos-latest' }}
@@ -163,8 +180,8 @@ jobs:
           go-version-file: go.mod
           cache: ${{ github.event_name == 'pull_request' }}
 
-      - name: Test shard 1 of 3 (full, no -short)
-        run: go run ./scripts/shardtests run -shards 3 -shard 1 -out shard-record
+      - name: Test shard 1 of 4 (full, no -short)
+        run: go run ./scripts/shardtests run -shards 4 -shard 1 -out shard-record
 
       - uses: actions/upload-artifact@v4
         if: always()
@@ -184,8 +201,8 @@ jobs:
           go-version-file: go.mod
           cache: ${{ github.event_name == 'pull_request' }}
 
-      - name: Test shard 2 of 3 (full, no -short)
-        run: go run ./scripts/shardtests run -shards 3 -shard 2 -out shard-record
+      - name: Test shard 2 of 4 (full, no -short)
+        run: go run ./scripts/shardtests run -shards 4 -shard 2 -out shard-record
 
       - uses: actions/upload-artifact@v4
         if: always()
@@ -205,8 +222,8 @@ jobs:
           go-version-file: go.mod
           cache: ${{ github.event_name == 'pull_request' }}
 
-      - name: Test shard 3 of 3 (full, no -short)
-        run: go run ./scripts/shardtests run -shards 3 -shard 3 -out shard-record
+      - name: Test shard 3 of 4 (full, no -short)
+        run: go run ./scripts/shardtests run -shards 4 -shard 3 -out shard-record
 
       - uses: actions/upload-artifact@v4
         if: always()
@@ -215,8 +232,29 @@ jobs:
           path: shard-record
           if-no-files-found: error
 
+  full-suite-4:
+    runs-on: ${{ github.event_name != 'pull_request' && vars.MAC_RUNNER || 'macos-latest' }}
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: ${{ github.event_name == 'pull_request' }}
+
+      - name: Test shard 4 of 4 (full, no -short)
+        run: go run ./scripts/shardtests run -shards 4 -shard 4 -out shard-record
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: full-suite-shard-4
+          path: shard-record
+          if-no-files-found: error
+
   full-suite-census:
-    needs: [full-suite-1, full-suite-2, full-suite-3]
+    needs: [full-suite-1, full-suite-2, full-suite-3, full-suite-4]
     if: always()
     runs-on: ${{ github.event_name != 'pull_request' && vars.MAC_RUNNER || 'macos-latest' }}
     timeout-minutes: 10
@@ -228,14 +266,14 @@ jobs:
           go-version-file: go.mod
           cache: ${{ github.event_name == 'pull_request' }}
 
-      # Reads the three shard command lines themselves (the "run: go run" form
-      # only they use, never this step's own text) and requires all three, so
+      # Reads the four shard command lines themselves (the "run: go run" form
+      # only they use, never this step's own text) and requires all four, so
       # it cannot pass by matching nothing.
       - name: No shard step runs -short
         run: |
           lines=$(grep -E '^ +run: go run \./scripts/shardtests run ' .github/workflows/ci.yml)
           echo "$lines"
-          test "$(printf '%s\n' "$lines" | grep -c .)" -eq 3 || { echo "expected the 3 shard command lines"; exit 1; }
+          test "$(printf '%s\n' "$lines" | grep -c .)" -eq 4 || { echo "expected the 4 shard command lines"; exit 1; }
           if printf '%s\n' "$lines" | grep -q short; then
             echo "a shard step runs -short: the full suite never does"; exit 1
           fi
@@ -248,7 +286,7 @@ jobs:
 
       - name: Census (every test selected by exactly one shard and run exactly once)
         if: always()
-        run: go run ./scripts/shardtests census -shards 3 shard-records/full-suite-shard-1 shard-records/full-suite-shard-2 shard-records/full-suite-shard-3
+        run: go run ./scripts/shardtests census -shards 4 shard-records/full-suite-shard-1 shard-records/full-suite-shard-2 shard-records/full-suite-shard-3 shard-records/full-suite-shard-4
 
       - name: Every shard passed
         if: always()
@@ -256,9 +294,10 @@ jobs:
           S1: ${{ needs.full-suite-1.result }}
           S2: ${{ needs.full-suite-2.result }}
           S3: ${{ needs.full-suite-3.result }}
+          S4: ${{ needs.full-suite-4.result }}
         run: |
-          echo "full-suite-1: $S1  full-suite-2: $S2  full-suite-3: $S3"
-          test "$S1" = success && test "$S2" = success && test "$S3" = success
+          echo "full-suite-1: $S1  full-suite-2: $S2  full-suite-3: $S3  full-suite-4: $S4"
+          test "$S1" = success && test "$S2" = success && test "$S3" = success && test "$S4" = success
 
   # ITEM 2 (ini-0lko): the CENSUS leg. Builds the real binary; no Claude needed.
   #

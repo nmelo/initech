@@ -62,18 +62,22 @@ type testID struct{ pkg, name string }
 
 func (t testID) String() string { return t.pkg + " " + t.name }
 
-// shardSalt balances the three shards. Chosen by summing each test's measured
-// duration (from a shard run's -json events) per shard for every salt from 0
-// to 399 and keeping the one with the smallest maximum. Re-tune it the same
-// way when a full-suite shard runs past two and a half minutes; any value is
-// correct, since the census proves the partition whatever the salt.
-const shardSalt = "304:"
+// shardSalt balances the four shards. Chosen by summing each test's measured
+// duration (from the shards' -json results in a push run) per shard for every
+// salt from 0 to 399 and keeping the one with the smallest maximum: "96:"
+// split 358 s of tests as 85-92 s per shard. Re-tune it the same way when a
+// full-suite shard runs past 100 s; any value is correct, since the census
+// proves the partition whatever the salt.
+const shardSalt = "96:"
 
-// shardOf returns the 1-based shard of t among n shards.
+// shardOf returns the 1-based shard of t among n shards. It takes the shard
+// from the hash's HIGH bits (multiply, then shift): FNV-1a's low bits mix
+// poorly, so h % 4 depends only on the low two bits of each byte, and every
+// salt gave the same four-way split up to relabelling (110 s against 57 s).
 func shardOf(t testID, n int) int {
 	h := fnv.New32a()
 	io.WriteString(h, shardSalt+t.pkg+"."+t.name)
-	return int(h.Sum32()%uint32(n)) + 1
+	return int(uint64(h.Sum32())*uint64(n)>>32) + 1
 }
 
 // runnable matches the top-level names go test -run selects: tests, examples

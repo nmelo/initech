@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 	"testing"
 
@@ -14,7 +15,8 @@ import (
 // CI: every shard runs the tool with no -short; the census job needs every
 // shard and runs even when one failed; and setup-go's cache is on for pull
 // requests only, in ci.yml and rigs.yml alike, since both land on the same
-// self-hosted runner.
+// self-hosted runner. And the gate is exactly the seven jobs the release gate
+// expects (ini-p2ve.2), with the suite run once, in the shards.
 
 type workflow struct {
 	Jobs map[string]struct {
@@ -29,7 +31,7 @@ type workflow struct {
 	} `yaml:"jobs"`
 }
 
-const shards = 3
+const shards = 4
 
 func readCI(t *testing.T) workflow { return readWorkflow(t, "ci.yml") }
 
@@ -141,5 +143,45 @@ func TestWorkflows_SetupGoCachesOnlyOnPullRequests(t *testing.T) {
 		if n == 0 {
 			t.Errorf("%s: found no setup-go step: this test is not reading the workflow", file)
 		}
+	}
+}
+
+// The job set the release gate expects, exactly (ini-p2ve.2): six start
+// together on the Mac's six runner slots and the census follows. And
+// build-and-test runs no tests: its only go test is the witness -list, and it
+// runs the short census, which is what makes dropping its -short run safe.
+func TestCIWorkflow_TheGateIsTheSevenJobs(t *testing.T) {
+	w := readCI(t)
+	want := []string{"build-and-test", "census-leg", "full-suite-1", "full-suite-2", "full-suite-3", "full-suite-4", "full-suite-census"}
+	var got []string
+	for key := range w.Jobs {
+		got = append(got, key)
+	}
+	sort.Strings(got)
+	if strings.Join(got, " ") != strings.Join(want, " ") {
+		t.Errorf("ci.yml jobs are %v, want %v: the release gate reads this set (fleet/reference.md)", got, want)
+	}
+	var started int
+	for _, key := range got {
+		if w.Jobs[key].Needs == nil {
+			started++
+		}
+	}
+	if started != 6 {
+		t.Errorf("%d jobs start without needs, want 6, one per runner slot", started)
+	}
+	job := w.Jobs["build-and-test"]
+	var census bool
+	for _, s := range job.Steps {
+		if strings.Contains(s.Run, "go test") && !strings.Contains(s.Run, " -list ") {
+			t.Errorf("build-and-test runs %q: the suite runs once, in the full-suite shards", s.Run)
+		}
+		census = census || strings.HasPrefix(s.Run, "go run ./scripts/shortcensus")
+	}
+	if !census {
+		t.Error("build-and-test does not run the short census: nothing proves -short only skips tests")
+	}
+	if len(job.Steps) == 0 {
+		t.Error("build-and-test has no steps: this test is not reading it")
 	}
 }
