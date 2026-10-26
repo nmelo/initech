@@ -227,6 +227,9 @@ func (t *TUI) handleMouse(ev *tcell.EventMouse) {
 		for _, pr := range t.plan.Panes {
 			r := pr.Region
 			if mx >= r.X && mx < r.X+r.W && my >= r.Y && my < r.Y+r.H {
+				if t.wheelDroppedInSplit(pr.Pane) {
+					return
+				}
 				t.focusFromWheel(pr.Pane)
 				t.wheelPane(pr.Pane, mx-r.X, my-r.Y, true, ev.Modifiers())
 				return
@@ -239,6 +242,9 @@ func (t *TUI) handleMouse(ev *tcell.EventMouse) {
 		for _, pr := range t.plan.Panes {
 			r := pr.Region
 			if mx >= r.X && mx < r.X+r.W && my >= r.Y && my < r.Y+r.H {
+				if t.wheelDroppedInSplit(pr.Pane) {
+					return
+				}
 				t.focusFromWheel(pr.Pane)
 				t.wheelPane(pr.Pane, mx-r.X, my-r.Y, false, ev.Modifiers())
 				return
@@ -308,6 +314,20 @@ func (t *TUI) wheelPane(pv PaneView, lx, ly int, up bool, mods tcell.ModMask) {
 		return
 	}
 	pv.ScrollDown(wheelScrollRows)
+}
+
+// wheelDroppedInSplit reports whether a wheel tick over pv is dropped
+// (ini-cbh8): in the Focus, Live Focus and Live List splits the focused pane
+// is the one drawn in the left slot, so focusing the pane under the wheel, as
+// focusFromWheel does elsewhere, moved a right-side pane to the left and put
+// the displaced pane under the pointer for the next tick, swapping the sides
+// on every tick. There the wheel over any pane but the left one does nothing:
+// no focus, no re-plan, no scroll, nothing forwarded. Over the left pane, and
+// outside the splits, it is not dropped.
+func (t *TUI) wheelDroppedInSplit(pv PaneView) bool {
+	inSplit := t.layoutState.Mode == Layout2Col &&
+		(t.focusSplitPrev != nil || t.liveFocus != nil || t.liveList != nil)
+	return inSplit && agentKey(pv) != t.layoutState.Focused
 }
 
 // focusFromWheel focuses the pane a wheel notch landed on and re-plans the

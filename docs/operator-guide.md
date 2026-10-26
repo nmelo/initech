@@ -170,7 +170,7 @@ Press backtick, type `log` or `events`. This shows the last 60 minutes of detect
 
 Option+Shift+F holds the focused agent on the left and shows the working agents on the right. A pinned agent stays on the right whatever it is doing, except while it is suspended; it comes back when it wakes, still pinned.
 
-Both splits survive a restart of initech. Restarted from the live split, initech opens in the live split with the same agent on the left and the agents working now on the right; restarted from the plain Focus split (Option+f), it opens in the Focus split with the same agent on the left and every other agent on the right. Either way the second press goes back to the layout you were in before the split. If that agent is no longer in `initech.yaml`, or is hidden, initech opens in the layout underneath instead and logs a warning naming the agent. Leaving a split before the restart opens the layout underneath, as before. A second window starts without a split.
+Both splits survive a restart of initech. Restarted from the live split, initech opens in the live split with the same agent on the left and the agents working now on the right; restarted from the plain Focus split (Option+f), it opens in the Focus split with the same agent on the left and every other agent on the right. Either way the second press goes back to the layout you were in before the split. If that agent is no longer in `initech.yaml`, or is hidden, initech opens in the layout underneath instead and logs a warning naming the agent. Leaving a split before the restart opens the layout underneath, as before. A second window starts without a split. In both splits the mouse wheel over a pane on the right does nothing, so the sides never swap; over the agent on the left it scrolls that agent. A click on a right-side pane still moves it to the left.
 
 ### Live List Split
 
@@ -178,7 +178,7 @@ Option+Shift+L (or `list` in the command bar) holds the focused agent on the lef
 
 When more agents are working than there are boxes, the agents already in a box keep it and the others wait; when a box frees, the first waiting agent in the panel's order takes it. A pinned agent always gets a box.
 
-Inside the split, `grid CxR` sets the shape: C columns and R rows, each from 1 to 6. Any other value leaves the grid as it is and the command bar says why. Pressing Option+Shift+L again goes back to the layout you were in before. From the Focus split or the live focus split it keeps the agent on the left, and pressing it again goes back to the layout from before the first split. Option+Shift+F inside it switches to the live focus split on the same agent; Option+f inside it does nothing. Like the other splits it survives a restart with the same agent on the left and the same shape.
+Inside the split, `grid CxR` sets the shape: C columns and R rows, each from 1 to 6. Any other value leaves the grid as it is and the command bar says why. Pressing Option+Shift+L again goes back to the layout you were in before. From the Focus split or the live focus split it keeps the agent on the left, and pressing it again goes back to the layout from before the first split. Option+Shift+F inside it switches to the live focus split on the same agent; Option+f inside it does nothing. Like the other splits it survives a restart with the same agent on the left and the same shape. The mouse wheel over a box on the right does nothing; over the agent on the left it scrolls that agent.
 
 ### Second Windows
 
