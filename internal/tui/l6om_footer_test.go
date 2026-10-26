@@ -107,15 +107,16 @@ func TestFooter_ACutSegmentIsNotRead(t *testing.T) {
 		line string
 		want Footer
 	}{
-		// "8…" could be 80 or 85: not read.
-		{"  Haiku 5.5 │ Personal │ 8…", Footer{Model: l6omStr("Haiku 5.5"), User: l6omStr("Personal")}},
+		// "8…" could be 80 or 85: not read. The account name is the segment
+		// before the percent (ini-67k7), so with no percent it is not read.
+		{"  Haiku 5.5 │ Personal │ 8…", Footer{Model: l6omStr("Haiku 5.5")}},
 		{"  Haiku 5.5 │ Pers…", Footer{Model: l6omStr("Haiku 5.5")}},
 		{"  Haiku 5.…", Footer{}},
 		// A cut segment before a separator: the line is not trusted.
 		{"  Haiku 5.… │ Personal │ 8% │ 1%", Footer{}},
 		// Not a percent at all.
-		{"  Haiku 5.5 │ Personal │ lots │ 1%", Footer{Model: l6omStr("Haiku 5.5"), User: l6omStr("Personal")}},
-		{"  Haiku 5.5 │ Personal │ 140% │ 1%", Footer{Model: l6omStr("Haiku 5.5"), User: l6omStr("Personal")}},
+		{"  Haiku 5.5 │ Personal │ lots │ 1%", Footer{Model: l6omStr("Haiku 5.5")}},
+		{"  Haiku 5.5 │ Personal │ 140% │ 1%", Footer{Model: l6omStr("Haiku 5.5")}},
 	}
 	for _, c := range cases {
 		rows := append(append([]string{}, frame...), c.line)

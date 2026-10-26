@@ -143,8 +143,9 @@ func agentState(pi paneInfo) *string {
 	return &s
 }
 
-// toAgentJSON is pi as status --json prints it.
-func toAgentJSON(pi paneInfo) agentJSON {
+// toAgentJSON is pi as status --json prints it. fromBD is bd's answer for
+// every agent, or nil when there is none and the ribbon stands in.
+func toAgentJSON(pi paneInfo, fromBD map[string][]beadInfo) agentJSON {
 	a := agentJSON{
 		Role:           pi.Name,
 		Host:           pi.Host,
@@ -155,6 +156,13 @@ func toAgentJSON(pi paneInfo) agentJSON {
 		BeadNote:       pi.NoBead,
 		ContextPercent: pi.ContextPercent,
 		QueuedCount:    pi.QueuedCount,
+	}
+	if fromBD != nil {
+		ids := []string{}
+		for _, b := range fromBD[pi.Name] {
+			ids = append(ids, b.ID)
+		}
+		a.Beads = &ids
 	}
 	if b := pi.Background; b != nil {
 		a.Background = backgroundJSON{Shells: b.Shells, Monitors: b.Monitors, Tasks: b.Tasks}
@@ -175,10 +183,10 @@ func toAgentJSON(pi paneInfo) agentJSON {
 
 // printStatusJSON writes the agents as one JSON array, the only thing status
 // --json puts on stdout.
-func printStatusJSON(cmd *cobra.Command, panes []paneInfo) error {
+func printStatusJSON(cmd *cobra.Command, panes []paneInfo, fromBD map[string][]beadInfo) error {
 	agents := make([]agentJSON, 0, len(panes))
 	for _, pi := range panes {
-		agents = append(agents, toAgentJSON(pi))
+		agents = append(agents, toAgentJSON(pi, fromBD))
 	}
 	data, err := json.MarshalIndent(agents, "", "  ")
 	if err != nil {
@@ -239,18 +247,24 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	// Merge remote peer agents not already in the pane list.
 	panes = mergeRemotePeers(sockPath, panes)
 
-	// --json reads the ribbon for beads, so it needs no bd.
-	if statusJSON {
-		return printStatusJSON(cmd, panes)
-	}
-
 	// Try to get bead assignments (skip when disabled).
 	runner := &iexec.DefaultRunner{}
 	var beadMap map[string][]beadInfo
+	bdAnswered := false
 	if beadsEnabled && beadNote == "" {
-		beadMap = getBeadAssignments(runner, beadDir)
+		beadMap, bdAnswered = beadAssignments(runner, beadDir)
 	} else {
 		beadMap = make(map[string][]beadInfo)
+	}
+
+	// --json reads beads where the table does: bd's answer, so the two never
+	// differ; the ribbon only when bd is off or gave no answer (ini-67k7).
+	if statusJSON {
+		var fromBD map[string][]beadInfo
+		if bdAnswered {
+			fromBD = beadMap
+		}
+		return printStatusJSON(cmd, panes, fromBD)
 	}
 
 	// Build table.
@@ -485,10 +499,17 @@ func sameBeadSet(ribbon []string, held []beadInfo) bool {
 // assignee set and a shown status (in_progress, ready_for_qa, in_qa), in bd's
 // order. qa_passed is left out: nobody is working the bead.
 func getBeadAssignments(runner iexec.Runner, dir string) map[string][]beadInfo {
+	result, _ := beadAssignments(runner, dir)
+	return result
+}
+
+// beadAssignments is getBeadAssignments that also reports whether bd
+// answered: false when bd is missing, fails, or prints nothing it can read.
+func beadAssignments(runner iexec.Runner, dir string) (map[string][]beadInfo, bool) {
 	result := make(map[string][]beadInfo)
 
 	if _, err := runner.Run("which", "bd"); err != nil {
-		return result
+		return result, false
 	}
 
 	// Read-only: bd list, in dir when given (another project's root), else
@@ -503,12 +524,14 @@ func getBeadAssignments(runner iexec.Runner, dir string) map[string][]beadInfo {
 	if err != nil {
 		out, err = list("list", "--json")
 		if err != nil {
-			return result
+			return result, false
 		}
 	}
 
 	var beads []beadInfo
+	answered := true
 	if err := json.Unmarshal([]byte(out), &beads); err != nil {
+		answered = false
 		for _, line := range strings.Split(out, "\n") {
 			line = strings.TrimSpace(line)
 			if line == "" {
@@ -517,6 +540,7 @@ func getBeadAssignments(runner iexec.Runner, dir string) map[string][]beadInfo {
 			var b beadInfo
 			if err := json.Unmarshal([]byte(line), &b); err == nil {
 				beads = append(beads, b)
+				answered = true
 			}
 		}
 	}
@@ -527,7 +551,7 @@ func getBeadAssignments(runner iexec.Runner, dir string) map[string][]beadInfo {
 		}
 	}
 
-	return result
+	return result, answered
 }
 
 // shortDur renders a latch age compactly: 47m, 2h, 8s.

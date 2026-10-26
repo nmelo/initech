@@ -40,7 +40,7 @@ type Footer struct {
 // nothing.
 func parseFooter(rows []string, width int) Footer {
 	var f Footer
-	_, bottom, ok := lowestComposerFrame(rows)
+	bottom, ok := footerFrameBottom(rows, width)
 	if !ok {
 		return f
 	}
@@ -64,16 +64,52 @@ func parseFooter(rows []string, width int) Footer {
 	return f
 }
 
+// footerFrameBottom finds the bottom rule of the lowest input-box frame, as
+// lowestComposerFrame does, but a rule need only span the pane: in a pane
+// narrower than composerRuleMinRunes the box's rules are shorter than that,
+// and the footer under them is still Claude's (measured at 34 and 30
+// columns, ini-67k7). lowestComposerFrame keeps its floor for the send path.
+func footerFrameBottom(rows []string, width int) (int, bool) {
+	isRule := func(row string) bool {
+		t := strings.TrimSpace(row)
+		n := len([]rune(t))
+		return n > 0 && n >= min(composerRuleMinRunes, width) && strings.Trim(t, "\u2500") == ""
+	}
+	for bottom := len(rows) - 1; bottom >= 2; bottom-- {
+		if !isRule(rows[bottom]) {
+			continue
+		}
+		top := bottom - 1
+		for top > 0 && bottom-top <= composerFrameMaxRows && !isRule(rows[top]) {
+			top--
+		}
+		if top <= 0 || top == bottom-1 || !isRule(rows[top]) || !isComposerPromptRow(rows[top+1]) {
+			continue
+		}
+		return bottom, true
+	}
+	return 0, false
+}
+
 // statusSep separates the status line's segments.
 const statusSep = " │ "
 
 // contextSegment is the context-used segment: a whole percent, 0 to 100.
 var contextSegment = regexp.MustCompile(`^(\d{1,3})%$`)
 
+// modelSegment is a segment that names a model: "Haiku 5.5", "Opus 5.5",
+// "Claude Sonnet 4.6".
+var modelSegment = regexp.MustCompile(`^(Claude )?(Haiku|Sonnet|Opus|Fable|Claude)( [A-Za-z]+)? \d+(\.\d+)*\b`)
+
 // readStatusLine reads model, account name and context percent from the
-// operator's status line. A segment counts only when the separator after it
-// is on screen, so one cut at the pane's edge or with "…" is not read ("8…"
-// may be 80). It reports whether row had the status line's shape.
+// operator's status line BY SHAPE, never by position (ini-67k7): the line
+// leads with a "⎇ branch" segment when the agent's folder is a git repo,
+// and position shifted every field. The context is the first segment that
+// is exactly a whole percent; the account name is the segment right before
+// it; the model is the nearest earlier segment shaped like a model name.
+// Anything else is skipped. A segment counts only when the separator after
+// it is on screen, so one cut at the pane's edge or with "…" is not read
+// ("8…" may be 80). It reports whether row had the status line's shape.
 func readStatusLine(row string, f *Footer) bool {
 	segs := strings.Split(strings.TrimSpace(row), statusSep)
 	if len(segs) < 2 {
@@ -85,18 +121,30 @@ func readStatusLine(row string, f *Footer) bool {
 			return false
 		}
 	}
-	f.Model = &closed[0]
-	if len(closed) > 1 {
-		f.User = &closed[1]
-	}
-	if len(closed) > 2 {
-		if m := contextSegment.FindStringSubmatch(closed[2]); m != nil {
+	pct := -1
+	for i, s := range closed {
+		if m := contextSegment.FindStringSubmatch(s); m != nil {
 			if n, err := strconv.Atoi(m[1]); err == nil && n <= 100 {
+				pct = i
 				f.ContextPercent = &n
 			}
+			break
 		}
 	}
-	return true
+	limit := len(closed)
+	if pct >= 0 {
+		limit = pct
+		if pct > 0 {
+			f.User = &closed[pct-1]
+		}
+	}
+	for i := limit - 1; i >= 0; i-- {
+		if modelSegment.MatchString(closed[i]) {
+			f.Model = &closed[i]
+			break
+		}
+	}
+	return f.Model != nil || f.User != nil || f.ContextPercent != nil
 }
 
 // footerRightMargin is the columns Claude Code leaves free at the right of
@@ -105,9 +153,16 @@ func readStatusLine(row string, f *Footer) bool {
 // column 38. A row that reaches it is read as cut.
 const footerRightMargin = 2
 
-// modeLineHead is the mode line's first segment: "⏸ manual mode on",
-// "⏵⏵ accept edits on", "⏵⏵ auto mode on (shift+tab to cycle)".
-var modeLineHead = regexp.MustCompile(`^(⏸|⏵⏵) [a-z ]+ on( \(.*\))?$`)
+// modeLineHead is the start of the mode line: "⏸ manual mode on",
+// "⏵⏵ accept edits on", then optionally the hint, whole or cut:
+// "⏵⏵ auto mode on (shift+tab to cycle)", "⏵⏵ auto mode on (shift+tab to".
+var modeLineHead = regexp.MustCompile(`^(⏸|⏵⏵) [a-z ]+ on( \(|$)`)
+
+// MEASURED on 2.1.310 in all four modes (ini-67k7): the "(shift+tab to
+// cycle)" hint is drawn only when there are no background words; with a
+// shell, every mode drops it. The line never wraps in a narrow pane: it is
+// cut, often inside the hint.
+const modeLineHint = " ("
 
 // backgroundCount is one whole count on the mode line: "1 shell", "2 monitors".
 var backgroundCount = regexp.MustCompile(`^(\d+) (shell|monitor)s?$`)
@@ -121,6 +176,11 @@ func readModeLine(row string, width int, f *Footer) bool {
 	segs := strings.Split(strings.TrimSpace(row), " · ")
 	if !modeLineHead.MatchString(segs[0]) {
 		return false
+	}
+	if strings.Contains(segs[0], modeLineHint) {
+		zero := 0
+		f.Shells, f.Monitors = &zero, &zero
+		return true
 	}
 	cut := runewidth.StringWidth(row) >= width-footerRightMargin
 	var shells, monitors *int

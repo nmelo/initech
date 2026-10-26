@@ -167,16 +167,16 @@ An agent whose Claude Code footer shows background work reads it after its state
 | `host` | The peer it runs on; empty for a local agent. |
 | `state` | `running`, `idle`, `waiting` (a dialog is waiting on the operator), `suspended`, or `stopped` (stopped or its process exited); `null` for any other state, such as an agent on another machine. |
 | `alive`, `visible` | Whether its process is running, and whether its pane is shown. |
-| `beads` | The bead ids on its ribbon (`[]` when none). The table's Bead column reads bd instead, so the two can differ when the ribbon is stale. `null` from an initech too old to report the ribbon. |
+| `beads` | The bead ids bd names the agent as holding, read the way the table's Bead column reads them, so the two agree (`[]` when none). When the project has beads turned off, or bd gives no answer, the ids on the agent's ribbon stand in; `null` then from an initech too old to report the ribbon. |
 | `bead_note` | The words of work dispatched with no bead, or empty. |
 | `context_percent` | The context used, from the status line under the input box. |
-| `background` | `shells`, `monitors`, `tasks`: the background shells and monitors Claude Code counts under the input box, and the background agents it lists there. `0` when Claude shows its mode line with none; `null` when that line is not on screen or is cut off at the pane's edge before the count. |
+| `background` | `shells`, `monitors`, `tasks`: the background shells and monitors Claude Code counts under the input box, and the background agents it lists there. `0` when Claude shows its mode line with none, including a mode line cut off in a narrow pane while it shows its `(shift+tab to cycle)` hint, which Claude draws only when there is no background work; `null` when no mode line is on screen, or a count is cut off at the pane's edge. |
 | `banner` | The dialog open in the pane: `none`, `permission_prompt`, `trust_prompt`, `picker` (a question with options), `login`, or `unknown` (a dialog is open that initech does not recognise, which includes the usage-limit banner). |
 | `banner_age_sec` | How long the dialog has held the pane's messages; `null` when none is holding them. |
 | `queued_count` | Messages waiting for that dialog to close. |
 | `account` | `user` and `model` from the status line. |
 
-`context_percent` and `account` come from the status line the `cla statusline` command draws (model, account name, context used); a pane with any other status line, or none, reports them as `null`. Everything read from the screen is `null` for an agent that is not running, for a pane that is not Claude Code, while a dialog covers the rows under the input box, and from an initech too old to read them.
+`context_percent` and `account` come from the status line the `cla statusline` command draws, read by the shape of each segment, not its place: the context is the first segment that is a whole percent, the account name the segment just before it, and the model the nearest segment before that which names a model (Haiku, Sonnet, Opus, Fable or Claude and a version). Any other segment, such as the `⎇ branch` the line starts with in a git folder, is skipped. A pane with any other status line, or none, reports them as `null`. Everything read from the screen is `null` for an agent that is not running, for a pane that is not Claude Code, while a dialog covers the rows under the input box, and from an initech too old to read them.
 
 ### Toast Notifications
 
