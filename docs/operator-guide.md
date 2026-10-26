@@ -436,6 +436,8 @@ If an agent hasn't produced output in 15 minutes with a bead assigned, something
 
 At the end of a session, tell super: "landing the plane." Super will instruct all agents to commit, push, and update their bead status. Wait for confirmations before shutting down. This prevents lost work from agents that were mid-task.
 
+`initech down` stops the session and prints `Session '<name>' stopped.`, naming the project the stopped initech serves, which it asks that initech before stopping it. With `INITECH_SOCKET` pointing at another project's initech, that is the other project, not the folder you ran it from; an initech too old to say which project it serves is named by its socket path instead.
+
 ### After a Crash
 
 If initech crashes mid-session, agents' Claude sessions survive (they're independent processes, though they'll lose their terminal). Relaunch `initech` and agents reconnect via `--continue`.

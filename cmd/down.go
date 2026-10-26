@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 
+	"github.com/nmelo/initech/internal/config"
 	"github.com/nmelo/initech/internal/tui"
 	"github.com/spf13/cobra"
 )
@@ -24,6 +25,8 @@ func runDown(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	name := stoppedSessionName(sockPath, p)
+
 	resp, err := ipcCallSocket(sockPath, tui.IPCRequest{Action: "quit"})
 	if err != nil {
 		return fmt.Errorf("send quit: %w", err)
@@ -31,13 +34,23 @@ func runDown(cmd *cobra.Command, args []string) error {
 	if !resp.OK {
 		return fmt.Errorf("%s", resp.Error)
 	}
-
-	// p is nil when INITECH_SOCKET is set but no initech.yaml is
-	// discoverable from cwd — see resolveSocket (ini-raup).
-	projName := "(unknown project)"
-	if p != nil {
-		projName = p.Name
-	}
-	fmt.Fprintf(cmd.OutOrStdout(), "Session '%s' stopped.\n", projName)
+	fmt.Fprintf(cmd.OutOrStdout(), "Session '%s' stopped.\n", name)
 	return nil
+}
+
+// stoppedSessionName names the session behind sockPath, asked of the socket
+// before it is told to quit: the project its list reply names. An older
+// server names none; then the folder's project stands only when sockPath is
+// that project's own socket, and otherwise the socket path is printed rather
+// than a guess. The list is only for the label: when it fails the quit is
+// still sent.
+func stoppedSessionName(sockPath string, p *config.Project) string {
+	if resp, err := ipcCallSocket(sockPath, tui.IPCRequest{Action: "list"}); err == nil && resp.OK &&
+		resp.Project != nil && resp.Project.Name != "" {
+		return resp.Project.Name
+	}
+	if p != nil && !socketIsAnotherProject(sockPath, p) {
+		return p.Name
+	}
+	return sockPath
 }
