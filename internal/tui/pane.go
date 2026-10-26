@@ -41,6 +41,12 @@ const (
 	// no work happening. Appended rather than inserted so the existing constants
 	// keep their values (ini-2x8.1).
 	StateWaitingInput
+	// StateBackground: the pane is quiet but Claude Code's footer shows a
+	// background shell, monitor or background agent (ini-pi8p). Never stored:
+	// Activity derives it from a stored StateIdle and the maintenance tick's
+	// background record, so no detector's transitions change. Appended so
+	// the existing constants keep their values.
+	StateBackground
 )
 
 // String returns a human-readable label for the state.
@@ -56,6 +62,8 @@ func (s ActivityState) String() string {
 		return "suspended"
 	case StateWaitingInput:
 		return "waiting"
+	case StateBackground:
+		return "background"
 	}
 	return "unknown"
 }
@@ -1684,6 +1692,11 @@ func (p *Pane) RecentEntries() []JournalEntry {
 func (p *Pane) Activity() ActivityState {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	// A quiet pane with background work is background (ini-pi8p). Only an
+	// idle pane: running, waiting, suspended and dead are stronger.
+	if p.activity == StateIdle && p.bgWork.busy() {
+		return StateBackground
+	}
 	return p.activity
 }
 

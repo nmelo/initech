@@ -365,6 +365,10 @@ type ControlResp struct {
 	// NoBead rides agent_status beside Beads: the no-bead marker's words, so
 	// every window shows the same ribbon. Omitted when none.
 	NoBead string `json:"no_bead,omitempty"`
+	// BackgroundWork rides agent_status: the background work window 1 read
+	// from the agent's footer, so every window shows the same background
+	// state (ini-pi8p). Omitted when none; an older viewer ignores it.
+	BackgroundWork *AgentBackground `json:"background_work,omitempty"`
 	// EventType and EventTimeMs ride agent_event with Name and Text (ini-ei8l):
 	// the report's type by its EventType name ("message" or "stalled") and
 	// when the daemon raised it.

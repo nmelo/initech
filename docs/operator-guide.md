@@ -133,7 +133,7 @@ The overlay (toggle with Alt+s, or `panel` in the command bar) is your dashboard
 | Dot | Meaning |
 |-----|---------|
 | Green (filled) | Agent is actively processing (PTY bytes flowing) |
-| Gray (hollow) | Idle at prompt, no work assigned |
+| Gray (hollow) | Idle at prompt, no work assigned; or background: quiet, with a background shell, monitor or agent running (the row says `background` and the job's age) |
 | Yellow (filled) | Idle but has work waiting (idle-with-backlog) |
 | Red (filled) | Dead process (crashed or killed) |
 | Blue (filled) | Suspended (auto-suspend feature) |
@@ -152,7 +152,7 @@ bd is the record of who holds a bead; the ribbon displays it and is moved by the
 
 In `initech status`, a suspended agent shows Alive `no` and Status `suspended`; an agent that was stopped or whose process has exited shows Alive `no` and Status `stopped`.
 
-An agent whose Claude Code footer shows background work reads it after its state, in the Status column of `initech status` and the header of `initech patrol`: `idle, 1 background shell 4m`, `running, 2 background shells, 1 monitor 30s`, with background agents counted too and the time since the work was first seen. The state word is unchanged, so an idle agent with a background shell still reads idle, and busy. initech reads the footer once a second, so the work shows within a second of appearing and clears when the footer shows none; while a dialog covers the footer the last reading stands. `initech patrol --active` keeps such an agent even when its screen is quiet. Agents hosted by a cross-machine daemon do not report background work.
+An agent whose pane is quiet but whose Claude Code footer shows a background shell, monitor or background agent is in the state `background`: it is not producing output, but it is not idle either. `initech status`, `initech patrol` and the Agents panel say so with the work and how long it has been seen: `background, 1 shell 4m`, `background, 2 shells, 1 monitor 30s`. background never overrides a stronger state: an agent producing output with a shell is `running, 1 shell 4m`, one with a dialog open is waiting, and a suspended or stopped agent reads as such. initech reads the footer once a second, so the state shows within a second of the work appearing and turns back to idle when the footer shows none; while a dialog covers the footer the last reading stands. Every window shows the same state. `initech patrol --active` keeps a background agent even when its screen is quiet. A background agent is not working for Live Focus, Live List or the running tint, cannot be suspended by hand (suspending would stop its job) and is never auto-suspended. Agents hosted by a cross-machine daemon do not report background work.
 
 `initech status` reads bd for its Bead column: each agent bd names as assignee of a bead in progress, ready for QA or in QA shows that bead and its status (a bead at QA passed has no holder to show). When an agent's ribbon shows different beads from bd, the column shows bd's answer followed by `ribbon: <ids>` (`ribbon: -` for an empty ribbon), so a stale ribbon is visible; when they agree nothing is added. With `INITECH_SOCKET` pointing at another project's initech, the `Session:` header names the project behind that socket, not the project of the folder you ran it from; an initech too old to say which project it serves leaves the folder's name. The Bead column then shows the beads of the project behind the socket, read from that project's own folder, never yours; an initech too old to say where its project lives shows `(bd: unknown project)` there instead, as does a project whose folder is not on this machine. An `INITECH_SOCKET` that names your own project's socket, as every agent's does, counts as no override.
 
@@ -165,7 +165,7 @@ An agent whose Claude Code footer shows background work reads it after its state
 |-----|-------|
 | `role` | The agent's name. |
 | `host` | The peer it runs on; empty for a local agent. |
-| `state` | `running`, `idle`, `waiting` (a dialog is waiting on the operator), `suspended`, or `stopped` (stopped or its process exited); `null` for any other state, such as an agent on another machine. |
+| `state` | `running`, `idle`, `background` (quiet, with background work under way; see `background_age_sec`), `waiting` (a dialog is waiting on the operator), `suspended`, or `stopped` (stopped or its process exited); `null` for any other state, such as an agent on another machine. |
 | `alive`, `visible` | Whether its process is running, and whether its pane is shown. |
 | `beads` | The bead ids bd names the agent as holding, read the way the table's Bead column reads them, so the two agree (`[]` when none). When the project has beads turned off, or bd gives no answer, the ids on the agent's ribbon stand in; `null` then from an initech too old to report the ribbon. |
 | `bead_note` | The words of work dispatched with no bead, or empty. |
@@ -174,6 +174,7 @@ An agent whose Claude Code footer shows background work reads it after its state
 | `banner` | The dialog open in the pane: `none`, `permission_prompt`, `trust_prompt`, `picker` (a question with options), `login`, or `unknown` (a dialog is open that initech does not recognise, which includes the usage-limit banner). |
 | `banner_age_sec` | How long the dialog has held the pane's messages; `null` when none is holding them. |
 | `queued_count` | Messages waiting for that dialog to close. |
+| `background_age_sec` | How long the background work has been seen, when `state` is `background`; `null` otherwise. |
 | `account` | `user` and `model` from the status line. |
 
 `context_percent` and `account` come from the status line the `cla statusline` command draws, read by the shape of each segment, not its place: the context is the first segment that is a whole percent, including when Claude cuts the line right after it (`10% │…`, `10%…`) but not inside it (`1…`), the account name the segment just before it, and the model the nearest segment before that which names a model (Haiku, Sonnet, Opus, Fable or Claude and a version). Any other segment, such as the `⎇ branch` the line starts with in a git folder, is skipped. A pane with any other status line, or none, reports them as `null`. Everything read from the screen is `null` for an agent that is not running, for a pane that is not Claude Code, while a dialog covers the rows under the input box, and from an initech too old to read them.

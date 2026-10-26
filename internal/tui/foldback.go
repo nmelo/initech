@@ -658,7 +658,7 @@ type agentStatusSnapshot struct {
 	beads string // Joined, for cheap comparison only -- the wire carries the slice.
 	// noBead is the no-bead marker; a change to it is a change to the ribbon.
 	noBead string
-	desc  string
+	desc   string
 	// waiting is part of the compared state so BOTH EDGES fire (ini-35ak): a
 	// raise and a CLEAR are the same detector seeing a different value, not a
 	// clear path bolted on beside a raise path. A clear that is a special case
@@ -668,6 +668,19 @@ type agentStatusSnapshot struct {
 	// detector seeing different values (2026-08-15, "window 2 doesn't show
 	// it as suspended").
 	suspended bool
+	// Background work, both edges (ini-pi8p): the counts and when it was
+	// first seen, not its age, which changes every second.
+	bgShells, bgMonitors, bgTasks int
+	bgSince                       time.Time
+}
+
+// AgentBackground is an agent's background work on agent_status: the counts
+// window 1 read from the footer and how long ago it was first seen.
+type AgentBackground struct {
+	Shells   int `json:"shells"`
+	Monitors int `json:"monitors"`
+	Tasks    int `json:"tasks"`
+	SinceSec int `json:"since_sec"`
 }
 
 // broadcastAgentStatusChanges pushes per-agent bead/description updates to
@@ -702,19 +715,25 @@ func (t *TUI) broadcastAgentStatusChanges() {
 		key := agentKey(p)
 		ws := waitingStateOf(p)
 		susp := p.IsSuspended()
-		next := agentStatusSnapshot{beads: strings.Join(beads, "\x00"), noBead: noBead, desc: desc, waiting: ws, suspended: susp}
+		bw, busy := p.backgroundWorkNow()
+		next := agentStatusSnapshot{beads: strings.Join(beads, "\x00"), noBead: noBead, desc: desc, waiting: ws, suspended: susp,
+			bgShells: bw.shells, bgMonitors: bw.monitors, bgTasks: bw.tasks, bgSince: bw.since}
 		if prev, seen := t.agentStatus[key]; seen && prev == next {
 			continue
 		}
 		t.agentStatus[key] = next
-		t.windowSrv.broadcastAgentStatus(p.Name(), beads, noBead, desc, ws, susp)
+		var bg *AgentBackground
+		if busy {
+			bg = &AgentBackground{Shells: bw.shells, Monitors: bw.monitors, Tasks: bw.tasks, SinceSec: int(time.Since(bw.since).Seconds())}
+		}
+		t.windowSrv.broadcastAgentStatus(p.Name(), beads, noBead, desc, ws, susp, bg)
 	}
 }
 
 // broadcastAgentStatus pushes one agent's state to every attached window.
 // Best-effort per recipient, for the same reason as broadcastSessionNotice: a
 // window whose stream is already broken is about to be detected as gone.
-func (w *windowServer) broadcastAgentStatus(name string, beads []string, noBead, desc string, ws WaitingState, suspended bool) {
+func (w *windowServer) broadcastAgentStatus(name string, beads []string, noBead, desc string, ws WaitingState, suspended bool, bg *AgentBackground) {
 	if w == nil || w.daemon == nil {
 		return
 	}
@@ -728,15 +747,27 @@ func (w *windowServer) broadcastAgentStatus(name string, beads []string, noBead,
 	}
 	for _, ctrl := range ctrls {
 		writeJSON(ctrl, ControlResp{ //nolint:errcheck
-			Action:       agentStatusAction,
-			Name:         name,
-			Beads:        beads,
-			Bead:         primary, // Wire compatibility, same as AgentStatus.
-			NoBead:       noBead,
-			Text:         desc,
-			WaitingState: ws,
-			Suspended:    suspended,
+			Action:         agentStatusAction,
+			Name:           name,
+			Beads:          beads,
+			Bead:           primary, // Wire compatibility, same as AgentStatus.
+			NoBead:         noBead,
+			Text:           desc,
+			WaitingState:   ws,
+			Suspended:      suspended,
+			BackgroundWork: bg,
 		})
+	}
+}
+
+// applyAgentBackground records window 1's word on an agent's background work
+// on the named remote pane; nil clears it (ini-pi8p). Beside applyAgentStatus
+// rather than inside it, so that function's callers are unchanged.
+func (t *TUI) applyAgentBackground(name string, bg *AgentBackground, now time.Time) {
+	for _, pv := range t.panes {
+		if rp, ok := pv.(*RemotePane); ok && rp.Name() == name {
+			rp.ApplyBackground(bg, now)
+		}
 	}
 }
 

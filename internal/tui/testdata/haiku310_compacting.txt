@@ -1,0 +1,45 @@
+
+ ▐▛███▛█   Claude Code v2.1.310
+▝▜██████▀  Haiku 5.5 · Claude Max
+ ▝▝   ▝▝   /private/tmp/rig
+
+⚠ 3 MCP servers need authentication · run /mcp
+
+❯ /compact
+  ⎿  Not enough messages to compact.
+
+❯ List three prime numbers.
+
+⏺ 2, 3, and 5 are three prime numbers.
+
+✻ Cogitated for 2s · done 5:46 PM
+
+❯ Now list three even numbers.
+
+⏺ 2, 4, and 6 are three even numbers.
+
+✻ Brewed for 1s · done 5:46 PM
+
+❯ Name one colour.
+
+⏺ Blue.
+
+✻ Cooked for 1s · done 5:47 PM
+
+❯ /compact
+
+
+
+
+
+
+
+
+
+✽ Compacting conversation… (4s · ↓ 285 tokens)
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ 
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ⎇ main │ Haiku 5.5 │ Second │ 5% │ 67% ▓▓▓▓┃▓▓░░░ → 09:00 PM │ 27% ▓▓┃░░░░░░░
+  ⏵⏵ auto mode on (shift+tab to cycle)

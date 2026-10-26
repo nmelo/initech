@@ -856,6 +856,10 @@ func (t *TUI) renderOverlay() {
 		act := p.Activity()
 		// Overlay shows activity state only; bead info is in the pane ribbon.
 		status := act.String()
+		// A background agent shows how long its job has run (ini-pi8p).
+		if age, ok := backgroundAge(p, time.Now()); ok && act == StateBackground {
+			status += " " + shortAge(age)
+		}
 		// HELD MAIL IS A VISIBLE FACT (ini-9gvn AC3). Deferred messages were
 		// invisible everywhere: the fleet simply looked idle while ~30 minutes
 		// of coordination sat in queues, and the operator had no surface that
@@ -1014,7 +1018,8 @@ func (t *TUI) renderOverlay() {
 		switch a.Activity {
 		case StateRunning:
 			dotColor = tcell.ColorGreen
-		case StateIdle:
+		case StateIdle, StateBackground:
+			// Background is idle's dot: not producing output (ini-pi8p).
 			dot = '\u25cb'
 			dotColor = tcell.ColorGray
 		case StateDead:

@@ -105,6 +105,9 @@ type peerManager struct {
 	// state (ini-9ka.11). primary is AgentStatus.Bead, used only when beads is
 	// empty because the peer predates the plural field.
 	onAgentStatus func(name string, beads []string, primary, noBead, desc string, ws WaitingState, suspended bool)
+	// onAgentBackground is called with the same agent_status message's
+	// background work (nil when none), ini-pi8p.
+	onAgentBackground func(name string, bg *AgentBackground)
 	// onForwardSend is called when a daemon pushes a forward_send command
 	// through the control stream. The TUI delivers the message to the
 	// local pane named by target. Returns the send's verdict (ini-69fy), or
@@ -454,6 +457,9 @@ func (pm *peerManager) consumeEvents(peerName string, pc *peerConn, done chan st
 				if pm.onAgentStatus != nil {
 					pm.onAgentStatus(ev.Name, ev.Beads, ev.Bead, ev.NoBead, ev.Text, ev.WaitingState, ev.Suspended)
 				}
+				if pm.onAgentBackground != nil {
+					pm.onAgentBackground(ev.Name, ev.BackgroundWork)
+				}
 			case identityTakenOverAction:
 				LogWarn("remote", "identity taken over", "peer", peerName, "reason", ev.Text)
 				pc.evicted.Store(true)
@@ -664,6 +670,12 @@ func (pm *peerManager) SetOnPaneOwnership(fn func(owner map[string]string)) {
 // (ini-35ak).
 func (pm *peerManager) SetOnAgentStatus(fn func(name string, beads []string, primary, noBead, desc string, ws WaitingState, suspended bool)) {
 	pm.onAgentStatus = fn
+}
+
+// SetOnAgentBackground registers the handler for an agent_status message's
+// background work (ini-pi8p).
+func (pm *peerManager) SetOnAgentBackground(fn func(name string, bg *AgentBackground)) {
+	pm.onAgentBackground = fn
 }
 
 // SetOnWindowToken registers the callback told, after each attempt to reach

@@ -68,7 +68,9 @@ type RemotePane struct {
 	// (agent_status broadcast) — without it a parked agent's silent stream
 	// reads as idle in every window but the one that parked it.
 	suspended bool
-	region    Region
+	// bgWork is window 1's word on this agent's background work (ini-pi8p).
+	bgWork backgroundWork
+	region Region
 
 	goWg sync.WaitGroup // Tracks readLoop goroutine. Close waits on this.
 
@@ -229,6 +231,11 @@ func (rp *RemotePane) Activity() ActivityState {
 		return StateDead
 	}
 	if time.Since(rp.lastOut) >= ptyIdleTimeout {
+		// Quiet with background work is background, as window 1 reads it
+		// (ini-pi8p).
+		if rp.bgWork.busy() {
+			return StateBackground
+		}
 		return StateIdle
 	}
 	return rp.activity
@@ -873,6 +880,28 @@ func (rp *RemotePane) ApplySuspended(suspended bool) {
 	rp.mu.Lock()
 	defer rp.mu.Unlock()
 	rp.suspended = suspended
+}
+
+// ApplyBackground records window 1's word on this agent's background work,
+// both edges: nil clears it (ini-pi8p). The age arrives as seconds since
+// first seen, so the clocks of the two windows never meet.
+func (rp *RemotePane) ApplyBackground(bg *AgentBackground, now time.Time) {
+	rp.mu.Lock()
+	defer rp.mu.Unlock()
+	if bg == nil {
+		rp.bgWork = backgroundWork{}
+		return
+	}
+	rp.bgWork = backgroundWork{shells: bg.Shells, monitors: bg.Monitors, tasks: bg.Tasks,
+		since: now.Add(-time.Duration(bg.SinceSec) * time.Second)}
+}
+
+// backgroundWorkNow returns the background work window 1 last reported and
+// whether there is any.
+func (rp *RemotePane) backgroundWorkNow() (backgroundWork, bool) {
+	rp.mu.Lock()
+	defer rp.mu.Unlock()
+	return rp.bgWork, rp.bgWork.busy()
 }
 
 func (rp *RemotePane) ApplyStatus(beads []string, noBead, desc string) {

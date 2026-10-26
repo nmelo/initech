@@ -1,0 +1,45 @@
+
+
+❯ Name one colour.
+
+⏺ Blue.
+
+✻ Cooked for 1s · done 5:47 PM · 1 shell still running
+
+❯ /compact
+  ⎿  Compacted (ctrl+o to see full summary)
+
+❯ Run the shell command "sleep 40 && git commit --allow-empty -m landed" with run_in_background set to true, then reply "started" and nothing else.
+
+  Ran 1 shell command
+
+⏺ started
+
+✻ Cooked for 4s · done 5:47 PM · 1 shell still running
+
+⏺ Background command "Wait 40 seconds, then create an empty commit named landed" completed (exit code 0)
+
+⏺ The background command finished with exit code 0, so the empty commit "landed" was created.
+
+✻ Crunched for 2s · done 5:48 PM · 1 shell still running
+
+❯ Run the shell command "sleep 200" with run_in_background set to true, then reply "started" and nothing else.
+
+  Ran 1 shell command
+
+⏺ started
+
+✻ Worked for 2s · done 5:49 PM · 1 shell still running
+
+❯ Write a 300-word story about a lighthouse keeper, as plain text in your reply.
+
+⏺ The lamp had not gone out in forty-one years, and Elspeth Marr intended to keep it that way.
+
+  Each evening she climbed the 126 iron steps, wound the clockwork that turned the great lens, and trimmed the wick until the flame stood steady. Her father had
+  taught her this on the rock, the summer she turned twelve, when the fog came in thick as wool and he could no longer see his own hands. "The light isn't for
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ 
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ⎇ main │ Haiku 5.5 │ Second │ 6% │ 69% ▓▓▓▓┃▓▓░░░ → 09:00 PM │ 28% ▓▓┃░░░░░░░
+  ⏵⏵ auto mode on · 1 shell

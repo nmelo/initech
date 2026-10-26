@@ -1,0 +1,45 @@
+
+
+❯ /compact
+  ⎿  Not enough messages to compact.
+
+❯ List three prime numbers.
+
+⏺ 2, 3, and 5 are three prime numbers.
+
+✻ Cogitated for 2s · done 5:46 PM
+
+❯ Now list three even numbers.
+
+⏺ 2, 4, and 6 are three even numbers.
+
+✻ Brewed for 1s · done 5:46 PM
+
+❯ Name one colour.
+
+⏺ Blue.
+
+✻ Cooked for 1s · done 5:47 PM
+
+❯ /compact
+  ⎿  Compacted (ctrl+o to see full summary)
+
+❯ Run the shell command "sleep 40 && git commit --allow-empty -m landed" with run_in_background set to true, then reply "started" and nothing else.
+
+  Ran 1 shell command
+
+⏺ started
+
+✻ Cooked for 4s · done 5:47 PM
+
+⏺ Background command "Wait 40 seconds, then create an empty commit named landed" completed (exit code 0)
+
+⏺ The background command finished with exit code 0, so the empty commit "landed" was created.
+
+✻ Crunched for 2s · done 5:48 PM
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ 
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ⎇ main │ Haiku 5.5 │ Second │ 6% │ 69% ▓▓▓▓┃▓▓░░░ → 09:00 PM │ 28% ▓▓┃░░░░░░░
+  ⏵⏵ auto mode on (shift+tab to cycle)

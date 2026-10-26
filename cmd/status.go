@@ -69,8 +69,8 @@ type paneInfo struct {
 }
 
 // busyText is background work as status and patrol print it after the state
-// word: "1 background shell 4m", "2 background shells, 1 monitor 30s". Empty
-// for none.
+// word: "background, 1 shell 4m", "running, 2 shells, 1 monitor 30s"
+// (ini-pi8p). Empty for none.
 func busyText(b *tui.PaneBusy) string {
 	if b == nil {
 		return ""
@@ -80,7 +80,7 @@ func busyText(b *tui.PaneBusy) string {
 		n          int
 		one, other string
 	}{
-		{b.Shells, "background shell", "background shells"},
+		{b.Shells, "shell", "shells"},
 		{b.Monitors, "monitor", "monitors"},
 		{b.Tasks, "background agent", "background agents"},
 	} {
@@ -112,8 +112,11 @@ type agentJSON struct {
 	Background     backgroundJSON `json:"background"`
 	Banner         *string        `json:"banner"`
 	BannerAgeSec   *int           `json:"banner_age_sec"`
-	QueuedCount    int            `json:"queued_count"`
-	Account        accountJSON    `json:"account"`
+	// BackgroundAgeSec is how long the background work has been seen, when
+	// the state is background; null otherwise (ini-pi8p).
+	BackgroundAgeSec *int        `json:"background_age_sec"`
+	QueuedCount      int         `json:"queued_count"`
+	Account          accountJSON `json:"account"`
 }
 
 type backgroundJSON struct {
@@ -136,7 +139,7 @@ func agentState(pi paneInfo) *string {
 	case !pi.Alive && s == "suspended":
 	case !pi.Alive:
 		s = "stopped"
-	case s == "running" || s == "idle" || s == "waiting":
+	case s == "running" || s == "idle" || s == "waiting" || s == "background":
 	default:
 		return nil
 	}
@@ -170,6 +173,10 @@ func toAgentJSON(pi paneInfo, fromBD map[string][]beadInfo) agentJSON {
 	if pi.Banner != "" {
 		banner := pi.Banner
 		a.Banner = &banner
+	}
+	if a.State != nil && *a.State == "background" && pi.Busy != nil {
+		age := pi.Busy.SinceSec
+		a.BackgroundAgeSec = &age
 	}
 	if pi.ModalLatched {
 		age := pi.ModalAgeSec
@@ -427,7 +434,7 @@ func statusColor(s string) string {
 	switch {
 	case s == "running" || s == "in_progress" || s == "qa_passed":
 		return color.Green(s)
-	case s == "idle" || s == "stopped" || s == "suspended":
+	case s == "idle" || s == "stopped" || s == "suspended" || s == "background":
 		return color.Dim(s)
 	case strings.HasPrefix(s, "stalled"):
 		return color.Yellow(s)

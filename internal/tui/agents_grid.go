@@ -1658,7 +1658,7 @@ func (t *TUI) renderAgentsGrid() {
 			// the one state whose own colour (silver) would otherwise make a
 			// hidden row look visible at a glance.
 			nameStyle = nameStyle.Italic(true)
-			if p.Activity() == StateIdle {
+			if a := p.Activity(); a == StateIdle || a == StateBackground {
 				nameStyle = nameStyle.Foreground(tcell.ColorGray)
 			}
 		}

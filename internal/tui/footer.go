@@ -339,14 +339,47 @@ func (p *Pane) backgroundWorkNow() (backgroundWork, bool) {
 	return p.bgWork, p.bgWork.busy()
 }
 
+// backgroundAge is how long a pane's background work has been seen, for the
+// overlay row; ok is false when it has none. Local panes read the tick's
+// record, a second window's panes the record window 1 sent (ini-pi8p).
+func backgroundAge(pv PaneView, now time.Time) (time.Duration, bool) {
+	var w backgroundWork
+	var busy bool
+	switch p := pv.(type) {
+	case *Pane:
+		w, busy = p.backgroundWorkNow()
+	case *RemotePane:
+		w, busy = p.backgroundWorkNow()
+	}
+	if !busy {
+		return 0, false
+	}
+	return now.Sub(w.since), true
+}
+
+// shortAge is an age as the overlay prints it: 12s, 4m, 2h.
+func shortAge(d time.Duration) string {
+	switch s := int(d.Seconds()); {
+	case s >= 3600:
+		return strconv.Itoa(s/3600) + "h"
+	case s >= 60:
+		return strconv.Itoa(s/60) + "m"
+	default:
+		return strconv.Itoa(max(s, 0)) + "s"
+	}
+}
+
 // paneBusy is a pane's background work for the list and patrol replies; nil
 // when there is none or the pane is not a local one.
 func paneBusy(pv PaneView, now time.Time) *PaneBusy {
-	p, ok := pv.(*Pane)
-	if !ok {
-		return nil
+	var w backgroundWork
+	var busy bool
+	switch p := pv.(type) {
+	case *Pane:
+		w, busy = p.backgroundWorkNow()
+	case *RemotePane:
+		w, busy = p.backgroundWorkNow()
 	}
-	w, busy := p.backgroundWorkNow()
 	if !busy {
 		return nil
 	}

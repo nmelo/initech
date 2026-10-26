@@ -1,0 +1,45 @@
+
+ ▐▛███▛█   Claude Code v2.1.310
+▝▜██████▀  Haiku 5.5 · Claude Max
+ ▝▝   ▝▝   /private/tmp/rig
+
+⚠ 3 MCP servers need authentication · run /mcp
+
+❯ /compact
+  ⎿  Not enough messages to compact.
+
+❯ List three prime numbers.
+
+⏺ 2, 3, and 5 are three prime numbers.
+
+✻ Cogitated for 2s · done 5:46 PM · 1 shell still running
+
+❯ Now list three even numbers.
+
+⏺ 2, 4, and 6 are three even numbers.
+
+✻ Brewed for 1s · done 5:46 PM · 1 shell still running
+
+❯ Name one colour.
+
+⏺ Blue.
+
+✻ Cooked for 1s · done 5:47 PM · 1 shell still running
+
+❯ /compact
+  ⎿  Compacted (ctrl+o to see full summary)
+
+❯ Run the shell command "sleep 40 && git commit --allow-empty -m landed" with run_in_background set to true, then reply "started" and nothing else.
+
+  Ran 1 shell command
+
+⏺ started
+
+✻ Cooked for 4s · done 5:47 PM · 1 shell still running
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ 
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ⎇ main │ Haiku 5.5 │ Second │ 6% │ 68% ▓▓▓▓┃▓▓░░░ → 09:00 PM │ 27% ▓▓┃░░░░░░░
+  ⏵⏵ auto mode on · 1 shell

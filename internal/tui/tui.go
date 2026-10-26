@@ -1259,6 +1259,10 @@ func Run(cfg Config) error {
 			}
 			t.runOnMain(func() { t.applyAgentStatus(name, beads, noBead, desc, ws, suspended) })
 		})
+		pm.SetOnAgentBackground(func(name string, bg *AgentBackground) {
+			now := time.Now()
+			t.runOnMain(func() { t.applyAgentBackground(name, bg, now) })
+		})
 		pm.SetOnSessionNotice(func(text string) {
 			t.runOnMain(func() { t.surfaceSessionNotice(text) })
 		})

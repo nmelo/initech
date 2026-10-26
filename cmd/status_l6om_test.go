@@ -79,7 +79,8 @@ func l6omObjects(t *testing.T, stdout string) []map[string]any {
 }
 
 var l6omKeys = []string{"role", "host", "state", "alive", "visible", "beads", "bead_note",
-	"context_percent", "background", "banner", "banner_age_sec", "queued_count", "account"}
+	"context_percent", "background", "banner", "banner_age_sec", "queued_count", "account",
+	"background_age_sec"}
 
 func l6omByRole(t *testing.T, objs []map[string]any) map[string]map[string]any {
 	t.Helper()
@@ -120,12 +121,12 @@ func TestStatusJSON_ANewReplyCarriesEveryField(t *testing.T) {
 			"beads": []any{"ini-a", "ini-b"}, "bead_note": "", "context_percent": 42.0,
 			"background": map[string]any{"shells": 1.0, "monitors": 0.0, "tasks": 2.0},
 			"banner":     "none", "banner_age_sec": nil, "queued_count": 0.0,
-			"account": map[string]any{"user": "Personal", "model": "Haiku 5.5"}},
+			"account": map[string]any{"user": "Personal", "model": "Haiku 5.5"}, "background_age_sec": nil},
 		"eng2": {"role": "eng2", "host": "", "state": "waiting", "alive": true, "visible": false,
 			"beads": []any{}, "bead_note": "look at the logs", "context_percent": nil,
 			"background": map[string]any{"shells": nil, "monitors": nil, "tasks": nil},
 			"banner":     "permission_prompt", "banner_age_sec": 75.0, "queued_count": 3.0,
-			"account": map[string]any{"user": nil, "model": nil}},
+			"account": map[string]any{"user": nil, "model": nil}, "background_age_sec": nil},
 	}
 	for role, w := range want {
 		if !reflect.DeepEqual(got[role], w) {

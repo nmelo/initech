@@ -1,0 +1,45 @@
+
+  Each evening she climbed the 126 iron steps, wound the clockwork that turned the great lens, and trimmed the wick until the flame stood steady. Her father had
+  taught her this on the rock, the summer she turned twelve, when the fog came in thick as wool and he could no longer see his own hands. "The light isn't for
+  us," he had said. "It's for the boats that can't see us yet."
+
+  The autumn of the storm, the sea rose over the lower landing and took the supply crate, the spare oil, and the handrail her father had bolted in himself.
+  Elspeth spent three days with a hammer and a cold chisel, hauling stone and swearing at the gulls. When the wind finally dropped, she counted her stores and
+  found enough oil for six weeks, perhaps eight if she was careful.
+
+  The relief boat was due in November. It did not come in November. It did not come in December either.
+
+  She kept the light burning anyway. She talked to it sometimes, the way her father had talked to the gulls. She wrote the ship's log in pencil, each entry
+  beginning with the weather and ending with the same two words: Light lit.
+
+  On the fifty-third night of silence, a single lantern appeared on the water, bobbing and uncertain, then steadying. It was a fishing smack, badly listing, its
+  sail patched with what looked like flour sacks. A man stood in the bow, waving both arms.
+
+  Elspeth climbed to the gallery and watched him come in. When his boat finally bumped against the rock below, he looked up at her with the expression of
+  someone who had been steering toward one fixed point for a very long time.
+
+  "You're still here," he called.
+
+  "The light is," she said. "I'm just the one who minds it."
+
+  He laughed, a short startled sound, and tied off his line. Behind her, the lens turned slowly, throwing its white arm across the dark water, and the fog
+  thinned to let it through.
+
+✻ Worked for 6s · done 5:49 PM · 1 shell still running
+
+❯ Use the Write tool to create notes.txt containing hi.
+
+⏺ Write(notes.txt)
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ Create file
+ notes.txt
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+  1 hi
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+ Do you want to create notes.txt?
+ ❯ 1. Yes
+   2. Yes, and switch to accept edits (auto-approve file edits and common file commands) for this session (shift+tab)
+   3. No
+
+ Esc to cancel · Tab to amend
