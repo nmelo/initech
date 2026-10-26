@@ -40,6 +40,7 @@ type IPCRequest struct {
 	ItemID      string `json:"item_id,omitempty"`      // Inbox item, distinct from control request correlation.
 	DefaultText string `json:"default_text,omitempty"` // Proposed action absent an operator reply.
 	Chime       bool   `json:"chime,omitempty"`        // Request one inbox arrival chime.
+	Detail      bool   `json:"detail,omitempty"`       // list: also read each pane's footer and dialog (status --json).
 }
 
 // IPCResponse is the JSON structure returned by the TUI socket.
@@ -136,10 +137,20 @@ func (t *TUI) FindPaneView(name string) (PaneView, bool) {
 }
 
 func (t *TUI) AllPanes() ([]PaneInfo, bool) {
+	panes, _, ok := t.allPanesWithViews()
+	return panes, ok
+}
+
+// allPanesWithViews is AllPanes plus the pane behind each entry, taken in the
+// same main-loop turn so the two cannot disagree.
+func (t *TUI) allPanesWithViews() ([]PaneInfo, []PaneView, bool) {
 	var panes []PaneInfo
+	var views []PaneView
 	ok := t.runOnMain(func() {
 		panes = make([]PaneInfo, len(t.panes))
+		views = make([]PaneView, len(t.panes))
 		for i, p := range t.panes {
+			views[i] = p
 			panes[i] = PaneInfo{
 				Name:     p.Name(),
 				Host:     p.Host(),
@@ -163,7 +174,7 @@ func (t *TUI) AllPanes() ([]PaneInfo, bool) {
 			}
 		}
 	})
-	return panes, ok
+	return panes, views, ok
 }
 
 func (t *TUI) HandleSend(conn net.Conn, req IPCRequest) {

@@ -1,0 +1,30 @@
+
+
+✻ Worked for 11s · done 3:30 PM · 1
+  shell, 1 monitor still running
+
+❯ Launch a background subagent (Agent
+  tool, run_in_background true) whose
+  task is: run "for i in 1 2 3 4 5 6 7
+  8 9; do sleep 10; echo $i; done" with
+  the Bash tool in the foreground and
+  report the last number. Reply "ok"
+  right after launching.
+
+⏺ Agent(Run countdown loop, report last
+       number)
+  ⎿  Backgrounded agent (↓ to
+
+⏺ ok
+
+✻ Waiting for 1 background agent to
+  finish
+
+────────────────────────────────────────
+❯ 
+────────────────────────────────────────
+  Haiku 5.5 │ Personal │ 9% │ 78% ▓▓▓…
+  ⏸ manual mode on · 1 shell, 1 monito
+
+  ⏺ main
+  ◯ general-purpose 1m 20s · ↓ 56.8k

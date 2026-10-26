@@ -1,0 +1,30 @@
+
+ ▐▛███▛█   Claude Code v2.1.310
+▝▜██████▀  Haiku 5.5 · Claude Max
+ ▝▝   ▝▝   /private/tmp/rig
+
+⚠ 2 MCP servers need authentication ·
+  run /mcp
+
+❯ Run the shell command "sleep 600"
+  with run_in_background set to true,
+  then reply "started" and nothing
+  else.
+
+  Ran 1 shell command
+
+⏺ started
+
+✻ Churned for 6s · done 3:28 PM · 1
+  shell still running
+
+
+
+
+
+
+────────────────────────────────────────
+❯ 
+────────────────────────────────────────
+  Haiku 5.5 │ Personal │ 8% │ 75% ▓▓▓…
+  ⏵⏵ auto mode on · 1 shell

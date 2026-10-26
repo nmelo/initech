@@ -659,9 +659,17 @@ func (d *Daemon) FindPaneView(name string) (PaneView, bool) {
 func (d *Daemon) ProjectSnapshot() *IPCProject { return projectSnapshot(d.project) }
 
 func (d *Daemon) AllPanes() ([]PaneInfo, bool) {
+	panes, _, ok := d.allPanesWithViews()
+	return panes, ok
+}
+
+// allPanesWithViews is AllPanes plus the pane behind each entry.
+func (d *Daemon) allPanesWithViews() ([]PaneInfo, []PaneView, bool) {
 	snap := d.snapshotPanes()
 	panes := make([]PaneInfo, len(snap))
+	views := make([]PaneView, len(snap))
 	for i, p := range snap {
+		views[i] = p
 		panes[i] = PaneInfo{
 			Name:     p.Name(),
 			Activity: p.Activity().String(),
@@ -671,7 +679,7 @@ func (d *Daemon) AllPanes() ([]PaneInfo, bool) {
 			NoBead:   p.NoBeadWork(),
 		}
 	}
-	return panes, true
+	return panes, views, true
 }
 
 func (d *Daemon) HandleSend(conn net.Conn, req IPCRequest) {

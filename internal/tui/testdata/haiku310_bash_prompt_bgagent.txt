@@ -1,0 +1,45 @@
+
+⏺ Agent(Run foreground sleep 300)
+  ⎿  Backgrounded agent (↓ to manage · ctrl+o to expand)
+
+⏺ Monitor(Wait 900 seconds (sleep 900))
+  ⎿  Monitor started · task b1in4a2ly · timeout 900s
+
+⏺ ok
+
+✻ Waiting for 1 background agent to finish
+
+⏺ Agent "Run foreground sleep 300" finished · 5s
+
+⏺ The background subagent did not complete its sleep 300. It reports that the sandbox blocked the standalone sleep of that length, so the command never ran. I
+  did not try a workaround.
+
+  The Monitor watching sleep 900 started successfully and will notify you when it finishes or expires in about 15 minutes.
+
+✻ Worked for 11s · done 3:30 PM · 1 shell, 1 monitor still running
+
+❯ Launch a background subagent (Agent tool, run_in_background true) whose task is: run "for i in 1 2 3 4 5 6 7 8 9; do sleep 10; echo $i; done" with the Bash
+  tool in the foreground and report the last number. Reply "ok" right after launching.
+
+⏺ Agent(Run countdown loop, report last number)
+  ⎿  Backgrounded agent (↓ to manage · ctrl+o to expand)
+
+⏺ ok
+
+✻ Waiting for 1 background agent to finish
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ Bash command · from the general-purpose agent
+ Tip: auto mode handles these prompts for you — choose "switch to auto mode" below
+ Loop sleeping 10 seconds nine times, echoing counter
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+ for i in 1 2 3 4 5 6 7 8 9; do sleep 10; echo $i; done
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+ A variable in this command can't be checked before it runs
+
+ Do you want to proceed?
+ ❯ 1. Yes
+   2. Yes, and switch to auto mode · auto mode handles these prompts for you
+   3. No
+
+ Esc to cancel · Tab to amend · ctrl+x ctrl+k twice to stop background agents

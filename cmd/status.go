@@ -21,7 +21,11 @@ var statusCmd = &cobra.Command{
 	RunE:  runStatus,
 }
 
+// statusJSON is --json: one JSON object per agent instead of the table.
+var statusJSON bool
+
 func init() {
+	statusCmd.Flags().BoolVar(&statusJSON, "json", false, "print one JSON object per agent (state, beads, context, background work, dialog, account); a value not read is null")
 	rootCmd.AddCommand(statusCmd)
 }
 
@@ -52,6 +56,104 @@ type paneInfo struct {
 	// NoBead is the no-bead marker's words for an agent dispatched work with
 	// no bead (initech assign -m with no bead id); empty otherwise.
 	NoBead string `json:"no_bead,omitempty"`
+
+	// Read from the screen for --json only; nil or empty when not read
+	// (ini-l6om).
+	ContextPercent *int                `json:"context_percent"`
+	Background     *tui.PaneBackground `json:"background"`
+	Banner         string              `json:"banner"`
+	Account        *tui.PaneAccount    `json:"account"`
+}
+
+// agentJSON is one agent in initech status --json. Its field names are a
+// public contract: every key is always printed, and a value initech did not
+// read is null, never a guess.
+type agentJSON struct {
+	Role           string         `json:"role"`
+	Host           string         `json:"host"`
+	State          *string        `json:"state"`
+	Alive          bool           `json:"alive"`
+	Visible        bool           `json:"visible"`
+	Beads          *[]string      `json:"beads"`
+	BeadNote       string         `json:"bead_note"`
+	ContextPercent *int           `json:"context_percent"`
+	Background     backgroundJSON `json:"background"`
+	Banner         *string        `json:"banner"`
+	BannerAgeSec   *int           `json:"banner_age_sec"`
+	QueuedCount    int            `json:"queued_count"`
+	Account        accountJSON    `json:"account"`
+}
+
+type backgroundJSON struct {
+	Shells   *int `json:"shells"`
+	Monitors *int `json:"monitors"`
+	Tasks    *int `json:"tasks"`
+}
+
+type accountJSON struct {
+	User  *string `json:"user"`
+	Model *string `json:"model"`
+}
+
+// agentState is the activity label as status --json reports it: an agent
+// whose process has exited is stopped, a suspended one suspended, and a label
+// outside running, idle and waiting is null.
+func agentState(pi paneInfo) *string {
+	s := pi.Activity
+	switch {
+	case !pi.Alive && s == "suspended":
+	case !pi.Alive:
+		s = "stopped"
+	case s == "running" || s == "idle" || s == "waiting":
+	default:
+		return nil
+	}
+	return &s
+}
+
+// toAgentJSON is pi as status --json prints it.
+func toAgentJSON(pi paneInfo) agentJSON {
+	a := agentJSON{
+		Role:           pi.Name,
+		Host:           pi.Host,
+		State:          agentState(pi),
+		Alive:          pi.Alive,
+		Visible:        pi.Visible,
+		Beads:          pi.Beads,
+		BeadNote:       pi.NoBead,
+		ContextPercent: pi.ContextPercent,
+		QueuedCount:    pi.QueuedCount,
+	}
+	if b := pi.Background; b != nil {
+		a.Background = backgroundJSON{Shells: b.Shells, Monitors: b.Monitors, Tasks: b.Tasks}
+	}
+	if pi.Banner != "" {
+		banner := pi.Banner
+		a.Banner = &banner
+	}
+	if pi.ModalLatched {
+		age := pi.ModalAgeSec
+		a.BannerAgeSec = &age
+	}
+	if acct := pi.Account; acct != nil {
+		a.Account = accountJSON{User: acct.User, Model: acct.Model}
+	}
+	return a
+}
+
+// printStatusJSON writes the agents as one JSON array, the only thing status
+// --json puts on stdout.
+func printStatusJSON(cmd *cobra.Command, panes []paneInfo) error {
+	agents := make([]agentJSON, 0, len(panes))
+	for _, pi := range panes {
+		agents = append(agents, toAgentJSON(pi))
+	}
+	data, err := json.MarshalIndent(agents, "", "  ")
+	if err != nil {
+		return err
+	}
+	_, err = fmt.Fprintln(cmd.OutOrStdout(), string(data))
+	return err
 }
 
 func runStatus(cmd *cobra.Command, args []string) error {
@@ -74,7 +176,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	}
 
 	// Query pane list from TUI.
-	resp, err := ipcCallSocket(sockPath, tui.IPCRequest{Action: "list"})
+	resp, err := ipcCallSocket(sockPath, tui.IPCRequest{Action: "list", Detail: statusJSON})
 	if err != nil {
 		return fmt.Errorf("query TUI: %w", err)
 	}
@@ -104,6 +206,11 @@ func runStatus(cmd *cobra.Command, args []string) error {
 
 	// Merge remote peer agents not already in the pane list.
 	panes = mergeRemotePeers(sockPath, panes)
+
+	// --json reads the ribbon for beads, so it needs no bd.
+	if statusJSON {
+		return printStatusJSON(cmd, panes)
+	}
 
 	// Try to get bead assignments (skip when disabled).
 	runner := &iexec.DefaultRunner{}

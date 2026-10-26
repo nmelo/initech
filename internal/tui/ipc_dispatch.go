@@ -33,6 +33,54 @@ type PaneInfo struct {
 	ModalLatched bool `json:"modal_latched,omitempty"`
 	ModalAgeSec  int  `json:"modal_age_sec,omitempty"`
 	QueuedCount  int  `json:"queued_count,omitempty"`
+
+	// Read from the pane's screen only when the list request asks for detail
+	// (initech status --json, ini-l6om), and only for a live pane. Each is
+	// omitted when it was not read, so a client reads it as null; an older
+	// client ignores them and an older TUI never sends them.
+	ContextPercent *int            `json:"context_percent,omitempty"`
+	Background     *PaneBackground `json:"background,omitempty"`
+	Banner         string          `json:"banner,omitempty"`
+	Account        *PaneAccount    `json:"account,omitempty"`
+}
+
+// PaneBackground is the background work Claude Code's footer shows. A nil
+// count was not read.
+type PaneBackground struct {
+	Shells   *int `json:"shells,omitempty"`
+	Monitors *int `json:"monitors,omitempty"`
+	Tasks    *int `json:"tasks,omitempty"`
+}
+
+// PaneAccount is the account and model the operator's status line shows. A
+// nil field was not read.
+type PaneAccount struct {
+	User  *string `json:"user,omitempty"`
+	Model *string `json:"model,omitempty"`
+}
+
+// fillPaneDetail reads a live pane's screen into its list entry: footer
+// values and the dialog kind. It waits on the emulator's lock, so it runs on
+// the IPC goroutine, never the main loop. A pane that is not alive shows a
+// screen from before it stopped, so it is not read.
+func fillPaneDetail(info *PaneInfo, pv PaneView) {
+	if pv == nil || !info.Alive {
+		return
+	}
+	emu := pv.Emulator()
+	if emu == nil {
+		return
+	}
+	rows := emuRowsBlocking(emu)
+	f := parseFooter(rows, emu.Width())
+	info.ContextPercent = f.ContextPercent
+	if f.Shells != nil || f.Monitors != nil || f.Tasks != nil {
+		info.Background = &PaneBackground{Shells: f.Shells, Monitors: f.Monitors, Tasks: f.Tasks}
+	}
+	if f.User != nil || f.Model != nil {
+		info.Account = &PaneAccount{User: f.User, Model: f.Model}
+	}
+	info.Banner = bannerKind(rows, info.ModalLatched)
 }
 
 // ribbonBeads is the pane's bead set for the list reply, never nil, so it
@@ -96,7 +144,20 @@ func dispatchIPC(h IPCHost, conn net.Conn, req IPCRequest, rawJSON []byte) {
 		writeIPCResponse(conn, IPCResponse{OK: true, Data: peekContentBlocking(pv, req.Lines)})
 
 	case "list":
-		panes, ok := h.AllPanes()
+		var panes []PaneInfo
+		var ok bool
+		detail, canDetail := h.(interface {
+			allPanesWithViews() ([]PaneInfo, []PaneView, bool)
+		})
+		if req.Detail && canDetail {
+			var views []PaneView
+			panes, views, ok = detail.allPanesWithViews()
+			for i := range panes {
+				fillPaneDetail(&panes[i], views[i])
+			}
+		} else {
+			panes, ok = h.AllPanes()
+		}
 		if !ok {
 			writeIPCResponse(conn, IPCResponse{Error: "shutting down"})
 			return
