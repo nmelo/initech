@@ -207,6 +207,9 @@ func TestBanner_NearMissesAreNone(t *testing.T) {
 		"quoted above the composer": quoted,
 		"shell":                     {"sh-3.2$ echo Select login method:", "Select login method:", "sh-3.2$ "},
 		"empty":                     nil,
+		// The trust prompt's options without its "Enter to confirm" footer:
+		// quoted, not open (qa1's survivor on ini-l6om).
+		"trust options without the footer": {" ❯ No, exit", "   Yes, I trust this folder"},
 	}
 	for name, rows := range cases {
 		if got := bannerKind(rows, false); got != "none" {
