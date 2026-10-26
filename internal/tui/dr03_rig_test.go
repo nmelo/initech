@@ -128,7 +128,7 @@ func TestDr03Rig_ThreeChattyAgentsResyncWithNoTornSequencesInWindow2(t *testing.
 	burst := `for i in $(seq 1 3000); do printf '\033[31mLINE-%d\033[0m\n' "$i"; done`
 	for _, agent := range []string{"eng1", "eng2", "eng3"} {
 		out := a9d8CLI(t, bin, root, socket, "send", agent, burst)
-		if !strings.Contains(out, "delivered") {
+		if !dr03Sent(out, agent) {
 			t.Fatalf("burst to %s was not delivered: %s", agent, out)
 		}
 	}
@@ -193,7 +193,7 @@ func TestDr03Rig_ThreeChattyAgentsResyncWithNoTornSequencesInWindow2(t *testing.
 	for _, agent := range []string{"eng1", "eng2", "eng3"} {
 		marker := "POST_BURST_ALIVE_" + agent
 		out := a9d8CLI(t, bin, root, socket, "send", agent, "echo "+marker)
-		if !strings.Contains(out, "delivered") {
+		if !dr03Sent(out, agent) {
 			t.Fatalf("post-burst send to %s was not even accepted: %s", agent, out)
 		}
 	}
@@ -209,4 +209,12 @@ func TestDr03Rig_ThreeChattyAgentsResyncWithNoTornSequencesInWindow2(t *testing.
 		}
 	}
 	t.Logf("All three streams survived the burst: post-burst messages reach window 2. PASS.")
+}
+
+// dr03Sent reports whether initech send took the message for agent. This
+// rig's agents are generic shells, which have no input box to check, so
+// since ini-69fy the answer is "sent to <agent>, unconfirmed", exit 0, not
+// "delivered to".
+func dr03Sent(out, agent string) bool {
+	return strings.Contains(out, "delivered to "+agent) || strings.Contains(out, "sent to "+agent+", unconfirmed")
 }

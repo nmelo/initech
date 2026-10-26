@@ -114,6 +114,22 @@ type peerManager struct {
 	wg            sync.WaitGroup
 }
 
+// answerForwardSend is the answer to a forward_send request from a daemon:
+// the message is delivered to the local pane it names, and the send's
+// verdict rides the answer (ini-69fy). The deferral text is this TUI's own,
+// so a deferred answer carries the outcome with a plain deferral line.
+func (pm *peerManager) answerForwardSend(peerName string, req ControlResp) ControlResp {
+	if req.Action != "forward_send" || pm.onForwardSend == nil {
+		return ControlResp{Error: "unknown action"}
+	}
+	LogInfo("remote", "forward_send request", "peer", peerName, "target", req.Target)
+	v, err := pm.onForwardSend(req.Target, req.Text, req.Enter)
+	if err != nil {
+		return ControlResp{Error: err.Error()}
+	}
+	return verdictControlResp(v, "deferred to "+req.Target+" — modal open")
+}
+
 // newPeerManager creates a manager and starts a goroutine per remote peer.
 // All connections (initial and reconnect) happen in the background so the
 // TUI renders immediately without blocking on network I/O.
@@ -300,17 +316,7 @@ func (pm *peerManager) managePeer(peerName string, remote config.Remote) {
 		// When the daemon sends a forward_send WITH an ID, the mux dispatches
 		// it here. We deliver to the local pane and respond with OK or error.
 		pc.mux.SetRequestHandler(func(req ControlResp) ControlResp {
-			if req.Action == "forward_send" && pm.onForwardSend != nil {
-				LogInfo("remote", "forward_send request", "peer", peerName, "target", req.Target)
-				v, err := pm.onForwardSend(req.Target, req.Text, req.Enter)
-				if err != nil {
-					return ControlResp{Error: err.Error()}
-				}
-				// The verdict rides the answer (ini-69fy); the deferral text
-				// is the TUI's own, so a deferred one carries the outcome only.
-				return verdictControlResp(v, "deferred to "+req.Target+" — modal open")
-			}
-			return ControlResp{Error: "unknown action"}
+			return pm.answerForwardSend(peerName, req)
 		})
 
 		// Consume unsolicited events from the control stream (backward compat

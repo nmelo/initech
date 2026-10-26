@@ -332,3 +332,24 @@ func TestSendVerdict_AForwardedSendCarriesTheClientsVerdict(t *testing.T) {
 		})
 	}
 }
+
+// Item 4, the connected initech's half of the other direction: its answer to
+// a daemon's forward_send carries the local send's verdict.
+func TestSendVerdict_TheAnswerToAForwardSendCarriesTheVerdict(t *testing.T) {
+	cases := []struct {
+		v    SendVerdict
+		want ControlResp
+	}{
+		{SendVerdict{Outcome: DeliveryDelivered}, ControlResp{OK: true, Delivery: DeliveryDelivered}},
+		{SendVerdict{DeliveryUnconfirmed, "no composer visible"}, ControlResp{OK: true, Delivery: DeliveryUnconfirmed, Data: "no composer visible"}},
+		{SendVerdict{DeliveryNotDelivered, "r"}, ControlResp{Error: "r", Delivery: DeliveryNotDelivered}},
+	}
+	for _, c := range cases {
+		v := c.v
+		pm := &peerManager{onForwardSend: func(string, string, bool) (SendVerdict, error) { return v, nil }}
+		got := pm.answerForwardSend("workbench", ControlResp{Action: "forward_send", Target: "super", Text: "hi", Enter: true})
+		if got.OK != c.want.OK || got.Error != c.want.Error || got.Delivery != c.want.Delivery || got.Data != c.want.Data {
+			t.Errorf("verdict %+v: answer %+v, want %+v", c.v, got, c.want)
+		}
+	}
+}
