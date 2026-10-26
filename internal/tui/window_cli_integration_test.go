@@ -364,14 +364,17 @@ func runViewerUnderPTYCommon(t *testing.T, bin, root string, hold time.Duration,
 	if err != nil {
 		t.Fatalf("start viewer under pty: %v", err)
 	}
+	// One waiter, so the exit below is observed, not inferred: ProcessState
+	// is set only by Wait, and the old poll on it never saw an exit at all.
+	exited := make(chan struct{})
+	go func() { _ = cmd.Wait(); close(exited) }()
 	defer func() {
 		_ = ptmx.Close()
 		_ = cmd.Process.Kill()
-		_, _ = cmd.Process.Wait()
+		<-exited
 	}()
 
 	var seen strings.Builder
-	_ = exitSig
 	deadline := time.Now().Add(hold)
 	buf := make([]byte, 32*1024)
 	var keysSent bool
@@ -391,18 +394,31 @@ func runViewerUnderPTYCommon(t *testing.T, bin, root string, hold time.Duration,
 		}
 	}
 
-	// Exit the way the caller asked, and give the handler time to run before
-	// the deferred Kill takes the process out from under it.
+	// Exit the way the caller asked and wait for the process to exit with the
+	// handler's own status (2), before the deferred Kill. The old wait polled
+	// ProcessState, which only Wait sets, so it always slept its full 3 s and
+	// never saw whether the handler finished (ini-p2ve.1). Keep reading the
+	// PTY meanwhile, as a terminal does: the handler restores the screen
+	// before it exits, and with nobody reading, that write blocks forever.
 	if exitSig != os.Kill {
-		_ = cmd.Process.Signal(exitSig)
-		deadline := time.Now().Add(3 * time.Second)
-		for time.Now().Before(deadline) {
-			if cmd.ProcessState != nil {
-				break
+		go func() {
+			b := make([]byte, 32*1024)
+			_ = ptmx.SetReadDeadline(time.Time{})
+			for {
+				if _, err := ptmx.Read(b); err != nil {
+					return
+				}
 			}
-			time.Sleep(50 * time.Millisecond)
+		}()
+		_ = cmd.Process.Signal(exitSig)
+		select {
+		case <-exited:
+		case <-time.After(3 * time.Second):
+			t.Fatalf("the viewer did not exit within 3s of %v", exitSig)
 		}
-		time.Sleep(500 * time.Millisecond)
+		if code := cmd.ProcessState.ExitCode(); code != 2 {
+			t.Fatalf("the viewer exited %v after %v, want status 2 from its signal handler", cmd.ProcessState, exitSig)
+		}
 	}
 	return seen.String()
 }

@@ -23,10 +23,18 @@ import (
 	"github.com/hashicorp/yamux"
 )
 
-// handoffCatPane is a live /bin/cat pane named eng1.
+// handoffCommand is the fixture child: it prints one line and goes quiet, as
+// an agent does after it boots, then echoes what it is sent. A silent /bin/cat
+// never satisfies the startup gate (quiet AFTER first output), so every send
+// to a just-started one waited out the gate's whole cap (ini-p2ve.1).
+var handoffCommand = []string{"/bin/sh", "-c", "echo " + handoffReady + "; exec /bin/cat"}
+
+const handoffReady = "HANDOFF-READY"
+
+// handoffCatPane is a live cat pane named eng1 (see handoffCommand).
 func handoffCatPane(t *testing.T) *Pane {
 	t.Helper()
-	p, err := NewPane(PaneConfig{Name: "eng1", Command: []string{"/bin/cat"}, NoBracketedPaste: true}, 24, 80)
+	p, err := NewPane(PaneConfig{Name: "eng1", Command: handoffCommand, NoBracketedPaste: true}, 24, 80)
 	if err != nil {
 		t.Fatalf("NewPane: %v", err)
 	}
@@ -157,6 +165,11 @@ func TestWindowHandoff_EveryReplacementReachesTheServer(t *testing.T) {
 			if !sinkOf(np) {
 				t.Fatal("the new eng1 has no network sink; a second window's copy freezes at its last frame")
 			}
+			// The new process has booted and printed: the startup gate opens
+			// once that output is quiet, not at its cap.
+			if !handoffWaitFor(func() bool { return strings.Contains(emuText(np), handoffReady) }, 5*time.Second) {
+				t.Fatal("setup: the new eng1 never printed its ready line")
+			}
 			if errText := viewerSend(t, ws.Addr(), "eng1", "MARK813"); errText != "" {
 				t.Fatalf("a send from the second window failed: %s", errText)
 			}
@@ -216,7 +229,7 @@ func acceptStreams(t *testing.T, session *yamux.Session) func(id uint32) net.Con
 
 func handoffCatPaneNamed(t *testing.T, name string) *Pane {
 	t.Helper()
-	p, err := NewPane(PaneConfig{Name: name, Command: []string{"/bin/cat"}, NoBracketedPaste: true}, 24, 80)
+	p, err := NewPane(PaneConfig{Name: name, Command: handoffCommand, NoBracketedPaste: true}, 24, 80)
 	if err != nil {
 		t.Fatalf("NewPane: %v", err)
 	}

@@ -112,13 +112,27 @@ func (srv *evictionWarServer) handle(conn net.Conn, script string) {
 	}
 }
 
+func (srv *evictionWarServer) waitCount(n int, d time.Duration) bool {
+	deadline := time.Now().Add(d)
+	for time.Now().Before(deadline) {
+		if srv.count() >= n {
+			return true
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	return srv.count() >= n
+}
+
 // evictionPM builds a real peerManager against the war server and runs the
 // REAL managePeer loop -- not a reimplementation of its counter, which would
 // be the mirror-test tautology (a mutation in the loop would fail nothing).
-func evictionPM(t *testing.T, srv *evictionWarServer) (chan string, func()) {
+// ended closes when the loop returns on its own: with quit still open, that is
+// the loop ending, which is what "never redials" means, observed directly
+// instead of as no new connection within a fixed sleep.
+func evictionPM(t *testing.T, srv *evictionWarServer) (evicted chan string, ended chan struct{}, stop func()) {
 	t.Helper()
 	quit := make(chan struct{})
-	evicted := make(chan string, 1)
+	evicted = make(chan string, 1)
 	pm := newPeerManager(
 		// A configured token (ini-cxia): with none, window 2 reads the
 		// session token file and, with no project root, never dials. The
@@ -130,7 +144,24 @@ func evictionPM(t *testing.T, srv *evictionWarServer) (chan string, func()) {
 		func(string, []PaneView, bool) {},
 		nil, quit)
 	pm.SetOnEvicted(func(peer, reason string) { evicted <- peer + ": " + reason })
-	return evicted, func() { close(quit); pm.wait() }
+	ended = make(chan struct{})
+	go func() { pm.wait(); close(ended) }()
+	return evicted, ended, func() { close(quit); <-ended }
+}
+
+// loopEnds fails unless the reconnect loop returns within d of concluding,
+// and then checks no connection followed the conclusion.
+func loopEnds(t *testing.T, srv *evictionWarServer, ended chan struct{}, atConclusion int, d time.Duration) {
+	t.Helper()
+	select {
+	case <-ended:
+	case <-time.After(d):
+		t.Fatalf("the reconnect loop was still running %v after concluding eviction (%d connection(s) so far) -- "+
+			"the conclusion did not end the loop, which is the war continuing politely", d, srv.count())
+	}
+	if got := srv.count(); got != atConclusion {
+		t.Fatalf("client connected again AFTER concluding eviction (%d -> %d)", atConclusion, got)
+	}
 }
 
 // TestEvictionWar_VerdictIsTerminal drives the real loop: the server delivers
@@ -139,7 +170,7 @@ func evictionPM(t *testing.T, srv *evictionWarServer) (chan string, func()) {
 // rejoined the war.
 func TestEvictionWar_VerdictIsTerminal(t *testing.T) {
 	srv := startEvictionWarServer(t, "verdict")
-	evicted, stop := evictionPM(t, srv)
+	evicted, ended, stop := evictionPM(t, srv)
 	defer stop()
 
 	select {
@@ -162,11 +193,7 @@ func TestEvictionWar_VerdictIsTerminal(t *testing.T) {
 		t.Fatalf("client connected %d times before concluding, want at most %d (a cycle or two)",
 			atConclusion, quickEvictionLimit)
 	}
-	time.Sleep(4 * time.Second)
-	if got := srv.count(); got != atConclusion {
-		t.Fatalf("client connected again AFTER concluding eviction (%d -> %d) -- the conclusion "+
-			"did not end the loop, which is the war continuing politely", atConclusion, got)
-	}
+	loopEnds(t, srv, ended, atConclusion, 2*time.Second)
 }
 
 // TestEvictionWar_VerdictAloneConcludesALongSession is the verdict layer's
@@ -180,7 +207,7 @@ func TestEvictionWar_VerdictIsTerminal(t *testing.T) {
 // by any other road.
 func TestEvictionWar_VerdictAloneConcludesALongSession(t *testing.T) {
 	srv := startEvictionWarServer(t, "hold-then-verdict", "hold")
-	evicted, stop := evictionPM(t, srv)
+	evicted, ended, stop := evictionPM(t, srv)
 	defer stop()
 
 	select {
@@ -193,11 +220,11 @@ func TestEvictionWar_VerdictAloneConcludesALongSession(t *testing.T) {
 			"the verdict layer is dead and only the inference has been passing these tests " +
 			"(layer-masking: the outer guard eating the inner's evidence)")
 	}
-	time.Sleep(3 * time.Second)
 	if got := srv.count(); got != 1 {
 		t.Fatalf("client connected %d times, want exactly 1 -- with the death not quick, a "+
 			"redial means the verdict was ignored", got)
 	}
+	loopEnds(t, srv, ended, 1, 2*time.Second)
 }
 
 // TestEvictionWar_LostVerdictInferredFromQuickDeaths is the bead's edge 1
@@ -205,7 +232,7 @@ func TestEvictionWar_VerdictAloneConcludesALongSession(t *testing.T) {
 // lost in flight). Two consecutive quick deaths must conclude takeover.
 func TestEvictionWar_LostVerdictInferredFromQuickDeaths(t *testing.T) {
 	srv := startEvictionWarServer(t, "drop", "drop", "drop", "drop")
-	evicted, stop := evictionPM(t, srv)
+	evicted, ended, stop := evictionPM(t, srv)
 	defer stop()
 
 	select {
@@ -217,10 +244,11 @@ func TestEvictionWar_LostVerdictInferredFromQuickDeaths(t *testing.T) {
 		t.Fatal("silent accept-and-drop never concluded takeover; with the verdict lost in " +
 			"flight the client wars forever")
 	}
-	time.Sleep(4 * time.Second)
-	if got := srv.count(); got > quickEvictionLimit {
-		t.Fatalf("client connected %d times before concluding, want at most %d", got, quickEvictionLimit)
+	atConclusion := srv.count()
+	if atConclusion > quickEvictionLimit {
+		t.Fatalf("client connected %d times before concluding, want at most %d", atConclusion, quickEvictionLimit)
 	}
+	loopEnds(t, srv, ended, atConclusion, 2*time.Second)
 }
 
 // TestEvictionWar_LongSessionDeathResets drives the reset rule against the
@@ -231,18 +259,25 @@ func TestEvictionWar_LostVerdictInferredFromQuickDeaths(t *testing.T) {
 // server merely restarted twice.
 func TestEvictionWar_LongSessionDeathResets(t *testing.T) {
 	srv := startEvictionWarServer(t, "drop", "hold-then-drop", "drop", "hold")
-	evicted, stop := evictionPM(t, srv)
+	evicted, ended, stop := evictionPM(t, srv)
 	defer stop()
 
+	// The loop decides whether to conclude BEFORE it redials, so the 4th
+	// connection arriving means the third death was judged and not concluded.
+	reached := srv.waitCount(4, quickEvictionWindow+8*time.Second)
 	select {
 	case reason := <-evicted:
 		t.Fatalf("quick death / long-lived death / quick death concluded takeover (%q); the "+
 			"long-lived session did not reset the counter and ordinary churn exiles windows", reason)
-	case <-time.After(quickEvictionWindow + 8*time.Second):
-		// Correct: no conclusion; the client is on the held 4th connection.
+	default:
 	}
-	if got := srv.count(); got < 4 {
-		t.Errorf("client made %d connections, want it to still be retrying (4: drop, long, drop, hold)", got)
+	if !reached {
+		t.Errorf("client made %d connections, want it to still be retrying (4: drop, long, drop, hold)", srv.count())
+	}
+	select {
+	case <-ended:
+		t.Error("the reconnect loop ended without concluding eviction")
+	default:
 	}
 }
 
@@ -252,18 +287,25 @@ func TestEvictionWar_LongSessionDeathResets(t *testing.T) {
 // window-1 hiccup into a self-exiling window.
 func TestEvictionWar_HeldSessionResetsInference(t *testing.T) {
 	srv := startEvictionWarServer(t, "drop", "hold")
-	evicted, stop := evictionPM(t, srv)
+	evicted, ended, stop := evictionPM(t, srv)
 	defer stop()
 
+	// As above: the second connection arriving means the first death was
+	// judged, and the held session cannot die while it is held.
+	srv.waitCount(2, 8*time.Second)
 	select {
 	case reason := <-evicted:
 		t.Fatalf("one quick death + a healthy session concluded takeover (%q); a transient "+
 			"hiccup just exiled a working window", reason)
-	case <-time.After(8 * time.Second):
-		// Correct: still connected to the held session, no conclusion.
+	default:
 	}
 	if got := srv.count(); got != 2 {
 		t.Errorf("client connected %d times, want 2 (the drop, then the held session)", got)
+	}
+	select {
+	case <-ended:
+		t.Error("the reconnect loop ended on one quick death")
+	default:
 	}
 }
 

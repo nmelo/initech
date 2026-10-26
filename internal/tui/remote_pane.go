@@ -795,7 +795,12 @@ func (rp *RemotePane) Close() {
 	rp.alive = false
 	rp.mu.Unlock()
 	if rp.stream != nil {
-		rp.stream.Close() // readLoop exits on stream read error.
+		// A yamux Close only half-closes: it sends our FIN, and readLoop's
+		// Read keeps blocking until the PEER closes its side, so every Close
+		// waited out the 2 s timeout below. An expired read deadline makes
+		// that Read return now (ini-p2ve.1).
+		rp.stream.SetReadDeadline(time.Now())
+		rp.stream.Close()
 	}
 	// Close the emulator's input pipe so responseLoop's blocking Read exits.
 	if pw, ok := rp.emu.InputPipe().(interface{ CloseWithError(error) error }); ok {
