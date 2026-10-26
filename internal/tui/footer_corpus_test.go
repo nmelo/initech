@@ -50,6 +50,18 @@ func TestFooterCorpus_EveryCapturedShapeReadsWhatItShows(t *testing.T) {
 		{"haiku310_label_pa_w94.txt", none(i(0), s("Haiku 5.5"), s("Second"))},
 		{"haiku310_label_accountant_w94.txt", none(i(0), s("Haiku 5.5"), s("Second"))},
 		{"haiku310_label_pa_w40.txt", none(i(0), s("Haiku 5.5"), s("Second"))},
+		// hover's and nayutal's supers (rows relayed on the bead): a model
+		// segment with a suffix, and background work on the mode line.
+		{"hover_1m_3shells_w118.txt", Footer{i(46), i(3), zero, zero, s("Opus 5.5 (1M context)"), s("Second")}},
+		{"nayutal_1m_2monitors_w109.txt", Footer{i(46), zero, i(2), zero, s("Opus 5.5 (1M context)"), s("Second")}},
+		// nayutal (54 columns) and hover's other panes: no branch segment,
+		// "0%", a two-word label, the 1M-context model cut and uncut.
+		{"nayutal_opus_1shell_w54.txt", Footer{i(39), i(1), zero, zero, s("Opus 5.5"), s("Second")}},
+		{"nayutal_fable_idle_w54.txt", none(i(46), s("Fable 5.1"), s("Second"))},
+		{"nayutal_sonnet_nobranch_w54.txt", none(i(0), s("Sonnet 5.5"), s("Second"))},
+		{"hover_super_label_w118.txt", Footer{i(46), i(3), zero, zero, s("Opus 5.5 (1M context)"), s("Second")}},
+		{"hover_video_1m_cut_w89.txt", none(i(32), s("Opus 5.5 (1M context)"), s("Second"))},
+		{"hover_qa4_sonnet_nobranch_w90.txt", Footer{i(43), i(1), zero, zero, s("Sonnet 5.5"), s("Second")}},
 		// This rig's live panes, about 58 and 75 columns, bypass mode.
 		{"fleet_qa1.txt", none(i(42), s("Sonnet 5.5"), s("Second"))},
 		{"fleet_super.txt", Footer{i(22), zero, i(1), zero, s("Opus 5.5"), s("Second")}},
