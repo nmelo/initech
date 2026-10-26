@@ -22,6 +22,21 @@ import (
 // realTerminalScreen returns a terminfo screen on a fresh pty slave and a
 // function returning the bytes the master received since its last call.
 func realTerminalScreen(t *testing.T) (tcell.Screen, func() int) {
+	return realTerminalScreenReader(t, 0)
+}
+
+// realTerminalScreenReader is realTerminalScreen with the master's reader
+// pausing readerDelay before each read, as a loaded machine schedules it late.
+//
+// The count waits for the bytes by effect (ini-ol29). It writes a numbered
+// sentinel into the slave after the frame: tcell has already written the
+// frame there synchronously, and the slave's output queue keeps order, so
+// once the reader has seen the sentinel every byte of the frame is in, and
+// the count is the bytes before it. The old count slept 40 ms and read
+// whatever had arrived; with the reader late, the tail of one frame (its
+// last styles, the clock, cursor hide, end of synchronized update) landed
+// in the next frame's count and a static frame "emitted" 58-92 bytes.
+func realTerminalScreenReader(t *testing.T, readerDelay time.Duration) (tcell.Screen, func() int) {
 	t.Helper()
 	ptmx, tty, err := pty.Open()
 	if err != nil {
@@ -45,6 +60,10 @@ func realTerminalScreen(t *testing.T) (tcell.Screen, func() int) {
 	go func() {
 		b := make([]byte, 64*1024)
 		for {
+			if readerDelay > 0 {
+				time.Sleep(readerDelay)
+				b = b[:512] // small reads, so a frame arrives in many late pieces
+			}
 			n, err := ptmx.Read(b)
 			if n > 0 {
 				mu.Lock()
@@ -57,14 +76,28 @@ func realTerminalScreen(t *testing.T) (tcell.Screen, func() int) {
 		}
 	}()
 	t.Cleanup(func() { s.Fini(); ptmx.Close(); tty.Close() })
-	last := 0
+	last, seq := 0, 0
 	return s, func() int {
-		time.Sleep(40 * time.Millisecond) // let the master drain
-		mu.Lock()
-		defer mu.Unlock()
-		n := out.Len() - last
-		last = out.Len()
-		return n
+		seq++
+		mark := []byte(fmt.Sprintf("\x1b[P39-SYNC-%d]", seq))
+		if _, err := tty.Write(mark); err != nil {
+			t.Fatalf("fixture: writing the sync mark: %v", err)
+		}
+		deadline := time.Now().Add(5 * time.Second)
+		for {
+			mu.Lock()
+			i := bytes.Index(out.Bytes()[last:], mark)
+			if i >= 0 {
+				last += i + len(mark)
+				mu.Unlock()
+				return i
+			}
+			mu.Unlock()
+			if time.Now().After(deadline) {
+				t.Fatalf("fixture: the master never received sync mark %d within 5s; the reader is not draining the terminal", seq)
+			}
+			time.Sleep(time.Millisecond)
+		}
 	}
 }
 
@@ -72,8 +105,26 @@ func realTerminalScreen(t *testing.T) (tcell.Screen, func() int) {
 // again; static again emits nothing. Before the frame buffer every frame
 // re-sent every pane row (2,649 bytes per frame on this fixture).
 func TestP39_StaticFrameEmitsNoBytesOnARealTerminal(t *testing.T) {
+	p39StaticFrame(t, realTerminalScreen)
+}
+
+// The same frames with the master's reader running late, as on a loaded CI
+// runner (ini-ol29: this failed twice in one day with the fixed-sleep count).
+func TestP39_StaticFrameEmitsNoBytesWithALateReader(t *testing.T) {
+	p39StaticFrame(t, func(t *testing.T) (tcell.Screen, func() int) {
+		return realTerminalScreenReader(t, 30*time.Millisecond)
+	})
+}
+
+func p39StaticFrame(t *testing.T, screen func(*testing.T) (tcell.Screen, func() int)) {
+	// Hold the status bar clock still: a minute rolling over between two
+	// frames redraws its digit (65 bytes, measured), a real change, which
+	// failed about one run in eighty (ini-ol29).
+	clock := time.Date(2026, 10, 26, 16, 52, 30, 0, time.Local)
+	statusClock = func() time.Time { return clock }
+	t.Cleanup(func() { statusClock = time.Now })
 	tui, _ := newTestTUIWithScreen("super", "eng1", "eng2", "eng3", "qa1", "qa2")
-	s, emitted := realTerminalScreen(t)
+	s, emitted := screen(t)
 	tui.screen = newFrameScreen(s)
 	for _, pv := range tui.panes {
 		p := pv.(*Pane)
@@ -105,5 +156,13 @@ func TestP39_StaticFrameEmitsNoBytesOnARealTerminal(t *testing.T) {
 	tui.render()
 	if n := emitted(); n != 0 {
 		t.Errorf("frame after the change emitted %d bytes", n)
+	}
+
+	// The held clock is the one the bar draws: moving it a minute is a real
+	// change and reaches the terminal.
+	clock = clock.Add(time.Minute)
+	tui.render()
+	if n := emitted(); n == 0 {
+		t.Error("the clock moved a minute and the frame emitted nothing: the bar is not drawing statusClock")
 	}
 }

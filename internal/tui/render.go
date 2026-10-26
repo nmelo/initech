@@ -573,7 +573,7 @@ func (t *TUI) renderHints() {
 	}
 
 	// Clock (rightmost).
-	b.addRight(time.Now().Format("15:04"), b.barStyle)
+	b.addRight(statusClock().Format("15:04"), b.barStyle)
 
 	b.render(t.screen, sh-1)
 }
@@ -1233,3 +1233,8 @@ func (t *TUI) inboxUnreadForBadge() int {
 	}
 	return inboxUnreadCount(r)
 }
+
+// statusClock is the status bar clock's time source. A variable only so a
+// test that compares frames can hold it still: the minute rolling over
+// between two frames is a real change (ini-ol29).
+var statusClock = time.Now
