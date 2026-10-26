@@ -68,11 +68,12 @@ func runPatrol(cmd *cobra.Command, args []string) error {
 
 	// Parse the JSON array of patrol entries.
 	type patrolEntry struct {
-		Name     string `json:"name"`
-		Activity string `json:"activity"`
-		Bead     string `json:"bead,omitempty"`
-		Alive    bool   `json:"alive"`
-		Content  string `json:"content"`
+		Name     string        `json:"name"`
+		Activity string        `json:"activity"`
+		Bead     string        `json:"bead,omitempty"`
+		Alive    bool          `json:"alive"`
+		Content  string        `json:"content"`
+		Busy     *tui.PaneBusy `json:"busy"`
 	}
 	var entries []patrolEntry
 	if err := json.Unmarshal([]byte(resp.Data), &entries); err != nil {
@@ -94,13 +95,21 @@ func runPatrol(cmd *cobra.Command, args []string) error {
 		content := strings.TrimRight(e.Content, "\n")
 
 		// Apply active filter.
-		if patrolActive && e.Activity == "idle" && content == "" {
+		work := ""
+		if e.Alive {
+			work = busyText(e.Busy)
+		}
+		// A busy agent is active even when its screen is quiet (ini-b4l0).
+		if patrolActive && e.Activity == "idle" && content == "" && work == "" {
 			continue
 		}
 
 		// Header line: agent name blue+bold, status colored by severity, bead ID blue.
 		activityColored := patrolStatusColor(e.Activity)
 		headerInner := color.BlueBold(e.Name) + " (" + activityColored
+		if work != "" {
+			headerInner += ", " + color.Yellow(work)
+		}
 		if e.Bead != "" {
 			headerInner += " | " + color.Blue(e.Bead)
 		}

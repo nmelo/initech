@@ -159,6 +159,7 @@ func (t *TUI) allPanesWithViews() ([]PaneInfo, []PaneView, bool) {
 				Visible:  !t.layoutState.Hidden[agentKey(p)],
 				Beads:    ribbonBeads(p),
 				NoBead:   noBeadOf(p),
+				Busy:     paneBusy(p, time.Now()),
 			}
 			// The latch is why mail stops moving, so it belongs where someone
 			// looks when mail stops moving (ini-gbqc). Age and depth, not a
@@ -1323,12 +1324,13 @@ func (t *TUI) handleIPCPatrol(conn net.Conn, req IPCRequest) {
 		lines = 20
 	}
 	type patrolEntry struct {
-		Name     string `json:"name"`
-		Activity string `json:"activity"`
-		Bead     string `json:"bead,omitempty"`
-		Alive    bool   `json:"alive"`
-		Visible  bool   `json:"visible"`
-		Content  string `json:"content"`
+		Name     string    `json:"name"`
+		Activity string    `json:"activity"`
+		Bead     string    `json:"bead,omitempty"`
+		Alive    bool      `json:"alive"`
+		Visible  bool      `json:"visible"`
+		Content  string    `json:"content"`
+		Busy     *PaneBusy `json:"busy,omitempty"`
 	}
 	var result []patrolEntry
 	t.runOnMain(func() {
@@ -1341,6 +1343,7 @@ func (t *TUI) handleIPCPatrol(conn net.Conn, req IPCRequest) {
 				Alive:    p.IsAlive(),
 				Visible:  !t.layoutState.Hidden[agentKey(p)],
 				Content:  peekContent(p, lines),
+				Busy:     paneBusy(p, time.Now()),
 			}
 		}
 	})

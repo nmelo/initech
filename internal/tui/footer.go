@@ -4,6 +4,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/mattn/go-runewidth"
 )
@@ -209,4 +210,67 @@ func bannerKind(rows []string, latched bool) string {
 		return bannerUnknown
 	}
 	return bannerNone
+}
+
+// backgroundWork is the background work a pane's footer last showed and when
+// it was first seen (ini-b4l0). Zero when none.
+type backgroundWork struct {
+	shells, monitors, tasks int
+	since                   time.Time
+}
+
+// busy reports whether any background work is recorded.
+func (w backgroundWork) busy() bool { return w.shells+w.monitors+w.tasks > 0 }
+
+// observeBackground records what the footer read this tick says about
+// background work. A kind the footer did not show readably keeps its last
+// value, so a dialog over the footer or a cut row changes nothing; the
+// no-background shape (every count read as 0) clears it, and so does the
+// process ending. since is when work was first seen, kept while any goes on.
+func (p *Pane) observeBackground(now time.Time, alive bool, f Footer) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if !alive {
+		p.bgWork = backgroundWork{}
+		return
+	}
+	w := p.bgWork
+	if f.Shells != nil {
+		w.shells = *f.Shells
+	}
+	if f.Monitors != nil {
+		w.monitors = *f.Monitors
+	}
+	if f.Tasks != nil {
+		w.tasks = *f.Tasks
+	}
+	switch {
+	case !w.busy():
+		w = backgroundWork{}
+	case w.since.IsZero():
+		w.since = now
+	}
+	p.bgWork = w
+}
+
+// backgroundWorkNow returns the recorded background work and whether there is
+// any.
+func (p *Pane) backgroundWorkNow() (backgroundWork, bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.bgWork, p.bgWork.busy()
+}
+
+// paneBusy is a pane's background work for the list and patrol replies; nil
+// when there is none or the pane is not a local one.
+func paneBusy(pv PaneView, now time.Time) *PaneBusy {
+	p, ok := pv.(*Pane)
+	if !ok {
+		return nil
+	}
+	w, busy := p.backgroundWorkNow()
+	if !busy {
+		return nil
+	}
+	return &PaneBusy{Shells: w.shells, Monitors: w.monitors, Tasks: w.tasks, SinceSec: int(now.Sub(w.since).Seconds())}
 }

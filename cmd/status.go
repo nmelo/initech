@@ -63,6 +63,38 @@ type paneInfo struct {
 	Background     *tui.PaneBackground `json:"background"`
 	Banner         string              `json:"banner"`
 	Account        *tui.PaneAccount    `json:"account"`
+
+	// Busy is the background work the TUI's tick last saw (ini-b4l0).
+	Busy *tui.PaneBusy `json:"busy"`
+}
+
+// busyText is background work as status and patrol print it after the state
+// word: "1 background shell 4m", "2 background shells, 1 monitor 30s". Empty
+// for none.
+func busyText(b *tui.PaneBusy) string {
+	if b == nil {
+		return ""
+	}
+	var kinds []string
+	for _, k := range []struct {
+		n          int
+		one, other string
+	}{
+		{b.Shells, "background shell", "background shells"},
+		{b.Monitors, "monitor", "monitors"},
+		{b.Tasks, "background agent", "background agents"},
+	} {
+		switch {
+		case k.n == 1:
+			kinds = append(kinds, "1 "+k.one)
+		case k.n > 1:
+			kinds = append(kinds, fmt.Sprintf("%d %s", k.n, k.other))
+		}
+	}
+	if len(kinds) == 0 {
+		return ""
+	}
+	return strings.Join(kinds, ", ") + " " + shortDur(b.SinceSec)
 }
 
 // agentJSON is one agent in initech status --json. Its field names are a
@@ -281,7 +313,14 @@ func runStatus(cmd *cobra.Command, args []string) error {
 			alive = color.Red("no")
 		}
 		bead := "-"
-		status := statusColor(pi.Activity)
+		// Background work follows the state word, which it does not change
+		// (ini-b4l0): an idle agent landing a commit in a background shell
+		// is idle, and busy.
+		work := ""
+		if t := busyText(pi.Busy); t != "" && pi.Alive {
+			work = ", " + color.Yellow(t)
+		}
+		status := statusColor(pi.Activity) + work
 		// A suspended agent is not alive either, but it is parked, not
 		// stopped: calling it stopped invites a second suspend or a restart.
 		if !pi.Alive && pi.Activity != "suspended" {
@@ -315,7 +354,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 			}
 			bead = fmt.Sprintf("%s %s", color.Blue(b.ID), color.Dim("("+title+")"))
 			if pi.Alive {
-				status = statusColor(b.Status)
+				status = statusColor(b.Status) + work
 			}
 		}
 		// Work with no bead shows in the bead's place. It wins over a bd

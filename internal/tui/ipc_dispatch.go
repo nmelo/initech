@@ -42,6 +42,19 @@ type PaneInfo struct {
 	Background     *PaneBackground `json:"background,omitempty"`
 	Banner         string          `json:"banner,omitempty"`
 	Account        *PaneAccount    `json:"account,omitempty"`
+
+	// Busy is the background work the pane's footer showed at the last tick,
+	// sent only while there is some (ini-b4l0).
+	Busy *PaneBusy `json:"busy,omitempty"`
+}
+
+// PaneBusy is a pane's background work as the maintenance tick last read it
+// from the footer, and how long it has been seen.
+type PaneBusy struct {
+	Shells   int `json:"shells"`
+	Monitors int `json:"monitors"`
+	Tasks    int `json:"tasks"`
+	SinceSec int `json:"since_sec"`
 }
 
 // PaneBackground is the background work Claude Code's footer shows. A nil

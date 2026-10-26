@@ -63,6 +63,12 @@ func maintainModal(panes []PaneView, now time.Time, last *time.Time) {
 			continue
 		}
 		p.noteScreenRead()
+		// Background work from the same snapshot (ini-b4l0); the width is
+		// the size withScreen just recorded.
+		p.mu.Lock()
+		cols := p.lastEmuCols
+		p.mu.Unlock()
+		p.observeBackground(now, p.IsAlive(), parseFooter(rows, cols))
 		if screenShowsModal(rows) {
 			p.noteDialogSighting()
 		}
