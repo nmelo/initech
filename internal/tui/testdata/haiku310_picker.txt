@@ -1,0 +1,45 @@
+
+ ▐▛███▛█   Claude Code v2.1.310
+▝▜██████▀  Haiku 5.5 · Claude Max
+ ▝▝   ▝▝   /private/tmp/rig
+
+⚠ 2 MCP servers need authentication · run /mcp
+
+❯ Run the shell command "sleep 600" with run_in_background set to true, then reply "started" and nothing else.
+
+  Ran 1 shell command
+
+⏺ started
+
+✻ Churned for 6s · done 3:28 PM · 1 shell still running
+
+❯ Use the Write tool to create notes.txt containing hi.
+
+⏺ Write(notes.txt)
+  ⎿  User rejected write to notes.txt
+      1 hi
+
+✻ Sautéed for 3s · done 3:29 PM · 1 shell still running
+
+❯ Use the AskUserQuestion tool to ask me whether I prefer tea or coffee.
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ ☐ Drink
+
+Do you prefer tea or coffee?
+
+❯ 1. Tea
+     You prefer tea.
+  2. Coffee
+     You prefer coffee.
+  3. Type something.
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  4. Chat about this
+
+Enter to select · ↑/↓ to navigate · Esc to cancel
+
+
+
+
+
+
+

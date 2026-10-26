@@ -154,6 +154,28 @@ In `initech status`, a suspended agent shows Alive `no` and Status `suspended`; 
 
 `initech status` reads bd for its Bead column: each agent bd names as assignee of a bead in progress, ready for QA or in QA shows that bead and its status (a bead at QA passed has no holder to show). When an agent's ribbon shows different beads from bd, the column shows bd's answer followed by `ribbon: <ids>` (`ribbon: -` for an empty ribbon), so a stale ribbon is visible; when they agree nothing is added. With `INITECH_SOCKET` pointing at another project's initech, the `Session:` header names the project behind that socket, not the project of the folder you ran it from; an initech too old to say which project it serves leaves the folder's name. The Bead column then shows the beads of the project behind the socket, read from that project's own folder, never yours; an initech too old to say where its project lives shows `(bd: unknown project)` there instead, as does a project whose folder is not on this machine. An `INITECH_SOCKET` that names your own project's socket, as every agent's does, counts as no override.
 
+
+#### status --json
+
+`initech status --json` prints a JSON array to stdout, one object per agent, and nothing else; errors and notes go to stderr. It exits 0 when the TUI answered. Every object has every key below. **A value initech did not read is `null`, never a guess.**
+
+| Key | Value |
+|-----|-------|
+| `role` | The agent's name. |
+| `host` | The peer it runs on; empty for a local agent. |
+| `state` | `running`, `idle`, `waiting` (a dialog is waiting on the operator), `suspended`, or `stopped` (stopped or its process exited); `null` for any other state, such as an agent on another machine. |
+| `alive`, `visible` | Whether its process is running, and whether its pane is shown. |
+| `beads` | The bead ids on its ribbon (`[]` when none). The table's Bead column reads bd instead, so the two can differ when the ribbon is stale. `null` from an initech too old to report the ribbon. |
+| `bead_note` | The words of work dispatched with no bead, or empty. |
+| `context_percent` | The context used, from the status line under the input box. |
+| `background` | `shells`, `monitors`, `tasks`: the background shells and monitors Claude Code counts under the input box, and the background agents it lists there. `0` when Claude shows its mode line with none; `null` when that line is not on screen or is cut off at the pane's edge before the count. |
+| `banner` | The dialog open in the pane: `none`, `permission_prompt`, `trust_prompt`, `picker` (a question with options), `login`, or `unknown` (a dialog is open that initech does not recognise, which includes the usage-limit banner). |
+| `banner_age_sec` | How long the dialog has held the pane's messages; `null` when none is holding them. |
+| `queued_count` | Messages waiting for that dialog to close. |
+| `account` | `user` and `model` from the status line. |
+
+`context_percent` and `account` come from the status line the `cla statusline` command draws (model, account name, context used); a pane with any other status line, or none, reports them as `null`. Everything read from the screen is `null` for an agent that is not running, for a pane that is not Claude Code, while a dialog covers the rows under the input box, and from an initech too old to read them.
+
 ### Toast Notifications
 
 Toasts appear in the bottom-right and auto-dismiss after 10 seconds.
