@@ -40,8 +40,50 @@ import (
 // is unrelated to whether the backtick was swallowed (ini-1klk).
 var fn77ViewerAge = regexp.MustCompile(`(?m)^(42\| main PID \d+ \| started \S+ \| age )\d+(?:h\d+m\d+s|m\d+s|s)$`)
 
-func fn77ScreenWithoutViewerAge(screen string) string {
+// fn77StatusClock is the status bar's HH:MM: the rightmost item of row 43,
+// the last row of the rig's 44-row screen. Pinned to that row and to the end
+// of it, so any other status-bar change still counts. The child window's
+// clock cannot be held: the statusClock seam is in-process only.
+var fn77StatusClock = regexp.MustCompile(`(?m)^(43\| .*\s)\d{2}:\d{2}$`)
+
+// fn77ScreenWithoutClocks masks the two regions that change with the wall
+// clock alone, the footer's elapsed age and the status-bar clock, and keeps
+// every other cell of the screen in the comparison.
+func fn77ScreenWithoutClocks(screen string) string {
+	screen = fn77StatusClock.ReplaceAllString(screen, "${1}<clock>")
 	return fn77ViewerAge.ReplaceAllString(screen, "${1}<elapsed>")
+}
+
+// The status bar clock: a minute rolling over between two captures of a
+// screen that did not change. Rows 41 and 43 are the capture from the rigs
+// run that failed on exactly this (row 43 read 18:06, then 18:07).
+func TestFN77ScreenComparison_IgnoresTheStatusBarClock(t *testing.T) {
+	const fleetRow = "41| █ 1 super                                   █ 2 pm                                     █ 3 qa1"
+	const statusRow = "43|  Press backtick to open the command bar                                                               Grid 3x2 · Bat  80% · "
+	screen := func(fleet, status, clock string) string {
+		return " 0| shell ready\n" + fleet + "\n" + status + clock
+	}
+	before := screen(fleetRow, statusRow, "18:06")
+	for _, pair := range [][2]string{{"18:06", "18:07"}, {"23:59", "00:00"}} {
+		a, b := screen(fleetRow, statusRow, pair[0]), screen(fleetRow, statusRow, pair[1])
+		if fn77ScreenWithoutClocks(a) != fn77ScreenWithoutClocks(b) {
+			t.Errorf("clock %s -> %s changed the comparison", pair[0], pair[1])
+		}
+	}
+	// Positive twins: the minute still advances, and something a chord could
+	// change also changed, so the pair must still compare unequal.
+	agentClock := before + "\n40| agent printed 18:06"
+	unclocked := screen(fleetRow, "43|  saved 18:06 · Grid 3x2", "")
+	for name, pair := range map[string][2]string{
+		"fleet row":          {before, screen(strings.Replace(fleetRow, "3 qa1", "3 qa2", 1), statusRow, "18:07")},
+		"status bar text":    {before, screen(fleetRow, strings.Replace(statusRow, "Grid 3x2", "Grid 2x2", 1), "18:07")},
+		"clock on agent row": {agentClock, strings.Replace(agentClock, "printed 18:06", "printed 18:07", 1)},
+		"HH:MM mid-status":   {unclocked, strings.Replace(unclocked, "saved 18:06", "saved 18:07", 1)},
+	} {
+		if fn77ScreenWithoutClocks(pair[0]) == fn77ScreenWithoutClocks(pair[1]) {
+			t.Errorf("masked a meaningful %s change", name)
+		}
+	}
 }
 
 func TestFN77ScreenComparison_IgnoresOnlyAuthorityAge(t *testing.T) {
@@ -49,7 +91,7 @@ func TestFN77ScreenComparison_IgnoresOnlyAuthorityAge(t *testing.T) {
 	const before = " 0| shell ready\n" + footer + "\n43| status"
 	for _, age := range []string{"28s", "1m0s", "2h3m4s"} {
 		after := strings.Replace(before, "age 26s", "age "+age, 1)
-		if fn77ScreenWithoutViewerAge(before) != fn77ScreenWithoutViewerAge(after) {
+		if fn77ScreenWithoutClocks(before) != fn77ScreenWithoutClocks(after) {
 			t.Fatalf("clock change to %s changed the comparison", age)
 		}
 	}
@@ -61,14 +103,14 @@ func TestFN77ScreenComparison_IgnoresOnlyAuthorityAge(t *testing.T) {
 		"notice":        before + "\n41| main-window-only notice",
 		"disconnected":  strings.Replace(before, footer, "42| main: disconnected", 1),
 	} {
-		if fn77ScreenWithoutViewerAge(before) == fn77ScreenWithoutViewerAge(after) {
+		if fn77ScreenWithoutClocks(before) == fn77ScreenWithoutClocks(after) {
 			t.Errorf("masked meaningful %s change", name)
 		}
 	}
 	// Even an identical-looking line in agent output is not the footer.
 	otherRow := strings.Replace(before, "42|", " 5|", 1)
 	changed := strings.Replace(otherRow, "age 26s", "age 28s", 1)
-	if fn77ScreenWithoutViewerAge(otherRow) == fn77ScreenWithoutViewerAge(changed) {
+	if fn77ScreenWithoutClocks(otherRow) == fn77ScreenWithoutClocks(changed) {
 		t.Fatal("masked agent output outside the authority footer")
 	}
 }
@@ -108,13 +150,14 @@ func TestFN77Rig_ChildWindowLosesFleetManagementChords(t *testing.T) {
 	// ── WINDOW 2, BACKTICK: swallowed, not forwarded, no notice ─────────
 	// Asserted as a screen-content diff (not a raw-byte diff, which would
 	// false-positive on the housekeeping ticker's redraws of unchanged
-	// state). Mask only the live authority age: the two-second observation
-	// window advances that clock even when the key has no effect.
+	// state). Mask only the clocks (authority age, status-bar HH:MM): the
+	// two-second observation window advances them even when the key has no
+	// effect.
 	before := nineISXScreen(w2emu)
 	w2pty.Write([]byte("`"))
 	time.Sleep(2 * time.Second)
 	after := nineISXScreen(w2emu)
-	if fn77ScreenWithoutViewerAge(before) != fn77ScreenWithoutViewerAge(after) {
+	if fn77ScreenWithoutClocks(before) != fn77ScreenWithoutClocks(after) {
 		t.Fatalf("window 2's screen changed after a backtick keypress; the AC requires it be "+
 			"swallowed with no modal, no notice, and nothing forwarded to the pane\nBEFORE:\n%s\n"+
 			"AFTER:\n%s", before, after)

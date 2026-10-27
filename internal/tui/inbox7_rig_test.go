@@ -26,23 +26,16 @@ package tui
 import (
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"testing"
 	"time"
 )
 
-// inbox7StatusClock is the status bar's HH:MM: the rightmost item of row 43,
-// the last row of the rig's 44-row screen. Pinned to that row and to the end
-// of it, so any other status-bar change still counts (ini-1eao).
-var inbox7StatusClock = regexp.MustCompile(`(?m)^(43\| .*\s)\d{2}:\d{2}$`)
-
 // inbox7Layout is window 2's screen with the regions that change without a
 // layout change removed: row 0 (badge and inbox count, which this bead
 // changes on purpose), the footer's elapsed age, and the status-bar clock.
 func inbox7Layout(screen string) string {
-	screen = inbox7StatusClock.ReplaceAllString(screen, "${1}<clock>")
-	lines := strings.Split(fn77ScreenWithoutViewerAge(screen), "\n")
+	lines := strings.Split(fn77ScreenWithoutClocks(screen), "\n")
 	if len(lines) > 0 {
 		lines = lines[1:]
 	}
