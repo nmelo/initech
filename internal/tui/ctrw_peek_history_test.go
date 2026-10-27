@@ -120,3 +120,15 @@ func TestPeekHistory_TheNoteOnlyWhenTheReplyIsShort(t *testing.T) {
 		t.Errorf("exactly what was asked: note %q, want none", n)
 	}
 }
+
+// A negative -n is read as 0, the screen; never a panic in the handler.
+func TestPeekHistory_ANegativeCountIsTheScreen(t *testing.T) {
+	p := ctrwPane(10, 200)
+	for _, n := range []int{-1, -50, -100000} {
+		ctrwConsecutive(t, fmt.Sprintf("-n %d", n), ctrwNumbers(t, peekReadBlocking(p, n).text), 192, 200)
+		if note := peekNotice(peekReadBlocking(p, n), n); note != "" {
+			t.Errorf("-n %d: note %q, want none", n, note)
+		}
+	}
+	ctrwConsecutive(t, "patrol -n -50", ctrwNumbers(t, peekContent(p, -50)), 192, 200)
+}

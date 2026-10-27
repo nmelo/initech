@@ -2447,6 +2447,9 @@ type peekRead struct {
 // The caller holds the emulator's lock: peekReadBlocking waits for it on an
 // IPC goroutine, peekContent tries for it from the main loop.
 func readHistory(e *vt.Emulator, lines int) peekRead {
+	// A negative count (initech peek -n -1, a raw request) is 0, the screen:
+	// unclamped it sized a slice below zero and panicked the handler.
+	lines = max(lines, 0)
 	screen := readScreenRows(e)
 	r := peekRead{alt: e.IsAltScreen(), rows: e.Height()}
 	all := screen
