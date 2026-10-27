@@ -180,7 +180,7 @@ func TestExtractSelectionText_ScrollbackMode_IsRaceFreeAgainstLivePTYOutput(t *t
 // Every rune the child emits is printable ASCII, so any control byte or
 // replacement char in the output means a read observed a corrupted cell.
 //
-// Reads through peekReadBlocking -- the form initech peek and the daemon
+// Reads through peekContentBlocking -- the form initech peek and the daemon
 // take (ini-oxnl). The main-loop form gives up on a held pane by design
 // (psjt; TestPeekContent_DoesNotBlockOnAHeldEmulator), and against this
 // never-pausing child Linux never yields the lock inside its 250ms try, so
@@ -196,7 +196,7 @@ func TestPeekContent_ReturnsUncorruptedTextDuringLiveOutput(t *testing.T) {
 	sawPayload := false
 	deadline := time.Now().Add(900 * time.Millisecond)
 	for time.Now().Before(deadline) {
-		out := peekReadBlocking(p, 20).text
+		out := peekContentBlocking(p, 20)
 		if strings.Contains(out, payload) {
 			sawPayload = true
 		}

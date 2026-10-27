@@ -41,7 +41,7 @@ var lockedEmulatorMethods = map[string]bool{
 // blockingScreenReaders wait for the lock by design; their callers are part
 // of the inventory.
 var blockingScreenReaders = map[string]bool{
-	"emuRowsBlocking": true, "emulatorBottomTextBlocking": true, "peekReadBlocking": true,
+	"emuRowsBlocking": true, "emulatorBottomTextBlocking": true, "peekContentBlocking": true,
 }
 
 // lockingCallAllowlist maps an enclosing function ("Type.method" or "func")
@@ -72,7 +72,7 @@ var lockingCallAllowlist = map[string]string{
 	// Peek for callers that answer one request on their own goroutine and
 	// may wait (ini-oxnl). The main-loop peek (:peek, patrol) stays on the
 	// bounded try in peekContent; see mainLoopFunctions below.
-	"peekReadBlocking":           "the blocking peek primitive with scrollback (ini-ctrw): IPC handler goroutine and daemon, never the main loop",
+	"peekContentBlocking":        "the blocking peek primitive",
 	"dispatchIPC":                "IPC handler goroutine (initech peek)",
 	"Daemon.handleControlStream": "daemon control goroutine (cross-machine peek)",
 
