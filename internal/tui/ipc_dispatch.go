@@ -154,7 +154,7 @@ func dispatchIPC(h IPCHost, conn net.Conn, req IPCRequest, rawJSON []byte) {
 		}
 		// IPC handler goroutine: may wait on the pane (ini-oxnl), so a burst
 		// returns the screen rather than "unreadable".
-		writeIPCResponse(conn, IPCResponse{OK: true, Data: peekContentBlocking(pv, req.Lines)})
+		writeIPCResponse(conn, IPCResponse{OK: true, Data: peekReadBlocking(pv, req.Lines).text})
 
 	case "list":
 		var panes []PaneInfo

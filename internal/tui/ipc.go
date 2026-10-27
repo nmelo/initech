@@ -1388,33 +1388,12 @@ func peekContent(p PaneView, lines int) string {
 	// Reached from the main loop (:peek, patrol under runOnMain), so it may
 	// not wait on the pane (ini-psjt): a pane whose lock stays held for
 	// peekTryBudget reports that instead of content. Callers on a goroutine
-	// that MAY wait use peekContentBlocking.
-	var allLines []string
-	if !withEmulator(p.Emulator(), peekTryBudget, func(e *vt.Emulator) { allLines = readScreenRows(e) }) {
+	// that MAY wait use peekReadBlocking.
+	var r peekRead
+	if !withEmulator(p.Emulator(), peekTryBudget, func(e *vt.Emulator) { r = readHistory(e, lines) }) {
 		return peekUnreadable + "\n"
 	}
-	return peekLastLines(allLines, lines)
-}
-
-// peekContentBlocking is peekContent for callers that may WAIT on the pane:
-// the IPC "peek" handler (initech peek) and the daemon's cross-machine peek,
-// both on their own goroutines. It reads row by row under the emulator's
-// lock -- the v2.12.0 read, no torn cells -- and waits for a writer rather
-// than giving up.
-//
-// WHY TWO FORMS (ini-oxnl): psjt's bounded try protects the MAIN LOOP from
-// parking behind a wedged pane. Applied to every caller, it also made peek
-// on Linux answer "pane unreadable" for the whole of an agent's sustained
-// output burst -- the scheduler there never yields a gap the 250ms try can
-// win, while macOS does (v2.13.0 release run 34702544631). A goroutine that
-// exists to answer one request has no display to protect and may wait; the
-// lock-discipline inventory keeps the two forms on the right callers.
-func peekContentBlocking(p PaneView, lines int) string {
-	emu := p.Emulator()
-	if emu == nil {
-		return ""
-	}
-	return peekLastLines(emuRowsBlocking(emu), lines)
+	return r.text
 }
 
 // peekLastLines trims trailing blanks and keeps the last N rows -- the one
@@ -2396,4 +2375,65 @@ func deferredMsg(target string, age time.Duration, queued int) string {
 	}
 	return fmt.Sprintf("deferred to %s — modal open %s, %d queued",
 		target, age.Round(time.Minute), queued)
+}
+
+// peekRead is what one peek read found.
+type peekRead struct {
+	text  string
+	found int  // lines returned
+	alt   bool // the pane is on its alternate screen: screen only
+	rows  int  // the pane's height
+	kept  int  // the most lines of history the pane keeps
+}
+
+// readHistory reads a pane as a tall terminal would show it (ini-ctrw): the
+// main screen's scrollback, oldest first, then the screen, last `lines` lines
+// after trailing blank rows are trimmed. Scrollback is read only when the
+// screen alone may be short of `lines`, and no more of it than could be
+// needed. A line leaves the screen's top as it enters scrollback, so the two
+// never overlap and nothing repeats at the seam. On the alternate screen (an
+// editor, a pager) the scrollback belongs to the screen behind it, so the
+// screen alone is read. lines <= 0 takes no scrollback: the screen alone, as
+// before.
+//
+// The caller holds the emulator's lock: peekReadBlocking waits for it on an
+// IPC goroutine, peekContent tries for it from the main loop.
+func readHistory(e *vt.Emulator, lines int) peekRead {
+	screen := readScreenRows(e)
+	r := peekRead{alt: e.IsAltScreen(), rows: e.Height()}
+	all := screen
+	if sb := e.Scrollback(); sb != nil && !r.alt {
+		r.kept = sb.MaxLines()
+		from := max(sb.Len()-lines, 0)
+		hist := make([]string, 0, sb.Len()-from+len(screen))
+		for i := from; i < sb.Len(); i++ {
+			hist = append(hist, sb.Line(i).String())
+		}
+		all = append(hist, screen...)
+	}
+	r.text = peekLastLines(all, lines)
+	r.found = strings.Count(r.text, "\n")
+	return r
+}
+
+// peekReadBlocking is the peek handler's read: it waits for the emulator's
+// lock, holding it for the scrollback and the screen together so a line
+// cannot move between them mid-read. IPC goroutine and daemon only, never
+// the main loop (lock-discipline allowlist).
+//
+// WHY TWO FORMS (ini-oxnl): psjt's bounded try protects the MAIN LOOP from
+// parking behind a wedged pane. Applied to every caller, it also made peek
+// on Linux answer "pane unreadable" for the whole of an agent's sustained
+// output burst -- the scheduler there never yields a gap the 250ms try can
+// win, while macOS does (v2.13.0 release run 34702544631). A goroutine that
+// exists to answer one request has no display to protect and may wait; the
+// lock-discipline inventory keeps the two forms on the right callers.
+func peekReadBlocking(p PaneView, lines int) peekRead {
+	emu := p.Emulator()
+	if emu == nil {
+		return peekRead{}
+	}
+	emu.Lock()
+	defer emu.Unlock()
+	return readHistory(emu.Emulator, lines)
 }

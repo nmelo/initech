@@ -51,7 +51,7 @@ func TestPeekContent_TryFormGivesUpAndBlockingFormWaits(t *testing.T) {
 	}
 
 	start = time.Now()
-	got = peekContentBlocking(p, 5)
+	got = peekReadBlocking(p, 5).text
 	if !strings.Contains(got, "PEEK_ME_31") {
 		t.Fatalf("blocking peek = %q, want the screen content once the hold ends", got)
 	}

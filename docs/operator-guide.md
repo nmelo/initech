@@ -289,7 +289,7 @@ To turn it off, set `telemetry: false` in `initech.yaml`, or set `DO_NOT_TRACK=1
 1. Check the overlay. Is the dot green (active) or gray (idle)?
 2. If gray: the agent is at a prompt. Send a message: `initech send <agent> "status?"`.
 3. If green but no visible progress: it might be in a long tool execution. Wait 2-3 minutes.
-4. If still stuck: `initech peek <agent>` to see the last output. Look for error messages or permission prompts.
+4. If still stuck: `initech peek <agent>` to see the last output. Look for error messages or permission prompts. `initech peek <agent> -n 50` returns the agent's last 50 lines whatever its pane's height: when the screen holds fewer, the lines above it come from the pane's scrollback, in order. A pane showing a full-screen program (an editor, a pager) returns its screen only.
 5. Last resort: restart via backtick -> `restart` (when focused on that pane) or `initech restart <agent>` from another terminal.
 
 ### Agent Crashed (Red Dot / [dead])
