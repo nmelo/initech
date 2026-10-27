@@ -73,6 +73,7 @@ var lockingCallAllowlist = map[string]string{
 	// may wait (ini-oxnl). The main-loop peek (:peek, patrol) stays on the
 	// bounded try in peekContent; see mainLoopFunctions below.
 	"peekContentBlocking":        "the blocking peek primitive",
+	"peekShortPaneNotice":        "IPC handler goroutine, beside peekContentBlocking in dispatchIPC (ini-jpal)",
 	"dispatchIPC":                "IPC handler goroutine (initech peek)",
 	"Daemon.handleControlStream": "daemon control goroutine (cross-machine peek)",
 

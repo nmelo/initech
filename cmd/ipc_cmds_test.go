@@ -259,3 +259,29 @@ func TestRunPeers_NoPeers(t *testing.T) {
 		t.Errorf("stdout = %q, want 'No peers'", stdout.String())
 	}
 }
+
+// ini-jpal: the short-pane notice goes to stderr; stdout carries the screen
+// exactly, and the exit is 0.
+func TestRunPeek_NoticeGoesToStderrScreenToStdout(t *testing.T) {
+	skipWindows(t)
+	sockPath := startFakeIPC(t, tui.IPCResponse{OK: true, Data: "row1\nrow2\n",
+		Notices: []string{"pane is 10 rows; peek reads the screen only"}})
+	t.Setenv("INITECH_SOCKET", sockPath)
+
+	var stdout, stderr bytes.Buffer
+	rootCmd.SetOut(&stdout)
+	rootCmd.SetErr(&stderr)
+	rootCmd.SetArgs([]string{"peek", "eng7", "-n", "50"})
+	defer rootCmd.SetArgs(nil)
+	defer func() { peekLines = 0 }()
+
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if stdout.String() != "row1\nrow2\n" {
+		t.Errorf("stdout = %q, want the screen only", stdout.String())
+	}
+	if stderr.String() != "pane is 10 rows; peek reads the screen only\n" {
+		t.Errorf("stderr = %q, want the notice line", stderr.String())
+	}
+}

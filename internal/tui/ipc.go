@@ -1053,11 +1053,22 @@ func bodyTextVisible(p *Pane, ps *pendingSubmit) bool {
 // dialog, like the rule-bounded read it uses. VERDICT ONLY: submitSighted
 // reads it, so it decides taken or held after an Enter and the sighting
 // before it; nothing that decides whether to press Enter reads it.
+//
+// A BOX THAT RUNS OFF THE BOTTOM EDGE (ini-jpal). In a short pane (a cell of
+// a full grid, about 10 rows) the box's bottom rule and the footer fall below
+// the pane's last row, so there is no second rule; the box is then the rows
+// from its top rule to the last row (openBottomBox), read by the same rule.
+// Measured: 20 of 20 long sends read "never seen" in a 10-row pane, all of
+// them landed.
 func boxRunIsOurs(p *Pane, ps *pendingSubmit) bool {
 	if paneHasModal(p) {
 		return false
 	}
-	rows, ok := ruleBoundedRegion(emuRowsBlocking(p.emu))
+	screen := emuRowsBlocking(p.emu)
+	rows, ok := openBottomBox(screen)
+	if !ok {
+		rows, ok = ruleBoundedRegion(screen)
+	}
 	if !ok {
 		return false
 	}
@@ -1066,6 +1077,28 @@ func boxRunIsOurs(p *Pane, ps *pendingSubmit) bool {
 		return false
 	}
 	return strings.Contains(stripSpace(strings.Join(ps.bodyLines, "")), run)
+}
+
+// openBottomBox returns a box whose bottom rule is off the screen: the rows
+// after the last rule on screen, through the last row, when the first of them
+// is the prompt row. A box whose bottom rule is on screen has
+// the footer, not a prompt row, after its last rule, so it is not one.
+func openBottomBox(rows []string) ([]string, bool) {
+	last := -1
+	for i := len(rows) - 1; i >= 0; i-- {
+		if isRegionRule(rows[i]) {
+			last = i
+			break
+		}
+	}
+	if last < 0 || last+1 >= len(rows) || !strings.HasPrefix(strings.TrimSpace(rows[last+1]), "\u276f") {
+		return nil, false
+	}
+	var box []string
+	for _, r := range rows[last+1:] {
+		box = append(box, strings.TrimSpace(r))
+	}
+	return box, true
 }
 
 // composerRegion is the composer block, or -- when Claude's ❯ row has
@@ -1415,6 +1448,22 @@ func peekContentBlocking(p PaneView, lines int) string {
 		return ""
 	}
 	return peekLastLines(emuRowsBlocking(emu), lines)
+}
+
+// peekShortPaneNotice is the line peek adds when the caller asked for more
+// lines than the pane has rows (ini-jpal): peek reads the screen only, so a
+// 10-row cell of a full grid answers -n 50 with 10 rows at most, and without
+// this line the short answer looks like a broken read. "" when the screen
+// can hold what was asked, or nothing was asked.
+func peekShortPaneNotice(p PaneView, lines int) string {
+	emu := p.Emulator()
+	if emu == nil {
+		return ""
+	}
+	if rows := emu.Height(); lines > rows {
+		return fmt.Sprintf("pane is %d rows; peek reads the screen only", rows)
+	}
+	return ""
 }
 
 // peekLastLines trims trailing blanks and keeps the last N rows -- the one

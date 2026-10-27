@@ -289,7 +289,7 @@ To turn it off, set `telemetry: false` in `initech.yaml`, or set `DO_NOT_TRACK=1
 1. Check the overlay. Is the dot green (active) or gray (idle)?
 2. If gray: the agent is at a prompt. Send a message: `initech send <agent> "status?"`.
 3. If green but no visible progress: it might be in a long tool execution. Wait 2-3 minutes.
-4. If still stuck: `initech peek <agent>` to see the last output. Look for error messages or permission prompts.
+4. If still stuck: `initech peek <agent>` to see the last output. Look for error messages or permission prompts. Peek reads the pane's screen only: `-n` larger than the pane's rows returns the whole screen and prints `pane is <rows> rows; peek reads the screen only` on stderr, exit 0.
 5. Last resort: restart via backtick -> `restart` (when focused on that pane) or `initech restart <agent>` from another terminal.
 
 ### Agent Crashed (Red Dot / [dead])
@@ -348,6 +348,8 @@ Recovery: `initech send <agent> "You were working on <bead-id>. Run bd show <bea
 for an agent at its prompt, then prints one line and exits with its status:
 
 - `delivered to <agent>` (exit 0): the message was seen in the agent's input box and the box cleared.
+  In a short pane, where Claude Code scrolls a long message inside the box and the box's bottom edge
+  falls below the pane, the end of the message still in view counts as seen.
   A `--no-enter` send submits nothing and also reads delivered, as does a send that woke a suspended agent.
 - `not delivered to <agent>: <reason>` (exit 1): the message is still in the box after the Enter and
   the one resend, or could not be typed at all.
