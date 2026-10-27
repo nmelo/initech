@@ -30,10 +30,18 @@ import (
 // mutant for want of exactly this, on a canonical-mode tty).
 func proofPane(t *testing.T) (*Pane, <-chan []byte, <-chan AgentEvent) {
 	t.Helper()
+	return proofPaneSized(t, 120, 40)
+}
+
+// proofPaneSized is proofPane at a given screen size, for a fixture that
+// must sit at the pane's real bottom edge (ini-jpal). The emulator is set
+// before the drain starts, so nothing replaces it under the drain's reads.
+func proofPaneSized(t *testing.T, cols, rows int) (*Pane, <-chan []byte, <-chan AgentEvent) {
+	t.Helper()
 	p, _ := paneWithPipe(t)
 	p.name = "eng2"
 	p.alive = true
-	p.emu = vt.NewSafeEmulator(120, 40)
+	p.emu = vt.NewSafeEmulator(cols, rows)
 	events := make(chan AgentEvent, 8)
 	p.eventCh = events
 	p.claudeVersion = measuredOnlyVersionProbe()

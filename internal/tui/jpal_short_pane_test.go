@@ -8,8 +8,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/charmbracelet/x/vt"
 )
 
 // ini-jpal: in a short pane (about 10 rows, a cell of a full grid) Claude
@@ -28,20 +26,8 @@ var jpalBody = "[from rig] marker JPAL-F-01: fixture. " + strings.TrimSpace(stri
 // row is the screen's last row, as it was.
 func jpalPane(t *testing.T) *Pane {
 	t.Helper()
-	p, _, _ := proofPane(t)
-	p.emu = vt.NewSafeEmulator(110, 10)
-	go drainEmu(p.emu)
+	p, _, _ := proofPaneSized(t, 110, 10)
 	return p
-}
-
-// drainEmu keeps the emulator's response pipe from blocking writes.
-func drainEmu(emu *vt.SafeEmulator) {
-	buf := make([]byte, 256)
-	for {
-		if _, err := emu.Read(buf); err != nil {
-			return
-		}
-	}
 }
 
 func jpalFixture(t *testing.T) []string {
