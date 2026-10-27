@@ -289,7 +289,7 @@ To turn it off, set `telemetry: false` in `initech.yaml`, or set `DO_NOT_TRACK=1
 1. Check the overlay. Is the dot green (active) or gray (idle)?
 2. If gray: the agent is at a prompt. Send a message: `initech send <agent> "status?"`.
 3. If green but no visible progress: it might be in a long tool execution. Wait 2-3 minutes.
-4. If still stuck: `initech peek <agent>` to see the last output. Look for error messages or permission prompts. Peek reads the pane's screen only: `-n` larger than the pane's rows returns the whole screen and prints `pane is <rows> rows; peek reads the screen only` on stderr, exit 0.
+4. If still stuck: `initech peek <agent>` to see the last output. Look for error messages or permission prompts. `initech peek <agent> -n 50` returns the agent's last 50 lines whatever its pane's height: when the screen holds fewer, the lines above it come from the pane's scrollback, in order. When it returns fewer lines than asked, it says why on stderr, with stdout and the exit code unchanged: a pane showing a full-screen program (an editor, a pager) is read as its screen only (`pane is <rows> rows; peek reads the screen only`), and a pane whose whole output is shorter says so (`peek returned <k> of <n> lines: all the pane keeps (up to 10000 lines of history)`).
 5. Last resort: restart via backtick -> `restart` (when focused on that pane) or `initech restart <agent>` from another terminal.
 
 ### Agent Crashed (Red Dot / [dead])

@@ -159,16 +159,17 @@ func TestShortPane_TheBeltDoesNotReadTheOpenBox(t *testing.T) {
 	}
 }
 
-// peek -n N on a pane shorter than N returns the screen and says why it is
-// short; asking for no more than the pane holds, or for everything (0), adds
-// nothing.
+// peek -n N on a pane whose whole output is shorter than N returns all of it
+// and says why it is short (since ini-ctrw a short pane reads its scrollback,
+// so the note names the pane's history, not its height); asking for no more
+// than it holds, or for everything (0), adds nothing.
 func TestShortPane_PeekSaysWhenThePaneIsShorterThanAsked(t *testing.T) {
 	for _, tc := range []struct {
 		lines  int
 		notice string
 	}{
-		{50, "pane is 10 rows; peek reads the screen only"},
-		{11, "pane is 10 rows; peek reads the screen only"},
+		{50, "peek returned 10 of 50 lines: all the pane keeps (up to 10000 lines of history)"},
+		{11, "peek returned 10 of 11 lines: all the pane keeps (up to 10000 lines of history)"},
 		{10, ""},
 		{3, ""},
 		{0, ""},
@@ -192,7 +193,7 @@ func TestShortPane_PeekSaysWhenThePaneIsShorterThanAsked(t *testing.T) {
 func TestShortPane_PeekNoticeWithNoEmulatorIsEmpty(t *testing.T) {
 	p := newEmuPane("eng7", 110, 10)
 	p.emu = nil
-	if got := peekShortPaneNotice(p, 50); got != "" {
+	if got := peekNotice(peekReadBlocking(p, 50), 50); got != "" {
 		t.Errorf("no emulator: notice %q, want none", got)
 	}
 }

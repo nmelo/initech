@@ -18,7 +18,7 @@ package tui
 // ever touched from the main goroutine through runOnMain, so the main loop's
 // own serialization is its lock. This store is reached from the IPC goroutine,
 // which may WAIT where the main loop may not (ini-oxnl, the same split
-// peekContentBlocking records: "a goroutine that exists to answer one request
+// peekReadBlocking records: "a goroutine that exists to answer one request
 // has no display to protect and may wait"). So it carries its own mutex across
 // every read and every mutation, and it must never be routed through
 // runOnMain. Copying fleet_state.go literally would have produced an

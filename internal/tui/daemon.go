@@ -1355,7 +1355,7 @@ func (d *Daemon) handleControlStream(ctrl net.Conn, scanner *bufio.Scanner, peer
 				continue
 			}
 			// Daemon control goroutine: may wait on the pane (ini-oxnl).
-			if !respond(cmd.ID, ControlResp{OK: true, Data: peekContentBlocking(p, cmd.Lines)}) {
+			if !respond(cmd.ID, ControlResp{OK: true, Data: peekReadBlocking(p, cmd.Lines).text}) {
 				return
 			}
 
