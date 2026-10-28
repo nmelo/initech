@@ -217,10 +217,13 @@ func TestFN77Rig_OverlayDotClickFromAChildWindowStillHidesAnAgent(t *testing.T) 
 	}
 
 	// Find the OVERLAY's dot for eng1: the black-circle glyph only the
-	// overlay draws (render.go:929), on the same row as the agent name, so a
-	// pane's own ribbon (which can also say "eng1") is never mistaken for
-	// it.
-	col, row, ok := fn77FindOverlayDot(w2emu, "eng1")
+	// overlay draws, on the same row as the agent name, so a pane's own ribbon
+	// (which can also say "eng1") is never mistaken for it. Wait until the dot
+	// has held one cell for longer than the overlay's click settle: the "n"
+	// above was typed into eng1's shell, so eng1 runs for a moment and moves
+	// to the working column, and a dot cell that just changed agent swallows
+	// a click by design (ini-gt7w).
+	col, row, ok := fn77AwaitSettledOverlayDot(w2emu, "eng1", overlayClickSettle+500*time.Millisecond, 20*time.Second)
 	if !ok {
 		t.Fatalf("could not find the overlay dot for eng1 in window 2's own screen\n%s",
 			nineISXScreen(w2emu))
@@ -280,6 +283,27 @@ func fn77FindOverlayDot(emu *vt.SafeEmulator, agent string) (col, row int, ok bo
 				return x - 2, y, true
 			}
 		}
+	}
+	return 0, 0, false
+}
+
+// fn77AwaitSettledOverlayDot polls for the agent's overlay dot until it has
+// stayed in one cell for hold, and returns that cell. ok is false if it never
+// does within timeout.
+func fn77AwaitSettledOverlayDot(emu *vt.SafeEmulator, agent string, hold, timeout time.Duration) (col, row int, ok bool) {
+	deadline := time.Now().Add(timeout)
+	lastCol, lastRow, seen := -1, -1, time.Time{}
+	for time.Now().Before(deadline) {
+		c, r, found := fn77FindOverlayDot(emu, agent)
+		switch {
+		case !found:
+			lastCol, lastRow = -1, -1
+		case c != lastCol || r != lastRow:
+			lastCol, lastRow, seen = c, r, time.Now()
+		case time.Since(seen) >= hold:
+			return c, r, true
+		}
+		time.Sleep(100 * time.Millisecond)
 	}
 	return 0, 0, false
 }

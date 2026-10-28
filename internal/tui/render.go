@@ -849,6 +849,26 @@ func (t *TUI) overlayDisplayOrder(panes []PaneView) []PaneView {
 	return append(locals, remotes...)
 }
 
+// overlayDot is one clickable dot cell: the agent drawn there and since when
+// it has been drawn in that cell.
+type overlayDot struct {
+	key   string
+	since time.Time
+}
+
+// overlayClickSettle is how long a dot cell must hold the same agent before a
+// click on it acts. Rows move with state (an agent changes column the moment
+// it starts or stops working, and the agents below it close the gap), so the
+// agent under the cursor can change between the frame the operator aimed at
+// and the click. A click on a cell whose agent changed within this window does
+// nothing: an ignored click costs a second click, a wrong one hides an agent
+// the operator never chose (rigs 40739760528).
+const overlayClickSettle = time.Second
+
+// overlayClickClock is the clock the dot-cell settle reads; a variable only so
+// tests can step it.
+var overlayClickClock = time.Now
+
 // drawOverlayRow draws one agent's overlay row with its dot at x, clipped
 // before limit, and records the dot's cell so a click there acts on this
 // agent (ini-gt7w AC8: the click map is the drawn cells, in either column).
@@ -879,7 +899,17 @@ func (t *TUI) drawOverlayRow(x, row, limit, maxNameLen int, a AgentInfo, bgStyle
 	}
 	put(x, dot, bgStyle.Foreground(dotColor))
 	if x < limit {
-		t.overlayBounds.dots[[2]int{x, row}] = a.Key
+		cell := [2]int{x, row}
+		// Settled unless this cell showed a different agent last draw. The
+		// first draw has nothing to compare: what is on screen is all the
+		// operator can have aimed at.
+		d := overlayDot{key: a.Key}
+		if prev, ok := t.overlayBounds.prev[cell]; ok && prev.key == a.Key {
+			d.since = prev.since
+		} else if t.overlayBounds.prev != nil {
+			d.since = overlayClickClock()
+		}
+		t.overlayBounds.dots[cell] = d
 	}
 
 	// Name (dimmed for hidden panes).
@@ -942,7 +972,7 @@ func (t *TUI) renderOverlay() {
 	// Display order: locals in the Agents panel's order, then remote machines
 	// alphabetically, each block in arrival order (overlayDisplayOrder).
 	scoped = t.overlayDisplayOrder(scoped)
-	t.overlayBounds.dots = nil
+	t.overlayBounds.prev, t.overlayBounds.dots = t.overlayBounds.dots, nil
 
 	// TWO COLUMNS (ini-gt7w): each section (this machine's agents, then one per
 	// remote machine under its divider) splits into not-working on the left and
@@ -1103,7 +1133,7 @@ func (t *TUI) renderOverlay() {
 	t.overlayBounds.x = px
 	t.overlayBounds.y = py
 	t.overlayBounds.agentCount = listRows
-	t.overlayBounds.dots = make(map[[2]int]string, agentRows)
+	t.overlayBounds.dots = make(map[[2]int]overlayDot, agentRows)
 
 	overlayBg := tcell.NewRGBColor(20, 25, 40)
 	bgStyle := tcell.StyleDefault.Background(overlayBg)

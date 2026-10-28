@@ -23,11 +23,14 @@ func (t *TUI) handleMouse(ev *tcell.EventMouse) {
 		// The click resolves through the cells the overlay DREW (ini-9isx,
 		// ini-gt7w): the overlay is window-scoped and two columns, so neither
 		// t.panes nor any row index names the agent under the cursor. A dot
-		// cell maps to exactly the agent drawn there, so a click can never
-		// hide a bystander.
+		// cell maps to exactly the agent drawn there, and a cell whose agent
+		// changed within overlayClickSettle swallows the click: rows move with
+		// state, and the agent the operator aimed at may have just left it.
 		if t.layoutState.Overlay {
-			if key, ok := t.overlayBounds.dots[[2]int{mx, my}]; ok {
-				t.toggleHidden(key)
+			if d, ok := t.overlayBounds.dots[[2]int{mx, my}]; ok {
+				if overlayClickClock().Sub(d.since) >= overlayClickSettle {
+					t.toggleHidden(d.key)
+				}
 				return
 			}
 		}

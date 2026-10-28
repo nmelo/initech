@@ -290,9 +290,22 @@ func TestOverlayColumns_AllIdleKeepsTheWidthWithABlankRightColumn(t *testing.T) 
 	}
 }
 
+// stepOverlayClock makes every read of the dot-settle clock a settle period
+// later than the last, as real time passes between a draw and a click aimed
+// at it. Restored when the test ends.
+func stepOverlayClock(t *testing.T) {
+	now := time.Now()
+	overlayClickClock = func() time.Time {
+		now = now.Add(2 * overlayClickSettle)
+		return now
+	}
+	t.Cleanup(func() { overlayClickClock = time.Now })
+}
+
 // (f) A click on a dot acts on the agent drawn there, in either column. A
 // click one cell off the dot acts on nobody.
 func TestOverlayColumns_ClickActsOnTheAgentInEitherColumn(t *testing.T) {
+	stepOverlayClock(t)
 	tui, s := mixedFleet(t)
 	rows := overlayFrameRows(tui, s)
 	// click presses and releases, as a real mouse does: a press beside the
@@ -405,5 +418,46 @@ func TestOverlayColumns_ColumnsKeepAGapWhenTheLeftRowIsFull(t *testing.T) {
 	}
 	if row[rx-1] != ' ' || row[rx-2] != ' ' {
 		t.Errorf("columns touch: %q before the right dot, want two blanks\n%s", string(row[rx-2:rx]), framesText(rows))
+	}
+}
+
+// The release rig's failure (rigs 40739760528), in-process: the operator reads
+// the overlay, eng1 starts running and moves to the right column, eng2 slides
+// up into the cell the operator is aiming at, and the click lands. A click
+// must never act on an agent other than the one the operator aimed at.
+func TestOverlayColumns_AClickOnACellWhoseAgentJustMovedHidesNobody(t *testing.T) {
+	tui, s := newTestTUIWithScreen("eng1", "eng2", "eng3")
+	setOverlayActivity(t, tui, map[string]ActivityState{"eng1": StateIdle, "eng2": StateIdle, "eng3": StateIdle})
+	x, y, ok := overlayDotOf(overlayFrameRows(tui, s), "eng1") // what the operator saw
+	if !ok {
+		t.Fatal("eng1 not drawn")
+	}
+	setOverlayActivity(t, tui, map[string]ActivityState{"eng1": StateRunning})
+	rows := overlayFrameRows(tui, s) // the next frame: eng2 now sits in eng1's old cell
+	if _, y2, _ := overlayDotOf(rows, "eng2"); y2 != y {
+		t.Fatalf("fixture: eng2 did not move into eng1's old cell\n%s", framesText(rows))
+	}
+	focused := tui.layoutState.Focused
+	tui.handleMouse(tcell.NewEventMouse(x, y, tcell.Button1, tcell.ModNone))
+	tui.handleMouse(tcell.NewEventMouse(x, y, tcell.ButtonNone, tcell.ModNone))
+	if tui.layoutState.Focused != focused {
+		t.Errorf("the swallowed click fell through to the pane below: focus %q -> %q", focused, tui.layoutState.Focused)
+	}
+	for _, n := range []string{"eng1", "eng2", "eng3"} {
+		if tui.layoutState.Hidden[n] {
+			t.Errorf("a click aimed at eng1's dot hid %s, which had just moved under the cursor\n%s", n, framesText(rows))
+		}
+	}
+
+	// The twin: once eng2 has held the cell for the settle time, the same
+	// click hides eng2, the agent now drawn there.
+	at := time.Now().Add(overlayClickSettle + time.Millisecond)
+	overlayClickClock = func() time.Time { return at }
+	defer func() { overlayClickClock = time.Now }()
+	overlayFrameRows(tui, s)
+	tui.handleMouse(tcell.NewEventMouse(x, y, tcell.Button1, tcell.ModNone))
+	tui.handleMouse(tcell.NewEventMouse(x, y, tcell.ButtonNone, tcell.ModNone))
+	if !tui.layoutState.Hidden["eng2"] || tui.layoutState.Hidden["eng1"] {
+		t.Errorf("after the settle a click on the cell hid %v, want only eng2", tui.layoutState.Hidden)
 	}
 }

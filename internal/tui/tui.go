@@ -432,9 +432,11 @@ type TUI struct {
 	overlayBounds struct {
 		x, y       int // Panel top-left corner.
 		agentCount int // Number of list rows rendered (agents and machine dividers).
-		// dots maps each drawn dot cell {x, y} to the agent key it acts on,
-		// in either column (ini-gt7w). Rebuilt on every overlay draw.
-		dots map[[2]int]string
+		// dots maps each drawn dot cell {x, y} to the agent it acts on, in
+		// either column, and since when that agent has been drawn there
+		// (ini-gt7w). Rebuilt on every overlay draw; prev is the previous
+		// draw's map while the new one is built.
+		dots, prev map[[2]int]overlayDot
 	}
 
 	// Live Mode: persistent engine for anti-thrashing across render frames.
