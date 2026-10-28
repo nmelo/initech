@@ -486,3 +486,34 @@ func TestOverlayColumns_AClickRightAfterTheBoxShiftsActs(t *testing.T) {
 		t.Errorf("a click on eng1's dot right after the box shifted: hidden %v, want eng1 (and engnonce53754)", tui.layoutState.Hidden)
 	}
 }
+
+// The settle is one second, pinned in literal time rather than through the
+// constant, so shortening or stretching it is red: a cell another agent just
+// took still swallows a click at 999ms, and takes it at 1001ms.
+func TestOverlayColumns_AMovedCellWaitsOneSecond(t *testing.T) {
+	t0 := time.Now()
+	at := t0
+	overlayClickClock = func() time.Time { return at }
+	t.Cleanup(func() { overlayClickClock = time.Now })
+
+	tui, s := newTestTUIWithScreen("eng1", "eng2", "eng3")
+	setOverlayActivity(t, tui, map[string]ActivityState{"eng1": StateIdle, "eng2": StateIdle, "eng3": StateIdle})
+	x, y, _ := overlayDotOf(overlayFrameRows(tui, s), "eng1")
+	setOverlayActivity(t, tui, map[string]ActivityState{"eng1": StateRunning})
+	overlayFrameRows(tui, s) // at t0, eng2 takes eng1's old cell
+	click := func(after time.Duration) {
+		at = t0.Add(after)
+		tui.handleMouse(tcell.NewEventMouse(x, y, tcell.Button1, tcell.ModNone))
+		tui.handleMouse(tcell.NewEventMouse(x, y, tcell.ButtonNone, tcell.ModNone))
+	}
+	for _, d := range []time.Duration{500 * time.Millisecond, 999 * time.Millisecond} {
+		click(d)
+		if tui.layoutState.Hidden["eng2"] {
+			t.Fatalf("a click %v after eng2 took the cell hid it; the cell must wait one second", d)
+		}
+	}
+	click(1001 * time.Millisecond)
+	if !tui.layoutState.Hidden["eng2"] {
+		t.Fatal("a click 1001ms after eng2 took the cell did nothing; the wait must end at one second")
+	}
+}
