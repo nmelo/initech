@@ -63,6 +63,12 @@ func dndPane(t *testing.T, name string) (*Pane, chan AgentEvent, func() string) 
 	}
 }
 
+// dndLineIs reports whether line is the held line for agent with the count
+// ahead given; the age is whatever the clock made it (its own test pins it).
+func dndLineIs(line, agent, ahead string) bool {
+	return strings.HasPrefix(line, "held: "+agent+" is in do-not-disturb (") && strings.HasSuffix(line, ", "+ahead+")")
+}
+
 // dndCall runs one IPC handler on a pipe and returns its reply.
 func dndCall(t *testing.T, handle func(net.Conn)) IPCResponse {
 	t.Helper()
@@ -114,9 +120,11 @@ func TestDND_ASendIsHeldAndNothingIsTyped(t *testing.T) {
 	if r := dndSet(t, tu, "a", "on"); !r.OK {
 		t.Fatalf("dnd on: %+v", r)
 	}
-	resp := dndCall(t, func(c net.Conn) { tu.handleIPCSend(c, IPCRequest{Action: "send", Target: "a", Text: "[from b] one", Enter: true}) })
-	if !resp.OK || resp.Delivery != DeliveryHeld || resp.Data != "held: a is in do-not-disturb" {
-		t.Errorf("reply %+v, want OK, delivery held, data %q", resp, "held: a is in do-not-disturb")
+	resp := dndCall(t, func(c net.Conn) {
+		tu.handleIPCSend(c, IPCRequest{Action: "send", Target: "a", Text: "[from b] one", Enter: true})
+	})
+	if !resp.OK || resp.Delivery != DeliveryHeld || !dndLineIs(resp.Data, "a", "0 messages ahead") {
+		t.Errorf("reply %+v, want OK, delivery held, the held line with 0 messages ahead", resp)
 	}
 	time.Sleep(200 * time.Millisecond)
 	if got := typed(); strings.Contains(got, "one") {
@@ -180,7 +188,9 @@ func TestDND_AFullQueueRefusesTheNewMessageAndKeepsTheOldest(t *testing.T) {
 		}
 	}
 	before := dndQueue(p)
-	resp := dndCall(t, func(c net.Conn) { tu.handleIPCSend(c, IPCRequest{Action: "send", Target: "a", Text: "one too many", Enter: true}) })
+	resp := dndCall(t, func(c net.Conn) {
+		tu.handleIPCSend(c, IPCRequest{Action: "send", Target: "a", Text: "one too many", Enter: true})
+	})
 	if resp.OK || resp.Delivery != DeliveryNotDelivered || resp.Error != "not delivered to a: do-not-disturb queue is full" {
 		t.Errorf("reply %+v, want not delivered: do-not-disturb queue is full", resp)
 	}
@@ -353,9 +363,10 @@ func TestDND_TheOperatorsPasteGoesIn(t *testing.T) {
 func TestDND_AServedPaneAnswersWithTheSameWords(t *testing.T) {
 	p, _, typed := dndPane(t, "a")
 	p.startDND()
-	for _, resp := range []ControlResp{servedSend(p, "[from b] far", true), verdictSend(p, "[from b] near", true)} {
-		if !resp.OK || resp.Delivery != DeliveryHeld || resp.Data != "held: a is in do-not-disturb" {
-			t.Errorf("reply %+v, want held with the held line", resp)
+	for i, resp := range []ControlResp{servedSend(p, "[from b] far", true), verdictSend(p, "[from b] near", true)} {
+		want := []string{"0 messages ahead", "1 message ahead"}[i]
+		if !resp.OK || resp.Delivery != DeliveryHeld || !dndLineIs(resp.Data, "a", want) {
+			t.Errorf("reply %+v, want held with %q", resp, want)
 		}
 	}
 	for p.QueueLen() < maxMessageQueue {

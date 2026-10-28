@@ -49,6 +49,11 @@ type paneInfo struct {
 	ModalAgeSec  int  `json:"modal_age_sec,omitempty"`
 	QueuedCount  int  `json:"queued_count,omitempty"`
 
+	// Do-not-disturb (ini-x432): nil when the TUI did not say (an older
+	// one, or a pane it does not run); the age only while on.
+	DND       *bool `json:"dnd"`
+	DNDAgeSec *int  `json:"dnd_age_sec"`
+
 	// Beads is the pane's ribbon; nil when the TUI sent no beads field (an
 	// older TUI), which turns the ribbon-versus-bd check off for the pane.
 	Beads *[]string `json:"beads"`
@@ -117,6 +122,10 @@ type agentJSON struct {
 	BackgroundAgeSec *int        `json:"background_age_sec"`
 	QueuedCount      int         `json:"queued_count"`
 	Account          accountJSON `json:"account"`
+	// DND is whether the agent is in do-not-disturb, null when the TUI did
+	// not say; DNDAgeSec how long, null unless on (ini-x432).
+	DND       *bool `json:"dnd"`
+	DNDAgeSec *int  `json:"dnd_age_sec"`
 }
 
 type backgroundJSON struct {
@@ -178,6 +187,8 @@ func toAgentJSON(pi paneInfo, fromBD map[string][]beadInfo) agentJSON {
 		BeadNote:       pi.NoBead,
 		ContextPercent: pi.ContextPercent,
 		QueuedCount:    pi.QueuedCount,
+		DND:            pi.DND,
+		DNDAgeSec:      pi.DNDAgeSec, // the TUI sends it only while on
 	}
 	if fromBD != nil {
 		ids := []string{}
@@ -379,6 +390,11 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		// stopped: calling it stopped invites a second suspend or a restart.
 		if !pi.Alive && pi.Activity != "suspended" {
 			status = statusColor("stopped")
+		}
+		// Do-not-disturb sits beside the state word, which it does not
+		// change (ini-x432).
+		if pi.DNDAgeSec != nil { // sent only while on
+			status += " " + color.Yellow(dndText(*pi.DNDAgeSec))
 		}
 		if !pi.Visible {
 			status += " " + color.Dim("[hidden]")
@@ -623,6 +639,11 @@ func socketBeadRoot(proj *tui.IPCProject) (dir, note string) {
 		return "", beadNoteUnknown
 	}
 	return proj.Root, ""
+}
+
+// dndText is do-not-disturb as status and patrol print it: "dnd 12m".
+func dndText(ageSec int) string {
+	return "dnd " + shortDur(ageSec)
 }
 
 func shortDur(sec int) string {

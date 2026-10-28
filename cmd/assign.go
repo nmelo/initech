@@ -303,6 +303,10 @@ func runAssign(cmd *cobra.Command, args []string) error {
 	if !resp.OK {
 		return fmt.Errorf("beads claimed but dispatch failed: %s\nRun: initech send %s to notify manually", resp.Error, agent)
 	}
+	if resp.Delivery == tui.DeliveryHeld {
+		// Held for do-not-disturb is delivered later, in order (ini-x432).
+		fmt.Fprintln(cmd.ErrOrStderr(), resp.Data)
+	}
 
 	// The previous holder of a moved bead hears it from initech, after the
 	// target has its message (best-effort: a warning, never a failed assign).

@@ -21,9 +21,42 @@ import (
 // when its queue is at maxMessageQueue. The oldest message is never dropped.
 const dndQueueFullReason = "do-not-disturb queue is full"
 
-// dndHeldLine is the sender's line for a message held for do-not-disturb.
-func dndHeldLine(name string) string {
-	return "held: " + name + " is in do-not-disturb"
+// dndHeldLine is the sender's line for a message held for do-not-disturb:
+// how long the agent has been in it, in the overlay's short form, and how
+// many messages are queued ahead of this one.
+func dndHeldLine(name string, age time.Duration, ahead int) string {
+	n := fmt.Sprintf("%d messages ahead", ahead)
+	if ahead == 1 {
+		n = "1 message ahead"
+	}
+	return fmt.Sprintf("held: %s is in do-not-disturb (%s, %s)", name, shortAge(age), n)
+}
+
+// dndAge is how long the pane has been in do-not-disturb, and false when it
+// is not.
+func (p *Pane) dndAge(now time.Time) (time.Duration, bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if !p.dnd {
+		return 0, false
+	}
+	return now.Sub(p.dndSince), true
+}
+
+// dndFields is a pane's do-not-disturb as the list and patrol replies carry
+// it: on or off, and the age in seconds while on. A pane another process
+// runs answers nil for both: this process cannot know.
+func dndFields(pv PaneView, now time.Time) (on *bool, ageSec *int) {
+	p, ok := pv.(*Pane)
+	if !ok {
+		return nil, nil
+	}
+	age, in := p.dndAge(now)
+	if in {
+		s := int(age.Seconds())
+		ageSec = &s
+	}
+	return &in, ageSec
 }
 
 // InDND reports whether the pane is in do-not-disturb.
@@ -39,6 +72,9 @@ func (p *Pane) startDND() bool {
 	defer p.mu.Unlock()
 	was := p.dnd
 	p.dnd = true
+	if !was {
+		p.dndSince = time.Now()
+	}
 	return !was
 }
 
@@ -78,7 +114,8 @@ func (p *Pane) holdIfDND(text string, enter bool) (SendVerdict, bool) {
 	if !p.dnd {
 		return SendVerdict{}, false
 	}
-	held := SendVerdict{Outcome: DeliveryHeld, Reason: dndHeldLine(p.name)}
+	now := time.Now()
+	held := SendVerdict{Outcome: DeliveryHeld, Reason: dndHeldLine(p.name, now.Sub(p.dndSince), len(p.messageQueue))}
 	if m := p.redelivering; m != nil && m.Text == text && m.Enter == enter {
 		p.redelivering = nil
 		p.messageQueue = append([]QueuedMessage{*m}, p.messageQueue...)
@@ -88,7 +125,7 @@ func (p *Pane) holdIfDND(text string, enter bool) (SendVerdict, bool) {
 		LogInfo("dnd", "SEND NOT DELIVERED: do-not-disturb queue full", "pane", p.name, "queued", len(p.messageQueue))
 		return SendVerdict{Outcome: DeliveryNotDelivered, Reason: dndQueueFullReason}, true
 	}
-	p.messageQueue = append(p.messageQueue, QueuedMessage{Text: text, Enter: enter, Time: time.Now(), DND: true})
+	p.messageQueue = append(p.messageQueue, QueuedMessage{Text: text, Enter: enter, Time: now, DND: true})
 	LogInfo("dnd", "held: do-not-disturb", "pane", p.name, "queued", len(p.messageQueue))
 	return held, true
 }

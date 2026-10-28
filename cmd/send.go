@@ -46,7 +46,8 @@ send waits for that (about two seconds), prints one line and exits with:
   0  sent to <agent>, unconfirmed: no delivery check for this agent type
      (Codex, OpenCode and generic agents)
   0  deferred to <agent> (a dialog is open; delivered when it closes)
-  0  held: <agent> is in do-not-disturb (delivered, in order, when it ends)
+  0  held: <agent> is in do-not-disturb (<age>, <N> messages ahead)
+     (delivered, in order, when it ends)
   1  not delivered to <agent>: do-not-disturb queue is full
 
 A refused send (no such agent, agent not running) exits 1 with the reason.

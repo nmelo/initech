@@ -371,8 +371,9 @@ type Pane struct {
 	redelivering *QueuedMessage
 
 	// Do-not-disturb (dnd.go): while set, sends wait on messageQueue.
-	// Memory only, never saved. Guarded by mu.
-	dnd bool
+	// Memory only, never saved. dndSince is when it went on. Guarded by mu.
+	dnd      bool
+	dndSince time.Time
 
 	// Typing hold (typing_hold.go): when the operator last typed here, the
 	// FIFO of messages waiting for a quiet gap, how many wait, and the clock.

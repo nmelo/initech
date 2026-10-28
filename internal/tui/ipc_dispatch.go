@@ -34,6 +34,12 @@ type PaneInfo struct {
 	ModalAgeSec  int  `json:"modal_age_sec,omitempty"`
 	QueuedCount  int  `json:"queued_count,omitempty"`
 
+	// Do-not-disturb (ini-x432): DND is sent true or false for every pane
+	// this process runs and omitted for one it does not, so a client never
+	// reads a guess; DNDAgeSec only while it is on.
+	DND       *bool `json:"dnd,omitempty"`
+	DNDAgeSec *int  `json:"dnd_age_sec,omitempty"`
+
 	// Read from the pane's screen only when the list request asks for detail
 	// (initech status --json, ini-l6om), and only for a live pane. Each is
 	// omitted when it was not read, so a client reads it as null; an older

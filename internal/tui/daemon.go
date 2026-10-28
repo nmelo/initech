@@ -683,6 +683,10 @@ func (d *Daemon) allPanesWithViews() ([]PaneInfo, []PaneView, bool) {
 			Beads:    ribbonBeads(p),
 			NoBead:   p.NoBeadWork(),
 		}
+		panes[i].DND, panes[i].DNDAgeSec = dndFields(p, time.Now())
+		if panes[i].DNDAgeSec != nil {
+			panes[i].QueuedCount = p.QueuedMessageCount()
+		}
 	}
 	return panes, views, true
 }

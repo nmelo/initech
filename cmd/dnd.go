@@ -18,7 +18,8 @@ var dndCmd = &cobra.Command{
 
 While it is on, a message another agent sends you with initech send waits
 in your pane's message queue instead of being typed into your input box.
-The sender sees "held: <agent> is in do-not-disturb" and exit 0. When the
+The sender sees "held: <agent> is in do-not-disturb (<age>, <N> messages
+ahead)" and exit 0. initech status shows "dnd <age>" beside your state. When the
 queue is full (20 messages) a new message is refused with "not delivered
 to <agent>: do-not-disturb queue is full" and exit 1; the oldest is never
 dropped.

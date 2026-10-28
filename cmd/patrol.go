@@ -74,6 +74,8 @@ func runPatrol(cmd *cobra.Command, args []string) error {
 		Alive    bool          `json:"alive"`
 		Content  string        `json:"content"`
 		Busy     *tui.PaneBusy `json:"busy"`
+		// DNDAgeSec is set while the agent is in do-not-disturb.
+		DNDAgeSec *int `json:"dnd_age_sec"`
 	}
 	var entries []patrolEntry
 	if err := json.Unmarshal([]byte(resp.Data), &entries); err != nil {
@@ -109,6 +111,9 @@ func runPatrol(cmd *cobra.Command, args []string) error {
 		headerInner := color.BlueBold(e.Name) + " (" + activityColored
 		if work != "" {
 			headerInner += ", " + color.Yellow(work)
+		}
+		if e.DNDAgeSec != nil {
+			headerInner += ", " + color.Yellow(dndText(*e.DNDAgeSec))
 		}
 		if e.Bead != "" {
 			headerInner += " | " + color.Blue(e.Bead)

@@ -174,6 +174,11 @@ func (t *TUI) allPanesWithViews() ([]PaneInfo, []PaneView, bool) {
 					panes[i].QueuedCount = lp.QueuedMessageCount()
 				}
 			}
+			// Do-not-disturb holds mail too: its count rides beside it.
+			panes[i].DND, panes[i].DNDAgeSec = dndFields(p, time.Now())
+			if panes[i].DNDAgeSec != nil {
+				panes[i].QueuedCount = p.(*Pane).QueuedMessageCount()
+			}
 		}
 	})
 	return panes, views, ok
@@ -1394,6 +1399,8 @@ func (t *TUI) handleIPCPatrol(conn net.Conn, req IPCRequest) {
 		Visible  bool      `json:"visible"`
 		Content  string    `json:"content"`
 		Busy     *PaneBusy `json:"busy,omitempty"`
+		// DNDAgeSec is how long the agent has been in do-not-disturb.
+		DNDAgeSec *int `json:"dnd_age_sec,omitempty"`
 	}
 	var result []patrolEntry
 	t.runOnMain(func() {
@@ -1408,6 +1415,7 @@ func (t *TUI) handleIPCPatrol(conn net.Conn, req IPCRequest) {
 				Content:  peekContent(p, lines),
 				Busy:     paneBusy(p, time.Now()),
 			}
+			_, result[i].DNDAgeSec = dndFields(p, time.Now())
 		}
 	})
 	data, _ := json.Marshal(result)

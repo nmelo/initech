@@ -275,6 +275,9 @@ func runDeliver(cmd *cobra.Command, args []string) error {
 	} else if !resp.OK {
 		fmt.Fprintf(cmd.ErrOrStderr(), "warning: report failed: %s\n", resp.Error)
 		reportFailed = resp.Error
+	} else if resp.Delivery == tui.DeliveryHeld {
+		// Held for do-not-disturb is delivered later, in order (ini-x432).
+		fmt.Fprintln(cmd.ErrOrStderr(), resp.Data)
 	}
 	event := tpl.IPCSummary
 	if reportFailed != "" {

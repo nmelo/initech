@@ -175,9 +175,11 @@ An agent whose pane is quiet but whose Claude Code footer shows a background she
 | `background` | `shells`, `monitors`, `tasks`: the background shells and monitors Claude Code counts under the input box, and the background agents it lists there. `0` when Claude shows its mode line with none, including a mode line cut off in a narrow pane while it shows its `(shift+tab to cycle)` hint, which Claude draws only when there is no background work; `null` when no mode line is on screen, or a count is cut off at the pane's edge. |
 | `banner` | The dialog open in the pane: `none`, `permission_prompt`, `trust_prompt`, `picker` (a question with options), `login`, or `unknown` (a dialog is open that initech does not recognise, which includes the usage-limit banner). |
 | `banner_age_sec` | How long the dialog has held the pane's messages; `null` when none is holding them. |
-| `queued_count` | Messages waiting for that dialog to close. |
+| `queued_count` | Messages waiting for that dialog to close, or held for do-not-disturb. |
 | `background_age_sec` | How long the background work has been seen, when `state` is `background`; `null` otherwise. |
 | `account` | `user` and `model` from the status line. |
+| `dnd` | `true` while the agent is in do-not-disturb, `false` when it is not; `null` for an agent another machine runs, or from an initech too old to report it. |
+| `dnd_age_sec` | How long the agent has been in do-not-disturb; `null` unless `dnd` is `true`. |
 
 `context_percent` and `account` come from the status line the `cla statusline` command draws, read by the shape of each segment, not its place: the context is the first segment that is a whole percent, including when Claude cuts the line right after it (`10% │…`, `10%…`) but not inside it (`1…`), the account name the segment just before it, and the model the nearest segment before that which names a model (Haiku, Sonnet, Opus, Fable or Claude and a version). Any other segment, such as the `⎇ branch` the line starts with in a git folder, is skipped. A pane with any other status line, or none, reports them as `null`. When the running initech is too old to read its panes (started before status --json existed, as after an upgrade without a restart), every screen field reads `null` and `initech status --json` also prints `older initech running; restart it for status detail` on stderr; the JSON and the exit code are unchanged. Everything read from the screen is `null` for an agent that is not running, for a pane that is not Claude Code, while a dialog covers the rows under the input box, and from an initech too old to read them.
 
@@ -280,8 +282,11 @@ For a send to an agent on another machine, the sending machine sizes its wait fr
 
 An agent in the middle of a step can run `initech dnd on` in its own pane. Until it runs
 `initech dnd off`, messages other agents send it wait in the pane's message queue instead of
-being typed into its input box, and each sender sees `held: <agent> is in do-not-disturb`
-with exit 0. `dnd off` delivers them in the order they arrived, one at a time, through the
+being typed into its input box, and each sender sees
+`held: <agent> is in do-not-disturb (<age>, <N> messages ahead)` with exit 0: how long the
+agent has been in it (45s, 12m, 1h) and how many messages wait ahead of this one. `initech
+status` shows `dnd <age>` after the agent's state, and so does the `initech patrol` header;
+`initech deliver` and `initech assign` print the held line and succeed. `dnd off` delivers them in the order they arrived, one at a time, through the
 normal path. A message that cannot be delivered then is reported to you once, with how long
 it waited. At 20 waiting messages a new one is refused with
 `not delivered to <agent>: do-not-disturb queue is full` and exit 1; the oldest is kept.
