@@ -205,8 +205,13 @@ func TestK3g2_AnUnknownAfterTheResendIsSurfaced(t *testing.T) {
 // composer without our text, so this must never read as taken. Measured
 // before the stable-sample check, with the repaint left to timing: about 1
 // run in 5 confirmed "taken". The hook makes the tear land every time.
+//
+// The window is the product's 1 s (ini-jyh3). An unknown outcome is decided
+// only at the deadline, so this cell is bounded by a clock however it is
+// written; at 300 ms a loaded host fitted fewer than the three samples (the
+// sighting, the torn one, a whole one after it) the assertion needs.
 func TestK3g2_ATornSampleDuringARepaintIsNotCountedAsTaken(t *testing.T) {
-	nma5Window(t, 300*time.Millisecond)
+	nma5Window(t, time.Second)
 	p, _, _ := proofPane(t)
 	nma5Paint(p, "❯ "+nma5Body)
 	samples := 0

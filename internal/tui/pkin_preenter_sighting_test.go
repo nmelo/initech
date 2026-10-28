@@ -190,10 +190,31 @@ func pkinSendRig(t *testing.T, f *pkinFake) (*Pane, <-chan AgentEvent) {
 	return p, events
 }
 
-func pkinSend(p *Pane, text string) {
+func pkinSend(p *Pane, text string) SendVerdict {
 	p.sendMu.Lock()
 	defer p.sendMu.Unlock()
-	sendPaneTextLocked(p, text, true)
+	return sendPaneTextLocked(p, text, true)
+}
+
+// pkinBusyBound is the confirm window for the busy-agent cells: a bound, not
+// a clock (ini-jyh3). The watch returns the moment the box clears after the
+// torn sample, so a passing run never reaches it; a 300 ms window here was
+// the clock a loaded CI host ran out before the fake's clear landed, and the
+// cell read "could not confirm" for a send that was taken.
+const pkinBusyBound = 5 * time.Second
+
+// pkinDeliveredByEffect asserts what the send itself answered, delivered,
+// and that the fixture really was the busy agent: a sample after the
+// sighter's was torn and the box then cleared. The verdict is the effect;
+// no window of silence afterwards stands in for it.
+func pkinDeliveredByEffect(t *testing.T, f *pkinFake, v SendVerdict) {
+	t.Helper()
+	if v.Outcome != DeliveryDelivered {
+		t.Fatalf("the send answered %q (%s) for a message the fake took", v.Outcome, v.Reason)
+	}
+	if !f.torn.Load() || !f.cleared.Load() {
+		t.Fatalf("torn %v, cleared %v: the fixture did not produce the busy agent", f.torn.Load(), f.cleared.Load())
+	}
 }
 
 func pkinNoEvent(t *testing.T, events <-chan AgentEvent) {
@@ -229,11 +250,10 @@ func TestPkin_DeliveryBytesAndEnterMomentAreUnchanged(t *testing.T) {
 // was in plain view for the whole wait before the Enter; that sighting
 // completes the transition. Before ini-pkin this ended "could not confirm".
 func TestPkin_ABusyAgentThatTakesTheEnterIsConfirmed(t *testing.T) {
-	nma5Window(t, 300*time.Millisecond)
+	nma5Window(t, pkinBusyBound)
 	f := &pkinFake{body: nma5Body, after: "❯ ", takes: func(int) bool { return true }, busy: true}
-	p, events := pkinSendRig(t, f)
-	pkinSend(p, nma5Body)
-	pkinNoEvent(t, events)
+	p, _ := pkinSendRig(t, f)
+	pkinDeliveredByEffect(t, f, pkinSend(p, nma5Body))
 	if n := f.enters.Load(); n != 1 {
 		t.Fatalf("sent %d Enters, want 1", n)
 	}
@@ -244,11 +264,10 @@ func TestPkin_ABusyAgentThatTakesTheEnterIsConfirmed(t *testing.T) {
 
 // Criterion 2: Claude's queued-message line in the box is delivery.
 func TestPkin_ABusyAgentThatQueuesTheMessageIsConfirmed(t *testing.T) {
-	nma5Window(t, 300*time.Millisecond)
+	nma5Window(t, pkinBusyBound)
 	f := &pkinFake{body: nma5Body, after: "❯ Press up to edit queued messages", takes: func(int) bool { return true }, busy: true}
-	p, events := pkinSendRig(t, f)
-	pkinSend(p, nma5Body)
-	pkinNoEvent(t, events)
+	p, _ := pkinSendRig(t, f)
+	pkinDeliveredByEffect(t, f, pkinSend(p, nma5Body))
 }
 
 // Criterion 3: a box that keeps our text after the Enter still gets one
