@@ -41,6 +41,7 @@ type IPCRequest struct {
 	DefaultText string `json:"default_text,omitempty"` // Proposed action absent an operator reply.
 	Chime       bool   `json:"chime,omitempty"`        // Request one inbox arrival chime.
 	Detail      bool   `json:"detail,omitempty"`       // list: also read each pane's footer and dialog (status --json).
+	ForSec      int    `json:"for_sec,omitempty"`      // dnd on: end after this many seconds (capped at an hour), not at turn end.
 }
 
 // IPCResponse is the JSON structure returned by the TUI socket.

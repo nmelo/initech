@@ -25,7 +25,8 @@ func x432Run(t *testing.T, resp tui.IPCResponse, env string, args ...string) (st
 	skipWindows(t)
 	t.Setenv("INITECH_SOCKET", startFakeIPC(t, resp))
 	t.Setenv("INITECH_AGENT", env)
-	dndAgent = ""
+	dndAgent, dndFor = "", 0
+	dndCmd.Flags().Lookup("for").Changed = false
 	var out, errOut bytes.Buffer
 	rootCmd.SetOut(&out)
 	rootCmd.SetErr(&errOut)
@@ -111,7 +112,8 @@ func TestDND_TheRequestNamesTheAgentAndTheWord(t *testing.T) {
 		{[]string{"dnd", "on"}, "eng2", "on"},
 		{[]string{"dnd", "--agent", "qa1", "off"}, "qa1", "off"},
 	} {
-		dndAgent = ""
+		dndAgent, dndFor = "", 0
+		dndCmd.Flags().Lookup("for").Changed = false
 		rootCmd.SetOut(&bytes.Buffer{})
 		rootCmd.SetErr(&bytes.Buffer{})
 		rootCmd.SetArgs(c.args)

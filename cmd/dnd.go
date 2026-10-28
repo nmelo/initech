@@ -4,12 +4,16 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/nmelo/initech/internal/tui"
 	"github.com/spf13/cobra"
 )
 
-var dndAgent string
+var (
+	dndAgent string
+	dndFor   time.Duration
+)
 
 var dndCmd = &cobra.Command{
 	Use:   "dnd on|off",
@@ -24,8 +28,15 @@ queue is full (20 messages) a new message is refused with "not delivered
 to <agent>: do-not-disturb queue is full" and exit 1; the oldest is never
 dropped.
 
-dnd off delivers the held messages in the order they arrived, one at a
-time, through the normal path. A message that cannot be delivered then is
+It ends, and the held messages are delivered in the order they arrived,
+one at a time through the normal path, when your turn ends (your pane stops
+running: idle, waiting on a dialog, or quiet with a background job), when
+you run dnd off, or, with --for, when that timer runs out. A timer holds
+through the end of your turn; it is at most 1h, and a longer one is cut to
+1h with "do-not-disturb capped at 1h" on stderr. dnd on again with a new
+--for restarts the timer; without --for it keeps the timer running. Run
+against a pane that is already idle, dnd says "pane is idle; do-not-disturb
+ends at turn end". A message that cannot be delivered then is
 reported to the operator once, with how long it waited.
 
 Do-not-disturb lives in the running initech only: nothing is written to
@@ -33,6 +44,7 @@ disk, and a restart clears it. Your own typing is never held.
 
 Inside a TUI pane (INITECH_AGENT set automatically):
   initech dnd on
+  initech dnd on --for 30m
   initech dnd off
 
 Outside the TUI (must specify agent):
@@ -47,6 +59,7 @@ initech running; restart it for do-not-disturb" and exits 2.`,
 
 func init() {
 	dndCmd.Flags().StringVar(&dndAgent, "agent", "", "Target agent name (auto-detected inside TUI via INITECH_AGENT)")
+	dndCmd.Flags().DurationVar(&dndFor, "for", 0, "With on: end after this long (e.g. 30m) instead of at turn end; at most 1h")
 	rootCmd.AddCommand(dndCmd)
 }
 
@@ -76,8 +89,18 @@ func runDND(cmd *cobra.Command, args []string) error {
 	if agent == "" {
 		return fmt.Errorf("no agent specified (set --agent or run inside a TUI pane where INITECH_AGENT is set)")
 	}
+	forSec := 0
+	if cmd.Flags().Changed("for") {
+		switch {
+		case onOff != "on":
+			return fmt.Errorf("--for goes with dnd on")
+		case dndFor <= 0:
+			return fmt.Errorf("--for must be more than 0")
+		}
+		forSec = int((dndFor + time.Second - 1) / time.Second) // a part second counts
+	}
 	cmd.SilenceUsage = true
-	resp, err := ipcCall(tui.IPCRequest{Action: "dnd", Target: agent, Text: onOff})
+	resp, err := ipcCall(tui.IPCRequest{Action: "dnd", Target: agent, Text: onOff, ForSec: forSec})
 	if err != nil {
 		return err
 	}
@@ -89,5 +112,13 @@ func runDND(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("%s", resp.Error)
 	}
 	fmt.Fprintln(cmd.OutOrStdout(), resp.Data)
+	for _, n := range resp.Notices {
+		fmt.Fprintln(cmd.ErrOrStderr(), n)
+	}
+	// An initech from before timers takes the flag and drops the timer; its
+	// reply names no end time.
+	if forSec > 0 && !strings.HasPrefix(resp.Data, "do-not-disturb on for "+agent+" until ") {
+		fmt.Fprintln(cmd.ErrOrStderr(), "the running initech does not know --for; do-not-disturb holds until initech dnd off")
+	}
 	return nil
 }

@@ -17,6 +17,16 @@ import (
 // do-not-disturb exists. The operator's own typing and pastes never pass
 // through it. Nothing is written to disk: a restart clears it.
 
+// dndMaxFor is the longest do-not-disturb timer: a longer one is cut to it,
+// so a forgotten flag cannot hold mail all night.
+const dndMaxFor = time.Hour
+
+// Notices the dnd action answers with, printed by the CLI on stderr.
+const (
+	dndCappedNotice = "do-not-disturb capped at 1h"
+	dndIdleNotice   = "pane is idle; do-not-disturb ends at turn end"
+)
+
 // dndQueueFullReason is why a send to a pane in do-not-disturb is refused
 // when its queue is at maxMessageQueue. The oldest message is never dropped.
 const dndQueueFullReason = "do-not-disturb queue is full"
@@ -66,16 +76,75 @@ func (p *Pane) InDND() bool {
 	return p.dnd
 }
 
-// startDND puts the pane in do-not-disturb. It reports whether it was off.
+// startDND puts the pane in do-not-disturb with no timer of its own. It
+// reports whether it was off.
 func (p *Pane) startDND() bool {
+	return p.startDNDFor(time.Now(), 0)
+}
+
+// startDNDFor is startDND with a timer: d > 0 ends it at now+d, replacing
+// a timer already running; d == 0 keeps whatever timer runs (none: it ends
+// at turn end). It reports whether it was off.
+//
+// The flag and the timer change in one step: the once-a-second tick must
+// never see a timed do-not-disturb without its timer, or it would end it at
+// turn end on an idle pane.
+func (p *Pane) startDNDFor(now time.Time, d time.Duration) bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	was := p.dnd
 	p.dnd = true
 	if !was {
-		p.dndSince = time.Now()
+		p.dndSince = now
+	}
+	if d > 0 {
+		p.dndUntil = now.Add(d)
 	}
 	return !was
+}
+
+// dndTimer is when the pane's do-not-disturb timer ends, and false when it
+// has none.
+func (p *Pane) dndTimer() (time.Time, bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.dndUntil, p.dnd && !p.dndUntil.IsZero()
+}
+
+// dndTurnEnded is the turn-end rule's reading of the pane: anything but
+// running ends the turn -- idle, waiting on a dialog, background (quiet with
+// a background job), suspended or dead. Deliberately not paneIsWorking,
+// which keeps background in view as work (ini-fg1q): an agent that set
+// do-not-disturb and went quiet with a job running has ended its turn.
+func dndTurnEnded(p *Pane) bool {
+	return p.Activity() != StateRunning
+}
+
+// endDNDIfDue ends do-not-disturb when its time has come: at the timer when
+// one runs (turn end does not end it), else at turn end. Run once a second
+// from maintainModal, in the TUI and the serve daemon alike. It reports
+// whether it ended it.
+func (p *Pane) endDNDIfDue(now time.Time) bool {
+	p.mu.Lock()
+	on, until := p.dnd, p.dndUntil
+	p.mu.Unlock()
+	if !on {
+		return false
+	}
+	why := "timer"
+	if until.IsZero() {
+		if !dndTurnEnded(p) {
+			return false
+		}
+		why = "turn end"
+	} else if now.Before(until) {
+		return false
+	}
+	held, was := p.endDND(now)
+	if was {
+		LogInfo("dnd", "do-not-disturb ended", "pane", p.name, "by", why, "held", held)
+	}
+	return was
 }
 
 // endDND takes the pane out of do-not-disturb and drains its queue, one
@@ -87,6 +156,12 @@ func (p *Pane) endDND(now time.Time) (held int, was bool) {
 	p.mu.Lock()
 	was = p.dnd
 	p.dnd = false
+	p.dndUntil = time.Time{}
+	if !was {
+		// Never on: dialog mail keeps its own clock.
+		p.mu.Unlock()
+		return 0, false
+	}
 	for i := range p.messageQueue {
 		m := &p.messageQueue[i]
 		if m.DND || m.HeldForDialog {
@@ -97,9 +172,7 @@ func (p *Pane) endDND(now time.Time) (held int, was bool) {
 		}
 	}
 	p.mu.Unlock()
-	if was {
-		p.startModalDrain()
-	}
+	p.startModalDrain()
 	return held, was
 }
 
@@ -158,10 +231,25 @@ func handleIPCDND(h IPCHost, conn net.Conn, req IPCRequest) {
 		return
 	}
 	if req.Text == "on" {
-		p.startDND()
-		LogInfo("dnd", "do-not-disturb on", "pane", p.name)
-		writeIPCResponse(conn, IPCResponse{OK: true, Data: fmt.Sprintf(
-			"do-not-disturb on for %s: messages from other agents wait until initech dnd off", p.name)})
+		now := time.Now()
+		d := time.Duration(req.ForSec) * time.Second // 0 or less: no timer
+		var notices []string
+		if d > dndMaxFor {
+			d = dndMaxFor
+			notices = append(notices, dndCappedNotice)
+		}
+		p.startDNDFor(now, d)
+		until, timed := p.dndTimer()
+		if !timed && dndTurnEnded(p) {
+			notices = append(notices, dndIdleNotice)
+		}
+		LogInfo("dnd", "do-not-disturb on", "pane", p.name, "until", until)
+		line := fmt.Sprintf("do-not-disturb on for %s: messages from other agents wait until your turn ends or initech dnd off", p.name)
+		if timed {
+			line = fmt.Sprintf("do-not-disturb on for %s until %s (%s): messages from other agents wait until then or initech dnd off",
+				p.name, until.Format("15:04:05"), shortAge(until.Sub(now).Round(time.Second)))
+		}
+		writeIPCResponse(conn, IPCResponse{OK: true, Data: line, Notices: notices})
 		return
 	}
 	held, was := p.endDND(time.Now())
