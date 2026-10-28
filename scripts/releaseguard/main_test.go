@@ -11,7 +11,7 @@ import (
 
 const sha = "0123456789abcdef0123456789abcdef01234567"
 
-var gateJobs = []string{"build-and-test", "census-leg", "full-suite-1", "full-suite-2", "full-suite-3", "full-suite-4", "full-suite-census"}
+var gateJobs = []string{"build-and-test", "census-leg", "full-suite-1", "full-suite-2", "full-suite-3", "full-suite-4", "full-suite-5", "full-suite-census"}
 
 func greenJobs(names ...string) []Job {
 	jobs := make([]Job, len(names))
@@ -44,7 +44,7 @@ func repoRoot(t *testing.T) string {
 }
 
 // The guard's job list is ci.yml's job keys, the list shipper's gate reads; the
-// live file must give the seven-job set, full suite included.
+// live file must give the eight-job set, full suite included.
 func TestExpectedJobs_ReadsCIYamlJobKeys(t *testing.T) {
 	raw, err := os.ReadFile(filepath.Join(repoRoot(t), ".github", "workflows", "ci.yml"))
 	if err != nil {
@@ -82,6 +82,26 @@ func TestVerdict_BuildJobOnlyIsRefused(t *testing.T) {
 	r.Jobs = greenJobs("build-and-test")
 	if err := verdict(sha, gateJobs, []Run{r}); err == nil || !strings.Contains(err.Error(), "missing jobs") {
 		t.Fatalf("a run with only the build job passed: %v", err)
+	}
+}
+
+// A shard the workflow names but the run lacks is refused: a gate whose set
+// lost full-suite-5 while ci.yml still runs five shards would pass a cut on
+// four fifths of the suite (ini-c5a.3).
+func TestVerdict_RunMissingOneShardIsRefused(t *testing.T) {
+	r := greenRun()
+	var jobs []Job
+	for _, j := range r.Jobs {
+		if j.Name != "full-suite-5" {
+			jobs = append(jobs, j)
+		}
+	}
+	if len(jobs) != len(r.Jobs)-1 {
+		t.Fatal("fixture: full-suite-5 is not in the gate's set")
+	}
+	r.Jobs = jobs
+	if err := verdict(sha, gateJobs, []Run{r}); err == nil || !strings.Contains(err.Error(), "missing jobs") {
+		t.Fatalf("a run without full-suite-5 passed: %v", err)
 	}
 }
 

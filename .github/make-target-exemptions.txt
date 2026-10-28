@@ -24,7 +24,7 @@ lint           # golangci-lint over the tree; not in a gate because the linter i
 # suite split across full-suite-1..4, and full-suite-census proves every test ran
 # exactly once; release.yml no longer re-runs it (ini-c5a.5), its guard checks the
 # CI run green instead.
-test-full      # the whole suite, one process. TRIGGER: by hand, on CI's runners or a branch dispatch, never on the shared Mac; CI runs the same suite in four shards.
+test-full      # the whole suite, one process. TRIGGER: by hand, on CI's runners or a branch dispatch, never on the shared Mac; CI runs the same suite in five shards.
 
 integration    # a hand-picked subset, superseded by test-full. TRIGGER: by hand, when someone wants that subset without the full run.
 

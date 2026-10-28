@@ -15,7 +15,7 @@ import (
 // CI: every shard runs the tool with no -short; the census job needs every
 // shard and runs even when one failed; and setup-go's cache is on for pull
 // requests only, in ci.yml and rigs.yml alike, since both land on the same
-// self-hosted runner. And the gate is exactly the seven jobs the release gate
+// self-hosted runner. And the gate is exactly the eight jobs the release gate
 // expects (ini-p2ve.2), with the suite run once, in the shards.
 
 type workflow struct {
@@ -27,11 +27,12 @@ type workflow struct {
 			Uses string            `yaml:"uses"`
 			Run  string            `yaml:"run"`
 			With map[string]string `yaml:"with"`
+			Env  map[string]string `yaml:"env"`
 		} `yaml:"steps"`
 	} `yaml:"jobs"`
 }
 
-const shards = 4
+const shards = 5
 
 func readCI(t *testing.T) workflow { return readWorkflow(t, "ci.yml") }
 
@@ -111,13 +112,34 @@ func TestCIWorkflow_TheCensusNeedsEveryShardAndAlwaysRuns(t *testing.T) {
 	if job.If != "always()" {
 		t.Errorf("full-suite-census runs if %q, want always(): a red shard would skip it", job.If)
 	}
-	var census, gate bool
+	var census, gate, noShort bool
 	for _, s := range job.Steps {
 		census = census || strings.Contains(s.Run, fmt.Sprintf("shardtests census -shards %d ", shards))
-		gate = gate || strings.Contains(s.Run, `test "$S1" = success`)
+		if strings.Contains(s.Run, `test "$S1" = success`) {
+			gate = true
+			// Every shard's result is read and required, not only the first
+			// few: a shard left out of this line could go red under a green
+			// census job.
+			for k := 1; k <= shards; k++ {
+				if !strings.Contains(s.Run, fmt.Sprintf(`test "$S%d" = success`, k)) {
+					t.Errorf("the every-shard-passed step does not require shard %d", k)
+				}
+				if s.Env[fmt.Sprintf("S%d", k)] != fmt.Sprintf("${{ needs.full-suite-%d.result }}", k) {
+					t.Errorf("S%d is %q, want full-suite-%d's result", k, s.Env[fmt.Sprintf("S%d", k)], k)
+				}
+			}
+		}
+		// The no-short step counts the shard command lines it read; that
+		// count must be the number of shards, or it passes on a missing one.
+		if strings.Contains(s.Run, "shardtests run ") && strings.Contains(s.Run, "-eq ") {
+			noShort = true
+			if !strings.Contains(s.Run, fmt.Sprintf("-eq %d ", shards)) {
+				t.Errorf("the no-short step does not expect %d shard command lines", shards)
+			}
+		}
 	}
-	if !census || !gate {
-		t.Errorf("full-suite-census lacks the census step (%v) or the every-shard-passed step (%v)", census, gate)
+	if !census || !gate || !noShort {
+		t.Errorf("full-suite-census lacks the census step (%v), the every-shard-passed step (%v) or the no-short step (%v)", census, gate, noShort)
 	}
 }
 
@@ -146,13 +168,14 @@ func TestWorkflows_SetupGoCachesOnlyOnPullRequests(t *testing.T) {
 	}
 }
 
-// The job set the release gate expects, exactly (ini-p2ve.2): six start
-// together on the Mac's six runner slots and the census follows. And
+// The job set the release gate expects, exactly (ini-p2ve.2, ini-c5a.3):
+// seven start together on the Mac's six runner slots (census-leg takes the
+// slot build-and-test frees) and the census follows. And
 // build-and-test runs no tests: its only go test is the witness -list, and it
 // runs the short census, which is what makes dropping its -short run safe.
-func TestCIWorkflow_TheGateIsTheSevenJobs(t *testing.T) {
+func TestCIWorkflow_TheGateIsTheEightJobs(t *testing.T) {
 	w := readCI(t)
-	want := []string{"build-and-test", "census-leg", "full-suite-1", "full-suite-2", "full-suite-3", "full-suite-4", "full-suite-census"}
+	want := []string{"build-and-test", "census-leg", "full-suite-1", "full-suite-2", "full-suite-3", "full-suite-4", "full-suite-5", "full-suite-census"}
 	var got []string
 	for key := range w.Jobs {
 		got = append(got, key)
@@ -167,8 +190,8 @@ func TestCIWorkflow_TheGateIsTheSevenJobs(t *testing.T) {
 			started++
 		}
 	}
-	if started != 6 {
-		t.Errorf("%d jobs start without needs, want 6, one per runner slot", started)
+	if started != 7 {
+		t.Errorf("%d jobs start without needs, want 7: the five shards, build-and-test and census-leg", started)
 	}
 	job := w.Jobs["build-and-test"]
 	var census bool

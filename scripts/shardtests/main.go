@@ -62,13 +62,16 @@ type testID struct{ pkg, name string }
 
 func (t testID) String() string { return t.pkg + " " + t.name }
 
-// shardSalt balances the four shards. Chosen by summing each test's measured
+// shardSalt balances the five shards. Chosen by summing each test's measured
 // duration (from the shards' -json results in a push run) per shard for every
-// salt from 0 to 399 and keeping the one with the smallest maximum: "96:"
-// split 358 s of tests as 85-92 s per shard. Re-tune it the same way when a
-// full-suite shard runs past 100 s; any value is correct, since the census
-// proves the partition whatever the salt.
-const shardSalt = "96:"
+// salt from 0 to 999 and keeping the one with the smallest maximum among those
+// that leave no shard of this package's own fixture (TestA0..59, TestB0..59)
+// empty at two to five shards: names that differ only in their last digits
+// can all miss one shard under FNV-1a. "517:" split 335 s of tests as 62-71 s
+// per shard (the four-shard "96:" had grown to 73-96 s). Re-tune it the same
+// way when a full-suite shard runs past 90 s; any value is correct, since the
+// census proves the partition whatever the salt.
+const shardSalt = "517:"
 
 // shardOf returns the 1-based shard of t among n shards. It takes the shard
 // from the hash's HIGH bits (multiply, then shift): FNV-1a's low bits mix
