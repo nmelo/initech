@@ -97,21 +97,23 @@ func TestRenderOverlay_HiddenAgentNameItalic(t *testing.T) {
 	tui, s := newTestTUIWithScreen("eng1", "eng2")
 	tui.layoutState.Hidden["eng2"] = true
 
-	tui.renderOverlay()
+	// Each name as drawn: with two columns (ini-gt7w, ini-08j) its cell
+	// depends on the agent's state, so it is read off the frame. The name
+	// starts two cells right of the dot.
+	rows := overlayFrameRows(tui, s)
+	vx, vy, vok := overlayDotOf(rows, "eng1")
+	hx, hy, hok := overlayDotOf(rows, "eng2")
+	if !vok || !hok {
+		t.Fatalf("eng1 or eng2 is not drawn in the overlay:\n%s", framesText(rows))
+	}
 
-	sw, _ := s.Size()
-	maxNameLen := len("eng2") + 4 // hidden suffix " [h]"
-	panelW := 4 + maxNameLen + 1 + 7 + 2
-	px := sw - panelW - 1
-	py := 1
-
-	_, _, visibleStyle, _ := s.GetContent(px+4, py+1)
+	_, _, visibleStyle, _ := s.GetContent(vx+2, vy)
 	_, _, visibleAttrs := visibleStyle.Decompose()
 	if visibleAttrs&tcell.AttrItalic != 0 {
 		t.Fatal("visible overlay agent name should not be italic")
 	}
 
-	_, _, hiddenStyle, _ := s.GetContent(px+4, py+2)
+	_, _, hiddenStyle, _ := s.GetContent(hx+2, hy)
 	_, _, hiddenAttrs := hiddenStyle.Decompose()
 	if hiddenAttrs&tcell.AttrItalic == 0 {
 		t.Fatal("hidden overlay agent name should be italic")
