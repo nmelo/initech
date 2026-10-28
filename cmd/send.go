@@ -49,6 +49,15 @@ send waits for that (about two seconds), prints one line and exits with:
   0  held: <agent> is in do-not-disturb (<age>, <N> messages ahead)
      (delivered, in order, when it ends)
   1  not delivered to <agent>: do-not-disturb queue is full
+  1  not delivered to <agent>: only super may break do-not-disturb
+
+An agent in do-not-disturb (initech dnd) holds other agents' messages. A
+send run outside any pane is the operator's and goes straight in. super
+may break through with --urgent, which delivers now and leaves a line in
+the TUI log and the event log; --urgent from any other agent is refused,
+and to an agent not in do-not-disturb it is an ordinary send. The sender
+is whoever INITECH_AGENT names: do-not-disturb trusts that word, as a
+courtesy between agents, not a security wall.
 
 A refused send (no such agent, agent not running) exits 1 with the reason.
 
@@ -80,12 +89,14 @@ Requires a running initech TUI (connects via INITECH_SOCKET).`,
 
 var (
 	sendNoEnter bool
+	sendUrgent  bool
 	sendStdin   bool
 	sendFile    string
 )
 
 func init() {
 	sendCmd.Flags().BoolVar(&sendNoEnter, "no-enter", false, "Don't append Enter after the text")
+	sendCmd.Flags().BoolVar(&sendUrgent, "urgent", false, "From super only: deliver now even if the agent is in do-not-disturb (logged)")
 	sendCmd.Flags().BoolVar(&sendStdin, "stdin", false, "Read the message body from stdin (shell-safe: no command substitution)")
 	sendCmd.Flags().StringVarP(&sendFile, "file", "f", "", "Read the message body from a file; \"-\" means stdin")
 	rootCmd.AddCommand(sendCmd)
@@ -198,7 +209,7 @@ func runSend(cmd *cobra.Command, args []string) error {
 	// From here a failure is the send's answer, printed once as its own
 	// line: not a usage error, and not prefixed "Error:" (ini-69fy).
 	cmd.SilenceUsage, cmd.SilenceErrors = true, true
-	return deliverText(cmd.ErrOrStderr(), target, host, text, !sendNoEnter)
+	return deliverText(cmd.ErrOrStderr(), target, host, text, !sendNoEnter, sendUrgent)
 }
 
 // exitUnconfirmed is initech send's exit status when it could not confirm
@@ -230,13 +241,14 @@ func unconfirmedSend(name, reason string) error {
 // TUI's error, "not delivered to <agent>: <reason>"; could not confirm is an
 // unconfirmedSendError. An agent type with no composer check prints "sent to
 // <agent>, unconfirmed", exit 0. A deferral reads as before.
-func deliverText(w io.Writer, target, host, text string, enter bool) error {
+func deliverText(w io.Writer, target, host, text string, enter, urgent bool) error {
 	req := tui.IPCRequest{
 		Action: "send",
 		Target: target,
 		Host:   host,
 		Text:   text,
 		Enter:  enter,
+		Urgent: urgent,
 	}
 
 	resp, err := ipcCall(req)
@@ -470,11 +482,31 @@ func ipcDeadlineFor(action string) time.Duration {
 // ipcCallSocket sends a request to the TUI's IPC endpoint at the given path.
 // Uses tui.DialIPC which handles Unix sockets on POSIX and TCP via .port file
 // on Windows.
+// sendFrom is who a send is from, stamped on every send this CLI makes
+// (ini-x432): the agent named by INITECH_AGENT inside a pane, or the
+// operator outside one. It is the sender's word, not a proof: do-not-disturb
+// is a courtesy that trusts it.
+func sendFrom() string {
+	if a := os.Getenv("INITECH_AGENT"); a != "" {
+		return a
+	}
+	return tui.OperatorSender
+}
+
+// stampSender names the sender on a send that does not already name one.
+func stampSender(req tui.IPCRequest) tui.IPCRequest {
+	if req.Action == "send" && req.From == "" {
+		req.From = sendFrom()
+	}
+	return req
+}
+
 func ipcCallSocket(sockPath string, req tui.IPCRequest) (*tui.IPCResponse, error) {
 	// Refuse BEFORE dialing (ini-grg3): a dev build must never deliver
 	// against a live session, even silently discovered via an inherited
 	// INITECH_SOCKET. Checked ahead of the dial so a refusal never puts a
 	// single byte on the wire.
+	req = stampSender(req)
 	if deliveryEffectActions[req.Action] && isDevBuild() && !allowDevDelivery {
 		return nil, fmt.Errorf(
 			"refusing %q: this looks like a local dev build (not a released initech), "+

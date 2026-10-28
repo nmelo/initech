@@ -325,7 +325,7 @@ func TestConsumeEvents_AClientWithoutTheHandlerPassesOver(t *testing.T) {
 	defer mux.Close()
 	forwarded := make(chan struct{})
 	done := make(chan struct{})
-	pm := &peerManager{quit: make(chan struct{}), onForwardSend: func(string, string, bool) (SendVerdict, error) {
+	pm := &peerManager{quit: make(chan struct{}), onForwardSend: func(string, string, bool, sendOrigin) (SendVerdict, error) {
 		close(forwarded)
 		return SendVerdict{}, nil
 	}}

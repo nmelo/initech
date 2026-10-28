@@ -27,6 +27,51 @@ const (
 	dndIdleNotice   = "pane is idle; do-not-disturb ends at turn end"
 )
 
+// operatorSender is the sender name of a send run outside any pane: the
+// operator's own. "@" is not a valid role name, so no agent is named this.
+const operatorSender = "@operator"
+
+// OperatorSender is operatorSender for the CLI, which stamps it.
+const OperatorSender = operatorSender
+
+// sendOrigin is who a send came from, as the sending initech stamped it
+// (ini-x432): the agent's name, operatorSender, or "" when the sender's
+// initech did not say (older than part 4) -- unknown, and held like an
+// agent's. Urgent is send --urgent.
+type sendOrigin struct {
+	From   string
+	Urgent bool
+}
+
+// dndGate is the do-not-disturb decision for one send: held, refused, or
+// let through (false, nothing to return). *broke is set once a super
+// --urgent break has been logged, so a send judged twice logs once.
+func (p *Pane) dndGate(text string, enter bool, o sendOrigin, broke *bool) (SendVerdict, bool) {
+	if !p.InDND() {
+		return SendVerdict{}, false // --urgent to an agent not in it is a plain send
+	}
+	switch {
+	case o.From == operatorSender:
+		return SendVerdict{}, false // the operator always goes through
+	case o.Urgent && o.From == "super":
+		if !*broke {
+			*broke = true
+			line := "urgent from super broke do-not-disturb on " + p.name
+			LogInfo("dnd", line, "pane", p.name)
+			p.reportEvent(AgentEvent{Type: EventMessageSent, Pane: p.name, Detail: line, Time: time.Now()})
+		}
+		return SendVerdict{}, false
+	case o.Urgent:
+		LogInfo("dnd", "SEND NOT DELIVERED: --urgent from someone other than super", "pane", p.name, "from", o.From)
+		return SendVerdict{Outcome: DeliveryNotDelivered, Reason: dndOnlySuperReason}, true
+	}
+	return p.holdIfDND(text, enter)
+}
+
+// dndOnlySuperReason is why an --urgent send from anyone but super to an
+// agent in do-not-disturb is refused; nothing is queued.
+const dndOnlySuperReason = "only super may break do-not-disturb"
+
 // dndQueueFullReason is why a send to a pane in do-not-disturb is refused
 // when its queue is at maxMessageQueue. The oldest message is never dropped.
 const dndQueueFullReason = "do-not-disturb queue is full"

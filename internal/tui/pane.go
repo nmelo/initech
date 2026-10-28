@@ -1164,13 +1164,24 @@ func (p *Pane) AgentType() string { return p.agentType }
 // suppression. The Codex ready-wait runs before acquiring sendMu so it does
 // not block concurrent sends.
 func (p *Pane) SendText(text string, enter bool) {
-	p.sendText(text, enter, true)
+	p.sendText(text, enter, true, sendOrigin{})
 }
 
 // SendTextVerdict is SendText for a caller waiting on the answer (ini-69fy):
 // it returns what the send learned about its own delivery.
 func (p *Pane) SendTextVerdict(text string, enter bool) SendVerdict {
-	return p.sendText(text, enter, true)
+	return p.sendText(text, enter, true, sendOrigin{})
+}
+
+// SendTextFrom is SendText for a send whose sender is known.
+func (p *Pane) SendTextFrom(text string, enter bool, o sendOrigin) {
+	p.sendText(text, enter, true, o)
+}
+
+// SendTextVerdictFrom is SendTextVerdict for a send whose sender is known,
+// which do-not-disturb judges (ini-x432).
+func (p *Pane) SendTextVerdictFrom(text string, enter bool, o sendOrigin) SendVerdict {
+	return p.sendText(text, enter, true, o)
 }
 
 // SendOperatorText delivers text the operator produced (a paste from another
@@ -1178,12 +1189,13 @@ func (p *Pane) SendTextVerdict(text string, enter bool) SendVerdict {
 // operator's own input is not held behind their own keystrokes.
 func (p *Pane) SendOperatorText(text string, enter bool) {
 	p.noteOperatorKey()
-	p.sendText(text, enter, false)
+	p.sendText(text, enter, false, sendOrigin{From: operatorSender})
 }
 
 // sendText delivers and returns the verdict. A message queued for a
 // suspended pane reads delivered: the wake it triggers delivers the queue.
-func (p *Pane) sendText(text string, enter, hold bool) SendVerdict {
+func (p *Pane) sendText(text string, enter, hold bool, o sendOrigin) SendVerdict {
+	var broke bool
 	p.mu.Lock()
 	p.lastMessageReceived = time.Now()
 	p.mu.Unlock()
@@ -1194,7 +1206,7 @@ func (p *Pane) sendText(text string, enter, hold bool) SendVerdict {
 	// DO-NOT-DISTURB (ini-x432): held on the queue, nothing typed. The
 	// operator's paste (hold false) is typing, not a send, and goes in.
 	if hold {
-		if v, held := p.holdIfDND(text, enter); held {
+		if v, held := p.dndGate(text, enter, o, &broke); held {
 			return v
 		}
 	}
@@ -1221,7 +1233,7 @@ func (p *Pane) sendText(text string, enter, hold bool) SendVerdict {
 			return SendVerdict{Outcome: DeliveryDelivered}
 		}
 		// Do-not-disturb set while the message waited holds it too.
-		if v, held := p.holdIfDND(text, enter); held {
+		if v, held := p.dndGate(text, enter, o, &broke); held {
 			return v
 		}
 	}

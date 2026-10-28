@@ -319,6 +319,11 @@ type ControlCmd struct {
 	// Operator marks a send carrying the operator's own input (a paste from a
 	// viewer window): it is typing, never held by the typing hold.
 	Operator bool `json:"operator,omitempty"`
+	// From and Urgent are who sent a send and whether with --urgent
+	// (ini-x432), carried across windows and machines so the owner of the
+	// agent judges do-not-disturb; none from an older initech.
+	From   string `json:"from,omitempty"`
+	Urgent bool   `json:"urgent,omitempty"`
 }
 
 // wheelEventFromCmd builds the wheel event a "mouse" control command asks
@@ -344,6 +349,8 @@ type ControlResp struct {
 	Target   string `json:"target,omitempty"`    // Agent name for forward_send.
 	Text     string `json:"text,omitempty"`      // Message text for forward_send.
 	Enter    bool   `json:"enter,omitempty"`     // Append Enter for forward_send.
+	From     string `json:"from,omitempty"`      // forward_send: the sender (ini-x432).
+	Urgent   bool   `json:"urgent,omitempty"`    // forward_send: send --urgent (ini-x432).
 	StreamID uint32 `json:"stream_id,omitempty"` // yamux stream ID for stream_added.
 	// Owner carries window 1's pane-ownership decision (ini-x5ob): canonical
 	// agent key -> owning window id. Rides the same unsolicited-control-event
@@ -711,7 +718,7 @@ func (d *Daemon) HandleSend(conn net.Conn, req IPCRequest) {
 			writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("peer %q not connected. Run 'initech peers' to see available targets.", req.Host)})
 			return
 		}
-		fwd := ControlCmd{Action: "forward_send", Target: req.Target, Text: req.Text, Enter: req.Enter}
+		fwd := ControlCmd{Action: "forward_send", Target: req.Target, Text: req.Text, Enter: req.Enter, From: req.From, Urgent: req.Urgent}
 		resp, err := d.forwardToClient(req.Host, clientCtrl, mu, fwd)
 		if err != nil {
 			writeIPCResponse(conn, IPCResponse{Error: err.Error()})
@@ -744,9 +751,9 @@ func (d *Daemon) HandleSend(conn net.Conn, req IPCRequest) {
 	// and the agent named as the TUI names it (ini-69fy).
 	var resp ControlResp
 	if d.serve {
-		resp = servedSend(p, req.Text, req.Enter)
+		resp = servedSend(p, req.Text, req.Enter, req.origin())
 	} else {
-		resp = verdictSend(p, req.Text, req.Enter)
+		resp = verdictSend(p, req.Text, req.Enter, req.origin())
 	}
 	if resp.Delivery == DeliveryNotDelivered {
 		writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("not delivered to %s: %s", req.Target, resp.Error), Delivery: resp.Delivery, Data: resp.Error})

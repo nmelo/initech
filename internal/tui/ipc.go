@@ -42,7 +42,12 @@ type IPCRequest struct {
 	Chime       bool   `json:"chime,omitempty"`        // Request one inbox arrival chime.
 	Detail      bool   `json:"detail,omitempty"`       // list: also read each pane's footer and dialog (status --json).
 	ForSec      int    `json:"for_sec,omitempty"`      // dnd on: end after this many seconds (capped at an hour), not at turn end.
+	From        string `json:"from,omitempty"`         // send: the sending agent, or "@operator"; none from an older CLI.
+	Urgent      bool   `json:"urgent,omitempty"`       // send --urgent: super breaks do-not-disturb.
 }
+
+// origin is who sent req, as its initech stamped it.
+func (req IPCRequest) origin() sendOrigin { return sendOrigin{From: req.From, Urgent: req.Urgent} }
 
 // IPCResponse is the JSON structure returned by the TUI socket.
 type IPCResponse struct {
@@ -423,7 +428,7 @@ func (t *TUI) handleIPCSend(conn net.Conn, req IPCRequest) {
 	// kind answers what it can: nothing checked.
 	verdict := SendVerdict{DeliveryUnchecked, uncheckedVerdictReason}
 	if lp, ok := pv.(*Pane); ok {
-		verdict = lp.SendTextVerdict(req.Text, req.Enter)
+		verdict = lp.SendTextVerdictFrom(req.Text, req.Enter, req.origin())
 	} else {
 		pv.SendText(req.Text, req.Enter)
 	}
@@ -1751,7 +1756,7 @@ func (t *TUI) forwardSendToRemote(conn net.Conn, req IPCRequest) {
 // never delivered. Its deferral still reads as one (ini-ei8l).
 func (t *TUI) sendViaRemote(conn net.Conn, rp *RemotePane, req IPCRequest) {
 	name := rp.Host() + ":" + rp.Name()
-	resp, err := rp.Request(ControlCmd{Action: "send", Text: req.Text, Enter: req.Enter})
+	resp, err := rp.Request(ControlCmd{Action: "send", Text: req.Text, Enter: req.Enter, From: req.From, Urgent: req.Urgent})
 	if reason := peerFailure(resp, err); reason != "" {
 		writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("not delivered to %s: %s", name, reason), Delivery: resp.Delivery, Data: resp.Error})
 		return

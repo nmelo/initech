@@ -396,6 +396,12 @@ func (rp *RemotePane) Request(cmd ControlCmd) (ControlResp, error) {
 // the daemon's "send" command which injects text through the emulator path
 // (same as initech send), handling Ctrl+S stash and paste detection.
 func (rp *RemotePane) SendText(text string, enter bool) {
+	rp.SendTextFrom(text, enter, sendOrigin{})
+}
+
+// SendTextFrom is SendText with the sender carried to the agent's owner,
+// which judges do-not-disturb (ini-x432).
+func (rp *RemotePane) SendTextFrom(text string, enter bool, o sendOrigin) {
 	// Fire-and-forget: network operations must never block the main loop.
 	// The mux.Request has a 10s timeout; running it synchronously on the
 	// main goroutine would freeze all rendering and input handling.
@@ -405,6 +411,8 @@ func (rp *RemotePane) SendText(text string, enter bool) {
 			Target: rp.name,
 			Text:   text,
 			Enter:  enter,
+			From:   o.From,
+			Urgent: o.Urgent,
 		})
 		if err != nil {
 			LogWarn("remote", "send failed", "agent", rp.name, "err", err)

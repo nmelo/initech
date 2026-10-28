@@ -346,7 +346,7 @@ func TestSendVerdict_TheAnswerToAForwardSendCarriesTheVerdict(t *testing.T) {
 	}
 	for _, c := range cases {
 		v := c.v
-		pm := &peerManager{onForwardSend: func(string, string, bool) (SendVerdict, error) { return v, nil }}
+		pm := &peerManager{onForwardSend: func(string, string, bool, sendOrigin) (SendVerdict, error) { return v, nil }}
 		got := pm.answerForwardSend("workbench", ControlResp{Action: "forward_send", Target: "super", Text: "hi", Enter: true})
 		if got.OK != c.want.OK || got.Error != c.want.Error || got.Delivery != c.want.Delivery || got.Data != c.want.Data {
 			t.Errorf("verdict %+v: answer %+v, want %+v", c.v, got, c.want)

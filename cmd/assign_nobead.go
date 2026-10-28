@@ -35,7 +35,7 @@ func noBeadWords(message string) string {
 // A send that could not confirm (ini-69fy) may well have arrived: the marker
 // is still set, and the could-not-confirm line and its exit status come last.
 func assignNoBead(w io.Writer, agent, host, message string) error {
-	sendErr := deliverText(w, agent, host, message, true)
+	sendErr := deliverText(w, agent, host, message, true, false)
 	var unconfirmed *unconfirmedSendError
 	if sendErr != nil && !errors.As(sendErr, &unconfirmed) {
 		return sendErr

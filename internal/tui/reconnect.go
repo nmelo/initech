@@ -112,7 +112,7 @@ type peerManager struct {
 	// through the control stream. The TUI delivers the message to the
 	// local pane named by target. Returns the send's verdict (ini-69fy), or
 	// an error if the pane doesn't exist or refuses.
-	onForwardSend func(target, text string, enter bool) (SendVerdict, error)
+	onForwardSend func(target, text string, enter bool, o sendOrigin) (SendVerdict, error)
 	quit          chan struct{}
 	wg            sync.WaitGroup
 }
@@ -126,7 +126,7 @@ func (pm *peerManager) answerForwardSend(peerName string, req ControlResp) Contr
 		return ControlResp{Error: "unknown action"}
 	}
 	LogInfo("remote", "forward_send request", "peer", peerName, "target", req.Target)
-	v, err := pm.onForwardSend(req.Target, req.Text, req.Enter)
+	v, err := pm.onForwardSend(req.Target, req.Text, req.Enter, sendOrigin{From: req.From, Urgent: req.Urgent})
 	if err != nil {
 		return ControlResp{Error: err.Error()}
 	}
@@ -136,7 +136,7 @@ func (pm *peerManager) answerForwardSend(peerName string, req ControlResp) Contr
 // newPeerManager creates a manager and starts a goroutine per remote peer.
 // All connections (initial and reconnect) happen in the background so the
 // TUI renders immediately without blocking on network I/O.
-func newPeerManager(project *config.Project, onChange func(string, []PaneView, bool), onFwd func(string, string, bool) (SendVerdict, error), quit chan struct{}, onAuthority ...func(string, *AuthorityIdentity)) *peerManager {
+func newPeerManager(project *config.Project, onChange func(string, []PaneView, bool), onFwd func(string, string, bool, sendOrigin) (SendVerdict, error), quit chan struct{}, onAuthority ...func(string, *AuthorityIdentity)) *peerManager {
 	pm := &peerManager{
 		project:        project,
 		onPanesChanged: onChange,
@@ -451,7 +451,7 @@ func (pm *peerManager) consumeEvents(peerName string, pc *peerConn, done chan st
 			case "forward_send":
 				if pm.onForwardSend != nil {
 					LogInfo("remote", "forward_send event (id-less)", "peer", peerName, "target", ev.Target)
-					pm.onForwardSend(ev.Target, ev.Text, ev.Enter) //nolint:errcheck // id-less events have no caller to report to
+					pm.onForwardSend(ev.Target, ev.Text, ev.Enter, sendOrigin{From: ev.From, Urgent: ev.Urgent}) //nolint:errcheck // id-less events have no caller to report to
 				}
 			case agentStatusAction:
 				if pm.onAgentStatus != nil {

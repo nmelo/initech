@@ -363,7 +363,7 @@ func TestDND_TheOperatorsPasteGoesIn(t *testing.T) {
 func TestDND_AServedPaneAnswersWithTheSameWords(t *testing.T) {
 	p, _, typed := dndPane(t, "a")
 	p.startDND()
-	for i, resp := range []ControlResp{servedSend(p, "[from b] far", true), verdictSend(p, "[from b] near", true)} {
+	for i, resp := range []ControlResp{servedSend(p, "[from b] far", true, sendOrigin{}), verdictSend(p, "[from b] near", true, sendOrigin{})} {
 		want := []string{"0 messages ahead", "1 message ahead"}[i]
 		if !resp.OK || resp.Delivery != DeliveryHeld || !dndLineIs(resp.Data, "a", want) {
 			t.Errorf("reply %+v, want held with %q", resp, want)
@@ -372,7 +372,7 @@ func TestDND_AServedPaneAnswersWithTheSameWords(t *testing.T) {
 	for p.QueueLen() < maxMessageQueue {
 		p.enqueue(QueuedMessage{Text: "x", Time: time.Now(), DND: true})
 	}
-	if resp := servedSend(p, "[from b] full", true); resp.OK || resp.Delivery != DeliveryNotDelivered || resp.Error != dndQueueFullReason {
+	if resp := servedSend(p, "[from b] full", true, sendOrigin{}); resp.OK || resp.Delivery != DeliveryNotDelivered || resp.Error != dndQueueFullReason {
 		t.Errorf("full reply %+v", resp)
 	}
 	if typed() != "" {

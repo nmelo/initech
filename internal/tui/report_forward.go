@@ -151,7 +151,7 @@ func (d *Daemon) forwardReport(ev AgentEvent) {
 // that is gone or still booting is refused before anything is typed; a send
 // held behind a dialog is answered deferred, with the latch age and the depth
 // of the mail already held.
-func servedSend(p *Pane, text string, enter bool) ControlResp {
+func servedSend(p *Pane, text string, enter bool, o sendOrigin) ControlResp {
 	if err := p.notRunningReason(); err != nil {
 		LogInfo("daemon", "SEND NOT DELIVERED", "target", p.Name(), "reason", err)
 		return ControlResp{Error: err.Error()}
@@ -160,15 +160,15 @@ func servedSend(p *Pane, text string, enter bool) ControlResp {
 		LogInfo("daemon", "SEND NOT DELIVERED", "target", p.Name(), "reason", err)
 		return ControlResp{Error: err.Error()}
 	}
-	return verdictSend(p, text, enter)
+	return verdictSend(p, text, enter, o)
 }
 
 // verdictSend delivers and answers with the send's verdict (ini-69fy), as
 // the TUI's own send does: window 1's window server and initech serve both.
-func verdictSend(p *Pane, text string, enter bool) ControlResp {
+func verdictSend(p *Pane, text string, enter bool, o sendOrigin) ControlResp {
 	age, _ := p.latchAge(time.Now())
 	depth := p.QueuedMessageCount()
-	return verdictControlResp(p.SendTextVerdict(text, enter), deferredMsg(p.Name(), age, depth))
+	return verdictControlResp(p.SendTextVerdictFrom(text, enter, o), deferredMsg(p.Name(), age, depth))
 }
 
 // onRemoteAgentEvent is the connected initech's side: a report from a serve

@@ -40,7 +40,10 @@ ends at turn end". A message that cannot be delivered then is
 reported to the operator once, with how long it waited.
 
 Do-not-disturb lives in the running initech only: nothing is written to
-disk, and a restart clears it. Your own typing is never held.
+disk, and a restart clears it. Your own typing is never held, nor is a
+send run outside any pane (the operator's) or an inbox reply; super can
+break through with initech send --urgent, which is logged. It trusts the
+sender's word (INITECH_AGENT): a courtesy, not a security wall.
 
 Inside a TUI pane (INITECH_AGENT set automatically):
   initech dnd on

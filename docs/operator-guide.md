@@ -294,7 +294,7 @@ out instead; a timer is at most an hour. A message that cannot be delivered then
 it waited. At 20 waiting messages a new one is refused with
 `not delivered to <agent>: do-not-disturb queue is full` and exit 1; the oldest is kept.
 
-Your own typing and pastes are never held. To take a pane out yourself, run
+Your own typing and pastes are never held, and neither is a message you send from outside any pane or an inbox reply: those go straight in. super can break through with `initech send --urgent`, which goes straight in and leaves `urgent from super broke do-not-disturb on <agent>` in the log and the event log; `--urgent` from any other agent is refused. Do-not-disturb trusts the sender's word, which is `INITECH_AGENT`: an agent that clears it reads as you. It is a courtesy between agents, not a security wall. To take a pane out yourself, run
 `initech dnd --agent <agent> off`. Nothing is saved: restarting initech, restarting the agent or waking a suspended one clears it. An initech
 started before this command existed answers `older initech running; restart it for
 do-not-disturb` (exit 2).

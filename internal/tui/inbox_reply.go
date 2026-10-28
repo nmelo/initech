@@ -181,7 +181,14 @@ func (t *TUI) deliverInboxReply(id, agent, text string) {
 	// ONE CALL, THE SAME ONE initech send MAKES. Suspension, the modal queue
 	// and the submit belt are all handled inside it; what follows only reads
 	// what it did.
-	pv.SendText(text, true)
+	// The operator's reply: do-not-disturb lets it through (ini-x432).
+	if s, ok := pv.(interface {
+		SendTextFrom(string, bool, sendOrigin)
+	}); ok {
+		s.SendTextFrom(text, true, sendOrigin{From: operatorSender})
+	} else {
+		pv.SendText(text, true)
+	}
 
 	switch {
 	case suspended:

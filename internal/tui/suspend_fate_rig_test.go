@@ -448,7 +448,7 @@ func TestSuspendGuard_ForwardSendSite(t *testing.T) {
 		t.Skip("set INITECH_9IMX=1")
 	}
 	tui, _ := suspendedFixture(t)
-	if _, err := tui.deliverForwardedSend("eng1", "via-forward", true); err != nil {
+	if _, err := tui.deliverForwardedSend("eng1", "via-forward", true, sendOrigin{}); err != nil {
 		t.Fatalf("forward delivery errored: %v", err)
 	}
 	awaitDelivery(t, tui, "via-forward")

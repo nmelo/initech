@@ -23,6 +23,12 @@ import (
 // answers resp.
 func x432cRun(t *testing.T, resp tui.IPCResponse, args ...string) (stdout, stderr string, err error, got []tui.IPCRequest) {
 	t.Helper()
+	return x432cRunAs(t, "eng2", resp, args...)
+}
+
+// x432cRunAs is x432cRun inside agent's pane ("" for outside any pane).
+func x432cRunAs(t *testing.T, agent string, resp tui.IPCResponse, args ...string) (stdout, stderr string, err error, got []tui.IPCRequest) {
+	t.Helper()
 	skipWindows(t)
 	sockPath := filepath.Join("/tmp", fmt.Sprintf("initech-x432c-%d-%d.sock", os.Getpid(), fakeIPCCounter.Add(1)))
 	os.Remove(sockPath)
@@ -48,7 +54,7 @@ func x432cRun(t *testing.T, resp tui.IPCResponse, args ...string) (stdout, stder
 		}
 	}()
 	t.Setenv("INITECH_SOCKET", sockPath)
-	t.Setenv("INITECH_AGENT", "eng2")
+	t.Setenv("INITECH_AGENT", agent)
 	dndAgent, dndFor = "", 0
 	dndCmd.Flags().Lookup("for").Changed = false
 	t.Cleanup(func() { dndAgent, dndFor = "", 0; dndCmd.Flags().Lookup("for").Changed = false })

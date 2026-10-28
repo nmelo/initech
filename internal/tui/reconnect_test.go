@@ -77,7 +77,7 @@ func TestConsumeEvents_ForwardSend(t *testing.T) {
 	done := make(chan struct{})
 	pm := &peerManager{
 		quit: quit,
-		onForwardSend: func(target, text string, enter bool) (SendVerdict, error) {
+		onForwardSend: func(target, text string, enter bool, _ sendOrigin) (SendVerdict, error) {
 			gotTarget = target
 			gotText = text
 			gotEnter = enter

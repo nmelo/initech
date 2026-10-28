@@ -171,6 +171,7 @@ func isMouseOrFocusReport(b []byte) bool {
 // every other request on the connection. Sends to one target stay in order.
 func (d *Daemon) deliverOffReader(sends *targetSerializer, p *Pane, cmd ControlCmd, respond func(string, ControlResp) bool) {
 	id, text, enter, operator := cmd.ID, cmd.Text, cmd.Enter, cmd.Operator
+	o := sendOrigin{From: cmd.From, Urgent: cmd.Urgent}
 	sends.Run(cmd.Target, func() {
 		switch {
 		case operator:
@@ -178,12 +179,12 @@ func (d *Daemon) deliverOffReader(sends *targetSerializer, p *Pane, cmd ControlC
 		case d.serve:
 			// initech serve answers as the TUI does: refused, deferred or OK
 			// (ini-ei8l), with the verdict (ini-69fy).
-			respond(id, servedSend(p, text, enter))
+			respond(id, servedSend(p, text, enter, o))
 			return
 		default:
 			// Window 1's window server refuses nothing it did not before,
 			// and answers with the verdict (ini-69fy).
-			respond(id, verdictSend(p, text, enter))
+			respond(id, verdictSend(p, text, enter, o))
 			return
 		}
 		respond(id, ControlResp{OK: true})

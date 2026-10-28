@@ -1589,7 +1589,7 @@ func autoGrid(n int) (cols, rows int) {
 // It returns the send's verdict (ini-69fy), which the forwarding window or
 // machine hands to its sender. A target this window relays on to another
 // machine answers nothing here: could not confirm.
-func (t *TUI) deliverForwardedSend(target, text string, enter bool) (SendVerdict, error) {
+func (t *TUI) deliverForwardedSend(target, text string, enter bool, o sendOrigin) (SendVerdict, error) {
 	var pv PaneView
 	t.runOnMain(func() { pv = t.findPaneByName(target) })
 	if pv == nil {
@@ -1601,7 +1601,7 @@ func (t *TUI) deliverForwardedSend(target, text string, enter bool) (SendVerdict
 		if err := lp.awaitStartupSettled(); err != nil {
 			return SendVerdict{}, err
 		}
-		return lp.SendTextVerdict(text, enter), nil
+		return lp.SendTextVerdictFrom(text, enter, o), nil
 	}
 	pv.SendText(text, enter)
 	return SendVerdict{DeliveryUnconfirmed, relayedVerdictReason}, nil
