@@ -128,9 +128,9 @@ func TestDNDMarks_TheColumnIsStillTheState(t *testing.T) {
 	tui.panes[0].(*Pane).startDNDFor(time.Now(), 0)
 	tui.panes[1].(*Pane).startDNDFor(time.Now(), 0)
 	rows := overlayFrameRows(tui, s)
-	left, right := leftRight(t, overlayColumns(t, rows, []string{"eng1", "eng2"}), rows)
-	if strings.Join(left, ",") != "eng2" || strings.Join(right, ",") != "eng1" {
-		t.Errorf("left %v right %v, want eng2 left (idle) and eng1 right (running)\n%s", left, right, framesText(rows))
+	left, right := leftRight(t, tui, overlayColumns(t, rows, []string{"eng1", "eng2"}), rows)
+	if strings.Join(left, ",") != "eng1" || strings.Join(right, ",") != "eng2" {
+		t.Errorf("left %v right %v, want eng1 left (running) and eng2 right (idle)\n%s", left, right, framesText(rows))
 	}
 }
 

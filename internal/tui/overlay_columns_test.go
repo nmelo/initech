@@ -114,32 +114,30 @@ func framesText(rows [][]rune) string {
 	return b.String()
 }
 
-// leftRight splits overlayColumns' result into the left and right columns.
-func leftRight(t *testing.T, cols map[int][]string, rows [][]rune) (left, right []string) {
+// leftRight splits overlayColumns' result into the left and right columns,
+// telling them apart by where the box's left column sits (two cells inside
+// the border), so a frame with only one column filled still says which one.
+func leftRight(t *testing.T, tui *TUI, cols map[int][]string, rows [][]rune) (left, right []string) {
 	t.Helper()
 	if len(cols) > 2 {
 		t.Fatalf("dots in %d columns, want at most 2:\n%s", len(cols), framesText(rows))
 	}
-	lx, rx := -1, -1
-	for x := range cols {
-		if lx < 0 || x < lx {
-			lx = x
+	leftX := tui.overlayBounds.x + 2
+	for x, names := range cols {
+		if x == leftX {
+			left = names
+		} else {
+			right = names
 		}
-		if x > rx {
-			rx = x
-		}
-	}
-	left = cols[lx]
-	if rx != lx {
-		right = cols[rx]
 	}
 	return left, right
 }
 
-// (a) One agent in each state: suspended, dead, idle and waiting on the left,
-// running and background on the right, each column in the panel's order.
-// Red on the one-column overlay: every dot shares one column.
-func TestOverlayColumns_NotWorkingLeftWorkingRightInPanelOrder(t *testing.T) {
+// (a) One agent in each state: running and background on the left,
+// suspended, dead, idle and waiting on the right, each column in the panel's
+// order. Red on the one-column overlay (every dot shares one column) and on
+// v2.37.0's order (working on the right).
+func TestOverlayColumns_WorkingLeftNotWorkingRightInPanelOrder(t *testing.T) {
 	tui, s := newTestTUIWithScreen("super", "pm", "eng1", "eng2", "qa1", "qa2")
 	setOverlayActivity(t, tui, map[string]ActivityState{
 		"super": StateSuspended, "pm": StateRunning, "eng1": StateDead,
@@ -153,12 +151,12 @@ func TestOverlayColumns_NotWorkingLeftWorkingRightInPanelOrder(t *testing.T) {
 	}
 
 	rows := overlayFrameRows(tui, s)
-	left, right := leftRight(t, overlayColumns(t, rows, []string{"super", "pm", "eng1", "eng2", "qa1", "qa2"}), rows)
-	if got, want := strings.Join(left, ","), "super,eng1,eng2,qa1"; got != want {
-		t.Errorf("left column %s, want %s (suspended, dead, idle, waiting in panel order)\n%s", got, want, framesText(rows))
+	left, right := leftRight(t, tui, overlayColumns(t, rows, []string{"super", "pm", "eng1", "eng2", "qa1", "qa2"}), rows)
+	if got, want := strings.Join(left, ","), "pm,qa2"; got != want {
+		t.Errorf("left column %s, want %s (running, background in panel order)\n%s", got, want, framesText(rows))
 	}
-	if got, want := strings.Join(right, ","), "pm,qa2"; got != want {
-		t.Errorf("right column %s, want %s (running, background in panel order)\n%s", got, want, framesText(rows))
+	if got, want := strings.Join(right, ","), "super,eng1,eng2,qa1"; got != want {
+		t.Errorf("right column %s, want %s (suspended, dead, idle, waiting in panel order)\n%s", got, want, framesText(rows))
 	}
 	_, superY, _ := overlayDotOf(rows, "super")
 	_, pmY, _ := overlayDotOf(rows, "pm")
@@ -188,14 +186,14 @@ func TestOverlayColumns_BandOrderReordersBothColumns(t *testing.T) {
 		groups      []string
 		left, right string
 	}{
-		{[]string{"core", "eng", "qa"}, "pm,eng2,qa2", "super,eng1,qa1"},
-		{[]string{"eng", "core", "qa"}, "eng2,pm,qa2", "eng1,super,qa1"},
+		{[]string{"core", "eng", "qa"}, "super,eng1,qa1", "pm,eng2,qa2"},
+		{[]string{"eng", "core", "qa"}, "eng1,super,qa1", "eng2,pm,qa2"},
 	} {
 		tui, s := mixedFleet(t)
 		tui.ensureGroups(false)
 		tui.layoutState.Groups = c.groups
 		rows := overlayFrameRows(tui, s)
-		left, right := leftRight(t, overlayColumns(t, rows, names), rows)
+		left, right := leftRight(t, tui, overlayColumns(t, rows, names), rows)
 		if strings.Join(left, ",") != c.left || strings.Join(right, ",") != c.right {
 			t.Errorf("bands %v: left %v right %v, want %s | %s\n%s", c.groups, left, right, c.left, c.right, framesText(rows))
 		}
@@ -206,9 +204,9 @@ func TestOverlayColumns_BandOrderReordersBothColumns(t *testing.T) {
 	tui.agents.selected = 0 // super, in core
 	tui.agentsMoveBand(+1)
 	rows := overlayFrameRows(tui, s)
-	left, right := leftRight(t, overlayColumns(t, rows, names), rows)
-	if strings.Join(left, ",") != "eng2,pm,qa2" || strings.Join(right, ",") != "eng1,super,qa1" {
-		t.Errorf("after > on core: left %v right %v, want eng2,pm,qa2 | eng1,super,qa1\n%s", left, right, framesText(rows))
+	left, right := leftRight(t, tui, overlayColumns(t, rows, names), rows)
+	if strings.Join(left, ",") != "eng1,super,qa1" || strings.Join(right, ",") != "eng2,pm,qa2" {
+		t.Errorf("after > on core: left %v right %v, want eng1,super,qa1 | eng2,pm,qa2\n%s", left, right, framesText(rows))
 	}
 }
 
@@ -222,9 +220,9 @@ func TestOverlayColumns_FollowTheBandsNotThePaneSlice(t *testing.T) {
 	tui.ensureGroups(false)
 	tui.layoutState.Groups = []string{"core", "eng", "qa"}
 	rows := overlayFrameRows(tui, s)
-	left, right := leftRight(t, overlayColumns(t, rows, []string{"eng1", "qa1", "super", "eng2"}), rows)
-	if got := strings.Join(left, ","); got != "super,eng1,eng2,qa1" || len(right) != 0 {
-		t.Errorf("left %s right %v, want super,eng1,eng2,qa1 and an empty right column\n%s", got, right, framesText(rows))
+	left, right := leftRight(t, tui, overlayColumns(t, rows, []string{"eng1", "qa1", "super", "eng2"}), rows)
+	if got := strings.Join(right, ","); got != "super,eng1,eng2,qa1" || len(left) != 0 {
+		t.Errorf("right %s left %v, want super,eng1,eng2,qa1 and an empty left column\n%s", got, left, framesText(rows))
 	}
 }
 
@@ -257,37 +255,50 @@ func overlayBoxWidth(t *testing.T, rows [][]rune, y int) int {
 	return len([]rune(row[:r])) - len([]rune(row[:l])) + 1
 }
 
-// (e) All idle: the right column is blank and the box is exactly as wide as
-// when agents are working, so it does not jump sideways.
-func TestOverlayColumns_AllIdleKeepsTheWidthWithABlankRightColumn(t *testing.T) {
+// (e) All idle: the left (working) column is blank and the box is exactly as
+// wide as when agents are working, so it does not jump sideways. All running
+// is the mirror: the right column is blank at the same width.
+func TestOverlayColumns_OneEmptyColumnKeepsTheBoxWidth(t *testing.T) {
 	names := []string{"super", "pm", "eng1", "eng2", "qa1", "qa2"}
 	tui, s := mixedFleet(t)
 	mixedRows := overlayFrameRows(tui, s)
 	mixedW := overlayBoxWidth(t, mixedRows, tui.overlayBounds.y)
-	_, rightCols := leftRight(t, overlayColumns(t, mixedRows, names), mixedRows)
-	if len(rightCols) == 0 {
-		t.Fatalf("mixed fleet drew no right column:\n%s", framesText(mixedRows))
+	left, right := leftRight(t, tui, overlayColumns(t, mixedRows, names), mixedRows)
+	if len(left) == 0 || len(right) == 0 {
+		t.Fatalf("mixed fleet did not fill both columns:\n%s", framesText(mixedRows))
 	}
-	rx, _, _ := overlayDotOf(mixedRows, rightCols[0])
+	lx, _, _ := overlayDotOf(mixedRows, left[0])
+	rx, _, _ := overlayDotOf(mixedRows, right[0])
 
-	tui, s = newTestTUIWithScreen(names...)
-	all := map[string]ActivityState{}
-	for _, n := range names {
-		all[n] = StateIdle
-	}
-	setOverlayActivity(t, tui, all)
-	idleRows := overlayFrameRows(tui, s)
-	if w := overlayBoxWidth(t, idleRows, tui.overlayBounds.y); w != mixedW {
-		t.Errorf("all-idle box is %d wide, mixed is %d: the box jumps when the last agent goes idle", w, mixedW)
-	}
-	for y := tui.overlayBounds.y + 1; y < tui.overlayBounds.y+1+tui.overlayBounds.agentCount; y++ {
-		if ch := idleRows[y][rx]; ch != ' ' {
-			t.Errorf("right column row %d holds %q, want blank\n%s", y, ch, framesText(idleRows))
+	for _, c := range []struct {
+		state     ActivityState
+		blankX    int
+		blankSide string
+		wantLeft  int
+		wantRight int
+	}{
+		{StateIdle, lx, "left", 0, 6},
+		{StateRunning, rx, "right", 6, 0},
+	} {
+		tui, s := newTestTUIWithScreen(names...)
+		all := map[string]ActivityState{}
+		for _, n := range names {
+			all[n] = c.state
 		}
-	}
-	left, right := leftRight(t, overlayColumns(t, idleRows, names), idleRows)
-	if len(left) != 6 || len(right) != 0 {
-		t.Errorf("all idle: left %v right %v, want all six left", left, right)
+		setOverlayActivity(t, tui, all)
+		rows := overlayFrameRows(tui, s)
+		if w := overlayBoxWidth(t, rows, tui.overlayBounds.y); w != mixedW {
+			t.Errorf("all %v: box is %d wide, mixed is %d: the box jumps when a column empties", c.state, w, mixedW)
+		}
+		for y := tui.overlayBounds.y + 1; y < tui.overlayBounds.y+1+tui.overlayBounds.agentCount; y++ {
+			if ch := rows[y][c.blankX]; ch != ' ' {
+				t.Errorf("all %v: %s column row %d holds %q, want blank\n%s", c.state, c.blankSide, y, ch, framesText(rows))
+			}
+		}
+		l, r := leftRight(t, tui, overlayColumns(t, rows, names), rows)
+		if len(l) != c.wantLeft || len(r) != c.wantRight {
+			t.Errorf("all %v: left %v right %v, want %d left and %d right", c.state, l, r, c.wantLeft, c.wantRight)
+		}
 	}
 }
 
@@ -315,7 +326,7 @@ func TestOverlayColumns_ClickActsOnTheAgentInEitherColumn(t *testing.T) {
 		tui.handleMouse(tcell.NewEventMouse(x, y, tcell.Button1, tcell.ModNone))
 		tui.handleMouse(tcell.NewEventMouse(x, y, tcell.ButtonNone, tcell.ModNone))
 	}
-	for _, name := range []string{"eng1", "pm"} { // right, then left
+	for _, name := range []string{"eng1", "pm"} { // working column, then the other
 		x, y, ok := overlayDotOf(rows, name)
 		if !ok {
 			t.Fatalf("%s not drawn", name)
@@ -350,9 +361,9 @@ func TestOverlayColumns_FooterCountsTheWholeListBelowTheColumns(t *testing.T) {
 	if line := string(rows[footerY]); !strings.Contains(line, " 5 visible, 1 hidden") {
 		t.Errorf("footer row %q, want \" 5 visible, 1 hidden\"\n%s", strings.TrimSpace(line), framesText(rows))
 	}
-	_, right := leftRight(t, overlayColumns(t, rows, []string{"super", "pm", "eng1", "eng2", "qa1", "qa2"}), rows)
-	if strings.Join(right, ",") != "super,eng1,qa1" {
-		t.Errorf("hidden eng1 left the right column: right %v", right)
+	left, _ := leftRight(t, tui, overlayColumns(t, rows, []string{"super", "pm", "eng1", "eng2", "qa1", "qa2"}), rows)
+	if strings.Join(left, ",") != "super,eng1,qa1" {
+		t.Errorf("hidden eng1 left the working column: left %v", left)
 	}
 	x, y, _ := overlayDotOf(rows, "eng1")
 	if !strings.Contains(string(rows[y][x:]), "eng1 [h]") {
@@ -396,7 +407,10 @@ func TestOverlayColumns_RemoteMachineSplitsUnderItsDivider(t *testing.T) {
 		t.Errorf("rows: super %d eng1 %d divider %d intern %d arch %d, want locals above the divider and the machine's agents below\n%s", sy, ey, divY, iy, ay, framesText(rows))
 	}
 	if ax != sx || ix != ex || iy != ay {
-		t.Errorf("remote split: arch x=%d (want left %d), intern x=%d (want right %d), same row %d/%d\n%s", ax, sx, ix, ex, iy, ay, framesText(rows))
+		t.Errorf("remote split: arch x=%d (want idle super's %d), intern x=%d (want running eng1's %d), same row %d/%d\n%s", ax, sx, ix, ex, iy, ay, framesText(rows))
+	}
+	if ex != tui.overlayBounds.x+2 {
+		t.Errorf("running eng1 at x=%d, want the left column %d\n%s", ex, tui.overlayBounds.x+2, framesText(rows))
 	}
 }
 
@@ -406,7 +420,7 @@ func TestOverlayColumns_RemoteMachineSplitsUnderItsDivider(t *testing.T) {
 // overwrite it.
 func TestOverlayColumns_ColumnsKeepAGapWhenTheLeftRowIsFull(t *testing.T) {
 	tui, s := newTestTUIWithScreen("super", "eng1")
-	setOverlayActivity(t, tui, map[string]ActivityState{"super": StateSuspended, "eng1": StateRunning})
+	setOverlayActivity(t, tui, map[string]ActivityState{"super": StateRunning, "eng1": StateIdle})
 	rows := overlayFrameRows(tui, s)
 	lx, ly, _ := overlayDotOf(rows, "super")
 	rx, ry, ok := overlayDotOf(rows, "eng1")
@@ -414,8 +428,8 @@ func TestOverlayColumns_ColumnsKeepAGapWhenTheLeftRowIsFull(t *testing.T) {
 		t.Fatalf("want super left and eng1 right on one row:\n%s", framesText(rows))
 	}
 	row := rows[ly]
-	if got := strings.TrimRight(string(row[lx:rx]), " "); got != "○ super [P] suspended" {
-		t.Errorf("left row reads %q, want %q intact", got, "○ super [P] suspended")
+	if got := strings.TrimRight(string(row[lx:rx]), " "); got != "● super [P] running" {
+		t.Errorf("left row reads %q, want %q intact", got, "● super [P] running")
 	}
 	if row[rx-1] != ' ' || row[rx-2] != ' ' {
 		t.Errorf("columns touch: %q before the right dot, want two blanks\n%s", string(row[rx-2:rx]), framesText(rows))
@@ -423,7 +437,7 @@ func TestOverlayColumns_ColumnsKeepAGapWhenTheLeftRowIsFull(t *testing.T) {
 }
 
 // The release rig's failure (rigs 40739760528), in-process: the operator reads
-// the overlay, eng1 starts running and moves to the right column, eng2 slides
+// the overlay, eng1 starts running and moves to the working column, eng2 slides
 // up into the cell the operator is aiming at, and the click lands. A click
 // must never act on an agent other than the one the operator aimed at.
 func TestOverlayColumns_AClickOnACellWhoseAgentJustMovedHidesNobody(t *testing.T) {

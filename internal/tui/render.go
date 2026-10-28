@@ -993,9 +993,9 @@ func (t *TUI) renderOverlay() {
 	t.overlayBounds.prev, t.overlayBounds.dots = t.overlayBounds.dots, nil
 
 	// TWO COLUMNS (ini-gt7w): each section (this machine's agents, then one per
-	// remote machine under its divider) splits into not-working on the left and
-	// working on the right, each column keeping the section's order. The
-	// answer the operator glances for, who is busy, sits in one column.
+	// remote machine under its divider) splits into working on the left and
+	// not working on the right, each column keeping the section's order. The
+	// answer the operator glances for, who is busy, sits in the first column.
 	type overlaySection struct {
 		machine     string // "" for this machine's agents; else the divider's label
 		left, right []AgentInfo
@@ -1053,12 +1053,14 @@ func (t *TUI) renderOverlay() {
 		_, livePin := t.layoutState.LivePinned[pk]
 		a := AgentInfo{Name: displayName, Key: pk, Status: status, Activity: act, Visible: vis, Protected: t.layoutState.Protected[pk], LivePinned: livePin, Remote: remote}
 		// The column is the product's one "working" predicate (running or
-		// background), the same one the splits and live mode use.
+		// background), the same one the splits and live mode use. Working is
+		// the LEFT column: the first one the eye lands on answers "who is
+		// working".
 		sec := &sections[len(sections)-1]
 		if paneIsWorking(p) {
-			sec.right = append(sec.right, a)
-		} else {
 			sec.left = append(sec.left, a)
+		} else {
+			sec.right = append(sec.right, a)
 		}
 		agentRows++
 		nameLen := len(displayName)

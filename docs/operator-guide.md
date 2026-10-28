@@ -130,7 +130,7 @@ Keys always go to the highlighted pane, in every layout: whatever you type, past
 
 The overlay (toggle with Alt+s, or `panel` in the command bar) is your dashboard. It comes back after a relaunch shown or hidden as you left it; a second window always starts with it shown.
 
-It lists this window's agents in two columns: not working on the left (suspended, dead, idle, waiting), working on the right (running, background), each column in the Agents panel's band order. A row adds `· N held` for messages waiting and `· dnd <age>` while the agent is in do-not-disturb, after the state word. An agent changes column the moment its state changes. Clicking an agent's dot hides or shows it. A dot that has just changed agent, because a row moved, ignores clicks for one second, so a click never lands on an agent that slid under the cursor; click again.
+It lists this window's agents in two columns: working on the left (running, background), not working on the right (idle, waiting, suspended, dead), each column in the Agents panel's band order. A row adds `· N held` for messages waiting and `· dnd <age>` while the agent is in do-not-disturb, after the state word. An agent changes column the moment its state changes. Clicking an agent's dot hides or shows it. A dot that has just changed agent, because a row moved, ignores clicks for one second, so a click never lands on an agent that slid under the cursor; click again.
 
 | Dot | Meaning |
 |-----|---------|
