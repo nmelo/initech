@@ -166,6 +166,62 @@ var dialogNotifyTexts = map[string]bool{
 	"Claude Code needs your input": true,
 }
 
+// silentClaudeDialogs are Claude Code dialogs that send no notification, so
+// the OSC 777 raise above never fires for them and a pane stopped on one
+// would read idle (ini-x7f3). One entry per captured dialog, never a pattern
+// for "any boxed question": a looser rule invents waiting states, and a false
+// one is a defect. Each is read from the screen at the list-only tier: it
+// shows in status, the overlay and the needs-input list, and never chimes.
+var silentClaudeDialogs = []struct{ question, preview string }{
+	// CAPTURED twice by qa1 on 2026-10-28, Claude Code 2.1.311 or 2.1.312 on
+	// Haiku (testdata/haiku311_teach_auto_mode_*.txt); the 2.1.312 bundle
+	// has no notification call beside it.
+	{"teach auto mode about your environment?", "Teach auto mode about your environment?"},
+}
+
+// silentClaudeDialogPreview returns the preview of a listed silent dialog
+// open on screen, or "". Only the rows where a live dialog can be drawn are
+// read (liveDialogRows: never transcript above a composer frame, so an agent
+// quoting the dialog is not it), and only with an option row carrying the
+// cursor, the answer the dialog waits for.
+func silentClaudeDialogPreview(rows []string) string {
+	live := liveDialogRows(rows)
+	hasCursor := false
+	for _, r := range live {
+		if cursorOptionRow.MatchString(r) {
+			hasCursor = true
+			break
+		}
+	}
+	if !hasCursor {
+		return ""
+	}
+	text := compactPromptText(strings.ToLower(strings.Join(live, "\n")))
+	for _, d := range silentClaudeDialogs {
+		if strings.Contains(text, compactPromptText(d.question)) {
+			return d.preview
+		}
+	}
+	return ""
+}
+
+// raiseSilentClaudeDialog raises the list-only waiting row for a listed
+// silent dialog on a Claude pane that is not already waiting. Called from the
+// once-a-second maintenance pass with the screen it already read, so it
+// costs no read of its own.
+func (p *Pane) raiseSilentClaudeDialog(rows []string) {
+	if p.attn == nil || !p.hasTier1Signal() {
+		return
+	}
+	if waiting, _, _ := p.WaitingInput(); waiting {
+		return
+	}
+	if preview := silentClaudeDialogPreview(rows); preview != "" {
+		p.SetWaitingInputTier(preview, WaitingTierListOnly)
+		p.markModalSeen()
+	}
+}
+
 // raisesAttention reports whether a notify message is one of the measured
 // dialog texts. Everything else -- including the empty message a malformed
 // payload yields -- is excluded by design.
@@ -241,7 +297,9 @@ func (p *Pane) refreshWaitingState() {
 		p.noteScreenSkipped(time.Now(), "attention")
 		return
 	}
-	onScreen := screenShowsDialogText(rows)
+	// A listed silent dialog counts as on screen too: its own words are
+	// what raised the row, so they are what keeps it (ini-x7f3).
+	onScreen := screenShowsDialogText(rows) || silentClaudeDialogPreview(rows) != ""
 	if onScreen {
 		p.markModalSeen()
 		// Upgrade the row's text now that the dialog is actually rendered. Costs

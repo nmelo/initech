@@ -1,0 +1,12 @@
+─────────────────────────────
+  Teach auto mode about
+  your environment?
+
+  Auto mode works better
+  when it knows your
+  environment. Takes about
+  a minute.
+
+  ❯ 1. Yes
+    2. Not now
+    3. Don't show again

@@ -69,6 +69,7 @@ func maintainModal(panes []PaneView, now time.Time, last *time.Time) {
 		cols := p.lastEmuCols
 		p.mu.Unlock()
 		p.observeBackground(now, p.IsAlive(), parseFooter(rows, cols))
+		p.raiseSilentClaudeDialog(rows)
 		if screenShowsModal(rows) {
 			p.noteDialogSighting()
 		}
