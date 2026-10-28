@@ -862,7 +862,9 @@ type overlayDot struct {
 // agent under the cursor can change between the frame the operator aimed at
 // and the click. A click on a cell whose agent changed within this window does
 // nothing: an ignored click costs a second click, a wrong one hides an agent
-// the operator never chose (rigs 40739760528).
+// the operator never chose (rigs 40739760528). Only a cell that held another
+// agent's dot counts as changed; one that held no dot, as when the whole box
+// shifts, takes the click.
 const overlayClickSettle = time.Second
 
 // overlayClickClock is the clock the dot-cell settle reads; a variable only so
@@ -900,14 +902,19 @@ func (t *TUI) drawOverlayRow(x, row, limit, maxNameLen int, a AgentInfo, bgStyle
 	put(x, dot, bgStyle.Foreground(dotColor))
 	if x < limit {
 		cell := [2]int{x, row}
-		// Settled unless this cell showed a different agent last draw. The
-		// first draw has nothing to compare: what is on screen is all the
-		// operator can have aimed at.
+		// Unsettled only when this cell held ANOTHER agent's dot last draw:
+		// that is the one way a click aimed at the previous frame lands on an
+		// agent the operator did not aim at. A cell that held no dot (the
+		// first draw, or the box moved because a name or status width
+		// changed) takes the click: in the previous frame it would have hit
+		// nobody, so it cannot hit the wrong agent now.
 		d := overlayDot{key: a.Key}
-		if prev, ok := t.overlayBounds.prev[cell]; ok && prev.key == a.Key {
-			d.since = prev.since
-		} else if t.overlayBounds.prev != nil {
-			d.since = overlayClickClock()
+		if prev, ok := t.overlayBounds.prev[cell]; ok {
+			if prev.key == a.Key {
+				d.since = prev.since
+			} else {
+				d.since = overlayClickClock()
+			}
 		}
 		t.overlayBounds.dots[cell] = d
 	}

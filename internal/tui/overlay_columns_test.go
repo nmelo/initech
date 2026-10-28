@@ -461,3 +461,28 @@ func TestOverlayColumns_AClickOnACellWhoseAgentJustMovedHidesNobody(t *testing.T
 		t.Errorf("after the settle a click on the cell hid %v, want only eng2", tui.layoutState.Hidden)
 	}
 }
+
+// Hiding an agent adds " [h]" to its name, which can widen the box and move
+// every dot to a cell that held no dot (rigs 40743066180, TestUZ42Rig). A
+// click on the new screen must act at once: in the previous frame that cell
+// held no agent's dot, so no click aimed there can hit the wrong agent.
+func TestOverlayColumns_AClickRightAfterTheBoxShiftsActs(t *testing.T) {
+	tui, s := newTestTUIWithScreen("eng1", "eng2", "engnonce53754")
+	setOverlayActivity(t, tui, map[string]ActivityState{"eng1": StateIdle, "eng2": StateIdle, "engnonce53754": StateIdle})
+	overlayFrameRows(tui, s)
+	before := tui.overlayBounds.x
+	tui.layoutState.Hidden["engnonce53754"] = true // the longest name gains " [h]"
+	rows := overlayFrameRows(tui, s)
+	if tui.overlayBounds.x == before {
+		t.Fatalf("fixture: the box did not move (x=%d)", before)
+	}
+	x, y, ok := overlayDotOf(rows, "eng1")
+	if !ok {
+		t.Fatal("eng1 not drawn")
+	}
+	tui.handleMouse(tcell.NewEventMouse(x, y, tcell.Button1, tcell.ModNone))
+	tui.handleMouse(tcell.NewEventMouse(x, y, tcell.ButtonNone, tcell.ModNone))
+	if !tui.layoutState.Hidden["eng1"] || tui.layoutState.Hidden["eng2"] {
+		t.Errorf("a click on eng1's dot right after the box shifted: hidden %v, want eng1 (and engnonce53754)", tui.layoutState.Hidden)
+	}
+}
