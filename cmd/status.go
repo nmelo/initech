@@ -99,6 +99,11 @@ func busyText(b *tui.PaneBusy) string {
 	if len(kinds) == 0 {
 		return ""
 	}
+	// An age the process tree did not give is how long the footer has shown
+	// the work (ini-d2sx), and says so.
+	if b.SeenFor {
+		return strings.Join(kinds, ", ") + ", seen for " + shortDur(b.SinceSec)
+	}
 	return strings.Join(kinds, ", ") + " " + shortDur(b.SinceSec)
 }
 

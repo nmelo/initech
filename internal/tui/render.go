@@ -1012,6 +1012,9 @@ func (t *TUI) renderOverlay() {
 		status := act.String()
 		// A background agent shows how long its job has run (ini-pi8p).
 		if age, ok := backgroundAge(p, time.Now()); ok && act == StateBackground {
+			if backgroundSeenFor(p) {
+				status += " seen" // the footer's age, not a process's (ini-d2sx)
+			}
 			status += " " + shortAge(age)
 		}
 		// HELD MAIL IS A VISIBLE FACT (ini-9gvn AC3). Deferred messages were

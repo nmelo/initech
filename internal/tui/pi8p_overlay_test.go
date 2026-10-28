@@ -16,7 +16,8 @@ func TestOverlayStatus_ABackgroundAgentShowsItsAge(t *testing.T) {
 	lp.mu.Lock()
 	lp.activity = StateIdle
 	lp.mu.Unlock()
-	lp.observeBackground(time.Now().Add(-90*time.Second), true, parseFooter(lvxwFixture(t, "haiku310_landing_shell.txt"), 160))
+	// A shell the process tree shows running for 90 s (ini-d2sx).
+	lp.observeBackgroundTree(time.Now(), true, parseFooter(lvxwFixture(t, "haiku310_landing_shell.txt"), 160), []time.Time{time.Now().Add(-90 * time.Second)}, true)
 
 	tui.renderOverlay()
 	screen.Show()

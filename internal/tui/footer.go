@@ -308,45 +308,91 @@ func bannerKind(rows []string, latched bool) string {
 	return bannerNone
 }
 
-// backgroundWork is the background work a pane's footer last showed and when
-// it was first seen (ini-b4l0). Zero when none.
+// backgroundWork is a pane's background work and since when (ini-b4l0).
+// Zero when none. seenFor marks an age that is how long the footer has shown
+// work, not a process's start (ini-d2sx): the tree could not be read, or the
+// only work is background agents, which run inside claude.
 type backgroundWork struct {
 	shells, monitors, tasks int
 	since                   time.Time
+	seenFor                 bool
 }
 
 // busy reports whether any background work is recorded.
 func (w backgroundWork) busy() bool { return w.shells+w.monitors+w.tasks > 0 }
 
-// observeBackground records what the footer read this tick says about
-// background work. A kind the footer did not show readably keeps its last
+// observeBackground is observeBackgroundTree with no process tree: the
+// footer's reading, its age labelled as seen for.
+func (p *Pane) observeBackground(now time.Time, alive bool, f Footer) {
+	p.observeBackgroundTree(now, alive, f, nil, false)
+}
+
+// observeBackgroundTree records what the footer read this tick says about
+// background work, checked against the pane's running background shells
+// (starts, read from the process tree when treeOK).
+//
+// The footer names the kinds. A kind it did not show readably keeps its last
 // value, so a dialog over the footer or a cut row changes nothing; the
 // no-background shape (every count read as 0) clears it, and so does the
-// process ending. since is when work was first seen, kept while any goes on.
-func (p *Pane) observeBackground(now time.Time, alive bool, f Footer) {
+// process ending.
+//
+// The tree says what runs (ini-d2sx): Claude Code keeps a finished shell
+// listed until it is read, so shells and monitors shown are the footer's
+// capped at the shells running, and the age is the oldest running one's
+// start. Listed but none running, and no background agents: no work, and the
+// pane reads idle. Background agents run inside claude and have no process;
+// they, and a pane whose tree was not read, keep the footer's age, labelled
+// seen for.
+func (p *Pane) observeBackgroundTree(now time.Time, alive bool, f Footer, starts []time.Time, treeOK bool) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if !alive {
-		p.bgWork = backgroundWork{}
+		p.bgWork, p.bgFooter = backgroundWork{}, backgroundWork{}
 		return
 	}
-	w := p.bgWork
+	raw := p.bgFooter
 	if f.Shells != nil {
-		w.shells = *f.Shells
+		raw.shells = *f.Shells
 	}
 	if f.Monitors != nil {
-		w.monitors = *f.Monitors
+		raw.monitors = *f.Monitors
 	}
 	if f.Tasks != nil {
-		w.tasks = *f.Tasks
+		raw.tasks = *f.Tasks
 	}
 	switch {
-	case !w.busy():
+	case !raw.busy():
+		raw = backgroundWork{}
+	case raw.since.IsZero():
+		raw.since = now
+	}
+	p.bgFooter = raw
+
+	w := backgroundWork{shells: raw.shells, monitors: raw.monitors, tasks: raw.tasks, since: raw.since, seenFor: true}
+	if treeOK {
+		w.shells = min(raw.shells, len(starts))
+		w.monitors = min(raw.monitors, len(starts)-w.shells)
+		if w.shells+w.monitors > 0 {
+			w.since, w.seenFor = starts[0], false
+			for _, s := range starts[1:] {
+				if s.Before(w.since) {
+					w.since = s
+				}
+			}
+		}
+	}
+	if !w.busy() {
 		w = backgroundWork{}
-	case w.since.IsZero():
-		w.since = now
 	}
 	p.bgWork = w
+}
+
+// footerBusy reports whether the pane's footer last showed background work,
+// which is when its process tree is worth reading.
+func (p *Pane) footerBusy() bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.bgFooter.busy()
 }
 
 // backgroundWorkNow returns the recorded background work and whether there is
@@ -375,6 +421,18 @@ func backgroundAge(pv PaneView, now time.Time) (time.Duration, bool) {
 	return now.Sub(w.since), true
 }
 
+// backgroundSeenFor reports whether a local pane's background age is how
+// long the footer has shown the work rather than a process's age. A second
+// window's record carries no such mark and prints as window 1 sent it.
+func backgroundSeenFor(pv PaneView) bool {
+	p, ok := pv.(*Pane)
+	if !ok {
+		return false
+	}
+	w, busy := p.backgroundWorkNow()
+	return busy && w.seenFor
+}
+
 // shortAge is an age as the overlay prints it: 12s, 4m, 2h.
 func shortAge(d time.Duration) string {
 	switch s := int(d.Seconds()); {
@@ -401,5 +459,5 @@ func paneBusy(pv PaneView, now time.Time) *PaneBusy {
 	if !busy {
 		return nil
 	}
-	return &PaneBusy{Shells: w.shells, Monitors: w.monitors, Tasks: w.tasks, SinceSec: int(now.Sub(w.since).Seconds())}
+	return &PaneBusy{Shells: w.shells, Monitors: w.monitors, Tasks: w.tasks, SinceSec: int(now.Sub(w.since).Seconds()), SeenFor: w.seenFor}
 }

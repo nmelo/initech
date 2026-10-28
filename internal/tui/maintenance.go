@@ -44,6 +44,18 @@ func maintainModal(panes []PaneView, now time.Time, last *time.Time) {
 	// is the fleet's once-a-second, output-independent tick.
 	sweepWithheldSubmitsIn(panes, now)
 
+	// The process tree, read off this goroutine and only while some pane's
+	// footer shows background work, says which jobs run and since when
+	// (ini-d2sx). nil when there is no fresh sample.
+	wantTree := false
+	for _, pv := range panes {
+		if p, ok := pv.(*Pane); ok && p.footerBusy() {
+			wantTree = true
+			break
+		}
+	}
+	tree := procSampler.sample(wantTree)
+
 	for _, pv := range panes {
 		p, ok := pv.(*Pane)
 		if !ok {
@@ -70,7 +82,8 @@ func maintainModal(panes []PaneView, now time.Time, last *time.Time) {
 		p.mu.Lock()
 		cols := p.lastEmuCols
 		p.mu.Unlock()
-		p.observeBackground(now, p.IsAlive(), parseFooter(rows, cols))
+		starts, treeOK := tree.runningShells(p.pid)
+		p.observeBackgroundTree(now, p.IsAlive(), parseFooter(rows, cols), starts, treeOK)
 		p.raiseSilentClaudeDialog(rows)
 		if screenShowsModal(rows) {
 			p.noteDialogSighting()

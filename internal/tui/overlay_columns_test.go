@@ -146,7 +146,8 @@ func TestOverlayColumns_NotWorkingLeftWorkingRightInPanelOrder(t *testing.T) {
 		"eng2": StateIdle, "qa1": StateWaitingInput, "qa2": StateIdle,
 	})
 	qa2 := tui.panes[5].(*Pane)
-	qa2.observeBackground(time.Now().Add(-90*time.Second), true, parseFooter(lvxwFixture(t, "haiku310_landing_shell.txt"), 160))
+	// A shell the process tree shows running for 90 s (ini-d2sx).
+	qa2.observeBackgroundTree(time.Now(), true, parseFooter(lvxwFixture(t, "haiku310_landing_shell.txt"), 160), []time.Time{time.Now().Add(-90 * time.Second)}, true)
 	if qa2.Activity() != StateBackground {
 		t.Fatalf("fixture: qa2 is %v, want background", qa2.Activity())
 	}

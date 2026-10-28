@@ -301,7 +301,8 @@ type Pane struct {
 	screenSkipSince              time.Time         // When the main loop first found this pane's emulator lock held (ini-psjt).
 	screenSkipLogged             time.Time         // Last time that skip was logged; rate-limits the record.
 	lastEmuCols, lastEmuRows     int               // Emulator size last seen under its lock (ini-psjt); emuSize's fallback.
-	bgWork                       backgroundWork    // Background work the footer last showed, and since when (ini-b4l0).
+	bgWork                       backgroundWork    // Background work shown: the footer's, checked against the process tree (ini-b4l0, ini-d2sx).
+	bgFooter                     backgroundWork    // The footer's own counts, and since when it has shown work (ini-d2sx).
 	lastFrame                    []frameCell       // Content region as last drawn; replayed while the pane cannot be read.
 	lastFrameCols, lastFrameRows int
 	// perfBytes and perfEmuNs are this pane's PTY bytes read and time spent in

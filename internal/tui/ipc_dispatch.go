@@ -61,6 +61,9 @@ type PaneBusy struct {
 	Monitors int `json:"monitors"`
 	Tasks    int `json:"tasks"`
 	SinceSec int `json:"since_sec"`
+	// SeenFor marks SinceSec as how long the footer has shown the work, not
+	// a running process's age: the process tree was not read (ini-d2sx).
+	SeenFor bool `json:"seen_for,omitempty"`
 }
 
 // PaneBackground is the background work Claude Code's footer shows. A nil
