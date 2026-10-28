@@ -29,9 +29,17 @@ type liveFocusState struct {
 // blank region: a blank 60% with no explanation reads as a broken layout.
 const liveFocusNoneWorking = "no agent is working"
 
-// paneIsWorking is the right grid's membership test: the activity state the
-// overlay dot shows. One definition of "working" in the product, not two.
-func paneIsWorking(p PaneView) bool { return p.Activity() == StateRunning }
+// paneIsWorking is the one definition of "working" wherever the TUI decides
+// running versus idle: the splits' right grid, live mode's ranking, the top
+// title and the ribbon sweep. Working is running, or background: a quiet pane
+// whose footer reports a background shell, monitor or task (ini-fg1q), so an
+// agent does not drop out of view during the slow part of its work. Waiting,
+// idle, suspended and dead are not working; a quiet pane with a dialog open
+// reads waiting, the stronger state.
+func paneIsWorking(p PaneView) bool {
+	a := p.Activity()
+	return a == StateRunning || a == StateBackground
+}
 
 // toggleLiveFocusSplit implements Option+Shift+F.
 //

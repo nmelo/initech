@@ -360,10 +360,11 @@ func (t *TUI) renderTop() {
 		}
 	}
 
-	// Title centered in top border. Green when running, blue when idle.
+	// Title centered in top border. Green when any pane is working (running
+	// or background), blue when none is.
 	anyRunning := false
 	for _, pv := range t.panes {
-		if pv.Activity() == StateRunning {
+		if paneIsWorking(pv) {
 			anyRunning = true
 			break
 		}

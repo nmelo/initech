@@ -245,7 +245,7 @@ func (p *Pane) renderActivityBar(s *clampedScreen, r Region) {
 	baseStyle := tcell.StyleDefault.Foreground(tcell.NewRGBColor(35, 35, 35))
 	y := r.Y
 
-	if p.Activity() != StateRunning {
+	if !paneIsWorking(p) {
 		for x := r.X; x < r.X+r.W; x++ {
 			s.SetContent(x, y, '─', nil, baseStyle)
 		}

@@ -54,7 +54,7 @@ const (
 //
 // Signals and weights:
 //   - Bead assigned:          30  (has work to do)
-//   - Sustained activity >5s: 20  (actively producing output)
+//   - Sustained activity >5s: 20  (working: running, or background work in a quiet pane)
 //   - Output volume >10KB:    15  (meaningful output, not just a prompt)
 //   - Recent dispatch <30s:   25  (just received a message)
 //   - Recent event <10s:      10  (semantic event fired recently)
@@ -71,7 +71,7 @@ func convictionScore(p PaneView, now time.Time) int {
 	if p.BeadID() != "" {
 		score += 30
 	}
-	if p.Activity() == StateRunning {
+	if paneIsWorking(p) {
 		if dur := now.Sub(p.ActiveRunStart()); dur > 5*time.Second {
 			score += 20
 		}
