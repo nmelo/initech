@@ -130,7 +130,7 @@ Keys always go to the highlighted pane, in every layout: whatever you type, past
 
 The overlay (toggle with Alt+s, or `panel` in the command bar) is your dashboard. It comes back after a relaunch shown or hidden as you left it; a second window always starts with it shown.
 
-It lists this window's agents in two columns: not working on the left (suspended, dead, idle, waiting), working on the right (running, background), each column in the Agents panel's band order. An agent changes column the moment its state changes. Clicking an agent's dot hides or shows it. A dot that has just changed agent, because a row moved, ignores clicks for one second, so a click never lands on an agent that slid under the cursor; click again.
+It lists this window's agents in two columns: not working on the left (suspended, dead, idle, waiting), working on the right (running, background), each column in the Agents panel's band order. A row adds `· N held` for messages waiting and `· dnd <age>` while the agent is in do-not-disturb, after the state word. An agent changes column the moment its state changes. Clicking an agent's dot hides or shows it. A dot that has just changed agent, because a row moved, ignores clicks for one second, so a click never lands on an agent that slid under the cursor; click again.
 
 | Dot | Meaning |
 |-----|---------|
@@ -288,7 +288,7 @@ being typed into its input box, and each sender sees
 `held: <agent> is in do-not-disturb (<age>, <N> messages ahead)` with exit 0: how long the
 agent has been in it (45s, 12m, 1h) and how many messages wait ahead of this one. `initech
 status` shows `dnd <age>` after the agent's state, and so does the `initech patrol` header;
-`initech deliver` and `initech assign` print the held line and succeed. `dnd off` delivers them in the order they arrived, one at a time, through the
+`initech deliver` and `initech assign` print the held line and succeed. On screen, the pane's ribbon carries `dnd` after the agent's name, after the held-mail mark when there is one, and the Agents overlay row reads `· dnd <age>` after the state word and the held count (`idle · 2 held · dnd 5m`); the agent stays in the column its state puts it in. Both go at the next draw once do-not-disturb ends. `dnd off` delivers them in the order they arrived, one at a time, through the
 normal path. `initech dnd on --for 30m` holds through the end of the turn until the timer runs
 out instead; a timer is at most an hour. A message that cannot be delivered then is reported to you once, with how long
 it waited. At 20 waiting messages a new one is refused with

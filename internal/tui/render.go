@@ -1023,6 +1023,12 @@ func (t *TUI) renderOverlay() {
 			if held := lp.QueuedMessageCount(); held > 0 {
 				status = fmt.Sprintf("%s · %d held", status, held)
 			}
+			// Do-not-disturb after the held count, with how long it has been
+			// on (ini-x432.5): the held mail and the reason it waits, side by
+			// side. The column stays the state's.
+			if age, on := lp.dndAge(time.Now()); on {
+				status = fmt.Sprintf("%s · dnd %s", status, shortAge(age))
+			}
 		}
 		pk := agentKey(p)
 		// Window-alias prefixes are dropped, cross-machine hosts kept, and the

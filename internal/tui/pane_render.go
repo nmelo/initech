@@ -105,6 +105,11 @@ func (p *Pane) Render(screen tcell.Screen, focused bool, dimmed bool, index int,
 		// Mail waiting for the operator to pause typing (typing hold).
 		title = strings.TrimSuffix(title, " ") + " \u2709 "
 	}
+	if p.InDND() {
+		// The agent asked not to be disturbed (ini-x432.5): its mail waits,
+		// and this is where the operator looks to see why.
+		title = strings.TrimSuffix(title, " ") + " dnd "
+	}
 
 	beadLabel, beadTitle := ribbonBeadLabel(p.BeadID(), p.BeadTitle(), p.NoBeadWork())
 	renderRibbon(s, r, title, titleStyle, beadLabel, beadTitle, running)
