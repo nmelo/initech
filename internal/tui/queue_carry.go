@@ -9,7 +9,10 @@ package tui
 // mail we accepted and have not delivered; a path that cannot deliver must
 // hand it on or say so, never drop it quietly (the ini-a9d8 class).
 
-import "strings"
+import (
+	"strings"
+	"time"
+)
 
 // carryQueueForRestart moves deferred messages from a pane being replaced onto
 // its replacement, and reports how many moved.
@@ -34,6 +37,15 @@ func carryQueueForRestart(old, fresh *Pane) int {
 func giveQueueToRestartedPane(fresh *Pane, msgs []QueuedMessage) int {
 	if len(msgs) == 0 {
 		return 0
+	}
+	// The new pane is not in do-not-disturb (a restart clears it): mail
+	// it held is released, so the dialog deadline applies from now
+	// (ini-x432).
+	now := time.Now()
+	for i := range msgs {
+		if msgs[i].DND && msgs[i].Released.IsZero() {
+			msgs[i].Released = now
+		}
 	}
 	fresh.mu.Lock()
 	fresh.messageQueue = append(fresh.messageQueue, msgs...)

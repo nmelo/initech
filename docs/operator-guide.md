@@ -282,19 +282,20 @@ For a send to an agent on another machine, the sending machine sizes its wait fr
 
 ### Do-not-disturb
 
-An agent in the middle of a step can run `initech dnd on` in its own pane. Until it runs
-`initech dnd off`, messages other agents send it wait in the pane's message queue instead of
+An agent in the middle of a step can run `initech dnd on` in its own pane. Until its turn
+ends (the pane stops running), or it runs `initech dnd off`, messages other agents send it wait in the pane's message queue instead of
 being typed into its input box, and each sender sees
 `held: <agent> is in do-not-disturb (<age>, <N> messages ahead)` with exit 0: how long the
 agent has been in it (45s, 12m, 1h) and how many messages wait ahead of this one. `initech
 status` shows `dnd <age>` after the agent's state, and so does the `initech patrol` header;
 `initech deliver` and `initech assign` print the held line and succeed. `dnd off` delivers them in the order they arrived, one at a time, through the
-normal path. A message that cannot be delivered then is reported to you once, with how long
+normal path. `initech dnd on --for 30m` holds through the end of the turn until the timer runs
+out instead; a timer is at most an hour. A message that cannot be delivered then is reported to you once, with how long
 it waited. At 20 waiting messages a new one is refused with
 `not delivered to <agent>: do-not-disturb queue is full` and exit 1; the oldest is kept.
 
 Your own typing and pastes are never held. To take a pane out yourself, run
-`initech dnd --agent <agent> off`. Nothing is saved: restarting initech clears it. An initech
+`initech dnd --agent <agent> off`. Nothing is saved: restarting initech, restarting the agent or waking a suspended one clears it. An initech
 started before this command existed answers `older initech running; restart it for
 do-not-disturb` (exit 2).
 

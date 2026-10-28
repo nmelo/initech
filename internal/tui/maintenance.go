@@ -49,6 +49,8 @@ func maintainModal(panes []PaneView, now time.Time, last *time.Time) {
 		if !ok {
 			continue // Remote panes are maintained by the window that owns them.
 		}
+		// Do-not-disturb ends at its timer, or at turn end (ini-x432).
+		p.endDNDIfDue(now)
 		// ONE NON-BLOCKING READ PER PANE PER TICK (ini-psjt). Everything below
 		// that looks at the screen looks at this snapshot. Through the blocking
 		// accessors, a single pane whose emulator lock was held by a stalled
