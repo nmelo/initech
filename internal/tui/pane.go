@@ -237,8 +237,9 @@ var _ PaneView = (*Pane)(nil)
 // Pane represents a terminal pane backed by a PTY process.
 // It uses a SafeEmulator from charmbracelet/x/vt for terminal emulation.
 type Pane struct {
-	cfg  PaneConfig // Original config for restart.
-	name string
+	frameChange            // Content changed since the last frame (ini-ysr.1).
+	cfg         PaneConfig // Original config for restart.
+	name        string
 	// onSuspendedMessage fires when SendText queues for a suspended pane
 	// (ini-g7fl): the TUI wires it to resume-on-message, because the pane
 	// cannot respawn itself and entry points must not each remember to.
@@ -599,6 +600,7 @@ func (p *Pane) readLoop() {
 				w0 = time.Now()
 			}
 			p.emu.Write(data)
+			p.markFrameChanged()
 			if perfExtras() {
 				p.perfEmuNs.Add(int64(time.Since(w0)))
 			}
@@ -1900,6 +1902,7 @@ func removeArg(args []string, flag string) []string {
 
 // ScrollUp moves the viewport up (into scrollback history) by n rows.
 func (p *Pane) ScrollUp(n int) {
+	p.markFrameChanged()
 	p.scrollOffset += n
 	read := p.withScreen(func(e *vt.Emulator) {
 		if max := p.maxScrollOffsetOn(e); p.scrollOffset > max {
@@ -1917,6 +1920,7 @@ func (p *Pane) ScrollUp(n int) {
 // ScrollDown moves the viewport down (toward live output) by n rows.
 // When scrollOffset reaches 0, the pane returns to live view.
 func (p *Pane) ScrollDown(n int) {
+	p.markFrameChanged()
 	p.scrollOffset -= n
 	if p.scrollOffset < 0 {
 		p.scrollOffset = 0

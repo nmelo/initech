@@ -121,7 +121,10 @@ func (t *TUI) renderFrame() {
 	s.Clear()
 
 	if t.eventLogM.active {
-		// Full-screen event log replaces pane rendering.
+		// Full-screen event log replaces pane rendering. No pane is on
+		// screen, so none keeps a record of how it was drawn: every pane is
+		// changed on the frame that brings it back (ini-ysr.1).
+		t.lastDrawn = nil
 		t.renderEventLog()
 		s.Show()
 		return
@@ -130,10 +133,17 @@ func (t *TUI) renderFrame() {
 	t.renderEmptyViewerHint(s, w, h)
 	t.renderLiveFocusEmptyHint(s, w, h)
 
-	// Draw panes from the render plan. No visibility checks needed.
+	// Draw panes from the render plan. No visibility checks needed. Each
+	// pane's changed-since-the-last-frame fact is taken here (ini-ysr.1);
+	// nothing acts on it yet.
+	nextDrawn := make(map[PaneView]paneFrameState, len(t.plan.Panes))
+	changed := make(map[string]bool, len(t.plan.Panes))
 	for i, pr := range t.plan.Panes {
 		LogDebug("render", "drawing pane", "frame", t.renderCount, "idx", i, "name", pr.Pane.Name(), "host", pr.Pane.Host())
 		sel := t.selectionForPane(pr.Pane)
+		if paneChangedForFrame(t.lastDrawn, nextDrawn, pr, sel) {
+			changed[agentKey(pr.Pane)] = true
+		}
 		pr.Pane.Render(s, pr.Focused, pr.Dimmed, pr.Index, sel)
 		// Live mode: draw [P] badge for pinned panes, right-aligned on ribbon.
 		if t.layoutState.Mode == LayoutLive {
@@ -153,6 +163,7 @@ func (t *TUI) renderFrame() {
 		}
 		LogDebug("render", "pane done", "frame", t.renderCount, "idx", i, "name", pr.Pane.Name())
 	}
+	t.lastDrawn, t.frameChanged = nextDrawn, changed
 
 	// Dividers (ini-573): the reserved gutter column is left EMPTY on
 	// purpose -- no SetContent call at all, not a drawn glyph in a dark

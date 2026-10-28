@@ -28,15 +28,16 @@ const resizeDebounce = 50 * time.Millisecond
 // The local VT emulator receives PTY bytes from the stream for rendering.
 // Keystrokes are forwarded upstream to the daemon for injection into the PTY.
 type RemotePane struct {
-	name     string           // Agent name (e.g. "eng1").
-	host     string           // Peer name of the remote daemon (e.g. "workbench").
-	stream   net.Conn         // Yamux stream: downstream PTY bytes + upstream keystrokes.
-	mux      *ControlMux      // Shared multiplexed control channel (thread-safe).
-	emu      *vt.SafeEmulator // Local VT emulator owned exclusively by the main goroutine.
-	dataCh   chan []byte      // readLoop sends byte chunks here; Render drains and writes to emu.
-	mu       sync.Mutex
-	alive    bool
-	fleetNum int // Fleet-canonical number PLUS ONE (ini-6m4); zero value = unknown. See fleetNumbered in pane.go.
+	frameChange                  // A stream frame arrived since the last frame (ini-ysr.1).
+	name        string           // Agent name (e.g. "eng1").
+	host        string           // Peer name of the remote daemon (e.g. "workbench").
+	stream      net.Conn         // Yamux stream: downstream PTY bytes + upstream keystrokes.
+	mux         *ControlMux      // Shared multiplexed control channel (thread-safe).
+	emu         *vt.SafeEmulator // Local VT emulator owned exclusively by the main goroutine.
+	dataCh      chan []byte      // readLoop sends byte chunks here; Render drains and writes to emu.
+	mu          sync.Mutex
+	alive       bool
+	fleetNum    int // Fleet-canonical number PLUS ONE (ini-6m4); zero value = unknown. See fleetNumbered in pane.go.
 	// emuPanicked rate-limits the emulator-panic log to once per pane; the
 	// panic barrier in writeEmu keeps draining after a parser failure.
 	emuPanicked bool
@@ -613,6 +614,7 @@ func (rp *RemotePane) writeEmu(chunk []byte) {
 		}
 	}()
 	rp.emu.Write(chunk)
+	rp.markFrameChanged()
 }
 
 // Render draws the remote pane with [R] badge in the ribbon title.
@@ -702,12 +704,14 @@ func (rp *RemotePane) Render(screen tcell.Screen, focused bool, dimmed bool, ind
 
 // ScrollUp moves this window's view into the pane's history (ini-di8h).
 func (rp *RemotePane) ScrollUp(n int) {
+	rp.markFrameChanged()
 	_, termRows := rp.region.InnerSize()
 	rp.scroll.up(n, rp.emu.Emulator, termRows)
 }
 
 // ScrollDown moves the view back toward live output; at the bottom it is live.
 func (rp *RemotePane) ScrollDown(n int) {
+	rp.markFrameChanged()
 	rp.scroll.down(n)
 }
 
