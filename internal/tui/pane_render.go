@@ -242,6 +242,12 @@ func (p *Pane) renderContent(s *clampedScreen, cr Region, e *vt.Emulator, focuse
 // renderActivityBar draws a 1-row activity indicator on the top edge of the
 // pane. Running panes show a KITT scanner effect (gaussian brightness peak
 // sweeping left-right). All other states show a static dim horizontal line.
+// kittClock is the sweep's clock; tests step it.
+var kittClock = time.Now
+
+// kittStepsPerSec is how often the sweep moves.
+const kittStepsPerSec = 5.0
+
 func (p *Pane) renderActivityBar(s *clampedScreen, r Region) {
 	if r.W < 1 {
 		return
@@ -257,14 +263,23 @@ func (p *Pane) renderActivityBar(s *clampedScreen, r Region) {
 		return
 	}
 
-	// KITT scanner: gaussian brightness peak sweeping left-right (~3s cycle).
+	// KITT scanner: gaussian brightness peak sweeping left-right and back
+	// every 8 s, moving five steps a second.
 	w := r.W
 	cycle := (w - 1) * 2
 	if cycle <= 0 {
 		return
 	}
 	const kittCycleSec = 8.0
-	elapsed := time.Since(p.kittEpoch).Seconds()
+	// FIVE STEPS A SECOND, not one per frame (ini-ysr). The terminal is sent
+	// only cells that changed, so a sweep moving every frame cost one write
+	// of the whole bar 30 times a second per working pane: measured, about
+	// 5 KB a second from one running pane with no output of its own, the
+	// biggest steady feed of the terminal. Rounding the time down to a step
+	// keeps the bar's cells identical between steps, and the terminal is
+	// sent nothing.
+	elapsed := kittClock().Sub(p.kittEpoch).Seconds()
+	elapsed = math.Floor(elapsed*kittStepsPerSec) / kittStepsPerSec
 	frac := math.Mod(elapsed, kittCycleSec) / kittCycleSec
 	pos := frac * float64(cycle)
 	if pos >= float64(w) {
