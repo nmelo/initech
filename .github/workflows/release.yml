@@ -7,41 +7,21 @@ on:
 
 permissions:
   contents: write
+  actions: read
 
 # Runner selection and the MAC_RUNNER revert: see the header of ci.yml (ini-8k1o).
 jobs:
-  # THE GATE RUNS ON THE PLATFORM WE TEST. macOS is the only tested platform
-  # since ini-ibsm (operator ruling, 2026-08-22: linux ships but is
-  # community-maintained -- "if someone wants it they need to sign up to
-  # maintain and test it themselves"). ci.yml moved every leg to macos-latest
-  # in v2.11.4; this job was missed, so on 2026-09-12 v2.13.0's tag was blocked
-  # by a 900ms-deadline timing test on ubuntu (peek_race_test.go) while CI at
-  # the same sha was 4/4 green on macOS (ini-govx). Do not re-add an ubuntu
-  # test job here as "more coverage": a red leg nobody is signed up to act on
-  # is a gate on an untested platform, not coverage. The release job below
-  # stays on ubuntu-latest deliberately -- it cross-compiles every goos/goarch
-  # and tests nothing, and stop-testing is not stop-shipping.
-  test:
-    runs-on: ${{ github.event_name != 'pull_request' && vars.MAC_RUNNER || 'macos-latest' }}
-    timeout-minutes: 25
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-
-      - uses: actions/setup-go@v6
-        with:
-          go-version-file: go.mod
-
-      # test-full, not test: `make test` is -short, which skips the PTY
-      # integration suite. ini-4bf2 shipped in v2.7.9 and v2.8.0 behind exactly
-      # that gap -- a test that WAS red, in a half no gate ran. A ship gate that
-      # cannot see half the suite is not a ship gate for that half.
-      - name: Run tests
-        run: make test-full
-
+  # THE RELEASE BUILD RUNS NO TESTS. The tests run once, in CI, on the platform
+  # we test (macOS, ini-ibsm), and shipper's gate tags only a commit whose push
+  # CI run is green with ci.yml's full job set. The release job proves the same
+  # for every v* tag before it builds: scripts/releaseguard reads the job list
+  # from ci.yml at the tagged commit, the list the gate reads, and refuses a
+  # tag without a green push run carrying all of it. A second test run here only
+  # re-ran a suite already green at that commit and cost two thirds of the
+  # build (ini-c5a.5). The job stays on ubuntu-latest deliberately: it
+  # cross-compiles every goos/goarch and tests nothing, and stop-testing is not
+  # stop-shipping.
   release:
-    needs: [test]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -52,6 +32,11 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - name: Refuse a tag without green CI at its commit
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: go run ./scripts/releaseguard -sha "$GITHUB_SHA"
+
       - name: Run goreleaser
         uses: goreleaser/goreleaser-action@v7
         with:
@@ -60,41 +45,3 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-
-      - name: Add AI changelog summary
-        env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          TAG=${GITHUB_REF#refs/tags/}
-          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
-          if [ -z "$PREV_TAG" ]; then
-            echo "No previous tag found, skipping AI summary"
-            exit 0
-          fi
-
-          COMMITS=$(git log --oneline "${PREV_TAG}..HEAD")
-          if [ -z "$COMMITS" ]; then
-            echo "No commits since ${PREV_TAG}, skipping AI summary"
-            exit 0
-          fi
-
-          SUMMARY=$(curl -sf https://api.openai.com/v1/chat/completions \
-            -H "Authorization: Bearer $OPENAI_API_KEY" \
-            -H "content-type: application/json" \
-            -d "$(jq -n --arg commits "$COMMITS" '{
-              model: "gpt-4o-mini",
-              max_tokens: 256,
-              messages: [{
-                role: "user",
-                content: ("Summarize these commits into a 2-3 sentence changelog blurb for a GitHub release. Be concise and focus on what changed for users, not implementation details.\n\nCommits:\n" + $commits)
-              }]
-            }')" 2>/dev/null | jq -r '.choices[0].message.content // empty') || SUMMARY=""
-
-          if [ -z "$SUMMARY" ]; then
-            echo "AI summary unavailable, skipping"
-            exit 0
-          fi
-
-          EXISTING=$(gh release view "$TAG" --repo nmelo/initech --json body --jq '.body')
-          gh release edit "$TAG" --repo nmelo/initech --notes "$(printf '%s\n\n---\n\n%s' "$SUMMARY" "$EXISTING")"

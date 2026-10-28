@@ -4,16 +4,20 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"testing"
 )
 
-// TestReleaseGate_TestJobRunsOnTheTestedPlatform pins release.yml's gating
-// test job to macOS (ini-govx). ini-ibsm made macOS the only tested platform
-// and ci.yml followed; release.yml did not, and v2.13.0's tag was blocked by
-// an ubuntu-only timing red with CI green. Any job in release.yml that runs
-// the suite must run where the suite is tested; the goreleaser job is a
-// build and may stay on ubuntu.
-func TestReleaseGate_TestJobRunsOnTheTestedPlatform(t *testing.T) {
+// TestReleaseGate_BuildsOnlyAndRunsNoTests pins release.yml to a build: it runs
+// no tests and only the goreleaser job runs on ubuntu (ini-c5a.5). The full
+// suite still gates every release, once, in CI on the tested platform (macOS,
+// ini-ibsm): the release job's guard (scripts/releaseguard, whose own test pins
+// the guard before goreleaser) refuses a tag without a green push run carrying
+// ci.yml's whole job set, full-suite-census included, so the ini-4bf2 gap (a
+// gate that ran half the suite) cannot reopen. A test job here would re-run a
+// suite already green at the commit; one on ubuntu would gate on an untested
+// platform (ini-govx).
+func TestReleaseGate_BuildsOnlyAndRunsNoTests(t *testing.T) {
 	raw, err := os.ReadFile(filepath.Join(repoRoot(t), ".github", "workflows", "release.yml"))
 	if err != nil {
 		t.Fatal(err)
@@ -24,21 +28,16 @@ func TestReleaseGate_TestJobRunsOnTheTestedPlatform(t *testing.T) {
 	for _, m := range jobRe.FindAllStringSubmatch(string(raw), -1) {
 		runsOn[m[1]] = m[2]
 	}
-	if got, ok := runsOn["test"]; !ok {
-		t.Fatalf("release.yml has no test job; jobs found: %v", runsOn)
-	} else if got != "macos-latest" && got != macRunnerSelector {
-		t.Fatalf("release.yml test job runs on %q, want macos-latest or the guarded MAC_RUNNER selector: the release gate must run on the tested platform (ini-ibsm, ini-govx, ini-8k1o)", got)
+	if _, ok := runsOn["release"]; !ok {
+		t.Fatalf("release.yml has no release job; jobs found: %v", runsOn)
 	}
-	// Anchored to the WHOLE step (shipper, ini-govx review): a prefix match
-	// on "make test" also accepted a downgrade to plain `make test`, which is
-	// exactly the -short half-suite gap ini-4bf2 shipped behind twice.
-	testStep := regexp.MustCompile(`(?m)^\s+run: make test-full\s*$`)
 	for job, os := range runsOn {
 		if os == "ubuntu-latest" && job != "release" {
 			t.Errorf("job %q runs on ubuntu-latest; only the goreleaser build job may", job)
 		}
 	}
-	if !testStep.Match(raw) {
-		t.Fatal("release.yml no longer runs make test-full anywhere; the ini-4bf2 full-suite gate is gone")
+	testRun := regexp.MustCompile(`(?m)^\s+run: .*\b(make test|go test)\b`)
+	if m := testRun.Find(raw); m != nil {
+		t.Fatalf("release.yml runs tests (%q); the suite runs in CI and the guard checks it green at the tagged commit", strings.TrimSpace(string(m)))
 	}
 }

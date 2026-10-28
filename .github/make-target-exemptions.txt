@@ -20,6 +20,12 @@ lint           # golangci-lint over the tree; not in a gate because the linter i
 # whole suite without -short and therefore already covers every test named
 # here. Kept for hand use rather than deleted, but recorded so the redundancy
 # is visible to whoever next reaches for it.
+# test-full is the whole suite in one process without -short. CI runs that same
+# suite split across full-suite-1..4, and full-suite-census proves every test ran
+# exactly once; release.yml no longer re-runs it (ini-c5a.5), its guard checks the
+# CI run green instead.
+test-full      # the whole suite, one process. TRIGGER: by hand, on CI's runners or a branch dispatch, never on the shared Mac; CI runs the same suite in four shards.
+
 integration    # a hand-picked subset, superseded by test-full. TRIGGER: by hand, when someone wants that subset without the full run.
 
 # The release chain. Invoked by shipper during a release, in order, not by any
