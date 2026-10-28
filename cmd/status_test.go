@@ -76,7 +76,7 @@ esac
 
 	got := out.String()
 	for _, want := range []string{
-		"Session: demo (1 agents, 1 stopped)",
+		"Session: demo (2 agents, 1 stopped)", // the rows, not the live ones (ini-e6al)
 		"Role",
 		"Alive",
 		"Bead",

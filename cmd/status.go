@@ -301,13 +301,16 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		return printStatusJSON(cmd, panes, fromBD)
 	}
 
-	// Build table.
-	running := 0
-	stopped := 0
+	// Build table. The header counts the rows, and names the agents that are
+	// not alive the way their rows do (ini-e6al): a suspended agent is
+	// parked, not stopped, and calling it stopped invites a restart.
+	suspended, stopped := 0, 0
 	for _, pi := range panes {
-		if pi.Alive {
-			running++
-		} else {
+		switch {
+		case pi.Alive:
+		case pi.Activity == "suspended":
+			suspended++
+		default:
 			stopped++
 		}
 	}
@@ -321,7 +324,10 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	header := fmt.Sprintf("Session: %s (%d agents", projName, running)
+	header := fmt.Sprintf("Session: %s (%d agents", projName, len(panes))
+	if suspended > 0 {
+		header += fmt.Sprintf(", %d suspended", suspended)
+	}
 	if stopped > 0 {
 		header += fmt.Sprintf(", %d stopped", stopped)
 	}
