@@ -20,13 +20,10 @@ func TestOverlayDotRunningIsFilledGreen(t *testing.T) {
 	tui.panes[0].(*Pane).lastOutputTime = time.Now()
 	tui.render()
 
-	sw, _ := s.Size()
-	maxNameLen := 4
-	statusMaxLen := 7
-	panelW := 4 + maxNameLen + 1 + statusMaxLen + 2
-	px := sw - panelW - 1
-	dotX := px + 2
-	dotY := 2
+	dotX, dotY, ok := overlayDotOf(overlayScreenRows(s), "eng1")
+	if !ok {
+		t.Fatal("eng1 is not drawn in the overlay")
+	}
 
 	mainc, style, _ := s.Get(dotX, dotY)
 	if mainc != "\u25cf" {
@@ -45,11 +42,10 @@ func TestOverlayDotIdleIsHollowGray(t *testing.T) {
 	// lastOutputTime is zero (default): time.Since(zero) >> ptyIdleTimeout → StateIdle.
 	tui.render()
 
-	sw, _ := s.Size()
-	panelW := 4 + 4 + 1 + 7 + 2
-	px := sw - panelW - 1
-	dotX := px + 2
-	dotY := 2
+	dotX, dotY, ok := overlayDotOf(overlayScreenRows(s), "eng1")
+	if !ok {
+		t.Fatal("eng1 is not drawn in the overlay")
+	}
 
 	mainc, style, _ := s.Get(dotX, dotY)
 	if mainc != "\u25cb" {
@@ -69,12 +65,14 @@ func TestOverlayDotMixedRunningAndIdle(t *testing.T) {
 	// eng2: zero lastOutputTime → idle
 	tui.render()
 
-	sw, _ := s.Size()
-	panelW := 4 + 4 + 1 + 7 + 2
-	px := sw - panelW - 1
-	dotX := px + 2
+	rows := overlayScreenRows(s)
+	x1, y1, ok1 := overlayDotOf(rows, "eng1")
+	x2, y2, ok2 := overlayDotOf(rows, "eng2")
+	if !ok1 || !ok2 {
+		t.Fatal("eng1 or eng2 is not drawn in the overlay")
+	}
 
-	c1, style1, _ := s.Get(dotX, 2)
+	c1, style1, _ := s.Get(x1, y1)
 	if c1 != "\u25cf" {
 		t.Errorf("eng1 (running) dot = %q, want ●", c1)
 	}
@@ -83,7 +81,7 @@ func TestOverlayDotMixedRunningAndIdle(t *testing.T) {
 		t.Errorf("eng1 (running) dot color = %v, want Green", fg1)
 	}
 
-	c2, style2, _ := s.Get(dotX, 3)
+	c2, style2, _ := s.Get(x2, y2)
 	if c2 != "\u25cb" {
 		t.Errorf("eng2 (idle) dot = %q, want ○", c2)
 	}

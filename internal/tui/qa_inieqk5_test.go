@@ -74,11 +74,12 @@ func TestOverlayDot_SuspendedIsBlueHollow(t *testing.T) {
 	tui.layoutState.Overlay = true
 	tui.render()
 
-	// The overlay dot is at column px+2, row py+1. Find it by scanning
-	// the right edge of the screen for the hollow dot character.
+	// The overlay dot is on row py+1. Find it by scanning the row for the
+	// hollow dot character: with two columns (ini-gt7w) a suspended agent's
+	// dot sits in the left column, further from the edge.
 	sw, _ := s.Size()
 	found := false
-	for x := sw - 30; x < sw; x++ {
+	for x := 0; x < sw; x++ {
 		c, style, _ := s.Get(x, 2) // row 2 = first agent row (py=1, +1)
 		if c == "\u25cb" {         // hollow dot
 			fg, _, _ := style.Decompose()

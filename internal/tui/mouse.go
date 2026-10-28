@@ -20,23 +20,15 @@ func (t *TUI) handleMouse(ev *tcell.EventMouse) {
 	switch {
 	case ev.Buttons()&tcell.Button1 != 0 && !t.sel.active:
 		// Overlay dot click: toggle hide/unhide before pane hit-test.
-		if t.layoutState.Overlay && t.overlayBounds.agentCount > 0 {
-			dotCol := t.overlayBounds.x + 2
-			agentStartY := t.overlayBounds.y + 1
-			if mx == dotCol && my >= agentStartY && my < agentStartY+t.overlayBounds.agentCount {
-				idx := my - agentStartY
-				// Index the SAME list the overlay drew (ini-9isx). The overlay
-				// is window-scoped, so t.panes[idx] is a different agent than
-				// the row under the cursor the moment any group lives on
-				// another window -- the click would silently hide a bystander,
-				// on a surface whose whole purpose is showing you what is
-				// where. Row N of the drawn list must resolve to entry N of
-				// the drawn list.
-				rows := t.visiblePanesForWindow()
-				if idx >= 0 && idx < len(rows) {
-					t.toggleHidden(agentKey(rows[idx]))
-					return
-				}
+		// The click resolves through the cells the overlay DREW (ini-9isx,
+		// ini-gt7w): the overlay is window-scoped and two columns, so neither
+		// t.panes nor any row index names the agent under the cursor. A dot
+		// cell maps to exactly the agent drawn there, so a click can never
+		// hide a bystander.
+		if t.layoutState.Overlay {
+			if key, ok := t.overlayBounds.dots[[2]int{mx, my}]; ok {
+				t.toggleHidden(key)
+				return
 			}
 		}
 

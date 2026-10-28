@@ -121,12 +121,13 @@ func TestRenderOverlay_HiddenAgentNameItalic(t *testing.T) {
 // ── ini-khy: overlay dot click-to-toggle ────────────────────────────
 
 func TestOverlayDotClick_TogglesHidden(t *testing.T) {
-	tui, _ := newTestTUIWithScreen("eng1", "eng2", "eng3")
-	tui.layoutState.Overlay = true
-	tui.renderOverlay()
-
-	dotCol := tui.overlayBounds.x + 2
-	eng2Row := tui.overlayBounds.y + 1 + 1 // agent index 1 = eng2
+	tui, s := newTestTUIWithScreen("eng1", "eng2", "eng3")
+	// eng2's dot as drawn: with two columns (ini-gt7w) its cell depends on
+	// its state, so it is read off the frame, not recomputed.
+	dotCol, eng2Row, ok := overlayDotOf(overlayFrameRows(tui, s), "eng2")
+	if !ok {
+		t.Fatal("eng2 is not drawn in the overlay")
+	}
 
 	if tui.layoutState.Hidden["eng2"] {
 		t.Fatal("eng2 should start visible")
@@ -147,12 +148,12 @@ func TestOverlayDotClick_TogglesHidden(t *testing.T) {
 }
 
 func TestOverlayDotClick_OnlyDotColumnIsTarget(t *testing.T) {
-	tui, _ := newTestTUIWithScreen("eng1", "eng2")
-	tui.layoutState.Overlay = true
-	tui.renderOverlay()
-
-	nameCol := tui.overlayBounds.x + 4 // name starts here, not the dot
-	eng1Row := tui.overlayBounds.y + 1 // agent index 0
+	tui, s := newTestTUIWithScreen("eng1", "eng2")
+	dotCol, eng1Row, ok := overlayDotOf(overlayFrameRows(tui, s), "eng1")
+	if !ok {
+		t.Fatal("eng1 is not drawn in the overlay")
+	}
+	nameCol := dotCol + 2 // name starts here, not the dot
 
 	tui.handleMouse(tcell.NewEventMouse(nameCol, eng1Row, tcell.Button1, 0))
 
@@ -162,13 +163,12 @@ func TestOverlayDotClick_OnlyDotColumnIsTarget(t *testing.T) {
 }
 
 func TestOverlayDotClick_BlocksLastVisible(t *testing.T) {
-	tui, _ := newTestTUIWithScreen("eng1", "eng2")
-	tui.layoutState.Overlay = true
+	tui, s := newTestTUIWithScreen("eng1", "eng2")
 	tui.layoutState.Hidden["eng2"] = true // only eng1 visible
-	tui.renderOverlay()
-
-	dotCol := tui.overlayBounds.x + 2
-	eng1Row := tui.overlayBounds.y + 1
+	dotCol, eng1Row, ok := overlayDotOf(overlayFrameRows(tui, s), "eng1")
+	if !ok {
+		t.Fatal("eng1 is not drawn in the overlay")
+	}
 
 	tui.handleMouse(tcell.NewEventMouse(dotCol, eng1Row, tcell.Button1, 0))
 

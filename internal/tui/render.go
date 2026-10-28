@@ -818,6 +818,115 @@ func drawField(s tcell.Screen, x, y, width int, text string, style tcell.Style) 
 	}
 }
 
+// overlayDisplayOrder orders the overlay's rows: this machine's agents in the
+// Agents panel's order (agentsPanelOrder, band by band, each band's members in
+// pane order -- the order the live list split reads, so the two never
+// disagree), then one block per remote machine, machines alphabetical, each
+// block in arrival order (orderPanesForDisplay). A local agent the panel does
+// not list keeps its relative place after the ones it does.
+func (t *TUI) overlayDisplayOrder(panes []PaneView) []PaneView {
+	rank := make(map[string]int)
+	for i, k := range t.agentsPanelOrder() {
+		if _, dup := rank[k]; !dup {
+			rank[k] = i
+		}
+	}
+	var locals, remotes []PaneView
+	for _, idx := range orderPanesForDisplay(panes) {
+		if p := panes[idx]; paneIsRemoteMachine(p) {
+			remotes = append(remotes, p)
+		} else {
+			locals = append(locals, p)
+		}
+	}
+	rankOf := func(p PaneView) int {
+		if r, ok := rank[agentKey(p)]; ok {
+			return r
+		}
+		return len(rank)
+	}
+	sort.SliceStable(locals, func(i, j int) bool { return rankOf(locals[i]) < rankOf(locals[j]) })
+	return append(locals, remotes...)
+}
+
+// drawOverlayRow draws one agent's overlay row with its dot at x, clipped
+// before limit, and records the dot's cell so a click there acts on this
+// agent (ini-gt7w AC8: the click map is the drawn cells, in either column).
+func (t *TUI) drawOverlayRow(x, row, limit, maxNameLen int, a AgentInfo, bgStyle tcell.Style) {
+	s := t.screen
+	put := func(col int, ch rune, st tcell.Style) {
+		if col < limit {
+			s.SetContent(col, row, ch, nil, st)
+		}
+	}
+	// Status dot (color per actual activity state, not display text).
+	dot := '\u25cf'
+	var dotColor tcell.Color
+	switch a.Activity {
+	case StateRunning:
+		dotColor = tcell.ColorGreen
+	case StateIdle, StateBackground:
+		// Background is idle's dot: not producing output (ini-pi8p).
+		dot = '\u25cb'
+		dotColor = tcell.ColorGray
+	case StateDead:
+		dotColor = tcell.ColorRed
+	case StateSuspended:
+		dot = '\u25cb' // Hollow dot, same as idle but blue.
+		dotColor = tcell.ColorDodgerBlue
+	default:
+		dotColor = tcell.ColorGray
+	}
+	put(x, dot, bgStyle.Foreground(dotColor))
+	if x < limit {
+		t.overlayBounds.dots[[2]int{x, row}] = a.Key
+	}
+
+	// Name (dimmed for hidden panes).
+	nameStyle := bgStyle.Foreground(tcell.ColorWhite)
+	if a.Name == t.layoutState.Focused {
+		nameStyle = bgStyle.Foreground(tcell.ColorYellow).Bold(true)
+	} else if !a.Visible {
+		nameStyle = bgStyle.Foreground(tcell.ColorDarkGray)
+	}
+	if !a.Visible {
+		nameStyle = nameStyle.Italic(true)
+	}
+	col := x + 2
+	text := func(str string, st tcell.Style) {
+		for _, ch := range str {
+			put(col, ch, st)
+			col++
+		}
+	}
+	text(a.Name, nameStyle)
+	// Remote marker.
+	if a.Remote {
+		text(" [R]", bgStyle.Foreground(tcell.ColorTeal))
+	}
+	// Pin markers: blue for Protected, purple for LivePinned.
+	if a.Protected {
+		text(" [P]", bgStyle.Foreground(tcell.ColorCornflowerBlue))
+	}
+	if a.LivePinned {
+		text(" [P]", bgStyle.Foreground(tcell.ColorMediumPurple).Bold(true))
+	}
+	// Hidden marker -- the same glyph the agents modal draws
+	// (hiddenBoxMarker, agents_grid.go), one definition instead of two
+	// copies that happened to agree (ini-6e97).
+	if !a.Visible {
+		text(" "+hiddenBoxMarker, bgStyle.Foreground(tcell.ColorDarkGray))
+	}
+
+	// Status text.
+	statusStyle := bgStyle.Foreground(tcell.ColorSilver)
+	if !a.Visible {
+		statusStyle = bgStyle.Foreground(tcell.ColorDarkGray)
+	}
+	col = x + 2 + maxNameLen + 1
+	text(a.Status, statusStyle)
+}
+
 // renderOverlay draws the floating agent status panel.
 func (t *TUI) renderOverlay() {
 	s := t.screen
@@ -830,27 +939,35 @@ func (t *TUI) renderOverlay() {
 	scoped := t.visiblePanesForWindow()
 	scopeHidden, scopeWhere := t.scopeDisclosure()
 
-	// Display order: locals in arrangement order, then remote machines
-	// alphabetically, each block in arrival order — the operator-chosen rule,
-	// shared with the modal's machine tiers (orderPanesForDisplay).
-	ordered := make([]PaneView, 0, len(scoped))
-	for _, idx := range orderPanesForDisplay(scoped) {
-		ordered = append(ordered, scoped[idx])
-	}
-	scoped = ordered
+	// Display order: locals in the Agents panel's order, then remote machines
+	// alphabetically, each block in arrival order (overlayDisplayOrder).
+	scoped = t.overlayDisplayOrder(scoped)
+	t.overlayBounds.dots = nil
 
-	agents := make([]AgentInfo, 0, len(scoped)+2)
+	// TWO COLUMNS (ini-gt7w): each section (this machine's agents, then one per
+	// remote machine under its divider) splits into not-working on the left and
+	// working on the right, each column keeping the section's order. The
+	// answer the operator glances for, who is busy, sits in one column.
+	type overlaySection struct {
+		machine     string // "" for this machine's agents; else the divider's label
+		left, right []AgentInfo
+	}
+	var sections []overlaySection
 	maxNameLen := 0
 	hiddenCount := 0
-	lastMachine := ""
+	agentRows := 0
+	dividerW := 0
 	for _, p := range scoped {
 		// A thin divider row opens each remote machine's block.
-		if paneIsRemoteMachine(p) && p.Host() != lastMachine {
-			lastMachine = p.Host()
-			agents = append(agents, AgentInfo{Name: p.Host(), Divider: true})
-			if dl := len(p.Host()) + 4; dl > maxNameLen {
-				maxNameLen = dl
+		if paneIsRemoteMachine(p) {
+			if len(sections) == 0 || sections[len(sections)-1].machine != p.Host() {
+				sections = append(sections, overlaySection{machine: p.Host()})
+				if dl := len(p.Host()) + 4; dl > dividerW {
+					dividerW = dl
+				}
 			}
+		} else if len(sections) == 0 {
+			sections = append(sections, overlaySection{})
 		}
 		vis := !t.layoutState.Hidden[agentKey(p)]
 		act := p.Activity()
@@ -871,17 +988,22 @@ func (t *TUI) renderOverlay() {
 			}
 		}
 		pk := agentKey(p)
-		pin := t.layoutState.Protected[pk]
-		if !pin {
-			_, pin = t.layoutState.LivePinned[pk]
-		}
 		// Window-alias prefixes are dropped, cross-machine hosts kept, and the
 		// [R] badge now means what it says -- another MACHINE, not another
 		// window of this fleet (ini-9isx AC1/AC2).
 		remote := paneIsRemoteMachine(p)
 		displayName := paneDisplayName(p)
 		_, livePin := t.layoutState.LivePinned[pk]
-		agents = append(agents, AgentInfo{Name: displayName, Status: status, Activity: act, Visible: vis, Protected: t.layoutState.Protected[pk], LivePinned: livePin, Remote: remote})
+		a := AgentInfo{Name: displayName, Key: pk, Status: status, Activity: act, Visible: vis, Protected: t.layoutState.Protected[pk], LivePinned: livePin, Remote: remote}
+		// The column is the product's one "working" predicate (running or
+		// background), the same one the splits and live mode use.
+		sec := &sections[len(sections)-1]
+		if paneIsWorking(p) {
+			sec.right = append(sec.right, a)
+		} else {
+			sec.left = append(sec.left, a)
+		}
+		agentRows++
 		nameLen := len(displayName)
 		if remote {
 			nameLen += 4 // " [R]"
@@ -902,15 +1024,32 @@ func (t *TUI) renderOverlay() {
 	}
 
 	statusMaxLen := 7 // minimum: "running"
-	for _, a := range agents {
-		if len(a.Status) > statusMaxLen {
-			statusMaxLen = len(a.Status)
+	listRows := 0
+	for _, sec := range sections {
+		for _, col := range [][]AgentInfo{sec.left, sec.right} {
+			for _, a := range col {
+				if l := len([]rune(a.Status)); l > statusMaxLen {
+					statusMaxLen = l
+				}
+			}
 		}
+		if sec.machine != "" {
+			listRows++
+		}
+		listRows += max(len(sec.left), len(sec.right))
 	}
-	panelW := 4 + maxNameLen + 1 + statusMaxLen + 2
+	// One column width for both, measured over EVERY row, so the box width
+	// does not depend on how the agents split: when the last running agent
+	// goes idle the right column stays blank at its width and the box does
+	// not jump sideways (ini-gt7w, pm's ruling).
+	colW := 2 + maxNameLen + 1 + statusMaxLen // dot, space, name, gap, status
+	panelW := 2 + colW + 2 + colW + 2
+	if w := dividerW + 4; w > panelW {
+		panelW = w
+	}
 	// Extra row for summary line when there are hidden panes.
 	summaryRow := hiddenCount > 0
-	panelH := len(agents) + 2
+	panelH := listRows + 2
 	if summaryRow {
 		panelH++
 	}
@@ -963,166 +1102,90 @@ func (t *TUI) renderOverlay() {
 
 	t.overlayBounds.x = px
 	t.overlayBounds.y = py
-	t.overlayBounds.agentCount = len(agents)
+	t.overlayBounds.agentCount = listRows
+	t.overlayBounds.dots = make(map[[2]int]string, agentRows)
 
 	overlayBg := tcell.NewRGBColor(20, 25, 40)
 	bgStyle := tcell.StyleDefault.Background(overlayBg)
 	borderStyle := tcell.StyleDefault.Foreground(tcell.ColorWhite).Background(overlayBg)
 
 	// Top border with title (rounded corners).
-	s.SetContent(px, py, '\u256d', nil, borderStyle)
+	s.SetContent(px, py, '╭', nil, borderStyle)
 	// The project name lives in the standing top-left badge now, not here —
 	// a title that disappears with the overlay cannot be the orientation cue.
 	title := " Agents "
 	for i := 1; i < panelW-1; i++ {
-		ch := '\u2500'
+		ch := '─'
 		if i-1 < len(title) {
 			ch = rune(title[i-1])
 		}
 		s.SetContent(px+i, py, ch, nil, borderStyle)
 	}
-	s.SetContent(px+panelW-1, py, '\u256e', nil, borderStyle)
+	s.SetContent(px+panelW-1, py, '╮', nil, borderStyle)
 
-	// Agent rows.
-	for i, a := range agents {
-		if i+2 >= panelH {
-			break
-		}
-		row := py + 1 + i
-
-		s.SetContent(px, row, '\u2502', nil, borderStyle)
+	// blankRow opens a row inside the box: borders and background.
+	blankRow := func(row int) {
+		s.SetContent(px, row, '│', nil, borderStyle)
 		for x := px + 1; x < px+panelW-1; x++ {
 			s.SetContent(x, row, ' ', nil, bgStyle)
 		}
+		s.SetContent(px+panelW-1, row, '│', nil, borderStyle)
+	}
+	inner := px + panelW - 1 // first column past the box's content
+	leftX, rightX := px+2, px+2+colW+2
 
-		if a.Divider {
+	// Agent rows, section by section.
+	row := py + 1
+	for _, sec := range sections {
+		if sec.machine != "" {
+			if row >= py+panelH-1 {
+				break
+			}
+			blankRow(row)
 			// "- machine -" rule, dim, spanning the panel: twelve remote rows
 			// read as "the support machine" instead of a wall of prefixes.
 			divStyle := bgStyle.Foreground(tcell.ColorGray)
 			col := px + 2
-			for _, ch := range "\u2500 " + a.Name + " " {
-				if col < px+panelW-1 {
+			for _, ch := range "─ " + sec.machine + " " {
+				if col < inner {
 					s.SetContent(col, row, ch, nil, divStyle)
 				}
 				col++
 			}
-			for col < px+panelW-1 {
-				s.SetContent(col, row, '\u2500', nil, divStyle)
+			for col < inner {
+				s.SetContent(col, row, '─', nil, divStyle)
 				col++
 			}
-			continue
+			row++
 		}
-		// Status dot (color per actual activity state, not display text).
-		dot := '\u25cf'
-		var dotColor tcell.Color
-		switch a.Activity {
-		case StateRunning:
-			dotColor = tcell.ColorGreen
-		case StateIdle, StateBackground:
-			// Background is idle's dot: not producing output (ini-pi8p).
-			dot = '\u25cb'
-			dotColor = tcell.ColorGray
-		case StateDead:
-			dotColor = tcell.ColorRed
-		case StateSuspended:
-			dot = '\u25cb' // Hollow dot, same as idle but blue.
-			dotColor = tcell.ColorDodgerBlue
-		default:
-			dotColor = tcell.ColorGray
-		}
-		s.SetContent(px+2, row, dot, nil, bgStyle.Foreground(dotColor))
-
-		// Name (dimmed for hidden panes).
-		nameStyle := bgStyle.Foreground(tcell.ColorWhite)
-		if a.Name == t.layoutState.Focused {
-			nameStyle = bgStyle.Foreground(tcell.ColorYellow).Bold(true)
-		} else if !a.Visible {
-			nameStyle = bgStyle.Foreground(tcell.ColorDarkGray)
-		}
-		if !a.Visible {
-			nameStyle = nameStyle.Italic(true)
-		}
-		col := px + 4
-		for _, ch := range a.Name {
-			if col < px+panelW-1 {
-				s.SetContent(col, row, ch, nil, nameStyle)
+		for i := 0; i < max(len(sec.left), len(sec.right)); i++ {
+			if row >= py+panelH-1 {
+				break
 			}
-			col++
-		}
-		// Remote marker.
-		if a.Remote {
-			remoteStyle := bgStyle.Foreground(tcell.ColorTeal)
-			for _, ch := range " [R]" {
-				if col < px+panelW-1 {
-					s.SetContent(col, row, ch, nil, remoteStyle)
-				}
-				col++
+			blankRow(row)
+			if i < len(sec.left) {
+				t.drawOverlayRow(leftX, row, min(leftX+colW, inner), maxNameLen, sec.left[i], bgStyle)
 			}
-		}
-		// Pin markers: blue for Protected, purple for LivePinned.
-		if a.Protected {
-			pinStyle := bgStyle.Foreground(tcell.ColorCornflowerBlue)
-			for _, ch := range " [P]" {
-				if col < px+panelW-1 {
-					s.SetContent(col, row, ch, nil, pinStyle)
-				}
-				col++
+			if i < len(sec.right) {
+				t.drawOverlayRow(rightX, row, min(rightX+colW, inner), maxNameLen, sec.right[i], bgStyle)
 			}
+			row++
 		}
-		if a.LivePinned {
-			pinStyle := bgStyle.Foreground(tcell.ColorMediumPurple).Bold(true)
-			for _, ch := range " [P]" {
-				if col < px+panelW-1 {
-					s.SetContent(col, row, ch, nil, pinStyle)
-				}
-				col++
-			}
-		}
-		// Hidden marker -- the same glyph the agents modal draws
-		// (hiddenBoxMarker, agents_grid.go), one definition instead of two
-		// copies that happened to agree (ini-6e97).
-		if !a.Visible {
-			markerStyle := bgStyle.Foreground(tcell.ColorDarkGray)
-			for _, ch := range " " + hiddenBoxMarker {
-				if col < px+panelW-1 {
-					s.SetContent(col, row, ch, nil, markerStyle)
-				}
-				col++
-			}
-		}
-
-		// Status text.
-		statusStyle := bgStyle.Foreground(tcell.ColorSilver)
-		if !a.Visible {
-			statusStyle = bgStyle.Foreground(tcell.ColorDarkGray)
-		}
-		statusCol := px + 4 + maxNameLen + 1
-		for j, ch := range a.Status {
-			if statusCol+j < px+panelW-1 {
-				s.SetContent(statusCol+j, row, ch, nil, statusStyle)
-			}
-		}
-
-		s.SetContent(px+panelW-1, row, '\u2502', nil, borderStyle)
 	}
 
-	// Summary line (only when hidden panes exist).
+	// Summary line (only when hidden panes exist). It counts agents, never
+	// the machine divider rows.
 	if summaryRow {
-		sumRow := py + 1 + len(agents)
+		sumRow := py + 1 + listRows
 		if sumRow+1 < py+panelH {
-			s.SetContent(px, sumRow, '\u2502', nil, borderStyle)
-			for x := px + 1; x < px+panelW-1; x++ {
-				s.SetContent(x, sumRow, ' ', nil, bgStyle)
-			}
-			visCount := len(agents) - hiddenCount
-			summary := fmt.Sprintf(" %d visible, %d hidden", visCount, hiddenCount)
+			blankRow(sumRow)
+			summary := fmt.Sprintf(" %d visible, %d hidden", agentRows-hiddenCount, hiddenCount)
 			sumStyle := bgStyle.Foreground(tcell.ColorSilver)
 			for j, ch := range summary {
-				if px+1+j < px+panelW-1 {
+				if px+1+j < inner {
 					s.SetContent(px+1+j, sumRow, ch, nil, sumStyle)
 				}
 			}
-			s.SetContent(px+panelW-1, sumRow, '\u2502', nil, borderStyle)
 		}
 	}
 
@@ -1131,22 +1194,18 @@ func (t *TUI) renderOverlay() {
 	// window owns that the operator has hidden; this line is agents this
 	// window does not own at all.
 	if scopeLine != "" {
-		scopeRow := py + 1 + len(agents)
+		scopeRow := py + 1 + listRows
 		if summaryRow {
 			scopeRow++
 		}
 		if scopeRow+1 < py+panelH {
-			s.SetContent(px, scopeRow, '\u2502', nil, borderStyle)
-			for x := px + 1; x < px+panelW-1; x++ {
-				s.SetContent(x, scopeRow, ' ', nil, bgStyle)
-			}
+			blankRow(scopeRow)
 			scopeStyle := bgStyle.Foreground(tcell.ColorSilver)
 			for j, ch := range []rune(scopeLine) {
-				if px+1+j < px+panelW-1 {
+				if px+1+j < inner {
 					s.SetContent(px+1+j, scopeRow, ch, nil, scopeStyle)
 				}
 			}
-			s.SetContent(px+panelW-1, scopeRow, '\u2502', nil, borderStyle)
 		}
 	}
 

@@ -22,11 +22,12 @@ func TestRender_UpdateActivity_OverridesManualRunning(t *testing.T) {
 	// lastOutputTime is zero → updateActivity() returns StateIdle.
 	tui.render()
 
-	sw, _ := s.Size()
-	panelW := 4 + 4 + 1 + 7 + 2
-	px := sw - panelW - 1
-	dotX := px + 2
-	dotY := 2
+	// The dot as drawn: with two columns (ini-gt7w) its cell depends on the
+	// agent's state, so it is read off the frame, not recomputed.
+	dotX, dotY, ok := overlayDotOf(overlayScreenRows(s), "eng1")
+	if !ok {
+		t.Fatal("eng1 is not drawn in the overlay")
+	}
 
 	mainc, style, _ := s.Get(dotX, dotY)
 	if mainc != "\u25cb" {
@@ -46,11 +47,12 @@ func TestRender_UpdateActivity_RecentOutputYieldsRunning(t *testing.T) {
 	tui.panes[0].(*Pane).lastOutputTime = time.Now() // simulate active PTY output
 	tui.render()
 
-	sw, _ := s.Size()
-	panelW := 4 + 4 + 1 + 7 + 2
-	px := sw - panelW - 1
-	dotX := px + 2
-	dotY := 2
+	// The dot as drawn: with two columns (ini-gt7w) its cell depends on the
+	// agent's state, so it is read off the frame, not recomputed.
+	dotX, dotY, ok := overlayDotOf(overlayScreenRows(s), "eng1")
+	if !ok {
+		t.Fatal("eng1 is not drawn in the overlay")
+	}
 
 	mainc, style, _ := s.Get(dotX, dotY)
 	if mainc != "\u25cf" {
@@ -70,11 +72,12 @@ func TestRender_UpdateActivity_StaleOutputYieldsIdle(t *testing.T) {
 	tui.panes[0].(*Pane).lastOutputTime = time.Now().Add(-(ptyIdleTimeout + time.Second))
 	tui.render()
 
-	sw, _ := s.Size()
-	panelW := 4 + 4 + 1 + 7 + 2
-	px := sw - panelW - 1
-	dotX := px + 2
-	dotY := 2
+	// The dot as drawn: with two columns (ini-gt7w) its cell depends on the
+	// agent's state, so it is read off the frame, not recomputed.
+	dotX, dotY, ok := overlayDotOf(overlayScreenRows(s), "eng1")
+	if !ok {
+		t.Fatal("eng1 is not drawn in the overlay")
+	}
 
 	mainc, style, _ := s.Get(dotX, dotY)
 	if mainc != "\u25cb" {
@@ -96,11 +99,12 @@ func TestRender_UpdateActivity_DeadPaneIsIdle(t *testing.T) {
 	tui.panes[0].(*Pane).lastOutputTime = time.Now() // recent, but pane is dead
 	tui.render()
 
-	sw, _ := s.Size()
-	panelW := 4 + 4 + 1 + 7 + 2
-	px := sw - panelW - 1
-	dotX := px + 2
-	dotY := 2
+	// The dot as drawn: with two columns (ini-gt7w) its cell depends on the
+	// agent's state, so it is read off the frame, not recomputed.
+	dotX, dotY, ok := overlayDotOf(overlayScreenRows(s), "eng1")
+	if !ok {
+		t.Fatal("eng1 is not drawn in the overlay")
+	}
 
 	mainc, style, _ := s.Get(dotX, dotY)
 	if mainc != "\u25cf" {

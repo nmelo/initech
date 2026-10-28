@@ -466,8 +466,12 @@ func TestOverlayClick_ResolvesAgainstTheDrawnList(t *testing.T) {
 	events := make(chan AgentEvent, 8)
 	tui.agentEvents = events
 
-	dotCol := tui.overlayBounds.x + 2
-	firstRowY := tui.overlayBounds.y + 1
+	// Row 0's dot as drawn: with two columns (ini-gt7w) its cell depends on
+	// eng1's state, so it is read off the frame.
+	dotCol, firstRowY, ok := overlayDotOf(overlayScreenRows(s), "eng1")
+	if !ok || firstRowY != tui.overlayBounds.y+1 {
+		t.Fatalf("eng1 not drawn on the overlay's first row (found=%v, y=%d)", ok, firstRowY)
+	}
 	tui.handleMouse(tcell.NewEventMouse(dotCol, firstRowY, tcell.Button1, tcell.ModNone))
 
 	select {

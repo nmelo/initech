@@ -27,6 +27,7 @@ const (
 // AgentInfo describes an agent for the status overlay.
 type AgentInfo struct {
 	Name       string
+	Key        string        // Agent key (agentKey) the row acts on when its dot is clicked.
 	Status     string        // Display text: activity string or bead ID.
 	Activity   ActivityState // Actual activity state for dot color.
 	Visible    bool
@@ -430,7 +431,10 @@ type TUI struct {
 	// Overlay geometry cached by renderOverlay for mouse hit-testing.
 	overlayBounds struct {
 		x, y       int // Panel top-left corner.
-		agentCount int // Number of agent rows rendered.
+		agentCount int // Number of list rows rendered (agents and machine dividers).
+		// dots maps each drawn dot cell {x, y} to the agent key it acts on,
+		// in either column (ini-gt7w). Rebuilt on every overlay draw.
+		dots map[[2]int]string
 	}
 
 	// Live Mode: persistent engine for anti-thrashing across render frames.
