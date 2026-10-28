@@ -44,19 +44,12 @@ func (c *clampedScreen) Get(x, y int) (string, tcell.Style, int) {
 	return " ", tcell.StyleDefault, 1
 }
 
-// Render draws the pane's bottom ribbon and terminal content onto the tcell screen.
-// When dimmed is true, foreground colors are reduced to ~70% brightness.
-// The index parameter is the 1-based pane number shown in the ribbon badge.
-// All writes are clamped to the pane's region to prevent bleed-through.
-func (p *Pane) Render(screen tcell.Screen, focused bool, dimmed bool, index int, sel Selection) {
-	r := p.region
-	if r.W < 1 || r.H < 3 {
-		return
-	}
-
-	// Clamp all writes to the pane's region.
-	s := &clampedScreen{Screen: screen, r: r}
-
+// renderChrome draws the pane's frame around its body: the bottom ribbon and
+// the activity bar on the top edge. Every frame draws it for every pane, so
+// the badge, the running square and the sweep keep their cadence even for a
+// pane whose body is not redrawn (ini-ysr.2). Returns the running tint, which
+// the body uses too, so both are one claim read from one field.
+func (p *Pane) renderChrome(s *clampedScreen, r Region, focused bool, index int) tcell.Color {
 	// Running-pane background tint (ini-zmzg): ColorDefault when not running /
 	// past the hold window, so idle/dead/suspended panes render exactly as
 	// before. Applied only to default-bg content cells.
@@ -117,6 +110,32 @@ func (p *Pane) Render(screen tcell.Screen, focused bool, dimmed bool, index int,
 	// Activity bar at r.Y (top edge). Drawn before content so it is always
 	// present even when content rendering is suppressed during resize settling.
 	p.renderActivityBar(s, r)
+	return tint
+}
+
+// renderChromeOnly draws the chrome alone, for a pane whose body is unchanged.
+func (p *Pane) renderChromeOnly(screen tcell.Screen, focused bool, index int) {
+	r := p.region
+	if r.W < 1 || r.H < 3 {
+		return
+	}
+	p.renderChrome(&clampedScreen{Screen: screen, r: r}, r, focused, index)
+}
+
+// Render draws the pane's bottom ribbon and terminal content onto the tcell screen.
+// When dimmed is true, foreground colors are reduced to ~70% brightness.
+// The index parameter is the 1-based pane number shown in the ribbon badge.
+// All writes are clamped to the pane's region to prevent bleed-through.
+func (p *Pane) Render(screen tcell.Screen, focused bool, dimmed bool, index int, sel Selection) {
+	r := p.region
+	if r.W < 1 || r.H < 3 {
+		return
+	}
+
+	// Clamp all writes to the pane's region.
+	s := &clampedScreen{Screen: screen, r: r}
+
+	tint := p.renderChrome(s, r, focused, index)
 
 	// Content region: below activity bar (r.Y+1), above ribbon (r.Y+H-1).
 	// cr.InnerSize() returns TerminalSize dimensions (H-2 rows), and
@@ -135,6 +154,7 @@ func (p *Pane) Render(screen tcell.Screen, focused bool, dimmed bool, index int,
 	read := p.withScreen(func(e *vt.Emulator) {
 		drewContent = p.renderContent(s, cr, e, focused, dimmed, sel, tint, termCols, termRows)
 	})
+	p.renderFinal = read && drewContent
 	if !read {
 		p.noteScreenSkipped(now, "render")
 		p.replayFrame(s, cr, termCols, termRows, now)

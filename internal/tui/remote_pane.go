@@ -617,26 +617,10 @@ func (rp *RemotePane) writeEmu(chunk []byte) {
 	rp.markFrameChanged()
 }
 
-// Render draws the remote pane with [R] badge in the ribbon title.
-func (rp *RemotePane) Render(screen tcell.Screen, focused bool, dimmed bool, index int, sel Selection) {
-	r := rp.region
-	if r.W < 1 || r.H < 2 {
-		return
-	}
-
-	s := &clampedScreen{Screen: screen, r: r}
-
-	// Change-gated geometry trace (post-wake garble instrumentation): the
-	// region this pane is DRAWN at vs the emulator it draws FROM. A split
-	// between this and the last "viewer resize" line is the defect.
-	if r.H != rp.lastLoggedH || r.W != rp.lastLoggedW {
-		rp.lastLoggedH, rp.lastLoggedW = r.H, r.W
-		LogInfo("remote", "render region", "agent", rp.name, "host", rp.host,
-			"region_h", r.H, "region_w", r.W,
-			"emu_h", rp.emu.Height(), "emu_w", rp.emu.Width())
-	}
-
-	// Badge style: remote panes use teal to distinguish from local.
+// renderChrome draws the remote pane's ribbon: its number, name, badge and
+// bead. Drawn every frame, so the ribbon stays current for a pane whose body
+// is not redrawn (ini-ysr.2).
+func (rp *RemotePane) renderChrome(s *clampedScreen, r Region, focused bool, index int) {
 	var titleStyle tcell.Style
 	if focused {
 		titleStyle = tcell.StyleDefault.Background(tcell.ColorTeal).Foreground(tcell.ColorBlack).Bold(true)
@@ -681,12 +665,44 @@ func (rp *RemotePane) Render(screen tcell.Screen, focused bool, dimmed bool, ind
 	// "running" notion for remote panes.
 	beadLabel, beadTitle := ribbonBeadLabel(rp.BeadID(), "", rp.NoBeadWork())
 	renderRibbon(s, r, title, titleStyle, beadLabel, beadTitle, false)
+}
+
+// renderChromeOnly draws the ribbon alone, for a pane whose body is unchanged.
+func (rp *RemotePane) renderChromeOnly(screen tcell.Screen, focused bool, index int) {
+	r := rp.region
+	if r.W < 1 || r.H < 2 {
+		return
+	}
+	rp.renderChrome(&clampedScreen{Screen: screen, r: r}, r, focused, index)
+}
+
+// Render draws the remote pane with [R] badge in the ribbon title.
+func (rp *RemotePane) Render(screen tcell.Screen, focused bool, dimmed bool, index int, sel Selection) {
+	r := rp.region
+	if r.W < 1 || r.H < 2 {
+		return
+	}
+
+	s := &clampedScreen{Screen: screen, r: r}
+
+	// Change-gated geometry trace (post-wake garble instrumentation): the
+	// region this pane is DRAWN at vs the emulator it draws FROM. A split
+	// between this and the last "viewer resize" line is the defect.
+	if r.H != rp.lastLoggedH || r.W != rp.lastLoggedW {
+		rp.lastLoggedH, rp.lastLoggedW = r.H, r.W
+		LogInfo("remote", "render region", "agent", rp.name, "host", rp.host,
+			"region_h", r.H, "region_w", r.W,
+			"emu_h", rp.emu.Height(), "emu_w", rp.emu.Width())
+	}
+
+	// Badge style: remote panes use teal to distinguish from local.
+	rp.renderChrome(s, r, focused, index)
 
 	_, innerRows := r.InnerSize()
 	emuStartRow := rp.emu.Height() - innerRows
 	// The viewer emulator is written only on this goroutine, so the try never
 	// fails; going through withEmulator keeps one rule for every render.
-	withEmulator(rp.emu, screenTryBudget, func(e *vt.Emulator) {
+	rp.renderFinal = withEmulator(rp.emu, screenTryBudget, func(e *vt.Emulator) {
 		innerCols, _ := r.InnerSize()
 		// Compensate for output that arrived while the operator reads, then
 		// draw history instead of the live tail (ini-di8h). Same rule, same

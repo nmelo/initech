@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"github.com/mattn/go-runewidth"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -118,33 +119,61 @@ func (t *TUI) renderFrame() {
 	// immediately in a single-window session, where there is nobody to tell.
 	t.broadcastAgentStatusChanges()
 
-	s.Clear()
-
 	if t.eventLogM.active {
 		// Full-screen event log replaces pane rendering. No pane is on
 		// screen, so none keeps a record of how it was drawn: every pane is
 		// changed on the frame that brings it back (ini-ysr.1).
+		s.Clear()
 		t.lastDrawn = nil
 		t.renderEventLog()
 		s.Show()
 		return
 	}
 
-	t.renderEmptyViewerHint(s, w, h)
-	t.renderLiveFocusEmptyHint(s, w, h)
+	// DRAW ONLY WHAT CHANGED (ini-ysr.2). A frame starts from a cleared
+	// screen only when the whole screen is new: the first frame, after the
+	// event log, a new screen size, or a new layout (a pane moved, came or
+	// went, so a gutter or an empty region may hold stale cells). Otherwise
+	// the screen keeps last frame's cells, each pane's body is drawn only
+	// when it changed or its last draw was not its real body, and every
+	// pane's chrome (ribbon, activity bar) is drawn every frame. The layers
+	// drawn over the panes (overlay, help, toasts, status bar...) are
+	// recorded; a cell a layer wrote last frame and not this one is restored
+	// after the layers (restoreUncovered). Measured: an 11-pane frame cost
+	// 9.0 ms drawing every body, 0.6 ms drawing chrome.
+	regions := planRegions(t.plan.Panes)
+	full := t.lastDrawn == nil || t.lastLayerW != w || len(t.lastLayer) != w*h || !slices.Equal(regions, t.lastPlan)
+	if full {
+		s.Clear()
+	}
+	rec := newLayerRecorder(s)
+
+	t.renderEmptyViewerHint(rec, w, h)
+	t.renderLiveFocusEmptyHint(rec, w, h)
 
 	// Draw panes from the render plan. No visibility checks needed. Each
 	// pane's changed-since-the-last-frame fact is taken here (ini-ysr.1);
 	// nothing acts on it yet.
 	nextDrawn := make(map[PaneView]paneFrameState, len(t.plan.Panes))
 	changed := make(map[string]bool, len(t.plan.Panes))
+	var bodies []string
 	for i, pr := range t.plan.Panes {
 		LogDebug("render", "drawing pane", "frame", t.renderCount, "idx", i, "name", pr.Pane.Name(), "host", pr.Pane.Host())
 		sel := t.selectionForPane(pr.Pane)
-		if paneChangedForFrame(t.lastDrawn, nextDrawn, pr, sel) {
+		paneChanged := paneChangedForFrame(t.lastDrawn, nextDrawn, pr, sel)
+		if paneChanged {
 			changed[agentKey(pr.Pane)] = true
 		}
-		pr.Pane.Render(s, pr.Focused, pr.Dimmed, pr.Index, sel)
+		co, chromeAlone := pr.Pane.(chromeOnly)
+		if full || paneChanged || !chromeAlone || co.renderPending() {
+			if !full {
+				blankRegion(s, pr.Region)
+			}
+			pr.Pane.Render(s, pr.Focused, pr.Dimmed, pr.Index, sel)
+			bodies = append(bodies, agentKey(pr.Pane))
+		} else {
+			co.renderChromeOnly(s, pr.Focused, pr.Index)
+		}
 		// Live mode: draw [P] badge for pinned panes, right-aligned on ribbon.
 		if t.layoutState.Mode == LayoutLive {
 			pk := agentKey(pr.Pane)
@@ -163,7 +192,12 @@ func (t *TUI) renderFrame() {
 		}
 		LogDebug("render", "pane done", "frame", t.renderCount, "idx", i, "name", pr.Pane.Name())
 	}
-	t.lastDrawn, t.frameChanged = nextDrawn, changed
+	t.lastDrawn, t.frameChanged, t.bodiesDrawn = nextDrawn, changed, bodies
+
+	// The layers draw through the recorder; restored after the frame.
+	saved := t.screen
+	t.screen = rec
+	defer func() { t.screen = saved }()
 
 	// Dividers (ini-573): the reserved gutter column is left EMPTY on
 	// purpose -- no SetContent call at all, not a drawn glyph in a dark
@@ -257,6 +291,10 @@ func (t *TUI) renderFrame() {
 	t.renderStatusBar()
 
 	t.renderWindowConnectionStatus()
+	if !full {
+		restoreUncovered(s, t.lastLayer, rec.cells, w, t.plan.Panes)
+	}
+	t.lastLayer, t.lastLayerW, t.lastPlan = rec.cells, w, regions
 	s.Show()
 
 	// Stamp the watchdog heartbeat so it knows we're alive.

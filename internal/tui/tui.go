@@ -164,7 +164,14 @@ type TUI struct {
 	// (ini-ysr.1). Main loop only. Nothing acts on frameChanged yet.
 	lastDrawn    map[PaneView]paneFrameState
 	frameChanged map[string]bool
-	inboxOnce    sync.Once
+	// lastLayer marks the cells the layers over the panes wrote last frame
+	// (w = lastLayerW), lastPlan the layout it was drawn with, and
+	// bodiesDrawn the panes whose body the last frame drew (ini-ysr.2).
+	lastLayer   []bool
+	lastLayerW  int
+	lastPlan    []paneAt
+	bodiesDrawn []string
+	inboxOnce   sync.Once
 	// inboxOutstanding maps an agent to the inbox items whose delivery verdict
 	// may still be corrected by a late report from the send path (ini-3wkl.6).
 	inboxOutstanding   map[string][]string
