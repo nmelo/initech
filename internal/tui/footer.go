@@ -76,33 +76,8 @@ func parseFooter(rows []string, width int) Footer {
 // label, then " ─", at the rule's end; the bottom rule is never labelled.
 // Without this every field of a renamed agent read null (ini-2tec).
 func footerFrameBottom(rows []string, width int) (int, bool) {
-	isRule := func(row string) bool {
-		t := strings.TrimSpace(row)
-		n := len([]rune(t))
-		return n > 0 && n >= min(composerRuleMinRunes, width) && strings.Trim(t, "\u2500") == ""
-	}
-	isTopRule := func(row string) bool {
-		if isRule(row) {
-			return true
-		}
-		t := strings.TrimSpace(row)
-		m := labelledRule.FindStringSubmatch(t)
-		return m != nil && len([]rune(t)) >= min(composerRuleMinRunes, width) && len([]rune(m[1])) >= len([]rune(t))/2
-	}
-	for bottom := len(rows) - 1; bottom >= 2; bottom-- {
-		if !isRule(rows[bottom]) {
-			continue
-		}
-		top := bottom - 1
-		for top > 0 && bottom-top <= composerFrameMaxRows && !isTopRule(rows[top]) {
-			top--
-		}
-		if top <= 0 || top == bottom-1 || !isTopRule(rows[top]) || !isComposerPromptRow(rows[top+1]) {
-			continue
-		}
-		return bottom, true
-	}
-	return 0, false
+	_, bottom, ok := composerFrame(rows, width)
+	return bottom, ok
 }
 
 // labelledRule is a top rule ending in a label: the rule, one space, a short

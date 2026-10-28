@@ -13,6 +13,7 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 // modalScanWholePane makes the modal scan cover EVERY rendered row of the pane
@@ -235,22 +236,50 @@ func liveDialogRows(rows []string) []string {
 	return rows[bottom+1:]
 }
 
-// lowestComposerFrame finds the composer frame nearest the bottom: a ─ rule
-// at top, the ❯ prompt row under it, a ─ rule at bottom, at most
-// composerFrameMaxRows apart. ok is false when there is none.
+// lowestComposerFrame finds the composer frame nearest the bottom of a
+// screen, the pane's width read from the screen itself: the widest row (a
+// live row is padded to the pane's width; in a capture the full-width rule
+// is the widest). ok is false when there is none.
 func lowestComposerFrame(rows []string) (top, bottom int, ok bool) {
+	width := 0
+	for _, r := range rows {
+		width = max(width, utf8.RuneCountInString(r))
+	}
+	return composerFrame(rows, width)
+}
+
+// composerFrame finds the composer frame nearest the bottom: a ─ rule at
+// top, the ❯ prompt row under it, a ─ rule at bottom, at most
+// composerFrameMaxRows apart. A rule spans at least composerRuleMinRunes or
+// the whole pane when it is narrower (ini-gav: a 32-column pane never showed
+// a 40-rune rule, so its input box was never found and a dialog latch on it
+// never cleared). The top rule may end in a label, a named session's
+// (ini-2tec); the bottom rule never does. The footer parser and the dialog
+// guard share this one definition of the input box.
+func composerFrame(rows []string, width int) (top, bottom int, ok bool) {
+	minRunes := min(composerRuleMinRunes, width)
+	isRule := func(row string) bool {
+		t := strings.TrimSpace(row)
+		n := utf8.RuneCountInString(t)
+		return n > 0 && n >= minRunes && strings.Trim(t, "\u2500") == ""
+	}
+	isTopRule := func(row string) bool {
+		if isRule(row) {
+			return true
+		}
+		t := strings.TrimSpace(row)
+		m := labelledRule.FindStringSubmatch(t)
+		return m != nil && utf8.RuneCountInString(t) >= minRunes && utf8.RuneCountInString(m[1]) >= utf8.RuneCountInString(t)/2
+	}
 	for bottom := len(rows) - 1; bottom >= 2; bottom-- {
-		if !isComposerRule(rows[bottom]) {
+		if !isRule(rows[bottom]) {
 			continue
 		}
 		top := bottom - 1
-		for top > 0 && bottom-top <= composerFrameMaxRows && !isComposerRule(rows[top]) {
+		for top > 0 && bottom-top <= composerFrameMaxRows && !isTopRule(rows[top]) {
 			top--
 		}
-		if top <= 0 || top == bottom-1 || !isComposerRule(rows[top]) {
-			continue
-		}
-		if !isComposerPromptRow(rows[top+1]) {
+		if top <= 0 || top == bottom-1 || !isTopRule(rows[top]) || !isComposerPromptRow(rows[top+1]) {
 			continue
 		}
 		return top, bottom, true

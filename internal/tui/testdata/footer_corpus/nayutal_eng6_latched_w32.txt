@@ -1,0 +1,18 @@
+  through my runner. Services
+  itself can't run whole here
+  because many of its rows start
+  containers.
+
+  They're running in the
+  background; landing waits for
+  both landing slots to clear,
+  19:53 at the latest.
+
+✻ Cooked for 1m 9s · done 7:25
+  PM · 1 shell still running
+
+────────────────────────────────
+❯ 
+────────────────────────────────
+  Opus 5.5 │ Second2 │ 60% │ 44…
+  ⏵⏵ bypass permissions on · 1

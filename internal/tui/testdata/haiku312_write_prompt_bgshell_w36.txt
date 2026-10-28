@@ -1,0 +1,36 @@
+✻ Baked for 6s · done 7:40 PM · 1
+  shell still running
+
+❯ [from b] one: reply ONE
+
+⏺ ONE
+
+✻ Crunched for 3s · done 7:41 PM · 1
+  shell still running
+
+❯ Use your Write tool to create the
+  file
+  /tmp/iqk.jcGS/../gav-outside.txt
+  containing the word hi. Reply
+  WRITTEN.
+
+⏺ Write(/tmp/gav-outside.txt)
+
+────────────────────────────────────
+ Create file
+ ../../../../tmp/gav-outside.txt
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+  1 hi
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+ Do you want to create
+ gav-outside.txt?
+ ❯ 1. Yes
+   2. Yes, and switch to accept
+      edits (auto-approve file edits
+      and common file commands) for
+      this session; Yes, and always
+      allow access to /tmp,
+      /private/tmp for this session
+   3. Nohift+tab)
+
+ Esc to cancel · Tab to amend

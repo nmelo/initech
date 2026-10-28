@@ -1,0 +1,35 @@
+❯ Spawn a subagent with your Agent
+  tool, run_in_background true,
+  whose task is: run sleep 120 with
+  Bash, then report done. Do not
+  wait. Reply SPAWNED.
+
+⏺ Agent(Sleep 120 then report)
+  ⎿  Backgrounded agent (↓ to
+
+⏺ SPAWNED
+
+✻ Waiting for 1 background agent to
+  finish
+
+⏺ Agent "Sleep 120 then report" is
+waiting on its own background work ·
+5s
+
+⏺ The subagent is still running its
+  120-second sleep, so there's no
+  "done" yet. I'll report back when
+  its completion notification
+  arrives.
+
+✻ Brewed for 11s · done 7:42 PM · 2
+  shells still running
+
+────────────────────────────────────
+❯
+────────────────────────────────────
+  Haiku 5.5 │ Other │ 6% │ 58% ▓▓…
+  ⏸ manual mode on · 2 shells
+
+  ⏺ main
+  ◯ general-purpose 5s · ↓ 43.4k

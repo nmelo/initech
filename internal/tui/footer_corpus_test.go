@@ -70,6 +70,13 @@ func TestFooterCorpus_EveryCapturedShapeReadsWhatItShows(t *testing.T) {
 		{"fleet_eng1.txt", none(i(0), s("Opus 5.5"), s("Second"))},
 		{"fleet_eng2.txt", none(i(54), s("Opus 5.5"), s("Second"))},
 		{"fleet_eng4.txt", none(i(0), s("Opus 5.5"), s("Second"))},
+		// nayutal eng6, a 32-column pane held "modal open" by a dialog latch
+		// that never cleared (ini-gav); the mode line is cut after "· 1".
+		{"nayutal_eng6_latched_w32.txt", Footer{i(60), nil, nil, zero, s("Opus 5.5"), s("Second2")}},
+		// Claude Code 2.1.312 on Haiku, 36 columns (ini-gav): a background
+		// shell, then two shells and a background subagent listed below.
+		{"haiku312_bgshell_w36.txt", Footer{i(6), i(1), zero, zero, s("Haiku 5.5"), s("Other")}},
+		{"haiku312_subagent_w36.txt", Footer{i(6), i(2), zero, i(1), s("Haiku 5.5"), s("Other")}},
 	}
 	for _, c := range cases {
 		rows, width := corpusFooter(t, c.name)

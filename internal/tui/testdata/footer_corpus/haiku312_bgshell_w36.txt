@@ -1,0 +1,35 @@
+           Claude Code v2.1.312
+ ▐▛███▛█   Haiku 5.5
+▝▜██████▀  Claude Max
+ ▝▝   ▝▝   /…/tmp/iqk.jcGS/a
+
+
+❯ Use Bash with run_in_background
+  true to run: sleep 600. Do not
+  wait. Reply STARTED.
+
+  Ran 1 shell command
+
+⏺ STARTED
+
+✻ Baked for 6s · done 7:40 PM · 1
+  shell still running
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────
+❯
+────────────────────────────────────
+  Haiku 5.5 │ Other │ 6% │ 57% ▓▓…
+  ⏸ manual mode on · 1 shell
