@@ -167,7 +167,9 @@ func (t *TUI) renderFrame() {
 		co, chromeAlone := pr.Pane.(chromeOnly)
 		if full || paneChanged || !chromeAlone || co.renderPending() {
 			if !full {
-				blankRegion(s, pr.Region)
+				// The region the pane draws itself at, so the blank never
+				// reaches a cell another pane drew this frame.
+				blankRegion(s, pr.Pane.GetRegion())
 			}
 			pr.Pane.Render(s, pr.Focused, pr.Dimmed, pr.Index, sel)
 			bodies = append(bodies, agentKey(pr.Pane))

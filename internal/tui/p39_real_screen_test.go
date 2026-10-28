@@ -148,7 +148,10 @@ func p39StaticFrame(t *testing.T, screen func(*testing.T) (tcell.Screen, func() 
 	// terminal on the next frame.
 	// Pane 1 sits at x=60 and is on screen; the fixture parks panes 2+ past
 	// the 120th column, where a change would rightly emit nothing.
+	// Written as the read loop writes it: the bytes, then the pane marked
+	// changed, which is what makes the frame draw its body (ini-ysr.2).
 	tui.panes[1].(*Pane).emu.Write([]byte("CHANGED"))
+	tui.panes[1].(*Pane).markFrameChanged()
 	tui.render()
 	if n := emitted(); n == 0 {
 		t.Error("a changed pane emitted nothing: the buffer is suppressing real changes")
