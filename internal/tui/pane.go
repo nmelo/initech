@@ -370,6 +370,10 @@ type Pane struct {
 	// new mail (ini-1898). Guarded by mu.
 	redelivering *QueuedMessage
 
+	// Do-not-disturb (dnd.go): while set, sends wait on messageQueue.
+	// Memory only, never saved. Guarded by mu.
+	dnd bool
+
 	// Typing hold (typing_hold.go): when the operator last typed here, the
 	// FIFO of messages waiting for a quiet gap, how many wait, and the clock.
 	lastOperatorKey atomic.Int64
@@ -1184,6 +1188,13 @@ func (p *Pane) sendText(text string, enter, hold bool) SendVerdict {
 	if p.queueIfSuspended(text, enter) {
 		return SendVerdict{Outcome: DeliveryDelivered}
 	}
+	// DO-NOT-DISTURB (ini-x432): held on the queue, nothing typed. The
+	// operator's paste (hold false) is typing, not a send, and goes in.
+	if hold {
+		if v, held := p.holdIfDND(text, enter); held {
+			return v
+		}
+	}
 	// STARTUP GATE (ini-i35w): a child that is still booting is not listening.
 	// Claude with a --continue transcript renders for seconds and flushes
 	// stdin at raw-mode entry, so text that lands early is eaten. Every caller
@@ -1205,6 +1216,10 @@ func (p *Pane) sendText(text string, enter, hold bool) SendVerdict {
 		defer release()
 		if p.queueIfSuspended(text, enter) {
 			return SendVerdict{Outcome: DeliveryDelivered}
+		}
+		// Do-not-disturb set while the message waited holds it too.
+		if v, held := p.holdIfDND(text, enter); held {
+			return v
 		}
 	}
 	p.sendMu.Lock()

@@ -30,6 +30,9 @@ const (
 	DeliveryUnchecked = "unchecked"
 	// DeliveryDeferred: held behind an open dialog, delivered when it closes.
 	DeliveryDeferred = "deferred"
+	// DeliveryHeld: the agent is in do-not-disturb; the message waits on its
+	// queue and is delivered, in order, when it ends (ini-x432).
+	DeliveryHeld = "held"
 )
 
 // Reasons the send path gives that are not the watcher's own.

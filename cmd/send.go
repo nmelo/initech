@@ -46,6 +46,8 @@ send waits for that (about two seconds), prints one line and exits with:
   0  sent to <agent>, unconfirmed: no delivery check for this agent type
      (Codex, OpenCode and generic agents)
   0  deferred to <agent> (a dialog is open; delivered when it closes)
+  0  held: <agent> is in do-not-disturb (delivered, in order, when it ends)
+  1  not delivered to <agent>: do-not-disturb queue is full
 
 A refused send (no such agent, agent not running) exits 1 with the reason.
 
@@ -130,6 +132,7 @@ var deliveryEffectActions = map[string]bool{
 	"add":           true,
 	"remove":        true,
 	"emit_event":    true,
+	"dnd":           true,
 }
 
 // isDevBuild reports whether this binary looks like a local, uncommitted-tree
@@ -253,6 +256,13 @@ func deliverText(w io.Writer, target, host, text string, enter bool) error {
 	// verdict and is still a deferral.
 	case resp.Delivery == tui.DeliveryDeferred, resp.Delivery == "" && strings.Contains(resp.Data, "deferred"):
 		fmt.Fprintf(w, "deferred to %s — target has a modal open; will deliver when it closes\n", name)
+	case resp.Delivery == tui.DeliveryHeld:
+		// The agent is in do-not-disturb (ini-x432): the line is the TUI's.
+		line := resp.Data
+		if line == "" {
+			line = "held: " + name + " is in do-not-disturb"
+		}
+		fmt.Fprintln(w, line)
 	case resp.Delivery == tui.DeliveryDelivered:
 		fmt.Fprintf(w, "delivered to %s\n", name)
 	case resp.Delivery == tui.DeliveryUnchecked:

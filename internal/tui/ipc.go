@@ -427,7 +427,7 @@ func (t *TUI) handleIPCSend(conn net.Conn, req IPCRequest) {
 		writeIPCResponse(conn, resp)
 		return
 	}
-	if verdict.Outcome == DeliveryDeferred {
+	if verdict.Outcome == DeliveryDeferred || verdict.Outcome == DeliveryHeld {
 		writeIPCResponse(conn, resp)
 		return
 	}

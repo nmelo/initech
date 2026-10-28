@@ -454,6 +454,11 @@ type QueuedMessage struct {
 	// (ini-7txh), as opposed to mail queued for a suspended pane. Only held
 	// messages are subject to heldMessageDeadline (ini-1898).
 	HeldForDialog bool
+	// DND marks a message held because the pane was in do-not-disturb
+	// (ini-x432), and Released is when dnd off let it go: from then on it
+	// waits for a dialog like held mail, its deadline counted from Released.
+	DND      bool
+	Released time.Time
 }
 
 // wireSuspendResume gives a pane its resume-on-message trigger (ini-g7fl):
@@ -567,8 +572,8 @@ func (p *Pane) QueueLen() int {
 // delivery runs in a guarded goroutine so the read loop is never blocked, and a
 // single in-flight drain is enforced via p.modalDraining.
 func (p *Pane) maybeDrainModalQueue() {
-	if p.QueueLen() == 0 {
-		return
+	if p.QueueLen() == 0 || p.InDND() {
+		return // nothing to drain, or do-not-disturb holds it (ini-x432).
 	}
 	if paneHasModal(p) {
 		return // still blocked; wait for the modal to close.
@@ -629,7 +634,8 @@ func (p *Pane) drainModalQueue() {
 	for {
 		// A dead pane's mail is the maintenance tick's to report
 		// (resolveHeldMail); handing it to a closed PTY would lose it silently.
-		if paneHasModal(p) || !p.IsAlive() {
+		// Do-not-disturb holds the queue until dnd off starts a drain.
+		if paneHasModal(p) || !p.IsAlive() || p.InDND() {
 			return
 		}
 		m, ok := p.PopQueuedMessage()
@@ -641,8 +647,8 @@ func (p *Pane) drainModalQueue() {
 		if !p.endRedelivery() {
 			return // re-held at the front: the dialog is back; wait for it.
 		}
-		if m.HeldForDialog && !p.IsSuspended() {
-			LogInfo("inject", "held message delivered", "pane", p.name,
+		if (m.HeldForDialog || m.DND) && !p.IsSuspended() {
+			LogInfo("inject", "held message delivered", "pane", p.name, "dnd", m.DND,
 				"waited", time.Since(m.Time).Round(time.Second))
 		}
 		if p.QueuedMessageCount() > 0 {

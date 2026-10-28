@@ -276,6 +276,21 @@ mouse input does not. Your own pastes, from any window, are never held.
 For a send to an agent on another machine, the sending machine sizes its wait from its own
 `typing_hold_max_s`, so give both machines the same value.
 
+### Do-not-disturb
+
+An agent in the middle of a step can run `initech dnd on` in its own pane. Until it runs
+`initech dnd off`, messages other agents send it wait in the pane's message queue instead of
+being typed into its input box, and each sender sees `held: <agent> is in do-not-disturb`
+with exit 0. `dnd off` delivers them in the order they arrived, one at a time, through the
+normal path. A message that cannot be delivered then is reported to you once, with how long
+it waited. At 20 waiting messages a new one is refused with
+`not delivered to <agent>: do-not-disturb queue is full` and exit 1; the oldest is kept.
+
+Your own typing and pastes are never held. To take a pane out yourself, run
+`initech dnd --agent <agent> off`. Nothing is saved: restarting initech clears it. An initech
+started before this command existed answers `older initech running; restart it for
+do-not-disturb` (exit 2).
+
 ### Usage data
 
 initech sends one anonymous usage ping a day, so the maintainer knows how many installs there are and which versions they run. Window 1 sends it in the background after its first frame, at most once every 24 hours per install. A `--window` viewer, `initech serve` and the subcommands never send it. It carries exactly four things: a random install id, the initech version, the OS and the CPU architecture. It also asks PostHog not to derive a location from the request. It never carries names, paths, hostnames, roles, agent counts, project content or anything typed.

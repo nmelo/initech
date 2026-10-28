@@ -134,7 +134,16 @@ func (p *Pane) resolveHeldMail(now time.Time) int {
 		p.surfaceHeldMail(msgs, "the agent's process exited", now)
 		return len(msgs)
 	}
+	// Do-not-disturb holds the whole queue: no dialog is keeping it
+	// (ini-x432). Mail it released waits for a dialog like held mail, the
+	// deadline counted from the release; the report gives the whole wait.
+	if p.InDND() {
+		return 0
+	}
 	msgs := p.takeQueued(func(m QueuedMessage) bool {
+		if !m.Released.IsZero() {
+			return now.Sub(m.Released) >= heldMessageDeadline
+		}
 		return m.HeldForDialog && now.Sub(m.Time) >= heldMessageDeadline
 	})
 	p.surfaceHeldMail(msgs, "a dialog stayed open past "+heldMessageDeadline.String(), now)
