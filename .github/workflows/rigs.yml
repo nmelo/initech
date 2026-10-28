@@ -1,13 +1,15 @@
 name: Rigs
 
-# Rigs (the four composed-rig shards and the race detector) run ON DEMAND
-# only: workflow_dispatch, which any agent may trigger when it judges a change
-# needs it, and which shipper runs at every release cut sha before tagging --
-# that dispatch is the release gate's rig evidence. Not on push and not on a
-# schedule (operator): releases are cut several times a day, so the gate at the
-# cut reaches a regression before a nightly run would. Cost: a rig or race
-# regression surfaces at the next cut and holds that release, not at the commit
-# that made it. Pull requests never reach the Mac (see ci.yml).
+# Rigs (the four composed-rig shards and the race detector) run NIGHTLY and ON
+# DEMAND, never on push: a scheduled run at 07:00 UTC (03:00 ET in summer
+# time, 02:00 in winter), and workflow_dispatch, which any agent may trigger
+# when it judges a change needs it. At a release cut, shipper's gate cites the
+# latest green nightly when its commit is an ancestor of the cut and nothing
+# between them touches a rig area (PTYs, sockets, two windows, suspend/wake,
+# the send path, the rigs themselves); otherwise it dispatches this workflow at
+# the cut sha, as it does when no nightly from the last 48 hours exists. A red
+# nightly holds the next cut until super has read it. This takes the rigs off
+# the landing-to-release path. Pull requests never reach the Mac (see ci.yml).
 #
 # A SEPARATE FILE, not jobs in ci.yml behind an event condition: shipper's
 # release gate derives the expected job set from ci.yml and asserts a push run
@@ -16,6 +18,8 @@ name: Rigs
 # scripts/rigcensus reads this file as well as ci.yml, so a rig invoked here
 # still counts as invoked.
 on:
+  schedule:
+    - cron: '0 7 * * *'
   workflow_dispatch:
 
 permissions:
