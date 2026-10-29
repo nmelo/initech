@@ -421,7 +421,8 @@ placeholder where M is the number of line breaks in the message, a trailing one 
 `[Pasted text #N]` Claude shows for a message with no line break longer than 800 characters), and then
 seen it leave. When Claude scrolls a message taller than its input box inside the box, so only the end
 shows, that end counts as the message's text if everything in the box is part of the message and it
-holds at least 12 characters besides spaces. A box that only changed is not a sighting. The log line is `submitted: composer cleared`,
+holds at least 12 characters besides spaces. The box is read across all its rows, the same way at any
+pane width and whether or not its top border carries the session's name. A box that only changed is not a sighting. The log line is `submitted: composer cleared`,
 with how many milliseconds after the Enter the box was seen without the message, and what it showed;
 because the message is usually seen during the wait before the Enter, that can read under 50, including
 0. A box showing Claude's queued-message line or the operator's own restored draft counts as cleared; a

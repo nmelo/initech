@@ -120,10 +120,17 @@ func (f *pkinFake) stream() (all string, bodyAt, enterAt time.Time) {
 // way responseLoop does.
 func pkinSendRig(t *testing.T, f *pkinFake) (*Pane, <-chan AgentEvent) {
 	t.Helper()
+	return pkinSendRigSized(t, f, 120, 40)
+}
+
+// pkinSendRigSized is pkinSendRig with the pane a given size, for a capture
+// whose borders span a pane of its own width (ini-cnp).
+func pkinSendRigSized(t *testing.T, f *pkinFake, cols, rows int) (*Pane, <-chan AgentEvent) {
+	t.Helper()
 	p, r := paneWithPipe(t)
 	p.name = "eng2"
 	p.alive = true
-	p.emu = vt.NewSafeEmulator(120, 40)
+	p.emu = vt.NewSafeEmulator(cols, rows)
 	events := make(chan AgentEvent, 8)
 	p.eventCh = events
 	p.claudeVersion = measuredOnlyVersionProbe()

@@ -83,6 +83,18 @@ func TestFooterCorpus_EveryCapturedShapeReadsWhatItShows(t *testing.T) {
 		{"haiku312_busy_collapsed_w49.txt", Footer{i(7), nil, nil, nil, s("Haiku 5.5"), s("Second")}},
 		{"fleet312_super_busy_w49.txt", Footer{i(61), zero, i(1), zero, s("Opus 5.5"), s("Other")}},
 		{"fleet312_pm_busy_w49.txt", none(i(51), s("Fable 5.1"), s("Other"))},
+		// 2.1.312, a session named "pa" at its prompt, the input box holding
+		// a short, a 300-character and a two-line body at 32, 40 and 80
+		// columns (ini-cnp).
+		{"haiku312_label_short_w32.txt", none(i(5), s("Haiku 5.5"), s("Other"))},
+		{"haiku312_label_long_w32.txt", none(i(0), s("Haiku 5.5"), s("Other"))},
+		{"haiku312_label_two_w32.txt", none(i(5), s("Haiku 5.5"), s("Other"))},
+		{"haiku312_label_short_w40.txt", none(i(5), s("Haiku 5.5"), s("Other"))},
+		{"haiku312_label_long_w40.txt", none(i(0), s("Haiku 5.5"), s("Other"))},
+		{"haiku312_label_two_w40.txt", none(i(5), s("Haiku 5.5"), s("Other"))},
+		{"haiku312_label_short_w80.txt", none(i(5), s("Haiku 5.5"), s("Other"))},
+		{"haiku312_label_long_w80.txt", none(i(0), s("Haiku 5.5"), s("Other"))},
+		{"haiku312_label_two_w80.txt", none(i(5), s("Haiku 5.5"), s("Other"))},
 	}
 	for _, c := range cases {
 		rows, width := corpusFooter(t, c.name)
