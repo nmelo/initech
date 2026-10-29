@@ -161,13 +161,16 @@ func (t *TUI) renderFrame() {
 	changed := make(map[string]bool, len(t.plan.Panes))
 	shown := make(map[PaneView]*shownCells, len(t.plan.Panes))
 	var bodies, chromes []string
+	now := frameClock()
 	for i, pr := range t.plan.Panes {
 		LogDebug("render", "drawing pane", "frame", t.renderCount, "idx", i, "name", pr.Pane.Name(), "host", pr.Pane.Host())
 		sel := t.selectionForPane(pr.Pane)
 		pk := agentKey(pr.Pane)
 		_, pinned := t.layoutState.LivePinned[pk]
 		pinned = pinned && t.layoutState.Mode == LayoutLive
-		paneChanged := paneChangedForFrame(t.lastDrawn, nextDrawn, pr, sel, pinned)
+		capped, hasCap := pr.Pane.(bodyCapped)
+		hold := hasCap && capped.holdBody(pr.Pane.Activity() == StateBackground, now)
+		paneChanged := paneChangedForFrame(t.lastDrawn, nextDrawn, pr, sel, pinned, hold)
 		if paneChanged {
 			changed[pk] = true
 		}
@@ -191,6 +194,9 @@ func (t *TUI) renderFrame() {
 			}
 			pr.Pane.Render(ps, pr.Focused, pr.Dimmed, pr.Index, sel)
 			bodies = append(bodies, pk)
+			if hasCap {
+				capped.noteBody(now)
+			}
 		} else if co.renderChromeOnly(ps, pr.Focused, pr.Index) {
 			chromes = append(chromes, pk)
 		} else {

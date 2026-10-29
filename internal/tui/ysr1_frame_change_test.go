@@ -178,20 +178,20 @@ func TestFrameChange_EachDrawnPropertyIsCompared(t *testing.T) {
 		"selection": func(_ *PaneRender, s *Selection) { s.Active = true },
 	} {
 		last := map[PaneView]paneFrameState{}
-		paneChangedForFrame(nil, last, base, Selection{}, false)
-		if paneChangedForFrame(last, map[PaneView]paneFrameState{}, base, Selection{}, false) {
+		paneChangedForFrame(nil, last, base, Selection{}, false, false)
+		if paneChangedForFrame(last, map[PaneView]paneFrameState{}, base, Selection{}, false, false) {
 			t.Fatalf("%s: precondition: the same frame twice reads changed", name)
 		}
 		pr, sel := base, Selection{}
 		change(&pr, &sel)
-		if !paneChangedForFrame(last, map[PaneView]paneFrameState{}, pr, sel, false) {
+		if !paneChangedForFrame(last, map[PaneView]paneFrameState{}, pr, sel, false, false) {
 			t.Errorf("a change of %s alone did not mark the pane", name)
 		}
 	}
 	// The live [P] badge is drawn with the pane (ini-ysr.3).
 	last := map[PaneView]paneFrameState{}
-	paneChangedForFrame(nil, last, base, Selection{}, false)
-	if !paneChangedForFrame(last, map[PaneView]paneFrameState{}, base, Selection{}, true) {
+	paneChangedForFrame(nil, last, base, Selection{}, false, false)
+	if !paneChangedForFrame(last, map[PaneView]paneFrameState{}, base, Selection{}, true, false) {
 		t.Error("a pin alone did not mark the pane")
 	}
 }

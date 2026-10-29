@@ -2,9 +2,17 @@ package tui
 
 import (
 	"sync/atomic"
+	"time"
 
 	"github.com/gdamore/tcell/v2"
 )
+
+// frameClock is the frame loop's clock for the background cap; tests step it.
+var frameClock = time.Now
+
+// backgroundRedrawsPerSec is the most a background pane's body is drawn in a
+// second while its bytes keep coming (ini-ysr.4).
+const backgroundRedrawsPerSec = 4
 
 // The "changed since the last frame" fact (ini-ysr.1), the base the redraw
 // work stands on: a pane needs drawing only when its content changed or the
@@ -27,13 +35,37 @@ import (
 // resize settles, after a screen read that failed, and before the first
 // draw, so such a pane is drawn again until its body is real (ini-ysr.2).
 // lastLook is the chrome last drawn (main loop only), so chrome that would
-// look the same is not drawn again (ini-ysr.3).
+// look the same is not drawn again (ini-ysr.3). writes counts the changes
+// marked, so the frame loop can tell bytes that arrived since the last frame
+// from ones it held; seenWrites and bodyAt (main loop only) are that count at
+// the last frame and the time of the last body draw (ini-ysr.4).
 type frameChange struct {
 	dirty       atomic.Bool
+	writes      atomic.Uint64
 	renderFinal bool
 	lastLook    ribbonLook
 	lookDrawn   bool
+	seenWrites  uint64
+	bodyAt      time.Time
 }
+
+// holdBody reports whether the pane's new content waits for a later frame:
+// a background pane whose bytes keep coming is drawn at most
+// backgroundRedrawsPerSec times a second (ini-ysr.4). Only while they keep
+// coming: a frame with no new byte draws what was held, so the frame after
+// the last byte shows the final content. Called once a frame per pane.
+func (f *frameChange) holdBody(background bool, now time.Time) bool {
+	w := f.writes.Load()
+	fresh := w != f.seenWrites
+	f.seenWrites = w
+	// A clock that stepped back draws the pane rather than holding it
+	// until the clock catches up.
+	since := now.Sub(f.bodyAt)
+	return background && fresh && since >= 0 && since < time.Second/backgroundRedrawsPerSec
+}
+
+// noteBody records that the frame loop drew the pane's body at now.
+func (f *frameChange) noteBody(now time.Time) { f.bodyAt = now }
 
 // ribbonLook is everything a pane's chrome is drawn from: the ribbon's title,
 // its style, the bead, the running square, and the top edge (the sweep's
@@ -59,7 +91,10 @@ func (f *frameChange) renderPending() bool { return !f.renderFinal }
 
 // markFrameChanged records that the pane's content changed since the last
 // frame was drawn.
-func (f *frameChange) markFrameChanged() { f.dirty.Store(true) }
+func (f *frameChange) markFrameChanged() {
+	f.writes.Add(1)
+	f.dirty.Store(true)
+}
 
 // takeFrameChanged reports whether the content changed since the last call,
 // and clears the fact. Called by the frame loop when it draws the pane.
@@ -78,14 +113,22 @@ type paneFrameState struct {
 // frameChangeTaker is the pane half's reader, met by Pane and RemotePane.
 type frameChangeTaker interface{ takeFrameChanged() bool }
 
+// bodyCapped is met by panes the background cap applies to (ini-ysr.4).
+type bodyCapped interface {
+	holdBody(background bool, now time.Time) bool
+	noteBody(now time.Time)
+}
+
 // paneChangedForFrame is the whole fact for one pane in this frame: its own
 // flag (taken, so cleared), or a difference from how it was last drawn, or
 // never drawn before. It records this frame's state in next, which becomes
 // the last-drawn record once the frame is done, so a pane that leaves the
-// plan is forgotten.
-func paneChangedForFrame(last, next map[PaneView]paneFrameState, pr PaneRender, sel Selection, pinned bool) bool {
+// plan is forgotten. hold leaves the pane's own flag for a later frame (the
+// background cap) unless the pane is drawn anyway for a view change.
+func paneChangedForFrame(last, next map[PaneView]paneFrameState, pr PaneRender, sel Selection, pinned, hold bool) bool {
 	changed := false
-	if f, ok := pr.Pane.(frameChangeTaker); ok {
+	f, taker := pr.Pane.(frameChangeTaker)
+	if taker && !hold {
 		changed = f.takeFrameChanged()
 	}
 	st := paneFrameState{focused: pr.Focused, dimmed: pr.Dimmed, index: pr.Index, region: pr.Region, sel: sel, pinned: pinned}
@@ -94,6 +137,9 @@ func paneChangedForFrame(last, next map[PaneView]paneFrameState, pr PaneRender, 
 	}
 	if prev, ok := last[pr.Pane]; !ok || prev != st {
 		changed = true
+		if taker && hold {
+			f.takeFrameChanged() // drawn now, held bytes included
+		}
 	}
 	next[pr.Pane] = st
 	return changed
