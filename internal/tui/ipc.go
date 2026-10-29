@@ -1103,7 +1103,7 @@ func bodyTextVisible(p *Pane, ps *pendingSubmit) bool {
 // Measured: 20 of 20 long sends read "never seen" in a 10-row pane, all of
 // them landed.
 //
-// THE BOX IS READ ONE WAY AT EVERY WIDTH (ini-cnp): composerBoxRows. A named
+// THE BOX IS READ ONE WAY AT EVERY WIDTH (ini-cnp): composerBoxRows first. A named
 // session draws its name into the box's top border ("──── pa ─"), and a
 // reader that knew only plain dash borders took the rows above the box in
 // with it, so the run was never ours. Measured: in a 32-column named pane
@@ -1112,7 +1112,14 @@ func boxRunIsOurs(p *Pane, ps *pendingSubmit) bool {
 	if paneHasModal(p) {
 		return false
 	}
-	rows, ok := composerBoxRows(emuRowsBlocking(p.emu))
+	screen := emuRowsBlocking(p.emu)
+	rows, ok := composerBoxRows(screen)
+	if !ok {
+		rows, ok = openBottomBox(screen)
+	}
+	if !ok {
+		rows, ok = ruleBoundedRegion(screen)
+	}
 	if !ok {
 		return false
 	}
@@ -1123,25 +1130,23 @@ func boxRunIsOurs(p *Pane, ps *pendingSubmit) bool {
 	return strings.Contains(stripSpace(strings.Join(ps.bodyLines, "")), run)
 }
 
-// composerBoxRows is the input box's own rows, trimmed, however the composer
-// lays it out (ini-cnp): the frame the footer and the dialog guard read
-// (lowestComposerFrame: any pane width, a plain or a labelled top border);
-// else a box whose bottom border is off the screen (openBottomBox); else,
-// for a prompt row scrolled off the top, the rows between the last two plain
-// rules (ruleBoundedRegion). Its text is compared space-stripped, so where
-// the composer wrapped a line does not matter.
+// composerBoxRows is the input box's own rows, trimmed, read from the frame
+// the footer and the dialog guard share (lowestComposerFrame: any pane width,
+// a plain or a labelled top border) (ini-cnp). boxRunIsOurs falls back from
+// it, in order, to a box whose bottom border is off the screen
+// (openBottomBox) and, for a prompt row scrolled off the top, the rows
+// between the last two plain rules (ruleBoundedRegion). The text is compared
+// space-stripped, so where the composer wrapped a line does not matter.
 func composerBoxRows(screen []string) ([]string, bool) {
-	if top, bottom, ok := lowestComposerFrame(screen); ok {
-		var box []string
-		for _, r := range screen[top+1 : bottom] {
-			box = append(box, strings.TrimSpace(r))
-		}
-		return box, true
+	top, bottom, ok := lowestComposerFrame(screen)
+	if !ok {
+		return nil, false
 	}
-	if rows, ok := openBottomBox(screen); ok {
-		return rows, true
+	var box []string
+	for _, r := range screen[top+1 : bottom] {
+		box = append(box, strings.TrimSpace(r))
 	}
-	return ruleBoundedRegion(screen)
+	return box, true
 }
 
 // isBoxBorder is a box border the open-bottom read accepts: a plain rule
