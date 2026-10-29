@@ -19,7 +19,7 @@ import (
 // that differs is a stale cell.
 
 // ysr2TUI is a 4x3 grid of eleven panes on a 160x48 screen, each body filled
-// with its name, with the sweep clock pinned so frames compare equal.
+// with its name.
 func ysr2TUI(t *testing.T, names ...string) (*TUI, tcell.SimulationScreen) {
 	t.Helper()
 	if len(names) == 0 {
@@ -27,9 +27,6 @@ func ysr2TUI(t *testing.T, names ...string) (*TUI, tcell.SimulationScreen) {
 			names = append(names, fmt.Sprintf("p%02d", i))
 		}
 	}
-	old := kittClock
-	kittClock = func() time.Time { return time.Date(2026, 10, 28, 19, 0, 0, 0, time.UTC) }
-	t.Cleanup(func() { kittClock = old })
 	tui, s := newTestTUIWithScreen(names...)
 	s.SetSize(160, 48)
 	tui.layoutState.Mode = LayoutGrid
@@ -273,42 +270,6 @@ func TestPartialFrame_ATintThatFadesDrawsThePane(t *testing.T) {
 		t.Errorf("the tint faded and the frame drew %q, want p02", got)
 	}
 	ysr2SameAsFull(t, tui, s, "after the tint faded")
-}
-
-// AC2: chrome keeps its cadence with every body idle: a working pane's sweep
-// moves although its body is not drawn, and the frame matches a full one.
-func TestPartialFrame_TheSweepMovesWithoutTheBody(t *testing.T) {
-	tui, s := ysr2TUI(t)
-	p := ysr2Pane(tui, "p03")
-	// Running with no new body bytes: output a moment ago keeps the real
-	// activity path calling it running for the frames below.
-	p.mu.Lock()
-	p.activity, p.lastOutputTime = StateRunning, time.Now()
-	p.mu.Unlock()
-	// A real pane's sweep starts when the pane does; from the zero time the
-	// elapsed duration saturates and the sweep cannot move.
-	p.kittEpoch = time.Date(2026, 10, 28, 18, 0, 0, 0, time.UTC)
-	ysr2Frame(tui)
-	ysr2Frame(tui)
-	r := p.region
-	edge := func() string {
-		var b strings.Builder
-		for x := r.X; x < r.X+r.W; x++ {
-			_, _, st, _ := s.GetContent(x, r.Y)
-			fg, _, _ := st.Decompose()
-			fmt.Fprintf(&b, "%d ", fg.Hex())
-		}
-		return b.String()
-	}
-	before := edge()
-	kittClock = func() time.Time { return time.Date(2026, 10, 28, 19, 0, 3, 0, time.UTC) }
-	if got := ysr2Frame(tui); got != "" {
-		t.Fatalf("a sweep step drew bodies %q, want none", got)
-	}
-	if edge() == before {
-		t.Error("the sweep did not move on a frame that drew no body")
-	}
-	ysr2SameAsFull(t, tui, s, "after a sweep step")
 }
 
 // AC5 feed it nothing: an empty plan draws the same frame partial or full.

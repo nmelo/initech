@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/charmbracelet/x/vt"
 	"github.com/gdamore/tcell/v2"
 )
 
@@ -185,28 +184,6 @@ func TestRenderTop_TitleGreenWhenOnlyABackgroundPane(t *testing.T) {
 		}
 	}
 	t.Error("title is not green with a background pane working")
-}
-
-// The ribbon's activity sweep runs for a background pane as for a running one.
-func TestActivityBar_BackgroundSweeps(t *testing.T) {
-	s := tcell.NewSimulationScreen("")
-	s.Init()
-	s.SetSize(40, 11)
-	p := bgPane(&Pane{
-		name: "eng1", emu: vt.NewSafeEmulator(40, 10), alive: true, visible: true,
-		kittEpoch: time.Now().Add(-500 * time.Millisecond),
-		region:    Region{X: 0, Y: 0, W: 40, H: 11},
-	})
-	p.Render(s, false, false, 1, Selection{})
-	colors := map[tcell.Color]bool{}
-	for x := 0; x < 40; x++ {
-		_, style, _ := s.Get(x, 0)
-		fg, _, _ := style.Decompose()
-		colors[fg] = true
-	}
-	if len(colors) < 2 {
-		t.Errorf("a background pane's bar is uniform (%d colours); it should sweep", len(colors))
-	}
 }
 
 // (f) Feed it nothing: an empty fleet scores nothing and shows nobody, and a

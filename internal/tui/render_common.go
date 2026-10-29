@@ -23,6 +23,9 @@ var trueBlack = tcell.NewRGBColor(0, 0, 0)
 // foreground color, so reusing it here would reproduce the exact
 // invisible-glyph failure ini-6o3 exists to prevent, just in a different
 // color. Do not "fix" this back to red or to the literal tint RGB.
+// ribbonTagStyle is the dim state tag after a ribbon's title ([bg 4m]).
+var ribbonTagStyle = tcell.StyleDefault.Background(trueBlack).Foreground(tcell.ColorDimGray)
+
 var runningSquareStyle = tcell.StyleDefault.Background(trueBlack).Foreground(tcell.ColorGreen).Bold(true)
 
 // noBeadLabel is what the ribbon shows in a bead's place for work dispatched
@@ -38,12 +41,12 @@ func ribbonBeadLabel(beadID, beadTitle, noBead string) (string, string) {
 	return beadID, beadTitle
 }
 
-// renderRibbon draws the bottom ribbon: solid black background, title badge,
-// and optional bead ID with title. running draws a full-height green block at
-// the ribbon's leading cell (reserved unconditionally by the col := r.X+1
-// title start below, so the badge never shifts whether or not the square is
-// shown). Returns the column position after the last element.
-func renderRibbon(s *clampedScreen, r Region, title string, titleStyle tcell.Style, beadID, beadTitle string, running bool) int {
+// renderRibbon draws a pane's bottom ribbon from its look: the running
+// square, the title, the dim state tag ([bg 4m]) and the bead. A narrow
+// ribbon cuts from the right, so the tag goes before the name. Returns the
+// column after the last cell drawn.
+func renderRibbon(s *clampedScreen, r Region, look ribbonLook) int {
+	title, titleStyle, beadID, beadTitle, running := look.title, look.style, look.bead, look.beadTitle, look.running
 	ribbonY := r.Y + r.H - 1
 
 	blackStyle := tcell.StyleDefault.Background(trueBlack)
@@ -59,6 +62,13 @@ func renderRibbon(s *clampedScreen, r Region, title string, titleStyle tcell.Sty
 	for _, ch := range title {
 		if col < r.X+r.W {
 			s.SetContent(col, ribbonY, ch, nil, titleStyle)
+			col++
+		}
+	}
+
+	for _, ch := range look.tag {
+		if col < r.X+r.W {
+			s.SetContent(col, ribbonY, ch, nil, ribbonTagStyle)
 			col++
 		}
 	}

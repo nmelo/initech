@@ -2,7 +2,6 @@ package tui
 
 import (
 	"testing"
-	"time"
 
 	"github.com/charmbracelet/x/vt"
 	"github.com/gdamore/tcell/v2"
@@ -60,13 +59,12 @@ func BenchmarkRenderPane(b *testing.B) {
 	s.SetSize(80, 25) // 24 content + 1 ribbon
 
 	p := &Pane{
-		name:      "eng1",
-		emu:       emu,
-		alive:     true,
-		visible:   true,
-		activity:  StateRunning,
-		kittEpoch: time.Now(),
-		region:    Region{X: 0, Y: 0, W: 80, H: 25},
+		name:     "eng1",
+		emu:      emu,
+		alive:    true,
+		visible:  true,
+		activity: StateRunning,
+		region:   Region{X: 0, Y: 0, W: 80, H: 25},
 	}
 
 	b.ResetTimer()
@@ -96,13 +94,12 @@ func BenchmarkRenderPane_Dimmed(b *testing.B) {
 	s.SetSize(80, 25)
 
 	p := &Pane{
-		name:      "eng1",
-		emu:       emu,
-		alive:     true,
-		visible:   true,
-		activity:  StateIdle,
-		kittEpoch: time.Now(),
-		region:    Region{X: 0, Y: 0, W: 80, H: 25},
+		name:     "eng1",
+		emu:      emu,
+		alive:    true,
+		visible:  true,
+		activity: StateIdle,
+		region:   Region{X: 0, Y: 0, W: 80, H: 25},
 	}
 
 	b.ResetTimer()

@@ -625,12 +625,12 @@ func (rp *RemotePane) renderChrome(s *clampedScreen, r Region, focused bool, ind
 
 // drawChrome draws the ribbon from its look alone and records it.
 func (rp *RemotePane) drawChrome(s *clampedScreen, r Region, look ribbonLook) {
-	renderRibbon(s, r, look.title, look.style, look.bead, look.beadTitle, look.running)
+	renderRibbon(s, r, look)
 	rp.noteChrome(look)
 }
 
 // chromeLook is everything the ribbon is drawn from (ini-ysr.3). A window 2
-// pane has no top edge, so its bar is always flat.
+// pane has no top edge.
 func (rp *RemotePane) chromeLook(focused bool, index int) ribbonLook {
 	var titleStyle tcell.Style
 	if focused {
@@ -675,7 +675,7 @@ func (rp *RemotePane) chromeLook(focused bool, index int) ribbonLook {
 	// it's local-only for the same reason here — never a fabricated parallel
 	// "running" notion for remote panes.
 	beadLabel, beadTitle := ribbonBeadLabel(rp.BeadID(), "", rp.NoBeadWork())
-	return ribbonLook{title: title, style: titleStyle, bead: beadLabel, beadTitle: beadTitle, bar: -1}
+	return ribbonLook{title: title, style: titleStyle, tag: backgroundTag(rp), bead: beadLabel, beadTitle: beadTitle}
 }
 
 // renderChromeOnly draws the ribbon alone, for a pane whose body is

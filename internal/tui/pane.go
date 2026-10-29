@@ -259,7 +259,7 @@ type Pane struct {
 	visible            bool          // Whether this pane is shown in the layout. Hidden panes keep running.
 	activity           ActivityState // Current state: running when PTY bytes flowed recently, else idle.
 	lastOutputTime     time.Time     // Last time readLoop received bytes from the PTY.
-	tintUntil          time.Time     // Hold deadline for the running-pane background tint (ini-zmzg). Bumped while StateRunning; the tint shows until this passes, giving the bg its own hysteresis window decoupled from the 2s dot/KITT signal.
+	tintUntil          time.Time     // Hold deadline for the running-pane background tint (ini-zmzg). Bumped while StateRunning; the tint shows until this passes, giving the bg its own hysteresis window decoupled from the 2s dot signal.
 	lastIdleNotify     time.Time     // Last time an EventAgentIdleWithBead was emitted.
 	// Screen-signature activity (ini-lnnk, Codex only): when the signature
 	// first said idle -- the idle-with-bead clock for a pane whose bytes never
@@ -326,7 +326,6 @@ type Pane struct {
 	modalDraining                  bool                // True while a modal-close queue drain is in flight (guarded by p.mu).
 	protected                      bool                // Protected agents are never auto-suspended.
 	resumeGrace                    time.Time           // Until this time, post-resume grace period is active.
-	kittEpoch                      time.Time           // Reference time for KITT scanner animation phase.
 	agentType                      string              // Semantic agent type: claude-code, codex, or generic.
 	noBracketedPaste               bool                // True when injectText should use typed input instead of bracketed paste.
 	submitKey                      string              // Key sequence to submit: "" or "enter" (Enter), "ctrl+enter" (Ctrl+Enter).
@@ -490,7 +489,6 @@ func NewPane(cfg PaneConfig, rows, cols int) (*Pane, error) {
 		activity:         StateIdle,
 		jsonlDir:         jsonlDir,
 		dedupEvents:      newDedup(),
-		kittEpoch:        time.Now(),
 		agentType:        agentType,
 		noBracketedPaste: cfg.NoBracketedPaste,
 		submitKey:        submitKey,
@@ -539,7 +537,6 @@ func NewParkedPane(cfg PaneConfig, rows, cols int) *Pane {
 		suspended:        true,
 		activity:         StateSuspended,
 		dedupEvents:      newDedup(),
-		kittEpoch:        time.Now(),
 		agentType:        agentType,
 		noBracketedPaste: cfg.NoBracketedPaste,
 		submitKey:        submitKey,

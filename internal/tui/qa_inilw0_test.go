@@ -3,7 +3,6 @@ package tui
 
 import (
 	"testing"
-	"time"
 
 	"github.com/charmbracelet/x/vt"
 	"github.com/gdamore/tcell/v2"
@@ -18,13 +17,12 @@ func TestActivityBar_IdleIsUniform(t *testing.T) {
 	s.SetSize(40, 11)
 
 	p := &Pane{
-		name:      "eng1",
-		emu:       emu,
-		alive:     true,
-		visible:   true,
-		activity:  StateIdle,
-		kittEpoch: time.Now(),
-		region:    Region{X: 0, Y: 0, W: 40, H: 11},
+		name:     "eng1",
+		emu:      emu,
+		alive:    true,
+		visible:  true,
+		activity: StateIdle,
+		region:   Region{X: 0, Y: 0, W: 40, H: 11},
 	}
 	p.Render(s, false, false, 1, Selection{})
 
@@ -41,37 +39,6 @@ func TestActivityBar_IdleIsUniform(t *testing.T) {
 	}
 }
 
-// TestActivityBar_RunningHasVariation verifies that running panes render the
-// KITT scanner with varying brightness (not all cells the same).
-func TestActivityBar_RunningHasVariation(t *testing.T) {
-	emu := vt.NewSafeEmulator(40, 10)
-	s := tcell.NewSimulationScreen("")
-	s.Init()
-	s.SetSize(40, 11)
-
-	p := &Pane{
-		name:      "eng1",
-		emu:       emu,
-		alive:     true,
-		visible:   true,
-		activity:  StateRunning,
-		kittEpoch: time.Now().Add(-500 * time.Millisecond), // offset so peak isn't at edge
-		region:    Region{X: 0, Y: 0, W: 40, H: 11},
-	}
-	p.Render(s, false, false, 1, Selection{})
-
-	// Top row should have at least 2 different foreground colors (bright peak + dim base).
-	colors := make(map[tcell.Color]bool)
-	for x := 0; x < 40; x++ {
-		_, style, _ := s.Get(x, 0)
-		fg, _, _ := style.Decompose()
-		colors[fg] = true
-	}
-	if len(colors) < 2 {
-		t.Errorf("running bar should have varying brightness, got %d distinct colors", len(colors))
-	}
-}
-
 // TestActivityBar_DeadIsStatic verifies dead panes get the static dim bar.
 func TestActivityBar_DeadIsStatic(t *testing.T) {
 	emu := vt.NewSafeEmulator(40, 10)
@@ -80,13 +47,12 @@ func TestActivityBar_DeadIsStatic(t *testing.T) {
 	s.SetSize(40, 11)
 
 	p := &Pane{
-		name:      "eng1",
-		emu:       emu,
-		alive:     false,
-		visible:   true,
-		activity:  StateDead,
-		kittEpoch: time.Now(),
-		region:    Region{X: 0, Y: 0, W: 40, H: 11},
+		name:     "eng1",
+		emu:      emu,
+		alive:    false,
+		visible:  true,
+		activity: StateDead,
+		region:   Region{X: 0, Y: 0, W: 40, H: 11},
 	}
 	p.Render(s, false, false, 1, Selection{})
 
@@ -117,7 +83,6 @@ func TestActivityBar_SuspendedIsStatic(t *testing.T) {
 		suspended: true,
 		visible:   true,
 		activity:  StateSuspended,
-		kittEpoch: time.Now(),
 		region:    Region{X: 0, Y: 0, W: 40, H: 11},
 	}
 	p.Render(s, false, false, 1, Selection{})
@@ -143,13 +108,12 @@ func TestActivityBar_UsesHorizontalLine(t *testing.T) {
 	s.SetSize(40, 11)
 
 	p := &Pane{
-		name:      "eng1",
-		emu:       emu,
-		alive:     true,
-		visible:   true,
-		activity:  StateRunning,
-		kittEpoch: time.Now(),
-		region:    Region{X: 0, Y: 0, W: 40, H: 11},
+		name:     "eng1",
+		emu:      emu,
+		alive:    true,
+		visible:  true,
+		activity: StateRunning,
+		region:   Region{X: 0, Y: 0, W: 40, H: 11},
 	}
 	p.Render(s, false, false, 1, Selection{})
 
@@ -170,13 +134,12 @@ func TestActivityBar_NarrowPaneNoPanic(t *testing.T) {
 	s.SetSize(2, 5)
 
 	p := &Pane{
-		name:      "a",
-		emu:       emu,
-		alive:     true,
-		visible:   true,
-		activity:  StateRunning,
-		kittEpoch: time.Now(),
-		region:    Region{X: 0, Y: 0, W: 2, H: 5},
+		name:     "a",
+		emu:      emu,
+		alive:    true,
+		visible:  true,
+		activity: StateRunning,
+		region:   Region{X: 0, Y: 0, W: 2, H: 5},
 	}
 	p.Render(s, false, false, 1, Selection{}) // must not panic
 }

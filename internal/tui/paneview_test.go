@@ -253,12 +253,11 @@ func TestPaneView_InterfaceMethodSet(t *testing.T) {
 		}
 	}()
 	p := &Pane{
-		name:      "test",
-		emu:       emu,
-		alive:     true,
-		activity:  StateIdle,
-		region:    Region{X: 0, Y: 0, W: 10, H: 5},
-		kittEpoch: time.Now(),
+		name:     "test",
+		emu:      emu,
+		alive:    true,
+		activity: StateIdle,
+		region:   Region{X: 0, Y: 0, W: 10, H: 5},
 	}
 
 	var pv PaneView = p

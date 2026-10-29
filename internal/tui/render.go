@@ -136,9 +136,9 @@ func (t *TUI) renderFrame() {
 	// went, so a gutter or an empty region may hold stale cells). Otherwise
 	// the screen keeps last frame's cells, each pane's body is drawn only
 	// when it changed or its last draw was not its real body, and its chrome
-	// (ribbon, activity bar) only when it would look different: an idle,
-	// suspended or hidden pane is not drawn at all between changes, and a
-	// running pane's top edge once per sweep step (ini-ysr.3). Each pane
+	// (ribbon, top edge) only when it would look different: an idle,
+	// suspended or hidden pane is not drawn at all between changes
+	// (ini-ysr.3). Each pane
 	// draws through a record of the cells it wrote (shownCells). The layers
 	// drawn over the panes (overlay, help, toasts, status bar...) are
 	// recorded too; a cell a layer wrote last frame and not this one is put

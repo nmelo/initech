@@ -5,7 +5,6 @@ package tui
 import (
 	"fmt"
 	"image/color"
-	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -112,23 +111,23 @@ func (p *Pane) chromeLook(focused bool, index int) (ribbonLook, tcell.Color) {
 	}
 
 	beadLabel, beadTitle := ribbonBeadLabel(p.BeadID(), p.BeadTitle(), p.NoBeadWork())
-	return ribbonLook{title: title, style: titleStyle, bead: beadLabel, beadTitle: beadTitle, running: running, bar: p.sweepStep()}, tint
+	return ribbonLook{title: title, style: titleStyle, tag: backgroundTag(p), bead: beadLabel, beadTitle: beadTitle, running: running}, tint
 }
 
 // drawChrome draws the chrome from its look alone.
 func (p *Pane) drawChrome(s *clampedScreen, r Region, look ribbonLook) {
-	renderRibbon(s, r, look.title, look.style, look.bead, look.beadTitle, look.running)
+	renderRibbon(s, r, look)
 
-	// Activity bar at r.Y (top edge). Drawn before content so it is always
-	// present even when content rendering is suppressed during resize settling.
-	p.drawActivityBar(s, r, look.bar)
+	// Top edge at r.Y. Drawn before content so it is always present even
+	// when content rendering is suppressed during resize settling.
+	drawTopEdge(s, r)
 	p.noteChrome(look)
 }
 
 // renderChromeOnly draws the chrome alone, for a pane whose body is unchanged,
 // and only when it would look different from the last chrome drawn: an idle
-// or suspended pane costs nothing between changes, and a running pane's top
-// edge is drawn once per sweep step (ini-ysr.3). Reports whether it drew.
+// or suspended pane costs nothing between changes (ini-ysr.3). Reports
+// whether it drew.
 func (p *Pane) renderChromeOnly(screen tcell.Screen, focused bool, index int) bool {
 	r := p.region
 	if r.W < 1 || r.H < 3 {
@@ -279,81 +278,14 @@ func (p *Pane) renderContent(s *clampedScreen, cr Region, e *vt.Emulator, focuse
 	return true
 }
 
-// renderActivityBar draws a 1-row activity indicator on the top edge of the
-// pane. Running panes show a KITT scanner effect (gaussian brightness peak
-// sweeping left-right). All other states show a static dim horizontal line.
-// kittClock is the sweep's clock; tests step it.
-var kittClock = time.Now
-
-// kittStepsPerSec is how often the sweep moves.
-const kittStepsPerSec = 5.0
-
-// kittCycleSec is how long the sweep takes across and back.
-const kittCycleSec = 8.0
-
-// sweepStep is the sweep's step within its cycle, or -1 for the flat edge of
-// a pane that is not working.
-func (p *Pane) sweepStep() int {
-	if !paneIsWorking(p) {
-		return -1
-	}
-	// FIVE STEPS A SECOND, not one per frame (ini-ysr). The terminal is sent
-	// only cells that changed, so a sweep moving every frame cost one write
-	// of the whole bar 30 times a second per working pane: measured, about
-	// 5 KB a second from one running pane with no output of its own, the
-	// biggest steady feed of the terminal. Between steps the bar is the same,
-	// so it is not even drawn (ini-ysr.3).
-	steps := int64(kittCycleSec * kittStepsPerSec)
-	k := int64(math.Floor(kittClock().Sub(p.kittEpoch).Seconds()*kittStepsPerSec)) % steps
-	if k < 0 {
-		k += steps
-	}
-	return int(k)
-}
-
-func (p *Pane) renderActivityBar(s *clampedScreen, r Region) {
-	p.drawActivityBar(s, r, p.sweepStep())
-}
-
-// drawActivityBar draws the top edge: flat for step -1, else the sweep at
-// that step.
-func (p *Pane) drawActivityBar(s *clampedScreen, r Region, step int) {
-	if r.W < 1 {
-		return
-	}
-	const baseBrightness = 35.0
-	baseStyle := tcell.StyleDefault.Foreground(tcell.NewRGBColor(35, 35, 35))
-	y := r.Y
-
-	if step < 0 {
-		for x := r.X; x < r.X+r.W; x++ {
-			s.SetContent(x, y, '─', nil, baseStyle)
-		}
-		return
-	}
-
-	// KITT scanner: gaussian brightness peak sweeping left-right and back
-	// every 8 s, moving five steps a second.
-	w := r.W
-	cycle := (w - 1) * 2
-	if cycle <= 0 {
-		return
-	}
-	frac := float64(step) / kittStepsPerSec / kittCycleSec
-	pos := frac * float64(cycle)
-	if pos >= float64(w) {
-		pos = float64(cycle) - pos
-	}
-
-	for dx := 0; dx < w; dx++ {
-		dist := float64(dx) - pos
-		brightness := 85.0 * math.Exp(-dist*dist*0.15)
-		if brightness < baseBrightness {
-			s.SetContent(r.X+dx, y, '─', nil, baseStyle)
-		} else {
-			b := int32(brightness)
-			s.SetContent(r.X+dx, y, '─', nil, tcell.StyleDefault.Foreground(tcell.NewRGBColor(b, b, b)))
-		}
+// drawTopEdge draws a pane's top edge: a plain line in every state. The
+// activity sweep that once glided along a working pane's edge is gone
+// (ini-amx); the running square, the title colour, the tint and the ribbon
+// tag mark the states.
+func drawTopEdge(s *clampedScreen, r Region) {
+	style := tcell.StyleDefault.Foreground(tcell.NewRGBColor(35, 35, 35))
+	for x := r.X; x < r.X+r.W; x++ {
+		s.SetContent(x, r.Y, '─', nil, style)
 	}
 }
 

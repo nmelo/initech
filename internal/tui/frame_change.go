@@ -68,15 +68,30 @@ func (f *frameChange) holdBody(background bool, now time.Time) bool {
 func (f *frameChange) noteBody(now time.Time) { f.bodyAt = now }
 
 // ribbonLook is everything a pane's chrome is drawn from: the ribbon's title,
-// its style, the bead, the running square, and the top edge (the sweep's
-// step, or -1 for a flat edge). The chrome is drawn from this value alone, so
-// two equal looks draw the same cells.
+// its style, the dim state tag, the bead and the running square (the top edge
+// is the same plain line for every pane). The chrome is drawn from this value
+// alone, so two equal looks draw the same cells.
 type ribbonLook struct {
 	title           string
 	style           tcell.Style
+	tag             string
 	bead, beadTitle string
 	running         bool
-	bar             int
+}
+
+// backgroundTag is the ribbon's state tag for a pane in the background state:
+// "[bg 4m] " with the job's age in the overlay's short form (ini-amx). A
+// background pane gets no tint (the tint marks output), and with the sweep
+// gone this tag is what marks it. Empty in every other state.
+func backgroundTag(pv PaneView) string {
+	if pv.Activity() != StateBackground {
+		return ""
+	}
+	age, ok := backgroundAge(pv, time.Now())
+	if !ok {
+		return ""
+	}
+	return "[bg " + shortAge(age) + "] "
 }
 
 // chromeUnchanged reports whether the chrome last drawn looks like l.

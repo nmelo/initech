@@ -129,44 +129,6 @@ func TestParkedFleet_TheOverlayStillDraws(t *testing.T) {
 	ysr2SameAsFull(t, tui, s, "the overlay closed over a parked fleet")
 }
 
-// The running pane's sweep still moves, five steps a second: inside one step
-// nothing is drawn, a new step draws that pane's top edge and nothing else.
-func TestParkedFleet_TheSweepStillMoves(t *testing.T) {
-	tui, s := ysr3Parked(t)
-	p := ysr2Pane(tui, "p03")
-	p.mu.Lock()
-	p.activity, p.lastOutputTime = StateRunning, time.Now()
-	p.mu.Unlock()
-	p.kittEpoch = time.Date(2026, 10, 28, 18, 0, 0, 0, time.UTC)
-	tui.render()
-	tui.render()
-	if in, _ := ysr3Count(tui, s, 5); in != 0 {
-		t.Errorf("five frames inside one sweep step wrote %d pane cells, want 0", in)
-	}
-	edgeStyle := func() string {
-		var b strings.Builder
-		for x := p.region.X; x < p.region.X+p.region.W; x++ {
-			_, _, st, _ := s.GetContent(x, p.region.Y)
-			fg, _, _ := st.Decompose()
-			b.WriteString(fg.String())
-		}
-		return b.String()
-	}
-	look := edgeStyle()
-	kittClock = func() time.Time { return time.Date(2026, 10, 28, 19, 0, 0, 200*int(time.Millisecond), time.UTC) }
-	in, _ := ysr3Count(tui, s, 1)
-	if in == 0 || edgeStyle() == look {
-		t.Fatalf("a new sweep step drew %d pane cells and the edge did not move", in)
-	}
-	if got := strings.Join(tui.chromesDrawn, ","); got != "p03" {
-		t.Errorf("a sweep step drew the chrome of %q, want p03 only", got)
-	}
-	if len(tui.bodiesDrawn) != 0 {
-		t.Errorf("a sweep step drew bodies %v", tui.bodiesDrawn)
-	}
-	ysr2SameAsFull(t, tui, s, "after a sweep step")
-}
-
 // AC2: a hidden pane fed bytes draws nothing; revealing it shows its current
 // content, drawn once.
 func TestParkedFleet_AHiddenPaneIsFedAndShownWhenRevealed(t *testing.T) {
@@ -238,7 +200,6 @@ func TestParkedFleet_APaneGoingIdleKeepsItsCells(t *testing.T) {
 	p.mu.Lock()
 	p.activity, p.lastOutputTime = StateRunning, time.Now()
 	p.mu.Unlock()
-	p.kittEpoch = time.Date(2026, 10, 28, 18, 0, 0, 0, time.UTC)
 	tui.render()
 	tui.render()
 	body := ysr3Row(s, p.region, p.region.Y+1)
