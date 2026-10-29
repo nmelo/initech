@@ -77,6 +77,12 @@ func TestFooterCorpus_EveryCapturedShapeReadsWhatItShows(t *testing.T) {
 		// shell, then two shells and a background subagent listed below.
 		{"haiku312_bgshell_w36.txt", Footer{i(6), i(1), zero, zero, s("Haiku 5.5"), s("Other")}},
 		{"haiku312_subagent_w36.txt", Footer{i(6), i(2), zero, i(1), s("Haiku 5.5"), s("Other")}},
+		// 2.1.312, 49 columns, busy (ini-dmi): Claude's "paste again to
+		// expand" hint in place of the mode line under a collapsed paste, so
+		// no counts are shown; this fleet's busy super and pm.
+		{"haiku312_busy_collapsed_w49.txt", Footer{i(7), nil, nil, nil, s("Haiku 5.5"), s("Second")}},
+		{"fleet312_super_busy_w49.txt", Footer{i(61), zero, i(1), zero, s("Opus 5.5"), s("Other")}},
+		{"fleet312_pm_busy_w49.txt", none(i(51), s("Fable 5.1"), s("Other"))},
 	}
 	for _, c := range cases {
 		rows, width := corpusFooter(t, c.name)

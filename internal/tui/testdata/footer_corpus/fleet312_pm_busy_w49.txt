@@ -1,0 +1,24 @@
+  captures if you can get them.
+
+⏺ Two filings. First the captures for the second
+  one, taken now while both panes are busy, and
+  the Claude Code version on this rig.
+
+  Capturing the bottom of both busy panes for the
+  corpus and note the versions
+  ⎿  $ mkdir -p captures && for a in super pm; do
+     initech peek $a -n 24 >
+     "captures/never-seen-2026-10-28-$a.txt"
+     2>/dev/null; echo "$a: $(wc -l <
+     captures/never-seen-2026-10-28-$a.txt)
+     lines, box rows: $(grep -c -E '^[╭╰│]'
+     captures/never-seen-2026-10-28-$a.txt)";
+     done; echo "claude: $(claude --version…
+
+✢ Nesting… (22s · ↓ 1.0k tokens)
+
+─────────────────────────────────────────────────
+❯
+─────────────────────────────────────────────────
+  ⎇ main │ Fable 5.1 │ Other │ 51% │ 32% ▓┃▓░░…
+  ⏵⏵ bypass permissions on (shift+tab to cycle)

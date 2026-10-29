@@ -417,7 +417,8 @@ Enter while a dialog or option picker is open. A NOT DELIVERED or SUPERSEDED mes
 
 After pressing Enter, initech counts a message as delivered only when it has seen the message in the
 agent's input box, before or after the Enter (its text, or Claude's `[Pasted text #N +M lines]`
-placeholder where M is the number of line breaks in the message, a trailing one included), and then
+placeholder where M is the number of line breaks in the message, a trailing one included, or the bare
+`[Pasted text #N]` Claude shows for a message with no line break longer than 800 characters), and then
 seen it leave. When Claude scrolls a message taller than its input box inside the box, so only the end
 shows, that end counts as the message's text if everything in the box is part of the message and it
 holds at least 12 characters besides spaces. A box that only changed is not a sighting. The log line is `submitted: composer cleared`,
@@ -431,8 +432,10 @@ under a dialog it presses nothing and reports `could not confirm delivery (...)`
 `dialog open at the retry`. If
 initech could not recognise the message in the box at all (no input box on screen, a placeholder with a
 different count, or other text only), it presses nothing and reports
-`could not confirm delivery (...)` in a toast, the event log and the inbox, with the reason. Check the
-agent's pane and re-send if the message is not there.
+`could not confirm delivery (...)` in a toast, the event log and the inbox, with the reason. When the
+reason is that the message was never seen in the box, it names how many readings initech took and the
+first line of the box in the last reading before the Enter and the last after it (`no box`, `an empty
+box`, or the line, cut to 60 characters). Check the agent's pane and re-send if the message is not there.
 
 A reading of the box counts only when the box's own rows, from the `❯` row through its bottom border,
 read the same and in the same place before and after it; an answer streaming above the box, the spinner

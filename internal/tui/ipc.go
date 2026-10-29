@@ -750,7 +750,7 @@ func watchSubmit(pane *Pane, ps *pendingSubmit, sentAt time.Time) (submitOutcome
 		if stable {
 			tail, found, held = sTail, sFound, sHeld
 			if found {
-				sawComposer = true
+				sawComposer, ps.census.boxAfter = true, &sTail
 			}
 			if !held && found && mismatch == "" {
 				mismatch = placeholderMismatch(tail, ps)
@@ -771,7 +771,7 @@ func watchSubmit(pane *Pane, ps *pendingSubmit, sentAt time.Time) (submitOutcome
 					"composer", composerSnapshot(pane))
 				return submitNotTaken, ""
 			}
-			why := unconfirmedReason(mismatch, sawComposer, seen)
+			why := unconfirmedReason(mismatch, sawComposer, seen, ps.census)
 			LogInfo("inject", "submit outcome UNKNOWN: could not confirm", "pane", pane.Name(),
 				"mode", ps.mode, "reason", why, "waited_ms", time.Since(sentAt).Milliseconds(),
 				"text", ps.preview, "composer", composerSnapshot(pane),
@@ -885,6 +885,9 @@ type submitCensus struct {
 	torn          int // samples whose composer rows changed while they were read
 	stable        int // samples whose composer rows held still
 	sighted       int // stable samples that showed our text
+	// The first line of the box in the last stable sample that showed one,
+	// before the Enter and after it (ini-dmi).
+	boxBefore, boxAfter *string
 }
 
 // count records one sample's verdict.
@@ -918,7 +921,10 @@ func startPreEnterSighting(pane *Pane, ps *pendingSubmit) *preEnterSighting {
 	go func() {
 		defer close(s.done)
 		for {
-			_, _, held, stable := submitSample(pane, ps)
+			tail, found, held, stable := submitSample(pane, ps)
+			if stable && found {
+				s.census.boxBefore = &tail
+			}
 			s.census.before++
 			s.census.count(held, stable)
 			if held && stable {
@@ -958,6 +964,12 @@ func placeholderMismatch(tail string, ps *pendingSubmit) string {
 	if m == nil {
 		return ""
 	}
+	if m[1] == "" {
+		if ps.pasteCount == 0 {
+			return "the box showed a collapsed one-line paste; ours is short enough to show in full"
+		}
+		return "the box showed a collapsed one-line paste; ours would read +" + strconv.Itoa(ps.pasteCount) + " lines"
+	}
 	return "the box showed a collapsed paste of +" + m[1] + " lines; ours would read +" +
 		strconv.Itoa(ps.pasteCount) + ", a line count that does not match"
 }
@@ -966,7 +978,13 @@ func placeholderMismatch(tail string, ps *pendingSubmit) string {
 // confirmed either way. mismatch is the first placeholder of another count
 // seen during the window: Claude may have taken it and cleared the box by the
 // end, and it is still the explanation.
-func unconfirmedReason(mismatch string, sawComposer, seen bool) string {
+//
+// NEVER SEEN NAMES ITS EVIDENCE (ini-dmi): the samples taken, and the first
+// line of the box in the last sample before the Enter and the last after it,
+// bounded like the log's. A false "never seen" is then read for its cause
+// from the sender's own screen: the one that found this bug showed
+// "[Pasted text #1]" before the Enter, a placeholder of ours nothing read.
+func unconfirmedReason(mismatch string, sawComposer, seen bool, c submitCensus) string {
 	switch {
 	case seen:
 		return "our text left the box but no composer was visible afterwards"
@@ -975,7 +993,20 @@ func unconfirmedReason(mismatch string, sawComposer, seen bool) string {
 	case !sawComposer:
 		return "no composer visible"
 	}
-	return "our text was never seen in the box"
+	return "our text was never seen in the box: " + strconv.Itoa(c.before+c.after) +
+		" samples; the box before the Enter showed " + boxLine(c.boxBefore) + ", after it " + boxLine(c.boxAfter)
+}
+
+// boxLine is the first line of a box for the operator: quoted and bounded,
+// or what stood in for it.
+func boxLine(tail *string) string {
+	switch {
+	case tail == nil:
+		return "no box"
+	case *tail == "":
+		return "an empty box"
+	}
+	return strconv.Quote(logSnippet(*tail))
 }
 
 // submitRetryDialogReason is the could-not-confirm reason when the one resend
@@ -1910,6 +1941,7 @@ func (t *TUI) handleIPCAttention(conn net.Conn, req IPCRequest) {
 type pendingSubmit struct {
 	bodyLines      []string     // Our body's distinct non-blank lines, the evidence a composer must show to prove it holds OURS.
 	pasteCount     int          // The +M a COLLAPSED paste of our body shows: its newline count (ini-vpwg, re-measured ini-k3g2).
+	bodyRunes      int          // The body's length, which decides whether a one-line paste of it collapses with no count (ini-dmi).
 	withheldAt     time.Time    // When we withheld, so the operator is told how long a message waited.
 	preview        string       // For operator-facing records.
 	mode           string       // Injection mode, for the log.
@@ -1951,6 +1983,7 @@ func newPendingSubmit(text, mode, tailAtWithhold string) *pendingSubmit {
 	return &pendingSubmit{
 		bodyLines:      bodyEvidenceLines(text),
 		pasteCount:     collapsedPasteCount(text),
+		bodyRunes:      utf8.RuneCountInString(text),
 		withheldAt:     now,
 		preview:        preview,
 		mode:           mode,
@@ -1979,8 +2012,19 @@ func bodyEvidenceLines(text string) []string {
 }
 
 // collapsedPaste matches Claude's collapsed-paste marker and captures the line
-// count it exposes: "[Pasted text #1 +39 lines]".
-var collapsedPaste = regexp.MustCompile(`\[Pasted text #\d+ \+(\d+) lines?\]`)
+// count it exposes: "[Pasted text #1 +39 lines]". A paste with no newline
+// shows no count, "[Pasted text #1]" (ini-dmi), and the capture is empty.
+var collapsedPaste = regexp.MustCompile(`\[Pasted text #\d+(?: \+(\d+) lines?)?\]`)
+
+// collapsedOneLineRunes is the longest one-line paste Claude still shows in
+// full. MEASURED on Claude Code 2.1.312 (ini-dmi), into a busy Haiku pane: a
+// one-line body of 800 characters was shown, 801 and 1200 collapsed to
+// "[Pasted text #1]" with no count. Our own body is that placeholder only
+// when it is longer than this; a shorter one-line body never collapses, so a
+// bare placeholder in its box is somebody else's paste. Counted in runes:
+// where Claude counts a character as two, it collapses a body we call
+// shorter, which we then fail to recognise, the never-seen direction.
+const collapsedOneLineRunes = 800
 
 // collapsedPasteCount is the +M Claude prints for a collapsed paste of text:
 // the number of newline characters in it. MEASURED, not guessed: on Claude
@@ -2000,7 +2044,7 @@ func collapsedPasteCount(text string) int {
 
 // collapsedPasteMeasuredVersion must change alongside the measurement above.
 // Surfaced failures name this version so a stale proof is diagnosable.
-const collapsedPasteMeasuredVersion = "2.1.302"
+const collapsedPasteMeasuredVersion = "2.1.312"
 
 // minProvenRunes is how much of OUR OWN text must be visible in the composer
 // before we will call it proof.
@@ -2154,6 +2198,11 @@ func composerHoldsOurBody(p *Pane, tail string, ps *pendingSubmit) bool {
 	m := collapsedPaste.FindStringSubmatch(tail)
 	if m == nil {
 		return false
+	}
+	if m[1] == "" {
+		// No count: a paste with no newline (ini-dmi), ours only when our
+		// body has none and is long enough that Claude collapses it.
+		return ps.pasteCount == 0 && ps.bodyRunes > collapsedOneLineRunes
 	}
 	shown, err := strconv.Atoi(m[1])
 	if err != nil {

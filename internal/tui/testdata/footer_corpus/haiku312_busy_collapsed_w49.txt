@@ -1,0 +1,26 @@
+  messages, so I can't fully verify that exactly
+  40 separate sleep 4 calls ran. My best count is
+  40, and I stopped there rather than add a
+  call.
+
+✻ Churned for 3m 54s · done 8:21 PM
+
+❯ Run the Bash command: sleep 4 ; thirty times,
+  as thirty separate Bash tool calls one after
+  another, never in parallel and never combined.
+  Then reply LOOP2DONE.
+
+  Ran 1 shell command
+
+⏺ 1 of 30 done.
+
+  Running 1 shell command…
+  ⎿  $ sleep 4
+
+✻ Skedaddling… (8s · ↓ 294 tokens)
+
+─────────────────────────────────────────────────
+❯ [Pasted text #1]
+─────────────────────────────────────────────────
+  Haiku 5.5 │ Second │ 7% │ 30% ┃▓▓░░░░░░░ → 0…
+  paste again to expand
