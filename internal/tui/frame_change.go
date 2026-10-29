@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"slices"
 	"sync/atomic"
 
 	"github.com/gdamore/tcell/v2"
@@ -102,11 +103,14 @@ func (l *layerRecorder) SetContent(x, y int, primary rune, combining []rune, sty
 
 // restoreUncovered puts back the cells a layer wrote last frame and did not
 // write this frame: the layer is gone or smaller, and what it covered must
-// show again. Inside a pane, a chrome row was drawn this frame, and a body
-// cell comes back from the pane's cached last body, which a body drawn this
-// frame has just refreshed; any other cell, or a pane with no usable cache,
-// is blanked and the pane is marked changed so the next frame draws its body.
-func restoreUncovered(s tcell.Screen, last, now []bool, w int, panes []PaneRender) {
+// show again. Inside a pane whose body this frame drew, the body already did
+// it; inside another pane, a chrome row was drawn this frame, and a body cell
+// comes back from the pane's cached last body. Any other cell, or a pane with
+// no usable cache, is blanked and the pane marked changed so the next frame
+// draws its body. A window 2 pane keeps no cache: its body is drawn the frame
+// a layer it lay under may leave (bodyNeedsLayerRedraw), so it lands in the
+// first case.
+func restoreUncovered(s tcell.Screen, last, now []bool, w int, panes []PaneRender, drawn []string) {
 	if len(last) != len(now) {
 		return
 	}
@@ -121,7 +125,9 @@ func restoreUncovered(s tcell.Screen, last, now []bool, w int, panes []PaneRende
 			if x < r.X || x >= r.X+r.W || y < r.Y || y >= r.Y+r.H {
 				continue
 			}
-			if y == r.Y || y == r.Y+r.H-1 {
+			if slices.Contains(drawn, agentKey(pr.Pane)) {
+				restored = true // the body drew this cell this frame
+			} else if c, ok := pr.Pane.(interface{ isChromeRow(y int) bool }); ok && c.isChromeRow(y) {
 				restored = true // the chrome drew this cell this frame
 			} else if c, ok := pr.Pane.(interface {
 				restoreBodyCell(s tcell.Screen, x, y int) bool
@@ -167,3 +173,37 @@ type chromeOnly interface {
 	renderChromeOnly(screen tcell.Screen, focused bool, index int)
 	renderPending() bool
 }
+
+// bodyNeedsLayerRedraw reports whether a pane must draw its body this frame
+// because a layer covered it last frame and the pane cannot restore single
+// cells from a cache (a window 2 pane).
+func bodyNeedsLayerRedraw(pv PaneView, last []bool, w int) bool {
+	if _, cached := pv.(interface {
+		restoreBodyCell(s tcell.Screen, x, y int) bool
+	}); cached {
+		return false
+	}
+	return layerCovers(last, w, pv.GetRegion())
+}
+
+// layerCovers reports whether any recorded cell lies inside r.
+func layerCovers(cells []bool, w int, r Region) bool {
+	if w == 0 {
+		return false
+	}
+	h := len(cells) / w
+	for y := max(r.Y, 0); y < min(r.Y+r.H, h); y++ {
+		for x := max(r.X, 0); x < min(r.X+r.W, w); x++ {
+			if cells[y*w+x] {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// isChromeRow reports whether row y of a local pane is chrome, drawn every
+// frame: its activity bar (top) or its ribbon (bottom). A window 2 pane has no
+// top-edge chrome, so it has no such method: the frame a layer over it may
+// leave draws its whole body instead (bodyNeedsLayerRedraw).
+func (p *Pane) isChromeRow(y int) bool { return y == p.region.Y || y == p.region.Y+p.region.H-1 }

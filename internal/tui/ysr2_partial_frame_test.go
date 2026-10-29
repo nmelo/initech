@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/x/vt"
 	"github.com/gdamore/tcell/v2"
 )
 
@@ -325,4 +326,27 @@ func TestPartialFrame_AnEmptyPlanResizedMatchesAFullFrame(t *testing.T) {
 	tui.render()
 	s.SetSize(120, 50) // taller: the old status line row stays on screen
 	ysr2SameAsFull(t, tui, s, "an empty plan after a resize")
+}
+
+// A window 2 pane draws no top-edge chrome: its top row is body. A layer that
+// covered that row and goes away must not leave its cells behind (the inbox
+// count in the corner of a child window, rig ini-3wkl.7, red on 517c6c9).
+func TestPartialFrame_ALayerLeavingARemotePaneTopRowLeavesNoStaleCells(t *testing.T) {
+	tui, s := newTestTUIWithScreen()
+	rp := &RemotePane{name: "eng1", host: "w2", alive: true, emu: vt.NewSafeEmulator(118, 37)}
+	rp.emu.Write([]byte(strings.Repeat("remote body ", 30)))
+	tui.panes = []PaneView{rp}
+	tui.layoutState.Mode = LayoutGrid
+	tui.layoutState.Focused = agentKey(rp)
+	tui.applyLayout()
+	tui.render()
+	tui.render()
+	if rp.region.Y != 0 {
+		t.Fatalf("fixture: the remote pane starts on row %d, want 0 (under the corner)", rp.region.Y)
+	}
+	tui.notifications = nil
+	tui.help.active = true
+	ysr2SameAsFull(t, tui, s, "help open over a remote pane")
+	tui.help.active = false
+	ysr2SameAsFull(t, tui, s, "help closed over a remote pane")
 }

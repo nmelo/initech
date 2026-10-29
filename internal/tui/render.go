@@ -165,7 +165,7 @@ func (t *TUI) renderFrame() {
 			changed[agentKey(pr.Pane)] = true
 		}
 		co, chromeAlone := pr.Pane.(chromeOnly)
-		if full || paneChanged || !chromeAlone || co.renderPending() {
+		if full || paneChanged || !chromeAlone || co.renderPending() || bodyNeedsLayerRedraw(pr.Pane, t.lastLayer, t.lastLayerW) {
 			if !full {
 				// The region the pane draws itself at, so the blank never
 				// reaches a cell another pane drew this frame.
@@ -294,7 +294,7 @@ func (t *TUI) renderFrame() {
 
 	t.renderWindowConnectionStatus()
 	if !full {
-		restoreUncovered(s, t.lastLayer, rec.cells, w, t.plan.Panes)
+		restoreUncovered(s, t.lastLayer, rec.cells, w, t.plan.Panes, bodies)
 	}
 	t.lastLayer, t.lastLayerW, t.lastPlan = rec.cells, w, regions
 	s.Show()
