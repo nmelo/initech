@@ -203,26 +203,6 @@ func (p *Pane) cacheFrame(s *clampedScreen, cr Region, cols, rows int) {
 	}
 }
 
-// restoreBodyCell draws one cell of the pane's body from its cached last
-// body (ini-ysr.2): a cell a layer covered last frame and no longer does.
-// False when the cache does not match the pane's present body size or the
-// cell is not in the body.
-func (p *Pane) restoreBodyCell(s tcell.Screen, x, y int) bool {
-	r := p.region
-	cr := Region{X: r.X, Y: r.Y + 1, W: r.W, H: r.H - 1}
-	cols, rows := cr.InnerSize()
-	if p.lastFrameCols != cols || p.lastFrameRows != rows || len(p.lastFrame) != cols*rows {
-		return false
-	}
-	col, row := x-cr.X, y-cr.Y
-	if col < 0 || row < 0 || col >= cols || row >= rows {
-		return false
-	}
-	fc := p.lastFrame[row*cols+col]
-	s.SetContent(x, y, fc.ch, nil, fc.style)
-	return true
-}
-
 // drawSettleFrame draws the last cached body while a resized pane settles
 // (ini-206s): clipped and BOTTOM-ANCHORED to the new region, because the
 // bottom of a pane is where the operator is looking (the prompt, the newest

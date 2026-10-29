@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"slices"
 	"sync/atomic"
 
 	"github.com/gdamore/tcell/v2"
@@ -27,10 +26,32 @@ import (
 // last Render drew the pane's real body (main loop only): false while a
 // resize settles, after a screen read that failed, and before the first
 // draw, so such a pane is drawn again until its body is real (ini-ysr.2).
+// lastLook is the chrome last drawn (main loop only), so chrome that would
+// look the same is not drawn again (ini-ysr.3).
 type frameChange struct {
 	dirty       atomic.Bool
 	renderFinal bool
+	lastLook    ribbonLook
+	lookDrawn   bool
 }
+
+// ribbonLook is everything a pane's chrome is drawn from: the ribbon's title,
+// its style, the bead, the running square, and the top edge (the sweep's
+// step, or -1 for a flat edge). The chrome is drawn from this value alone, so
+// two equal looks draw the same cells.
+type ribbonLook struct {
+	title           string
+	style           tcell.Style
+	bead, beadTitle string
+	running         bool
+	bar             int
+}
+
+// chromeUnchanged reports whether the chrome last drawn looks like l.
+func (f *frameChange) chromeUnchanged(l ribbonLook) bool { return f.lookDrawn && f.lastLook == l }
+
+// noteChrome records the chrome just drawn.
+func (f *frameChange) noteChrome(l ribbonLook) { f.lastLook, f.lookDrawn = l, true }
 
 // renderPending reports whether the pane's last render left its body short
 // of real, so it must be drawn again whatever else changed.
@@ -51,6 +72,7 @@ type paneFrameState struct {
 	region          Region
 	sel             Selection
 	tint            tcell.Color // the running tint: it fades on a timer, with no bytes
+	pinned          bool        // the live mode [P] badge
 }
 
 // frameChangeTaker is the pane half's reader, met by Pane and RemotePane.
@@ -61,12 +83,12 @@ type frameChangeTaker interface{ takeFrameChanged() bool }
 // never drawn before. It records this frame's state in next, which becomes
 // the last-drawn record once the frame is done, so a pane that leaves the
 // plan is forgotten.
-func paneChangedForFrame(last, next map[PaneView]paneFrameState, pr PaneRender, sel Selection) bool {
+func paneChangedForFrame(last, next map[PaneView]paneFrameState, pr PaneRender, sel Selection, pinned bool) bool {
 	changed := false
 	if f, ok := pr.Pane.(frameChangeTaker); ok {
 		changed = f.takeFrameChanged()
 	}
-	st := paneFrameState{focused: pr.Focused, dimmed: pr.Dimmed, index: pr.Index, region: pr.Region, sel: sel}
+	st := paneFrameState{focused: pr.Focused, dimmed: pr.Dimmed, index: pr.Index, region: pr.Region, sel: sel, pinned: pinned}
 	if tp, ok := pr.Pane.(interface{ backgroundTint() tcell.Color }); ok {
 		st.tint = tp.backgroundTint()
 	}
@@ -103,14 +125,11 @@ func (l *layerRecorder) SetContent(x, y int, primary rune, combining []rune, sty
 
 // restoreUncovered puts back the cells a layer wrote last frame and did not
 // write this frame: the layer is gone or smaller, and what it covered must
-// show again. Inside a pane whose body this frame drew, the body already did
-// it; inside another pane, a chrome row was drawn this frame, and a body cell
-// comes back from the pane's cached last body. Any other cell, or a pane with
-// no usable cache, is blanked and the pane marked changed so the next frame
-// draws its body. A window 2 pane keeps no cache: its body is drawn the frame
-// a layer it lay under may leave (bodyNeedsLayerRedraw), so it lands in the
-// first case.
-func restoreUncovered(s tcell.Screen, last, now []bool, w int, panes []PaneRender, drawn []string) {
+// show again. A cell inside a pane comes back from what the pane last wrote
+// there (shownCells), chrome or body, local or window 2 alike. Any other
+// cell is blanked; inside a pane with nothing recorded there, the pane is
+// marked changed too, so the next frame draws it.
+func restoreUncovered(s tcell.Screen, last, now []bool, w int, panes []PaneRender, shown map[PaneView]*shownCells) {
 	if len(last) != len(now) {
 		return
 	}
@@ -125,13 +144,7 @@ func restoreUncovered(s tcell.Screen, last, now []bool, w int, panes []PaneRende
 			if x < r.X || x >= r.X+r.W || y < r.Y || y >= r.Y+r.H {
 				continue
 			}
-			if slices.Contains(drawn, agentKey(pr.Pane)) {
-				restored = true // the body drew this cell this frame
-			} else if c, ok := pr.Pane.(interface{ isChromeRow(y int) bool }); ok && c.isChromeRow(y) {
-				restored = true // the chrome drew this cell this frame
-			} else if c, ok := pr.Pane.(interface {
-				restoreBodyCell(s tcell.Screen, x, y int) bool
-			}); ok && c.restoreBodyCell(s, x, y) {
+			if shown[pr.Pane].restore(s, x, y) {
 				restored = true
 			} else if f, ok := pr.Pane.(interface{ markFrameChanged() }); ok {
 				f.markFrameChanged()
@@ -142,6 +155,65 @@ func restoreUncovered(s tcell.Screen, last, now []bool, w int, panes []PaneRende
 			s.SetContent(x, y, ' ', nil, tcell.StyleDefault)
 		}
 	}
+}
+
+// shownCells is what a pane last wrote to each cell of its region, recorded
+// as it draws (ini-ysr.3). A pane at rest is not drawn, so the screen keeps
+// its cells; when a layer over it goes, the cells come back from here.
+type shownCells struct {
+	r     Region
+	cells []frameCell
+	set   []bool
+}
+
+// at readies the record for a pane drawing at r; a new region starts empty.
+func (c *shownCells) at(r Region) {
+	n := max(r.W, 0) * max(r.H, 0)
+	if c.r == r && len(c.cells) == n {
+		return
+	}
+	c.r = r
+	c.cells = make([]frameCell, n)
+	c.set = make([]bool, n)
+}
+
+// forget empties the record: the screen was cleared.
+func (c *shownCells) forget() { clear(c.set) }
+
+func (c *shownCells) index(x, y int) (int, bool) {
+	if x < c.r.X || y < c.r.Y || x >= c.r.X+c.r.W || y >= c.r.Y+c.r.H {
+		return 0, false
+	}
+	return (y-c.r.Y)*c.r.W + (x - c.r.X), true
+}
+
+// restore draws the cell as the pane last wrote it. False when nothing is
+// recorded there (or no record).
+func (c *shownCells) restore(s tcell.Screen, x, y int) bool {
+	if c == nil {
+		return false
+	}
+	i, ok := c.index(x, y)
+	if !ok || !c.set[i] {
+		return false
+	}
+	s.SetContent(x, y, c.cells[i].ch, nil, c.cells[i].style)
+	return true
+}
+
+// shownRecorder is the screen a pane draws through: it passes every write on
+// and records the ones inside the pane's region.
+type shownRecorder struct {
+	tcell.Screen
+	c *shownCells
+}
+
+func (r *shownRecorder) SetContent(x, y int, ch rune, comb []rune, st tcell.Style) {
+	if i, ok := r.c.index(x, y); ok {
+		r.c.cells[i] = frameCell{ch: ch, style: st}
+		r.c.set[i] = true
+	}
+	r.Screen.SetContent(x, y, ch, comb, st)
 }
 
 // blankRegion fills r with blank default cells, as a cleared screen holds.
@@ -169,41 +241,9 @@ type paneAt struct {
 }
 
 // chromeOnly is met by panes that can draw their chrome without their body.
+// renderChromeOnly draws it only when it would look different from the last
+// chrome drawn, and reports whether it drew.
 type chromeOnly interface {
-	renderChromeOnly(screen tcell.Screen, focused bool, index int)
+	renderChromeOnly(screen tcell.Screen, focused bool, index int) bool
 	renderPending() bool
 }
-
-// bodyNeedsLayerRedraw reports whether a pane must draw its body this frame
-// because a layer covered it last frame and the pane cannot restore single
-// cells from a cache (a window 2 pane).
-func bodyNeedsLayerRedraw(pv PaneView, last []bool, w int) bool {
-	if _, cached := pv.(interface {
-		restoreBodyCell(s tcell.Screen, x, y int) bool
-	}); cached {
-		return false
-	}
-	return layerCovers(last, w, pv.GetRegion())
-}
-
-// layerCovers reports whether any recorded cell lies inside r.
-func layerCovers(cells []bool, w int, r Region) bool {
-	if w == 0 {
-		return false
-	}
-	h := len(cells) / w
-	for y := max(r.Y, 0); y < min(r.Y+r.H, h); y++ {
-		for x := max(r.X, 0); x < min(r.X+r.W, w); x++ {
-			if cells[y*w+x] {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-// isChromeRow reports whether row y of a local pane is chrome, drawn every
-// frame: its activity bar (top) or its ribbon (bottom). A window 2 pane has no
-// top-edge chrome, so it has no such method: the frame a layer over it may
-// leave draws its whole body instead (bodyNeedsLayerRedraw).
-func (p *Pane) isChromeRow(y int) bool { return y == p.region.Y || y == p.region.Y+p.region.H-1 }

@@ -135,12 +135,16 @@ func (t *TUI) renderFrame() {
 	// event log, a new screen size, or a new layout (a pane moved, came or
 	// went, so a gutter or an empty region may hold stale cells). Otherwise
 	// the screen keeps last frame's cells, each pane's body is drawn only
-	// when it changed or its last draw was not its real body, and every
-	// pane's chrome (ribbon, activity bar) is drawn every frame. The layers
+	// when it changed or its last draw was not its real body, and its chrome
+	// (ribbon, activity bar) only when it would look different: an idle,
+	// suspended or hidden pane is not drawn at all between changes, and a
+	// running pane's top edge once per sweep step (ini-ysr.3). Each pane
+	// draws through a record of the cells it wrote (shownCells). The layers
 	// drawn over the panes (overlay, help, toasts, status bar...) are
-	// recorded; a cell a layer wrote last frame and not this one is restored
-	// after the layers (restoreUncovered). Measured: an 11-pane frame cost
-	// 9.0 ms drawing every body, 0.6 ms drawing chrome.
+	// recorded too; a cell a layer wrote last frame and not this one is put
+	// back from the pane's record after the layers (restoreUncovered).
+	// Measured: an 11-pane frame cost 9.0 ms drawing every body, 0.6 ms
+	// drawing chrome.
 	regions := planRegions(t.plan.Panes)
 	full := t.lastDrawn == nil || t.lastLayerW != w || len(t.lastLayer) != w*h || !slices.Equal(regions, t.lastPlan)
 	if full {
@@ -152,49 +156,62 @@ func (t *TUI) renderFrame() {
 	t.renderLiveFocusEmptyHint(rec, w, h)
 
 	// Draw panes from the render plan. No visibility checks needed. Each
-	// pane's changed-since-the-last-frame fact is taken here (ini-ysr.1);
-	// nothing acts on it yet.
+	// pane's changed-since-the-last-frame fact is taken here (ini-ysr.1).
 	nextDrawn := make(map[PaneView]paneFrameState, len(t.plan.Panes))
 	changed := make(map[string]bool, len(t.plan.Panes))
-	var bodies []string
+	shown := make(map[PaneView]*shownCells, len(t.plan.Panes))
+	var bodies, chromes []string
 	for i, pr := range t.plan.Panes {
 		LogDebug("render", "drawing pane", "frame", t.renderCount, "idx", i, "name", pr.Pane.Name(), "host", pr.Pane.Host())
 		sel := t.selectionForPane(pr.Pane)
-		paneChanged := paneChangedForFrame(t.lastDrawn, nextDrawn, pr, sel)
+		pk := agentKey(pr.Pane)
+		_, pinned := t.layoutState.LivePinned[pk]
+		pinned = pinned && t.layoutState.Mode == LayoutLive
+		paneChanged := paneChangedForFrame(t.lastDrawn, nextDrawn, pr, sel, pinned)
 		if paneChanged {
-			changed[agentKey(pr.Pane)] = true
+			changed[pk] = true
 		}
+		cells := t.shown[pr.Pane]
+		if cells == nil {
+			cells = &shownCells{}
+		}
+		if full {
+			cells.forget()
+		}
+		cells.at(pr.Pane.GetRegion())
+		shown[pr.Pane] = cells
+		ps := &shownRecorder{Screen: s, c: cells}
+		drew := true
 		co, chromeAlone := pr.Pane.(chromeOnly)
-		if full || paneChanged || !chromeAlone || co.renderPending() || bodyNeedsLayerRedraw(pr.Pane, t.lastLayer, t.lastLayerW) {
+		if full || paneChanged || !chromeAlone || co.renderPending() {
 			if !full {
 				// The region the pane draws itself at, so the blank never
 				// reaches a cell another pane drew this frame.
-				blankRegion(s, pr.Pane.GetRegion())
+				blankRegion(ps, pr.Pane.GetRegion())
 			}
-			pr.Pane.Render(s, pr.Focused, pr.Dimmed, pr.Index, sel)
-			bodies = append(bodies, agentKey(pr.Pane))
+			pr.Pane.Render(ps, pr.Focused, pr.Dimmed, pr.Index, sel)
+			bodies = append(bodies, pk)
+		} else if co.renderChromeOnly(ps, pr.Focused, pr.Index) {
+			chromes = append(chromes, pk)
 		} else {
-			co.renderChromeOnly(s, pr.Focused, pr.Index)
+			drew = false
 		}
 		// Live mode: draw [P] badge for pinned panes, right-aligned on ribbon.
-		if t.layoutState.Mode == LayoutLive {
-			pk := agentKey(pr.Pane)
-			if _, pinned := t.layoutState.LivePinned[pk]; pinned {
-				r := pr.Region
-				ribbonY := r.Y + r.H - 1
-				badge := "[P]"
-				startX := r.X + r.W - len(badge) - 1
-				pinStyle := tcell.StyleDefault.Background(trueBlack).Foreground(tcell.ColorMediumPurple).Bold(true)
-				for j, ch := range badge {
-					if startX+j >= r.X && startX+j < r.X+r.W {
-						s.SetContent(startX+j, ribbonY, ch, nil, pinStyle)
-					}
+		if pinned && drew {
+			r := pr.Region
+			ribbonY := r.Y + r.H - 1
+			badge := "[P]"
+			startX := r.X + r.W - len(badge) - 1
+			pinStyle := tcell.StyleDefault.Background(trueBlack).Foreground(tcell.ColorMediumPurple).Bold(true)
+			for j, ch := range badge {
+				if startX+j >= r.X && startX+j < r.X+r.W {
+					ps.SetContent(startX+j, ribbonY, ch, nil, pinStyle)
 				}
 			}
 		}
 		LogDebug("render", "pane done", "frame", t.renderCount, "idx", i, "name", pr.Pane.Name())
 	}
-	t.lastDrawn, t.frameChanged, t.bodiesDrawn = nextDrawn, changed, bodies
+	t.lastDrawn, t.frameChanged, t.bodiesDrawn, t.chromesDrawn, t.shown = nextDrawn, changed, bodies, chromes, shown
 
 	// The layers draw through the recorder; restored after the frame.
 	saved := t.screen
@@ -294,7 +311,7 @@ func (t *TUI) renderFrame() {
 
 	t.renderWindowConnectionStatus()
 	if !full {
-		restoreUncovered(s, t.lastLayer, rec.cells, w, t.plan.Panes, bodies)
+		restoreUncovered(s, t.lastLayer, rec.cells, w, t.plan.Panes, shown)
 	}
 	t.lastLayer, t.lastLayerW, t.lastPlan = rec.cells, w, regions
 	s.Show()

@@ -166,12 +166,16 @@ type TUI struct {
 	frameChanged map[string]bool
 	// lastLayer marks the cells the layers over the panes wrote last frame
 	// (w = lastLayerW), lastPlan the layout it was drawn with, and
-	// bodiesDrawn the panes whose body the last frame drew (ini-ysr.2).
-	lastLayer   []bool
-	lastLayerW  int
-	lastPlan    []paneAt
-	bodiesDrawn []string
-	inboxOnce   sync.Once
+	// bodiesDrawn the panes whose body the last frame drew (ini-ysr.2),
+	// chromesDrawn those whose chrome alone it drew, and shown what each
+	// pane last wrote to its cells (ini-ysr.3).
+	lastLayer    []bool
+	lastLayerW   int
+	lastPlan     []paneAt
+	bodiesDrawn  []string
+	chromesDrawn []string
+	shown        map[PaneView]*shownCells
+	inboxOnce    sync.Once
 	// inboxOutstanding maps an agent to the inbox items whose delivery verdict
 	// may still be corrected by a late report from the send path (ini-3wkl.6).
 	inboxOutstanding   map[string][]string

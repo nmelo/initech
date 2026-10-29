@@ -45,11 +45,18 @@ func (c *clampedScreen) Get(x, y int) (string, tcell.Style, int) {
 }
 
 // renderChrome draws the pane's frame around its body: the bottom ribbon and
-// the activity bar on the top edge. Every frame draws it for every pane, so
-// the badge, the running square and the sweep keep their cadence even for a
-// pane whose body is not redrawn (ini-ysr.2). Returns the running tint, which
-// the body uses too, so both are one claim read from one field.
+// the activity bar on the top edge, and records the look it drew. Returns the
+// running tint, which the body uses too, so both are one claim read from one
+// field.
 func (p *Pane) renderChrome(s *clampedScreen, r Region, focused bool, index int) tcell.Color {
+	look, tint := p.chromeLook(focused, index)
+	p.drawChrome(s, r, look)
+	return tint
+}
+
+// chromeLook is everything the chrome is drawn from (ini-ysr.3), and the
+// running tint.
+func (p *Pane) chromeLook(focused bool, index int) (ribbonLook, tcell.Color) {
 	// Running-pane background tint (ini-zmzg): ColorDefault when not running /
 	// past the hold window, so idle/dead/suspended panes render exactly as
 	// before. Applied only to default-bg content cells.
@@ -105,21 +112,34 @@ func (p *Pane) renderChrome(s *clampedScreen, r Region, focused bool, index int)
 	}
 
 	beadLabel, beadTitle := ribbonBeadLabel(p.BeadID(), p.BeadTitle(), p.NoBeadWork())
-	renderRibbon(s, r, title, titleStyle, beadLabel, beadTitle, running)
+	return ribbonLook{title: title, style: titleStyle, bead: beadLabel, beadTitle: beadTitle, running: running, bar: p.sweepStep()}, tint
+}
+
+// drawChrome draws the chrome from its look alone.
+func (p *Pane) drawChrome(s *clampedScreen, r Region, look ribbonLook) {
+	renderRibbon(s, r, look.title, look.style, look.bead, look.beadTitle, look.running)
 
 	// Activity bar at r.Y (top edge). Drawn before content so it is always
 	// present even when content rendering is suppressed during resize settling.
-	p.renderActivityBar(s, r)
-	return tint
+	p.drawActivityBar(s, r, look.bar)
+	p.noteChrome(look)
 }
 
-// renderChromeOnly draws the chrome alone, for a pane whose body is unchanged.
-func (p *Pane) renderChromeOnly(screen tcell.Screen, focused bool, index int) {
+// renderChromeOnly draws the chrome alone, for a pane whose body is unchanged,
+// and only when it would look different from the last chrome drawn: an idle
+// or suspended pane costs nothing between changes, and a running pane's top
+// edge is drawn once per sweep step (ini-ysr.3). Reports whether it drew.
+func (p *Pane) renderChromeOnly(screen tcell.Screen, focused bool, index int) bool {
 	r := p.region
 	if r.W < 1 || r.H < 3 {
-		return
+		return false
 	}
-	p.renderChrome(&clampedScreen{Screen: screen, r: r}, r, focused, index)
+	look, _ := p.chromeLook(focused, index)
+	if p.chromeUnchanged(look) {
+		return false
+	}
+	p.drawChrome(&clampedScreen{Screen: screen, r: r}, r, look)
+	return true
 }
 
 // Render draws the pane's bottom ribbon and terminal content onto the tcell screen.
@@ -268,7 +288,36 @@ var kittClock = time.Now
 // kittStepsPerSec is how often the sweep moves.
 const kittStepsPerSec = 5.0
 
+// kittCycleSec is how long the sweep takes across and back.
+const kittCycleSec = 8.0
+
+// sweepStep is the sweep's step within its cycle, or -1 for the flat edge of
+// a pane that is not working.
+func (p *Pane) sweepStep() int {
+	if !paneIsWorking(p) {
+		return -1
+	}
+	// FIVE STEPS A SECOND, not one per frame (ini-ysr). The terminal is sent
+	// only cells that changed, so a sweep moving every frame cost one write
+	// of the whole bar 30 times a second per working pane: measured, about
+	// 5 KB a second from one running pane with no output of its own, the
+	// biggest steady feed of the terminal. Between steps the bar is the same,
+	// so it is not even drawn (ini-ysr.3).
+	steps := int64(kittCycleSec * kittStepsPerSec)
+	k := int64(math.Floor(kittClock().Sub(p.kittEpoch).Seconds()*kittStepsPerSec)) % steps
+	if k < 0 {
+		k += steps
+	}
+	return int(k)
+}
+
 func (p *Pane) renderActivityBar(s *clampedScreen, r Region) {
+	p.drawActivityBar(s, r, p.sweepStep())
+}
+
+// drawActivityBar draws the top edge: flat for step -1, else the sweep at
+// that step.
+func (p *Pane) drawActivityBar(s *clampedScreen, r Region, step int) {
 	if r.W < 1 {
 		return
 	}
@@ -276,7 +325,7 @@ func (p *Pane) renderActivityBar(s *clampedScreen, r Region) {
 	baseStyle := tcell.StyleDefault.Foreground(tcell.NewRGBColor(35, 35, 35))
 	y := r.Y
 
-	if !paneIsWorking(p) {
+	if step < 0 {
 		for x := r.X; x < r.X+r.W; x++ {
 			s.SetContent(x, y, '─', nil, baseStyle)
 		}
@@ -290,17 +339,7 @@ func (p *Pane) renderActivityBar(s *clampedScreen, r Region) {
 	if cycle <= 0 {
 		return
 	}
-	const kittCycleSec = 8.0
-	// FIVE STEPS A SECOND, not one per frame (ini-ysr). The terminal is sent
-	// only cells that changed, so a sweep moving every frame cost one write
-	// of the whole bar 30 times a second per working pane: measured, about
-	// 5 KB a second from one running pane with no output of its own, the
-	// biggest steady feed of the terminal. Rounding the time down to a step
-	// keeps the bar's cells identical between steps, and the terminal is
-	// sent nothing.
-	elapsed := kittClock().Sub(p.kittEpoch).Seconds()
-	elapsed = math.Floor(elapsed*kittStepsPerSec) / kittStepsPerSec
-	frac := math.Mod(elapsed, kittCycleSec) / kittCycleSec
+	frac := float64(step) / kittStepsPerSec / kittCycleSec
 	pos := frac * float64(cycle)
 	if pos >= float64(w) {
 		pos = float64(cycle) - pos

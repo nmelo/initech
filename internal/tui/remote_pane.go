@@ -618,9 +618,20 @@ func (rp *RemotePane) writeEmu(chunk []byte) {
 }
 
 // renderChrome draws the remote pane's ribbon: its number, name, badge and
-// bead. Drawn every frame, so the ribbon stays current for a pane whose body
-// is not redrawn (ini-ysr.2).
+// bead, and records the look it drew.
 func (rp *RemotePane) renderChrome(s *clampedScreen, r Region, focused bool, index int) {
+	rp.drawChrome(s, r, rp.chromeLook(focused, index))
+}
+
+// drawChrome draws the ribbon from its look alone and records it.
+func (rp *RemotePane) drawChrome(s *clampedScreen, r Region, look ribbonLook) {
+	renderRibbon(s, r, look.title, look.style, look.bead, look.beadTitle, look.running)
+	rp.noteChrome(look)
+}
+
+// chromeLook is everything the ribbon is drawn from (ini-ysr.3). A window 2
+// pane has no top edge, so its bar is always flat.
+func (rp *RemotePane) chromeLook(focused bool, index int) ribbonLook {
 	var titleStyle tcell.Style
 	if focused {
 		titleStyle = tcell.StyleDefault.Background(tcell.ColorTeal).Foreground(tcell.ColorBlack).Bold(true)
@@ -664,16 +675,23 @@ func (rp *RemotePane) renderChrome(s *clampedScreen, r Region, focused bool, ind
 	// it's local-only for the same reason here — never a fabricated parallel
 	// "running" notion for remote panes.
 	beadLabel, beadTitle := ribbonBeadLabel(rp.BeadID(), "", rp.NoBeadWork())
-	renderRibbon(s, r, title, titleStyle, beadLabel, beadTitle, false)
+	return ribbonLook{title: title, style: titleStyle, bead: beadLabel, beadTitle: beadTitle, bar: -1}
 }
 
-// renderChromeOnly draws the ribbon alone, for a pane whose body is unchanged.
-func (rp *RemotePane) renderChromeOnly(screen tcell.Screen, focused bool, index int) {
+// renderChromeOnly draws the ribbon alone, for a pane whose body is
+// unchanged, and only when it would look different from the last ribbon
+// drawn (ini-ysr.3). Reports whether it drew.
+func (rp *RemotePane) renderChromeOnly(screen tcell.Screen, focused bool, index int) bool {
 	r := rp.region
 	if r.W < 1 || r.H < 2 {
-		return
+		return false
 	}
-	rp.renderChrome(&clampedScreen{Screen: screen, r: r}, r, focused, index)
+	look := rp.chromeLook(focused, index)
+	if rp.chromeUnchanged(look) {
+		return false
+	}
+	rp.drawChrome(&clampedScreen{Screen: screen, r: r}, r, look)
+	return true
 }
 
 // Render draws the remote pane with [R] badge in the ribbon title.
