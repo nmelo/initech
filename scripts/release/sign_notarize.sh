@@ -89,9 +89,10 @@ if mode != 0o600:
     print(f'ERR the key file has mode {mode:o}, not 600'); sys.exit(0)
 print(p); print(a['key_id']); print(a['issuer_id'])
 PY
-)
+) || refuse "the config reader failed (python exited non-zero); nothing signed"
 case "$CREDS" in ERR*) refuse "${CREDS#ERR }";; esac
 { read -r KEY_PATH; read -r KEY_ID; read -r ISSUER; } <<<"$CREDS"
+[ -n "$KEY_PATH" ] && [ -n "$KEY_ID" ] && [ -n "$ISSUER" ] || refuse "the config reader returned no key path, key id or issuer"
 unset CREDS
 
 # 3. The darwin assets, each matching its checksums line.

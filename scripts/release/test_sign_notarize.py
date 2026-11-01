@@ -234,6 +234,15 @@ class Config(Case):
         r.env['PATH'] = nb + ':' + r.env['PATH']
         out = r.run(); self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
 
+    def test_a_config_reader_that_crashes_refuses(self):
+        # A python that dies in the reader must stop the step, not sign with empty credentials.
+        r = self.rig(); nb = os.path.join(r.h, 'crashpy'); os.makedirs(nb)
+        p = os.path.join(nb, 'python3')
+        open(p, 'w').write('#!/bin/bash\necho "Traceback: boom" >&2\nexit 1\n'); os.chmod(p, 0o755)
+        r.env['PATH'] = nb + ':' + r.env['PATH']
+        out = r.run(); self.assert_nothing_uploaded(r, out); self.assertIn('config reader failed', out.stdout)
+        self.assertEqual([c for c in r.calls() if c.startswith(('codesign', 'notarytool'))], [])
+
     def test_reads_the_block_among_others_with_quotes_and_comments(self):
         r = self.rig()
         open(r.config, 'w').write(

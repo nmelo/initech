@@ -18,6 +18,8 @@ M = [
     ('key printed', 'unset CREDS\n', 'unset CREDS\ncat "$KEY_PATH"\n'),
     ('key ids printed', 'unset CREDS\n', 'unset CREDS\necho "using $KEY_ID $ISSUER"\n'),
     ('a third-party module imported', 'import os, stat, sys\n', 'import os, stat, sys\nimport yaml\n'),
+    ('reader crash ignored', ') || refuse "the config reader failed (python exited non-zero); nothing signed"', ')'),
+    ('empty credentials accepted', '[ -n "$KEY_PATH" ] && [ -n "$KEY_ID" ] && [ -n "$ISSUER" ] || refuse', 'true || refuse'),
     ('a key outside the block read', "            inside = line.split('#', 1)[0].strip() == 'app_store_connect:'\n", "            inside = True\n"),
     ('quotes kept', '                v = v[1:-1]\n', '                pass\n'),
     ('0644 key accepted', "if mode != 0o600:", "if mode not in (0o600, 0o644):"),
