@@ -124,6 +124,8 @@ func New(cfg Config) *Server {
 	s.mux.HandleFunc("GET /v1/status", s.handleStatus)
 	s.mux.HandleFunc("GET /v1/status/{rig}", s.handleRigStatus)
 	s.mux.HandleFunc("GET /v1/conversation/{rig}/{pane}", s.handleConversation)
+	s.mux.HandleFunc("POST /v1/keys/{rig}/{pane}", s.handleKeys)
+	s.mux.HandleFunc("POST /v1/send/{rig}/{pane}", s.handleSend)
 	s.mux.HandleFunc("GET /v1/pins", s.handleGetPins)
 	s.mux.HandleFunc("PUT /v1/pins", s.handlePutPins)
 	s.mux.HandleFunc("GET /v1/feed", func(w http.ResponseWriter, r *http.Request) { serveFeed(s.feed, w, r) })

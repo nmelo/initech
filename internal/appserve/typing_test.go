@@ -67,14 +67,11 @@ func newTypingBackend() *typingBackend {
 	}
 }
 
-// typingServer is the service with the typing routes registered as
-// server.go registers them (eng5's two lines), behind the same token gate.
+// typingServer is the service as New registers it, typing routes and token
+// gate included.
 func typingServer(b Backend) http.Handler {
 	now := time.Unix(1_800_000_000, 0)
-	s := newTestServer(b, &now)
-	s.mux.HandleFunc("POST /v1/keys/{rig}/{pane}", s.handleKeys)
-	s.mux.HandleFunc("POST /v1/send/{rig}/{pane}", s.handleSend)
-	return s.Handler()
+	return newTestServer(b, &now).Handler()
 }
 
 func post(t *testing.T, h http.Handler, path, auth, body string) (int, Typed, string) {
