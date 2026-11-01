@@ -23,7 +23,7 @@ EXPECTED_ASSETS := checksums.txt initech_darwin_amd64.tar.gz initech_darwin_arm6
 LDFLAGS := -s -w -X github.com/nmelo/initech/cmd.Version=$(VERSION)
 REQUIRE_RELEASE_VERSION = test -n "$(VERSION)" && case "$(VERSION)" in v*) ;; *) echo "VERSION must start with v, got $(VERSION)" >&2; exit 1 ;; esac
 
-.PHONY: release-install-test release-sign-test build test test-full test-race integration vet vet-linux lint test-census rig-census template-census short-census lint-test-names lint-test-names-self-test clean release check check-fast install-hooks hooks-check release-tag release-wait release-assets release-verify release-ship
+.PHONY: release-install-test release-sign-test release-publish-test release-sign release-publish build test test-full test-race integration vet vet-linux lint test-census rig-census template-census short-census lint-test-names lint-test-names-self-test clean release check check-fast install-hooks hooks-check release-tag release-wait release-assets release-verify release-ship
 
 build:
 	go build -ldflags "$(LDFLAGS)" -o initech .
@@ -202,7 +202,26 @@ release-assets:
 	test -s "$$tmpdir/checksums.txt"; \
 	echo "Release assets verified for $(VERSION)"
 
-release-verify: release-wait release-assets
+# Sign and notarise the draft's darwin binaries on the release Mac: the Developer
+# ID identity in its keychain, and INITECH_CONFIG naming the initech.yaml whose
+# app_store_connect block holds the notarising key's path.
+release-sign:
+	@set -eu; \
+	$(REQUIRE_RELEASE_VERSION); \
+	if [ -z "$(INITECH_CONFIG)" ]; then echo "release-sign needs INITECH_CONFIG=<initech.yaml with app_store_connect>" >&2; exit 1; fi; \
+	bash scripts/release/sign_notarize.sh "$(VERSION)" --config "$(INITECH_CONFIG)"
+
+# Publish the signed draft, then push the tap formula with the signed checksums.
+release-publish:
+	@set -eu; \
+	$(REQUIRE_RELEASE_VERSION); \
+	bash scripts/release/publish_signed.sh "$(VERSION)"
+
+# The publish step's tests: fake gh and codesign, a local repository as the tap.
+release-publish-test:
+	python3 scripts/release/test_publish_signed.py
+
+release-verify: release-wait release-assets release-sign release-publish
 	@set -eu; \
 	$(REQUIRE_RELEASE_VERSION); \
 	brew update; \

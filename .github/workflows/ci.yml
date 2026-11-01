@@ -136,6 +136,10 @@ jobs:
           [ "$sign_rc" -eq 0 ] || echo "::error::Signing step tests failed (exit $sign_rc)"
           [ "$install_rc" -eq 0 ] && [ "$sign_rc" -eq 0 ]
 
+      # The publish step: fake gh and codesign, a local repository as the tap.
+      - name: Publish step tests
+        run: make release-publish-test
+
       # ini-2x8.8: fail when a test file compiles on one platform and not
       # another without a declared exemption. Static (`go list` applies build
       # constraints without running anything), so one leg answers for all three

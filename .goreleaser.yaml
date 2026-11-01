@@ -40,11 +40,14 @@ archives:
 checksum:
   name_template: checksums.txt
 
+# The release stays a draft and the formula is not pushed from CI: the darwin
+# binaries are signed and notarised on the release Mac first, then
+# scripts/release/publish_signed.sh publishes the draft and pushes the formula.
 release:
   github:
     owner: nmelo
     name: initech
-  draft: false
+  draft: true
   prerelease: auto
 
 brews:
@@ -53,6 +56,7 @@ brews:
       name: homebrew-tap
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
     directory: Formula
+    skip_upload: true
     homepage: https://github.com/nmelo/initech
     description: Bootstrap and manage multi-agent development projects
     license: MIT

@@ -45,3 +45,13 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+
+      # goreleaser leaves a draft and does not push the formula. The release Mac
+      # signs the draft's darwin binaries, publishes it and pushes this formula
+      # with the signed checksums (scripts/release/publish_signed.sh).
+      - name: Keep the formula for the release gate
+        uses: actions/upload-artifact@v4
+        with:
+          name: homebrew-formula
+          path: dist/homebrew/**/initech.rb
+          if-no-files-found: error
