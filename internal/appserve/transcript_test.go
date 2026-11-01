@@ -296,7 +296,7 @@ func TestConversation_LiveRecordShapes(t *testing.T) {
 // A line larger than the page's read budget does not stop the cursor:
 // paging still moves past it and reaches the start.
 func TestConversation_ALineLargerThanTheBudgetDoesNotStopPaging(t *testing.T) {
-	huge := fmt.Sprintf(`{"type":"api-request-blob","blob":"%s"}`, strings.Repeat("x", pageReadMax+1<<20))
+	huge := fmt.Sprintf(`{"type":"api-request-blob","blob":"%s"}`, strings.Repeat("x", 3*pageReadMax))
 	path := writeTranscript(t, []string{tline("user", "old", t0, "before the blob"), huge, tline("user", "new", t0, "after the blob")})
 	pg, err := ReadPage(path, 0, 50)
 	if err != nil {
@@ -313,8 +313,12 @@ func TestConversation_ALineLargerThanTheBudgetDoesNotStopPaging(t *testing.T) {
 		if pg.StartReached {
 			break
 		}
-		if pg, err = ReadPage(path, pg.Before, 50); err != nil {
+		was := pg.Before
+		if pg, err = ReadPage(path, was, 50); err != nil {
 			t.Fatal(err)
+		}
+		if pg.Before >= was {
+			t.Fatalf("the cursor did not move: %d after %d", pg.Before, was)
 		}
 	}
 	if !seen["old"] || !seen["new"] {

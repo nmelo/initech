@@ -2,6 +2,7 @@ package appserve
 
 import (
 	"context"
+	"sort"
 	"time"
 )
 
@@ -118,9 +119,12 @@ func (s *Server) Poll() {
 			}
 		}
 	}
+	// All at once: a request must not see the poll finished with the running
+	// list still the old one.
+	sort.Slice(running, func(i, j int) bool { return running[i].Name < running[j].Name })
 	s.mu.Lock()
 	s.panes, s.found, s.polled = seen, found, true
+	s.rigs, s.rigsAt = running, s.cfg.Now()
 	s.mu.Unlock()
-	s.setRunning(running)
 	s.publishBlockers()
 }

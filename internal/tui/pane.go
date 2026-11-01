@@ -504,13 +504,7 @@ func NewPane(cfg PaneConfig, rows, cols int) (*Pane, error) {
 	// CCS: $CLAUDE_CONFIG_DIR/projects/<encoded-cwd>/
 	jsonlDir := ""
 	if cfg.Dir != "" {
-		encodedCwd := encodePathForClaude(cfg.Dir)
-		configDir := os.Getenv("CLAUDE_CONFIG_DIR")
-		if configDir == "" {
-			home, _ := os.UserHomeDir()
-			configDir = filepath.Join(home, ".claude")
-		}
-		jsonlDir = filepath.Join(configDir, "projects", encodedCwd)
+		jsonlDir = sessionDirFor(cfg.Dir)
 	}
 
 	// Cache PID at creation time so it can be read without locking cmd.Process.
@@ -2060,6 +2054,23 @@ func (p *Pane) SetResumeGrace(until time.Time) {
 
 // encodePathForClaude converts an absolute path to Claude's directory encoding
 // (slashes replaced with dashes, e.g. /Users/foo/bar -> -Users-foo-bar).
+// sessionDirFor is where Claude Code keeps the session transcripts of an agent
+// working in dir: $CLAUDE_CONFIG_DIR/projects/<encoded dir>, ~/.claude when
+// that is unset.
+func sessionDirFor(dir string) string {
+	configDir := os.Getenv("CLAUDE_CONFIG_DIR")
+	if configDir == "" {
+		home, _ := os.UserHomeDir()
+		configDir = filepath.Join(home, ".claude")
+	}
+	return filepath.Join(configDir, "projects", encodePathForClaude(dir))
+}
+
+// NewestTranscript is the newest session transcript of an agent working in
+// dir, "" for none: what a pane's session_file names, for a TUI too old to
+// send it.
+func NewestTranscript(dir string) string { return newestJSONL(sessionDirFor(dir)) }
+
 func encodePathForClaude(path string) string {
 	return strings.ReplaceAll(path, string(filepath.Separator), "-")
 }

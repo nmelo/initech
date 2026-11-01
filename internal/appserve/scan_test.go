@@ -120,3 +120,56 @@ func TestFolderScan_NoFoldersAllHeldAndDuplicates(t *testing.T) {
 		t.Errorf("a rig in two folders: %v", got)
 	}
 }
+
+// Scans running at once share a read: the poll and the progress run start
+// together, and neither may take the other's read for a held folder. Both
+// get the rigs and nothing is named. Held, both get the rest at the bound and
+// it is named once.
+func TestFolderScan_ScansAtOnceShareARead(t *testing.T) {
+	var mu sync.Mutex
+	var named []string
+	slow := make(chan struct{})
+	reads := 0
+	f := &FolderScan{Bound: 2 * time.Second, OnHeld: func(d string) { mu.Lock(); named = append(named, d); mu.Unlock() }, Read: func(dir string) []Rig {
+		mu.Lock()
+		reads++
+		mu.Unlock()
+		<-slow
+		return []Rig{{Name: dir, Root: "/" + dir}}
+	}}
+	results := make(chan string, 2)
+	for i := 0; i < 2; i++ {
+		go func() { results <- rigNames(f.Scan([]string{"a"})) }()
+	}
+	time.Sleep(50 * time.Millisecond)
+	close(slow)
+	for i := 0; i < 2; i++ {
+		if got := <-results; got != "a" {
+			t.Errorf("scan %d = %q, want the rig", i, got)
+		}
+	}
+	mu.Lock()
+	if len(named) != 0 || reads != 1 {
+		t.Errorf("named %v, %d reads; want none named and one read", named, reads)
+	}
+	mu.Unlock()
+
+	never := make(chan struct{})
+	defer close(never)
+	h := &FolderScan{Bound: 30 * time.Millisecond, OnHeld: func(d string) { mu.Lock(); named = append(named, d); mu.Unlock() }, Read: func(string) []Rig { <-never; return nil }}
+	for i := 0; i < 2; i++ {
+		go func() { results <- rigNames(h.Scan([]string{"held"})) }()
+	}
+	for i := 0; i < 2; i++ {
+		select {
+		case <-results:
+		case <-time.After(2 * time.Second):
+			t.Fatal("a held read stalled a scan")
+		}
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(named) != 1 {
+		t.Errorf("held: named %v, want once", named)
+	}
+}

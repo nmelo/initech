@@ -126,8 +126,18 @@ func appServeBindIP() (net.IP, error) {
 	return appserve.BindAddr(appServeListen, addrs)
 }
 
+// appServeLeavePane drops what a shell inside a pane inherits. The service
+// serves every rig and speaks as the operator: INITECH_SOCKET would aim its
+// reads at that pane's rig and INITECH_AGENT would sign its sends as that
+// agent.
+func appServeLeavePane() {
+	os.Unsetenv("INITECH_SOCKET")
+	os.Unsetenv("INITECH_AGENT")
+}
+
 func runAppServe(cmd *cobra.Command, args []string) error {
 	cmd.SilenceUsage = true
+	appServeLeavePane()
 	errw := cmd.ErrOrStderr()
 	base := cmd.Context()
 	if base == nil {
@@ -272,6 +282,12 @@ func (b *appBackend) Panes(r appserve.Rig) ([]appserve.PaneState, error) {
 	out := make([]appserve.PaneState, 0, len(panes))
 	for _, pi := range panes {
 		ps := appserve.PaneState{Name: pi.Name, Banner: pi.Banner, SessionFile: pi.SessionFile}
+		// A TUI older than session_file names none: without this, every
+		// pane of a rig not yet restarted reads as having no transcript and
+		// its super as having nothing waiting.
+		if ps.SessionFile == "" && pi.Host == "" {
+			ps.SessionFile = tui.NewestTranscript(filepath.Join(r.Root, pi.Name))
+		}
 		if s := agentState(pi); s != nil {
 			ps.State = *s
 		}

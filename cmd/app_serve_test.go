@@ -360,3 +360,50 @@ func (l *effortLister) RunInDir(dir, name string, args ...string) (string, error
 	l.calls = append(l.calls, name+" "+strings.Join(args, " "))
 	return l.out, nil
 }
+
+// A TUI older than session_file names no transcript: the service finds the
+// pane's newest one itself, as the TUI would, or every pane of a rig not yet
+// restarted has an empty conversation and its super nothing waiting. A TUI
+// that names one is believed; a pane with none has none; a remote pane is not
+// looked for here.
+func TestAppServePanes_FindsTheTranscriptForAnOlderTUI(t *testing.T) {
+	skipWindows(t)
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("CLAUDE_CONFIG_DIR", "")
+	dir := shortProjectDir(t)
+	writeBasicConfig(t, dir, "demo")
+	session := filepath.Join(home, ".claude", "projects", strings.ReplaceAll(filepath.Join(dir, "eng1"), string(filepath.Separator), "-"))
+	os.MkdirAll(session, 0o700)
+	found := filepath.Join(session, "s1.jsonl")
+	os.WriteFile(found, []byte("{}\n"), 0o600)
+	panes := `[{"name":"eng1","activity":"idle","alive":true},
+	 {"name":"eng2","activity":"idle","alive":true},
+	 {"name":"qa1","activity":"idle","alive":true,"session_file":"/named/by/the/tui.jsonl"},
+	 {"name":"eng1","host":"far","activity":"idle","alive":true}]`
+	sock := tui.SocketPath(dir, "demo")
+	serveFakeTUI(t, sock, tui.IPCResponse{OK: true, Data: panes})
+	got, err := (&appBackend{runner: &iexec.DefaultRunner{}}).Panes(appserve.Rig{Name: "demo", Root: dir, Socket: sock})
+	if err != nil || len(got) != 4 {
+		t.Fatalf("panes = %+v %v", got, err)
+	}
+	for i, want := range []string{found, "", "/named/by/the/tui.jsonl", ""} {
+		if got[i].SessionFile != want {
+			t.Errorf("pane %d (%s): session file %q, want %q", i, got[i].Name, got[i].SessionFile, want)
+		}
+	}
+}
+
+// A service started from a shell inside a pane drops that pane's identity:
+// its reads are not aimed at that rig and its sends not signed as that agent.
+func TestAppServeLeavePane_DropsThePanesIdentity(t *testing.T) {
+	t.Setenv("INITECH_SOCKET", "/some/rig.sock")
+	t.Setenv("INITECH_AGENT", "eng9")
+	appServeLeavePane()
+	if os.Getenv("INITECH_SOCKET") != "" || os.Getenv("INITECH_AGENT") != "" {
+		t.Errorf("still set: %q %q", os.Getenv("INITECH_SOCKET"), os.Getenv("INITECH_AGENT"))
+	}
+	if got := sendFrom(); got != tui.OperatorSender {
+		t.Errorf("a send is from %q, want the operator", got)
+	}
+}
