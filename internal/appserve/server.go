@@ -53,6 +53,8 @@ type Config struct {
 	Now func() time.Time
 	// CacheFor is how long a status read is served before it is read again.
 	CacheFor time.Duration
+	// After is the poll's timer; time.After when nil.
+	After func(time.Duration) <-chan time.Time
 }
 
 // DefaultCacheFor is the status cache window.
@@ -67,10 +69,13 @@ type Server struct {
 	cfg Config
 	mux *http.ServeMux
 
+	feed *Feed
+
 	mu       sync.Mutex
 	rigs     []Rig
 	rigsAt   time.Time
 	statuses map[string]cachedStatus
+	panes    map[string]map[string]PaneState // by rig root, then pane: the last poll
 }
 
 type cachedStatus struct {
@@ -102,10 +107,14 @@ func New(cfg Config) *Server {
 	if cfg.CacheFor <= 0 {
 		cfg.CacheFor = DefaultCacheFor
 	}
-	s := &Server{cfg: cfg, mux: http.NewServeMux(), statuses: map[string]cachedStatus{}}
+	if cfg.After == nil {
+		cfg.After = time.After
+	}
+	s := &Server{cfg: cfg, mux: http.NewServeMux(), statuses: map[string]cachedStatus{}, feed: NewFeed(cfg.Now)}
 	s.mux.HandleFunc("GET /v1/rigs", s.handleRigs)
 	s.mux.HandleFunc("GET /v1/status", s.handleStatus)
 	s.mux.HandleFunc("GET /v1/status/{rig}", s.handleRigStatus)
+	s.mux.HandleFunc("GET /v1/feed", func(w http.ResponseWriter, r *http.Request) { serveFeed(s.feed, w, r) })
 	return s
 }
 
@@ -120,6 +129,9 @@ func (s *Server) Handler() http.Handler {
 		s.mux.ServeHTTP(w, r)
 	})
 }
+
+// Feed is the service's change feed.
+func (s *Server) Feed() *Feed { return s.feed }
 
 // running is the rigs whose TUI answers, read again once the cache window
 // has passed.

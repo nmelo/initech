@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -144,6 +145,11 @@ func runAppServe(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	fmt.Fprintf(cmd.ErrOrStderr(), "initech app-serve listening on %s (%s), rigs under %v\n", ln.Addr(), appServeListen, dirs)
+	ctx := cmd.Context()
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	go srv.Run(ctx)
 	return appserve.ServeTLS(ln, srv.Handler(), cert)
 }
 

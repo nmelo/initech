@@ -3,7 +3,9 @@ package cmd
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"net"
 	"net/http/httptest"
 	"os"
@@ -11,8 +13,10 @@ import (
 	"reflect"
 	"regexp"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/nmelo/initech/internal/appserve"
 	iexec "github.com/nmelo/initech/internal/exec"
@@ -229,5 +233,73 @@ func TestAppServeToken_PrintsThePairingLinkOnce(t *testing.T) {
 	c.SetOut(&bytes.Buffer{})
 	if err := runAppServeToken(c, nil); err == nil || !strings.Contains(err.Error(), "--listen local-network") {
 		t.Errorf("no tailnet: %v, want the error naming --listen local-network", err)
+	}
+}
+
+// countingRunner records every command run through it and runs none.
+type countingRunner struct {
+	mu    sync.Mutex
+	calls []string
+}
+
+func (r *countingRunner) Run(name string, args ...string) (string, error) {
+	return r.RunInDir("", name, args...)
+}
+
+func (r *countingRunner) RunInDir(dir, name string, args ...string) (string, error) {
+	r.mu.Lock()
+	r.calls = append(r.calls, name+" "+strings.Join(args, " "))
+	r.mu.Unlock()
+	return "", errors.New("not run")
+}
+
+// ini-r0q.1 AC5: over a minute of idle the service polls the running rig
+// through its TUI only: the runner every bd and git call goes through is
+// called zero times. A status request is what reads bd, and it does (the
+// positive twin: the counter can see a bd call).
+func TestAppServe_AMinuteOfIdleMakesNoBdOrGitCall(t *testing.T) {
+	skipWindows(t)
+	projects, err := os.MkdirTemp("", "iap-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(projects) })
+	dir := filepath.Join(projects, "r")
+	os.MkdirAll(dir, 0o755)
+	writeBasicConfig(t, dir, "demo")
+	tuiCalls := serveFakeTUI(t, tui.SocketPath(dir, "demo"), tui.IPCResponse{OK: true, Data: appServePanes})
+
+	runner := &countingRunner{}
+	now := time.Unix(1_800_000_000, 0)
+	var mu sync.Mutex
+	clock := func() time.Time { mu.Lock(); defer mu.Unlock(); return now }
+	ctx, cancel := context.WithCancel(context.Background())
+	var waited time.Duration
+	after := func(d time.Duration) <-chan time.Time {
+		mu.Lock()
+		now = now.Add(d)
+		mu.Unlock()
+		waited += d
+		ch := make(chan time.Time, 1)
+		if waited >= time.Minute {
+			cancel()
+			return make(chan time.Time)
+		}
+		ch <- now
+		return ch
+	}
+	srv := appserve.New(appserve.Config{Backend: &appBackend{dirs: []string{projects}, runner: runner},
+		HasToken: true, Now: clock, After: after})
+	srv.Run(ctx)
+	if n := len(runner.calls); n != 0 {
+		t.Errorf("a minute of idle ran %d commands: %v", n, runner.calls)
+	}
+	if tuiCalls.Load() == 0 {
+		t.Fatal("the poll never asked the TUI: the minute did not reach the rig")
+	}
+
+	(&appBackend{dirs: []string{projects}, runner: runner}).Status(appserve.Rig{Name: "demo", Root: dir, Socket: tui.SocketPath(dir, "demo")})
+	if len(runner.calls) == 0 {
+		t.Error("a status read ran no command: the counter cannot see bd")
 	}
 }

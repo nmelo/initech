@@ -21,7 +21,8 @@ import (
 type fakeBackend struct {
 	mu          sync.Mutex
 	rigs        []Rig
-	down        map[string]bool // rig root -> no TUI answers
+	down        map[string]bool        // rig root -> no TUI answers
+	panes       map[string][]PaneState // rig root -> its pane list
 	agents      map[string][]map[string]any
 	screen      string
 	statusCalls int
@@ -38,7 +39,7 @@ func (f *fakeBackend) Panes(r Rig) ([]PaneState, error) {
 	if f.down[r.Root] {
 		return nil, errors.New("no TUI")
 	}
-	return nil, nil
+	return append([]PaneState(nil), f.panes[r.Root]...), nil
 }
 
 func (f *fakeBackend) Status(r Rig) ([]map[string]any, error) {
