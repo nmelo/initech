@@ -18,10 +18,19 @@ import (
 // on screen compares the partial frame with a forced full frame: any cell
 // that differs is a stale cell.
 
+// ysr2Now is the fixture's wall clock. The status bar draws statusClock's
+// minute on the bottom row; on the real clock a minute that turns between a
+// partial frame and the forced full frame it is compared with reads as stale
+// cells on that row (ini-78n: "toast closed: stale cells, first on row 47",
+// once, under load). Held still, a difference can only be a paint.
+var ysr2Now = time.Date(2026, 11, 1, 12, 0, 30, 0, time.Local)
+
 // ysr2TUI is a 4x3 grid of eleven panes on a 160x48 screen, each body filled
-// with its name.
+// with its name, with the status bar clock held at ysr2Now.
 func ysr2TUI(t *testing.T, names ...string) (*TUI, tcell.SimulationScreen) {
 	t.Helper()
+	statusClock = func() time.Time { return ysr2Now }
+	t.Cleanup(func() { statusClock = time.Now })
 	if len(names) == 0 {
 		for i := 1; i <= 11; i++ {
 			names = append(names, fmt.Sprintf("p%02d", i))
@@ -161,7 +170,7 @@ func TestPartialFrame_LayersLeaveNoStaleCells(t *testing.T) {
 		"toast": func(tu *TUI, on bool) {
 			tu.notifications = nil
 			if on {
-				tu.notifications = []notification{{event: AgentEvent{Type: EventAgentStalled, Pane: "p03", Detail: "a toast over the panes"}, expires: time.Now().Add(time.Minute)}}
+				tu.notifications = []notification{{event: AgentEvent{Type: EventAgentStalled, Pane: "p03", Detail: "a toast over the panes"}, expires: ysr2Now.Add(time.Minute)}}
 			}
 		},
 	} {
@@ -310,4 +319,16 @@ func TestPartialFrame_ALayerLeavingARemotePaneTopRowLeavesNoStaleCells(t *testin
 	ysr2SameAsFull(t, tui, s, "help open over a remote pane")
 	tui.help.active = false
 	ysr2SameAsFull(t, tui, s, "help closed over a remote pane")
+}
+
+// ini-78n: the fixture holds the status bar clock, so no comparison in this
+// file can see the minute turn between its two frames. Red on the old
+// fixture, where statusClock was the wall clock.
+func TestPartialFrame_TheFixtureHoldsTheStatusBarClock(t *testing.T) {
+	ysr2TUI(t)
+	first := statusClock()
+	time.Sleep(2 * time.Millisecond)
+	if second := statusClock(); !first.Equal(ysr2Now) || !second.Equal(ysr2Now) {
+		t.Fatalf("statusClock = %v then %v inside the fixture, want ysr2Now (%v) both times", first, second, ysr2Now)
+	}
 }
