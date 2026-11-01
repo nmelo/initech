@@ -50,7 +50,8 @@ final class HomeModel: ObservableObject {
     @Published private(set) var rigs: [RigStatus] = []
     @Published private(set) var problem: String?
     @Published private(set) var unauthorized = false
-    /// waiting holds the newest waiting item per pane from the feed.
+    /// waiting holds each pane's newest item from the blockers list, set at
+    /// once by a waiting_item event and read again when the list changes.
     @Published private(set) var waiting: [PaneRef: String] = [:]
     /// selection is the open pane: the sidebar's choice on iPad, the pushed
     /// pane on iPhone. Any view holding the model opens a pane with open(_:).
@@ -107,7 +108,7 @@ final class HomeModel: ObservableObject {
 
     // MARK: loading
 
-    /// reload reads the pins and the status of every running rig.
+    /// reload reads the pins, the status of every running rig and what waits.
     func reload() async {
         do {
             async let p = service.pins()
@@ -119,6 +120,19 @@ final class HomeModel: ObservableObject {
         } catch {
             note(error)
         }
+        await refreshWaiting()
+    }
+
+    /// refreshWaiting takes what waits from the blockers list. A read that
+    /// fails says nothing about an item leaving, so the rows stay as they are;
+    /// the Blockers view reports the failure.
+    private func refreshWaiting() async {
+        guard let lists = try? await blockersSource.blockers() else { return }
+        var next: [PaneRef: String] = [:]
+        for rig in lists {
+            for item in rig.waiting { next[PaneRef(rig: rig.rig, pane: item.pane)] = item.text }
+        }
+        waiting = next
     }
 
     /// startFeed applies feed events until stop; a reset reloads everything.
@@ -155,8 +169,10 @@ final class HomeModel: ObservableObject {
             waiting[PaneRef(rig: rig, pane: pane)] = text
         case .stuck:
             await refreshStatus()
-        case .transcript, .blockers:
-            break // the open pane's and the Blockers view's own models take these
+        case .blockers:
+            await refreshWaiting()
+        case .transcript:
+            break // the open pane's own model takes these
         case .reset:
             await reload()
         }

@@ -289,7 +289,7 @@ The app locks behind Face ID (or the device passcode) on every open and every re
 
 ### Home
 
-Home lists the panes you pinned, in your order, each with the name you gave it, its state (working, idle, waiting at a prompt, pending input, or its banner), its context percentage, the bead it holds and the newest item it has waiting on you. It updates live from the service's feed. A pinned pane whose rig stopped or that no longer exists stays in the list, greyed. With nothing pinned, home shows one line pointing to Rigs.
+Home lists the panes you pinned, in your order, each with the name you gave it, its state (working, idle, waiting at a prompt, pending input, or its banner), its context percentage, the bead it holds and the newest item it has waiting on you, until that item leaves the Blockers list. It updates live from the service's feed. A pinned pane whose rig stopped or that no longer exists stays in the list, greyed. With nothing pinned, home shows one line pointing to Rigs.
 
 **Rigs** lists every running rig with the panes you have not pinned; the pin button pins one. Swipe a pinned row to rename or unpin it; Edit reorders. The pinned list is stored on the Mac, so every paired device shows the same list. On iPad, the pinned list is a sidebar beside the open pane.
 

@@ -57,6 +57,39 @@ final class HomeModelTests: XCTestCase {
         try await waitForMain { home.waiting[PaneRef(rig: "initech", pane: "super")] == "▶ Ship v2.50?" }
     }
 
+    private func blockersJSON(_ item: String?) -> String {
+        let waiting = item.map { #"[{"pane":"super","text":"\#($0)","recommendation":""}]"# } ?? "[]"
+        return #"[{"rig":"initech","waiting":\#(waiting),"stuck":[],"quiet":false}]"#
+    }
+
+    func testAWaitingItemThatDropsOff_ClearsFromItsRow() async {
+        let ref = PaneRef(rig: "initech", pane: "super")
+        let home = HomeModel(service: service)
+        await home.reload()
+        await home.apply(.waitingItem(rig: "initech", pane: "super", text: "▶ Ship it?"))
+        XCTAssertEqual(home.waiting[ref], "▶ Ship it?")
+        server.setRawGET("blockers", blockersJSON(nil))
+        await home.apply(.blockers)
+        XCTAssertNil(home.waiting[ref], "the item left the list and stayed on the row")
+    }
+
+    func testHome_ShowsWhatIsWaitingWhenItOpens() async {
+        server.setRawGET("blockers", blockersJSON("▶ Ship it?"))
+        let home = HomeModel(service: service)
+        await home.reload()
+        XCTAssertEqual(home.waiting[PaneRef(rig: "initech", pane: "super")], "▶ Ship it?")
+    }
+
+    func testABlockersReadThatFails_LeavesTheRowAsItWas() async {
+        let ref = PaneRef(rig: "initech", pane: "super")
+        let home = HomeModel(service: service)
+        await home.reload()
+        await home.apply(.waitingItem(rig: "initech", pane: "super", text: "▶ Ship it?"))
+        await home.apply(.blockers) // the fixture answers 404: nothing says the item left
+        XCTAssertEqual(home.waiting[ref], "▶ Ship it?")
+        XCTAssertNil(home.problem, "home still works without the blockers route")
+    }
+
     func testRigs_ListsOnlyUnpinnedPanes_AndOneTapPins() async {
         let home = HomeModel(service: service)
         await home.reload()
