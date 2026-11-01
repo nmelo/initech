@@ -34,6 +34,7 @@ package tui
 // cannot come from either window's local state agreeing by luck.
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -55,6 +56,27 @@ import (
 // sixm4RigRoles is the operator's role order: declaration order differs from
 // group order, which is what makes numbering divergence expressible at all.
 var sixm4RigRoles = []string{"super", "pmm", "shipper", "growth", "pm", "qa1", "eng1", "eng2"}
+
+// sixm4HiddenCount is the overlay's footer counting a hidden agent.
+var sixm4HiddenCount = regexp.MustCompile(`\d+ visible, \d+ hidden`)
+
+// sixm4EnvWithout is this process's environment less the named variables,
+// so a command the rig runs can never reach the session the rig runs inside.
+func sixm4EnvWithout(names ...string) []string {
+	var out []string
+	for _, kv := range os.Environ() {
+		keep := true
+		for _, n := range names {
+			if strings.HasPrefix(kv, n+"=") {
+				keep = false
+			}
+		}
+		if keep {
+			out = append(out, kv)
+		}
+	}
+	return out
+}
 
 // sixm4ModelFlagRe reads the --model value off a child's argv.
 var sixm4ModelFlagRe = regexp.MustCompile(`--model[ =](\S+)`)
@@ -431,6 +453,20 @@ func TestSixM4Rig_ViewerModalParityAndReplaySurvival(t *testing.T) {
 	// fixture refusing to assert past a setup that had not happened yet.
 	// A fixed sleep is a bet on the other machine's speed; a poll with a
 	// generous deadline is not.
+	// POSITIVE TWIN (ini-7w4 fix): before the hide, window 2 renders both its
+	// agents' panes and its overlay counts nothing hidden. The assertions
+	// after the hide are only evidence if this frame differs from that one.
+	w2before := strings.Join(nonEmpty(snapRows(w2emu)), "\n")
+	for _, marker := range []string{"/eng1", "/eng2"} {
+		if !strings.Contains(w2before, marker) {
+			t.Fatalf("FIXTURE: before the hide window 2 shows no %s content, so the hide "+
+				"cannot be read off its pane area\nW2:\n%s", marker, w2before)
+		}
+	}
+	if sixm4HiddenCount.MatchString(w2before) {
+		t.Fatalf("FIXTURE: window 2 counts an agent hidden before anything was hidden\nW2:\n%s", w2before)
+	}
+
 	w1pty.Write([]byte("/eng1\r")) // search to eng1, keep the selection
 	time.Sleep(1500 * time.Millisecond)
 	w1pty.Write([]byte(" ")) // hide the selected agent
@@ -479,26 +515,61 @@ func TestSixM4Rig_ViewerModalParityAndReplaySurvival(t *testing.T) {
 	// -- but the PROPAGATION it was testing is not, and it is the half worth
 	// gating: a viewer must not go on rendering a fleet state window 1 has
 	// changed. The overlay is where a viewer observes it, and it is a surface
-	// window 2 still has. Measured, not assumed: the overlay marks the hidden
-	// agent "○ eng1 [h]" and footers "1 visible, 1 hidden".
+	// window 2 still has, with its pane area.
 	w1pty.Write([]byte("\x1b")) // close window 1's modal so nothing overlaps
 	time.Sleep(2500 * time.Millisecond)
 	w2after := strings.Join(nonEmpty(snapRows(w2emu)), "\n")
 
-	marked := regexp.MustCompile(`\x{25cb} ` + hiddenAgent + ` ` + regexp.QuoteMeta(hiddenBoxMarker))
-	if !marked.MatchString(w2after) {
-		t.Errorf("window 1 hid %s and window 2's overlay does not mark it hidden -- the "+
-			"viewer is rendering its startup fleet-state snapshot, so the two windows "+
-			"disagree about what the fleet looks like\nW2:\n%s", hiddenAgent, w2after)
+	// The overlay lists only agents doing something or needing attention
+	// (ini-7w4), so window 2's idle eng1 has no overlay row to carry "[h]"; a
+	// viewer serves no socket and its Agents panel is main-window only. What
+	// window 2 itself shows of the hide is (a) its overlay's count, "1
+	// visible, 1 hidden" over its two agents, and (b) its pane area: the hidden
+	// agent's pane goes and the other stays, which names the agent. Both are
+	// read against the positive twin above, taken before the hide.
+	if !sixm4HiddenCount.MatchString(w2after) || !strings.Contains(w2after, "1 visible, 1 hidden") {
+		t.Errorf("window 1 hid %s and window 2's overlay does not count it hidden (want "+
+			"\"1 visible, 1 hidden\"): the viewer is rendering its startup fleet-state "+
+			"snapshot, so the two windows disagree\nW2:\n%s", hiddenAgent, w2after)
 	}
-	// SPECIFICITY: the marker must belong to the hidden agent, not decorate
-	// every row. Without this, an overlay that marked everything would pass.
 	other := "eng2"
 	if hiddenAgent == other {
 		other = "eng1"
 	}
-	if regexp.MustCompile(`\x{25cb} ` + other + ` ` + regexp.QuoteMeta(hiddenBoxMarker)).MatchString(w2after) {
-		t.Errorf("window 2's overlay marks %s hidden too, but only %s was hidden -- the "+
-			"marker is not reporting per-agent state\nW2:\n%s", other, hiddenAgent, w2after)
+	if strings.Contains(w2after, "/"+hiddenAgent) {
+		t.Errorf("window 1 hid %s and window 2 still renders its pane\nW2:\n%s", hiddenAgent, w2after)
+	}
+	// SPECIFICITY: only the hidden agent's pane goes; the other stays.
+	if !strings.Contains(w2after, "/"+other) {
+		t.Errorf("window 2 stopped rendering %s too, but only %s was hidden -- the hide is "+
+			"not per-agent\nW2:\n%s", other, hiddenAgent, w2after)
+	}
+	// The fleet's record agrees, read from window 1's socket (a viewer serves
+	// none): status --json has the hidden agent not visible and the other
+	// visible.
+	st := newCmd(bin, root, "status", "--json")
+	st.Env = append(sixm4EnvWithout("INITECH_SOCKET", "INITECH_AGENT"), "TERM=xterm-256color")
+	out, err := st.Output()
+	if err != nil {
+		t.Fatalf("status --json: %v\n%s", err, out)
+	}
+	var agents []struct {
+		Role    string `json:"role"`
+		Visible bool   `json:"visible"`
+	}
+	if err := json.Unmarshal(out, &agents); err != nil {
+		t.Fatalf("status --json: %v\n%s", err, out)
+	}
+	seen := map[string]bool{}
+	for _, a := range agents {
+		if a.Role == hiddenAgent || a.Role == other {
+			seen[a.Role] = true
+			if want := a.Role == other; a.Visible != want {
+				t.Errorf("status --json: %s visible=%v, want %v", a.Role, a.Visible, want)
+			}
+		}
+	}
+	if !seen[hiddenAgent] || !seen[other] {
+		t.Errorf("status --json lists %v, want both %s and %s\n%s", seen, hiddenAgent, other, out)
 	}
 }
