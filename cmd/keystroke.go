@@ -55,9 +55,21 @@ func runKeystroke(cmd *cobra.Command, args []string) error {
 	return keystrokeAgent(cmd.ErrOrStderr(), target, host, args[1], keystrokeUrgent)
 }
 
+// ipcCaller is one IPC round trip: ipcCall for the CLI (the socket it
+// resolves), or a fixed rig's socket for the app service.
+type ipcCaller func(tui.IPCRequest) (*tui.IPCResponse, error)
+
 // keystrokeAgent is initech keystroke after argument parsing. A key name
 // outside the table is refused here, before anything reaches the TUI.
 func keystrokeAgent(w io.Writer, target, host, key string, urgent bool) error {
+	return keystrokeVia(w, ipcCall, target, host, key, urgent, "")
+}
+
+// keystrokeVia is keystrokeAgent over call, sent as from ("" lets the socket
+// call stamp the sender from INITECH_AGENT, as the CLI does). It writes the
+// delivered line to w and returns the refusal as its error: the words the
+// command prints either way.
+func keystrokeVia(w io.Writer, call ipcCaller, target, host, key string, urgent bool, from string) error {
 	name := target
 	if host != "" {
 		name = host + ":" + target
@@ -65,7 +77,7 @@ func keystrokeAgent(w io.Writer, target, host, key string, urgent bool) error {
 	if !tui.KeystrokeKnown(key) {
 		return fmt.Errorf("not delivered to %s: %s", name, tui.KeystrokeUnknownReason(key))
 	}
-	resp, err := ipcCall(tui.IPCRequest{Action: "keystroke", Target: target, Host: host, Text: key, Urgent: urgent})
+	resp, err := call(tui.IPCRequest{Action: "keystroke", Target: target, Host: host, Text: key, Urgent: urgent, From: from})
 	if err != nil {
 		return err
 	}

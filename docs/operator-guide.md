@@ -311,6 +311,8 @@ It serves HTTPS only (TLS 1.3) with its own self-signed certificate, `~/.config/
 
 `GET /v1/pins` is the pinned list, `[{"rig", "pane", "name", "order"}]` in `order`, `[]` when nothing is pinned; `PUT /v1/pins` with the whole list replaces it. The list is stored on the Mac, in `~/.config/initech/app-serve/pins.json` (mode 0600), so every paired device shows the same one. A list with a pin missing its rig or pane, the same pane twice, a name over 80 characters, more than 200 pins or a field the service does not know is refused with 400, and the stored list stands.
 
+`POST /v1/keys/<rig>/<pane>` with `{"key": "enter"}` (or `esc`, `ctrl-c`, `y`, `n`) presses that key in the pane exactly as `initech keystroke` does, as you, the operator: it goes into an open dialog (on Claude's numbered prompt `enter` is Yes and `esc` is No), and a pane in do-not-disturb or suspended refuses it, nothing typed. The answer is `{"verdict": ..., "words": ...}`: the verdict `initech keystroke` reached (`delivered` or `not_delivered`) and the line it prints for the same call, word for word. A request the service turns away before anything is typed answers `{"verdict": "refused", "words": ...}`: 400 for a key outside the five (with `initech keystroke`'s own refusal line) or a body that is not a JSON object, 404 for a rig not running or a pane it does not have.
+
 ## Configuration
 
 Settings live in `initech.yaml` at the project root and are read at startup.
