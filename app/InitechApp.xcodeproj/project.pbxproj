@@ -63,6 +63,7 @@
 		10D5A8C8CF2881FB2236459D /* BlockersModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlockersModel.swift; sourceTree = "<group>"; };
 		141131EF2DD5FEE337187AD3 /* BlockersModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlockersModelTests.swift; sourceTree = "<group>"; };
 		1A4E60E0BF81FC9AD90D324C /* InitechAppUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = InitechAppUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		2DF1A52E1AA6AD143C33B281 /* InitechApp.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = InitechApp.entitlements; sourceTree = "<group>"; };
 		2F0C8C6A411B9F13BD5F6987 /* Pairing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Pairing.swift; sourceTree = "<group>"; };
 		38311B4C974E91A7AF9834C0 /* LiveServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveServiceTests.swift; sourceTree = "<group>"; };
 		38DE6C64E6074FD3DA0E9F8C /* PaneView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaneView.swift; sourceTree = "<group>"; };
@@ -83,6 +84,7 @@
 		9AD89DF8748C72A36D899F85 /* ScreenshotTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenshotTests.swift; sourceTree = "<group>"; };
 		9C7B8C3570C7B33C099C65C3 /* HomeModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeModel.swift; sourceTree = "<group>"; };
 		A282C9D0B4542CD0C2D4AD1C /* HomeModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeModelTests.swift; sourceTree = "<group>"; };
+		A5C4B78E7DDAD9C9D884A6A0 /* InitechApp.Debug.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = InitechApp.Debug.entitlements; sourceTree = "<group>"; };
 		BB189FF009C5D6B4E1735478 /* ServiceClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServiceClient.swift; sourceTree = "<group>"; };
 		CC3E1D3D497C12A586B34C15 /* ProgressView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProgressView.swift; sourceTree = "<group>"; };
 		D973C4CF1AB9FD8305E3EE9B /* InitechApp.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = InitechApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -112,6 +114,8 @@
 				666FD729244613CF6E86345D /* BlockersView.swift */,
 				9C7B8C3570C7B33C099C65C3 /* HomeModel.swift */,
 				0DD99BD2396715324CE7297D /* HomeView.swift */,
+				A5C4B78E7DDAD9C9D884A6A0 /* InitechApp.Debug.entitlements */,
+				2DF1A52E1AA6AD143C33B281 /* InitechApp.entitlements */,
 				F87CD51E774AB674C7B99838 /* InitechApp.swift */,
 				93051BAD3626304FE12B85BC /* Models.swift */,
 				5C4A3801D442302B722CA33A /* OperatorScreens.swift */,
@@ -230,12 +234,15 @@
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
 					1E18E62F81993F0DE182E8FF = {
+						DevelopmentTeam = K7Z8YKVA8G;
 						ProvisioningStyle = Automatic;
 					};
 					B46DA23474408FBC80783FD4 = {
+						DevelopmentTeam = K7Z8YKVA8G;
 						ProvisioningStyle = Automatic;
 					};
 					EE34F6E985C7C97F90C88394 = {
+						DevelopmentTeam = K7Z8YKVA8G;
 						ProvisioningStyle = Automatic;
 						TestTargetID = B46DA23474408FBC80783FD4;
 					};
@@ -336,6 +343,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = InitechApp/InitechApp.Debug.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = initech;
@@ -359,6 +367,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = InitechApp/InitechApp.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = initech;
@@ -432,6 +441,7 @@
 				COPY_PHASE_STRIP = NO;
 				CURRENT_PROJECT_VERSION = 1;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = K7Z8YKVA8G;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
@@ -544,6 +554,7 @@
 				COPY_PHASE_STRIP = NO;
 				CURRENT_PROJECT_VERSION = 1;
 				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = K7Z8YKVA8G;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
