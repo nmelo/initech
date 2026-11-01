@@ -50,3 +50,22 @@ func (b *appBackend) Key(r appserve.Rig, pane, key string) appserve.Typed {
 	}
 	return appserve.Typed{Verdict: tui.DeliveryDelivered, Words: strings.TrimRight(out.String(), "\n")}
 }
+
+// Send types text into pane of rig r as initech send does, as the operator:
+// the verdict the TUI reached and the line the command prints for it (its
+// error's words when it fails). An older TUI's deferral, which carries no
+// verdict word, reads deferred, as the command reads it.
+func (b *appBackend) Send(r appserve.Rig, pane, text string, enter bool) appserve.Typed {
+	var out bytes.Buffer
+	verdict, err := deliverTextVia(&out, rigCaller(r), pane, "", text, enter, false, tui.OperatorSender)
+	if err != nil {
+		if verdict == "" {
+			verdict = tui.DeliveryNotDelivered
+		}
+		return appserve.Typed{Verdict: verdict, Words: err.Error()}
+	}
+	if verdict == "" {
+		verdict = tui.DeliveryDeferred
+	}
+	return appserve.Typed{Verdict: verdict, Words: strings.TrimRight(out.String(), "\n")}
+}

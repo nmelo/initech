@@ -315,6 +315,8 @@ It serves HTTPS only (TLS 1.3) with its own self-signed certificate, `~/.config/
 
 `POST /v1/keys/<rig>/<pane>` with `{"key": "enter"}` (or `esc`, `ctrl-c`, `y`, `n`) presses that key in the pane exactly as `initech keystroke` does, as you, the operator: it goes into an open dialog (on Claude's numbered prompt `enter` is Yes and `esc` is No), and a pane in do-not-disturb or suspended refuses it, nothing typed. The answer is `{"verdict": ..., "words": ...}`: the verdict `initech keystroke` reached (`delivered` or `not_delivered`) and the line it prints for the same call, word for word. A request the service turns away before anything is typed answers `{"verdict": "refused", "words": ...}`: 400 for a key outside the five (with `initech keystroke`'s own refusal line) or a body that is not a JSON object, 404 for a rig not running or a pane it does not have.
 
+`POST /v1/send/<rig>/<pane>` with `{"text": "..."}` types the message into the pane exactly as `initech send` does, as you, and presses Enter once (`"enter": false` leaves it in the box, as `--no-enter`). The answer carries the send's verdict and line, word for word: `delivered`; `deferred` when a dialog is open (the message waits and goes in when it closes); `held` when the agent is in do-not-disturb (it waits for the turn to end); `unchecked` or `unconfirmed` when initech could not tell; `not_delivered`. An empty text is refused with 400 and nothing is sent.
+
 ## Configuration
 
 Settings live in `initech.yaml` at the project root and are read at startup.

@@ -117,3 +117,51 @@ func readBody(r *http.Request, w http.ResponseWriter, limit int64, v any) string
 func refuse(w http.ResponseWriter, code int, words string) {
 	writeJSON(w, code, Typed{Verdict: VerdictRefused, Words: words})
 }
+
+// MessageTypist is a backend that can send a message into a pane, as
+// initech send does, as the operator. cmd implements it over the command's
+// own code, so the verdict and words are the command's, never rebuilt here.
+type MessageTypist interface {
+	// Send types text into pane of rig r (one Enter after it when enter)
+	// and answers the command's verdict and words: delivered, deferred (a
+	// dialog is open; the text is kept), held (do-not-disturb; kept),
+	// unchecked, unconfirmed or not_delivered.
+	Send(r Rig, pane, text string, enter bool) Typed
+}
+
+// maxSendBody bounds a send request body.
+const maxSendBody = 1 << 20
+
+// handleSend is POST /v1/send/{rig}/{pane} with body {"text": "...",
+// "enter": true}: enter absent means true (one Enter, as initech send);
+// false is initech send --no-enter. 200 with the command's verdict and
+// words once the text was offered to the pane; a refusal (400 bad body or
+// empty text, 404 unknown rig or pane, 501 a backend that cannot send)
+// answers {verdict: refused, words} and sends nothing.
+func (s *Server) handleSend(w http.ResponseWriter, r *http.Request) {
+	rigName, pane := r.PathValue("rig"), r.PathValue("pane")
+	mt, ok := s.cfg.Backend.(MessageTypist)
+	if !ok {
+		refuse(w, http.StatusNotImplemented, "this initech app-serve cannot send into panes")
+		return
+	}
+	var body struct {
+		Text  *string `json:"text"`
+		Enter *bool   `json:"enter"`
+	}
+	if words := readBody(r, w, maxSendBody, &body); words != "" {
+		refuse(w, http.StatusBadRequest, words)
+		return
+	}
+	if body.Text == nil || *body.Text == "" {
+		refuse(w, http.StatusBadRequest, "nothing to send: the text is empty")
+		return
+	}
+	enter := body.Enter == nil || *body.Enter
+	rg, words := s.typingTarget(rigName, pane)
+	if words != "" {
+		refuse(w, http.StatusNotFound, words)
+		return
+	}
+	writeJSON(w, http.StatusOK, mt.Send(rg, pane, *body.Text, enter))
+}

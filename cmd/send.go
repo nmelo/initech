@@ -252,6 +252,14 @@ func deliverText(w io.Writer, target, host, text string, enter, urgent bool) err
 // one), for a caller that acts on the outcome after the report: initech
 // compact watches only after delivered (ini-sf5.1).
 func deliverTextVerdict(w io.Writer, target, host, text string, enter, urgent bool) (string, error) {
+	return deliverTextVia(w, ipcCall, target, host, text, enter, urgent, "")
+}
+
+// deliverTextVia is deliverTextVerdict over call, sent as from ("" lets the
+// socket call stamp the sender from INITECH_AGENT, as the CLI does): the app
+// service sends as the operator to one rig's socket through it, with the
+// command's own lines.
+func deliverTextVia(w io.Writer, call ipcCaller, target, host, text string, enter, urgent bool, from string) (string, error) {
 	req := tui.IPCRequest{
 		Action: "send",
 		Target: target,
@@ -259,9 +267,10 @@ func deliverTextVerdict(w io.Writer, target, host, text string, enter, urgent bo
 		Text:   text,
 		Enter:  enter,
 		Urgent: urgent,
+		From:   from,
 	}
 
-	resp, err := ipcCall(req)
+	resp, err := call(req)
 	if err != nil {
 		return "", err
 	}
