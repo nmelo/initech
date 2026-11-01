@@ -31,6 +31,9 @@ func serveFakeTUI(t *testing.T, sockPath string, resp tui.IPCResponse) *atomic.I
 	t.Cleanup(func() { ln.Close() })
 	var n atomic.Int32
 	data, _ := json.Marshal(resp)
+	// One line, built before any connection: each goroutine only reads it
+	// (an append per connection raced on data's spare capacity).
+	line := append(append([]byte(nil), data...), '\n')
 	go func() {
 		for {
 			c, err := ln.Accept()
@@ -43,7 +46,7 @@ func serveFakeTUI(t *testing.T, sockPath string, resp tui.IPCResponse) *atomic.I
 					return
 				}
 				n.Add(1)
-				c.Write(append(data, '\n'))
+				c.Write(line)
 			}()
 		}
 	}()
