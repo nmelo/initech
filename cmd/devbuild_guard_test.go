@@ -258,3 +258,41 @@ func TestDevBuildGuard_DoesNotGateReadOnlyActions(t *testing.T) {
 		t.Fatalf("read-only commands must not be gated by the dev-build guard, got error: %v", err)
 	}
 }
+
+// ini-92x: dev build has one meaning. A hand-set version or a prerelease is
+// refused like the default "dev"; a plain release number, with or without its
+// leading v, is not. Red with the guard back on Version == "dev".
+func TestDevBuildGuard_AnyVersionNotAPlainReleaseNumberIsDev(t *testing.T) {
+	resetDevBuildGuardState(t)
+	for v, wantDev := range map[string]bool{
+		"dev": true, "": true, "qa": true, "2.50.0-rc1": true,
+		"2.49.0": false, "v2.49.0": false,
+	} {
+		Version = v
+		if got := isDevBuild(); got != wantDev {
+			t.Errorf("isDevBuild() with Version %q = %v, want %v", v, got, wantDev)
+		}
+	}
+}
+
+// ini-92x: the refusal says which version it read, since a hand-set version
+// does not look like a dev build to the person who set it.
+func TestDevBuildGuard_RefusalNamesTheVersionItRead(t *testing.T) {
+	skipWindows(t)
+	resetDevBuildGuardState(t)
+	Version = "qa"
+
+	sockPath, accepts := listenCountingFakeIPC(t, tui.IPCResponse{OK: true})
+	_, err := ipcCallSocket(sockPath, tui.IPCRequest{Action: "send", Target: "eng1", Text: "x"})
+	if err == nil {
+		t.Fatal("a hand-set version was not refused")
+	}
+	for _, want := range []string{"dev build", `"qa"`, "not a plain release number", "--allow-dev-delivery", sockPath} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("refusal %q does not say %q", err.Error(), want)
+		}
+	}
+	if n := accepts.Load(); n != 0 {
+		t.Errorf("the guard let %d connection(s) through before refusing", n)
+	}
+}

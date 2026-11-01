@@ -174,6 +174,17 @@ type Daemon struct {
 // ── Protocol messages ───────────────────────────────────────────────
 
 // HelloMsg is sent by the client to initiate the handshake.
+// startSessionRecord gives a daemon with a project root its session-bead
+// recorder, in the folder its build version names, and says what a rig's start
+// says about it on w.
+func (d *Daemon) startSessionRecord(w io.Writer) {
+	if d.project == nil || d.project.Root == "" {
+		return
+	}
+	reportSessionRecordStart(w, d.version, d.project.Root)
+	d.sessionBeads = newSessionBeadRecorder(sessionRecordsDirFor(d.version, d.project.Root), d.project.Root, d.project.Name)
+}
+
 // ProtocolVersion is the window/peer control protocol version. Bump it when a
 // wire form changes in a way an older peer would MISREAD rather than reject --
 // including how fleet-scoped state is keyed, since that changes the protocol's
@@ -524,12 +535,7 @@ func RunDaemon(cfg DaemonConfig) error {
 	defer close(stopMaint)
 	// The process that runs the agents writes their session-bead record
 	// (ini-wra.2).
-	if d.project != nil && d.project.Root != "" {
-		if w := SessionRecordStartWarning(); w != "" {
-			fmt.Fprintln(os.Stderr, w)
-		}
-		d.sessionBeads = newSessionBeadRecorder(sessionRecordsDir(), d.project.Root, d.project.Name)
-	}
+	d.startSessionRecord(os.Stderr)
 	go d.runMaintenance(stopMaint, maintenanceFrameInterval)
 	// Each daemon derives its own panes' beads from its own bd (ini-wra.1).
 	go d.runBeadPoller(stopMaint)

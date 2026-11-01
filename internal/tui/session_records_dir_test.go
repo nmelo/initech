@@ -27,7 +27,7 @@ func TestSessionRecords_WrittenToTheClaudeAccountsFolderOnly(t *testing.T) {
 	records := recordsHome(t)
 	root := t.TempDir()
 	tu := newTestTUI(testPane("eng2"))
-	tu.projectRoot, tu.projectName = root, "initech"
+	tu.projectRoot, tu.projectName, tu.version = root, "initech", "2.49.0"
 	r := tu.sessionBeadRecorderFor(false)
 	if r == nil {
 		t.Fatal("window 1 has no recorder")
@@ -182,8 +182,8 @@ func TestSessionRecords_NoNameEmptyFolderAndNothingToWrite(t *testing.T) {
 // nothing when it can (a missing folder is made, as the writer would).
 func TestSessionRecords_StartWarningOnlyWhenTheFolderCannotBeWritten(t *testing.T) {
 	records := recordsHome(t)
-	if w := SessionRecordStartWarning(); w != "" {
-		t.Errorf("a missing folder: warning %q, want none (it is created)", w)
+	if l := SessionRecordStartLines("2.49.0", t.TempDir()); len(l) != 0 {
+		t.Errorf("a missing folder: lines %q, want none (it is created)", l)
 	}
 	if st, err := os.Stat(records); err != nil || !st.IsDir() {
 		t.Fatalf("the start check did not create the folder: %v", err)
@@ -193,7 +193,7 @@ func TestSessionRecords_StartWarningOnlyWhenTheFolderCannotBeWritten(t *testing.
 	}
 	os.Remove(records)
 	os.WriteFile(records, []byte("a file"), 0o600)
-	w := SessionRecordStartWarning()
+	w := strings.Join(SessionRecordStartLines("2.49.0", t.TempDir()), "\n")
 	if w == "" || strings.Contains(w, "\n") || !strings.Contains(w, records) {
 		t.Errorf("records is a file: warning %q, want one line naming the folder", w)
 	}

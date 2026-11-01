@@ -12,6 +12,9 @@ package tui
 // under ~/Desktop), one JSON object per line, appended and never rewritten.
 // <rig>.owner beside the files names the rig root that owns the name; a
 // second root with the same name writes <rig>-<six hex of its root>-....
+// A dev build writes the same files under <rig>/.initech/records instead, and
+// never under ~/.claude-accounts: the ledger reads every *.jsonl there, so a
+// test rig's session would reach the real spend figures.
 // One line is one interval:
 //
 //	{"v":1,"rig":"initech","host":"nmbp","session_id":"0f3c...","role":"eng2",
@@ -29,6 +32,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -57,6 +61,21 @@ func sessionRecordsDir() string {
 		return ""
 	}
 	return filepath.Join(home, ".claude-accounts", "records")
+}
+
+// sessionRecordsDirFor is the folder a build of this version records into: a
+// release build's is the account folder, and any other build's is its own rig
+// folder, whatever HOME says. "" when there is no folder to name (no home
+// folder for a release build, no rig root for a dev build), never a relative
+// path.
+func sessionRecordsDirFor(version, root string) string {
+	if IsReleaseVersion(version) {
+		return sessionRecordsDir()
+	}
+	if root == "" {
+		return ""
+	}
+	return filepath.Join(root, ".initech", "records")
 }
 
 // recordRigName is the rig's name in the record's file names: the project
@@ -616,16 +635,41 @@ func (t *TUI) sessionBeadRecorderFor(viewer bool) *sessionBeadRecorder {
 	if !t.isFleetAuthority() || viewer || t.projectRoot == "" {
 		return nil
 	}
-	return newSessionBeadRecorder(sessionRecordsDir(), t.projectRoot, t.projectName)
+	return newSessionBeadRecorder(sessionRecordsDirFor(t.version, t.projectRoot), t.projectRoot, t.projectName)
 }
 
-// SessionRecordStartWarning is the one line a rig's start prints when the
-// session-bead record's folder cannot be written ("" when it can). It makes
-// the folder (0700) when missing, as the writer would. Called before the
-// screen takes the terminal, so the line is readable; the writer itself
-// retries each minute and never blocks.
-func SessionRecordStartWarning() string {
-	dir := sessionRecordsDir()
+// reportSessionRecordStart writes SessionRecordStartLines to w, one per line.
+func reportSessionRecordStart(w io.Writer, version, root string) {
+	for _, l := range SessionRecordStartLines(version, root) {
+		fmt.Fprintln(w, l)
+	}
+}
+
+// SessionRecordStartLines is what a rig's start says about the session-bead
+// record: for a dev build, the line naming the folder it records into, and for
+// any build, one line when that folder cannot be written. It makes the folder
+// (0700) when missing, as the writer would, and only that build's folder.
+// Called before the screen takes the terminal, so the lines are readable; the
+// writer itself retries each minute and never blocks. A rig with no root
+// records nothing and says nothing.
+func SessionRecordStartLines(version, root string) []string {
+	if root == "" {
+		return nil
+	}
+	dir := sessionRecordsDirFor(version, root)
+	var lines []string
+	if !IsReleaseVersion(version) {
+		lines = append(lines, fmt.Sprintf("dev build: session records go to %s, not the account ledger", dir))
+	}
+	if w := sessionRecordFolderWarning(dir); w != "" {
+		lines = append(lines, w)
+	}
+	return lines
+}
+
+// sessionRecordFolderWarning is the one line saying dir cannot be written, ""
+// when it can.
+func sessionRecordFolderWarning(dir string) string {
 	err := func() error {
 		if dir == "" {
 			return errors.New("no home folder")

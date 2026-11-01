@@ -104,7 +104,7 @@ func init() {
 	sendCmd.Flags().StringVarP(&sendFile, "file", "f", "", "Read the message body from a file; \"-\" means stdin")
 	rootCmd.AddCommand(sendCmd)
 	rootCmd.PersistentFlags().BoolVar(&allowDevDelivery, "allow-dev-delivery", false,
-		"Allow a locally-built dev binary to run a delivery-effect command against a live session (ini-grg3)")
+		"Allow a dev build (any version that is not a plain release number) to run a delivery-effect command against a live session")
 }
 
 // allowDevDelivery bypasses the dev-build guard below when set explicitly.
@@ -151,10 +151,12 @@ var deliveryEffectActions = map[string]bool{
 	"dnd":           true,
 }
 
-// isDevBuild reports whether this binary looks like a local, uncommitted-tree
-// build rather than a properly released one (ini-grg3).
+// isDevBuild reports whether this binary is anything but a released one
+// (ini-grg3): any version that is not a plain release number
+// (tui.IsReleaseVersion, the one meaning of dev build; a hand-set version or a
+// prerelease reads dev too).
 //
-// Version=='dev' (cmd.Version, ldflag-injected at release time by
+// That test on cmd.Version (ldflag-injected at release time by
 // goreleaser; "dev" is the hardcoded default for any local `go
 // build`/`make build`) is SUFFICIENT ON ITS OWN. Do not add a second gate
 // that can override it to false: a prior version of this function also
@@ -182,7 +184,7 @@ func isDevBuild() bool {
 	if isRunningUnderGoTest() {
 		return false
 	}
-	return Version == "dev"
+	return !tui.IsReleaseVersion(Version)
 }
 
 // isRunningUnderGoTest reports whether this binary was compiled and run by
@@ -535,12 +537,12 @@ func ipcCallSocket(sockPath string, req tui.IPCRequest) (*tui.IPCResponse, error
 	req = stampSender(req)
 	if deliveryEffectActions[req.Action] && isDevBuild() && !allowDevDelivery {
 		return nil, fmt.Errorf(
-			"refusing %q: this looks like a local dev build (not a released initech), "+
+			"refusing %q: this is a dev build (version %q is not a plain release number), "+
 				"and %q is a delivery-effect command against a live session at %s. "+
 				"A dev build silently delivering into another agent's live pane is exactly "+
 				"what caused ini-grg3. If you really mean to run this against that session, "+
 				"pass --allow-dev-delivery.",
-			req.Action, req.Action, sockPath)
+			req.Action, Version, req.Action, sockPath)
 	}
 
 	conn, err := tui.DialIPC(sockPath)

@@ -393,7 +393,7 @@ func TestSessionBeads_AStaleBeadWritesNothingNew(t *testing.T) {
 func TestSessionBeads_OnlyWindowOneRecords(t *testing.T) {
 	records := recordsHome(t)
 	tui, _ := newTestTUIWithScreen("eng2")
-	tui.projectRoot, tui.projectName = t.TempDir(), "initech"
+	tui.projectRoot, tui.projectName, tui.version = t.TempDir(), "initech", "2.49.0"
 	tui.windowID = WindowOne
 	if tui.sessionBeadRecorderFor(false) == nil {
 		t.Fatal("window 1 has no recorder")

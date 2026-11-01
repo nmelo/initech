@@ -854,12 +854,11 @@ func Run(cfg Config) error {
 	// terminal in raw mode. This captures cgo/native crash stack traces that
 	// would otherwise be lost in the garbled terminal buffer.
 	// The session-bead record's folder (ini-5jh) is checked while stderr is
-	// still the terminal, so a folder that cannot be written is said once
-	// where the operator sees it; the writer then retries each minute.
+	// still the terminal, so a folder that cannot be written, and a dev build's
+	// folder (ini-92x), are said once where the operator sees them; the writer
+	// then retries each minute.
 	if cfg.ProjectRoot != "" && !isViewerSession(cfg) {
-		if w := SessionRecordStartWarning(); w != "" {
-			fmt.Fprintln(os.Stderr, w)
-		}
+		reportSessionRecordStart(os.Stderr, cfg.Version, cfg.ProjectRoot)
 	}
 	stderrCleanup := redirectStderr(cfg.ProjectRoot)
 	defer stderrCleanup()
