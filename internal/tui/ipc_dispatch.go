@@ -17,6 +17,11 @@ type PaneInfo struct {
 	Activity string `json:"activity"`
 	Alive    bool   `json:"alive"`
 	Visible  bool   `json:"visible"`
+	// AgentType is the agent type of a pane this process runs ("claude-code",
+	// "codex", "opencode", "generic"); omitted for a pane it does not run, so
+	// a client reads it as unknown. initech compact refuses non-Claude agents
+	// by it (ini-sf5.1).
+	AgentType string `json:"agent_type,omitempty"`
 
 	// Beads is what the pane's ribbon shows, always sent ([] when empty) so a
 	// client can tell an empty ribbon from an older TUI that sends no field.

@@ -170,6 +170,9 @@ func (t *TUI) allPanesWithViews() ([]PaneInfo, []PaneView, bool) {
 				Unattributed: unattributedOf(p),
 				Busy:         paneBusy(p, time.Now()),
 			}
+			if lp, ok := p.(*Pane); ok {
+				panes[i].AgentType = config.NormalizeAgentType(lp.AgentType())
+			}
 			// The latch is why mail stops moving, so it belongs where someone
 			// looks when mail stops moving (ini-gbqc). Age and depth, not a
 			// bare flag: the live incident was diagnosed by a human peeking at

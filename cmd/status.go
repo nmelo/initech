@@ -44,6 +44,9 @@ type paneInfo struct {
 	Activity string `json:"activity"`
 	Alive    bool   `json:"alive"`
 	Visible  bool   `json:"visible"`
+	// AgentType is the pane's agent type; "" from a TUI too old to send it
+	// (ini-sf5.1).
+	AgentType string `json:"agent_type,omitempty"`
 
 	ModalLatched bool `json:"modal_latched,omitempty"`
 	ModalAgeSec  int  `json:"modal_age_sec,omitempty"`

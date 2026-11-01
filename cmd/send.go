@@ -242,6 +242,15 @@ func unconfirmedSend(name, reason string) error {
 // unconfirmedSendError. An agent type with no composer check prints "sent to
 // <agent>, unconfirmed", exit 0. A deferral reads as before.
 func deliverText(w io.Writer, target, host, text string, enter, urgent bool) error {
+	_, err := deliverTextVerdict(w, target, host, text, enter, urgent)
+	return err
+}
+
+// deliverTextVerdict is deliverText that also returns the TUI's verdict word
+// (tui.DeliveryDelivered and the rest; "" when the request failed before
+// one), for a caller that acts on the outcome after the report: initech
+// compact watches only after delivered (ini-sf5.1).
+func deliverTextVerdict(w io.Writer, target, host, text string, enter, urgent bool) (string, error) {
 	req := tui.IPCRequest{
 		Action: "send",
 		Target: target,
@@ -253,10 +262,10 @@ func deliverText(w io.Writer, target, host, text string, enter, urgent bool) err
 
 	resp, err := ipcCall(req)
 	if err != nil {
-		return err
+		return "", err
 	}
 	if !resp.OK {
-		return fmt.Errorf("%s", resp.Error)
+		return resp.Delivery, fmt.Errorf("%s", resp.Error)
 	}
 
 	name := target
@@ -284,14 +293,14 @@ func deliverText(w io.Writer, target, host, text string, enter, urgent bool) err
 	case resp.Delivery == tui.DeliveryUnchecked:
 		fmt.Fprintf(w, "sent to %s, unconfirmed: %s\n", name, resp.Data)
 	case resp.Delivery == tui.DeliveryUnconfirmed:
-		return unconfirmedSend(name, resp.Data)
+		return resp.Delivery, unconfirmedSend(name, resp.Data)
 	case resp.Delivery == "":
 		// An OK with no verdict is a TUI that answers before its verdict.
-		return unconfirmedSend(name, olderTUIVerdictReason)
+		return resp.Delivery, unconfirmedSend(name, olderTUIVerdictReason)
 	default:
-		return unconfirmedSend(name, "unknown delivery verdict "+strconv.Quote(resp.Delivery))
+		return resp.Delivery, unconfirmedSend(name, "unknown delivery verdict "+strconv.Quote(resp.Delivery))
 	}
-	return nil
+	return resp.Delivery, nil
 }
 
 // resolveSendBody returns the message body for a send invocation. Positional
