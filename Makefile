@@ -23,7 +23,7 @@ EXPECTED_ASSETS := checksums.txt initech_darwin_amd64.tar.gz initech_darwin_arm6
 LDFLAGS := -s -w -X github.com/nmelo/initech/cmd.Version=$(VERSION)
 REQUIRE_RELEASE_VERSION = test -n "$(VERSION)" && case "$(VERSION)" in v*) ;; *) echo "VERSION must start with v, got $(VERSION)" >&2; exit 1 ;; esac
 
-.PHONY: release-install-test build test test-full test-race integration vet vet-linux lint test-census rig-census template-census short-census lint-test-names lint-test-names-self-test clean release check check-fast install-hooks hooks-check release-tag release-wait release-assets release-verify release-ship
+.PHONY: release-install-test release-sign-test build test test-full test-race integration vet vet-linux lint test-census rig-census template-census short-census lint-test-names lint-test-names-self-test clean release check check-fast install-hooks hooks-check release-tag release-wait release-assets release-verify release-ship
 
 build:
 	go build -ldflags "$(LDFLAGS)" -o initech .
@@ -223,6 +223,10 @@ release-ship: test release-tag release-verify
 # The install step's tests: a fake brew and a temp prefix, no network, no real Cellar.
 release-install-test:
 	python3 scripts/release/test_keg_install.py
+
+# The signing step's tests: fake gh, codesign and notarytool; no keychain, no Apple service.
+release-sign-test:
+	python3 scripts/release/test_sign_notarize.py
 
 # Activation, not installation (ini-3nzc): the hook itself is VERSIONED at
 # scripts/hooks/pre-commit -- one source of truth instead of a copy per clone
