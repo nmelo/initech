@@ -12,13 +12,12 @@ import (
 // command when it arrives as a paste. A longer one-line message collapses to
 // "[Pasted text #N]" and is sent as content, so the command never runs.
 // MEASURED: see collapsedOneLineRunes (Claude Code 2.1.312: 800 shown, 801
-// collapsed); confirmed for a slash command on the installed Claude Code by
-// the live run recorded on ini-hoy. Counted in runes, as that measurement is.
+// collapsed); confirmed for a slash command on Claude Code 2.1.316 (800
+// shown, 801 collapsed). Counted in runes, as that measurement is. A line
+// break alone does not collapse a short command: on 2.1.316 a two-line
+// /compact showed as text and ran. How many lines collapse a command under
+// the limit is not measured, so a line break is not judged.
 const claudeSlashMaxRunes = collapsedOneLineRunes
-
-// slashPasteLineBreakWords is the refusal for a slash command with a line
-// break: Claude collapses any multi-line paste, at any length.
-const slashPasteLineBreakWords = "a slash command with a line break would paste, not run"
 
 // slashPasteWordsPrefix begins both refusals.
 const slashPasteWordsPrefix = "a slash command "
@@ -27,13 +26,10 @@ const slashPasteWordsPrefix = "a slash command "
 // typed: it is a slash command that Claude Code would collapse into a pasted
 // block and never run. "" when it may be typed: the pane is not Claude Code
 // (an unknown type included: its paste behaviour is unmeasured), the text
-// does not begin with "/", or it is short enough and on one line.
+// does not begin with "/", or it is short enough.
 func slashPasteRefusal(agentType, text string) string {
 	if config.NormalizeAgentType(agentType) != config.AgentTypeClaudeCode || !strings.HasPrefix(text, "/") {
 		return ""
-	}
-	if strings.ContainsAny(text, "\r\n") {
-		return slashPasteLineBreakWords
 	}
 	if n := utf8.RuneCountInString(text); n > claudeSlashMaxRunes {
 		return fmt.Sprintf("%s of %d characters would paste, not run; Claude takes a command of at most %d", strings.TrimSpace(slashPasteWordsPrefix), n, claudeSlashMaxRunes)

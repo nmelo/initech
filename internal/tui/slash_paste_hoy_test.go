@@ -9,9 +9,8 @@ import (
 	"github.com/nmelo/initech/internal/config"
 )
 
-// ini-hoy: Claude Code collapses a message longer than 800 characters, or
-// one with a line break, into a "[Pasted text #N]" placeholder, and a
-// collapsed paste is sent as content, never read as a slash command. So
+// ini-hoy: Claude Code collapses a message longer than 800 characters into
+// a "[Pasted text #N]" placeholder, and a collapsed paste is sent as content, never read as a slash command. So
 // `initech compact super <1,300 characters>` reported delivered and nothing
 // compacted. The TUI's send action now refuses such a slash command to a
 // Claude Code pane before anything is typed, held or queued.
@@ -25,8 +24,6 @@ func hoySlash(n int) string {
 func hoyLongWords(n int) string {
 	return fmt.Sprintf("a slash command of %d characters would paste, not run; Claude takes a command of at most 800", n)
 }
-
-const hoyBreakWords = "a slash command with a line break would paste, not run"
 
 // hoyRefused asserts the reply refuses with the words and nothing reached
 // the child.
@@ -50,14 +47,24 @@ func TestSlashPaste_ALongSlashCommandIsRefusedAndNothingTyped(t *testing.T) {
 	hoyRefused(t, resp, hoyLongWords(1300), s7qWritten(t, p, r))
 }
 
-// AC2: a line break pastes at any length.
-func TestSlashPaste_ALineBreakIsRefusedWithItsOwnWords(t *testing.T) {
-	for _, text := range []string{"/compact keep the plan\nand the tests", "/compact keep\r\nthis", "/x\n"} {
-		p, r := s7qSettledPane(t, "eng1")
-		tui := &TUI{panes: toPaneViews([]*Pane{p})}
-		resp := s7qSend(t, tui, "eng1", text)
-		hoyRefused(t, resp, hoyBreakWords, s7qWritten(t, p, r))
+// AC2: a line break alone does not paste a short command. MEASURED on
+// Claude Code 2.1.316: a submitted two-line /compact ran (ini-hoy), so it is
+// typed as today; past the limit, its length is what refuses it.
+func TestSlashPaste_AShortCommandWithALineBreakIsTyped(t *testing.T) {
+	nma5Window(t, 200*time.Millisecond)
+	text := "/compact keep the plan\nand the tests"
+	p, r := s7qSettledPane(t, "eng1")
+	tui := &TUI{panes: toPaneViews([]*Pane{p})}
+	if resp := s7qSend(t, tui, "eng1", text); strings.Contains(resp.Error, "slash command") {
+		t.Errorf("refused: %+v", resp)
 	}
+	if got := s7qWritten(t, p, r); !strings.Contains(got, "and the tests") {
+		t.Errorf("not typed: %.80q", got)
+	}
+	long := hoySlash(900)[:850] + "\n" + hoySlash(900)[850:]
+	p2, r2 := s7qSettledPane(t, "eng1")
+	tui2 := &TUI{panes: toPaneViews([]*Pane{p2})}
+	hoyRefused(t, s7qSend(t, tui2, "eng1", long), hoyLongWords(901), s7qWritten(t, p2, r2))
 }
 
 // AC2: the boundary. A command of exactly the limit is typed; one more is
@@ -188,7 +195,7 @@ func TestSlashPaste_TheOperatorsOwnPasteIsNotJudged(t *testing.T) {
 // IsSlashPasteRefusal recognises the refusal in a sender's error, so
 // compact can say "not compacted" without matching the words itself.
 func TestSlashPaste_TheRefusalIsRecognisable(t *testing.T) {
-	for _, w := range []string{hoyLongWords(1300), hoyBreakWords, "not delivered to eng1: " + hoyBreakWords} {
+	for _, w := range []string{hoyLongWords(1300), "not delivered to eng1: " + hoyLongWords(801)} {
 		if !IsSlashPasteRefusal(w) {
 			t.Errorf("%q not recognised", w)
 		}

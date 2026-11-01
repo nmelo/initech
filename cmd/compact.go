@@ -21,8 +21,8 @@ input box through the same delivery path as initech send: the same delivery
 verdict, and the same hold and refusal lines and exit codes (held for a
 dialog, do-not-disturb, not delivered). The words after the agent name are
 joined with single spaces, as initech send joins its words. A keep text that
-makes the command longer than 800 characters, or that has a line break, is
-refused before anything is typed: Claude would paste it rather than run it.
+makes the command longer than 800 characters is refused before anything is
+typed: Claude would paste it rather than run it.
 That prints "not compacted: <the reason>", exit 1, and nothing is watched.
 
 Once delivered, it watches the agent's context figure (the one initech
