@@ -43,6 +43,16 @@ defaults:
   run:
     shell: nice -n 19 bash -e {0}
 
+# BOUNDED ON THE SHARED WORKBENCH (ini-c5a.7, theguy's conditions, after a
+# rigs race job ran beside another project's nightly at a load of 479): every
+# Go process here uses at most 4 OS threads for Go code, and go test runs at
+# most 2 packages at once. Every job runs only from main (a dispatch on
+# another branch skips every job), one rigs run at a time across all refs (the
+# group below), and logs what it used: peak memory, process count, disk.
+env:
+  GOMAXPROCS: "4"
+  GOFLAGS: "-p=2"
+
 # Concurrency: only main pushes would share a group and cancel each other; rigs
 # never run on push, so every schedule and dispatch run has its own group and
 # is never cancelled or replaced.
@@ -54,6 +64,7 @@ jobs:
   race:
     runs-on: ${{ github.event_name != 'pull_request' && 'initech-rigs' || 'ubuntu-latest' }}
     timeout-minutes: 60  # make test-race bounds each package at 30 minutes
+    if: github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v5
 
@@ -61,6 +72,9 @@ jobs:
         with:
           go-version-file: go.mod
           cache: ${{ github.event_name == 'pull_request' }}
+
+      - name: Start the resource sampler (peak memory, processes)
+        run: scripts/rigs-resources.sh start > /dev/null 2>&1 &
 
       # ini-4cfl: `make test-race` existed, unrun by any gate, and 7 data
       # races accumulated invisibly in the suspend/wake path -- resumePane's
@@ -76,6 +90,10 @@ jobs:
         env:
           INITECH_CI_SANDBOX: "1"
         run: make test-race
+
+      - name: Resources this job used
+        if: always()
+        run: scripts/rigs-resources.sh report
 
   # THE COMPOSED RIGS, SHARDED BY MEASURED TIME (ini-q6dp).
   #
@@ -106,6 +124,7 @@ jobs:
     # GitHub's 6h cap. Measured ~3 min on the Mac host; 20 allows for a
     # 3-core hosted runner. (shipper caught this missing on 2d2f909.)
     timeout-minutes: 20
+    if: github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v5
 
@@ -113,6 +132,9 @@ jobs:
         with:
           go-version-file: go.mod
           cache: ${{ github.event_name == 'pull_request' }}
+
+      - name: Start the resource sampler (peak memory, processes)
+        run: scripts/rigs-resources.sh start > /dev/null 2>&1 &
 
       # ini-0lko: name what this shard selected, before running it.
       - name: Witness which rigs this shard selected
@@ -128,6 +150,10 @@ jobs:
         # 2d2f909 -- the first dispatch had zero PASS/SKIP lines to check).
         run: go test ./internal/tui/ -count=1 -v -timeout 900s -run 'X5obRig|FN77Rig|A9d8Rig'
 
+      - name: Resources this job used
+        if: always()
+        run: scripts/rigs-resources.sh report
+
   composed-rigs-shard2:
     # ~183s measured: SuspendGuard 98.1s + AQY 55.9s + UZ42 29.2s
     runs-on: ${{ github.event_name != 'pull_request' && 'initech-rigs' || 'ubuntu-latest' }}
@@ -135,6 +161,7 @@ jobs:
     # GitHub's 6h cap. Measured ~3 min on the Mac host; 20 allows for a
     # 3-core hosted runner. (shipper caught this missing on 2d2f909.)
     timeout-minutes: 20
+    if: github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v5
 
@@ -142,6 +169,9 @@ jobs:
         with:
           go-version-file: go.mod
           cache: ${{ github.event_name == 'pull_request' }}
+
+      - name: Start the resource sampler (peak memory, processes)
+        run: scripts/rigs-resources.sh start > /dev/null 2>&1 &
 
       # ini-0lko: name what this shard selected, before running it.
       - name: Witness which rigs this shard selected
@@ -157,6 +187,10 @@ jobs:
         # 2d2f909 -- the first dispatch had zero PASS/SKIP lines to check).
         run: go test ./internal/tui/ -count=1 -v -timeout 900s -run 'TestSuspendGuard|TestAQY_|UZ42Rig' -skip '^TestSuspendGuard_ResumeFailureKeepsQueue$'
 
+      - name: Resources this job used
+        if: always()
+        run: scripts/rigs-resources.sh report
+
   composed-rigs-shard3:
     # ~179s measured: 9ISX 79.7s + Dr03 56.0s + 9GVN 35.6s + Z5UW 7.2s
     runs-on: ${{ github.event_name != 'pull_request' && 'initech-rigs' || 'ubuntu-latest' }}
@@ -164,6 +198,7 @@ jobs:
     # GitHub's 6h cap. Measured ~3 min on the Mac host; 20 allows for a
     # 3-core hosted runner. (shipper caught this missing on 2d2f909.)
     timeout-minutes: 20
+    if: github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v5
 
@@ -171,6 +206,9 @@ jobs:
         with:
           go-version-file: go.mod
           cache: ${{ github.event_name == 'pull_request' }}
+
+      - name: Start the resource sampler (peak memory, processes)
+        run: scripts/rigs-resources.sh start > /dev/null 2>&1 &
 
       # ini-0lko: name what this shard selected, before running it.
       - name: Witness which rigs this shard selected
@@ -187,6 +225,10 @@ jobs:
         # 2d2f909 -- the first dispatch had zero PASS/SKIP lines to check).
         run: go test ./internal/tui/ -count=1 -v -timeout 900s -run 'NineISXRig|Dr03Rig|NineGVNRig|TestZ5uwRig'
 
+      - name: Resources this job used
+        if: always()
+        run: scripts/rigs-resources.sh report
+
   composed-rigs-shard4:
     # ~173s measured: Attention 73.0s + SuspendFate 65.7s + Inbox7 34.1s
     runs-on: ${{ github.event_name != 'pull_request' && 'initech-rigs' || 'ubuntu-latest' }}
@@ -194,6 +236,7 @@ jobs:
     # GitHub's 6h cap. Measured ~3 min on the Mac host; 20 allows for a
     # 3-core hosted runner. (shipper caught this missing on 2d2f909.)
     timeout-minutes: 20
+    if: github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v5
 
@@ -201,6 +244,9 @@ jobs:
         with:
           go-version-file: go.mod
           cache: ${{ github.event_name == 'pull_request' }}
+
+      - name: Start the resource sampler (peak memory, processes)
+        run: scripts/rigs-resources.sh start > /dev/null 2>&1 &
 
       # ini-0lko: name what this shard selected, before running it.
       - name: Witness which rigs this shard selected
@@ -215,6 +261,10 @@ jobs:
         # invisible and a shard reports a vacuous green (shipper, reviewing
         # 2d2f909 -- the first dispatch had zero PASS/SKIP lines to check).
         run: go test ./internal/tui/ -count=1 -v -timeout 900s -run 'AttentionRig|TestSuspendFate|Inbox7Rig'
+
+      - name: Resources this job used
+        if: always()
+        run: scripts/rigs-resources.sh report
 
   # DARWIN-ONLY (ini-c5a.7): the tests that need macOS or a host outside the
   # workbench sandbox, off main's path, on the shared Mac behind its load gate,
@@ -235,6 +285,7 @@ jobs:
     defaults:
       run:
         shell: bash -e {0}
+    if: github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v5
 
@@ -242,6 +293,9 @@ jobs:
         with:
           go-version-file: go.mod
           cache: ${{ github.event_name == 'pull_request' }}
+
+      - name: Start the resource sampler (peak memory, processes)
+        run: scripts/rigs-resources.sh start > /dev/null 2>&1 &
 
       - name: Wait for the shared Mac host (load gate)
         uses: ./.github/actions/load-gate
@@ -260,3 +314,7 @@ jobs:
           INITECH_9IMX: "1"
           INITECH_9GVN: "1"
         run: go test ./internal/tui/ ./internal/appserve/ -count=1 -v -timeout 1200s -run '^(TestSuspendGuard_ForwardSendSite|TestSuspendGuard_DaemonIPCSendSite|TestSuspendGuard_DaemonControlSendSite|TestSuspendGuard_ResumeFailureKeepsQueue|TestSuspendFate_IPCSendPath|TestNineGVNRig_QuotedDialogDoesNotHoldMail|TestListen_RealBindIsTheOneAddressNotLoopback)$'
+
+      - name: Resources this job used
+        if: always()
+        run: scripts/rigs-resources.sh report

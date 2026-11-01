@@ -181,3 +181,54 @@ func TestRigsWorkflow_TheDarwinJobRunsOnTheMacBehindItsGate(t *testing.T) {
 		t.Error("found no -skip in the workbench rigs jobs: this test is not reading them")
 	}
 }
+
+// The rigs run bounded on the shared workbench (ini-c5a.7, theguy's
+// conditions): every Go process at GOMAXPROCS=4 and go test at -p 2 for the
+// whole workflow; every job only from main; and every job samples its own
+// memory and process count from its start and reports them, with its disk
+// use, in a step that runs however the job ends.
+func TestRigsWorkflow_EveryJobIsBoundedMainOnlyAndReportsItsResources(t *testing.T) {
+	src, err := os.ReadFile(filepath.Join(repoRootForWorkflows(t), ".github", "workflows", "rigs.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var w struct {
+		Env  map[string]string `yaml:"env"`
+		Jobs map[string]struct {
+			If    string `yaml:"if"`
+			Steps []struct {
+				If   string `yaml:"if"`
+				Uses string `yaml:"uses"`
+				Run  string `yaml:"run"`
+			} `yaml:"steps"`
+		} `yaml:"jobs"`
+	}
+	if err := yaml.Unmarshal(src, &w); err != nil {
+		t.Fatal(err)
+	}
+	if w.Env["GOMAXPROCS"] != "4" || w.Env["GOFLAGS"] != "-p=2" {
+		t.Errorf("rigs.yml env %v, want GOMAXPROCS=4 and GOFLAGS=-p=2 for every job", w.Env)
+	}
+	if len(w.Jobs) == 0 {
+		t.Fatal("rigs.yml parsed to no jobs: this test is not reading it")
+	}
+	const start = "scripts/rigs-resources.sh start > /dev/null 2>&1 &"
+	for key, job := range w.Jobs {
+		if job.If != "github.ref == 'refs/heads/main'" {
+			t.Errorf("%s runs if %q, want only from main", key, job.If)
+		}
+		var started int
+		for i, s := range job.Steps {
+			if s.Run == start {
+				started++
+				if i == 0 || !strings.HasPrefix(job.Steps[i-1].Uses, "actions/setup-go@") {
+					t.Errorf("%s starts the sampler at step %d, want right after setup-go", key, i)
+				}
+			}
+		}
+		last := job.Steps[len(job.Steps)-1]
+		if started != 1 || last.Run != "scripts/rigs-resources.sh report" || last.If != "always()" {
+			t.Errorf("%s: sampler started %d times, last step %q if %q; want one start and the report last, always()", key, started, last.Run, last.If)
+		}
+	}
+}
