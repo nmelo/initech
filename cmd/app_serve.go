@@ -202,6 +202,7 @@ func appServeLeavePane() {
 func runAppServe(cmd *cobra.Command, args []string) error {
 	cmd.SilenceUsage = true
 	appServeLeavePane()
+	appserve.NarrowLog(os.Stderr, cmd.ErrOrStderr())
 	errw := cmd.ErrOrStderr()
 	base := cmd.Context()
 	if base == nil {

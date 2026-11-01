@@ -459,3 +459,64 @@ func TestInstall_TheCommandsAreRegistered(t *testing.T) {
 		}
 	}
 }
+
+// bootstrapProbe is a runner that, when launchctl bootstrap runs, records the
+// log's mode at that moment.
+type bootstrapProbe struct {
+	iexec.FakeRunner
+	log  string
+	seen os.FileMode
+	had  bool
+}
+
+func (b *bootstrapProbe) Run(name string, args ...string) (string, error) {
+	if name == "launchctl" && len(args) > 0 && args[0] == "bootstrap" {
+		if st, err := os.Stat(b.log); err == nil {
+			b.seen, b.had = st.Mode().Perm(), true
+		}
+	}
+	return b.FakeRunner.Run(name, args...)
+}
+
+// ini-r0q.21 AC2: install creates the log 0600 before bootstrap, so launchd
+// appends to a private file; the job stays byte for byte as before. A
+// reinstall narrows an older 0644 log and says so; one it cannot write is a
+// warning and the install goes on.
+func TestInstall_TheLogIsPrivateBeforeBootstrap(t *testing.T) {
+	r := newInstallRig(t)
+	probe := &bootstrapProbe{log: appserve.LogPath(r.home)}
+	appServeRunner = probe
+	if err := r.install(); err != nil {
+		t.Fatal(err)
+	}
+	if !probe.had || probe.seen != 0o600 {
+		t.Fatalf("at bootstrap the log existed %v with mode %o, want 0600", probe.had, probe.seen)
+	}
+	want := appserve.RenderPlist(r.home, os.Getenv("PATH"), []string{"/opt/homebrew/bin/initech", "app-serve", "--listen", "local-network", "--port", "7392", "--projects", "/rigs"})
+	if raw, _ := os.ReadFile(r.plist()); !bytes.Equal(raw, want) {
+		t.Errorf("the job changed:\n%s", raw)
+	}
+
+	os.Chmod(probe.log, 0o644)
+	var errw bytes.Buffer
+	c := *appServeInstallCmd
+	c.SetOut(&bytes.Buffer{})
+	c.SetErr(&errw)
+	if err := runAppServeInstall(&c, nil); err != nil {
+		t.Fatal(err)
+	}
+	if fi, _ := os.Stat(probe.log); fi.Mode().Perm() != 0o600 || !strings.Contains(errw.String(), "now 0600") {
+		t.Errorf("reinstall over a 0644 log: mode %o, said %q", fi.Mode().Perm(), errw.String())
+	}
+
+	if os.Getuid() != 0 {
+		os.Chmod(probe.log, 0o400)
+		errw.Reset()
+		if err := runAppServeInstall(&c, nil); err != nil {
+			t.Errorf("an unwritable log stopped the install: %v", err)
+		}
+		if !strings.Contains(errw.String(), "could not be made private") {
+			t.Errorf("an unwritable log: said %q, want a warning", errw.String())
+		}
+	}
+}

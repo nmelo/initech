@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -195,6 +196,7 @@ func runAppServeInstall(cmd *cobra.Command, args []string) error {
 	want := appserve.RenderPlist(home, path, jobArgs)
 	old, readErr := os.ReadFile(plist)
 	if readErr == nil && bytes.Equal(old, want) {
+		appServePrivateLog(cmd.ErrOrStderr(), home)
 		fmt.Fprintf(out, "already installed: %s\n", plist)
 		return nil
 	}
@@ -209,6 +211,7 @@ func runAppServeInstall(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("make %s: %w", dir, err)
 		}
 	}
+	appServePrivateLog(cmd.ErrOrStderr(), home)
 	if err := os.WriteFile(plist, want, 0o644); err != nil {
 		return fmt.Errorf("write %s: %w", plist, err)
 	}
@@ -218,6 +221,20 @@ func runAppServeInstall(cmd *cobra.Command, args []string) error {
 	}
 	fmt.Fprintf(out, "installed: %s\nlog: %s\n", plist, appserve.LogPath(home))
 	return nil
+}
+
+// appServePrivateLog creates the service log 0600 before launchd appends to
+// it, or narrows an older one; a log it cannot open is a warning, and the
+// install goes on.
+func appServePrivateLog(errw io.Writer, home string) {
+	path := appserve.LogPath(home)
+	narrowed, err := appserve.EnsurePrivateLog(path)
+	switch {
+	case err != nil:
+		fmt.Fprintf(errw, "warning: the log %s could not be made private: %v\n", path, err)
+	case narrowed:
+		fmt.Fprintf(errw, "the log %s was readable by others; it is now 0600\n", path)
+	}
 }
 
 func runAppServeUninstall(cmd *cobra.Command, args []string) error {
