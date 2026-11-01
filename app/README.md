@@ -93,6 +93,11 @@ stage that fails stops the script and names its log; nothing is retried. Raise
 `CURRENT_PROJECT_VERSION` in `project.yml` before each new upload: App Store
 Connect takes each build number once per version.
 
+The app uses only Apple's system encryption, so `Info.plist` sets
+`ITSAppUsesNonExemptEncryption` to false and a build needs no export-compliance
+answer in App Store Connect. Adding encryption of its own goes back to Nelson
+first.
+
 ## Layout
 
 - `InitechApp/Pairing.swift`, `PairingStore.swift`, `PairingView.swift`: the

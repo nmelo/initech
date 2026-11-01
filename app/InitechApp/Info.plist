@@ -2,6 +2,11 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<!-- The app uses only Apple's system encryption, so a build uploads with
+	     this answer and App Store Connect holds it for no export question.
+	     Adding encryption of its own goes back to Nelson first. -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<!-- The app's one peer is the Mac's initech app-serve, reached at a tailnet
 	     IP with its own self-signed certificate. ATS would require that
 	     certificate to chain to a system root and fails every connection

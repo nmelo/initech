@@ -14,4 +14,11 @@ final class TransportSecurityTests: XCTestCase {
         XCTAssertEqual(ats["NSAllowsArbitraryLoads"] as? Bool, true, "ATS still requires system trust for the Mac's address: \(ats)")
         XCTAssertNil(ats["NSAllowsLocalNetworking"], "with NSAllowsLocalNetworking set, iOS ignores NSAllowsArbitraryLoads")
     }
+
+    // Without this key every uploaded build waits in App Store Connect on the
+    // export-compliance question, and no tester can install it.
+    func testTheBuildDeclaresItUsesNoEncryptionOfItsOwn() {
+        XCTAssertEqual(Bundle.main.object(forInfoDictionaryKey: "ITSAppUsesNonExemptEncryption") as? Bool, false,
+                       "the built Info.plist does not answer the export-compliance question")
+    }
 }
