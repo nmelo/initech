@@ -5,9 +5,11 @@ description: >-
   it is 11:45 to 12:15 in New York (another project's nightly build), and, with
   simulators set, while any iOS simulator is booted there, by any user. After
   20 minutes it lets the job run anyway with a warning, so a long hold is a
-  stated miss, never a silent one. Use it right after setup-go, at the start of
-  every job that starts a run (jobs that only follow other jobs skip it, so a
-  run is never held by the load it made itself). GitHub-hosted runners skip it.
+  stated miss, never a silent one. Use it right after setup-go, once per run:
+  in ci.yml it is the last step of the gate job, which every job that starts
+  the work needs, so a waiting run holds one runner; a one-job workflow
+  (app-tests) uses it in that job. Jobs that follow other jobs never use it, so
+  a run is never held by the load it made itself. GitHub-hosted runners skip it.
 inputs:
   simulators:
     description: also wait while any iOS simulator is booted on the host

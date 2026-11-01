@@ -8,16 +8,18 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// The load gate's wiring (ini-c5a.7): in ci.yml every job that starts a run
-// (no needs) waits for the shared Mac host right after setup-go,
-// and every job that only follows other jobs does not, so a run is never held
-// back by the load it made itself. rigs.yml runs on GitHub-hosted macOS and has
+// The load gate's wiring (ini-c5a.7): in ci.yml one small job, gate, starts
+// the run and waits for the shared Mac host right after setup-go; the six jobs
+// that do the work need it and do not wait themselves, so a waiting run holds
+// one runner and its other jobs wait in GitHub's queue holding none; and no
+// job that follows other jobs waits, so a run is never held back by the load
+// it made itself. rigs.yml runs on GitHub-hosted macOS and has
 // no gate (rigs_hosted_test.go). The gate's own rules are tested in
 // scripts/loadgate.
-func TestWorkflows_EveryFirstWaveJobWaitsForTheHost(t *testing.T) {
+func TestWorkflows_OneGateJobWaitsForTheHostAndTheWorkNeedsIt(t *testing.T) {
 	root := repoRootForWorkflows(t)
 	const gate = "./.github/actions/load-gate"
-	var gated, followers int
+	var gated, afterGate, followers int
 	for _, name := range []string{"ci.yml"} {
 		src, err := os.ReadFile(filepath.Join(root, ".github", "workflows", name))
 		if err != nil {
@@ -37,23 +39,28 @@ func TestWorkflows_EveryFirstWaveJobWaitsForTheHost(t *testing.T) {
 					gateAt = i
 				}
 			}
-			if job.Needs != nil {
-				followers++
-				if gateAt >= 0 {
-					t.Errorf("%s %s: follows other jobs but waits for the host, held by its own run's load", name, key)
+			switch {
+			case key == "gate":
+				gated++
+				if job.Needs != nil {
+					t.Errorf("%s gate: needs %v; it starts the run", name, job.Needs)
 				}
-				continue
-			}
-			gated++
-			if gateAt < 0 {
-				t.Errorf("%s %s: starts a run without the load gate", name, key)
-			} else if setupGo < 0 || gateAt != setupGo+1 {
-				t.Errorf("%s %s: the load gate is step %d, want right after setup-go (step %d): it runs go", name, key, gateAt, setupGo)
+				if gateAt < 0 || setupGo < 0 || gateAt != setupGo+1 || len(job.Steps) != gateAt+1 {
+					t.Errorf("%s gate: the load gate is step %d of %d, want the last step, right after setup-go (step %d): the job only waits", name, gateAt, len(job.Steps), setupGo)
+				}
+			case gateAt >= 0:
+				t.Errorf("%s %s: waits for the host itself, holding a runner while it waits; only the gate job waits", name, key)
+			case job.Needs == "gate":
+				afterGate++
+			case job.Needs == nil:
+				t.Errorf("%s %s: starts a run without needing the gate", name, key)
+			default:
+				followers++
 			}
 		}
 	}
-	if gated != 6 || followers != 1 {
-		t.Errorf("%d first-wave jobs and %d followers, want 6 (build-and-test and five shards) and 1 (full-suite-census): this test is not reading the jobs", gated, followers)
+	if gated != 1 || afterGate != 6 || followers != 1 {
+		t.Errorf("%d gate jobs, %d jobs after the gate and %d followers, want 1, 6 (build-and-test and five shards) and 1 (full-suite-census): this test is not reading the jobs", gated, afterGate, followers)
 	}
 	action, err := os.ReadFile(filepath.Join(root, ".github", "actions", "load-gate", "action.yml"))
 	if err != nil {

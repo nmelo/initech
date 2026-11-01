@@ -33,13 +33,19 @@ permissions:
 # the Mac goes away: timeout-minutes counts only once a job STARTS, so a job
 # queued for an offline self-hosted runner waits (up to 24h) instead of failing.
 #
-# NO CONCURRENCY GROUP (ini-c5a.7, the operator via theguy): every run
-# finishes, so every landed main sha gets its own verdict, which the land rule
-# (CI green on the exact sha) needs. A shared group cancelled each main run
-# that waited at the load gate when the next push came, and GitHub drops an
-# older pending run in a shared group even with cancel-in-progress off, so no
-# group is the only "never cancel". The cost: a burst of pushes queues one full
-# run per push, and a release-branch run waits its turn behind them.
+# CONCURRENCY (ini-c5a.7, the operator via theguy): main pushes share one
+# group with cancel-in-progress off, so a run that has started always finishes,
+# and GitHub keeps at most one more, the newest, pending: a burst of pushes
+# collapses to the newest sha instead of queueing one run per push, and an
+# intermediate sha may get no run of its own (a cut there re-runs it). With
+# cancel-in-progress on, a run waiting at the load gate was cancelled by the
+# next push; with no group, every push queued a full run and the waiting runs
+# held every runner. Every other run -- release/** pushes, pull requests,
+# schedule, dispatch -- gets its own group (its run id) and is never cancelled
+# or replaced.
+concurrency:
+  group: ${{ github.workflow }}-${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') && 'main-push' || github.run_id }}
+  cancel-in-progress: false
 
 # SPEED (ini-bus5, ini-p2ve): every release cut gates on this workflow, so its
 # wall time is release latency. Three levers, each measured on its own:
@@ -62,14 +68,14 @@ permissions:
 #      variant, or a short-only life, that no job here would run. make check
 #      still runs the -short suite locally.
 #
-# Six jobs before the census (build-and-test, full-suite-1..5), one for each of
-# the Mac's six runner slots, so none waits for a second wave (ini-c5a.7: a
-# seventh job, census-leg, waited for a free slot and pushed the wall past two
-# minutes; its steps now end build-and-test). The wall is the longest of
-# build-and-test and the shards, plus full-suite-census. Five shards, not four,
-# keep a push under two minutes with every test still on it (ini-c5a.3). Rigs
-# run on GitHub-hosted macOS (rigs.yml), so they hold no Mac runner and add no
-# load at the gate.
+# Six jobs after the gate and before the census (build-and-test,
+# full-suite-1..5), one for each of the Mac's six runner slots, so none waits
+# for a second wave (ini-c5a.7: a seventh job, census-leg, waited for a free
+# slot and pushed the wall past two minutes; its steps now end build-and-test).
+# The wall is the longest of build-and-test and the shards, plus
+# full-suite-census. Five shards, not four, keep a push under two minutes with
+# every test still on it (ini-c5a.3). Rigs run on GitHub-hosted macOS
+# (rigs.yml), so they hold no Mac runner and add no load at the gate.
 #
 # THE CENSUS is what keeps the faster gate from running less. full-suite-census
 # needs all five shards, runs even when one failed, and is red unless every
@@ -84,10 +90,14 @@ permissions:
 # matrix), or that set-equality breaks.
 
 jobs:
-  build-and-test:
+  # THE LOAD GATE, one small job first (ini-c5a.7): it waits for the shared Mac
+  # host (.github/actions/load-gate) while holding one runner, and every job
+  # that starts the run needs it, so a waiting run holds exactly one runner and
+  # its other jobs wait in GitHub's queue holding none. Gating inside each job
+  # had a waiting run hold six runners and filled the host at a load of 4.8.
+  gate:
     runs-on: ${{ github.event_name != 'pull_request' && vars.MAC_RUNNER || 'macos-latest' }}
-    # 25, not 15: this job also runs the census steps, bounded at 900 s.
-    timeout-minutes: 45  # 25 plus the load gate's 20-minute cap
+    timeout-minutes: 25  # the gate's 20-minute cap, then it lets the run go
     steps:
       - uses: actions/checkout@v5
 
@@ -98,6 +108,19 @@ jobs:
 
       - name: Wait for the shared Mac host (load gate)
         uses: ./.github/actions/load-gate
+
+  build-and-test:
+    needs: gate
+    runs-on: ${{ github.event_name != 'pull_request' && vars.MAC_RUNNER || 'macos-latest' }}
+    # 25, not 15: this job also runs the census steps, bounded at 900 s.
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: ${{ github.event_name == 'pull_request' }}
 
       - name: Build
         run: go build -ldflags "-s -w" -o initech .
@@ -220,8 +243,9 @@ jobs:
   # so these legs do not spawn Claude sessions. The five shards together run
   # what `make test-full` runs (see SPEED above); full-suite-census proves it.
   full-suite-1:
+    needs: gate
     runs-on: ${{ github.event_name != 'pull_request' && vars.MAC_RUNNER || 'macos-latest' }}
-    timeout-minutes: 45  # 25 plus the load gate's 20-minute cap
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v5
 
@@ -229,9 +253,6 @@ jobs:
         with:
           go-version-file: go.mod
           cache: ${{ github.event_name == 'pull_request' }}
-
-      - name: Wait for the shared Mac host (load gate)
-        uses: ./.github/actions/load-gate
 
       - name: Test shard 1 of 5 (full, no -short)
         run: go run ./scripts/shardtests run -shards 5 -shard 1 -out shard-record
@@ -244,8 +265,9 @@ jobs:
           if-no-files-found: error
 
   full-suite-2:
+    needs: gate
     runs-on: ${{ github.event_name != 'pull_request' && vars.MAC_RUNNER || 'macos-latest' }}
-    timeout-minutes: 45  # 25 plus the load gate's 20-minute cap
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v5
 
@@ -253,9 +275,6 @@ jobs:
         with:
           go-version-file: go.mod
           cache: ${{ github.event_name == 'pull_request' }}
-
-      - name: Wait for the shared Mac host (load gate)
-        uses: ./.github/actions/load-gate
 
       - name: Test shard 2 of 5 (full, no -short)
         run: go run ./scripts/shardtests run -shards 5 -shard 2 -out shard-record
@@ -268,8 +287,9 @@ jobs:
           if-no-files-found: error
 
   full-suite-3:
+    needs: gate
     runs-on: ${{ github.event_name != 'pull_request' && vars.MAC_RUNNER || 'macos-latest' }}
-    timeout-minutes: 45  # 25 plus the load gate's 20-minute cap
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v5
 
@@ -277,9 +297,6 @@ jobs:
         with:
           go-version-file: go.mod
           cache: ${{ github.event_name == 'pull_request' }}
-
-      - name: Wait for the shared Mac host (load gate)
-        uses: ./.github/actions/load-gate
 
       - name: Test shard 3 of 5 (full, no -short)
         run: go run ./scripts/shardtests run -shards 5 -shard 3 -out shard-record
@@ -292,8 +309,9 @@ jobs:
           if-no-files-found: error
 
   full-suite-4:
+    needs: gate
     runs-on: ${{ github.event_name != 'pull_request' && vars.MAC_RUNNER || 'macos-latest' }}
-    timeout-minutes: 45  # 25 plus the load gate's 20-minute cap
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v5
 
@@ -301,9 +319,6 @@ jobs:
         with:
           go-version-file: go.mod
           cache: ${{ github.event_name == 'pull_request' }}
-
-      - name: Wait for the shared Mac host (load gate)
-        uses: ./.github/actions/load-gate
 
       - name: Test shard 4 of 5 (full, no -short)
         run: go run ./scripts/shardtests run -shards 5 -shard 4 -out shard-record
@@ -316,8 +331,9 @@ jobs:
           if-no-files-found: error
 
   full-suite-5:
+    needs: gate
     runs-on: ${{ github.event_name != 'pull_request' && vars.MAC_RUNNER || 'macos-latest' }}
-    timeout-minutes: 45  # 25 plus the load gate's 20-minute cap
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v5
 
@@ -325,9 +341,6 @@ jobs:
         with:
           go-version-file: go.mod
           cache: ${{ github.event_name == 'pull_request' }}
-
-      - name: Wait for the shared Mac host (load gate)
-        uses: ./.github/actions/load-gate
 
       - name: Test shard 5 of 5 (full, no -short)
         run: go run ./scripts/shardtests run -shards 5 -shard 5 -out shard-record

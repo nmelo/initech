@@ -172,8 +172,9 @@ func TestWorkflows_SetupGoCachesOnlyOnPullRequests(t *testing.T) {
 }
 
 // The job set the release gate expects, exactly (ini-p2ve.2, ini-c5a.3,
-// ini-c5a.7): six start together, one for each of the Mac's six runner slots,
-// so none waits for a second wave, and the census follows. build-and-test runs
+// ini-c5a.7): the gate starts the run alone, then six start together, one for
+// each of the Mac's six runner slots, so none waits for a second wave, and the
+// census follows. build-and-test runs
 // go test in two steps only: the witness -list of the whole tui package, and
 // the side-by-side step, whose only go test lines are the -list of the census
 // selector and that one env-gated selector (TestCensus_, TestRolesLessBoot_,
@@ -184,7 +185,7 @@ func TestWorkflows_SetupGoCachesOnlyOnPullRequests(t *testing.T) {
 // census, which is what makes dropping its -short run safe.
 func TestCIWorkflow_TheGateIsTheSevenJobs(t *testing.T) {
 	w := readCI(t)
-	want := []string{"build-and-test", "full-suite-1", "full-suite-2", "full-suite-3", "full-suite-4", "full-suite-5", "full-suite-census"}
+	want := []string{"build-and-test", "full-suite-1", "full-suite-2", "full-suite-3", "full-suite-4", "full-suite-5", "full-suite-census", "gate"}
 	var got []string
 	for key := range w.Jobs {
 		got = append(got, key)
@@ -193,14 +194,17 @@ func TestCIWorkflow_TheGateIsTheSevenJobs(t *testing.T) {
 	if strings.Join(got, " ") != strings.Join(want, " ") {
 		t.Errorf("ci.yml jobs are %v, want %v: the release gate reads this set (fleet/reference.md)", got, want)
 	}
-	var started int
+	var started, afterGate int
 	for _, key := range got {
-		if w.Jobs[key].Needs == nil {
+		switch w.Jobs[key].Needs {
+		case nil:
 			started++
+		case "gate":
+			afterGate++
 		}
 	}
-	if started != 6 {
-		t.Errorf("%d jobs start without needs, want 6, one per runner: the five shards and build-and-test", started)
+	if started != 1 || w.Jobs["gate"].Needs != nil || afterGate != 6 {
+		t.Errorf("%d jobs start without needs and %d need the gate; want only the gate to start, then 6, one per runner: the five shards and build-and-test", started, afterGate)
 	}
 	job := w.Jobs["build-and-test"]
 	const (
