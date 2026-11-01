@@ -1,0 +1,64 @@
+name: CodeQL
+
+# CODE SCANNING, WEEKLY AND ON DEMAND (ini-7h5, the operator via theguy): this
+# workflow is the repo's only CodeQL scan, and GitHub's default setup is off.
+# It starts on its weekly schedule (Mondays 06:17 UTC) and on demand:
+#   gh workflow run codeql.yml --ref main
+# and on nothing else, so landing a commit spends no runner on a scan.
+#
+# The scan is the one default setup ran: the same four languages, the default
+# query suite, the same build modes, and the same /language:<lang> categories,
+# so each language's alerts carry on from default setup's analyses.
+#
+# GITHUB-HOSTED RUNNERS ONLY: ubuntu-latest, and macos-latest for swift, whose
+# autobuild runs xcodebuild on the app. Never the shared Mac host
+# (192.168.1.207). scripts/shardtests (codeql_test.go) fails this file if a
+# trigger, a language, a runner, a build mode or a category changes.
+on:
+  schedule:
+    - cron: '17 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    permissions:
+      security-events: write
+      contents: read
+      actions: read
+      packages: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: actions
+            build-mode: none
+            os: ubuntu-latest
+          - language: go
+            build-mode: autobuild
+            os: ubuntu-latest
+          - language: python
+            build-mode: none
+            os: ubuntu-latest
+          - language: swift
+            build-mode: autobuild
+            os: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+
+      - if: matrix.build-mode == 'autobuild'
+        uses: github/codeql-action/autobuild@v4
+
+      - uses: github/codeql-action/analyze@v4
+        with:
+          category: /language:${{ matrix.language }}
