@@ -47,6 +47,61 @@ final class LiveServiceTests: XCTestCase {
         _ = try await ScreenshotTests().shot("live-progress", NavigationStack { EffortProgressView(progress: m) })
     }
 
+    // AC1 end to end, with LIVE_RIG naming a test rig whose real super a script
+    // drives: after its opening read, this list moves on feed events alone. The
+    // script and the test hand off through files in SHOT_DIR.
+    func testARealReplyComesAndGoesOnTheFeed() async throws {
+        let env = ProcessInfo.processInfo.environment
+        let rig = env["LIVE_RIG"] ?? ""
+        try XCTSkipIf(rig.isEmpty, "needs a test rig in TEST_RUNNER_LIVE_RIG")
+        let dir = try XCTUnwrap(env["SHOT_DIR"])
+        let item = try XCTUnwrap(env["LIVE_ITEM"])
+        let recommendation = try XCTUnwrap(env["LIVE_REC"])
+        func mark(_ name: String) { FileManager.default.createFile(atPath: "\(dir)/\(name)", contents: nil) }
+        func rows(_ m: BlockersModel) -> [BlockerRow] { m.sections.first { $0.rig == rig }?.rows ?? [] }
+        func waitFor(_ what: String, _ cond: () -> Bool) async throws {
+            let deadline = Date().addingTimeInterval(240)
+            while !cond() {
+                if Date() > deadline { throw XCTSkip("timed out: \(what)") }
+                try await Task.sleep(for: .milliseconds(500))
+            }
+        }
+
+        let m = BlockersModel(source: service)
+        let home = HomeModel(service: service)
+        home.listeners["blockers"] = m
+        home.startFeed()
+        defer { home.stopFeed() }
+        await m.reload()
+        XCTAssertFalse(rows(m).contains { $0.title == item }, "the item is there before the reply")
+        mark("open.ready")
+
+        do {
+            try await waitFor("the item to arrive on the feed") { rows(m).contains { $0.title == item } }
+        } catch { return XCTFail("\(error)") }
+        let row = try XCTUnwrap(rows(m).first { $0.title == item })
+        XCTAssertEqual(row.kind, .waiting)
+        XCTAssertEqual(row.detail, recommendation)
+        XCTAssertEqual(row.pane, "super")
+        _ = try await ScreenshotTests().shot("rig-waiting", NavigationStack { BlockersView(blockers: m) { _, _ in } })
+        mark("item.ready")
+
+        do {
+            try await waitFor("the script's no-footer reply") {
+                FileManager.default.fileExists(atPath: "\(dir)/nofooter.done")
+            }
+        } catch { return XCTFail("\(error)") }
+        await m.reload()
+        XCTAssertTrue(rows(m).contains { $0.title == item }, "a reply with no footer cleared the item")
+        mark("stay.ready")
+
+        do {
+            try await waitFor("the item to go on the feed") { !rows(m).contains { $0.title == item } }
+        } catch { return XCTFail("\(error)") }
+        _ = try await ScreenshotTests().shot("rig-cleared", NavigationStack { BlockersView(blockers: m) { _, _ in } })
+        mark("cleared.ready")
+    }
+
     /// CountingSource counts reads of the real service's list.
     private final class CountingSource: BlockersSource, @unchecked Sendable {
         let base: BlockersSource
