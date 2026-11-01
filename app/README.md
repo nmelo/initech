@@ -49,9 +49,12 @@ sample shows the runner's machine can take one simulator. A run waits at the
 shared load gate (`.github/actions/load-gate`: while that machine's 5-minute
 load is over 6, during another project's nightly window, and while any
 simulator is booted there; after 20 minutes it goes ahead with a warning),
-runs one device on a fresh simulator through `sim-test.sh`, and fails if a crash report names that
-simulator or if any xcodebuild or simulator process it started is still
-running. One app job runs at a time; pull requests never run it.
+runs one device on a fresh simulator through `sim-test.sh` once its first boot
+has finished, and fails if a crash report from the app, its test runners,
+SpringBoard or PosterBoard names that simulator (a report from any other
+process there is named as a warning: nobody sits at that machine), or if any
+xcodebuild or simulator process it started is still running. One simulator
+runs on that machine at a time; pull requests never run it.
 
 On this Mac, run tests only through `app/scripts/sim-test.sh` under
 `super/tools/heavy.sh`, one at a time, and never open Simulator.app:
@@ -63,8 +66,9 @@ On this Mac, run tests only through `app/scripts/sim-test.sh` under
 It creates a simulator for that run alone, runs `xcodebuild test` on it with
 `-parallel-testing-enabled NO`, then shuts it down and deletes it, however the
 run ends. A simulator kept between runs carries its state, and one such
-device crashed PosterBoard at every boot. A new crash report from the run's
-device fails the run with exit 9: stop and tell super.
+device crashed PosterBoard at every boot. On this Mac any new crash report
+from the run's device fails the run with exit 9 (`CRASH_FATAL=all`, the
+default): stop and tell super.
 
 ## A TestFlight build
 

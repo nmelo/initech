@@ -10,8 +10,13 @@
 #   ~/Desktop/Projects/initech/super/tools/heavy.sh app/scripts/sim-test.sh iphone /tmp/run.log
 #
 # The device is shut down and deleted however the run ends: pass, fail, the
-# 18-minute bound, or heavy.sh stopping the step. After the run, any new crash
+# 18-minute bound, or heavy.sh stopping the step. After the run, a new crash
 # report from that device fails the run (exit 9): stop and tell super.
+# CRASH_FATAL=all (the default) fails on any report, because on a Mac with
+# someone at it a crash puts a dialog on their screen. CRASH_FATAL=ui (the
+# unattended app-tests runner) fails only on a report from the app, its test
+# runners, SpringBoard or PosterBoard, and names any other as a warning: a new
+# device's first boot often crashes unrelated system services.
 set -u
 kind=${1:?iphone or ipad}; log=${2:?log file}; shift 2
 case "$kind" in
@@ -42,9 +47,17 @@ cleanup() {
   # never reaches the check below the test: look here too, after shutdown.
   sleep 10
   crashed=$(find "$reports" -newer "$mark" -name '*.ips' -exec grep -l "SimDevice.$udid" {} + 2>/dev/null)
-  if [ -n "$crashed" ]; then
-    echo "sim-test: CRASH REPORT from $name, stop and tell super:" >&2
-    echo "$crashed" | sed 's|.*/||' >&2
+  fatal="" warn=""
+  for f in $crashed; do
+    proc=$(basename "$f" | sed -E 's/-20[0-9]{2}-[0-9]{2}-[0-9]{2}-.*//')
+    case "${CRASH_FATAL:-all}:$proc" in
+      all:*|ui:InitechApp|ui:InitechApp*Runner|ui:*xctrunner*|ui:SpringBoard|ui:PosterBoard) fatal="$fatal $(basename "$f")" ;;
+      *) warn="$warn $(basename "$f")" ;;
+    esac
+  done
+  [ -n "$warn" ] && echo "sim-test: warning: crash reports from system services on $name (not failing the run):$warn" >&2
+  if [ -n "$fatal" ]; then
+    echo "sim-test: CRASH REPORT from $name, stop and tell super:$fatal" >&2
     rm -f "$mark"
     exit 9
   fi
@@ -54,6 +67,14 @@ trap cleanup EXIT
 trap 'exit 143' TERM INT
 
 cd "$app" || exit 2
+# A new device's first boot takes minutes on a busy host; xcodebuild launching
+# into it before it finishes fails with "No such process". Boot it and wait
+# for the boot to finish, bounded.
+if ! perl -e 'alarm 420; exec @ARGV' xcrun simctl bootstatus "$udid" -b > "$log.boot" 2>&1; then
+  echo "sim-test: $name did not finish booting in 7 minutes" >&2
+  exit 7
+fi
+echo "sim-test: $name booted"
 perl -e 'alarm 1080; exec @ARGV' xcodebuild test -project InitechApp.xcodeproj -scheme InitechApp \
   -parallel-testing-enabled NO -destination "id=$udid" "$@" > "$log" 2>&1 &
 xb=$!

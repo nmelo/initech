@@ -11,15 +11,19 @@
 #   shared with other projects' iOS jobs, and the switch is flipped only once
 #   a load sample shows it can take one simulator. With it unset the job is
 #   skipped, so no runner is used at all.
-# - One app job at a time across the repo (concurrency group app-sim), so one
-#   simulator at a time.
+# - One simulator at a time on the host: the load gate holds a job while any
+#   simulator is booted there; a concurrency group per ref queues a ref's own
+#   runs.
 # - The job waits at the shared load gate first (.github/actions/load-gate,
 #   with simulators): while the host's 5-minute load is over 6, during the
 #   other project's nightly window, and while any simulator is booted there by
 #   anyone; after 20 minutes it runs with a warning. The job's timeout allows
 #   that wait; the run itself stays bounded by sim-test.sh (18 minutes).
-# - app/scripts/sim-test.sh makes a simulator for the run and deletes it
-#   however the run ends; a new crash report from it fails the job, by name.
+# - app/scripts/sim-test.sh makes a simulator for the run, waits for its first
+#   boot to finish, and deletes it however the run ends. With CRASH_FATAL=ui a
+#   new crash report from the app, its test runners, SpringBoard or PosterBoard
+#   fails the job by name; any other report from that device is named as a
+#   warning (nobody sits at this host, so no dialog reaches anyone).
 # - A last step fails the job if any simulator or xcodebuild process the job
 #   started is still running.
 name: app-tests
@@ -35,8 +39,12 @@ on:
     branches: [main]
     paths: ["app/**", ".github/workflows/app-tests.yml"]
 
+# One group per ref: GitHub keeps one pending run per group, so a shared group
+# let a push cancel another branch's queued run. One simulator at a time across
+# the host is the load gate's job (simulators: true holds a job while any
+# simulator is booted there).
 concurrency:
-  group: app-sim
+  group: app-sim-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -68,6 +76,7 @@ jobs:
       - name: Test on a fresh simulator
         env:
           INITECH_AGENT: ci-${{ github.run_id }}
+          CRASH_FATAL: ui
           DEVICE: ${{ github.event.inputs.device || 'iphone' }}
         run: |
           case "$DEVICE" in iphone|ipad) ;; *) echo "app-tests: device must be iphone or ipad" >&2; exit 2 ;; esac
