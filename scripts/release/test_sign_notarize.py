@@ -121,8 +121,11 @@ class Rig:
         open(self.config, 'w').write(
             'project: fixture\napp_store_connect:\n'
             f'  key_path: {self.key}\n  key_id: {KEY_ID}\n  issuer_id: {ISSUER}\n  team_id: {TEAM}\n')
+        # The script's scratch folders and saved logs go here and leave with the
+        # rig, even under a mutant that keeps them.
+        self.tmp = os.path.join(self.h, 'tmp'); os.makedirs(self.tmp)
         self.env = dict(os.environ, H=self.h, PATH=fb + ':' + os.environ['PATH'],
-                        NOTARYTOOL=os.path.join(fb, 'notarytool'), NOTARY_LIMIT='5')
+                        NOTARYTOOL=os.path.join(fb, 'notarytool'), NOTARY_LIMIT='5', TMPDIR=self.tmp)
 
     def run(self, *extra, timeout=60):
         return subprocess.run(['bash', SCRIPT, TAG, '--config', self.config, *extra], env=self.env,
@@ -327,7 +330,7 @@ class Refuses(Case):
         m = re.search(r'notarytool log saved to (\S+)', out.stdout)
         self.assertTrue(m and os.path.exists(m[1]), out.stdout)
         self.assertIn('fixture issue', open(m[1]).read())
-        self.addCleanup(lambda: os.path.exists(m[1]) and os.remove(m[1]))
+        self.assertTrue(m[1].startswith(r.tmp), 'the log is saved under TMPDIR')
 
     def test_notarytool_in_progress_is_not_accepted(self):
         r = self.rig(); r.flag('notary_status', 'In Progress')
