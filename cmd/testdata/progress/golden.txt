@@ -7,7 +7,7 @@ fx-8            in_progress eng2        -       0  13:30      eng2     Títle wi
 fx-10           in_progress eng1        -       1  17:50      status   Overlay columns settle after a click
 fx-2            in_qa       qa1         -       0  17:30      status   Status leads with the ribbon's bead
 
-closed 3 of 10: worked by engineers 2, writing/review only 1
+closed 3 of 10: worked by engineers 2, writing/review only 1; stuck 0, blocked 0
 stages: closed 3, in_progress 4, in_qa 1, open 1, ready_for_qa 1
 closed in the last 6 h: 2
   16:00 fx-5 No-bead marker after fifteen minutes

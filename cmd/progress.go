@@ -34,7 +34,9 @@ ini-wra., or a molecule), or for the whole rig without one:
   the window that name the bead, and the last move (a status change, a
   comment or a commit) and who made it;
   closed of total, split into beads an engineer worked and writing or
-  review only; beads per stage; the closes in the window; the critical path
+  review only, with the stuck beads (no bd move in an hour, owner pane
+  idle, waiting or pending) and the blocked ones (blocked, or waiting on
+  Nelson, which reads "blocked (Nelson)"); beads per stage; the closes in the window; the critical path
   (open beads with the most dependents); the engineers on it;
   for every bead with no move in an hour, what it waits on: "working,
   unrecorded" when its owner's pane is running or background, waiting on
@@ -43,6 +45,9 @@ ini-wra., or a molecule), or for the whole rig without one:
 With --json it prints the same report as one JSON object instead of the
 table: the rows, the effort counts, the closes in the window, the critical
 path, the engineers, the quiet beads and their waits, and the notes.
+
+A deferred bead is left out of every row and count. With no bead past open
+and not closed the table is the line "no bead in flight".
 
 It is read-only and never prints a finish time, an estimate or an actual.`,
 	Args: cobra.MaximumNArgs(1),
