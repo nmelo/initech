@@ -37,6 +37,7 @@ final class FixtureServer: @unchecked Sendable {
     private var _feeds: [NWConnection] = []
     private var _requests: [Request] = []
     private var _feedsPaused = false
+    private var _rawGET: [String: Data] = [:] // "blockers" -> the JSON GET /v1/blockers answers
 
     var pairing: Pairing { Pairing(host: "127.0.0.1", port: Int(port), token: token, fingerprint: fingerprint) }
 
@@ -123,6 +124,9 @@ final class FixtureServer: @unchecked Sendable {
 
     func setSendVerdict(rig: String, pane: String, _ r: SendResult) { locked { _sendVerdict["\(rig)/\(pane)"] = r } }
     func setKeyVerdict(rig: String, pane: String, _ r: SendResult) { locked { _keyVerdict["\(rig)/\(pane)"] = r } }
+    /// setRawGET makes GET /v1/<name> answer this JSON; for a route whose shape
+    /// the test target does not compile. Until it is set, the route is a 404.
+    func setRawGET(_ name: String, _ json: String) { locked { _rawGET[name] = Data(json.utf8) } }
 
     /// emit records a feed event and writes it to every open feed.
     @discardableResult
@@ -242,6 +246,8 @@ final class FixtureServer: @unchecked Sendable {
                 return json(c, SendResult(verdict: "refused", words: "unknown key"), code: 400)
             }
             json(c, locked { _keyVerdict["\(parts[2])/\(parts[3])"] } ?? SendResult(verdict: "delivered", words: "key \(b.key) delivered to \(parts[3])"))
+        case ("GET", let name) where locked({ _rawGET[name] }) != nil:
+            respond(c, 200, locked { _rawGET[name] })
         case ("GET", "feed") where feedsPaused:
             respond(c, 503)
         case ("GET", "feed"):
