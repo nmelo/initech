@@ -299,6 +299,8 @@ A pane opens as its conversation, read from the pane's Claude Code transcript: t
 
 What you type in the box goes into the pane through the send path, as `initech send` would type it, and the message shows the verdict: delivered, held (with why), sent but not confirmed, or not delivered (with why).
 
+Below the box, the key strip sends Enter, Esc, Ctrl-C, `y` or `n` into the pane as a single keystroke (`initech keystroke`), and shows the result under it. While the pane is at a dialog or banner, or waiting or pending, its last screen lines show above the input box, so you can read the prompt you are answering.
+
 ### The App Service
 
 The app talks to `initech app-serve`, a service on the Mac. It listens on one address only: this Mac's Tailscale address by default (`--listen tailnet`, the release setting; the address on the interface that also holds Tailscale's `fd7a:115c:a1e0::/48` address, since a `100.64.0.0/10` address alone can be carrier NAT on the LAN), or, with `--listen local-network`, the Mac's private LAN address, for the build phase while Tailscale is stopped. It never listens on all interfaces or on loopback, and with no Tailscale address it does not start; its port is 7392 unless `--port` says otherwise. It finds rigs by scanning each `--projects` folder (by default the folder holding the rig it was started from) for `<folder>/*/initech.yaml`; a rig is running when its initech answers on its socket.

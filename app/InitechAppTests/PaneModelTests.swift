@@ -96,4 +96,34 @@ final class PaneModelTests: XCTestCase {
         XCTAssertEqual(pane.verdicts["t9"]?.outcome, .delivered)
     }
 
+    func testKeyStrip_SendsTheKeyAndShowsItsVerdict() async {
+        let pane = PaneModel(service: service, ref: ref)
+        for key in PaneKey.allCases {
+            await pane.press(key)
+            XCTAssertEqual(pane.lastKey?.key, key)
+            XCTAssertEqual(pane.lastKey?.result.outcome, .delivered)
+        }
+        let sent = server.requests.filter { $0.path == "/v1/keys/initech/eng1" }
+            .map { String(decoding: $0.body, as: UTF8.self) }
+        XCTAssertEqual(sent, PaneKey.allCases.map { #"{"key":"\#($0.rawValue)"}"# })
+    }
+
+    func testKeyStrip_NotDeliveredSaysSo() async {
+        server.setKeyVerdict(rig: ref.rig, pane: ref.pane, SendResult(verdict: "not_delivered", words: "eng1 is not running"))
+        let pane = PaneModel(service: service, ref: ref)
+        await pane.press(.enter)
+        XCTAssertEqual(pane.lastKey?.result.outcome, .notDelivered)
+        XCTAssertEqual(pane.lastKey?.result.words, "eng1 is not running")
+    }
+
+    func testPaneRow_ShowsScreenLinesOnlyAtADialogOrBanner() {
+        func row(_ state: String?, _ banner: String?) -> PaneRow {
+            PaneRow(ref: ref, name: "eng1", state: state, banner: banner, gone: false)
+        }
+        XCTAssertTrue(row("waiting", "none").atDialog)
+        XCTAssertTrue(row("pending", "none").atDialog)
+        XCTAssertTrue(row("idle", "login").atDialog)
+        XCTAssertFalse(row("running", "none").atDialog)
+        XCTAssertFalse(row("idle", nil).atDialog)
+    }
 }

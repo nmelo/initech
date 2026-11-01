@@ -2,7 +2,7 @@ import SwiftUI
 
 /// PaneView is one pane as a conversation: replies as text, tool runs as one
 /// line that expands, his messages on the right, the footer at the bottom of
-/// each reply, and the input box.
+/// each reply, and below the input box the key strip.
 struct PaneView: View {
     @StateObject var model: PaneModel
     @ObservedObject var home: HomeModel
@@ -36,7 +36,11 @@ struct PaneView: View {
             if let problem = model.problem {
                 Text(problem).font(.footnote).foregroundStyle(.red).padding(.horizontal)
             }
+            if let row, row.atDialog, let screen = row.screen, !screen.isEmpty {
+                ScreenLines(lines: screen)
+            }
             InputBar(draft: $draft) { text in Task { await model.send(text) } }
+            KeyStrip(last: model.lastKey) { key in Task { await model.press(key) } }
         }
         .navigationTitle(row?.name ?? model.ref.pane)
         .navigationBarTitleDisplayMode(.inline)
@@ -139,6 +143,22 @@ struct VerdictLabel: View {
     }
 }
 
+/// ScreenLines is the pane's last screen lines when it is at a dialog or banner.
+struct ScreenLines: View {
+    let lines: [String]
+
+    var body: some View {
+        ScrollView(.horizontal) {
+            Text(lines.joined(separator: "\n"))
+                .font(.caption2.monospaced())
+                .padding(8)
+        }
+        .frame(maxHeight: 160)
+        .background(.black.opacity(0.85))
+        .foregroundStyle(.white)
+    }
+}
+
 /// InputBar is the box he types a message into.
 struct InputBar: View {
     @Binding var draft: String
@@ -161,5 +181,29 @@ struct InputBar: View {
         }
         .padding(.horizontal)
         .padding(.top, 6)
+    }
+}
+
+/// KeyStrip sends Enter, Esc, Ctrl-C, y or n to the pane.
+struct KeyStrip: View {
+    var last: (key: PaneKey, result: SendResult)?
+    let press: (PaneKey) -> Void
+
+    var body: some View {
+        VStack(spacing: 2) {
+            HStack {
+                ForEach(PaneKey.allCases, id: \.self) { key in
+                    Button(key.label) { press(key) }
+                        .buttonStyle(.bordered)
+                        .font(.callout.monospaced())
+                }
+            }
+            if let last {
+                Text("\(last.key.label): \(last.result.words)")
+                    .font(.caption2)
+                    .foregroundStyle(last.result.outcome == .delivered ? Color.secondary : Color.red)
+            }
+        }
+        .padding(.vertical, 6)
     }
 }
