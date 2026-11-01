@@ -350,6 +350,7 @@ func TestAppServeProgress_IsProgressJSONForTheEffort(t *testing.T) {
 type effortLister struct {
 	out   string
 	calls []string
+	dirs  []string // the folder of each call, "" for none
 }
 
 func (l *effortLister) Run(name string, args ...string) (string, error) {
@@ -358,6 +359,7 @@ func (l *effortLister) Run(name string, args ...string) (string, error) {
 
 func (l *effortLister) RunInDir(dir, name string, args ...string) (string, error) {
 	l.calls = append(l.calls, name+" "+strings.Join(args, " "))
+	l.dirs = append(l.dirs, dir)
 	return l.out, nil
 }
 
@@ -509,8 +511,8 @@ func TestAppServeWaiting_OneBdListInTheRigRoot(t *testing.T) {
 	if err != nil || len(got) != 1 || got[0] != (appserve.WaitingBead{ID: "ini-a", Title: "Choose", Assignee: "super"}) {
 		t.Fatalf("waiting = %+v %v", got, err)
 	}
-	if len(l.calls) != 1 || l.calls[0] != "bd list --status waiting_on_nelson --json" {
-		t.Errorf("calls = %q", l.calls)
+	if len(l.calls) != 1 || l.calls[0] != "bd list --status waiting_on_nelson --json" || l.dirs[0] != dir {
+		t.Errorf("calls = %q in %q, want one bd list in %s", l.calls, l.dirs, dir)
 	}
 	off := t.TempDir()
 	os.WriteFile(filepath.Join(off, "initech.yaml"), []byte("project: off\nroot: "+off+"\nroles:\n  - eng1\nbeads:\n  enabled: false\n"), 0o644)

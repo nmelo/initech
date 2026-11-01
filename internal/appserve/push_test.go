@@ -146,12 +146,15 @@ func TestPush_AFailedReadIsNotALeaveAndTheEventCarriesTheBead(t *testing.T) {
 	b.mu.Lock()
 	b.fail["/r/alpha"] = false
 	b.mu.Unlock()
+	// A bead that entered while the read was failing is still new after it.
+	b.set("/r/alpha", WaitingBead{ID: "ini-b", Title: "Pick the version", Assignee: "pm"}, WaitingBead{ID: "ini-e"})
 	s.readWaiting(b)
-	if got := settle(t, rec, 1); len(got) != 1 {
-		t.Errorf("a failed read in between: %d pushes, want 1", len(got))
+	got := settle(t, rec, 2)
+	if len(got) != 2 || got[1].APS.Alert.Body != "ini-e" {
+		t.Errorf("a failed read in between: pushes %+v, want ini-b once and then ini-e", got)
 	}
 	evs := eventsOf(s, 0, "waiting_item")
-	if len(evs) != 1 {
+	if len(evs) != 2 {
 		t.Fatalf("waiting_item events: %d", len(evs))
 	}
 	raw, _ := json.Marshal(evs[0].Data)

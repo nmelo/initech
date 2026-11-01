@@ -59,6 +59,10 @@ func TestDevices_RegisterOnceRemoveAndSurviveARestart(t *testing.T) {
 		t.Errorf("file = %s (%v), want {devices: [{token, added}]}", raw, err)
 	}
 
+	if code, out := deviceReq(t, h, "PUT", "/v1/devices", auth, `{"token":"ab12","name":"phone"}`); code != 400 || out["verdict"] != "refused" {
+		t.Errorf("an unknown field with room to spare: %d %v, want 400 refused", code, out)
+	}
+
 	h2 := deviceServer(t, dir) // a restart
 	code, out := deviceReq(t, h2, "PUT", "/v1/devices", auth, `{"token":"0f0f"}`)
 	if code != 200 || out["devices"] != float64(2) {

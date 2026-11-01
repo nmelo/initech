@@ -364,6 +364,9 @@ func TestSender_TheKeyNeverLeaves(t *testing.T) {
 	pushAndWait(t, s, NewPayload("r", "p", "waiting"))
 	clk.Add(time.Hour)
 	pushAndWait(t, s, NewPayload("r", "p", "stuck"))
+	// And APNs unreachable, the other path that logs.
+	dead := NewSender(cfg, loaded, "https://127.0.0.1:1", fa.srv.Client(), devs, clk.Now, log.add)
+	pushAndWait(t, dead, NewPayload("r", "p", "stuck"))
 
 	block, _ := pem.Decode(raw)
 	secrets := map[string]string{
