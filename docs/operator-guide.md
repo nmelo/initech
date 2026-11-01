@@ -299,7 +299,7 @@ Home lists the panes you pinned, in your order, each with the name you gave it, 
 
 ### A Pane
 
-A pane opens as its conversation, read from the pane's Claude Code transcript: the agent's replies as text with the footer lines (`▶`) at the bottom of each reply, each tool run as one line that expands on tap, your messages on the right. Scrolling up reads older entries until the transcript's start. A pane with nothing in its transcript yet says so.
+A pane opens as its conversation, read from the pane's Claude Code transcript: the agent's replies as text with the footer lines (`▶`) at the bottom of each reply, each tool run as one line that expands on tap, your messages on the right. It opens on the newest entry and stays where you are reading when new entries arrive; Show older messages at the top reads the next older page, until the transcript's start. A pane with nothing in its transcript yet says so.
 
 What you type in the box goes into the pane through the send path, as `initech send` would type it, and the message shows the verdict in the send path's own words: delivered, deferred because a dialog is open (it goes when the dialog closes), sent but not confirmed, or not delivered (with why).
 

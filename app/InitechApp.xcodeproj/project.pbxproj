@@ -10,6 +10,7 @@
 		1070815A259D1E1A5F5492E6 /* PairingStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = EBF1B0563C039519DA1FBAFF /* PairingStore.swift */; };
 		24750DD1B4DD9C35F9E16E95 /* BlockersModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 141131EF2DD5FEE337187AD3 /* BlockersModelTests.swift */; };
 		292871944F3D0BC9148532E2 /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DD99BD2396715324CE7297D /* HomeView.swift */; };
+		2ABCD2A36E3CD1DC84DC72F7 /* PaneFlowUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03B27EFEDFF80711F04B50F0 /* PaneFlowUITests.swift */; };
 		3143849633B5CCDC67ECB10B /* ScreenshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F6B44C43A26A6F70FCF033B /* ScreenshotTests.swift */; };
 		3B71EA093E888A1CE3B0A06A /* PaneModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7EE12E10FEBB62BEC8DAAF65 /* PaneModelTests.swift */; };
 		40E7FF7EA5D5C02FA1140670 /* BlockersModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10D5A8C8CF2881FB2236459D /* BlockersModel.swift */; };
@@ -62,6 +63,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		03B27EFEDFF80711F04B50F0 /* PaneFlowUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaneFlowUITests.swift; sourceTree = "<group>"; };
 		08612C6B0EEC57AB3F1801AA /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		0DD99BD2396715324CE7297D /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
 		10D5A8C8CF2881FB2236459D /* BlockersModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlockersModel.swift; sourceTree = "<group>"; };
@@ -174,6 +176,7 @@
 			isa = PBXGroup;
 			children = (
 				DF7D8AF7C84F7DFAF8F70811 /* BlockersUITests.swift */,
+				03B27EFEDFF80711F04B50F0 /* PaneFlowUITests.swift */,
 				9AD89DF8748C72A36D899F85 /* ScreenshotTests.swift */,
 			);
 			path = InitechAppUITests;
@@ -324,6 +327,7 @@
 				7DBE242BC65500EEAF05660A /* FixtureServer.swift in Sources */,
 				81179ABE488B00B0312D56B4 /* Models.swift in Sources */,
 				F5027582EA43711603E42F43 /* Pairing.swift in Sources */,
+				2ABCD2A36E3CD1DC84DC72F7 /* PaneFlowUITests.swift in Sources */,
 				74A565216330F44BEB6B5A5F /* ScreenshotTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

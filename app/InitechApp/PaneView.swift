@@ -7,6 +7,11 @@ struct PaneView: View {
     @StateObject var model: PaneModel
     @ObservedObject var home: HomeModel
     @State private var draft = ""
+    @State private var nearBottom = true
+    @State private var loadingOlder = false
+    /// topRow is the row at the top of the screen. Tracking it holds the rows
+    /// he is reading in place while an older page comes in above.
+    @State private var topRow: String?
 
     var row: PaneRow? { home.row(for: model.ref) }
 
@@ -15,9 +20,23 @@ struct PaneView: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 14) {
+                        // Older entries load on a tap, never by scrolling: a lazy
+                        // stack builds its first rows whatever is on screen, so
+                        // scroll-triggered paging chained pages in by itself.
                         if model.loaded && !model.startReached {
-                            ProgressView().frame(maxWidth: .infinity)
-                                .task { await model.loadOlder() }
+                            Button {
+                                loadingOlder = true
+                                // Known limit: the view lands at the top of the
+                                // older page, not on the row he tapped from.
+                                Task {
+                                    await model.loadOlder()
+                                    loadingOlder = false
+                                }
+                            } label: {
+                                if loadingOlder { ProgressView() } else { Text("Show older messages") }
+                            }
+                            .disabled(loadingOlder)
+                            .frame(maxWidth: .infinity)
                         }
                         if model.loaded && model.messages.isEmpty {
                             Text("Nothing in this pane's conversation yet.")
@@ -27,10 +46,26 @@ struct PaneView: View {
                             MessageView(message: m, verdict: model.verdicts[m.id]).id(m.id)
                         }
                     }
+                    .scrollTargetLayout()
                     .padding()
                 }
-                .onChange(of: model.messages.last?.id) { _, last in
-                    if let last { withAnimation { proxy.scrollTo(last, anchor: .bottom) } }
+                // A pane opens on its newest entry.
+                .scrollPosition(id: $topRow, anchor: .top)
+                .defaultScrollAnchor(.bottom, for: .initialOffset)
+                .onScrollGeometryChange(for: Bool.self) {
+                    $0.contentOffset.y + $0.containerSize.height >= $0.contentSize.height - 200
+                } action: { _, atBottom in
+                    nearBottom = atBottom
+                }
+                // A new entry follows only if he is at the bottom, or it is the
+                // first page or his own message; reading back stays put.
+                .onChange(of: model.messages.last?.id) { old, last in
+                    guard let last else { return }
+                    if old == nil {
+                        proxy.scrollTo(last, anchor: .bottom)
+                    } else if nearBottom || model.messages.last?.kind == .nelson {
+                        withAnimation { proxy.scrollTo(last, anchor: .bottom) }
+                    }
                 }
             }
             if let problem = model.problem {
