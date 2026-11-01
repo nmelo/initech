@@ -38,7 +38,7 @@ concurrency:
 jobs:
   race:
     runs-on: ${{ github.event_name != 'pull_request' && vars.MAC_RUNNER || 'macos-latest' }}
-    timeout-minutes: 30
+    timeout-minutes: 50  # 30 plus the load gate's 20-minute cap
     steps:
       - uses: actions/checkout@v5
 
@@ -46,6 +46,9 @@ jobs:
         with:
           go-version-file: go.mod
           cache: ${{ github.event_name == 'pull_request' }}
+
+      - name: Wait for the shared Mac host (load gate)
+        uses: ./.github/actions/load-gate
 
       # ini-4cfl: `make test-race` existed, unrun by any gate, and 7 data
       # races accumulated invisibly in the suspend/wake path -- resumePane's
@@ -88,7 +91,7 @@ jobs:
     # ini-8k1o: every job that can land on the self-hosted Mac carries a
     # timeout, or a wedged rig holds a runner to GitHub 6h cap. Measured ~3
     # min; 10 is ~3x headroom. (shipper caught this missing on 2d2f909.)
-    timeout-minutes: 10
+    timeout-minutes: 30  # 10 plus the load gate's 20-minute cap
     steps:
       - uses: actions/checkout@v5
 
@@ -96,6 +99,9 @@ jobs:
         with:
           go-version-file: go.mod
           cache: ${{ github.event_name == 'pull_request' }}
+
+      - name: Wait for the shared Mac host (load gate)
+        uses: ./.github/actions/load-gate
 
       # ini-0lko: name what this shard selected, before running it.
       - name: Witness which rigs this shard selected
@@ -117,7 +123,7 @@ jobs:
     # ini-8k1o: every job that can land on the self-hosted Mac carries a
     # timeout, or a wedged rig holds a runner to GitHub 6h cap. Measured ~3
     # min; 10 is ~3x headroom. (shipper caught this missing on 2d2f909.)
-    timeout-minutes: 10
+    timeout-minutes: 30  # 10 plus the load gate's 20-minute cap
     steps:
       - uses: actions/checkout@v5
 
@@ -125,6 +131,9 @@ jobs:
         with:
           go-version-file: go.mod
           cache: ${{ github.event_name == 'pull_request' }}
+
+      - name: Wait for the shared Mac host (load gate)
+        uses: ./.github/actions/load-gate
 
       # ini-0lko: name what this shard selected, before running it.
       - name: Witness which rigs this shard selected
@@ -146,7 +155,7 @@ jobs:
     # ini-8k1o: every job that can land on the self-hosted Mac carries a
     # timeout, or a wedged rig holds a runner to GitHub 6h cap. Measured ~3
     # min; 10 is ~3x headroom. (shipper caught this missing on 2d2f909.)
-    timeout-minutes: 10
+    timeout-minutes: 30  # 10 plus the load gate's 20-minute cap
     steps:
       - uses: actions/checkout@v5
 
@@ -154,6 +163,9 @@ jobs:
         with:
           go-version-file: go.mod
           cache: ${{ github.event_name == 'pull_request' }}
+
+      - name: Wait for the shared Mac host (load gate)
+        uses: ./.github/actions/load-gate
 
       # ini-0lko: name what this shard selected, before running it.
       - name: Witness which rigs this shard selected
@@ -176,7 +188,7 @@ jobs:
     # ini-8k1o: every job that can land on the self-hosted Mac carries a
     # timeout, or a wedged rig holds a runner to GitHub 6h cap. Measured ~3
     # min; 10 is ~3x headroom. (shipper caught this missing on 2d2f909.)
-    timeout-minutes: 10
+    timeout-minutes: 30  # 10 plus the load gate's 20-minute cap
     steps:
       - uses: actions/checkout@v5
 
@@ -184,6 +196,9 @@ jobs:
         with:
           go-version-file: go.mod
           cache: ${{ github.event_name == 'pull_request' }}
+
+      - name: Wait for the shared Mac host (load gate)
+        uses: ./.github/actions/load-gate
 
       # ini-0lko: name what this shard selected, before running it.
       - name: Witness which rigs this shard selected

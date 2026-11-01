@@ -93,7 +93,7 @@ jobs:
   build-and-test:
     runs-on: ${{ github.event_name != 'pull_request' && vars.MAC_RUNNER || 'macos-latest' }}
     # 25, not 15: this job also runs the census steps, bounded at 900 s.
-    timeout-minutes: 25
+    timeout-minutes: 45  # 25 plus the load gate's 20-minute cap
     steps:
       - uses: actions/checkout@v5
 
@@ -101,6 +101,9 @@ jobs:
         with:
           go-version-file: go.mod
           cache: ${{ github.event_name == 'pull_request' }}
+
+      - name: Wait for the shared Mac host (load gate)
+        uses: ./.github/actions/load-gate
 
       - name: Build
         run: go build -ldflags "-s -w" -o initech .
@@ -219,7 +222,7 @@ jobs:
   # what `make test-full` runs (see SPEED above); full-suite-census proves it.
   full-suite-1:
     runs-on: ${{ github.event_name != 'pull_request' && vars.MAC_RUNNER || 'macos-latest' }}
-    timeout-minutes: 25
+    timeout-minutes: 45  # 25 plus the load gate's 20-minute cap
     steps:
       - uses: actions/checkout@v5
 
@@ -227,6 +230,9 @@ jobs:
         with:
           go-version-file: go.mod
           cache: ${{ github.event_name == 'pull_request' }}
+
+      - name: Wait for the shared Mac host (load gate)
+        uses: ./.github/actions/load-gate
 
       - name: Test shard 1 of 5 (full, no -short)
         run: go run ./scripts/shardtests run -shards 5 -shard 1 -out shard-record
@@ -240,7 +246,7 @@ jobs:
 
   full-suite-2:
     runs-on: ${{ github.event_name != 'pull_request' && vars.MAC_RUNNER || 'macos-latest' }}
-    timeout-minutes: 25
+    timeout-minutes: 45  # 25 plus the load gate's 20-minute cap
     steps:
       - uses: actions/checkout@v5
 
@@ -248,6 +254,9 @@ jobs:
         with:
           go-version-file: go.mod
           cache: ${{ github.event_name == 'pull_request' }}
+
+      - name: Wait for the shared Mac host (load gate)
+        uses: ./.github/actions/load-gate
 
       - name: Test shard 2 of 5 (full, no -short)
         run: go run ./scripts/shardtests run -shards 5 -shard 2 -out shard-record
@@ -261,7 +270,7 @@ jobs:
 
   full-suite-3:
     runs-on: ${{ github.event_name != 'pull_request' && vars.MAC_RUNNER || 'macos-latest' }}
-    timeout-minutes: 25
+    timeout-minutes: 45  # 25 plus the load gate's 20-minute cap
     steps:
       - uses: actions/checkout@v5
 
@@ -269,6 +278,9 @@ jobs:
         with:
           go-version-file: go.mod
           cache: ${{ github.event_name == 'pull_request' }}
+
+      - name: Wait for the shared Mac host (load gate)
+        uses: ./.github/actions/load-gate
 
       - name: Test shard 3 of 5 (full, no -short)
         run: go run ./scripts/shardtests run -shards 5 -shard 3 -out shard-record
@@ -282,7 +294,7 @@ jobs:
 
   full-suite-4:
     runs-on: ${{ github.event_name != 'pull_request' && vars.MAC_RUNNER || 'macos-latest' }}
-    timeout-minutes: 25
+    timeout-minutes: 45  # 25 plus the load gate's 20-minute cap
     steps:
       - uses: actions/checkout@v5
 
@@ -290,6 +302,9 @@ jobs:
         with:
           go-version-file: go.mod
           cache: ${{ github.event_name == 'pull_request' }}
+
+      - name: Wait for the shared Mac host (load gate)
+        uses: ./.github/actions/load-gate
 
       - name: Test shard 4 of 5 (full, no -short)
         run: go run ./scripts/shardtests run -shards 5 -shard 4 -out shard-record
@@ -303,7 +318,7 @@ jobs:
 
   full-suite-5:
     runs-on: ${{ github.event_name != 'pull_request' && vars.MAC_RUNNER || 'macos-latest' }}
-    timeout-minutes: 25
+    timeout-minutes: 45  # 25 plus the load gate's 20-minute cap
     steps:
       - uses: actions/checkout@v5
 
@@ -311,6 +326,9 @@ jobs:
         with:
           go-version-file: go.mod
           cache: ${{ github.event_name == 'pull_request' }}
+
+      - name: Wait for the shared Mac host (load gate)
+        uses: ./.github/actions/load-gate
 
       - name: Test shard 5 of 5 (full, no -short)
         run: go run ./scripts/shardtests run -shards 5 -shard 5 -out shard-record

@@ -1,0 +1,21 @@
+name: Load gate
+description: >-
+  Holds a job on the shared Mac runner host until it can take it (ini-c5a.7,
+  the operator's conditions): while the host's 5-minute load is over 6, while
+  it is 11:45 to 12:15 in New York (another project's nightly build), and, with
+  simulators set, while any iOS simulator is booted there, by any user. After
+  20 minutes it lets the job run anyway with a warning, so a long hold is a
+  stated miss, never a silent one. Use it right after setup-go, at the start of
+  every job that starts a run (jobs that only follow other jobs skip it, so a
+  run is never held by the load it made itself). GitHub-hosted runners skip it.
+inputs:
+  simulators:
+    description: also wait while any iOS simulator is booted on the host
+    default: 'false'
+runs:
+  using: composite
+  steps:
+    - name: Load gate (the shared Mac host)
+      if: runner.environment == 'self-hosted'
+      shell: bash
+      run: go run ./scripts/loadgate ${{ inputs.simulators == 'true' && '-simulators' || '' }}
