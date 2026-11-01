@@ -37,9 +37,8 @@ func ytxcHeldPaced(t *testing.T, dialogAtRetry, slowEdge bool) (*Pane, func() in
 	nma5Paint(p, "❯ "+nma5Body)
 	n := nma5Enters(t, submits, func(int) {})
 	start := time.Now()
-	old := submitSampleMidpoint
 	slept := false
-	submitSampleMidpoint = func() {
+	setSampleMidpoint(t, p, func() {
 		if slowEdge && !slept && time.Since(start) >= window-60*time.Millisecond {
 			slept = true
 			time.Sleep(120 * time.Millisecond)
@@ -48,8 +47,7 @@ func ytxcHeldPaced(t *testing.T, dialogAtRetry, slowEdge bool) (*Pane, func() in
 		if dialogAtRetry {
 			p.latchDialogOpen("Claude needs your permission")
 		}
-	}
-	t.Cleanup(func() { submitSampleMidpoint = old })
+	})
 	return p, n.Load, events
 }
 

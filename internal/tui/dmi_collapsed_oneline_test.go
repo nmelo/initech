@@ -364,14 +364,12 @@ func TestCollapsedOneLine_ATornReadingIsNeverTheBeforeLine(t *testing.T) {
 	}
 	lvxwPaint(p, frame(0))
 	var n atomic.Int32
-	old := submitSampleMidpoint
-	submitSampleMidpoint = func() { lvxwPaint(p, frame(int(n.Add(1)))) }
-	t.Cleanup(func() { submitSampleMidpoint = old })
+	restore := setSampleMidpoint(t, p, func() { lvxwPaint(p, frame(int(n.Add(1)))) })
 	s := startPreEnterSighting(p, newPendingSubmit(dmiBody, "bracketed", ""))
 	time.Sleep(3 * composerEchoPoll)
 	ps := newPendingSubmit(dmiBody, "bracketed", "")
 	ps.seenInBox, ps.census = s.wait(), s.census
-	submitSampleMidpoint = old
+	restore()
 	if ps.census.torn == 0 || ps.census.stable != 0 {
 		t.Fatalf("torn %d stable %d: the readings before the Enter were not all torn", ps.census.torn, ps.census.stable)
 	}

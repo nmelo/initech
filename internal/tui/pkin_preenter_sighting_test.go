@@ -138,8 +138,7 @@ func pkinSendRigSized(t *testing.T, f *pkinFake, cols, rows int) (*Pane, <-chan 
 	f.paint("❯ ")
 
 	if f.busy {
-		old := submitSampleMidpoint
-		submitSampleMidpoint = func() {
+		setSampleMidpoint(t, p, func() {
 			// The first sample is the sighter's, during the wait: the one
 			// stable frame a busy agent shows. Every later sample, which is
 			// the watch after the Enter, is torn while the box holds our
@@ -154,8 +153,7 @@ func pkinSendRigSized(t *testing.T, f *pkinFake, cols, rows int) (*Pane, <-chan 
 			p.emu.Write([]byte("\x1b[3;45H✻ Working " + strconv.Itoa(int(f.frame.Add(1)))))
 			f.torn.Store(true)
 			f.maybeClear()
-		}
-		t.Cleanup(func() { submitSampleMidpoint = old })
+		})
 	}
 
 	var wg sync.WaitGroup

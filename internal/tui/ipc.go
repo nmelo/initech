@@ -14,6 +14,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 	"unicode"
 	"unicode/utf8"
@@ -713,11 +714,13 @@ func sendPaneTextLocked(pane *Pane, text string, enter bool) SendVerdict {
 // within ~2s (AC 2). A variable so tests can shorten it.
 var submitConfirmWindow = 1000 * time.Millisecond
 
-// submitSampleMidpoint, when set, runs inside each confirmation sample
-// between the ❯-row read and the box read. Nil in production. Tests use it to
-// land a repaint exactly there, the tear the stable-sample check exists for,
-// which timing alone produces only by luck.
-var submitSampleMidpoint func()
+// submitSampleMidpoint, when set, runs inside each confirmation sample, with
+// the pane being sampled, between the ❯-row read and the box read. Nil in
+// production. Tests set it (setSampleMidpoint) to land a repaint exactly
+// there, the tear the stable-sample check exists for, which timing alone
+// produces only by luck. It is atomic because a test swaps it while a send
+// another test left running may still be sampling its own pane.
+var submitSampleMidpoint atomic.Pointer[func(*Pane)]
 
 // submitOutcome is what confirmSubmit saw.
 type submitOutcome int
@@ -831,8 +834,8 @@ func submitSample(pane *Pane, ps *pendingSubmit) (tail string, found, held, stab
 	before := emuRowsBlocking(pane.emu)
 	tail, found = composerTail(pane)
 	found = found && !paneHasModal(pane)
-	if submitSampleMidpoint != nil {
-		submitSampleMidpoint()
+	if h := submitSampleMidpoint.Load(); h != nil {
+		(*h)(pane)
 	}
 	held = submitSighted(pane, tail, found, ps)
 	return tail, found, held, sameComposerSpan(before, emuRowsBlocking(pane.emu))

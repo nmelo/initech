@@ -40,8 +40,7 @@ func s1kdScreen(composer string) string {
 func s1kdStream(t *testing.T, p *Pane, also func(k int)) *atomic.Int32 {
 	t.Helper()
 	n := &atomic.Int32{}
-	old := submitSampleMidpoint
-	submitSampleMidpoint = func() {
+	setSampleMidpoint(t, p, func() {
 		k := int(n.Add(1))
 		p.emu.Write([]byte("\x1b[" + strconv.Itoa(2+k%30) + ";1H\x1b[2Kstreamed token " + strconv.Itoa(k) +
 			"\x1b[36;1H\x1b[2K✻ Working " + strconv.Itoa(k) +
@@ -49,8 +48,7 @@ func s1kdStream(t *testing.T, p *Pane, also func(k int)) *atomic.Int32 {
 		if also != nil {
 			also(k)
 		}
-	}
-	t.Cleanup(func() { submitSampleMidpoint = old })
+	})
 	return n
 }
 

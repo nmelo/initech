@@ -75,15 +75,14 @@ func TestK3g2_NoConfirmationBeforeTheFiftyMillisecondFloor(t *testing.T) {
 	p, _, _ := proofPane(t)
 	nma5Paint(p, "❯ "+nma5Body)
 	samples := 0
-	submitSampleMidpoint = func() {
+	setSampleMidpoint(t, p, func() {
 		switch samples++; samples {
 		case 1:
 			time.Sleep(10 * time.Millisecond)
 		case 2:
 			nma5Paint(p, "❯ ")
 		}
-	}
-	t.Cleanup(func() { submitSampleMidpoint = nil })
+	})
 	start := time.Now()
 	if got := confirmSubmit(p, newPendingSubmit(nma5Body, "bracketed", ""), start); got != submitTaken {
 		t.Fatalf("seen, then cleared: outcome %d, want taken", got)
@@ -215,12 +214,11 @@ func TestK3g2_ATornSampleDuringARepaintIsNotCountedAsTaken(t *testing.T) {
 	p, _, _ := proofPane(t)
 	nma5Paint(p, "❯ "+nma5Body)
 	samples := 0
-	submitSampleMidpoint = func() {
+	setSampleMidpoint(t, p, func() {
 		if samples++; samples == 2 {
 			nma5Paint(p, "Loading conversation...")
 		}
-	}
-	t.Cleanup(func() { submitSampleMidpoint = nil })
+	})
 	if got := confirmSubmit(p, newPendingSubmit(nma5Body, "bracketed", ""), time.Now()); got != submitUnknown {
 		t.Fatalf("a sample torn across a repaint: outcome %d, want unknown (never taken)", got)
 	}
