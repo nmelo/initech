@@ -236,7 +236,11 @@ final class HomeModel: ObservableObject {
         }
     }
 
+    /// note shows a failure, and logs it; a cancel (the task that asked was
+    /// cancelled) is not one and shows nothing.
     private func note(_ error: Error) {
+        if error is CancellationError { return }
+        Log.shown(error, screen: "home")
         switch error as? ServiceError {
         case .unauthorized?:
             needsPairing = true

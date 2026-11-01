@@ -76,8 +76,11 @@ final class BlockersModel: ObservableObject {
         do {
             sections = Self.sections(try await source.blockers())
             problem = nil
+        } catch is CancellationError {
+            return // not a failure, and not a read: the list stays as it was
         } catch {
             problem = "Blockers could not be read: \(error)"
+            Log.shown(error, screen: "blockers")
         }
         loaded = true
     }

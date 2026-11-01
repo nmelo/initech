@@ -99,6 +99,23 @@ final class ServiceClientTests: XCTestCase {
         XCTAssertEqual(again, pins)
     }
 
+    /// The iPhone's "Could not read the conversation: cancelled": a request
+    /// whose task is cancelled in flight (the view went away or reloaded) is a
+    /// CancellationError, which a screen shows as nothing, never "unreachable".
+    func testARequestCancelledInFlight_IsACancel_NotAFailure() async throws {
+        server.answerDelay = 2
+        let service = self.service!
+        let read = Task { try await service.conversation(rig: "r", pane: "eng1", before: nil, limit: 2) }
+        try await Task.sleep(for: .milliseconds(500))
+        read.cancel()
+        do {
+            _ = try await read.value
+            XCTFail("a cancelled request answered")
+        } catch {
+            XCTAssertTrue(error is CancellationError, "a cancel came back as \(error)")
+        }
+    }
+
     func testConversation_PagesBackToTheStart() async throws {
         let all = (1...5).map { Fx.msg("m\($0)", .agent, "reply \($0)") }
         server.setTranscript(rig: "r", pane: "eng1", all, pageSize: 2)

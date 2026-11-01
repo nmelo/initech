@@ -37,6 +37,7 @@ final class FixtureServer: @unchecked Sendable {
     private var _feeds: [NWConnection] = []
     private var _requests: [Request] = []
     private var _feedsPaused = false
+    private var _answerDelay: TimeInterval = 0
     private var _rawGET: [String: Data] = [:] // "blockers" -> the JSON GET /v1/blockers answers
     private var _rawPages: [String: [String: Data]] = [:] // "rig/pane" -> ?before value ("" for none) -> page JSON
     private var _devices: [String] = []
@@ -173,6 +174,10 @@ final class FixtureServer: @unchecked Sendable {
 
     var openFeeds: Int { locked { _feeds.count } }
 
+    /// answerDelay holds every non-feed answer back this long, so a test can
+    /// cancel a request while it is in flight.
+    var answerDelay: TimeInterval { get { locked { _answerDelay } } set { locked { _answerDelay = newValue } } }
+
     /// feedsPaused answers feed requests with 503 while true, so a test can
     /// change what was missed before the client is let back in.
     var feedsPaused: Bool { get { locked { _feedsPaused } } set { locked { _feedsPaused = newValue } } }
@@ -233,6 +238,15 @@ final class FixtureServer: @unchecked Sendable {
     }
 
     private func respond(_ c: NWConnection, _ code: Int, _ body: Data? = nil) {
+        let delay = answerDelay
+        guard delay <= 0 else {
+            queue.asyncAfter(deadline: .now() + delay) { [weak self] in self?.send(c, code, body) }
+            return
+        }
+        send(c, code, body)
+    }
+
+    private func send(_ c: NWConnection, _ code: Int, _ body: Data?) {
         var head = "HTTP/1.1 \(code) X\r\nConnection: close\r\nContent-Length: \(body?.count ?? 0)\r\n"
         if body != nil { head += "Content-Type: application/json\r\n" }
         var out = Data((head + "\r\n").utf8)

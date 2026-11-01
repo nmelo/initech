@@ -20,6 +20,10 @@ final class PaneModel: ObservableObject {
     /// pane closing (a pane opened again disappears and stays on screen while
     /// the push runs), so the feed stops when the model goes, in deinit.
     nonisolated(unsafe) private var feedTask: Task<Void, Never>?
+    /// rereading and rereadingOlder say a cancelled read is being read once
+    /// more, so a second cancel in a row stops there instead of looping.
+    private var rereading = false
+    private var rereadingOlder = false
     private var sentCount = 0
     static let pageSize = 50
 
@@ -65,8 +69,15 @@ final class PaneModel: ObservableObject {
             }
             loaded = true
             problem = nil
+        } catch is CancellationError {
+            // Not a failure: the task that asked was cancelled. Nothing shows;
+            // while this task is live the page is read once more.
+            guard !rereading, !Task.isCancelled else { return }
+            rereading = true
+            defer { rereading = false }
+            await load()
         } catch {
-            problem = "Could not read the conversation: \(error)"
+            show("Could not read the conversation: \(error)", error)
         }
     }
 
@@ -79,9 +90,20 @@ final class PaneModel: ObservableObject {
             messages = page.messages.filter { !known.contains($0.id) } + messages
             before = page.before
             startReached = page.startReached
+        } catch is CancellationError {
+            guard !rereadingOlder, !Task.isCancelled else { return } // the button stays; a tap reads again
+            rereadingOlder = true
+            defer { rereadingOlder = false }
+            await loadOlder()
         } catch {
-            problem = "Could not read older messages: \(error)"
+            show("Could not read older messages: \(error)", error)
         }
+    }
+
+    /// show puts a failure on the pane and its domain and code in the device log.
+    private func show(_ line: String, _ error: Error) {
+        problem = line
+        Log.shown(error, screen: "pane")
     }
 
     /// send types text into the pane through the service and puts the verdict on the message.
@@ -93,10 +115,12 @@ final class PaneModel: ObservableObject {
         messages.append(local)
         do {
             verdicts[local.id] = try await service.send(rig: ref.rig, pane: ref.pane, text: trimmed)
-        } catch ServiceError.status(_, let words?) {
+        } catch ServiceError.status(let code, let words?) {
             verdicts[local.id] = SendResult(verdict: "not_delivered", words: words)
+            Log.shown(ServiceError.status(code, words), screen: "pane")
         } catch {
             verdicts[local.id] = SendResult(verdict: "not_delivered", words: "The Mac did not answer: \(error)")
+            Log.shown(error, screen: "pane")
         }
     }
 
@@ -104,10 +128,12 @@ final class PaneModel: ObservableObject {
     func press(_ key: PaneKey) async {
         do {
             lastKey = (key, try await service.key(rig: ref.rig, pane: ref.pane, key: key))
-        } catch ServiceError.status(_, let words?) {
+        } catch ServiceError.status(let code, let words?) {
             lastKey = (key, SendResult(verdict: "not_delivered", words: words))
+            Log.shown(ServiceError.status(code, words), screen: "pane")
         } catch {
             lastKey = (key, SendResult(verdict: "not_delivered", words: "The Mac did not answer: \(error)"))
+            Log.shown(error, screen: "pane")
         }
     }
 

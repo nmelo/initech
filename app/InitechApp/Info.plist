@@ -11,7 +11,7 @@
 	     IP with its own self-signed certificate. ATS would require that
 	     certificate to chain to a system root and fails every connection
 	     (-9802) before the app's pin check runs. Every connection the app makes
-	     is pinned to the certificate named in the pairing (PinningDelegate), so
+	     is pinned to the certificate named in the pairing (PinCheck, one per request), so
 	     the pin, not system trust, decides. NSAllowsLocalNetworking is not set
 	     alongside: iOS ignores NSAllowsArbitraryLoads when it is. -->
 	<key>NSAppTransportSecurity</key>

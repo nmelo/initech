@@ -125,8 +125,11 @@ final class ProgressModel: ObservableObject {
         do {
             cards = try await source.progress().map(ProgressCard.init)
             problem = nil
+        } catch is CancellationError {
+            return // not a failure, and not a read: the cards stay as they were
         } catch {
             problem = "Progress could not be read: \(error)"
+            Log.shown(error, screen: "progress")
         }
         loaded = true
     }

@@ -57,6 +57,7 @@ extension ServiceError: CustomNSError {
         case let .status(code, _): code
         case .unreachable: -1
         case .certificateRefused: -2
+        case .handshakeEnded: -3
         }
     }
 }

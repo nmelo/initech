@@ -10,6 +10,9 @@ enum ServiceError: Error, Equatable {
     case unreachable(String)
     /// The server's certificate is not the one this pairing pins.
     case certificateRefused
+    /// The app ended the TLS handshake itself, for the reason given (no
+    /// certificate reached it): never a cancel to hide.
+    case handshakeEnded(String)
 }
 
 extension ServiceError: CustomStringConvertible {
@@ -20,6 +23,7 @@ extension ServiceError: CustomStringConvertible {
         case .certificateRefused: "its certificate is not the one this phone paired with"
         case let .status(code, words): words ?? "it answered with status \(code)"
         case let .unreachable(words): words
+        case let .handshakeEnded(why): "the app ended the connection: \(why)"
         }
     }
 }
@@ -53,9 +57,9 @@ struct HTTPService: Service {
         self.pairing = pairing
         self.retryDelay = retryDelay
         self.maxRetryDelay = maxRetryDelay
-        session = URLSession(configuration: .ephemeral,
-                             delegate: PinningDelegate(fingerprint: pairing.fingerprint),
-                             delegateQueue: nil)
+        // No session delegate: every TLS challenge goes to the request's own
+        // PinCheck, so one request's pin result is never read as another's.
+        session = URLSession(configuration: .ephemeral)
     }
 
     /// request is one authorized request to the service. Internal, with call and
@@ -77,12 +81,15 @@ struct HTTPService: Service {
     func call(_ r: URLRequest) async throws -> Data {
         let data: Data
         let response: URLResponse
+        let check = PinCheck(fingerprint: pairing.fingerprint)
         do {
-            (data, response) = try await session.data(for: r)
+            (data, response) = try await session.data(for: r, delegate: check)
         } catch {
-            // A refused pin reaches here as a plain cancelled request.
-            if (session.delegate as? PinningDelegate)?.refusedLast == true { throw ServiceError.certificateRefused }
-            throw ServiceError.unreachable(error.localizedDescription)
+            let e = Self.failure(error, check: check)
+            if !(e is CancellationError) {
+                Log.service.error("\(r.httpMethod ?? "", privacy: .public) \(r.url?.path ?? "", privacy: .public) failed: \(String(describing: e), privacy: .public) (\(String(describing: error), privacy: .public))")
+            }
+            throw e
         }
         let code = (response as? HTTPURLResponse)?.statusCode ?? 0
         if code == 401 { throw ServiceError.unauthorized }
@@ -91,6 +98,38 @@ struct HTTPService: Service {
             throw ServiceError.status(code, words)
         }
         return data
+    }
+
+    /// failure names why a request failed. Our own pin check ending the
+    /// handshake wins over URLSession's plain "cancelled" for it: a refused
+    /// certificate, or a handshake the check ended, is shown with its reason.
+    /// Only a cancel that is not the check's (the task that asked was
+    /// cancelled: the view went away or reloaded) is a CancellationError, which
+    /// a screen shows as nothing.
+    static func failure(_ error: Error, check: PinCheck) -> Error {
+        switch check.verdict {
+        case .refused: return ServiceError.certificateRefused
+        case .ended(let why): return ServiceError.handshakeEnded(why)
+        case .none, .matched: break
+        }
+        if error is CancellationError || (error as? URLError)?.code == .cancelled { return CancellationError() }
+        return ServiceError.unreachable(plainWords(error))
+    }
+
+    /// plainWords is what a screen says after "The Mac did not answer: " for a
+    /// transport failure: plain words, never a domain or code (those go to the
+    /// log with the failed request).
+    static func plainWords(_ error: Error) -> String {
+        switch (error as? URLError)?.code {
+        case .timedOut?: "it did not answer in time"
+        case .notConnectedToInternet?, .dataNotAllowed?: "this device is offline"
+        case .networkConnectionLost?: "the connection dropped"
+        case .cannotFindHost?, .cannotConnectToHost?, .dnsLookupFailed?: "it could not be reached"
+        case .secureConnectionFailed?, .serverCertificateUntrusted?, .serverCertificateHasBadDate?,
+             .serverCertificateNotYetValid?, .serverCertificateHasUnknownRoot?, .clientCertificateRejected?:
+            "the secure connection to it failed"
+        default: "it could not be reached"
+        }
     }
 
     /// get decodes a GET answer. Internal so other files can extend HTTPService
@@ -140,8 +179,9 @@ struct HTTPService: Service {
                     var r = base.request("GET", "/v1/feed")
                     r.timeoutInterval = 60 // keepalives arrive every 15 s
                     if let lastID { r.setValue(lastID, forHTTPHeaderField: "Last-Event-ID") }
+                    let check = PinCheck(fingerprint: base.pairing.fingerprint)
                     do {
-                        let (bytes, response) = try await base.session.bytes(for: r, delegate: base.session.delegate as? URLSessionTaskDelegate)
+                        let (bytes, response) = try await base.session.bytes(for: r, delegate: check)
                         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
                         if status == 401 { break }
                         if status == 200 {
@@ -156,7 +196,10 @@ struct HTTPService: Service {
                             }
                         }
                     } catch {
-                        if (base.session.delegate as? PinningDelegate)?.refusedLast == true { break }
+                        let e = HTTPService.failure(error, check: check)
+                        if e is CancellationError, Task.isCancelled { break }
+                        Log.service.error("feed dropped: \(String(describing: e), privacy: .public)")
+                        if case ServiceError.certificateRefused = e { break }
                     }
                     try? await Task.sleep(for: delay)
                     delay = min(delay * 2, base.maxRetryDelay)
@@ -173,43 +216,55 @@ struct HTTPService: Service {
     }
 }
 
-/// PinningDelegate accepts a server only when its leaf certificate's SHA-256
-/// equals the pairing's fingerprint; anything else is refused before a
-/// request, and so the token, is sent. No CA is consulted: the service's
-/// certificate is self-signed and the pin is the whole trust.
-///
-/// Both the session-level and the task-level challenge methods answer: a
-/// streaming task (the feed) asks the task-level one, and without it the
-/// system's default trust refuses the self-signed certificate.
-final class PinningDelegate: NSObject, URLSessionTaskDelegate, Sendable {
-    let fingerprint: String
-    private let refused = OSAllocatedUnfairLock(initialState: false)
+/// PinCheck answers one request's TLS challenges: it accepts the server only
+/// when its leaf certificate's SHA-256 equals the pairing's fingerprint, so
+/// anything else is refused before the request, and so the token, is sent. No
+/// CA is consulted: the service's certificate is self-signed and the pin is
+/// the whole trust. A challenge of any other kind gets the system's default
+/// handling. One PinCheck per request: its verdict is that request's alone.
+final class PinCheck: NSObject, URLSessionTaskDelegate, Sendable {
+    enum Verdict: Equatable, Sendable {
+        case none
+        case matched
+        /// The certificate did not match the pin.
+        case refused
+        /// The check ended the handshake for another reason, given.
+        case ended(String)
+    }
 
-    /// refusedLast says the newest certificate this session saw failed the pin.
-    var refusedLast: Bool { refused.withLock { $0 } }
+    let fingerprint: String
+    private let state = OSAllocatedUnfairLock(initialState: Verdict.none)
+
+    var verdict: Verdict { state.withLock { $0 } }
 
     init(fingerprint: String) { self.fingerprint = fingerprint }
 
-    func urlSession(_ session: URLSession, didReceive challenge: URLAuthenticationChallenge)
-        async -> (URLSession.AuthChallengeDisposition, URLCredential?) {
-        answer(challenge)
-    }
-
     func urlSession(_ session: URLSession, task: URLSessionTask, didReceive challenge: URLAuthenticationChallenge)
         async -> (URLSession.AuthChallengeDisposition, URLCredential?) {
-        answer(challenge)
+        decide(method: challenge.protectionSpace.authenticationMethod, trust: challenge.protectionSpace.serverTrust,
+               host: challenge.protectionSpace.host)
     }
 
-    private func answer(_ challenge: URLAuthenticationChallenge) -> (URLSession.AuthChallengeDisposition, URLCredential?) {
-        guard challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
-              let trust = challenge.protectionSpace.serverTrust else {
+    /// decide is the pin decision for one challenge, logged either way.
+    func decide(method: String, trust: SecTrust?, host: String) -> (URLSession.AuthChallengeDisposition, URLCredential?) {
+        guard method == NSURLAuthenticationMethodServerTrust else {
+            Log.service.info("TLS challenge \(method, privacy: .public) from \(host, privacy: .public): default handling")
+            return (.performDefaultHandling, nil)
+        }
+        guard let trust else {
+            let why = "no certificate came with the server-trust challenge"
+            state.withLock { $0 = .ended(why) }
+            Log.service.error("pin \(host, privacy: .public): ended the handshake, \(why, privacy: .public)")
             return (.cancelAuthenticationChallenge, nil)
         }
-        let matches = Self.leafFingerprint(trust) == fingerprint
-        refused.withLock { $0 = !matches }
-        guard matches else {
+        let got = Self.leafFingerprint(trust)
+        guard got == fingerprint else {
+            state.withLock { $0 = .refused }
+            Log.service.error("pin \(host, privacy: .public): refused, leaf \(got ?? "none", privacy: .public) is not the paired \(self.fingerprint, privacy: .public)")
             return (.cancelAuthenticationChallenge, nil)
         }
+        state.withLock { $0 = .matched }
+        Log.service.debug("pin \(host, privacy: .public): matched")
         return (.useCredential, URLCredential(trust: trust))
     }
 
