@@ -44,12 +44,15 @@ protocol Service: Sendable {
 struct HTTPService: Service {
     let pairing: Pairing
     let session: URLSession
-    /// retryDelay is how long the feed waits before reconnecting.
+    /// retryDelay is how long the feed first waits before reconnecting; each
+    /// failure in a row doubles it, up to maxRetryDelay.
     var retryDelay: Duration
+    var maxRetryDelay: Duration
 
-    init(pairing: Pairing, retryDelay: Duration = .seconds(2)) {
+    init(pairing: Pairing, retryDelay: Duration = .seconds(2), maxRetryDelay: Duration = .seconds(60)) {
         self.pairing = pairing
         self.retryDelay = retryDelay
+        self.maxRetryDelay = maxRetryDelay
         session = URLSession(configuration: .ephemeral,
                              delegate: PinningDelegate(fingerprint: pairing.fingerprint),
                              delegateQueue: nil)
@@ -120,18 +123,27 @@ struct HTTPService: Service {
         return try JSONDecoder.service.decode(SendResult.self, from: try await call(r))
     }
 
+    /// feed streams events until the task is cancelled. After a drop it
+    /// reconnects with the last event id, waiting longer after each failure
+    /// in a row (back-off, reset by a connection that opens). A refused token
+    /// (401) or certificate ends the stream: retrying cannot succeed until the
+    /// phone pairs again, and a loop would knock on the Mac every few seconds.
     func feed() -> AsyncStream<FeedEvent> {
         let base = self
         return AsyncStream { continuation in
             let task = Task {
                 var lastID: String?
+                var delay = base.retryDelay
                 while !Task.isCancelled {
                     var r = base.request("GET", "/v1/feed")
                     r.timeoutInterval = 60 // keepalives arrive every 15 s
                     if let lastID { r.setValue(lastID, forHTTPHeaderField: "Last-Event-ID") }
                     do {
                         let (bytes, response) = try await base.session.bytes(for: r, delegate: base.session.delegate as? URLSessionTaskDelegate)
-                        if (response as? HTTPURLResponse)?.statusCode == 200 {
+                        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+                        if status == 401 { break }
+                        if status == 200 {
+                            delay = base.retryDelay
                             // Not bytes.lines: it drops blank lines, and a
                             // blank line is what ends an SSE event.
                             var parser = SSEParser()
@@ -141,8 +153,11 @@ struct HTTPService: Service {
                                 if let e = raw.event { continuation.yield(e) }
                             }
                         }
-                    } catch {}
-                    try? await Task.sleep(for: base.retryDelay)
+                    } catch {
+                        if (base.session.delegate as? PinningDelegate)?.refusedLast == true { break }
+                    }
+                    try? await Task.sleep(for: delay)
+                    delay = min(delay * 2, base.maxRetryDelay)
                 }
                 continuation.finish()
             }

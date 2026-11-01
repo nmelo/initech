@@ -200,6 +200,44 @@ final class ServiceClientTests: XCTestCase {
         XCTAssertEqual(lines, ["id: 1", "event: x", "", ": k"])
     }
 
+    /// nextOrNil waits for the stream's next event, or nil when it ends or
+    /// after the timeout.
+    private func nextOrNil(_ stream: AsyncStream<FeedEvent>, timeout: Duration) async -> (ended: Bool, event: FeedEvent?) {
+        let got = Task { () -> FeedEvent? in var it = stream.makeAsyncIterator(); return await it.next() }
+        let timer = Task { try await Task.sleep(for: timeout); got.cancel() }
+        let e = await got.value
+        let timedOut = got.isCancelled
+        timer.cancel()
+        return (!timedOut && e == nil, e)
+    }
+
+    func testFeed_ARefusedToken_EndsTheStream_WithoutALoop() async throws {
+        var p = server.pairing
+        p.token = "wrong"
+        let r = await nextOrNil(HTTPService(pairing: p, retryDelay: .milliseconds(20)).feed(), timeout: .seconds(10)) // ends at once; 10 s only bounds a failure on a cold, busy runner
+        XCTAssertTrue(r.ended, "a refused token kept the feed retrying")
+        XCTAssertEqual(server.requests.filter { $0.path == "/v1/feed" }.count, 1)
+    }
+
+    func testFeed_ARefusedCertificate_EndsTheStream_WithoutALoop() async throws {
+        var p = server.pairing
+        p.fingerprint = Data("some other certificate".utf8).sha256Base64URL
+        let r = await nextOrNil(HTTPService(pairing: p, retryDelay: .milliseconds(20)).feed(), timeout: .seconds(10)) // ends at once; 10 s only bounds a failure on a cold, busy runner
+        XCTAssertTrue(r.ended, "a refused certificate kept the feed retrying")
+        XCTAssertTrue(server.requests.isEmpty)
+    }
+
+    func testFeed_AServiceThatKeepsFailing_IsAskedLessAndLessOften() async throws {
+        server.feedsPaused = true // every feed request answers 503
+        let svc = HTTPService(pairing: server.pairing, retryDelay: .milliseconds(50), maxRetryDelay: .milliseconds(400))
+        _ = await nextOrNil(svc.feed(), timeout: .milliseconds(1500))
+        let n = server.requests.filter { $0.path == "/v1/feed" }.count
+        // Back-off 50, 100, 200, 400, 400 ms: about 6 requests in 1.5 s; a
+        // fixed 50 ms would make about 30.
+        XCTAssertGreaterThanOrEqual(n, 3, "the feed stopped retrying a service that is only failing")
+        XCTAssertLessThanOrEqual(n, 9, "the feed retried \(n) times in 1.5 s: no back-off")
+    }
+
     func testSSEParser_SkipsKeepalivesAndJoinsDataLines() {
         var p = SSEParser()
         XCTAssertNil(p.feed(": keepalive"))
