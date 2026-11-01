@@ -806,6 +806,8 @@ func (t *TUI) resumePane(pane *Pane, senderName string) error {
 				np.derivedBead, np.derivedTitle = pane.derivedBead, pane.derivedTitle
 				np.derivedUpdatedAt, np.derivedSince = pane.derivedUpdatedAt, pane.derivedSince
 				np.beadStale = pane.beadStale
+				np.lastAnswer = append([]bdBead(nil), pane.lastAnswer...)
+				np.answeredOnce = pane.answeredOnce
 				// The no-bead marker wakes with the pane, as its beads do.
 				np.noBeadWork = pane.noBeadWork
 				carryFleetIdentity(np, pane)

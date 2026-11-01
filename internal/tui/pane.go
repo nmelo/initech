@@ -303,6 +303,8 @@ type Pane struct {
 	derivedUpdatedAt time.Time // Its updated_at in bd.
 	derivedSince     time.Time // When it first became the derived bead here (Step 2A's interval start).
 	beadStale        bool      // bd did not answer the last poll; the derived bead is the last one known.
+	lastAnswer       []bdBead  // The role's in_progress beads at the last poll bd answered; a clear re-derives from it.
+	answeredOnce     bool      // A poll has been answered here (or carried by a restart); lastAnswer is bd's word.
 	// Unattributed work (ini-wra.3): working time with no bead, counted on the
 	// once-a-second maintenance tick, and that tick's last time.
 	noBeadFor                    time.Duration
@@ -1733,7 +1735,22 @@ func (p *Pane) applyDerivedBeads(beads []bdBead, answered bool, now time.Time) {
 		return
 	}
 	p.beadStale = false
-	b, ok := deriveBead(p.name, beads, p.lastNamed)
+	p.lastAnswer = p.lastAnswer[:0]
+	for _, b := range beads {
+		if b.Assignee == p.name && b.Status == "in_progress" {
+			p.lastAnswer = append(p.lastAnswer, b)
+		}
+	}
+	p.answeredOnce = true
+	p.rederiveLocked(now)
+}
+
+// rederiveLocked sets the derived bead from the last answer bd gave, by the
+// tie rule (deriveBead): the poll calls it with each answer, and a clear
+// calls it so the last-named bead shows at once rather than at the next
+// poll (ini-8xf).
+func (p *Pane) rederiveLocked(now time.Time) {
+	b, ok := deriveBead(p.name, p.lastAnswer, p.lastNamed)
 	if !ok {
 		p.derivedBead, p.derivedTitle = "", ""
 		p.derivedUpdatedAt, p.derivedSince = time.Time{}, time.Time{}
@@ -1764,6 +1781,7 @@ func (p *Pane) SetBead(id, title string) {
 	p.noBeadWork = "" // Any bead registration, a clear included, ends the no-bead marker.
 	if id == "" {
 		p.beadIDs = nil
+		p.rederiveOnClearLocked()
 	} else {
 		p.beadIDs = []string{id}
 		p.lastNamed = id
@@ -1783,6 +1801,7 @@ func (p *Pane) SetBeads(ids []string) {
 	p.noBeadWork = ""
 	if len(ids) == 0 {
 		p.beadIDs = nil
+		p.rederiveOnClearLocked()
 	} else {
 		p.beadIDs = make([]string, len(ids))
 		copy(p.beadIDs, ids)
@@ -1791,6 +1810,17 @@ func (p *Pane) SetBeads(ids []string) {
 		p.idleBeadNotified = false
 	}
 	p.beadTitle = ""
+}
+
+// rederiveOnClearLocked re-derives the bead from bd's last answer when an
+// override is cleared, so the pane returns at once to the bead the tie rule
+// picks. Before any answer, or while bd is unreachable (stale), the pane
+// keeps the value it has; nothing is guessed.
+func (p *Pane) rederiveOnClearLocked() {
+	if !p.answeredOnce || p.beadStale {
+		return
+	}
+	p.rederiveLocked(time.Now())
 }
 
 // SetNoBeadWork marks the pane as working without a bead: the ribbon shows
