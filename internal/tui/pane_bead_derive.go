@@ -35,12 +35,19 @@ type bdBead struct {
 	Status    string    `json:"status"`
 	Assignee  string    `json:"assignee"`
 	UpdatedAt time.Time `json:"updated_at"`
+	ClosedAt  time.Time `json:"closed_at"`
 }
 
-// bdListInProgress runs bd list --status in_progress --json in dir, bounded by
-// ctx. A package variable so tests stand in for bd.
-var bdListInProgress = func(ctx context.Context, dir string) ([]bdBead, error) {
-	cmd := exec.CommandContext(ctx, "bd", "list", "--status", "in_progress", "--json")
+// bdListArgs asks bd for every bead, closed ones included (bd lists 50 open
+// ones by default).
+var bdListArgs = []string{"list", "--all", "--limit", "0", "--json"}
+
+// bdListBeads runs bd list --all --limit 0 --json in dir, bounded by ctx:
+// every bead, so one call serves both the derived bead (the in_progress ones)
+// and the pane header's pace (closed of total, ini-y0n.2). A package variable
+// so tests stand in for bd.
+var bdListBeads = func(ctx context.Context, dir string) ([]bdBead, error) {
+	cmd := exec.CommandContext(ctx, "bd", bdListArgs...)
 	cmd.Dir = dir
 	out, err := cmd.Output()
 	if err != nil {
@@ -94,7 +101,7 @@ func deriveBead(role string, beads []bdBead, lastNamed string) (b bdBead, ok boo
 func askBdBeads(dir string) (beads []bdBead, answered bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), beadPollTimeout)
 	defer cancel()
-	beads, err := bdListInProgress(ctx, dir)
+	beads, err := bdListBeads(ctx, dir)
 	if err != nil {
 		LogWarn("beads", "bd list failed; panes keep their last bead, marked stale", "err", err)
 		return nil, false
@@ -107,6 +114,7 @@ func askBdBeads(dir string) (beads []bdBead, answered bool) {
 func (t *TUI) pollBeadsOnce(now time.Time) {
 	beads, answered := askBdBeads(t.projectRoot)
 	t.runOnMain(func() {
+		t.notePaceAnswer(beads, answered)
 		for _, pv := range t.panes {
 			if p, ok := pv.(*Pane); ok {
 				p.applyDerivedBeads(beads, answered, now)

@@ -119,7 +119,7 @@ func (p *Pane) chromeLook(focused bool, index int) (ribbonLook, tcell.Color) {
 		// Fifteen minutes of work with no bead (ini-wra.3).
 		beadLabel = noBeadLabel
 	}
-	return ribbonLook{title: title, style: titleStyle, tag: pendingTag(p) + backgroundTag(p), bead: beadLabel, beadTitle: beadTitle, running: running}, tint
+	return ribbonLook{title: title, style: titleStyle, tag: pendingTag(p) + backgroundTag(p), header: p.PaceLine(), bead: beadLabel, beadTitle: beadTitle, running: running}, tint
 }
 
 // drawChrome draws the chrome from its look alone.
@@ -128,7 +128,7 @@ func (p *Pane) drawChrome(s *clampedScreen, r Region, look ribbonLook) {
 
 	// Top edge at r.Y. Drawn before content so it is always present even
 	// when content rendering is suppressed during resize settling.
-	drawTopEdge(s, r)
+	drawTopEdge(s, r, look.header)
 	p.noteChrome(look)
 }
 
@@ -290,11 +290,43 @@ func (p *Pane) renderContent(s *clampedScreen, cr Region, e *vt.Emulator, focuse
 // activity sweep that once glided along a working pane's edge is gone
 // (ini-amx); the running square, the title colour, the tint and the ribbon
 // tag mark the states.
-func drawTopEdge(s *clampedScreen, r Region) {
+//
+// header, when set, is the pane's effort pace (ini-y0n.2), written over the
+// line from its second cell, "─ ini-wra 2/4 · 1/h · 0 stuck ─", and cut at
+// the pane's edge, so a narrow pane keeps the effort's name.
+func drawTopEdge(s *clampedScreen, r Region, header string) {
 	style := tcell.StyleDefault.Foreground(tcell.NewRGBColor(35, 35, 35))
 	for x := r.X; x < r.X+r.W; x++ {
 		s.SetContent(x, r.Y, '─', nil, style)
 	}
+	if header == "" {
+		return
+	}
+	x := r.X + 1
+	for _, ch := range " " + header + " " {
+		if x >= r.X+r.W {
+			break
+		}
+		s.SetContent(x, r.Y, ch, nil, paceHeaderStyle)
+		x++
+	}
+}
+
+// paceHeaderStyle is the effort line on a pane's top edge: quiet, like the
+// ribbon's state tag.
+var paceHeaderStyle = tcell.StyleDefault.Foreground(tcell.ColorDimGray)
+
+// PaceLine is the pane's effort line for its top edge, "" for none.
+func (p *Pane) PaceLine() string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.paceLine
+}
+
+func (p *Pane) setPaceLine(line string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.paceLine = line
 }
 
 // renderStatusBarRow renders a single emulator row with CUF bleed-through

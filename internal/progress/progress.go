@@ -9,8 +9,10 @@ package progress
 
 import (
 	"fmt"
+	"math"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -400,4 +402,82 @@ func Render(in Input) string {
 		line("note: %s", n)
 	}
 	return w.String()
+}
+
+// HeaderWindow is the window the pane header's pace is counted over.
+const HeaderWindow = 6 * time.Hour
+
+// Effort is the effort a bead belongs to: its id up to and including the
+// last ".", so ini-wra.2 is in ini-wra. with its siblings. A bead with no "."
+// is an effort of its own. label is the effort as the header names it,
+// without the dot.
+func Effort(beadID string) (prefix, label string) {
+	if i := strings.LastIndexByte(beadID, '.'); i > 0 {
+		return beadID[:i+1], beadID[:i]
+	}
+	return beadID, beadID
+}
+
+// Pace is how one effort is moving, as a pane header shows it.
+type Pace struct {
+	Label   string
+	Closed  int
+	Total   int
+	PerHour float64 // beads closed per hour over the window
+	Stuck   int
+}
+
+// stuckStates are the owner pane states that leave a quiet bead stuck: the
+// owner is not working on it. A running or background owner is working, and
+// an owner with no pane here is not known to be idle.
+var stuckStates = map[string]bool{"idle": true, "waiting": true, "pending": true}
+
+// PaceOf is the pace of the effort beadID belongs to, from the beads bd
+// listed: closed of total, closed per hour over window, and the beads past
+// open and not closed whose bd updated_at is QuietAfter old or more and whose
+// owner's pane (panes, by role) is idle, waiting or pending. The bead's own
+// last move is bd's updated_at alone, so this can count a bead stuck that a
+// comment has since moved; initech progress reads the comments.
+func PaceOf(beads []Bead, beadID string, panes map[string]string, now time.Time, window time.Duration) Pace {
+	prefix, label := Effort(beadID)
+	p := Pace{Label: label}
+	recent := 0
+	for _, b := range beads {
+		if b.ID != beadID && !(strings.HasSuffix(prefix, ".") && strings.HasPrefix(b.ID, prefix)) {
+			continue
+		}
+		p.Total++
+		switch b.Status {
+		case "closed":
+			p.Closed++
+			if !b.ClosedAt.IsZero() && now.Sub(b.ClosedAt) < window {
+				recent++
+			}
+		case "open":
+		default:
+			if now.Sub(b.UpdatedAt) >= QuietAfter && stuckStates[panes[b.Assignee]] {
+				p.Stuck++
+			}
+		}
+	}
+	if window > 0 {
+		p.PerHour = float64(recent) / window.Hours()
+	}
+	return p
+}
+
+// Line is the pace as the pane header prints it: "ini-wra 2/4 · 1/h · 0
+// stuck", or "ini-abc 0/1 · 0/h" for an effort of one bead; "" when bd
+// listed none of it (a bead bd does not know). It never holds a time, an
+// estimate or an actual.
+func (p Pace) Line() string {
+	if p.Total == 0 {
+		return ""
+	}
+	rate := strconv.FormatFloat(math.Round(p.PerHour*10)/10, 'f', -1, 64)
+	s := fmt.Sprintf("%s %d/%d · %s/h", p.Label, p.Closed, p.Total, rate)
+	if p.Total > 1 {
+		s += fmt.Sprintf(" · %d stuck", p.Stuck)
+	}
+	return s
 }

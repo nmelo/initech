@@ -180,7 +180,14 @@ type TUI struct {
 	// lastSessionBeads is when it last reconciled.
 	sessionBeads     *sessionBeadRecorder
 	lastSessionBeads time.Time
-	inboxOnce        sync.Once
+	// The pane header's pace (ini-y0n.2): the beads of the last answered
+	// poll, whether the last poll went unanswered, whether any poll has
+	// answered, and when the lines were last computed. Main loop only.
+	paceBeads    []bdBead
+	paceStale    bool
+	paceAnswered bool
+	paceAt       time.Time
+	inboxOnce    sync.Once
 	// inboxOutstanding maps an agent to the inbox items whose delivery verdict
 	// may still be corrected by a late report from the send path (ini-3wkl.6).
 	inboxOutstanding   map[string][]string
@@ -1495,6 +1502,7 @@ func Run(cfg Config) error {
 			}
 			t.rotateTip()
 			t.recordSessionBeads(time.Now())
+			t.refreshPaceLines(time.Now())
 			// The inbox staleness floor for a child window (ini-3wkl.7).
 			t.refreshInboxOnCadence(time.Now())
 			if (t.layoutState.Mode == LayoutLive || t.liveFocus != nil || t.liveList != nil) && time.Since(t.lastLiveTick) >= time.Second {

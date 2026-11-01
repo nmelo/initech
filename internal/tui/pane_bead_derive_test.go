@@ -56,9 +56,9 @@ func TestDeriveBead_TwoBeadsLastNamedThenNewest(t *testing.T) {
 // pollTUI is a window-1 TUI whose bd is the given stub.
 func pollTUI(t *testing.T, names []string, bd func(context.Context, string) ([]bdBead, error)) *TUI {
 	t.Helper()
-	old := bdListInProgress
-	bdListInProgress = bd
-	t.Cleanup(func() { bdListInProgress = old })
+	old := bdListBeads
+	bdListBeads = bd
+	t.Cleanup(func() { bdListBeads = old })
 	tui, _ := newTestTUIWithScreen(names...)
 	tui.projectRoot = t.TempDir()
 	return tui

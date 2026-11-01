@@ -308,6 +308,7 @@ type Pane struct {
 	sessionID        string    // The Claude session id (transcript sessionId) of an entry written since the process started; "" until there is one (ini-wra.2).
 	sessionSince     time.Time // The timestamp of the first entry carrying sessionID.
 	beadStale        bool      // bd did not answer the last poll; the derived bead is the last one known.
+	paceLine         string    // The header line of the pane's effort (ini-y0n.2), set once a minute; "" for none.
 	lastAnswer       []bdBead  // The role's in_progress beads at the last poll bd answered; a clear re-derives from it.
 	answeredOnce     bool      // A poll has been answered here (or carried by a restart); lastAnswer is bd's word.
 	// Unattributed work (ini-wra.3): working time with no bead, counted on the
