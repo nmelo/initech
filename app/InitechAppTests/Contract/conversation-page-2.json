@@ -1,0 +1,30 @@
+{
+  "session": "sess-1",
+  "messages": [
+    {
+      "id": "a1",
+      "at": "2026-10-31T21:50:20Z",
+      "kind": "tool",
+      "text": "Bash: Run check-fast",
+      "tool": {
+        "name": "Bash",
+        "summary": "Bash: Run check-fast",
+        "detail": "{\"command\":\"make check-fast\",\"description\":\"Run check-fast\"}\n\ngo build ./...\nok"
+      }
+    },
+    {
+      "id": "a3",
+      "at": "2026-10-31T21:51:00Z",
+      "kind": "agent",
+      "text": "The cursor is a number.\n\nCI is green.",
+      "footer": [
+        "- ▶ Approve the release? Recommend yes.",
+        "▶ Restart hover?"
+      ]
+    }
+  ],
+  "start_reached": false,
+  "before": 515,
+  "skipped_lines": 1
+}
+

@@ -1,0 +1,10 @@
+{
+  "rig": "demo",
+  "pane": "eng1",
+  "message": {
+    "id": "a9",
+    "at": "2026-10-31T21:59:30Z",
+    "kind": "agent",
+    "text": "Waiting on the permission dialog."
+  }
+}

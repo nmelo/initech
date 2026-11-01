@@ -1,0 +1,7 @@
+{
+  "rig": "demo",
+  "pane": "eng1",
+  "from": "running",
+  "to": "idle",
+  "banner": "permission_prompt"
+}

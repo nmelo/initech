@@ -1,0 +1,21 @@
+{
+  "session": "sess-1",
+  "messages": [
+    {
+      "id": "u3",
+      "at": "2026-10-31T21:52:00Z",
+      "kind": "nelson",
+      "text": "yes, release it"
+    },
+    {
+      "id": "a4",
+      "at": "2026-10-31T21:52:30Z",
+      "kind": "agent",
+      "text": "Released."
+    }
+  ],
+  "start_reached": false,
+  "before": 1303,
+  "skipped_lines": 0
+}
+

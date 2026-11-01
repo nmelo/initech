@@ -1,0 +1,350 @@
+[
+  {
+    "rig": "demo",
+    "prefix": "fx-1",
+    "at": "2026-10-31T22:00:00Z",
+    "hours": 6,
+    "beads": [
+      {
+        "id": "fx-1",
+        "stage": "in_progress",
+        "owner": "eng1",
+        "ac": "2/3",
+        "ac_proven": 2,
+        "ac_items": 3,
+        "commits": 2,
+        "last_move": "2026-10-31T21:40:00Z",
+        "by": "commit",
+        "title": "Ribbon shows the derived bead"
+      },
+      {
+        "id": "fx-10",
+        "stage": "in_progress",
+        "owner": "eng1",
+        "ac": "-",
+        "ac_proven": null,
+        "ac_items": null,
+        "commits": 1,
+        "last_move": "2026-10-31T21:50:00Z",
+        "by": "status",
+        "title": "Overlay columns settle after a click"
+      }
+    ],
+    "closed": 1,
+    "total": 3,
+    "stuck": 0,
+    "blocked": 0,
+    "worked_by_engineers": 1,
+    "writing_review_only": 0,
+    "stages": {
+      "closed": 1,
+      "in_progress": 2
+    },
+    "closed_recent": [
+      {
+        "id": "fx-11",
+        "title": "Five shards for the full suite",
+        "closed_at": "2026-10-31T21:10:00Z"
+      }
+    ],
+    "critical_path": [],
+    "engineers": [
+      "eng1"
+    ],
+    "quiet": [],
+    "notes": []
+  },
+  {
+    "rig": "demo",
+    "prefix": "fx-10",
+    "at": "2026-10-31T22:00:00Z",
+    "hours": 6,
+    "beads": [
+      {
+        "id": "fx-10",
+        "stage": "in_progress",
+        "owner": "eng1",
+        "ac": "-",
+        "ac_proven": null,
+        "ac_items": null,
+        "commits": 1,
+        "last_move": "2026-10-31T21:50:00Z",
+        "by": "status",
+        "title": "Overlay columns settle after a click"
+      }
+    ],
+    "closed": 0,
+    "total": 1,
+    "stuck": 0,
+    "blocked": 0,
+    "worked_by_engineers": 0,
+    "writing_review_only": 0,
+    "stages": {
+      "in_progress": 1
+    },
+    "closed_recent": [],
+    "critical_path": [],
+    "engineers": [
+      "eng1"
+    ],
+    "quiet": [],
+    "notes": []
+  },
+  {
+    "rig": "demo",
+    "prefix": "fx-11",
+    "at": "2026-10-31T22:00:00Z",
+    "hours": 6,
+    "beads": [],
+    "closed": 1,
+    "total": 1,
+    "stuck": 0,
+    "blocked": 0,
+    "worked_by_engineers": 1,
+    "writing_review_only": 0,
+    "stages": {
+      "closed": 1
+    },
+    "closed_recent": [
+      {
+        "id": "fx-11",
+        "title": "Five shards for the full suite",
+        "closed_at": "2026-10-31T21:10:00Z"
+      }
+    ],
+    "critical_path": [],
+    "engineers": [],
+    "quiet": [],
+    "notes": []
+  },
+  {
+    "rig": "demo",
+    "prefix": "fx-2",
+    "at": "2026-10-31T22:00:00Z",
+    "hours": 6,
+    "beads": [
+      {
+        "id": "fx-2",
+        "stage": "in_qa",
+        "owner": "qa1",
+        "ac": "-",
+        "ac_proven": null,
+        "ac_items": null,
+        "commits": 0,
+        "last_move": "2026-10-31T21:30:00Z",
+        "by": "status",
+        "title": "Status leads with the ribbon's bead"
+      }
+    ],
+    "closed": 0,
+    "total": 1,
+    "stuck": 0,
+    "blocked": 0,
+    "worked_by_engineers": 0,
+    "writing_review_only": 0,
+    "stages": {
+      "in_qa": 1
+    },
+    "closed_recent": [],
+    "critical_path": [],
+    "engineers": [],
+    "quiet": [],
+    "notes": []
+  },
+  {
+    "rig": "demo",
+    "prefix": "fx-3",
+    "at": "2026-10-31T22:00:00Z",
+    "hours": 6,
+    "beads": [
+      {
+        "id": "fx-3",
+        "stage": "in_progress",
+        "owner": "eng2",
+        "ac": "0/3",
+        "ac_proven": 0,
+        "ac_items": 3,
+        "commits": 0,
+        "last_move": "2026-10-31T19:45:00Z",
+        "by": "eng2",
+        "title": "Clear applies the tie rule at once"
+      }
+    ],
+    "closed": 0,
+    "total": 1,
+    "stuck": 0,
+    "blocked": 0,
+    "worked_by_engineers": 0,
+    "writing_review_only": 0,
+    "stages": {
+      "in_progress": 1
+    },
+    "closed_recent": [],
+    "critical_path": [
+      {
+        "id": "fx-3",
+        "waiting": 2,
+        "stage": "in_progress",
+        "title": "Clear applies the tie rule at once"
+      }
+    ],
+    "engineers": [
+      "eng2"
+    ],
+    "quiet": [
+      {
+        "id": "fx-3",
+        "owner": "eng2",
+        "wait": "waiting on \"the shared test cluster\""
+      }
+    ],
+    "notes": []
+  },
+  {
+    "rig": "demo",
+    "prefix": "fx-4",
+    "at": "2026-10-31T22:00:00Z",
+    "hours": 6,
+    "beads": [],
+    "closed": 0,
+    "total": 1,
+    "stuck": 0,
+    "blocked": 0,
+    "worked_by_engineers": 0,
+    "writing_review_only": 0,
+    "stages": {
+      "ready_for_qa": 1
+    },
+    "closed_recent": [],
+    "critical_path": [],
+    "engineers": [],
+    "quiet": [],
+    "notes": []
+  },
+  {
+    "rig": "demo",
+    "prefix": "fx-5",
+    "at": "2026-10-31T22:00:00Z",
+    "hours": 6,
+    "beads": [],
+    "closed": 1,
+    "total": 1,
+    "stuck": 0,
+    "blocked": 0,
+    "worked_by_engineers": 1,
+    "writing_review_only": 0,
+    "stages": {
+      "closed": 1
+    },
+    "closed_recent": [
+      {
+        "id": "fx-5",
+        "title": "No-bead marker after fifteen minutes",
+        "closed_at": "2026-10-31T20:00:00Z"
+      }
+    ],
+    "critical_path": [],
+    "engineers": [],
+    "quiet": [],
+    "notes": []
+  },
+  {
+    "rig": "demo",
+    "prefix": "fx-6",
+    "at": "2026-10-31T22:00:00Z",
+    "hours": 6,
+    "beads": [],
+    "closed": 1,
+    "total": 1,
+    "stuck": 0,
+    "blocked": 0,
+    "worked_by_engineers": 0,
+    "writing_review_only": 1,
+    "stages": {
+      "closed": 1
+    },
+    "closed_recent": [],
+    "critical_path": [],
+    "engineers": [],
+    "quiet": [],
+    "notes": []
+  },
+  {
+    "rig": "demo",
+    "prefix": "fx-7",
+    "at": "2026-10-31T22:00:00Z",
+    "hours": 6,
+    "beads": [],
+    "closed": 0,
+    "total": 1,
+    "stuck": 0,
+    "blocked": 0,
+    "worked_by_engineers": 0,
+    "writing_review_only": 0,
+    "stages": {
+      "open": 1
+    },
+    "closed_recent": [],
+    "critical_path": [
+      {
+        "id": "fx-7",
+        "waiting": 3,
+        "stage": "open",
+        "title": "Daemon pushes its bead to window 1"
+      }
+    ],
+    "engineers": [],
+    "quiet": [],
+    "notes": []
+  },
+  {
+    "rig": "demo",
+    "prefix": "fx-8",
+    "at": "2026-10-31T22:00:00Z",
+    "hours": 6,
+    "beads": [
+      {
+        "id": "fx-8",
+        "stage": "in_progress",
+        "owner": "eng2",
+        "ac": "-",
+        "ac_proven": null,
+        "ac_items": null,
+        "commits": 0,
+        "last_move": "2026-10-31T17:30:00Z",
+        "by": "eng2",
+        "title": "Títle with accents that runs well past the sixty character cut for the table"
+      }
+    ],
+    "closed": 0,
+    "total": 1,
+    "stuck": 0,
+    "blocked": 0,
+    "worked_by_engineers": 0,
+    "writing_review_only": 0,
+    "stages": {
+      "in_progress": 1
+    },
+    "closed_recent": [],
+    "critical_path": [
+      {
+        "id": "fx-8",
+        "waiting": 1,
+        "stage": "in_progress",
+        "title": "Títle with accents that runs well past the sixty character cut for the table"
+      }
+    ],
+    "engineers": [
+      "eng2"
+    ],
+    "quiet": [
+      {
+        "id": "fx-8",
+        "owner": "eng2",
+        "wait": "stalled"
+      }
+    ],
+    "notes": []
+  }
+]
+

@@ -1,0 +1,5 @@
+[
+ {"name":"eng1","activity":"idle","alive":true,"visible":true,"beads":["fx-3"],"banner":"permission_prompt","modal_latched":true,"modal_age_sec":3,"context_percent":41,"session_file":"SESSION"},
+ {"name":"super","activity":"idle","alive":true,"visible":true,"beads":[],"banner":"permission_prompt","modal_latched":true,"modal_age_sec":12},
+ {"name":"qa1","activity":"suspended","alive":false,"visible":false,"banner":""}
+]

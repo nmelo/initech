@@ -1,0 +1,22 @@
+{
+  "session": "sess-1",
+  "messages": [
+    {
+      "id": "u1",
+      "at": "2026-10-31T21:50:00Z",
+      "kind": "nelson",
+      "text": "ship the fix tonight"
+    },
+    {
+      "id": "u2",
+      "at": "2026-10-31T21:50:05Z",
+      "kind": "message",
+      "from": "super",
+      "text": "fx-3: Fix the paging cursor. Read bd show fx-3."
+    }
+  ],
+  "start_reached": false,
+  "before": 37,
+  "skipped_lines": 0
+}
+

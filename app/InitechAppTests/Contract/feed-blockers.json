@@ -1,0 +1,20 @@
+[
+  {
+    "rig": "demo",
+    "waiting": [
+      {
+        "pane": "super",
+        "text": "Approve the v2.55 release",
+        "recommendation": "",
+        "bead": "fx-1"
+      }
+    ],
+    "stuck": [
+      {
+        "pane": "super",
+        "reason": "permission prompt open"
+      }
+    ],
+    "quiet": false
+  }
+]

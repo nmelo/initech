@@ -1,0 +1,96 @@
+{
+  "rig": "demo",
+  "root": "/Users/operator/Desktop/Projects/demo",
+  "read_at": "2026-10-31T22:00:00Z",
+  "agents": [
+    {
+      "account": {
+        "model": null,
+        "user": null
+      },
+      "alive": true,
+      "background": {
+        "monitors": null,
+        "shells": null,
+        "tasks": null
+      },
+      "background_age_sec": null,
+      "banner": "none",
+      "banner_age_sec": null,
+      "bead_note": "",
+      "beads": [
+        "fx-3"
+      ],
+      "context_percent": 41,
+      "dnd": null,
+      "dnd_age_sec": null,
+      "host": "",
+      "queued_count": 0,
+      "role": "eng1",
+      "screen": null,
+      "state": "running",
+      "visible": true
+    },
+    {
+      "account": {
+        "model": null,
+        "user": null
+      },
+      "alive": true,
+      "background": {
+        "monitors": null,
+        "shells": null,
+        "tasks": null
+      },
+      "background_age_sec": null,
+      "banner": "permission_prompt",
+      "banner_age_sec": 12,
+      "bead_note": "",
+      "beads": [],
+      "context_percent": null,
+      "dnd": null,
+      "dnd_age_sec": null,
+      "host": "",
+      "queued_count": 0,
+      "role": "super",
+      "screen": [
+        "Bash command",
+        "",
+        "  make check-fast",
+        "",
+        "Do you want to proceed?",
+        "❯ 1. Yes",
+        "  2. No"
+      ],
+      "state": "idle",
+      "visible": true
+    },
+    {
+      "account": {
+        "model": null,
+        "user": null
+      },
+      "alive": false,
+      "background": {
+        "monitors": null,
+        "shells": null,
+        "tasks": null
+      },
+      "background_age_sec": null,
+      "banner": null,
+      "banner_age_sec": null,
+      "bead_note": "",
+      "beads": null,
+      "context_percent": null,
+      "dnd": null,
+      "dnd_age_sec": null,
+      "host": "",
+      "queued_count": 0,
+      "role": "qa1",
+      "screen": null,
+      "state": "suspended",
+      "visible": false
+    }
+  ]
+}
+
