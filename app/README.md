@@ -39,3 +39,4 @@ Simulator.app.
 - `InitechApp/AppLock.swift`: Face ID on open and on every return to the app.
 - `InitechApp/Models.swift`, `ServiceClient.swift`: the API shapes and the
   HTTPS client: the certificate pin, the Bearer token, the feed parser.
+- `InitechApp/HomeModel.swift`, `HomeView.swift`: pinned panes and the Rigs view.

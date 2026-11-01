@@ -28,7 +28,7 @@ struct RootView: View {
         case .locked:
             LockView { await lock.unlock() }
         case .unlocked(let pairing):
-            Text("Paired with \(pairing.host)") // the pinned-pane home lands in the next pieces
+            MainView(home: HomeModel(service: HTTPService(pairing: pairing))) { try? lock.forget() }
         }
     }
 }
