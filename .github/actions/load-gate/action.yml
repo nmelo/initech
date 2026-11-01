@@ -1,7 +1,7 @@
 name: Load gate
 description: >-
   Holds a job on the shared Mac runner host until it can take it (ini-c5a.7,
-  the operator's conditions): while the host's 5-minute load is over 6, while
+  the operator's conditions): while the host's 5-minute load is over 24, while
   it is 11:45 to 12:15 in New York (another project's nightly build), and, with
   simulators set, while any iOS simulator is booted there, by any user. After
   20 minutes it lets the job run anyway with a warning, so a long hold is a

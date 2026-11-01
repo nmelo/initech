@@ -3,7 +3,7 @@
 // nightly build (ini-c5a.7, the operator's conditions). It runs once, at the
 // start of each first-wave job, right after checkout:
 //
-//	go run ./scripts/loadgate [-max-load 6] [-skip 11:45-12:15] [-tz America/New_York] [-max-wait 20m] [-simulators]
+//	go run ./scripts/loadgate [-max-load 24] [-skip 11:45-12:15] [-tz America/New_York] [-max-wait 20m] [-simulators]
 //
 // It waits while the host's 5-minute load average is over -max-load, while the
 // local time is inside -skip (the other project's nightly window), and, with
@@ -32,6 +32,11 @@ type reading struct {
 	now        time.Time // in the gate's time zone
 	simulators int
 }
+
+// defaultMaxLoad is the operator's limit on .207's 5-minute load: twice its 12
+// cores. A limit of 6 held every push behind initech's own rigs run, which
+// alone puts the host near 20.
+const defaultMaxLoad = 24
 
 // config is the gate's limits.
 type config struct {
@@ -134,7 +139,7 @@ func parseWindow(s string) (int, int, error) {
 }
 
 func main() {
-	maxLoad := flag.Float64("max-load", 6, "wait while the 5-minute load average is over this")
+	maxLoad := flag.Float64("max-load", defaultMaxLoad, "wait while the 5-minute load average is over this")
 	skip := flag.String("skip", "11:45-12:15", "wait while the local time is inside HH:MM-HH:MM (empty: never)")
 	tz := flag.String("tz", "America/New_York", "the time zone of -skip")
 	maxWait := flag.Duration("max-wait", 20*time.Minute, "run the job anyway after waiting this long")

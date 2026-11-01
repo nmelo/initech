@@ -111,3 +111,19 @@ func TestParsers_ReadTheirInputs(t *testing.T) {
 		t.Errorf("no window: %d %d %v", from, to, err)
 	}
 }
+
+// The default limit is the operator's 24, twice the host's 12 cores: a load
+// our own rigs run makes (about 20) does not hold a push, and one past 24 does.
+func TestDefaultMaxLoad_IsTheOperatorsTwentyFour(t *testing.T) {
+	if defaultMaxLoad != 24 {
+		t.Fatalf("defaultMaxLoad is %v, want 24", float64(defaultMaxLoad))
+	}
+	c := gate()
+	c.maxLoad = defaultMaxLoad
+	if got := why(c, reading{19.78, at("10:00"), 0}); got != "" {
+		t.Errorf("a rigs run's own load held the job: %q", got)
+	}
+	if got := why(c, reading{24.01, at("10:00"), 0}); got != "the 5-minute load is 24.01, over 24.00" {
+		t.Errorf("past the limit: %q", got)
+	}
+}
