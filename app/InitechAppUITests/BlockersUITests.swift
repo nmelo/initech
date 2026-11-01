@@ -67,6 +67,14 @@ final class BlockersUITests: XCTestCase {
         server.emit("transcript", #"{"rig":"initech","pane":"super","message":{"id":"2","kind":"agent","text":"later"}}"#)
         waitGone(element("Keep the old link?"), "a dropped item stayed")
 
+        // The service's own event for a changed list does the same.
+        server.setRawGET("blockers", blockers(#",{"pane":"super","text":"Second question?","recommendation":""}"#))
+        server.emit("waiting_item", #"{"rig":"initech","pane":"super","text":"Second question?"}"#)
+        XCTAssertTrue(element("Second question?").waitForExistence(timeout: 10))
+        server.setRawGET("blockers", blockers())
+        server.emit("blockers", "[]")
+        waitGone(element("Second question?"), "a dropped item stayed after the blockers event")
+
         app.buttons["blocker-initech-super"].firstMatch.tap()
         XCTAssertTrue(element("The reply behind the blocker").waitForExistence(timeout: 10), "the tap did not open the pane")
         XCTAssertFalse(app.buttons["blocker-initech-eng6"].exists, "the sheet stayed open over the pane")

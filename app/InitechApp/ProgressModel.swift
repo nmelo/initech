@@ -98,7 +98,8 @@ struct ProgressCard: Identifiable, Equatable, Sendable {
         pace = "\(r.closed) of \(r.total) closed · \(r.closedRecent.count) in the last \(r.hours) h"
         worked = "worked by engineers \(r.workedByEngineers) · writing or review only \(r.writingReviewOnly)"
         beads = r.beads.map { b in
-            var parts = [b.stage, b.owner.isEmpty ? "no owner" : b.owner]
+            // The command prints "-" for a bead with no owner.
+            var parts = [b.stage, b.owner.isEmpty || b.owner == "-" ? "no owner" : b.owner]
             if let p = b.acProven, let n = b.acItems { parts.append("AC \(p)/\(n)") } else { parts.append("no AC list") }
             if let c = b.commits { parts.append("\(c) landed") }
             return Bead(id: b.id, title: b.title, line: parts.joined(separator: " · "))

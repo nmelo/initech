@@ -270,6 +270,8 @@ extension FeedEvent {
         case "transcript":
             guard let e = try? d.decode(Transcript.self, from: bytes) else { return nil }
             return .transcript(rig: e.rig, pane: e.pane, message: e.message)
+        case "blockers":
+            return .blockers
         case "reset":
             return .reset
         default:

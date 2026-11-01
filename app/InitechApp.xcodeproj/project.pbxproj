@@ -24,6 +24,7 @@
 		7C9EED75881678B3BDE815B6 /* OperatorScreensTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BAD504231BC2B5E64665002 /* OperatorScreensTests.swift */; };
 		7DBE242BC65500EEAF05660A /* FixtureServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7B4D274B41C77005FCB4951 /* FixtureServer.swift */; };
 		81179ABE488B00B0312D56B4 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93051BAD3626304FE12B85BC /* Models.swift */; };
+		84F0874E6D24D561BB80BC36 /* LiveServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38311B4C974E91A7AF9834C0 /* LiveServiceTests.swift */; };
 		8760144F04AED9057D821D6D /* HomeModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A282C9D0B4542CD0C2D4AD1C /* HomeModelTests.swift */; };
 		89E3CEC32DF11F42F086C4BE /* HomeModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C7B8C3570C7B33C099C65C3 /* HomeModel.swift */; };
 		A04E78EFB83532AD539D6C7A /* ProgressView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC3E1D3D497C12A586B34C15 /* ProgressView.swift */; };
@@ -63,6 +64,7 @@
 		141131EF2DD5FEE337187AD3 /* BlockersModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlockersModelTests.swift; sourceTree = "<group>"; };
 		1A4E60E0BF81FC9AD90D324C /* InitechAppUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = InitechAppUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		2F0C8C6A411B9F13BD5F6987 /* Pairing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Pairing.swift; sourceTree = "<group>"; };
+		38311B4C974E91A7AF9834C0 /* LiveServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveServiceTests.swift; sourceTree = "<group>"; };
 		38DE6C64E6074FD3DA0E9F8C /* PaneView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaneView.swift; sourceTree = "<group>"; };
 		40BCD2D871E2FA5F5623A55C /* PaneModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaneModel.swift; sourceTree = "<group>"; };
 		41354D02977BC4D7F01A5923 /* InitechAppTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = InitechAppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -142,6 +144,7 @@
 				141131EF2DD5FEE337187AD3 /* BlockersModelTests.swift */,
 				E7B4D274B41C77005FCB4951 /* FixtureServer.swift */,
 				A282C9D0B4542CD0C2D4AD1C /* HomeModelTests.swift */,
+				38311B4C974E91A7AF9834C0 /* LiveServiceTests.swift */,
 				7BAD504231BC2B5E64665002 /* OperatorScreensTests.swift */,
 				93A60E37937117C84492E6AF /* PairingTests.swift */,
 				7EE12E10FEBB62BEC8DAAF65 /* PaneModelTests.swift */,
@@ -303,6 +306,7 @@
 				24750DD1B4DD9C35F9E16E95 /* BlockersModelTests.swift in Sources */,
 				6BFF360A8731EE56647A3EFC /* FixtureServer.swift in Sources */,
 				8760144F04AED9057D821D6D /* HomeModelTests.swift in Sources */,
+				84F0874E6D24D561BB80BC36 /* LiveServiceTests.swift in Sources */,
 				7C9EED75881678B3BDE815B6 /* OperatorScreensTests.swift in Sources */,
 				6166565653BCA9C9210BAFC7 /* PairingTests.swift in Sources */,
 				3B71EA093E888A1CE3B0A06A /* PaneModelTests.swift in Sources */,

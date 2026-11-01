@@ -39,7 +39,7 @@ final class ScreenshotTests: XCTestCase {
     }
 
     /// shot hosts the view full screen, lets it load, and returns its PNG.
-    private func shot<V: View>(_ name: String, _ view: V) async throws -> Data {
+    func shot<V: View>(_ name: String, _ view: V) async throws -> Data {
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)
         window.rootViewController = UIHostingController(rootView: view)

@@ -155,8 +155,8 @@ final class HomeModel: ObservableObject {
             waiting[PaneRef(rig: rig, pane: pane)] = text
         case .stuck:
             await refreshStatus()
-        case .transcript:
-            break // the open pane's own model takes these
+        case .transcript, .blockers:
+            break // the open pane's and the Blockers view's own models take these
         case .reset:
             await reload()
         }

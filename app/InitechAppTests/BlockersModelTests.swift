@@ -100,4 +100,14 @@ final class BlockersModelTests: XCTestCase {
         }
         XCTAssertEqual(src.calls, 5)
     }
+
+    // AC1: the service's event for a changed list is decoded and reloads: with
+    // a waiting_item it is all the live service sends when a line drops.
+    func testTheBlockersEventDecodesAndReloads() async throws {
+        let e = try XCTUnwrap(FeedEvent.decode(type: "blockers", data: blockersJSON), "the app drops the event")
+        XCTAssertEqual(e, .blockers)
+        let src = FakeBlockers([])
+        await BlockersModel(source: src).apply(e)
+        XCTAssertEqual(src.calls, 1)
+    }
 }

@@ -112,6 +112,8 @@ enum FeedEvent: Equatable, Sendable {
     case waitingItem(rig: String, pane: String, text: String)
     case stuck(rig: String, pane: String, reason: String)
     case transcript(rig: String, pane: String, message: Message)
+    /// blockers says the service's blockers list changed: read it again.
+    case blockers
     /// reset says events were missed beyond the replay window: reload everything.
     case reset
 }

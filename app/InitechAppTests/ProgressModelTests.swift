@@ -52,6 +52,13 @@ final class ProgressModelTests: XCTestCase {
         XCTAssertEqual(card.quiet, ["ini-r0q.9 qa1: stalled"])
     }
 
+    // The command prints "-" for a bead with no owner; the card says so in words.
+    func testADashOwnerReadsAsNoOwner() throws {
+        let json = progressJSON.replacingOccurrences(of: #""owner":"qa1","ac":"-""#, with: #""owner":"-","ac":"-""#)
+        XCTAssertNotEqual(json, progressJSON, "the fixture no longer has the line this test edits")
+        XCTAssertEqual(ProgressCard(try reports(json)[0]).beads.last?.line, "in_qa · no owner · no AC list")
+    }
+
     // AC6: no efforts in flight, and an effort whose lists are all null.
     func testNoEffortsAndNullLists() async throws {
         let none = ProgressModel(source: FakeProgress([]))
