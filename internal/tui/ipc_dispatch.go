@@ -68,6 +68,11 @@ type PaneInfo struct {
 	// above ContextFlagAt (ini-sf5.2), so initech status flags it without
 	// asking for detail.
 	ContextSoon *int `json:"context_soon,omitempty"`
+
+	// SessionFile is the pane's newest Claude Code session transcript, the
+	// file its journal reads, sent with detail only (initech app-serve
+	// renders it as the conversation). Empty for a pane with none.
+	SessionFile string `json:"session_file,omitempty"`
 }
 
 // PaneBusy is a pane's background work as the maintenance tick last read it
@@ -98,12 +103,16 @@ type PaneAccount struct {
 }
 
 // fillPaneDetail reads a live pane's screen into its list entry: footer
-// values and the dialog kind. Context and account the footer could not read
+// values and the dialog kind, and any pane's newest transcript file. Context and account the footer could not read
 // come from the pane's transcript and cla's active account (paneContext). It
 // waits on the emulator's lock, so it runs on the IPC goroutine, never the
 // main loop. A pane that is not alive shows a screen from before it stopped,
 // so it is not read.
 func fillPaneDetail(info *PaneInfo, pv PaneView) {
+	if p, ok := pv.(*Pane); ok && p != nil && p.jsonlDir != "" {
+		// A stopped pane's transcript is still its conversation.
+		info.SessionFile = newestJSONL(p.jsonlDir)
+	}
 	if pv == nil || !info.Alive {
 		return
 	}

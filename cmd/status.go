@@ -86,6 +86,10 @@ type paneInfo struct {
 	// ContextSoon is the context figure while the pane is at or above
 	// tui.ContextFlagAt (ini-sf5.2); nil otherwise or from an older TUI.
 	ContextSoon *int `json:"context_soon"`
+
+	// SessionFile is the pane's newest transcript (detail only), which
+	// initech app-serve reads; status does not print it.
+	SessionFile string `json:"session_file"`
 }
 
 // busyText is background work as status and patrol print it after the state

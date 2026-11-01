@@ -2,8 +2,10 @@ package appserve
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -23,6 +25,9 @@ type PaneState struct {
 	Name   string
 	State  string // running, idle, waiting, pending, background, suspended, stopped
 	Banner string // as status --json prints it; "" when none was read
+	// SessionFile is the pane's newest transcript, "" for none. Not part of
+	// what the feed compares: a pane's state is its state and banner.
+	SessionFile string
 }
 
 // Backend is what the service reads from initech; cmd implements it over
@@ -118,6 +123,7 @@ func New(cfg Config) *Server {
 	s.mux.HandleFunc("GET /v1/rigs", s.handleRigs)
 	s.mux.HandleFunc("GET /v1/status", s.handleStatus)
 	s.mux.HandleFunc("GET /v1/status/{rig}", s.handleRigStatus)
+	s.mux.HandleFunc("GET /v1/conversation/{rig}/{pane}", s.handleConversation)
 	s.mux.HandleFunc("GET /v1/pins", s.handleGetPins)
 	s.mux.HandleFunc("PUT /v1/pins", s.handlePutPins)
 	s.mux.HandleFunc("GET /v1/feed", func(w http.ResponseWriter, r *http.Request) { serveFeed(s.feed, w, r) })
@@ -230,6 +236,63 @@ func (s *Server) status(rg Rig) RigStatus {
 	s.statuses[rg.Root] = cachedStatus{at: now, rig: st}
 	s.mu.Unlock()
 	return st
+}
+
+// MaxPageLimit caps a conversation page's limit.
+const MaxPageLimit = 200
+
+// handleConversation is one page of a pane's conversation: the newest one,
+// or the one before ?before=<cursor>, with ?limit=<n> (default 50). A pane
+// with no transcript is an empty page at the start.
+func (s *Server) handleConversation(w http.ResponseWriter, r *http.Request) {
+	rigName, paneName := r.PathValue("rig"), r.PathValue("pane")
+	q := r.URL.Query()
+	before, limit := int64(0), 50
+	if v := q.Get("before"); v != "" {
+		n, err := strconv.ParseInt(v, 10, 64)
+		if err != nil || n < 0 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "bad before"})
+			return
+		}
+		before = n
+	}
+	if v := q.Get("limit"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 1 || n > MaxPageLimit {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("limit is 1 to %d", MaxPageLimit)})
+			return
+		}
+		limit = n
+	}
+	for _, rg := range s.running() {
+		if rg.Name != rigName {
+			continue
+		}
+		panes, err := s.cfg.Backend.Panes(rg)
+		if err != nil {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "no running rig " + rigName})
+			return
+		}
+		for _, ps := range panes {
+			if ps.Name != paneName {
+				continue
+			}
+			if ps.SessionFile == "" {
+				writeJSON(w, http.StatusOK, Page{Messages: []Message{}, StartReached: true})
+				return
+			}
+			pg, err := ReadPage(ps.SessionFile, before, limit)
+			if err != nil {
+				writeJSON(w, http.StatusOK, Page{Messages: []Message{}, StartReached: true})
+				return
+			}
+			writeJSON(w, http.StatusOK, pg)
+			return
+		}
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "no pane " + paneName + " in " + rigName})
+		return
+	}
+	writeJSON(w, http.StatusNotFound, map[string]string{"error": "no running rig " + rigName})
 }
 
 // needsScreen reports an agent whose status says a dialog or banner is open

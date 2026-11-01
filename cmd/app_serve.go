@@ -199,7 +199,7 @@ func (b *appBackend) Panes(r appserve.Rig) ([]appserve.PaneState, error) {
 	}
 	out := make([]appserve.PaneState, 0, len(panes))
 	for _, pi := range panes {
-		ps := appserve.PaneState{Name: pi.Name, Banner: pi.Banner}
+		ps := appserve.PaneState{Name: pi.Name, Banner: pi.Banner, SessionFile: pi.SessionFile}
 		if s := agentState(pi); s != nil {
 			ps.State = *s
 		}

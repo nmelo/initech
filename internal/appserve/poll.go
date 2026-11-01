@@ -79,7 +79,7 @@ func (s *Server) Poll() {
 		}
 		for _, ps := range panes {
 			old, had := prev[ps.Name]
-			if had && old == ps {
+			if had && old.State == ps.State && old.Banner == ps.Banner {
 				continue
 			}
 			s.feed.Publish("pane_state", PaneEvent{Rig: rg.Name, Pane: ps.Name, From: old.State, To: ps.State, Banner: ps.Banner})
