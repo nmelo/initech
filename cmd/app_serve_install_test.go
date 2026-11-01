@@ -20,6 +20,19 @@ type installRig struct {
 	home   string
 	runner *iexec.FakeRunner
 	out    bytes.Buffer
+	link   string // the path install is run as: a link, as Homebrew's is
+	src    string // the real file it resolves to
+}
+
+// unsignedCodesign is codesign over a file that carries no signature.
+func unsignedCodesign(args ...string) (string, error) {
+	return "code object is not signed at all", errors.New("exit status 1")
+}
+
+// args is the job's command line for these settings: the copy, then the
+// source link, then rest.
+func (r *installRig) args(rest ...string) []string {
+	return append([]string{appserve.CopyPath(r.home), "app-serve", "--source", r.link}, rest...)
 }
 
 // newInstallRig is a temp HOME with a token issued, a fake launchctl, a named
@@ -29,14 +42,29 @@ func newInstallRig(t *testing.T) *installRig {
 	skipWindows(t)
 	r := &installRig{home: t.TempDir(), runner: &iexec.FakeRunner{}}
 	t.Setenv("HOME", r.home)
-	oldRunner, oldBin, oldDir := appServeRunner, appServeBinary, appServeStateDir
+	oldRunner, oldBin, oldDir, oldCodesign := appServeRunner, appServeBinary, appServeStateDir, appServeCodesign
 	oldListen, oldPort, oldProjects, oldNotify := appServeListen, appServePort, appServeProjects, appServeNotify
 	t.Cleanup(func() {
-		appServeRunner, appServeBinary, appServeStateDir = oldRunner, oldBin, oldDir
+		appServeRunner, appServeBinary, appServeStateDir, appServeCodesign = oldRunner, oldBin, oldDir, oldCodesign
 		appServeListen, appServePort, appServeProjects, appServeNotify = oldListen, oldPort, oldProjects, oldNotify
 	})
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.src = filepath.Join(root, "Cellar", "initech", "2.0", "bin", "initech")
+	r.link = filepath.Join(root, "bin", "initech")
+	os.MkdirAll(filepath.Dir(r.src), 0o755)
+	os.MkdirAll(filepath.Dir(r.link), 0o755)
+	if err := os.WriteFile(r.src, []byte("#!/bin/sh\necho build 2.0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("../Cellar/initech/2.0/bin/initech", r.link); err != nil {
+		t.Fatal(err)
+	}
 	appServeRunner = r.runner
-	appServeBinary = func() (string, error) { return "/opt/homebrew/bin/initech", nil }
+	appServeCodesign = unsignedCodesign
+	appServeBinary = func() (string, error) { return r.link, nil }
 	appServeStateDir = func() string { return filepath.Join(r.home, ".config", "initech", "app-serve") }
 	appServeListen, appServePort, appServeProjects, appServeNotify = appserve.ListenLocalNetwork, 7392, []string{"/rigs"}, ""
 	if _, err := appserve.IssueToken(appServeStateDir()); err != nil {
@@ -86,7 +114,7 @@ func TestInstall_WritesTheJobAndBootstrapsIt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := appserve.RenderPlist(r.home, os.Getenv("PATH"), []string{"/opt/homebrew/bin/initech", "app-serve", "--listen", "local-network", "--port", "7392", "--projects", "/rigs", "--notify", "/usr/local/bin/tell-me"})
+	want := appserve.RenderPlist(r.home, os.Getenv("PATH"), r.args("--listen", "local-network", "--port", "7392", "--projects", "/rigs", "--notify", "/usr/local/bin/tell-me"))
 	if !bytes.Equal(raw, want) {
 		t.Errorf("the job:\n%s\nwant:\n%s", raw, want)
 	}
@@ -430,11 +458,13 @@ func TestInstall_WarnsAboutGuardedFolders(t *testing.T) {
 	}
 	appServeProjects = []string{"/rigs"}
 	bin := filepath.Join(r.home, "Desktop", "initech")
+	os.MkdirAll(filepath.Dir(bin), 0o755)
+	os.WriteFile(bin, []byte("#!/bin/sh\n"), 0o755)
 	appServeBinary = func() (string, error) { return bin, nil }
 	if got := run(); !strings.Contains(got, "warning: "+bin+" ") {
 		t.Errorf("the binary: warned %q", got)
 	}
-	appServeBinary = func() (string, error) { return "/opt/homebrew/bin/initech", nil }
+	appServeBinary = func() (string, error) { return r.link, nil }
 	entry := filepath.Join(r.home, "Desktop", "tools", "bin")
 	t.Setenv("PATH", "/usr/bin"+string(filepath.ListSeparator)+entry)
 	if got := run(); !strings.Contains(got, "warning: "+entry+" ") {
@@ -492,7 +522,7 @@ func TestInstall_TheLogIsPrivateBeforeBootstrap(t *testing.T) {
 	if !probe.had || probe.seen != 0o600 {
 		t.Fatalf("at bootstrap the log existed %v with mode %o, want 0600", probe.had, probe.seen)
 	}
-	want := appserve.RenderPlist(r.home, os.Getenv("PATH"), []string{"/opt/homebrew/bin/initech", "app-serve", "--listen", "local-network", "--port", "7392", "--projects", "/rigs"})
+	want := appserve.RenderPlist(r.home, os.Getenv("PATH"), r.args("--listen", "local-network", "--port", "7392", "--projects", "/rigs"))
 	if raw, _ := os.ReadFile(r.plist()); !bytes.Equal(raw, want) {
 		t.Errorf("the job changed:\n%s", raw)
 	}
@@ -518,5 +548,120 @@ func TestInstall_TheLogIsPrivateBeforeBootstrap(t *testing.T) {
 		if !strings.Contains(errw.String(), "could not be made private") {
 			t.Errorf("an unwritable log: said %q, want a warning", errw.String())
 		}
+	}
+}
+
+// ini-unf AC2: the job runs a copy at one fixed path. Install writes a
+// byte-identical copy of the file the as-run link resolves to, 0755 in a 0700
+// folder, before the job; the plist's program is the copy and --source the
+// link. Red at base: the plist ran the link and nothing was copied.
+func TestInstall_TheJobRunsACopyAtTheFixedPath(t *testing.T) {
+	r := newInstallRig(t)
+	if err := r.install(); err != nil {
+		t.Fatal(err)
+	}
+	cp := appserve.CopyPath(r.home)
+	want, _ := os.ReadFile(r.src)
+	got, err := os.ReadFile(cp)
+	if err != nil || !bytes.Equal(got, want) {
+		t.Fatalf("the copy at %s: %q %v, want the bytes of %s", cp, got, err, r.src)
+	}
+	if fi, _ := os.Stat(cp); fi.Mode().Perm() != 0o755 {
+		t.Errorf("copy mode %o, want 755", fi.Mode().Perm())
+	}
+	if fi, _ := os.Stat(filepath.Dir(cp)); fi.Mode().Perm() != 0o700 {
+		t.Errorf("copy folder mode %o, want 700", fi.Mode().Perm())
+	}
+	raw, _ := os.ReadFile(r.plist())
+	if !bytes.Equal(raw, appserve.RenderPlist(r.home, os.Getenv("PATH"), r.args("--listen", "local-network", "--port", "7392", "--projects", "/rigs"))) {
+		t.Errorf("the job does not run the copy with --source the link:\n%s", raw)
+	}
+	entries, _ := os.ReadDir(filepath.Dir(cp))
+	if len(entries) != 1 {
+		t.Errorf("the copy folder holds %d files, want only the copy (no temp left)", len(entries))
+	}
+}
+
+// ini-unf AC2: a second install with the same settings and the same build
+// says already installed and rewrites nothing (the copy is the same file);
+// a new build under the link with the same settings is copied and the job
+// restarted.
+func TestInstall_ReinstallRewritesNothingUntilTheBuildChanges(t *testing.T) {
+	r := newInstallRig(t)
+	if err := r.install(); err != nil {
+		t.Fatal(err)
+	}
+	cp := appserve.CopyPath(r.home)
+	before, _ := os.Stat(cp)
+	r.runner.Calls = nil
+	if err := r.install(); err != nil {
+		t.Fatal(err)
+	}
+	after, _ := os.Stat(cp)
+	if !strings.Contains(r.out.String(), "already installed") || len(r.runner.Calls) != 0 || !os.SameFile(before, after) {
+		t.Errorf("same settings, same build: printed %q, calls %q, copy rewritten %v", r.out.String(), r.runner.Calls, !os.SameFile(before, after))
+	}
+	os.WriteFile(r.src, []byte("#!/bin/sh\necho build 2.1\n"), 0o755)
+	if err := r.install(); err != nil {
+		t.Fatal(err)
+	}
+	if !appserve.SameBytes(r.src, cp) || strings.Contains(r.out.String(), "already installed") || len(r.runner.Calls) != 2 {
+		t.Errorf("a new build: copy current %v, printed %q, calls %q (want bootout and bootstrap)", appserve.SameBytes(r.src, cp), r.out.String(), r.runner.Calls)
+	}
+}
+
+// ini-unf AC2: uninstall removes the copy and its folder.
+func TestUninstall_RemovesTheCopyAndItsFolder(t *testing.T) {
+	r := newInstallRig(t)
+	if err := r.install(); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.uninstall(); err != nil {
+		t.Fatal(err)
+	}
+	cp := appserve.CopyPath(r.home)
+	for _, p := range []string{cp, filepath.Dir(cp)} {
+		if _, err := os.Stat(p); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("%s remains after uninstall (%v)", p, err)
+		}
+	}
+}
+
+// ini-unf AC2 feed-it-nothing: a source that cannot be read, a link to
+// nothing, and a copy that does not verify each refuse install with the
+// reason; no job is written and no launchctl runs.
+func TestInstall_ACopyThatCannotBeMadeOrCheckedWritesNoJob(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("root reads a mode-000 file")
+	}
+	for name, tc := range map[string]struct {
+		setup func(r *installRig)
+		want  string
+	}{
+		"unreadable": {func(r *installRig) { os.Chmod(r.src, 0) }, "permission denied"},
+		"link to nothing": {func(r *installRig) { os.Remove(r.src) }, "resolve"},
+		"does not verify": {func(r *installRig) {
+			appServeCodesign = func(args ...string) (string, error) {
+				if args[0] == "--verify" {
+					return "invalid signature (code or signature have been modified)", errors.New("exit status 1")
+				}
+				return "Identifier=com.neblihq.initech\nTeamIdentifier=K7Z8YKVA8G\n", nil
+			}
+		}, "does not verify"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			r := newInstallRig(t)
+			tc.setup(r)
+			err := r.install()
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("install: %v, want a refusal naming %q", err, tc.want)
+			}
+			if r.plistThere() || len(r.runner.Calls) != 0 {
+				t.Errorf("a refused copy wrote the job (%v) or ran launchctl %q", r.plistThere(), r.runner.Calls)
+			}
+			if _, err := os.Stat(appserve.CopyPath(r.home)); !errors.Is(err, os.ErrNotExist) {
+				t.Errorf("a refused copy left a file at the fixed path (%v)", err)
+			}
+		})
 	}
 }

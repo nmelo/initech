@@ -56,3 +56,9 @@ func BinaryReplaced(ctx context.Context, path, start string, resolve func(string
 func ReplacedLine(from, to string) string {
 	return fmt.Sprintf("initech app-serve: the initech it runs was replaced (%s -> %s); finishing requests in flight and exiting, and launchd starts the new build", from, to)
 }
+
+// UpgradeFailedLine is the log line, and the --notify line, for a new build
+// that could not be copied over the copy the job runs.
+func UpgradeFailedLine(build, copyPath string, err error) string {
+	return fmt.Sprintf("initech app-serve: a new build %s could not be put at %s (%v); it keeps running the build it has and tries again in a minute", build, copyPath, err)
+}

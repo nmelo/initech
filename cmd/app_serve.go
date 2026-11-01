@@ -81,6 +81,8 @@ func init() {
 		c.Flags().IntVar(&appServePort, "port", appserve.DefaultPort, "TCP port")
 	}
 	appServeCmd.Flags().StringSliceVar(&appServeProjects, "projects", nil, "a folder whose subfolders are rigs (repeatable); default: the folder holding the rig found from the current directory")
+	appServeCmd.Flags().StringVar(&appServeSource, "source", "", "the path install was run as, when the job runs a copy of it (written by install)")
+	appServeCmd.Flags().MarkHidden("source") //nolint:errcheck // the flag is defined on the line above
 	appServeCmd.AddCommand(appServeTokenCmd)
 	rootCmd.AddCommand(appServeCmd)
 }
@@ -94,6 +96,9 @@ var (
 	appServeAddrs                  = appserve.SystemAddrs
 	appServeRunner    iexec.Runner = &iexec.DefaultRunner{}
 	appServeAddrEvery              = 30 * time.Second
+	// appServeSource is --source: the path install was run as, the link an
+	// upgrade moves, when the job runs a copy at appserve.CopyPath.
+	appServeSource string
 	appServeListenOn               = appserve.Listen
 	appServeExecutable             = os.Executable
 	appServeLstat                  = os.Lstat
@@ -271,6 +276,7 @@ func runAppServe(cmd *cobra.Command, args []string) error {
 	// that has not yet seen ctx end.
 	addrEvery, addrs, listen := appServeAddrEvery, appServeAddrs, appServeListen
 	binEvery, resolve, grace := appServeBinaryEvery, appServeResolve, appServeDrainGrace
+	codesign, source, notify := appServeCodesign, appServeSource, appServeNotify
 	moved := make(chan struct{})
 	go func() {
 		for {
@@ -287,23 +293,57 @@ func runAppServe(cmd *cobra.Command, args []string) error {
 			}
 		}
 	}()
-	// An upgrade moves the link launchd ran to a new build: the service
-	// notices within appServeBinaryEvery, says so once, lets requests in
-	// flight finish and exits, and KeepAlive starts the new build.
+	// An upgrade moves the link to a new build. When the job runs the copy
+	// at the fixed path (--source names the link), the service copies the new
+	// build over its copy first: macOS keys the Desktop grant by that path, so
+	// it holds. Then it says so once, lets requests in flight finish and
+	// exits, and KeepAlive starts the new build. A copy that fails is logged
+	// once, notified at most hourly, and tried again at the next tick, while
+	// the old build keeps running. Without --source the service follows its
+	// own path, the link launchd ran.
 	replaced := make(chan struct{})
 	if exe, err := appServeExecutable(); err != nil {
 		fmt.Fprintf(errw, "initech app-serve: its own path is unknown (%v), so an upgrade does not restart the service\n", err)
-	} else if start, ok := appserve.ArmBinaryWatch(exe, appServeLstat, resolve, errw); ok {
-		go func() {
-			tick := time.NewTicker(binEvery)
-			defer tick.Stop()
-			if to := appserve.BinaryReplaced(ctx, exe, start, resolve, tick.C); to != "" {
-				fmt.Fprintln(errw, appserve.ReplacedLine(start, to))
-				close(replaced)
+	} else {
+		watch, copyTo := exe, ""
+		if source != "" {
+			watch, copyTo = source, exe
+		}
+		if start, ok := appserve.ArmBinaryWatch(watch, appServeLstat, resolve, errw); ok {
+			from := start
+			if copyTo != "" && !appserve.SameBytes(start, copyTo) {
+				// Upgraded while the service was not running: the copy is
+				// behind the link, so the first tick puts the new build in.
+				start, from = "", copyTo
 			}
-		}()
+			go func() {
+				tick := time.NewTicker(binEvery)
+				defer tick.Stop()
+				said := ""
+				for {
+					to := appserve.BinaryReplaced(ctx, watch, start, resolve, tick.C)
+					if to == "" {
+						return
+					}
+					if copyTo != "" {
+						if err := appserve.InstallCopy(codesign, to, copyTo); err != nil {
+							line := appserve.UpgradeFailedLine(to, copyTo, err)
+							if line != said {
+								fmt.Fprintln(errw, line)
+								said = line
+							}
+							appserve.ReportUpgradeFailure(state, notify, errw, line)
+							continue
+						}
+					}
+					fmt.Fprintln(errw, appserve.ReplacedLine(from, to))
+					close(replaced)
+					return
+				}
+			}()
+		}
 	}
-	err = appserve.RunMarked(state, appServeNotify, errw, func() error {
+	err = appserve.RunMarked(state, notify, errw, func() error {
 		err := appserve.ServeTLSUntil(ln, srv.Handler(), cert, replaced, grace)
 		select {
 		case <-replaced:

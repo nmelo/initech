@@ -38,6 +38,9 @@ const (
 	MarkerFile           = "running"
 	NotifiedAtFile       = "notified-at"
 	FolderNotifiedAtFile = "notified-at-folder"
+	// UpgradeNotifiedAtFile is when --notify last ran for a new build that
+	// could not be copied into place.
+	UpgradeNotifiedAtFile = "notified-at-upgrade"
 )
 
 // notifyEvery is the guard on a crash loop: launchd restarts the job every
@@ -191,6 +194,14 @@ func ReportFolder(stateDir, notify string, log io.Writer, dir, why string) {
 	line := StuckFolderLine(dir, why)
 	fmt.Fprintln(log, line)
 	notifyGuarded(stateDir, FolderNotifiedAtFile, notify, line, log, time.Now)
+}
+
+// ReportUpgradeFailure runs notify with line, a new build that could not be
+// copied into place, under its own one-per-hour guard, so a failure the
+// watcher retries every minute notifies at most hourly and never silences
+// the restart or folder notices. The caller logs the line.
+func ReportUpgradeFailure(stateDir, notify string, log io.Writer, line string) {
+	notifyGuarded(stateDir, UpgradeNotifiedAtFile, notify, line, log, time.Now)
 }
 
 // notifyGuarded runs notify with line when this kind of message's one-per-hour

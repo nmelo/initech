@@ -23,10 +23,13 @@ with launchctl bootstrap in your login session. launchd is the watchdog: it
 restarts the service ten seconds after it dies, and starts it at login. Stdout
 and stderr go to ~/Library/Logs/initech/app-serve.log, which is not rotated.
 
-The job runs this binary, as you ran it (found through PATH when you ran it by
-name, so a Homebrew install stays valid across upgrades), with the --listen,
---port, --projects and --notify given here, and with your shell's PATH, since
-launchd's own has no /opt/homebrew/bin and the service runs bd. A tool that moves
+The job runs a copy of this binary at ~/Library/Application Support/initech/
+app-serve/initech, made from the file the path you ran resolves to and checked
+(same bytes; for a signed build, the same identifier and team). macOS keys the
+Desktop grant by a program's real path, so the one fixed path keeps the grant
+across upgrades: the service copies each new build over it itself. It runs with
+the --listen, --port, --projects and --notify given here, and with your shell's
+PATH, since launchd's own has no /opt/homebrew/bin and the service runs bd. A tool that moves
 later needs install again. launchd starts jobs in /, so
 --projects defaults here, now, to the folder holding the rig you are in, and is
 written out in full. With no rig found and no --projects, nothing is written.
@@ -56,8 +59,8 @@ var appServeUninstallCmd = &cobra.Command{
 	Use:   "uninstall",
 	Short: "Stop the app service under launchd and remove its job",
 	Long: `Stops the service with launchctl bootout and removes
-~/Library/LaunchAgents/com.initech.app-serve.plist. With nothing installed it
-says so. The token, the certificate and the log are kept.`,
+~/Library/LaunchAgents/com.initech.app-serve.plist and the copy it ran. With
+nothing installed it says so. The token, the certificate and the log are kept.`,
 	Args: cobra.NoArgs,
 	RunE: runAppServeUninstall,
 }
@@ -84,6 +87,10 @@ func init() {
 	appServeCmd.AddCommand(appServeInstallCmd, appServeUninstallCmd)
 }
 
+// appServeCodesign reads and checks code signatures for the copy. A var so a
+// test can stand in for it.
+var appServeCodesign appserve.Codesign = appserve.SystemCodesign
+
 // binaryAsRun is argv0 as a path launchd can run: through PATH when it has no
 // folder in it, else made absolute. Symlinks are kept.
 func binaryAsRun(argv0 string) (string, error) {
@@ -109,17 +116,20 @@ func appServeHome() (string, error) {
 // launchdDomain is this user's login session, where the job loads.
 func launchdDomain() string { return "gui/" + strconv.Itoa(os.Getuid()) }
 
-// appServeJobArgs is the job's whole command line, or why there can be none.
-// Every refusal happens here, before anything is written.
-func appServeJobArgs() ([]string, error) {
+// appServeJobArgs is the job's whole command line, or why there can be none,
+// and the real file the copy is made from. The job runs the copy at
+// appserve.CopyPath; --source names the path install was run as (the link an
+// upgrade moves), so the service knows where a new build lands. Every refusal
+// happens here, before anything is written.
+func appServeJobArgs(home string) ([]string, string, error) {
 	if appServeListen != appserve.ListenTailnet && appServeListen != appserve.ListenLocalNetwork {
-		return nil, fmt.Errorf("--listen takes %s or %s, not %q; nothing written", appserve.ListenTailnet, appserve.ListenLocalNetwork, appServeListen)
+		return nil, "", fmt.Errorf("--listen takes %s or %s, not %q; nothing written", appserve.ListenTailnet, appserve.ListenLocalNetwork, appServeListen)
 	}
 	if _, err := appserve.LoadDigest(appServeStateDir()); err != nil {
 		if errors.Is(err, appserve.ErrNoToken) {
-			return nil, fmt.Errorf("no token issued: run initech app-serve token first; nothing written")
+			return nil, "", fmt.Errorf("no token issued: run initech app-serve token first; nothing written")
 		}
-		return nil, fmt.Errorf("read the token digest: %w; nothing written", err)
+		return nil, "", fmt.Errorf("read the token digest: %w; nothing written", err)
 	}
 	dirs := appServeProjects
 	if len(dirs) == 0 {
@@ -128,24 +138,28 @@ func appServeJobArgs() ([]string, error) {
 		}
 	}
 	if len(dirs) == 0 {
-		return nil, fmt.Errorf("no rig folder: run from inside a rig or pass --projects <folder>; nothing written")
+		return nil, "", fmt.Errorf("no rig folder: run from inside a rig or pass --projects <folder>; nothing written")
 	}
 	bin, err := appServeBinary()
 	if err != nil {
-		return nil, fmt.Errorf("%w; nothing written", err)
+		return nil, "", fmt.Errorf("%w; nothing written", err)
 	}
-	args := []string{bin, "app-serve", "--listen", appServeListen, "--port", strconv.Itoa(appServePort)}
+	src, err := filepath.EvalSymlinks(bin)
+	if err != nil {
+		return nil, "", fmt.Errorf("resolve %s: %w; nothing written", bin, err)
+	}
+	args := []string{appserve.CopyPath(home), "app-serve", "--source", bin, "--listen", appServeListen, "--port", strconv.Itoa(appServePort)}
 	for _, d := range dirs {
 		abs, err := filepath.Abs(d)
 		if err != nil {
-			return nil, fmt.Errorf("--projects %s: %w; nothing written", d, err)
+			return nil, "", fmt.Errorf("--projects %s: %w; nothing written", d, err)
 		}
 		args = append(args, "--projects", abs)
 	}
 	if appServeNotify != "" {
 		args = append(args, "--notify", appServeNotify)
 	}
-	return args, nil
+	return args, src, nil
 }
 
 // appServeGuardedPaths is each path the job would touch (the binary, every
@@ -163,6 +177,9 @@ func appServeGuardedPaths(home, path string, jobArgs []string) []string {
 		}
 	}
 	check(jobArgs[0])
+	if len(jobArgs) > 3 && jobArgs[2] == "--source" {
+		check(jobArgs[3])
+	}
 	for i, a := range jobArgs {
 		if a == "--projects" && i+1 < len(jobArgs) {
 			check(jobArgs[i+1])
@@ -184,10 +201,11 @@ func runAppServeInstall(cmd *cobra.Command, args []string) error {
 	if path == "" {
 		return fmt.Errorf("PATH is not set: the service could not find bd under launchd; nothing written")
 	}
-	jobArgs, err := appServeJobArgs()
+	jobArgs, src, err := appServeJobArgs(home)
 	if err != nil {
 		return err
 	}
+	copyPath := jobArgs[0]
 	out := cmd.OutOrStdout()
 	for _, guarded := range appServeGuardedPaths(home, path, jobArgs) {
 		fmt.Fprintf(cmd.ErrOrStderr(), "warning: %s is in a folder macOS guards for launchd jobs: the service will wait on a permission dialog there until the binary is allowed; the log says when\n", guarded)
@@ -195,10 +213,17 @@ func runAppServeInstall(cmd *cobra.Command, args []string) error {
 	plist := appserve.PlistPath(home)
 	want := appserve.RenderPlist(home, path, jobArgs)
 	old, readErr := os.ReadFile(plist)
-	if readErr == nil && bytes.Equal(old, want) {
+	if readErr == nil && bytes.Equal(old, want) && appserve.SameBytes(src, copyPath) {
 		appServePrivateLog(cmd.ErrOrStderr(), home)
 		fmt.Fprintf(out, "already installed: %s\n", plist)
 		return nil
+	}
+	// The job runs a copy at one fixed path: macOS keys the Desktop grant by
+	// a program's real path, and a Homebrew build's names its version. The
+	// copy comes first, so one that fails leaves any running job as it was
+	// (the job keeps the file it started from).
+	if err := appserve.InstallCopy(appServeCodesign, src, copyPath); err != nil {
+		return fmt.Errorf("copy %s to %s: %w; nothing else written", src, copyPath, err)
 	}
 	if readErr == nil {
 		// New settings: the running job goes first, or bootstrap finds it loaded.
@@ -254,6 +279,13 @@ func runAppServeUninstall(cmd *cobra.Command, args []string) error {
 	}
 	if err := os.Remove(plist); err != nil {
 		return fmt.Errorf("the service is stopped but its job file remains: %w", err)
+	}
+	copyPath := appserve.CopyPath(home)
+	if err := os.Remove(copyPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("the service is stopped and its job removed, but its copy remains: %w", err)
+	}
+	if err := os.Remove(filepath.Dir(copyPath)); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("the service is stopped and its copy removed, but its folder remains: %w", err)
 	}
 	fmt.Fprintf(out, "uninstalled: %s\n", plist)
 	return nil
