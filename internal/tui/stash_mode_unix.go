@@ -9,12 +9,12 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// slaveRawMode reads the slave's termios (read only, through SyscallConn so
-// the file's blocking mode is left alone) and reports raw: ICANON and IXON
-// both clear.
-func slaveRawMode(f *os.File) (bool, error) {
+// termiosRawMode reads the terminal's termios through f, the pty master (read
+// only, through SyscallConn so the file's blocking mode is left alone), and
+// reports raw: ICANON and IXON both clear.
+func termiosRawMode(f *os.File) (bool, error) {
 	if f == nil {
-		return false, errors.New("pty has no slave")
+		return false, errors.New("pty has no master")
 	}
 	rc, err := f.SyscallConn()
 	if err != nil {
@@ -34,7 +34,7 @@ func slaveRawMode(f *os.File) (bool, error) {
 }
 
 // platformDefaultRawMode answers for a pty that exposes neither a mode nor a
-// slave: on unix that mode cannot be read.
+// master: on unix that mode cannot be read.
 func platformDefaultRawMode() (bool, error) {
 	return false, errors.New("pty exposes no terminal to read")
 }

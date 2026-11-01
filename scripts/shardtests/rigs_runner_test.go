@@ -148,12 +148,15 @@ func TestRigsWorkflow_TheDarwinJobRunsOnTheMacBehindItsGate(t *testing.T) {
 	for _, n := range names {
 		runHere[n] = true
 	}
-	var skipped int
+	var read int
 	for key, j := range w.Jobs {
 		if key == "darwin" {
 			continue
 		}
 		for _, s := range j.Steps {
+			if strings.Contains(s.Run, "go test") && strings.Contains(s.Run, "-run '") {
+				read++
+			}
 			i := strings.Index(s.Run, "-skip '")
 			if i < 0 {
 				continue
@@ -170,15 +173,16 @@ func TestRigsWorkflow_TheDarwinJobRunsOnTheMacBehindItsGate(t *testing.T) {
 				names = []string{sel}
 			}
 			for _, n := range names {
-				skipped++
 				if !runHere[n] {
 					t.Errorf("%s skips %s, which the darwin job does not run: the test would run nowhere", key, n)
 				}
 			}
 		}
 	}
-	if skipped == 0 {
-		t.Error("found no -skip in the workbench rigs jobs: this test is not reading them")
+	// The workbench jobs skip nothing today (ini-933, ini-dyv), so the proof
+	// that this test reads them is their go test selections, not a skip.
+	if read == 0 {
+		t.Error("found no go test -run step in the workbench rigs jobs: this test is not reading them")
 	}
 }
 

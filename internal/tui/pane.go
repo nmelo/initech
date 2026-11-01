@@ -500,6 +500,9 @@ func NewPane(cfg PaneConfig, rows, cols int) (*Pane, error) {
 		ptmx.Close()
 		return nil, fmt.Errorf("start command: %w", err)
 	}
+	// The child holds the slave now; the parent's copy would keep the master
+	// from ever hanging up when the child exits (ini-dyv, pane_tty.go).
+	releaseParentSlave(ptmx, cfg.Name)
 
 	// Determine the JSONL session directory for this pane.
 	// Standard Claude: ~/.claude/projects/<encoded-cwd>/

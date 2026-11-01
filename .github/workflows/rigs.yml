@@ -185,7 +185,7 @@ jobs:
         # -v so the log NAMES every rig that ran: without it a skipped rig is
         # invisible and a shard reports a vacuous green (shipper, reviewing
         # 2d2f909 -- the first dispatch had zero PASS/SKIP lines to check).
-        run: go test ./internal/tui/ -count=1 -v -timeout 900s -run 'TestSuspendGuard|TestAQY_|UZ42Rig' -skip '^TestSuspendGuard_ResumeFailureKeepsQueue$'
+        run: go test ./internal/tui/ -count=1 -v -timeout 900s -run 'TestSuspendGuard|TestAQY_|UZ42Rig'
 
       - name: Resources this job used
         if: always()
@@ -273,9 +273,7 @@ jobs:
   # with codesign and skip on Linux), the Go tests that read code signatures or
   # pmset output, the one test that binds the host's LAN address (the sandbox
   # denies private ranges), and the suspend and send rigs, which run on Linux
-  # in the shards above too, so each runs on both systems. One of them,
-  # TestSuspendGuard_ResumeFailureKeepsQueue, still fails on Linux and is the
-  # one test shard 2 skips there; it runs here.
+  # in the shards above too, so each runs on both systems.
   darwin:
     runs-on: ${{ github.event_name != 'pull_request' && vars.MAC_RUNNER || 'macos-latest' }}
     timeout-minutes: 50  # 30 plus the load gate's 20-minute cap

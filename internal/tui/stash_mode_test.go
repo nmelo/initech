@@ -48,13 +48,13 @@ func stashWaitFor(get func() string, want string, d time.Duration) bool {
 // which mode the test actually exercised.
 func stashLogMode(t *testing.T, p *Pane) {
 	t.Helper()
-	s, ok := p.ptmx.(slaveHolder)
+	m, ok := p.ptmx.(masterHolder)
 	if !ok {
-		t.Logf("pty exposes no slave")
+		t.Logf("pty exposes no master")
 		return
 	}
-	raw, err := slaveRawMode(s.Slave())
-	t.Logf("%s: raw=%v err=%v", s.Slave().Name(), raw, err)
+	raw, err := termiosRawMode(m.Master())
+	t.Logf("%s (read via the master): raw=%v err=%v", p.ptmx.Name(), raw, err)
 }
 
 // TestNineThreeThree_CookedChildKeepsFlowingAfterASend is the defect by
@@ -239,8 +239,8 @@ func (f *bareFilePty) Name() string            { return "bare" }
 func (f *bareFilePty) Start(*exec.Cmd) error   { return nil }
 
 // TestNineThreeThree_UnreadableModeIsAnErrorNeverRaw feeds the reader nothing
-// usable: no pty, a pty whose slave is closed, and a pty that is not a
-// terminal. Each is an error, so the send types no stash.
+// usable: no pty, a pty whose master (the end the mode is read from) is
+// closed, and a pty that is not a terminal. Each is an error, so the send types no stash.
 func TestNineThreeThree_UnreadableModeIsAnErrorNeverRaw(t *testing.T) {
 	if raw, err := ptyRawMode(nil); raw || !errors.Is(err, errNoPTY) {
 		t.Errorf("no pty: raw=%v err=%v, want false and errNoPTY", raw, err)
@@ -251,9 +251,9 @@ func TestNineThreeThree_UnreadableModeIsAnErrorNeverRaw(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer pty.Close()
-	_ = pty.(slaveHolder).Slave().Close()
+	_ = pty.(masterHolder).Master().Close()
 	if raw, err := ptyRawMode(pty); raw || err == nil {
-		t.Errorf("closed slave: raw=%v err=%v, want false and an error", raw, err)
+		t.Errorf("closed master: raw=%v err=%v, want false and an error", raw, err)
 	}
 
 	r, w, err := os.Pipe()

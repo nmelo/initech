@@ -8,8 +8,8 @@ import (
 	"runtime"
 )
 
-// slaveRawMode: no termios to read here.
-func slaveRawMode(*os.File) (bool, error) {
+// termiosRawMode: no termios to read here.
+func termiosRawMode(*os.File) (bool, error) {
 	return platformDefaultRawMode()
 }
 

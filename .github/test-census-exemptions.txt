@@ -56,6 +56,7 @@ internal/tui/battery_darwin_test.go           linux,windows  # parses `pmset` ou
 internal/tui/stash_mode_test.go               windows  # reads and sets a pty slave's termios (unix.IoctlGetTermios, ICANON/IXON) on real ptys; Windows has no termios and its ConPTY keeps the stash key, so an unreadable mode reads raw there
 internal/tui/stash_mode_darwin_test.go        linux,windows  # holds only the darwin termios write request (unix.TIOCSETA) for stash_mode_test.go
 internal/tui/stash_mode_linux_test.go         darwin,windows  # holds only the linux termios write request (unix.TCSETS) for stash_mode_test.go
+internal/tui/pane_tty_test.go                 windows  # real unix ptys and sh children (exit, tty, stty raw) to see a pane's exit through the master; Windows ConPTY has no slave to release
 
 # ── Audited: constraint is REAL, with the evidence that proves it ────
 # ini-2x8.9 removed each tag and compiled for Windows. These failed, and the

@@ -19,21 +19,23 @@ import (
 // control character typed into a shell line. Linux ptys start with IXON set,
 // so a Linux pane in cooked mode froze at its first send.
 //
-// So the mode is READ from the pane's terminal at the moment of the send,
-// never inferred from the pane's name, agent type or state, and never written:
-// initech does not touch the termios a program set for itself.
+// So the mode is READ from the pane's terminal, through the pty master, at the
+// moment of the send, never inferred from the pane's name, agent type or
+// state, and never written: initech does not touch the termios a program set
+// for itself.
 
 // termModeReader is implemented by a pty that can report its terminal's mode
 // directly. Test ptys that are not terminals (a pipe) implement it to say
-// which mode they model; production ptys are read through their slave.
+// which mode they model; production ptys are read through their master.
 type termModeReader interface {
 	TermRawMode() (bool, error)
 }
 
-// slaveHolder is the part of xpty.UnixPty this file needs: the slave end,
-// which the parent keeps open for the life of the pty.
-type slaveHolder interface {
-	Slave() *os.File
+// masterHolder is the part of xpty.UnixPty this file needs: the master end,
+// the only end the parent keeps once the child has started (pane_tty.go). A
+// master's termios request answers for the terminal the child sees.
+type masterHolder interface {
+	Master() *os.File
 }
 
 var errNoPTY = errors.New("pane has no pty")
@@ -49,8 +51,8 @@ func ptyRawMode(pty xpty.Pty) (bool, error) {
 	if r, ok := pty.(termModeReader); ok {
 		return r.TermRawMode()
 	}
-	if s, ok := pty.(slaveHolder); ok {
-		return slaveRawMode(s.Slave())
+	if m, ok := pty.(masterHolder); ok {
+		return termiosRawMode(m.Master())
 	}
 	return platformDefaultRawMode()
 }
