@@ -33,19 +33,13 @@ permissions:
 # the Mac goes away: timeout-minutes counts only once a job STARTS, so a job
 # queued for an offline self-hosted runner waits (up to 24h) instead of failing.
 #
-# CONCURRENCY: a burst of main pushes queued one full run per push on the
-# self-hosted runners and starved release-branch runs, so superseded main runs
-# are cancelled. An intermediate main sha may therefore have no completed run; a
-# release cut at such a sha re-runs its cancelled run (gh run rerun <id>), which
-# runs at that same sha.
-concurrency:
-  # Only pushes to main share a group, so a newer main push cancels the older
-  # main run, queued or running. Every other run -- release/** pushes, pull
-  # requests, schedule, dispatch -- gets its own group (its run id) and is never
-  # cancelled or replaced: GitHub also drops an older PENDING run in a shared
-  # group even with cancel-in-progress off, so per-run is the only "never".
-  group: ${{ github.workflow }}-${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') && 'main-push' || github.run_id }}
-  cancel-in-progress: true
+# NO CONCURRENCY GROUP (ini-c5a.7, the operator via theguy): every run
+# finishes, so every landed main sha gets its own verdict, which the land rule
+# (CI green on the exact sha) needs. A shared group cancelled each main run
+# that waited at the load gate when the next push came, and GitHub drops an
+# older pending run in a shared group even with cancel-in-progress off, so no
+# group is the only "never cancel". The cost: a burst of pushes queues one full
+# run per push, and a release-branch run waits its turn behind them.
 
 # SPEED (ini-bus5, ini-p2ve): every release cut gates on this workflow, so its
 # wall time is release latency. Three levers, each measured on its own:
