@@ -38,6 +38,16 @@ cleanup() {
   fi
   xcrun simctl shutdown "$udid" >/dev/null 2>&1
   xcrun simctl delete "$udid" >/dev/null 2>&1 && echo "sim-test: deleted $name"
+  # Crash reports land a few seconds after a process dies, and a stopped run
+  # never reaches the check below the test: look here too, after shutdown.
+  sleep 10
+  crashed=$(find "$reports" -newer "$mark" -name '*.ips' -exec grep -l "SimDevice.$udid" {} + 2>/dev/null)
+  if [ -n "$crashed" ]; then
+    echo "sim-test: CRASH REPORT from $name, stop and tell super:" >&2
+    echo "$crashed" | sed 's|.*/||' >&2
+    rm -f "$mark"
+    exit 9
+  fi
   rm -f "$mark"
 }
 trap cleanup EXIT
@@ -50,12 +60,6 @@ xb=$!
 wait "$xb"; rc=$?
 xb=""
 
-# A crash report names the device in its coalition. Any new one from this
-# device means the run hurt the simulator: fail loudly.
-crashed=$(find "$reports" -newer "$mark" -name '*.ips' -exec grep -l "SimDevice.$udid" {} + 2>/dev/null)
-if [ -n "$crashed" ]; then
-  echo "sim-test: CRASH REPORT from $name, stop and tell super:" >&2
-  echo "$crashed" | sed 's|.*/||' >&2
-  exit 9
-fi
+# The EXIT trap shuts the device down, deletes it, and fails the run with 9
+# on any new crash report naming it.
 exit "$rc"
