@@ -21,6 +21,7 @@ M = [
  ('lsof control gone', 'if [ $rc -ne 0 ] || ! grep -q \'^n/\' "$out"; then rm -f "$out" "$out.err"; return 1; fi\n', ''),
  ('lsof failure read as none running', 'if [ $rc -ne 0 ] && { [ $rc -ne 1 ] || [ -s "$out.err" ]; }; then rm -f "$out" "$out.err"; return 1; fi\n', ''),
  ('prune goes on when lsof cannot say', 'echo "prune: lsof could not say which kegs are running; nothing pruned"\n    return 0\n', 'echo "prune: lsof could not say which kegs are running; nothing pruned"\n'),
+ ('scratch folder kept', '  rm -rf "${TMPD:?}"\n', ''),
  ('running kegs not read from real paths', 'n$real/', 'n$CELLAR.never/'),
  ('fetch failure ignored', 'fetch --formula "$FORMULA" || { echo "brew fetch failed: $(tail -1 "$out")"; rm -f "$out"; return 1; }', 'fetch --formula "$FORMULA" || true'),
  ('version not validated', "if ! [[ \"$ver\" =~ ^[0-9]+\\.[0-9]+\\.[0-9]+$ ]]; then echo \"no version read from the formula: '$ver'\"; rm -f \"$out\"; return 1; fi\n", ''),

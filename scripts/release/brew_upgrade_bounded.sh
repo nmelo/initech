@@ -33,8 +33,11 @@ if ! mkdir "$LOCK" 2>/dev/null; then
 fi
 echo $$ > "$LOCK/pid"
 STAGE=
+# Every scratch file of the run lives here and goes with it, on every path.
+TMPD=$(mktemp -d "${TMPDIR:-/tmp}/brew-upgrade.XXXX") || { rm -rf "${LOCK:?}"; exit 1; }
 cleanup() {
   [ -n "$STAGE" ] && rm -rf "${STAGE:?}"
+  rm -rf "${TMPD:?}"
   rm -rf "${LOCK:?}"
 }
 trap cleanup EXIT
@@ -91,7 +94,7 @@ installed() { # the version the link points at
 
 install_keg() {
   local out ver cur tarball keg
-  out=$(mktemp "${TMPDIR:-/tmp}/brew-out.XXXX")
+  out=$(mktemp "$TMPD/brew-out.XXXX")
   echo "before: $(readlink "$LINK") / $("$LINK" version 2>&1)"
   bounded_brew "$out" info --json=v2 "$FORMULA" || { echo "brew info failed"; rm -f "$out"; return 1; }
   ver=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["formulae"][0]["versions"]["stable"])' "$out" 2>/dev/null)
@@ -160,7 +163,7 @@ PY
 # this shell tells "no initech running" from an lsof that answers nothing.
 running_kegs() {
   local out rc real
-  out=$(mktemp "${TMPDIR:-/tmp}/lsof-out.XXXX")
+  out=$(mktemp "$TMPD/lsof-out.XXXX")
   bounded "$out" "$LSOF" -w -a -p $$ -d txt -Fn; rc=$?
   if [ $rc -ne 0 ] || ! grep -q '^n/' "$out"; then rm -f "$out" "$out.err"; return 1; fi
   bounded "$out" "$LSOF" -w -a -c initech -d txt -Fn; rc=$?

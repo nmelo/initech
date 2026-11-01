@@ -64,8 +64,9 @@ class Rig:
             t.add(nb, arcname='initech')
             for n in ('LICENSE', 'README.md'):
                 q = os.path.join(self.h, n); open(q, 'w').write(n); t.add(q, arcname=n)
+        self.tmp = os.path.join(self.h, 'tmp'); os.makedirs(self.tmp)
         self.env = dict(os.environ, H=self.h, P=self.p, NEWV=NEW, HB_PREFIX=self.p, BREW=self.brew,
-                        PATH=fb + ':' + os.environ['PATH'], LIMIT='5')
+                        PATH=fb + ':' + os.environ['PATH'], LIMIT='5', TMPDIR=self.tmp)
 
     def keg(self, v):
         k = os.path.join(self.p, 'Cellar/initech', v)
@@ -96,6 +97,15 @@ class Rig:
         return sorted(os.listdir(os.path.join(self.p, 'Cellar/initech')))
 
     def close(self):
+        # A hung fake outlives a script killed at a test's timeout (a mutant that
+        # drops the bound): stop it by the PID it wrote, never by name.
+        for f in ('brew_pid', 'lsof_pid'):
+            q = os.path.join(self.h, f)
+            if os.path.exists(q):
+                try:
+                    os.kill(int(open(q).read()), 9)
+                except (OSError, ValueError):
+                    pass
         shutil.rmtree(self.h, ignore_errors=True)
 
 
@@ -215,6 +225,23 @@ class FailsSafe(Case):
         r = self.rig(); r.keg(NEW)
         out = r.run(); self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
         self.assertEqual(r.version(), f'initech {NEW}')
+
+
+class Leaves(Case):
+    def assert_tmp_empty(self, r, out):
+        self.assertEqual(os.listdir(r.tmp), [], out.stdout)
+
+    def test_no_scratch_file_after_an_install(self):
+        r = self.rig(); out = r.run('--prune'); self.assertEqual(out.returncode, 0, out.stdout)
+        self.assert_tmp_empty(r, out)
+
+    def test_no_scratch_file_after_a_refusal(self):
+        r = self.rig(); open(os.path.join(r.h, 'fetch_fails'), 'w').close()
+        out = r.run(); self.assertNotEqual(out.returncode, 0); self.assert_tmp_empty(r, out)
+
+    def test_no_scratch_file_after_a_bound_hit(self):
+        r = self.rig(); open(os.path.join(r.h, 'fetch_hangs'), 'w').close()
+        out = r.run(); self.assertEqual(out.returncode, 2); self.assert_tmp_empty(r, out)
 
 
 class TwoRuns(Case):
@@ -390,7 +417,7 @@ class Prune(Case):
         self.assert_kept_all(r, r.run('--prune'))
 
     def test_lsof_past_the_bound_prunes_nothing(self):
-        r = self.rig(kegs=self.VERS); self.fake_lsof(r, 'exec sleep 86399')
+        r = self.rig(kegs=self.VERS); self.fake_lsof(r, 'echo $$ > "$H/lsof_pid"; exec sleep 86399')
         t = time.time(); out = r.run('--prune')
         self.assert_kept_all(r, out); self.assertLess(time.time() - t, 25)
         self.assertEqual(r.version(), f'initech {NEW}', 'the install itself stands')
