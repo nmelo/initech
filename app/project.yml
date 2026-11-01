@@ -1,0 +1,50 @@
+# The source of InitechApp.xcodeproj. After editing, regenerate with
+# `xcodegen generate --spec app/project.yml` and commit both files: the
+# committed project is what xcodebuild reads, so a build needs only Xcode.
+name: InitechApp
+options:
+  bundleIdPrefix: co.nmelo
+  deploymentTarget:
+    iOS: "26.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    CODE_SIGN_STYLE: Automatic
+targets:
+  InitechApp:
+    type: application
+    platform: iOS
+    sources: [InitechApp]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: co.nmelo.initech
+        TARGETED_DEVICE_FAMILY: "1,2"
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: initech
+        INFOPLIST_KEY_NSCameraUsageDescription: "initech scans the pairing code your Mac shows."
+        INFOPLIST_KEY_NSLocalNetworkUsageDescription: "initech talks to the initech service on your Mac."
+        INFOPLIST_KEY_NSFaceIDUsageDescription: "initech locks behind Face ID because it can type into your agents."
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: "UIInterfaceOrientationPortrait"
+  InitechAppTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources: [InitechAppTests]
+    dependencies:
+      - target: InitechApp
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: co.nmelo.initech.tests
+        GENERATE_INFOPLIST_FILE: YES
+schemes:
+  InitechApp:
+    build:
+      targets:
+        InitechApp: all
+        InitechAppTests: [test]
+    test:
+      targets: [InitechAppTests]

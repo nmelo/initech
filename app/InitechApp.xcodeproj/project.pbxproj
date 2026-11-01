@@ -1,0 +1,427 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		1070815A259D1E1A5F5492E6 /* PairingStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = EBF1B0563C039519DA1FBAFF /* PairingStore.swift */; };
+		5C34785AC296AEBE541AD12A /* AppLockTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B272B5DB2C3178712A3DC43 /* AppLockTests.swift */; };
+		6166565653BCA9C9210BAFC7 /* PairingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93A60E37937117C84492E6AF /* PairingTests.swift */; };
+		6C1D595F222CA4C1D1D2E9DC /* Pairing.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F0C8C6A411B9F13BD5F6987 /* Pairing.swift */; };
+		AA2F5F162E37D2C590BCED41 /* PairingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 773F4EA9812F633D405B6B10 /* PairingView.swift */; };
+		B2F2B4FB55FCDA56E935F9F9 /* AppLock.swift in Sources */ = {isa = PBXBuildFile; fileRef = 507BBB42FCC3688C96662A86 /* AppLock.swift */; };
+		EF28745458391348A35D4F25 /* InitechApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F87CD51E774AB674C7B99838 /* InitechApp.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		FD53A0C4CBC84EF615A66A89 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 0D23AF995BA2D0042CC2DB2C /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = B46DA23474408FBC80783FD4;
+			remoteInfo = InitechApp;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		2F0C8C6A411B9F13BD5F6987 /* Pairing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Pairing.swift; sourceTree = "<group>"; };
+		41354D02977BC4D7F01A5923 /* InitechAppTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = InitechAppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		507BBB42FCC3688C96662A86 /* AppLock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLock.swift; sourceTree = "<group>"; };
+		773F4EA9812F633D405B6B10 /* PairingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingView.swift; sourceTree = "<group>"; };
+		8B272B5DB2C3178712A3DC43 /* AppLockTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLockTests.swift; sourceTree = "<group>"; };
+		93A60E37937117C84492E6AF /* PairingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingTests.swift; sourceTree = "<group>"; };
+		D973C4CF1AB9FD8305E3EE9B /* InitechApp.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = InitechApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		EBF1B0563C039519DA1FBAFF /* PairingStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingStore.swift; sourceTree = "<group>"; };
+		F87CD51E774AB674C7B99838 /* InitechApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InitechApp.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		1DE991B572F84F7BCD8029D1 = {
+			isa = PBXGroup;
+			children = (
+				7086ED0B40EB5EE0469CEA1F /* InitechApp */,
+				927C9DED42946EDB74E42919 /* InitechAppTests */,
+				7157ED01C9F67AEFB1AF32E3 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		7086ED0B40EB5EE0469CEA1F /* InitechApp */ = {
+			isa = PBXGroup;
+			children = (
+				507BBB42FCC3688C96662A86 /* AppLock.swift */,
+				F87CD51E774AB674C7B99838 /* InitechApp.swift */,
+				2F0C8C6A411B9F13BD5F6987 /* Pairing.swift */,
+				EBF1B0563C039519DA1FBAFF /* PairingStore.swift */,
+				773F4EA9812F633D405B6B10 /* PairingView.swift */,
+			);
+			path = InitechApp;
+			sourceTree = "<group>";
+		};
+		7157ED01C9F67AEFB1AF32E3 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				D973C4CF1AB9FD8305E3EE9B /* InitechApp.app */,
+				41354D02977BC4D7F01A5923 /* InitechAppTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		927C9DED42946EDB74E42919 /* InitechAppTests */ = {
+			isa = PBXGroup;
+			children = (
+				8B272B5DB2C3178712A3DC43 /* AppLockTests.swift */,
+				93A60E37937117C84492E6AF /* PairingTests.swift */,
+			);
+			path = InitechAppTests;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		1E18E62F81993F0DE182E8FF /* InitechAppTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 47C26C329F6C076033FDD315 /* Build configuration list for PBXNativeTarget "InitechAppTests" */;
+			buildPhases = (
+				DD9916A7F477B92E0677D286 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				1B62B7A43BD7B0F633CD1607 /* PBXTargetDependency */,
+			);
+			name = InitechAppTests;
+			packageProductDependencies = (
+			);
+			productName = InitechAppTests;
+			productReference = 41354D02977BC4D7F01A5923 /* InitechAppTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		B46DA23474408FBC80783FD4 /* InitechApp */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 5F8F6D2C3AB03EFFF91AACA8 /* Build configuration list for PBXNativeTarget "InitechApp" */;
+			buildPhases = (
+				2E7CC0FF48F28966B591462F /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = InitechApp;
+			packageProductDependencies = (
+			);
+			productName = InitechApp;
+			productReference = D973C4CF1AB9FD8305E3EE9B /* InitechApp.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		0D23AF995BA2D0042CC2DB2C /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					1E18E62F81993F0DE182E8FF = {
+						ProvisioningStyle = Automatic;
+					};
+					B46DA23474408FBC80783FD4 = {
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = 593AF33D6E3F6E2AA2DF9AAC /* Build configuration list for PBXProject "InitechApp" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 1DE991B572F84F7BCD8029D1;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 7157ED01C9F67AEFB1AF32E3 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				B46DA23474408FBC80783FD4 /* InitechApp */,
+				1E18E62F81993F0DE182E8FF /* InitechAppTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		2E7CC0FF48F28966B591462F /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B2F2B4FB55FCDA56E935F9F9 /* AppLock.swift in Sources */,
+				EF28745458391348A35D4F25 /* InitechApp.swift in Sources */,
+				6C1D595F222CA4C1D1D2E9DC /* Pairing.swift in Sources */,
+				1070815A259D1E1A5F5492E6 /* PairingStore.swift in Sources */,
+				AA2F5F162E37D2C590BCED41 /* PairingView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		DD9916A7F477B92E0677D286 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				5C34785AC296AEBE541AD12A /* AppLockTests.swift in Sources */,
+				6166565653BCA9C9210BAFC7 /* PairingTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		1B62B7A43BD7B0F633CD1607 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = B46DA23474408FBC80783FD4 /* InitechApp */;
+			targetProxy = FD53A0C4CBC84EF615A66A89 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		00DB652FF339F08E0108A24D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = initech;
+				INFOPLIST_KEY_NSCameraUsageDescription = "initech scans the pairing code your Mac shows.";
+				INFOPLIST_KEY_NSFaceIDUsageDescription = "initech locks behind Face ID because it can type into your agents.";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "initech talks to the initech service on your Mac.";
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = co.nmelo.initech;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		27B233523EC23F0D9ECFB569 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = initech;
+				INFOPLIST_KEY_NSCameraUsageDescription = "initech scans the pairing code your Mac shows.";
+				INFOPLIST_KEY_NSFaceIDUsageDescription = "initech locks behind Face ID because it can type into your agents.";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "initech talks to the initech service on your Mac.";
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = co.nmelo.initech;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		2BEECC872937ADCEDE07797B /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = co.nmelo.initech.tests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/InitechApp.app/InitechApp";
+			};
+			name = Debug;
+		};
+		77C1D750BF43A2B9325D150B /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 0.1.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+		AB5A970D35455F3EF278CA26 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = co.nmelo.initech.tests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/InitechApp.app/InitechApp";
+			};
+			name = Release;
+		};
+		DBC9301DEC260505CA8EAD7E /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 0.1.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		47C26C329F6C076033FDD315 /* Build configuration list for PBXNativeTarget "InitechAppTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				2BEECC872937ADCEDE07797B /* Debug */,
+				AB5A970D35455F3EF278CA26 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		593AF33D6E3F6E2AA2DF9AAC /* Build configuration list for PBXProject "InitechApp" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				DBC9301DEC260505CA8EAD7E /* Debug */,
+				77C1D750BF43A2B9325D150B /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		5F8F6D2C3AB03EFFF91AACA8 /* Build configuration list for PBXNativeTarget "InitechApp" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				00DB652FF339F08E0108A24D /* Debug */,
+				27B233523EC23F0D9ECFB569 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 0D23AF995BA2D0042CC2DB2C /* Project object */;
+}
