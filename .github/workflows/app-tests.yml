@@ -1,0 +1,90 @@
+# app-tests runs the iPhone and iPad app's tests (app/) on the Mac runner,
+# one simulator at a time, for one device per run.
+#
+# Start a run with app/scripts/app-tests-run.sh <ref> <iphone|ipad>, which
+# checks the runners are online first; cite the run id on the bead.
+#
+# Guards:
+# - Never for pull requests: the repo is public, and a fork's code must never
+#   run on the operator's machine (the same rule as ci.yml).
+# - Off until the repo variable APP_TESTS is "on": the runners' machine is
+#   shared with other projects' iOS jobs, and the switch is flipped only once
+#   a load sample shows it can take one simulator. With it unset the job is
+#   skipped, so no runner is used at all.
+# - One app job at a time across the repo (concurrency group app-sim), so one
+#   simulator at a time.
+# - The run waits for the machine's load first (app/scripts/wait-load.sh) and
+#   refuses after 15 minutes, with the figures in the log.
+# - app/scripts/sim-test.sh makes a simulator for the run and deletes it
+#   however the run ends; a new crash report from it fails the job, by name.
+# - A last step fails the job if any simulator or xcodebuild process the job
+#   started is still running.
+name: app-tests
+
+on:
+  workflow_dispatch:
+    inputs:
+      device:
+        description: "iphone or ipad"
+        required: true
+        default: iphone
+  push:
+    branches: [main]
+    paths: ["app/**", ".github/workflows/app-tests.yml"]
+
+concurrency:
+  group: app-sim
+  cancel-in-progress: false
+
+jobs:
+  app-tests:
+    if: github.event_name != 'pull_request' && vars.APP_TESTS == 'on'
+    runs-on: ${{ vars.MAC_RUNNER || 'macos-latest' }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Xcode and the simulator runtime are here
+        run: |
+          xcodebuild -version || { echo "app-tests: no xcodebuild on $RUNNER_NAME" >&2; exit 5; }
+          xcrun simctl list runtimes | grep -q 'iOS 27.0' \
+            || { echo "app-tests: the iOS 27.0 simulator runtime is not installed on $RUNNER_NAME" >&2; exit 5; }
+
+      - name: Wait for the machine's load
+        run: LIMIT=900 app/scripts/wait-load.sh
+
+      - name: Processes before
+        run: pgrep -U "$(id -u)" -x 'xcodebuild|launchd_sim|xctest|simctl' | sort > "$RUNNER_TEMP/before.txt" || true
+
+      - name: Test on a fresh simulator
+        env:
+          INITECH_AGENT: ci-${{ github.run_id }}
+          DEVICE: ${{ github.event.inputs.device || 'iphone' }}
+        run: |
+          case "$DEVICE" in iphone|ipad) ;; *) echo "app-tests: device must be iphone or ipad" >&2; exit 2 ;; esac
+          echo "app-tests: $DEVICE on $RUNNER_NAME, run $GITHUB_RUN_ID"
+          app/scripts/sim-test.sh "$DEVICE" "$RUNNER_TEMP/xcodebuild.log" \
+            -test-timeouts-enabled YES -default-test-execution-time-allowance 300
+          rc=$?
+          grep -E 'Test Case .*(failed|skipped|exceeded)|TEST (SUCCEEDED|FAILED)' "$RUNNER_TEMP/xcodebuild.log" | sort -u
+          echo "passed: $(grep -cE 'Test Case .*passed' "$RUNNER_TEMP/xcodebuild.log")"
+          exit $rc
+
+      - name: No simulator or xcodebuild of this job left
+        if: always()
+        run: |
+          pgrep -U "$(id -u)" -x 'xcodebuild|launchd_sim|xctest|simctl' | sort > "$RUNNER_TEMP/after.txt" || true
+          left=$(comm -13 "$RUNNER_TEMP/before.txt" "$RUNNER_TEMP/after.txt")
+          if [ -n "$left" ]; then
+            echo "app-tests: still running after the job:" >&2
+            for p in $left; do ps -o pid=,comm= -p "$p" >&2; done
+            exit 6
+          fi
+          echo "app-tests: nothing of this job left running"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: app-tests-${{ github.run_id }}
+          path: ${{ runner.temp }}/xcodebuild.log
+          if-no-files-found: ignore

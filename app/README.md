@@ -35,7 +35,24 @@ a pane at a dialog. With `TEST_RUNNER_SHOT_DIR=<dir>` set, it stops at each
 screen until `<dir>/<stop>.done` exists, so `xcrun simctl io <udid>
 screenshot` can take it.
 
-In the initech rig, run tests only through `app/scripts/sim-test.sh` under
+The app's tests run on the Mac runner that CI already uses (`MAC_RUNNER`),
+as the `app-tests` workflow, never on the rig's own Mac when that runner can
+take them:
+
+```bash
+app/scripts/app-tests-run.sh <sha> iphone   # then the same for ipad
+```
+
+It refuses, starting nothing, when no runner with that label is online or the
+repo variable `APP_TESTS` is not `on`; the variable is set only once a load
+sample shows the runner's machine can take one simulator. A run waits for that
+machine's load (`app/scripts/wait-load.sh`, 5-minute load under 30 and
+1-minute under 50, refusing after 15 minutes), runs one device on a fresh
+simulator through `sim-test.sh`, and fails if a crash report names that
+simulator or if any xcodebuild or simulator process it started is still
+running. One app job runs at a time; pull requests never run it.
+
+On this Mac, run tests only through `app/scripts/sim-test.sh` under
 `super/tools/heavy.sh`, one at a time, and never open Simulator.app:
 
 ```bash
