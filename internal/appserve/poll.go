@@ -126,6 +126,8 @@ func (s *Server) Poll() {
 	first := !s.polled
 	s.panes, s.found, s.polled = seen, found, true
 	s.rigs, s.rigsAt = running, s.cfg.Now()
+	close(s.nextPoll)
+	s.nextPoll = make(chan struct{})
 	s.mu.Unlock()
 	if first {
 		close(s.firstPoll)

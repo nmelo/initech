@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"crypto/ecdsa"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -159,24 +160,40 @@ var (
 	appServeAPNsHost   = ""
 )
 
-// appServePushes sends pushes from the feed once the first poll has read the
-// rigs' settings: the apns block, then the key. With either missing or
-// unusable it says so once and the service runs on without pushes.
+// appServePushes sends pushes from the feed once a poll has read the rigs'
+// settings: one apns block, then its key. Until then it says once why not and
+// looks again after every poll; once they load it says where pushes go, and
+// keeps those settings until the next start. A devices file that cannot be
+// read is said once and is final.
 func appServePushes(ctx context.Context, srv *appserve.Server, b *appBackend, errw io.Writer) {
 	select {
 	case <-ctx.Done():
 		return
 	case <-srv.FirstPoll():
 	}
-	cfg, err := b.APNs()
-	if err != nil {
-		fmt.Fprintf(errw, "initech app-serve: no pushes: %v\n", err)
-		return
-	}
-	key, err := appserve.LoadAPNsKey(cfg)
-	if err != nil {
-		fmt.Fprintf(errw, "initech app-serve: no pushes: %v\n", err)
-		return
+	// No block, two different blocks, or a key that does not load is not
+	// final: a first scan held at a permission dialog reads no rig. Say so
+	// once, look again after every poll, and say so once when pushes start.
+	var cfg appserve.APNsConfig
+	var key *ecdsa.PrivateKey
+	said := false
+	for {
+		next := srv.NextPoll()
+		var err error
+		if cfg, err = b.APNs(); err == nil {
+			if key, err = appserve.LoadAPNsKey(cfg); err == nil {
+				break
+			}
+		}
+		if !said {
+			fmt.Fprintf(errw, "initech app-serve: no pushes yet: %v; looking again at each poll\n", err)
+			said = true
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-next:
+		}
 	}
 	if srv.Devices() == nil {
 		fmt.Fprintln(errw, "initech app-serve: no pushes: the devices file could not be read")

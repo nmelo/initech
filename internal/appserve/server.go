@@ -110,6 +110,7 @@ type Server struct {
 	tails     map[string]tailPos       // by rig root and pane; only RunTail's goroutine touches it
 	waiting   map[string][]WaitingBead // by rig root: the beads in waiting_on_nelson at the last bd read
 	firstPoll chan struct{}            // closed when the first poll has finished
+	nextPoll  chan struct{}            // closed when the poll running or next to run finishes, then replaced
 
 	blockersMu   sync.Mutex
 	lastBlockers []byte                  // the list last compared, as JSON; nil before the first
@@ -151,7 +152,7 @@ func New(cfg Config) *Server {
 	if cfg.StuckAfter <= 0 {
 		cfg.StuckAfter = DefaultStuckAfter
 	}
-	s := &Server{cfg: cfg, mux: http.NewServeMux(), statuses: map[string]cachedStatus{}, progressAsked: map[string]cachedProgress{}, tails: map[string]tailPos{}, firstPoll: make(chan struct{}), feed: NewFeed(cfg.Now)}
+	s := &Server{cfg: cfg, mux: http.NewServeMux(), statuses: map[string]cachedStatus{}, progressAsked: map[string]cachedProgress{}, tails: map[string]tailPos{}, firstPoll: make(chan struct{}), nextPoll: make(chan struct{}), feed: NewFeed(cfg.Now)}
 	if cfg.StateDir != "" {
 		if d, err := LoadDevices(cfg.StateDir, cfg.Now); err == nil {
 			s.devices = d
@@ -208,6 +209,16 @@ func (s *Server) digest() ([32]byte, bool) {
 // FirstPoll is closed once the first poll has finished, so the rigs' settings
 // are read.
 func (s *Server) FirstPoll() <-chan struct{} { return s.firstPoll }
+
+// NextPoll is closed when the next poll to finish has finished, so something
+// that reads what a poll found (the rigs' apns settings) can look again after
+// each one. Take it before reading, so a poll that ends during the read is
+// not missed.
+func (s *Server) NextPoll() <-chan struct{} {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.nextPoll
+}
 
 // Devices is the registered device set; nil when it could not be read.
 func (s *Server) Devices() *Devices { return s.devices }

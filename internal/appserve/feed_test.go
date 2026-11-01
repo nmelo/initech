@@ -412,3 +412,34 @@ func TestFeed_ARevokedTokenEndsItsOpenStream(t *testing.T) {
 		})
 	}
 }
+
+// ini-632: NextPoll taken before a poll closes when that poll finishes; one
+// taken after it waits for the next.
+func TestNextPoll_ClosesAtTheEndOfEachPoll(t *testing.T) {
+	b := &fakeBackend{rigs: []Rig{{Name: "alpha", Root: "/r/alpha"}}, panes: map[string][]PaneState{"/r/alpha": {{Name: "eng1"}}}}
+	s := New(Config{Backend: b, HasToken: true})
+	before := s.NextPoll()
+	select {
+	case <-before:
+		t.Fatal("closed before any poll")
+	default:
+	}
+	s.Poll()
+	select {
+	case <-before:
+	default:
+		t.Fatal("not closed by the poll")
+	}
+	after := s.NextPoll()
+	select {
+	case <-after:
+		t.Fatal("a channel taken after the poll is already closed")
+	default:
+	}
+	s.Poll()
+	select {
+	case <-after:
+	default:
+		t.Fatal("not closed by the next poll")
+	}
+}
