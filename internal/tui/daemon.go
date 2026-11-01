@@ -1380,6 +1380,13 @@ func (d *Daemon) handleControlStream(ctrl net.Conn, scanner *bufio.Scanner, peer
 				return
 			}
 
+		case "keystroke":
+			// keystroke host:agent from another machine: one key to this
+			// daemon's own agent, with the local path's verdict and refusals.
+			if !respond(cmd.ID, d.keystrokeControl(cmd)) {
+				return
+			}
+
 		case "peek":
 			p := d.findPane(cmd.Target)
 			if p == nil {

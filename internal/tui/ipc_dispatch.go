@@ -221,6 +221,9 @@ func dispatchIPC(h IPCHost, conn net.Conn, req IPCRequest, rawJSON []byte) {
 	case "dnd":
 		handleIPCDND(h, conn, req)
 
+	case "keystroke":
+		handleIPCKeystroke(h, conn, req)
+
 	default:
 		if !h.HandleExtended(conn, req, rawJSON) {
 			writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("unknown action %q", req.Action)})

@@ -1,0 +1,75 @@
+package cmd
+
+import (
+	"fmt"
+	"io"
+	"strings"
+
+	"github.com/nmelo/initech/internal/tui"
+	"github.com/spf13/cobra"
+)
+
+var keystrokeCmd = &cobra.Command{
+	Use:   "keystroke [host:]<agent> <enter|esc|ctrl-c|y|n>",
+	Short: "Send one key (Enter, Esc, Ctrl-C, y or n) into an agent's pane",
+	Long: `Writes exactly one key into the agent's terminal: enter, esc, ctrl-c, y
+or n. Nothing else is typed: no bracketed paste, no Enter after it, and no
+check of the input box, so Claude Code, Codex and generic agents take it the
+same way. An open dialog does not hold the operator's key (run outside any
+pane): a key is how a dialog is answered, so it goes into whatever is on
+screen. Any other sender's key to an agent with a dialog open is not
+delivered: "a dialog is open; only the operator may answer it".
+
+Prints "key <key> delivered to <agent>", exit 0, once the key has reached
+the agent's terminal. Otherwise nothing is typed and it prints
+"not delivered to <agent>: <reason>", exit 1: an unknown or empty key name,
+an agent that is not found, not running, or suspended (a key never wakes a
+suspended agent), or an agent in do-not-disturb. A key is never queued or
+held for later.
+
+For an agent on another machine use host:agent; that machine's initech
+writes the key and answers.`,
+	Args: cobra.ExactArgs(2),
+	RunE: runKeystroke,
+}
+
+func init() {
+	rootCmd.AddCommand(keystrokeCmd)
+}
+
+func runKeystroke(cmd *cobra.Command, args []string) error {
+	target := args[0]
+	var host string
+	if idx := strings.Index(target, ":"); idx >= 0 {
+		host, target = target[:idx], target[idx+1:]
+	}
+	cmd.SilenceUsage, cmd.SilenceErrors = true, true
+	return keystrokeAgent(cmd.ErrOrStderr(), target, host, args[1], false)
+}
+
+// keystrokeAgent is initech keystroke after argument parsing. A key name
+// outside the table is refused here, before anything reaches the TUI.
+func keystrokeAgent(w io.Writer, target, host, key string, urgent bool) error {
+	name := target
+	if host != "" {
+		name = host + ":" + target
+	}
+	if !tui.KeystrokeKnown(key) {
+		return fmt.Errorf("not delivered to %s: %s", name, tui.KeystrokeUnknownReason(key))
+	}
+	resp, err := ipcCall(tui.IPCRequest{Action: "keystroke", Target: target, Host: host, Text: key, Urgent: urgent})
+	if err != nil {
+		return err
+	}
+	if !resp.OK {
+		if strings.HasPrefix(resp.Error, "unknown action") {
+			return fmt.Errorf("not delivered to %s: older initech running; restart it for keystroke", name)
+		}
+		return fmt.Errorf("not delivered to %s: %s", name, resp.Error)
+	}
+	if resp.Delivery != tui.DeliveryDelivered {
+		return fmt.Errorf("not delivered to %s: unexpected verdict %q", name, resp.Delivery)
+	}
+	fmt.Fprintf(w, "key %s delivered to %s\n", key, name)
+	return nil
+}

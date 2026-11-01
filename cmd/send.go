@@ -139,6 +139,7 @@ var deliveryEffectActions = map[string]bool{
 	"stop":          true,
 	"quit":          true,
 	"interrupt":     true,
+	"keystroke":     true,
 	"bead":          true,
 	"start":         true,
 	"add":           true,
@@ -505,9 +506,10 @@ func sendFrom() string {
 	return tui.OperatorSender
 }
 
-// stampSender names the sender on a send that does not already name one.
+// stampSender names the sender on a send or a keystroke that does not
+// already name one.
 func stampSender(req tui.IPCRequest) tui.IPCRequest {
-	if req.Action == "send" && req.From == "" {
+	if (req.Action == "send" || req.Action == "keystroke") && req.From == "" {
 		req.From = sendFrom()
 	}
 	return req
