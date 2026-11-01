@@ -38,6 +38,7 @@ final class FixtureServer: @unchecked Sendable {
     private var _requests: [Request] = []
     private var _feedsPaused = false
     private var _rawGET: [String: Data] = [:] // "blockers" -> the JSON GET /v1/blockers answers
+    private var _rawPages: [String: [String: Data]] = [:] // "rig/pane" -> ?before value ("" for none) -> page JSON
 
     var pairing: Pairing { Pairing(host: "127.0.0.1", port: Int(port), token: token, fingerprint: fingerprint) }
 
@@ -130,6 +131,14 @@ final class FixtureServer: @unchecked Sendable {
     /// setRawGET makes GET /v1/<name> answer this JSON; for a route whose shape
     /// the test target does not compile. Until it is set, the route is a 404.
     func setRawGET(_ name: String, _ json: String) { locked { _rawGET[name] = Data(json.utf8) } }
+
+    /// servePages makes GET /v1/conversation/<rig>/<pane> answer the service's
+    /// own page JSON (the contract fixtures), chosen by the ?before value the
+    /// app sends: "" for none, otherwise the cursor exactly as given. A cursor
+    /// with no page is a 400, as the service answers a bad before.
+    func servePages(rig: String, pane: String, _ byBefore: [String: Data]) {
+        locked { _rawPages["\(rig)/\(pane)"] = byBefore }
+    }
 
     /// emit records a feed event and writes it to every open feed.
     @discardableResult
@@ -235,6 +244,10 @@ final class FixtureServer: @unchecked Sendable {
             guard let p = try? JSONDecoder.service.decode([Pin].self, from: r.body) else { return respond(c, 400) }
             pins = p
             respond(c, 204)
+        case ("GET", "conversation") where parts.count == 4 && locked({ _rawPages["\(parts[2])/\(parts[3])"] }) != nil:
+            let byBefore = locked { _rawPages["\(parts[2])/\(parts[3])"] } ?? [:]
+            guard let page = byBefore[r.query["before"] ?? ""] else { return respond(c, 400) }
+            respond(c, 200, page)
         case ("GET", "conversation") where parts.count == 4:
             let pages = locked { _pages["\(parts[2])/\(parts[3])"] } ?? [Conversation(session: nil, messages: [], startReached: true, before: 0)]
             // ?before=0 or none is the newest page, as on the service.

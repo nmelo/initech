@@ -56,19 +56,24 @@ process there is named as a warning: nobody sits at that machine), or if any
 xcodebuild or simulator process it started is still running. One simulator
 runs on that machine at a time; pull requests never run it.
 
-On this Mac, run tests only through `app/scripts/sim-test.sh` under
-`super/tools/heavy.sh`, one at a time, and never open Simulator.app:
+The shared Mac runs no simulator and no test binary that opens a server:
+both run on the runner's machine only, through the job above. A new binary
+that listens, even on the loopback (FixtureServer, a harness built with
+`swiftc`), can make macOS ask the person at the screen whether it may use the
+local network, and on the shared Mac that question lands on the operator's
+screen. Here, compile only, under `super/tools/heavy.sh`:
 
 ```bash
-~/Desktop/Projects/initech/super/tools/heavy.sh app/scripts/sim-test.sh iphone /tmp/run.log
+~/Desktop/Projects/initech/super/tools/heavy.sh xcodebuild build-for-testing -project InitechApp.xcodeproj \
+  -scheme InitechApp -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO
 ```
 
-It creates a simulator for that run alone, runs `xcodebuild test` on it with
-`-parallel-testing-enabled NO`, then shuts it down and deletes it, however the
-run ends. A simulator kept between runs carries its state, and one such
-device crashed PosterBoard at every boot. On this Mac any new crash report
-from the run's device fails the run with exit 9 (`CRASH_FATAL=all`, the
-default): stop and tell super.
+`sim-test.sh` creates a simulator for one run alone, runs `xcodebuild test` on
+it with `-parallel-testing-enabled NO`, then shuts it down and deletes it,
+however the run ends. A simulator kept between runs carries its state, and one
+such device crashed PosterBoard at every boot. A new crash report from the
+run's device fails the run with exit 9 (`CRASH_FATAL=all`, the default; the
+job sets `ui`, as above).
 
 ## A TestFlight build
 
