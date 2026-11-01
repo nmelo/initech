@@ -13,8 +13,11 @@
 #   skipped, so no runner is used at all.
 # - One app job at a time across the repo (concurrency group app-sim), so one
 #   simulator at a time.
-# - The run waits for the machine's load first (app/scripts/wait-load.sh) and
-#   refuses after 15 minutes, with the figures in the log.
+# - The job waits at the shared load gate first (.github/actions/load-gate,
+#   with simulators): while the host's 5-minute load is over 6, during the
+#   other project's nightly window, and while any simulator is booted there by
+#   anyone; after 20 minutes it runs with a warning. The job's timeout allows
+#   that wait; the run itself stays bounded by sim-test.sh (18 minutes).
 # - app/scripts/sim-test.sh makes a simulator for the run and deletes it
 #   however the run ends; a new crash report from it fails the job, by name.
 # - A last step fails the job if any simulator or xcodebuild process the job
@@ -40,7 +43,7 @@ jobs:
   app-tests:
     if: github.event_name != 'pull_request' && vars.APP_TESTS == 'on'
     runs-on: ${{ vars.MAC_RUNNER || 'macos-latest' }}
-    timeout-minutes: 20
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v5
 
@@ -50,8 +53,14 @@ jobs:
           xcrun simctl list runtimes | grep -q 'iOS 27.0' \
             || { echo "app-tests: the iOS 27.0 simulator runtime is not installed on $RUNNER_NAME" >&2; exit 5; }
 
-      - name: Wait for the machine's load
-        run: LIMIT=900 app/scripts/wait-load.sh
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Wait for the shared Mac host (load gate)
+        uses: ./.github/actions/load-gate
+        with:
+          simulators: "true"
 
       - name: Processes before
         run: pgrep -U "$(id -u)" -x 'xcodebuild|launchd_sim|xctest|simctl' | sort > "$RUNNER_TEMP/before.txt" || true
