@@ -248,8 +248,8 @@ func TestRefreshStableCopy_ARefusedBuildKeepsThePreviousCopy(t *testing.T) {
 			if !strings.Contains(string(b), relVersion) || !strings.Contains(string(b), "keeps the build it has") {
 				t.Errorf("log %q", b)
 			}
-			if fi, _ := os.Stat(filepath.Join(r.dir(), RefreshLog)); fi.Mode().Perm() != 0o600 {
-				t.Errorf("log mode %o, want 600", fi.Mode().Perm())
+			if fi, err := os.Stat(filepath.Join(r.dir(), RefreshLog)); err != nil || fi.Mode().Perm() != 0o600 {
+				t.Errorf("the refresh log: %v, want a file of mode 600", err)
 			}
 		})
 	}
