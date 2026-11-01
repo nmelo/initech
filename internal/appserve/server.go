@@ -91,8 +91,9 @@ type Server struct {
 	cfg Config
 	mux *http.ServeMux
 
-	feed   *Feed
-	pinsMu sync.Mutex // one PUT /v1/pins at a time
+	feed    *Feed
+	pinsMu  sync.Mutex // one PUT /v1/pins at a time
+	devices *Devices   // nil when the state folder's devices file cannot be read
 
 	mu       sync.Mutex
 	rigs     []Rig
@@ -149,6 +150,13 @@ func New(cfg Config) *Server {
 		cfg.StuckAfter = DefaultStuckAfter
 	}
 	s := &Server{cfg: cfg, mux: http.NewServeMux(), statuses: map[string]cachedStatus{}, progressAsked: map[string]cachedProgress{}, tails: map[string]tailPos{}, feed: NewFeed(cfg.Now)}
+	if cfg.StateDir != "" {
+		if d, err := LoadDevices(cfg.StateDir, cfg.Now); err == nil {
+			s.devices = d
+		} else if cfg.OnStuck != nil {
+			cfg.OnStuck("initech app-serve: devices not read, no pushes: " + err.Error())
+		}
+	}
 	s.mux.HandleFunc("GET /v1/rigs", s.handleRigs)
 	s.mux.HandleFunc("GET /v1/status", s.handleStatus)
 	s.mux.HandleFunc("GET /v1/status/{rig}", s.handleRigStatus)
@@ -158,6 +166,8 @@ func New(cfg Config) *Server {
 	s.mux.HandleFunc("GET /v1/blockers", s.handleBlockers)
 	s.mux.HandleFunc("GET /v1/progress", s.handleProgress)
 	s.mux.HandleFunc("GET /v1/progress/{rig}", s.handleRigProgress)
+	s.mux.HandleFunc("PUT /v1/devices", s.handlePutDevice)
+	s.mux.HandleFunc("DELETE /v1/devices/{token}", s.handleDeleteDevice)
 	s.mux.HandleFunc("GET /v1/pins", s.handleGetPins)
 	s.mux.HandleFunc("PUT /v1/pins", s.handlePutPins)
 	s.mux.HandleFunc("GET /v1/feed", func(w http.ResponseWriter, r *http.Request) {
