@@ -309,6 +309,7 @@ type Pane struct {
 	sessionSince     time.Time // The timestamp of the first entry carrying sessionID.
 	beadStale        bool      // bd did not answer the last poll; the derived bead is the last one known.
 	paceLine         string    // The header line of the pane's effort (ini-y0n.2), set once a minute; "" for none.
+	headerInset      int       // Columns of the top edge the project badge covers (main loop only); the line starts after them.
 	lastAnswer       []bdBead  // The role's in_progress beads at the last poll bd answered; a clear re-derives from it.
 	answeredOnce     bool      // A poll has been answered here (or carried by a restart); lastAnswer is bd's word.
 	// Unattributed work (ini-wra.3): working time with no bead, counted on the

@@ -162,6 +162,7 @@ func (t *TUI) renderFrame() {
 	shown := make(map[PaneView]*shownCells, len(t.plan.Panes))
 	var bodies, chromes []string
 	now := frameClock()
+	badgeEnd := t.projectBadgeEnd()
 	for i, pr := range t.plan.Panes {
 		LogDebug("render", "drawing pane", "frame", t.renderCount, "idx", i, "name", pr.Pane.Name(), "host", pr.Pane.Host())
 		sel := t.selectionForPane(pr.Pane)
@@ -173,6 +174,9 @@ func (t *TUI) renderFrame() {
 		paneChanged := paneChangedForFrame(t.lastDrawn, nextDrawn, pr, sel, pinned, hold)
 		if paneChanged {
 			changed[pk] = true
+		}
+		if lp, ok := pr.Pane.(*Pane); ok {
+			lp.setHeaderInset(headerInsetFor(lp.GetRegion(), badgeEnd))
 		}
 		cells := t.shown[pr.Pane]
 		if cells == nil {
@@ -1372,9 +1376,30 @@ func planPaneSet(plan RenderPlan) string {
 // renders whether or not the overlay is visible — it exists precisely for the
 // overlay-hidden case, as the orientation cue between many project windows.
 func (t *TUI) renderProjectBadge() {
-	if t.projectName == "" || t.screen == nil {
+	if t.screen == nil {
 		return
 	}
+	for _, c := range t.projectBadgeCells() {
+		t.screen.SetContent(c.x, 0, c.ch, nil, c.style)
+	}
+}
+
+// badgeCell is one cell of the project badge on row 0.
+type badgeCell struct {
+	x     int
+	ch    rune
+	style tcell.Style
+}
+
+// projectBadgeCells lays out the project badge and its unread count on row
+// 0, from column 0. One layout for drawing and measuring it, so a pane's
+// effort line on the same row starts after it (ini-y0n.2) and the two can
+// never disagree about where it ends.
+func (t *TUI) projectBadgeCells() []badgeCell {
+	if t.projectName == "" || t.screen == nil {
+		return nil
+	}
+	var cells []badgeCell
 	style := tcell.StyleDefault.Background(tcell.ColorDodgerBlue).Foreground(tcell.ColorBlack).Bold(true)
 	label := " " + t.projectName + " "
 	sw, _ := t.screen.Size()
@@ -1389,7 +1414,7 @@ func (t *TUI) renderProjectBadge() {
 		if col+w > sw {
 			break
 		}
-		t.screen.SetContent(col, 0, ch, nil, style)
+		cells = append(cells, badgeCell{col, ch, style})
 		col += w
 	}
 
@@ -1409,10 +1434,21 @@ func (t *TUI) renderProjectBadge() {
 			if col+w > sw {
 				break
 			}
-			t.screen.SetContent(col, 0, ch, nil, countStyle)
+			cells = append(cells, badgeCell{col, ch, countStyle})
 			col += w
 		}
 	}
+	return cells
+}
+
+// projectBadgeEnd is the first column after the project badge on row 0; 0
+// when there is none.
+func (t *TUI) projectBadgeEnd() int {
+	end := 0
+	for _, c := range t.projectBadgeCells() {
+		end = c.x + runewidth.RuneWidth(c.ch)
+	}
+	return end
 }
 
 // inboxUnreadForBadge is the corner count. Reads the store directly so the

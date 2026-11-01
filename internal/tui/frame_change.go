@@ -76,6 +76,7 @@ type ribbonLook struct {
 	style           tcell.Style
 	tag             string
 	header          string // the effort's pace on the top edge (ini-y0n.2)
+	headerInset     int    // the top edge columns the project badge covers
 	bead, beadTitle string
 	running         bool
 }

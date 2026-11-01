@@ -119,7 +119,7 @@ func (p *Pane) chromeLook(focused bool, index int) (ribbonLook, tcell.Color) {
 		// Fifteen minutes of work with no bead (ini-wra.3).
 		beadLabel = noBeadLabel
 	}
-	return ribbonLook{title: title, style: titleStyle, tag: pendingTag(p) + backgroundTag(p), header: p.PaceLine(), bead: beadLabel, beadTitle: beadTitle, running: running}, tint
+	return ribbonLook{title: title, style: titleStyle, tag: pendingTag(p) + backgroundTag(p), header: p.PaceLine(), headerInset: p.HeaderInset(), bead: beadLabel, beadTitle: beadTitle, running: running}, tint
 }
 
 // drawChrome draws the chrome from its look alone.
@@ -128,7 +128,7 @@ func (p *Pane) drawChrome(s *clampedScreen, r Region, look ribbonLook) {
 
 	// Top edge at r.Y. Drawn before content so it is always present even
 	// when content rendering is suppressed during resize settling.
-	drawTopEdge(s, r, look.header)
+	drawTopEdge(s, r, look.header, look.headerInset)
 	p.noteChrome(look)
 }
 
@@ -293,8 +293,10 @@ func (p *Pane) renderContent(s *clampedScreen, cr Region, e *vt.Emulator, focuse
 //
 // header, when set, is the pane's effort pace (ini-y0n.2), written over the
 // line from its second cell, "─ ini-wra 2/4 · 1/h · 0 stuck ─", and cut at
-// the pane's edge, so a narrow pane keeps the effort's name.
-func drawTopEdge(s *clampedScreen, r Region, header string) {
+// the pane's edge, so a narrow pane keeps the effort's name. inset is the
+// columns at the edge's start that the project badge covers (the leftmost
+// pane on the top row): the line starts one cell after them.
+func drawTopEdge(s *clampedScreen, r Region, header string, inset int) {
 	style := tcell.StyleDefault.Foreground(tcell.NewRGBColor(35, 35, 35))
 	for x := r.X; x < r.X+r.W; x++ {
 		s.SetContent(x, r.Y, '─', nil, style)
@@ -302,7 +304,7 @@ func drawTopEdge(s *clampedScreen, r Region, header string) {
 	if header == "" {
 		return
 	}
-	x := r.X + 1
+	x := r.X + inset + 1
 	for _, ch := range " " + header + " " {
 		if x >= r.X+r.W {
 			break
@@ -321,6 +323,28 @@ func (p *Pane) PaceLine() string {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.paceLine
+}
+
+// HeaderInset is the columns of the pane's top edge the project badge covers.
+func (p *Pane) HeaderInset() int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.headerInset
+}
+
+func (p *Pane) setHeaderInset(n int) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.headerInset = n
+}
+
+// headerInsetFor is how many of region r's top-edge columns the project
+// badge, ending at column badgeEnd on screen row 0, covers.
+func headerInsetFor(r Region, badgeEnd int) int {
+	if r.Y != 0 || badgeEnd <= r.X {
+		return 0
+	}
+	return badgeEnd - r.X
 }
 
 func (p *Pane) setPaceLine(line string) {
