@@ -9,12 +9,14 @@ struct RigBlockers: Codable, Equatable, Sendable {
     var quiet: Bool
 }
 
-/// WaitingItem is one ▶ line of a super's footer. recommendation is "" when
-/// the reply that carried it gives none.
+/// WaitingItem is one item waiting on Nelson. recommendation is "" when there
+/// is none. bead is the bead waiting on him, when the item is one; pane is
+/// then its assignee ("" when it has none) and text its title.
 struct WaitingItem: Codable, Equatable, Hashable, Sendable {
     var pane: String
     var text: String
     var recommendation: String
+    var bead: String?
 }
 
 /// StuckPane is a pane that cannot act, with the reason in plain words.
@@ -37,14 +39,17 @@ struct BlockerRow: Identifiable, Equatable, Sendable {
     enum Kind: Equatable, Sendable { case waiting, stuck, quiet }
     var kind: Kind
     var rig: String
-    /// pane is the pane a tap opens; nil for a quiet row.
+    /// pane is the pane a tap opens; nil for a quiet row and for a waiting
+    /// bead nobody is assigned.
     var pane: String?
     var title: String
     /// detail is the recommendation of a waiting item, or the reason of a
     /// stuck pane; nil when there is none.
     var detail: String?
+    /// bead is the waiting bead's id, when the row is one.
+    var bead: String? = nil
 
-    var id: String { "\(rig)/\(kind)/\(pane ?? "")/\(title)" }
+    var id: String { "\(rig)/\(kind)/\(bead ?? "")/\(pane ?? "")/\(title)" }
 }
 
 /// BlockerSection is one rig in the blockers list.
@@ -96,8 +101,9 @@ final class BlockersModel: ObservableObject {
     nonisolated static func sections(_ rigs: [RigBlockers]) -> [BlockerSection] {
         rigs.map { r in
             var rows: [BlockerRow] = r.waiting.map {
-                BlockerRow(kind: .waiting, rig: r.rig, pane: $0.pane, title: $0.text,
-                           detail: $0.recommendation.isEmpty ? nil : $0.recommendation)
+                BlockerRow(kind: .waiting, rig: r.rig, pane: $0.pane.isEmpty ? nil : $0.pane, title: $0.text,
+                           detail: $0.recommendation.isEmpty ? nil : $0.recommendation,
+                           bead: $0.bead.flatMap { $0.isEmpty ? nil : $0 })
             }
             rows += r.stuck.map {
                 BlockerRow(kind: .stuck, rig: r.rig, pane: $0.pane, title: $0.pane, detail: $0.reason)

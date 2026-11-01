@@ -4,10 +4,29 @@ import SwiftUI
 /// stuck panes, or one quiet row. Tapping an item opens its pane.
 struct BlockersView: View {
     @ObservedObject var blockers: BlockersModel
+    /// focus is the rig and bead a tapped push names: the list scrolls to the
+    /// bead's row while it is listed, else to the rig.
+    var focus: BlockerFocus? = nil
     /// open opens a pane, given its rig and name (HomeModel.open).
     var open: (_ rig: String, _ pane: String) -> Void
 
     var body: some View {
+        ScrollViewReader { proxy in
+            list
+                .onChange(of: ScrollKey(focus: focus, sections: blockers.sections), initial: true) { _, key in
+                    guard let target = key.target else { return }
+                    proxy.scrollTo(target, anchor: .center)
+                    // A scroll while the sheet is still sliding up can be
+                    // dropped; once more after the presentation settles.
+                    Task {
+                        try? await Task.sleep(for: .milliseconds(500))
+                        proxy.scrollTo(target, anchor: .center)
+                    }
+                }
+        }
+    }
+
+    private var list: some View {
         List {
             if blockers.loaded && blockers.sections.isEmpty {
                 Text("No rig is running.")
@@ -19,7 +38,7 @@ struct BlockersView: View {
             ForEach(blockers.sections) { section in
                 Section(section.rig) {
                     ForEach(section.rows) { row in
-                        BlockerRowView(row: row, open: open)
+                        BlockerRowView(row: row, open: open).id(row.id)
                     }
                 }
             }
@@ -27,6 +46,26 @@ struct BlockersView: View {
         .navigationTitle("Blockers")
         .refreshable { await blockers.reload() }
         .task { await blockers.reload() }
+    }
+}
+
+/// BlockerFocus is the rig and bead of a tapped waiting-on-Nelson push.
+struct BlockerFocus: Equatable, Sendable {
+    var rig: String
+    var bead: String
+}
+
+/// ScrollKey is what the list scrolls by: the focus, and the rows as they
+/// stand, so a focus set before the list loads still scrolls once it does.
+struct ScrollKey: Equatable {
+    var focus: BlockerFocus?
+    var sections: [BlockerSection]
+
+    /// target is the focused bead's row while listed, else the rig's first
+    /// row; nil with no focus or no such rig.
+    var target: String? {
+        guard let focus, let section = sections.first(where: { $0.rig == focus.rig }) else { return nil }
+        return (section.rows.first { $0.bead == focus.bead } ?? section.rows.first)?.id
     }
 }
 
@@ -41,7 +80,9 @@ struct BlockerRowView: View {
             // all, even over .primary. The shape keeps the whole row tappable.
             Button { open(row.rig, pane) } label: { content.contentShape(Rectangle()) }
                 .buttonStyle(.plain)
-                .accessibilityIdentifier("blocker-\(row.rig)-\(pane)")
+                .accessibilityIdentifier(row.bead.map { "waiting-\(row.rig)-\($0)" } ?? "blocker-\(row.rig)-\(pane)")
+        } else if let bead = row.bead {
+            content.accessibilityIdentifier("waiting-\(row.rig)-\(bead)")
         } else {
             content.accessibilityIdentifier("blocker-quiet-\(row.rig)")
         }

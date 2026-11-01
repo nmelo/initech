@@ -273,6 +273,11 @@ func TestAppContract_FixturesAreWhatTheServiceWrites(t *testing.T) {
 	got["send"] = call("POST", "/v1/send/demo/eng1", `{"text":"ship it","enter":true}`)
 	got["keys"] = call("POST", "/v1/keys/demo/super", `{"key":"enter"}`)
 	got["devices-put"] = call("PUT", "/v1/devices", `{"token":"`+strings.Repeat("ab", 32)+`"}`)
+	// The two pushes as Sender.Push puts them on the wire (json.Marshal of the
+	// payload): the app routes a tap, and decides the foreground banner, from
+	// these. The bead is the one the blockers fixture lists.
+	got["push-pane"], _ = json.Marshal(appserve.NewPayload("demo", "eng1", "stuck"))
+	got["push-bead"], _ = json.Marshal(appserve.NewBeadPayload("demo", "fx-1"))
 
 	// The changes every feed event announces: eng1 stops at a dialog, a bead
 	// enters waiting_on_nelson (and so the blockers list changes), and eng1's

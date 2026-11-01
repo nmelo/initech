@@ -6,15 +6,20 @@ import UIKit
 struct MainView: View {
     @StateObject var home: HomeModel
     @ObservedObject var push: PushRegistrar
+    @ObservedObject var inbox: PushInbox
     let forget: () -> Void
     @State private var showRigs = false
     @State private var showBlockers = false
     @State private var showProgress = false
     @State private var showAbout = false
+    @State private var blockersFocus: BlockerFocus?
+    /// opened is false until home's first reload, before which a tap that
+    /// opened the app cannot tell a running pane from a gone one.
+    @State private var opened = false
 
     var body: some View {
         NavigationSplitView {
-            HomeList(home: home, push: push, showRigs: $showRigs)
+            HomeList(home: home, push: push, inbox: inbox, showRigs: $showRigs)
                 .navigationTitle("Panes")
                 .toolbar {
                     ToolbarItem(placement: .topBarLeading) { EditButton() }
@@ -43,7 +48,7 @@ struct MainView: View {
             NavigationStack { RigsView(home: home) }
         }
         .sheet(isPresented: $showBlockers) {
-            NavigationStack { BlockersScreen(home: home) }
+            NavigationStack { BlockersScreen(home: home, focus: blockersFocus, arrived: inbox.arrived) }
         }
         .sheet(isPresented: $showProgress) {
             NavigationStack { ProgressScreen(home: home) }
@@ -54,7 +59,14 @@ struct MainView: View {
         .task {
             await home.reload()
             home.startFeed()
+            opened = true
+            if let route = inbox.tapped { await open(route) }
         }
+        .onChange(of: inbox.tapped) { _, route in
+            if opened, let route { Task { await open(route) } }
+        }
+        .onChange(of: inbox.arrived) { Task { await home.reload() } }
+        .onChange(of: screen, initial: true) { _, now in inbox.onScreen = now }
         .onDisappear { home.stopFeed() }
         .alert("Pair again", isPresented: .constant(home.needsPairing)) {
             Button("Pair") { forget() }
@@ -64,10 +76,48 @@ struct MainView: View {
     }
 }
 
+extension MainView {
+    /// screen is what is on screen for the push rule: a sheet over
+    /// everything, else the open pane.
+    var screen: OnScreen {
+        if showBlockers { return .waitingList }
+        if showRigs || showProgress || showAbout { return .other }
+        return home.selection.map { .pane($0) } ?? .other
+    }
+
+    /// open takes the app where a tapped push says: the pane, or home with one
+    /// line when the pane is gone; Blockers at the rig for a bead; home for a
+    /// push with no data.
+    func open(_ route: PushRoute) async {
+        inbox.tapped = nil
+        showRigs = false
+        showProgress = false
+        showAbout = false
+        switch route {
+        case .home:
+            showBlockers = false
+            home.selection = nil
+        case .pane(let ref):
+            showBlockers = false
+            if !home.hasPane(ref) { await home.reload() }
+            if home.hasPane(ref) {
+                home.open(ref)
+            } else {
+                home.selection = nil
+                inbox.notice = "\(ref.pane) is no longer running in \(ref.rig)."
+            }
+        case let .bead(rig, bead):
+            blockersFocus = BlockerFocus(rig: rig, bead: bead)
+            showBlockers = true
+        }
+    }
+}
+
 /// HomeList is his pinned panes in his order; rename by swipe, reorder in edit mode.
 struct HomeList: View {
     @ObservedObject var home: HomeModel
     @ObservedObject var push: PushRegistrar
+    @ObservedObject var inbox: PushInbox
     @Binding var showRigs: Bool
     @State private var renaming: PaneRow?
     @State private var newName = ""
@@ -79,6 +129,10 @@ struct HomeList: View {
             }
             if let line = push.line {
                 PushLineView(line: line)
+            }
+            if let notice = inbox.notice {
+                Text(notice).font(.footnote).foregroundStyle(.secondary)
+                    .accessibilityIdentifier("push-notice")
             }
             if home.showsNoPinsLine {
                 Button("No pinned panes yet. Pin one from Rigs.") { showRigs = true }

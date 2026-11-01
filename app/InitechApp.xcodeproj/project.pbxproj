@@ -10,6 +10,7 @@
 		0FAB0F046DB478AE084B3200 /* feed-stuck.json in Resources */ = {isa = PBXBuildFile; fileRef = D8E4748A0B6538C9AC429AD6 /* feed-stuck.json */; };
 		1070815A259D1E1A5F5492E6 /* PairingStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = EBF1B0563C039519DA1FBAFF /* PairingStore.swift */; };
 		1BAA45A31C6655F8669686FE /* Log.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C3E862B677A6F9D41C85D1F /* Log.swift */; };
+		203C5150BE5DAF85E9C1631E /* push-pane.json in Resources */ = {isa = PBXBuildFile; fileRef = 0CE28320A41CC2F648313508 /* push-pane.json */; };
 		22E84A939649827F01F2684B /* feed-pane_state.json in Resources */ = {isa = PBXBuildFile; fileRef = E18FE5E3D891E020F83FE3BB /* feed-pane_state.json */; };
 		24750DD1B4DD9C35F9E16E95 /* BlockersModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 141131EF2DD5FEE337187AD3 /* BlockersModelTests.swift */; };
 		27543E74C4DEFA8E45464E76 /* progress-rig.json in Resources */ = {isa = PBXBuildFile; fileRef = 6545B88FAFA9E85A885392AA /* progress-rig.json */; };
@@ -20,6 +21,7 @@
 		3143849633B5CCDC67ECB10B /* ScreenshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F6B44C43A26A6F70FCF033B /* ScreenshotTests.swift */; };
 		39E88FB80C949C1AD8CBE483 /* BuildInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = C279EBB3EEACABD81ACE0EBE /* BuildInfo.swift */; };
 		3B71EA093E888A1CE3B0A06A /* PaneModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7EE12E10FEBB62BEC8DAAF65 /* PaneModelTests.swift */; };
+		3F7DE68DA9AB0DFCEC4D1451 /* push-bead.json in Resources */ = {isa = PBXBuildFile; fileRef = 1B1B76910DE131E4477D6D4E /* push-bead.json */; };
 		40E7FF7EA5D5C02FA1140670 /* BlockersModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10D5A8C8CF2881FB2236459D /* BlockersModel.swift */; };
 		4105D03A5F3200C5D99BAC79 /* status-rig.json in Resources */ = {isa = PBXBuildFile; fileRef = 57BBEBB514D72EB19F907C56 /* status-rig.json */; };
 		4CAE43B175972AC6DAB00F4F /* conversation-page-2.json in Resources */ = {isa = PBXBuildFile; fileRef = F106C797981DFA544C47096B /* conversation-page-2.json */; };
@@ -40,6 +42,7 @@
 		7C9EED75881678B3BDE815B6 /* OperatorScreensTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BAD504231BC2B5E64665002 /* OperatorScreensTests.swift */; };
 		7DBE242BC65500EEAF05660A /* FixtureServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7B4D274B41C77005FCB4951 /* FixtureServer.swift */; };
 		81179ABE488B00B0312D56B4 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93051BAD3626304FE12B85BC /* Models.swift */; };
+		8385317283AFB68938476CFA /* PushRoute.swift in Sources */ = {isa = PBXBuildFile; fileRef = 934777A3DD77F708BBB96A2A /* PushRoute.swift */; };
 		84F0874E6D24D561BB80BC36 /* LiveServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38311B4C974E91A7AF9834C0 /* LiveServiceTests.swift */; };
 		85936F32C4084107557397A3 /* feed-reset.json in Resources */ = {isa = PBXBuildFile; fileRef = 3D71AB446543F331F8F9B2E3 /* feed-reset.json */; };
 		8760144F04AED9057D821D6D /* HomeModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A282C9D0B4542CD0C2D4AD1C /* HomeModelTests.swift */; };
@@ -63,6 +66,7 @@
 		DB1FE079C32E3E19BD5580A8 /* feed-transcript.json in Resources */ = {isa = PBXBuildFile; fileRef = 11C9B47FDBBF7F33F1DFDC67 /* feed-transcript.json */; };
 		DDDE72D924802323C4B8A020 /* PushRegistrarTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42DA776732F9FCA3FB2ED17D /* PushRegistrarTests.swift */; };
 		DF952F1CED653D0BD4EC56CA /* blockers.json in Resources */ = {isa = PBXBuildFile; fileRef = 2F95958437420FF2A2A7F734 /* blockers.json */; };
+		E26719F8ECF31A7BCEA60714 /* PushTapUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17CD690DC1B27DC1AACBC7CA /* PushTapUITests.swift */; };
 		E8CD411447E065872C08A1B1 /* OperatorScreens.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C4A3801D442302B722CA33A /* OperatorScreens.swift */; };
 		EC4464F05F24EC42C4B4DBFE /* conversation-page-3.json in Resources */ = {isa = PBXBuildFile; fileRef = A2FF6CC33FEF9CD0FF22CB0C /* conversation-page-3.json */; };
 		ED99CBF96801ED11252F0E12 /* BlockersView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 666FD729244613CF6E86345D /* BlockersView.swift */; };
@@ -70,6 +74,7 @@
 		F21D7B4DE2BF7A525CCBB046 /* pins.json in Resources */ = {isa = PBXBuildFile; fileRef = 581E4FF2F0E09E47E97E6AD8 /* pins.json */; };
 		F229D08EA6EC0CC2F4755CF8 /* devices-put.json in Resources */ = {isa = PBXBuildFile; fileRef = 433D0F22C6C0914DEA8D1554 /* devices-put.json */; };
 		F5027582EA43711603E42F43 /* Pairing.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F0C8C6A411B9F13BD5F6987 /* Pairing.swift */; };
+		F9340CE4EE6DEDCD61559690 /* PushRouteTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF47256DDF89B763C9624D69 /* PushRouteTests.swift */; };
 		FB47B54BA57D81C2C70C5502 /* ServiceClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB189FF009C5D6B4E1735478 /* ServiceClient.swift */; };
 		FBB3609DBA918383A9D51E2A /* conversation-page-1.json in Resources */ = {isa = PBXBuildFile; fileRef = 6DA431684772BA3BA75B621C /* conversation-page-1.json */; };
 		FC7FA69B8F7682AA0435FF3D /* AboutView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC1A9C6BFFF8556E5AC5F858 /* AboutView.swift */; };
@@ -96,11 +101,14 @@
 /* Begin PBXFileReference section */
 		03B27EFEDFF80711F04B50F0 /* PaneFlowUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaneFlowUITests.swift; sourceTree = "<group>"; };
 		08612C6B0EEC57AB3F1801AA /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		0CE28320A41CC2F648313508 /* push-pane.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "push-pane.json"; sourceTree = "<group>"; };
 		0DD99BD2396715324CE7297D /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
 		10D5A8C8CF2881FB2236459D /* BlockersModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlockersModel.swift; sourceTree = "<group>"; };
 		11C9B47FDBBF7F33F1DFDC67 /* feed-transcript.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "feed-transcript.json"; sourceTree = "<group>"; };
 		141131EF2DD5FEE337187AD3 /* BlockersModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlockersModelTests.swift; sourceTree = "<group>"; };
+		17CD690DC1B27DC1AACBC7CA /* PushTapUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushTapUITests.swift; sourceTree = "<group>"; };
 		1A4E60E0BF81FC9AD90D324C /* InitechAppUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = InitechAppUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		1B1B76910DE131E4477D6D4E /* push-bead.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "push-bead.json"; sourceTree = "<group>"; };
 		2DF1A52E1AA6AD143C33B281 /* InitechApp.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = InitechApp.entitlements; sourceTree = "<group>"; };
 		2F0C8C6A411B9F13BD5F6987 /* Pairing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Pairing.swift; sourceTree = "<group>"; };
 		2F95958437420FF2A2A7F734 /* blockers.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = blockers.json; sourceTree = "<group>"; };
@@ -135,6 +143,7 @@
 		8B272B5DB2C3178712A3DC43 /* AppLockTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLockTests.swift; sourceTree = "<group>"; };
 		926BB43F5DEAA400A6ECE838 /* ServiceClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServiceClientTests.swift; sourceTree = "<group>"; };
 		93051BAD3626304FE12B85BC /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+		934777A3DD77F708BBB96A2A /* PushRoute.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushRoute.swift; sourceTree = "<group>"; };
 		93A60E37937117C84492E6AF /* PairingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingTests.swift; sourceTree = "<group>"; };
 		98FCDBB52BA4EF5F44D9A727 /* progress.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = progress.json; sourceTree = "<group>"; };
 		9AD89DF8748C72A36D899F85 /* ScreenshotTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenshotTests.swift; sourceTree = "<group>"; };
@@ -154,6 +163,7 @@
 		D71FB245EAB63C4A2D1FAA3C /* BuildInfoTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BuildInfoTests.swift; sourceTree = "<group>"; };
 		D8E4748A0B6538C9AC429AD6 /* feed-stuck.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "feed-stuck.json"; sourceTree = "<group>"; };
 		D973C4CF1AB9FD8305E3EE9B /* InitechApp.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = InitechApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		DF47256DDF89B763C9624D69 /* PushRouteTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushRouteTests.swift; sourceTree = "<group>"; };
 		DF7D8AF7C84F7DFAF8F70811 /* BlockersUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlockersUITests.swift; sourceTree = "<group>"; };
 		E18FE5E3D891E020F83FE3BB /* feed-pane_state.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "feed-pane_state.json"; sourceTree = "<group>"; };
 		E5BA13039D21E26AE94FA127 /* PushUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushUITests.swift; sourceTree = "<group>"; };
@@ -198,6 +208,8 @@
 				581E4FF2F0E09E47E97E6AD8 /* pins.json */,
 				6545B88FAFA9E85A885392AA /* progress-rig.json */,
 				98FCDBB52BA4EF5F44D9A727 /* progress.json */,
+				1B1B76910DE131E4477D6D4E /* push-bead.json */,
+				0CE28320A41CC2F648313508 /* push-pane.json */,
 				D01854A00951F2D170FF2325 /* rigs.json */,
 				F03BC2B148EF6380D71F1A0A /* send.json */,
 				57BBEBB514D72EB19F907C56 /* status-rig.json */,
@@ -232,6 +244,7 @@
 				FA7EF57F97CDE7D1A12D1B6C /* ProgressModel.swift */,
 				CC3E1D3D497C12A586B34C15 /* ProgressView.swift */,
 				345C809540C96C533CD52202 /* PushRegistrar.swift */,
+				934777A3DD77F708BBB96A2A /* PushRoute.swift */,
 				BB189FF009C5D6B4E1735478 /* ServiceClient.swift */,
 			);
 			path = InitechApp;
@@ -264,6 +277,7 @@
 				7EE12E10FEBB62BEC8DAAF65 /* PaneModelTests.swift */,
 				80BF034D8710ADF009CF829B /* ProgressModelTests.swift */,
 				42DA776732F9FCA3FB2ED17D /* PushRegistrarTests.swift */,
+				DF47256DDF89B763C9624D69 /* PushRouteTests.swift */,
 				7F6B44C43A26A6F70FCF033B /* ScreenshotTests.swift */,
 				926BB43F5DEAA400A6ECE838 /* ServiceClientTests.swift */,
 				65E10B8A7F8ADF45595B7CD7 /* TransportSecurityTests.swift */,
@@ -277,6 +291,7 @@
 			children = (
 				DF7D8AF7C84F7DFAF8F70811 /* BlockersUITests.swift */,
 				03B27EFEDFF80711F04B50F0 /* PaneFlowUITests.swift */,
+				17CD690DC1B27DC1AACBC7CA /* PushTapUITests.swift */,
 				E5BA13039D21E26AE94FA127 /* PushUITests.swift */,
 				9AD89DF8748C72A36D899F85 /* ScreenshotTests.swift */,
 			);
@@ -418,6 +433,8 @@
 				F21D7B4DE2BF7A525CCBB046 /* pins.json in Resources */,
 				27543E74C4DEFA8E45464E76 /* progress-rig.json in Resources */,
 				713963C106E54A974BAFD9BF /* progress.json in Resources */,
+				3F7DE68DA9AB0DFCEC4D1451 /* push-bead.json in Resources */,
+				203C5150BE5DAF85E9C1631E /* push-pane.json in Resources */,
 				9909ADF0BE8AB68017A75764 /* rigs.json in Resources */,
 				753040E3A4E14DE419AD32A5 /* send.json in Resources */,
 				4105D03A5F3200C5D99BAC79 /* status-rig.json in Resources */,
@@ -474,6 +491,7 @@
 				D094A1098D0D9BE296C35EF4 /* ProgressModel.swift in Sources */,
 				A04E78EFB83532AD539D6C7A /* ProgressView.swift in Sources */,
 				2A73B735410EDE12A191B5A7 /* PushRegistrar.swift in Sources */,
+				8385317283AFB68938476CFA /* PushRoute.swift in Sources */,
 				FB47B54BA57D81C2C70C5502 /* ServiceClient.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -487,6 +505,7 @@
 				81179ABE488B00B0312D56B4 /* Models.swift in Sources */,
 				F5027582EA43711603E42F43 /* Pairing.swift in Sources */,
 				2ABCD2A36E3CD1DC84DC72F7 /* PaneFlowUITests.swift in Sources */,
+				E26719F8ECF31A7BCEA60714 /* PushTapUITests.swift in Sources */,
 				8A4F6A814B1E6C870DEC1836 /* PushUITests.swift in Sources */,
 				74A565216330F44BEB6B5A5F /* ScreenshotTests.swift in Sources */,
 			);
@@ -510,6 +529,7 @@
 				3B71EA093E888A1CE3B0A06A /* PaneModelTests.swift in Sources */,
 				685878ED785A10A098F263E2 /* ProgressModelTests.swift in Sources */,
 				DDDE72D924802323C4B8A020 /* PushRegistrarTests.swift in Sources */,
+				F9340CE4EE6DEDCD61559690 /* PushRouteTests.swift in Sources */,
 				3143849633B5CCDC67ECB10B /* ScreenshotTests.swift in Sources */,
 				B8924AE4C4A38EB48764AD4B /* ServiceClientTests.swift in Sources */,
 				A5E7F5E88EF7F428FC56F0CC /* TransportSecurityTests.swift in Sources */,

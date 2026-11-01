@@ -25,7 +25,7 @@ struct InitechApp: App {
 
     var body: some Scene {
         WindowGroup {
-            RootView(lock: lock, push: delegate.push)
+            RootView(lock: lock, push: delegate.push, inbox: delegate.inbox)
                 .onChange(of: phase) { _, now in
                     if now == .background { lock.lock() }
                 }
@@ -37,6 +37,7 @@ struct InitechApp: App {
 struct RootView: View {
     @ObservedObject var lock: AppLock
     @ObservedObject var push: PushRegistrar
+    @ObservedObject var inbox: PushInbox
 
     var body: some View {
         switch lock.screen {
@@ -45,7 +46,7 @@ struct RootView: View {
         case .locked:
             LockView { await lock.unlock() }
         case .unlocked(let pairing):
-            MainView(home: HomeModel(service: HTTPService(pairing: pairing)), push: push) {
+            MainView(home: HomeModel(service: HTTPService(pairing: pairing)), push: push, inbox: inbox) {
                 Task {
                     await push.unpair()
                     try? lock.forget()
@@ -71,11 +72,13 @@ struct LockView: View {
     }
 }
 
-/// AppDelegate is where iOS hands over the APNs device token; it owns the
-/// app's one PushRegistrar, which lives as long as the process.
+/// AppDelegate is where iOS hands over the APNs device token and each push;
+/// it owns the app's one PushRegistrar and one PushInbox, which live as long
+/// as the process.
 @MainActor
 final class AppDelegate: NSObject, UIApplicationDelegate, ObservableObject {
     let push: PushRegistrar
+    let inbox = PushInbox()
 
     override init() {
         #if DEBUG
@@ -95,12 +98,40 @@ final class AppDelegate: NSObject, UIApplicationDelegate, ObservableObject {
         super.init()
     }
 
+    /// The notification delegate is set before launch ends, so a push he
+    /// tapped to open the app reaches the inbox.
+    func application(_ application: UIApplication,
+                     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
+        UNUserNotificationCenter.current().delegate = self
+        #if DEBUG
+        if let route = UITestHooks.tappedPush { inbox.tap(route) }
+        #endif
+        return true
+    }
+
     func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
         Task { await push.received(token: deviceToken) }
     }
 
     func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
         // No token, nothing to send: the next launch asks iOS again.
+    }
+}
+
+extension AppDelegate: UNUserNotificationCenterDelegate {
+    /// A push while the app is open: no banner for what is already on
+    /// screen (the inbox's rule); the screen refreshes either way.
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter,
+                                            willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
+        let route = PushRoute(userInfo: notification.request.content.userInfo)
+        return await inbox.present(route) ? [.banner, .list, .sound] : []
+    }
+
+    /// A tapped push opens what it names.
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter,
+                                            didReceive response: UNNotificationResponse) async {
+        let route = PushRoute(userInfo: response.notification.request.content.userInfo)
+        await inbox.tap(route)
     }
 }
 
@@ -151,6 +182,19 @@ extension UITestHooks {
             })
         }
         return (FixedAsking(now: now), token)
+    }
+}
+
+extension UITestHooks {
+    /// tappedPush is a push the UI test says he tapped to open the app:
+    /// `-uitest-push-tap <payload JSON>`, fed to the same inbox a real tap
+    /// reaches. A really delivered push comes through simctl (sim-test.sh).
+    static var tappedPush: PushRoute? {
+        let args = ProcessInfo.processInfo.arguments
+        guard let i = args.firstIndex(of: "-uitest-push-tap"), i + 1 < args.count,
+              let info = try? JSONSerialization.jsonObject(with: Data(args[i + 1].utf8)) as? [String: Any]
+        else { return nil }
+        return PushRoute(userInfo: info)
     }
 }
 

@@ -12,6 +12,11 @@
 # The device is shut down and deleted however the run ends: pass, fail, the
 # 18-minute bound, or heavy.sh stopping the step. After the run, a new crash
 # report from that device fails the run (exit 9): stop and tell super.
+# PUSH RELAY: while the tests run, every <name>.apns file a test writes into
+# the directory it gets as PUSH_DIR (xcodebuild passes TEST_RUNNER_PUSH_DIR
+# on) is delivered to this run's device with `xcrun simctl push`, then renamed
+# <name>.apns.sent (or .failed). A test cannot run simctl from inside the
+# simulator, and a push really delivered is the one iOS shows or hides.
 # CRASH_FATAL=all (the default) fails on any report, because on a Mac with
 # someone at it a crash puts a dialog on their screen. CRASH_FATAL=ui (the
 # unattended app-tests runner) fails only on a report from the app, its test
@@ -49,7 +54,11 @@ udid=$(xcrun simctl create "$name" "$type" "$runtime") || { echo "sim-test: coul
 echo "sim-test: created $name $udid"
 
 xb=""
+relay=""
+pushdir=$(mktemp -d -t sim-test-push) || { rm -rf "${lock:?}"; rm -f "$mark"; exit 2; }
 cleanup() {
+  if [ -n "$relay" ]; then kill "$relay" 2>/dev/null; wait "$relay" 2>/dev/null; fi
+  rm -rf "${pushdir:?}"
   # Stop xcodebuild gently, then shut the device down before deleting it:
   # never a hard kill while it boots.
   if [ -n "$xb" ] && kill -0 "$xb" 2>/dev/null; then
@@ -100,9 +109,19 @@ if ! perl -e 'alarm 420; exec @ARGV' xcrun simctl bootstatus "$udid" -b > "$log.
   exit 7
 fi
 echo "sim-test: $name booted"
-perl -e 'alarm 1080; exec @ARGV' xcodebuild test -project InitechApp.xcodeproj -scheme InitechApp \
+TEST_RUNNER_PUSH_DIR="$pushdir" perl -e 'alarm 1080; exec @ARGV' xcodebuild test -project InitechApp.xcodeproj -scheme InitechApp \
   -parallel-testing-enabled NO -destination "id=$udid" "$@" > "$log" 2>&1 &
 xb=$!
+# The relay lives as long as xcodebuild does, and cleanup stops it by pid.
+(
+  while kill -0 "$xb" 2>/dev/null; do
+    find "$pushdir" -maxdepth 1 -type f -name '*.apns' | while read -r f; do
+      if xcrun simctl push "$udid" co.nmelo.initech "$f" >> "$log.push" 2>&1; then mv "$f" "$f.sent"; else mv "$f" "$f.failed"; fi
+    done
+    sleep 0.5
+  done
+) &
+relay=$!
 wait "$xb"; rc=$?
 xb=""
 

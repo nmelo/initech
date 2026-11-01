@@ -33,7 +33,7 @@ final class ScreenshotTests: XCTestCase {
         server.pins = [Pin(rig: "initech", pane: "super", name: "initech super", order: 0)]
         let home = HomeModel(service: HTTPService(pairing: server.pairing, retryDelay: .milliseconds(50)))
         defer { home.stopFeed() }
-        let png = try await shot("panes", MainView(home: home, push: PushRegistrar(asking: FakeAsking(.allowed), memory: MemoryTokens()) { _ in }) {})
+        let png = try await shot("panes", MainView(home: home, push: PushRegistrar(asking: FakeAsking(.allowed), memory: MemoryTokens()) { _ in }, inbox: PushInbox()) {})
         XCTAssertEqual(home.rows.map(\.name), ["initech super"], "the screen read the fixture")
         XCTAssertFalse(png.isEmpty)
     }

@@ -1,0 +1,15 @@
+{
+  "aps": {
+    "alert": {
+      "title": "initech: demo",
+      "body": "fx-1"
+    },
+    "sound": "default",
+    "thread-id": "demo"
+  },
+  "data": {
+    "rig": "demo",
+    "bead": "fx-1",
+    "reason": "nelson"
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "aps": {
+    "alert": {
+      "title": "initech: demo",
+      "body": "eng1"
+    },
+    "sound": "default",
+    "thread-id": "demo"
+  },
+  "data": {
+    "rig": "demo",
+    "pane": "eng1",
+    "reason": "stuck"
+  }
+}
