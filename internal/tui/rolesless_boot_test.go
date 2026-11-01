@@ -60,7 +60,9 @@ remotes:
 		t.Fatalf("write config: %v", err)
 	}
 
-	bin := buildInitechBinary(t)
+	// A release build: "starts cleanly" is the claim about what a user runs, and
+	// a dev build says where its session records go before the screen starts.
+	bin := buildReleaseInitechBinary(t)
 	cmd := exec.Command(bin)
 	cmd.Dir = root
 	var env []string
@@ -70,7 +72,7 @@ remotes:
 		}
 		env = append(env, e)
 	}
-	cmd.Env = env
+	cmd.Env = releaseRunEnv(t, env)
 
 	ptmx, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: 40, Cols: 120})
 	if err != nil {

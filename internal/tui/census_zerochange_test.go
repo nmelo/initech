@@ -44,7 +44,7 @@ func TestCensus_SingleWindowMatchesShippedRelease(t *testing.T) {
 		t.Fatalf("read baseline fixture: %v", err)
 	}
 
-	bin := buildInitechBinary(t)
+	bin := buildReleaseInitechBinary(t)
 	got := captureCensus(t, bin)
 
 	if normalizeCensusDoc(string(want)) != normalizeCensusDoc(got) {
@@ -92,14 +92,62 @@ func buildInitechBinary(t *testing.T) string {
 	if testing.Short() {
 		t.Skip("builds and runs the real initech binary; runs in the full suite, skipped under -short")
 	}
+	return buildInitechBinaryWith(t)
+}
+
+// censusReleaseVersion is the version the single-window claims build with: a
+// plain release number, stamped the way the release ldflags stamp it, so the
+// binary under test is the one a single-window user runs. A dev build (any
+// other version) records its session beads under the rig's .initech/records
+// and says so at start; a release build does neither, and the published
+// zero-change claim is about the release.
+const censusReleaseVersion = "0.0.0"
+
+// buildReleaseInitechBinary is buildInitechBinary stamped as a release. Run it
+// with releaseRunEnv: a release build's start checks the account ledger's
+// folder under HOME, which must never be the real one.
+func buildReleaseInitechBinary(t *testing.T) string {
+	t.Helper()
+	return buildInitechBinaryWith(t, "-ldflags", "-X github.com/nmelo/initech/cmd.Version="+censusReleaseVersion)
+}
+
+// buildInitechBinaryWith builds the repo's initech with extra go build flags.
+func buildInitechBinaryWith(t *testing.T, flags ...string) string {
+	t.Helper()
+	if testing.Short() {
+		t.Skip("builds and runs the real initech binary; runs in the full suite, skipped under -short")
+	}
 	dir := t.TempDir()
 	bin := filepath.Join(dir, "initech")
-	cmd := exec.Command("go", "build", "-o", bin, ".")
+	args := append([]string{"build"}, flags...)
+	cmd := exec.Command("go", append(args, "-o", bin, ".")...)
 	cmd.Dir = "../.." // repo root, relative to internal/tui
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("build initech: %v\n%s", err, out)
 	}
 	return bin
+}
+
+// releaseRunEnv is env for a release build under test: a scratch HOME, so its
+// session-record folder (~/.claude-accounts/records) is never the real spend
+// ledger, and DO_NOT_TRACK, so a test run is never counted as a release
+// install by the usage ping. Neither touches the rig's .initech or the output
+// before the screen starts.
+func releaseRunEnv(t *testing.T, env []string) []string {
+	t.Helper()
+	home, err := os.MkdirTemp("", "ini-home-")
+	if err != nil {
+		t.Fatalf("mkdir scratch HOME: %v", err)
+	}
+	t.Cleanup(func() { os.RemoveAll(home) })
+	var out []string
+	for _, e := range env {
+		if strings.HasPrefix(e, "HOME=") || strings.HasPrefix(e, "DO_NOT_TRACK=") {
+			continue
+		}
+		out = append(out, e)
+	}
+	return append(out, "HOME="+home, "DO_NOT_TRACK=1")
 }
 
 // captureCensus starts the given initech binary as a single-window fleet in
@@ -156,7 +204,7 @@ role_overrides:
 		}
 		env = append(env, e)
 	}
-	cmd.Env = env
+	cmd.Env = releaseRunEnv(t, env)
 
 	ptmx, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: 40, Cols: 120})
 	if err != nil {
