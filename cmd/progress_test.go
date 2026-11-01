@@ -30,10 +30,10 @@ var progressFixtureNow = time.Date(2026, 10, 31, 22, 0, 0, 0, time.UTC)
 type progressFake struct {
 	mu      sync.Mutex
 	calls   []string
-	bdErr   error             // bd list fails
-	origin  string            // git remote get-url origin; "" fails
-	gitLog  string            // git log output
-	hang    bool              // git fetch never finishes until its context ends
+	bdErr   error  // bd list fails
+	origin  string // git remote get-url origin; "" fails
+	gitLog  string // git log output
+	hang    bool   // git fetch never finishes until its context ends
 	fetched bool
 	data    string // absolute path of testdata/progress
 }

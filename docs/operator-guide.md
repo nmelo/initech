@@ -522,6 +522,16 @@ It prints, in this order:
 
 Commits come from the asking agent's own src clone after a fetch of origin/main bounded at ten seconds; a fetch that runs out of time reads the clone as it stands and says so. Outside an agent, or for a repo that clone is not, they come from GitHub (`gh api`). Times are Eastern. When bd does not answer, it prints one line and exits 1; a prefix that matches no bead prints one line. It never prints a finish time, an estimate or an actual.
 
+## The iPhone and iPad App
+
+### The App Service
+
+The app talks to `initech app-serve`, a service on the Mac. It listens on one address only: this Mac's Tailscale address by default (`--listen tailnet`, the release setting), or, with `--listen local-network`, the Mac's private LAN address, for the build phase while Tailscale is stopped. It never listens on all interfaces or on loopback, and with no Tailscale address it does not start; its port is 7392 unless `--port` says otherwise. It finds rigs by scanning each `--projects` folder (by default the folder holding the rig it was started from) for `<folder>/*/initech.yaml`; a rig is running when its initech answers on its socket.
+
+Every request carries the device token as `Authorization: Bearer <token>`; a request without it or with another one is refused with 401 and no body. `initech app-serve token` issues the token and prints it once, inside the pairing link `initech://pair?host=<address>&port=<port>&token=<token>`; only its SHA-256 is stored, in `~/.config/initech/app-serve/token.sha256` (mode 0600). Issuing a new token revokes the device paired before.
+
+`GET /v1/rigs` lists every rig the scan found and whether it is running. `GET /v1/status` (and `GET /v1/status/<rig>`) gives, for every running rig, the objects `initech status --json` prints on it, each with `screen`: the pane's last 20 screen lines while its banner is set and not `none` or it is waiting or pending, else null. A rig's status is read at most once every five seconds; the service makes no bd or git call on a timer.
+
 ## Tips
 
 ### Start Small

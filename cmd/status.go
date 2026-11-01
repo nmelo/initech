@@ -246,19 +246,91 @@ func toAgentJSON(pi paneInfo, fromBD map[string][]beadInfo) agentJSON {
 	return a
 }
 
-// printStatusJSON writes the agents as one JSON array, the only thing status
-// --json puts on stdout.
-func printStatusJSON(cmd *cobra.Command, panes []paneInfo, fromBD map[string][]beadInfo) error {
-	agents := make([]agentJSON, 0, len(panes))
-	for _, pi := range panes {
+// statusRead is everything one initech status reads before it prints: the
+// TUI's reply, the panes with remote peers merged in, and bd's bead answer.
+type statusRead struct {
+	resp       *tui.IPCResponse
+	projName   string
+	panes      []paneInfo
+	tuiTooOld  bool // judged on the TUI's own panes, before peers merge
+	beadMap    map[string][]beadInfo
+	bdAnswered bool
+	beadNote   string // why bd was not read for another project's socket
+}
+
+// collectStatus asks the TUI at sockPath for its panes (with screen detail
+// when detail is set) and bd for the beads. p is the project found from cwd
+// (nil when none); bd runs in beadDir, "" meaning cwd, unless the socket is
+// another project's, whose own root is read then. initech app-serve calls it
+// with each rig's root, so its status is initech status --json's.
+func collectStatus(runner iexec.Runner, sockPath string, p *config.Project, beadDir string, detail bool) (*statusRead, error) {
+	// p is nil when INITECH_SOCKET is set but no initech.yaml is
+	// discoverable from cwd (e.g. an isolated test fixture) — resolveSocket
+	// deliberately decouples socket resolution from project metadata
+	// (ini-raup), so display and bead-lookup gracefully degrade instead of
+	// requiring a project.
+	st := &statusRead{projName: "(unknown project)"}
+	beadsEnabled := false
+	if p != nil {
+		st.projName = p.Name
+		beadsEnabled = p.Beads.IsEnabled()
+	}
+
+	// Query pane list from TUI.
+	resp, err := ipcCallSocket(sockPath, tui.IPCRequest{Action: "list", Detail: detail})
+	if err != nil {
+		return nil, fmt.Errorf("query TUI: %w", err)
+	}
+	if !resp.OK {
+		return nil, fmt.Errorf("%s", resp.Error)
+	}
+	st.resp = resp
+	// A socket named by INITECH_SOCKET may be another project's: label the
+	// roster with the project behind it, which the reply names (ini-l8s5),
+	// and read the Bead column from that project's bd, in the root the reply
+	// names (ini-lg62). An older TUI names none: the folder's name stands,
+	// and the column says it cannot tell rather than show this folder's beads.
+	if socketIsAnotherProject(sockPath, p) {
+		if resp.Project != nil && resp.Project.Name != "" {
+			st.projName = resp.Project.Name
+			beadsEnabled = resp.Project.BeadsEnabled
+		}
+		if resp.Project == nil || beadsEnabled {
+			beadDir, st.beadNote = socketBeadRoot(resp.Project)
+		}
+	}
+
+	if err := json.Unmarshal([]byte(resp.Data), &st.panes); err != nil {
+		return nil, fmt.Errorf("parse pane list: %w", err)
+	}
+
+	st.tuiTooOld = detail && tuiReadsNoScreens(st.panes)
+
+	// Merge remote peer agents not already in the pane list.
+	st.panes = mergeRemotePeers(sockPath, st.panes)
+
+	// Try to get bead assignments (skip when disabled).
+	if beadsEnabled && st.beadNote == "" {
+		st.beadMap, st.bdAnswered = beadAssignments(runner, beadDir)
+	} else {
+		st.beadMap = make(map[string][]beadInfo)
+	}
+	return st, nil
+}
+
+// statusAgents is the agents as initech status --json prints them: beads
+// from bd's answer, the ribbon only when bd is off or gave no answer
+// (ini-67k7), so the JSON and the table never differ.
+func statusAgents(st *statusRead) []agentJSON {
+	var fromBD map[string][]beadInfo
+	if st.bdAnswered {
+		fromBD = st.beadMap
+	}
+	agents := make([]agentJSON, 0, len(st.panes))
+	for _, pi := range st.panes {
 		agents = append(agents, toAgentJSON(pi, fromBD))
 	}
-	data, err := json.MarshalIndent(agents, "", "  ")
-	if err != nil {
-		return err
-	}
-	_, err = fmt.Fprintln(cmd.OutOrStdout(), string(data))
-	return err
+	return agents
 }
 
 func runStatus(cmd *cobra.Command, args []string) error {
@@ -268,76 +340,24 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	// p is nil when INITECH_SOCKET is set but no initech.yaml is
-	// discoverable from cwd (e.g. an isolated test fixture) — resolveSocket
-	// deliberately decouples socket resolution from project metadata
-	// (ini-raup), so display and bead-lookup gracefully degrade instead of
-	// requiring a project.
-	projName := "(unknown project)"
-	beadsEnabled := false
-	if p != nil {
-		projName = p.Name
-		beadsEnabled = p.Beads.IsEnabled()
-	}
-
-	// Query pane list from TUI.
-	resp, err := ipcCallSocket(sockPath, tui.IPCRequest{Action: "list", Detail: statusJSON})
+	st, err := collectStatus(&iexec.DefaultRunner{}, sockPath, p, "", statusJSON)
 	if err != nil {
-		return fmt.Errorf("query TUI: %w", err)
+		return err
 	}
-	if !resp.OK {
-		return fmt.Errorf("%s", resp.Error)
-	}
-	// A socket named by INITECH_SOCKET may be another project's: label the
-	// roster with the project behind it, which the reply names (ini-l8s5),
-	// and read the Bead column from that project's bd, in the root the reply
-	// names (ini-lg62). An older TUI names none: the folder's name stands,
-	// and the column says it cannot tell rather than show this folder's beads.
-	beadDir, beadNote := "", ""
-	if socketIsAnotherProject(sockPath, p) {
-		if resp.Project != nil && resp.Project.Name != "" {
-			projName = resp.Project.Name
-			beadsEnabled = resp.Project.BeadsEnabled
-		}
-		if resp.Project == nil || beadsEnabled {
-			beadDir, beadNote = socketBeadRoot(resp.Project)
-		}
-	}
+	resp, projName, panes, beadMap, beadNote := st.resp, st.projName, st.panes, st.beadMap, st.beadNote
 
-	var panes []paneInfo
-	if err := json.Unmarshal([]byte(resp.Data), &panes); err != nil {
-		return fmt.Errorf("parse pane list: %w", err)
-	}
-
-	// Judged on the TUI's own panes, before peers are merged in here.
-	tuiTooOld := statusJSON && tuiReadsNoScreens(panes)
-
-	// Merge remote peer agents not already in the pane list.
-	panes = mergeRemotePeers(sockPath, panes)
-
-	// Try to get bead assignments (skip when disabled).
-	runner := &iexec.DefaultRunner{}
-	var beadMap map[string][]beadInfo
-	bdAnswered := false
-	if beadsEnabled && beadNote == "" {
-		beadMap, bdAnswered = beadAssignments(runner, beadDir)
-	} else {
-		beadMap = make(map[string][]beadInfo)
-	}
-
-	// --json reads beads where the table does: bd's answer, so the two never
-	// differ; the ribbon only when bd is off or gave no answer (ini-67k7).
 	if statusJSON {
 		// A page of nulls must not pass for agents with nothing to say
 		// (ini-r1u2): stderr only, so the JSON and the exit code stand.
-		if tuiTooOld {
+		if st.tuiTooOld {
 			fmt.Fprintln(cmd.ErrOrStderr(), "older initech running; restart it for status detail")
 		}
-		var fromBD map[string][]beadInfo
-		if bdAnswered {
-			fromBD = beadMap
+		data, err := json.MarshalIndent(statusAgents(st), "", "  ")
+		if err != nil {
+			return err
 		}
-		return printStatusJSON(cmd, panes, fromBD)
+		_, err = fmt.Fprintln(out, string(data))
+		return err
 	}
 
 	// Build table. The header counts the rows, and names the agents that are
