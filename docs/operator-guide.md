@@ -285,6 +285,10 @@ Home lists the panes you pinned, in your order, each with the name you gave it, 
 
 **Rigs** lists every running rig with the panes you have not pinned; the pin button pins one. Swipe a pinned row to rename or unpin it; Edit reorders. The pinned list is stored on the Mac, so every paired device shows the same list. On iPad, the pinned list is a sidebar beside the open pane.
 
+### A Pane
+
+A pane opens as its conversation, read from the pane's Claude Code transcript: the agent's replies as text with the footer lines (`▶`) at the bottom of each reply, each tool run as one line that expands on tap, your messages on the right. Scrolling up reads older entries until the transcript's start. A pane with nothing in its transcript yet says so.
+
 ### The App Service
 
 The app talks to `initech app-serve`, a service on the Mac. It listens on one address only: this Mac's Tailscale address by default (`--listen tailnet`, the release setting; the address on the interface that also holds Tailscale's `fd7a:115c:a1e0::/48` address, since a `100.64.0.0/10` address alone can be carrier NAT on the LAN), or, with `--listen local-network`, the Mac's private LAN address, for the build phase while Tailscale is stopped. It never listens on all interfaces or on loopback, and with no Tailscale address it does not start; its port is 7392 unless `--port` says otherwise. It finds rigs by scanning each `--projects` folder (by default the folder holding the rig it was started from) for `<folder>/*/initech.yaml`; a rig is running when its initech answers on its socket.

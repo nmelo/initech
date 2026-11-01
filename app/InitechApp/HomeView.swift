@@ -19,8 +19,8 @@ struct MainView: View {
                 }
         } detail: {
             if let ref = home.selection {
-                // The pane's conversation view lands in the next piece.
-                Text("\(home.row(for: ref)?.name ?? ref.pane)").font(.title2)
+                PaneView(model: PaneModel(service: home.service, ref: ref), home: home)
+                    .id(ref)
             } else {
                 Text("Pick a pane").foregroundStyle(.secondary)
             }
