@@ -1635,6 +1635,9 @@ func (t *TUI) renderAgentsGrid() {
 		switch p.Activity() {
 		case StateRunning:
 			nameStyle = bgStyle.Foreground(tcell.ColorGreen)
+		case StatePendingInput:
+			// Text waits unsent in its box (ini-b5w): not idle silver.
+			nameStyle = bgStyle.Foreground(tcell.ColorYellow)
 		case StateDead:
 			nameStyle = bgStyle.Foreground(tcell.ColorGray)
 		case StateSuspended:

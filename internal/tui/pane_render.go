@@ -119,7 +119,7 @@ func (p *Pane) chromeLook(focused bool, index int) (ribbonLook, tcell.Color) {
 		// Fifteen minutes of work with no bead (ini-wra.3).
 		beadLabel = noBeadLabel
 	}
-	return ribbonLook{title: title, style: titleStyle, tag: backgroundTag(p), bead: beadLabel, beadTitle: beadTitle, running: running}, tint
+	return ribbonLook{title: title, style: titleStyle, tag: pendingTag(p) + backgroundTag(p), bead: beadLabel, beadTitle: beadTitle, running: running}, tint
 }
 
 // drawChrome draws the chrome from its look alone.

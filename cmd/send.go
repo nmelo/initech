@@ -276,6 +276,9 @@ func deliverText(w io.Writer, target, host, text string, enter, urgent bool) err
 			line = "held: " + name + " is in do-not-disturb"
 		}
 		fmt.Fprintln(w, line)
+	case resp.Delivery == tui.DeliveryDelivered && strings.HasPrefix(resp.Data, tui.LeftInBoxPrefix):
+		// Delivered, and the box holds other text (ini-b5w): said, not hidden.
+		fmt.Fprintf(w, "delivered to %s; %s\n", name, resp.Data)
 	case resp.Delivery == tui.DeliveryDelivered:
 		fmt.Fprintf(w, "delivered to %s\n", name)
 	case resp.Delivery == tui.DeliveryUnchecked:

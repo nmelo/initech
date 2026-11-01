@@ -180,7 +180,7 @@ func agentState(pi paneInfo) *string {
 	case !pi.Alive && s == "suspended":
 	case !pi.Alive:
 		s = "stopped"
-	case s == "running" || s == "idle" || s == "waiting" || s == "background":
+	case s == "running" || s == "idle" || s == "waiting" || s == "background" || s == "pending":
 	default:
 		return nil
 	}
@@ -410,7 +410,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		if t := busyText(pi.Busy); t != "" && pi.Alive {
 			work = ", " + color.Yellow(t)
 		}
-		status := statusColor(pi.Activity) + work
+		status := statusColor(stateWord(pi.Activity)) + work
 		// A suspended agent is not alive either, but it is parked, not
 		// stopped: calling it stopped invites a second suspend or a restart.
 		if !pi.Alive && pi.Activity != "suspended" {
@@ -511,9 +511,21 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
+// stateWord is an agent state as status and patrol print it: the TUI's
+// "pending" (text left unsent in the input box, ini-b5w) reads "pending
+// input"; every other state reads as sent. status --json keeps "pending".
+func stateWord(s string) string {
+	if s == "pending" {
+		return "pending input"
+	}
+	return s
+}
+
 // statusColor applies a color to a bead/agent status string based on its value.
 func statusColor(s string) string {
 	switch {
+	case s == "pending input":
+		return color.Yellow(s)
 	case s == "running" || s == "in_progress" || s == "qa_passed":
 		return color.Green(s)
 	case s == "idle" || s == "stopped" || s == "suspended" || s == "background":

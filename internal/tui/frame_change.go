@@ -79,6 +79,16 @@ type ribbonLook struct {
 	running         bool
 }
 
+// pendingTag is the ribbon's state tag for a pane whose input box holds
+// unsent text (ini-b5w): "[pending input] ". Not dimmed and not a tint: it
+// is what marks a stuck message on a quiet pane. Empty in every other state.
+func pendingTag(pv PaneView) string {
+	if pv.Activity() != StatePendingInput {
+		return ""
+	}
+	return "[pending input] "
+}
+
 // backgroundTag is the ribbon's state tag for a pane in the background state:
 // "[bg 4m] " with the job's age in the overlay's short form (ini-amx). A
 // background pane gets no tint (the tint marks output), and with the sweep

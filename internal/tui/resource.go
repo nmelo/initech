@@ -296,6 +296,11 @@ func (t *TUI) checkSuspendPolicy() {
 				p.mu.Lock()
 				alive := p.alive
 				activity := p.activity
+				if activity == StateIdle && p.pendingInput != "" {
+					// Unsent text in the box would go with the process
+					// (ini-b5w): a pending pane is not idle here either.
+					activity = StatePendingInput
+				}
 				bead := p.primaryBeadLocked()
 				pinned := p.protected
 				name := p.name

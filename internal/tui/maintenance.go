@@ -86,6 +86,7 @@ func maintainModal(panes []PaneView, now time.Time, last *time.Time) {
 		p.mu.Unlock()
 		starts, treeOK := tree.runningShells(p.pid)
 		p.observeBackgroundTree(now, p.IsAlive(), parseFooter(rows, cols), starts, treeOK)
+		p.observePendingInput(rows, cols)
 		p.raiseSilentClaudeDialog(rows)
 		if screenShowsModal(rows) {
 			p.noteDialogSighting()

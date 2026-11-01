@@ -1,0 +1,25 @@
+ ▐▛███▛█   Claude Code v2.1.316
+▝▜██████▀  Haiku 5.5 · Claude Ultra
+ ▝▝   ▝▝   /private/tmp/iqb.TOHu/a
+
+
+❯ [from b] B5W one line typed and not sent yet
+
+⏺ Noted: b has a line typed but not sent (B5W), so I'm holding and not acting on
+  it.
+
+✻ Worked for 2s · done 7:57 PM
+
+
+
+
+
+
+
+                                                         ctrl+g to edit in Vim
+────────────────────────────────────────────────────────────────────────────────
+❯ [from b] B5W two lines pasted, first line here
+  second line of the paste, not sent
+────────────────────────────────────────────────────────────────────────────────
+  Haiku 5.5 │ Acct │ 4% │ 89% ▓▓▓▓▓▓┃▓▓░ → 10:00 PM │ 65% ▓┃▓▓▓▓▓░░░
+  ⏵⏵ auto mode on (shift+tab to cycle)

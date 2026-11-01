@@ -47,6 +47,13 @@ const (
 	// background record, so no detector's transitions change. Appended so
 	// the existing constants keep their values.
 	StateBackground
+	// StatePendingInput: the pane is quiet and its input box holds text that
+	// was not sent (ini-b5w): a message whose Enter was not taken, a
+	// half-typed line, a paste waiting. Never stored, like StateBackground:
+	// Activity derives it from a stored StateIdle and the maintenance tick's
+	// reading of the box. Appended so the existing constants keep their
+	// values.
+	StatePendingInput
 )
 
 // String returns a human-readable label for the state.
@@ -64,6 +71,8 @@ func (s ActivityState) String() string {
 		return "waiting"
 	case StateBackground:
 		return "background"
+	case StatePendingInput:
+		return "pending"
 	}
 	return "unknown"
 }
@@ -317,6 +326,7 @@ type Pane struct {
 	screenSkipLogged             time.Time       // Last time that skip was logged; rate-limits the record.
 	lastEmuCols, lastEmuRows     int             // Emulator size last seen under its lock (ini-psjt); emuSize's fallback.
 	bgWork                       backgroundWork  // Background work shown: the footer's, checked against the process tree (ini-b4l0, ini-d2sx).
+	pendingInput                 string          // First line of text left unsent in the input box at the last tick, "" when none (ini-b5w).
 	bgFooter                     backgroundWork  // The footer's own counts, and since when it has shown work (ini-d2sx).
 	lastFrame                    []frameCell     // Content region as last drawn; replayed while the pane cannot be read.
 	lastFrameCols, lastFrameRows int
@@ -1819,10 +1829,17 @@ func (p *Pane) RecentEntries() []JournalEntry {
 func (p *Pane) Activity() ActivityState {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	// A quiet pane with background work is background (ini-pi8p). Only an
-	// idle pane: running, waiting, suspended and dead are stronger.
-	if p.activity == StateIdle && p.bgWork.busy() {
-		return StateBackground
+	// A quiet pane with text left in its input box is pending input
+	// (ini-b5w); one with background work is background (ini-pi8p). Only an
+	// idle pane: running, waiting, suspended and dead are stronger. Pending
+	// outranks background: text stuck in the box needs the operator.
+	if p.activity == StateIdle {
+		if p.pendingInput != "" {
+			return StatePendingInput
+		}
+		if p.bgWork.busy() {
+			return StateBackground
+		}
 	}
 	return p.activity
 }

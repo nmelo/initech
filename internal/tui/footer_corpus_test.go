@@ -95,6 +95,16 @@ func TestFooterCorpus_EveryCapturedShapeReadsWhatItShows(t *testing.T) {
 		{"haiku312_label_short_w80.txt", none(i(5), s("Haiku 5.5"), s("Other"))},
 		{"haiku312_label_long_w80.txt", none(i(0), s("Haiku 5.5"), s("Other"))},
 		{"haiku312_label_two_w80.txt", none(i(5), s("Haiku 5.5"), s("Other"))},
+		// 2.1.312 on Haiku, 32 and 80 columns: an empty box at rest, one line
+		// and a two-line paste waiting unsent, and a turn running (ini-b5w).
+		{"haiku312_state_idle_w32.txt", none(i(0), s("Haiku 5.5"), s("Acct"))},
+		{"haiku312_state_idle_w80.txt", none(i(0), s("Haiku 5.5"), s("Acct"))},
+		{"haiku312_state_pending1_w32.txt", none(i(0), s("Haiku 5.5"), s("Acct"))},
+		{"haiku312_state_pending1_w80.txt", none(i(0), s("Haiku 5.5"), s("Acct"))},
+		{"haiku312_state_pending2_w32.txt", none(i(4), s("Haiku 5.5"), s("Acct"))},
+		{"haiku312_state_pending2_w80.txt", none(i(4), s("Haiku 5.5"), s("Acct"))},
+		{"haiku312_state_running_w32.txt", none(i(5), s("Haiku 5.5"), s("Acct"))},
+		{"haiku312_state_running_w80.txt", none(i(5), s("Haiku 5.5"), s("Acct"))},
 	}
 	for _, c := range cases {
 		rows, width := corpusFooter(t, c.name)

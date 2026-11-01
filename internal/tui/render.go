@@ -965,6 +965,10 @@ func (t *TUI) drawOverlayRow(x, row, limit, maxNameLen int, a AgentInfo, bgStyle
 		// Background is idle's dot: not producing output (ini-pi8p).
 		dot = '\u25cb'
 		dotColor = tcell.ColorGray
+	case StatePendingInput:
+		// Quiet, but not at rest: text waits unsent in its box (ini-b5w).
+		dot = '\u25cb'
+		dotColor = tcell.ColorYellow
 	case StateDead:
 		dotColor = tcell.ColorRed
 	case StateSuspended:
@@ -1084,6 +1088,9 @@ func (t *TUI) renderOverlay() {
 		act := p.Activity()
 		// Overlay shows activity state only; bead info is in the pane ribbon.
 		status := act.String()
+		if act == StatePendingInput {
+			status = "pending input" // ini-b5w
+		}
 		// A background agent shows how long its job has run (ini-pi8p).
 		if age, ok := backgroundAge(p, time.Now()); ok && act == StateBackground {
 			if backgroundSeenFor(p) {

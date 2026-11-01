@@ -1026,7 +1026,7 @@ const submitRetryDialogReason = "dialog open at the retry"
 func confirmAndRetrySubmit(pane *Pane, ps *pendingSubmit) SendVerdict {
 	switch outcome, why := watchSubmit(pane, ps, time.Now()); outcome {
 	case submitTaken:
-		return SendVerdict{Outcome: DeliveryDelivered}
+		return SendVerdict{DeliveryDelivered, leftInBoxNote(pane)}
 	case submitUnknown:
 		pane.emitUnconfirmedSubmit(ps, why, time.Since(ps.withheldAt).Round(time.Second))
 		return SendVerdict{DeliveryUnconfirmed, why}
@@ -1051,7 +1051,7 @@ func confirmAndRetrySubmit(pane *Pane, ps *pendingSubmit) SendVerdict {
 		pane.emitUnconfirmedSubmit(ps, why, time.Since(ps.withheldAt).Round(time.Second))
 		return SendVerdict{DeliveryUnconfirmed, why}
 	}
-	return SendVerdict{Outcome: DeliveryDelivered}
+	return SendVerdict{DeliveryDelivered, leftInBoxNote(pane)}
 }
 
 // submitStillHeld reports whether the composer still shows our body after an

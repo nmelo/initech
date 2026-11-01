@@ -43,7 +43,7 @@ func patrolStatusColor(s string) string {
 	switch {
 	case s == "running":
 		return color.Green(s)
-	case strings.HasPrefix(s, "stalled"):
+	case strings.HasPrefix(s, "stalled") || s == "pending input":
 		return color.Yellow(s)
 	case s == "dead":
 		return color.Red(s)
@@ -111,7 +111,7 @@ func runPatrol(cmd *cobra.Command, args []string) error {
 		}
 
 		// Header line: agent name blue+bold, status colored by severity, bead ID blue.
-		activityColored := patrolStatusColor(e.Activity)
+		activityColored := patrolStatusColor(stateWord(e.Activity))
 		headerInner := color.BlueBold(e.Name) + " (" + activityColored
 		if work != "" {
 			headerInner += ", " + color.Yellow(work)

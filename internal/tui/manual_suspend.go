@@ -116,6 +116,8 @@ func describeActivity(a ActivityState) string {
 	case StateBackground:
 		// Suspending would stop the job with the process (ini-pi8p).
 		return "running a background job"
+	case StatePendingInput:
+		return "holding unsent text in its input box"
 	case StateSuspended:
 		return "suspended"
 	case StateDead:

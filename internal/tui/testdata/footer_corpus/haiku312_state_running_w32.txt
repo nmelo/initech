@@ -1,0 +1,25 @@
+❯ [from b] B5W two lines
+  pasted, first line here
+  second line of the paste, not
+  sent
+
+⏺ Noted: b reports two lines
+  pasted into B5W, with only the
+  first line sent; nothing for
+  me to act on.
+
+✻ Worked for 1s · done 7:57 PM
+
+❯ Run the Bash command: sleep
+  10 . Then reply SLEPT.
+
+  Sleeping for 10 seconds
+  ⎿  $ sleep 10
+
+✽ Beboppin'… (4s)
+
+────────────────────────────────
+❯
+────────────────────────────────
+  Haiku 5.5 │ Acct │ 5% │ 89%…
+  ⏵⏵ auto mode on (shift+tab
