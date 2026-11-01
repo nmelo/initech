@@ -73,6 +73,17 @@ func next(t *testing.T, ch <-chan sseEvent, within time.Duration) sseEvent {
 	}
 }
 
+// nextPaneEvent is the next event that is not the blockers list, which a
+// stuck pane also changes (TestBlockersFeed_EventsOnAChangedList).
+func nextPaneEvent(t *testing.T, ch <-chan sseEvent, within time.Duration) sseEvent {
+	t.Helper()
+	for {
+		if e := next(t, ch, within); e.Type != "blockers" {
+			return e
+		}
+	}
+}
+
 // lockedClock is a test clock the poll and the feed read while the test
 // moves it.
 type lockedClock struct {
@@ -117,7 +128,7 @@ func TestFeed_PaneChangeReachesASubscriberWithinASecondOfThePoll(t *testing.T) {
 	b.mu.Unlock()
 	start := time.Now()
 	s.Poll()
-	e := next(t, ch, time.Second)
+	e := nextPaneEvent(t, ch, time.Second)
 	if e.Type != "pane_state" {
 		t.Fatalf("first event %+v, want pane_state", e)
 	}
@@ -126,7 +137,7 @@ func TestFeed_PaneChangeReachesASubscriberWithinASecondOfThePoll(t *testing.T) {
 	if pe != (PaneEvent{Rig: "alpha", Pane: "eng1", From: "running", To: "idle", Banner: "permission_prompt"}) {
 		t.Errorf("pane_state = %+v", pe)
 	}
-	e = next(t, ch, time.Second)
+	e = nextPaneEvent(t, ch, time.Second)
 	var se StuckEvent
 	json.Unmarshal([]byte(e.Data), &se)
 	if e.Type != "stuck" || se != (StuckEvent{Rig: "alpha", Pane: "eng1", Reason: "permission_prompt"}) {
@@ -141,13 +152,15 @@ func TestFeed_PaneChangeReachesASubscriberWithinASecondOfThePoll(t *testing.T) {
 	b.panes["/r/alpha"] = []PaneState{{Name: "eng1", State: "waiting", Banner: "permission_prompt"}}
 	b.mu.Unlock()
 	s.Poll()
-	if e := next(t, ch, time.Second); e.Type != "pane_state" {
+	if e := nextPaneEvent(t, ch, time.Second); e.Type != "pane_state" {
 		t.Errorf("got %+v, want pane_state", e)
 	}
 	s.Poll() // nothing changed
 	select {
 	case e := <-ch:
-		t.Errorf("an unchanged poll or a pane still stuck sent %+v", e)
+		if e.Type != "blockers" {
+			t.Errorf("an unchanged poll or a pane still stuck sent %+v", e)
+		}
 	case <-time.After(200 * time.Millisecond):
 	}
 }

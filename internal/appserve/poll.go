@@ -92,4 +92,5 @@ func (s *Server) Poll() {
 	s.panes = seen
 	s.mu.Unlock()
 	s.setRunning(running)
+	s.publishBlockers()
 }

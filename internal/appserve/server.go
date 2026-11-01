@@ -90,6 +90,10 @@ type Server struct {
 
 	progress      []progress.Report         // the latest progress run
 	progressAsked map[string]cachedProgress // reports read on request, by rig root and prefix
+
+	blockersMu   sync.Mutex
+	lastBlockers []byte                  // the list last compared, as JSON; nil before the first
+	lastWaiting  map[string]WaitingEvent // the waiting items on it
 }
 
 type cachedStatus struct {
@@ -131,6 +135,7 @@ func New(cfg Config) *Server {
 	s.mux.HandleFunc("GET /v1/conversation/{rig}/{pane}", s.handleConversation)
 	s.mux.HandleFunc("POST /v1/keys/{rig}/{pane}", s.handleKeys)
 	s.mux.HandleFunc("POST /v1/send/{rig}/{pane}", s.handleSend)
+	s.mux.HandleFunc("GET /v1/blockers", s.handleBlockers)
 	s.mux.HandleFunc("GET /v1/progress", s.handleProgress)
 	s.mux.HandleFunc("GET /v1/progress/{rig}", s.handleRigProgress)
 	s.mux.HandleFunc("GET /v1/pins", s.handleGetPins)
