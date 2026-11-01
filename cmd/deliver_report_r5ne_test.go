@@ -49,7 +49,9 @@ func TestRunDeliver_ASkipQAWalkStopsAtQAPassedWithNoReport(t *testing.T) {
 	}
 	stubBdFns(t)
 	resetDeliverFlags(t)
-	bdShowBeadFn = func(id string) (string, string, string, error) { return "Release notes v2.19.1", "pm", "ready_to_ship", nil }
+	bdShowBeadFn = func(id string) (string, string, string, error) {
+		return "Release notes v2.19.1", "pm", "ready_to_ship", nil
+	}
 	sock, received := startCapturingFakeIPC(t, tui.IPCResponse{OK: true})
 	t.Setenv("INITECH_SOCKET", sock)
 	t.Setenv("INITECH_AGENT", "pm")

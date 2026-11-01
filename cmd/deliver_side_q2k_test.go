@@ -182,7 +182,9 @@ func TestDeliver_ASideStateIsRefusedBeforeTheCallerCheck(t *testing.T) {
 	stubBdFns(t)
 	resetDeliverFlags(t)
 	lifecycle.ConfigGetFn = func(string) (string, error) { return q2kCustom, nil }
-	bdShowBeadFn = func(id string) (string, string, string, error) { return "Side state", "super", "waiting_on_nelson", nil }
+	bdShowBeadFn = func(id string) (string, string, string, error) {
+		return "Side state", "super", "waiting_on_nelson", nil
+	}
 	writes := 0
 	bdUpdateBeadFn = func(id string, w beadWrite) error { writes++; return nil }
 	old := bdLatestCommentFn
