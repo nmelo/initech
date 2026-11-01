@@ -37,8 +37,10 @@ struct BlockerRowView: View {
 
     var body: some View {
         if let pane = row.pane {
-            // The label keeps its own colours; a list button would tint it all.
-            Button { open(row.rig, pane) } label: { content.foregroundStyle(.primary) }
+            // Plain, so the label keeps its own colours: a list button tints it
+            // all, even over .primary. The shape keeps the whole row tappable.
+            Button { open(row.rig, pane) } label: { content.contentShape(Rectangle()) }
+                .buttonStyle(.plain)
                 .accessibilityIdentifier("blocker-\(row.rig)-\(pane)")
         } else {
             content.accessibilityIdentifier("blocker-quiet-\(row.rig)")
