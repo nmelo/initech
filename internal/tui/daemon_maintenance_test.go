@@ -316,6 +316,14 @@ func TestDaemonMaintenance_TickBesideSendsOutputAndReads(t *testing.T) {
 	time.Sleep(300 * time.Millisecond)
 	close(stop)
 	wg.Wait()
+	// The pane's end, as in production: a drain checks IsAlive before every
+	// message, so it stops after the one in flight. On a slow runner the
+	// loops leave many messages queued (the tick's clock moves slowly, so the
+	// dialog stays latched); without this the drain delivers them all at
+	// queueDrainInterval each, past the bound below (ini-ns4).
+	p.mu.Lock()
+	p.alive = false
+	p.mu.Unlock()
 	ended := make(chan struct{})
 	go func() { drains.Wait(); close(ended) }()
 	select {
