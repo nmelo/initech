@@ -36,6 +36,24 @@ final class ConversationDecodingTests: XCTestCase {
         XCTAssertEqual(p.messages.map(\.id), ["1", "2"])
     }
 
+    /// The P1 on Nelson's iPhone and iPad: "Could not read the conversation:
+    /// DecodingError.typeMismatch ... Path: before. Expected to decode String
+    /// but found number". The service's cursor is a number, the byte offset of
+    /// the page's first line, and 0 on the page that starts the transcript
+    /// (internal/appserve/transcript.go Page). This is that page, verbatim.
+    func testTheServicesCursor_IsANumber_AndTheStartPageSaysZero() throws {
+        let older = #"{"session":"s","messages":[\#(agent)],"start_reached":false,"before":48213,"skipped_lines":0}"#
+        let p = try JSONDecoder.service.decode(Conversation.self, from: Data(older.utf8))
+        XCTAssertEqual(p.before, 48213)
+        XCTAssertFalse(p.startReached)
+        let start = #"{"session":"s","messages":[\#(agent)],"start_reached":true,"before":0,"skipped_lines":0}"#
+        let q = try JSONDecoder.service.decode(Conversation.self, from: Data(start.utf8))
+        XCTAssertEqual(q.before, 0)
+        XCTAssertTrue(q.startReached)
+        let none = #"{"session":"s","messages":[\#(agent)],"start_reached":true}"#
+        XCTAssertNil(try JSONDecoder.service.decode(Conversation.self, from: Data(none.utf8)).before)
+    }
+
     func testALiveMessageEntry_FromTheFeed_IsShown() {
         let e = FeedEvent.decode(type: "transcript", data: #"{"rig":"initech","pane":"eng1","message":\#(fromAgent)}"#)
         guard case let .transcript(_, _, m)? = e else { return XCTFail("the feed dropped a message entry: \(String(describing: e))") }

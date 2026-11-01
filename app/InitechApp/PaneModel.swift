@@ -15,7 +15,7 @@ final class PaneModel: ObservableObject {
 
     let service: Service
     let ref: PaneRef
-    private var before: String?
+    private var before: Int64?
     private var feedTask: Task<Void, Never>?
     private var sentCount = 0
     static let pageSize = 50

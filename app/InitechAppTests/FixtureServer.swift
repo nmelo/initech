@@ -114,9 +114,12 @@ final class FixtureServer: @unchecked Sendable {
         while end > 0 || pages.isEmpty {
             let start = max(0, end - pageSize)
             let page = Array(messages[start..<end])
-            // The cursor names the index of the next older page.
+            // As the service does: the cursor is where this page starts (the
+            // service's byte offset; here the index of its first message), 0 on
+            // the page that starts the transcript; ?before=<n> is the page
+            // that ends where n starts.
             pages.append(Conversation(session: "s1", messages: page, startReached: start == 0,
-                                      before: start == 0 ? nil : "c\(pages.count + 1)"))
+                                      before: Int64(start)))
             end = start
         }
         locked { _pages["\(rig)/\(pane)"] = pages }
@@ -233,9 +236,11 @@ final class FixtureServer: @unchecked Sendable {
             pins = p
             respond(c, 204)
         case ("GET", "conversation") where parts.count == 4:
-            let pages = locked { _pages["\(parts[2])/\(parts[3])"] } ?? [Conversation(session: nil, messages: [], startReached: true, before: nil)]
-            let idx = r.query["before"].flatMap { Int($0.dropFirst()) } ?? 0
-            guard pages.indices.contains(idx) else { return respond(c, 400) }
+            let pages = locked { _pages["\(parts[2])/\(parts[3])"] } ?? [Conversation(session: nil, messages: [], startReached: true, before: 0)]
+            // ?before=0 or none is the newest page, as on the service.
+            guard let n = r.query["before"].map({ Int64($0) }) ?? 0 else { return respond(c, 400) }
+            let idx = n == 0 ? 0 : pages.firstIndex { ($0.before ?? 0) + Int64($0.messages.count) == n }
+            guard let idx else { return respond(c, 400) }
             json(c, pages[idx])
         case ("POST", "send") where parts.count == 4:
             json(c, locked { _sendVerdict["\(parts[2])/\(parts[3])"] } ?? SendResult(verdict: "delivered", words: "delivered to \(parts[3])"))

@@ -31,7 +31,7 @@ protocol Service: Sendable {
     func status() async throws -> StatusReply
     func pins() async throws -> [Pin]
     func savePins(_ pins: [Pin]) async throws
-    func conversation(rig: String, pane: String, before: String?, limit: Int) async throws -> Conversation
+    func conversation(rig: String, pane: String, before: Int64?, limit: Int) async throws -> Conversation
     func send(rig: String, pane: String, text: String) async throws -> SendResult
     func key(rig: String, pane: String, key: PaneKey) async throws -> SendResult
     /// feed streams events until the task is cancelled, reconnecting after a
@@ -105,9 +105,9 @@ struct HTTPService: Service {
         _ = try await call(request("PUT", "/v1/pins", body: try JSONEncoder.service.encode(pins)))
     }
 
-    func conversation(rig: String, pane: String, before: String?, limit: Int) async throws -> Conversation {
+    func conversation(rig: String, pane: String, before: Int64?, limit: Int) async throws -> Conversation {
         var q = [URLQueryItem(name: "limit", value: String(limit))]
-        if let before { q.append(URLQueryItem(name: "before", value: before)) }
+        if let before { q.append(URLQueryItem(name: "before", value: String(before))) }
         return try await get("/v1/conversation/\(seg(rig))/\(seg(pane))", query: q)
     }
 

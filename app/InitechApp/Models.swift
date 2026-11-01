@@ -49,9 +49,12 @@ struct Conversation: Codable, Equatable, Sendable {
     var session: String?
     var messages: [Message]
     var startReached: Bool
-    var before: String?
+    /// before is the cursor for the next older page, an integer the app passes
+    /// back as given (the service's byte offset of this page's first line; 0
+    /// on the page that starts the transcript); nil when a page carries none.
+    var before: Int64?
 
-    init(session: String?, messages: [Message], startReached: Bool, before: String?) {
+    init(session: String?, messages: [Message], startReached: Bool, before: Int64?) {
         self.session = session
         self.messages = messages
         self.startReached = startReached
@@ -64,7 +67,7 @@ struct Conversation: Codable, Equatable, Sendable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         session = try c.decodeIfPresent(String.self, forKey: .session)
         startReached = try c.decode(Bool.self, forKey: .startReached)
-        before = try c.decodeIfPresent(String.self, forKey: .before)
+        before = try c.decodeIfPresent(Int64.self, forKey: .before)
         messages = try c.decode([Lossy<Message>].self, forKey: .messages).compactMap(\.value)
     }
 }

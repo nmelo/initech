@@ -109,6 +109,11 @@ final class ServiceClientTests: XCTestCase {
             seen = page.messages + seen
         }
         XCTAssertEqual(seen, all)
+        // The cursor goes back as the number the service gave: ?before=<n>.
+        let sent = server.requests.filter { $0.path.hasPrefix("/v1/conversation/") }.compactMap { $0.query["before"] }
+        XCTAssertEqual(sent, ["3", "1"], "the app did not send back the service's cursor")
+        XCTAssertTrue(page.startReached)
+        XCTAssertEqual(page.before, 0)
     }
 
     func testSend_ReturnsTheSendPathsVerdictAndWords() async throws {
