@@ -1,0 +1,22 @@
+[
+ {
+  "author": "eng1",
+  "text": "PLAN: do it",
+  "created_at": "2026-10-31T19:05:00Z"
+ },
+ {
+  "author": "eng1",
+  "text": "AC 1 proven: abc123",
+  "created_at": "2026-10-31T20:00:00Z"
+ },
+ {
+  "author": "eng1",
+  "text": "AC2 proven: run 42",
+  "created_at": "2026-10-31T20:30:00Z"
+ },
+ {
+  "author": "qa1",
+  "text": "ac 2 PROVEN again",
+  "created_at": "2026-10-31T20:40:00Z"
+ }
+]

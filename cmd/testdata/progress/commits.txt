@@ -1,0 +1,4 @@
+2026-10-31T21:40:00Z feat(bead): the ribbon reads bd (fx-1)
+2026-10-31T20:15:00Z fix: fx-1 follow-up
+2026-10-31T19:20:00Z test: fx-10 settles; not fx-1x
+2026-10-31T18:30:00Z chore: unrelated

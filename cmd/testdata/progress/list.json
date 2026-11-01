@@ -1,0 +1,108 @@
+[
+ {
+  "id": "fx-1",
+  "title": "Ribbon shows the derived bead",
+  "status": "in_progress",
+  "assignee": "eng1",
+  "description": "Story.\n\n### Acceptance Criteria\n- AC1 one\n- AC2 two\n- AC3 three\n\nDocs: the guide",
+  "updated_at": "2026-10-31T19:00:00Z",
+  "closed_at": null,
+  "dependent_count": 0,
+  "estimated_minutes": 120,
+  "metadata": {
+   "actual_min": "33",
+   "estimate_revised_min": "45",
+   "wait": "one CI run (~3 min)"
+  }
+ },
+ {
+  "id": "fx-2",
+  "title": "Status leads with the ribbon's bead",
+  "status": "in_qa",
+  "assignee": "qa1",
+  "description": "No criteria here.",
+  "updated_at": "2026-10-31T21:30:00Z",
+  "closed_at": null,
+  "dependent_count": 0
+ },
+ {
+  "id": "fx-3",
+  "title": "Clear applies the tie rule at once",
+  "status": "in_progress",
+  "assignee": "eng2",
+  "description": "### Acceptance Criteria\n1. first\n2) second\n* third\n",
+  "updated_at": "2026-10-31T18:00:00Z",
+  "closed_at": null,
+  "dependent_count": 2
+ },
+ {
+  "id": "fx-4",
+  "title": "Step 2: a header shows the pace",
+  "status": "ready_for_qa",
+  "assignee": "eng3",
+  "description": "",
+  "updated_at": "2026-10-31T20:00:00Z",
+  "closed_at": null,
+  "dependent_count": 0
+ },
+ {
+  "id": "fx-5",
+  "title": "No-bead marker after fifteen minutes",
+  "status": "closed",
+  "assignee": "qa1",
+  "description": "",
+  "updated_at": "2026-10-31T20:00:00Z",
+  "closed_at": "2026-10-31T20:00:00Z",
+  "dependent_count": 0
+ },
+ {
+  "id": "fx-6",
+  "title": "Release notes for the cut",
+  "status": "closed",
+  "assignee": "pm",
+  "description": "",
+  "updated_at": "2026-10-30T10:00:00Z",
+  "closed_at": "2026-10-30T10:00:00Z",
+  "dependent_count": 0
+ },
+ {
+  "id": "fx-7",
+  "title": "Daemon pushes its bead to window 1",
+  "status": "open",
+  "assignee": "",
+  "description": "",
+  "updated_at": "2026-10-31T12:00:00Z",
+  "closed_at": null,
+  "dependent_count": 3
+ },
+ {
+  "id": "fx-8",
+  "title": "T\u00edtle with accents that runs well past the sixty character cut for the table",
+  "status": "in_progress",
+  "assignee": "eng2",
+  "description": "",
+  "updated_at": "2026-10-31T17:00:00Z",
+  "closed_at": null,
+  "dependent_count": 1
+ },
+ {
+  "id": "fx-10",
+  "title": "Overlay columns settle after a click",
+  "status": "in_progress",
+  "assignee": "eng1",
+  "description": "",
+  "updated_at": "2026-10-31T21:50:00Z",
+  "closed_at": null,
+  "dependent_count": 0
+ },
+ {
+  "id": "fx-11",
+  "title": "Five shards for the full suite",
+  "status": "closed",
+  "assignee": "qa2",
+  "description": "",
+  "updated_at": "2026-10-31T21:10:00Z",
+  "closed_at": "2026-10-31T21:10:00Z",
+  "dependent_count": 0
+ }
+]

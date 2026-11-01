@@ -489,6 +489,19 @@ bd show <id>        # Full bead details with comments
 bd close <id>       # Close (super, on evidence it checked)
 ```
 
+### Reading an Effort's Progress
+
+`initech progress [<prefix>] [--hours N]` shows whether a multi-bead effort is moving and where it is held. `<prefix>` picks the effort by bead id (an epic's children, such as `ini-wra.`); without one it reads the whole rig. `--hours` is the window for commits and closes, six by default. It is read-only.
+
+It prints, in this order:
+
+- **A table of the beads past open and not closed**, sorted by stage: the owner; `AC n/m`, the acceptance items proven out of the bullets under the bead's Acceptance Criteria heading (an engineer posts one comment per item, starting `AC <n> proven`; `-` when the bead has no such heading); the commits on main in the window whose subject names the bead as a word (`-` when initech.yaml lists no repos); and the last move, the newest of a status change, a comment or a commit, with who made it. A bead whose title starts with `Step ` is left out of the table.
+- **The effort lines:** closed of total, split into beads an engineer worked and beads that were writing or review only; beads per stage; the beads closed in the window (the count and the last eight by title); the critical path, up to five open beads with the most beads waiting on them; and the engineers on it.
+- **What each quiet bead waits on.** A bead with no move for an hour or more reads `working, unrecorded` when its owner's pane is running or has background work (an engineer working with no comment or commit), `waiting on "<thing>"` when its last comment names what holds it (waiting on, blocked on, held for), and `stalled` otherwise.
+- **Notes on anything it could not read.** One note covers agent panes it could not read because no initech is answering; then no quiet bead reads working. Another covers a fetch that ran out of time.
+
+Commits come from the asking agent's own src clone after a fetch of origin/main bounded at ten seconds; a fetch that runs out of time reads the clone as it stands and says so. Outside an agent, or for a repo that clone is not, they come from GitHub (`gh api`). Times are Eastern. When bd does not answer, it prints one line and exits 1; a prefix that matches no bead prints one line. It never prints a finish time, an estimate or an actual.
+
 ## Tips
 
 ### Start Small
