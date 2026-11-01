@@ -35,6 +35,7 @@
 		B2F2B4FB55FCDA56E935F9F9 /* AppLock.swift in Sources */ = {isa = PBXBuildFile; fileRef = 507BBB42FCC3688C96662A86 /* AppLock.swift */; };
 		B33FA76D4B1E9DC9B950FF11 /* PaneModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40BCD2D871E2FA5F5623A55C /* PaneModel.swift */; };
 		B8924AE4C4A38EB48764AD4B /* ServiceClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 926BB43F5DEAA400A6ECE838 /* ServiceClientTests.swift */; };
+		CDFECC86E13B903B76424CDF /* ConversationDecodingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AADA0D1242ECC9AB06C188B3 /* ConversationDecodingTests.swift */; };
 		D094A1098D0D9BE296C35EF4 /* ProgressModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA7EF57F97CDE7D1A12D1B6C /* ProgressModel.swift */; };
 		E8CD411447E065872C08A1B1 /* OperatorScreens.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C4A3801D442302B722CA33A /* OperatorScreens.swift */; };
 		ED99CBF96801ED11252F0E12 /* BlockersView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 666FD729244613CF6E86345D /* BlockersView.swift */; };
@@ -89,6 +90,7 @@
 		9C7B8C3570C7B33C099C65C3 /* HomeModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeModel.swift; sourceTree = "<group>"; };
 		A282C9D0B4542CD0C2D4AD1C /* HomeModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeModelTests.swift; sourceTree = "<group>"; };
 		A5C4B78E7DDAD9C9D884A6A0 /* InitechApp.Debug.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = InitechApp.Debug.entitlements; sourceTree = "<group>"; };
+		AADA0D1242ECC9AB06C188B3 /* ConversationDecodingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationDecodingTests.swift; sourceTree = "<group>"; };
 		B5FF5FF44D37E73B61D2D4BB /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		BB189FF009C5D6B4E1735478 /* ServiceClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServiceClient.swift; sourceTree = "<group>"; };
 		CC3E1D3D497C12A586B34C15 /* ProgressView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProgressView.swift; sourceTree = "<group>"; };
@@ -153,6 +155,7 @@
 			children = (
 				8B272B5DB2C3178712A3DC43 /* AppLockTests.swift */,
 				141131EF2DD5FEE337187AD3 /* BlockersModelTests.swift */,
+				AADA0D1242ECC9AB06C188B3 /* ConversationDecodingTests.swift */,
 				E7B4D274B41C77005FCB4951 /* FixtureServer.swift */,
 				A282C9D0B4542CD0C2D4AD1C /* HomeModelTests.swift */,
 				38311B4C974E91A7AF9834C0 /* LiveServiceTests.swift */,
@@ -331,6 +334,7 @@
 			files = (
 				5C34785AC296AEBE541AD12A /* AppLockTests.swift in Sources */,
 				24750DD1B4DD9C35F9E16E95 /* BlockersModelTests.swift in Sources */,
+				CDFECC86E13B903B76424CDF /* ConversationDecodingTests.swift in Sources */,
 				6BFF360A8731EE56647A3EFC /* FixtureServer.swift in Sources */,
 				8760144F04AED9057D821D6D /* HomeModelTests.swift in Sources */,
 				84F0874E6D24D561BB80BC36 /* LiveServiceTests.swift in Sources */,

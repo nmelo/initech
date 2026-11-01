@@ -100,6 +100,20 @@ struct MessageView: View {
                     }
                 }
             }
+        case .message:
+            VStack(alignment: .leading, spacing: 4) {
+                if let from = message.from, !from.isEmpty {
+                    Text("from \(from)").font(.caption).foregroundStyle(.secondary)
+                }
+                Text(message.text)
+                    .textSelection(.enabled)
+                    .padding(12)
+                    .background(.quaternary.opacity(0.6), in: RoundedRectangle(cornerRadius: 18))
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.trailing, 40)
+        case .other:
+            Text(message.text).textSelection(.enabled)
         case .system:
             Text(message.text).font(.caption).foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity)

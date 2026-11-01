@@ -50,12 +50,43 @@ struct Conversation: Codable, Equatable, Sendable {
     var messages: [Message]
     var startReached: Bool
     var before: String?
+
+    init(session: String?, messages: [Message], startReached: Bool, before: String?) {
+        self.session = session
+        self.messages = messages
+        self.startReached = startReached
+        self.before = before
+    }
+
+    /// Decoding keeps every entry it can read and skips one it cannot: a
+    /// single malformed entry must never cost the whole page.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        session = try c.decodeIfPresent(String.self, forKey: .session)
+        startReached = try c.decode(Bool.self, forKey: .startReached)
+        before = try c.decodeIfPresent(String.self, forKey: .before)
+        messages = try c.decode([Lossy<Message>].self, forKey: .messages).compactMap(\.value)
+    }
+}
+
+/// Lossy decodes one element of a list and keeps nil when it cannot.
+struct Lossy<T: Decodable>: Decodable {
+    let value: T?
+    init(from decoder: Decoder) throws { value = try? T(from: decoder) }
 }
 
 /// Message is one entry of the conversation view.
 struct Message: Codable, Equatable, Identifiable, Sendable {
+    /// Kind is what the service says an entry is: the agent's reply, what the
+    /// operator typed, a message another agent sent, a tool run. A kind the app
+    /// does not know yet reads as other and shows as plain text, never as a
+    /// failure of the page.
     enum Kind: String, Codable, Sendable {
-        case agent, nelson, tool, system
+        case agent, nelson, message, tool, system, other
+
+        init(from decoder: Decoder) throws {
+            self = Kind(rawValue: try decoder.singleValueContainer().decode(String.self)) ?? .other
+        }
     }
     struct Tool: Codable, Equatable, Sendable {
         var name: String
@@ -68,6 +99,8 @@ struct Message: Codable, Equatable, Identifiable, Sendable {
     var text: String
     var footer: [String]?
     var tool: Tool?
+    /// from is the agent that sent a message entry.
+    var from: String?
 }
 
 /// SendResult is the send path's own verdict and the line it printed.
