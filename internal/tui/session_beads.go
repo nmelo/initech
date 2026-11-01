@@ -65,6 +65,7 @@ type paneWork struct {
 	role      string
 	sessionID string
 	bead      string // "" is a stretch with no bead (null in the record)
+	derived   string // the pane's derived bead: the writer guard's stand-in for a non-id bead
 	source    string // "bd" or "manual"
 	from      time.Time
 	working   bool // alive and not suspended
@@ -86,8 +87,10 @@ func (o *openInterval) sameAs(w paneWork) bool {
 type sessionBeadRecorder struct {
 	dir, rig, host string
 	open           map[any]*openInterval
-	month          string // the UTC month of the last write, for the keep sweep
-	failing        bool   // the last write failed and was logged
+	month          string          // the UTC month of the last write, for the keep sweep
+	failing        bool            // the last write failed and was logged
+	upgraded       bool            // the first reconcile closed the open non-id intervals on disk
+	rejected       map[string]bool // non-id bead values already logged by the guard
 }
 
 // newSessionBeadRecorder records into root's .initech folder.
@@ -119,8 +122,13 @@ func clampTime(t, lo, hi time.Time) time.Time {
 // it closes intervals that ended and opens the ones that began. A pane not
 // in works has stopped or gone.
 func (r *sessionBeadRecorder) reconcile(works []paneWork, now time.Time) {
+	if !r.upgraded {
+		r.upgraded = true
+		r.closeOpenNonIDs(now)
+	}
 	seen := make(map[any]bool, len(works))
 	for _, w := range works {
+		w = r.guard(w)
 		seen[w.key] = true
 		cur := r.open[w.key]
 		want := w.working && w.sessionID != ""
@@ -161,6 +169,65 @@ func (r *sessionBeadRecorder) reconcile(works []paneWork, now time.Time) {
 		if !seen[k] {
 			r.closeInterval(k, cur, now, now)
 		}
+	}
+}
+
+// guard keeps a bead that is not an id out of the record (ini-5qf): the
+// interval carries the pane's derived bead instead, with source bd, or no
+// bead when there is none, and the rejected value is logged once.
+func (r *sessionBeadRecorder) guard(w paneWork) paneWork {
+	if w.bead == "" || IsBeadID(w.bead) {
+		return w
+	}
+	if r.rejected == nil {
+		r.rejected = map[string]bool{}
+	}
+	if !r.rejected[w.bead] {
+		r.rejected[w.bead] = true
+		LogWarn("session-beads", "a bead that is not an id was not recorded; the derived bead stands in", "role", w.role, "value", w.bead, "derived", w.derived)
+	}
+	w.bead, w.source = "", "bd"
+	if IsBeadID(w.derived) {
+		w.bead = w.derived
+	}
+	return w
+}
+
+// closeOpenNonIDs closes, once, every interval this month's or last month's
+// file holds open with a bead that is not an id: lines a run before the fix
+// left open (a crash, or a rig that never stopped). It appends one closing
+// line each, to now; nothing already written is changed. An open interval on
+// an id is left as the next start always leaves it.
+func (r *sessionBeadRecorder) closeOpenNonIDs(now time.Time) {
+	type key struct{ session, role, bead, from string }
+	latest := map[key]sessionBeadLine{}
+	var order []key
+	for _, month := range []time.Time{now.AddDate(0, -1, 0), now} {
+		b, err := os.ReadFile(filepath.Join(r.dir, sessionBeadFile(month)))
+		if err != nil {
+			continue
+		}
+		for _, ln := range strings.Split(string(b), "\n") {
+			var l sessionBeadLine
+			if strings.TrimSpace(ln) == "" || json.Unmarshal([]byte(ln), &l) != nil || l.Bead == nil {
+				continue
+			}
+			k := key{l.SessionID, l.Role, *l.Bead, l.From}
+			if _, ok := latest[k]; !ok {
+				order = append(order, k)
+			}
+			latest[k] = l
+		}
+	}
+	for _, k := range order {
+		l := latest[k]
+		if l.To != nil || IsBeadID(k.bead) {
+			continue
+		}
+		to := recordTime(now)
+		l.To = &to
+		LogWarn("session-beads", "closed an open interval whose bead is not an id", "role", l.Role, "value", k.bead)
+		r.write(l, now)
 	}
 }
 
@@ -281,6 +348,7 @@ func (p *Pane) sessionWork() paneWork {
 		role:      p.name,
 		sessionID: p.sessionID,
 		bead:      p.primaryBeadLocked(),
+		derived:   p.derivedBead,
 		source:    "bd",
 		working:   p.alive && !p.suspended,
 	}

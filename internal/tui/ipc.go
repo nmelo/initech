@@ -1623,17 +1623,31 @@ func (t *TUI) handleIPCBead(conn net.Conn, req IPCRequest) {
 	// - "id1,id2,id3" (comma-separated: multiple IDs, no titles)
 	// - "id" (plain: single ID, no title)
 	// - "" (clear)
+	// The tab comes first: everything after it is the title, display only, so
+	// a comma in a title never splits it into ids (ini-5qf). Only ids are
+	// stored; anything else is refused and nothing changes.
 	text := req.Text
-	if strings.Contains(text, ",") {
-		ids := strings.Split(text, ",")
-		for i := range ids {
-			ids[i] = strings.TrimSpace(ids[i])
+	if text == "" {
+		pv.SetBead("", "")
+		reply(IPCResponse{OK: true})
+		return
+	}
+	idPart, title := text, ""
+	if idx := strings.IndexByte(text, '\t'); idx >= 0 {
+		idPart, title = text[:idx], text[idx+1:]
+	}
+	ids := strings.Split(idPart, ",")
+	for i := range ids {
+		ids[i] = strings.TrimSpace(ids[i])
+		if !IsBeadID(ids[i]) {
+			reply(IPCResponse{Error: fmt.Sprintf("not a bead id: %q", ids[i])})
+			return
 		}
+	}
+	if len(ids) > 1 {
 		pv.SetBeads(ids)
-	} else if idx := strings.IndexByte(text, '\t'); idx >= 0 {
-		pv.SetBead(text[:idx], text[idx+1:])
 	} else {
-		pv.SetBead(text, "")
+		pv.SetBead(ids[0], title)
 	}
 	reply(IPCResponse{OK: true})
 }

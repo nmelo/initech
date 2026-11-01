@@ -1737,6 +1737,7 @@ func (p *Pane) DerivedBeadSince() (id string, updatedAt, since time.Time) {
 func (p *Pane) applyDerivedBeads(beads []bdBead, answered bool, now time.Time) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	p.cleanStoredBeadsLocked()
 	if !answered {
 		p.beadStale = true
 		return
@@ -1750,6 +1751,32 @@ func (p *Pane) applyDerivedBeads(beads []bdBead, answered bool, now time.Time) {
 	}
 	p.answeredOnce = true
 	p.rederiveLocked(now)
+}
+
+// cleanStoredBeadsLocked keeps only ids in the override and the last-named
+// memory (ini-5qf): a value stored with its title joined on, as initech bead
+// stored them before, is cut to its id, and one with no id in it is dropped,
+// each with one log line naming it. An override left with no id is cleared,
+// and the pane is back on bd.
+func (p *Pane) cleanStoredBeadsLocked() {
+	var kept []string
+	changed := false
+	for _, b := range p.beadIDs {
+		id := CutBeadID(b)
+		if id != b {
+			changed = true
+			LogWarn("beads", "a stored bead was not an id; kept its id, or dropped it", "pane", p.name, "value", b, "kept", id)
+		}
+		if id != "" {
+			kept = append(kept, id)
+		}
+	}
+	if changed {
+		p.beadIDs = kept // nil when no id is left: the override is gone, the pane is back on bd
+	}
+	if p.lastNamed != "" && !IsBeadID(p.lastNamed) {
+		p.lastNamed = CutBeadID(p.lastNamed)
+	}
 }
 
 // rederiveLocked sets the derived bead from the last answer bd gave, by the
