@@ -87,6 +87,62 @@ final class PaneModelTests: XCTestCase {
         XCTAssertEqual(pane.messages.first?.footer, ["▶ ok?"])
     }
 
+    func testAResetFromTheFeed_ReloadsTheConversation() async throws {
+        let pane = PaneModel(service: service, ref: ref)
+        await pane.load()
+        XCTAssertTrue(pane.messages.isEmpty)
+        // Written while the feed was away, past its replay window.
+        server.setTranscript(rig: ref.rig, pane: ref.pane, [Fx.msg("m1", .agent, "missed")], pageSize: 50)
+        pane.apply(.reset)
+        try await waitForMain { pane.messages.map(\.id) == ["m1"] }
+    }
+
+    func testAnEntryFromTheFeed_SurvivesALoadThatDoesNotCarryItYet() async {
+        server.setTranscript(rig: ref.rig, pane: ref.pane, [Fx.msg("m1", .agent, "older")], pageSize: 50)
+        let pane = PaneModel(service: service, ref: ref)
+        pane.apply(.transcript(rig: ref.rig, pane: ref.pane, message: Fx.msg("n1", .agent, "newer")))
+        await pane.load()
+        XCTAssertEqual(pane.messages.map(\.id), ["m1", "n1"])
+    }
+
+    func testAReset_AfterPagingBack_KeepsTheOrder() async throws {
+        let all = (1...120).map { Fx.msg("m\($0)", .agent, "entry \($0)") }
+        server.setTranscript(rig: ref.rig, pane: ref.pane, all, pageSize: PaneModel.pageSize)
+        let pane = PaneModel(service: service, ref: ref)
+        await pane.load()
+        await pane.loadOlder()
+        XCTAssertEqual(pane.messages.count, 100)
+        pane.apply(.reset)
+        try await waitForMain { pane.messages.count == 50 }
+        XCTAssertEqual(pane.messages.first?.id, "m71")
+        XCTAssertEqual(pane.messages.last?.id, "m120")
+        XCTAssertFalse(pane.startReached)
+    }
+
+    func testAReset_KeepsWhatHeSent_UntilTheTranscriptCarriesIt() async throws {
+        let pane = PaneModel(service: service, ref: ref)
+        await pane.load()
+        await pane.send("go ahead")
+        pane.apply(.reset)
+        try await waitForMain { pane.loaded }
+        XCTAssertEqual(pane.messages.map(\.text), ["go ahead"], "not in the transcript yet: it stays")
+
+        server.setTranscript(rig: ref.rig, pane: ref.pane, [Fx.msg("t9", .nelson, "go ahead")], pageSize: 50)
+        await pane.load()
+        XCTAssertEqual(pane.messages.map(\.id), ["t9"], "the page carries it: no second copy")
+        XCTAssertEqual(pane.verdicts["t9"]?.outcome, .delivered)
+    }
+
+    func testOpen_RunsTheFeedAndLoads() async throws {
+        server.setTranscript(rig: ref.rig, pane: ref.pane, [Fx.msg("m1", .agent, "hi")], pageSize: 50)
+        let pane = PaneModel(service: service, ref: ref)
+        await pane.open()
+        defer { pane.stopFeed() }
+        XCTAssertEqual(pane.messages.map(\.id), ["m1"])
+        let srv = server!
+        try await waitFor { srv.openFeeds == 1 }
+    }
+
     func testHisMessageComingBackFromTheTranscript_ReplacesTheSentCopyAndKeepsItsVerdict() async {
         let pane = PaneModel(service: service, ref: ref)
         await pane.load()
@@ -114,6 +170,14 @@ final class PaneModelTests: XCTestCase {
         await pane.press(.enter)
         XCTAssertEqual(pane.lastKey?.result.outcome, .notDelivered)
         XCTAssertEqual(pane.lastKey?.result.words, "eng1 is not running")
+    }
+
+    func testKeyStrip_SaysWhichKeysActOnlyAtADialog() throws {
+        let hint = try XCTUnwrap(KeyStrip.hint(atDialog: true))
+        XCTAssertTrue(hint.contains("Enter says Yes"), hint)
+        XCTAssertTrue(hint.contains("Esc says No"), hint)
+        XCTAssertTrue(hint.contains("Ctrl-C do nothing"), hint)
+        XCTAssertNil(KeyStrip.hint(atDialog: false))
     }
 
     func testPaneRow_ShowsScreenLinesOnlyAtADialogOrBanner() {

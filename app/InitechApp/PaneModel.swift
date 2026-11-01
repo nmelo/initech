@@ -25,11 +25,22 @@ final class PaneModel: ObservableObject {
         self.ref = ref
     }
 
-    /// load reads the newest page of the transcript.
+    /// open starts the feed, then reads the newest page: in that order, so an
+    /// entry written between the two is not missed.
+    func open() async {
+        startFeed()
+        await load()
+    }
+
+    /// load reads the newest page of the transcript. What it already holds
+    /// and the page does not carry yet (a feed entry newer than the page, a
+    /// message he just sent) stays after the page.
     func load() async {
         do {
             let page = try await service.conversation(rig: ref.rig, pane: ref.pane, before: nil, limit: Self.pageSize)
-            messages = page.messages
+            page.messages.forEach { dropSentCopy(of: $0) }
+            let onPage = Set(page.messages.map(\.id))
+            messages = page.messages + messages.filter { !onPage.contains($0.id) }
             before = page.before
             startReached = page.startReached
             loaded = true
@@ -95,15 +106,28 @@ final class PaneModel: ObservableObject {
 
     /// apply appends this pane's new transcript entries. His own message coming
     /// back from the transcript replaces the copy shown when he sent it, and
-    /// keeps its verdict.
+    /// keeps its verdict. A reset means entries were missed past the replay
+    /// window: the conversation is read again from its newest page, keeping
+    /// only what he sent that the transcript has not shown yet.
     func apply(_ e: FeedEvent) {
+        if case .reset = e {
+            messages = messages.filter { $0.id.hasPrefix("local-") }
+            startReached = false
+            Task { await load() }
+            return
+        }
         guard case let .transcript(rig, pane, m) = e, rig == ref.rig, pane == ref.pane,
               !messages.contains(where: { $0.id == m.id }) else { return }
-        if m.kind == .nelson,
-           let i = messages.firstIndex(where: { $0.id.hasPrefix("local-") && $0.text == m.text }) {
-            verdicts[m.id] = verdicts.removeValue(forKey: messages[i].id)
-            messages.remove(at: i)
-        }
+        dropSentCopy(of: m)
         messages.append(m)
+    }
+
+    /// dropSentCopy removes the copy shown when he sent this message, once the
+    /// transcript carries it; the verdict moves to the transcript's entry.
+    private func dropSentCopy(of m: Message) {
+        guard m.kind == .nelson,
+              let i = messages.firstIndex(where: { $0.id.hasPrefix("local-") && $0.text == m.text }) else { return }
+        verdicts[m.id] = verdicts.removeValue(forKey: messages[i].id)
+        messages.remove(at: i)
     }
 }

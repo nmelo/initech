@@ -40,13 +40,12 @@ struct PaneView: View {
                 ScreenLines(lines: screen)
             }
             InputBar(draft: $draft) { text in Task { await model.send(text) } }
-            KeyStrip(last: model.lastKey) { key in Task { await model.press(key) } }
+            KeyStrip(last: model.lastKey, atDialog: row?.atDialog ?? false) { key in Task { await model.press(key) } }
         }
         .navigationTitle(row?.name ?? model.ref.pane)
         .navigationBarTitleDisplayMode(.inline)
         .task {
-            await model.load()
-            model.startFeed()
+            await model.open()
         }
         .onDisappear { model.stopFeed() }
     }
@@ -184,10 +183,18 @@ struct InputBar: View {
     }
 }
 
-/// KeyStrip sends Enter, Esc, Ctrl-C, y or n to the pane.
+/// KeyStrip sends Enter, Esc, Ctrl-C, y or n to the pane. "Delivered" means
+/// the key reached the pane, not that it did anything, so a pane at a dialog
+/// also says which keys act there.
 struct KeyStrip: View {
     var last: (key: PaneKey, result: SendResult)?
+    var atDialog = false
     let press: (PaneKey) -> Void
+
+    /// hint is the line a pane at a dialog shows under the keys.
+    static func hint(atDialog: Bool) -> String? {
+        atDialog ? "On Claude's numbered prompt, Enter says Yes and Esc says No; y, n and Ctrl-C do nothing there." : nil
+    }
 
     var body: some View {
         VStack(spacing: 2) {
@@ -197,6 +204,9 @@ struct KeyStrip: View {
                         .buttonStyle(.bordered)
                         .font(.callout.monospaced())
                 }
+            }
+            if let hint = Self.hint(atDialog: atDialog) {
+                Text(hint).font(.caption2).foregroundStyle(.secondary).multilineTextAlignment(.center)
             }
             if let last {
                 Text("\(last.key.label): \(last.result.words)")

@@ -299,7 +299,7 @@ A pane opens as its conversation, read from the pane's Claude Code transcript: t
 
 What you type in the box goes into the pane through the send path, as `initech send` would type it, and the message shows the verdict in the send path's own words: delivered, deferred because a dialog is open (it goes when the dialog closes), sent but not confirmed, or not delivered (with why).
 
-Below the box, the key strip sends Enter, Esc, Ctrl-C, `y` or `n` into the pane as a single keystroke (`initech keystroke`), and shows the result under it. While the pane is at a dialog or banner, or waiting or pending, its last screen lines show above the input box, so you can read the prompt you are answering.
+Below the box, the key strip sends Enter, Esc, Ctrl-C, `y` or `n` into the pane as a single keystroke (`initech keystroke`), and shows the result under it. Delivered means the key reached the pane, not that it did anything: on Claude's numbered permission prompt, Enter says Yes and Esc says No, and `y`, `n` and Ctrl-C do nothing there; `y` and `n` are for Codex approvals and plain yes/no questions. While the pane is at a dialog or banner, or waiting or pending, its last screen lines show above the input box, so you can read the prompt you are answering, and the strip says which keys act.
 
 ### The App Service
 

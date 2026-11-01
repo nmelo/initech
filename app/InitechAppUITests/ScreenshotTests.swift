@@ -68,8 +68,9 @@ final class ScreenshotTests: XCTestCase {
         app.buttons["Send"].tap()
         XCTAssertTrue(element(app, "deferred to super").waitForExistence(timeout: 10),
                       "the deferred verdict is not on the message")
-        app.buttons["y"].tap()
-        XCTAssertTrue(element(app, "y: key y delivered to super").waitForExistence(timeout: 10), "the key's verdict is not shown")
+        XCTAssertTrue(element(app, "Enter says Yes and Esc says No").exists, "the dialog does not say which keys act")
+        app.buttons["Enter"].tap()
+        XCTAssertTrue(element(app, "Enter: key enter delivered to super").waitForExistence(timeout: 10), "the key's verdict is not shown")
         try stop("pane")
     }
 
