@@ -173,3 +173,31 @@ func TestDeliver_ACustomListWithoutQAPassedWalksAsToday(t *testing.T) {
 		t.Errorf("blocked under a custom list without qa_passed: err %v, %d writes; want refused", r.err, r.updates)
 	}
 }
+
+// The side-state refusal comes before the caller check: a bead waiting on
+// Nelson and assigned to super, delivered by an engineer, is told why it
+// waits, not "claim it first".
+func TestDeliver_ASideStateIsRefusedBeforeTheCallerCheck(t *testing.T) {
+	skipWindows(t)
+	stubBdFns(t)
+	resetDeliverFlags(t)
+	lifecycle.ConfigGetFn = func(string) (string, error) { return q2kCustom, nil }
+	bdShowBeadFn = func(id string) (string, string, string, error) { return "Side state", "super", "waiting_on_nelson", nil }
+	writes := 0
+	bdUpdateBeadFn = func(id string, w beadWrite) error { writes++; return nil }
+	old := bdLatestCommentFn
+	bdLatestCommentFn = func(string) (string, error) { return "Ship it or hold?", nil }
+	t.Cleanup(func() { bdLatestCommentFn = old })
+	t.Setenv("INITECH_AGENT", "eng7")
+	rootCmd.SetOut(&bytes.Buffer{})
+	rootCmd.SetErr(&bytes.Buffer{})
+	rootCmd.SetArgs([]string{"deliver", "ini-q2k"})
+	defer rootCmd.SetArgs(nil)
+	err := rootCmd.Execute()
+	if want := "not delivered: ini-q2k waits on Nelson (Ship it or hold?); super moves it when he answers"; err == nil || err.Error() != want {
+		t.Errorf("err = %v, want %q", err, want)
+	}
+	if writes != 0 {
+		t.Errorf("%d writes", writes)
+	}
+}
