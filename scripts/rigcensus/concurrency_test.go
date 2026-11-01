@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"gopkg.in/yaml.v3"
@@ -57,6 +58,14 @@ func TestWorkflows_OnlyMainPushesShareAConcurrencyGroup(t *testing.T) {
 		case c.CancelInProgress != cancel:
 			t.Errorf("%s: cancel-in-progress is %v, want %v", name, c.CancelInProgress, cancel)
 		}
+	}
+	// app-tests.yml: ONE group for every ref, a literal with no expression, so
+	// only one app-tests run (one simulator) is on the host at a time across
+	// all branches (ini-r0q.17); a started run always finishes.
+	if c, jobs := read("app-tests.yml"); jobs == 0 {
+		t.Fatal("app-tests.yml: no jobs parsed -- the fence is reading nothing")
+	} else if c == nil || c.Group == "" || strings.Contains(c.Group, "${{") || c.CancelInProgress {
+		t.Errorf("app-tests.yml: concurrency %+v; want one literal group for every ref with cancel-in-progress off: two branches' simulators overlapped", c)
 	}
 	if c, jobs := read("release.yml"); jobs == 0 {
 		t.Fatal("release.yml: no jobs parsed -- the fence is reading nothing")

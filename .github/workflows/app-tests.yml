@@ -11,9 +11,10 @@
 #   shared with other projects' iOS jobs, and the switch is flipped only once
 #   a load sample shows it can take one simulator. With it unset the job is
 #   skipped, so no runner is used at all.
-# - One simulator at a time on the host: sim-test.sh's lock; the load gate
-#   also holds a job while any simulator is booted there; a concurrency group
-#   per ref queues a ref's own runs.
+# - One simulator at a time on the host: ONE concurrency group for every ref,
+#   so one app-tests run at a time across all branches (two branches' runs
+#   overlapped on the host before); sim-test.sh's lock and the load gate's
+#   simulator check stay as a second and third line.
 # - The job waits at the shared load gate first (.github/actions/load-gate,
 #   with simulators): while the host's 5-minute load is over 6, during the
 #   other project's nightly window, and while any simulator is booted there by
@@ -40,12 +41,15 @@ on:
     branches: [main]
     paths: ["app/**", ".github/workflows/app-tests.yml"]
 
-# One group per ref: GitHub keeps one pending run per group, so a shared group
-# let a push cancel another branch's queued run. One simulator at a time across
-# the host is the load gate's job (simulators: true holds a job while any
-# simulator is booted there).
+# ONE GROUP FOR EVERY REF (ini-r0q.17, the operator via theguy): only one
+# app-tests run at a time across all branches, so only one simulator on the
+# host. Per-ref groups let two branches' runs start together, and both passed
+# the load gate's simulator check before either booted one. The cost, known:
+# GitHub keeps one running and one pending run per group, so a third request
+# replaces the pending one (that run is cancelled, never started); start it
+# again once the queue clears. A started run always finishes.
 concurrency:
-  group: app-sim-${{ github.ref }}
+  group: app-sim
   cancel-in-progress: false
 
 jobs:
