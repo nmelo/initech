@@ -15,7 +15,10 @@ var keystrokeCmd = &cobra.Command{
 	Long: `Writes exactly one key into the agent's terminal: enter, esc, ctrl-c, y
 or n. Nothing else is typed: no bracketed paste, no Enter after it, and no
 check of the input box, so Claude Code, Codex and generic agents take it the
-same way. An open dialog does not hold the operator's key (run outside any
+same way. On Claude Code's numbered permission prompt, enter answers Yes
+(the highlighted option) and esc cancels (No); y and n are for Codex
+approvals and plain y/n questions and do nothing on a numbered prompt, as
+when typed by hand. An open dialog does not hold the operator's key (run outside any
 pane): a key is how a dialog is answered, so it goes into whatever is on
 screen. Any other sender's key to an agent with a dialog open is not
 delivered: "a dialog is open; only the operator may answer it".
