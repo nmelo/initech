@@ -257,6 +257,22 @@ These are the commands you'll use most. The full list is in the README.
 
 `top` (or `ps`) opens a process table. Press `p` to pin/unpin agents (pinned agents are never auto-suspended). Press `r` to restart, `k` to kill, `h` to hide/show. Arrow keys to navigate.
 
+## The iPhone and iPad App
+
+### Blockers
+
+Blockers is one list per running rig, in two kinds.
+
+**Waiting on you** comes from the `super` pane of each rig. Its items are the `▶` lines in the footer of that pane's latest reply that has a footer. A reply with no footer leaves the list as it was, and `- ▶ nothing` empties it. An item drops off once a later footer no longer carries its line. The first item shows the `Recommendation` line of the reply it came from, and shows no recommendation when that reply has none. Tapping an item opens the pane.
+
+**Stuck** lists each pane that cannot act, with the reason:
+- a dialog open: a permission prompt, trust prompt, picker, login screen or an unknown dialog;
+- waiting at a prompt, or text left unsent in its input box;
+- idle while it owns a bead (in progress or later, not closed) that has not moved for an hour or more;
+- a QA pane idle while its rig has a bead in `ready_for_qa`, or one in `in_qa` that is unassigned or assigned to it.
+
+A rig with nothing in either kind shows as one quiet row.
+
 ## Configuration
 
 Settings live in `initech.yaml` at the project root and are read at startup.
