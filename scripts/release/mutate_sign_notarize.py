@@ -17,6 +17,9 @@ M = [
     ('published before notarisation', '# 5. Notarise both binaries', '"$GH" release edit "$TAG" --repo "$REPO" --draft=false >/dev/null 2>&1\n# 5. Notarise both binaries'),
     ('key printed', 'unset CREDS\n', 'unset CREDS\ncat "$KEY_PATH"\n'),
     ('key ids printed', 'unset CREDS\n', 'unset CREDS\necho "using $KEY_ID $ISSUER"\n'),
+    ('a third-party module imported', 'import os, stat, sys\n', 'import os, stat, sys\nimport yaml\n'),
+    ('a key outside the block read', "            inside = line.split('#', 1)[0].strip() == 'app_store_connect:'\n", "            inside = True\n"),
+    ('quotes kept', '                v = v[1:-1]\n', '                pass\n'),
     ('0644 key accepted', "if mode != 0o600:", "if mode not in (0o600, 0o644):"),
     # AC4, each refusal
     ('a published release signed', '[ "$draft" = true ] || refuse', '[ -n "$draft" ] || refuse'),

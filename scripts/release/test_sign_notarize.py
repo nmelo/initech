@@ -225,6 +225,31 @@ class Secrets(Case):
         out = r.run(); self.assert_nothing_uploaded(r, out); self.assertIn('app_store_connect', out.stdout)
 
 
+class Config(Case):
+    def test_runs_with_no_third_party_module(self):
+        # A release runner's python has the standard library only.
+        r = self.rig(); nb = os.path.join(r.h, 'nosite'); os.makedirs(nb)
+        p = os.path.join(nb, 'python3')
+        open(p, 'w').write(f'#!/bin/bash\nexec {shutil.which("python3")} -S "$@"\n'); os.chmod(p, 0o755)
+        r.env['PATH'] = nb + ':' + r.env['PATH']
+        out = r.run(); self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+
+    def test_reads_the_block_among_others_with_quotes_and_comments(self):
+        r = self.rig()
+        open(r.config, 'w').write(
+            '# fixture\nproject: fixture\nroles: [a, b]\napp_store_connect:\n'
+            f'  # the notarising key\n  key_path: "{r.key}"\n  key_id: \'{KEY_ID}\'  # id\n'
+            f'  issuer_id: {ISSUER}\nother:\n  key_path: /nowhere\n')
+        out = r.run(); self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        sub = [c for c in r.calls() if c.startswith('notarytool submit')][0]
+        self.assertIn(f'--key {r.key} --key-id {KEY_ID} --issuer {ISSUER}', sub)
+
+    def test_a_key_outside_the_block_is_not_read(self):
+        r = self.rig()
+        open(r.config, 'w').write(f'key_path: {r.key}\nkey_id: {KEY_ID}\nissuer_id: {ISSUER}\napp_store_connect:\n  team_id: {TEAM}\n')
+        out = r.run(); self.assert_nothing_uploaded(r, out); self.assertIn('app_store_connect lacks', out.stdout)
+
+
 class Refuses(Case):
     def test_a_published_release(self):
         r = self.rig(); r.flag('is_draft', 'false\n')

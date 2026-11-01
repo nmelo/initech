@@ -55,10 +55,28 @@ draft=$("$GH" release view "$TAG" --repo "$REPO" --json isDraft -q .isDraft 2>/d
 # 2. The key, by path. The values stay in this process; nothing prints them.
 CREDS=$(python3 - "$CONFIG" <<'PY'
 import os, stat, sys
+def block(path):
+    # The app_store_connect mapping of initech.yaml, read with the standard
+    # library only (a release runner has no YAML module): the top-level key,
+    # then its indented "key: value" lines, quotes and trailing comments dropped.
+    out, inside = {}, False
+    for raw in open(path, encoding='utf-8'):
+        line = raw.rstrip('\n')
+        if not line.strip() or line.lstrip().startswith('#'):
+            continue
+        if not line[0].isspace():
+            inside = line.split('#', 1)[0].strip() == 'app_store_connect:'
+            continue
+        if inside and ':' in line:
+            k, v = line.strip().split(':', 1)
+            v = v.split(' #', 1)[0].strip()
+            if len(v) >= 2 and v[0] == v[-1] and v[0] in (chr(34), chr(39)):
+                v = v[1:-1]
+            out[k.strip()] = v
+    return out
 try:
-    import yaml
-    a = (yaml.safe_load(open(sys.argv[1])) or {}).get('app_store_connect') or {}
-except Exception as e:
+    a = block(sys.argv[1])
+except (OSError, UnicodeDecodeError) as e:
     print(f'ERR cannot read the config: {type(e).__name__}'); sys.exit(0)
 missing = [k for k in ('key_path', 'key_id', 'issuer_id') if not a.get(k)]
 if missing:
