@@ -13,6 +13,7 @@
 		3143849633B5CCDC67ECB10B /* ScreenshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F6B44C43A26A6F70FCF033B /* ScreenshotTests.swift */; };
 		3B71EA093E888A1CE3B0A06A /* PaneModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7EE12E10FEBB62BEC8DAAF65 /* PaneModelTests.swift */; };
 		40E7FF7EA5D5C02FA1140670 /* BlockersModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10D5A8C8CF2881FB2236459D /* BlockersModel.swift */; };
+		54B918EF7002E93756072549 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 08612C6B0EEC57AB3F1801AA /* Assets.xcassets */; };
 		5C34785AC296AEBE541AD12A /* AppLockTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B272B5DB2C3178712A3DC43 /* AppLockTests.swift */; };
 		6166565653BCA9C9210BAFC7 /* PairingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93A60E37937117C84492E6AF /* PairingTests.swift */; };
 		685878ED785A10A098F263E2 /* ProgressModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 80BF034D8710ADF009CF829B /* ProgressModelTests.swift */; };
@@ -59,6 +60,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		08612C6B0EEC57AB3F1801AA /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		0DD99BD2396715324CE7297D /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
 		10D5A8C8CF2881FB2236459D /* BlockersModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlockersModel.swift; sourceTree = "<group>"; };
 		141131EF2DD5FEE337187AD3 /* BlockersModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlockersModelTests.swift; sourceTree = "<group>"; };
@@ -110,6 +112,7 @@
 			isa = PBXGroup;
 			children = (
 				507BBB42FCC3688C96662A86 /* AppLock.swift */,
+				08612C6B0EEC57AB3F1801AA /* Assets.xcassets */,
 				10D5A8C8CF2881FB2236459D /* BlockersModel.swift */,
 				666FD729244613CF6E86345D /* BlockersView.swift */,
 				9C7B8C3570C7B33C099C65C3 /* HomeModel.swift */,
@@ -194,6 +197,7 @@
 			buildConfigurationList = 5F8F6D2C3AB03EFFF91AACA8 /* Build configuration list for PBXNativeTarget "InitechApp" */;
 			buildPhases = (
 				2E7CC0FF48F28966B591462F /* Sources */,
+				5F6C76DDC7550957AE697D26 /* Resources */,
 			);
 			buildRules = (
 			);
@@ -268,6 +272,17 @@
 			);
 		};
 /* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		5F6C76DDC7550957AE697D26 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				54B918EF7002E93756072549 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		2E7CC0FF48F28966B591462F /* Sources */ = {
