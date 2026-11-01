@@ -174,6 +174,10 @@ func TestRefreshStableCopy_NothingButAReleaseRunThroughItsLink(t *testing.T) {
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
+			// From a temp folder: with HOME unset the copy's path would be
+			// relative, and a broken check must not write into the source
+			// tree.
+			t.Chdir(t.TempDir())
 			r := newStableRig(t)
 			old := r.oldCopy(t)
 			e := r.env()
@@ -182,6 +186,9 @@ func TestRefreshStableCopy_NothingButAReleaseRunThroughItsLink(t *testing.T) {
 			got, _ := os.ReadFile(r.copyPath())
 			if !bytes.Equal(got, old) || !exists(r.stamp("2.55.1")) || exists(r.stamp(e.Version)) && e.Version != "2.55.1" || r.logLines() != 0 {
 				t.Errorf("the copy or its stamp changed, or a line was logged (copy now %q)", got)
+			}
+			if _, err := os.Stat("Library"); err == nil {
+				t.Error("a copy was written relative to the working folder")
 			}
 		})
 	}
