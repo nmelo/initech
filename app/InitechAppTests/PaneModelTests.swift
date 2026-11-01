@@ -113,8 +113,11 @@ final class PaneModelTests: XCTestCase {
         await pane.loadOlder()
         XCTAssertEqual(pane.messages.count, 100)
         pane.apply(.reset)
-        try await waitForMain { pane.messages.count == 50 }
-        XCTAssertEqual(pane.messages.first?.id, "m71")
+        // The newest page overlaps what is held, so the older pages stay: the
+        // reader keeps their place.
+        try await Task.sleep(for: .milliseconds(300))
+        XCTAssertEqual(pane.messages.count, 100)
+        XCTAssertEqual(pane.messages.first?.id, "m21")
         XCTAssertEqual(pane.messages.last?.id, "m120")
         XCTAssertFalse(pane.startReached)
     }
@@ -131,6 +134,55 @@ final class PaneModelTests: XCTestCase {
         await pane.load()
         XCTAssertEqual(pane.messages.map(\.id), ["t9"], "the page carries it: no second copy")
         XCTAssertEqual(pane.verdicts["t9"]?.outcome, .delivered)
+    }
+
+    /// A pane opened a second time has its view's task cancelled in the push;
+    /// the read must still finish, or the pane opens empty.
+    func testOpen_WhenItsTaskIsCancelled_StillReadsTheConversation() async throws {
+        server.setTranscript(rig: ref.rig, pane: ref.pane, (1...10).map { Fx.msg("m\($0)", .agent, "e") }, pageSize: PaneModel.pageSize)
+        let pane = PaneModel(service: service, ref: ref)
+        let opening = Task { await pane.open() }
+        opening.cancel()
+        await opening.value
+        try await waitForMain { pane.loaded }
+        XCTAssertEqual(pane.messages.last?.id, "m10")
+        XCTAssertNil(pane.problem)
+        pane.stopFeed()
+    }
+
+    /// The feed lives as long as the model: once nothing holds an opened
+    /// pane, it is released, and its deinit stops the feed.
+    func testAnOpenedPane_IsReleasedWhenNothingHoldsIt() async throws {
+        server.setTranscript(rig: ref.rig, pane: ref.pane, (1...3).map { Fx.msg("m\($0)", .agent, "e") }, pageSize: PaneModel.pageSize)
+        var pane: PaneModel? = PaneModel(service: service, ref: ref)
+        await pane?.open()
+        weak let held = pane
+        pane = nil
+        try await waitForMain { held == nil }
+    }
+
+    func testAReset_WithEntriesMissedBelow_SplicesThemInAndKeepsTheOlderPages() async throws {
+        var all = (1...120).map { Fx.msg("m\($0)", .agent, "entry \($0)") }
+        server.setTranscript(rig: ref.rig, pane: ref.pane, all, pageSize: PaneModel.pageSize)
+        let pane = PaneModel(service: service, ref: ref)
+        await pane.load()
+        await pane.loadOlder()
+        all += (121...125).map { Fx.msg("m\($0)", .agent, "entry \($0)") }
+        server.setTranscript(rig: ref.rig, pane: ref.pane, all, pageSize: PaneModel.pageSize)
+        pane.apply(.reset)
+        try await waitForMain { pane.messages.last?.id == "m125" }
+        XCTAssertEqual(pane.messages.map(\.id), (21...125).map { "m\($0)" })
+    }
+
+    func testAReset_PastMoreThanAPage_ReplacesWhatIsHeld() async throws {
+        server.setTranscript(rig: ref.rig, pane: ref.pane, (1...60).map { Fx.msg("m\($0)", .agent, "e") }, pageSize: 50)
+        let pane = PaneModel(service: service, ref: ref)
+        await pane.load()
+        server.setTranscript(rig: ref.rig, pane: ref.pane, (1...200).map { Fx.msg("m\($0)", .agent, "e") }, pageSize: 50)
+        pane.apply(.reset)
+        try await waitForMain { pane.messages.last?.id == "m200" }
+        XCTAssertEqual(pane.messages.first?.id, "m151", "no overlap: the newest page replaces, the place is lost")
+        XCTAssertFalse(pane.startReached)
     }
 
     func testOpen_RunsTheFeedAndLoads() async throws {

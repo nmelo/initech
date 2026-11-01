@@ -189,15 +189,7 @@ final class PaneFlowUITests: XCTestCase {
             // A new entry must not pull him away from what he is reading.
             server?.emit("transcript", #"{"rig":"initech","pane":"\#(paneA)","message":{"id":"m121","kind":"agent","text":"entry 121 of the transcript"}}"#)
             Thread.sleep(forTimeInterval: 2)
-            // KNOWN DEFECT, open (super's ruling on ini-r0q.2; its own P1 bead,
-            // blocking the first TestFlight build): a new entry arriving while he
-            // reads the start scrolls him away from it. Strict: once the fix
-            // lands this check passes, the expected failure goes unmet, and the
-            // test goes red until this block is removed.
-            XCTExpectFailure("a new entry scrolls him away from what he reads back (known defect, ini-r0q.2)",
-                             options: .init()) {
-                XCTAssertTrue(start.isHittable, "a new entry scrolled him away from the start")
-            }
+            XCTAssertTrue(start.isHittable, "a new entry scrolled him away from the start")
         }
 
         field.tap()
@@ -209,6 +201,190 @@ final class PaneFlowUITests: XCTestCase {
             format: "label == 'Delivered' OR label CONTAINS 'deferred to' OR label CONTAINS 'not delivered' OR label CONTAINS 'not confirmed'")).firstMatch
         XCTAssertTrue(verdict.waitForExistence(timeout: 30), "no verdict on the message")
         if server != nil { XCTAssertEqual(verdict.label, "Delivered") }
+    }
+
+    // MARK: keeping his place (fixture only: the entries come from the fixture's feed)
+
+    private func entry(_ n: Int) -> XCUIElement { app.staticTexts["entry \(n) of the transcript"] }
+
+    /// emit sends n new entries to paneA's conversation, numbered from first.
+    private func emit(_ n: Int, from first: Int) {
+        for i in first..<(first + n) {
+            server?.emit("transcript", #"{"rig":"initech","pane":"\#(paneA)","message":{"id":"m\#(i)","kind":"agent","text":"entry \#(i) of the transcript"}}"#)
+        }
+    }
+
+    /// topEntry is the first entry line on screen and where it sits.
+    private func topEntry() -> (label: String, y: CGFloat)? {
+        let top = app.scrollViews.firstMatch.frame.minY
+        return app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'entry '")).allElementsBoundByIndex
+            .filter { $0.isHittable && $0.frame.minY >= top }
+            .map { ($0.label, $0.frame.minY) }
+            .min { $0.1 < $1.1 }
+    }
+
+    /// openPaneA opens paneA on its newest entry, with paneB pinned as well
+    /// when reopening is what the test does (see reopenPaneA).
+    private func openPaneA(toReopen: Bool = false) throws {
+        if toReopen {
+            server?.setTranscript(rig: "initech", pane: paneB,
+                                  [Message(id: "o1", at: nil, kind: .agent, text: "the other pane", footer: nil, tool: nil)],
+                                  pageSize: 50)
+        }
+        launch()
+        unpinAll()
+        pinFromRigs(toReopen ? [paneA, paneB] : [paneA])
+        XCTAssertTrue(row(paneA).waitForExistence(timeout: 10))
+        row(paneA).tap()
+        XCTAssertTrue(entry(120).waitForExistence(timeout: 15), "the pane did not open on its newest entry")
+    }
+
+    /// Two screens up, new entries leave the line he reads where it is and show
+    /// "3 new below"; a tap goes to the bottom and clears it; at the bottom the
+    /// view follows and no line shows.
+    func testNewEntries_KeepHisPlace_AndSayNewBelow() throws {
+        try XCTSkipIf(server == nil, "fixture only")
+        try openPaneA()
+        app.scrollViews.firstMatch.swipeDown(velocity: .slow)
+        app.scrollViews.firstMatch.swipeDown(velocity: .slow)
+        let before = try XCTUnwrap(topEntry(), "no entry on screen two screens up")
+        emit(3, from: 121)
+        XCTAssertTrue(element("3 new below").waitForExistence(timeout: 10), "no new-below line")
+        let after = try XCTUnwrap(topEntry())
+        XCTAssertEqual(after.label, before.label, "the first line he was reading changed")
+        XCTAssertEqual(after.y, before.y, accuracy: 4, "the line he was reading moved")
+        XCTAssertFalse(entry(123).isHittable, "the view went to the new entries")
+
+        element("3 new below").tap()
+        XCTAssertTrue(entry(123).waitForExistence(timeout: 5))
+        XCTAssertTrue(entry(123).isHittable, "the tap did not go to the bottom")
+        XCTAssertFalse(element("new below").exists, "the line stayed after the tap")
+
+        emit(1, from: 124)
+        XCTAssertTrue(entry(124).waitForExistence(timeout: 10), "the entry did not arrive")
+        Thread.sleep(forTimeInterval: 1)
+        XCTAssertTrue(entry(124).isHittable, "at the bottom, the view did not follow")
+        XCTAssertFalse(element("new below").exists, "a line showed at the bottom")
+    }
+
+    /// Scrolling back to the bottom by hand clears the line; a burst of 50 is
+    /// one line with its count, and the view stays put.
+    func testABurstOf50_IsOneLine_AndScrollingDownClearsIt() throws {
+        try XCTSkipIf(server == nil, "fixture only")
+        try openPaneA()
+        app.scrollViews.firstMatch.swipeDown(velocity: .slow)
+        let before = try XCTUnwrap(topEntry())
+        emit(50, from: 121)
+        Thread.sleep(forTimeInterval: 3)
+        XCTAssertTrue(element("50 new below").waitForExistence(timeout: 15), "no single line with the count")
+        XCTAssertEqual(try XCTUnwrap(topEntry()).label, before.label, "the burst moved the view")
+        for _ in 0..<30 where element("new below").exists { app.scrollViews.firstMatch.swipeUp(velocity: .fast) }
+        XCTAssertFalse(element("new below").exists, "reaching the bottom by hand did not clear the line")
+    }
+
+    /// assertNotEditingTheList fails if the pane list is in edit mode, where a
+    /// tap on a row lands on its Reorder control and opens nothing.
+    private func assertNotEditingTheList() {
+        let reorder = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Reorder'"))
+        XCTAssertEqual(reorder.count, 0, "the pane list is in edit mode")
+    }
+
+    /// reopenPaneA closes paneA and opens it again, each way that happens. On
+    /// iPhone the back button goes to the list. On iPad the list stays beside
+    /// the pane and there is no back button: paneA closes when another pane
+    /// opens, so paneB opens first and paneA has to be gone.
+    private func reopenPaneA() {
+        if UIDevice.current.userInterfaceIdiom == .pad {
+            assertNotEditingTheList()
+            row(paneB).tap()
+            XCTAssertTrue(app.staticTexts["the other pane"].waitForExistence(timeout: 10), "the other pane did not open")
+            XCTAssertFalse(entry(120).exists, "paneA did not leave")
+        } else {
+            app.navigationBars.buttons["BackButton"].tap()
+        }
+        XCTAssertTrue(row(paneA).waitForExistence(timeout: 10))
+        assertNotEditingTheList()
+        row(paneA).tap()
+    }
+
+    /// A pane opened again is at the bottom before anything scrolls, and
+    /// nothing has yet reported what is in view: the first new entry is
+    /// followed and no line shows.
+    func testAReopenedPane_FollowsTheFirstNewEntry() throws {
+        try XCTSkipIf(server == nil, "fixture only")
+        try openPaneA(toReopen: true)
+        reopenPaneA()
+        XCTAssertTrue(entry(120).waitForExistence(timeout: 15), "the reopened pane shows nothing")
+        emit(1, from: 121)
+        XCTAssertTrue(entry(121).waitForExistence(timeout: 10), "the new entry is not on screen: the view did not follow it")
+        Thread.sleep(forTimeInterval: 1)
+        XCTAssertTrue(entry(121).isHittable, "a reopened pane did not follow the new entry")
+        XCTAssertFalse(element("new below").exists, "a line showed at the bottom")
+    }
+
+    /// Closing the pane and opening it again opens it on its newest entry.
+    func testReopening_OpensAtTheBottom() throws {
+        try XCTSkipIf(server == nil, "fixture only")
+        try openPaneA(toReopen: true)
+        app.scrollViews.firstMatch.swipeDown(velocity: .slow)
+        reopenPaneA()
+        XCTAssertTrue(entry(120).waitForExistence(timeout: 15), "the reopened pane shows nothing")
+        XCTAssertTrue(entry(120).isHittable, "reopening did not open at the bottom")
+    }
+
+    /// A feed reset while he reads back keeps his place; reopening the pane
+    /// opens at the bottom.
+    func testAReset_KeepsHisPlace_AndReopeningOpensAtTheBottom() throws {
+        try XCTSkipIf(server == nil, "fixture only")
+        try openPaneA(toReopen: true)
+        app.scrollViews.firstMatch.swipeDown(velocity: .slow)
+        let before = try XCTUnwrap(topEntry())
+        server?.emit("reset", "{}")
+        Thread.sleep(forTimeInterval: 2)
+        XCTAssertEqual(try XCTUnwrap(topEntry()).label, before.label, "a reset moved him")
+
+        reopenPaneA()
+        XCTAssertTrue(entry(120).waitForExistence(timeout: 15))
+        XCTAssertTrue(entry(120).isHittable, "reopening did not open at the bottom")
+    }
+
+    /// Paging back while entries arrive keeps his place: entries that came in
+    /// before the older page are still counted, and entries after it leave the
+    /// line he reads where it is.
+    func testPagingBack_WhileEntriesArrive_KeepsHisPlace() throws {
+        try XCTSkipIf(server == nil, "fixture only")
+        try openPaneA()
+        let older = app.buttons["Show older messages"]
+        for _ in 0..<20 where !older.isHittable { app.scrollViews.firstMatch.swipeDown(velocity: .fast) }
+        XCTAssertTrue(older.isHittable, "no Show older messages at the top")
+        emit(2, from: 121)
+        XCTAssertTrue(element("2 new below").waitForExistence(timeout: 10), "no new-below line before the page")
+        older.tap()
+        XCTAssertTrue(entry(21).waitForExistence(timeout: 10), "the tap brought no older page")
+        Thread.sleep(forTimeInterval: 1)
+        let before = try XCTUnwrap(topEntry(), "no entry on screen after paging back")
+        emit(2, from: 123)
+        XCTAssertTrue(element("4 new below").waitForExistence(timeout: 10), "the count did not carry across the page")
+        let after = try XCTUnwrap(topEntry())
+        XCTAssertEqual(after.label, before.label, "the first line he was reading changed")
+        XCTAssertEqual(after.y, before.y, accuracy: 4, "the line he was reading moved")
+        XCTAssertFalse(entry(124).isHittable, "the view went to the new entries")
+    }
+
+    /// A conversation shorter than a screen never shows the line.
+    func testAShortConversation_NeverShowsTheLine() throws {
+        let server = try XCTUnwrap(server, "fixture only")
+        server.setTranscript(rig: "initech", pane: paneB,
+                             (1...3).map { Message(id: "s\($0)", at: nil, kind: .agent, text: "short \($0)", footer: nil, tool: nil) },
+                             pageSize: 50)
+        launch()
+        unpinAll()
+        pinFromRigs([paneB])
+        row(paneB).tap()
+        XCTAssertTrue(app.staticTexts["short 3"].waitForExistence(timeout: 15))
+        server.emit("transcript", #"{"rig":"initech","pane":"\#(paneB)","message":{"id":"s4","kind":"agent","text":"short 4"}}"#)
+        XCTAssertTrue(app.staticTexts["short 4"].waitForExistence(timeout: 10))
+        XCTAssertFalse(element("new below").exists, "a short conversation showed the line")
     }
 
     /// AC 7: at a prompt the screen lines and the hint show; Esc and then Enter

@@ -16,7 +16,10 @@ final class PaneModel: ObservableObject {
     let service: Service
     let ref: PaneRef
     private var before: Int64?
-    private var feedTask: Task<Void, Never>?
+    /// feedTask lives as long as the model: a view's disappear is not the
+    /// pane closing (a pane opened again disappears and stays on screen while
+    /// the push runs), so the feed stops when the model goes, in deinit.
+    nonisolated(unsafe) private var feedTask: Task<Void, Never>?
     private var sentCount = 0
     static let pageSize = 50
 
@@ -25,24 +28,41 @@ final class PaneModel: ObservableObject {
         self.ref = ref
     }
 
+    deinit { feedTask?.cancel() }
+
     /// open starts the feed, then reads the newest page: in that order, so an
-    /// entry written between the two is not missed.
+    /// entry written between the two is not missed. The read runs in a task of
+    /// its own: the view's task is cancelled when a pane opened a second time
+    /// passes through the push, and a cancelled read left the pane empty.
     func open() async {
         startFeed()
-        await load()
+        await Task { await self.load() }.value
     }
 
-    /// load reads the newest page of the transcript. What it already holds
-    /// and the page does not carry yet (a feed entry newer than the page, a
-    /// message he just sent) stays after the page.
-    func load() async {
+    /// load reads the newest page of the transcript and merges it with what is
+    /// held. When the page overlaps what is held, the older entries before it
+    /// stay and so does the paging back, so a reader keeps their place; what
+    /// is held and not on the page (a feed entry newer than the page, a message
+    /// he just sent) stays after it. With no overlap the page replaces the held
+    /// entries: more than a page was missed, and the place cannot be kept.
+    func load() async { await load(afterReset: false) }
+
+    /// load(afterReset:) is load; after a feed reset with no overlap, what is
+    /// held is stale, so only what he sent and the transcript has not shown
+    /// yet stays after the page.
+    private func load(afterReset: Bool) async {
         do {
             let page = try await service.conversation(rig: ref.rig, pane: ref.pane, before: nil, limit: Self.pageSize)
             page.messages.forEach { dropSentCopy(of: $0) }
             let onPage = Set(page.messages.map(\.id))
-            messages = page.messages + messages.filter { !onPage.contains($0.id) }
-            before = page.before
-            startReached = page.startReached
+            if let first = page.messages.first?.id, let i = messages.firstIndex(where: { $0.id == first }) {
+                messages = Array(messages[..<i]) + page.messages + messages[i...].filter { !onPage.contains($0.id) }
+            } else {
+                let kept = afterReset ? messages.filter { $0.id.hasPrefix("local-") } : messages
+                messages = page.messages + kept.filter { !onPage.contains($0.id) }
+                before = page.before
+                startReached = page.startReached
+            }
             loaded = true
             problem = nil
         } catch {
@@ -107,13 +127,11 @@ final class PaneModel: ObservableObject {
     /// apply appends this pane's new transcript entries. His own message coming
     /// back from the transcript replaces the copy shown when he sent it, and
     /// keeps its verdict. A reset means entries were missed past the replay
-    /// window: the conversation is read again from its newest page, keeping
-    /// only what he sent that the transcript has not shown yet.
+    /// window: the newest page is read again and merged in (see load), so the
+    /// reader keeps their place.
     func apply(_ e: FeedEvent) {
         if case .reset = e {
-            messages = messages.filter { $0.id.hasPrefix("local-") }
-            startReached = false
-            Task { await load() }
+            Task { await load(afterReset: true) }
             return
         }
         guard case let .transcript(rig, pane, m) = e, rig == ref.rig, pane == ref.pane,

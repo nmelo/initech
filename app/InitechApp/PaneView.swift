@@ -7,11 +7,10 @@ struct PaneView: View {
     @StateObject var model: PaneModel
     @ObservedObject var home: HomeModel
     @State private var draft = ""
-    @State private var nearBottom = true
+    @State private var follow = FollowState()
     @State private var loadingOlder = false
-    /// topRow is the row at the top of the screen. Tracking it holds the rows
-    /// he is reading in place while an older page comes in above.
-    @State private var topRow: String?
+    /// visible is the entries on screen, at least half in view.
+    @State private var visible: Set<String> = []
 
     var row: PaneRow? { home.row(for: model.ref) }
 
@@ -49,22 +48,53 @@ struct PaneView: View {
                     .scrollTargetLayout()
                     .padding()
                 }
-                // A pane opens on its newest entry.
-                .scrollPosition(id: $topRow, anchor: .top)
+                // A pane opens on its newest entry. No scroll position is held
+                // by id: a held id went stale when an older page came in, and the
+                // next entry then moved the view to it. Without one, an entry
+                // added below never moves the view.
                 .defaultScrollAnchor(.bottom, for: .initialOffset)
-                .onScrollGeometryChange(for: Bool.self) {
-                    $0.contentOffset.y + $0.containerSize.height >= $0.contentSize.height - 200
-                } action: { _, atBottom in
-                    nearBottom = atBottom
+                // He is at the bottom when the newest entry is in view; reaching
+                // it, by a tap or by hand, clears the new-below line.
+                .onScrollTargetVisibilityChange(idType: String.self, threshold: 0.5) { ids in
+                    visible = Set(ids)
+                    if let last = model.messages.last?.id, visible.contains(last) {
+                        follow.sawBottom(last)
+                    } else if !ids.isEmpty {
+                        follow.leftBottom()
+                    }
                 }
-                // A new entry follows only if he is at the bottom, or it is the
-                // first page or his own message; reading back stays put.
+                // A new entry follows him only if the entry before it was in
+                // view, or it is his own message; away from the bottom the view
+                // stays put and the new-below line counts what came after the
+                // last entry he saw.
                 .onChange(of: model.messages.last?.id) { old, last in
                     guard let last else { return }
-                    if old == nil {
+                    guard let old else {
                         proxy.scrollTo(last, anchor: .bottom)
-                    } else if nearBottom || model.messages.last?.kind == .nelson {
+                        follow.sawBottom(last)
+                        return
+                    }
+                    let ids = model.messages.map(\.id)
+                    let own = model.messages.last?.kind == .nelson
+                    // Before the first scroll nothing has reported what is in
+                    // view; the pane opened at the bottom, so that stands.
+                    let wasAtBottom = visible.isEmpty ? follow.atBottom : visible.contains(old)
+                    if follow.arrived(ids, previous: old, wasAtBottom: wasAtBottom, own: own) == .follow {
                         withAnimation { proxy.scrollTo(last, anchor: .bottom) }
+                    }
+                }
+                .overlay(alignment: .bottom) {
+                    if let line = follow.markerText(model.messages.map(\.id)) {
+                        Button(line) {
+                            if let last = model.messages.last?.id {
+                                withAnimation { proxy.scrollTo(last, anchor: .bottom) }
+                                follow.sawBottom(last)
+                            }
+                        }
+                        .font(.footnote.weight(.medium))
+                        .padding(.horizontal, 12).padding(.vertical, 6)
+                        .background(.thinMaterial, in: Capsule())
+                        .padding(.bottom, 8)
                     }
                 }
             }
@@ -82,7 +112,6 @@ struct PaneView: View {
         .task {
             await model.open()
         }
-        .onDisappear { model.stopFeed() }
     }
 }
 
@@ -264,5 +293,58 @@ struct KeyStrip: View {
             }
         }
         .padding(.vertical, 6)
+    }
+}
+
+/// FollowState decides what a new entry does to the conversation: at the
+/// bottom, or for his own message, the view follows it; away from the bottom
+/// the view stays where he is reading and the new-below line counts the
+/// entries after the last one he saw. The count comes from the entries
+/// themselves, not a running total, so entries landing in one update are all
+/// counted.
+struct FollowState: Equatable {
+    enum Action: Equatable { case follow, mark }
+
+    private(set) var atBottom = true
+    /// seen is the newest entry he has had at the bottom of the screen.
+    private(set) var seen: String?
+
+    /// arrived decides for the newest of ids. wasAtBottom says the entry before
+    /// it (previous) was in view.
+    mutating func arrived(_ ids: [String], previous: String?, wasAtBottom: Bool, own: Bool) -> Action {
+        guard let last = ids.last else { return .follow }
+        if wasAtBottom || own {
+            atBottom = true
+            seen = last
+            return .follow
+        }
+        atBottom = false
+        // The entry he saw can leave the list (his sent copy, replaced by the
+        // transcript's); count from the entry before this one instead.
+        if seen.map({ ids.contains($0) }) != true { seen = previous }
+        return .mark
+    }
+
+    /// sawBottom records that the newest entry, last, is in view.
+    mutating func sawBottom(_ last: String) {
+        atBottom = true
+        seen = last
+    }
+
+    mutating func leftBottom() { atBottom = false }
+
+    /// newBelow is how many of ids come after the last one he saw.
+    func newBelow(_ ids: [String]) -> Int {
+        guard let seen, let i = ids.lastIndex(of: seen) else { return 0 }
+        return ids.count - 1 - i
+    }
+
+    /// markerText is the new-below line, nil when nothing arrived below.
+    func markerText(_ ids: [String]) -> String? {
+        switch newBelow(ids) {
+        case 0: nil
+        case 1: "new below"
+        case let n: "\(n) new below"
+        }
     }
 }
