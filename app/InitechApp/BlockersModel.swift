@@ -77,15 +77,17 @@ final class BlockersModel: ObservableObject {
         loaded = true
     }
 
-    /// apply reloads on the events that change blockers: a pane state, a
-    /// waiting item, a stuck pane, or a reset. A transcript event alone
-    /// changes nothing the list shows until the service says so.
+    /// apply reloads on the events that can change blockers: a pane state, a
+    /// waiting item, a stuck pane, a reset, or a reply in a super pane. That
+    /// reply is the only event when a later footer drops a line, and the
+    /// service decides from it what still waits. Other transcript lines do
+    /// not reload.
     func apply(_ e: FeedEvent) async {
         switch e {
         case .paneState, .waitingItem, .stuck, .reset:
             await reload()
-        case .transcript:
-            break
+        case let .transcript(_, pane, message):
+            if pane == "super", message.kind == .agent { await reload() }
         }
     }
 

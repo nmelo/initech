@@ -57,6 +57,9 @@ final class HomeModel: ObservableObject {
     @Published var selection: PaneRef?
 
     let service: Service
+    /// listeners get every feed event before the home list does: the
+    /// Blockers and Progress views while they are open.
+    var listeners: [String: any FeedListener] = [:]
     private var feedTask: Task<Void, Never>?
 
     init(service: Service) { self.service = service }
@@ -134,6 +137,7 @@ final class HomeModel: ObservableObject {
 
     /// apply folds one feed event into the model.
     func apply(_ e: FeedEvent) async {
+        for l in listeners.values { await l.apply(e) }
         switch e {
         case let .paneState(rig, pane, _, to, banner):
             guard let ri = rigs.firstIndex(where: { $0.rig == rig }),

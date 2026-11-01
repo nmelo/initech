@@ -6,6 +6,8 @@ struct MainView: View {
     @StateObject var home: HomeModel
     let forget: () -> Void
     @State private var showRigs = false
+    @State private var showBlockers = false
+    @State private var showProgress = false
 
     var body: some View {
         NavigationSplitView {
@@ -15,6 +17,12 @@ struct MainView: View {
                     ToolbarItem(placement: .topBarLeading) { EditButton() }
                     ToolbarItem(placement: .topBarTrailing) {
                         Button("Rigs") { showRigs = true }
+                    }
+                    ToolbarItem(placement: .bottomBar) {
+                        Button("Blockers") { showBlockers = true }
+                    }
+                    ToolbarItem(placement: .bottomBar) {
+                        Button("Progress") { showProgress = true }
                     }
                 }
         } detail: {
@@ -27,6 +35,12 @@ struct MainView: View {
         }
         .sheet(isPresented: $showRigs) {
             NavigationStack { RigsView(home: home) }
+        }
+        .sheet(isPresented: $showBlockers) {
+            NavigationStack { BlockersScreen(home: home) }
+        }
+        .sheet(isPresented: $showProgress) {
+            NavigationStack { ProgressScreen(home: home) }
         }
         .task {
             await home.reload()

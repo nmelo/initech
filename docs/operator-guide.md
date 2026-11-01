@@ -275,7 +275,7 @@ Blockers is one list per running rig, in two kinds.
 
 A rig with nothing in either kind shows as one quiet row.
 
-The list reloads on every feed event that can change it: a pane state, a waiting item, a stuck pane, or a reset. A transcript event alone does not reload it. With no rig running it reads "No rig is running."
+The list reloads on every feed event that can change it: a pane state, a waiting item, a stuck pane, a reset, or a reply in a `super` pane. Other transcript lines do not reload it. The Blockers and Progress buttons on the Panes screen open each view as a sheet; tapping an item opens its pane and closes the sheet. With no rig running it reads "No rig is running."
 
 ### Progress
 

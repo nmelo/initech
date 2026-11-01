@@ -62,7 +62,7 @@ final class BlockersModelTests: XCTestCase {
         await m.reload()
         XCTAssertEqual(m.sections.count, 1)
         XCTAssertEqual(m.sections[0].rows.map(\.kind), [.quiet])
-        XCTAssertNil(m.sections[0].rows[0].pane)
+        XCTAssertNil(m.sections[0].rows.first?.pane)
     }
 
     // AC6: no running rig gives no section, and the model reads loaded.
@@ -74,22 +74,30 @@ final class BlockersModelTests: XCTestCase {
         XCTAssertTrue(m.sections.isEmpty)
     }
 
-    // AC1: the list updates within a feed event: the events that can change
-    // it reload it, a transcript event alone does not.
+    // AC1: the list updates within a feed event. A reply in a super pane is
+    // what drops an item: no other event says a later footer lacks its line.
     func testFeedEventsReload() async {
+        let reply = Message(id: "m1", at: nil, kind: .agent, text: "hi", footer: nil, tool: nil)
+        let toolLine = Message(id: "m2", at: nil, kind: .tool, text: "", footer: nil, tool: nil)
         let src = FakeBlockers([])
         let m = BlockersModel(source: src)
-        await m.apply(.transcript(rig: "initech", pane: "super", message: Message(id: "m1", at: nil, kind: .agent, text: "hi", footer: nil, tool: nil)))
-        XCTAssertEqual(src.calls, 0)
+        await m.apply(.transcript(rig: "initech", pane: "eng1", message: reply))
+        await m.apply(.transcript(rig: "initech", pane: "super", message: toolLine))
+        XCTAssertEqual(src.calls, 0, "only a reply in a super pane reloads")
+
         src.answer = [mixed]
         await m.apply(.waitingItem(rig: "initech", pane: "super", text: "Your go for the patch release"))
         XCTAssertEqual(src.calls, 1)
         XCTAssertEqual(m.sections.first?.rows.first?.title, "Your go for the patch release")
+
         src.answer = []
+        await m.apply(.transcript(rig: "initech", pane: "super", message: reply))
+        XCTAssertEqual(src.calls, 2)
+        XCTAssertTrue(m.sections.isEmpty, "a later reply without the item drops it")
+
         for e: FeedEvent in [.stuck(rig: "a", pane: "b", reason: "c"), .paneState(rig: "a", pane: "b", from: nil, to: "idle", banner: nil), .reset] {
             await m.apply(e)
         }
-        XCTAssertEqual(src.calls, 4)
-        XCTAssertTrue(m.sections.isEmpty, "a later answer without the item drops it")
+        XCTAssertEqual(src.calls, 5)
     }
 }
