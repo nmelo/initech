@@ -94,7 +94,18 @@ var (
 	appServeAddrs                  = appserve.SystemAddrs
 	appServeRunner    iexec.Runner = &iexec.DefaultRunner{}
 	appServeAddrEvery              = 30 * time.Second
+	appServeListenOn               = appserve.Listen
+	appServeExecutable             = os.Executable
+	appServeLstat                  = os.Lstat
+	appServeResolve                = filepath.EvalSymlinks
+	appServeBinaryEvery            = appserve.BinaryEvery
+	appServeDrainGrace             = appserve.DrainGrace
 )
+
+// errBinaryReplaced ends a serve whose initech an upgrade replaced: a
+// planned restart, which RunMarked counts clean and the command exits 0 on,
+// so its one log line is the only one.
+var errBinaryReplaced = fmt.Errorf("the initech it runs was replaced: %w", appserve.ErrPlannedRestart)
 
 func runAppServeToken(cmd *cobra.Command, args []string) error {
 	cmd.SilenceUsage = true
@@ -123,11 +134,17 @@ func runAppServeToken(cmd *cobra.Command, args []string) error {
 }
 
 func appServeBindIP() (net.IP, error) {
-	addrs, err := appServeAddrs()
+	return appServeBindIPFrom(appServeListen, appServeAddrs)
+}
+
+// appServeBindIPFrom is the address to bind for listen over the interfaces
+// addrs reads.
+func appServeBindIPFrom(listen string, addrs func() ([]appserve.IfaceAddr, error)) (net.IP, error) {
+	list, err := addrs()
 	if err != nil {
 		return nil, fmt.Errorf("read interfaces: %w", err)
 	}
-	return appserve.BindAddr(appServeListen, addrs)
+	return appserve.BindAddr(listen, list)
 }
 
 // appServeAPNsClient is the client pushes go out on (HTTP/2 to Apple), and
@@ -236,7 +253,7 @@ func runAppServe(cmd *cobra.Command, args []string) error {
 		StateDir: state,
 		OnStuck:  func(notice string) { fmt.Fprintln(errw, notice) },
 	})
-	ln, err := appserve.Listen(ip, appServePort)
+	ln, err := appServeListenOn(ip, appServePort)
 	if err != nil {
 		return err
 	}
@@ -249,6 +266,11 @@ func runAppServe(cmd *cobra.Command, args []string) error {
 
 	// The bound address going away (DHCP, Tailscale restarting) ends the
 	// run, so launchd starts it again on the new one.
+	// The goroutines below take the seams they use as values here, so a test
+	// that restores them after the service returns does not race a watcher
+	// that has not yet seen ctx end.
+	addrEvery, addrs, listen := appServeAddrEvery, appServeAddrs, appServeListen
+	binEvery, resolve, grace := appServeBinaryEvery, appServeResolve, appServeDrainGrace
 	moved := make(chan struct{})
 	go func() {
 		for {
@@ -256,17 +278,38 @@ func runAppServe(cmd *cobra.Command, args []string) error {
 			case <-ctx.Done():
 				ln.Close()
 				return
-			case <-time.After(appServeAddrEvery):
+			case <-time.After(addrEvery):
 			}
-			if cur, err := appServeBindIP(); err != nil || !cur.Equal(ip) {
+			if cur, err := appServeBindIPFrom(listen, addrs); err != nil || !cur.Equal(ip) {
 				close(moved)
 				ln.Close()
 				return
 			}
 		}
 	}()
-	return appserve.RunMarked(state, appServeNotify, errw, func() error {
-		err := appserve.ServeTLS(ln, srv.Handler(), cert)
+	// An upgrade moves the link launchd ran to a new build: the service
+	// notices within appServeBinaryEvery, says so once, lets requests in
+	// flight finish and exits, and KeepAlive starts the new build.
+	replaced := make(chan struct{})
+	if exe, err := appServeExecutable(); err != nil {
+		fmt.Fprintf(errw, "initech app-serve: its own path is unknown (%v), so an upgrade does not restart the service\n", err)
+	} else if start, ok := appserve.ArmBinaryWatch(exe, appServeLstat, resolve, errw); ok {
+		go func() {
+			tick := time.NewTicker(binEvery)
+			defer tick.Stop()
+			if to := appserve.BinaryReplaced(ctx, exe, start, resolve, tick.C); to != "" {
+				fmt.Fprintln(errw, appserve.ReplacedLine(start, to))
+				close(replaced)
+			}
+		}()
+	}
+	err = appserve.RunMarked(state, appServeNotify, errw, func() error {
+		err := appserve.ServeTLSUntil(ln, srv.Handler(), cert, replaced, grace)
+		select {
+		case <-replaced:
+			return errBinaryReplaced
+		default:
+		}
 		select {
 		case <-moved:
 			return fmt.Errorf("the address %s went away; restarting on the new one: %w", ip, appserve.ErrPlannedRestart)
@@ -277,6 +320,10 @@ func runAppServe(cmd *cobra.Command, args []string) error {
 		}
 		return err
 	})
+	if errors.Is(err, errBinaryReplaced) {
+		return nil
+	}
+	return err
 }
 
 // appServeRigFolders is the folders to scan for rigs: --projects, else the

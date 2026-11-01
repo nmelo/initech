@@ -1,6 +1,7 @@
 package appserve
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -105,8 +106,29 @@ func TLSConfig(cert tls.Certificate) *tls.Config {
 // ServeTLS serves h on ln over TLS 1.3 with cert until ln closes: the only
 // way the service answers, so no request is ever read in clear.
 func ServeTLS(ln net.Listener, h http.Handler, cert tls.Certificate) error {
+	return ServeTLSUntil(ln, h, cert, nil, 0)
+}
+
+// ServeTLSUntil is ServeTLS that, once drain closes, takes no new connection,
+// lets the requests in flight finish for at most grace, then ends them and
+// returns http.ErrServerClosed. A nil drain never closes. A stream that
+// outlives grace (the feed) is cut, and its subscriber reconnects.
+func ServeTLSUntil(ln net.Listener, h http.Handler, cert tls.Certificate, drain <-chan struct{}, grace time.Duration) error {
 	hs := &http.Server{Handler: h, ReadHeaderTimeout: 10 * time.Second}
-	return hs.Serve(tls.NewListener(ln, TLSConfig(cert)))
+	done := make(chan error, 1)
+	go func() { done <- hs.Serve(tls.NewListener(ln, TLSConfig(cert))) }()
+	select {
+	case err := <-done:
+		return err
+	case <-drain:
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), grace)
+	defer cancel()
+	if hs.Shutdown(ctx) != nil {
+		hs.Close() //nolint:errcheck // past grace: cut what is left
+	}
+	<-done
+	return http.ErrServerClosed
 }
 
 // writePrivate writes data to path through a 0600 temp file and a rename.
