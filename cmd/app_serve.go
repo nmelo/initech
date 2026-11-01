@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -20,6 +21,7 @@ import (
 	"github.com/nmelo/initech/internal/progress"
 	"github.com/nmelo/initech/internal/tui"
 	"github.com/spf13/cobra"
+	"gopkg.in/yaml.v3"
 )
 
 var (
@@ -233,6 +235,9 @@ type appBackend struct {
 	scanOnce sync.Once
 	folders  *appserve.FolderScan
 
+	apnsMu sync.Mutex
+	apns   map[string]appserve.APNsConfig // by initech.yaml path
+
 	refusedMu sync.Mutex
 	refused   map[string]bool // folders reported refused, until they read again
 }
@@ -254,6 +259,52 @@ func (b *appBackend) scan() *appserve.FolderScan {
 		}}
 	})
 	return b.folders
+}
+
+// apnsBlock is the part of an initech.yaml the pushes read.
+type apnsBlock struct {
+	APNs *appserve.APNsConfig `yaml:"apns"`
+}
+
+// readAPNs records the apns block of the initech.yaml at path, if it has one.
+func (b *appBackend) readAPNs(path string) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return
+	}
+	var blk apnsBlock
+	if yaml.Unmarshal(raw, &blk) != nil || blk.APNs == nil {
+		return
+	}
+	b.apnsMu.Lock()
+	defer b.apnsMu.Unlock()
+	if b.apns == nil {
+		b.apns = map[string]appserve.APNsConfig{}
+	}
+	b.apns[path] = *blk.APNs
+}
+
+// APNs is the push settings: the apns block of whichever rig's initech.yaml
+// the scans found holding one. None is an error, and so are two different
+// ones, which would make the push depend on scan order.
+func (b *appBackend) APNs() (appserve.APNsConfig, error) {
+	b.apnsMu.Lock()
+	defer b.apnsMu.Unlock()
+	var paths []string
+	for p := range b.apns {
+		paths = append(paths, p)
+	}
+	sort.Strings(paths)
+	if len(paths) == 0 {
+		return appserve.APNsConfig{}, errors.New("no apns block in any rig's initech.yaml")
+	}
+	first := b.apns[paths[0]]
+	for _, p := range paths[1:] {
+		if b.apns[p] != first {
+			return appserve.APNsConfig{}, fmt.Errorf("%s and %s hold different apns blocks", paths[0], p)
+		}
+	}
+	return first, nil
 }
 
 // readRigFolder is every <dir>/*/initech.yaml that loads. Glob swallows I/O
@@ -282,6 +333,7 @@ func (b *appBackend) readRigFolder(dir string) []appserve.Rig {
 	sort.Strings(matches)
 	var rigs []appserve.Rig
 	for _, m := range matches {
+		b.readAPNs(m)
 		p, err := config.Load(m)
 		if err != nil || p.Root == "" {
 			continue

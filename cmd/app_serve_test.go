@@ -459,3 +459,42 @@ func TestAppServeFindRigs_ARefusedFolderIsReportedOnce(t *testing.T) {
 		t.Errorf("refused again: %q, want it reported again", reports)
 	}
 }
+
+// ini-r0q.16: the push settings come from the rig whose initech.yaml holds an
+// apns block, wherever it is in the scan; none, or two different, is an
+// error; two the same is that one.
+func TestAppServeAPNs_ReadFromTheRigThatHoldsIt(t *testing.T) {
+	projects := t.TempDir()
+	mk := func(name, extra string) {
+		d := filepath.Join(projects, name)
+		os.MkdirAll(d, 0o755)
+		cfg := "project: " + name + "\nroot: " + d + "\nroles:\n  - eng1\n" + extra
+		if err := os.WriteFile(filepath.Join(d, "initech.yaml"), []byte(cfg), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	block := "apns:\n  key_name: Initech Push\n  key_id: KEY1\n  team_id: TEAM1\n  topic: com.x.initech\n  environment: production\n  key_path: /k/AuthKey.p8\n"
+	mk("a", "")
+	mk("b", "")
+	b := &appBackend{dirs: []string{projects}, runner: &iexec.DefaultRunner{}}
+	b.FindRigs()
+	if _, err := b.APNs(); err == nil || !strings.Contains(err.Error(), "no apns block") {
+		t.Errorf("no block: %v", err)
+	}
+	mk("b", block)
+	b.FindRigs()
+	got, err := b.APNs()
+	if err != nil || got.KeyID != "KEY1" || got.TeamID != "TEAM1" || got.Topic != "com.x.initech" || got.KeyPath != "/k/AuthKey.p8" || got.Host() != appserve.APNsProduction {
+		t.Errorf("one block: %+v %v", got, err)
+	}
+	mk("a", block)
+	b.FindRigs()
+	if _, err := b.APNs(); err != nil {
+		t.Errorf("two equal blocks: %v", err)
+	}
+	mk("a", strings.Replace(block, "KEY1", "KEY2", 1))
+	b.FindRigs()
+	if _, err := b.APNs(); err == nil || !strings.Contains(err.Error(), "different apns blocks") {
+		t.Errorf("two different blocks: %v", err)
+	}
+}
