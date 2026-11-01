@@ -243,6 +243,15 @@ class Config(Case):
         out = r.run(); self.assert_nothing_uploaded(r, out); self.assertIn('config reader failed', out.stdout)
         self.assertEqual([c for c in r.calls() if c.startswith(('codesign', 'notarytool'))], [])
 
+    def test_a_config_reader_with_a_short_answer_refuses(self):
+        # The reader exits 0 but answers less than the three values: refuse, never sign with a blank.
+        r = self.rig(); nb = os.path.join(r.h, 'shortpy'); os.makedirs(nb)
+        p = os.path.join(nb, 'python3')
+        open(p, 'w').write(f'#!/bin/bash\nif [ "$1" = - ]; then cat >/dev/null; echo "{r.key}"; exit 0; fi\nexec {shutil.which("python3")} "$@"\n'); os.chmod(p, 0o755)
+        r.env['PATH'] = nb + ':' + r.env['PATH']
+        out = r.run(); self.assert_nothing_uploaded(r, out); self.assertIn('no key path, key id or issuer', out.stdout)
+        self.assertEqual([c for c in r.calls() if c.startswith(('codesign', 'notarytool'))], [])
+
     def test_reads_the_block_among_others_with_quotes_and_comments(self):
         r = self.rig()
         open(r.config, 'w').write(
