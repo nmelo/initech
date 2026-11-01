@@ -8,10 +8,12 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"github.com/nmelo/initech/internal/appserve"
 	"github.com/nmelo/initech/internal/config"
 	iexec "github.com/nmelo/initech/internal/exec"
+	"github.com/nmelo/initech/internal/progress"
 	"github.com/nmelo/initech/internal/tui"
 	"github.com/spf13/cobra"
 )
@@ -151,6 +153,7 @@ func runAppServe(cmd *cobra.Command, args []string) error {
 		ctx = context.Background()
 	}
 	go srv.Run(ctx)
+	go srv.RunProgress(ctx)
 	return appserve.ServeTLS(ln, srv.Handler(), cert)
 }
 
@@ -235,6 +238,49 @@ func agentsAsMaps(agents []agentJSON) ([]map[string]any, error) {
 		out = []map[string]any{}
 	}
 	return out, nil
+}
+
+// appServeProgressHours is the window of the service's progress reports,
+// initech progress's default.
+const appServeProgressHours = 6
+
+// ActiveEfforts is the effort prefixes of the rig's beads past open and not
+// closed, from one bd list; a rig with beads off has none.
+func (b *appBackend) ActiveEfforts(r appserve.Rig) ([]string, error) {
+	p, err := config.Load(filepath.Join(r.Root, "initech.yaml"))
+	if err != nil {
+		return nil, err
+	}
+	if !p.Beads.IsEnabled() {
+		return nil, nil
+	}
+	raw, err := b.runner.RunInDir(r.Root, "bd", "list", "--status", strings.Join(shownStatuses, ","), "--json")
+	if err != nil {
+		return nil, err
+	}
+	var beads []progress.Bead
+	if err := json.Unmarshal([]byte(raw), &beads); err != nil {
+		return nil, err
+	}
+	seen := map[string]bool{}
+	var out []string
+	for _, bd := range beads {
+		prefix, _ := progress.Effort(bd.ID)
+		if !seen[prefix] {
+			seen[prefix] = true
+			out = append(out, prefix)
+		}
+	}
+	return out, nil
+}
+
+// Progress is initech progress --json for the rig and prefix.
+func (b *appBackend) Progress(r appserve.Rig, prefix string) (progress.Report, error) {
+	p, err := config.Load(filepath.Join(r.Root, "initech.yaml"))
+	if err != nil {
+		return progress.Report{}, err
+	}
+	return progressReport(b.runner, p, prefix, appServeProgressHours, progressNow().UTC())
 }
 
 // Screen is the pane's last lines, as initech peek reads them.

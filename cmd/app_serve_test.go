@@ -20,6 +20,7 @@ import (
 
 	"github.com/nmelo/initech/internal/appserve"
 	iexec "github.com/nmelo/initech/internal/exec"
+	"github.com/nmelo/initech/internal/progress"
 	"github.com/nmelo/initech/internal/tui"
 	"github.com/spf13/cobra"
 )
@@ -302,4 +303,57 @@ func TestAppServe_AMinuteOfIdleMakesNoBdOrGitCall(t *testing.T) {
 	if len(runner.calls) == 0 {
 		t.Error("a status read ran no command: the counter cannot see bd")
 	}
+}
+
+// ini-r0q.1 AC8: the service's report for a rig and prefix is what initech
+// progress --json prints for them, and the active efforts come from one bd
+// list of the beads past open.
+func TestAppServeProgress_IsProgressJSONForTheEffort(t *testing.T) {
+	cli, err := runProgressJSON(t, &progressFake{}, progressRepos, "fx-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var want progress.Report
+	if err := json.Unmarshal([]byte(cli), &want); err != nil {
+		t.Fatal(err)
+	}
+	dir, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	progressNow = func() time.Time { return progressFixtureNow }
+	fake := &progressFake{data: progressTestdata}
+	got, err := (&appBackend{runner: fake}).Progress(appserve.Rig{Name: "initech", Root: dir}, "fx-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, _ := json.Marshal(got)
+	b, _ := json.Marshal(want)
+	if string(a) != string(b) {
+		t.Errorf("service report differs from progress --json.\nservice: %s\ncli:     %s", a, b)
+	}
+
+	lister := &effortLister{out: `[{"id":"ini-a.1"},{"id":"ini-a.2"},{"id":"ini-b"}]`}
+	efforts, err := (&appBackend{runner: lister}).ActiveEfforts(appserve.Rig{Root: dir})
+	if err != nil || !reflect.DeepEqual(efforts, []string{"ini-a.", "ini-b"}) {
+		t.Errorf("efforts = %v %v", efforts, err)
+	}
+	if len(lister.calls) != 1 || !strings.Contains(lister.calls[0], "bd list --status in_progress,ready_for_qa,in_qa --json") {
+		t.Errorf("calls = %v, want one bd list of the beads past open", lister.calls)
+	}
+}
+
+// effortLister answers every command with out, recording them.
+type effortLister struct {
+	out   string
+	calls []string
+}
+
+func (l *effortLister) Run(name string, args ...string) (string, error) {
+	return l.RunInDir("", name, args...)
+}
+
+func (l *effortLister) RunInDir(dir, name string, args ...string) (string, error) {
+	l.calls = append(l.calls, name+" "+strings.Join(args, " "))
+	return l.out, nil
 }

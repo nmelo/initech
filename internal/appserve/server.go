@@ -9,6 +9,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/nmelo/initech/internal/progress"
 )
 
 // Rig is one initech rig the scan found: its project name, root and IPC
@@ -85,6 +87,9 @@ type Server struct {
 	rigsAt   time.Time
 	statuses map[string]cachedStatus
 	panes    map[string]map[string]PaneState // by rig root, then pane: the last poll
+
+	progress      []progress.Report         // the latest progress run
+	progressAsked map[string]cachedProgress // reports read on request, by rig root and prefix
 }
 
 type cachedStatus struct {
@@ -119,13 +124,15 @@ func New(cfg Config) *Server {
 	if cfg.After == nil {
 		cfg.After = time.After
 	}
-	s := &Server{cfg: cfg, mux: http.NewServeMux(), statuses: map[string]cachedStatus{}, feed: NewFeed(cfg.Now)}
+	s := &Server{cfg: cfg, mux: http.NewServeMux(), statuses: map[string]cachedStatus{}, progressAsked: map[string]cachedProgress{}, feed: NewFeed(cfg.Now)}
 	s.mux.HandleFunc("GET /v1/rigs", s.handleRigs)
 	s.mux.HandleFunc("GET /v1/status", s.handleStatus)
 	s.mux.HandleFunc("GET /v1/status/{rig}", s.handleRigStatus)
 	s.mux.HandleFunc("GET /v1/conversation/{rig}/{pane}", s.handleConversation)
 	s.mux.HandleFunc("POST /v1/keys/{rig}/{pane}", s.handleKeys)
 	s.mux.HandleFunc("POST /v1/send/{rig}/{pane}", s.handleSend)
+	s.mux.HandleFunc("GET /v1/progress", s.handleProgress)
+	s.mux.HandleFunc("GET /v1/progress/{rig}", s.handleRigProgress)
 	s.mux.HandleFunc("GET /v1/pins", s.handleGetPins)
 	s.mux.HandleFunc("PUT /v1/pins", s.handlePutPins)
 	s.mux.HandleFunc("GET /v1/feed", func(w http.ResponseWriter, r *http.Request) { serveFeed(s.feed, w, r) })
