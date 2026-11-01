@@ -123,8 +123,12 @@ func (s *Server) Poll() {
 	// list still the old one.
 	sort.Slice(running, func(i, j int) bool { return running[i].Name < running[j].Name })
 	s.mu.Lock()
+	first := !s.polled
 	s.panes, s.found, s.polled = seen, found, true
 	s.rigs, s.rigsAt = running, s.cfg.Now()
 	s.mu.Unlock()
+	if first {
+		close(s.firstPoll)
+	}
 	s.publishBlockers()
 }

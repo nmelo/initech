@@ -107,7 +107,9 @@ type Server struct {
 	progress      []progress.Report         // the latest progress run
 	progressAsked map[string]cachedProgress // reports read on request, by rig root and prefix
 
-	tails map[string]tailPos // by rig root and pane; only RunTail's goroutine touches it
+	tails     map[string]tailPos       // by rig root and pane; only RunTail's goroutine touches it
+	waiting   map[string][]WaitingBead // by rig root: the beads in waiting_on_nelson at the last bd read
+	firstPoll chan struct{}            // closed when the first poll has finished
 
 	blockersMu   sync.Mutex
 	lastBlockers []byte                  // the list last compared, as JSON; nil before the first
@@ -149,7 +151,7 @@ func New(cfg Config) *Server {
 	if cfg.StuckAfter <= 0 {
 		cfg.StuckAfter = DefaultStuckAfter
 	}
-	s := &Server{cfg: cfg, mux: http.NewServeMux(), statuses: map[string]cachedStatus{}, progressAsked: map[string]cachedProgress{}, tails: map[string]tailPos{}, feed: NewFeed(cfg.Now)}
+	s := &Server{cfg: cfg, mux: http.NewServeMux(), statuses: map[string]cachedStatus{}, progressAsked: map[string]cachedProgress{}, tails: map[string]tailPos{}, firstPoll: make(chan struct{}), feed: NewFeed(cfg.Now)}
 	if cfg.StateDir != "" {
 		if d, err := LoadDevices(cfg.StateDir, cfg.Now); err == nil {
 			s.devices = d
@@ -202,6 +204,13 @@ func (s *Server) digest() ([32]byte, bool) {
 	d, err := LoadDigest(s.cfg.TokenDir)
 	return d, err == nil
 }
+
+// FirstPoll is closed once the first poll has finished, so the rigs' settings
+// are read.
+func (s *Server) FirstPoll() <-chan struct{} { return s.firstPoll }
+
+// Devices is the registered device set; nil when it could not be read.
+func (s *Server) Devices() *Devices { return s.devices }
 
 // Feed is the service's change feed.
 func (s *Server) Feed() *Feed { return s.feed }

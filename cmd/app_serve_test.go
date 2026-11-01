@@ -498,3 +498,62 @@ func TestAppServeAPNs_ReadFromTheRigThatHoldsIt(t *testing.T) {
 		t.Errorf("two different blocks: %v", err)
 	}
 }
+
+// ini-r0q.16 AC1: the waiting read is one bd list of waiting_on_nelson in the
+// rig's root; a rig with beads off makes no call.
+func TestAppServeWaiting_OneBdListInTheRigRoot(t *testing.T) {
+	dir := t.TempDir()
+	writeBasicConfig(t, dir, "demo")
+	l := &effortLister{out: `[{"id":"ini-a","title":"Choose","assignee":"super"}]`}
+	got, err := (&appBackend{runner: l}).Waiting(appserve.Rig{Name: "demo", Root: dir})
+	if err != nil || len(got) != 1 || got[0] != (appserve.WaitingBead{ID: "ini-a", Title: "Choose", Assignee: "super"}) {
+		t.Fatalf("waiting = %+v %v", got, err)
+	}
+	if len(l.calls) != 1 || l.calls[0] != "bd list --status waiting_on_nelson --json" {
+		t.Errorf("calls = %q", l.calls)
+	}
+	off := t.TempDir()
+	os.WriteFile(filepath.Join(off, "initech.yaml"), []byte("project: off\nroot: "+off+"\nroles:\n  - eng1\nbeads:\n  enabled: false\n"), 0o644)
+	l.calls = nil
+	if got, err := (&appBackend{runner: l}).Waiting(appserve.Rig{Root: off}); err != nil || len(got) != 0 || len(l.calls) != 0 {
+		t.Errorf("beads off: %v %v, calls %q", got, err, l.calls)
+	}
+}
+
+// ini-r0q.16 AC5: with no apns block, or a key that is not 0600, the push
+// setup says so in one line after the first poll and returns; the service
+// runs on without pushes.
+func TestAppServePushes_NoBlockOrABadKeyIsOneLine(t *testing.T) {
+	for name, extra := range map[string]string{
+		"no block":    "",
+		"key not 600": "apns:\n  key_id: K\n  team_id: T\n  topic: com.x\n  key_path: KEYPATH\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			projects := t.TempDir()
+			rig := filepath.Join(projects, "r")
+			os.MkdirAll(rig, 0o755)
+			key := filepath.Join(t.TempDir(), "AuthKey.p8")
+			os.WriteFile(key, []byte("not read"), 0o644)
+			cfg := "project: r\nroot: " + rig + "\nroles:\n  - eng1\n" + strings.ReplaceAll(extra, "KEYPATH", key)
+			os.WriteFile(filepath.Join(rig, "initech.yaml"), []byte(cfg), 0o644)
+			b := &appBackend{dirs: []string{projects}, runner: &iexec.DefaultRunner{}}
+			srv := appserve.New(appserve.Config{Backend: b, HasToken: true, StateDir: t.TempDir()})
+			srv.Poll()
+			var log bytes.Buffer
+			done := make(chan struct{})
+			go func() { appServePushes(context.Background(), srv, b, &log); close(done) }()
+			select {
+			case <-done:
+			case <-time.After(5 * time.Second):
+				t.Fatal("the push setup did not return")
+			}
+			out := log.String()
+			if strings.Count(out, "\n") != 1 || !strings.HasPrefix(out, "initech app-serve: no pushes: ") {
+				t.Errorf("log = %q, want one no-pushes line", out)
+			}
+			if strings.Contains(out, "not read") {
+				t.Error("the log carries the key file's bytes")
+			}
+		})
+	}
+}

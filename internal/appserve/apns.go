@@ -98,9 +98,22 @@ type Payload struct {
 	} `json:"aps"`
 	Data struct {
 		Rig    string `json:"rig"`
-		Pane   string `json:"pane"`
-		Reason string `json:"reason"` // waiting or stuck
+		Pane   string `json:"pane,omitempty"` // a stuck push
+		Bead   string `json:"bead,omitempty"` // a waiting-on-Nelson push
+		Reason string `json:"reason"`         // stuck or nelson
 	} `json:"data"`
+}
+
+// NewBeadPayload is the push for a bead entering waiting_on_nelson: its id
+// as the body, never its title.
+func NewBeadPayload(rig, bead string) Payload {
+	var p Payload
+	p.APS.Alert.Title = "initech: " + rig
+	p.APS.Alert.Body = bead
+	p.APS.Sound = "default"
+	p.APS.ThreadID = rig
+	p.Data.Rig, p.Data.Bead, p.Data.Reason = rig, bead, "nelson"
+	return p
 }
 
 // NewPayload is the push for pane in rig, for reason.

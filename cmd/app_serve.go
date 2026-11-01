@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -128,6 +130,66 @@ func appServeBindIP() (net.IP, error) {
 	return appserve.BindAddr(appServeListen, addrs)
 }
 
+// appServeAPNsClient is the client pushes go out on (HTTP/2 to Apple), and
+// appServeAPNsHost, when set, the host instead of Apple's: seams for tests.
+var (
+	appServeAPNsClient = &http.Client{}
+	appServeAPNsHost   = ""
+)
+
+// appServePushes sends pushes from the feed once the first poll has read the
+// rigs' settings: the apns block, then the key. With either missing or
+// unusable it says so once and the service runs on without pushes.
+func appServePushes(ctx context.Context, srv *appserve.Server, b *appBackend, errw io.Writer) {
+	select {
+	case <-ctx.Done():
+		return
+	case <-srv.FirstPoll():
+	}
+	cfg, err := b.APNs()
+	if err != nil {
+		fmt.Fprintf(errw, "initech app-serve: no pushes: %v\n", err)
+		return
+	}
+	key, err := appserve.LoadAPNsKey(cfg)
+	if err != nil {
+		fmt.Fprintf(errw, "initech app-serve: no pushes: %v\n", err)
+		return
+	}
+	if srv.Devices() == nil {
+		fmt.Fprintln(errw, "initech app-serve: no pushes: the devices file could not be read")
+		return
+	}
+	host := cfg.Host()
+	if appServeAPNsHost != "" {
+		host = appServeAPNsHost
+	}
+	sender := appserve.NewSender(cfg, key, host, appServeAPNsClient, srv.Devices(), time.Now, func(line string) { fmt.Fprintln(errw, line) })
+	fmt.Fprintf(errw, "initech app-serve: pushes go to %s for %s\n", host, cfg.Topic)
+	appserve.NewPusher(srv.Feed(), func(p appserve.Payload) { sender.Push(p, nil) }).Run(ctx)
+}
+
+// Waiting is the rig's beads in waiting_on_nelson, from one bd list in its
+// root; a rig with beads off has none.
+func (b *appBackend) Waiting(r appserve.Rig) ([]appserve.WaitingBead, error) {
+	p, err := config.Load(filepath.Join(r.Root, "initech.yaml"))
+	if err != nil {
+		return nil, err
+	}
+	if !p.Beads.IsEnabled() {
+		return nil, nil
+	}
+	raw, err := b.runner.RunInDir(r.Root, "bd", "list", "--status", "waiting_on_nelson", "--json")
+	if err != nil {
+		return nil, err
+	}
+	var beads []appserve.WaitingBead
+	if err := json.Unmarshal([]byte(raw), &beads); err != nil {
+		return nil, err
+	}
+	return beads, nil
+}
+
 // appServeLeavePane drops what a shell inside a pane inherits. The service
 // serves every rig and speaks as the operator: INITECH_SOCKET would aim its
 // reads at that pane's rig and INITECH_AGENT would sign its sends as that
@@ -164,10 +226,11 @@ func runAppServe(cmd *cobra.Command, args []string) error {
 	if _, err := appserve.LoadDigest(state); err != nil {
 		fmt.Fprintf(errw, "initech app-serve: %v; every request is refused until then\n", err)
 	}
+	backend := &appBackend{dirs: dirs, runner: appServeRunner, report: func(dir, why string) {
+		appserve.ReportFolder(state, appServeNotify, errw, dir, why)
+	}}
 	srv := appserve.New(appserve.Config{
-		Backend: &appBackend{dirs: dirs, runner: appServeRunner, report: func(dir, why string) {
-			appserve.ReportFolder(state, appServeNotify, errw, dir, why)
-		}},
+		Backend:  backend,
 		TokenDir: state,
 		StateDir: state,
 		OnStuck:  func(notice string) { fmt.Fprintln(errw, notice) },
@@ -180,6 +243,8 @@ func runAppServe(cmd *cobra.Command, args []string) error {
 	go srv.Run(ctx)
 	go srv.RunProgress(ctx)
 	go srv.RunTail(ctx)
+	go srv.RunWaiting(ctx)
+	go appServePushes(ctx, srv, backend, errw)
 
 	// The bound address going away (DHCP, Tailscale restarting) ends the
 	// run, so launchd starts it again on the new one.

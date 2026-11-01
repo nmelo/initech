@@ -71,6 +71,9 @@ type WaitingItem struct {
 	Pane           string `json:"pane"`
 	Text           string `json:"text"`
 	Recommendation string `json:"recommendation"`
+	// Bead is the bead waiting on Nelson (bd's waiting_on_nelson), when the
+	// item is one; Pane is then its assignee and Text its title.
+	Bead string `json:"bead,omitempty"`
 }
 
 // StuckPane is a pane that cannot act, with the reason in plain words.

@@ -43,8 +43,7 @@ func (s *Server) RunTail(ctx context.Context) {
 }
 
 // tailOnce reads what each polled pane's transcript gained: a transcript
-// event per new message, and for a super whose reply is new, the blockers
-// list again (on disk already, so anyone reloading on the event reads it). A
+// event per new message. A
 // pane seen for the first time starts at the end of its file; a pane that
 // moved to a new session file starts that file at its beginning.
 func (s *Server) tailOnce() {
@@ -73,24 +72,11 @@ func (s *Server) tailOnce() {
 			}
 			msgs := s.readNew(&pos, st.Size())
 			s.tails[key] = pos
-			if ps.Name == superPaneName && hasReply(msgs) {
-				s.publishBlockers()
-			}
 			for _, m := range msgs {
 				s.feed.Publish("transcript", TranscriptEvent{Rig: rg.Name, Pane: ps.Name, Message: m})
 			}
 		}
 	}
-}
-
-// hasReply reports an agent reply among msgs.
-func hasReply(msgs []Message) bool {
-	for _, m := range msgs {
-		if m.Kind == KindAgent {
-			return true
-		}
-	}
-	return false
 }
 
 // readNew renders the whole lines between pos and size, moving pos past them;

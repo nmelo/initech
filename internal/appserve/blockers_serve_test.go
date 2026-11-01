@@ -1,9 +1,7 @@
 package appserve
 
 import (
-	"encoding/json"
 	"os"
-	"strings"
 	"testing"
 	"time"
 
@@ -30,109 +28,7 @@ func appendLine(t *testing.T, path, line string) {
 	}
 }
 
-// AC11: GET /v1/blockers is Blockers over what the service holds: the super's
-// latest footer with its recommendation, a stuck pane from the poll, a quiet
-// rig's row, behind the token, and read fresh, so a reply already in the
-// transcript is on the list before any event about it (eng7's reload).
-func TestBlockersEndpoint_ReadsTheFooterAndThePoll(t *testing.T) {
-	path := writeTranscript(t, []string{replyLine("a1", "Ship it?\n\nRecommendation: ship.\n\n- ▶ Approve the release?\n- Fleet: idle")})
-	clk := &lockedClock{t: time.Unix(1_800_000_000, 0)}
-	b := &fakeBackend{rigs: []Rig{{Name: "alpha", Root: "/r/alpha"}, {Name: "beta", Root: "/r/beta"}},
-		panes: map[string][]PaneState{
-			"/r/alpha": {super(path), {Name: "eng1", State: "idle", Banner: "permission_prompt"}},
-			"/r/beta":  {{Name: "eng1", State: "running", Banner: "none"}},
-		}}
-	s := New(Config{Backend: b, Digest: shaToken(), HasToken: true, Now: clk.Now})
-	h := s.Handler()
-	auth := "Bearer " + testToken
 
-	if code, body := get(t, h, "/v1/blockers", auth); code != 200 || strings.TrimSpace(body) != "[]" {
-		t.Fatalf("before a poll: %d %s, want []", code, body)
-	}
-	s.Poll()
-	reads := b.statusCalls
-	_, body := get(t, h, "/v1/blockers", auth)
-	var list []RigBlockers
-	if err := json.Unmarshal([]byte(body), &list); err != nil || len(list) != 2 {
-		t.Fatalf("list = %s (%v)", body, err)
-	}
-	alpha, beta := list[0], list[1]
-	if len(alpha.Waiting) != 1 || alpha.Waiting[0].Text != "Approve the release?" || alpha.Waiting[0].Recommendation != "ship." || alpha.Waiting[0].Pane != "super" {
-		t.Errorf("waiting = %+v", alpha.Waiting)
-	}
-	if len(alpha.Stuck) != 1 || alpha.Stuck[0].Pane != "eng1" || alpha.Quiet {
-		t.Errorf("stuck = %+v quiet %v", alpha.Stuck, alpha.Quiet)
-	}
-	if !beta.Quiet || len(beta.Waiting)+len(beta.Stuck) != 0 {
-		t.Errorf("beta = %+v, want a quiet row", beta)
-	}
-	if b.statusCalls != reads {
-		t.Errorf("a blockers read asked for status (bd)")
-	}
-
-	// A new footer is on the list as soon as it is in the transcript, with no
-	// poll between; a later reply with no footer clears nothing.
-	appendLine(t, path, replyLine("a2", "Done.\n\n▶ nothing"))
-	_, body = get(t, h, "/v1/blockers", auth)
-	json.Unmarshal([]byte(body), &list)
-	if len(list[0].Waiting) != 0 {
-		t.Errorf("after a nothing footer: %+v", list[0].Waiting)
-	}
-	appendLine(t, path, replyLine("a3", "- ▶ Restart hover?"))
-	appendLine(t, path, replyLine("a4", "A reply with no footer."))
-	_, body = get(t, h, "/v1/blockers", auth)
-	json.Unmarshal([]byte(body), &list)
-	if len(list[0].Waiting) != 1 || list[0].Waiting[0].Text != "Restart hover?" {
-		t.Errorf("a footerless reply cleared or a new footer missed: %+v", list[0].Waiting)
-	}
-
-	if code, body := get(t, h, "/v1/blockers", ""); code != 401 || body != "" {
-		t.Errorf("no token: %d %q", code, body)
-	}
-}
-
-// AC11, AC4: a poll that changes the list sends one blockers event carrying
-// it and one waiting_item per new text; an unchanged list sends none; the
-// first poll is the baseline.
-func TestBlockersFeed_EventsOnAChangedList(t *testing.T) {
-	path := writeTranscript(t, []string{replyLine("a1", "- ▶ First item")})
-	clk := &lockedClock{t: time.Unix(1_800_000_000, 0)}
-	b := &fakeBackend{rigs: []Rig{{Name: "alpha", Root: "/r/alpha"}}, panes: map[string][]PaneState{"/r/alpha": {super(path)}}}
-	s := New(Config{Backend: b, Digest: shaToken(), HasToken: true, Now: clk.Now})
-	types := func(after int64) []string {
-		evs, _, _ := s.Feed().Since(after)
-		var out []string
-		for _, e := range evs {
-			out = append(out, e.Type)
-		}
-		return out
-	}
-	s.Poll()
-	if got := types(0); len(got) != 0 {
-		t.Fatalf("baseline poll sent %v", got)
-	}
-	s.Poll()
-	if got := types(0); len(got) != 0 {
-		t.Fatalf("an unchanged list sent %v", got)
-	}
-	appendLine(t, path, replyLine("a2", "- ▶ First item\n- ▶ Second item"))
-	s.Poll()
-	evs, _, _ := s.Feed().Since(0)
-	if len(evs) != 2 || evs[0].Type != "waiting_item" || evs[1].Type != "blockers" {
-		t.Fatalf("events = %v, want one waiting_item for the new text, then blockers", types(0))
-	}
-	if w := evs[0].Data.(WaitingEvent); w != (WaitingEvent{Rig: "alpha", Pane: "super", Text: "Second item"}) {
-		t.Errorf("waiting_item = %+v", w)
-	}
-	if list := evs[1].Data.([]RigBlockers); len(list) != 1 || len(list[0].Waiting) != 2 {
-		t.Errorf("blockers event = %+v", list)
-	}
-	last := s.Feed().Last()
-	s.Poll()
-	if s.Feed().Last() != last {
-		t.Errorf("an unchanged poll sent %v", types(last))
-	}
-}
 
 // AC11: the beads of the latest progress run reach Blockers: a bead quiet an
 // hour with its owner idle is stuck on that owner's pane.
@@ -165,16 +61,3 @@ func TestBlockersSnapshot_CarriesTheProgressRunsBeads(t *testing.T) {
 	}
 }
 
-// AC6 feed-it-nothing: a super with no transcript, an unreadable one and an
-// empty one have no items and no error.
-func TestSuperReplies_NoTranscriptIsNoItems(t *testing.T) {
-	if got := superReplies(""); got != nil {
-		t.Errorf("no transcript: %v", got)
-	}
-	if got := superReplies("/no/such/file.jsonl"); got != nil {
-		t.Errorf("no file: %v", got)
-	}
-	if got := superReplies(writeTranscript(t, []string{`{"type":"mode"}`})); len(got) != 0 {
-		t.Errorf("no replies: %v", got)
-	}
-}

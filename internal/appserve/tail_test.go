@@ -115,30 +115,6 @@ func TestTail_StartsAtTheEndAndReadsWholeLines(t *testing.T) {
 	}
 }
 
-// AC4: a super's new footer item is a waiting_item as soon as the tail sees
-// the reply, without waiting for the 30-second poll, and the blockers list
-// already holds it when the reply's transcript event goes out (eng7's reload).
-func TestTail_ASupersNewFooterIsAWaitingItemBeforeItsTranscriptEvent(t *testing.T) {
-	path := writeTranscript(t, []string{tline("assistant", "a1", t0, []map[string]any{{"type": "text", "text": "- ▶ First"}})})
-	s, _ := tailServer(t, []PaneState{super(path)})
-	s.tailOnce()
-	if s.Feed().Last() != 0 {
-		t.Fatalf("baseline sent events")
-	}
-	appendLine(t, path, tline("assistant", "a2", t0, []map[string]any{{"type": "text", "text": "- ▶ First\n- ▶ Second"}}))
-	s.tailOnce()
-	evs, _, _ := s.Feed().Since(0)
-	var order []string
-	for _, e := range evs {
-		order = append(order, e.Type)
-	}
-	if len(order) != 3 || order[0] != "waiting_item" || order[1] != "blockers" || order[2] != "transcript" {
-		t.Fatalf("order = %v, want waiting_item, blockers, transcript", order)
-	}
-	if w := evs[0].Data.(WaitingEvent); w.Text != "Second" {
-		t.Errorf("waiting_item = %+v", w)
-	}
-}
 
 // AC6 feed-it-nothing: a pane with no transcript, and one whose file has
 // gone, send nothing; a malformed new line is left out and the look goes on.
