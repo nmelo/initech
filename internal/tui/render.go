@@ -939,8 +939,12 @@ var overlayListedOff = false
 // agent doing something or needing attention. Suspended agents are not
 // listed; idle ones only with a dialog or banner on screen or a bead the pace
 // counts stuck. Every other state (running, background, waiting, pending
-// input, dead, and one not yet read as idle) is listed.
+// input, dead, and one not yet read as idle) is listed. In a second window an
+// agent hidden there is listed whatever its state (overlayListsHidden).
 func (t *TUI) overlayListed(p PaneView) bool {
+	if t.overlayListsHidden() && t.layoutState.Hidden[agentKey(p)] {
+		return true
+	}
 	switch p.Activity() {
 	case StateSuspended:
 		return false
@@ -952,6 +956,13 @@ func (t *TUI) overlayListed(p PaneView) bool {
 	}
 	return true
 }
+
+// overlayListsHidden reports whether this window's overlay lists its hidden
+// agents, marked [h], whatever their state (ini-6um). Only a second window
+// does: it has no Agents panel, so a hidden agent's dot is its one unhide
+// control there. The main window unhides through its Agents panel, so its
+// overlay stays active-only.
+func (t *TUI) overlayListsHidden() bool { return t.windowID != WindowOne }
 
 // overlayNameLen is the width of p's name in the overlay, with its markers.
 func overlayNameLen(t *TUI, p PaneView) int {
