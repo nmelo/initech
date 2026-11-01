@@ -1,0 +1,24 @@
+────────────────────────────────
+ Bash command
+ Create temp dir with mktemp
+ and remove it
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+ rm -rf "$(mktemp -d
+ /tmp/iqrg.XXXX)"
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+ │ Dangerous rm operation on
+ │ statically-unresolvable
+ │ target: command substitution
+ │ output
+ ⚠ Claude Code will
+ automatically block this
+ request in 1:53, to avoid
+ holding up an unattended
+ session
+
+
+ Do you want to proceed?
+ ❯ 1. Yes
+   2. No
+
+ Esc to cancel · Tab to amend

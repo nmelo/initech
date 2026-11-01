@@ -1,0 +1,25 @@
+ ▐▛███▛█   Claude Code v2.1.316
+▝▜██████▀  Haiku 5.5 · Claude Ultra
+ ▝▝   ▝▝   /private/tmp/iqr.PeR6/a
+
+
+❯ Run exactly this one Bash command and nothing else: rm -rf "$(mktemp -d
+  /tmp/iqrg.XXXX)"
+
+⏺ Creating temp dir with mktemp and removing it
+  ⎿  Not run · permission denied
+     │ Reason: Permission for this command was denied by a built-in Claude Code
+     │ safety check
+  ⎿  $ rm -rf "$(mktemp -d /tmp/iqrg.XXXX)"
+
+
+
+
+
+✽ Boogieing… (4s · ↓ 111 tokens · thinking)
+                                                            ◐ medium · /effort
+────────────────────────────────────────────────────────────────────────────────
+❯
+────────────────────────────────────────────────────────────────────────────────
+  Haiku 5.5 │ Second │ 7% │ 40% ▓▓▓▓░░┃░░░
+  ⏵⏵ bypass permissions on (shift+tab to cycle)

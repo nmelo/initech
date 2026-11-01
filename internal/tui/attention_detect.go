@@ -166,17 +166,31 @@ var dialogNotifyTexts = map[string]bool{
 	"Claude Code needs your input": true,
 }
 
-// silentClaudeDialogs are Claude Code dialogs that send no notification, so
-// the OSC 777 raise above never fires for them and a pane stopped on one
-// would read idle (ini-x7f3). One entry per captured dialog, never a pattern
+// silentClaudeDialogs are Claude Code dialogs read from the screen: ones that
+// send no notification, so the OSC 777 raise above never fires for them and a
+// pane stopped on one would read idle (ini-x7f3), and ones whose notification
+// comes late, so the pane reads running from the countdown's repaints until it
+// does (ini-82c.1); noticed marks those, whose notice is about this very
+// dialog, so their preview names it over the generic permission-prompt
+// reading. One entry per captured dialog, never a pattern
 // for "any boxed question": a looser rule invents waiting states, and a false
 // one is a defect. Each is read from the screen at the list-only tier: it
 // shows in status, the overlay and the needs-input list, and never chimes.
-var silentClaudeDialogs = []struct{ question, preview string }{
+var silentClaudeDialogs = []struct {
+	question, preview string
+	noticed           bool
+}{
 	// CAPTURED twice by qa1 on 2026-10-28, Claude Code 2.1.311 or 2.1.312 on
 	// Haiku (testdata/haiku311_teach_auto_mode_*.txt); the 2.1.312 bundle
 	// has no notification call beside it.
-	{"teach auto mode about your environment?", "Teach auto mode about your environment?"},
+	{"teach auto mode about your environment?", "Teach auto mode about your environment?", false},
+	// CAPTURED by eng2 on 2026-10-31, Claude Code 2.1.312 on Haiku in bypass
+	// mode (testdata/haiku312_rm_guard_*.txt): the rm safety check, "Dangerous
+	// rm operation on statically-unresolvable target", over "Claude Code will
+	// automatically block this request in 1:54" and "Do you want to proceed?
+	// 1. Yes 2. No". Its notice arrives about ten seconds in; until then the
+	// countdown's repaint each second read as running.
+	{"dangerous rm operation", "Dangerous rm operation: do you want to proceed?", true},
 }
 
 // silentClaudeDialogPreview returns the preview of a listed silent dialog
@@ -185,6 +199,13 @@ var silentClaudeDialogs = []struct{ question, preview string }{
 // quoting the dialog is not it), and only with an option row carrying the
 // cursor, the answer the dialog waits for.
 func silentClaudeDialogPreview(rows []string) string {
+	preview, _ := listedClaudeDialog(rows)
+	return preview
+}
+
+// listedClaudeDialog is silentClaudeDialogPreview with whether the listed
+// dialog sends its own (late) notice.
+func listedClaudeDialog(rows []string) (preview string, noticed bool) {
 	live := liveDialogRows(rows)
 	hasCursor := false
 	for _, r := range live {
@@ -194,15 +215,15 @@ func silentClaudeDialogPreview(rows []string) string {
 		}
 	}
 	if !hasCursor {
-		return ""
+		return "", false
 	}
 	text := compactPromptText(strings.ToLower(strings.Join(live, "\n")))
 	for _, d := range silentClaudeDialogs {
 		if strings.Contains(text, compactPromptText(d.question)) {
-			return d.preview
+			return d.preview, d.noticed
 		}
 	}
-	return ""
+	return "", false
 }
 
 // raiseSilentClaudeDialog raises the list-only waiting row for a listed
@@ -304,8 +325,10 @@ func (p *Pane) refreshWaitingState() {
 		p.markModalSeen()
 		// Upgrade the row's text now that the dialog is actually rendered. Costs
 		// nothing when the text has not changed and does not disturb the clock.
+		// The tier is the row's own (ini-82c.1): a notice raised it to chime,
+		// and a row inferred from the screen never chimes.
 		if preview := waitingPreviewFromRows(rows); preview != "" {
-			p.SetWaitingInputTier(preview, WaitingTierChime)
+			p.SetWaitingInputTier(preview, p.WaitingTierOf())
 		}
 		return
 	}
@@ -363,6 +386,13 @@ func (p *Pane) waitingPreviewText() string {
 
 // waitingPreviewFromRows is waitingPreviewText over a screen already read.
 func waitingPreviewFromRows(rows []string) string {
+	// A listed dialog whose own notice comes late names its own preview,
+	// whichever path raised the wait: the screen read, or that notice
+	// (ini-82c.1). A listed dialog with no notice of its own does not: a
+	// notified row on its screen belongs to another dialog and keeps its text.
+	if preview, noticed := listedClaudeDialog(rows); noticed {
+		return preview
+	}
 	text := bottomTextFromRows(rows, modalScanWholePane)
 	if text == "" {
 		return ""

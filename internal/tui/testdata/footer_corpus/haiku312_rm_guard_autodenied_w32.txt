@@ -1,0 +1,26 @@
+▝▜██████▀  Claude Ultra
+ ▝▝   ▝▝   /…/tmp/iqr.R8CP/a
+
+
+❯ Run exactly this one Bash
+  command and nothing else: rm
+  -rf "$(mktemp -d
+  /tmp/iqrg.XXXX)"
+
+⏺ Creating temp dir with mktemp
+  and removing it
+  ⎿  Not run · permission denied
+     │ Reason: Permission for
+     │ this command was denied
+     │ by a built-in Claude Code
+     │ safety check
+  ⎿  $ rm -rf "$(mktemp -d
+     /tmp/iqrg.XXXX)"
+
+✽ Computing… (4s · thinking)
+            ◐ medium · /effort
+────────────────────────────────
+❯
+────────────────────────────────
+  Haiku 5.5 │ Second │ 7% │ 4…
+  ⏵⏵ bypass permissions on

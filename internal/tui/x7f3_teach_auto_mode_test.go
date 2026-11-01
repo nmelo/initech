@@ -180,11 +180,17 @@ func TestTeachAutoMode_TheCorpusReadsOnlyItsOwnCaptures(t *testing.T) {
 		if own {
 			seen++
 		}
-		if own && got != x7f3Preview {
-			t.Errorf("%s: preview %q, want %q", name, got, x7f3Preview)
+		// Each listed dialog's captures read as that dialog and nothing else
+		// does: the rm safety prompt (ini-82c.1) is the other listed one.
+		want := ""
+		switch {
+		case own:
+			want = x7f3Preview
+		case strings.HasPrefix(name, "haiku312_rm_guard_prompt_"):
+			want = "Dangerous rm operation: do you want to proceed?"
 		}
-		if !own && got != "" {
-			t.Errorf("%s: read as the teach auto mode dialog (%q)", name, got)
+		if got != want {
+			t.Errorf("%s: preview %q, want %q", name, got, want)
 		}
 	}
 	if seen != 2 {

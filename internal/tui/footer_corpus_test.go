@@ -105,6 +105,10 @@ func TestFooterCorpus_EveryCapturedShapeReadsWhatItShows(t *testing.T) {
 		{"haiku312_state_pending2_w80.txt", none(i(4), s("Haiku 5.5"), s("Acct"))},
 		{"haiku312_state_running_w32.txt", none(i(5), s("Haiku 5.5"), s("Acct"))},
 		{"haiku312_state_running_w80.txt", none(i(5), s("Haiku 5.5"), s("Acct"))},
+		// 2.1.312, bypass mode, the input box back after the rm safety prompt
+		// blocked itself (ini-82c.1).
+		{"haiku312_rm_guard_autodenied_w80.txt", none(i(7), s("Haiku 5.5"), s("Second"))},
+		{"haiku312_rm_guard_autodenied_w32.txt", none(i(7), s("Haiku 5.5"), s("Second"))},
 	}
 	for _, c := range cases {
 		rows, width := corpusFooter(t, c.name)
