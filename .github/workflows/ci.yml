@@ -5,8 +5,8 @@ on:
     # release/** (ini-cctz, the first release cut from a branch): for a push
     # GitHub reads this file FROM THE PUSHED COMMIT, so a release branch runs
     # CI only if the branch itself carries this line — a fix on main alone runs
-    # nothing for it. And it must be a PUSH trigger: one job below (census-leg) gates
-    # on github.event_name == 'push', so a pull_request run shows a short job set,
+    # nothing for it. And it must be a PUSH trigger: build-and-test's census steps
+    # run only when github.event_name != 'pull_request', so a pull_request run is lighter,
     # and a PR into main runs on the merge ref rather than the branch sha.
     branches: [main, 'release/**']
   pull_request:
@@ -68,11 +68,14 @@ concurrency:
 #      variant, or a short-only life, that no job here would run. make check
 #      still runs the -short suite locally.
 #
-# Seven jobs before the census (build-and-test, full-suite-1..5, census-leg)
-# share the Mac's six runner slots: census-leg waits for build-and-test (about
-# 16 s) to free its slot and still finishes inside the shards' time, so the
-# wall is the longest shard plus full-suite-census. Five shards, not four,
-# keep a push under two minutes with every test still on it (ini-c5a.3).
+# Six jobs before the census (build-and-test, full-suite-1..5), one for each of
+# the Mac's six runner slots, so none waits for a second wave (ini-c5a.7: a
+# seventh job, census-leg, waited for a free slot and pushed the wall past two
+# minutes; its steps now end build-and-test). The wall is the longest of
+# build-and-test and the shards, plus full-suite-census. Five shards, not four,
+# keep a push under two minutes with every test still on it (ini-c5a.3). A rigs
+# run holding runners when a push lands still delays it: a known miss until the
+# runner count changes.
 #
 # THE CENSUS is what keeps the faster gate from running less. full-suite-census
 # needs all five shards, runs even when one failed, and is red unless every
@@ -89,7 +92,8 @@ concurrency:
 jobs:
   build-and-test:
     runs-on: ${{ github.event_name != 'pull_request' && vars.MAC_RUNNER || 'macos-latest' }}
-    timeout-minutes: 15
+    # 25, not 15: this job also runs the census steps, bounded at 900 s.
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v5
 
@@ -159,6 +163,22 @@ jobs:
       # is red the day one is not (a lighter variant, a short-only test).
       - name: Short census (every testing.Short() use is a skip guard)
         run: go run ./scripts/shortcensus -v
+
+      # THE CENSUS LEG (was its own job, census-leg; folded in by ini-c5a.7 so
+      # the push run is six jobs on six runners). The env-gated census and
+      # window-CLI integration tests, which no shard runs (their gate is off
+      # there), so the suite still runs once. Push, schedule and dispatch only,
+      # as the job was.
+      # ini-0lko: same witness for the census steps -- name what they selected.
+      - name: Witness which census tests this leg selected
+        if: github.event_name != 'pull_request'
+        run: go test ./internal/tui/ -list 'TestCensus_|TestRolesLessBoot_|TestWindowCLI_'
+
+      - name: Census and window-CLI integration
+        if: github.event_name != 'pull_request'
+        env:
+          INITECH_CENSUS: "1"
+        run: go test ./internal/tui/ -count=1 -timeout 900s -run 'TestCensus_|TestRolesLessBoot_|TestWindowCLI_'
 
   # THE NON-SHORT SUITE, on one platform (ini-4bf2), in five shards (ini-bus5,
   # ini-p2ve, ini-c5a.3). The only run of the test suite in this workflow.
@@ -340,23 +360,3 @@ jobs:
   #   TestRolesLessBoot_ a pure viewer boots with zero local agents
   #   TestWindowCLI_     the --window CLI surface: attach, detach, reattach, and
   #                      a viewer touching no project-root store
-  census-leg:
-    if: github.event_name != 'pull_request'
-    runs-on: ${{ github.event_name != 'pull_request' && vars.MAC_RUNNER || 'macos-latest' }}
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v5
-
-      - uses: actions/setup-go@v6
-        with:
-          go-version-file: go.mod
-          cache: ${{ github.event_name == 'pull_request' }}
-
-      # ini-0lko: same witness for the census leg -- name what it selected.
-      - name: Witness which census tests this leg selected
-        run: go test ./internal/tui/ -list 'TestCensus_|TestRolesLessBoot_|TestWindowCLI_'
-
-      - name: Census and window-CLI integration
-        env:
-          INITECH_CENSUS: "1"
-        run: go test ./internal/tui/ -count=1 -timeout 900s -run 'TestCensus_|TestRolesLessBoot_|TestWindowCLI_'

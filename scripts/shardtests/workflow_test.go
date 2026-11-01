@@ -24,6 +24,7 @@ type workflow struct {
 		Needs interface{} `yaml:"needs"`
 		If    string      `yaml:"if"`
 		Steps []struct {
+			If   string            `yaml:"if"`
 			Uses string            `yaml:"uses"`
 			Run  string            `yaml:"run"`
 			With map[string]string `yaml:"with"`
@@ -168,14 +169,18 @@ func TestWorkflows_SetupGoCachesOnlyOnPullRequests(t *testing.T) {
 	}
 }
 
-// The job set the release gate expects, exactly (ini-p2ve.2, ini-c5a.3):
-// seven start together on the Mac's six runner slots (census-leg takes the
-// slot build-and-test frees) and the census follows. And
-// build-and-test runs no tests: its only go test is the witness -list, and it
-// runs the short census, which is what makes dropping its -short run safe.
-func TestCIWorkflow_TheGateIsTheEightJobs(t *testing.T) {
+// The job set the release gate expects, exactly (ini-p2ve.2, ini-c5a.3,
+// ini-c5a.7): six start together, one for each of the Mac's six runner slots,
+// so none waits for a second wave, and the census follows. build-and-test runs
+// exactly two go test commands: the witness -list of the census selector, and
+// that one env-gated census selector (TestCensus_, TestRolesLessBoot_,
+// TestWindowCLI_ under INITECH_CENSUS), which no shard runs; any other go test
+// there would run part of the suite twice. Both are push-only, as census-leg
+// was. It runs the short census, which is what makes dropping its -short run
+// safe.
+func TestCIWorkflow_TheGateIsTheSevenJobs(t *testing.T) {
 	w := readCI(t)
-	want := []string{"build-and-test", "census-leg", "full-suite-1", "full-suite-2", "full-suite-3", "full-suite-4", "full-suite-5", "full-suite-census"}
+	want := []string{"build-and-test", "full-suite-1", "full-suite-2", "full-suite-3", "full-suite-4", "full-suite-5", "full-suite-census"}
 	var got []string
 	for key := range w.Jobs {
 		got = append(got, key)
@@ -190,16 +195,32 @@ func TestCIWorkflow_TheGateIsTheEightJobs(t *testing.T) {
 			started++
 		}
 	}
-	if started != 7 {
-		t.Errorf("%d jobs start without needs, want 7: the five shards, build-and-test and census-leg", started)
+	if started != 6 {
+		t.Errorf("%d jobs start without needs, want 6, one per runner: the five shards and build-and-test", started)
 	}
 	job := w.Jobs["build-and-test"]
-	var census bool
+	const (
+		witness   = "go test ./internal/tui/ -list '.*' -count=1"
+		censusSel = "'TestCensus_|TestRolesLessBoot_|TestWindowCLI_'"
+		censusRun = "go test ./internal/tui/ -count=1 -timeout 900s -run " + censusSel
+		pushOnly  = "github.event_name != 'pull_request'"
+	)
+	var census, censusList, censusTests bool
 	for _, s := range job.Steps {
-		if strings.Contains(s.Run, "go test") && !strings.Contains(s.Run, " -list ") {
-			t.Errorf("build-and-test runs %q: the suite runs once, in the full-suite shards", s.Run)
+		switch {
+		case !strings.Contains(s.Run, "go test"):
+		case s.Run == witness:
+		case s.Run == "go test ./internal/tui/ -list "+censusSel:
+			censusList = s.If == pushOnly
+		case s.Run == censusRun && s.Env["INITECH_CENSUS"] == "1" && s.If == pushOnly:
+			censusTests = true
+		default:
+			t.Errorf("build-and-test runs %q: its only go test runs are the witness lists and the push-only census selector under INITECH_CENSUS; the suite runs once, in the full-suite shards", s.Run)
 		}
 		census = census || strings.HasPrefix(s.Run, "go run ./scripts/shortcensus")
+	}
+	if !censusList || !censusTests {
+		t.Errorf("build-and-test lacks the push-only census steps (witness %v, tests under INITECH_CENSUS %v): nothing would run the census tests", censusList, censusTests)
 	}
 	if !census {
 		t.Error("build-and-test does not run the short census: nothing proves -short only skips tests")

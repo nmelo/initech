@@ -11,7 +11,7 @@ import (
 
 const sha = "0123456789abcdef0123456789abcdef01234567"
 
-var gateJobs = []string{"build-and-test", "census-leg", "full-suite-1", "full-suite-2", "full-suite-3", "full-suite-4", "full-suite-5", "full-suite-census"}
+var gateJobs = []string{"build-and-test", "full-suite-1", "full-suite-2", "full-suite-3", "full-suite-4", "full-suite-5", "full-suite-census"}
 
 func greenJobs(names ...string) []Job {
 	jobs := make([]Job, len(names))
