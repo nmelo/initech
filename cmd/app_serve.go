@@ -99,13 +99,13 @@ var (
 	appServeAddrEvery              = 30 * time.Second
 	// appServeSource is --source: the path install was run as, the link an
 	// upgrade moves, when the job runs a copy at appserve.CopyPath.
-	appServeSource string
-	appServeListenOn               = appserve.Listen
-	appServeExecutable             = os.Executable
-	appServeLstat                  = os.Lstat
-	appServeResolve                = filepath.EvalSymlinks
-	appServeBinaryEvery            = appserve.BinaryEvery
-	appServeDrainGrace             = appserve.DrainGrace
+	appServeSource      string
+	appServeListenOn    = appserve.Listen
+	appServeExecutable  = os.Executable
+	appServeLstat       = os.Lstat
+	appServeResolve     = filepath.EvalSymlinks
+	appServeBinaryEvery = appserve.BinaryEvery
+	appServeDrainGrace  = appserve.DrainGrace
 )
 
 // errBinaryReplaced ends a serve whose initech an upgrade replaced: a

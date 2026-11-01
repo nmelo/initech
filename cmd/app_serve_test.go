@@ -540,4 +540,3 @@ func TestAppServeWaiting_OneBdListInTheRigRoot(t *testing.T) {
 		t.Errorf("beads off: %v %v, calls %q", got, err, l.calls)
 	}
 }
-

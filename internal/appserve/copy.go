@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // macOS keys a privacy grant (the Desktop folder) to a program that is not
@@ -133,11 +134,21 @@ func VerifyCopy(codesign Codesign, src, dst string) error {
 	return nil
 }
 
+// copyLockWait is how long install and the app service's watcher wait for a
+// copy another process is putting in place.
+const copyLockWait = 10 * time.Second
+
 // InstallCopy puts a verified copy of src at dst: written beside it under a
 // temporary name, mode 0755, checked by VerifyCopy, then renamed over dst, so
 // dst is always the old file or the new one, never missing or half written.
-// The folder is made 0700. On any failure dst is left as it was.
+// The folder is made 0700. Writers take the folder's copy lock, waiting up to
+// copyLockWait. On any failure dst is left as it was.
 func InstallCopy(codesign Codesign, src, dst string) error {
+	return installCopy(codesign, src, dst, copyLockWait)
+}
+
+// installCopy is InstallCopy with the lock wait given (0: one try).
+func installCopy(codesign Codesign, src, dst string, wait time.Duration) error {
 	dir := filepath.Dir(dst)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return fmt.Errorf("make %s: %w", dir, err)
@@ -145,6 +156,11 @@ func InstallCopy(codesign Codesign, src, dst string) error {
 	if err := os.Chmod(dir, 0o700); err != nil {
 		return fmt.Errorf("make %s private: %w", dir, err)
 	}
+	unlock, err := lockCopyDir(dir, wait)
+	if err != nil {
+		return fmt.Errorf("lock %s: %w", dir, err)
+	}
+	defer unlock()
 	in, err := os.Open(src)
 	if err != nil {
 		return fmt.Errorf("read %s: %w", src, err)

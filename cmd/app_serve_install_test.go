@@ -688,8 +688,10 @@ func TestInstall_TheJobRunsACopyAtTheFixedPath(t *testing.T) {
 		t.Errorf("the job does not run the copy with --source the link:\n%s", raw)
 	}
 	entries, _ := os.ReadDir(filepath.Dir(cp))
-	if len(entries) != 1 {
-		t.Errorf("the copy folder holds %d files, want only the copy (no temp left)", len(entries))
+	for _, e := range entries {
+		if e.Name() != "initech" && e.Name() != ".copy.lock" {
+			t.Errorf("the copy folder holds %s: want only the copy and its lock (no temp left)", e.Name())
+		}
 	}
 }
 
@@ -749,7 +751,7 @@ func TestInstall_ACopyThatCannotBeMadeOrCheckedWritesNoJob(t *testing.T) {
 		setup func(r *installRig)
 		want  string
 	}{
-		"unreadable": {func(r *installRig) { os.Chmod(r.src, 0) }, "permission denied"},
+		"unreadable":      {func(r *installRig) { os.Chmod(r.src, 0) }, "permission denied"},
 		"link to nothing": {func(r *installRig) { os.Remove(r.src) }, "resolve"},
 		"does not verify": {func(r *installRig) {
 			appServeCodesign = func(args ...string) (string, error) {
@@ -813,7 +815,6 @@ func TestInstall_AFailedCopyLeavesTheRunningJobAlone(t *testing.T) {
 		t.Errorf("a refused copy touched the running job: launchctl %q, job changed %v", r.runner.Calls, !bytes.Equal(before, after))
 	}
 }
-
 
 // ini-myh: the job as a release install leaves it: installed and running,
 // then install again with new settings (another port).

@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/nmelo/initech/internal/appserve"
 	"github.com/nmelo/initech/internal/color"
 	"github.com/nmelo/initech/internal/config"
 	"github.com/nmelo/initech/internal/roles"
@@ -94,8 +95,15 @@ Commands (via ` + "`" + ` modal):
 // either, and a script needs to tell those apart without parsing prose.
 type exitCoder interface{ ExitCode() int }
 
+// refreshStableCopy keeps the stable initech path for launchd jobs current:
+// on the first run of a new release build it refreshes the copy at
+// appserve.CopyPath (one stat when current; nothing on any output). A var so
+// a test can see it run.
+var refreshStableCopy = func() { appserve.RefreshStableCopy(appserve.SystemRefreshEnv(Version)) }
+
 // Execute runs the root command.
 func Execute() {
+	refreshStableCopy()
 	if err := executeRoot(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		code := 1

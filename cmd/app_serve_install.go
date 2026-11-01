@@ -355,6 +355,16 @@ func runAppServeUninstall(cmd *cobra.Command, args []string) error {
 	if err := os.Remove(copyPath); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("the service is stopped and its job removed, but its copy remains: %w", err)
 	}
+	// What lives beside the copy: its lock, the version stamp and the refresh
+	// log. The next initech run through the link puts a copy back at the same
+	// path, so jobs pointed at it keep working and keep their grant.
+	if entries, err := os.ReadDir(filepath.Dir(copyPath)); err == nil {
+		for _, e := range entries {
+			if n := e.Name(); n == ".copy.lock" || n == appserve.RefreshLog || strings.HasPrefix(n, appserve.StampPrefix) {
+				os.Remove(filepath.Join(filepath.Dir(copyPath), n)) //nolint:errcheck // the folder removal below names what remains
+			}
+		}
+	}
 	if err := os.Remove(filepath.Dir(copyPath)); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("the service is stopped and its copy removed, but its folder remains: %w", err)
 	}
