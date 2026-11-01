@@ -217,7 +217,7 @@ func toAgentJSON(pi paneInfo, fromBD map[string][]beadInfo) agentJSON {
 	}
 	if fromBD != nil {
 		ids := []string{}
-		for _, b := range fromBD[pi.Name] {
+		for _, b := range heldInRibbonOrder(pi, fromBD[pi.Name]) {
 			ids = append(ids, b.ID)
 		}
 		a.Beads = &ids
@@ -440,7 +440,9 @@ func runStatus(cmd *cobra.Command, args []string) error {
 			displayName = pi.Host + ":" + pi.Name
 		}
 
-		held := beadMap[pi.Name]
+		// The bead the ribbon shows leads (the pane's derived bead, or the
+		// override), so status and the ribbon name the same one first.
+		held := heldInRibbonOrder(pi, beadMap[pi.Name])
 		if len(held) > 0 && pi.NoBead == "" {
 			b := held[0]
 			title := b.Title
@@ -700,4 +702,24 @@ func shortDur(sec int) string {
 	default:
 		return fmt.Sprintf("%ds", sec)
 	}
+}
+
+// heldInRibbonOrder is held, bd's beads for pi's agent, with the bead pi's
+// ribbon shows first: the same set, otherwise in bd's order. held is not
+// changed.
+func heldInRibbonOrder(pi paneInfo, held []beadInfo) []beadInfo {
+	if pi.Beads == nil || len(*pi.Beads) == 0 {
+		return held
+	}
+	lead := (*pi.Beads)[0]
+	for i, b := range held {
+		if b.ID != lead {
+			continue
+		}
+		out := make([]beadInfo, 0, len(held))
+		out = append(out, b)
+		out = append(out, held[:i]...)
+		return append(out, held[i+1:]...)
+	}
+	return held
 }

@@ -33,6 +33,20 @@ emit qa_passed '{"id":"ini-z","title":"Passed","status":"qa_passed","assignee":"
 // of panes, and returns each agent's row by name.
 func jvrsStatus(t *testing.T, panes ...tui.PaneInfo) map[string]string {
 	t.Helper()
+	out := jvrsStatusWith(t, jvrsBd, false, panes...)
+	rows := map[string]string{}
+	for _, line := range strings.Split(out, "\n") {
+		if f := strings.Fields(line); len(f) > 0 {
+			rows[f[0]] = line
+		}
+	}
+	return rows
+}
+
+// jvrsStatusWith runs initech status (or status --json) against the fake bd
+// script bd and a list reply made of panes, and returns what it printed.
+func jvrsStatusWith(t *testing.T, bd string, asJSON bool, panes ...tui.PaneInfo) string {
+	t.Helper()
 	skipWindows(t)
 	restoreColor := disableColor(t)
 	defer restoreColor()
@@ -46,7 +60,7 @@ func jvrsStatus(t *testing.T, panes ...tui.PaneInfo) map[string]string {
 	if err := os.MkdirAll(binDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	writeExecutable(t, filepath.Join(binDir, "bd"), jvrsBd)
+	writeExecutable(t, filepath.Join(binDir, "bd"), bd)
 	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 
 	data, _ := json.Marshal(panes)
@@ -54,19 +68,15 @@ func jvrsStatus(t *testing.T, panes ...tui.PaneInfo) map[string]string {
 	_, cleanup := startATIPCServer(t, tui.SocketPath(projectDir, "demo"), responseMode{raw: string(resp) + "\n"})
 	defer cleanup()
 
+	statusJSON = asJSON
+	defer func() { statusJSON = false }()
 	var out bytes.Buffer
 	cmd := &cobra.Command{}
 	cmd.SetOut(&out)
 	if err := runStatus(cmd, nil); err != nil {
 		t.Fatalf("runStatus: %v", err)
 	}
-	rows := map[string]string{}
-	for _, line := range strings.Split(out.String(), "\n") {
-		if f := strings.Fields(line); len(f) > 0 {
-			rows[f[0]] = line
-		}
-	}
-	return rows
+	return out.String()
 }
 
 func jvrsPane(name string, beads ...string) tui.PaneInfo {

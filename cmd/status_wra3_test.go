@@ -39,3 +39,71 @@ func TestStatus_ReadsTheUnattributedField(t *testing.T) {
 	}
 	_ = tui.PaneInfo{Unattributed: true}
 }
+
+// wra3OrderBd gives eng1 two in_progress beads, bd's newest first, the way
+// bd list orders them.
+const wra3OrderBd = `#!/bin/sh
+[ "$1" = list ] || exit 1
+echo '{"id":"ini-new","title":"Newer","status":"in_progress","assignee":"eng1"}'
+echo '{"id":"ini-old","title":"Named last","status":"in_progress","assignee":"eng1"}'
+`
+
+// AC5: with two in_progress beads for a role, status's Bead column and
+// status --json put the pane's bead first, the one its ribbon shows, with the
+// same set. Red at base: both lead with bd's newest.
+func TestStatus_TwoBeadsLeadWithTheRibbonsBead(t *testing.T) {
+	pane := jvrsPane("eng1", "ini-old")
+	table := jvrsStatusWith(t, wra3OrderBd, false, pane)
+	var row string
+	for _, line := range strings.Split(table, "\n") {
+		if f := strings.Fields(line); len(f) > 0 && f[0] == "eng1" {
+			row = line
+		}
+	}
+	first := ""
+	for _, f := range strings.Fields(row) {
+		if strings.HasPrefix(f, "ini-") {
+			first = f
+			break
+		}
+	}
+	if first != "ini-old" {
+		t.Errorf("table row %q: the Bead column leads with %q, want the ribbon's ini-old, not bd's newest ini-new", row, first)
+	}
+
+	var agents []map[string]any
+	if err := json.Unmarshal([]byte(jvrsStatusWith(t, wra3OrderBd, true, pane)), &agents); err != nil || len(agents) != 1 {
+		t.Fatalf("status --json: %v %v", agents, err)
+	}
+	got, _ := json.Marshal(agents[0]["beads"])
+	if string(got) != `["ini-old","ini-new"]` {
+		t.Errorf("status --json beads %s, want [\"ini-old\",\"ini-new\"]: the ribbon's bead first, the same set", got)
+	}
+}
+
+// AC5 feed-it-nothing: no ribbon, an empty ribbon, and a ribbon bead bd does
+// not hold keep bd's order; the order never changes the set.
+func TestStatus_BeadOrderKeepsBdsOrderWithoutARibbonBead(t *testing.T) {
+	held := []beadInfo{{ID: "ini-new"}, {ID: "ini-old"}}
+	empty := []string{}
+	other := []string{"ini-x"}
+	named := []string{"ini-old"}
+	ids := func(bs []beadInfo) string {
+		var s []string
+		for _, b := range bs {
+			s = append(s, b.ID)
+		}
+		return strings.Join(s, ",")
+	}
+	for name, ribbon := range map[string]*[]string{"nil": nil, "empty": &empty, "not held": &other} {
+		if got := ids(heldInRibbonOrder(paneInfo{Beads: ribbon}, held)); got != "ini-new,ini-old" {
+			t.Errorf("%s ribbon: order %s, want bd's ini-new,ini-old", name, got)
+		}
+	}
+	if got := ids(heldInRibbonOrder(paneInfo{Beads: &named}, held)); got != "ini-old,ini-new" {
+		t.Errorf("ribbon ini-old: order %s, want ini-old,ini-new", got)
+	}
+	if ids(held) != "ini-new,ini-old" {
+		t.Errorf("bd's slice was changed in place: %s", ids(held))
+	}
+}
