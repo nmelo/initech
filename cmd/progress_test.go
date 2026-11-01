@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/nmelo/initech/internal/progress"
 	"github.com/nmelo/initech/internal/tui"
 	"github.com/spf13/cobra"
 )
@@ -284,5 +285,73 @@ func TestProgress_BusyOwnerPaneReadsWorkingUnrecorded(t *testing.T) {
 	}
 	if strings.Contains(out, "owner panes not read") {
 		t.Errorf("the panes were read but the note says not:\n%s", out)
+	}
+}
+
+// runProgressJSON is runProgressFixture with --json set.
+func runProgressJSON(t *testing.T, fake *progressFake, repos string, args ...string) (string, error) {
+	t.Helper()
+	old := progressJSON
+	t.Cleanup(func() { progressJSON = old })
+	progressJSON = true
+	return runProgressFixture(t, fake, repos, args...)
+}
+
+// ini-r0q.1 AC8: --json prints the data the table shows. The JSON, decoded
+// and rendered, is the table byte for byte, so no row, count, close, path
+// bead, engineer, wait or note is in one and not the other. Red at base: no
+// --json flag.
+func TestProgressJSON_RendersToTheSameTable(t *testing.T) {
+	table, err := runProgressFixture(t, &progressFake{}, progressRepos, "fx-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := runProgressJSON(t, &progressFake{}, progressRepos, "fx-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rep progress.Report
+	dec := json.NewDecoder(strings.NewReader(out))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&rep); err != nil {
+		t.Fatalf("--json is not one report object: %v\n%s", err, out)
+	}
+	if got := progress.RenderReport(rep); got != table {
+		t.Errorf("the JSON renders to a different table.\n--- from JSON:\n%s\n--- the table:\n%s", got, table)
+	}
+	if len(rep.Beads) == 0 || len(rep.Quiet) == 0 || rep.Total == 0 {
+		t.Fatalf("fixture report is empty: %+v", rep)
+	}
+	for _, key := range []string{`"beads"`, `"ac_proven"`, `"commits"`, `"closed_recent"`, `"critical_path"`, `"quiet"`, `"wait"`, `"notes"`} {
+		if !strings.Contains(out, key) {
+			t.Errorf("--json has no %s key:\n%s", key, out)
+		}
+	}
+	low := strings.ToLower(out)
+	for _, bad := range []string{"estimate", "actual", "finish"} {
+		if strings.Contains(low, bad) {
+			t.Errorf("--json names %q", bad)
+		}
+	}
+}
+
+// ini-r0q.1 AC8 feed-it-nothing: no bead with the prefix is a report with
+// total 0 and empty lists, never null, and no table line.
+func TestProgressJSON_NoBeadsIsAnEmptyReport(t *testing.T) {
+	out, err := runProgressJSON(t, &progressFake{}, progressRepos, "zz-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rep map[string]any
+	if err := json.Unmarshal([]byte(out), &rep); err != nil {
+		t.Fatalf("not JSON: %v\n%s", err, out)
+	}
+	if rep["total"] != float64(0) || rep["prefix"] != "zz-" || rep["rig"] != "initech" {
+		t.Errorf("empty report: %v", rep)
+	}
+	for _, k := range []string{"beads", "closed_recent", "critical_path", "engineers", "quiet", "notes"} {
+		if v, ok := rep[k].([]any); !ok || len(v) != 0 {
+			t.Errorf("%s = %v, want []", k, rep[k])
+		}
 	}
 }

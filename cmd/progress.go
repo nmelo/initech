@@ -17,7 +17,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var progressHours int
+var (
+	progressHours int
+	progressJSON  bool
+)
 
 var progressCmd = &cobra.Command{
 	Use:   "progress [<prefix>]",
@@ -37,6 +40,10 @@ ini-wra., or a molecule), or for the whole rig without one:
   unrecorded" when its owner's pane is running or background, waiting on
   the thing its last comment names, else stalled.
 
+With --json it prints the same report as one JSON object instead of the
+table: the rows, the effort counts, the closes in the window, the critical
+path, the engineers, the quiet beads and their waits, and the notes.
+
 It is read-only and never prints a finish time, an estimate or an actual.`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: runProgress,
@@ -44,6 +51,7 @@ It is read-only and never prints a finish time, an estimate or an actual.`,
 
 func init() {
 	progressCmd.Flags().IntVar(&progressHours, "hours", 6, "the window, in hours, for commits and closes")
+	progressCmd.Flags().BoolVar(&progressJSON, "json", false, "print the report as one JSON object instead of the table")
 	rootCmd.AddCommand(progressCmd)
 }
 
@@ -89,24 +97,19 @@ func runProgress(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("load config: %w", err)
 	}
 	out := cmd.OutOrStdout()
-	r := progressRunner
-	now := progressNow().UTC()
-	in := progress.Input{Rig: p.Name, Prefix: prefix, Hours: progressHours, Now: now}
-
-	raw, err := r.RunInDir(p.Root, "bd", "list", "--all", "--limit", "0", "--json")
-	var all []progress.Bead
-	if err == nil {
-		err = json.Unmarshal([]byte(raw), &all)
-	}
+	rep, err := progressReport(progressRunner, p, prefix, progressHours, progressNow().UTC())
 	if err != nil {
-		return &progressExitError{fmt.Sprintf("bd unreachable: %s", firstLine(err.Error()))}
+		return err
 	}
-	for _, b := range all {
-		if strings.HasPrefix(b.ID, prefix) {
-			in.Beads = append(in.Beads, b)
+	if progressJSON {
+		data, err := json.MarshalIndent(rep, "", "  ")
+		if err != nil {
+			return err
 		}
+		_, err = fmt.Fprintln(out, string(data))
+		return err
 	}
-	if len(in.Beads) == 0 {
+	if rep.Total == 0 {
 		if prefix == "" {
 			fmt.Fprintf(out, "no beads in %s\n", p.Name)
 		} else {
@@ -114,16 +117,41 @@ func runProgress(cmd *cobra.Command, args []string) error {
 		}
 		return nil
 	}
+	fmt.Fprint(out, progress.RenderReport(rep))
+	return nil
+}
+
+// progressReport reads bd, main's commits and the panes for p through r and
+// builds the report for the beads whose id starts with prefix. A rig with no
+// such bead is a report with Total 0. initech app-serve calls it too.
+func progressReport(r iexec.Runner, p *config.Project, prefix string, hours int, now time.Time) (progress.Report, error) {
+	in := progress.Input{Rig: p.Name, Prefix: prefix, Hours: hours, Now: now}
+
+	raw, err := r.RunInDir(p.Root, "bd", "list", "--all", "--limit", "0", "--json")
+	var all []progress.Bead
+	if err == nil {
+		err = json.Unmarshal([]byte(raw), &all)
+	}
+	if err != nil {
+		return progress.Report{}, &progressExitError{fmt.Sprintf("bd unreachable: %s", firstLine(err.Error()))}
+	}
+	for _, b := range all {
+		if strings.HasPrefix(b.ID, prefix) {
+			in.Beads = append(in.Beads, b)
+		}
+	}
+	if len(in.Beads) == 0 {
+		return progress.Build(in), nil
+	}
 
 	in.Comments = progressComments(r, p.Root, in.Beads, &in.Notes)
-	since := now.Add(-time.Duration(progressHours) * time.Hour)
+	since := now.Add(-time.Duration(hours) * time.Hour)
 	in.Commits, in.CommitsKnown = progressCommits(r, p, since, &in.Notes)
 	in.Panes, in.PanesKnown = progressPanes(p)
 	if !in.PanesKnown {
 		in.Notes = append(in.Notes, "owner panes not read (no initech answering): no quiet bead reads working")
 	}
-	fmt.Fprint(out, progress.Render(in))
-	return nil
+	return progress.Build(in), nil
 }
 
 // progressComments reads the comments of every bead the report uses (those

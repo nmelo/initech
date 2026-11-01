@@ -495,7 +495,7 @@ bd close <id>       # Close (super, on evidence it checked)
 
 ### Reading an Effort's Progress
 
-`initech progress [<prefix>] [--hours N]` shows whether a multi-bead effort is moving and where it is held. `<prefix>` picks the effort by bead id (an epic's children, such as `ini-wra.`); without one it reads the whole rig. `--hours` is the window for commits and closes, six by default. It is read-only.
+`initech progress [<prefix>] [--hours N] [--json]` shows whether a multi-bead effort is moving and where it is held. `<prefix>` picks the effort by bead id (an epic's children, such as `ini-wra.`); without one it reads the whole rig. `--hours` is the window for commits and closes, six by default. `--json` prints the same report as one JSON object instead of the table: `beads` (the rows, each with `ac_proven` and `ac_items`, null without a criteria section, and `commits`, null when no repo was read), `closed`, `total`, `worked_by_engineers`, `writing_review_only`, `stages`, `closed_recent` (every close in the window; the table lists the last eight), `critical_path`, `engineers`, `quiet` (each with its `wait`) and `notes`; an effort with no bead is a report with `total` 0 and empty lists. It is read-only.
 
 It prints, in this order:
 

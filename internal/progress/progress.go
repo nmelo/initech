@@ -260,12 +260,81 @@ func isEngineer(author string) bool {
 	return strings.HasPrefix(author, "eng") || strings.HasPrefix(author, "video")
 }
 
-// Render is the report as initech progress prints it: the header, the table
-// of beads past open, the effort lines, the wait of every quiet bead, then
-// the notes.
-func Render(in Input) string {
-	var w strings.Builder
-	line := func(format string, a ...any) { fmt.Fprintf(&w, format+"\n", a...) }
+// Report is one initech progress report as data: what the table and the
+// effort lines show, in the order they show it. --json prints it; Render
+// prints the same Report as text, so the two never differ.
+type Report struct {
+	Rig    string    `json:"rig"`
+	Prefix string    `json:"prefix"`
+	At     time.Time `json:"at"`
+	Hours  int       `json:"hours"`
+
+	// Beads are the table rows: the beads past open and not closed, step
+	// beads left out, in stage order.
+	Beads []Row `json:"beads"`
+
+	Closed      int            `json:"closed"`
+	Total       int            `json:"total"`
+	ByEngineers int            `json:"worked_by_engineers"`
+	WritingOnly int            `json:"writing_review_only"`
+	Stages      map[string]int `json:"stages"`
+
+	// ClosedRecent are the closes in the window, oldest first; the table
+	// lists the last eight of them.
+	ClosedRecent []Closed `json:"closed_recent"`
+
+	// CriticalPath is up to five open beads with the most dependents.
+	CriticalPath []PathBead `json:"critical_path"`
+	Engineers    []string   `json:"engineers"`
+	Quiet        []QuietRow `json:"quiet"`
+	Notes        []string   `json:"notes"`
+}
+
+// Row is one bead in the table. AC is the table's cell ("n/m" or "-");
+// ACProven and ACItems are its numbers, null when the bead has no criteria
+// section. Commits is null when no repo was read. LastMove is zero when the
+// bead has none.
+type Row struct {
+	ID       string    `json:"id"`
+	Stage    string    `json:"stage"`
+	Owner    string    `json:"owner"`
+	AC       string    `json:"ac"`
+	ACProven *int      `json:"ac_proven"`
+	ACItems  *int      `json:"ac_items"`
+	Commits  *int      `json:"commits"`
+	LastMove time.Time `json:"last_move"`
+	By       string    `json:"by"`
+	Title    string    `json:"title"`
+}
+
+// Closed is one close in the window.
+type Closed struct {
+	ID       string    `json:"id"`
+	Title    string    `json:"title"`
+	ClosedAt time.Time `json:"closed_at"`
+}
+
+// PathBead is one bead on the critical path: how many wait on it.
+type PathBead struct {
+	ID      string `json:"id"`
+	Waiting int    `json:"waiting"`
+	Stage   string `json:"stage"`
+	Title   string `json:"title"`
+}
+
+// QuietRow is a bead with no move for QuietAfter or more, and what it waits
+// on (WaitWorkingUnrecorded, WaitStalled or "waiting on ...").
+type QuietRow struct {
+	ID    string `json:"id"`
+	Owner string `json:"owner"`
+	Wait  string `json:"wait"`
+}
+
+// Build is the report for in, as data.
+func Build(in Input) Report {
+	r := Report{Rig: in.Rig, Prefix: in.Prefix, At: in.Now, Hours: in.Hours,
+		Beads: []Row{}, Stages: map[string]int{}, ClosedRecent: []Closed{},
+		CriticalPath: []PathBead{}, Engineers: []string{}, Quiet: []QuietRow{}, Notes: []string{}}
 
 	var beads []Bead
 	for _, b := range in.Beads {
@@ -274,10 +343,6 @@ func Render(in Input) string {
 		}
 	}
 
-	line("%s %s* at %s ET; commits counted over the last %d h\n", in.Rig, in.Prefix, hhmm(in.Now), in.Hours)
-	line("%s %s %s %s %s  %s %s title", left("bead", 15), left("stage", 11), left("owner", 7),
-		right("AC", 5), right("commits", 7), left("last move", 10), left("by", 8))
-
 	var active []Bead
 	for _, b := range beads {
 		if b.Status != "open" && b.Status != "closed" && !strings.HasPrefix(b.Title, "Step ") {
@@ -285,56 +350,43 @@ func Render(in Input) string {
 		}
 	}
 	sort.SliceStable(active, func(i, j int) bool { return active[i].Status < active[j].Status })
-	type quiet struct {
-		b    Bead
-		wait string
-	}
-	var quiets []quiet
 	for _, b := range active {
 		cs := in.Comments[b.ID]
-		commits := "-"
+		row := Row{ID: b.ID, Stage: b.Status, Owner: b.Assignee, AC: ACCell(b, cs), Title: b.Title}
+		if row.Owner == "" {
+			row.Owner = "-"
+		}
+		if items, ok := ACItems(b.Description); ok && items > 0 {
+			proven := len(ACProven(cs))
+			row.ACProven, row.ACItems = &proven, &items
+		}
 		if in.CommitsKnown {
-			commits = fmt.Sprint(len(beadCommits(b, in.Commits)))
+			n := len(beadCommits(b, in.Commits))
+			row.Commits = &n
 		}
-		last, by := LastMove(b, cs, in.Commits)
-		owner := b.Assignee
-		if owner == "" {
-			owner = "-"
-		}
-		line("%s %s %s %s %s  %s %s %s", left(b.ID, 15), left(b.Status, 11), left(owner, 7),
-			right(ACCell(b, cs), 5), right(commits, 7), left(clock(last), 10), left(cut(by, 8), 8), cut(b.Title, 60))
-		if !last.IsZero() && in.Now.Sub(last) >= QuietAfter {
-			quiets = append(quiets, quiet{b, Wait(b, cs, in)})
+		row.LastMove, row.By = LastMove(b, cs, in.Commits)
+		r.Beads = append(r.Beads, row)
+		if !row.LastMove.IsZero() && in.Now.Sub(row.LastMove) >= QuietAfter {
+			r.Quiet = append(r.Quiet, QuietRow{ID: b.ID, Owner: row.Owner, Wait: Wait(b, cs, in)})
 		}
 	}
 
 	var closed []Bead
-	build := 0
-	stages := map[string]int{}
 	for _, b := range beads {
-		stages[b.Status]++
+		r.Stages[b.Status]++
 		if b.Status != "closed" {
 			continue
 		}
 		closed = append(closed, b)
 		for _, c := range in.Comments[b.ID] {
 			if isEngineer(c.Author) {
-				build++
+				r.ByEngineers++
 				break
 			}
 		}
 	}
-	line("\nclosed %d of %d: worked by engineers %d, writing/review only %d", len(closed), len(beads), build, len(closed)-build)
-	var names []string
-	for k := range stages {
-		names = append(names, k)
-	}
-	sort.Strings(names)
-	var parts []string
-	for _, k := range names {
-		parts = append(parts, fmt.Sprintf("%s %d", k, stages[k]))
-	}
-	line("stages: %s", strings.Join(parts, ", "))
+	r.Closed, r.Total = len(closed), len(beads)
+	r.WritingOnly = r.Closed - r.ByEngineers
 
 	var recent []Bead
 	for _, b := range closed {
@@ -343,15 +395,9 @@ func Render(in Input) string {
 		}
 	}
 	sort.SliceStable(recent, func(i, j int) bool { return recent[i].ClosedAt.Before(recent[j].ClosedAt) })
-	fmt.Fprintf(&w, "closed in the last %d h: %d", in.Hours, len(recent))
-	shown := recent
-	if len(shown) > 8 {
-		shown = shown[len(shown)-8:]
+	for _, b := range recent {
+		r.ClosedRecent = append(r.ClosedRecent, Closed{ID: b.ID, Title: b.Title, ClosedAt: b.ClosedAt})
 	}
-	for _, b := range shown {
-		fmt.Fprintf(&w, "\n  %s %s %s", clock(b.ClosedAt), b.ID, cut(b.Title, 70))
-	}
-	w.WriteString("\n")
 
 	var path []Bead
 	for _, b := range beads {
@@ -363,15 +409,9 @@ func Render(in Input) string {
 	if len(path) > 5 {
 		path = path[:5]
 	}
-	var crit []string
 	for _, b := range path {
-		crit = append(crit, fmt.Sprintf("%s (%d wait, %s) %s", b.ID, b.DependentCount, b.Status, cut(b.Title, 50)))
+		r.CriticalPath = append(r.CriticalPath, PathBead{ID: b.ID, Waiting: b.DependentCount, Stage: b.Status, Title: b.Title})
 	}
-	critLine := strings.Join(crit, "; ")
-	if critLine == "" {
-		critLine = "none"
-	}
-	line("critical path (open, most waiting on it): %s", critLine)
 
 	engSet := map[string]bool{}
 	for _, b := range active {
@@ -379,26 +419,78 @@ func Render(in Input) string {
 			engSet[b.Assignee] = true
 		}
 	}
-	var engs []string
 	for e := range engSet {
-		engs = append(engs, e)
+		r.Engineers = append(r.Engineers, e)
 	}
-	sort.Strings(engs)
-	line("engineers on it: %d (%s)", len(engs), strings.Join(engs, " "))
+	sort.Strings(r.Engineers)
+	r.Notes = append(r.Notes, in.Notes...)
+	return r
+}
 
-	if len(quiets) == 0 {
+// Render is the report as initech progress prints it: the header, the table
+// of beads past open, the effort lines, the wait of every quiet bead, then
+// the notes.
+func Render(in Input) string { return RenderReport(Build(in)) }
+
+// RenderReport prints r as the initech progress table.
+func RenderReport(r Report) string {
+	var w strings.Builder
+	line := func(format string, a ...any) { fmt.Fprintf(&w, format+"\n", a...) }
+
+	line("%s %s* at %s ET; commits counted over the last %d h\n", r.Rig, r.Prefix, hhmm(r.At), r.Hours)
+	line("%s %s %s %s %s  %s %s title", left("bead", 15), left("stage", 11), left("owner", 7),
+		right("AC", 5), right("commits", 7), left("last move", 10), left("by", 8))
+	for _, b := range r.Beads {
+		commits := "-"
+		if b.Commits != nil {
+			commits = fmt.Sprint(*b.Commits)
+		}
+		line("%s %s %s %s %s  %s %s %s", left(b.ID, 15), left(b.Stage, 11), left(b.Owner, 7),
+			right(b.AC, 5), right(commits, 7), left(clock(b.LastMove), 10), left(cut(b.By, 8), 8), cut(b.Title, 60))
+	}
+
+	line("\nclosed %d of %d: worked by engineers %d, writing/review only %d", r.Closed, r.Total, r.ByEngineers, r.WritingOnly)
+	var names []string
+	for k := range r.Stages {
+		names = append(names, k)
+	}
+	sort.Strings(names)
+	var parts []string
+	for _, k := range names {
+		parts = append(parts, fmt.Sprintf("%s %d", k, r.Stages[k]))
+	}
+	line("stages: %s", strings.Join(parts, ", "))
+
+	fmt.Fprintf(&w, "closed in the last %d h: %d", r.Hours, len(r.ClosedRecent))
+	shown := r.ClosedRecent
+	if len(shown) > 8 {
+		shown = shown[len(shown)-8:]
+	}
+	for _, b := range shown {
+		fmt.Fprintf(&w, "\n  %s %s %s", clock(b.ClosedAt), b.ID, cut(b.Title, 70))
+	}
+	w.WriteString("\n")
+
+	var crit []string
+	for _, b := range r.CriticalPath {
+		crit = append(crit, fmt.Sprintf("%s (%d wait, %s) %s", b.ID, b.Waiting, b.Stage, cut(b.Title, 50)))
+	}
+	critLine := strings.Join(crit, "; ")
+	if critLine == "" {
+		critLine = "none"
+	}
+	line("critical path (open, most waiting on it): %s", critLine)
+	line("engineers on it: %d (%s)", len(r.Engineers), strings.Join(r.Engineers, " "))
+
+	if len(r.Quiet) == 0 {
 		line("\nquiet an hour or more: none")
 	} else {
 		line("\nquiet an hour or more:")
-		for _, q := range quiets {
-			owner := q.b.Assignee
-			if owner == "" {
-				owner = "-"
-			}
-			line("  %s %s: %s", q.b.ID, owner, q.wait)
+		for _, q := range r.Quiet {
+			line("  %s %s: %s", q.ID, q.Owner, q.Wait)
 		}
 	}
-	for _, n := range in.Notes {
+	for _, n := range r.Notes {
 		line("note: %s", n)
 	}
 	return w.String()
