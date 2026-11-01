@@ -211,11 +211,20 @@ func TestAppServePushes_NothingUsableIsOneLineAndAQuietWait(t *testing.T) {
 		"key not 600": apnsYAML("@KEY@", "com.example.initech"),
 	} {
 		t.Run(name, func(t *testing.T) {
-			r := newPushesRig(t, extra)
-			if name == "key not 600" {
-				writeKey(t, r.key)
-				os.Chmod(r.key, 0o644)
-			}
+			// The key is 0644 before the setup first looks: written 0600 and
+			// changed after it starts, a slow first look can see it 0600 and
+			// rightly accept it (main red at a26c41c, run 41349123715).
+			r := newPushesRigWith(t, extra, func(r *pushesRig) {
+				if name == "key not 600" {
+					writeKey(t, r.key)
+					if err := os.Chmod(r.key, 0o644); err != nil {
+						t.Fatal(err)
+					}
+					if fi, err := os.Stat(r.key); err != nil || fi.Mode().Perm() != 0o644 {
+						t.Fatalf("the fixture key is %v (%v), want 0644", fi.Mode().Perm(), err)
+					}
+				}
+			})
 			r.until(t, func() bool { return r.count(notYet) == 1 }, "no not-yet line")
 			r.pollQuietly(5)
 			r.aBeadEnters()
