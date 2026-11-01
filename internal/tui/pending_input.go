@@ -76,11 +76,21 @@ const LeftInBoxPrefix = "the box still holds other text: "
 // uses (ini-b5w): a restored draft, a half-typed line. The pane then reads
 // pending input, and the sender is told rather than left to find it. "" when
 // the box is empty or a dialog is open.
+//
+// NEVER WAITS ON THE PANE (ini-psjt): the screen and its width come through
+// tryScreenRows and emuSize, the readers that give up when the emulator lock
+// is held. A note skipped that way is the one cost: the pane itself reads
+// pending input at the next maintenance tick.
 func leftInBoxNote(p *Pane) string {
 	if paneHasModal(p) {
 		return ""
 	}
-	text, ok := pendingInputText(emuRowsBlocking(p.emu), p.emu.Width())
+	rows, read := tryScreenRows(p)
+	if !read {
+		return ""
+	}
+	cols, _ := p.emuSize()
+	text, ok := pendingInputText(rows, cols)
 	if !ok {
 		return ""
 	}

@@ -424,3 +424,27 @@ func TestPendingInput_TheAgentsPanelNameIsYellow(t *testing.T) {
 		t.Errorf("pending agent's name fg = %v, want yellow", fg)
 	}
 }
+
+// The delivered note never waits on the pane (ini-psjt): with the render lock
+// held it gives up at once and says nothing; the pane's own reading follows
+// at the next tick.
+func TestPendingInput_TheNoteNeverWaitsOnAHeldScreen(t *testing.T) {
+	p, _, _ := proofPaneSized(t, 32, 30)
+	lvxwPaint(p, dmiScreen(t, b5wName("pending1", 32)))
+	if leftInBoxNote(p) == "" {
+		t.Fatal("precondition: with the lock free the note is given")
+	}
+	p.renderMu.Lock()
+	done := make(chan string, 1)
+	go func() { done <- leftInBoxNote(p) }()
+	select {
+	case got := <-done:
+		p.renderMu.Unlock()
+		if got != "" {
+			t.Errorf("with the screen held, noted %q", got)
+		}
+	case <-time.After(2 * time.Second):
+		p.renderMu.Unlock()
+		t.Fatal("the note waited on a held screen")
+	}
+}
