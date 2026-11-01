@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/nmelo/initech/internal/appserve"
 	"github.com/spf13/cobra"
@@ -50,7 +51,10 @@ every restart. It runs with the PATH written here. A plain
 kill, a logout and uninstall are clean exits and notify nothing.
 
 Running it again with the same settings says already installed and changes
-nothing; with new settings it replaces the job.`,
+nothing while the job is loaded, and starts it when it is not. With new
+settings it stops the old job, waits up to ten seconds for launchd to let it
+go, then starts the new one. If the start fails, the job file and the copy
+stay and the message gives the command to start it by hand.`,
 	Args: cobra.NoArgs,
 	RunE: runAppServeInstall,
 }
@@ -215,8 +219,18 @@ func runAppServeInstall(cmd *cobra.Command, args []string) error {
 	old, readErr := os.ReadFile(plist)
 	if readErr == nil && bytes.Equal(old, want) && appserve.SameBytes(src, copyPath) {
 		appServePrivateLog(cmd.ErrOrStderr(), home)
-		fmt.Fprintf(out, "already installed: %s\n", plist)
-		return nil
+		// The same job: one look at launchd. Loaded is already installed;
+		// not loaded (a bootstrap that failed before) is started now, so
+		// install again is the recovery a failed start points to.
+		loaded, err := launchdLoaded()
+		if err != nil {
+			return err
+		}
+		if loaded {
+			fmt.Fprintf(out, "already installed: %s\n", plist)
+			return nil
+		}
+		return launchdBootstrap(out, home, plist)
 	}
 	// The job runs a copy at one fixed path: macOS keys the Desktop grant by
 	// a program's real path, and a Homebrew build's names its version. The
@@ -230,6 +244,11 @@ func runAppServeInstall(cmd *cobra.Command, args []string) error {
 		if err := launchdBootout(); err != nil {
 			return err
 		}
+		// bootout returns before the job is gone, and a bootstrap while it
+		// is still loaded fails: wait for launchd to let it go.
+		if err := launchdWaitGone(); err != nil {
+			return err
+		}
 	}
 	for _, dir := range []string{filepath.Dir(plist), filepath.Dir(appserve.LogPath(home))} {
 		if err := os.MkdirAll(dir, 0o700); err != nil {
@@ -240,12 +259,64 @@ func runAppServeInstall(cmd *cobra.Command, args []string) error {
 	if err := os.WriteFile(plist, want, 0o644); err != nil {
 		return fmt.Errorf("write %s: %w", plist, err)
 	}
+	return launchdBootstrap(out, home, plist)
+}
+
+// launchdBootstrap starts the job at plist. A failure keeps the job file and
+// the copy (they are the right job) and says the service is not running and
+// how to start it: removing the file would turn a passing failure into a
+// service with no job at all.
+func launchdBootstrap(out io.Writer, home, plist string) error {
 	if _, err := appServeRunner.Run("launchctl", "bootstrap", launchdDomain(), plist); err != nil {
-		os.Remove(plist) //nolint:errcheck // the error below is the one that matters
-		return fmt.Errorf("launchctl bootstrap failed, the job file is removed again: %w", err)
+		return fmt.Errorf("launchctl bootstrap failed: %w\nThe service is not running. Its job file %s and its copy are in place; start it with:\n  launchctl bootstrap %s %s\nor run initech app-serve install again", err, plist, launchdDomain(), plist)
 	}
 	fmt.Fprintf(out, "installed: %s\nlog: %s\n", plist, appserve.LogPath(home))
 	return nil
+}
+
+// How long install waits for launchd to let the old job go after bootout,
+// and how often it looks. Vars so a test can shorten them.
+var (
+	appServeGoneWait  = 10 * time.Second
+	appServeGoneEvery = 250 * time.Millisecond
+)
+
+// launchdJob is the job's name in launchctl's terms.
+func launchdJob() string { return launchdDomain() + "/" + appserve.LaunchLabel }
+
+// launchdLoaded reports whether launchd has the job loaded: one launchctl
+// print. "Could not find service" is not loaded; a clean answer is loaded;
+// any other failure is an error, never taken as gone.
+func launchdLoaded() (bool, error) {
+	out, err := appServeRunner.Run("launchctl", "print", launchdJob())
+	if err == nil {
+		return true, nil
+	}
+	if strings.Contains(out, "Could not find service") || strings.Contains(err.Error(), "Could not find service") {
+		return false, nil
+	}
+	return false, fmt.Errorf("launchctl print %s failed: %w", launchdJob(), err)
+}
+
+// launchdWaitGone waits, up to appServeGoneWait, for the job to be gone after
+// a bootout. A wait that runs out is an error naming the job still loaded (or
+// the last print error) and what to run; nothing is started.
+func launchdWaitGone() error {
+	deadline := time.Now().Add(appServeGoneWait)
+	why := "it is still loaded"
+	for {
+		loaded, err := launchdLoaded()
+		if err == nil && !loaded {
+			return nil
+		}
+		if err != nil {
+			why = err.Error()
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("the old job %s is still loaded %s after launchctl bootout (%s); the new job is not started. Stop it with:\n  launchctl bootout %s\nthen run initech app-serve install again", launchdJob(), appServeGoneWait, why, launchdJob())
+		}
+		time.Sleep(appServeGoneEvery)
+	}
 }
 
 // appServePrivateLog creates the service log 0600 before launchd appends to
@@ -295,7 +366,7 @@ func runAppServeUninstall(cmd *cobra.Command, args []string) error {
 // loaded, which is what was asked for; any other failure leaves the job file
 // in place and is named.
 func launchdBootout() error {
-	if out, err := appServeRunner.Run("launchctl", "bootout", launchdDomain()+"/"+appserve.LaunchLabel); err != nil {
+	if out, err := appServeRunner.Run("launchctl", "bootout", launchdJob()); err != nil {
 		if strings.Contains(out, "No such process") || strings.Contains(err.Error(), "No such process") {
 			return nil
 		}

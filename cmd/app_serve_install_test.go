@@ -7,7 +7,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/nmelo/initech/internal/appserve"
 	iexec "github.com/nmelo/initech/internal/exec"
@@ -18,11 +20,101 @@ import (
 
 type installRig struct {
 	home   string
-	runner *iexec.FakeRunner
+	runner *launchdFake
 	out    bytes.Buffer
 	link   string // the path install is run as: a link, as Homebrew's is
 	src    string // the real file it resolves to
 }
+
+// launchdFake is launchctl as it behaves, for the one job: bootout of a
+// loaded job returns at once while print still shows it for Slow calls (or
+// for ever when Stuck); bootstrap while the job is still loaded fails with
+// exit 5, Input/output error; print of a job not loaded answers "Could not
+// find service", exit 113. Calls and Err are iexec.FakeRunner's: every call
+// is recorded as "|name args", and an Err fails every call (an Err naming
+// "No such process" on a bootout also means the job is not loaded).
+type launchdFake struct {
+	mu           sync.Mutex
+	Calls        []string
+	Err          error
+	Slow         int   // print calls that still show the job after a bootout returns
+	Stuck        bool  // the job never unloads
+	PrintErr     error // print fails for another reason
+	BootstrapErr error // bootstrap fails though the job is gone
+	loaded       bool
+	unloading    int // -1: for ever
+}
+
+func (f *launchdFake) Run(name string, args ...string) (string, error) {
+	return f.RunInDir("", name, args...)
+}
+
+func (f *launchdFake) RunInDir(dir, name string, args ...string) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.Calls = append(f.Calls, dir+"|"+name+" "+strings.Join(args, " "))
+	if f.Err != nil {
+		if len(args) > 0 && args[0] == "bootout" && strings.Contains(f.Err.Error(), "No such process") {
+			f.loaded, f.unloading = false, 0
+		}
+		return "", f.Err
+	}
+	if name != "launchctl" || len(args) == 0 {
+		return "", nil
+	}
+	switch args[0] {
+	case "bootout":
+		if !f.loaded && f.unloading == 0 {
+			return "Boot-out failed: 3: No such process", errors.New("exit status 3")
+		}
+		if f.loaded {
+			f.loaded, f.unloading = false, f.Slow
+			if f.Stuck {
+				f.unloading = -1
+			}
+		}
+		return "", nil
+	case "print":
+		if f.PrintErr != nil {
+			return f.PrintErr.Error(), f.PrintErr
+		}
+		if f.loaded {
+			return "state = running", nil
+		}
+		if f.unloading != 0 {
+			if f.unloading > 0 {
+				f.unloading--
+			}
+			return "state = running", nil
+		}
+		return "Bad request.\nCould not find service \"com.initech.app-serve\" in domain for user gui: 501", errors.New("exit status 113")
+	case "bootstrap":
+		if f.loaded || f.unloading != 0 {
+			return "Bootstrap failed: 5: Input/output error", errors.New("exit status 5")
+		}
+		if f.BootstrapErr != nil {
+			return f.BootstrapErr.Error(), f.BootstrapErr
+		}
+		f.loaded = true
+		return "", nil
+	}
+	return "", nil
+}
+
+// count is how many calls start with verb ("bootout", "print", "bootstrap").
+func (f *launchdFake) count(verb string) int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	n := 0
+	for _, c := range f.Calls {
+		if strings.HasPrefix(c, "|launchctl "+verb+" ") {
+			n++
+		}
+	}
+	return n
+}
+
+func (f *launchdFake) isLoaded() bool { f.mu.Lock(); defer f.mu.Unlock(); return f.loaded }
 
 // unsignedCodesign is codesign over a file that carries no signature.
 func unsignedCodesign(args ...string) (string, error) {
@@ -40,8 +132,11 @@ func (r *installRig) args(rest ...string) []string {
 func newInstallRig(t *testing.T) *installRig {
 	t.Helper()
 	skipWindows(t)
-	r := &installRig{home: t.TempDir(), runner: &iexec.FakeRunner{}}
+	r := &installRig{home: t.TempDir(), runner: &launchdFake{Slow: 2}}
 	t.Setenv("HOME", r.home)
+	oldWait, oldEvery := appServeGoneWait, appServeGoneEvery
+	t.Cleanup(func() { appServeGoneWait, appServeGoneEvery = oldWait, oldEvery })
+	appServeGoneWait, appServeGoneEvery = 2*time.Second, time.Millisecond
 	oldRunner, oldBin, oldDir, oldCodesign := appServeRunner, appServeBinary, appServeStateDir, appServeCodesign
 	oldListen, oldPort, oldProjects, oldNotify := appServeListen, appServePort, appServeProjects, appServeNotify
 	t.Cleanup(func() {
@@ -96,6 +191,10 @@ func (r *installRig) plistThere() bool {
 
 func (r *installRig) bootstrapCall() string {
 	return fmt.Sprintf("|launchctl bootstrap gui/%d %s", os.Getuid(), r.plist())
+}
+
+func printCall() string {
+	return fmt.Sprintf("|launchctl print gui/%d/com.initech.app-serve", os.Getuid())
 }
 
 func bootoutCall() string {
@@ -179,12 +278,14 @@ func TestInstall_ASecondInstallIsIdempotent(t *testing.T) {
 	if !bytes.Equal(first, second) || !strings.HasPrefix(r.out.String(), "already installed") {
 		t.Errorf("same %v, printed %q", bytes.Equal(first, second), r.out.String())
 	}
-	if len(r.runner.Calls) != 1 {
-		t.Errorf("launchctl calls %q, want only the first bootstrap", r.runner.Calls)
+	if want := []string{r.bootstrapCall(), printCall()}; strings.Join(r.runner.Calls, ";") != strings.Join(want, ";") {
+		t.Errorf("launchctl calls %q, want the first bootstrap and one print", r.runner.Calls)
 	}
 }
 
-// New settings replace the job: bootout first, then bootstrap.
+// New settings replace the job: bootout first, then a wait until print says
+// the old job is gone (the fake keeps it for two prints, as launchd does),
+// then bootstrap.
 func TestInstall_NewSettingsReplaceTheJob(t *testing.T) {
 	r := newInstallRig(t)
 	if err := r.install(); err != nil {
@@ -197,7 +298,7 @@ func TestInstall_NewSettingsReplaceTheJob(t *testing.T) {
 	if raw, _ := os.ReadFile(r.plist()); !strings.Contains(string(raw), "<string>7400</string>") {
 		t.Errorf("the job was not replaced:\n%s", raw)
 	}
-	want := []string{r.bootstrapCall(), bootoutCall(), r.bootstrapCall()}
+	want := []string{r.bootstrapCall(), bootoutCall(), printCall(), printCall(), printCall(), r.bootstrapCall()}
 	if strings.Join(r.runner.Calls, ";") != strings.Join(want, ";") {
 		t.Errorf("launchctl calls %q, want %q", r.runner.Calls, want)
 	}
@@ -246,20 +347,21 @@ func TestUninstall_ANotLoadedJobIsGoneAndAnyOtherFailureKeepsIt(t *testing.T) {
 	}
 }
 
-// AC5: launchctl failing: the job file is removed again and the error named,
+// AC5, ini-myh: launchctl failing at a first install: the job file stays
+// (it is the right job), the error is named with the command to start it,
 // exit 1. launchctl missing, through the real runner, the same.
-func TestInstall_ALaunchctlFailureRemovesTheJobAgain(t *testing.T) {
+func TestInstall_ALaunchctlFailureKeepsTheJobAndNamesIt(t *testing.T) {
 	r := newInstallRig(t)
 	r.runner.Err = errors.New("launchctl bootstrap: exit status 5")
 	err := r.install()
-	if v69Exit(err) != 1 || err == nil || !strings.Contains(err.Error(), "launchctl bootstrap failed") || r.plistThere() {
+	if v69Exit(err) != 1 || err == nil || !strings.Contains(err.Error(), "launchctl bootstrap failed") || !strings.Contains(err.Error(), "not running") || !r.plistThere() {
 		t.Errorf("err %v, file there %v", err, r.plistThere())
 	}
 	m := newInstallRig(t)
 	appServeRunner = &iexec.DefaultRunner{}
 	t.Setenv("PATH", t.TempDir())
 	err = m.install()
-	if v69Exit(err) != 1 || err == nil || !strings.Contains(err.Error(), "launchctl") || m.plistThere() {
+	if v69Exit(err) != 1 || err == nil || !strings.Contains(err.Error(), "launchctl") || !m.plistThere() {
 		t.Errorf("missing: err %v, file there %v", err, m.plistThere())
 	}
 }
@@ -417,7 +519,7 @@ func TestInstall_TheJobCarriesTheShellsPath(t *testing.T) {
 	if !strings.Contains(string(raw), "<string>/elsewhere/bin:/usr/bin</string>") {
 		t.Errorf("a changed PATH did not replace the job:\n%s", raw)
 	}
-	wantCalls := []string{r.bootstrapCall(), bootoutCall(), r.bootstrapCall()}
+	wantCalls := []string{r.bootstrapCall(), bootoutCall(), printCall(), printCall(), printCall(), r.bootstrapCall()}
 	if strings.Join(r.runner.Calls, ";") != strings.Join(wantCalls, ";") {
 		t.Errorf("launchctl calls %q, want %q", r.runner.Calls, wantCalls)
 	}
@@ -598,14 +700,14 @@ func TestInstall_ReinstallRewritesNothingUntilTheBuildChanges(t *testing.T) {
 		t.Fatal(err)
 	}
 	after, _ := os.Stat(cp)
-	if !strings.Contains(r.out.String(), "already installed") || len(r.runner.Calls) != 0 || !os.SameFile(before, after) {
+	if !strings.Contains(r.out.String(), "already installed") || len(r.runner.Calls) != 1 || r.runner.count("print") != 1 || !os.SameFile(before, after) {
 		t.Errorf("same settings, same build: printed %q, calls %q, copy rewritten %v", r.out.String(), r.runner.Calls, !os.SameFile(before, after))
 	}
 	os.WriteFile(r.src, []byte("#!/bin/sh\necho build 2.1\n"), 0o755)
 	if err := r.install(); err != nil {
 		t.Fatal(err)
 	}
-	if !appserve.SameBytes(r.src, cp) || strings.Contains(r.out.String(), "already installed") || len(r.runner.Calls) != 2 {
+	if !appserve.SameBytes(r.src, cp) || strings.Contains(r.out.String(), "already installed") || r.runner.count("bootout") != 1 || r.runner.count("bootstrap") != 1 {
 		t.Errorf("a new build: copy current %v, printed %q, calls %q (want bootout and bootstrap)", appserve.SameBytes(r.src, cp), r.out.String(), r.runner.Calls)
 	}
 }
@@ -700,5 +802,151 @@ func TestInstall_AFailedCopyLeavesTheRunningJobAlone(t *testing.T) {
 	after, _ := os.ReadFile(r.plist())
 	if len(r.runner.Calls) != 0 || !bytes.Equal(before, after) {
 		t.Errorf("a refused copy touched the running job: launchctl %q, job changed %v", r.runner.Calls, !bytes.Equal(before, after))
+	}
+}
+
+
+// ini-myh: the job as a release install leaves it: installed and running,
+// then install again with new settings (another port).
+func (r *installRig) reinstallWithNewSettings(t *testing.T) error {
+	t.Helper()
+	if err := r.install(); err != nil {
+		t.Fatal(err)
+	}
+	r.runner.Calls = nil
+	appServePort++
+	return r.install()
+}
+
+// ini-myh AC1: launchctl's bootout returns before the old job is gone;
+// install waits until print says it is gone and only then bootstraps, and
+// the new job runs. Red at base: bootstrap ran at once and failed with exit
+// 5 (shipper, v2.55.0).
+func TestInstall_NewSettingsStartTheNewJobOnlyAfterTheOldIsGone(t *testing.T) {
+	r := newInstallRig(t)
+	r.runner.Slow = 3
+	if err := r.reinstallWithNewSettings(t); err != nil {
+		t.Fatalf("install over a slowly unloading job: %v", err)
+	}
+	if !r.runner.isLoaded() || r.runner.count("bootstrap") != 1 || r.runner.count("print") != 4 {
+		t.Errorf("loaded %v, calls %q: want the bootstrap after 3 prints that still show the job and 1 that says gone", r.runner.isLoaded(), r.runner.Calls)
+	}
+	last := r.runner.Calls[len(r.runner.Calls)-1]
+	if last != r.bootstrapCall() || !strings.Contains(r.out.String(), "installed: ") {
+		t.Errorf("last call %q, printed %q", last, r.out.String())
+	}
+}
+
+// ini-myh AC2: a job that never unloads ends the wait within the bound with
+// the job named and what to run; no bootstrap; the old job file stays (it is
+// the job still loaded) and the copy is the new one; exit 1.
+func TestInstall_AJobThatNeverUnloadsEndsTheWaitWithTheHandSteps(t *testing.T) {
+	r := newInstallRig(t)
+	appServeGoneWait = 100 * time.Millisecond
+	if err := r.install(); err != nil {
+		t.Fatal(err)
+	}
+	before, _ := os.ReadFile(r.plist())
+	r.runner.Stuck = true
+	r.runner.Calls = nil
+	os.WriteFile(r.src, []byte("#!/bin/sh\necho build 2.1\n"), 0o755)
+	start := time.Now()
+	appServePort++
+	err := r.install()
+	took := time.Since(start)
+	if v69Exit(err) != 1 || err == nil {
+		t.Fatalf("err %v, want exit 1", err)
+	}
+	for _, want := range []string{"com.initech.app-serve", "still loaded", "launchctl bootout gui/", "initech app-serve install"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the error %q does not name %q", err, want)
+		}
+	}
+	if r.runner.count("bootstrap") != 0 || took > 2*time.Second {
+		t.Errorf("bootstrap calls %d, wait %v: want none, within the bound", r.runner.count("bootstrap"), took)
+	}
+	after, _ := os.ReadFile(r.plist())
+	if !bytes.Equal(before, after) || !appserve.SameBytes(r.src, appserve.CopyPath(r.home)) {
+		t.Errorf("job file kept %v, copy current %v", bytes.Equal(before, after), appserve.SameBytes(r.src, appserve.CopyPath(r.home)))
+	}
+}
+
+// ini-myh AC3: a bootstrap that fails after a clean wait leaves the job file
+// and the copy, says the service is not running and gives the command to run
+// by hand; exit 1. Install again is the recovery the message promises: the
+// job file and copy match, the job is not loaded, so it is bootstrapped.
+func TestInstall_ABootstrapFailureKeepsTheJobAndSaysHowToStartIt(t *testing.T) {
+	r := newInstallRig(t)
+	if err := r.install(); err != nil {
+		t.Fatal(err)
+	}
+	r.runner.BootstrapErr = errors.New("exit status 5")
+	r.runner.Calls = nil
+	appServePort++
+	err := r.install()
+	if v69Exit(err) != 1 || err == nil {
+		t.Fatalf("err %v, want exit 1", err)
+	}
+	for _, want := range []string{"launchctl bootstrap failed", "not running", "launchctl bootstrap " + launchdDomain() + " " + r.plist(), "initech app-serve install"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the error %q does not say %q", err, want)
+		}
+	}
+	if !r.plistThere() {
+		t.Error("the job file was removed: the service has no job at all")
+	}
+	if _, err := os.Stat(appserve.CopyPath(r.home)); err != nil {
+		t.Errorf("the copy is gone: %v", err)
+	}
+	r.runner.BootstrapErr = nil
+	r.runner.Calls = nil
+	if err := r.install(); err != nil {
+		t.Fatalf("install again: %v", err)
+	}
+	if !r.runner.isLoaded() || !strings.Contains(r.out.String(), "installed: ") || strings.Contains(r.out.String(), "already installed") {
+		t.Errorf("install again: loaded %v, printed %q, calls %q", r.runner.isLoaded(), r.out.String(), r.runner.Calls)
+	}
+}
+
+// ini-myh AC4: a first install makes no bootout and no print; already
+// installed with the job loaded is one print and nothing else.
+func TestInstall_FirstAndAlreadyInstalledAreUnchanged(t *testing.T) {
+	r := newInstallRig(t)
+	if err := r.install(); err != nil {
+		t.Fatal(err)
+	}
+	if r.runner.count("bootout") != 0 || r.runner.count("print") != 0 || len(r.runner.Calls) != 1 {
+		t.Errorf("first install calls %q, want the bootstrap alone", r.runner.Calls)
+	}
+	r.runner.Calls = nil
+	if err := r.install(); err != nil {
+		t.Fatal(err)
+	}
+	if len(r.runner.Calls) != 1 || r.runner.count("print") != 1 || !strings.Contains(r.out.String(), "already installed") {
+		t.Errorf("already installed: calls %q, printed %q, want one print", r.runner.Calls, r.out.String())
+	}
+}
+
+// ini-myh feed-it-nothing: print failing for another reason is never taken
+// as gone: after a bootout the wait runs out naming it, and on the
+// already-installed path install names it and bootstraps nothing.
+func TestInstall_APrintFailureIsNeverTakenAsGone(t *testing.T) {
+	r := newInstallRig(t)
+	appServeGoneWait = 100 * time.Millisecond
+	if err := r.install(); err != nil {
+		t.Fatal(err)
+	}
+	r.runner.PrintErr = errors.New("exit status 1: Operation not permitted")
+	r.runner.Calls = nil
+	appServePort++
+	err := r.install()
+	if err == nil || !strings.Contains(err.Error(), "Operation not permitted") || r.runner.count("bootstrap") != 0 {
+		t.Errorf("after bootout: err %v, calls %q", err, r.runner.Calls)
+	}
+	appServePort--
+	r.runner.Calls = nil
+	err = r.install()
+	if err == nil || !strings.Contains(err.Error(), "Operation not permitted") || r.runner.count("bootstrap") != 0 {
+		t.Errorf("already installed: err %v, calls %q", err, r.runner.Calls)
 	}
 }
