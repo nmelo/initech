@@ -40,11 +40,28 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: co.nmelo.initech.tests
         GENERATE_INFOPLIST_FILE: YES
+  InitechAppUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - InitechAppUITests
+      - InitechApp/Models.swift
+      - InitechApp/Pairing.swift
+      - InitechAppTests/FixtureServer.swift
+    dependencies:
+      - target: InitechApp
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: co.nmelo.initech.uitests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: InitechApp
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) UITESTS"
 schemes:
   InitechApp:
     build:
       targets:
         InitechApp: all
         InitechAppTests: [test]
+        InitechAppUITests: [test]
     test:
-      targets: [InitechAppTests]
+      targets: [InitechAppTests, InitechAppUITests]

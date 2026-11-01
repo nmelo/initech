@@ -112,10 +112,10 @@ final class ServiceClientTests: XCTestCase {
     }
 
     func testSend_ReturnsTheSendPathsVerdictAndWords() async throws {
-        server.setSendVerdict(rig: "r", pane: "eng1", SendResult(verdict: "held", words: "held: eng1 is in do-not-disturb"))
+        server.setSendVerdict(rig: "r", pane: "eng1", SendResult(verdict: "deferred", words: "deferred to eng1 — target has a modal open; will deliver when it closes"))
         let r = try await service.send(rig: "r", pane: "eng1", text: "hello 'quoted' $HOME")
         XCTAssertEqual(r.outcome, .held)
-        XCTAssertEqual(r.words, "held: eng1 is in do-not-disturb")
+        XCTAssertEqual(r.words, "deferred to eng1 — target has a modal open; will deliver when it closes")
         struct Body: Decodable, Equatable { var text: String; var enter: Bool }
         let body = try JSONDecoder().decode(Body.self, from: server.requests.last!.body)
         XCTAssertEqual(body, Body(text: "hello 'quoted' $HOME", enter: true), "the text reaches the service byte for byte")

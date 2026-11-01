@@ -109,7 +109,7 @@ struct MessageView: View {
 }
 
 /// VerdictLabel says what the send path did with a message, in the send
-/// path's own words (they already name the verdict: "held: ...", "not
+/// path's own words (they already name the verdict: "deferred to ...", "not
 /// delivered to ...: ..."); a delivered message just says so.
 struct VerdictLabel: View {
     let result: SendResult

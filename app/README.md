@@ -28,6 +28,13 @@ Mac's) that serves the app service's v1 API: the Bearer token gate, rigs,
 status, pins, the conversation pages, send, keys and the SSE feed with
 Last-Event-ID replay.
 
+`InitechAppUITests/ScreenshotTests` drives the real app, paired with the
+fixture through a debug-only launch argument (`-uitest-pairing <link>`,
+which also skips Face ID; release builds do not contain it), to home and to
+a pane at a dialog. With `TEST_RUNNER_SHOT_DIR=<dir>` set, it stops at each
+screen until `<dir>/<stop>.done` exists, so `xcrun simctl io <udid>
+screenshot` can take it.
+
 In the initech rig, wrap every build in `super/tools/heavy.sh` and never open
 Simulator.app.
 

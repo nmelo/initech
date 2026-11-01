@@ -35,6 +35,20 @@
                ReferencedContainer = "container:InitechApp.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "NO"
+            buildForProfiling = "NO"
+            buildForArchiving = "NO"
+            buildForAnalyzing = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "EE34F6E985C7C97F90C88394"
+               BuildableName = "InitechAppUITests.xctest"
+               BlueprintName = "InitechAppUITests"
+               ReferencedContainer = "container:InitechApp.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
       </BuildActionEntries>
    </BuildAction>
    <TestAction
@@ -61,6 +75,17 @@
                BlueprintIdentifier = "1E18E62F81993F0DE182E8FF"
                BuildableName = "InitechAppTests.xctest"
                BlueprintName = "InitechAppTests"
+               ReferencedContainer = "container:InitechApp.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
+         <TestableReference
+            skipped = "NO"
+            parallelizable = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "EE34F6E985C7C97F90C88394"
+               BuildableName = "InitechAppUITests.xctest"
+               BlueprintName = "InitechAppUITests"
                ReferencedContainer = "container:InitechApp.xcodeproj">
             </BuildableReference>
          </TestableReference>

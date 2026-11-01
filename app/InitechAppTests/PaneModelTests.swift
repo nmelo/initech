@@ -50,7 +50,7 @@ final class PaneModelTests: XCTestCase {
         let pane = PaneModel(service: service, ref: ref)
         await pane.load()
         await pane.send("first")
-        server.setSendVerdict(rig: ref.rig, pane: ref.pane, SendResult(verdict: "held", words: "held: eng1 is in do-not-disturb"))
+        server.setSendVerdict(rig: ref.rig, pane: ref.pane, SendResult(verdict: "deferred", words: "deferred to eng1 — target has a modal open; will deliver when it closes"))
         await pane.send("second")
         server.setSendVerdict(rig: ref.rig, pane: ref.pane, SendResult(verdict: "not_delivered", words: "eng1 is not running"))
         await pane.send("third")

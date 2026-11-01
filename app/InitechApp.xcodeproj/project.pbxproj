@@ -18,8 +18,11 @@
 		685878ED785A10A098F263E2 /* ProgressModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 80BF034D8710ADF009CF829B /* ProgressModelTests.swift */; };
 		6BFF360A8731EE56647A3EFC /* FixtureServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7B4D274B41C77005FCB4951 /* FixtureServer.swift */; };
 		6C1D595F222CA4C1D1D2E9DC /* Pairing.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F0C8C6A411B9F13BD5F6987 /* Pairing.swift */; };
+		74A565216330F44BEB6B5A5F /* ScreenshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9AD89DF8748C72A36D899F85 /* ScreenshotTests.swift */; };
 		7C1AB1DCE9110CB679D4BE08 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93051BAD3626304FE12B85BC /* Models.swift */; };
 		7C9EED75881678B3BDE815B6 /* OperatorScreensTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BAD504231BC2B5E64665002 /* OperatorScreensTests.swift */; };
+		7DBE242BC65500EEAF05660A /* FixtureServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7B4D274B41C77005FCB4951 /* FixtureServer.swift */; };
+		81179ABE488B00B0312D56B4 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93051BAD3626304FE12B85BC /* Models.swift */; };
 		8760144F04AED9057D821D6D /* HomeModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A282C9D0B4542CD0C2D4AD1C /* HomeModelTests.swift */; };
 		89E3CEC32DF11F42F086C4BE /* HomeModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C7B8C3570C7B33C099C65C3 /* HomeModel.swift */; };
 		A04E78EFB83532AD539D6C7A /* ProgressView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC3E1D3D497C12A586B34C15 /* ProgressView.swift */; };
@@ -32,10 +35,18 @@
 		E8CD411447E065872C08A1B1 /* OperatorScreens.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C4A3801D442302B722CA33A /* OperatorScreens.swift */; };
 		ED99CBF96801ED11252F0E12 /* BlockersView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 666FD729244613CF6E86345D /* BlockersView.swift */; };
 		EF28745458391348A35D4F25 /* InitechApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F87CD51E774AB674C7B99838 /* InitechApp.swift */; };
+		F5027582EA43711603E42F43 /* Pairing.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F0C8C6A411B9F13BD5F6987 /* Pairing.swift */; };
 		FB47B54BA57D81C2C70C5502 /* ServiceClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB189FF009C5D6B4E1735478 /* ServiceClient.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
+		1BB38B0BE0FFF0CAFCA7BE4B /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 0D23AF995BA2D0042CC2DB2C /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = B46DA23474408FBC80783FD4;
+			remoteInfo = InitechApp;
+		};
 		FD53A0C4CBC84EF615A66A89 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 0D23AF995BA2D0042CC2DB2C /* Project object */;
@@ -49,6 +60,7 @@
 		0DD99BD2396715324CE7297D /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
 		10D5A8C8CF2881FB2236459D /* BlockersModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlockersModel.swift; sourceTree = "<group>"; };
 		141131EF2DD5FEE337187AD3 /* BlockersModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlockersModelTests.swift; sourceTree = "<group>"; };
+		1A4E60E0BF81FC9AD90D324C /* InitechAppUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = InitechAppUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		2F0C8C6A411B9F13BD5F6987 /* Pairing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Pairing.swift; sourceTree = "<group>"; };
 		38DE6C64E6074FD3DA0E9F8C /* PaneView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaneView.swift; sourceTree = "<group>"; };
 		40BCD2D871E2FA5F5623A55C /* PaneModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaneModel.swift; sourceTree = "<group>"; };
@@ -65,6 +77,7 @@
 		926BB43F5DEAA400A6ECE838 /* ServiceClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServiceClientTests.swift; sourceTree = "<group>"; };
 		93051BAD3626304FE12B85BC /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		93A60E37937117C84492E6AF /* PairingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingTests.swift; sourceTree = "<group>"; };
+		9AD89DF8748C72A36D899F85 /* ScreenshotTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenshotTests.swift; sourceTree = "<group>"; };
 		9C7B8C3570C7B33C099C65C3 /* HomeModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeModel.swift; sourceTree = "<group>"; };
 		A282C9D0B4542CD0C2D4AD1C /* HomeModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeModelTests.swift; sourceTree = "<group>"; };
 		BB189FF009C5D6B4E1735478 /* ServiceClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServiceClient.swift; sourceTree = "<group>"; };
@@ -82,6 +95,7 @@
 			children = (
 				7086ED0B40EB5EE0469CEA1F /* InitechApp */,
 				927C9DED42946EDB74E42919 /* InitechAppTests */,
+				A6DDA42AFA442F6FB7E93C2A /* InitechAppUITests */,
 				7157ED01C9F67AEFB1AF32E3 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -114,6 +128,7 @@
 			children = (
 				D973C4CF1AB9FD8305E3EE9B /* InitechApp.app */,
 				41354D02977BC4D7F01A5923 /* InitechAppTests.xctest */,
+				1A4E60E0BF81FC9AD90D324C /* InitechAppUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -133,6 +148,14 @@
 				926BB43F5DEAA400A6ECE838 /* ServiceClientTests.swift */,
 			);
 			path = InitechAppTests;
+			sourceTree = "<group>";
+		};
+		A6DDA42AFA442F6FB7E93C2A /* InitechAppUITests */ = {
+			isa = PBXGroup;
+			children = (
+				9AD89DF8748C72A36D899F85 /* ScreenshotTests.swift */,
+			);
+			path = InitechAppUITests;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -173,6 +196,24 @@
 			productReference = D973C4CF1AB9FD8305E3EE9B /* InitechApp.app */;
 			productType = "com.apple.product-type.application";
 		};
+		EE34F6E985C7C97F90C88394 /* InitechAppUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 055C475B823268B457B69DEE /* Build configuration list for PBXNativeTarget "InitechAppUITests" */;
+			buildPhases = (
+				95720A0CBCE23B30E7167B23 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				CB25E67C3C629446C16D2ECB /* PBXTargetDependency */,
+			);
+			name = InitechAppUITests;
+			packageProductDependencies = (
+			);
+			productName = InitechAppUITests;
+			productReference = 1A4E60E0BF81FC9AD90D324C /* InitechAppUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -187,6 +228,10 @@
 					};
 					B46DA23474408FBC80783FD4 = {
 						ProvisioningStyle = Automatic;
+					};
+					EE34F6E985C7C97F90C88394 = {
+						ProvisioningStyle = Automatic;
+						TestTargetID = B46DA23474408FBC80783FD4;
 					};
 				};
 			};
@@ -206,6 +251,7 @@
 			targets = (
 				B46DA23474408FBC80783FD4 /* InitechApp */,
 				1E18E62F81993F0DE182E8FF /* InitechAppTests */,
+				EE34F6E985C7C97F90C88394 /* InitechAppUITests */,
 			);
 		};
 /* End PBXProject section */
@@ -234,6 +280,17 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		95720A0CBCE23B30E7167B23 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7DBE242BC65500EEAF05660A /* FixtureServer.swift in Sources */,
+				81179ABE488B00B0312D56B4 /* Models.swift in Sources */,
+				F5027582EA43711603E42F43 /* Pairing.swift in Sources */,
+				74A565216330F44BEB6B5A5F /* ScreenshotTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		DD9916A7F477B92E0677D286 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -258,6 +315,11 @@
 			isa = PBXTargetDependency;
 			target = B46DA23474408FBC80783FD4 /* InitechApp */;
 			targetProxy = FD53A0C4CBC84EF615A66A89 /* PBXContainerItemProxy */;
+		};
+		CB25E67C3C629446C16D2ECB /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = B46DA23474408FBC80783FD4 /* InitechApp */;
+			targetProxy = 1BB38B0BE0FFF0CAFCA7BE4B /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -401,6 +463,42 @@
 			};
 			name = Release;
 		};
+		BB75FE4EDAFF832564D0A24B /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = co.nmelo.initech.uitests;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) UITESTS";
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = InitechApp;
+			};
+			name = Debug;
+		};
+		D6401725029E33F3A4411625 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = co.nmelo.initech.uitests;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) UITESTS";
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = InitechApp;
+			};
+			name = Release;
+		};
 		DBC9301DEC260505CA8EAD7E /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -470,6 +568,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		055C475B823268B457B69DEE /* Build configuration list for PBXNativeTarget "InitechAppUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				BB75FE4EDAFF832564D0A24B /* Debug */,
+				D6401725029E33F3A4411625 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
 		47C26C329F6C076033FDD315 /* Build configuration list for PBXNativeTarget "InitechAppTests" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

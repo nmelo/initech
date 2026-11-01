@@ -297,7 +297,7 @@ Home lists the panes you pinned, in your order, each with the name you gave it, 
 
 A pane opens as its conversation, read from the pane's Claude Code transcript: the agent's replies as text with the footer lines (`▶`) at the bottom of each reply, each tool run as one line that expands on tap, your messages on the right. Scrolling up reads older entries until the transcript's start. A pane with nothing in its transcript yet says so.
 
-What you type in the box goes into the pane through the send path, as `initech send` would type it, and the message shows the verdict: delivered, held (with why), sent but not confirmed, or not delivered (with why).
+What you type in the box goes into the pane through the send path, as `initech send` would type it, and the message shows the verdict in the send path's own words: delivered, deferred because a dialog is open (it goes when the dialog closes), sent but not confirmed, or not delivered (with why).
 
 Below the box, the key strip sends Enter, Esc, Ctrl-C, `y` or `n` into the pane as a single keystroke (`initech keystroke`), and shows the result under it. While the pane is at a dialog or banner, or waiting or pending, its last screen lines show above the input box, so you can read the prompt you are answering.
 
