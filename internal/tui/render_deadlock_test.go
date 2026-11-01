@@ -77,6 +77,9 @@ func TestRenderNotBlockedByRemoteConnection(t *testing.T) {
 		agentEvents: make(chan AgentEvent, 64),
 	}
 	tui.plan = computeLayout(tui.layoutState, tui.panes, 120, 39)
+	// eng1 is idle; the overlay lists an idle agent only when it needs
+	// attention (ini-7w4), so a stuck bead keeps its name on screen here.
+	tui.paceStuck = map[string]bool{"eng1": true}
 
 	// Start the peer manager in the background (same as Run() does).
 	// This will attempt to connect to the unreachable remote.

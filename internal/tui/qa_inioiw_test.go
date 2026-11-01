@@ -20,6 +20,9 @@ func TestRender_UpdateActivity_OverridesManualRunning(t *testing.T) {
 	// Manually set running state — render() must override this via updateActivity().
 	tui.panes[0].(*Pane).activity = StateRunning
 	// lastOutputTime is zero → updateActivity() returns StateIdle.
+	// The overlay lists an idle agent only when it needs attention (ini-7w4):
+	// a bead the pace counts stuck keeps eng1 listed, so its idle dot shows.
+	tui.paceStuck = map[string]bool{"eng1": true}
 	tui.render()
 
 	// The dot as drawn: with two columns (ini-gt7w) its cell depends on the
@@ -70,6 +73,8 @@ func TestRender_UpdateActivity_StaleOutputYieldsIdle(t *testing.T) {
 	tui, s := newTestTUIWithScreen("eng1")
 	tui.layoutState.Overlay = true
 	tui.panes[0].(*Pane).lastOutputTime = time.Now().Add(-(ptyIdleTimeout + time.Second))
+	// Listed while idle by a stuck bead (the overlay hides plain idle, ini-7w4).
+	tui.paceStuck = map[string]bool{"eng1": true}
 	tui.render()
 
 	// The dot as drawn: with two columns (ini-gt7w) its cell depends on the
