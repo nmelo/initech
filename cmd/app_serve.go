@@ -154,6 +154,7 @@ func runAppServe(cmd *cobra.Command, args []string) error {
 	}
 	go srv.Run(ctx)
 	go srv.RunProgress(ctx)
+	go srv.RunTail(ctx)
 	return appserve.ServeTLS(ln, srv.Handler(), cert)
 }
 

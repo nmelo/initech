@@ -91,6 +91,8 @@ type Server struct {
 	progress      []progress.Report         // the latest progress run
 	progressAsked map[string]cachedProgress // reports read on request, by rig root and prefix
 
+	tails map[string]tailPos // by rig root and pane; only RunTail's goroutine touches it
+
 	blockersMu   sync.Mutex
 	lastBlockers []byte                  // the list last compared, as JSON; nil before the first
 	lastWaiting  map[string]WaitingEvent // the waiting items on it
@@ -128,7 +130,7 @@ func New(cfg Config) *Server {
 	if cfg.After == nil {
 		cfg.After = time.After
 	}
-	s := &Server{cfg: cfg, mux: http.NewServeMux(), statuses: map[string]cachedStatus{}, progressAsked: map[string]cachedProgress{}, feed: NewFeed(cfg.Now)}
+	s := &Server{cfg: cfg, mux: http.NewServeMux(), statuses: map[string]cachedStatus{}, progressAsked: map[string]cachedProgress{}, tails: map[string]tailPos{}, feed: NewFeed(cfg.Now)}
 	s.mux.HandleFunc("GET /v1/rigs", s.handleRigs)
 	s.mux.HandleFunc("GET /v1/status", s.handleStatus)
 	s.mux.HandleFunc("GET /v1/status/{rig}", s.handleRigStatus)
