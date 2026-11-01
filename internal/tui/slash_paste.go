@@ -13,11 +13,16 @@ import (
 // "[Pasted text #N]" and is sent as content, so the command never runs.
 // MEASURED: see collapsedOneLineRunes (Claude Code 2.1.312: 800 shown, 801
 // collapsed); confirmed for a slash command on Claude Code 2.1.316 (800
-// shown, 801 collapsed). Counted in runes, as that measurement is. A line
-// break alone does not collapse a short command: on 2.1.316 a two-line
-// /compact showed as text and ran. How many lines collapse a command under
-// the limit is not measured, so a line break is not judged.
+// shown, 801 collapsed). Counted in runes, as that measurement is.
 const claudeSlashMaxRunes = collapsedOneLineRunes
+
+// claudeSlashMaxLines is the most lines a short slash command can have and
+// still run. MEASURED on Claude Code 2.1.316 (ini-hoy), Haiku, pasted and
+// submitted: 2 and 3 lines showed as text and ran; 4 lines collapsed to
+// "[Pasted text #1 +3 lines]"; 5, 10 and 20 collapsed and did not run.
+// Lines are line breaks plus one, the count Claude's "+M lines" is based on
+// (collapsedPasteCount), so a trailing line break counts.
+const claudeSlashMaxLines = 3
 
 // slashPasteWordsPrefix begins both refusals.
 const slashPasteWordsPrefix = "a slash command "
@@ -26,13 +31,16 @@ const slashPasteWordsPrefix = "a slash command "
 // typed: it is a slash command that Claude Code would collapse into a pasted
 // block and never run. "" when it may be typed: the pane is not Claude Code
 // (an unknown type included: its paste behaviour is unmeasured), the text
-// does not begin with "/", or it is short enough.
+// does not begin with "/", or it is short enough in characters and lines.
 func slashPasteRefusal(agentType, text string) string {
 	if config.NormalizeAgentType(agentType) != config.AgentTypeClaudeCode || !strings.HasPrefix(text, "/") {
 		return ""
 	}
 	if n := utf8.RuneCountInString(text); n > claudeSlashMaxRunes {
 		return fmt.Sprintf("%s of %d characters would paste, not run; Claude takes a command of at most %d", strings.TrimSpace(slashPasteWordsPrefix), n, claudeSlashMaxRunes)
+	}
+	if lines := strings.Count(text, "\n") + 1; lines > claudeSlashMaxLines {
+		return fmt.Sprintf("%s of %d lines would paste, not run; Claude takes a command of at most %d lines", strings.TrimSpace(slashPasteWordsPrefix), lines, claudeSlashMaxLines)
 	}
 	return ""
 }

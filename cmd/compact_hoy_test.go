@@ -24,6 +24,7 @@ const hoyLong = "a slash command of 1309 characters would paste, not run; Claude
 func TestCompact_ASlashCommandThatWouldPasteIsNotCompacted(t *testing.T) {
 	for _, c := range []struct{ name, words, self string }{
 		{"long", hoyLong, ""},
+		{"four lines", "a slash command of 4 lines would paste, not run; Claude takes a command of at most 3 lines", ""},
 		{"from its own pane", hoyLong, "a"},
 	} {
 		t.Run(c.name, func(t *testing.T) {

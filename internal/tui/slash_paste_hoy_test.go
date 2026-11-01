@@ -67,6 +67,37 @@ func TestSlashPaste_AShortCommandWithALineBreakIsTyped(t *testing.T) {
 	hoyRefused(t, s7qSend(t, tui2, "eng1", long), hoyLongWords(901), s7qWritten(t, p2, r2))
 }
 
+// AC2: the line boundary, MEASURED on Claude Code 2.1.316 (ini-hoy): a short
+// command of 3 lines showed as text and ran; 4 lines collapsed to "[Pasted
+// text #1 +3 lines]", and 5, 10 and 20 collapsed and did not run. A command
+// of more than claudeSlashMaxLines is refused with its line count; 3 is typed.
+func TestSlashPaste_MoreThanThreeLinesIsRefused(t *testing.T) {
+	nma5Window(t, 200*time.Millisecond)
+	three := "/compact keep line 1\nline 2\nline 3"
+	p, r := s7qSettledPane(t, "eng1")
+	tui := &TUI{panes: toPaneViews([]*Pane{p})}
+	if resp := s7qSend(t, tui, "eng1", three); strings.Contains(resp.Error, "slash command") {
+		t.Errorf("3 lines refused: %+v", resp)
+	}
+	if got := s7qWritten(t, p, r); !strings.Contains(got, "line 3") {
+		t.Errorf("3 lines not typed: %.80q", got)
+	}
+	for _, c := range []struct {
+		text  string
+		lines int
+	}{
+		{three + "\nline 4", 4},
+		{three + "\nline 4\nline 5", 5},
+		{"/compact a\r\nb\r\nc\r\nd", 4},
+		{three + "\n", 4},
+	} {
+		p, r := s7qSettledPane(t, "eng1")
+		tui := &TUI{panes: toPaneViews([]*Pane{p})}
+		words := fmt.Sprintf("a slash command of %d lines would paste, not run; Claude takes a command of at most 3 lines", c.lines)
+		hoyRefused(t, s7qSend(t, tui, "eng1", c.text), words, s7qWritten(t, p, r))
+	}
+}
+
 // AC2: the boundary. A command of exactly the limit is typed; one more is
 // refused. Counted in characters (runes), not bytes.
 func TestSlashPaste_TheLimitIsTypedAndOneMoreIsRefused(t *testing.T) {
@@ -195,7 +226,7 @@ func TestSlashPaste_TheOperatorsOwnPasteIsNotJudged(t *testing.T) {
 // IsSlashPasteRefusal recognises the refusal in a sender's error, so
 // compact can say "not compacted" without matching the words itself.
 func TestSlashPaste_TheRefusalIsRecognisable(t *testing.T) {
-	for _, w := range []string{hoyLongWords(1300), "not delivered to eng1: " + hoyLongWords(801)} {
+	for _, w := range []string{hoyLongWords(1300), "not delivered to eng1: " + hoyLongWords(801), "a slash command of 4 lines would paste, not run; Claude takes a command of at most 3 lines"} {
 		if !IsSlashPasteRefusal(w) {
 			t.Errorf("%q not recognised", w)
 		}
