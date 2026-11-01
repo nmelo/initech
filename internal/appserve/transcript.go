@@ -19,6 +19,11 @@ const (
 	KindTool    = "tool"    // one tool run: a line that expands
 )
 
+// Kinds is every message kind a conversation sends, and only those. The
+// operator guide names each one in its conversation paragraph (a test holds
+// the two together), and the app shows any other kind as plain text.
+var Kinds = []string{KindAgent, KindNelson, KindMessage, KindTool}
+
 // Limits on reading a transcript page.
 const (
 	ToolDetailMax   = 4 << 10  // a tool run's expanded detail, input and result together
