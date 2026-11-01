@@ -44,16 +44,73 @@ func keystrokeDNDReason(name string, age time.Duration) string {
 // prompt above all) is the operator's, never another agent's.
 const keystrokeDialogReason = "a dialog is open; only the operator may answer it"
 
+// keystrokeScreenBudget bounds how long a key tries to read the pane's screen
+// for the trust prompt: long enough to outlast a render, short enough that a
+// wedged emulator costs an operator's key only this.
+var keystrokeScreenBudget = 100 * time.Millisecond
+
+// keystrokeTrustReason is why a key is not delivered at Claude Code's folder
+// trust prompt, or "" when it goes in. MEASURED on 2.1.316 (Haiku): Enter
+// confirms the highlighted row and "No, exit" is highlighted by default, so
+// the process ends; Esc ends it whichever row is highlighted; a second Ctrl-C
+// inside its window ends it, and two taps can beat the repaint that shows the
+// first was armed, so Ctrl-C is refused outright (one press has no use there);
+// y and n do nothing there and go in. Enter on Yes is refused too: trusting a
+// folder is a decision taken in the pane. Any other sender gets the dialog
+// words, the armed footer being one the dialog guard cannot read.
+//
+// A screen that cannot be read inside the budget, and a pane no longer alive
+// (its last screen can still show the prompt), answer "": the existing verdict
+// stands. So a key sent at the instant the screen is held is not guarded.
+func keystrokeTrustReason(p *Pane, key string, o sendOrigin) string {
+	if !p.IsAlive() {
+		return ""
+	}
+	var rows []string
+	deadline := time.Now().Add(keystrokeScreenBudget)
+	for {
+		var ok bool
+		if rows, ok = tryScreenRows(p); ok {
+			break
+		}
+		if !time.Now().Before(deadline) {
+			p.noteScreenSkipped(time.Now(), "keystroke")
+			return ""
+		}
+	}
+	cursor := trustPromptCursor(strings.Join(liveDialogRows(rows), "\n"))
+	if cursor == trustNotShown {
+		return ""
+	}
+	if o.From != operatorSender {
+		return keystrokeDialogReason
+	}
+	const ask = "; open the pane to answer it"
+	switch key {
+	case "enter":
+		if cursor == trustOnYes {
+			return "the folder trust prompt is up and Enter would choose Yes, I trust this folder" + ask
+		}
+		return "the folder trust prompt is up and Enter would choose No, exit" + ask
+	case "esc":
+		return "the folder trust prompt is up and Esc would exit Claude" + ask
+	case "ctrl-c":
+		return "the folder trust prompt is up and Ctrl-C twice would exit Claude" + ask
+	}
+	return ""
+}
+
 // keystrokePane writes one key to p and says what became of it: delivered
 // when the bytes reached the PTY, not delivered (nothing written) for an
 // unknown key, a suspended pane (never woken by a key), a pane in
 // do-not-disturb (except for the operator and super --urgent, by send's own
 // rule, dndOrigin), or one whose process is not running. A dialog never holds
 // the operator's key: a key is how a dialog is answered, so it goes into
-// whatever is on screen. Any other sender's key to a pane with a dialog open
-// (the send guard's own test, paneHasModal) is not delivered: one agent never
-// answers another's permission prompt. Every agent type takes a key the same
-// way; there is no composer to confirm.
+// whatever is on screen. The one exception is the folder trust prompt, where a
+// blind key would end the agent (keystrokeTrustReason). Any other sender's key
+// to a pane with a dialog open (the send guard's own test, paneHasModal) is not
+// delivered: one agent never answers another's permission prompt. Every agent
+// type takes a key the same way; there is no composer to confirm.
 func keystrokePane(p *Pane, key string, o sendOrigin) SendVerdict {
 	b, ok := keystrokeKeys[key]
 	if !ok {
@@ -83,6 +140,10 @@ func keystrokePane(p *Pane, key string, o sendOrigin) SendVerdict {
 	if o.From != operatorSender && paneHasModal(p) {
 		LogInfo("keystroke", "KEY NOT DELIVERED: dialog open, sender is not the operator", "pane", p.name, "key", key, "from", o.From)
 		return SendVerdict{Outcome: DeliveryNotDelivered, Reason: keystrokeDialogReason}
+	}
+	if reason := keystrokeTrustReason(p, key, o); reason != "" {
+		LogInfo("keystroke", "KEY NOT DELIVERED: folder trust prompt", "pane", p.name, "key", key, "from", o.From)
+		return SendVerdict{Outcome: DeliveryNotDelivered, Reason: reason}
 	}
 	if _, err := p.ptmx.Write([]byte(b)); err != nil {
 		return SendVerdict{Outcome: DeliveryNotDelivered, Reason: fmt.Sprintf("%s: %v", p.name, err)}

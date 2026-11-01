@@ -254,6 +254,38 @@ const (
 	bannerUnknown    = "unknown"
 )
 
+// trustCursor is where Claude Code's folder trust prompt has its cursor, or
+// that the prompt is not on screen.
+type trustCursor int
+
+const (
+	trustNotShown trustCursor = iota
+	trustOnNo
+	trustOnYes
+)
+
+// trustOptionRows is the trust prompt's two option rows, one directly under
+// the other, with whitespace removed and lowercased: a marker between them
+// means the cursor is on the second.
+var trustOptionRows = regexp.MustCompile(`no,exit([^a-z0-9]?)yes,itrustthisfolder`)
+
+// trustPromptCursor reads the folder trust prompt from text, the rows where a
+// live dialog can be drawn (liveDialogRows). MEASURED, 2.1.232 to 2.1.316: "❯
+// No, exit" over "Yes, I trust this folder". It reads the option rows with
+// whitespace removed because the Yes row wraps under 25 columns, and it does
+// not need the footer because the footer changes to "Press Ctrl-C again to
+// exit" while Ctrl-C is armed, when Enter still ends the process.
+func trustPromptCursor(text string) trustCursor {
+	m := trustOptionRows.FindStringSubmatch(compactPromptText(strings.ToLower(text)))
+	switch {
+	case m == nil:
+		return trustNotShown
+	case m[1] != "":
+		return trustOnYes
+	}
+	return trustOnNo
+}
+
 // bannerKind names the dialog open on screen, read where a live dialog can be
 // drawn (liveDialogRows), so dialog words in the transcript above a resting
 // input box are not a dialog. A latched dialog no recogniser knows is
@@ -267,9 +299,7 @@ func bannerKind(rows []string, latched bool) string {
 	// subscription ...".
 	case strings.Contains(low, "select login method:") && screenOffersAnswer(text):
 		return bannerLogin
-	// MEASURED: 2.1.310 and earlier, a new folder: "❯ No, exit" / "Yes, I
-	// trust this folder" over "Enter to confirm · Esc to cancel".
-	case strings.Contains(low, "yes, i trust this folder") && strings.Contains(low, "enter to confirm"):
+	case trustPromptCursor(text) != trustNotShown:
 		return bannerTrust
 	case permissionPromptShape(text):
 		return bannerPermission

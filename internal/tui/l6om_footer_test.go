@@ -209,9 +209,18 @@ func TestBanner_NearMissesAreNone(t *testing.T) {
 		"quoted above the composer": quoted,
 		"shell":                     {"sh-3.2$ echo Select login method:", "Select login method:", "sh-3.2$ "},
 		"empty":                     nil,
-		// The trust prompt's options without its "Enter to confirm" footer:
-		// quoted, not open (qa1's survivor on ini-l6om).
-		"trust options without the footer": {" ❯ No, exit", "   Yes, I trust this folder"},
+		// The trust prompt's option rows quoted in a transcript are not the open
+		// prompt (qa1's survivor on ini-l6om). What says so is the resting input
+		// box under them, not a footer: the footer is not read, so bare rows on
+		// a screen with no input box are the prompt.
+		"trust options above a resting input box": {
+			" ❯ No, exit", "   Yes, I trust this folder", "✻ Churned for 6s",
+			strings.Repeat("─", 80), "❯ ", strings.Repeat("─", 80),
+		},
+		"trust options directly above a resting input box": {
+			" ❯ No, exit", "   Yes, I trust this folder",
+			strings.Repeat("─", 80), "❯ ", strings.Repeat("─", 80),
+		},
 	}
 	for name, rows := range cases {
 		if got := bannerKind(rows, false); got != "none" {

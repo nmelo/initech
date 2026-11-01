@@ -20,14 +20,17 @@ same way. On Claude Code's numbered permission prompt, enter answers Yes
 approvals and plain y/n questions and do nothing on a numbered prompt, as
 when typed by hand. An open dialog does not hold the operator's key (run outside any
 pane): a key is how a dialog is answered, so it goes into whatever is on
-screen. Any other sender's key to an agent with a dialog open is not
-delivered: "a dialog is open; only the operator may answer it".
+screen. The exception is Claude Code's folder trust prompt, where enter, esc
+and ctrl-c are not delivered because they would end the agent or trust the
+folder blind; y and n do nothing there. Open the pane to answer it. Any other
+sender's key to an agent with a dialog open is not delivered: "a dialog is
+open; only the operator may answer it".
 
 Prints "key <key> delivered to <agent>", exit 0, once the key has reached
 the agent's terminal. Otherwise nothing is typed and it prints
 "not delivered to <agent>: <reason>", exit 1: an unknown or empty key name,
 an agent that is not found, not running, or suspended (a key never wakes a
-suspended agent), or an agent in do-not-disturb. A key is never queued or
+suspended agent), an agent in do-not-disturb, or the folder trust prompt. A key is never queued or
 held for later. Do-not-disturb lets the operator's key through (run outside
 any pane), and super's with --urgent; --urgent from anyone else is refused:
 "only super may break do-not-disturb".
