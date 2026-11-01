@@ -58,7 +58,9 @@ struct HTTPService: Service {
                              delegateQueue: nil)
     }
 
-    private func request(_ method: String, _ path: String, query: [URLQueryItem] = [], body: Data? = nil) -> URLRequest {
+    /// request is one authorized request to the service. Internal, with call and
+    /// seg, so other files can extend HTTPService with an endpoint each.
+    func request(_ method: String, _ path: String, query: [URLQueryItem] = [], body: Data? = nil) -> URLRequest {
         var c = URLComponents(url: pairing.baseURL, resolvingAgainstBaseURL: false)!
         c.percentEncodedPath = path
         if !query.isEmpty { c.queryItems = query }
@@ -72,7 +74,7 @@ struct HTTPService: Service {
         return r
     }
 
-    private func call(_ r: URLRequest) async throws -> Data {
+    func call(_ r: URLRequest) async throws -> Data {
         let data: Data
         let response: URLResponse
         do {
@@ -166,7 +168,7 @@ struct HTTPService: Service {
     }
 
     /// seg escapes one path segment (a rig or pane name).
-    private func seg(_ s: String) -> String {
+    func seg(_ s: String) -> String {
         s.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed.subtracting(CharacterSet(charactersIn: "/"))) ?? s
     }
 }

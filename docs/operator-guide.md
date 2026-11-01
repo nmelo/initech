@@ -293,6 +293,10 @@ The app locks behind Face ID (or the device passcode) on every open and every re
 
 Every error the app shows is also written to the device log under the subsystem `co.nmelo.initech`, one category per screen, with the error's domain and code; read it in Console with the device connected, or for a simulator with `xcrun simctl spawn <device> log show --predicate 'subsystem == "co.nmelo.initech"' --last 5m`. An entry never carries the error's words, a pane name, the token or a URL with it, a pane's text, a message body or a bead title. About, at the bottom of home, shows the version, the build number and the commit the build was made from, as `0.1.0 (1) 1a2b3c4`; a build whose commit could not be read shows `unknown` in its place.
 
+### Pushes
+
+On the first open after pairing the app asks once whether it may send notifications; it never asks again, and Settings changes the answer. With notifications allowed, every launch registers the device with the Mac (`PUT /v1/devices`), once per launch, and again if iOS gives the device a new token; unlocking after the app was in the background is the same launch. With notifications off, home shows "Pushes are off" with an Open Settings button, and the app registers nothing. If the Mac refuses the registration, home shows one line with the Mac's words, and the app tries again at the next launch. Pairing again first removes the device from the Mac's list (`DELETE /v1/devices/<token>`, one attempt). An app installed from TestFlight or the App Store gets pushes from a service on Apple's production server, the default; a build installed from Xcode gets them only from a service whose `apns` block says `sandbox`.
+
 ### Home
 
 Home lists the panes you pinned, in your order, each with the name you gave it, its state (working, idle, waiting at a prompt, pending input, or its banner), its context percentage, the bead it holds and the newest item it has waiting on you, until that item leaves the Blockers list. It updates live from the service's feed. A pinned pane whose rig stopped or that no longer exists stays in the list, greyed. With nothing pinned, home shows one line pointing to Rigs.

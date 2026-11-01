@@ -14,6 +14,7 @@
 		24750DD1B4DD9C35F9E16E95 /* BlockersModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 141131EF2DD5FEE337187AD3 /* BlockersModelTests.swift */; };
 		27543E74C4DEFA8E45464E76 /* progress-rig.json in Resources */ = {isa = PBXBuildFile; fileRef = 6545B88FAFA9E85A885392AA /* progress-rig.json */; };
 		292871944F3D0BC9148532E2 /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DD99BD2396715324CE7297D /* HomeView.swift */; };
+		2A73B735410EDE12A191B5A7 /* PushRegistrar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 345C809540C96C533CD52202 /* PushRegistrar.swift */; };
 		2ABCD2A36E3CD1DC84DC72F7 /* PaneFlowUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03B27EFEDFF80711F04B50F0 /* PaneFlowUITests.swift */; };
 		2F3F80E3DAA963E0DE6FD704 /* status.json in Resources */ = {isa = PBXBuildFile; fileRef = 317938B4B8813532A9AD217E /* status.json */; };
 		3143849633B5CCDC67ECB10B /* ScreenshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F6B44C43A26A6F70FCF033B /* ScreenshotTests.swift */; };
@@ -43,6 +44,7 @@
 		85936F32C4084107557397A3 /* feed-reset.json in Resources */ = {isa = PBXBuildFile; fileRef = 3D71AB446543F331F8F9B2E3 /* feed-reset.json */; };
 		8760144F04AED9057D821D6D /* HomeModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A282C9D0B4542CD0C2D4AD1C /* HomeModelTests.swift */; };
 		89E3CEC32DF11F42F086C4BE /* HomeModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C7B8C3570C7B33C099C65C3 /* HomeModel.swift */; };
+		8A4F6A814B1E6C870DEC1836 /* PushUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5BA13039D21E26AE94FA127 /* PushUITests.swift */; };
 		902FDF4F9C8DFCEF4C35DF54 /* feed-blockers.json in Resources */ = {isa = PBXBuildFile; fileRef = AD740AD0FEB319114A8CCE3A /* feed-blockers.json */; };
 		9703F6C96D38A64CAB840163 /* conversation-page-4.json in Resources */ = {isa = PBXBuildFile; fileRef = A81BA49AEE057CB0570D7947 /* conversation-page-4.json */; };
 		9909ADF0BE8AB68017A75764 /* rigs.json in Resources */ = {isa = PBXBuildFile; fileRef = D01854A00951F2D170FF2325 /* rigs.json */; };
@@ -59,6 +61,7 @@
 		D094A1098D0D9BE296C35EF4 /* ProgressModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA7EF57F97CDE7D1A12D1B6C /* ProgressModel.swift */; };
 		D112B0EEF970206A1AD01BB3 /* conversation-no-transcript.json in Resources */ = {isa = PBXBuildFile; fileRef = 54DF350ED82569BAE7EDCBF8 /* conversation-no-transcript.json */; };
 		DB1FE079C32E3E19BD5580A8 /* feed-transcript.json in Resources */ = {isa = PBXBuildFile; fileRef = 11C9B47FDBBF7F33F1DFDC67 /* feed-transcript.json */; };
+		DDDE72D924802323C4B8A020 /* PushRegistrarTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42DA776732F9FCA3FB2ED17D /* PushRegistrarTests.swift */; };
 		DF952F1CED653D0BD4EC56CA /* blockers.json in Resources */ = {isa = PBXBuildFile; fileRef = 2F95958437420FF2A2A7F734 /* blockers.json */; };
 		E8CD411447E065872C08A1B1 /* OperatorScreens.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C4A3801D442302B722CA33A /* OperatorScreens.swift */; };
 		EC4464F05F24EC42C4B4DBFE /* conversation-page-3.json in Resources */ = {isa = PBXBuildFile; fileRef = A2FF6CC33FEF9CD0FF22CB0C /* conversation-page-3.json */; };
@@ -102,6 +105,7 @@
 		2F0C8C6A411B9F13BD5F6987 /* Pairing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Pairing.swift; sourceTree = "<group>"; };
 		2F95958437420FF2A2A7F734 /* blockers.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = blockers.json; sourceTree = "<group>"; };
 		317938B4B8813532A9AD217E /* status.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = status.json; sourceTree = "<group>"; };
+		345C809540C96C533CD52202 /* PushRegistrar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushRegistrar.swift; sourceTree = "<group>"; };
 		38311B4C974E91A7AF9834C0 /* LiveServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveServiceTests.swift; sourceTree = "<group>"; };
 		38DE6C64E6074FD3DA0E9F8C /* PaneView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaneView.swift; sourceTree = "<group>"; };
 		3D71AB446543F331F8F9B2E3 /* feed-reset.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "feed-reset.json"; sourceTree = "<group>"; };
@@ -109,6 +113,7 @@
 		4015218F19EFC5D13DDB0EB5 /* pins-put.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "pins-put.json"; sourceTree = "<group>"; };
 		40BCD2D871E2FA5F5623A55C /* PaneModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaneModel.swift; sourceTree = "<group>"; };
 		41354D02977BC4D7F01A5923 /* InitechAppTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = InitechAppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		42DA776732F9FCA3FB2ED17D /* PushRegistrarTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushRegistrarTests.swift; sourceTree = "<group>"; };
 		433D0F22C6C0914DEA8D1554 /* devices-put.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "devices-put.json"; sourceTree = "<group>"; };
 		507BBB42FCC3688C96662A86 /* AppLock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLock.swift; sourceTree = "<group>"; };
 		54DF350ED82569BAE7EDCBF8 /* conversation-no-transcript.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "conversation-no-transcript.json"; sourceTree = "<group>"; };
@@ -151,6 +156,7 @@
 		D973C4CF1AB9FD8305E3EE9B /* InitechApp.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = InitechApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		DF7D8AF7C84F7DFAF8F70811 /* BlockersUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlockersUITests.swift; sourceTree = "<group>"; };
 		E18FE5E3D891E020F83FE3BB /* feed-pane_state.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "feed-pane_state.json"; sourceTree = "<group>"; };
+		E5BA13039D21E26AE94FA127 /* PushUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushUITests.swift; sourceTree = "<group>"; };
 		E7B4D274B41C77005FCB4951 /* FixtureServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FixtureServer.swift; sourceTree = "<group>"; };
 		EBF1B0563C039519DA1FBAFF /* PairingStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingStore.swift; sourceTree = "<group>"; };
 		F03BC2B148EF6380D71F1A0A /* send.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = send.json; sourceTree = "<group>"; };
@@ -225,6 +231,7 @@
 				38DE6C64E6074FD3DA0E9F8C /* PaneView.swift */,
 				FA7EF57F97CDE7D1A12D1B6C /* ProgressModel.swift */,
 				CC3E1D3D497C12A586B34C15 /* ProgressView.swift */,
+				345C809540C96C533CD52202 /* PushRegistrar.swift */,
 				BB189FF009C5D6B4E1735478 /* ServiceClient.swift */,
 			);
 			path = InitechApp;
@@ -256,6 +263,7 @@
 				93A60E37937117C84492E6AF /* PairingTests.swift */,
 				7EE12E10FEBB62BEC8DAAF65 /* PaneModelTests.swift */,
 				80BF034D8710ADF009CF829B /* ProgressModelTests.swift */,
+				42DA776732F9FCA3FB2ED17D /* PushRegistrarTests.swift */,
 				7F6B44C43A26A6F70FCF033B /* ScreenshotTests.swift */,
 				926BB43F5DEAA400A6ECE838 /* ServiceClientTests.swift */,
 				65E10B8A7F8ADF45595B7CD7 /* TransportSecurityTests.swift */,
@@ -269,6 +277,7 @@
 			children = (
 				DF7D8AF7C84F7DFAF8F70811 /* BlockersUITests.swift */,
 				03B27EFEDFF80711F04B50F0 /* PaneFlowUITests.swift */,
+				E5BA13039D21E26AE94FA127 /* PushUITests.swift */,
 				9AD89DF8748C72A36D899F85 /* ScreenshotTests.swift */,
 			);
 			path = InitechAppUITests;
@@ -464,6 +473,7 @@
 				A63BB6736597FC951A3267DA /* PaneView.swift in Sources */,
 				D094A1098D0D9BE296C35EF4 /* ProgressModel.swift in Sources */,
 				A04E78EFB83532AD539D6C7A /* ProgressView.swift in Sources */,
+				2A73B735410EDE12A191B5A7 /* PushRegistrar.swift in Sources */,
 				FB47B54BA57D81C2C70C5502 /* ServiceClient.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -477,6 +487,7 @@
 				81179ABE488B00B0312D56B4 /* Models.swift in Sources */,
 				F5027582EA43711603E42F43 /* Pairing.swift in Sources */,
 				2ABCD2A36E3CD1DC84DC72F7 /* PaneFlowUITests.swift in Sources */,
+				8A4F6A814B1E6C870DEC1836 /* PushUITests.swift in Sources */,
 				74A565216330F44BEB6B5A5F /* ScreenshotTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -498,6 +509,7 @@
 				6166565653BCA9C9210BAFC7 /* PairingTests.swift in Sources */,
 				3B71EA093E888A1CE3B0A06A /* PaneModelTests.swift in Sources */,
 				685878ED785A10A098F263E2 /* ProgressModelTests.swift in Sources */,
+				DDDE72D924802323C4B8A020 /* PushRegistrarTests.swift in Sources */,
 				3143849633B5CCDC67ECB10B /* ScreenshotTests.swift in Sources */,
 				B8924AE4C4A38EB48764AD4B /* ServiceClientTests.swift in Sources */,
 				A5E7F5E88EF7F428FC56F0CC /* TransportSecurityTests.swift in Sources */,

@@ -39,6 +39,8 @@ final class FixtureServer: @unchecked Sendable {
     private var _feedsPaused = false
     private var _rawGET: [String: Data] = [:] // "blockers" -> the JSON GET /v1/blockers answers
     private var _rawPages: [String: [String: Data]] = [:] // "rig/pane" -> ?before value ("" for none) -> page JSON
+    private var _devices: [String] = []
+    private var _deviceRefusal: (code: Int, words: String)?
 
     var pairing: Pairing { Pairing(host: "127.0.0.1", port: Int(port), token: token, fingerprint: fingerprint) }
 
@@ -138,6 +140,16 @@ final class FixtureServer: @unchecked Sendable {
     /// with no page is a 400, as the service answers a bad before.
     func servePages(rig: String, pane: String, _ byBefore: [String: Data]) {
         locked { _rawPages["\(rig)/\(pane)"] = byBefore }
+    }
+
+    /// devices is the device tokens registered with PUT /v1/devices, as the
+    /// service stores them; DELETE /v1/devices/<token> removes one.
+    var devices: [String] { locked { _devices } }
+
+    /// refuseDevices makes PUT /v1/devices answer code with the service's
+    /// refusal body ({"verdict":"refused","words":...}); nil takes them again.
+    func refuseDevices(_ code: Int?, words: String = "devices are not stored here") {
+        locked { _deviceRefusal = code.map { ($0, words) } }
     }
 
     /// emit records a feed event and writes it to every open feed.
@@ -264,6 +276,25 @@ final class FixtureServer: @unchecked Sendable {
                 return json(c, SendResult(verdict: "refused", words: "unknown key"), code: 400)
             }
             json(c, locked { _keyVerdict["\(parts[2])/\(parts[3])"] } ?? SendResult(verdict: "delivered", words: "key \(b.key) delivered to \(parts[3])"))
+        case ("PUT", "devices") where parts.count == 2:
+            if let no = locked({ _deviceRefusal }) {
+                return json(c, SendResult(verdict: "refused", words: no.words), code: no.code)
+            }
+            struct Body: Decodable { var token: String }
+            guard let b = try? JSONDecoder.service.decode(Body.self, from: r.body) else { return respond(c, 400) }
+            let n = locked { () -> Int in
+                if !_devices.contains(b.token) { _devices.append(b.token) }
+                return _devices.count
+            }
+            json(c, ["devices": n])
+        case ("DELETE", "devices") where parts.count == 3:
+            let had = locked { () -> Bool in
+                let had = _devices.contains(parts[2])
+                _devices.removeAll { $0 == parts[2] }
+                return had
+            }
+            had ? json(c, ["devices": devices.count])
+                : json(c, SendResult(verdict: "refused", words: "that device is not registered"), code: 404)
         case ("GET", let name) where locked({ _rawGET[name] }) != nil:
             respond(c, 200, locked { _rawGET[name] })
         case ("GET", "feed") where feedsPaused:

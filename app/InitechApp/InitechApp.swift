@@ -1,9 +1,12 @@
 import SwiftUI
+import UIKit
+import UserNotifications
 
 /// InitechApp is the phone and iPad client of initech's app service on the Mac.
 @main
 struct InitechApp: App {
     @StateObject private var lock = AppLock(store: InitechApp.store, authenticator: InitechApp.authenticator)
+    @UIApplicationDelegateAdaptor private var delegate: AppDelegate
 
     private static var store: PairingStore {
         #if DEBUG
@@ -22,7 +25,7 @@ struct InitechApp: App {
 
     var body: some Scene {
         WindowGroup {
-            RootView(lock: lock)
+            RootView(lock: lock, push: delegate.push)
                 .onChange(of: phase) { _, now in
                     if now == .background { lock.lock() }
                 }
@@ -33,6 +36,7 @@ struct InitechApp: App {
 /// RootView shows the one screen AppLock says is due.
 struct RootView: View {
     @ObservedObject var lock: AppLock
+    @ObservedObject var push: PushRegistrar
 
     var body: some View {
         switch lock.screen {
@@ -41,7 +45,13 @@ struct RootView: View {
         case .locked:
             LockView { await lock.unlock() }
         case .unlocked(let pairing):
-            MainView(home: HomeModel(service: HTTPService(pairing: pairing))) { try? lock.forget() }
+            MainView(home: HomeModel(service: HTTPService(pairing: pairing)), push: push) {
+                Task {
+                    await push.unpair()
+                    try? lock.forget()
+                }
+            }
+            .task(id: pairing) { await push.begin(devices: HTTPService(pairing: pairing), pairingID: pairing.token) }
         }
     }
 }
@@ -61,6 +71,54 @@ struct LockView: View {
     }
 }
 
+/// AppDelegate is where iOS hands over the APNs device token; it owns the
+/// app's one PushRegistrar, which lives as long as the process.
+@MainActor
+final class AppDelegate: NSObject, UIApplicationDelegate, ObservableObject {
+    let push: PushRegistrar
+
+    override init() {
+        #if DEBUG
+        if let fake = UITestHooks.push {
+            let token = fake.token
+            push = PushRegistrar(asking: fake.asking, memory: DefaultsTokenMemory()) { registrar in
+                guard let token else { return }
+                Task { await registrar.received(token: token) }
+            }
+            super.init()
+            return
+        }
+        #endif
+        push = PushRegistrar(asking: SystemNotificationAsking(), memory: DefaultsTokenMemory()) { _ in
+            UIApplication.shared.registerForRemoteNotifications()
+        }
+        super.init()
+    }
+
+    func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+        Task { await push.received(token: deviceToken) }
+    }
+
+    func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
+        // No token, nothing to send: the next launch asks iOS again.
+    }
+}
+
+/// SystemNotificationAsking is iOS's own notification permission.
+struct SystemNotificationAsking: NotificationAsking {
+    func current() async -> PushPermission {
+        switch await UNUserNotificationCenter.current().notificationSettings().authorizationStatus {
+        case .notDetermined: .notDetermined
+        case .denied: .denied
+        default: .allowed
+        }
+    }
+
+    func request() async -> Bool {
+        (try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge])) ?? false
+    }
+}
+
 #if DEBUG
 /// UITestHooks lets the UI tests point a debug build at their fixture server:
 /// `-uitest-pairing <pairing url>` pairs with it and skips Face ID, which a
@@ -71,6 +129,36 @@ enum UITestHooks {
         guard let i = args.firstIndex(of: "-uitest-pairing"), i + 1 < args.count else { return nil }
         return try? Pairing.parse(args[i + 1])
     }
+}
+
+extension UITestHooks {
+    /// push stands in for iOS in UI tests: `-uitest-push-permission
+    /// allowed|denied|undecided` answers the permission, and `-uitest-push-token
+    /// <hex>` is the device token iOS hands over (a simulator gets none).
+    static var push: (asking: NotificationAsking, token: Data?)? {
+        let args = ProcessInfo.processInfo.arguments
+        guard let i = args.firstIndex(of: "-uitest-push-permission"), i + 1 < args.count else { return nil }
+        let now: PushPermission = switch args[i + 1] {
+        case "allowed": .allowed
+        case "denied": .denied
+        default: .notDetermined
+        }
+        var token: Data?
+        if let j = args.firstIndex(of: "-uitest-push-token"), j + 1 < args.count {
+            let hex = Array(args[j + 1].utf8)
+            token = Data(stride(from: 0, to: hex.count - 1, by: 2).compactMap {
+                UInt8(String(decoding: hex[$0...$0 + 1], as: UTF8.self), radix: 16)
+            })
+        }
+        return (FixedAsking(now: now), token)
+    }
+}
+
+/// FixedAsking answers the permission as the UI test says; asked once, he allows.
+struct FixedAsking: NotificationAsking {
+    let now: PushPermission
+    func current() async -> PushPermission { now }
+    func request() async -> Bool { true }
 }
 
 struct FixedPairingStore: PairingStore {

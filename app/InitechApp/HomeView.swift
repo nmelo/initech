@@ -1,9 +1,11 @@
 import SwiftUI
+import UIKit
 
 /// MainView is the app once unlocked: the pinned panes beside the open one on
 /// iPad (a sidebar), and a stack on iPhone; both from one NavigationSplitView.
 struct MainView: View {
     @StateObject var home: HomeModel
+    @ObservedObject var push: PushRegistrar
     let forget: () -> Void
     @State private var showRigs = false
     @State private var showBlockers = false
@@ -12,7 +14,7 @@ struct MainView: View {
 
     var body: some View {
         NavigationSplitView {
-            HomeList(home: home, showRigs: $showRigs)
+            HomeList(home: home, push: push, showRigs: $showRigs)
                 .navigationTitle("Panes")
                 .toolbar {
                     ToolbarItem(placement: .topBarLeading) { EditButton() }
@@ -65,6 +67,7 @@ struct MainView: View {
 /// HomeList is his pinned panes in his order; rename by swipe, reorder in edit mode.
 struct HomeList: View {
     @ObservedObject var home: HomeModel
+    @ObservedObject var push: PushRegistrar
     @Binding var showRigs: Bool
     @State private var renaming: PaneRow?
     @State private var newName = ""
@@ -73,6 +76,9 @@ struct HomeList: View {
         List(selection: $home.selection) {
             if let problem = home.problem {
                 Text(problem).foregroundStyle(.red).font(.footnote)
+            }
+            if let line = push.line {
+                PushLineView(line: line)
             }
             if home.showsNoPinsLine {
                 Button("No pinned panes yet. Pin one from Rigs.") { showRigs = true }
@@ -95,6 +101,22 @@ struct HomeList: View {
             }
             Button("Cancel", role: .cancel) {}
         }
+    }
+}
+
+/// PushLineView says why pushes are not coming, with Settings when he turned
+/// them off.
+struct PushLineView: View {
+    let line: PushRegistrar.Line
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(line.words).font(.footnote).foregroundStyle(.secondary)
+            if line == .off, let settings = URL(string: UIApplication.openSettingsURLString) {
+                Button("Open Settings") { UIApplication.shared.open(settings) }.font(.footnote)
+            }
+        }
+        .accessibilityIdentifier("push-line")
     }
 }
 
