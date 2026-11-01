@@ -1,18 +1,21 @@
 import Foundation
 
-/// PaneModel is one open pane: its conversation, paged back on demand and
-/// kept current from the feed.
+/// PaneModel is one open pane: its conversation, paged back on demand, kept
+/// current from the feed, and what he sends into it with the send path's verdict.
 @MainActor
 final class PaneModel: ObservableObject {
     @Published private(set) var messages: [Message] = []
     @Published private(set) var startReached = false
     @Published private(set) var loaded = false
     @Published private(set) var problem: String?
+    /// verdicts holds the send verdict for each message he sent from here.
+    @Published private(set) var verdicts: [String: SendResult] = [:]
 
     let service: Service
     let ref: PaneRef
     private var before: String?
     private var feedTask: Task<Void, Never>?
+    private var sentCount = 0
     static let pageSize = 50
 
     init(service: Service, ref: PaneRef) {
@@ -48,6 +51,22 @@ final class PaneModel: ObservableObject {
         }
     }
 
+    /// send types text into the pane through the service and puts the verdict on the message.
+    func send(_ text: String) async {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        sentCount += 1
+        let local = Message(id: "local-\(sentCount)", at: nil, kind: .nelson, text: trimmed, footer: nil, tool: nil)
+        messages.append(local)
+        do {
+            verdicts[local.id] = try await service.send(rig: ref.rig, pane: ref.pane, text: trimmed)
+        } catch ServiceError.status(_, let words?) {
+            verdicts[local.id] = SendResult(verdict: "not_delivered", words: words)
+        } catch {
+            verdicts[local.id] = SendResult(verdict: "not_delivered", words: "The Mac did not answer: \(error)")
+        }
+    }
+
     func startFeed() {
         guard feedTask == nil else { return }
         let stream = service.feed()
@@ -61,10 +80,17 @@ final class PaneModel: ObservableObject {
         feedTask = nil
     }
 
-    /// apply appends this pane's new transcript entries.
+    /// apply appends this pane's new transcript entries. His own message coming
+    /// back from the transcript replaces the copy shown when he sent it, and
+    /// keeps its verdict.
     func apply(_ e: FeedEvent) {
         guard case let .transcript(rig, pane, m) = e, rig == ref.rig, pane == ref.pane,
               !messages.contains(where: { $0.id == m.id }) else { return }
+        if m.kind == .nelson,
+           let i = messages.firstIndex(where: { $0.id.hasPrefix("local-") && $0.text == m.text }) {
+            verdicts[m.id] = verdicts.removeValue(forKey: messages[i].id)
+            messages.remove(at: i)
+        }
         messages.append(m)
     }
 }

@@ -46,6 +46,33 @@ final class PaneModelTests: XCTestCase {
         XCTAssertTrue(pane.startReached)
     }
 
+    func testSend_PutsTheVerdictOnTheMessage() async {
+        let pane = PaneModel(service: service, ref: ref)
+        await pane.load()
+        await pane.send("first")
+        server.setSendVerdict(rig: ref.rig, pane: ref.pane, SendResult(verdict: "held", words: "held: eng1 is in do-not-disturb"))
+        await pane.send("second")
+        server.setSendVerdict(rig: ref.rig, pane: ref.pane, SendResult(verdict: "not_delivered", words: "eng1 is not running"))
+        await pane.send("third")
+        XCTAssertEqual(pane.messages.map(\.text), ["first", "second", "third"])
+        XCTAssertEqual(pane.messages.map { pane.verdicts[$0.id]?.outcome }, [.delivered, .held, .notDelivered])
+        XCTAssertEqual(pane.verdicts[pane.messages[2].id]?.words, "eng1 is not running")
+    }
+
+    func testSend_WhenTheMacDoesNotAnswer_SaysNotDelivered() async {
+        let pane = PaneModel(service: service, ref: ref)
+        server.stop()
+        await pane.send("hello")
+        XCTAssertEqual(pane.verdicts[pane.messages[0].id]?.outcome, .notDelivered)
+    }
+
+    func testSend_IgnoresABlankMessage() async {
+        let pane = PaneModel(service: service, ref: ref)
+        await pane.send("  \n ")
+        XCTAssertTrue(pane.messages.isEmpty)
+        XCTAssertFalse(server.requests.contains { $0.path.hasPrefix("/v1/send") })
+    }
+
     func testFeed_AppendsNewEntriesForThisPaneOnly() async throws {
         let pane = PaneModel(service: service, ref: ref)
         await pane.load()
@@ -58,6 +85,15 @@ final class PaneModelTests: XCTestCase {
         try await waitForMain { pane.messages.count == 1 }
         XCTAssertEqual(pane.messages.first?.text, "new reply")
         XCTAssertEqual(pane.messages.first?.footer, ["▶ ok?"])
+    }
+
+    func testHisMessageComingBackFromTheTranscript_ReplacesTheSentCopyAndKeepsItsVerdict() async {
+        let pane = PaneModel(service: service, ref: ref)
+        await pane.load()
+        await pane.send("go ahead")
+        pane.apply(.transcript(rig: ref.rig, pane: ref.pane, message: Fx.msg("t9", .nelson, "go ahead")))
+        XCTAssertEqual(pane.messages.map(\.id), ["t9"])
+        XCTAssertEqual(pane.verdicts["t9"]?.outcome, .delivered)
     }
 
 }

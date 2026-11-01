@@ -2,10 +2,11 @@ import SwiftUI
 
 /// PaneView is one pane as a conversation: replies as text, tool runs as one
 /// line that expands, his messages on the right, the footer at the bottom of
-/// each reply.
+/// each reply, and the input box.
 struct PaneView: View {
     @StateObject var model: PaneModel
     @ObservedObject var home: HomeModel
+    @State private var draft = ""
 
     var row: PaneRow? { home.row(for: model.ref) }
 
@@ -23,7 +24,7 @@ struct PaneView: View {
                                 .foregroundStyle(.secondary).frame(maxWidth: .infinity)
                         }
                         ForEach(model.messages) { m in
-                            MessageView(message: m).id(m.id)
+                            MessageView(message: m, verdict: model.verdicts[m.id]).id(m.id)
                         }
                     }
                     .padding()
@@ -35,6 +36,7 @@ struct PaneView: View {
             if let problem = model.problem {
                 Text(problem).font(.footnote).foregroundStyle(.red).padding(.horizontal)
             }
+            InputBar(draft: $draft) { text in Task { await model.send(text) } }
         }
         .navigationTitle(row?.name ?? model.ref.pane)
         .navigationBarTitleDisplayMode(.inline)
@@ -49,6 +51,7 @@ struct PaneView: View {
 /// MessageView draws one message in its shape.
 struct MessageView: View {
     let message: Message
+    var verdict: SendResult?
     @State private var expanded = false
 
     var body: some View {
@@ -58,6 +61,7 @@ struct MessageView: View {
                 Text(message.text)
                     .padding(12)
                     .background(.quaternary, in: RoundedRectangle(cornerRadius: 18))
+                if let verdict { VerdictLabel(result: verdict) }
             }
             .frame(maxWidth: .infinity, alignment: .trailing)
             .padding(.leading, 40)
@@ -97,5 +101,65 @@ struct MessageView: View {
             Text(message.text).font(.caption).foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity)
         }
+    }
+}
+
+/// VerdictLabel says what the send path did with a message, in the send
+/// path's own words (they already name the verdict: "held: ...", "not
+/// delivered to ...: ..."); a delivered message just says so.
+struct VerdictLabel: View {
+    let result: SendResult
+
+    var body: some View {
+        Label(text, systemImage: icon)
+            .font(.caption)
+            .foregroundStyle(color)
+    }
+
+    private var text: String {
+        if result.outcome == .delivered { return "Delivered" }
+        return result.words.isEmpty ? result.verdict : result.words
+    }
+
+    private var icon: String {
+        switch result.outcome {
+        case .delivered: "checkmark"
+        case .held: "pause.circle"
+        case .notDelivered: "exclamationmark.triangle"
+        case .unsure: "questionmark.circle"
+        }
+    }
+
+    private var color: Color {
+        switch result.outcome {
+        case .delivered: .secondary
+        case .held, .unsure: .orange
+        case .notDelivered: .red
+        }
+    }
+}
+
+/// InputBar is the box he types a message into.
+struct InputBar: View {
+    @Binding var draft: String
+    let send: (String) -> Void
+
+    var body: some View {
+        HStack(alignment: .bottom) {
+            TextField("Message", text: $draft, axis: .vertical)
+                .lineLimit(1...6)
+                .padding(10)
+                .background(.quaternary, in: RoundedRectangle(cornerRadius: 18))
+            Button {
+                send(draft)
+                draft = ""
+            } label: {
+                Image(systemName: "arrow.up.circle.fill").font(.title)
+            }
+            .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .accessibilityLabel("Send")
+        }
+        .padding(.horizontal)
+        .padding(.top, 6)
     }
 }
