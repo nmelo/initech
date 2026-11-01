@@ -163,8 +163,8 @@ func runAppServe(cmd *cobra.Command, args []string) error {
 		fmt.Fprintf(errw, "initech app-serve: %v; every request is refused until then\n", err)
 	}
 	srv := appserve.New(appserve.Config{
-		Backend: &appBackend{dirs: dirs, runner: appServeRunner, onHeld: func(dir string) {
-			fmt.Fprintf(errw, "initech app-serve: %s does not answer and is skipped; run under launchd, it may need macOS permission\n", dir)
+		Backend: &appBackend{dirs: dirs, runner: appServeRunner, report: func(dir, why string) {
+			appserve.ReportFolder(state, appServeNotify, errw, dir, why)
 		}},
 		TokenDir: state,
 		StateDir: state,
@@ -197,16 +197,18 @@ func runAppServe(cmd *cobra.Command, args []string) error {
 			}
 		}
 	}()
-	err = appserve.ServeTLS(ln, srv.Handler(), cert)
-	select {
-	case <-moved:
-		return fmt.Errorf("the address %s went away; restarting on the new one", ip)
-	default:
-	}
-	if ctx.Err() != nil {
-		return nil
-	}
-	return err
+	return appserve.RunMarked(state, appServeNotify, errw, func() error {
+		err := appserve.ServeTLS(ln, srv.Handler(), cert)
+		select {
+		case <-moved:
+			return fmt.Errorf("the address %s went away; restarting on the new one: %w", ip, appserve.ErrPlannedRestart)
+		default:
+		}
+		if ctx.Err() != nil {
+			return nil
+		}
+		return err
+	})
 }
 
 // appServeRigFolders is the folders to scan for rigs: --projects, else the
@@ -226,10 +228,13 @@ func appServeRigFolders() ([]string, error) {
 type appBackend struct {
 	dirs   []string
 	runner iexec.Runner
-	onHeld func(dir string) // told once when a rig folder does not answer
+	report func(dir, why string) // told once when a rig folder does not answer or is refused
 
 	scanOnce sync.Once
 	folders  *appserve.FolderScan
+
+	refusedMu sync.Mutex
+	refused   map[string]bool // folders reported refused, until they read again
 }
 
 // FindRigs is the rigs in the scan folders, a folder that does not answer in
@@ -242,13 +247,37 @@ func (b *appBackend) FindRigs() []appserve.Rig {
 // stays one read and one report.
 func (b *appBackend) scan() *appserve.FolderScan {
 	b.scanOnce.Do(func() {
-		b.folders = &appserve.FolderScan{Read: readRigFolder, OnHeld: b.onHeld}
+		b.folders = &appserve.FolderScan{Read: b.readRigFolder, OnHeld: func(dir string) {
+			if b.report != nil {
+				b.report(dir, "it has not answered")
+			}
+		}}
 	})
 	return b.folders
 }
 
-// readRigFolder is every <dir>/*/initech.yaml that loads.
-func readRigFolder(dir string) []appserve.Rig {
+// readRigFolder is every <dir>/*/initech.yaml that loads. Glob swallows I/O
+// errors, so the folder is read first: one macOS refuses, or that is not
+// there, would otherwise read as a folder with no rigs and nothing said.
+func (b *appBackend) readRigFolder(dir string) []appserve.Rig {
+	_, err := os.ReadDir(dir)
+	b.refusedMu.Lock()
+	first := err != nil && !b.refused[dir]
+	if err != nil {
+		if b.refused == nil {
+			b.refused = map[string]bool{}
+		}
+		b.refused[dir] = true
+	} else {
+		delete(b.refused, dir)
+	}
+	b.refusedMu.Unlock()
+	if first && b.report != nil {
+		b.report(dir, err.Error())
+	}
+	if err != nil {
+		return nil
+	}
 	matches, _ := filepath.Glob(filepath.Join(dir, "*", "initech.yaml"))
 	sort.Strings(matches)
 	var rigs []appserve.Rig

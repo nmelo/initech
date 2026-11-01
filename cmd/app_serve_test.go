@@ -407,3 +407,55 @@ func TestAppServeLeavePane_DropsThePanesIdentity(t *testing.T) {
 		t.Errorf("a send is from %q, want the operator", got)
 	}
 }
+
+// ini-r0q.1 AC12: a folder that is refused or missing reads as no rigs and is
+// reported once with its error, not silently; the good folder's rigs stand;
+// once it reads again and is refused again it is reported again. A folder
+// that does not answer is reported through the same call.
+func TestAppServeFindRigs_ARefusedFolderIsReportedOnce(t *testing.T) {
+	skipWindows(t)
+	if os.Getuid() == 0 {
+		t.Skip("root reads a folder with no permissions")
+	}
+	good, refused := shortProjectDir(t), t.TempDir()
+	rig := filepath.Join(good, "r")
+	os.MkdirAll(rig, 0o755)
+	writeBasicConfig(t, rig, "demo")
+	os.Chmod(refused, 0o000)
+	t.Cleanup(func() { os.Chmod(refused, 0o755) })
+	missing := filepath.Join(good, "no-such-folder")
+
+	var reports []string
+	var mu sync.Mutex
+	b := &appBackend{dirs: []string{refused, good, missing}, runner: &iexec.DefaultRunner{}, report: func(dir, why string) {
+		mu.Lock()
+		defer mu.Unlock()
+		reports = append(reports, dir+"|"+why)
+	}}
+	for i := 0; i < 3; i++ {
+		rigs := b.FindRigs()
+		if len(rigs) != 1 || rigs[0].Name != "demo" {
+			t.Fatalf("scan %d: %+v, want the good folder's rig", i, rigs)
+		}
+	}
+	mu.Lock()
+	if len(reports) != 2 {
+		t.Fatalf("reports = %q, want the refused and the missing folder once each", reports)
+	}
+	joined := strings.Join(reports, "\n")
+	if !strings.Contains(joined, refused+"|") || !strings.Contains(joined, "permission denied") || !strings.Contains(joined, missing+"|") {
+		t.Errorf("reports = %q", reports)
+	}
+	reports = nil
+	mu.Unlock()
+
+	os.Chmod(refused, 0o755)
+	b.FindRigs()
+	os.Chmod(refused, 0o000)
+	b.FindRigs()
+	mu.Lock()
+	defer mu.Unlock()
+	if len(reports) != 1 || !strings.HasPrefix(reports[0], refused+"|") {
+		t.Errorf("refused again: %q, want it reported again", reports)
+	}
+}
