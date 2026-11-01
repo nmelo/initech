@@ -677,3 +677,28 @@ func TestInstall_ACopyThatCannotBeMadeOrCheckedWritesNoJob(t *testing.T) {
 		})
 	}
 }
+
+// ini-unf AC2: a copy that fails while a job is installed leaves that job as
+// it was: no bootout, its file unchanged, so the service keeps running.
+func TestInstall_AFailedCopyLeavesTheRunningJobAlone(t *testing.T) {
+	r := newInstallRig(t)
+	if err := r.install(); err != nil {
+		t.Fatal(err)
+	}
+	before, _ := os.ReadFile(r.plist())
+	r.runner.Calls = nil
+	appServePort = 7393 // new settings: a job replace, if the copy were good
+	appServeCodesign = func(args ...string) (string, error) {
+		if args[0] == "--verify" {
+			return "invalid signature", errors.New("exit status 1")
+		}
+		return "Identifier=com.neblihq.initech\nTeamIdentifier=K7Z8YKVA8G\n", nil
+	}
+	if err := r.install(); err == nil || !strings.Contains(err.Error(), "does not verify") {
+		t.Fatalf("install: %v, want the copy refused", err)
+	}
+	after, _ := os.ReadFile(r.plist())
+	if len(r.runner.Calls) != 0 || !bytes.Equal(before, after) {
+		t.Errorf("a refused copy touched the running job: launchctl %q, job changed %v", r.runner.Calls, !bytes.Equal(before, after))
+	}
+}
