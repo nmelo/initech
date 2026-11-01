@@ -93,9 +93,11 @@ type PaneAccount struct {
 }
 
 // fillPaneDetail reads a live pane's screen into its list entry: footer
-// values and the dialog kind. It waits on the emulator's lock, so it runs on
-// the IPC goroutine, never the main loop. A pane that is not alive shows a
-// screen from before it stopped, so it is not read.
+// values and the dialog kind. Context and account the footer could not read
+// come from the pane's transcript and cla's active account (paneContext). It
+// waits on the emulator's lock, so it runs on the IPC goroutine, never the
+// main loop. A pane that is not alive shows a screen from before it stopped,
+// so it is not read.
 func fillPaneDetail(info *PaneInfo, pv PaneView) {
 	if pv == nil || !info.Alive {
 		return
@@ -106,12 +108,14 @@ func fillPaneDetail(info *PaneInfo, pv PaneView) {
 	}
 	rows := emuRowsBlocking(emu)
 	f := parseFooter(rows, emu.Width())
-	info.ContextPercent = f.ContextPercent
+	p, _ := pv.(*Pane)
+	ctx, user, model := paneContext(f, p)
+	info.ContextPercent = ctx
 	if f.Shells != nil || f.Monitors != nil || f.Tasks != nil {
 		info.Background = &PaneBackground{Shells: f.Shells, Monitors: f.Monitors, Tasks: f.Tasks}
 	}
-	if f.User != nil || f.Model != nil {
-		info.Account = &PaneAccount{User: f.User, Model: f.Model}
+	if user != nil || model != nil {
+		info.Account = &PaneAccount{User: user, Model: model}
 	}
 	info.Banner = bannerKind(rows, info.ModalLatched)
 }

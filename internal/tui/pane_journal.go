@@ -22,10 +22,7 @@ func (p *Pane) watchJSONL() {
 	ticker := time.NewTicker(500 * time.Millisecond)
 	defer ticker.Stop()
 
-	var lastFile string
-	var lastOffset int64
-	initialRead := true // First read of a file populates the journal but skips bead detection.
-
+	var tail journalTail
 	for {
 		<-ticker.C
 
@@ -35,69 +32,88 @@ func (p *Pane) watchJSONL() {
 		if !alive {
 			return
 		}
+		p.journalTick(&tail)
+	}
+}
 
-		// Find the most recently modified .jsonl file in the session dir.
-		file := newestJSONL(p.jsonlDir)
-		if file == "" {
-			continue
-		}
+// journalTail is where watchJSONL is in the session directory: the file it
+// reads, how far, and whether that file's first read is still to come.
+type journalTail struct {
+	file    string
+	offset  int64
+	started bool // The current file has been read once (its history loaded).
+}
 
-		// File rotation: new file -> reset offset. Mark as initial read
-		// so the first batch of entries doesn't trigger bead detection
-		// (prevents ghost beads from stale --continue session history).
-		if file != lastFile {
-			lastFile = file
-			lastOffset = 0
-			initialRead = true
-		}
+// journalTick is one poll of watchJSONL: it reads what the newest transcript
+// gained since the last tick into the journal, the session id, the context
+// reading and the detectors.
+func (p *Pane) journalTick(t *journalTail) {
+	lastFile, lastOffset, initialRead := t.file, t.offset, !t.started
+	defer func() { t.file, t.offset, t.started = lastFile, lastOffset, !initialRead }()
+	// Find the most recently modified .jsonl file in the session dir.
+	file := newestJSONL(p.jsonlDir)
+	if file == "" {
+		return
+	}
 
-		// Check file size. Truncation (size < offset) -> reset.
-		info, err := os.Stat(file)
-		if err != nil {
-			continue
-		}
-		size := info.Size()
-		if size < lastOffset {
-			lastOffset = 0
-		}
-		if size == lastOffset {
-			p.runDetectors(nil) // stall/stuck checks run every tick
-			continue
-		}
+	// File rotation: new file -> reset offset. Mark as initial read
+	// so the first batch of entries doesn't trigger bead detection
+	// (prevents ghost beads from stale --continue session history).
+	if file != lastFile {
+		lastFile = file
+		lastOffset = 0
+		initialRead = true
+		p.resetSessionUsage() // a new file (/clear, a new session) starts empty
+	}
 
-		// Read new entries from offset.
-		entries, newOffset := recentJSONLEntries(file, lastOffset)
-		lastOffset = newOffset
+	// Check file size. Truncation (size < offset) -> reset.
+	info, err := os.Stat(file)
+	if err != nil {
+		return
+	}
+	size := info.Size()
+	if size < lastOffset {
+		lastOffset = 0
+		p.resetSessionUsage()
+	}
+	if size == lastOffset {
+		p.runDetectors(nil) // stall/stuck checks run every tick
+		return
+	}
 
-		if len(entries) > 0 {
-			p.noteSessionID(entries)
-			p.mu.Lock()
-			// Append to ring buffer.
-			for _, e := range entries {
-				if len(p.journal) >= journalRingSize {
-					p.journal = p.journal[1:]
-				}
-				p.journal = append(p.journal, e)
+	// Read new entries from offset.
+	entries, newOffset := recentJSONLEntries(file, lastOffset)
+	lastOffset = newOffset
+
+	if len(entries) > 0 {
+		p.noteSessionID(entries)
+		p.noteSessionUsage(entries)
+		p.mu.Lock()
+		// Append to ring buffer.
+		for _, e := range entries {
+			if len(p.journal) >= journalRingSize {
+				p.journal = p.journal[1:]
 			}
-			p.mu.Unlock()
-
-			// Bead auto-detection: only run on entries written AFTER the pane
-			// started watching. The initial read loads history from prior
-			// --continue sessions; those old bd update commands would set ghost
-			// bead IDs that no longer exist (ini-anv).
-			if p.eventCh != nil && !initialRead {
-				p.applyBeadDetection(entries)
-			}
+			p.journal = append(p.journal, e)
 		}
+		p.mu.Unlock()
 
-		if initialRead {
-			initialRead = false
-			// Still run detectors to initialize stall/stuck state, but entries
-			// from the initial read are not treated as "new" for detection.
-			p.runDetectors(nil)
-		} else {
-			p.runDetectors(entries)
+		// Bead auto-detection: only run on entries written AFTER the pane
+		// started watching. The initial read loads history from prior
+		// --continue sessions; those old bd update commands would set ghost
+		// bead IDs that no longer exist (ini-anv).
+		if p.eventCh != nil && !initialRead {
+			p.applyBeadDetection(entries)
 		}
+	}
+
+	if initialRead {
+		initialRead = false
+		// Still run detectors to initialize stall/stuck state, but entries
+		// from the initial read are not treated as "new" for detection.
+		p.runDetectors(nil)
+	} else {
+		p.runDetectors(entries)
 	}
 }
 
@@ -529,18 +545,31 @@ func recentJSONLEntries(path string, sinceOffset int64) ([]JournalEntry, int64) 
 // Extracts type, content, tool name, and exit code from the nested structure.
 func parseJSONLEntry(line string) JournalEntry {
 	var raw struct {
-		Type      string `json:"type"`
-		Timestamp string `json:"timestamp"`
-		SessionID string `json:"sessionId"`
-		Message   struct {
+		Type        string `json:"type"`
+		Subtype     string `json:"subtype"`
+		Timestamp   string `json:"timestamp"`
+		SessionID   string `json:"sessionId"`
+		IsSidechain bool   `json:"isSidechain"`
+		Message     struct {
 			Content json.RawMessage `json:"content"`
+			Model   string          `json:"model"`
+			Usage   *struct {
+				Input       int64 `json:"input_tokens"`
+				CacheCreate int64 `json:"cache_creation_input_tokens"`
+				CacheRead   int64 `json:"cache_read_input_tokens"`
+			} `json:"usage"`
 		} `json:"message"`
 	}
 	if json.Unmarshal([]byte(line), &raw) != nil {
 		return JournalEntry{}
 	}
 
-	entry := JournalEntry{Type: raw.Type, SessionID: raw.SessionID}
+	entry := JournalEntry{Type: raw.Type, SessionID: raw.SessionID, Subtype: raw.Subtype,
+		Sidechain: raw.IsSidechain, Model: raw.Message.Model}
+	if u := raw.Message.Usage; u != nil {
+		entry.HasUsage = true
+		entry.ContextTokens = u.Input + u.CacheCreate + u.CacheRead
+	}
 	if raw.Timestamp != "" {
 		entry.Timestamp, _ = time.Parse(time.RFC3339Nano, raw.Timestamp)
 	}

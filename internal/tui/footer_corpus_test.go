@@ -109,6 +109,14 @@ func TestFooterCorpus_EveryCapturedShapeReadsWhatItShows(t *testing.T) {
 		// blocked itself (ini-82c.1).
 		{"haiku312_rm_guard_autodenied_w80.txt", none(i(7), s("Haiku 5.5"), s("Second"))},
 		{"haiku312_rm_guard_autodenied_w32.txt", none(i(7), s("Haiku 5.5"), s("Second"))},
+		// 2.1.316 on Haiku, one session at 120 and 29 columns (ini-484): the
+		// shape Claude cuts a full grid's panes to. Led by the branch, the
+		// cut falls inside the account name, so only the model reads; the
+		// transcript gives the context (session_context.go). Without the
+		// branch the cut falls after the percent, which reads.
+		{"haiku316_branch_w120.txt", none(i(7), s("Haiku 5.5"), s("Second"))},
+		{"haiku316_branch_cut_w29.txt", none(nil, s("Haiku 5.5"), nil)},
+		{"haiku316_cut_w29.txt", none(i(7), s("Haiku 5.5"), s("Second"))},
 	}
 	for _, c := range cases {
 		rows, width := corpusFooter(t, c.name)

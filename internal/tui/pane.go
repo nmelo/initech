@@ -85,6 +85,14 @@ type JournalEntry struct {
 	ExitCode  int       // For Bash tool results: exit code if available.
 	Timestamp time.Time // When this entry was written.
 	SessionID string    // The transcript's sessionId: the Claude session the entry belongs to.
+
+	// Context reading (ini-484): the reply's model and the tokens it was
+	// sent (input + cache creation + cache read), when it carries usage.
+	Model         string
+	ContextTokens int64
+	HasUsage      bool
+	Sidechain     bool   // A subagent's entry, not the pane's own conversation.
+	Subtype       string // A system entry's kind: "compact_boundary" after a compaction.
 }
 
 const (
@@ -288,6 +296,8 @@ type Pane struct {
 	attn                  *attentionSignal  // Mailbox the OSC 777 handler writes into. Leaf-locked; see attention_detect.go.
 	journal               []JournalEntry    // Ring buffer of recent JSONL entries (cap journalRingSize).
 	jsonlDir              string            // Directory to search for session JSONL files.
+	sessUse               sessionUsage      // The transcript's last context reading (ini-484).
+	ctxWarned             map[string]bool   // Models whose footer and transcript context disagreement was logged.
 	eventCh               chan<- AgentEvent // Emits detected semantic events to the TUI. May be nil.
 	safeGo                func(func())      // Launches a goroutine with panic recovery. Set by TUI after creation.
 	goWg                  sync.WaitGroup    // Tracks goroutines launched by Start(). Wait in Close().
