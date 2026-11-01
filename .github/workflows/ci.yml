@@ -114,13 +114,27 @@ jobs:
       - name: Lint test names
         run: bash scripts/lint-test-names.sh
 
-      # The install step: fake brew, temp prefix, no network, no real Cellar.
-      - name: Install step tests
-        run: make release-install-test
-
-      # The signing step: fake gh, codesign and notarytool; no keychain, no Apple service.
-      - name: Signing step tests
-        run: make release-sign-test
+      # The install step (fake brew, temp prefix, no network, no real Cellar)
+      # and the signing step (fake gh, codesign and notarytool; no keychain, no
+      # Apple service). Two Python suites of about a minute each, run side by
+      # side (ini-c5a.7): each makes its own temp folder and fakes, so they share
+      # nothing, and back to back they made build-and-test the push run's long
+      # pole. Each exit code is read on its own, unpiped: a red in either fails
+      # the step, and both logs print whatever happened.
+      - name: Install and signing step tests (side by side)
+        run: |
+          set +e
+          make release-install-test > release-install-test.log 2>&1 &
+          install_pid=$!
+          make release-sign-test > release-sign-test.log 2>&1 &
+          sign_pid=$!
+          wait "$install_pid"; install_rc=$?
+          wait "$sign_pid"; sign_rc=$?
+          echo "::group::Install step tests (exit $install_rc)"; cat release-install-test.log; echo "::endgroup::"
+          echo "::group::Signing step tests (exit $sign_rc)"; cat release-sign-test.log; echo "::endgroup::"
+          [ "$install_rc" -eq 0 ] || echo "::error::Install step tests failed (exit $install_rc)"
+          [ "$sign_rc" -eq 0 ] || echo "::error::Signing step tests failed (exit $sign_rc)"
+          [ "$install_rc" -eq 0 ] && [ "$sign_rc" -eq 0 ]
 
       # ini-2x8.8: fail when a test file compiles on one platform and not
       # another without a declared exemption. Static (`go list` applies build
