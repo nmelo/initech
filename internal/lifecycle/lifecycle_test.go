@@ -21,17 +21,24 @@ func stubConfigGet(t *testing.T, value string, err error) {
 }
 
 func TestLoadChain_DefaultProject(t *testing.T) {
-	// Initech's standard configuration: four custom states between
-	// in_progress and closed.
+	// Initech's standard configuration. The chain ends at qa_passed
+	// (ini-q2k): ready_to_ship after it is a side state, and closed is
+	// super's bd close, not a deliver step.
 	stubConfigGet(t, "ready_for_qa,in_qa,qa_passed,ready_to_ship", nil)
 
-	got, err := LoadChain()
+	l, err := LoadLifecycle()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	want := []string{"open", "in_progress", "ready_for_qa", "in_qa", "qa_passed", "ready_to_ship", "closed"}
-	if !reflect.DeepEqual(got, want) {
-		t.Errorf("chain = %v\n want %v", got, want)
+	want := []string{"open", "in_progress", "ready_for_qa", "in_qa", "qa_passed"}
+	if !reflect.DeepEqual(l.Chain, want) {
+		t.Errorf("chain = %v\n want %v", l.Chain, want)
+	}
+	if side := []string{"blocked", "deferred", "ready_to_ship"}; !reflect.DeepEqual(l.Side, side) {
+		t.Errorf("side = %v, want %v", l.Side, side)
+	}
+	if l.NoQAPassed {
+		t.Error("NoQAPassed set with qa_passed in the list")
 	}
 }
 

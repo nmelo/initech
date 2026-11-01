@@ -1397,9 +1397,14 @@ func TestDeliver_FullLifecycleWalk_Forward(t *testing.T) {
 		{"in_progress", "ready_for_qa"},
 		{"ready_for_qa", "in_qa"},
 		{"in_qa", "qa_passed"},
-		{"qa_passed", "ready_to_ship"},
-		{"ready_to_ship", "closed"},
+		// The walk ends at qa_passed (ini-q2k): see the qa_passed row below.
 	}
+	t.Run("qa_passed_is_the_end", func(t *testing.T) {
+		got, _, err := runDeliverFromStatus(t, "eng1", "qa_passed")
+		if err != nil || got != "" {
+			t.Errorf("from qa_passed: err %v, wrote %q; want the terminal no-op", err, got)
+		}
+	})
 	for _, tt := range tests {
 		t.Run(tt.from+"_to_"+tt.to, func(t *testing.T) {
 			// An IMPLEMENTER caller, deliberately: since ini-1fb9 the status
@@ -1432,9 +1437,16 @@ func TestDeliver_FailWalksBack(t *testing.T) {
 		{"ready_for_qa", "in_progress"},
 		{"in_qa", "ready_for_qa"},
 		{"qa_passed", "in_qa"},
-		{"ready_to_ship", "qa_passed"},
-		{"closed", "ready_to_ship"},
+		// ready_to_ship is a side state and closed is not a chain state any
+		// more (ini-q2k): their --fail cases are in deliver_side_q2k_test.go
+		// and the closed row below.
 	}
+	t.Run("closed_is_a_no_op", func(t *testing.T) {
+		got, comments, err := runDeliverFromStatus(t, "eng1", "closed", "--fail", "--reason", "regression found")
+		if err != nil || got != "" || len(comments) != 0 {
+			t.Errorf("--fail from closed: err %v, wrote %q, %d comments; want the no-op", err, got, len(comments))
+		}
+	})
 	for _, tt := range tests {
 		t.Run(tt.from+"_back_to_"+tt.to, func(t *testing.T) {
 			got, comments, err := runDeliverFromStatus(t, "eng1", tt.from, "--fail", "--reason", "regression found")
@@ -1551,13 +1563,14 @@ func TestDeliver_AnyRole_AdvancesStatus(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.role, func(t *testing.T) {
-			// Bead is at qa_passed; all roles should advance it to ready_to_ship.
-			got, _, err := runDeliverFromStatus(t, tt.role, "qa_passed", tt.args...)
+			// Bead is at in_qa; all roles advance it to qa_passed, the
+			// chain's end since ini-q2k (it was qa_passed to ready_to_ship).
+			got, _, err := runDeliverFromStatus(t, tt.role, "in_qa", tt.args...)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			if got != "ready_to_ship" {
-				t.Errorf("role %s at qa_passed: deliver wrote %q, want ready_to_ship (any role can advance per Q3)",
+			if got != "qa_passed" {
+				t.Errorf("role %s at in_qa: deliver wrote %q, want qa_passed (any role can advance per Q3)",
 					tt.role, got)
 			}
 		})

@@ -569,7 +569,11 @@ open -> in_progress -> ready_for_qa -> in_qa -> qa_passed -> closed
 - **ready_for_qa**: Engineer finished, pushed code, ready for QA verification
 - **in_qa**: QA is actively testing
 - **qa_passed**: QA verified, waiting for super to close
-- **closed**: Done; super checked the evidence and closed it
+- **closed**: Done; super checked the evidence and closed it with `bd close`
+
+`initech deliver` moves a bead one step along this chain and stops at `qa_passed`; it never closes a bead.
+
+Three side states sit beside the chain and are not steps: `blocked` (waiting on something named, such as another bead, a person, a release or a machine, with the wait in a comment), `deferred` (parked on purpose) and `waiting_on_nelson` (waiting on a decision, click or answer only you give, with the question in the latest comment). Any status added to bd's `status.custom` after `qa_passed` is a side state too. Set one with `bd update <id> --status blocked` (or `deferred`, `waiting_on_nelson`) and a comment; when the wait ends, move it back with `bd update <id> --status open` or `in_progress`. `initech deliver` on a bead in a side state writes nothing, sends no report and exits 1: `not delivered: <id> is blocked (<the latest comment's first line>); move it back to open or in_progress first`, or for `waiting_on_nelson`, `not delivered: <id> waits on Nelson (<first line>); super moves it when he answers`.
 
 ### What You Should See on Each Bead
 

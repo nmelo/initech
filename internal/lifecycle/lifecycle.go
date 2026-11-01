@@ -44,25 +44,51 @@ var ConfigGetFn = func(key string) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
-// LoadChain returns the full bead lifecycle chain in directional order.
-// Reads bd's status.custom config to populate the project-defined middle
-// section, then brackets with the standard wrapper [open, in_progress] at
-// the start and [closed] at the terminal.
+// fixedSideStates are side states whatever status.custom says: a bead that
+// waits on something named, or is parked on purpose (Nelson, 2026-11-01).
+var fixedSideStates = []string{"blocked", "deferred"}
+
+// Lifecycle is the bead lifecycle deliver walks, read from bd's status.custom.
+type Lifecycle struct {
+	// Chain is the walk in directional order: open, in_progress, then
+	// status.custom up to and including qa_passed. Super closes a bead
+	// with bd close; deliver never does.
+	Chain []string
+	// Side are the states that are not steps: blocked, deferred, and every
+	// status.custom entry after qa_passed, so a status added after it is a
+	// side state by default. Deliver refuses a bead in one (ini-q2k).
+	Side []string
+	// NoQAPassed is true when status.custom has no qa_passed: the chain is
+	// then the custom list bracketed by open, in_progress and closed, as it
+	// was before qa_passed ended it.
+	NoQAPassed bool
+}
+
+// IsSide reports whether status is a side state.
+func (l Lifecycle) IsSide(status string) bool {
+	for _, s := range l.Side {
+		if s == status {
+			return true
+		}
+	}
+	return false
+}
+
+// LoadLifecycle reads bd's status.custom into the chain and the side states.
 //
-// Hard-fails if bd is unreachable or returns an error: the lifecycle walker
-// cannot make a meaningful next/prev decision without the configured
-// middle section. (ini-6e54 Q4.)
+// Hard-fails if bd is unreachable or returns an error: the walker cannot make
+// a meaningful next/prev decision without the configured middle section.
+// (ini-6e54 Q4.)
 //
-// Example return values:
-//   - empty status.custom -> ["open", "in_progress", "closed"]
-//   - status.custom="ready_for_qa,in_qa,qa_passed,ready_to_ship" ->
-//     ["open", "in_progress", "ready_for_qa", "in_qa", "qa_passed", "ready_to_ship", "closed"]
-func LoadChain() ([]string, error) {
+// Example: status.custom="ready_for_qa,in_qa,qa_passed,ready_to_ship,waiting_on_nelson"
+// gives Chain [open in_progress ready_for_qa in_qa qa_passed] and Side
+// [blocked deferred ready_to_ship waiting_on_nelson]. An empty status.custom
+// gives Chain [open in_progress closed], Side [blocked deferred], NoQAPassed.
+func LoadLifecycle() (Lifecycle, error) {
 	raw, err := ConfigGetFn("status.custom")
 	if err != nil {
-		return nil, fmt.Errorf("read bd status.custom: %w (is bd installed and the project configured?)", err)
+		return Lifecycle{}, fmt.Errorf("read bd status.custom: %w (is bd installed and the project configured?)", err)
 	}
-
 	var custom []string
 	if raw != "" {
 		for _, p := range strings.Split(raw, ",") {
@@ -71,12 +97,28 @@ func LoadChain() ([]string, error) {
 			}
 		}
 	}
+	l := Lifecycle{Chain: []string{"open", "in_progress"}, Side: append([]string{}, fixedSideStates...)}
+	end := -1
+	for i, s := range custom {
+		if s == qaPassedState {
+			end = i
+			break
+		}
+	}
+	if end < 0 {
+		l.Chain = append(append(l.Chain, custom...), "closed")
+		l.NoQAPassed = true
+		return l, nil
+	}
+	l.Chain = append(l.Chain, custom[:end+1]...)
+	l.Side = append(l.Side, custom[end+1:]...)
+	return l, nil
+}
 
-	chain := make([]string, 0, len(custom)+3)
-	chain = append(chain, "open", "in_progress")
-	chain = append(chain, custom...)
-	chain = append(chain, "closed")
-	return chain, nil
+// LoadChain is LoadLifecycle's chain.
+func LoadChain() ([]string, error) {
+	l, err := LoadLifecycle()
+	return l.Chain, err
 }
 
 // NextState returns the state after current in the chain, plus a bool

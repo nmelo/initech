@@ -166,16 +166,17 @@ func TestRunDeliver_QAPassAdvancesAndKeepsTheAssignee(t *testing.T) {
 	}
 }
 
-// The fallback row, at the command level: super walks a passed bead toward
-// closed with repeated deliver calls, and the assignee is not touched.
-func TestRunDeliver_WalkToClosedLeavesTheAssigneeAlone(t *testing.T) {
+// The fallback row, at the command level: an implementer walks a bead one
+// step along the chain, and the assignee is not touched. (The walk used to
+// run past qa_passed toward closed; it ends there now, ini-q2k.)
+func TestRunDeliver_TheWalkLeavesTheAssigneeAlone(t *testing.T) {
 	skipWindows(t)
-	got, _, err := deliverWriteFromStatus(t, "eng1", "qa_passed", "")
+	got, _, err := deliverWriteFromStatus(t, "eng1", "in_qa", "")
 	if err != nil {
 		t.Fatalf("deliver: %v", err)
 	}
-	if got.Status != "ready_to_ship" {
-		t.Errorf("status = %q, want ready_to_ship", got.Status)
+	if got.Status != "qa_passed" {
+		t.Errorf("status = %q, want qa_passed", got.Status)
 	}
 	if got.SetAssignee {
 		t.Errorf("the walk rewrote the assignee to %q; it is kept", got.Assignee)

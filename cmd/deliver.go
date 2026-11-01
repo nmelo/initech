@@ -53,6 +53,13 @@ transition table (internal/lifecycle), never by this command:
   --verdict FAIL (qa)      -> in_progress, assignee set to the bead's implementer
   anything else            -> one step along the lifecycle chain, assignee kept
 
+The chain is open, in_progress, then bd's status.custom up to and including
+qa_passed; it ends there, and deliver never closes a bead (super does, with
+bd close). A bead in a side state is refused before any write, with no
+report, exit 1: blocked, deferred, waiting_on_nelson, or any status.custom
+entry after qa_passed. Move it back to open or in_progress with bd update
+first.
+
 Fail-fast ordering: input validation first (rejects bad flag combos before
 any side effects), bd operations second (durable state), ribbon update
 third (cosmetic), report last (notifications). A partial failure
@@ -127,6 +134,21 @@ func runDeliver(cmd *cobra.Command, args []string) error {
 	// silently reassigning to the caller: the fix is an action the caller
 	// takes (claim it), not something deliver should paper over, and
 	// auto-reassigning would blur who actually did the work.
+	// Step 1a: a bead in a side state is not a step and is never walked
+	// (ini-q2k): blocked, deferred, or a status after qa_passed such as
+	// waiting_on_nelson. Refused before any write, any report and the
+	// caller check, whose "claim it" would be the wrong advice here.
+	lc, err := lifecycle.LoadLifecycle()
+	if err != nil {
+		return fmt.Errorf("cannot determine bead lifecycle: %w (configure bd's status.custom or check that bd is reachable)", err)
+	}
+	if lc.IsSide(status) {
+		return sideStateRefusal(beadID, status)
+	}
+	if lc.NoQAPassed {
+		fmt.Fprintln(cmd.ErrOrStderr(), "deliver: bd status.custom has no qa_passed; the chain runs to closed as configured")
+	}
+
 	if agent != "" && assignee != "" && agent != assignee {
 		return fmt.Errorf("bead %s is assigned to %s, you are %s — claim it first with 'bd update %s --assignee %s', then re-run deliver", beadID, assignee, agent, beadID, agent)
 	}
@@ -146,10 +168,7 @@ func runDeliver(cmd *cobra.Command, args []string) error {
 	// On --fail (non-initial state): the FAILED audit comment AND the
 	// walk-back state write are both performed (ini-6e54 Q2). The comment
 	// is the reason; the walk-back is the action.
-	chain, err := lifecycle.LoadChain()
-	if err != nil {
-		return fmt.Errorf("cannot determine bead lifecycle: %w (configure bd's status.custom or check that bd is reachable)", err)
-	}
+	chain := lc.Chain
 
 	// THE TABLE DECIDES, not this function (ini-1fb9). What to write for
 	// (family, current state, verdict) — including what happens to the
@@ -248,11 +267,8 @@ func runDeliver(cmd *cobra.Command, args []string) error {
 	// the repeats read to the operator like a stuck agent. An explicit --to is
 	// an instruction to report, exactly as --report is; its default names
 	// where a report goes and forces nothing, hence Changed.
-	send, closed := deliverReportFor(tr, chain, isFail, verdict, deliverReport || cmd.Flags().Changed("to"))
+	send := deliverReportFor(tr, isFail, verdict, deliverReport || cmd.Flags().Changed("to"))
 	reportText := tpl.ReportText
-	if closed {
-		reportText = "closed: " + displayTitle
-	}
 	report := fmt.Sprintf("[from %s] %s: %s", agentOrUnknown(agent), beadID, reportText)
 	if deliverMessage != "" {
 		report += ". " + deliverMessage
@@ -309,15 +325,26 @@ func shellSingleQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
-// deliverReportFor decides whether a delivered step reports, and whether it
-// is the final close (ini-r5ne). It reports when someone else acts next: a
-// hand-off (the table moves the assignee), a QA verdict, any --fail, or the
-// chain's last state, which reports once and says "closed". A same-agent
-// lifecycle walk step (assignee kept, not terminal) is silent unless forced.
-func deliverReportFor(tr lifecycle.Transition, chain []string, isFail bool, verdict string, forced bool) (send, closed bool) {
-	closed = len(chain) > 0 && tr.Status == chain[len(chain)-1]
-	send = forced || isFail || verdict != "" || closed || tr.Assignee != lifecycle.AssigneeKeep
-	return send, closed
+// deliverReportFor decides whether a delivered step reports (ini-r5ne): when
+// someone else acts next, a hand-off (the table moves the assignee), a QA
+// verdict or any --fail. A same-agent lifecycle walk step (assignee kept) is
+// silent unless forced (--report, or an explicit --to). Deliver never closes
+// a bead, so there is no closing report (ini-q2k): super closes with bd close.
+func deliverReportFor(tr lifecycle.Transition, isFail bool, verdict string, forced bool) bool {
+	return forced || isFail || verdict != "" || tr.Assignee != lifecycle.AssigneeKeep
+}
+
+// sideStateRefusal is deliver's answer for a bead in a side state: its state,
+// the first line of its newest comment (what it waits on), and what to do.
+func sideStateRefusal(beadID, status string) error {
+	why := ""
+	if line, err := bdLatestCommentFn(beadID); err == nil && line != "" {
+		why = " (" + line + ")"
+	}
+	if status == "waiting_on_nelson" {
+		return fmt.Errorf("not delivered: %s waits on Nelson%s; super moves it when he answers", beadID, why)
+	}
+	return fmt.Errorf("not delivered: %s is %s%s; move it back to open or in_progress first", beadID, status, why)
 }
 
 // bdShowBeadFn is the default implementation of bdShowBead. Tests override this.
@@ -413,6 +440,29 @@ func bdBeadImplementerImpl(beadID string) (string, error) {
 		return "", nil
 	}
 	return beads[0].Metadata[implementerKey], nil
+}
+
+// bdLatestCommentFn is the default implementation. Tests override this.
+var bdLatestCommentFn = bdLatestCommentImpl
+
+// bdLatestCommentImpl is the first line of the bead's newest comment, "" when
+// it has none. Read only for a bead in a side state, to say what it waits on.
+func bdLatestCommentImpl(beadID string) (string, error) {
+	out, err := exec.Command("bd", "comments", beadID, "--json").CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("bd comments failed: %s", strings.TrimSpace(string(out)))
+	}
+	var comments []struct {
+		Text string `json:"text"`
+	}
+	if err := json.Unmarshal(out, &comments); err != nil {
+		return "", fmt.Errorf("parse bd comments: %w", err)
+	}
+	if len(comments) == 0 {
+		return "", nil
+	}
+	first, _, _ := strings.Cut(strings.TrimSpace(comments[len(comments)-1].Text), "\n")
+	return strings.TrimSpace(first), nil
 }
 
 // bdCommentAddFn is the default implementation. Tests override this.

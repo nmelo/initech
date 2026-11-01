@@ -36,25 +36,32 @@ func r5neDeliver(t *testing.T, agent, state string, args ...string) []tui.IPCReq
 	return sends
 }
 
-// The observed case (ini-o09i): one agent walks a skip-QA bead from
-// ready_for_qa to closed. Super gets ONE message, the last, and it says closed.
-func TestRunDeliver_ASkipQAWalkToClosedReportsOnceSayingClosed(t *testing.T) {
-	var all []tui.IPCRequest
-	for _, state := range []string{"ready_for_qa", "in_qa", "qa_passed", "ready_to_ship"} {
-		sends := r5neDeliver(t, "pm", state)
-		if state != "ready_to_ship" && len(sends) != 0 {
+// The observed case (ini-o09i), under the chain that ends at qa_passed
+// (ini-q2k): one agent walks a skip-QA bead from ready_for_qa to qa_passed and
+// no step reports (the same agent continues); a deliver at qa_passed writes
+// nothing; ready_to_ship is a side state and is refused. Super closes the
+// bead with bd close, so there is no "closed:" report any more.
+func TestRunDeliver_ASkipQAWalkStopsAtQAPassedWithNoReport(t *testing.T) {
+	for _, state := range []string{"ready_for_qa", "in_qa", "qa_passed"} {
+		if sends := r5neDeliver(t, "pm", state); len(sends) != 0 {
 			t.Fatalf("step from %s by the same agent sent %d report(s): %q", state, len(sends), sends[0].Text)
 		}
-		all = append(all, sends...)
 	}
-	if len(all) != 1 {
-		t.Fatalf("a 4-step walk to closed sent %d reports, want exactly 1", len(all))
+	stubBdFns(t)
+	resetDeliverFlags(t)
+	bdShowBeadFn = func(id string) (string, string, string, error) { return "Release notes v2.19.1", "pm", "ready_to_ship", nil }
+	sock, received := startCapturingFakeIPC(t, tui.IPCResponse{OK: true})
+	t.Setenv("INITECH_SOCKET", sock)
+	t.Setenv("INITECH_AGENT", "pm")
+	rootCmd.SetOut(&bytes.Buffer{})
+	rootCmd.SetErr(&bytes.Buffer{})
+	rootCmd.SetArgs([]string{"deliver", "ini-o09i"})
+	defer rootCmd.SetArgs(nil)
+	if err := rootCmd.Execute(); err == nil || !strings.Contains(err.Error(), "is ready_to_ship") {
+		t.Fatalf("deliver from ready_to_ship: err %v, want the side-state refusal", err)
 	}
-	if txt := all[0].Text; !strings.Contains(txt, "closed: Release notes v2.19.1") || strings.Contains(txt, "delivered") {
-		t.Fatalf("final report = %q, want it to say closed, not delivered", txt)
-	}
-	if all[0].Target != "super" {
-		t.Fatalf("closed report went to %q, want super", all[0].Target)
+	if len(*received) != 0 {
+		t.Fatalf("the refusal sent %d IPC requests", len(*received))
 	}
 }
 
