@@ -11,13 +11,13 @@ name: Rigs
 # nightly holds the next cut until super has read it. This takes the rigs off
 # the landing-to-release path.
 #
-# ON GITHUB-HOSTED macOS (ini-c5a.7, the operator via theguy): every job runs
-# on macos-latest, free for a public repo, never on the shared Mac host
-# (192.168.1.207), so a rigs run adds no load there and never holds a CI push
-# run at its load gate. No job here needs anything only that host has: the
-# rigs build their own binaries under t.TempDir and start no Claude. Each
-# hosted job is its own fresh machine, so setup-go's cache is on (nothing is
-# shared, and an empty cache would rebuild everything).
+# ON THE WORKBENCH (ini-c5a.7, the operator via theguy): the race job and the
+# four rig shards run on the two runners labelled initech-rigs on
+# 192.168.1.100 (user initech-ci, sandboxed), never on main CI's eight; the
+# rigs build their own binaries under t.TempDir and start no Claude. The
+# runners share one Go build cache, so setup-go's cache is on for pull
+# requests only. What cannot run there (macOS-only, or needing a LAN address
+# the sandbox denies) runs in the darwin job on the shared Mac, below.
 #
 # A SEPARATE FILE, not jobs in ci.yml behind an event condition: shipper's
 # release gate derives the expected job set from ci.yml and asserts a push run
