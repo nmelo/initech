@@ -27,7 +27,22 @@ esac
 runtime=${SIM_RUNTIME:-com.apple.CoreSimulator.SimRuntime.iOS-27-0}
 app=$(cd "$(dirname "$0")/.." && pwd)
 reports="$HOME/Library/Logs/DiagnosticReports"
-mark=$(mktemp -t sim-test-mark) || exit 2
+
+# One simulator at a time on this host, whatever started the run: a lock
+# directory (mkdir is atomic), taken over when its holder is gone, waited on
+# for at most 30 minutes. Two jobs that pass a load check in the same second
+# would otherwise boot two simulators at once.
+lock=${SIM_LOCK:-/tmp/initech-app-sim.lock}
+waited=0
+until mkdir "$lock" 2>/dev/null; do
+  holder=$(cat "$lock/pid" 2>/dev/null)
+  if [ -n "$holder" ] && ! kill -0 "$holder" 2>/dev/null; then rm -rf "${lock:?}"; continue; fi
+  [ $((waited % 60)) -eq 0 ] && echo "sim-test: waiting for the simulator lock (held by pid ${holder:-?})"
+  [ "$waited" -ge 1800 ] && { echo "sim-test: the simulator lock was held for 30 minutes; refused" >&2; exit 2; }
+  sleep 10; waited=$((waited + 10))
+done
+echo $$ > "$lock/pid"
+mark=$(mktemp -t sim-test-mark) || { rm -rf "${lock:?}"; exit 2; }
 
 name="${INITECH_AGENT:-run}-$kind-$(date +%H%M%S)"
 udid=$(xcrun simctl create "$name" "$type" "$runtime") || { echo "sim-test: could not create $name" >&2; exit 2; }
@@ -43,6 +58,16 @@ cleanup() {
   fi
   xcrun simctl shutdown "$udid" >/dev/null 2>&1
   xcrun simctl delete "$udid" >/dev/null 2>&1 && echo "sim-test: deleted $name"
+  # Nothing of this run's simulator may outlive it: its processes carry the
+  # device id in their path. Only this device is looked at, never another
+  # job's; the command lines are matched, never printed.
+  left=$(pgrep -f "Devices/$udid" 2>/dev/null | tr '\n' ' ')
+  rm -rf "${lock:?}"
+  if [ -n "$left" ]; then
+    echo "sim-test: processes of $name still running after its delete (pids $left)" >&2
+    rm -f "$mark"
+    exit 8
+  fi
   # Crash reports land a few seconds after a process dies, and a stopped run
   # never reaches the check below the test: look here too, after shutdown.
   sleep 10

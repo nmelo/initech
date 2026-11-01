@@ -11,9 +11,9 @@
 #   shared with other projects' iOS jobs, and the switch is flipped only once
 #   a load sample shows it can take one simulator. With it unset the job is
 #   skipped, so no runner is used at all.
-# - One simulator at a time on the host: the load gate holds a job while any
-#   simulator is booted there; a concurrency group per ref queues a ref's own
-#   runs.
+# - One simulator at a time on the host: sim-test.sh's lock; the load gate
+#   also holds a job while any simulator is booted there; a concurrency group
+#   per ref queues a ref's own runs.
 # - The job waits at the shared load gate first (.github/actions/load-gate,
 #   with simulators): while the host's 5-minute load is over 6, during the
 #   other project's nightly window, and while any simulator is booted there by
@@ -24,8 +24,9 @@
 #   new crash report from the app, its test runners, SpringBoard or PosterBoard
 #   fails the job by name; any other report from that device is named as a
 #   warning (nobody sits at this host, so no dialog reaches anyone).
-# - A last step fails the job if any simulator or xcodebuild process the job
-#   started is still running.
+# - sim-test.sh holds a lock on the host for its whole run (one simulator at
+#   a time, whichever job started it) and fails with exit 8 if any process of
+#   its simulator outlives the delete; it looks at its own device only.
 name: app-tests
 
 on:
@@ -70,9 +71,6 @@ jobs:
         with:
           simulators: "true"
 
-      - name: Processes before
-        run: pgrep -U "$(id -u)" -x 'xcodebuild|launchd_sim|xctest|simctl' | sort > "$RUNNER_TEMP/before.txt" || true
-
       - name: Test on a fresh simulator
         env:
           INITECH_AGENT: ci-${{ github.run_id }}
@@ -87,18 +85,6 @@ jobs:
           grep -E 'Test Case .*(failed|skipped|exceeded)|TEST (SUCCEEDED|FAILED)' "$RUNNER_TEMP/xcodebuild.log" | sort -u
           echo "passed: $(grep -cE 'Test Case .*passed' "$RUNNER_TEMP/xcodebuild.log")"
           exit $rc
-
-      - name: No simulator or xcodebuild of this job left
-        if: always()
-        run: |
-          pgrep -U "$(id -u)" -x 'xcodebuild|launchd_sim|xctest|simctl' | sort > "$RUNNER_TEMP/after.txt" || true
-          left=$(comm -13 "$RUNNER_TEMP/before.txt" "$RUNNER_TEMP/after.txt")
-          if [ -n "$left" ]; then
-            echo "app-tests: still running after the job:" >&2
-            for p in $left; do ps -o pid=,comm= -p "$p" >&2; done
-            exit 6
-          fi
-          echo "app-tests: nothing of this job left running"
 
       - uses: actions/upload-artifact@v4
         if: always()
