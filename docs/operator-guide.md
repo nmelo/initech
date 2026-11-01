@@ -273,6 +273,12 @@ Blockers is one list per running rig, in two kinds.
 
 A rig with nothing in either kind shows as one quiet row.
 
+The list reloads on every feed event that can change it: a pane state, a waiting item, a stuck pane, or a reset. A transcript event alone does not reload it. With no rig running it reads "No rig is running."
+
+### Progress
+
+Progress shows the report of `initech progress --json` for each effort in flight in every running rig, as the service last ran it (every five minutes); the view reads it on open, every five minutes after, and on a pull to refresh. Each effort shows the counts the command prints: closed of total and the number closed in the window, beads an engineer worked and beads that were writing or review only, the engineers on it, each bead past open with its stage, owner, `AC n/m` and commits landed, the critical path, and each bead quiet an hour or more with what it waits on. It shows no time at all: no finish time, no estimate, no actual, and no clock time of a close. With no effort in flight it reads "No effort is in flight."
+
 ### Pairing and Unlocking
 
 Install the app from TestFlight on the iPhone or iPad. On first open it asks for the pairing code: run `initech app-serve token` on the Mac and scan the QR code it shows, or paste the pairing link it prints (`initech://pair?host=<address>&port=<port>&token=<token>&fp=<fingerprint>`). The app keeps the pairing in the keychain of that device only. It talks to the service over HTTPS and accepts only the certificate whose SHA-256 matches `fp`; any other certificate is refused before a request, and so the token, is sent. A new token issued on the Mac makes the service refuse the old one, and the app then asks to pair again.
