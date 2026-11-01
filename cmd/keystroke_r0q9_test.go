@@ -130,6 +130,23 @@ func TestKeystroke_NotDeliveredIsExitOne(t *testing.T) {
 	}
 }
 
+// --urgent rides from the flag to the wire.
+func TestKeystroke_TheUrgentFlagReachesTheWire(t *testing.T) {
+	f := &r0q9TUI{resp: r0q9Delivered}
+	startR0q9TUI(t, f)
+	t.Setenv("INITECH_AGENT", "super")
+	if err := keystrokeCmd.Flags().Set("urgent", "true"); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { keystrokeCmd.Flags().Set("urgent", "false") })
+	if err := runKeystroke(keystrokeCmd, []string{"a", "esc"}); err != nil {
+		t.Fatal(err)
+	}
+	if r := f.got(); len(r) != 1 || !r[0].Urgent || r[0].From != "super" {
+		t.Errorf("requests %+v, want urgent from super", r)
+	}
+}
+
 // The command takes exactly the agent and the key.
 func TestKeystroke_TakesTheAgentAndOneKey(t *testing.T) {
 	if keystrokeCmd.Args(keystrokeCmd, []string{"a"}) == nil || keystrokeCmd.Args(keystrokeCmd, []string{"a", "y", "n"}) == nil {

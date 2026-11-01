@@ -25,7 +25,9 @@ the agent's terminal. Otherwise nothing is typed and it prints
 "not delivered to <agent>: <reason>", exit 1: an unknown or empty key name,
 an agent that is not found, not running, or suspended (a key never wakes a
 suspended agent), or an agent in do-not-disturb. A key is never queued or
-held for later.
+held for later. Do-not-disturb lets the operator's key through (run outside
+any pane), and super's with --urgent; --urgent from anyone else is refused:
+"only super may break do-not-disturb".
 
 For an agent on another machine use host:agent; that machine's initech
 writes the key and answers.`,
@@ -33,7 +35,10 @@ writes the key and answers.`,
 	RunE: runKeystroke,
 }
 
+var keystrokeUrgent bool
+
 func init() {
+	keystrokeCmd.Flags().BoolVar(&keystrokeUrgent, "urgent", false, "From super only: deliver now even if the agent is in do-not-disturb (logged); never into a dialog")
 	rootCmd.AddCommand(keystrokeCmd)
 }
 
@@ -44,7 +49,7 @@ func runKeystroke(cmd *cobra.Command, args []string) error {
 		host, target = target[:idx], target[idx+1:]
 	}
 	cmd.SilenceUsage, cmd.SilenceErrors = true, true
-	return keystrokeAgent(cmd.ErrOrStderr(), target, host, args[1], false)
+	return keystrokeAgent(cmd.ErrOrStderr(), target, host, args[1], keystrokeUrgent)
 }
 
 // keystrokeAgent is initech keystroke after argument parsing. A key name

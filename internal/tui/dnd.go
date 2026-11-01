@@ -43,16 +43,27 @@ type sendOrigin struct {
 	Urgent bool
 }
 
-// dndGate is the do-not-disturb decision for one send: held, refused, or
-// let through (false, nothing to return). *broke is set once a super
-// --urgent break has been logged, so a send judged twice logs once.
-func (p *Pane) dndGate(text string, enter bool, o sendOrigin, broke *bool) (SendVerdict, bool) {
+// dndRuling is how do-not-disturb rules on one sender.
+type dndRuling int
+
+const (
+	dndOriginThrough dndRuling = iota // not in it, the operator, or super --urgent: goes through now
+	dndOriginRefused                  // --urgent from anyone but super: refused, nothing queued
+	dndOriginWaits                    // anyone else: a send is held, a key is not delivered
+)
+
+// dndOrigin is the do-not-disturb rule on a sender, the one send and
+// keystroke share: the operator always goes through, super --urgent breaks it
+// (logged once: *broke is set when the break has been logged, so a sender
+// judged twice logs once), --urgent from anyone else is refused, and anyone
+// else waits. The verdict is set only for dndOriginRefused.
+func (p *Pane) dndOrigin(o sendOrigin, broke *bool) (dndRuling, SendVerdict) {
 	if !p.InDND() {
-		return SendVerdict{}, false // --urgent to an agent not in it is a plain send
+		return dndOriginThrough, SendVerdict{} // --urgent to an agent not in it is a plain send
 	}
 	switch {
 	case o.From == operatorSender:
-		return SendVerdict{}, false // the operator always goes through
+		return dndOriginThrough, SendVerdict{} // the operator always goes through
 	case o.Urgent && o.From == "super":
 		if !*broke {
 			*broke = true
@@ -60,10 +71,22 @@ func (p *Pane) dndGate(text string, enter bool, o sendOrigin, broke *bool) (Send
 			LogInfo("dnd", line, "pane", p.name)
 			p.reportEvent(AgentEvent{Type: EventMessageSent, Pane: p.name, Detail: line, Time: time.Now()})
 		}
-		return SendVerdict{}, false
+		return dndOriginThrough, SendVerdict{}
 	case o.Urgent:
-		LogInfo("dnd", "SEND NOT DELIVERED: --urgent from someone other than super", "pane", p.name, "from", o.From)
-		return SendVerdict{Outcome: DeliveryNotDelivered, Reason: dndOnlySuperReason}, true
+		LogInfo("dnd", "NOT DELIVERED: --urgent from someone other than super", "pane", p.name, "from", o.From)
+		return dndOriginRefused, SendVerdict{Outcome: DeliveryNotDelivered, Reason: dndOnlySuperReason}
+	}
+	return dndOriginWaits, SendVerdict{}
+}
+
+// dndGate is the do-not-disturb decision for one send: held, refused, or
+// let through (false, nothing to return), by dndOrigin's rule.
+func (p *Pane) dndGate(text string, enter bool, o sendOrigin, broke *bool) (SendVerdict, bool) {
+	switch r, v := p.dndOrigin(o, broke); r {
+	case dndOriginThrough:
+		return SendVerdict{}, false
+	case dndOriginRefused:
+		return v, true
 	}
 	return p.holdIfDND(text, enter)
 }

@@ -47,7 +47,8 @@ const keystrokeDialogReason = "a dialog is open; only the operator may answer it
 // keystrokePane writes one key to p and says what became of it: delivered
 // when the bytes reached the PTY, not delivered (nothing written) for an
 // unknown key, a suspended pane (never woken by a key), a pane in
-// do-not-disturb, or one whose process is not running. A dialog never holds
+// do-not-disturb (except for the operator and super --urgent, by send's own
+// rule, dndOrigin), or one whose process is not running. A dialog never holds
 // the operator's key: a key is how a dialog is answered, so it goes into
 // whatever is on screen. Any other sender's key to a pane with a dialog open
 // (the send guard's own test, paneHasModal) is not delivered: one agent never
@@ -61,7 +62,14 @@ func keystrokePane(p *Pane, key string, o sendOrigin) SendVerdict {
 	if p.IsSuspended() {
 		return SendVerdict{Outcome: DeliveryNotDelivered, Reason: p.name + " is suspended; a key does not wake it"}
 	}
-	if age, in := p.dndAge(time.Now()); in {
+	// Do-not-disturb by send's own rule; where a send would be held, a key
+	// is not delivered: it is about the screen now, so it is never queued.
+	var broke bool
+	switch r, v := p.dndOrigin(o, &broke); r {
+	case dndOriginRefused:
+		return v
+	case dndOriginWaits:
+		age, _ := p.dndAge(time.Now())
 		LogInfo("keystroke", "KEY NOT DELIVERED: do-not-disturb", "pane", p.name, "key", key, "from", o.From)
 		return SendVerdict{Outcome: DeliveryNotDelivered, Reason: keystrokeDNDReason(p.name, age)}
 	}

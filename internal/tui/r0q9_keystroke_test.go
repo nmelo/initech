@@ -293,3 +293,55 @@ func TestKeystroke_ADialogTakesOnlyTheOperatorsKey(t *testing.T) {
 		t.Errorf("an agent's key with no dialog: %q (%s), typed %q", v.Outcome, v.Reason, typed())
 	}
 }
+
+// AC3: do-not-disturb by send's own rule: the operator's key and super's with
+// --urgent go through now (the break logged as for a send); --urgent from
+// anyone else is refused as a send is; any other agent's key is not
+// delivered. Nothing is ever queued, and the pane stays in do-not-disturb.
+func TestKeystroke_DoNotDisturbLetsTheOperatorAndSuperUrgentThrough(t *testing.T) {
+	for _, c := range []struct {
+		o      sendOrigin
+		want   string // "" delivered, else the reason's start
+		broken bool
+	}{
+		{sendOrigin{From: operatorSender}, "", false},
+		{sendOrigin{From: "super", Urgent: true}, "", true},
+		{sendOrigin{From: "eng1", Urgent: true}, dndOnlySuperReason, false},
+		{sendOrigin{From: "super"}, "a is in do-not-disturb (", false},
+		{sendOrigin{From: "eng1"}, "a is in do-not-disturb (", false},
+		{sendOrigin{From: ""}, "a is in do-not-disturb (", false},
+	} {
+		p, events, typed := dndPane(t, "a")
+		p.startDND()
+		v := keystrokePane(p, "ctrl-c", c.o)
+		switch {
+		case c.want == "":
+			if v.Outcome != DeliveryDelivered || r0q9Typed(typed, "\x03") != "\x03" {
+				t.Errorf("%+v: %q (%s), typed %q; want delivered", c.o, v.Outcome, v.Reason, typed())
+			}
+		default:
+			if v.Outcome != DeliveryNotDelivered || !strings.HasPrefix(v.Reason, c.want) || r0q9Typed(typed, "") != "" {
+				t.Errorf("%+v: %q (%s), typed %q; want not delivered: %s", c.o, v.Outcome, v.Reason, typed(), c.want)
+			}
+		}
+		if len(dndQueue(p)) != 0 || !p.InDND() {
+			t.Errorf("%+v: queue %v, in dnd %v", c.o, dndQueue(p), p.InDND())
+		}
+		broke := false
+		for len(events) > 0 {
+			if e := <-events; e.Detail == "urgent from super broke do-not-disturb on a" {
+				broke = true
+			}
+		}
+		if broke != c.broken {
+			t.Errorf("%+v: break logged %v, want %v", c.o, broke, c.broken)
+		}
+	}
+	// The send twin: the same rule still holds an agent's send.
+	p, _, _ := dndPane(t, "a")
+	p.startDND()
+	var broke bool
+	if v, held := p.dndGate("[from eng1] hi", true, sendOrigin{From: "eng1"}, &broke); !held || v.Outcome != DeliveryHeld || len(dndQueue(p)) != 1 {
+		t.Errorf("an agent's send: held %v, %q, queue %d; want held and queued", held, v.Outcome, len(dndQueue(p)))
+	}
+}
