@@ -187,6 +187,7 @@ type TUI struct {
 	paceStale    bool
 	paceAnswered bool
 	paceAt       time.Time
+	paceRows     []string // the Agents overlay's effort rows (ini-y0n.3)
 	inboxOnce    sync.Once
 	// inboxOutstanding maps an agent to the inbox items whose delivery verdict
 	// may still be corrected by a late report from the send path (ini-3wkl.6).
@@ -460,6 +461,10 @@ type TUI struct {
 	overlayBounds struct {
 		x, y       int // Panel top-left corner.
 		agentCount int // Number of list rows rendered (agents and machine dividers).
+		// effortTop and effortEnd are the screen rows of the effort rule and
+		// rows (effortEnd exclusive), from x to xEnd; a click there does
+		// nothing.
+		effortTop, effortEnd, xEnd int
 		// dots maps each drawn dot cell {x, y} to the agent it acts on, in
 		// either column, and since when that agent has been drawn there
 		// (ini-gt7w). Rebuilt on every overlay draw; prev is the previous

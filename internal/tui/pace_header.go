@@ -1,12 +1,14 @@
 package tui
 
-// pace_header.go puts each pane's effort pace on its top edge (ini-y0n.2):
+// pace_header.go puts each pane's effort pace on its top edge (ini-y0n.2),
+// and one row per effort in flight in the Agents overlay (ini-y0n.3):
 // "ini-wra 2/4 · 1/h · 0 stuck", from the bead poll window 1 already runs
 // (one bd list every beadPollInterval, ini-wra.1) and the pane states the TUI
 // already has. The line is computed once a minute on the main loop; a frame
 // only reads it, so drawing does no bd or git work.
 
 import (
+	"sort"
 	"time"
 
 	"github.com/nmelo/initech/internal/progress"
@@ -48,6 +50,7 @@ func (t *TUI) refreshPaceLines(now time.Time) {
 	for _, pv := range t.panes {
 		panes[pv.Name()] = pv.Activity().String()
 	}
+	t.paceRows = paceEffortRows(beads, panes, now, t.paceStale)
 	for _, pv := range t.panes {
 		p, ok := pv.(*Pane)
 		if !ok {
@@ -62,4 +65,47 @@ func (t *TUI) refreshPaceLines(now time.Time) {
 		}
 		p.setPaceLine(line)
 	}
+}
+
+// inFlight are the bead states that put an effort in the Agents overlay: in
+// progress, ready for QA, in QA.
+var inFlight = map[string]bool{"in_progress": true, "ready_for_qa": true, "in_qa": true}
+
+// paceEffortRows is the Agents overlay's rows: one per effort with a bead in
+// flight, each the line a pane header on that effort shows (the same PaceOf
+// call over the same window), with the stale mark when bd stopped answering;
+// in effort id order. None when nothing is in flight.
+func paceEffortRows(beads []progress.Bead, panes map[string]string, now time.Time, stale bool) []string {
+	type effort struct{ label, prefix, bead string }
+	seen := map[string]bool{}
+	var efforts []effort
+	for _, b := range beads {
+		if !inFlight[b.Status] {
+			continue
+		}
+		prefix, label := progress.Effort(b.ID)
+		if seen[prefix] {
+			continue
+		}
+		seen[prefix] = true
+		efforts = append(efforts, effort{label, prefix, b.ID})
+	}
+	sort.Slice(efforts, func(i, j int) bool {
+		if efforts[i].label != efforts[j].label {
+			return efforts[i].label < efforts[j].label
+		}
+		return efforts[i].prefix < efforts[j].prefix
+	})
+	var rows []string
+	for _, e := range efforts {
+		line := progress.PaceOf(beads, e.bead, panes, now, progress.HeaderWindow).Line()
+		if line == "" {
+			continue
+		}
+		if stale {
+			line += paceStaleMark
+		}
+		rows = append(rows, line)
+	}
+	return rows
 }

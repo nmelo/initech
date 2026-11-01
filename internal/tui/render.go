@@ -1217,6 +1217,14 @@ func (t *TUI) renderOverlay() {
 		}
 	}
 
+	// The panel is as wide as its longest effort row, as for the scope line:
+	// a row is cut only when the screen itself is narrower.
+	for _, line := range t.paceRows {
+		if w := len([]rune(line)) + 4; w > panelW {
+			panelW = w
+		}
+	}
+
 	sw, sh := s.Size()
 	px := sw - panelW - 1
 	py := 1
@@ -1225,6 +1233,20 @@ func (t *TUI) renderOverlay() {
 	}
 	if px+panelW > sw {
 		panelW = sw - px
+	}
+	// EFFORT ROWS (ini-y0n.3): one per effort in flight, the pane header's
+	// reading, under one rule below the columns and above the footer. They
+	// are the first lines a short screen gives up: the rows the screen has no
+	// room for are cut, and with room for none the rule goes too, so the
+	// columns and the footer keep their lines.
+	efforts := t.paceRows
+	if room := sh - py - panelH - 1; len(efforts) > room {
+		efforts = efforts[:max(room, 0)]
+	}
+	effortLines := 0
+	if len(efforts) > 0 {
+		effortLines = 1 + len(efforts)
+		panelH += effortLines
 	}
 	if py+panelH > sh {
 		panelH = sh - py
@@ -1236,6 +1258,9 @@ func (t *TUI) renderOverlay() {
 	t.overlayBounds.x = px
 	t.overlayBounds.y = py
 	t.overlayBounds.agentCount = listRows
+	t.overlayBounds.effortTop = py + 1 + listRows
+	t.overlayBounds.effortEnd = t.overlayBounds.effortTop + effortLines
+	t.overlayBounds.xEnd = px + panelW
 	t.overlayBounds.dots = make(map[[2]int]overlayDot, agentRows)
 
 	overlayBg := tcell.NewRGBColor(20, 25, 40)
@@ -1306,10 +1331,32 @@ func (t *TUI) renderOverlay() {
 		}
 	}
 
+	if effortLines > 0 {
+		ruleRow := py + 1 + listRows
+		blankRow(ruleRow)
+		dim := bgStyle.Foreground(tcell.ColorGray)
+		for x := px + 1; x < inner; x++ {
+			s.SetContent(x, ruleRow, '─', nil, dim)
+		}
+		rowStyle := bgStyle.Foreground(tcell.ColorSilver)
+		for i, line := range efforts {
+			r := ruleRow + 1 + i
+			blankRow(r)
+			col := px + 2
+			for _, ch := range line {
+				if col >= inner {
+					break
+				}
+				s.SetContent(col, r, ch, nil, rowStyle)
+				col++
+			}
+		}
+	}
+
 	// Summary line (only when hidden panes exist). It counts agents, never
 	// the machine divider rows.
 	if summaryRow {
-		sumRow := py + 1 + listRows
+		sumRow := py + 1 + listRows + effortLines
 		if sumRow+1 < py+panelH {
 			blankRow(sumRow)
 			summary := fmt.Sprintf(" %d visible, %d hidden", agentRows-hiddenCount, hiddenCount)
@@ -1327,7 +1374,7 @@ func (t *TUI) renderOverlay() {
 	// window owns that the operator has hidden; this line is agents this
 	// window does not own at all.
 	if scopeLine != "" {
-		scopeRow := py + 1 + listRows
+		scopeRow := py + 1 + listRows + effortLines
 		if summaryRow {
 			scopeRow++
 		}

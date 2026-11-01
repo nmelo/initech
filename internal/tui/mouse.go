@@ -33,6 +33,11 @@ func (t *TUI) handleMouse(ev *tcell.EventMouse) {
 				}
 				return
 			}
+			// The effort rows are read, never acted on: a click there
+			// neither toggles nor reaches the pane under the overlay.
+			if b := t.overlayBounds; my >= b.effortTop && my < b.effortEnd && mx >= b.x && mx < b.xEnd {
+				return
+			}
 		}
 
 		// Button1 press: focus + start selection. Hit-test against the render
