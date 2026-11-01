@@ -65,6 +65,24 @@ run ends. A simulator kept between runs carries its state, and one such
 device crashed PosterBoard at every boot. A new crash report from the run's
 device fails the run with exit 9: stop and tell super.
 
+## A TestFlight build
+
+```bash
+~/Desktop/Projects/initech/super/tools/heavy.sh app/scripts/testflight.sh /tmp/tf
+```
+
+Archives the checkout, exports it for App Store Connect and uploads it, with
+the keys in `initech.yaml` `app_store_connect`, by path only and never printed.
+The archive signs with the CI key; the export and the upload use the release
+key, an Admin key, because only an Admin key may use the cloud-managed
+distribution certificate. The release key file must be at
+`~/.appstoreconnect/private_keys/AuthKey_<release_key_id>.p8`, where `altool`
+looks. `--check` runs the checks alone: each key file present and mode 600,
+the release key where `altool` looks; a failed check refuses with exit 3. A
+stage that fails stops the script and names its log; nothing is retried. Raise
+`CURRENT_PROJECT_VERSION` in `project.yml` before each new upload: App Store
+Connect takes each build number once per version.
+
 ## Layout
 
 - `InitechApp/Pairing.swift`, `PairingStore.swift`, `PairingView.swift`: the
