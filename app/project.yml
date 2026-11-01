@@ -35,6 +35,8 @@ targets:
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: "UIInterfaceOrientationPortrait"
+        # The stamp phase below reads git and writes the built Info.plist.
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
       # Push: a Release build (TestFlight, the App Store) signs with a
       # distribution profile and its production push environment; a Debug
       # build signs with a development profile, so its environment is
@@ -44,6 +46,24 @@ targets:
           CODE_SIGN_ENTITLEMENTS: InitechApp/InitechApp.Debug.entitlements
         Release:
           CODE_SIGN_ENTITLEMENTS: InitechApp/InitechApp.entitlements
+    # Stamp the build commit: the short sha of the checkout this build was made
+    # from, into the built Info.plist as InitechCommit (About shows it). Runs
+    # on every build, so an incremental build never keeps an old sha; no
+    # readable commit writes "unknown". Before signing, as every build phase is.
+    postBuildScripts:
+      - name: Stamp the build commit
+        basedOnDependencyAnalysis: false
+        # The built Info.plist as an input orders this phase after the plist
+        # is written; without it the phase can run first and be overwritten.
+        inputFiles:
+          - $(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)
+        script: |
+          sha=$(git -C "$SRCROOT" rev-parse --short HEAD 2>/dev/null) || sha=unknown
+          case "$sha" in ""|*[!0-9a-f]*) sha=unknown ;; esac
+          plist="$TARGET_BUILD_DIR/$INFOPLIST_PATH"
+          /usr/libexec/PlistBuddy -c "Delete :InitechCommit" "$plist" 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :InitechCommit string $sha" "$plist"
+          echo "Stamp the build commit: InitechCommit=$sha"
   InitechAppTests:
     type: bundle.unit-test
     platform: iOS

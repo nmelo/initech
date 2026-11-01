@@ -83,6 +83,8 @@ jobs:
         run: |
           case "$DEVICE" in iphone|ipad) ;; *) echo "app-tests: device must be iphone or ipad" >&2; exit 2 ;; esac
           echo "app-tests: $DEVICE on $RUNNER_NAME, run $GITHUB_RUN_ID"
+          # BuildInfoTests checks the build stamped this checkout's commit.
+          export TEST_RUNNER_INITECH_EXPECT_COMMIT=$(git rev-parse --short HEAD)
           app/scripts/sim-test.sh "$DEVICE" "$RUNNER_TEMP/xcodebuild.log" \
             -test-timeouts-enabled YES -default-test-execution-time-allowance 300
           rc=$?

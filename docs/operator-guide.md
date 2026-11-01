@@ -291,7 +291,7 @@ Install the app from TestFlight on the iPhone or iPad. On first open it asks for
 
 The app locks behind Face ID (or the device passcode) on every open and every return from the background; a device with neither set stays locked.
 
-Every error the app shows is also written to the device log under the subsystem `co.nmelo.initech`, one category per screen, with the error's domain and code; read it in Console with the device connected, or for a simulator with `xcrun simctl spawn <device> log show --predicate 'subsystem == "co.nmelo.initech"' --last 5m`. An entry never carries the error's words, a pane name, the token or a URL with it, a pane's text, a message body or a bead title.
+Every error the app shows is also written to the device log under the subsystem `co.nmelo.initech`, one category per screen, with the error's domain and code; read it in Console with the device connected, or for a simulator with `xcrun simctl spawn <device> log show --predicate 'subsystem == "co.nmelo.initech"' --last 5m`. An entry never carries the error's words, a pane name, the token or a URL with it, a pane's text, a message body or a bead title. About, at the bottom of home, shows the version, the build number and the commit the build was made from, as `0.1.0 (1) 1a2b3c4`; a build whose commit could not be read shows `unknown` in its place.
 
 ### Home
 

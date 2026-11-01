@@ -8,6 +8,7 @@ struct MainView: View {
     @State private var showRigs = false
     @State private var showBlockers = false
     @State private var showProgress = false
+    @State private var showAbout = false
 
     var body: some View {
         NavigationSplitView {
@@ -23,6 +24,9 @@ struct MainView: View {
                     }
                     ToolbarItem(placement: .bottomBar) {
                         Button("Progress") { showProgress = true }
+                    }
+                    ToolbarItem(placement: .bottomBar) {
+                        Button("About") { showAbout = true }
                     }
                 }
         } detail: {
@@ -41,6 +45,9 @@ struct MainView: View {
         }
         .sheet(isPresented: $showProgress) {
             NavigationStack { ProgressScreen(home: home) }
+        }
+        .sheet(isPresented: $showAbout) {
+            NavigationStack { AboutView() }
         }
         .task {
             await home.reload()
