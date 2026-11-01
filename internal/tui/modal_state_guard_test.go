@@ -122,6 +122,7 @@ func newZJHGRig(t *testing.T, echoBody bool) *zjhgRig {
 			}
 		}
 	}()
+	endDrainsWithTest(t, r.p)
 	return r
 }
 

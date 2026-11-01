@@ -288,6 +288,7 @@ func TestRestart_ARealFreshlySpawnedPaneActuallyDeliversTheCarriedQueue(t *testi
 		t.Fatal("pane slot does not hold a local pane after restart")
 	}
 	t.Cleanup(np.Close)
+	endDrainsWithTest(t, np)
 
 	// Poll rather than sleep-once: this is waiting on a REAL process's own
 	// startup timing, not a fixed delay this test controls.

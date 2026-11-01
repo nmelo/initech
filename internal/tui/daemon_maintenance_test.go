@@ -261,8 +261,22 @@ func TestDaemonMaintenance_OneDefinitionOfMaintenance(t *testing.T) {
 // The tick runs on its own goroutine beside the daemon's others: sends from
 // IPC handlers, agent output, and the status and handshake reads. On the TUI
 // all of this ran on one goroutine, so this is what -race must see together.
+//
+// Every modal drain the test starts ends before it returns (ini-tio): a drain
+// left sending read the next tests' package seams (submitSampleMidpoint,
+// submitConfirmWindow) while they swapped them, a data race in their name.
+// The pane's safeGo counts the drains, and once the loops stop the test waits
+// for every drain to empty its queue and end (about three seconds).
 func TestDaemonMaintenance_TickBesideSendsOutputAndReads(t *testing.T) {
 	p := daemonPane(t)
+	var drains sync.WaitGroup
+	p.safeGo = func(f func()) {
+		drains.Add(1)
+		go func() {
+			defer drains.Done()
+			f()
+		}()
+	}
 	d := &Daemon{panes: []*Pane{p}}
 	stop := make(chan struct{})
 	var wg sync.WaitGroup
@@ -302,4 +316,17 @@ func TestDaemonMaintenance_TickBesideSendsOutputAndReads(t *testing.T) {
 	time.Sleep(300 * time.Millisecond)
 	close(stop)
 	wg.Wait()
+	ended := make(chan struct{})
+	go func() { drains.Wait(); close(ended) }()
+	select {
+	case <-ended:
+	case <-time.After(15 * time.Second):
+		t.Fatal("a modal drain did not end within 15s of the loops stopping: it would outlive the test")
+	}
+	p.mu.Lock()
+	draining := p.modalDraining
+	p.mu.Unlock()
+	if draining {
+		t.Error("a modal drain is still sending after the test's loops stopped: it outlives the test")
+	}
 }

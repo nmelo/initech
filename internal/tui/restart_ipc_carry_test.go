@@ -89,6 +89,7 @@ func TestRestartIPC_CarriedMessagesReachTheNewProcess(t *testing.T) {
 		t.Fatalf("restart: %+v", resp)
 	}
 	np := f6kgNew(t, tui, old)
+	endDrainsWithTest(t, np)
 	deadline := time.Now().Add(8 * time.Second)
 	for time.Now().Before(deadline) {
 		screen := np.emu.Render()

@@ -41,6 +41,7 @@ func heldMailPane(t *testing.T, name string) (*Pane, chan AgentEvent, *os.File) 
 		}
 	}()
 	t.Cleanup(func() { emu.Close() })
+	endDrainsWithTest(t, p)
 	return p, events, r
 }
 

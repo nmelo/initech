@@ -56,6 +56,7 @@ func dndPane(t *testing.T, name string) (*Pane, chan AgentEvent, func() string) 
 		}
 	}()
 	t.Cleanup(func() { emu.Close() })
+	endDrainsWithTest(t, p)
 	return p, events, func() string {
 		mu.Lock()
 		defer mu.Unlock()
