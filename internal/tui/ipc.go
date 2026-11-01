@@ -159,15 +159,16 @@ func (t *TUI) allPanesWithViews() ([]PaneInfo, []PaneView, bool) {
 		for i, p := range t.panes {
 			views[i] = p
 			panes[i] = PaneInfo{
-				Name:      p.Name(),
-				Host:      p.Host(),
-				Activity:  p.Activity().String(),
-				Alive:     p.IsAlive(),
-				Visible:   !t.layoutState.Hidden[agentKey(p)],
-				Beads:     ribbonBeads(p),
-				NoBead:    noBeadOf(p),
-				BeadStale: beadStaleOf(p),
-				Busy:      paneBusy(p, time.Now()),
+				Name:         p.Name(),
+				Host:         p.Host(),
+				Activity:     p.Activity().String(),
+				Alive:        p.IsAlive(),
+				Visible:      !t.layoutState.Hidden[agentKey(p)],
+				Beads:        ribbonBeads(p),
+				NoBead:       noBeadOf(p),
+				BeadStale:    beadStaleOf(p),
+				Unattributed: unattributedOf(p),
+				Busy:         paneBusy(p, time.Now()),
 			}
 			// The latch is why mail stops moving, so it belongs where someone
 			// looks when mail stops moving (ini-gbqc). Age and depth, not a
@@ -1480,6 +1481,8 @@ func (t *TUI) handleIPCPatrol(conn net.Conn, req IPCRequest) {
 		DNDAgeSec *int `json:"dnd_age_sec,omitempty"`
 		// BeadStale: Bead is the last one bd gave; bd did not answer since.
 		BeadStale bool `json:"bead_stale,omitempty"`
+		// Unattributed: fifteen minutes of work with no bead (ini-wra.3).
+		Unattributed bool `json:"unattributed,omitempty"`
 	}
 	var result []patrolEntry
 	t.runOnMain(func() {
@@ -1495,6 +1498,7 @@ func (t *TUI) handleIPCPatrol(conn net.Conn, req IPCRequest) {
 				Busy:     paneBusy(p, time.Now()),
 			}
 			result[i].BeadStale = beadStaleOf(p)
+			result[i].Unattributed = unattributedOf(p)
 			_, result[i].DNDAgeSec = dndFields(p, time.Now())
 		}
 	})

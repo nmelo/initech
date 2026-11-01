@@ -685,13 +685,14 @@ func (d *Daemon) allPanesWithViews() ([]PaneInfo, []PaneView, bool) {
 	for i, p := range snap {
 		views[i] = p
 		panes[i] = PaneInfo{
-			Name:      p.Name(),
-			Activity:  p.Activity().String(),
-			Alive:     p.IsAlive(),
-			Visible:   true,
-			Beads:     ribbonBeads(p),
-			NoBead:    p.NoBeadWork(),
-			BeadStale: p.BeadStale(),
+			Name:         p.Name(),
+			Activity:     p.Activity().String(),
+			Alive:        p.IsAlive(),
+			Visible:      true,
+			Beads:        ribbonBeads(p),
+			NoBead:       p.NoBeadWork(),
+			BeadStale:    p.BeadStale(),
+			Unattributed: p.Unattributed(),
 		}
 		panes[i].DND, panes[i].DNDAgeSec = dndFields(p, time.Now())
 		if panes[i].DNDAgeSec != nil {

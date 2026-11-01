@@ -115,6 +115,10 @@ func (p *Pane) chromeLook(focused bool, index int) (ribbonLook, tcell.Color) {
 		// The last bead bd gave, said to be unconfirmed (ini-wra.1).
 		beadTitle = BeadStaleNote
 	}
+	if beadLabel == "" && p.Unattributed() {
+		// Fifteen minutes of work with no bead (ini-wra.3).
+		beadLabel = noBeadLabel
+	}
 	return ribbonLook{title: title, style: titleStyle, tag: backgroundTag(p), bead: beadLabel, beadTitle: beadTitle, running: running}, tint
 }
 

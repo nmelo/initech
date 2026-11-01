@@ -31,6 +31,9 @@ type PaneInfo struct {
 	// BeadStale is true while the derived bead shown is the last one bd gave:
 	// bd did not answer the last poll (ini-wra.1). Omitted when false.
 	BeadStale bool `json:"bead_stale,omitempty"`
+	// Unattributed is true when the pane has worked fifteen minutes with no
+	// bead, derived or set (ini-wra.3). Omitted when false.
+	Unattributed bool `json:"unattributed,omitempty"`
 
 	// Modal-latch visibility (ini-gbqc): omitted entirely when no latch is up.
 	ModalLatched bool `json:"modal_latched,omitempty"`

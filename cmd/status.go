@@ -66,6 +66,10 @@ type paneInfo struct {
 	// has not confirmed since (ini-wra.1).
 	BeadStale bool `json:"bead_stale,omitempty"`
 
+	// Unattributed: the pane has worked fifteen minutes with no bead
+	// (ini-wra.3).
+	Unattributed bool `json:"unattributed,omitempty"`
+
 	// Read from the screen for --json only; nil or empty when not read
 	// (ini-l6om).
 	ContextPercent *int                `json:"context_percent"`
@@ -464,6 +468,11 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		// different (ini-jvrs).
 		if beadNote != "" && pi.NoBead == "" {
 			bead = color.Dim(beadNote)
+		}
+		// Fifteen minutes of work with no bead anywhere (ini-wra.3): bd holds
+		// none for the role and the pane shows none.
+		if pi.Unattributed && len(held) == 0 && pi.NoBead == "" {
+			bead = color.Yellow("no bead")
 		}
 		if pi.BeadStale && pi.NoBead == "" {
 			bead += " " + color.Yellow(tui.BeadStaleNote)

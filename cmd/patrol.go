@@ -78,6 +78,8 @@ func runPatrol(cmd *cobra.Command, args []string) error {
 		DNDAgeSec *int `json:"dnd_age_sec"`
 		// BeadStale: Bead is the last one bd gave; bd has not answered since.
 		BeadStale bool `json:"bead_stale"`
+		// Unattributed: fifteen minutes of work with no bead (ini-wra.3).
+		Unattributed bool `json:"unattributed"`
 	}
 	var entries []patrolEntry
 	if err := json.Unmarshal([]byte(resp.Data), &entries); err != nil {
@@ -116,6 +118,9 @@ func runPatrol(cmd *cobra.Command, args []string) error {
 		}
 		if e.DNDAgeSec != nil {
 			headerInner += ", " + color.Yellow(dndText(*e.DNDAgeSec))
+		}
+		if e.Bead == "" && e.Unattributed {
+			headerInner += " | " + color.Yellow("no bead")
 		}
 		if e.Bead != "" {
 			headerInner += " | " + color.Blue(e.Bead)

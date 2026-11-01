@@ -288,12 +288,16 @@ type Pane struct {
 	// says the role is on; an override set by initech bead wins until it is
 	// cleared (beadIDs or the no-bead marker set: overrideLocked).
 	// effectiveBeadsLocked is the one answer every reader uses.
-	lastNamed                    string          // The bead the pane last named, kept after a clear; breaks a two-bead tie.
-	derivedBead                  string          // bd's in_progress bead for the role, "" for none.
-	derivedTitle                 string          // Its title.
-	derivedUpdatedAt             time.Time       // Its updated_at in bd.
-	derivedSince                 time.Time       // When it first became the derived bead here (Step 2A's interval start).
-	beadStale                    bool            // bd did not answer the last poll; the derived bead is the last one known.
+	lastNamed        string    // The bead the pane last named, kept after a clear; breaks a two-bead tie.
+	derivedBead      string    // bd's in_progress bead for the role, "" for none.
+	derivedTitle     string    // Its title.
+	derivedUpdatedAt time.Time // Its updated_at in bd.
+	derivedSince     time.Time // When it first became the derived bead here (Step 2A's interval start).
+	beadStale        bool      // bd did not answer the last poll; the derived bead is the last one known.
+	// Unattributed work (ini-wra.3): working time with no bead, counted on the
+	// once-a-second maintenance tick, and that tick's last time.
+	noBeadFor                    time.Duration
+	noBeadTick                   time.Time
 	noBeadWork                   string          // First words of work dispatched with no bead; "" when none. Never set alongside beadIDs.
 	stallReported                bool            // True after emitting stall event. Reset on new activity.
 	stuckReported                bool            // True after emitting stuck event. Reset on success.

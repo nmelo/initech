@@ -63,6 +63,8 @@ func maintainModal(panes []PaneView, now time.Time, last *time.Time) {
 		}
 		// Do-not-disturb ends at its timer, or at turn end (ini-x432).
 		p.endDNDIfDue(now)
+		// Working time with no bead, for the "no bead" marker (ini-wra.3).
+		p.noteNoBeadWork(now)
 		// ONE NON-BLOCKING READ PER PANE PER TICK (ini-psjt). Everything below
 		// that looks at the screen looks at this snapshot. Through the blocking
 		// accessors, a single pane whose emulator lock was held by a stalled
