@@ -90,10 +90,11 @@ func tokenMatches(header string, want [32]byte) bool {
 }
 
 // PairURL is the pairing payload the token command shows as text and QR:
-// initech://pair?host=<ip>&port=<n>&token=<t>.
-func PairURL(host string, port int, token string) string {
+// initech://pair?host=<ip>&port=<n>&token=<t>&fp=<certificate pin>. The app
+// trusts the service only when its certificate's Fingerprint equals fp.
+func PairURL(host string, port int, token, fp string) string {
 	if strings.Contains(host, ":") {
 		host = "[" + host + "]"
 	}
-	return fmt.Sprintf("initech://pair?host=%s&port=%d&token=%s", host, port, token)
+	return fmt.Sprintf("initech://pair?host=%s&port=%d&token=%s&fp=%s", host, port, token, fp)
 }

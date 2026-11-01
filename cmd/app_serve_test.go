@@ -5,9 +5,11 @@ import (
 	"bytes"
 	"encoding/json"
 	"net"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -155,4 +157,77 @@ func TestAppServeBackend_NoRigAndNoTUI(t *testing.T) {
 		}
 	}
 	t.Error("the rig was not found")
+}
+
+// ini-r0q.1 AC9 (token, text half): initech app-serve token prints the
+// pairing link once, with the address the service binds, the port, a new
+// token and the certificate pin; it stores the token's digest only, and a
+// second run revokes the first token. With no tailnet address it refuses
+// and names --listen local-network.
+func TestAppServeToken_PrintsThePairingLinkOnce(t *testing.T) {
+	state := filepath.Join(t.TempDir(), "app-serve")
+	oldDir, oldAddrs, oldListen, oldPort := appServeStateDir, appServeAddrs, appServeListen, appServePort
+	t.Cleanup(func() {
+		appServeStateDir, appServeAddrs, appServeListen, appServePort = oldDir, oldAddrs, oldListen, oldPort
+	})
+	appServeStateDir = func() string { return state }
+	appServeAddrs = func() ([]appserve.IfaceAddr, error) {
+		return []appserve.IfaceAddr{
+			{Iface: "en0", IP: net.ParseIP("192.168.1.50"), Up: true},
+			{Iface: "utun4", IP: net.ParseIP("100.101.1.2"), Up: true},
+			{Iface: "utun4", IP: net.ParseIP("fd7a:115c:a1e0::1"), Up: true},
+		}, nil
+	}
+	appServeListen, appServePort = appserve.ListenTailnet, appserve.DefaultPort
+
+	run := func() string {
+		var out bytes.Buffer
+		c := &cobra.Command{}
+		c.SetOut(&out)
+		if err := runAppServeToken(c, nil); err != nil {
+			t.Fatal(err)
+		}
+		return out.String()
+	}
+	out := run()
+	_, fp, err := appserve.LoadCert(state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	re := regexp.MustCompile(`initech://pair\?host=100\.101\.1\.2&port=7392&token=([A-Za-z0-9_-]{43})&fp=` + regexp.QuoteMeta(fp) + `\n`)
+	m := re.FindStringSubmatch(out)
+	if m == nil {
+		t.Fatalf("no pairing link with the tailnet address, port, token and pin in:\n%s", out)
+	}
+	if strings.Count(out, m[1]) != 1 {
+		t.Errorf("the token is printed %d times", strings.Count(out, m[1]))
+	}
+	stored, _ := os.ReadFile(filepath.Join(state, appserve.TokenFile))
+	if strings.Contains(string(stored), m[1]) {
+		t.Error("the token itself is stored")
+	}
+	second := re.FindStringSubmatch(run())
+	if second == nil || second[1] == m[1] {
+		t.Fatalf("second run: %v, want a new token", second)
+	}
+	d, _ := appserve.LoadDigest(state)
+	h := appserve.New(appserve.Config{Backend: &appBackend{}, Digest: d, HasToken: true}).Handler()
+	for tok, want := range map[string]int{m[1]: 401, second[1]: 200} {
+		req := httptest.NewRequest("GET", "/v1/rigs", nil)
+		req.Header.Set("Authorization", "Bearer "+tok)
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if rec.Code != want {
+			t.Errorf("token %s...: %d, want %d", tok[:4], rec.Code, want)
+		}
+	}
+
+	appServeAddrs = func() ([]appserve.IfaceAddr, error) {
+		return []appserve.IfaceAddr{{Iface: "en0", IP: net.ParseIP("192.168.1.50"), Up: true}}, nil
+	}
+	c := &cobra.Command{}
+	c.SetOut(&bytes.Buffer{})
+	if err := runAppServeToken(c, nil); err == nil || !strings.Contains(err.Error(), "--listen local-network") {
+		t.Errorf("no tailnet: %v, want the error naming --listen local-network", err)
+	}
 }

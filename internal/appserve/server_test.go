@@ -249,7 +249,7 @@ func TestIssueToken_DigestOnlyAndANewOneRevokesTheOld(t *testing.T) {
 	if _, err := LoadDigest(t.TempDir()); !errors.Is(err, ErrNoToken) {
 		t.Errorf("no token issued: %v, want ErrNoToken", err)
 	}
-	if got := PairURL("100.101.1.2", 7392, "tok"); got != "initech://pair?host=100.101.1.2&port=7392&token=tok" {
+	if got := PairURL("100.101.1.2", 7392, "tok", "pin"); got != "initech://pair?host=100.101.1.2&port=7392&token=tok&fp=pin" {
 		t.Errorf("PairURL = %s", got)
 	}
 }
@@ -276,6 +276,16 @@ func TestBindAddr_TailnetOnlyNeverAllOrLoopback(t *testing.T) {
 	}
 	if ip, err := BindAddr(ListenTailnet, []IfaceAddr{{"utun4", net.ParseIP("fd7a:115c:a1e0::1"), true}}); err != nil || ip.String() != "fd7a:115c:a1e0::1" {
 		t.Errorf("tailnet v6 only: %v %v", ip, err)
+	}
+	// Carrier NAT and phone hotspots hand out 100.64.0.0/10 on a LAN
+	// interface: without Tailscale's fd7a: address beside it, that is not
+	// the tailnet.
+	cgnat := []IfaceAddr{{"en0", net.ParseIP("100.72.3.4"), true}, {"en0", net.ParseIP("fe80::1"), true}}
+	if ip, err := BindAddr(ListenTailnet, cgnat); !errors.Is(err, ErrNoTailnet) {
+		t.Errorf("a carrier-NAT 100.64/10 address on en0 was taken as the tailnet: %v %v", ip, err)
+	}
+	if ip, err := BindAddr(ListenTailnet, append(cgnat, addrs...)); err != nil || ip.String() != "100.101.1.2" {
+		t.Errorf("carrier NAT on en0 beside Tailscale on utun4: %v %v, want utun4's 100.101.1.2", ip, err)
 	}
 	if ip, err := BindAddr(ListenLocalNetwork, addrs); err != nil || ip.String() != "192.168.1.50" {
 		t.Errorf("local-network: %v %v, want en0's 192.168.1.50", ip, err)

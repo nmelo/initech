@@ -4,11 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
-	"net/http"
 	"os"
 	"path/filepath"
 	"sort"
-	"time"
 
 	"github.com/nmelo/initech/internal/appserve"
 	"github.com/nmelo/initech/internal/config"
@@ -31,9 +29,11 @@ listens on one address only: by default this Mac's Tailscale address, and
 with --listen local-network the LAN address, for the build phase while
 Tailscale is stopped. It never binds 0.0.0.0 or loopback.
 
-Every request carries the device token (Authorization: Bearer <token>); a
-missing or wrong token is refused with 401 and no body. Issue the token
-with initech app-serve token, which prints it once.
+It serves HTTPS only (TLS 1.3) with its own self-signed certificate, which
+the app pins by the fingerprint in the pairing link. Every request carries
+the device token (Authorization: Bearer <token>); a missing or wrong token
+is refused with 401 and no body. Issue the token with initech app-serve
+token, which prints it once.
 
 It finds rigs by scanning each --projects folder for <folder>/*/initech.yaml
 and serves, for every rig whose initech answers: GET /v1/rigs and
@@ -51,9 +51,11 @@ var appServeTokenCmd = &cobra.Command{
 SHA-256 (~/.config/initech/app-serve/token.sha256, mode 0600) and prints the
 pairing link once:
 
-  initech://pair?host=<address>&port=<port>&token=<token>
+  initech://pair?host=<address>&port=<port>&token=<token>&fp=<pin>
 
-The address is the one initech app-serve binds with the same --listen and
+fp is the SHA-256 of the service's certificate (made on the first run,
+~/.config/initech/app-serve/cert.pem, key 0600, kept across re-pairing),
+which the app pins. The address is the one initech app-serve binds with the same --listen and
 --port. A new token replaces the old one, so the device paired before is
 refused from then on. The token is never printed again; run this again to
 pair a device.`,
@@ -87,13 +89,17 @@ func runAppServeToken(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+	_, fp, err := appserve.EnsureCert(appServeStateDir())
+	if err != nil {
+		return fmt.Errorf("make certificate: %w", err)
+	}
 	token, err := appserve.IssueToken(appServeStateDir())
 	if err != nil {
 		return fmt.Errorf("issue token: %w", err)
 	}
 	out := cmd.OutOrStdout()
 	fmt.Fprintln(out, "Pair the app with this link (shown once; a new token revokes the previous device):")
-	fmt.Fprintln(out, appserve.PairURL(ip.String(), appServePort, token))
+	fmt.Fprintln(out, appserve.PairURL(ip.String(), appServePort, token, fp))
 	return nil
 }
 
@@ -112,6 +118,10 @@ func runAppServe(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	digest, err := appserve.LoadDigest(appServeStateDir())
+	if err != nil {
+		return err
+	}
+	cert, _, err := appserve.LoadCert(appServeStateDir())
 	if err != nil {
 		return err
 	}
@@ -134,8 +144,7 @@ func runAppServe(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	fmt.Fprintf(cmd.ErrOrStderr(), "initech app-serve listening on %s (%s), rigs under %v\n", ln.Addr(), appServeListen, dirs)
-	hs := &http.Server{Handler: srv.Handler(), ReadHeaderTimeout: 10 * time.Second}
-	return hs.Serve(ln)
+	return appserve.ServeTLS(ln, srv.Handler(), cert)
 }
 
 // appBackend is the app service's Backend over the code initech status,

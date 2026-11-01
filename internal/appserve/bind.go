@@ -62,54 +62,73 @@ func mustCIDR(s string) *net.IPNet {
 // a tailnet address: Tailscale is stopped or not installed.
 var ErrNoTailnet = errors.New("no tailnet address on this Mac (is Tailscale running?); for the build phase, --listen local-network binds the LAN interface")
 
-// BindAddr is the one address the service listens on: in tailnet mode the
-// interface's Tailscale address (100.64.0.0/10, else fd7a:115c:a1e0::/48);
-// in local-network mode the LAN's private IPv4 (en0 first). It is never the
-// unspecified address and never a loopback one.
+// BindAddr is the one address the service listens on.
+//
+// In tailnet mode it is an address on Tailscale's interface, which is told
+// apart by the fd7a:115c:a1e0::/48 address Tailscale gives every node: an
+// address in 100.64.0.0/10 alone proves nothing, since carrier NAT and phone
+// hotspots hand out that range on ordinary LAN interfaces. The interface's
+// 100.64.0.0/10 address is preferred, else its fd7a: one. No interface
+// holding an fd7a:115c:a1e0::/48 address is ErrNoTailnet.
+//
+// In local-network mode it is the LAN's private IPv4 (en0 first).
+//
+// It is never the unspecified address and never a loopback one.
 func BindAddr(mode string, addrs []IfaceAddr) (net.IP, error) {
-	var pick func(net.IP) bool
+	usable := func(a IfaceAddr) bool { return a.Up && !a.IP.IsLoopback() && !a.IP.IsUnspecified() }
 	switch mode {
 	case ListenTailnet:
-		pick = func(ip net.IP) bool { return tailnetV4.Contains(ip) || (ip.To4() == nil && tailnetV6.Contains(ip)) }
+		ts := map[string]bool{}
+		for _, a := range addrs {
+			if usable(a) && a.IP.To4() == nil && tailnetV6.Contains(a.IP) {
+				ts[a.Iface] = true
+			}
+		}
+		var v4, v6 []IfaceAddr
+		for _, a := range addrs {
+			if !usable(a) || !ts[a.Iface] {
+				continue
+			}
+			switch {
+			case a.IP.To4() != nil && tailnetV4.Contains(a.IP):
+				v4 = append(v4, a)
+			case a.IP.To4() == nil && tailnetV6.Contains(a.IP):
+				v6 = append(v6, a)
+			}
+		}
+		for _, c := range [][]IfaceAddr{v4, v6} {
+			if len(c) > 0 {
+				sort.SliceStable(c, func(i, j int) bool { return c[i].Iface < c[j].Iface })
+				return c[0].IP, nil
+			}
+		}
+		return nil, ErrNoTailnet
 	case ListenLocalNetwork:
-		pick = func(ip net.IP) bool {
-			if ip.To4() == nil {
-				return false
+		var cands []IfaceAddr
+		for _, a := range addrs {
+			if !usable(a) || a.IP.To4() == nil {
+				continue
 			}
 			for _, n := range privateV4s {
-				if n.Contains(ip) {
-					return true
+				if n.Contains(a.IP) {
+					cands = append(cands, a)
+					break
 				}
 			}
-			return false
 		}
-	default:
-		return nil, fmt.Errorf("--listen %q: want %s or %s", mode, ListenTailnet, ListenLocalNetwork)
+		if len(cands) == 0 {
+			return nil, errors.New("no private LAN address on this Mac for --listen local-network")
+		}
+		sort.SliceStable(cands, func(i, j int) bool {
+			a, b := cands[i], cands[j]
+			if (a.Iface == "en0") != (b.Iface == "en0") {
+				return a.Iface == "en0"
+			}
+			return a.Iface < b.Iface
+		})
+		return cands[0].IP, nil
 	}
-	var cands []IfaceAddr
-	for _, a := range addrs {
-		if a.Up && !a.IP.IsLoopback() && !a.IP.IsUnspecified() && pick(a.IP) {
-			cands = append(cands, a)
-		}
-	}
-	if len(cands) == 0 {
-		if mode == ListenTailnet {
-			return nil, ErrNoTailnet
-		}
-		return nil, errors.New("no private LAN address on this Mac for --listen local-network")
-	}
-	// IPv4 before IPv6, en0 before the rest, then by name: one stable answer.
-	sort.SliceStable(cands, func(i, j int) bool {
-		a, b := cands[i], cands[j]
-		if (a.IP.To4() != nil) != (b.IP.To4() != nil) {
-			return a.IP.To4() != nil
-		}
-		if (a.Iface == "en0") != (b.Iface == "en0") {
-			return a.Iface == "en0"
-		}
-		return a.Iface < b.Iface
-	})
-	return cands[0].IP, nil
+	return nil, fmt.Errorf("--listen %q: want %s or %s", mode, ListenTailnet, ListenLocalNetwork)
 }
 
 // Listen opens the service's TCP listener on ip:port, refusing an address
