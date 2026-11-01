@@ -20,6 +20,11 @@ func (f *filePty) Size() (int, int, error) { return 80, 24, nil }
 func (f *filePty) Name() string            { return "test" }
 func (f *filePty) Start(*exec.Cmd) error   { return nil }
 
+// TermRawMode: a filePty stands in for a Claude pane, whose terminal is in raw
+// mode, so the send path types the stash key into it as into a real Claude
+// (stash_mode.go). A pipe has no termios to read.
+func (f *filePty) TermRawMode() (bool, error) { return true, nil }
+
 // fakePaneSpawner is a TUI.paneSpawner that wakes an agent with no process
 // behind it: the production NewParkedPane, set alive and awake like a fresh
 // NewPane, reading from a pipe that has already said "up". So readLoop

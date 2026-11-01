@@ -579,8 +579,11 @@ func sendPaneTextLocked(pane *Pane, text string, enter bool) SendVerdict {
 	// unconditionally would have made the fix worse than the bug for them.
 	// Safe by construction: no caller passed enter=false before a9d8, so this
 	// condition changes no existing behaviour.
+	//
+	// ONLY INTO A TERMINAL IN RAW MODE (ini-933): read at this moment, see
+	// stash_mode.go. In cooked mode the byte is XOFF and freezes the pane.
 	stashed := false
-	if !pane.noBracketedPaste && enter {
+	if !pane.noBracketedPaste && enter && pane.stashKeyAllowed() {
 		pane.emu.SendKey(uv.KeyPressEvent(uv.Key{Code: 's', Mod: uv.ModCtrl}))
 		time.Sleep(75 * time.Millisecond)
 		stashed = true

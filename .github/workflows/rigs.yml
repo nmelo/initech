@@ -153,7 +153,7 @@ jobs:
         # -v so the log NAMES every rig that ran: without it a skipped rig is
         # invisible and a shard reports a vacuous green (shipper, reviewing
         # 2d2f909 -- the first dispatch had zero PASS/SKIP lines to check).
-        run: go test ./internal/tui/ -count=1 -v -timeout 900s -run 'TestSuspendGuard|TestAQY_|UZ42Rig' -skip '^TestSuspendGuard_(ForwardSendSite|DaemonIPCSendSite|DaemonControlSendSite|ResumeFailureKeepsQueue)$'
+        run: go test ./internal/tui/ -count=1 -v -timeout 900s -run 'TestSuspendGuard|TestAQY_|UZ42Rig' -skip '^TestSuspendGuard_ResumeFailureKeepsQueue$'
 
   composed-rigs-shard3:
     # ~179s measured: 9ISX 79.7s + Dr03 56.0s + 9GVN 35.6s + Z5UW 7.2s
@@ -183,7 +183,7 @@ jobs:
         # -v so the log NAMES every rig that ran: without it a skipped rig is
         # invisible and a shard reports a vacuous green (shipper, reviewing
         # 2d2f909 -- the first dispatch had zero PASS/SKIP lines to check).
-        run: go test ./internal/tui/ -count=1 -v -timeout 900s -run 'NineISXRig|Dr03Rig|NineGVNRig|TestZ5uwRig' -skip '^(TestNineGVNRig_QuotedDialogDoesNotHoldMail)$'
+        run: go test ./internal/tui/ -count=1 -v -timeout 900s -run 'NineISXRig|Dr03Rig|NineGVNRig|TestZ5uwRig'
 
   composed-rigs-shard4:
     # ~173s measured: Attention 73.0s + SuspendFate 65.7s + Inbox7 34.1s
@@ -212,7 +212,7 @@ jobs:
         # -v so the log NAMES every rig that ran: without it a skipped rig is
         # invisible and a shard reports a vacuous green (shipper, reviewing
         # 2d2f909 -- the first dispatch had zero PASS/SKIP lines to check).
-        run: go test ./internal/tui/ -count=1 -v -timeout 900s -run 'AttentionRig|TestSuspendFate|Inbox7Rig' -skip '^(TestSuspendFate_IPCSendPath)$'
+        run: go test ./internal/tui/ -count=1 -v -timeout 900s -run 'AttentionRig|TestSuspendFate|Inbox7Rig'
 
   # DARWIN-ONLY (ini-c5a.7): the tests that need macOS or a host outside the
   # workbench sandbox, off main's path, on the shared Mac behind its load gate,
@@ -220,8 +220,10 @@ jobs:
   # and notarytool), the whole install suite (two of its tests re-sign a binary
   # with codesign and skip on Linux), the Go tests that read code signatures or
   # pmset output, the one test that binds the host's LAN address (the sandbox
-  # denies private ranges), and the six rigs that fail on Linux (the shards
-  # above skip exactly these; pm holds the Linux question).
+  # denies private ranges), and the suspend and send rigs, which run on Linux
+  # in the shards above too, so each runs on both systems. One of them,
+  # TestSuspendGuard_ResumeFailureKeepsQueue, still fails on Linux and is the
+  # one test shard 2 skips there; it runs here.
   darwin:
     runs-on: ${{ github.event_name != 'pull_request' && vars.MAC_RUNNER || 'macos-latest' }}
     timeout-minutes: 50  # 30 plus the load gate's 20-minute cap
@@ -251,7 +253,7 @@ jobs:
       - name: Go tests that need macOS
         run: go test ./internal/appserve/ ./internal/tui/ -count=1 -v -run '^(TestInstallCopy_ASignedBinaryKeepsItsSignature|TestParseBatteryOutput_RealPmsetStrings|TestIsChargingField_NotChargingIsNotSubstringMatched)$'
 
-      - name: Rigs that fail on Linux, and the LAN-bind test
+      - name: The suspend and send rigs on macOS, and the LAN-bind test
         env:
           INITECH_9IMX: "1"
           INITECH_9GVN: "1"

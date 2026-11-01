@@ -294,6 +294,7 @@ type Pane struct {
 	waitingTier           WaitingTier       // Confidence in the current wait. Zero value is the SILENT tier, deliberately.
 	waitingModalSeen      bool              // The screen has confirmed this wait's dialog, so the screen may also retire it.
 	attn                  *attentionSignal  // Mailbox the OSC 777 handler writes into. Leaf-locked; see attention_detect.go.
+	stashModeLogged       atomic.Bool       // The pane logged once that its terminal mode could not be read (stash_mode.go).
 	journal               []JournalEntry    // Ring buffer of recent JSONL entries (cap journalRingSize).
 	jsonlDir              string            // Directory to search for session JSONL files.
 	sessUse               sessionUsage      // The transcript's last context reading (ini-484).

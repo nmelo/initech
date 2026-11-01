@@ -362,7 +362,10 @@ Settings live in `initech.yaml` at the project root and are read at startup.
 ### Typing hold
 
 When an agent sends a message to a pane you are typing in, the message waits until you pause,
-so your draft is not stashed and restored mid-word. While a message waits, the pane's ribbon
+so your draft is not stashed and restored mid-word. A message that submits first types the stash
+key (Ctrl+S) to keep your draft, and the stash key is typed only into a terminal in raw mode, as
+Claude Code's is: a pane in cooked mode (a shell, or an agent still starting) gets the message
+without it, because there Ctrl+S stops the pane's output. While a message waits, the pane's ribbon
 shows a ✉ mark. Messages to the same pane go one after another, in the order they arrived.
 The sender's `initech send` returns once the message is actually delivered.
 
