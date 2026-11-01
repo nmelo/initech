@@ -235,6 +235,10 @@ Once connected, address an agent on the other machine as `host:agent`. `initech 
 
 An agent the daemon hosts holds and reports messages the same way a local one does. A message that arrives while a dialog is open waits, and goes once the dialog closes: `initech send host:agent` answers `deferred to host:agent`, as a local send does, and exits 0. A send to a remote agent that is stopped, has exited or is still starting is refused with the same reason a local one gets. When a message is held, released, or cannot be delivered (the process exited, a dialog stayed open for 10 minutes, or a withheld Enter ran out of time), the connected initech shows the same toast and event-log line as for a local agent, named `host:agent`, and the daemon's log records it too. A report raised while no initech is connected is in the daemon's log only. A remote agent has no inbox entries, since it cannot post to the inbox. The agent's running or idle state follows its output: `initech status` on that machine reports it, and a stop gives a busy agent the same grace to finish as a local one gets.
 
+### Upgrading with Rigs Running
+
+`brew upgrade initech` removes `/opt/homebrew/bin/initech` before it builds the new version, so while it runs every agent's `initech send`, `peek` and `deliver` fails, and a hung brew leaves them failing. On a Mac with rigs running, the fleet upgrades through `scripts/release/brew_upgrade_bounded.sh`, not bare `brew upgrade`: brew only downloads and checks the tarball, the script builds the new version beside the old one and runs it to prove it, then renames the link over, so the link never goes away. A second run at the same time refuses. A brew call past its time bound is stopped, and the link stays on the old version. `--prune` also removes old versions from the Cellar, keeping the installed one, the previous one and any a running initech started from. On any other Mac, `brew upgrade initech` is the way to upgrade. A running rig stays on the version it started with until it restarts.
+
 ## Key Commands Quick Reference
 
 These are the commands you'll use most. The full list is in the README.

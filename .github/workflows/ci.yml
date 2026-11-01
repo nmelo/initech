@@ -110,6 +110,10 @@ jobs:
       - name: Lint test names
         run: bash scripts/lint-test-names.sh
 
+      # The install step: fake brew, temp prefix, no network, no real Cellar.
+      - name: Install step tests
+        run: make release-install-test
+
       # ini-2x8.8: fail when a test file compiles on one platform and not
       # another without a declared exemption. Static (`go list` applies build
       # constraints without running anything), so one leg answers for all three
