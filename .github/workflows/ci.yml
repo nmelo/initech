@@ -117,31 +117,52 @@ jobs:
       - name: Lint test names
         run: bash scripts/lint-test-names.sh
 
-      # The install step (fake brew, temp prefix, no network, no real Cellar)
-      # and the signing step (fake gh, codesign and notarytool; no keychain, no
-      # Apple service). Two Python suites of about a minute each, run side by
-      # side (ini-c5a.7): each makes its own temp folder and fakes, so they share
-      # nothing, and back to back they made build-and-test the push run's long
-      # pole. Each exit code is read on its own, unpiped: a red in either fails
-      # the step, and both logs print whatever happened.
-      - name: Install and signing step tests (side by side)
+      # THE SLOW STEPS, SIDE BY SIDE (ini-c5a.7): the release install suite (fake
+      # brew, temp prefix, no network, no real Cellar), the signing suite (fake
+      # gh, codesign and notarytool; no keychain, no Apple service), the publish
+      # suite (fake gh and codesign, a local repository as the tap), and the
+      # census leg (was its own job, census-leg): the env-gated census and
+      # window-CLI integration tests, which no shard runs (their gate is off
+      # there), so the suite still runs once; on push, schedule and dispatch
+      # only, as the job was. Each is about a minute and they share nothing (each
+      # Python suite makes its own temp folder and fakes); one after another they
+      # made build-and-test the push run's long pole. Each exit code is read on
+      # its own, unpiped: a red in any fails the step, and every log prints.
+      # ini-0lko: the census line first names what it selected (-list).
+      - name: Release suites and the census, side by side
+        env:
+          INITECH_CENSUS: "1"
         run: |
           set +e
           make release-install-test > release-install-test.log 2>&1 &
           install_pid=$!
           make release-sign-test > release-sign-test.log 2>&1 &
           sign_pid=$!
-          wait "$install_pid"; install_rc=$?
-          wait "$sign_pid"; sign_rc=$?
-          echo "::group::Install step tests (exit $install_rc)"; cat release-install-test.log; echo "::endgroup::"
-          echo "::group::Signing step tests (exit $sign_rc)"; cat release-sign-test.log; echo "::endgroup::"
-          [ "$install_rc" -eq 0 ] || echo "::error::Install step tests failed (exit $install_rc)"
-          [ "$sign_rc" -eq 0 ] || echo "::error::Signing step tests failed (exit $sign_rc)"
-          [ "$install_rc" -eq 0 ] && [ "$sign_rc" -eq 0 ]
-
-      # The publish step: fake gh and codesign, a local repository as the tap.
-      - name: Publish step tests
-        run: make release-publish-test
+          make release-publish-test > release-publish-test.log 2>&1 &
+          publish_pid=$!
+          census_pid=""
+          if [ "$GITHUB_EVENT_NAME" != "pull_request" ]; then
+            {
+              go test ./internal/tui/ -list 'TestCensus_|TestRolesLessBoot_|TestWindowCLI_' &&
+              go test ./internal/tui/ -count=1 -timeout 900s -run 'TestCensus_|TestRolesLessBoot_|TestWindowCLI_'
+            } > census.log 2>&1 &
+            census_pid=$!
+          fi
+          failed=0
+          report() { # report <name> <pid> <log>
+            wait "$2"; rc=$?
+            echo "::group::$1 (exit $rc)"; cat "$3"; echo "::endgroup::"
+            if [ "$rc" -ne 0 ]; then echo "::error::$1 failed (exit $rc)"; failed=1; fi
+          }
+          report "Install step tests" "$install_pid" release-install-test.log
+          report "Signing step tests" "$sign_pid" release-sign-test.log
+          report "Publish step tests" "$publish_pid" release-publish-test.log
+          if [ -n "$census_pid" ]; then
+            report "Census and window-CLI integration" "$census_pid" census.log
+          else
+            echo "Census and window-CLI integration: skipped on a pull request, as census-leg was"
+          fi
+          exit "$failed"
 
       # ini-2x8.8: fail when a test file compiles on one platform and not
       # another without a declared exemption. Static (`go list` applies build
@@ -188,22 +209,6 @@ jobs:
       # is red the day one is not (a lighter variant, a short-only test).
       - name: Short census (every testing.Short() use is a skip guard)
         run: go run ./scripts/shortcensus -v
-
-      # THE CENSUS LEG (was its own job, census-leg; folded in by ini-c5a.7 so
-      # the push run is six jobs on six runners). The env-gated census and
-      # window-CLI integration tests, which no shard runs (their gate is off
-      # there), so the suite still runs once. Push, schedule and dispatch only,
-      # as the job was.
-      # ini-0lko: same witness for the census steps -- name what they selected.
-      - name: Witness which census tests this leg selected
-        if: github.event_name != 'pull_request'
-        run: go test ./internal/tui/ -list 'TestCensus_|TestRolesLessBoot_|TestWindowCLI_'
-
-      - name: Census and window-CLI integration
-        if: github.event_name != 'pull_request'
-        env:
-          INITECH_CENSUS: "1"
-        run: go test ./internal/tui/ -count=1 -timeout 900s -run 'TestCensus_|TestRolesLessBoot_|TestWindowCLI_'
 
   # THE NON-SHORT SUITE, on one platform (ini-4bf2), in five shards (ini-bus5,
   # ini-p2ve, ini-c5a.3). The only run of the test suite in this workflow.

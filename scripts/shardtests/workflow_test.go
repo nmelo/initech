@@ -24,6 +24,7 @@ type workflow struct {
 		Needs interface{} `yaml:"needs"`
 		If    string      `yaml:"if"`
 		Steps []struct {
+			Name string            `yaml:"name"`
 			If   string            `yaml:"if"`
 			Uses string            `yaml:"uses"`
 			Run  string            `yaml:"run"`
@@ -172,12 +173,14 @@ func TestWorkflows_SetupGoCachesOnlyOnPullRequests(t *testing.T) {
 // The job set the release gate expects, exactly (ini-p2ve.2, ini-c5a.3,
 // ini-c5a.7): six start together, one for each of the Mac's six runner slots,
 // so none waits for a second wave, and the census follows. build-and-test runs
-// exactly two go test commands: the witness -list of the census selector, and
-// that one env-gated census selector (TestCensus_, TestRolesLessBoot_,
+// go test in two steps only: the witness -list of the whole tui package, and
+// the side-by-side step, whose only go test lines are the -list of the census
+// selector and that one env-gated selector (TestCensus_, TestRolesLessBoot_,
 // TestWindowCLI_ under INITECH_CENSUS), which no shard runs; any other go test
-// there would run part of the suite twice. Both are push-only, as census-leg
-// was. It runs the short census, which is what makes dropping its -short run
-// safe.
+// there would run part of the suite twice. The step itself has no if: the
+// release suites in it run on a pull request too, and the census inside it is
+// push-only, which sidebyside_test.go proves by running it. It runs the short
+// census, which is what makes dropping its -short run safe.
 func TestCIWorkflow_TheGateIsTheSevenJobs(t *testing.T) {
 	w := readCI(t)
 	want := []string{"build-and-test", "full-suite-1", "full-suite-2", "full-suite-3", "full-suite-4", "full-suite-5", "full-suite-census"}
@@ -203,24 +206,32 @@ func TestCIWorkflow_TheGateIsTheSevenJobs(t *testing.T) {
 		witness   = "go test ./internal/tui/ -list '.*' -count=1"
 		censusSel = "'TestCensus_|TestRolesLessBoot_|TestWindowCLI_'"
 		censusRun = "go test ./internal/tui/ -count=1 -timeout 900s -run " + censusSel
-		pushOnly  = "github.event_name != 'pull_request'"
 	)
-	var census, censusList, censusTests bool
+	var census, sideBySide bool
 	for _, s := range job.Steps {
 		switch {
 		case !strings.Contains(s.Run, "go test"):
 		case s.Run == witness:
-		case s.Run == "go test ./internal/tui/ -list "+censusSel:
-			censusList = s.If == pushOnly
-		case s.Run == censusRun && s.Env["INITECH_CENSUS"] == "1" && s.If == pushOnly:
-			censusTests = true
+		case s.Name == sideBySideStep:
+			var lines []string
+			for _, l := range strings.Split(s.Run, "\n") {
+				if strings.Contains(l, "go test") {
+					lines = append(lines, strings.TrimSpace(l))
+				}
+			}
+			want := []string{"go test ./internal/tui/ -list " + censusSel + " &&", censusRun}
+			if strings.Join(lines, "\n") != strings.Join(want, "\n") || s.Env["INITECH_CENSUS"] != "1" || s.If != "" {
+				t.Errorf("%q runs go test %q with INITECH_CENSUS=%q and if %q; want exactly %q under INITECH_CENSUS=1 and no if", s.Name, lines, s.Env["INITECH_CENSUS"], s.If, want)
+			} else {
+				sideBySide = true
+			}
 		default:
-			t.Errorf("build-and-test runs %q: its only go test runs are the witness lists and the push-only census selector under INITECH_CENSUS; the suite runs once, in the full-suite shards", s.Run)
+			t.Errorf("build-and-test runs %q: its only go test runs are the witness list and the census selector under INITECH_CENSUS in the side-by-side step; the suite runs once, in the full-suite shards", s.Run)
 		}
 		census = census || strings.HasPrefix(s.Run, "go run ./scripts/shortcensus")
 	}
-	if !censusList || !censusTests {
-		t.Errorf("build-and-test lacks the push-only census steps (witness %v, tests under INITECH_CENSUS %v): nothing would run the census tests", censusList, censusTests)
+	if !sideBySide {
+		t.Errorf("build-and-test lacks the %q step running the census under INITECH_CENSUS: nothing would run the census tests", sideBySideStep)
 	}
 	if !census {
 		t.Error("build-and-test does not run the short census: nothing proves -short only skips tests")
