@@ -22,6 +22,12 @@ xcodebuild test -project app/InitechApp.xcodeproj -scheme InitechApp \
 xcrun simctl shutdown <simulator udid>
 ```
 
+The tests run against `FixtureServer`, a real HTTPS server on the loopback
+inside the test bundle (a self-signed test-only certificate, pinned like the
+Mac's) that serves the app service's v1 API: the Bearer token gate, rigs,
+status, pins, the conversation pages, send, keys and the SSE feed with
+Last-Event-ID replay.
+
 In the initech rig, wrap every build in `super/tools/heavy.sh` and never open
 Simulator.app.
 
@@ -31,3 +37,5 @@ Simulator.app.
   pairing code (`initech://pair?host=<ip>&port=<n>&token=<t>&fp=<f>`), scanned
   as a QR or pasted, kept in the keychain on this device only.
 - `InitechApp/AppLock.swift`: Face ID on open and on every return to the app.
+- `InitechApp/Models.swift`, `ServiceClient.swift`: the API shapes and the
+  HTTPS client: the certificate pin, the Bearer token, the feed parser.

@@ -10,10 +10,14 @@
 		1070815A259D1E1A5F5492E6 /* PairingStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = EBF1B0563C039519DA1FBAFF /* PairingStore.swift */; };
 		5C34785AC296AEBE541AD12A /* AppLockTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B272B5DB2C3178712A3DC43 /* AppLockTests.swift */; };
 		6166565653BCA9C9210BAFC7 /* PairingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93A60E37937117C84492E6AF /* PairingTests.swift */; };
+		6BFF360A8731EE56647A3EFC /* FixtureServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7B4D274B41C77005FCB4951 /* FixtureServer.swift */; };
 		6C1D595F222CA4C1D1D2E9DC /* Pairing.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F0C8C6A411B9F13BD5F6987 /* Pairing.swift */; };
+		7C1AB1DCE9110CB679D4BE08 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93051BAD3626304FE12B85BC /* Models.swift */; };
 		AA2F5F162E37D2C590BCED41 /* PairingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 773F4EA9812F633D405B6B10 /* PairingView.swift */; };
 		B2F2B4FB55FCDA56E935F9F9 /* AppLock.swift in Sources */ = {isa = PBXBuildFile; fileRef = 507BBB42FCC3688C96662A86 /* AppLock.swift */; };
+		B8924AE4C4A38EB48764AD4B /* ServiceClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 926BB43F5DEAA400A6ECE838 /* ServiceClientTests.swift */; };
 		EF28745458391348A35D4F25 /* InitechApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F87CD51E774AB674C7B99838 /* InitechApp.swift */; };
+		FB47B54BA57D81C2C70C5502 /* ServiceClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB189FF009C5D6B4E1735478 /* ServiceClient.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -32,8 +36,12 @@
 		507BBB42FCC3688C96662A86 /* AppLock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLock.swift; sourceTree = "<group>"; };
 		773F4EA9812F633D405B6B10 /* PairingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingView.swift; sourceTree = "<group>"; };
 		8B272B5DB2C3178712A3DC43 /* AppLockTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLockTests.swift; sourceTree = "<group>"; };
+		926BB43F5DEAA400A6ECE838 /* ServiceClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServiceClientTests.swift; sourceTree = "<group>"; };
+		93051BAD3626304FE12B85BC /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		93A60E37937117C84492E6AF /* PairingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingTests.swift; sourceTree = "<group>"; };
+		BB189FF009C5D6B4E1735478 /* ServiceClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServiceClient.swift; sourceTree = "<group>"; };
 		D973C4CF1AB9FD8305E3EE9B /* InitechApp.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = InitechApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		E7B4D274B41C77005FCB4951 /* FixtureServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FixtureServer.swift; sourceTree = "<group>"; };
 		EBF1B0563C039519DA1FBAFF /* PairingStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingStore.swift; sourceTree = "<group>"; };
 		F87CD51E774AB674C7B99838 /* InitechApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InitechApp.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -53,9 +61,11 @@
 			children = (
 				507BBB42FCC3688C96662A86 /* AppLock.swift */,
 				F87CD51E774AB674C7B99838 /* InitechApp.swift */,
+				93051BAD3626304FE12B85BC /* Models.swift */,
 				2F0C8C6A411B9F13BD5F6987 /* Pairing.swift */,
 				EBF1B0563C039519DA1FBAFF /* PairingStore.swift */,
 				773F4EA9812F633D405B6B10 /* PairingView.swift */,
+				BB189FF009C5D6B4E1735478 /* ServiceClient.swift */,
 			);
 			path = InitechApp;
 			sourceTree = "<group>";
@@ -73,7 +83,9 @@
 			isa = PBXGroup;
 			children = (
 				8B272B5DB2C3178712A3DC43 /* AppLockTests.swift */,
+				E7B4D274B41C77005FCB4951 /* FixtureServer.swift */,
 				93A60E37937117C84492E6AF /* PairingTests.swift */,
+				926BB43F5DEAA400A6ECE838 /* ServiceClientTests.swift */,
 			);
 			path = InitechAppTests;
 			sourceTree = "<group>";
@@ -160,9 +172,11 @@
 			files = (
 				B2F2B4FB55FCDA56E935F9F9 /* AppLock.swift in Sources */,
 				EF28745458391348A35D4F25 /* InitechApp.swift in Sources */,
+				7C1AB1DCE9110CB679D4BE08 /* Models.swift in Sources */,
 				6C1D595F222CA4C1D1D2E9DC /* Pairing.swift in Sources */,
 				1070815A259D1E1A5F5492E6 /* PairingStore.swift in Sources */,
 				AA2F5F162E37D2C590BCED41 /* PairingView.swift in Sources */,
+				FB47B54BA57D81C2C70C5502 /* ServiceClient.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -171,7 +185,9 @@
 			buildActionMask = 2147483647;
 			files = (
 				5C34785AC296AEBE541AD12A /* AppLockTests.swift in Sources */,
+				6BFF360A8731EE56647A3EFC /* FixtureServer.swift in Sources */,
 				6166565653BCA9C9210BAFC7 /* PairingTests.swift in Sources */,
+				B8924AE4C4A38EB48764AD4B /* ServiceClientTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
