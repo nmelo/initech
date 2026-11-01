@@ -11,7 +11,7 @@ import (
 
 const sha = "0123456789abcdef0123456789abcdef01234567"
 
-var gateJobs = []string{"build-and-test", "full-suite-1", "full-suite-2", "full-suite-3", "full-suite-4", "full-suite-5", "full-suite-census", "gate"}
+var gateJobs = []string{"build-and-test", "full-suite-1", "full-suite-2", "full-suite-3", "full-suite-4", "full-suite-5", "full-suite-6", "full-suite-census", "gate"}
 
 func greenJobs(names ...string) []Job {
 	jobs := make([]Job, len(names))
@@ -44,7 +44,7 @@ func repoRoot(t *testing.T) string {
 }
 
 // The guard's job list is ci.yml's job keys, the list shipper's gate reads; the
-// live file must give the job set: the gate, build-and-test, the five shards
+// live file must give the job set: the gate, build-and-test, the six shards
 // and the census.
 func TestExpectedJobs_ReadsCIYamlJobKeys(t *testing.T) {
 	raw, err := os.ReadFile(filepath.Join(repoRoot(t), ".github", "workflows", "ci.yml"))
@@ -87,8 +87,8 @@ func TestVerdict_BuildJobOnlyIsRefused(t *testing.T) {
 }
 
 // A shard the workflow names but the run lacks is refused: a gate whose set
-// lost full-suite-5 while ci.yml still runs five shards would pass a cut on
-// four fifths of the suite (ini-c5a.3).
+// lost full-suite-5 while ci.yml still runs six shards would pass a cut on
+// five sixths of the suite (ini-c5a.3).
 func TestVerdict_RunMissingOneShardIsRefused(t *testing.T) {
 	r := greenRun()
 	var jobs []Job

@@ -68,17 +68,18 @@ concurrency:
 #      variant, or a short-only life, that no job here would run. make check
 #      still runs the -short suite locally.
 #
-# Six jobs after the gate and before the census (build-and-test,
-# full-suite-1..5), one for each of the Mac's six runner slots, so none waits
-# for a second wave (ini-c5a.7: a seventh job, census-leg, waited for a free
-# slot and pushed the wall past two minutes; its steps now end build-and-test).
-# The wall is the longest of build-and-test and the shards, plus
-# full-suite-census. Five shards, not four, keep a push under two minutes with
-# every test still on it (ini-c5a.3). Rigs run on GitHub-hosted macOS
+# Seven jobs after the gate and before the census (build-and-test,
+# full-suite-1..6), on seven of the Mac's eight runners, so none waits for a
+# second wave and one runner stays free for app-tests (ini-c5a.7: census-leg,
+# once its own job, now ends build-and-test). The wall is the gate, then the
+# longest of build-and-test and the shards, plus full-suite-census. Six shards
+# (ini-c5a.7; five since ini-c5a.3) keep a push under two minutes on a quiet
+# host with every test still on it; with the host's load over about 20, or
+# app-tests holding runners, a push takes longer: a known limit. Rigs run on GitHub-hosted macOS
 # (rigs.yml), so they hold no Mac runner and add no load at the gate.
 #
 # THE CENSUS is what keeps the faster gate from running less. full-suite-census
-# needs all five shards, runs even when one failed, and is red unless every
+# needs all six shards, runs even when one failed, and is red unless every
 # shard passed AND the shards' own records show that their selections are
 # disjoint, together equal the full test list, and every selected test
 # reported a result exactly once. A test outside every shard, a test in two
@@ -227,8 +228,8 @@ jobs:
       - name: Short census (every testing.Short() use is a skip guard)
         run: go run ./scripts/shortcensus -v
 
-  # THE NON-SHORT SUITE, on one platform (ini-4bf2), in five shards (ini-bus5,
-  # ini-p2ve, ini-c5a.3). The only run of the test suite in this workflow.
+  # THE NON-SHORT SUITE, on one platform (ini-4bf2), in six shards (ini-bus5,
+  # ini-p2ve, ini-c5a.3, ini-c5a.7). The only run of the test suite in this workflow.
   #
   # `make test` runs -short. That is not an oversight -- -short skips slow PTY
   # integration tests, which is worth having locally. What was missing once is
@@ -240,7 +241,7 @@ jobs:
   # One platform, not the matrix: the tests this adds are unix-PTY integration
   # tests that do not run on windows anyway, and the point is coverage of the
   # skipped HALF, not of every OS. Gated rigs stay opt-in behind their env vars,
-  # so these legs do not spawn Claude sessions. The five shards together run
+  # so these legs do not spawn Claude sessions. The six shards together run
   # what `make test-full` runs (see SPEED above); full-suite-census proves it.
   full-suite-1:
     needs: gate
@@ -254,8 +255,8 @@ jobs:
           go-version-file: go.mod
           cache: ${{ github.event_name == 'pull_request' }}
 
-      - name: Test shard 1 of 5 (full, no -short)
-        run: go run ./scripts/shardtests run -shards 5 -shard 1 -out shard-record
+      - name: Test shard 1 of 6 (full, no -short)
+        run: go run ./scripts/shardtests run -shards 6 -shard 1 -out shard-record
 
       - uses: actions/upload-artifact@v4
         if: always()
@@ -276,8 +277,8 @@ jobs:
           go-version-file: go.mod
           cache: ${{ github.event_name == 'pull_request' }}
 
-      - name: Test shard 2 of 5 (full, no -short)
-        run: go run ./scripts/shardtests run -shards 5 -shard 2 -out shard-record
+      - name: Test shard 2 of 6 (full, no -short)
+        run: go run ./scripts/shardtests run -shards 6 -shard 2 -out shard-record
 
       - uses: actions/upload-artifact@v4
         if: always()
@@ -298,8 +299,8 @@ jobs:
           go-version-file: go.mod
           cache: ${{ github.event_name == 'pull_request' }}
 
-      - name: Test shard 3 of 5 (full, no -short)
-        run: go run ./scripts/shardtests run -shards 5 -shard 3 -out shard-record
+      - name: Test shard 3 of 6 (full, no -short)
+        run: go run ./scripts/shardtests run -shards 6 -shard 3 -out shard-record
 
       - uses: actions/upload-artifact@v4
         if: always()
@@ -320,8 +321,8 @@ jobs:
           go-version-file: go.mod
           cache: ${{ github.event_name == 'pull_request' }}
 
-      - name: Test shard 4 of 5 (full, no -short)
-        run: go run ./scripts/shardtests run -shards 5 -shard 4 -out shard-record
+      - name: Test shard 4 of 6 (full, no -short)
+        run: go run ./scripts/shardtests run -shards 6 -shard 4 -out shard-record
 
       - uses: actions/upload-artifact@v4
         if: always()
@@ -342,8 +343,8 @@ jobs:
           go-version-file: go.mod
           cache: ${{ github.event_name == 'pull_request' }}
 
-      - name: Test shard 5 of 5 (full, no -short)
-        run: go run ./scripts/shardtests run -shards 5 -shard 5 -out shard-record
+      - name: Test shard 5 of 6 (full, no -short)
+        run: go run ./scripts/shardtests run -shards 6 -shard 5 -out shard-record
 
       - uses: actions/upload-artifact@v4
         if: always()
@@ -352,8 +353,30 @@ jobs:
           path: shard-record
           if-no-files-found: error
 
+  full-suite-6:
+    needs: gate
+    runs-on: ${{ github.event_name != 'pull_request' && vars.MAC_RUNNER || 'macos-latest' }}
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: ${{ github.event_name == 'pull_request' }}
+
+      - name: Test shard 6 of 6 (full, no -short)
+        run: go run ./scripts/shardtests run -shards 6 -shard 6 -out shard-record
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: full-suite-shard-6
+          path: shard-record
+          if-no-files-found: error
+
   full-suite-census:
-    needs: [full-suite-1, full-suite-2, full-suite-3, full-suite-4, full-suite-5]
+    needs: [full-suite-1, full-suite-2, full-suite-3, full-suite-4, full-suite-5, full-suite-6]
     if: always()
     runs-on: ${{ github.event_name != 'pull_request' && vars.MAC_RUNNER || 'macos-latest' }}
     timeout-minutes: 10
@@ -365,14 +388,14 @@ jobs:
           go-version-file: go.mod
           cache: ${{ github.event_name == 'pull_request' }}
 
-      # Reads the five shard command lines themselves (the "run: go run" form
-      # only they use, never this step's own text) and requires all five, so
+      # Reads the six shard command lines themselves (the "run: go run" form
+      # only they use, never this step's own text) and requires all six, so
       # it cannot pass by matching nothing.
       - name: No shard step runs -short
         run: |
           lines=$(grep -E '^ +run: go run \./scripts/shardtests run ' .github/workflows/ci.yml)
           echo "$lines"
-          test "$(printf '%s\n' "$lines" | grep -c .)" -eq 5 || { echo "expected the 5 shard command lines"; exit 1; }
+          test "$(printf '%s\n' "$lines" | grep -c .)" -eq 6 || { echo "expected the 6 shard command lines"; exit 1; }
           if printf '%s\n' "$lines" | grep -q short; then
             echo "a shard step runs -short: the full suite never does"; exit 1
           fi
@@ -385,7 +408,7 @@ jobs:
 
       - name: Census (every test selected by exactly one shard and run exactly once)
         if: always()
-        run: go run ./scripts/shardtests census -shards 5 shard-records/full-suite-shard-1 shard-records/full-suite-shard-2 shard-records/full-suite-shard-3 shard-records/full-suite-shard-4 shard-records/full-suite-shard-5
+        run: go run ./scripts/shardtests census -shards 6 shard-records/full-suite-shard-1 shard-records/full-suite-shard-2 shard-records/full-suite-shard-3 shard-records/full-suite-shard-4 shard-records/full-suite-shard-5 shard-records/full-suite-shard-6
 
       - name: Every shard passed
         if: always()
@@ -395,9 +418,10 @@ jobs:
           S3: ${{ needs.full-suite-3.result }}
           S4: ${{ needs.full-suite-4.result }}
           S5: ${{ needs.full-suite-5.result }}
+          S6: ${{ needs.full-suite-6.result }}
         run: |
-          echo "full-suite-1: $S1  full-suite-2: $S2  full-suite-3: $S3  full-suite-4: $S4  full-suite-5: $S5"
-          test "$S1" = success && test "$S2" = success && test "$S3" = success && test "$S4" = success && test "$S5" = success
+          echo "full-suite-1: $S1  full-suite-2: $S2  full-suite-3: $S3  full-suite-4: $S4  full-suite-5: $S5  full-suite-6: $S6"
+          test "$S1" = success && test "$S2" = success && test "$S3" = success && test "$S4" = success && test "$S5" = success && test "$S6" = success
 
   # ITEM 2 (ini-0lko): the CENSUS leg. Builds the real binary; no Claude needed.
   #

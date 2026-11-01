@@ -9,7 +9,7 @@ import (
 )
 
 // The load gate's wiring (ini-c5a.7): in ci.yml one small job, gate, starts
-// the run and waits for the shared Mac host right after setup-go; the six jobs
+// the run and waits for the shared Mac host right after setup-go; the seven jobs
 // that do the work need it and do not wait themselves, so a waiting run holds
 // one runner and its other jobs wait in GitHub's queue holding none; and no
 // job that follows other jobs waits, so a run is never held back by the load
@@ -59,8 +59,8 @@ func TestWorkflows_OneGateJobWaitsForTheHostAndTheWorkNeedsIt(t *testing.T) {
 			}
 		}
 	}
-	if gated != 1 || afterGate != 6 || followers != 1 {
-		t.Errorf("%d gate jobs, %d jobs after the gate and %d followers, want 1, 6 (build-and-test and five shards) and 1 (full-suite-census): this test is not reading the jobs", gated, afterGate, followers)
+	if gated != 1 || afterGate != 7 || followers != 1 {
+		t.Errorf("%d gate jobs, %d jobs after the gate and %d followers, want 1, 7 (build-and-test and six shards) and 1 (full-suite-census): this test is not reading the jobs", gated, afterGate, followers)
 	}
 	action, err := os.ReadFile(filepath.Join(root, ".github", "actions", "load-gate", "action.yml"))
 	if err != nil {
