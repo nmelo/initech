@@ -189,6 +189,12 @@ type TUI struct {
 	paceAt       time.Time
 	paceRows     []string        // the Agents overlay's effort rows (ini-y0n.3)
 	paceStuck    map[string]bool // agents owning a stuck bead, by the pace rule (ini-7w4)
+	// The pace's last move per bead (ini-bfu): the comment count each poll
+	// saw, when that count last rose, and the TUI's start, which floors every
+	// last move so nothing reads stuck sooner than QuietAfter after it.
+	paceComments  map[string]int
+	paceCommentAt map[string]time.Time
+	paceSince     time.Time
 	inboxOnce    sync.Once
 	// inboxOutstanding maps an agent to the inbox items whose delivery verdict
 	// may still be corrected by a late report from the send path (ini-3wkl.6).
@@ -1456,6 +1462,7 @@ func Run(cfg Config) error {
 	t.startBatteryPoller()
 
 	// Derive each pane's bead from bd (ini-wra.1).
+	t.paceSince = time.Now()
 	t.startBeadPoller(t.quitCh)
 
 	// Record which session is on which bead (ini-wra.2): the process that

@@ -36,6 +36,9 @@ type bdBead struct {
 	Assignee  string    `json:"assignee"`
 	UpdatedAt time.Time `json:"updated_at"`
 	ClosedAt  time.Time `json:"closed_at"`
+	// CommentCount is bd's comment count. A comment does not move updated_at,
+	// so the pace reads a rise in this count as the bead's last move.
+	CommentCount int `json:"comment_count"`
 }
 
 // bdListArgs asks bd for every bead, closed ones included (bd lists 50 open
@@ -114,6 +117,9 @@ func askBdBeads(dir string) (beads []bdBead, answered bool) {
 func (t *TUI) pollBeadsOnce(now time.Time) {
 	beads, answered := askBdBeads(t.projectRoot)
 	t.runOnMain(func() {
+		if answered {
+			t.notePaceComments(beads, now)
+		}
 		t.notePaceAnswer(beads, answered)
 		for _, pv := range t.panes {
 			if p, ok := pv.(*Pane); ok {

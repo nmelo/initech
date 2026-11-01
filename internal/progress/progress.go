@@ -27,6 +27,12 @@ type Bead struct {
 	UpdatedAt      time.Time `json:"updated_at"`
 	ClosedAt       time.Time `json:"closed_at"`
 	DependentCount int       `json:"dependent_count"`
+
+	// Moved is the bead's last move where the caller knows more than bd's
+	// updated_at (a comment or a commit since); zero when it does not. Stuck
+	// reads the newer of the two. Never read from bd's JSON: initech progress
+	// sets it from LastMove, the TUI from its bead poll.
+	Moved time.Time `json:"-"`
 }
 
 // Comment is one bead comment as bd comments --json gives it.
@@ -388,6 +394,11 @@ func Build(in Input) Report {
 		}
 	}
 	r.Closed, r.Total = len(closed), len(beads)
+	// The pace's last move is the quiet list's: LastMove over the comments
+	// and commits this report read.
+	for i, b := range beads {
+		beads[i].Moved, _ = LastMove(b, in.Comments[b.ID], in.Commits)
+	}
 	var panes map[string]string
 	if in.PanesKnown {
 		panes = in.Panes
@@ -560,15 +571,23 @@ func Deferred(b Bead) bool { return b.Status == "deferred" }
 var stuckStates = map[string]bool{"idle": true, "waiting": true, "pending": true}
 
 // Stuck reports whether b counts as stuck in the pace: past open, not closed,
-// not blocked or waiting on Nelson (a named wait), not deferred, its bd
-// updated_at QuietAfter old or more, and its owner's pane
-// (ownerState, the pane state by name; "" when the owner has no pane here)
-// idle, waiting or pending.
+// not blocked or waiting on Nelson (a named wait), not deferred, its last move
+// (Moved) QuietAfter old or more, and its owner's pane (ownerState, the pane
+// state by name; "" when the owner has no pane here) idle, waiting or pending.
 func Stuck(b Bead, ownerState string, now time.Time) bool {
 	if b.Status == "open" || b.Status == "closed" || blockedStates[b.Status] || Deferred(b) {
 		return false
 	}
-	return now.Sub(b.UpdatedAt) >= QuietAfter && stuckStates[ownerState]
+	return now.Sub(b.LastMoved()) >= QuietAfter && stuckStates[ownerState]
+}
+
+// LastMoved is the bead's last move as the pace counts it: the newer of bd's
+// updated_at and Moved.
+func (b Bead) LastMoved() time.Time {
+	if b.Moved.After(b.UpdatedAt) {
+		return b.Moved
+	}
+	return b.UpdatedAt
 }
 
 // PaceOf is the pace of the effort beadID belongs to: PaceOver on that
@@ -588,9 +607,9 @@ func PaceOf(beads []Bead, beadID string, panes map[string]string, now time.Time,
 // initech progress share: of beads, leaving out the deferred ones, the closed
 // of the total, the closes per hour over window, the stuck beads (Stuck, with
 // the owner's pane state from panes, by role) and the blocked ones (blocked
-// or waiting on Nelson). A bead's last move is bd's updated_at alone, so this
-// can count a bead stuck that a comment has since moved; initech progress's
-// quiet section reads the comments.
+// or waiting on Nelson). A bead's last move is Bead.LastMoved: initech
+// progress sets Moved from LastMove (comments and commits), so its pace and
+// its quiet list agree; the TUI sets it from its bead poll.
 func PaceOver(beads []Bead, label string, panes map[string]string, now time.Time, window time.Duration) Pace {
 	p := Pace{Label: label}
 	recent := 0
