@@ -51,6 +51,12 @@ func (t *TUI) refreshPaceLines(now time.Time) {
 		panes[pv.Name()] = pv.Activity().String()
 	}
 	t.paceRows = paceEffortRows(beads, panes, now, t.paceStale)
+	t.paceStuck = map[string]bool{}
+	for _, b := range beads {
+		if b.Assignee != "" && progress.Stuck(b, panes[b.Assignee], now) {
+			t.paceStuck[b.Assignee] = true
+		}
+	}
 	for _, pv := range t.panes {
 		p, ok := pv.(*Pane)
 		if !ok {

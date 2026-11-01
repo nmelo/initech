@@ -187,7 +187,8 @@ type TUI struct {
 	paceStale    bool
 	paceAnswered bool
 	paceAt       time.Time
-	paceRows     []string // the Agents overlay's effort rows (ini-y0n.3)
+	paceRows     []string        // the Agents overlay's effort rows (ini-y0n.3)
+	paceStuck    map[string]bool // agents owning a stuck bead, by the pace rule (ini-7w4)
 	inboxOnce    sync.Once
 	// inboxOutstanding maps an agent to the inbox items whose delivery verdict
 	// may still be corrected by a late report from the send path (ini-3wkl.6).

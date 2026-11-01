@@ -91,6 +91,10 @@ func maintainModal(panes []PaneView, now time.Time, last *time.Time) {
 		p.noteContext(foot)
 		p.observePendingInput(rows, cols)
 		p.raiseSilentClaudeDialog(rows)
+		// A dialog or banner on screen lists the agent in the Agents overlay
+		// even while its state reads idle (ini-7w4); the overlay reads this
+		// note, never the screen.
+		p.noteAttentionScreen(screenShowsModal(rows) || bannerKind(rows, false) != bannerNone)
 		if screenShowsModal(rows) {
 			p.noteDialogSighting()
 		}

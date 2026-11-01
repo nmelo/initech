@@ -927,6 +927,51 @@ func (t *TUI) overlayDisplayOrder(panes []PaneView) []PaneView {
 	return append(locals, remotes...)
 }
 
+// overlayAllIdle is the overlay's one line when none of the window's agents
+// is listed.
+const overlayAllIdle = "all idle"
+
+// overlayListedOff turns the overlay's listing filter off, for a test that
+// compares frames with and without it.
+var overlayListedOff = false
+
+// overlayListed reports whether the Agents overlay lists p (ini-7w4): an
+// agent doing something or needing attention. Suspended agents are not
+// listed; idle ones only with a dialog or banner on screen or a bead the pace
+// counts stuck. Every other state (running, background, waiting, pending
+// input, dead, and one not yet read as idle) is listed.
+func (t *TUI) overlayListed(p PaneView) bool {
+	switch p.Activity() {
+	case StateSuspended:
+		return false
+	case StateIdle:
+		if lp, ok := p.(*Pane); ok && lp.attentionScreen() {
+			return true
+		}
+		return t.paceStuck[p.Name()]
+	}
+	return true
+}
+
+// overlayNameLen is the width of p's name in the overlay, with its markers.
+func overlayNameLen(t *TUI, p PaneView) int {
+	pk := agentKey(p)
+	n := len(paneDisplayName(p))
+	if paneIsRemoteMachine(p) {
+		n += 4 // " [R]"
+	}
+	if t.layoutState.Protected[pk] {
+		n += 4 // " [P]"
+	}
+	if _, livePin := t.layoutState.LivePinned[pk]; livePin {
+		n += 4 // " [P]"
+	}
+	if t.layoutState.Hidden[pk] {
+		n += 4 // " [h]"
+	}
+	return n
+}
+
 // overlayDot is one clickable dot cell: the agent drawn there and since when
 // it has been drawn in that cell.
 type overlayDot struct {
@@ -1076,7 +1121,21 @@ func (t *TUI) renderOverlay() {
 	hiddenCount := 0
 	agentRows := 0
 	dividerW := 0
+	allIdle := len(scoped) > 0
 	for _, p := range scoped {
+		// The name width is measured over every agent of the window, listed
+		// or not, so the box does not jump as agents come and go.
+		if nameLen := overlayNameLen(t, p); nameLen > maxNameLen {
+			maxNameLen = nameLen
+		}
+		if !overlayListedOff && !t.overlayListed(p) {
+			agentRows++
+			if t.layoutState.Hidden[agentKey(p)] {
+				hiddenCount++
+			}
+			continue
+		}
+		allIdle = false
 		// A thin divider row opens each remote machine's block.
 		if paneIsRemoteMachine(p) {
 			if len(sections) == 0 || sections[len(sections)-1].machine != p.Host() {
@@ -1094,6 +1153,10 @@ func (t *TUI) renderOverlay() {
 		status := act.String()
 		if act == StatePendingInput {
 			status = "pending input" // ini-b5w
+		}
+		// An idle agent listed for its stuck bead says so (ini-7w4).
+		if act == StateIdle && t.paceStuck[p.Name()] {
+			status += " · stuck"
 		}
 		// A background agent shows how long its job has run (ini-pi8p).
 		if age, ok := backgroundAge(p, time.Now()); ok && act == StateBackground {
@@ -1137,27 +1200,16 @@ func (t *TUI) renderOverlay() {
 			sec.right = append(sec.right, a)
 		}
 		agentRows++
-		nameLen := len(displayName)
-		if remote {
-			nameLen += 4 // " [R]"
-		}
-		if t.layoutState.Protected[pk] {
-			nameLen += 4 // " [P]"
-		}
-		if livePin {
-			nameLen += 4 // " [P]"
-		}
 		if !vis {
-			nameLen += 4 // " [h]"
 			hiddenCount++
-		}
-		if nameLen > maxNameLen {
-			maxNameLen = nameLen
 		}
 	}
 
 	statusMaxLen := 7 // minimum: "running"
 	listRows := 0
+	if allIdle {
+		listRows = 1 // the one line "all idle" where the columns would be
+	}
 	for _, sec := range sections {
 		for _, col := range [][]AgentInfo{sec.left, sec.right} {
 			for _, a := range col {
@@ -1217,23 +1269,8 @@ func (t *TUI) renderOverlay() {
 		}
 	}
 
-	// The panel is as wide as its longest effort row, as for the scope line:
-	// a row is cut only when the screen itself is narrower.
-	for _, line := range t.paceRows {
-		if w := len([]rune(line)) + 4; w > panelW {
-			panelW = w
-		}
-	}
-
 	sw, sh := s.Size()
-	px := sw - panelW - 1
 	py := 1
-	if px < 0 {
-		px = 0
-	}
-	if px+panelW > sw {
-		panelW = sw - px
-	}
 	// EFFORT ROWS (ini-y0n.3): one per effort in flight, the pane header's
 	// reading, under one rule below the columns and above the footer. They
 	// are the first lines a short screen gives up: the rows the screen has no
@@ -1242,6 +1279,20 @@ func (t *TUI) renderOverlay() {
 	efforts := t.paceRows
 	if room := sh - py - panelH - 1; len(efforts) > room {
 		efforts = efforts[:max(room, 0)]
+	}
+	// The panel is as wide as its longest effort row drawn, as for the scope
+	// line: a row is cut only when the screen itself is narrower.
+	for _, line := range efforts {
+		if w := len([]rune(line)) + 4; w > panelW {
+			panelW = w
+		}
+	}
+	px := sw - panelW - 1
+	if px < 0 {
+		px = 0
+	}
+	if px+panelW > sw {
+		panelW = sw - px
 	}
 	effortLines := 0
 	if len(efforts) > 0 {
@@ -1349,6 +1400,16 @@ func (t *TUI) renderOverlay() {
 				}
 				s.SetContent(col, r, ch, nil, rowStyle)
 				col++
+			}
+		}
+	}
+
+	if allIdle && py+1 < py+panelH-1 {
+		blankRow(py + 1)
+		idleStyle := bgStyle.Foreground(tcell.ColorSilver)
+		for j, ch := range overlayAllIdle {
+			if px+2+j < inner {
+				s.SetContent(px+2+j, py+1, ch, nil, idleStyle)
 			}
 		}
 	}

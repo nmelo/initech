@@ -33,13 +33,13 @@ func effortFixture(now time.Time) []bdBead {
 	)
 }
 
-// effortTUI is four panes, two working and two idle, so the overlay's columns
-// are two rows tall; p03, idle, owns the quiet ini-wra.4 (the header's stuck
-// bead).
+// effortTUI is four panes, two working, p03 idle and p04 waiting, so the
+// overlay's columns are two rows tall; p03, idle, owns the quiet ini-wra.4
+// (the header's stuck bead), which keeps it listed (ini-7w4).
 func effortTUI(t *testing.T) (*TUI, tcell.SimulationScreen) {
 	t.Helper()
 	tui, s := newTestTUIWithScreen("p01", "p02", "p03", "p04")
-	for name, st := range map[string]ActivityState{"p01": StateRunning, "p02": StateRunning, "p03": StateIdle, "p04": StateIdle} {
+	for name, st := range map[string]ActivityState{"p01": StateRunning, "p02": StateRunning, "p03": StateIdle, "p04": StateWaitingInput} {
 		p := ysr2Pane(tui, name)
 		p.mu.Lock()
 		p.activity = st
@@ -296,6 +296,9 @@ func TestEffortRows_ATooShortScreenCutsTheRowsFirst(t *testing.T) {
 	}
 	tui0, s0 := effortTUI(t)
 	tui0.layoutState.Hidden["p04"] = true
+	tui0.notePaceAnswer(effortFixture(now), true) // the same listing: p03 stuck
+	tui0.refreshPaceLines(now)
+	tui0.paceRows = nil
 	s0.SetSize(120, 1+1+2+1+1+1)
 	if base := framesText(overlayFrameRows(tui0, s0)); base != text {
 		t.Errorf("with no room the overlay differs from one with no rows:\n%s\nwant\n%s", text, base)

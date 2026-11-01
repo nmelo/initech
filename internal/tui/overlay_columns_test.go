@@ -59,7 +59,12 @@ func overlayDotOf(rows [][]rune, name string) (x, y int, ok bool) {
 	return 0, 0, false
 }
 
-// setOverlayActivity sets each named local pane's activity directly.
+// setOverlayActivity sets each named local pane's activity directly. The
+// overlay lists an idle agent only when it needs attention (ini-7w4); these
+// tests are about columns, order, clicks and marks, not that filter, so an
+// idle agent here also carries the tick's note of a dialog on its screen,
+// which keeps it listed with its state word "idle". The filter's own tests are
+// in y7w4_overlay_listed_test.go.
 func setOverlayActivity(t *testing.T, tui *TUI, states map[string]ActivityState) {
 	t.Helper()
 	for _, p := range tui.panes {
@@ -71,6 +76,7 @@ func setOverlayActivity(t *testing.T, tui *TUI, states map[string]ActivityState)
 		lp.mu.Lock()
 		lp.activity = st
 		lp.mu.Unlock()
+		lp.noteAttentionScreen(st == StateIdle)
 	}
 }
 
@@ -151,17 +157,21 @@ func TestOverlayColumns_WorkingLeftNotWorkingRightInPanelOrder(t *testing.T) {
 	}
 
 	rows := overlayFrameRows(tui, s)
-	left, right := leftRight(t, tui, overlayColumns(t, rows, []string{"super", "pm", "eng1", "eng2", "qa1", "qa2"}), rows)
+	left, right := leftRight(t, tui, overlayColumns(t, rows, []string{"pm", "eng1", "eng2", "qa1", "qa2"}), rows)
+	if _, _, ok := overlayDotOf(rows, "super"); ok {
+		t.Errorf("suspended super has a row\n%s", framesText(rows))
+	}
 	if got, want := strings.Join(left, ","), "pm,qa2"; got != want {
 		t.Errorf("left column %s, want %s (running, background in panel order)\n%s", got, want, framesText(rows))
 	}
-	if got, want := strings.Join(right, ","), "super,eng1,eng2,qa1"; got != want {
-		t.Errorf("right column %s, want %s (suspended, dead, idle, waiting in panel order)\n%s", got, want, framesText(rows))
+	// A suspended agent is not listed (ini-7w4): super has no row.
+	if got, want := strings.Join(right, ","), "eng1,eng2,qa1"; got != want {
+		t.Errorf("right column %s, want %s (dead, idle, waiting in panel order)\n%s", got, want, framesText(rows))
 	}
-	_, superY, _ := overlayDotOf(rows, "super")
+	_, eng1Y, _ := overlayDotOf(rows, "eng1")
 	_, pmY, _ := overlayDotOf(rows, "pm")
-	if superY != tui.overlayBounds.y+1 || pmY != superY {
-		t.Errorf("each column starts on the box's first row: super y=%d pm y=%d, want both %d", superY, pmY, tui.overlayBounds.y+1)
+	if eng1Y != tui.overlayBounds.y+1 || pmY != eng1Y {
+		t.Errorf("each column starts on the box's first row: eng1 y=%d pm y=%d, want both %d", eng1Y, pmY, tui.overlayBounds.y+1)
 	}
 	if frame := framesText(rows); !strings.Contains(frame, "background 1m") || !strings.Contains(frame, "waiting") {
 		t.Errorf("rows lost their status words:\n%s", frame)
@@ -387,6 +397,10 @@ func TestOverlayColumns_RemoteMachineSplitsUnderItsDivider(t *testing.T) {
 	setOverlayActivity(t, tui, map[string]ActivityState{"super": StateIdle, "eng1": StateRunning})
 	busy := &RemotePane{name: "intern", host: "workbench", alive: true, activity: StateRunning, lastOut: time.Now()}
 	quiet := &RemotePane{name: "arch", host: "workbench", alive: true}
+	// arch is quiet (idle); the overlay lists an idle agent only when it needs
+	// attention (ini-7w4), and a pane on another machine has no screen here,
+	// so a stuck bead is what keeps it listed in this layout test.
+	tui.paceStuck = map[string]bool{"arch": true}
 	tui.panes = append(tui.panes, busy, quiet)
 	rows := overlayFrameRows(tui, s)
 

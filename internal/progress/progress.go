@@ -524,6 +524,17 @@ type Pace struct {
 // an owner with no pane here is not known to be idle.
 var stuckStates = map[string]bool{"idle": true, "waiting": true, "pending": true}
 
+// Stuck reports whether b counts as stuck in the pace: past open and not
+// closed, its bd updated_at QuietAfter old or more, and its owner's pane
+// (ownerState, the pane state by name; "" when the owner has no pane here)
+// idle, waiting or pending.
+func Stuck(b Bead, ownerState string, now time.Time) bool {
+	if b.Status == "open" || b.Status == "closed" {
+		return false
+	}
+	return now.Sub(b.UpdatedAt) >= QuietAfter && stuckStates[ownerState]
+}
+
 // PaceOf is the pace of the effort beadID belongs to, from the beads bd
 // listed: closed of total, closed per hour over window, and the beads past
 // open and not closed whose bd updated_at is QuietAfter old or more and whose
@@ -547,7 +558,7 @@ func PaceOf(beads []Bead, beadID string, panes map[string]string, now time.Time,
 			}
 		case "open":
 		default:
-			if now.Sub(b.UpdatedAt) >= QuietAfter && stuckStates[panes[b.Assignee]] {
+			if Stuck(b, panes[b.Assignee], now) {
 				p.Stuck++
 			}
 		}

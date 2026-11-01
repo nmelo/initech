@@ -65,32 +65,30 @@ func TestUpdateActivity_DeadNotSuspended(t *testing.T) {
 	}
 }
 
-// TestOverlayDot_SuspendedIsBluHollow verifies the overlay uses a blue hollow
-// dot for suspended agents.
-func TestOverlayDot_SuspendedIsBlueHollow(t *testing.T) {
+// TestOverlayDot_ASuspendedAgentHasNoRow verifies the overlay draws no row
+// for a suspended agent. It verified the blue hollow dot until the overlay
+// stopped listing suspended agents (ini-7w4).
+func TestOverlayDot_ASuspendedAgentHasNoRow(t *testing.T) {
 	tui, s := newTestTUIWithScreen("eng1")
 	tui.panes[0].(*Pane).alive = false
 	tui.panes[0].(*Pane).suspended = true
 	tui.layoutState.Overlay = true
 	tui.render()
 
-	// The overlay dot is on row py+1. Find it by scanning the row for the
-	// hollow dot character: with two columns (ini-gt7w) a suspended agent's
-	// dot sits in the left column, further from the edge.
+	// The overlay lists only agents doing something or needing attention
+	// (ini-7w4): a suspended agent has no row, so no blue hollow dot, and a
+	// window with nothing listed reads "all idle". The suspended mark is the
+	// ribbon's (TestRibbon_SuspendedShowsSusp) and the Agents panel's.
 	sw, _ := s.Size()
-	found := false
 	for x := 0; x < sw; x++ {
-		c, style, _ := s.Get(x, 2) // row 2 = first agent row (py=1, +1)
-		if c == "\u25cb" {         // hollow dot
-			fg, _, _ := style.Decompose()
-			if fg == tcell.ColorDodgerBlue {
-				found = true
-				break
+		if c, style, _ := s.Get(x, 2); c == "\u25cb" {
+			if fg, _, _ := style.Decompose(); fg == tcell.ColorDodgerBlue {
+				t.Error("the overlay drew a suspended agent's row")
 			}
 		}
 	}
-	if !found {
-		t.Error("overlay should show blue hollow dot for suspended agent")
+	if !strings.Contains(framesText(overlayScreenRows(s)), "all idle") {
+		t.Errorf("a window whose one agent is suspended does not read all idle:\n%s", framesText(overlayScreenRows(s)))
 	}
 }
 

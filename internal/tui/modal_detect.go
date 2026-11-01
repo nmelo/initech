@@ -662,6 +662,21 @@ func (p *Pane) noteScreenSkipped(now time.Time, reader string) {
 	}
 }
 
+// noteAttentionScreen records whether the maintenance tick's snapshot showed a
+// dialog or a banner.
+func (p *Pane) noteAttentionScreen(on bool) {
+	p.mu.Lock()
+	p.attnScreen = on
+	p.mu.Unlock()
+}
+
+// attentionScreen reports the last tick's note: a dialog or banner on screen.
+func (p *Pane) attentionScreen() bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.attnScreen
+}
+
 // noteScreenRead clears the skip record once a read succeeds.
 func (p *Pane) noteScreenRead() {
 	p.mu.Lock()
