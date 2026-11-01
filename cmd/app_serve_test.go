@@ -25,6 +25,25 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// ownRigFolder is a folder of rigs that only this test scans, and the one rig
+// folder in it. Never scan the temp folder itself: every concurrent test and
+// whatever the machine leaves there share it, and one slow or stuck neighbour
+// holds the scan to its bound and the test loses its rig (main red at 56cb5fc).
+// Kept short for the unix socket path.
+func ownRigFolder(t *testing.T) (projects, rig string) {
+	t.Helper()
+	projects, err := os.MkdirTemp("", "iap-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(projects) })
+	rig = filepath.Join(projects, "r")
+	if err := os.MkdirAll(rig, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return projects, rig
+}
+
 // serveFakeTUI answers every request on sockPath with resp, counting them.
 func serveFakeTUI(t *testing.T, sockPath string, resp tui.IPCResponse) *atomic.Int32 {
 	t.Helper()
@@ -80,7 +99,7 @@ func TestAppServeStatus_MatchesStatusJSONOnTheRig(t *testing.T) {
 	skipWindows(t)
 	restoreColor := disableColor(t)
 	defer restoreColor()
-	dir := shortProjectDir(t)
+	projects, dir := ownRigFolder(t)
 	writeBasicConfig(t, dir, "demo")
 	binDir := filepath.Join(dir, "bin")
 	os.MkdirAll(binDir, 0o755)
@@ -114,7 +133,7 @@ func TestAppServeStatus_MatchesStatusJSONOnTheRig(t *testing.T) {
 	restoreWD()
 	defer chdirForTest(t, t.TempDir())()
 
-	b := &appBackend{dirs: []string{filepath.Dir(dir)}, runner: &iexec.DefaultRunner{}}
+	b := &appBackend{dirs: []string{projects}, runner: &iexec.DefaultRunner{}}
 	var rig appserve.Rig
 	for _, rg := range b.FindRigs() {
 		if rg.Root == dir {
@@ -150,9 +169,9 @@ func TestAppServeBackend_NoRigAndNoTUI(t *testing.T) {
 	if rigs := b.FindRigs(); len(rigs) != 0 {
 		t.Errorf("empty folder: %v", rigs)
 	}
-	dir := shortProjectDir(t)
+	projects, dir := ownRigFolder(t)
 	writeBasicConfig(t, dir, "demo")
-	b.dirs = []string{filepath.Dir(dir)}
+	b.dirs = []string{projects}
 	for _, rg := range b.FindRigs() {
 		if rg.Root == dir {
 			if _, err := b.Panes(rg); err == nil {
