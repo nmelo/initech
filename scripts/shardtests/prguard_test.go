@@ -29,6 +29,10 @@ const macGuard = "${{ github.event_name != 'pull_request' && vars.MAC_RUNNER || 
 // 192.168.1.100): a pull_request run goes to GitHub-hosted ubuntu-latest.
 const linuxGuard = "${{ github.event_name != 'pull_request' && 'initech-wb' || 'ubuntu-latest' }}"
 
+// rigsGuard is the same guard for the two workbench runners labelled
+// initech-rigs, which only rigs.yml uses.
+const rigsGuard = "${{ github.event_name != 'pull_request' && 'initech-rigs' || 'ubuntu-latest' }}"
+
 // hostedLabel is a GitHub-hosted image name: ubuntu-, macos- or windows-
 // followed by a version or latest.
 var hostedLabel = regexp.MustCompile(`^(ubuntu|macos|windows)-[0-9a-z.-]+$`)
@@ -115,8 +119,8 @@ func prMacJobs(src []byte) ([]string, error) {
 		for _, l := range labels {
 			switch {
 			case hostedLabel.MatchString(l):
-			case (l == macGuard || l == linuxGuard) && !prTarget:
-			case l == macGuard || l == linuxGuard:
+			case (l == macGuard || l == linuxGuard || l == rigsGuard) && !prTarget:
+			case l == macGuard || l == linuxGuard || l == rigsGuard:
 				bad = append(bad, name+": the guarded expression under pull_request_target, where it picks the Mac")
 			default:
 				bad = append(bad, fmt.Sprintf("%s: runs-on %q is not a GitHub-hosted image", name, l))

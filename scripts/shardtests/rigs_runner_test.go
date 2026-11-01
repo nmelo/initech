@@ -10,7 +10,8 @@ import (
 )
 
 // Rigs run on the workbench beside main CI (ini-c5a.7, the operator via
-// theguy): every rigs.yml job but darwin runs on the guarded Linux selector, and every
+// theguy): every rigs.yml job but darwin runs on the two rigs runners (label
+// initech-rigs, never main's initech-wb), through the guarded selector, and every
 // step runs at the lowest CPU priority (the workflow's default shell is
 // nice -n 19 bash, and no step names another shell), so main CI's jobs and the
 // other projects' work come first. No job waits at the Mac's
@@ -54,8 +55,8 @@ func TestRigsWorkflow_EveryJobRunsOnTheWorkbenchAtLowPriority(t *testing.T) {
 		if key == "darwin" {
 			continue // TestRigsWorkflow_TheDarwinJobRunsOnTheMacBehindItsGate
 		}
-		if job.RunsOn != linuxGuard {
-			t.Errorf("%s runs on %v, want the workbench's guarded selector %s", key, job.RunsOn, linuxGuard)
+		if job.RunsOn != rigsGuard {
+			t.Errorf("%s runs on %v, want the rigs runners' guarded selector %s: never main's runners", key, job.RunsOn, rigsGuard)
 		}
 		if job.Timeout <= 0 {
 			t.Errorf("%s has no timeout-minutes", key)

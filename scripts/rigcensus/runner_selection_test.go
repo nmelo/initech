@@ -20,6 +20,10 @@ const macRunnerSelector = "${{ github.event_name != 'pull_request' && vars.MAC_R
 // guard: a pull request falls back to GitHub-hosted ubuntu-latest.
 const linuxRunnerSelector = "${{ github.event_name != 'pull_request' && 'initech-wb' || 'ubuntu-latest' }}"
 
+// rigsRunnerSelector reaches the workbench's two rigs runners (label
+// initech-rigs), with the same pull_request guard.
+const rigsRunnerSelector = "${{ github.event_name != 'pull_request' && 'initech-rigs' || 'ubuntu-latest' }}"
+
 // TestWorkflows_SelfHostedOnlyThroughTheGuardedSelector fences the one real
 // risk of a self-hosted runner on a public repo: a job reachable by
 // pull_request naming the Mac directly would run a stranger's code on the
@@ -61,10 +65,10 @@ func TestWorkflows_SelfHostedOnlyThroughTheGuardedSelector(t *testing.T) {
 			switch {
 			case !ok:
 				t.Errorf("%s job %q: runs-on is %#v; only a plain string is allowed (a label list could name the Mac directly)", name, job, wf.Jobs[job].RunsOn)
-			case got == "macos-latest", got == macRunnerSelector, got == linuxRunnerSelector:
+			case got == "macos-latest", got == macRunnerSelector, got == linuxRunnerSelector, got == rigsRunnerSelector:
 			case got == "ubuntu-latest" && name == "release.yml" && job == "release":
 			default:
-				t.Errorf("%s job %q runs on %q: a job may reach a self-hosted runner only through a guarded selector, %s or %s (ini-8k1o)", name, job, got, macRunnerSelector, linuxRunnerSelector)
+				t.Errorf("%s job %q runs on %q: a job may reach a self-hosted runner only through a guarded selector, %s, %s or %s (ini-8k1o)", name, job, got, macRunnerSelector, linuxRunnerSelector, rigsRunnerSelector)
 			}
 		}
 	}
