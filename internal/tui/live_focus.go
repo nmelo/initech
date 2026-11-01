@@ -7,7 +7,7 @@
 // the Focus split's Layout2Col (focus_split.go) supplies the layout, and a
 // LiveEngine in auto mode supplies who is on the right, with live's own hold
 // and one-change-per-tick rules. The only thing new is the engine's Eligible
-// predicate, set here to the overlay dot's "running" signal.
+// predicate, set here to paneKeptOnRight: working, or waiting at a prompt.
 package tui
 
 import "time"
@@ -39,6 +39,16 @@ const liveFocusNoneWorking = "no agent is working"
 func paneIsWorking(p PaneView) bool {
 	a := p.Activity()
 	return a == StateRunning || a == StateBackground
+}
+
+// paneKeptOnRight decides who the live focus split and the live list split
+// keep on the right: a working pane, or one waiting on the operator at a
+// permission prompt (ini-82c.2). A waiting agent is not idle; dropping it
+// from view hides the one pane that needs the operator. Only the splits use
+// it: live mode's ranking, the overlay's columns and the top title keep
+// paneIsWorking.
+func paneKeptOnRight(p PaneView) bool {
+	return paneIsWorking(p) || p.Activity() == StateWaitingInput
 }
 
 // toggleLiveFocusSplit implements Option+Shift+F.
@@ -73,7 +83,7 @@ func (t *TUI) toggleLiveFocusSplit() {
 		roles = t.project.Roles
 	}
 	engine := NewLiveEngine(0, nil, roles)
-	engine.Eligible = paneIsWorking
+	engine.Eligible = paneKeptOnRight
 	t.liveFocus = &liveFocusState{prev: prev, engine: engine}
 
 	t.layoutState.Mode = Layout2Col
@@ -117,13 +127,14 @@ func (t *TUI) freezeLiveFocusToFocusSplit() {
 	t.applyLayout()
 }
 
-// seedLiveFocus fills the right grid with the panes working at entry, each
+// seedLiveFocus fills the right grid with the panes kept on the right at
+// entry (working or waiting), each
 // on a fresh hold, so entering does not fill it one pane per tick.
 func (t *TUI) seedLiveFocus(now time.Time) {
 	panes := t.liveFocusInputs()
 	var names []string
 	for _, p := range panes {
-		if paneIsWorking(p) {
+		if paneKeptOnRight(p) {
 			names = append(names, agentKey(p))
 		}
 	}

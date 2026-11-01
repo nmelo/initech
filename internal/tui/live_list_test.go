@@ -293,8 +293,8 @@ func TestLiveList_MembershipIsLiveFocusMembership(t *testing.T) {
 	tui := listFleet(t)
 	tui.layoutState.Hidden = map[string]bool{"eng1": true}
 	altShiftL(tui)
-	if reflect.ValueOf(tui.liveList.engine.Eligible).Pointer() != reflect.ValueOf(paneIsWorking).Pointer() {
-		t.Fatal("the list's engine does not use paneIsWorking, the live focus split's predicate")
+	if reflect.ValueOf(tui.liveList.engine.Eligible).Pointer() != reflect.ValueOf(paneKeptOnRight).Pointer() {
+		t.Fatal("the list's engine does not use paneKeptOnRight, the live focus split's predicate")
 	}
 	if strings.Contains(listJoined(tui), "eng1") {
 		t.Fatalf("hidden eng1 is in a box: %s", listJoined(tui))

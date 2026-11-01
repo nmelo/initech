@@ -78,7 +78,7 @@ func (t *TUI) toggleLiveListSplit() {
 		roles = t.project.Roles
 	}
 	engine := NewLiveEngine(0, nil, roles)
-	engine.Eligible = paneIsWorking
+	engine.Eligible = paneKeptOnRight
 	t.liveList = &liveListState{prev: prev, engine: engine}
 	if t.listRows < 1 {
 		t.listRows = liveListDefaultRows
@@ -132,14 +132,15 @@ func (t *TUI) handLiveListToLiveFocus() {
 	t.toggleLiveFocusSplit()
 }
 
-// seedLiveList fills the grid with the panes working at entry, each on a
+// seedLiveList fills the grid with the panes kept on the right at entry
+// (working or waiting), each on a
 // fresh hold, so entering does not fill it one box per tick. The same seed
 // the live focus split does, on this mode's engine.
 func (t *TUI) seedLiveList(now time.Time) {
 	panes := t.liveFocusInputs()
 	var names []string
 	for _, p := range panes {
-		if paneIsWorking(p) {
+		if paneKeptOnRight(p) {
 			names = append(names, agentKey(p))
 		}
 	}
