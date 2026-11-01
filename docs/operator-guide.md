@@ -305,6 +305,8 @@ It serves HTTPS only (TLS 1.3) with its own self-signed certificate, `~/.config/
 
 `GET /v1/feed` is the change feed, as server-sent events (`id:`, `event:`, `data:` with a JSON object). Every 30 seconds, and no faster, the service reads each running rig's pane list from its initech (no bd or git) and sends a `pane_state` event for each pane whose state or banner changed (`rig`, `pane`, `from`, `to`, `banner`) and a `stuck` event once when a pane comes to a dialog or banner or starts waiting or pending (`rig`, `pane`, `reason`); the first read of a rig only sets what later reads compare against. A subscriber that reconnects with the last id it saw (the `Last-Event-ID` header, or `?since=<id>`) gets every event after it from the last ten minutes; one whose id is older than that gets a `reset` event first and reloads; one with no id starts from now. An idle stream carries a comment line every 15 seconds.
 
+`GET /v1/pins` is the pinned list, `[{"rig", "pane", "name", "order"}]` in `order`, `[]` when nothing is pinned; `PUT /v1/pins` with the whole list replaces it. The list is stored on the Mac, in `~/.config/initech/app-serve/pins.json` (mode 0600), so every paired device shows the same one. A list with a pin missing its rig or pane, the same pane twice, a name over 80 characters, more than 200 pins or a field the service does not know is refused with 400, and the stored list stands.
+
 ## Configuration
 
 Settings live in `initech.yaml` at the project root and are read at startup.

@@ -139,6 +139,7 @@ func runAppServe(cmd *cobra.Command, args []string) error {
 		Backend:  &appBackend{dirs: dirs, runner: appServeRunner},
 		Digest:   digest,
 		HasToken: true,
+		StateDir: appServeStateDir(),
 	})
 	ln, err := appserve.Listen(ip, appServePort)
 	if err != nil {

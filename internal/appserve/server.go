@@ -55,6 +55,9 @@ type Config struct {
 	CacheFor time.Duration
 	// After is the poll's timer; time.After when nil.
 	After func(time.Duration) <-chan time.Time
+	// StateDir is the service's state folder (token digest, certificate,
+	// pinned list).
+	StateDir string
 }
 
 // DefaultCacheFor is the status cache window.
@@ -69,7 +72,8 @@ type Server struct {
 	cfg Config
 	mux *http.ServeMux
 
-	feed *Feed
+	feed   *Feed
+	pinsMu sync.Mutex // one PUT /v1/pins at a time
 
 	mu       sync.Mutex
 	rigs     []Rig
@@ -114,6 +118,8 @@ func New(cfg Config) *Server {
 	s.mux.HandleFunc("GET /v1/rigs", s.handleRigs)
 	s.mux.HandleFunc("GET /v1/status", s.handleStatus)
 	s.mux.HandleFunc("GET /v1/status/{rig}", s.handleRigStatus)
+	s.mux.HandleFunc("GET /v1/pins", s.handleGetPins)
+	s.mux.HandleFunc("PUT /v1/pins", s.handlePutPins)
 	s.mux.HandleFunc("GET /v1/feed", func(w http.ResponseWriter, r *http.Request) { serveFeed(s.feed, w, r) })
 	return s
 }
