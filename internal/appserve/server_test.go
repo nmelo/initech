@@ -306,8 +306,13 @@ func TestBindAddr_TailnetOnlyNeverAllOrLoopback(t *testing.T) {
 }
 
 // AC5: the real listener binds the one LAN address it was given, and the
-// public port does not answer on loopback.
+// public port does not answer on loopback. It needs the host's own private
+// address: the workbench CI sandbox (INITECH_CI_SANDBOX=1) denies every
+// private range, so there it says so and stops; rigs.yml's mac job runs it.
 func TestListen_RealBindIsTheOneAddressNotLoopback(t *testing.T) {
+	if os.Getenv("INITECH_CI_SANDBOX") == "1" {
+		t.Skip("the workbench CI sandbox denies private addresses; this runs in rigs.yml's darwin job on the Mac")
+	}
 	addrs, err := SystemAddrs()
 	if err != nil {
 		t.Fatal(err)

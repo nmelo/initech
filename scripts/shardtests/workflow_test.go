@@ -14,16 +14,18 @@ import (
 // itself so a change to the workflow that breaks it fails here as well as in
 // CI: every shard runs the tool with no -short; the census job needs every
 // shard and runs even when one failed; and setup-go's cache is on for pull
-// requests only in ci.yml, which lands on the self-hosted runner. And the gate
+// requests only, in ci.yml and rigs.yml alike, since both land on the same
+// self-hosted runners. And the gate
 // is exactly the jobs the release gate expects (ini-p2ve.2), with the suite
 // run once, in the shards.
 
 type workflow struct {
 	Jobs map[string]struct {
-		Name  string      `yaml:"name"`
-		Needs interface{} `yaml:"needs"`
-		If    string      `yaml:"if"`
-		Steps []struct {
+		Name   string      `yaml:"name"`
+		RunsOn interface{} `yaml:"runs-on"`
+		Needs  interface{} `yaml:"needs"`
+		If     string      `yaml:"if"`
+		Steps  []struct {
 			Name string            `yaml:"name"`
 			If   string            `yaml:"if"`
 			Uses string            `yaml:"uses"`
@@ -145,13 +147,13 @@ func TestCIWorkflow_TheCensusNeedsEveryShardAndAlwaysRuns(t *testing.T) {
 	}
 }
 
-// AC 2, the cache lever: every setup-go in ci.yml has its cache on for pull
-// requests only, never on for the self-hosted runner, whose slots share one Go
-// build cache: a restore there unlinks object files under a compile running in
-// another slot (the v2.34.0 rigs race job). rigs.yml runs on GitHub-hosted
-// machines with the cache on (rigs_hosted_test.go).
+// AC 2, the cache lever: every setup-go has its cache on for pull requests
+// only, never on for a self-hosted runner, whose slots share one Go build
+// cache: a restore there unlinks object files under a compile running in
+// another slot (the v2.34.0 rigs race job). rigs.yml too: it shares the
+// workbench runners with ci.yml.
 func TestWorkflows_SetupGoCachesOnlyOnPullRequests(t *testing.T) {
-	for _, file := range []string{"ci.yml"} {
+	for _, file := range []string{"ci.yml", "rigs.yml"} {
 		w := readWorkflow(t, file)
 		var n int
 		for key, job := range w.Jobs {
@@ -172,9 +174,8 @@ func TestWorkflows_SetupGoCachesOnlyOnPullRequests(t *testing.T) {
 }
 
 // The job set the release gate expects, exactly (ini-p2ve.2, ini-c5a.3,
-// ini-c5a.7): the gate starts the run alone, then seven start together, on seven of
-// the Mac's eight runners, so none waits for a second wave, and the census
-// follows. build-and-test runs
+// ini-c5a.7): seven start together, one per workbench runner, so none waits
+// for a second wave, and the census follows. build-and-test runs
 // go test in two steps only: the witness -list of the whole tui package, and
 // the side-by-side step, whose only go test lines are the -list of the census
 // selector and that one env-gated selector (TestCensus_, TestRolesLessBoot_,
@@ -185,7 +186,7 @@ func TestWorkflows_SetupGoCachesOnlyOnPullRequests(t *testing.T) {
 // census, which is what makes dropping its -short run safe.
 func TestCIWorkflow_TheGateIsTheSevenJobs(t *testing.T) {
 	w := readCI(t)
-	want := []string{"build-and-test", "full-suite-1", "full-suite-2", "full-suite-3", "full-suite-4", "full-suite-5", "full-suite-6", "full-suite-census", "gate"}
+	want := []string{"build-and-test", "full-suite-1", "full-suite-2", "full-suite-3", "full-suite-4", "full-suite-5", "full-suite-6", "full-suite-census"}
 	var got []string
 	for key := range w.Jobs {
 		got = append(got, key)
@@ -194,17 +195,21 @@ func TestCIWorkflow_TheGateIsTheSevenJobs(t *testing.T) {
 	if strings.Join(got, " ") != strings.Join(want, " ") {
 		t.Errorf("ci.yml jobs are %v, want %v: the release gate reads this set (fleet/reference.md)", got, want)
 	}
-	var started, afterGate int
+	var started int
 	for _, key := range got {
-		switch w.Jobs[key].Needs {
-		case nil:
+		if w.Jobs[key].Needs == nil {
 			started++
-		case "gate":
-			afterGate++
 		}
 	}
-	if started != 1 || w.Jobs["gate"].Needs != nil || afterGate != 7 {
-		t.Errorf("%d jobs start without needs and %d need the gate; want only the gate to start, then 7: the six shards and build-and-test", started, afterGate)
+	if started != 7 {
+		t.Errorf("%d jobs start without needs, want 7, one per runner: the six shards and build-and-test", started)
+	}
+	// Main CI is Linux only, on the workbench (the operator via theguy): every
+	// job, the census included, runs on its guarded selector.
+	for _, key := range got {
+		if w.Jobs[key].RunsOn != linuxGuard {
+			t.Errorf("ci.yml %s runs on %v, want the workbench's guarded selector: main CI runs on Linux only", key, w.Jobs[key].RunsOn)
+		}
 	}
 	job := w.Jobs["build-and-test"]
 	const (

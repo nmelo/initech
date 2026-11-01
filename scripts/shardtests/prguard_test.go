@@ -25,6 +25,10 @@ import (
 // GitHub-hosted macos-latest and every other event to the Mac runners.
 const macGuard = "${{ github.event_name != 'pull_request' && vars.MAC_RUNNER || 'macos-latest' }}"
 
+// linuxGuard is the same guard for the workbench runners (initech-ci on
+// 192.168.1.100): a pull_request run goes to GitHub-hosted ubuntu-latest.
+const linuxGuard = "${{ github.event_name != 'pull_request' && 'initech-wb' || 'ubuntu-latest' }}"
+
 // hostedLabel is a GitHub-hosted image name: ubuntu-, macos- or windows-
 // followed by a version or latest.
 var hostedLabel = regexp.MustCompile(`^(ubuntu|macos|windows)-[0-9a-z.-]+$`)
@@ -111,8 +115,8 @@ func prMacJobs(src []byte) ([]string, error) {
 		for _, l := range labels {
 			switch {
 			case hostedLabel.MatchString(l):
-			case l == macGuard && !prTarget:
-			case l == macGuard:
+			case (l == macGuard || l == linuxGuard) && !prTarget:
+			case l == macGuard || l == linuxGuard:
 				bad = append(bad, name+": the guarded expression under pull_request_target, where it picks the Mac")
 			default:
 				bad = append(bad, fmt.Sprintf("%s: runs-on %q is not a GitHub-hosted image", name, l))
@@ -164,6 +168,8 @@ func TestWorkflows_PullRequestCheckCatchesEachUnsafeShape(t *testing.T) {
 		"the Mac variable on pull_request":        job("[push, pull_request]", "${{ vars.MAC_RUNNER }}"),
 		"the Mac variable with a hosted fallback": job("[pull_request]", "${{ vars.MAC_RUNNER || 'macos-latest' }}"),
 		"the guard under pull_request_target":     job("[pull_request_target]", "\""+macGuard+"\""),
+		"the Linux guard under a PR target":       job("[pull_request_target]", "\""+linuxGuard+"\""),
+		"the Linux variable on pull_request":      job("[pull_request]", "${{ vars.LINUX_RUNNER }}"),
 		"the runner label":                        job("{pull_request: {branches: [main]}}", "nmbp14"),
 		"self-hosted in a list":                   job("pull_request", "[self-hosted, macOS]"),
 		"a runner group":                          job("[pull_request]", "{group: mac, labels: [macos-latest]}"),
@@ -177,6 +183,7 @@ func TestWorkflows_PullRequestCheckCatchesEachUnsafeShape(t *testing.T) {
 	}
 	for name, src := range map[string]string{
 		"the guard on pull_request":    job("[push, pull_request, workflow_dispatch]", "\""+macGuard+"\""),
+		"the Linux guard on a PR":      job("[push, pull_request]", "\""+linuxGuard+"\""),
 		"a hosted image on a PR":       job("[pull_request]", "macos-latest"),
 		"the Mac with no PR trigger":   job("[push, workflow_dispatch]", "${{ vars.MAC_RUNNER }}"),
 		"the label on schedule":        job("{schedule: [{cron: '0 7 * * *'}]}", "nmbp14"),

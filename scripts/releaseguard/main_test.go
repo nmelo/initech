@@ -11,7 +11,7 @@ import (
 
 const sha = "0123456789abcdef0123456789abcdef01234567"
 
-var gateJobs = []string{"build-and-test", "full-suite-1", "full-suite-2", "full-suite-3", "full-suite-4", "full-suite-5", "full-suite-6", "full-suite-census", "gate"}
+var gateJobs = []string{"build-and-test", "full-suite-1", "full-suite-2", "full-suite-3", "full-suite-4", "full-suite-5", "full-suite-6", "full-suite-census"}
 
 func greenJobs(names ...string) []Job {
 	jobs := make([]Job, len(names))
@@ -44,8 +44,8 @@ func repoRoot(t *testing.T) string {
 }
 
 // The guard's job list is ci.yml's job keys, the list shipper's gate reads; the
-// live file must give the job set: the gate, build-and-test, the six shards
-// and the census.
+// live file must give the job set: build-and-test, the six shards and the
+// census.
 func TestExpectedJobs_ReadsCIYamlJobKeys(t *testing.T) {
 	raw, err := os.ReadFile(filepath.Join(repoRoot(t), ".github", "workflows", "ci.yml"))
 	if err != nil {

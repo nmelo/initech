@@ -20,6 +20,12 @@ on:
 permissions:
   contents: read
 
+# The workbench runners run in a sandbox that denies every private address
+# range; the one test that binds the host's own LAN address reads this and
+# stops with a skip that names where it runs instead (rigs.yml's darwin job).
+env:
+  INITECH_CI_SANDBOX: "1"
+
 # RUNNER SELECTION (ini-8k1o). Push, schedule and dispatch jobs run on the
 # operator's Mac -- self-hosted runners labelled nmbp14, arm64 macOS, the same
 # arch as GitHub's macos-latest -- when the repo variable MAC_RUNNER holds that
@@ -68,14 +74,17 @@ concurrency:
 #      variant, or a short-only life, that no job here would run. make check
 #      still runs the -short suite locally.
 #
-# Seven jobs after the gate and before the census (build-and-test,
-# full-suite-1..6), on seven of the Mac's eight runners, so none waits for a
-# second wave and one runner stays free for app-tests (ini-c5a.7: census-leg,
-# once its own job, now ends build-and-test). The wall is the gate, then the
-# longest of build-and-test and the shards, plus full-suite-census. Six shards
-# (ini-c5a.7; five since ini-c5a.3) keep a push under two minutes on a quiet
-# host with every test still on it; with the host's load over about 20, or
-# app-tests holding runners, a push takes longer: a known limit. Rigs run on GitHub-hosted macOS
+# ON THE WORKBENCH (ini-c5a.7, the operator via theguy): every job runs on
+# the Linux runners registered as initech-ci on 192.168.1.100 (label
+# initech-wb, in a sandbox: no sudo, no Docker, no LAN); a pull request falls
+# back to GitHub-hosted ubuntu-latest, so a fork's code never reaches that
+# machine. Tests that need macOS run in rigs.yml's darwin job, off this path. Nothing here
+# runs on the shared Mac (192.168.1.207), so no job waits at its load gate.
+# Seven jobs start together (build-and-test, full-suite-1..6) on seven
+# runners, so none waits for a second wave, and the census follows. The wall
+# is the longest of build-and-test and the shards, plus full-suite-census.
+# Six shards keep a push under two minutes with every test on it, with a
+# rigs run going: rigs jobs run at the lowest CPU priority (rigs.yml). Rigs run on GitHub-hosted macOS
 # (rigs.yml), so they hold no Mac runner and add no load at the gate.
 #
 # THE CENSUS is what keeps the faster gate from running less. full-suite-census
@@ -91,28 +100,8 @@ concurrency:
 # matrix), or that set-equality breaks.
 
 jobs:
-  # THE LOAD GATE, one small job first (ini-c5a.7): it waits for the shared Mac
-  # host (.github/actions/load-gate) while holding one runner, and every job
-  # that starts the run needs it, so a waiting run holds exactly one runner and
-  # its other jobs wait in GitHub's queue holding none. Gating inside each job
-  # had a waiting run hold six runners and filled the host at a load of 4.8.
-  gate:
-    runs-on: ${{ github.event_name != 'pull_request' && vars.MAC_RUNNER || 'macos-latest' }}
-    timeout-minutes: 25  # the gate's 20-minute cap, then it lets the run go
-    steps:
-      - uses: actions/checkout@v5
-
-      - uses: actions/setup-go@v6
-        with:
-          go-version-file: go.mod
-          cache: ${{ github.event_name == 'pull_request' }}
-
-      - name: Wait for the shared Mac host (load gate)
-        uses: ./.github/actions/load-gate
-
   build-and-test:
-    needs: gate
-    runs-on: ${{ github.event_name != 'pull_request' && vars.MAC_RUNNER || 'macos-latest' }}
+    runs-on: ${{ github.event_name != 'pull_request' && 'initech-wb' || 'ubuntu-latest' }}
     # 25, not 15: this job also runs the census steps, bounded at 900 s.
     timeout-minutes: 25
     steps:
@@ -136,9 +125,9 @@ jobs:
         run: bash scripts/lint-test-names.sh
 
       # THE SLOW STEPS, SIDE BY SIDE (ini-c5a.7): the release install suite (fake
-      # brew, temp prefix, no network, no real Cellar), the signing suite (fake
-      # gh, codesign and notarytool; no keychain, no Apple service), the publish
-      # suite (fake gh and codesign, a local repository as the tap), and the
+      # brew, temp prefix, no network, no real Cellar; its two tests that re-sign
+      # a binary with macOS codesign skip here), the publish suite (fake gh and
+      # codesign, a local repository as the tap), and the
       # census leg (was its own job, census-leg): the env-gated census and
       # window-CLI integration tests, which no shard runs (their gate is off
       # there), so the suite still runs once; on push, schedule and dispatch
@@ -154,8 +143,6 @@ jobs:
           set +e
           make release-install-test > release-install-test.log 2>&1 &
           install_pid=$!
-          make release-sign-test > release-sign-test.log 2>&1 &
-          sign_pid=$!
           make release-publish-test > release-publish-test.log 2>&1 &
           publish_pid=$!
           census_pid=""
@@ -173,7 +160,6 @@ jobs:
             if [ "$rc" -ne 0 ]; then echo "::error::$1 failed (exit $rc)"; failed=1; fi
           }
           report "Install step tests" "$install_pid" release-install-test.log
-          report "Signing step tests" "$sign_pid" release-sign-test.log
           report "Publish step tests" "$publish_pid" release-publish-test.log
           if [ -n "$census_pid" ]; then
             report "Census and window-CLI integration" "$census_pid" census.log
@@ -244,8 +230,7 @@ jobs:
   # so these legs do not spawn Claude sessions. The six shards together run
   # what `make test-full` runs (see SPEED above); full-suite-census proves it.
   full-suite-1:
-    needs: gate
-    runs-on: ${{ github.event_name != 'pull_request' && vars.MAC_RUNNER || 'macos-latest' }}
+    runs-on: ${{ github.event_name != 'pull_request' && 'initech-wb' || 'ubuntu-latest' }}
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v5
@@ -266,8 +251,7 @@ jobs:
           if-no-files-found: error
 
   full-suite-2:
-    needs: gate
-    runs-on: ${{ github.event_name != 'pull_request' && vars.MAC_RUNNER || 'macos-latest' }}
+    runs-on: ${{ github.event_name != 'pull_request' && 'initech-wb' || 'ubuntu-latest' }}
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v5
@@ -288,8 +272,7 @@ jobs:
           if-no-files-found: error
 
   full-suite-3:
-    needs: gate
-    runs-on: ${{ github.event_name != 'pull_request' && vars.MAC_RUNNER || 'macos-latest' }}
+    runs-on: ${{ github.event_name != 'pull_request' && 'initech-wb' || 'ubuntu-latest' }}
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v5
@@ -310,8 +293,7 @@ jobs:
           if-no-files-found: error
 
   full-suite-4:
-    needs: gate
-    runs-on: ${{ github.event_name != 'pull_request' && vars.MAC_RUNNER || 'macos-latest' }}
+    runs-on: ${{ github.event_name != 'pull_request' && 'initech-wb' || 'ubuntu-latest' }}
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v5
@@ -332,8 +314,7 @@ jobs:
           if-no-files-found: error
 
   full-suite-5:
-    needs: gate
-    runs-on: ${{ github.event_name != 'pull_request' && vars.MAC_RUNNER || 'macos-latest' }}
+    runs-on: ${{ github.event_name != 'pull_request' && 'initech-wb' || 'ubuntu-latest' }}
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v5
@@ -354,8 +335,7 @@ jobs:
           if-no-files-found: error
 
   full-suite-6:
-    needs: gate
-    runs-on: ${{ github.event_name != 'pull_request' && vars.MAC_RUNNER || 'macos-latest' }}
+    runs-on: ${{ github.event_name != 'pull_request' && 'initech-wb' || 'ubuntu-latest' }}
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v5
@@ -378,7 +358,7 @@ jobs:
   full-suite-census:
     needs: [full-suite-1, full-suite-2, full-suite-3, full-suite-4, full-suite-5, full-suite-6]
     if: always()
-    runs-on: ${{ github.event_name != 'pull_request' && vars.MAC_RUNNER || 'macos-latest' }}
+    runs-on: ${{ github.event_name != 'pull_request' && 'initech-wb' || 'ubuntu-latest' }}
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5

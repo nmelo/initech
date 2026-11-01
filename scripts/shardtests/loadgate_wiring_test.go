@@ -8,59 +8,51 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// The load gate's wiring (ini-c5a.7): in ci.yml one small job, gate, starts
-// the run and waits for the shared Mac host right after setup-go; the seven jobs
-// that do the work need it and do not wait themselves, so a waiting run holds
-// one runner and its other jobs wait in GitHub's queue holding none; and no
-// job that follows other jobs waits, so a run is never held back by the load
-// it made itself. rigs.yml runs on GitHub-hosted macOS and has
-// no gate (rigs_hosted_test.go). The gate's own rules are tested in
-// scripts/loadgate.
-func TestWorkflows_OneGateJobWaitsForTheHostAndTheWorkNeedsIt(t *testing.T) {
+// The load gate's wiring (ini-c5a.7): the gate guards the shared Mac
+// (192.168.1.207); ci.yml and rigs.yml run on the workbench's Linux runners and
+// never wait at it, except rigs.yml's darwin job, which runs on the Mac.
+// app-tests.yml has one job, which waits right after checkout with simulators
+// on. The gate's own
+// rules are tested in scripts/loadgate.
+func TestWorkflows_OnlyTheMacJobWaitsAtTheLoadGate(t *testing.T) {
 	root := repoRootForWorkflows(t)
 	const gate = "./.github/actions/load-gate"
-	var gated, afterGate, followers int
-	for _, name := range []string{"ci.yml"} {
+	read := func(name string) workflow {
 		src, err := os.ReadFile(filepath.Join(root, ".github", "workflows", name))
 		if err != nil {
 			t.Fatal(err)
 		}
 		var w workflow
-		if err := yaml.Unmarshal(src, &w); err != nil {
-			t.Fatal(err)
+		if err := yaml.Unmarshal(src, &w); err != nil || len(w.Jobs) == 0 {
+			t.Fatalf("%s: %v (%d jobs): this test is not reading it", name, err, len(w.Jobs))
 		}
-		for key, job := range w.Jobs {
-			setupGo, gateAt := -1, -1
-			for i, s := range job.Steps {
-				switch {
-				case len(s.Uses) >= 18 && s.Uses[:18] == "actions/setup-go@v":
-					setupGo = i
-				case s.Uses == gate:
-					gateAt = i
-				}
+		return w
+	}
+	for _, name := range []string{"ci.yml", "rigs.yml"} {
+		for key, job := range read(name).Jobs {
+			var waits bool
+			for _, s := range job.Steps {
+				waits = waits || s.Uses == gate
 			}
-			switch {
-			case key == "gate":
-				gated++
-				if job.Needs != nil {
-					t.Errorf("%s gate: needs %v; it starts the run", name, job.Needs)
-				}
-				if gateAt < 0 || setupGo < 0 || gateAt != setupGo+1 || len(job.Steps) != gateAt+1 {
-					t.Errorf("%s gate: the load gate is step %d of %d, want the last step, right after setup-go (step %d): the job only waits", name, gateAt, len(job.Steps), setupGo)
-				}
-			case gateAt >= 0:
-				t.Errorf("%s %s: waits for the host itself, holding a runner while it waits; only the gate job waits", name, key)
-			case job.Needs == "gate":
-				afterGate++
-			case job.Needs == nil:
-				t.Errorf("%s %s: starts a run without needing the gate", name, key)
-			default:
-				followers++
+			mac := name == "rigs.yml" && key == "darwin"
+			if waits != mac {
+				t.Errorf("%s %s waits at the Mac's load gate: %v, want %v (only a job on the Mac waits)", name, key, waits, mac)
 			}
 		}
 	}
-	if gated != 1 || afterGate != 7 || followers != 1 {
-		t.Errorf("%d gate jobs, %d jobs after the gate and %d followers, want 1, 7 (build-and-test and six shards) and 1 (full-suite-census): this test is not reading the jobs", gated, afterGate, followers)
+	var gated int
+	for key, job := range read("app-tests.yml").Jobs {
+		for _, s := range job.Steps {
+			if s.Uses == gate {
+				gated++
+				if s.With["simulators"] != "true" {
+					t.Errorf("app-tests.yml %s waits without simulators: it boots one", key)
+				}
+			}
+		}
+	}
+	if gated != 1 {
+		t.Errorf("app-tests.yml waits at the load gate %d times, want once", gated)
 	}
 	action, err := os.ReadFile(filepath.Join(root, ".github", "actions", "load-gate", "action.yml"))
 	if err != nil {

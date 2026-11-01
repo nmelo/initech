@@ -377,11 +377,13 @@ class Prune(Case):
         comm = subprocess.run(['ps', '-o', 'comm=', '-p', str(p.pid)], capture_output=True, text=True).stdout
         self.assertNotIn('Cellar', comm, 'the fixture must look as a real initech does: no keg in comm')
 
+    @unittest.skipUnless(sys.platform == 'darwin', 'the running-keg fixture is a macOS binary re-signed with codesign: it runs on the Mac, in rigs.yml\'s darwin job')
     def test_a_keg_running_through_a_link_stays(self):
         r = self.rig(kegs=self.VERS); self.running(r, '2.46.0', 'link')
         out = r.run('--prune'); self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
         self.assertEqual(set(r.kegs()), {'2.46.0', OLD, NEW}); self.assertIn('kept 2.46.0 (running)', out.stdout)
 
+    @unittest.skipUnless(sys.platform == 'darwin', 'the running-keg fixture is a macOS binary re-signed with codesign: it runs on the Mac, in rigs.yml\'s darwin job')
     def test_a_keg_running_from_path_stays(self):
         r = self.rig(kegs=self.VERS); self.running(r, '2.47.0', 'path')
         out = r.run('--prune'); self.assertEqual(out.returncode, 0, out.stdout + out.stderr)

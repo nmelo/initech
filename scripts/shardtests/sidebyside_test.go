@@ -11,8 +11,8 @@ import (
 
 // The side-by-side step in build-and-test (ini-c5a.7), run for real: its own
 // script, taken from ci.yml, under GitHub's default shell for a Mac runner
-// (bash -e), with a fake make and go on PATH. The three release suites and the
-// census start together and each exit code gates on its own: a red in any one
+// (bash -e), with a fake make and go on PATH. The two release suites that run
+// on Linux and the census start together and each exit code gates on its own: a red in any one
 // fails the step, every log still prints, and a pull request skips the census.
 
 const sideBySideStep = "Release suites and the census, side by side"
@@ -95,9 +95,9 @@ func runSideBySide(t *testing.T, event string, rcs map[string]string) stepResult
 	if err := os.WriteFile(scriptPath, []byte(script), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	expect := "4"
+	expect := "3"
 	if event == "pull_request" {
-		expect = "3"
+		expect = "2"
 	}
 	calls := filepath.Join(dir, "calls")
 	cmd := exec.Command("bash", "-e", scriptPath)
@@ -138,14 +138,13 @@ func runSideBySide(t *testing.T, event string, rcs map[string]string) stepResult
 
 var participants = map[string]string{
 	"release_install_test": "Install step tests",
-	"release_sign_test":    "Signing step tests",
 	"release_publish_test": "Publish step tests",
 }
 
 // Every log prints, inside its group, whatever the outcome.
 func assertEveryLog(t *testing.T, name string, r stepResult, census bool) {
 	t.Helper()
-	for _, l := range []string{"log of release-install-test", "log of release-sign-test", "log of release-publish-test"} {
+	for _, l := range []string{"log of release-install-test", "log of release-publish-test"} {
 		if !strings.Contains(r.out, l) {
 			t.Errorf("%s: %q missing from the step's output:\n%s", name, l, r.out)
 		}
@@ -166,7 +165,7 @@ func TestSideBySide_AllGreenPassesWithEveryLogAndTheCensusUnderItsGate(t *testin
 	if r.calls != want {
 		t.Errorf("go was called\n%s\nwant\n%s", r.calls, want)
 	}
-	for _, g := range []string{"::group::Install step tests (exit 0)", "::group::Signing step tests (exit 0)", "::group::Publish step tests (exit 0)", "::group::Census and window-CLI integration (exit 0)"} {
+	for _, g := range []string{"::group::Install step tests (exit 0)", "::group::Publish step tests (exit 0)", "::group::Census and window-CLI integration (exit 0)"} {
 		if !strings.Contains(r.out, g) {
 			t.Errorf("no %q in the output:\n%s", g, r.out)
 		}
@@ -207,9 +206,9 @@ func TestSideBySide_PullRequestSkipsOnlyTheCensus(t *testing.T) {
 		t.Errorf("pull request: exit %d, go calls %q:\n%s", r.rc, r.calls, r.out)
 	}
 	assertEveryLog(t, "pull request", r, false)
-	r = runSideBySide(t, "pull_request", map[string]string{"release_sign_test": "5"})
-	if r.rc == 0 || !strings.Contains(r.out, "::error::Signing step tests failed (exit 5)") {
-		t.Errorf("pull request, signing red: exit %d:\n%s", r.rc, r.out)
+	r = runSideBySide(t, "pull_request", map[string]string{"release_publish_test": "5"})
+	if r.rc == 0 || !strings.Contains(r.out, "::error::Publish step tests failed (exit 5)") {
+		t.Errorf("pull request, publish red: exit %d:\n%s", r.rc, r.out)
 	}
 }
 
