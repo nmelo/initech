@@ -333,10 +333,19 @@ func (t *TUI) handleIPCSend(conn net.Conn, req IPCRequest) {
 	var concretePane *Pane
 	var queued bool
 	var notRunning error
+	var slashRefusal string
 	if !t.runOnMain(func() {
 		pv = t.findPaneByName(req.Target)
 		if pv == nil {
 			return
+		}
+		// A slash command that would paste is refused before the suspended
+		// queue below, which would otherwise keep it and paste it on wake
+		// (ini-hoy). sendText refuses it for every other path.
+		if lp, ok := pv.(*Pane); ok {
+			if slashRefusal = slashPasteRefusal(lp.AgentType(), req.Text); slashRefusal != "" {
+				return
+			}
 		}
 		// A process that is gone gets nothing typed and the sender is told
 		// (ini-2s7q). Read here, with the suspended check, on main.
@@ -374,6 +383,11 @@ func (t *TUI) handleIPCSend(conn net.Conn, req IPCRequest) {
 	// SendText answers nothing.
 	if rp, ok := pv.(*RemotePane); ok {
 		t.sendViaRemote(conn, rp, req)
+		return
+	}
+	if slashRefusal != "" {
+		LogInfo("ipc", "SEND NOT DELIVERED", "target", req.Target, "reason", slashRefusal)
+		writeIPCResponse(conn, verdictIPCResponse(req.Target, SendVerdict{Outcome: DeliveryNotDelivered, Reason: slashRefusal}, ""))
 		return
 	}
 	if notRunning != nil {

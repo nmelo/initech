@@ -42,6 +42,9 @@ send waits for that (about two seconds), prints one line and exits with:
 
   0  delivered to <agent>
   1  not delivered to <agent>: <reason>
+     (one reason: a message to a Claude Code agent that begins with "/" and
+     is longer than 800 characters, or has a line break, would paste rather
+     than run as a command, so it is refused before anything is typed)
   2  could not confirm delivery to <agent>: <reason>; peek the pane
   0  sent to <agent>, unconfirmed: no delivery check for this agent type
      (Codex, OpenCode and generic agents)

@@ -20,7 +20,10 @@ var compactCmd = &cobra.Command{
 input box through the same delivery path as initech send: the same delivery
 verdict, and the same hold and refusal lines and exit codes (held for a
 dialog, do-not-disturb, not delivered). The words after the agent name are
-joined with single spaces, as initech send joins its words.
+joined with single spaces, as initech send joins its words. A keep text that
+makes the command longer than 800 characters, or that has a line break, is
+refused before anything is typed: Claude would paste it rather than run it.
+That prints "not compacted: <the reason>", exit 1, and nothing is watched.
 
 Once delivered, it watches the agent's context figure (the one initech
 status --json reports) and prints "compacted: <before>% -> <after>%" when it
@@ -106,6 +109,15 @@ func compactAgent(w io.Writer, target, host, text, self string) error {
 	}
 
 	verdict, err := deliverTextVerdict(w, target, host, text, true, false)
+	if err != nil && verdict == tui.DeliveryNotDelivered && tui.IsSlashPasteRefusal(err.Error()) {
+		// The TUI refused before typing: the command would have pasted,
+		// not run (ini-hoy). Its words, in compact's.
+		msg := err.Error()
+		if i := strings.Index(msg, ": a slash command "); i >= 0 {
+			msg = msg[i+2:]
+		}
+		return fmt.Errorf("not compacted: %s", msg)
+	}
 	if err != nil || verdict != tui.DeliveryDelivered {
 		// The send's own words and exit code; nothing to watch.
 		return err

@@ -1233,6 +1233,14 @@ func (p *Pane) SendOperatorText(text string, enter bool) {
 // sendText delivers and returns the verdict. A message queued for a
 // suspended pane reads delivered: the wake it triggers delivers the queue.
 func (p *Pane) sendText(text string, enter, hold bool, o sendOrigin) SendVerdict {
+	// A SLASH COMMAND THAT WOULD PASTE (ini-hoy) is refused before every hold
+	// below: held or queued, it would paste later, the same silent no-op. The
+	// operator's own paste (hold false) is typing, and is not judged.
+	if hold {
+		if why := slashPasteRefusal(p.AgentType(), text); why != "" {
+			return SendVerdict{Outcome: DeliveryNotDelivered, Reason: why}
+		}
+	}
 	var broke bool
 	p.mu.Lock()
 	p.lastMessageReceived = time.Now()
