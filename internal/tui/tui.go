@@ -175,7 +175,12 @@ type TUI struct {
 	bodiesDrawn  []string
 	chromesDrawn []string
 	shown        map[PaneView]*shownCells
-	inboxOnce    sync.Once
+	// sessionBeads writes the session-bead record (ini-wra.2), window 1
+	// only; nil in a second window and when there is no project root.
+	// lastSessionBeads is when it last reconciled.
+	sessionBeads     *sessionBeadRecorder
+	lastSessionBeads time.Time
+	inboxOnce        sync.Once
 	// inboxOutstanding maps an agent to the inbox items whose delivery verdict
 	// may still be corrected by a late report from the send path (ini-3wkl.6).
 	inboxOutstanding   map[string][]string
@@ -1433,6 +1438,13 @@ func Run(cfg Config) error {
 	// Derive each pane's bead from bd (ini-wra.1).
 	t.startBeadPoller(t.quitCh)
 
+	// Record which session is on which bead (ini-wra.2): the process that
+	// runs the agents writes it, so window 1 only. A clean exit closes every
+	// open interval.
+	if t.sessionBeads = t.sessionBeadRecorderFor(viewer); t.sessionBeads != nil {
+		defer func() { t.sessionBeads.closeAll(time.Now()) }()
+	}
+
 	// Poll tcell events in a goroutine.
 	eventCh := make(chan tcell.Event, 64)
 	t.safeGo(func() {
@@ -1482,6 +1494,7 @@ func Run(cfg Config) error {
 				t.welcome.active = false
 			}
 			t.rotateTip()
+			t.recordSessionBeads(time.Now())
 			// The inbox staleness floor for a child window (ini-3wkl.7).
 			t.refreshInboxOnCadence(time.Now())
 			if (t.layoutState.Mode == LayoutLive || t.liveFocus != nil || t.liveList != nil) && time.Since(t.lastLiveTick) >= time.Second {

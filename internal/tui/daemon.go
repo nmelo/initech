@@ -59,8 +59,12 @@ type Daemon struct {
 
 	// maintainMu makes the maintenance tick single-flight and guards
 	// lastModalMaint, its once-a-second clock (ini-dbqy).
-	maintainMu     sync.Mutex
-	lastModalMaint time.Time
+	maintainMu sync.Mutex
+	// sessionBeads writes this daemon's session-bead record (ini-wra.2):
+	// RunDaemon only, under maintainMu; lastSessionBeads is its last tick.
+	sessionBeads     *sessionBeadRecorder
+	lastSessionBeads time.Time
+	lastModalMaint   time.Time
 
 	// serve marks the daemon RunDaemon started (initech serve), never window
 	// 1's in-TUI one. Only it answers sends the way the TUI does and forwards
@@ -518,6 +522,11 @@ func RunDaemon(cfg DaemonConfig) error {
 	// panes, which the render loop already maintains.
 	stopMaint := make(chan struct{})
 	defer close(stopMaint)
+	// The process that runs the agents writes their session-bead record
+	// (ini-wra.2).
+	if d.project != nil && d.project.Root != "" {
+		d.sessionBeads = newSessionBeadRecorder(d.project.Root, d.project.Name)
+	}
 	go d.runMaintenance(stopMaint, maintenanceFrameInterval)
 	// Each daemon derives its own panes' beads from its own bd (ini-wra.1).
 	go d.runBeadPoller(stopMaint)
@@ -533,6 +542,11 @@ func RunDaemon(cfg DaemonConfig) error {
 			d.consolef("[%s] Shutting down (%s)...\n",
 				time.Now().Format("15:04:05"), sig)
 			d.gracefulShutdown()
+			if d.sessionBeads != nil {
+				d.maintainMu.Lock()
+				d.sessionBeads.closeAll(time.Now())
+				d.maintainMu.Unlock()
+			}
 			d.sessionsMu.Lock()
 			nClients := len(d.sessions)
 			d.sessionsMu.Unlock()
@@ -582,6 +596,10 @@ func (d *Daemon) maintain(now time.Time) {
 		views = append(views, p)
 	}
 	maintainModal(views, now, &d.lastModalMaint)
+	if d.sessionBeads != nil && now.Sub(d.lastSessionBeads) >= sessionBeadEvery {
+		d.lastSessionBeads = now
+		d.sessionBeads.reconcile(localPaneWork(views), now)
+	}
 }
 
 // gracefulShutdown notifies all connected clients and closes sessions.

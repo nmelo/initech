@@ -70,6 +70,7 @@ func (p *Pane) watchJSONL() {
 		lastOffset = newOffset
 
 		if len(entries) > 0 {
+			p.noteSessionID(entries)
 			p.mu.Lock()
 			// Append to ring buffer.
 			for _, e := range entries {
@@ -530,6 +531,7 @@ func parseJSONLEntry(line string) JournalEntry {
 	var raw struct {
 		Type      string `json:"type"`
 		Timestamp string `json:"timestamp"`
+		SessionID string `json:"sessionId"`
 		Message   struct {
 			Content json.RawMessage `json:"content"`
 		} `json:"message"`
@@ -538,7 +540,7 @@ func parseJSONLEntry(line string) JournalEntry {
 		return JournalEntry{}
 	}
 
-	entry := JournalEntry{Type: raw.Type}
+	entry := JournalEntry{Type: raw.Type, SessionID: raw.SessionID}
 	if raw.Timestamp != "" {
 		entry.Timestamp, _ = time.Parse(time.RFC3339Nano, raw.Timestamp)
 	}

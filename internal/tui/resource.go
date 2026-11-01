@@ -808,6 +808,12 @@ func (t *TUI) resumePane(pane *Pane, senderName string) error {
 				np.beadStale = pane.beadStale
 				np.lastAnswer = append([]bdBead(nil), pane.lastAnswer...)
 				np.answeredOnce = pane.answeredOnce
+				// The session-bead record's fields wake too (ini-wra.2): the
+				// configured command resumes the session (--continue), so the
+				// interval reopens at the wake with the same session id. A
+				// fresh session replaces it at its first entry.
+				np.derivedFrom, np.overrideSince = pane.derivedFrom, pane.overrideSince
+				np.sessionID, np.sessionSince = pane.sessionID, pane.sessionSince
 				// The no-bead marker wakes with the pane, as its beads do.
 				np.noBeadWork = pane.noBeadWork
 				carryFleetIdentity(np, pane)

@@ -84,6 +84,7 @@ type JournalEntry struct {
 	ToolName  string    // For tool_use/tool_result: which tool was called.
 	ExitCode  int       // For Bash tool results: exit code if available.
 	Timestamp time.Time // When this entry was written.
+	SessionID string    // The transcript's sessionId: the Claude session the entry belongs to.
 }
 
 const (
@@ -301,7 +302,11 @@ type Pane struct {
 	derivedBead      string    // bd's in_progress bead for the role, "" for none.
 	derivedTitle     string    // Its title.
 	derivedUpdatedAt time.Time // Its updated_at in bd.
-	derivedSince     time.Time // When it first became the derived bead here (Step 2A's interval start).
+	derivedSince     time.Time // When it first became the derived bead here (the poll time).
+	derivedFrom      time.Time // When it became the role's work: its bd updated_at at that first poll (the claim), else that poll's time (ini-wra.2).
+	overrideSince    time.Time // When initech bead last set or cleared the override (ini-wra.2).
+	sessionID        string    // The Claude session id (transcript sessionId) of an entry written since the process started; "" until there is one (ini-wra.2).
+	sessionSince     time.Time // The timestamp of the first entry carrying sessionID.
 	beadStale        bool      // bd did not answer the last poll; the derived bead is the last one known.
 	lastAnswer       []bdBead  // The role's in_progress beads at the last poll bd answered; a clear re-derives from it.
 	answeredOnce     bool      // A poll has been answered here (or carried by a restart); lastAnswer is bd's word.
@@ -1752,12 +1757,22 @@ func (p *Pane) applyDerivedBeads(beads []bdBead, answered bool, now time.Time) {
 func (p *Pane) rederiveLocked(now time.Time) {
 	b, ok := deriveBead(p.name, p.lastAnswer, p.lastNamed)
 	if !ok {
+		if p.derivedBead != "" {
+			p.derivedFrom = now
+		}
 		p.derivedBead, p.derivedTitle = "", ""
 		p.derivedUpdatedAt, p.derivedSince = time.Time{}, time.Time{}
 		return
 	}
 	if b.ID != p.derivedBead {
 		p.derivedSince = now
+		// The interval the session-bead record opens starts at the claim, not
+		// at this poll (ini-wra.2): bd's updated_at as first seen. A missing
+		// or future value falls back to the poll time.
+		p.derivedFrom = now
+		if !b.UpdatedAt.IsZero() && !b.UpdatedAt.After(now) {
+			p.derivedFrom = b.UpdatedAt
+		}
 		if !p.overrideLocked() {
 			// A new bead on the ribbon starts the idle-with-bead grace, as an
 			// initech bead call does (ini-t42).
@@ -1779,6 +1794,7 @@ func (p *Pane) SetBead(id, title string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.noBeadWork = "" // Any bead registration, a clear included, ends the no-bead marker.
+	p.overrideSince = time.Now()
 	if id == "" {
 		p.beadIDs = nil
 		p.rederiveOnClearLocked()
@@ -1799,6 +1815,7 @@ func (p *Pane) SetBeads(ids []string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.noBeadWork = ""
+	p.overrideSince = time.Now()
 	if len(ids) == 0 {
 		p.beadIDs = nil
 		p.rederiveOnClearLocked()
@@ -1833,6 +1850,7 @@ func (p *Pane) SetNoBeadWork(words string) {
 	defer p.mu.Unlock()
 	p.beadIDs = nil
 	p.beadTitle = ""
+	p.overrideSince = time.Now()
 	// The marker is said by the dispatcher, so it is an override too
 	// (overrideLocked): it stands over any bead bd shows until the next
 	// registration or clear.
