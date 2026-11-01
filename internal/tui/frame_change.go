@@ -75,6 +75,7 @@ type ribbonLook struct {
 	title           string
 	style           tcell.Style
 	tag             string
+	warn            string // the compact-soon flag, drawn after the tag (ini-sf5.2)
 	header          string // the effort's pace on the top edge (ini-y0n.2)
 	headerInset     int    // the top edge columns the project badge covers
 	bead, beadTitle string
@@ -104,6 +105,17 @@ func backgroundTag(pv PaneView) string {
 		return ""
 	}
 	return "[bg " + shortAge(age) + "] "
+}
+
+// contextTag is the ribbon's compact-soon flag for a local pane at or above
+// ContextFlagAt: "[ctx 91%, compact soon] " (ini-sf5.2). Empty below it, for
+// an unknown figure, and for a remote pane, whose figure this window does
+// not have.
+func contextTag(p *Pane) string {
+	if t := ContextFlagText(p.ContextFigure()); t != "" {
+		return "[" + t + "] "
+	}
+	return ""
 }
 
 // chromeUnchanged reports whether the chrome last drawn looks like l.

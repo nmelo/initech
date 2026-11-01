@@ -715,6 +715,7 @@ func (d *Daemon) allPanesWithViews() ([]PaneInfo, []PaneView, bool) {
 			BeadStale:    p.BeadStale(),
 			Unattributed: p.Unattributed(),
 			AgentType:    config.NormalizeAgentType(p.AgentType()),
+			ContextSoon:  contextSoon(p),
 		}
 		panes[i].DND, panes[i].DNDAgeSec = dndFields(p, time.Now())
 		if panes[i].DNDAgeSec != nil {

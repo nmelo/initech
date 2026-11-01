@@ -80,6 +80,8 @@ func runPatrol(cmd *cobra.Command, args []string) error {
 		BeadStale bool `json:"bead_stale"`
 		// Unattributed: fifteen minutes of work with no bead (ini-wra.3).
 		Unattributed bool `json:"unattributed"`
+		// ContextSoon: the context figure while at or above the flag.
+		ContextSoon *int `json:"context_soon"`
 	}
 	var entries []patrolEntry
 	if err := json.Unmarshal([]byte(resp.Data), &entries); err != nil {
@@ -118,6 +120,9 @@ func runPatrol(cmd *cobra.Command, args []string) error {
 		}
 		if e.DNDAgeSec != nil {
 			headerInner += ", " + color.Yellow(dndText(*e.DNDAgeSec))
+		}
+		if flag := tui.ContextFlagText(e.ContextSoon); flag != "" && e.Alive {
+			headerInner += ", " + color.Yellow(flag)
 		}
 		if e.Bead == "" && e.Unattributed {
 			headerInner += " | " + color.Yellow("no bead")

@@ -26,6 +26,10 @@ var trueBlack = tcell.NewRGBColor(0, 0, 0)
 // ribbonTagStyle is the dim state tag after a ribbon's title ([bg 4m]).
 var ribbonTagStyle = tcell.StyleDefault.Background(trueBlack).Foreground(tcell.ColorDimGray)
 
+// ribbonWarnStyle draws the compact-soon flag: yellow, as status and patrol
+// print it, so it reads at a glance (ini-sf5.2).
+var ribbonWarnStyle = tcell.StyleDefault.Background(trueBlack).Foreground(tcell.ColorYellow)
+
 var runningSquareStyle = tcell.StyleDefault.Background(trueBlack).Foreground(tcell.ColorGreen).Bold(true)
 
 // noBeadLabel is what the ribbon shows in a bead's place for work dispatched
@@ -69,6 +73,12 @@ func renderRibbon(s *clampedScreen, r Region, look ribbonLook) int {
 	for _, ch := range look.tag {
 		if col < r.X+r.W {
 			s.SetContent(col, ribbonY, ch, nil, ribbonTagStyle)
+			col++
+		}
+	}
+	for _, ch := range look.warn {
+		if col < r.X+r.W {
+			s.SetContent(col, ribbonY, ch, nil, ribbonWarnStyle)
 			col++
 		}
 	}

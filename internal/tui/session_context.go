@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 )
 
 // Context and account for status --json when the footer cannot say (ini-484).
@@ -161,7 +162,22 @@ func claActiveProfile() *string {
 // the pane logs it once per model: a wrong window in sessionModels shows
 // here instead of on every narrow pane unsaid.
 func paneContext(f Footer, p *Pane) (ctx *int, user, model *string) {
-	ctx, user, model = f.ContextPercent, f.User, f.Model
+	ctx, model = contextFigure(f, p), f.Model
+	if model == nil && p != nil {
+		model = p.sessionUsageNow().modelName()
+	}
+	user = f.User
+	if user == nil {
+		user = claActiveProfile()
+	}
+	return ctx, user, model
+}
+
+// contextFigure is the pane's context used: the footer's when it shows one,
+// else the transcript's; nil when neither answers. A footer and transcript
+// more than a point apart log once (warnContextDisagrees).
+func contextFigure(f Footer, p *Pane) *int {
+	ctx := f.ContextPercent
 	var u sessionUsage
 	if p != nil {
 		u = p.sessionUsageNow()
@@ -173,13 +189,50 @@ func paneContext(f Footer, p *Pane) (ctx *int, user, model *string) {
 	case sp != nil && (*ctx-*sp > 1 || *sp-*ctx > 1):
 		p.warnContextDisagrees(u.model, *ctx, *sp)
 	}
-	if model == nil {
-		model = u.modelName()
+	return ctx
+}
+
+// ContextFlagAt is the context used, in percent, at which a pane is flagged
+// to compact soon (ini-sf5.2).
+const ContextFlagAt = 85
+
+// ContextFlagText is the flag status, patrol and the ribbon print for a
+// context figure: "ctx 91%, compact soon" at or above ContextFlagAt, the
+// figure as read; "" below it or for an unknown figure.
+func ContextFlagText(pct *int) string {
+	if pct == nil || *pct < ContextFlagAt {
+		return ""
 	}
-	if user == nil {
-		user = claActiveProfile()
+	return "ctx " + strconv.Itoa(*pct) + "%, compact soon"
+}
+
+// noteContext records the context figure the maintenance tick read.
+func (p *Pane) noteContext(f Footer) {
+	ctx := contextFigure(f, p)
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.ctxFigure = ctx
+}
+
+// ContextFigure is the context used as the last maintenance tick read it;
+// nil when unknown.
+func (p *Pane) ContextFigure() *int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.ctxFigure
+}
+
+// contextSoon is the figure to send when the pane is flagged, nil when not:
+// a local pane's tick reading; a remote pane has none here.
+func contextSoon(pv PaneView) *int {
+	p, ok := pv.(*Pane)
+	if !ok {
+		return nil
 	}
-	return ctx, user, model
+	if ctx := p.ContextFigure(); ContextFlagText(ctx) != "" {
+		return ctx
+	}
+	return nil
 }
 
 // warnContextDisagrees logs, once per model, that the footer's context and

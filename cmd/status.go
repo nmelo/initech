@@ -82,6 +82,10 @@ type paneInfo struct {
 
 	// Busy is the background work the TUI's tick last saw (ini-b4l0).
 	Busy *tui.PaneBusy `json:"busy"`
+
+	// ContextSoon is the context figure while the pane is at or above
+	// tui.ContextFlagAt (ini-sf5.2); nil otherwise or from an older TUI.
+	ContextSoon *int `json:"context_soon"`
 }
 
 // busyText is background work as status and patrol print it after the state
@@ -443,6 +447,11 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		// change (ini-x432).
 		if pi.DNDAgeSec != nil { // sent only while on
 			status += " " + color.Yellow(dndText(*pi.DNDAgeSec))
+		}
+		// Compact soon (ini-sf5.2): the context figure at or above the
+		// threshold, as the tick read it.
+		if flag := tui.ContextFlagText(pi.ContextSoon); flag != "" && pi.Alive {
+			status += " " + color.Yellow(flag)
 		}
 		if !pi.Visible {
 			status += " " + color.Dim("[hidden]")

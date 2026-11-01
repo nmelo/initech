@@ -169,6 +169,7 @@ func (t *TUI) allPanesWithViews() ([]PaneInfo, []PaneView, bool) {
 				BeadStale:    beadStaleOf(p),
 				Unattributed: unattributedOf(p),
 				Busy:         paneBusy(p, time.Now()),
+				ContextSoon:  contextSoon(p),
 			}
 			if lp, ok := p.(*Pane); ok {
 				panes[i].AgentType = config.NormalizeAgentType(lp.AgentType())
@@ -1486,6 +1487,8 @@ func (t *TUI) handleIPCPatrol(conn net.Conn, req IPCRequest) {
 		BeadStale bool `json:"bead_stale,omitempty"`
 		// Unattributed: fifteen minutes of work with no bead (ini-wra.3).
 		Unattributed bool `json:"unattributed,omitempty"`
+		// ContextSoon: the context figure while at or above ContextFlagAt.
+		ContextSoon *int `json:"context_soon,omitempty"`
 	}
 	var result []patrolEntry
 	t.runOnMain(func() {
@@ -1502,6 +1505,7 @@ func (t *TUI) handleIPCPatrol(conn net.Conn, req IPCRequest) {
 			}
 			result[i].BeadStale = beadStaleOf(p)
 			result[i].Unattributed = unattributedOf(p)
+			result[i].ContextSoon = contextSoon(p)
 			_, result[i].DNDAgeSec = dndFields(p, time.Now())
 		}
 	})

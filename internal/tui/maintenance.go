@@ -85,7 +85,10 @@ func maintainModal(panes []PaneView, now time.Time, last *time.Time) {
 		cols := p.lastEmuCols
 		p.mu.Unlock()
 		starts, treeOK := tree.runningShells(p.pid)
-		p.observeBackgroundTree(now, p.IsAlive(), parseFooter(rows, cols), starts, treeOK)
+		foot := parseFooter(rows, cols)
+		p.observeBackgroundTree(now, p.IsAlive(), foot, starts, treeOK)
+		// The context figure for the compact-soon flag (ini-sf5.2).
+		p.noteContext(foot)
 		p.observePendingInput(rows, cols)
 		p.raiseSilentClaudeDialog(rows)
 		if screenShowsModal(rows) {

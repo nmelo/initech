@@ -63,6 +63,11 @@ type PaneInfo struct {
 	// Busy is the background work the pane's footer showed at the last tick,
 	// sent only while there is some (ini-b4l0).
 	Busy *PaneBusy `json:"busy,omitempty"`
+
+	// ContextSoon is the pane's context figure, sent only while it is at or
+	// above ContextFlagAt (ini-sf5.2), so initech status flags it without
+	// asking for detail.
+	ContextSoon *int `json:"context_soon,omitempty"`
 }
 
 // PaneBusy is a pane's background work as the maintenance tick last read it
