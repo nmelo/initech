@@ -29,6 +29,7 @@
 		8760144F04AED9057D821D6D /* HomeModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A282C9D0B4542CD0C2D4AD1C /* HomeModelTests.swift */; };
 		89E3CEC32DF11F42F086C4BE /* HomeModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C7B8C3570C7B33C099C65C3 /* HomeModel.swift */; };
 		A04E78EFB83532AD539D6C7A /* ProgressView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC3E1D3D497C12A586B34C15 /* ProgressView.swift */; };
+		A5E7F5E88EF7F428FC56F0CC /* TransportSecurityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65E10B8A7F8ADF45595B7CD7 /* TransportSecurityTests.swift */; };
 		A63BB6736597FC951A3267DA /* PaneView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38DE6C64E6074FD3DA0E9F8C /* PaneView.swift */; };
 		AA2F5F162E37D2C590BCED41 /* PairingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 773F4EA9812F633D405B6B10 /* PairingView.swift */; };
 		B2F2B4FB55FCDA56E935F9F9 /* AppLock.swift in Sources */ = {isa = PBXBuildFile; fileRef = 507BBB42FCC3688C96662A86 /* AppLock.swift */; };
@@ -73,6 +74,7 @@
 		41354D02977BC4D7F01A5923 /* InitechAppTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = InitechAppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		507BBB42FCC3688C96662A86 /* AppLock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLock.swift; sourceTree = "<group>"; };
 		5C4A3801D442302B722CA33A /* OperatorScreens.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OperatorScreens.swift; sourceTree = "<group>"; };
+		65E10B8A7F8ADF45595B7CD7 /* TransportSecurityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransportSecurityTests.swift; sourceTree = "<group>"; };
 		666FD729244613CF6E86345D /* BlockersView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlockersView.swift; sourceTree = "<group>"; };
 		773F4EA9812F633D405B6B10 /* PairingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingView.swift; sourceTree = "<group>"; };
 		7BAD504231BC2B5E64665002 /* OperatorScreensTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OperatorScreensTests.swift; sourceTree = "<group>"; };
@@ -87,6 +89,7 @@
 		9C7B8C3570C7B33C099C65C3 /* HomeModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeModel.swift; sourceTree = "<group>"; };
 		A282C9D0B4542CD0C2D4AD1C /* HomeModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeModelTests.swift; sourceTree = "<group>"; };
 		A5C4B78E7DDAD9C9D884A6A0 /* InitechApp.Debug.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = InitechApp.Debug.entitlements; sourceTree = "<group>"; };
+		B5FF5FF44D37E73B61D2D4BB /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		BB189FF009C5D6B4E1735478 /* ServiceClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServiceClient.swift; sourceTree = "<group>"; };
 		CC3E1D3D497C12A586B34C15 /* ProgressView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProgressView.swift; sourceTree = "<group>"; };
 		D973C4CF1AB9FD8305E3EE9B /* InitechApp.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = InitechApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -117,6 +120,7 @@
 				666FD729244613CF6E86345D /* BlockersView.swift */,
 				9C7B8C3570C7B33C099C65C3 /* HomeModel.swift */,
 				0DD99BD2396715324CE7297D /* HomeView.swift */,
+				B5FF5FF44D37E73B61D2D4BB /* Info.plist */,
 				A5C4B78E7DDAD9C9D884A6A0 /* InitechApp.Debug.entitlements */,
 				2DF1A52E1AA6AD143C33B281 /* InitechApp.entitlements */,
 				F87CD51E774AB674C7B99838 /* InitechApp.swift */,
@@ -158,6 +162,7 @@
 				80BF034D8710ADF009CF829B /* ProgressModelTests.swift */,
 				7F6B44C43A26A6F70FCF033B /* ScreenshotTests.swift */,
 				926BB43F5DEAA400A6ECE838 /* ServiceClientTests.swift */,
+				65E10B8A7F8ADF45595B7CD7 /* TransportSecurityTests.swift */,
 			);
 			path = InitechAppTests;
 			sourceTree = "<group>";
@@ -335,6 +340,7 @@
 				685878ED785A10A098F263E2 /* ProgressModelTests.swift in Sources */,
 				3143849633B5CCDC67ECB10B /* ScreenshotTests.swift in Sources */,
 				B8924AE4C4A38EB48764AD4B /* ServiceClientTests.swift in Sources */,
+				A5E7F5E88EF7F428FC56F0CC /* TransportSecurityTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -361,6 +367,7 @@
 				CODE_SIGN_ENTITLEMENTS = InitechApp/InitechApp.Debug.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = InitechApp/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = initech;
 				INFOPLIST_KEY_NSCameraUsageDescription = "initech scans the pairing code your Mac shows.";
 				INFOPLIST_KEY_NSFaceIDUsageDescription = "initech locks behind Face ID because it can type into your agents.";
@@ -385,6 +392,7 @@
 				CODE_SIGN_ENTITLEMENTS = InitechApp/InitechApp.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = InitechApp/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = initech;
 				INFOPLIST_KEY_NSCameraUsageDescription = "initech scans the pairing code your Mac shows.";
 				INFOPLIST_KEY_NSFaceIDUsageDescription = "initech locks behind Face ID because it can type into your agents.";

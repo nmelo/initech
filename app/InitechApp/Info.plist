@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- The app's one peer is the Mac's initech app-serve, reached at a tailnet
+	     IP with its own self-signed certificate. ATS would require that
+	     certificate to chain to a system root and fails every connection
+	     (-9802) before the app's pin check runs. Every connection the app makes
+	     is pinned to the certificate named in the pairing (PinningDelegate), so
+	     the pin, not system trust, decides. NSAllowsLocalNetworking is not set
+	     alongside: iOS ignores NSAllowsArbitraryLoads when it is. -->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+	</dict>
+</dict>
+</plist>

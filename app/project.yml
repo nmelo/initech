@@ -24,6 +24,9 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: co.nmelo.initech
         TARGETED_DEVICE_FAMILY: "1,2"
         GENERATE_INFOPLIST_FILE: YES
+        # Merged into the generated Info.plist: the keys that cannot be
+        # INFOPLIST_KEY_ settings (App Transport Security).
+        INFOPLIST_FILE: InitechApp/Info.plist
         INFOPLIST_KEY_CFBundleDisplayName: initech
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         INFOPLIST_KEY_NSCameraUsageDescription: "initech scans the pairing code your Mac shows."
