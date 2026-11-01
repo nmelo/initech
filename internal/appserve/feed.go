@@ -28,7 +28,8 @@ type Event struct {
 // Feed is the service's change feed: every event in order, kept FeedKeep
 // for replay.
 type Feed struct {
-	now func() time.Time
+	now       func() time.Time
+	keepalive time.Duration
 
 	mu      sync.Mutex
 	next    int64
@@ -38,7 +39,7 @@ type Feed struct {
 
 // NewFeed is an empty feed on clock now.
 func NewFeed(now func() time.Time) *Feed {
-	return &Feed{now: now, next: 1, changed: make(chan struct{})}
+	return &Feed{now: now, keepalive: FeedKeepalive, next: 1, changed: make(chan struct{})}
 }
 
 // Publish adds an event and wakes every subscriber.
@@ -96,8 +97,11 @@ func (f *Feed) Last() int64 {
 // serveFeed streams the feed as server-sent events from the id the
 // subscriber last saw (Last-Event-ID, or ?since=), replaying what it missed
 // in the last FeedKeep. A subscriber with no id starts from now. One whose
-// id is older than what is kept gets a reset event first.
-func serveFeed(f *Feed, w http.ResponseWriter, r *http.Request) {
+// id is older than what is kept gets a reset event first. authorized is asked
+// before anything is written and on every wake and keepalive: the stream ends
+// once its token is no longer the current one, so revoking a device also ends
+// what it has open.
+func serveFeed(f *Feed, w http.ResponseWriter, r *http.Request, authorized func() bool) {
 	fl, ok := w.(http.Flusher)
 	if !ok {
 		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
@@ -121,9 +125,12 @@ func serveFeed(f *Feed, w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	fl.Flush()
 
-	keep := time.NewTicker(FeedKeepalive)
+	keep := time.NewTicker(f.keepalive)
 	defer keep.Stop()
 	for {
+		if !authorized() {
+			return
+		}
 		events, wake, lost := f.Since(last)
 		if lost {
 			fmt.Fprintf(w, "event: reset\ndata: {\"reason\":\"events older than %s were dropped; reload\"}\n\n", FeedKeep)

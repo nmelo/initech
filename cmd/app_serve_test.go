@@ -207,6 +207,9 @@ func TestAppServeToken_PrintsThePairingLinkOnce(t *testing.T) {
 	if strings.Count(out, m[1]) != 1 {
 		t.Errorf("the token is printed %d times", strings.Count(out, m[1]))
 	}
+	if !strings.Contains(out, "█") {
+		t.Errorf("no QR code in the output:\n%s", out)
+	}
 	stored, _ := os.ReadFile(filepath.Join(state, appserve.TokenFile))
 	if strings.Contains(string(stored), m[1]) {
 		t.Error("the token itself is stored")

@@ -39,11 +39,40 @@ func stuckReason(ps PaneState) string {
 	return ""
 }
 
+// ScanStuckNotice is what OnStuck is told. It names no pane content.
+const ScanStuckNotice = "initech app-serve cannot finish reading its rig folders; run under launchd, it may need macOS permission for them"
+
 // Run polls every rig every PollEvery until ctx ends, publishing what
-// changed on the feed. The first poll runs at once.
+// changed on the feed. The first poll runs at once. From here on requests
+// read the poll's results instead of scanning, so a poll that blocks holds no
+// request; it is reported through OnStuck.
 func (s *Server) Run(ctx context.Context) {
+	s.mu.Lock()
+	s.polling = true
+	s.mu.Unlock()
 	for {
-		s.Poll()
+		done := make(chan struct{})
+		go func() {
+			s.Poll()
+			close(done)
+		}()
+		stuck := time.NewTimer(s.cfg.StuckAfter)
+		select {
+		case <-done:
+		case <-stuck.C:
+			if s.cfg.OnStuck != nil {
+				s.cfg.OnStuck(ScanStuckNotice)
+			}
+			select {
+			case <-done:
+			case <-ctx.Done():
+				return
+			}
+		case <-ctx.Done():
+			stuck.Stop()
+			return
+		}
+		stuck.Stop()
 		select {
 		case <-ctx.Done():
 			return
@@ -60,7 +89,8 @@ func (s *Server) Run(ctx context.Context) {
 func (s *Server) Poll() {
 	var running []Rig
 	seen := map[string]map[string]PaneState{}
-	for _, rg := range s.cfg.Backend.FindRigs() {
+	found := s.cfg.Backend.FindRigs()
+	for _, rg := range found {
 		panes, err := s.cfg.Backend.Panes(rg)
 		if err != nil {
 			continue
@@ -89,7 +119,7 @@ func (s *Server) Poll() {
 		}
 	}
 	s.mu.Lock()
-	s.panes = seen
+	s.panes, s.found, s.polled = seen, found, true
 	s.mu.Unlock()
 	s.setRunning(running)
 	s.publishBlockers()

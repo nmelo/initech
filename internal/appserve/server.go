@@ -52,8 +52,13 @@ type Backend interface {
 // Config is the service's setup.
 type Config struct {
 	Backend Backend
-	// Digest is the stored token's SHA-256; a request carries the token
-	// itself. With HasToken false every request is refused.
+	// TokenDir is the folder holding the token digest, read on every
+	// request, so a token issued while the service runs takes effect at once
+	// and revokes the one before; no digest there refuses every request.
+	// Empty: Digest and HasToken stand instead.
+	TokenDir string
+	// Digest is the token's SHA-256; a request carries the token itself.
+	// With HasToken false every request is refused.
 	Digest   [32]byte
 	HasToken bool
 	// Now is the clock; time.Now when nil.
@@ -65,10 +70,17 @@ type Config struct {
 	// StateDir is the service's state folder (token digest, certificate,
 	// pinned list).
 	StateDir string
+	// StuckAfter is how long a rig scan runs before OnStuck is told;
+	// DefaultStuckAfter when zero. OnStuck runs once per scan that sticks.
+	StuckAfter time.Duration
+	OnStuck    func(string)
 }
 
 // DefaultCacheFor is the status cache window.
 const DefaultCacheFor = 5 * time.Second
+
+// DefaultStuckAfter is how long a rig scan runs before it is reported stuck.
+const DefaultStuckAfter = 30 * time.Second
 
 // ScreenLines is how many lines of a pane's screen ride with its status
 // while it shows a dialog, a banner or a prompt.
@@ -87,6 +99,9 @@ type Server struct {
 	rigsAt   time.Time
 	statuses map[string]cachedStatus
 	panes    map[string]map[string]PaneState // by rig root, then pane: the last poll
+	found    []Rig                           // every rig the last poll's scan found, running or not
+	polling  bool                            // Run is going: requests read its results and never scan
+	polled   bool                            // a poll has finished
 
 	progress      []progress.Report         // the latest progress run
 	progressAsked map[string]cachedProgress // reports read on request, by rig root and prefix
@@ -130,6 +145,9 @@ func New(cfg Config) *Server {
 	if cfg.After == nil {
 		cfg.After = time.After
 	}
+	if cfg.StuckAfter <= 0 {
+		cfg.StuckAfter = DefaultStuckAfter
+	}
 	s := &Server{cfg: cfg, mux: http.NewServeMux(), statuses: map[string]cachedStatus{}, progressAsked: map[string]cachedProgress{}, tails: map[string]tailPos{}, feed: NewFeed(cfg.Now)}
 	s.mux.HandleFunc("GET /v1/rigs", s.handleRigs)
 	s.mux.HandleFunc("GET /v1/status", s.handleStatus)
@@ -142,14 +160,21 @@ func New(cfg Config) *Server {
 	s.mux.HandleFunc("GET /v1/progress/{rig}", s.handleRigProgress)
 	s.mux.HandleFunc("GET /v1/pins", s.handleGetPins)
 	s.mux.HandleFunc("PUT /v1/pins", s.handlePutPins)
-	s.mux.HandleFunc("GET /v1/feed", func(w http.ResponseWriter, r *http.Request) { serveFeed(s.feed, w, r) })
+	s.mux.HandleFunc("GET /v1/feed", func(w http.ResponseWriter, r *http.Request) {
+		header := r.Header.Get("Authorization")
+		serveFeed(s.feed, w, r, func() bool {
+			digest, ok := s.digest()
+			return ok && tokenMatches(header, digest)
+		})
+	})
 	return s
 }
 
 // Handler is the service with the token gate in front of every route.
 func (s *Server) Handler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !s.cfg.HasToken || !tokenMatches(r.Header.Get("Authorization"), s.cfg.Digest) {
+		digest, ok := s.digest()
+		if !ok || !tokenMatches(r.Header.Get("Authorization"), digest) {
 			// No body, no hint: a wrong token and a missing one look alike.
 			w.WriteHeader(http.StatusUnauthorized)
 			return
@@ -158,13 +183,41 @@ func (s *Server) Handler() http.Handler {
 	})
 }
 
+// digest is the token digest to check a request against; false when there
+// is none or it cannot be read, which refuses the request.
+func (s *Server) digest() ([32]byte, bool) {
+	if s.cfg.TokenDir == "" {
+		return s.cfg.Digest, s.cfg.HasToken
+	}
+	d, err := LoadDigest(s.cfg.TokenDir)
+	return d, err == nil
+}
+
 // Feed is the service's change feed.
 func (s *Server) Feed() *Feed { return s.feed }
 
-// running is the rigs whose TUI answers, read again once the cache window
-// has passed.
+// notYetRead reports that the poll loop is going and no poll has finished,
+// so there is no answer yet, and says so on w: a scan that blocks (macOS
+// guarding a folder, say) must not hang the requests behind it.
+func (s *Server) notYetRead(w http.ResponseWriter) bool {
+	s.mu.Lock()
+	waiting := s.polling && !s.polled
+	s.mu.Unlock()
+	if waiting {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "the rig scan has not finished"})
+	}
+	return waiting
+}
+
+// running is the rigs whose TUI answers: the poll's result while the poll
+// loop is going, else read again once the cache window has passed.
 func (s *Server) running() []Rig {
 	s.mu.Lock()
+	if s.polling {
+		rigs := s.rigs
+		s.mu.Unlock()
+		return rigs
+	}
 	if !s.rigsAt.IsZero() && s.cfg.Now().Sub(s.rigsAt) < s.cfg.CacheFor {
 		rigs := s.rigs
 		s.mu.Unlock()
@@ -189,12 +242,21 @@ func (s *Server) setRunning(rigs []Rig) {
 }
 
 func (s *Server) handleRigs(w http.ResponseWriter, r *http.Request) {
+	if s.notYetRead(w) {
+		return
+	}
 	up := map[string]bool{}
 	for _, rg := range s.running() {
 		up[rg.Root] = true
 	}
+	s.mu.Lock()
+	found, polling := s.found, s.polling
+	s.mu.Unlock()
+	if !polling {
+		found = s.cfg.Backend.FindRigs()
+	}
 	out := []RigEntry{}
-	for _, rg := range s.cfg.Backend.FindRigs() {
+	for _, rg := range found {
 		out = append(out, RigEntry{Rig: rg.Name, Root: rg.Root, Running: up[rg.Root]})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Rig < out[j].Rig })
@@ -202,6 +264,9 @@ func (s *Server) handleRigs(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
+	if s.notYetRead(w) {
+		return
+	}
 	out := []RigStatus{}
 	for _, rg := range s.running() {
 		out = append(out, s.status(rg))
@@ -210,6 +275,9 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleRigStatus(w http.ResponseWriter, r *http.Request) {
+	if s.notYetRead(w) {
+		return
+	}
 	name := r.PathValue("rig")
 	for _, rg := range s.running() {
 		if rg.Name == name {
@@ -261,6 +329,9 @@ const MaxPageLimit = 200
 // or the one before ?before=<cursor>, with ?limit=<n> (default 50). A pane
 // with no transcript is an empty page at the start.
 func (s *Server) handleConversation(w http.ResponseWriter, r *http.Request) {
+	if s.notYetRead(w) {
+		return
+	}
 	rigName, paneName := r.PathValue("rig"), r.PathValue("pane")
 	q := r.URL.Query()
 	before, limit := int64(0), 50

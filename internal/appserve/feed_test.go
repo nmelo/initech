@@ -39,6 +39,7 @@ func subscribe(t *testing.T, url, lastID string) <-chan sseEvent {
 	}
 	ch := make(chan sseEvent, 64)
 	go func() {
+		defer close(ch)
 		defer resp.Body.Close()
 		sc := bufio.NewScanner(resp.Body)
 		var e sseEvent
@@ -260,3 +261,154 @@ func TestPoll_NoRigPublishesNothing(t *testing.T) {
 func itoa(n int) string { return strconv.Itoa(n) }
 
 func shaToken() [32]byte { return sha256.Sum256([]byte(testToken)) }
+
+// blockingScan is a backend whose rig scan blocks until released, as an open
+// macOS is holding does.
+type blockingScan struct {
+	fakeBackend
+	release chan struct{}
+}
+
+func (b *blockingScan) FindRigs() []Rig {
+	<-b.release
+	return b.rigs
+}
+
+// A scan that blocks holds no request: while it is stuck every read answers
+// 503 at once, saying so, with the token gate still first; OnStuck is told
+// once; when the scan finishes the same requests answer, and they read the
+// poll's result rather than scanning again.
+func TestRun_ABlockedScanHoldsNoRequest(t *testing.T) {
+	b := &blockingScan{release: make(chan struct{})}
+	b.rigs = []Rig{{Name: "alpha", Root: "/r/alpha"}}
+	b.agents = map[string][]map[string]any{"/r/alpha": {{"role": "eng1", "state": "idle"}}}
+	told := make(chan string, 4)
+	s := New(Config{Backend: b, Digest: shaToken(), HasToken: true, StuckAfter: 20 * time.Millisecond, OnStuck: func(m string) { told <- m }})
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { s.Run(ctx); close(done) }()
+	h := s.Handler()
+	auth := "Bearer " + testToken
+
+	select {
+	case m := <-told:
+		if !strings.Contains(m, "macOS permission") {
+			t.Errorf("notice = %q", m)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("a stuck scan told no one")
+	}
+	for _, path := range []string{"/v1/rigs", "/v1/status", "/v1/status/alpha", "/v1/conversation/alpha/eng1"} {
+		start := time.Now()
+		code, body := get(t, h, path, auth)
+		if code != http.StatusServiceUnavailable || !strings.Contains(body, "the rig scan has not finished") {
+			t.Errorf("%s while the scan is stuck: %d %s", path, code, body)
+		}
+		if d := time.Since(start); d > time.Second {
+			t.Errorf("%s took %s", path, d)
+		}
+	}
+	if code, body := get(t, h, "/v1/rigs", "Bearer wrong"); code != 401 || body != "" {
+		t.Errorf("wrong token while stuck: %d %q", code, body)
+	}
+	if code, body := get(t, h, "/v1/blockers", auth); code != 200 || strings.TrimSpace(body) != "[]" {
+		t.Errorf("blockers while stuck: %d %s", code, body)
+	}
+	if code, body := get(t, h, "/v1/pins", auth); code != 200 {
+		t.Errorf("pins, which read no rig, while stuck: %d %s", code, body)
+	}
+
+	close(b.release)
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		code, body := get(t, h, "/v1/rigs", auth)
+		if code == 200 {
+			if !strings.Contains(body, `"running":true`) {
+				t.Errorf("after the scan: %s", body)
+			}
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("after the scan finished: %d %s", code, body)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if len(told) != 0 {
+		t.Errorf("told again: %q", <-told)
+	}
+	cancel()
+	<-done
+}
+
+// A device whose token is revoked stops receiving on the stream it already
+// has open: on the next event, sending it nothing, and on an idle stream by
+// the next keepalive. The current token's stream goes on.
+func TestFeed_ARevokedTokenEndsItsOpenStream(t *testing.T) {
+	for name, wake := range map[string]bool{"on an event": true, "idle, by the keepalive": false} {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			old, err := IssueToken(dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			clk := &lockedClock{t: time.Unix(1_800_000_000, 0)}
+			s := New(Config{Backend: &fakeBackend{}, TokenDir: dir, StateDir: dir, Now: clk.Now})
+			s.Feed().keepalive = 20 * time.Millisecond
+			hs := httptest.NewServer(s.Handler())
+			t.Cleanup(hs.Close)
+			open := func(token string) <-chan sseEvent {
+				req, _ := http.NewRequest("GET", hs.URL+"/v1/feed", nil)
+				req.Header.Set("Authorization", "Bearer "+token)
+				ctx, cancel := context.WithCancel(context.Background())
+				t.Cleanup(cancel)
+				resp, err := http.DefaultClient.Do(req.WithContext(ctx))
+				if err != nil || resp.StatusCode != 200 {
+					t.Fatalf("open: %v", err)
+				}
+				ch := make(chan sseEvent, 8)
+				go func() {
+					defer close(ch)
+					defer resp.Body.Close()
+					sc := bufio.NewScanner(resp.Body)
+					var e sseEvent
+					for sc.Scan() {
+						switch ln := sc.Text(); {
+						case ln == "" && e.Type != "":
+							ch <- e
+							e = sseEvent{}
+						case strings.HasPrefix(ln, "event: "):
+							e.Type = ln[7:]
+						}
+					}
+				}()
+				return ch
+			}
+			stream := open(old)
+			s.Feed().Publish("stuck", StuckEvent{Pane: "before"})
+			if e := next(t, stream, time.Second); e.Type != "stuck" {
+				t.Fatalf("before revoking: %+v", e)
+			}
+			current, err := IssueToken(dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			kept := open(current)
+			if wake {
+				s.Feed().Publish("stuck", StuckEvent{Pane: "after"})
+			}
+			select {
+			case e, more := <-stream:
+				if more {
+					t.Errorf("the revoked stream got %+v", e)
+				}
+			case <-time.After(2 * time.Second):
+				t.Fatal("the revoked stream stayed open")
+			}
+			if wake {
+				if e := next(t, kept, time.Second); e.Type != "stuck" {
+					t.Errorf("the current token's stream: %+v", e)
+				}
+			}
+		})
+	}
+}

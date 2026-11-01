@@ -6,9 +6,12 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"sort"
 	"strings"
+	"syscall"
+	"time"
 
 	"github.com/nmelo/initech/internal/appserve"
 	"github.com/nmelo/initech/internal/config"
@@ -42,7 +45,8 @@ It finds rigs by scanning each --projects folder for <folder>/*/initech.yaml
 and serves, for every rig whose initech answers: GET /v1/rigs and
 GET /v1/status (what initech status --json prints, with each pane's last
 screen lines while it shows a dialog, a banner or a prompt; read at most once
-every 5 seconds). No bd or git call runs on a timer.`,
+every 5 seconds), and the rest of the API in the operator guide. Its only bd
+and git calls on a timer are the progress read every 5 minutes.`,
 	Args: cobra.NoArgs,
 	RunE: runAppServe,
 }
@@ -82,8 +86,9 @@ var (
 		home, _ := os.UserHomeDir()
 		return filepath.Join(home, ".config", "initech", "app-serve")
 	}
-	appServeAddrs               = appserve.SystemAddrs
-	appServeRunner iexec.Runner = &iexec.DefaultRunner{}
+	appServeAddrs                  = appserve.SystemAddrs
+	appServeRunner    iexec.Runner = &iexec.DefaultRunner{}
+	appServeAddrEvery              = 30 * time.Second
 )
 
 func runAppServeToken(cmd *cobra.Command, args []string) error {
@@ -102,7 +107,13 @@ func runAppServeToken(cmd *cobra.Command, args []string) error {
 	}
 	out := cmd.OutOrStdout()
 	fmt.Fprintln(out, "Pair the app with this link (shown once; a new token revokes the previous device):")
-	fmt.Fprintln(out, appserve.PairURL(ip.String(), appServePort, token, fp))
+	link := appserve.PairURL(ip.String(), appServePort, token, fp)
+	fmt.Fprintln(out, link)
+	code, err := appserve.RenderQR(link)
+	if err != nil {
+		return fmt.Errorf("draw the QR code: %w; the link above still pairs", err)
+	}
+	fmt.Fprint(out, "\n"+code)
 	return nil
 }
 
@@ -116,46 +127,85 @@ func appServeBindIP() (net.IP, error) {
 
 func runAppServe(cmd *cobra.Command, args []string) error {
 	cmd.SilenceUsage = true
+	errw := cmd.ErrOrStderr()
+	base := cmd.Context()
+	if base == nil {
+		base = context.Background()
+	}
+	ctx, stop := signal.NotifyContext(base, os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
 	ip, err := appServeBindIP()
 	if err != nil {
 		return err
 	}
-	digest, err := appserve.LoadDigest(appServeStateDir())
+	dirs, err := appServeRigFolders()
 	if err != nil {
 		return err
 	}
-	cert, _, err := appserve.LoadCert(appServeStateDir())
+	state := appServeStateDir()
+	cert, _, err := appserve.EnsureCert(state)
 	if err != nil {
-		return err
+		return fmt.Errorf("certificate: %w", err)
 	}
-	dirs := appServeProjects
-	if len(dirs) == 0 {
-		if p := discoverProjectBestEffort(); p != nil {
-			dirs = []string{filepath.Dir(p.Root)}
-		}
-	}
-	if len(dirs) == 0 {
-		return fmt.Errorf("no rig folder: run from inside a rig or pass --projects <folder>")
+	if _, err := appserve.LoadDigest(state); err != nil {
+		fmt.Fprintf(errw, "initech app-serve: %v; every request is refused until then\n", err)
 	}
 	srv := appserve.New(appserve.Config{
 		Backend:  &appBackend{dirs: dirs, runner: appServeRunner},
-		Digest:   digest,
-		HasToken: true,
-		StateDir: appServeStateDir(),
+		TokenDir: state,
+		StateDir: state,
+		OnStuck:  func(notice string) { fmt.Fprintln(errw, notice) },
 	})
 	ln, err := appserve.Listen(ip, appServePort)
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(cmd.ErrOrStderr(), "initech app-serve listening on %s (%s), rigs under %v\n", ln.Addr(), appServeListen, dirs)
-	ctx := cmd.Context()
-	if ctx == nil {
-		ctx = context.Background()
-	}
+	fmt.Fprintf(errw, "initech app-serve listening on %s (%s), rigs under %v\n", ln.Addr(), appServeListen, dirs)
 	go srv.Run(ctx)
 	go srv.RunProgress(ctx)
 	go srv.RunTail(ctx)
-	return appserve.ServeTLS(ln, srv.Handler(), cert)
+
+	// The bound address going away (DHCP, Tailscale restarting) ends the
+	// run, so launchd starts it again on the new one.
+	moved := make(chan struct{})
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				ln.Close()
+				return
+			case <-time.After(appServeAddrEvery):
+			}
+			if cur, err := appServeBindIP(); err != nil || !cur.Equal(ip) {
+				close(moved)
+				ln.Close()
+				return
+			}
+		}
+	}()
+	err = appserve.ServeTLS(ln, srv.Handler(), cert)
+	select {
+	case <-moved:
+		return fmt.Errorf("the address %s went away; restarting on the new one", ip)
+	default:
+	}
+	if ctx.Err() != nil {
+		return nil
+	}
+	return err
+}
+
+// appServeRigFolders is the folders to scan for rigs: --projects, else the
+// folder holding the rig found from the current directory.
+func appServeRigFolders() ([]string, error) {
+	if len(appServeProjects) > 0 {
+		return appServeProjects, nil
+	}
+	if p := discoverProjectBestEffort(); p != nil {
+		return []string{filepath.Dir(p.Root)}, nil
+	}
+	return nil, fmt.Errorf("no rig folder: run from inside a rig or pass --projects <folder>")
 }
 
 // appBackend is the app service's Backend over the code initech status,
