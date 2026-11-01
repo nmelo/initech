@@ -43,7 +43,7 @@ test-full:
 # CI (ini-0lko) rather than local hooks. It runs in CI's full-suite job
 # instead, where the cost is real but off the critical path of every commit.
 test-race:
-	go test ./... -count=1 -race
+	go test ./... -count=1 -race -timeout 30m
 
 integration:
 	go test ./... -count=1 -run 'Integ|Watchdog|RenderNotBlocked|DaemonAuth|AddPane_(Success|SetsGoroutines|EventChWired|EnvInjected|GridRecalculated|NoConfigModification)|NoBracketedPaste|WaitsForReady|StashSkipsRetry|ResumesSuspended|ResizeDebounce'

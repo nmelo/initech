@@ -14,9 +14,9 @@ import (
 // itself so a change to the workflow that breaks it fails here as well as in
 // CI: every shard runs the tool with no -short; the census job needs every
 // shard and runs even when one failed; and setup-go's cache is on for pull
-// requests only, in ci.yml and rigs.yml alike, since both land on the same
-// self-hosted runner. And the gate is exactly the eight jobs the release gate
-// expects (ini-p2ve.2), with the suite run once, in the shards.
+// requests only in ci.yml, which lands on the self-hosted runner. And the gate
+// is exactly the jobs the release gate expects (ini-p2ve.2), with the suite
+// run once, in the shards.
 
 type workflow struct {
 	Jobs map[string]struct {
@@ -145,12 +145,13 @@ func TestCIWorkflow_TheCensusNeedsEveryShardAndAlwaysRuns(t *testing.T) {
 	}
 }
 
-// AC 2, the cache lever: every setup-go has its cache on for pull requests
-// only, never on for the self-hosted runner. rigs.yml too: its jobs share the
-// runner's one Go build cache with CI's, and a restore there unlinks object
-// files under a compile running in another slot (the v2.34.0 rigs race job).
+// AC 2, the cache lever: every setup-go in ci.yml has its cache on for pull
+// requests only, never on for the self-hosted runner, whose slots share one Go
+// build cache: a restore there unlinks object files under a compile running in
+// another slot (the v2.34.0 rigs race job). rigs.yml runs on GitHub-hosted
+// machines with the cache on (rigs_hosted_test.go).
 func TestWorkflows_SetupGoCachesOnlyOnPullRequests(t *testing.T) {
-	for _, file := range []string{"ci.yml", "rigs.yml"} {
+	for _, file := range []string{"ci.yml"} {
 		w := readWorkflow(t, file)
 		var n int
 		for key, job := range w.Jobs {

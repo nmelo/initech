@@ -8,16 +8,17 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// The load gate's wiring (ini-c5a.7): in ci.yml and rigs.yml every job that
-// starts a run (no needs) waits for the shared Mac host right after setup-go,
+// The load gate's wiring (ini-c5a.7): in ci.yml every job that starts a run
+// (no needs) waits for the shared Mac host right after setup-go,
 // and every job that only follows other jobs does not, so a run is never held
-// back by the load it made itself. The gate's own rules are tested in
+// back by the load it made itself. rigs.yml runs on GitHub-hosted macOS and has
+// no gate (rigs_hosted_test.go). The gate's own rules are tested in
 // scripts/loadgate.
 func TestWorkflows_EveryFirstWaveJobWaitsForTheHost(t *testing.T) {
 	root := repoRootForWorkflows(t)
 	const gate = "./.github/actions/load-gate"
 	var gated, followers int
-	for _, name := range []string{"ci.yml", "rigs.yml"} {
+	for _, name := range []string{"ci.yml"} {
 		src, err := os.ReadFile(filepath.Join(root, ".github", "workflows", name))
 		if err != nil {
 			t.Fatal(err)
@@ -51,8 +52,8 @@ func TestWorkflows_EveryFirstWaveJobWaitsForTheHost(t *testing.T) {
 			}
 		}
 	}
-	if gated != 11 || followers != 1 {
-		t.Errorf("%d first-wave jobs and %d followers, want 11 (ci's six, rigs' five) and 1 (full-suite-census): this test is not reading the jobs", gated, followers)
+	if gated != 6 || followers != 1 {
+		t.Errorf("%d first-wave jobs and %d followers, want 6 (build-and-test and five shards) and 1 (full-suite-census): this test is not reading the jobs", gated, followers)
 	}
 	action, err := os.ReadFile(filepath.Join(root, ".github", "actions", "load-gate", "action.yml"))
 	if err != nil {

@@ -67,9 +67,9 @@ permissions:
 # seventh job, census-leg, waited for a free slot and pushed the wall past two
 # minutes; its steps now end build-and-test). The wall is the longest of
 # build-and-test and the shards, plus full-suite-census. Five shards, not four,
-# keep a push under two minutes with every test still on it (ini-c5a.3). A rigs
-# run holding runners when a push lands still delays it: a known miss until the
-# runner count changes.
+# keep a push under two minutes with every test still on it (ini-c5a.3). Rigs
+# run on GitHub-hosted macOS (rigs.yml), so they hold no Mac runner and add no
+# load at the gate.
 #
 # THE CENSUS is what keeps the faster gate from running less. full-suite-census
 # needs all five shards, runs even when one failed, and is red unless every
