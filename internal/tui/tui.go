@@ -848,6 +848,14 @@ func Run(cfg Config) error {
 	// Redirect stderr to .initech/stderr.log BEFORE screen.Init() puts the
 	// terminal in raw mode. This captures cgo/native crash stack traces that
 	// would otherwise be lost in the garbled terminal buffer.
+	// The session-bead record's folder (ini-5jh) is checked while stderr is
+	// still the terminal, so a folder that cannot be written is said once
+	// where the operator sees it; the writer then retries each minute.
+	if cfg.ProjectRoot != "" && !isViewerSession(cfg) {
+		if w := SessionRecordStartWarning(); w != "" {
+			fmt.Fprintln(os.Stderr, w)
+		}
+	}
 	stderrCleanup := redirectStderr(cfg.ProjectRoot)
 	defer stderrCleanup()
 

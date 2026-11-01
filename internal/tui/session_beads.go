@@ -7,9 +7,12 @@ package tui
 // a new field never changes the meaning of an old one, and no field is added
 // without that agreement.
 //
-// One file per rig and month, <rig root>/.initech/session-beads-YYYY-MM.jsonl
-// (the folder that holds initech.sock), one JSON object per line, appended and
-// never rewritten. One line is one interval:
+// One file per rig and month, ~/.claude-accounts/records/<rig>-YYYY-MM.jsonl,
+// where the cla ledger reads it (ini-5jh: a launchd job cannot open a rig
+// under ~/Desktop), one JSON object per line, appended and never rewritten.
+// <rig>.owner beside the files names the rig root that owns the name; a
+// second root with the same name writes <rig>-<six hex of its root>-....
+// One line is one interval:
 //
 //	{"v":1,"rig":"initech","host":"nmbp","session_id":"0f3c...","role":"eng2",
 //	 "bead":"ini-cnp","source":"bd","from":"2026-10-31T23:50:12Z","to":null}
@@ -21,7 +24,12 @@ package tui
 // leaves intervals open and the next start never rewrites them.
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
+	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -33,13 +41,52 @@ import (
 // sessionBeadKeepDays is how long a month's file stays after the month ends.
 const sessionBeadKeepDays = 90
 
-// sessionBeadFileRe matches the record's monthly files and nothing else: the
-// only files the record ever removes.
-var sessionBeadFileRe = regexp.MustCompile(`^session-beads-(\d{4})-(\d{2})\.jsonl$`)
+// sessionRecordRetry is how often a recorder whose folder cannot be written
+// looks again: one cheap probe, never more often.
+const sessionRecordRetry = time.Minute
 
-// sessionBeadFile is the month's file name for t, by its UTC month.
-func sessionBeadFile(t time.Time) string {
-	return "session-beads-" + t.UTC().Format("2006-01") + ".jsonl"
+// sessionRecordPendingMax bounds the lines held while the folder cannot be
+// written; past it the oldest go, counted in one log line.
+const sessionRecordPendingMax = 10000
+
+// sessionRecordsDir is the folder the record is written to and cla reads:
+// ~/.claude-accounts/records, "" when there is no home folder.
+func sessionRecordsDir() string {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return ""
+	}
+	return filepath.Join(home, ".claude-accounts", "records")
+}
+
+// recordRigName is the rig's name in the record's file names: the project
+// name, else the rig root's folder name, with anything outside
+// [A-Za-z0-9._-] made a dash.
+func recordRigName(name, root string) string {
+	if name == "" {
+		name = filepath.Base(filepath.Clean(root))
+	}
+	b := []byte(name)
+	for i, c := range b {
+		if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '.' || c == '_' || c == '-') {
+			b[i] = '-'
+		}
+	}
+	if s := strings.Trim(string(b), "."); s != "" {
+		return s
+	}
+	return "rig"
+}
+
+// rootSuffix is six hex of a rig root path: the clash suffix.
+func rootSuffix(root string) string {
+	sum := sha256.Sum256([]byte(root))
+	return hex.EncodeToString(sum[:])[:6]
+}
+
+// fileFor is this recorder's file for t's UTC month.
+func (r *sessionBeadRecorder) fileFor(t time.Time) string {
+	return r.name + "-" + t.UTC().Format("2006-01") + ".jsonl"
 }
 
 // sessionBeadLine is one line of the record, keys in the agreed order.
@@ -86,25 +133,156 @@ func (o *openInterval) sameAs(w paneWork) bool {
 // Used from one goroutine (the main loop, or a daemon's maintenance loop).
 type sessionBeadRecorder struct {
 	dir, rig, host string
+	root           string // the rig root, which the owner marker names
+	name           string // the files' prefix: the rig name, or it with the clash suffix
 	open           map[any]*openInterval
 	month          string          // the UTC month of the last write, for the keep sweep
-	failing        bool            // the last write failed and was logged
+	failing        bool            // the folder could not be written, and that was logged
 	upgraded       bool            // the first reconcile closed the open non-id intervals on disk
 	rejected       map[string]bool // non-id bead values already logged by the guard
+
+	ready   bool              // the folder is there, writable, and the name resolved
+	nextTry time.Time         // the next probe while not ready
+	probes  int               // probes made, for the never-blocks test
+	pending []sessionBeadLine // lines held while the folder could not be written
+	dropped int               // pending lines dropped past the bound
 }
 
-// newSessionBeadRecorder records into root's .initech folder.
-func newSessionBeadRecorder(root, rig string) *sessionBeadRecorder {
+// newSessionBeadRecorder records the rig at root, named rig, into dir (the
+// records folder). Nothing touches the file system until the first write.
+func newSessionBeadRecorder(dir, root, rig string) *sessionBeadRecorder {
 	host, _ := os.Hostname()
 	if i := strings.IndexByte(host, '.'); i > 0 {
 		host = host[:i]
 	}
+	if rig == "" {
+		rig = filepath.Base(filepath.Clean(root))
+	}
 	return &sessionBeadRecorder{
-		dir:  filepath.Join(root, ".initech"),
+		dir:  dir,
 		rig:  rig,
+		root: root,
 		host: host,
 		open: map[any]*openInterval{},
 	}
+}
+
+// ensure reports whether the folder can take a write, probing it at most once
+// a minute while it cannot: it creates the folder (0700) when missing,
+// resolves the file name through the owner marker, and then writes what was
+// held. It never sleeps, and costs nothing between probes.
+func (r *sessionBeadRecorder) ensure(now time.Time) bool {
+	if r.ready {
+		return true
+	}
+	if !r.nextTry.IsZero() && now.Before(r.nextTry) {
+		return false
+	}
+	r.nextTry = now.Add(sessionRecordRetry)
+	r.probes++
+	if err := r.openFolder(); err != nil {
+		r.fail(err)
+		return false
+	}
+	r.ready = true
+	r.flush(now)
+	return r.ready
+}
+
+// fail logs the folder's failure once per failing streak.
+func (r *sessionBeadRecorder) fail(err error) {
+	if !r.failing {
+		LogWarn("session-beads", "cannot write the session-bead record; the TUI goes on without it and retries each minute", "dir", r.dir, "err", err)
+	}
+	r.failing = true
+	r.ready = false
+}
+
+// openFolder makes the records folder ready: created 0700 when missing, a
+// folder and not a file, and the rig's file name resolved.
+func (r *sessionBeadRecorder) openFolder() error {
+	if r.dir == "" {
+		return errors.New("no home folder for ~/.claude-accounts/records")
+	}
+	st, err := os.Stat(r.dir)
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		if err := os.MkdirAll(r.dir, 0o700); err != nil {
+			return err
+		}
+	case err != nil:
+		return err
+	case !st.IsDir():
+		return fmt.Errorf("%s is not a folder", r.dir)
+	}
+	return r.resolveName()
+}
+
+// resolveName picks the files' prefix from the owner marker <rig>.owner: a
+// missing marker is written with this root, and the plain rig name is
+// this root's; a marker naming another root means two rigs share the name,
+// and this one writes under <rig>-<six hex of its root>, with one log line.
+func (r *sessionBeadRecorder) resolveName() error {
+	base := recordRigName(r.rig, r.root)
+	marker := filepath.Join(r.dir, base+".owner")
+	b, err := os.ReadFile(marker)
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		if err := os.WriteFile(marker, []byte(r.root+"\n"), 0o600); err != nil {
+			return err
+		}
+		r.name = base
+	case err != nil:
+		return err
+	case strings.TrimSpace(string(b)) == r.root:
+		r.name = base
+	default:
+		r.name = base + "-" + rootSuffix(r.root)
+		LogInfo("session-beads", "another rig root owns this rig name; this rig records under a suffixed name", "rig", base, "owner", strings.TrimSpace(string(b)), "root", r.root, "file_prefix", r.name)
+	}
+	return nil
+}
+
+// peekName is the files' prefix the owner marker gives this rig, read
+// without writing anything: "" when there is no marker (no file here is this
+// rig's) or the folder cannot be read.
+func (r *sessionBeadRecorder) peekName() string {
+	if r.dir == "" {
+		return ""
+	}
+	base := recordRigName(r.rig, r.root)
+	b, err := os.ReadFile(filepath.Join(r.dir, base+".owner"))
+	if err != nil {
+		return ""
+	}
+	if strings.TrimSpace(string(b)) == r.root {
+		return base
+	}
+	return base + "-" + rootSuffix(r.root)
+}
+
+// flush writes the held lines in order; it stops at a failure and keeps the
+// rest.
+func (r *sessionBeadRecorder) flush(now time.Time) {
+	if r.dropped > 0 {
+		LogWarn("session-beads", "lines held while the folder could not be written were dropped past the bound", "dropped", r.dropped)
+		r.dropped = 0
+	}
+	for len(r.pending) > 0 && r.ready {
+		if !r.append(r.pending[0], now) {
+			return
+		}
+		r.pending = r.pending[1:]
+	}
+}
+
+// hold keeps l for when the folder can be written, within the bound.
+func (r *sessionBeadRecorder) hold(l sessionBeadLine) {
+	if len(r.pending) >= sessionRecordPendingMax {
+		r.pending = r.pending[1:]
+		r.dropped++
+	}
+	r.pending = append(r.pending, l)
 }
 
 // clampTime is t held within [lo, hi].
@@ -122,6 +300,11 @@ func clampTime(t, lo, hi time.Time) time.Time {
 // it closes intervals that ended and opens the ones that began. A pane not
 // in works has stopped or gone.
 func (r *sessionBeadRecorder) reconcile(works []paneWork, now time.Time) {
+	if len(r.pending) > 0 {
+		// Lines are held: look at the folder again (at most once a minute);
+		// when it can be written, they go out with their original times.
+		r.ensure(now)
+	}
 	if !r.upgraded {
 		r.upgraded = true
 		r.closeOpenNonIDs(now)
@@ -199,11 +382,20 @@ func (r *sessionBeadRecorder) guard(w paneWork) paneWork {
 // line each, to now; nothing already written is changed. An open interval on
 // an id is left as the next start always leaves it.
 func (r *sessionBeadRecorder) closeOpenNonIDs(now time.Time) {
+	name := r.name
+	if name == "" {
+		// Read the owner marker without writing it: with no marker, nothing in
+		// the folder is this rig's, and the folder is left untouched.
+		name = r.peekName()
+		if name == "" {
+			return
+		}
+	}
 	type key struct{ session, role, bead, from string }
 	latest := map[key]sessionBeadLine{}
 	var order []key
 	for _, month := range []time.Time{now.AddDate(0, -1, 0), now} {
-		b, err := os.ReadFile(filepath.Join(r.dir, sessionBeadFile(month)))
+		b, err := os.ReadFile(filepath.Join(r.dir, name+"-"+month.UTC().Format("2006-01")+".jsonl"))
 		if err != nil {
 			continue
 		}
@@ -256,34 +448,48 @@ func (r *sessionBeadRecorder) line(o *openInterval, to *time.Time) sessionBeadLi
 	return l
 }
 
-// write appends one line to the month's file. A failure is logged once until
-// a write succeeds again; nothing else changes, so the record never stops the
-// TUI.
+// write appends one line to the month's file, or holds it while the folder
+// cannot be written (probed once a minute). A failure is logged once per
+// streak; nothing else changes, so the record never stops or slows the TUI.
 func (r *sessionBeadRecorder) write(l sessionBeadLine, now time.Time) {
+	if !r.ensure(now) {
+		r.hold(l)
+		return
+	}
+	if len(r.pending) > 0 {
+		r.hold(l)
+		r.flush(now)
+		return
+	}
+	if !r.append(l, now) {
+		r.hold(l)
+	}
+}
+
+// append writes l to the month's file; false (logged, and the recorder back
+// to probing) when it could not.
+func (r *sessionBeadRecorder) append(l sessionBeadLine, now time.Time) bool {
 	if month := now.UTC().Format("2006-01"); month != r.month {
 		r.month = month
 		r.prune(now)
 	}
 	b, err := json.Marshal(l)
 	if err == nil {
-		err = appendRecordLine(filepath.Join(r.dir, sessionBeadFile(now)), append(b, '\n'))
+		err = appendRecordLine(filepath.Join(r.dir, r.fileFor(now)), append(b, '\n'))
 	}
 	if err != nil {
-		if !r.failing {
-			LogWarn("session-beads", "cannot write the session-bead record; the TUI goes on without it", "dir", r.dir, "err", err)
-		}
-		r.failing = true
-		return
+		r.fail(err)
+		r.nextTry = now.Add(sessionRecordRetry)
+		return false
 	}
 	r.failing = false
+	return true
 }
 
-// appendRecordLine appends b to path in one write, creating the file (and its
-// folder) when missing. O_APPEND keeps every line whole and in place.
+// appendRecordLine appends b to path in one write, creating the file when
+// missing (the folder is the recorder's to make). O_APPEND keeps every line
+// whole and in place.
 func appendRecordLine(path string, b []byte) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return err
-	}
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 	if err != nil {
 		return err
@@ -299,12 +505,18 @@ func appendRecordLine(path string, b []byte) error {
 // sessionBeadKeepDays before now. Only names the record itself writes are
 // ever removed, so at least 90 days of the record stay on disk.
 func (r *sessionBeadRecorder) prune(now time.Time) {
+	if r.name == "" {
+		return
+	}
 	entries, err := os.ReadDir(r.dir)
 	if err != nil {
 		return
 	}
+	// Only this rig's own month files: <name>-YYYY-MM.jsonl, exactly. Other
+	// rigs' files, markers and anything else in the folder are never touched.
+	own := regexp.MustCompile(`^` + regexp.QuoteMeta(r.name) + `-(\d{4})-(\d{2})\.jsonl$`)
 	for _, e := range entries {
-		m := sessionBeadFileRe.FindStringSubmatch(e.Name())
+		m := own.FindStringSubmatch(e.Name())
 		if m == nil || e.IsDir() {
 			continue
 		}
@@ -404,5 +616,39 @@ func (t *TUI) sessionBeadRecorderFor(viewer bool) *sessionBeadRecorder {
 	if !t.isFleetAuthority() || viewer || t.projectRoot == "" {
 		return nil
 	}
-	return newSessionBeadRecorder(t.projectRoot, t.projectName)
+	return newSessionBeadRecorder(sessionRecordsDir(), t.projectRoot, t.projectName)
+}
+
+// SessionRecordStartWarning is the one line a rig's start prints when the
+// session-bead record's folder cannot be written ("" when it can). It makes
+// the folder (0700) when missing, as the writer would. Called before the
+// screen takes the terminal, so the line is readable; the writer itself
+// retries each minute and never blocks.
+func SessionRecordStartWarning() string {
+	dir := sessionRecordsDir()
+	err := func() error {
+		if dir == "" {
+			return errors.New("no home folder")
+		}
+		st, err := os.Stat(dir)
+		switch {
+		case errors.Is(err, fs.ErrNotExist):
+			return os.MkdirAll(dir, 0o700)
+		case err != nil:
+			return err
+		case !st.IsDir():
+			return fmt.Errorf("%s is not a folder", dir)
+		}
+		f, err := os.CreateTemp(dir, ".initech-probe-*")
+		if err != nil {
+			return err
+		}
+		name := f.Name()
+		f.Close()
+		return os.Remove(name)
+	}()
+	if err == nil {
+		return ""
+	}
+	return fmt.Sprintf("initech: the session-bead record cannot be written to %s (%v); the TUI runs without it and retries each minute", dir, err)
 }

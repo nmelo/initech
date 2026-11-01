@@ -40,9 +40,10 @@ func TestSessionBeads_WriterGuardWritesTheDerivedBead(t *testing.T) {
 // left alone; the bytes already in the file are untouched; a second
 // reconcile adds nothing more.
 func TestSessionBeads_UpgradeClosesOpenNonIDIntervalsOnce(t *testing.T) {
-	r, root := sbRecorder(t)
-	dir := filepath.Join(root, ".initech")
+	r, _ := sbRecorder(t)
+	dir := r.dir
 	os.MkdirAll(dir, 0o700)
+	os.WriteFile(filepath.Join(dir, "initech.owner"), []byte(r.root+"\n"), 0o600)
 	now := time.Date(2026, 11, 1, 4, 0, 0, 0, time.UTC)
 	before := strings.Join([]string{
 		`{"v":1,"rig":"initech","host":"nmbp","session_id":"s1","role":"eng4","bead":"ini-old","source":"bd","from":"2026-11-01T01:00:00Z","to":"2026-11-01T02:00:00Z"}`,
@@ -51,7 +52,7 @@ func TestSessionBeads_UpgradeClosesOpenNonIDIntervalsOnce(t *testing.T) {
 		`{"v":1,"rig":"initech","host":"nmbp","session_id":"s3","role":"qa2","bead":"per hour","source":"manual","from":"2026-11-01T02:40:00Z","to":null}`,
 		`{"v":1,"rig":"initech","host":"nmbp","session_id":"s3","role":"qa2","bead":"per hour","source":"manual","from":"2026-11-01T02:40:00Z","to":"2026-11-01T03:00:00Z"}`,
 	}, "\n") + "\n"
-	path := filepath.Join(dir, sessionBeadFile(now))
+	path := filepath.Join(dir, "initech-2026-11.jsonl")
 	os.WriteFile(path, []byte(before), 0o600)
 
 	r.reconcile(nil, now)
@@ -76,10 +77,11 @@ func TestSessionBeads_UpgradeWithNothingOpenAddsNothing(t *testing.T) {
 		t.Errorf("no file: wrote %q", l)
 	}
 	r2, root2 := sbRecorder(t)
-	dir := filepath.Join(root2, ".initech")
+	dir := r2.dir
 	os.MkdirAll(dir, 0o700)
+	os.WriteFile(filepath.Join(dir, "initech.owner"), []byte(r2.root+"\n"), 0o600)
 	closed := `{"v":1,"rig":"initech","host":"nmbp","session_id":"s1","role":"eng4","bead":"x\ty","source":"manual","from":"2026-10-31T19:00:00Z","to":"2026-10-31T19:30:00Z"}` + "\n"
-	os.WriteFile(filepath.Join(dir, sessionBeadFile(sbBase)), []byte(closed), 0o600)
+	os.WriteFile(filepath.Join(dir, "initech-2026-10.jsonl"), []byte(closed), 0o600)
 	r2.reconcile(nil, sbBase)
 	if l := sbLines(t, root2); len(l) != 1 {
 		t.Errorf("a closed non-id interval was closed again: %q", l)

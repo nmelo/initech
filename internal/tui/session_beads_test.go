@@ -16,11 +16,11 @@ import (
 // ini-wra.2: the session-bead record. Each test reads the files back the way
 // the cost ledger does, line by line, and checks the agreed keys and values.
 
-// sbLines reads every line of every month file in root's .initech, oldest
-// file first, as raw strings.
+// sbLines reads every line of every month file in root's records folder
+// (root/records, where sbRecorder records), oldest file first, as raw strings.
 func sbLines(t *testing.T, root string) []string {
 	t.Helper()
-	names, _ := filepath.Glob(filepath.Join(root, ".initech", "session-beads*.jsonl"))
+	names, _ := filepath.Glob(filepath.Join(root, "records", "*.jsonl"))
 	sort.Strings(names)
 	var out []string
 	for _, n := range names {
@@ -63,7 +63,7 @@ func sbStr(p *string) string {
 func sbRecorder(t *testing.T) (*sessionBeadRecorder, string) {
 	t.Helper()
 	root := t.TempDir()
-	r := newSessionBeadRecorder(root, "initech")
+	r := newSessionBeadRecorder(filepath.Join(root, "records"), filepath.Join(root, "rig"), "initech")
 	r.host = "nmbp"
 	return r, root
 }
@@ -183,11 +183,11 @@ func TestSessionBeads_ShutdownClosesAndARestartNeverRewrites(t *testing.T) {
 	// A crash leaves an interval open; the next start appends and never
 	// rewrites what is there.
 	r2, _ := sbRecorder(t)
-	r2.dir = r.dir
+	r2.dir, r2.root = r.dir, r.root
 	r.reconcile([]paneWork{sbWork(a, "ini-y", "bd", sbBase.Add(6*time.Minute))}, sbBase.Add(7*time.Minute))
-	before, _ := os.ReadFile(filepath.Join(r.dir, sessionBeadFile(sbBase)))
+	before, _ := os.ReadFile(filepath.Join(r.dir, "initech-2026-10.jsonl"))
 	r2.reconcile([]paneWork{sbWork(a, "ini-y", "bd", sbBase.Add(8*time.Minute))}, sbBase.Add(9*time.Minute))
-	after, _ := os.ReadFile(filepath.Join(r.dir, sessionBeadFile(sbBase)))
+	after, _ := os.ReadFile(filepath.Join(r.dir, "initech-2026-10.jsonl"))
 	if !bytes.HasPrefix(after, before) || len(after) <= len(before) {
 		t.Error("a restart rewrote the earlier lines instead of appending")
 	}
@@ -266,15 +266,15 @@ func TestSessionBeads_APaneTakesItsSessionFromItsOwnEntries(t *testing.T) {
 // only month files older than 90 days are removed, and only by name.
 func TestSessionBeads_MonthlyFilesAndTheNinetyDayKeep(t *testing.T) {
 	r, root := sbRecorder(t)
-	dir := filepath.Join(root, ".initech")
+	dir := filepath.Join(root, "records")
 	os.MkdirAll(dir, 0o700)
 	nov1 := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
 	keep := []string{
-		"session-beads-2026-08.jsonl", // ended Sep 1: 61 days
-		"session-beads-2026-07.jsonl", // ended Aug 1: exactly 92 days... see below
-		"session-beads-notes.jsonl", "session-beads-2026-07.jsonl.bak", "initech.sock.lock",
+		"initech-2026-08.jsonl", // ended Sep 1: 61 days
+		"initech-2026-07.jsonl", // ended Aug 1: exactly 92 days... see below
+		"initech-notes.jsonl", "initech-2026-07.jsonl.bak", "otherrig-2025-12.jsonl",
 	}
-	for _, n := range append(keep, "session-beads-2026-06.jsonl", "session-beads-2025-12.jsonl") {
+	for _, n := range append(keep, "initech-2026-06.jsonl", "initech-2025-12.jsonl") {
 		os.WriteFile(filepath.Join(dir, n), []byte("x\n"), 0o600)
 	}
 	k := new(int)
@@ -283,19 +283,19 @@ func TestSessionBeads_MonthlyFilesAndTheNinetyDayKeep(t *testing.T) {
 	// 91 days 23:59:59): it goes once the month turns.
 	r.reconcile([]paneWork{sbWork(k, "ini-y", "bd", nov1)}, nov1)
 
-	oct, nov := filepath.Join(dir, "session-beads-2026-10.jsonl"), filepath.Join(dir, "session-beads-2026-11.jsonl")
+	oct, nov := filepath.Join(dir, "initech-2026-10.jsonl"), filepath.Join(dir, "initech-2026-11.jsonl")
 	if b, _ := os.ReadFile(oct); strings.Count(string(b), "\n") != 1 {
 		t.Errorf("October holds %q, want only the line written on Oct 31", b)
 	}
 	if b, _ := os.ReadFile(nov); strings.Count(string(b), "\n") != 2 {
 		t.Errorf("November holds %q, want the close and the open written on Nov 1", b)
 	}
-	for _, n := range []string{"session-beads-2026-06.jsonl", "session-beads-2025-12.jsonl", "session-beads-2026-07.jsonl"} {
+	for _, n := range []string{"initech-2026-06.jsonl", "initech-2025-12.jsonl", "initech-2026-07.jsonl"} {
 		if _, err := os.Stat(filepath.Join(dir, n)); err == nil {
 			t.Errorf("%s ended more than 90 days ago and is still there", n)
 		}
 	}
-	for _, n := range []string{"session-beads-2026-08.jsonl", "session-beads-notes.jsonl", "session-beads-2026-07.jsonl.bak", "initech.sock.lock"} {
+	for _, n := range []string{"initech-2026-08.jsonl", "initech-notes.jsonl", "initech-2026-07.jsonl.bak", "otherrig-2025-12.jsonl"} {
 		if _, err := os.Stat(filepath.Join(dir, n)); err != nil {
 			t.Errorf("%s was removed; only month files older than 90 days may go", n)
 		}
@@ -303,13 +303,13 @@ func TestSessionBeads_MonthlyFilesAndTheNinetyDayKeep(t *testing.T) {
 	// The edge: a month that ended 90 days ago stays, one that ended 91
 	// days ago goes.
 	edge := time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC).Add(90 * 24 * time.Hour)
-	os.WriteFile(filepath.Join(dir, "session-beads-2026-07.jsonl"), []byte("x\n"), 0o600)
+	os.WriteFile(filepath.Join(dir, "initech-2026-07.jsonl"), []byte("x\n"), 0o600)
 	r.prune(edge)
-	if _, err := os.Stat(filepath.Join(dir, "session-beads-2026-07.jsonl")); err != nil {
+	if _, err := os.Stat(filepath.Join(dir, "initech-2026-07.jsonl")); err != nil {
 		t.Error("a month that ended exactly 90 days ago was removed")
 	}
 	r.prune(edge.Add(24 * time.Hour))
-	if _, err := os.Stat(filepath.Join(dir, "session-beads-2026-07.jsonl")); err == nil {
+	if _, err := os.Stat(filepath.Join(dir, "initech-2026-07.jsonl")); err == nil {
 		t.Error("a month that ended 91 days ago was kept")
 	}
 }
@@ -331,7 +331,7 @@ func TestSessionBeads_NothingToRecord(t *testing.T) {
 	w := sbWork(k, "ini-x", "bd", sbBase)
 	w.sessionID = ""
 	r2.reconcile([]paneWork{w}, sbBase.Add(time.Minute))
-	if _, err := os.Stat(filepath.Join(root2, ".initech")); err == nil {
+	if _, err := os.Stat(filepath.Join(root2, "records")); err == nil {
 		t.Error("a pane with no session id yet wrote a record")
 	}
 	r2.reconcile(nil, sbBase.Add(time.Minute))
@@ -343,7 +343,7 @@ func TestSessionBeads_NothingToRecord(t *testing.T) {
 	appLogger.mu.Unlock()
 	t.Cleanup(func() { appLogger.mu.Lock(); appLogger.logger = prev; appLogger.mu.Unlock() })
 	r3, root3 := sbRecorder(t)
-	os.WriteFile(filepath.Join(root3, ".initech"), []byte("a file where the folder should be"), 0o600)
+	os.WriteFile(filepath.Join(root3, "records"), []byte("a file where the folder should be"), 0o600)
 	for i := 0; i < 5; i++ {
 		ww := sbWork(k, "ini-"+string(rune('a'+i)), "bd", sbBase.Add(time.Duration(i)*time.Minute))
 		r3.reconcile([]paneWork{ww}, sbBase.Add(time.Duration(i)*time.Minute+time.Second))
@@ -351,6 +351,9 @@ func TestSessionBeads_NothingToRecord(t *testing.T) {
 	r3.closeAll(sbBase.Add(time.Hour))
 	if n := strings.Count(buf.String(), "cannot write the session-bead record"); n != 1 {
 		t.Errorf("an unwritable folder logged %d times, want once", n)
+	}
+	if !strings.Contains(buf.String(), "is not a folder") {
+		t.Errorf("a file where the records folder should be: the warning does not say so:\n%s", buf.String())
 	}
 }
 
@@ -388,6 +391,7 @@ func TestSessionBeads_AStaleBeadWritesNothingNew(t *testing.T) {
 // Only window 1 records: a second window or a viewer gets no recorder, and a
 // window 2 pane is never in the record.
 func TestSessionBeads_OnlyWindowOneRecords(t *testing.T) {
+	records := recordsHome(t)
 	tui, _ := newTestTUIWithScreen("eng2")
 	tui.projectRoot, tui.projectName = t.TempDir(), "initech"
 	tui.windowID = WindowOne
@@ -411,7 +415,7 @@ func TestSessionBeads_OnlyWindowOneRecords(t *testing.T) {
 	p.alive, p.startedAt = true, time.Now().Add(-time.Minute)
 	p.noteSessionID([]JournalEntry{{SessionID: "s-1", Timestamp: time.Now().Add(-30 * time.Second)}})
 	tui.recordSessionBeads(time.Now())
-	if l := sbParsed(t, tui.projectRoot); len(l) != 1 || l[0].Role != "eng2" || l[0].SessionID != "s-1" {
+	if l := sbParsed(t, filepath.Dir(records)); len(l) != 1 || l[0].Role != "eng2" || l[0].SessionID != "s-1" {
 		t.Errorf("the tick wrote %+v, want eng2's open interval", l)
 	}
 }

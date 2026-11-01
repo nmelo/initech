@@ -525,7 +525,10 @@ func RunDaemon(cfg DaemonConfig) error {
 	// The process that runs the agents writes their session-bead record
 	// (ini-wra.2).
 	if d.project != nil && d.project.Root != "" {
-		d.sessionBeads = newSessionBeadRecorder(d.project.Root, d.project.Name)
+		if w := SessionRecordStartWarning(); w != "" {
+			fmt.Fprintln(os.Stderr, w)
+		}
+		d.sessionBeads = newSessionBeadRecorder(sessionRecordsDir(), d.project.Root, d.project.Name)
 	}
 	go d.runMaintenance(stopMaint, maintenanceFrameInterval)
 	// Each daemon derives its own panes' beads from its own bd (ini-wra.1).
