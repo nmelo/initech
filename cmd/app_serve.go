@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -152,7 +153,9 @@ func runAppServe(cmd *cobra.Command, args []string) error {
 		fmt.Fprintf(errw, "initech app-serve: %v; every request is refused until then\n", err)
 	}
 	srv := appserve.New(appserve.Config{
-		Backend:  &appBackend{dirs: dirs, runner: appServeRunner},
+		Backend: &appBackend{dirs: dirs, runner: appServeRunner, onHeld: func(dir string) {
+			fmt.Fprintf(errw, "initech app-serve: %s does not answer and is skipped; run under launchd, it may need macOS permission\n", dir)
+		}},
 		TokenDir: state,
 		StateDir: state,
 		OnStuck:  func(notice string) { fmt.Fprintln(errw, notice) },
@@ -213,23 +216,38 @@ func appServeRigFolders() ([]string, error) {
 type appBackend struct {
 	dirs   []string
 	runner iexec.Runner
+	onHeld func(dir string) // told once when a rig folder does not answer
+
+	scanOnce sync.Once
+	folders  *appserve.FolderScan
 }
 
-// FindRigs is every <dir>/*/initech.yaml that loads, one rig per root.
+// FindRigs is the rigs in the scan folders, a folder that does not answer in
+// time left out (appserve.FolderScan).
 func (b *appBackend) FindRigs() []appserve.Rig {
-	seen := map[string]bool{}
+	return b.scan().Scan(b.dirs)
+}
+
+// scan is the backend's one FolderScan, kept across scans so a held folder
+// stays one read and one report.
+func (b *appBackend) scan() *appserve.FolderScan {
+	b.scanOnce.Do(func() {
+		b.folders = &appserve.FolderScan{Read: readRigFolder, OnHeld: b.onHeld}
+	})
+	return b.folders
+}
+
+// readRigFolder is every <dir>/*/initech.yaml that loads.
+func readRigFolder(dir string) []appserve.Rig {
+	matches, _ := filepath.Glob(filepath.Join(dir, "*", "initech.yaml"))
+	sort.Strings(matches)
 	var rigs []appserve.Rig
-	for _, dir := range b.dirs {
-		matches, _ := filepath.Glob(filepath.Join(dir, "*", "initech.yaml"))
-		sort.Strings(matches)
-		for _, m := range matches {
-			p, err := config.Load(m)
-			if err != nil || p.Root == "" || seen[p.Root] {
-				continue
-			}
-			seen[p.Root] = true
-			rigs = append(rigs, appserve.Rig{Name: p.Name, Root: p.Root, Socket: tui.SocketPath(p.Root, p.Name)})
+	for _, m := range matches {
+		p, err := config.Load(m)
+		if err != nil || p.Root == "" {
+			continue
 		}
+		rigs = append(rigs, appserve.Rig{Name: p.Name, Root: p.Root, Socket: tui.SocketPath(p.Root, p.Name)})
 	}
 	return rigs
 }
