@@ -135,6 +135,7 @@ final class HomeModelTests: XCTestCase {
         await home.reload()
         XCTAssertTrue(home.pins.isEmpty)
         XCTAssertTrue(home.rows.isEmpty)
+        XCTAssertTrue(home.showsNoPinsLine)
     }
 
     func testARigThatWentAway_GreysItsRows() async {
@@ -163,10 +164,32 @@ final class HomeModelTests: XCTestCase {
         XCTAssertEqual(home.row(for: home.selection!)?.stateLabel, "idle")
     }
 
+    func testARefusedCertificate_SaysSoAndDoesNotClaimNothingIsPinned() async throws {
+        var p = server.pairing
+        p.fingerprint = Data("some other certificate".utf8).sha256Base64URL
+        let home = HomeModel(service: HTTPService(pairing: p))
+        await home.reload()
+        XCTAssertFalse(home.showsNoPinsLine, "the list failed to load; it is not known to be empty")
+        let problem = try XCTUnwrap(home.problem)
+        XCTAssertTrue(problem.contains("certificate"), problem)
+        XCTAssertTrue(home.needsPairing, "a changed certificate must offer pairing again")
+    }
+
+    func testAMacThatDoesNotAnswer_ReadsPlainlyAndDoesNotAskToPair() async throws {
+        let home = HomeModel(service: service)
+        server.stop()
+        await home.reload()
+        XCTAssertFalse(home.showsNoPinsLine)
+        let problem = try XCTUnwrap(home.problem)
+        XCTAssertTrue(problem.hasPrefix("The Mac did not answer"), problem)
+        XCTAssertFalse(problem.contains("unreachable("), problem)
+        XCTAssertFalse(home.needsPairing)
+    }
+
     func testARefusedToken_AsksToPairAgain() async {
         let home = HomeModel(service: HTTPService(pairing: { var p = server.pairing; p.token = "old"; return p }()))
         await home.reload()
-        XCTAssertTrue(home.unauthorized)
+        XCTAssertTrue(home.needsPairing)
     }
 }
 

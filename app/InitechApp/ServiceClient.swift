@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 /// ServiceError names why a call to the app service failed.
 enum ServiceError: Error, Equatable {
@@ -7,6 +8,20 @@ enum ServiceError: Error, Equatable {
     /// Any other non-2xx answer, with the service's words when it gave some.
     case status(Int, String?)
     case unreachable(String)
+    /// The server's certificate is not the one this pairing pins.
+    case certificateRefused
+}
+
+extension ServiceError: CustomStringConvertible {
+    /// description is the plain words a screen shows after "The Mac did not answer: ".
+    var description: String {
+        switch self {
+        case .unauthorized: "it refused this phone's token"
+        case .certificateRefused: "its certificate is not the one this phone paired with"
+        case let .status(code, words): words ?? "it answered with status \(code)"
+        case let .unreachable(words): words
+        }
+    }
 }
 
 /// Service is everything the app asks of the Mac. Views talk to this, never
@@ -60,6 +75,8 @@ struct HTTPService: Service {
         do {
             (data, response) = try await session.data(for: r)
         } catch {
+            // A refused pin reaches here as a plain cancelled request.
+            if (session.delegate as? PinningDelegate)?.refusedLast == true { throw ServiceError.certificateRefused }
             throw ServiceError.unreachable(error.localizedDescription)
         }
         let code = (response as? HTTPURLResponse)?.statusCode ?? 0
@@ -149,6 +166,10 @@ struct HTTPService: Service {
 /// system's default trust refuses the self-signed certificate.
 final class PinningDelegate: NSObject, URLSessionTaskDelegate, Sendable {
     let fingerprint: String
+    private let refused = OSAllocatedUnfairLock(initialState: false)
+
+    /// refusedLast says the newest certificate this session saw failed the pin.
+    var refusedLast: Bool { refused.withLock { $0 } }
 
     init(fingerprint: String) { self.fingerprint = fingerprint }
 
@@ -167,7 +188,9 @@ final class PinningDelegate: NSObject, URLSessionTaskDelegate, Sendable {
               let trust = challenge.protectionSpace.serverTrust else {
             return (.cancelAuthenticationChallenge, nil)
         }
-        guard Self.leafFingerprint(trust) == fingerprint else {
+        let matches = Self.leafFingerprint(trust) == fingerprint
+        refused.withLock { $0 = !matches }
+        guard matches else {
             return (.cancelAuthenticationChallenge, nil)
         }
         return (.useCredential, URLCredential(trust: trust))

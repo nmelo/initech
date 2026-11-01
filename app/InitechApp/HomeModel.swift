@@ -49,7 +49,8 @@ final class HomeModel: ObservableObject {
     @Published private(set) var pins: [Pin] = []
     @Published private(set) var rigs: [RigStatus] = []
     @Published private(set) var problem: String?
-    @Published private(set) var unauthorized = false
+    /// needsPairing says the Mac refused this phone's token or certificate.
+    @Published private(set) var needsPairing = false
     /// waiting holds each pane's newest item from the blockers list, set at
     /// once by a waiting_item event and read again when the list changes.
     @Published private(set) var waiting: [PaneRef: String] = [:]
@@ -64,6 +65,11 @@ final class HomeModel: ObservableObject {
     private var feedTask: Task<Void, Never>?
 
     init(service: Service) { self.service = service }
+
+    /// showsNoPinsLine says the list loaded and holds nothing; a list that
+    /// failed to load says nothing about what is pinned.
+    var showsNoPinsLine: Bool { pinsLoaded && pins.isEmpty }
+    private var pinsLoaded = false
 
     /// rows is the home list: his pins in his order, each joined to its status.
     var rows: [PaneRow] {
@@ -116,6 +122,7 @@ final class HomeModel: ObservableObject {
             let (pins, status) = try await (p, s)
             self.pins = pins
             self.rigs = status.rigs
+            pinsLoaded = true
             problem = nil
         } catch {
             note(error)
@@ -230,10 +237,14 @@ final class HomeModel: ObservableObject {
     }
 
     private func note(_ error: Error) {
-        if error as? ServiceError == .unauthorized {
-            unauthorized = true
+        switch error as? ServiceError {
+        case .unauthorized?:
+            needsPairing = true
             problem = "The Mac refused this phone's token. Pair again."
-        } else {
+        case .certificateRefused?:
+            needsPairing = true
+            problem = "The Mac's certificate is not the one this phone paired with. Pair again."
+        default:
             problem = "The Mac did not answer: \(error)"
         }
     }

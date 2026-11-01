@@ -47,10 +47,10 @@ struct MainView: View {
             home.startFeed()
         }
         .onDisappear { home.stopFeed() }
-        .alert("Pair again", isPresented: .constant(home.unauthorized)) {
+        .alert("Pair again", isPresented: .constant(home.needsPairing)) {
             Button("Pair") { forget() }
         } message: {
-            Text("The Mac refused this phone's token. Run initech app-serve token on the Mac and scan the new code.")
+            Text("\(home.problem ?? "") Run initech app-serve token on the Mac and scan the new code.")
         }
     }
 }
@@ -67,7 +67,7 @@ struct HomeList: View {
             if let problem = home.problem {
                 Text(problem).foregroundStyle(.red).font(.footnote)
             }
-            if home.pins.isEmpty {
+            if home.showsNoPinsLine {
                 Button("No pinned panes yet. Pin one from Rigs.") { showRigs = true }
             }
             ForEach(home.rows) { row in

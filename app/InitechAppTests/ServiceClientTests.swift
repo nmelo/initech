@@ -42,7 +42,7 @@ final class ServiceClientTests: XCTestCase {
             _ = try await HTTPService(pairing: p).status()
             XCTFail("a server whose certificate does not match the pin was answered")
         } catch {
-            guard case .unreachable = error as? ServiceError else { return XCTFail("\(error)") }
+            XCTAssertEqual(error as? ServiceError, .certificateRefused)
         }
         XCTAssertTrue(server.requests.isEmpty, "a request, and so the token, reached an unpinned server")
     }

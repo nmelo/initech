@@ -287,7 +287,7 @@ Progress shows the report of `initech progress --json` for each effort in flight
 
 ### Pairing and Unlocking
 
-Install the app from TestFlight on the iPhone or iPad. On first open it asks for the pairing code: run `initech app-serve token` on the Mac and scan the QR code it shows, or paste the pairing link it prints (`initech://pair?host=<address>&port=<port>&token=<token>&fp=<fingerprint>`). The app keeps the pairing in the keychain of that device only. It talks to the service over HTTPS and accepts only the certificate whose SHA-256 matches `fp`; any other certificate is refused before a request, and so the token, is sent. A new token issued on the Mac makes the service refuse the old one, and the app then asks to pair again.
+Install the app from TestFlight on the iPhone or iPad. On first open it asks for the pairing code: run `initech app-serve token` on the Mac and scan the QR code it shows, or paste the pairing link it prints (`initech://pair?host=<address>&port=<port>&token=<token>&fp=<fingerprint>`). The app keeps the pairing in the keychain of that device only. It talks to the service over HTTPS and accepts only the certificate whose SHA-256 matches `fp`; any other certificate is refused before a request, and so the token, is sent. A new token issued on the Mac makes the service refuse the old one; on a refused token or certificate the app says which and asks to pair again. A Mac that does not answer reads as that, and home shows no line about pins until the list has loaded.
 
 The app locks behind Face ID (or the device passcode) on every open and every return from the background; a device with neither set stays locked.
 
