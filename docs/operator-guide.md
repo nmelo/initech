@@ -291,6 +291,8 @@ Install the app from TestFlight on the iPhone or iPad. On first open it asks for
 
 The app locks behind Face ID (or the device passcode) on every open and every return from the background; a device with neither set stays locked.
 
+Every error the app shows is also written to the device log under the subsystem `co.nmelo.initech`, one category per screen, with the error's domain and code; read it in Console with the device connected, or for a simulator with `xcrun simctl spawn <device> log show --predicate 'subsystem == "co.nmelo.initech"' --last 5m`. An entry never carries the error's words, a pane name, the token or a URL with it, a pane's text, a message body or a bead title.
+
 ### Home
 
 Home lists the panes you pinned, in your order, each with the name you gave it, its state (working, idle, waiting at a prompt, pending input, or its banner), its context percentage, the bead it holds and the newest item it has waiting on you, until that item leaves the Blockers list. It updates live from the service's feed. A pinned pane whose rig stopped or that no longer exists stays in the list, greyed. With nothing pinned, home shows one line pointing to Rigs.

@@ -33,8 +33,15 @@ struct PairingView: View {
         do {
             try pair(code)
         } catch {
-            problem = PairingView.describe(error)
+            problem = PairingView.shown(error)
         }
+    }
+
+    /// shown logs a pairing failure the screen is about to show and returns
+    /// the line to show.
+    static func shown(_ error: Error) -> String {
+        Log.shown(error, screen: "pairing")
+        return describe(error)
     }
 
     /// describe turns a pairing failure into the one line the screen shows.
