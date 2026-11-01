@@ -35,8 +35,18 @@ a pane at a dialog. With `TEST_RUNNER_SHOT_DIR=<dir>` set, it stops at each
 screen until `<dir>/<stop>.done` exists, so `xcrun simctl io <udid>
 screenshot` can take it.
 
-In the initech rig, wrap every build in `super/tools/heavy.sh` and never open
-Simulator.app.
+In the initech rig, run tests only through `app/scripts/sim-test.sh` under
+`super/tools/heavy.sh`, one at a time, and never open Simulator.app:
+
+```bash
+~/Desktop/Projects/initech/super/tools/heavy.sh app/scripts/sim-test.sh iphone /tmp/run.log
+```
+
+It creates a simulator for that run alone, runs `xcodebuild test` on it with
+`-parallel-testing-enabled NO`, then shuts it down and deletes it, however the
+run ends. A simulator kept between runs carries its state, and one such
+device crashed PosterBoard at every boot. A new crash report from the run's
+device fails the run with exit 9: stop and tell super.
 
 ## Layout
 
