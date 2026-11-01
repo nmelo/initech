@@ -65,6 +65,11 @@ func stubBdFns(t *testing.T) {
 // resetDeliverFlags resets the package-level flag vars to defaults.
 func resetDeliverFlags(t *testing.T) {
 	t.Helper()
+	// cobra keeps a flag's Changed mark across Execute calls in one process,
+	// and an explicit --to is what makes a report unconditional.
+	toFlag := deliverCmd.Flags().Lookup("to")
+	toFlag.Changed = false
+	t.Cleanup(func() { toFlag.Changed = false })
 	deliverFail = false
 	deliverPass = false
 	deliverReason = ""

@@ -90,7 +90,7 @@ Agents on the same bead talk to each other directly and post everything on the b
 - **Closed**: refused; follow-on work gets its own bead.
 - **Anything else**: dispatched, replacing the agent's ribbon with the beads of the call.
 
-`initech deliver` fails the same way when its hand-off report does not reach the `--to` agent: the bead moves, but the command exits non-zero and prints the `initech send` line to tell the agent by hand (see Pane Ribbons for the summary line).
+`initech deliver` fails the same way when its hand-off report does not reach the `--to` agent: the bead moves, but the command exits non-zero and prints the `initech send` line to tell the agent by hand (see Pane Ribbons for the summary line). With `--to`, it always reports to that agent or fails this way, on every step, and a `--to` that names no agent is refused before bd is touched. Without `--to`, the report goes to `super` and only when the acting agent changes: a hand-off, a verdict, a failure or the final close; `--report` forces one on any other step.
 
 An agent that is stopped or whose process has exited gets nothing: no bead is claimed, and assign exits non-zero with the same reason `initech send` gives and the command that brings the agent back.
 

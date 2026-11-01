@@ -25,7 +25,7 @@ and initech send in one command. Counterpart to initech assign.
   initech deliver ini-abc --fail --reason "tests fail"  # eng: walk back a step, report failure
   initech deliver ini-abc --verdict PASS                # qa: report PASS verdict
   initech deliver ini-abc --verdict FAIL --reason X     # qa: report FAIL verdict
-  initech deliver ini-abc --to qa1                      # report to qa1 instead of super
+  initech deliver ini-abc --to qa1                      # report to qa1 instead of super, always
   initech deliver ini-abc --as qa2 --verdict PASS       # override INITECH_AGENT (rare)
 
 The notification template is selected from the caller's role family:
@@ -84,7 +84,7 @@ func init() {
 	deliverCmd.Flags().BoolVar(&deliverPass, "pass", false, "Mark ready_for_qa (default behavior)")
 	deliverCmd.Flags().BoolVar(&deliverFail, "fail", false, "Report failure: walk the bead back one lifecycle step (a QA FAIL returns it to its implementer)")
 	deliverCmd.Flags().StringVar(&deliverReason, "reason", "", "Failure reason (used with --fail or --verdict FAIL)")
-	deliverCmd.Flags().StringVar(&deliverTo, "to", "super", "Agent to report to (default: super)")
+	deliverCmd.Flags().StringVar(&deliverTo, "to", "super", "Agent to report to. Given, it always reports, or the command fails naming the agent; left out, the report goes to super and only when the acting agent changes")
 	deliverCmd.Flags().StringVarP(&deliverMessage, "message", "m", "", "Custom note appended to the chat report; on success, also written as a bd comment on the bead")
 	deliverCmd.Flags().BoolVar(&deliverReport, "report", false, "Report this step even when the same agent acts next (by default only hand-offs, verdicts, failures and the final close report)")
 	deliverCmd.Flags().StringVar(&deliverVerdict, "verdict", "", "QA verdict: PASS or FAIL (required for qa* roles)")
@@ -108,6 +108,9 @@ func runDeliver(cmd *cobra.Command, args []string) error {
 	if idx := strings.Index(recipient, ":"); idx >= 0 {
 		recipientHost = recipient[:idx]
 		recipient = recipient[idx+1:]
+	}
+	if strings.TrimSpace(recipient) == "" {
+		return fmt.Errorf("--to %q names no agent", deliverTo)
 	}
 
 	// Step 1: Read bead info (fail fast if bead not found).
@@ -242,8 +245,10 @@ func runDeliver(cmd *cobra.Command, args []string) error {
 	// Step 4: Send report to recipient -- only when the step changes who acts
 	// next (ini-r5ne). A skip-QA bead walked to closed by one agent used to
 	// send the same "delivered" four or five times, each a super turn, and
-	// the repeats read to the operator like a stuck agent.
-	send, closed := deliverReportFor(tr, chain, isFail, verdict, deliverReport)
+	// the repeats read to the operator like a stuck agent. An explicit --to is
+	// an instruction to report, exactly as --report is; its default names
+	// where a report goes and forces nothing, hence Changed.
+	send, closed := deliverReportFor(tr, chain, isFail, verdict, deliverReport || cmd.Flags().Changed("to"))
 	reportText := tpl.ReportText
 	if closed {
 		reportText = "closed: " + displayTitle
@@ -268,7 +273,7 @@ func runDeliver(cmd *cobra.Command, args []string) error {
 	// (ini-3x0d), the parked-bead shape assign already refuses.
 	var reportFailed string
 	if !send {
-		reportedTo = "(no report: same agent continues; --report sends one)"
+		reportedTo = "(no report: same agent continues; --to or --report sends one)"
 	} else if resp, err := ipcCall(sendReq); err != nil {
 		fmt.Fprintf(cmd.ErrOrStderr(), "warning: report failed, notify %s manually: %s\n", deliverTo, err)
 		reportFailed = err.Error()
