@@ -648,6 +648,18 @@ func TestInstall_ACopyThatCannotBeMadeOrCheckedWritesNoJob(t *testing.T) {
 				return "Identifier=com.neblihq.initech\nTeamIdentifier=K7Z8YKVA8G\n", nil
 			}
 		}, "does not verify"},
+		"another identity": {func(r *installRig) {
+			// The copy verifies, but reads back another team than its source.
+			appServeCodesign = func(args ...string) (string, error) {
+				if args[0] == "--verify" {
+					return "", nil
+				}
+				if strings.Contains(args[len(args)-1], "Cellar") {
+					return "Identifier=com.neblihq.initech\nTeamIdentifier=K7Z8YKVA8G\n", nil
+				}
+				return "Identifier=com.neblihq.initech\nTeamIdentifier=OTHERTEAM1\n", nil
+			}
+		}, "not com.neblihq.initech (team K7Z8YKVA8G)"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			r := newInstallRig(t)
