@@ -28,8 +28,6 @@ func appendLine(t *testing.T, path, line string) {
 	}
 }
 
-
-
 // AC11: the beads of the latest progress run reach Blockers: a bead quiet an
 // hour with its owner idle is stuck on that owner's pane.
 func TestBlockersSnapshot_CarriesTheProgressRunsBeads(t *testing.T) {
@@ -60,4 +58,3 @@ func TestBlockersSnapshot_CarriesTheProgressRunsBeads(t *testing.T) {
 		t.Errorf("stuck = %+v, want eng1 for the quiet bead", list[0].Stuck)
 	}
 }
-

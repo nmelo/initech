@@ -96,7 +96,12 @@ func TestDevices_RefusalsLeaveTheSetStanding(t *testing.T) {
 	dir := t.TempDir()
 	h := deviceServer(t, dir)
 	auth := "Bearer " + testToken
-	for i := 0; i < MaxDevices; i++ {
+	// The limits are the ruled numbers, written out: a test that read the
+	// constants would pass whatever they were changed to.
+	if MaxDevices != 10 || MaxDeviceTokenLen != 200 {
+		t.Fatalf("limits are %d devices and %d characters, ruled 10 and 200", MaxDevices, MaxDeviceTokenLen)
+	}
+	for i := 0; i < 10; i++ {
 		if code, out := deviceReq(t, h, "PUT", "/v1/devices", auth, fmt.Sprintf(`{"token":"%04x"}`, i)); code != 200 {
 			t.Fatalf("device %d: %d %v", i, code, out)
 		}
@@ -105,7 +110,7 @@ func TestDevices_RefusalsLeaveTheSetStanding(t *testing.T) {
 	for name, body := range map[string]string{
 		"an 11th":       `{"token":"ffff"}`,
 		"not hex":       `{"token":"zz12"}`,
-		"too long":      `{"token":"` + strings.Repeat("a", MaxDeviceTokenLen+2) + `"}`,
+		"too long":      `{"token":"` + strings.Repeat("a", 202) + `"}`,
 		"empty token":   `{"token":""}`,
 		"no token":      `{}`,
 		"unknown field": `{"token":"abcd","name":"phone"}`,
@@ -117,7 +122,7 @@ func TestDevices_RefusalsLeaveTheSetStanding(t *testing.T) {
 			t.Errorf("%s: %d %v, want 400 refused with words", name, code, out)
 		}
 	}
-	if code, out := deviceReq(t, h, "PUT", "/v1/devices", auth, `{"token":"0003"}`); code != 200 || out["devices"] != float64(MaxDevices) {
+	if code, out := deviceReq(t, h, "PUT", "/v1/devices", auth, `{"token":"0003"}`); code != 200 || out["devices"] != float64(10) {
 		t.Errorf("a registered token at the limit: %d %v, want 200 and no change", code, out)
 	}
 	after, _ := os.ReadFile(filepath.Join(dir, DevicesFile))
@@ -126,5 +131,14 @@ func TestDevices_RefusalsLeaveTheSetStanding(t *testing.T) {
 	}
 	if code, _ := deviceReq(t, h, "DELETE", "/v1/devices/zz", auth, ""); code != 400 {
 		t.Errorf("DELETE of a non-hex token: %d, want 400", code)
+	}
+}
+
+// A token of exactly 200 hex characters is taken; 202 is refused.
+func TestDevices_TheTwoHundredCharacterLimit(t *testing.T) {
+	h := deviceServer(t, t.TempDir())
+	auth := "Bearer " + testToken
+	if code, out := deviceReq(t, h, "PUT", "/v1/devices", auth, `{"token":"`+strings.Repeat("a", 200)+`"}`); code != 200 {
+		t.Errorf("200 characters: %d %v, want taken", code, out)
 	}
 }

@@ -115,7 +115,6 @@ func TestTail_StartsAtTheEndAndReadsWholeLines(t *testing.T) {
 	}
 }
 
-
 // AC6 feed-it-nothing: a pane with no transcript, and one whose file has
 // gone, send nothing; a malformed new line is left out and the look goes on.
 func TestTail_NoTranscriptAndAMalformedLineSendNothing(t *testing.T) {
