@@ -364,6 +364,15 @@ func TestInstall_ALaunchctlFailureKeepsTheJobAndNamesIt(t *testing.T) {
 	if v69Exit(err) != 1 || err == nil || !strings.Contains(err.Error(), "launchctl") || !m.plistThere() {
 		t.Errorf("missing: err %v, file there %v", err, m.plistThere())
 	}
+	// New settings with launchctl missing: the bootout fails, named, and
+	// nothing waits or starts.
+	before, _ := os.ReadFile(m.plist())
+	appServePort++
+	err = m.install()
+	after, _ := os.ReadFile(m.plist())
+	if v69Exit(err) != 1 || err == nil || !strings.Contains(err.Error(), "launchctl bootout failed") || !bytes.Equal(before, after) {
+		t.Errorf("missing, new settings: err %v, job file changed %v", err, !bytes.Equal(before, after))
+	}
 }
 
 // AC5: every refusal names itself and leaves nothing written and nothing
