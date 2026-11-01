@@ -23,6 +23,21 @@ final class ScreenshotTests: XCTestCase {
         XCTAssertFalse(b.isEmpty || p.isEmpty)
     }
 
+    /// The real Panes screen over the fixture API: panes.png shows the Blockers
+    /// and Progress entries a reader reaches both views from. No test presses them.
+    func testPanesScreenRenders() async throws {
+        let server = try FixtureServer()
+        try await server.start()
+        defer { server.stop() }
+        server.status = StatusReply(rigs: [Fx.rig("initech", [Fx.agent("super", state: "running", beads: ["ini-r0q"], context: 65)])])
+        server.pins = [Pin(rig: "initech", pane: "super", name: "initech super", order: 0)]
+        let home = HomeModel(service: HTTPService(pairing: server.pairing, retryDelay: .milliseconds(50)))
+        defer { home.stopFeed() }
+        let png = try await shot("panes", MainView(home: home) {})
+        XCTAssertEqual(home.rows.map(\.name), ["initech super"], "the screen read the fixture")
+        XCTAssertFalse(png.isEmpty)
+    }
+
     /// shot hosts the view full screen, lets it load, and returns its PNG.
     private func shot<V: View>(_ name: String, _ view: V) async throws -> Data {
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
