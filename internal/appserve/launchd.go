@@ -48,10 +48,32 @@ const notifyEvery = time.Hour
 // shorten it.
 var notifyBound = 10 * time.Second
 
-// StuckFolderLine is what --notify gets when a rig folder cannot be read. It
-// holds no token.
-func StuckFolderLine(dir string) string {
-	return "initech app-serve cannot read " + dir + ": macOS guards Desktop, Documents and Downloads for launchd jobs until the binary is allowed"
+// StuckFolderLine is what the log and --notify get when a rig folder cannot be
+// read: the folder and why. The macOS hint is added only for a folder under
+// ~/Desktop, ~/Documents or ~/Downloads, which macOS guards for launchd jobs; a
+// missing or mistyped folder is not blamed on it. It holds no token.
+func StuckFolderLine(dir, why string) string {
+	line := "initech app-serve cannot read " + dir + ": " + why
+	if underGuardedFolder(dir) {
+		line += "; macOS guards ~/Desktop, ~/Documents and ~/Downloads for launchd jobs until the binary is allowed"
+	}
+	return line
+}
+
+// underGuardedFolder reports whether dir is under ~/Desktop, ~/Documents or
+// ~/Downloads.
+func underGuardedFolder(dir string) bool {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return false
+	}
+	for _, name := range []string{"Desktop", "Documents", "Downloads"} {
+		root := filepath.Join(home, name)
+		if dir == root || strings.HasPrefix(dir, root+string(filepath.Separator)) {
+			return true
+		}
+	}
+	return false
 }
 
 // notifyMu makes a guard's look at its stamp and its write one step: a scan's
@@ -161,13 +183,13 @@ func checkUncleanExit(stateDir, notify string, log io.Writer, now func() time.Ti
 	}
 }
 
-// ReportFolder is what the rig scan calls when a folder does not answer or is
-// refused: it logs the line with why, and runs notify under the folder notice's
-// own one-per-hour guard, so a restart's notice never silences it. dir is named;
-// no token is.
+// ReportFolder is what the rig scan calls when a folder does not answer, is
+// refused or is missing: it logs the line, and runs notify with it under the
+// folder notice's own one-per-hour guard, so a restart's notice never silences
+// it. dir is named; no token is.
 func ReportFolder(stateDir, notify string, log io.Writer, dir, why string) {
-	line := StuckFolderLine(dir)
-	fmt.Fprintf(log, "%s (%s)\n", line, why)
+	line := StuckFolderLine(dir, why)
+	fmt.Fprintln(log, line)
 	notifyGuarded(stateDir, FolderNotifiedAtFile, notify, line, log, time.Now)
 }
 

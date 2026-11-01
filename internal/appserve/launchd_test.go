@@ -313,15 +313,37 @@ func TestMarker_TheTokenAppearsNowhere(t *testing.T) {
 func TestReportFolder_NamesTheFolderAndWhy(t *testing.T) {
 	r := newMarkerRig(t)
 	ReportFolder(r.dir, r.notify, &r.log, "/some/rigs", "it has not answered")
-	want := StuckFolderLine("/some/rigs")
+	want := "initech app-serve cannot read /some/rigs: it has not answered"
 	if got := r.runs(); len(got) != 1 || got[0] != want {
 		t.Errorf("notify ran %q, want once with %q", got, want)
 	}
-	if !strings.Contains(r.log.String(), want+" (it has not answered)") {
+	if r.log.String() != want+"\n" {
 		t.Errorf("the log says %q", r.log.String())
 	}
-	if !strings.Contains(want, "/some/rigs") {
-		t.Errorf("the line does not name the folder: %q", want)
+}
+
+// The macOS hint is given only for a folder under ~/Desktop, ~/Documents or
+// ~/Downloads; a missing folder elsewhere, or one merely named like them, is
+// not blamed on macOS.
+func TestStuckFolderLine_BlamesMacOSOnlyUnderAGuardedFolder(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	hint := "; macOS guards ~/Desktop, ~/Documents and ~/Downloads for launchd jobs until the binary is allowed"
+	for _, name := range []string{"Desktop", "Documents", "Downloads"} {
+		dir := filepath.Join(home, name, "Projects")
+		if got := StuckFolderLine(dir, "it has not answered"); got != "initech app-serve cannot read "+dir+": it has not answered"+hint {
+			t.Errorf("%s: %q", name, got)
+		}
+	}
+	for _, dir := range []string{"/srv/rigs", filepath.Join(home, "Desktopish"), filepath.Join(home, "Projects")} {
+		why := "open " + dir + ": no such file or directory"
+		if got := StuckFolderLine(dir, why); got != "initech app-serve cannot read "+dir+": "+why {
+			t.Errorf("%s: %q", dir, got)
+		}
+	}
+	t.Setenv("HOME", "")
+	if got := StuckFolderLine(filepath.Join(home, "Desktop"), "x"); strings.Contains(got, "macOS") {
+		t.Errorf("no HOME: %q", got)
 	}
 }
 
@@ -361,7 +383,7 @@ func TestReportFolder_ARestartDoesNotSilenceIt(t *testing.T) {
 	checkUncleanExit(r.dir, r.notify, &r.log, r.clock)
 	ReportFolder(r.dir, r.notify, &r.log, "/rigs", "held")
 	got := strings.Join(r.runs(), "\n")
-	for _, want := range []string{NotifyLine, StuckFolderLine("/rigs")} {
+	for _, want := range []string{NotifyLine, StuckFolderLine("/rigs", "held")} {
 		if !strings.Contains(got, want) {
 			t.Errorf("notify ran %q, lacks %q", got, want)
 		}
