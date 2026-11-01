@@ -296,10 +296,7 @@ func (t *TUI) checkSuspendPolicy() {
 				p.mu.Lock()
 				alive := p.alive
 				activity := p.activity
-				bead := ""
-				if len(p.beadIDs) > 0 {
-					bead = p.beadIDs[0]
-				}
+				bead := p.primaryBeadLocked()
 				pinned := p.protected
 				name := p.name
 				lot := p.lastOutputTime
@@ -797,6 +794,13 @@ func (t *TUI) resumePane(pane *Pane, senderName string) error {
 					copy(np.beadIDs, pane.beadIDs)
 				}
 				np.beadTitle = pane.beadTitle
+				// The override and the derived bead wake with the pane too, so
+				// a restart neither forgets an initech bead nor waits a poll to
+				// show what bd says (ini-wra.1).
+				np.lastNamed = pane.lastNamed
+				np.derivedBead, np.derivedTitle = pane.derivedBead, pane.derivedTitle
+				np.derivedUpdatedAt, np.derivedSince = pane.derivedUpdatedAt, pane.derivedSince
+				np.beadStale = pane.beadStale
 				// The no-bead marker wakes with the pane, as its beads do.
 				np.noBeadWork = pane.noBeadWork
 				carryFleetIdentity(np, pane)

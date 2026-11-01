@@ -265,46 +265,56 @@ type Pane struct {
 	// first said idle -- the idle-with-bead clock for a pane whose bytes never
 	// stop -- and the once-per-transition record of which rule decided the
 	// state.
-	sigIdleSince                 time.Time
-	activityTransitions          int
-	activityDecidedBy            string
-	idleWithBeadThreshold        time.Duration     // Silence duration before idle-with-bead fires. 0 = disabled.
-	idleBeadNotified             bool              // True after idle-with-bead fires. Reset when output resumes.
-	beadAssignedAt               time.Time         // When the current bead was assigned. Grace period starts here.
-	waitingSince                 time.Time         // When the currently-open blocking dialog was first seen. Zero = not waiting.
-	waitingPreview               string            // What to show for this agent in the needs-input list. Empty is allowed.
-	waitingTier                  WaitingTier       // Confidence in the current wait. Zero value is the SILENT tier, deliberately.
-	waitingModalSeen             bool              // The screen has confirmed this wait's dialog, so the screen may also retire it.
-	attn                         *attentionSignal  // Mailbox the OSC 777 handler writes into. Leaf-locked; see attention_detect.go.
-	journal                      []JournalEntry    // Ring buffer of recent JSONL entries (cap journalRingSize).
-	jsonlDir                     string            // Directory to search for session JSONL files.
-	eventCh                      chan<- AgentEvent // Emits detected semantic events to the TUI. May be nil.
-	safeGo                       func(func())      // Launches a goroutine with panic recovery. Set by TUI after creation.
-	goWg                         sync.WaitGroup    // Tracks goroutines launched by Start(). Wait in Close().
-	sessionDesc                  string            // Session description extracted from cursor row.
-	beadIDs                      []string          // Current bead IDs. Nil = no beads. First is primary.
-	beadTitle                    string            // Bead title for top modal display.
-	noBeadWork                   string            // First words of work dispatched with no bead; "" when none. Never set alongside beadIDs.
-	stallReported                bool              // True after emitting stall event. Reset on new activity.
-	stuckReported                bool              // True after emitting stuck event. Reset on success.
-	dedupEvents                  *dedup            // Dedup state for emitted events.
-	startedAt                    time.Time         // When this pane's process was started. Used to filter stale JSONL.
-	startupSettled               bool              // The child has been seen quiet once since it started; sends wait for that, once (ini-i35w). Guarded by mu.
-	scrollOffset                 int               // Rows scrolled back from live view (0 = live).
-	resizeSettleFrames           int               // Render frames remaining to skip after resize.
-	resizeSettleDeadline         time.Time         // Hard deadline: skip content rendering until this time.
-	lastClampedResize            [2]int            // Last clamped resize request logged (rows, cols); under renderMu.
-	scrollAnchorLen              int               // Scrollback length when user last scrolled. Used to compensate for new output.
-	memoryRSS                    int64             // RSS in kilobytes, updated by memory monitor goroutine.
-	suspended                    bool              // True when auto-suspend policy has stopped this pane.
-	messageQueue                 []QueuedMessage   // Messages waiting for resume or modal-close. Capped at maxMessageQueue.
-	idlePromptSince              time.Time         // When the pane last began rendering its idle composer (ini-gbqc).
-	screenSkipSince              time.Time         // When the main loop first found this pane's emulator lock held (ini-psjt).
-	screenSkipLogged             time.Time         // Last time that skip was logged; rate-limits the record.
-	lastEmuCols, lastEmuRows     int               // Emulator size last seen under its lock (ini-psjt); emuSize's fallback.
-	bgWork                       backgroundWork    // Background work shown: the footer's, checked against the process tree (ini-b4l0, ini-d2sx).
-	bgFooter                     backgroundWork    // The footer's own counts, and since when it has shown work (ini-d2sx).
-	lastFrame                    []frameCell       // Content region as last drawn; replayed while the pane cannot be read.
+	sigIdleSince          time.Time
+	activityTransitions   int
+	activityDecidedBy     string
+	idleWithBeadThreshold time.Duration     // Silence duration before idle-with-bead fires. 0 = disabled.
+	idleBeadNotified      bool              // True after idle-with-bead fires. Reset when output resumes.
+	beadAssignedAt        time.Time         // When the current bead was assigned. Grace period starts here.
+	waitingSince          time.Time         // When the currently-open blocking dialog was first seen. Zero = not waiting.
+	waitingPreview        string            // What to show for this agent in the needs-input list. Empty is allowed.
+	waitingTier           WaitingTier       // Confidence in the current wait. Zero value is the SILENT tier, deliberately.
+	waitingModalSeen      bool              // The screen has confirmed this wait's dialog, so the screen may also retire it.
+	attn                  *attentionSignal  // Mailbox the OSC 777 handler writes into. Leaf-locked; see attention_detect.go.
+	journal               []JournalEntry    // Ring buffer of recent JSONL entries (cap journalRingSize).
+	jsonlDir              string            // Directory to search for session JSONL files.
+	eventCh               chan<- AgentEvent // Emits detected semantic events to the TUI. May be nil.
+	safeGo                func(func())      // Launches a goroutine with panic recovery. Set by TUI after creation.
+	goWg                  sync.WaitGroup    // Tracks goroutines launched by Start(). Wait in Close().
+	sessionDesc           string            // Session description extracted from cursor row.
+	beadIDs               []string          // The OVERRIDE's bead IDs (initech bead, assign, deliver); non-empty means an override is in force. First is primary.
+	beadTitle             string            // The override's bead title.
+	// The bead comes from bd (ini-wra.1): the derived fields hold what bd
+	// says the role is on; an override set by initech bead wins until it is
+	// cleared (beadIDs or the no-bead marker set: overrideLocked).
+	// effectiveBeadsLocked is the one answer every reader uses.
+	lastNamed                    string          // The bead the pane last named, kept after a clear; breaks a two-bead tie.
+	derivedBead                  string          // bd's in_progress bead for the role, "" for none.
+	derivedTitle                 string          // Its title.
+	derivedUpdatedAt             time.Time       // Its updated_at in bd.
+	derivedSince                 time.Time       // When it first became the derived bead here (Step 2A's interval start).
+	beadStale                    bool            // bd did not answer the last poll; the derived bead is the last one known.
+	noBeadWork                   string          // First words of work dispatched with no bead; "" when none. Never set alongside beadIDs.
+	stallReported                bool            // True after emitting stall event. Reset on new activity.
+	stuckReported                bool            // True after emitting stuck event. Reset on success.
+	dedupEvents                  *dedup          // Dedup state for emitted events.
+	startedAt                    time.Time       // When this pane's process was started. Used to filter stale JSONL.
+	startupSettled               bool            // The child has been seen quiet once since it started; sends wait for that, once (ini-i35w). Guarded by mu.
+	scrollOffset                 int             // Rows scrolled back from live view (0 = live).
+	resizeSettleFrames           int             // Render frames remaining to skip after resize.
+	resizeSettleDeadline         time.Time       // Hard deadline: skip content rendering until this time.
+	lastClampedResize            [2]int          // Last clamped resize request logged (rows, cols); under renderMu.
+	scrollAnchorLen              int             // Scrollback length when user last scrolled. Used to compensate for new output.
+	memoryRSS                    int64           // RSS in kilobytes, updated by memory monitor goroutine.
+	suspended                    bool            // True when auto-suspend policy has stopped this pane.
+	messageQueue                 []QueuedMessage // Messages waiting for resume or modal-close. Capped at maxMessageQueue.
+	idlePromptSince              time.Time       // When the pane last began rendering its idle composer (ini-gbqc).
+	screenSkipSince              time.Time       // When the main loop first found this pane's emulator lock held (ini-psjt).
+	screenSkipLogged             time.Time       // Last time that skip was logged; rate-limits the record.
+	lastEmuCols, lastEmuRows     int             // Emulator size last seen under its lock (ini-psjt); emuSize's fallback.
+	bgWork                       backgroundWork  // Background work shown: the footer's, checked against the process tree (ini-b4l0, ini-d2sx).
+	bgFooter                     backgroundWork  // The footer's own counts, and since when it has shown work (ini-d2sx).
+	lastFrame                    []frameCell     // Content region as last drawn; replayed while the pane cannot be read.
 	lastFrameCols, lastFrameRows int
 	// perfBytes and perfEmuNs are this pane's PTY bytes read and time spent in
 	// emu.Write since the last perf minute (ini-pqdy.1). readLoop adds; the
@@ -1625,38 +1635,115 @@ func (p *Pane) SessionDesc() string {
 	return p.sessionDesc
 }
 
+// effectiveBeadsLocked is the pane's bead as every reader sees it: the
+// override when one is in force, else the bead derived from bd (ini-wra.1).
+// The returned slice is the caller's. p.mu must be held.
+func (p *Pane) effectiveBeadsLocked() (ids []string, title string) {
+	if p.overrideLocked() {
+		if len(p.beadIDs) == 0 {
+			return nil, ""
+		}
+		return append([]string(nil), p.beadIDs...), p.beadTitle
+	}
+	if p.derivedBead == "" {
+		return nil, ""
+	}
+	return []string{p.derivedBead}, p.derivedTitle
+}
+
+// overrideLocked reports whether an override is in force: a bead set by
+// initech bead (or assign, deliver, the journal detector), or the no-bead
+// marker, which the dispatcher said. p.mu must be held.
+func (p *Pane) overrideLocked() bool {
+	return len(p.beadIDs) > 0 || p.noBeadWork != ""
+}
+
+// primaryBeadLocked is the effective primary bead, or "". p.mu must be held.
+func (p *Pane) primaryBeadLocked() string {
+	ids, _ := p.effectiveBeadsLocked()
+	if len(ids) == 0 {
+		return ""
+	}
+	return ids[0]
+}
+
 // BeadID returns the first (primary) bead ID, or empty string.
 func (p *Pane) BeadID() string {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if len(p.beadIDs) == 0 {
-		return ""
-	}
-	return p.beadIDs[0]
+	return p.primaryBeadLocked()
 }
 
-// BeadIDs returns all assigned bead IDs.
+// BeadIDs returns all the pane's bead IDs: the override's, or the derived one.
 func (p *Pane) BeadIDs() []string {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if len(p.beadIDs) == 0 {
-		return nil
-	}
-	out := make([]string, len(p.beadIDs))
-	copy(out, p.beadIDs)
-	return out
+	ids, _ := p.effectiveBeadsLocked()
+	return ids
 }
 
 // BeadTitle returns the title of the primary bead, or empty string.
 func (p *Pane) BeadTitle() string {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	return p.beadTitle
+	_, title := p.effectiveBeadsLocked()
+	return title
+}
+
+// BeadStale reports whether the bead shown is a derived one that bd could not
+// refresh at the last poll. An override is never stale: it does not come
+// from bd.
+func (p *Pane) BeadStale() bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.beadStale && !p.overrideLocked() && p.derivedBead != ""
+}
+
+// DerivedBeadSince returns the derived bead, its updated_at in bd, and when
+// it first became the pane's derived bead here; "" when there is none.
+func (p *Pane) DerivedBeadSince() (id string, updatedAt, since time.Time) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.derivedBead, p.derivedUpdatedAt, p.derivedSince
+}
+
+// applyDerivedBeads applies one bd poll (ini-wra.1). answered false (bd
+// failed or timed out) keeps the last derived bead and marks it stale; it
+// never clears. An answer clears the mark and sets the derived bead, which
+// the override, when set, still outranks.
+func (p *Pane) applyDerivedBeads(beads []bdBead, answered bool, now time.Time) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if !answered {
+		p.beadStale = true
+		return
+	}
+	p.beadStale = false
+	b, ok := deriveBead(p.name, beads, p.lastNamed)
+	if !ok {
+		p.derivedBead, p.derivedTitle = "", ""
+		p.derivedUpdatedAt, p.derivedSince = time.Time{}, time.Time{}
+		return
+	}
+	if b.ID != p.derivedBead {
+		p.derivedSince = now
+		if !p.overrideLocked() {
+			// A new bead on the ribbon starts the idle-with-bead grace, as an
+			// initech bead call does (ini-t42).
+			p.beadAssignedAt = now
+			p.idleBeadNotified = false
+		}
+	}
+	p.derivedBead, p.derivedTitle, p.derivedUpdatedAt = b.ID, b.Title, b.UpdatedAt
 }
 
 // SetBead sets a single bead ID (backward compat). Pass "" to clear.
 // When assigning a non-empty bead, resets the idle-with-bead grace window
 // so the notification doesn't fire on stale lastOutputTime (ini-t42).
+//
+// A non-empty id is a manual override that wins over the bead derived from
+// bd until it is cleared; "" clears it and returns the pane to the derived
+// bead at once (ini-wra.1).
 func (p *Pane) SetBead(id, title string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -1665,6 +1752,7 @@ func (p *Pane) SetBead(id, title string) {
 		p.beadIDs = nil
 	} else {
 		p.beadIDs = []string{id}
+		p.lastNamed = id
 		p.beadAssignedAt = time.Now()
 		p.idleBeadNotified = false
 	}
@@ -1674,6 +1762,7 @@ func (p *Pane) SetBead(id, title string) {
 // SetBeads sets multiple bead IDs. Pass nil to clear.
 // When assigning non-empty beads, resets the idle-with-bead grace window
 // so the notification doesn't fire on stale lastOutputTime (ini-t42).
+// Like SetBead, a non-empty set is an override and an empty one clears it.
 func (p *Pane) SetBeads(ids []string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -1683,6 +1772,7 @@ func (p *Pane) SetBeads(ids []string) {
 	} else {
 		p.beadIDs = make([]string, len(ids))
 		copy(p.beadIDs, ids)
+		p.lastNamed = ids[0]
 		p.beadAssignedAt = time.Now()
 		p.idleBeadNotified = false
 	}
@@ -1699,6 +1789,9 @@ func (p *Pane) SetNoBeadWork(words string) {
 	defer p.mu.Unlock()
 	p.beadIDs = nil
 	p.beadTitle = ""
+	// The marker is said by the dispatcher, so it is an override too
+	// (overrideLocked): it stands over any bead bd shows until the next
+	// registration or clear.
 	p.noBeadWork = words
 }
 

@@ -519,6 +519,8 @@ func RunDaemon(cfg DaemonConfig) error {
 	stopMaint := make(chan struct{})
 	defer close(stopMaint)
 	go d.runMaintenance(stopMaint, maintenanceFrameInterval)
+	// Each daemon derives its own panes' beads from its own bd (ini-wra.1).
+	go d.runBeadPoller(stopMaint)
 	// Their delivery reports go to the connected initech (ini-ei8l).
 	go d.runReportForwarder(stopMaint)
 
@@ -683,12 +685,13 @@ func (d *Daemon) allPanesWithViews() ([]PaneInfo, []PaneView, bool) {
 	for i, p := range snap {
 		views[i] = p
 		panes[i] = PaneInfo{
-			Name:     p.Name(),
-			Activity: p.Activity().String(),
-			Alive:    p.IsAlive(),
-			Visible:  true,
-			Beads:    ribbonBeads(p),
-			NoBead:   p.NoBeadWork(),
+			Name:      p.Name(),
+			Activity:  p.Activity().String(),
+			Alive:     p.IsAlive(),
+			Visible:   true,
+			Beads:     ribbonBeads(p),
+			NoBead:    p.NoBeadWork(),
+			BeadStale: p.BeadStale(),
 		}
 		panes[i].DND, panes[i].DNDAgeSec = dndFields(p, time.Now())
 		if panes[i].DNDAgeSec != nil {

@@ -111,6 +111,10 @@ func (p *Pane) chromeLook(focused bool, index int) (ribbonLook, tcell.Color) {
 	}
 
 	beadLabel, beadTitle := ribbonBeadLabel(p.BeadID(), p.BeadTitle(), p.NoBeadWork())
+	if p.BeadStale() {
+		// The last bead bd gave, said to be unconfirmed (ini-wra.1).
+		beadTitle = BeadStaleNote
+	}
 	return ribbonLook{title: title, style: titleStyle, tag: backgroundTag(p), bead: beadLabel, beadTitle: beadTitle, running: running}, tint
 }
 

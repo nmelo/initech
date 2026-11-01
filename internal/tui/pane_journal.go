@@ -324,10 +324,7 @@ func (p *Pane) updateActivity() {
 	}
 
 	var idleEvent *AgentEvent
-	primaryBead := ""
-	if len(p.beadIDs) > 0 {
-		primaryBead = p.beadIDs[0]
-	}
+	primaryBead := p.primaryBeadLocked()
 	// Fire idle-with-bead once when silence exceeds the bead threshold.
 	// Threshold of 0 disables entirely. The flag prevents re-firing every
 	// tick; cooldown is a secondary safety net. The beadAssignedAt grace
@@ -389,10 +386,7 @@ func (p *Pane) runDetectors(newEntries []JournalEntry) {
 
 	// Read protected fields atomically.
 	p.mu.Lock()
-	beadID := ""
-	if len(p.beadIDs) > 0 {
-		beadID = p.beadIDs[0]
-	}
+	beadID := p.primaryBeadLocked()
 	journal := make([]JournalEntry, len(p.journal))
 	copy(journal, p.journal)
 	stallReported := p.stallReported

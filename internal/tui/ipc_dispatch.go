@@ -28,6 +28,9 @@ type PaneInfo struct {
 	// bead (Beads is then empty); omitted otherwise. initech status shows it
 	// where a bead id would go.
 	NoBead string `json:"no_bead,omitempty"`
+	// BeadStale is true while the derived bead shown is the last one bd gave:
+	// bd did not answer the last poll (ini-wra.1). Omitted when false.
+	BeadStale bool `json:"bead_stale,omitempty"`
 
 	// Modal-latch visibility (ini-gbqc): omitted entirely when no latch is up.
 	ModalLatched bool `json:"modal_latched,omitempty"`
@@ -103,6 +106,14 @@ func fillPaneDetail(info *PaneInfo, pv PaneView) {
 		info.Account = &PaneAccount{User: f.User, Model: f.Model}
 	}
 	info.Banner = bannerKind(rows, info.ModalLatched)
+}
+
+// beadStaleOf reports pv's stale-bead mark; false for a pane without one.
+func beadStaleOf(pv PaneView) bool {
+	if p, ok := pv.(*Pane); ok {
+		return p.BeadStale()
+	}
+	return false
 }
 
 // ribbonBeads is the pane's bead set for the list reply, never nil, so it

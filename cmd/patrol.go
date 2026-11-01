@@ -76,6 +76,8 @@ func runPatrol(cmd *cobra.Command, args []string) error {
 		Busy     *tui.PaneBusy `json:"busy"`
 		// DNDAgeSec is set while the agent is in do-not-disturb.
 		DNDAgeSec *int `json:"dnd_age_sec"`
+		// BeadStale: Bead is the last one bd gave; bd has not answered since.
+		BeadStale bool `json:"bead_stale"`
 	}
 	var entries []patrolEntry
 	if err := json.Unmarshal([]byte(resp.Data), &entries); err != nil {
@@ -117,6 +119,9 @@ func runPatrol(cmd *cobra.Command, args []string) error {
 		}
 		if e.Bead != "" {
 			headerInner += " | " + color.Blue(e.Bead)
+			if e.BeadStale {
+				headerInner += " " + color.Yellow(tui.BeadStaleNote)
+			}
 		}
 		if !e.Alive {
 			headerInner += " | " + color.Red("dead")

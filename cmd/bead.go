@@ -14,14 +14,19 @@ var beadClear bool
 
 var beadCmd = &cobra.Command{
 	Use:   "bead [id...]",
-	Short: "Set or clear the current bead(s) for an agent pane",
-	Long: `Reports the current bead assignment to the TUI so it appears in the
-ribbon badge and overlay panel. Supports multiple bead IDs.
+	Short: "Override or clear an agent pane's bead (it comes from bd)",
+	Long: `A pane's bead comes from bd: the bead whose assignee is the pane's role
+and whose status is in_progress, read every 10 seconds. With two such beads,
+the one this command last named wins, else the newest updated.
+
+initech bead <id> is a manual override: the pane shows that bead until
+initech bead --clear, which returns it to the bead bd says at once. Supports
+multiple bead IDs.
 
 Inside a TUI pane (INITECH_AGENT set automatically):
-  initech bead ini-bhk.3                      Set single bead
-  initech bead ini-abc ini-def ini-ghi         Set multiple beads
-  initech bead --clear                         Clear all beads
+  initech bead ini-bhk.3                      Override with one bead
+  initech bead ini-abc ini-def ini-ghi         Override with several beads
+  initech bead --clear                         Clear the override (back to bd)
 
 Outside the TUI (must specify agent):
   initech bead --agent eng1 ini-bhk.3
@@ -32,7 +37,7 @@ Outside the TUI (must specify agent):
 
 func init() {
 	beadCmd.Flags().StringVar(&beadAgent, "agent", "", "Target agent name (auto-detected inside TUI via INITECH_AGENT)")
-	beadCmd.Flags().BoolVar(&beadClear, "clear", false, "Clear the current bead display")
+	beadCmd.Flags().BoolVar(&beadClear, "clear", false, "Clear the override: the pane shows the bead bd says again")
 	rootCmd.AddCommand(beadCmd)
 }
 

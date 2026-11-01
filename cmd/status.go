@@ -62,6 +62,10 @@ type paneInfo struct {
 	// no bead (initech assign -m with no bead id); empty otherwise.
 	NoBead string `json:"no_bead,omitempty"`
 
+	// BeadStale: the pane's bead is the last one bd gave the TUI, which bd
+	// has not confirmed since (ini-wra.1).
+	BeadStale bool `json:"bead_stale,omitempty"`
+
 	// Read from the screen for --json only; nil or empty when not read
 	// (ini-l6om).
 	ContextPercent *int                `json:"context_percent"`
@@ -179,6 +183,18 @@ func agentState(pi paneInfo) *string {
 	return &s
 }
 
+// beadNoteOf is status --json's bead_note for pi: the no-bead marker's words,
+// else the stale-bead note while the TUI's bd poll is failing, else "".
+func beadNoteOf(pi paneInfo) string {
+	if pi.NoBead != "" {
+		return pi.NoBead
+	}
+	if pi.BeadStale {
+		return tui.BeadStaleNote
+	}
+	return ""
+}
+
 // toAgentJSON is pi as status --json prints it. fromBD is bd's answer for
 // every agent, or nil when there is none and the ribbon stands in.
 func toAgentJSON(pi paneInfo, fromBD map[string][]beadInfo) agentJSON {
@@ -189,7 +205,7 @@ func toAgentJSON(pi paneInfo, fromBD map[string][]beadInfo) agentJSON {
 		Alive:          pi.Alive,
 		Visible:        pi.Visible,
 		Beads:          pi.Beads,
-		BeadNote:       pi.NoBead,
+		BeadNote:       beadNoteOf(pi),
 		ContextPercent: pi.ContextPercent,
 		QueuedCount:    pi.QueuedCount,
 		DND:            pi.DND,
@@ -448,6 +464,9 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		// different (ini-jvrs).
 		if beadNote != "" && pi.NoBead == "" {
 			bead = color.Dim(beadNote)
+		}
+		if pi.BeadStale && pi.NoBead == "" {
+			bead += " " + color.Yellow(tui.BeadStaleNote)
 		}
 		if pi.Beads != nil && pi.NoBead == "" && beadNote == "" && !sameBeadSet(*pi.Beads, held) {
 			shown := "-"

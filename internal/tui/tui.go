@@ -1430,6 +1430,9 @@ func Run(cfg Config) error {
 	// Start battery polling for status bar display.
 	t.startBatteryPoller()
 
+	// Derive each pane's bead from bd (ini-wra.1).
+	t.startBeadPoller(t.quitCh)
+
 	// Poll tcell events in a goroutine.
 	eventCh := make(chan tcell.Event, 64)
 	t.safeGo(func() {
