@@ -20,8 +20,8 @@ package tui
 // every window. Nothing here is called from those paths.
 
 import (
-	"sort"
 	"regexp"
+	"sort"
 )
 
 // windowAliasHostPattern is THE spelling of the window-alias host family, and
@@ -78,7 +78,6 @@ func paneIsRemoteMachine(p PaneView) bool {
 	host := p.Host()
 	return host != "" && !isWindowAliasHost(host)
 }
-
 
 // orderPanesForDisplay returns pane indices in the fleet's display order —
 // the ONE ordering the overlay uses and the modal's machine tiers agree with

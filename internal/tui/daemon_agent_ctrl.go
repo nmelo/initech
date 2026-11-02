@@ -5,10 +5,10 @@
 package tui
 
 import (
-	"net"
-	"github.com/nmelo/initech/internal/config"
 	"encoding/json"
 	"fmt"
+	"github.com/nmelo/initech/internal/config"
+	"net"
 	"os"
 	"path/filepath"
 	"sync"

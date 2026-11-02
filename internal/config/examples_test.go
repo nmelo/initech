@@ -147,7 +147,7 @@ func TestHasTopLevelKey_LiveAndCommentedFormsOnly(t *testing.T) {
 		{"# claude_args: [--x]\n", true},
 		{"#claude_args: []\n", true},
 		{"claude_args : []\n", true},
-		{"  claude_args: [--x]\n", false},           // nested under another key, not top level
+		{"  claude_args: [--x]\n", false}, // nested under another key, not top level
 		{"role_overrides:\n  eng1:\n    claude_args: []\n", false},
 		{"# Flags for claude_args below\n", false}, // prose mentioning the key
 		{"my_claude_args: []\n", false},

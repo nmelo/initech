@@ -144,8 +144,8 @@ func TestProcAge_TheSecondJobShowsItsOwnAgeAndAFinishedOneNone(t *testing.T) {
 		clock = at
 		pi8pTick(t, tu, p, "haiku310_landing_shell.txt", StateIdle, at)
 	}
-	tick(t0)                   // the footer shows the shell; the tree is asked for
-	tick(t0.Add(time.Second))  // read
+	tick(t0)                  // the footer shows the shell; the tree is asked for
+	tick(t0.Add(time.Second)) // read
 	tick(t0.Add(10 * time.Second))
 	if b := paneBusy(p, clock); b == nil || b.Shells != 1 || b.SinceSec != 10 || b.SeenFor {
 		t.Fatalf("first job: %+v, want 1 shell, 10s, a process age", b)

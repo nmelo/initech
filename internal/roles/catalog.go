@@ -107,9 +107,9 @@ func LookupRole(name string) RoleDef {
 // IsValidRoleName reports whether name is acceptable as a role name for CLI
 // commands like 'initech hire' / 'initech add-agent' without any opt-in flag.
 // Two paths to acceptance:
-//  - exact match against the Catalog (covers the curated role set), or
-//  - match against the numbered family pattern qa\d+ / eng\d+ (covers
-//    arbitrary scaling like qa10, eng7, qa007).
+//   - exact match against the Catalog (covers the curated role set), or
+//   - match against the numbered family pattern qa\d+ / eng\d+ (covers
+//     arbitrary scaling like qa10, eng7, qa007).
 //
 // Custom non-numbered names (e.g. "designer", "dba") are deliberately rejected
 // here to preserve typo protection. The opt-in path is IsValidCustomRoleName,

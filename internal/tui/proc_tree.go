@@ -134,7 +134,7 @@ func (t *procTree) runningShells(root int) (starts []time.Time, ok bool) {
 type treeSampler struct {
 	read     func() (string, error) // the process table as text
 	now      func() time.Time
-	run      func(func())   // starts the read; a goroutine in production
+	run      func(func()) // starts the read; a goroutine in production
 	latest   atomic.Pointer[procTree]
 	mu       sync.Mutex
 	inFlight bool

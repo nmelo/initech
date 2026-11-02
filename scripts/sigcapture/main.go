@@ -1,9 +1,10 @@
 // Signature-capture harness for the attention system (ini-2x8 family).
 //
 // Run: go run ./scripts/sigcapture/ -agent claude
-//      go run ./scripts/sigcapture/ -agent codex -prompt "Run the shell command: date +%s"
 //
-// WHAT THIS IS FOR
+//	go run ./scripts/sigcapture/ -agent codex -prompt "Run the shell command: date +%s"
+//
+// # WHAT THIS IS FOR
 //
 // Attention detection is not something initech computes; it is something the
 // agent TELLS us, or fails to. That makes every detection rule a claim about
@@ -35,7 +36,7 @@
 // taken from it can be pasted into a fixture without silently encoding a
 // layout the detector will never encounter.
 //
-// SAFETY PROPERTY -- READ THIS BEFORE ADDING A FLAG
+// # SAFETY PROPERTY -- READ THIS BEFORE ADDING A FLAG
 //
 // A capture must never make itself convenient at the cost of the operator's
 // real configuration or credentials. Specifically:

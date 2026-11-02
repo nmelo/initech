@@ -221,7 +221,7 @@ func TestIsValidCustomRoleName_AcceptsAndRejects(t *testing.T) {
 		{"marketing ", false},
 
 		// Max length 32 characters: the boundary cases.
-		{"abcdefghijklmnopqrstuvwxyz012345", true},  // 32 chars
+		{"abcdefghijklmnopqrstuvwxyz012345", true},   // 32 chars
 		{"abcdefghijklmnopqrstuvwxyz0123456", false}, // 33 chars
 	}
 	for _, tt := range tests {

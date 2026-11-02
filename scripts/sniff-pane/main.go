@@ -7,8 +7,9 @@
 // ini-szir round 3.
 //
 // Usage:
-//   go run ./scripts/sniff-pane/ -- <command> [args...]
-//   go run ./scripts/sniff-pane/ -seconds 20 -cols 20 -- claude
+//
+//	go run ./scripts/sniff-pane/ -- <command> [args...]
+//	go run ./scripts/sniff-pane/ -seconds 20 -cols 20 -- claude
 //
 // Default: 20 columns wide, 15 seconds, no command (you must pass --).
 //

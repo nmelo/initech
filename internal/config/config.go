@@ -41,12 +41,12 @@ func ValidPeerName(name string) bool {
 
 // Project is the top-level config read from initech.yaml.
 type Project struct {
-	Name          string                  `yaml:"project"`
-	Root          string                  `yaml:"root"`
-	Repos         []Repo                  `yaml:"repos,omitempty"`
-	Beads         BeadsConfig             `yaml:"beads,omitempty"`
-	Resource      ResourceConfig          `yaml:"resource,omitempty"`
-	Roles         []string                `yaml:"roles"`
+	Name     string         `yaml:"project"`
+	Root     string         `yaml:"root"`
+	Repos    []Repo         `yaml:"repos,omitempty"`
+	Beads    BeadsConfig    `yaml:"beads,omitempty"`
+	Resource ResourceConfig `yaml:"resource,omitempty"`
+	Roles    []string       `yaml:"roles"`
 
 	// TechStack, BuildCmd and TestCmd fill the {{tech_stack}}, {{build_cmd}}
 	// and {{test_cmd}} placeholders in every role's CLAUDE.md. Before ini-rg12
