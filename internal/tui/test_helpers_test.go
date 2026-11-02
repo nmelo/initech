@@ -25,6 +25,15 @@ func (f *filePty) Start(*exec.Cmd) error   { return nil }
 // (stash_mode.go). A pipe has no termios to read.
 func (f *filePty) TermRawMode() (bool, error) { return true, nil }
 
+// drainPaneInput waits for the pane's input writer, for a test that reads what
+// reached the child (writes go through a queue, pane_input.go).
+func drainPaneInput(t *testing.T, p *Pane) {
+	t.Helper()
+	if !p.awaitInputDrained(5 * time.Second) {
+		t.Fatal("the pane's input did not drain")
+	}
+}
+
 // fakePaneSpawner is a TUI.paneSpawner that wakes an agent with no process
 // behind it: the production NewParkedPane, set alive and awake like a fresh
 // NewPane, reading from a pipe that has already said "up". So readLoop

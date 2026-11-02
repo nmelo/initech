@@ -28,7 +28,8 @@ const (
 	// DeliveryUnchecked: an agent type with no composer to check (Codex,
 	// OpenCode, generic). Not a failure: nothing can be checked there.
 	DeliveryUnchecked = "unchecked"
-	// DeliveryDeferred: held behind an open dialog, delivered when it closes.
+	// DeliveryDeferred: held behind an open dialog, delivered when it closes, or
+	// behind a pane that is not reading its input, delivered when it does.
 	DeliveryDeferred = "deferred"
 	// DeliveryHeld: the agent is in do-not-disturb; the message waits on its
 	// queue and is delivered, in order, when it ends (ini-x432).
@@ -40,6 +41,9 @@ const (
 	withheldVerdictReason  = "submit withheld, awaiting composer repaint; the TUI delivers it when the box repaints and reports"
 	uncheckedVerdictReason = "no delivery check for this agent type"
 	noPTYVerdictReason     = "pane has no PTY"
+	// StuckInputDeferral is the deferral of a message held behind a pane that
+	// is not reading: the CLI prints it in place of the dialog's words.
+	StuckInputDeferral     = "the pane is not reading its input; will deliver when it does"
 	retryMissVerdictReason = "Enter not taken twice; the text is still in the composer"
 	olderPeerVerdictFormat = "older initech on %s"
 	relayedVerdictReason   = "relayed on to another machine, which does not answer a relay"
@@ -55,6 +59,9 @@ func verdictIPCResponse(name string, v SendVerdict, deferred string) IPCResponse
 	case DeliveryNotDelivered:
 		return IPCResponse{Error: fmt.Sprintf("not delivered to %s: %s", name, v.Reason), Delivery: v.Outcome, Data: v.Reason}
 	case DeliveryDeferred:
+		if v.Reason != "" {
+			deferred = v.Reason
+		}
 		return IPCResponse{OK: true, Delivery: v.Outcome, Data: deferred}
 	}
 	return IPCResponse{OK: true, Delivery: v.Outcome, Data: v.Reason}
@@ -68,6 +75,9 @@ func verdictControlResp(v SendVerdict, deferred string) ControlResp {
 	case DeliveryNotDelivered:
 		return ControlResp{Error: v.Reason, Delivery: v.Outcome}
 	case DeliveryDeferred:
+		if v.Reason != "" {
+			deferred = v.Reason
+		}
 		return ControlResp{OK: true, Delivery: v.Outcome, Data: deferred}
 	}
 	return ControlResp{OK: true, Delivery: v.Outcome, Data: v.Reason}

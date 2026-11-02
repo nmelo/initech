@@ -192,27 +192,8 @@ func (t *TUI) handleTopKey(ev *tcell.EventKey) bool {
 				if !ok {
 					return false
 				}
-				cols := p.Emulator().Width()
-				rows := p.Emulator().Height()
-				if cols < 10 {
-					cols = 80
-				}
-				if rows < 2 {
-					rows = 24
-				}
-				p.sendMu.Lock()
-				p.Close()
-				p.sendMu.Unlock()
-				np, err := NewPane(p.cfg, rows, cols)
-				if err != nil {
+				if err := t.restartPane(p); err != nil {
 					t.cmd.error = fmt.Sprintf("restart %s: %v", p.Name(), err)
-				} else {
-					np.eventCh = t.agentEvents
-					np.safeGo = t.safeGo
-					np.protected = p.protected
-					np.Start()
-					t.replacePane(idx, np)
-					t.applyLayout()
 				}
 				t.top.cacheTime = time.Time{}
 			}

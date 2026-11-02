@@ -426,6 +426,12 @@ To turn it off, set `telemetry: false` in `initech.yaml`, or set `DO_NOT_TRACK=1
 4. If still stuck: `initech peek <agent>` to see the last output. Look for error messages or permission prompts. `initech peek <agent> -n 50` returns the agent's last 50 lines whatever its pane's height: when the screen holds fewer, the lines above it come from the pane's scrollback, in order. When it returns fewer lines than asked, it says why on stderr, with stdout and the exit code unchanged: a pane showing a full-screen program (an editor, a pager) is read as its screen only (`pane is <rows> rows; peek reads the screen only`), and a pane whose whole output is shorter says so (`peek returned <k> of <n> lines: all the pane keeps (up to 10000 lines of history)`).
 5. Last resort: restart via backtick -> `restart` (when focused on that pane) or `initech restart <agent>` from another terminal.
 
+### An Agent Stopped Reading Its Input
+
+An agent whose process stops reading its input cannot take keys or messages, and it wedges only its own pane: the rest of the window keeps moving. The first key, paste or message that cannot go in brings one notice, `<agent> stopped reading its input; keys and messages to it are not going in`, and from then on what you type at that pane is dropped, with no further notice. When the agent reads again the pane takes input again, with no notice.
+
+A message sent to it waits at most two seconds. If none of the message had gone in, `initech send` answers `deferred to <agent> — the pane is not reading its input; will deliver when it does` (exit 0), and the message goes in once the agent reads again. If part of it had, `initech send` answers `could not confirm delivery to <agent>: the pane stopped reading its input while this message was being written; it will not be sent again, because a resend could duplicate it if the agent resumes; peek the pane` (exit 2): the rest may still arrive if the agent resumes, so look at the pane before sending it again. Suspending or restarting the pane works as usual.
+
 ### Agent Crashed (Red Dot / [dead])
 
 The process exited. Common causes:

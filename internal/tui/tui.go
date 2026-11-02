@@ -195,7 +195,7 @@ type TUI struct {
 	paceComments  map[string]int
 	paceCommentAt map[string]time.Time
 	paceSince     time.Time
-	inboxOnce    sync.Once
+	inboxOnce     sync.Once
 	// inboxOutstanding maps an agent to the inbox items whose delivery verdict
 	// may still be corrected by a late report from the send path (ini-3wkl.6).
 	inboxOutstanding   map[string][]string
@@ -424,6 +424,8 @@ type TUI struct {
 	// one underlying fact is not.
 	peerConnected map[string]bool
 
+	// restarts counts the restarts running off the main goroutine (restartPane).
+	restarts sync.WaitGroup
 	// lastRenderAt stores the UnixNano timestamp of the last completed render.
 	// Updated atomically by render(), read by the watchdog goroutine.
 	lastRenderAt atomic.Int64

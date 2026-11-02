@@ -48,7 +48,8 @@ send waits for that (about two seconds), prints one line and exits with:
   2  could not confirm delivery to <agent>: <reason>; peek the pane
   0  sent to <agent>, unconfirmed: no delivery check for this agent type
      (Codex, OpenCode and generic agents)
-  0  deferred to <agent> (a dialog is open; delivered when it closes)
+  0  deferred to <agent> (a dialog is open, or the pane is not reading its input;
+     delivered when it closes or reads again)
   0  held: <agent> is in do-not-disturb (<age>, <N> messages ahead)
      (delivered, in order, when it ends)
   1  not delivered to <agent>: do-not-disturb queue is full
@@ -292,6 +293,10 @@ func deliverTextVia(w io.Writer, call ipcCaller, target, host, text string, ente
 	// (ini-ei8l), never as delivered. An older TUI's deferral carries no
 	// verdict and is still a deferral.
 	case resp.Delivery == tui.DeliveryDeferred, resp.Delivery == "" && strings.Contains(resp.Data, "deferred"):
+		if resp.Data == tui.StuckInputDeferral {
+			fmt.Fprintf(w, "deferred to %s — %s\n", name, resp.Data)
+			break
+		}
 		fmt.Fprintf(w, "deferred to %s — target has a modal open; will deliver when it closes\n", name)
 	case resp.Delivery == tui.DeliveryHeld:
 		// The agent is in do-not-disturb (ini-x432): the line is the TUI's.

@@ -1196,9 +1196,7 @@ func (d *Daemon) streamAgentLive(p *Pane, stream net.Conn, peerName string) {
 		if !isMouseOrFocusReport(buf[:n]) {
 			cur.noteOperatorKey() // typing in another window holds messages too
 		}
-		if cur.ptmx != nil {
-			cur.ptmx.Write(buf[:n])
-		}
+		cur.writeInput(buf[:n])
 	}
 }
 
@@ -1570,8 +1568,10 @@ func (d *Daemon) interruptPane(cmd ControlCmd) ControlResp {
 	if p.ptmx == nil {
 		return ControlResp{Error: fmt.Sprintf("agent %s is not running", cmd.Target)}
 	}
-	if _, err := p.ptmx.Write([]byte{b}); err != nil {
+	if wrote, err := p.writeInputWait([]byte{b}); err != nil {
 		return ControlResp{Error: fmt.Sprintf("interrupt %s: %v", cmd.Target, err)}
+	} else if wrote != childWritten {
+		return ControlResp{Error: fmt.Sprintf("interrupt %s: the agent is not reading its input", cmd.Target)}
 	}
 	return ControlResp{OK: true}
 }

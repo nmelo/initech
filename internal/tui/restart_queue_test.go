@@ -154,6 +154,7 @@ func TestRestart_TheRealRestartPathCarriesTheMail(t *testing.T) {
 	if err := tui.restartPane(fp); err != nil {
 		t.Fatalf("restartPane: %v", err)
 	}
+	tui.restarts.Wait()
 
 	np, ok := tui.panes[0].(*Pane)
 	if !ok {
@@ -282,6 +283,7 @@ func TestRestart_ARealFreshlySpawnedPaneActuallyDeliversTheCarriedQueue(t *testi
 	if err := tui.restartPane(fp); err != nil {
 		t.Fatalf("restartPane: %v", err)
 	}
+	tui.restarts.Wait()
 
 	np, ok := tui.panes[0].(*Pane)
 	if !ok {

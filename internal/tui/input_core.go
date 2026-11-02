@@ -419,42 +419,18 @@ func (t *TUI) restartPane(fp *Pane) error {
 	if idx < 0 {
 		return fmt.Errorf("pane not found")
 	}
-	cols, rows := fp.emuSize() // never waits on the pane (ini-psjt)
-	if cols < 10 {
-		cols = 80
-	}
-	if rows < 2 {
-		rows = 24
-	}
-	// Serialize with any in-flight IPC send before closing.
-	// Without this lock, handleIPCSend may be mid-sleep inside its retry loop
-	// (holding sendMu) while Close() tears down the PTY underneath it.
-	// The deferred queue is taken UNDER THE SAME LOCK that serialises against
-	// an in-flight send, and before Close, so nothing can enqueue onto a pane
-	// that is about to stop existing (ini-1z6i).
-	fp.sendMu.Lock()
-	carried := fp.DrainQueue()
-	fp.Close()
-	fp.sendMu.Unlock()
-
-	p, err := NewPane(fp.cfg, rows, cols)
-	if err != nil {
-		// The mail is in hand and the replacement never came up. Putting it
-		// back is the whole reason this branch exists: returning here with
-		// `carried` on the stack is the same silent discard the bead is about.
-		restoreQueueAfterFailedRestart(fp, carried)
-		return err
-	}
-	p.eventCh = t.agentEvents
-	t.wireSuspendResume(p)
-	p.safeGo = t.safeGo
-	p.protected = fp.protected
-	// Carried BEFORE Start so the maintenance tick can find the mail the
-	// moment the pane is up. Nothing here delivers: the modal latch does not
-	// survive the Pane, so the tick's drain is unblocked by construction.
-	giveQueueToRestartedPane(p, carried)
-	p.Start()
-	t.replacePane(idx, p)
-	t.applyLayout()
+	// The main goroutine never waits on a pane (ini-7rd): the restart runs on
+	// its own goroutine, and a failure reaches the operator as a notice.
+	t.restarts.Add(1)
+	go func() {
+		defer t.restarts.Done()
+		if _, err := t.restartOffMain(fp, idx, fp.cfg); err != nil {
+			EmitEvent(t.agentEvents, AgentEvent{
+				Type:   EventAgentStalled,
+				Pane:   fp.Name(),
+				Detail: err.Error(),
+			})
+		}
+	}()
 	return nil
 }

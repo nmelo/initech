@@ -295,6 +295,14 @@ type Pane struct {
 	waitingModalSeen      bool              // The screen has confirmed this wait's dialog, so the screen may also retire it.
 	attn                  *attentionSignal  // Mailbox the OSC 777 handler writes into. Leaf-locked; see attention_detect.go.
 	stashModeLogged       atomic.Bool       // The pane logged once that its terminal mode could not be read (stash_mode.go).
+	input                 paneInput         // Every write to the child goes through this queue (pane_input.go).
+	closingOnce           sync.Once         // Makes closingCh.
+	closedOnce            sync.Once         // Closes closingCh once.
+	closingCh             chan struct{}     // Closed when the pane starts closing; use closingC.
+	ptyMu                 sync.Mutex        // Guards the ptmx field against teardown clearing it (ptyHandle).
+	stopOnce              sync.Once         // Runs stopChild once.
+	releaseOnce           sync.Once         // Runs releaseTerminal once.
+	teardown              chan struct{}     // Closed when closeOffMain has finished. Guarded by mu.
 	journal               []JournalEntry    // Ring buffer of recent JSONL entries (cap journalRingSize).
 	jsonlDir              string            // Directory to search for session JSONL files.
 	sessUse               sessionUsage      // The transcript's last context reading (ini-484).
@@ -678,7 +686,11 @@ func (p *Pane) readLoop() {
 		if err != nil {
 			p.mu.Lock()
 			p.alive = false
-			p.activity = StateIdle
+			// A park sets the activity before its teardown closes the PTY, so
+			// this exit can come after it (ini-7rd).
+			if !p.suspended {
+				p.activity = StateIdle
+			}
 			p.mu.Unlock()
 			return
 		}
@@ -692,7 +704,10 @@ func (p *Pane) responseLoop() {
 	for {
 		n, err := p.emu.Read(buf)
 		if n > 0 {
-			p.ptmx.Write(buf[:n])
+			// Never a blocking write here: readLoop writes the emulator's
+			// replies to this pipe holding renderMu, so a reader that stops
+			// reading on a stuck child freezes rendering (ini-7rd).
+			p.writeInput(buf[:n])
 		}
 		if err != nil {
 			return
@@ -732,9 +747,7 @@ func (p *Pane) SendKey(ev *tcell.EventKey) {
 	// bytes must arrive in a single read() on stdin. A single ptmx.Write()
 	// guarantees this for small writes on a PTY.
 	if ev.Key() == tcell.KeyEnter && ev.Modifiers()&tcell.ModShift != 0 {
-		if p.ptmx != nil {
-			p.ptmx.Write([]byte("\x1b[13;2u"))
-		}
+		p.writeInput([]byte("\x1b[13;2u"))
 		return
 	}
 	p.emu.SendKey(kpe)
@@ -746,52 +759,39 @@ func (p *Pane) SendKey(ev *tcell.EventKey) {
 // distinguish pasted content from typed keystrokes.
 // No-op if the PTY is not open.
 func (p *Pane) SendPaste(start bool) {
-	if p.ptmx == nil {
+	if !p.hasPTY() {
 		return
 	}
 	p.noteOperatorKey()
 	if start {
-		p.ptmx.Write([]byte("\x1b[200~")) //nolint:errcheck
+		p.writeInput([]byte("\x1b[200~"))
 	} else {
-		p.ptmx.Write([]byte("\x1b[201~")) //nolint:errcheck
+		p.writeInput([]byte("\x1b[201~"))
 	}
 }
 
-// FlushPaste writes the entire paste content to the PTY in a single operation,
-// wrapped in bracketed paste markers (unless noBracketedPaste is set). Uses
-// sendMu to serialize with concurrent IPC sends and prevent interleaving.
-// For large pastes (>64KB), the content is written in chunks to avoid blocking
-// the PTY write buffer for extended periods.
+// FlushPaste hands the entire paste to the child as one write, wrapped in
+// bracketed paste markers (unless noBracketedPaste is set). It returns at once.
 func (p *Pane) FlushPaste(content []byte) {
-	if p.ptmx == nil || len(content) == 0 {
+	if len(content) == 0 || !p.hasPTY() {
 		return
 	}
-
-	p.sendMu.Lock()
-	defer p.sendMu.Unlock()
-
-	if p.noBracketedPaste {
-		p.writePTYChunked(content)
-		return
+	// A copy: the goroutine below outlives this call and the caller reuses its
+	// paste buffer.
+	item := append([]byte(nil), content...)
+	if !p.noBracketedPaste {
+		item = bracketedBody(string(content))
 	}
-
-	p.ptmx.Write([]byte("\x1b[200~")) //nolint:errcheck
-	p.writePTYChunked(content)
-	p.ptmx.Write([]byte("\x1b[201~")) //nolint:errcheck
-}
-
-// writePTYChunked writes data to the PTY, splitting into 64KB chunks for
-// large payloads to avoid blocking the PTY write buffer indefinitely.
-func (p *Pane) writePTYChunked(data []byte) {
-	const chunkSize = 64 * 1024
-	for len(data) > 0 {
-		n := len(data)
-		if n > chunkSize {
-			n = chunkSize
-		}
-		p.ptmx.Write(data[:n]) //nolint:errcheck
-		data = data[n:]
-	}
+	// One item, so nothing lands inside the paste, and off the main goroutine,
+	// which never takes sendMu: a send holds it across its body and its Enter,
+	// and the paste must not land between them.
+	p.input.pending.Add(1)
+	go func() {
+		defer p.input.pending.Add(-1)
+		p.sendMu.Lock()
+		defer p.sendMu.Unlock()
+		p.writeInput(item)
+	}()
 }
 
 // resizeSettleCount is the number of render frames to skip after a resize.
@@ -826,8 +826,8 @@ func (p *Pane) ResizeExact(rows, cols int) {
 	p.renderMu.Lock()
 	defer p.renderMu.Unlock()
 	rows, cols = p.clampResize(rows, cols)
-	if p.ptmx != nil {
-		p.ptmx.Resize(cols, rows)
+	if ptmx := p.ptyHandle(); ptmx != nil {
+		ptmx.Resize(cols, rows)
 	}
 	p.emu.Resize(cols, rows)
 	p.noteEmuSize(cols, rows)
@@ -879,8 +879,8 @@ func (p *Pane) resizeUnder(e *vt.Emulator, rows, cols int) {
 	if !e.IsAltScreen() {
 		emuRows = effectiveEmuRows(rows)
 	}
-	if p.ptmx != nil {
-		p.ptmx.Resize(cols, emuRows)
+	if ptmx := p.ptyHandle(); ptmx != nil {
+		ptmx.Resize(cols, emuRows)
 	}
 	e.Resize(cols, emuRows)
 	p.resizeSettleFrames = resizeSettleCount
@@ -1388,7 +1388,7 @@ func (p *Pane) awaitStartupSettled() error {
 	settled := p.startupSettled
 	started := p.startedAt
 	p.mu.Unlock()
-	if settled || p.ptmx == nil {
+	if settled || !p.hasPTY() {
 		return nil // no live child to wait for: the send path reports that itself
 	}
 	if started.IsZero() || time.Since(started) >= startupGateWindow ||
@@ -1577,8 +1577,8 @@ func (p *Pane) waitForCodexReady(timeout time.Duration) bool {
 		p.renderMu.Lock()
 		text := emulatorBottomTextBlocking(p.emu, p.emu.Height())
 		p.renderMu.Unlock()
-		if isCodexTrustPrompt(text) && !trustAccepted && p.ptmx != nil {
-			_, _ = p.ptmx.Write([]byte("\r"))
+		if isCodexTrustPrompt(text) && !trustAccepted && p.hasPTY() {
+			p.writeInput([]byte("\r"))
 			trustAccepted = true
 		}
 		if p.isCodexReadyForSend() {
@@ -2161,12 +2161,70 @@ func (p *Pane) InScrollback() bool {
 
 // Close terminates the PTY, kills the process, and signals goroutines to exit.
 func (p *Pane) Close() {
+	p.beginClose()
+	p.stopOnce.Do(p.stopChild)
+	p.releaseOnce.Do(p.releaseTerminal)
+}
+
+// closeOffMain closes the pane from the main goroutine, which never waits on a
+// pane (ini-7rd). The pane reads closed when this returns; stopping the child,
+// which can take the busy grace or wait on a stuck write, runs on its own
+// goroutine, and the terminal is released under sendMu, so a send in flight
+// finishes on a live emulator. A send sees the close and ends, so it cannot
+// hold the kill: stopping the child takes no lock.
+func (p *Pane) closeOffMain() {
+	p.beginClose()
+	done := make(chan struct{})
+	p.mu.Lock()
+	p.teardown = done
+	p.mu.Unlock()
+	run := func() {
+		defer close(done)
+		p.stopOnce.Do(p.stopChild)
+		p.sendMu.Lock()
+		defer p.sendMu.Unlock()
+		p.releaseOnce.Do(p.releaseTerminal)
+	}
+	if p.safeGo != nil {
+		p.safeGo(run)
+	} else {
+		go run()
+	}
+}
+
+// awaitTeardown waits for a closeOffMain to finish, at most d, and reports
+// whether it did. A pane with none has nothing to wait for. A descendant that
+// holds the terminal can keep a teardown from ever finishing, so a caller
+// never waits unbounded.
+func (p *Pane) awaitTeardown(d time.Duration) bool {
+	p.mu.Lock()
+	done := p.teardown
+	p.mu.Unlock()
+	if done == nil {
+		return true
+	}
+	select {
+	case <-done:
+		return true
+	case <-time.After(d):
+		return false
+	}
+}
+
+// beginClose makes the pane read closed. It never blocks.
+func (p *Pane) beginClose() {
 	// Signal watchJSONL and readLoop to exit.
 	p.mu.Lock()
 	p.alive = false
 	p.closed = true
 	p.mu.Unlock()
+	// A send in flight ends, and nothing queued is written after this.
+	p.markClosing()
+}
 
+// stopChild closes the PTY, stops the child and waits for the pane's
+// goroutines. It may wait: the busy grace, or a descendant holding the terminal.
+func (p *Pane) stopChild() {
 	// Close PTY first so readLoop's ptmx.Read() errors out immediately.
 	// (The field is nil'd at the END of Close, after goWg.Wait -- see below.)
 	if p.ptmx != nil {
@@ -2223,6 +2281,11 @@ func (p *Pane) Close() {
 	// Wait for all goroutines started by Start() to exit before touching
 	// emu or ptmx fields, preventing data races detected by the race detector.
 	p.goWg.Wait()
+}
+
+// releaseTerminal frees what a send reads: the emulator and the PTY field. A
+// caller off the main goroutine holds sendMu, so no send is using them.
+func (p *Pane) releaseTerminal() {
 	// readLoop has exited, so nothing records after this.
 	closePaneRecorder(p.name, p.rec)
 	// responseLoop has exited; safe to call emu.Close() now.
@@ -2235,11 +2298,10 @@ func (p *Pane) Close() {
 	// nil-guard existed and never fired (measured: queue=0, ptmx_nil=false,
 	// message gone). With the field nil, any dead-pane write path that slips
 	// past the suspension guard hits the explicit early-return instead of a
-	// silent discard. The suspend path holds sendMu across this entire Close,
-	// so no send can interleave with the teardown it serializes against.
-	p.mu.Lock()
+	// silent discard. This runs under sendMu, so no send is mid-way through it.
+	p.ptyMu.Lock()
 	p.ptmx = nil
-	p.mu.Unlock()
+	p.ptyMu.Unlock()
 }
 
 // tcellKeyToUV translates a tcell key event to a charmbracelet KeyPressEvent,

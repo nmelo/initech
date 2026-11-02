@@ -121,17 +121,18 @@ func (t *TUI) pollAllRSS() {
 // origin flag precisely so there is nothing to diverge on, and the way to keep
 // that true is for there to be one sequence rather than two that agree today.
 //
-// The sequence itself is load-bearing and predates this bead: Close() runs
-// under sendMu so a racing send is serialized rather than interleaved (the
-// ini-9imx transition-race finding), and BOTH suspended and activity are set
-// because updateActivity would otherwise see alive=false + suspended=false and
-// derive StateDead instead of StateSuspended.
+// NOTHING HERE WAITS ON THE PANE (ini-7rd): this runs on the main goroutine,
+// and a send in flight into a child that stopped reading held sendMu for as long
+// as the child did not read, so a park that took sendMu froze the whole rig.
+// closeOffMain ends the pane's input and marks it closing, so a racing send sees
+// the close at its next write or check and ends with its message held, rather
+// than interleaving with the teardown (the ini-9imx transition race). BOTH
+// suspended and activity are set because updateActivity would otherwise see
+// alive=false + suspended=false and derive StateDead instead of StateSuspended.
 //
-// Caller must be on the main goroutine: Close() touches TUI state.
+// Caller must be on the main goroutine.
 func parkPaneSuspended(pane *Pane) {
-	pane.sendMu.Lock()
-	pane.Close()
-	pane.sendMu.Unlock()
+	pane.closeOffMain()
 	pane.mu.Lock()
 	pane.suspended = true
 	pane.activity = StateSuspended
@@ -661,6 +662,10 @@ func (p *Pane) drainModalQueue() {
 
 // ── Resume-on-message ───────────────────────────────────────────────
 
+// teardownWaitBound is how long a resume waits for the old pane to stop: the
+// two seconds of the busy grace, plus a margin.
+const teardownWaitBound = 3 * time.Second
+
 // resumeTimeout is how long to wait for a resumed agent to initialize
 // before giving up.
 const resumeTimeout = 30 * time.Second
@@ -745,6 +750,12 @@ func (t *TUI) resumePane(pane *Pane, senderName string) error {
 	// -- or it was never parked.
 	if !pane.IsSuspended() {
 		return nil
+	}
+
+	// The old child must be gone before a new one starts on the same session,
+	// and a send that ended held has its message on the queue by then.
+	if !pane.awaitTeardown(teardownWaitBound) {
+		LogWarn("resource", "resuming while the old pane is still stopping", "agent", agentName)
 	}
 
 	LogInfo("resource", "resuming agent", "agent", agentName, "trigger", senderName)

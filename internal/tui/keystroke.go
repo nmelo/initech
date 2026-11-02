@@ -145,8 +145,10 @@ func keystrokePane(p *Pane, key string, o sendOrigin) SendVerdict {
 		LogInfo("keystroke", "KEY NOT DELIVERED: folder trust prompt", "pane", p.name, "key", key, "from", o.From)
 		return SendVerdict{Outcome: DeliveryNotDelivered, Reason: reason}
 	}
-	if _, err := p.ptmx.Write([]byte(b)); err != nil {
+	if wrote, err := p.writeInputWait([]byte(b)); err != nil {
 		return SendVerdict{Outcome: DeliveryNotDelivered, Reason: fmt.Sprintf("%s: %v", p.name, err)}
+	} else if wrote != childWritten {
+		return SendVerdict{Outcome: DeliveryNotDelivered, Reason: p.name + " is not reading its input"}
 	}
 	LogInfo("keystroke", "key delivered", "pane", p.name, "key", key, "from", o.From)
 	return SendVerdict{Outcome: DeliveryDelivered}

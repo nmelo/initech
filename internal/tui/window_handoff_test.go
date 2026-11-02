@@ -142,10 +142,12 @@ func TestWindowHandoff_EveryReplacementReachesTheServer(t *testing.T) {
 			if err := tui.restartPane(old); err != nil {
 				t.Fatalf("restartPane: %v", err)
 			}
+			tui.restarts.Wait()
 		},
 		"top-overlay restart": func(t *testing.T, tui *TUI, old *Pane) {
 			tui.top = topModal{active: true, data: []topEntry{{Key: "eng1"}}}
 			tui.handleTopKey(tcell.NewEventKey(tcell.KeyRune, 'r', tcell.ModNone))
+			tui.restarts.Wait()
 		},
 	}
 	for name, act := range entries {
@@ -302,6 +304,7 @@ func TestWindowHandoff_NoServerAndAFailedSpawn(t *testing.T) {
 	if err := tui.restartPane(old); err != nil {
 		t.Fatalf("restart with no window server: %v", err)
 	}
+	tui.restarts.Wait()
 	if np, ok := tui.panes[0].(*Pane); !ok || np == old {
 		t.Fatal("with no window server the list was not updated")
 	} else {
@@ -313,7 +316,7 @@ func TestWindowHandoff_NoServerAndAFailedSpawn(t *testing.T) {
 	// A missing directory fails the spawn itself; a missing binary would not,
 	// since the command runs under the login shell (see the f6kg test).
 	keep.cfg.Dir = "/nonexistent/initech-813u-no-such-dir"
-	if err := tui2.restartPane(keep); err == nil {
+	if _, err := tui2.restartOffMain(keep, 0, keep.cfg); err == nil {
 		t.Fatal("setup: a restart with a missing command succeeded")
 	}
 	if ws.daemon.currentPane("eng1") != keep || tui2.panes[0] != PaneView(keep) {

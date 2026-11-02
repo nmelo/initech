@@ -553,6 +553,12 @@ func sendPaneTextLocked(pane *Pane, text string, enter bool) SendVerdict {
 		return SendVerdict{Outcome: DeliveryDeferred}
 	}
 
+	// A pane with a stuck write takes nothing until that write returns, or the
+	// bytes of this send could interleave with it (ini-7rd).
+	if pane.inputWedged() {
+		return holdForStuckInput(pane, text, enter)
+	}
+
 	// A withheld submit gets its fate before this send touches the composer.
 	pane.settlePendingSubmit()
 
@@ -608,36 +614,33 @@ func sendPaneTextLocked(pane *Pane, text string, enter bool) SendVerdict {
 	beltApplies := !pane.noBracketedPaste
 	tailBefore, hasComposer := composerTail(pane)
 
+	var wrote childWrite
 	if useCodexBracketedPaste {
-		var buf []byte
-		buf = append(buf, "\x1b[200~"...)
-		buf = append(buf, text...)
-		buf = append(buf, "\x1b[201~"...)
-		n, err := pane.ptmx.Write(buf)
-		LogDebug("inject", "body written", "pane", pane.Name(), "mode", mode, "bytes", n, "err", err)
+		wrote = pane.writeBody(bracketedBody(text), mode)
 	} else if pane.noBracketedPaste {
 		// Direct PTY write for text bytes, but route Enter through the emulator.
 		// The raw text path avoids the emulator's key-to-byte translation for the
 		// message body, which Codex can misinterpret. For the final submit key we
 		// deliberately use the emulator path so Enter encoding stays aligned with
 		// the PTY/terminal mode the emulator is already managing.
-		var buf []byte
-		buf = append(buf, text...)
-		n, err := pane.ptmx.Write(buf)
-		LogDebug("inject", "body written", "pane", pane.Name(), "mode", mode, "bytes", n, "err", err)
+		wrote = pane.writeBody([]byte(text), mode)
 	} else {
 		// Bracketed paste: ESC[200~ + text + ESC[201~ directly to PTY.
-		var buf []byte
-		buf = append(buf, "\x1b[200~"...)
-		buf = append(buf, text...)
-		buf = append(buf, "\x1b[201~"...)
-		n, err := pane.ptmx.Write(buf)
-		LogDebug("inject", "body written", "pane", pane.Name(), "mode", mode, "bytes", n, "err", err)
+		wrote = pane.writeBody(bracketedBody(text), mode)
+	}
+	if wrote != childWritten {
+		return endStuckSend(pane, text, enter, wrote)
 	}
 	// The delivery probe's "written" stamp (ini-pqdy.4) belongs HERE, at the
 	// body's PTY write, not after SendText returns: SendText goes on to wait
 	// before the submit, and the child echoes the body as soon as it lands.
 	notePerfMarkerWritten(pane, text)
+
+	// The whole body is in the child's terminal, so it is never resent. A close
+	// that came meanwhile ends the send before its waits, with no Enter.
+	if pane.isClosing() {
+		return endStuckSend(pane, text, enter, childPartial)
+	}
 
 	if !enter {
 		LogInfo("inject", "typed, no submit requested", "pane", pane.Name(), "mode", mode, "bytes", len(text))
@@ -688,7 +691,7 @@ func sendPaneTextLocked(pane *Pane, text string, enter bool) SendVerdict {
 		LogDebug("inject", "submit", "pane", pane.Name(), "mode", mode, "method", "pty-enter", "delay_ms", rawSubmitDelay.Milliseconds())
 		LogInfo("inject", "submit sent, unconfirmed", "pane", pane.Name(), "mode", mode, "why", "no composer check for this agent type")
 		if config.IsCodexLikeAgentType(pane.AgentType()) && pane.submitKey != "ctrl+enter" {
-			_, _ = pane.ptmx.Write([]byte("\r"))
+			pane.writeInput([]byte("\r"))
 			return SendVerdict{DeliveryUnchecked, uncheckedVerdictReason}
 		}
 		sendSubmitKey(pane.emu, pane.submitKey)
@@ -971,7 +974,15 @@ func startPreEnterSighting(pane *Pane, ps *pendingSubmit) *preEnterSighting {
 // the Enter is written, so the Enter never waits on a screen read.
 func (s *preEnterSighting) wait() bool {
 	close(s.stop)
-	<-s.done
+	// The sampler ends on stop; its screen reads are bounded (screen_read.go).
+	// The sender waits for it no longer than one confirm window, and a sampler
+	// that overstays exits on its own.
+	select {
+	case <-s.done:
+	case <-time.After(submitConfirmWindow):
+		LogWarn("inject", "pre-Enter sampler did not stop within its window", "window", submitConfirmWindow)
+		return false
+	}
 	return s.seen
 }
 
@@ -1292,7 +1303,7 @@ func (t *TUI) injectText(pane *Pane, text string, enter bool) {
 // BEFORE acquiring sendMu. This prevents the up-to-10s poll from blocking
 // concurrent sends on other goroutines that share the same pane mutex.
 func waitForCodexReadyIfNeeded(pane *Pane) {
-	if pane.ptmx == nil {
+	if !pane.hasPTY() {
 		return
 	}
 	codexQueueSubmit := codexShouldQueueSubmit(pane)
@@ -1476,13 +1487,55 @@ func withholdSubmit(pane *Pane, text, mode, tailBefore, lastPolled string) {
 	})
 }
 
+// bracketedBody wraps text in the bracketed-paste markers.
+func bracketedBody(text string) []byte {
+	buf := make([]byte, 0, len(text)+12)
+	buf = append(buf, "\x1b[200~"...)
+	buf = append(buf, text...)
+	return append(buf, "\x1b[201~"...)
+}
+
+// writeBody hands a send's body to the writer and waits for it, bounded.
+func (p *Pane) writeBody(body []byte, mode string) childWrite {
+	wrote, err := p.writeInputWait(body)
+	LogDebug("inject", "body written", "pane", p.Name(), "mode", mode, "bytes", len(body), "outcome", int(wrote), "err", err)
+	return wrote
+}
+
+// holdForStuckInput keeps a message none of which reached the child, for
+// redelivery once the pane reads again. A message a drain is redelivering goes
+// back to the front with its original time, as it does for a dialog.
+func holdForStuckInput(pane *Pane, text string, enter bool) SendVerdict {
+	if m, ok := pane.takeRedelivery(text, enter); ok {
+		pane.requeueFront(m)
+		return SendVerdict{DeliveryDeferred, StuckInputDeferral}
+	}
+	pane.enqueueHeld(text, enter)
+	LogInfo("inject", "deferred: pane is not reading its input", "pane", pane.Name(), "enter", enter,
+		"queued", pane.QueuedMessageCount())
+	return SendVerdict{DeliveryDeferred, StuckInputDeferral}
+}
+
+// endStuckSend ends a send whose body did not finish. The rule (ini-7rd): a
+// body none of which reached the writer is held; once any of it did, a blocked
+// write can still land later, so it is never resent, and the sender is told so.
+func endStuckSend(pane *Pane, text string, enter bool, wrote childWrite) SendVerdict {
+	if wrote == childNotReached {
+		return holdForStuckInput(pane, text, enter)
+	}
+	LogWarn("inject", "message not resent: pane stopped reading while it was written",
+		"pane", pane.Name(), "bytes", len(text))
+	pane.takeRedelivery(text, enter) // Not put back, and it ends a drain: the pane is stuck.
+	return SendVerdict{DeliveryUnconfirmed, stoppedReadingVerdictReason}
+}
+
 func sendCodexSubmit(pane *Pane, queue bool) string {
 	if queue {
-		_, _ = pane.ptmx.Write([]byte("\t"))
+		pane.writeInput([]byte("\t"))
 		return "pty-tab"
 	}
 	if pane.submitKey != "ctrl+enter" {
-		_, _ = pane.ptmx.Write([]byte("\r"))
+		pane.writeInput([]byte("\r"))
 		return "pty-enter"
 	}
 	sendSubmitKey(pane.emu, pane.submitKey)

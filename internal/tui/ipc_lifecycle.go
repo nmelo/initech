@@ -282,10 +282,41 @@ func (t *TUI) handleIPCRestart(conn net.Conn, req IPCRequest) {
 		writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("pane %q not found", req.Target)})
 		return
 	}
-	// Close the old pane off-main; sendMu serialises concurrent sends.
-	// The mail held for the agent is taken under the same lock, before
-	// Close, and carried to the new pane by the helpers the command-bar
-	// restart uses (queue_carry.go, ini-f6kg): one carry path, not two.
+	// Rebuild config from the project to pick up any initech.yaml changes
+	// (e.g. role_overrides.command added after initial spawn).
+	cfg := old.cfg
+	if t.paneConfigBuilder != nil {
+		if fresh, err := t.paneConfigBuilder(req.Target); err == nil {
+			fresh.Env = append(fresh.Env, agentIdentityEnv(req.Target, t.sockPath)...)
+			cfg = fresh
+		}
+	}
+	n, err := t.restartOffMain(old, oldIdx, cfg)
+	if err != nil {
+		writeIPCResponse(conn, IPCResponse{Error: err.Error()})
+		return
+	}
+	LogInfo("pane", "restarted", "name", req.Target, "carried", n)
+	detail, data := "Restarted "+req.Target, ""
+	if n > 0 {
+		data = fmt.Sprintf("carried %d held message(s)", n)
+		detail += " (" + data + ")"
+	}
+	EmitEvent(t.agentEvents, AgentEvent{
+		Type:   EventAgentRestarted,
+		Pane:   req.Target,
+		Detail: detail,
+	})
+	writeIPCResponse(conn, IPCResponse{OK: true, Data: data})
+}
+
+// restartOffMain stops old and swaps in a pane running cfg, carrying its held
+// mail, and returns how many messages it carried. It is the one restart: it
+// runs off the main goroutine, because taking sendMu and stopping a child can
+// both wait, and it hops onto main only for the swap.
+func (t *TUI) restartOffMain(old *Pane, oldIdx int, cfg PaneConfig) (int, error) {
+	// A send in flight ends now, and what it held is on the queue below.
+	old.markClosing()
 	old.sendMu.Lock()
 	carried := old.DrainQueue()
 	cols, rows := old.emuSize() // never waits on the pane (ini-psjt)
@@ -298,30 +329,20 @@ func (t *TUI) handleIPCRestart(conn net.Conn, req IPCRequest) {
 	}
 	old.Close()
 	old.sendMu.Unlock()
-	// Rebuild config from the project to pick up any initech.yaml changes
-	// (e.g. role_overrides.command added after initial spawn).
-	cfg := old.cfg
-	if t.paneConfigBuilder != nil {
-		if fresh, err := t.paneConfigBuilder(req.Target); err == nil {
-			fresh.Env = append(fresh.Env, agentIdentityEnv(req.Target, t.sockPath)...)
-			cfg = fresh
-		}
-	}
 	// Create new pane off-main (may fork/exec).
 	np, err := NewPane(cfg, rows, cols)
 	if err != nil {
-		LogError("pane", "restart failed", "name", req.Target, "err", err)
+		LogError("pane", "restart failed", "name", old.Name(), "err", err)
 		restoreQueueAfterFailedRestart(old, carried)
-		writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("restart failed: %v", err)})
-		return
+		return 0, fmt.Errorf("restart failed: %w", err)
 	}
 	np.region = old.region
 	np.eventCh = t.agentEvents
 	t.wireSuspendResume(np)
 	np.safeGo = t.safeGo
 	np.protected = old.IsProtected()
-	// Carried before Start, as restartPane does: the new pane's maintenance
-	// drain delivers it by its normal path once the pane is up.
+	// Carried before Start, as a spawn does: the new pane's maintenance drain
+	// delivers it by its normal path once the pane is up.
 	n := giveQueueToRestartedPane(np, carried)
 	// Replace in t.panes on main; re-verify index is still valid.
 	// replaced is read only when runOnMain reports the closure ran: on a
@@ -340,21 +361,9 @@ func (t *TUI) handleIPCRestart(conn net.Conn, req IPCRequest) {
 		// for a spawn failure, rather than out with a pane nobody can see.
 		restoreQueueAfterFailedRestart(old, np.DrainQueue())
 		np.Close()
-		writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("restart of %s did not replace the pane (the pane list changed or the TUI is shutting down)", req.Target)})
-		return
+		return 0, fmt.Errorf("restart of %s did not replace the pane (the pane list changed or the TUI is shutting down)", old.Name())
 	}
-	LogInfo("pane", "restarted", "name", req.Target, "carried", n)
-	detail, data := "Restarted "+req.Target, ""
-	if n > 0 {
-		data = fmt.Sprintf("carried %d held message(s)", n)
-		detail += " (" + data + ")"
-	}
-	EmitEvent(t.agentEvents, AgentEvent{
-		Type:   EventAgentRestarted,
-		Pane:   req.Target,
-		Detail: detail,
-	})
-	writeIPCResponse(conn, IPCResponse{OK: true, Data: data})
+	return n, nil
 }
 
 func (t *TUI) handleIPCAdd(conn net.Conn, req IPCRequest) {
@@ -504,8 +513,10 @@ func (t *TUI) removePane(name string) error {
 		if lp, ok := p.(*Pane); ok {
 			lp.surfaceHeldMail(lp.takeQueued(func(QueuedMessage) bool { return true }),
 				"the agent was removed", time.Now())
+			lp.closeOffMain() // This closure runs on the main goroutine.
+		} else {
+			p.Close()
 		}
-		p.Close()
 
 		// Remove from slice without leaving gaps.
 		oldLen := len(t.panes)
@@ -629,8 +640,12 @@ func (t *TUI) handleIPCInterrupt(conn net.Conn, req IPCRequest) {
 		writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("agent %s is not running", req.Target)})
 		return
 	}
-	pane.ptmx.Write([]byte{b}) //nolint:errcheck
+	wrote, _ := pane.writeInputWait([]byte{b})
 	pane.sendMu.Unlock()
+	if wrote != childWritten {
+		writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("agent %s is not reading its input", req.Target)})
+		return
+	}
 
 	writeIPCResponse(conn, IPCResponse{OK: true})
 }

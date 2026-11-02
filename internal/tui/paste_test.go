@@ -27,6 +27,7 @@ func paneWithPipe(t *testing.T) (*Pane, *os.File) {
 func TestSendPasteStart(t *testing.T) {
 	p, r := paneWithPipe(t)
 	p.SendPaste(true)
+	drainPaneInput(t, p)
 	p.ptmx.Close()
 
 	got, err := io.ReadAll(r)
@@ -41,6 +42,7 @@ func TestSendPasteStart(t *testing.T) {
 func TestSendPasteEnd(t *testing.T) {
 	p, r := paneWithPipe(t)
 	p.SendPaste(false)
+	drainPaneInput(t, p)
 	p.ptmx.Close()
 
 	got, err := io.ReadAll(r)
@@ -94,6 +96,8 @@ func TestBufferedPaste_BasicFlush(t *testing.T) {
 	}
 	tui.handleEvent(tcell.NewEventPaste(false))
 
+	drainPaneInput(t, tui.panes[0].(*Pane))
+
 	tui.panes[0].(*Pane).ptmx.Close()
 	got, _ := io.ReadAll(r)
 
@@ -123,6 +127,8 @@ func TestBufferedPaste_NoBracketedPaste(t *testing.T) {
 	}
 	tui.handleEvent(tcell.NewEventPaste(false))
 
+	drainPaneInput(t, p)
+
 	p.ptmx.Close()
 	got, _ := io.ReadAll(r)
 
@@ -138,6 +144,8 @@ func TestBufferedPaste_EmptyPaste(t *testing.T) {
 	// Empty paste: start immediately followed by end.
 	tui.handleEvent(tcell.NewEventPaste(true))
 	tui.handleEvent(tcell.NewEventPaste(false))
+
+	drainPaneInput(t, tui.panes[0].(*Pane))
 
 	tui.panes[0].(*Pane).ptmx.Close()
 	got, _ := io.ReadAll(r)
@@ -163,6 +171,8 @@ func TestBufferedPaste_SpecialChars(t *testing.T) {
 	tui.handleEvent(tcell.NewEventKey(tcell.KeyBackspace2, 0, 0))
 	tui.handleEvent(tcell.NewEventPaste(false))
 
+	drainPaneInput(t, tui.panes[0].(*Pane))
+
 	tui.panes[0].(*Pane).ptmx.Close()
 	got, _ := io.ReadAll(r)
 
@@ -184,6 +194,8 @@ func TestBufferedPaste_MultiLineLF(t *testing.T) {
 	tui.handleEvent(tcell.NewEventKey(tcell.KeyRune, 'c', 0))
 	tui.handleEvent(tcell.NewEventPaste(false))
 
+	drainPaneInput(t, tui.panes[0].(*Pane))
+
 	tui.panes[0].(*Pane).ptmx.Close()
 	got, _ := io.ReadAll(r)
 
@@ -204,6 +216,8 @@ func TestBufferedPaste_ModalDropsPaste(t *testing.T) {
 		tui.handleEvent(tcell.NewEventKey(tcell.KeyRune, ch, 0))
 	}
 	tui.handleEvent(tcell.NewEventPaste(false))
+
+	drainPaneInput(t, tui.panes[0].(*Pane))
 
 	tui.panes[0].(*Pane).ptmx.Close()
 	got, _ := io.ReadAll(r)
@@ -273,6 +287,8 @@ func TestBufferedPaste_UnicodeContent(t *testing.T) {
 	}
 	tui.handleEvent(tcell.NewEventPaste(false))
 
+	drainPaneInput(t, tui.panes[0].(*Pane))
+
 	tui.panes[0].(*Pane).ptmx.Close()
 	got, _ := io.ReadAll(r)
 
@@ -300,6 +316,8 @@ func TestBufferedPaste_LargePaste(t *testing.T) {
 		tui.handleEvent(tcell.NewEventKey(tcell.KeyRune, ch, 0))
 	}
 	tui.handleEvent(tcell.NewEventPaste(false))
+
+	drainPaneInput(t, tui.panes[0].(*Pane))
 
 	tui.panes[0].(*Pane).ptmx.Close()
 	got := <-doneCh
@@ -330,6 +348,7 @@ func TestFlushPaste_EmptyContent(t *testing.T) {
 	p, r := paneWithPipe(t)
 	p.FlushPaste(nil)
 	p.FlushPaste([]byte{})
+	drainPaneInput(t, p)
 	p.ptmx.Close()
 	got, _ := io.ReadAll(r)
 	if len(got) != 0 {
@@ -340,6 +359,7 @@ func TestFlushPaste_EmptyContent(t *testing.T) {
 func TestFlushPaste_WithBrackets(t *testing.T) {
 	p, r := paneWithPipe(t)
 	p.FlushPaste([]byte("data"))
+	drainPaneInput(t, p)
 	p.ptmx.Close()
 	got, _ := io.ReadAll(r)
 	want := "\x1b[200~data\x1b[201~"
@@ -352,6 +372,7 @@ func TestFlushPaste_WithoutBrackets(t *testing.T) {
 	p, r := paneWithPipe(t)
 	p.noBracketedPaste = true
 	p.FlushPaste([]byte("data"))
+	drainPaneInput(t, p)
 	p.ptmx.Close()
 	got, _ := io.ReadAll(r)
 	if string(got) != "data" {

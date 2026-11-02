@@ -150,6 +150,7 @@ func TestRestart_BothEntryPointsCarryTheSameWay(t *testing.T) {
 			if err := tui.restartPane(p); err != nil {
 				t.Fatalf("restartPane: %v", err)
 			}
+			tui.restarts.Wait()
 		},
 		"initech restart": func(t *testing.T, tui *TUI, p *Pane) {
 			if resp := f6kgIPCRestart(t, tui); !resp.OK {
