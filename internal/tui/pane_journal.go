@@ -51,7 +51,7 @@ func (p *Pane) journalTick(t *journalTail) {
 	lastFile, lastOffset, initialRead := t.file, t.offset, !t.started
 	defer func() { t.file, t.offset, t.started = lastFile, lastOffset, !initialRead }()
 	// Find the most recently modified .jsonl file in the session dir.
-	file := newestJSONL(p.jsonlDir)
+	file := p.newestTranscript()
 	if file == "" {
 		return
 	}
@@ -467,6 +467,35 @@ func (p *Pane) runDetectors(newEntries []JournalEntry) {
 	// Periodically prune the dedup map to avoid unbounded growth.
 	p.dedupEvents.prune()
 }
+
+// newestJSONLIn is the most recently modified .jsonl across dirs, "" for
+// none; an empty dir is skipped. A transcript folder under both spellings of a
+// symlinked path takes the newest file of the two.
+func newestJSONLIn(dirs ...string) string {
+	var newest string
+	var newestTime time.Time
+	for _, dir := range dirs {
+		if dir == "" {
+			continue
+		}
+		file := newestJSONL(dir)
+		if file == "" {
+			continue
+		}
+		info, err := os.Stat(file)
+		if err != nil {
+			continue
+		}
+		if newest == "" || info.ModTime().After(newestTime) {
+			newest, newestTime = file, info.ModTime()
+		}
+	}
+	return newest
+}
+
+// newestTranscript is the file this pane's journal reads: the newest session
+// transcript under either spelling of its folder.
+func (p *Pane) newestTranscript() string { return newestJSONLIn(p.jsonlDir, p.jsonlRealDir) }
 
 // newestJSONL finds the most recently modified .jsonl file in dir (non-recursive,
 // excludes subdirectories like subagents/).

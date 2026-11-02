@@ -111,7 +111,7 @@ type PaneAccount struct {
 func fillPaneDetail(info *PaneInfo, pv PaneView) {
 	if p, ok := pv.(*Pane); ok && p != nil && p.jsonlDir != "" {
 		// A stopped pane's transcript is still its conversation.
-		info.SessionFile = newestJSONL(p.jsonlDir)
+		info.SessionFile = p.newestTranscript()
 	}
 	if pv == nil || !info.Alive {
 		return

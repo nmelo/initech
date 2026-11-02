@@ -305,6 +305,7 @@ type Pane struct {
 	teardown              chan struct{}     // Closed when closeOffMain has finished. Guarded by mu.
 	journal               []JournalEntry    // Ring buffer of recent JSONL entries (cap journalRingSize).
 	jsonlDir              string            // Directory to search for session JSONL files.
+	jsonlRealDir          string            // The same for the pane folder's real path, when a symlink makes it differ; "" otherwise.
 	sessUse               sessionUsage      // The transcript's last context reading (ini-484).
 	ctxWarned             map[string]bool   // Models whose footer and transcript context disagreement was logged.
 	ctxFigure             *int              // Context used as the maintenance tick last read it; nil unknown (ini-sf5.2).
@@ -515,9 +516,10 @@ func NewPane(cfg PaneConfig, rows, cols int) (*Pane, error) {
 	// Determine the JSONL session directory for this pane.
 	// Standard Claude: ~/.claude/projects/<encoded-cwd>/
 	// CCS: $CLAUDE_CONFIG_DIR/projects/<encoded-cwd>/
-	jsonlDir := ""
+	jsonlDir, jsonlRealDir := "", ""
 	if cfg.Dir != "" {
 		jsonlDir = sessionDirFor(cfg.Dir)
+		jsonlRealDir = paneRealSessionDir(cfg.Name, cfg.Dir)
 	}
 
 	// Cache PID at creation time so it can be read without locking cmd.Process.
@@ -539,6 +541,7 @@ func NewPane(cfg PaneConfig, rows, cols int) (*Pane, error) {
 		visible:          true,
 		activity:         StateIdle,
 		jsonlDir:         jsonlDir,
+		jsonlRealDir:     jsonlRealDir,
 		dedupEvents:      newDedup(),
 		agentType:        agentType,
 		noBracketedPaste: cfg.NoBracketedPaste,
@@ -2079,10 +2082,40 @@ func sessionDirFor(dir string) string {
 	return filepath.Join(configDir, "projects", encodePathForClaude(dir))
 }
 
+// realSessionDir is the session folder for dir's real path, "" when that is
+// the folder sessionDirFor already names. Claude Code names the folder after
+// the working directory it sees, the real path, so a pane folder reached
+// through a symlink (every rig under /tmp on macOS) has its transcripts here.
+// A dir that does not exist, or a symlink loop, is the error; resolving stops
+// by itself on a loop.
+func realSessionDir(dir string) (string, error) {
+	real, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		return "", err
+	}
+	if d := sessionDirFor(real); d != sessionDirFor(dir) {
+		return d, nil
+	}
+	return "", nil
+}
+
+// paneRealSessionDir is realSessionDir for a starting pane: a folder that
+// cannot be resolved logs one line and the pane reads the spelled folder alone.
+func paneRealSessionDir(name, dir string) string {
+	d, err := realSessionDir(dir)
+	if err != nil {
+		LogWarn("pane", "pane folder has no real path; its transcripts are looked for as spelled", "agent", name, "err", err)
+	}
+	return d
+}
+
 // NewestTranscript is the newest session transcript of an agent working in
 // dir, "" for none: what a pane's session_file names, for a TUI too old to
 // send it.
-func NewestTranscript(dir string) string { return newestJSONL(sessionDirFor(dir)) }
+func NewestTranscript(dir string) string {
+	realDir, _ := realSessionDir(dir)
+	return newestJSONLIn(sessionDirFor(dir), realDir)
+}
 
 func encodePathForClaude(path string) string {
 	return strings.ReplaceAll(path, string(filepath.Separator), "-")
