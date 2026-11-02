@@ -125,12 +125,15 @@ first.
 
 - `InitechCore/Sources/InitechCore/`: the package: the API shapes
   (`Models.swift`), the HTTPS client (`ServiceClient.swift`: the certificate
-  pin, the Bearer token, the feed parser), `Pairing.swift`, `Log.swift` and
-  `FollowState.swift`, what a new entry does to the conversation.
-- `InitechCore/Sources/InitechCore/Pairing.swift`, `InitechApp/PairingStore.swift`,
+  pin, the Bearer token, the feed parser), `HomeModel.swift` and
+  `PaneModel.swift` (the pinned panes, a pane's conversation, paging, the
+  feed's lifetime), `FollowState.swift` (what a new entry does to the
+  conversation), `BlockersModel.swift`, `ProgressModel.swift`, `Pairing.swift`
+  and `Log.swift`.
+- `Pairing.swift` in the package, `InitechApp/PairingStore.swift`,
   `PairingView.swift`: the
   pairing code (`initech://pair?host=<ip>&port=<n>&token=<t>&fp=<f>`), scanned
   as a QR or pasted, kept in the keychain on this device only.
 - `InitechApp/AppLock.swift`: Face ID on open and on every return to the app.
-- `InitechApp/HomeModel.swift`, `HomeView.swift`: pinned panes and the Rigs view.
-- `InitechApp/PaneModel.swift`, `PaneView.swift`: the pane's conversation.
+- `InitechApp/HomeView.swift`: pinned panes and the Rigs view.
+- `InitechApp/PaneView.swift`: the pane's conversation.

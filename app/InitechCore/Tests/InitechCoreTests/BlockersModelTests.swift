@@ -1,5 +1,4 @@
 import XCTest
-@testable import InitechApp
 @testable import InitechCore
 
 /// FakeBlockers answers blockers() with a fixed list and counts the calls.

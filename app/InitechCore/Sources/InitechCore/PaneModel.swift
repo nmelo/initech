@@ -1,21 +1,21 @@
+import Combine
 import Foundation
-import InitechCore
 
 /// PaneModel is one open pane: its conversation, paged back on demand, kept
 /// current from the feed, and what he sends into it with the send path's verdict.
 @MainActor
-final class PaneModel: ObservableObject {
-    @Published private(set) var messages: [Message] = []
-    @Published private(set) var startReached = false
-    @Published private(set) var loaded = false
-    @Published private(set) var problem: String?
+public final class PaneModel: ObservableObject {
+    @Published public private(set) var messages: [Message] = []
+    @Published public private(set) var startReached = false
+    @Published public private(set) var loaded = false
+    @Published public private(set) var problem: String?
     /// verdicts holds the send verdict for each message he sent from here.
-    @Published private(set) var verdicts: [String: SendResult] = [:]
+    @Published public private(set) var verdicts: [String: SendResult] = [:]
     /// lastKey is the newest key-strip verdict, shown under the strip.
-    @Published private(set) var lastKey: (key: PaneKey, result: SendResult)?
+    @Published public private(set) var lastKey: (key: PaneKey, result: SendResult)?
 
-    let service: Service
-    let ref: PaneRef
+    public let service: Service
+    public let ref: PaneRef
     private var before: Int64?
     /// feedTask lives as long as the model: a view's disappear is not the
     /// pane closing (a pane opened again disappears and stays on screen while
@@ -26,9 +26,9 @@ final class PaneModel: ObservableObject {
     private var rereading = false
     private var rereadingOlder = false
     private var sentCount = 0
-    static let pageSize = 50
+    public static let pageSize = 50
 
-    init(service: Service, ref: PaneRef) {
+    public init(service: Service, ref: PaneRef) {
         self.service = service
         self.ref = ref
     }
@@ -39,7 +39,7 @@ final class PaneModel: ObservableObject {
     /// entry written between the two is not missed. The read runs in a task of
     /// its own: the view's task is cancelled when a pane opened a second time
     /// passes through the push, and a cancelled read left the pane empty.
-    func open() async {
+    public func open() async {
         startFeed()
         await Task { await self.load() }.value
     }
@@ -50,7 +50,7 @@ final class PaneModel: ObservableObject {
     /// is held and not on the page (a feed entry newer than the page, a message
     /// he just sent) stays after it. With no overlap the page replaces the held
     /// entries: more than a page was missed, and the place cannot be kept.
-    func load() async { await load(afterReset: false) }
+    public func load() async { await load(afterReset: false) }
 
     /// load(afterReset:) is load; after a feed reset with no overlap, what is
     /// held is stale, so only what he sent and the transcript has not shown
@@ -83,7 +83,7 @@ final class PaneModel: ObservableObject {
     }
 
     /// loadOlder prepends the next older page; nothing once the start is reached.
-    func loadOlder() async {
+    public func loadOlder() async {
         guard loaded, !startReached else { return }
         do {
             let page = try await service.conversation(rig: ref.rig, pane: ref.pane, before: before, limit: Self.pageSize)
@@ -108,7 +108,7 @@ final class PaneModel: ObservableObject {
     }
 
     /// send types text into the pane through the service and puts the verdict on the message.
-    func send(_ text: String) async {
+    public func send(_ text: String) async {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         sentCount += 1
@@ -126,7 +126,7 @@ final class PaneModel: ObservableObject {
     }
 
     /// press sends one key of the key strip to the pane.
-    func press(_ key: PaneKey) async {
+    public func press(_ key: PaneKey) async {
         do {
             lastKey = (key, try await service.key(rig: ref.rig, pane: ref.pane, key: key))
         } catch ServiceError.status(let code, let words?) {
@@ -138,7 +138,7 @@ final class PaneModel: ObservableObject {
         }
     }
 
-    func startFeed() {
+    public func startFeed() {
         guard feedTask == nil else { return }
         let stream = service.feed()
         feedTask = Task { [weak self] in
@@ -146,7 +146,7 @@ final class PaneModel: ObservableObject {
         }
     }
 
-    func stopFeed() {
+    public func stopFeed() {
         feedTask?.cancel()
         feedTask = nil
     }
@@ -156,7 +156,7 @@ final class PaneModel: ObservableObject {
     /// keeps its verdict. A reset means entries were missed past the replay
     /// window: the newest page is read again and merged in (see load), so the
     /// reader keeps their place.
-    func apply(_ e: FeedEvent) {
+    public func apply(_ e: FeedEvent) {
         if case .reset = e {
             Task { await load(afterReset: true) }
             return

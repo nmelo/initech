@@ -1,3 +1,4 @@
+import InitechCore
 import SwiftUI
 
 /// EffortProgressView shows initech progress per effort in each running rig:

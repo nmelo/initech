@@ -1,79 +1,79 @@
+import Combine
 import Foundation
-import InitechCore
 
 /// RigBlockers is one rig's row of GET /v1/blockers: what waits on Nelson
 /// and which panes are stuck. quiet is true when the rig has neither.
-struct RigBlockers: Codable, Equatable, Sendable {
-    var rig: String
-    var waiting: [WaitingItem]
-    var stuck: [StuckPane]
-    var quiet: Bool
+public struct RigBlockers: Codable, Equatable, Sendable {
+    public var rig: String
+    public var waiting: [WaitingItem]
+    public var stuck: [StuckPane]
+    public var quiet: Bool
 }
 
 /// WaitingItem is one item waiting on Nelson. recommendation is "" when there
 /// is none. bead is the bead waiting on him, when the item is one; pane is
 /// then its assignee ("" when it has none) and text its title.
-struct WaitingItem: Codable, Equatable, Hashable, Sendable {
-    var pane: String
-    var text: String
-    var recommendation: String
-    var bead: String?
+public struct WaitingItem: Codable, Equatable, Hashable, Sendable {
+    public var pane: String
+    public var text: String
+    public var recommendation: String
+    public var bead: String?
 }
 
 /// StuckPane is a pane that cannot act, with the reason in plain words.
-struct StuckPane: Codable, Equatable, Hashable, Sendable {
-    var pane: String
-    var reason: String
+public struct StuckPane: Codable, Equatable, Hashable, Sendable {
+    public var pane: String
+    public var reason: String
 }
 
 /// BlockersSource is the part of the service the blockers view reads.
-protocol BlockersSource: Sendable {
+public protocol BlockersSource: Sendable {
     func blockers() async throws -> [RigBlockers]
 }
 
 extension HTTPService: BlockersSource {
-    func blockers() async throws -> [RigBlockers] { try await get("/v1/blockers") }
+    public func blockers() async throws -> [RigBlockers] { try await get("/v1/blockers") }
 }
 
 /// BlockerRow is one rendered row of the blockers list.
-struct BlockerRow: Identifiable, Equatable, Sendable {
-    enum Kind: Equatable, Sendable { case waiting, stuck, quiet }
-    var kind: Kind
-    var rig: String
+public struct BlockerRow: Identifiable, Equatable, Sendable {
+    public enum Kind: Equatable, Sendable { case waiting, stuck, quiet }
+    public var kind: Kind
+    public var rig: String
     /// pane is the pane a tap opens; nil for a quiet row and for a waiting
     /// bead nobody is assigned.
-    var pane: String?
-    var title: String
+    public var pane: String?
+    public var title: String
     /// detail is the recommendation of a waiting item, or the reason of a
     /// stuck pane; nil when there is none.
-    var detail: String?
+    public var detail: String?
     /// bead is the waiting bead's id, when the row is one.
-    var bead: String? = nil
+    public var bead: String? = nil
 
-    var id: String { "\(rig)/\(kind)/\(bead ?? "")/\(pane ?? "")/\(title)" }
+    public var id: String { "\(rig)/\(kind)/\(bead ?? "")/\(pane ?? "")/\(title)" }
 }
 
 /// BlockerSection is one rig in the blockers list.
-struct BlockerSection: Identifiable, Equatable, Sendable {
-    var rig: String
-    var rows: [BlockerRow]
-    var id: String { rig }
+public struct BlockerSection: Identifiable, Equatable, Sendable {
+    public var rig: String
+    public var rows: [BlockerRow]
+    public var id: String { rig }
 }
 
 /// BlockersModel holds the blockers list, reloaded from the service on every
 /// feed event that can change it.
 @MainActor
-final class BlockersModel: ObservableObject {
-    @Published private(set) var sections: [BlockerSection] = []
+public final class BlockersModel: ObservableObject {
+    @Published public private(set) var sections: [BlockerSection] = []
     /// loaded is false until the first reload answers.
-    @Published private(set) var loaded = false
-    @Published private(set) var problem: String?
+    @Published public private(set) var loaded = false
+    @Published public private(set) var problem: String?
 
     private let source: BlockersSource
 
-    init(source: BlockersSource) { self.source = source }
+    public init(source: BlockersSource) { self.source = source }
 
-    func reload() async {
+    public func reload() async {
         do {
             sections = Self.sections(try await source.blockers())
             problem = nil
@@ -91,7 +91,7 @@ final class BlockersModel: ObservableObject {
     /// reply in a super pane. Only the blockers event and that reply come when
     /// a later footer drops a line; waiting_item announces new items only.
     /// Other transcript lines do not reload.
-    func apply(_ e: FeedEvent) async {
+    public func apply(_ e: FeedEvent) async {
         switch e {
         case .paneState, .waitingItem, .stuck, .blockers, .reset:
             await reload()
@@ -102,7 +102,7 @@ final class BlockersModel: ObservableObject {
 
     /// sections renders rigs: waiting items first, then stuck panes; a quiet
     /// rig is one quiet row.
-    nonisolated static func sections(_ rigs: [RigBlockers]) -> [BlockerSection] {
+    public nonisolated static func sections(_ rigs: [RigBlockers]) -> [BlockerSection] {
         rigs.map { r in
             var rows: [BlockerRow] = r.waiting.map {
                 BlockerRow(kind: .waiting, rig: r.rig, pane: $0.pane.isEmpty ? nil : $0.pane, title: $0.text,

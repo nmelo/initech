@@ -1,28 +1,28 @@
+import Combine
 import Foundation
-import InitechCore
 
 /// ProgressReport is one effort's report, exactly the object initech
 /// progress --json prints. Times are decoded as text and never rendered:
 /// the progress view shows pace and what is stuck, never a time.
-struct ProgressReport: Codable, Equatable, Sendable {
-    var rig: String
-    var prefix: String
-    var hours: Int
-    var beads: [Row]
-    var closed: Int
-    var total: Int
-    var workedByEngineers: Int
-    var writingReviewOnly: Int
-    var closedRecent: [Closed]
-    var criticalPath: [PathBead]
-    var engineers: [String]
-    var quiet: [QuietRow]
+public struct ProgressReport: Codable, Equatable, Sendable {
+    public var rig: String
+    public var prefix: String
+    public var hours: Int
+    public var beads: [Row]
+    public var closed: Int
+    public var total: Int
+    public var workedByEngineers: Int
+    public var writingReviewOnly: Int
+    public var closedRecent: [Closed]
+    public var criticalPath: [PathBead]
+    public var engineers: [String]
+    public var quiet: [QuietRow]
     /// stuckAfter is the rig's value in effect, such as "20m".
-    var stuckAfter: String
-    var stuckIds: [String]
-    var waiting: [QuietRow]
+    public var stuckAfter: String
+    public var stuckIds: [String]
+    public var waiting: [QuietRow]
 
-    struct Row: Codable, Equatable, Sendable {
+    public struct Row: Codable, Equatable, Sendable {
         var id: String
         var stage: String
         var owner: String
@@ -32,24 +32,24 @@ struct ProgressReport: Codable, Equatable, Sendable {
         var commits: Int?
         var title: String
     }
-    struct Closed: Codable, Equatable, Sendable {
+    public struct Closed: Codable, Equatable, Sendable {
         var id: String
         var title: String
     }
-    struct PathBead: Codable, Equatable, Sendable {
+    public struct PathBead: Codable, Equatable, Sendable {
         var id: String
         var waiting: Int
         var stage: String
         var title: String
     }
-    struct QuietRow: Codable, Equatable, Sendable {
+    public struct QuietRow: Codable, Equatable, Sendable {
         var id: String
         var owner: String
         var wait: String
     }
 
     // The service sends null for an empty list; read it as empty.
-    init(from decoder: Decoder) throws {
+    public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         rig = try c.decode(String.self, forKey: .rig)
         prefix = try c.decodeIfPresent(String.self, forKey: .prefix) ?? ""
@@ -70,44 +70,44 @@ struct ProgressReport: Codable, Equatable, Sendable {
 }
 
 /// ProgressSource is the part of the service the progress view reads.
-protocol ProgressSource: Sendable {
+public protocol ProgressSource: Sendable {
     func progress() async throws -> [ProgressReport]
 }
 
 extension HTTPService: ProgressSource {
-    func progress() async throws -> [ProgressReport] { try await get("/v1/progress") }
+    public func progress() async throws -> [ProgressReport] { try await get("/v1/progress") }
 }
 
 /// ProgressCard is one effort as the progress view renders it: only text and
 /// counts, never a time, so no finish time, estimate or actual can appear.
-struct ProgressCard: Identifiable, Equatable, Sendable {
-    struct Bead: Identifiable, Equatable, Sendable {
-        var id: String
-        var title: String
+public struct ProgressCard: Identifiable, Equatable, Sendable {
+    public struct Bead: Identifiable, Equatable, Sendable {
+        public var id: String
+        public var title: String
         /// line is "<stage> · <owner> · AC <proven>/<items> · <n> landed".
-        var line: String
+        public var line: String
     }
-    var rig: String
-    var effort: String
+    public var rig: String
+    public var effort: String
     /// pace is "<closed> of <total> closed · <n> in the last <h> h".
-    var pace: String
+    public var pace: String
     /// worked is "worked by engineers <n> · writing or review only <m>".
-    var worked: String
-    var beads: [Bead]
-    var criticalPath: [String]
-    var engineers: String
-    var quiet: [String]
+    public var worked: String
+    public var beads: [Bead]
+    public var criticalPath: [String]
+    public var engineers: String
+    public var quiet: [String]
     /// quietLabel names the rig's value: "Quiet 20m or more".
-    var quietLabel: String
+    public var quietLabel: String
     /// stuck lists the stuck beads; empty when none.
-    var stuck: [String]
-    var waitingLabel: String
+    public var stuck: [String]
+    public var waitingLabel: String
     /// waiting lists the beads in waiting past the value, with the wait text.
-    var waiting: [String]
+    public var waiting: [String]
 
-    var id: String { "\(rig)/\(effort)" }
+    public var id: String { "\(rig)/\(effort)" }
 
-    init(_ r: ProgressReport) {
+    public init(_ r: ProgressReport) {
         rig = r.rig
         effort = r.prefix.isEmpty ? "whole rig" : r.prefix
         pace = "\(r.closed) of \(r.total) closed · \(r.closedRecent.count) in the last \(r.hours) h"
@@ -131,16 +131,16 @@ struct ProgressCard: Identifiable, Equatable, Sendable {
 
 /// ProgressModel holds the progress cards, reloaded on open and on reset.
 @MainActor
-final class ProgressModel: ObservableObject {
-    @Published private(set) var cards: [ProgressCard] = []
-    @Published private(set) var loaded = false
-    @Published private(set) var problem: String?
+public final class ProgressModel: ObservableObject {
+    @Published public private(set) var cards: [ProgressCard] = []
+    @Published public private(set) var loaded = false
+    @Published public private(set) var problem: String?
 
     private let source: ProgressSource
 
-    init(source: ProgressSource) { self.source = source }
+    public init(source: ProgressSource) { self.source = source }
 
-    func reload() async {
+    public func reload() async {
         do {
             cards = try await source.progress().map(ProgressCard.init)
             problem = nil
@@ -155,7 +155,7 @@ final class ProgressModel: ObservableObject {
 
     /// apply reloads on a reset; progress is rerun on the Mac every five
     /// minutes, so a pane event alone does not change it.
-    func apply(_ e: FeedEvent) async {
+    public func apply(_ e: FeedEvent) async {
         if case .reset = e { await reload() }
     }
 }
