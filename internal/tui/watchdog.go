@@ -6,22 +6,54 @@ package tui
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 	"runtime"
 	"sync/atomic"
 	"time"
 )
 
-// renderWatchdog monitors the TUI render loop. It checks every checkInterval
-// whether the last render completion timestamp has advanced. If no render
-// completes within timeout, it dumps all goroutine stacks to crash.log.
+const (
+	// watchdogCheckInterval is how often the watchdog reads the render clock.
+	watchdogCheckInterval = 5 * time.Second
+	// watchdogRepeat is the least time between two dumps of one freeze. The
+	// first dump names the blocked path; a frozen loop stays frozen, so dumping
+	// every timeout only filled the disk (ini-7rd: 1.6 MB a minute, 750 MB).
+	watchdogRepeat = 5 * time.Minute
+)
+
+// watchdogCadence decides when a freeze is dumped: once at the first check
+// past timeout, then at most once every repeat, until a render ends the freeze.
+type watchdogCadence struct {
+	timeout, repeat time.Duration
+	lastDump        time.Time // Zero when no dump has been written for this freeze.
+}
+
+// step takes the time of the check and of the last completed render, and
+// returns how long the loop has been frozen and whether a dump is due now.
+func (c *watchdogCadence) step(now, lastRender time.Time) (time.Duration, bool) {
+	stale := now.Sub(lastRender)
+	if stale <= c.timeout {
+		c.lastDump = time.Time{} // Rendering: the next freeze is a new one.
+		return stale, false
+	}
+	if !c.lastDump.IsZero() && now.Sub(c.lastDump) < c.repeat {
+		return stale, false
+	}
+	c.lastDump = now
+	return stale, true
+}
+
+// renderWatchdog monitors the TUI render loop. It checks every
+// watchdogCheckInterval whether the last render completion timestamp has
+// advanced. If no render completes within timeout, it dumps all goroutine
+// stacks to crash.log, at the cadence watchdogCadence states. It runs on its
+// own goroutine, so a dump never touches the main loop, and it only reads
+// lastRender, so each dump names how long the freeze has really lasted.
 //
 // The watchdog exits when quit is closed.
 func renderWatchdog(lastRender *atomic.Int64, timeout time.Duration, projectRoot, version string, quit chan struct{}) {
-	const checkInterval = 5 * time.Second
-	ticker := time.NewTicker(checkInterval)
+	ticker := time.NewTicker(watchdogCheckInterval)
 	defer ticker.Stop()
+	cadence := watchdogCadence{timeout: timeout, repeat: watchdogRepeat}
 
 	for {
 		select {
@@ -30,11 +62,8 @@ func renderWatchdog(lastRender *atomic.Int64, timeout time.Duration, projectRoot
 			if last == 0 {
 				continue // No render has completed yet (startup).
 			}
-			elapsed := time.Since(time.Unix(0, last))
-			if elapsed > timeout {
-				dumpWatchdogStacks(projectRoot, version, elapsed)
-				// Reset the timestamp so we don't dump repeatedly.
-				lastRender.Store(time.Now().UnixNano())
+			if stale, due := cadence.step(time.Now(), time.Unix(0, last)); due {
+				dumpWatchdogStacks(projectRoot, version, stale)
 			}
 		case <-quit:
 			return
@@ -64,14 +93,7 @@ func dumpWatchdogStacks(projectRoot, version string, stale time.Duration) {
 	LogError("watchdog", "render stalled, dumping goroutine stacks",
 		"stale", stale.Round(time.Second), "goroutines", runtime.NumGoroutine())
 
-	if projectRoot != "" {
-		dir := filepath.Join(projectRoot, ".initech")
-		os.MkdirAll(dir, 0700)
-		path := filepath.Join(dir, "crash.log")
-		if f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600); err == nil {
-			f.WriteString(report)
-			f.Close()
-			LogError("watchdog", "goroutine stacks written", "path", path)
-		}
+	if path := appendCrashLog(projectRoot, report); path != "" {
+		LogError("watchdog", "goroutine stacks written", "path", path)
 	}
 }

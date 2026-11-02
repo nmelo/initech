@@ -53,15 +53,40 @@ func crashLog(projectRoot string, version string, panicVal any) string {
 	)
 
 	// Write to .initech/crash.log (best effort).
-	if projectRoot != "" {
-		dir := filepath.Join(projectRoot, ".initech")
-		os.MkdirAll(dir, 0700)
-		path := filepath.Join(dir, "crash.log")
-		if f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600); err == nil {
-			f.WriteString(report)
-			f.Close()
-		}
-	}
+	appendCrashLog(projectRoot, report)
 
 	return report
+}
+
+// crashLogCap is the size past which crash.log is rotated. One previous file
+// is kept, so the two together hold a little over 40 MB at most.
+const crashLogCap = 20 * 1024 * 1024
+
+// appendCrashLog appends report to .initech/crash.log and returns the path, or
+// "" when nothing was written. Past crashLogCap the file first moves to
+// crash.log.1, replacing the previous one, and a new file starts. Every
+// crash.log write goes through here. It is best effort and logs nothing: it
+// runs while a panic is being handled, when the logger's lock may be held, so a
+// rotation that fails is reported in the file itself and the write goes on.
+func appendCrashLog(projectRoot, report string) string {
+	if projectRoot == "" {
+		return ""
+	}
+	dir := filepath.Join(projectRoot, ".initech")
+	os.MkdirAll(dir, 0700)
+	path := filepath.Join(dir, "crash.log")
+	if fi, err := os.Stat(path); err == nil && fi.Size() > crashLogCap {
+		if err := os.Rename(path, path+".1"); err != nil {
+			report = fmt.Sprintf("crash.log not rotated: %v\n", err) + report
+		}
+	}
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+	if _, err := f.WriteString(report); err != nil {
+		return ""
+	}
+	return path
 }

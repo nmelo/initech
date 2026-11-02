@@ -438,7 +438,7 @@ To recover: restart from the `top` modal (select agent, press `r`) or via comman
 ### TUI Crash
 
 If the TUI itself crashes:
-1. Check `.initech/crash.log` for panic stack traces
+1. Check `.initech/crash.log` for panic stack traces and render watchdog dumps. While the screen is frozen the watchdog writes one dump past ten seconds, then at most one every five minutes, each saying how long the freeze has lasted. Past 20 MB the file moves to `crash.log.1`, replacing the previous one, and a new `crash.log` starts
 2. Check `.initech/stderr.log` for native crash output
 3. Check `.initech/initech.log` for application-level errors
 
