@@ -65,4 +65,14 @@ final class FollowStateTests: XCTestCase {
         XCTAssertEqual(f.arrived(after, previous: "m10", wasAtBottom: false, own: false), .mark)
         XCTAssertEqual(f.markerText(after), "new below")
     }
+
+    // Nothing seen yet (a pane that opened away from the bottom): the count
+    // starts from the entry before this one, so the line says one new entry
+    // and not nothing.
+    func testNothingSeenYet_TheCountStartsFromTheEntryBeforeThisOne() {
+        var f = FollowState()
+        XCTAssertEqual(f.arrived(ids(1...11), previous: "m10", wasAtBottom: false, own: false), .mark)
+        XCTAssertEqual(f.newBelow(ids(1...11)), 1)
+        XCTAssertEqual(f.markerText(ids(1...11)), "new below")
+    }
 }

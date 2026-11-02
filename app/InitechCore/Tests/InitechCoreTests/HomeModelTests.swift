@@ -1,16 +1,13 @@
 import XCTest
-@testable import InitechApp
 @testable import InitechCore
 
 @MainActor
 final class HomeModelTests: XCTestCase {
-    var server: FixtureServer!
-    var service: HTTPService!
+    var server: MemoryService!
+    var service: MemoryService { server }
 
     override func setUp() async throws {
-        server = try FixtureServer()
-        try await server.start()
-        service = HTTPService(pairing: server.pairing, retryDelay: .milliseconds(50))
+        server = MemoryService()
         server.status = StatusReply(rigs: [
             Fx.rig("initech", [Fx.agent("super", state: "running", beads: ["ini-r0q"], context: 65),
                                Fx.agent("eng6", state: "idle", beads: [], context: 12)]),
@@ -20,8 +17,6 @@ final class HomeModelTests: XCTestCase {
         server.pins = [Pin(rig: "theguy", pane: "super", name: "theguy", order: 1),
                        Pin(rig: "initech", pane: "super", name: "hover super", order: 0)]
     }
-
-    override func tearDown() { server.stop() }
 
     func testHome_ListsPinsInHisOrderWithNameStateContextAndBead() async {
         let home = HomeModel(service: service)
@@ -110,7 +105,7 @@ final class HomeModelTests: XCTestCase {
         await phone.move(from: IndexSet(integer: 2), to: 0)
         XCTAssertEqual(phone.rows.map(\.name), ["eng6 on the app", "hover super", "theguy"])
 
-        let ipad = HomeModel(service: HTTPService(pairing: server.pairing))
+        let ipad = HomeModel(service: service)
         await ipad.reload()
         XCTAssertEqual(ipad.rows.map(\.name), ["eng6 on the app", "hover super", "theguy"])
         XCTAssertEqual(server.pins.map(\.order), [0, 1, 2])
@@ -165,17 +160,6 @@ final class HomeModelTests: XCTestCase {
         XCTAssertEqual(home.row(for: home.selection!)?.stateLabel, "idle")
     }
 
-    func testARefusedCertificate_SaysSoAndDoesNotClaimNothingIsPinned() async throws {
-        var p = server.pairing
-        p.fingerprint = Data("some other certificate".utf8).sha256Base64URL
-        let home = HomeModel(service: HTTPService(pairing: p))
-        await home.reload()
-        XCTAssertFalse(home.showsNoPinsLine, "the list failed to load; it is not known to be empty")
-        let problem = try XCTUnwrap(home.problem)
-        XCTAssertTrue(problem.contains("certificate"), problem)
-        XCTAssertTrue(home.needsPairing, "a changed certificate must offer pairing again")
-    }
-
     func testAMacThatDoesNotAnswer_ReadsPlainlyAndDoesNotAskToPair() async throws {
         let home = HomeModel(service: service)
         server.stop()
@@ -188,18 +172,9 @@ final class HomeModelTests: XCTestCase {
     }
 
     func testARefusedToken_AsksToPairAgain() async {
-        let home = HomeModel(service: HTTPService(pairing: { var p = server.pairing; p.token = "old"; return p }()))
+        server.failure = .unauthorized
+        let home = HomeModel(service: service)
         await home.reload()
         XCTAssertTrue(home.needsPairing)
-    }
-}
-
-/// waitForMain polls a main-actor condition for at most two seconds.
-@MainActor
-func waitForMain(_ cond: () -> Bool, file: StaticString = #filePath, line: UInt = #line) async throws {
-    let deadline = Date().addingTimeInterval(2)
-    while !cond() {
-        if Date() > deadline { XCTFail("condition not met in 2 s", file: file, line: line); return }
-        try await Task.sleep(for: .milliseconds(10))
     }
 }

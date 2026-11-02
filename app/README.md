@@ -19,11 +19,12 @@ sysctl -n vm.loadavg   # wait while the 5-minute figure is above 30
 cd app/InitechCore && ~/Desktop/Projects/initech/super/tools/heavy.sh swift test
 ```
 
-These tests never open a socket, so they may run on the shared Mac; a server
-test does not belong in the package. The scheme runs them on the simulator
-too, so `app-tests` covers them. The tests that need real HTTP, TLS or the pin
-stay in `InitechAppTests`, and the simulator UI tests remain the final proof of
-any change.
+These tests never open a socket, so they may run on the shared Mac: they run on
+`MemoryService`, an in-memory `Service`, and `NoListenerCensusTests` fails on a
+listener or a UI import anywhere in the package. A server test does not belong
+there. The scheme runs them on the simulator too, so `app-tests` covers them.
+The tests that need real HTTP, TLS, the pin or a view stay in `InitechAppTests`,
+and the simulator UI tests remain the final proof of any change.
 
 ```bash
 # Create a simulator once (any iPhone or iPad device type, iOS 26 or later):
@@ -37,7 +38,7 @@ xcodebuild test -project app/InitechApp.xcodeproj -scheme InitechApp \
 xcrun simctl shutdown <simulator udid>
 ```
 
-The tests run against `FixtureServer`, a real HTTPS server on the loopback
+The tests in `InitechAppTests` run against `FixtureServer`, a real HTTPS server on the loopback
 inside the test bundle (a self-signed test-only certificate, pinned like the
 Mac's) that serves the app service's v1 API: the Bearer token gate, rigs,
 status, pins, the conversation pages, send, keys and the SSE feed with
