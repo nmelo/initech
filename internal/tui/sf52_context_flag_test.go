@@ -2,6 +2,7 @@ package tui
 
 import (
 	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -9,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	xpty "github.com/charmbracelet/x/xpty"
 	"github.com/gdamore/tcell/v2"
 )
 
@@ -216,6 +218,58 @@ func TestContextFlag_TheRibbonShowsTheTag(t *testing.T) {
 		t.Errorf("after the compaction p01 still reads %q", sf52Ribbon(s, p))
 	}
 	ysr2SameAsFull(t, tui, s, "the tag gone")
+}
+
+// endedPty is a PTY whose child has gone: the next read ends readLoop.
+type endedPty struct{ xpty.Pty }
+
+func (endedPty) Read([]byte) (int, error) { return 0, io.EOF }
+
+// A pane keeps its last screen when its process stops, footer and all, and
+// the tick keeps reading it; the ribbon carries the state marker alone, and
+// the tag means a running agent. Running, the same pane shows the tag.
+func TestContextFlag_AStoppedPaneShowsNoTag(t *testing.T) {
+	for _, c := range []struct {
+		name, marker string
+		stop         func(*Pane)
+	}{
+		{"dead", "[dead]", func(p *Pane) {
+			p.ptmx = endedPty{}
+			p.readLoop()
+		}},
+		{"suspended", "[susp", parkPaneSuspended},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			tui, s := ysr3Parked(t)
+			p := ysr2Pane(tui, "p01")
+			_, width := sf52Screen(t, "91%")
+			p.emu.Resize(width, 8)
+			now := time.Now()
+			sf52Tick(t, p, "91%", now)
+			p.markFrameChanged() // the paint went round readLoop, which marks it
+			tui.render()
+			if row := sf52Ribbon(s, p); !strings.Contains(row, "[ctx 91%") {
+				t.Fatalf("running at 91%%: the ribbon reads %q, want the tag", row)
+			}
+			ysr2SameAsFull(t, tui, s, "running, the tag on")
+
+			c.stop(p)
+			var last time.Time
+			maintainModal([]PaneView{p}, now.Add(2*time.Second), &last)
+			if p.ContextFigure() == nil || *p.ContextFigure() != 91 {
+				t.Fatalf("fixture: the stopped pane no longer reads 91 from its screen: %v", p.ContextFigure())
+			}
+			tui.render()
+			row := sf52Ribbon(s, p)
+			if !strings.Contains(row, c.marker) {
+				t.Fatalf("the ribbon reads %q, want %s", row, c.marker)
+			}
+			if strings.Contains(row, "ctx") {
+				t.Errorf("a stopped pane's ribbon reads %q, want no tag", row)
+			}
+			ysr2SameAsFull(t, tui, s, "the tag gone with the process")
+		})
+	}
 }
 
 // AC3: a ribbon too narrow for the tag keeps the name and cuts the tag at

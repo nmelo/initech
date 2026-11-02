@@ -109,10 +109,11 @@ func backgroundTag(pv PaneView) string {
 
 // contextTag is the ribbon's compact-soon flag for a local pane at or above
 // ContextFlagAt: "[ctx 91%, compact soon] " (ini-sf5.2). Empty below it, for
-// an unknown figure, and for a remote pane, whose figure this window does
-// not have.
+// an unknown figure, for a remote pane, whose figure this window does not
+// have, and for a pane not running: its screen keeps the footer it last drew,
+// so the figure outlives the process.
 func contextTag(p *Pane) string {
-	if t := ContextFlagText(p.ContextFigure()); t != "" {
+	if t := ContextFlagText(p.ContextFigure()); t != "" && p.IsAlive() {
 		return "[" + t + "] "
 	}
 	return ""
