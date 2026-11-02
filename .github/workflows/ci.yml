@@ -116,6 +116,11 @@ jobs:
       - name: Build
         run: go build -ldflags "-s -w" -o initech .
 
+      # ini-e2c: CI runs check-fast's pieces one by one, not the target, so the
+      # gofmt check is a step of its own: a push that skipped the hook meets it.
+      - name: Gofmt (every tracked Go file)
+        run: make gofmt-check
+
       - name: Vet
         run: go vet ./...
 
