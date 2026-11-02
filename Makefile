@@ -48,6 +48,18 @@ test-race:
 integration:
 	go test ./... -count=1 -run 'Integ|Watchdog|RenderNotBlocked|DaemonAuth|AddPane_(Success|SetsGoroutines|EventChWired|EnvInjected|GridRecalculated|NoConfigModification)|NoBracketedPaste|WaitsForReady|StashSkipsRetry|ResumesSuspended|ResizeDebounce'
 
+# gofmt-check fails with the list of tracked Go files gofmt would change, so
+# formatting never drifts and no later commit has to reformat files it does not
+# otherwise touch (ini-e2c). gofmt's stderr is kept: a file that does not parse
+# is named here too. A tracked file deleted in the working tree is skipped.
+gofmt-check:
+	@out=$$(git ls-files '*.go' | while read -r f; do if [ -f "$$f" ]; then printf '%s\n' "$$f"; fi; done | xargs gofmt -l 2>&1); \
+	if [ -n "$$out" ]; then \
+		echo "gofmt-check: these tracked Go files are not gofmt-clean; run gofmt -w on them:"; \
+		echo "$$out"; \
+		exit 1; \
+	fi
+
 vet:
 	go vet ./...
 
@@ -131,16 +143,16 @@ short-census:
 # the only thing that verifies the lint script guarding every test name in the
 # repo. A self-test that nothing runs is the defect this census exists to find,
 # and exempting it would have recorded the gap instead of closing it.
-check: hooks-check vet vet-windows vet-linux test-census rig-census template-census short-census lint-test-names lint-test-names-self-test test
+check: hooks-check gofmt-check vet vet-windows vet-linux test-census rig-census template-census short-census lint-test-names lint-test-names-self-test test
 
 # check-fast is what the pre-commit hook runs (ini-7ts2): everything in
-# `check` that is static -- compile, the three vets, the two lints, the four
-# censuses -- and NO product tests. Seconds, not minutes. The suite is not
+# `check` that is static -- gofmt, compile, the three vets, the two lints, the
+# four censuses -- and NO product tests. Seconds, not minutes. The suite is not
 # gone from the loop; it moved to where it was already being run: `make check`
 # after every rebase and immediately before every push (root CLAUDE.md rule,
 # unchanged), and CI at the pushed sha. The hook comment in
 # scripts/hooks/pre-commit says why. `check` itself is unchanged.
-check-fast: hooks-check vet vet-windows vet-linux test-census rig-census template-census short-census lint-test-names lint-test-names-self-test
+check-fast: hooks-check gofmt-check vet vet-windows vet-linux test-census rig-census template-census short-census lint-test-names lint-test-names-self-test
 	go build ./...
 
 release:
