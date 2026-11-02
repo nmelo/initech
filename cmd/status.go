@@ -515,7 +515,10 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		if pi.BeadStale && pi.NoBead == "" {
 			bead += " " + color.Yellow(tui.BeadStaleNote)
 		}
-		if pi.Beads != nil && pi.NoBead == "" && beadNote == "" && !sameBeadSet(*pi.Beads, held) {
+		// Only bd's own answer can disagree with the ribbon: with no answer, or
+		// a stale poll, the stale mark says so and held is not a judgement.
+		if pi.Beads != nil && pi.NoBead == "" && beadNote == "" && st.bdAnswered && !pi.BeadStale &&
+			ribbonDisagrees(*pi.Beads, held) {
 			shown := "-"
 			if len(*pi.Beads) > 0 {
 				shown = strings.Join(*pi.Beads, ",")
@@ -620,18 +623,26 @@ func mergeRemotePeers(sockPath string, panes []paneInfo) []paneInfo {
 	return panes
 }
 
-// sameBeadSet reports whether a ribbon shows exactly the beads bd says the
-// agent holds, in any order.
-func sameBeadSet(ribbon []string, held []beadInfo) bool {
-	if len(ribbon) != len(held) {
-		return false
+// ribbonDisagrees reports whether a ribbon really differs from bd: it shows a
+// bead bd does not give the agent, or nothing while bd gives it one. The ribbon
+// shows one bead, so one of several held beads is agreement, not a mismatch.
+func ribbonDisagrees(ribbon []string, held []beadInfo) bool {
+	if len(ribbon) == 0 {
+		return len(held) > 0
 	}
-	for _, b := range held {
-		if !containsString(ribbon, b.ID) {
-			return false
+	for _, id := range ribbon {
+		found := false
+		for _, b := range held {
+			if b.ID == id {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return true
 		}
 	}
-	return true
+	return false
 }
 
 // getBeadAssignments maps each agent to the beads bd says it holds: an
