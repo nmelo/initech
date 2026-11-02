@@ -34,19 +34,33 @@ app=$(cd "$(dirname "$0")/.." && pwd)
 reports="$HOME/Library/Logs/DiagnosticReports"
 
 # One simulator at a time on this host, whatever started the run: a lock
-# directory (mkdir is atomic), taken over when its holder is gone, waited on
-# for at most 30 minutes. Two jobs that pass a load check in the same second
-# would otherwise boot two simulators at once.
+# directory (mkdir is atomic), taken over when its holder is gone. This lock is
+# the one-simulator rule: app-tests runs on different refs can start together,
+# and two jobs can pass the load gate in the same second. The holder writes who
+# it is in the lock. A job that finds the lock held waits for SIM_LOCK_WAIT
+# seconds, 20 minutes by default, printing once a minute who holds it and how
+# long it has waited; past that it fails with exit 2, naming the holder. While
+# it waits it counts booted simulators every 10 seconds and prints the most it
+# saw. app-tests.yml's timeout-minutes allows this wait, the load gate's and
+# the run's; a guard test adds them up.
 lock=${SIM_LOCK:-/tmp/initech-app-sim.lock}
+bound=${SIM_LOCK_WAIT:-1200}
 waited=0
+most=0
 until mkdir "$lock" 2>/dev/null; do
   holder=$(cat "$lock/pid" 2>/dev/null)
   if [ -n "$holder" ] && ! kill -0 "$holder" 2>/dev/null; then rm -rf "${lock:?}"; continue; fi
-  [ $((waited % 60)) -eq 0 ] && echo "sim-test: waiting for the simulator lock (held by pid ${holder:-?})"
-  [ "$waited" -ge 1800 ] && { echo "sim-test: the simulator lock was held for 30 minutes; refused" >&2; exit 2; }
+  who="$(cat "$lock/owner" 2>/dev/null || echo 'an unnamed run'), pid ${holder:-?}"
+  [ $((waited % 60)) -eq 0 ] && echo "sim-test: waiting for the simulator lock, $((waited / 60)) of $((bound / 60)) minutes so far, held by $who; most simulators booted during this wait: $most"
+  [ "$waited" -ge "$bound" ] && { echo "sim-test: the simulator lock was still held after $((bound / 60)) minutes by $who; refused" >&2; exit 2; }
+  booted=$(xcrun simctl list devices booted 2>/dev/null | grep -c '(Booted)')
+  [ "${booted:-0}" -gt "$most" ] && most=$booted
   sleep 10; waited=$((waited + 10))
 done
 echo $$ > "$lock/pid"
+if [ -n "${GITHUB_RUN_ID:-}" ]; then owner="run $GITHUB_RUN_ID on ${GITHUB_REF_NAME:-?} ($kind)"; else owner="${INITECH_AGENT:-a local run} ($kind)"; fi
+echo "$owner" > "$lock/owner"
+[ "$waited" -gt 0 ] && echo "sim-test: took the simulator lock after waiting ${waited}s; most simulators booted during the wait: $most"
 mark=$(mktemp -t sim-test-mark) || { rm -rf "${lock:?}"; exit 2; }
 
 name="${INITECH_AGENT:-run}-$kind-$(date +%H%M%S)"

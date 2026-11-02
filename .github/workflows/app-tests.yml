@@ -11,23 +11,24 @@
 #   shared with other projects' iOS jobs, and the switch is flipped only once
 #   a load sample shows it can take one simulator. With it unset the job is
 #   skipped, so no runner is used at all.
-# - One simulator at a time on the host: ONE concurrency group for every ref,
-#   so one app-tests run at a time across all branches (two branches' runs
-#   overlapped on the host before); sim-test.sh's lock and the load gate's
-#   simulator check stay as a second and third line.
+# - One simulator at a time on the host: sim-test.sh's lock is the rule. A job
+#   that finds the simulator busy waits at the lock, for at most 20 minutes,
+#   and says once a minute which run holds it; past that it fails naming the
+#   holder. The concurrency group below is per ref and does not limit the host.
 # - The job waits at the shared load gate first (.github/actions/load-gate,
-#   with simulators): while the host's 5-minute load is over 6, during the
+#   with simulators): while the host's 5-minute load is over 24, during the
 #   other project's nightly window, and while any simulator is booted there by
 #   anyone; after 20 minutes it runs with a warning. The job's timeout allows
-#   that wait; the run itself stays bounded by sim-test.sh (18 minutes).
+#   that wait and the lock's; the run itself stays bounded by sim-test.sh
+#   (7 minutes for the first boot, 18 for the tests).
 # - app/scripts/sim-test.sh makes a simulator for the run, waits for its first
 #   boot to finish, and deletes it however the run ends. With CRASH_FATAL=ui a
 #   new crash report from the app, its test runners, SpringBoard or PosterBoard
 #   fails the job by name; any other report from that device is named as a
 #   warning (nobody sits at this host, so no dialog reaches anyone).
-# - sim-test.sh holds a lock on the host for its whole run (one simulator at
-#   a time, whichever job started it) and fails with exit 8 if any process of
-#   its simulator outlives the delete; it looks at its own device only.
+# - sim-test.sh holds its lock for its whole run, whichever job started it, and
+#   fails with exit 8 if any process of its simulator outlives the delete; it
+#   looks at its own device only.
 name: app-tests
 
 on:
@@ -41,22 +42,22 @@ on:
     branches: [main]
     paths: ["app/**", ".github/workflows/app-tests.yml"]
 
-# ONE GROUP FOR EVERY REF (ini-r0q.17, the operator via theguy): only one
-# app-tests run at a time across all branches, so only one simulator on the
-# host. Per-ref groups let two branches' runs start together, and both passed
-# the load gate's simulator check before either booted one. The cost, known:
-# GitHub keeps one running and one pending run per group, so a third request
-# replaces the pending one (that run is cancelled, never started); start it
-# again once the queue clears. A started run always finishes.
+# ONE GROUP PER REF: GitHub keeps one running and one pending run per group, so
+# one group for every ref let a push to main replace a run pending on a branch,
+# with no notice. A newer run on the same ref still replaces an older pending
+# one. Runs on different refs can overlap; the host lock in sim-test.sh is what
+# keeps them to one simulator. A started run always finishes.
 concurrency:
-  group: app-sim
+  group: app-sim-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
   app-tests:
     if: github.event_name != 'pull_request' && vars.APP_TESTS == 'on'
     runs-on: ${{ vars.MAC_RUNNER || 'macos-latest' }}
-    timeout-minutes: 45
+    # The load gate (20), the lock (20), the first boot (7), the tests (18) and
+    # setup, so each bound can speak for itself before the job's timeout does.
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@v5
 

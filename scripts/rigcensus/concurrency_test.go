@@ -65,13 +65,15 @@ func TestWorkflows_OnlyMainPushesShareAConcurrencyGroup(t *testing.T) {
 	} else if c == nil || c.Group == "" || strings.Contains(c.Group, "${{") || c.CancelInProgress {
 		t.Errorf("rigs.yml: concurrency %+v; want one literal group for every run with cancel-in-progress off: at most one rigs run at a time", c)
 	}
-	// app-tests.yml: ONE group for every ref, a literal with no expression, so
-	// only one app-tests run (one simulator) is on the host at a time across
-	// all branches (ini-r0q.17); a started run always finishes.
+	// app-tests.yml: one group per ref, so a run pending on a branch is never
+	// replaced by a push to main or another branch. GitHub keeps one pending
+	// run per group, which is why one group for every ref lost runs. The host
+	// lock in sim-test.sh, not this group, keeps one simulator at a time. A
+	// started run always finishes.
 	if c, jobs := read("app-tests.yml"); jobs == 0 {
 		t.Fatal("app-tests.yml: no jobs parsed -- the fence is reading nothing")
-	} else if c == nil || c.Group == "" || strings.Contains(c.Group, "${{") || c.CancelInProgress {
-		t.Errorf("app-tests.yml: concurrency %+v; want one literal group for every ref with cancel-in-progress off: two branches' simulators overlapped", c)
+	} else if c == nil || c.Group != "app-sim-${{ github.ref }}" || c.CancelInProgress {
+		t.Errorf("app-tests.yml: concurrency %+v; want group app-sim-${{ github.ref }} with cancel-in-progress off: one group across refs replaces a pending run on another ref, with no notice", c)
 	}
 	if c, jobs := read("release.yml"); jobs == 0 {
 		t.Fatal("release.yml: no jobs parsed -- the fence is reading nothing")
