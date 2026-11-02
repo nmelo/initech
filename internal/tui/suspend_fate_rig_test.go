@@ -412,7 +412,36 @@ func suspendedFixture(t *testing.T) (*TUI, *Pane) {
 	tui.wireSuspendResume(p) // the production adoption wiring
 	time.Sleep(500 * time.Millisecond)
 	suspendViaRealPolicy(t, tui, p)
+	startMainLoop(t, tui)
 	return tui, p
+}
+
+// startMainLoop gives a fixture TUI the one goroutine Run gives a real one, so
+// the auto-resume's pane swap and the test's reads of t.panes are serialized
+// the way production serializes them. Left at nil, ipcCh makes runOnMain run
+// inline on each caller, and the resume goroutine and the test goroutine touch
+// t.panes at once: a race in the fixture that production cannot have. Started
+// after the fixture's own direct t.panes use, so that needs no loop.
+func startMainLoop(t *testing.T, tui *TUI) {
+	t.Helper()
+	tui.ipcCh = make(chan ipcAction, 32)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for {
+			select {
+			case op := <-tui.ipcCh:
+				op.fn()
+				close(op.done)
+			case <-tui.quitCh:
+				return
+			}
+		}
+	}()
+	t.Cleanup(func() {
+		tui.requestQuit()
+		<-done
+	})
 }
 
 // awaitDelivery polls for the auto-resumed pane to echo the message --
