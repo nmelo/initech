@@ -1,4 +1,5 @@
 import Foundation
+import InitechCore
 
 /// PushPermission is what iOS says about notifications for the app.
 enum PushPermission: Equatable, Sendable {

@@ -1,5 +1,6 @@
 import XCTest
 @testable import InitechApp
+@testable import InitechCore
 
 final class FakeProgress: ProgressSource, @unchecked Sendable {
     var answer: [ProgressReport]

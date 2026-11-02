@@ -1,5 +1,6 @@
 import XCTest
 @testable import InitechApp
+@testable import InitechCore
 
 /// TransportSecurityTests: the Mac's service is reached at a tailnet IP with
 /// its own self-signed certificate. Without an App Transport Security setting

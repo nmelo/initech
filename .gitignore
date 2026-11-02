@@ -47,3 +47,5 @@ coverage.out
 /scripts/testcensus/testcensus
 /rigcensus
 /testcensus
+/app/InitechCore/.build/
+/app/InitechCore/.swiftpm/

@@ -1,5 +1,6 @@
 import XCTest
 @testable import InitechApp
+@testable import InitechCore
 
 /// FakeAsking answers for iOS's notification permission and counts the asks.
 final class FakeAsking: NotificationAsking, @unchecked Sendable {

@@ -5,56 +5,63 @@ import Foundation
 // a field the service may leave null is optional here, never defaulted.
 
 /// RigInfo is one rig the service found, running or not.
-struct RigInfo: Codable, Equatable, Sendable {
-    var rig: String
-    var root: String
-    var running: Bool
+public struct RigInfo: Codable, Equatable, Sendable {
+    public var rig: String
+    public var root: String
+    public var running: Bool
 }
 
 /// StatusReply is GET /v1/status: every running rig's `initech status --json`.
-struct StatusReply: Codable, Equatable, Sendable {
-    var rigs: [RigStatus]
+public struct StatusReply: Codable, Equatable, Sendable {
+    public var rigs: [RigStatus]
 }
 
 /// RigStatus is one rig's status, read at readAt.
-struct RigStatus: Codable, Equatable, Sendable {
-    var rig: String
-    var root: String
-    var readAt: String?
-    var agents: [AgentStatus]
+public struct RigStatus: Codable, Equatable, Sendable {
+    public var rig: String
+    public var root: String
+    public var readAt: String?
+    public var agents: [AgentStatus]
 }
 
 /// AgentStatus is one agent object of `initech status --json`, plus the
 /// pane's last screen lines when it is at a dialog, a banner, waiting or pending.
-struct AgentStatus: Codable, Equatable, Sendable {
-    var role: String
-    var state: String?
-    var alive: Bool
-    var beads: [String]?
-    var contextPercent: Int?
-    var banner: String?
-    var screen: [String]?
+public struct AgentStatus: Codable, Equatable, Sendable {
+    public var role: String
+    public var state: String?
+    public var alive: Bool
+    public var beads: [String]?
+    public var contextPercent: Int?
+    public var banner: String?
+    public var screen: [String]?
 }
 
 /// Pin is one pane on the home list: where it is, the name he gave it, its place.
-struct Pin: Codable, Equatable, Hashable, Sendable {
-    var rig: String
-    var pane: String
-    var name: String
-    var order: Int
+public struct Pin: Codable, Equatable, Hashable, Sendable {
+    public var rig: String
+    public var pane: String
+    public var name: String
+    public var order: Int
+
+    public init(rig: String, pane: String, name: String, order: Int) {
+        self.rig = rig
+        self.pane = pane
+        self.name = name
+        self.order = order
+    }
 }
 
 /// Conversation is one page of a pane's transcript, oldest first.
-struct Conversation: Codable, Equatable, Sendable {
-    var session: String?
-    var messages: [Message]
-    var startReached: Bool
+public struct Conversation: Codable, Equatable, Sendable {
+    public var session: String?
+    public var messages: [Message]
+    public var startReached: Bool
     /// before is the cursor for the next older page, an integer the app passes
     /// back as given (the service's byte offset of this page's first line; 0
     /// on the page that starts the transcript); nil when a page carries none.
-    var before: Int64?
+    public var before: Int64?
 
-    init(session: String?, messages: [Message], startReached: Bool, before: Int64?) {
+    public init(session: String?, messages: [Message], startReached: Bool, before: Int64?) {
         self.session = session
         self.messages = messages
         self.startReached = startReached
@@ -63,7 +70,7 @@ struct Conversation: Codable, Equatable, Sendable {
 
     /// Decoding keeps every entry it can read and skips one it cannot: a
     /// single malformed entry must never cost the whole page.
-    init(from decoder: Decoder) throws {
+    public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         session = try c.decodeIfPresent(String.self, forKey: .session)
         startReached = try c.decode(Bool.self, forKey: .startReached)
@@ -74,48 +81,63 @@ struct Conversation: Codable, Equatable, Sendable {
 
 /// Lossy decodes one element of a list and keeps nil when it cannot.
 struct Lossy<T: Decodable>: Decodable {
-    let value: T?
-    init(from decoder: Decoder) throws { value = try? T(from: decoder) }
+    public let value: T?
+    public init(from decoder: Decoder) throws { value = try? T(from: decoder) }
 }
 
 /// Message is one entry of the conversation view.
-struct Message: Codable, Equatable, Identifiable, Sendable {
+public struct Message: Codable, Equatable, Identifiable, Sendable {
     /// Kind is what the service says an entry is: the agent's reply, what the
     /// operator typed, a message another agent sent, a tool run. A kind the app
     /// does not know yet reads as other and shows as plain text, never as a
     /// failure of the page.
-    enum Kind: String, Codable, Sendable {
+    public enum Kind: String, Codable, Sendable {
         case agent, nelson, message, tool, system, other
 
-        init(from decoder: Decoder) throws {
+        public init(from decoder: Decoder) throws {
             self = Kind(rawValue: try decoder.singleValueContainer().decode(String.self)) ?? .other
         }
     }
-    struct Tool: Codable, Equatable, Sendable {
-        var name: String
-        var summary: String
-        var detail: String?
+    public struct Tool: Codable, Equatable, Sendable {
+        public var name: String
+        public var summary: String
+        public var detail: String?
     }
-    var id: String
-    var at: String?
-    var kind: Kind
-    var text: String
-    var footer: [String]?
-    var tool: Tool?
+    public var id: String
+    public var at: String?
+    public var kind: Kind
+    public var text: String
+    public var footer: [String]?
+    public var tool: Tool?
     /// from is the agent that sent a message entry.
-    var from: String?
+    public var from: String?
+
+    public init(id: String, at: String?, kind: Kind, text: String, footer: [String]?, tool: Tool?, from: String? = nil) {
+        self.id = id
+        self.at = at
+        self.kind = kind
+        self.text = text
+        self.footer = footer
+        self.tool = tool
+        self.from = from
+    }
 }
 
 /// SendResult is the send path's own verdict and the line it printed.
 /// The keys endpoint answers in the same shape.
-struct SendResult: Codable, Equatable, Sendable {
-    var verdict: String
-    var words: String
+public struct SendResult: Codable, Equatable, Sendable {
+    public var verdict: String
+    public var words: String
+
+    public init(verdict: String, words: String) {
+        self.verdict = verdict
+        self.words = words
+    }
 
     /// Outcome groups the verdicts the way the message bubble shows them.
-    enum Outcome: Equatable { case delivered, held, notDelivered, unsure }
+    public enum Outcome: Equatable { case delivered, held, notDelivered, unsure }
 
-    var outcome: Outcome {
+    public var outcome: Outcome {
         switch verdict {
         case "delivered": .delivered
         case "held", "deferred": .held
@@ -126,12 +148,12 @@ struct SendResult: Codable, Equatable, Sendable {
 }
 
 /// PaneKey is one key of the key strip, named as the keys endpoint takes it.
-enum PaneKey: String, CaseIterable, Codable, Sendable {
+public enum PaneKey: String, CaseIterable, Codable, Sendable {
     case enter, esc
     case ctrlC = "ctrl-c"
     case y, n
 
-    var label: String {
+    public var label: String {
         switch self {
         case .enter: "Enter"
         case .esc: "Esc"
@@ -143,7 +165,7 @@ enum PaneKey: String, CaseIterable, Codable, Sendable {
 }
 
 /// FeedEvent is one event of GET /v1/feed.
-enum FeedEvent: Equatable, Sendable {
+public enum FeedEvent: Equatable, Sendable {
     case paneState(rig: String, pane: String, from: String?, to: String?, banner: String?)
     case waitingItem(rig: String, pane: String, text: String)
     case stuck(rig: String, pane: String, reason: String)
@@ -156,7 +178,7 @@ enum FeedEvent: Equatable, Sendable {
 
 extension JSONDecoder {
     /// service decodes the app service's snake_case JSON.
-    static var service: JSONDecoder {
+    public static var service: JSONDecoder {
         let d = JSONDecoder()
         d.keyDecodingStrategy = .convertFromSnakeCase
         return d
@@ -165,7 +187,7 @@ extension JSONDecoder {
 
 extension JSONEncoder {
     /// service encodes for the app service's snake_case JSON.
-    static var service: JSONEncoder {
+    public static var service: JSONEncoder {
         let e = JSONEncoder()
         e.keyEncodingStrategy = .convertToSnakeCase
         e.outputFormatting = .sortedKeys

@@ -1,4 +1,5 @@
 import Foundation
+import InitechCore
 
 /// RigBlockers is one rig's row of GET /v1/blockers: what waits on Nelson
 /// and which panes are stuck. quiet is true when the rig has neither.

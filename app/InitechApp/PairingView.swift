@@ -1,4 +1,5 @@
 import AVFoundation
+import InitechCore
 import SwiftUI
 
 /// PairingView is the token screen: scan the QR `initech app-serve token`

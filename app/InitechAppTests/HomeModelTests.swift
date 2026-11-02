@@ -1,5 +1,6 @@
 import XCTest
 @testable import InitechApp
+@testable import InitechCore
 
 @MainActor
 final class HomeModelTests: XCTestCase {

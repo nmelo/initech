@@ -2,7 +2,7 @@ import Foundation
 import os
 
 /// ServiceError names why a call to the app service failed.
-enum ServiceError: Error, Equatable {
+public enum ServiceError: Error, Equatable {
     /// The service refused the token (401): the phone must pair again.
     case unauthorized
     /// Any other non-2xx answer, with the service's words when it gave some.
@@ -17,7 +17,7 @@ enum ServiceError: Error, Equatable {
 
 extension ServiceError: CustomStringConvertible {
     /// description is the plain words a screen shows after "The Mac did not answer: ".
-    var description: String {
+    public var description: String {
         switch self {
         case .unauthorized: "it refused this phone's token"
         case .certificateRefused: "its certificate is not the one this phone paired with"
@@ -30,7 +30,7 @@ extension ServiceError: CustomStringConvertible {
 
 /// Service is everything the app asks of the Mac. Views talk to this, never
 /// to URLSession, so tests and previews can stand in for the Mac.
-protocol Service: Sendable {
+public protocol Service: Sendable {
     func rigs() async throws -> [RigInfo]
     func status() async throws -> StatusReply
     func pins() async throws -> [Pin]
@@ -45,15 +45,15 @@ protocol Service: Sendable {
 
 /// HTTPService is the Service over HTTPS to `initech app-serve`, trusting
 /// only the certificate the pairing names.
-struct HTTPService: Service {
-    let pairing: Pairing
+public struct HTTPService: Service {
+    public let pairing: Pairing
     let session: URLSession
     /// retryDelay is how long the feed first waits before reconnecting; each
     /// failure in a row doubles it, up to maxRetryDelay.
     var retryDelay: Duration
     var maxRetryDelay: Duration
 
-    init(pairing: Pairing, retryDelay: Duration = .seconds(2), maxRetryDelay: Duration = .seconds(60)) {
+    public init(pairing: Pairing, retryDelay: Duration = .seconds(2), maxRetryDelay: Duration = .seconds(60)) {
         self.pairing = pairing
         self.retryDelay = retryDelay
         self.maxRetryDelay = maxRetryDelay
@@ -64,7 +64,7 @@ struct HTTPService: Service {
 
     /// request is one authorized request to the service. Internal, with call and
     /// seg, so other files can extend HTTPService with an endpoint each.
-    func request(_ method: String, _ path: String, query: [URLQueryItem] = [], body: Data? = nil) -> URLRequest {
+    public func request(_ method: String, _ path: String, query: [URLQueryItem] = [], body: Data? = nil) -> URLRequest {
         var c = URLComponents(url: pairing.baseURL, resolvingAgainstBaseURL: false)!
         c.percentEncodedPath = path
         if !query.isEmpty { c.queryItems = query }
@@ -78,7 +78,7 @@ struct HTTPService: Service {
         return r
     }
 
-    func call(_ r: URLRequest) async throws -> Data {
+    public func call(_ r: URLRequest) async throws -> Data {
         let data: Data
         let response: URLResponse
         let check = PinCheck(fingerprint: pairing.fingerprint)
@@ -134,31 +134,31 @@ struct HTTPService: Service {
 
     /// get decodes a GET answer. Internal so other files can extend HTTPService
     /// with an endpoint each (the blockers and progress views do).
-    func get<T: Decodable>(_ path: String, query: [URLQueryItem] = []) async throws -> T {
+    public func get<T: Decodable>(_ path: String, query: [URLQueryItem] = []) async throws -> T {
         try JSONDecoder.service.decode(T.self, from: try await call(request("GET", path, query: query)))
     }
 
-    func rigs() async throws -> [RigInfo] { try await get("/v1/rigs") }
-    func status() async throws -> StatusReply { try await get("/v1/status") }
-    func pins() async throws -> [Pin] { try await get("/v1/pins") }
+    public func rigs() async throws -> [RigInfo] { try await get("/v1/rigs") }
+    public func status() async throws -> StatusReply { try await get("/v1/status") }
+    public func pins() async throws -> [Pin] { try await get("/v1/pins") }
 
-    func savePins(_ pins: [Pin]) async throws {
+    public func savePins(_ pins: [Pin]) async throws {
         _ = try await call(request("PUT", "/v1/pins", body: try JSONEncoder.service.encode(pins)))
     }
 
-    func conversation(rig: String, pane: String, before: Int64?, limit: Int) async throws -> Conversation {
+    public func conversation(rig: String, pane: String, before: Int64?, limit: Int) async throws -> Conversation {
         var q = [URLQueryItem(name: "limit", value: String(limit))]
         if let before { q.append(URLQueryItem(name: "before", value: String(before))) }
         return try await get("/v1/conversation/\(seg(rig))/\(seg(pane))", query: q)
     }
 
-    func send(rig: String, pane: String, text: String) async throws -> SendResult {
+    public func send(rig: String, pane: String, text: String) async throws -> SendResult {
         struct Body: Encodable { var text: String; var enter = true }
         let r = request("POST", "/v1/send/\(seg(rig))/\(seg(pane))", body: try JSONEncoder.service.encode(Body(text: text)))
         return try JSONDecoder.service.decode(SendResult.self, from: try await call(r))
     }
 
-    func key(rig: String, pane: String, key: PaneKey) async throws -> SendResult {
+    public func key(rig: String, pane: String, key: PaneKey) async throws -> SendResult {
         struct Body: Encodable { var key: PaneKey }
         let r = request("POST", "/v1/keys/\(seg(rig))/\(seg(pane))", body: try JSONEncoder.service.encode(Body(key: key)))
         return try JSONDecoder.service.decode(SendResult.self, from: try await call(r))
@@ -169,7 +169,7 @@ struct HTTPService: Service {
     /// in a row (back-off, reset by a connection that opens). A refused token
     /// (401) or certificate ends the stream: retrying cannot succeed until the
     /// phone pairs again, and a loop would knock on the Mac every few seconds.
-    func feed() -> AsyncStream<FeedEvent> {
+    public func feed() -> AsyncStream<FeedEvent> {
         let base = self
         return AsyncStream { continuation in
             let task = Task {
@@ -211,7 +211,7 @@ struct HTTPService: Service {
     }
 
     /// seg escapes one path segment (a rig or pane name).
-    func seg(_ s: String) -> String {
+    public func seg(_ s: String) -> String {
         s.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed.subtracting(CharacterSet(charactersIn: "/"))) ?? s
     }
 }

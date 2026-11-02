@@ -2,6 +2,7 @@ import XCTest
 import SwiftUI
 import UIKit
 @testable import InitechApp
+@testable import InitechCore
 
 /// ScreenshotTests renders the Blockers and Progress views with fixture data
 /// in a window of the test host (inside the simulator, never on the Mac's

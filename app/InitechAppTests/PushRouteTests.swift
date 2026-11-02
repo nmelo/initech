@@ -1,5 +1,6 @@
 import XCTest
 @testable import InitechApp
+@testable import InitechCore
 
 /// PushRouteTests (ini-r0q.4 AC2, AC3, AC5, AC6): a push is routed from its
 /// data alone, read from the payloads the service puts on the wire

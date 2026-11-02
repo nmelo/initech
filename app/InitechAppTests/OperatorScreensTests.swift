@@ -1,6 +1,7 @@
 import XCTest
 import SwiftUI
 @testable import InitechApp
+@testable import InitechCore
 
 @MainActor
 final class OperatorScreensTests: XCTestCase {

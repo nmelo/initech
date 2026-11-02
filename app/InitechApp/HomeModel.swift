@@ -1,4 +1,5 @@
 import Foundation
+import InitechCore
 
 /// PaneRef names one pane across rigs.
 struct PaneRef: Hashable, Sendable {

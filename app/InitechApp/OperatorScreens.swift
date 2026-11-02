@@ -1,3 +1,4 @@
+import InitechCore
 import SwiftUI
 
 /// FeedListener is a model that HomeModel hands every feed event to, before

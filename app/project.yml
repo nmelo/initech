@@ -14,11 +14,17 @@ settings:
     CURRENT_PROJECT_VERSION: "3"
     CODE_SIGN_STYLE: Automatic
     DEVELOPMENT_TEAM: K7Z8YKVA8G
+# The model logic, a local package: no network to resolve it (app/README.md).
+packages:
+  InitechCore:
+    path: InitechCore
 targets:
   InitechApp:
     type: application
     platform: iOS
     sources: [InitechApp]
+    dependencies:
+      - package: InitechCore
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: co.nmelo.initech
@@ -79,8 +85,8 @@ targets:
     platform: iOS
     sources:
       - InitechAppUITests
-      - InitechApp/Models.swift
-      - InitechApp/Pairing.swift
+      - InitechCore/Sources/InitechCore/Models.swift
+      - InitechCore/Sources/InitechCore/Pairing.swift
       - InitechAppTests/FixtureServer.swift
     dependencies:
       - target: InitechApp
@@ -98,4 +104,9 @@ schemes:
         InitechAppTests: [test]
         InitechAppUITests: [test]
     test:
-      targets: [InitechAppTests, InitechAppUITests]
+      # The package's tests run here too, so app-tests covers the moved tests;
+      # `swift test` is the fast local run of the same tests.
+      targets:
+        - InitechAppTests
+        - package: InitechCore/InitechCoreTests
+        - InitechAppUITests

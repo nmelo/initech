@@ -1,4 +1,5 @@
 import Foundation
+import InitechCore
 import LocalAuthentication
 
 /// Authenticator asks the person holding the phone to prove they are its owner.

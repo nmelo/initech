@@ -83,6 +83,17 @@
             parallelizable = "NO">
             <BuildableReference
                BuildableIdentifier = "primary"
+               BlueprintIdentifier = "InitechCoreTests"
+               BuildableName = "InitechCoreTests"
+               BlueprintName = "InitechCoreTests"
+               ReferencedContainer = "container:InitechCore">
+            </BuildableReference>
+         </TestableReference>
+         <TestableReference
+            skipped = "NO"
+            parallelizable = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
                BlueprintIdentifier = "EE34F6E985C7C97F90C88394"
                BuildableName = "InitechAppUITests.xctest"
                BlueprintName = "InitechAppUITests"

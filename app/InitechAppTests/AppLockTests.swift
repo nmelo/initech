@@ -1,5 +1,6 @@
 import XCTest
 @testable import InitechApp
+@testable import InitechCore
 
 /// MemoryPairingStore is a PairingStore for tests that never touches the keychain.
 final class MemoryPairingStore: PairingStore, @unchecked Sendable {

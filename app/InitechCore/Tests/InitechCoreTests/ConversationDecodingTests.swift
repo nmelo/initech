@@ -1,5 +1,5 @@
 import XCTest
-@testable import InitechApp
+@testable import InitechCore
 
 /// ConversationDecodingTests: on Nelson's iPad a real pane failed to show its
 /// conversation at all, DecodingError.dataCorrupted at messages[7].kind,

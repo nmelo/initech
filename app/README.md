@@ -10,6 +10,21 @@ Xcode only; nothing else to install. The committed `InitechApp.xcodeproj` is
 generated from `project.yml`; after changing the file list or a setting, run
 `xcodegen generate --spec app/project.yml` and commit both.
 
+The model logic lives in a local Swift package, `app/InitechCore`: it imports
+no UIKit or SwiftUI, and its tests build and run on a Mac in seconds, with no
+simulator:
+
+```bash
+sysctl -n vm.loadavg   # wait while the 5-minute figure is above 30
+cd app/InitechCore && ~/Desktop/Projects/initech/super/tools/heavy.sh swift test
+```
+
+These tests never open a socket, so they may run on the shared Mac; a server
+test does not belong in the package. The scheme runs them on the simulator
+too, so `app-tests` covers them. The tests that need real HTTP, TLS or the pin
+stay in `InitechAppTests`, and the simulator UI tests remain the final proof of
+any change.
+
 ```bash
 # Create a simulator once (any iPhone or iPad device type, iOS 26 or later):
 xcrun simctl create my-iphone "iPhone 17 Pro" com.apple.CoreSimulator.SimRuntime.iOS-27-0
@@ -100,11 +115,14 @@ first.
 
 ## Layout
 
-- `InitechApp/Pairing.swift`, `PairingStore.swift`, `PairingView.swift`: the
+- `InitechCore/Sources/InitechCore/`: the package: the API shapes
+  (`Models.swift`), the HTTPS client (`ServiceClient.swift`: the certificate
+  pin, the Bearer token, the feed parser), `Pairing.swift`, `Log.swift` and
+  `FollowState.swift`, what a new entry does to the conversation.
+- `InitechCore/Sources/InitechCore/Pairing.swift`, `InitechApp/PairingStore.swift`,
+  `PairingView.swift`: the
   pairing code (`initech://pair?host=<ip>&port=<n>&token=<t>&fp=<f>`), scanned
   as a QR or pasted, kept in the keychain on this device only.
 - `InitechApp/AppLock.swift`: Face ID on open and on every return to the app.
-- `InitechApp/Models.swift`, `ServiceClient.swift`: the API shapes and the
-  HTTPS client: the certificate pin, the Bearer token, the feed parser.
 - `InitechApp/HomeModel.swift`, `HomeView.swift`: pinned panes and the Rigs view.
 - `InitechApp/PaneModel.swift`, `PaneView.swift`: the pane's conversation.

@@ -1,5 +1,6 @@
 import XCTest
 @testable import InitechApp
+@testable import InitechCore
 
 /// ContractDecodingTests decodes, with the app's own models, the JSON the
 /// service's own handlers wrote for every route the app reads (ini-470): the
@@ -115,10 +116,15 @@ final class ContractDecodingTests: XCTestCase {
     /// Every route the app's code names has its fixture: a route added to the
     /// app without one goes red here.
     func testEveryRouteTheAppCalls_HasAFixture() throws {
-        let sources = Self.here.deletingLastPathComponent().appendingPathComponent("InitechApp").resolvingSymlinksInPath()
-        let files = try FileManager.default.contentsOfDirectory(at: sources, includingPropertiesForKeys: nil)
-            .filter { $0.pathExtension == "swift" }
-        XCTAssertFalse(files.isEmpty, "no app sources at \(sources.path)")
+        let app = Self.here.deletingLastPathComponent()
+        let sources = [app.appendingPathComponent("InitechApp"), app.appendingPathComponent("InitechCore/Sources/InitechCore")]
+            .map { $0.resolvingSymlinksInPath() }
+        let files = try sources.flatMap { dir in
+            let found = try FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)
+                .filter { $0.pathExtension == "swift" }
+            XCTAssertFalse(found.isEmpty, "no app sources at \(dir.path)")
+            return found
+        }
         var routes = Set<String>()
         let pattern = try NSRegularExpression(pattern: #""/v1/([a-z_]+)"#)
         for f in files {

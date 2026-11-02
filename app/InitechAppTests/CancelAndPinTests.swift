@@ -1,6 +1,7 @@
 import XCTest
 import os
 @testable import InitechApp
+@testable import InitechCore
 
 /// ScriptedService answers the conversation with the errors it is given, in
 /// order, then with a page; everything else is never called by these tests.

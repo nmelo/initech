@@ -2,6 +2,7 @@ import Foundation
 import Network
 #if !UITESTS
 @testable import InitechApp
+@testable import InitechCore
 #endif
 
 /// FixtureServer is the app service's v1 API as eng5 posted it, served over

@@ -1,6 +1,7 @@
 import XCTest
 import SwiftUI
 @testable import InitechApp
+@testable import InitechCore
 
 /// LiveServiceTests reads a real initech app-serve through the app's own
 /// pinned client: TEST_RUNNER_LIVE_PAIRING holds its pairing link. They skip

@@ -1,5 +1,5 @@
 import XCTest
-@testable import InitechApp
+@testable import InitechCore
 
 final class PairingTests: XCTestCase {
     func testParse_ReadsHostPortAndToken() throws {

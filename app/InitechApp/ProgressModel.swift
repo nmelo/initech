@@ -1,4 +1,5 @@
 import Foundation
+import InitechCore
 
 /// ProgressReport is one effort's report, exactly the object initech
 /// progress --json prints. Times are decoded as text and never rendered:

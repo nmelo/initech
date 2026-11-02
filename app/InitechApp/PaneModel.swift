@@ -1,4 +1,5 @@
 import Foundation
+import InitechCore
 
 /// PaneModel is one open pane: its conversation, paged back on demand, kept
 /// current from the feed, and what he sends into it with the send path's verdict.

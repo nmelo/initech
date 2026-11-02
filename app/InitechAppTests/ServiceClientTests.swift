@@ -1,5 +1,6 @@
 import XCTest
 @testable import InitechApp
+@testable import InitechCore
 
 /// Fixtures for the shapes the app service sends, used across the app's tests.
 enum Fx {

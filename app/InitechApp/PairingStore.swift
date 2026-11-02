@@ -1,4 +1,5 @@
 import Foundation
+import InitechCore
 import Security
 
 /// PairingStore keeps the one pairing the phone holds. The token is the whole

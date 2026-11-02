@@ -1,5 +1,5 @@
 import XCTest
-@testable import InitechApp
+@testable import InitechCore
 
 final class FollowStateTests: XCTestCase {
     private func ids(_ r: ClosedRange<Int>) -> [String] { r.map { "m\($0)" } }

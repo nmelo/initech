@@ -12,17 +12,17 @@ import os
 ///            name, a token or a URL carrying one, a pane's text, a message
 ///            body or a bead title.
 /// Never log the pairing token, a message's text or anything typed into a pane.
-enum Log {
-    static let subsystem = "co.nmelo.initech"
-    static let service = Logger(subsystem: subsystem, category: "service")
-    static let screen = Logger(subsystem: subsystem, category: "screen")
+public enum Log {
+    public static let subsystem = "co.nmelo.initech"
+    public static let service = Logger(subsystem: subsystem, category: "service")
+    public static let screen = Logger(subsystem: subsystem, category: "screen")
 
     /// shown writes one entry for an error a screen showed the user, in the
     /// category `screen`. Call it once per shown error, beside the line that
     /// shows it; an error the app handles without showing it is not logged.
     /// The entry is built from ShownError's fields alone, so the error's
     /// words never reach the log.
-    static func shown(_ error: Error, screen: String) {
+    public static func shown(_ error: Error, screen: String) {
         let ns = error as NSError
         let entry = ShownError(subsystem: subsystem, category: screen, domain: ns.domain, code: ns.code)
         Logger(subsystem: subsystem, category: screen).error(
@@ -32,7 +32,7 @@ enum Log {
 
     /// record hands every later Log.shown entry to sink, or stops with nil.
     /// Tests only: os_log cannot be read back in process.
-    static func record(to sink: (@Sendable (ShownError) -> Void)?) {
+    public static func record(to sink: (@Sendable (ShownError) -> Void)?) {
         recorder.withLock { $0 = sink }
     }
 
@@ -40,18 +40,18 @@ enum Log {
 }
 
 /// ShownError is everything a shown-error entry carries.
-struct ShownError: Equatable, Sendable {
-    let subsystem: String
-    let category: String
-    let domain: String
-    let code: Int
+public struct ShownError: Equatable, Sendable {
+    public let subsystem: String
+    public let category: String
+    public let domain: String
+    public let code: Int
 }
 
 /// ServiceError's domain and codes in the log: the HTTP status where there is
 /// one, a negative code for the two failures that have none.
 extension ServiceError: CustomNSError {
-    static var errorDomain: String { "co.nmelo.initech.service" }
-    var errorCode: Int {
+    public static var errorDomain: String { "co.nmelo.initech.service" }
+    public var errorCode: Int {
         switch self {
         case .unauthorized: 401
         case let .status(code, _): code

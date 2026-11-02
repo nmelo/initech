@@ -1,5 +1,6 @@
 import XCTest
 @testable import InitechApp
+@testable import InitechCore
 
 final class BuildInfoTests: XCTestCase {
     func testVersionLine_ShowsVersionBuildAndCommit() {
