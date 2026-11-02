@@ -62,14 +62,22 @@ It refuses, starting nothing, when no runner with that label is online or the
 repo variable `APP_TESTS` is not `on`; the variable is set only once a load
 sample shows the runner's machine can take one simulator. A run waits at the
 shared load gate (`.github/actions/load-gate`: while that machine's 5-minute
-load is over 6, during another project's nightly window, and while any
+load is over 24, during another project's nightly window, and while any
 simulator is booted there; after 20 minutes it goes ahead with a warning),
 runs one device on a fresh simulator through `sim-test.sh` once its first boot
 has finished, and fails if a crash report from the app, its test runners,
 SpringBoard or PosterBoard names that simulator (a report from any other
 process there is named as a warning: nobody sits at that machine), or if any
-xcodebuild or simulator process it started is still running. One simulator
-runs on that machine at a time; pull requests never run it.
+xcodebuild or simulator process it started is still running. Pull requests
+never run it.
+
+One simulator runs on that machine at a time, and the host lock in
+`sim-test.sh` is what keeps it so. The workflow's concurrency group is per ref,
+so a run pending on one ref is never replaced by a run on another; a newer run
+on the same ref replaces an older pending one. Runs on different refs can
+overlap, and the later one waits at the lock, saying once a minute which run
+holds it. After 20 minutes it fails, naming the holder. A waiting job holds a
+Mac runner.
 
 The shared Mac runs no simulator and no test binary that opens a server:
 both run on the runner's machine only, through the job above. A new binary
