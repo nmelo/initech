@@ -439,7 +439,7 @@ The process exited. Common causes:
 - A permission was denied and Claude stopped
 - Out of memory (check `top` for RSS values)
 
-To recover: restart from the `top` modal (select agent, press `r`) or via command bar (`restart`). Claude's `--continue` flag will resume from the last session.
+To recover: restart from the `top` modal (select agent, press `r`) or via command bar (`restart`). Claude's `--continue` flag will resume from the last session. Either restart runs in the background, so the window keeps moving while it happens, and a restart that fails reaches you as a notice, not as an error in the command bar.
 
 ### TUI Crash
 
@@ -537,7 +537,7 @@ and is delivered. If the agent doesn't react:
 - The agent's Claude session is in a state where it can't read terminal input (rare, restart fixes it)
 - The agent has a dialog open (a permission prompt, including the Write and Edit prompt "Do you want to create w.txt?" / "Do you want to make this edit to w.txt?", or a question). initech holds the message instead of typing into the dialog, says `deferred (modal open)`, and delivers it once the dialog closes. An agent on another machine behaves the same way: the send says `deferred to host:agent`, and its holds, releases and NOT delivered reports appear here as `host:agent`. A dialog counts as open only when it is drawn where Claude draws a live one: below the transcript, in place of the input box. Dialog wording quoted in the transcript above an idle input box does not hold mail. A dialog that has closed (answered, or cancelled with `initech interrupt`), or one announced by the agent but never drawn, stops holding mail once the input box has sat at rest for 5 seconds after the announcement. initech finds the input box at any pane width, a narrow pane's shorter rules included, and with a named session's label on its top rule. A background shell, monitor, task or subagent is not a dialog: a send to an agent running one is delivered as to any working pane. Each change is logged at Info as `dialog latch raised`, `dialog latch corroborated` or `dialog latch cleared`, with what caused it.
 - A held message that cannot be delivered (the agent's process exited, the agent was removed, or a dialog stayed open for 10 minutes) is reported as `NOT delivered (...)` in a toast, the event log and the inbox, with how long it waited. Re-send it.
-- Restarting an agent (`initech restart <agent>`, or restart from the command bar) carries the messages waiting for it to the new process, which receives them once it is ready; `initech restart` says how many it carried. If the new process cannot start, the messages stay where they were and are reported as stranded.
+- Restarting an agent (`initech restart <agent>`, or restart from the command bar or the `top` modal) carries the messages waiting for it to the new process, which receives them once it is ready; `initech restart` says how many it carried. If the new process cannot start, the messages stay where they were and are reported as stranded.
 
 When initech cannot see the message in the agent's input box, it holds back the Enter instead of
 guessing, keeps checking, and logs exactly one outcome for that message: `withheld submit DELIVERED`
