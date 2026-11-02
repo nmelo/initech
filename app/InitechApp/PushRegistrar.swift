@@ -135,6 +135,7 @@ final class PushRegistrar: ObservableObject {
             line = nil
         } catch {
             line = .refused(String(describing: error))
+            Log.shown(error, screen: "push")
         }
     }
 }
