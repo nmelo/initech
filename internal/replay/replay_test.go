@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 	"testing"
 	"time"
 )
@@ -122,25 +123,172 @@ func TestPlay_LatenessDoesNotAccumulateAcrossChunks(t *testing.T) {
 	}
 }
 
-// Real-clock smoke for AC 1: every chunk within a 25ms ceiling. Not the 2ms
-// per-chunk bound: on this shared Mac a bare time.Sleep misses 2ms in ~6% of
-// wakes at load 30, and far more under a parallel test run (see the
-// DIVERGENCE comment on ini-pqdy.3). Skipped under -short for the same reason;
-// the real clock is still exercised in make check by the cancellation cell.
-func TestPlay_RealClockWritesEveryChunkWithinA25msCeiling(t *testing.T) {
+// earlyTolerance is the clock resolution the never-early half allows, and
+// lateAllowance what the late half allows beyond the host's own worst miss.
+const (
+	earlyTolerance = time.Millisecond
+	lateAllowance  = 25 * time.Millisecond
+)
+
+// judgeRealClock is the verdict on one real-clock play: offsets is each
+// chunk's write time minus its recorded time, and worstMiss the host's worst
+// sleep miss over the same window, from controls bare sleeps.
+//
+// Two halves, because they are two different claims. Early is the replay's
+// alone: no host makes a timer fire ahead of time, so a chunk written before
+// its recorded time is a defect, and that bound does not move with load. Late
+// is mostly the host's: a shared runner wakes every sleeper late, so lateness
+// is judged against what a bare sleep suffered in the same window, plus
+// lateAllowance for the replay's own work. The fake-clock tests above prove
+// the schedule; this one proves the real clock is wired to it.
+func judgeRealClock(offsets []time.Duration, worstMiss time.Duration, controls int) error {
+	for i, d := range offsets {
+		if d < -earlyTolerance {
+			return fmt.Errorf("chunk %d written %s before its recorded time: a replay defect at any load", i, -d)
+		}
+		if limit := worstMiss + lateAllowance; d > limit {
+			return fmt.Errorf("chunk %d late by %s, over the host's worst sleep miss %s (of %d control sleeps) plus %s", i, d, worstMiss, controls, lateAllowance)
+		}
+	}
+	return nil
+}
+
+// measureSleepMisses runs bare sleeps of spacing until stop closes and at
+// least min have run, and returns the worst miss and how many ran.
+func measureSleepMisses(spacing time.Duration, min int, stop <-chan struct{}) (worst time.Duration, n int) {
+	for {
+		start := time.Now()
+		time.Sleep(spacing)
+		if miss := time.Since(start) - spacing; miss > worst {
+			worst = miss
+		}
+		n++
+		select {
+		case <-stop:
+			if n >= min {
+				return worst, n
+			}
+		default:
+		}
+	}
+}
+
+// The real clock, on the real sleep: a chunk is never early, and late only by
+// what the host did to a bare sleep in the same window (judgeRealClock). The
+// control runs alongside the play, not before or after it, so a load spike
+// during the play is in the control too. Skipped under -short, which runs no
+// wall-clock timing; the verdict's own tests below run everywhere.
+func TestPlay_RealClockIsNeverEarlyAndLateOnlyByTheHost(t *testing.T) {
 	if testing.Short() {
 		t.Skip("real-clock timing depends on host load; runs in the full suite")
 	}
+	const spacing = 7 * time.Millisecond // tenChunks' mean gap
+	type control struct {
+		worst time.Duration
+		n     int
+	}
+	stop := make(chan struct{})
+	done := make(chan control, 1)
+	go func() {
+		worst, n := measureSleepMisses(spacing, 10, stop)
+		done <- control{worst, n}
+	}()
 	clk := Real()
 	w := &stampWriter{clk: clk, start: time.Now()}
+	chunks := tenChunks()
+	err := Play(context.Background(), opener(chunks), w, Options{}, clk)
+	close(stop)
+	c := <-done
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(w.at) != len(chunks) {
+		t.Fatalf("wrote %d chunks, want %d", len(w.at), len(chunks))
+	}
+	offsets := make([]time.Duration, len(chunks))
+	var latest time.Duration
+	for i, ch := range chunks {
+		offsets[i] = w.at[i] - ch.At
+		latest = max(latest, offsets[i])
+	}
+	t.Logf("worst lateness %s, host's worst sleep miss %s over %d sleeps", latest, c.worst, c.n)
+	if err := judgeRealClock(offsets, c.worst, c.n); err != nil {
+		t.Fatalf("%v (writes at %v)", err, w.at)
+	}
+}
+
+// The verdict, on planted offsets: early fails at any host jitter, even a
+// huge one; late passes inside the host's worst miss plus the allowance and
+// fails past it, naming the control.
+func TestJudgeRealClock_EarlyIsADefectAndLateIsMeasuredAgainstTheHost(t *testing.T) {
+	cases := []struct {
+		name      string
+		offset    time.Duration
+		worstMiss time.Duration
+		wantErr   string
+	}{
+		{"on time", 0, 0, ""},
+		{"inside the clock's resolution", -time.Millisecond, 0, ""},
+		{"early, quiet host", -2 * time.Millisecond, 0, "before its recorded time"},
+		{"early, host a second behind", -2 * time.Millisecond, time.Second, "before its recorded time"},
+		{"late under the allowance, quiet host", 24 * time.Millisecond, 0, ""},
+		{"late past the allowance, quiet host", 26 * time.Millisecond, 0, "plus 25ms"},
+		{"late, but less than a loaded host's miss plus the allowance", 90 * time.Millisecond, 70 * time.Millisecond, ""},
+		{"late past a loaded host's miss plus the allowance", 96 * time.Millisecond, 70 * time.Millisecond, "worst sleep miss 70ms (of 12 control sleeps)"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			err := judgeRealClock([]time.Duration{0, c.offset}, c.worstMiss, 12)
+			switch {
+			case c.wantErr == "" && err != nil:
+				t.Fatalf("got %v, want a pass", err)
+			case c.wantErr != "" && err == nil:
+				t.Fatalf("passed, want an error with %q", c.wantErr)
+			case c.wantErr != "" && !strings.Contains(err.Error(), c.wantErr):
+				t.Fatalf("got %v, want it to name %q", err, c.wantErr)
+			}
+		})
+	}
+}
+
+// The control runs its minimum even when told to stop at once, and reports a
+// miss: a real sleep always wakes some time after its deadline, so zero would
+// mean it measured nothing, and that would quietly tighten the late half.
+func TestMeasureSleepMisses_RunsItsMinimumAndRecordsAMiss(t *testing.T) {
+	stop := make(chan struct{})
+	close(stop)
+	worst, n := measureSleepMisses(time.Millisecond, 3, stop)
+	if n != 3 {
+		t.Errorf("ran %d sleeps, want 3", n)
+	}
+	if worst <= 0 {
+		t.Errorf("worst miss %s over %d sleeps: the control measured nothing", worst, n)
+	}
+}
+
+// earlyClock wakes every sleep 5ms ahead of time: a planted early replay.
+type earlyClock struct{ fakeClock }
+
+func (c *earlyClock) Sleep(ctx context.Context, d time.Duration) error {
+	return c.fakeClock.Sleep(ctx, d-5*time.Millisecond)
+}
+
+// A replay that writes early, through the real Play, fails the never-early
+// half however late the host's sleeps ran.
+func TestJudgeRealClock_APlantedEarlyPlayFails(t *testing.T) {
+	clk := &earlyClock{fakeClock{now: time.Unix(1000, 0)}}
+	w := &stampWriter{clk: clk, start: clk.now}
 	chunks := tenChunks()
 	if err := Play(context.Background(), opener(chunks), w, Options{}, clk); err != nil {
 		t.Fatal(err)
 	}
-	for i, c := range chunks {
-		if d := w.at[i] - c.At; d > 25*time.Millisecond || d < -25*time.Millisecond {
-			t.Fatalf("chunk %d off by %s (written %s, recorded %s)", i, d, w.at[i], c.At)
-		}
+	offsets := make([]time.Duration, len(chunks))
+	for i, ch := range chunks {
+		offsets[i] = w.at[i] - ch.At
+	}
+	err := judgeRealClock(offsets, time.Second, 10)
+	if err == nil || !strings.Contains(err.Error(), "before its recorded time") {
+		t.Fatalf("a play that wrote early got %v (offsets %v)", err, offsets)
 	}
 }
 
