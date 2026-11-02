@@ -294,9 +294,10 @@ func TestEvictionWar_LostVerdictInferredFromQuickDeaths(t *testing.T) {
 }
 
 // TestEvictionWar_HandshakeDropStillConcludes covers a connection dropped
-// before the handshake finishes. That is a failed connect, not a session that
-// died: it is not a quick death, so the client pays one more connect, and it
-// does not reset the count, so the second quick death still concludes. It runs
+// before the handshake finishes, among real quick deaths. That is a failed
+// connect, not a session that died: it is not a quick death, so the client pays
+// one more connect, and it does not reset the count, so the second quick death
+// still concludes; the handshake drop plays no part in concluding. It runs
 // both orders because each pins one half: after a quick death (the order the
 // runners produced) a reset would need a fourth connect; before any quick
 // death, counting it as one would conclude on the second.
@@ -325,6 +326,31 @@ func TestEvictionWar_HandshakeDropStillConcludes(t *testing.T) {
 			}
 			loopEnds(t, srv, ended, atConclusion, 2*time.Second)
 		})
+	}
+}
+
+// TestEvictionWar_HandshakeDropsAloneRetryAtBackoff is the outage case: every
+// connection drops in the handshake. That looks like window 1 down or
+// restarting, so it is never an eviction and has no bound by count. The client
+// keeps retrying at the reconnect backoff (1s, 2s, 4s, capped at 30s), which
+// makes four connects in 8 seconds, never a tight loop.
+func TestEvictionWar_HandshakeDropsAloneRetryAtBackoff(t *testing.T) {
+	srv := startEvictionWarServer(t, "handshake-drop", "handshake-drop", "handshake-drop",
+		"handshake-drop", "handshake-drop", "handshake-drop")
+	evicted, ended, stop := evictionPM(t, srv)
+	defer stop()
+
+	select {
+	case reason := <-evicted:
+		t.Fatalf("handshake drops alone concluded eviction (%q); an outage just exiled a window", reason)
+	case <-ended:
+		t.Fatal("the reconnect loop ended on handshake drops alone; it must keep retrying")
+	case <-time.After(8 * time.Second):
+	}
+	got := srv.count()
+	t.Logf("%d connects in 8s with every connection dropped in the handshake", got)
+	if got < 3 || got > 4 {
+		t.Fatalf("client connected %d times in 8s, want 3 or 4: at most 4 is the backoff, and fewer than 3 means it stopped retrying", got)
 	}
 }
 
