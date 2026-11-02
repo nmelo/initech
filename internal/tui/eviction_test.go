@@ -21,15 +21,23 @@ import (
 // evictionWarServer accepts connections REPEATEDLY (unlike the single-shot
 // remotePeerServer scaffold, because a war is by definition multi-connection),
 // completes the real handshake, and then follows a per-connection script:
-// "verdict" sends identity_taken_over and closes; "drop" closes silently;
-// "hold" keeps the session open. It counts accepted connections -- the war's
-// unit of measure.
+// "verdict" sends identity_taken_over and closes; "drop" closes silently once
+// the client reports the connection up; "handshake-drop" reads the hello and
+// closes without answering; "hold" keeps the session open. It counts accepted
+// connections -- the war's unit of measure.
+//
+// "drop" waits for the client because a close in the microseconds after
+// hello_ok can reach the client before its own hello write is confirmed. The
+// client then reports a failed connect, not a session that died, so the loop
+// backs off without counting a quick death and connects a third time.
+// "handshake-drop" is that path, on purpose.
 type evictionWarServer struct {
 	addr     string
 	ln       net.Listener
 	scripts  []string
 	mu       sync.Mutex
 	accepted int
+	up       int // connections the client reported established
 }
 
 func startEvictionWarServer(t *testing.T, scripts ...string) *evictionWarServer {
@@ -55,12 +63,13 @@ func startEvictionWarServer(t *testing.T, scripts ...string) *evictionWarServer 
 			srv.mu.Lock()
 			idx := srv.accepted
 			srv.accepted++
+			upBefore := srv.up
 			script := "drop"
 			if idx < len(srv.scripts) {
 				script = srv.scripts[idx]
 			}
 			srv.mu.Unlock()
-			go srv.handle(conn, script)
+			go srv.handle(conn, script, upBefore)
 		}
 	}()
 	t.Cleanup(func() { ln.Close() })
@@ -73,7 +82,31 @@ func (srv *evictionWarServer) count() int {
 	return srv.accepted
 }
 
-func (srv *evictionWarServer) handle(conn net.Conn, script string) {
+// noteUp records that the client finished connecting.
+func (srv *evictionWarServer) noteUp() {
+	srv.mu.Lock()
+	defer srv.mu.Unlock()
+	srv.up++
+}
+
+// waitUp returns once the client has reported a connection beyond upBefore,
+// the count when this connection was accepted. The client dials one at a
+// time, so that connection is this one. The bound only stops a client that
+// never connects from hanging the handler.
+func (srv *evictionWarServer) waitUp(upBefore int) {
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		srv.mu.Lock()
+		up := srv.up
+		srv.mu.Unlock()
+		if up > upBefore {
+			return
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
+func (srv *evictionWarServer) handle(conn net.Conn, script string, upBefore int) {
 	defer conn.Close()
 	session, err := yamux.Server(conn, yamux.DefaultConfig())
 	if err != nil {
@@ -86,6 +119,9 @@ func (srv *evictionWarServer) handle(conn net.Conn, script string) {
 	}
 	scanner := bufio.NewScanner(ctrl)
 	if !scanner.Scan() {
+		return
+	}
+	if script == "handshake-drop" {
 		return
 	}
 	writeJSON(ctrl, HelloOKMsg{Action: "hello_ok", Version: 1, PeerName: "window1"})
@@ -108,7 +144,9 @@ func (srv *evictionWarServer) handle(conn net.Conn, script string) {
 		writeJSON(ctrl, ControlResp{Action: identityTakenOverAction, Text: "taken over by test"})
 		time.Sleep(300 * time.Millisecond)
 	case "drop":
-		// fall through to the deferred close: accepted-then-dropped.
+		// Falls through to the deferred close once the session is up:
+		// accepted-then-dropped.
+		srv.waitUp(upBefore)
 	}
 }
 
@@ -141,7 +179,11 @@ func evictionPM(t *testing.T, srv *evictionWarServer) (evicted chan string, ende
 		&config.Project{PeerName: "window-2", Remotes: map[string]config.Remote{
 			"window1": {Addr: srv.addr, Token: testWindowToken},
 		}},
-		func(string, []PaneView, bool) {},
+		func(_ string, _ []PaneView, connected bool) {
+			if connected {
+				srv.noteUp()
+			}
+		},
 		nil, quit)
 	pm.SetOnEvicted(func(peer, reason string) { evicted <- peer + ": " + reason })
 	ended = make(chan struct{})
@@ -249,6 +291,41 @@ func TestEvictionWar_LostVerdictInferredFromQuickDeaths(t *testing.T) {
 		t.Fatalf("client connected %d times before concluding, want at most %d", atConclusion, quickEvictionLimit)
 	}
 	loopEnds(t, srv, ended, atConclusion, 2*time.Second)
+}
+
+// TestEvictionWar_HandshakeDropStillConcludes covers a connection dropped
+// before the handshake finishes. That is a failed connect, not a session that
+// died: it is not a quick death, so the client pays one more connect, and it
+// does not reset the count, so the second quick death still concludes. It runs
+// both orders because each pins one half: after a quick death (the order the
+// runners produced) a reset would need a fourth connect; before any quick
+// death, counting it as one would conclude on the second.
+func TestEvictionWar_HandshakeDropStillConcludes(t *testing.T) {
+	for name, scripts := range map[string][]string{
+		"between the quick deaths": {"drop", "handshake-drop", "drop", "drop"},
+		"before the quick deaths":  {"handshake-drop", "drop", "drop", "drop"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			srv := startEvictionWarServer(t, scripts...)
+			evicted, ended, stop := evictionPM(t, srv)
+			defer stop()
+
+			select {
+			case reason := <-evicted:
+				if !strings.Contains(reason, "concluding") {
+					t.Errorf("reason %q is not the quick-death conclusion", reason)
+				}
+			case <-time.After(15 * time.Second):
+				t.Fatal("a handshake drop among quick deaths never concluded")
+			}
+			atConclusion := srv.count()
+			t.Logf("concluded after %d connects: one handshake drop, %d quick deaths", atConclusion, quickEvictionLimit)
+			if want := quickEvictionLimit + 1; atConclusion != want {
+				t.Fatalf("client connected %d times before concluding, want %d: the handshake drop plus the two quick deaths", atConclusion, want)
+			}
+			loopEnds(t, srv, ended, atConclusion, 2*time.Second)
+		})
+	}
 }
 
 // TestEvictionWar_LongSessionDeathResets drives the reset rule against the
