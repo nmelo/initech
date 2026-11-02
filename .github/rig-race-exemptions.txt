@@ -1,0 +1,19 @@
+# Env-gated rigs CI runs but the gate does not run under -race, each with the
+# reason. Read by scripts/rigcensus; same format as rig-census-exemptions.txt,
+# and the TRIGGER: token is required. A rig the gate does run under -race fails
+# the census while it is still listed here, so these lines go when the rigs'
+# race job joins the gate.
+
+INITECH_35AK  # memory: the race-rigs job stays on demand until its peak is read against the rigs slice. TRIGGER: gh workflow run rigs.yml --ref main -f race_rigs=true, by the engineer changing this rig or the suspend path.
+INITECH_3WKL7  # memory: the race-rigs job stays on demand until its peak is read against the rigs slice. TRIGGER: gh workflow run rigs.yml --ref main -f race_rigs=true, by the engineer changing this rig or the suspend path.
+INITECH_9GVN  # memory: the race-rigs job stays on demand until its peak is read against the rigs slice. TRIGGER: gh workflow run rigs.yml --ref main -f race_rigs=true, by the engineer changing this rig or the suspend path.
+INITECH_9IMX  # memory: the race-rigs job stays on demand until its peak is read against the rigs slice. TRIGGER: gh workflow run rigs.yml --ref main -f race_rigs=true, by the engineer changing this rig or the suspend path.
+INITECH_9ISX  # memory: the race-rigs job stays on demand until its peak is read against the rigs slice. TRIGGER: gh workflow run rigs.yml --ref main -f race_rigs=true, by the engineer changing this rig or the suspend path.
+INITECH_A9D8  # memory: the race-rigs job stays on demand until its peak is read against the rigs slice. TRIGGER: gh workflow run rigs.yml --ref main -f race_rigs=true, by the engineer changing this rig or the suspend path.
+INITECH_AQY  # memory: the race-rigs job stays on demand until its peak is read against the rigs slice. TRIGGER: gh workflow run rigs.yml --ref main -f race_rigs=true, by the engineer changing this rig or the suspend path.
+INITECH_CENSUS  # memory: the race-rigs job stays on demand until its peak is read against the rigs slice. TRIGGER: gh workflow run rigs.yml --ref main -f race_rigs=true, by the engineer changing this rig or the suspend path.
+INITECH_DR03  # memory: the race-rigs job stays on demand until its peak is read against the rigs slice. TRIGGER: gh workflow run rigs.yml --ref main -f race_rigs=true, by the engineer changing this rig or the suspend path.
+INITECH_FN77  # memory: the race-rigs job stays on demand until its peak is read against the rigs slice. TRIGGER: gh workflow run rigs.yml --ref main -f race_rigs=true, by the engineer changing this rig or the suspend path.
+INITECH_UZ42  # memory: the race-rigs job stays on demand until its peak is read against the rigs slice. TRIGGER: gh workflow run rigs.yml --ref main -f race_rigs=true, by the engineer changing this rig or the suspend path.
+INITECH_X5OB  # memory: the race-rigs job stays on demand until its peak is read against the rigs slice. TRIGGER: gh workflow run rigs.yml --ref main -f race_rigs=true, by the engineer changing this rig or the suspend path.
+INITECH_Z5UW  # memory: the race-rigs job stays on demand until its peak is read against the rigs slice. TRIGGER: gh workflow run rigs.yml --ref main -f race_rigs=true, by the engineer changing this rig or the suspend path.

@@ -220,7 +220,14 @@ func TestRigsWorkflow_EveryJobIsBoundedMainOnlyAndReportsItsResources(t *testing
 	}
 	const start = "scripts/rigs-resources.sh start"
 	for key, job := range w.Jobs {
-		if job.If != "github.ref == 'refs/heads/main'" {
+		want := "github.ref == 'refs/heads/main'"
+		if key == "race-rigs" {
+			// Asked for by a dispatch input, and it runs after a red race job
+			// too, so that job's failure does not hide its own result. Spelled
+			// out whole, so main-only stays exact here as well.
+			want = "${{ !cancelled() && github.ref == 'refs/heads/main' && inputs.race_rigs }}"
+		}
+		if job.If != want {
 			t.Errorf("%s runs if %q, want only from main", key, job.If)
 		}
 		var started int

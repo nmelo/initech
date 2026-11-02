@@ -29,6 +29,11 @@ on:
   schedule:
     - cron: '0 7 * * *'
   workflow_dispatch:
+    inputs:
+      race_rigs:
+        description: Also run the env-gated rigs under the race detector, after every other workbench job
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -261,6 +266,61 @@ jobs:
         # invisible and a shard reports a vacuous green (shipper, reviewing
         # 2d2f909 -- the first dispatch had zero PASS/SKIP lines to check).
         run: go test ./internal/tui/ -count=1 -v -timeout 900s -run 'AttentionRig|TestSuspendFate|Inbox7Rig'
+
+      - name: Resources this job used
+        if: always()
+        run: scripts/rigs-resources.sh report
+
+  # THE ENV-GATED RIGS UNDER THE RACE DETECTOR. The race job above runs with no
+  # gate set, so every gated rig skips there and its green says nothing about
+  # them. This job sets the gates, and scripts/rigcensus asserts it covers them
+  # (.github/rig-race-exemptions.txt names what it does not).
+  #
+  # AFTER EVERY OTHER WORKBENCH JOB, NEVER BESIDE ONE: the two initech-rigs
+  # runners share one memory slice, so waiting on the race job alone could still
+  # stack this on a shard. Its own job, not a step of the race job, so the
+  # resource log gives its peak apart from the main race run's.
+  #
+  # ON DEMAND UNTIL ITS MEMORY IS READ: gh workflow run rigs.yml --ref main -f
+  # race_rigs=true. It joins the gate only when its peak fits the slice.
+  #
+  # The detector sees the test process. A rig's real binaries are built without
+  # -race, so a race inside one of those is not found here.
+  race-rigs:
+    runs-on: ${{ github.event_name != 'pull_request' && 'initech-rigs' || 'ubuntu-latest' }}
+    timeout-minutes: 60  # the go test below is bounded at 45
+    needs: [race, composed-rigs-shard1, composed-rigs-shard2, composed-rigs-shard3, composed-rigs-shard4]
+    if: ${{ !cancelled() && github.ref == 'refs/heads/main' && inputs.race_rigs }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: ${{ github.event_name == 'pull_request' }}
+
+      - name: Start the resource sampler (peak memory, processes)
+        run: scripts/rigs-resources.sh start
+
+      - name: Witness which rigs this job selected
+        run: go test ./internal/tui/ -list 'X5obRig|FN77Rig|A9d8Rig|TestSuspendGuard|TestAQY_|UZ42Rig|NineISXRig|Dr03Rig|NineGVNRig|TestZ5uwRig|AttentionRig|TestSuspendFate|Inbox7Rig|TestCensus_|TestRolesLessBoot_|TestWindowCLI_'
+
+      - name: Env-gated rigs (race detector)
+        env:
+          INITECH_X5OB: "1"
+          INITECH_FN77: "1"
+          INITECH_A9D8: "1"
+          INITECH_9IMX: "1"
+          INITECH_AQY: "1"
+          INITECH_UZ42: "1"
+          INITECH_9ISX: "1"
+          INITECH_DR03: "1"
+          INITECH_9GVN: "1"
+          INITECH_Z5UW: "1"
+          INITECH_35AK: "1"
+          INITECH_3WKL7: "1"
+          INITECH_CENSUS: "1"
+        run: go test ./internal/tui/ -race -count=1 -v -timeout 2700s -run 'X5obRig|FN77Rig|A9d8Rig|TestSuspendGuard|TestAQY_|UZ42Rig|NineISXRig|Dr03Rig|NineGVNRig|TestZ5uwRig|AttentionRig|TestSuspendFate|Inbox7Rig|TestCensus_|TestRolesLessBoot_|TestWindowCLI_'
 
       - name: Resources this job used
         if: always()

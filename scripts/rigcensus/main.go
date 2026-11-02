@@ -70,6 +70,7 @@ const (
 	// (ini-i4uj). A rig invoked in either counts as invoked.
 	defaultWorkflow = ".github/workflows/ci.yml,.github/workflows/rigs.yml"
 	exemptionsPath  = ".github/rig-census-exemptions.txt"
+	raceExemptPath  = ".github/rig-race-exemptions.txt"
 	quarantinePath  = ".github/rig-quarantine.txt"
 	gateEnvPrefix   = "INITECH_"
 )
@@ -89,6 +90,8 @@ type ciStep struct {
 	Env      map[string]string
 	Selector string // the -run value; empty means "runs everything"
 	HasRun   bool
+	Race     bool // runs under the race detector
+	OnDemand bool // runs only when a dispatch input asks, so no nightly or cut sees it
 }
 
 func main() {
@@ -96,10 +99,15 @@ func main() {
 	workflow := flag.String("workflow", defaultWorkflow, "CI workflow(s) to read coverage from, comma-separated")
 	exemptions := flag.String("exemptions", exemptionsPath, "path to the exemption file")
 	quarantineF := flag.String("quarantine", quarantinePath, "path to the quarantine file")
+	raceExempt := flag.String("race-exemptions", raceExemptPath, "path to the race exemption file")
 	verbose := flag.Bool("v", false, "list every gate and where it runs")
 	flag.Parse()
 
 	if err := run(*testDir, *workflow, *exemptions, *quarantineF, *verbose); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	if err := runRace(*testDir, *workflow, *exemptions, *raceExempt, *verbose); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
@@ -664,8 +672,10 @@ func findCISteps(path string) ([]ciStep, error) {
 	}
 	var wf struct {
 		Jobs map[string]struct {
+			If    string `yaml:"if"`
 			Steps []struct {
 				Name string            `yaml:"name"`
+				If   string            `yaml:"if"`
 				Env  map[string]string `yaml:"env"`
 				Run  string            `yaml:"run"`
 			} `yaml:"steps"`
@@ -685,7 +695,13 @@ func findCISteps(path string) ([]ciStep, error) {
 			if !strings.Contains(s.Run, "go test") && !strings.Contains(s.Run, "make test") {
 				continue
 			}
-			st := ciStep{Job: j, Name: s.Name, Env: s.Env}
+			st := ciStep{
+				Job:      j,
+				Name:     s.Name,
+				Env:      s.Env,
+				Race:     raceFlagRe.MatchString(s.Run) || strings.Contains(s.Run, "make test-race"),
+				OnDemand: strings.Contains(wf.Jobs[j].If, "inputs.") || strings.Contains(s.If, "inputs."),
+			}
 			if m := runSelectorRe.FindStringSubmatch(s.Run); m != nil {
 				st.HasRun = true
 				for _, g := range m[1:] {
