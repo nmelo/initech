@@ -74,7 +74,7 @@ jobs:
           cache: ${{ github.event_name == 'pull_request' }}
 
       - name: Start the resource sampler (peak memory, processes)
-        run: scripts/rigs-resources.sh start > /dev/null 2>&1 &
+        run: scripts/rigs-resources.sh start
 
       # ini-4cfl: `make test-race` existed, unrun by any gate, and 7 data
       # races accumulated invisibly in the suspend/wake path -- resumePane's
@@ -134,7 +134,7 @@ jobs:
           cache: ${{ github.event_name == 'pull_request' }}
 
       - name: Start the resource sampler (peak memory, processes)
-        run: scripts/rigs-resources.sh start > /dev/null 2>&1 &
+        run: scripts/rigs-resources.sh start
 
       # ini-0lko: name what this shard selected, before running it.
       - name: Witness which rigs this shard selected
@@ -171,7 +171,7 @@ jobs:
           cache: ${{ github.event_name == 'pull_request' }}
 
       - name: Start the resource sampler (peak memory, processes)
-        run: scripts/rigs-resources.sh start > /dev/null 2>&1 &
+        run: scripts/rigs-resources.sh start
 
       # ini-0lko: name what this shard selected, before running it.
       - name: Witness which rigs this shard selected
@@ -208,7 +208,7 @@ jobs:
           cache: ${{ github.event_name == 'pull_request' }}
 
       - name: Start the resource sampler (peak memory, processes)
-        run: scripts/rigs-resources.sh start > /dev/null 2>&1 &
+        run: scripts/rigs-resources.sh start
 
       # ini-0lko: name what this shard selected, before running it.
       - name: Witness which rigs this shard selected
@@ -246,7 +246,7 @@ jobs:
           cache: ${{ github.event_name == 'pull_request' }}
 
       - name: Start the resource sampler (peak memory, processes)
-        run: scripts/rigs-resources.sh start > /dev/null 2>&1 &
+        run: scripts/rigs-resources.sh start
 
       # ini-0lko: name what this shard selected, before running it.
       - name: Witness which rigs this shard selected
@@ -293,7 +293,7 @@ jobs:
           cache: ${{ github.event_name == 'pull_request' }}
 
       - name: Start the resource sampler (peak memory, processes)
-        run: scripts/rigs-resources.sh start > /dev/null 2>&1 &
+        run: scripts/rigs-resources.sh start
 
       - name: Wait for the shared Mac host (load gate)
         uses: ./.github/actions/load-gate
@@ -305,7 +305,7 @@ jobs:
         run: make release-install-test
 
       - name: Go tests that need macOS
-        run: go test ./internal/appserve/ ./internal/tui/ -count=1 -v -run '^(TestInstallCopy_ASignedBinaryKeepsItsSignature|TestParseBatteryOutput_RealPmsetStrings|TestIsChargingField_NotChargingIsNotSubstringMatched)$'
+        run: go test ./internal/appserve/ ./internal/tui/ ./scripts/shardtests/ -count=1 -v -run '^(TestRigsResources_TheMacJobIsMeasuredUnderItsWorker|TestInstallCopy_ASignedBinaryKeepsItsSignature|TestParseBatteryOutput_RealPmsetStrings|TestIsChargingField_NotChargingIsNotSubstringMatched)$'
 
       - name: The suspend and send rigs on macOS, and the LAN-bind test
         env:

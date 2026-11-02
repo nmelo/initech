@@ -3,10 +3,13 @@
 # theguy's condition: each rigs job records its peak memory, process count
 # and disk use in its own log).
 #
-#   rigs-resources.sh start   # in the background, from the job's first step
+#   rigs-resources.sh start   # in the foreground, from the job's first step
 #   rigs-resources.sh report  # in an always() step at the job's end
 #
-# start samples every 5 seconds, for at most RIGS_SAMPLES samples (default
+# start finds the job's scope in the foreground, while its step's shell is
+# still its parent (a backgrounded start loses that chain to Runner.Worker
+# when the shell exits), then returns and leaves one background loop that
+# samples every 5 seconds, for at most RIGS_SAMPLES samples (default
 # 1440, two hours, so it never outlives its job), THIS JOB's memory and
 # process count, appending to $RUNNER_TEMP/rigs-resources. A runner holds one
 # job at a time, so the job is: on Linux, the runner's own cgroup
@@ -38,17 +41,19 @@ start)
   [ -n "$cg" ] && echo "scope cgroup ${cg#/sys/fs/cgroup}" >> "$f"
   [ -n "$worker" ] && echo "scope process-tree Runner.Worker pid $worker" >> "$f"
   [ -z "$cg$worker" ] && { echo "scope none" >> "$f"; exit 0; }
-  for _ in $(seq 1 "${RIGS_SAMPLES:-1440}"); do
-    if [ -n "$cg" ]; then
-      kb=$(( $(cat "$cg/memory.current") / 1024 )); n=$(cat "$cg/pids.current")
-    else
-      read -r kb n < <(ps -A -o pid=,ppid=,rss= | awk -v root="$worker" '
-        {pp[$1]=$2; rss[$1]=$3}
-        END {for (p in pp) {q=p; while (q!="" && q!=root && q>1) q=pp[q]; if (q==root) {s+=rss[p]; c++}} print s+0, c+0}')
-    fi
-    echo "$(date +%s) $kb $n" >> "$f"
-    sleep 5
-  done
+  (
+    for _ in $(seq 1 "${RIGS_SAMPLES:-1440}"); do
+      if [ -n "$cg" ]; then
+        kb=$(( $(cat "$cg/memory.current") / 1024 )); n=$(cat "$cg/pids.current")
+      else
+        read -r kb n < <(ps -A -o pid=,ppid=,rss= | awk -v root="$worker" '
+          {pp[$1]=$2; rss[$1]=$3}
+          END {for (p in pp) {q=p; while (q!="" && q!=root && q>1) q=pp[q]; if (q==root) {s+=rss[p]; c++}} print s+0, c+0}')
+      fi
+      echo "$(date +%s) $kb $n" >> "$f"
+      sleep 5
+    done
+  ) < /dev/null > /dev/null 2>&1 &
   ;;
 report)
   if [ ! -s "$f" ]; then

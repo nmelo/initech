@@ -129,6 +129,8 @@ func TestRigsWorkflow_TheDarwinJobRunsOnTheMacBehindItsGate(t *testing.T) {
 		t.Fatalf("darwin: gate %v, signing suite %v, install suite %v, Go tests %v: want all four", gate, sign, install, names)
 	}
 	files, _ := filepath.Glob(filepath.Join(root, "internal", "*", "*_test.go"))
+	own, _ := filepath.Glob(filepath.Join(root, "scripts", "shardtests", "*_test.go"))
+	files = append(files, own...)
 	for _, n := range names {
 		var found bool
 		for _, f := range files {
@@ -216,7 +218,7 @@ func TestRigsWorkflow_EveryJobIsBoundedMainOnlyAndReportsItsResources(t *testing
 	if len(w.Jobs) == 0 {
 		t.Fatal("rigs.yml parsed to no jobs: this test is not reading it")
 	}
-	const start = "scripts/rigs-resources.sh start > /dev/null 2>&1 &"
+	const start = "scripts/rigs-resources.sh start"
 	for key, job := range w.Jobs {
 		if job.If != "github.ref == 'refs/heads/main'" {
 			t.Errorf("%s runs if %q, want only from main", key, job.If)
