@@ -40,7 +40,7 @@ func TestBlocked_TheThreeSurfacesAgree(t *testing.T) {
 	for i, b := range beads {
 		pb[i] = progress.Bead{ID: b.ID, Status: b.Status, Assignee: b.Assignee, UpdatedAt: b.UpdatedAt, ClosedAt: b.ClosedAt}
 	}
-	rep := progress.Build(progress.Input{Rig: "r", Prefix: "ini-x.", Hours: 6, Now: now, Beads: pb, Panes: panes, PanesKnown: true})
+	rep := progress.Build(progress.Input{Rig: "r", Prefix: "ini-x.", Hours: 6, Now: now, Rule: tui.paceRule(), Beads: pb, Panes: panes, PanesKnown: true})
 
 	line := regexp.MustCompile(`^ini-x (\d+)/(\d+) · [\d.]+/h · (\d+) stuck(?: · (\d+) blocked)?$`)
 	read := func(name, l string) [4]int {
