@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/nmelo/initech/internal/appserve"
 	"github.com/nmelo/initech/internal/progress"
 	"github.com/nmelo/initech/internal/tui"
 	"github.com/spf13/cobra"
@@ -477,5 +478,32 @@ func TestProgress_TheChainIsTheRigsStatusCustom(t *testing.T) {
 	}
 	if strings.Contains(out, "stuck: ") && strings.Contains(strings.SplitN(out, "stuck: ", 2)[1], "fx-4 ") {
 		t.Errorf("a ready_for_qa bead read stuck with the chain unread:\n%s", out)
+	}
+}
+
+// ini-e4c: an effort holding only waiting beads still has a report for the
+// app, so the waiting count reaches it.
+func TestAppServe_ActiveEffortsAsksForWaitingToo(t *testing.T) {
+	dir := t.TempDir()
+	cfg := "project: demo\nroot: " + dir + "\nroles:\n  - eng1\n"
+	if err := os.WriteFile(filepath.Join(dir, "initech.yaml"), []byte(cfg), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	fake := &progressFake{data: progressTestdata}
+	b := &appBackend{runner: fake}
+	if _, err := b.ActiveEfforts(appserve.Rig{Name: "demo", Root: dir}); err != nil {
+		t.Fatal(err)
+	}
+	var asked string
+	for _, c := range fake.calls {
+		if strings.Contains(c, "bd list --status") {
+			asked = c
+		}
+	}
+	if !strings.Contains(asked, "waiting") || !strings.Contains(asked, "in_progress") {
+		t.Errorf("bd list asked %q, want waiting beside the in-flight statuses", asked)
+	}
+	if containsString(shownStatuses, "waiting") {
+		t.Error("the ribbon's shownStatuses gained waiting; only the effort list should")
 	}
 }

@@ -126,3 +126,29 @@ final class ProgressModelTests: XCTestCase {
         }
     }
 }
+
+/// The screen says the rig's own value and lists the stuck and the waiting
+/// beads the report names; an older service's report reads as one hour.
+final class ProgressStuckAfterTests: XCTestCase {
+    private func card(_ json: String) throws -> ProgressCard {
+        ProgressCard(try JSONDecoder.service.decode([ProgressReport].self, from: Data(json.utf8))[0])
+    }
+
+    func testTheCardNamesTheValueTheStuckAndTheWaiting() throws {
+        let c = try card("""
+        [{"rig":"hover","prefix":"hov-w.","stuck_after":"20m","stuck_ids":["hov-w.5"],
+          "waiting":[{"id":"hov-w.1","owner":"eng1","wait":"parked for the release"},{"id":"hov-w.4","owner":"-","wait":"no comment"}]}]
+        """)
+        XCTAssertEqual(c.quietLabel, "Quiet 20m or more")
+        XCTAssertEqual(c.waitingLabel, "Waiting 20m or more")
+        XCTAssertEqual(c.stuck, ["hov-w.5"])
+        XCTAssertEqual(c.waiting, ["hov-w.1 eng1: parked for the release", "hov-w.4 -: no comment"])
+    }
+
+    func testAReportWithoutTheFieldsReadsAsOneHourAndNothingListed() throws {
+        let c = try card(#"[{"rig":"hover"}]"#)
+        XCTAssertEqual(c.quietLabel, "Quiet 1h or more")
+        XCTAssertEqual(c.stuck, [])
+        XCTAssertEqual(c.waiting, [])
+    }
+}

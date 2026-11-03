@@ -17,6 +17,10 @@ struct ProgressReport: Codable, Equatable, Sendable {
     var criticalPath: [PathBead]
     var engineers: [String]
     var quiet: [QuietRow]
+    /// stuckAfter is the rig's value in effect, such as "20m".
+    var stuckAfter: String
+    var stuckIds: [String]
+    var waiting: [QuietRow]
 
     struct Row: Codable, Equatable, Sendable {
         var id: String
@@ -59,6 +63,9 @@ struct ProgressReport: Codable, Equatable, Sendable {
         criticalPath = try c.decodeIfPresent([PathBead].self, forKey: .criticalPath) ?? []
         engineers = try c.decodeIfPresent([String].self, forKey: .engineers) ?? []
         quiet = try c.decodeIfPresent([QuietRow].self, forKey: .quiet) ?? []
+        stuckAfter = try c.decodeIfPresent(String.self, forKey: .stuckAfter) ?? "1h"
+        stuckIds = try c.decodeIfPresent([String].self, forKey: .stuckIds) ?? []
+        waiting = try c.decodeIfPresent([QuietRow].self, forKey: .waiting) ?? []
     }
 }
 
@@ -90,6 +97,13 @@ struct ProgressCard: Identifiable, Equatable, Sendable {
     var criticalPath: [String]
     var engineers: String
     var quiet: [String]
+    /// quietLabel names the rig's value: "Quiet 20m or more".
+    var quietLabel: String
+    /// stuck lists the stuck beads; empty when none.
+    var stuck: [String]
+    var waitingLabel: String
+    /// waiting lists the beads in waiting past the value, with the wait text.
+    var waiting: [String]
 
     var id: String { "\(rig)/\(effort)" }
 
@@ -108,6 +122,10 @@ struct ProgressCard: Identifiable, Equatable, Sendable {
         criticalPath = r.criticalPath.map { "\($0.id) (\($0.waiting) wait, \($0.stage)) \($0.title)" }
         engineers = r.engineers.isEmpty ? "no engineers on it" : "\(r.engineers.count) on it: \(r.engineers.joined(separator: " "))"
         quiet = r.quiet.map { "\($0.id) \($0.owner): \($0.wait)" }
+        quietLabel = "Quiet \(r.stuckAfter) or more"
+        stuck = r.stuckIds
+        waitingLabel = "Waiting \(r.stuckAfter) or more"
+        waiting = r.waiting.map { "\($0.id) \($0.owner): \($0.wait)" }
     }
 }
 

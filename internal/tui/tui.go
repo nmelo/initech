@@ -183,15 +183,16 @@ type TUI struct {
 	// The pane header's pace (ini-y0n.2): the beads of the last answered
 	// poll, whether the last poll went unanswered, whether any poll has
 	// answered, and when the lines were last computed. Main loop only.
-	paceBeads     []bdBead
-	paceStale     bool
-	paceAnswered  bool
-	paceAt        time.Time
-	paceRows      []string            // the Agents overlay's effort rows (ini-y0n.3)
-	paceStuck     map[string]bool     // agents owning a stuck bead, by the pace rule (ini-7w4)
-	paceStuckIDs  map[string][]string // those beads, by agent, for the panel row
-	paceChain     []string            // the rig's working chain from bd, read once; nil until it answers
-	paceChainRead atomic.Bool         // the poller's: that read has answered
+	paceBeads      []bdBead
+	paceStale      bool
+	paceAnswered   bool
+	paceAt         time.Time
+	paceRows       []string            // the Agents overlay's effort rows (ini-y0n.3)
+	paceStuck      map[string]bool     // agents owning a stuck bead, by the pace rule (ini-7w4)
+	paceStuckIDs   map[string][]string // those beads, by agent, for the panel row
+	paceWaitingIDs map[string][]string // beads the waiting count counts, by owner, for the panel row
+	paceChain      []string            // the rig's working chain from bd, read once; nil until it answers
+	paceChainRead  atomic.Bool         // the poller's: that read has answered
 	// The pace's last move per bead (ini-bfu): the comment count each poll
 	// saw, when that count last rose, and the TUI's start, which floors every
 	// last move so nothing reads stuck sooner than QuietAfter after it.

@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 )
 
 // Bead is one bead as bd list --json gives it.
@@ -330,7 +331,9 @@ type Report struct {
 	CriticalPath []PathBead `json:"critical_path"`
 	Engineers    []string   `json:"engineers"`
 	Quiet        []QuietRow `json:"quiet"`
-	Notes        []string   `json:"notes"`
+	// Waiting are the beads the waiting count counts, each with its wait text.
+	Waiting []WaitingRow `json:"waiting"`
+	Notes   []string     `json:"notes"`
 }
 
 // Row is one bead in the table. AC is the table's cell ("n/m" or "-");
@@ -373,11 +376,42 @@ type QuietRow struct {
 	Wait  string `json:"wait"`
 }
 
+// WaitingRow is a bead in waiting past the rule's value with an idle owner or
+// no holder ("-"), and the first line of its latest comment. initech cannot
+// tell whether the wait has ended; this shows the reader who can.
+type WaitingRow struct {
+	ID    string `json:"id"`
+	Owner string `json:"owner"`
+	Wait  string `json:"wait"`
+}
+
+// waitText is the first line of the newest comment, with control characters
+// removed so a comment cannot drive the reader's terminal; "no comment" with none.
+func waitText(comments []Comment) string {
+	var newest *Comment
+	for i := range comments {
+		if newest == nil || comments[i].CreatedAt.After(newest.CreatedAt) {
+			newest = &comments[i]
+		}
+	}
+	if newest == nil {
+		return "no comment"
+	}
+	first, _, _ := strings.Cut(strings.TrimSpace(newest.Text), "\n")
+	first = strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) {
+			return -1
+		}
+		return r
+	}, first)
+	return cut(first, 100)
+}
+
 // Build is the report for in, as data.
 func Build(in Input) Report {
 	r := Report{Rig: in.Rig, Prefix: in.Prefix, At: in.Now, Hours: in.Hours, Rule: in.Rule, StuckAfter: in.Rule.AfterText(), StuckIDs: []string{},
 		Beads: []Row{}, Stages: map[string]int{}, ClosedRecent: []Closed{},
-		CriticalPath: []PathBead{}, Engineers: []string{}, Quiet: []QuietRow{}, Notes: []string{}}
+		CriticalPath: []PathBead{}, Engineers: []string{}, Quiet: []QuietRow{}, Waiting: []WaitingRow{}, Notes: []string{}}
 
 	var beads []Bead
 	for _, b := range in.Beads {
@@ -409,7 +443,7 @@ func Build(in Input) Report {
 		}
 		row.LastMove, row.By = LastMove(b, cs, in.Commits)
 		r.Beads = append(r.Beads, row)
-		if !row.LastMove.IsZero() && in.Now.Sub(row.LastMove) >= in.Rule.After {
+		if in.Rule.Chain[b.Status] && !row.LastMove.IsZero() && in.Now.Sub(row.LastMove) >= in.Rule.After {
 			r.Quiet = append(r.Quiet, QuietRow{ID: b.ID, Owner: row.Owner, Wait: Wait(b, cs, in)})
 		}
 	}
@@ -441,6 +475,19 @@ func Build(in Input) Report {
 	pace := PaceOver(beads, strings.TrimSuffix(in.Prefix, "."), panes, in.Rule, in.Now, time.Duration(in.Hours)*time.Hour)
 	r.Stuck, r.Blocked = pace.Stuck, pace.Blocked
 	r.StuckIDs = append(r.StuckIDs, pace.StuckIDs...)
+	waiting := map[string]bool{}
+	for _, id := range pace.WaitingIDs {
+		waiting[id] = true
+	}
+	for _, b := range beads {
+		if waiting[b.ID] {
+			owner := b.Assignee
+			if owner == "" {
+				owner = "-"
+			}
+			r.Waiting = append(r.Waiting, WaitingRow{ID: b.ID, Owner: owner, Wait: waitText(in.Comments[b.ID])})
+		}
+	}
 	r.WritingOnly = r.Closed - r.ByEngineers
 
 	var recent []Bead
@@ -521,8 +568,12 @@ func RenderReport(r Report) string {
 			right(b.AC, 5), right(commits, 7), left(clock(b.LastMove), 10), left(cut(b.By, 8), 8), cut(b.Title, 60))
 	}
 
-	line("\nclosed %d of %d: worked by engineers %d, writing/review only %d; stuck %d, blocked %d",
-		r.Closed, r.Total, r.ByEngineers, r.WritingOnly, r.Stuck, r.Blocked)
+	waitingCount := ""
+	if len(r.Waiting) > 0 {
+		waitingCount = fmt.Sprintf(", waiting %d", len(r.Waiting))
+	}
+	line("\nclosed %d of %d: worked by engineers %d, writing/review only %d; stuck %d, blocked %d%s",
+		r.Closed, r.Total, r.ByEngineers, r.WritingOnly, r.Stuck, r.Blocked, waitingCount)
 	var names []string
 	for k := range r.Stages {
 		names = append(names, k)
@@ -566,6 +617,12 @@ func RenderReport(r Report) string {
 			line("  %s %s: %s", q.ID, q.Owner, q.Wait)
 		}
 	}
+	if len(r.Waiting) > 0 {
+		line("\nwaiting %s or more:", r.StuckAfter)
+		for _, b := range r.Waiting {
+			line("  %s %s: %s", b.ID, b.Owner, b.Wait)
+		}
+	}
 	for _, n := range r.Notes {
 		line("note: %s", n)
 	}
@@ -596,6 +653,10 @@ type Pace struct {
 	Blocked int
 	// StuckIDs are the stuck beads, in the order they came.
 	StuckIDs []string
+	// Waiting counts beads in waiting past the value (the Waiting function);
+	// WaitingIDs names them.
+	Waiting    int
+	WaitingIDs []string
 }
 
 // blockedStates are the bd statuses of a bead waiting on something named: it
@@ -621,6 +682,16 @@ func Stuck(b Bead, ownerState string, rule Rule, now time.Time) bool {
 		return false
 	}
 	return now.Sub(b.LastMoved()) >= rule.After && stuckStates[ownerState]
+}
+
+// Waiting is the one definition of the waiting count: a bead in waiting whose
+// last move is rule.After old or more, with an idle owner or no holder. It is
+// calm: never stuck, never blocked, and an owner at work on it is not asked.
+func Waiting(b Bead, ownerState string, rule Rule, now time.Time) bool {
+	if b.Status != "waiting" || now.Sub(b.LastMoved()) < rule.After || rule.After <= 0 {
+		return false
+	}
+	return b.Assignee == "" || ownerState == "idle"
 }
 
 // LastMoved is the bead's last move as the pace counts it: the newer of bd's
@@ -671,6 +742,9 @@ func PaceOver(beads []Bead, label string, panes map[string]string, rule Rule, no
 		case Stuck(b, panes[b.Assignee], rule, now):
 			p.Stuck++
 			p.StuckIDs = append(p.StuckIDs, b.ID)
+		case Waiting(b, panes[b.Assignee], rule, now):
+			p.Waiting++
+			p.WaitingIDs = append(p.WaitingIDs, b.ID)
 		}
 	}
 	if window > 0 {
@@ -695,6 +769,9 @@ func (p Pace) Line() string {
 	}
 	if p.Blocked > 0 {
 		s += fmt.Sprintf(" · %d blocked", p.Blocked)
+	}
+	if p.Waiting > 0 {
+		s += fmt.Sprintf(" · %d waiting", p.Waiting)
 	}
 	return s
 }

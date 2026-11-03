@@ -8,6 +8,7 @@ package tui
 // only reads it, so drawing does no bd or git work.
 
 import (
+	"fmt"
 	"sort"
 	"time"
 
@@ -99,10 +100,14 @@ func (t *TUI) refreshPaceLines(now time.Time) {
 	t.paceRows = paceEffortRows(beads, panes, rule, now, t.paceStale)
 	t.paceStuck = map[string]bool{}
 	t.paceStuckIDs = map[string][]string{}
+	t.paceWaitingIDs = map[string][]string{}
 	for _, b := range beads {
 		if b.Assignee != "" && progress.Stuck(b, panes[b.Assignee], rule, now) {
 			t.paceStuck[b.Assignee] = true
 			t.paceStuckIDs[b.Assignee] = append(t.paceStuckIDs[b.Assignee], b.ID)
+		}
+		if b.Assignee != "" && progress.Waiting(b, panes[b.Assignee], rule, now) {
+			t.paceWaitingIDs[b.Assignee] = append(t.paceWaitingIDs[b.Assignee], b.ID)
 		}
 	}
 	for _, pv := range t.panes {
@@ -125,16 +130,23 @@ func (t *TUI) refreshPaceLines(now time.Time) {
 // progress, ready for QA, in QA.
 var inFlight = map[string]bool{"in_progress": true, "ready_for_qa": true, "in_qa": true}
 
+// paceWaitingShown is how many waiting ids an effort row names; the rest read
+// as a count, so a long wait list cannot widen the overlay across the screen.
+// initech progress names them all.
+const paceWaitingShown = 3
+
 // paceEffortRows is the Agents overlay's rows: one per effort with a bead in
-// flight, each the line a pane header on that effort shows (the same PaceOf
-// call over the same window), with the stale mark when bd stopped answering;
-// in effort id order. None when nothing is in flight.
+// flight or a bead the waiting count counts (a bead with no holder has no pane
+// row, so its effort's row is where it shows), each the line a pane header on
+// that effort shows (the same PaceOf call over the same window), then the
+// waiting ids, with the stale mark when bd stopped answering; in effort id
+// order. None when nothing is in flight or waiting.
 func paceEffortRows(beads []progress.Bead, panes map[string]string, rule progress.Rule, now time.Time, stale bool) []string {
 	type effort struct{ label, prefix, bead string }
 	seen := map[string]bool{}
 	var efforts []effort
 	for _, b := range beads {
-		if !inFlight[b.Status] {
+		if !inFlight[b.Status] && !progress.Waiting(b, panes[b.Assignee], rule, now) {
 			continue
 		}
 		prefix, label := progress.Effort(b.ID)
@@ -152,9 +164,17 @@ func paceEffortRows(beads []progress.Bead, panes map[string]string, rule progres
 	})
 	var rows []string
 	for _, e := range efforts {
-		line := progress.PaceOf(beads, e.bead, panes, rule, now, progress.HeaderWindow).Line()
+		pace := progress.PaceOf(beads, e.bead, panes, rule, now, progress.HeaderWindow)
+		line := pace.Line()
 		if line == "" {
 			continue
+		}
+		for i, id := range pace.WaitingIDs {
+			if i == paceWaitingShown {
+				line += fmt.Sprintf(" +%d", len(pace.WaitingIDs)-i)
+				break
+			}
+			line += " " + id
 		}
 		if stale {
 			line += paceStaleMark

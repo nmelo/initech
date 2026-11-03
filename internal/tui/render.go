@@ -1172,6 +1172,12 @@ func (t *TUI) renderOverlay() {
 				status += " " + strings.Join(ids, " ")
 			}
 		}
+		// A row listed for some other reason also names its owner's waiting
+		// beads, calmly; an idle agent with only those stays unlisted, and its
+		// beads are on the effort row.
+		if ids := t.paceWaitingIDs[p.Name()]; act == StateIdle && len(ids) > 0 {
+			status += " · waiting " + strings.Join(ids, " ")
+		}
 		// A background agent shows how long its job has run (ini-pi8p).
 		if age, ok := backgroundAge(p, time.Now()); ok && act == StateBackground {
 			if backgroundSeenFor(p) {

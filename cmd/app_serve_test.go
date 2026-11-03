@@ -360,7 +360,7 @@ func TestAppServeProgress_IsProgressJSONForTheEffort(t *testing.T) {
 	if err != nil || !reflect.DeepEqual(efforts, []string{"ini-a.", "ini-b"}) {
 		t.Errorf("efforts = %v %v", efforts, err)
 	}
-	if len(lister.calls) != 1 || !strings.Contains(lister.calls[0], "bd list --status in_progress,ready_for_qa,in_qa --json") {
+	if len(lister.calls) != 1 || !strings.Contains(lister.calls[0], "bd list --status in_progress,ready_for_qa,in_qa,waiting --json") {
 		t.Errorf("calls = %v, want one bd list of the beads past open", lister.calls)
 	}
 }

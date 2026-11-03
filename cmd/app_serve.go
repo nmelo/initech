@@ -580,8 +580,9 @@ func agentsAsMaps(agents []agentJSON) ([]map[string]any, error) {
 // initech progress's default.
 const appServeProgressHours = 6
 
-// ActiveEfforts is the effort prefixes of the rig's beads past open and not
-// closed, from one bd list; a rig with beads off has none.
+// ActiveEfforts is the effort prefixes of the rig's beads in flight or in
+// waiting, from one bd list, so an effort holding only waiting beads still has
+// a report; a rig with beads off has none.
 func (b *appBackend) ActiveEfforts(r appserve.Rig) ([]string, error) {
 	p, err := config.Load(filepath.Join(r.Root, "initech.yaml"))
 	if err != nil {
@@ -590,7 +591,7 @@ func (b *appBackend) ActiveEfforts(r appserve.Rig) ([]string, error) {
 	if !p.Beads.IsEnabled() {
 		return nil, nil
 	}
-	raw, err := b.runner.RunInDir(r.Root, "bd", "list", "--status", strings.Join(shownStatuses, ","), "--json")
+	raw, err := b.runner.RunInDir(r.Root, "bd", "list", "--status", strings.Join(append(shownStatuses[:len(shownStatuses):len(shownStatuses)], "waiting"), ","), "--json")
 	if err != nil {
 		return nil, err
 	}

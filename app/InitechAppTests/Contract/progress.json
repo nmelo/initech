@@ -54,6 +54,7 @@
       "eng1"
     ],
     "quiet": [],
+    "waiting": [],
     "notes": []
   },
   {
@@ -92,6 +93,7 @@
       "eng1"
     ],
     "quiet": [],
+    "waiting": [],
     "notes": []
   },
   {
@@ -121,6 +123,7 @@
     "critical_path": [],
     "engineers": [],
     "quiet": [],
+    "waiting": [],
     "notes": []
   },
   {
@@ -157,6 +160,7 @@
     "critical_path": [],
     "engineers": [],
     "quiet": [],
+    "waiting": [],
     "notes": []
   },
   {
@@ -208,6 +212,7 @@
         "wait": "waiting on \"the shared test cluster\""
       }
     ],
+    "waiting": [],
     "notes": []
   },
   {
@@ -231,6 +236,7 @@
     "critical_path": [],
     "engineers": [],
     "quiet": [],
+    "waiting": [],
     "notes": []
   },
   {
@@ -260,6 +266,7 @@
     "critical_path": [],
     "engineers": [],
     "quiet": [],
+    "waiting": [],
     "notes": []
   },
   {
@@ -283,6 +290,7 @@
     "critical_path": [],
     "engineers": [],
     "quiet": [],
+    "waiting": [],
     "notes": []
   },
   {
@@ -313,6 +321,7 @@
     ],
     "engineers": [],
     "quiet": [],
+    "waiting": [],
     "notes": []
   },
   {
@@ -364,6 +373,7 @@
         "wait": "stalled"
       }
     ],
+    "waiting": [],
     "notes": []
   }
 ]

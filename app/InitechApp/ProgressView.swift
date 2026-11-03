@@ -32,7 +32,13 @@ struct EffortProgressView: View {
                     if !card.criticalPath.isEmpty {
                         LabeledLines(label: "Critical path", lines: card.criticalPath)
                     }
-                    LabeledLines(label: "Quiet an hour or more", lines: card.quiet.isEmpty ? ["none"] : card.quiet)
+                    if !card.stuck.isEmpty {
+                        LabeledLines(label: "Stuck", lines: card.stuck)
+                    }
+                    LabeledLines(label: card.quietLabel, lines: card.quiet.isEmpty ? ["none"] : card.quiet)
+                    if !card.waiting.isEmpty {
+                        LabeledLines(label: card.waitingLabel, lines: card.waiting)
+                    }
                 }
             }
         }
