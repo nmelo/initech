@@ -19,4 +19,5 @@ role_overrides:
     tech_stack: Go   # qa tests in Go
 beads:
   enabled: false
+  stuck_after: 20m   # a slow rig
 my_unknown_key: keep me

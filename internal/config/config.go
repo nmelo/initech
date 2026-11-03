@@ -163,6 +163,9 @@ type Repo struct {
 type BeadsConfig struct {
 	Enabled *bool  `yaml:"enabled,omitempty"` // nil = legacy (treat as enabled), false = disabled
 	Prefix  string `yaml:"prefix,omitempty"`
+	// StuckAfter is how long a bead may sit before it reads stuck. Absent is
+	// one hour; read it through Value.
+	StuckAfter StuckAfter `yaml:"stuck_after,omitempty"`
 }
 
 // IsEnabled returns whether beads integration is active. Nil (legacy configs

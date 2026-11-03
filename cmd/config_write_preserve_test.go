@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/nmelo/initech/internal/config"
 	iexec "github.com/nmelo/initech/internal/exec"
@@ -154,4 +155,34 @@ func TestConfigWrite_InitConsentKeepsComments(t *testing.T) {
 	stubTTY(t, true)
 	out := runInitForTest(t, dir, false)
 	wantExact(t, path, insertAfter(t, orig, "my_unknown_key: keep me\n", "attention:\n  hooks: false\n"), out)
+}
+
+// ini-e4c: the fixture carries beads.stuck_after with a comment, so each
+// writer's byte-for-byte test above keeps the key; this one says so, and that
+// the value still loads after a write.
+func TestConfigWrite_EveryWriterKeepsStuckAfter(t *testing.T) {
+	_, path, orig := annotatedConfig(t)
+	if !strings.Contains(orig, "stuck_after: 20m   # a slow rig") {
+		t.Fatal("the fixture lost beads.stuck_after")
+	}
+	if err := config.Update(path, func(p *config.Project) error {
+		p.Roles = append(p.Roles, "eng2")
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), "stuck_after: 20m   # a slow rig") {
+		t.Errorf("an update dropped or rewrote the key:\n%s", b)
+	}
+	p, err := config.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := p.Beads.Value(); got != 20*time.Minute {
+		t.Errorf("Value after a write = %v, want 20m", got)
+	}
 }
