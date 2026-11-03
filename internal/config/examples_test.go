@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/nmelo/initech/internal/usage"
 )
@@ -66,7 +67,7 @@ func TestExamples_UncommentedTheyParseIntoTheirKeys(t *testing.T) {
 		t.Fatalf("uncommented examples do not load: %v\n%s", err, yaml)
 	}
 	if len(p.ClaudeCommand) == 0 || len(p.ClaudeArgs) == 0 || !p.Resource.AutoSuspend ||
-		p.Resource.PressureThreshold != 90 || len(p.RoleOverrides) != 2 || p.RunningPaneTint != "#1e2022" || p.IsTelemetryEnabled() {
+		p.Resource.PressureThreshold != 90 || len(p.RoleOverrides) != 2 || p.RunningPaneTint != "#1e2022" || p.IsTelemetryEnabled() || p.Beads.Value() != 20*time.Minute {
 		t.Errorf("uncommented examples did not set every key: %+v\n%s", p, yaml)
 	}
 }
@@ -84,8 +85,8 @@ func TestAppendMissingExamples_KeepsEveryExistingByteAndIsIdempotent(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n != 4 {
-		t.Errorf("added %d examples, want 4 (claude_command, typing_hold_quiet_s, role_overrides, telemetry; claude_args is live, resource commented)", n)
+	if n != 5 {
+		t.Errorf("added %d examples, want 5 (claude_command, typing_hold_quiet_s, role_overrides, stuck_after, telemetry; claude_args is live, resource commented)", n)
 	}
 	b, _ := os.ReadFile(path)
 	got := string(b)
@@ -170,5 +171,22 @@ func TestExamples_CarryTheUsageNotice(t *testing.T) {
 	// Positive twin: a file that already sets telemetry gets no second copy.
 	if strings.Contains(MissingExamples("telemetry: true\n"), usage.Notice) {
 		t.Error("notice added to a file that already sets telemetry")
+	}
+}
+
+// ini-e4c: the stuck_after example sits under beads:, so it is found at any
+// indent: a second run adds nothing, and a file that sets it gets no copy.
+func TestExamples_StuckAfterIsFoundUnderBeads(t *testing.T) {
+	want := "#   stuck_after: 20m\n"
+	if !strings.Contains(MissingExamples(""), want) {
+		t.Fatal("the examples lack stuck_after")
+	}
+	for _, text := range []string{MissingExamples(""), "beads:\n  stuck_after: 1h\n"} {
+		if strings.Contains(MissingExamples(text), "stuck_after") {
+			t.Errorf("a file that has the key gets the example again:\n%s", text)
+		}
+	}
+	if !strings.Contains(MissingExamples("beads:\n  enabled: true\n"), want) {
+		t.Error("a beads block without the key did not get the example")
 	}
 }

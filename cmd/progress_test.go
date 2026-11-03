@@ -507,3 +507,36 @@ func TestAppServe_ActiveEffortsAsksForWaitingToo(t *testing.T) {
 		t.Error("the ribbon's shownStatuses gained waiting; only the effort list should")
 	}
 }
+
+// ini-e4c AC3: the app's progress route reads the rig's own yaml value and
+// chain, and carries the rule its blockers count by.
+func TestAppServe_ProgressReadsTheRigsValue(t *testing.T) {
+	dir := t.TempDir()
+	cfg := "project: demo\nroot: " + dir + "\nroles:\n  - eng1\nbeads:\n  stuck_after: 15m\n"
+	if err := os.WriteFile(filepath.Join(dir, "initech.yaml"), []byte(cfg), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	old := progressNow
+	t.Cleanup(func() { progressNow = old })
+	progressNow = func() time.Time { return progressFixtureNow }
+	fake := &progressFake{data: progressTestdata, custom: "review,qa_passed"}
+	rep, err := (&appBackend{runner: fake}).Progress(appserve.Rig{Name: "demo", Root: dir}, "fx-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.StuckAfter != "15m" || rep.Rule.After != 15*time.Minute {
+		t.Errorf("stuck_after %q, rule %v, want the rig's 15m", rep.StuckAfter, rep.Rule.After)
+	}
+	if !rep.Rule.Chain["review"] || rep.Rule.Chain["in_qa"] {
+		t.Errorf("chain %v, want the rig's own status.custom", rep.Rule.Chain)
+	}
+	var read bool
+	for _, c := range fake.calls {
+		if strings.HasPrefix(c, dir+"|bd config get status.custom") {
+			read = true
+		}
+	}
+	if !read {
+		t.Errorf("status.custom was not read in the rig's folder: %v", fake.calls)
+	}
+}

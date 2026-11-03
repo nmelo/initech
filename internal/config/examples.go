@@ -27,35 +27,38 @@ const examplesHeader = `
 type configExample struct {
 	key  string
 	text string
+	// nested says key sits under another key, so it is looked for at any
+	// indent, live or commented, not only at the top level.
+	nested bool
 }
 
 // configExamples are appended in this order, each only when its key is not
 // already in the file (live or commented).
 var configExamples = []configExample{
-	{"claude_command", `
+	{key: "claude_command", text: `
 # Wrap the agent command, e.g. to set an environment variable for every agent:
 # claude_command: [env, SOME_VAR=1, claude]
 `},
-	{"claude_args", `
+	{key: "claude_args", text: `
 # Flags for every Claude agent: resume the last session, skip permission prompts:
 # claude_args: [--continue, --dangerously-skip-permissions]
 `},
-	{"resource", `
+	{key: "resource", text: `
 # Park idle agents when memory runs short (off when this block is absent):
 # resource:
 #   auto_suspend: true
 #   pressure_threshold: <percent>
 `},
-	{"running_pane_tint", `
+	{key: "running_pane_tint", text: `
 # Background tint behind running panes; the trained fleets use a lighter grey than the default:
 # running_pane_tint: '#1e2022'
 `},
-	{"typing_hold_quiet_s", `
+	{key: "typing_hold_quiet_s", text: `
 # A message to a pane you are typing in waits until you pause (0 turns the hold off):
 # typing_hold_quiet_s: 2   # seconds without a keystroke before it goes
 # typing_hold_max_s: 15    # longest a message waits, then it goes anyway
 `},
-	{"role_overrides", `
+	{key: "role_overrides", text: `
 # Per-role flags REPLACE claude_args above for that role, so repeat them; a model, or a per-agent settings file:
 # role_overrides:
 #   <role>:
@@ -63,7 +66,12 @@ var configExamples = []configExample{
 #   <other-role>:
 #     claude_args: [--continue, --dangerously-skip-permissions, --settings, <path>]
 `},
-	{"telemetry", "\n# " + usage.Notice + "\n# telemetry: false\n"},
+	{key: "stuck_after", nested: true, text: `
+# How long a bead may sit before it reads stuck (one hour when absent), under the beads: key:
+# beads:
+#   stuck_after: 20m
+`},
+	{key: "telemetry", text: "\n# " + usage.Notice + "\n# telemetry: false\n"},
 }
 
 // hasTopLevelKey reports whether text sets key at the top level, live or
@@ -75,12 +83,21 @@ func hasTopLevelKey(text, key string) bool {
 	return re.MatchString(text)
 }
 
+// present reports whether text already has this example's key, live or
+// commented.
+func (ex configExample) present(text string) bool {
+	if ex.nested {
+		return regexp.MustCompile(`(?m)^[#\s]*` + regexp.QuoteMeta(ex.key) + `[ \t]*:`).MatchString(text)
+	}
+	return hasTopLevelKey(text, ex.key)
+}
+
 // MissingExamples returns the example block for every key text does not
 // already have, or "" when none is missing.
 func MissingExamples(text string) string {
 	var b strings.Builder
 	for _, ex := range configExamples {
-		if !hasTopLevelKey(text, ex.key) {
+		if !ex.present(text) {
 			b.WriteString(ex.text)
 		}
 	}
@@ -120,7 +137,7 @@ func AppendMissingExamples(path string) (int, error) {
 	}
 	n := 0
 	for _, ex := range configExamples {
-		if !hasTopLevelKey(text, ex.key) {
+		if !ex.present(text) {
 			n++
 		}
 	}
