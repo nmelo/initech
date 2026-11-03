@@ -193,12 +193,13 @@ type TUI struct {
 	paceWaitingIDs map[string][]string // beads the waiting count counts, by owner, for the panel row
 	paceChain      []string            // the rig's working chain from bd, read once; nil until it answers
 	paceChainRead  atomic.Bool         // the poller's: that read has answered
-	// The pace's last move per bead (ini-bfu): the comment count each poll
-	// saw, when that count last rose, and the TUI's start, which floors every
-	// last move so nothing reads stuck sooner than QuietAfter after it.
+	// The pace's last move per bead (ini-bfu, ini-e4c): the comment count each
+	// poll saw and when it last rose, what each crossing read found, and the
+	// beads whose read has not landed. Main loop only.
 	paceComments  map[string]int
 	paceCommentAt map[string]time.Time
-	paceSince     time.Time
+	paceReads     map[string]paceRead
+	paceUnread    map[string]bool
 	inboxOnce     sync.Once
 	// inboxOutstanding maps an agent to the inbox items whose delivery verdict
 	// may still be corrected by a late report from the send path (ini-3wkl.6).
@@ -1468,7 +1469,6 @@ func Run(cfg Config) error {
 	t.startBatteryPoller()
 
 	// Derive each pane's bead from bd (ini-wra.1).
-	t.paceSince = time.Now()
 	t.startBeadPoller(t.quitCh)
 
 	// Record which session is on which bead (ini-wra.2): the process that

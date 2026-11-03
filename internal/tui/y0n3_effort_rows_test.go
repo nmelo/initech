@@ -216,8 +216,14 @@ func TestEffortRows_NoBdOrGitCallAndOnceAMinute(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if gitCall.Match(b) {
-			t.Errorf("%s runs git", f)
+		// The one exception: the pace's crossing read, once per crossing bead
+		// (TestCrossing_OneReadPerBeadThenNoneUntilItMoves), never per tick.
+		allowed := 0
+		if f == "pace_crossing.go" {
+			allowed = 1
+		}
+		if n := len(gitCall.FindAll(b, -1)); n > allowed {
+			t.Errorf("%s runs git %d times, want at most %d", f, n, allowed)
 		}
 	}
 	if !gitCall.MatchString(`exec.Command("git", "log")`) || !gitCall.MatchString(`exec.CommandContext(ctx, "git")`) {

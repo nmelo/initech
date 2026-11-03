@@ -10,8 +10,8 @@ import (
 )
 
 // ini-bfu: the header and the overlay read a comment as a move: the poll
-// that sees a bead's comment_count rise is its last move, floored at the
-// TUI's start. No new bd call and no git call per tick.
+// that sees a bead's comment_count rise is its last move. No new bd call and
+// no git call per tick.
 
 // AC2: p03's bead (ini-wra.4) is quiet two hours by updated_at and p03 is
 // idle. Two polls with its comment count rising between them: stuck 0 after
@@ -45,30 +45,6 @@ func TestPace_ACommentRiseBetweenPollsIsAMove(t *testing.T) {
 	tui2.refreshPaceLines(now)
 	if line := ysr2Pane(tui2, "p01").PaceLine(); !strings.Contains(line, "1 stuck") {
 		t.Errorf("with no rise the header reads %q, want 1 stuck", line)
-	}
-}
-
-// AC2 floor: with no rise and old updated_at, nothing reads stuck sooner than
-// QuietAfter after the TUI started, and it does once that has passed.
-func TestPace_TheTUIStartFloorsTheLastMove(t *testing.T) {
-	start := time.Now()
-	for _, c := range []struct {
-		at    time.Duration
-		stuck string
-	}{{30 * time.Minute, "0 stuck"}, {61 * time.Minute, "1 stuck"}} {
-		tui, _ := ysr3Parked(t)
-		tui.paceSince = start
-		now := start.Add(c.at)
-		ysr2Pane(tui, "p01").SetBead("ini-wra.2", "")
-		beads := paceFixture(now)
-		beads[2].UpdatedAt = now.Add(-10 * time.Minute) // p01's own bead stays fresh
-		beads[4].UpdatedAt = start.Add(-5 * time.Hour)  // p03's bead: quiet since before the start
-		tui.notePaceComments(beads, now)
-		tui.notePaceAnswer(beads, true)
-		tui.refreshPaceLines(now)
-		if line := ysr2Pane(tui, "p01").PaceLine(); !strings.Contains(line, c.stuck) {
-			t.Errorf("%v after start the header reads %q, want %s", c.at, line, c.stuck)
-		}
 	}
 }
 

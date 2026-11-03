@@ -38,7 +38,7 @@ func (t *TUI) notePaceAnswer(beads []bdBead, answered bool) {
 // notePaceComments records, per bead, the comment count this poll saw and
 // the moment it rose past the last poll's: a comment does not move bd's
 // updated_at, so that moment is the bead's last move for the pace. A bead
-// seen for the first time has no rise; the TUI's start floors it instead.
+// seen for the first time has no rise; its crossing read finds its true move.
 // Main loop only.
 func (t *TUI) notePaceComments(beads []bdBead, now time.Time) {
 	if t.paceComments == nil {
@@ -54,12 +54,16 @@ func (t *TUI) notePaceComments(beads []bdBead, now time.Time) {
 }
 
 // paceMoved is a bead's last move beyond updated_at as the TUI knows it: the
-// newer of the poll that saw its comments rise and the TUI's start. A commit
-// alone is not seen here (the TUI runs no git).
-func (t *TUI) paceMoved(id string) time.Time {
+// newer of the poll that saw its comments rise and its crossing read. A bead
+// whose read has not landed is held at now, so it is not counted before the
+// read can say whether it moved.
+func (t *TUI) paceMoved(id string, now time.Time) time.Time {
+	if t.paceUnread[id] {
+		return now
+	}
 	at := t.paceCommentAt[id]
-	if t.paceSince.After(at) {
-		return t.paceSince
+	if r := t.paceReads[id]; r.at.After(at) {
+		return r.at
 	}
 	return at
 }
@@ -90,12 +94,9 @@ func (t *TUI) refreshPaceLines(now time.Time) {
 	t.paceAt = now
 	beads := make([]progress.Bead, len(t.paceBeads))
 	for i, b := range t.paceBeads {
-		beads[i] = progress.Bead{ID: b.ID, Title: b.Title, Status: b.Status, Assignee: b.Assignee, UpdatedAt: b.UpdatedAt, ClosedAt: b.ClosedAt, Moved: t.paceMoved(b.ID)}
+		beads[i] = t.paceBead(b, now)
 	}
-	panes := make(map[string]string, len(t.panes))
-	for _, pv := range t.panes {
-		panes[pv.Name()] = pv.Activity().String()
-	}
+	panes := t.panePaceStates()
 	rule := t.paceRule()
 	t.paceRows = paceEffortRows(beads, panes, rule, now, t.paceStale)
 	t.paceStuck = map[string]bool{}

@@ -148,9 +148,11 @@ func (t *TUI) readPaceChain() {
 func (t *TUI) pollBeadsOnce(now time.Time) {
 	t.readPaceChain()
 	beads, answered := askBdBeads(t.projectRoot)
+	var due []paceCandidate
 	t.runOnMain(func() {
 		if answered {
 			t.notePaceComments(beads, now)
+			due = t.paceCrossings(beads, now)
 		}
 		t.notePaceAnswer(beads, answered)
 		for _, pv := range t.panes {
@@ -159,6 +161,7 @@ func (t *TUI) pollBeadsOnce(now time.Time) {
 			}
 		}
 	})
+	t.readPaceCrossings(due)
 }
 
 // startBeadPoller polls bd for the panes' beads: once at once, then every
