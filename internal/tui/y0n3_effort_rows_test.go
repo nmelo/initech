@@ -114,7 +114,7 @@ func TestEffortRows_AnEffortWithNoPaneHereHasItsRow(t *testing.T) {
 		pb[i] = progress.Bead{ID: b.ID, Status: b.Status, Assignee: b.Assignee, UpdatedAt: b.UpdatedAt, ClosedAt: b.ClosedAt}
 	}
 	panes := map[string]string{"p01": "idle", "p02": "idle", "p03": "idle", "p04": "idle"}
-	want := progress.PaceOf(pb, "ini-r0q.2", panes, now, progress.HeaderWindow).Line()
+	want := progress.PaceOf(pb, "ini-r0q.2", panes, tui.paceRule(), now, progress.HeaderWindow).Line()
 	_, lines := effortBlock(tui, overlayFrameRows(tui, s))
 	if len(lines) != 3 || lines[1] != want {
 		t.Errorf("rows %q, want ini-r0q's %q second", lines, want)
@@ -282,7 +282,7 @@ func TestEffortRows_ATooShortScreenCutsTheRowsFirst(t *testing.T) {
 	if !strings.Contains(text, "3 visible, 1 hidden") {
 		t.Errorf("the footer was cut\n%s", text)
 	}
-	if !strings.Contains(text, "ini-abc 0/1") || strings.Contains(text, "ini-r0q") || strings.Contains(text, "ini-wra") {
+	if !strings.Contains(text, "ini-abc 0/1") || strings.Contains(text, "ini-r0q 1/") || strings.Contains(text, "ini-wra 2/") {
 		t.Errorf("want the first effort row only\n%s", text)
 	}
 	if !strings.ContainsRune(string(rows[len(rows)-1]), '╰') {
@@ -291,7 +291,7 @@ func TestEffortRows_ATooShortScreenCutsTheRowsFirst(t *testing.T) {
 	// No room for any row: no rule either.
 	s.SetSize(120, 1+1+2+1+1+1)
 	text = framesText(overlayFrameRows(tui, s))
-	if strings.Contains(text, "ini-") || !strings.Contains(text, "3 visible, 1 hidden") {
+	if strings.Contains(text, "ini-abc 0/") || !strings.Contains(text, "3 visible, 1 hidden") {
 		t.Errorf("with no room for a row\n%s", text)
 	}
 	tui0, s0 := effortTUI(t)

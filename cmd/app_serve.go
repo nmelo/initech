@@ -616,7 +616,7 @@ func (b *appBackend) Progress(r appserve.Rig, prefix string) (progress.Report, e
 	if err != nil {
 		return progress.Report{}, err
 	}
-	return progressReport(b.runner, p, prefix, appServeProgressHours, progressNow().UTC())
+	return progressReport(b.runner, p, prefix, appServeProgressHours, p.Beads.Value(), progressNow().UTC())
 }
 
 // Screen is the pane's last lines, as initech peek reads them.

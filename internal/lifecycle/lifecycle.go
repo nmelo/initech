@@ -89,6 +89,12 @@ func LoadLifecycle() (Lifecycle, error) {
 	if err != nil {
 		return Lifecycle{}, fmt.Errorf("read bd status.custom: %w (is bd installed and the project configured?)", err)
 	}
+	return Parse(raw), nil
+}
+
+// Parse is the lifecycle a status.custom value describes, for a caller that
+// read it from a rig of its own (ConfigGetFn reads the process's directory).
+func Parse(raw string) Lifecycle {
 	var custom []string
 	if raw != "" {
 		for _, p := range strings.Split(raw, ",") {
@@ -108,11 +114,28 @@ func LoadLifecycle() (Lifecycle, error) {
 	if end < 0 {
 		l.Chain = append(append(l.Chain, custom...), "closed")
 		l.NoQAPassed = true
-		return l, nil
+		return l
 	}
 	l.Chain = append(l.Chain, custom[:end+1]...)
 	l.Side = append(l.Side, custom[end+1:]...)
-	return l, nil
+	return l
+}
+
+// namedSideStates are side states by name, even in a status.custom with no
+// qa_passed to end the chain before them.
+var namedSideStates = map[string]bool{"blocked": true, "deferred": true, "waiting": true, "waiting_on_nelson": true, "ready_to_ship": true}
+
+// Working is the chain past open and short of closed: the states in which a
+// bead is someone's work to move. An allowlist, so a status added later is
+// not work by accident.
+func (l Lifecycle) Working() []string {
+	var out []string
+	for _, s := range l.Chain {
+		if s != "open" && s != "closed" && !namedSideStates[s] {
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 // LoadChain is LoadLifecycle's chain.

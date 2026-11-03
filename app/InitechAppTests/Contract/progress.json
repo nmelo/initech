@@ -1,5 +1,7 @@
 [
   {
+    "stuck_after": "1h",
+    "stuck_ids": [],
     "rig": "demo",
     "prefix": "fx-1",
     "at": "2026-10-31T22:00:00Z",
@@ -55,6 +57,8 @@
     "notes": []
   },
   {
+    "stuck_after": "1h",
+    "stuck_ids": [],
     "rig": "demo",
     "prefix": "fx-10",
     "at": "2026-10-31T22:00:00Z",
@@ -91,6 +95,8 @@
     "notes": []
   },
   {
+    "stuck_after": "1h",
+    "stuck_ids": [],
     "rig": "demo",
     "prefix": "fx-11",
     "at": "2026-10-31T22:00:00Z",
@@ -118,6 +124,8 @@
     "notes": []
   },
   {
+    "stuck_after": "1h",
+    "stuck_ids": [],
     "rig": "demo",
     "prefix": "fx-2",
     "at": "2026-10-31T22:00:00Z",
@@ -152,6 +160,8 @@
     "notes": []
   },
   {
+    "stuck_after": "1h",
+    "stuck_ids": [],
     "rig": "demo",
     "prefix": "fx-3",
     "at": "2026-10-31T22:00:00Z",
@@ -201,6 +211,8 @@
     "notes": []
   },
   {
+    "stuck_after": "1h",
+    "stuck_ids": [],
     "rig": "demo",
     "prefix": "fx-4",
     "at": "2026-10-31T22:00:00Z",
@@ -222,6 +234,8 @@
     "notes": []
   },
   {
+    "stuck_after": "1h",
+    "stuck_ids": [],
     "rig": "demo",
     "prefix": "fx-5",
     "at": "2026-10-31T22:00:00Z",
@@ -249,6 +263,8 @@
     "notes": []
   },
   {
+    "stuck_after": "1h",
+    "stuck_ids": [],
     "rig": "demo",
     "prefix": "fx-6",
     "at": "2026-10-31T22:00:00Z",
@@ -270,6 +286,8 @@
     "notes": []
   },
   {
+    "stuck_after": "1h",
+    "stuck_ids": [],
     "rig": "demo",
     "prefix": "fx-7",
     "at": "2026-10-31T22:00:00Z",
@@ -298,6 +316,8 @@
     "notes": []
   },
   {
+    "stuck_after": "1h",
+    "stuck_ids": [],
     "rig": "demo",
     "prefix": "fx-8",
     "at": "2026-10-31T22:00:00Z",

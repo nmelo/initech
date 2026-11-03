@@ -3,6 +3,7 @@ package lifecycle
 import (
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -175,5 +176,20 @@ func TestNextState_BareChain_NoCustom(t *testing.T) {
 	got, ok = NextState(chain, "closed")
 	if got != "" || ok {
 		t.Errorf("NextState(closed) = (%q, %v), want (\"\", false)", got, ok)
+	}
+}
+
+// ini-e4c: the working chain is status.custom up to qa_passed, past open and
+// short of closed; a named side state never joins it, even with no qa_passed.
+func TestWorking_IsTheRigsOwnChain(t *testing.T) {
+	for raw, want := range map[string]string{
+		"ready_for_qa,in_qa,qa_passed,ready_to_ship,waiting_on_nelson,waiting": "in_progress ready_for_qa in_qa qa_passed",
+		"review,qa_passed,added_later":                                         "in_progress review qa_passed",
+		"":                                                                     "in_progress",
+		"review,waiting,waiting_on_nelson":                                     "in_progress review",
+	} {
+		if got := strings.Join(Parse(raw).Working(), " "); got != want {
+			t.Errorf("%q: Working = %q, want %q", raw, got, want)
+		}
 	}
 }

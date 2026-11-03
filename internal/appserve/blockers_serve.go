@@ -32,6 +32,7 @@ func (s *Server) snapshot() Snapshot {
 			if rep.Rig != rg.Name {
 				continue
 			}
+			row.Rule = rep.Rule
 			for _, b := range rep.Beads {
 				owner := b.Owner
 				if owner == "-" {

@@ -13,7 +13,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
+
+	"github.com/nmelo/initech/internal/lifecycle"
 )
 
 // beadPollInterval is how often window 1 asks bd for the in_progress beads,
@@ -112,9 +115,38 @@ func askBdBeads(dir string) (beads []bdBead, answered bool) {
 	return beads, true
 }
 
+// bdStatusCustom reads the rig's status.custom, bounded by ctx. A package
+// variable so tests stand in for bd.
+var bdStatusCustom = func(ctx context.Context, dir string) (string, error) {
+	cmd := exec.CommandContext(ctx, "bd", "config", "get", "status.custom")
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	return strings.TrimSpace(string(out)), err
+}
+
+// readPaceChain reads the rig's working chain once, off the main loop, until
+// bd answers: the only bd call the pace makes beyond the poll's own, never per
+// tick once answered.
+func (t *TUI) readPaceChain() {
+	if t.paceChainRead.Load() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), beadPollTimeout)
+	defer cancel()
+	raw, err := bdStatusCustom(ctx, t.projectRoot)
+	if err != nil {
+		LogWarn("beads", "bd status.custom not read; only in_progress beads can read stuck", "err", err)
+		return
+	}
+	t.paceChainRead.Store(true)
+	working := lifecycle.Parse(raw).Working()
+	t.runOnMain(func() { t.paceChain = working })
+}
+
 // pollBeadsOnce asks bd once, off the main loop, and applies the answer to
 // every local pane on it.
 func (t *TUI) pollBeadsOnce(now time.Time) {
+	t.readPaceChain()
 	beads, answered := askBdBeads(t.projectRoot)
 	t.runOnMain(func() {
 		if answered {

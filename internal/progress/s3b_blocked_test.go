@@ -36,19 +36,19 @@ func withNelson(b []Bead) []Bead {
 // AC1: closed 2, total 5, stuck 1, blocked 1; a bead waiting on Nelson adds
 // to the total and to blocked, never to stuck.
 func TestBlocked_CountedApartFromStuck(t *testing.T) {
-	p := PaceOf(s3bFixture(), "ini-x.3", s3bPanes, paceNow, HeaderWindow)
+	p := PaceOf(s3bFixture(), "ini-x.3", s3bPanes, testRule, paceNow, HeaderWindow)
 	if p.Closed != 2 || p.Total != 5 || p.Stuck != 1 || p.Blocked != 1 {
 		t.Errorf("pace %+v, want closed 2 total 5 stuck 1 blocked 1", p)
 	}
 	if got, want := p.Line(), "ini-x 2/5 · 0.3/h · 1 stuck · 1 blocked"; got != want {
 		t.Errorf("line %q, want %q", got, want)
 	}
-	n := PaceOf(withNelson(s3bFixture()), "ini-x.3", s3bPanes, paceNow, HeaderWindow)
+	n := PaceOf(withNelson(s3bFixture()), "ini-x.3", s3bPanes, testRule, paceNow, HeaderWindow)
 	if n.Total != 6 || n.Blocked != 2 || n.Stuck != 1 {
 		t.Errorf("with a bead waiting on Nelson: %+v, want total 6 blocked 2 stuck 1", n)
 	}
 	for _, b := range withNelson(s3bFixture())[4:] {
-		if Stuck(b, "idle", paceNow) {
+		if Stuck(b, "idle", testRule, paceNow) {
 			t.Errorf("%s (%s) reads stuck", b.ID, b.Status)
 		}
 	}
@@ -57,15 +57,15 @@ func TestBlocked_CountedApartFromStuck(t *testing.T) {
 // AC2: "· N blocked" only above zero; today's line otherwise; a blocked
 // single bead.
 func TestBlocked_TheLine(t *testing.T) {
-	if got := PaceOf(paceFleet(), "ini-wra.2", map[string]string{"eng4": "running", "eng1": "running"}, paceNow, HeaderWindow).Line(); got != "ini-wra 2/4 · 0.2/h · 0 stuck" {
+	if got := PaceOf(paceFleet(), "ini-wra.2", map[string]string{"eng4": "running", "eng1": "running"}, testRule, paceNow, HeaderWindow).Line(); got != "ini-wra 2/4 · 0.2/h · 0 stuck" {
 		t.Errorf("no blocked bead: %q, want today's line", got)
 	}
 	alone := []Bead{{ID: "ini-abc", Status: "in_progress"}}
-	if got := PaceOf(alone, "ini-abc", nil, paceNow, HeaderWindow).Line(); got != "ini-abc 0/1 · 0/h" {
+	if got := PaceOf(alone, "ini-abc", nil, testRule, paceNow, HeaderWindow).Line(); got != "ini-abc 0/1 · 0/h" {
 		t.Errorf("a lone bead: %q", got)
 	}
 	alone[0].Status = "blocked"
-	if got := PaceOf(alone, "ini-abc", nil, paceNow, HeaderWindow).Line(); got != "ini-abc 0/1 · 0/h · 1 blocked" {
+	if got := PaceOf(alone, "ini-abc", nil, testRule, paceNow, HeaderWindow).Line(); got != "ini-abc 0/1 · 0/h · 1 blocked" {
 		t.Errorf("a lone blocked bead: %q", got)
 	}
 }
@@ -75,21 +75,21 @@ func TestBlocked_TheLine(t *testing.T) {
 func TestBlocked_NothingButBlockedOrDeferred(t *testing.T) {
 	q := paceNow.Add(-2 * time.Hour)
 	all := []Bead{{ID: "ini-y.1", Status: "blocked", Assignee: "eng1", UpdatedAt: q}, {ID: "ini-y.2", Status: "waiting_on_nelson", Assignee: "eng1", UpdatedAt: q}}
-	if got := PaceOf(all, "ini-y.1", map[string]string{"eng1": "idle"}, paceNow, HeaderWindow).Line(); got != "ini-y 0/2 · 0/h · 0 stuck · 2 blocked" {
+	if got := PaceOf(all, "ini-y.1", map[string]string{"eng1": "idle"}, testRule, paceNow, HeaderWindow).Line(); got != "ini-y 0/2 · 0/h · 0 stuck · 2 blocked" {
 		t.Errorf("every bead blocked: %q", got)
 	}
 	parked := []Bead{{ID: "ini-z.1", Status: "deferred"}, {ID: "ini-z.2", Status: "deferred"}}
-	if got := PaceOf(parked, "ini-z.1", nil, paceNow, HeaderWindow).Line(); got != "" {
+	if got := PaceOf(parked, "ini-z.1", nil, testRule, paceNow, HeaderWindow).Line(); got != "" {
 		t.Errorf("every bead deferred: %q, want no line", got)
 	}
 	odd := []Bead{{ID: "ini-u.1", Status: "hooked", Assignee: "eng1", UpdatedAt: q}, {ID: "ini-u.2", Status: "closed", ClosedAt: q}}
-	if got := PaceOf(odd, "ini-u.1", map[string]string{"eng1": "idle"}, paceNow, HeaderWindow).Line(); got != "ini-u 1/2 · 0.2/h · 1 stuck" {
-		t.Errorf("an unknown status: %q, want it counted as today", got)
+	if got := PaceOf(odd, "ini-u.1", map[string]string{"eng1": "idle"}, testRule, paceNow, HeaderWindow).Line(); got != "ini-u 1/2 · 0.2/h · 0 stuck" {
+		t.Errorf("a status outside the working chain: %q, want it never stuck", got)
 	}
 }
 
 func s3bInput(beads []Bead) Input {
-	return Input{Rig: "r", Prefix: "ini-x.", Hours: 6, Now: paceNow, Beads: beads, Panes: s3bPanes, PanesKnown: true}
+	return Input{Rig: "r", Prefix: "ini-x.", Hours: 6, Now: paceNow, Rule: testRule, Beads: beads, Panes: s3bPanes, PanesKnown: true}
 }
 
 // AC3: the report counts stuck and blocked beside closed of total, from the
@@ -98,7 +98,7 @@ func s3bInput(beads []Bead) Input {
 func TestBlocked_TheProgressReport(t *testing.T) {
 	in := s3bInput(withNelson(s3bFixture()))
 	r := Build(in)
-	p := PaceOver(in.Beads, "ini-x", s3bPanes, paceNow, 6*time.Hour)
+	p := PaceOver(in.Beads, "ini-x", s3bPanes, testRule, paceNow, 6*time.Hour)
 	if r.Closed != p.Closed || r.Total != p.Total || r.Stuck != p.Stuck || r.Blocked != p.Blocked {
 		t.Errorf("report closed %d total %d stuck %d blocked %d, want the pace's %+v", r.Closed, r.Total, r.Stuck, r.Blocked, p)
 	}

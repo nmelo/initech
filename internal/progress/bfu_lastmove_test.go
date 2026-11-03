@@ -13,7 +13,7 @@ import (
 // status changed two hours ago; comments and commits are added per test.
 func bfuInput() Input {
 	return Input{
-		Rig: "demo", Prefix: "ini-q.", Hours: 6, Now: paceNow,
+		Rig: "demo", Prefix: "ini-q.", Hours: 6, Now: paceNow, Rule: testRule,
 		Beads: []Bead{
 			{ID: "ini-q.1", Title: "a step", Status: "in_progress", Assignee: "eng1", UpdatedAt: paceNow.Add(-2 * time.Hour)},
 			{ID: "ini-q.2", Title: "another", Status: "closed", ClosedAt: paceNow.Add(-3 * time.Hour)},
@@ -80,14 +80,14 @@ func TestStuck_OneCountOnEverySurface(t *testing.T) {
 	for i, b := range beads {
 		beads[i].Moved, _ = LastMove(b, in.Comments[b.ID], in.Commits)
 	}
-	over := PaceOver(beads, "ini-q", in.Panes, in.Now, 6*time.Hour)
-	of := PaceOf(beads, "ini-q.1", in.Panes, in.Now, 6*time.Hour)
+	over := PaceOver(beads, "ini-q", in.Panes, in.Rule, in.Now, 6*time.Hour)
+	of := PaceOf(beads, "ini-q.1", in.Panes, in.Rule, in.Now, 6*time.Hour)
 	if r.Stuck != over.Stuck || over.Stuck != of.Stuck || r.Stuck != 2 {
 		t.Fatalf("stuck: report %d, PaceOver %d, PaceOf %d; want 2 on all three", r.Stuck, over.Stuck, of.Stuck)
 	}
 	var stuck, quiet []string
 	for _, b := range beads {
-		if Stuck(b, in.Panes[b.Assignee], in.Now) {
+		if Stuck(b, in.Panes[b.Assignee], in.Rule, in.Now) {
 			stuck = append(stuck, b.ID)
 		}
 	}

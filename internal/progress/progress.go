@@ -54,6 +54,7 @@ type Input struct {
 	Prefix string // the bead-id prefix of the effort; "" is the whole rig
 	Hours  int    // the window for commits and closes
 	Now    time.Time
+	Rule   Rule // what this rig counts stuck by
 
 	Beads    []Bead
 	Comments map[string][]Comment // by bead id; a bead missing here has none
@@ -73,8 +74,35 @@ type Input struct {
 	Notes []string
 }
 
-// QuietAfter is how long a bead goes without a move before its wait is read.
-const QuietAfter = time.Hour
+// Rule is what one rig counts stuck by: how long a bead may sit, and the
+// statuses in its working chain (open and side states are not). Every surface
+// that counts stuck takes one, so a slow rig and a fast one each read true.
+// The zero Rule counts nothing.
+type Rule struct {
+	After time.Duration
+	Chain map[string]bool
+}
+
+// NewRule is the rule for after and a rig's working chain.
+func NewRule(after time.Duration, working []string) Rule {
+	chain := make(map[string]bool, len(working))
+	for _, s := range working {
+		chain[s] = true
+	}
+	return Rule{After: after, Chain: chain}
+}
+
+// AfterText is the rule's value as it is printed: "20m", "1h", "1h30m".
+func (r Rule) AfterText() string {
+	s := r.After.String()
+	if strings.HasSuffix(s, "m0s") {
+		s = strings.TrimSuffix(s, "0s")
+	}
+	if strings.HasSuffix(s, "h0m") {
+		s = strings.TrimSuffix(s, "0m")
+	}
+	return s
+}
 
 // Wait labels for a quiet bead.
 const (
@@ -270,6 +298,13 @@ func isEngineer(author string) bool {
 // effort lines show, in the order they show it. --json prints it; Render
 // prints the same Report as text, so the two never differ.
 type Report struct {
+	// Rule is what the report counted stuck by, for a reader in this process
+	// (the app's blockers count by the same one); StuckAfter is its value.
+	Rule       Rule   `json:"-"`
+	StuckAfter string `json:"stuck_after"`
+	// StuckIDs are the beads the Stuck count counted.
+	StuckIDs []string `json:"stuck_ids"`
+
 	Rig    string    `json:"rig"`
 	Prefix string    `json:"prefix"`
 	At     time.Time `json:"at"`
@@ -330,7 +365,7 @@ type PathBead struct {
 	Title   string `json:"title"`
 }
 
-// QuietRow is a bead with no move for QuietAfter or more, and what it waits
+// QuietRow is a bead with no move for the rule's value or more, and what it waits
 // on (WaitWorkingUnrecorded, WaitStalled or "waiting on ...").
 type QuietRow struct {
 	ID    string `json:"id"`
@@ -340,7 +375,7 @@ type QuietRow struct {
 
 // Build is the report for in, as data.
 func Build(in Input) Report {
-	r := Report{Rig: in.Rig, Prefix: in.Prefix, At: in.Now, Hours: in.Hours,
+	r := Report{Rig: in.Rig, Prefix: in.Prefix, At: in.Now, Hours: in.Hours, Rule: in.Rule, StuckAfter: in.Rule.AfterText(), StuckIDs: []string{},
 		Beads: []Row{}, Stages: map[string]int{}, ClosedRecent: []Closed{},
 		CriticalPath: []PathBead{}, Engineers: []string{}, Quiet: []QuietRow{}, Notes: []string{}}
 
@@ -374,7 +409,7 @@ func Build(in Input) Report {
 		}
 		row.LastMove, row.By = LastMove(b, cs, in.Commits)
 		r.Beads = append(r.Beads, row)
-		if !row.LastMove.IsZero() && in.Now.Sub(row.LastMove) >= QuietAfter {
+		if !row.LastMove.IsZero() && in.Now.Sub(row.LastMove) >= in.Rule.After {
 			r.Quiet = append(r.Quiet, QuietRow{ID: b.ID, Owner: row.Owner, Wait: Wait(b, cs, in)})
 		}
 	}
@@ -403,8 +438,9 @@ func Build(in Input) Report {
 	if in.PanesKnown {
 		panes = in.Panes
 	}
-	pace := PaceOver(beads, strings.TrimSuffix(in.Prefix, "."), panes, in.Now, time.Duration(in.Hours)*time.Hour)
+	pace := PaceOver(beads, strings.TrimSuffix(in.Prefix, "."), panes, in.Rule, in.Now, time.Duration(in.Hours)*time.Hour)
 	r.Stuck, r.Blocked = pace.Stuck, pace.Blocked
+	r.StuckIDs = append(r.StuckIDs, pace.StuckIDs...)
 	r.WritingOnly = r.Closed - r.ByEngineers
 
 	var recent []Bead
@@ -465,7 +501,7 @@ func RenderReport(r Report) string {
 	var w strings.Builder
 	line := func(format string, a ...any) { fmt.Fprintf(&w, format+"\n", a...) }
 
-	line("%s %s* at %s ET; commits counted over the last %d h\n", r.Rig, r.Prefix, hhmm(r.At), r.Hours)
+	line("%s %s* at %s ET; commits counted over the last %d h; stuck after %s\n", r.Rig, r.Prefix, hhmm(r.At), r.Hours, r.StuckAfter)
 	stageW := 11
 	for _, b := range r.Beads {
 		stageW = max(stageW, len([]rune(stageWord(b.Stage))))
@@ -496,6 +532,9 @@ func RenderReport(r Report) string {
 	for _, k := range names {
 		parts = append(parts, fmt.Sprintf("%s %d", k, r.Stages[k]))
 	}
+	if len(r.StuckIDs) > 0 {
+		line("stuck: %s", strings.Join(r.StuckIDs, " "))
+	}
 	line("stages: %s", strings.Join(parts, ", "))
 
 	fmt.Fprintf(&w, "closed in the last %d h: %d", r.Hours, len(r.ClosedRecent))
@@ -520,9 +559,9 @@ func RenderReport(r Report) string {
 	line("engineers on it: %d (%s)", len(r.Engineers), strings.Join(r.Engineers, " "))
 
 	if len(r.Quiet) == 0 {
-		line("\nquiet an hour or more: none")
+		line("\nquiet %s or more: none", r.StuckAfter)
 	} else {
-		line("\nquiet an hour or more:")
+		line("\nquiet %s or more:", r.StuckAfter)
 		for _, q := range r.Quiet {
 			line("  %s %s: %s", q.ID, q.Owner, q.Wait)
 		}
@@ -555,6 +594,8 @@ type Pace struct {
 	PerHour float64 // beads closed per hour over the window
 	Stuck   int
 	Blocked int
+	// StuckIDs are the stuck beads, in the order they came.
+	StuckIDs []string
 }
 
 // blockedStates are the bd statuses of a bead waiting on something named: it
@@ -570,15 +611,16 @@ func Deferred(b Bead) bool { return b.Status == "deferred" }
 // an owner with no pane here is not known to be idle.
 var stuckStates = map[string]bool{"idle": true, "waiting": true, "pending": true}
 
-// Stuck reports whether b counts as stuck in the pace: past open, not closed,
-// not blocked or waiting on Nelson (a named wait), not deferred, its last move
-// (Moved) QuietAfter old or more, and its owner's pane (ownerState, the pane
-// state by name; "" when the owner has no pane here) idle, waiting or pending.
-func Stuck(b Bead, ownerState string, now time.Time) bool {
-	if b.Status == "open" || b.Status == "closed" || blockedStates[b.Status] || Deferred(b) {
+// Stuck is the one definition of a stuck bead: in the rig's working chain
+// (rule.Chain, so a side state or a status added later never is), its last
+// move (LastMoved) rule.After old or more, and its owner's pane (ownerState,
+// the pane state by name; "" when the owner has no pane here) idle, waiting or
+// pending.
+func Stuck(b Bead, ownerState string, rule Rule, now time.Time) bool {
+	if !rule.Chain[b.Status] {
 		return false
 	}
-	return now.Sub(b.LastMoved()) >= QuietAfter && stuckStates[ownerState]
+	return now.Sub(b.LastMoved()) >= rule.After && stuckStates[ownerState]
 }
 
 // LastMoved is the bead's last move as the pace counts it: the newer of bd's
@@ -592,7 +634,7 @@ func (b Bead) LastMoved() time.Time {
 
 // PaceOf is the pace of the effort beadID belongs to: PaceOver on that
 // effort's beads.
-func PaceOf(beads []Bead, beadID string, panes map[string]string, now time.Time, window time.Duration) Pace {
+func PaceOf(beads []Bead, beadID string, panes map[string]string, rule Rule, now time.Time, window time.Duration) Pace {
 	prefix, label := Effort(beadID)
 	var mine []Bead
 	for _, b := range beads {
@@ -600,7 +642,7 @@ func PaceOf(beads []Bead, beadID string, panes map[string]string, now time.Time,
 			mine = append(mine, b)
 		}
 	}
-	return PaceOver(mine, label, panes, now, window)
+	return PaceOver(mine, label, panes, rule, now, window)
 }
 
 // PaceOver is the one count the pane header, the overlay's effort rows and
@@ -610,7 +652,7 @@ func PaceOf(beads []Bead, beadID string, panes map[string]string, now time.Time,
 // or waiting on Nelson). A bead's last move is Bead.LastMoved: initech
 // progress sets Moved from LastMove (comments and commits), so its pace and
 // its quiet list agree; the TUI sets it from its bead poll.
-func PaceOver(beads []Bead, label string, panes map[string]string, now time.Time, window time.Duration) Pace {
+func PaceOver(beads []Bead, label string, panes map[string]string, rule Rule, now time.Time, window time.Duration) Pace {
 	p := Pace{Label: label}
 	recent := 0
 	for _, b := range beads {
@@ -626,8 +668,9 @@ func PaceOver(beads []Bead, label string, panes map[string]string, now time.Time
 			}
 		case blockedStates[b.Status]:
 			p.Blocked++
-		case Stuck(b, panes[b.Assignee], now):
+		case Stuck(b, panes[b.Assignee], rule, now):
 			p.Stuck++
+			p.StuckIDs = append(p.StuckIDs, b.ID)
 		}
 	}
 	if window > 0 {

@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/nmelo/initech/internal/progress"
 )
 
 var now = time.Date(2026, 11, 1, 4, 0, 0, 0, time.UTC)
@@ -16,8 +18,11 @@ func superPane(replies ...Reply) PaneSnapshot {
 	return PaneSnapshot{Name: "super", State: "idle", Banner: "none", Replies: replies}
 }
 
+// testRule is the default value over this rig's working chain.
+var testRule = progress.NewRule(time.Hour, []string{"in_progress", "ready_for_qa", "in_qa", "qa_passed"})
+
 func oneRig(panes []PaneSnapshot, beads ...BeadSnapshot) Snapshot {
-	return Snapshot{Now: now, Rigs: []RigSnapshot{{Rig: "initech", Panes: panes, Beads: beads}}}
+	return Snapshot{Now: now, Rigs: []RigSnapshot{{Rig: "initech", Panes: panes, Beads: beads, Rule: testRule}}}
 }
 
 func only(t *testing.T, s Snapshot) RigBlockers {
@@ -258,5 +263,40 @@ func TestFooterItem_StripsTheMarker(t *testing.T) {
 	}
 	if strings.Contains(footerItem("- ▶ a"), "▶") {
 		t.Error("marker kept")
+	}
+}
+
+// ini-e4c AC3: the app's blockers count through the same Stuck with the rig's
+// rule: the value decides, and only the rig's working chain can be stuck.
+func TestBlockers_CountByTheRigsRule(t *testing.T) {
+	bead := func(id, status string, age time.Duration) BeadSnapshot {
+		return BeadSnapshot{ID: id, Status: status, Assignee: "eng1", LastMove: now.Add(-age)}
+	}
+	panes := []PaneSnapshot{pane("eng1", "idle", "none")}
+	beads := []BeadSnapshot{
+		bead("ini-a.1", "in_progress", 20*time.Minute),
+		bead("ini-a.2", "review", 30*time.Minute),
+		bead("ini-a.3", "in_progress", 5*time.Minute),
+		bead("ini-a.4", "in_qa", 40*time.Minute),
+		bead("ini-a.5", "waiting", 40*time.Minute),
+		bead("ini-a.6", "blocked", 40*time.Minute),
+	}
+	stuckIDs := func(rule progress.Rule) string {
+		s := Snapshot{Now: now, Rigs: []RigSnapshot{{Rig: "r", Panes: panes, Beads: beads, Rule: rule}}}
+		var ids []string
+		for _, st := range Blockers(s)[0].Stuck {
+			ids = append(ids, strings.Fields(st.Reason)[0])
+		}
+		return strings.Join(ids, " ")
+	}
+	chain := []string{"in_progress", "review"}
+	if got := stuckIDs(progress.NewRule(15*time.Minute, chain)); got != "ini-a.1 ini-a.2" {
+		t.Errorf("at 15m stuck = %q, want ini-a.1 ini-a.2", got)
+	}
+	if got := stuckIDs(progress.NewRule(time.Hour, chain)); got != "" {
+		t.Errorf("at 1h stuck = %q, want none", got)
+	}
+	if got := stuckIDs(progress.Rule{}); got != "" {
+		t.Errorf("no rule read yet: stuck = %q, want none", got)
 	}
 }

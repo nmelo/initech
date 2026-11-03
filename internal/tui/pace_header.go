@@ -11,6 +11,8 @@ import (
 	"sort"
 	"time"
 
+	"github.com/nmelo/initech/internal/config"
+	"github.com/nmelo/initech/internal/lifecycle"
 	"github.com/nmelo/initech/internal/progress"
 )
 
@@ -61,6 +63,20 @@ func (t *TUI) paceMoved(id string) time.Time {
 	return at
 }
 
+// paceRule is what this rig counts stuck by: its yaml value, over the working
+// chain read from bd once when the poller started. Until that read answers,
+// only in_progress can read stuck.
+func (t *TUI) paceRule() progress.Rule {
+	after := config.DefaultStuckAfter
+	if t.project != nil {
+		after = t.project.Beads.Value()
+	}
+	if t.paceChain == nil {
+		return progress.NewRule(after, lifecycle.Parse("").Working())
+	}
+	return progress.NewRule(after, t.paceChain)
+}
+
 // refreshPaceLines recomputes every local pane's header line, at most once a
 // minute, and at once after the first answer. Main loop only.
 func (t *TUI) refreshPaceLines(now time.Time) {
@@ -79,11 +95,14 @@ func (t *TUI) refreshPaceLines(now time.Time) {
 	for _, pv := range t.panes {
 		panes[pv.Name()] = pv.Activity().String()
 	}
-	t.paceRows = paceEffortRows(beads, panes, now, t.paceStale)
+	rule := t.paceRule()
+	t.paceRows = paceEffortRows(beads, panes, rule, now, t.paceStale)
 	t.paceStuck = map[string]bool{}
+	t.paceStuckIDs = map[string][]string{}
 	for _, b := range beads {
-		if b.Assignee != "" && progress.Stuck(b, panes[b.Assignee], now) {
+		if b.Assignee != "" && progress.Stuck(b, panes[b.Assignee], rule, now) {
 			t.paceStuck[b.Assignee] = true
+			t.paceStuckIDs[b.Assignee] = append(t.paceStuckIDs[b.Assignee], b.ID)
 		}
 	}
 	for _, pv := range t.panes {
@@ -93,7 +112,7 @@ func (t *TUI) refreshPaceLines(now time.Time) {
 		}
 		line := ""
 		if id := p.BeadID(); id != "" {
-			line = progress.PaceOf(beads, id, panes, now, progress.HeaderWindow).Line()
+			line = progress.PaceOf(beads, id, panes, rule, now, progress.HeaderWindow).Line()
 			if t.paceStale {
 				line += paceStaleMark
 			}
@@ -110,7 +129,7 @@ var inFlight = map[string]bool{"in_progress": true, "ready_for_qa": true, "in_qa
 // flight, each the line a pane header on that effort shows (the same PaceOf
 // call over the same window), with the stale mark when bd stopped answering;
 // in effort id order. None when nothing is in flight.
-func paceEffortRows(beads []progress.Bead, panes map[string]string, now time.Time, stale bool) []string {
+func paceEffortRows(beads []progress.Bead, panes map[string]string, rule progress.Rule, now time.Time, stale bool) []string {
 	type effort struct{ label, prefix, bead string }
 	seen := map[string]bool{}
 	var efforts []effort
@@ -133,7 +152,7 @@ func paceEffortRows(beads []progress.Bead, panes map[string]string, now time.Tim
 	})
 	var rows []string
 	for _, e := range efforts {
-		line := progress.PaceOf(beads, e.bead, panes, now, progress.HeaderWindow).Line()
+		line := progress.PaceOf(beads, e.bead, panes, rule, now, progress.HeaderWindow).Line()
 		if line == "" {
 			continue
 		}

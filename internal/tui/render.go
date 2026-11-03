@@ -1168,6 +1168,9 @@ func (t *TUI) renderOverlay() {
 		// An idle agent listed for its stuck bead says so (ini-7w4).
 		if act == StateIdle && t.paceStuck[p.Name()] {
 			status += " · stuck"
+			if ids := t.paceStuckIDs[p.Name()]; len(ids) > 0 {
+				status += " " + strings.Join(ids, " ")
+			}
 		}
 		// A background agent shows how long its job has run (ini-pi8p).
 		if age, ok := backgroundAge(p, time.Now()); ok && act == StateBackground {

@@ -28,6 +28,7 @@ type RigSnapshot struct {
 	Rig   string
 	Panes []PaneSnapshot
 	Beads []BeadSnapshot // from the latest progress run; none when none ran
+	Rule  progress.Rule  // what that run counted stuck by, from the rig's yaml
 }
 
 // PaneSnapshot is one pane. State and Banner are exactly what initech status
@@ -109,7 +110,7 @@ func Blockers(s Snapshot) []RigBlockers {
 			if p.Name == superPaneName {
 				row.Waiting = append(row.Waiting, waitingItems(p)...)
 			}
-			for _, reason := range stuckReasons(p, rig.Beads, s.Now) {
+			for _, reason := range stuckReasons(p, rig.Beads, rig.Rule, s.Now) {
 				row.Stuck = append(row.Stuck, StuckPane{Pane: p.Name, Reason: reason})
 			}
 		}
@@ -174,9 +175,9 @@ func recommendationOf(text string) string {
 }
 
 // stuckReasons are the reasons p cannot act: an open banner or a state that
-// cannot act, a bead of its quiet an hour while it is idle, and, for a QA
+// cannot act, a bead of its stuck by the rig's rule while it is idle, and, for a QA
 // pane, idle while work waits for QA.
-func stuckReasons(p PaneSnapshot, beads []BeadSnapshot, now time.Time) []string {
+func stuckReasons(p PaneSnapshot, beads []BeadSnapshot, rule progress.Rule, now time.Time) []string {
 	var reasons []string
 	switch {
 	case p.Banner != "" && p.Banner != "none":
@@ -192,11 +193,11 @@ func stuckReasons(p PaneSnapshot, beads []BeadSnapshot, now time.Time) []string 
 		return reasons
 	}
 	for _, b := range beads {
-		if b.Assignee != p.Name || b.Status == "open" || b.Status == "closed" || b.LastMove.IsZero() {
+		if b.Assignee != p.Name || b.LastMove.IsZero() {
 			continue
 		}
-		if quiet := now.Sub(b.LastMove); quiet >= progress.QuietAfter {
-			reasons = append(reasons, fmt.Sprintf("%s quiet %s, its owner idle", b.ID, hoursMinutes(quiet)))
+		if progress.Stuck(progress.Bead{ID: b.ID, Status: b.Status, Assignee: b.Assignee, Moved: b.LastMove}, p.State, rule, now) {
+			reasons = append(reasons, fmt.Sprintf("%s quiet %s, its owner idle", b.ID, hoursMinutes(now.Sub(b.LastMove))))
 		}
 	}
 	if strings.HasPrefix(p.Name, "qa") {

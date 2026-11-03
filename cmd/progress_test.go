@@ -28,14 +28,16 @@ var progressFixtureNow = time.Date(2026, 10, 31, 22, 0, 0, 0, time.UTC)
 // progressFake answers bd, gh and git from testdata/progress, and records
 // every call. It is a Runner and a contextRunner.
 type progressFake struct {
-	mu      sync.Mutex
-	calls   []string
-	bdErr   error  // bd list fails
-	origin  string // git remote get-url origin; "" fails
-	gitLog  string // git log output
-	hang    bool   // git fetch never finishes until its context ends
-	fetched bool
-	data    string // absolute path of testdata/progress
+	custom    string // bd config get status.custom; "" is this rig's list
+	customErr error
+	mu        sync.Mutex
+	calls     []string
+	bdErr     error  // bd list fails
+	origin    string // git remote get-url origin; "" fails
+	gitLog    string // git log output
+	hang      bool   // git fetch never finishes until its context ends
+	fetched   bool
+	data      string // absolute path of testdata/progress
 }
 
 func (f *progressFake) RunInDir(dir, name string, args ...string) (string, error) {
@@ -60,6 +62,14 @@ func (f *progressFake) RunInDir(dir, name string, args ...string) (string, error
 		return f.origin, nil
 	case name == "git" && args[0] == "log":
 		return f.gitLog, nil
+	case name == "bd" && args[0] == "config":
+		if f.customErr != nil {
+			return "", f.customErr
+		}
+		if f.custom != "" {
+			return f.custom + "\n", nil
+		}
+		return "ready_for_qa,in_qa,qa_passed,waiting_on_nelson,waiting\n", nil
 	case name == "git" && args[0] == "fetch":
 		f.mu.Lock()
 		f.fetched = true
@@ -145,7 +155,7 @@ func TestProgress_FixtureMatchesTheGuysScript(t *testing.T) {
 	}
 	rest := strings.TrimPrefix(out, string(golden))
 	for _, want := range []string{
-		"quiet an hour or more:",
+		"quiet 1h or more:",
 		`  fx-3 eng2: waiting on "the shared test cluster"`,
 		"  fx-8 eng2: stalled",
 		"note: owner panes not read",
@@ -356,5 +366,116 @@ func TestProgressJSON_NoBeadsIsAnEmptyReport(t *testing.T) {
 		if v, ok := rep[k].([]any); !ok || len(v) != 0 {
 			t.Errorf("%s = %v, want []", k, rep[k])
 		}
+	}
+}
+
+// e4cProgress runs initech progress with eng1 and eng2 idle, in a rig whose
+// yaml carries yamlExtra, with --stuck-after flag ("" for none).
+func e4cProgress(t *testing.T, fake *progressFake, yamlExtra, flag string, asJSON bool) (string, error) {
+	t.Helper()
+	skipWindows(t)
+	dir := shortProjectDir(t)
+	panes, _ := json.Marshal([]tui.PaneInfo{{Name: "eng1", Activity: "idle", Alive: true}, {Name: "eng2", Activity: "idle", Alive: true}, {Name: "eng3", Activity: "idle", Alive: true}, {Name: "qa1", Activity: "idle", Alive: true}})
+	resp, _ := json.Marshal(tui.IPCResponse{OK: true, Data: string(panes)})
+	sock := filepath.Join(dir, "p.sock")
+	_, cleanup := startATIPCServer(t, sock, responseMode{raw: string(resp) + "\n"})
+	t.Cleanup(cleanup)
+	t.Setenv("INITECH_SOCKET", sock)
+	old, oldJSON := progressStuckAfter, progressJSON
+	t.Cleanup(func() { progressStuckAfter, progressJSON = old, oldJSON })
+	progressStuckAfter, progressJSON = flag, asJSON
+	return runProgressFixture(t, fake, progressRepos+yamlExtra, "fx-")
+}
+
+// AC2: the flag over the yaml over one hour; the header and the JSON name the
+// value in effect; two values return different named beads. In the fixture
+// fx-1's last move is 20 minutes old, fx-3's 2h15m and fx-8's 4h30m, owners idle.
+func TestProgress_StuckAfterFlagOverYamlOverOneHour(t *testing.T) {
+	yaml15 := "beads:\n  stuck_after: 15m\n"
+	for _, c := range []struct {
+		name, yaml, flag, header string
+		want                     []string
+		notWant                  []string
+	}{
+		{"neither", "", "", "stuck after 1h", []string{"fx-3", "fx-8"}, []string{"fx-1 "}},
+		{"yaml", yaml15, "", "stuck after 15m", []string{"fx-1", "fx-3", "fx-8"}, nil},
+		{"flag over yaml", yaml15, "3h", "stuck after 3h", []string{"fx-8"}, []string{"fx-1 ", "fx-3"}},
+		{"flag alone", "", "15m", "stuck after 15m", []string{"fx-1", "fx-3", "fx-8"}, nil},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			out, err := e4cProgress(t, &progressFake{}, c.yaml, c.flag, false)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(out, c.header) {
+				t.Errorf("no %q in the header:\n%s", c.header, out)
+			}
+			var line string
+			for _, l := range strings.Split(out, "\n") {
+				if strings.HasPrefix(l, "stuck: ") {
+					line = l + " "
+				}
+			}
+			for _, id := range c.want {
+				if !strings.Contains(line, id) {
+					t.Errorf("stuck line %q lacks %s", line, id)
+				}
+			}
+			for _, id := range c.notWant {
+				if strings.Contains(line, id) {
+					t.Errorf("stuck line %q has %s", line, id)
+				}
+			}
+			js, err := e4cProgress(t, &progressFake{}, c.yaml, c.flag, true)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var rep progress.Report
+			if err := json.Unmarshal([]byte(js), &rep); err != nil {
+				t.Fatal(err)
+			}
+			if "stuck after "+rep.StuckAfter != c.header {
+				t.Errorf("JSON stuck_after %q, header %q", rep.StuckAfter, c.header)
+			}
+			if rep.Stuck != len(rep.StuckIDs) || rep.Stuck != len(strings.Fields(strings.TrimPrefix(line, "stuck: "))) {
+				t.Errorf("JSON stuck %d, ids %v, table line %q", rep.Stuck, rep.StuckIDs, line)
+			}
+		})
+	}
+}
+
+func TestProgress_ABadStuckAfterFlagIsRefused(t *testing.T) {
+	_, err := e4cProgress(t, &progressFake{}, "", "soon", false)
+	if err == nil || !strings.Contains(err.Error(), "--stuck-after") {
+		t.Fatalf("err = %v, want one naming --stuck-after", err)
+	}
+}
+
+// AC3: the chain is the rig's status.custom, read in the rig's own folder, and
+// a rig whose bd config cannot be read says so and counts only in_progress.
+func TestProgress_TheChainIsTheRigsStatusCustom(t *testing.T) {
+	// fx-2 (in_qa) and fx-4 (ready_for_qa) are in this fixture, owners idle.
+	out, err := e4cProgress(t, &progressFake{custom: "ready_for_qa,qa_passed"}, "", "15m", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var line string
+	for _, l := range strings.Split(out, "\n") {
+		if strings.HasPrefix(l, "stuck: ") {
+			line = l + " "
+		}
+	}
+	if !strings.Contains(line, "fx-4 ") || strings.Contains(line, "fx-2 ") {
+		t.Errorf("with ready_for_qa in the chain and in_qa out, stuck line %q", line)
+	}
+	out, err = e4cProgress(t, &progressFake{customErr: errors.New("bd down")}, "", "15m", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "note: bd status.custom not read") {
+		t.Errorf("no note that the chain was not read:\n%s", out)
+	}
+	if strings.Contains(out, "stuck: ") && strings.Contains(strings.SplitN(out, "stuck: ", 2)[1], "fx-4 ") {
+		t.Errorf("a ready_for_qa bead read stuck with the chain unread:\n%s", out)
 	}
 }

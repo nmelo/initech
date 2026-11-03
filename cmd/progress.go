@@ -12,6 +12,7 @@ import (
 
 	"github.com/nmelo/initech/internal/config"
 	iexec "github.com/nmelo/initech/internal/exec"
+	"github.com/nmelo/initech/internal/lifecycle"
 	"github.com/nmelo/initech/internal/progress"
 	"github.com/nmelo/initech/internal/tui"
 	"github.com/spf13/cobra"
@@ -20,6 +21,8 @@ import (
 var (
 	progressHours int
 	progressJSON  bool
+	// progressStuckAfter is --stuck-after: empty means the rig's yaml value.
+	progressStuckAfter string
 )
 
 var progressCmd = &cobra.Command{
@@ -34,13 +37,17 @@ ini-wra., or a molecule), or for the whole rig without one:
   the window that name the bead, and the last move (a status change, a
   comment or a commit) and who made it;
   closed of total, split into beads an engineer worked and writing or
-  review only, with the stuck beads (no bd move in an hour, owner pane
-  idle, waiting or pending) and the blocked ones (blocked, or waiting on
-  Nelson, which reads "blocked (Nelson)"); beads per stage; the closes in the window; the critical path
-  (open beads with the most dependents); the engineers on it;
-  for every bead with no move in an hour, what it waits on: "working,
+  review only, with the stuck beads (in the rig's working chain, no move for
+  the stuck-after value, owner pane idle, waiting or pending), named, and the
+  blocked ones (blocked, or waiting on Nelson, which reads "blocked (Nelson)");
+  beads per stage; the closes in the window; the critical path (open beads
+  with the most dependents); the engineers on it;
+  for every bead with no move for that value, what it waits on: "working,
   unrecorded" when its owner's pane is running or background, waiting on
   the thing its last comment names, else stalled.
+
+The stuck-after value is --stuck-after, else beads.stuck_after in initech.yaml,
+else one hour; the header and the JSON name the value in effect.
 
 With --json it prints the same report as one JSON object instead of the
 table: the rows, the effort counts, the closes in the window, the critical
@@ -57,6 +64,7 @@ It is read-only and never prints a finish time, an estimate or an actual.`,
 func init() {
 	progressCmd.Flags().IntVar(&progressHours, "hours", 6, "the window, in hours, for commits and closes")
 	progressCmd.Flags().BoolVar(&progressJSON, "json", false, "print the report as one JSON object instead of the table")
+	progressCmd.Flags().StringVar(&progressStuckAfter, "stuck-after", "", "how long a bead may sit before it reads stuck, for this run (a duration such as 20m; default the rig's beads.stuck_after, else 1h)")
 	rootCmd.AddCommand(progressCmd)
 }
 
@@ -101,8 +109,15 @@ func runProgress(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
 	}
+	after := p.Beads.Value()
+	if progressStuckAfter != "" {
+		after, err = config.ParseStuckAfter(progressStuckAfter)
+		if err != nil {
+			return fmt.Errorf("--stuck-after: %w", err)
+		}
+	}
 	out := cmd.OutOrStdout()
-	rep, err := progressReport(progressRunner, p, prefix, progressHours, progressNow().UTC())
+	rep, err := progressReport(progressRunner, p, prefix, progressHours, after, progressNow().UTC())
 	if err != nil {
 		return err
 	}
@@ -127,10 +142,12 @@ func runProgress(cmd *cobra.Command, args []string) error {
 }
 
 // progressReport reads bd, main's commits and the panes for p through r and
-// builds the report for the beads whose id starts with prefix. A rig with no
-// such bead is a report with Total 0. initech app-serve calls it too.
-func progressReport(r iexec.Runner, p *config.Project, prefix string, hours int, now time.Time) (progress.Report, error) {
+// builds the report for the beads whose id starts with prefix, counting stuck
+// after after. A rig with no such bead is a report with Total 0. initech
+// app-serve calls it too, with the rig's yaml value.
+func progressReport(r iexec.Runner, p *config.Project, prefix string, hours int, after time.Duration, now time.Time) (progress.Report, error) {
 	in := progress.Input{Rig: p.Name, Prefix: prefix, Hours: hours, Now: now}
+	in.Rule = progress.NewRule(after, progressWorkingChain(r, p.Root, &in.Notes))
 
 	raw, err := r.RunInDir(p.Root, "bd", "list", "--all", "--limit", "0", "--json")
 	var all []progress.Bead
@@ -157,6 +174,17 @@ func progressReport(r iexec.Runner, p *config.Project, prefix string, hours int,
 		in.Notes = append(in.Notes, "owner panes not read (no initech answering): no quiet bead reads working")
 	}
 	return progress.Build(in), nil
+}
+
+// progressWorkingChain is the rig's working chain, from its own bd config.
+// When it cannot be read, only in_progress can read stuck, and the report says so.
+func progressWorkingChain(r iexec.Runner, root string, notes *[]string) []string {
+	raw, err := r.RunInDir(root, "bd", "config", "get", "status.custom")
+	if err != nil {
+		*notes = append(*notes, "bd status.custom not read: only in_progress beads can read stuck")
+		return lifecycle.Parse("").Working()
+	}
+	return lifecycle.Parse(strings.TrimSpace(raw)).Working()
 }
 
 // progressComments reads the comments of every bead the report uses (those

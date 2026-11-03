@@ -107,7 +107,7 @@ func TestWait_WorkingUnrecordedNamedOrStalled(t *testing.T) {
 
 // The wait section lists only beads quiet an hour or more.
 func TestRender_WaitOnlyForBeadsQuietAnHour(t *testing.T) {
-	in := Input{Rig: "r", Prefix: "fx-", Hours: 6, Now: now, CommitsKnown: true, Beads: []Bead{
+	in := Input{Rig: "r", Prefix: "fx-", Hours: 6, Now: now, Rule: testRule, CommitsKnown: true, Beads: []Bead{
 		{ID: "fx-1", Status: "in_progress", Assignee: "eng1", UpdatedAt: now.Add(-59 * time.Minute)},
 		{ID: "fx-2", Status: "in_progress", Assignee: "eng2", UpdatedAt: now.Add(-61 * time.Minute)},
 	}}
@@ -116,7 +116,7 @@ func TestRender_WaitOnlyForBeadsQuietAnHour(t *testing.T) {
 		t.Errorf("want a wait line for fx-2 (61 min) only, not fx-1 (59 min):\n%s", out)
 	}
 	in.Beads = in.Beads[:1]
-	if out := Render(in); !strings.Contains(out, "quiet an hour or more: none") {
+	if out := Render(in); !strings.Contains(out, "quiet 1h or more: none") {
 		t.Errorf("no quiet bead: want the none line:\n%s", out)
 	}
 }

@@ -38,7 +38,7 @@ func TestBlockersSnapshot_CarriesTheProgressRunsBeads(t *testing.T) {
 	s := New(Config{Backend: b, Digest: shaToken(), HasToken: true, Now: clk.Now})
 	s.Poll()
 	s.mu.Lock()
-	s.progress = []progress.Report{{Rig: "a", Prefix: "ini-x.", Beads: []progress.Row{
+	s.progress = []progress.Report{{Rig: "a", Prefix: "ini-x.", Rule: testRule, Beads: []progress.Row{
 		{ID: "ini-x.1", Stage: "in_progress", Owner: "eng1", LastMove: clk.Now().Add(-2 * time.Hour)},
 		{ID: "ini-x.2", Stage: "in_progress", Owner: "-", LastMove: clk.Now().Add(-2 * time.Hour)},
 	}}}
