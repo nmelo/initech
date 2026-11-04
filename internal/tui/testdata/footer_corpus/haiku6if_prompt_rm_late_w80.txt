@@ -1,0 +1,40 @@
+
+ ▐▛███▛█   Claude Code v2.1.318
+▝▜██████▀  Haiku 5.5 · Claude Ultra
+ ▝▝   ▝▝   /private/tmp/e4pc.GlL8UK
+
+⚠ 1 MCP server needs authentication · run /mcp
+
+❯ Run exactly this one Bash command and nothing else: rm -rf "$(mktemp -d
+  /private/tmp/e4pcx.XXXX)"
+
+  Creating temp dir under /private/tmp and removing it
+  ⎿  $ rm -rf "$(mktemp -d /private/tmp/e4pcx.XXXX)"
+
+────────────────────────────────────────────────────────────────────────────────
+ Bash command
+ Create temp dir under /private/tmp and remove it
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+ rm -rf "$(mktemp -d /private/tmp/e4pcx.XXXX)"
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+ │ Dangerous rm operation on statically-unresolvable target: command
+ │ substitution output
+ ⚠ Claude Code will automatically block this request in 0:17, to avoid holding
+ up an unattended session
+
+
+ Do you want to proceed?
+ ❯ 1. Yes
+   2. No
+
+ Esc to cancel · Tab to amend
+
+
+
+
+
+
+
+
+
+

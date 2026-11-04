@@ -83,3 +83,4 @@ INITECH_6M4  # spawns 8 real Claude sessions; asserts OUR two-window modal parit
 INITECH_FOLDBACK_HELPER  # child process of TestFoldback_CrashFoldsAgentIntoWindowOne. TRIGGER: by its parent test, every CI run.
 INITECH_LIVENESS_HELPER  # child process of TestChildProcessAlive_*. TRIGGER: by its parent test, every CI run.
 INITECH_FOLDBACK_ADDR    # address handed to the foldback helper child; not a gate of its own. TRIGGER: set by the parent test, every CI run.
+INITECH_6IF  # starts a real Claude agent on Haiku at a real rm safety prompt; asserts super gets exactly one prompt notice and the named answer closes it. Cannot run in CI (needs a live authenticated Claude). TRIGGER: the engineer and QA run it on Haiku for any change to prompt_notice.go, the prompt parser or the corpus it reads, and at the release that carries such a change.

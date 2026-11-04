@@ -95,6 +95,8 @@ func maintainModal(panes []PaneView, now time.Time, last *time.Time) {
 		// even while its state reads idle (ini-7w4); the overlay reads this
 		// note, never the screen.
 		p.noteAttentionScreen(screenShowsModal(rows) || bannerKind(rows, false) != bannerNone)
+		// A prompt the agent cannot pass alone, for super (ini-6if).
+		p.observeBlockingPrompt(rows, now)
 		if screenShowsModal(rows) {
 			p.noteDialogSighting()
 		}

@@ -310,6 +310,7 @@ type Pane struct {
 	ctxWarned             map[string]bool   // Models whose footer and transcript context disagreement was logged.
 	ctxFigure             *int              // Context used as the maintenance tick last read it; nil unknown (ini-sf5.2).
 	attnScreen            bool              // The tick's snapshot showed a dialog or banner (ini-7w4).
+	promptNotice          promptNoticeState // The open blocking prompt and whether super was told (ini-6if).
 	eventCh               chan<- AgentEvent // Emits detected semantic events to the TUI. May be nil.
 	safeGo                func(func())      // Launches a goroutine with panic recovery. Set by TUI after creation.
 	goWg                  sync.WaitGroup    // Tracks goroutines launched by Start(). Wait in Close().

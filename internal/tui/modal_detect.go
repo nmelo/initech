@@ -706,4 +706,7 @@ func (p *Pane) dialogLatched() bool {
 // there is no reason to do that at render cadence.
 func (t *TUI) modalMaintenance(now time.Time) {
 	maintainModal(t.panes, now, &t.lastModalMaint)
+	// A prompt an agent cannot pass alone, held for the grace, is told to
+	// super once (ini-6if).
+	t.sendPromptNotices()
 }
