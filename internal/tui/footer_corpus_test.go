@@ -114,16 +114,10 @@ func TestFooterCorpus_EveryCapturedShapeReadsWhatItShows(t *testing.T) {
 		// cut falls inside the account name, so only the model reads; the
 		// transcript gives the context (session_context.go). Without the
 		// branch the cut falls after the percent, which reads.
-		// Claude Code on Haiku, bypass mode, the rm safety prompt open with
-		// its auto-block countdown, early and late, at three widths
-		// (ini-6if): the dialog replaces the input box, so no footer reads.
-		// After it blocked itself, the box and footer come back.
-		{"haiku6if_prompt_rm_early_w100.txt", Footer{}},
-		{"haiku6if_prompt_rm_early_w80.txt", Footer{}},
-		{"haiku6if_prompt_rm_early_w32.txt", Footer{}},
-		{"haiku6if_prompt_rm_late_w100.txt", Footer{}},
-		{"haiku6if_prompt_rm_late_w80.txt", Footer{}},
-		{"haiku6if_prompt_rm_late_w32.txt", Footer{}},
+		// Claude Code on Haiku, bypass mode, after the rm safety prompt
+		// blocked itself (ini-6if): the box and footer are back. The open
+		// prompt's screens are not at rest, so they live in testdata/ beside
+		// haiku312_rm_guard_prompt_*, not in this corpus.
 		{"haiku6if_prompt_rm_after_w100.txt", none(i(7), s("Haiku 5.5"), s("Personal"))},
 		{"haiku316_branch_w120.txt", none(i(7), s("Haiku 5.5"), s("Second"))},
 		{"haiku316_branch_cut_w29.txt", none(nil, s("Haiku 5.5"), nil)},

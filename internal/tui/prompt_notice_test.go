@@ -22,12 +22,12 @@ func TestPromptNotice_EveryCaptureReadsRight(t *testing.T) {
 		file string
 		want want
 	}{
-		{"footer_corpus/haiku6if_prompt_rm_early_w100.txt", want{true, rmReason, "1:58"}},
-		{"footer_corpus/haiku6if_prompt_rm_early_w80.txt", want{true, rmReason, "1:57"}},
-		{"footer_corpus/haiku6if_prompt_rm_early_w32.txt", want{true, rmReason, "1:55"}},
-		{"footer_corpus/haiku6if_prompt_rm_late_w100.txt", want{true, rmReason, "0:18"}},
-		{"footer_corpus/haiku6if_prompt_rm_late_w80.txt", want{true, rmReason, "0:17"}},
-		{"footer_corpus/haiku6if_prompt_rm_late_w32.txt", want{true, rmReason, ""}},
+		{"haiku6if_prompt_rm_early_w100.txt", want{true, rmReason, "1:58"}},
+		{"haiku6if_prompt_rm_early_w80.txt", want{true, rmReason, "1:57"}},
+		{"haiku6if_prompt_rm_early_w32.txt", want{true, rmReason, "1:55"}},
+		{"haiku6if_prompt_rm_late_w100.txt", want{true, rmReason, "0:18"}},
+		{"haiku6if_prompt_rm_late_w80.txt", want{true, rmReason, "0:17"}},
+		{"haiku6if_prompt_rm_late_w32.txt", want{true, rmReason, ""}},
 		{"haiku312_rm_guard_prompt_w80.txt", want{true, rmReason, "1:54"}},
 		{"haiku312_rm_guard_prompt_w32.txt", want{true, rmReason, ""}},
 		// Blocked and gone: nothing on screen to tell.
@@ -65,7 +65,7 @@ var regexpLeft = regexp.MustCompile(`^\d+:\d\d$`)
 // same real screen with the countdown's words changed, or the question
 // changed, reads as none.
 func TestPromptNotice_AnUnknownShapeReadsAsNone(t *testing.T) {
-	rows := lvxwFixture(t, "footer_corpus/haiku6if_prompt_rm_early_w80.txt")
+	rows := lvxwFixture(t, "haiku6if_prompt_rm_early_w80.txt")
 	plant := func(from, to string) []string {
 		out := make([]string, len(rows))
 		hit := false
@@ -97,7 +97,7 @@ func TestPromptNotice_AnUnknownShapeReadsAsNone(t *testing.T) {
 // The prompt quoted above a resting input box is transcript, not an open
 // prompt: nothing is sent for it.
 func TestPromptNotice_AQuotedPromptAboveTheBoxReadsAsNone(t *testing.T) {
-	rows := lvxwFixture(t, "footer_corpus/haiku6if_prompt_rm_early_w80.txt")
+	rows := lvxwFixture(t, "haiku6if_prompt_rm_early_w80.txt")
 	box := []string{strings.Repeat("─", 80), "❯ ", strings.Repeat("─", 80), "  ⏵⏵ bypass permissions on"}
 	quoted := append(append([]string{}, rows...), "", "✻ Worked for 3s")
 	if _, ok := parseBlockingPrompt(append(quoted, box...)); ok {
@@ -110,7 +110,7 @@ func observe(p *Pane, open bool, at time.Time, t *testing.T) {
 	t.Helper()
 	rows := []string{"❯ ", ""}
 	if open {
-		rows = lvxwFixture(t, "footer_corpus/haiku6if_prompt_rm_early_w80.txt")
+		rows = lvxwFixture(t, "haiku6if_prompt_rm_early_w80.txt")
 	}
 	p.observeBlockingPrompt(rows, at)
 }
