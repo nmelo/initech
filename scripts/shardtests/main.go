@@ -135,8 +135,19 @@ func selectShard(all []testID, n, k int) map[string][]string {
 
 // testArgs is the go test command for one package of a shard: make
 // test-full's semantics, -json for the witness events, never -short.
-func testArgs(pkg string, names []string) []string {
-	return []string{"test", "-count=1", "-json", pkg, "-run", "^(" + strings.Join(names, "|") + ")$"}
+//
+// race adds the race detector and -p 1, with timeout as the per-package bound:
+// the rigs' race job runs the shards one after another, so no two race test
+// binaries are alive at once and each holds only its shard's tests.
+func testArgs(pkg string, names []string, race bool, timeout string) []string {
+	a := []string{"test", "-count=1", "-json"}
+	if race {
+		a = append(a, "-race", "-p", "1")
+	}
+	if timeout != "" {
+		a = append(a, "-timeout", timeout)
+	}
+	return append(a, pkg, "-run", "^("+strings.Join(names, "|")+")$")
 }
 
 // testEvent is the part of a go test -json event the tool reads.
@@ -303,6 +314,8 @@ func runShard(args []string) error {
 	n := fs.Int("shards", 0, "number of shards")
 	k := fs.Int("shard", 0, "this shard, 1-based")
 	outDir := fs.String("out", "", "directory for this shard's record")
+	race := fs.Bool("race", false, "run under the race detector, one package at a time (-p 1)")
+	timeout := fs.String("timeout", "", "go test -timeout for each package")
 	fs.Parse(args)
 	if *n < 1 || *k < 1 || *k > *n || *outDir == "" {
 		return errors.New("run needs -shards N -shard K (1..N) -out DIR")
@@ -334,7 +347,7 @@ func runShard(args []string) error {
 		for _, name := range names {
 			selected = append(selected, testID{pkg, name})
 		}
-		a := testArgs(pkg, names)
+		a := testArgs(pkg, names, *race, *timeout)
 		fmt.Printf("SHARD %d/%d: go %s  [%d tests]\n", *k, *n, strings.Join(a[:len(a)-1], " ")+" '^(...)$'", len(names))
 		cmd := exec.Command("go", a...)
 		cmd.Stderr = os.Stderr

@@ -42,8 +42,20 @@ test-full:
 # place to pay it, per the same reasoning that moved slow rig coverage into
 # CI (ini-0lko) rather than local hooks. It runs in CI's full-suite job
 # instead, where the cost is real but off the critical path of every commit.
+#
+# It runs as RACE_SHARDS shards one after another, each test in exactly one
+# shard, one package at a time (-p 1), then the census checks every test ran
+# under -race exactly once. One race binary at a time, holding one shard's
+# tests, keeps the peak memory to a fraction of a single `go test -race ./...`.
+# Each shard rewrites its own record files, so a rerun needs no cleanup.
+RACE_SHARDS ?= 6
 test-race:
-	go test ./... -count=1 -race -timeout 30m
+	@rc=0; \
+	for k in $$(seq 1 $(RACE_SHARDS)); do \
+	  go run ./scripts/shardtests run -race -timeout 30m -shards $(RACE_SHARDS) -shard $$k -out race-record/shard$$k || rc=1; \
+	done; \
+	go run ./scripts/shardtests census -shards $(RACE_SHARDS) $$(seq -f 'race-record/shard%g' 1 $(RACE_SHARDS)) || rc=1; \
+	exit $$rc
 
 integration:
 	go test ./... -count=1 -run 'Integ|Watchdog|RenderNotBlocked|DaemonAuth|AddPane_(Success|SetsGoroutines|EventChWired|EnvInjected|GridRecalculated|NoConfigModification)|NoBracketedPaste|WaitsForReady|StashSkipsRetry|ResumesSuspended|ResizeDebounce'

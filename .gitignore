@@ -49,3 +49,4 @@ coverage.out
 /testcensus
 /app/InitechCore/.build/
 /app/InitechCore/.swiftpm/
+race-record/

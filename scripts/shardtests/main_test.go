@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os/exec"
 	"slices"
 	"strings"
 	"testing"
@@ -102,7 +103,7 @@ func TestSelectShard_PartitionsAndIsStable(t *testing.T) {
 
 // AC 4: a shard's command never carries -short.
 func TestTestArgs_NeverShort(t *testing.T) {
-	a := testArgs("example.com/a", []string{"TestOne", "TestTwo"})
+	a := testArgs("example.com/a", []string{"TestOne", "TestTwo"}, false, "")
 	for _, f := range a {
 		if strings.Contains(f, "short") {
 			t.Fatalf("a shard runs %v", a)
@@ -110,6 +111,50 @@ func TestTestArgs_NeverShort(t *testing.T) {
 	}
 	if !slices.Contains(a, "-count=1") || a[len(a)-1] != "^(TestOne|TestTwo)$" {
 		t.Fatalf("shard args %v do not match make test-full's -count=1 with an anchored selector", a)
+	}
+}
+
+// A race shard runs under the detector one package at a time, bounded by the
+// timeout it was given; a plain shard carries neither.
+func TestTestArgs_RaceShardIsOnePackageAtATime(t *testing.T) {
+	a := testArgs("example.com/a", []string{"TestOne"}, true, "30m")
+	joined := strings.Join(a, " ")
+	for _, want := range []string{"-race", "-p 1", "-timeout 30m"} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("race shard args %q lack %q", joined, want)
+		}
+	}
+	if a[len(a)-1] != "^(TestOne)$" || a[len(a)-3] != "example.com/a" {
+		t.Errorf("race shard args %q: the package and selector must stay last", joined)
+	}
+	plain := strings.Join(testArgs("example.com/a", []string{"TestOne"}, false, ""), " ")
+	if strings.Contains(plain, "-race") || strings.Contains(plain, "-p 1") || strings.Contains(plain, "-timeout") {
+		t.Errorf("plain shard args %q carry race-only flags", plain)
+	}
+}
+
+// make test-race is what the rigs' race job runs: every shard under -race, one
+// after another, then the census over all of them, never one go test ./....
+func TestMakeTestRace_RunsEveryShardThenTheCensus(t *testing.T) {
+	out, err := exec.Command("make", "-n", "-C", repoRootForWorkflows(t), "test-race").CombinedOutput()
+	if err != nil {
+		t.Fatalf("make -n test-race: %v\n%s", err, out)
+	}
+	recipe := string(out)
+	for _, want := range []string{
+		"go run ./scripts/shardtests run -race",
+		"for k in $(seq 1 6)",
+		"go run ./scripts/shardtests census -shards 6",
+	} {
+		if !strings.Contains(recipe, want) {
+			t.Errorf("make test-race recipe lacks %q:\n%s", want, recipe)
+		}
+	}
+	if strings.Contains(recipe, "go test ./...") {
+		t.Errorf("make test-race still runs the whole suite in one go test:\n%s", recipe)
+	}
+	if strings.Index(recipe, "census") < strings.Index(recipe, "run -race") {
+		t.Errorf("the census must follow the shards:\n%s", recipe)
 	}
 }
 
