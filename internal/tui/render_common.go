@@ -87,8 +87,14 @@ func renderRibbon(s *clampedScreen, r Region, look ribbonLook) int {
 		beadStyle := tcell.StyleDefault.Background(trueBlack).Foreground(tcell.ColorDarkCyan)
 		maxCol := r.X + r.W
 
-		// Build bead display: "| id: title " or "| id " if no title.
-		beadStr := "| " + beadID
+		// Build bead display: "| id: title " or "| id " if no title; the
+		// bead's state icon stands where the bar is when its status is known
+		// (ini-z9t).
+		lead := beadBar
+		if look.beadIcon != 0 {
+			lead = look.beadIcon
+		}
+		beadStr := string(lead) + " " + beadID
 		if beadTitle != "" {
 			beadStr += ": " + beadTitle
 		}

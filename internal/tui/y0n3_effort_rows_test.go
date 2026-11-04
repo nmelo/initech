@@ -95,9 +95,12 @@ func TestEffortRows_OneRowPerEffortReadingAsTheHeader(t *testing.T) {
 	if len(lines) != len(want) {
 		t.Fatalf("effort rows %q, want %q", lines, want)
 	}
+	// After the effort's own bead's state icon (ini-z9t): ini-abc is in
+	// progress, ini-wra open, and ini-r0q has no bead of its own id.
+	icons := []string{"▶ ", "", "○ "}
 	for i := range want {
-		if lines[i] != want[i] {
-			t.Errorf("row %d reads %q, want the header's %q", i, lines[i], want[i])
+		if lines[i] != icons[i]+want[i] {
+			t.Errorf("row %d reads %q, want the header's %q after %q", i, lines[i], want[i], icons[i])
 		}
 	}
 }
@@ -157,7 +160,7 @@ func TestEffortRows_StaleWhenBdStopsAnswering(t *testing.T) {
 	tui.notePaceAnswer(nil, false)
 	tui.refreshPaceLines(now.Add(time.Minute))
 	_, lines := effortBlock(tui, overlayFrameRows(tui, s))
-	want := []string{"ini-abc 0/1 · 0/h (stale)", "ini-r0q 1/2 · 0.2/h · 0 stuck (stale)", "ini-wra 2/4 · 0.2/h · 1 stuck (stale)"}
+	want := []string{"▶ ini-abc 0/1 · 0/h (stale)", "ini-r0q 1/2 · 0.2/h · 0 stuck (stale)", "○ ini-wra 2/4 · 0.2/h · 1 stuck (stale)"}
 	if strings.Join(lines, "|") != strings.Join(want, "|") {
 		t.Errorf("rows %q, want %q", lines, want)
 	}
@@ -199,7 +202,7 @@ func TestEffortRows_NoBdOrGitCallAndOnceAMinute(t *testing.T) {
 		t.Errorf("a minute of frames, refreshes and overlay toggles called bd %d times, want 0", n)
 	}
 	tui.refreshPaceLines(t0.Add(time.Minute))
-	if _, got := effortBlock(tui, overlayFrameRows(tui, s)); len(got) != 3 || got[2] != "ini-wra 3/4 · 0.3/h · 1 stuck" {
+	if _, got := effortBlock(tui, overlayFrameRows(tui, s)); len(got) != 3 || got[2] != "○ ini-wra 3/4 · 0.3/h · 1 stuck" {
 		t.Errorf("a minute on, the rows read %q, want ini-wra's closed bead counted", got)
 	}
 
@@ -320,7 +323,7 @@ func TestEffortRows_ANarrowOverlayCutsEachRowAtItsEdge(t *testing.T) {
 	s.SetSize(21, 40)
 	rows := overlayFrameRows(tui, s)
 	y := tui.overlayBounds.y + 1 + tui.overlayBounds.agentCount
-	for i, want := range []string{"ini-abc 0/1 · 0/h", "ini-r0q 1/2 · 0.2/h", "ini-wra 2/4 · 0.2/h"} {
+	for i, want := range []string{"▶ ini-abc 0/1 · 0/h", "ini-r0q 1/2 · 0.2/h", "○ ini-wra 2/4 · 0.2/h"} {
 		r := string(rows[y+1+i])
 		if !strings.HasPrefix(strings.TrimLeft(r[strings.IndexRune(r, '│')+len("│"):], " "), want[:12]) {
 			t.Errorf("row %d reads %q, want it to start %q", i, r, want[:12])
@@ -334,7 +337,7 @@ func TestEffortRows_ANarrowOverlayCutsEachRowAtItsEdge(t *testing.T) {
 // AC6: no row holds a time, an estimate or an actual: each is exactly the
 // pace's shape.
 func TestEffortRows_NoTimeOrEstimateInARow(t *testing.T) {
-	shape := regexp.MustCompile(`^ini-[a-z0-9]+ \d+/\d+ · \d+(\.\d)?/h( · \d+ stuck)?( \(stale\))?$`)
+	shape := regexp.MustCompile(`^([○▶◎◆☾■?❄✓] )?ini-[a-z0-9]+ \d+/\d+ · \d+(\.\d)?/h( · \d+ stuck)?( \(stale\))?$`)
 	tui, s := effortTUI(t)
 	now := time.Now()
 	tui.notePaceAnswer(effortFixture(now), true)

@@ -334,6 +334,9 @@ type Pane struct {
 	headerInset      int       // Columns of the top edge the project badge covers (main loop only); the line starts after them.
 	lastAnswer       []bdBead  // The role's in_progress beads at the last poll bd answered; a clear re-derives from it.
 	answeredOnce     bool      // A poll has been answered here (or carried by a restart); lastAnswer is bd's word.
+	// The bd status of each bead the pane shows, and of its last-named one, as
+	// the last answered poll read it: the ribbon's state icon (ini-z9t).
+	beadStatus map[string]string
 	// Unattributed work (ini-wra.3): working time with no bead, counted on the
 	// once-a-second maintenance tick, and that tick's last time.
 	noBeadFor                    time.Duration
@@ -1772,6 +1775,35 @@ func (p *Pane) applyDerivedBeads(beads []bdBead, answered bool, now time.Time) {
 	}
 	p.answeredOnce = true
 	p.rederiveLocked(now)
+	p.noteBeadStatusLocked(beads)
+}
+
+// noteBeadStatusLocked keeps, from the poll's answer, the status of each bead
+// the pane shows and of its last-named one, for the ribbon's state icon
+// (ini-z9t). A bead named after this poll has none until the next one.
+func (p *Pane) noteBeadStatusLocked(beads []bdBead) {
+	ids, _ := p.effectiveBeadsLocked()
+	want := map[string]bool{}
+	for _, id := range ids {
+		want[id] = true
+	}
+	if p.lastNamed != "" {
+		want[p.lastNamed] = true
+	}
+	p.beadStatus = map[string]string{}
+	for _, b := range beads {
+		if want[b.ID] {
+			p.beadStatus[b.ID] = b.Status
+		}
+	}
+}
+
+// BeadStatus is the bd status of the pane's primary bead as the last poll
+// read it, "" when none was read (ini-z9t).
+func (p *Pane) BeadStatus() string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.beadStatus[p.primaryBeadLocked()]
 }
 
 // cleanStoredBeadsLocked keeps only ids in the override and the last-named

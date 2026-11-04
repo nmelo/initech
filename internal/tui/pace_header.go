@@ -139,9 +139,10 @@ const paceWaitingShown = 3
 // paceEffortRows is the Agents overlay's rows: one per effort with a bead in
 // flight or a bead the waiting count counts (a bead with no holder has no pane
 // row, so its effort's row is where it shows), each the line a pane header on
-// that effort shows (the same PaceOf call over the same window), then the
-// waiting ids, with the stale mark when bd stopped answering; in effort id
-// order. None when nothing is in flight or waiting.
+// that effort shows (the same PaceOf call over the same window), after the
+// state icon of the effort's own bead (ini-z9t), then the waiting ids, with
+// the stale mark when bd stopped answering; in effort id order. None when
+// nothing is in flight or waiting.
 func paceEffortRows(beads []progress.Bead, panes map[string]string, rule progress.Rule, now time.Time, stale bool) []string {
 	type effort struct{ label, prefix, bead string }
 	seen := map[string]bool{}
@@ -163,12 +164,22 @@ func paceEffortRows(beads []progress.Bead, panes map[string]string, rule progres
 		}
 		return efforts[i].prefix < efforts[j].prefix
 	})
+	status := map[string]string{}
+	for _, b := range beads {
+		status[b.ID] = b.Status
+	}
 	var rows []string
 	for _, e := range efforts {
 		pace := progress.PaceOf(beads, e.bead, panes, rule, now, progress.HeaderWindow)
 		line := pace.Line()
 		if line == "" {
 			continue
+		}
+		// The state icon of the effort's own bead, the one its label names,
+		// left of the label (ini-z9t); a label with no bead of that id, or a
+		// status outside the table, gets none.
+		if icon, ok := beadStateIcon(status[e.label]); ok {
+			line = string(icon) + " " + line
 		}
 		for i, id := range pace.WaitingIDs {
 			if i == paceWaitingShown {
