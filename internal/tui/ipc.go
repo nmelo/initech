@@ -789,25 +789,32 @@ func watchSubmit(pane *Pane, ps *pendingSubmit, sentAt time.Time) (submitOutcome
 			if held {
 				seen = true
 			} else if seen && found {
+				cols, rows := pane.emuSize()
 				LogInfo("inject", "submitted: composer cleared", "pane", pane.Name(), "mode", ps.mode,
 					"ms", time.Since(sentAt).Milliseconds(), "text", ps.preview,
-					"composer", composerSnapshot(pane))
+					"composer", composerSnapshot(pane), "cols", cols, "rows", rows)
 				return submitTaken, ""
 			}
 		}
 		if time.Now().After(deadline) {
 			if held {
+				cols, rows := pane.emuSize()
 				LogInfo("inject", "SUBMIT NOT TAKEN: composer still holds our text", "pane", pane.Name(),
 					"mode", ps.mode, "waited_ms", time.Since(sentAt).Milliseconds(), "text", ps.preview,
-					"composer", composerSnapshot(pane))
+					"composer", composerSnapshot(pane), "cols", cols, "rows", rows)
 				return submitNotTaken, ""
 			}
 			why := unconfirmedReason(mismatch, sawComposer, seen, ps.census)
+			// The rows the samples read, kept beside the log (ini-xl9), with the
+			// emulator's size: what made an UNKNOWN is read from them.
+			cols, rows := pane.emuSize()
+			capture := writeInjectCapture(pane.Name(), cols, rows, emuRowsBlocking(pane.emu))
 			LogInfo("inject", "submit outcome UNKNOWN: could not confirm", "pane", pane.Name(),
 				"mode", ps.mode, "reason", why, "waited_ms", time.Since(sentAt).Milliseconds(),
 				"text", ps.preview, "composer", composerSnapshot(pane),
 				"samples_before", ps.census.before, "samples_after", ps.census.after,
-				"torn", ps.census.torn, "stable", ps.census.stable, "sighted", ps.census.sighted)
+				"torn", ps.census.torn, "stable", ps.census.stable, "sighted", ps.census.sighted,
+				"cols", cols, "rows", rows, "capture", capture)
 			return submitUnknown, why
 		}
 		time.Sleep(composerEchoPoll)
