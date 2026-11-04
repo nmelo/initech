@@ -441,6 +441,9 @@ type TUI struct {
 
 	// restarts counts the restarts running off the main goroutine (restartPane).
 	restarts sync.WaitGroup
+	// sched runs the rig's schedule in window 1 (schedule_run.go); nil in a
+	// viewer and without a project root.
+	sched *rigScheduler
 	// lastRenderAt stores the UnixNano timestamp of the last completed render.
 	// Updated atomically by render(), read by the watchdog goroutine.
 	lastRenderAt atomic.Int64
@@ -1504,6 +1507,16 @@ func Run(cfg Config) error {
 	// goroutine stacks to crash.log for post-mortem analysis of silent freezes.
 	go renderWatchdog(&t.lastRenderAt, 10*time.Second, t.projectRoot, t.version, t.quitCh)
 
+	// The rig's schedule runs in window 1 only, so a job fires once.
+	if !viewer && t.projectRoot != "" {
+		t.sched = newRigScheduler(t.projectRoot, t, time.Now)
+		t.sched.isAgent = func(name string) bool {
+			var found bool
+			t.runOnMain(func() { found = t.findPaneByName(name) != nil })
+			return found
+		}
+	}
+
 	// Render at ~30 fps.
 	ticker := time.NewTicker(maintenanceFrameInterval)
 	defer ticker.Stop()
@@ -1540,6 +1553,9 @@ func Run(cfg Config) error {
 			t.recordSessionBeads(time.Now())
 			t.refreshPaceLines(time.Now())
 			t.refreshRigNumbers(time.Now())
+			if t.sched != nil {
+				t.sched.kick() // Never waits; at most once a second.
+			}
 			// The inbox staleness floor for a child window (ini-3wkl.7).
 			t.refreshInboxOnCadence(time.Now())
 			if (t.layoutState.Mode == LayoutLive || t.liveFocus != nil || t.liveList != nil) && time.Since(t.lastLiveTick) >= time.Second {

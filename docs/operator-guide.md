@@ -421,6 +421,25 @@ Your own typing and pastes are never held, and neither is a message you send fro
 started before this command existed answers `older initech running; restart it for
 do-not-disturb` (exit 2).
 
+### Schedules
+
+A rig keeps its own schedule, and window 1 runs it whenever the rig is up: through restarts, and after the agent session that added a job has ended. A job delivers a message, or the output of a one-line command, to one pane, at a time of day or on an interval.
+
+| Command | What it does |
+|---------|--------------|
+| `initech cron add --to <pane> --at 09:30 --message "<text>"` | A job at a time of day. After the time, add `weekdays`, `weekends` or days like `mon,thu` (`--at "09:30 weekdays"`); without one it runs daily. |
+| `initech cron add --to <pane> --every 15m --command "<line>"` | A job on an interval of a minute or more. |
+| `initech cron list` | Every job: its owner, id, pane, when, next run, last run and what it does. |
+| `initech cron remove <id>` | Removes a job. An agent removes its own; super removes any. |
+
+`add` and `remove` run inside an agent's pane: initech works out the agent from the pane the command runs in, as it does for `initech post`, so a job's owner is the agent that added it and only that agent, or super, can remove it. Outside an agent's pane, and on Windows, they are refused. A job of an agent that has since left stays listed and runs until super removes it.
+
+A message arrives as `[from <owner>, schedule <id>] <text>`. A command runs in the rig root and is stopped at 30 seconds; its output, cut at 2 KB, arrives the same way with the command line and its exit code. Both go through the same path as `initech send`, so a dialog or do-not-disturb holds them like any other message, and a suspended agent wakes for them. A job whose time passed while initech was down runs once at the next start and says when it was due; an interval job carries on from the start, without catching up. A job never runs twice for one due time, even across a restart in the same minute.
+
+Super hears one message, from initech, when a job cannot be delivered (no such pane, the pane not running, or the message refused), naming the job, its owner and why, and when a command fails or is stopped. Nothing is dropped silently.
+
+The schedule is `.initech/schedule.yaml`, readable by the rig's user only (0600), and the commands are the way to change it. A hand edit that does not parse, or names an owner that is not an agent of the rig, is refused when it is read, with the line named in a message to super, and the last good schedule keeps running. Whoever can write that file can schedule a command, as with the operating system's crontab, which is why it is readable by the rig's user only. A job holds no secrets: a command that needs one reads it from where it is kept. Not built: retries, chaining, more than one line of command, a log per job, and editing a job (remove it and add it again).
+
 ### Usage data
 
 initech sends one anonymous usage ping a day, so the maintainer knows how many installs there are and which versions they run. Window 1 sends it in the background after its first frame, at most once every 24 hours per install. A `--window` viewer, `initech serve` and the subcommands never send it. It carries exactly four things: a random install id, the initech version, the OS and the CPU architecture. It also asks PostHog not to derive a location from the request. It never carries names, paths, hostnames, roles, agent counts, project content or anything typed.
