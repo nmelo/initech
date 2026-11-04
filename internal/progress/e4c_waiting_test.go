@@ -48,10 +48,10 @@ func TestWaiting_TheHoverCasesCountWaitingNotStuck(t *testing.T) {
 		t.Errorf("blocked %d: waiting is not blocked", r.Blocked)
 	}
 	want := []WaitingRow{
-		{ID: "hov-w.1", Owner: "eng1", Wait: "parked for the release"},
-		{ID: "hov-w.2", Owner: "eng2", Wait: "waits on hov-w.20 landing"},
-		{ID: "hov-w.3", Owner: "eng3", Wait: "waiting on hov-w.30"},
-		{ID: "hov-w.4", Owner: "-", Wait: "no comment"},
+		{ID: "hov-w.1", Owner: "eng1", Wait: "parked for the release", Target: "unknown"},
+		{ID: "hov-w.2", Owner: "eng2", Wait: "waits on hov-w.20 landing", Target: "unknown"},
+		{ID: "hov-w.3", Owner: "eng3", Wait: "waiting on hov-w.30", Target: "unknown"},
+		{ID: "hov-w.4", Owner: "-", Wait: "no comment", Target: "unknown"},
 	}
 	if len(r.Waiting) != len(want) {
 		t.Fatalf("waiting = %+v, want %+v", r.Waiting, want)
@@ -62,7 +62,7 @@ func TestWaiting_TheHoverCasesCountWaitingNotStuck(t *testing.T) {
 		}
 	}
 	out := RenderReport(r)
-	for _, line := range []string{"stuck 0, blocked 0, waiting 4", "waiting 20m or more:", "  hov-w.1 eng1: parked for the release", "  hov-w.4 -: no comment"} {
+	for _, line := range []string{"stuck 0, blocked 0, waiting 4", "waiting 20m or more, or wait over:", "  hov-w.1 eng1: parked for the release", "  hov-w.4 -: no comment"} {
 		if !strings.Contains(out, line) {
 			t.Errorf("the table lacks %q:\n%s", line, out)
 		}

@@ -169,6 +169,11 @@ func progressReport(r iexec.Runner, p *config.Project, prefix string, hours int,
 	in.Comments = progressComments(r, p.Root, in.Beads, &in.Notes)
 	since := now.Add(-time.Duration(hours) * time.Hour)
 	in.Commits, in.CommitsKnown = progressCommits(r, p, since, &in.Notes)
+	if world := newProgressWorld(r, p, &in.Notes); world != nil {
+		in.Beads = progress.JudgeAll(in.Beads, now, world)
+	} else {
+		in.Beads = progress.JudgeAll(in.Beads, now, nil)
+	}
 	in.Panes, in.PanesKnown = progressPanes(p)
 	if !in.PanesKnown {
 		in.Notes = append(in.Notes, "owner panes not read (no initech answering): no quiet bead reads working")

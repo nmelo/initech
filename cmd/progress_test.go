@@ -38,7 +38,10 @@ type progressFake struct {
 	gitLog    string // git log output
 	hang      bool   // git fetch never finishes until its context ends
 	fetched   bool
-	data      string // absolute path of testdata/progress
+	data      string            // absolute path of testdata/progress
+	list      string            // bd list output instead of the fixture's
+	tags      string            // git ls-remote --tags output
+	runs      map[string]string // gh run view <id> status; absent is "not found"
 }
 
 func (f *progressFake) RunInDir(dir, name string, args ...string) (string, error) {
@@ -51,9 +54,19 @@ func (f *progressFake) RunInDir(dir, name string, args ...string) (string, error
 		if f.bdErr != nil {
 			return "", f.bdErr
 		}
+		if f.list != "" {
+			return f.list, nil
+		}
 		return readFixture(data, "list.json")
 	case name == "bd" && args[0] == "comments":
 		return readFixture(data, "comments", args[1]+".json")
+	case name == "gh" && len(args) > 1 && args[0] == "run" && args[1] == "view":
+		if st, ok := f.runs[args[2]]; ok {
+			return `{"status":"` + st + `"}`, nil
+		}
+		return "", errors.New("could not find any workflow run with ID " + args[2])
+	case name == "git" && args[0] == "ls-remote":
+		return f.tags, nil
 	case name == "gh":
 		return readFixture(data, "commits.txt")
 	case name == "git" && args[0] == "remote":
@@ -85,6 +98,9 @@ func (f *progressFake) Run(name string, args ...string) (string, error) {
 }
 
 func (f *progressFake) RunContext(ctx context.Context, name string, args ...string) (string, error) {
+	if !(name == "git" && len(args) > 2 && args[2] == "fetch") {
+		return f.RunInDir("ctx", name, args...)
+	}
 	f.mu.Lock()
 	f.calls = append(f.calls, "ctx|"+name+" "+strings.Join(args, " "))
 	f.fetched = true
@@ -538,5 +554,74 @@ func TestAppServe_ProgressReadsTheRigsValue(t *testing.T) {
 	}
 	if !read {
 		t.Errorf("status.custom was not read in the rig's folder: %v", fake.calls)
+	}
+}
+
+// ini-agq AC1, AC3 through initech progress: each typed wait is judged with one
+// call per waiting bead (git for a tag, gh for a run), bead and date waits from
+// the list and the clock, and the table and JSON carry over and unknown.
+func TestProgress_JudgesEveryKindOfWait(t *testing.T) {
+	now := progressFixtureNow.UTC()
+	old := now.Add(-3 * time.Hour).Format(time.RFC3339)
+	bead := func(id, status, meta, deps string) string {
+		return `{"id":"` + id + `","title":"t","status":"` + status + `","assignee":"","updated_at":"` + old + `","metadata":` + meta + `,"dependencies":` + deps + `}`
+	}
+	list := "[" + strings.Join([]string{
+		bead("fx-1", "waiting", `{"wait_on":"tag:v9.9.9"}`, "[]"),
+		bead("fx-2", "waiting", `{"wait_on":"run:4242"}`, "[]"),
+		bead("fx-3", "waiting", `{"wait_on":"date:2026-10-01"}`, "[]"),
+		bead("fx-4", "waiting", `{}`, `[{"depends_on_id":"fx-9","type":"blocks"}]`),
+		bead("fx-5", "waiting", `{}`, "[]"),
+		bead("fx-6", "waiting", `{"wait_on":"run:777"}`, "[]"),
+		bead("fx-9", "closed", `{}`, "[]"),
+		bead("fx-10", "in_progress", `{"wait_on":"tag:v9.9.9"}`, "[]"),
+	}, ",") + "]"
+	fake := &progressFake{list: list, tags: "abc123\trefs/tags/v9.9.9\n", runs: map[string]string{"4242": "completed"}}
+	out, err := runProgressJSON(t, fake, progressRepos, "fx-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rep progress.Report
+	if err := json.Unmarshal([]byte(out), &rep); err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]progress.WaitingRow{}
+	for _, w := range rep.Waiting {
+		got[w.ID] = w
+	}
+	for id, want := range map[string]string{"fx-1": "tag v9.9.9 exists", "fx-2": "run 4242 completed", "fx-3": "2026-10-01 passed", "fx-4": "fx-9 closed"} {
+		if w := got[id]; !w.Over || w.Event != want {
+			t.Errorf("%s: %+v, want over with %q", id, w, want)
+		}
+	}
+	if w := got["fx-5"]; w.Over || w.Target != "unknown" {
+		t.Errorf("fx-5 with no target: %+v", w)
+	}
+	if w := got["fx-6"]; w.Over || w.Target != "unknown (no run 777)" {
+		t.Errorf("fx-6 with no such run: %+v", w)
+	}
+	if rep.WaitingOver != 4 || rep.Stuck != 0 {
+		t.Errorf("over %d stuck %d, want 4 and 0", rep.WaitingOver, rep.Stuck)
+	}
+	var tagCalls, runCalls int
+	for _, c := range fake.calls {
+		if strings.Contains(c, "git ls-remote") {
+			tagCalls++
+		}
+		if strings.Contains(c, "gh run view") {
+			runCalls++
+		}
+	}
+	if tagCalls != 1 || runCalls != 2 {
+		t.Errorf("tag calls %d, run calls %d: want one per waiting bead and none for fx-10 (in progress)", tagCalls, runCalls)
+	}
+	found := false
+	for _, n := range rep.Notes {
+		if strings.Contains(n, "run 777 does not exist") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("no note for the missing run: %v", rep.Notes)
 	}
 }

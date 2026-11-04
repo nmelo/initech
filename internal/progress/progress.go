@@ -8,6 +8,7 @@
 package progress
 
 import (
+	"encoding/json"
 	"fmt"
 	"math"
 	"regexp"
@@ -34,6 +35,12 @@ type Bead struct {
 	// reads the newer of the two. Never read from bd's JSON: initech progress
 	// sets it from LastMove, the TUI from its bead poll.
 	Moved time.Time `json:"-"`
+
+	// Dependencies and Metadata are bd's, read for the wait (waits.go). Wait
+	// is that wait as judged by the caller (JudgeAll); zero when not judged.
+	Dependencies []Dependency    `json:"dependencies,omitempty"`
+	Metadata     json.RawMessage `json:"metadata,omitempty"`
+	Wait         WaitState       `json:"-"`
 }
 
 // Comment is one bead comment as bd comments --json gives it.
@@ -331,9 +338,11 @@ type Report struct {
 	CriticalPath []PathBead `json:"critical_path"`
 	Engineers    []string   `json:"engineers"`
 	Quiet        []QuietRow `json:"quiet"`
-	// Waiting are the beads the waiting count counts, each with its wait text.
-	Waiting []WaitingRow `json:"waiting"`
-	Notes   []string     `json:"notes"`
+	// Waiting are the beads the waiting count counts, each with its wait text
+	// and target; WaitingOver counts those whose wait is over.
+	Waiting     []WaitingRow `json:"waiting"`
+	WaitingOver int          `json:"waiting_over"`
+	Notes       []string     `json:"notes"`
 }
 
 // Row is one bead in the table. AC is the table's cell ("n/m" or "-");
@@ -383,6 +392,11 @@ type WaitingRow struct {
 	ID    string `json:"id"`
 	Owner string `json:"owner"`
 	Wait  string `json:"wait"`
+	// Target is what it waits on ("tag v2.58.0", "ini-abc", "unknown"); Over
+	// and Event say whether that has arrived and how.
+	Target string `json:"target"`
+	Over   bool   `json:"over"`
+	Event  string `json:"event,omitempty"`
 }
 
 // waitText is the first line of the newest comment, with control characters
@@ -465,8 +479,18 @@ func Build(in Input) Report {
 	r.Closed, r.Total = len(closed), len(beads)
 	// The pace's last move is the quiet list's: LastMove over the comments
 	// and commits this report read.
+	status := make(map[string]string, len(in.Beads))
+	for _, b := range in.Beads {
+		status[b.ID] = b.Status
+	}
 	for i, b := range beads {
 		beads[i].Moved, _ = LastMove(b, in.Comments[b.ID], in.Commits)
+		// A wait the caller did not judge is judged here as far as the list
+		// and the clock can: a bead or a date. A tag or a run needs a caller
+		// that can ask git or gh (JudgeAll with an External).
+		if beads[i].Wait == (WaitState{}) {
+			beads[i].Wait = Judge(b, status, in.Now, nil)
+		}
 	}
 	var panes map[string]string
 	if in.PanesKnown {
@@ -485,7 +509,11 @@ func Build(in Input) Report {
 			if owner == "" {
 				owner = "-"
 			}
-			r.Waiting = append(r.Waiting, WaitingRow{ID: b.ID, Owner: owner, Wait: waitText(in.Comments[b.ID])})
+			r.Waiting = append(r.Waiting, WaitingRow{ID: b.ID, Owner: owner, Wait: waitText(in.Comments[b.ID]),
+				Target: b.Wait.Target.String(), Over: b.Wait.Over, Event: b.Wait.Event})
+			if b.Wait.Over {
+				r.WaitingOver++
+			}
 		}
 	}
 	r.WritingOnly = r.Closed - r.ByEngineers
@@ -572,6 +600,9 @@ func RenderReport(r Report) string {
 	if len(r.Waiting) > 0 {
 		waitingCount = fmt.Sprintf(", waiting %d", len(r.Waiting))
 	}
+	if r.WaitingOver > 0 {
+		waitingCount += fmt.Sprintf(" (%d over)", r.WaitingOver)
+	}
 	line("\nclosed %d of %d: worked by engineers %d, writing/review only %d; stuck %d, blocked %d%s",
 		r.Closed, r.Total, r.ByEngineers, r.WritingOnly, r.Stuck, r.Blocked, waitingCount)
 	var names []string
@@ -618,9 +649,13 @@ func RenderReport(r Report) string {
 		}
 	}
 	if len(r.Waiting) > 0 {
-		line("\nwaiting %s or more:", r.StuckAfter)
+		line("\nwaiting %s or more, or wait over:", r.StuckAfter)
 		for _, b := range r.Waiting {
-			line("  %s %s: %s", b.ID, b.Owner, b.Wait)
+			on := "waits on " + b.Target
+			if b.Over {
+				on = "OVER: " + b.Event
+			}
+			line("  %s %s: %s [%s]", b.ID, b.Owner, b.Wait, on)
 		}
 	}
 	for _, n := range r.Notes {
@@ -657,6 +692,9 @@ type Pace struct {
 	// WaitingIDs names them.
 	Waiting    int
 	WaitingIDs []string
+	// Over counts the waiting beads whose wait is over; OverIDs names them.
+	Over    int
+	OverIDs []string
 }
 
 // blockedStates are the bd statuses of a bead waiting on something named: it
@@ -685,10 +723,16 @@ func Stuck(b Bead, ownerState string, rule Rule, now time.Time) bool {
 }
 
 // Waiting is the one definition of the waiting count: a bead in waiting whose
-// last move is rule.After old or more, with an idle owner or no holder. It is
+// last move is rule.After old or more, or whose wait is over at any age, with
+// an idle owner or no holder. It is
 // calm: never stuck, never blocked, and an owner at work on it is not asked.
 func Waiting(b Bead, ownerState string, rule Rule, now time.Time) bool {
-	if b.Status != "waiting" || now.Sub(b.LastMoved()) < rule.After || rule.After <= 0 {
+	if b.Status != "waiting" || rule.After <= 0 {
+		return false
+	}
+	// A wait that is over counts whatever the bead's age: the thing it waited
+	// on has arrived, so someone should move it now.
+	if !b.Wait.Over && now.Sub(b.LastMoved()) < rule.After {
 		return false
 	}
 	return b.Assignee == "" || ownerState == "idle"
@@ -745,6 +789,10 @@ func PaceOver(beads []Bead, label string, panes map[string]string, rule Rule, no
 		case Waiting(b, panes[b.Assignee], rule, now):
 			p.Waiting++
 			p.WaitingIDs = append(p.WaitingIDs, b.ID)
+			if b.Wait.Over {
+				p.Over++
+				p.OverIDs = append(p.OverIDs, b.ID)
+			}
 		}
 	}
 	if window > 0 {
@@ -772,6 +820,9 @@ func (p Pace) Line() string {
 	}
 	if p.Waiting > 0 {
 		s += fmt.Sprintf(" · %d waiting", p.Waiting)
+	}
+	if p.Over > 0 {
+		s += fmt.Sprintf(" · %d over", p.Over)
 	}
 	return s
 }
