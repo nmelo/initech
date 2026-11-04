@@ -219,12 +219,11 @@ func TestEffortRows_NoBdOrGitCallAndOnceAMinute(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		// The one exception: the pace's crossing read, once per crossing bead
-		// (TestCrossing_OneReadPerBeadThenNoneUntilItMoves), never per tick.
-		allowed := 0
-		if f == "pace_crossing.go" {
-			allowed = 1
-		}
+		// The exceptions: the pace's crossing read, once per crossing bead
+		// (TestCrossing_OneReadPerBeadThenNoneUntilItMoves), never per tick;
+		// pace_waits.go: a tag wait's git ls-remote, at most once a minute
+		// per target (TestWaits_TagsAndRunsAreAskedOnceAMinuteAndNeverOnceFinal).
+		allowed := map[string]int{"pace_crossing.go": 1, "pace_waits.go": 1}[f]
 		if n := len(gitCall.FindAll(b, -1)); n > allowed {
 			t.Errorf("%s runs git %d times, want at most %d", f, n, allowed)
 		}

@@ -12,6 +12,7 @@ import (
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/nmelo/initech/internal/config"
+	"github.com/nmelo/initech/internal/progress"
 )
 
 // LayoutMode determines how panes are arranged on screen.
@@ -202,8 +203,14 @@ type TUI struct {
 	paceUnread    map[string]bool
 	// rig is window 1's rig numbers (ini-3sl): the cached result and the
 	// once-a-minute gate.
-	rig       rigNumbersState
-	inboxOnce sync.Once
+	rig rigNumbersState
+	// The waits (ini-agq): each waiting bead's judged wait (main loop), the
+	// lines already sent to super by bead and target (main loop), and the
+	// answers about tags and runs (the poll goroutine's alone).
+	paceWaits    map[string]progress.WaitState
+	paceOverSent map[string]bool
+	paceAnswers  map[string]paceAnswer
+	inboxOnce    sync.Once
 	// inboxOutstanding maps an agent to the inbox items whose delivery verdict
 	// may still be corrected by a late report from the send path (ini-3wkl.6).
 	inboxOutstanding   map[string][]string

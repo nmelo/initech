@@ -1414,11 +1414,17 @@ func (t *TUI) renderOverlay() {
 			r := ruleRow + 1 + i
 			blankRow(r)
 			col := px + 2
-			for _, ch := range line {
+			// The over part of a row (" · N over") is red; the rest is calm.
+			overAt, overEnd := overSpan(line)
+			for j, ch := range []rune(line) {
 				if col >= inner {
 					break
 				}
-				s.SetContent(col, r, ch, nil, rowStyle)
+				st := rowStyle
+				if j >= overAt && j < overEnd {
+					st = rowStyle.Foreground(tcell.ColorRed)
+				}
+				s.SetContent(col, r, ch, nil, st)
 				col++
 			}
 		}

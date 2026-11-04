@@ -138,6 +138,14 @@ type External interface {
 // every bead id the caller listed to its status. ext may be nil, and then a
 // tag or a run wait stays open. A bead not in waiting has no wait.
 func Judge(b Bead, status map[string]string, now time.Time, ext External) WaitState {
+	return judge(b, status, now, ext).cleaned()
+}
+
+// Clean removes control characters from text that came from bd, git or gh,
+// for a caller that prints it or types it into a pane.
+func Clean(s string) string { return clean(s) }
+
+func judge(b Bead, status map[string]string, now time.Time, ext External) WaitState {
 	if b.Status != "waiting" {
 		return WaitState{}
 	}
@@ -176,6 +184,7 @@ func Judge(b Bead, status map[string]string, now time.Time, ext External) WaitSt
 // clean the event too: it names a target that came from bd.
 func (w WaitState) cleaned() WaitState {
 	w.Event = clean(w.Event)
+	w.Target.Name = clean(w.Target.Name)
 	return w
 }
 
@@ -187,7 +196,7 @@ func JudgeAll(beads []Bead, now time.Time, ext External) []Bead {
 		status[b.ID] = b.Status
 	}
 	for i := range beads {
-		beads[i].Wait = Judge(beads[i], status, now, ext).cleaned()
+		beads[i].Wait = Judge(beads[i], status, now, ext)
 	}
 	return beads
 }

@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/nmelo/initech/internal/lifecycle"
+	"github.com/nmelo/initech/internal/progress"
 )
 
 // beadPollInterval is how often window 1 asks bd for the in_progress beads,
@@ -44,6 +45,9 @@ type bdBead struct {
 	// CommentCount is bd's comment count. A comment does not move updated_at,
 	// so the pace reads a rise in this count as the bead's last move.
 	CommentCount int `json:"comment_count"`
+	// Dependencies and Metadata carry a waiting bead's wait (pace_waits.go).
+	Dependencies []progress.Dependency `json:"dependencies,omitempty"`
+	Metadata     json.RawMessage       `json:"metadata,omitempty"`
 }
 
 // bdListArgs asks bd for every bead, closed ones included (bd lists 50 open
@@ -164,6 +168,9 @@ func (t *TUI) pollBeadsOnce(now time.Time) {
 		}
 	})
 	t.readPaceCrossings(due)
+	if answered {
+		t.judgePaceWaits(beads, now)
+	}
 }
 
 // startBeadPoller polls bd for the panes' beads: once at once, then every

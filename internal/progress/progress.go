@@ -494,7 +494,7 @@ func Build(in Input) Report {
 		// and the clock can: a bead or a date. A tag or a run needs a caller
 		// that can ask git or gh (JudgeAll with an External).
 		if beads[i].Wait == (WaitState{}) {
-			beads[i].Wait = Judge(b, status, in.Now, nil).cleaned()
+			beads[i].Wait = Judge(b, status, in.Now, nil)
 		}
 	}
 	var panes map[string]string
