@@ -259,6 +259,11 @@ These are the commands you'll use most. The full list is in the README.
 | Restart a stuck agent | `restart` or `r` |
 | Check event history | `log` or `events` |
 | Quit | Alt+q or `quit` (requires confirmation) |
+| Read what an agent said and ran, from its session | `initech last <agent>` in a shell |
+
+### initech last
+
+`initech last <agent> [-n N]` prints the agent's newest N entries (20 by default, at most 200) from its newest Claude Code session transcript, oldest first, as plain text: each entry is its time, its kind (`agent`, `nelson`, `message from <agent>`, `tool`) and its text; a reply keeps its footer lines, and a tool run is its one line and its input and result, cut to 4 KB. It reads the transcript through the reader the app's conversation route uses, so it prints exactly what the app shows: the same entries left out, and a malformed line skipped and counted in a last line `skipped <n> malformed line`. The transcript is the one the pane list names for the agent, also under a rig reached through a symlink. An agent with no transcript prints `no transcript for <agent>` and exits 1; an agent on another machine (`host:agent`, or a pane the list shows as remote) is refused, since only this machine's agents are read; `-n` outside 1 to 200 is refused. A tool result can carry whatever the agent saw, secrets included, so treat the output as you would the agent's pane.
 
 ### The Top Modal
 
