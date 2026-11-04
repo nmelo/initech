@@ -186,7 +186,8 @@ func TestTeachAutoMode_TheCorpusReadsOnlyItsOwnCaptures(t *testing.T) {
 		switch {
 		case own:
 			want = x7f3Preview
-		case strings.HasPrefix(name, "haiku312_rm_guard_prompt_"):
+		case strings.HasPrefix(name, "haiku312_rm_guard_prompt_"),
+			strings.HasPrefix(name, "haiku6if_prompt_rm_"):
 			want = "Dangerous rm operation: do you want to proceed?"
 		}
 		if got != want {
