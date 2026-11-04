@@ -18,6 +18,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -78,7 +79,7 @@ remotes:
 	if err != nil {
 		t.Fatalf("start under pty: %v", err)
 	}
-	var out strings.Builder
+	var out lockedBuilder
 	done := make(chan struct{})
 	go func() {
 		io.Copy(&out, ptmx)
@@ -171,7 +172,7 @@ remotes:
 	if err != nil {
 		t.Fatalf("start under pty: %v", err)
 	}
-	var out strings.Builder
+	var out lockedBuilder
 	done := make(chan struct{})
 	go func() {
 		io.Copy(&out, ptmx)
@@ -187,4 +188,24 @@ remotes:
 	if !strings.Contains(out.String(), "no valid role directories found") {
 		t.Errorf("expected the unchanged 'no valid role directories found' error when configured roles fail to build, even with remotes set. Output:\n%s", out.String())
 	}
+}
+
+// lockedBuilder is a strings.Builder the copy goroutine writes while the test
+// reads it. A bare Builder there is a data race under -race: io.Copy appends on
+// one goroutine as out.String() reads on another.
+type lockedBuilder struct {
+	mu sync.Mutex
+	b  strings.Builder
+}
+
+func (l *lockedBuilder) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.b.Write(p)
+}
+
+func (l *lockedBuilder) String() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.b.String()
 }
