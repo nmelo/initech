@@ -2,7 +2,9 @@ package cmd
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -12,6 +14,7 @@ import (
 	"time"
 
 	"github.com/nmelo/initech/internal/color"
+	"github.com/nmelo/initech/internal/rignumbers"
 	"github.com/nmelo/initech/internal/tui"
 )
 
@@ -29,6 +32,13 @@ import (
 // per-test regardless of what the process-wide baseline was.
 func TestMain(m *testing.M) {
 	os.Unsetenv("INITECH_SOCKET")
+	// No test reaches the real gh or bd through status's rig numbers: a test
+	// that wants them sets its own statusRigRun (ini-3sl).
+	statusRigRun = func(string) rignumbers.Runner {
+		return func(context.Context, string, ...string) ([]byte, error) {
+			return nil, errors.New("no gh or bd in tests")
+		}
+	}
 	os.Exit(m.Run())
 }
 

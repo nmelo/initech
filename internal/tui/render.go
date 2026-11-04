@@ -1296,7 +1296,7 @@ func (t *TUI) renderOverlay() {
 	// are the first lines a short screen gives up: the rows the screen has no
 	// room for are cut, and with room for none the rule goes too, so the
 	// columns and the footer keep their lines.
-	efforts := t.paceRows
+	efforts := t.boardRows()
 	if room := sh - py - panelH - 1; len(efforts) > room {
 		efforts = efforts[:max(room, 0)]
 	}

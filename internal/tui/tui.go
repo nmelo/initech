@@ -200,7 +200,10 @@ type TUI struct {
 	paceCommentAt map[string]time.Time
 	paceReads     map[string]paceRead
 	paceUnread    map[string]bool
-	inboxOnce     sync.Once
+	// rig is window 1's rig numbers (ini-3sl): the cached result and the
+	// once-a-minute gate.
+	rig       rigNumbersState
+	inboxOnce sync.Once
 	// inboxOutstanding maps an agent to the inbox items whose delivery verdict
 	// may still be corrected by a late report from the send path (ini-3wkl.6).
 	inboxOutstanding   map[string][]string
@@ -1529,6 +1532,7 @@ func Run(cfg Config) error {
 			t.rotateTip()
 			t.recordSessionBeads(time.Now())
 			t.refreshPaceLines(time.Now())
+			t.refreshRigNumbers(time.Now())
 			// The inbox staleness floor for a child window (ini-3wkl.7).
 			t.refreshInboxOnCadence(time.Now())
 			if (t.layoutState.Mode == LayoutLive || t.liveFocus != nil || t.liveList != nil) && time.Since(t.lastLiveTick) >= time.Second {

@@ -46,7 +46,10 @@ type Project struct {
 	Repos    []Repo         `yaml:"repos,omitempty"`
 	Beads    BeadsConfig    `yaml:"beads,omitempty"`
 	Resource ResourceConfig `yaml:"resource,omitempty"`
-	Roles    []string       `yaml:"roles"`
+	// Numbers are the thresholds of the rig's numbers; a crossing sends super
+	// one line. Absent, nothing is ever sent.
+	Numbers NumbersConfig `yaml:"numbers,omitempty"`
+	Roles   []string      `yaml:"roles"`
 
 	// TechStack, BuildCmd and TestCmd fill the {{tech_stack}}, {{build_cmd}}
 	// and {{test_cmd}} placeholders in every role's CLAUDE.md. Before ini-rg12

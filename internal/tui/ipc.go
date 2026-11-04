@@ -21,6 +21,7 @@ import (
 
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/nmelo/initech/internal/config"
+	"github.com/nmelo/initech/internal/rignumbers"
 )
 
 const (
@@ -52,13 +53,14 @@ func (req IPCRequest) origin() sendOrigin { return sendOrigin{From: req.From, Ur
 
 // IPCResponse is the JSON structure returned by the TUI socket.
 type IPCResponse struct {
-	Notices    []string          `json:"notices,omitempty"` // Teaching lines, printed after the normal result; never overwrite another detector.
-	WindowPort *WindowPortStatus `json:"window_port,omitempty"`
-	Project    *IPCProject       `json:"project,omitempty"` // The serving process's project, on list (ini-l8s5).
-	OK         bool              `json:"ok"`
-	Error      string            `json:"error,omitempty"`
-	Data       string            `json:"data,omitempty"`     // Pane content for peek, pane list for list.
-	Delivery   string            `json:"delivery,omitempty"` // A send's verdict (ini-69fy): a Delivery* outcome, its reason in Data.
+	Notices    []string            `json:"notices,omitempty"` // Teaching lines, printed after the normal result; never overwrite another detector.
+	WindowPort *WindowPortStatus   `json:"window_port,omitempty"`
+	Project    *IPCProject         `json:"project,omitempty"` // The serving process's project, on list (ini-l8s5).
+	Rig        *rignumbers.Numbers `json:"rig,omitempty"`     // Window 1's cached rig numbers, on list (ini-3sl); absent before the first gather.
+	OK         bool                `json:"ok"`
+	Error      string              `json:"error,omitempty"`
+	Data       string              `json:"data,omitempty"`     // Pane content for peek, pane list for list.
+	Delivery   string              `json:"delivery,omitempty"` // A send's verdict (ini-69fy): a Delivery* outcome, its reason in Data.
 }
 
 // IPCProject names the project behind a socket, so a caller that reached it

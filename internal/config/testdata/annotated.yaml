@@ -20,4 +20,7 @@ role_overrides:
 beads:
   enabled: false
   stuck_after: 20m   # a slow rig
+numbers:
+  gate_red_max: 1   # one red is a question
+  idle_engineers_min: 2
 my_unknown_key: keep me

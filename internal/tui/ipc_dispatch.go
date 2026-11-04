@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"net"
 	"time"
+
+	"github.com/nmelo/initech/internal/rignumbers"
 )
 
 // PaneInfo is the JSON structure returned by the "list" IPC action.
@@ -233,6 +235,9 @@ func dispatchIPC(h IPCHost, conn net.Conn, req IPCRequest, rawJSON []byte) {
 		}
 		if source, ok := h.(interface{ ProjectSnapshot() *IPCProject }); ok {
 			response.Project = source.ProjectSnapshot()
+		}
+		if source, ok := h.(interface{ RigNumbersSnapshot() *rignumbers.Numbers }); ok {
+			response.Rig = source.RigNumbersSnapshot()
 		}
 		writeIPCResponse(conn, response)
 

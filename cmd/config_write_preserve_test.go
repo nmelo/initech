@@ -186,3 +186,34 @@ func TestConfigWrite_EveryWriterKeepsStuckAfter(t *testing.T) {
 		t.Errorf("Value after a write = %v, want 20m", got)
 	}
 }
+
+// ini-3sl: the fixture carries a numbers: block with a comment, so each
+// writer's byte-for-byte test above keeps it; this one says so, and that the
+// thresholds still load after a write.
+func TestConfigWrite_EveryWriterKeepsTheNumbersBlock(t *testing.T) {
+	_, path, orig := annotatedConfig(t)
+	block := "numbers:\n  gate_red_max: 1   # one red is a question\n  idle_engineers_min: 2\n"
+	if !strings.Contains(orig, block) {
+		t.Fatal("the fixture lost its numbers: block")
+	}
+	if err := config.Update(path, func(p *config.Project) error {
+		p.Roles = append(p.Roles, "eng2")
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), block) {
+		t.Errorf("an update dropped or rewrote the numbers: block:\n%s", b)
+	}
+	p, err := config.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if th := p.Numbers.Thresholds(); th["gate_red_max"] != 1 || th["idle_engineers_min"] != 2 {
+		t.Errorf("after a write the thresholds are %v", th)
+	}
+}

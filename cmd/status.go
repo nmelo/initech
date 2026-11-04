@@ -354,6 +354,17 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	}
 	resp, projName, panes, beadMap, beadNote := st.resp, st.projName, st.panes, st.beadMap, st.beadNote
 
+	// --numbers: the rig's numbers alone, as one object with --json. The
+	// agent array --json prints is never reshaped (ini-3sl).
+	if statusNumbers {
+		rig := statusRigNumbers(st, p, time.Now())
+		if statusJSON {
+			return printRigJSON(out, rig)
+		}
+		printRigLine(out, rig)
+		return nil
+	}
+
 	if statusJSON {
 		// A page of nulls must not pass for agents with nothing to say
 		// (ini-r1u2): stderr only, so the JSON and the exit code stand.
@@ -548,6 +559,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		}
 	}
 	fmt.Fprintln(out)
+	printRigLine(out, statusRigNumbers(st, p, time.Now()))
 
 	return nil
 }
