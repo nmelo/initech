@@ -31,6 +31,7 @@ type WaitTarget struct {
 // String is the target as a reader sees it: "ini-abc", "tag v2.58.0",
 // "run 41858021524", "2026-11-05", "unknown".
 func (w WaitTarget) String() string {
+	w.Name = clean(w.Name)
 	switch w.Kind {
 	case WaitOnTag, WaitOnRun:
 		return w.Kind + " " + w.Name
@@ -59,7 +60,11 @@ type Dependency struct {
 	Type      string `json:"type"`
 }
 
-var runID = regexp.MustCompile(`^[0-9]+$`)
+var (
+	runID = regexp.MustCompile(`^[0-9]+$`)
+	// tagName is the characters a git tag name may use here.
+	tagName = regexp.MustCompile(`^[A-Za-z0-9._/+-]+$`)
+)
 
 // ParseWaitOn reads a wait_on value. ok is false for any other shape.
 func ParseWaitOn(v string) (WaitTarget, bool) {
@@ -74,7 +79,7 @@ func ParseWaitOn(v string) (WaitTarget, bool) {
 			return WaitTarget{Kind: WaitOnRun, Name: name}, true
 		}
 	case WaitOnTag:
-		if !strings.ContainsAny(name, " \t\n") {
+		if tagName.MatchString(name) {
 			return WaitTarget{Kind: WaitOnTag, Name: name}, true
 		}
 	case WaitOnDate:
@@ -168,6 +173,12 @@ func Judge(b Bead, status map[string]string, now time.Time, ext External) WaitSt
 	return w
 }
 
+// clean the event too: it names a target that came from bd.
+func (w WaitState) cleaned() WaitState {
+	w.Event = clean(w.Event)
+	return w
+}
+
 // JudgeAll sets Wait on every waiting bead of beads, by Judge over the same
 // list, and returns beads.
 func JudgeAll(beads []Bead, now time.Time, ext External) []Bead {
@@ -176,7 +187,7 @@ func JudgeAll(beads []Bead, now time.Time, ext External) []Bead {
 		status[b.ID] = b.Status
 	}
 	for i := range beads {
-		beads[i].Wait = Judge(beads[i], status, now, ext)
+		beads[i].Wait = Judge(beads[i], status, now, ext).cleaned()
 	}
 	return beads
 }

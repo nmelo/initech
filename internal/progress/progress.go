@@ -399,6 +399,17 @@ type WaitingRow struct {
 	Event  string `json:"event,omitempty"`
 }
 
+// clean removes control characters, so text from bd, git or gh cannot drive
+// the reader's terminal.
+func clean(s string) string {
+	return strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) {
+			return -1
+		}
+		return r
+	}, s)
+}
+
 // waitText is the first line of the newest comment, with control characters
 // removed so a comment cannot drive the reader's terminal; "no comment" with none.
 func waitText(comments []Comment) string {
@@ -412,13 +423,7 @@ func waitText(comments []Comment) string {
 		return "no comment"
 	}
 	first, _, _ := strings.Cut(strings.TrimSpace(newest.Text), "\n")
-	first = strings.Map(func(r rune) rune {
-		if unicode.IsControl(r) {
-			return -1
-		}
-		return r
-	}, first)
-	return cut(first, 100)
+	return cut(clean(first), 100)
 }
 
 // Build is the report for in, as data.
@@ -489,7 +494,7 @@ func Build(in Input) Report {
 		// and the clock can: a bead or a date. A tag or a run needs a caller
 		// that can ask git or gh (JudgeAll with an External).
 		if beads[i].Wait == (WaitState{}) {
-			beads[i].Wait = Judge(b, status, in.Now, nil)
+			beads[i].Wait = Judge(b, status, in.Now, nil).cleaned()
 		}
 	}
 	var panes map[string]string
@@ -659,7 +664,7 @@ func RenderReport(r Report) string {
 		}
 	}
 	for _, n := range r.Notes {
-		line("note: %s", n)
+		line("note: %s", clean(n))
 	}
 	return w.String()
 }

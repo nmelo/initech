@@ -162,3 +162,29 @@ func TestJudgeAll_NothingWaiting(t *testing.T) {
 }
 
 func ptr(b Bead) *Bead { return &b }
+
+// Text from bd cannot drive the terminal: a tag outside git's ref characters
+// is refused, and a target, an event or a note carries no control character.
+func TestWaits_NoControlCharactersReachTheTable(t *testing.T) {
+	if _, ok := ParseWaitOn("tag:v1\x1b[2J"); ok {
+		t.Error("a tag name with an escape parsed")
+	}
+	if _, ok := ParseWaitOn("tag:v2.58.0"); !ok {
+		t.Error("an ordinary tag name was refused")
+	}
+	dep := waitingBead("e.1", "", Dependency{DependsOn: "x\x1b]0;pwned\x07", Type: "blocks"})
+	bad := waitingBead("e.2", `{"wait_on":"date:\u001b[31m"}`)
+	in := Input{Rig: "r", Prefix: "e.", Hours: 6, Now: paceNow, Rule: testRule, Panes: map[string]string{"eng1": "idle"}, PanesKnown: true,
+		Beads: []Bead{dep, bad, {ID: "x\x1b]0;pwned\x07", Status: "closed"}}, Notes: []string{"bad \x1b[2J note"}}
+	in.Beads[0].UpdatedAt = paceNow.Add(-3 * time.Hour)
+	in.Beads[1].UpdatedAt = paceNow.Add(-3 * time.Hour)
+	out := RenderReport(Build(in))
+	for _, r := range out {
+		if r != '\n' && (r < 0x20 || (r >= 0x7f && r <= 0x9f)) {
+			t.Fatalf("the table holds control character %#x:\n%q", r, out)
+		}
+	}
+	if !strings.Contains(out, "OVER: x]0;pwned closed") {
+		t.Errorf("the cleaned event is missing:\n%s", out)
+	}
+}
