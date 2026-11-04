@@ -31,6 +31,7 @@ var sendMuTakers = map[string]string{
 	"keystrokePane":                 "an IPC connection goroutine",
 	"Pane.maybeRetryWithheldSubmit": "readLoop and the maintenance sweep, with TryLock",
 	"Daemon.interruptPane":          "a control stream goroutine",
+	"Pane.Close":                    "off the main goroutine: quit, removals and failed starts (the census bans a pane Close on main)",
 }
 
 // goroutineOnlySendMuTakers must take the lock only inside a func literal: their
@@ -193,5 +194,81 @@ func TestCensus_TheMainPathsDoNotBlockOnAPane(t *testing.T) {
 		if !found[fn] {
 			t.Errorf("%s is on the main-path list and was not found, or calls nothing: fix the list", fn)
 		}
+	}
+}
+
+// releaseTerminalCallers are the only functions that may release a pane's
+// terminal, and each holds sendMu while it does (ini-tca): a send in flight
+// reads ptmx and emu, so a release beside it is a data race.
+var releaseTerminalCallers = map[string]string{
+	"Pane.Close":              "takes sendMu around it",
+	"Pane.closeOffMain":       "inside the teardown goroutine, which takes sendMu",
+	"Pane.closeHoldingSendMu": "its caller holds sendMu",
+}
+
+func TestCensus_TheTerminalIsReleasedOnlyUnderSendMu(t *testing.T) {
+	seen := map[string]bool{}
+	inventoryCalls(t, func(fn, file string, _ bool, call *ast.CallExpr) {
+		if !strings.HasSuffix(selectorPath(call.Fun), "releaseOnce.Do") {
+			return
+		}
+		seen[fn] = true
+		if _, ok := releaseTerminalCallers[fn]; !ok {
+			t.Errorf("%s (%s) releases a pane's terminal and is not on the list: it must hold sendMu", fn, file)
+		}
+	})
+	for fn := range releaseTerminalCallers {
+		if !seen[fn] {
+			t.Errorf("%s is on the list and no longer releases the terminal: remove it", fn)
+		}
+	}
+}
+
+// TestCensus_CloseTakesSendMuAroundTheRelease reads Pane.Close itself: the
+// lock is taken before the release, in its own body.
+func TestCensus_CloseTakesSendMuAroundTheRelease(t *testing.T) {
+	var lockAt, releaseAt token.Pos
+	inventoryCalls(t, func(fn, _ string, inFuncLit bool, call *ast.CallExpr) {
+		if fn != "Pane.Close" || inFuncLit {
+			return
+		}
+		switch p := selectorPath(call.Fun); {
+		case strings.HasSuffix(p, "sendMu.Lock"):
+			lockAt = call.Pos()
+		case strings.HasSuffix(p, "releaseOnce.Do"):
+			releaseAt = call.Pos()
+		}
+	})
+	if !lockAt.IsValid() || !releaseAt.IsValid() || lockAt > releaseAt {
+		t.Fatal("Pane.Close does not take sendMu before it releases the terminal")
+	}
+}
+
+// TestCensus_TheSendPathReadsThePTYThroughItsSnapshot: sendPaneTextLocked never
+// reads the pane's ptmx field directly (ini-tca). It goes through ptyHandle or
+// hasPTY, under ptyMu, and the writer owns every write.
+func TestCensus_TheSendPathReadsThePTYThroughItsSnapshot(t *testing.T) {
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, "ipc.go", nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, d := range f.Decls {
+		fd, ok := d.(*ast.FuncDecl)
+		if !ok || fd.Name.Name != "sendPaneTextLocked" {
+			continue
+		}
+		found = true
+		ast.Inspect(fd.Body, func(n ast.Node) bool {
+			if s, ok := n.(*ast.SelectorExpr); ok && s.Sel.Name == "ptmx" {
+				t.Errorf("sendPaneTextLocked reads %s.ptmx directly at %s: a close can clear it beside the send",
+					selectorPath(s.X), fset.Position(s.Pos()))
+			}
+			return true
+		})
+	}
+	if !found {
+		t.Fatal("sendPaneTextLocked not found in ipc.go: fix the census")
 	}
 }

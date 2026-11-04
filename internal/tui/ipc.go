@@ -507,7 +507,7 @@ func resumedSendReply() IPCResponse {
 // already decides it: nothing about when anything is written or pressed
 // depends on the return.
 func sendPaneTextLocked(pane *Pane, text string, enter bool) SendVerdict {
-	if pane.ptmx == nil {
+	if !pane.hasPTY() {
 		// Never silent (ini-2s7q): the IPC handler refuses a stopped or
 		// exited agent before reaching here, so a send arriving here was
 		// routed past that check and its text goes nowhere.

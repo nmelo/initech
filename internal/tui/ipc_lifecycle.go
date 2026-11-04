@@ -151,7 +151,7 @@ func (t *TUI) handleIPCStop(conn net.Conn, req IPCRequest) {
 		writeIPCResponse(conn, IPCResponse{OK: true, Data: "already stopped"})
 		return
 	}
-	pane.Close()
+	pane.closeHoldingSendMu() // sendMu is held above.
 	EmitEvent(t.agentEvents, AgentEvent{
 		Type:   EventAgentStopped,
 		Pane:   req.Target,
@@ -327,7 +327,7 @@ func (t *TUI) restartOffMain(old *Pane, oldIdx int, cfg PaneConfig) (int, error)
 	if rows < 2 {
 		rows = 24
 	}
-	old.Close()
+	old.closeHoldingSendMu()
 	old.sendMu.Unlock()
 	// Create new pane off-main (may fork/exec).
 	np, err := NewPane(cfg, rows, cols)

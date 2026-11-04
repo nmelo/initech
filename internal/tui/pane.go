@@ -2228,6 +2228,19 @@ func (p *Pane) InScrollback() bool {
 func (p *Pane) Close() {
 	p.beginClose()
 	p.stopOnce.Do(p.stopChild)
+	// Under sendMu, as closeOffMain does: a send in flight reads ptmx and emu,
+	// and releasing them beside it was a data race (ini-tca). markClosing has
+	// run, so that send ends at its next write or check and lets go promptly.
+	// Close is never called on the main goroutine (the census holds that).
+	p.sendMu.Lock()
+	defer p.sendMu.Unlock()
+	p.releaseOnce.Do(p.releaseTerminal)
+}
+
+// closeHoldingSendMu is Close for a caller that already holds sendMu.
+func (p *Pane) closeHoldingSendMu() {
+	p.beginClose()
+	p.stopOnce.Do(p.stopChild)
 	p.releaseOnce.Do(p.releaseTerminal)
 }
 
