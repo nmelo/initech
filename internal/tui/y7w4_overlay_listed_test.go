@@ -153,7 +153,7 @@ func TestOverlayListed_AllIdleIsOneLine(t *testing.T) {
 		t.Errorf("list rows %d, dots %d: want the one line and nothing to click", tui.overlayBounds.agentCount, len(tui.overlayBounds.dots))
 	}
 	rule, lines := effortBlock(tui, rows)
-	if !strings.Contains(rule, "──") || len(lines) < 3 || lines[0] != "ini-abc 0/1 · 0/h" {
+	if !strings.Contains(rule, "──") || len(lines) < 3 || lines[0] != "▶ ini-abc 0/1 · 0/h" {
 		t.Errorf("effort rows under the line: rule %q rows %q\n%s", rule, lines, framesText(rows))
 	}
 	if frame := framesText(rows); !strings.Contains(frame, "2 visible, 1 hidden") {
