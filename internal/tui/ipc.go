@@ -209,6 +209,8 @@ func (t *TUI) HandleExtended(conn net.Conn, req IPCRequest, rawJSON []byte) bool
 	switch req.Action {
 	case "post", "post_check", "post_mine", "post_withdraw":
 		t.handleIPCPost(conn, req, rawJSON)
+	case "remotes_reload":
+		t.handleIPCRemotesReload(conn)
 	case "cron_list", "cron_add", "cron_remove":
 		t.handleIPCCron(conn, req)
 	case "stop":

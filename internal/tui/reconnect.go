@@ -115,6 +115,23 @@ type peerManager struct {
 	onForwardSend func(target, text string, enter bool, o sendOrigin) (SendVerdict, error)
 	quit          chan struct{}
 	wg            sync.WaitGroup
+
+	// runs holds one entry per remote being managed, so a remote can be
+	// stopped alone when it leaves initech.yaml (ini-7op8). runsMu also
+	// serializes reconcile, so two reloads never interleave their removes
+	// and adds.
+	runsMu sync.Mutex
+	runs   map[string]*peerRun
+	closed bool // Set by wait: nothing starts after shutdown begins waiting.
+}
+
+// peerRun is one remote's manager goroutine: the remote it was started with
+// (its token resolved), a stop of its own, and done, closed once the
+// goroutine has returned and every callback it made has finished.
+type peerRun struct {
+	remote config.Remote
+	stop   chan struct{}
+	done   chan struct{}
 }
 
 // answerForwardSend is the answer to a forward_send request from a daemon:
@@ -146,11 +163,144 @@ func newPeerManager(project *config.Project, onChange func(string, []PaneView, b
 	if len(onAuthority) > 0 {
 		pm.onAuthority = onAuthority[0]
 	}
+	pm.runsMu.Lock()
 	for peerName, remote := range project.Remotes {
-		pm.wg.Add(1)
-		go pm.managePeer(peerName, remote)
+		pm.startPeerLocked(peerName, effectiveRemote(remote, project), project)
 	}
+	pm.runsMu.Unlock()
 	return pm
+}
+
+// effectiveRemote is remote with the token it connects with filled in: its
+// own, or the project's. Two entries that connect the same way compare equal.
+func effectiveRemote(remote config.Remote, project *config.Project) config.Remote {
+	if remote.Token == "" && project != nil {
+		remote.Token = project.Token
+	}
+	return remote
+}
+
+// startPeerLocked starts the manager goroutine for one remote, connecting
+// and pushing roles with project (the config as read when it was started).
+// The caller holds runsMu.
+func (pm *peerManager) startPeerLocked(name string, remote config.Remote, project *config.Project) {
+	if pm.closed {
+		return
+	}
+	if pm.runs == nil {
+		pm.runs = map[string]*peerRun{}
+	}
+	run := &peerRun{remote: remote, stop: make(chan struct{}), done: make(chan struct{})}
+	pm.runs[name] = run
+	pm.wg.Add(1)
+	go func() {
+		defer close(run.done)
+		pm.managePeerWith(name, remote, project, run.stop)
+	}()
+}
+
+// stopPeerLocked stops one remote's goroutine and waits until it has
+// returned: its connection closed and its last callback finished, so nothing
+// it does can land after the caller moves on. The caller holds runsMu.
+func (pm *peerManager) stopPeerLocked(name string) {
+	run, ok := pm.runs[name]
+	if !ok {
+		return
+	}
+	delete(pm.runs, name)
+	close(run.stop)
+	select {
+	case <-run.done:
+	case <-pm.quit:
+	}
+}
+
+// remotesChange is what a reload does to the running remotes: the names it
+// stops, the names it stops and starts again under a new addr or token, and
+// the names it starts. Each is sorted.
+type remotesChange struct {
+	Removed, Changed, Added []string
+}
+
+// Empty reports whether the change does nothing.
+func (c remotesChange) Empty() bool {
+	return len(c.Removed)+len(c.Changed)+len(c.Added) == 0
+}
+
+// diffRemotes compares the running remotes with the wanted ones. Only the
+// address and the token count as a change; roles and root take effect at the
+// next start.
+func diffRemotes(running, wanted map[string]config.Remote) remotesChange {
+	var c remotesChange
+	for name, old := range running {
+		w, ok := wanted[name]
+		switch {
+		case !ok:
+			c.Removed = append(c.Removed, name)
+		case w.Addr != old.Addr || w.Token != old.Token:
+			c.Changed = append(c.Changed, name)
+		}
+	}
+	for name := range wanted {
+		if _, ok := running[name]; !ok {
+			c.Added = append(c.Added, name)
+		}
+	}
+	sort.Strings(c.Removed)
+	sort.Strings(c.Changed)
+	sort.Strings(c.Added)
+	return c
+}
+
+// reconcile makes the running remotes those of project: a removed remote is
+// stopped, a changed one stopped and then started again under the same name,
+// a new one started. onRemoved runs for every remote stopped, after its
+// goroutine has returned and before any start, so its panes leave before a
+// changed remote's return. It blocks while a remote stops, so it never runs
+// on the main goroutine.
+func (pm *peerManager) reconcile(project *config.Project, onRemoved func(name string, changed bool)) remotesChange {
+	wanted := make(map[string]config.Remote, len(project.Remotes))
+	for name, r := range project.Remotes {
+		wanted[name] = effectiveRemote(r, project)
+	}
+	pm.runsMu.Lock()
+	defer pm.runsMu.Unlock()
+	running := make(map[string]config.Remote, len(pm.runs))
+	for name, run := range pm.runs {
+		running[name] = run.remote
+	}
+	c := diffRemotes(running, wanted)
+	for _, name := range c.Removed {
+		pm.stopPeerLocked(name)
+		if onRemoved != nil {
+			onRemoved(name, false)
+		}
+	}
+	for _, name := range c.Changed {
+		pm.stopPeerLocked(name)
+		if onRemoved != nil {
+			onRemoved(name, true)
+		}
+	}
+	select {
+	case <-pm.quit:
+		return c
+	default:
+	}
+	for _, name := range append(append([]string(nil), c.Changed...), c.Added...) {
+		pm.startPeerLocked(name, wanted[name], project)
+	}
+	return c
+}
+
+// stopped reports whether ch is closed.
+func stopped(ch <-chan struct{}) bool {
+	select {
+	case <-ch:
+		return true
+	default:
+		return false
+	}
 }
 
 // SetOnPaneAdded registers the callback fired when a daemon announces a
@@ -223,6 +373,9 @@ func (pm *peerManager) concludeEvicted(peerName, reason string) {
 }
 
 func (pm *peerManager) wait() {
+	pm.runsMu.Lock()
+	pm.closed = true
+	pm.runsMu.Unlock()
 	pm.wg.Wait()
 }
 
@@ -259,8 +412,16 @@ func (pm *peerManager) trackActive(label string) func() {
 }
 
 // managePeer runs the connect/reconnect loop for a single remote peer.
-// It exits when pm.quit is closed.
-func (pm *peerManager) managePeer(peerName string, remote config.Remote) {
+// It exits when pm.quit is closed, or when stop is: the remote left
+// initech.yaml. A stopped peer reports nothing more; the caller drops its
+// panes.
+func (pm *peerManager) managePeer(peerName string, remote config.Remote, stop <-chan struct{}) {
+	pm.managePeerWith(peerName, remote, pm.project, stop)
+}
+
+// managePeerWith is managePeer connecting with project rather than the
+// manager's start-time one.
+func (pm *peerManager) managePeerWith(peerName string, remote config.Remote, project *config.Project, stop <-chan struct{}) {
 	defer pm.wg.Done()
 	defer pm.trackActive("managePeer:" + peerName)()
 
@@ -275,7 +436,13 @@ func (pm *peerManager) managePeer(peerName string, remote config.Remote) {
 
 	for {
 		// Try to connect.
-		pc, err := connectPeer(peerName, remote, pm.project)
+		pc, err := connectPeerStop(peerName, remote, project, stop)
+		if stopped(stop) {
+			if pc != nil {
+				pc.Close()
+			}
+			return
+		}
 		pm.noteWindowToken(peerName, err)
 		if err != nil {
 			LogWarn("remote", "connection failed", "peer", peerName, "attempt", attempt, "err", err)
@@ -287,6 +454,8 @@ func (pm *peerManager) managePeer(peerName string, remote config.Remote) {
 			case <-time.After(delay):
 				continue
 			case <-pm.quit:
+				return
+			case <-stop:
 				return
 			}
 		}
@@ -329,12 +498,19 @@ func (pm *peerManager) managePeer(peerName string, remote config.Remote) {
 		// Monitor connection health: wait for all RemotePanes to go dead,
 		// which signals the yamux session died (either naturally or via
 		// heartbeat closing the session).
-		pm.waitForDisconnect(peerName, pc)
+		pm.waitForDisconnectOr(peerName, pc, stop)
 		close(heartbeatDone)
 
 		// Close the yamux session and control mux to release goroutines,
 		// file descriptors, and the TCP connection.
 		pc.Close()
+
+		// Removed from initech.yaml: the caller drops the panes and says
+		// so; this is not a disconnect, and nothing is redialled.
+		if stopped(stop) {
+			LogInfo("remote", "stopped: removed from initech.yaml", "peer", peerName)
+			return
+		}
 
 		LogWarn("remote", "disconnected", "peer", peerName)
 		pm.onPanesChanged(peerName, nil, false)
@@ -387,6 +563,8 @@ func (pm *peerManager) managePeer(peerName string, remote config.Remote) {
 		select {
 		case <-time.After(reconnectInitial):
 		case <-pm.quit:
+			return
+		case <-stop:
 			return
 		}
 	}
@@ -579,6 +757,12 @@ func (pm *peerManager) handleAgentRemoved(peerName string, pc *peerConn, ev Cont
 // waitForDisconnect blocks until all panes from a peer are dead (yamux
 // session closed) or pm.quit fires.
 func (pm *peerManager) waitForDisconnect(peerName string, pc *peerConn) {
+	pm.waitForDisconnectOr(peerName, pc, nil)
+}
+
+// waitForDisconnectOr is waitForDisconnect that also returns when stop
+// closes (a nil stop never does).
+func (pm *peerManager) waitForDisconnectOr(peerName string, pc *peerConn, stop <-chan struct{}) {
 	defer pm.trackActive("waitForDisconnect:" + peerName)()
 	poll := pm.disconnectPoll
 	if poll <= 0 {
@@ -603,6 +787,8 @@ func (pm *peerManager) waitForDisconnect(peerName string, pc *peerConn) {
 	for {
 		select {
 		case <-closed:
+			return
+		case <-stop:
 			return
 		case <-pm.quit:
 			// The doc above always promised this exit; the select never had it

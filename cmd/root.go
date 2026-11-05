@@ -290,6 +290,7 @@ func runTUI(cmd *cobra.Command, args []string) error {
 		AutoSuspend:        enableAutoSuspend,
 		PressureThreshold:  proj.Resource.PressureThreshold,
 		Project:            proj,
+		ConfigPath:         cfgPath,
 		PaneConfigBuilder:  buildReloadingPaneConfigBuilder(cfgPath, buildAgentPaneConfig),
 		OnAttentionConsent: attentionConsentRecorder(cfgPath, proj),
 		RecordDir:          recDir,

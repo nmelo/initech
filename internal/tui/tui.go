@@ -291,6 +291,10 @@ type TUI struct {
 	// remote connection routing. Nil when no config is loaded (tests).
 	project *config.Project
 
+	// remotes re-reads initech.yaml's remotes while window 1 runs (ini-7op8).
+	// Nil in a viewer, and when there is no config file.
+	remotes *remotesReloader
+
 	// sockPath is the IPC socket this TUI is listening on. Used to inject
 	// INITECH_SOCKET into hot-added panes.
 	sockPath string
@@ -869,6 +873,7 @@ type Config struct {
 	PressureThreshold  int                                   // RSS percentage threshold (0 uses default 85).
 	PaneConfigBuilder  func(name string) (PaneConfig, error) // Optional factory for hot-add. Nil disables add command.
 	Project            *config.Project                       // Full project config. Used for remote peer connections.
+	ConfigPath         string                                // initech.yaml, re-read for its remotes while window 1 runs (ini-7op8). Empty: never re-read.
 	OnAttentionConsent func(granted bool)                    // Persists the one-time consent answer (ini-2x8.6). Nil disables the modal's write-back.
 	RecordDir          string                                // Non-empty: record every local pane's output under this directory (ini-pqdy.2). Empty: off.
 	AfterFirstFrame    func()                                // Run once, in the background, after the first frame is drawn; window 1 only (ini-62tn). Nil: nothing.
@@ -1320,7 +1325,10 @@ func Run(cfg Config) error {
 	// initial connection and reconnection in background goroutines. The TUI
 	// renders immediately with local-only panes; remote panes appear once
 	// connected via handlePeerUpdate on the main goroutine.
-	if cfg.Project != nil && len(cfg.Project.Remotes) > 0 {
+	// Window 1 keeps a manager even with no remotes, so one added to
+	// initech.yaml while it runs connects without a restart (ini-7op8).
+	liveRemotes := !viewer && cfg.Project != nil && cfg.ConfigPath != ""
+	if cfg.Project != nil && (len(cfg.Project.Remotes) > 0 || liveRemotes) {
 		pm := newPeerManager(cfg.Project, func(peerName string, panes []PaneView, connected bool) {
 			t.runOnMain(func() {
 				if !connected && peerName == WindowOnePeerName {
@@ -1405,6 +1413,11 @@ func Run(cfg Config) error {
 				t.applyLayout()
 			})
 		})
+		if liveRemotes {
+			t.remotes = newRemotesReloader(cfg.ConfigPath, pm, func(name string, changed bool) {
+				t.runOnMain(func() { t.handlePeerRemoved(name, changed) })
+			}, time.Now)
+		}
 		defer func() {
 			done := make(chan struct{})
 			go func() {
@@ -1564,6 +1577,9 @@ func Run(cfg Config) error {
 			t.refreshRigNumbers(time.Now())
 			if t.sched != nil {
 				t.sched.kick() // Never waits; at most once a second.
+			}
+			if t.remotes != nil {
+				t.remotes.kick() // Never waits; at most once a second.
 			}
 			// The inbox staleness floor for a child window (ini-3wkl.7).
 			t.refreshInboxOnCadence(time.Now())

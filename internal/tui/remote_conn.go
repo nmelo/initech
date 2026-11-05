@@ -6,6 +6,7 @@ package tui
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -61,6 +62,13 @@ func (pc *peerConn) Close() {
 // connectPeer establishes a yamux connection to a single remote peer, performs
 // the hello handshake, reads the stream map, and creates RemotePanes.
 func connectPeer(peerName string, remote config.Remote, project *config.Project) (*peerConn, error) {
+	return connectPeerStop(peerName, remote, project, nil)
+}
+
+// connectPeerStop is connectPeer that gives up when stop closes: the dial is
+// cancelled, and a connection already open is closed, which ends a handshake
+// or a role push waiting on it (ini-7op8). A nil stop never closes.
+func connectPeerStop(peerName string, remote config.Remote, project *config.Project, stop <-chan struct{}) (*peerConn, error) {
 	// The hello's token. For window 1 with no configured token, read the
 	// session token file on EVERY attempt (ini-cxia): a window 1 restart
 	// writes a new token, and a cached read would be refused forever by the
@@ -82,10 +90,31 @@ func connectPeer(peerName string, remote config.Remote, project *config.Project)
 	// the default 2-hour TCP keepalive. yamux has its own keepalive, but
 	// after kill -9 the TCP write may buffer locally without failing.
 	dialer := net.Dialer{Timeout: connectTimeout, KeepAlive: 15 * time.Second}
-	conn, err := dialer.Dial("tcp", remote.Addr)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	handshook := make(chan struct{})
+	defer close(handshook)
+	if stop != nil {
+		go func() {
+			select {
+			case <-stop:
+				cancel()
+			case <-handshook:
+			}
+		}()
+	}
+	conn, err := dialer.DialContext(ctx, "tcp", remote.Addr)
 	if err != nil {
 		return nil, fmt.Errorf("dial %s: %w", remote.Addr, err)
 	}
+	// A stop during the handshake closes the connection under it.
+	context.AfterFunc(ctx, func() {
+		select {
+		case <-handshook:
+		default:
+			conn.Close()
+		}
+	})
 
 	// Wrap in yamux client.
 	session, err := yamux.Client(conn, yamux.DefaultConfig())

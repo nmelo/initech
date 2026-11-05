@@ -826,3 +826,22 @@ func unwrapDoc(n *yaml.Node) *yaml.Node {
 	}
 	return n
 }
+
+// LoadQuiet reads and validates the config at path as Load does, for a
+// process that re-reads it while running: a parse error is scrubbed of the
+// value it quotes (a mistyped token never reaches a log), and nothing is
+// written to stderr.
+func LoadQuiet(path string) (*Project, error) {
+	src, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read config: %w", err)
+	}
+	p, err := decodeProject(src)
+	if err != nil {
+		return nil, err
+	}
+	if err := Validate(p); err != nil {
+		return nil, fmt.Errorf("invalid config: %w", err)
+	}
+	return p, nil
+}
