@@ -160,3 +160,23 @@ func TestHangProbe_ASlowTestOrAMovingLogRecordsNothing(t *testing.T) {
 		t.Errorf("a log still moving was recorded as a hang: %q", said)
 	}
 }
+
+// sim-test.sh changes into the app folder before the tests, so the probe is
+// started by a path read before that cd; a path from $0 then names no file
+// (run 41952270959: "app/scripts/hang-probe.sh: No such file or directory").
+func TestSimTest_TheProbeIsStartedByAPathReadBeforeTheCd(t *testing.T) {
+	src, err := os.ReadFile(filepath.Join(repoRootForWorkflows(t), "app", "scripts", "sim-test.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(src)
+	here := strings.Index(s, `here=$(cd "$(dirname "$0")" && pwd)`)
+	cd := strings.Index(s, `cd "$app" || exit 2`)
+	start := strings.Index(s, `"$here/hang-probe.sh" "$xb"`)
+	if here < 0 || cd < 0 || start < 0 || !(here < cd && cd < start) {
+		t.Errorf("want here= (at %d) before the cd (at %d) before the probe's start by $here (at %d)", here, cd, start)
+	}
+	if strings.Contains(s, `"$(dirname "$0")/hang-probe.sh"`) {
+		t.Error("the probe is started by a path from $0, which names no file after the cd")
+	}
+}

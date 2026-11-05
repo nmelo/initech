@@ -30,7 +30,8 @@ case "$kind" in
   *) echo "sim-test: kind is iphone or ipad" >&2; exit 2 ;;
 esac
 runtime=${SIM_RUNTIME:-com.apple.CoreSimulator.SimRuntime.iOS-27-0}
-app=$(cd "$(dirname "$0")/.." && pwd)
+here=$(cd "$(dirname "$0")" && pwd) # read before the cd into the app below
+app=$(cd "$here/.." && pwd)
 reports="$HOME/Library/Logs/DiagnosticReports"
 
 # One simulator at a time on this host, whatever started the run: a lock
@@ -143,7 +144,7 @@ xb=$!
 relay=$!
 # HANG PROBE: when xcodebuild says nothing for a minute right after a suite
 # ended, hang-probe.sh writes what it is doing to $log.hang, once.
-"$(dirname "$0")/hang-probe.sh" "$xb" "$log" "$udid" "$log.hang" &
+"$here/hang-probe.sh" "$xb" "$log" "$udid" "$log.hang" &
 probe=$!
 wait "$xb"; rc=$?
 xb=""
