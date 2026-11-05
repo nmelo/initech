@@ -56,6 +56,7 @@ func r0q14Paint(t *testing.T, p *Pane, rows []string) {
 // r0q14At is a live pane showing the capture, and what reaches its PTY.
 func r0q14At(t *testing.T, file string) (*Pane, func() string) {
 	t.Helper()
+	shortSubmitDelays(t)
 	p, _, typed := dndPane(t, "a")
 	r0q14Paint(t, p, lvxwFixture(t, file))
 	return p, typed

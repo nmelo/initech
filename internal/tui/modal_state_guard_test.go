@@ -56,6 +56,7 @@ type zjhgRig struct {
 // showed the text.
 func newZJHGRig(t *testing.T, echoBody bool) *zjhgRig {
 	t.Helper()
+	shortSubmitDelays(t)
 	if runtime.GOOS == "windows" {
 		t.Skip("test uses Unix pipes / raw PTY mode")
 	}
@@ -171,7 +172,7 @@ func TestZJHG_ScrolledOutDialogGetsNothing(t *testing.T) {
 
 	// Then the drain trigger fires, exactly as readLoop fires it on new output.
 	r.p.maybeDrainModalQueue()
-	time.Sleep(bracketedPasteSubmitDelay + 300*time.Millisecond)
+	time.Sleep(bracketedPasteSubmitDelay.Get() + 300*time.Millisecond)
 
 	raw, enters := r.bytes()
 	if strings.Contains(raw, "payload-A") {
@@ -273,7 +274,7 @@ func TestZJHG_BeltHoldsWhenTheLatchNeverHeardOfTheDialog(t *testing.T) {
 	}
 
 	r.p.SendText("payload-C", true)
-	time.Sleep(composerEchoWindow + bracketedPasteSubmitDelay + 300*time.Millisecond)
+	time.Sleep(composerEchoWindow + bracketedPasteSubmitDelay.Get() + 300*time.Millisecond)
 
 	raw, enters := r.bytes()
 	if !strings.Contains(raw, "payload-C") {
@@ -297,7 +298,7 @@ func TestZJHG_BeltPassesANormalDrain(t *testing.T) {
 	_, _ = r.emu.Write([]byte("\x1b[2J\x1b[24;1H❯ "))
 
 	r.p.SendText("payload-D", true)
-	time.Sleep(bracketedPasteSubmitDelay + 500*time.Millisecond)
+	time.Sleep(bracketedPasteSubmitDelay.Get() + 500*time.Millisecond)
 
 	raw, enters := r.bytes()
 	if !strings.Contains(raw, "\x1b[200~payload-D\x1b[201~") {
@@ -327,7 +328,7 @@ func TestZJHG_ResumeQueueCannotSubmitToAScrolledOutDialog(t *testing.T) {
 		t.Fatal("queue dropped the message before the test could run")
 	}
 	r.p.drainModalQueue()
-	time.Sleep(bracketedPasteSubmitDelay + 300*time.Millisecond)
+	time.Sleep(bracketedPasteSubmitDelay.Get() + 300*time.Millisecond)
 
 	raw, enters := r.bytes()
 	if strings.Contains(raw, "payload-E") {
@@ -412,7 +413,7 @@ func TestZJHG_BeltPassesWithOperatorTextAlreadyInTheComposer(t *testing.T) {
 	_, _ = r.emu.Write([]byte("\x1b[2J\x1b[24;1H❯ half written thought"))
 
 	r.p.SendText("payload-F", true)
-	time.Sleep(bracketedPasteSubmitDelay + 700*time.Millisecond)
+	time.Sleep(bracketedPasteSubmitDelay.Get() + 700*time.Millisecond)
 
 	raw, enters := r.bytes()
 	if !strings.Contains(raw, "\x1b[200~payload-F\x1b[201~") {

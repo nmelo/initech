@@ -22,6 +22,7 @@ import (
 // reached the agent's box.
 func dndPane(t *testing.T, name string) (*Pane, chan AgentEvent, func() string) {
 	t.Helper()
+	shortSubmitDelays(t)
 	r, w, err := os.Pipe()
 	if err != nil {
 		t.Fatal(err)

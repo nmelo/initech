@@ -73,7 +73,7 @@ func TestSendVerdict_NoComposerAnswersCouldNotConfirmWithinTheDeadline(t *testin
 	if !resp.OK || resp.Delivery != DeliveryUnconfirmed || resp.Data != "no composer visible" {
 		t.Fatalf("reply %+v, want OK, unconfirmed, reason \"no composer visible\"", resp)
 	}
-	if el := time.Since(start); el > bracketedPasteSubmitDelay+2*submitConfirmWindow+time.Second {
+	if el := time.Since(start); el > bracketedPasteSubmitDelay.Get()+2*submitConfirmWindow+time.Second {
 		t.Fatalf("answered after %s, past the watcher's deadline", el)
 	}
 }

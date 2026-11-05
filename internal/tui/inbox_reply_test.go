@@ -90,6 +90,7 @@ func awaitStatus(t *testing.T, tui *TUI, id string, want string) string {
 // so the never-submit belt stands down and a submit actually goes out.
 func inboxLivePane(t *testing.T, name string) *Pane {
 	t.Helper()
+	shortSubmitDelays(t)
 	ptmx, tty, err := pty.Open()
 	if err != nil {
 		t.Fatalf("pty.Open: %v", err)

@@ -23,6 +23,7 @@ import (
 // exactly what reached the child.
 func s7qSettledPane(t *testing.T, name string) (*Pane, *os.File) {
 	t.Helper()
+	shortSubmitDelays(t)
 	p, r := i35wFreshPane(t, name)
 	p.mu.Lock()
 	p.startedAt = time.Now().Add(-2 * startupGateWindow)

@@ -462,7 +462,7 @@ func TestDrainModalQueue_RedeliversAfterModalCloses(t *testing.T) {
 
 	// Drain: the deferred message is now re-delivered to the normal prompt.
 	p.drainModalQueue()
-	time.Sleep(bracketedPasteSubmitDelay + 300*time.Millisecond)
+	time.Sleep(bracketedPasteSubmitDelay.Get() + 300*time.Millisecond)
 
 	ptyMu.Lock()
 	got := string(ptyBytes)

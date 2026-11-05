@@ -18,6 +18,7 @@ import (
 
 func queuedPane(t *testing.T, n int) *Pane {
 	t.Helper()
+	shortSubmitDelays(t)
 	p, _ := paneWithPipe(t)
 	p.name = "eng2"
 	p.alive = true

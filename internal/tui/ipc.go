@@ -25,9 +25,33 @@ import (
 )
 
 const (
-	rawSubmitDelay            = 200 * time.Millisecond
-	bracketedPasteSubmitDelay = 500 * time.Millisecond
-	codexBracketedSubmitDelay = 200 * time.Millisecond
+	prodRawSubmitDelay            = 200 * time.Millisecond
+	prodBracketedPasteSubmitDelay = 500 * time.Millisecond
+	codexBracketedSubmitDelay     = 200 * time.Millisecond
+)
+
+// submitDelaySetting is a submit wait read atomically on every send. The
+// production value never changes; the shared test helpers shorten it for one
+// test and restore it in Cleanup, while a send another test left running may
+// still be reading it, so a bare variable would race (ini-tio).
+type submitDelaySetting struct{ ns atomic.Int64 }
+
+func newSubmitDelaySetting(d time.Duration) *submitDelaySetting {
+	s := &submitDelaySetting{}
+	s.ns.Store(int64(d))
+	return s
+}
+
+// Get returns the current wait.
+func (s *submitDelaySetting) Get() time.Duration { return time.Duration(s.ns.Load()) }
+
+func (s *submitDelaySetting) set(d time.Duration) { s.ns.Store(int64(d)) }
+
+// rawSubmitDelay lets a non-bracketed paste burst expire before the Enter;
+// bracketedPasteSubmitDelay lets Claude Code finish a bracketed paste.
+var (
+	rawSubmitDelay            = newSubmitDelaySetting(prodRawSubmitDelay)
+	bracketedPasteSubmitDelay = newSubmitDelaySetting(prodBracketedPasteSubmitDelay)
 )
 
 // IPCRequest is the JSON structure sent by CLI commands to the TUI socket.
@@ -699,7 +723,7 @@ func sendPaneTextLocked(pane *Pane, text string, enter bool) SendVerdict {
 			// Retry only when no stash was active. After a stash, Claude Code
 			// auto-restores the stashed text into the prompt, making
 			// promptHasContent a false positive (ini-vxw).
-			time.Sleep(bracketedPasteSubmitDelay)
+			time.Sleep(bracketedPasteSubmitDelay.Get())
 			if promptHasContent(pane) {
 				method = sendCodexSubmit(pane, codexQueueSubmit)
 				LogDebug("inject", "submit retry", "pane", pane.Name(), "mode", mode, "method", method)
@@ -712,8 +736,8 @@ func sendPaneTextLocked(pane *Pane, text string, enter bool) SendVerdict {
 		// Let Codex's non-bracketed paste-burst detection expire before sending
 		// Enter. The 8ms parser window observed in source was not enough in the
 		// full PTY/TUI pipeline; use a larger margin here.
-		time.Sleep(rawSubmitDelay)
-		LogDebug("inject", "submit", "pane", pane.Name(), "mode", mode, "method", "pty-enter", "delay_ms", rawSubmitDelay.Milliseconds())
+		time.Sleep(rawSubmitDelay.Get())
+		LogDebug("inject", "submit", "pane", pane.Name(), "mode", mode, "method", "pty-enter", "delay_ms", rawSubmitDelay.Get().Milliseconds())
 		LogInfo("inject", "submit sent, unconfirmed", "pane", pane.Name(), "mode", mode, "why", "no composer check for this agent type")
 		if config.IsCodexLikeAgentType(pane.AgentType()) && pane.submitKey != "ctrl+enter" {
 			pane.writeInput([]byte("\r"))
@@ -729,8 +753,8 @@ func sendPaneTextLocked(pane *Pane, text string, enter bool) SendVerdict {
 	// goroutine; it is joined only after the Enter, so it cannot move or gate
 	// it (ini-pkin).
 	sighting := startPreEnterSighting(pane, newPendingSubmit(text, mode, ""))
-	time.Sleep(bracketedPasteSubmitDelay)
-	LogDebug("inject", "submit", "pane", pane.Name(), "mode", mode, "method", "emulator", "delay_ms", bracketedPasteSubmitDelay.Milliseconds())
+	time.Sleep(bracketedPasteSubmitDelay.Get())
+	LogDebug("inject", "submit", "pane", pane.Name(), "mode", mode, "method", "emulator", "delay_ms", bracketedPasteSubmitDelay.Get().Milliseconds())
 	sendSubmitKey(pane.emu, pane.submitKey)
 	ps := newPendingSubmit(text, mode, "")
 	ps.seenInBox = sighting.wait()
@@ -2617,7 +2641,7 @@ func (p *Pane) settlePendingSubmit() {
 	if proven {
 		if p.deliverWithheldSubmit(ps, "settled by the next send, our text still in the composer") {
 			// Let Claude take it before the next send's stash and paste.
-			time.Sleep(bracketedPasteSubmitDelay)
+			time.Sleep(bracketedPasteSubmitDelay.Get())
 		}
 		return
 	}

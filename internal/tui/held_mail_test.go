@@ -16,6 +16,7 @@ import (
 // the startup gate already settled, so sends reach the modal guard.
 func heldMailPane(t *testing.T, name string) (*Pane, chan AgentEvent, *os.File) {
 	t.Helper()
+	shortSubmitDelays(t)
 	r, w, err := os.Pipe()
 	if err != nil {
 		t.Fatal(err)

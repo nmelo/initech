@@ -284,3 +284,21 @@ func waitForAsyncWake(t *testing.T, tui *TUI, trigger func(), timeout time.Durat
 		t.Fatal("async wake did not complete within the timeout -- onWakeComplete never fired")
 	}
 }
+
+// testSubmitDelay is the submit wait the shared delivering helpers use. It
+// stays above zero so the body and the Enter still go out as two writes, in
+// the production order.
+const testSubmitDelay = 10 * time.Millisecond
+
+// shortSubmitDelays shortens both submit waits for one test and restores the
+// production values in Cleanup (ini-02h). It is the only writer of the waits
+// in the package; TestSubmitDelays_NoTestSetsThemDirectly holds that.
+func shortSubmitDelays(t *testing.T) {
+	t.Helper()
+	bracketedPasteSubmitDelay.set(testSubmitDelay)
+	rawSubmitDelay.set(testSubmitDelay)
+	t.Cleanup(func() {
+		bracketedPasteSubmitDelay.set(prodBracketedPasteSubmitDelay)
+		rawSubmitDelay.set(prodRawSubmitDelay)
+	})
+}

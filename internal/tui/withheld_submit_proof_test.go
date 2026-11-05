@@ -30,6 +30,7 @@ import (
 // mutant for want of exactly this, on a canonical-mode tty).
 func proofPane(t *testing.T) (*Pane, <-chan []byte, <-chan AgentEvent) {
 	t.Helper()
+	shortSubmitDelays(t)
 	return proofPaneSized(t, 120, 40)
 }
 

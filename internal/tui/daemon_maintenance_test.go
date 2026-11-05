@@ -21,6 +21,7 @@ import (
 // outcome the tick emits must still go out without one.
 func daemonPane(t *testing.T) *Pane {
 	t.Helper()
+	shortSubmitDelays(t)
 	p, _, _ := heldMailPane(t, "eng1")
 	p.eventCh = nil
 	return p

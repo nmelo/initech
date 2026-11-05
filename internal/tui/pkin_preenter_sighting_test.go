@@ -120,6 +120,7 @@ func (f *pkinFake) stream() (all string, bodyAt, enterAt time.Time) {
 // way responseLoop does.
 func pkinSendRig(t *testing.T, f *pkinFake) (*Pane, <-chan AgentEvent) {
 	t.Helper()
+	shortSubmitDelays(t)
 	return pkinSendRigSized(t, f, 120, 40)
 }
 
@@ -245,8 +246,8 @@ func TestPkin_DeliveryBytesAndEnterMomentAreUnchanged(t *testing.T) {
 		t.Fatalf("PTY bytes %q, want %q", all, want)
 	}
 	gap := enterAt.Sub(bodyAt)
-	if gap < bracketedPasteSubmitDelay || gap > bracketedPasteSubmitDelay+250*time.Millisecond {
-		t.Fatalf("Enter went out %s after the body, want the %s wait (plus the belt's first poll)", gap, bracketedPasteSubmitDelay)
+	if gap < bracketedPasteSubmitDelay.Get() || gap > bracketedPasteSubmitDelay.Get()+250*time.Millisecond {
+		t.Fatalf("Enter went out %s after the body, want the %s wait (plus the belt's first poll)", gap, bracketedPasteSubmitDelay.Get())
 	}
 }
 

@@ -147,6 +147,7 @@ const resumingChild = `stty raw -echo -ixon && printf 'READY933' && sleep %d && 
 // resumingPane starts that child and returns a reader of the file.
 func resumingPane(t *testing.T, delay int) (*Pane, func() string) {
 	t.Helper()
+	shortSubmitDelays(t)
 	out := filepath.Join(t.TempDir(), "received")
 	p, screen := stashTestPane(t, fmt.Sprintf(resumingChild, delay), out)
 	if !stashWaitFor(screen, "READY933", 5*time.Second) {

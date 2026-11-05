@@ -60,6 +60,7 @@ func dmiWithBox(t *testing.T, name, composer string) []string {
 // Claude's queued placeholder.
 func dmiBusyFake(t *testing.T, name, body, shows string, takes func(int) bool) *pkinFake {
 	t.Helper()
+	shortSubmitDelays(t)
 	return &pkinFake{
 		body:  body,
 		shows: shows,
