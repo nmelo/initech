@@ -445,3 +445,34 @@ func TestReaders_ReadThisMachine(t *testing.T) {
 		t.Fatalf("Load5 = %v, %v", load, err)
 	}
 }
+
+// TestDir_TheVariableNamesTheFolderOutright: a rig points its initech at a
+// scratch ceiling without moving HOME (ini-f3lq); unset, the user's folder.
+func TestDir_TheVariableNamesTheFolderOutright(t *testing.T) {
+	t.Setenv(DirEnv, "/tmp/scratch-machine")
+	if d, err := Dir(); err != nil || d != "/tmp/scratch-machine" {
+		t.Fatalf("Dir() = %q, %v with %s set", d, err, DirEnv)
+	}
+	t.Setenv(DirEnv, "")
+	base, _ := os.UserConfigDir()
+	if d, err := Dir(); err != nil || d != filepath.Join(base, "initech") {
+		t.Fatalf("Dir() = %q, %v unset; want the user's config folder", d, err)
+	}
+}
+
+// TestDir_AnEmptyOrMissingFolderGivesTheDefaultCeiling is feed-it-nothing:
+// a folder with no machine.yaml, or none at all, reads the default ceiling,
+// never an error.
+func TestDir_AnEmptyOrMissingFolderGivesTheDefaultCeiling(t *testing.T) {
+	for name, dir := range map[string]string{"empty": t.TempDir(), "missing": filepath.Join(t.TempDir(), "not-there")} {
+		t.Setenv(DirEnv, dir)
+		d, err := Dir()
+		if err != nil || d != dir {
+			t.Fatalf("%s: Dir() = %q, %v", name, d, err)
+		}
+		c, err := LoadCeiling(d, 16)
+		if err != nil || c != CeilingFor(16) {
+			t.Fatalf("%s folder: ceiling %+v, %v; want the default %+v", name, c, err, CeilingFor(16))
+		}
+	}
+}

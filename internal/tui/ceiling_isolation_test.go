@@ -12,9 +12,12 @@ import (
 )
 
 // rigCeilingEnv is the environment a rig's initech child gets on top of its
-// own: HOME and XDG_CONFIG_HOME in a scratch folder whose machine.yaml sets
-// a ceiling no test runner reaches (a 7 GB CI runner is always under 8 GB
-// free). Set by isolateMachineCeiling.
+// own: the machine folder (machine.DirEnv) in a scratch folder whose
+// machine.yaml sets a ceiling no test runner reaches (a 7 GB CI runner is
+// always under 8 GB free). Set by isolateMachineCeiling. It never moves HOME:
+// the child passes HOME on to the agents it starts, and a real Claude with a
+// scratch HOME opens on its first-run screen instead of the session a rig
+// reads (ini-f3lq).
 var rigCeilingEnv []string
 
 // isolateMachineCeiling keeps the package's tests off this machine's
@@ -38,7 +41,7 @@ func isolateMachineCeiling() func() {
 	home, err := os.MkdirTemp("", "initech-ceiling-home-")
 	if err == nil {
 		writeOpenCeiling(home)
-		rigCeilingEnv = append([]string{"HOME=" + home}, openCeilingConfigEnv(home)...)
+		rigCeilingEnv = []string{machine.DirEnv + "=" + home}
 	}
 	return func() {
 		ceilingDefaults = prev
@@ -50,21 +53,13 @@ func isolateMachineCeiling() func() {
 
 // writeOpenCeiling writes, under a scratch home, a machine.yaml with a
 // ceiling no test runner reaches, where each platform's initech looks.
-func writeOpenCeiling(home string) {
+func writeOpenCeiling(dir string) {
 	open := []byte("ceiling:\n  sessions: 100000\n  free_memory_gb: 0\n  load: 100000\n")
-	for _, dir := range []string{
-		filepath.Join(home, "Library", "Application Support", "initech"), // macOS
-		filepath.Join(home, ".config", "initech"),                        // Linux
-		filepath.Join(home, "AppData", "Roaming", "initech"),             // Windows
-	} {
-		if os.MkdirAll(dir, 0o700) == nil {
-			_ = os.WriteFile(filepath.Join(dir, "machine.yaml"), open, 0o600)
-		}
-	}
+	_ = os.WriteFile(filepath.Join(dir, machine.FileName), open, 0o600)
 }
 
-// openCeilingConfigEnv points the config folder variables at home, so a
-// value inherited from the machine cannot lead the child back to it.
+// openCeilingConfigEnv points the config folder variables at home, for a
+// test that gives its child a scratch HOME on purpose (no Claude agents).
 func openCeilingConfigEnv(home string) []string {
 	return []string{"XDG_CONFIG_HOME=" + filepath.Join(home, ".config"), "APPDATA=" + filepath.Join(home, "AppData", "Roaming")}
 }
@@ -79,11 +74,35 @@ func TestCeilingIsolation_ATestTUIReadsNothingOfThisMachine(t *testing.T) {
 		t.Fatalf("a test TUI read this machine: %+v engaged=%v", r, engaged)
 	}
 	if len(rigCeilingEnv) == 0 {
-		t.Fatal("rig children get no scratch home")
+		t.Fatal("rig children get no scratch machine folder")
 	}
-	home := strings.TrimPrefix(rigCeilingEnv[0], "HOME=")
-	c, err := machine.LoadCeiling(filepath.Join(home, "Library", "Application Support", "initech"), 16)
+	dir := ""
+	for _, kv := range rigCeilingEnv {
+		if strings.HasPrefix(kv, machine.DirEnv+"=") {
+			dir = strings.TrimPrefix(kv, machine.DirEnv+"=")
+		}
+	}
+	// What a rig's child resolves, through the product's own Dir.
+	t.Setenv(machine.DirEnv, dir)
+	got, err := machine.Dir()
+	if err != nil || got != dir || dir == "" {
+		t.Fatalf("a rig child's machine folder = %q, %v; want the scratch %q", got, err, dir)
+	}
+	c, err := machine.LoadCeiling(got, 16)
 	if err != nil || c.Sessions != 100000 || c.FreeMemoryGB != 0 {
 		t.Fatalf("rig ceiling = %+v, %v; want the open ceiling", c, err)
+	}
+}
+
+// TestCeilingIsolation_ARigsAgentsKeepTheRealHome is ini-f3lq: a rig child
+// that moved HOME passed it to its Claude agents, which opened on their
+// first-run screen, so the 6M4 rig never saw a session.
+func TestCeilingIsolation_ARigsAgentsKeepTheRealHome(t *testing.T) {
+	for _, kv := range rigCeilingEnv {
+		for _, k := range []string{"HOME=", "XDG_CONFIG_HOME=", "APPDATA="} {
+			if strings.HasPrefix(kv, k) {
+				t.Fatalf("rig children get %s, which their agents inherit", kv)
+			}
+		}
 	}
 }

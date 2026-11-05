@@ -464,7 +464,7 @@ To turn it off, set `telemetry: false` in `initech.yaml`, or set `DO_NOT_TRACK=1
 
 ### The machine ceiling
 
-One Mac runs every rig on it, so initech reads the Mac as a whole and refuses to start or wake one more agent when it is full. The ceiling is three numbers in one file, `~/Library/Application Support/initech/machine.yaml` (the `initech` folder in your user config folder on other systems):
+One Mac runs every rig on it, so initech reads the Mac as a whole and refuses to start or wake one more agent when it is full. The ceiling is three numbers in one file, `~/Library/Application Support/initech/machine.yaml` (the `initech` folder in your user config folder on other systems; `INITECH_MACHINE_DIR` names another folder outright, which is for test rigs, so a rig's initech reads a scratch ceiling while its agents keep your real home and login):
 
 ```yaml
 ceiling:

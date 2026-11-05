@@ -62,11 +62,18 @@ var DefaultCeiling = Ceiling{Sessions: 30, FreeMemoryGB: DefaultFreeCapGB, Load:
 // FileName is the machine-level file's name inside Dir.
 const FileName = "machine.yaml"
 
-// Dir is the machine-level initech folder: the user's config folder plus
-// "initech" (~/Library/Application Support/initech on macOS). It follows
-// HOME, so a test or a QA rig with a scratch HOME never touches the
-// operator's file.
+// DirEnv names the machine folder outright when set. A test rig sets it so
+// its initech reads a scratch ceiling while the agents it starts keep the
+// real HOME, and with it their own login and settings.
+const DirEnv = "INITECH_MACHINE_DIR"
+
+// Dir is the machine-level initech folder: DirEnv when set, otherwise the
+// user's config folder plus "initech" (~/Library/Application Support/initech
+// on macOS).
 func Dir() (string, error) {
+	if d := os.Getenv(DirEnv); d != "" {
+		return d, nil
+	}
 	base, err := os.UserConfigDir()
 	if err != nil {
 		return "", fmt.Errorf("machine folder: %w", err)
