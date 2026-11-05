@@ -200,16 +200,15 @@ func TestPanelKinds_TheBeadPollerStartsTheReader(t *testing.T) {
 	orig := kindsRunner
 	t.Cleanup(func() { kindsRunner = orig })
 	kindsRunner = func(string) beadkind.Runner { return f.run }
-	origList, origCustom := bdListBeads, bdStatusCustom
-	t.Cleanup(func() { bdListBeads, bdStatusCustom = origList, origCustom })
+	origList, origCustom, origHas := bdListBeads, bdStatusCustom, projectHasBeads
+	t.Cleanup(func() { bdListBeads, bdStatusCustom, projectHasBeads = origList, origCustom, origHas })
 	bdListBeads = func(context.Context, string) ([]bdBead, error) { return nil, nil }
 	bdStatusCustom = func(context.Context, string) (string, error) { return "", nil }
+	// The real check also needs bd on PATH, which a CI runner lacks.
+	projectHasBeads = func(string) bool { return true }
 	tui := newTestTUI()
 	tui.windowID = WindowOne
 	tui.projectRoot = t.TempDir()
-	if err := os.MkdirAll(filepath.Join(tui.projectRoot, ".beads"), 0o755); err != nil {
-		t.Fatal(err)
-	}
 	quit := make(chan struct{})
 	close(quit)
 	tui.startBeadPoller(quit)
