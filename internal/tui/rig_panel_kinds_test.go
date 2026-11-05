@@ -253,3 +253,27 @@ func TestPanelKinds_PlanBReadsTheBeadsOwnEvents(t *testing.T) {
 		t.Fatalf("kind %q %v via calls %q, want waiting from the bead's events", k, ok, calls)
 	}
 }
+
+// pm's ruling in the box: a QA FAIL with no assignee reads blank. The reader
+// knows the newest change maps to no kind, so the box does not fall back to
+// the status kind (which would say claimed for in_progress).
+func TestPanelKinds_ABlankKindStaysBlankInTheBox(t *testing.T) {
+	f := &kindsBD{rows: []string{
+		kindsRow(1, "create", "ini-f", "in_progress", "eng5", k0),
+		kindsRow(2, "update", "ini-f", "in_qa", "qa2", k0.Add(time.Minute)),
+		kindsRow(3, "update", "ini-f", "in_progress", "", k0.Add(2*time.Minute)),
+	}}
+	tui := kindsTUI(t, f)
+	bead := bdBead{ID: "ini-f", Status: "in_progress", UpdatedAt: k0.Add(2 * time.Minute)}
+	tui.pollKinds([]bdBead{bead}, k0.Add(3*time.Minute))
+	tui.paceAnswered, tui.paceBeads = true, []bdBead{bead}
+	snap := tui.movedSnapshot(k0.Add(4 * time.Minute))
+	if len(snap) != 1 || snap[0].Kind != "" {
+		t.Fatalf("snapshot %+v, want a blank kind (not qa, not the status's claimed)", snap)
+	}
+	// A comment after it still shows.
+	tui.paceCommentAt = map[string]time.Time{"ini-f": k0.Add(3 * time.Minute)}
+	if snap := tui.movedSnapshot(k0.Add(4 * time.Minute)); snap[0].Kind != "comment" {
+		t.Fatalf("a newer comment: %q", snap[0].Kind)
+	}
+}

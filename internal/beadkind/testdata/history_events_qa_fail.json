@@ -1,0 +1,74 @@
+[
+  {
+    "id": "evt-00",
+    "issue_id": "bd-f",
+    "event_type": "reopened",
+    "actor": "eng5",
+    "old_value": "{\"status\": \"closed\", \"assignee\": \"super\"}",
+    "new_value": "{\"status\": \"in_progress\"}",
+    "created_at": "2026-11-05T19:27:31Z"
+  },
+  {
+    "id": "evt-01",
+    "issue_id": "bd-f",
+    "event_type": "closed",
+    "actor": "super",
+    "old_value": "",
+    "new_value": "Closed",
+    "created_at": "2026-11-05T19:27:22Z"
+  },
+  {
+    "id": "evt-02",
+    "issue_id": "bd-f",
+    "event_type": "updated",
+    "actor": "super",
+    "old_value": "{\"status\": \"qa_passed\", \"assignee\": \"qa2\"}",
+    "new_value": "{\"assignee\": \"super\"}",
+    "created_at": "2026-11-05T19:27:22Z"
+  },
+  {
+    "id": "evt-03",
+    "issue_id": "bd-f",
+    "event_type": "status_changed",
+    "actor": "qa2",
+    "old_value": "{\"status\": \"in_qa\", \"assignee\": \"qa2\"}",
+    "new_value": "{\"status\": \"qa_passed\"}",
+    "created_at": "2026-11-05T19:26:25Z"
+  },
+  {
+    "id": "evt-04",
+    "issue_id": "bd-f",
+    "event_type": "updated",
+    "actor": "qa2",
+    "old_value": "{\"status\": \"in_qa\"}",
+    "new_value": "{\"assignee\": \"qa2\"}",
+    "created_at": "2026-11-05T19:23:57Z"
+  },
+  {
+    "id": "evt-05",
+    "issue_id": "bd-f",
+    "event_type": "status_changed",
+    "actor": "eng5",
+    "old_value": "{\"status\": \"ready_for_qa\"}",
+    "new_value": "{\"status\": \"in_qa\"}",
+    "created_at": "2026-11-05T19:23:27Z"
+  },
+  {
+    "id": "evt-06",
+    "issue_id": "bd-f",
+    "event_type": "status_changed",
+    "actor": "eng5",
+    "old_value": "{\"status\": \"in_progress\"}",
+    "new_value": "{\"status\": \"ready_for_qa\"}",
+    "created_at": "2026-11-05T19:23:27Z"
+  },
+  {
+    "id": "evt-07",
+    "issue_id": "bd-f",
+    "event_type": "status_changed",
+    "actor": "qa2",
+    "old_value": "{\"status\": \"in_qa\", \"assignee\": \"qa2\"}",
+    "new_value": "{\"status\": \"in_progress\", \"assignee\": \"\"}",
+    "created_at": "2026-11-05T19:16:56Z"
+  }
+]

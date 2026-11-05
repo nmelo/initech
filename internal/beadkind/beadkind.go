@@ -122,7 +122,8 @@ func (r *Reader) Kind(id string) (Kind, bool) {
 	return k, ok
 }
 
-// KindAt is the kind of id's last change and when that change was made.
+// KindAt is the kind of id's last change and when that change was made. ok
+// with a blank Kind means the newest change maps to no kind.
 func (r *Reader) KindAt(id string) (Kind, time.Time, bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -328,10 +329,10 @@ func (r *Reader) apply(row journalRow) {
 	case "comment":
 		r.setKind(row.IssueID, Comment, ts)
 	case "update":
-		if prev, ok := r.prev[row.IssueID]; ok {
-			if k, ok := kindOfUpdate(prev, now); ok {
-				r.setKind(row.IssueID, k, ts)
-			}
+		if prev, ok := r.prev[row.IssueID]; ok && prev != now {
+			// The newest change decides, blank when it maps to no kind.
+			k, _ := kindOfUpdate(prev, now)
+			r.setKind(row.IssueID, k, ts)
 		}
 	}
 	r.prev[row.IssueID] = now
@@ -397,7 +398,7 @@ func (r *Reader) readHistory(ctx context.Context, beads []Bead, now time.Time) {
 		if json.Unmarshal(out, &evs) != nil {
 			continue
 		}
-		k, at, ok := kindOfEvents(evs)
+		k, at, ok := kindOfEvents(evs, state{b.Status, b.Assignee})
 		r.mu.Lock()
 		if ok {
 			r.setKind(b.ID, k, at)
@@ -420,37 +421,68 @@ type auditEvent struct {
 	CreatedAt string `json:"created_at"`
 }
 
-// kindOfEvents is the kind of the newest event that maps, newest first as bd
-// lists them, with its time: created is filed; a status_changed or updated
-// event applies its new status and assignee over the old and maps as
-// kindOfUpdate does. Other events (closed, reopened, dependencies, labels)
-// set no kind, so a later one never erases an earlier kind. A comment is not
-// an audit event; the comment kind comes from elsewhere.
-func kindOfEvents(evs []auditEvent) (Kind, time.Time, bool) {
+// kindOfEvents is the kind of the newest change, newest first as bd lists
+// events, with its time: created is filed; an event that moves the status or
+// assignee maps as kindOfUpdate does, and one that maps to no kind is a blank
+// kind (ok true, Kind ""), never an older one. Events that move neither are
+// passed over. A comment is not an audit event; the comment kind comes from
+// elsewhere.
+func kindOfEvents(evs []auditEvent, cur state) (Kind, time.Time, bool) {
+	type change struct {
+		prev, now state
+		at        time.Time
+		filed     bool
+	}
+	var newest []change // the newest change, and any others in the same second
 	for _, e := range evs {
 		at, _ := time.Parse(time.RFC3339Nano, e.CreatedAt)
-		switch e.EventType {
-		case "created":
-			return Filed, at, true
-		case "status_changed", "updated":
-			var old, changed map[string]any
-			if json.Unmarshal([]byte(e.OldValue), &old) != nil || json.Unmarshal([]byte(e.NewValue), &changed) != nil {
-				continue
-			}
-			prev := state{str(old["status"]), str(old["assignee"])}
-			now := prev
-			if v, ok := changed["status"]; ok {
-				now.status = str(v)
-			}
-			if v, ok := changed["assignee"]; ok {
-				now.assignee = str(v)
-			}
-			if k, ok := kindOfUpdate(prev, now); ok {
-				return k, at, true
-			}
+		if len(newest) > 0 && !at.Truncate(time.Second).Equal(newest[0].at.Truncate(time.Second)) {
+			break
+		}
+		if e.EventType == "created" {
+			newest = append(newest, change{at: at, filed: true})
+			continue
+		}
+		// Any event that carries a state before and the fields it set
+		// (status_changed, updated, reopened) is a change when it moves the
+		// status or the assignee; the others (closed's words, dependencies,
+		// labels, an edit of other fields) are passed over.
+		var old, changed map[string]any
+		if json.Unmarshal([]byte(e.OldValue), &old) != nil || json.Unmarshal([]byte(e.NewValue), &changed) != nil {
+			continue
+		}
+		prev := state{str(old["status"]), str(old["assignee"])}
+		now := prev
+		if v, ok := changed["status"]; ok {
+			now.status = str(v)
+		}
+		if v, ok := changed["assignee"]; ok {
+			now.assignee = str(v)
+		}
+		if now == prev {
+			continue
+		}
+		newest = append(newest, change{prev: prev, now: now, at: at})
+	}
+	if len(newest) == 0 {
+		return "", time.Time{}, false
+	}
+	// bd lists events of the same second in no reliable order: of those,
+	// the change that leads to the bead's state now is the newest.
+	pick := newest[0]
+	for _, c := range newest {
+		if !c.filed && c.now == cur {
+			pick = c
+			break
 		}
 	}
-	return "", time.Time{}, false
+	if pick.filed {
+		return Filed, pick.at, true
+	}
+	// The newest change decides, even when it maps to no kind: then the kind
+	// is blank, never an older one.
+	k, _ := kindOfUpdate(pick.prev, pick.now)
+	return k, pick.at, true
 }
 
 func str(v any) string {

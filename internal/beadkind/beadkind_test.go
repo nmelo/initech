@@ -579,19 +579,21 @@ func TestKindOfEvents_TheRealSequence(t *testing.T) {
 		}
 		return nil
 	}
+	// cur is the bead's state just after each step, as the poll would show.
 	cases := []struct {
 		at   string
+		cur  state
 		want Kind
 	}{
-		{"2026-11-05T16:07:59Z", Filed},
-		{"2026-11-05T16:33:13Z", Claimed},
-		{"2026-11-05T16:40:04Z", Waiting},
-		{"2026-11-05T17:47:07Z", Claimed},
-		{"2026-11-05T17:54:51Z", QA},
-		{"2026-11-05T18:18:23Z", QA},
+		{"2026-11-05T16:07:59Z", state{"open", ""}, Filed},
+		{"2026-11-05T16:33:13Z", state{"in_progress", "eng5"}, Claimed}, // two changes in one second
+		{"2026-11-05T16:40:04Z", state{"waiting", "eng5"}, Waiting},
+		{"2026-11-05T17:47:07Z", state{"in_progress", "eng5"}, Claimed},
+		{"2026-11-05T17:54:51Z", state{"in_qa", "eng5"}, QA},
+		{"2026-11-05T18:18:23Z", state{"qa_passed", "qa2"}, QA},
 	}
 	for _, c := range cases {
-		k, when, ok := kindOfEvents(asOf(c.at))
+		k, when, ok := kindOfEvents(asOf(c.at), c.cur)
 		if !ok || k != c.want {
 			t.Errorf("as of %s: %q %v, want %q", c.at, k, ok, c.want)
 		}
@@ -619,11 +621,11 @@ func TestKindOfEvents_UnmappedEventsKeepTheKind(t *testing.T) {
 		{EventType: "updated", OldValue: `{"status":"in_progress","assignee":"eng1"}`, NewValue: `{}`, CreatedAt: "2026-11-05T17:01:30Z"},
 		{EventType: "status_changed", OldValue: `{"status":"open"}`, NewValue: `{"status":"in_progress","assignee":"eng1"}`, CreatedAt: "2026-11-05T17:01:00Z"},
 	}
-	k, when, ok := kindOfEvents(evs)
+	k, when, ok := kindOfEvents(evs, state{"in_progress", "eng1"})
 	if !ok || k != Claimed || !when.Equal(mustTime(t, "2026-11-05T17:01:00Z")) {
 		t.Fatalf("kind %q at %v %v, want claimed at 17:01", k, when, ok)
 	}
-	if k, _, ok := kindOfEvents(nil); ok {
+	if k, _, ok := kindOfEvents(nil, state{}); ok {
 		t.Fatalf("no events gave %q", k)
 	}
 }
@@ -632,7 +634,76 @@ func TestKindOfEvents_UnmappedEventsKeepTheKind(t *testing.T) {
 // while in progress, that is claimed.
 func TestKindOfEvents_AnUpdatedEventCanClaim(t *testing.T) {
 	evs := []auditEvent{{EventType: "updated", OldValue: `{"status":"in_progress","assignee":"eng1"}`, NewValue: `{"assignee":"eng5"}`, CreatedAt: "2026-11-05T17:05:00Z"}}
-	if k, _, ok := kindOfEvents(evs); !ok || k != Claimed {
+	if k, _, ok := kindOfEvents(evs, state{"in_progress", "eng5"}); !ok || k != Claimed {
+		t.Fatalf("kind %q %v, want claimed", k, ok)
+	}
+}
+
+func loadFail(t *testing.T) []auditEvent {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join("testdata", "history_events_qa_fail.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var evs []auditEvent
+	if err := json.Unmarshal(data, &evs); err != nil {
+		t.Fatal(err)
+	}
+	return evs
+}
+
+// pm's ruling, on this rig's real events of a QA FAIL (in_qa with qa2, then
+// in_progress with no assignee): the newest change decides, and it maps to
+// no kind, so the kind is blank, never the older qa.
+func TestKindOfEvents_AQAFailWithNoAssigneeIsBlank(t *testing.T) {
+	evs := loadFail(t)
+	fail := evs[len(evs)-1] // the oldest event in the capture is the FAIL
+	if fail.EventType != "status_changed" || !strings.Contains(fail.NewValue, `"in_progress"`) {
+		t.Fatalf("fixture's FAIL event is %+v", fail)
+	}
+	k, when, ok := kindOfEvents([]auditEvent{fail, {EventType: "status_changed", OldValue: `{"status":"in_progress"}`, NewValue: `{"status":"ready_for_qa"}`, CreatedAt: "2026-11-05T19:06:20Z"}}, state{"in_progress", ""})
+	if !ok || k != "" || !when.Equal(mustTime(t, "2026-11-05T19:16:56Z")) {
+		t.Fatalf("kind %q at %v %v, want blank at the FAIL", k, when, ok)
+	}
+}
+
+// Its twin: the same FAIL with an assignee after it is claimed.
+func TestKindOfEvents_AQAFailWithAnAssigneeIsClaimed(t *testing.T) {
+	evs := loadFail(t)
+	fail := evs[len(evs)-1]
+	fail.NewValue = `{"status":"in_progress","assignee":"eng5"}`
+	if k, _, ok := kindOfEvents([]auditEvent{fail}, state{"in_progress", "eng5"}); !ok || k != Claimed {
+		t.Fatalf("kind %q %v, want claimed", k, ok)
+	}
+}
+
+// The same ruling on the journal path: an update into in_progress with no
+// assignee blanks the older qa; with an assignee it is claimed.
+func TestJournal_AQAFailIsBlankAndItsTwinClaimed(t *testing.T) {
+	for _, c := range []struct {
+		assignee string
+		want     Kind
+	}{{"", ""}, {"eng5", Claimed}} {
+		f := &fakeBD{enabled: true, rows: []string{
+			row(1, "create", "bd-f", "in_progress", "eng5", at(1)),
+			row(2, "update", "bd-f", "in_qa", "qa2", at(2)),
+			row(3, "update", "bd-f", "in_progress", c.assignee, at(3)),
+		}}
+		var s said
+		r := newReader(f, &s)
+		r.Poll(context.Background(), []Bead{{ID: "bd-f", Status: "in_progress", Assignee: c.assignee, UpdatedAt: at(3)}}, at(4))
+		k, when, ok := r.KindAt("bd-f")
+		if !ok || k != c.want || !when.Equal(at(3)) {
+			t.Errorf("assignee %q: kind %q at %v %v, want %q at the FAIL", c.assignee, k, when, ok, c.want)
+		}
+	}
+}
+
+// reopened carries a status change like the others: a reopen into
+// in_progress with an assignee is claimed.
+func TestKindOfEvents_AReopenIsAChange(t *testing.T) {
+	evs := []auditEvent{{EventType: "reopened", OldValue: `{"status":"closed","assignee":"super"}`, NewValue: `{"status":"in_progress"}`, CreatedAt: "2026-11-05T19:27:31Z"}}
+	if k, _, ok := kindOfEvents(evs, state{"in_progress", "super"}); !ok || k != Claimed {
 		t.Fatalf("kind %q %v, want claimed", k, ok)
 	}
 }

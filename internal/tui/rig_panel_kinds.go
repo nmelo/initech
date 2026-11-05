@@ -74,17 +74,19 @@ type panelKindSource struct{ t *TUI }
 // Kind is id's newest known change. Main loop only: it reads the pace's maps.
 func (k *panelKindSource) Kind(id string) (string, bool) {
 	t := k.t
-	kind, at := "", time.Time{}
+	kind, at, known := "", time.Time{}, false
 	if r := t.kinds.reader; r != nil {
 		if rk, rat, ok := r.KindAt(id); ok {
-			kind, at = string(rk), rat
+			// A blank the reader recorded is known: the newest change maps
+			// to no kind, and the box shows blank, not the status kind.
+			kind, at, known = string(rk), rat, true
 		}
 	}
 	if pr, ok := t.paceReads[id]; ok && pr.by == "commit" && pr.at.After(at) {
-		kind, at = string(beadkind.Commit), pr.at
+		kind, at, known = string(beadkind.Commit), pr.at, true
 	}
 	if c := t.paceCommentAt[id]; !c.IsZero() && c.After(at) {
-		kind = string(beadkind.Comment)
+		kind, known = string(beadkind.Comment), true
 	}
-	return kind, kind != ""
+	return kind, known
 }
