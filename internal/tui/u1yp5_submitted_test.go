@@ -203,3 +203,37 @@ func TestSubmitted1yp5_TheLastLineIsNeededToo(t *testing.T) {
 		t.Fatal("matched with the last line absent")
 	}
 }
+
+// qa2's probe 1: an empty composer with our body nowhere on screen (only the
+// stale screen before the Enter, emptied) is no proof: the body above is
+// required, not just an empty box.
+func TestSubmitted1yp5_AnEmptyBoxWithoutOurBodyIsNoProof(t *testing.T) {
+	u1Windows(t, 0)
+	c := u1Captures[0]
+	rows := u1Rows(t, c.file)
+	after := u1Before(rows, c)
+	top, _ := composerSpan(after)
+	after[top] = "❯ "
+	p := newEmuPane("x", c.cols, c.rows)
+	u1Paint(p, after)
+	ps := newPendingSubmit(c.body, "bracketed", "")
+	ps.lastRows = u1Before(rows, c)
+	if got, _ := watchSubmit(p, ps, time.Now()); got == submitTaken {
+		t.Fatal("submitted on an empty box with our body nowhere above")
+	}
+}
+
+// qa2's probe 2: with no screen from before the Enter there is nothing to
+// compare against, so the proof is not given.
+func TestSubmitted1yp5_NoScreenBeforeTheEnterIsNoProof(t *testing.T) {
+	u1Windows(t, 0)
+	c := u1Captures[0]
+	rows := u1Rows(t, c.file)
+	p := newEmuPane("x", c.cols, c.rows)
+	u1Paint(p, rows)
+	ps := newPendingSubmit(c.body, "bracketed", "")
+	ps.lastRows = nil
+	if got, _ := watchSubmit(p, ps, time.Now()); got == submitTaken {
+		t.Fatal("submitted with no screen from before the Enter")
+	}
+}
