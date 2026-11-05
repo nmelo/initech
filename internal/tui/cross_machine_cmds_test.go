@@ -35,7 +35,7 @@ func (r *crossRig) received() []ControlCmd {
 func newCrossRig(t *testing.T) *crossRig {
 	t.Helper()
 	r := &crossRig{reply: func(ControlCmd) *ControlResp { return &ControlResp{OK: true} }}
-	srv := startRemotePeerServer(t, remotePeerServerConfig{
+	srv := startMemPeerServer(t, remotePeerServerConfig{
 		firstResponse: HelloOKMsg{Action: "hello_ok", Version: ProtocolVersion, PeerName: "workbench"},
 		agentNames:    []string{"eng1"},
 		onControl: func(c ControlCmd) *ControlResp {
@@ -235,13 +235,20 @@ func TestCrossMachine_APeerThatNeverAnswersIsAnErrorNeverOK(t *testing.T) {
 	if testing.Short() {
 		t.Skip("waits out the 10 s control request timeout; runs in the full suite")
 	}
-	r := newCrossRig(t)
-	r.reply = func(ControlCmd) *ControlResp { return nil }
-	start := time.Now()
-	resp := r.call(t, interruptH, IPCRequest{Action: "interrupt", Host: "workbench", Target: "eng1"})
-	if resp.OK || !strings.Contains(resp.Error, "not interrupted") {
-		t.Fatalf("reply after %v: %+v, want not interrupted", time.Since(start), resp)
-	}
+	sendBubble(t, func(t *testing.T) {
+		r := newCrossRig(t)
+		r.reply = func(ControlCmd) *ControlResp { return nil }
+		start := time.Now()
+		resp := r.call(t, interruptH, IPCRequest{Action: "interrupt", Host: "workbench", Target: "eng1"})
+		if resp.OK || !strings.Contains(resp.Error, "not interrupted") {
+			t.Fatalf("reply after %v: %+v, want not interrupted", time.Since(start), resp)
+		}
+		// On the bubble's clock the wait is exact: a silent peer is answered
+		// only by the request timeout, where a closed one answers at once.
+		if waited := time.Since(start); waited < requestWait("interrupt") {
+			t.Fatalf("answered after %v, before the %v request timeout: not the never-answers path (%q)", waited, requestWait("interrupt"), resp.Error)
+		}
+	})
 }
 
 // The daemon's interrupt action writes Escape, or Ctrl+C for "hard", to its

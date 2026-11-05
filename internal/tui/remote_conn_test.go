@@ -50,7 +50,21 @@ func startRemotePeerServer(t *testing.T, cfg remotePeerServerConfig) *remotePeer
 	if err != nil {
 		t.Fatalf("listen: %v", err)
 	}
+	return startRemotePeerServerOn(t, cfg, ln)
+}
 
+// startMemPeerServer is startRemotePeerServer in memory (ini-t0y1): peerDial
+// points at it for this test, so the peer's timers can run in a synctest
+// bubble.
+func startMemPeerServer(t *testing.T, cfg remotePeerServerConfig) *remotePeerServer {
+	t.Helper()
+	ln := newMemListener()
+	useMemPeer(t, ln)
+	return startRemotePeerServerOn(t, cfg, ln)
+}
+
+func startRemotePeerServerOn(t *testing.T, cfg remotePeerServerConfig, ln net.Listener) *remotePeerServer {
+	t.Helper()
 	srv := &remotePeerServer{
 		addr:     ln.Addr().String(),
 		helloCh:  make(chan HelloMsg, 1),

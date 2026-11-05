@@ -274,85 +274,87 @@ func TestDNDBreak_KeystrokesReachThePaneAtOnce(t *testing.T) {
 // runs, a forwarded send delivered here, the serve daemon's own send and its
 // control-stream send, and the id-less forward_send event.
 func TestDNDBreak_EveryRelayCarriesTheSender(t *testing.T) {
-	// The TUI's send to a remote agent puts the sender on the control stream.
-	server, client := net.Pipe()
-	defer server.Close()
-	defer client.Close()
-	mux := NewControlMux(client)
-	defer mux.Close()
-	rp := &RemotePane{name: "far", host: "box", alive: true, mux: mux}
-	got := make(chan ControlCmd, 1)
-	go func() {
-		line, err := bufio.NewReader(server).ReadBytes('\n')
-		if err != nil {
-			return
+	sendBubble(t, func(t *testing.T) {
+		// The TUI's send to a remote agent puts the sender on the control stream.
+		server, client := net.Pipe()
+		defer server.Close()
+		defer client.Close()
+		mux := NewControlMux(client)
+		defer mux.Close()
+		rp := &RemotePane{name: "far", host: "box", alive: true, mux: mux}
+		got := make(chan ControlCmd, 1)
+		go func() {
+			line, err := bufio.NewReader(server).ReadBytes('\n')
+			if err != nil {
+				return
+			}
+			var cmd ControlCmd
+			json.Unmarshal(line, &cmd)
+			got <- cmd
+			writeJSON(server, ControlResp{ID: cmd.ID, OK: true, Delivery: DeliveryDelivered})
+		}()
+		tu := newTestTUI()
+		dndCall(t, func(c net.Conn) {
+			tu.sendViaRemote(c, rp, IPCRequest{Action: "send", Target: "far", Text: "x", Enter: true, From: "super", Urgent: true})
+		})
+		if cmd := <-got; cmd.From != "super" || !cmd.Urgent {
+			t.Errorf("sendViaRemote sent %+v", cmd)
 		}
-		var cmd ControlCmd
-		json.Unmarshal(line, &cmd)
-		got <- cmd
-		writeJSON(server, ControlResp{ID: cmd.ID, OK: true, Delivery: DeliveryDelivered})
-	}()
-	tu := newTestTUI()
-	dndCall(t, func(c net.Conn) {
-		tu.sendViaRemote(c, rp, IPCRequest{Action: "send", Target: "far", Text: "x", Enter: true, From: "super", Urgent: true})
+
+		// A forwarded send delivered by this TUI is judged by its sender.
+		p, _, typed := dndPane(t, "a")
+		tu = newTestTUI(p)
+		p.startDND()
+		if v, err := tu.deliverForwardedSend("a", "[operator] forwarded", true, sendOrigin{From: operatorSender}); err != nil || v.Outcome == DeliveryHeld {
+			t.Errorf("forwarded operator send: %+v %v", v, err)
+		}
+
+		// The serve daemon's own send.
+		d := &Daemon{panes: []*Pane{p}, project: &config.Project{PeerName: "box"}, serve: true}
+		r := dndCall(t, func(c net.Conn) {
+			d.HandleSend(c, IPCRequest{Action: "send", Target: "a", Text: "[operator] daemon", Enter: true, From: operatorSender})
+		})
+		if !r.OK || r.Delivery == DeliveryHeld {
+			t.Errorf("daemon send: %+v", r)
+		}
+
+		// The daemon's control-stream send.
+		answered := make(chan ControlResp, 1)
+		d.deliverOffReader(newTargetSerializer(), p, ControlCmd{ID: "1", Action: "send", Target: "a", Text: "[operator] stream", Enter: true, From: operatorSender},
+			func(_ string, resp ControlResp) bool { answered <- resp; return true })
+		if resp := <-answered; !resp.OK || resp.Delivery == DeliveryHeld {
+			t.Errorf("control-stream send: %+v", resp)
+		}
+		for _, w := range []string{"[operator] forwarded", "[operator] daemon", "[operator] stream"} {
+			if !dndWait(5*time.Second, func() bool { return strings.Contains(typed(), w) }) {
+				t.Errorf("%q not typed: %q", w, typed())
+			}
+		}
+
+		// The id-less forward_send event.
+		s2, c2 := net.Pipe()
+		defer s2.Close()
+		defer c2.Close()
+		mux2 := NewControlMux(c2)
+		defer mux2.Close()
+		seen := make(chan sendOrigin, 1)
+		done := make(chan struct{})
+		pm := &peerManager{quit: make(chan struct{}), onForwardSend: func(_, _ string, _ bool, o sendOrigin) (SendVerdict, error) {
+			seen <- o
+			return SendVerdict{}, nil
+		}}
+		go pm.consumeEvents("box", &peerConn{mux: mux2}, done)
+		defer close(done)
+		writeJSON(s2, ControlCmd{Action: "forward_send", Target: "a", Text: "x", Enter: true, From: "super", Urgent: true})
+		select {
+		case o := <-seen:
+			if o.From != "super" || !o.Urgent {
+				t.Errorf("id-less forward_send handed %+v", o)
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatal("id-less forward_send never arrived")
+		}
 	})
-	if cmd := <-got; cmd.From != "super" || !cmd.Urgent {
-		t.Errorf("sendViaRemote sent %+v", cmd)
-	}
-
-	// A forwarded send delivered by this TUI is judged by its sender.
-	p, _, typed := dndPane(t, "a")
-	tu = newTestTUI(p)
-	p.startDND()
-	if v, err := tu.deliverForwardedSend("a", "[operator] forwarded", true, sendOrigin{From: operatorSender}); err != nil || v.Outcome == DeliveryHeld {
-		t.Errorf("forwarded operator send: %+v %v", v, err)
-	}
-
-	// The serve daemon's own send.
-	d := &Daemon{panes: []*Pane{p}, project: &config.Project{PeerName: "box"}, serve: true}
-	r := dndCall(t, func(c net.Conn) {
-		d.HandleSend(c, IPCRequest{Action: "send", Target: "a", Text: "[operator] daemon", Enter: true, From: operatorSender})
-	})
-	if !r.OK || r.Delivery == DeliveryHeld {
-		t.Errorf("daemon send: %+v", r)
-	}
-
-	// The daemon's control-stream send.
-	answered := make(chan ControlResp, 1)
-	d.deliverOffReader(newTargetSerializer(), p, ControlCmd{ID: "1", Action: "send", Target: "a", Text: "[operator] stream", Enter: true, From: operatorSender},
-		func(_ string, resp ControlResp) bool { answered <- resp; return true })
-	if resp := <-answered; !resp.OK || resp.Delivery == DeliveryHeld {
-		t.Errorf("control-stream send: %+v", resp)
-	}
-	for _, w := range []string{"[operator] forwarded", "[operator] daemon", "[operator] stream"} {
-		if !dndWait(5*time.Second, func() bool { return strings.Contains(typed(), w) }) {
-			t.Errorf("%q not typed: %q", w, typed())
-		}
-	}
-
-	// The id-less forward_send event.
-	s2, c2 := net.Pipe()
-	defer s2.Close()
-	defer c2.Close()
-	mux2 := NewControlMux(c2)
-	defer mux2.Close()
-	seen := make(chan sendOrigin, 1)
-	done := make(chan struct{})
-	pm := &peerManager{quit: make(chan struct{}), onForwardSend: func(_, _ string, _ bool, o sendOrigin) (SendVerdict, error) {
-		seen <- o
-		return SendVerdict{}, nil
-	}}
-	go pm.consumeEvents("box", &peerConn{mux: mux2}, done)
-	defer close(done)
-	writeJSON(s2, ControlCmd{Action: "forward_send", Target: "a", Text: "x", Enter: true, From: "super", Urgent: true})
-	select {
-	case o := <-seen:
-		if o.From != "super" || !o.Urgent {
-			t.Errorf("id-less forward_send handed %+v", o)
-		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("id-less forward_send never arrived")
-	}
 }
 
 // The serve daemon's forward of a send to a connected client machine carries

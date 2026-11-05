@@ -86,10 +86,6 @@ func connectPeerStop(peerName string, remote config.Remote, project *config.Proj
 		token = tok
 	}
 
-	// Dial TCP with OS-level keepalive to detect dead peers faster than
-	// the default 2-hour TCP keepalive. yamux has its own keepalive, but
-	// after kill -9 the TCP write may buffer locally without failing.
-	dialer := net.Dialer{Timeout: connectTimeout, KeepAlive: 15 * time.Second}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	handshook := make(chan struct{})
@@ -103,7 +99,11 @@ func connectPeerStop(peerName string, remote config.Remote, project *config.Proj
 			}
 		}()
 	}
-	conn, err := dialer.DialContext(ctx, "tcp", remote.Addr)
+	dial := peerDial
+	if dial == nil {
+		dial = dialPeerTCP
+	}
+	conn, err := dial(ctx, remote.Addr)
 	if err != nil {
 		return nil, fmt.Errorf("dial %s: %w", remote.Addr, err)
 	}
@@ -336,3 +336,20 @@ func readStreamMap(scanner *bufio.Scanner, peerName string, helloOK *HelloOKMsg)
 	}
 	return streamMap, fmt.Errorf("no stream_map in the first %d control frames", maxPreamble)
 }
+
+// peerDial opens a peer's connection. It is the real TCP dialer
+// (dialPeerTCP); a test swaps in an in-memory dialer so a synctest bubble can
+// run the peer timers on its clock (ini-t0y1), since a goroutine blocked on a
+// real socket stalls a bubble's clock. A nil peerDial dials for real.
+var peerDial = dialPeerTCP
+
+// dialPeerTCP dials TCP with OS-level keepalive to detect dead peers faster
+// than the default 2-hour TCP keepalive. yamux has its own keepalive, but
+// after kill -9 the TCP write may buffer locally without failing.
+func dialPeerTCP(ctx context.Context, addr string) (net.Conn, error) {
+	dialer := net.Dialer{Timeout: connectTimeout, KeepAlive: peerTCPKeepAlive}
+	return dialer.DialContext(ctx, "tcp", addr)
+}
+
+// peerTCPKeepAlive is the OS-level keepalive period on a peer's connection.
+const peerTCPKeepAlive = 15 * time.Second

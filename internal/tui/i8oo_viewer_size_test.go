@@ -205,13 +205,15 @@ func TestSendResize_APeerThatNeverAnswersWarnsOnce(t *testing.T) {
 	if testing.Short() {
 		t.Skip("waits out the 10-second request timeout; runs in the full suite, skipped under -short")
 	}
-	logs := captureLogs(t)
-	client, server := net.Pipe()
-	t.Cleanup(func() { client.Close(); server.Close() })
-	go func() { _, _ = io.Copy(io.Discard, server) }() // reads, never answers
-	rp := &RemotePane{name: "eng1", host: "wb", emu: vt.NewSafeEmulator(10, 5), mux: NewControlMux(client)}
-	rp.sendResize(36, 55)
-	if n := countLines(logs, "viewer resize not applied"); n != 1 {
-		t.Errorf("logged %d lines, want 1:\n%s", n, logs)
-	}
+	sendBubble(t, func(t *testing.T) {
+		logs := captureLogs(t)
+		client, server := net.Pipe()
+		t.Cleanup(func() { client.Close(); server.Close() })
+		go func() { _, _ = io.Copy(io.Discard, server) }() // reads, never answers
+		rp := &RemotePane{name: "eng1", host: "wb", emu: vt.NewSafeEmulator(10, 5), mux: NewControlMux(client)}
+		rp.sendResize(36, 55)
+		if n := countLines(logs, "viewer resize not applied"); n != 1 {
+			t.Errorf("logged %d lines, want 1:\n%s", n, logs)
+		}
+	})
 }

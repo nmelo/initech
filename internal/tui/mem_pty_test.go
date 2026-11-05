@@ -3,6 +3,7 @@ package tui
 import (
 	"io"
 	"os/exec"
+	"runtime"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -128,6 +129,13 @@ func memPipe(t *testing.T) (*io.PipeReader, *memPty) {
 // all of them.
 func sendBubble(t *testing.T, f func(t *testing.T)) {
 	t.Helper()
+	// yamux pools its timers in a sync.Pool, so a timer made in one bubble
+	// would be handed to the next test, in a bubble or not, and no code may
+	// touch another bubble's timer (fatal, measured both ways, ini-t0y1).
+	// Two collections empty a sync.Pool: before, and after.
+	emptyPools := func() { runtime.GC(); runtime.GC() }
+	emptyPools()
+	defer emptyPools()
 	synctest.Test(t, f)
 }
 
