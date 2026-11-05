@@ -45,6 +45,10 @@ type bdBead struct {
 	// CommentCount is bd's comment count. A comment does not move updated_at,
 	// so the pace reads a rise in this count as the bead's last move.
 	CommentCount int `json:"comment_count"`
+	// Priority and Labels order and filter the rig panel's moved box
+	// (ini-9z0b): efforts by priority then id, archived beads never shown.
+	Priority int      `json:"priority"`
+	Labels   []string `json:"labels,omitempty"`
 	// Dependencies and Metadata carry a waiting bead's wait (pace_waits.go).
 	Dependencies []progress.Dependency `json:"dependencies,omitempty"`
 	Metadata     json.RawMessage       `json:"metadata,omitempty"`

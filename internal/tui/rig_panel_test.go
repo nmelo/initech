@@ -145,9 +145,16 @@ func TestPanelBeadCell(t *testing.T) {
 
 // renderPanelCapture draws the panel for agents and beads on a w x 40 screen
 // and returns its rows, so a test reads what the operator would.
-func renderPanelCapture(t *testing.T, w int, agents []panelAgent, beads []panelBead) []string {
+func renderPanelCapture(t *testing.T, w int, agents []panelAgent, beads []panelBead, moved ...movedBead) []string {
+	t.Helper()
+	return renderPanelCaptureRows(t, w, panelDefaultRows, agents, beads, moved...)
+}
+
+// renderPanelCaptureRows is renderPanelCapture with the boxes rows tall.
+func renderPanelCaptureRows(t *testing.T, w, boxRows int, agents []panelAgent, beads []panelBead, moved ...movedBead) []string {
 	t.Helper()
 	tui := newTestTUI()
+	tui.panelMoved = moved
 	tui.projectName = "initech"
 	scr := tcell.NewSimulationScreen("UTF-8")
 	if err := scr.Init(); err != nil {
@@ -156,7 +163,7 @@ func renderPanelCapture(t *testing.T, w int, agents []panelAgent, beads []panelB
 	t.Cleanup(scr.Fini)
 	scr.SetSize(w, 40)
 	tui.screen = scr
-	tui.planTop = 1 + 1 + panelDefaultRows + 1
+	tui.planTop = 1 + 1 + boxRows + 1
 	tui.drawRigPanel(panelNow, agents, beads)
 	tui.renderProjectBadge() // Render draws it over row 0 after the panel.
 	scr.Show()
@@ -324,5 +331,42 @@ func TestRigPanel_TheTitleRowCountsHiddenAgents(t *testing.T) {
 	s.Show()
 	if title := string(overlayScreenRows(s)[0]); strings.Contains(title, "hidden") {
 		t.Fatalf("with nothing hidden the title row reads %q", strings.TrimRight(title, " "))
+	}
+}
+
+// TestRigPanel_TheMovedBoxDrawsItsTree is AC1's capture: m2's shape at 120.
+func TestRigPanel_TheMovedBoxDrawsItsTree(t *testing.T) {
+	rows := renderPanelCaptureRows(t, 160, 12, panelQuiet, nil, busyBeads()...)
+	t.Logf("\n%s", strings.Join(rows, "\n"))
+	all := strings.Join(rows, "\n")
+	for _, want := range []string{"▶ h.pnxg", "Today", "1/7", "◎ h.78", "Detections", "qa", "1m",
+		"▶ h.76", "▶ h.76.1", "commit", "▶ h.71", "Release", "initech", "☾ h.dcz9"} {
+		if !strings.Contains(all, want) {
+			t.Errorf("the moved box lacks %q", want)
+		}
+	}
+	for _, gone := range []string{"h.old", "h.arch", "h.71.4"} {
+		if strings.Contains(all, gone) {
+			t.Errorf("the moved box shows %s, closed or archived", gone)
+		}
+	}
+	// h.76.1 sits two deeper than h.pnxg.
+	var top, nested int
+	runeAt := func(r, sub string) int {
+		if i := strings.Index(r, sub); i >= 0 {
+			return len([]rune(r[:i]))
+		}
+		return -1
+	}
+	for _, r := range rows {
+		if i := runeAt(r, "▶ h.pnxg"); i >= 0 {
+			top = i
+		}
+		if i := runeAt(r, "▶ h.76.1"); i >= 0 {
+			nested = i
+		}
+	}
+	if nested-top != 4 {
+		t.Errorf("h.76.1 is indented %d past h.pnxg, want 4", nested-top)
 	}
 }

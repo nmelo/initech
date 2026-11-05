@@ -80,7 +80,9 @@ func TestStatusNumbers_TheLineIsWindowOnesCachedNumbers(t *testing.T) {
 	var c countingRigRun
 	c.install(t)
 	out := runStatusWith(t, paneReply(windowOneNumbers()), false, false)
-	want := "  rig: merges/h 4 · gate 3g/1r med - · landing 2 · filed +5/-3 · no move 20m 1 · idle 2\n"
+	// Window 1's cached numbers here predate today's main fields, as an
+	// older window 1's would: those read ? (ini-9z0b).
+	want := "  merges/h 4 · main ? · median ? · closed today ?\n"
 	if !strings.HasSuffix(out, want) {
 		t.Errorf("status ends\n%q\nwant the rig line\n%q", out[max(0, len(out)-200):], want)
 	}
@@ -97,7 +99,7 @@ func TestStatusNumbers_WithNoneFromWindowOneStatusComputesAndSaysSo(t *testing.T
 	var c countingRigRun
 	c.install(t)
 	out := runStatusWith(t, paneReply(nil), false, false)
-	if !strings.Contains(out, "  rig: merges/h - · gate - · landing - · filed +0/-0 · no move 20m 0 · idle 1  (computed now: window 1 has no numbers yet)") {
+	if !strings.Contains(out, "  merges/h - · main - · median - · closed today 0  (computed now: window 1 has no numbers yet)") {
 		t.Errorf("status:\n%s", out)
 	}
 	if len(c.calls) != 1 || !strings.HasPrefix(c.calls[0], "bd list --all") {
@@ -141,5 +143,39 @@ func TestStatusNumbers_ComputedReadsTheProductRepo(t *testing.T) {
 	joined := strings.Join(c.calls, "\n")
 	if !strings.Contains(joined, "git -C "+filepath.Join(root, "product")+" fetch") || strings.Contains(joined, "scaffold") {
 		t.Fatalf("status read %q, want the product clone and never the first repo", c.calls)
+	}
+}
+
+// TestStatusNumbers_TheJSONFieldsAreUnchanged is AC3 (ini-9z0b): every field
+// --json --numbers had keeps its name; the new ones are added beside them,
+// and line keeps the old one-line form.
+func TestStatusNumbers_TheJSONFieldsAreUnchanged(t *testing.T) {
+	n := windowOneNumbers()
+	b, err := json.Marshal(rigNumbersJSON{Source: "window 1", Numbers: *n, Line: n.Line()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var top map[string]json.RawMessage
+	json.Unmarshal(b, &top)
+	for _, k := range []string{"source", "numbers", "line"} {
+		if _, ok := top[k]; !ok {
+			t.Errorf("--json --numbers lost %q", k)
+		}
+	}
+	var nums map[string]json.RawMessage
+	json.Unmarshal(top["numbers"], &nums)
+	for _, k := range []string{"at", "repo", "merges_per_hour", "gate_green", "gate_red", "gate_median_minutes",
+		"landing_depth", "filed", "closed", "no_move_20m", "idle_engineers"} {
+		if _, ok := nums[k]; !ok {
+			t.Errorf("numbers lost %q", k)
+		}
+	}
+	for _, k := range []string{"main_pass_today", "main_fail_today", "main_latest_red", "main_median_minutes_today", "closed_today"} {
+		if _, ok := nums[k]; !ok {
+			t.Errorf("numbers lacks the new %q", k)
+		}
+	}
+	if !strings.HasPrefix(string(top["line"]), `"merges/h`) || !strings.Contains(string(top["line"]), "gate") {
+		t.Errorf("line changed form: %s", top["line"])
 	}
 }

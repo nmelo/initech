@@ -41,6 +41,15 @@ func (t *TUI) panelRowsFor(h int) int {
 		return 1
 	}
 	rows := t.layoutState.PanelRows
+	if rows > max(panelRowsMin, h/2) {
+		// Too tall for this screen: the default, said once (qa1's reading
+		// of the ruling, by super's word).
+		if t.panelRowsWarned != rows {
+			t.panelRowsWarned = rows
+			LogWarn("layout", "panel_rows is more than half the screen; reading it as the default 8", "panel_rows", rows, "screen_rows", h)
+		}
+		rows = 0
+	}
 	if rows == 0 {
 		rows = panelDefaultRows
 	}

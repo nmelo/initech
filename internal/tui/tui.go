@@ -528,6 +528,17 @@ type TUI struct {
 	// panelAttn holds the rig panel's needs-attention column after it
 	// empties (ini-fed0).
 	panelAttn panelHold
+	// panelQuota is the bottom bar's fleet quota source (ini-kb4c fills it);
+	// nil shows a dash.
+	panelQuota quotaSource
+	// panelKinds is the moved box's change-kind source (ini-u2xf fills
+	// it); nil reads the kind from each bead's status.
+	panelKinds beadKinds
+	// panelMoved is the last frame's moved-box snapshot.
+	panelMoved []movedBead
+	// panelRowsWarned is the panel_rows value last warned about, so a
+	// too-tall height is said once.
+	panelRowsWarned int
 
 	// Live Mode: persistent engine for anti-thrashing across render frames.
 	// Nil when not in live mode. Created by cmdLive/Alt+5, destroyed on mode switch.

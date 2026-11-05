@@ -37,7 +37,9 @@ func TestStatusFleet_TheLineFollowsTheTableAndSaysAtTheCeiling(t *testing.T) {
 	resp := paneReply(windowOneNumbers())
 	resp.Fleet = fleetAt(31, 6.1, 34)
 	out := runStatusWith(t, resp, false, false)
-	want := "  fleet 31 awake · 6.1 GB free · swap 2.3 GB · load 34 · ceiling 30 / 8 GB (default) / 30 · at the ceiling\n  rig: "
+	// The rig line is the panel bar's left part (ini-9z0b), so it starts
+	// with merges/h, no label.
+	want := "  fleet 31 awake · 6.1 GB free · swap 2.3 GB · load 34 · ceiling 30 / 8 GB (default) / 30 · at the ceiling\n  merges/h "
 	if !strings.Contains(out, want) {
 		t.Errorf("status:\n%s\nwant the fleet line before the rig line:\n%q", out, want)
 	}

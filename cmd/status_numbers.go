@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
+	"strings"
 	"time"
 
 	"github.com/nmelo/initech/internal/color"
@@ -102,14 +103,25 @@ func printFleetLine(out io.Writer, f *rignumbers.Fleet) {
 	fmt.Fprintf(out, "  %s\n", line)
 }
 
-// printRigLine prints the rig line after the agent table, naming where the
-// numbers came from when window 1 did not have them.
+// printRigLine prints the rig panel's bottom bar left part after the agent
+// table (ini-9z0b), its red parts red, naming where the numbers came from
+// when window 1 did not have them. --json --numbers keeps line as it was.
 func printRigLine(out io.Writer, r rigNumbersJSON) {
 	note := ""
 	if r.Source != "window 1" {
 		note = "  (computed now: window 1 has no numbers yet)"
 	}
-	fmt.Fprintf(out, "  rig: %s%s\n", r.Line, note)
+	line, spans := r.Numbers.BarLeft()
+	runes := []rune(line)
+	var b strings.Builder
+	at := 0
+	for _, s := range spans {
+		b.WriteString(string(runes[at:s.From]))
+		b.WriteString(color.Red(string(runes[s.From:s.To])))
+		at = s.To
+	}
+	b.WriteString(string(runes[at:]))
+	fmt.Fprintf(out, "  %s%s\n", b.String(), note)
 }
 
 // printRigJSON prints status --json --numbers.

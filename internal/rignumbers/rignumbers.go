@@ -80,6 +80,15 @@ type Numbers struct {
 	Closed            *int      `json:"closed"`
 	NoMove20m         *int      `json:"no_move_20m"`
 	IdleEngineers     *int      `json:"idle_engineers"`
+	// Today's push runs on main since local midnight (ini-9z0b): passes,
+	// fails, whether the latest finished one failed, and their median
+	// minutes; nil while the runs are unread.
+	MainPass          *int     `json:"main_pass_today"`
+	MainFail          *int     `json:"main_fail_today"`
+	MainLatestRed     bool     `json:"main_latest_red"`
+	MainMedianMinutes *float64 `json:"main_median_minutes_today"`
+	// ClosedToday is beads closed since local midnight; nil while unread.
+	ClosedToday *int `json:"closed_today"`
 	// Fleet is the machine's numbers, filled by whoever has them (window 1's
 	// gate, or status reading the machine itself); absent when nobody does.
 	Fleet *Fleet `json:"fleet,omitempty"`
@@ -146,6 +155,44 @@ func Compute(in Input) Numbers {
 			sort.Float64s(mins)
 			n.GateMedianMinutes = ptr(mins[len(mins)/2])
 		}
+	}
+	midnight := localMidnight(in.Now)
+	if in.HasRepo && in.RunsKnown {
+		pass, fail := 0, 0
+		var mins []float64
+		var latest time.Time
+		latestRed := false
+		for _, r := range in.Runs {
+			if r.CreatedAt.Before(midnight) {
+				continue
+			}
+			switch r.Conclusion {
+			case "success":
+				pass++
+			case "failure":
+				fail++
+			default:
+				continue // Still running, or cancelled: not a verdict.
+			}
+			mins = append(mins, r.UpdatedAt.Sub(r.CreatedAt).Minutes())
+			if r.CreatedAt.After(latest) {
+				latest, latestRed = r.CreatedAt, r.Conclusion == "failure"
+			}
+		}
+		n.MainPass, n.MainFail, n.MainLatestRed = ptr(pass), ptr(fail), latestRed
+		if len(mins) > 0 {
+			sort.Float64s(mins)
+			n.MainMedianMinutes = ptr(mins[len(mins)/2])
+		}
+	}
+	if in.BeadsKnown {
+		today := 0
+		for _, b := range in.Beads {
+			if !b.ClosedAt.IsZero() && !b.ClosedAt.Before(midnight) {
+				today++
+			}
+		}
+		n.ClosedToday = ptr(today)
 	}
 	if in.BeadsKnown {
 		filed, closed, still := 0, 0, 0
@@ -340,3 +387,60 @@ func (a *Alarm) Check(n Numbers, th Thresholds) []string {
 }
 
 func trim(v float64) string { return strings.TrimSuffix(fmt.Sprintf("%.1f", v), ".0") }
+
+// localMidnight is the start of now's day in now's location.
+func localMidnight(now time.Time) time.Time {
+	y, m, d := now.Date()
+	return time.Date(y, m, d, 0, 0, 0, 0, now.Location())
+}
+
+// Span marks a rune range of a bar line that is drawn red.
+type Span struct{ From, To int }
+
+// BarLeft is the bottom bar's left part, as the rig panel and initech status
+// print it (ini-9z0b): "merges/h N · main ✓N ✗N · median Nm · closed today
+// N". The spans are what is red: the fail count when there are any, and the
+// whole main item when the latest finished run failed. ? is a number initech
+// could not read, - a rig with no repo, — a median with no run today.
+func (n Numbers) BarLeft() (string, []Span) {
+	var b strings.Builder
+	var spans []Span
+	at := 0
+	write := func(s string, red bool) {
+		if red {
+			spans = append(spans, Span{at, at + len([]rune(s))})
+		}
+		b.WriteString(s)
+		at += len([]rune(s))
+	}
+	write("merges/h "+num(n.MergesPerHour, true, n.Repo), false)
+	write(" · ", false)
+	switch {
+	case !n.Repo:
+		write("main -", false)
+	case n.MainPass == nil || n.MainFail == nil:
+		write("main ?", false)
+	default:
+		pass, fail := fmt.Sprintf("main ✓%d ", *n.MainPass), fmt.Sprintf("✗%d", *n.MainFail)
+		if n.MainLatestRed {
+			write(pass+fail, true)
+		} else {
+			write(pass, false)
+			write(fail, *n.MainFail > 0)
+		}
+	}
+	write(" · ", false)
+	med := "—"
+	switch {
+	case !n.Repo:
+		med = "-"
+	case n.MainPass == nil:
+		med = "?"
+	case n.MainMedianMinutes != nil:
+		med = fmt.Sprintf("%.0fm", *n.MainMedianMinutes)
+	}
+	write("median "+med, false)
+	write(" · ", false)
+	write("closed today "+num(n.ClosedToday, false, n.Repo), false)
+	return b.String(), spans
+}

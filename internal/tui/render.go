@@ -612,9 +612,23 @@ func (t *TUI) renderHints() {
 	_, sh := t.screen.Size()
 	b := newStatusBarBuilder()
 
-	// Left: cycling tip.
-	tips := getStatusTips()
-	b.addLeft(tips[t.tipIndex%len(tips)], b.barStyle)
+	// Left: the rig panel's rig line while the panel is shown and this
+	// window has the numbers (window 1); a cycling tip otherwise.
+	if n := t.RigNumbersSnapshot(); n != nil && t.layoutState.Overlay {
+		for _, it := range barLeftItems(*n, b.barStyle) {
+			b.addLeft(it.text, it.style)
+		}
+	} else {
+		tips := getStatusTips()
+		b.addLeft(tips[t.tipIndex%len(tips)], b.barStyle)
+	}
+
+	// The rig panel's machine numbers (ini-9z0b), first on the right.
+	if t.layoutState.Overlay {
+		for _, it := range barRightItems(t.FleetSnapshot(), t.panelQuota, panelCores(), b.barStyle) {
+			b.addRight(it.text, it.style)
+		}
+	}
 
 	// Right side groups items by category, in display order (left-to-right):
 	//   1. App state:    mode

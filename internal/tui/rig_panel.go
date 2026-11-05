@@ -24,6 +24,9 @@ const (
 	panelAttentionHold = time.Minute
 	// panelDefaultRows is the boxes' height in rows, under their top border.
 	panelDefaultRows = 8
+	// panelMovedMinWidth is the narrowest the moved box gets before the
+	// agents box gives up its bead column (the fold order).
+	panelMovedMinWidth = 30
 )
 
 // panelBead is one bead as the panel reads it.
@@ -337,7 +340,50 @@ func (t *TUI) renderRigPanel(now time.Time) {
 		return
 	}
 	agents, beads := t.panelSnapshot(now)
+	t.panelMoved = t.movedSnapshot(now)
 	t.drawRigPanel(now, agents, beads)
+}
+
+// movedSnapshot is the polled beads as the moved box reads them: each
+// one's parent from a parent-child link, else from a dotted id whose prefix
+// is a polled bead; its last move by the stuck rule's clock; its kind from
+// panelKinds when set, else from its status.
+func (t *TUI) movedSnapshot(now time.Time) []movedBead {
+	if !t.paceAnswered {
+		return nil
+	}
+	known := make(map[string]bool, len(t.paceBeads))
+	for _, b := range t.paceBeads {
+		known[b.ID] = true
+	}
+	out := make([]movedBead, 0, len(t.paceBeads))
+	for _, b := range t.paceBeads {
+		m := movedBead{ID: b.ID, Title: b.Title, Status: b.Status, Priority: b.Priority,
+			LastMoved: t.paceBead(b, now).LastMoved(), ClosedAt: b.ClosedAt}
+		for _, l := range b.Labels {
+			if l == "archived" {
+				m.Archived = true
+			}
+		}
+		for _, d := range b.Dependencies {
+			if d.Type == "parent-child" && d.DependsOn != "" {
+				m.Parent = d.DependsOn
+			}
+		}
+		if m.Parent == "" {
+			if i := strings.LastIndex(b.ID, "."); i > 0 && known[b.ID[:i]] {
+				m.Parent = b.ID[:i]
+			}
+		}
+		m.Kind = kindFromStatus(m, b.CreatedAt, now)
+		if t.panelKinds != nil {
+			if k, ok := t.panelKinds.Kind(b.ID); ok {
+				m.Kind = k
+			}
+		}
+		out = append(out, m)
+	}
+	return out
 }
 
 // drawRigPanel lays out a snapshot across the top planTop rows.
@@ -434,8 +480,10 @@ func (t *TUI) drawRigPanel(now time.Time, agents []panelAgent, beads []panelBead
 		cols = 2
 	}
 	box1W := cols*colW + (cols-1)*3 + 4
-	if box1W > sw*2/3 {
-		w.withBead = false // The fold: the bead column goes before anything else.
+	if sw-box1W-1 < panelMovedMinWidth {
+		// The fold: the bead column goes before the moved box gets narrower
+		// than panelMovedMinWidth.
+		w.withBead = false
 		colW = w.width()
 		box1W = cols*colW + (cols-1)*3 + 4
 	}
@@ -530,6 +578,98 @@ func (t *TUI) drawRigPanel(now time.Time, agents []panelAgent, beads []panelBead
 		// (no new message between windows, ini-cdgj): it says where it is.
 		if !t.isFleetAuthority() {
 			put(box1W+3, yTop+1, "moved 30m is in window 1", dim, sw-1)
+		} else {
+			t.drawMoved(box1W+3, sw-2, yTop+1, rows, now, bg)
 		}
 	}
+}
+
+// drawMoved lays the moved box's rows out between x0 and limit from row y.
+func (t *TUI) drawMoved(x0, limit, y, rows int, now time.Time, bg tcell.Style) {
+	list := movedRows(t.panelMoved, now, rows, t.panelRigName())
+	text := bg.Foreground(tcell.NewRGBColor(220, 222, 230))
+	dim := bg.Foreground(tcell.NewRGBColor(120, 124, 140))
+	red := bg.Foreground(tcell.NewRGBColor(240, 100, 100))
+	yellow := bg.Foreground(tcell.NewRGBColor(240, 200, 90))
+	green := bg.Foreground(tcell.NewRGBColor(120, 210, 120))
+	teal := bg.Foreground(tcell.NewRGBColor(90, 200, 200))
+	blue := bg.Foreground(tcell.NewRGBColor(120, 170, 250))
+	put := func(x, y int, s string, st tcell.Style) int {
+		for _, ch := range s {
+			if x >= limit {
+				break
+			}
+			t.screen.SetContent(x, y, ch, nil, st)
+			x++
+		}
+		return x
+	}
+	idW := 0
+	for _, r := range list {
+		if r.ID != "" {
+			idW = max(idW, 2*r.Depth+2+len([]rune(r.ID)))
+		}
+	}
+	const statW, rateW = 9, 7
+	titleW := limit - x0 - idW - 2 - statW - rateW - 12
+	titleW = min(max(titleW, 8), movedTitleCut)
+	for i, r := range list {
+		if i >= rows {
+			break
+		}
+		yy := y + i
+		pad := strings.Repeat("  ", r.Depth)
+		if r.More > 0 {
+			put(x0+len(pad), yy, fmt.Sprintf("+%d more", r.More), dim)
+			continue
+		}
+		x := x0
+		if r.ID == "" {
+			put(x+len(pad), yy, r.Title, text)
+			continue
+		}
+		icon, ok := beadStateIcon(r.Status)
+		if !ok {
+			icon = beadBar
+		}
+		put(x, yy, fmt.Sprintf("%s%c %s", pad, icon, r.ID), blue)
+		x = x0 + idW + 2
+		title := []rune(r.Title)
+		if len(title) > titleW {
+			title = append(title[:titleW-1], '…')
+		}
+		put(x, yy, string(title), text)
+		x += titleW + 2
+		if r.Effort {
+			put(x, yy, r.Done, text)
+			rateSt := green
+			if r.RateZero || r.Rate == "—" {
+				rateSt = dim
+			}
+			put(x+statW, yy, r.Rate, rateSt)
+			fx := x + statW + rateW
+			for j, f := range r.Flags {
+				if j > 0 {
+					fx = put(fx, yy, "  ", dim)
+				}
+				st := red
+				if f.Waiting {
+					st = yellow
+				}
+				fx = put(fx, yy, f.Text, st)
+			}
+			continue
+		}
+		put(x, yy, r.Kind, teal)
+		put(x+statW, yy, r.Ago, dim)
+	}
+}
+
+// panelRigName names the moved box's last row, the beads under no effort:
+// the project's name.
+func (t *TUI) panelRigName() string {
+	if t.projectName != "" {
+		return t.projectName
+	}
+	return "initech"
 }

@@ -189,3 +189,80 @@ func TestParseThresholdKey_NamesEveryNumberAndOnlyThose(t *testing.T) {
 		}
 	}
 }
+
+// TestCompute_TodaysMainAndClosedCountFromLocalMidnight (ini-9z0b): a run or
+// a close before midnight is yesterday's; a run still going is no verdict;
+// the latest finished run decides red.
+func TestCompute_TodaysMainAndClosedCountFromLocalMidnight(t *testing.T) {
+	loc := time.FixedZone("EST", -5*3600)
+	now := time.Date(2026, 11, 5, 10, 0, 0, 0, loc)
+	at := func(h, m int) time.Time { return time.Date(2026, 11, 5, h, m, 0, 0, loc) }
+	yesterday := time.Date(2026, 11, 4, 23, 50, 0, 0, loc)
+	in := Input{Now: now, HasRepo: true, RunsKnown: true, BeadsKnown: true,
+		Runs: []Run{
+			{Conclusion: "success", CreatedAt: at(8, 0), UpdatedAt: at(8, 2)},
+			{Conclusion: "success", CreatedAt: at(8, 30), UpdatedAt: at(8, 34)},
+			{Conclusion: "failure", CreatedAt: at(9, 0), UpdatedAt: at(9, 9)},
+			{Conclusion: "", CreatedAt: at(9, 55)},                                               // running
+			{Conclusion: "failure", CreatedAt: yesterday, UpdatedAt: yesterday.Add(time.Minute)}, // yesterday
+		},
+		Beads: []Bead{
+			{ID: "a", ClosedAt: at(7, 0)},
+			{ID: "b", ClosedAt: yesterday},
+			{ID: "c"},
+		},
+	}
+	n := Compute(in)
+	if *n.MainPass != 2 || *n.MainFail != 1 || !n.MainLatestRed {
+		t.Fatalf("main today pass %d fail %d latest red %v, want 2, 1, true", *n.MainPass, *n.MainFail, n.MainLatestRed)
+	}
+	if *n.MainMedianMinutes != 4 {
+		t.Fatalf("median %v, want 4 (2, 4, 9)", *n.MainMedianMinutes)
+	}
+	if *n.ClosedToday != 1 {
+		t.Fatalf("closed today %d, want 1", *n.ClosedToday)
+	}
+	// A pass after the failure turns the main item back.
+	in.Runs = append(in.Runs, Run{Conclusion: "success", CreatedAt: at(9, 30), UpdatedAt: at(9, 33)})
+	if Compute(in).MainLatestRed {
+		t.Fatal("the latest finished run passed and main still reads red")
+	}
+	// Feed it nothing: runs unread are unknown, not zero.
+	in.RunsKnown = false
+	if n := Compute(in); n.MainPass != nil || n.MainMedianMinutes != nil {
+		t.Fatal("unread runs read as numbers")
+	}
+}
+
+// TestBarLeft_WordsNumbersAndTheRedParts (ini-9z0b).
+func TestBarLeft_WordsNumbersAndTheRedParts(t *testing.T) {
+	i := func(v int) *int { return &v }
+	f := func(v float64) *float64 { return &v }
+	red := func(line string, spans []Span) string {
+		r := []rune(line)
+		var out []string
+		for _, s := range spans {
+			out = append(out, string(r[s.From:s.To]))
+		}
+		return strings.Join(out, "|")
+	}
+	n := Numbers{Repo: true, MergesPerHour: i(11), MainPass: i(10), MainFail: i(1), MainMedianMinutes: f(2), ClosedToday: i(9)}
+	line, spans := n.BarLeft()
+	if line != "merges/h 11 · main ✓10 ✗1 · median 2m · closed today 9" || red(line, spans) != "✗1" {
+		t.Fatalf("%q red %q", line, red(line, spans))
+	}
+	n.MainLatestRed = true
+	if line, spans = n.BarLeft(); red(line, spans) != "main ✓10 ✗1" {
+		t.Fatalf("latest red: red %q", red(line, spans))
+	}
+	quiet := Numbers{Repo: true, MergesPerHour: i(0), MainPass: i(0), MainFail: i(0), ClosedToday: i(7)}
+	if line, spans := quiet.BarLeft(); line != "merges/h 0 · main ✓0 ✗0 · median — · closed today 7" || len(spans) != 0 {
+		t.Fatalf("quiet %q spans %v", line, spans)
+	}
+	if line, _ := (Numbers{Repo: true}).BarLeft(); line != "merges/h ? · main ? · median ? · closed today ?" {
+		t.Fatalf("unread %q", line)
+	}
+	if line, _ := (Numbers{}).BarLeft(); line != "merges/h - · main - · median - · closed today ?" {
+		t.Fatalf("no repo %q", line)
+	}
+}

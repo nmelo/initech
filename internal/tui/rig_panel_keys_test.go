@@ -226,13 +226,24 @@ func TestRigPanelKeys_TheNeedsInputListDrawsBelowThePanel(t *testing.T) {
 	t.Fatalf("the needs-input list is not on screen:\n%s", strings.Join(rows, "\n"))
 }
 
-// TestRigPanelKeys_AStoredHeightIsKeptToHalfTheScreen: a panel_rows saved on
-// a tall screen is clamped where it is drawn, never past half a shorter one.
-func TestRigPanelKeys_AStoredHeightIsKeptToHalfTheScreen(t *testing.T) {
+// TestRigPanelKeys_ATooTallStoredHeightReadsTheDefaultWithOneWarning: a
+// panel_rows above half the screen reads as the default 8, said once (qa1's
+// reading of the ruling, by super's word); one within bounds is kept.
+func TestRigPanelKeys_ATooTallStoredHeightReadsTheDefaultWithOneWarning(t *testing.T) {
+	logs := captureLogs(t)
 	tui, _ := panelWindow(t, 120, 40)
 	tui.layoutState.PanelRows = 30
+	for i := 0; i < 3; i++ {
+		if got := tui.panelRowsFor(40); got != panelDefaultRows {
+			t.Fatalf("panel_rows 30 on a 40-row screen draws %d rows, want the default 8", got)
+		}
+	}
+	if n := strings.Count(logs.String(), "panel_rows is more than half the screen"); n != 1 {
+		t.Fatalf("warned %d times, want once", n)
+	}
+	tui.layoutState.PanelRows = 20
 	if got := tui.panelRowsFor(40); got != 20 {
-		t.Fatalf("panel_rows 30 on a 40-row screen draws %d rows, want 20", got)
+		t.Fatalf("panel_rows 20 (exactly half) draws %d rows", got)
 	}
 	tui.layoutState.PanelRows = 3
 	if got := tui.panelRowsFor(80); got != 3 {
