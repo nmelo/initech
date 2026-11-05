@@ -203,13 +203,15 @@ func pkinSendRigOn(t *testing.T, f *pkinFake, cols, rows int, pipeFor func(*test
 		}
 	}()
 	t.Cleanup(func() {
-		f.inFlight.Wait()
 		if w, ok := p.emu.InputPipe().(*io.PipeWriter); ok {
 			w.CloseWithError(io.EOF)
 		}
 		_ = p.ptmx.Close()
 		_ = r.Close()
 		wg.Wait()
+		// Only once the readers are gone: they add to inFlight (saw), and an
+		// Add racing a Wait is a data race.
+		f.inFlight.Wait()
 	})
 	return p, events
 }
