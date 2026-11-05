@@ -8,6 +8,7 @@ package tui
 import (
 	"fmt"
 	"runtime"
+	"strings"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/nmelo/initech/internal/rignumbers"
@@ -56,16 +57,18 @@ func barLeftItems(n rignumbers.Numbers, bar tcell.Style) []statusBarItem {
 	return out
 }
 
-// barRightItems is the machine's part: memory free over the free-memory
-// ceiling, awake sessions over the sessions ceiling, the fleet quota and the
+// barRightItems is the machine's part: free memory and the floor the start
+// refusal holds it to, awake sessions over the sessions ceiling, the fleet quota and the
 // load over the cores. A number the reading lacks prints ?.
 func barRightItems(f *rignumbers.Fleet, quota quotaSource, cores int, bar tcell.Style) []statusBarItem {
 	if f == nil {
 		return nil
 	}
-	mem := "?"
+	// Free memory, the number the start refusal reads, against its floor
+	// (theguy): "free 11 GB · floor 8".
+	free := "?"
 	if f.FreeGB != nil {
-		mem = fmt.Sprintf("%.1f", *f.FreeGB)
+		free = strings.TrimSuffix(fmt.Sprintf("%.1f", *f.FreeGB), ".0")
 	}
 	sessions := "?"
 	if f.Awake != nil {
@@ -78,7 +81,8 @@ func barRightItems(f *rignumbers.Fleet, quota quotaSource, cores int, bar tcell.
 		}
 	}
 	items := []statusBarItem{
-		{fmt.Sprintf("mem %s/%g GB", mem, f.Ceiling.FreeMemoryGB), bar},
+		{fmt.Sprintf("free %s GB", free), bar},
+		{fmt.Sprintf("floor %g", f.Ceiling.FreeMemoryGB), bar},
 		{fmt.Sprintf("sessions %s/%d", sessions, f.Ceiling.Sessions), bar},
 		{"fleet quota " + q, bar},
 	}

@@ -34,7 +34,7 @@ func TestBarRight_TheMachinesNumbersAndTheQuotaDash(t *testing.T) {
 		}
 		return strings.Join(out, " · ")
 	}
-	if got := text(barRightItems(f, nil, 15, tcell.StyleDefault)); got != "mem 5.1/8 GB · sessions 14/30 · fleet quota — · load 3.5/15" {
+	if got := text(barRightItems(f, nil, 15, tcell.StyleDefault)); got != "free 5.1 GB · floor 8 · sessions 14/30 · fleet quota — · load 3.5/15" {
 		t.Fatalf("got %q", got)
 	}
 	if got := text(barRightItems(f, fixedQuota("58% ▓▓░░"), 15, tcell.StyleDefault)); !strings.Contains(got, "fleet quota 58% ▓▓░░") {
@@ -43,7 +43,7 @@ func TestBarRight_TheMachinesNumbersAndTheQuotaDash(t *testing.T) {
 	if barRightItems(nil, nil, 15, tcell.StyleDefault) != nil {
 		t.Fatal("no reading drew numbers")
 	}
-	if got := text(barRightItems(&rignumbers.Fleet{Ceiling: rignumbers.FleetCeiling{Sessions: 30, FreeMemoryGB: 8}}, nil, 15, tcell.StyleDefault)); got != "mem ?/8 GB · sessions ?/30 · fleet quota — · load ?/15" {
+	if got := text(barRightItems(&rignumbers.Fleet{Ceiling: rignumbers.FleetCeiling{Sessions: 30, FreeMemoryGB: 8}}, nil, 15, tcell.StyleDefault)); got != "free ? GB · floor 8 · sessions ?/30 · fleet quota — · load ?/15" {
 		t.Fatalf("unread numbers: %q", got)
 	}
 }
@@ -60,5 +60,17 @@ func TestBarLeftItems_TheRedPartsAreRed(t *testing.T) {
 	}
 	if strings.Join(all, "") != "merges/h 0 · main ✓2 ✗4 · median — · closed today 3" || strings.Join(red, "|") != "main ✓2 ✗4" {
 		t.Fatalf("items %q red %q", all, red)
+	}
+}
+
+// TestBarRight_FreeMemorySaysItIsFreeAgainstTheFloor (theguy, via super):
+// the number the start refusal reads, as "free 11 GB · floor 8".
+func TestBarRight_FreeMemorySaysItIsFreeAgainstTheFloor(t *testing.T) {
+	free, load, awake := 11.0, 1.0, 1
+	f := &rignumbers.Fleet{FreeGB: &free, Load: &load, Awake: &awake,
+		Ceiling: rignumbers.FleetCeiling{Sessions: 30, FreeMemoryGB: 8}}
+	items := barRightItems(f, nil, 15, tcell.StyleDefault)
+	if len(items) < 2 || items[0].text != "free 11 GB" || items[1].text != "floor 8" {
+		t.Fatalf("the memory items read %+v", items)
 	}
 }
