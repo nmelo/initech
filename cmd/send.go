@@ -280,8 +280,13 @@ func deliverTextVia(w io.Writer, call ipcCaller, target, host, text string, ente
 	if err != nil {
 		return "", err
 	}
+	// A message the send path cleaned says so on every line (ini-47vy).
+	removed := tui.ControlsRemovedNote(resp.Removed)
 	if !resp.OK {
-		return resp.Delivery, fmt.Errorf("%s", resp.Error)
+		if strings.Contains(resp.Error, "only control characters") {
+			removed = "" // the refusal names the count itself
+		}
+		return resp.Delivery, fmt.Errorf("%s%s", resp.Error, removed)
 	}
 
 	name := target
@@ -294,26 +299,26 @@ func deliverTextVia(w io.Writer, call ipcCaller, target, host, text string, ente
 	// verdict and is still a deferral.
 	case resp.Delivery == tui.DeliveryDeferred, resp.Delivery == "" && strings.Contains(resp.Data, "deferred"):
 		if resp.Data == tui.StuckInputDeferral {
-			fmt.Fprintf(w, "deferred to %s — %s\n", name, resp.Data)
+			fmt.Fprintf(w, "deferred to %s — %s%s\n", name, resp.Data, removed)
 			break
 		}
-		fmt.Fprintf(w, "deferred to %s — target has a modal open; will deliver when it closes\n", name)
+		fmt.Fprintf(w, "deferred to %s — target has a modal open; will deliver when it closes%s\n", name, removed)
 	case resp.Delivery == tui.DeliveryHeld:
 		// The agent is in do-not-disturb (ini-x432): the line is the TUI's.
 		line := resp.Data
 		if line == "" {
 			line = "held: " + name + " is in do-not-disturb"
 		}
-		fmt.Fprintln(w, line)
+		fmt.Fprintln(w, line+removed)
 	case resp.Delivery == tui.DeliveryDelivered && strings.HasPrefix(resp.Data, tui.LeftInBoxPrefix):
 		// Delivered, and the box holds other text (ini-b5w): said, not hidden.
-		fmt.Fprintf(w, "delivered to %s; %s\n", name, resp.Data)
+		fmt.Fprintf(w, "delivered to %s; %s%s\n", name, resp.Data, removed)
 	case resp.Delivery == tui.DeliveryDelivered:
-		fmt.Fprintf(w, "delivered to %s\n", name)
+		fmt.Fprintf(w, "delivered to %s%s\n", name, removed)
 	case resp.Delivery == tui.DeliveryUnchecked:
-		fmt.Fprintf(w, "sent to %s, unconfirmed: %s\n", name, resp.Data)
+		fmt.Fprintf(w, "sent to %s, unconfirmed: %s%s\n", name, resp.Data, removed)
 	case resp.Delivery == tui.DeliveryUnconfirmed:
-		return resp.Delivery, unconfirmedSend(name, resp.Data)
+		return resp.Delivery, unconfirmedSend(name, resp.Data+removed)
 	case resp.Delivery == "":
 		// An OK with no verdict is a TUI that answers before its verdict.
 		return resp.Delivery, unconfirmedSend(name, olderTUIVerdictReason)

@@ -21,7 +21,7 @@ import (
 // is not the main goroutine. A site inside a func literal counts as off main
 // only when the entry says so.
 var sendMuTakers = map[string]string{
-	"Pane.sendText":                 "the send path: IPC, forward and drain goroutines",
+	"Pane.deliverClean":             "the send path: IPC, forward and drain goroutines",
 	"Pane.FlushPaste":               "inside its own goroutine, never on the caller's",
 	"Pane.closeOffMain":             "inside the teardown goroutine",
 	"TUI.restartOffMain":            "the restart goroutine",
@@ -270,5 +270,57 @@ func TestCensus_TheSendPathReadsThePTYThroughItsSnapshot(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("sendPaneTextLocked not found in ipc.go: fix the census")
+	}
+}
+
+// ini-47vy: every message is cleaned before it is typed. The body of a
+// message is written only by sendPaneTextLocked, which cleans it before its
+// first write; only the send path's two entries reach it; and sendText, the
+// entry every sender uses, cleans first so its verdict carries the count.
+func TestCensus_EveryMessageIsCleanedBeforeItIsTyped(t *testing.T) {
+	callers := map[string]map[string]bool{"sendPaneTextLocked": {}, "bracketedBody": {}, "Pane.writeBody": {}, "cleanMessage": {}}
+	var cleanAt, firstWrite token.Pos
+	inventoryCalls(t, func(fn, file string, _ bool, call *ast.CallExpr) {
+		p := selectorPath(call.Fun)
+		name := p
+		if strings.HasSuffix(p, ".writeBody") {
+			name = "Pane.writeBody"
+		}
+		if m, ok := callers[name]; ok {
+			m[fn] = true
+		}
+		if fn == "sendPaneTextLocked" {
+			if p == "cleanMessage" && cleanAt == 0 {
+				cleanAt = call.Pos()
+			}
+			if name == "Pane.writeBody" && (firstWrite == 0 || call.Pos() < firstWrite) {
+				firstWrite = call.Pos()
+			}
+		}
+	})
+	want := map[string]string{
+		"sendPaneTextLocked": "Pane.deliverClean TUI.injectText",
+		// FlushPaste is the operator's own paste into the focused pane: their
+		// typing at the keyboard, not a message, and not cleaned.
+		"bracketedBody":  "Pane.FlushPaste sendPaneTextLocked",
+		"Pane.writeBody": "sendPaneTextLocked",
+	}
+	for callee, w := range want {
+		var got []string
+		for fn := range callers[callee] {
+			got = append(got, fn)
+		}
+		sort.Strings(got)
+		if g := strings.Join(got, " "); g != w {
+			t.Errorf("%s is called from %q, want %q: a message body reaches a child only through sendPaneTextLocked", callee, g, w)
+		}
+	}
+	for _, fn := range []string{"sendPaneTextLocked", "Pane.sendText"} {
+		if !callers["cleanMessage"][fn] {
+			t.Errorf("%s does not call cleanMessage", fn)
+		}
+	}
+	if cleanAt == 0 || firstWrite == 0 || cleanAt > firstWrite {
+		t.Errorf("sendPaneTextLocked cleans at %d and first writes the body at %d: it must clean before it writes", cleanAt, firstWrite)
 	}
 }

@@ -1706,7 +1706,7 @@ func (t *TUI) deliverForwardedSend(target, text string, enter bool, o sendOrigin
 		return lp.SendTextVerdictFrom(text, enter, o), nil
 	}
 	pv.SendText(text, enter)
-	return SendVerdict{DeliveryUnconfirmed, relayedVerdictReason}, nil
+	return SendVerdict{Outcome: DeliveryUnconfirmed, Reason: relayedVerdictReason}, nil
 }
 
 // requestQuit closes quitCh exactly once, from any goroutine.

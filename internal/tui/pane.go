@@ -1247,9 +1247,25 @@ func (p *Pane) SendOperatorText(text string, enter bool) {
 	p.sendText(text, enter, false, sendOrigin{From: operatorSender})
 }
 
-// sendText delivers and returns the verdict. A message queued for a
-// suspended pane reads delivered: the wake it triggers delivers the queue.
+// sendText cleans the message (ini-47vy), delivers it and returns the
+// verdict with the count removed. Cleaning here, before every hold, means a
+// held or queued message is already clean and its verdict carries the count;
+// sendPaneTextLocked cleans again before it types, for the queues filled
+// without passing here. A body of only control characters is refused.
 func (p *Pane) sendText(text string, enter, hold bool, o sendOrigin) SendVerdict {
+	clean, removed := cleanMessage(text)
+	if clean == "" && removed > 0 {
+		return SendVerdict{Outcome: DeliveryNotDelivered, Reason: onlyControlsReason(removed), Removed: removed}
+	}
+	v := p.deliverClean(clean, enter, hold, o)
+	v.Removed = removed
+	return v
+}
+
+// deliverClean delivers a cleaned message and returns the verdict. A message
+// queued for a suspended pane reads delivered: the wake it triggers delivers
+// the queue.
+func (p *Pane) deliverClean(text string, enter, hold bool, o sendOrigin) SendVerdict {
 	// A SLASH COMMAND THAT WOULD PASTE (ini-hoy) is refused before every hold
 	// below: held or queued, it would paste later, the same silent no-op. The
 	// operator's own paste (hold false) is typing, and is not judged.

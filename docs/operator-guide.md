@@ -435,7 +435,7 @@ A rig keeps its own schedule, and window 1 runs it whenever the rig is up: throu
 
 `add` and `remove` run inside an agent's pane: initech works out the agent from the pane the command runs in, as it does for `initech post`, so a job's owner is the agent that added it and only that agent, or super, can remove it. Outside an agent's pane, and on Windows, they are refused. A job of an agent that has since left stays listed and runs until super removes it.
 
-A message arrives as `[from <owner>, schedule <id>] <text>`. A command runs in the rig root and is stopped at 30 seconds; its output, cut at 2 KB, arrives the same way with the command line and its exit code. Control characters in a message or a command's output are dropped before it is delivered, keeping newlines and tabs, so neither can type keys or repaint the pane. Both go through the same path as `initech send`, so a dialog or do-not-disturb holds them like any other message, and a suspended agent wakes for them. A job whose time passed while initech was down runs once at the next start and says when it was due; an interval job carries on from the start, without catching up. A job never runs twice for one due time, even across a restart in the same minute.
+A message arrives as `[from <owner>, schedule <id>] <text>`. A command runs in the rig root and is stopped at 30 seconds; its output, cut at 2 KB, arrives the same way with the command line and its exit code. Both go through the same path as `initech send`: it removes control characters from them as from any message (see Messages Not Arriving), so neither can type keys or repaint the pane; a dialog or do-not-disturb holds them like any other message; and a suspended agent wakes for them. A job whose time passed while initech was down runs once at the next start and says when it was due; an interval job carries on from the start, without catching up. A job never runs twice for one due time, even across a restart in the same minute.
 
 Super hears one message, from initech, when a job cannot be delivered (no such pane, the pane not running, or the message refused), naming the job, its owner and why, and when a command fails or is stopped. Nothing is dropped silently. A job that keeps failing to deliver for the same reason is said once, not every run, until it delivers again or fails for another reason; this is kept in `schedule.yaml`, so a restart does not say it again.
 
@@ -553,6 +553,17 @@ for an agent at its prompt, then prints one line and exits with its status:
   generic agents have no input box initech can read, so nothing is checked.
 - `deferred to <agent> — target has a modal open; will deliver when it closes` (exit 0): see the dialog
   bullet below.
+
+Before a message is typed, initech removes from it everything that could act as keys: ESC and every
+control character other than tab and newline (a carriage return inside the message among them), DEL,
+the C1 controls, invalid UTF-8, and whole escape sequences (CSI, OSC, DCS, SOS, PM and APC, so the
+paste end `ESC[201~` too). An escape sequence with no end loses only its ESC. Tab, newline and every
+printable character stay. This holds for every message, whoever sends it: a command, a schedule,
+another window or machine, initech's own lines, and a paste from another window. A message that lost
+characters is still typed, and its line says so: `delivered to <agent>; <n> control characters
+removed` (a whole sequence counts as one), and every other answer above gains the same `; <n> control
+characters removed`. A message that held nothing else is refused and nothing is typed: `not delivered
+to <agent>: the message held only control characters (<n> removed)` (exit 1).
 
 An agent on another machine, named `host:agent` or by a bare name that resolves there, gets the same
 answers from that machine. Other commands that type into an agent (`assign`, `deliver`'s report,

@@ -9,6 +9,9 @@ import "fmt"
 type SendVerdict struct {
 	Outcome string
 	Reason  string
+	// Removed counts what cleanMessage took out of the body before it was
+	// typed (ini-47vy); 0 for a clean message.
+	Removed int
 }
 
 // Send outcomes, as they travel in IPCResponse.Delivery and
@@ -57,14 +60,14 @@ const (
 func verdictIPCResponse(name string, v SendVerdict, deferred string) IPCResponse {
 	switch v.Outcome {
 	case DeliveryNotDelivered:
-		return IPCResponse{Error: fmt.Sprintf("not delivered to %s: %s", name, v.Reason), Delivery: v.Outcome, Data: v.Reason}
+		return IPCResponse{Error: fmt.Sprintf("not delivered to %s: %s", name, v.Reason), Delivery: v.Outcome, Data: v.Reason, Removed: v.Removed}
 	case DeliveryDeferred:
 		if v.Reason != "" {
 			deferred = v.Reason
 		}
-		return IPCResponse{OK: true, Delivery: v.Outcome, Data: deferred}
+		return IPCResponse{OK: true, Delivery: v.Outcome, Data: deferred, Removed: v.Removed}
 	}
-	return IPCResponse{OK: true, Delivery: v.Outcome, Data: v.Reason}
+	return IPCResponse{OK: true, Delivery: v.Outcome, Data: v.Reason, Removed: v.Removed}
 }
 
 // verdictControlResp is verdictIPCResponse for the control stream, where the
@@ -73,12 +76,12 @@ func verdictIPCResponse(name string, v SendVerdict, deferred string) IPCResponse
 func verdictControlResp(v SendVerdict, deferred string) ControlResp {
 	switch v.Outcome {
 	case DeliveryNotDelivered:
-		return ControlResp{Error: v.Reason, Delivery: v.Outcome}
+		return ControlResp{Error: v.Reason, Delivery: v.Outcome, Removed: v.Removed}
 	case DeliveryDeferred:
 		if v.Reason != "" {
 			deferred = v.Reason
 		}
-		return ControlResp{OK: true, Delivery: v.Outcome, Data: deferred}
+		return ControlResp{OK: true, Delivery: v.Outcome, Data: deferred, Removed: v.Removed}
 	}
-	return ControlResp{OK: true, Delivery: v.Outcome, Data: v.Reason}
+	return ControlResp{OK: true, Delivery: v.Outcome, Data: v.Reason, Removed: v.Removed}
 }

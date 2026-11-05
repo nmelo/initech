@@ -391,8 +391,10 @@ func TestScheduler_AJobOfARemovedAgentKeepsRunning(t *testing.T) {
 }
 
 // TestScheduler_ControlCharactersNeverReachThePane: a command's output and a
-// message from the file are cleaned before delivery, so neither can end the
-// paste early or repaint the screen.
+// message from the file are cleaned by the send path before they are typed
+// (cleanMessage, ini-47vy), so neither can end the paste early or repaint the
+// screen. The fake host records what the scheduler hands the send path; the
+// real path is TestCleanPath_AScheduleMessageTypesTheCleanBody.
 func TestScheduler_ControlCharactersNeverReachThePane(t *testing.T) {
 	s, host, clk := schedRig(t, clockAt(4, 9, 0),
 		schedule.Job{Owner: "qa1", To: "qa1", Every: "1m", Command: "printf x"},
@@ -405,13 +407,15 @@ func TestScheduler_ControlCharactersNeverReachThePane(t *testing.T) {
 	if len(d) != 2 {
 		t.Fatalf("delivered %d", len(d))
 	}
-	for _, m := range d {
+	for i, m := range d {
+		d[i], _ = cleanMessage(m)
+		m = d[i]
 		if strings.ContainsAny(m, "\x1b\x00\r\x07\u009b") {
 			t.Fatalf("a control character reached the pane: %q", m)
 		}
 	}
 	joined := strings.Join(d, "|")
-	if !strings.Contains(joined, "ok[201~[2Jboom\ttab\nline2") || !strings.Contains(joined, "hi[201~rm -rf x") {
+	if !strings.Contains(joined, "okboom\ttab\nline2") || !strings.Contains(joined, "hirm -rf x") {
 		t.Fatalf("the text around the controls was lost: %q", joined)
 	}
 }

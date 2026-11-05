@@ -196,14 +196,14 @@ func (s *rigScheduler) compose(c claim) (text, cmdFailure string) {
 		fmt.Fprintf(&b, "(due %s while initech was down) ", c.due.Format("2006-01-02 15:04"))
 	}
 	if j.Command == "" {
-		b.WriteString(cleanForPane(j.Message))
+		b.WriteString(j.Message)
 		return b.String(), ""
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), s.bound)
 	defer cancel()
 	out, code, err := s.runLine(ctx, s.root, j.Command)
-	out = cutAtRune(cleanForPane(out), scheduleOutputCut)
-	fmt.Fprintf(&b, "$ %s\n", cleanForPane(j.Command))
+	out = cutAtRune(out, scheduleOutputCut)
+	fmt.Fprintf(&b, "$ %s\n", j.Command)
 	switch {
 	case ctx.Err() != nil:
 		cmdFailure = fmt.Sprintf("was stopped after %s", s.bound)
@@ -357,26 +357,6 @@ func (t *TUI) deliver(to, text, from string) (bool, string) {
 // (initech_line.go): the send path, with its holds, on its own goroutine.
 func (t *TUI) tellSuper(text string) {
 	t.sendInitechLine(text)
-}
-
-// cleanForPane drops the control characters a delivered text must not carry
-// into a pane, keeping newlines and tabs: an escape could end the bracketed
-// paste early (ESC[201~) and type the rest as keys, or repaint the screen.
-// Invalid UTF-8 and the C1 range go too.
-func cleanForPane(text string) string {
-	var b strings.Builder
-	b.Grow(len(text))
-	for _, r := range text {
-		switch {
-		case r == '\n' || r == '\t':
-			b.WriteRune(r)
-		case r == utf8.RuneError, r < 0x20, r == 0x7f, r >= 0x80 && r <= 0x9f:
-			// Dropped.
-		default:
-			b.WriteRune(r)
-		}
-	}
-	return b.String()
 }
 
 // cutAtRune cuts text to at most n bytes on a rune boundary, saying so.

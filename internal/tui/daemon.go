@@ -360,6 +360,7 @@ type ControlResp struct {
 	Error    string `json:"error,omitempty"`
 	Data     string `json:"data,omitempty"`
 	Delivery string `json:"delivery,omitempty"`  // A send's verdict (ini-69fy); none from an older peer.
+	Removed  int    `json:"removed,omitempty"`   // A send's count of control characters removed before typing (ini-47vy).
 	Action   string `json:"action,omitempty"`    // Set for unsolicited commands (e.g. "forward_send", "stream_added").
 	Target   string `json:"target,omitempty"`    // Agent name for forward_send.
 	Text     string `json:"text,omitempty"`      // Message text for forward_send.
@@ -766,7 +767,7 @@ func (d *Daemon) HandleSend(conn net.Conn, req IPCRequest) {
 		case resp.Error != "":
 			writeIPCResponse(conn, IPCResponse{Error: resp.Error})
 		case resp.Delivery != "":
-			writeIPCResponse(conn, IPCResponse{OK: true, Delivery: resp.Delivery, Data: resp.Data})
+			writeIPCResponse(conn, IPCResponse{OK: true, Delivery: resp.Delivery, Data: resp.Data, Removed: resp.Removed})
 		default:
 			writeIPCResponse(conn, IPCResponse{OK: true, Delivery: DeliveryUnconfirmed, Data: fmt.Sprintf(olderPeerVerdictFormat, req.Host)})
 		}
@@ -793,7 +794,7 @@ func (d *Daemon) HandleSend(conn net.Conn, req IPCRequest) {
 		writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("not delivered to %s: %s", req.Target, resp.Error), Delivery: resp.Delivery, Data: resp.Error})
 		return
 	}
-	writeIPCResponse(conn, IPCResponse{OK: resp.OK, Error: resp.Error, Data: resp.Data, Delivery: resp.Delivery})
+	writeIPCResponse(conn, IPCResponse{OK: resp.OK, Error: resp.Error, Data: resp.Data, Delivery: resp.Delivery, Removed: resp.Removed})
 }
 
 func (d *Daemon) HandleExtended(conn net.Conn, req IPCRequest, rawJSON []byte) bool {

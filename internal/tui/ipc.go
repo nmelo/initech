@@ -61,6 +61,7 @@ type IPCResponse struct {
 	Error      string              `json:"error,omitempty"`
 	Data       string              `json:"data,omitempty"`     // Pane content for peek, pane list for list.
 	Delivery   string              `json:"delivery,omitempty"` // A send's verdict (ini-69fy): a Delivery* outcome, its reason in Data.
+	Removed    int                 `json:"removed,omitempty"`  // A send's count of control characters removed before typing (ini-47vy).
 }
 
 // IPCProject names the project behind a socket, so a caller that reached it
@@ -352,6 +353,11 @@ func (t *TUI) handleIPCSend(conn net.Conn, req IPCRequest) {
 			if slashRefusal = slashPasteRefusal(lp.AgentType(), req.Text); slashRefusal != "" {
 				return
 			}
+			// A body of only control characters is refused here too, before
+			// the suspended queue would keep it (ini-47vy).
+			if slashRefusal = onlyControlsRefusal(req.Text); slashRefusal != "" {
+				return
+			}
 		}
 		// A process that is gone gets nothing typed and the sender is told
 		// (ini-2s7q). Read here, with the suspended check, on main.
@@ -408,7 +414,9 @@ func (t *TUI) handleIPCSend(conn net.Conn, req IPCRequest) {
 			writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("resume failed: %v", err)})
 			return
 		}
-		writeIPCResponse(conn, resumedSendReply())
+		reply := resumedSendReply()
+		_, reply.Removed = cleanMessage(req.Text)
+		writeIPCResponse(conn, reply)
 		return
 	}
 
@@ -452,7 +460,7 @@ func (t *TUI) handleIPCSend(conn net.Conn, req IPCRequest) {
 	// path decides it as it delivers, so a deferral is the send path's own
 	// (ini-7txh), not a guess made before it ran. A PaneView that is neither
 	// kind answers what it can: nothing checked.
-	verdict := SendVerdict{DeliveryUnchecked, uncheckedVerdictReason}
+	verdict := SendVerdict{Outcome: DeliveryUnchecked, Reason: uncheckedVerdictReason}
 	if lp, ok := pv.(*Pane); ok {
 		verdict = lp.SendTextVerdictFrom(req.Text, req.Enter, req.origin())
 	} else {
@@ -517,8 +525,18 @@ func sendPaneTextLocked(pane *Pane, text string, enter bool) SendVerdict {
 		// exited agent before reaching here, so a send arriving here was
 		// routed past that check and its text goes nowhere.
 		LogWarn("inject", "send dropped: pane has no PTY", "pane", pane.Name(), "text", logSnippet(text))
-		return SendVerdict{DeliveryNotDelivered, noPTYVerdictReason}
+		return SendVerdict{Outcome: DeliveryNotDelivered, Reason: noPTYVerdictReason}
 	}
+
+	// NOTHING IN A MESSAGE TYPES KEYS (ini-47vy). Every message is typed
+	// from here, so the body is cleaned here, before the paste opens: an
+	// ESC[201~ inside it would end the paste and the rest would arrive as
+	// keystrokes. sendText cleaned already and this removes nothing more; a
+	// queue filled without sendText (the suspended path in handleIPCSend) is
+	// cleaned only here. Both of this function's callers are fed by paths
+	// that refuse a body of only control characters first (the census holds
+	// the callers to those two).
+	text, _ = cleanMessage(text)
 
 	// Modal guard (ini-7txh): never paste a body or fire a submit into an open
 	// Claude Code modal (AskUserQuestion / permission prompt). An option picker
@@ -666,7 +684,7 @@ func sendPaneTextLocked(pane *Pane, text string, enter bool) SendVerdict {
 	if beltApplies && hasComposer {
 		if accepted, lastTail := composerAcceptedBody(pane, tailBefore, newPendingSubmit(text, mode, "")); !accepted {
 			withholdSubmit(pane, text, mode, tailBefore, lastTail)
-			return SendVerdict{DeliveryUnconfirmed, withheldVerdictReason}
+			return SendVerdict{Outcome: DeliveryUnconfirmed, Reason: withheldVerdictReason}
 		}
 	}
 
@@ -685,7 +703,7 @@ func sendPaneTextLocked(pane *Pane, text string, enter bool) SendVerdict {
 				LogDebug("inject", "submit retry", "pane", pane.Name(), "mode", mode, "method", method)
 			}
 		}
-		return SendVerdict{DeliveryUnchecked, uncheckedVerdictReason}
+		return SendVerdict{Outcome: DeliveryUnchecked, Reason: uncheckedVerdictReason}
 	}
 
 	if pane.noBracketedPaste {
@@ -697,10 +715,10 @@ func sendPaneTextLocked(pane *Pane, text string, enter bool) SendVerdict {
 		LogInfo("inject", "submit sent, unconfirmed", "pane", pane.Name(), "mode", mode, "why", "no composer check for this agent type")
 		if config.IsCodexLikeAgentType(pane.AgentType()) && pane.submitKey != "ctrl+enter" {
 			pane.writeInput([]byte("\r"))
-			return SendVerdict{DeliveryUnchecked, uncheckedVerdictReason}
+			return SendVerdict{Outcome: DeliveryUnchecked, Reason: uncheckedVerdictReason}
 		}
 		sendSubmitKey(pane.emu, pane.submitKey)
-		return SendVerdict{DeliveryUnchecked, uncheckedVerdictReason}
+		return SendVerdict{Outcome: DeliveryUnchecked, Reason: uncheckedVerdictReason}
 	}
 
 	// Bracketed paste mode: wait for Claude Code's paste completion
@@ -1075,11 +1093,11 @@ const submitRetryDialogReason = "dialog open at the retry"
 func confirmAndRetrySubmit(pane *Pane, ps *pendingSubmit) SendVerdict {
 	switch outcome, why := watchSubmit(pane, ps, time.Now()); outcome {
 	case submitTaken:
-		return SendVerdict{DeliveryDelivered, leftInBoxNote(pane)}
+		return SendVerdict{Outcome: DeliveryDelivered, Reason: leftInBoxNote(pane)}
 	case submitUnknown:
 		pane.emitUnconfirmedSubmit(ps, why, time.Since(ps.withheldAt).Round(time.Second))
 		keepUnknownSubmit(pane, ps)
-		return SendVerdict{DeliveryUnconfirmed, why}
+		return SendVerdict{Outcome: DeliveryUnconfirmed, Reason: why}
 	}
 	// NEVER INTO A DIALOG (ini-ytxc), the guard deliverWithheldSubmit has:
 	// the verdict above rests on a sample up to one poll old, and a
@@ -1089,20 +1107,20 @@ func confirmAndRetrySubmit(pane *Pane, ps *pendingSubmit) SendVerdict {
 	if paneHasModal(pane) {
 		LogInfo("inject", "submit retry withheld: dialog open", "pane", pane.Name(), "mode", ps.mode, "text", ps.preview)
 		pane.emitUnconfirmedSubmit(ps, submitRetryDialogReason, time.Since(ps.withheldAt).Round(time.Second))
-		return SendVerdict{DeliveryUnconfirmed, submitRetryDialogReason}
+		return SendVerdict{Outcome: DeliveryUnconfirmed, Reason: submitRetryDialogReason}
 	}
 	LogInfo("inject", "submit retry: Enter not taken, resending once", "pane", pane.Name(), "mode", ps.mode, "text", ps.preview)
 	sendSubmitKey(pane.emu, pane.submitKey)
 	switch outcome, why := watchSubmit(pane, ps, time.Now()); outcome {
 	case submitNotTaken:
 		pane.emitUndeliveredSubmit(ps, retryMissVerdictReason, time.Since(ps.withheldAt).Round(time.Second))
-		return SendVerdict{DeliveryNotDelivered, retryMissVerdictReason}
+		return SendVerdict{Outcome: DeliveryNotDelivered, Reason: retryMissVerdictReason}
 	case submitUnknown:
 		pane.emitUnconfirmedSubmit(ps, why, time.Since(ps.withheldAt).Round(time.Second))
 		keepUnknownSubmit(pane, ps)
-		return SendVerdict{DeliveryUnconfirmed, why}
+		return SendVerdict{Outcome: DeliveryUnconfirmed, Reason: why}
 	}
-	return SendVerdict{DeliveryDelivered, leftInBoxNote(pane)}
+	return SendVerdict{Outcome: DeliveryDelivered, Reason: leftInBoxNote(pane)}
 }
 
 // keepUnknownSubmit keeps a send whose outcome was UNKNOWN as the pane's
@@ -1563,12 +1581,12 @@ func (p *Pane) writeBody(body []byte, mode string) childWrite {
 func holdForStuckInput(pane *Pane, text string, enter bool) SendVerdict {
 	if m, ok := pane.takeRedelivery(text, enter); ok {
 		pane.requeueFront(m)
-		return SendVerdict{DeliveryDeferred, StuckInputDeferral}
+		return SendVerdict{Outcome: DeliveryDeferred, Reason: StuckInputDeferral}
 	}
 	pane.enqueueHeld(text, enter)
 	LogInfo("inject", "deferred: pane is not reading its input", "pane", pane.Name(), "enter", enter,
 		"queued", pane.QueuedMessageCount())
-	return SendVerdict{DeliveryDeferred, StuckInputDeferral}
+	return SendVerdict{Outcome: DeliveryDeferred, Reason: StuckInputDeferral}
 }
 
 // endStuckSend ends a send whose body did not finish. The rule (ini-7rd): a
@@ -1581,7 +1599,7 @@ func endStuckSend(pane *Pane, text string, enter bool, wrote childWrite) SendVer
 	LogWarn("inject", "message not resent: pane stopped reading while it was written",
 		"pane", pane.Name(), "bytes", len(text))
 	pane.takeRedelivery(text, enter) // Not put back, and it ends a drain: the pane is stuck.
-	return SendVerdict{DeliveryUnconfirmed, stoppedReadingVerdictReason}
+	return SendVerdict{Outcome: DeliveryUnconfirmed, Reason: stoppedReadingVerdictReason}
 }
 
 func sendCodexSubmit(pane *Pane, queue bool) string {
@@ -1990,7 +2008,7 @@ func (t *TUI) sendViaRemote(conn net.Conn, rp *RemotePane, req IPCRequest) {
 	}
 	switch {
 	case resp.Delivery != "":
-		writeIPCResponse(conn, IPCResponse{OK: true, Delivery: resp.Delivery, Data: resp.Data})
+		writeIPCResponse(conn, IPCResponse{OK: true, Delivery: resp.Delivery, Data: resp.Data, Removed: resp.Removed})
 	case strings.Contains(resp.Data, "deferred"):
 		writeIPCResponse(conn, IPCResponse{OK: true, Delivery: DeliveryDeferred, Data: resp.Data})
 	default:

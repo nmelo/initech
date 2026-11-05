@@ -152,11 +152,11 @@ func TestSendVerdict_EachOutcomeMapsToItsReply(t *testing.T) {
 		v    SendVerdict
 		want IPCResponse
 	}{
-		{SendVerdict{DeliveryDelivered, ""}, IPCResponse{OK: true, Delivery: DeliveryDelivered}},
-		{SendVerdict{DeliveryNotDelivered, "r"}, IPCResponse{Error: "not delivered to eng2: r", Delivery: DeliveryNotDelivered, Data: "r"}},
-		{SendVerdict{DeliveryUnconfirmed, "r"}, IPCResponse{OK: true, Delivery: DeliveryUnconfirmed, Data: "r"}},
-		{SendVerdict{DeliveryUnchecked, "r"}, IPCResponse{OK: true, Delivery: DeliveryUnchecked, Data: "r"}},
-		{SendVerdict{DeliveryDeferred, ""}, IPCResponse{OK: true, Delivery: DeliveryDeferred, Data: "deferred to eng2 — modal open, 1 queued"}},
+		{SendVerdict{Outcome: DeliveryDelivered, Reason: ""}, IPCResponse{OK: true, Delivery: DeliveryDelivered}},
+		{SendVerdict{Outcome: DeliveryNotDelivered, Reason: "r"}, IPCResponse{Error: "not delivered to eng2: r", Delivery: DeliveryNotDelivered, Data: "r"}},
+		{SendVerdict{Outcome: DeliveryUnconfirmed, Reason: "r"}, IPCResponse{OK: true, Delivery: DeliveryUnconfirmed, Data: "r"}},
+		{SendVerdict{Outcome: DeliveryUnchecked, Reason: "r"}, IPCResponse{OK: true, Delivery: DeliveryUnchecked, Data: "r"}},
+		{SendVerdict{Outcome: DeliveryDeferred, Reason: ""}, IPCResponse{OK: true, Delivery: DeliveryDeferred, Data: "deferred to eng2 — modal open, 1 queued"}},
 	}
 	for _, c := range cases {
 		got := verdictIPCResponse("eng2", c.v, "deferred to eng2 — modal open, 1 queued")
@@ -341,8 +341,8 @@ func TestSendVerdict_TheAnswerToAForwardSendCarriesTheVerdict(t *testing.T) {
 		want ControlResp
 	}{
 		{SendVerdict{Outcome: DeliveryDelivered}, ControlResp{OK: true, Delivery: DeliveryDelivered}},
-		{SendVerdict{DeliveryUnconfirmed, "no composer visible"}, ControlResp{OK: true, Delivery: DeliveryUnconfirmed, Data: "no composer visible"}},
-		{SendVerdict{DeliveryNotDelivered, "r"}, ControlResp{Error: "r", Delivery: DeliveryNotDelivered}},
+		{SendVerdict{Outcome: DeliveryUnconfirmed, Reason: "no composer visible"}, ControlResp{OK: true, Delivery: DeliveryUnconfirmed, Data: "no composer visible"}},
+		{SendVerdict{Outcome: DeliveryNotDelivered, Reason: "r"}, ControlResp{Error: "r", Delivery: DeliveryNotDelivered}},
 	}
 	for _, c := range cases {
 		v := c.v
