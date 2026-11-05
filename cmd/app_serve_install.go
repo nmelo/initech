@@ -36,8 +36,9 @@ later needs install again. launchd starts jobs in /, so
 written out in full. With no rig found and no --projects, nothing is written.
 
 Issue a token first (initech app-serve token): with none, nothing is written.
---listen tailnet is not refused while Tailscale is stopped: launchd keeps
-retrying, and the log says why meanwhile.
+--listen tailnet is not refused while Tailscale is stopped: the service waits
+for a tailnet address, listening on nothing meanwhile, with one log line when
+the wait starts and the listening line when it binds.
 
 macOS guards ~/Desktop, ~/Documents and ~/Downloads for launchd jobs: a job
 reading there waits on a permission dialog until the binary is allowed. Install

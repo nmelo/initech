@@ -97,6 +97,9 @@ var (
 	appServeAddrs                  = appserve.SystemAddrs
 	appServeRunner    iexec.Runner = &iexec.DefaultRunner{}
 	appServeAddrEvery              = 30 * time.Second
+	// appServeAfter is the timer the address watch and the wait for a
+	// tailnet address use: a seam, so a test fires each tick itself.
+	appServeAfter = time.After
 	// appServeSource is --source: the path install was run as, the link an
 	// upgrade moves, when the job runs a copy at appserve.CopyPath.
 	appServeSource      string
@@ -250,10 +253,6 @@ func runAppServe(cmd *cobra.Command, args []string) error {
 	ctx, stop := signal.NotifyContext(base, os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	ip, err := appServeBindIP()
-	if err != nil {
-		return err
-	}
 	dirs, err := appServeRigFolders()
 	if err != nil {
 		return err
@@ -275,41 +274,74 @@ func runAppServe(cmd *cobra.Command, args []string) error {
 		StateDir: state,
 		OnStuck:  func(notice string) { fmt.Fprintln(errw, notice) },
 	})
-	ln, err := appServeListenOn(ip, appServePort)
+	// The seams the service reads after it starts are taken as values here,
+	// so a test that restores them once the service returns does not race a
+	// goroutine that has not yet seen ctx end.
+	addrEvery, addrs, listen, listenOn, port := appServeAddrEvery, appServeAddrs, appServeListen, appServeListenOn, appServePort
+	after, notify := appServeAfter, appServeNotify
+	find := func() (net.IP, error) { return appServeBindIPFrom(listen, addrs) }
+	// With no tailnet address the service waits for one in-process (ini-she):
+	// one line in, the listening line out, a retry from 2 s to 60 s between,
+	// nothing per try and never a wider bind. An exit here would only have
+	// launchd start it again ten seconds later, forever.
+	waitForTailnet := func(stop <-chan struct{}) (net.IP, error) {
+		return appserve.WaitForTailnet(ctx, stop, find, after, errw, func() {
+			appserve.ReportTailnetWait(state, notify, errw)
+		})
+	}
+	ip, err := waitForTailnet(nil)
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil // stopped while waiting: a clean exit, and nothing was serving
+		}
+		return err
+	}
+	ln, err := listenOn(ip, port)
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(errw, "initech app-serve listening on %s (%s), rigs under %v\n", ln.Addr(), appServeListen, dirs)
+	fmt.Fprintf(errw, "initech app-serve listening on %s (%s), rigs under %v\n", ln.Addr(), listen, dirs)
 	go srv.Run(ctx)
 	go srv.RunProgress(ctx)
 	go srv.RunTail(ctx)
 	go srv.RunWaiting(ctx)
 	go appServePushes(ctx, srv, backend, errw)
 
-	// The bound address going away (DHCP, Tailscale restarting) ends the
-	// run, so launchd starts it again on the new one.
-	// The goroutines below take the seams they use as values here, so a test
-	// that restores them after the service returns does not race a watcher
-	// that has not yet seen ctx end.
-	addrEvery, addrs, listen := appServeAddrEvery, appServeAddrs, appServeListen
 	binEvery, resolve, grace := appServeBinaryEvery, appServeResolve, appServeDrainGrace
-	codesign, source, notify := appServeCodesign, appServeSource, appServeNotify
-	moved := make(chan struct{})
-	go func() {
-		for {
-			select {
-			case <-ctx.Done():
-				ln.Close()
-				return
-			case <-time.After(addrEvery):
+	codesign, source := appServeCodesign, appServeSource
+	// watchAddr looks at the bound address every addrEvery while ln serves.
+	// The tailnet address gone (Tailscale stopped) closes lost and the
+	// listener: the service waits for it in-process and binds again. Any other
+	// change (DHCP, a new address) closes moved and the listener: the run
+	// ends, and launchd starts it again on the new one. Closing done ends the
+	// look.
+	watchAddr := func(ln net.Listener, ip net.IP) (lost, moved, done chan struct{}) {
+		lost, moved, done = make(chan struct{}), make(chan struct{}), make(chan struct{})
+		go func() {
+			for {
+				select {
+				case <-ctx.Done():
+					ln.Close()
+					return
+				case <-done:
+					return
+				case <-after(addrEvery):
+				}
+				cur, err := find()
+				if errors.Is(err, appserve.ErrNoTailnet) {
+					close(lost)
+					ln.Close()
+					return
+				}
+				if err != nil || !cur.Equal(ip) {
+					close(moved)
+					ln.Close()
+					return
+				}
 			}
-			if cur, err := appServeBindIPFrom(listen, addrs); err != nil || !cur.Equal(ip) {
-				close(moved)
-				ln.Close()
-				return
-			}
-		}
-	}()
+		}()
+		return lost, moved, done
+	}
 	// An upgrade moves the link to a new build. When the job runs the copy
 	// at the fixed path (--source names the link), the service copies the new
 	// build over its copy first: macOS keys the Desktop grant by that path, so
@@ -361,21 +393,44 @@ func runAppServe(cmd *cobra.Command, args []string) error {
 		}
 	}
 	err = appserve.RunMarked(state, notify, errw, func() error {
-		err := appserve.ServeTLSUntil(ln, srv.Handler(), cert, replaced, grace)
-		select {
-		case <-replaced:
-			return errBinaryReplaced
-		default:
+		for {
+			lost, moved, done := watchAddr(ln, ip)
+			err := appserve.ServeTLSUntil(ln, srv.Handler(), cert, replaced, grace)
+			close(done)
+			select {
+			case <-replaced:
+				return errBinaryReplaced
+			default:
+			}
+			select {
+			case <-moved:
+				return fmt.Errorf("the address %s went away; restarting on the new one: %w", ip, appserve.ErrPlannedRestart)
+			default:
+			}
+			if ctx.Err() != nil {
+				return nil
+			}
+			select {
+			case <-lost:
+			default:
+				return err
+			}
+			// The tailnet address went away: wait for it here, the same way
+			// as at start, and serve again on the address that comes back.
+			if ip, err = waitForTailnet(replaced); err != nil {
+				if errors.Is(err, appserve.ErrWaitStopped) {
+					return errBinaryReplaced
+				}
+				if ctx.Err() != nil {
+					return nil
+				}
+				return err
+			}
+			if ln, err = listenOn(ip, port); err != nil {
+				return err
+			}
+			fmt.Fprintf(errw, "initech app-serve listening on %s (%s), rigs under %v\n", ln.Addr(), listen, dirs)
 		}
-		select {
-		case <-moved:
-			return fmt.Errorf("the address %s went away; restarting on the new one: %w", ip, appserve.ErrPlannedRestart)
-		default:
-		}
-		if ctx.Err() != nil {
-			return nil
-		}
-		return err
 	})
 	if errors.Is(err, errBinaryReplaced) {
 		return nil

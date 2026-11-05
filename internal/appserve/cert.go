@@ -112,13 +112,17 @@ func ServeTLS(ln net.Listener, h http.Handler, cert tls.Certificate) error {
 // ServeTLSUntil is ServeTLS that, once drain closes, takes no new connection,
 // lets the requests in flight finish for at most grace, then ends them and
 // returns http.ErrServerClosed. A nil drain never closes. A stream that
-// outlives grace (the feed) is cut, and its subscriber reconnects.
+// outlives grace (the feed) is cut, and its subscriber reconnects. When the
+// listener ends on its own (closed because the address went away), the open
+// connections end with it, so a later listener on the address that returns
+// serves alone.
 func ServeTLSUntil(ln net.Listener, h http.Handler, cert tls.Certificate, drain <-chan struct{}, grace time.Duration) error {
 	hs := &http.Server{Handler: h, ReadHeaderTimeout: 10 * time.Second}
 	done := make(chan error, 1)
 	go func() { done <- hs.Serve(tls.NewListener(ln, TLSConfig(cert))) }()
 	select {
 	case err := <-done:
+		hs.Close() //nolint:errcheck // the listener is gone: end what it had open
 		return err
 	case <-drain:
 	}

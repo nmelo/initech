@@ -41,6 +41,9 @@ const (
 	// UpgradeNotifiedAtFile is when --notify last ran for a new build that
 	// could not be copied into place.
 	UpgradeNotifiedAtFile = "notified-at-upgrade"
+	// TailnetNotifiedAtFile is when --notify last ran for the service waiting
+	// for a tailnet address.
+	TailnetNotifiedAtFile = "notified-at-tailnet"
 )
 
 // notifyEvery is the guard on a crash loop: launchd restarts the job every
