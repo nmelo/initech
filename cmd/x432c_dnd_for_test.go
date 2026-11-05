@@ -57,7 +57,14 @@ func x432cRunAs(t *testing.T, agent string, resp tui.IPCResponse, args ...string
 	t.Setenv("INITECH_AGENT", agent)
 	dndAgent, dndFor = "", 0
 	dndCmd.Flags().Lookup("for").Changed = false
-	t.Cleanup(func() { dndAgent, dndFor = "", 0; dndCmd.Flags().Lookup("for").Changed = false })
+	dndUntilOff = false
+	dndCmd.Flags().Lookup("until-off").Changed = false
+	t.Cleanup(func() {
+		dndAgent, dndFor = "", 0
+		dndCmd.Flags().Lookup("for").Changed = false
+		dndUntilOff = false
+		dndCmd.Flags().Lookup("until-off").Changed = false
+	})
 	var out, errOut bytes.Buffer
 	rootCmd.SetOut(&out)
 	rootCmd.SetErr(&errOut)
@@ -120,7 +127,7 @@ func TestDNDFor_ZeroNegativeAndOffAreRefused(t *testing.T) {
 func TestDNDFor_AnOlderTUIThatDropsTheTimerIsNamed(t *testing.T) {
 	_, stderr, err, _ := x432cRun(t, tui.IPCResponse{OK: true, Data: "do-not-disturb on for eng2: messages from other agents wait until initech dnd off"},
 		"dnd", "on", "--for", "10m")
-	if err != nil || !strings.Contains(stderr, "the running initech does not know --for; do-not-disturb holds until initech dnd off") {
+	if err != nil || !strings.Contains(stderr, "the running initech does not know --for; do-not-disturb ends at turn end") {
 		t.Errorf("stderr %q err %v", stderr, err)
 	}
 	_, stderr, _, _ = x432cRun(t, tui.IPCResponse{OK: true, Data: "do-not-disturb on for eng2 until 15:00:00 (10m): x"}, "dnd", "on", "--for", "10m")

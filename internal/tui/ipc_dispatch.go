@@ -52,6 +52,9 @@ type PaneInfo struct {
 	// reads a guess; DNDAgeSec only while it is on.
 	DND       *bool `json:"dnd,omitempty"`
 	DNDAgeSec *int  `json:"dnd_age_sec,omitempty"`
+	// DNDUntil is how the hold ends (ini-pt3j): "off" until dnd off, an
+	// RFC3339 time for a timer; omitted for a turn-end hold and when off.
+	DNDUntil string `json:"dnd_until,omitempty"`
 
 	// IdleSec is how long a pane this process runs has been idle, in seconds
 	// (ini-9dv), sent only while it is idle. Absent means not known, never

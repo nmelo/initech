@@ -10,8 +10,8 @@ import (
 )
 
 // ini-x432.3: do-not-disturb ends at turn end (the pane leaving running),
-// or, when a timer was set, at the timer and not before; the timer is capped
-// at an hour; a restart or a resume clears it and nothing reaches disk.
+// or, when a timer was set, at the timer and not before; the timer has no
+// maximum (ini-pt3j); a restart or a resume clears it.
 
 // dndTick runs the once-a-second maintenance over p at now.
 func dndTick(p *Pane, now time.Time) {
@@ -99,28 +99,28 @@ func TestDNDEnd_ATimerEndsItAtItsTimeNotAtTurnEnd(t *testing.T) {
 	})
 }
 
-// AC3: a timer over an hour is cut to an hour, and the reply says so once.
-func TestDNDEnd_ATimerIsCappedAtAnHour(t *testing.T) {
+// ini-pt3j AC1: a timer of any length holds to its end; no cap, no notice.
+// The clock is injected (endDNDIfDue takes now).
+func TestDNDEnd_ATimerHasNoCap(t *testing.T) {
 	p, _, _ := dndPane(t, "a")
 	tu := newTestTUI(p)
-	dndSetActivity(p, StateRunning)
+	dndSetActivity(p, StateIdle) // a turn end must not end a timed hold
 	before := time.Now()
 	r := dndCall(t, func(c net.Conn) {
-		dispatchIPC(tu, c, IPCRequest{Action: "dnd", Target: "a", Text: "on", ForSec: 2 * 3600}, nil)
+		dispatchIPC(tu, c, IPCRequest{Action: "dnd", Target: "a", Text: "on", ForSec: 3 * 3600}, nil)
 	})
-	if !r.OK || len(r.Notices) != 1 || r.Notices[0] != "do-not-disturb capped at 1h" {
-		t.Errorf("reply %+v, want one capped notice", r)
+	if !r.OK || len(r.Notices) != 0 {
+		t.Fatalf("reply %+v, want OK and no notice", r)
 	}
 	until, _ := p.dndTimer()
-	if d := until.Sub(before); d < time.Hour || d > time.Hour+5*time.Second {
-		t.Errorf("timer %v from now, want an hour", d)
+	if d := until.Sub(before); d < 3*time.Hour || d > 3*time.Hour+5*time.Second {
+		t.Fatalf("timer %v from now, want 3h", d)
 	}
-	// Exactly an hour is not capped.
-	r = dndCall(t, func(c net.Conn) {
-		dispatchIPC(tu, c, IPCRequest{Action: "dnd", Target: "a", Text: "on", ForSec: 3600}, nil)
-	})
-	if len(r.Notices) != 0 {
-		t.Errorf("an hour exactly: notices %v", r.Notices)
+	if p.endDNDIfDue(before.Add(2 * time.Hour)) {
+		t.Fatal("a 3h hold ended at 2h")
+	}
+	if !p.endDNDIfDue(until.Add(time.Second)) {
+		t.Fatal("a 3h hold did not end at its timer")
 	}
 }
 

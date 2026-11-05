@@ -76,6 +76,8 @@ func runPatrol(cmd *cobra.Command, args []string) error {
 		Busy     *tui.PaneBusy `json:"busy"`
 		// DNDAgeSec is set while the agent is in do-not-disturb.
 		DNDAgeSec *int `json:"dnd_age_sec"`
+		// DNDUntil is how the hold ends (ini-pt3j).
+		DNDUntil string `json:"dnd_until"`
 		// BeadStale: Bead is the last one bd gave; bd has not answered since.
 		BeadStale bool `json:"bead_stale"`
 		// Unattributed: fifteen minutes of work with no bead (ini-wra.3).
@@ -119,7 +121,7 @@ func runPatrol(cmd *cobra.Command, args []string) error {
 			headerInner += ", " + color.Yellow(work)
 		}
 		if e.DNDAgeSec != nil {
-			headerInner += ", " + color.Yellow(dndText(*e.DNDAgeSec))
+			headerInner += ", " + color.Yellow(dndText(*e.DNDAgeSec, e.DNDUntil))
 		}
 		if flag := tui.ContextFlagText(e.ContextSoon); flag != "" && e.Alive {
 			headerInner += ", " + color.Yellow(flag)

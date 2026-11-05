@@ -68,7 +68,8 @@ type IPCRequest struct {
 	DefaultText string `json:"default_text,omitempty"` // Proposed action absent an operator reply.
 	Chime       bool   `json:"chime,omitempty"`        // Request one inbox arrival chime.
 	Detail      bool   `json:"detail,omitempty"`       // list: also read each pane's footer and dialog (status --json).
-	ForSec      int    `json:"for_sec,omitempty"`      // dnd on: end after this many seconds (capped at an hour), not at turn end.
+	ForSec      int    `json:"for_sec,omitempty"`      // dnd on: end after this many seconds, not at turn end.
+	UntilOff    bool   `json:"until_off,omitempty"`    // dnd on: hold through turn ends until dnd off (ini-pt3j).
 	From        string `json:"from,omitempty"`         // send: the sending agent, or "@operator"; none from an older CLI.
 	Urgent      bool   `json:"urgent,omitempty"`       // send --urgent: super breaks do-not-disturb.
 }
@@ -221,6 +222,7 @@ func (t *TUI) allPanesWithViews() ([]PaneInfo, []PaneView, bool) {
 			}
 			// Do-not-disturb holds mail too: its count rides beside it.
 			panes[i].DND, panes[i].DNDAgeSec = dndFields(p, time.Now())
+			panes[i].DNDUntil = dndUntilField(p)
 			if panes[i].DNDAgeSec != nil {
 				panes[i].QueuedCount = p.(*Pane).QueuedMessageCount()
 			}
@@ -1672,7 +1674,8 @@ func (t *TUI) handleIPCPatrol(conn net.Conn, req IPCRequest) {
 		Content  string    `json:"content"`
 		Busy     *PaneBusy `json:"busy,omitempty"`
 		// DNDAgeSec is how long the agent has been in do-not-disturb.
-		DNDAgeSec *int `json:"dnd_age_sec,omitempty"`
+		DNDAgeSec *int   `json:"dnd_age_sec,omitempty"`
+		DNDUntil  string `json:"dnd_until,omitempty"` // how the hold ends (ini-pt3j)
 		// BeadStale: Bead is the last one bd gave; bd did not answer since.
 		BeadStale bool `json:"bead_stale,omitempty"`
 		// Unattributed: fifteen minutes of work with no bead (ini-wra.3).
@@ -1697,6 +1700,7 @@ func (t *TUI) handleIPCPatrol(conn net.Conn, req IPCRequest) {
 			result[i].Unattributed = unattributedOf(p)
 			result[i].ContextSoon = contextSoon(p)
 			_, result[i].DNDAgeSec = dndFields(p, time.Now())
+			result[i].DNDUntil = dndUntilField(p)
 		}
 	})
 	data, _ := json.Marshal(result)

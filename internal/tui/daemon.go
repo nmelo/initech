@@ -741,6 +741,7 @@ func (d *Daemon) allPanesWithViews() ([]PaneInfo, []PaneView, bool) {
 			ContextSoon:  contextSoon(p),
 		}
 		panes[i].DND, panes[i].DNDAgeSec = dndFields(p, time.Now())
+		panes[i].DNDUntil = dndUntilField(p)
 		if panes[i].DNDAgeSec != nil {
 			panes[i].QueuedCount = p.QueuedMessageCount()
 		}

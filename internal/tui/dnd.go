@@ -17,14 +17,11 @@ import (
 // do-not-disturb exists. The operator's own typing and pastes never pass
 // through it. Nothing is written to disk: a restart clears it.
 
-// dndMaxFor is the longest do-not-disturb timer: a longer one is cut to it,
-// so a forgotten flag cannot hold mail all night.
-const dndMaxFor = time.Hour
-
-// Notices the dnd action answers with, printed by the CLI on stderr.
+// Notices the dnd action answers with, printed by the CLI on stderr. A
+// timer has no maximum (ini-pt3j): held mail is kept across a restart
+// (ini-8rkg), so a long hold costs nothing but the wait.
 const (
-	dndCappedNotice = "do-not-disturb capped at 1h"
-	dndIdleNotice   = "pane is idle; do-not-disturb ends at turn end"
+	dndIdleNotice = "pane is idle; do-not-disturb ends at turn end"
 )
 
 // operatorSender is the sender name of a send run outside any pane: the
@@ -158,6 +155,14 @@ func (p *Pane) startDND() bool {
 // never see a timed do-not-disturb without its timer, or it would end it at
 // turn end on an idle pane.
 func (p *Pane) startDNDFor(now time.Time, d time.Duration) bool {
+	return p.startDNDHold(now, d, false)
+}
+
+// startDNDHold is startDNDFor with until-off (ini-pt3j). What a second dnd on
+// does: a plain one (no timer, not until-off) keeps whatever hold runs and
+// never shortens it; a timer replaces a timer or an until-off; until-off
+// replaces a timer. It reports whether the pane was off.
+func (p *Pane) startDNDHold(now time.Time, d time.Duration, untilOff bool) bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	was := p.dnd
@@ -165,10 +170,38 @@ func (p *Pane) startDNDFor(now time.Time, d time.Duration) bool {
 	if !was {
 		p.dndSince = now
 	}
-	if d > 0 {
-		p.dndUntil = now.Add(d)
+	switch {
+	case untilOff:
+		p.dndUntilOff, p.dndUntil = true, time.Time{}
+	case d > 0:
+		p.dndUntilOff, p.dndUntil = false, now.Add(d)
 	}
 	return !was
+}
+
+// dndHold names the hold in force: "off" for until-off, an RFC3339 time for
+// a timer, "" for until turn end or when not in do-not-disturb. It is the
+// list reply's dnd_until (ini-pt3j).
+func (p *Pane) dndHold() string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	switch {
+	case !p.dnd:
+		return ""
+	case p.dndUntilOff:
+		return "off"
+	case !p.dndUntil.IsZero():
+		return p.dndUntil.Format(time.RFC3339)
+	}
+	return ""
+}
+
+// dndUntilField is dndHold for a PaneView: "" for one this process does not run.
+func dndUntilField(pv PaneView) string {
+	if p, ok := pv.(*Pane); ok {
+		return p.dndHold()
+	}
+	return ""
 }
 
 // dndTimer is when the pane's do-not-disturb timer ends, and false when it
@@ -194,10 +227,10 @@ func dndTurnEnded(p *Pane) bool {
 // whether it ended it.
 func (p *Pane) endDNDIfDue(now time.Time) bool {
 	p.mu.Lock()
-	on, until := p.dnd, p.dndUntil
+	on, until, untilOff := p.dnd, p.dndUntil, p.dndUntilOff
 	p.mu.Unlock()
-	if !on {
-		return false
+	if !on || untilOff {
+		return false // until-off ends only by dnd off or super's break
 	}
 	why := "timer"
 	if until.IsZero() {
@@ -226,6 +259,7 @@ func (p *Pane) endDND(now time.Time) (held int, was bool) {
 	was = p.dnd
 	p.dnd = false
 	p.dndUntil = time.Time{}
+	p.dndUntilOff = false
 	if !was {
 		// Never on: dialog mail keeps its own clock.
 		p.mu.Unlock()
@@ -303,19 +337,23 @@ func handleIPCDND(h IPCHost, conn net.Conn, req IPCRequest) {
 	if req.Text == "on" {
 		now := time.Now()
 		d := time.Duration(req.ForSec) * time.Second // 0 or less: no timer
-		var notices []string
-		if d > dndMaxFor {
-			d = dndMaxFor
-			notices = append(notices, dndCappedNotice)
+		if req.UntilOff && d > 0 {
+			writeIPCResponse(conn, IPCResponse{Error: "--for and --until-off cannot go together"})
+			return
 		}
-		p.startDNDFor(now, d)
+		var notices []string
+		p.startDNDHold(now, d, req.UntilOff)
 		until, timed := p.dndTimer()
-		if !timed && dndTurnEnded(p) {
+		untilOff := p.dndHold() == "off"
+		if !timed && !untilOff && dndTurnEnded(p) {
 			notices = append(notices, dndIdleNotice)
 		}
-		LogInfo("dnd", "do-not-disturb on", "pane", p.name, "until", until)
+		LogInfo("dnd", "do-not-disturb on", "pane", p.name, "until", until, "until_off", untilOff)
 		line := fmt.Sprintf("do-not-disturb on for %s: messages from other agents wait until your turn ends or initech dnd off", p.name)
-		if timed {
+		switch {
+		case untilOff:
+			line = fmt.Sprintf("do-not-disturb on for %s until off: messages from other agents wait until initech dnd off", p.name)
+		case timed:
 			line = fmt.Sprintf("do-not-disturb on for %s until %s (%s): messages from other agents wait until then or initech dnd off",
 				p.name, until.Format("15:04:05"), shortAge(until.Sub(now).Round(time.Second)))
 		}

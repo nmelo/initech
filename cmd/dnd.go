@@ -11,8 +11,9 @@ import (
 )
 
 var (
-	dndAgent string
-	dndFor   time.Duration
+	dndAgent    string
+	dndFor      time.Duration
+	dndUntilOff bool
 )
 
 var dndCmd = &cobra.Command{
@@ -31,16 +32,22 @@ dropped.
 It ends, and the held messages are delivered in the order they arrived,
 one at a time through the normal path, when your turn ends (your pane stops
 running: idle, waiting on a dialog, or quiet with a background job), when
-you run dnd off, or, with --for, when that timer runs out. A timer holds
-through the end of your turn; it is at most 1h, and a longer one is cut to
-1h with "do-not-disturb capped at 1h" on stderr. dnd on again with a new
---for restarts the timer; without --for it keeps the timer running. Run
-against a pane that is already idle, dnd says "pane is idle; do-not-disturb
-ends at turn end". A message that cannot be delivered then is
-reported to the operator once, with how long it waited.
+you run dnd off, or, with --for, when that timer runs out, of any length.
+A timer holds through the end of your turn. With --until-off it holds
+through every turn end, with no timer, until dnd off (or super breaks it).
+--for and --until-off together is an error.
 
-Do-not-disturb lives in the running initech only: nothing is written to
-disk, and a restart clears it. Your own typing is never held, nor is a
+dnd on again: a plain dnd on never shortens a hold in force (it keeps a
+timer or an until-off); --for replaces a timer or an until-off with the new
+timer; --until-off replaces a timer. The reply names what is in force:
+until your turn ends, until <time>, or until off. Run against a pane that
+is already idle, a plain dnd on says "pane is idle; do-not-disturb ends at
+turn end". A message that cannot be delivered then is reported to the
+operator once, with how long it waited.
+
+The flag lives in the running initech only, and a restart clears it; the
+messages it held are kept across the restart and delivered after it.
+Your own typing is never held, nor is a
 send run outside any pane (the operator's) or an inbox reply; super can
 break through with initech send --urgent, which is logged. It trusts the
 sender's word (INITECH_AGENT): a courtesy, not a security wall.
@@ -48,13 +55,16 @@ sender's word (INITECH_AGENT): a courtesy, not a security wall.
 Inside a TUI pane (INITECH_AGENT set automatically):
   initech dnd on
   initech dnd on --for 30m
+  initech dnd on --until-off
   initech dnd off
 
 Outside the TUI (must specify agent):
   initech dnd --agent eng1 off
 
 Against an initech that does not know do-not-disturb, dnd prints "older
-initech running; restart it for do-not-disturb" and exits 2.`,
+initech running; restart it for do-not-disturb" and exits 2. Against one
+that does not know --until-off, or caps --for, dnd prints one line saying
+so and when the hold will really end, and exits 0.`,
 	Args:      cobra.ExactArgs(1),
 	ValidArgs: []string{"on", "off"},
 	RunE:      runDND,
@@ -62,7 +72,8 @@ initech running; restart it for do-not-disturb" and exits 2.`,
 
 func init() {
 	dndCmd.Flags().StringVar(&dndAgent, "agent", "", "Target agent name (auto-detected inside TUI via INITECH_AGENT)")
-	dndCmd.Flags().DurationVar(&dndFor, "for", 0, "With on: end after this long (e.g. 30m) instead of at turn end; at most 1h")
+	dndCmd.Flags().DurationVar(&dndFor, "for", 0, "With on: end after this long (e.g. 30m, 3h) instead of at turn end")
+	dndCmd.Flags().BoolVar(&dndUntilOff, "until-off", false, "With on: hold through turn ends until initech dnd off")
 	rootCmd.AddCommand(dndCmd)
 }
 
@@ -92,6 +103,13 @@ func runDND(cmd *cobra.Command, args []string) error {
 	if agent == "" {
 		return fmt.Errorf("no agent specified (set --agent or run inside a TUI pane where INITECH_AGENT is set)")
 	}
+	untilOff := cmd.Flags().Changed("until-off") && dndUntilOff
+	if untilOff && cmd.Flags().Changed("for") {
+		return fmt.Errorf("--for and --until-off cannot go together")
+	}
+	if untilOff && onOff != "on" {
+		return fmt.Errorf("--until-off goes with dnd on")
+	}
 	forSec := 0
 	if cmd.Flags().Changed("for") {
 		switch {
@@ -103,7 +121,7 @@ func runDND(cmd *cobra.Command, args []string) error {
 		forSec = int((dndFor + time.Second - 1) / time.Second) // a part second counts
 	}
 	cmd.SilenceUsage = true
-	resp, err := ipcCall(tui.IPCRequest{Action: "dnd", Target: agent, Text: onOff, ForSec: forSec})
+	resp, err := ipcCall(tui.IPCRequest{Action: "dnd", Target: agent, Text: onOff, ForSec: forSec, UntilOff: untilOff})
 	if err != nil {
 		return err
 	}
@@ -118,10 +136,36 @@ func runDND(cmd *cobra.Command, args []string) error {
 	for _, n := range resp.Notices {
 		fmt.Fprintln(cmd.ErrOrStderr(), n)
 	}
-	// An initech from before timers takes the flag and drops the timer; its
-	// reply names no end time.
-	if forSec > 0 && !strings.HasPrefix(resp.Data, "do-not-disturb on for "+agent+" until ") {
-		fmt.Fprintln(cmd.ErrOrStderr(), "the running initech does not know --for; do-not-disturb holds until initech dnd off")
+	if line := olderDNDLine(agent, resp, forSec, untilOff); line != "" {
+		fmt.Fprintln(cmd.ErrOrStderr(), line)
 	}
 	return nil
+}
+
+// olderDNDLine is the one line dnd prints when the running initech did not
+// hold as asked (ini-pt3j), saying when the hold will really end; "" when it
+// did. An initech that does not know --until-off ignores it: its reply does
+// not name until off. One from before timers drops --for: its reply names no
+// end time. One that caps --for cuts it to an hour and says so in a notice.
+func olderDNDLine(agent string, resp *tui.IPCResponse, forSec int, untilOff bool) string {
+	timedPrefix := "do-not-disturb on for " + agent + " until "
+	end := "at turn end"
+	if strings.HasPrefix(resp.Data, timedPrefix) {
+		if t := strings.Fields(strings.TrimPrefix(resp.Data, timedPrefix)); len(t) > 0 && t[0] != "off:" {
+			end = "at " + t[0]
+		}
+	}
+	switch {
+	case untilOff && !strings.HasPrefix(resp.Data, timedPrefix+"off:"):
+		return "the running initech does not know --until-off; do-not-disturb ends " + end
+	case forSec > 0 && !strings.HasPrefix(resp.Data, timedPrefix):
+		return "the running initech does not know --for; do-not-disturb ends at turn end"
+	case forSec > 0:
+		for _, n := range resp.Notices {
+			if strings.Contains(n, "capped") {
+				return "the running initech caps --for; do-not-disturb ends " + end
+			}
+		}
+	}
+	return ""
 }

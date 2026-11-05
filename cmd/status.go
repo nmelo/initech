@@ -56,6 +56,10 @@ type paneInfo struct {
 	// one, or a pane it does not run); the age only while on.
 	DND       *bool `json:"dnd"`
 	DNDAgeSec *int  `json:"dnd_age_sec"`
+	// DNDUntil is how the hold ends, from the list reply (ini-pt3j): "off",
+	// an RFC3339 time, or "" (turn end, or a TUI too old to say). Never
+	// copied into status --json.
+	DNDUntil string `json:"dnd_until"`
 	// Ceiling is the machine ceiling's refusal for an agent it left
 	// unstarted (ini-49q), or "".
 	Ceiling string `json:"ceiling,omitempty"`
@@ -468,7 +472,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		// Do-not-disturb sits beside the state word, which it does not
 		// change (ini-x432).
 		if pi.DNDAgeSec != nil { // sent only while on
-			status += " " + color.Yellow(dndText(*pi.DNDAgeSec))
+			status += " " + color.Yellow(dndText(*pi.DNDAgeSec, pi.DNDUntil))
 		}
 		// Compact soon (ini-sf5.2): the context figure at or above the
 		// threshold, as the tick read it.
@@ -761,9 +765,18 @@ func socketBeadRoot(proj *tui.IPCProject) (dir, note string) {
 	return proj.Root, ""
 }
 
-// dndText is do-not-disturb as status and patrol print it: "dnd 12m".
-func dndText(ageSec int) string {
-	return "dnd " + shortDur(ageSec)
+// dndText is do-not-disturb as status and patrol print it: "dnd 12m", with
+// how it ends when the TUI says (ini-pt3j): "dnd 12m until off" or
+// "dnd 12m until 15:30". A value it cannot read prints today's line.
+func dndText(ageSec int, until string) string {
+	s := "dnd " + shortDur(ageSec)
+	if until == "off" {
+		return s + " until off"
+	}
+	if t, err := time.Parse(time.RFC3339, until); err == nil {
+		return s + " until " + t.Local().Format("15:04")
+	}
+	return s
 }
 
 func shortDur(sec int) string {

@@ -455,6 +455,9 @@ type Pane struct {
 	dnd      bool
 	dndSince time.Time
 	dndUntil time.Time
+	// dndUntilOff is a hold with no end but dnd off or super's break: turn
+	// ends and timers do not end it (ini-pt3j).
+	dndUntilOff bool
 
 	// Typing hold (typing_hold.go): when the operator last typed here, the
 	// FIFO of messages waiting for a quiet gap, how many wait, and the clock.

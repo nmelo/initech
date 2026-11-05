@@ -421,10 +421,10 @@ ends (the pane stops running), or it runs `initech dnd off`, messages other agen
 being typed into its input box, and each sender sees
 `held: <agent> is in do-not-disturb (<age>, <N> messages ahead)` with exit 0: how long the
 agent has been in it (45s, 12m, 1h) and how many messages wait ahead of this one. `initech
-status` shows `dnd <age>` after the agent's state, and so does the `initech patrol` header;
+status` shows `dnd <age>` after the agent's state, and so does the `initech patrol` header, with how it ends when it does not end at turn end: `dnd 12m until off`, or `dnd 12m until 15:30` for a timer;
 `initech deliver` and `initech assign` print the held line and succeed. On screen, the pane's ribbon carries `dnd` after the agent's name, after the held-mail mark when there is one, and the Agents overlay row reads `· dnd <age>` after the state word and the held count (`idle · 2 held · dnd 5m`); the agent stays in the column its state puts it in. Both go at the next draw once do-not-disturb ends. `dnd off` delivers them in the order they arrived, one at a time, through the
 normal path. `initech dnd on --for 30m` holds through the end of the turn until the timer runs
-out instead; a timer is at most an hour. A message that cannot be delivered then is reported to you once, with how long
+out instead; a timer can be any length. `initech dnd on --until-off` holds through every turn end, with no timer, until `initech dnd off` (or super breaks it); `--for` and `--until-off` together is an error. A second `dnd on` never shortens a hold in force: a plain one keeps a timer or an until-off, `--for` replaces either with its timer, and `--until-off` replaces a timer; the reply names what is in force (until your turn ends, until <time>, or until off). Against a running initech too old to know `--until-off`, or one that caps `--for` at an hour, the command prints one line saying so and when the hold will really end. A message that cannot be delivered then is reported to you once, with how long
 it waited. At 20 waiting messages a new one is refused with
 `not delivered to <agent>: do-not-disturb queue is full` and exit 1; the oldest is kept.
 
