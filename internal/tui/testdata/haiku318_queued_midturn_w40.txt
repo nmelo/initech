@@ -1,0 +1,40 @@
+
+ ▐▛███▛█   Claude Code v2.1.318
+▝▜██████▀  Haiku 5.5 · Claude Ultra
+ ▝▝   ▝▝   /private/tmp/e4xl.miqb8W
+
+
+❯ Run exactly this one Bash command and
+  nothing else: sleep 20
+
+  Pause for 20 seconds · 6s
+  ⎿  $ sleep 20 (6s)
+     (ctrl+b ctrl+b (twice) to run in
+     background)
+
+❯ a queued line typed mid-turn
+  ctrl+x ctrl+s to send now
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+✢ Undulating… (8s · ↓ 81 tokens)
+
+────────────────────────────────────────
+❯ Press up to edit queued messages
+────────────────────────────────────────
+  Haiku 5.5 │ Zola │ 4% │ 40% ▓┃▓▓░░░…
+  ⏵⏵ bypass permissions on (shift+tab
