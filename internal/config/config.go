@@ -11,6 +11,7 @@ package config
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -49,7 +50,13 @@ type Project struct {
 	// Numbers are the thresholds of the rig's numbers; a crossing sends super
 	// one line. Absent, nothing is ever sent.
 	Numbers NumbersConfig `yaml:"numbers,omitempty"`
-	Roles   []string      `yaml:"roles"`
+	// ProductRepo is a path to a local clone of the rig's product repo,
+	// absolute or relative to Root. When set, the rig numbers read its main
+	// instead of the first repo's. Top level on purpose: the top level is not
+	// strict, so an older initech loads a file that carries it, where a key
+	// inside a block with its own parser (numbers:) would fail its load.
+	ProductRepo string   `yaml:"product_repo,omitempty"`
+	Roles       []string `yaml:"roles"`
 
 	// TechStack, BuildCmd and TestCmd fill the {{tech_stack}}, {{build_cmd}}
 	// and {{test_cmd}} placeholders in every role's CLAUDE.md. Before ini-rg12
@@ -335,6 +342,11 @@ func Load(path string) (*Project, error) {
 	if err := Validate(&p); err != nil {
 		return nil, fmt.Errorf("invalid config: %w", err)
 	}
+	if p.ProductRepo != "" {
+		if _, ok := p.ProductRepoDir(); !ok {
+			fmt.Fprintf(configWarnings, "Warning: product_repo: %s is not a git clone; the rig's repo numbers read ? until it is fixed\n", p.productRepoPath())
+		}
+	}
 
 	// Warn if config contains tokens and file is group/world readable.
 	if hasTokens(&p) {
@@ -365,6 +377,39 @@ func refuseRigCeiling(data []byte) error {
 		}
 	}
 	return nil
+}
+
+// configWarnings receives the load's warnings; stderr outside tests.
+var configWarnings io.Writer = os.Stderr
+
+// productRepoPath is product_repo resolved against the root, or "" when the
+// key is absent.
+func (p *Project) productRepoPath() string {
+	if p == nil || p.ProductRepo == "" {
+		return ""
+	}
+	dir := expandHome(p.ProductRepo)
+	if !filepath.IsAbs(dir) {
+		dir = filepath.Join(p.Root, dir)
+	}
+	return filepath.Clean(dir)
+}
+
+// ProductRepoDir is the product clone the rig numbers read, and whether there
+// is one: product_repo set, naming a folder that holds .git (a directory, or
+// a worktree's file). Checked on every call, so fixing the path is enough.
+func (p *Project) ProductRepoDir() (string, bool) {
+	dir := p.productRepoPath()
+	if dir == "" {
+		return "", false
+	}
+	if fi, err := os.Stat(dir); err != nil || !fi.IsDir() {
+		return dir, false
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".git")); err != nil {
+		return dir, false
+	}
+	return dir, true
 }
 
 // hasTokens returns true if the project config contains any auth tokens.

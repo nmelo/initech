@@ -37,6 +37,22 @@ type rigNumbersState struct {
 	ghDown bool // the last repo read failed and was logged
 }
 
+// GatherRigRepo reads the rig's repo numbers into in. With product_repo set
+// they are that clone's (its origin/main and its origin's runs); a
+// product_repo that is not a clone reads them as unknown, never the first
+// repo's. Without it they are the first repo's, by slug.
+func GatherRigRepo(ctx context.Context, run rignumbers.Runner, p *config.Project, slug string, in *rignumbers.Input) error {
+	if p != nil && p.ProductRepo != "" {
+		dir, ok := p.ProductRepoDir()
+		if !ok {
+			in.HasRepo = true
+			return fmt.Errorf("product_repo %s is not a git clone", dir)
+		}
+		return rignumbers.GatherProduct(ctx, run, dir, in)
+	}
+	return rignumbers.GatherRepo(ctx, run, slug, in)
+}
+
 // rigSlug is the owner/repo of the rig's first repo, or "" when it has none
 // on GitHub.
 func rigSlug(p *config.Project) string {
@@ -85,7 +101,7 @@ func (t *TUI) refreshRigNumbers(now time.Time) {
 	th := t.project.Numbers.Thresholds()
 	t.safeGo(func() {
 		defer r.busy.Store(false)
-		err := rignumbers.GatherRepo(context.Background(), rigRun, slug, &in)
+		err := GatherRigRepo(context.Background(), rigRun, t.project, slug, &in)
 		if err != nil && !r.ghDown {
 			LogWarn("rig-numbers", "repo numbers unknown; the gate and merge numbers print as ?", "err", err)
 		}

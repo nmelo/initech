@@ -50,22 +50,104 @@ func GatherRepo(ctx context.Context, run Runner, slug string, in *Input) error {
 	} else {
 		in.CommitsKnown = true
 	}
-	cctx, cancel = context.WithTimeout(ctx, ReadBudget)
-	out, err = run(cctx, "gh", "run", "list", "-R", slug, "--branch", "main", "--event", "push",
+	if err := gatherRuns(ctx, run, slug, in); err != nil {
+		errs = append(errs, err.Error())
+	}
+	if len(errs) > 0 {
+		return fmt.Errorf("gh: %s", strings.Join(errs, "; "))
+	}
+	return nil
+}
+
+// gatherRuns reads the push runs on slug's main into in, bounded by
+// ReadBudget.
+func gatherRuns(ctx context.Context, run Runner, slug string, in *Input) error {
+	cctx, cancel := context.WithTimeout(ctx, ReadBudget)
+	out, err := run(cctx, "gh", "run", "list", "-R", slug, "--branch", "main", "--event", "push",
 		"--limit", "100", "--json", "conclusion,createdAt,updatedAt")
 	cancel()
 	if err == nil {
 		in.Runs, err = parseRuns(out)
 	}
 	if err != nil {
-		errs = append(errs, "runs: "+err.Error())
+		return fmt.Errorf("runs: %w", err)
+	}
+	in.RunsKnown = true
+	return nil
+}
+
+// GatherProduct reads the numbers of the product clone at dir into in: its
+// origin/main's latest 100 commits after a fetch, and the push runs on main
+// of the GitHub repo its origin names. Each read is bounded by ReadBudget. A
+// fetch that fails leaves the commits unknown rather than reading a stale
+// main; an origin not on GitHub leaves the runs unknown. With no dir it reads
+// nothing.
+func GatherProduct(ctx context.Context, run Runner, dir string, in *Input) error {
+	if dir == "" {
+		in.HasRepo = false
+		return nil
+	}
+	in.HasRepo = true
+	var errs []string
+	cctx, cancel := context.WithTimeout(ctx, ReadBudget)
+	_, err := run(cctx, "git", "-C", dir, "fetch", "--quiet", "origin", "main")
+	cancel()
+	if err != nil {
+		errs = append(errs, "fetch: "+err.Error())
 	} else {
-		in.RunsKnown = true
+		cctx, cancel = context.WithTimeout(ctx, ReadBudget)
+		out, err := run(cctx, "git", "-C", dir, "log", "origin/main", "-n", "100", "--format=%cI%x09%s")
+		cancel()
+		if err == nil {
+			in.Commits, err = parseLog(out)
+		}
+		if err != nil {
+			errs = append(errs, "commits: "+err.Error())
+		} else {
+			in.CommitsKnown = true
+		}
+	}
+	cctx, cancel = context.WithTimeout(ctx, ReadBudget)
+	out, err := run(cctx, "git", "-C", dir, "remote", "get-url", "origin")
+	cancel()
+	slug, onGitHub := "", false
+	if err == nil {
+		slug, onGitHub = Slug(string(out))
+	}
+	switch {
+	case err != nil:
+		errs = append(errs, "origin: "+err.Error())
+	case !onGitHub:
+		errs = append(errs, "runs: the clone's origin is not on GitHub")
+	default:
+		if err := gatherRuns(ctx, run, slug, in); err != nil {
+			errs = append(errs, err.Error())
+		}
 	}
 	if len(errs) > 0 {
-		return fmt.Errorf("gh: %s", strings.Join(errs, "; "))
+		return fmt.Errorf("product repo: %s", strings.Join(errs, "; "))
 	}
 	return nil
+}
+
+// parseLog reads git log --format=%cI%x09%s lines into commits.
+func parseLog(b []byte) ([]Commit, error) {
+	var out []Commit
+	for _, line := range strings.Split(strings.TrimRight(string(b), "\n"), "\n") {
+		if line == "" {
+			continue
+		}
+		when, subject, ok := strings.Cut(line, "\t")
+		if !ok {
+			return nil, fmt.Errorf("log line %q: no tab", line)
+		}
+		t, err := time.Parse(time.RFC3339, when)
+		if err != nil {
+			return nil, fmt.Errorf("log line %q: %w", line, err)
+		}
+		out = append(out, Commit{When: t, Subject: subject})
+	}
+	return out, nil
 }
 
 func parseCommits(b []byte) ([]Commit, error) {

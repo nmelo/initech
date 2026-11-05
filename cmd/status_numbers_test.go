@@ -4,6 +4,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"github.com/nmelo/initech/internal/config"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -120,5 +123,23 @@ func TestStatusNumbers_JSONShapes(t *testing.T) {
 	}
 	if rig.Source != "window 1" || rig.Numbers.GateRed == nil || *rig.Numbers.GateRed != 1 || !strings.HasPrefix(rig.Line, "merges/h 4") {
 		t.Errorf("status --json --numbers: %+v", rig)
+	}
+}
+
+// ini-61by: with no numbers from window 1, status reads product_repo's
+// clone, not the first repo, through the same gather window 1 uses.
+func TestStatusNumbers_ComputedReadsTheProductRepo(t *testing.T) {
+	var c countingRigRun
+	c.install(t)
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "product", ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	p := &config.Project{Name: "demo", Root: root, ProductRepo: "product",
+		Repos: []config.Repo{{URL: "https://github.com/acme/scaffold", Name: "scaffold"}}}
+	statusRigNumbers(&statusRead{}, p, time.Now())
+	joined := strings.Join(c.calls, "\n")
+	if !strings.Contains(joined, "git -C "+filepath.Join(root, "product")+" fetch") || strings.Contains(joined, "scaffold") {
+		t.Fatalf("status read %q, want the product clone and never the first repo", c.calls)
 	}
 }

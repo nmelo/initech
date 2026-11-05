@@ -70,7 +70,7 @@ func statusRigNumbers(st *statusRead, p *config.Project, now time.Time) rigNumbe
 	if p == nil || p.Beads.IsEnabled() {
 		_ = rignumbers.GatherBeads(ctx, run, &in) // unknown on failure, printed as ?
 	}
-	_ = rignumbers.GatherRepo(ctx, run, slug, &in)
+	_ = tui.GatherRigRepo(ctx, run, p, slug, &in) // unknown on failure, printed as ?
 	n := rignumbers.Compute(in)
 	n.Fleet = fleet
 	return rigNumbersJSON{Source: "computed", Numbers: n, Line: n.Line()}
