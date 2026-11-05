@@ -2,7 +2,12 @@
 // that the shards together ran every test exactly once (ini-bus5).
 //
 //	go run ./scripts/shardtests run -shards 3 -shard 1 -out shard1
+//	go run ./scripts/shardtests run -race -profile -shards 3 -shard 1 -out shard1
 //	go run ./scripts/shardtests census -shards 3 shard1 shard2 shard3
+//
+// -profile (off by default) writes, per package, a heap profile at the test
+// binary's exit, its -json events and, where the package's TestMain reads
+// INITECH_TEST_PROFILE, memory samples and a goroutine dump, into DIR/profile.
 //
 // # WHY THIS EXISTS
 //
@@ -148,6 +153,45 @@ func testArgs(pkg string, names []string, race bool, timeout string) []string {
 		a = append(a, "-timeout", timeout)
 	}
 	return append(a, pkg, "-run", "^("+strings.Join(names, "|")+")$")
+}
+
+// profileEnvVar names the file prefix a package's TestMain writes its memory
+// samples and exit goroutine dump to; set only under -profile (ini-jr08).
+const profileEnvVar = "INITECH_TEST_PROFILE"
+
+// profilePrefix is the file prefix for pkg's profiles under a shard's record.
+func profilePrefix(outDir, pkg string) string {
+	return filepath.Join(outDir, "profile", strings.ReplaceAll(pkg, "/", "_"))
+}
+
+// withProfile adds a heap profile at prefix.heap.pprof to a's go test,
+// keeping the package and the selector last.
+func withProfile(a []string, prefix string) []string {
+	head := append([]string(nil), a[:len(a)-3]...)
+	head = append(head, "-memprofile", prefix+".heap.pprof")
+	return append(head, a[len(a)-3:]...)
+}
+
+// profileEnv is the variable that tells the test binary where to write.
+func profileEnv(prefix string) string { return profileEnvVar + "=" + prefix }
+
+// shardCommandArgs is a package's go test args, with the heap profile when
+// prefix is set; with it empty they are exactly testArgs'.
+func shardCommandArgs(pkg string, names []string, race bool, timeout, prefix string) []string {
+	a := testArgs(pkg, names, race, timeout)
+	if prefix == "" {
+		return a
+	}
+	return withProfile(a, prefix)
+}
+
+// shardCommandEnv is what -profile adds to the test binary's environment:
+// nothing when prefix is empty.
+func shardCommandEnv(prefix string) []string {
+	if prefix == "" {
+		return nil
+	}
+	return []string{profileEnv(prefix)}
 }
 
 // testEvent is the part of a go test -json event the tool reads.
@@ -316,6 +360,7 @@ func runShard(args []string) error {
 	outDir := fs.String("out", "", "directory for this shard's record")
 	race := fs.Bool("race", false, "run under the race detector, one package at a time (-p 1)")
 	timeout := fs.String("timeout", "", "go test -timeout for each package")
+	profile := fs.Bool("profile", false, "write each package's heap profile, -json events, memory samples and exit goroutine dump to DIR/profile (off by default)")
 	fs.Parse(args)
 	if *n < 1 || *k < 1 || *k > *n || *outDir == "" {
 		return errors.New("run needs -shards N -shard K (1..N) -out DIR")
@@ -347,9 +392,23 @@ func runShard(args []string) error {
 		for _, name := range names {
 			selected = append(selected, testID{pkg, name})
 		}
-		a := testArgs(pkg, names, *race, *timeout)
+		prefix := ""
+		if *profile {
+			abs, err := filepath.Abs(*outDir)
+			if err != nil {
+				return err
+			}
+			prefix = profilePrefix(abs, pkg)
+			if err := os.MkdirAll(filepath.Dir(prefix), 0o755); err != nil {
+				return err
+			}
+		}
+		a := shardCommandArgs(pkg, names, *race, *timeout, prefix)
 		fmt.Printf("SHARD %d/%d: go %s  [%d tests]\n", *k, *n, strings.Join(a[:len(a)-1], " ")+" '^(...)$'", len(names))
 		cmd := exec.Command("go", a...)
+		if env := shardCommandEnv(prefix); env != nil {
+			cmd.Env = append(os.Environ(), env...)
+		}
 		cmd.Stderr = os.Stderr
 		stdout, err := cmd.StdoutPipe()
 		if err != nil {
@@ -358,8 +417,19 @@ func runShard(args []string) error {
 		if err := cmd.Start(); err != nil {
 			return err
 		}
-		for _, name := range relay(stdout, os.Stdout) {
+		var events io.Reader = stdout
+		var eventsFile *os.File
+		if prefix != "" {
+			if eventsFile, err = os.Create(prefix + ".events.json"); err != nil {
+				return err
+			}
+			events = io.TeeReader(stdout, eventsFile)
+		}
+		for _, name := range relay(events, os.Stdout) {
 			executed = append(executed, testID{pkg, name})
+		}
+		if eventsFile != nil {
+			eventsFile.Close()
 		}
 		if err := cmd.Wait(); err != nil {
 			failed = append(failed, pkg)

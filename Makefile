@@ -48,11 +48,14 @@ test-full:
 # under -race exactly once. One race binary at a time, holding one shard's
 # tests, keeps the peak memory to a fraction of a single `go test -race ./...`.
 # Each shard rewrites its own record files, so a rerun needs no cleanup.
+# RACE_PROFILE=1 adds shardtests' -profile: each package's heap profile,
+# memory samples and exit goroutine dump under race-record/shardK/profile.
 RACE_SHARDS ?= 6
+RACE_PROFILE ?=
 test-race:
 	@rc=0; \
 	for k in $$(seq 1 $(RACE_SHARDS)); do \
-	  go run ./scripts/shardtests run -race -timeout 30m -shards $(RACE_SHARDS) -shard $$k -out race-record/shard$$k || rc=1; \
+	  go run ./scripts/shardtests run -race $(if $(RACE_PROFILE),-profile )-timeout 30m -shards $(RACE_SHARDS) -shard $$k -out race-record/shard$$k || rc=1; \
 	done; \
 	go run ./scripts/shardtests census -shards $(RACE_SHARDS) $$(seq -f 'race-record/shard%g' 1 $(RACE_SHARDS)) || rc=1; \
 	exit $$rc

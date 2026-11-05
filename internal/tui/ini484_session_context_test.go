@@ -28,7 +28,9 @@ func TestMain(m *testing.M) {
 	}
 	claStatePath = ""
 	restore := isolateMachineCeiling()
+	stopProfile := startTestProfile() // nothing unless INITECH_TEST_PROFILE (ini-jr08)
 	code := m.Run()
+	stopProfile()
 	restore()
 	os.Exit(code)
 }

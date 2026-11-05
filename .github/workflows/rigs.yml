@@ -34,6 +34,10 @@ on:
         description: Also run the env-gated rigs under the race detector, after every other workbench job
         type: boolean
         default: false
+      race_profile:
+        description: Profile the race job's test binaries (heap, memory samples, goroutines at exit) and keep them as an artifact
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -94,7 +98,17 @@ jobs:
       - name: Test (race detector)
         env:
           INITECH_CI_SANDBOX: "1"
+          RACE_PROFILE: ${{ inputs.race_profile && '1' || '' }}
         run: make test-race
+
+      # ini-jr08: the profiles race_profile asked for, kept with the run.
+      - name: Keep the race profiles
+        if: always() && inputs.race_profile
+        uses: actions/upload-artifact@v4
+        with:
+          name: race-profiles
+          path: race-record/*/profile
+          retention-days: 14
 
       - name: Resources this job used
         if: always()

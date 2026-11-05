@@ -281,3 +281,41 @@ func TestRunShard_AShardWithNoTestsFails(t *testing.T) {
 		t.Fatalf("an empty shard: %v, want it to fail", err)
 	}
 }
+
+// ini-jr08: -profile adds a heap profile to the package's go test, keeping
+// the package and selector last, and names one prefix per package.
+func TestProfile_AddsAHeapProfileAndKeepsThePackageAndSelectorLast(t *testing.T) {
+	base := testArgs("example.com/a/b", []string{"TestOne"}, true, "30m")
+	prefix := profilePrefix("/rec/shard1", "example.com/a/b")
+	if prefix != "/rec/shard1/profile/example.com_a_b" {
+		t.Fatalf("prefix %q", prefix)
+	}
+	a := withProfile(base, prefix)
+	joined := strings.Join(a, " ")
+	if !strings.Contains(joined, "-memprofile "+prefix+".heap.pprof") {
+		t.Errorf("args %q lack the heap profile", joined)
+	}
+	if a[len(a)-1] != "^(TestOne)$" || a[len(a)-3] != "example.com/a/b" {
+		t.Errorf("args %q: the package and selector must stay last", joined)
+	}
+	if env := profileEnv(prefix); env != "INITECH_TEST_PROFILE="+prefix {
+		t.Errorf("env %q", env)
+	}
+}
+
+// Feed it nothing: with -profile off the args are exactly testArgs' and no
+// profile variable reaches the test binary.
+func TestProfile_OffChangesNothing(t *testing.T) {
+	base := testArgs("example.com/a", []string{"TestOne"}, true, "30m")
+	got := shardCommandArgs("example.com/a", []string{"TestOne"}, true, "30m", "")
+	if !slices.Equal(got, base) {
+		t.Fatalf("off: %v, want %v", got, base)
+	}
+	if env := shardCommandEnv(""); env != nil {
+		t.Fatalf("off: env %v, want none added", env)
+	}
+	on := shardCommandArgs("example.com/a", []string{"TestOne"}, true, "30m", "/p/x")
+	if slices.Equal(on, base) || shardCommandEnv("/p/x") == nil {
+		t.Fatalf("on changed nothing: %v", on)
+	}
+}
