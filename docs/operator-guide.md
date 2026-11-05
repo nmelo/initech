@@ -131,7 +131,7 @@ PM sets an evidence tier on each bead when grooming it. It decides how much of t
 
 Keys always go to the highlighted pane, in every layout: whatever you type, paste or press Enter on lands in the pane drawn as focused, never in one you cannot see. A grid smaller than the fleet shows the first panes, and the focus moves to one of them; Option+arrows step through the panes on screen. When live mode moves the focused agent off screen, the focus moves to a pane that is drawn. Scrolling over a pane focuses it and highlights it at once.
 
-### Activity Dots (Overlay Panel)
+### Rig panel
 
 The rig panel is your dashboard: a band across the top of the window, with the pane grid below it. Alt+s, or `panel` in the command bar, pins and unpins it; unpinned, the grid takes the whole height. It starts pinned every time initech starts, in every window. Alt+= makes its boxes one row taller and Alt+- one row shorter, from 3 rows up to half the screen; window 1 keeps the height in `layout.yaml` as `panel_rows` (8 when absent; a stored height under 3, or over half the screen it is shown on, reads as 8 with one warning). On a screen under 30 rows each box keeps one row.
 
