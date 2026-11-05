@@ -301,3 +301,24 @@ func i35wFreshMemPane(t *testing.T, name string) (*Pane, *pipeRecord) {
 	p.mu.Unlock()
 	return p, rec
 }
+
+// TestPkinFake_ANewlineInsideThePasteIsNotAnEnter (ini-vlgq): the fake
+// counted the newline in a two-line paste as an Enter and cleared the box
+// 20 ms after painting the body; the os.Pipe half of the fidelity check then
+// withheld its submit whenever its first echo sample missed those 20 ms.
+func TestPkinFake_ANewlineInsideThePasteIsNotAnEnter(t *testing.T) {
+	for chunk, want := range map[string]int32{
+		"\x1b[200~first line\nsecond line\x1b[201~":   0,
+		"\x1b[200~first line\nsecond line\x1b[201~\r": 1,
+		"\r":                         1,
+		"\x1b[200~one line\x1b[201~": 0,
+	} {
+		f := &pkinFake{body: "first line\nsecond line", after: "❯ ", takes: func(int) bool { return false },
+			screen: func(string) string { return "" }}
+		f.p = &Pane{emu: vt.NewSafeEmulator(40, 5)}
+		f.saw(chunk)
+		if got := f.enters.Load(); got != want {
+			t.Errorf("%q: %d Enters, want %d", chunk, got, want)
+		}
+	}
+}

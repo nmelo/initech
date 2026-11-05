@@ -69,7 +69,7 @@ func (f *pkinFake) saw(b string) {
 			f.paint("❯ " + f.body)
 		}
 	}
-	if strings.ContainsAny(b, "\r\n") {
+	if strings.ContainsAny(outsidePaste(b), "\r\n") {
 		n := int(f.enters.Add(1))
 		if f.takes(n) {
 			if f.busy {
@@ -86,6 +86,28 @@ func (f *pkinFake) saw(b string) {
 				f.paint(f.after)
 			}()
 		}
+	}
+}
+
+// outsidePaste is what a chunk the fake read holds outside a bracketed paste.
+// A newline inside the paste is part of the message, as it is in Claude's
+// box; only one outside it is an Enter (ini-vlgq: read as an Enter, it
+// cleared the box 20 ms after painting the body, and a send whose first
+// echo sample missed those 20 ms withheld its submit).
+func outsidePaste(b string) string {
+	var out strings.Builder
+	for {
+		i := strings.Index(b, "\x1b[200~")
+		if i < 0 {
+			out.WriteString(b)
+			return out.String()
+		}
+		out.WriteString(b[:i])
+		j := strings.Index(b[i:], "\x1b[201~")
+		if j < 0 {
+			return out.String()
+		}
+		b = b[i+j+len("\x1b[201~"):]
 	}
 }
 

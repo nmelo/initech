@@ -113,8 +113,7 @@ func TestLabelledBox_EveryCaptureShowsOurText(t *testing.T) {
 
 // AC1, AC2 from the real send entry: a long and a short one-line send into
 // the named pane read delivered at every width, with one Enter. (The fake
-// reads a newline in the paste as an Enter, so the two-line body is read
-// from the screen above.)
+// two-line body is read from the screen above.)
 func TestLabelledBox_ASendIntoTheNamedPaneIsDelivered(t *testing.T) {
 	for _, cols := range []int{32, 40, 80} {
 		for _, body := range []string{"long", "short"} {
