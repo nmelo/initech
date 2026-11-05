@@ -9,9 +9,11 @@ package tui
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os/exec"
 	"strings"
+	"testing"
 	"time"
 
 	"github.com/nmelo/initech/internal/progress"
@@ -143,24 +145,69 @@ func (t *TUI) judgePaceWaits(beads []bdBead, now time.Time) {
 	url, slug := t.paceRepo()
 	world := paceWorld{t: t, now: now, url: url, slug: slug}
 	judged := make(map[string]progress.WaitState, len(waiting))
+	records := make(map[string]string, len(waiting))
 	for _, b := range waiting {
 		judged[b.ID] = progress.Judge(b, status, now, world)
+		records[b.ID] = progress.WaitOverSent(b)
 	}
 	t.runOnMain(func() {
 		t.paceWaits = judged
 		if t.paceOverSent == nil {
 			t.paceOverSent = map[string]bool{}
 		}
+		if t.paceOverWrote == nil {
+			t.paceOverWrote = map[string]string{}
+		}
 		for _, b := range waiting {
 			w := judged[b.ID]
-			key := b.ID + "|" + w.Target.String()
-			if !w.Over || t.paceOverSent[key] {
+			target := w.Target.String()
+			// The bead's own record says which target its line went out for,
+			// so a restarted process does not send it again. This process's
+			// own write stands in for it until bd's list shows it.
+			record := records[b.ID]
+			if wrote, ok := t.paceOverWrote[b.ID]; ok {
+				if wrote == record {
+					delete(t.paceOverWrote, b.ID)
+				}
+				record = wrote
+			}
+			if !w.Over {
+				if record != "" && record != target {
+					t.writeWaitOverSent(b.ID, "") // a new target: the old record goes
+				}
+				continue
+			}
+			key := b.ID + "|" + target
+			if t.paceOverSent[key] || record == target {
+				t.paceOverSent[key] = true
 				continue
 			}
 			t.paceOverSent[key] = true
 			t.sendInitechLine(fmt.Sprintf("☾ %s waits on %s: %s; move it on", progress.Clean(b.ID), w.Target, w.Event))
+			t.writeWaitOverSent(b.ID, target)
 		}
 		t.paceAt = time.Time{} // the lines show the answer at the next refresh
+	})
+}
+
+// paceWaitWriteTimeout bounds one wait_over_sent write.
+const paceWaitWriteTimeout = 10 * time.Second
+
+// writeWaitOverSent records target ("" clears) on bead id, off the main loop,
+// once: the value is kept in paceOverWrote until bd's list shows it. A failed
+// write is logged; this process still sends nothing twice. Main loop only.
+func (t *TUI) writeWaitOverSent(id, target string) {
+	if strings.HasPrefix(id, "-") {
+		return // never an argument bd could read as a flag
+	}
+	t.paceOverWrote[id] = target
+	root, write := t.projectRoot, bdSetWaitOverSent // the seam is read here, on the main loop
+	t.safeGo(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), paceWaitWriteTimeout)
+		defer cancel()
+		if err := write(ctx, root, id, target); err != nil {
+			LogWarn("waits", "wait_over_sent not recorded", "bead", progress.Clean(id), "err", err)
+		}
 	})
 }
 
@@ -181,4 +228,29 @@ func overSpan(line string) (int, int) {
 		}
 	}
 	return -1, -1
+}
+
+// errBdWriteInTest refuses a real bd write from a test binary.
+var errBdWriteInTest = errors.New("waits: refusing a real bd write from a test")
+
+// bdSetWaitOverSent records on the bead that its over line went out for
+// target (bd metadata wait_over_sent), or clears that record when target is
+// "", so a restarted window 1 does not announce the same wait again. One bd
+// call per event, never per tick; off the main loop. A test swaps it.
+var bdSetWaitOverSent = func(ctx context.Context, dir, id, target string) error {
+	if testing.Testing() {
+		return errBdWriteInTest // a test that forgot the seam must not write a real bead
+	}
+	cmd := exec.CommandContext(ctx, "bd", waitOverSentArgs(id, target)...)
+	cmd.Dir = dir
+	return cmd.Run()
+}
+
+// waitOverSentArgs is the bd command that records target on id, or clears the
+// record when target is "".
+func waitOverSentArgs(id, target string) []string {
+	if target == "" {
+		return []string{"update", id, "--unset-metadata", progress.WaitOverSentKey}
+	}
+	return []string{"update", id, "--set-metadata", progress.WaitOverSentKey + "=" + target}
 }

@@ -3,7 +3,9 @@ package tui
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -41,6 +43,9 @@ func waitsTUI(t *testing.T, r *waitsRig) (*TUI, *lineRecorder) {
 		return st, ok, nil
 	}
 	projectHasBeads = func(string) bool { return false } // no crossing reads here
+	origW := bdSetWaitOverSent
+	t.Cleanup(func() { bdSetWaitOverSent = origW })
+	bdSetWaitOverSent = func(ctx context.Context, dir, id, target string) error { return nil }
 	rec := recordInitechLines(t)
 	tui := newTestTUI(testPane("super"), testPane("eng1"))
 	tui.project = &config.Project{Repos: []config.Repo{{URL: "git@github.com:o/r.git", Name: "r"}}}
@@ -238,5 +243,135 @@ func TestWaits_TheLineToSuperCarriesNoControlCharacters(t *testing.T) {
 	}
 	if !strings.Contains(got[0], "ini-x[2J waits on ini-y: ini-y closed") {
 		t.Errorf("line %q", got[0])
+	}
+}
+
+// writeRecorder stands in for bd's metadata write and keeps each call.
+type writeRecorder struct {
+	mu    sync.Mutex
+	calls []string
+}
+
+func recordWaitOverSent(t *testing.T) *writeRecorder {
+	t.Helper()
+	orig := bdSetWaitOverSent
+	t.Cleanup(func() { bdSetWaitOverSent = orig })
+	w := &writeRecorder{}
+	bdSetWaitOverSent = func(ctx context.Context, dir, id, target string) error {
+		w.mu.Lock()
+		defer w.mu.Unlock()
+		w.calls = append(w.calls, id+"="+target)
+		return nil
+	}
+	return w
+}
+
+// waitWrites is the calls so far once there are n, or at a two-second
+// deadline.
+func waitWrites(w *writeRecorder, n int) []string {
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		w.mu.Lock()
+		got := append([]string(nil), w.calls...)
+		w.mu.Unlock()
+		if len(got) >= n || !time.Now().Before(deadline) {
+			return got
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+// ini-agq AC4 (pm's ruling after qa1's restart finding): the line's record is
+// the bead's own metadata, wait_over_sent: <target>, written once when the
+// line goes out; a window 1 that restarts and polls the bead with that record
+// sends nothing more. Positive twin: the same bead with no record sends.
+func TestWaits_ARestartBetweenTwoPollsSendsNoSecondLine(t *testing.T) {
+	over := func(meta string) []bdBead {
+		return []bdBead{{ID: "ini-r.1", Status: "waiting", UpdatedAt: time.Now(), Dependencies: []progress.Dependency{{DependsOn: "ini-r.9", Type: "blocks"}},
+			Metadata: json.RawMessage(meta)}, {ID: "ini-r.9", Status: "closed"}}
+	}
+	r := &waitsRig{beads: over(`{}`)}
+	first, rec := waitsTUI(t, r)
+	writes := recordWaitOverSent(t)
+	first.pollBeadsOnce(time.Now())
+	if got := rec.waitFor(1); len(got) != 1 {
+		t.Fatalf("first process: lines %q", got)
+	}
+	if got := waitWrites(writes, 1); len(got) != 1 || got[0] != "ini-r.1=ini-r.9" {
+		t.Fatalf("record writes %q, want one: ini-r.1=ini-r.9", got)
+	}
+	first.pollBeadsOnce(time.Now().Add(beadPollInterval))
+	time.Sleep(50 * time.Millisecond)
+	if got := waitWrites(writes, 1); len(got) != 1 {
+		t.Errorf("a second poll wrote the record again: %q", got)
+	}
+
+	// The restart: a new process, its memory empty, and bd now carrying the record.
+	r2 := &waitsRig{beads: over(`{"wait_over_sent":"ini-r.9"}`)}
+	second, rec2 := waitsTUI(t, r2) // a new process records its own lines
+	for i := 0; i < 3; i++ {
+		second.pollBeadsOnce(time.Now().Add(time.Duration(i) * beadPollInterval))
+	}
+	time.Sleep(50 * time.Millisecond)
+	if got := rec2.all(); len(got) != 0 {
+		t.Errorf("after a restart the over wait was announced again: %q", got)
+	}
+	if !second.paceWaits["ini-r.1"].Over {
+		t.Error("the restarted process does not read the wait over (the record must not hide it)")
+	}
+}
+
+// The record names a target: a bead that now waits on another one is sent
+// again when that one is over, and a record left by an old target is cleared
+// while the new one is still open.
+func TestWaits_ARecordForAnOldTargetIsClearedAndANewTargetIsSent(t *testing.T) {
+	r := &waitsRig{beads: []bdBead{{ID: "ini-r.2", Status: "waiting", UpdatedAt: time.Now(),
+		Dependencies: []progress.Dependency{{DependsOn: "ini-r.8", Type: "blocks"}}, Metadata: json.RawMessage(`{"wait_over_sent":"ini-r.7"}`)},
+		{ID: "ini-r.8", Status: "in_progress"}}}
+	tui, rec := waitsTUI(t, r)
+	writes := recordWaitOverSent(t)
+	tui.pollBeadsOnce(time.Now())
+	if got := waitWrites(writes, 1); len(got) != 1 || got[0] != "ini-r.2=" {
+		t.Fatalf("writes %q, want the old record cleared: ini-r.2=", got)
+	}
+	r.beads[0].Metadata = json.RawMessage(`{}`)
+	r.beads[1].Status = "closed"
+	tui.pollBeadsOnce(time.Now().Add(beadPollInterval))
+	if got := rec.waitFor(1); len(got) != 1 || !strings.Contains(got[0], "waits on ini-r.8: ini-r.8 closed") {
+		t.Fatalf("lines %q", got)
+	}
+	if got := waitWrites(writes, 2); len(got) != 2 || got[1] != "ini-r.2=ini-r.8" {
+		t.Errorf("writes %q, want the new record", got)
+	}
+}
+
+// The record's bd words, and a test binary that forgot the seam writes no
+// real bead.
+func TestWaits_TheRecordIsOneBdUpdateAndNeverRealInATest(t *testing.T) {
+	if got := strings.Join(waitOverSentArgs("ini-x", "tag v1"), " "); got != "update ini-x --set-metadata wait_over_sent=tag v1" {
+		t.Errorf("set: %q", got)
+	}
+	if got := strings.Join(waitOverSentArgs("ini-x", ""), " "); got != "update ini-x --unset-metadata wait_over_sent" {
+		t.Errorf("clear: %q", got)
+	}
+	if err := bdSetWaitOverSent(context.Background(), t.TempDir(), "ini-x", "tag v1"); !errors.Is(err, errBdWriteInTest) {
+		t.Errorf("the real seam ran under a test: %v", err)
+	}
+}
+
+// A record names one target only: a bead whose record is for an old target and
+// whose new target is already over is announced, and the record moves on.
+func TestWaits_ARecordForAnotherTargetDoesNotHideAnOverWait(t *testing.T) {
+	r := &waitsRig{beads: []bdBead{{ID: "ini-r.3", Status: "waiting", UpdatedAt: time.Now(),
+		Dependencies: []progress.Dependency{{DependsOn: "ini-r.6", Type: "blocks"}}, Metadata: json.RawMessage(`{"wait_over_sent":"ini-r.5"}`)},
+		{ID: "ini-r.6", Status: "closed"}}}
+	tui, rec := waitsTUI(t, r)
+	writes := recordWaitOverSent(t)
+	tui.pollBeadsOnce(time.Now())
+	if got := rec.waitFor(1); len(got) != 1 || !strings.Contains(got[0], "waits on ini-r.6: ini-r.6 closed") {
+		t.Fatalf("lines %q, want the over wait announced", got)
+	}
+	if got := waitWrites(writes, 1); len(got) != 1 || got[0] != "ini-r.3=ini-r.6" {
+		t.Errorf("writes %q", got)
 	}
 }

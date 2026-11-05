@@ -209,8 +209,11 @@ type TUI struct {
 	// answers about tags and runs (the poll goroutine's alone).
 	paceWaits    map[string]progress.WaitState
 	paceOverSent map[string]bool
-	paceAnswers  map[string]paceAnswer
-	inboxOnce    sync.Once
+	// paceOverWrote is the wait_over_sent value this process last wrote per
+	// bead, until bd's list shows it (ini-agq).
+	paceOverWrote map[string]string
+	paceAnswers   map[string]paceAnswer
+	inboxOnce     sync.Once
 	// inboxOutstanding maps an agent to the inbox items whose delivery verdict
 	// may still be corrected by a late report from the send path (ini-3wkl.6).
 	inboxOutstanding   map[string][]string

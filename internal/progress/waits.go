@@ -200,3 +200,11 @@ func JudgeAll(beads []Bead, now time.Time, ext External) []Bead {
 	}
 	return beads
 }
+
+// WaitOverSentKey is the bd metadata key that records, on a waiting bead, the
+// target its over line was sent for, so a restart sends it no second time.
+const WaitOverSentKey = "wait_over_sent"
+
+// WaitOverSent is the target the bead's over line was last sent for, as its
+// metadata records it; "" when none.
+func WaitOverSent(b Bead) string { return clean(b.metaString(WaitOverSentKey)) }
