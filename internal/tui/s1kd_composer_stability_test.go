@@ -94,18 +94,20 @@ func s1kdCensus(t *testing.T, log string) map[string]int {
 // the body is sighted before the Enter, and the box clearing confirms it.
 // Before ini-s1kd every sample tore and this ended "could not confirm".
 func TestS1kd_AStreamingAgentIsConfirmed(t *testing.T) {
-	nma5Window(t, 300*time.Millisecond)
-	f := &pkinFake{body: nma5Body, after: "❯ ", takes: func(int) bool { return true }, screen: s1kdScreen}
-	p, events := pkinSendRig(t, f)
-	n := s1kdStream(t, p, nil)
-	pkinSend(p, nma5Body)
-	pkinNoEvent(t, events)
-	if n.Load() == 0 {
-		t.Fatal("fixture: no sample ran through the stream")
-	}
-	if e := f.enters.Load(); e != 1 {
-		t.Fatalf("sent %d Enters, want 1", e)
-	}
+	sendBubble(t, func(t *testing.T) {
+		nma5Window(t, 300*time.Millisecond)
+		f := &pkinFake{body: nma5Body, after: "❯ ", takes: func(int) bool { return true }, screen: s1kdScreen}
+		p, events := pkinSendRig(t, f)
+		n := s1kdStream(t, p, nil)
+		pkinSend(p, nma5Body)
+		pkinNoEvent(t, events)
+		if n.Load() == 0 {
+			t.Fatal("fixture: no sample ran through the stream")
+		}
+		if e := f.enters.Load(); e != 1 {
+			t.Fatalf("sent %d Enters, want 1", e)
+		}
+	})
 }
 
 // Criterion 2 at the sighter: our body in a box that holds still is sighted
@@ -171,29 +173,31 @@ func TestS1kd_ARepaintOfTheComposerRowsIsStillATear(t *testing.T) {
 // Every sample, before the Enter and after, lands a repaint on the box's
 // bottom border, so every one tears and none can sight our text.
 func TestS1kdCensus_EverySampleTornIsCountedTorn(t *testing.T) {
-	nma5Window(t, 300*time.Millisecond)
-	log := s1kdLog(t)
-	f := &pkinFake{body: nma5Body, after: "❯ ", takes: func(int) bool { return true }, screen: s1kdScreen}
-	p, events := pkinSendRig(t, f)
-	s1kdStream(t, p, func(k int) {
-		p.emu.Write([]byte("\x1b[39;1H\x1b[2K" + s1kdRule + " " + strconv.Itoa(k)))
-	})
-	pkinSend(p, nma5Body)
-	select {
-	case ev := <-events:
-		if !strings.HasPrefix(ev.Detail, unconfirmedSubmitPrefix) {
-			t.Fatalf("reported %q, want could not confirm", ev.Detail)
+	sendBubble(t, func(t *testing.T) {
+		nma5Window(t, 300*time.Millisecond)
+		log := s1kdLog(t)
+		f := &pkinFake{body: nma5Body, after: "❯ ", takes: func(int) bool { return true }, screen: s1kdScreen}
+		p, events := pkinSendRig(t, f)
+		s1kdStream(t, p, func(k int) {
+			p.emu.Write([]byte("\x1b[39;1H\x1b[2K" + s1kdRule + " " + strconv.Itoa(k)))
+		})
+		pkinSend(p, nma5Body)
+		select {
+		case ev := <-events:
+			if !strings.HasPrefix(ev.Detail, unconfirmedSubmitPrefix) {
+				t.Fatalf("reported %q, want could not confirm", ev.Detail)
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatal("a send whose every sample tore was not reported")
 		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("a send whose every sample tore was not reported")
-	}
-	c := s1kdCensus(t, log())
-	if c["samples_before"] == 0 || c["samples_after"] == 0 {
-		t.Fatalf("census %v: want samples both before and after the Enter", c)
-	}
-	if c["torn"] != c["samples_before"]+c["samples_after"] || c["stable"] != 0 || c["sighted"] != 0 {
-		t.Fatalf("census %v: want every sample torn, none stable, none sighted", c)
-	}
+		c := s1kdCensus(t, log())
+		if c["samples_before"] == 0 || c["samples_after"] == 0 {
+			t.Fatalf("census %v: want samples both before and after the Enter", c)
+		}
+		if c["torn"] != c["samples_before"]+c["samples_after"] || c["stable"] != 0 || c["sighted"] != 0 {
+			t.Fatalf("census %v: want every sample torn, none stable, none sighted", c)
+		}
+	})
 }
 
 // Criterion 1, feed it nothing: no composer anywhere. Every sample is whole

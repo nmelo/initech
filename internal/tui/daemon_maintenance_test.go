@@ -64,23 +64,25 @@ func TestDaemonMaintenance_HeldMailIsReportedPastItsDeadline(t *testing.T) {
 // The ticker RunDaemon starts, not only the method: held mail older than the
 // deadline is reported within a few ticks.
 func TestDaemonMaintenance_TheTickerRunDaemonStartsResolvesHeldMail(t *testing.T) {
-	d, p := dbqyHeld(t)
-	p.mu.Lock()
-	for i := range p.messageQueue {
-		p.messageQueue[i].Time = time.Now().Add(-heldMessageDeadline - time.Minute)
-	}
-	p.mu.Unlock()
-	stop := make(chan struct{})
-	done := make(chan struct{})
-	go func() { d.runMaintenance(stop, 5*time.Millisecond); close(done) }()
-	defer func() { close(stop); <-done }()
-	deadline := time.Now().Add(3 * time.Second)
-	for time.Now().Before(deadline) && p.QueuedMessageCount() > 0 {
-		time.Sleep(10 * time.Millisecond)
-	}
-	if q := p.QueuedMessageCount(); q != 0 {
-		t.Fatalf("the daemon's ticker left %d held messages past their deadline", q)
-	}
+	sendBubble(t, func(t *testing.T) {
+		d, p := dbqyHeld(t)
+		p.mu.Lock()
+		for i := range p.messageQueue {
+			p.messageQueue[i].Time = time.Now().Add(-heldMessageDeadline - time.Minute)
+		}
+		p.mu.Unlock()
+		stop := make(chan struct{})
+		done := make(chan struct{})
+		go func() { d.runMaintenance(stop, 5*time.Millisecond); close(done) }()
+		defer func() { close(stop); <-done }()
+		deadline := time.Now().Add(3 * time.Second)
+		for time.Now().Before(deadline) && p.QueuedMessageCount() > 0 {
+			time.Sleep(10 * time.Millisecond)
+		}
+		if q := p.QueuedMessageCount(); q != 0 {
+			t.Fatalf("the daemon's ticker left %d held messages past their deadline", q)
+		}
+	})
 }
 
 // Criterion 2: a withheld Enter past its deadline is reported, not kept.
@@ -108,31 +110,33 @@ func TestDaemonMaintenance_AWithheldSubmitPastItsDeadlineIsReported(t *testing.T
 // raises the latch; the real prompt on screen corroborates it and holds
 // mail; the resting composer, held for the idle window, clears it.
 func TestDaemonMaintenance_DialogAnnouncementsAreRead(t *testing.T) {
-	p := daemonPane(t)
-	p.emu = claudeScreen(t, 40, zrdtScreen(t, "haiku_write_prompt.txt"))
-	p.attn = &attentionSignal{}
-	registerAttentionOSC(p)
-	d := &Daemon{panes: []*Pane{p}}
-	p.emu.Write([]byte("\x1b]777;notify;Claude Code;Claude needs your permission\x07"))
-	now := time.Now()
-	d.maintain(now)
-	if !p.dialogLatched() {
-		t.Fatal("the daemon never read the dialog announcement: no latch")
-	}
-	if waiting, _, _ := p.WaitingInput(); !waiting {
-		t.Error("the daemon raised no needs-input state for the announced dialog")
-	}
-	p.SendText("[from super] held", true)
-	if q := p.QueuedMessageCount(); q != 1 {
-		t.Fatalf("a send under the corroborated dialog: %d held, want 1", q)
-	}
-	p.emu = claudeScreen(t, 40, zrdtScreen(t, "haiku_after_esc.txt"))
-	for s := 1; s <= int(idlePromptStableWindow/time.Second)+2; s++ {
-		d.maintain(now.Add(time.Duration(s) * time.Second))
-	}
-	if p.dialogLatched() {
-		t.Error("the latch stayed after the dialog left and the composer rested past the idle window")
-	}
+	sendBubble(t, func(t *testing.T) {
+		p := daemonPane(t)
+		p.emu = claudeScreen(t, 40, zrdtScreen(t, "haiku_write_prompt.txt"))
+		p.attn = &attentionSignal{}
+		registerAttentionOSC(p)
+		d := &Daemon{panes: []*Pane{p}}
+		p.emu.Write([]byte("\x1b]777;notify;Claude Code;Claude needs your permission\x07"))
+		now := time.Now()
+		d.maintain(now)
+		if !p.dialogLatched() {
+			t.Fatal("the daemon never read the dialog announcement: no latch")
+		}
+		if waiting, _, _ := p.WaitingInput(); !waiting {
+			t.Error("the daemon raised no needs-input state for the announced dialog")
+		}
+		p.SendText("[from super] held", true)
+		if q := p.QueuedMessageCount(); q != 1 {
+			t.Fatalf("a send under the corroborated dialog: %d held, want 1", q)
+		}
+		p.emu = claudeScreen(t, 40, zrdtScreen(t, "haiku_after_esc.txt"))
+		for s := 1; s <= int(idlePromptStableWindow/time.Second)+2; s++ {
+			d.maintain(now.Add(time.Duration(s) * time.Second))
+		}
+		if p.dialogLatched() {
+			t.Error("the latch stayed after the dialog left and the composer rested past the idle window")
+		}
+	})
 }
 
 // Criterion 4: Activity moves with output on the daemon, so the busy grace

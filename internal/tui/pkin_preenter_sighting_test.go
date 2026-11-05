@@ -44,6 +44,10 @@ type pkinFake struct {
 	clear   sync.Once
 	enters  atomic.Int32
 	frame   atomic.Int32
+	// inFlight counts the delayed paints still to land; the rig's cleanup
+	// waits for them, so none outlives its test (a synctest bubble fails a
+	// test that leaves one asleep, ini-8yrl).
+	inFlight sync.WaitGroup
 }
 
 func (f *pkinFake) paint(composer string) {
@@ -75,7 +79,9 @@ func (f *pkinFake) saw(b string) {
 			}
 			// Claude takes an Enter within one sample (869 of 1,088 measured
 			// confirmations landed at 50-99 ms).
+			f.inFlight.Add(1)
 			go func() {
+				defer f.inFlight.Done()
 				time.Sleep(20 * time.Millisecond)
 				f.paint(f.after)
 			}()
@@ -92,7 +98,9 @@ func (f *pkinFake) maybeClear() {
 		return
 	}
 	f.clear.Do(func() {
+		f.inFlight.Add(1)
 		go func() {
+			defer f.inFlight.Done()
 			time.Sleep(20 * time.Millisecond)
 			f.paint(f.after)
 			f.cleared.Store(true)
@@ -128,7 +136,16 @@ func pkinSendRig(t *testing.T, f *pkinFake) (*Pane, <-chan AgentEvent) {
 // whose borders span a pane of its own width (ini-cnp).
 func pkinSendRigSized(t *testing.T, f *pkinFake, cols, rows int) (*Pane, <-chan AgentEvent) {
 	t.Helper()
-	p, r := paneWithPipe(t)
+	// Over io.Pipe, not os.Pipe, so a test may build this rig inside a
+	// synctest bubble (mem_pty_test.go); outside one it behaves the same.
+	return pkinSendRigOn(t, f, cols, rows, func(t *testing.T) (*Pane, io.ReadCloser) { return paneWithMemPipe(t) })
+}
+
+// pkinSendRigOn is pkinSendRigSized over the pipe pipeFor gives: the fidelity
+// check runs the same send over os.Pipe and over memPty (ini-8yrl).
+func pkinSendRigOn(t *testing.T, f *pkinFake, cols, rows int, pipeFor func(*testing.T) (*Pane, io.ReadCloser)) (*Pane, <-chan AgentEvent) {
+	t.Helper()
+	p, r := pipeFor(t)
 	p.name = "eng2"
 	p.alive = true
 	p.emu = vt.NewSafeEmulator(cols, rows)
@@ -186,6 +203,7 @@ func pkinSendRigSized(t *testing.T, f *pkinFake, cols, rows int) (*Pane, <-chan 
 		}
 	}()
 	t.Cleanup(func() {
+		f.inFlight.Wait()
 		if w, ok := p.emu.InputPipe().(*io.PipeWriter); ok {
 			w.CloseWithError(io.EOF)
 		}
@@ -236,19 +254,21 @@ func pkinNoEvent(t *testing.T, events <-chan AgentEvent) {
 // body, then ONE Enter, and the Enter goes out after the 500 ms wait, the
 // same as before the sighting existed. Holds at 4af6701 and after.
 func TestPkin_DeliveryBytesAndEnterMomentAreUnchanged(t *testing.T) {
-	nma5Window(t, 300*time.Millisecond)
-	f := &pkinFake{body: nma5Body, after: "❯ ", takes: func(int) bool { return true }, busy: true}
-	p, _ := pkinSendRig(t, f)
-	pkinSend(p, nma5Body)
+	sendBubble(t, func(t *testing.T) {
+		nma5Window(t, 300*time.Millisecond)
+		f := &pkinFake{body: nma5Body, after: "❯ ", takes: func(int) bool { return true }, busy: true}
+		p, _ := pkinSendRig(t, f)
+		pkinSend(p, nma5Body)
 
-	all, bodyAt, enterAt := f.stream()
-	if want := "\x13\x1b[200~" + nma5Body + "\x1b[201~\r"; all != want {
-		t.Fatalf("PTY bytes %q, want %q", all, want)
-	}
-	gap := enterAt.Sub(bodyAt)
-	if gap < bracketedPasteSubmitDelay.Get() || gap > bracketedPasteSubmitDelay.Get()+250*time.Millisecond {
-		t.Fatalf("Enter went out %s after the body, want the %s wait (plus the belt's first poll)", gap, bracketedPasteSubmitDelay.Get())
-	}
+		all, bodyAt, enterAt := f.stream()
+		if want := "\x13\x1b[200~" + nma5Body + "\x1b[201~\r"; all != want {
+			t.Fatalf("PTY bytes %q, want %q", all, want)
+		}
+		gap := enterAt.Sub(bodyAt)
+		if gap < bracketedPasteSubmitDelay.Get() || gap > bracketedPasteSubmitDelay.Get()+250*time.Millisecond {
+			t.Fatalf("Enter went out %s after the body, want the %s wait (plus the belt's first poll)", gap, bracketedPasteSubmitDelay.Get())
+		}
+	})
 }
 
 // Criterion 2, from the real entry point: a busy agent tears every sample
@@ -256,65 +276,73 @@ func TestPkin_DeliveryBytesAndEnterMomentAreUnchanged(t *testing.T) {
 // was in plain view for the whole wait before the Enter; that sighting
 // completes the transition. Before ini-pkin this ended "could not confirm".
 func TestPkin_ABusyAgentThatTakesTheEnterIsConfirmed(t *testing.T) {
-	nma5Window(t, pkinBusyBound)
-	f := &pkinFake{body: nma5Body, after: "❯ ", takes: func(int) bool { return true }, busy: true}
-	p, _ := pkinSendRig(t, f)
-	pkinDeliveredByEffect(t, f, pkinSend(p, nma5Body))
-	if n := f.enters.Load(); n != 1 {
-		t.Fatalf("sent %d Enters, want 1", n)
-	}
-	if f.frame.Load() == 0 {
-		t.Fatal("no post-Enter sample was torn: the fixture did not produce the busy agent")
-	}
+	sendBubble(t, func(t *testing.T) {
+		nma5Window(t, pkinBusyBound)
+		f := &pkinFake{body: nma5Body, after: "❯ ", takes: func(int) bool { return true }, busy: true}
+		p, _ := pkinSendRig(t, f)
+		pkinDeliveredByEffect(t, f, pkinSend(p, nma5Body))
+		if n := f.enters.Load(); n != 1 {
+			t.Fatalf("sent %d Enters, want 1", n)
+		}
+		if f.frame.Load() == 0 {
+			t.Fatal("no post-Enter sample was torn: the fixture did not produce the busy agent")
+		}
+	})
 }
 
 // Criterion 2: Claude's queued-message line in the box is delivery.
 func TestPkin_ABusyAgentThatQueuesTheMessageIsConfirmed(t *testing.T) {
-	nma5Window(t, pkinBusyBound)
-	f := &pkinFake{body: nma5Body, after: "❯ Press up to edit queued messages", takes: func(int) bool { return true }, busy: true}
-	p, _ := pkinSendRig(t, f)
-	pkinDeliveredByEffect(t, f, pkinSend(p, nma5Body))
+	sendBubble(t, func(t *testing.T) {
+		nma5Window(t, pkinBusyBound)
+		f := &pkinFake{body: nma5Body, after: "❯ Press up to edit queued messages", takes: func(int) bool { return true }, busy: true}
+		p, _ := pkinSendRig(t, f)
+		pkinDeliveredByEffect(t, f, pkinSend(p, nma5Body))
+	})
 }
 
 // Criterion 3: a box that keeps our text after the Enter still gets one
 // resend and then the NOT delivered report, from the real entry point.
 func TestPkin_TextLeftInTheBoxIsStillResentOnceThenNotDelivered(t *testing.T) {
-	nma5Window(t, 300*time.Millisecond)
-	f := &pkinFake{body: nma5Body, after: "❯ ", takes: func(int) bool { return false }}
-	p, events := pkinSendRig(t, f)
-	pkinSend(p, nma5Body)
-	select {
-	case ev := <-events:
-		if !strings.HasPrefix(ev.Detail, undeliveredSubmitPrefix) || !strings.Contains(ev.Detail, "Enter not taken twice") {
-			t.Fatalf("reported %q, want NOT delivered", ev.Detail)
+	sendBubble(t, func(t *testing.T) {
+		nma5Window(t, 300*time.Millisecond)
+		f := &pkinFake{body: nma5Body, after: "❯ ", takes: func(int) bool { return false }}
+		p, events := pkinSendRig(t, f)
+		pkinSend(p, nma5Body)
+		select {
+		case ev := <-events:
+			if !strings.HasPrefix(ev.Detail, undeliveredSubmitPrefix) || !strings.Contains(ev.Detail, "Enter not taken twice") {
+				t.Fatalf("reported %q, want NOT delivered", ev.Detail)
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatal("a message left in the box was never reported")
 		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("a message left in the box was never reported")
-	}
-	if n := f.enters.Load(); n != 2 {
-		t.Fatalf("sent %d Enters, want 2 (the Enter and one resend)", n)
-	}
+		if n := f.enters.Load(); n != 2 {
+			t.Fatalf("sent %d Enters, want 2 (the Enter and one resend)", n)
+		}
+	})
 }
 
 // Criterion 4, from the real entry point: the box changed when the paste
 // ended (so the belt let the Enter go) but never showed our text. That is
 // not a sighting, so the cleared box after the Enter stays unconfirmed.
 func TestPkin_ABoxThatOnlyChangedIsNeverConfirmed(t *testing.T) {
-	nma5Window(t, 300*time.Millisecond)
-	f := &pkinFake{body: nma5Body, shows: "❯ lunch?", after: "❯ ", takes: func(int) bool { return true }}
-	p, events := pkinSendRig(t, f)
-	pkinSend(p, nma5Body)
-	select {
-	case ev := <-events:
-		if !strings.HasPrefix(ev.Detail, unconfirmedSubmitPrefix) || !strings.Contains(ev.Detail, "never seen") {
-			t.Fatalf("reported %q, want could not confirm, never seen", ev.Detail)
+	sendBubble(t, func(t *testing.T) {
+		nma5Window(t, 300*time.Millisecond)
+		f := &pkinFake{body: nma5Body, shows: "❯ lunch?", after: "❯ ", takes: func(int) bool { return true }}
+		p, events := pkinSendRig(t, f)
+		pkinSend(p, nma5Body)
+		select {
+		case ev := <-events:
+			if !strings.HasPrefix(ev.Detail, unconfirmedSubmitPrefix) || !strings.Contains(ev.Detail, "never seen") {
+				t.Fatalf("reported %q, want could not confirm, never seen", ev.Detail)
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatal("a box that never showed our text was passed over in silence")
 		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("a box that never showed our text was passed over in silence")
-	}
-	if n := f.enters.Load(); n != 1 {
-		t.Fatalf("sent %d Enters, want 1 (unknown presses nothing)", n)
-	}
+		if n := f.enters.Load(); n != 1 {
+			t.Fatalf("sent %d Enters, want 1 (unknown presses nothing)", n)
+		}
+	})
 }
 
 // ── the sighting and the carried watch, cell by cell ─────────────────

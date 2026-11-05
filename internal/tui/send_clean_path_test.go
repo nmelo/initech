@@ -41,60 +41,74 @@ func assertCleanPaste(t *testing.T, how string, f *pkinFake) {
 }
 
 func TestCleanPath_AnInitechSendTypesTheCleanBody(t *testing.T) {
-	tui, _, f := rig47vy(t)
-	resp := v69Send(t, tui, "eng2", hostile47vy, true)
-	if !resp.OK || resp.Delivery != DeliveryDelivered {
-		t.Fatalf("reply %+v, want delivered", resp)
-	}
-	assertCleanPaste(t, "initech send", f)
+	sendBubble(t, func(t *testing.T) {
+		tui, _, f := rig47vy(t)
+		resp := v69Send(t, tui, "eng2", hostile47vy, true)
+		if !resp.OK || resp.Delivery != DeliveryDelivered {
+			t.Fatalf("reply %+v, want delivered", resp)
+		}
+		assertCleanPaste(t, "initech send", f)
+	})
 }
 
 func TestCleanPath_AScheduleMessageTypesTheCleanBody(t *testing.T) {
-	tui, _, f := rig47vy(t)
-	if ok, why := tui.deliver("eng2", hostile47vy, "cron"); !ok {
-		t.Fatalf("schedule delivery refused: %s", why)
-	}
-	assertCleanPaste(t, "schedule", f)
+	sendBubble(t, func(t *testing.T) {
+		tui, _, f := rig47vy(t)
+		if ok, why := tui.deliver("eng2", hostile47vy, "cron"); !ok {
+			t.Fatalf("schedule delivery refused: %s", why)
+		}
+		assertCleanPaste(t, "schedule", f)
+	})
 }
 
 func TestCleanPath_AWindowTwoForwardTypesTheCleanBody(t *testing.T) {
-	_, p, f := rig47vy(t)
-	if resp := servedSend(p, hostile47vy, true, sendOrigin{From: "eng1"}); !resp.OK {
-		t.Fatalf("forward answered %+v", resp)
-	}
-	assertCleanPaste(t, "forward_send", f)
+	sendBubble(t, func(t *testing.T) {
+		_, p, f := rig47vy(t)
+		if resp := servedSend(p, hostile47vy, true, sendOrigin{From: "eng1"}); !resp.OK {
+			t.Fatalf("forward answered %+v", resp)
+		}
+		assertCleanPaste(t, "forward_send", f)
+	})
 }
 
 // The wake drain types a queue the IPC handler filled without sendText.
 func TestCleanPath_TheWakeDrainTypesTheCleanBody(t *testing.T) {
-	tui, p, f := rig47vy(t)
-	tui.injectText(p, hostile47vy, true)
-	assertCleanPaste(t, "wake drain", f)
+	sendBubble(t, func(t *testing.T) {
+		tui, p, f := rig47vy(t)
+		tui.injectText(p, hostile47vy, true)
+		assertCleanPaste(t, "wake drain", f)
+	})
 }
 
 func TestCleanPath_AnOperatorPasteTypesTheCleanBody(t *testing.T) {
-	_, p, f := rig47vy(t)
-	p.SendOperatorText(hostile47vy, true)
-	assertCleanPaste(t, "operator paste", f)
+	sendBubble(t, func(t *testing.T) {
+		_, p, f := rig47vy(t)
+		p.SendOperatorText(hostile47vy, true)
+		assertCleanPaste(t, "operator paste", f)
+	})
 }
 
 // AC4: the verdict names the count; a clean message's verdict is unchanged.
 func TestCleanPath_TheVerdictNamesTheCount(t *testing.T) {
-	tui, _, _ := rig47vy(t)
-	resp := v69Send(t, tui, "eng2", hostile47vy, true)
-	if resp.Removed != 2 {
-		t.Fatalf("reply %+v, want removed 2", resp)
-	}
+	sendBubble(t, func(t *testing.T) {
+		tui, _, _ := rig47vy(t)
+		resp := v69Send(t, tui, "eng2", hostile47vy, true)
+		if resp.Removed != 2 {
+			t.Fatalf("reply %+v, want removed 2", resp)
+		}
+	})
 }
 
 func TestCleanPath_ACleanMessagesVerdictIsUnchanged(t *testing.T) {
-	nma5Window(t, 300*time.Millisecond)
-	f := &pkinFake{body: nma5Body, after: "❯ ", takes: func(int) bool { return true }}
-	tui, _ := v69Rig(t, f)
-	resp := v69Send(t, tui, "eng2", nma5Body, true)
-	if !resp.OK || resp.Delivery != DeliveryDelivered || resp.Data != "" || resp.Error != "" || resp.Removed != 0 || len(resp.Notices) != 0 {
-		t.Fatalf("reply %+v, want exactly OK and delivered", resp)
-	}
+	sendBubble(t, func(t *testing.T) {
+		nma5Window(t, 300*time.Millisecond)
+		f := &pkinFake{body: nma5Body, after: "❯ ", takes: func(int) bool { return true }}
+		tui, _ := v69Rig(t, f)
+		resp := v69Send(t, tui, "eng2", nma5Body, true)
+		if !resp.OK || resp.Delivery != DeliveryDelivered || resp.Data != "" || resp.Error != "" || resp.Removed != 0 || len(resp.Notices) != 0 {
+			t.Fatalf("reply %+v, want exactly OK and delivered", resp)
+		}
+	})
 }
 
 // Feed it nothing: a body of only control characters is refused with words,

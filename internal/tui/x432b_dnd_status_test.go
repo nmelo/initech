@@ -80,41 +80,43 @@ func dndListEntry(t *testing.T, tu *TUI, name string) map[string]any {
 // dnd false and no age when off or never on; a pane another process runs
 // carries no dnd at all, so nothing is guessed for it.
 func TestDNDStatus_TheListSaysWhoIsInIt(t *testing.T) {
-	p, _, _ := dndPane(t, "a")
-	q, _, _ := dndPane(t, "b")
-	tu := newTestTUI(p, q)
-	tu.panes = append(tu.panes, &RemotePane{name: "far", host: "box", alive: true})
-	dndSet(t, tu, "a", "on")
-	p.mu.Lock()
-	p.dndSince = time.Now().Add(-90 * time.Second)
-	p.mu.Unlock()
-	p.SendTextVerdict("one", true)
-	p.SendTextVerdict("two", true)
+	sendBubble(t, func(t *testing.T) {
+		p, _, _ := dndPane(t, "a")
+		q, _, _ := dndPane(t, "b")
+		tu := newTestTUI(p, q)
+		tu.panes = append(tu.panes, &RemotePane{name: "far", host: "box", alive: true})
+		dndSet(t, tu, "a", "on")
+		p.mu.Lock()
+		p.dndSince = time.Now().Add(-90 * time.Second)
+		p.mu.Unlock()
+		p.SendTextVerdict("one", true)
+		p.SendTextVerdict("two", true)
 
-	a := dndListEntry(t, tu, "a")
-	if a["dnd"] != true || a["queued_count"] != float64(2) {
-		t.Errorf("a while on: %v", a)
-	}
-	if age, ok := a["dnd_age_sec"].(float64); !ok || age < 90 || age > 95 {
-		t.Errorf("a dnd_age_sec %v, want about 90", a["dnd_age_sec"])
-	}
-	b := dndListEntry(t, tu, "b")
-	if v, ok := b["dnd"]; !ok || v != false {
-		t.Errorf("b never on: dnd %v (present %v), want false", v, ok)
-	}
-	if _, ok := b["dnd_age_sec"]; ok {
-		t.Errorf("b carries an age: %v", b)
-	}
-	if _, ok := dndListEntry(t, tu, "far")["dnd"]; ok {
-		t.Error("a remote pane carries dnd; this process cannot know it")
-	}
+		a := dndListEntry(t, tu, "a")
+		if a["dnd"] != true || a["queued_count"] != float64(2) {
+			t.Errorf("a while on: %v", a)
+		}
+		if age, ok := a["dnd_age_sec"].(float64); !ok || age < 90 || age > 95 {
+			t.Errorf("a dnd_age_sec %v, want about 90", a["dnd_age_sec"])
+		}
+		b := dndListEntry(t, tu, "b")
+		if v, ok := b["dnd"]; !ok || v != false {
+			t.Errorf("b never on: dnd %v (present %v), want false", v, ok)
+		}
+		if _, ok := b["dnd_age_sec"]; ok {
+			t.Errorf("b carries an age: %v", b)
+		}
+		if _, ok := dndListEntry(t, tu, "far")["dnd"]; ok {
+			t.Error("a remote pane carries dnd; this process cannot know it")
+		}
 
-	dndSet(t, tu, "a", "off")
-	dndWait(10*time.Second, func() bool { return p.QueueLen() == 0 })
-	a = dndListEntry(t, tu, "a")
-	if a["dnd"] != false || a["dnd_age_sec"] != nil || a["queued_count"] != nil {
-		t.Errorf("a after off: %v", a)
-	}
+		dndSet(t, tu, "a", "off")
+		dndWait(10*time.Second, func() bool { return p.QueueLen() == 0 })
+		a = dndListEntry(t, tu, "a")
+		if a["dnd"] != false || a["dnd_age_sec"] != nil || a["queued_count"] != nil {
+			t.Errorf("a after off: %v", a)
+		}
+	})
 }
 
 // The serve daemon's list says the same for its panes.

@@ -16,6 +16,7 @@ package tui
 // these are repairs to the PROOF.
 
 import (
+	"io"
 	"strings"
 	"testing"
 	"time"
@@ -49,7 +50,15 @@ func proofPaneSized(t *testing.T, cols, rows int) (*Pane, <-chan []byte, <-chan 
 
 	submits := make(chan []byte, 8)
 	drainDone := make(chan struct{})
-	t.Cleanup(func() { close(drainDone) })
+	t.Cleanup(func() {
+		close(drainDone)
+		// The drain may be parked in emu.Read: end that read too, so the
+		// drain never outlives the test (a synctest bubble fails a test that
+		// leaves one behind, ini-8yrl).
+		if w, ok := p.emu.InputPipe().(*io.PipeWriter); ok {
+			w.CloseWithError(io.EOF)
+		}
+	})
 	go func() {
 		buf := make([]byte, 4096)
 		for {

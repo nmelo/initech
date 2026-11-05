@@ -70,21 +70,23 @@ func TestInjectCapture_AnUnknownKeepsTheScreenItRead(t *testing.T) {
 
 // A taken submit writes no capture and its line names the size too.
 func TestInjectCapture_ATakenSubmitWritesNone(t *testing.T) {
-	buf := captureLogs(t)
-	capDir := xl9LogDir(t)
-	nma5Window(t, time.Second)
-	f := &pkinFake{body: nma5Body, after: "❯ ", takes: func(int) bool { return true }}
-	p, _ := pkinSendRig(t, f)
-	if v := pkinSend(p, nma5Body); v.Outcome != DeliveryDelivered {
-		t.Fatalf("fixture: the send reads %+v, want delivered", v)
-	}
-	line := recordContaining(t, buf.String(), "submitted: composer cleared")
-	if !strings.Contains(line, "cols=") || !strings.Contains(line, "rows=") {
-		t.Errorf("the taken line %q lacks the size", line)
-	}
-	if _, err := os.Stat(capDir); !os.IsNotExist(err) {
-		t.Errorf("a taken submit left a capture folder (%v)", err)
-	}
+	sendBubble(t, func(t *testing.T) {
+		buf := captureLogs(t)
+		capDir := xl9LogDir(t)
+		nma5Window(t, time.Second)
+		f := &pkinFake{body: nma5Body, after: "❯ ", takes: func(int) bool { return true }}
+		p, _ := pkinSendRig(t, f)
+		if v := pkinSend(p, nma5Body); v.Outcome != DeliveryDelivered {
+			t.Fatalf("fixture: the send reads %+v, want delivered", v)
+		}
+		line := recordContaining(t, buf.String(), "submitted: composer cleared")
+		if !strings.Contains(line, "cols=") || !strings.Contains(line, "rows=") {
+			t.Errorf("the taken line %q lacks the size", line)
+		}
+		if _, err := os.Stat(capDir); !os.IsNotExist(err) {
+			t.Errorf("a taken submit left a capture folder (%v)", err)
+		}
+	})
 }
 
 // Only the newest twenty are kept; other files there stay; no log file means

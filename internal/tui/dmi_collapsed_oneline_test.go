@@ -125,46 +125,50 @@ func TestCollapsedOneLine_ASendIntoTheBusyPaneIsDelivered(t *testing.T) {
 // newline as an Enter, so this one is read from the screen); and the fleet's
 // busy screens, whose boxes are empty, are not our text.
 func TestCollapsedOneLine_ShorterSendsStillDelivered(t *testing.T) {
-	mid := "[from b] DMIL4 one line of about six hundred: " +
-		strings.TrimSuffix(strings.Repeat("all five rigs are back on the release and the timings are in; ", 9), " ") + " marker DMIL4 end."
-	dmiBound(t)
-	// The box of a 49-column pane caps at a few rows and keeps the end in
-	// view (ini-lvxw).
-	f := dmiBusyFake(t, "haiku312_busy_collapsed_w49.txt", mid, "❯ "+mid[len(mid)-40:], func(int) bool { return true })
-	p, _ := pkinSendRig(t, f)
-	if v := pkinSend(p, mid); v.Outcome != DeliveryDelivered {
-		t.Fatalf("a 621-character send answered %q (%s)", v.Outcome, v.Reason)
-	}
-	two := "[from b] DMI02 two lines: first line says the rig moved to the new build and every agent restarted cleanly.\nSecond line: no action, keep looping; marker DMI02 end."
-	q, _, _ := proofPane(t)
-	lvxwPaint(q, dmiWithBox(t, "haiku312_busy_collapsed_w49.txt", "❯ Second line: no action, keep looping;"))
-	tail, found := composerTail(q)
-	if !submitSighted(q, tail, found, newPendingSubmit(two, "bracketed", "")) {
-		t.Error("the end of a two-line body in the busy box was not seen")
-	}
-	for _, name := range []string{"fleet312_super_busy_w49.txt", "fleet312_pm_busy_w49.txt"} {
-		p, _, _ := proofPane(t)
-		lvxwPaint(p, dmiScreen(t, name))
-		tail, found := composerTail(p)
-		if submitSighted(p, tail, found, newPendingSubmit(dmiBody, "bracketed", "")) {
-			t.Errorf("%s: the empty busy box read as our text", name)
+	sendBubble(t, func(t *testing.T) {
+		mid := "[from b] DMIL4 one line of about six hundred: " +
+			strings.TrimSuffix(strings.Repeat("all five rigs are back on the release and the timings are in; ", 9), " ") + " marker DMIL4 end."
+		dmiBound(t)
+		// The box of a 49-column pane caps at a few rows and keeps the end in
+		// view (ini-lvxw).
+		f := dmiBusyFake(t, "haiku312_busy_collapsed_w49.txt", mid, "❯ "+mid[len(mid)-40:], func(int) bool { return true })
+		p, _ := pkinSendRig(t, f)
+		if v := pkinSend(p, mid); v.Outcome != DeliveryDelivered {
+			t.Fatalf("a 621-character send answered %q (%s)", v.Outcome, v.Reason)
 		}
-	}
+		two := "[from b] DMI02 two lines: first line says the rig moved to the new build and every agent restarted cleanly.\nSecond line: no action, keep looping; marker DMI02 end."
+		q, _, _ := proofPane(t)
+		lvxwPaint(q, dmiWithBox(t, "haiku312_busy_collapsed_w49.txt", "❯ Second line: no action, keep looping;"))
+		tail, found := composerTail(q)
+		if !submitSighted(q, tail, found, newPendingSubmit(two, "bracketed", "")) {
+			t.Error("the end of a two-line body in the busy box was not seen")
+		}
+		for _, name := range []string{"fleet312_super_busy_w49.txt", "fleet312_pm_busy_w49.txt"} {
+			p, _, _ := proofPane(t)
+			lvxwPaint(p, dmiScreen(t, name))
+			tail, found := composerTail(p)
+			if submitSighted(p, tail, found, newPendingSubmit(dmiBody, "bracketed", "")) {
+				t.Errorf("%s: the empty busy box read as our text", name)
+			}
+		}
+	})
 }
 
 // AC3: Claude never takes the Enter, the placeholder stays in the box
 // through the resend: not delivered, two Enters, never "could not confirm".
 func TestCollapsedOneLine_LeftInTheBoxIsNotDelivered(t *testing.T) {
-	nma5Window(t, 300*time.Millisecond)
-	f := dmiBusyFake(t, "haiku312_busy_collapsed_w49.txt", dmiBody, "❯ [Pasted text #1]", func(int) bool { return false })
-	p, _ := pkinSendRig(t, f)
-	v := pkinSend(p, dmiBody)
-	if v.Outcome != DeliveryNotDelivered {
-		t.Fatalf("our placeholder left in the box answered %q (%s), want not delivered", v.Outcome, v.Reason)
-	}
-	if n := f.enters.Load(); n != 2 {
-		t.Errorf("%d Enters, want the send and one resend", n)
-	}
+	sendBubble(t, func(t *testing.T) {
+		nma5Window(t, 300*time.Millisecond)
+		f := dmiBusyFake(t, "haiku312_busy_collapsed_w49.txt", dmiBody, "❯ [Pasted text #1]", func(int) bool { return false })
+		p, _ := pkinSendRig(t, f)
+		v := pkinSend(p, dmiBody)
+		if v.Outcome != DeliveryNotDelivered {
+			t.Fatalf("our placeholder left in the box answered %q (%s), want not delivered", v.Outcome, v.Reason)
+		}
+		if n := f.enters.Load(); n != 2 {
+			t.Errorf("%d Enters, want the send and one resend", n)
+		}
+	})
 }
 
 var dmiNeverSeen = regexp.MustCompile(`^our text was never seen in the box: (\d+) samples; the box before the Enter showed (.+), after it (.+)$`)

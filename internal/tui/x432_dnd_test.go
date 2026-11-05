@@ -23,11 +23,7 @@ import (
 func dndPane(t *testing.T, name string) (*Pane, chan AgentEvent, func() string) {
 	t.Helper()
 	shortSubmitDelays(t)
-	r, w, err := os.Pipe()
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { r.Close(); w.Close() })
+	r, w := memPipe(t) // io.Pipe, so the rig may run in a synctest bubble (ini-8yrl)
 	var mu sync.Mutex
 	var typed strings.Builder
 	go func() {
@@ -44,7 +40,7 @@ func dndPane(t *testing.T, name string) (*Pane, chan AgentEvent, func() string) 
 	}()
 	events := make(chan AgentEvent, 256)
 	p := testPane(name)
-	p.ptmx = &filePty{w}
+	p.ptmx = w
 	p.eventCh = events
 	p.startupSettled = true
 	emu := p.emu
@@ -117,65 +113,69 @@ func dndWait(d time.Duration, cond func() bool) bool {
 // with the held verdict; the box receives nothing; the queue holds the
 // message with the do-not-disturb mark. At base the text was typed in.
 func TestDND_ASendIsHeldAndNothingIsTyped(t *testing.T) {
-	p, _, typed := dndPane(t, "a")
-	tu := newTestTUI(p)
-	if r := dndSet(t, tu, "a", "on"); !r.OK {
-		t.Fatalf("dnd on: %+v", r)
-	}
-	resp := dndCall(t, func(c net.Conn) {
-		tu.handleIPCSend(c, IPCRequest{Action: "send", Target: "a", Text: "[from b] one", Enter: true})
-	})
-	if !resp.OK || resp.Delivery != DeliveryHeld || !dndLineIs(resp.Data, "a", "0 messages ahead") {
-		t.Errorf("reply %+v, want OK, delivery held, the held line with 0 messages ahead", resp)
-	}
-	time.Sleep(200 * time.Millisecond)
-	if got := typed(); strings.Contains(got, "one") {
-		t.Errorf("the box received %q while in do-not-disturb", got)
-	}
-	q := dndQueue(p)
-	if len(q) != 1 || q[0].Text != "[from b] one" || !q[0].Enter || !q[0].DND || q[0].HeldForDialog {
-		t.Errorf("queue %+v, want the one message marked do-not-disturb", q)
-	}
-	for _, ev := range tu.eventLog {
-		if ev.Type == EventMessageSent {
-			t.Errorf("event log says it was sent: %q", ev.Detail)
+	sendBubble(t, func(t *testing.T) {
+		p, _, typed := dndPane(t, "a")
+		tu := newTestTUI(p)
+		if r := dndSet(t, tu, "a", "on"); !r.OK {
+			t.Fatalf("dnd on: %+v", r)
 		}
-	}
+		resp := dndCall(t, func(c net.Conn) {
+			tu.handleIPCSend(c, IPCRequest{Action: "send", Target: "a", Text: "[from b] one", Enter: true})
+		})
+		if !resp.OK || resp.Delivery != DeliveryHeld || !dndLineIs(resp.Data, "a", "0 messages ahead") {
+			t.Errorf("reply %+v, want OK, delivery held, the held line with 0 messages ahead", resp)
+		}
+		time.Sleep(200 * time.Millisecond)
+		if got := typed(); strings.Contains(got, "one") {
+			t.Errorf("the box received %q while in do-not-disturb", got)
+		}
+		q := dndQueue(p)
+		if len(q) != 1 || q[0].Text != "[from b] one" || !q[0].Enter || !q[0].DND || q[0].HeldForDialog {
+			t.Errorf("queue %+v, want the one message marked do-not-disturb", q)
+		}
+		for _, ev := range tu.eventLog {
+			if ev.Type == EventMessageSent {
+				t.Errorf("event log says it was sent: %q", ev.Detail)
+			}
+		}
+	})
 }
 
 // AC2: dnd off delivers the held messages in arrival order through the
 // normal path, mail a dialog held before do-not-disturb first; the queue is
 // empty after.
 func TestDND_OffDeliversEverythingInArrivalOrder(t *testing.T) {
-	p, _, typed := dndPane(t, "a")
-	tu := newTestTUI(p)
-	p.enqueueHeld("[from c] zero", true) // a dialog held it before dnd on
-	dndSet(t, tu, "a", "on")
-	for _, s := range []string{"one", "two", "three"} {
-		if v := p.SendTextVerdict("[from b] "+s, true); v.Outcome != DeliveryHeld {
-			t.Fatalf("send %s: %+v, want held", s, v)
+	sendBubble(t, func(t *testing.T) {
+		p, _, typed := dndPane(t, "a")
+		tu := newTestTUI(p)
+		p.enqueueHeld("[from c] zero", true) // a dialog held it before dnd on
+		dndSet(t, tu, "a", "on")
+		for _, s := range []string{"one", "two", "three"} {
+			if v := p.SendTextVerdict("[from b] "+s, true); v.Outcome != DeliveryHeld {
+				t.Fatalf("send %s: %+v, want held", s, v)
+			}
 		}
-	}
-	if got := typed(); got != "" {
-		t.Fatalf("typed %q before dnd off", got)
-	}
-	resp := dndSet(t, tu, "a", "off")
-	if !resp.OK || !strings.Contains(resp.Data, "3 held messages delivering in order") {
-		t.Errorf("dnd off reply %+v, want the three it held named", resp)
-	}
-	if !dndWait(15*time.Second, func() bool { return p.QueueLen() == 0 && strings.Contains(typed(), "three") }) {
-		t.Fatalf("drain did not finish: queue %d, typed %q", p.QueueLen(), typed())
-	}
-	got := typed()
-	order := []int{strings.Index(got, "zero"), strings.Index(got, "one"), strings.Index(got, "two"), strings.Index(got, "three")}
-	for i := 1; i < len(order); i++ {
-		if order[i-1] < 0 || order[i] < order[i-1] {
-			t.Fatalf("delivered out of order (positions %v): %q", order, got)
+		if got := typed(); got != "" {
+			t.Fatalf("typed %q before dnd off", got)
 		}
-	}
-	if p.InDND() {
-		t.Error("still in do-not-disturb after off")
-	}
+		resp := dndSet(t, tu, "a", "off")
+		if !resp.OK || !strings.Contains(resp.Data, "3 held messages delivering in order") {
+			t.Errorf("dnd off reply %+v, want the three it held named", resp)
+		}
+		if !dndWait(15*time.Second, func() bool { return p.QueueLen() == 0 && strings.Contains(typed(), "three") }) {
+			t.Fatalf("drain did not finish: queue %d, typed %q", p.QueueLen(), typed())
+		}
+		got := typed()
+		order := []int{strings.Index(got, "zero"), strings.Index(got, "one"), strings.Index(got, "two"), strings.Index(got, "three")}
+		for i := 1; i < len(order); i++ {
+			if order[i-1] < 0 || order[i] < order[i-1] {
+				t.Fatalf("delivered out of order (positions %v): %q", order, got)
+			}
+		}
+		if p.InDND() {
+			t.Error("still in do-not-disturb after off")
+		}
+	})
 }
 
 // AC3: at the cap the new message is refused, not delivered, and the queue is
@@ -208,20 +208,22 @@ func TestDND_AFullQueueRefusesTheNewMessageAndKeepsTheOldest(t *testing.T) {
 // While do-not-disturb is on, no drain types the queue: not the read loop's,
 // not the maintenance tick's, not one already started.
 func TestDND_NoDrainRunsWhileItIsOn(t *testing.T) {
-	p, _, typed := dndPane(t, "a")
-	tu := newTestTUI(p)
-	p.enqueueHeld("[from c] dialog mail", true)
-	dndSet(t, tu, "a", "on")
-	p.maybeDrainModalQueue()
-	tu.modalMaintenance(time.Now())
-	p.drainModalQueue()
-	time.Sleep(300 * time.Millisecond)
-	if got := typed(); got != "" {
-		t.Errorf("a drain typed %q while in do-not-disturb", got)
-	}
-	if p.QueueLen() != 1 {
-		t.Errorf("queue %d, want the dialog mail still waiting", p.QueueLen())
-	}
+	sendBubble(t, func(t *testing.T) {
+		p, _, typed := dndPane(t, "a")
+		tu := newTestTUI(p)
+		p.enqueueHeld("[from c] dialog mail", true)
+		dndSet(t, tu, "a", "on")
+		p.maybeDrainModalQueue()
+		tu.modalMaintenance(time.Now())
+		p.drainModalQueue()
+		time.Sleep(300 * time.Millisecond)
+		if got := typed(); got != "" {
+			t.Errorf("a drain typed %q while in do-not-disturb", got)
+		}
+		if p.QueueLen() != 1 {
+			t.Errorf("queue %d, want the dialog mail still waiting", p.QueueLen())
+		}
+	})
 }
 
 // A drain's own message that meets do-not-disturb (set again mid-drain) goes
@@ -252,101 +254,105 @@ func TestDND_ADrainMessageThatMeetsItGoesBackToTheFront(t *testing.T) {
 // deadline counted from its release, and is surfaced once with its whole
 // wait; a dead pane's held mail is surfaced once too.
 func TestDND_UndeliverableHeldMailIsSurfacedOnceWithItsWait(t *testing.T) {
-	p, events, _ := dndPane(t, "a")
-	tu := newTestTUI(p)
-	arrived := time.Now().Add(-30 * time.Minute)
-	p.startDND()
-	p.enqueue(QueuedMessage{Text: "[from b] waited", Enter: true, Time: arrived, DND: true})
-	p.latchDialogOpen("Claude needs your permission")
-	p.noteDialogSighting()
-	dndSet(t, tu, "a", "off") // the dialog keeps the drain from popping
-	time.Sleep(200 * time.Millisecond)
-	q := dndQueue(p)
-	if len(q) != 1 || q[0].Released.IsZero() {
-		t.Fatalf("queue %+v, want the message waiting, marked released", q)
-	}
-	released := q[0].Released
-	if n := p.resolveHeldMail(released.Add(heldMessageDeadline - time.Second)); n != 0 {
-		t.Errorf("surfaced %d before the dialog deadline from release; the 30m it waited in do-not-disturb is not the dialog's", n)
-	}
-	if n := p.resolveHeldMail(released.Add(heldMessageDeadline)); n != 1 {
-		t.Fatalf("surfaced %d at the deadline, want 1", n)
-	}
-	got := undelivered(events)
-	if len(got) != 1 || !strings.Contains(got[0].Detail, "held 40m") || !strings.Contains(got[0].Detail, "[from b] waited") {
-		t.Errorf("reports %+v, want one naming its 40m wait and the message", got)
-	}
-	if n := p.resolveHeldMail(released.Add(2 * heldMessageDeadline)); n != 0 {
-		t.Errorf("surfaced again: %d", n)
-	}
+	sendBubble(t, func(t *testing.T) {
+		p, events, _ := dndPane(t, "a")
+		tu := newTestTUI(p)
+		arrived := time.Now().Add(-30 * time.Minute)
+		p.startDND()
+		p.enqueue(QueuedMessage{Text: "[from b] waited", Enter: true, Time: arrived, DND: true})
+		p.latchDialogOpen("Claude needs your permission")
+		p.noteDialogSighting()
+		dndSet(t, tu, "a", "off") // the dialog keeps the drain from popping
+		time.Sleep(200 * time.Millisecond)
+		q := dndQueue(p)
+		if len(q) != 1 || q[0].Released.IsZero() {
+			t.Fatalf("queue %+v, want the message waiting, marked released", q)
+		}
+		released := q[0].Released
+		if n := p.resolveHeldMail(released.Add(heldMessageDeadline - time.Second)); n != 0 {
+			t.Errorf("surfaced %d before the dialog deadline from release; the 30m it waited in do-not-disturb is not the dialog's", n)
+		}
+		if n := p.resolveHeldMail(released.Add(heldMessageDeadline)); n != 1 {
+			t.Fatalf("surfaced %d at the deadline, want 1", n)
+		}
+		got := undelivered(events)
+		if len(got) != 1 || !strings.Contains(got[0].Detail, "held 40m") || !strings.Contains(got[0].Detail, "[from b] waited") {
+			t.Errorf("reports %+v, want one naming its 40m wait and the message", got)
+		}
+		if n := p.resolveHeldMail(released.Add(2 * heldMessageDeadline)); n != 0 {
+			t.Errorf("surfaced again: %d", n)
+		}
 
-	// A dead pane in do-not-disturb: everything held is surfaced, once.
-	d, devents, _ := dndPane(t, "d")
-	d.startDND()
-	d.SendTextVerdict("[from b] lost?", true)
-	d.mu.Lock()
-	d.alive = false
-	d.mu.Unlock()
-	if n := d.resolveHeldMail(time.Now()); n != 1 {
-		t.Fatalf("dead pane surfaced %d, want 1", n)
-	}
-	if got := undelivered(devents); len(got) != 1 || !strings.Contains(got[0].Detail, "process exited") {
-		t.Errorf("dead pane reports %+v", got)
-	}
-	if n := d.resolveHeldMail(time.Now()); n != 0 {
-		t.Errorf("dead pane surfaced again: %d", n)
-	}
+		// A dead pane in do-not-disturb: everything held is surfaced, once.
+		d, devents, _ := dndPane(t, "d")
+		d.startDND()
+		d.SendTextVerdict("[from b] lost?", true)
+		d.mu.Lock()
+		d.alive = false
+		d.mu.Unlock()
+		if n := d.resolveHeldMail(time.Now()); n != 1 {
+			t.Fatalf("dead pane surfaced %d, want 1", n)
+		}
+		if got := undelivered(devents); len(got) != 1 || !strings.Contains(got[0].Detail, "process exited") {
+			t.Errorf("dead pane reports %+v", got)
+		}
+		if n := d.resolveHeldMail(time.Now()); n != 0 {
+			t.Errorf("dead pane surfaced again: %d", n)
+		}
+	})
 }
 
 // Feed it nothing: dnd off when never on, an empty queue drained, a send with
 // an empty body, a bad word, no target, an unknown agent, an agent another
 // process owns.
 func TestDND_TheActionWithNothingToDo(t *testing.T) {
-	p, _, typed := dndPane(t, "a")
-	tu := newTestTUI(p)
-	tu.panes = append(tu.panes, &RemotePane{name: "far", alive: true})
+	sendBubble(t, func(t *testing.T) {
+		p, _, typed := dndPane(t, "a")
+		tu := newTestTUI(p)
+		tu.panes = append(tu.panes, &RemotePane{name: "far", alive: true})
 
-	if r := dndSet(t, tu, "a", "off"); !r.OK || r.Data != "a was not in do-not-disturb" {
-		t.Errorf("off when never on: %+v", r)
-	}
-	dndSet(t, tu, "a", "on")
-	if r := dndSet(t, tu, "a", "on"); !r.OK || !p.InDND() {
-		t.Errorf("on twice: %+v", r)
-	}
-	if r := dndSet(t, tu, "a", "off"); !r.OK || !strings.Contains(r.Data, "0 held messages") {
-		t.Errorf("off with an empty queue: %+v", r)
-	}
-	time.Sleep(200 * time.Millisecond)
-	if typed() != "" {
-		t.Errorf("an empty drain typed %q", typed())
-	}
-
-	dndSet(t, tu, "a", "on")
-	if v := p.SendTextVerdict("", true); v.Outcome != DeliveryHeld {
-		t.Errorf("empty body: %+v, want held", v)
-	}
-	if q := dndQueue(p); len(q) != 1 || q[0].Text != "" || !q[0].DND {
-		t.Errorf("empty body queue %+v", q)
-	}
-	dndSet(t, tu, "a", "off")
-	if !dndWait(10*time.Second, func() bool { return p.QueueLen() == 0 }) {
-		t.Errorf("empty body never drained: queue %d", p.QueueLen())
-	}
-
-	for _, c := range []struct {
-		req  IPCRequest
-		want string
-	}{
-		{IPCRequest{Action: "dnd", Target: "a", Text: "maybe"}, `dnd takes on or off, not "maybe"`},
-		{IPCRequest{Action: "dnd", Text: "on"}, "target is required"},
-		{IPCRequest{Action: "dnd", Target: "ghost", Text: "on"}, `pane "ghost" not found`},
-		{IPCRequest{Action: "dnd", Target: "far", Text: "on"}, "far runs in another window or on another machine; run initech dnd there"},
-	} {
-		r := dndCall(t, func(conn net.Conn) { dispatchIPC(tu, conn, c.req, nil) })
-		if r.OK || r.Error != c.want {
-			t.Errorf("%+v: %+v, want error %q", c.req, r, c.want)
+		if r := dndSet(t, tu, "a", "off"); !r.OK || r.Data != "a was not in do-not-disturb" {
+			t.Errorf("off when never on: %+v", r)
 		}
-	}
+		dndSet(t, tu, "a", "on")
+		if r := dndSet(t, tu, "a", "on"); !r.OK || !p.InDND() {
+			t.Errorf("on twice: %+v", r)
+		}
+		if r := dndSet(t, tu, "a", "off"); !r.OK || !strings.Contains(r.Data, "0 held messages") {
+			t.Errorf("off with an empty queue: %+v", r)
+		}
+		time.Sleep(200 * time.Millisecond)
+		if typed() != "" {
+			t.Errorf("an empty drain typed %q", typed())
+		}
+
+		dndSet(t, tu, "a", "on")
+		if v := p.SendTextVerdict("", true); v.Outcome != DeliveryHeld {
+			t.Errorf("empty body: %+v, want held", v)
+		}
+		if q := dndQueue(p); len(q) != 1 || q[0].Text != "" || !q[0].DND {
+			t.Errorf("empty body queue %+v", q)
+		}
+		dndSet(t, tu, "a", "off")
+		if !dndWait(10*time.Second, func() bool { return p.QueueLen() == 0 }) {
+			t.Errorf("empty body never drained: queue %d", p.QueueLen())
+		}
+
+		for _, c := range []struct {
+			req  IPCRequest
+			want string
+		}{
+			{IPCRequest{Action: "dnd", Target: "a", Text: "maybe"}, `dnd takes on or off, not "maybe"`},
+			{IPCRequest{Action: "dnd", Text: "on"}, "target is required"},
+			{IPCRequest{Action: "dnd", Target: "ghost", Text: "on"}, `pane "ghost" not found`},
+			{IPCRequest{Action: "dnd", Target: "far", Text: "on"}, "far runs in another window or on another machine; run initech dnd there"},
+		} {
+			r := dndCall(t, func(conn net.Conn) { dispatchIPC(tu, conn, c.req, nil) })
+			if r.OK || r.Error != c.want {
+				t.Errorf("%+v: %+v, want error %q", c.req, r, c.want)
+			}
+		}
+	})
 }
 
 // The operator's paste from another window is typing, not a send: it goes in.
@@ -385,32 +391,34 @@ func TestDND_AServedPaneAnswersWithTheSameWords(t *testing.T) {
 // AC6: on and off write nothing: the layout and fleet-state files are
 // byte-identical before and after.
 func TestDND_NothingIsWrittenToDisk(t *testing.T) {
-	dir := t.TempDir()
-	files := map[string][]byte{
-		filepath.Join(dir, ".initech", "layout.yaml"):      []byte("panes: [a]\n"),
-		filepath.Join(dir, ".initech", "fleet-state.yaml"): []byte("agents: {}\n"),
-	}
-	os.MkdirAll(filepath.Join(dir, ".initech"), 0o755)
-	for f, b := range files {
-		os.WriteFile(f, b, 0o644)
-	}
-	t.Chdir(dir)
-	p, _, _ := dndPane(t, "a")
-	tu := newTestTUI(p)
-	dndSet(t, tu, "a", "on")
-	p.SendTextVerdict("[from b] one", true)
-	dndSet(t, tu, "a", "off")
-	dndWait(10*time.Second, func() bool { return p.QueueLen() == 0 })
-	for f, b := range files {
-		got, err := os.ReadFile(f)
-		if err != nil || string(got) != string(b) {
-			t.Errorf("%s changed: %q (%v)", f, got, err)
+	sendBubble(t, func(t *testing.T) {
+		dir := t.TempDir()
+		files := map[string][]byte{
+			filepath.Join(dir, ".initech", "layout.yaml"):      []byte("panes: [a]\n"),
+			filepath.Join(dir, ".initech", "fleet-state.yaml"): []byte("agents: {}\n"),
 		}
-	}
-	entries, _ := os.ReadDir(filepath.Join(dir, ".initech"))
-	if len(entries) != len(files) {
-		t.Errorf("%d files in .initech, want %d", len(entries), len(files))
-	}
+		os.MkdirAll(filepath.Join(dir, ".initech"), 0o755)
+		for f, b := range files {
+			os.WriteFile(f, b, 0o644)
+		}
+		t.Chdir(dir)
+		p, _, _ := dndPane(t, "a")
+		tu := newTestTUI(p)
+		dndSet(t, tu, "a", "on")
+		p.SendTextVerdict("[from b] one", true)
+		dndSet(t, tu, "a", "off")
+		dndWait(10*time.Second, func() bool { return p.QueueLen() == 0 })
+		for f, b := range files {
+			got, err := os.ReadFile(f)
+			if err != nil || string(got) != string(b) {
+				t.Errorf("%s changed: %q (%v)", f, got, err)
+			}
+		}
+		entries, _ := os.ReadDir(filepath.Join(dir, ".initech"))
+		if len(entries) != len(files) {
+			t.Errorf("%d files in .initech, want %d", len(entries), len(files))
+		}
+	})
 }
 
 // While do-not-disturb holds the queue, nothing in it is reported as kept by
@@ -465,28 +473,30 @@ func TestDND_HeldAtOnceWithoutTheStartupWait(t *testing.T) {
 // Do-not-disturb set while a message waited out the operator's typing holds
 // that message too.
 func TestDND_SetWhileAMessageWaitsForTheOperatorsPause(t *testing.T) {
-	p, _, typed := dndPane(t, "a")
-	p.noteOperatorKey()
-	got := make(chan SendVerdict, 1)
-	go func() { got <- p.SendTextVerdict("[from b] waited for a pause", true) }()
-	if !dndWait(2*time.Second, func() bool { return p.HeldMessages() == 1 }) {
-		t.Fatal("the message never waited in the typing hold")
-	}
-	p.startDND()
-	select {
-	case v := <-got:
-		if v.Outcome != DeliveryHeld {
-			t.Errorf("verdict %+v, want held", v)
+	sendBubble(t, func(t *testing.T) {
+		p, _, typed := dndPane(t, "a")
+		p.noteOperatorKey()
+		got := make(chan SendVerdict, 1)
+		go func() { got <- p.SendTextVerdict("[from b] waited for a pause", true) }()
+		if !dndWait(2*time.Second, func() bool { return p.HeldMessages() == 1 }) {
+			t.Fatal("the message never waited in the typing hold")
 		}
-	case <-time.After(20 * time.Second):
-		t.Fatal("the send never returned")
-	}
-	if strings.Contains(typed(), "waited for a pause") {
-		t.Errorf("typed %q after do-not-disturb was set", typed())
-	}
-	if q := dndQueue(p); len(q) != 1 || !q[0].DND {
-		t.Errorf("queue %+v", q)
-	}
+		p.startDND()
+		select {
+		case v := <-got:
+			if v.Outcome != DeliveryHeld {
+				t.Errorf("verdict %+v, want held", v)
+			}
+		case <-time.After(20 * time.Second):
+			t.Fatal("the send never returned")
+		}
+		if strings.Contains(typed(), "waited for a pause") {
+			t.Errorf("typed %q after do-not-disturb was set", typed())
+		}
+		if q := dndQueue(p); len(q) != 1 || !q[0].DND {
+			t.Errorf("queue %+v", q)
+		}
+	})
 }
 
 // The read loop's drain trigger starts nothing while do-not-disturb is on: it

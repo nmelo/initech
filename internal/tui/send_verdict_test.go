@@ -35,64 +35,74 @@ func v69Rig(t *testing.T, f *pkinFake) (*TUI, *Pane) {
 
 // Criterion 1: a box that clears after the Enter answers delivered.
 func TestSendVerdict_ABoxThatClearsAnswersDelivered(t *testing.T) {
-	nma5Window(t, 300*time.Millisecond)
-	tui, _ := v69Rig(t, &pkinFake{body: nma5Body, after: "❯ ", takes: func(int) bool { return true }})
-	resp := v69Send(t, tui, "eng2", nma5Body, true)
-	if !resp.OK || resp.Delivery != DeliveryDelivered {
-		t.Fatalf("reply %+v, want OK and delivered", resp)
-	}
+	// On the bubble's clock (ini-8yrl): the submit delay and the confirm
+	// window run as written, without waiting them out in real time.
+	sendBubble(t, func(t *testing.T) {
+		nma5Window(t, 300*time.Millisecond)
+		tui, _ := v69Rig(t, &pkinFake{body: nma5Body, after: "❯ ", takes: func(int) bool { return true }})
+		resp := v69Send(t, tui, "eng2", nma5Body, true)
+		if !resp.OK || resp.Delivery != DeliveryDelivered {
+			t.Fatalf("reply %+v, want OK and delivered", resp)
+		}
+	})
 }
 
 // Criterion 1: our text still in the box after the one resend answers not
 // delivered, as an error, naming the agent and the toast's reason.
 func TestSendVerdict_TextKeptThroughTheRetryAnswersNotDelivered(t *testing.T) {
-	nma5Window(t, 300*time.Millisecond)
-	f := &pkinFake{body: nma5Body, after: "❯ ", takes: func(int) bool { return false }}
-	tui, _ := v69Rig(t, f)
-	resp := v69Send(t, tui, "eng2", nma5Body, true)
-	want := "not delivered to eng2: Enter not taken twice; the text is still in the composer"
-	if resp.OK || resp.Error != want || resp.Delivery != DeliveryNotDelivered {
-		t.Fatalf("reply %+v, want error %q", resp, want)
-	}
-	if n := f.enters.Load(); n != 2 {
-		t.Fatalf("sent %d Enters, want 2: the retry is unchanged", n)
-	}
+	sendBubble(t, func(t *testing.T) {
+		nma5Window(t, 300*time.Millisecond)
+		f := &pkinFake{body: nma5Body, after: "❯ ", takes: func(int) bool { return false }}
+		tui, _ := v69Rig(t, f)
+		resp := v69Send(t, tui, "eng2", nma5Body, true)
+		want := "not delivered to eng2: Enter not taken twice; the text is still in the composer"
+		if resp.OK || resp.Error != want || resp.Delivery != DeliveryNotDelivered {
+			t.Fatalf("reply %+v, want error %q", resp, want)
+		}
+		if n := f.enters.Load(); n != 2 {
+			t.Fatalf("sent %d Enters, want 2: the retry is unchanged", n)
+		}
+	})
 }
 
 // Criterion 1 and the feed-it-nothing case: a pane that never shows a
 // composer gives the watcher nothing to see. The reply is could not confirm,
 // with the watcher's reason, inside the watcher's own deadline: never a hang.
 func TestSendVerdict_NoComposerAnswersCouldNotConfirmWithinTheDeadline(t *testing.T) {
-	nma5Window(t, 300*time.Millisecond)
-	f := &pkinFake{body: nma5Body, shows: "Loading conversation...", after: "Loading conversation...", takes: func(int) bool { return true }}
-	tui, p := v69Rig(t, f)
-	f.paint("Loading conversation...")
-	_ = p
-	start := time.Now()
-	resp := v69Send(t, tui, "eng2", nma5Body, true)
-	if !resp.OK || resp.Delivery != DeliveryUnconfirmed || resp.Data != "no composer visible" {
-		t.Fatalf("reply %+v, want OK, unconfirmed, reason \"no composer visible\"", resp)
-	}
-	if el := time.Since(start); el > bracketedPasteSubmitDelay.Get()+2*submitConfirmWindow+time.Second {
-		t.Fatalf("answered after %s, past the watcher's deadline", el)
-	}
+	sendBubble(t, func(t *testing.T) {
+		nma5Window(t, 300*time.Millisecond)
+		f := &pkinFake{body: nma5Body, shows: "Loading conversation...", after: "Loading conversation...", takes: func(int) bool { return true }}
+		tui, p := v69Rig(t, f)
+		f.paint("Loading conversation...")
+		_ = p
+		start := time.Now()
+		resp := v69Send(t, tui, "eng2", nma5Body, true)
+		if !resp.OK || resp.Delivery != DeliveryUnconfirmed || resp.Data != "no composer visible" {
+			t.Fatalf("reply %+v, want OK, unconfirmed, reason \"no composer visible\"", resp)
+		}
+		if el := time.Since(start); el > bracketedPasteSubmitDelay.Get()+2*submitConfirmWindow+time.Second {
+			t.Fatalf("answered after %s, past the watcher's deadline", el)
+		}
+	})
 }
 
 // G2: the belt withholds the submit (the box never changed when our paste
 // ended). The submit is armed for later, so the reply is could not confirm
 // with the ruling's reason, not delivered and not a failure.
 func TestSendVerdict_AWithheldSubmitAnswersCouldNotConfirm(t *testing.T) {
-	nma5Window(t, 300*time.Millisecond)
-	f := &pkinFake{body: nma5Body, shows: "❯ ", after: "❯ ", takes: func(int) bool { return true }}
-	tui, p := v69Rig(t, f)
-	resp := v69Send(t, tui, "eng2", nma5Body, true)
-	if !resp.OK || resp.Delivery != DeliveryUnconfirmed || resp.Data != withheldVerdictReason {
-		t.Fatalf("reply %+v, want OK, unconfirmed, the withheld reason", resp)
-	}
-	if n := f.enters.Load(); n != 0 {
-		t.Fatalf("sent %d Enters, want none: the belt withholds", n)
-	}
-	p.clearPendingSubmit()
+	sendBubble(t, func(t *testing.T) {
+		nma5Window(t, 300*time.Millisecond)
+		f := &pkinFake{body: nma5Body, shows: "❯ ", after: "❯ ", takes: func(int) bool { return true }}
+		tui, p := v69Rig(t, f)
+		resp := v69Send(t, tui, "eng2", nma5Body, true)
+		if !resp.OK || resp.Delivery != DeliveryUnconfirmed || resp.Data != withheldVerdictReason {
+			t.Fatalf("reply %+v, want OK, unconfirmed, the withheld reason", resp)
+		}
+		if n := f.enters.Load(); n != 0 {
+			t.Fatalf("sent %d Enters, want none: the belt withholds", n)
+		}
+		p.clearPendingSubmit()
+	})
 }
 
 // G1: --no-enter submits nothing, so it has nothing to confirm: delivered,
@@ -113,13 +123,15 @@ func TestSendVerdict_NoEnterAnswersDelivered(t *testing.T) {
 // G3: an agent type with no composer check (a raw pane) answers unchecked:
 // OK, with the reason, and never could not confirm.
 func TestSendVerdict_ARawPaneAnswersUnchecked(t *testing.T) {
-	f := &pkinFake{body: nma5Body, after: "❯ ", takes: func(int) bool { return true }}
-	tui, p := v69Rig(t, f)
-	p.noBracketedPaste = true
-	resp := v69Send(t, tui, "eng2", nma5Body, true)
-	if !resp.OK || resp.Delivery != DeliveryUnchecked || resp.Data != "no delivery check for this agent type" {
-		t.Fatalf("reply %+v, want OK, unchecked, \"no delivery check for this agent type\"", resp)
-	}
+	sendBubble(t, func(t *testing.T) {
+		f := &pkinFake{body: nma5Body, after: "❯ ", takes: func(int) bool { return true }}
+		tui, p := v69Rig(t, f)
+		p.noBracketedPaste = true
+		resp := v69Send(t, tui, "eng2", nma5Body, true)
+		if !resp.OK || resp.Delivery != DeliveryUnchecked || resp.Data != "no delivery check for this agent type" {
+			t.Fatalf("reply %+v, want OK, unchecked, \"no delivery check for this agent type\"", resp)
+		}
+	})
 }
 
 // Positive twin, deferred: a send held behind an open dialog keeps its

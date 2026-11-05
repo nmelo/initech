@@ -133,19 +133,21 @@ func gavSendPane(t *testing.T, cols int, screen []string) (*Pane, func() string)
 // background subagent, is typed, not deferred (Claude Code 2.1.312, Haiku,
 // a 36-column pane).
 func TestGav_ABackgroundShellOrSubagentIsNotADialog(t *testing.T) {
-	for _, name := range []string{"haiku312_bgshell_w36.txt", "haiku312_subagent_w36.txt"} {
-		rows := gavScreen(t, name)
-		if screenShowsModal(rows) || !screenShowsIdleComposer(rows) {
-			t.Errorf("%s: modal %v, at rest %v", name, screenShowsModal(rows), screenShowsIdleComposer(rows))
+	sendBubble(t, func(t *testing.T) {
+		for _, name := range []string{"haiku312_bgshell_w36.txt", "haiku312_subagent_w36.txt"} {
+			rows := gavScreen(t, name)
+			if screenShowsModal(rows) || !screenShowsIdleComposer(rows) {
+				t.Errorf("%s: modal %v, at rest %v", name, screenShowsModal(rows), screenShowsIdleComposer(rows))
+			}
+			p, typed := gavSendPane(t, 36, rows[1:])
+			if v := p.SendTextVerdict("[from b] hello", true); v.Outcome == DeliveryDeferred {
+				t.Errorf("%s: deferred", name)
+			}
+			if !strings.Contains(typed(), "[from b] hello") {
+				t.Errorf("%s: nothing typed: %q", name, typed())
+			}
 		}
-		p, typed := gavSendPane(t, 36, rows[1:])
-		if v := p.SendTextVerdict("[from b] hello", true); v.Outcome == DeliveryDeferred {
-			t.Errorf("%s: deferred", name)
-		}
-		if !strings.Contains(typed(), "[from b] hello") {
-			t.Errorf("%s: nothing typed: %q", name, typed())
-		}
-	}
+	})
 }
 
 // AC3: a permission prompt on a pane that also runs a background shell is

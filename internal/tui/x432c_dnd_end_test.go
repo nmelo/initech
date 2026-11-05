@@ -69,32 +69,34 @@ func TestDNDEnd_TheTurnEndingEndsItAndDrains(t *testing.T) {
 // AC2: a timer ends it at its time, drain included, and the turn ending
 // before then does not.
 func TestDNDEnd_ATimerEndsItAtItsTimeNotAtTurnEnd(t *testing.T) {
-	p, _, typed := dndPane(t, "a")
-	tu := newTestTUI(p)
-	dndSetActivity(p, StateRunning)
-	r := dndCall(t, func(c net.Conn) {
-		dispatchIPC(tu, c, IPCRequest{Action: "dnd", Target: "a", Text: "on", ForSec: 10}, nil)
+	sendBubble(t, func(t *testing.T) {
+		p, _, typed := dndPane(t, "a")
+		tu := newTestTUI(p)
+		dndSetActivity(p, StateRunning)
+		r := dndCall(t, func(c net.Conn) {
+			dispatchIPC(tu, c, IPCRequest{Action: "dnd", Target: "a", Text: "on", ForSec: 10}, nil)
+		})
+		if !r.OK || !strings.Contains(r.Data, "(10s)") || len(r.Notices) != 0 {
+			t.Fatalf("on --for 10s: %+v", r)
+		}
+		until, ok := p.dndTimer()
+		if !ok {
+			t.Fatal("no timer set")
+		}
+		p.SendTextVerdict("[from b] held", true)
+		dndSetActivity(p, StateIdle)
+		dndTick(p, until.Add(-time.Second))
+		if !p.InDND() {
+			t.Fatal("the turn ending ended a timed do-not-disturb")
+		}
+		dndTick(p, until)
+		if p.InDND() {
+			t.Fatal("still on at the timer")
+		}
+		if !dndWait(10*time.Second, func() bool { return strings.Contains(typed(), "[from b] held") }) {
+			t.Errorf("not drained at the timer: typed %q", typed())
+		}
 	})
-	if !r.OK || !strings.Contains(r.Data, "(10s)") || len(r.Notices) != 0 {
-		t.Fatalf("on --for 10s: %+v", r)
-	}
-	until, ok := p.dndTimer()
-	if !ok {
-		t.Fatal("no timer set")
-	}
-	p.SendTextVerdict("[from b] held", true)
-	dndSetActivity(p, StateIdle)
-	dndTick(p, until.Add(-time.Second))
-	if !p.InDND() {
-		t.Fatal("the turn ending ended a timed do-not-disturb")
-	}
-	dndTick(p, until)
-	if p.InDND() {
-		t.Fatal("still on at the timer")
-	}
-	if !dndWait(10*time.Second, func() bool { return strings.Contains(typed(), "[from b] held") }) {
-		t.Errorf("not drained at the timer: typed %q", typed())
-	}
 }
 
 // AC3: a timer over an hour is cut to an hour, and the reply says so once.

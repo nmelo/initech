@@ -109,27 +109,29 @@ func TestLiveDialogRegion_RealPermissionPromptsStillDefer(t *testing.T) {
 // the transcript, Claude idle at its prompt below. Not a dialog; a held
 // message goes out on the first drain.
 func TestLiveDialogRegion_QuotedDialogAboveAnIdleComposerDelivers(t *testing.T) {
-	p, _, _ := heldMailPane(t, "qa2")
-	lines := append(append([]string{}, quotedDialog...), composerAtRest...)
-	p.emu = claudeScreen(t, 40, lines)
-	if !isModalPrompt(strings.Join(lines, "\n")) || !screenOffersAnswer(strings.Join(lines, "\n")) {
-		t.Fatal("fixture: the quoted text no longer matches the dialog matcher, so this cell would discriminate nothing")
-	}
-	if paneHasModal(p) {
-		t.Fatalf("quoted dialog text above an idle composer reads as an open dialog:\n%s", strings.Join(screenOf(p.emu), "\n"))
-	}
-	if !screenShowsIdleComposer(screenOf(p.emu)) {
-		t.Error("the idle composer is not recognised under quoted dialog text, so a latch could never clear here")
-	}
-	p.enqueueHeld("[from super] broadcast", true)
-	start := time.Now()
-	p.drainModalQueue()
-	if p.QueuedMessageCount() != 0 {
-		t.Error("the held message was not delivered")
-	}
-	if d := time.Since(start); d > 2*time.Second {
-		t.Errorf("delivery took %v, want within 2 s", d)
-	}
+	sendBubble(t, func(t *testing.T) {
+		p, _, _ := heldMailPane(t, "qa2")
+		lines := append(append([]string{}, quotedDialog...), composerAtRest...)
+		p.emu = claudeScreen(t, 40, lines)
+		if !isModalPrompt(strings.Join(lines, "\n")) || !screenOffersAnswer(strings.Join(lines, "\n")) {
+			t.Fatal("fixture: the quoted text no longer matches the dialog matcher, so this cell would discriminate nothing")
+		}
+		if paneHasModal(p) {
+			t.Fatalf("quoted dialog text above an idle composer reads as an open dialog:\n%s", strings.Join(screenOf(p.emu), "\n"))
+		}
+		if !screenShowsIdleComposer(screenOf(p.emu)) {
+			t.Error("the idle composer is not recognised under quoted dialog text, so a latch could never clear here")
+		}
+		p.enqueueHeld("[from super] broadcast", true)
+		start := time.Now()
+		p.drainModalQueue()
+		if p.QueuedMessageCount() != 0 {
+			t.Error("the held message was not delivered")
+		}
+		if d := time.Since(start); d > 2*time.Second {
+			t.Errorf("delivery took %v, want within 2 s", d)
+		}
+	})
 }
 
 // AC1, raw-sequence case: the stand-in's OSC 777 declaration is in the stream

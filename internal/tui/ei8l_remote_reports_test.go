@@ -188,79 +188,85 @@ func TestForwardSendToRemote_PassesThePeersDeferral(t *testing.T) {
 // Criterion 2: held mail past its deadline reaches the connected initech as
 // one agent_event per message, NOT DELIVERED, for the agent.
 func TestServeReports_NotDeliveredIsForwarded(t *testing.T) {
-	d, p, client, _ := ei8lServe(t)
-	lines := ei8lRead(client)
-	ei8lForwarder(t, d)
-	p.SendText("[from super] one", true)
-	p.SendText("[from super] two", true)
-	now := time.Now()
-	d.maintain(now.Add(heldMessageDeadline + time.Minute))
-	var nd []ControlResp
-	for _, r := range ei8lCollect(lines, 500*time.Millisecond) {
-		if strings.HasPrefix(r.Text, undeliveredSubmitPrefix) {
-			nd = append(nd, r)
+	sendBubble(t, func(t *testing.T) {
+		d, p, client, _ := ei8lServe(t)
+		lines := ei8lRead(client)
+		ei8lForwarder(t, d)
+		p.SendText("[from super] one", true)
+		p.SendText("[from super] two", true)
+		now := time.Now()
+		d.maintain(now.Add(heldMessageDeadline + time.Minute))
+		var nd []ControlResp
+		for _, r := range ei8lCollect(lines, 500*time.Millisecond) {
+			if strings.HasPrefix(r.Text, undeliveredSubmitPrefix) {
+				nd = append(nd, r)
+			}
 		}
-	}
-	if len(nd) != 2 {
-		t.Fatalf("%d NOT DELIVERED agent_events, want one per held message (2)", len(nd))
-	}
-	for _, r := range nd {
-		if r.Name != "eng1" || r.EventType != "stalled" || r.EventTimeMs == 0 {
-			t.Errorf("agent_event %+v, want eng1, type stalled, a time", r)
+		if len(nd) != 2 {
+			t.Fatalf("%d NOT DELIVERED agent_events, want one per held message (2)", len(nd))
 		}
-	}
+		for _, r := range nd {
+			if r.Name != "eng1" || r.EventType != "stalled" || r.EventTimeMs == 0 {
+				t.Errorf("agent_event %+v, want eng1, type stalled, a time", r)
+			}
+		}
+	})
 }
 
 // Criterion 3: the hold and the release forward the same way.
 func TestServeReports_HoldAndReleaseAreForwarded(t *testing.T) {
-	p := daemonPane(t)
-	d := &Daemon{serve: true, reportQ: make(chan AgentEvent, reportQueueDepth), panes: []*Pane{p},
-		clients: map[string]net.Conn{}, clientCtrlMu: map[string]*sync.Mutex{}}
-	d.adoptReports(p)
-	client, _ := ei8lConnect(t, d, "hub")
-	lines := ei8lRead(client)
-	ei8lForwarder(t, d)
-	// A declared dialog that never appears: the send is held, and the latch
-	// heals at the corroboration window, releasing it.
-	raise := time.Now()
-	p.latchDialogOpen("Claude needs your permission")
-	p.mu.Lock()
-	p.dialogOpenAt = raise
-	p.mu.Unlock()
-	p.SendText("[from super] held", true)
-	d.maintain(raise.Add(latchCorroborationWindow + time.Second))
-	var hold, release int
-	for _, r := range ei8lCollect(lines, 500*time.Millisecond) {
-		switch {
-		case strings.HasPrefix(r.Text, "deferred (modal open)") && r.EventType == "message":
-			hold++
-		case strings.HasPrefix(r.Text, "held mail released") && r.EventType == "message":
-			release++
+	sendBubble(t, func(t *testing.T) {
+		p := daemonPane(t)
+		d := &Daemon{serve: true, reportQ: make(chan AgentEvent, reportQueueDepth), panes: []*Pane{p},
+			clients: map[string]net.Conn{}, clientCtrlMu: map[string]*sync.Mutex{}}
+		d.adoptReports(p)
+		client, _ := ei8lConnect(t, d, "hub")
+		lines := ei8lRead(client)
+		ei8lForwarder(t, d)
+		// A declared dialog that never appears: the send is held, and the latch
+		// heals at the corroboration window, releasing it.
+		raise := time.Now()
+		p.latchDialogOpen("Claude needs your permission")
+		p.mu.Lock()
+		p.dialogOpenAt = raise
+		p.mu.Unlock()
+		p.SendText("[from super] held", true)
+		d.maintain(raise.Add(latchCorroborationWindow + time.Second))
+		var hold, release int
+		for _, r := range ei8lCollect(lines, 500*time.Millisecond) {
+			switch {
+			case strings.HasPrefix(r.Text, "deferred (modal open)") && r.EventType == "message":
+				hold++
+			case strings.HasPrefix(r.Text, "held mail released") && r.EventType == "message":
+				release++
+			}
 		}
-	}
-	if hold != 1 || release != 1 {
-		t.Fatalf("hold %d, release %d agent_events, want one of each", hold, release)
-	}
+		if hold != 1 || release != 1 {
+			t.Fatalf("hold %d, release %d agent_events, want one of each", hold, release)
+		}
+	})
 }
 
 // Criterion 3: a reconnect mid-hold. The report after it reaches the new
 // connection once, and nothing reaches the old one.
 func TestServeReports_ReconnectMidHoldDeliversOnce(t *testing.T) {
-	d, p, oldClient, _ := ei8lServe(t)
-	oldLines := ei8lRead(oldClient)
-	ei8lForwarder(t, d)
-	p.SendText("[from super] held", true)
-	ei8lCollect(oldLines, 300*time.Millisecond) // the hold went to the old connection
-	newClient, _ := ei8lConnect(t, d, "hub")
-	newLines := ei8lRead(newClient)
-	d.maintain(time.Now().Add(heldMessageDeadline + time.Minute))
-	got := ei8lCollect(newLines, 500*time.Millisecond)
-	if len(got) != 1 || !strings.HasPrefix(got[0].Text, undeliveredSubmitPrefix) {
-		t.Fatalf("new connection got %d agent_events (%+v), want the one NOT DELIVERED", len(got), got)
-	}
-	if late := ei8lCollect(oldLines, 200*time.Millisecond); len(late) != 0 {
-		t.Errorf("the replaced connection still got %d agent_events", len(late))
-	}
+	sendBubble(t, func(t *testing.T) {
+		d, p, oldClient, _ := ei8lServe(t)
+		oldLines := ei8lRead(oldClient)
+		ei8lForwarder(t, d)
+		p.SendText("[from super] held", true)
+		ei8lCollect(oldLines, 300*time.Millisecond) // the hold went to the old connection
+		newClient, _ := ei8lConnect(t, d, "hub")
+		newLines := ei8lRead(newClient)
+		d.maintain(time.Now().Add(heldMessageDeadline + time.Minute))
+		got := ei8lCollect(newLines, 500*time.Millisecond)
+		if len(got) != 1 || !strings.HasPrefix(got[0].Text, undeliveredSubmitPrefix) {
+			t.Fatalf("new connection got %d agent_events (%+v), want the one NOT DELIVERED", len(got), got)
+		}
+		if late := ei8lCollect(oldLines, 200*time.Millisecond); len(late) != 0 {
+			t.Errorf("the replaced connection still got %d agent_events", len(late))
+		}
+	})
 }
 
 // Criterion 2, the client: the report becomes the toast and the event-log

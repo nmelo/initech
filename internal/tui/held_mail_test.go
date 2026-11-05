@@ -2,7 +2,6 @@ package tui
 
 import (
 	"io"
-	"os"
 	"strings"
 	"testing"
 	"time"
@@ -14,18 +13,14 @@ import (
 
 // heldMailPane is a pane with a writable PTY (a pipe), an event channel and
 // the startup gate already settled, so sends reach the modal guard.
-func heldMailPane(t *testing.T, name string) (*Pane, chan AgentEvent, *os.File) {
+func heldMailPane(t *testing.T, name string) (*Pane, chan AgentEvent, *io.PipeReader) {
 	t.Helper()
 	shortSubmitDelays(t)
-	r, w, err := os.Pipe()
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { r.Close(); w.Close() })
+	r, w := memPipe(t)        // io.Pipe, so the rig may run in a synctest bubble (ini-8yrl)
 	go io.Copy(io.Discard, r) //nolint:errcheck // keep the pipe from filling
 	events := make(chan AgentEvent, 64)
 	p := testPane(name)
-	p.ptmx = &filePty{w}
+	p.ptmx = w
 	p.eventCh = events
 	p.startupSettled = true
 	// Real panes run responseLoop to drain the emulator's replies; without a
@@ -71,91 +66,95 @@ func undelivered(events chan AgentEvent) []AgentEvent {
 // "deferred" line every pass, forever. Now it puts the message back at the
 // FRONT with its original time and the drain returns.
 func TestHeldMail_DrainStopsWhenTheDialogComesBackInsteadOfSpinning(t *testing.T) {
-	logs := captureLogs(t)
-	p, _, _ := heldMailPane(t, "eng3")
-	// Not settled and freshly started: the send waits for output to go quiet
-	// (resumeQuiesceStable), which is the window the dialog opens in.
-	p.startupSettled = false
-	p.startedAt = time.Now()
-	p.lastOutputTime = time.Now()
-	held := time.Now().Add(-time.Minute)
-	p.enqueue(QueuedMessage{Text: "[from super] merge order", Enter: true, Time: held, HeldForDialog: true})
+	sendBubble(t, func(t *testing.T) {
+		logs := captureLogs(t)
+		p, _, _ := heldMailPane(t, "eng3")
+		// Not settled and freshly started: the send waits for output to go quiet
+		// (resumeQuiesceStable), which is the window the dialog opens in.
+		p.startupSettled = false
+		p.startedAt = time.Now()
+		p.lastOutputTime = time.Now()
+		held := time.Now().Add(-time.Minute)
+		p.enqueue(QueuedMessage{Text: "[from super] merge order", Enter: true, Time: held, HeldForDialog: true})
 
-	done := make(chan struct{})
-	go func() { p.drainModalQueue(); close(done) }()
-	time.Sleep(100 * time.Millisecond) // the drain has popped and is in the startup wait
-	p.latchDialogOpen("Claude needs your permission")
-	p.noteDialogSighting()
+		done := make(chan struct{})
+		go func() { p.drainModalQueue(); close(done) }()
+		time.Sleep(100 * time.Millisecond) // the drain has popped and is in the startup wait
+		p.latchDialogOpen("Claude needs your permission")
+		p.noteDialogSighting()
 
-	select {
-	case <-done:
-	case <-time.After(5 * time.Second):
-		t.Fatalf("the drain is still running 5 s after the dialog opened: it is spinning (%d deferral lines)",
-			countLines(logs, "deferred: modal open"))
-	}
-	if n := countLines(logs, "deferred: modal open"); n != 0 {
-		t.Errorf("%d new 'deferred' Info lines for a message already held; want 0 (logged once, when first held)", n)
-	}
-	if q := p.QueuedMessageCount(); q != 1 {
-		t.Fatalf("queue holds %d, want the one message back", q)
-	}
-	p.mu.Lock()
-	m := p.messageQueue[0]
-	p.mu.Unlock()
-	if !m.Time.Equal(held) || !m.HeldForDialog {
-		t.Errorf("re-held message = %+v; want its original time %v and the held mark", m, held)
-	}
+		select {
+		case <-done:
+		case <-time.After(5 * time.Second):
+			t.Fatalf("the drain is still running 5 s after the dialog opened: it is spinning (%d deferral lines)",
+				countLines(logs, "deferred: modal open"))
+		}
+		if n := countLines(logs, "deferred: modal open"); n != 0 {
+			t.Errorf("%d new 'deferred' Info lines for a message already held; want 0 (logged once, when first held)", n)
+		}
+		if q := p.QueuedMessageCount(); q != 1 {
+			t.Fatalf("queue holds %d, want the one message back", q)
+		}
+		p.mu.Lock()
+		m := p.messageQueue[0]
+		p.mu.Unlock()
+		if !m.Time.Equal(held) || !m.HeldForDialog {
+			t.Errorf("re-held message = %+v; want its original time %v and the held mark", m, held)
+		}
+	})
 }
 
 // AC1: a pane that dies holding mail reports each message exactly once,
 // within one maintenance tick, and then nothing more -- 60 further ticks
 // produce no event and no deferral line.
 func TestHeldMail_DeadPaneReportsEachMessageOnceThenGoesQuiet(t *testing.T) {
-	logs := captureLogs(t)
-	tui := newTestTUI()
-	p, events, _ := heldMailPane(t, "eng3")
-	tui.panes = []PaneView{p}
-	p.latchDialogOpen("Claude needs your permission")
-	p.noteDialogSighting()
-	p.SendText("[from super] one", true)
-	p.SendText("[from super] two", true)
-	if n := countLines(logs, "deferred: modal open"); n != 2 {
-		t.Fatalf("precondition: %d deferral lines for two sends, want 2", n)
-	}
-	undelivered(events) // discard the deferral events
-
-	p.mu.Lock()
-	p.alive = false // the child exited; liveness has seen EOF
-	p.mu.Unlock()
-	now := time.Now()
-	tui.modalMaintenance(now)
-
-	got := undelivered(events)
-	if len(got) != 2 {
-		t.Fatalf("%d NOT delivered events after the pane died, want one per held message (2): %+v", len(got), got)
-	}
-	for _, ev := range got {
-		if !strings.Contains(ev.Detail, "process exited") || !strings.Contains(ev.Detail, "re-send it: [from super]") {
-			t.Errorf("report does not say why or what: %q", ev.Detail)
+	sendBubble(t, func(t *testing.T) {
+		logs := captureLogs(t)
+		tui := newTestTUI()
+		p, events, _ := heldMailPane(t, "eng3")
+		tui.panes = []PaneView{p}
+		p.latchDialogOpen("Claude needs your permission")
+		p.noteDialogSighting()
+		p.SendText("[from super] one", true)
+		p.SendText("[from super] two", true)
+		if n := countLines(logs, "deferred: modal open"); n != 2 {
+			t.Fatalf("precondition: %d deferral lines for two sends, want 2", n)
 		}
-	}
-	if n := countLines(logs, "held message NOT DELIVERED"); n != 2 {
-		t.Errorf("%d NOT DELIVERED Info lines, want 2", n)
-	}
-	if q := p.QueuedMessageCount(); q != 0 {
-		t.Errorf("queue still holds %d after reporting", q)
-	}
-	before := countLines(logs, "deferred: modal open")
-	for i := 1; i <= 60; i++ {
-		tui.modalMaintenance(now.Add(time.Duration(i) * time.Second))
-	}
-	time.Sleep(100 * time.Millisecond)
-	if extra := undelivered(events); len(extra) != 0 {
-		t.Errorf("%d more reports over 60 ticks; want none", len(extra))
-	}
-	if n := countLines(logs, "deferred: modal open") - before; n != 0 {
-		t.Errorf("%d deferral lines over 60 ticks on a dead pane; want 0", n)
-	}
+		undelivered(events) // discard the deferral events
+
+		p.mu.Lock()
+		p.alive = false // the child exited; liveness has seen EOF
+		p.mu.Unlock()
+		now := time.Now()
+		tui.modalMaintenance(now)
+
+		got := undelivered(events)
+		if len(got) != 2 {
+			t.Fatalf("%d NOT delivered events after the pane died, want one per held message (2): %+v", len(got), got)
+		}
+		for _, ev := range got {
+			if !strings.Contains(ev.Detail, "process exited") || !strings.Contains(ev.Detail, "re-send it: [from super]") {
+				t.Errorf("report does not say why or what: %q", ev.Detail)
+			}
+		}
+		if n := countLines(logs, "held message NOT DELIVERED"); n != 2 {
+			t.Errorf("%d NOT DELIVERED Info lines, want 2", n)
+		}
+		if q := p.QueuedMessageCount(); q != 0 {
+			t.Errorf("queue still holds %d after reporting", q)
+		}
+		before := countLines(logs, "deferred: modal open")
+		for i := 1; i <= 60; i++ {
+			tui.modalMaintenance(now.Add(time.Duration(i) * time.Second))
+		}
+		time.Sleep(100 * time.Millisecond)
+		if extra := undelivered(events); len(extra) != 0 {
+			t.Errorf("%d more reports over 60 ticks; want none", len(extra))
+		}
+		if n := countLines(logs, "deferred: modal open") - before; n != 0 {
+			t.Errorf("%d deferral lines over 60 ticks on a dead pane; want 0", n)
+		}
+	})
 }
 
 // A suspended pane is not dead: its queue is resume mail and stays.
@@ -206,29 +205,31 @@ func TestHeldMail_DeadlineReportsTheWaitOnALivePane(t *testing.T) {
 // AC3: a message deferred and then delivered when the dialog closes leaves
 // exactly two Info lines, one for each event.
 func TestHeldMail_DeferredThenDeliveredIsTwoInfoLines(t *testing.T) {
-	logs := captureLogs(t)
-	p, _, _ := heldMailPane(t, "eng3")
-	p.latchDialogOpen("Claude needs your permission")
-	p.noteDialogSighting()
-	p.SendText("[from super] go", true)
-	p.mu.Lock()
-	p.dialogOpen = false // the operator answered the dialog
-	p.mu.Unlock()
-	p.drainModalQueue()
+	sendBubble(t, func(t *testing.T) {
+		logs := captureLogs(t)
+		p, _, _ := heldMailPane(t, "eng3")
+		p.latchDialogOpen("Claude needs your permission")
+		p.noteDialogSighting()
+		p.SendText("[from super] go", true)
+		p.mu.Lock()
+		p.dialogOpen = false // the operator answered the dialog
+		p.mu.Unlock()
+		p.drainModalQueue()
 
-	info := 0
-	for _, line := range strings.Split(logs.String(), "\n") {
-		if strings.Contains(line, "level=INFO") && strings.Contains(line, "pane=eng3") &&
-			(strings.Contains(line, "deferred: modal open") || strings.Contains(line, "held message delivered")) {
-			info++
+		info := 0
+		for _, line := range strings.Split(logs.String(), "\n") {
+			if strings.Contains(line, "level=INFO") && strings.Contains(line, "pane=eng3") &&
+				(strings.Contains(line, "deferred: modal open") || strings.Contains(line, "held message delivered")) {
+				info++
+			}
 		}
-	}
-	if info != 2 {
-		t.Errorf("%d Info lines for one deferred-then-delivered message, want 2:\n%s", info, logs.String())
-	}
-	if p.QueuedMessageCount() != 0 {
-		t.Error("message still queued after the dialog closed and the drain ran")
-	}
+		if info != 2 {
+			t.Errorf("%d Info lines for one deferred-then-delivered message, want 2:\n%s", info, logs.String())
+		}
+		if p.QueuedMessageCount() != 0 {
+			t.Error("message still queued after the dialog closed and the drain ran")
+		}
+	})
 }
 
 // AC2, remove: mail a removed pane still holds is reported, not dropped with
