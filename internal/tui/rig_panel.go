@@ -36,6 +36,8 @@ type panelBead struct {
 // its current state; zero when not known (a remote agent).
 type panelAgent struct {
 	Name       string
+	Key        string // agentKey: what a click on its dot hides or shows.
+	Hidden     bool   // Hidden from this window's grid: the row reads [h].
 	State      ActivityState
 	Since      time.Time
 	Suspended  bool
@@ -191,7 +193,11 @@ func panelRowCells(a panelAgent, now time.Time) (dot rune, name, state, age, bea
 	if a.State == StateRunning {
 		dot = '●'
 	}
-	return dot, a.Name, panelStateWord(a.State), panelAge(a.Since, now), panelBeadCell(a)
+	name = a.Name
+	if a.Hidden {
+		name += " " + hiddenBoxMarker
+	}
+	return dot, name, panelStateWord(a.State), panelAge(a.Since, now), panelBeadCell(a)
 }
 
 // panelColumnWidths is the agents column layout: the widest name, state,
@@ -287,10 +293,11 @@ func (t *TUI) panelSnapshot(now time.Time) ([]panelAgent, []panelBead) {
 	}
 	var agents []panelAgent
 	for _, p := range t.overlayDisplayOrder(t.visiblePanesForWindow()) {
-		a := panelAgent{Name: p.Name(), State: p.Activity(), Suspended: p.IsSuspended(), Alive: p.IsAlive(), Bead: p.BeadID()}
-		if p.Host() != "" {
-			a.Name = p.Host() + ":" + p.Name()
-		}
+		// The overlay's own naming: a real remote machine's agents carry
+		// their host, window 1's alias is dropped in a second window.
+		a := panelAgent{Name: paneDisplayName(p), Key: agentKey(p), State: p.Activity(),
+			Suspended: p.IsSuspended(), Alive: p.IsAlive(), Bead: p.BeadID()}
+		a.Hidden = t.layoutState.Hidden[a.Key]
 		a.BeadStatus = status[a.Bead]
 		if lp, ok := p.(*Pane); ok {
 			a.Since = lp.ActivitySince()
@@ -338,6 +345,10 @@ func (t *TUI) drawRigPanel(now time.Time, agents []panelAgent, beads []panelBead
 	top := t.planTop
 	s := t.screen
 	sw, _ := s.Size()
+	// This frame's dot cells replace the last frame's, which the settle
+	// rule reads.
+	t.overlayBounds.prev, t.overlayBounds.dots = t.overlayBounds.dots, map[[2]int]overlayDot{}
+	t.overlayBounds.effortTop, t.overlayBounds.effortEnd = -1, -1
 	title := panelTitleOf(beads, agents, now)
 	working, attention := panelColumns(agents, now)
 	showAttn := t.panelAttn.show(len(attention) > 0, now)
@@ -464,6 +475,21 @@ func (t *TUI) drawRigPanel(now time.Time, agents []panelAgent, beads []panelBead
 			dotSt := bg.Foreground(tcell.ColorGray)
 			if dot == '●' {
 				dotSt = bg.Foreground(tcell.ColorGreen)
+			}
+			// The dot is a click target, as the overlay's was: it hides or
+			// shows the agent; a cell that just changed agent swallows a
+			// click (overlayClickSettle).
+			if x0 < limit && a.Key != "" {
+				cell := [2]int{x0, y}
+				d := overlayDot{key: a.Key}
+				if prev, ok := t.overlayBounds.prev[cell]; ok {
+					if prev.key == a.Key {
+						d.since = prev.since
+					} else {
+						d.since = overlayClickClock()
+					}
+				}
+				t.overlayBounds.dots[cell] = d
 			}
 			x := put(x0, y, string(dot)+" ", dotSt, limit)
 			x = put(x, y, fmt.Sprintf("%-*s  ", w.name, nm), text, limit)

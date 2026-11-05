@@ -4,6 +4,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gdamore/tcell/v2"
 )
@@ -249,5 +250,87 @@ func TestRigPanelKeys_AFileThatSaysFloatingStillShowsTheBand(t *testing.T) {
 		if got := tui.agentsPinnedTop(40); got != 1+1+panelDefaultRows+1 {
 			t.Fatalf("agents_form %q: the band takes %d rows, want %d", v, got, 1+1+panelDefaultRows+1)
 		}
+	}
+}
+
+// TestRigPanelDots_ASecondWindowNamesWindowOnesAgentsBare: window 1's alias
+// is not drawn in a second window (9ISX), so the row reads "○ eng1".
+func TestRigPanelDots_ASecondWindowNamesWindowOnesAgentsBare(t *testing.T) {
+	rp := NewRemotePane("eng1", WindowOnePeerName, nil, nil, 40, 10)
+	tui, s := newTestTUIWithScreen()
+	tui.panes = []PaneView{rp}
+	// Through paneDisplayName, as in a second window: window 1's alias is
+	// the observer prefix, never drawn.
+	agents, _ := tui.panelSnapshot(panelNow)
+	if len(agents) != 1 || agents[0].Name != "eng1" {
+		t.Fatalf("window 2 names window 1's agent %+v", agents)
+	}
+	_ = s
+}
+
+// TestRigPanelDots_AClickOnADotHidesTheAgentAndTheRowSaysSo: the dot is the
+// panel's click target, as the overlay's was (FN77, UZ42).
+func TestRigPanelDots_AClickOnADotHidesTheAgentAndTheRowSaysSo(t *testing.T) {
+	tui, s := panelWindow(t, 120, 40)
+	clock := panelNow
+	old := overlayClickClock
+	overlayClickClock = func() time.Time { return clock }
+	t.Cleanup(func() { overlayClickClock = old })
+	draw := func() []string {
+		s.Clear()
+		tui.renderRigPanel(panelNow)
+		s.Show()
+		var out []string
+		for _, r := range overlayScreenRows(s)[:tui.planTop] {
+			out = append(out, string(r))
+		}
+		return out
+	}
+	dotOf := func(rows []string, name string) (int, int) {
+		for y, r := range rows {
+			rr := []rune(r)
+			for x := 2; x+len(name) <= len(rr); x++ {
+				if string(rr[x:x+len(name)]) == name && (rr[x-2] == '●' || rr[x-2] == '○') {
+					return x - 2, y
+				}
+			}
+		}
+		t.Fatalf("no dot for %s:\n%s", name, strings.Join(rows, "\n"))
+		return 0, 0
+	}
+	draw()
+	x, y := dotOf(draw(), "p02")
+	clock = clock.Add(overlayClickSettle + time.Second)
+	tui.handleMouse(tcell.NewEventMouse(x, y, tcell.Button1, 0))
+	if !tui.layoutState.Hidden["p02"] {
+		t.Fatal("a click on p02's settled dot did not hide it")
+	}
+	if rows := draw(); !strings.Contains(strings.Join(rows, "\n"), "p02 "+hiddenBoxMarker) {
+		t.Fatalf("the hidden agent's row does not read %s:\n%s", hiddenBoxMarker, strings.Join(rows, "\n"))
+	}
+}
+
+// TestRigPanelDots_ADotThatJustChangedAgentSwallowsTheClick: the settle rule.
+func TestRigPanelDots_ADotThatJustChangedAgentSwallowsTheClick(t *testing.T) {
+	tui, s := panelWindow(t, 120, 40)
+	clock := panelNow
+	old := overlayClickClock
+	overlayClickClock = func() time.Time { return clock }
+	t.Cleanup(func() { overlayClickClock = old })
+	tui.renderRigPanel(panelNow)
+	var cell [2]int
+	for c, d := range tui.overlayBounds.dots {
+		if d.key == "p01" {
+			cell = c
+		}
+	}
+	// Another agent drew in that cell last frame: the click is swallowed.
+	// The draw moves this frame's cells to prev, which the settle reads.
+	tui.overlayBounds.dots = map[[2]int]overlayDot{cell: {key: "someone-else"}}
+	s.Clear()
+	tui.drawRigPanel(panelNow, []panelAgent{{Name: "p01", Key: "p01", Alive: true, State: StateIdle}}, nil)
+	tui.handleMouse(tcell.NewEventMouse(cell[0], cell[1], tcell.Button1, 0))
+	if tui.layoutState.Hidden["p01"] {
+		t.Fatal("a click on a cell that just changed agent acted")
 	}
 }
