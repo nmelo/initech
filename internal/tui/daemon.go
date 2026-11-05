@@ -57,6 +57,12 @@ type Daemon struct {
 	multiSinks map[string]*MultiSink // Per-pane fan-out sink keyed by agent name.
 	lastSizes  map[string][2]int     // Last viewer-applied {rows, cols} per agent — survives restarts (ini-ap3i).
 
+	// Each viewer's last size per agent, so one leaving can give the pane back
+	// to the one that remains (daemon_viewer_size.go).
+	viewerSizeMu sync.Mutex
+	viewerSizes  map[string]map[string]viewerSize
+	viewerSeq    uint64
+
 	// maintainMu makes the maintenance tick single-flight and guards
 	// lastModalMaint, its once-a-second clock (ini-dbqy).
 	maintainMu sync.Mutex
@@ -947,12 +953,18 @@ func (d *Daemon) handleConnection(conn net.Conn) {
 		d.sessionsMu.Unlock()
 		defer func() {
 			d.sessionsMu.Lock()
-			if d.clients[hello.PeerName] == ctrl {
+			left := d.clients[hello.PeerName] == ctrl
+			if left {
 				delete(d.clients, hello.PeerName)
 				delete(d.clientSessions, hello.PeerName)
 				delete(d.clientCtrlMu, hello.PeerName)
 			}
 			d.sessionsMu.Unlock()
+			// A viewer that reconnected under its own name has replaced this
+			// connection: it has not left.
+			if left {
+				d.viewerLeft(hello.PeerName)
+			}
 		}()
 	}
 
@@ -1437,17 +1449,7 @@ func (d *Daemon) handleControlStream(ctrl net.Conn, scanner *bufio.Scanner, peer
 					LogWarn("daemon", "resize request clamped", "agent", cmd.Target, "peer", peerName,
 						"requested_rows", cmd.Rows, "requested_cols", cmd.Cols, "rows", rows, "cols", cols)
 				}
-				if d.headless {
-					p.ResizeExact(rows, cols)
-				} else {
-					p.Resize(rows, cols)
-				}
-				d.panesMu.Lock()
-				if d.lastSizes == nil {
-					d.lastSizes = make(map[string][2]int)
-				}
-				d.lastSizes[cmd.Target] = [2]int{rows, cols}
-				d.panesMu.Unlock()
+				d.resizeForViewer(p, peerName, rows, cols)
 			}
 			if p != nil {
 				pCols, pRows := p.emuSize()

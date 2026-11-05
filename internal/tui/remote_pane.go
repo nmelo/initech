@@ -81,6 +81,8 @@ type RemotePane struct {
 	resizeTimer *time.Timer
 	pendingRows int
 	pendingCols int
+	// resizeWarned is the size last warned about (noteResizeAnswer).
+	resizeWarned [2]int
 
 	// lastLoggedH/W gate the render-region trace to changes only.
 	lastLoggedH int
@@ -824,15 +826,36 @@ func (rp *RemotePane) sendResize(rows, cols int) {
 	}
 	LogInfo("remote", "viewer resize", "agent", rp.name, "host", rp.host,
 		"rows", rows, "cols", cols, "viewer_emu_h", rp.emu.Height(), "viewer_emu_w", rp.emu.Width())
-	_, err := rp.mux.Request(ControlCmd{
+	resp, err := rp.mux.Request(ControlCmd{
 		Action: "resize",
 		Target: rp.name,
 		Rows:   rows,
 		Cols:   cols,
 	})
+	reason := resp.Error
 	if err != nil {
-		LogDebug("remote", "resize failed (fire-and-forget)", "agent", rp.name, "err", err)
+		reason = err.Error()
 	}
+	rp.noteResizeAnswer(rows, cols, reason)
+}
+
+// noteResizeAnswer logs one warning for a size the peer refused or never
+// answered: the agent keeps painting for its last size, and that wraps wrong
+// in this tile, so it must be findable. Once per size, since a layout change
+// can ask for the same one again and again; an answered size clears it.
+func (rp *RemotePane) noteResizeAnswer(rows, cols int, reason string) {
+	rp.resizeMu.Lock()
+	defer rp.resizeMu.Unlock()
+	if reason == "" {
+		rp.resizeWarned = [2]int{}
+		return
+	}
+	if rp.resizeWarned == [2]int{rows, cols} {
+		return
+	}
+	rp.resizeWarned = [2]int{rows, cols}
+	LogWarn("remote", "viewer resize not applied", "agent", rp.name, "host", rp.host,
+		"rows", rows, "cols", cols, "reason", reason)
 }
 
 // Close terminates the yamux stream and stops background goroutines.
