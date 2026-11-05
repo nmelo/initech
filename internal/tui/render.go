@@ -84,6 +84,10 @@ func (t *TUI) renderFrame() {
 		t.lastW = w
 		t.lastH = h
 		t.applyLayout()
+	} else if t.agentsPinnedTop(h) != t.planTop {
+		// The pinned section grew or shrank (ini-5d3): Option+s, a form
+		// change, or the rig numbers arriving on a short terminal.
+		t.applyLayout()
 	}
 
 	// Refresh activity state for all panes before rendering.
@@ -266,7 +270,11 @@ func (t *TUI) renderFrame() {
 	t.attentionChimes(time.Now())
 
 	if t.layoutState.Overlay {
-		t.renderOverlay()
+		if t.agentsPinned() {
+			t.renderPinnedAgents()
+		} else {
+			t.renderOverlay()
+		}
 	}
 
 	// Project badge is ALWAYS on, independent of the overlay: the operator
@@ -1102,9 +1110,27 @@ func (t *TUI) drawOverlayRow(x, row, limit, maxNameLen int, a AgentInfo, bgStyle
 	text(a.Status, statusStyle)
 }
 
-// renderOverlay draws the floating agent status panel.
-func (t *TUI) renderOverlay() {
-	s := t.screen
+// overlaySection is one block of the Agents overlay's agents: this
+// machine's, or one remote machine's under its divider, split into working
+// (left) and not working (right).
+type overlaySection struct {
+	machine     string // "" for this machine's agents; else the divider's label
+	left, right []AgentInfo
+}
+
+// overlayAgents is what both forms of the Agents overlay list (ini-5d3): one
+// content, two forms. The floating box and the pinned section draw it.
+type overlayAgents struct {
+	sections               []overlaySection
+	maxNameLen, dividerW   int
+	hiddenCount, agentRows int
+	allIdle                bool
+	scopeHidden            int
+	scopeWhere             string
+}
+
+// overlayContent builds the overlay's agents for this window.
+func (t *TUI) overlayContent() overlayAgents {
 
 	// SCOPED TO THIS WINDOW (ini-9isx AC4), through the same primitive the
 	// layout uses -- so "which agents are this window's" is one fact with one
@@ -1117,16 +1143,11 @@ func (t *TUI) renderOverlay() {
 	// Display order: locals in the Agents panel's order, then remote machines
 	// alphabetically, each block in arrival order (overlayDisplayOrder).
 	scoped = t.overlayDisplayOrder(scoped)
-	t.overlayBounds.prev, t.overlayBounds.dots = t.overlayBounds.dots, nil
 
 	// TWO COLUMNS (ini-gt7w): each section (this machine's agents, then one per
 	// remote machine under its divider) splits into working on the left and
 	// not working on the right, each column keeping the section's order. The
 	// answer the operator glances for, who is busy, sits in the first column.
-	type overlaySection struct {
-		machine     string // "" for this machine's agents; else the divider's label
-		left, right []AgentInfo
-	}
 	var sections []overlaySection
 	maxNameLen := 0
 	hiddenCount := 0
@@ -1229,6 +1250,20 @@ func (t *TUI) renderOverlay() {
 		}
 	}
 
+	return overlayAgents{sections: sections, maxNameLen: maxNameLen, dividerW: dividerW,
+		hiddenCount: hiddenCount, agentRows: agentRows, allIdle: allIdle,
+		scopeHidden: scopeHidden, scopeWhere: scopeWhere}
+}
+
+// renderOverlay draws the floating agent status panel.
+func (t *TUI) renderOverlay() {
+	s := t.screen
+	t.overlayBounds.prev, t.overlayBounds.dots = t.overlayBounds.dots, nil
+	c := t.overlayContent()
+	sections, maxNameLen, dividerW := c.sections, c.maxNameLen, c.dividerW
+	hiddenCount, agentRows, allIdle := c.hiddenCount, c.agentRows, c.allIdle
+	scopeHidden, scopeWhere := c.scopeHidden, c.scopeWhere
+
 	statusMaxLen := 7 // minimum: "running"
 	listRows := 0
 	if allIdle {
@@ -1318,6 +1353,9 @@ func (t *TUI) renderOverlay() {
 	if px+panelW > sw {
 		panelW = sw - px
 	}
+	// Each row's bead title fits the box as measured without titles: a
+	// title never widens it (ini-5d3).
+	efforts = t.titledBoardRows(efforts, panelW-4)
 	effortLines := 0
 	if len(efforts) > 0 {
 		effortLines = 1 + len(efforts)

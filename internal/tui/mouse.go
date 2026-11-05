@@ -224,6 +224,9 @@ func (t *TUI) handleMouse(ev *tcell.EventMouse) {
 		// its whole grid and does its own scrolling (ini-i3v): forward the
 		// wheel event instead of mutating scrollOffset, which contentOffset
 		// ignores entirely for alt-screen content anyway.
+		if t.scrollPinnedAgents(mx, my, -1) {
+			return // the pinned Agents section scrolls its column (ini-5d3)
+		}
 		for _, pr := range t.plan.Panes {
 			r := pr.Region
 			if mx >= r.X && mx < r.X+r.W && my >= r.Y && my < r.Y+r.H {
@@ -239,6 +242,9 @@ func (t *TUI) handleMouse(ev *tcell.EventMouse) {
 	case ev.Buttons()&tcell.WheelDown != 0:
 		// Scroll toward live view for the pane under cursor -- see WheelUp
 		// for the alt-screen forwarding rationale (ini-i3v).
+		if t.scrollPinnedAgents(mx, my, 1) {
+			return
+		}
 		for _, pr := range t.plan.Panes {
 			r := pr.Region
 			if mx >= r.X && mx < r.X+r.W && my >= r.Y && my < r.Y+r.H {

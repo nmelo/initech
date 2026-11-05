@@ -509,6 +509,8 @@ func TestLiveList_AV260FileLoadsAsItDidThere(t *testing.T) {
 		root := t.TempDir()
 		os.MkdirAll(layoutDir(root), 0o700)
 		os.WriteFile(layoutPath(root), golden, 0o600)
+		// A file older than agents_form loads floating (ini-5d3).
+		w.AgentsForm = agentsFormFloating
 		got, ok := LoadLayout(root, aa8aKeys)
 		if !ok || !reflect.DeepEqual(got, w) {
 			t.Errorf("%s: loaded (ok=%v)\n%#v\nwant, as v2.26.0 loaded it,\n%#v", name, ok, got, w)
@@ -517,9 +519,9 @@ func TestLiveList_AV260FileLoadsAsItDidThere(t *testing.T) {
 		if err := SaveLayout(out, listV260Inputs[name]); err != nil {
 			t.Fatal(err)
 		}
-		// v2.26.0's bytes plus the overlay key, which every save now writes
-		// last (ini-ye1x).
-		wantSaved := string(golden) + fmt.Sprintf("overlay: %v\n", listV260Inputs[name].Overlay)
+		// v2.26.0's bytes plus the overlay key (ini-ye1x) and the
+		// agents_form key (ini-5d3), which every save now writes last.
+		wantSaved := string(golden) + fmt.Sprintf("overlay: %v\n", listV260Inputs[name].Overlay) + "agents_form: floating\n"
 		if b, _ := os.ReadFile(layoutPath(out)); string(b) != wantSaved {
 			t.Errorf("%s: saved\n%s\nwant v2.26.0's bytes and the overlay key\n%s", name, b, wantSaved)
 		}

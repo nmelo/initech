@@ -189,6 +189,7 @@ type TUI struct {
 	paceAnswered   bool
 	paceAt         time.Time
 	paceRows       []string            // the Agents overlay's effort rows (ini-y0n.3)
+	paceTitles     map[string]string   // bd's title per polled bead id, for those rows (ini-5d3)
 	paceStuck      map[string]bool     // agents owning a stuck bead, by the pace rule (ini-7w4)
 	paceStuckIDs   map[string][]string // those beads, by agent, for the panel row
 	paceWaitingIDs map[string][]string // beads the waiting count counts, by owner, for the panel row
@@ -515,6 +516,12 @@ type TUI struct {
 		dots, prev map[[2]int]overlayDot
 	}
 
+	// planTop is the rows the pinned Agents section takes above the pane
+	// grid in the current plan (ini-5d3); 0 when the overlay floats or is
+	// hidden. agentsPin is that section's scroll and column state.
+	planTop   int
+	agentsPin agentsPinState
+
 	// Live Mode: persistent engine for anti-thrashing across render frames.
 	// Nil when not in live mode. Created by cmdLive/Alt+5, destroyed on mode switch.
 	liveEngine   *LiveEngine
@@ -593,8 +600,10 @@ func (t *TUI) applyLayout() {
 	} else {
 		w, h = 200, 60 // Fallback for tests without a screen.
 	}
-	// Reserve 2 rows below panes: spacer (h-2) + tip/command line (h-1).
-	paneH := h - 2
+	// Reserve 2 rows below panes: spacer (h-2) + tip/command line (h-1),
+	// and the pinned Agents section's rows above them (ini-5d3).
+	top := t.agentsPinnedTop(h)
+	paneH := h - 2 - top
 	if paneH < 1 {
 		paneH = 1
 	}
@@ -635,7 +644,8 @@ func (t *TUI) applyLayout() {
 	t.noticeWindowTransitions()
 	t.broadcastAgentStatusChanges()
 
-	t.plan = computeLayout(t.layoutState, t.visiblePanesForWindow(), w, paneH)
+	t.plan = shiftPlan(computeLayout(t.layoutState, t.visiblePanesForWindow(), w, paneH), top)
+	t.planTop = top
 	LogInfo("applyLayout", "layout applied", "panes", len(t.plan.Panes), "w", w, "h", paneH)
 
 	// Cancel in-progress mouse selection only if the tracked pane's region
@@ -1473,6 +1483,7 @@ func Run(cfg Config) error {
 	// it was left (ini-ye1x).
 	t.adoptLoadedSplit(viewer)
 	t.adoptLoadedOverlay(viewer)
+	t.adoptLoadedAgentsForm(viewer)
 
 	// Now that panes exist, compute the full render plan.
 	t.applyLayout()
