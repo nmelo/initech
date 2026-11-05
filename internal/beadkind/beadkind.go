@@ -14,7 +14,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"reflect"
 	"regexp"
 	"sort"
 	"strconv"
@@ -76,8 +75,8 @@ type Bead struct {
 	Status    string
 	Assignee  string
 	UpdatedAt time.Time
-	// CommentCount is bd's comment count. A comment does not move
-	// updated_at, so plan B reads a bead whose count rose.
+	// CommentCount is bd's comment count. Plan B does not read comments (they
+	// are not audit events); it is kept for callers that pass the poll whole.
 	CommentCount int
 }
 
@@ -99,7 +98,6 @@ type Reader struct {
 	mode     Mode
 	kinds    map[string]Kind
 	kindAt   map[string]time.Time // when each kind's change was made
-	comments map[string]int       // plan B: the comment count when last read
 	seq      int64
 	caughtUp bool
 	started  time.Time                 // the first poll's now
@@ -112,7 +110,7 @@ type Reader struct {
 
 // NewReader makes a Reader.
 func NewReader(opt Options) *Reader {
-	return &Reader{opt: opt, kinds: map[string]Kind{}, kindAt: map[string]time.Time{}, comments: map[string]int{}, prev: map[string]state{},
+	return &Reader{opt: opt, kinds: map[string]Kind{}, kindAt: map[string]time.Time{}, prev: map[string]state{},
 		rowSeen: map[string]map[int64]bool{}, lastPoll: map[string]time.Time{}, readAt: map[string]time.Time{}}
 }
 
@@ -363,12 +361,6 @@ func kindOfUpdate(prev, now state) (Kind, bool) {
 	return "", false
 }
 
-// historyEntry is one version from bd history --json.
-type historyEntry struct {
-	CommitDate string         `json:"CommitDate"`
-	Issue      map[string]any `json:"Issue"`
-}
-
 // readHistory reads, newest move first, at most PlanBCap beads whose move
 // is in the window and that moved since they were last read. A bead not
 // read keeps its last kind.
@@ -377,15 +369,10 @@ func (r *Reader) readHistory(ctx context.Context, beads []Bead, now time.Time) {
 	r.mu.Lock()
 	var due []Bead
 	for _, b := range beads {
-		count, seen := r.comments[b.ID]
-		commented := seen && b.CommentCount > count
-		if !seen {
-			r.comments[b.ID] = b.CommentCount
-		}
-		if b.UpdatedAt.Before(floor) && !commented {
+		if b.UpdatedAt.Before(floor) {
 			continue
 		}
-		if last, ok := r.readAt[b.ID]; ok && last.Equal(b.UpdatedAt) && !commented {
+		if last, ok := r.readAt[b.ID]; ok && last.Equal(b.UpdatedAt) {
 			continue
 		}
 		due = append(due, b)
@@ -399,58 +386,71 @@ func (r *Reader) readHistory(ctx context.Context, beads []Bead, now time.Time) {
 		if !validID.MatchString(b.ID) {
 			continue // never handed to bd as an argument
 		}
-		out, err := r.bd(ctx, "history", b.ID, "--json", "--limit", "2")
+		// --events is the bead's own audit trail. Plain bd history walks
+		// the database's newest commits, so on a busy rig its newest
+		// entries are other beads' writes and say nothing about this one.
+		out, err := r.bd(ctx, "history", b.ID, "--events", "--json", "--limit", strconv.Itoa(EventsLimit))
 		if err != nil {
 			continue // keeps its last kind; tried again next poll
 		}
-		var hist []historyEntry
-		if json.Unmarshal(out, &hist) != nil || len(hist) == 0 {
+		var evs []auditEvent
+		if json.Unmarshal(out, &evs) != nil {
 			continue
 		}
-		k, ok := kindOfVersions(hist)
-		at, _ := time.Parse(time.RFC3339Nano, hist[0].CommitDate)
+		k, at, ok := kindOfEvents(evs)
 		r.mu.Lock()
 		if ok {
 			r.setKind(b.ID, k, at)
 		}
 		r.readAt[b.ID] = b.UpdatedAt
-		r.comments[b.ID] = b.CommentCount
 		r.mu.Unlock()
 	}
 }
 
-// kindOfVersions is the kind from the newest two versions: one version is
-// filed; a status or assignee change maps as kindOfUpdate does; two versions
-// that differ in nothing but the update time are a comment (an inference: a
-// commit that changed no field of the issue, which a dependency or label
-// change also makes).
-func kindOfVersions(hist []historyEntry) (Kind, bool) {
-	if len(hist) == 1 {
-		return Filed, true
-	}
-	newer, older := hist[0].Issue, hist[1].Issue
-	ns := state{str(newer["status"]), str(newer["assignee"])}
-	os := state{str(older["status"]), str(older["assignee"])}
-	if k, ok := kindOfUpdate(os, ns); ok {
-		return k, true
-	}
-	if sameApartFrom(newer, older, "updated_at") {
-		return Comment, true
-	}
-	return "", false
+// EventsLimit is how many of a bead's audit events plan B reads.
+const EventsLimit = 20
+
+// auditEvent is one event from bd history <id> --events --json: old_value
+// is the issue before the change, new_value the fields that changed (or
+// words, for some types).
+type auditEvent struct {
+	EventType string `json:"event_type"`
+	OldValue  string `json:"old_value"`
+	NewValue  string `json:"new_value"`
+	CreatedAt string `json:"created_at"`
 }
 
-func sameApartFrom(a, b map[string]any, skip string) bool {
-	strip := func(m map[string]any) map[string]any {
-		out := make(map[string]any, len(m))
-		for k, v := range m {
-			if k != skip {
-				out[k] = v
+// kindOfEvents is the kind of the newest event that maps, newest first as bd
+// lists them, with its time: created is filed; a status_changed or updated
+// event applies its new status and assignee over the old and maps as
+// kindOfUpdate does. Other events (closed, reopened, dependencies, labels)
+// set no kind, so a later one never erases an earlier kind. A comment is not
+// an audit event; the comment kind comes from elsewhere.
+func kindOfEvents(evs []auditEvent) (Kind, time.Time, bool) {
+	for _, e := range evs {
+		at, _ := time.Parse(time.RFC3339Nano, e.CreatedAt)
+		switch e.EventType {
+		case "created":
+			return Filed, at, true
+		case "status_changed", "updated":
+			var old, changed map[string]any
+			if json.Unmarshal([]byte(e.OldValue), &old) != nil || json.Unmarshal([]byte(e.NewValue), &changed) != nil {
+				continue
+			}
+			prev := state{str(old["status"]), str(old["assignee"])}
+			now := prev
+			if v, ok := changed["status"]; ok {
+				now.status = str(v)
+			}
+			if v, ok := changed["assignee"]; ok {
+				now.assignee = str(v)
+			}
+			if k, ok := kindOfUpdate(prev, now); ok {
+				return k, at, true
 			}
 		}
-		return out
 	}
-	return reflect.DeepEqual(strip(a), strip(b))
+	return "", time.Time{}, false
 }
 
 func str(v any) string {

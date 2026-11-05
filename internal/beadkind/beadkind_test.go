@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -79,11 +81,31 @@ func (f *fakeBD) run(ctx context.Context, name string, args ...string) ([]byte, 
 				id = args[i+1]
 			}
 		}
-		var hist []map[string]any
-		for _, s := range f.history[id] {
-			hist = append(hist, map[string]any{"CommitDate": s.UpdatedAt, "Issue": map[string]any{"id": id, "status": s.Status, "assignee": s.Assignee, "updated_at": s.UpdatedAt}})
+		hist := f.history[id] // newest first
+		if !strings.Contains(all, "--events") {
+			// What real bd gives without --events: the database's newest
+			// commits, each with this bead's current state, so the newest
+			// entries all look alike.
+			var out []map[string]any
+			for i := 0; i < 2 && len(hist) > 0; i++ {
+				out = append(out, map[string]any{"CommitDate": hist[0].UpdatedAt, "Issue": map[string]any{"id": id, "status": hist[0].Status, "assignee": hist[0].Assignee, "updated_at": hist[0].UpdatedAt}})
+			}
+			b, _ := json.Marshal(out)
+			return b, nil
 		}
-		b, _ := json.Marshal(hist)
+		// --events: the bead's own audit trail, newest first, as real bd
+		// writes it (old_value the state before, new_value the fields set).
+		var evs []map[string]any
+		for i := 0; i < len(hist); i++ {
+			if i == len(hist)-1 {
+				evs = append(evs, map[string]any{"event_type": "created", "old_value": "", "new_value": "", "created_at": hist[i].UpdatedAt})
+				continue
+			}
+			oldV, _ := json.Marshal(map[string]any{"status": hist[i+1].Status, "assignee": hist[i+1].Assignee})
+			newV, _ := json.Marshal(map[string]any{"status": hist[i].Status, "assignee": hist[i].Assignee})
+			evs = append(evs, map[string]any{"event_type": "status_changed", "old_value": string(oldV), "new_value": string(newV), "created_at": hist[i].UpdatedAt})
+		}
+		b, _ := json.Marshal(evs)
 		return b, nil
 	}
 	return nil, errors.New("unexpected: " + all)
@@ -280,9 +302,9 @@ func TestJournal_OffGoesToPlanBSilently(t *testing.T) {
 	}
 }
 
-// Plan B: an unchanged snapshot is a comment; a moved bead outside the
+// Plan B: an event that changes nothing the map reads sets no kind; a moved bead outside the
 // window is not read; a bead not read keeps its kind.
-func TestPlanB_DiffsTheLastTwoVersions(t *testing.T) {
+func TestPlanB_ReadsTheBeadsOwnEvents(t *testing.T) {
 	f := &fakeBD{enabled: false, history: map[string][]snapshot{
 		"ini-c": {{"in_progress", "eng1", at(20).Format(time.RFC3339)}, {"in_progress", "eng1", at(10).Format(time.RFC3339)}},
 		"ini-w": {{"waiting", "eng1", at(21).Format(time.RFC3339)}, {"in_progress", "eng1", at(11).Format(time.RFC3339)}},
@@ -294,8 +316,10 @@ func TestPlanB_DiffsTheLastTwoVersions(t *testing.T) {
 		{ID: "ini-w", Status: "waiting", Assignee: "eng1", UpdatedAt: at(21)},
 		{ID: "ini-old", Status: "open", UpdatedAt: at(-60)},
 	}, at(22))
-	if got, _ := r.Kind("ini-c"); got != Comment {
-		t.Errorf("ini-c %q, want comment", got)
+	// ini-c's newest event changed nothing the map reads, so the newest
+	// event that maps is its creation: filed, never a guessed comment.
+	if got, _ := r.Kind("ini-c"); got != Filed {
+		t.Errorf("ini-c %q, want filed (no mapped change since), never comment", got)
 	}
 	if got, _ := r.Kind("ini-w"); got != Waiting {
 		t.Errorf("ini-w %q, want waiting", got)
@@ -436,34 +460,6 @@ func TestJournal_KindAtIsTheRowsTime(t *testing.T) {
 	}
 }
 
-// Plan B: a comment does not move updated_at, so a bead whose comment count
-// rose is read even with an old updated_at, and its kind is comment at the
-// history entry's time.
-func TestPlanB_ACommentCountRiseIsRead(t *testing.T) {
-	f := &fakeBD{enabled: false, history: map[string][]snapshot{
-		"ini-c": {{"in_progress", "eng1", at(-60).Format(time.RFC3339)}, {"in_progress", "eng1", at(-60).Format(time.RFC3339)}},
-	}}
-	var s said
-	r := newReader(f, &s)
-	b := Bead{ID: "ini-c", Status: "in_progress", Assignee: "eng1", UpdatedAt: at(-60), CommentCount: 2}
-	r.Poll(context.Background(), []Bead{b}, at(1))
-	if f.callsWith("history ini-c") != 0 {
-		t.Fatal("read a bead that neither moved in the window nor gained a comment")
-	}
-	b.CommentCount = 3
-	r.Poll(context.Background(), []Bead{b}, at(2))
-	if f.callsWith("history ini-c") != 1 {
-		t.Fatalf("the comment rise was not read: %d reads", f.callsWith("history ini-c"))
-	}
-	if k, _, ok := r.KindAt("ini-c"); !ok || k != Comment {
-		t.Fatalf("kind %q %v, want comment", k, ok)
-	}
-	r.Poll(context.Background(), []Bead{b}, at(3))
-	if f.callsWith("history ini-c") != 1 {
-		t.Fatal("re-read with no new comment")
-	}
-}
-
 // Security: the line to super names only a bead id of the strict shape, and
 // never carries bd's output; the log keeps the detail.
 func TestSuperLine_CarriesNoStoreTextButASafeID(t *testing.T) {
@@ -514,5 +510,129 @@ func TestPlanB_AFlagShapedIDIsNeverPassedToBD(t *testing.T) {
 	}
 	if f.callsWith("history ini-ok") != 1 {
 		t.Fatal("a valid id was not read")
+	}
+}
+
+// The real call: every plan B read asks for the bead's own events.
+func TestPlanB_AsksForTheBeadsEvents(t *testing.T) {
+	f := &fakeBD{enabled: false, history: map[string][]snapshot{"ini-a": {{"open", "", at(1).Format(time.RFC3339)}}}}
+	var s said
+	r := newReader(f, &s)
+	r.Poll(context.Background(), []Bead{{ID: "ini-a", Status: "open", UpdatedAt: at(1)}}, at(2))
+	if f.callsWith("history ini-a --events") != 1 {
+		t.Fatalf("calls %q: plan B must read the bead's own events", f.calls)
+	}
+}
+
+// qa2's journal-off rig, six beads, each read after other beads changed
+// (which is what made plain history useless): every kind is the bead's own.
+func TestPlanB_QA2sSixCases(t *testing.T) {
+	ts := func(m int) string { return at(m).Format(time.RFC3339) }
+	f := &fakeBD{enabled: false, history: map[string][]snapshot{
+		"c-filed":    {{"open", "", ts(1)}},
+		"c-claimed":  {{"in_progress", "eng1", ts(3)}, {"open", "", ts(1)}},
+		"c-qa":       {{"ready_for_qa", "eng1", ts(4)}, {"in_progress", "eng1", ts(3)}, {"open", "", ts(1)}},
+		"c-waiting":  {{"waiting", "eng1", ts(5)}, {"in_progress", "eng1", ts(3)}, {"open", "", ts(1)}},
+		"c-blocked":  {{"blocked", "eng1", ts(6)}, {"in_progress", "eng1", ts(3)}, {"open", "", ts(1)}},
+		"c-reworded": {{"in_progress", "eng1", ts(7)}, {"in_progress", "eng1", ts(3)}, {"open", "", ts(1)}},
+	}}
+	var s said
+	r := newReader(f, &s)
+	var beads []Bead
+	for id, h := range f.history {
+		up, _ := time.Parse(time.RFC3339, h[0].UpdatedAt)
+		beads = append(beads, Bead{ID: id, Status: h[0].Status, Assignee: h[0].Assignee, UpdatedAt: up})
+	}
+	r.Poll(context.Background(), beads, at(8))
+	want := map[string]Kind{"c-filed": Filed, "c-claimed": Claimed, "c-qa": QA, "c-waiting": Waiting, "c-blocked": Blocked, "c-reworded": Claimed}
+	for id, k := range want {
+		if got, _ := r.Kind(id); got != k {
+			t.Errorf("%s: %q, want %q", id, got, k)
+		}
+	}
+}
+
+func loadEvents(t *testing.T) []auditEvent {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join("testdata", "history_events_real.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var evs []auditEvent
+	if err := json.Unmarshal(data, &evs); err != nil {
+		t.Fatal(err)
+	}
+	return evs
+}
+
+// The real fixture: bd history <id> --events --json from this rig (a bead
+// that went filed, claimed, waiting, claimed, ready_for_qa, in_qa,
+// qa_passed, closed), ids and text replaced. Read as of each step, the kind
+// is that step's.
+func TestKindOfEvents_TheRealSequence(t *testing.T) {
+	evs := loadEvents(t)
+	asOf := func(ts string) []auditEvent {
+		for i, e := range evs {
+			if e.CreatedAt <= ts {
+				return evs[i:]
+			}
+		}
+		return nil
+	}
+	cases := []struct {
+		at   string
+		want Kind
+	}{
+		{"2026-11-05T16:07:59Z", Filed},
+		{"2026-11-05T16:33:13Z", Claimed},
+		{"2026-11-05T16:40:04Z", Waiting},
+		{"2026-11-05T17:47:07Z", Claimed},
+		{"2026-11-05T17:54:51Z", QA},
+		{"2026-11-05T18:18:23Z", QA},
+	}
+	for _, c := range cases {
+		k, when, ok := kindOfEvents(asOf(c.at))
+		if !ok || k != c.want {
+			t.Errorf("as of %s: %q %v, want %q", c.at, k, ok, c.want)
+		}
+		if ok && !when.Equal(mustTime(t, c.at)) {
+			t.Errorf("as of %s: kind time %v, want the step's own time", c.at, when)
+		}
+	}
+}
+
+func mustTime(t *testing.T, s string) time.Time {
+	t.Helper()
+	tm, err := time.Parse(time.RFC3339, s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return tm
+}
+
+// Events that map to no kind never erase one: a dependency, a label or a
+// close after a claim leaves claimed.
+func TestKindOfEvents_UnmappedEventsKeepTheKind(t *testing.T) {
+	evs := []auditEvent{
+		{EventType: "dependency_added", NewValue: "Added dependency", CreatedAt: "2026-11-05T17:03:00Z"},
+		{EventType: "label_added", CreatedAt: "2026-11-05T17:02:00Z"},
+		{EventType: "updated", OldValue: `{"status":"in_progress","assignee":"eng1"}`, NewValue: `{}`, CreatedAt: "2026-11-05T17:01:30Z"},
+		{EventType: "status_changed", OldValue: `{"status":"open"}`, NewValue: `{"status":"in_progress","assignee":"eng1"}`, CreatedAt: "2026-11-05T17:01:00Z"},
+	}
+	k, when, ok := kindOfEvents(evs)
+	if !ok || k != Claimed || !when.Equal(mustTime(t, "2026-11-05T17:01:00Z")) {
+		t.Fatalf("kind %q at %v %v, want claimed at 17:01", k, when, ok)
+	}
+	if k, _, ok := kindOfEvents(nil); ok {
+		t.Fatalf("no events gave %q", k)
+	}
+}
+
+// bd records a reassignment as an "updated" event carrying the new assignee:
+// while in progress, that is claimed.
+func TestKindOfEvents_AnUpdatedEventCanClaim(t *testing.T) {
+	evs := []auditEvent{{EventType: "updated", OldValue: `{"status":"in_progress","assignee":"eng1"}`, NewValue: `{"assignee":"eng5"}`, CreatedAt: "2026-11-05T17:05:00Z"}}
+	if k, _, ok := kindOfEvents(evs); !ok || k != Claimed {
+		t.Fatalf("kind %q %v, want claimed", k, ok)
 	}
 }

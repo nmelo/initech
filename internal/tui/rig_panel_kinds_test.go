@@ -227,19 +227,18 @@ func TestPanelKinds_TheBeadPollerStartsTheReader(t *testing.T) {
 	}
 }
 
-// Plan B through the hook: the poll's comment count reaches the reader, so
-// a comment that does not move updated_at is still read.
-func TestPanelKinds_TheCommentCountReachesPlanB(t *testing.T) {
-	calls := 0
+// Plan B through the hook: with the journal off, the reader reads the bead's
+// own audit events (bd history --events), and the box gets that kind.
+func TestPanelKinds_PlanBReadsTheBeadsOwnEvents(t *testing.T) {
+	var calls []string
 	run := func(ctx context.Context, name string, args ...string) ([]byte, error) {
 		all := strings.Join(args, " ")
+		calls = append(calls, all)
 		switch {
 		case strings.Contains(all, "config get events-journal"):
 			return []byte("false\n"), nil
-		case strings.Contains(all, " history "):
-			calls++
-			old := k0.Add(-time.Hour).Format(time.RFC3339)
-			return []byte(`[{"CommitDate":"` + k0.Format(time.RFC3339) + `","Issue":{"id":"ini-n","status":"in_progress","updated_at":"` + old + `"}},{"CommitDate":"` + old + `","Issue":{"id":"ini-n","status":"in_progress","updated_at":"` + old + `"}}]`), nil
+		case strings.Contains(all, "history ini-n --events"):
+			return []byte(`[{"event_type":"status_changed","old_value":"{\"status\":\"in_progress\",\"assignee\":\"eng1\"}","new_value":"{\"status\":\"waiting\"}","created_at":"` + k0.Format(time.RFC3339) + `"},{"event_type":"created","created_at":"` + k0.Add(-time.Hour).Format(time.RFC3339) + `"}]`), nil
 		}
 		return nil, nil
 	}
@@ -249,11 +248,8 @@ func TestPanelKinds_TheCommentCountReachesPlanB(t *testing.T) {
 	tui := newTestTUI()
 	tui.startPanelKinds()
 	tui.kinds.spawn = func(fn func()) { fn() }
-	b := bdBead{ID: "ini-n", Status: "in_progress", UpdatedAt: k0.Add(-time.Hour), CommentCount: 1}
-	tui.pollKinds([]bdBead{b}, k0)
-	b.CommentCount = 2
-	tui.pollKinds([]bdBead{b}, k0.Add(time.Minute))
-	if k, _, ok := tui.kinds.reader.KindAt("ini-n"); !ok || k != beadkind.Comment || calls != 1 {
-		t.Fatalf("reader kind %q %v after %d history reads, want comment from one read", k, ok, calls)
+	tui.pollKinds([]bdBead{{ID: "ini-n", Status: "waiting", Assignee: "eng1", UpdatedAt: k0}}, k0.Add(time.Minute))
+	if k, ok := tui.panelKinds.Kind("ini-n"); !ok || k != "waiting" {
+		t.Fatalf("kind %q %v via calls %q, want waiting from the bead's events", k, ok, calls)
 	}
 }
