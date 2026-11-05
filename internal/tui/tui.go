@@ -209,6 +209,12 @@ type TUI struct {
 	// answers about tags and runs (the poll goroutine's alone).
 	paceWaits    map[string]progress.WaitState
 	paceOverSent map[string]bool
+	// The idle-owner reading (ini-9dv): each local idle pane's idle time at
+	// the last refresh, the idle-owner beads by owner for the pane row, and
+	// the idle spell each owner|bead line was sent for.
+	paceIdleFor  map[string]time.Duration
+	paceIdle     map[string][]paceIdleMark
+	paceIdleSent map[string]time.Time
 	paceAnswers  map[string]paceAnswer
 	inboxOnce    sync.Once
 	// inboxOutstanding maps an agent to the inbox items whose delivery verdict

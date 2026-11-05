@@ -625,3 +625,54 @@ func TestProgress_JudgesEveryKindOfWait(t *testing.T) {
 		t.Errorf("no note for the missing run: %v", rep.Notes)
 	}
 }
+
+// ini-9dv AC1, AC4 and pm's IPC cells: initech progress reads idle_sec from
+// the running initech's list reply. eng1 idle 25m reads idle-owner on its
+// in_progress beads, in the table and the JSON; eng2 idle with no idle_sec (an
+// older TUI) is unknown and reads nothing, never zero; a pane on another
+// machine with idle_sec reads nothing.
+func TestProgress_IdleOwnerFromTheListReply(t *testing.T) {
+	skipWindows(t)
+	dir := shortProjectDir(t)
+	sec, far := 1500, 7200
+	panes, _ := json.Marshal([]tui.PaneInfo{
+		{Name: "eng1", Activity: "idle", Alive: true, IdleSec: &sec},
+		{Name: "eng2", Activity: "idle", Alive: true},
+		{Name: "eng2", Host: "box2", Activity: "idle", Alive: true, IdleSec: &far},
+	})
+	resp, _ := json.Marshal(tui.IPCResponse{OK: true, Data: string(panes)})
+	sock := filepath.Join(dir, "p.sock")
+	_, cleanup := startATIPCServer(t, sock, responseMode{raw: string(resp) + "\n"})
+	defer cleanup()
+	t.Setenv("INITECH_SOCKET", sock)
+	out, err := runProgressFixture(t, &progressFake{}, progressRepos, "fx-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"owner idle 2", "owner idle 20m or more:", "  fx-1 eng1: idle 25m", "  fx-10 eng1: idle 25m"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("want %q; got:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "eng2: idle") {
+		t.Errorf("eng2 sent no idle_sec (or only from another machine) yet reads idle:\n%s", out)
+	}
+	js, err := runProgressJSON(t, &progressFake{}, progressRepos, "fx-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rep struct {
+		IdleAfter string `json:"idle_after"`
+		IdleOwner []struct {
+			ID      string `json:"id"`
+			Owner   string `json:"owner"`
+			IdleMin int    `json:"idle_min"`
+		} `json:"idle_owner"`
+	}
+	if err := json.Unmarshal([]byte(js), &rep); err != nil {
+		t.Fatalf("json: %v\n%s", err, js)
+	}
+	if rep.IdleAfter != "20m" || len(rep.IdleOwner) != 2 || rep.IdleOwner[0].Owner != "eng1" || rep.IdleOwner[0].IdleMin != 25 {
+		t.Errorf("json idle_after %q idle_owner %+v", rep.IdleAfter, rep.IdleOwner)
+	}
+}

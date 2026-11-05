@@ -148,6 +148,7 @@ func runProgress(cmd *cobra.Command, args []string) error {
 func progressReport(r iexec.Runner, p *config.Project, prefix string, hours int, after time.Duration, now time.Time) (progress.Report, error) {
 	in := progress.Input{Rig: p.Name, Prefix: prefix, Hours: hours, Now: now}
 	in.Rule = progress.NewRule(after, progressWorkingChain(r, p.Root, &in.Notes))
+	in.Rule.IdleAfter = p.Beads.IdleValue()
 
 	raw, err := r.RunInDir(p.Root, "bd", "list", "--all", "--limit", "0", "--json")
 	var all []progress.Bead
@@ -174,7 +175,11 @@ func progressReport(r iexec.Runner, p *config.Project, prefix string, hours int,
 	} else {
 		in.Beads = progress.JudgeAll(in.Beads, now, nil)
 	}
-	in.Panes, in.PanesKnown = progressPanes(p)
+	var idle map[string]time.Duration
+	in.Panes, idle, in.PanesKnown = progressPanes(p)
+	for i, b := range in.Beads {
+		in.Beads[i].OwnerIdle = idle[b.Assignee]
+	}
 	if !in.PanesKnown {
 		in.Notes = append(in.Notes, "owner panes not read (no initech answering): no quiet bead reads working")
 	}
@@ -349,28 +354,35 @@ func repoSlug(url string) string {
 	return strings.ToLower(parts[len(parts)-2] + "/" + parts[len(parts)-1])
 }
 
-// progressPanes is each role's pane activity from the running initech;
-// known is false when none answers.
-func progressPanes(p *config.Project) (map[string]string, bool) {
+// progressPanes is each role's pane activity from the running initech, and
+// how long each idle one has been idle where the TUI said (idle_sec; absent
+// is not known, so no entry); known is false when none answers. Panes on
+// another machine are left out of both.
+func progressPanes(p *config.Project) (map[string]string, map[string]time.Duration, bool) {
 	sock := os.Getenv("INITECH_SOCKET")
 	if sock == "" {
 		sock = tui.SocketPath(p.Root, p.Name)
 	}
 	resp, err := ipcCallSocket(sock, tui.IPCRequest{Action: "list"})
 	if err != nil || resp == nil || !resp.OK {
-		return nil, false
+		return nil, nil, false
 	}
 	var panes []paneInfo
 	if json.Unmarshal([]byte(resp.Data), &panes) != nil {
-		return nil, false
+		return nil, nil, false
 	}
 	out := make(map[string]string, len(panes))
+	idle := map[string]time.Duration{}
 	for _, pi := range panes {
-		if pi.Host == "" {
-			out[pi.Name] = pi.Activity
+		if pi.Host != "" {
+			continue
+		}
+		out[pi.Name] = pi.Activity
+		if pi.IdleSec != nil {
+			idle[pi.Name] = time.Duration(*pi.IdleSec) * time.Second
 		}
 	}
-	return out, true
+	return out, idle, true
 }
 
 func isDir(p string) bool {

@@ -169,6 +169,10 @@ type BeadsConfig struct {
 	// StuckAfter is how long a bead may sit before it reads stuck. Absent is
 	// one hour; read it through Value.
 	StuckAfter StuckAfter `yaml:"stuck_after,omitempty"`
+	// IdleAfter is how long an in_progress bead's owner pane may sit idle
+	// before the bead reads idle-owner. Absent is 20 minutes; read it through
+	// IdleValue.
+	IdleAfter IdleAfter `yaml:"idle_after,omitempty"`
 }
 
 // IsEnabled returns whether beads integration is active. Nil (legacy configs

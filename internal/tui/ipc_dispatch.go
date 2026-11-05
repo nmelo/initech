@@ -53,6 +53,12 @@ type PaneInfo struct {
 	DND       *bool `json:"dnd,omitempty"`
 	DNDAgeSec *int  `json:"dnd_age_sec,omitempty"`
 
+	// IdleSec is how long a pane this process runs has been idle, in seconds
+	// (ini-9dv), sent only while it is idle. Absent means not known, never
+	// zero: a pane that is busy, on another machine, or behind an older TUI
+	// gives no idle-owner reading.
+	IdleSec *int `json:"idle_sec,omitempty"`
+
 	// Read from the pane's screen only when the list request asks for detail
 	// (initech status --json, ini-l6om), and only for a live pane. Each is
 	// omitted when it was not read, so a client reads it as null; an older

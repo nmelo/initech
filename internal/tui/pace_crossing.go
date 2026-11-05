@@ -93,7 +93,7 @@ func (t *TUI) paceClone() string {
 // paceBead is a polled bead as the pace counts it.
 func (t *TUI) paceBead(b bdBead, now time.Time) progress.Bead {
 	return progress.Bead{ID: b.ID, Title: b.Title, Status: b.Status, Assignee: b.Assignee, UpdatedAt: b.UpdatedAt, ClosedAt: b.ClosedAt,
-		Moved: t.paceMoved(b.ID, now), Wait: t.paceWaits[b.ID]}
+		Moved: t.paceMoved(b.ID, now), Wait: t.paceWaits[b.ID], OwnerIdle: t.paceIdleFor[b.Assignee]}
 }
 
 // panePaceStates maps each pane to its state by name.

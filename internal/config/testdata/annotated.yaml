@@ -20,6 +20,7 @@ role_overrides:
 beads:
   enabled: false
   stuck_after: 20m   # a slow rig
+  idle_after: 45m   # long thinkers
 numbers:
   gate_red_max: 1   # one red is a question
   idle_engineers_min: 2

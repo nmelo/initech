@@ -389,6 +389,7 @@ func (p *Pane) recordActivityTransition(prev ActivityState, by string) {
 	}
 	p.activityTransitions++
 	p.activityDecidedBy = by
+	p.activitySince = paneClock()
 	LogInfo("activity", "state changed", "pane", p.name, "from", prev, "to", p.activity, "by", by)
 }
 

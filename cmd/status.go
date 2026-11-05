@@ -57,6 +57,10 @@ type paneInfo struct {
 	DND       *bool `json:"dnd"`
 	DNDAgeSec *int  `json:"dnd_age_sec"`
 
+	// IdleSec is how long the pane has been idle (ini-9dv); nil when the TUI
+	// did not say (busy, another machine, or an older TUI), never zero.
+	IdleSec *int `json:"idle_sec,omitempty"`
+
 	// Beads is the pane's ribbon; nil when the TUI sent no beads field (an
 	// older TUI), which turns the ribbon-versus-bd check off for the pane.
 	Beads *[]string `json:"beads"`

@@ -187,6 +187,36 @@ func TestConfigWrite_EveryWriterKeepsStuckAfter(t *testing.T) {
 	}
 }
 
+// ini-9dv AC3: beads.idle_after rides the same fixture; an update keeps its
+// bytes and its value still loads.
+func TestConfigWrite_EveryWriterKeepsIdleAfter(t *testing.T) {
+	_, path, orig := annotatedConfig(t)
+	line := "idle_after: 45m   # long thinkers"
+	if !strings.Contains(orig, line) {
+		t.Fatal("the fixture lost beads.idle_after")
+	}
+	if err := config.Update(path, func(p *config.Project) error {
+		p.Roles = append(p.Roles, "eng2")
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), line) {
+		t.Errorf("an update dropped or rewrote the key:\n%s", b)
+	}
+	p, err := config.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := p.Beads.IdleValue(); got != 45*time.Minute {
+		t.Errorf("IdleValue after a write = %v, want 45m", got)
+	}
+}
+
 // ini-3sl: the fixture carries a numbers: block with a comment, so each
 // writer's byte-for-byte test above keeps it; this one says so, and that the
 // thresholds still load after a write.

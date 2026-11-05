@@ -86,7 +86,7 @@ func TestAppendMissingExamples_KeepsEveryExistingByteAndIsIdempotent(t *testing.
 		t.Fatal(err)
 	}
 	if n != 5 {
-		t.Errorf("added %d examples, want 5 (claude_command, typing_hold_quiet_s, role_overrides, stuck_after, telemetry; claude_args is live, resource commented)", n)
+		t.Errorf("added %d examples, want 5 (claude_command, typing_hold_quiet_s, role_overrides, stuck_after with idle_after, telemetry; claude_args is live, resource commented)", n)
 	}
 	b, _ := os.ReadFile(path)
 	got := string(b)
