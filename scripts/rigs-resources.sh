@@ -57,7 +57,13 @@ start)
           {pp[$1]=$2; rss[$1]=$3}
           END {for (p in pp) {q=p; while (q!="" && q!=root && q>1) q=pp[q]; if (q==root) {s+=rss[p]; c++}} print s+0, c+0}')
       fi
-      echo "$(date +%s) $kb $n ${anon:--} ${file:--}" >> "$f"
+      # anon and file only where memory.stat exists (the Linux cgroup); a
+      # macOS sample stays time, kilobytes, processes.
+      if [ -n "$cg" ]; then
+        echo "$(date +%s) $kb $n ${anon:--} ${file:--}" >> "$f"
+      else
+        echo "$(date +%s) $kb $n" >> "$f"
+      fi
       sleep 5
     done
   ) < /dev/null > /dev/null 2>&1 &
