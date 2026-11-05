@@ -209,9 +209,19 @@ func TestPanelKinds_TheBeadPollerStartsTheReader(t *testing.T) {
 	tui := newTestTUI()
 	tui.windowID = WindowOne
 	tui.projectRoot = t.TempDir()
+	// The poller's first poll runs on its own goroutine and reads the stubs
+	// above; the cleanups restore them. pollKinds is that poll's last step,
+	// so its spawn is the event that says the goroutine is done with them.
+	polled := make(chan struct{})
+	tui.kinds.spawn = func(fn func()) { fn(); close(polled) }
 	quit := make(chan struct{})
 	close(quit)
 	tui.startBeadPoller(quit)
+	select {
+	case <-polled:
+	case <-time.After(10 * time.Second): // a safety bound only; the event ends the wait
+		t.Fatal("the poller's first poll never reached the reader")
+	}
 	if tui.panelKinds == nil || tui.kinds.reader == nil {
 		t.Fatal("the bead poller started without the change-kind reader")
 	}
