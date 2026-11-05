@@ -301,3 +301,28 @@ func TestRigPanel_Window2SaysTheMovedBoxIsInWindow1(t *testing.T) {
 		scr.Fini()
 	}
 }
+
+// TestRigPanel_TheTitleRowCountsHiddenAgents: the overlay's "N visible, M
+// hidden" stays on the title row, which is how a second window shows that
+// window 1 hid an agent (6M4's propagation check).
+func TestRigPanel_TheTitleRowCountsHiddenAgents(t *testing.T) {
+	tui, s := newTestTUIWithScreen("eng1", "eng2")
+	tui.projectName = "initech"
+	tui.layoutState.Overlay = true
+	tui.layoutState.Hidden = map[string]bool{"eng1": true}
+	tui.applyLayout()
+	tui.renderRigPanel(panelNow)
+	tui.renderProjectBadge()
+	s.Show()
+	rows := overlayScreenRows(s)
+	if title := string(rows[0]); !strings.Contains(title, "1 visible, 1 hidden") {
+		t.Fatalf("title row %q lacks 1 visible, 1 hidden", strings.TrimRight(title, " "))
+	}
+	tui.layoutState.Hidden = map[string]bool{}
+	s.Clear()
+	tui.renderRigPanel(panelNow)
+	s.Show()
+	if title := string(overlayScreenRows(s)[0]); strings.Contains(title, "hidden") {
+		t.Fatalf("with nothing hidden the title row reads %q", strings.TrimRight(title, " "))
+	}
+}

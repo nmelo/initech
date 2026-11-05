@@ -307,6 +307,22 @@ func (t *TUI) panelSnapshot(now time.Time) ([]panelAgent, []panelBead) {
 	return agents, beads
 }
 
+// panelDisclosure is the title row's left-side disclosures: "N visible, M
+// hidden" when any of the window's agents are hidden from its grid, and
+// "+N <window> · alt+a shows all" when agents are on another window; empty
+// when neither applies.
+func (t *TUI) panelDisclosure() string {
+	c := t.overlayContent()
+	var parts []string
+	if c.hiddenCount > 0 {
+		parts = append(parts, fmt.Sprintf("%d visible, %d hidden", c.agentRows-c.hiddenCount, c.hiddenCount))
+	}
+	if c.scopeHidden > 0 {
+		parts = append(parts, fmt.Sprintf("+%d %s · alt+a shows all", c.scopeHidden, c.scopeWhere))
+	}
+	return strings.Join(parts, " · ")
+}
+
 // renderRigPanel draws the panel across the top planTop rows.
 func (t *TUI) renderRigPanel(now time.Time) {
 	top := t.planTop
@@ -357,6 +373,14 @@ func (t *TUI) drawRigPanel(now time.Time, agents []panelAgent, beads []panelBead
 	// the awake counts go whole; past that the line is cut at the right edge.
 	// The alarms, the row's job, are kept longest.
 	left := t.projectBadgeEnd()
+	// The overlay's disclosures stay on the title row after the name: how
+	// many of the window's agents are hidden from its grid, and how many are
+	// on another window. They are how a second window shows that window 1
+	// hid an agent (6M4's propagation check).
+	if disc := t.panelDisclosure(); disc != "" && left+2+len([]rune(disc)) < sw {
+		put(left+2, 0, disc, dim, sw)
+		left += 2 + len([]rune(disc))
+	}
 	var right string
 	var spans []panelSpan
 	for level := 0; level <= 3; level++ {
