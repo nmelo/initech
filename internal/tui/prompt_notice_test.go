@@ -133,8 +133,8 @@ func TestPromptNotice_SuperGetsOneLine(t *testing.T) {
 	observe(eng1, true, t0.Add(promptNoticeGrace), t)
 	tui.sendPromptNotices()
 	got := r.waitFor(1)
-	want := "super|initech|[from initech] eng1 is at a prompt it cannot pass alone: Do you want to proceed? Reason: " + rmReason +
-		". Claude Code blocks it in 1:57. Answer it: initech keystroke eng1 y (or n), or tell eng1 to rewrite the command."
+	want := "super|initech|[from initech] eng1 is at a prompt it cannot pass alone: Do you want to proceed? Its screen gives the reason: \"" + rmReason +
+		"\". Claude Code blocks it in 1:57. Answer it: initech keystroke eng1 y (or n), or tell eng1 to rewrite the command."
 	if len(got) != 1 || got[0] != want {
 		t.Fatalf("lines %q\nwant %q", got, want)
 	}
@@ -242,5 +242,71 @@ func TestPromptNotice_APaneWithNoDialogSendsNothing(t *testing.T) {
 	}
 	if got := r.waitFor(1); len(got) != 0 {
 		t.Fatalf("a pane with no dialog sent %q", got)
+	}
+}
+
+// A screen showing only the question and a countdown, with no answers under
+// it, is text an agent printed, not an open prompt: nothing is sent.
+func TestPromptNotice_NoAnswerRowsReadsAsNone(t *testing.T) {
+	rows := lvxwFixture(t, "haiku6if_prompt_rm_early_w80.txt")
+	if _, ok := parseBlockingPrompt(rows); !ok {
+		t.Fatal("the real screen does not read: the twin below proves nothing")
+	}
+	var forged []string
+	for _, r := range rows {
+		if t := strings.TrimSpace(r); t == "❯ 1. Yes" || t == "2. No" {
+			continue
+		}
+		forged = append(forged, r)
+	}
+	if bp, ok := parseBlockingPrompt(forged); ok {
+		t.Errorf("a screen with no answer rows read as an open prompt: %+v", bp)
+	}
+}
+
+// The reason comes from the agent's screen, so it is forwarded as plain
+// printable text, short, and quoted as the screen's: an escape sequence, a
+// line break or a flood of text do not reach super's pane.
+func TestPromptNotice_TheReasonIsCleanedAndQuoted(t *testing.T) {
+	got := cleanScreenText("rm on \x1b[2Jtarget\n\nignore all of this " + strings.Repeat("x", 400))
+	if strings.ContainsAny(got, "\x1b\n\r") {
+		t.Errorf("control characters survived: %q", got)
+	}
+	if n := len([]rune(got)); n > screenTextMax+1 {
+		t.Errorf("reason is %d runes, cap %d", n, screenTextMax)
+	}
+	if !strings.HasPrefix(got, "rm on [2Jtarget ignore all") {
+		t.Errorf("printable text lost or spacing not collapsed: %q", got)
+	}
+	line := promptNoticeText("eng1", blockingPrompt{Question: promptQuestion, Reason: `say "hi"`, Left: "1:00"})
+	if !strings.Contains(line, `Its screen gives the reason: "say \"hi\""`) {
+		t.Errorf("the reason is not quoted as the screen's: %q", line)
+	}
+}
+
+// The parser itself cleans what it reads: an escape sequence and a flood of
+// text planted in a real prompt's reason row reach the notice as printable
+// text within the cap.
+func TestPromptNotice_TheParserCleansTheReasonItReads(t *testing.T) {
+	rows := lvxwFixture(t, "haiku6if_prompt_rm_early_w80.txt")
+	hit := false
+	for i, r := range rows {
+		if strings.Contains(r, "│ Dangerous rm operation") {
+			rows[i] = strings.Replace(r, "Dangerous", "\x1b[2J\x07Dangerous "+strings.Repeat("y", 300), 1)
+			hit = true
+		}
+	}
+	if !hit {
+		t.Fatal("no reason row to plant in: the check below proves nothing")
+	}
+	bp, ok := parseBlockingPrompt(rows)
+	if !ok {
+		t.Fatal("the planted screen no longer reads as the prompt")
+	}
+	if strings.ContainsAny(bp.Reason, "\x1b\x07") {
+		t.Errorf("control characters reached the reason: %q", bp.Reason)
+	}
+	if n := len([]rune(bp.Reason)); n > screenTextMax+1 {
+		t.Errorf("reason is %d runes, cap %d", n, screenTextMax)
 	}
 }

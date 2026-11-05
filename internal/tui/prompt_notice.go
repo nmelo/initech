@@ -5,6 +5,7 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"unicode"
 )
 
 // A PROMPT THE AGENT CANNOT PASS ALONE is Claude Code's permission prompt
@@ -50,7 +51,7 @@ func parseBlockingPrompt(rows []string) (blockingPrompt, bool) {
 			q = i
 		}
 	}
-	if q < 0 {
+	if q < 0 || !promptOptionsBelow(live[q+1:]) {
 		return blockingPrompt{}, false
 	}
 	// The countdown and the reason sit above the question: the reason as a
@@ -82,9 +83,61 @@ func parseBlockingPrompt(rows []string) (blockingPrompt, bool) {
 	}
 	return blockingPrompt{
 		Question: promptQuestion,
-		Reason:   strings.Join(reason, " "),
+		Reason:   cleanScreenText(strings.Join(reason, " ")),
 		Left:     m[1],
 	}, true
+}
+
+// promptOptionsBelow reports whether the two rows right below the question
+// are the prompt's own answers, "1. Yes" and "2. No" (the cursor mark ❯ on
+// either). A screen that only shows the question and a countdown -- text an
+// agent printed -- is not an open prompt.
+func promptOptionsBelow(rows []string) bool {
+	var opts []string
+	for _, r := range rows {
+		t := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(r), "❯"))
+		if t == "" {
+			continue
+		}
+		opts = append(opts, t)
+		if len(opts) == 2 {
+			break
+		}
+	}
+	return len(opts) == 2 && opts[0] == "1. Yes" && opts[1] == "2. No"
+}
+
+// screenTextMax caps the reason text a notice carries.
+const screenTextMax = 160
+
+// cleanScreenText makes text read from an agent's screen safe to forward: only
+// printable characters, whitespace collapsed, at most screenTextMax runes.
+// It is still the agent's screen, and the notice quotes it as such.
+func cleanScreenText(s string) string {
+	var b strings.Builder
+	space := false
+	n := 0
+	for _, r := range s {
+		if unicode.IsSpace(r) {
+			space = true
+			continue
+		}
+		if !unicode.IsPrint(r) {
+			continue
+		}
+		if space && b.Len() > 0 {
+			b.WriteByte(' ')
+			n++
+		}
+		space = false
+		if n >= screenTextMax {
+			b.WriteString("…")
+			break
+		}
+		b.WriteRune(r)
+		n++
+	}
+	return b.String()
 }
 
 // promptNoticeState is one pane's record of its open blocking prompt.
@@ -135,7 +188,7 @@ func promptNoticeText(agent string, bp blockingPrompt) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s is at a prompt it cannot pass alone: %s", agent, bp.Question)
 	if bp.Reason != "" {
-		fmt.Fprintf(&b, " Reason: %s.", strings.TrimSuffix(bp.Reason, "."))
+		fmt.Fprintf(&b, " Its screen gives the reason: %q.", bp.Reason)
 	}
 	fmt.Fprintf(&b, " Claude Code blocks it in %s. Answer it: initech keystroke %s y (or n), or tell %s to rewrite the command.", bp.Left, agent, agent)
 	return b.String()
