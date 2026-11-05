@@ -401,3 +401,22 @@ func TestHeldFile_AMessageBeingTypedIsWrittenAsTyping(t *testing.T) {
 		}
 	}
 }
+
+// qa2's H7 (ini-8rkg): restored do-not-disturb mail is released at the
+// restart, so a dialog that then stays open gives it up ten minutes after
+// the restart, not after it was sent, and not never.
+func TestHeldFile_RestoredDNDMailGivesUpTenMinutesAfterTheRestart(t *testing.T) {
+	p, _, _ := dndPane(t, "eng1")
+	restart := heldT0.Add(3 * time.Hour) // sent long before the restart
+	lines := requeueHeld([]heldEntry{{Pane: "eng1", Text: "[from eng2] held", Enter: true, Time: heldT0,
+		Kind: heldKindDND, From: "eng2", State: heldStateHeld}}, func(string) *Pane { return p }, restart)
+	if len(lines) != 0 || p.QueuedMessageCount() != 1 {
+		t.Fatalf("restore: lines %q, queued %d; want it back, nothing said", lines, p.QueuedMessageCount())
+	}
+	if n := p.resolveHeldMail(restart.Add(heldMessageDeadline - time.Second)); n != 0 {
+		t.Fatalf("given up %d before ten minutes from the restart", n)
+	}
+	if n := p.resolveHeldMail(restart.Add(heldMessageDeadline)); n != 1 {
+		t.Fatalf("given up %d at ten minutes from the restart, want 1", n)
+	}
+}
