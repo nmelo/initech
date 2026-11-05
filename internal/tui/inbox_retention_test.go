@@ -146,6 +146,14 @@ func TestInboxRetention_RealStoreAndPanelAgree(t *testing.T) {
 	sort.Strings(deliveryNames)
 	root := inboxRoot(t)
 	store := mustLoadInbox(t, root)
+	// The matrix builds its ~1300 items through the store's own mutate path,
+	// with the save that path ends in deferred to one save below: every save
+	// writes every item, so saving per mutation made the matrix quadratic
+	// (43-64s under -race, 3.5s plain). Per-mutation persistence is the inbox
+	// persistence tests' claim; this test's claim is the four reads below.
+	store.mu.Lock()
+	store.memoryOnly = true
+	store.mu.Unlock()
 	retained := map[string]InboxItem{}
 	for _, stateName := range stateNames {
 		state := states[stateName]
@@ -202,6 +210,13 @@ func TestInboxRetention_RealStoreAndPanelAgree(t *testing.T) {
 	}
 	// All discovered cells coexist: qa2's mixed-store probe, expanded from
 	// four hand-picked items to the full type-derived matrix.
+	store.mu.Lock()
+	store.memoryOnly = false
+	err := store.save()
+	store.mu.Unlock()
+	if err != nil {
+		t.Fatalf("saving the matrix: %v", err)
+	}
 	assertInboxRetentionItems(t, "panel before reload", inboxListFor(store), retained)
 	reloaded := mustLoadInbox(t, root)
 	assertInboxRetentionItems(t, "store after reload", reloaded.Items(), retained)
