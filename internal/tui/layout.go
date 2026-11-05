@@ -94,6 +94,41 @@ type LayoutState struct {
 	// is in PersistentLayout, and the tags say so.
 	RightSet       []string `yaml:"-"`
 	RightSetActive bool     `yaml:"-"`
+
+	// AgentsForm is the Agents overlay's form (ini-5d3): agentsFormFloating,
+	// the box over the panes, or agentsFormPinned, a section across the top
+	// of the page that the pane grid sits below. layout.yaml stores it as
+	// agents_form; LoadLayout reads anything else as floating.
+	AgentsForm string `yaml:"-"`
+}
+
+// The two forms of the Agents overlay (ini-5d3).
+const (
+	agentsFormFloating = "floating"
+	agentsFormPinned   = "pinned"
+)
+
+// readAgentsForm is the form a stored agents_form value means: absent is
+// floating; floating and pinned are themselves; anything else is floating,
+// with one WARN naming the value.
+func readAgentsForm(v string) string {
+	switch v {
+	case "", agentsFormFloating:
+		return agentsFormFloating
+	case agentsFormPinned:
+		return agentsFormPinned
+	}
+	LogWarn("layout", "agents_form is neither floating nor pinned; reading it as floating", "agents_form", v)
+	return agentsFormFloating
+}
+
+// writeAgentsForm is the value SaveLayout stores for a form: always one of
+// the two, so every saved file carries the field.
+func writeAgentsForm(form string) string {
+	if form == agentsFormPinned {
+		return agentsFormPinned
+	}
+	return agentsFormFloating
 }
 
 // RenderPlan is the complete set of instructions for one frame.
@@ -528,13 +563,14 @@ func DefaultLayoutState(paneNames []string) LayoutState {
 		}
 	}
 	return LayoutState{
-		Mode:      LayoutGrid,
-		GridCols:  cols,
-		GridRows:  rows,
-		Focused:   focused,
-		Hidden:    make(map[string]bool),
-		Protected: protected,
-		Overlay:   true,
+		Mode:       LayoutGrid,
+		GridCols:   cols,
+		GridRows:   rows,
+		Focused:    focused,
+		Hidden:     make(map[string]bool),
+		Protected:  protected,
+		Overlay:    true,
+		AgentsForm: agentsFormFloating,
 	}
 }
 
@@ -580,6 +616,10 @@ type PersistentLayout struct {
 	// writes it, true or false; a file without it (written before the key
 	// existed) loads shown, and an older initech ignores it.
 	Overlay *bool `yaml:"overlay,omitempty"`
+	// AgentsForm is the Agents overlay's form, floating or pinned (ini-5d3).
+	// Every save writes it; a file without it loads floating, and an older
+	// initech ignores it.
+	AgentsForm string `yaml:"agents_form,omitempty"`
 }
 
 // The two splits layout.yaml can carry (ini-aa8a).
@@ -711,6 +751,7 @@ func SaveLayout(projectRoot string, state LayoutState) error {
 		ListRows:     state.ListRows,
 		ListCols:     state.ListCols,
 		Overlay:      &state.Overlay,
+		AgentsForm:   writeAgentsForm(state.AgentsForm),
 	}
 	// Hidden/Protected/LivePinned are deliberately NOT written: they are
 	// session-global and live in fleet-state.yaml (ini-9ka.10). A layout file
@@ -924,6 +965,7 @@ func LoadLayout(projectRoot string, paneKeys []string) (LayoutState, bool) {
 		Held:         pl.Held,
 		ListRows:     pl.ListRows,
 		ListCols:     pl.ListCols,
+		AgentsForm:   readAgentsForm(pl.AgentsForm),
 	}, true
 }
 

@@ -111,6 +111,7 @@ func (t *TUI) refreshPaceLines(now time.Time) {
 	panes := t.panePaceStates()
 	rule := t.paceRule()
 	t.paceRows = paceEffortRows(beads, panes, rule, now, t.paceStale)
+	t.paceTitles = effortTitles(t.paceBeads)
 	t.paceStuck = map[string]bool{}
 	t.paceStuckIDs = map[string][]string{}
 	t.paceWaitingIDs = map[string][]string{}

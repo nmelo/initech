@@ -134,6 +134,10 @@ func (t *TUI) handleKey(ev *tcell.EventKey) bool {
 			case base == 'l':
 				t.toggleLiveListSplit()
 				return false
+			case base == 's':
+				// The Agents overlay's form, floating or pinned (ini-5d3).
+				t.toggleAgentsForm()
+				return false
 			}
 		}
 		switch ev.Key() {

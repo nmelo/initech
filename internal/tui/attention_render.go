@@ -65,7 +65,9 @@ func (t *TUI) renderAttention() {
 		return
 	}
 
-	const px, py = 1, 1
+	// Below the pinned Agents section when it is up (ini-5d3), which would
+	// otherwise cover the list.
+	px, py := 1, 1+t.planTop
 	bg := tcell.NewRGBColor(40, 20, 20)
 	border := tcell.StyleDefault.Foreground(tcell.ColorOrange).Background(bg)
 	text := tcell.StyleDefault.Foreground(tcell.ColorWhite).Background(bg)
