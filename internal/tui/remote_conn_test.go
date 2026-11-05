@@ -212,6 +212,13 @@ func (srv *remotePeerServer) waitHello(t *testing.T) HelloMsg {
 	case hello := <-srv.helloCh:
 		return hello
 	case err := <-srv.errCh:
+		// A write error after the hello arrived (the client read a rejection
+		// and hung up) is not an error before the hello.
+		select {
+		case hello := <-srv.helloCh:
+			return hello
+		default:
+		}
 		t.Fatalf("server error before hello: %v", err)
 	case <-time.After(2 * time.Second):
 		t.Fatal("timeout waiting for hello message")
@@ -431,5 +438,20 @@ func TestWaitForDisconnect_QuitFiresPromptly(t *testing.T) {
 	case <-done:
 	case <-time.After(500 * time.Millisecond):
 		t.Fatal("waitForDisconnect did not exit within 500ms of quit — the shutdown tax is back")
+	}
+}
+
+// TestRemotePeerServer_AHelloThatArrivedWinsOverALaterWriteError: a server
+// that rejects the hello can see its own write fail once the client has read
+// the rejection and hung up; the hello it received still counts. Seen red in
+// a race run (rigs 42038013752, ini-f3lq): waitHello picked the error.
+func TestRemotePeerServer_AHelloThatArrivedWinsOverALaterWriteError(t *testing.T) {
+	for i := 0; i < 50; i++ {
+		srv := &remotePeerServer{helloCh: make(chan HelloMsg, 1), errCh: make(chan error, 1)}
+		srv.helloCh <- HelloMsg{Token: "t"}
+		srv.reportErr(errors.New("write: session shutdown"))
+		if h := srv.waitHello(t); h.Token != "t" {
+			t.Fatalf("got %+v", h)
+		}
 	}
 }
