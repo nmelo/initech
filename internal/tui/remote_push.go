@@ -1,12 +1,14 @@
 // remote_push.go implements the TUI->daemon push protocol for zero-config
 // remotes. After the hello handshake, the TUI computes a role-diff against
-// the daemon's reported running agents and converges the daemon to the
-// local config: pushes new/refresh roles via configure_agent, stops orphans
-// via stop_agent.
+// the daemon's reported running agents: pushes new/refresh roles via
+// configure_agent, and stops via stop_agent only what this initech itself
+// pushed and no longer lists. Every other agent on the peer is left running.
 package tui
 
 import (
 	"fmt"
+	"io"
+	"net"
 	"strconv"
 
 	"github.com/nmelo/initech/internal/config"
@@ -15,7 +17,10 @@ import (
 // pushDecision describes one outcome of the role-diff computation.
 type pushDecision struct {
 	Configure []string // Roles to push via configure_agent (new + existing same-owner refresh).
-	Stop      []string // Agents to stop_agent (running but no longer in config).
+	Stop      []string // Agents to stop_agent: this initech pushed them and no longer lists them.
+	// LeftRunning are agents neither listed nor pushed by this initech: never
+	// stopped, and named in the log.
+	LeftRunning []string
 }
 
 // computePushDiff compares the daemon's running agents against the desired
@@ -46,14 +51,55 @@ func computePushDiff(configRoles []string, running []AgentStatus, owned map[stri
 		}
 	}
 	for _, ag := range running {
-		if !owned[ag.Name] {
-			continue // Different owner — leave alone.
+		if roleSet[ag.Name] {
+			continue
 		}
-		if !roleSet[ag.Name] {
+		if owned[ag.Name] {
 			dec.Stop = append(dec.Stop, ag.Name)
+		} else {
+			dec.LeftRunning = append(dec.LeftRunning, ag.Name)
 		}
 	}
 	return dec
+}
+
+// pushedByThisInitech is the set of agents the peer says this initech pushed:
+// the only agents its sweep may stop. A peer that names no pusher (one the
+// serve started itself, or an older serve) owns nothing to us, and an initech
+// with no peer name owns nothing (ini-a2nb).
+func pushedByThisInitech(running []AgentStatus, self string) map[string]bool {
+	owned := make(map[string]bool, len(running))
+	if self == "" {
+		return owned
+	}
+	for _, ag := range running {
+		if ag.PushedBy == self {
+			owned[ag.Name] = true
+		}
+	}
+	return owned
+}
+
+// hiddenByRoles reports whether a roles list leaves an agent out of what this
+// initech shows. No list hides nothing.
+func hiddenByRoles(roles []string) func(string) bool {
+	if len(roles) == 0 {
+		return func(string) bool { return false }
+	}
+	listed := make(map[string]bool, len(roles))
+	for _, r := range roles {
+		listed[r] = true
+	}
+	return func(name string) bool { return !listed[name] }
+}
+
+// discardStream ends this initech's view of an agent it does not show. The
+// close ends the peer's fan-out to the stream, which never touches the agent;
+// the drain runs until the peer closes its side, so a replay already on its
+// way larger than the stream's window cannot stall the peer.
+func discardStream(stream net.Conn) {
+	stream.Close()
+	go io.Copy(io.Discard, stream) //nolint:errcheck // Ends with the stream or the session.
 }
 
 // configureAgentBuilder builds a ConfigureAgentCmd payload for a single role.
@@ -138,6 +184,10 @@ func pushRolesToPeer(mux *ControlMux, peerName string, remote config.Remote, pro
 		}
 		configured++
 		LogInfo("remote-push", "configured", "peer", peerName, "role", roleName)
+	}
+
+	for _, agentName := range dec.LeftRunning {
+		LogInfo("remote-push", "left running: not pushed by this initech", "peer", peerName, "agent", agentName)
 	}
 
 	for _, agentName := range dec.Stop {

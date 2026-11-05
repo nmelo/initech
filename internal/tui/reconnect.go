@@ -715,6 +715,10 @@ func acceptPushedStreams(session *yamux.Session, accepted chan<- *yamux.Stream, 
 // attachPushedStream creates the RemotePane for a paired stream and calls
 // onPaneAdded so the TUI inserts it into the live grid.
 func (pm *peerManager) attachPushedStream(peerName string, pc *peerConn, name string, stream net.Conn) {
+	if pc.hidden != nil && pc.hidden(name) {
+		discardStream(stream)
+		return
+	}
 	rp := NewRemotePane(name, peerName, stream, pc.mux, 80, 24)
 	rp.Start()
 	pc.panesMu.Lock()

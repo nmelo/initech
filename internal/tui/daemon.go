@@ -300,6 +300,10 @@ type AgentStatus struct {
 	// NoBead is the no-bead marker's words for an agent working without a
 	// bead; omitted when none. An older window ignores it and shows no marker.
 	NoBead string `json:"no_bead,omitempty"`
+	// PushedBy is the peer name of the initech that pushed this agent here;
+	// empty for one the serve started itself. An initech's orphan sweep stops
+	// only what names it (ini-a2nb).
+	PushedBy string `json:"pushed_by,omitempty"`
 }
 
 // StreamMapMsg tells the client which yamux stream ID maps to which agent.
@@ -995,6 +999,7 @@ func (d *Daemon) handleConnection(conn net.Conn) {
 			Beads:        p.BeadIDs(),
 			NoBead:       p.NoBeadWork(),
 			Desc:         p.SessionDesc(),
+			PushedBy:     d.pushedBy(p.Name()),
 		}
 	}
 

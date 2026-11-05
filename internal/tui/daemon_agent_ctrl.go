@@ -89,6 +89,16 @@ func (a *agentOwnership) verify(name, owner string) (string, bool) {
 	return prev, prev == owner
 }
 
+// pushedBy is the peer name of the initech that pushed the named agent here,
+// or empty when none did.
+func (d *Daemon) pushedBy(name string) string {
+	if d.ownership == nil {
+		return ""
+	}
+	owner, _ := d.ownership.verify(name, "")
+	return owner
+}
+
 func (a *agentOwnership) config(name string) (PaneConfig, bool) {
 	a.mu.Lock()
 	defer a.mu.Unlock()

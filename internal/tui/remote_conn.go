@@ -44,6 +44,9 @@ type peerConn struct {
 	// binder pairs streams window 1 opens after attach with their
 	// stream_added by id (ini-c5jv). Set by consumeEvents; nil until then.
 	binder *streamBinder
+	// hidden reports an agent the roles list leaves out of this initech;
+	// nil hides nothing.
+	hidden func(string) bool
 }
 
 // Close releases connection resources: control mux, yamux session (which
@@ -206,6 +209,10 @@ func connectPeerStop(peerName string, remote config.Remote, project *config.Proj
 		fleetIdxByAgent[ag.Name] = i
 	}
 
+	// A roles list narrows what this initech shows, never what the peer runs:
+	// an unlisted agent gets no pane here, and keeps running there (ini-a2nb).
+	hidden := hiddenByRoles(remote.Roles)
+
 	// Accept yamux streams opened by the server (one per agent).
 	var panes []PaneView
 	for range agentByStreamID {
@@ -224,6 +231,11 @@ func connectPeerStop(peerName string, remote config.Remote, project *config.Proj
 		if !ok {
 			LogWarn("remote", "unknown stream ID", "peer", peerName, "id", yStream.StreamID())
 			rawStream.Close()
+			continue
+		}
+		if hidden(agentName) {
+			discardStream(rawStream)
+			LogDebug("remote", "not shown: not in the roles list", "peer", serverPeerName, "agent", agentName)
 			continue
 		}
 
@@ -260,9 +272,10 @@ func connectPeerStop(peerName string, remote config.Remote, project *config.Proj
 	}
 
 	// Zero-config push: if remote.Roles is configured, send configure_agent
-	// for each role and stop_agent for orphans (running but no longer in
-	// config). The daemon's idempotent configure_agent handles same-owner
-	// re-pushes by refreshing CLAUDE.md without disrupting running agents.
+	// for each role and stop_agent for what this initech pushed and no longer
+	// lists; everything else on the peer is left running (ini-a2nb). The
+	// daemon's idempotent configure_agent handles same-owner re-pushes by
+	// refreshing CLAUDE.md without disrupting running agents.
 	//
 	// Note: agents created by configure_agent in this call do not get yamux
 	// streams in the current connection — the existing handshake already
@@ -270,15 +283,12 @@ func connectPeerStop(peerName string, remote config.Remote, project *config.Proj
 	// next reconnect via hello_ok's running list. (Stream-on-create wiring
 	// is tracked in ini-4q9.2.1.)
 	if len(remote.Roles) > 0 {
-		owned := make(map[string]bool, len(helloOK.Agents))
-		for _, ag := range helloOK.Agents {
-			owned[ag.Name] = true
-		}
+		owned := pushedByThisInitech(helloOK.Agents, project.PeerName)
 		configured, stopped := pushRolesToPeer(mux, peerName, remote, project, helloOK.Agents, owned)
 		LogInfo("remote", "push complete", "peer", peerName, "configured", configured, "stopped", stopped)
 	}
 
-	return &peerConn{session: session, mux: mux, panes: panes, helloOwner: helloOK.Owner, authority: helloOK.Authority}, nil
+	return &peerConn{session: session, mux: mux, panes: panes, helloOwner: helloOK.Owner, authority: helloOK.Authority, hidden: hidden}, nil
 }
 
 // readStreamMap reads control frames until the stream map arrives, matching on
