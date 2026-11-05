@@ -31,6 +31,10 @@ func TestSimTest_TheBoundsAreSevenAndEighteenMinutes(t *testing.T) {
 	}
 }
 
+// Real-clock waits, by exception: what hang-probe.sh measures is a wall-clock
+// silence (a log's mtime against now, checked every HANG_EVERY seconds), so its
+// tests run it at one-second settings and wait on real time.
+//
 // probeRun starts hang-probe.sh against a stand-in xcodebuild (a sleep) and
 // the log at path, quiet after one second, looking every second. It returns
 // the out file and a stop func that ends both and gives the probe's stdout.
@@ -178,5 +182,28 @@ func TestSimTest_TheProbeIsStartedByAPathReadBeforeTheCd(t *testing.T) {
 	}
 	if strings.Contains(s, `"$(dirname "$0")/hang-probe.sh"`) {
 		t.Error("the probe is started by a path from $0, which names no file after the cd")
+	}
+}
+
+// ini-qiv: after the last test xcodebuild ran `simctl diagnose` on the device
+// and waited for it (run 41958263102: ten minutes, most of the way to the
+// tests' alarm). sim-test.sh turns that collection off on the xcodebuild test
+// line itself; removing the flag brings the hang back.
+func TestSimTest_XcodebuildCollectsNoDiagnosticsAfterTheTests(t *testing.T) {
+	src, err := os.ReadFile(filepath.Join(repoRootForWorkflows(t), "app", "scripts", "sim-test.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(src)
+	i := strings.Index(s, "xcodebuild test -project")
+	if i < 0 {
+		t.Fatal("sim-test.sh has no xcodebuild test line: this guard is reading nothing")
+	}
+	end := strings.Index(s[i:], "> \"$log\"")
+	if end < 0 {
+		t.Fatal("the xcodebuild test line has no redirect to the log: this guard cannot find its end")
+	}
+	if !strings.Contains(s[i:i+end], "-collect-test-diagnostics never") {
+		t.Errorf("the xcodebuild test line does not pass -collect-test-diagnostics never:\n%s", s[i:i+end])
 	}
 }

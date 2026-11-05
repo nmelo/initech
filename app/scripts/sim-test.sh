@@ -129,8 +129,10 @@ echo "sim-test: $name booted"
 # The tests' bound is 18 minutes (alarm 1080) and is never widened: a run that
 # reaches it was stuck, and hang-probe.sh records where.
 started=$(date +%s)
+# No diagnostics after the tests: xcodebuild otherwise runs `simctl diagnose`
+# on the device and waits for it, ten minutes on this host, past the bound.
 TEST_RUNNER_PUSH_DIR="$pushdir" perl -e 'alarm 1080; exec @ARGV' xcodebuild test -project InitechApp.xcodeproj -scheme InitechApp \
-  -parallel-testing-enabled NO -destination "id=$udid" "$@" > "$log" 2>&1 &
+  -collect-test-diagnostics never -parallel-testing-enabled NO -destination "id=$udid" "$@" > "$log" 2>&1 &
 xb=$!
 # The relay lives as long as xcodebuild does, and cleanup stops it by pid.
 (

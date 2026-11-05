@@ -99,7 +99,11 @@ run's device fails the run with exit 9 (`CRASH_FATAL=all`, the default; the
 job sets `ui`, as above).
 
 The tests are bounded at 18 minutes and the first boot at 7; neither bound is
-widened. When xcodebuild ends, `sim-test.sh` prints its exit code, how long it
+widened. The run collects no test diagnostics (`-collect-test-diagnostics never`):
+with them, xcodebuild runs `simctl diagnose` on the device after the last test
+and waits for it, ten minutes on the runners' machine, which reached the
+18-minute bound. A failing run still has its log, the crash-report check and
+the result bundle. When xcodebuild ends, `sim-test.sh` prints its exit code, how long it
 ran and how long before that its log was last written; a passing run ends a few
 seconds after its last suite, with `** TEST SUCCEEDED **`. If xcodebuild prints
 nothing for a minute right after a suite, `hang-probe.sh` writes once what it
