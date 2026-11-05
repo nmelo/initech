@@ -1,7 +1,7 @@
 // Package fleetquota reads how much of its weekly cap the fleet has used,
 // from the file cla writes on each poll of every Claude account
 // (~/.claude-accounts/usage.json): the mean of each account's
-// sevenDay.utilization, an integer percent. Every account has the same
+// sevenDay.utilization, an integer percent from 0 to 100. Every account has the same
 // weekly cap, so the mean equals points used over the sum of caps.
 //
 // The file sits beside account credentials, so the reader decodes exactly two
@@ -81,18 +81,19 @@ func Read(path string, now time.Time) Quota {
 			newest = t
 		}
 		if a.SevenDay != nil && a.SevenDay.Utilization != nil {
-			sum += *a.SevenDay.Utilization
+			u := *a.SevenDay.Utilization
+			if math.IsNaN(u) || u < 0 || u > 100 {
+				continue // not a percent: left out of the mean
+			}
+			sum += u
 			n++
 		}
 	}
 	if n == 0 {
-		return Quota{Why: "no account in the usage file carries a weekly figure"}
+		return Quota{Why: "no account in the usage file carries a weekly figure from 0 to 100"}
 	}
 	if newest.IsZero() {
-		// No account says when it was polled: the file's own time stands in.
-		if fi, err := os.Stat(path); err == nil {
-			newest = fi.ModTime()
-		}
+		return Quota{Why: "no account in the usage file says when it was polled"}
 	}
 	if now.Sub(newest) > StaleAfter {
 		return Quota{Why: "the account usage file is stale (no poll in the last 10 minutes)"}

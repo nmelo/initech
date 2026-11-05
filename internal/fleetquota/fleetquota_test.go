@@ -69,6 +69,10 @@ func TestRead_StaleOverTenMinutesByItsOwnTime(t *testing.T) {
 	if q := Read(p, polled.Add(10*time.Minute-time.Second)); !q.Known {
 		t.Fatalf("9m59s old was a dash: %s", q.Why)
 	}
+	// "Older than 10 minutes": exactly 10m00s still reads.
+	if q := Read(p, polled.Add(10*time.Minute)); !q.Known {
+		t.Fatalf("exactly 10m00s old was a dash: %s", q.Why)
+	}
 }
 
 // The newest polledAt counts: one fresh account keeps the file fresh.
@@ -80,21 +84,37 @@ func TestRead_TheNewestPolledAtCounts(t *testing.T) {
 	}
 }
 
-// With no polledAt anywhere, the file's mtime stands in.
-func TestRead_NoPolledAtFallsBackToTheFilesTime(t *testing.T) {
+// With no polledAt anywhere there is no time to judge by: a dash, never the
+// file's own time.
+func TestRead_NoPolledAtIsADash(t *testing.T) {
 	p := write(t, `{"a":{"sevenDay":{"utilization":40}}}`)
-	old := polled.Add(-20 * time.Minute)
-	if err := os.Chtimes(p, old, old); err != nil {
-		t.Fatal(err)
-	}
-	if q := Read(p, polled); q.Known {
-		t.Fatalf("a 20-minute-old file read as %d%%", q.Percent)
-	}
 	if err := os.Chtimes(p, polled, polled); err != nil {
 		t.Fatal(err)
 	}
-	if q := Read(p, polled.Add(time.Minute)); !q.Known || q.Percent != 40 {
-		t.Fatalf("a fresh file = %+v", q)
+	if q := Read(p, polled.Add(time.Minute)); q.Known || q.Why == "" {
+		t.Fatalf("a file with no poll time read as %+v", q)
+	}
+}
+
+// An account whose figure is outside 0 to 100 is left out of the mean; with
+// none left the quota is a dash.
+func TestRead_AFigureOutOfRangeIsLeftOut(t *testing.T) {
+	for _, u := range []string{"-1", "101", "150.5"} {
+		p := write(t, `{"a":{"sevenDay":{"utilization":`+u+`},"polledAt":"2026-11-05T16:40:00.000000+00:00"},
+		"b":{"sevenDay":{"utilization":50},"polledAt":"2026-11-05T16:40:00.000000+00:00"}}`)
+		if q := Read(p, polled.Add(time.Minute)); !q.Known || q.Percent != 50 {
+			t.Errorf("utilization %s beside 50: %+v, want 50%% with it left out", u, q)
+		}
+		only := write(t, `{"a":{"sevenDay":{"utilization":`+u+`},"polledAt":"2026-11-05T16:40:00.000000+00:00"}}`)
+		if q := Read(only, polled.Add(time.Minute)); q.Known {
+			t.Errorf("utilization %s alone read as %d%%, want a dash", u, q.Percent)
+		}
+	}
+	for _, u := range []string{"0", "100"} {
+		p := write(t, `{"a":{"sevenDay":{"utilization":`+u+`},"polledAt":"2026-11-05T16:40:00.000000+00:00"}}`)
+		if q := Read(p, polled.Add(time.Minute)); !q.Known {
+			t.Errorf("utilization %s, in range, was a dash: %s", u, q.Why)
+		}
 	}
 }
 
