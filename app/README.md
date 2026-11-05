@@ -98,6 +98,17 @@ such device crashed PosterBoard at every boot. A new crash report from the
 run's device fails the run with exit 9 (`CRASH_FATAL=all`, the default; the
 job sets `ui`, as above).
 
+The tests are bounded at 18 minutes and the first boot at 7; neither bound is
+widened. When xcodebuild ends, `sim-test.sh` prints its exit code, how long it
+ran and how long before that its log was last written; a passing run ends a few
+seconds after its last suite, with `** TEST SUCCEEDED **`. If xcodebuild prints
+nothing for a minute right after a suite, `hang-probe.sh` writes once what it
+is doing to `xcodebuild.log.hang` (its process tree by command name, what of
+the app and its test runner still runs in the device, the newest result
+bundle's size and age) and a sample of its threads to
+`xcodebuild.log.hang.sample`; the job uploads both with the log. The job's
+summary lines print however the run ended.
+
 ## A TestFlight build
 
 ```bash

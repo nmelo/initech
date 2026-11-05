@@ -86,9 +86,11 @@ jobs:
           echo "app-tests: $DEVICE on $RUNNER_NAME, run $GITHUB_RUN_ID"
           # BuildInfoTests checks the build stamped this checkout's commit.
           export TEST_RUNNER_INITECH_EXPECT_COMMIT=$(git rev-parse --short HEAD)
+          # The step runs under bash -e: keep sim-test's exit code so the summary
+          # below prints however the run ended.
+          rc=0
           app/scripts/sim-test.sh "$DEVICE" "$RUNNER_TEMP/xcodebuild.log" \
-            -test-timeouts-enabled YES -default-test-execution-time-allowance 300
-          rc=$?
+            -test-timeouts-enabled YES -default-test-execution-time-allowance 300 || rc=$?
           grep -E 'Test Case .*(failed|skipped|exceeded)|TEST (SUCCEEDED|FAILED)' "$RUNNER_TEMP/xcodebuild.log" | sort -u
           echo "passed: $(grep -cE 'Test Case .*passed' "$RUNNER_TEMP/xcodebuild.log")"
           exit $rc
@@ -97,5 +99,10 @@ jobs:
         if: always()
         with:
           name: app-tests-${{ github.run_id }}
-          path: ${{ runner.temp }}/xcodebuild.log
+          # The hang probe's files exist only when xcodebuild went quiet after
+          # its last suite (hang-probe.sh).
+          path: |
+            ${{ runner.temp }}/xcodebuild.log
+            ${{ runner.temp }}/xcodebuild.log.hang
+            ${{ runner.temp }}/xcodebuild.log.hang.sample
           if-no-files-found: ignore

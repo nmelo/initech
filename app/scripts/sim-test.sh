@@ -69,9 +69,11 @@ echo "sim-test: created $name $udid"
 
 xb=""
 relay=""
+probe=""
 pushdir=$(mktemp -d -t sim-test-push) || { rm -rf "${lock:?}"; rm -f "$mark"; exit 2; }
 cleanup() {
   if [ -n "$relay" ]; then kill "$relay" 2>/dev/null; wait "$relay" 2>/dev/null; fi
+  if [ -n "$probe" ]; then kill "$probe" 2>/dev/null; wait "$probe" 2>/dev/null; fi
   rm -rf "${pushdir:?}"
   # Stop xcodebuild gently, then shut the device down before deleting it:
   # never a hard kill while it boots.
@@ -123,6 +125,9 @@ if ! perl -e 'alarm 420; exec @ARGV' xcrun simctl bootstatus "$udid" -b > "$log.
   exit 7
 fi
 echo "sim-test: $name booted"
+# The tests' bound is 18 minutes (alarm 1080) and is never widened: a run that
+# reaches it was stuck, and hang-probe.sh records where.
+started=$(date +%s)
 TEST_RUNNER_PUSH_DIR="$pushdir" perl -e 'alarm 1080; exec @ARGV' xcodebuild test -project InitechApp.xcodeproj -scheme InitechApp \
   -parallel-testing-enabled NO -destination "id=$udid" "$@" > "$log" 2>&1 &
 xb=$!
@@ -136,8 +141,14 @@ xb=$!
   done
 ) &
 relay=$!
+# HANG PROBE: when xcodebuild says nothing for a minute right after a suite
+# ended, hang-probe.sh writes what it is doing to $log.hang, once.
+"$(dirname "$0")/hang-probe.sh" "$xb" "$log" "$udid" "$log.hang" &
+probe=$!
 wait "$xb"; rc=$?
 xb=""
+now=$(date +%s)
+echo "sim-test: xcodebuild exited $rc after $((now - started))s; its log was last written $((now - $(stat -f %m "$log" 2>/dev/null || echo "$now")))s before"
 
 # The EXIT trap shuts the device down, deletes it, and fails the run with 9
 # on any new crash report naming it.
