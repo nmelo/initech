@@ -2142,6 +2142,7 @@ type pendingSubmit struct {
 	seenInBox      bool         // Our body was already seen in the box before the watch began (ini-pkin).
 	census         submitCensus // What this send's samples saw, before the Enter and after, for the UNKNOWN line (ini-s1kd).
 	lastRows       []string     // The screen the last sample read, for the UNKNOWN capture (ini-xl9); written only by the goroutine sampling this pendingSubmit.
+	bodyFlat       string       // The whole body with every whitespace rune removed: what a box holding only our text is a run of (ini-xl9).
 	fromUnknown    bool         // Kept after an UNKNOWN outcome for one bounded retry (ini-xl9 (d)); its sender was already told "could not confirm".
 	retrying       atomic.Bool  // The sweep's retry of a kept UNKNOWN is running; one at a time (ini-xl9 (d)).
 	deadline       time.Time    // Bounded: we do not wait forever.
@@ -2178,6 +2179,7 @@ func newPendingSubmit(text, mode, tailAtWithhold string) *pendingSubmit {
 	now := time.Now()
 	return &pendingSubmit{
 		bodyLines:      bodyEvidenceLines(text),
+		bodyFlat:       stripSpace(text),
 		pasteCount:     collapsedPasteCount(text),
 		bodyRunes:      utf8.RuneCountInString(text),
 		withheldAt:     now,
@@ -2351,6 +2353,40 @@ func provenRunes(rows, bodyLines []string) int {
 	return n
 }
 
+// stuckBodyProven is the proof a kept UNKNOWN needs before its one Enter
+// (ini-xl9, pm's ruling): two-sided. Enough of the body's own characters are
+// in the box (the rune proof bodyTextVisible has), AND nothing in the box is
+// outside the body: the box's text, whitespace removed, is one run of the
+// body's. A narrow tile that crops a long body still passes; a draft typed
+// before or after the stuck body, or a collapsed paste placeholder, does
+// not, so only initech's own text is ever submitted.
+func stuckBodyProven(p *Pane, ps *pendingSubmit) bool {
+	rows, ok := composerRegion(p)
+	if !ok || provenRunes(rows, ps.bodyLines) < minProvenRunes {
+		return false
+	}
+	return boxHoldsOnlyBody(rows, ps.bodyFlat)
+}
+
+// boxHoldsOnlyBody reports whether the box rows composerRegion read (the
+// prompt row's text first, the rows below it to the box's bottom border, or
+// the rows between two borders) hold nothing but a run of body, whitespace
+// removed on both sides. An empty box holds nothing to prove.
+func boxHoldsOnlyBody(rows []string, bodyFlat string) bool {
+	var box strings.Builder
+	for i, r := range rows {
+		if isRegionRule(r) {
+			if i == 0 {
+				continue
+			}
+			break
+		}
+		box.WriteString(r)
+	}
+	text := stripSpace(box.String())
+	return text != "" && strings.Contains(bodyFlat, text)
+}
+
 // stripSpace removes every whitespace rune, so a comparison cannot depend on
 // where a terminal chose to wrap.
 func stripSpace(s string) string {
@@ -2471,7 +2507,10 @@ func (p *Pane) maybeRetryWithheldSubmit() {
 	// collapsed-placeholder proof, where an earlier paste's placeholder could
 	// look like ours; our own runes cannot. Requiring it here is why the retry
 	// delivered 0 times in a month while bodies sat in the composer.
-	case (found && composerProvesOurPaste(p, tail, ps)) || bodyTextVisible(p, ps):
+	case ps.fromUnknown && stuckBodyProven(p, ps):
+		// A kept UNKNOWN's own text, and nothing else, is in the box (ini-xl9).
+		p.deliverWithheldSubmit(ps, "our text still in the box after an unconfirmed send")
+	case !ps.fromUnknown && ((found && composerProvesOurPaste(p, tail, ps)) || bodyTextVisible(p, ps)):
 		// PROVABLE: our text is in the composer. Send the submit, nothing else.
 		// Claim it first: if the sweep already reported this message as
 		// undelivered, sending it now would make that report a lie.
@@ -2548,7 +2587,11 @@ func (p *Pane) settlePendingSubmit() {
 		return
 	}
 	tail, found := composerTail(p)
-	if (found && composerProvesOurPaste(p, tail, ps)) || bodyTextVisible(p, ps) {
+	proven := (found && composerProvesOurPaste(p, tail, ps)) || bodyTextVisible(p, ps)
+	if ps.fromUnknown {
+		proven = stuckBodyProven(p, ps)
+	}
+	if proven {
 		if p.deliverWithheldSubmit(ps, "settled by the next send, our text still in the composer") {
 			// Let Claude take it before the next send's stash and paste.
 			time.Sleep(bracketedPasteSubmitDelay)

@@ -211,3 +211,62 @@ func TestUnknownRetry_TheCapturedShapes(t *testing.T) {
 		}
 	})
 }
+
+// pm's two-sided proof: our text and nothing else. A draft typed after or
+// before the stuck body gets no Enter; a box cropped to the body's last
+// lines (its prompt row scrolled off) still gets its one.
+func TestUnknownRetry_OnlyOurTextInTheBoxGetsTheEnter(t *testing.T) {
+	rule := strings.Repeat("─", 60)
+	for name, c := range map[string]struct {
+		body, screen string
+		want         int32
+	}{
+		"draft after":        {nma5Body, "❯ " + nma5Body + " and also my own note", 0},
+		"draft before":       {nma5Body, "❯ my own note first " + nma5Body, 0},
+		"only ours":          {nma5Body, "❯ " + nma5Body, 1},
+		"a short piece only": {"ok\n" + nma5Body, "❯ ok", 0},
+		"cropped to its last lines": {
+			"first line of the stuck body\nsecond line of the stuck body\nthird line of the stuck body\nfourth line ends it",
+			"third line of the stuck body\r\nfourth line ends it\r\n" + rule + "\r\n  Haiku 5.5 │ Zola │ 4%", 1},
+		"cropped with a draft after": {
+			"first line of the stuck body\nsecond line of the stuck body\nthird line of the stuck body\nfourth line ends it",
+			"third line of the stuck body\r\nfourth line ends it plus mine\r\n" + rule + "\r\n  Haiku 5.5 │ Zola │ 4%", 0},
+	} {
+		t.Run(name, func(t *testing.T) {
+			p, submits, _ := proofPane(t)
+			n := nma5Enters(t, submits, func(int) {})
+			nma5Paint(p, "❯ ")
+			ps := newPendingSubmit(c.body, "bracketed", "")
+			p.sendMu.Lock()
+			keepUnknownSubmit(p, ps)
+			p.sendMu.Unlock()
+			if strings.HasPrefix(c.screen, "❯") {
+				nma5Paint(p, rule+"\r\n"+c.screen+"\r\n"+rule)
+			} else {
+				nma5Paint(p, c.screen)
+			}
+			xl9Sweep(p, ps)
+			time.Sleep(60 * time.Millisecond)
+			if got := n.Load(); got != c.want {
+				t.Fatalf("%d Enters, want %d", got, c.want)
+			}
+		})
+	}
+}
+
+// The next send's settle takes the same two-sided proof: a draft beside the
+// stuck body gets no Enter there either.
+func TestUnknownRetry_TheSettleNeedsOnlyOurTextToo(t *testing.T) {
+	p, ps, _, enters := xl9Kept(t, "❯ ")
+	nma5Paint(p, "❯ "+nma5Body+" and also my own note")
+	p.sendMu.Lock()
+	p.settlePendingSubmit()
+	p.sendMu.Unlock()
+	if n := enters(); n != 0 {
+		t.Fatalf("%d Enters at the settle with a draft beside our text, want 0", n)
+	}
+	if xl9Pending(p) != nil {
+		t.Error("the kept send did not end at the settle")
+	}
+	_ = ps
+}
