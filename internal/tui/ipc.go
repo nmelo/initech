@@ -1075,6 +1075,7 @@ func confirmAndRetrySubmit(pane *Pane, ps *pendingSubmit) SendVerdict {
 		return SendVerdict{DeliveryDelivered, leftInBoxNote(pane)}
 	case submitUnknown:
 		pane.emitUnconfirmedSubmit(ps, why, time.Since(ps.withheldAt).Round(time.Second))
+		keepUnknownSubmit(pane, ps)
 		return SendVerdict{DeliveryUnconfirmed, why}
 	}
 	// NEVER INTO A DIALOG (ini-ytxc), the guard deliverWithheldSubmit has:
@@ -1095,9 +1096,49 @@ func confirmAndRetrySubmit(pane *Pane, ps *pendingSubmit) SendVerdict {
 		return SendVerdict{DeliveryNotDelivered, retryMissVerdictReason}
 	case submitUnknown:
 		pane.emitUnconfirmedSubmit(ps, why, time.Since(ps.withheldAt).Round(time.Second))
+		keepUnknownSubmit(pane, ps)
 		return SendVerdict{DeliveryUnconfirmed, why}
 	}
 	return SendVerdict{DeliveryDelivered, leftInBoxNote(pane)}
+}
+
+// keepUnknownSubmit keeps a send whose outcome was UNKNOWN as the pane's
+// pending submit, for one bounded retry (ini-xl9 (d)). Before this an UNKNOWN
+// was the end of the story: a body that sat in the composer behind a lost
+// Enter was never submitted, and each later send stashed it, submitted its own
+// and had Claude restore it, so only a bare Enter, or a resend that then
+// duplicated, ever sent it.
+//
+// Kept, it is resolved by the same three paths a withheld submit has, each
+// with one rule: our own text provably in the box and no dialog gets ONE
+// Enter (deliverWithheldSubmit claims it first, so never a second); a box
+// that reads and no longer holds our text ends it quietly, since the sender
+// was already told it could not be confirmed and it may well have arrived; a
+// screen with no readable box keeps waiting, to withheldSubmitWindow. A pane
+// already holding a withheld submit keeps that one. Caller holds sendMu.
+func keepUnknownSubmit(pane *Pane, ps *pendingSubmit) {
+	tail, _ := composerTail(pane)
+	ps.fromUnknown, ps.tailAtWithhold = true, tail
+	ps.deadline = time.Now().Add(withheldSubmitWindow)
+	pane.mu.Lock()
+	kept := pane.pendingSubmit == nil
+	if kept {
+		pane.pendingSubmit = ps
+	}
+	pane.mu.Unlock()
+	if kept {
+		LogInfo("inject", "submit UNKNOWN kept for one retry", "pane", pane.Name(), "mode", ps.mode, "text", ps.preview)
+	}
+}
+
+// endUnknownSubmit ends a kept UNKNOWN with no Enter and no report beyond the
+// "could not confirm" its sender already has: one log line naming why.
+func (p *Pane) endUnknownSubmit(ps *pendingSubmit, why string) {
+	if !p.takePendingSubmit(ps) {
+		return
+	}
+	LogInfo("inject", "kept UNKNOWN submit ended without a retry", "pane", p.name, "mode", ps.mode,
+		"why", why, "waited", time.Since(ps.withheldAt).Round(time.Second), "text", ps.preview)
 }
 
 // submitStillHeld reports whether the composer still shows our body after an
@@ -2101,6 +2142,8 @@ type pendingSubmit struct {
 	seenInBox      bool         // Our body was already seen in the box before the watch began (ini-pkin).
 	census         submitCensus // What this send's samples saw, before the Enter and after, for the UNKNOWN line (ini-s1kd).
 	lastRows       []string     // The screen the last sample read, for the UNKNOWN capture (ini-xl9); written only by the goroutine sampling this pendingSubmit.
+	fromUnknown    bool         // Kept after an UNKNOWN outcome for one bounded retry (ini-xl9 (d)); its sender was already told "could not confirm".
+	retrying       atomic.Bool  // The sweep's retry of a kept UNKNOWN is running; one at a time (ini-xl9 (d)).
 	deadline       time.Time    // Bounded: we do not wait forever.
 }
 
@@ -2433,6 +2476,15 @@ func (p *Pane) maybeRetryWithheldSubmit() {
 		// Claim it first: if the sweep already reported this message as
 		// undelivered, sending it now would make that report a lie.
 		p.deliverWithheldSubmit(ps, "composer repainted holding our text")
+	case ps.fromUnknown && (!found || tail == ps.tailAtWithhold):
+		// A kept UNKNOWN with no box to read, or a box that has not changed:
+		// keep waiting, but not forever, and never say NOT delivered.
+		if time.Now().After(ps.deadline) {
+			p.endUnknownSubmit(ps, "our text was never seen in the box before the bound")
+		}
+	case ps.fromUnknown:
+		// The box reads and does not hold our text: taken, or never there.
+		p.endUnknownSubmit(ps, "the box reads without our text")
 	case found && tail == ps.tailAtWithhold:
 		// Nothing has changed yet. Keep waiting, but not forever.
 		if time.Now().After(ps.deadline) {
@@ -2503,6 +2555,10 @@ func (p *Pane) settlePendingSubmit() {
 		}
 		return
 	}
+	if ps.fromUnknown {
+		p.endUnknownSubmit(ps, "a later send arrived and the box does not show our text")
+		return
+	}
 	if !p.takePendingSubmit(ps) {
 		return
 	}
@@ -2557,7 +2613,23 @@ func sweepWithheldSubmitsIn(panes []PaneView, now time.Time) {
 		p.mu.Lock()
 		ps := p.pendingSubmit
 		p.mu.Unlock()
-		if ps == nil || now.Before(ps.deadline) {
+		if ps == nil {
+			continue
+		}
+		if ps.fromUnknown {
+			// A kept UNKNOWN is retried from here too (ini-xl9 (d)): a pane that
+			// went quiet behind a lost Enter produces no output for the hook.
+			// Off this goroutine, which must not wait on a pane's screen, and
+			// one at a time; the retry's own bound ends it.
+			if ps.retrying.CompareAndSwap(false, true) {
+				go func() {
+					defer ps.retrying.Store(false)
+					p.maybeRetryWithheldSubmit()
+				}()
+			}
+			continue
+		}
+		if now.Before(ps.deadline) {
 			continue
 		}
 		p.surfaceUndeliveredSubmit(ps, "the pane produced no further output")

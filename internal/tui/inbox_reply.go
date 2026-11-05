@@ -211,7 +211,9 @@ func (t *TUI) deliverInboxReply(id, agent, text string) {
 	t.runOnMain(func() {
 		if lp, ok := pv.(*Pane); ok {
 			lp.mu.Lock()
-			withheld = lp.pendingSubmit != nil
+			// A kept UNKNOWN (ini-xl9) is not a withheld submit: its Enter went
+			// out, and the inbox reads it as before.
+			withheld = lp.pendingSubmit != nil && !lp.pendingSubmit.fromUnknown
 			lp.mu.Unlock()
 		}
 	})
