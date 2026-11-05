@@ -65,8 +65,10 @@ func TestNineThreeThree_CookedChildKeepsFlowingAfterASend(t *testing.T) {
 	if testing.Short() {
 		t.Skip("real child process and the send path's startup gate (up to ~17s); runs in the full suite")
 	}
-	p, screen := stashTestPane(t, `while read l; do echo "GOT:$l"; done`)
-	time.Sleep(300 * time.Millisecond)
+	p, screen := stashTestPane(t, `echo READY933; while read l; do echo "GOT:$l"; done`)
+	if !stashWaitFor(screen, "READY933", 10*time.Second) {
+		t.Fatalf("the child never started reading. Screen:\n%s", screen())
+	}
 	stashLogMode(t, p)
 
 	p.SendText("first933", true)

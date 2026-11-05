@@ -302,9 +302,10 @@ func TestNewPaneDefaultShell(t *testing.T) {
 
 func TestPaneIsAliveAfterClose(t *testing.T) {
 	p := newLivePaneT(t, "short", []string{"true"})
-
-	// Wait for process to exit.
-	time.Sleep(200 * time.Millisecond)
+	// Started, so the read loop sees the child exit: Close then runs on a pane
+	// whose child is already gone, which the old fixed pause only guessed at.
+	p.Start()
+	waitFor(t, 10*time.Second, func() bool { return !p.IsAlive() }, "the child's exit was never seen")
 	p.Close()
 
 	if p.IsAlive() {

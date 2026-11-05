@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -29,12 +30,15 @@ func TestClose_IdlePaneIsInstant(t *testing.T) {
 // TestClose_RunningPaneGetsTermGrace: a RUNNING pane's child that traps
 // SIGTERM and exits promptly is reaped by the grace, not the kill.
 func TestClose_RunningPaneGetsTermGrace(t *testing.T) {
-	p, err := NewPane(PaneConfig{Name: "busy", Command: []string{"sh", "-c", "trap 'exit 0' TERM; while :; do sleep 0.1; done"}}, 10, 40)
+	p, err := NewPane(PaneConfig{Name: "busy", Command: []string{"sh", "-c", "trap 'exit 0' TERM; echo TRAPPED; while :; do sleep 0.1; done"}}, 10, 40)
 	if err != nil {
 		t.Fatal(err)
 	}
 	p.Start()
-	time.Sleep(200 * time.Millisecond) // let the trap install
+	// The trap is installed once the child prints the line after it.
+	waitFor(t, 10*time.Second, func() bool {
+		return strings.Contains(strings.Join(snapRows(p.emu), "\n"), "TRAPPED")
+	}, "the child never reported its TERM trap installed")
 	p.mu.Lock()
 	p.activity = StateRunning
 	p.mu.Unlock()

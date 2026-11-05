@@ -106,10 +106,14 @@ func TestWedge_MainPathsReturn(t *testing.T) {
 // device-attributes query from inside emu.Write, which readLoop calls holding
 // renderMu, so a wedged pipe would hold the renderer with no input at all.
 func TestWedge_AQueryFromTheChildDoesNotBlockRendering(t *testing.T) {
-	const script = `stty raw -echo -ixon && printf '\033[?1000hREADY933' && sleep 1 && printf '\033[c' && exec sleep 600`
-	p, _ := wedgedPane(t, script)
+	const script = `stty raw -echo -ixon && printf '\033[?1000hREADY933' && sleep 1 && printf '\033[cQUERIED933' && exec sleep 600`
+	p, screen := wedgedPane(t, script)
 	mustReturn(t, "a key", func() { p.SendKey(wedgeKey()) })
-	time.Sleep(1200 * time.Millisecond) // The child's query lands here.
+	// The child's query lands with the marker after it: once the marker is on
+	// screen, readLoop has written the query through the emulator.
+	if !stashWaitFor(screen, "QUERIED933", 10*time.Second) {
+		t.Fatalf("the child's query never landed. Screen:\n%s", screen())
+	}
 	mustReturn(t, "taking renderMu", func() {
 		p.renderMu.Lock()
 		p.renderMu.Unlock() //nolint:staticcheck // Only the wait is under test.
