@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -60,6 +61,11 @@ const (
 	PageSize     = 500
 	PagesPerPoll = 4
 )
+
+// validID is the shape of a bead id this package will name to super or pass
+// to bd: an id is store data, and both a line in super's pane and an argument
+// to bd must not carry anything else.
+var validID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
 
 // Runner runs one command and returns its standard output.
 type Runner func(ctx context.Context, name string, args ...string) ([]byte, error)
@@ -160,7 +166,7 @@ func (r *Reader) Poll(ctx context.Context, beads []Bead, now time.Time) {
 		out, err := r.bd(ctx, "config", "get", "events-journal")
 		switch {
 		case err != nil:
-			r.switchToPlanB("the journal setting could not be read: " + err.Error())
+			r.switchToPlanB(trouble{"setting could not be read: " + firstLine(err.Error()), "setting could not be read"})
 		case strings.TrimSpace(string(out)) == "true":
 			r.setMode(ModeJournal)
 		default:
@@ -168,8 +174,8 @@ func (r *Reader) Poll(ctx context.Context, beads []Bead, now time.Time) {
 		}
 	}
 	if r.Mode() == ModeJournal {
-		if reason := r.readJournal(ctx, beads, now); reason != "" {
-			r.switchToPlanB(reason)
+		if why := r.readJournal(ctx, beads, now); why.log != "" {
+			r.switchToPlanB(why)
 		}
 	}
 	if r.Mode() == ModePlanB {
@@ -191,9 +197,13 @@ func (r *Reader) setMode(m Mode) {
 	r.mu.Unlock()
 }
 
+// trouble is why the journal cannot be trusted: the full detail for the
+// log, and fixed words for super, which never carry bd's output.
+type trouble struct{ log, super string }
+
 // switchToPlanB moves the session to plan B, saying why once in the log and
 // once to super.
-func (r *Reader) switchToPlanB(reason string) {
+func (r *Reader) switchToPlanB(why trouble) {
 	r.mu.Lock()
 	if r.mode == ModePlanB {
 		r.mu.Unlock()
@@ -202,10 +212,10 @@ func (r *Reader) switchToPlanB(reason string) {
 	r.mode = ModePlanB
 	r.mu.Unlock()
 	if r.opt.Log != nil {
-		r.opt.Log("change kinds: reading bd history for the rest of the session, the beads journal " + reason)
+		r.opt.Log("change kinds: reading bd history for the rest of the session, the beads journal " + why.log)
 	}
 	if r.opt.TellSuper != nil {
-		r.opt.TellSuper("rig panel: change kinds now come from bd history for this session; the beads journal " + reason)
+		r.opt.TellSuper("rig panel: change kinds now come from bd history for this session; the beads journal " + why.super)
 	}
 }
 
@@ -224,15 +234,15 @@ type journalRow struct {
 
 // readJournal reads up to PagesPerPoll pages after the last seq, applies
 // them, and once caught up checks every move in the window has its row. It
-// returns why the journal cannot be trusted, or "".
-func (r *Reader) readJournal(ctx context.Context, beads []Bead, now time.Time) string {
+// returns why the journal cannot be trusted, or a zero trouble.
+func (r *Reader) readJournal(ctx context.Context, beads []Bead, now time.Time) trouble {
 	for page := 0; page < PagesPerPoll; page++ {
 		r.mu.Lock()
 		since := r.seq
 		r.mu.Unlock()
 		out, err := r.bd(ctx, "events", "tail", "--since", strconv.FormatInt(since, 10), "--limit", strconv.Itoa(PageSize), "--json")
 		if err != nil {
-			return "could not be read: " + firstLine(err.Error())
+			return trouble{"could not be read: " + firstLine(err.Error()), "could not be read"}
 		}
 		n := 0
 		for _, line := range strings.Split(string(out), "\n") {
@@ -241,10 +251,11 @@ func (r *Reader) readJournal(ctx context.Context, beads []Bead, now time.Time) s
 			}
 			var row journalRow
 			if err := json.Unmarshal([]byte(line), &row); err != nil {
-				return "gave a row it could not read: " + firstLine(err.Error())
+				return trouble{"gave a row it could not read: " + firstLine(err.Error()), "gave a row it could not read"}
 			}
 			if row.Seq <= since || row.IssueID == "" {
-				return fmt.Sprintf("gave row %d out of order after %d", row.Seq, since)
+				why := fmt.Sprintf("gave row %d out of order after %d", row.Seq, since)
+				return trouble{why, why}
 			}
 			r.apply(row)
 			since = row.Seq
@@ -264,7 +275,7 @@ func (r *Reader) readJournal(ctx context.Context, beads []Bead, now time.Time) s
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if !r.caughtUp {
-		return "" // still catching up: nothing to judge yet
+		return trouble{} // still catching up: nothing to judge yet
 	}
 	floor := now.Add(-Window)
 	// Moves before the journal's first row, or before this reader started
@@ -284,10 +295,15 @@ func (r *Reader) readJournal(ctx context.Context, beads []Bead, now time.Time) s
 			continue
 		}
 		if !r.rowSeen[b.ID][b.UpdatedAt.Unix()] {
-			return "has no row for " + b.ID + "'s change at " + b.UpdatedAt.UTC().Format(time.RFC3339) + " (a row that came by bd dolt pull, or another machine's write)"
+			name := "a bead"
+			if validID.MatchString(b.ID) {
+				name = b.ID
+			}
+			why := "has no row for " + name + "'s change at " + b.UpdatedAt.UTC().Format(time.RFC3339) + " (a row that came by bd dolt pull, or another machine's write)"
+			return trouble{why, why}
 		}
 	}
-	return ""
+	return trouble{}
 }
 
 // apply records one journal row. Caller does not hold r.mu.
@@ -380,6 +396,9 @@ func (r *Reader) readHistory(ctx context.Context, beads []Bead, now time.Time) {
 		due = due[:PlanBCap]
 	}
 	for _, b := range due {
+		if !validID.MatchString(b.ID) {
+			continue // never handed to bd as an argument
+		}
 		out, err := r.bd(ctx, "history", b.ID, "--json", "--limit", "2")
 		if err != nil {
 			continue // keeps its last kind; tried again next poll
