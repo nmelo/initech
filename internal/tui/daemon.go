@@ -727,6 +727,7 @@ func (d *Daemon) allPanesWithViews() ([]PaneInfo, []PaneView, bool) {
 		if panes[i].DNDAgeSec != nil {
 			panes[i].QueuedCount = p.QueuedMessageCount()
 		}
+		panes[i].IdleSec = idleSecOf(p, time.Now())
 	}
 	return panes, views, true
 }

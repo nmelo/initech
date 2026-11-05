@@ -41,6 +41,11 @@ type Bead struct {
 	Dependencies []Dependency    `json:"dependencies,omitempty"`
 	Metadata     json.RawMessage `json:"metadata,omitempty"`
 	Wait         WaitState       `json:"-"`
+
+	// OwnerIdle is how long the owner's pane has been idle, as the caller
+	// knows it from the pane (idle.go); zero when it is not idle or not
+	// known. Never read from bd's JSON.
+	OwnerIdle time.Duration `json:"-"`
 }
 
 // Comment is one bead comment as bd comments --json gives it.
@@ -89,6 +94,9 @@ type Input struct {
 type Rule struct {
 	After time.Duration
 	Chain map[string]bool
+	// IdleAfter is how long an in_progress bead's owner pane may sit idle
+	// before the bead reads idle-owner (IdleOwner); zero reads none.
+	IdleAfter time.Duration
 }
 
 // NewRule is the rule for after and a rig's working chain.
@@ -342,7 +350,11 @@ type Report struct {
 	// and target; WaitingOver counts those whose wait is over.
 	Waiting     []WaitingRow `json:"waiting"`
 	WaitingOver int          `json:"waiting_over"`
-	Notes       []string     `json:"notes"`
+	// IdleOwner are the in_progress beads whose owner's pane has been idle
+	// IdleAfter or more (IdleOwner); a bead here may also be stuck.
+	IdleAfter string    `json:"idle_after"`
+	IdleOwner []IdleRow `json:"idle_owner"`
+	Notes     []string  `json:"notes"`
 }
 
 // Row is one bead in the table. AC is the table's cell ("n/m" or "-");
@@ -430,7 +442,10 @@ func waitText(comments []Comment) string {
 func Build(in Input) Report {
 	r := Report{Rig: in.Rig, Prefix: in.Prefix, At: in.Now, Hours: in.Hours, Rule: in.Rule, StuckAfter: in.Rule.AfterText(), StuckIDs: []string{},
 		Beads: []Row{}, Stages: map[string]int{}, ClosedRecent: []Closed{},
-		CriticalPath: []PathBead{}, Engineers: []string{}, Quiet: []QuietRow{}, Waiting: []WaitingRow{}, Notes: []string{}}
+		CriticalPath: []PathBead{}, Engineers: []string{}, Quiet: []QuietRow{}, Waiting: []WaitingRow{}, IdleOwner: []IdleRow{}, Notes: []string{}}
+	if in.Rule.IdleAfter > 0 {
+		r.IdleAfter = Minutes(in.Rule.IdleAfter)
+	}
 
 	var beads []Bead
 	for _, b := range in.Beads {
@@ -521,6 +536,15 @@ func Build(in Input) Report {
 			}
 		}
 	}
+	idle := map[string]bool{}
+	for _, id := range pace.IdleIDs {
+		idle[id] = true
+	}
+	for _, b := range beads {
+		if idle[b.ID] {
+			r.IdleOwner = append(r.IdleOwner, IdleRow{ID: b.ID, Owner: b.Assignee, IdleMin: int(b.OwnerIdle / time.Minute)})
+		}
+	}
 	r.WritingOnly = r.Closed - r.ByEngineers
 
 	var recent []Bead
@@ -608,6 +632,9 @@ func RenderReport(r Report) string {
 	if r.WaitingOver > 0 {
 		waitingCount += fmt.Sprintf(" (%d over)", r.WaitingOver)
 	}
+	if len(r.IdleOwner) > 0 {
+		waitingCount += fmt.Sprintf(", owner idle %d", len(r.IdleOwner))
+	}
 	line("\nclosed %d of %d: worked by engineers %d, writing/review only %d; stuck %d, blocked %d%s",
 		r.Closed, r.Total, r.ByEngineers, r.WritingOnly, r.Stuck, r.Blocked, waitingCount)
 	var names []string
@@ -663,6 +690,12 @@ func RenderReport(r Report) string {
 			line("  %s %s: %s [%s]", b.ID, b.Owner, b.Wait, on)
 		}
 	}
+	if len(r.IdleOwner) > 0 {
+		line("\nowner idle %s or more:", r.IdleAfter)
+		for _, b := range r.IdleOwner {
+			line("  %s %s: idle %dm", b.ID, b.Owner, b.IdleMin)
+		}
+	}
 	for _, n := range r.Notes {
 		line("note: %s", clean(n))
 	}
@@ -700,6 +733,10 @@ type Pace struct {
 	// Over counts the waiting beads whose wait is over; OverIDs names them.
 	Over    int
 	OverIDs []string
+	// Idle counts the idle-owner beads (IdleOwner), stuck or not; IdleIDs
+	// names them.
+	Idle    int
+	IdleIDs []string
 }
 
 // blockedStates are the bd statuses of a bead waiting on something named: it
@@ -799,6 +836,11 @@ func PaceOver(beads []Bead, label string, panes map[string]string, rule Rule, no
 				p.OverIDs = append(p.OverIDs, b.ID)
 			}
 		}
+		// Its own count, outside the switch: a stuck bead can read it too.
+		if IdleOwner(b, panes[b.Assignee], rule) {
+			p.Idle++
+			p.IdleIDs = append(p.IdleIDs, b.ID)
+		}
 	}
 	if window > 0 {
 		p.PerHour = float64(recent) / window.Hours()
@@ -828,6 +870,9 @@ func (p Pace) Line() string {
 	}
 	if p.Over > 0 {
 		s += fmt.Sprintf(" · %d over", p.Over)
+	}
+	if p.Idle > 0 {
+		s += fmt.Sprintf(" · %d idle", p.Idle)
 	}
 	return s
 }

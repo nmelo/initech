@@ -937,8 +937,8 @@ var overlayListedOff = false
 
 // overlayListed reports whether the Agents overlay lists p (ini-7w4): an
 // agent doing something or needing attention. Suspended agents are not
-// listed; idle ones only with a dialog or banner on screen or a bead the pace
-// counts stuck. Every other state (running, background, waiting, pending
+// listed; idle ones only with a dialog or banner on screen, a bead the pace
+// counts stuck, or an in_progress bead whose owner it is idle on (ini-9dv). Every other state (running, background, waiting, pending
 // input, dead, and one not yet read as idle) is listed. In a second window an
 // agent hidden there is listed whatever its state (overlayListsHidden).
 func (t *TUI) overlayListed(p PaneView) bool {
@@ -952,7 +952,7 @@ func (t *TUI) overlayListed(p PaneView) bool {
 		if lp, ok := p.(*Pane); ok && lp.attentionScreen() {
 			return true
 		}
-		return t.paceStuck[p.Name()]
+		return t.paceStuck[p.Name()] || len(t.paceIdle[p.Name()]) > 0
 	}
 	return true
 }
@@ -1164,6 +1164,10 @@ func (t *TUI) renderOverlay() {
 		status := act.String()
 		if act == StatePendingInput {
 			status = "pending input" // ini-b5w
+		}
+		// An idle owner on an in_progress bead says how long (ini-9dv).
+		if marks := t.paceIdle[p.Name()]; len(marks) > 0 && (act == StateIdle || act == StatePendingInput) {
+			status = paceIdleText(status, marks)
 		}
 		// An idle agent listed for its stuck bead says so (ini-7w4).
 		if act == StateIdle && t.paceStuck[p.Name()] {

@@ -67,9 +67,11 @@ var configExamples = []configExample{
 #     claude_args: [--continue, --dangerously-skip-permissions, --settings, <path>]
 `},
 	{key: "stuck_after", nested: true, text: `
-# How long a bead may sit before it reads stuck (one hour when absent), under the beads: key:
+# Under the beads: key, how long a bead may sit before it reads stuck (one hour when absent),
+# and how long an in_progress bead's owner may sit idle before the board and super hear of it (20 minutes when absent):
 # beads:
 #   stuck_after: 20m
+#   idle_after: 30m
 `},
 	{key: "telemetry", text: "\n# " + usage.Notice + "\n# telemetry: false\n"},
 }

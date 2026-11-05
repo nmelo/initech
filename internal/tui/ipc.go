@@ -194,6 +194,7 @@ func (t *TUI) allPanesWithViews() ([]PaneInfo, []PaneView, bool) {
 			if panes[i].DNDAgeSec != nil {
 				panes[i].QueuedCount = p.(*Pane).QueuedMessageCount()
 			}
+			panes[i].IdleSec = idleSecOf(p, time.Now())
 		}
 	})
 	return panes, views, ok

@@ -56,6 +56,8 @@
     "quiet": [],
     "waiting": [],
     "waiting_over": 0,
+    "idle_after": "20m",
+    "idle_owner": [],
     "notes": []
   },
   {
@@ -96,6 +98,8 @@
     "quiet": [],
     "waiting": [],
     "waiting_over": 0,
+    "idle_after": "20m",
+    "idle_owner": [],
     "notes": []
   },
   {
@@ -127,6 +131,8 @@
     "quiet": [],
     "waiting": [],
     "waiting_over": 0,
+    "idle_after": "20m",
+    "idle_owner": [],
     "notes": []
   },
   {
@@ -165,6 +171,8 @@
     "quiet": [],
     "waiting": [],
     "waiting_over": 0,
+    "idle_after": "20m",
+    "idle_owner": [],
     "notes": []
   },
   {
@@ -218,6 +226,8 @@
     ],
     "waiting": [],
     "waiting_over": 0,
+    "idle_after": "20m",
+    "idle_owner": [],
     "notes": []
   },
   {
@@ -243,6 +253,8 @@
     "quiet": [],
     "waiting": [],
     "waiting_over": 0,
+    "idle_after": "20m",
+    "idle_owner": [],
     "notes": []
   },
   {
@@ -274,6 +286,8 @@
     "quiet": [],
     "waiting": [],
     "waiting_over": 0,
+    "idle_after": "20m",
+    "idle_owner": [],
     "notes": []
   },
   {
@@ -299,6 +313,8 @@
     "quiet": [],
     "waiting": [],
     "waiting_over": 0,
+    "idle_after": "20m",
+    "idle_owner": [],
     "notes": []
   },
   {
@@ -331,6 +347,8 @@
     "quiet": [],
     "waiting": [],
     "waiting_over": 0,
+    "idle_after": "20m",
+    "idle_owner": [],
     "notes": []
   },
   {
@@ -384,6 +402,8 @@
     ],
     "waiting": [],
     "waiting_over": 0,
+    "idle_after": "20m",
+    "idle_owner": [],
     "notes": []
   }
 ]

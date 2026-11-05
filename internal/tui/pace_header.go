@@ -76,10 +76,17 @@ func (t *TUI) paceRule() progress.Rule {
 	if t.project != nil {
 		after = t.project.Beads.Value()
 	}
+	var rule progress.Rule
 	if t.paceChain == nil {
-		return progress.NewRule(after, lifecycle.Parse("").Working())
+		rule = progress.NewRule(after, lifecycle.Parse("").Working())
+	} else {
+		rule = progress.NewRule(after, t.paceChain)
 	}
-	return progress.NewRule(after, t.paceChain)
+	rule.IdleAfter = config.DefaultIdleAfter
+	if t.project != nil {
+		rule.IdleAfter = t.project.Beads.IdleValue()
+	}
+	return rule
 }
 
 // refreshPaceLines recomputes every local pane's header line, at most once a
@@ -92,6 +99,11 @@ func (t *TUI) refreshPaceLines(now time.Time) {
 		return
 	}
 	t.paceAt = now
+	spells := t.paneIdleSpells()
+	t.paceIdleFor = make(map[string]time.Duration, len(spells))
+	for name, at := range spells {
+		t.paceIdleFor[name] = now.Sub(at)
+	}
 	beads := make([]progress.Bead, len(t.paceBeads))
 	for i, b := range t.paceBeads {
 		beads[i] = t.paceBead(b, now)
@@ -111,6 +123,7 @@ func (t *TUI) refreshPaceLines(now time.Time) {
 			t.paceWaitingIDs[b.Assignee] = append(t.paceWaitingIDs[b.Assignee], b.ID)
 		}
 	}
+	t.notePaceIdle(beads, panes, rule, spells)
 	for _, pv := range t.panes {
 		p, ok := pv.(*Pane)
 		if !ok {
@@ -165,8 +178,10 @@ func paceEffortRows(beads []progress.Bead, panes map[string]string, rule progres
 		return efforts[i].prefix < efforts[j].prefix
 	})
 	status := map[string]string{}
+	byID := map[string]progress.Bead{}
 	for _, b := range beads {
 		status[b.ID] = b.Status
+		byID[b.ID] = b
 	}
 	var rows []string
 	for _, e := range efforts {
@@ -187,6 +202,18 @@ func paceEffortRows(beads []progress.Bead, panes map[string]string, rule progres
 				break
 			}
 			line += " " + id
+		}
+		// The idle owners, each with how long (ini-9dv), after the waiting ids.
+		for i, id := range pace.IdleIDs {
+			if i == paceWaitingShown {
+				line += fmt.Sprintf(" +%d", len(pace.IdleIDs)-i)
+				break
+			}
+			if i == 0 {
+				line += " · idle"
+			}
+			b := byID[id]
+			line += " " + b.Assignee + " " + progress.Minutes(b.OwnerIdle)
 		}
 		if stale {
 			line += paceStaleMark

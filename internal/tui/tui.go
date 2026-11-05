@@ -212,8 +212,14 @@ type TUI struct {
 	// paceOverWrote is the wait_over_sent value this process last wrote per
 	// bead, until bd's list shows it (ini-agq).
 	paceOverWrote map[string]string
-	paceAnswers   map[string]paceAnswer
-	inboxOnce     sync.Once
+	// The idle-owner reading (ini-9dv): each local idle pane's idle time at
+	// the last refresh, the idle-owner beads by owner for the pane row, and
+	// the idle spell each owner|bead line was sent for.
+	paceIdleFor  map[string]time.Duration
+	paceIdle     map[string][]paceIdleMark
+	paceIdleSent map[string]time.Time
+	paceAnswers  map[string]paceAnswer
+	inboxOnce    sync.Once
 	// inboxOutstanding maps an agent to the inbox items whose delivery verdict
 	// may still be corrected by a late report from the send path (ini-3wkl.6).
 	inboxOutstanding   map[string][]string

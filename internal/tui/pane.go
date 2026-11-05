@@ -284,9 +284,12 @@ type Pane struct {
 	// first said idle -- the idle-with-bead clock for a pane whose bytes never
 	// stop -- and the once-per-transition record of which rule decided the
 	// state.
-	sigIdleSince          time.Time
-	activityTransitions   int
-	activityDecidedBy     string
+	sigIdleSince        time.Time
+	activityTransitions int
+	activityDecidedBy   string
+	// activitySince is when the activity last changed (ini-9dv): while the
+	// pane is idle, the start of its idle spell. Zero until the first change.
+	activitySince         time.Time
 	idleWithBeadThreshold time.Duration     // Silence duration before idle-with-bead fires. 0 = disabled.
 	idleBeadNotified      bool              // True after idle-with-bead fires. Reset when output resumes.
 	beadAssignedAt        time.Time         // When the current bead was assigned. Grace period starts here.
