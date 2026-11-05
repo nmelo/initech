@@ -101,6 +101,11 @@ func (p *Pane) noteSessionUsage(entries []JournalEntry) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.sessUse = p.sessUse.observe(entries)
+	for _, e := range entries {
+		if e.Version != "" && !e.Sidechain {
+			p.claudeCodeVersion = e.Version
+		}
+	}
 }
 
 // resetSessionUsage forgets the reading: a new transcript file starts empty.
@@ -108,6 +113,19 @@ func (p *Pane) resetSessionUsage() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.sessUse = sessionUsage{}
+	p.claudeCodeVersion = ""
+}
+
+// ClaudeCodeVersion is the Claude Code version the pane's own transcript last
+// named, or "unknown" before one does: the send path's outcome lines carry it
+// (ini-xl9), so a miss is tied to the version that drew the screen.
+func (p *Pane) ClaudeCodeVersion() string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.claudeCodeVersion == "" {
+		return "unknown"
+	}
+	return p.claudeCodeVersion
 }
 
 // sessionUsageNow returns the pane's transcript reading.

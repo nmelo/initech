@@ -93,6 +93,7 @@ type JournalEntry struct {
 	HasUsage      bool
 	Sidechain     bool   // A subagent's entry, not the pane's own conversation.
 	Subtype       string // A system entry's kind: "compact_boundary" after a compaction.
+	Version       string // The Claude Code version that wrote the entry, as the transcript names it.
 }
 
 const (
@@ -307,6 +308,7 @@ type Pane struct {
 	jsonlDir              string            // Directory to search for session JSONL files.
 	jsonlRealDir          string            // The same for the pane folder's real path, when a symlink makes it differ; "" otherwise.
 	sessUse               sessionUsage      // The transcript's last context reading (ini-484).
+	claudeCodeVersion     string            // The Claude Code version the pane's own transcript last named; "" before one does (ini-xl9).
 	ctxWarned             map[string]bool   // Models whose footer and transcript context disagreement was logged.
 	ctxFigure             *int              // Context used as the maintenance tick last read it; nil unknown (ini-sf5.2).
 	attnScreen            bool              // The tick's snapshot showed a dialog or banner (ini-7w4).

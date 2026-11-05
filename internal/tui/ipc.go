@@ -792,7 +792,7 @@ func watchSubmit(pane *Pane, ps *pendingSubmit, sentAt time.Time) (submitOutcome
 				cols, rows := pane.emuSize()
 				LogInfo("inject", "submitted: composer cleared", "pane", pane.Name(), "mode", ps.mode,
 					"ms", time.Since(sentAt).Milliseconds(), "text", ps.preview,
-					"composer", composerSnapshot(pane), "cols", cols, "rows", rows)
+					"composer", composerSnapshot(pane), "cols", cols, "rows", rows, "claude_code", pane.ClaudeCodeVersion())
 				return submitTaken, ""
 			}
 		}
@@ -801,7 +801,7 @@ func watchSubmit(pane *Pane, ps *pendingSubmit, sentAt time.Time) (submitOutcome
 				cols, rows := pane.emuSize()
 				LogInfo("inject", "SUBMIT NOT TAKEN: composer still holds our text", "pane", pane.Name(),
 					"mode", ps.mode, "waited_ms", time.Since(sentAt).Milliseconds(), "text", ps.preview,
-					"composer", composerSnapshot(pane), "cols", cols, "rows", rows)
+					"composer", composerSnapshot(pane), "cols", cols, "rows", rows, "claude_code", pane.ClaudeCodeVersion())
 				return submitNotTaken, ""
 			}
 			why := unconfirmedReason(mismatch, sawComposer, seen, ps.census)
@@ -814,7 +814,7 @@ func watchSubmit(pane *Pane, ps *pendingSubmit, sentAt time.Time) (submitOutcome
 				"text", ps.preview, "composer", composerSnapshot(pane),
 				"samples_before", ps.census.before, "samples_after", ps.census.after,
 				"torn", ps.census.torn, "stable", ps.census.stable, "sighted", ps.census.sighted,
-				"cols", cols, "rows", rows, "capture", capture)
+				"cols", cols, "rows", rows, "claude_code", pane.ClaudeCodeVersion(), "capture", capture)
 			return submitUnknown, why
 		}
 		time.Sleep(composerEchoPoll)

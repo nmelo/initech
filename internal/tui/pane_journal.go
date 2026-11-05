@@ -579,6 +579,7 @@ func parseJSONLEntry(line string) JournalEntry {
 		Timestamp   string `json:"timestamp"`
 		SessionID   string `json:"sessionId"`
 		IsSidechain bool   `json:"isSidechain"`
+		Version     string `json:"version"`
 		Message     struct {
 			Content json.RawMessage `json:"content"`
 			Model   string          `json:"model"`
@@ -594,7 +595,7 @@ func parseJSONLEntry(line string) JournalEntry {
 	}
 
 	entry := JournalEntry{Type: raw.Type, SessionID: raw.SessionID, Subtype: raw.Subtype,
-		Sidechain: raw.IsSidechain, Model: raw.Message.Model}
+		Sidechain: raw.IsSidechain, Model: raw.Message.Model, Version: raw.Version}
 	if u := raw.Message.Usage; u != nil {
 		entry.HasUsage = true
 		entry.ContextTokens = u.Input + u.CacheCreate + u.CacheRead

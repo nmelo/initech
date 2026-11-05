@@ -592,6 +592,7 @@ and the hint rows below it never spoil a reading. The log line for a message ini
 - `stable` is how many held still.
 - `sighted` is how many of the stable readings showed the message in the box.
 - `cols` and `rows` are the pane's terminal size as initech read it; the `submitted: composer cleared` and `SUBMIT NOT TAKEN` lines carry them too.
+- `claude_code` is the Claude Code version the agent's own session transcript last named, or `unknown` before it names one; the same two lines carry it too.
 - `capture` is the file holding the screen initech read at that moment, in `.initech/inject-captures/` beside the log (the folder readable only by you, like the log), one file per such message, the newest 20 kept. Empty when there is no log file.
 
 ## The Bead Workflow

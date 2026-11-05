@@ -127,3 +127,32 @@ func TestInjectCapture_KeepsTheNewestTwenty(t *testing.T) {
 		t.Errorf("with no log file a capture went to %q, want none", got)
 	}
 }
+
+// The outcome lines carry the Claude Code version the pane's own transcript
+// last named, "unknown" before one does; a subagent's entry does not count.
+func TestInjectCapture_TheLineNamesTheTranscriptsClaudeCodeVersion(t *testing.T) {
+	buf := captureLogs(t)
+	xl9LogDir(t)
+	nma5Window(t, 200*time.Millisecond)
+	p, submits, _ := proofPane(t)
+	if got := p.ClaudeCodeVersion(); got != "unknown" {
+		t.Fatalf("before any transcript: %q, want unknown", got)
+	}
+	p.noteSessionUsage([]JournalEntry{
+		parseJSONLEntry(`{"type":"assistant","version":"2.1.318","sessionId":"s"}`),
+		parseJSONLEntry(`{"type":"assistant","version":"2.1.999","isSidechain":true}`),
+		parseJSONLEntry(`{"type":"api-request-blob"}`),
+	})
+	nma5Paint(p, "Loading conversation...")
+	nma5Enters(t, submits, func(int) {})
+	sendSubmitKey(p.emu, p.submitKey)
+	confirmAndRetrySubmit(p, newPendingSubmit(nma5Body, "bracketed", ""))
+	line := recordContaining(t, buf.String(), "submit outcome UNKNOWN")
+	if !strings.Contains(line, "claude_code=2.1.318") {
+		t.Errorf("the UNKNOWN line %q, want claude_code=2.1.318", line)
+	}
+	p.resetSessionUsage()
+	if got := p.ClaudeCodeVersion(); got != "unknown" {
+		t.Errorf("after a new transcript: %q, want unknown", got)
+	}
+}
