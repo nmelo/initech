@@ -1,0 +1,51 @@
+    failure.                                                                  
+  - Saved: the bead database is backed up, and my files match main.           
+  - Still running: pm and shipper are finishing their last turns. I'll suspend
+    them, then tell theguy "ready".                                           
+                                                                              
+  Waiting on you (0 beads waiting on Nelson)                                  
+  - Now: nothing.                                                             
+  - Coming: restarting the rig whenever you bring it back; v2.60.0's failed   
+    check is fixed first.                                                     
+  - Later: choosing the app's real icon; one counting rule for the            
+    duplicate-row bug when it resumes.                                        
+                                                                              
+✻ Worked for 50s · done Wednesday 10:09 PM                                    
+                                                                              
+⏺ Background command "Suspend pm and shipper once they finish their last turn"
+completed (exit code 0)                                                       
+                                                                              
+  Ran 1 shell command                                                         
+                                                                              
+⏺ I've told theguy the rig is ready to stop.                                  
+                                                                              
+  - Release in use: v2.59.0. v2.60.0 was held at the two-window check and     
+    never tagged.                                                             
+  - First at the next start: the bug behind that hold, ○ ini-f3lq. The failed 
+    check's log is saved in the rig's evidence folder.                        
+  - Agents: all suspended, and nothing of ours is running. One large test run 
+    on the held release version is still finishing in GitHub.                 
+  - Parked work: each bead records where it stands and what's next.           
+  - Saved: the bead database is backed up, and the workbench tunnel is down.  
+                                                                              
+  Waiting on you (0 beads waiting on Nelson)                                  
+  - Now: nothing.                                                             
+  - Coming: restarting the rig whenever you bring it back; v2.60.0's failed   
+    check is fixed first.                                                     
+  - Later: choosing the app's real icon; one counting rule for the            
+    duplicate-row bug when it resumes.                                        
+                                                                              
+✻ Cooked for 13s · done Wednesday 10:11 PM                                    
+                                                                              
+⏺ Background shell command didn't finish before the previous session ended    
+                                                                              
+❯ [from initech] ☾ ini-l1r waits on ini-r0q.18: ini-r0q.18 closed; move it on 
+  ⎿  1 agent type available                                                   
+                                                                              
+✢ Actualizing…                                                                
+                                                          ◐ medium · /effort  
+────────────────────────────────────────────────────────────── Initech super ─
+❯                                                                             
+──────────────────────────────────────────────────────────────────────────────
+  ⎇ main │ Opus 5.5 │ Zola │ 84% │ 14% ▓░░░░░░░┃░ → 09:30 AM │ 56% ▓▓▓▓▓▓░░…  
+  ⏵⏵ bypass permissions on (shift+tab to cycle) · ← for agents                

@@ -841,10 +841,34 @@ func watchSubmit(pane *Pane, ps *pendingSubmit, sentAt time.Time) (submitOutcome
 	seen, sawComposer := ps.seenInBox, false
 	var tail, mismatch string
 	var found, held bool
+	// The screen the last sample before the Enter read, for the second proof
+	// (ini-1yp5): our body above the prompt counts only where it was not
+	// already there.
+	beforeRows := ps.lastRows
+	var emptyBefore []string // the last stable sample that met that proof
 	for {
 		sTail, sFound, sHeld, stable := submitSample(pane, ps)
 		ps.census.after++
 		ps.census.count(sHeld, stable)
+		if stable && !seen && sFound && sTail == "" && !time.Now().Before(sentAt.Add(submitRestoreWindow)) &&
+			bodyShownAbove(ps.lastRows, ps) && beforeRows != nil && !bodyShownAbove(beforeRows, ps) {
+			// SUBMITTED WITHOUT A SIGHTING (ini-1yp5): our text was never seen
+			// in the box (a stale or mid-redraw screen before the Enter, after
+			// a resume or a resize), but two equal samples after the restore
+			// window show an empty composer with our body above it, where the
+			// screen before the Enter did not have it. Measured: both live
+			// UNKNOWN captures were this shape, and both were delivered.
+			if emptyBefore != nil && slices.Equal(emptyBefore, ps.lastRows) {
+				cols, rows := pane.emuSize()
+				LogInfo("inject", "submitted: composer empty, our body above the prompt", "pane", pane.Name(), "mode", ps.mode,
+					"ms", time.Since(sentAt).Milliseconds(), "text", ps.preview,
+					"cols", cols, "rows", rows, "claude_code", pane.ClaudeCodeVersion())
+				return submitTaken, ""
+			}
+			emptyBefore = append([]string(nil), ps.lastRows...)
+		} else if stable {
+			emptyBefore = nil
+		}
 		if stable {
 			tail, found, held = sTail, sFound, sHeld
 			if found {
@@ -887,6 +911,32 @@ func watchSubmit(pane *Pane, ps *pendingSubmit, sentAt time.Time) (submitOutcome
 		}
 		time.Sleep(composerEchoPoll)
 	}
+}
+
+// submitRestoreWindow is how long after the Enter the second proof waits for
+// Claude to restore a stashed draft into the box, so an empty composer read
+// before the restore is not taken as the box having cleared.
+var submitRestoreWindow = 200 * time.Millisecond
+
+// bodyShownAbove reports whether the first and last lines of our body show
+// above the box's prompt row (the transcript, or the queued line, which Claude
+// prints above the box) on rows. Space-stripped, so a line wrapped at any
+// width still matches. A body too short to prove itself (minProvenRunes)
+// never matches: a short word would match anything.
+func bodyShownAbove(rows []string, ps *pendingSubmit) bool {
+	if len(ps.bodyLines) == 0 {
+		return false
+	}
+	first, last := stripSpace(ps.bodyLines[0]), stripSpace(ps.bodyLines[len(ps.bodyLines)-1])
+	if utf8.RuneCountInString(first+last) < minProvenRunes {
+		return false
+	}
+	top, _ := composerSpan(rows)
+	if top <= 0 {
+		return false
+	}
+	above := stripSpace(strings.Join(rows[:top], ""))
+	return strings.Contains(above, first) && strings.Contains(above, last)
 }
 
 // submitSample reads the box once: the composer tail, whether a composer was

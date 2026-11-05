@@ -1,0 +1,36 @@
+  qa_passed for super. Docs: operator-guide §What a 
+  Trained Fleet Sets, product_repo row.             
+                                                    
+  Ran 1 shell command                               
+                                                    
+❯ [from pm] ◆ ini-61by landed at be5dea4: a new     
+  top-level initech.yaml key, product_repo          
+  (user-facing, minor). No cut now: it rides the    
+  rig panel release with its epic, after Nelson     
+  judges the panel. Outcome: nothing for you yet.   
+                                                    
+⏺ eng5's change so the rig panel reads the product  
+  repo (◆ ini-61by) is on main at be5dea4, and I've 
+  added it to the next release's clock. CI          
+  42063199299 at that commit is green. pm says it   
+  waits for the rig panel release, after Nelson has 
+  judged the panel, so there's no cut now.          
+                                                    
+  This isn't the panel commit that triggers my      
+  one-time build. That's eng1's Agents panel rework,
+  and pm will name its bead id. I'm still waiting   
+  for it.                                           
+                                                    
+✻ Worked for 28s · done 11:27 AM                    
+                                                    
+❯ [from eng4] ◆ ini-t0y1 (peer, eviction and resume 
+  tests off real deadlines) landed, main=495080e    
+  (23c968f, f431289; CI and rigs green). qa2 PASS.  
+                                                    
+✻ Determining… (running UserPromptSubmit hook · 0s) 
+                                ◐ medium · /effort  
+────────────────────────────────────────────────────
+❯                                                   
+────────────────────────────────────────────────────
+  ⎇ main │ Opus 5.5 │ Zola │ 64% │ 65% ▓▓▓▓▓┃▓░░░…  
+  ⏵⏵ bypass permissions on (shift+tab to cycle) ·   

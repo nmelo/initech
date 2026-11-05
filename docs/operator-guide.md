@@ -645,7 +645,10 @@ pane width and whether or not its top border carries the session's name. A box t
 with how many milliseconds after the Enter the box was seen without the message, and what it showed;
 because the message is usually seen during the wait before the Enter, that can read under 50, including
 0. A box showing Claude's queued-message line or the operator's own restored draft counts as cleared; a
-dialog on screen does not. If the message is still there after one second, initech
+dialog on screen does not. When the message was never seen in the box (the screen before the Enter showed other text, as after a
+resume or a resize), it still counts as sent when, from 200 ms after the Enter, two samples in a row show an
+empty box with the message's first and last lines above it that the screen before the Enter did not show; the
+log line is then `submitted: composer empty, our body above the prompt`. If the message is still there after one second, initech
 presses Enter once more; if it is still there after that, it is reported as `NOT delivered (...)`. That
 second Enter is never pressed while a dialog is open: initech checks at the moment it would press, and
 under a dialog it presses nothing and reports `could not confirm delivery (...)` with the reason
