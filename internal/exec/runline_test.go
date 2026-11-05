@@ -44,3 +44,14 @@ func TestRunLine_TheBoundStopsTheLineAndWhatItStarted(t *testing.T) {
 		t.Fatal("the line's background child outlived the bound")
 	}
 }
+
+// TestRunLine_OutputIsCappedAndTheLineIsNotKilledForIt.
+func TestRunLine_OutputIsCappedAndTheLineIsNotKilledForIt(t *testing.T) {
+	out, code, err := RunLine(context.Background(), t.TempDir(), "head -c 1000000 /dev/zero | tr '\\0' x; echo; echo done >&2; exit 0")
+	if err != nil || code != 0 {
+		t.Fatalf("code %d err %v: the line was hurt by the cap", code, err)
+	}
+	if len(out) > lineOutputCap {
+		t.Fatalf("kept %d bytes, cap %d", len(out), lineOutputCap)
+	}
+}

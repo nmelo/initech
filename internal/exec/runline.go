@@ -7,8 +7,8 @@ import (
 	"time"
 )
 
-// RunLine runs one shell line in dir and returns its combined output and exit
-// code. The context bounds it: on expiry the line's whole process group is
+// RunLine runs one shell line in dir and returns its combined output, at most
+// the first 64 KB of it, and its exit code. The context bounds it: on expiry the line's whole process group is
 // stopped, so nothing it started outlives the bound, and the error is the
 // context's. An exit code of -1 means the line did not run to an exit.
 func RunLine(ctx context.Context, dir, line string) (string, int, error) {

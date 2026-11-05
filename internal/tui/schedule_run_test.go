@@ -7,6 +7,7 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/nmelo/initech/internal/schedule"
 )
@@ -335,5 +336,41 @@ func TestScheduler_AJobOfARemovedAgentKeepsRunning(t *testing.T) {
 	s.step(clk, clockAt(4, 9, 5))
 	if d, sup := host.snap(); len(d) != 1 || len(sup) != 0 {
 		t.Fatalf("a removed agent's job: delivered %q, super heard %q", d, sup)
+	}
+}
+
+// TestScheduler_ControlCharactersNeverReachThePane: a command's output and a
+// message from the file are cleaned before delivery, so neither can end the
+// paste early or repaint the screen.
+func TestScheduler_ControlCharactersNeverReachThePane(t *testing.T) {
+	s, host, clk := schedRig(t, clockAt(4, 9, 0),
+		schedule.Job{Owner: "qa1", To: "qa1", Every: "1m", Command: "printf x"},
+		schedule.Job{Owner: "qa1", To: "qa1", Every: "1m", Message: "hi\x1b[201~rm -rf x\r\x07"})
+	s.runLine = func(context.Context, string, string) (string, int, error) {
+		return "ok\x1b[201~\x1b[2Jboom\x00\x9b\ttab\nline2", 0, nil
+	}
+	s.step(clk, clockAt(4, 9, 1))
+	d, _ := host.snap()
+	if len(d) != 2 {
+		t.Fatalf("delivered %d", len(d))
+	}
+	for _, m := range d {
+		if strings.ContainsAny(m, "\x1b\x00\r\x07\u009b") {
+			t.Fatalf("a control character reached the pane: %q", m)
+		}
+	}
+	joined := strings.Join(d, "|")
+	if !strings.Contains(joined, "ok[201~[2Jboom\ttab\nline2") || !strings.Contains(joined, "hi[201~rm -rf x") {
+		t.Fatalf("the text around the controls was lost: %q", joined)
+	}
+}
+
+// TestScheduler_TheCutLandsOnARuneBoundary.
+func TestScheduler_TheCutLandsOnARuneBoundary(t *testing.T) {
+	text := strings.Repeat("é", 2000) // Two bytes each.
+	got := cutAtRune(text, scheduleOutputCut+1)
+	body := strings.TrimSuffix(got, "\n[output cut at 2 KB]")
+	if !utf8.ValidString(body) || len(body) > scheduleOutputCut+1 {
+		t.Fatalf("cut to %d bytes, valid %v", len(body), utf8.ValidString(body))
 	}
 }
