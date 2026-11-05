@@ -1131,7 +1131,6 @@ type overlayAgents struct {
 
 // overlayContent builds the overlay's agents for this window.
 func (t *TUI) overlayContent() overlayAgents {
-
 	// SCOPED TO THIS WINDOW (ini-9isx AC4), through the same primitive the
 	// layout uses -- so "which agents are this window's" is one fact with one
 	// answer, not two lists that can drift. In a single-window session, or with

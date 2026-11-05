@@ -1,8 +1,9 @@
 // agents_form.go is the Agents overlay's second form (ini-5d3): pinned, a
 // section across the top of the page with the pane grid below it, beside the
 // floating box over the panes. One content, two forms: both draw what
-// overlayContent and boardRows give them. Shift+Option+s and the command
-// "agents pin|float" flip the form; layout.yaml remembers it as agents_form.
+// overlayContent and boardRows give them. Shift+Option+s flips the form in
+// any window, and the command "agents pin|float" sets it in window 1, the one
+// with a command bar; window 1's layout.yaml remembers it as agents_form.
 package tui
 
 import (

@@ -570,8 +570,9 @@ func (t *TUI) execCmd(cmd string) bool {
 	case "top", "ps":
 		return t.cmdTop()
 	case "agents":
-		// "agents pin" and "agents float" set the overlay's form in any
-		// window (ini-5d3); bare "agents" opens the modal.
+		// "agents pin" and "agents float" set the overlay's form (ini-5d3);
+		// bare "agents" opens the modal. The command bar is window 1's only
+		// (ini-fn77); Shift+Option+s flips the form in every window.
 		if len(parts) > 1 {
 			return t.cmdAgentsForm(parts[1])
 		}
