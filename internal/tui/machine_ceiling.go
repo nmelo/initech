@@ -15,7 +15,6 @@ package tui
 
 import (
 	"errors"
-	"fmt"
 	"os"
 	"sync"
 	"sync/atomic"
@@ -34,7 +33,9 @@ var osGetpid = os.Getpid
 type ceilingReads struct {
 	dir       func() (string, error)  // the machine folder (machine.Dir)
 	procTable func() (string, error)  // ps output, for the awake count
-	freeKB    func() (int64, error)   // available memory in KB
+	freeKB    func() (int64, error)   // reclaimable memory in KB
+	totalKB   func() (int64, error)   // total memory in KB
+	swapKB    func() (int64, error)   // swap in use in KB
 	load5     func() (float64, error) // the 5-minute load
 	alive     func(pid int) bool      // whether another rig's window 1 runs
 }
@@ -48,7 +49,9 @@ func defaultCeilingReads() ceilingReads {
 	return ceilingReads{
 		dir:       machine.Dir,
 		procTable: readProcTable,
-		freeKB:    systemMemoryAvail,
+		freeKB:    machine.ReclaimableKB,
+		totalKB:   machine.TotalKB,
+		swapKB:    machine.SwapUsedKB,
 		load5:     machine.Load5,
 		alive:     machine.PIDAlive,
 	}
@@ -81,6 +84,17 @@ func (e *ErrAtCeiling) Error() string { return e.Words }
 func isAtCeiling(err error) bool {
 	var e *ErrAtCeiling
 	return errors.As(err, &e)
+}
+
+// kbToGB converts a memory figure in KB to GB.
+func kbToGB(kb int64) float64 { return float64(kb) / (1024 * 1024) }
+
+// orNoReading gives a read that returned no error and no figure an error.
+func orNoReading(err error) error {
+	if err != nil {
+		return err
+	}
+	return errors.New("no figure reported")
 }
 
 // paneSighting is what the awake count needs of a pane, read on main.
@@ -164,9 +178,16 @@ func (t *TUI) stepCeiling(sightings []paneSighting, now time.Time) (engaged, cle
 
 	// The ceiling: a bad file keeps the last good ceiling (the defaults
 	// before one), and says so once.
-	ceiling := machine.DefaultCeiling
+	totalGB := 0.0
+	if kb, err := reads.totalKB(); err == nil && kb > 0 {
+		totalGB = kbToGB(kb)
+		c.noteUnreadable("total memory", nil)
+	} else {
+		c.noteUnreadable("total memory", orNoReading(err))
+	}
+	ceiling := machine.CeilingFor(totalGB)
 	if dirErr == nil {
-		got, err := machine.LoadCeiling(dir)
+		got, err := machine.LoadCeiling(dir, totalGB)
 		c.noteUnreadable("machine.yaml", err)
 		c.mu.Lock()
 		if err == nil {
@@ -200,13 +221,16 @@ func (t *TUI) stepCeiling(sightings []paneSighting, now time.Time) (engaged, cle
 	}
 
 	if kb, err := reads.freeKB(); err == nil && kb > 0 {
-		r.FreeGB, r.FreeOK = float64(kb)/(1024*1024), true
+		r.FreeGB, r.FreeOK = kbToGB(kb), true
 		c.noteUnreadable("free memory", nil)
 	} else {
-		if err == nil {
-			err = fmt.Errorf("no available memory reported")
-		}
-		c.noteUnreadable("free memory", err)
+		c.noteUnreadable("free memory", orNoReading(err))
+	}
+	if kb, err := reads.swapKB(); err == nil {
+		r.SwapGB, r.SwapOK = kbToGB(kb), true
+		c.noteUnreadable("swap", nil)
+	} else {
+		c.noteUnreadable("swap", err)
 	}
 	if l, err := reads.load5(); err == nil {
 		r.Load, r.LoadOK = l, true
@@ -319,7 +343,7 @@ func (t *TUI) FleetSnapshot() *rignumbers.Fleet {
 func FleetFromReading(r machine.Reading, c machine.Ceiling, engaged bool) *rignumbers.Fleet {
 	f := &rignumbers.Fleet{
 		AtCeiling: engaged,
-		Ceiling:   rignumbers.FleetCeiling{Sessions: c.Sessions, FreeMemoryGB: c.FreeMemoryGB, Load: c.Load},
+		Ceiling:   rignumbers.FleetCeiling{Sessions: c.Sessions, FreeMemoryGB: c.FreeMemoryGB, FreeSource: c.FreeSource, Load: c.Load},
 		Line:      machine.StatusLine(r, c),
 	}
 	if r.AwakeOK {
@@ -332,6 +356,10 @@ func FleetFromReading(r machine.Reading, c machine.Ceiling, engaged bool) *rignu
 	if r.LoadOK {
 		f.Load = &r.Load
 	}
+	if r.SwapOK {
+		gb := float64(int(r.SwapGB*10+0.5)) / 10
+		f.SwapGB = &gb
+	}
 	return f
 }
 
@@ -341,15 +369,22 @@ func FleetFromReading(r machine.Reading, c machine.Ceiling, engaged bool) *rignu
 func ReadFleetNow(now time.Time) *rignumbers.Fleet {
 	reads := ceilingDefaults()
 	r := machine.Reading{At: now}
-	ceiling := machine.DefaultCeiling
+	totalGB := 0.0
+	if kb, err := reads.totalKB(); err == nil && kb > 0 {
+		totalGB = kbToGB(kb)
+	}
+	ceiling := machine.CeilingFor(totalGB)
 	if dir, err := reads.dir(); err == nil {
-		if c, err := machine.LoadCeiling(dir); err == nil {
+		if c, err := machine.LoadCeiling(dir, totalGB); err == nil {
 			ceiling = c
 		}
 		r.Awake, r.AwakeOK = machine.SumOthers(dir, "", now, reads.alive), true
 	}
 	if kb, err := reads.freeKB(); err == nil && kb > 0 {
-		r.FreeGB, r.FreeOK = float64(kb)/(1024*1024), true
+		r.FreeGB, r.FreeOK = kbToGB(kb), true
+	}
+	if kb, err := reads.swapKB(); err == nil {
+		r.SwapGB, r.SwapOK = kbToGB(kb), true
 	}
 	if l, err := reads.load5(); err == nil {
 		r.Load, r.LoadOK = l, true

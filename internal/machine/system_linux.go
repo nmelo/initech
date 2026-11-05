@@ -22,3 +22,36 @@ func PIDAlive(pid int) bool {
 	err := syscall.Kill(pid, 0)
 	return err == nil || err == syscall.EPERM
 }
+
+func readMeminfo() (string, error) {
+	data, err := os.ReadFile("/proc/meminfo")
+	return string(data), err
+}
+
+// ReclaimableKB is the memory the system can hand out now, in KB: the
+// kernel's MemAvailable.
+func ReclaimableKB() (int64, error) {
+	out, err := readMeminfo()
+	if err != nil {
+		return 0, err
+	}
+	return parseMeminfoReclaimable(out)
+}
+
+// TotalKB is the machine's total memory in KB.
+func TotalKB() (int64, error) {
+	out, err := readMeminfo()
+	if err != nil {
+		return 0, err
+	}
+	return meminfoKB(out, "MemTotal")
+}
+
+// SwapUsedKB is the swap in use in KB.
+func SwapUsedKB() (int64, error) {
+	out, err := readMeminfo()
+	if err != nil {
+		return 0, err
+	}
+	return parseMeminfoSwapUsed(out)
+}

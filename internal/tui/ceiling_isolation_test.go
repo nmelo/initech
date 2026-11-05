@@ -29,6 +29,8 @@ func isolateMachineCeiling() func() {
 			dir:       func() (string, error) { return "", none },
 			procTable: func() (string, error) { return "", none },
 			freeKB:    func() (int64, error) { return 0, none },
+			totalKB:   func() (int64, error) { return 0, none },
+			swapKB:    func() (int64, error) { return 0, none },
 			load5:     func() (float64, error) { return 0, none },
 			alive:     func(int) bool { return false },
 		}
@@ -80,7 +82,7 @@ func TestCeilingIsolation_ATestTUIReadsNothingOfThisMachine(t *testing.T) {
 		t.Fatal("rig children get no scratch home")
 	}
 	home := strings.TrimPrefix(rigCeilingEnv[0], "HOME=")
-	c, err := machine.LoadCeiling(filepath.Join(home, "Library", "Application Support", "initech"))
+	c, err := machine.LoadCeiling(filepath.Join(home, "Library", "Application Support", "initech"), 16)
 	if err != nil || c.Sessions != 100000 || c.FreeMemoryGB != 0 {
 		t.Fatalf("rig ceiling = %+v, %v; want the open ceiling", c, err)
 	}

@@ -92,6 +92,7 @@ type Fleet struct {
 	Awake     *int         `json:"awake"`
 	FreeGB    *float64     `json:"free_gb"`
 	Load      *float64     `json:"load"`
+	SwapGB    *float64     `json:"swap_gb"`
 	Ceiling   FleetCeiling `json:"ceiling"`
 	AtCeiling bool         `json:"at_ceiling"`
 	Line      string       `json:"line"`
@@ -101,6 +102,7 @@ type Fleet struct {
 type FleetCeiling struct {
 	Sessions     int     `json:"sessions"`
 	FreeMemoryGB float64 `json:"free_memory_gb"`
+	FreeSource   string  `json:"free_memory_source"`
 	Load         float64 `json:"load"`
 }
 

@@ -16,7 +16,7 @@ import (
 // in --json --numbers, and names a refused agent's words on its row.
 
 func fleetAt(awake int, free, load float64) *rignumbers.Fleet {
-	r := machine.Reading{Awake: awake, AwakeOK: true, FreeGB: free, FreeOK: true, Load: load, LoadOK: true}
+	r := machine.Reading{Awake: awake, AwakeOK: true, FreeGB: free, FreeOK: true, Load: load, LoadOK: true, SwapGB: 2.3, SwapOK: true}
 	c := machine.DefaultCeiling
 	return tui.FleetFromReading(r, c, machine.Over(r, c))
 }
@@ -37,7 +37,7 @@ func TestStatusFleet_TheLineFollowsTheTableAndSaysAtTheCeiling(t *testing.T) {
 	resp := paneReply(windowOneNumbers())
 	resp.Fleet = fleetAt(31, 6.1, 34)
 	out := runStatusWith(t, resp, false, false)
-	want := "  fleet 31 awake · 6.1 GB free · load 34 · ceiling 30 / 8 GB / 30 · at the ceiling\n  rig: "
+	want := "  fleet 31 awake · 6.1 GB free · swap 2.3 GB · load 34 · ceiling 30 / 8 GB (default) / 30 · at the ceiling\n  rig: "
 	if !strings.Contains(out, want) {
 		t.Errorf("status:\n%s\nwant the fleet line before the rig line:\n%q", out, want)
 	}
@@ -53,7 +53,7 @@ func TestStatusFleet_UnderTheCeilingTheLineSaysNoMore(t *testing.T) {
 	resp := paneReply(windowOneNumbers())
 	resp.Fleet = fleetAt(12, 20, 5)
 	out := runStatusWith(t, resp, false, false)
-	if !strings.Contains(out, "  fleet 12 awake · 20.0 GB free · load 5 · ceiling 30 / 8 GB / 30\n") {
+	if !strings.Contains(out, "  fleet 12 awake · 20.0 GB free · swap 2.3 GB · load 5 · ceiling 30 / 8 GB (default) / 30\n") {
 		t.Errorf("status:\n%s", out)
 	}
 }
@@ -81,9 +81,11 @@ func TestStatusFleet_NumbersJSONCarriesTheFleetFields(t *testing.T) {
 				Awake     *int     `json:"awake"`
 				FreeGB    *float64 `json:"free_gb"`
 				Load      *float64 `json:"load"`
+				SwapGB    *float64 `json:"swap_gb"`
 				AtCeiling bool     `json:"at_ceiling"`
 				Ceiling   struct {
-					Sessions int `json:"sessions"`
+					Sessions   int    `json:"sessions"`
+					FreeSource string `json:"free_memory_source"`
 				} `json:"ceiling"`
 			} `json:"fleet"`
 		} `json:"numbers"`
@@ -92,7 +94,7 @@ func TestStatusFleet_NumbersJSONCarriesTheFleetFields(t *testing.T) {
 		t.Fatal(err)
 	}
 	f := rig.Numbers.Fleet
-	if f == nil || f.Awake == nil || *f.Awake != 31 || f.FreeGB == nil || *f.FreeGB != 6.1 || f.Load == nil || *f.Load != 34 || !f.AtCeiling || f.Ceiling.Sessions != 30 {
+	if f == nil || f.Awake == nil || *f.Awake != 31 || f.FreeGB == nil || *f.FreeGB != 6.1 || f.Load == nil || *f.Load != 34 || !f.AtCeiling || f.Ceiling.Sessions != 30 || f.SwapGB == nil || *f.SwapGB != 2.3 || f.Ceiling.FreeSource != "default" {
 		t.Errorf("--json --numbers fleet = %+v", f)
 	}
 }

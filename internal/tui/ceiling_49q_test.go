@@ -24,14 +24,16 @@ import (
 
 // fakeMachine stands in for every machine read a gate step makes.
 type fakeMachine struct {
-	mu     sync.Mutex
-	dir    string
-	ps     string
-	psErr  error
-	freeKB int64
-	memErr error
-	load   float64
-	ldErr  error
+	mu      sync.Mutex
+	dir     string
+	ps      string
+	psErr   error
+	freeKB  int64
+	totalKB int64
+	swapKB  int64
+	memErr  error
+	load    float64
+	ldErr   error
 }
 
 func (f *fakeMachine) set(load float64) {
@@ -52,6 +54,19 @@ func (f *fakeMachine) reads() *ceilingReads {
 			f.mu.Lock()
 			defer f.mu.Unlock()
 			return f.freeKB, f.memErr
+		},
+		totalKB: func() (int64, error) {
+			f.mu.Lock()
+			defer f.mu.Unlock()
+			if f.totalKB == 0 {
+				return 128 * 1024 * 1024, nil // the default holds at its 8 GB cap
+			}
+			return f.totalKB, nil
+		},
+		swapKB: func() (int64, error) {
+			f.mu.Lock()
+			defer f.mu.Unlock()
+			return f.swapKB, nil
 		},
 		load5: func() (float64, error) {
 			f.mu.Lock()
@@ -446,6 +461,8 @@ func TestCeiling_NothingReadableNeverEngagesIt(t *testing.T) {
 		dir:       func() (string, error) { return "", bad },
 		procTable: func() (string, error) { return "", bad },
 		freeKB:    func() (int64, error) { return 0, bad },
+		totalKB:   func() (int64, error) { return 0, bad },
+		swapKB:    func() (int64, error) { return 0, bad },
 		load5:     func() (float64, error) { return 0, bad },
 		alive:     func(int) bool { return true },
 	}
@@ -460,8 +477,8 @@ func TestCeiling_NothingReadableNeverEngagesIt(t *testing.T) {
 	tui.ceiling.mu.Lock()
 	logged := len(tui.ceiling.logged)
 	tui.ceiling.mu.Unlock()
-	if logged != 4 {
-		t.Fatalf("%d unreadable numbers recorded as logged, want 4 (folder, process table, memory, load)", logged)
+	if logged != 6 {
+		t.Fatalf("%d unreadable numbers recorded as logged, want 6 (folder, process table, total, free, swap, load)", logged)
 	}
 }
 
@@ -526,5 +543,40 @@ func TestCeiling_ClearingWipesTheWordsAndStartsNothing(t *testing.T) {
 	}
 	if spawned.Load() != 0 || !quiet.IsSuspended() {
 		t.Fatal("the clearing started a refused agent: a refused start is not retried")
+	}
+}
+
+// The small machine: with no machine.yaml the free memory limit is 20% of
+// total, named with its source, and 4 GB reclaimable on 16 GB is under it.
+func TestCeiling_TheStepUsesTheDefaultForThisMachinesMemory(t *testing.T) {
+	fm := ceilingAt(t, 5)
+	fm.totalKB, fm.freeKB = 16*1024*1024, 4*1024*1024
+	tui := newTestTUI()
+	tui.ceiling.reads = fm.reads()
+	if engaged, _ := tui.stepCeiling(nil, time.Now()); engaged {
+		t.Fatal("4 GB reclaimable on a 16 GB machine engaged the ceiling: its limit is 3.2 GB")
+	}
+	if got := tui.FleetSnapshot().Line; !strings.Contains(got, "ceiling 30 / 3.2 GB (20% of 16 GB) / 30") {
+		t.Fatalf("fleet line %q does not name the value and its source", got)
+	}
+	fm.freeKB = 3 * 1024 * 1024
+	if engaged, _ := tui.stepCeiling(nil, time.Now()); !engaged {
+		t.Fatal("3 GB reclaimable on a 16 GB machine did not engage the ceiling")
+	}
+}
+
+// Swap is information: any amount leaves the gate alone, and it is on the
+// fleet line and in the JSON fields.
+func TestCeiling_SwapIsShownAndNeverEngagesIt(t *testing.T) {
+	fm := ceilingAt(t, 5)
+	fm.swapKB = 500 * 1024 * 1024
+	tui := newTestTUI()
+	tui.ceiling.reads = fm.reads()
+	if engaged, _ := tui.stepCeiling(nil, time.Now()); engaged {
+		t.Fatal("swap engaged the ceiling")
+	}
+	f := tui.FleetSnapshot()
+	if !strings.Contains(f.Line, "swap 500.0 GB") || f.SwapGB == nil || *f.SwapGB != 500 {
+		t.Fatalf("fleet = line %q swap %v", f.Line, f.SwapGB)
 	}
 }

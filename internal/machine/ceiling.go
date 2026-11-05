@@ -12,6 +12,7 @@ package machine
 import (
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 
@@ -25,11 +26,38 @@ type Ceiling struct {
 	Sessions     int     `yaml:"sessions"`
 	FreeMemoryGB float64 `yaml:"free_memory_gb"`
 	Load         float64 `yaml:"load"`
+	// FreeSource names where FreeMemoryGB came from, for the fleet line:
+	// SourceDefault, "20% of <n> GB", or SourceFile.
+	FreeSource string `yaml:"-"`
+}
+
+const (
+	// DefaultFreeCapGB is the most the free memory default can be.
+	DefaultFreeCapGB = 8.0
+	// DefaultFreePercent is the share of total memory the free memory
+	// default is, on a machine where that is less than the cap.
+	DefaultFreePercent = 20
+	// SourceDefault says the free memory value is the default cap.
+	SourceDefault = "default"
+	// SourceFile says the free memory value was set in machine.yaml.
+	SourceFile = FileName
+)
+
+// CeilingFor is the ceiling with no machine.yaml on a machine of totalGB:
+// 30 sessions, load 30, and free memory the lower of DefaultFreeCapGB and
+// DefaultFreePercent of total. An unknown total (0 or less) keeps the cap.
+func CeilingFor(totalGB float64) Ceiling {
+	c := DefaultCeiling
+	if share := totalGB * DefaultFreePercent / 100; totalGB > 0 && share < DefaultFreeCapGB {
+		c.FreeMemoryGB = math.Round(share*10) / 10
+		c.FreeSource = fmt.Sprintf("%d%% of %s GB", DefaultFreePercent, num(math.Round(totalGB*10)/10))
+	}
+	return c
 }
 
 // DefaultCeiling is the ceiling when machine.yaml is absent or leaves a
 // key out.
-var DefaultCeiling = Ceiling{Sessions: 30, FreeMemoryGB: 8, Load: 30}
+var DefaultCeiling = Ceiling{Sessions: 30, FreeMemoryGB: DefaultFreeCapGB, Load: 30, FreeSource: SourceDefault}
 
 // FileName is the machine-level file's name inside Dir.
 const FileName = "machine.yaml"
@@ -46,11 +74,12 @@ func Dir() (string, error) {
 	return filepath.Join(base, "initech"), nil
 }
 
-// LoadCeiling reads dir/machine.yaml. An absent file is the defaults; a key
-// left out keeps its default; an unknown key or a bad value fails the load
-// with an error naming the key.
-func LoadCeiling(dir string) (Ceiling, error) {
-	c := DefaultCeiling
+// LoadCeiling reads dir/machine.yaml on a machine of totalGB. An absent file
+// is CeilingFor(totalGB); a key left out keeps that value; a key set is used
+// as written; an unknown key or a bad value fails the load with an error
+// naming the key.
+func LoadCeiling(dir string, totalGB float64) (Ceiling, error) {
+	c := CeilingFor(totalGB)
 	path := filepath.Join(dir, FileName)
 	data, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
@@ -97,7 +126,7 @@ func LoadCeiling(dir string) (Ceiling, error) {
 			if val.Decode(&f) != nil || f < 0 {
 				return c, fmt.Errorf("%s: ceiling.free_memory_gb: %q is not a number of GB, 0 or more", path, val.Value)
 			}
-			c.FreeMemoryGB = f
+			c.FreeMemoryGB, c.FreeSource = f, SourceFile
 		case "load":
 			var f float64
 			if val.Decode(&f) != nil || f <= 0 {

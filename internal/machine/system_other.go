@@ -22,3 +22,12 @@ func PIDAlive(pid int) bool {
 	_ = p.Release()
 	return true
 }
+
+// ReclaimableKB is unreadable here; it never engages the ceiling.
+func ReclaimableKB() (int64, error) { return 0, errors.New("memory: not read on this platform") }
+
+// TotalKB is unreadable here; the free memory default stays at its cap.
+func TotalKB() (int64, error) { return 0, errors.New("memory: not read on this platform") }
+
+// SwapUsedKB is unreadable here; the fleet line prints it as ?.
+func SwapUsedKB() (int64, error) { return 0, errors.New("swap: not read on this platform") }

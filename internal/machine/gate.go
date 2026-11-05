@@ -13,7 +13,9 @@ import (
 const ClearAfter = time.Minute
 
 // Reading is one look at the machine. A number whose OK is false could not
-// be read; it never engages the ceiling.
+// be read; it never engages the ceiling. FreeGB is reclaimable memory: what
+// the system can hand out now, not the bare free pages. SwapGB, swap in use,
+// is information for the fleet line and never engages the ceiling.
 type Reading struct {
 	Awake   int
 	AwakeOK bool
@@ -21,6 +23,8 @@ type Reading struct {
 	FreeOK  bool
 	Load    float64
 	LoadOK  bool
+	SwapGB  float64
+	SwapOK  bool
 	At      time.Time
 }
 
@@ -129,11 +133,20 @@ func Refusal(r Reading, c Ceiling) string {
 // at the ceiling, after "deferred to <agent> — ".
 const Deferred = "the Mac is at its ceiling; will wake and deliver when it is under"
 
-// StatusLine is status's fleet line: "fleet 31 awake · 6.1 GB free · load 34
-// · ceiling 30 / 8 GB / 30".
+// StatusLine is status's fleet line: "fleet 31 awake · 6.1 GB free · swap 2.3
+// GB · load 34 · ceiling 30 / 8 GB (default) / 30". It names where the free
+// memory value came from; the refusal gives the value alone.
 func StatusLine(r Reading, c Ceiling) string {
-	return fmt.Sprintf("fleet %s awake · %s GB free · load %s · ceiling %s",
-		awakeText(r), freeText(r), loadText(r), ceilingFigures(c))
+	swap := "?"
+	if r.SwapOK {
+		swap = strconv.FormatFloat(r.SwapGB, 'f', 1, 64)
+	}
+	free := num(c.FreeMemoryGB) + " GB"
+	if c.FreeSource != "" {
+		free += " (" + c.FreeSource + ")"
+	}
+	return fmt.Sprintf("fleet %s awake · %s GB free · swap %s GB · load %s · ceiling %d / %s / %s",
+		awakeText(r), freeText(r), swap, loadText(r), c.Sessions, free, num(c.Load))
 }
 
 func figures(r Reading) string {
