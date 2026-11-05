@@ -41,6 +41,10 @@ type Bead struct {
 	Dependencies []Dependency    `json:"dependencies,omitempty"`
 	Metadata     json.RawMessage `json:"metadata,omitempty"`
 	Wait         WaitState       `json:"-"`
+	// WaitComments are the bead's comments, set by a caller that read them,
+	// for its stated wait (waits.go StatedWait); nil when not read. Never
+	// read from bd's list JSON.
+	WaitComments []Comment `json:"-"`
 
 	// OwnerIdle is how long the owner's pane has been idle, as the caller
 	// knows it from the pane (idle.go); zero when it is not idle or not

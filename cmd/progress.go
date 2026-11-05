@@ -168,6 +168,10 @@ func progressReport(r iexec.Runner, p *config.Project, prefix string, hours int,
 	}
 
 	in.Comments = progressComments(r, p.Root, in.Beads, &in.Notes)
+	for i := range in.Beads {
+		// A waiting bead's stated wait is in its comments (WAIT: ...).
+		in.Beads[i].WaitComments = in.Comments[in.Beads[i].ID]
+	}
 	since := now.Add(-time.Duration(hours) * time.Hour)
 	in.Commits, in.CommitsKnown = progressCommits(r, p, since, &in.Notes)
 	if world := newProgressWorld(r, p, &in.Notes); world != nil {

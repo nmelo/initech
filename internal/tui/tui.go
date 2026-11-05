@@ -564,6 +564,10 @@ type TUI struct {
 	// ini-3o4b), so saveIfSplitMoved can tell when they changed.
 	savedSplit, savedHeld string
 	savedRows, savedCols  int
+
+	// paceWaitReads is each waiting bead's comments, read for its stated
+	// wait (ini-75pt). The bead poll goroutine's alone.
+	paceWaitReads paceWaitCommentState
 }
 
 // setOnWakeComplete installs (or, with nil, clears) the test-only wake-done

@@ -132,9 +132,12 @@ func (t *TUI) paceRepo() (url, slug string) {
 // once per bead and target. A bead not in waiting is never judged.
 func (t *TUI) judgePaceWaits(beads []bdBead, now time.Time) {
 	var waiting []progress.Bead
-	status := make(map[string]string, len(beads))
+	idx := progress.Index{Status: make(map[string]string, len(beads)), ClosedAt: make(map[string]time.Time, len(beads))}
 	for _, b := range beads {
-		status[b.ID] = b.Status
+		idx.Status[b.ID] = b.Status
+		if !b.ClosedAt.IsZero() {
+			idx.ClosedAt[b.ID] = b.ClosedAt
+		}
 		if b.Status == "waiting" {
 			waiting = append(waiting, progress.Bead{ID: b.ID, Status: b.Status, Dependencies: b.Dependencies, Metadata: b.Metadata})
 		}
@@ -147,8 +150,21 @@ func (t *TUI) judgePaceWaits(beads []bdBead, now time.Time) {
 	judged := make(map[string]progress.WaitState, len(waiting))
 	records := make(map[string]string, len(waiting))
 	for _, b := range waiting {
-		judged[b.ID] = progress.Judge(b, status, now, world)
 		records[b.ID] = progress.WaitOverSent(b)
+		cs, fresh := t.waitComments(b.ID, now)
+		if !fresh {
+			// The comments could not be read: the last judgement stands, and
+			// a bead never judged is not over (it might have a stated wait).
+			if last, ok := t.paceWaitReads.last[b.ID]; ok {
+				judged[b.ID] = last
+			} else {
+				judged[b.ID] = progress.WaitState{Target: progress.WaitTarget{Kind: progress.WaitOnUnknown}}
+			}
+			continue
+		}
+		b.WaitComments = cs
+		judged[b.ID] = progress.JudgeIndexed(b, idx, now, world)
+		t.paceWaitReads.last[b.ID] = judged[b.ID]
 	}
 	t.runOnMain(func() {
 		t.paceWaits = judged
@@ -188,6 +204,52 @@ func (t *TUI) judgePaceWaits(beads []bdBead, now time.Time) {
 		}
 		t.paceAt = time.Time{} // the lines show the answer at the next refresh
 	})
+}
+
+// paceWaitCommentState is the comments of each waiting bead, read for its
+// stated wait (a WAIT comment) at most once a minute. The poll goroutine's
+// alone, as the answer cache is.
+type paceWaitCommentState struct {
+	read   map[string]paceWaitComments
+	last   map[string]progress.WaitState // the last judgement made with comments
+	failed map[string]bool               // a failed read already logged
+}
+
+type paceWaitComments struct {
+	at time.Time
+	cs []progress.Comment
+	ok bool // the read at at succeeded
+}
+
+// waitComments is bead id's comments for its stated wait: read at most once
+// a minute, each read bounded by beadPollTimeout. fresh is false when the
+// newest read failed; a failure is logged once, naming the bead and never a
+// comment's text.
+func (t *TUI) waitComments(id string, now time.Time) ([]progress.Comment, bool) {
+	s := &t.paceWaitReads
+	if s.read == nil {
+		s.read = map[string]paceWaitComments{}
+		s.last = map[string]progress.WaitState{}
+		s.failed = map[string]bool{}
+	}
+	c, have := s.read[id]
+	if have && now.Sub(c.at) < paceWaitEvery {
+		return c.cs, c.ok
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), beadPollTimeout)
+	defer cancel()
+	cs, err := bdBeadComments(ctx, t.projectRoot, id)
+	if err != nil {
+		if !s.failed[id] {
+			s.failed[id] = true
+			LogWarn("waits", "comments not read; the bead's last wait judgement stands", "bead", progress.Clean(id))
+		}
+		s.read[id] = paceWaitComments{at: now, cs: c.cs, ok: false}
+		return c.cs, false
+	}
+	delete(s.failed, id)
+	s.read[id] = paceWaitComments{at: now, cs: cs, ok: true}
+	return cs, true
 }
 
 // paceWaitWriteTimeout bounds one wait_over_sent write.

@@ -42,6 +42,7 @@ type progressFake struct {
 	list      string            // bd list output instead of the fixture's
 	tags      string            // git ls-remote --tags output
 	runs      map[string]string // gh run view <id> status; absent is "not found"
+	comments  map[string]string // bd comments <id> --json instead of the fixture's
 }
 
 func (f *progressFake) RunInDir(dir, name string, args ...string) (string, error) {
@@ -59,6 +60,9 @@ func (f *progressFake) RunInDir(dir, name string, args ...string) (string, error
 		}
 		return readFixture(data, "list.json")
 	case name == "bd" && args[0] == "comments":
+		if c, ok := f.comments[args[1]]; ok {
+			return c, nil
+		}
 		return readFixture(data, "comments", args[1]+".json")
 	case name == "gh" && len(args) > 1 && args[0] == "run" && args[1] == "view":
 		if st, ok := f.runs[args[2]]; ok {
@@ -702,5 +706,47 @@ func TestProgress_IdleOwnerReadsTheRigsIdleAfter(t *testing.T) {
 		if got != c.want {
 			t.Errorf("idle %ds against idle_after 30m: listed %v, want %v:\n%s", c.sec, got, c.want, out)
 		}
+	}
+}
+
+// ini-75pt through initech progress: the CLI judges a waiting bead's stated
+// wait from the comments it already reads. The fed0 shape (an older edge
+// whose bead closed, then an untyped WAIT (who):) is not over; its twin (a
+// WAIT naming a closed bead) is.
+func TestProgress_AStatedWaitDecides(t *testing.T) {
+	now := progressFixtureNow.UTC()
+	old := now.Add(-3 * time.Hour).Format(time.RFC3339)
+	edgeAt := now.Add(-2 * time.Hour).Format(time.RFC3339)
+	waitAt := now.Add(-1 * time.Hour).Format(time.RFC3339)
+	bead := func(id, status, deps string) string {
+		return `{"id":"` + id + `","title":"t","status":"` + status + `","assignee":"","updated_at":"` + old + `","metadata":{},"dependencies":` + deps + `}`
+	}
+	list := "[" + strings.Join([]string{
+		bead("fx-w", "waiting", `[{"depends_on_id":"fx-old","type":"blocks","created_at":"`+edgeAt+`"}]`),
+		bead("fx-t", "waiting", `[{"depends_on_id":"fx-old","type":"blocks","created_at":"`+edgeAt+`"}]`),
+		bead("fx-old", "closed", "[]"),
+		bead("fx-new", "closed", "[]"),
+	}, ",") + "]"
+	fake := &progressFake{list: list, comments: map[string]string{
+		"fx-w": `[{"author":"super","text":"WAIT (operator via theguy): a human answer","created_at":"` + waitAt + `"}]`,
+		"fx-t": `[{"author":"super","text":"WAIT: fx-new lands","created_at":"` + waitAt + `"}]`,
+	}}
+	out, err := runProgressJSON(t, fake, progressRepos, "fx-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rep progress.Report
+	if err := json.Unmarshal([]byte(out), &rep); err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]progress.WaitingRow{}
+	for _, w := range rep.Waiting {
+		got[w.ID] = w
+	}
+	if w := got["fx-w"]; w.Over {
+		t.Errorf("fx-w (the fed0 shape) read over: %+v", w)
+	}
+	if w := got["fx-t"]; !w.Over || w.Event != "fx-new closed" {
+		t.Errorf("fx-t: %+v, want over on fx-new", w)
 	}
 }

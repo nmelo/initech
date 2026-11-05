@@ -84,7 +84,7 @@ func TestJudge_NoTargetIsUnknown(t *testing.T) {
 	}
 	// A related dependency is no wait; a blocks one is.
 	b := waitingBead("u.7", "", Dependency{DependsOn: "x.1", Type: "related"}, Dependency{DependsOn: "x.2", Type: "blocks"})
-	if got := TargetOf(b).String(); got != "x.2" {
+	if got := Judge(b, nil, paceNow, world).Target.String(); got != "x.2" {
 		t.Errorf("target %q, want the blocks dependency x.2", got)
 	}
 }
