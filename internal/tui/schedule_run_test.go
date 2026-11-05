@@ -199,6 +199,57 @@ func TestScheduler_ACommandPastItsBoundIsStoppedAndSaid(t *testing.T) {
 	}
 }
 
+// TestScheduler_TheDefaultBoundIsThirtySeconds pins the bound the guide and
+// cron's help state; the bound test above sets its own, so it cannot.
+func TestScheduler_TheDefaultBoundIsThirtySeconds(t *testing.T) {
+	s := newRigScheduler(t.TempDir(), nil, time.Now)
+	if s.bound != 30*time.Second {
+		t.Fatalf("a new scheduler stops a command after %s, want 30s", s.bound)
+	}
+}
+
+// TestScheduler_ARepeatedDeliveryFailureIsSaidOnceUntilItDelivers is pm's
+// ruling on qa1's finding: an interval job to a missing pane told super every
+// interval. Said once; a delivery re-arms it; another reason is said; and a
+// restart on the same file says nothing more.
+func TestScheduler_ARepeatedDeliveryFailureIsSaidOnceUntilItDelivers(t *testing.T) {
+	s, host, clk := schedRig(t, clockAt(4, 9, 0), schedule.Job{Owner: "eng7", To: "qa1", Every: "1m", Message: "hi"})
+	supers := func() int { _, sup := host.snap(); return len(sup) }
+	host.refuse["qa1"] = "qa1 is not running"
+	s.step(clk, clockAt(4, 9, 1))
+	s.step(clk, clockAt(4, 9, 2))
+	s.step(clk, clockAt(4, 9, 3))
+	if n := supers(); n != 1 {
+		t.Fatalf("three failures for one reason told super %d times, want 1", n)
+	}
+	if j := reload(t, s).Jobs[0]; j.Told != "qa1 is not running" {
+		t.Fatalf("the file holds told %q", j.Told)
+	}
+	// A restart: a new scheduler on the same file says nothing more.
+	s2 := newRigScheduler(s.root, host, clk.now)
+	s2.step(clk, clockAt(4, 9, 4))
+	if n := supers(); n != 1 {
+		t.Fatalf("after a restart super was told %d times, want still 1", n)
+	}
+	// Another reason is a new failure.
+	host.refuse["qa1"] = "a dialog is open"
+	s2.step(clk, clockAt(4, 9, 5))
+	if n := supers(); n != 2 {
+		t.Fatalf("a new reason told super %d times in all, want 2", n)
+	}
+	// A delivery re-arms it.
+	delete(host.refuse, "qa1")
+	s2.step(clk, clockAt(4, 9, 6))
+	if j := reload(t, s2).Jobs[0]; j.Told != "" || j.LastResult != "delivered" {
+		t.Fatalf("after a delivery the file holds told %q, result %q", j.Told, j.LastResult)
+	}
+	host.refuse["qa1"] = "a dialog is open"
+	s2.step(clk, clockAt(4, 9, 7))
+	if n := supers(); n != 3 {
+		t.Fatalf("a failure after a delivery told super %d times in all, want 3", n)
+	}
+}
+
 // TestScheduler_AFailedDeliveryTellsSuperOnce is AC4: nothing vanishes.
 func TestScheduler_AFailedDeliveryTellsSuperOnce(t *testing.T) {
 	s, host, clk := schedRig(t, clockAt(4, 9, 0), schedule.Job{Owner: "eng7", To: "ghost", At: "09:30", Message: "hello"})

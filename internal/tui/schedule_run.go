@@ -150,26 +150,41 @@ func (s *rigScheduler) fire(c claim) {
 	text, cmdFailure := s.compose(c)
 	ok, why := s.host.deliver(j.To, text, j.Owner)
 	result := "delivered"
+	var tell string
 	switch {
 	case !ok:
 		result = "not delivered: " + why
-		s.host.tellSuper(fmt.Sprintf("schedule %s (owner %s, to %s) did not deliver: %s",
-			j.ID, j.Owner, j.To, why))
+		tell = fmt.Sprintf("schedule %s (owner %s, to %s) did not deliver: %s", j.ID, j.Owner, j.To, why)
 	case cmdFailure != "":
 		result = "delivered; " + cmdFailure
-		s.host.tellSuper(fmt.Sprintf("schedule %s (owner %s, to %s): its command %s",
-			j.ID, j.Owner, j.To, cmdFailure))
+		tell = fmt.Sprintf("schedule %s (owner %s, to %s): its command %s", j.ID, j.Owner, j.To, cmdFailure)
 	}
+	// A delivery failure is said once until the job delivers again, or until
+	// it fails for another reason; told rides in the file, so a restart does
+	// not say it again.
 	s.mu.Lock()
 	delete(s.inFlight, j.ID)
 	for i := range s.file.Jobs {
-		if s.file.Jobs[i].ID == j.ID {
-			s.file.Jobs[i].LastResult = result
-			s.saveLocked()
-			break
+		f := &s.file.Jobs[i]
+		if f.ID != j.ID {
+			continue
 		}
+		f.LastResult = result
+		switch {
+		case ok:
+			f.Told = ""
+		case f.Told == why:
+			tell = ""
+		default:
+			f.Told = why
+		}
+		s.saveLocked()
+		break
 	}
 	s.mu.Unlock()
+	if tell != "" {
+		s.host.tellSuper(tell)
+	}
 }
 
 // compose builds the text a run delivers, and says how a command failed.

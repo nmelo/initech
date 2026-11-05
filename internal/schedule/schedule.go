@@ -39,6 +39,9 @@ type Job struct {
 	Created    time.Time  `yaml:"created"`
 	LastRun    *time.Time `yaml:"last_run,omitempty"`
 	LastResult string     `yaml:"last_result,omitempty"`
+	// Told is the delivery failure super was last told of, so a repeat of it
+	// is said once; a delivery clears it.
+	Told string `yaml:"told,omitempty"`
 	// Line is where the job starts in the file it was read from; never written.
 	Line int `yaml:"-"`
 }

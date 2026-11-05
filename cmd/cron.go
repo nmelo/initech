@@ -24,7 +24,8 @@ stopped at 30 seconds, and its output, cut to 2 KB, arrives as a message with
 its exit code. Deliveries go through the send path, so a dialog or
 do-not-disturb holds them as usual. A job whose time passed while initech was
 down runs once at the next start and says so. A delivery that cannot happen,
-or a command that fails, is one message to super.
+or a command that fails, is one message to super; a delivery that keeps
+failing for the same reason is said once, until it delivers again.
 
 Not a job runner: one line, no retries, no chaining, and no secrets in the
 file. To change a job, remove it and add it again.`,
