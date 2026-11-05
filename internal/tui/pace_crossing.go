@@ -24,6 +24,7 @@ import (
 type paceRead struct {
 	known time.Time
 	at    time.Time
+	by    string // who made that move: "status", a comment's author, or "commit"
 }
 
 // paceCandidate is a bead due a crossing read.
@@ -159,8 +160,8 @@ func (t *TUI) readPaceCrossings(due []paceCandidate) {
 			}
 		}
 		cancel()
-		at, _ := progress.LastMove(c.bead, comments, commits)
-		reads[c.bead.ID] = paceRead{known: c.known, at: at}
+		at, by := progress.LastMove(c.bead, comments, commits)
+		reads[c.bead.ID] = paceRead{known: c.known, at: at, by: by}
 	}
 	t.runOnMain(func() {
 		if t.paceReads == nil {

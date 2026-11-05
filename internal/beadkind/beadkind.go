@@ -70,6 +70,9 @@ type Bead struct {
 	Status    string
 	Assignee  string
 	UpdatedAt time.Time
+	// CommentCount is bd's comment count. A comment does not move
+	// updated_at, so plan B reads a bead whose count rose.
+	CommentCount int
 }
 
 // Options are what a Reader needs from its host.
@@ -89,6 +92,8 @@ type Reader struct {
 	mu       sync.Mutex
 	mode     Mode
 	kinds    map[string]Kind
+	kindAt   map[string]time.Time // when each kind's change was made
+	comments map[string]int       // plan B: the comment count when last read
 	seq      int64
 	caughtUp bool
 	started  time.Time                 // the first poll's now
@@ -101,7 +106,7 @@ type Reader struct {
 
 // NewReader makes a Reader.
 func NewReader(opt Options) *Reader {
-	return &Reader{opt: opt, kinds: map[string]Kind{}, prev: map[string]state{},
+	return &Reader{opt: opt, kinds: map[string]Kind{}, kindAt: map[string]time.Time{}, comments: map[string]int{}, prev: map[string]state{},
 		rowSeen: map[string]map[int64]bool{}, lastPoll: map[string]time.Time{}, readAt: map[string]time.Time{}}
 }
 
@@ -111,6 +116,20 @@ func (r *Reader) Kind(id string) (Kind, bool) {
 	defer r.mu.Unlock()
 	k, ok := r.kinds[id]
 	return k, ok
+}
+
+// KindAt is the kind of id's last change and when that change was made.
+func (r *Reader) KindAt(id string) (Kind, time.Time, bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	k, ok := r.kinds[id]
+	return k, r.kindAt[id], ok
+}
+
+// setKind records a kind with its time. Caller holds r.mu.
+func (r *Reader) setKind(id string, k Kind, at time.Time) {
+	r.kinds[id] = k
+	r.kindAt[id] = at
 }
 
 // Mode is the path in use.
@@ -275,13 +294,14 @@ func (r *Reader) readJournal(ctx context.Context, beads []Bead, now time.Time) s
 func (r *Reader) apply(row journalRow) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if ts, err := time.Parse(time.RFC3339, row.TS); err == nil && (r.firstRow.IsZero() || ts.Before(r.firstRow)) {
-		r.firstRow = ts
+	if t, err := time.Parse(time.RFC3339, row.TS); err == nil && (r.firstRow.IsZero() || t.Before(r.firstRow)) {
+		r.firstRow = t
 	}
 	if row.Issue == nil {
 		return // a delete: the bead leaves the panel
 	}
 	now := state{row.Issue.Status, row.Issue.Assignee}
+	ts, _ := time.Parse(time.RFC3339, row.TS)
 	if up, err := time.Parse(time.RFC3339, row.Issue.UpdatedAt); err == nil {
 		if r.rowSeen[row.IssueID] == nil {
 			r.rowSeen[row.IssueID] = map[int64]bool{}
@@ -290,13 +310,13 @@ func (r *Reader) apply(row journalRow) {
 	}
 	switch row.Op {
 	case "create":
-		r.kinds[row.IssueID] = Filed
+		r.setKind(row.IssueID, Filed, ts)
 	case "comment":
-		r.kinds[row.IssueID] = Comment
+		r.setKind(row.IssueID, Comment, ts)
 	case "update":
 		if prev, ok := r.prev[row.IssueID]; ok {
 			if k, ok := kindOfUpdate(prev, now); ok {
-				r.kinds[row.IssueID] = k
+				r.setKind(row.IssueID, k, ts)
 			}
 		}
 	}
@@ -329,7 +349,8 @@ func kindOfUpdate(prev, now state) (Kind, bool) {
 
 // historyEntry is one version from bd history --json.
 type historyEntry struct {
-	Issue map[string]any `json:"Issue"`
+	CommitDate string         `json:"CommitDate"`
+	Issue      map[string]any `json:"Issue"`
 }
 
 // readHistory reads, newest move first, at most PlanBCap beads whose move
@@ -340,10 +361,15 @@ func (r *Reader) readHistory(ctx context.Context, beads []Bead, now time.Time) {
 	r.mu.Lock()
 	var due []Bead
 	for _, b := range beads {
-		if b.UpdatedAt.Before(floor) {
+		count, seen := r.comments[b.ID]
+		commented := seen && b.CommentCount > count
+		if !seen {
+			r.comments[b.ID] = b.CommentCount
+		}
+		if b.UpdatedAt.Before(floor) && !commented {
 			continue
 		}
-		if last, ok := r.readAt[b.ID]; ok && last.Equal(b.UpdatedAt) {
+		if last, ok := r.readAt[b.ID]; ok && last.Equal(b.UpdatedAt) && !commented {
 			continue
 		}
 		due = append(due, b)
@@ -363,11 +389,13 @@ func (r *Reader) readHistory(ctx context.Context, beads []Bead, now time.Time) {
 			continue
 		}
 		k, ok := kindOfVersions(hist)
+		at, _ := time.Parse(time.RFC3339Nano, hist[0].CommitDate)
 		r.mu.Lock()
 		if ok {
-			r.kinds[b.ID] = k
+			r.setKind(b.ID, k, at)
 		}
 		r.readAt[b.ID] = b.UpdatedAt
+		r.comments[b.ID] = b.CommentCount
 		r.mu.Unlock()
 	}
 }

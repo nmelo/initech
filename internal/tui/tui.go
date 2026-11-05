@@ -534,6 +534,8 @@ type TUI struct {
 	// panelKinds is the moved box's change-kind source (ini-u2xf fills
 	// it); nil reads the kind from each bead's status.
 	panelKinds beadKinds
+	// kinds runs the change-kind reader behind panelKinds (ini-u2xf).
+	kinds panelKindsState
 	// panelMoved is the last frame's moved-box snapshot.
 	panelMoved []movedBead
 	// panelRowsWarned is the panel_rows value last warned about, so a

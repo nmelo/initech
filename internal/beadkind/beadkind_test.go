@@ -423,3 +423,43 @@ func TestJournal_AMoveBeforeTheJournalBeganIsNotAMiss(t *testing.T) {
 		t.Fatalf("a move from before the journal began switched it: mode %v super %q", r.Mode(), s.super)
 	}
 }
+
+// KindAt carries when the change was made: a journal row's time.
+func TestJournal_KindAtIsTheRowsTime(t *testing.T) {
+	f := &fakeBD{enabled: true, rows: []string{row(1, "create", "ini-a", "open", "", at(3))}}
+	var s said
+	r := newReader(f, &s)
+	r.Poll(context.Background(), []Bead{{ID: "ini-a", Status: "open", UpdatedAt: at(3)}}, at(4))
+	k, when, ok := r.KindAt("ini-a")
+	if !ok || k != Filed || !when.Equal(at(3)) {
+		t.Fatalf("KindAt = %q %v %v, want filed at %v", k, when, ok, at(3))
+	}
+}
+
+// Plan B: a comment does not move updated_at, so a bead whose comment count
+// rose is read even with an old updated_at, and its kind is comment at the
+// history entry's time.
+func TestPlanB_ACommentCountRiseIsRead(t *testing.T) {
+	f := &fakeBD{enabled: false, history: map[string][]snapshot{
+		"ini-c": {{"in_progress", "eng1", at(-60).Format(time.RFC3339)}, {"in_progress", "eng1", at(-60).Format(time.RFC3339)}},
+	}}
+	var s said
+	r := newReader(f, &s)
+	b := Bead{ID: "ini-c", Status: "in_progress", Assignee: "eng1", UpdatedAt: at(-60), CommentCount: 2}
+	r.Poll(context.Background(), []Bead{b}, at(1))
+	if f.callsWith("history ini-c") != 0 {
+		t.Fatal("read a bead that neither moved in the window nor gained a comment")
+	}
+	b.CommentCount = 3
+	r.Poll(context.Background(), []Bead{b}, at(2))
+	if f.callsWith("history ini-c") != 1 {
+		t.Fatalf("the comment rise was not read: %d reads", f.callsWith("history ini-c"))
+	}
+	if k, _, ok := r.KindAt("ini-c"); !ok || k != Comment {
+		t.Fatalf("kind %q %v, want comment", k, ok)
+	}
+	r.Poll(context.Background(), []Bead{b}, at(3))
+	if f.callsWith("history ini-c") != 1 {
+		t.Fatal("re-read with no new comment")
+	}
+}

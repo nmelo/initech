@@ -174,6 +174,7 @@ func (t *TUI) pollBeadsOnce(now time.Time) {
 	t.readPaceCrossings(due)
 	if answered {
 		t.judgePaceWaits(beads, now)
+		t.pollKinds(beads, now)
 	}
 }
 
@@ -185,6 +186,7 @@ func (t *TUI) startBeadPoller(quit <-chan struct{}) {
 	if !t.isFleetAuthority() || !projectHasBeads(t.projectRoot) {
 		return
 	}
+	t.startPanelKinds()
 	t.safeGo(func() {
 		t.pollBeadsOnce(time.Now())
 		tick := time.NewTicker(beadPollInterval)
