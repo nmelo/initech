@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/gdamore/tcell/v2"
+	"github.com/nmelo/initech/internal/fleetquota"
 	"github.com/nmelo/initech/internal/machine"
 	"github.com/nmelo/initech/internal/rignumbers"
 )
@@ -60,8 +61,11 @@ func defaultCeilingReads() ceilingReads {
 // ceilingState is the TUI's machine ceiling.
 type ceilingState struct {
 	gate machine.Gate
-	last time.Time   // main loop only: when the last step started
-	busy atomic.Bool // a step is running; a second never starts beside it
+	// quota is the fleet quota poller, read on this tick (ini-kb4c); nil
+	// until startPanelQuota.
+	quota *fleetquota.Poller
+	last  time.Time   // main loop only: when the last step started
+	busy  atomic.Bool // a step is running; a second never starts beside it
 
 	mu      sync.Mutex
 	reads   *ceilingReads   // nil until first use: the defaults
@@ -262,6 +266,9 @@ func (t *TUI) refreshMachineCeiling(now time.Time) {
 	sightings := t.localSightings()
 	t.safeGo(func() {
 		defer c.busy.Store(false)
+		if c.quota != nil {
+			c.quota.Poll(now)
+		}
 		if _, cleared := t.stepCeiling(sightings, now); cleared {
 			t.wakeCeilingHeld()
 		}

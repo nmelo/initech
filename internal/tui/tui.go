@@ -1248,6 +1248,7 @@ func Run(cfg Config) error {
 	// (ini-49q): the window opens either way, and an agent the gate refuses
 	// boots parked with the words, to wake later through any wake.
 	t.stepCeiling(nil, time.Now())
+	t.startPanelQuota(time.Now())
 	t.ceiling.last = time.Now()
 	var staggered []*Pane
 	for i, acfg := range cfg.Agents {

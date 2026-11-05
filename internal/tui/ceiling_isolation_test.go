@@ -25,7 +25,9 @@ var rigCeilingEnv []string
 // ceiling never engages and no fleet file is written), and rig children a
 // scratch home. It returns the undo.
 func isolateMachineCeiling() func() {
-	prev := ceilingDefaults
+	prev, prevQuota := ceilingDefaults, quotaPath
+	// Nor the operator's account usage file (ini-kb4c).
+	quotaPath = func() (string, error) { return filepath.Join(os.TempDir(), "initech-tests-no-usage.json"), nil }
 	none := errors.New("tests do not read this machine")
 	ceilingDefaults = func() ceilingReads {
 		return ceilingReads{
@@ -44,7 +46,7 @@ func isolateMachineCeiling() func() {
 		rigCeilingEnv = []string{machine.DirEnv + "=" + home}
 	}
 	return func() {
-		ceilingDefaults = prev
+		ceilingDefaults, quotaPath = prev, prevQuota
 		if home != "" {
 			_ = os.RemoveAll(home)
 		}
