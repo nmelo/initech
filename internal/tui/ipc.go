@@ -805,10 +805,11 @@ func watchSubmit(pane *Pane, ps *pendingSubmit, sentAt time.Time) (submitOutcome
 				return submitNotTaken, ""
 			}
 			why := unconfirmedReason(mismatch, sawComposer, seen, ps.census)
-			// The rows the samples read, kept beside the log (ini-xl9), with the
-			// emulator's size: what made an UNKNOWN is read from them.
+			// The rows the last sample read, kept beside the log (ini-xl9), with
+			// the emulator's size: what made an UNKNOWN is read from them. No
+			// read of its own: the sample already took them.
 			cols, rows := pane.emuSize()
-			capture := writeInjectCapture(pane.Name(), cols, rows, emuRowsBlocking(pane.emu))
+			capture := writeInjectCapture(pane.Name(), cols, rows, ps.lastRows)
 			LogInfo("inject", "submit outcome UNKNOWN: could not confirm", "pane", pane.Name(),
 				"mode", ps.mode, "reason", why, "waited_ms", time.Since(sentAt).Milliseconds(),
 				"text", ps.preview, "composer", composerSnapshot(pane),
@@ -847,6 +848,7 @@ func watchSubmit(pane *Pane, ps *pendingSubmit, sentAt time.Time) (submitOutcome
 // our body sits under it, unsent; that must never read as the box clearing.
 func submitSample(pane *Pane, ps *pendingSubmit) (tail string, found, held, stable bool) {
 	before := emuRowsBlocking(pane.emu)
+	ps.lastRows = before // what an UNKNOWN's capture shows: the rows this sample read (ini-xl9)
 	tail, found = composerTail(pane)
 	found = found && !paneHasModal(pane)
 	if h := submitSampleMidpoint.Load(); h != nil {
@@ -2098,6 +2100,7 @@ type pendingSubmit struct {
 	tailAtWithhold string       // The composer tail when we withheld: "nothing has changed yet".
 	seenInBox      bool         // Our body was already seen in the box before the watch began (ini-pkin).
 	census         submitCensus // What this send's samples saw, before the Enter and after, for the UNKNOWN line (ini-s1kd).
+	lastRows       []string     // The screen the last sample read, for the UNKNOWN capture (ini-xl9); written only by the goroutine sampling this pendingSubmit.
 	deadline       time.Time    // Bounded: we do not wait forever.
 }
 
