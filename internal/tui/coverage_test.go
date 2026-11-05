@@ -1148,8 +1148,9 @@ func TestProjectBadge_TopLeftAlwaysAndOverlayTitleBare(t *testing.T) {
 		t.Errorf("badge background = %v, want DodgerBlue (operator spec: blue box)", bg)
 	}
 
-	// Overlay SHOWN — the title no longer carries the name (the badge does).
+	// Panel SHOWN — its title row does not carry the name (the badge does).
 	tui.layoutState.Overlay = true
+	tui.applyLayout()
 	tui.render()
 	sw, sh := s.Size()
 	full := ""
@@ -1163,8 +1164,8 @@ func TestProjectBadge_TopLeftAlwaysAndOverlayTitleBare(t *testing.T) {
 	if strings.Contains(full, "(myproject)") {
 		t.Error("overlay title still carries the parenthesized project name — it moved to the badge")
 	}
-	if !strings.Contains(full, "Agents") {
-		t.Error("overlay title lost its 'Agents' label")
+	if !strings.Contains(full, "agents · working") {
+		t.Error("the rig panel lost its agents box label")
 	}
 
 	// qa1's cell-3 catch: byte-indexed drawing holes the badge on any

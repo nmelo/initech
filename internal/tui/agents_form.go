@@ -33,31 +33,55 @@ type agentsPinState struct {
 	splitX int
 }
 
-// agentsPinned reports whether the overlay is in its pinned form.
-func (t *TUI) agentsPinned() bool {
-	return t.layoutState.AgentsForm == agentsFormPinned
+// panelRowsFor is the boxes' height on a screen h rows tall: one row per box
+// under agentsPinnedTallFrom rows; otherwise layout.yaml's panel_rows, or
+// panelDefaultRows, kept between panelRowsMin and half the screen.
+func (t *TUI) panelRowsFor(h int) int {
+	if h < agentsPinnedTallFrom {
+		return 1
+	}
+	rows := t.layoutState.PanelRows
+	if rows == 0 {
+		rows = panelDefaultRows
+	}
+	return min(max(rows, panelRowsMin), max(panelRowsMin, h/2))
 }
 
-// agentsPinnedTop is how many rows the pinned section takes above the pane
-// grid on a screen h rows tall: none unless the overlay is shown and pinned;
-// the header and agentsPinnedRows rows on a tall screen; on a short one the
-// header, the summary line and, once window 1 has them, the rig numbers line.
-// A screen too short to keep a pane row below it gets no section.
+// agentsPinnedTop is how many rows the panel takes above the pane grid on a
+// screen h rows tall: none while it is hidden; otherwise the title row, then
+// the boxes' top border, their rows and their bottom border. A screen too
+// short to keep a pane row below it gets no panel.
 func (t *TUI) agentsPinnedTop(h int) int {
-	if !t.layoutState.Overlay || !t.agentsPinned() {
+	if !t.layoutState.Overlay {
 		return 0
 	}
-	top := 1 + agentsPinnedRows
-	if h < agentsPinnedTallFrom {
-		top = 2
-		if t.RigNumbersSnapshot() != nil {
-			top++
-		}
-	}
+	top := 1 + 1 + t.panelRowsFor(h) + 1
 	if h-2-top < 1 {
 		return 0
 	}
 	return top
+}
+
+// adjustPanelRows grows or shrinks the boxes by delta rows (Option+= and
+// Option+-), within the bounds panelRowsFor keeps, and saves the height to
+// layout.yaml at once (window 1 only; a viewer's save is refused in the
+// helper). A press at a bound changes nothing and writes nothing.
+func (t *TUI) adjustPanelRows(delta int) {
+	h := 0
+	if t.screen != nil {
+		_, h = t.screen.Size()
+	}
+	if h < agentsPinnedTallFrom {
+		return
+	}
+	cur := t.panelRowsFor(h)
+	next := min(max(cur+delta, panelRowsMin), max(panelRowsMin, h/2))
+	if next == cur {
+		return
+	}
+	t.layoutState.PanelRows = next
+	t.applyLayout()
+	t.saveLayoutIfConfigured()
 }
 
 // shiftPlan moves every region of a plan computed for the rows below the
@@ -77,51 +101,6 @@ func shiftPlan(plan RenderPlan, top int) RenderPlan {
 		plan.Waiting[i].Y += top
 	}
 	return plan
-}
-
-// setAgentsForm puts the overlay in form, showing it if Option+s had hidden
-// it, and saves the layout once. Choosing the form already shown changes
-// nothing and writes nothing.
-func (t *TUI) setAgentsForm(form string) {
-	if t.layoutState.AgentsForm == form && t.layoutState.Overlay {
-		return
-	}
-	t.layoutState.AgentsForm = form
-	t.layoutState.Overlay = true
-	t.agentsPin.scrollL, t.agentsPin.scrollR = 0, 0
-	t.applyLayout()
-	t.saveLayoutIfConfigured()
-}
-
-// toggleAgentsForm flips the overlay between its two forms (Shift+Option+s).
-func (t *TUI) toggleAgentsForm() {
-	if t.agentsPinned() {
-		t.setAgentsForm(agentsFormFloating)
-		return
-	}
-	t.setAgentsForm(agentsFormPinned)
-}
-
-// adoptLoadedAgentsForm keeps the form layout.yaml left in window 1. A
-// viewer starts floating, as it starts with the overlay shown: its
-// arrangement is session-scoped and it never writes the file (ini-qodm).
-func (t *TUI) adoptLoadedAgentsForm(viewer bool) {
-	if viewer || t.layoutState.AgentsForm == "" {
-		t.layoutState.AgentsForm = agentsFormFloating
-	}
-}
-
-// cmdAgentsForm runs "agents pin" and "agents float".
-func (t *TUI) cmdAgentsForm(arg string) bool {
-	switch arg {
-	case "pin":
-		t.setAgentsForm(agentsFormPinned)
-	case "float":
-		t.setAgentsForm(agentsFormFloating)
-	default:
-		t.cmd.error = "usage: agents [pin|float]"
-	}
-	return false
 }
 
 // effortTitles maps each polled bead's id to its bd title.
@@ -410,7 +389,7 @@ func drawEffortLine(s tcell.Screen, x, y, limit int, line string, st tcell.Style
 // reports whether (x, y) is inside the pinned section at all, so the caller
 // sends a wheel there to no pane.
 func (t *TUI) scrollPinnedAgents(x, y, delta int) bool {
-	if !t.layoutState.Overlay || !t.agentsPinned() || y >= t.planTop {
+	if !t.layoutState.Overlay || y >= t.planTop {
 		return false
 	}
 	if x < t.agentsPin.splitX {

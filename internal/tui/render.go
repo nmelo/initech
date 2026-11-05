@@ -270,11 +270,7 @@ func (t *TUI) renderFrame() {
 	t.attentionChimes(time.Now())
 
 	if t.layoutState.Overlay {
-		if t.agentsPinned() {
-			t.renderPinnedAgents()
-		} else {
-			t.renderOverlay()
-		}
+		t.renderRigPanel(time.Now())
 	}
 
 	// Project badge is ALWAYS on, independent of the overlay: the operator

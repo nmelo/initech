@@ -32,7 +32,7 @@ Each agent pane gets `INITECH_AGENT` and `BEADS_ACTOR` set to its role, and `INI
 
 On a project's first launch, a welcome box lists the main shortcuts for 10 seconds, after the consent question if that is due. The key or paste that dismisses it still counts: a letter or a paste reaches the focused pane and a shortcut does its action. Escape only dismisses it.
 
-You'll see a grid of panes. Each pane is a live Claude Code session. The floating overlay panel in the top-right shows all agents with activity indicators. Within 10-30 seconds, agents initialize and their prompts appear.
+You'll see a grid of panes. Each pane is a live Claude Code session. The rig panel across the top shows who is awake, what each has in hand, and whether anything needs you (Alt+s pins and unpins it). Within 10-30 seconds, agents initialize and their prompts appear.
 
 ### Your First Five Minutes
 
@@ -133,21 +133,16 @@ Keys always go to the highlighted pane, in every layout: whatever you type, past
 
 ### Activity Dots (Overlay Panel)
 
-The overlay (toggle with Alt+s, or `panel` in the command bar) is your dashboard. It comes back after a relaunch shown or hidden as you left it; a second window always starts with it shown.
+The rig panel is your dashboard: a band across the top of the window, with the pane grid below it. Alt+s, or `panel` in the command bar, pins and unpins it; unpinned, the grid takes the whole height. It starts pinned every time initech starts, in every window. Alt+= makes its boxes one row taller and Alt+- one row shorter, from 3 rows up to half the screen; window 1 keeps the height in `layout.yaml` as `panel_rows` (8 when absent). On a screen under 30 rows each box keeps one row.
 
-The overlay has two forms with the same content. Floating is a box in the top right corner over the panes. Pinned is a section across the top of the page, with the pane grid shrunk to fit below it: a header line reading `Agents`, with the visible and hidden counts and the other-window line when there are any, then eight rows split into two columns, the listed agents on the left (working first, then the rest, each remote machine under its divider) and the effort rows on the right, with the rig numbers as the section's last line. A column longer than its eight rows scrolls under the mouse wheel; a click in the section reaches no pane, and a click on an agent's dot hides or shows it as in the box. On a terminal under 30 rows each column folds to one line: the count, the first entries that fit and `+N` for the rest (`12 agents: eng1 running, eng2 running +10`), with the rig numbers on a line of their own once they exist; at 30 rows or more the columns come back. Shift+Alt+s flips between the forms in any window, and `agents pin` and `agents float` in the command bar set one in the main window (the only window with a command bar); pinning a hidden overlay shows it, and Alt+s hides and shows either form. The main window keeps the form in `.initech/layout.yaml` as `agents_form: floating` or `agents_form: pinned`, written each time it changes and read at start: a file without the key, or with any other value, starts floating (another value also logs one warning naming it). A second window always starts floating and keeps its choice for its own session only.
+The title row answers whether anything needs a person. The project's name is at the left. At the right: `on Nelson N` (beads waiting on Nelson), `blocked N`, `stale 20m N` (beads in progress with no move, a status change, comment or commit, for 20 minutes), `prompts N` (agents at a permission prompt or dialog), then `N awake` and `N suspended`. A count of zero is dim; a non-zero count is red (prompts yellow) and is followed by the bead ids or agent names. On a narrow window the ids go first, then the suspended count, then the awake count.
 
-It lists this window's agents that are doing something or need you, in two columns: working on the left (running, background), needing attention on the right (waiting, pending input, a dialog or banner on screen, dead, idle with a stuck bead, which reads `idle · stuck <id>`, stuck by the pane header's rule, and idle on an `in_progress` bead for the rig's `beads.idle_after`, which reads `idle 23m · ▶ <id>`), each column in the Agents panel's band order. Idle and suspended agents are not listed, with no row and no count; they are found in the Agents panel, which lists every agent. In a second window, which has no Agents panel, an agent hidden in that window stays listed whatever its state, with its hidden mark, because its dot is how it is unhidden there; the main window's overlay lists only active agents. A dead agent stays listed until it is restarted or removed. When none of the window's agents is listed, the panel shows the one line `all idle` where the columns would be. A row adds `· N held` for messages waiting and `· dnd <age>` while the agent is in do-not-disturb, after the state word. An agent changes column the moment its state changes. Clicking an agent's dot hides or shows it. A dot that has just changed agent, because a row moved, ignores clicks for one second, so a click never lands on an agent that slid under the cursor; click again. Under the columns, below a rule, the overlay has one row per effort in flight (an effort with a bead in progress, ready for QA or in QA, across the whole fleet), in effort id order, each reading as that effort's pane header does after the state icon of the effort's own bead (the bead whose id the row names; none when no such bead exists), with that bead's bd title after its id and a middle dot, such as `▶ ini-wra · Agents overlay rows 2/4 · 1/h · 0 stuck`; the title is cut with `…` to fit the column, never wrapped and never widening the box, and is left out when it has no room or no such bead exists; with ` (stale)` when bd has stopped answering, and blocked and waiting beads counted apart from stuck as in the header. A row follows its waiting count with the first three ids and `+N` for the rest, and an effort with only waiting beads past the value has a row too, because a bead with no holder has no agent row. An agent's own row adds `· waiting <id>` when it is listed for another reason; an idle agent whose only bead is waiting stays unlisted, and its bead is on the effort row. With nothing in flight or waiting there are no rows and no rule. The rows come from the same once-a-minute refresh as the headers, a click on them does nothing, and a screen too short for them cuts them first. In the main window the last of these rows is the rig's numbers (see [Rig numbers](#rig-numbers)), once the first minute's read has finished.
+The agents box lists this window's awake agents only, in the Agents panel's order: a dot, the name, the state (`running`, `background`, `idle`, `prompt`), how long it has been in that state (`2m`, `1h04m`), and the bead in its hands with its state icon, or `—`. A suspended or dead agent has no row; suspended agents are the title row's count. Agents at a prompt, and agents holding a bead that have been in the background or idle for 20 minutes or more, move to a second column, `needs attention`, beside the first; when it empties it stays a minute before it closes, so it does not flicker. On a narrow window the bead column goes before anything else. The `moved 30m` box beside it fills the rest of the width.
 
 | Dot | Meaning |
 |-----|---------|
-| Green (filled) | Agent is actively processing (PTY bytes flowing) |
-| Gray (hollow) | Idle at prompt, no work assigned; or background: quiet, with a background shell, monitor or agent running (the row says `background` and the job's age) |
-| Yellow (filled) | Idle but has work waiting (idle-with-backlog) |
-| Red (filled) | Dead process (crashed or killed) |
-| Blue (filled) | Suspended (auto-suspend feature) |
-
-A gray dot with a bead ID showing means the agent finished work but didn't clear their bead display. Nudge them or check the bead status directly.
+| Green (filled) | Running: the agent is working |
+| Gray (hollow) | Anything else that is awake: background, idle, or at a prompt (the state word says which) |
 
 ### Rig numbers
 
@@ -268,8 +263,8 @@ These are the commands you'll use most. The full list is in the README.
 |---------------|-----|
 | Open command bar | Backtick (`` ` ``) |
 | Switch between panes | Alt+Left / Alt+Right, or click |
-| See all agents at once | Alt+s (overlay toggle) |
-| Overlay floating or pinned across the top | Shift+Alt+s, or `agents pin` / `agents float` |
+| Pin or unpin the rig panel | Alt+s, or `panel` |
+| Rig panel taller or shorter | Alt+= / Alt+- |
 | Full-screen one pane | Alt+1 or `focus <name>` |
 | Back to grid | Alt+2, Alt+3, or `grid` |
 | Working agents in a fixed grid, panel order | Shift+Alt+L or `list` (then `grid CxR` for its shape) |

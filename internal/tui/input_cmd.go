@@ -570,11 +570,11 @@ func (t *TUI) execCmd(cmd string) bool {
 	case "top", "ps":
 		return t.cmdTop()
 	case "agents":
-		// "agents pin" and "agents float" set the overlay's form (ini-5d3);
-		// bare "agents" opens the modal. The command bar is window 1's only
-		// (ini-fn77); Shift+Option+s flips the form in every window.
+		// Bare "agents" opens the modal. "agents pin" and "agents float"
+		// went with the floating form (ini-cdgj) and are unknown commands.
 		if len(parts) > 1 {
-			return t.cmdAgentsForm(parts[1])
+			t.cmd.error = fmt.Sprintf("unknown command %q", strings.Join(parts, " "))
+			return false
 		}
 		t.openAgentsModal()
 		return false
@@ -665,9 +665,10 @@ func (t *TUI) cmdZoom() bool {
 }
 
 func (t *TUI) cmdPanel() bool {
-	// Saved at once, as Alt+s does (ini-ye1x).
+	// Pins or unpins the rig panel, as Option+s does; not remembered, the
+	// panel starts pinned (ini-cdgj).
 	t.layoutState.Overlay = !t.layoutState.Overlay
-	t.saveLayoutIfConfigured()
+	t.applyLayout()
 	return false
 }
 

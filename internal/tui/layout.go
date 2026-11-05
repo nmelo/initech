@@ -95,40 +95,35 @@ type LayoutState struct {
 	RightSet       []string `yaml:"-"`
 	RightSetActive bool     `yaml:"-"`
 
-	// AgentsForm is the Agents overlay's form (ini-5d3): agentsFormFloating,
-	// the box over the panes, or agentsFormPinned, a section across the top
-	// of the page that the pane grid sits below. layout.yaml stores it as
-	// agents_form; LoadLayout reads anything else as floating.
+	// AgentsForm is layout.yaml's agents_form as the file holds it: read and
+	// written back unchanged, never acted on (ini-cdgj; the rig panel has one
+	// form), so an older initech sharing the file keeps its own behaviour.
 	AgentsForm string `yaml:"-"`
+	// PanelRows is the rig panel's box height in rows; 0 is the default
+	// (ini-cdgj). layout.yaml stores it as panel_rows.
+	PanelRows int `yaml:"-"`
 }
 
-// The two forms of the Agents overlay (ini-5d3).
+// The two forms the Agents overlay had (ini-5d3), still the values an older
+// initech writes to agents_form.
 const (
 	agentsFormFloating = "floating"
 	agentsFormPinned   = "pinned"
 )
 
-// readAgentsForm is the form a stored agents_form value means: absent is
-// floating; floating and pinned are themselves; anything else is floating,
-// with one WARN naming the value.
-func readAgentsForm(v string) string {
-	switch v {
-	case "", agentsFormFloating:
-		return agentsFormFloating
-	case agentsFormPinned:
-		return agentsFormPinned
-	}
-	LogWarn("layout", "agents_form is neither floating nor pinned; reading it as floating", "agents_form", v)
-	return agentsFormFloating
-}
+// panelRowsMin is the least height panel_rows may hold; below it, or any
+// value that is not a count of rows, reads as the default with one WARN.
+const panelRowsMin = 3
 
-// writeAgentsForm is the value SaveLayout stores for a form: always one of
-// the two, so every saved file carries the field.
-func writeAgentsForm(form string) string {
-	if form == agentsFormPinned {
-		return agentsFormPinned
+// readPanelRows is the height a stored panel_rows means: absent is the
+// default (0); panelRowsMin or more is itself; anything else is the default
+// with one WARN naming it.
+func readPanelRows(v int) int {
+	if v == 0 || v >= panelRowsMin {
+		return v
 	}
-	return agentsFormFloating
+	LogWarn("layout", "panel_rows is under 3; reading it as the default 8", "panel_rows", v)
+	return 0
 }
 
 // RenderPlan is the complete set of instructions for one frame.
@@ -563,14 +558,13 @@ func DefaultLayoutState(paneNames []string) LayoutState {
 		}
 	}
 	return LayoutState{
-		Mode:       LayoutGrid,
-		GridCols:   cols,
-		GridRows:   rows,
-		Focused:    focused,
-		Hidden:     make(map[string]bool),
-		Protected:  protected,
-		Overlay:    true,
-		AgentsForm: agentsFormFloating,
+		Mode:      LayoutGrid,
+		GridCols:  cols,
+		GridRows:  rows,
+		Focused:   focused,
+		Hidden:    make(map[string]bool),
+		Protected: protected,
+		Overlay:   true,
 	}
 }
 
@@ -616,10 +610,12 @@ type PersistentLayout struct {
 	// writes it, true or false; a file without it (written before the key
 	// existed) loads shown, and an older initech ignores it.
 	Overlay *bool `yaml:"overlay,omitempty"`
-	// AgentsForm is the Agents overlay's form, floating or pinned (ini-5d3).
-	// Every save writes it; a file without it loads floating, and an older
-	// initech ignores it.
+	// AgentsForm is kept as the file had it (ini-cdgj): never acted on, so
+	// an older initech reading the file keeps its own form.
 	AgentsForm string `yaml:"agents_form,omitempty"`
+	// PanelRows is the rig panel's box height (ini-cdgj); absent is 8. An
+	// older initech ignores it.
+	PanelRows int `yaml:"panel_rows,omitempty"`
 }
 
 // The two splits layout.yaml can carry (ini-aa8a).
@@ -751,7 +747,8 @@ func SaveLayout(projectRoot string, state LayoutState) error {
 		ListRows:     state.ListRows,
 		ListCols:     state.ListCols,
 		Overlay:      &state.Overlay,
-		AgentsForm:   writeAgentsForm(state.AgentsForm),
+		AgentsForm:   state.AgentsForm,
+		PanelRows:    state.PanelRows,
 	}
 	// Hidden/Protected/LivePinned are deliberately NOT written: they are
 	// session-global and live in fleet-state.yaml (ini-9ka.10). A layout file
@@ -965,7 +962,8 @@ func LoadLayout(projectRoot string, paneKeys []string) (LayoutState, bool) {
 		Held:         pl.Held,
 		ListRows:     pl.ListRows,
 		ListCols:     pl.ListCols,
-		AgentsForm:   readAgentsForm(pl.AgentsForm),
+		AgentsForm:   pl.AgentsForm,
+		PanelRows:    readPanelRows(pl.PanelRows),
 	}, true
 }
 

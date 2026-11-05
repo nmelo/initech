@@ -75,9 +75,13 @@ func TestIdleOwner_TheBoardShowsItAndSuperHearsOncePerSpell(t *testing.T) {
 	if tui.paceStuck["eng1"] {
 		t.Error("a bead that moved a minute ago reads stuck")
 	}
-	tui.render()
-	if got := simScreenText(s); !strings.Contains(got, "idle 21m · ▶ ini-i.1") {
-		t.Errorf("the pane row lacks %q:\n%s", "idle 21m · ▶ ini-i.1", got)
+	// The rig panel's row (ini-cdgj): state, time in it and the bead, in the
+	// needs-attention column, a bead held idle 20 minutes or more.
+	if row := panelRowOf(t, tui, s, "eng1"); !strings.Contains(row, "idle") || !strings.Contains(row, "21m") || !strings.Contains(row, "▶ ini-i.1") {
+		t.Errorf("the panel row %q lacks idle, 21m and ▶ ini-i.1", row)
+	}
+	if !strings.Contains(simScreenText(s), "needs attention") {
+		t.Errorf("eng1 idle 21m with a bead is not in needs attention:\n%s", simScreenText(s))
 	}
 	got := rec.waitFor(1)
 	want := "super|initech|[from initech] eng1 idle 21m on ▶ ini-i.1; check on it"
@@ -137,9 +141,13 @@ func TestIdleOwner_StuckAndIdleReadsUnderBoth(t *testing.T) {
 	if !strings.Contains(tui.paceRows[0], "· 1 idle · idle eng1 90m") {
 		t.Errorf("effort row %q", tui.paceRows[0])
 	}
-	tui.render()
-	if got := simScreenText(s); !strings.Contains(got, "idle 90m · ▶ ini-i.3 · stuck ini-i.3") {
-		t.Errorf("the pane row does not read both:\n%s", got)
+	// The rig panel (ini-cdgj): the row reads idle 1h30m with its bead, and
+	// the title row names the bead as stale.
+	if row := panelRowOf(t, tui, s, "eng1"); !strings.Contains(row, "1h30m") || !strings.Contains(row, "▶ ini-i.3") {
+		t.Errorf("the panel row %q lacks 1h30m and ▶ ini-i.3", row)
+	}
+	if got := simScreenText(s); !strings.Contains(got, "stale 20m 1 ini-i.3") {
+		t.Errorf("the title row does not name ini-i.3 stale:\n%s", got)
 	}
 	rec.waitFor(1)
 }
@@ -286,4 +294,23 @@ func TestIdleOwner_TheLineCarriesNoControlCharacters(t *testing.T) {
 	if !strings.Contains(got[0], "on ▶ ini-i[2J.1; check on it") {
 		t.Errorf("line %q", got[0])
 	}
+}
+
+// panelRowOf shows the rig panel, draws a frame and returns the panel line
+// that names agent.
+func panelRowOf(t *testing.T, tui *TUI, s tcell.SimulationScreen, agent string) string {
+	t.Helper()
+	tui.layoutState.Overlay = true
+	tui.applyLayout()
+	tui.render()
+	for y, r := range overlayScreenRows(s) {
+		if y >= tui.planTop {
+			break
+		}
+		if line := string(r); strings.Contains(line, " "+agent+" ") {
+			return strings.TrimRight(line, " ")
+		}
+	}
+	t.Fatalf("no panel line names %s:\n%s", agent, simScreenText(s))
+	return ""
 }

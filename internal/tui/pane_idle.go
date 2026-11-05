@@ -18,6 +18,15 @@ func (p *Pane) IdleSpell() (time.Time, bool) {
 	return p.activitySince, true
 }
 
+// ActivitySince is when the pane's activity last changed; zero before its
+// first change. Background and pending input are idle underneath, so their
+// time counts from when the pane went quiet.
+func (p *Pane) ActivitySince() time.Time {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.activitySince
+}
+
 // idleSecOf is the list answer's idle_sec for p: the seconds since its idle
 // spell began, for a pane this process runs while it is idle; nil otherwise,
 // so a reader never takes an unknown for zero.

@@ -135,8 +135,8 @@ func (t *TUI) handleKey(ev *tcell.EventKey) bool {
 				t.toggleLiveListSplit()
 				return false
 			case base == 's':
-				// The Agents overlay's form, floating or pinned (ini-5d3).
-				t.toggleAgentsForm()
+				// Retired with the floating form (ini-cdgj): the rig panel has
+				// one form. Taken, so it does not fall to Option+s.
 				return false
 			}
 		}
@@ -163,10 +163,16 @@ func (t *TUI) handleKey(ev *tcell.EventKey) bool {
 				t.applyLayoutPreset(int(ev.Rune() - '1'))
 				return false
 			case 's':
-				// Saved at once, so a relaunch shows the overlay as it was
-				// left (ini-ye1x). A viewer's save is refused in the helper.
+				// Pins and unpins the rig panel (ini-cdgj). Not remembered:
+				// the panel starts pinned.
 				t.layoutState.Overlay = !t.layoutState.Overlay
-				t.saveLayoutIfConfigured()
+				t.applyLayout()
+				return false
+			case '=':
+				t.adjustPanelRows(1)
+				return false
+			case '-':
+				t.adjustPanelRows(-1)
 				return false
 			case 'z':
 				t.layoutState.Zoomed = !t.layoutState.Zoomed

@@ -97,6 +97,11 @@ func newTestTUI(panes ...*Pane) *TUI {
 		names[i] = p.name
 	}
 	ls := DefaultLayoutState(names)
+	// The rig panel starts off in a test TUI (ini-cdgj): it takes rows above
+	// the grid, and a test that is not about the panel measures the grid
+	// alone, as it did when the overlay floated over the panes. Production
+	// starts it pinned in Run; panel tests turn it on.
+	ls.Overlay = false
 	for _, p := range panes {
 		if !p.visible {
 			if ls.Hidden == nil {
@@ -144,6 +149,7 @@ func newTestTUIWithScreen(names ...string) (*TUI, tcell.SimulationScreen) {
 	}
 
 	ls := DefaultLayoutState(names)
+	ls.Overlay = false // The rig panel starts off in a test TUI; see newTestTUI.
 	views := make([]PaneView, len(panes))
 	for i, p := range panes {
 		views[i] = p

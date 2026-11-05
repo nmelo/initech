@@ -169,54 +169,6 @@ func TestWaits_ANewTargetSendsANewLineTheSameOneDoesNot(t *testing.T) {
 	}
 }
 
-// AC3: the effort row reads "N waiting · M over" with the over part red, and
-// the rest of the row is not.
-func TestWaits_TheOverPartOfTheEffortRowIsRed(t *testing.T) {
-	r := &waitsRig{beads: []bdBead{waitOn("ini-v.1", "date:2026-01-01"), waitOn("ini-v.2", "tag:v1")}, tags: map[string]bool{}}
-	tui, s := ysr3Parked(t)
-	origL, origT, origH := bdListBeads, gitTagExists, projectHasBeads
-	t.Cleanup(func() { bdListBeads, gitTagExists, projectHasBeads = origL, origT, origH })
-	bdListBeads = func(ctx context.Context, dir string) ([]bdBead, error) { return r.beads, nil }
-	gitTagExists = func(ctx context.Context, url, name string) (bool, error) { return false, nil }
-	projectHasBeads = func(string) bool { return false }
-	recordInitechLines(t)
-	tui.project = e4cProject(t, "15m")
-	tui.layoutState.Overlay = true
-	now := time.Now()
-	tui.pollBeadsOnce(now)
-	tui.paceAt = time.Time{}
-	tui.refreshPaceLines(now)
-	if len(tui.paceRows) != 1 || !strings.Contains(tui.paceRows[0], "1 waiting · 1 over") {
-		t.Fatalf("rows %q", tui.paceRows)
-	}
-	tui.render()
-	w, h := s.Size()
-	red, other := 0, 0
-	for y := 0; y < h; y++ {
-		var row []rune
-		for x := 0; x < w; x++ {
-			c, _, _ := s.Get(x, y)
-			row = append(row, []rune(c + " ")[0])
-		}
-		i := strings.Index(string(row), "1 over")
-		if i < 0 {
-			continue
-		}
-		col := len([]rune(string(row)[:i]))
-		for x := col; x < col+len("1 over"); x++ {
-			if _, st, _ := s.Get(x, y); colorOf(st) == tcell.ColorRed {
-				red++
-			}
-		}
-		if _, st, _ := s.Get(col-4, y); colorOf(st) == tcell.ColorRed {
-			other++
-		}
-	}
-	if red != len("1 over") || other != 0 {
-		t.Errorf("red cells in the over part %d of %d, red before it %d", red, len("1 over"), other)
-	}
-}
-
 func colorOf(st tcell.Style) tcell.Color {
 	fg, _, _ := st.Decompose()
 	return fg

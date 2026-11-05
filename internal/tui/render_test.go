@@ -172,6 +172,7 @@ func TestApplyLayout_ReservesStatusBar(t *testing.T) {
 	s.SetSize(120, 40)
 	panes := []*Pane{newEmuPane("eng1", 120, 39)}
 	ls := DefaultLayoutState([]string{"eng1"})
+	ls.Overlay = false // The bar's reserve alone; the rig panel's rows are its own tests'.
 	tui := &TUI{
 		screen:      s,
 		panes:       toPaneViews(panes),

@@ -101,32 +101,43 @@ func TestParkedFleet_AFrameDrawsNoPaneCells(t *testing.T) {
 	ysr2SameAsFull(t, tui, s, "a parked fleet")
 }
 
-// AC1 twin: the overlay over a parked fleet still draws every frame, and
-// when it closes the panes under it show again exactly.
+// AC1 twin: the rig panel over a parked fleet still draws every frame, and
+// the parked panes under it still write nothing. The panel is a band above
+// the grid, not a layer over the panes (ini-cdgj), so it is counted by its
+// rows, and closing it lays the panes out again.
 func TestParkedFleet_TheOverlayStillDraws(t *testing.T) {
 	tui, s := ysr3Parked(t)
 	tui.layoutState.Overlay = true
+	tui.applyLayout()
+	if tui.planTop == 0 {
+		t.Fatal("fixture: the panel takes no rows")
+	}
+	// Showing the panel re-lays the panes out, and a resized pane holds its
+	// content back until its settle ends (resizeSettleFrames and a deadline):
+	// end it here, as time would, so the frames below are the parked ones.
+	settlePanes(tui)
 	for f := 0; f < 3; f++ {
 		w, _ := s.Size()
 		c := &ysr3Counter{SimulationScreen: s, w: w, written: map[int]bool{}}
 		tui.screen = c
 		tui.render()
 		tui.screen = s
-		over := 0
-		for i, on := range tui.lastLayer {
-			if on && c.written[i] {
-				over++
+		panel := 0
+		for i := range c.written {
+			if i/w < tui.planTop {
+				panel++
 			}
 		}
-		if over < 100 {
-			t.Fatalf("frame %d: the overlay wrote %d cells, want it drawn every frame", f, over)
+		if panel < 100 {
+			t.Fatalf("frame %d: the panel wrote %d cells, want it drawn every frame", f, panel)
 		}
 	}
 	if in, _ := ysr3Count(tui, s, 3); in != 0 {
-		t.Errorf("the panes under the overlay wrote %d cells of their own, want 0", in)
+		t.Errorf("the parked panes under the panel wrote %d cells of their own, want 0", in)
 	}
 	tui.layoutState.Overlay = false
-	ysr2SameAsFull(t, tui, s, "the overlay closed over a parked fleet")
+	tui.applyLayout()
+	ysr2SameAsFull(t, tui, s, "the panel closed over a parked fleet")
 }
 
 // AC2: a hidden pane fed bytes draws nothing; revealing it shows its current
@@ -345,4 +356,15 @@ func TestParkedFleet_ALayerOverMovedPanesLeavesNoStaleCells(t *testing.T) {
 	ysr2SameAsFull(t, tui, s, "help open over moved panes")
 	tui.help.active = false
 	ysr2SameAsFull(t, tui, s, "help closed over moved panes")
+}
+
+// settlePanes ends every pane's post-resize settle, as its frames and its
+// deadline would.
+func settlePanes(tui *TUI) {
+	for _, pv := range tui.panes {
+		if p, ok := pv.(*Pane); ok {
+			p.resizeSettleFrames, p.resizeSettleDeadline = 0, time.Time{}
+		}
+	}
+	tui.render()
 }

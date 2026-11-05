@@ -73,12 +73,12 @@ func TestOverlayDot_ASuspendedAgentHasNoRow(t *testing.T) {
 	tui.panes[0].(*Pane).alive = false
 	tui.panes[0].(*Pane).suspended = true
 	tui.layoutState.Overlay = true
+	tui.applyLayout() // As Option+s does: the panel takes its rows.
 	tui.render()
 
-	// The overlay lists only agents doing something or needing attention
-	// (ini-7w4): a suspended agent has no row, so no blue hollow dot, and a
-	// window with nothing listed reads "all idle". The suspended mark is the
-	// ribbon's (TestRibbon_SuspendedShowsSusp) and the Agents panel's.
+	// The rig panel lists awake agents only (ini-cdgj): a suspended agent
+	// has no row, so no blue hollow dot, and is a count in the title row.
+	// The suspended mark is the ribbon's (TestRibbon_SuspendedShowsSusp).
 	sw, _ := s.Size()
 	for x := 0; x < sw; x++ {
 		if c, style, _ := s.Get(x, 2); c == "\u25cb" {
@@ -87,8 +87,8 @@ func TestOverlayDot_ASuspendedAgentHasNoRow(t *testing.T) {
 			}
 		}
 	}
-	if !strings.Contains(framesText(overlayScreenRows(s)), "all idle") {
-		t.Errorf("a window whose one agent is suspended does not read all idle:\n%s", framesText(overlayScreenRows(s)))
+	if txt := framesText(overlayScreenRows(s)[:tui.planTop]); strings.Contains(txt, "eng1") || !strings.Contains(txt, "0 awake · 1 suspended") {
+		t.Errorf("a window whose one agent is suspended draws it, or does not count it suspended:\n%s", txt)
 	}
 }
 

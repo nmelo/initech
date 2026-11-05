@@ -521,6 +521,9 @@ type TUI struct {
 	// hidden. agentsPin is that section's scroll and column state.
 	planTop   int
 	agentsPin agentsPinState
+	// panelAttn holds the rig panel's needs-attention column after it
+	// empties (ini-fed0).
+	panelAttn panelHold
 
 	// Live Mode: persistent engine for anti-thrashing across render frames.
 	// Nil when not in live mode. Created by cmdLive/Alt+5, destroyed on mode switch.
@@ -1483,7 +1486,8 @@ func Run(cfg Config) error {
 	// it was left (ini-ye1x).
 	t.adoptLoadedSplit(viewer)
 	t.adoptLoadedOverlay(viewer)
-	t.adoptLoadedAgentsForm(viewer)
+	// The rig panel starts pinned, whatever was left (ini-cdgj).
+	t.layoutState.Overlay = true
 
 	// Now that panes exist, compute the full render plan.
 	t.applyLayout()

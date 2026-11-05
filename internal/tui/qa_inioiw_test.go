@@ -5,6 +5,7 @@
 package tui
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -94,29 +95,21 @@ func TestRender_UpdateActivity_StaleOutputYieldsIdle(t *testing.T) {
 	}
 }
 
-// Dead pane (alive=false) must always render as idle regardless of lastOutputTime.
+// A dead pane is not awake (ini-cdgj): the rig panel draws no row for it
+// and the title row counts it neither awake nor suspended, however recent
+// its last output. Its state is StateDead (ini-a1e.29), asserted in
+// TestUpdateActivity tests; the dead mark itself is the ribbon's.
 func TestRender_UpdateActivity_DeadPaneIsIdle(t *testing.T) {
-	// ini-a1e.29: dead panes now show a red filled dot (StateDead),
-	// distinct from idle (gray hollow circle).
 	tui, s := newTestTUIWithScreen("eng1")
 	tui.layoutState.Overlay = true
 	tui.panes[0].(*Pane).alive = false
 	tui.panes[0].(*Pane).lastOutputTime = time.Now() // recent, but pane is dead
 	tui.render()
-
-	// The dot as drawn: with two columns (ini-gt7w) its cell depends on the
-	// agent's state, so it is read off the frame, not recomputed.
-	dotX, dotY, ok := overlayDotOf(overlayScreenRows(s), "eng1")
-	if !ok {
-		t.Fatal("eng1 is not drawn in the overlay")
+	txt := framesText(overlayScreenRows(s))
+	if _, _, ok := overlayDotOf(overlayScreenRows(s), "eng1"); ok {
+		t.Errorf("a dead pane has a row in the rig panel:\n%s", txt)
 	}
-
-	mainc, style, _ := s.Get(dotX, dotY)
-	if mainc != "\u25cf" {
-		t.Errorf("dead pane dot = %q (%q), want ● (U+25CF, filled red dot)", mainc, mainc)
-	}
-	fg, _, _ := style.Decompose()
-	if fg != tcell.ColorRed {
-		t.Errorf("dead pane dot color = %v, want Red", fg)
+	if !strings.Contains(txt, "0 awake · 0 suspended") {
+		t.Errorf("the title row counts a dead pane:\n%s", txt)
 	}
 }

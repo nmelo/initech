@@ -128,7 +128,9 @@ func ye1xWindow(t *testing.T) *TUI {
 	return tui
 }
 
-// Criterion 4: the key and the command each write the file at once.
+// The key and the command each pin and unpin the rig panel, and neither
+// writes layout.yaml: shown or hidden is not remembered, the panel starts
+// pinned (ini-cdgj, reversing ini-ye1x's criterion 4).
 func TestOverlayPersist_BothTogglesSave(t *testing.T) {
 	for name, toggle := range map[string]func(*TUI){
 		"Alt+s":   func(tui *TUI) { tui.handleKey(tcell.NewEventKey(tcell.KeyRune, 's', tcell.ModAlt)) },
@@ -137,15 +139,14 @@ func TestOverlayPersist_BothTogglesSave(t *testing.T) {
 		tui := ye1xWindow(t)
 		toggle(tui)
 		if tui.layoutState.Overlay {
-			t.Fatalf("%s did not hide the overlay", name)
+			t.Fatalf("%s did not hide the panel", name)
 		}
-		ls, ok := LoadLayout(tui.projectRoot, ye1xNames)
-		if !ok || ls.Overlay {
-			t.Errorf("%s: the file says ok=%v overlay=%v, want it saved hidden", name, ok, ls.Overlay)
+		if _, err := os.Stat(layoutPath(tui.projectRoot)); err == nil {
+			t.Errorf("%s wrote layout.yaml", name)
 		}
 		toggle(tui)
-		if ls, _ := LoadLayout(tui.projectRoot, ye1xNames); !ls.Overlay {
-			t.Errorf("%s again: the file still says hidden", name)
+		if !tui.layoutState.Overlay {
+			t.Errorf("%s again did not pin the panel", name)
 		}
 	}
 }
