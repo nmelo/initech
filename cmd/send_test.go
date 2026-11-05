@@ -610,3 +610,12 @@ func TestSendDeadline_GrowsWithATypingHoldCapAboveTheDefault(t *testing.T) {
 		t.Fatalf("60s cap: %s, want %s", got, want)
 	}
 }
+
+// ini-pt3j AC10: the send deadline stays 45 s; the cap made no reply wait on
+// the queue, so a change here needs its own reason in the comment above
+// sendActionTimeout.
+func TestSendActionTimeout_StaysFortyFiveSeconds(t *testing.T) {
+	if sendActionTimeout != 45*time.Second {
+		t.Fatalf("sendActionTimeout = %v, want 45s", sendActionTimeout)
+	}
+}

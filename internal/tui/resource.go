@@ -443,9 +443,10 @@ func processTreeRSS(pid int) int64 {
 
 // ── Message queue for suspended panes ───────────────────────────────
 
-// maxMessageQueue is the maximum number of messages buffered for a suspended
-// pane. When the queue is full, the oldest message is dropped to make room.
-const maxMessageQueue = 20
+// maxMessageQueue is the count half of the cap on a pane's held mail
+// (ini-pt3j, queue_cap.go): at 500 messages, or 1 MiB of text, a new message
+// is refused and nothing held is dropped.
+const maxMessageQueue = 500
 
 // QueuedMessage is a message waiting to be delivered to a suspended pane.
 // On resume, the queue is drained in FIFO order via injectText.
@@ -515,9 +516,9 @@ func (t *TUI) wireSuspendResume(p *Pane) {
 	})
 }
 
-// EnqueueMessage appends a message to the pane's queue. If the queue is at
-// capacity (maxMessageQueue), the oldest message is dropped. Returns true if
-// a message was dropped to make room.
+// EnqueueMessage appends a message to the pane's queue. At the cap
+// (queue_cap.go) the message is refused and nothing is dropped. Returns true
+// if it was refused.
 //
 // Thread-safe (guards p.mu): called both from the main goroutine (suspended
 // resume path) and from the send goroutine (modal-deferred sends, ini-7txh).
@@ -528,21 +529,31 @@ func (p *Pane) EnqueueMessage(text string, enter bool) bool {
 // EnqueueMessageFrom is EnqueueMessage naming the sender, which the held
 // file keeps (ini-8rkg).
 func (p *Pane) EnqueueMessageFrom(text string, enter bool, from string) bool {
-	return p.enqueue(QueuedMessage{Text: text, Enter: enter, Time: time.Now(), From: from})
+	return p.enqueueOrRefuse(QueuedMessage{Text: text, Enter: enter, Time: time.Now(), From: from}, sendAgainWhenResumes) != ""
 }
 
-// enqueue appends m, dropping the oldest message at capacity.
+// enqueue appends m, or refuses it at the cap; it reports whether it refused.
 func (p *Pane) enqueue(m QueuedMessage) bool {
+	when := sendAgainWhenResumes
+	if m.HeldForDialog {
+		when = sendAgainWhenDialog
+	}
+	return p.enqueueOrRefuse(m, when) != ""
+}
+
+// enqueueOrRefuse appends m, or at the cap refuses it and returns the
+// refusal line naming when to send again; nothing held is ever dropped
+// (ini-pt3j).
+func (p *Pane) enqueueOrRefuse(m QueuedMessage, when string) string {
 	defer p.heldChanged() // the held file follows every change (ini-8rkg)
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	dropped := false
-	if len(p.messageQueue) >= maxMessageQueue {
-		p.messageQueue = p.messageQueue[1:]
-		dropped = true
+	if limit := p.queueLimitLocked(m); limit != "" {
+		LogInfo("queue", "SEND NOT DELIVERED: queue at its limit", "pane", p.name, "queued", len(p.messageQueue), "limit", limit)
+		return queueRefusal(p.name, limit, when)
 	}
 	p.messageQueue = append(p.messageQueue, m)
-	return dropped
+	return ""
 }
 
 // DrainQueue returns all queued messages in FIFO order and clears the queue.
@@ -728,10 +739,24 @@ func (t *TUI) resumeLockFor(agentName string) *sync.Mutex {
 // stale queue to the live pane and returns; if it is this object and alive,
 // nothing to do; only "this object, still suspended" performs the resume.
 func (t *TUI) resumePane(pane *Pane, senderName string) error {
+	return t.resumePaneDrain(pane, senderName, false)
+}
+
+// resumePaneDrain is resumePane; with asyncDrain the queued mail is typed on
+// its own goroutine once the agent is up, so a sender waiting on the wake does
+// not also wait for the whole queue behind it (ini-pt3j: 500 queued at 500 ms
+// apart would outlast any send reply). The name lock passes to that goroutine,
+// so another wake still waits for the delivery to finish.
+func (t *TUI) resumePaneDrain(pane *Pane, senderName string, asyncDrain bool) error {
 	agentName := pane.name
 	lock := t.resumeLockFor(agentName)
 	lock.Lock()
-	defer lock.Unlock()
+	lockPassed := false
+	defer func() {
+		if !lockPassed {
+			lock.Unlock()
+		}
+	}()
 
 	var current *Pane
 	if !t.runOnMain(func() {
@@ -950,45 +975,57 @@ func (t *TUI) resumePane(pane *Pane, senderName string) error {
 	// fixtures; those legs are untested by ruling now (ini-ibsm), and the
 	// original darwin loss -- live-measured 2/2 on the operator's fleet --
 	// is what this closes.
-	if len(msgs) > 0 && sawOutput {
-		if !t.waitForOutputQuiescence(np, resumeQuiesceStable, resumeQuiesceCap) {
-			LogWarn("resource", "delivering queued messages without quiescence (cap or quit)",
-				"agent", agentName, "queued", len(msgs))
+	deliver := func() {
+		// The quiescence wait is part of the delivery, so an async drain's
+		// sender is not held by it either (ini-pt3j).
+		if len(msgs) > 0 && sawOutput {
+			if !t.waitForOutputQuiescence(np, resumeQuiesceStable, resumeQuiesceCap) {
+				LogWarn("resource", "delivering queued messages without quiescence (cap or quit)",
+					"agent", agentName, "queued", len(msgs))
+			}
 		}
-	}
-
-	// Deliver queued messages with gaps.
-	for _, msg := range msgs {
-		np.typingNext() // marked typing in the held file before it goes in
-		t.injectText(np, msg.Text, msg.Enter, msg.From)
-		np.typedOne()
-		if len(msgs) > 1 {
-			time.Sleep(queueDrainInterval)
+		// Deliver queued messages with gaps.
+		for _, msg := range msgs {
+			np.typingNext() // marked typing in the held file before it goes in
+			t.injectText(np, msg.Text, msg.Enter, msg.From)
+			np.typedOne()
+			if len(msgs) > 1 {
+				time.Sleep(queueDrainInterval)
+			}
 		}
+
+		// NOT gated on sawOutput, deliberately (ini-hbj4 round 3): the delivery
+		// loop above runs unconditionally, so a silent child's messages ARE
+		// delivered and the event must say so. sawOutput answers "did the child
+		// speak?" (the quiescence wait's question); this line answers "did we
+		// deliver?" -- different questions that happened to have textually
+		// identical predicates, which is how round 2 gave them one answer
+		// (shipper's f5bab05 review). Two questions, two answers.
+		detail := fmt.Sprintf("Resumed %s (message from %s)", agentName, senderName)
+		if len(msgs) > 0 {
+			detail += fmt.Sprintf(", delivered %d queued", len(msgs))
+		}
+
+		LogInfo("resource", "agent resumed",
+			"agent", agentName,
+			"trigger", senderName,
+			"queued_msgs", len(msgs))
+
+		EmitEvent(t.agentEvents, AgentEvent{
+			Type:   EventAgentResumed,
+			Pane:   agentName,
+			Detail: detail,
+		})
 	}
-
-	// NOT gated on sawOutput, deliberately (ini-hbj4 round 3): the delivery
-	// loop above runs unconditionally, so a silent child's messages ARE
-	// delivered and the event must say so. sawOutput answers "did the child
-	// speak?" (the quiescence wait's question); this line answers "did we
-	// deliver?" -- different questions that happened to have textually
-	// identical predicates, which is how round 2 gave them one answer
-	// (shipper's f5bab05 review). Two questions, two answers.
-	detail := fmt.Sprintf("Resumed %s (message from %s)", agentName, senderName)
-	if len(msgs) > 0 {
-		detail += fmt.Sprintf(", delivered %d queued", len(msgs))
+	if asyncDrain {
+		lockPassed = true
+		t.safeGo(func() {
+			defer lock.Unlock()
+			deliver()
+		})
+		return nil
 	}
-
-	LogInfo("resource", "agent resumed",
-		"agent", agentName,
-		"trigger", senderName,
-		"queued_msgs", len(msgs))
-
-	EmitEvent(t.agentEvents, AgentEvent{
-		Type:   EventAgentResumed,
-		Pane:   agentName,
-		Detail: detail,
-	})
+	deliver()
 
 	return nil
 }

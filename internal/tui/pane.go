@@ -1296,7 +1296,9 @@ func (p *Pane) deliverClean(text string, enter, hold bool, o sendOrigin) SendVer
 	p.lastMessageReceived = time.Now()
 	p.mu.Unlock()
 
-	if p.queueIfSuspended(text, enter, o.From) {
+	if queued, refusal := p.queueIfSuspended(text, enter, o.From); refusal != "" {
+		return SendVerdict{Outcome: DeliveryNotDelivered, Reason: refusal}
+	} else if queued {
 		return SendVerdict{Outcome: DeliveryDelivered}
 	}
 	// DO-NOT-DISTURB (ini-x432): held on the queue, nothing typed. The
@@ -1325,7 +1327,9 @@ func (p *Pane) deliverClean(text string, enter, hold bool, o sendOrigin) SendVer
 		// order. A pane suspended while the message waited queues it instead.
 		release := p.waitTypingHold()
 		defer release()
-		if p.queueIfSuspended(text, enter, o.From) {
+		if queued, refusal := p.queueIfSuspended(text, enter, o.From); refusal != "" {
+			return SendVerdict{Outcome: DeliveryNotDelivered, Reason: refusal}
+		} else if queued {
 			return SendVerdict{Outcome: DeliveryDelivered}
 		}
 		// Do-not-disturb set while the message waited holds it too.
@@ -1341,8 +1345,9 @@ func (p *Pane) deliverClean(text string, enter, hold bool, o sendOrigin) SendVer
 }
 
 // queueIfSuspended queues a message for a suspended pane and wakes it,
-// reporting whether it did.
-func (p *Pane) queueIfSuspended(text string, enter bool, from string) bool {
+// reporting whether the pane was suspended, and the refusal when its queue
+// is at the cap (ini-pt3j): then nothing is queued and nothing woken.
+func (p *Pane) queueIfSuspended(text string, enter bool, from string) (bool, string) {
 	p.mu.Lock()
 	suspended := p.suspended
 	cb := p.onSuspendedMessage
@@ -1357,13 +1362,8 @@ func (p *Pane) queueIfSuspended(text string, enter bool, from string) bool {
 	// HERE means every present and future caller inherits queue-on-suspended
 	// without knowing suspension exists: structural, not per-caller vigilance.
 	if suspended {
-		if dropped := p.EnqueueMessageFrom(text, enter, from); dropped {
-			EmitEvent(p.eventCh, AgentEvent{
-				Type:   EventAgentStalled,
-				Pane:   p.name,
-				Detail: "Message queue full, oldest message dropped.",
-				Time:   time.Now(),
-			})
+		if refusal := p.enqueueOrRefuse(QueuedMessage{Text: text, Enter: enter, Time: time.Now(), From: from}, sendAgainWhenResumes); refusal != "" {
+			return true, refusal
 		}
 		// Resume-on-message, via the callback the TUI wires at pane
 		// creation/adoption -- the pane cannot resume itself (respawn needs
@@ -1371,9 +1371,9 @@ func (p *Pane) queueIfSuspended(text string, enter bool, from string) bool {
 		if cb != nil {
 			cb(p)
 		}
-		return true
+		return true, ""
 	}
-	return false
+	return false, ""
 }
 
 // ErrPaneStillStarting reports an agent that has not settled since its

@@ -33,10 +33,16 @@ const heldMessageDeadline = 10 * time.Minute
 // dialog-held twin of EnqueueMessage; only held messages are subject to the
 // deadline, because a suspended pane's queue is resume mail with its own path.
 func (p *Pane) enqueueHeld(text string, enter bool) bool {
+	return p.enqueueHeldWhen(text, enter, sendAgainWhenDialog) != ""
+}
+
+// enqueueHeldWhen is enqueueHeld returning the refusal at the cap, naming
+// when the sender can send again.
+func (p *Pane) enqueueHeldWhen(text string, enter bool, when string) string {
 	p.mu.Lock()
 	from := p.sendFrom
 	p.mu.Unlock()
-	return p.enqueue(QueuedMessage{Text: text, Enter: enter, Time: time.Now(), HeldForDialog: true, From: from})
+	return p.enqueueOrRefuse(QueuedMessage{Text: text, Enter: enter, Time: time.Now(), HeldForDialog: true, From: from}, when)
 }
 
 // setSendFrom records whose send the send path is typing, for a hold inside
@@ -52,10 +58,9 @@ func (p *Pane) setSendFrom(from string) {
 func (p *Pane) requeueFront(m QueuedMessage) {
 	defer p.heldChanged() // the held file follows every change (ini-8rkg)
 	p.mu.Lock()
+	// Never trimmed: m was held already, and nothing held is dropped
+	// (ini-pt3j).
 	p.messageQueue = append([]QueuedMessage{m}, p.messageQueue...)
-	if len(p.messageQueue) > maxMessageQueue {
-		p.messageQueue = p.messageQueue[:maxMessageQueue]
-	}
 	p.mu.Unlock()
 }
 

@@ -92,10 +92,6 @@ func (p *Pane) dndGate(text string, enter bool, o sendOrigin, broke *bool) (Send
 // agent in do-not-disturb is refused; nothing is queued.
 const dndOnlySuperReason = "only super may break do-not-disturb"
 
-// dndQueueFullReason is why a send to a pane in do-not-disturb is refused
-// when its queue is at maxMessageQueue. The oldest message is never dropped.
-const dndQueueFullReason = "do-not-disturb queue is full"
-
 // dndHeldLine is the sender's line for a message held for do-not-disturb:
 // how long the agent has been in it, in the overlay's short form, and how
 // many messages are queued ahead of this one.
@@ -298,11 +294,12 @@ func (p *Pane) holdIfDND(text string, enter bool, from string) (SendVerdict, boo
 		p.messageQueue = append([]QueuedMessage{*m}, p.messageQueue...)
 		return held, true
 	}
-	if len(p.messageQueue) >= maxMessageQueue {
-		LogInfo("dnd", "SEND NOT DELIVERED: do-not-disturb queue full", "pane", p.name, "queued", len(p.messageQueue))
-		return SendVerdict{Outcome: DeliveryNotDelivered, Reason: dndQueueFullReason}, true
+	m := QueuedMessage{Text: text, Enter: enter, Time: now, DND: true, From: from}
+	if limit := p.queueLimitLocked(m); limit != "" {
+		LogInfo("dnd", "SEND NOT DELIVERED: do-not-disturb queue at its limit", "pane", p.name, "queued", len(p.messageQueue), "limit", limit)
+		return SendVerdict{Outcome: DeliveryNotDelivered, Reason: queueRefusal(p.name, limit, p.dndWhenLocked())}, true
 	}
-	p.messageQueue = append(p.messageQueue, QueuedMessage{Text: text, Enter: enter, Time: now, DND: true, From: from})
+	p.messageQueue = append(p.messageQueue, m)
 	LogInfo("dnd", "held: do-not-disturb", "pane", p.name, "queued", len(p.messageQueue))
 	return held, true
 }

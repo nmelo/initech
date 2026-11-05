@@ -380,29 +380,20 @@ func TestEnqueueMessage(t *testing.T) {
 	}
 }
 
-// TestEnqueueMessageCapDrop verifies that the queue caps at maxMessageQueue
-// and drops the oldest message when full.
-func TestEnqueueMessageCapDrop(t *testing.T) {
+// TestEnqueueMessageCapRefuses verifies that at maxMessageQueue a new
+// message is refused and nothing held is dropped (ini-pt3j).
+func TestEnqueueMessageCapRefuses(t *testing.T) {
 	p := &Pane{}
-	// Fill the queue to capacity.
 	for i := 0; i < maxMessageQueue; i++ {
-		p.EnqueueMessage("msg", true)
+		if p.EnqueueMessage("msg"+itoa(i), true) {
+			t.Fatalf("message %d refused below the cap", i)
+		}
 	}
-	if len(p.messageQueue) != maxMessageQueue {
-		t.Fatalf("queue len = %d, want %d", len(p.messageQueue), maxMessageQueue)
+	if !p.EnqueueMessage("overflow", true) {
+		t.Error("a message at the cap was not refused")
 	}
-
-	// One more should drop the oldest.
-	dropped := p.EnqueueMessage("overflow", true)
-	if !dropped {
-		t.Error("should report dropped when queue is full")
-	}
-	if len(p.messageQueue) != maxMessageQueue {
-		t.Fatalf("queue len = %d after overflow, want %d", len(p.messageQueue), maxMessageQueue)
-	}
-	// The newest should be last.
-	if p.messageQueue[maxMessageQueue-1].Text != "overflow" {
-		t.Errorf("newest msg = %q, want 'overflow'", p.messageQueue[maxMessageQueue-1].Text)
+	if len(p.messageQueue) != maxMessageQueue || p.messageQueue[0].Text != "msg0" || p.messageQueue[maxMessageQueue-1].Text != "msg"+itoa(maxMessageQueue-1) {
+		t.Fatalf("queue changed at the cap: %d messages, first %q", len(p.messageQueue), p.messageQueue[0].Text)
 	}
 }
 
@@ -600,8 +591,8 @@ func TestHandleIPCSendResumesSuspended(t *testing.T) {
 		}
 		return
 	}
-	if !strings.Contains(resp.Data, "resumed") {
-		t.Errorf("response data should contain 'resumed', got: %s", resp.Data)
+	if resp.Delivery != DeliveryHeld || !strings.Contains(resp.Data, "woken") {
+		t.Errorf("response should be held and say woken, got: %+v", resp)
 	}
 }
 

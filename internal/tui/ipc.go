@@ -372,6 +372,8 @@ func (t *TUI) handleIPCSend(conn net.Conn, req IPCRequest) {
 	var pv PaneView
 	var concretePane *Pane
 	var queued bool
+	var queueRefused string // the cap's refusal for a suspended pane (ini-pt3j)
+	var queuedAhead int
 	var notRunning error
 	var slashRefusal string
 	if !t.runOnMain(func() {
@@ -401,19 +403,10 @@ func (t *TUI) handleIPCSend(conn net.Conn, req IPCRequest) {
 		}
 		if lp, ok := pv.(*Pane); ok && lp.suspended {
 			concretePane = lp
-			dropped := lp.EnqueueMessageFrom(req.Text, req.Enter, req.origin().From)
-			if dropped {
-				t.notifications = append(t.notifications, notification{
-					event: AgentEvent{
-						Type:   EventAgentStalled,
-						Pane:   lp.name,
-						Detail: "Message queue full, oldest message dropped.",
-						Time:   time.Now(),
-					},
-					expires: time.Now().Add(notificationTTL),
-				})
+			if queueRefused = lp.enqueueOrRefuse(QueuedMessage{Text: req.Text, Enter: req.Enter, Time: time.Now(), From: req.origin().From}, sendAgainWhenResumes); queueRefused == "" {
+				queued = true
+				queuedAhead = lp.QueuedMessageCount() - 1
 			}
-			queued = true
 		}
 	}) {
 		writeIPCResponse(conn, IPCResponse{Error: "TUI shutting down"})
@@ -440,10 +433,16 @@ func (t *TUI) handleIPCSend(conn net.Conn, req IPCRequest) {
 		writeIPCResponse(conn, IPCResponse{Error: notRunning.Error()})
 		return
 	}
+	if queueRefused != "" {
+		LogInfo("ipc", "SEND NOT DELIVERED", "target", req.Target, "reason", "queue at its limit")
+		writeIPCResponse(conn, verdictIPCResponse(req.Target, SendVerdict{Outcome: DeliveryNotDelivered, Reason: queueRefused}, ""))
+		return
+	}
 	if queued {
-		// Trigger resume-on-message: respawn the agent and drain the queue.
-		// This blocks until the agent initializes and messages are delivered.
-		if err := t.resumePane(concretePane, "incoming message"); err != nil {
+		// Trigger resume-on-message: respawn the agent and wait until it is
+		// up; the queue then drains on its own goroutine (ini-pt3j), so the
+		// reply never waits for the mail queued ahead of this message.
+		if err := t.resumePaneDrain(concretePane, "incoming message", true); err != nil {
 			if isAtCeiling(err) {
 				// Held, not lost (ini-49q): the message is on the pane's
 				// queue, and the gate's clearing wakes it and delivers.
@@ -454,7 +453,7 @@ func (t *TUI) handleIPCSend(conn net.Conn, req IPCRequest) {
 			writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("resume failed: %v", err)})
 			return
 		}
-		reply := resumedSendReply()
+		reply := resumedSendReply(req.Target, queuedAhead)
 		_, reply.Removed = cleanMessage(req.Text)
 		writeIPCResponse(conn, reply)
 		return
@@ -538,8 +537,9 @@ const CeilingDeferral = machine.Deferred
 
 // resumedSendReply answers a send that woke a suspended agent and delivered
 // its queue.
-func resumedSendReply() IPCResponse {
-	return IPCResponse{OK: true, Data: `"resumed and delivered"`, Delivery: DeliveryDelivered}
+func resumedSendReply(agent string, ahead int) IPCResponse {
+	return IPCResponse{OK: true, Delivery: DeliveryHeld, Data: fmt.Sprintf(
+		"queued for %s, woken: delivered in order now that it is up (%d ahead)", agent, ahead)}
 }
 
 // injectText sends text into a pane's PTY. Two modes based on the pane's
@@ -602,7 +602,9 @@ func sendPaneTextLocked(pane *Pane, text string, enter bool) SendVerdict {
 				"held_for", time.Since(m.Time).Round(time.Second))
 			return SendVerdict{Outcome: DeliveryDeferred}
 		}
-		dropped := pane.enqueueHeld(text, enter)
+		if refusal := pane.enqueueHeldWhen(text, enter, sendAgainWhenDialog); refusal != "" {
+			return SendVerdict{Outcome: DeliveryNotDelivered, Reason: refusal}
+		}
 		preview := text
 		if len(preview) > 60 {
 			preview = preview[:57] + "..."
@@ -611,7 +613,7 @@ func sendPaneTextLocked(pane *Pane, text string, enter bool) SendVerdict {
 		// 7.8MB fleet log because this was the only record and it was below the
 		// default level. A message the fleet is holding is not debug detail.
 		LogInfo("inject", "deferred: modal open", "pane", pane.Name(), "enter", enter,
-			"queued", pane.QueuedMessageCount(), "queue_dropped", dropped)
+			"queued", pane.QueuedMessageCount())
 		pane.reportEvent(AgentEvent{
 			Type:   EventMessageSent,
 			Pane:   pane.Name(),
@@ -1629,7 +1631,9 @@ func holdForStuckInput(pane *Pane, text string, enter bool) SendVerdict {
 		pane.requeueFront(m)
 		return SendVerdict{Outcome: DeliveryDeferred, Reason: StuckInputDeferral}
 	}
-	pane.enqueueHeld(text, enter)
+	if refusal := pane.enqueueHeldWhen(text, enter, sendAgainWhenReading); refusal != "" {
+		return SendVerdict{Outcome: DeliveryNotDelivered, Reason: refusal}
+	}
 	LogInfo("inject", "deferred: pane is not reading its input", "pane", pane.Name(), "enter", enter,
 		"queued", pane.QueuedMessageCount())
 	return SendVerdict{Outcome: DeliveryDeferred, Reason: StuckInputDeferral}

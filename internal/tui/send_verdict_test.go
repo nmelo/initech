@@ -149,12 +149,13 @@ func TestSendVerdict_ADialogStillAnswersDeferred(t *testing.T) {
 	}
 }
 
-// Positive twin, queued: a suspended agent's "resumed and delivered" keeps
-// its words, now with the delivered outcome.
-func TestSendVerdict_AResumedSendStillAnswersResumedAndDelivered(t *testing.T) {
-	resp := resumedSendReply()
-	if !resp.OK || resp.Data != `"resumed and delivered"` || resp.Delivery != DeliveryDelivered {
-		t.Fatalf("reply %+v, want OK, \"resumed and delivered\", delivered", resp)
+// A send that wakes a suspended agent answers once the agent is up, held
+// with the count ahead: the queue drains after the reply (ini-pt3j), so the
+// words no longer claim delivery.
+func TestSendVerdict_AWakingSendAnswersHeldWithTheCountAhead(t *testing.T) {
+	resp := resumedSendReply("eng2", 3)
+	if !resp.OK || resp.Delivery != DeliveryHeld || resp.Data != "queued for eng2, woken: delivered in order now that it is up (3 ahead)" {
+		t.Fatalf("reply %+v, want OK, held, the queued line", resp)
 	}
 }
 

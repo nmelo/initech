@@ -111,7 +111,7 @@ func TestCeilingCensus_NoWakePathBypassesTheGate(t *testing.T) {
 		t.Errorf("starts an agent without asking the machine ceiling first: %s", b)
 	}
 	// The census must have found the paths it guards, or it read nothing.
-	for _, want := range []string{"resumePane", "handleIPCStart", "restartOffMain", "addPane", "Run"} {
+	for _, want := range []string{"resumePaneDrain", "handleIPCStart", "restartOffMain", "addPane", "Run"} {
 		if !seen[want] {
 			t.Errorf("census found no spawn in %s: it is not reading the package", want)
 		}

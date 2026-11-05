@@ -64,6 +64,12 @@ func TestSendVerdict_EachVerdictPrintsItsLineAndExitStatus(t *testing.T) {
 			"deferred to eng1 — target has a modal open; will deliver when it closes", 0},
 		{"queued and resumed", "eng1", tui.IPCResponse{OK: true, Delivery: tui.DeliveryDelivered, Data: `"resumed and delivered"`},
 			"delivered to eng1", 0},
+		// ini-pt3j: a send that wakes an agent answers once it is up, held.
+		{"queued and woken", "eng1", tui.IPCResponse{OK: true, Delivery: tui.DeliveryHeld, Data: "queued for eng1, woken: delivered in order now that it is up (499 ahead)"},
+			"queued for eng1, woken: delivered in order now that it is up (499 ahead)", 0},
+		// ini-pt3j: the cap's refusal, exit 1, the TUI's line.
+		{"refused at the cap", "eng1", tui.IPCResponse{Delivery: tui.DeliveryNotDelivered, Error: "not delivered to eng1: eng1 is holding 500 messages (its limit); do not retry in a loop: send again after it resumes"},
+			"not delivered to eng1: eng1 is holding 500 messages (its limit); do not retry in a loop: send again after it resumes", 1},
 		{"remote could not confirm", "workbench:eng1", tui.IPCResponse{OK: true, Delivery: tui.DeliveryUnconfirmed, Data: "older initech on workbench"},
 			"could not confirm delivery to workbench:eng1: older initech on workbench; peek the pane", 2},
 		// G5: a TUI older than the CLI answers OK with no verdict.
@@ -130,5 +136,22 @@ func TestSendVerdict_AssignNoBeadNotDeliveredSetsNoMarker(t *testing.T) {
 	}
 	if got := strings.Join(actions(), ","); got != "send" {
 		t.Fatalf("actions %s, want the send alone", got)
+	}
+}
+
+// ini-pt3j AC11: a send refused at the cap is asked once; nothing retries it.
+func TestSendVerdict_ARefusalAtTheCapIsNotRetried(t *testing.T) {
+	skipWindows(t)
+	line := "not delivered to eng1: eng1 is holding 500 messages (its limit); do not retry in a loop: send again after it resumes"
+	sock, actions := downFake(t, map[string]tui.IPCResponse{
+		"send": {Error: line, Delivery: tui.DeliveryNotDelivered},
+	})
+	t.Setenv("INITECH_SOCKET", sock)
+	err := deliverText(&bytes.Buffer{}, "eng1", "", "hello", true, false)
+	if err == nil || err.Error() != line || v69Exit(err) != 1 {
+		t.Fatalf("err %v, want the refusal, exit 1", err)
+	}
+	if got := strings.Join(actions(), ","); got != "send" {
+		t.Fatalf("actions %s, want one send", got)
 	}
 }

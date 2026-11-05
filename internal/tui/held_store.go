@@ -384,19 +384,30 @@ func requeueHeld(entries []heldEntry, panes func(string) *Pane, now time.Time) [
 		p := panes(name)
 		msgs := byPane[name]
 		p.mu.Lock()
-		room := maxMessageQueue - len(p.messageQueue)
-		if room < 0 {
-			room = 0
+		// The same cap as a live send (ini-pt3j, queue_cap.go): the oldest
+		// kept while they fit by count and by bytes, each other one told to
+		// its sender. Checked against what is already queued plus what this
+		// restore has kept so far.
+		// The limit reads only count and bytes, so the kept ones are counted
+		// behind the live ones and put in front at the end.
+		live := append([]QueuedMessage(nil), p.messageQueue...)
+		var keep, refused []QueuedMessage
+		var limit string
+		for _, m := range msgs {
+			if len(refused) == 0 {
+				if limit = p.queueLimitLocked(m); limit == "" {
+					keep = append(keep, m)
+					p.messageQueue = append(p.messageQueue, m)
+					continue
+				}
+			}
+			refused = append(refused, m) // past the first refused, all are
 		}
-		keep := msgs
-		var refused []QueuedMessage
-		if len(msgs) > room {
-			keep, refused = msgs[:room], msgs[room:] // the oldest kept
-		}
-		p.messageQueue = append(append([]QueuedMessage(nil), keep...), p.messageQueue...)
+		p.messageQueue = append(keep, live...)
 		p.mu.Unlock()
 		for _, m := range refused {
-			lines = append(lines, heldLine{m.From, fmt.Sprintf("held message to %s since %s was not delivered: its queue is full", name, m.Time.Format("15:04"))})
+			lines = append(lines, heldLine{m.From, fmt.Sprintf("held message to %s since %s was not delivered: %s",
+				name, m.Time.Format("15:04"), queueRefusal(name, limit, "it has typed what it holds"))})
 		}
 		LogInfo("held", "held mail put back after a restart", "pane", name, "count", len(keep), "refused", len(refused))
 		p.heldChanged()

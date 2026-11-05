@@ -193,8 +193,8 @@ func TestDND_AFullQueueRefusesTheNewMessageAndKeepsTheOldest(t *testing.T) {
 	resp := dndCall(t, func(c net.Conn) {
 		tu.handleIPCSend(c, IPCRequest{Action: "send", Target: "a", Text: "one too many", Enter: true})
 	})
-	if resp.OK || resp.Delivery != DeliveryNotDelivered || resp.Error != "not delivered to a: do-not-disturb queue is full" {
-		t.Errorf("reply %+v, want not delivered: do-not-disturb queue is full", resp)
+	if resp.OK || resp.Delivery != DeliveryNotDelivered || resp.Error != "not delivered to a: "+queueRefusal("a", "500 messages", sendAgainWhenTurnEnds) {
+		t.Errorf("reply %+v, want not delivered at the cap", resp)
 	}
 	after := dndQueue(p)
 	if len(after) != maxMessageQueue || after[0].Text != "m00" || after[len(after)-1].Text != before[len(before)-1].Text {
@@ -380,7 +380,7 @@ func TestDND_AServedPaneAnswersWithTheSameWords(t *testing.T) {
 	for p.QueueLen() < maxMessageQueue {
 		p.enqueue(QueuedMessage{Text: "x", Time: time.Now(), DND: true})
 	}
-	if resp := servedSend(p, "[from b] full", true, sendOrigin{}); resp.OK || resp.Delivery != DeliveryNotDelivered || resp.Error != dndQueueFullReason {
+	if resp := servedSend(p, "[from b] full", true, sendOrigin{}); resp.OK || resp.Delivery != DeliveryNotDelivered || resp.Error != queueRefusal("a", "500 messages", sendAgainWhenTurnEnds) {
 		t.Errorf("full reply %+v", resp)
 	}
 	if typed() != "" {

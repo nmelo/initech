@@ -456,23 +456,26 @@ func discoverProjectBestEffort() *config.Project {
 var ipcCallTimeout = 10 * time.Second
 
 // sendActionTimeout is the deadline used specifically for the "send" action
-// (ini-ousx qa7). handleIPCSend blocks synchronously on resumePane when the
-// target pane is suspended (internal/tui/ipc.go:232-239), and the client has
-// no way to know in advance whether a given send will hit that path, so
-// every send must budget for the worst case. Enumerated every other
-// delivery-effect action's server-side handler (internal/tui/ipc.go,
-// ipc_lifecycle.go): none has a comparable long synchronous wait, so this
-// deadline applies ONLY to "send" (which "clear" also uses, since it sends
-// literal "/clear" via the same action) — every other action keeps the
-// shorter ipcCallTimeout, preserving fast-stall detection where no legitimate
-// long wait exists.
+// (ini-ousx qa7). handleIPCSend waits for a suspended target to start before
+// it answers, and the client has no way to know in advance whether a given
+// send will hit that path, so every send must budget for the worst case.
+// Enumerated every other delivery-effect action's server-side handler
+// (internal/tui/ipc.go, ipc_lifecycle.go): none has a comparable long
+// synchronous wait, so this deadline applies ONLY to "send" (which "clear"
+// also uses, since it sends literal "/clear" via the same action) -- every
+// other action keeps the shorter ipcCallTimeout, preserving fast-stall
+// detection where no legitimate long wait exists.
 //
-// Justified maximum, not a convention: resumeTimeout (internal/tui/
-// resource.go:430) = 30s, the dominant term. Plus up to (maxMessageQueue-1)
-// = 19 gaps of queueDrainInterval (resource.go:319, :434) = 9.5s for a fully
-// queued suspended pane. Plus ~3s margin for NewPane (fork/exec) and
-// runOnMain pane-replacement overhead (normally sub-second; this is safety
-// margin, not a measured figure). Total 42.5s, rounded up to 45s.
+// Justified maximum, not a convention: the longest reply is a send that
+// wakes a suspended agent, which waits up to resumeTimeout (internal/tui/
+// resource.go) = 30s for the agent to start, plus ~3s margin for NewPane
+// (fork/exec) and runOnMain pane replacement (safety margin, not a measured
+// figure): 33s. The mail queued ahead is typed after the reply, on its own
+// goroutine (ini-pt3j), so no term grows with the queue (up to 500 held
+// messages, which at queueDrainInterval apart would take minutes). A send to
+// a running agent is bounded by the startup gate or the typing hold (15s
+// each by default) plus one typed message (~3s). Rounded up to 45s, and
+// pinned by TestSendActionTimeout_StaysFortyFiveSeconds.
 var sendActionTimeout = 45 * time.Second
 
 // sendReadyActionTimeout is the deadline for "send_ready" (ini-i35w). Its

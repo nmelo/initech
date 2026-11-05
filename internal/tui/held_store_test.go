@@ -218,7 +218,7 @@ func TestHeldFile_AFullQueueAtStartKeepsTheOldestAndSaysTheRest(t *testing.T) {
 	if len(q) != maxMessageQueue || q[0] != "M0" || q[len(q)-1] != "M"+itoa(maxMessageQueue-1) {
 		t.Fatalf("queue %v, want M0..M%d", q, maxMessageQueue-1)
 	}
-	if got := lines.waitFor(2); len(got) != 2 || !strings.Contains(got[0], "its queue is full") {
+	if got := lines.waitFor(2); len(got) != 2 || !strings.Contains(got[0], "is holding 500 messages (its limit); do not retry in a loop") {
 		t.Fatalf("lines %q, want two queue-full lines to eng2", got)
 	}
 }
