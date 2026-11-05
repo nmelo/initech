@@ -141,6 +141,16 @@ func TestCounts_OverIsWaitingNeverStuck(t *testing.T) {
 	if p.Over != 1 || !strings.HasSuffix(p.Line(), "· 5 waiting · 1 over") {
 		t.Errorf("line %q, over %d", p.Line(), p.Over)
 	}
+	// An over wait old enough to be stuck, its owner idle: still waiting, never
+	// stuck. The minute-old bead above cannot tell, since it is under the value.
+	agedIn := hoverWaitingInput()
+	agedIn.Beads = append(agedIn.Beads, Bead{ID: "hov-w.8", Title: "over, long ago", Status: "waiting", Assignee: "eng3", UpdatedAt: paceNow.Add(-3 * time.Hour),
+		Metadata: json.RawMessage(`{"wait_on":"date:2026-10-30"}`)})
+	agedIn.Beads = JudgeAll(agedIn.Beads, paceNow, nil)
+	aged := Build(agedIn)
+	if aged.Stuck != 0 || aged.WaitingOver != 1 {
+		t.Errorf("an aged over wait: stuck %d %v, over %d; want stuck 0, over 1", aged.Stuck, aged.StuckIDs, aged.WaitingOver)
+	}
 	out := RenderReport(r)
 	for _, want := range []string{"waiting 5 (1 over)", "hov-w.7 eng1: no comment [OVER: 2026-10-30 passed]", "hov-w.4 -: no comment [waits on unknown]"} {
 		if !strings.Contains(out, want) {
