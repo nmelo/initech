@@ -1,0 +1,114 @@
+{
+  "acct-a": {
+    "fiveHour": {
+      "utilization": 40,
+      "resetsAt": "2026-11-05T19:00:00.000000+00:00"
+    },
+    "sevenDay": {
+      "utilization": 60,
+      "resetsAt": "2026-11-09T07:00:00.000000+00:00"
+    },
+    "scoped": {
+      "model": "placeholder-model",
+      "utilization": 10,
+      "resetsAt": "2026-11-09T07:00:00.000000+00:00"
+    },
+    "polledAt": "2026-11-05T16:40:00.000000+00:00"
+  },
+  "acct-b": {
+    "fiveHour": {
+      "utilization": 41,
+      "resetsAt": "2026-11-05T19:00:00.000000+00:00"
+    },
+    "sevenDay": {
+      "utilization": 70,
+      "resetsAt": "2026-11-09T07:00:00.000000+00:00"
+    },
+    "scoped": {
+      "model": "placeholder-model",
+      "utilization": 11,
+      "resetsAt": "2026-11-09T07:00:00.000000+00:00"
+    },
+    "polledAt": "2026-11-05T16:40:00.000000+00:00"
+  },
+  "acct-c": {
+    "fiveHour": {
+      "utilization": 42,
+      "resetsAt": "2026-11-05T19:00:00.000000+00:00"
+    },
+    "sevenDay": {
+      "utilization": 80,
+      "resetsAt": "2026-11-09T07:00:00.000000+00:00"
+    },
+    "scoped": {
+      "model": "placeholder-model",
+      "utilization": 12,
+      "resetsAt": "2026-11-09T07:00:00.000000+00:00"
+    },
+    "polledAt": "2026-11-05T16:40:00.000000+00:00"
+  },
+  "acct-d": {
+    "fiveHour": {
+      "utilization": 43,
+      "resetsAt": "2026-11-05T19:00:00.000000+00:00"
+    },
+    "sevenDay": {
+      "utilization": 90,
+      "resetsAt": "2026-11-09T07:00:00.000000+00:00"
+    },
+    "scoped": {
+      "model": "placeholder-model",
+      "utilization": 13,
+      "resetsAt": "2026-11-09T07:00:00.000000+00:00"
+    },
+    "polledAt": "2026-11-05T16:40:00.000000+00:00"
+  },
+  "acct-e": {
+    "fiveHour": {
+      "utilization": 44,
+      "resetsAt": "2026-11-05T19:00:00.000000+00:00"
+    },
+    "sevenDay": {
+      "utilization": 50,
+      "resetsAt": "2026-11-09T07:00:00.000000+00:00"
+    },
+    "scoped": {
+      "model": "placeholder-model",
+      "utilization": 14,
+      "resetsAt": "2026-11-09T07:00:00.000000+00:00"
+    },
+    "polledAt": "2026-11-05T16:40:00.000000+00:00"
+  },
+  "acct-f": {
+    "fiveHour": {
+      "utilization": 45,
+      "resetsAt": "2026-11-05T19:00:00.000000+00:00"
+    },
+    "sevenDay": {
+      "utilization": 40,
+      "resetsAt": "2026-11-09T07:00:00.000000+00:00"
+    },
+    "scoped": {
+      "model": "placeholder-model",
+      "utilization": 15,
+      "resetsAt": "2026-11-09T07:00:00.000000+00:00"
+    },
+    "polledAt": "2026-11-05T16:40:00.000000+00:00"
+  },
+  "acct-g": {
+    "fiveHour": {
+      "utilization": 46,
+      "resetsAt": "2026-11-05T19:00:00.000000+00:00"
+    },
+    "sevenDay": {
+      "utilization": 34,
+      "resetsAt": "2026-11-09T07:00:00.000000+00:00"
+    },
+    "scoped": {
+      "model": "placeholder-model",
+      "utilization": 16,
+      "resetsAt": "2026-11-09T07:00:00.000000+00:00"
+    },
+    "polledAt": "2026-11-05T16:40:00.000000+00:00"
+  }
+}
