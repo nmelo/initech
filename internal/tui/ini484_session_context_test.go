@@ -21,6 +21,11 @@ var s484Past = time.Date(2026, 10, 31, 0, 0, 0, 0, time.UTC)
 // TestMain keeps the package's tests off this machine's cla state: a test
 // that wants an account name points claStatePath at a fixture.
 func TestMain(m *testing.M) {
+	// A child process some tests start inside a pane, never the suite.
+	if out := os.Getenv(peerSendHelperEnv); out != "" {
+		runPeerSendHelper(out)
+		os.Exit(0)
+	}
 	claStatePath = ""
 	restore := isolateMachineCeiling()
 	code := m.Run()

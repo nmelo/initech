@@ -1,5 +1,7 @@
 package tui
 
+import "strings"
+
 // agentIdentityEnv returns the per-agent identity variables a pane's process
 // gets, appended after the inherited environment so they win over any value
 // the launching shell had (ini-u2hy):
@@ -19,4 +21,32 @@ func agentIdentityEnv(name string, socket ...string) []string {
 		env = append(env, "INITECH_SOCKET="+s)
 	}
 	return append(env, "INITECH_AGENT="+name, "BEADS_ACTOR="+name)
+}
+
+// serveIdentityKeys are the variables the serve sets in each pane it starts;
+// a pushed configuration's own values for them are replaced.
+var serveIdentityKeys = []string{"INITECH_SOCKET=", "INITECH_AGENT=", "BEADS_ACTOR="}
+
+// withServeIdentity is env with the serve's socket and the agent's name set,
+// replacing any the push carried: the Mac does not know this machine's
+// socket, and a pane must never name another agent.
+func withServeIdentity(env []string, name, sockPath string) []string {
+	out := make([]string, 0, len(env)+3)
+	for _, kv := range env {
+		keep := true
+		for _, k := range serveIdentityKeys {
+			if strings.HasPrefix(kv, k) {
+				keep = false
+				break
+			}
+		}
+		if keep {
+			out = append(out, kv)
+		}
+	}
+	var sock []string
+	if sockPath != "" {
+		sock = append(sock, sockPath)
+	}
+	return append(out, agentIdentityEnv(name, sock...)...)
 }

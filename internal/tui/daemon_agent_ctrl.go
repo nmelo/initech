@@ -135,10 +135,12 @@ func (d *Daemon) handleConfigureAgent(line []byte, owner string) ControlResp {
 	}
 
 	paneCfg := PaneConfig{
-		Name:             cmd.Name,
-		Command:          cmd.Command,
-		Dir:              cmd.Dir,
-		Env:              cmd.Env,
+		Name:    cmd.Name,
+		Command: cmd.Command,
+		Dir:     cmd.Dir,
+		// The serve's socket and the agent's own name, so initech send works
+		// in a pushed pane as in one the serve started (ini-18pz).
+		Env:              withServeIdentity(cmd.Env, cmd.Name, d.sockPath),
 		AgentType:        cmd.AgentType,
 		NoBracketedPaste: cmd.NoBracketedPaste,
 		SubmitKey:        cmd.SubmitKey,

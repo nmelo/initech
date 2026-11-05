@@ -72,6 +72,10 @@ type Daemon struct {
 	serve   bool
 	reportQ chan AgentEvent
 
+	// identifySender names the pane a send's connection comes from; nil
+	// reads the connection's process tree (ini-18pz). Tests set it.
+	identifySender func(net.Conn) (string, error)
+
 	// liveStreams is the per-(peer, agent) client stream, so a mid-session
 	// resync can replay to THE REQUESTING WINDOW ONLY (ini-dr03). Replaying
 	// through the MultiSink would send one window's recovery to every window,
@@ -774,6 +778,12 @@ func (d *Daemon) HandleSend(conn net.Conn, req IPCRequest) {
 		return
 	}
 	p := d.findPane(req.Target)
+	if p == nil && req.Host == "" && d.serve {
+		// A name this serve does not host, from one of its own agents: it
+		// goes to the machine that runs that agent (ini-18pz).
+		d.sendToConnectedMachine(conn, req)
+		return
+	}
 	if p == nil {
 		// No local pane matches. Require explicit host:agent for remote
 		// delivery instead of auto-routing nondeterministically across
