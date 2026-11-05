@@ -166,7 +166,7 @@ remotes:
 	bin := buildInitechBinary(t)
 	cmd := exec.Command(bin)
 	cmd.Dir = root
-	cmd.Env = append(os.Environ(), "TERM=xterm-256color")
+	cmd.Env = append(append(os.Environ(), "TERM=xterm-256color"), rigCeilingEnv...)
 
 	ptmx, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: 40, Cols: 120})
 	if err != nil {

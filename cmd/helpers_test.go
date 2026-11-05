@@ -39,6 +39,9 @@ func TestMain(m *testing.M) {
 			return nil, errors.New("no gh or bd in tests")
 		}
 	}
+	// Nor this machine's ceiling (ini-49q): a test that wants a fleet line
+	// sets its own statusReadFleet.
+	statusReadFleet = func(time.Time) *rignumbers.Fleet { return nil }
 	os.Exit(m.Run())
 }
 

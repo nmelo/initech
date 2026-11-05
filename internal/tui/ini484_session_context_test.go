@@ -22,7 +22,10 @@ var s484Past = time.Date(2026, 10, 31, 0, 0, 0, 0, time.UTC)
 // that wants an account name points claStatePath at a fixture.
 func TestMain(m *testing.M) {
 	claStatePath = ""
-	os.Exit(m.Run())
+	restore := isolateMachineCeiling()
+	code := m.Run()
+	restore()
+	os.Exit(code)
 }
 
 // s484Reply is a transcript line for one reply: the model and the tokens it

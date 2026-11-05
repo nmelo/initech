@@ -39,6 +39,11 @@ type ceilingReads struct {
 	alive     func(pid int) bool      // whether another rig's window 1 runs
 }
 
+// ceilingDefaults makes the reads a TUI uses when none were set. The
+// package's TestMain points it at reads that cannot see this machine, so no
+// test writes the operator's fleet folder or meets this machine's ceiling.
+var ceilingDefaults = defaultCeilingReads
+
 func defaultCeilingReads() ceilingReads {
 	return ceilingReads{
 		dir:       machine.Dir,
@@ -100,7 +105,7 @@ func countAwake(tree *procTree, panes []paneSighting) int {
 // ceilingReadsLocked returns the reads, defaulting them on first use.
 func (c *ceilingState) readsLocked() ceilingReads {
 	if c.reads == nil {
-		r := defaultCeilingReads()
+		r := ceilingDefaults()
 		c.reads = &r
 	}
 	return *c.reads
@@ -334,7 +339,7 @@ func FleetFromReading(r machine.Reading, c machine.Ceiling, engaged bool) *rignu
 // does: every rig's file, free memory and load, against machine.yaml. The
 // result is not a gate: AtCeiling is whether this one reading is over.
 func ReadFleetNow(now time.Time) *rignumbers.Fleet {
-	reads := defaultCeilingReads()
+	reads := ceilingDefaults()
 	r := machine.Reading{At: now}
 	ceiling := machine.DefaultCeiling
 	if dir, err := reads.dir(); err == nil {

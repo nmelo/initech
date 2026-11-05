@@ -240,5 +240,9 @@ func newCmd(bin, root string, args ...string) *exec.Cmd {
 	c := exec.Command(bin, args...)
 	c.Dir = root
 	c.Env = append(os.Environ(), "TERM=xterm-256color")
+	// The child initech reads its machine ceiling from a scratch home that
+	// no runner reaches (ini-49q), never this machine's, and writes its
+	// fleet file there.
+	c.Env = append(c.Env, rigCeilingEnv...)
 	return c
 }

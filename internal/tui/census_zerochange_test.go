@@ -147,7 +147,8 @@ func releaseRunEnv(t *testing.T, env []string) []string {
 		}
 		out = append(out, e)
 	}
-	return append(out, "HOME="+home, "DO_NOT_TRACK=1")
+	writeOpenCeiling(home) // never this machine's ceiling (ini-49q)
+	return append(append(out, openCeilingConfigEnv(home)...), "HOME="+home, "DO_NOT_TRACK=1")
 }
 
 // captureCensus starts the given initech binary as a single-window fleet in

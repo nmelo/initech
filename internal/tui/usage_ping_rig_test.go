@@ -84,6 +84,14 @@ func runUsageRig(t *testing.T, bin, root string, settle time.Duration, extraEnv 
 		}
 	}
 	cmd.Env = append(append(env, "TERM=xterm-256color", "INITECH_MOCK_AGENT=/bin/cat"), extraEnv...)
+	// Never this machine's ceiling (ini-49q): the rig's own scratch home holds
+	// an open one, and the config folder cannot lead back here.
+	for _, e := range extraEnv {
+		if home, ok := strings.CutPrefix(e, "HOME="); ok {
+			writeOpenCeiling(home)
+			cmd.Env = append(cmd.Env, openCeilingConfigEnv(home)...)
+		}
+	}
 	ptmx, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: 40, Cols: 120})
 	if err != nil {
 		t.Fatalf("start under pty: %v", err)
