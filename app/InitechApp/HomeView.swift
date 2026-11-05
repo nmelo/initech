@@ -17,10 +17,12 @@ struct MainView: View {
     /// opened is false until home's first reload, before which a tap that
     /// opened the app cannot tell a running pane from a gone one.
     @State private var opened = false
+    /// Read here, outside the split view: regular is the list beside the pane.
+    @Environment(\.horizontalSizeClass) private var sizeClass
 
     var body: some View {
         NavigationSplitView {
-            HomeList(home: home, push: push, inbox: inbox, showRigs: $showRigs)
+            HomeList(home: home, push: push, inbox: inbox, showRigs: $showRigs, besideThePane: sizeClass == .regular)
                 .navigationTitle("Panes")
                 .toolbar {
                     ToolbarItem(placement: .topBarLeading) { EditButton() }
@@ -120,11 +122,12 @@ struct HomeList: View {
     @ObservedObject var push: PushRegistrar
     @ObservedObject var inbox: PushInbox
     @Binding var showRigs: Bool
+    let besideThePane: Bool
     @State private var renaming: PaneRow?
     @State private var newName = ""
 
     var body: some View {
-        List(selection: $home.selection) {
+        List(selection: Binding(get: { home.selection }, set: { home.listChose($0, besideThePane: besideThePane) })) {
             if let problem = home.problem {
                 Text(problem).foregroundStyle(.red).font(.footnote)
             }

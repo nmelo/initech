@@ -371,6 +371,32 @@ final class PaneFlowUITests: XCTestCase {
         XCTAssertFalse(entry(124).isHittable, "the view went to the new entries")
     }
 
+    /// On iPad the list sits beside the open pane: Edit and Done leave that pane
+    /// open at the line he was reading.
+    func testIPadEdit_KeepsTheOpenPaneAndItsPlace() throws {
+        try XCTSkipIf(UIDevice.current.userInterfaceIdiom != .pad, "the list and the pane share the screen only on iPad")
+        try XCTSkipIf(server == nil, "fixture only")
+        try openPaneA(toReopen: true)
+        app.scrollViews.firstMatch.swipeDown(velocity: .slow)
+        Thread.sleep(forTimeInterval: 1)
+        let before = try XCTUnwrap(topEntry(), "no entry on screen before Edit: the test would show nothing")
+        let reorder = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Reorder'"))
+        func assertStillReading(_ when: String) throws {
+            XCTAssertFalse(app.staticTexts["Pick a pane"].exists, "the open pane closed \(when)")
+            let now = try XCTUnwrap(topEntry(), "no entry on screen \(when)")
+            XCTAssertEqual(now.label, before.label, "the reader moved \(when)")
+            XCTAssertEqual(now.y, before.y, accuracy: 1, "the reader moved \(when)")
+        }
+        app.buttons["Edit"].tap()
+        Thread.sleep(forTimeInterval: 2)
+        XCTAssertGreaterThan(reorder.count, 0, "the list is not in edit mode: Edit was not exercised")
+        try assertStillReading("in edit mode")
+        app.buttons["Done"].tap()
+        Thread.sleep(forTimeInterval: 2)
+        XCTAssertEqual(reorder.count, 0, "the list stayed in edit mode")
+        try assertStillReading("after Done")
+    }
+
     /// A conversation shorter than a screen never shows the line.
     func testAShortConversation_NeverShowsTheLine() throws {
         let server = try XCTUnwrap(server, "fixture only")

@@ -97,6 +97,16 @@ final class HomeModel: ObservableObject {
     /// open shows a pane, pinned or not.
     func open(_ ref: PaneRef) { selection = ref }
 
+    /// listChose takes the pane list's write to the selection. Stacked, a nil
+    /// is the way back to the list and closes the pane. Beside the pane, the
+    /// list offers no way to close it: a nil there is the list clearing its own
+    /// selection around Edit and Done, on either side of the change of mode, and
+    /// the pane stays.
+    func listChose(_ ref: PaneRef?, besideThePane: Bool) {
+        if ref == nil && besideThePane { return }
+        selection = ref
+    }
+
     func row(for ref: PaneRef) -> PaneRow? {
         if let pin = pins.first(where: { $0.rig == ref.rig && $0.pane == ref.pane }) {
             return rows.first { $0.ref == ref } ?? PaneRow(ref: ref, name: pin.name, gone: true)

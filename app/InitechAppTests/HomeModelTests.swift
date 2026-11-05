@@ -192,6 +192,35 @@ final class HomeModelTests: XCTestCase {
         await home.reload()
         XCTAssertTrue(home.needsPairing)
     }
+
+    /// Around Edit and Done the list writes nil; beside the pane that must not
+    /// close it.
+    func testListChose_ANilBesideThePaneKeepsItOpen() {
+        let home = HomeModel(service: service)
+        let ref = PaneRef(rig: "initech", pane: "super")
+        home.open(ref)
+        home.listChose(nil, besideThePane: true)
+        XCTAssertEqual(home.selection, ref)
+    }
+
+    /// The twin: stacked, a nil closes the pane, the way back to the list.
+    func testListChose_ANilWhenStackedClosesThePane() {
+        let home = HomeModel(service: service)
+        home.open(PaneRef(rig: "initech", pane: "super"))
+        home.listChose(nil, besideThePane: false)
+        XCTAssertNil(home.selection)
+    }
+
+    /// A pane chosen opens either way.
+    func testListChose_APaneOpensBesideOrStacked() {
+        let home = HomeModel(service: service)
+        let a = PaneRef(rig: "initech", pane: "super")
+        let b = PaneRef(rig: "theguy", pane: "super")
+        home.listChose(a, besideThePane: false)
+        XCTAssertEqual(home.selection, a)
+        home.listChose(b, besideThePane: true)
+        XCTAssertEqual(home.selection, b)
+    }
 }
 
 /// waitForMain polls a main-actor condition for at most two seconds.
