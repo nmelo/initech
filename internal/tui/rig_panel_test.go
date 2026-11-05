@@ -265,3 +265,39 @@ func TestRigPanel_At80TheIDsFoldAndEveryCountAndTheBeadColumnStay(t *testing.T) 
 		t.Fatalf("row %q: the bead column stays at 80", rows[3])
 	}
 }
+
+// TestRigPanel_Window2SaysTheMovedBoxIsInWindow1 is AC5: a second window does
+// not run the bead poll the moved box is read from, so it says where it is.
+func TestRigPanel_Window2SaysTheMovedBoxIsInWindow1(t *testing.T) {
+	for _, win := range []string{"", "window-2"} {
+		tui := newTestTUI()
+		tui.windowID = win
+		scr := tcell.NewSimulationScreen("UTF-8")
+		if err := scr.Init(); err != nil {
+			t.Fatal(err)
+		}
+		scr.SetSize(120, 40)
+		tui.screen = scr
+		tui.planTop = 1 + 1 + panelDefaultRows + 1
+		tui.drawRigPanel(panelNow, panelQuiet, nil)
+		scr.Show()
+		cells, cw, _ := scr.GetContents()
+		var b strings.Builder
+		for y := 0; y < tui.planTop; y++ {
+			for x := 0; x < cw; x++ {
+				if c := cells[y*cw+x]; len(c.Runes) > 0 {
+					b.WriteRune(c.Runes[0])
+				}
+			}
+			b.WriteRune('\n')
+		}
+		says := strings.Contains(b.String(), "moved 30m is in window 1")
+		if win == "" && says {
+			t.Error("window 1 says its own moved box is elsewhere")
+		}
+		if win == "window-2" && !says {
+			t.Errorf("window 2 does not say the moved box is in window 1:\n%s", b.String())
+		}
+		scr.Fini()
+	}
+}

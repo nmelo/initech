@@ -476,5 +476,10 @@ func (t *TUI) drawRigPanel(now time.Time, agents []panelAgent, beads []panelBead
 	}
 	if box1W+2 < sw {
 		drawBox(box1W+1, sw-1, "moved 30m", text)
+		// A second window does not run the bead poll this box is read from
+		// (no new message between windows, ini-cdgj): it says where it is.
+		if !t.isFleetAuthority() {
+			put(box1W+3, yTop+1, "moved 30m is in window 1", dim, sw-1)
+		}
 	}
 }
