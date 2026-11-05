@@ -303,51 +303,53 @@ func TestTypingHold_AHeldMessageThatMeetsADialogIsDeferredNotPasted(t *testing.T
 
 // The sender's initech send answers only after the held message is written.
 func TestHandleIPCSend_AnswersOnlyAfterTheHeldMessageIsWritten(t *testing.T) {
-	withTypingHold(t, 2*time.Second, 15*time.Second)
-	p, r := i35wFreshPane(t, "eng2")
-	clk := newFakeHoldClock()
-	p.holdClk = clk
-	p.mu.Lock()
-	p.startupSettled = true
-	p.mu.Unlock()
-	clk.typedAgo(p, time.Second)
-	tui := &TUI{panes: toPaneViews([]*Pane{p})}
+	sendBubble(t, func(t *testing.T) {
+		withTypingHold(t, 2*time.Second, 15*time.Second)
+		p, rec := i35wFreshMemPane(t, "eng2")
+		clk := newFakeHoldClock()
+		p.holdClk = clk
+		p.mu.Lock()
+		p.startupSettled = true
+		p.mu.Unlock()
+		clk.typedAgo(p, time.Second)
+		tui := &TUI{panes: toPaneViews([]*Pane{p})}
 
-	server, client := net.Pipe()
-	defer client.Close()
-	go tui.handleIPCSend(server, IPCRequest{Target: "eng2", Text: "MARKER_UIBP_IPC", Enter: true})
-	answered := make(chan IPCResponse, 1)
-	go func() {
-		sc := bufio.NewScanner(client)
-		if sc.Scan() {
-			var resp IPCResponse
-			_ = json.Unmarshal(sc.Bytes(), &resp)
-			answered <- resp
-		}
-	}()
+		server, client := net.Pipe()
+		defer client.Close()
+		go tui.handleIPCSend(server, IPCRequest{Target: "eng2", Text: "MARKER_UIBP_IPC", Enter: true})
+		answered := make(chan IPCResponse, 1)
+		go func() {
+			sc := bufio.NewScanner(client)
+			if sc.Scan() {
+				var resp IPCResponse
+				_ = json.Unmarshal(sc.Bytes(), &resp)
+				answered <- resp
+			}
+		}()
 
-	awaitHoldTimer(t, clk)
-	select {
-	case resp := <-answered:
-		t.Fatalf("sender answered %+v while the message was still held", resp)
-	case <-time.After(100 * time.Millisecond):
-	}
-	if got := readPipeFor(t, r, 50*time.Millisecond); got != "" {
-		t.Fatalf("wrote %q during the hold", got)
-	}
-	clk.Advance(time.Second)
-	written := readPipeUntil(t, r, "MARKER_UIBP_IPC", 2*time.Second)
-	if !strings.Contains(written, "MARKER_UIBP_IPC") {
-		t.Fatalf("after the hold the pane got %q, want the message", written)
-	}
-	select {
-	case resp := <-answered:
-		if !resp.OK {
-			t.Fatalf("sender told %+v, want delivered", resp)
+		awaitHoldTimer(t, clk)
+		select {
+		case resp := <-answered:
+			t.Fatalf("sender answered %+v while the message was still held", resp)
+		case <-time.After(100 * time.Millisecond):
 		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("sender never answered after delivery")
-	}
+		if got := rec.takeAfter(50 * time.Millisecond); got != "" {
+			t.Fatalf("wrote %q during the hold", got)
+		}
+		clk.Advance(time.Second)
+		written := rec.takeUntil("MARKER_UIBP_IPC", 2*time.Second)
+		if !strings.Contains(written, "MARKER_UIBP_IPC") {
+			t.Fatalf("after the hold the pane got %q, want the message", written)
+		}
+		select {
+		case resp := <-answered:
+			if !resp.OK {
+				t.Fatalf("sender told %+v, want delivered", resp)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatal("sender never answered after delivery")
+		}
+	})
 }
 
 // readPipeFor collects whatever reaches the pane's PTY within d.

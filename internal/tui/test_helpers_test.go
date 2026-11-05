@@ -42,18 +42,8 @@ func drainPaneInput(t *testing.T, p *Pane) {
 func fakePaneSpawner(t *testing.T, calls *atomic.Int32) func(PaneConfig, int, int) (*Pane, error) {
 	t.Helper()
 	return func(cfg PaneConfig, rows, cols int) (*Pane, error) {
-		r, w, err := os.Pipe()
-		if err != nil {
-			return nil, err
-		}
-		if _, err := w.WriteString("up\r\n"); err != nil {
-			r.Close()
-			w.Close()
-			return nil, err
-		}
-		t.Cleanup(func() { w.Close() }) // Pane.Close closes the read end
 		p := NewParkedPane(cfg, rows, cols)
-		p.ptmx = &filePty{r}
+		p.ptmx = newSpawnPty(t) // in memory, so it may run in a bubble (ini-t0y1)
 		p.alive = true
 		p.suspended = false
 		p.activity = StateIdle

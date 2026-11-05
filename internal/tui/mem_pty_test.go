@@ -2,8 +2,12 @@ package tui
 
 import (
 	"io"
+	"os"
 	"os/exec"
 	"runtime"
+	"strings"
+	"sync"
+	"syscall"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -177,4 +181,123 @@ func TestMemPty_ASendDeliversTheSameBytesAsOverOSPipe(t *testing.T) {
 		}
 		t.Logf("%s: %d bytes, %q, verdict %s on both", name, len(overOS), overOS, vOS.Outcome)
 	}
+}
+
+// spawnPty is a woken agent's pane end in memory, for the fake spawners
+// (ini-t0y1): the child has said "up" (the read loop sees output, so the wake
+// settles) and then says nothing until closed. A write fails as a write to
+// the read end of the os.Pipe the spawners used before does (EBADF), so a
+// send behaves as before; capturePty overrides Write to record instead.
+// Every wait on it is durable, so resume tests can run in a synctest bubble.
+type spawnPty struct {
+	r *io.PipeReader
+	w *io.PipeWriter
+}
+
+func newSpawnPty(t *testing.T) *spawnPty {
+	t.Helper()
+	r, w := io.Pipe()
+	go func() { _, _ = w.Write([]byte("up\r\n")) }() // ends when read, or at Close
+	t.Cleanup(func() { w.Close() })
+	return &spawnPty{r: r, w: w}
+}
+
+func (s *spawnPty) Read(b []byte) (int, error) { return s.r.Read(b) }
+func (s *spawnPty) Write([]byte) (int, error) {
+	return 0, &os.PathError{Op: "write", Path: "test", Err: syscall.EBADF}
+}
+func (s *spawnPty) Close() error {
+	s.w.Close()
+	return s.r.Close()
+}
+func (s *spawnPty) Fd() uintptr                { return ^uintptr(0) }
+func (s *spawnPty) Resize(int, int) error      { return nil }
+func (s *spawnPty) Size() (int, int, error)    { return 80, 24, nil }
+func (s *spawnPty) Name() string               { return "test" }
+func (s *spawnPty) Start(*exec.Cmd) error      { return nil }
+func (s *spawnPty) TermRawMode() (bool, error) { return true, nil }
+
+// pipeRecord reads a child's side as the pane writes, as an os.Pipe's buffer
+// did for the tests that read it later (ini-t0y1).
+type pipeRecord struct {
+	mu   sync.Mutex
+	b    strings.Builder
+	read int
+	done chan struct{}
+}
+
+func recordPipe(t *testing.T, r io.Reader) *pipeRecord {
+	t.Helper()
+	rec := &pipeRecord{done: make(chan struct{})}
+	go func() {
+		defer close(rec.done)
+		buf := make([]byte, 4096)
+		for {
+			n, err := r.Read(buf)
+			rec.mu.Lock()
+			rec.b.Write(buf[:n])
+			rec.mu.Unlock()
+			if err != nil {
+				return
+			}
+		}
+	}()
+	return rec
+}
+
+// takeAfter waits d, then returns what arrived since the last take: what
+// readPipeFor read from an os.Pipe with a d read deadline.
+func (rec *pipeRecord) takeAfter(d time.Duration) string {
+	time.Sleep(d)
+	return rec.take()
+}
+
+// takeUntil returns what arrived since the last take once it holds want, or
+// at d: what readPipeUntil read from an os.Pipe.
+func (rec *pipeRecord) takeUntil(want string, d time.Duration) string {
+	end := time.Now().Add(d)
+	for time.Now().Before(end) {
+		rec.mu.Lock()
+		has := strings.Contains(rec.b.String()[rec.read:], want)
+		rec.mu.Unlock()
+		if has {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	return rec.take()
+}
+
+func (rec *pipeRecord) take() string {
+	rec.mu.Lock()
+	defer rec.mu.Unlock()
+	s := rec.b.String()[rec.read:]
+	rec.read = len(rec.b.String())
+	return s
+}
+
+// i35wFreshMemPane is i35wFreshPane in memory, for a test in a synctest
+// bubble: the child's side is recorded as it is written.
+func i35wFreshMemPane(t *testing.T, name string) (*Pane, *pipeRecord) {
+	t.Helper()
+	p := newEmuPane(name, 80, 24)
+	r, w := memPipe(t)
+	rec := recordPipe(t, r)
+	t.Cleanup(func() {
+		// End newEmuPane's drain and the recorder, so nothing outlives the
+		// bubble.
+		if pw, ok := p.emu.InputPipe().(*io.PipeWriter); ok {
+			pw.CloseWithError(io.EOF)
+		}
+		w.Close()
+		<-rec.done
+	})
+	p.ptmx = w
+	p.cfg.NoBracketedPaste = true
+	p.mu.Lock()
+	p.alive = true
+	p.startedAt = time.Now()
+	p.lastOutputTime = time.Now()
+	p.mu.Unlock()
+	return p, rec
 }

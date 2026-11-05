@@ -97,7 +97,7 @@ func ceilingTUI(t *testing.T, fm *fakeMachine, now time.Time, panes ...*Pane) *T
 // capturePty is a pipe the pane reads its first output from, recording
 // every byte the pane writes to its agent.
 type capturePty struct {
-	filePty
+	*spawnPty
 	mu  sync.Mutex
 	got bytes.Buffer
 }
@@ -119,17 +119,7 @@ func (c *capturePty) written() string {
 func captureSpawner(t *testing.T, calls *atomic.Int32, made *[]*capturePty, mu *sync.Mutex) func(PaneConfig, int, int) (*Pane, error) {
 	t.Helper()
 	return func(cfg PaneConfig, rows, cols int) (*Pane, error) {
-		r, w, err := os.Pipe()
-		if err != nil {
-			return nil, err
-		}
-		if _, err := w.WriteString("up\r\n"); err != nil {
-			r.Close()
-			w.Close()
-			return nil, err
-		}
-		t.Cleanup(func() { w.Close() })
-		cp := &capturePty{filePty: filePty{r}}
+		cp := &capturePty{spawnPty: newSpawnPty(t)} // in memory (ini-t0y1)
 		p := NewParkedPane(cfg, rows, cols)
 		p.ptmx = cp
 		p.alive = true
@@ -370,58 +360,60 @@ func TestCeiling_ASendIsHeldAndDeliveredOnceAfterTheCeilingClears(t *testing.T) 
 	if testing.Short() {
 		t.Skip("delivers through the real send path, which waits on the pane's quiet")
 	}
-	fm := ceilingAt(t, 99)
-	t0 := time.Date(2026, 11, 5, 2, 0, 0, 0, time.UTC)
-	parked := NewParkedPane(PaneConfig{Name: "eng1"}, 10, 40)
-	tui := ceilingTUI(t, fm, t0, parked)
-	var spawned atomic.Int32
-	var made []*capturePty
-	var mu sync.Mutex
-	tui.paneSpawner = captureSpawner(t, &spawned, &made, &mu)
+	sendBubble(t, func(t *testing.T) {
+		fm := ceilingAt(t, 99)
+		t0 := time.Date(2026, 11, 5, 2, 0, 0, 0, time.UTC)
+		parked := NewParkedPane(PaneConfig{Name: "eng1"}, 10, 40)
+		tui := ceilingTUI(t, fm, t0, parked)
+		var spawned atomic.Int32
+		var made []*capturePty
+		var mu sync.Mutex
+		tui.paneSpawner = captureSpawner(t, &spawned, &made, &mu)
 
-	resp := ipcCall(t, func(c net.Conn) {
-		tui.handleIPCSend(c, IPCRequest{Target: "eng1", Text: "held-ceiling-message", Enter: true})
+		resp := ipcCall(t, func(c net.Conn) {
+			tui.handleIPCSend(c, IPCRequest{Target: "eng1", Text: "held-ceiling-message", Enter: true})
+		})
+		if !resp.OK || resp.Delivery != DeliveryDeferred || resp.Data != CeilingDeferral {
+			t.Fatalf("send at the ceiling = %+v, want deferred with %q", resp, CeilingDeferral)
+		}
+		if parked.QueueLen() != 1 || spawned.Load() != 0 {
+			t.Fatalf("held send: queue %d spawned %d, want 1 queued, nothing spawned", parked.QueueLen(), spawned.Load())
+		}
+
+		// Under for less than a minute: still held.
+		fm.set(5)
+		if _, cleared := tui.stepCeiling(nil, t0.Add(time.Minute)); cleared {
+			t.Fatal("the first reading under cleared the ceiling")
+		}
+		if _, cleared := tui.stepCeiling(nil, t0.Add(time.Minute+59*time.Second)); cleared {
+			t.Fatal("59 seconds under cleared the ceiling")
+		}
+		if parked.QueueLen() != 1 || spawned.Load() != 0 {
+			t.Fatal("the held mail moved before the ceiling cleared")
+		}
+		// The minute tick clears it and wakes the held mail on its own.
+		waitForAsyncWake(t, tui, func() { tui.refreshMachineCeiling(t0.Add(2 * time.Minute)) }, 20*time.Second)
+		if tui.ceiling.gate.Engaged() {
+			t.Fatal("a full minute under did not clear the ceiling")
+		}
+
+		if spawned.Load() != 1 {
+			t.Fatalf("the clearing woke %d pane(s), want 1", spawned.Load())
+		}
+		np := tui.panes[0].(*Pane)
+		t.Cleanup(func() { np.Close() })
+		mu.Lock()
+		got := made[0].written()
+		mu.Unlock()
+		if n := strings.Count(got, "held-ceiling-message"); n != 1 {
+			t.Fatalf("the held message was delivered %d times, want once; wrote %q", n, got)
+		}
+		// A second clearing finds nothing held and delivers nothing again.
+		waitForAsyncWake(t, tui, tui.wakeCeilingHeld, 5*time.Second)
+		if spawned.Load() != 1 || strings.Count(made[0].written(), "held-ceiling-message") != 1 {
+			t.Fatal("a second clearing delivered the message again")
+		}
 	})
-	if !resp.OK || resp.Delivery != DeliveryDeferred || resp.Data != CeilingDeferral {
-		t.Fatalf("send at the ceiling = %+v, want deferred with %q", resp, CeilingDeferral)
-	}
-	if parked.QueueLen() != 1 || spawned.Load() != 0 {
-		t.Fatalf("held send: queue %d spawned %d, want 1 queued, nothing spawned", parked.QueueLen(), spawned.Load())
-	}
-
-	// Under for less than a minute: still held.
-	fm.set(5)
-	if _, cleared := tui.stepCeiling(nil, t0.Add(time.Minute)); cleared {
-		t.Fatal("the first reading under cleared the ceiling")
-	}
-	if _, cleared := tui.stepCeiling(nil, t0.Add(time.Minute+59*time.Second)); cleared {
-		t.Fatal("59 seconds under cleared the ceiling")
-	}
-	if parked.QueueLen() != 1 || spawned.Load() != 0 {
-		t.Fatal("the held mail moved before the ceiling cleared")
-	}
-	// The minute tick clears it and wakes the held mail on its own.
-	waitForAsyncWake(t, tui, func() { tui.refreshMachineCeiling(t0.Add(2 * time.Minute)) }, 20*time.Second)
-	if tui.ceiling.gate.Engaged() {
-		t.Fatal("a full minute under did not clear the ceiling")
-	}
-
-	if spawned.Load() != 1 {
-		t.Fatalf("the clearing woke %d pane(s), want 1", spawned.Load())
-	}
-	np := tui.panes[0].(*Pane)
-	t.Cleanup(func() { np.Close() })
-	mu.Lock()
-	got := made[0].written()
-	mu.Unlock()
-	if n := strings.Count(got, "held-ceiling-message"); n != 1 {
-		t.Fatalf("the held message was delivered %d times, want once; wrote %q", n, got)
-	}
-	// A second clearing finds nothing held and delivers nothing again.
-	waitForAsyncWake(t, tui, tui.wakeCeilingHeld, 5*time.Second)
-	if spawned.Load() != 1 || strings.Count(made[0].written(), "held-ceiling-message") != 1 {
-		t.Fatal("a second clearing delivered the message again")
-	}
 }
 
 // AC3, the fast half for the -short suite: the held mail is marked held and
