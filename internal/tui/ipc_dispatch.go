@@ -59,6 +59,10 @@ type PaneInfo struct {
 	// gives no idle-owner reading.
 	IdleSec *int `json:"idle_sec,omitempty"`
 
+	// Ceiling is the machine ceiling's refusal for a pane it left unstarted
+	// (ini-49q): the words the pane shows, omitted when nothing was refused.
+	Ceiling string `json:"ceiling,omitempty"`
+
 	// Read from the pane's screen only when the list request asks for detail
 	// (initech status --json, ini-l6om), and only for a live pane. Each is
 	// omitted when it was not read, so a client reads it as null; an older
@@ -244,6 +248,9 @@ func dispatchIPC(h IPCHost, conn net.Conn, req IPCRequest, rawJSON []byte) {
 		}
 		if source, ok := h.(interface{ RigNumbersSnapshot() *rignumbers.Numbers }); ok {
 			response.Rig = source.RigNumbersSnapshot()
+		}
+		if source, ok := h.(interface{ FleetSnapshot() *rignumbers.Fleet }); ok {
+			response.Fleet = source.FleetSnapshot()
 		}
 		writeIPCResponse(conn, response)
 

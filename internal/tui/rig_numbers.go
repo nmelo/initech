@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"fmt"
 	"os/exec"
 	"sync"
 	"sync/atomic"
@@ -123,5 +124,9 @@ func (t *TUI) boardRows() []string {
 	}
 	rows := make([]string, 0, len(t.paceRows)+1)
 	rows = append(rows, t.paceRows...)
-	return append(rows, rigRowPrefix+n.Line())
+	line := rigRowPrefix + n.Line()
+	if f := t.FleetSnapshot(); f != nil && f.Awake != nil {
+		line += fmt.Sprintf(" · fleet %d awake", *f.Awake)
+	}
+	return append(rows, line)
 }

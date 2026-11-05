@@ -326,6 +326,9 @@ func Load(path string) (*Project, error) {
 	if err := yaml.Unmarshal(data, &p); err != nil {
 		return nil, fmt.Errorf("parse config: %w", err)
 	}
+	if err := refuseRigCeiling(data); err != nil {
+		return nil, err
+	}
 
 	p.Root = expandHome(p.Root)
 
@@ -343,6 +346,25 @@ func Load(path string) (*Project, error) {
 	}
 
 	return &p, nil
+}
+
+// refuseRigCeiling fails a rig config that carries a top-level ceiling:
+// key. The machine ceiling is the whole Mac's, set only in machine.yaml; a
+// rig that could set it could raise it, which is the failure it exists to
+// stop. The key is refused rather than ignored so the author learns where
+// the ceiling lives.
+func refuseRigCeiling(data []byte) error {
+	var doc yaml.Node
+	if yaml.Unmarshal(data, &doc) != nil || len(doc.Content) == 0 || doc.Content[0].Kind != yaml.MappingNode {
+		return nil // the typed parse above already judged the shape
+	}
+	top := doc.Content[0]
+	for i := 0; i+1 < len(top.Content); i += 2 {
+		if top.Content[i].Value == "ceiling" {
+			return fmt.Errorf("invalid config: ceiling: is the machine's, and a rig cannot set it: the machine ceiling lives in machine.yaml in the initech folder under your user config folder (~/Library/Application Support/initech/machine.yaml on macOS)")
+		}
+	}
+	return nil
 }
 
 // hasTokens returns true if the project config contains any auth tokens.

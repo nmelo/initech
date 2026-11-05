@@ -8,8 +8,10 @@ import (
 	"os/exec"
 	"time"
 
+	"github.com/nmelo/initech/internal/color"
 	"github.com/nmelo/initech/internal/config"
 	"github.com/nmelo/initech/internal/rignumbers"
+	"github.com/nmelo/initech/internal/tui"
 )
 
 // statusNumbers is --numbers: with --json, the rig's numbers as one object
@@ -43,8 +45,11 @@ type rigNumbersJSON struct {
 // from the list reply, so gh and git never run per status call; computed here
 // only when window 1 has none yet (an older TUI, or before its first minute).
 func statusRigNumbers(st *statusRead, p *config.Project, now time.Time) rigNumbersJSON {
+	fleet := statusFleet(st, now)
 	if st.resp != nil && st.resp.Rig != nil {
-		return rigNumbersJSON{Source: "window 1", Numbers: *st.resp.Rig, Line: st.resp.Rig.Line()}
+		n := *st.resp.Rig
+		n.Fleet = fleet
+		return rigNumbersJSON{Source: "window 1", Numbers: n, Line: n.Line()}
 	}
 	dir := ""
 	slug := ""
@@ -67,7 +72,34 @@ func statusRigNumbers(st *statusRead, p *config.Project, now time.Time) rigNumbe
 	}
 	_ = rignumbers.GatherRepo(ctx, run, slug, &in)
 	n := rignumbers.Compute(in)
+	n.Fleet = fleet
 	return rigNumbersJSON{Source: "computed", Numbers: n, Line: n.Line()}
+}
+
+// statusReadFleet reads the machine when window 1 has no reading. A package
+// variable so tests stand in for the machine.
+var statusReadFleet = tui.ReadFleetNow
+
+// statusFleet is the machine ceiling's numbers for status (ini-49q): window
+// 1's last reading from the list reply, or one read here when it has none.
+func statusFleet(st *statusRead, now time.Time) *rignumbers.Fleet {
+	if st.resp != nil && st.resp.Fleet != nil {
+		return st.resp.Fleet
+	}
+	return statusReadFleet(now)
+}
+
+// printFleetLine prints the fleet line after the agent table, red when the
+// machine is at its ceiling.
+func printFleetLine(out io.Writer, f *rignumbers.Fleet) {
+	if f == nil {
+		return
+	}
+	line := f.Line
+	if f.AtCeiling {
+		line = color.Red(line + " · at the ceiling")
+	}
+	fmt.Fprintf(out, "  %s\n", line)
 }
 
 // printRigLine prints the rig line after the agent table, naming where the

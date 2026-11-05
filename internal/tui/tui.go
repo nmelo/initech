@@ -204,6 +204,9 @@ type TUI struct {
 	// rig is window 1's rig numbers (ini-3sl): the cached result and the
 	// once-a-minute gate.
 	rig rigNumbersState
+	// ceiling is the machine ceiling (ini-49q): the gate every start and
+	// wake asks, stepped once a minute.
+	ceiling ceilingState
 	// The waits (ini-agq): each waiting bead's judged wait (main loop), the
 	// lines already sent to super by bead and target (main loop), and the
 	// answers about tags and runs (the poll goroutine's alone).
@@ -1200,11 +1203,22 @@ func Run(cfg Config) error {
 		names[i] = cfg.Agents[i].Name
 	}
 	plan := startupSpawnPlan(names, suspendedAtExit, startupLiveBatch)
+	// The machine ceiling reads the Mac once before the first agent starts
+	// (ini-49q): the window opens either way, and an agent the gate refuses
+	// boots parked with the words, to wake later through any wake.
+	t.stepCeiling(nil, time.Now())
+	t.ceiling.last = time.Now()
 	var staggered []*Pane
 	for i, acfg := range cfg.Agents {
 		r := regions[i%len(regions)]
 		cols, rows := r.TerminalSize()
 		var p *Pane
+		refused := ""
+		if plan[i] == spawnLive {
+			if err := t.admitAgent(nil, acfg.Name, "boot"); err != nil {
+				plan[i], refused = spawnParked, err.Error()
+			}
+		}
 		if plan[i] == spawnLive {
 			live, err := NewPane(acfg, rows, cols)
 			if err != nil {
@@ -1217,6 +1231,9 @@ func Run(cfg Config) error {
 			p = live
 		} else {
 			p = NewParkedPane(acfg, rows, cols)
+		}
+		if refused != "" {
+			p.setCeilingNote(refused)
 		}
 		p.region = r
 		p.eventCh = t.agentEvents
@@ -1575,6 +1592,7 @@ func Run(cfg Config) error {
 			t.recordSessionBeads(time.Now())
 			t.refreshPaceLines(time.Now())
 			t.refreshRigNumbers(time.Now())
+			t.refreshMachineCeiling(time.Now())
 			if t.sched != nil {
 				t.sched.kick() // Never waits; at most once a second.
 			}

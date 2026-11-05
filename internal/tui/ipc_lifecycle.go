@@ -204,6 +204,10 @@ func (t *TUI) handleIPCStart(conn net.Conn, req IPCRequest) {
 		writeIPCResponse(conn, IPCResponse{OK: true, Data: "already running"})
 		return
 	}
+	if err := t.admitAgent(old, req.Target, "start"); err != nil {
+		writeIPCResponse(conn, IPCResponse{Error: err.Error()})
+		return
+	}
 	// Create the new pane off-main (may fork/exec).
 	cols, rows := old.emuSize() // never waits on the pane (ini-psjt)
 	// Dead panes may report zero dimensions; use sensible defaults.
@@ -315,6 +319,11 @@ func (t *TUI) handleIPCRestart(conn net.Conn, req IPCRequest) {
 // runs off the main goroutine, because taking sendMu and stopping a child can
 // both wait, and it hops onto main only for the swap.
 func (t *TUI) restartOffMain(old *Pane, oldIdx int, cfg PaneConfig) (int, error) {
+	// The machine ceiling asks first, before the old pane is touched: a
+	// refused restart leaves the running agent running (ini-49q).
+	if err := t.admitAgent(old, old.Name(), "restart"); err != nil {
+		return 0, err
+	}
 	// A send in flight ends now, and what it held is on the queue below.
 	old.markClosing()
 	old.sendMu.Lock()
@@ -436,6 +445,9 @@ func (t *TUI) addPane(name string) error {
 		}
 	}
 
+	if err := t.admitAgent(nil, name, "add"); err != nil {
+		return err
+	}
 	// Create the pane off-main (may fork/exec).
 	p, err := NewPane(cfg, rows, cols)
 	if err != nil {

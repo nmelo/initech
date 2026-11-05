@@ -490,6 +490,11 @@ func (t *TUI) wireSuspendResume(p *Pane) {
 		}
 		run(func() {
 			if err := t.resumePane(pane, "queued message"); err != nil {
+				if isAtCeiling(err) {
+					// Held, not stalled: the gate's clearing wakes it.
+					LogInfo("resource", "message held at the machine ceiling", "agent", pane.name, "queued", pane.QueuedMessageCount())
+					return
+				}
 				queued := pane.QueuedMessageCount()
 				LogError("resource", "resume-on-message failed; messages remain queued",
 					"agent", pane.name, "queued", queued, "err", err)
@@ -750,6 +755,12 @@ func (t *TUI) resumePane(pane *Pane, senderName string) error {
 	// -- or it was never parked.
 	if !pane.IsSuspended() {
 		return nil
+	}
+	// The machine ceiling (ini-49q): every wake asks the one gate here,
+	// before anything is spawned. A refusal leaves the pane parked with its
+	// queue untouched, and the words on the pane.
+	if err := t.admitAgent(pane, agentName, senderName); err != nil {
+		return err
 	}
 
 	// The old child must be gone before a new one starts on the same session,

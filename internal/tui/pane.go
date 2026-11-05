@@ -399,6 +399,12 @@ type Pane struct {
 	lastMessageReceived            time.Time // Updated when injectText delivers a message to this pane.
 	lastEventTime                  time.Time // Updated when an AgentEvent fires for this pane.
 
+	// The machine ceiling's refusal (ini-49q), under mu: the words the pane
+	// shows while a start or wake of it is refused, and whether its queued
+	// mail was held by the ceiling, so the gate's clearing wakes it.
+	ceilingNote string
+	ceilingHeld bool
+
 	// lastAltScreen is the child's alt-screen state as of the most recent
 	// resize (ini-y97). Compared against p.emu.IsAltScreen() on every PTY
 	// write (checkAltScreenTransition) to detect entry/exit and trigger the

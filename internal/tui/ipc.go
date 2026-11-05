@@ -21,6 +21,7 @@ import (
 
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/nmelo/initech/internal/config"
+	"github.com/nmelo/initech/internal/machine"
 	"github.com/nmelo/initech/internal/rignumbers"
 )
 
@@ -81,6 +82,7 @@ type IPCResponse struct {
 	WindowPort *WindowPortStatus   `json:"window_port,omitempty"`
 	Project    *IPCProject         `json:"project,omitempty"` // The serving process's project, on list (ini-l8s5).
 	Rig        *rignumbers.Numbers `json:"rig,omitempty"`     // Window 1's cached rig numbers, on list (ini-3sl); absent before the first gather.
+	Fleet      *rignumbers.Fleet   `json:"fleet,omitempty"`   // The machine ceiling's last reading, on list (ini-49q); absent before the first.
 	OK         bool                `json:"ok"`
 	Error      string              `json:"error,omitempty"`
 	Data       string              `json:"data,omitempty"`     // Pane content for peek, pane list for list.
@@ -201,6 +203,9 @@ func (t *TUI) allPanesWithViews() ([]PaneInfo, []PaneView, bool) {
 			}
 			if lp, ok := p.(*Pane); ok {
 				panes[i].AgentType = config.NormalizeAgentType(lp.AgentType())
+				if !lp.IsAlive() || lp.IsSuspended() {
+					panes[i].Ceiling = lp.ceilingNoteText()
+				}
 			}
 			// The latch is why mail stops moving, so it belongs where someone
 			// looks when mail stops moving (ini-gbqc). Age and depth, not a
@@ -437,6 +442,13 @@ func (t *TUI) handleIPCSend(conn net.Conn, req IPCRequest) {
 		// Trigger resume-on-message: respawn the agent and drain the queue.
 		// This blocks until the agent initializes and messages are delivered.
 		if err := t.resumePane(concretePane, "incoming message"); err != nil {
+			if isAtCeiling(err) {
+				// Held, not lost (ini-49q): the message is on the pane's
+				// queue, and the gate's clearing wakes it and delivers.
+				LogInfo("ipc", "send held at the machine ceiling", "target", req.Target)
+				writeIPCResponse(conn, IPCResponse{OK: true, Data: CeilingDeferral, Delivery: DeliveryDeferred})
+				return
+			}
 			writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("resume failed: %v", err)})
 			return
 		}
@@ -517,6 +529,10 @@ func (t *TUI) handleIPCSend(conn net.Conn, req IPCRequest) {
 	})
 	writeIPCResponse(conn, resp)
 }
+
+// CeilingDeferral is the deferred reply to a send held at the machine
+// ceiling (ini-49q); the sender prints it after "deferred to <agent> — ".
+const CeilingDeferral = machine.Deferred
 
 // resumedSendReply answers a send that woke a suspended agent and delivered
 // its queue.

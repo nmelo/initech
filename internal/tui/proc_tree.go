@@ -128,6 +128,28 @@ func (t *procTree) runningShells(root int) (starts []time.Time, ok bool) {
 	return starts, true
 }
 
+// hasClaude reports whether a claude process is root or in its subtree:
+// whether the pane whose process is root runs Claude Code (ini-49q). A nil
+// tree, or one without root, holds no claude.
+func (t *procTree) hasClaude(root int) bool {
+	if t == nil || root <= 0 {
+		return false
+	}
+	if _, ok := t.byPID[root]; !ok {
+		return false
+	}
+	queue := []int{root}
+	for len(queue) > 0 {
+		cur := queue[0]
+		queue = queue[1:]
+		if t.byPID[cur].claude {
+			return true
+		}
+		queue = append(queue, t.children[cur]...)
+	}
+	return false
+}
+
 // treeSampler keeps the latest process-table sample, read off the caller's
 // goroutine: ps takes tens of milliseconds and the TUI's tick runs on its
 // main loop. One read at a time, at most once a second.

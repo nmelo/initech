@@ -80,6 +80,28 @@ type Numbers struct {
 	Closed            *int      `json:"closed"`
 	NoMove20m         *int      `json:"no_move_20m"`
 	IdleEngineers     *int      `json:"idle_engineers"`
+	// Fleet is the machine's numbers, filled by whoever has them (window 1's
+	// gate, or status reading the machine itself); absent when nobody does.
+	Fleet *Fleet `json:"fleet,omitempty"`
+}
+
+// Fleet is the machine ceiling's numbers (ini-49q): the awake Claude
+// sessions of every rig on the machine, free memory and the 5-minute load,
+// beside the ceiling they are read against. A nil number was unreadable.
+type Fleet struct {
+	Awake     *int         `json:"awake"`
+	FreeGB    *float64     `json:"free_gb"`
+	Load      *float64     `json:"load"`
+	Ceiling   FleetCeiling `json:"ceiling"`
+	AtCeiling bool         `json:"at_ceiling"`
+	Line      string       `json:"line"`
+}
+
+// FleetCeiling is the ceiling the fleet numbers were read against.
+type FleetCeiling struct {
+	Sessions     int     `json:"sessions"`
+	FreeMemoryGB float64 `json:"free_memory_gb"`
+	Load         float64 `json:"load"`
 }
 
 func ptr[T any](v T) *T { return &v }

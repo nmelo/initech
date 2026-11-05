@@ -56,6 +56,9 @@ type paneInfo struct {
 	// one, or a pane it does not run); the age only while on.
 	DND       *bool `json:"dnd"`
 	DNDAgeSec *int  `json:"dnd_age_sec"`
+	// Ceiling is the machine ceiling's refusal for an agent it left
+	// unstarted (ini-49q), or "".
+	Ceiling string `json:"ceiling,omitempty"`
 
 	// IdleSec is how long the pane has been idle (ini-9dv); nil when the TUI
 	// did not say (busy, another machine, or an older TUI), never zero.
@@ -480,6 +483,11 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		// "modal" alone cannot separate a dialog opened a second ago from one
 		// that has held four messages for hours -- which is the case the live
 		// report was, and it took a human peeking at the pane to see it.
+		// The machine ceiling left this agent unstarted (ini-49q): the
+		// words the pane shows.
+		if pi.Ceiling != "" {
+			status += " " + color.Red("["+pi.Ceiling+"]")
+		}
 		if pi.ModalLatched {
 			status += " " + color.Yellow(fmt.Sprintf("[modal %s, %d queued]",
 				shortDur(pi.ModalAgeSec), pi.QueuedCount))
@@ -563,7 +571,9 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		}
 	}
 	fmt.Fprintln(out)
-	printRigLine(out, statusRigNumbers(st, p, time.Now()))
+	rig := statusRigNumbers(st, p, time.Now())
+	printFleetLine(out, rig.Numbers.Fleet)
+	printRigLine(out, rig)
 
 	return nil
 }

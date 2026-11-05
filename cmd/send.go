@@ -50,6 +50,8 @@ send waits for that (about two seconds), prints one line and exits with:
      (Codex, OpenCode and generic agents)
   0  deferred to <agent> (a dialog is open, or the pane is not reading its input;
      delivered when it closes or reads again)
+  0  deferred to <agent> — the Mac is at its ceiling; will wake and deliver when
+     it is under (a suspended agent, and the machine at its ceiling)
   0  held: <agent> is in do-not-disturb (<age>, <N> messages ahead)
      (delivered, in order, when it ends)
   1  not delivered to <agent>: do-not-disturb queue is full
@@ -298,7 +300,7 @@ func deliverTextVia(w io.Writer, call ipcCaller, target, host, text string, ente
 	// (ini-ei8l), never as delivered. An older TUI's deferral carries no
 	// verdict and is still a deferral.
 	case resp.Delivery == tui.DeliveryDeferred, resp.Delivery == "" && strings.Contains(resp.Data, "deferred"):
-		if resp.Data == tui.StuckInputDeferral {
+		if resp.Data == tui.StuckInputDeferral || resp.Data == tui.CeilingDeferral {
 			fmt.Fprintf(w, "deferred to %s — %s%s\n", name, resp.Data, removed)
 			break
 		}

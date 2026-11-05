@@ -56,6 +56,8 @@ func TestSendVerdict_EachVerdictPrintsItsLineAndExitStatus(t *testing.T) {
 			"sent to eng3, unconfirmed: no delivery check for this agent type", 0},
 		{"deferred behind a pane that is not reading", "eng1", tui.IPCResponse{OK: true, Delivery: tui.DeliveryDeferred, Data: tui.StuckInputDeferral},
 			"deferred to eng1 — the pane is not reading its input; will deliver when it does", 0},
+		{"held at the machine ceiling", "eng1", tui.IPCResponse{OK: true, Delivery: tui.DeliveryDeferred, Data: tui.CeilingDeferral},
+			"deferred to eng1 — the Mac is at its ceiling; will wake and deliver when it is under", 0},
 		{"partly written to a pane that stopped reading", "eng1", tui.IPCResponse{OK: true, Delivery: tui.DeliveryUnconfirmed, Data: "the pane stopped reading its input while this message was being written; it will not be sent again, because a resend could duplicate it if the agent resumes"},
 			"could not confirm delivery to eng1: the pane stopped reading its input while this message was being written; it will not be sent again, because a resend could duplicate it if the agent resumes; peek the pane", 2},
 		{"deferred", "eng1", tui.IPCResponse{OK: true, Delivery: tui.DeliveryDeferred, Data: "deferred to eng1 — modal open, 1 queued"},

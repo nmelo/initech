@@ -63,6 +63,7 @@ When initech changes `initech.yaml` (the hooks answer, `initech add-agent`, `ini
 | `beads.idle_after` | How long the owner's pane of an `in_progress` bead may sit idle before the bead reads idle-owner, as a duration such as `30m`. Twenty minutes when absent; a value that is not a duration above zero fails the load. The pane header, the overlay, `initech progress` (whose JSON the app service carries) and the line to super all read by it. | The rig's agents think longer or shorter than twenty minutes between steps. |
 | `numbers` | Thresholds for the rig's numbers, such as `gate_red_max: 1` or `idle_engineers_min: 2`; each crossing sends super one line. None when absent; an unknown key or a value below zero fails the load naming the key. See [Rig numbers](#rig-numbers). | You want super told when a number leaves its range. |
 | `telemetry` | `false` turns off the daily anonymous usage ping. On when absent. See [Usage data](#usage-data). | You do not want initech to send it. |
+| `ceiling` | Not a rig key. The machine ceiling is the whole Mac's and lives in its own file; a `ceiling:` key in `initech.yaml` fails the load and names that file. See [The machine ceiling](#the-machine-ceiling). | Never: no rig can set or raise it. |
 
 ## The Dispatch Cycle
 
@@ -453,6 +454,31 @@ initech sends one anonymous usage ping a day, so the maintainer knows how many i
 The install id is made once and kept in `~/.config/initech/install_id` (`%LOCALAPPDATA%\initech\install_id` on Windows), with the time of the last successful ping in `last_ping` next to it. A ping that fails is dropped without a message, never delays startup or exit, and is tried again at the next start.
 
 To turn it off, set `telemetry: false` in `initech.yaml`, or set `DO_NOT_TRACK=1` in the environment; `DO_NOT_TRACK` wins over the file. Either one means no id file is made and nothing is sent.
+
+### The machine ceiling
+
+One Mac runs every rig on it, so initech reads the Mac as a whole and refuses to start or wake one more agent when it is full. The ceiling is three numbers in one file, `~/Library/Application Support/initech/machine.yaml` (the `initech` folder in your user config folder on other systems):
+
+```yaml
+ceiling:
+  sessions: 30        # awake Claude sessions, across every rig
+  free_memory_gb: 8   # free memory, in GB
+  load: 30            # the 5-minute load average
+```
+
+When the file is absent the ceiling is 30 sessions, 8 GB free and load 30, and a key left out keeps its default. A value that is not a number (or, for `sessions`, not a whole number above 0), or a key that is not one of these three, fails the read naming the key, such as `ceiling.sessions`; initech then keeps the last good ceiling (the defaults before one) and logs the error once. The file is the machine owner's, written by hand; no rig can set or raise it, and a `ceiling:` key in a rig's `initech.yaml` fails that rig's load.
+
+An awake session is an agent pane whose Claude process is alive and not suspended: running, background, idle, waiting on a dialog and pending input all count. A suspended agent, a dead one, a pane with no process and a pane running a plain shell do not, and neither does a Claude session initech did not start. Agents an `initech serve` daemon starts are not counted, and the ceiling does not refuse them. Window 1 of every rig writes its awake count once a minute to `~/Library/Application Support/initech/fleet/<rig>.json` (the folder 0700, the file 0600, with window 1's pid and the time); every window reads every rig's file at the same cadence and adds them, skipping a file whose pid is gone or that is three minutes old or more, so a rig that quit or crashed drops out by itself. It reads free memory and the 5-minute load from the system at the same time. A number initech cannot read never engages the ceiling, and is logged once.
+
+The ceiling is engaged while any number is at its value or past it: that many awake sessions or more, that much free memory or less, that load or more. It clears only when all three have been under for one full minute, so a dip does not let a start through only to engage again. Between two readings initech counts the starts it let through itself, so a burst of starts inside one minute cannot carry the Mac past the ceiling.
+
+At the ceiling, initech refuses every start and wake of an agent: `initech start`, `initech resume`, `initech restart` and the restart command, `initech add`, the wake a message, a keystroke or the agents grid would cause, and the rig's own launch. The window still opens at the ceiling; an agent refused at launch stays parked, and wakes later through any wake. A refused agent's pane shows the reason across its bottom rows and `[ceiling]` on its ribbon, and `initech status` shows it on the agent's row: `not started: the Mac is at its ceiling: 31 awake sessions, 6.1 GB free, load 34; ceiling 30 / 8 GB / 30`. A refused command exits non-zero with the same words. initech never retries a refused start; run it again once the Mac is under. The ceiling never stops, suspends, interrupts or signals anything that is running: a restart is refused before the running agent is touched.
+
+A message to a suspended agent at the ceiling is held, not lost. It waits on the agent's queue and the sender hears `deferred to <agent> — the Mac is at its ceiling; will wake and deliver when it is under`, exit 0. When the ceiling clears, initech wakes the agents holding such messages one at a time, each through the ceiling again, and delivers each message once.
+
+`initech status` prints the fleet line after the agent table, `fleet 31 awake · 6.1 GB free · load 34 · ceiling 30 / 8 GB / 30`, red and ending `· at the ceiling` while it is engaged; it reads window 1's last reading, or the machine itself when window 1 has none. `initech status --json --numbers` carries the same in `numbers.fleet`: `awake`, `free_gb` and `load` (null when unreadable), `ceiling`, `at_ceiling` and `line`. The overlay's rig row ends with the fleet count, `· fleet 31 awake`.
+
+There is no override from a rig or a flag, no per-rig share of the ceiling, and no stopping or suspending agents to get under it.
 
 ## Troubleshooting
 

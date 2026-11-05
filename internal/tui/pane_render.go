@@ -91,9 +91,15 @@ func (p *Pane) chromeLook(focused bool, index int) (ribbonLook, tcell.Color) {
 		// (ini-zffi discoverability AC). Kept terse -- a ribbon is as narrow
 		// as the pane, and a hint that truncates teaches nothing.
 		title = fmt.Sprintf(" %d %s [susp: any key] ", index, p.name)
+		if p.ceilingNoteText() != "" {
+			title = fmt.Sprintf(" %d %s [ceiling] ", index, p.name)
+		}
 		titleStyle = tcell.StyleDefault.Background(trueBlack).Foreground(tcell.ColorDodgerBlue).Bold(true)
 	} else if !p.IsAlive() {
 		title = fmt.Sprintf(" %d %s [dead] ", index, p.name)
+		if p.ceilingNoteText() != "" {
+			title = fmt.Sprintf(" %d %s [ceiling] ", index, p.name)
+		}
 		titleStyle = tcell.StyleDefault.Background(trueBlack).Foreground(tcell.ColorRed).Bold(true)
 	} else if p.scrollOffset > 0 {
 		title = fmt.Sprintf(" %d %s [+%d] ", index, p.name, p.scrollOffset)
@@ -189,6 +195,7 @@ func (p *Pane) Render(screen tcell.Screen, focused bool, dimmed bool, index int,
 	if !read {
 		p.noteScreenSkipped(now, "render")
 		p.replayFrame(s, cr, termCols, termRows, now)
+		p.drawCeilingNote(s, cr, termCols, termRows)
 		return
 	}
 	p.noteScreenRead()
@@ -202,6 +209,7 @@ func (p *Pane) Render(screen tcell.Screen, focused bool, dimmed bool, index int,
 		// last REAL body.
 		p.drawSettleFrame(s, cr, termCols, termRows)
 	}
+	p.drawCeilingNote(s, cr, termCols, termRows)
 }
 
 // renderContent draws the content region from the emulator. Caller holds
