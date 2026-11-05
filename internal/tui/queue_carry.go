@@ -50,6 +50,7 @@ func giveQueueToRestartedPane(fresh *Pane, msgs []QueuedMessage) int {
 	fresh.mu.Lock()
 	fresh.messageQueue = append(fresh.messageQueue, msgs...)
 	fresh.mu.Unlock()
+	fresh.heldChanged() // ini-8rkg
 
 	LogInfo("restart", "carried deferred messages to the new pane",
 		"agent", fresh.Name(), "count", len(msgs), "senders", queuePreview(msgs))
@@ -69,6 +70,7 @@ func restoreQueueAfterFailedRestart(old *Pane, msgs []QueuedMessage) {
 	old.mu.Lock()
 	old.messageQueue = append(msgs, old.messageQueue...)
 	old.mu.Unlock()
+	old.heldChanged() // ini-8rkg
 
 	LogWarn("restart", "restart failed with mail in hand; messages kept on the old pane",
 		"agent", old.Name(), "count", len(msgs), "senders", queuePreview(msgs))

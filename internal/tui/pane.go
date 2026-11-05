@@ -441,6 +441,14 @@ type Pane struct {
 	// new mail (ini-1898). Guarded by mu.
 	redelivering *QueuedMessage
 
+	// The held file (ini-8rkg): heldHook rewrites the owner's file after a
+	// queue change; heldTyping and heldInHand are mail a loop took off the
+	// queue to type one at a time (resume), kept in the file until typed.
+	heldHook   func(*Pane)
+	sendFrom   string // whose send is being typed (setSendFrom)
+	heldTyping *QueuedMessage
+	heldInHand []QueuedMessage
+
 	// Do-not-disturb (dnd.go): while set, sends wait on messageQueue.
 	// Memory only, never saved. dndSince is when it went on, dndUntil when
 	// its timer ends (zero: no timer, it ends at turn end). Guarded by mu.
@@ -1285,7 +1293,7 @@ func (p *Pane) deliverClean(text string, enter, hold bool, o sendOrigin) SendVer
 	p.lastMessageReceived = time.Now()
 	p.mu.Unlock()
 
-	if p.queueIfSuspended(text, enter) {
+	if p.queueIfSuspended(text, enter, o.From) {
 		return SendVerdict{Outcome: DeliveryDelivered}
 	}
 	// DO-NOT-DISTURB (ini-x432): held on the queue, nothing typed. The
@@ -1314,7 +1322,7 @@ func (p *Pane) deliverClean(text string, enter, hold bool, o sendOrigin) SendVer
 		// order. A pane suspended while the message waited queues it instead.
 		release := p.waitTypingHold()
 		defer release()
-		if p.queueIfSuspended(text, enter) {
+		if p.queueIfSuspended(text, enter, o.From) {
 			return SendVerdict{Outcome: DeliveryDelivered}
 		}
 		// Do-not-disturb set while the message waited holds it too.
@@ -1324,12 +1332,14 @@ func (p *Pane) deliverClean(text string, enter, hold bool, o sendOrigin) SendVer
 	}
 	p.sendMu.Lock()
 	defer p.sendMu.Unlock()
+	p.setSendFrom(o.From) // a hold inside the send keeps its sender (ini-8rkg)
+	defer p.setSendFrom("")
 	return sendPaneTextLocked(p, text, enter)
 }
 
 // queueIfSuspended queues a message for a suspended pane and wakes it,
 // reporting whether it did.
-func (p *Pane) queueIfSuspended(text string, enter bool) bool {
+func (p *Pane) queueIfSuspended(text string, enter bool, from string) bool {
 	p.mu.Lock()
 	suspended := p.suspended
 	cb := p.onSuspendedMessage
@@ -1344,7 +1354,7 @@ func (p *Pane) queueIfSuspended(text string, enter bool) bool {
 	// HERE means every present and future caller inherits queue-on-suspended
 	// without knowing suspension exists: structural, not per-caller vigilance.
 	if suspended {
-		if dropped := p.EnqueueMessage(text, enter); dropped {
+		if dropped := p.EnqueueMessageFrom(text, enter, from); dropped {
 			EmitEvent(p.eventCh, AgentEvent{
 				Type:   EventAgentStalled,
 				Pane:   p.name,

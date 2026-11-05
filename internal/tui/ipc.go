@@ -399,7 +399,7 @@ func (t *TUI) handleIPCSend(conn net.Conn, req IPCRequest) {
 		}
 		if lp, ok := pv.(*Pane); ok && lp.suspended {
 			concretePane = lp
-			dropped := lp.EnqueueMessage(req.Text, req.Enter)
+			dropped := lp.EnqueueMessageFrom(req.Text, req.Enter, req.origin().From)
 			if dropped {
 				t.notifications = append(t.notifications, notification{
 					event: AgentEvent{
@@ -1404,13 +1404,15 @@ func logSnippet(s string) string {
 	return s
 }
 
-func (t *TUI) injectText(pane *Pane, text string, enter bool) {
+func (t *TUI) injectText(pane *Pane, text string, enter bool, from string) {
 	pane.mu.Lock()
 	pane.lastMessageReceived = time.Now()
 	pane.mu.Unlock()
 	waitForCodexReadyIfNeeded(pane)
 	pane.sendMu.Lock()
 	defer pane.sendMu.Unlock()
+	pane.setSendFrom(from) // a re-hold keeps the sender (ini-8rkg)
+	defer pane.setSendFrom("")
 	sendPaneTextLocked(pane, text, enter)
 }
 

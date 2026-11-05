@@ -50,6 +50,9 @@ type DaemonConfig struct {
 
 // Daemon manages headless agent panes and streams them to a yamux client.
 type Daemon struct {
+	// held writes the daemon's own held file (.initech/held-serve.yaml), so
+	// mail held for its agents survives its restart (ini-8rkg).
+	held       *heldWriter
 	authority  *AuthorityIdentity
 	panes      []*Pane
 	panesMu    sync.Mutex            // Protects panes/ringBufs/multiSinks for hot-add/remove via control commands.
@@ -465,6 +468,7 @@ func RunDaemon(cfg DaemonConfig) error {
 		cfg.Agents[i].Env = append(cfg.Agents[i].Env, agentIdentityEnv(cfg.Agents[i].Name, sock...)...)
 	}
 
+	d.held = newHeldWriter(cfg.Project.Root, heldFileServe)
 	// Create and start agent panes with ring buffers and multi-sinks.
 	for _, acfg := range cfg.Agents {
 		p, err := NewPane(acfg, 24, 80)
@@ -482,11 +486,13 @@ func RunDaemon(cfg DaemonConfig) error {
 		d.multiSinks[acfg.Name] = ms
 		p.SetNetworkSink(ms)
 		d.adoptReports(p)
+		p.setHeldHook(d.held)
 
 		p.Start()
 		d.panes = append(d.panes, p)
 		LogInfo("daemon", "agent started", "name", acfg.Name, "pid", p.pid)
 	}
+	d.loadHeldMail(time.Now())
 	defer func() {
 		for _, p := range d.snapshotPanes() {
 			p.Close()

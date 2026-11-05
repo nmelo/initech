@@ -75,7 +75,7 @@ func TestCleanPath_AWindowTwoForwardTypesTheCleanBody(t *testing.T) {
 func TestCleanPath_TheWakeDrainTypesTheCleanBody(t *testing.T) {
 	sendBubble(t, func(t *testing.T) {
 		tui, p, f := rig47vy(t)
-		tui.injectText(p, hostile47vy, true)
+		tui.injectText(p, hostile47vy, true, "")
 		assertCleanPaste(t, "wake drain", f)
 	})
 }

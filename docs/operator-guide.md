@@ -427,10 +427,16 @@ it waited. At 20 waiting messages a new one is refused with
 `not delivered to <agent>: do-not-disturb queue is full` and exit 1; the oldest is kept.
 
 Your own typing and pastes are never held, and neither is a message you send from outside any pane or an inbox reply: those go straight in. super can break through with `initech send --urgent`, which goes straight in and leaves `urgent from super broke do-not-disturb on <agent>` in the log and the event log; `--urgent` from any other agent is refused. A message initech sends itself, `[from initech] ...`, goes to super through the same path and is held like any agent's message. Do-not-disturb trusts the sender's word, which is `INITECH_AGENT`: an agent that clears it reads as you. It is a courtesy between agents, not a security wall. To take a pane out yourself, run
-`initech dnd --agent <agent> off`. Nothing is saved: restarting initech, restarting the agent or waking a suspended one clears it. An initech
+`initech dnd --agent <agent> off`. The flag itself is not saved: restarting initech, restarting the agent or waking a suspended one clears it. The messages it held are kept across a restart of initech (see Held mail across a restart). An initech
 started before this command existed answers `older initech running; restart it for
 do-not-disturb` (exit 2).
 
+
+### Held mail across a restart
+
+A message told it is held (an agent in do-not-disturb, a suspended agent, an open dialog) survives a restart of window 1, an upgrade's stop and start, and a crash. Window 1 writes every held message to `.initech/held.yaml` (readable only by you, 0600) whenever a queue changes, and reads it back at start before it takes a new send: each message goes back to its agent in the order it arrived, ahead of anything new. Do-not-disturb does not survive the restart, so its messages are delivered as `initech dnd off` delivers them; a suspended agent's messages wait for its wake; dialog messages wait for the dialog, their ten minutes counted from the restart. `initech serve` keeps its own file, `.initech/held-serve.yaml`. The log names counts and agents, never a message's words.
+
+When initech cannot keep a message it says so, never silently. A message that was being typed when initech stopped is not typed again; its sender gets `[from initech] the message to <agent> held since <time> may or may not have arrived`. A message to an agent that no longer exists: `held message to <agent> since <time> was not delivered: <agent> no longer exists`. More than 20 held for one agent: the oldest are kept and the sender of each other one is told its queue is full. A held file that does not parse is renamed to `held.yaml.bad-<time>`, never deleted, and super is told. If the file cannot be written (disk full, permissions), the log says so once, and when window 1 exits it prints one line per agent with held mail, its count and senders, that could not be kept. Lines owed to an agent go to its pane through the send path; yours appear as a notice in window 1; anyone else's go to super. An older initech does not read the file: after a downgrade, held mail is lost as it was before, and the file waits for the next newer start.
 ### Schedules
 
 A rig keeps its own schedule, and window 1 runs it whenever the rig is up: through restarts, and after the agent session that added a job has ended. A job delivers a message, or the output of a one-line command, to one pane, at a time of day or on an interval.

@@ -88,7 +88,7 @@ func (p *Pane) dndGate(text string, enter bool, o sendOrigin, broke *bool) (Send
 	case dndOriginRefused:
 		return v, true
 	}
-	return p.holdIfDND(text, enter)
+	return p.holdIfDND(text, enter, o.From)
 }
 
 // dndOnlySuperReason is why an --urgent send from anyone but super to an
@@ -221,6 +221,7 @@ func (p *Pane) endDNDIfDue(now time.Time) bool {
 // quiet it sat through (an earlier release is replaced). It returns how many messages do-not-disturb held and
 // whether the pane was in it.
 func (p *Pane) endDND(now time.Time) (held int, was bool) {
+	defer p.heldChanged() // the held file follows every change (ini-8rkg)
 	p.mu.Lock()
 	was = p.dnd
 	p.dnd = false
@@ -249,7 +250,8 @@ func (p *Pane) endDND(now time.Time) (held int, was bool) {
 // is full. A drain's own message that meets do-not-disturb (set again while
 // the drain ran) goes back to the front with its time, and the drain stops
 // (the ini-1898 re-hold rule).
-func (p *Pane) holdIfDND(text string, enter bool) (SendVerdict, bool) {
+func (p *Pane) holdIfDND(text string, enter bool, from string) (SendVerdict, bool) {
+	defer p.heldChanged() // the held file follows every change (ini-8rkg)
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if !p.dnd {
@@ -266,7 +268,7 @@ func (p *Pane) holdIfDND(text string, enter bool) (SendVerdict, bool) {
 		LogInfo("dnd", "SEND NOT DELIVERED: do-not-disturb queue full", "pane", p.name, "queued", len(p.messageQueue))
 		return SendVerdict{Outcome: DeliveryNotDelivered, Reason: dndQueueFullReason}, true
 	}
-	p.messageQueue = append(p.messageQueue, QueuedMessage{Text: text, Enter: enter, Time: now, DND: true})
+	p.messageQueue = append(p.messageQueue, QueuedMessage{Text: text, Enter: enter, Time: now, DND: true, From: from})
 	LogInfo("dnd", "held: do-not-disturb", "pane", p.name, "queued", len(p.messageQueue))
 	return held, true
 }

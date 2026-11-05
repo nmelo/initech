@@ -160,6 +160,10 @@ type mouseSelection struct {
 // TUI is the main terminal multiplexer. It owns the tcell screen,
 // a set of terminal panes, and handles input routing, layout, and rendering.
 type TUI struct {
+	// held writes window 1's held file (.initech/held.yaml): every pane's
+	// held mail, so a restart keeps it (ini-8rkg). Nil for a viewer, which
+	// owns no panes, and with no project root.
+	held *heldWriter
 	// lastDrawn is how the frame loop last drew each pane, and frameChanged
 	// the panes whose content or drawing changed in the last frame drawn
 	// (ini-ysr.1). Main loop only. Nothing acts on frameChanged yet.
@@ -955,6 +959,17 @@ func Run(cfg Config) error {
 	// hops; on Unix it's a no-op (the cursor was already idle). State is
 	// restored by screen.Fini() on clean exit and panic recovery.
 	screen.HideCursor()
+	// Held mail a failed write could not keep is said on stderr after the
+	// screen closes (ini-8rkg): registered before screen.Fini, so it runs
+	// after it.
+	var heldUnkept func() []string
+	defer func() {
+		if heldUnkept != nil {
+			for _, l := range heldUnkept() {
+				fmt.Fprintln(os.Stderr, l)
+			}
+		}
+	}()
 	defer screen.Fini()
 
 	// Initialize structured logging before anything else.
@@ -1572,6 +1587,18 @@ func Run(cfg Config) error {
 	}
 
 	// Render at ~30 fps.
+	// Held mail from before this start goes back on its panes before the
+	// loop serves the first send (ini-8rkg): IPC sends wait on runOnMain.
+	if !viewer {
+		t.held = newHeldWriter(cfg.ProjectRoot, heldFileWindowOne)
+		for _, pv := range t.panes {
+			if p, ok := pv.(*Pane); ok {
+				p.setHeldHook(t.held)
+			}
+		}
+		t.loadHeldMail(time.Now())
+		heldUnkept = t.held.unkept
+	}
 	ticker := time.NewTicker(maintenanceFrameInterval)
 	defer ticker.Stop()
 

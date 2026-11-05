@@ -462,6 +462,10 @@ type QueuedMessage struct {
 	// waits for a dialog like held mail, its deadline counted from Released.
 	DND      bool
 	Released time.Time
+	// From is who sent it, as the send path names its origin (an agent, the
+	// operator, a peer): the held file keeps it, so a message that cannot be
+	// delivered after a restart is said to its sender (ini-8rkg).
+	From string
 }
 
 // wireSuspendResume gives a pane its resume-on-message trigger (ini-g7fl):
@@ -483,6 +487,7 @@ type QueuedMessage struct {
 // delivered on the next resume from any trigger -- degraded to delayed, never
 // to lost.
 func (t *TUI) wireSuspendResume(p *Pane) {
+	p.setHeldHook(t.held) // every pane window 1 owns writes the held file (ini-8rkg)
 	p.SetOnSuspendedMessage(func(pane *Pane) {
 		run := t.safeGo
 		if run == nil {
@@ -517,11 +522,18 @@ func (t *TUI) wireSuspendResume(p *Pane) {
 // Thread-safe (guards p.mu): called both from the main goroutine (suspended
 // resume path) and from the send goroutine (modal-deferred sends, ini-7txh).
 func (p *Pane) EnqueueMessage(text string, enter bool) bool {
-	return p.enqueue(QueuedMessage{Text: text, Enter: enter, Time: time.Now()})
+	return p.EnqueueMessageFrom(text, enter, "")
+}
+
+// EnqueueMessageFrom is EnqueueMessage naming the sender, which the held
+// file keeps (ini-8rkg).
+func (p *Pane) EnqueueMessageFrom(text string, enter bool, from string) bool {
+	return p.enqueue(QueuedMessage{Text: text, Enter: enter, Time: time.Now(), From: from})
 }
 
 // enqueue appends m, dropping the oldest message at capacity.
 func (p *Pane) enqueue(m QueuedMessage) bool {
+	defer p.heldChanged() // the held file follows every change (ini-8rkg)
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	dropped := false
@@ -546,6 +558,7 @@ func (p *Pane) enqueue(m QueuedMessage) bool {
 // carry, because it lived in a local slice. Popping per message bounds the
 // loss to the single message actually in flight.
 func (p *Pane) PopQueuedMessage() (QueuedMessage, bool) {
+	defer p.heldChanged() // the held file follows every change (ini-8rkg)
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if len(p.messageQueue) == 0 {
@@ -557,6 +570,7 @@ func (p *Pane) PopQueuedMessage() (QueuedMessage, bool) {
 }
 
 func (p *Pane) DrainQueue() []QueuedMessage {
+	defer p.heldChanged() // the held file follows every change (ini-8rkg)
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if len(p.messageQueue) == 0 {
@@ -744,7 +758,7 @@ func (t *TUI) resumePane(pane *Pane, senderName string) error {
 			// SendText delivers if the live pane is up, or queues and
 			// re-triggers (on its own goroutine, which waits on this same
 			// name lock) if the winner's process died and it is parked again.
-			current.SendText(m.Text, m.Enter)
+			current.SendTextFrom(m.Text, m.Enter, sendOrigin{From: m.From})
 			if i < len(msgs)-1 {
 				time.Sleep(queueDrainInterval)
 			}
@@ -856,8 +870,11 @@ func (t *TUI) resumePane(pane *Pane, senderName string) error {
 				t.applyLayout()
 				replaced = true
 
-				// Drain the queue from the old pane while on main.
+				// Drain the queue from the old pane while on main. The new
+				// pane holds them in hand (the held file keeps them) until
+				// each is typed (ini-8rkg).
 				msgs = pane.DrainQueue()
+				np.typeInHand(msgs)
 				break
 			}
 		}
@@ -942,7 +959,9 @@ func (t *TUI) resumePane(pane *Pane, senderName string) error {
 
 	// Deliver queued messages with gaps.
 	for _, msg := range msgs {
-		t.injectText(np, msg.Text, msg.Enter)
+		np.typingNext() // marked typing in the held file before it goes in
+		t.injectText(np, msg.Text, msg.Enter, msg.From)
+		np.typedOne()
 		if len(msgs) > 1 {
 			time.Sleep(queueDrainInterval)
 		}

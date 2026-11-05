@@ -49,7 +49,7 @@ func TestInjectText_BracketedPaste(t *testing.T) {
 	tui := &TUI{agentEvents: make(chan AgentEvent, 8)}
 
 	// Inject without Enter so we only see the paste markers + text.
-	go tui.injectText(p, "hello", false)
+	go tui.injectText(p, "hello", false, "")
 
 	// Read from the slave side (what Claude Code's stdin sees).
 	// Ctrl+S goes through emulator (not to PTY), so we only see paste bytes.
@@ -136,7 +136,7 @@ func TestInjectText_CtrlS_StillSent(t *testing.T) {
 	p := &Pane{name: "eng1", emu: emu, alive: true, ptmx: &filePty{ptmx}}
 	tui := &TUI{agentEvents: make(chan AgentEvent, 8)}
 
-	go tui.injectText(p, "hi", true)
+	go tui.injectText(p, "hi", true, "")
 
 	select {
 	case <-ctrlSCh:
@@ -201,7 +201,7 @@ func TestInjectText_NoBracketedPasteCodexUsesBracketedPaste(t *testing.T) {
 	}
 	tui := &TUI{agentEvents: make(chan AgentEvent, 8)}
 
-	go tui.injectText(p, "hello", true)
+	go tui.injectText(p, "hello", true, "")
 
 	got := readPTYUntil(t, tty, []byte("\x1b[200~hello\x1b[201~\r"), 2*time.Second)
 	if got != "\x1b[200~hello\x1b[201~\r" {
@@ -234,7 +234,7 @@ func TestInjectText_DeadPane(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		tui.injectText(p, "hi", true)
+		tui.injectText(p, "hi", true, "")
 	}()
 
 	select {

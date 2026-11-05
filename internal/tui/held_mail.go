@@ -33,12 +33,24 @@ const heldMessageDeadline = 10 * time.Minute
 // dialog-held twin of EnqueueMessage; only held messages are subject to the
 // deadline, because a suspended pane's queue is resume mail with its own path.
 func (p *Pane) enqueueHeld(text string, enter bool) bool {
-	return p.enqueue(QueuedMessage{Text: text, Enter: enter, Time: time.Now(), HeldForDialog: true})
+	p.mu.Lock()
+	from := p.sendFrom
+	p.mu.Unlock()
+	return p.enqueue(QueuedMessage{Text: text, Enter: enter, Time: time.Now(), HeldForDialog: true, From: from})
+}
+
+// setSendFrom records whose send the send path is typing, for a hold inside
+// it (enqueueHeld). The caller holds sendMu around the send it names.
+func (p *Pane) setSendFrom(from string) {
+	p.mu.Lock()
+	p.sendFrom = from
+	p.mu.Unlock()
 }
 
 // requeueFront puts a message back at the head of the queue unchanged, so a
 // re-held message keeps both its place and its original time.
 func (p *Pane) requeueFront(m QueuedMessage) {
+	defer p.heldChanged() // the held file follows every change (ini-8rkg)
 	p.mu.Lock()
 	p.messageQueue = append([]QueuedMessage{m}, p.messageQueue...)
 	if len(p.messageQueue) > maxMessageQueue {
@@ -51,6 +63,7 @@ func (p *Pane) requeueFront(m QueuedMessage) {
 // path, so the send's modal guard can recognise it as a re-delivery rather
 // than new mail.
 func (p *Pane) beginRedelivery(m QueuedMessage) {
+	defer p.heldChanged() // the held file follows every change (ini-8rkg)
 	p.mu.Lock()
 	p.redelivering = &m
 	p.mu.Unlock()
@@ -60,6 +73,7 @@ func (p *Pane) beginRedelivery(m QueuedMessage) {
 // Matching on content keeps a concurrent, different send from being mistaken
 // for the drain's message.
 func (p *Pane) takeRedelivery(text string, enter bool) (QueuedMessage, bool) {
+	defer p.heldChanged() // the held file follows every change (ini-8rkg)
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	m := p.redelivering
@@ -73,6 +87,7 @@ func (p *Pane) takeRedelivery(text string, enter bool) (QueuedMessage, bool) {
 // endRedelivery clears the in-flight mark and reports whether the send path
 // kept the message (true) or handed it back because the dialog was open.
 func (p *Pane) endRedelivery() (kept bool) {
+	defer p.heldChanged() // the held file follows every change (ini-8rkg)
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	kept = p.redelivering != nil
@@ -83,6 +98,7 @@ func (p *Pane) endRedelivery() (kept bool) {
 // takeQueued removes and returns the queued messages pick selects, keeping
 // the rest in order.
 func (p *Pane) takeQueued(pick func(QueuedMessage) bool) []QueuedMessage {
+	defer p.heldChanged() // the held file follows every change (ini-8rkg)
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	var out, keep []QueuedMessage

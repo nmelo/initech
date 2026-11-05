@@ -54,3 +54,27 @@ func (t *TUI) sendInitechLine(text string) {
 		initechSend(p, line, sendOrigin{From: initechSender})
 	})
 }
+
+// sendInitechLineTo is sendInitechLine to the local pane named to, for a line
+// owed to one agent (held mail it sent, ini-8rkg). With no such pane it logs
+// one line and sends nothing.
+func (t *TUI) sendInitechLineTo(to, text string) {
+	line := fmt.Sprintf("[from %s] %s", initechSender, text)
+	t.safeGo(func() {
+		var p *Pane
+		if !t.runOnMain(func() {
+			for _, pv := range t.panes {
+				if lp, ok := pv.(*Pane); ok && lp.name == to {
+					p = lp
+				}
+			}
+		}) {
+			return
+		}
+		if p == nil {
+			LogWarn("initech-line", "no local pane for the line; not sent", "to", to)
+			return
+		}
+		initechSend(p, line, sendOrigin{From: initechSender})
+	})
+}
