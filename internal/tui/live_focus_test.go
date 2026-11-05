@@ -303,12 +303,13 @@ func TestLiveFocus_WritesOnlyTheSplitOverTheLayoutUnderneath(t *testing.T) {
 	}
 	altShiftF(tui)
 	tui.saveIfSplitMoved()
-	// Only split and held are added. They sit before the overlay key, which
-	// every save writes last (ini-ye1x).
-	if !strings.HasSuffix(string(before), "overlay: true\n") {
-		t.Fatalf("the saved layout does not end with the overlay key:\n%s", before)
+	// Only split and held are added. They sit before the overlay and
+	// agents_form keys, which every save writes last (ini-ye1x, ini-5d3).
+	const tail = "overlay: true\nagents_form: floating\n"
+	if !strings.HasSuffix(string(before), tail) {
+		t.Fatalf("the saved layout does not end with the overlay and agents_form keys:\n%s", before)
 	}
-	want := strings.TrimSuffix(string(before), "overlay: true\n") + "split: live\nheld: a\noverlay: true\n"
+	want := strings.TrimSuffix(string(before), tail) + "split: live\nheld: a\n" + tail
 	if mid, _ := os.ReadFile(path); string(mid) != want {
 		t.Errorf("layout.yaml while the mode was on:\n%s\nwant:\n%s", mid, want)
 	}
