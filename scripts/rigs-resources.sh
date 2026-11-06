@@ -26,8 +26,16 @@
 # parts, and the anon peak with its time. One RIGS SAMPLE line per sample
 # (UTC time, total, anon, file, processes) follows, so the job's own
 # timestamped log lines (a race shard's package lines) place any sample.
+# The sampler dies with its job: every sample first checks its scope (the
+# job's Runner.Worker pid, found on either platform when the step's ancestry
+# has it, else the cgroup) and exits once that is gone, and start records the
+# loop's pid and start time in $f.pid so report stops exactly that process
+# after reading, never another that took its pid. RIGS_SAMPLES stays the
+# outer bound. RIGS_EVERY (seconds, default 5) is the interval.
 set -u
 f="${RUNNER_TEMP:-/tmp}/rigs-resources"
+self="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
+every="${RIGS_EVERY:-5}"
 case "${1:-}" in
 start)
   : > "$f"
@@ -36,19 +44,31 @@ start)
     cg="/sys/fs/cgroup$(cut -d: -f3 /proc/self/cgroup | head -1)"
     [ -r "$cg/memory.current" ] && [ -r "$cg/pids.current" ] || cg=""
   fi
+  # The worker is the sampler's lifeline on both platforms, and the scope
+  # measured on macOS.
   worker=""
-  if [ -z "$cg" ]; then
-    p=$$
-    while [ -n "$p" ] && [ "$p" -gt 1 ]; do
-      case "$(ps -o comm= -p "$p" 2>/dev/null)" in *Runner.Worker*) worker=$p; break ;; esac
-      p=$(ps -o ppid= -p "$p" 2>/dev/null | tr -d ' ')
-    done
-  fi
+  p=$$
+  while [ -n "$p" ] && [ "$p" -gt 1 ]; do
+    case "$(ps -o comm= -p "$p" 2>/dev/null)" in *Runner.Worker*) worker=$p; break ;; esac
+    p=$(ps -o ppid= -p "$p" 2>/dev/null | tr -d ' ')
+  done
   [ -n "$cg" ] && echo "scope cgroup ${cg#/sys/fs/cgroup}" >> "$f"
-  [ -n "$worker" ] && echo "scope process-tree Runner.Worker pid $worker" >> "$f"
+  [ -z "$cg" ] && [ -n "$worker" ] && echo "scope process-tree Runner.Worker pid $worker" >> "$f"
   [ -z "$cg$worker" ] && { echo "scope none" >> "$f"; exit 0; }
-  (
-    for _ in $(seq 1 "${RIGS_SAMPLES:-1440}"); do
+  "$self" sample "$cg" "$worker" < /dev/null > /dev/null 2>&1 &
+  loop=$!
+  { echo "$loop"; ps -o lstart= -p "$loop" 2>/dev/null; } > "$f.pid"
+  ;;
+sample)
+  # The loop itself, in the background from start; a test runs it directly.
+  cg=${2:-}; worker=${3:-}
+  for _ in $(seq 1 "${RIGS_SAMPLES:-1440}"); do
+      # The scope is gone once its job is: stop, whether or not report runs.
+      if [ -n "$worker" ]; then
+        kill -0 "$worker" 2>/dev/null || exit 0
+      elif [ ! -r "$cg/pids.current" ]; then
+        exit 0
+      fi
       if [ -n "$cg" ]; then
         kb=$(( $(cat "$cg/memory.current") / 1024 )); n=$(cat "$cg/pids.current")
         read -r anon file < <(awk '$1=="anon" {a=$2} $1=="file" {f=$2} END {print int(a/1024), int(f/1024)}' "$cg/memory.stat" 2>/dev/null)
@@ -64,11 +84,24 @@ start)
       else
         echo "$(date +%s) $kb $n" >> "$f"
       fi
-      sleep 5
-    done
-  ) < /dev/null > /dev/null 2>&1 &
+      sleep "$every"
+  done
   ;;
 report)
+  # After reading, stop the loop start left: its pid, only while that pid is
+  # still the process start recorded (same start time), then wait for it.
+  stop_sampler() {
+    [ -r "$f.pid" ] || return 0
+    { read -r pid; read -r began; } < "$f.pid"
+    [ -n "${pid:-}" ] || return 0
+    now=$(ps -o lstart= -p "$pid" 2>/dev/null)
+    if [ -n "$now" ] && [ "$(echo $now)" = "$(echo ${began:-})" ]; then
+      kill "$pid" 2>/dev/null
+      for _ in $(seq 1 50); do kill -0 "$pid" 2>/dev/null || break; sleep 0.1; done
+    fi
+    rm -f "$f.pid"
+  }
+  trap stop_sampler EXIT
   if [ ! -s "$f" ]; then
     echo "RIGS RESOURCES: no samples (the sampler never ran)"
     exit 0
