@@ -57,7 +57,7 @@ func TestWhy_EachConditionHoldsTheJob(t *testing.T) {
 }
 
 // The wait: it looks again every interval, says why each time, and goes once
-// the host is quiet; past the cap it runs anyway with a GitHub warning.
+// the host is quiet; past the cap it fails with a GitHub error.
 func TestRun_WaitsThenGoesOrGivesUpAtTheCap(t *testing.T) {
 	c := gate()
 	loads := []float64{9, 7.5, 5}
@@ -75,7 +75,9 @@ func TestRun_WaitsThenGoesOrGivesUpAtTheCap(t *testing.T) {
 	elapsed, out = 0, bytes.Buffer{}
 	waited, gaveUp = run(c, func() (reading, error) { return reading{40, at("10:00"), 0}, nil },
 		func(d time.Duration) { elapsed += d }, func() time.Duration { return elapsed }, &out)
-	if !gaveUp || waited != 20*time.Minute || !strings.Contains(out.String(), "::warning::load gate: waited 20m0s and the 5-minute load is 40.00, over 6.00; running the job anyway") {
+	// ini-r0d8 AC1: at the cap the gate fails, naming the load, the line and
+	// the wait, so the runner frees; it never runs the job on a loaded host.
+	if !gaveUp || waited != 20*time.Minute || !strings.Contains(out.String(), "::error::load gate: the 5-minute load is 40.00, over 6.00, for 20m0s; failing so the runner frees; rerun when the host is quiet") || strings.Contains(out.String(), "running the job anyway") {
 		t.Errorf("at the cap: waited %v, gave up %v:\n%s", waited, gaveUp, out.String()[max(0, out.Len()-300):])
 	}
 	// A host it cannot read never holds a job.
@@ -125,5 +127,62 @@ func TestDefaultMaxLoad_IsTheOperatorsTwentyFour(t *testing.T) {
 	}
 	if got := why(c, reading{24.01, at("10:00"), 0}); got != "the 5-minute load is 24.01, over 24.00" {
 		t.Errorf("past the limit: %q", got)
+	}
+}
+
+// fakeHost is a look that always reads r, with a clock the sleeps advance.
+func fakeHost(r reading) (func() (reading, error), func(time.Duration), func() time.Duration) {
+	var elapsed time.Duration
+	return func() (reading, error) { return r, nil },
+		func(d time.Duration) { elapsed += d },
+		func() time.Duration { return elapsed }
+}
+
+// ini-r0d8 AC2: the failure reaches the exit code, through the same flags the
+// action passes; the twins exit 0.
+func TestGate_ExitsNonZeroAtTheLimitAndZeroOtherwise(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		r    reading
+		err  error
+		want int
+		says string
+	}{
+		{"over the line past the limit", reading{101.2, at("10:00"), 0}, nil, 1, "::error::load gate: the 5-minute load is 101.20, over 24.00, for 20m0s"},
+		{"under the line", reading{3, at("10:00"), 0}, nil, 0, "load gate: go (5-minute load 3.00"},
+		{"host cannot be read", reading{}, errors.New("no sysctl"), 0, "cannot read the host (no sysctl): running the job"},
+	} {
+		look, sleep, since := fakeHost(c.r)
+		if c.err != nil {
+			look = func() (reading, error) { return reading{}, c.err }
+		}
+		var out bytes.Buffer
+		if got := gateExit([]string{"-tz", "UTC"}, look, sleep, since, &out); got != c.want || !strings.Contains(out.String(), c.says) {
+			t.Errorf("%s: exit %d, want %d; output:\n%s", c.name, got, c.want, out.String()[max(0, out.Len()-300):])
+		}
+	}
+	var out bytes.Buffer
+	if got := gateExit([]string{"-skip", "nonsense"}, nil, nil, nil, &out); got != 2 {
+		t.Errorf("a bad flag: exit %d, want 2", got)
+	}
+}
+
+// The skip window and the simulators wait fail at the same limit, each naming
+// its own reason.
+func TestRun_EveryWaitFailsAtTheLimit(t *testing.T) {
+	c := gate()
+	c.simulators = true
+	for _, r := range []struct {
+		reading
+		says string
+	}{
+		{reading{1, at("12:00"), 0}, "12:00 is inside the 11:45 to 12:15 window, for 20m0s; failing so the runner frees"},
+		{reading{1, at("10:00"), 2}, "2 iOS simulator(s) booted, for 20m0s; failing so the runner frees"},
+	} {
+		look, sleep, since := fakeHost(r.reading)
+		var out bytes.Buffer
+		if _, failed := run(c, look, sleep, since, &out); !failed || !strings.Contains(out.String(), "::error::load gate: "+r.says) {
+			t.Errorf("%v: failed %v:\n%s", r.reading, failed, out.String()[max(0, out.Len()-200):])
+		}
 	}
 }

@@ -10,9 +10,11 @@
 // -simulators, while any iOS simulator is booted on the host, by any user
 // (simctl only lists the calling user's own devices, so the gate counts
 // launchd_sim processes). It reads every 15 seconds and says why it waits.
-// After -max-wait it lets the job run anyway and says so as a GitHub warning,
-// so a long hold is a stated miss, never a silent one and never a failed job;
-// the job's timeout-minutes allows for it.
+// After -max-wait it fails the job with one GitHub error line naming what it
+// waited on (the measured load and the line, the window or the simulators) and
+// for how long, so the runner frees and the rerun is a choice; a job never
+// starts on a host that is still loaded. A host it cannot read never holds or
+// fails a job: it runs, and says so.
 package main
 
 import (
@@ -65,7 +67,8 @@ func why(c config, r reading) string {
 func hhmm(m int) string { return fmt.Sprintf("%02d:%02d", m/60, m%60) }
 
 // run waits until look says the job may go or maxWait has passed, writing one
-// line a look to w. It returns how long it waited and whether it gave up.
+// line a look to w. It returns how long it waited and whether it failed: at
+// maxWait the job must not run on a host that is still loaded.
 func run(c config, look func() (reading, error), sleep func(time.Duration), since func() time.Duration, w io.Writer) (time.Duration, bool) {
 	for {
 		r, err := look()
@@ -79,7 +82,7 @@ func run(c config, look func() (reading, error), sleep func(time.Duration), sinc
 			return since(), false
 		}
 		if since() >= c.maxWait {
-			fmt.Fprintf(w, "::warning::load gate: waited %s and %s; running the job anyway\n", c.maxWait, reason)
+			fmt.Fprintf(w, "::error::load gate: %s, for %s; failing so the runner frees; rerun when the host is quiet\n", reason, c.maxWait)
 			return since(), true
 		}
 		fmt.Fprintf(w, "load gate: waiting, %s\n", reason)
@@ -139,42 +142,61 @@ func parseWindow(s string) (int, int, error) {
 }
 
 func main() {
-	maxLoad := flag.Float64("max-load", defaultMaxLoad, "wait while the 5-minute load average is over this")
-	skip := flag.String("skip", "11:45-12:15", "wait while the local time is inside HH:MM-HH:MM (empty: never)")
-	tz := flag.String("tz", "America/New_York", "the time zone of -skip")
-	maxWait := flag.Duration("max-wait", 20*time.Minute, "run the job anyway after waiting this long")
-	sims := flag.Bool("simulators", false, "also wait while any iOS simulator is booted, by any user")
-	flag.Parse()
+	os.Exit(gateExit(os.Args[1:], nil, time.Sleep, nil, os.Stdout))
+}
+
+// gateExit parses args as the action passes them, runs the gate and returns
+// the process's exit code. A nil look reads the real host; a nil since is the
+// time since the call.
+func gateExit(args []string, look func() (reading, error), sleep func(time.Duration), since func() time.Duration, w io.Writer) int {
+	fs := flag.NewFlagSet("loadgate", flag.ContinueOnError)
+	fs.SetOutput(w)
+	maxLoad := fs.Float64("max-load", defaultMaxLoad, "wait while the 5-minute load average is over this")
+	skip := fs.String("skip", "11:45-12:15", "wait while the local time is inside HH:MM-HH:MM (empty: never)")
+	tz := fs.String("tz", "America/New_York", "the time zone of -skip")
+	maxWait := fs.Duration("max-wait", 20*time.Minute, "fail the job after waiting this long")
+	sims := fs.Bool("simulators", false, "also wait while any iOS simulator is booted, by any user")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
 	from, to, err := parseWindow(*skip)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "load gate:", err)
-		os.Exit(2)
+		fmt.Fprintln(w, "load gate:", err)
+		return 2
 	}
 	loc, err := time.LoadLocation(*tz)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "load gate:", err)
-		os.Exit(2)
+		fmt.Fprintln(w, "load gate:", err)
+		return 2
 	}
 	c := config{maxLoad: *maxLoad, skipFrom: from, skipTo: to, maxWait: *maxWait, simulators: *sims, every: 15 * time.Second}
-	start := time.Now()
-	look := func() (reading, error) {
-		out, err := exec.Command("sysctl", "-n", "vm.loadavg").Output()
-		if err != nil {
-			return reading{}, err
-		}
-		l, err := parseLoad(string(out))
-		if err != nil {
-			return reading{}, err
-		}
-		r := reading{load5: l, now: time.Now().In(loc)}
-		if c.simulators {
-			ps, err := exec.Command("ps", "-A", "-o", "comm=").Output()
+	if since == nil {
+		start := time.Now()
+		since = func() time.Duration { return time.Since(start) }
+	}
+	if look == nil {
+		look = func() (reading, error) {
+			out, err := exec.Command("sysctl", "-n", "vm.loadavg").Output()
 			if err != nil {
 				return reading{}, err
 			}
-			r.simulators = countSimulators(string(ps))
+			l, err := parseLoad(string(out))
+			if err != nil {
+				return reading{}, err
+			}
+			r := reading{load5: l, now: time.Now().In(loc)}
+			if c.simulators {
+				ps, err := exec.Command("ps", "-A", "-o", "comm=").Output()
+				if err != nil {
+					return reading{}, err
+				}
+				r.simulators = countSimulators(string(ps))
+			}
+			return r, nil
 		}
-		return r, nil
 	}
-	run(c, look, time.Sleep, func() time.Duration { return time.Since(start) }, os.Stdout)
+	if _, failed := run(c, look, sleep, since, w); failed {
+		return 1
+	}
+	return 0
 }

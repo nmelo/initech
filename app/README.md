@@ -63,7 +63,9 @@ repo variable `APP_TESTS` is not `on`; the variable is set only once a load
 sample shows the runner's machine can take one simulator. A run waits at the
 shared load gate (`.github/actions/load-gate`: while that machine's 5-minute
 load is over 24, during another project's nightly window, and while any
-simulator is booted there; after 20 minutes it goes ahead with a warning),
+simulator is booted there; after 20 minutes it fails the job, naming the
+load and the line it waits under, so the runner frees and the rerun is a
+choice),
 runs one device on a fresh simulator through `sim-test.sh` once its first boot
 has finished, and fails if a crash report from the app, its test runners,
 SpringBoard or PosterBoard names that simulator (a report from any other

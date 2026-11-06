@@ -18,7 +18,7 @@
 # - The job waits at the shared load gate first (.github/actions/load-gate,
 #   with simulators): while the host's 5-minute load is over 24, during the
 #   other project's nightly window, and while any simulator is booted there by
-#   anyone; after 20 minutes it runs with a warning. The job's timeout allows
+#   anyone; after 20 minutes it fails the job, naming the load. The job's timeout allows
 #   that wait and the lock's; the run itself stays bounded by sim-test.sh
 #   (7 minutes for the first boot, 18 for the tests).
 # - app/scripts/sim-test.sh makes a simulator for the run, waits for its first

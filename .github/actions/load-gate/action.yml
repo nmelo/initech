@@ -4,8 +4,9 @@ description: >-
   the operator's conditions): while the host's 5-minute load is over 24, while
   it is 11:45 to 12:15 in New York (another project's nightly build), and, with
   simulators set, while any iOS simulator is booted there, by any user. After
-  20 minutes it lets the job run anyway with a warning, so a long hold is a
-  stated miss, never a silent one. Use it right after setup-go, once per run:
+  20 minutes it fails the job with one error line naming the load and the line
+  (or the window, or the simulators) and the wait, so the runner frees and the
+  rerun is a choice; a host it cannot read runs the job. Use it right after setup-go, once per run:
   in ci.yml it is the last step of the gate job, which every job that starts
   the work needs, so a waiting run holds one runner; a one-job workflow
   (app-tests) uses it in that job. Jobs that follow other jobs never use it, so
