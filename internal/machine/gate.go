@@ -9,7 +9,8 @@ import (
 
 // ClearAfter is how long all three numbers must stay under the ceiling
 // before it clears, so a dip under for one reading does not let a start
-// through only to engage again.
+// through only to engage again. Clearing's words say "one minute": change
+// both together.
 const ClearAfter = time.Minute
 
 // Reading is one look at the machine. A number whose OK is false could not
@@ -97,6 +98,9 @@ func (g *Gate) Admit() (ok bool, words string) {
 	if r.AwakeOK {
 		r.Awake += g.admitted
 	}
+	if g.engaged && !Over(r, g.ceiling) && !g.underSince.IsZero() {
+		return false, Clearing(r, g.ceiling, g.underSince, g.underSince.Add(ClearAfter))
+	}
 	if g.engaged || Over(r, g.ceiling) {
 		return false, Refusal(r, g.ceiling)
 	}
@@ -127,6 +131,20 @@ func (g *Gate) Snapshot() (r Reading, c Ceiling, engaged, seen bool) {
 // 6.1 GB free, load 34; ceiling 30 / 8 GB / 30".
 func Refusal(r Reading, c Ceiling) string {
 	return "not started: the Mac is at its ceiling: " + figures(r) + "; ceiling " + ceilingFigures(c)
+}
+
+// Clearing is the refusal during the hold, once every figure is under: the
+// ceiling stays engaged until ClearAfter under, so the words say since when
+// and when starts resume, instead of blaming figures that are under: "not
+// started: the ceiling is clearing: every figure under since 14:02 (28/30
+// sessions, 11.0 GB free over the 8 GB floor, load 12/30); starts again after
+// one minute under, at 14:03". Times print in their own location (the
+// readings' clock); an unread figure is "?".
+func Clearing(r Reading, c Ceiling, since, resume time.Time) string {
+	return fmt.Sprintf("not started: the ceiling is clearing: every figure under since %s "+
+		"(%s/%d sessions, %s GB free over the %s GB floor, load %s/%s); starts again after one minute under, at %s",
+		since.Format("15:04"), awakeText(r), c.Sessions, freeText(r), num(c.FreeMemoryGB), loadText(r), num(c.Load),
+		resume.Format("15:04"))
 }
 
 // Deferred is what a sender hears when its send to a suspended agent is held
