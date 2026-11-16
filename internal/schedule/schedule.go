@@ -29,13 +29,16 @@ const MinInterval = time.Minute
 
 // Job is one scheduled delivery.
 type Job struct {
-	ID         string     `yaml:"id"`
-	Owner      string     `yaml:"owner"`
-	To         string     `yaml:"to"`
-	At         string     `yaml:"at,omitempty"`
-	Every      string     `yaml:"every,omitempty"`
-	Message    string     `yaml:"message,omitempty"`
-	Command    string     `yaml:"command,omitempty"`
+	ID      string `yaml:"id"`
+	Owner   string `yaml:"owner"`
+	To      string `yaml:"to"`
+	At      string `yaml:"at,omitempty"`
+	Every   string `yaml:"every,omitempty"`
+	Message string `yaml:"message,omitempty"`
+	Command string `yaml:"command,omitempty"`
+	// Quiet is a command job whose run delivers nothing when the command
+	// exits 0 with no output but whitespace (ini-7k3n).
+	Quiet      bool       `yaml:"quiet,omitempty"`
 	Created    time.Time  `yaml:"created"`
 	LastRun    *time.Time `yaml:"last_run,omitempty"`
 	LastResult string     `yaml:"last_result,omitempty"`
@@ -149,6 +152,8 @@ func (j Job) Validate() error {
 		return errors.New("a job has exactly one of message and command")
 	case strings.ContainsAny(j.Command, "\r\n"):
 		return errors.New("a command is one line")
+	case j.Quiet && j.Command == "":
+		return errors.New("--quiet goes with --command, not --message: only a command's run can be quiet")
 	}
 	if j.At != "" {
 		if _, err := parseAt(j.At); err != nil {

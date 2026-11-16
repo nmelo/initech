@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"gopkg.in/yaml.v3"
 )
 
 // at builds a local time on 2026-11-04 (a Wednesday) for the tests' fake clock.
@@ -252,5 +254,106 @@ func TestNext_ListsTheNextRun(t *testing.T) {
 	k := Job{Every: "1h", Created: at(4, 8, 0)}
 	if got := k.Next(at(4, 8, 10), at(4, 8, 0)); !got.Equal(at(4, 9, 0)) {
 		t.Fatalf("next %v, want 09:00", got)
+	}
+}
+
+// ── ini-7k3n: quiet ─────────────────────────────────────────────────────
+
+// v2611Job and v2611File are the schedule's types exactly as v2.61.1 shipped
+// them, before quiet existed: the writer of old files and the reader of new
+// ones after a downgrade.
+type v2611Job struct {
+	ID         string     `yaml:"id"`
+	Owner      string     `yaml:"owner"`
+	To         string     `yaml:"to"`
+	At         string     `yaml:"at,omitempty"`
+	Every      string     `yaml:"every,omitempty"`
+	Message    string     `yaml:"message,omitempty"`
+	Command    string     `yaml:"command,omitempty"`
+	Created    time.Time  `yaml:"created"`
+	LastRun    *time.Time `yaml:"last_run,omitempty"`
+	LastResult string     `yaml:"last_result,omitempty"`
+	Told       string     `yaml:"told,omitempty"`
+	Line       int        `yaml:"-"`
+}
+
+type v2611File struct {
+	NextID int        `yaml:"next_id"`
+	Jobs   []v2611Job `yaml:"jobs"`
+}
+
+// TestQuiet_AFileWrittenBy2611LoadsUnchanged is rule 5: no quiet key, every
+// job loads not quiet, and writing it back gives the same bytes.
+func TestQuiet_AFileWrittenBy2611LoadsUnchanged(t *testing.T) {
+	old, err := yaml.Marshal(v2611File{NextID: 2, Jobs: []v2611Job{
+		{ID: "s1", Owner: "eng1", To: "qa1", Every: "5m", Command: "bd ready", Created: at(4, 9, 0), LastRun: ptr(at(4, 9, 5)), LastResult: "delivered"},
+		{ID: "s2", Owner: "eng1", To: "qa1", At: "09:30", Message: "standup", Created: at(4, 9, 0)},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), FileName)
+	if err := os.WriteFile(path, old, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	f, err := Load(path)
+	if err != nil || len(f.Jobs) != 2 || f.Jobs[0].Quiet || f.Jobs[1].Quiet {
+		t.Fatalf("loaded %+v %v", f, err)
+	}
+	if err := Save(path, f); err != nil {
+		t.Fatal(err)
+	}
+	if again, _ := os.ReadFile(path); string(again) != string(old) {
+		t.Fatalf("a 2.61.1 file changed on write:\n%s\nwant\n%s", again, old)
+	}
+}
+
+// TestQuiet_A2611ReaderLoadsANewFile is rule 6: v2.61.1's reader (yaml.v3
+// decoding into its own types, unknown keys allowed) loads a file holding a
+// quiet job without error; it sees the job, not quiet.
+func TestQuiet_A2611ReaderLoadsANewFile(t *testing.T) {
+	data, err := yaml.Marshal(&File{NextID: 1, Jobs: []Job{{ID: "s1", Owner: "eng1", To: "qa1", Every: "5m", Command: "bd ready", Quiet: true, Created: at(4, 9, 0)}}})
+	if err != nil || !strings.Contains(string(data), "quiet: true") {
+		t.Fatalf("the new file: %v\n%s", err, data)
+	}
+	var doc yaml.Node
+	if err := yaml.Unmarshal(data, &doc); err != nil {
+		t.Fatal(err)
+	}
+	var old v2611File
+	if err := doc.Decode(&old); err != nil || len(old.Jobs) != 1 || old.Jobs[0].Command != "bd ready" {
+		t.Fatalf("a 2.61.1 reader: %+v %v", old, err)
+	}
+}
+
+// TestQuiet_IsSavedAndOmittedWhenFalse: quiet survives a write and a read, and
+// a job without it writes no key.
+func TestQuiet_IsSavedAndOmittedWhenFalse(t *testing.T) {
+	path := filepath.Join(t.TempDir(), FileName)
+	f := &File{}
+	for _, q := range []bool{true, false} {
+		if _, err := f.Add(Job{Owner: "eng1", To: "qa1", Every: "5m", Command: "bd ready", Quiet: q, Created: at(4, 9, 0)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := Save(path, f); err != nil {
+		t.Fatal(err)
+	}
+	data, _ := os.ReadFile(path)
+	if n := strings.Count(string(data), "quiet"); n != 1 {
+		t.Fatalf("%d quiet keys, want one:\n%s", n, data)
+	}
+	back, err := Load(path)
+	if err != nil || !back.Jobs[0].Quiet || back.Jobs[1].Quiet {
+		t.Fatalf("read back %+v %v", back, err)
+	}
+}
+
+// TestQuiet_OnAMessageJobIsNotValid is AC5 in the file: quiet goes with a
+// command only, and the error names both flags.
+func TestQuiet_OnAMessageJobIsNotValid(t *testing.T) {
+	err := Job{Owner: "eng1", To: "qa1", Every: "5m", Message: "hi", Quiet: true}.Validate()
+	if err == nil || !strings.Contains(err.Error(), "--quiet") || !strings.Contains(err.Error(), "--message") {
+		t.Fatalf("validate: %v", err)
 	}
 }

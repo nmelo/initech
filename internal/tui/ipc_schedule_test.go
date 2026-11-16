@@ -171,3 +171,57 @@ func TestCron_ARequestFromOutsideAnyPaneIsRefused(t *testing.T) {
 		t.Fatalf("an add from outside any pane: %+v", resp)
 	}
 }
+
+// ── ini-7k3n: a quiet command job ──────────────────────────────────────
+
+// TestQuietCron_AQuietRunWakesNoSuspendedPane is AC1 through window 1's real
+// delivery: a suspended target is neither queued for nor woken by a quiet run,
+// while the same empty run of a job without quiet queues and wakes it.
+func TestQuietCron_AQuietRunWakesNoSuspendedPane(t *testing.T) {
+	for _, c := range []struct {
+		quiet         bool
+		queued, wakes int
+	}{{true, 0, 0}, {false, 1, 1}} {
+		wakes := 0
+		p := &Pane{name: "eng2", suspended: true, onSuspendedMessage: func(*Pane) { wakes++ }}
+		tui, clk := cronTUI(t, p)
+		f := &schedule.File{}
+		if _, err := f.Add(schedule.Job{Owner: "qa1", To: "eng2", Every: "1m", Command: "true", Quiet: c.quiet, Created: clk.now()}); err != nil {
+			t.Fatal(err)
+		}
+		if err := schedule.Save(tui.sched.path, f); err != nil {
+			t.Fatal(err)
+		}
+		tui.sched.step(clk, clockAt(4, 9, 1))
+		if n := p.QueuedMessageCount(); n != c.queued || wakes != c.wakes {
+			t.Fatalf("quiet %v: queued %d and woke %d times, want %d and %d", c.quiet, n, wakes, c.queued, c.wakes)
+		}
+	}
+}
+
+// TestQuietCron_AddStoresQuietAndSaysSo: the stored job is quiet and the reply
+// names it, which is what initech cron add checks (rule 7).
+func TestQuietCron_AddStoresQuietAndSaysSo(t *testing.T) {
+	tui, _ := cronTUI(t)
+	resp := cronIPC(t, tui, cronAddReq("eng1", CronAddRequest{To: "qa1", Every: "5m", Command: "bd ready", Quiet: true}))
+	if !resp.OK || resp.Data != "added s1, owned by eng1, quiet" {
+		t.Fatalf("add answered %+v", resp)
+	}
+	f, err := schedule.Load(tui.sched.path)
+	if err != nil || len(f.Jobs) != 1 || !f.Jobs[0].Quiet {
+		t.Fatalf("stored %+v %v, want a quiet job", f, err)
+	}
+	plain := cronIPC(t, tui, cronAddReq("eng1", CronAddRequest{To: "qa1", Every: "5m", Command: "bd ready"}))
+	if plain.Data != "added s2, owned by eng1" {
+		t.Fatalf("a plain add answered %q", plain.Data)
+	}
+}
+
+// TestQuietCron_QuietOnAMessageIsRefused is AC5 at window 1.
+func TestQuietCron_QuietOnAMessageIsRefused(t *testing.T) {
+	tui, _ := cronTUI(t)
+	resp := cronIPC(t, tui, cronAddReq("eng1", CronAddRequest{To: "qa1", Every: "5m", Message: "hi", Quiet: true}))
+	if resp.OK || !strings.Contains(resp.Error, "--quiet") || !strings.Contains(resp.Error, "--message") {
+		t.Fatalf("answered %+v, want a refusal naming --quiet and --message", resp)
+	}
+}

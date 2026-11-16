@@ -147,7 +147,14 @@ func (s *rigScheduler) tick() {
 // fire runs one claimed job and records what became of it.
 func (s *rigScheduler) fire(c claim) {
 	j := c.job
-	text, cmdFailure := s.compose(c)
+	text, cmdFailure, quiet := s.compose(c)
+	if quiet {
+		// A quiet run makes no deliver call: nothing is typed, no suspended
+		// pane wakes, super hears nothing (ini-7k3n). It is still recorded;
+		// told stays, since nothing was delivered.
+		s.record(j.ID, quietResult, "", false)
+		return
+	}
 	ok, why := s.host.deliver(j.To, text, j.Owner)
 	result := "delivered"
 	var tell string
@@ -159,36 +166,51 @@ func (s *rigScheduler) fire(c claim) {
 		result = "delivered; " + cmdFailure
 		tell = fmt.Sprintf("schedule %s (owner %s, to %s): its command %s", j.ID, j.Owner, j.To, cmdFailure)
 	}
-	// A delivery failure is said once until the job delivers again, or until
-	// it fails for another reason; told rides in the file, so a restart does
-	// not say it again.
+	if s.record(j.ID, result, why, ok) {
+		tell = "" // This delivery failure was already said.
+	}
+	if tell != "" {
+		s.host.tellSuper(tell)
+	}
+}
+
+// quietResult is a quiet run's last result (ini-7k3n).
+const quietResult = "quiet: exit 0, no output"
+
+// record ends a run: it frees the job and writes its result. A delivery
+// failure is said once until the job delivers again, or until it fails for
+// another reason; told rides in the file, so a restart does not say it again.
+// record reports whether this failure was already told. A quiet run passes
+// why "" and delivered false and leaves told as it was.
+func (s *rigScheduler) record(id, result, why string, delivered bool) (alreadyTold bool) {
 	s.mu.Lock()
-	delete(s.inFlight, j.ID)
+	defer s.mu.Unlock()
+	delete(s.inFlight, id)
 	for i := range s.file.Jobs {
 		f := &s.file.Jobs[i]
-		if f.ID != j.ID {
+		if f.ID != id {
 			continue
 		}
 		f.LastResult = result
 		switch {
-		case ok:
+		case delivered:
 			f.Told = ""
+		case why == "":
 		case f.Told == why:
-			tell = ""
+			alreadyTold = true
 		default:
 			f.Told = why
 		}
 		s.saveLocked()
 		break
 	}
-	s.mu.Unlock()
-	if tell != "" {
-		s.host.tellSuper(tell)
-	}
+	return alreadyTold
 }
 
-// compose builds the text a run delivers, and says how a command failed.
-func (s *rigScheduler) compose(c claim) (text, cmdFailure string) {
+// compose builds the text a run delivers, and says how a command failed. quiet
+// is a quiet job's run that ran, exited 0 and printed nothing but whitespace
+// (after the cut): it delivers nothing (ini-7k3n).
+func (s *rigScheduler) compose(c claim) (text, cmdFailure string, quiet bool) {
 	j := c.job
 	var b strings.Builder
 	fmt.Fprintf(&b, "[from %s, schedule %s] ", j.Owner, j.ID)
@@ -197,7 +219,7 @@ func (s *rigScheduler) compose(c claim) (text, cmdFailure string) {
 	}
 	if j.Command == "" {
 		b.WriteString(j.Message)
-		return b.String(), ""
+		return b.String(), "", false
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), s.bound)
 	defer cancel()
@@ -216,9 +238,10 @@ func (s *rigScheduler) compose(c claim) (text, cmdFailure string) {
 			cmdFailure = fmt.Sprintf("exited %d", code)
 		}
 		fmt.Fprintf(&b, "exit %d\n", code)
+		quiet = j.Quiet && code == 0 && strings.TrimSpace(out) == ""
 	}
 	b.WriteString(strings.TrimRight(out, "\n"))
-	return strings.TrimRight(b.String(), "\n"), cmdFailure
+	return strings.TrimRight(b.String(), "\n"), cmdFailure, quiet
 }
 
 // reloadIfChanged reads the file when it changed on disk. A file that does not

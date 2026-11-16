@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"errors"
 	"os"
 	"strings"
 	"sync"
@@ -427,5 +428,108 @@ func TestScheduler_TheCutLandsOnARuneBoundary(t *testing.T) {
 	body := strings.TrimSuffix(got, "\n[output cut at 2 KB]")
 	if !utf8.ValidString(body) || len(body) > scheduleOutputCut+1 {
 		t.Fatalf("cut to %d bytes, valid %v", len(body), utf8.ValidString(body))
+	}
+}
+
+// ── ini-7k3n: a quiet command job ──────────────────────────────────────
+
+// quietRun runs one interval tick of a job on the real command runner unless
+// runLine is given, and returns what was delivered, what super heard and the
+// job's last result.
+func quietRun(t *testing.T, job schedule.Job, runLine func(context.Context, string, string) (string, int, error), bound *time.Duration) ([]string, []string, string) {
+	t.Helper()
+	s, host, clk := schedRig(t, clockAt(4, 9, 0), job)
+	if runLine != nil {
+		s.runLine = runLine
+	}
+	if bound != nil {
+		s.bound = *bound
+	}
+	s.step(clk, clockAt(4, 9, 1))
+	d, sup := host.snap()
+	return d, sup, reload(t, s).Jobs[0].LastResult
+}
+
+// TestQuietCron_AQuietRunDeliversNothing is AC1 red-first: a quiet job whose
+// command prints nothing, or only whitespace, and exits 0 makes no deliver
+// call and tells super nothing, and the run is recorded as quiet.
+func TestQuietCron_AQuietRunDeliversNothing(t *testing.T) {
+	for name, line := range map[string]string{
+		"nothing":         "true",
+		"only whitespace": `printf '\n \t\n\n'`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			d, sup, last := quietRun(t, schedule.Job{Owner: "qa1", To: "eng2", Every: "1m", Command: line, Quiet: true}, nil, nil)
+			if len(d) != 0 || len(sup) != 0 {
+				t.Fatalf("a quiet run delivered %q and told super %q", d, sup)
+			}
+			if last != "quiet: exit 0, no output" {
+				t.Fatalf("last result %q", last)
+			}
+		})
+	}
+}
+
+// TestQuietCron_EverythingElseDeliversAsToday is AC2: the same quiet job
+// delivers today's exact text when it has output, exits non-zero, is stopped
+// by the bound or does not run; and a job without quiet delivers its empty run.
+func TestQuietCron_EverythingElseDeliversAsToday(t *testing.T) {
+	zero := time.Duration(0) // Already past: the stop path with no clock.
+	cases := []struct {
+		name    string
+		job     schedule.Job
+		run     func(context.Context, string, string) (string, int, error)
+		bound   *time.Duration
+		text    string
+		toSuper string
+	}{
+		{name: "output", job: schedule.Job{Command: "echo found", Quiet: true},
+			text: "eng2|qa1|[from qa1, schedule s1] $ echo found\nexit 0\nfound"},
+		{name: "exit 1 with no output", job: schedule.Job{Command: "exit 1", Quiet: true},
+			text: "eng2|qa1|[from qa1, schedule s1] $ exit 1\nexit 1", toSuper: "exited 1"},
+		{name: "stopped by the bound", job: schedule.Job{Command: "sleep 9", Quiet: true},
+			run:   func(context.Context, string, string) (string, int, error) { return "", 0, nil },
+			bound: &zero, text: "eng2|qa1|[from qa1, schedule s1] $ sleep 9\nstopped after 0s", toSuper: "was stopped after 0s"},
+		{name: "did not run", job: schedule.Job{Command: "true", Quiet: true},
+			run:  func(context.Context, string, string) (string, int, error) { return "", 0, errors.New("no shell") },
+			text: "eng2|qa1|[from qa1, schedule s1] $ true\ndid not run: no shell", toSuper: "did not run: no shell"},
+		{name: "not quiet, empty run", job: schedule.Job{Command: "true"},
+			text: "eng2|qa1|[from qa1, schedule s1] $ true\nexit 0"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			c.job.Owner, c.job.To, c.job.Every = "qa1", "eng2", "1m"
+			d, sup, last := quietRun(t, c.job, c.run, c.bound)
+			if len(d) != 1 || d[0] != c.text {
+				t.Fatalf("delivered %q, want exactly %q", d, c.text)
+			}
+			if c.toSuper == "" && len(sup) != 0 || c.toSuper != "" && (len(sup) != 1 || !strings.Contains(sup[0], c.toSuper)) {
+				t.Fatalf("super heard %q, want %q", sup, c.toSuper)
+			}
+			if strings.HasPrefix(last, "quiet") {
+				t.Fatalf("a delivered run recorded %q", last)
+			}
+		})
+	}
+}
+
+// TestQuietCron_AMissedRunFollowsTheSameRule: a quiet time job due while
+// initech was down delivers nothing when quiet, and with its note otherwise.
+func TestQuietCron_AMissedRunFollowsTheSameRule(t *testing.T) {
+	for _, c := range []struct{ line, want string }{
+		{"true", ""},
+		{"echo found", "(due 2026-11-04 09:30 while initech was down) $ echo found\nexit 0\nfound"},
+	} {
+		s, host, clk := schedRig(t, clockAt(4, 8, 0), schedule.Job{Owner: "eng1", To: "qa1", At: "09:30", Command: c.line, Quiet: true})
+		clk.set(clockAt(4, 11, 0))
+		back := newRigScheduler(s.root, host, clk.now)
+		back.step(clk, clockAt(4, 11, 0))
+		d, _ := host.snap()
+		switch {
+		case c.want == "" && len(d) != 0:
+			t.Fatalf("%s: a missed quiet run delivered %q", c.line, d)
+		case c.want != "" && (len(d) != 1 || !strings.Contains(d[0], c.want)):
+			t.Fatalf("%s: delivered %q, want the note and the output", c.line, d)
+		}
 	}
 }

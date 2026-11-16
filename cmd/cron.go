@@ -21,7 +21,11 @@ A job is a time of day (09:30, optionally followed by weekdays, weekends or days
 like mon,thu) or an interval of a minute or more (--every 15m), and either a
 message or a one-line command for one pane. A command runs in the rig root, is
 stopped at 30 seconds, and its output, cut to 2 KB, arrives as a message with
-its exit code. Deliveries go through the send path, so a dialog or
+its exit code. With --quiet, a command job's run that exits 0 and prints
+nothing but whitespace delivers nothing: no message, no wake, no line to
+super; cron list shows the job as quiet and the run as "quiet: exit 0, no
+output". Any output, a non-zero exit, a stop or a command that did not run
+delivers as usual. Deliveries go through the send path, so a dialog or
 do-not-disturb holds them as usual. A job whose time passed while initech was
 down runs once at the next start and says so. A delivery that cannot happen,
 or a command that fails, is one message to super; a delivery that keeps
@@ -40,10 +44,11 @@ var cronListCmd = &cobra.Command{
 
 var (
 	cronTo, cronAt, cronEvery, cronMessage, cronCommand string
+	cronQuiet                                           bool
 )
 
 var cronAddCmd = &cobra.Command{
-	Use:   "add --to <pane> (--at <time> | --every <interval>) (--message <text> | --command <line>)",
+	Use:   "add --to <pane> (--at <time> | --every <interval>) (--message <text> | --command <line> [--quiet])",
 	Short: "Add a job, owned by the agent whose pane runs this",
 	Args:  cobra.NoArgs,
 	RunE:  runCronAdd,
@@ -62,6 +67,7 @@ func init() {
 	cronAddCmd.Flags().StringVar(&cronEvery, "every", "", "An interval of a minute or more, like 15m")
 	cronAddCmd.Flags().StringVar(&cronMessage, "message", "", "The message to deliver")
 	cronAddCmd.Flags().StringVar(&cronCommand, "command", "", "One line to run in the rig root; its output is delivered")
+	cronAddCmd.Flags().BoolVar(&cronQuiet, "quiet", false, "With --command: a run that exits 0 with no output delivers nothing")
 	cronCmd.AddCommand(cronListCmd, cronAddCmd, cronRemoveCmd)
 	rootCmd.AddCommand(cronCmd)
 }
@@ -82,12 +88,21 @@ func cronCall(cmd *cobra.Command, req tui.IPCRequest) (*tui.IPCResponse, error) 
 }
 
 func runCronAdd(cmd *cobra.Command, _ []string) error {
-	body, _ := json.Marshal(tui.CronAddRequest{To: cronTo, At: cronAt, Every: cronEvery, Message: cronMessage, Command: cronCommand})
+	if cronQuiet && cronMessage != "" {
+		cmd.SilenceUsage = true
+		return fmt.Errorf("--quiet goes with --command, not --message: only a command's run can be quiet")
+	}
+	body, _ := json.Marshal(tui.CronAddRequest{To: cronTo, At: cronAt, Every: cronEvery, Message: cronMessage, Command: cronCommand, Quiet: cronQuiet})
 	resp, err := cronCall(cmd, tui.IPCRequest{Action: "cron_add", Text: string(body)})
 	if err != nil {
 		return err
 	}
 	fmt.Fprintln(cmd.OutOrStdout(), resp.Data)
+	// An initech from before --quiet ignores it and stores the job without
+	// it; its reply then does not name quiet (ini-7k3n).
+	if cronQuiet && !strings.HasSuffix(resp.Data, ", quiet") {
+		fmt.Fprintln(cmd.ErrOrStderr(), cronQuietOlderLine)
+	}
 	return nil
 }
 
@@ -124,6 +139,9 @@ func runCronList(cmd *cobra.Command, _ []string) error {
 		what := "message: " + j.Message
 		if j.Command != "" {
 			what = "command: " + j.Command
+			if j.Quiet {
+				what = "quiet " + what
+			}
 		}
 		if r := []rune(what); len(r) > 60 {
 			what = string(r[:57]) + "..."
@@ -140,3 +158,7 @@ func runCronList(cmd *cobra.Command, _ []string) error {
 	}
 	return w.Flush()
 }
+
+// cronQuietOlderLine is what add prints when it asked for --quiet and the
+// running initech stored the job without it (ini-7k3n).
+const cronQuietOlderLine = "the running initech does not know --quiet: this job delivers every run; restart initech, remove the job and add it again"

@@ -49,6 +49,7 @@ func recordingIPC(t *testing.T, resp tui.IPCResponse) (string, *tui.IPCRequest) 
 func runCron(t *testing.T, args ...string) (string, error) {
 	t.Helper()
 	cronTo, cronAt, cronEvery, cronMessage, cronCommand = "", "", "", "", ""
+	cronQuiet = false
 	var out bytes.Buffer
 	rootCmd.SetOut(&out)
 	rootCmd.SetErr(&out)
@@ -105,5 +106,84 @@ func TestCronCommand_AnOlderInitechSaysSo(t *testing.T) {
 	t.Setenv("INITECH_SOCKET", sock)
 	if _, err := runCron(t, "list"); err == nil || !strings.Contains(err.Error(), "does not keep a schedule") {
 		t.Fatalf("err %v", err)
+	}
+}
+
+// ── ini-7k3n: --quiet ───────────────────────────────────────────────────
+
+// TestCronQuiet_AddSendsQuietAndPrintsNoWarningWhenItTook: the request carries
+// quiet, and a reply naming it prints only the reply.
+func TestCronQuiet_AddSendsQuietAndPrintsNoWarningWhenItTook(t *testing.T) {
+	skipWindows(t)
+	sock, got := recordingIPC(t, tui.IPCResponse{OK: true, Data: "added s1, owned by eng1, quiet"})
+	t.Setenv("INITECH_SOCKET", sock)
+	out, err := runCron(t, "add", "--to", "qa1", "--every", "15m", "--command", "bd ready", "--quiet")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var add tui.CronAddRequest
+	json.Unmarshal([]byte(got.Text), &add)
+	if !add.Quiet || add.Command != "bd ready" {
+		t.Fatalf("sent job %+v, want quiet", add)
+	}
+	if strings.TrimSpace(out) != "added s1, owned by eng1, quiet" {
+		t.Fatalf("printed %q", out)
+	}
+}
+
+// TestCronQuiet_AnOlderWindowOneSaysQuietDidNotTake is rule 7: a reply that
+// does not name quiet means the running initech stored the job without it.
+// The job exists, so the exit is 0, with one line saying what to do.
+func TestCronQuiet_AnOlderWindowOneSaysQuietDidNotTake(t *testing.T) {
+	skipWindows(t)
+	sock, _ := recordingIPC(t, tui.IPCResponse{OK: true, Data: "added s1, owned by eng1"})
+	t.Setenv("INITECH_SOCKET", sock)
+	out, err := runCron(t, "add", "--to", "qa1", "--every", "15m", "--command", "bd ready", "--quiet")
+	if err != nil {
+		t.Fatalf("exit not 0: %v", err)
+	}
+	if !strings.Contains(out, "added s1, owned by eng1") || !strings.Contains(out, cronQuietOlderLine) {
+		t.Fatalf("printed %q, want the reply and the older-initech line", out)
+	}
+	// Without --quiet the same reply prints no such line.
+	out, _ = runCron(t, "add", "--to", "qa1", "--every", "15m", "--command", "bd ready")
+	if strings.Contains(out, "--quiet") {
+		t.Fatalf("a plain add printed %q", out)
+	}
+}
+
+// TestCronQuiet_WithAMessageIsRefusedBeforeAnyCall is AC5 at the command.
+func TestCronQuiet_WithAMessageIsRefusedBeforeAnyCall(t *testing.T) {
+	skipWindows(t)
+	sock, got := recordingIPC(t, tui.IPCResponse{OK: true, Data: "added s1, owned by eng1"})
+	t.Setenv("INITECH_SOCKET", sock)
+	_, err := runCron(t, "add", "--to", "qa1", "--every", "15m", "--message", "hi", "--quiet")
+	if err == nil || !strings.Contains(err.Error(), "--quiet") || !strings.Contains(err.Error(), "--message") {
+		t.Fatalf("err %v, want a refusal naming --quiet and --message", err)
+	}
+	if got.Action != "" {
+		t.Fatalf("a refused add still called window 1: %+v", got)
+	}
+}
+
+// TestCronQuiet_ListMarksAQuietJobAndItsQuietRun is AC3.
+func TestCronQuiet_ListMarksAQuietJobAndItsQuietRun(t *testing.T) {
+	skipWindows(t)
+	last := time.Date(2026, 11, 4, 9, 30, 0, 0, time.Local)
+	rows := []tui.CronListing{
+		{Job: schedule.Job{ID: "s1", Owner: "eng1", To: "qa1", Every: "5m", Command: "bd ready", Quiet: true, LastRun: &last, LastResult: "quiet: exit 0, no output"}},
+		{Job: schedule.Job{ID: "s2", Owner: "eng1", To: "qa1", Every: "5m", Command: "bd ready"}},
+	}
+	data, _ := json.Marshal(rows)
+	sock, _ := recordingIPC(t, tui.IPCResponse{OK: true, Data: string(data)})
+	t.Setenv("INITECH_SOCKET", sock)
+	out, err := runCron(t, "list")
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	if len(lines) != 3 || !strings.Contains(lines[1], "quiet command: bd ready") ||
+		!strings.Contains(lines[1], "quiet: exit 0, no output") || strings.Contains(lines[2], "quiet") {
+		t.Fatalf("listed:\n%s", out)
 	}
 }

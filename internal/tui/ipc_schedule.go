@@ -17,6 +17,7 @@ type CronAddRequest struct {
 	Every   string `json:"every,omitempty"`
 	Message string `json:"message,omitempty"`
 	Command string `json:"command,omitempty"`
+	Quiet   bool   `json:"quiet,omitempty"` // A quiet command job (ini-7k3n).
 }
 
 // CronListing is one row of initech cron list: the job and its next run.
@@ -66,7 +67,7 @@ func (t *TUI) handleIPCCron(conn net.Conn, req IPCRequest) {
 			return
 		}
 		job := schedule.Job{Owner: owner, To: add.To, At: add.At, Every: add.Every,
-			Message: add.Message, Command: add.Command, Created: t.sched.now()}
+			Message: add.Message, Command: add.Command, Quiet: add.Quiet, Created: t.sched.now()}
 		var id string
 		err = t.sched.change(func(f *schedule.File) error {
 			var e error
@@ -77,7 +78,13 @@ func (t *TUI) handleIPCCron(conn net.Conn, req IPCRequest) {
 			writeIPCResponse(conn, IPCResponse{Error: err.Error()})
 			return
 		}
-		writeIPCResponse(conn, IPCResponse{OK: true, Data: fmt.Sprintf("added %s, owned by %s", id, owner)})
+		reply := fmt.Sprintf("added %s, owned by %s", id, owner)
+		if job.Quiet {
+			// Named only when stored quiet: initech cron add reads it to tell
+			// an initech that dropped --quiet (ini-7k3n).
+			reply += ", quiet"
+		}
+		writeIPCResponse(conn, IPCResponse{OK: true, Data: reply})
 	case "cron_remove":
 		by, err := t.cronCaller(conn)
 		if err != nil {
