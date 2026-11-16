@@ -3,6 +3,7 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"text/tabwriter"
 
@@ -97,13 +98,55 @@ func runCronAdd(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintln(cmd.OutOrStdout(), resp.Data)
 	// An initech from before --quiet ignores it and stores the job without
-	// it; its reply then does not name quiet (ini-7k3n).
+	// it; its reply then does not name quiet. Such an add never reports ok:
+	// the job is removed again, nothing reaches stdout, one line, exit 1
+	// (ini-bqqk). A job due between the add and the remove can run once.
 	if cronQuiet && !strings.HasSuffix(resp.Data, ", quiet") {
-		fmt.Fprintln(cmd.ErrOrStderr(), cronQuietOlderLine)
+		cmd.SilenceErrors = true
+		return &cronQuietRefusal{rollBackQuietAdd(resp.Data)}
 	}
+	fmt.Fprintln(cmd.OutOrStdout(), resp.Data)
 	return nil
+}
+
+// cronQuietRefusal is an add asked with --quiet that the running initech could
+// not keep quiet: exit 1, its one line printed once, by Execute.
+type cronQuietRefusal struct{ line string }
+
+func (e *cronQuietRefusal) Error() string { return e.line }
+func (e *cronQuietRefusal) ExitCode() int { return 1 }
+
+// rollBackQuietAdd removes the job an add without quiet just stored, and says
+// what became of it, in one line.
+func rollBackQuietAdd(reply string) string {
+	notAdded := "not added: the running initech is older than --quiet and would deliver every run; restart initech on " + Version + " or later and add it again"
+	id := addedJobID(reply)
+	if id == "" {
+		return "not added as quiet: the running initech is older than --quiet, and its reply named no job to remove (" + strconv.Quote(reply) + "): check initech cron list and remove the job; restart initech on " + Version + " or later and add it again"
+	}
+	resp, err := ipcCall(tui.IPCRequest{Action: "cron_remove", Target: id})
+	switch {
+	case err != nil:
+		return "added " + id + " without quiet and could not remove it (" + err.Error() + "): remove it with initech cron remove " + id + "; restart initech on " + Version + " or later and add it again"
+	case !resp.OK:
+		return "added " + id + " without quiet and could not remove it (" + resp.Error + "): remove it with initech cron remove " + id + "; restart initech on " + Version + " or later and add it again"
+	}
+	return notAdded
+}
+
+// addedJobID is the id in an add reply, "added <id>, owned by <owner>"; "" when
+// the reply does not have that shape.
+func addedJobID(reply string) string {
+	rest, ok := strings.CutPrefix(reply, "added ")
+	if !ok {
+		return ""
+	}
+	id, _, ok := strings.Cut(rest, ",")
+	if !ok || id == "" || strings.ContainsAny(id, " \t") {
+		return ""
+	}
+	return id
 }
 
 func runCronRemove(cmd *cobra.Command, args []string) error {
@@ -158,7 +201,3 @@ func runCronList(cmd *cobra.Command, _ []string) error {
 	}
 	return w.Flush()
 }
-
-// cronQuietOlderLine is what add prints when it asked for --quiet and the
-// running initech stored the job without it (ini-7k3n).
-const cronQuietOlderLine = "the running initech does not know --quiet: this job delivers every run; restart initech, remove the job and add it again"
