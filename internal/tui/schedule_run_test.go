@@ -533,3 +533,21 @@ func TestQuietCron_AMissedRunFollowsTheSameRule(t *testing.T) {
 		}
 	}
 }
+
+// TestQuietCron_AQuietRunIsOneInfoLineInTheLog (pm, ini-7k3n): a quiet run is
+// told nowhere but its last result and one info line naming the job, with no
+// command output in it; a delivered run writes no such line.
+func TestQuietCron_AQuietRunIsOneInfoLineInTheLog(t *testing.T) {
+	logs := captureLogs(t)
+	quietRun(t, schedule.Job{Owner: "qa1", To: "eng2", Every: "1m", Command: `printf '\n'`, Quiet: true}, nil, nil)
+	out := logs.String()
+	want := `level=INFO msg="[schedule] schedule s1: quiet run, exit 0, no output"`
+	if n := strings.Count(out, "quiet run"); n != 1 || !strings.Contains(out, want) {
+		t.Fatalf("the log holds %d quiet-run lines, want one %s:\n%s", n, want, out)
+	}
+	logs2 := captureLogs(t)
+	quietRun(t, schedule.Job{Owner: "qa1", To: "eng2", Every: "1m", Command: "echo found", Quiet: true}, nil, nil)
+	if strings.Contains(logs2.String(), "quiet run") {
+		t.Fatalf("a delivered run logged a quiet run:\n%s", logs2.String())
+	}
+}

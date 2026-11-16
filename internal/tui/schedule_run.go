@@ -150,8 +150,10 @@ func (s *rigScheduler) fire(c claim) {
 	text, cmdFailure, quiet := s.compose(c)
 	if quiet {
 		// A quiet run makes no deliver call: nothing is typed, no suspended
-		// pane wakes, super hears nothing (ini-7k3n). It is still recorded;
+		// pane wakes, super hears nothing (ini-7k3n). It is recorded in its
+		// last result and one info line, never with the command's output;
 		// told stays, since nothing was delivered.
+		LogInfo("schedule", fmt.Sprintf("schedule %s: quiet run, exit 0, no output", j.ID))
 		s.record(j.ID, quietResult, "", false)
 		return
 	}
