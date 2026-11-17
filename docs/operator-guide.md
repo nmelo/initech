@@ -596,7 +596,9 @@ for an agent at its prompt, then prints one line and exits with its status:
 - `could not confirm delivery to <agent>: <reason>; peek the pane` (exit 2): initech could not tell
   either way (the reasons are below). When initech held back the Enter, the reason is `submit withheld,
   awaiting composer repaint; the TUI delivers it when the box repaints and reports`, and the outcome
-  arrives later as a toast. A running initech older than the command answers with `older initech
+  arrives later as a toast. If that message ends not delivered, its sender is told once, an agent as
+  `[from initech] <agent> did not get your message (not delivered after <n>s: <why>); send it again:
+  <its start>` and the operator as a notice in window 1. A running initech older than the command answers with `older initech
   running; restart it for delivery verdicts`; an agent on a machine running an older initech, with
   `older initech on <host>`.
 - `sent to <agent>, unconfirmed: no delivery check for this agent type` (exit 0): Codex, OpenCode and
@@ -646,7 +648,9 @@ placeholder where M is the number of line breaks in the message, a trailing one 
 seen it leave. When Claude scrolls a message taller than its input box inside the box, so only the end
 shows, that end counts as the message's text if everything in the box is part of the message and it
 holds at least 12 characters besides spaces. The box is read across all its rows, the same way at any
-pane width and whether or not its top border carries the session's name. A box that only changed is not a sighting. The log line is `submitted: composer cleared`,
+pane width and whether or not its top border carries the session's name. A message taller than the
+box, which Claude Code shows from 2.1.326 on as its last rows under a `─── ↑ N more ───` rule with no
+`❯`, is read as the box as well, and a pane left with such text reads `pending input`. A box that only changed is not a sighting. The log line is `submitted: composer cleared`,
 with how many milliseconds after the Enter the box was seen without the message, and what it showed;
 because the message is usually seen during the wait before the Enter, that can read under 50, including
 0. A box showing Claude's queued-message line or the operator's own restored draft counts as cleared; a
@@ -677,7 +681,7 @@ and the hint rows below it never spoil a reading. The log line for a message ini
 - `sighted` is how many of the stable readings showed the message in the box.
 - `cols` and `rows` are the pane's terminal size as initech read it; the `submitted: composer cleared` and `SUBMIT NOT TAKEN` lines carry them too.
 - `claude_code` is the Claude Code version the agent's own session transcript last named, or `unknown` before it names one; the same two lines carry it too.
-- `capture` is the file holding the screen initech read at that moment, in `.initech/inject-captures/` beside the log (the folder readable only by you, like the log), one file per such message, the newest 20 kept. Empty when there is no log file.
+- `capture` is the file holding the screen initech read at that moment, in `.initech/inject-captures/` beside the log (the folder readable only by you, like the log), one file per such message, the newest 20 kept. Empty when there is no log file. A message whose Enter initech held back is captured the same way: the `submit WITHHELD` line carries `cols`, `rows` and `capture` too, its file starts `withheld-` where an UNKNOWN's starts `unknown-`, and the newest 20 of each kind are kept.
 
 ## The Bead Workflow
 

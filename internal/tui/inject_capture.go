@@ -1,8 +1,10 @@
 package tui
 
 // inject_capture.go keeps the screen of every send whose outcome is UNKNOWN
-// (ini-xl9): the rows the send path read, as one file beside the log, so a
-// miss is read from what initech saw, never guessed.
+// (ini-xl9) or whose Enter was WITHHELD (ini-hkxn): the rows the send path
+// read, as one file beside the log, so a miss is read from what initech saw,
+// never guessed, and the next change in Claude Code's screen shows the day it
+// ships.
 
 import (
 	"fmt"
@@ -16,9 +18,10 @@ import (
 // injectCaptureDir is the folder beside the log that holds the captures, and
 // injectCaptureKeep how many it keeps: the newest, the rest removed.
 const (
-	injectCaptureDir  = "inject-captures"
-	injectCapturePref = "unknown-"
-	injectCaptureKeep = 20
+	injectCaptureDir    = "inject-captures"
+	injectCapturePref   = "unknown-"
+	withheldCapturePref = "withheld-"
+	injectCaptureKeep   = 20
 )
 
 // injectCaptureNow is the capture's clock; a variable so tests fix it.
@@ -43,6 +46,19 @@ func injectCaptureFolder() string {
 // newest injectCaptureKeep captures are kept. Best effort: a failure costs
 // the capture, never the send.
 func writeInjectCapture(pane string, cols, rows int, screen []string) string {
+	return writeCaptureAs(injectCapturePref, pane, cols, rows, screen)
+}
+
+// writeWithheldCapture is writeInjectCapture for a send whose Enter was
+// withheld: the screen the belt read when it found no box holding our text.
+// Its own newest injectCaptureKeep are kept, so a run of withholds never
+// pushes the UNKNOWN captures out, nor the other way round.
+func writeWithheldCapture(pane string, cols, rows int, screen []string) string {
+	return writeCaptureAs(withheldCapturePref, pane, cols, rows, screen)
+}
+
+// writeCaptureAs writes one capture whose name starts with pref.
+func writeCaptureAs(pref, pane string, cols, rows int, screen []string) string {
 	dir := injectCaptureFolder()
 	if dir == "" {
 		return ""
@@ -51,13 +67,13 @@ func writeInjectCapture(pane string, cols, rows int, screen []string) string {
 		return ""
 	}
 	now := injectCaptureNow()
-	name := injectCapturePref + safeCaptureName(pane) + "-" + now.UTC().Format("20060102T150405.000000000Z") + ".txt"
+	name := pref + safeCaptureName(pane) + "-" + now.UTC().Format("20060102T150405.000000000Z") + ".txt"
 	path := filepath.Join(dir, name)
 	body := fmt.Sprintf("pane=%s cols=%d rows=%d time=%s\n%s\n", pane, cols, rows, now.UTC().Format(time.RFC3339Nano), strings.Join(screen, "\n"))
 	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
 		return ""
 	}
-	pruneInjectCaptures(dir)
+	pruneInjectCaptures(dir, pref)
 	return path
 }
 
@@ -77,8 +93,9 @@ func safeCaptureName(s string) string {
 }
 
 // pruneInjectCaptures removes all but the newest injectCaptureKeep captures
-// in dir, by the time in their names; any other file there is left alone.
-func pruneInjectCaptures(dir string) {
+// whose names start with pref in dir, by the time in their names; any other
+// file there is left alone.
+func pruneInjectCaptures(dir, pref string) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return
@@ -87,7 +104,7 @@ func pruneInjectCaptures(dir string) {
 	var caps []capture
 	for _, e := range entries {
 		n := e.Name()
-		if e.IsDir() || !strings.HasPrefix(n, injectCapturePref) || !strings.HasSuffix(n, ".txt") {
+		if e.IsDir() || !strings.HasPrefix(n, pref) || !strings.HasSuffix(n, ".txt") {
 			continue
 		}
 		i := strings.LastIndexByte(n, '-')

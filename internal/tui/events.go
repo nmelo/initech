@@ -104,6 +104,11 @@ type AgentEvent struct {
 	BeadID string    // Relevant bead ID (empty if N/A).
 	Detail string    // Human-readable description.
 	Time   time.Time // When the event was detected.
+	// From and ToSender: a withheld message that ended not delivered
+	// (ini-hkxn) names its sender and the one line window 1 says to them.
+	// Empty on every other event.
+	From     string
+	ToSender string
 }
 
 // notification is a rendered event with an expiration time.
@@ -147,6 +152,11 @@ func (t *TUI) handleAgentEvent(ev AgentEvent) {
 	}
 	// The send path's late verdicts on a reply ride this stream (ini-3wkl.6).
 	t.noteInboxDeliveryEvent(ev)
+	// Never a silent drop (ini-hkxn): the sender of a withheld message that
+	// ended not delivered is told, once, here on the main goroutine.
+	if ev.From != "" && ev.ToSender != "" {
+		t.tellSender(ev.From, ev.ToSender)
+	}
 
 	// Update lastEventTime on the source pane for conviction scoring.
 	if ev.Pane != "" {

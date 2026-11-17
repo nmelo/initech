@@ -1535,7 +1535,17 @@ func composerTailAt(p *Pane) (string, int, bool) {
 // nothing. › and > stay as fallbacks for screens with no ❯ at all (Codex's
 // own prompt is ›).
 func composerTailFromRows(rows []string) (string, int, bool) {
-	for _, glyphs := range [][]string{{"\u276f"}, {"\u203a", ">"}} {
+	for tier, glyphs := range [][]string{{"\u276f"}, {"\u203a", ">"}} {
+		// THE SCROLLED BOX (ini-hkxn) comes after ❯ and before the › and >
+		// fallbacks: Claude Code 2.1.326 draws a text taller than the box
+		// with no ❯ at all, under a "↑ N more" rule, and its first row stands
+		// where 2.1.325's ❯ row stood. Before the fallbacks, so a ">" in the
+		// text is never taken for a prompt.
+		if tier == 1 {
+			if row, ok := scrolledBoxFirstRow(rows); ok {
+				return strings.TrimSpace(rows[row]), row, true
+			}
+		}
 		for row := len(rows) - 1; row >= 0; row-- {
 			text := rows[row]
 			for _, prompt := range glyphs {
@@ -1554,7 +1564,7 @@ func composerTailFromRows(rows []string) (string, int, bool) {
 // against a slow render because the cost of being wrong is asymmetric -- too
 // short withholds a legitimate submit (delayed delivery), too long only delays
 // the submit of a message that was going to be submitted anyway.
-const composerEchoWindow = 1500 * time.Millisecond
+var composerEchoWindow = 1500 * time.Millisecond
 
 // beltEchoWindow is composerEchoWindow stretched by the main loop's lag
 // (ini-cg8y): the window was measured on a light loop, and a loop missing
@@ -1617,6 +1627,7 @@ func withholdSubmit(pane *Pane, text, mode, tailBefore, lastPolled string) {
 	tail, found := composerTail(pane)
 	ps := newPendingSubmit(text, mode, tail)
 	pane.mu.Lock()
+	ps.from = pane.sendFrom // the sender, so a NOT DELIVERED end tells them (ini-hkxn)
 	pane.pendingSubmit = ps
 	pane.mu.Unlock()
 
@@ -1647,7 +1658,12 @@ func withholdSubmit(pane *Pane, text, mode, tailBefore, lastPolled string) {
 	// body_in_block says whether OUR text was in fact anywhere in the composer
 	// block at this moment -- true here is a FALSE withhold. Rows are bounded
 	// to the preview's length: no more of the body than the log already has.
+	// The screen as the belt read it (ini-hkxn): a WITHHELD is where a new
+	// Claude Code screen shows first, so it is kept like an UNKNOWN's.
+	cols, rows := pane.emuSize()
+	capture := writeWithheldCapture(pane.Name(), cols, rows, emuRowsBlocking(pane.emu))
 	LogInfo("inject", "submit WITHHELD: body never reached a composer", "pane", pane.Name(), "mode", mode,
+		"cols", cols, "rows", rows, "capture", capture,
 		"tail_before", logSnippet(tailBefore), "last_polled", logSnippet(lastPolled),
 		"composer", composerSnapshot(pane), "body_in_block", found && submitStillHeld(pane, tail, ps),
 		"echo_window_ms", beltEchoWindow().Milliseconds(), "loop_missed_last_min", loopMissedLastMinute.Load())
@@ -2260,6 +2276,7 @@ type pendingSubmit struct {
 	bodyRunes      int          // The body's length, which decides whether a one-line paste of it collapses with no count (ini-dmi).
 	withheldAt     time.Time    // When we withheld, so the operator is told how long a message waited.
 	preview        string       // For operator-facing records.
+	from           string       // Who sent a withheld message (the send's sender, ini-hkxn); told once if it ends not delivered.
 	mode           string       // Injection mode, for the log.
 	tailAtWithhold string       // The composer tail when we withheld: "nothing has changed yet".
 	seenInBox      bool         // Our body was already seen in the box before the watch began (ini-pkin).
@@ -2833,8 +2850,17 @@ func (p *Pane) emitUndeliveredSubmit(ps *pendingSubmit, why string, waited time.
 	// The WAIT is in the message: a bound that is generous still leaves the
 	// operator needing to know a message sat for 90s rather than arriving
 	// late for no stated reason (super, 2026-08-22).
-	p.emitSubmitReport(undeliveredSubmitPrefix,
-		"after "+waited.String()+" ("+why+"), re-send it: "+ps.preview)
+	p.emitSubmitReportTo(undeliveredSubmitPrefix,
+		"after "+waited.String()+" ("+why+"), re-send it: "+ps.preview,
+		ps.from, withheldNotDeliveredLine(p.name, waited, why, ps.preview))
+}
+
+// withheldNotDeliveredLine is what the sender of a withheld message hears
+// when it ends not delivered (ini-hkxn): which pane, that it was not
+// delivered and why, and that it needs sending again, with its start.
+func withheldNotDeliveredLine(pane string, waited time.Duration, why, preview string) string {
+	return fmt.Sprintf("%s did not get your message (not delivered after %s: %s); send it again: %s",
+		pane, waited, why, preview)
 }
 
 // emitUnconfirmedSubmit reports a submit whose fate the send path could not
@@ -2849,11 +2875,19 @@ func (p *Pane) emitUnconfirmedSubmit(ps *pendingSubmit, why string, waited time.
 // emitSubmitReport sends one submit report event: the prefix, the measured
 // Claude version pair, then the detail.
 func (p *Pane) emitSubmitReport(prefix, detail string) {
+	p.emitSubmitReportTo(prefix, detail, "", "")
+}
+
+// emitSubmitReportTo is emitSubmitReport carrying a sender and the one line
+// window 1 says to them (tellSender); a report with no sender tells no one.
+func (p *Pane) emitSubmitReportTo(prefix, detail, from, toSender string) {
 	event := AgentEvent{
-		Type:   EventAgentStalled,
-		Pane:   p.name,
-		Detail: detail,
-		Time:   time.Now(),
+		Type:     EventAgentStalled,
+		Pane:     p.name,
+		Detail:   detail,
+		Time:     time.Now(),
+		From:     from,
+		ToSender: toSender,
 	}
 	// This can run on readLoop while sendMu is held, or on maintenance. The
 	// version lookup must not hold either caller up. Capture the event/channel

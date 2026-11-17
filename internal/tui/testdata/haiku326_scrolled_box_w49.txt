@@ -1,0 +1,16 @@
+
+ ▐▛███▛█   Claude Code v2.1.326
+▝▜██████▀  Haiku 5.5 · Claude Ultra
+ ▝▝   ▝▝   ~/…/initech/eng5/hkxn-rig/eng1
+
+⚠ 1 MCP server needs authentication · run /mcp
+
+
+                             ◐ medium · /effort
+─── ↑ 10 more ───────────────────────────────────
+  read. Put the question and your
+  recommendation on the bead, and reply with
+  the single word ok to this message.
+─────────────────────────────────────────────────
+  ⎇ main │ Haiku 5.5 │ Fifth │ 0% │ 20% ┃▓░░░░…
+  ⏵⏵ bypass permissions on (shift+tab to cycle)

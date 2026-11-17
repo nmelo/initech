@@ -264,7 +264,7 @@ func composerFrame(rows []string, width int) (top, bottom int, ok bool) {
 		return n > 0 && n >= minRunes && strings.Trim(t, "\u2500") == ""
 	}
 	isTopRule := func(row string) bool {
-		if isRule(row) {
+		if isRule(row) || isScrolledBoxRule(row) {
 			return true
 		}
 		t := strings.TrimSpace(row)
@@ -279,7 +279,10 @@ func composerFrame(rows []string, width int) (top, bottom int, ok bool) {
 		for top > 0 && bottom-top <= composerFrameMaxRows && !isTopRule(rows[top]) {
 			top--
 		}
-		if top <= 0 || top == bottom-1 || !isTopRule(rows[top]) || !isComposerPromptRow(rows[top+1]) {
+		// A scrolled box (Claude Code 2.1.326) draws no prompt: its first
+		// row is the middle of the text, under the "↑ N more" rule.
+		if top <= 0 || top == bottom-1 || !isTopRule(rows[top]) ||
+			(!isComposerPromptRow(rows[top+1]) && !isScrolledBoxRule(rows[top])) {
 			continue
 		}
 		return top, bottom, true
@@ -317,6 +320,62 @@ const composerRuleMinRunes = 40
 // isComposerPromptRow reports the composer's first row: the ❯ prompt glyph at
 // the start of the row. A dialog's selection cursor ("❯ 1. Yes") never sits
 // directly under a full-width rule, which is what the frame check adds.
+// isScrolledBoxRule reports the top rule of an input box whose text is taller
+// than the box (Claude Code 2.1.326): box dashes around "↑ N more" and
+// nothing else, "─── ↑ 10 more ──────". The box under it shows the end of the
+// text and no ❯ prompt. 2.1.325 drew a plain rule and put ❯ on the first row
+// it showed.
+func isScrolledBoxRule(row string) bool {
+	t := strings.TrimSpace(row)
+	if utf8.RuneCountInString(t) < 10 || !strings.HasPrefix(t, "\u2500") || !strings.HasSuffix(t, "\u2500") {
+		return false
+	}
+	n, ok := strings.CutPrefix(strings.TrimSpace(strings.Trim(t, "\u2500")), "\u2191 ")
+	if !ok {
+		return false
+	}
+	if n, ok = strings.CutSuffix(n, " more"); !ok || n == "" {
+		return false
+	}
+	for _, r := range n {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+// scrolledBoxFirstRow finds a scrolled input box (isScrolledBoxRule) at the
+// bottom of the screen: its top rule, at least one row of text, then a plain
+// rule that is the last plain rule on screen (the box's bottom border; the
+// footer is under it). It returns the index of the box's first text row. A
+// "↑ N more" rule with no box under it, or a box with another rule below it,
+// is not one.
+func scrolledBoxFirstRow(rows []string) (int, bool) {
+	bottom := -1
+	for r := len(rows) - 1; r >= 0; r-- {
+		if isRegionRule(rows[r]) {
+			bottom = r
+			break
+		}
+	}
+	if bottom < 2 {
+		return 0, false
+	}
+	for r := bottom - 1; r >= 0; r-- {
+		if isScrolledBoxRule(rows[r]) {
+			if r+1 < bottom {
+				return r + 1, true
+			}
+			return 0, false
+		}
+		if isRegionRule(rows[r]) {
+			return 0, false
+		}
+	}
+	return 0, false
+}
+
 func isComposerPromptRow(row string) bool {
 	return strings.HasPrefix(strings.TrimLeft(row, " "), "\u276f")
 }

@@ -1,0 +1,23 @@
+    viewer sessions in a month. The share page
+    links back to the site with a tag, but
+    only 2 site visits and 0 sign-ups came
+    from it. The link carries no account id,
+    so we cannot credit the account that
+    brought them. The embed link has no tag
+    at all.
+  - Which loop first: I would champion the
+    viewer loop, with teammates second. I
+    have not asked for the other loops yet.
+
+✻ Cooked for 22m 45s · done 2:16 AM
+
+─── ↑ 10 more ────────────────────────────────
+  today (the reviewer reads the code first,
+  as you say). Yes, ask for the other loops;
+  one already seen: a rival gives pilots a
+  live "verified" badge with flight counts
+  for email signatures and websites, on its
+  free plan (shot 15).
+──────────────────────────────────────────────
+  ⎇ main │ Fable 5.2 │ Fifth │ 42% │ 20% ┃▓…
+  ⏵⏵ bypass permissions on
