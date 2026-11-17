@@ -600,7 +600,9 @@ for an agent at its prompt, then prints one line and exits with its status:
   awaiting composer repaint; the TUI delivers it when the box repaints and reports`, and the outcome
   arrives later as a toast. If that message ends not delivered, its sender is told once, an agent as
   `[from initech] <agent> did not get your message (not delivered after <n>s: <why>); send it again:
-  <its start>` and the operator as a notice in window 1. A running initech older than the command answers with `older initech
+  <its start>` and the operator as a notice in window 1. The notice never goes into the agent that did
+  not get the message: when it would (initech's own line to super, or an agent's message to itself),
+  only the log has it. A running initech older than the command answers with `older initech
   running; restart it for delivery verdicts`; an agent on a machine running an older initech, with
   `older initech on <host>`.
 - `sent to <agent>, unconfirmed: no delivery check for this agent type` (exit 0): Codex, OpenCode and
@@ -652,7 +654,7 @@ shows, that end counts as the message's text if everything in the box is part of
 holds at least 12 characters besides spaces. The box is read across all its rows, the same way at any
 pane width and whether or not its top border carries the session's name. A message taller than the
 box, which Claude Code shows from 2.1.326 on as its last rows under a `─── ↑ N more ───` rule with no
-`❯`, is read as the box as well, and a pane left with such text reads `pending input`. A box that only changed is not a sighting. The log line is `submitted: composer cleared`,
+`❯` (on a named session `─── ↑ N more ─── <name> ─`), is read as the box as well, and a pane left with such text reads `pending input`. A box that only changed is not a sighting. The log line is `submitted: composer cleared`,
 with how many milliseconds after the Enter the box was seen without the message, and what it showed;
 because the message is usually seen during the wait before the Enter, that can read under 50, including
 0. A box showing Claude's queued-message line or the operator's own restored draft counts as cleared; a

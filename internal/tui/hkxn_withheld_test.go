@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 )
 
 // ini-hkxn, rules 2, 4 and 5: a WITHHELD writes a capture; a withheld
@@ -154,5 +155,38 @@ func TestWithheld326_TheSendPathWritesNoEnterWithoutOurTextInABox(t *testing.T) 
 	}
 	if !strings.ContainsAny(wrote, "\r\n") {
 		t.Fatalf("twin: wrote %q, want the Enter", wrote)
+	}
+}
+
+// Reopen, the loop: a not-delivered notice never goes into the pane that
+// failed. initech's own line to a stuck super would tell "initech", which
+// routes to super, into the same stuck box. Its twin: the same notice for
+// eng2 goes to super once.
+func TestWithheld326_ANoticeNeverGoesIntoThePaneThatFailed(t *testing.T) {
+	logs := captureLogs(t)
+	r := recordInitechLines(t)
+	tui := newTestTUI(testPane("eng2"), testPane("eng5"), testPane("super"))
+	notice := func(pane, from string) AgentEvent {
+		return AgentEvent{Type: EventAgentStalled, Pane: pane, Detail: undeliveredSubmitPrefix + "x) after 1s",
+			From: from, ToSender: withheldNotDeliveredLine(pane, time.Second, "the composer no longer holds our text", "start")}
+	}
+	// The guard's own log line is the positive evidence (synchronous); a
+	// line that went out anyway would be sent off this goroutine, so its
+	// absence alone proves nothing.
+	tui.handleAgentEvent(notice("super", initechSender)) // routes to super: the pane that failed
+	tui.handleAgentEvent(notice("eng5", "eng5"))         // an agent's own message to itself
+	for _, pane := range []string{"super", "eng5"} {
+		if !strings.Contains(logs.String(), "not-delivered notice not sent: it would go to the pane that failed\" pane="+pane) {
+			t.Fatalf("no guard line for %s; log:\n%s", pane, logs.String())
+		}
+	}
+	tui.handleAgentEvent(notice("eng2", initechSender))
+	<-r.seen
+	got := r.all()
+	if len(got) != 1 || !strings.HasPrefix(got[0], "super|initech|[from initech] for initech: eng2 did not get your message") {
+		t.Fatalf("lines %q, want only the one line to super about eng2", got)
+	}
+	if strings.Contains(logs.String(), "would go to the pane that failed\" pane=eng2") {
+		t.Fatal("the guard held back a notice for a pane that was not its destination")
 	}
 }

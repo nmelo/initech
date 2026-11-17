@@ -23,6 +23,11 @@ type hkxnFixture struct {
 var hkxnFixtures = []hkxnFixture{
 	{"haiku326_scrolled_box_w49.txt", "read. Put the question and your", "Haiku 5.5"},
 	{"fable326_scrolled_box_w47.txt", "today (the reviewer reads the code first,", "Fable 5.2"},
+	// hover's super at 31x15 (reopen): a named session, so the scroll label
+	// and the session name share the top rule, with and without the
+	// "draft stashed" hint above it.
+	{"opus326_scrolled_named_w31.txt", "how did the key reach the", "Opus 5.5"},
+	{"opus326_scrolled_named_stashed_w31.txt", "shipper2, then the", "Opus 5.5"},
 }
 
 // hkxnRows is a fixture's rows and the pane width, read from its widest rule.
@@ -44,7 +49,7 @@ func hkxnRows(t *testing.T, file string) ([]string, int) {
 
 func hkxnBoxRow(rows []string) int {
 	for i, r := range rows {
-		if strings.Contains(r, "↑ 10 more") {
+		if strings.Contains(r, "↑ ") && strings.Contains(r, " more ") {
 			return i + 1
 		}
 	}
@@ -99,8 +104,15 @@ func TestScrolledBox326_OnlyTheMeasuredRuleShape(t *testing.T) {
 		"↑ 10 more":                      false,
 		"─ ↑ 1 more ─":                   true,
 		"─── ↑ 10 more " + dash + " end": false,
-		dash:                             false,
-		"":                               false,
+		// The named session's form (reopen): the name after the scroll label.
+		"─── ↑ 18 more ─── Hover super ─":                     true,
+		"─── ↑ 18 more ─── Hover super " + dash:               true,
+		"─── ↑ 18 more ─── a ─── b ─":                         false,
+		"─── ↑ 18 more ─── name ─ trailing":                   false,
+		"─── ↑ 18 more ─── " + strings.Repeat("x", 41) + " ─": false,
+		"─── ↑ 18 more ─── na│me ─":                           false,
+		dash: false,
+		"":   false,
 	}
 	for row, want := range cases {
 		if got := isScrolledBoxRule(row); got != want {

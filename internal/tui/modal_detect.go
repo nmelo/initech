@@ -321,29 +321,21 @@ const composerRuleMinRunes = 40
 // the start of the row. A dialog's selection cursor ("❯ 1. Yes") never sits
 // directly under a full-width rule, which is what the frame check adds.
 // isScrolledBoxRule reports the top rule of an input box whose text is taller
-// than the box (Claude Code 2.1.326): box dashes around "↑ N more" and
-// nothing else, "─── ↑ 10 more ──────". The box under it shows the end of the
-// text and no ❯ prompt. 2.1.325 drew a plain rule and put ❯ on the first row
-// it showed.
+// than the box (Claude Code 2.1.326): box dashes around "↑ N more",
+// "─── ↑ 10 more ──────", and on a named session the name after it in the
+// labelled-rule shape, "─── ↑ 18 more ─── Hover super ─" (ini-hkxn: hover's
+// 31-column super). The box under it shows the end of the text and no ❯
+// prompt. 2.1.325 drew a plain rule and put ❯ on the first row it showed.
 func isScrolledBoxRule(row string) bool {
 	t := strings.TrimSpace(row)
-	if utf8.RuneCountInString(t) < 10 || !strings.HasPrefix(t, "\u2500") || !strings.HasSuffix(t, "\u2500") {
-		return false
-	}
-	n, ok := strings.CutPrefix(strings.TrimSpace(strings.Trim(t, "\u2500")), "\u2191 ")
-	if !ok {
-		return false
-	}
-	if n, ok = strings.CutSuffix(n, " more"); !ok || n == "" {
-		return false
-	}
-	for _, r := range n {
-		if r < '0' || r > '9' {
-			return false
-		}
-	}
-	return true
+	return utf8.RuneCountInString(t) >= 10 && scrolledBoxRule.MatchString(t)
 }
+
+// scrolledBoxRule is the scrolled box's top rule: dashes, "↑ N more", dashes,
+// then optionally one session label with dashes after it. The label is what
+// the labelled rule allows (labelledRule): no box-drawing dash or bar, at
+// most 40 characters.
+var scrolledBoxRule = regexp.MustCompile(`^\x{2500}+ \x{2191} [0-9]+ more \x{2500}+(?: [^\x{2500}\x{2502}]{1,40} \x{2500}+)?$`)
 
 // scrolledBoxFirstRow finds a scrolled input box (isScrolledBoxRule) at the
 // bottom of the screen: its top rule, at least one row of text, then a plain

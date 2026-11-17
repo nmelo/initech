@@ -153,9 +153,16 @@ func (t *TUI) handleAgentEvent(ev AgentEvent) {
 	// The send path's late verdicts on a reply ride this stream (ini-3wkl.6).
 	t.noteInboxDeliveryEvent(ev)
 	// Never a silent drop (ini-hkxn): the sender of a withheld message that
-	// ended not delivered is told, once, here on the main goroutine.
+	// ended not delivered is told, once, here on the main goroutine. Never
+	// into the pane that failed: initech's own line to a stuck super tells
+	// "initech", which tellSender routes to super, into the same stuck box,
+	// and that line fails in turn (hover, 10:27: three in five seconds).
 	if ev.From != "" && ev.ToSender != "" {
-		t.tellSender(ev.From, ev.ToSender)
+		if t.tellSenderPane(ev.From) == ev.Pane {
+			LogInfo("inject", "not-delivered notice not sent: it would go to the pane that failed", "pane", ev.Pane, "from", ev.From)
+		} else {
+			t.tellSender(ev.From, ev.ToSender)
+		}
 	}
 
 	// Update lastEventTime on the source pane for conviction scoring.

@@ -475,6 +475,20 @@ func (t *TUI) tellSender(from, text string) {
 	}
 }
 
+// tellSenderPane is the pane tellSender would type into for from: the
+// sender's own pane when it is local, the operator's notice (no pane, "")
+// for the operator, super for anyone else. Main goroutine.
+func (t *TUI) tellSenderPane(from string) string {
+	switch {
+	case from == operatorSender:
+		return ""
+	case from != "" && t.hasLocalPane(from):
+		return from
+	default:
+		return superPaneName
+	}
+}
+
 // hasLocalPane reports a local pane of that name. Main goroutine.
 func (t *TUI) hasLocalPane(name string) bool {
 	for _, pv := range t.panes {
