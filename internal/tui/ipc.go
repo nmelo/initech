@@ -1344,7 +1344,13 @@ func boxRunIsOurs(p *Pane, ps *pendingSubmit) bool {
 		return false
 	}
 	screen := emuRowsBlocking(p.emu)
-	rows, ok := composerBoxRows(screen)
+	// A scrolled box (Claude Code 2.1.326) first, cut off by the bottom edge
+	// on a short pane or not (ini-w6kr): its rows are the middle and end of
+	// a long message, exactly the run this proof reads.
+	rows, ok := scrolledBoxRows(screen)
+	if !ok {
+		rows, ok = composerBoxRows(screen)
+	}
 	if !ok {
 		rows, ok = openBottomBox(screen)
 	}

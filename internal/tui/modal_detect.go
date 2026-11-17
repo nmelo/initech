@@ -381,6 +381,24 @@ func scrolledBoxFirstRow(rows []string) (int, bool) {
 	return top + 1, true
 }
 
+// scrolledBoxRows is the scrolled box's own text rows, trimmed: from its
+// first row (scrolledBoxFirstRow) to its bottom rule, or to the pane's last
+// row when the bottom edge cuts the box off (ini-w6kr).
+func scrolledBoxRows(rows []string) ([]string, bool) {
+	first, ok := scrolledBoxFirstRow(rows)
+	if !ok {
+		return nil, false
+	}
+	var box []string
+	for _, r := range rows[first:] {
+		if isRegionRule(r) {
+			break
+		}
+		box = append(box, strings.TrimSpace(r))
+	}
+	return box, true
+}
+
 func isComposerPromptRow(row string) bool {
 	return strings.HasPrefix(strings.TrimLeft(row, " "), "\u276f")
 }

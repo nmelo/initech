@@ -179,3 +179,26 @@ func TestShortPaneW6kr_AnExitNotReplacedIsNotDeliveredAtTheDeadline(t *testing.T
 		t.Fatalf("event %q", ev.Detail)
 	}
 }
+
+// Live check (6 rows): the Enter went, but the pre-Enter sighting never saw
+// our text, so each verdict was "could not confirm". The box-run proof reads
+// the scrolled box cut off by the bottom edge, so the one row of our message
+// it shows is sighted, and the confirmation can read the box clearing.
+func TestShortPaneW6kr_TheSightingReadsAScrolledBoxCutByTheBottomEdge(t *testing.T) {
+	rows := w6Rows(t, "haiku326_scrolled_open_w55h6.txt")
+	p, _, _ := proofPaneSized(t, 55, len(rows))
+	paintRows(t, p, rows)
+	body := "The ledger read is right; keep the fields, build the routes against the interface meanwhile and I will review when the store lands. Put the question and your recommendation on the bead."
+	ps := newPendingSubmit(body, "bracketed", "")
+	if !boxRunIsOurs(p, ps) {
+		t.Fatal("the box-run proof does not read our row in a scrolled box cut by the bottom edge")
+	}
+	tail, found := composerTail(p)
+	if !submitSighted(p, tail, found, ps) {
+		t.Fatalf("not sighted: tail %q found %v", tail, found)
+	}
+	// A body that is not ours is not sighted from the same box.
+	if boxRunIsOurs(p, newPendingSubmit("an unrelated message about something else entirely, long enough to prove", "bracketed", "")) {
+		t.Fatal("someone else's text read as ours")
+	}
+}
