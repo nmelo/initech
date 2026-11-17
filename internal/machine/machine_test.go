@@ -21,8 +21,8 @@ func TestCeiling_AnAbsentFileIsTheDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c != (Ceiling{Sessions: 30, FreeMemoryGB: 8, Load: 30, FreeSource: SourceDefault}) {
-		t.Fatalf("defaults = %+v, want 30 / 8 GB / 30", c)
+	if c != (Ceiling{Sessions: 40, FreeMemoryGB: 8, Load: 30, FreeSource: SourceDefault}) {
+		t.Fatalf("defaults = %+v, want 40 / 8 GB / 30", c)
 	}
 }
 
@@ -277,7 +277,7 @@ func TestCeilingFor_TheLowerOf8GBAnd20PercentOfTotal(t *testing.T) {
 		if got.FreeMemoryGB != c.want || got.FreeSource != c.source {
 			t.Errorf("total %v GB: %v GB (%s), want %v GB (%s)", c.total, got.FreeMemoryGB, got.FreeSource, c.want, c.source)
 		}
-		if got.Sessions != 30 || got.Load != 30 {
+		if got.Sessions != 40 || got.Load != 30 {
 			t.Errorf("total %v GB moved the other numbers: %+v", c.total, got)
 		}
 	}
@@ -310,8 +310,8 @@ func TestStatusLine_NamesTheValueInEffectAndItsSource(t *testing.T) {
 		c    Ceiling
 		want string
 	}{
-		{CeilingFor(48), "fleet 3 awake · 18.7 GB free · swap 2.3 GB · load 6 · ceiling 30 / 8 GB (default) / 30"},
-		{CeilingFor(16), "fleet 3 awake · 18.7 GB free · swap 2.3 GB · load 6 · ceiling 30 / 3.2 GB (20% of 16 GB) / 30"},
+		{CeilingFor(48), "fleet 3 awake · 18.7 GB free · swap 2.3 GB · load 6 · ceiling 40 / 8 GB (default) / 30"},
+		{CeilingFor(16), "fleet 3 awake · 18.7 GB free · swap 2.3 GB · load 6 · ceiling 40 / 3.2 GB (20% of 16 GB) / 30"},
 		{Ceiling{Sessions: 30, FreeMemoryGB: 12, Load: 30, FreeSource: SourceFile}, "fleet 3 awake · 18.7 GB free · swap 2.3 GB · load 6 · ceiling 30 / 12 GB (machine.yaml) / 30"},
 	} {
 		if got := StatusLine(r, tc.c); got != tc.want {
@@ -319,7 +319,7 @@ func TestStatusLine_NamesTheValueInEffectAndItsSource(t *testing.T) {
 		}
 	}
 	// The refusal gives the value in effect, in the ruling's words.
-	if got := Refusal(r, CeilingFor(16)); !strings.HasSuffix(got, "ceiling 30 / 3.2 GB / 30") {
+	if got := Refusal(r, CeilingFor(16)); !strings.HasSuffix(got, "ceiling 40 / 3.2 GB / 30") {
 		t.Errorf("refusal %q", got)
 	}
 }
@@ -474,5 +474,38 @@ func TestDir_AnEmptyOrMissingFolderGivesTheDefaultCeiling(t *testing.T) {
 		if err != nil || c != CeilingFor(16) {
 			t.Fatalf("%s folder: ceiling %+v, %v; want the default %+v", name, c, err, CeilingFor(16))
 		}
+	}
+}
+
+// TestGate_TheDefaultCeilingAdmitsUpTo39AwakeAndRefusesAt40 (ini-6kfq): with
+// no machine.yaml, a start or wake at 31 to 39 awake sessions, memory and load
+// under, is admitted; at 40 it is refused.
+func TestGate_TheDefaultCeilingAdmitsUpTo39AwakeAndRefusesAt40(t *testing.T) {
+	c, err := LoadCeiling(t.TempDir(), 48)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for awake := 31; awake <= 40; awake++ {
+		r := Reading{Awake: awake, AwakeOK: true, FreeGB: 20, FreeOK: true, Load: 5, LoadOK: true}
+		var g Gate
+		g.Step(r, c, time.Now())
+		ok, words := g.Admit()
+		if awake < 40 && !ok {
+			t.Fatalf("%d awake refused: %s", awake, words)
+		}
+		if awake == 40 && (ok || !strings.Contains(words, "40 awake sessions")) {
+			t.Fatalf("40 awake: admitted %v, words %q", ok, words)
+		}
+	}
+}
+
+// TestCeiling_AFileSaying30StillSets30 (ini-6kfq AC3): machine.yaml overrides
+// the new default as it did the old one.
+func TestCeiling_AFileSaying30StillSets30(t *testing.T) {
+	dir := t.TempDir()
+	writeMachineYAML(t, dir, "ceiling:\n  sessions: 30\n")
+	c, err := LoadCeiling(dir, 48)
+	if err != nil || c.Sessions != 30 {
+		t.Fatalf("ceiling = %+v %v, want sessions 30", c, err)
 	}
 }

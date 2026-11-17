@@ -133,7 +133,7 @@ func captureSpawner(t *testing.T, calls *atomic.Int32, made *[]*capturePty, mu *
 	}
 }
 
-const ceilingWordsAtLoad99 = "not started: the Mac is at its ceiling: 0 awake sessions, 20.0 GB free, load 99; ceiling 30 / 8 GB / 30"
+const ceilingWordsAtLoad99 = "not started: the Mac is at its ceiling: 0 awake sessions, 20.0 GB free, load 99; ceiling 40 / 8 GB / 30"
 
 // AC1: what counts as awake.
 func TestCeiling_AwakeCountsEveryLiveClaudeStateAndNothingElse(t *testing.T) {
@@ -548,7 +548,7 @@ func TestCeiling_TheStepUsesTheDefaultForThisMachinesMemory(t *testing.T) {
 	if engaged, _ := tui.stepCeiling(nil, time.Now()); engaged {
 		t.Fatal("4 GB reclaimable on a 16 GB machine engaged the ceiling: its limit is 3.2 GB")
 	}
-	if got := tui.FleetSnapshot().Line; !strings.Contains(got, "ceiling 30 / 3.2 GB (20% of 16 GB) / 30") {
+	if got := tui.FleetSnapshot().Line; !strings.Contains(got, "ceiling 40 / 3.2 GB (20% of 16 GB) / 30") {
 		t.Fatalf("fleet line %q does not name the value and its source", got)
 	}
 	fm.freeKB = 3 * 1024 * 1024

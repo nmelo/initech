@@ -44,7 +44,7 @@ const (
 )
 
 // CeilingFor is the ceiling with no machine.yaml on a machine of totalGB:
-// 30 sessions, load 30, and free memory the lower of DefaultFreeCapGB and
+// 40 sessions, load 30, and free memory the lower of DefaultFreeCapGB and
 // DefaultFreePercent of total. An unknown total (0 or less) keeps the cap.
 func CeilingFor(totalGB float64) Ceiling {
 	c := DefaultCeiling
@@ -57,7 +57,7 @@ func CeilingFor(totalGB float64) Ceiling {
 
 // DefaultCeiling is the ceiling when machine.yaml is absent or leaves a
 // key out.
-var DefaultCeiling = Ceiling{Sessions: 30, FreeMemoryGB: DefaultFreeCapGB, Load: 30, FreeSource: SourceDefault}
+var DefaultCeiling = Ceiling{Sessions: 40, FreeMemoryGB: DefaultFreeCapGB, Load: 30, FreeSource: SourceDefault}
 
 // FileName is the machine-level file's name inside Dir.
 const FileName = "machine.yaml"

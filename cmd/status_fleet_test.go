@@ -39,7 +39,7 @@ func TestStatusFleet_TheLineFollowsTheTableAndSaysAtTheCeiling(t *testing.T) {
 	out := runStatusWith(t, resp, false, false)
 	// The rig line is the panel bar's left part (ini-9z0b), so it starts
 	// with merges/h, no label.
-	want := "  fleet 31 awake · 6.1 GB free · swap 2.3 GB · load 34 · ceiling 30 / 8 GB (default) / 30 · at the ceiling\n  merges/h "
+	want := "  fleet 31 awake · 6.1 GB free · swap 2.3 GB · load 34 · ceiling 40 / 8 GB (default) / 30 · at the ceiling\n  merges/h "
 	if !strings.Contains(out, want) {
 		t.Errorf("status:\n%s\nwant the fleet line before the rig line:\n%q", out, want)
 	}
@@ -55,7 +55,7 @@ func TestStatusFleet_UnderTheCeilingTheLineSaysNoMore(t *testing.T) {
 	resp := paneReply(windowOneNumbers())
 	resp.Fleet = fleetAt(12, 20, 5)
 	out := runStatusWith(t, resp, false, false)
-	if !strings.Contains(out, "  fleet 12 awake · 20.0 GB free · swap 2.3 GB · load 5 · ceiling 30 / 8 GB (default) / 30\n") {
+	if !strings.Contains(out, "  fleet 12 awake · 20.0 GB free · swap 2.3 GB · load 5 · ceiling 40 / 8 GB (default) / 30\n") {
 		t.Errorf("status:\n%s", out)
 	}
 }
@@ -96,7 +96,7 @@ func TestStatusFleet_NumbersJSONCarriesTheFleetFields(t *testing.T) {
 		t.Fatal(err)
 	}
 	f := rig.Numbers.Fleet
-	if f == nil || f.Awake == nil || *f.Awake != 31 || f.FreeGB == nil || *f.FreeGB != 6.1 || f.Load == nil || *f.Load != 34 || !f.AtCeiling || f.Ceiling.Sessions != 30 || f.SwapGB == nil || *f.SwapGB != 2.3 || f.Ceiling.FreeSource != "default" {
+	if f == nil || f.Awake == nil || *f.Awake != 31 || f.FreeGB == nil || *f.FreeGB != 6.1 || f.Load == nil || *f.Load != 34 || !f.AtCeiling || f.Ceiling.Sessions != 40 || f.SwapGB == nil || *f.SwapGB != 2.3 || f.Ceiling.FreeSource != "default" {
 		t.Errorf("--json --numbers fleet = %+v", f)
 	}
 }
