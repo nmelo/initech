@@ -39,9 +39,15 @@ func (t *TUI) renderEmptyViewerHint(s tcell.Screen, w, h int) {
 // region when nobody else is working (ini-92wm rule 8). The region would
 // otherwise be blank, and a blank 60% of the screen reads as a broken layout
 // rather than a quiet fleet. Drawn before the panes, and only when the plan
-// holds the held pane alone, so it never sits under a pane.
+// holds the held pane alone, so it never sits under a pane, and never while a
+// pane is zoomed.
 func (t *TUI) renderLiveFocusEmptyHint(s tcell.Screen, w, h int) {
 	if !t.layoutState.RightSetActive || t.layoutState.Mode != Layout2Col || len(t.plan.Panes) != 1 {
+		return
+	}
+	// A zoomed plan also holds one pane, full screen: the zoom, not an empty
+	// right region (ini-yfws).
+	if t.layoutState.Zoomed {
 		return
 	}
 	if t.layoutState.ListRows > 0 {
