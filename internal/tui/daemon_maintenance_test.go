@@ -86,23 +86,29 @@ func TestDaemonMaintenance_TheTickerRunDaemonStartsResolvesHeldMail(t *testing.T
 }
 
 // Criterion 2: a withheld Enter past its deadline is reported, not kept.
+// Its fate was never seen, so it reads UNKNOWN (ini-e1lp: NOT DELIVERED
+// only on sight). The verdict reads the screen off the maintenance
+// goroutine, so the test waits on its report.
 func TestDaemonMaintenance_AWithheldSubmitPastItsDeadlineIsReported(t *testing.T) {
 	logs := captureLogs(t)
 	p := daemonPane(t)
+	reports := make(chan AgentEvent, 4)
+	p.eventCh = reports
 	ps := newPendingSubmit("[from super] hello", "bracketed", "")
 	ps.deadline = time.Now().Add(-time.Second)
 	p.mu.Lock()
 	p.pendingSubmit = ps
 	p.mu.Unlock()
 	(&Daemon{panes: []*Pane{p}}).maintain(time.Now())
+	ev := <-reports
 	p.mu.Lock()
 	left := p.pendingSubmit
 	p.mu.Unlock()
 	if left != nil {
 		t.Fatal("a withheld submit past its deadline is still pending on the daemon")
 	}
-	if !strings.Contains(logs.String(), "NOT DELIVERED") {
-		t.Error("the withheld submit was dropped without a NOT DELIVERED line")
+	if !strings.HasPrefix(ev.Detail, unconfirmedSubmitPrefix) || !strings.Contains(logs.String(), "withheld submit UNKNOWN") {
+		t.Errorf("report %q; log:\n%s\nwant the UNKNOWN line", ev.Detail, logs.String())
 	}
 }
 

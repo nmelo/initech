@@ -60,6 +60,8 @@ var lockingCallAllowlist = map[string]string{
 	"emulatorBottomTextBlocking": "the blocking primitive",
 	"composerTailAt":             "send goroutine (injectText under sendMu)",
 	"withholdSubmit":             "send goroutine (sendPaneTextLocked under sendMu): the capture at WITHHELD (ini-hkxn)",
+	"Pane.judgeWithheld":         "readLoop (the withheld retry, under sendMu) or the sweep's own goroutine: the withheld verdict (ini-e1lp)",
+	"Pane.endWithheldUnknown":    "as judgeWithheld: the UNKNOWN capture (ini-e1lp)",
 	"composerBlock":              "send goroutine (injectText under sendMu)",
 	"composerRegion":             "send goroutine and the withheld-submit retry, both under sendMu (ini-cg8y)",
 	"submitSample":               "send goroutine (injectText under sendMu) and the pre-Enter sighter it starts and joins: the stable-sample frame reads (ini-k3g2, ini-pkin)",

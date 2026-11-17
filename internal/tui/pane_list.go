@@ -16,6 +16,17 @@ package tui
 // successor is handed to the window server, which serves it and rebinds the
 // existing stream, so attached windows keep streaming and typing into it.
 func (t *TUI) replacePane(i int, np PaneView) {
+	// A message withheld in the pane being replaced is gone with its box
+	// (ini-e1lp): NOT DELIVERED, said off this goroutine, which must not wait
+	// on a pane's screen.
+	if old, ok := t.panes[i].(*Pane); ok && old != np {
+		old.mu.Lock()
+		ps := old.pendingSubmit
+		old.mu.Unlock()
+		if ps != nil {
+			go old.surfaceUndeliveredSubmit(ps, "the pane was restarted")
+		}
+	}
 	t.panes[i] = np
 	if lp, ok := np.(*Pane); ok {
 		t.windowSrv.ReplacePane(lp)

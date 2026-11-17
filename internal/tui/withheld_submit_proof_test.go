@@ -220,20 +220,29 @@ func TestProof_TheWholeBodyOnScreenIsProof(t *testing.T) {
 //
 // It costs delivery on the briefest messages, and that is the trade taken
 // deliberately: the operator is told, and told what to re-send.
+//
+// The box still holding the text is not the message seen gone, so it is
+// reported at its deadline as not known (ini-e1lp), never submitted.
 func TestProof_ABodyTooShortToProveSurfaces(t *testing.T) {
 	p, submits, events := proofPane(t)
 	armWithheld(p, "ok")
 
 	p.emu.Write([]byte("❯ ok"))
+	p.mu.Lock()
+	p.pendingSubmit.deadline = time.Now().Add(-time.Second)
+	p.mu.Unlock()
 
 	p.maybeRetryWithheldSubmit()
+	ev := <-events
+	if !strings.HasPrefix(ev.Detail, unconfirmedSubmitPrefix) {
+		t.Fatalf("event reads %q; want the could-not-confirm report", ev.Detail)
+	}
 	select {
 	case b := <-submits:
 		t.Fatalf("submitted (%q) on a two-rune body: there is nothing on that screen "+
 			"that our paste can produce and the operator cannot", string(b))
-	case <-time.After(400 * time.Millisecond):
+	default:
 	}
-	assertSurfaced(t, events)
 }
 
 // TestProof_RequiresTheTransition pins that a placeholder already present when
@@ -344,8 +353,9 @@ func TestProof_QuietPaneStillResolves(t *testing.T) {
 	tui.modalMaintenance(time.Now().Add(31 * time.Second))
 	select {
 	case ev := <-events:
-		if !strings.Contains(ev.Detail, "NOT delivered") {
-			t.Fatalf("event reads %q; expected the undelivered report", ev.Detail)
+		// Its fate was never seen: reported as not known (ini-e1lp).
+		if !strings.HasPrefix(ev.Detail, unconfirmedSubmitPrefix) {
+			t.Fatalf("event reads %q; expected the could-not-confirm report", ev.Detail)
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("A QUIET PANE HELD THE MESSAGE FOREVER.\n\n" +

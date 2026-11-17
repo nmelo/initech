@@ -165,15 +165,18 @@ func TestWithheldSubmit_GivesUpLoudlyAfterTheWindow(t *testing.T) {
 	p.mu.Unlock()
 	p.maybeRetryWithheldSubmit()
 
-	time.Sleep(100 * time.Millisecond)
+	// The retry decides synchronously; its report is an event (no sleep).
+	ev := <-ch
 	if got := w.count(); got != 0 {
 		t.Errorf("submitted %d time(s) after giving up", got)
 	}
 	if p.pendingSubmit != nil {
 		t.Error("still armed after the window expired: it would spin")
 	}
-	if evs := drainRetryEvents(ch); len(evs) == 0 || !strings.Contains(evs[0].Detail, "NOT delivered") {
-		t.Errorf("giving up was not surfaced: %+v", evs)
+	// The box stayed empty and the message was never seen: not known
+	// (ini-e1lp), not NOT DELIVERED.
+	if !strings.HasPrefix(ev.Detail, unconfirmedSubmitPrefix) {
+		t.Errorf("giving up was not surfaced as not known: %+v", ev)
 	}
 }
 

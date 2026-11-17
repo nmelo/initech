@@ -598,9 +598,16 @@ for an agent at its prompt, then prints one line and exits with its status:
 - `could not confirm delivery to <agent>: <reason>; peek the pane` (exit 2): initech could not tell
   either way (the reasons are below). When initech held back the Enter, the reason is `submit withheld,
   awaiting composer repaint; the TUI delivers it when the box repaints and reports`, and the outcome
-  arrives later as a toast. If that message ends not delivered, its sender is told once, an agent as
-  `[from initech] <agent> did not get your message (not delivered after <n>s: <why>); send it again:
-  <its start>` and the operator as a notice in window 1. The notice never goes into the agent that did
+  arrives later as a toast. initech never presses Enter on it without our text in the box; its fate is
+  one of three, read from the pane. Delivered: the box is empty and the message's first and last lines
+  show above the prompt in two readings in a row, where they were not before (someone or something else
+  pressed Enter), or Claude's queued-message line holds it; the sender hears nothing more. Not delivered:
+  the box holds other text and the message is nowhere above it, or the agent's process exited or was
+  restarted; the sender is told once, an agent as `[from initech] <agent> did not get your message (not
+  delivered after <n>s: <why>); send it again: <its start>` and the operator as a notice in window 1.
+  Not known, in every other case, an emptied box among them, once the wait ends: the sender is told
+  `[from initech] the message to <agent> sent at <HH:MM> may or may not have arrived`, the screen is
+  captured as for an UNKNOWN, and nothing is sent again. The notice never goes into the agent that did
   not get the message: when it would (initech's own line to super, or an agent's message to itself),
   only the log has it. A running initech older than the command answers with `older initech
   running; restart it for delivery verdicts`; an agent on a machine running an older initech, with

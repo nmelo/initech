@@ -1664,7 +1664,11 @@ func withholdSubmit(pane *Pane, text, mode, tailBefore, lastPolled string) {
 	// The screen as the belt read it (ini-hkxn): a WITHHELD is where a new
 	// Claude Code screen shows first, so it is kept like an UNKNOWN's.
 	cols, rows := pane.emuSize()
-	capture := writeWithheldCapture(pane.Name(), cols, rows, emuRowsBlocking(pane.emu))
+	screen := emuRowsBlocking(pane.emu)
+	pane.mu.Lock()
+	ps.screenAtWithhold = screen // the "screen before" for the verdict (ini-e1lp)
+	pane.mu.Unlock()
+	capture := writeWithheldCapture(pane.Name(), cols, rows, screen)
 	LogInfo("inject", "submit WITHHELD: body never reached a composer", "pane", pane.Name(), "mode", mode,
 		"cols", cols, "rows", rows, "capture", capture,
 		"tail_before", logSnippet(tailBefore), "last_polled", logSnippet(lastPolled),
@@ -2274,21 +2278,27 @@ func (t *TUI) handleIPCAttention(conn net.Conn, req IPCRequest) {
 // is why the modal guard's enqueue-the-whole-message shape is wrong here and
 // was correctly left out rather than forgotten.
 type pendingSubmit struct {
-	bodyLines      []string     // Our body's distinct non-blank lines, the evidence a composer must show to prove it holds OURS.
-	pasteCount     int          // The +M a COLLAPSED paste of our body shows: its newline count (ini-vpwg, re-measured ini-k3g2).
-	bodyRunes      int          // The body's length, which decides whether a one-line paste of it collapses with no count (ini-dmi).
-	withheldAt     time.Time    // When we withheld, so the operator is told how long a message waited.
-	preview        string       // For operator-facing records.
-	from           string       // Who sent a withheld message (the send's sender, ini-hkxn); told once if it ends not delivered.
-	mode           string       // Injection mode, for the log.
-	tailAtWithhold string       // The composer tail when we withheld: "nothing has changed yet".
-	seenInBox      bool         // Our body was already seen in the box before the watch began (ini-pkin).
-	census         submitCensus // What this send's samples saw, before the Enter and after, for the UNKNOWN line (ini-s1kd).
-	lastRows       []string     // The screen the last sample read, for the UNKNOWN capture (ini-xl9); written only by the goroutine sampling this pendingSubmit.
-	bodyFlat       string       // The whole body with every whitespace rune removed: what a box holding only our text is a run of (ini-xl9).
-	fromUnknown    bool         // Kept after an UNKNOWN outcome for one bounded retry (ini-xl9 (d)); its sender was already told "could not confirm".
-	retrying       atomic.Bool  // The sweep's retry of a kept UNKNOWN is running; one at a time (ini-xl9 (d)).
-	deadline       time.Time    // Bounded: we do not wait forever.
+	bodyLines  []string  // Our body's distinct non-blank lines, the evidence a composer must show to prove it holds OURS.
+	pasteCount int       // The +M a COLLAPSED paste of our body shows: its newline count (ini-vpwg, re-measured ini-k3g2).
+	bodyRunes  int       // The body's length, which decides whether a one-line paste of it collapses with no count (ini-dmi).
+	withheldAt time.Time // When we withheld, so the operator is told how long a message waited.
+	preview    string    // For operator-facing records.
+	from       string    // Who sent a withheld message (the send's sender, ini-hkxn); told once if it ends not delivered.
+	// The screen the belt read when it withheld (ini-e1lp), and the last
+	// sample that showed an empty box with our body above it: a withheld
+	// message is DELIVERED only on two equal such samples showing what this
+	// screen did not.
+	screenAtWithhold []string
+	emptySample      []string
+	mode             string       // Injection mode, for the log.
+	tailAtWithhold   string       // The composer tail when we withheld: "nothing has changed yet".
+	seenInBox        bool         // Our body was already seen in the box before the watch began (ini-pkin).
+	census           submitCensus // What this send's samples saw, before the Enter and after, for the UNKNOWN line (ini-s1kd).
+	lastRows         []string     // The screen the last sample read, for the UNKNOWN capture (ini-xl9); written only by the goroutine sampling this pendingSubmit.
+	bodyFlat         string       // The whole body with every whitespace rune removed: what a box holding only our text is a run of (ini-xl9).
+	fromUnknown      bool         // Kept after an UNKNOWN outcome for one bounded retry (ini-xl9 (d)); its sender was already told "could not confirm".
+	retrying         atomic.Bool  // The sweep's retry of a kept UNKNOWN is running; one at a time (ini-xl9 (d)).
+	deadline         time.Time    // Bounded: we do not wait forever.
 }
 
 // withheldSubmitWindow bounds how long a withheld submit waits for the
@@ -2667,18 +2677,127 @@ func (p *Pane) maybeRetryWithheldSubmit() {
 	case ps.fromUnknown:
 		// The box reads and does not hold our text: taken, or never there.
 		p.endUnknownSubmit(ps, "the box reads without our text")
-	case found && tail == ps.tailAtWithhold:
-		// Nothing has changed yet. Keep waiting, but not forever.
-		if time.Now().After(ps.deadline) {
-			p.surfaceUndeliveredSubmit(ps, "the composer never repainted")
-		}
 	default:
-		// The composer changed to something that is NOT ours, or vanished. We
-		// genuinely do not know whether our text is still there, and a submit
-		// sent into an unknown composer is a FORGED submit -- the exact thing
-		// the belt exists to prevent. Do not guess; surface.
-		p.surfaceUndeliveredSubmit(ps, "the composer no longer holds our text")
+		// The box changed to something that is NOT ours, emptied, vanished, or
+		// has not changed. A submit sent into it would be a FORGED submit, so
+		// none is sent; what it says about the message is judged on sight
+		// (ini-e1lp): NOT DELIVERED only when it is seen gone, DELIVERED only
+		// on the two-sided proof, UNKNOWN at the deadline otherwise.
+		p.judgeWithheld(ps, time.Now())
 	}
+}
+
+// Withheld verdict evidence and reasons (ini-e1lp), as the log and the
+// sender read them.
+const (
+	withheldSeenAbove   = "our body newly above the prompt in two samples, the box empty"
+	withheldSeenQueued  = "our body in Claude's queued line"
+	withheldOtherText   = "the box holds other text and our body is nowhere above it"
+	withheldEmptiedWhy  = "the box emptied and the message was not seen above it"
+	withheldUnchangeWhy = "the box never showed the message going or staying"
+)
+
+// judgeWithheld gives a withheld message (not a kept UNKNOWN) its fate from
+// what the pane shows (ini-e1lp), or leaves it waiting:
+//   - DELIVERED when the box is empty and the message's first and last lines
+//     are above the prompt, where the screen at the withhold did not show
+//     them, in two equal samples in a row (watchSubmit's proof), or when
+//     Claude's queued line is on screen with the message above the prompt;
+//   - NOT DELIVERED when the box holds other text and the message is
+//     nowhere above the prompt;
+//   - otherwise it waits, and at its deadline ends UNKNOWN: the sender hears
+//     it may or may not have arrived. An empty box alone is never NOT
+//     DELIVERED: another key (the operator, a script) may have submitted it.
+//
+// Nothing here presses a key. Caller holds sendMu or is the sweep.
+func (p *Pane) judgeWithheld(ps *pendingSubmit, now time.Time) {
+	if paneHasModal(p) {
+		if now.After(ps.deadline) {
+			p.endWithheldUnknown(ps, "a dialog was open")
+		}
+		return
+	}
+	rows := emuRowsBlocking(p.emu)
+	tail, _, found := composerTailFromRows(rows)
+	p.mu.Lock()
+	before, prev := ps.screenAtWithhold, ps.emptySample
+	p.mu.Unlock()
+	above := bodyShownAbove(rows, ps) && before != nil && !bodyShownAbove(before, ps)
+	switch {
+	case above && screenShowsQueuedLine(rows):
+		p.deliveredWithheld(ps, withheldSeenQueued)
+		return
+	case found && tail == "" && above:
+		if prev != nil && slices.Equal(prev, rows) {
+			p.deliveredWithheld(ps, withheldSeenAbove)
+			return
+		}
+		p.mu.Lock()
+		ps.emptySample = append([]string(nil), rows...)
+		p.mu.Unlock()
+		return
+	case found && tail != "" && tail != ps.tailAtWithhold && !submitStillHeld(p, tail, ps) && !bodyShownAbove(rows, ps):
+		p.surfaceUndeliveredSubmit(ps, withheldOtherText)
+		return
+	}
+	p.mu.Lock()
+	ps.emptySample = nil
+	p.mu.Unlock()
+	if now.After(ps.deadline) {
+		why := withheldUnchangeWhy
+		if found && tail == "" {
+			why = withheldEmptiedWhy
+		}
+		p.endWithheldUnknown(ps, why)
+	}
+}
+
+// screenShowsQueuedLine reports Claude's queued-message hint on screen: the
+// box row reads "❯ Press up to edit queued messages" while a message queued
+// mid-turn shows above the box. Space-stripped across rows, so a hint a
+// narrow pane wraps onto a second row still counts.
+func screenShowsQueuedLine(rows []string) bool {
+	return strings.Contains(stripSpace(strings.Join(rows, "")), stripSpace(queuedMessagesHint))
+}
+
+// deliveredWithheld records a withheld message seen submitted by another key
+// (ini-e1lp): no key is pressed; the DELIVERED report names the evidence.
+func (p *Pane) deliveredWithheld(ps *pendingSubmit, evidence string) {
+	if !p.takePendingSubmit(ps) {
+		return
+	}
+	waited := time.Since(ps.withheldAt).Round(time.Second)
+	LogInfo("inject", "withheld submit DELIVERED: seen submitted", "pane", p.name, "mode", ps.mode,
+		"evidence", evidence, "waited", waited, "text", ps.preview, "agent_running", p.Activity() == StateRunning)
+	EmitEvent(p.eventCh, AgentEvent{
+		Type:   EventMessageSent,
+		Pane:   p.name,
+		Detail: deliveredLateSubmitPrefix + " after " + waited.String() + " (" + evidence + "): " + ps.preview,
+	})
+}
+
+// endWithheldUnknown ends a withheld message whose fate the pane never
+// showed (ini-e1lp): the log line, a capture as at UNKNOWN, and its sender
+// told it may or may not have arrived. Never a resend.
+func (p *Pane) endWithheldUnknown(ps *pendingSubmit, why string) {
+	if !p.takePendingSubmit(ps) {
+		return
+	}
+	waited := time.Since(ps.withheldAt).Round(time.Second)
+	cols, rows := p.emuSize()
+	capture := writeInjectCapture(p.name, cols, rows, emuRowsBlocking(p.emu))
+	LogInfo("inject", "withheld submit UNKNOWN: "+why, "pane", p.name, "mode", ps.mode,
+		"waited", waited, "text", ps.preview, "cols", cols, "rows", rows, "capture", capture,
+		"agent_running", p.Activity() == StateRunning)
+	p.emitSubmitReportTo(unconfirmedSubmitPrefix,
+		"after "+waited.String()+" ("+why+"), re-send it if the agent did not get it: "+ps.preview,
+		ps.from, withheldUnknownLine(p.name, ps.withheldAt))
+}
+
+// withheldUnknownLine is what the sender of a withheld message hears when its
+// fate was never seen: the held-mail words.
+func withheldUnknownLine(pane string, sentAt time.Time) string {
+	return fmt.Sprintf("the message to %s sent at %s may or may not have arrived", pane, sentAt.Format("15:04"))
 }
 
 // deliverWithheldSubmit sends a withheld submit whose body is provably in the
@@ -2815,10 +2934,24 @@ func sweepWithheldSubmitsIn(panes []PaneView, now time.Time) {
 			}
 			continue
 		}
-		if now.Before(ps.deadline) {
+		// A pane whose process is gone has lost the box with our text: seen
+		// gone (ini-e1lp). Otherwise, at the deadline, the verdict is judged
+		// from the screen: never NOT DELIVERED on an empty or unchanged box.
+		// Both read the screen, so off this goroutine, one at a time.
+		dead := !p.IsAlive()
+		if !dead && now.Before(ps.deadline) {
 			continue
 		}
-		p.surfaceUndeliveredSubmit(ps, "the pane produced no further output")
+		if ps.retrying.CompareAndSwap(false, true) {
+			go func() {
+				defer ps.retrying.Store(false)
+				if dead {
+					p.surfaceUndeliveredSubmit(ps, "the pane exited")
+					return
+				}
+				p.judgeWithheld(ps, now)
+			}()
+		}
 	}
 }
 
