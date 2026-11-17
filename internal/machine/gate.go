@@ -127,8 +127,8 @@ func (g *Gate) Snapshot() (r Reading, c Ceiling, engaged, seen bool) {
 }
 
 // Refusal is the line a refused start or wake shows in the pane and in
-// status: "not started: the Mac is at its ceiling: 31 awake sessions,
-// 6.1 GB free, load 34; ceiling 30 / 8 GB / 30".
+// status: "not started: the Mac is at its ceiling: 41 awake sessions,
+// 6.1 GB free, load 34; ceiling 40 / 8 GB / 30".
 func Refusal(r Reading, c Ceiling) string {
 	return "not started: the Mac is at its ceiling: " + figures(r) + "; ceiling " + ceilingFigures(c)
 }
@@ -136,7 +136,7 @@ func Refusal(r Reading, c Ceiling) string {
 // Clearing is the refusal during the hold, once every figure is under: the
 // ceiling stays engaged until ClearAfter under, so the words say since when
 // and when starts resume, instead of blaming figures that are under: "not
-// started: the ceiling is clearing: every figure under since 14:02 (28/30
+// started: the ceiling is clearing: every figure under since 14:02 (28/40
 // sessions, 11.0 GB free over the 8 GB floor, load 12/30); starts again after
 // one minute under, at 14:03". Times print in their own location (the
 // readings' clock); an unread figure is "?".
@@ -151,8 +151,8 @@ func Clearing(r Reading, c Ceiling, since, resume time.Time) string {
 // at the ceiling, after "deferred to <agent> — ".
 const Deferred = "the Mac is at its ceiling; will wake and deliver when it is under"
 
-// StatusLine is status's fleet line: "fleet 31 awake · 6.1 GB free · swap 2.3
-// GB · load 34 · ceiling 30 / 8 GB (default) / 30". It names where the free
+// StatusLine is status's fleet line: "fleet 41 awake · 6.1 GB free · swap 2.3
+// GB · load 34 · ceiling 40 / 8 GB (default) / 30". It names where the free
 // memory value came from; the refusal gives the value alone.
 func StatusLine(r Reading, c Ceiling) string {
 	swap := "?"
