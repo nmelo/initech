@@ -3,6 +3,7 @@ package machine
 import (
 	"fmt"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -110,6 +111,33 @@ func (g *Gate) Admit() (ok bool, words string) {
 	return true, ""
 }
 
+// AdmitExempt lets one agent through whatever the ceiling: the rig's
+// coordinator (ini-o9dy), so a rig is never up with nobody to run it. It
+// counts the agent as Admit does, so the coordinator still counts as an
+// awake session for every start after it. used reports whether the ceiling
+// would have refused it (engaged, or a figure at or over), and over names
+// what was over in short form for the log: "load 30/30", or "clearing" in
+// the hold. A gate with no reading has nothing to exempt from.
+func (g *Gate) AdmitExempt() (used bool, over string) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if !g.seen {
+		return false, ""
+	}
+	r := g.last
+	if r.AwakeOK {
+		r.Awake += g.admitted
+		g.admitted++
+	}
+	if short := overShort(r, g.ceiling); short != "" {
+		return true, short
+	}
+	if g.engaged {
+		return true, "clearing"
+	}
+	return false, ""
+}
+
 // Engaged reports whether the gate is engaged now. A gate that has never
 // had a reading is not engaged.
 func (g *Gate) Engaged() bool {
@@ -127,10 +155,54 @@ func (g *Gate) Snapshot() (r Reading, c Ceiling, engaged, seen bool) {
 }
 
 // Refusal is the line a refused start or wake shows in the pane and in
-// status: "not started: the Mac is at its ceiling: 41 awake sessions,
-// 6.1 GB free, load 34; ceiling 40 / 8 GB / 30".
+// status. It names the figure or figures at or over the ceiling first, then
+// the rest: "not started: the Mac is at its ceiling: load 30 at or over 30
+// (0 awake sessions, 28.2 GB free)" (ini-o9dy). Free memory is over at or
+// under its floor: "6.1 GB free at or under 8 GB". A figure that could not
+// be read is never over. With none over, it gives every figure and the
+// ceiling.
 func Refusal(r Reading, c Ceiling) string {
-	return "not started: the Mac is at its ceiling: " + figures(r) + "; ceiling " + ceilingFigures(c)
+	var over, rest []string
+	if r.AwakeOK && r.Awake >= c.Sessions {
+		over = append(over, fmt.Sprintf("%d awake sessions at or over %d", r.Awake, c.Sessions))
+	} else {
+		rest = append(rest, awakeText(r)+" awake sessions")
+	}
+	if r.FreeOK && r.FreeGB <= c.FreeMemoryGB {
+		over = append(over, freeText(r)+" GB free at or under "+num(c.FreeMemoryGB)+" GB")
+	} else {
+		rest = append(rest, freeText(r)+" GB free")
+	}
+	if r.LoadOK && r.Load >= c.Load {
+		over = append(over, "load "+loadText(r)+" at or over "+num(c.Load))
+	} else {
+		rest = append(rest, "load "+loadText(r))
+	}
+	if len(over) == 0 {
+		return "not started: the Mac is at its ceiling: " + figures(r) + "; ceiling " + ceilingFigures(c)
+	}
+	words := "not started: the Mac is at its ceiling: " + strings.Join(over, ", ")
+	if len(rest) > 0 {
+		words += " (" + strings.Join(rest, ", ") + ")"
+	}
+	return words
+}
+
+// overShort is the figures at or over the ceiling in short form, for the log
+// of an exempt start: "load 30/30", "41/40 sessions", "6.1/8 GB free". ""
+// when none is.
+func overShort(r Reading, c Ceiling) string {
+	var over []string
+	if r.AwakeOK && r.Awake >= c.Sessions {
+		over = append(over, fmt.Sprintf("%d/%d sessions", r.Awake, c.Sessions))
+	}
+	if r.FreeOK && r.FreeGB <= c.FreeMemoryGB {
+		over = append(over, freeText(r)+"/"+num(c.FreeMemoryGB)+" GB free")
+	}
+	if r.LoadOK && r.Load >= c.Load {
+		over = append(over, "load "+loadText(r)+"/"+num(c.Load))
+	}
+	return strings.Join(over, ", ")
 }
 
 // Clearing is the refusal during the hold, once every figure is under: the

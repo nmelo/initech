@@ -133,7 +133,7 @@ func captureSpawner(t *testing.T, calls *atomic.Int32, made *[]*capturePty, mu *
 	}
 }
 
-const ceilingWordsAtLoad99 = "not started: the Mac is at its ceiling: 0 awake sessions, 20.0 GB free, load 99; ceiling 40 / 8 GB / 30"
+const ceilingWordsAtLoad99 = "not started: the Mac is at its ceiling: load 99 at or over 30 (0 awake sessions, 20.0 GB free)"
 
 // AC1: what counts as awake.
 func TestCeiling_AwakeCountsEveryLiveClaudeStateAndNothingElse(t *testing.T) {

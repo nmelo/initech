@@ -275,11 +275,29 @@ func (t *TUI) refreshMachineCeiling(now time.Time) {
 	})
 }
 
+// ceilingExemptRole is the role the machine ceiling never refuses: the
+// coordinator, the roles catalog's "super" (a pane's name is its role's
+// name). Only that name: a coordinator under another role name, or "super2",
+// is held like any agent.
+const ceilingExemptRole = "super"
+
 // admitAgent asks the gate to start or wake agent by path (start, resume,
 // restart, add, boot, the wake a send causes). On a refusal it records the
 // words on the pane, when there is one, and returns *ErrAtCeiling; it never
 // touches the pane's process.
 func (t *TUI) admitAgent(p *Pane, agent, path string) error {
+	if agent == ceilingExemptRole {
+		// The coordinator is never refused (ini-o9dy): a rig restarted on a
+		// busy Mac must come up with someone to run it. It still counts as
+		// awake for every start after it, and each exempt start is logged.
+		if used, over := t.ceiling.gate.AdmitExempt(); used {
+			LogInfo("ceiling", "super started over the ceiling ("+over+")", "agent", agent, "path", path)
+		}
+		if p != nil {
+			p.setCeilingNote("")
+		}
+		return nil
+	}
 	ok, words := t.ceiling.gate.Admit()
 	if ok {
 		if p != nil {

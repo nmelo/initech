@@ -193,7 +193,7 @@ func TestGate_AnUnreadableNumberNeverEngagesIt(t *testing.T) {
 
 func TestWords_TheRulingsLines(t *testing.T) {
 	r := Reading{Awake: 31, AwakeOK: true, FreeGB: 6.1, FreeOK: true, Load: 34, LoadOK: true}
-	if got, want := Refusal(r, testCeiling), "not started: the Mac is at its ceiling: 31 awake sessions, 6.1 GB free, load 34; ceiling 30 / 8 GB / 30"; got != want {
+	if got, want := Refusal(r, testCeiling), "not started: the Mac is at its ceiling: 31 awake sessions at or over 30, 6.1 GB free at or under 8 GB, load 34 at or over 30"; got != want {
 		t.Errorf("refusal\n got %q\nwant %q", got, want)
 	}
 	if got, want := StatusLine(r, testCeiling), "fleet 31 awake · 6.1 GB free · swap ? GB · load 34 · ceiling 30 / 8 GB / 30"; got != want {
@@ -253,7 +253,7 @@ func TestGate_AdmitRefusesWithTheWordsWhileEngaged(t *testing.T) {
 	r := Reading{Awake: 31, AwakeOK: true, FreeGB: 6.1, FreeOK: true, Load: 34, LoadOK: true}
 	g.Step(r, testCeiling, time.Now())
 	ok, words := g.Admit()
-	if ok || words != "not started: the Mac is at its ceiling: 31 awake sessions, 6.1 GB free, load 34; ceiling 30 / 8 GB / 30" {
+	if ok || words != "not started: the Mac is at its ceiling: 31 awake sessions at or over 30, 6.1 GB free at or under 8 GB, load 34 at or over 30" {
 		t.Fatalf("Admit at the ceiling = %v %q", ok, words)
 	}
 }
