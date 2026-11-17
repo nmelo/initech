@@ -57,7 +57,7 @@ func fakePaneSpawner(t *testing.T, calls *atomic.Int32) func(PaneConfig, int, in
 func testPane(name string) *Pane {
 	return &Pane{
 		name:    name,
-		emu:     vt.NewSafeEmulator(10, 5),
+		emu:     vt.NewSafeEmulator(80, 24),
 		alive:   true,
 		visible: true,
 		cfg:     PaneConfig{BeadsEnabled: true},

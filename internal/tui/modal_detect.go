@@ -338,34 +338,47 @@ func isScrolledBoxRule(row string) bool {
 var scrolledBoxRule = regexp.MustCompile(`^\x{2500}+ \x{2191} [0-9]+ more \x{2500}+(?: [^\x{2500}\x{2502}]{1,40} \x{2500}+)?$`)
 
 // scrolledBoxFirstRow finds a scrolled input box (isScrolledBoxRule) at the
-// bottom of the screen: its top rule, at least one row of text, then a plain
-// rule that is the last plain rule on screen (the box's bottom border; the
-// footer is under it). It returns the index of the box's first text row. A
-// "↑ N more" rule with no box under it, or a box with another rule below it,
-// is not one.
+// bottom of the screen and returns the index of its first text row. Under the
+// "↑ N more" rule nearest the bottom there must be at least one row of text,
+// then either a plain rule that is the last rule on screen (the box's bottom
+// border; the footer is under it) or the pane's last row: in a short pane
+// (6 rows) the box's bottom border and the footer fall below the last row,
+// and a box the bottom edge cuts off is still a box (ini-w6kr, the ini-jpal
+// shape). A "↑ N more" rule with no text under it, or with another rule below
+// its box, is not one: at 5 rows and fewer Claude Code draws no row of the box
+// at all, and nothing there can be proven.
 func scrolledBoxFirstRow(rows []string) (int, bool) {
-	bottom := -1
+	top := -1
 	for r := len(rows) - 1; r >= 0; r-- {
-		if isRegionRule(rows[r]) {
-			bottom = r
+		if isScrolledBoxRule(rows[r]) {
+			top = r
 			break
 		}
 	}
-	if bottom < 2 {
+	if top < 0 {
 		return 0, false
 	}
-	for r := bottom - 1; r >= 0; r-- {
-		if isScrolledBoxRule(rows[r]) {
-			if r+1 < bottom {
-				return r + 1, true
-			}
-			return 0, false
-		}
+	text := 0
+	for r := top + 1; r < len(rows); r++ {
 		if isRegionRule(rows[r]) {
-			return 0, false
+			for q := r + 1; q < len(rows); q++ {
+				if isRegionRule(rows[q]) {
+					return 0, false
+				}
+			}
+			if text == 0 {
+				return 0, false
+			}
+			return top + 1, true
+		}
+		if strings.TrimSpace(rows[r]) != "" {
+			text++
 		}
 	}
-	return 0, false
+	if text == 0 {
+		return 0, false
+	}
+	return top + 1, true
 }
 
 func isComposerPromptRow(row string) bool {

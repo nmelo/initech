@@ -197,23 +197,18 @@ func TestWithheldE1lp_OtherTextAndOursNowhereIsNotDelivered(t *testing.T) {
 	}
 }
 
-// Rule 2: the pane exited (the sweep) or was restarted (replacePane):
-// NOT DELIVERED.
-func TestWithheldE1lp_AnExitedOrRestartedPaneIsNotDelivered(t *testing.T) {
+// Rule 2 as amended (ini-w6kr): a pane that exited and was not replaced by
+// the deadline is NOT DELIVERED; a restart is not a loss, the message moves
+// to the replacement (TestShortPaneW6kr_ARestartCarriesTheMessageToTheNewPane).
+func TestWithheldE1lp_AnExitedPaneNotReplacedIsNotDelivered(t *testing.T) {
 	r := e1Withhold(t, e1Before)
 	r.p.mu.Lock()
 	r.p.alive = false
 	r.p.mu.Unlock()
+	r.pastDeadline()
 	sweepWithheldSubmitsIn([]PaneView{r.p}, time.Now())
-	if ev := <-r.events; !strings.HasPrefix(ev.Detail, undeliveredSubmitPrefix) || !strings.Contains(ev.Detail, "the pane exited") {
+	if ev := <-r.events; !strings.HasPrefix(ev.Detail, undeliveredSubmitPrefix) || !strings.Contains(ev.Detail, "the pane exited and was not replaced") {
 		t.Fatalf("exit: event %q", ev.Detail)
-	}
-
-	q := e1Withhold(t, e1Before)
-	tui := newTestTUI(q.p)
-	tui.replacePane(0, testPane("eng2"))
-	if ev := <-q.events; !strings.HasPrefix(ev.Detail, undeliveredSubmitPrefix) || !strings.Contains(ev.Detail, "the pane was restarted") {
-		t.Fatalf("restart: event %q", ev.Detail)
 	}
 }
 

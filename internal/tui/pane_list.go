@@ -16,15 +16,32 @@ package tui
 // successor is handed to the window server, which serves it and rebinds the
 // existing stream, so attached windows keep streaming and typing into it.
 func (t *TUI) replacePane(i int, np PaneView) {
-	// A message withheld in the pane being replaced is gone with its box
-	// (ini-e1lp): NOT DELIVERED, said off this goroutine, which must not wait
-	// on a pane's screen.
+	// A message withheld in the pane being replaced is not lost with it
+	// (ini-w6kr): a resumed Claude Code session keeps its draft, so the
+	// withheld message moves to the replacement and its settle carries on
+	// there under the same verdicts. A replacement that is not a local pane
+	// cannot carry it: its fate is not known.
 	if old, ok := t.panes[i].(*Pane); ok && old != np {
 		old.mu.Lock()
 		ps := old.pendingSubmit
+		old.pendingSubmit = nil
 		old.mu.Unlock()
 		if ps != nil {
-			go old.surfaceUndeliveredSubmit(ps, "the pane was restarted")
+			carried := false
+			if nl, ok := np.(*Pane); ok {
+				nl.mu.Lock()
+				if nl.pendingSubmit == nil {
+					nl.pendingSubmit, carried = ps, true
+				}
+				nl.mu.Unlock()
+			}
+			LogInfo("inject", "withheld submit carried to the replacement pane", "pane", old.name, "carried", carried)
+			if !carried {
+				old.mu.Lock()
+				old.pendingSubmit = ps
+				old.mu.Unlock()
+				go old.endWithheldUnknown(ps, "the pane was replaced and its message could not move with it")
+			}
 		}
 	}
 	t.panes[i] = np

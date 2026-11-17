@@ -53,6 +53,15 @@ func (p *Pane) setSendFrom(from string) {
 	p.mu.Unlock()
 }
 
+// setSendWaited records whether a caller waits on the verdict of the send
+// being typed (ini-w6kr): a refusal before typing is then said by the
+// verdict alone.
+func (p *Pane) setSendWaited(waited bool) {
+	p.mu.Lock()
+	p.sendWaited = waited
+	p.mu.Unlock()
+}
+
 // requeueFront puts a message back at the head of the queue unchanged, so a
 // re-held message keeps both its place and its original time.
 func (p *Pane) requeueFront(m QueuedMessage) {

@@ -20,6 +20,7 @@ import (
 	"unicode/utf8"
 
 	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/mattn/go-runewidth"
 	"github.com/nmelo/initech/internal/config"
 	"github.com/nmelo/initech/internal/machine"
 	"github.com/nmelo/initech/internal/rignumbers"
@@ -626,6 +627,27 @@ func sendPaneTextLocked(pane *Pane, text string, enter bool) SendVerdict {
 	// bytes of this send could interleave with it (ini-7rd).
 	if pane.inputWedged() {
 		return holdForStuckInput(pane, text, enter)
+	}
+
+	// TOO SHORT TO CONFIRM (ini-w6kr): below shortPaneRows Claude Code 2.1.326
+	// draws no row of a scrolled box, so a message taller than one box row
+	// could only be left typed and unsent. It is refused before anything is
+	// typed; one that fits a box row types as today.
+	if !pane.noBracketedPaste && enter {
+		if refusal := shortPaneRefusal(pane.Name(), text, pane); refusal != "" {
+			LogInfo("inject", "send refused: pane too short to confirm a long message", "pane", pane.Name(), "reason", refusal)
+			pane.mu.Lock()
+			from, waited := pane.sendFrom, pane.sendWaited
+			pane.mu.Unlock()
+			// A caller waiting on the verdict tells the sender (exit 1); a
+			// send nobody waits on (held or queued mail drained later)
+			// tells its sender here, once, through the not-delivered line.
+			if !waited {
+				pane.emitSubmitReportTo(undeliveredSubmitPrefix, "before typing ("+refusal+")", from,
+					"not delivered: "+refusal)
+			}
+			return SendVerdict{Outcome: DeliveryNotDelivered, Reason: refusal}
+		}
 	}
 
 	// A withheld submit gets its fate before this send touches the composer.
@@ -2687,6 +2709,34 @@ func (p *Pane) maybeRetryWithheldSubmit() {
 	}
 }
 
+// shortPaneRows is the smallest pane height at which a long send is proven
+// (ini-w6kr, measured on Claude Code 2.1.326): at 6 rows the scrolled box
+// shows its rule and one row, read by the open-bottom read; at 5 and fewer
+// only its rule, or nothing, is drawn.
+const shortPaneRows = 6
+
+// shortPaneFits is the longest message, in display columns on one line, that
+// a pane width w takes in one box row: the width less the prompt and the
+// box's padding.
+func shortPaneFits(w int) int { return max(w-4, 0) }
+
+// shortPaneRefusal is the refusal for a message too tall for the box of a
+// pane under shortPaneRows, "" when the pane is tall enough or the message
+// fits one box row. It names the height and what to send instead.
+func shortPaneRefusal(name, text string, p *Pane) string {
+	cols, rows := p.emuSize()
+	if rows <= 0 || rows >= shortPaneRows {
+		return ""
+	}
+	fit := shortPaneFits(cols)
+	if !strings.Contains(text, "\n") && runewidth.StringWidth(text) <= fit {
+		return ""
+	}
+	return fmt.Sprintf("%s is %d rows tall, too short to confirm a long message; widen or raise it, "+
+		"or send at most %d characters on one line (a longer text: write it to a file and send its path)",
+		name, rows, fit)
+}
+
 // Withheld verdict evidence and reasons (ini-e1lp), as the log and the
 // sender read them.
 const (
@@ -2736,7 +2786,7 @@ func (p *Pane) judgeWithheld(ps *pendingSubmit, now time.Time) {
 		ps.emptySample = append([]string(nil), rows...)
 		p.mu.Unlock()
 		return
-	case found && tail != "" && tail != ps.tailAtWithhold && !submitStillHeld(p, tail, ps) && !bodyShownAbove(rows, ps):
+	case found && tail != "" && tail != ps.tailAtWithhold && !submitStillHeld(p, tail, ps) && !boxRunIsOurs(p, ps) && !bodyShownAbove(rows, ps):
 		p.surfaceUndeliveredSubmit(ps, withheldOtherText)
 		return
 	}
@@ -2934,26 +2984,32 @@ func sweepWithheldSubmitsIn(panes []PaneView, now time.Time) {
 			}
 			continue
 		}
-		// A pane whose process is gone has lost the box with our text: seen
-		// gone (ini-e1lp). Otherwise, at the deadline, the verdict is judged
-		// from the screen: never NOT DELIVERED on an empty or unchanged box.
-		// Both read the screen, so off this goroutine, one at a time.
+		// A pane whose process exited and was not replaced within the wait
+		// has lost the box with our text: seen gone (ini-w6kr; a replacement
+		// carries the message, replacePane). Otherwise, at the deadline, the
+		// verdict is judged from the screen: never NOT DELIVERED on an empty
+		// or unchanged box. Both read the screen, so off this goroutine, one
+		// at a time.
 		dead := !p.IsAlive()
-		if !dead && now.Before(ps.deadline) {
+		if now.Before(ps.deadline) {
 			continue
 		}
 		if ps.retrying.CompareAndSwap(false, true) {
-			go func() {
+			sweepGo(func() {
 				defer ps.retrying.Store(false)
 				if dead {
-					p.surfaceUndeliveredSubmit(ps, "the pane exited")
+					p.surfaceUndeliveredSubmit(ps, "the pane exited and was not replaced")
 					return
 				}
 				p.judgeWithheld(ps, now)
-			}()
+			})
 		}
 	}
 }
+
+// sweepGo runs the sweep's verdict work off the maintenance goroutine; a
+// variable so a test runs it in line and sees what it decided.
+var sweepGo = func(f func()) { go f() }
 
 // surfaceUndeliveredSubmit reports a message we could not deliver and could not
 // prove the fate of. Loud on purpose: at this point the honest statement is "we

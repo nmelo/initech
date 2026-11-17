@@ -602,12 +602,19 @@ for an agent at its prompt, then prints one line and exits with its status:
   one of three, read from the pane. Delivered: the box is empty and the message's first and last lines
   show above the prompt in two readings in a row, where they were not before (someone or something else
   pressed Enter), or Claude's queued-message line holds it; the sender hears nothing more. Not delivered:
-  the box holds other text and the message is nowhere above it, or the agent's process exited or was
-  restarted; the sender is told once, an agent as `[from initech] <agent> did not get your message (not
+  the box holds other text and the message is nowhere above it, or the agent's process exited and was not
+  replaced within the wait (a restart is not a loss: the message carries over to the new process, whose box
+  keeps the draft, and is judged there the same way); the sender is told once, an agent as `[from initech] <agent> did not get your message (not
   delivered after <n>s: <why>); send it again: <its start>` and the operator as a notice in window 1.
   Not known, in every other case, an emptied box among them, once the wait ends: the sender is told
   `[from initech] the message to <agent> sent at <HH:MM> may or may not have arrived`, the screen is
-  captured as for an UNKNOWN, and nothing is sent again. The notice never goes into the agent that did
+  captured as for an UNKNOWN, and nothing is sent again.
+- `not delivered to <agent>: <agent> is <n> rows tall, too short to confirm a long message; widen or raise
+  it, or send at most <w> characters on one line (a longer text: write it to a file and send its path)`
+  (exit 1): a send is proven at any length into a pane 6 rows tall or more. Under 6 rows Claude Code draws
+  no row of a box that holds a long text, so a message longer than one box row (the pane's width less 4
+  characters, on one line) is refused before anything is typed; a message nobody waits on, such as held
+  mail, tells its sender the same. A message that fits one box row types as before. The notice never goes into the agent that did
   not get the message: when it would (initech's own line to super, or an agent's message to itself),
   only the log has it. A running initech older than the command answers with `older initech
   running; restart it for delivery verdicts`; an agent on a machine running an older initech, with
@@ -661,7 +668,8 @@ shows, that end counts as the message's text if everything in the box is part of
 holds at least 12 characters besides spaces. The box is read across all its rows, the same way at any
 pane width and whether or not its top border carries the session's name. A message taller than the
 box, which Claude Code shows from 2.1.326 on as its last rows under a `─── ↑ N more ───` rule with no
-`❯` (on a named session `─── ↑ N more ─── <name> ─`), is read as the box as well, and a pane left with such text reads `pending input`. A box that only changed is not a sighting. The log line is `submitted: composer cleared`,
+`❯` (on a named session `─── ↑ N more ─── <name> ─`), is read as the box as well, including when the pane is
+so short that the box's bottom border falls below its last row, and a pane left with such text reads `pending input`. A box that only changed is not a sighting. The log line is `submitted: composer cleared`,
 with how many milliseconds after the Enter the box was seen without the message, and what it showed;
 because the message is usually seen during the wait before the Enter, that can read under 50, including
 0. A box showing Claude's queued-message line or the operator's own restored draft counts as cleared; a

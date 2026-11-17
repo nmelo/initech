@@ -130,8 +130,11 @@ func TestBoxScroll_WhatIsNotProof(t *testing.T) {
 	}
 }
 
-// Verdict only: the box-run proof is read by submitSighted and nothing else,
-// so nothing that decides whether to press Enter widens with it.
+// Verdict only: the box-run proof is read by the two verdicts and nothing
+// else, so nothing that decides whether to press Enter widens with it:
+// submitSighted (taken or held after an Enter) and judgeWithheld (a withheld
+// message's fate, ini-w6kr: our own cropped text in a box is not "other
+// text"), which presses no key.
 func TestBoxScroll_OnlyTheVerdictReadsTheBoxRun(t *testing.T) {
 	fset := token.NewFileSet()
 	files, _ := filepath.Glob("*.go")
@@ -159,8 +162,8 @@ func TestBoxScroll_OnlyTheVerdictReadsTheBoxRun(t *testing.T) {
 			})
 		}
 	}
-	if len(callers) != 1 || !callers["submitSighted"] {
-		t.Errorf("boxRunIsOurs is called from %v; only submitSighted may call it", callers)
+	if len(callers) != 2 || !callers["submitSighted"] || !callers["judgeWithheld"] {
+		t.Errorf("boxRunIsOurs is called from %v; only submitSighted and judgeWithheld may call it", callers)
 	}
 }
 

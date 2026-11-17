@@ -446,6 +446,7 @@ type Pane struct {
 	// queue to type one at a time (resume), kept in the file until typed.
 	heldHook   func(*Pane)
 	sendFrom   string // whose send is being typed (setSendFrom)
+	sendWaited bool   // a caller waits on the verdict of the send being typed (setSendWaited)
 	heldTyping *QueuedMessage
 	heldInHand []QueuedMessage
 
@@ -1242,7 +1243,7 @@ func (p *Pane) SendText(text string, enter bool) {
 // SendTextVerdict is SendText for a caller waiting on the answer (ini-69fy):
 // it returns what the send learned about its own delivery.
 func (p *Pane) SendTextVerdict(text string, enter bool) SendVerdict {
-	return p.sendText(text, enter, true, sendOrigin{})
+	return p.sendText(text, enter, true, sendOrigin{Waiting: true})
 }
 
 // SendTextFrom is SendText for a send whose sender is known.
@@ -1253,6 +1254,7 @@ func (p *Pane) SendTextFrom(text string, enter bool, o sendOrigin) {
 // SendTextVerdictFrom is SendTextVerdict for a send whose sender is known,
 // which do-not-disturb judges (ini-x432).
 func (p *Pane) SendTextVerdictFrom(text string, enter bool, o sendOrigin) SendVerdict {
+	o.Waiting = true
 	return p.sendText(text, enter, true, o)
 }
 
@@ -1340,7 +1342,9 @@ func (p *Pane) deliverClean(text string, enter, hold bool, o sendOrigin) SendVer
 	p.sendMu.Lock()
 	defer p.sendMu.Unlock()
 	p.setSendFrom(o.From) // a hold inside the send keeps its sender (ini-8rkg)
+	p.setSendWaited(o.Waiting)
 	defer p.setSendFrom("")
+	defer p.setSendWaited(false)
 	return sendPaneTextLocked(p, text, enter)
 }
 

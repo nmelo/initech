@@ -38,6 +38,10 @@ const OperatorSender = operatorSender
 type sendOrigin struct {
 	From   string
 	Urgent bool
+	// Waiting: a caller waits on this send's verdict and tells the sender
+	// itself (initech send), so a refusal before typing is said once, by the
+	// verdict, not also by a line (ini-w6kr).
+	Waiting bool
 }
 
 // dndRuling is how do-not-disturb rules on one sender.
