@@ -76,12 +76,12 @@ func TestIdleOwner_TheBoardShowsItAndSuperHearsOncePerSpell(t *testing.T) {
 		t.Error("a bead that moved a minute ago reads stuck")
 	}
 	// The rig panel's row (ini-cdgj): state, time in it and the bead, in the
-	// needs-attention column, a bead held idle 20 minutes or more.
+	// agents box's second section, the agents holding a bead idle (ini-b0po).
 	if row := panelRowOf(t, tui, s, "eng1"); !strings.Contains(row, "idle") || !strings.Contains(row, "21m") || !strings.Contains(row, "▶ ini-i.1") {
 		t.Errorf("the panel row %q lacks idle, 21m and ▶ ini-i.1", row)
 	}
-	if !strings.Contains(simScreenText(s), "needs attention") {
-		t.Errorf("eng1 idle 21m with a bead is not in needs attention:\n%s", simScreenText(s))
+	if !strings.Contains(simScreenText(s), "agents · 0 working · 1 holding") {
+		t.Errorf("eng1 idle 21m with a bead is not in the holding section:\n%s", simScreenText(s))
 	}
 	got := rec.waitFor(1)
 	want := "super|initech|[from initech] eng1 idle 21m on ▶ ini-i.1; check on it"
