@@ -8,6 +8,7 @@ package tui
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -16,12 +17,9 @@ import (
 )
 
 const (
-	// panelAttentionAfter is how long an agent holding a bead may sit in the
-	// background or idle before it moves to the needs-attention column.
+	// panelAttentionAfter is how long an effort's bead may go unmoved before
+	// the moved box flags it stale.
 	panelAttentionAfter = 20 * time.Minute
-	// panelAttentionHold keeps the needs-attention column drawn this long
-	// after it empties, so it does not come and go with each tick.
-	panelAttentionHold = time.Minute
 	// panelDefaultRows is the boxes' height in rows, under their top border.
 	panelDefaultRows = 8
 	// panelMovedMinWidth is the narrowest the moved box gets before the
@@ -47,6 +45,8 @@ type panelAgent struct {
 	Alive      bool
 	Bead       string
 	BeadStatus string
+	Title      string // The bead's title, from the bead poll.
+	Stuck      bool   // The agent holds a bead stuck by the pace rule.
 }
 
 // panelAlarm is one title-row count and what it counts.
@@ -135,47 +135,158 @@ func panelAge(since, now time.Time) string {
 	return fmt.Sprintf("%dh%02dm", m/60, m%60)
 }
 
-// needsAttention reports whether an agent belongs in the needs-attention
-// column: at a prompt, or holding a bead and quiet for panelAttentionAfter.
-func needsAttention(a panelAgent, now time.Time) bool {
-	if a.atPrompt() {
-		return true
-	}
-	if a.Bead == "" || a.Since.IsZero() || a.State == StateRunning {
-		return false
-	}
-	return now.Sub(a.Since) >= panelAttentionAfter
+// panelSettleAfter is how long a new state word must hold before the agents
+// box takes it: a pane's raw state flips between idle and running many times
+// a minute, and the box keeps its order and its times through that.
+const panelSettleAfter = time.Minute
+
+// panelSettledState is what the agents box remembers of one agent: the state
+// word it shows, when that state began, and a newer word not yet held long
+// enough.
+type panelSettledState struct {
+	word      string
+	began     time.Time
+	cand      string
+	candSince time.Time
+	seen      bool
 }
 
-// panelColumns splits the awake agents, in their given order, into the
-// working and needs-attention columns.
-func panelColumns(agents []panelAgent, now time.Time) (working, attention []panelAgent) {
+// panelWord is the box's word for a raw state.
+func panelWord(a panelAgent) string { return panelStateWord(a.State) }
+
+// settle updates the memory with this draw's raw word and returns the word
+// shown and when its state began. A prompt settles at once; any other word
+// once it has held panelSettleAfter, counted from when it began.
+func (st *panelSettledState) settle(word string, since, now time.Time) (string, time.Time) {
+	if since.IsZero() || since.After(now) {
+		since = now
+	}
+	switch {
+	case !st.seen:
+		st.word, st.began, st.seen = word, since, true
+	case word == st.word:
+		st.cand = ""
+	case word == "prompt":
+		st.word, st.began, st.cand = word, since, ""
+	default:
+		if st.cand != word {
+			st.cand, st.candSince = word, since
+		}
+		if now.Sub(st.candSince) >= panelSettleAfter {
+			st.word, st.began, st.cand = word, st.candSince, ""
+		}
+	}
+	return st.word, st.began
+}
+
+// panelBoxRow is one agent row in the agents box: the agent, the word shown
+// and when its state began.
+type panelBoxRow struct {
+	a     panelAgent
+	word  string
+	began time.Time
+}
+
+// panelSections splits the awake agents into section 1 (running or
+// background, longest first) and section 2 (bead holders idle, at a prompt or
+// stuck, longest first), and counts the rest: idle (awake, no bead, not
+// working) and suspended. Ties keep the roster order.
+func (t *TUI) panelSections(agents []panelAgent, now time.Time) (working, holding []panelBoxRow, idle, suspended int) {
+	if t.panelSettled == nil {
+		t.panelSettled = map[string]*panelSettledState{}
+	}
 	for _, a := range agents {
+		if a.Suspended || a.State == StateSuspended {
+			suspended++
+			continue
+		}
 		if !a.awake() {
 			continue
 		}
-		if needsAttention(a, now) {
-			attention = append(attention, a)
-		} else {
-			working = append(working, a)
+		key := a.Key
+		if key == "" {
+			key = a.Name
+		}
+		st := t.panelSettled[key]
+		if st == nil {
+			st = &panelSettledState{}
+			t.panelSettled[key] = st
+		}
+		word, began := st.settle(panelWord(a), a.Since, now)
+		r := panelBoxRow{a: a, word: word, began: began}
+		switch {
+		case word == "running" || word == "background":
+			working = append(working, r)
+		case a.Bead != "":
+			if word != "prompt" && a.Stuck {
+				r.word = "stuck"
+			}
+			holding = append(holding, r)
+		default:
+			idle++
 		}
 	}
-	return working, attention
-}
-
-// panelHold remembers when the needs-attention column last held anyone, so
-// it is drawn for panelAttentionHold after it empties.
-type panelHold struct {
-	lastNonEmpty time.Time
-}
-
-// show reports whether to draw the column now.
-func (h *panelHold) show(nonEmpty bool, now time.Time) bool {
-	if nonEmpty {
-		h.lastNonEmpty = now
-		return true
+	longest := func(l []panelBoxRow) {
+		sort.SliceStable(l, func(i, j int) bool { return l[i].began.Before(l[j].began) })
 	}
-	return !h.lastNonEmpty.IsZero() && now.Sub(h.lastNonEmpty) < panelAttentionHold
+	longest(working)
+	longest(holding)
+	return working, holding, idle, suspended
+}
+
+// panelCountLine is the box's last line: "+N working · N idle · N
+// suspended", zero parts left out; "" when there is nothing to count. It never
+// names an agent or a bead.
+func panelCountLine(cutWorking, idle, suspended int) string {
+	var parts []string
+	if cutWorking > 0 {
+		parts = append(parts, fmt.Sprintf("+%d working", cutWorking))
+	}
+	if idle > 0 {
+		parts = append(parts, fmt.Sprintf("%d idle", idle))
+	}
+	if suspended > 0 {
+		parts = append(parts, fmt.Sprintf("%d suspended", suspended))
+	}
+	return strings.Join(parts, " · ")
+}
+
+// panelBoxLayout places the box's cells, column by column, rows tall: what of
+// section 1 fits, then all of section 2, then the count line. Section 2 and
+// the count are never cut: they take as many columns as they need, and
+// section 1 gives up rows from its shortest-running end.
+func panelBoxLayout(rows int, countInCell bool, working, holding []panelBoxRow, idle, suspended int) (cells []panelBoxRow, count string, cols int) {
+	n2 := len(holding)
+	for cols = 1; ; cols++ {
+		total := cols * rows
+		count = panelCountLine(0, idle, suspended)
+		need := n2
+		if count != "" && countInCell {
+			need++
+		}
+		if need > total {
+			continue
+		}
+		show := min(len(working), total-need)
+		if show < len(working) {
+			count = panelCountLine(len(working)-show, idle, suspended)
+			if countInCell && need == n2 {
+				need++
+				if need > total {
+					continue
+				}
+				show = min(show, total-need)
+				count = panelCountLine(len(working)-show, idle, suspended)
+			}
+		}
+		cells = append(append([]panelBoxRow(nil), working[:show]...), holding...)
+		used := len(cells)
+		if count != "" && countInCell {
+			used++
+		}
+		cols = max(1, (used+rows-1)/rows)
+		return cells, count, cols
+	}
 }
 
 // panelBeadCell is the bead column's cell: icon and id, or a dash.
@@ -188,47 +299,6 @@ func panelBeadCell(a panelAgent) string {
 		icon = beadBar
 	}
 	return string(icon) + " " + a.Bead
-}
-
-// panelRowCells is one agent row's cells: dot, name, state, time, bead.
-func panelRowCells(a panelAgent, now time.Time) (dot rune, name, state, age, bead string) {
-	dot = '○'
-	if a.State == StateRunning {
-		dot = '●'
-	}
-	name = a.Name
-	if a.Hidden {
-		name += " " + hiddenBoxMarker
-	}
-	return dot, name, panelStateWord(a.State), panelAge(a.Since, now), panelBeadCell(a)
-}
-
-// panelColumnWidths is the agents column layout: the widest name, state,
-// time and bead cell of the rows, with or without the bead column.
-type panelColumnWidths struct {
-	name, state, age, bead int
-	withBead               bool
-}
-
-// width is the column's whole width, from the dot to the last cell.
-func (w panelColumnWidths) width() int {
-	n := 2 + w.name + 2 + w.state + 2 + w.age
-	if w.withBead {
-		n += 2 + w.bead
-	}
-	return n
-}
-
-func panelWidthsOf(rows []panelAgent, now time.Time) panelColumnWidths {
-	w := panelColumnWidths{name: 5, state: 7, age: 5, bead: 1, withBead: true}
-	for _, a := range rows {
-		_, name, state, age, bead := panelRowCells(a, now)
-		w.name = max(w.name, len([]rune(name)))
-		w.state = max(w.state, len([]rune(state)))
-		w.age = max(w.age, len([]rune(age)))
-		w.bead = max(w.bead, len([]rune(bead)))
-	}
-	return w
 }
 
 // panelTitleText is the title row's right side as text at fold level, and
@@ -286,11 +356,12 @@ func panelTitleText(t panelTitle, level int) (string, []panelSpan) {
 // panelSnapshot is what the panel reads from this window: its agents in the
 // Agents panel's order, and the polled beads.
 func (t *TUI) panelSnapshot(now time.Time) ([]panelAgent, []panelBead) {
-	status := map[string]string{}
+	status, titles := map[string]string{}, map[string]string{}
 	var beads []panelBead
 	if t.paceAnswered {
 		for _, b := range t.paceBeads {
 			status[b.ID] = b.Status
+			titles[b.ID] = b.Title
 			beads = append(beads, panelBead{ID: b.ID, Status: b.Status, LastMoved: t.paceBead(b, now).LastMoved()})
 		}
 	}
@@ -302,6 +373,10 @@ func (t *TUI) panelSnapshot(now time.Time) ([]panelAgent, []panelBead) {
 			Suspended: p.IsSuspended(), Alive: p.IsAlive(), Bead: p.BeadID()}
 		a.Hidden = t.layoutState.Hidden[a.Key]
 		a.BeadStatus = status[a.Bead]
+		a.Title = titles[a.Bead]
+		// Stuck by the pace rule, the one the pane header and the moved box
+		// read (ini-b0po).
+		a.Stuck = t.paceStuck[p.Name()]
 		if lp, ok := p.(*Pane); ok {
 			a.Since = lp.ActivitySince()
 		}
@@ -396,8 +471,7 @@ func (t *TUI) drawRigPanel(now time.Time, agents []panelAgent, beads []panelBead
 	t.overlayBounds.prev, t.overlayBounds.dots = t.overlayBounds.dots, map[[2]int]overlayDot{}
 	t.overlayBounds.effortTop, t.overlayBounds.effortEnd = -1, -1
 	title := panelTitleOf(beads, agents, now)
-	working, attention := panelColumns(agents, now)
-	showAttn := t.panelAttn.show(len(attention) > 0, now)
+	working, holding, idleN, suspN := t.panelSections(agents, now)
 
 	bg := tcell.StyleDefault.Background(tcell.NewRGBColor(26, 28, 38))
 	frame := bg.Foreground(tcell.NewRGBColor(130, 140, 210))
@@ -466,26 +540,63 @@ func (t *TUI) drawRigPanel(now time.Time, agents []panelAgent, beads []panelBead
 		}
 	}
 
-	// The boxes: the agents box (working, then needs attention), then the
-	// moved box taking the rest of the width.
+	// The boxes: the agents box (who works, who holds a bead idle, one
+	// count), then the moved box taking the rest of the width.
 	rows := top - 3 // title, top border, bottom border
 	if rows < 1 {
 		return
 	}
-	all := append(append([]panelAgent(nil), working...), attention...)
-	w := panelWidthsOf(all, now)
-	colW := w.width()
-	cols := 1
-	if showAttn {
-		cols = 2
+	// Two shapes: the count line in the cell after section 2, or, when it
+	// does not fit there, on the box's bottom row under every column.
+	var cells []panelBoxRow
+	var count string
+	cols, cellRows, countRow := 1, rows, false
+	boxTitle := fmt.Sprintf("agents · %d working · %d holding", len(working), len(holding))
+	// The fold, to keep the moved box at panelMovedMinWidth: the box title's
+	// counts go, then the bead titles, then the time column; a bead id stays
+	// while its row is shown. Past that the moved box gives way.
+	type fold struct{ counts, titles, age bool }
+	folds := []fold{{true, true, true}, {false, true, true}, {false, false, true}, {false, false, false}}
+	var f fold
+	var widths []panelBoxColumn
+	box1W := 0
+	fits := func(limit int) bool {
+		for _, f = range folds {
+			for _, inCell := range []bool{true, false} {
+				r := rows
+				if !inCell {
+					if rows < 2 {
+						continue
+					}
+					r = rows - 1
+				}
+				cells, count, cols = panelBoxLayout(r, inCell, working, holding, idleN, suspN)
+				cellRows, countRow = r, !inCell
+				cnt := count
+				if countRow {
+					cnt = ""
+				}
+				widths, box1W = panelBoxWidths(cells, r, cols, cnt, f.titles, f.age, now)
+				label := boxTitle
+				if !f.counts {
+					label = "agents"
+				}
+				box1W = max(box1W, len([]rune(label))+6)
+				if countRow {
+					box1W = max(box1W, len([]rune(count))+4)
+				}
+				if box1W <= limit {
+					return true
+				}
+			}
+		}
+		return false
 	}
-	box1W := cols*colW + (cols-1)*3 + 4
-	if sw-box1W-1 < panelMovedMinWidth {
-		// The fold: the bead column goes before the moved box gets narrower
-		// than panelMovedMinWidth.
-		w.withBead = false
-		colW = w.width()
-		box1W = cols*colW + (cols-1)*3 + 4
+	if !fits(sw-1-panelMovedMinWidth) && !fits(sw) {
+		box1W = sw
+	}
+	if !f.counts {
+		boxTitle = "agents"
 	}
 	box1W = min(box1W, sw)
 	yTop, yBot := 1, 1+rows+1
@@ -513,66 +624,80 @@ func (t *TUI) drawRigPanel(now time.Time, agents []panelAgent, beads []panelBead
 		corner(x1, yBot, '┘')
 		put(x0+2, yTop, " "+label+" ", labelSt, x1)
 	}
-	drawColumn := func(x0, limit int, list []panelAgent) {
-		for i := 0; i < rows && i < len(list); i++ {
-			a := list[i]
-			dot, nm, state, age, bead := panelRowCells(a, now)
-			y := yTop + 1 + i
-			// The dots keep the terminal's named green and gray, as the
-			// overlay drew them (ini-1ss).
-			dotSt := bg.Foreground(tcell.ColorGray)
-			if dot == '●' {
-				dotSt = bg.Foreground(tcell.ColorGreen)
-			}
-			// The dot is a click target, as the overlay's was: it hides or
-			// shows the agent; a cell that just changed agent swallows a
-			// click (overlayClickSettle).
-			if x0 < limit && a.Key != "" {
-				cell := [2]int{x0, y}
-				d := overlayDot{key: a.Key}
-				if prev, ok := t.overlayBounds.prev[cell]; ok {
-					if prev.key == a.Key {
-						d.since = prev.since
-					} else {
-						d.since = overlayClickClock()
-					}
-				}
-				t.overlayBounds.dots[cell] = d
-			}
-			x := put(x0, y, string(dot)+" ", dotSt, limit)
-			x = put(x, y, fmt.Sprintf("%-*s  ", w.name, nm), text, limit)
-			stSt := dim
-			switch a.State {
-			case StateRunning:
-				stSt = green
-			case StateBackground:
-				stSt = amber
-			case StateWaitingInput:
-				stSt = red
-			}
-			x = put(x, y, fmt.Sprintf("%-*s  ", w.state, state), stSt, limit)
-			x = put(x, y, fmt.Sprintf("%*s", w.age, age), dim, limit)
-			if w.withBead {
-				beadSt := blue
-				if a.Bead == "" {
-					beadSt = dim
-				}
-				put(x+2, y, bead, beadSt, limit)
-			}
-		}
-		if len(list) > rows {
-			put(x0, yTop+rows, fmt.Sprintf("+%d more", len(list)-rows+1), dim, limit)
-		}
-	}
 	x1 := box1W - 1
-	drawBox(0, x1, "agents · working", text)
-	drawColumn(2, 2+colW, working)
-	if showAttn {
-		ax := 2 + colW + 3
-		put(ax, yTop, " needs attention ", red, x1)
-		drawColumn(ax, x1, attention)
+	drawBox(0, x1, boxTitle, text)
+	colX := func(c int) int {
+		x := 2
+		for i := 0; i < c && i < len(widths); i++ {
+			x += widths[i].width() + 3
+		}
+		return x
 	}
-	if box1W+2 < sw {
+	for i, r := range cells {
+		c, y := i/cellRows, yTop+1+i%cellRows
+		cw := widths[c]
+		x0 := colX(c)
+		limit := min(x0+cw.width(), x1)
+		a := r.a
+		dot := '○'
+		dotSt := bg.Foreground(tcell.ColorGray)
+		if r.word == "running" {
+			dot = '●'
+			dotSt = bg.Foreground(tcell.ColorGreen)
+		}
+		// The dot is a click target, as the overlay's was: it hides or shows
+		// the agent; a cell that just changed agent swallows a click
+		// (overlayClickSettle).
+		if x0 < limit && a.Key != "" {
+			cell := [2]int{x0, y}
+			d := overlayDot{key: a.Key}
+			if prev, ok := t.overlayBounds.prev[cell]; ok {
+				if prev.key == a.Key {
+					d.since = prev.since
+				} else {
+					d.since = overlayClickClock()
+				}
+			}
+			t.overlayBounds.dots[cell] = d
+		}
+		name := a.Name
+		if a.Hidden {
+			name += " " + hiddenBoxMarker
+		}
+		x := put(x0, y, string(dot)+" ", dotSt, limit)
+		x = put(x, y, fmt.Sprintf("%-*s  ", cw.name, name), text, limit)
+		stSt := dim
+		switch r.word {
+		case "running":
+			stSt = green
+		case "background":
+			stSt = amber
+		case "prompt", "stuck":
+			stSt = red
+		}
+		x = put(x, y, fmt.Sprintf("%-*s  ", cw.word, r.word), stSt, limit)
+		if cw.age > 0 {
+			x = put(x, y, fmt.Sprintf("%*s  ", cw.age, panelAge(r.began, now)), dim, limit)
+		}
+		beadSt := blue
+		if a.Bead == "" {
+			beadSt = dim
+		}
+		x = put(x, y, fmt.Sprintf("%-*s", cw.bead, panelBeadCell(a)), beadSt, limit)
+		if cw.title > 0 && a.Title != "" {
+			put(x+1, y, panelTitleWords(a.Title, cw.title), dim, limit)
+		}
+	}
+	switch {
+	case count == "":
+	case countRow:
+		put(2, yTop+rows, count, dim, x1)
+	default:
+		i := len(cells)
+		put(colX(i/cellRows), yTop+1+i%cellRows, count, dim, x1)
+	}
+	// The moved box gives way, rather than draw narrower than its minimum.
+	if sw-box1W-1 >= panelMovedMinWidth {
 		drawBox(box1W+1, sw-1, "moved 30m", text)
 		// A second window does not run the bead poll this box is read from
 		// (no new message between windows, ini-cdgj): it says where it is.
@@ -672,4 +797,72 @@ func (t *TUI) panelRigName() string {
 		return t.projectName
 	}
 	return "initech"
+}
+
+// panelBoxTitleMax is the most a row gives its bead's title.
+const panelBoxTitleMax = 32
+
+// panelBoxColumn is one column of the agents box: its cells' widths; age and
+// title are 0 when folded away.
+type panelBoxColumn struct{ name, word, age, bead, title int }
+
+func (c panelBoxColumn) width() int {
+	n := 2 + c.name + 2 + c.word + 2 + c.bead
+	if c.age > 0 {
+		n += c.age + 2
+	}
+	if c.title > 0 {
+		n += 1 + c.title
+	}
+	return n
+}
+
+// panelBoxWidths sizes each column from its own rows, and the box: the count
+// line, the last cell, gets the room it needs in its column.
+func panelBoxWidths(cells []panelBoxRow, rows, cols int, count string, titles, age bool, now time.Time) ([]panelBoxColumn, int) {
+	widths := make([]panelBoxColumn, cols)
+	for i, r := range cells {
+		c := &widths[i/rows]
+		name := len([]rune(r.a.Name))
+		if r.a.Hidden {
+			name += 1 + len([]rune(hiddenBoxMarker))
+		}
+		c.name = max(c.name, name)
+		c.word = max(c.word, len([]rune(r.word)))
+		if age {
+			c.age = max(c.age, len([]rune(panelAge(r.began, now))), 2)
+		}
+		c.bead = max(c.bead, len([]rune(panelBeadCell(r.a))))
+		if titles && r.a.Title != "" {
+			c.title = max(c.title, min(len([]rune(r.a.Title)), panelBoxTitleMax))
+		}
+	}
+	w := 4 + 3*(cols-1)
+	for i := range widths {
+		cw := widths[i].width()
+		if count != "" && i == len(cells)/rows {
+			cw = max(cw, len([]rune(count)))
+		}
+		w += cw
+	}
+	return widths, w
+}
+
+// panelTitleWords is as many whole words of title as fit in n runes.
+func panelTitleWords(title string, n int) string {
+	var b strings.Builder
+	for _, w := range strings.Fields(title) {
+		add := len([]rune(w))
+		if b.Len() > 0 {
+			add++
+		}
+		if len([]rune(b.String()))+add > n {
+			break
+		}
+		if b.Len() > 0 {
+			b.WriteByte(' ')
+		}
+		b.WriteString(w)
+	}
+	return b.String()
 }

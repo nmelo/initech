@@ -94,46 +94,6 @@ func TestPanelAge(t *testing.T) {
 
 // TestPanelColumns_AwakeOnlyInOrderAndTheAttentionRule: suspended and dead
 // agents are no rows; a prompt, or a bead held quiet 20 minutes, goes right.
-func TestPanelColumns_AwakeOnlyInOrderAndTheAttentionRule(t *testing.T) {
-	agents := []panelAgent{
-		{Name: "super", Alive: true, State: StateBackground, Since: ago(26 * time.Minute)},              // no bead: working
-		{Name: "pm", Alive: true, State: StateRunning, Since: ago(2 * time.Minute), Bead: "ini-p1x"},    // running
-		{Name: "eng1", Alive: true, State: StateBackground, Since: ago(72 * time.Minute), Bead: "h.77"}, // quiet with a bead
-		{Name: "eng4", Alive: true, State: StateWaitingInput, Since: ago(time.Minute)},                  // prompt
-		{Name: "qa2", Alive: true, State: StateIdle, Since: ago(19 * time.Minute), Bead: "h.78"},        // not yet 20m
-		{Name: "qa3", Alive: true, Suspended: true, State: StateSuspended},
-		{Name: "eng9", State: StateDead},
-	}
-	working, attention := panelColumns(agents, panelNow)
-	names := func(l []panelAgent) string {
-		var out []string
-		for _, a := range l {
-			out = append(out, a.Name)
-		}
-		return strings.Join(out, ",")
-	}
-	if names(working) != "super,pm,qa2" || names(attention) != "eng1,eng4" {
-		t.Fatalf("working %q attention %q", names(working), names(attention))
-	}
-}
-
-// TestPanelHold_TheAttentionColumnStaysAMinuteAfterEmptying: no thrash.
-func TestPanelHold_TheAttentionColumnStaysAMinuteAfterEmptying(t *testing.T) {
-	var h panelHold
-	if h.show(false, panelNow) {
-		t.Fatal("an attention column that never held anyone is drawn")
-	}
-	if !h.show(true, panelNow) {
-		t.Fatal("a non-empty column is not drawn")
-	}
-	if !h.show(false, panelNow.Add(59*time.Second)) {
-		t.Fatal("the column went within the hold")
-	}
-	if h.show(false, panelNow.Add(61*time.Second)) {
-		t.Fatal("the column stayed past the hold")
-	}
-}
-
 func TestPanelBeadCell(t *testing.T) {
 	if got := panelBeadCell(panelAgent{Bead: "ini-p1x", BeadStatus: "in_progress"}); got != "▶ ini-p1x" {
 		t.Fatalf("got %q", got)
@@ -192,74 +152,75 @@ var panelQuiet = []panelAgent{
 	{Name: "qa1", Alive: true, Suspended: true, State: StateSuspended},
 }
 
-// TestRigPanel_TheQuietCaptureAt120 is m1-quiet's title row and agents box.
+// TestRigPanel_TheQuietCaptureAt120 is m1-quiet's title row and agents box,
+// in the ini-b0po shape: the working agents longest first, then one count.
 func TestRigPanel_TheQuietCaptureAt120(t *testing.T) {
 	rows := renderPanelCapture(t, 120, panelQuiet, nil)
 	t.Logf("\n%s", strings.Join(rows, "\n"))
 	if !strings.HasPrefix(rows[0], " initech") || !strings.HasSuffix(rows[0], "on Nelson 0 · blocked 0 · stale 20m 0 · prompts 0 · 4 awake · 1 suspended") {
 		t.Fatalf("title row %q", rows[0])
 	}
-	if !strings.Contains(rows[1], "agents · working") || !strings.Contains(rows[1], "moved 30m") {
+	if !strings.Contains(rows[1], "agents · 3 working · 0 holding") || !strings.Contains(rows[1], "moved 30m") {
 		t.Fatalf("box labels %q", rows[1])
 	}
-	want := []string{"○ super  background    26m  —", "● pm     running        2m  ▶ ini-p1x", "○ eng1   idle        1h04m  —", "○ eng4   background    11m  ▶ ini-nxyf"}
+	want := []string{"○ super  background  26m  —", "○ eng4   background  11m  ▶ ini-nxyf", "● pm     running      2m  ▶ ini-p1x", "1 idle · 1 suspended"}
 	for i, w := range want {
 		if !strings.Contains(rows[2+i], w) {
 			t.Errorf("row %d = %q, want %q in it", i, rows[2+i], w)
 		}
 	}
 	for _, r := range rows {
-		if strings.Contains(r, "qa1") || strings.Contains(r, "needs attention") {
-			t.Fatalf("a suspended agent or an empty attention column is drawn: %q", r)
+		if rowOf([]string{"", r}, "qa1") > 0 || rowOf([]string{"", r}, "eng1") > 0 || strings.Contains(r, "needs attention") {
+			t.Fatalf("an idle or suspended agent drawn by name, or the old label: %q", r)
 		}
 	}
 }
 
-// TestRigPanel_NeedsAttentionIsItsOwnColumn is m3-trouble's agents box.
-func TestRigPanel_NeedsAttentionIsItsOwnColumn(t *testing.T) {
+// TestRigPanel_AnAgentAtAPromptWithABeadIsInSectionTwo is m3-trouble's agents
+// box: the working agent first, the one at its prompt under it, marked.
+func TestRigPanel_AnAgentAtAPromptWithABeadIsInSectionTwo(t *testing.T) {
 	agents := []panelAgent{
 		{Name: "super", Alive: true, State: StateRunning, Since: ago(time.Minute)},
 		{Name: "eng4", Alive: true, State: StateWaitingInput, Since: ago(41 * time.Minute), Bead: "h.76.2", BeadStatus: "in_progress"},
 	}
 	rows := renderPanelCapture(t, 120, agents, nil)
 	t.Logf("\n%s", strings.Join(rows, "\n"))
-	if !strings.Contains(rows[1], "needs attention") {
-		t.Fatalf("no attention column: %q", rows[1])
+	if rowOf(rows, "super") != 2 || rowOf(rows, "eng4") != 3 || !strings.Contains(rows[3], "prompt") || !strings.Contains(rows[3], "h.76.2") {
+		t.Fatalf("super working first, eng4 at its prompt under it:\n%s", strings.Join(rows, "\n"))
 	}
-	r := rows[2]
-	if !(strings.Index(r, "super") < strings.Index(r, "eng4")) || !strings.Contains(r, "prompt") {
-		t.Fatalf("row %q: super working on the left, eng4 at its prompt on the right", r)
-	}
-	if !strings.Contains(rows[0], "prompts 1 eng4") {
-		t.Fatalf("title %q", rows[0])
+	if !strings.Contains(rows[0], "prompts 1 eng4") || !strings.Contains(rows[1], "1 working · 1 holding") {
+		t.Fatalf("title %q, box %q", rows[0], rows[1])
 	}
 }
 
-// TestRigPanel_NarrowDropsIDsThenTheBeadColumn is the fold order at 60.
-func TestRigPanel_NarrowDropsIDsThenTheBeadColumn(t *testing.T) {
+// TestRigPanel_NarrowFoldsTheTitleAndKeepsTheBeadIDs is the fold at 60: the
+// title row loses its ids; the agents box loses its counts, the bead titles
+// and the time column, never a bead id while its row is shown.
+func TestRigPanel_NarrowFoldsTheTitleAndKeepsTheBeadIDs(t *testing.T) {
 	agents := append([]panelAgent(nil), panelQuiet...)
 	rows := renderPanelCapture(t, 60, agents, []panelBead{{ID: "ini-b1", Status: "blocked"}})
 	t.Logf("\n%s", strings.Join(rows, "\n"))
 	if strings.Contains(rows[0], "ini-b1") || !strings.Contains(rows[0], "blocked 1") {
 		t.Fatalf("narrow title %q: ids folded, counts kept", rows[0])
 	}
-	// At 60 even bare counts do not fit: the alarms, the title's job, are
-	// kept and the tail gives way.
 	if !strings.Contains(rows[0], "on Nelson 0") || !strings.Contains(rows[0], "prompts 0") {
 		t.Fatalf("narrow title %q: the alarms were cut", rows[0])
 	}
-	for _, r := range rows[2:6] {
-		if strings.Contains(r, "ini-p1x") || strings.Contains(r, "ini-nxyf") {
-			t.Fatalf("narrow agents box keeps the bead column: %q", r)
+	for _, id := range []string{"ini-p1x", "ini-nxyf"} {
+		found := false
+		for _, r := range rows[2:] {
+			if strings.Contains(r, id) {
+				found = true
+			}
 		}
-	}
-	if !strings.Contains(rows[3], "pm") || !strings.Contains(rows[3], "running") || !strings.Contains(rows[3], "2m") {
-		t.Fatalf("narrow row %q: name, state and time stay", rows[3])
+		if !found {
+			t.Fatalf("narrow agents box dropped the bead id %s:\n%s", id, strings.Join(rows, "\n"))
+		}
 	}
 }
 
-// TestRigPanel_At80TheIDsFoldAndEveryCountAndTheBeadColumnStay is AC4 at 80
-// columns: the first fold step only.
+// TestRigPanel_At80TheIDsFoldAndEveryCountAndTheBeadColumnStay is the first
+// fold step at 80 columns.
 func TestRigPanel_At80TheIDsFoldAndEveryCountAndTheBeadColumnStay(t *testing.T) {
 	rows := renderPanelCapture(t, 80, panelQuiet, []panelBead{{ID: "ini-b1", Status: "blocked"}})
 	t.Logf("\n%s", strings.Join(rows, "\n"))
@@ -268,8 +229,8 @@ func TestRigPanel_At80TheIDsFoldAndEveryCountAndTheBeadColumnStay(t *testing.T) 
 	if strings.Contains(rows[0], "ini-b1") || !strings.HasSuffix(rows[0], "prompts 0 · 4 awake") || !strings.Contains(rows[0], "initech") {
 		t.Fatalf("title %q: ids folded, the suspended count left out whole, the rest kept", rows[0])
 	}
-	if !strings.Contains(rows[3], "▶ ini-p1x") {
-		t.Fatalf("row %q: the bead column stays at 80", rows[3])
+	if i := rowOf(rows, "pm"); i < 0 || !strings.Contains(rows[i], "▶ ini-p1x") {
+		t.Fatalf("the bead column stays at 80:\n%s", strings.Join(rows, "\n"))
 	}
 }
 

@@ -525,9 +525,9 @@ type TUI struct {
 	// hidden. agentsPin is that section's scroll and column state.
 	planTop   int
 	agentsPin agentsPinState
-	// panelAttn holds the rig panel's needs-attention column after it
-	// empties (ini-fed0).
-	panelAttn panelHold
+	// panelSettled is the rig panel's agents box memory, by agent: the state
+	// word it shows and when that state began (ini-b0po).
+	panelSettled map[string]*panelSettledState
 	// panelQuota is the bottom bar's fleet quota source (ini-kb4c fills it);
 	// nil shows a dash.
 	panelQuota quotaSource

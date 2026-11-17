@@ -43,6 +43,7 @@ func TestOverlayDotIdleIsHollowGray(t *testing.T) {
 	// The overlay lists an idle agent only when it needs attention
 	// (ini-7w4): a bead the pace counts stuck keeps eng1 listed, idle.
 	tui.paceStuck = map[string]bool{"eng1": true}
+	tui.panes[0].(*Pane).SetBead("ini-x1", "") // An idle agent is listed when it holds a bead (ini-b0po).
 	tui.render()
 
 	dotX, dotY, ok := overlayDotOf(overlayScreenRows(s), "eng1")
@@ -68,6 +69,7 @@ func TestOverlayDotMixedRunningAndIdle(t *testing.T) {
 	// eng2: zero lastOutputTime → idle; listed because its bead counts stuck
 	// (the overlay lists an idle agent only when it needs attention, ini-7w4).
 	tui.paceStuck = map[string]bool{"eng2": true}
+	tui.panes[1].(*Pane).SetBead("ini-x2", "") // An idle agent is listed when it holds a bead (ini-b0po).
 	tui.render()
 
 	rows := overlayScreenRows(s)

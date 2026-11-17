@@ -1164,7 +1164,7 @@ func TestProjectBadge_TopLeftAlwaysAndOverlayTitleBare(t *testing.T) {
 	if strings.Contains(full, "(myproject)") {
 		t.Error("overlay title still carries the parenthesized project name — it moved to the badge")
 	}
-	if !strings.Contains(full, "agents · working") {
+	if !strings.Contains(full, "┌─ agents") {
 		t.Error("the rig panel lost its agents box label")
 	}
 
