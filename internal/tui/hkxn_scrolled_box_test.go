@@ -136,3 +136,16 @@ func TestScrolledBox326_ReadBeforeTheGlyphFallbacks(t *testing.T) {
 		t.Fatalf("composer = %q at row %d (%v), want the box's first row 2", tail, row, found)
 	}
 }
+
+// qa2's probe (S3): a "↑ N more" rule sitting directly on the bottom rule has
+// no text row between them, so it is no box: no first row, no composer.
+func TestScrolledBox326_ARuleOnTheBottomRuleWithNoTextIsNotTheBox(t *testing.T) {
+	rule := strings.Repeat("─", 40)
+	rows := []string{"transcript", "─── ↑ 4 more " + rule, rule, "  ⎇ main │ Haiku 5.5"}
+	if _, ok := scrolledBoxFirstRow(rows); ok {
+		t.Fatal("a scrolled rule with no text row under it read as a box")
+	}
+	if tail, row, found := composerTailFromRows(rows); found {
+		t.Fatalf("found a composer %q at row %d with no text row in the box", tail, row)
+	}
+}
