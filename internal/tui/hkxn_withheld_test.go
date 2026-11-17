@@ -190,3 +190,20 @@ func TestWithheld326_ANoticeNeverGoesIntoThePaneThatFailed(t *testing.T) {
 		t.Fatal("the guard held back a notice for a pane that was not its destination")
 	}
 }
+
+// qa2's probe (F): the operator's message to super that ends not delivered
+// tells the operator, as a notice in window 1; the guard holds back only a
+// notice that would land in the pane that failed, and the operator's notice
+// lands in no pane.
+func TestWithheld326_AnOperatorsNoticeAboutSuperStillReachesTheOperator(t *testing.T) {
+	tui := newTestTUI(testPane("eng2"), testPane("super"))
+	line := withheldNotDeliveredLine("super", time.Second, "the composer no longer holds our text", "start")
+	tui.handleAgentEvent(AgentEvent{Type: EventAgentStalled, Pane: "super", Detail: undeliveredSubmitPrefix + "x) after 1s",
+		From: operatorSender, ToSender: line})
+	for _, n := range tui.notifications {
+		if n.event.Detail == line {
+			return
+		}
+	}
+	t.Fatalf("no operator notice %q among %d notifications", line, len(tui.notifications))
+}
