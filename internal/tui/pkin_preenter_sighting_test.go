@@ -377,7 +377,8 @@ func pkinSight(t *testing.T, screen, body string) bool {
 	nma5Paint(p, screen)
 	s := startPreEnterSighting(p, newPendingSubmit(body, "bracketed", ""))
 	time.Sleep(3 * composerEchoPoll)
-	return s.wait()
+	seen, _ := s.wait()
+	return seen
 }
 
 func TestPkinSighting_FiresOnOurBodyInTheBox(t *testing.T) {
@@ -465,5 +466,35 @@ func TestPkinWatch_ADialogAfterTheSightingIsNotTheBoxClearing(t *testing.T) {
 	ps.seenInBox = true
 	if got := confirmSubmit(p, ps, time.Now()); got == submitTaken {
 		t.Fatal("a permission dialog on screen after the sighting: confirmed as taken")
+	}
+}
+
+// A wait that gives up on an overstaying sampler reads nothing the sampler is
+// still writing (ini-hkxn): the sampler has counted one sample and is blocked
+// in its second; the wait, out of window, returns no sighting and an empty
+// census, and the sampler then finishes on its own. Events only: the sample
+// hook says when the sampler is in its second sample, and holds it there.
+func TestPkinSighting_AWaitThatGivesUpReadsNoCensus(t *testing.T) {
+	nma5Window(t, 0)
+	p, _, _ := proofPane(t)
+	nma5Paint(p, "❯ ")
+	second, release := make(chan struct{}), make(chan struct{})
+	calls := 0
+	hook := func(*Pane) {
+		calls++
+		if calls == 2 {
+			close(second)
+			<-release
+		}
+	}
+	submitSampleMidpoint.Store(&hook)
+	t.Cleanup(func() { submitSampleMidpoint.Store(nil) })
+	s := startPreEnterSighting(p, newPendingSubmit(nma5Body, "bracketed", ""))
+	<-second
+	seen, census := s.wait()
+	close(release)
+	<-s.done
+	if seen || census.before != 0 || census.stable != 0 {
+		t.Fatalf("a wait out of window returned seen=%v census=%+v; want nothing read from a running sampler", seen, census)
 	}
 }

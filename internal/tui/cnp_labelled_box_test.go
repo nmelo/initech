@@ -162,7 +162,7 @@ func TestLabelledBox_NeverSeenNamesItsSamples(t *testing.T) {
 	s := startPreEnterSighting(p, newPendingSubmit(cnpLong, "bracketed", ""))
 	time.Sleep(3 * composerEchoPoll)
 	ps := newPendingSubmit(cnpLong, "bracketed", "")
-	ps.seenInBox, ps.census = s.wait(), s.census
+	ps.seenInBox, ps.census = s.wait()
 	lvxwPaint(p, cnpEmptied(t, cnpName("long", 32)))
 	v := confirmAndRetrySubmit(p, ps)
 	m := dmiNeverSeen.FindStringSubmatch(v.Reason)

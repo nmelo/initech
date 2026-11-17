@@ -118,7 +118,7 @@ func TestS1kdSighting_FiresWhileTheAnswerStreams(t *testing.T) {
 	s1kdStream(t, p, nil)
 	s := startPreEnterSighting(p, newPendingSubmit(nma5Body, "bracketed", ""))
 	time.Sleep(3 * composerEchoPoll)
-	if !s.wait() {
+	if seen, _ := s.wait(); !seen {
 		t.Fatal("our body in a still box under a streaming answer: not sighted")
 	}
 }

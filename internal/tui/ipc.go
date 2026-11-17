@@ -777,8 +777,7 @@ func sendPaneTextLocked(pane *Pane, text string, enter bool) SendVerdict {
 	LogDebug("inject", "submit", "pane", pane.Name(), "mode", mode, "method", "emulator", "delay_ms", bracketedPasteSubmitDelay.Get().Milliseconds())
 	sendSubmitKey(pane.emu, pane.submitKey)
 	ps := newPendingSubmit(text, mode, "")
-	ps.seenInBox = sighting.wait()
-	ps.census = sighting.census
+	ps.seenInBox, ps.census = sighting.wait()
 	return confirmAndRetrySubmit(pane, ps)
 }
 
@@ -1100,7 +1099,11 @@ func startPreEnterSighting(pane *Pane, ps *pendingSubmit) *preEnterSighting {
 
 // wait stops the sampler and reports whether it saw our body. Called after
 // the Enter is written, so the Enter never waits on a screen read.
-func (s *preEnterSighting) wait() bool {
+//
+// It returns the sighting and the sampler's census. A sampler that overstays
+// the window is still writing its census, so then neither is read: no
+// sighting and an empty census (ini-hkxn: reading it raced the sampler).
+func (s *preEnterSighting) wait() (bool, submitCensus) {
 	close(s.stop)
 	// The sampler ends on stop; its screen reads are bounded (screen_read.go).
 	// The sender waits for it no longer than one confirm window, and a sampler
@@ -1109,9 +1112,9 @@ func (s *preEnterSighting) wait() bool {
 	case <-s.done:
 	case <-time.After(submitConfirmWindow):
 		LogWarn("inject", "pre-Enter sampler did not stop within its window", "window", submitConfirmWindow)
-		return false
+		return false, submitCensus{}
 	}
-	return s.seen
+	return s.seen, s.census
 }
 
 // submitSighted reports whether this sample positively shows OUR body in the

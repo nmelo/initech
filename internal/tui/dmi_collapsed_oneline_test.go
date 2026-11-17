@@ -212,7 +212,7 @@ func TestCollapsedOneLine_AnEmptyBoxEverySampleIsNeverSeen(t *testing.T) {
 	s := startPreEnterSighting(p, newPendingSubmit(dmiBody, "bracketed", ""))
 	time.Sleep(3 * composerEchoPoll)
 	ps := newPendingSubmit(dmiBody, "bracketed", "")
-	ps.seenInBox, ps.census = s.wait(), s.census
+	ps.seenInBox, ps.census = s.wait()
 	v := confirmAndRetrySubmit(p, ps)
 	m := dmiNeverSeen.FindStringSubmatch(v.Reason)
 	if v.Outcome != DeliveryUnconfirmed || m == nil || m[2] != "an empty box" || m[3] != "an empty box" {
@@ -349,7 +349,7 @@ func TestCollapsedOneLine_NoBoxBeforeTheEnterReadsNoBox(t *testing.T) {
 	s := startPreEnterSighting(p, newPendingSubmit(dmiBody, "bracketed", ""))
 	time.Sleep(3 * composerEchoPoll)
 	ps := newPendingSubmit(dmiBody, "bracketed", "")
-	ps.seenInBox, ps.census = s.wait(), s.census
+	ps.seenInBox, ps.census = s.wait()
 	lvxwPaint(p, dmiWithBox(t, "haiku312_busy_collapsed_w49.txt", "❯ "))
 	v := confirmAndRetrySubmit(p, ps)
 	m := dmiNeverSeen.FindStringSubmatch(v.Reason)
@@ -373,7 +373,7 @@ func TestCollapsedOneLine_ATornReadingIsNeverTheBeforeLine(t *testing.T) {
 	s := startPreEnterSighting(p, newPendingSubmit(dmiBody, "bracketed", ""))
 	time.Sleep(3 * composerEchoPoll)
 	ps := newPendingSubmit(dmiBody, "bracketed", "")
-	ps.seenInBox, ps.census = s.wait(), s.census
+	ps.seenInBox, ps.census = s.wait()
 	restore()
 	if ps.census.torn == 0 || ps.census.stable != 0 {
 		t.Fatalf("torn %d stable %d: the readings before the Enter were not all torn", ps.census.torn, ps.census.stable)
