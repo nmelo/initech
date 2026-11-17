@@ -357,11 +357,26 @@ func panelTitleText(t panelTitle, level int) (string, []panelSpan) {
 // Agents panel's order, and the polled beads.
 func (t *TUI) panelSnapshot(now time.Time) ([]panelAgent, []panelBead) {
 	status, titles := map[string]string{}, map[string]string{}
+	// held is the bead each agent holds by bd's assignee, for an agent whose
+	// ribbon is empty (ini-jmut): an unfinished bead, in_progress first, then
+	// the most recently moved.
+	held := map[string]bdBead{}
+	heldMoved := map[string]time.Time{}
 	var beads []panelBead
 	if t.paceAnswered {
 		for _, b := range t.paceBeads {
 			status[b.ID] = b.Status
 			titles[b.ID] = b.Title
+			if b.Assignee != "" && panelHeldStatus[b.Status] {
+				moved := t.paceBead(b, now).LastMoved()
+				cur, ok := held[b.Assignee]
+				switch {
+				case !ok,
+					b.Status == "in_progress" && cur.Status != "in_progress",
+					(b.Status == "in_progress") == (cur.Status == "in_progress") && moved.After(heldMoved[b.Assignee]):
+					held[b.Assignee], heldMoved[b.Assignee] = b, moved
+				}
+			}
 			beads = append(beads, panelBead{ID: b.ID, Status: b.Status, LastMoved: t.paceBead(b, now).LastMoved()})
 		}
 	}
@@ -372,6 +387,11 @@ func (t *TUI) panelSnapshot(now time.Time) ([]panelAgent, []panelBead) {
 		a := panelAgent{Name: paneDisplayName(p), Key: agentKey(p), State: p.Activity(),
 			Suspended: p.IsSuspended(), Alive: p.IsAlive(), Bead: p.BeadID()}
 		a.Hidden = t.layoutState.Hidden[a.Key]
+		if a.Bead == "" {
+			if b, ok := held[p.Name()]; ok {
+				a.Bead = b.ID
+			}
+		}
 		a.BeadStatus = status[a.Bead]
 		a.Title = titles[a.Bead]
 		// Stuck by the pace rule, the one the pane header and the moved box
@@ -865,4 +885,11 @@ func panelTitleWords(title string, n int) string {
 		b.WriteString(w)
 	}
 	return b.String()
+}
+
+// panelHeldStatus is the statuses of a bead its assignee holds (ini-jmut):
+// every unfinished one but open and deferred.
+var panelHeldStatus = map[string]bool{
+	"in_progress": true, "waiting": true, "blocked": true, "waiting_on_nelson": true,
+	"ready_for_qa": true, "in_qa": true, "qa_passed": true, "ready_to_ship": true,
 }

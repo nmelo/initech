@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"strings"
 	"testing"
 	"time"
@@ -246,5 +247,101 @@ func TestAgentsBox_TheRealSnapshotMarksAStuckHolder(t *testing.T) {
 	i := rowOf(append([]string{""}, rows...), "eng1") - 1
 	if i < 0 || !strings.Contains(rows[i], " stuck ") || !strings.Contains(rows[i], "ini-st1") {
 		t.Fatalf("eng1 not drawn stuck with its bead:\n%s", strings.Join(rows, "\n"))
+	}
+}
+
+// ── ini-jmut: a holder is the agent bd names on an unfinished bead ─────
+
+// holderRows renders a panel whose window-1 bead poll answered beads, and
+// returns its rows as text.
+func holderRows(t *testing.T, beads []bdBead, setup func(*TUI), names ...string) []string {
+	t.Helper()
+	tui, s := newTestTUIWithScreen(names...)
+	tui.layoutState.Overlay = true
+	tui.paceBeads, tui.paceAnswered = beads, true
+	if setup != nil {
+		setup(tui)
+	}
+	tui.render()
+	// The panel only, down to its boxes' bottom border: the grid's own pane
+	// titles below name the agents too.
+	rows := []string{""}
+	for _, r := range overlayScreenRows(s) {
+		rows = append(rows, string(r))
+		if strings.Contains(string(r), "└") {
+			break
+		}
+	}
+	return rows
+}
+
+// holds reports whether name is drawn holding id.
+func holds(rows []string, name, id string) bool {
+	i := rowOf(rows, name)
+	return i > 0 && strings.Contains(rows[i], id)
+}
+
+// TestHolder_AnAssignedBeadMakesAHolderWithAnEmptyRibbon is AC1 and AC2: the
+// live eng5 case (an empty ribbon, a waiting bead assigned in bd) and every
+// other unfinished status make a holder; open, deferred and closed do not.
+func TestHolder_AnAssignedBeadMakesAHolderWithAnEmptyRibbon(t *testing.T) {
+	for _, st := range []string{"waiting", "blocked", "waiting_on_nelson", "in_qa", "ready_for_qa", "qa_passed", "in_progress"} {
+		rows := holderRows(t, []bdBead{{ID: "ini-hkxn", Status: st, Assignee: "eng5", UpdatedAt: panelNow}}, nil, "eng5")
+		if !holds(rows, "eng5", "ini-hkxn") || strings.Contains(strings.Join(rows, "\n"), "1 idle") {
+			t.Fatalf("%s: eng5 not a holder of ini-hkxn:\n%s", st, strings.Join(rows, "\n"))
+		}
+		if st == "waiting" {
+			i := rowOf(rows, "eng5")
+			if !strings.Contains(rows[i], "☾ ini-hkxn") || !strings.Contains(rows[i], " idle ") {
+				t.Fatalf("a waiting bead's holder reads idle with ☾: %q", rows[i])
+			}
+		}
+	}
+	for _, st := range []string{"open", "deferred", "closed"} {
+		rows := holderRows(t, []bdBead{{ID: "ini-x9", Status: st, Assignee: "eng5", UpdatedAt: panelNow}}, nil, "eng5")
+		if rowOf(rows, "eng5") > 0 || !strings.Contains(strings.Join(rows, "\n"), "1 idle") {
+			t.Fatalf("%s: an assigned %s bead made a holder:\n%s", st, st, strings.Join(rows, "\n"))
+		}
+	}
+}
+
+// TestHolder_TheRibbonWins is AC3.
+func TestHolder_TheRibbonWins(t *testing.T) {
+	rows := holderRows(t, []bdBead{{ID: "ini-bd1", Status: "waiting", Assignee: "eng5", UpdatedAt: panelNow}},
+		func(tui *TUI) { tui.panes[0].(*Pane).SetBead("ini-rib", "") }, "eng5")
+	if !holds(rows, "eng5", "ini-rib") || strings.Contains(strings.Join(rows, "\n"), "ini-bd1") {
+		t.Fatalf("the ribbon's bead did not win:\n%s", strings.Join(rows, "\n"))
+	}
+}
+
+// TestHolder_TwoAssignedBeads is AC4: in_progress first; with none in
+// progress, the most recently moved.
+func TestHolder_TwoAssignedBeads(t *testing.T) {
+	rows := holderRows(t, []bdBead{
+		{ID: "ini-new", Status: "waiting", Assignee: "eng5", UpdatedAt: panelNow},
+		{ID: "ini-ip", Status: "in_progress", Assignee: "eng5", UpdatedAt: panelNow.Add(-time.Hour)},
+	}, nil, "eng5")
+	if !holds(rows, "eng5", "ini-ip") {
+		t.Fatalf("in_progress did not come first:\n%s", strings.Join(rows, "\n"))
+	}
+	rows = holderRows(t, []bdBead{
+		{ID: "ini-old", Status: "blocked", Assignee: "eng5", UpdatedAt: panelNow.Add(-time.Hour)},
+		{ID: "ini-new", Status: "waiting", Assignee: "eng5", UpdatedAt: panelNow},
+	}, nil, "eng5")
+	if !holds(rows, "eng5", "ini-new") {
+		t.Fatalf("the most recently moved did not show:\n%s", strings.Join(rows, "\n"))
+	}
+}
+
+// TestHolder_NoBdCallThroughADraw is AC5: the panel reads the poll window 1
+// already holds.
+func TestHolder_NoBdCallThroughADraw(t *testing.T) {
+	calls := 0
+	prev := bdListBeads
+	bdListBeads = func(context.Context, string) ([]bdBead, error) { calls++; return nil, nil }
+	t.Cleanup(func() { bdListBeads = prev })
+	holderRows(t, []bdBead{{ID: "ini-hkxn", Status: "waiting", Assignee: "eng5", UpdatedAt: panelNow}}, nil, "eng5")
+	if calls != 0 {
+		t.Fatalf("a panel draw called bd %d times", calls)
 	}
 }
