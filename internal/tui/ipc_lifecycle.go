@@ -12,6 +12,7 @@ import (
 	"net"
 	"os"
 	"regexp"
+	"sync"
 	"time"
 )
 
@@ -211,10 +212,10 @@ func (t *TUI) handleIPCStart(conn net.Conn, req IPCRequest) {
 	// Create the new pane off-main (may fork/exec).
 	cols, rows := old.emuSize() // never waits on the pane (ini-psjt)
 	// Dead panes may report zero dimensions; use sensible defaults.
-	if cols < 10 {
+	if cols < 1 {
 		cols = 80
 	}
-	if rows < 2 {
+	if rows < 1 {
 		rows = 24
 	}
 	// Rebuild config from the project to pick up any initech.yaml changes.
@@ -231,7 +232,6 @@ func (t *TUI) handleIPCStart(conn net.Conn, req IPCRequest) {
 		writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("start failed: %v", err)})
 		return
 	}
-	np.region = old.region
 	np.eventCh = t.agentEvents
 	t.wireSuspendResume(np)
 	np.safeGo = t.safeGo
@@ -239,6 +239,7 @@ func (t *TUI) handleIPCStart(conn net.Conn, req IPCRequest) {
 	// Replace in t.panes on main; re-verify index is still valid.
 	if !t.runOnMain(func() {
 		if oldIdx < len(t.panes) && t.panes[oldIdx] == old {
+			np.inheritViewport(old)
 			np.Start()
 			t.replacePane(oldIdx, np)
 			t.applyLayout()
@@ -330,10 +331,10 @@ func (t *TUI) restartOffMain(old *Pane, oldIdx int, cfg PaneConfig) (int, error)
 	carried := old.DrainQueue()
 	cols, rows := old.emuSize() // never waits on the pane (ini-psjt)
 	// Dead panes may report zero dimensions; use sensible defaults.
-	if cols < 10 {
+	if cols < 1 {
 		cols = 80
 	}
-	if rows < 2 {
+	if rows < 1 {
 		rows = 24
 	}
 	old.closeHoldingSendMu()
@@ -345,7 +346,6 @@ func (t *TUI) restartOffMain(old *Pane, oldIdx int, cfg PaneConfig) (int, error)
 		restoreQueueAfterFailedRestart(old, carried)
 		return 0, fmt.Errorf("restart failed: %w", err)
 	}
-	np.region = old.region
 	np.eventCh = t.agentEvents
 	t.wireSuspendResume(np)
 	np.safeGo = t.safeGo
@@ -359,6 +359,7 @@ func (t *TUI) restartOffMain(old *Pane, oldIdx int, cfg PaneConfig) (int, error)
 	replaced := false
 	ran := t.runOnMain(func() {
 		if oldIdx < len(t.panes) && t.panes[oldIdx] == old {
+			np.inheritViewport(old)
 			np.Start()
 			t.replacePane(oldIdx, np)
 			t.applyLayout()
@@ -376,11 +377,12 @@ func (t *TUI) restartOffMain(old *Pane, oldIdx int, cfg PaneConfig) (int, error)
 }
 
 func (t *TUI) handleIPCAdd(conn net.Conn, req IPCRequest) {
-	if err := t.addPane(req.Target); err != nil {
+	detail, err := t.addPaneWithDetail(req.Target)
+	if err != nil {
 		writeIPCResponse(conn, IPCResponse{Error: err.Error()})
 		return
 	}
-	writeIPCResponse(conn, IPCResponse{OK: true})
+	writeIPCResponse(conn, IPCResponse{OK: true, Data: detail})
 }
 
 func (t *TUI) handleIPCRemove(conn net.Conn, req IPCRequest) {
@@ -391,86 +393,99 @@ func (t *TUI) handleIPCRemove(conn net.Conn, req IPCRequest) {
 	writeIPCResponse(conn, IPCResponse{OK: true})
 }
 
-// addPane creates a new pane for the given role name and integrates it into
+// addPaneWithDetail creates a new pane for the given role name and integrates it into
 // the running TUI. The workspace directory must already exist on disk.
 // Returns an error if the name is empty, already exists, or has no workspace.
-func (t *TUI) addPane(name string) error {
+func (t *TUI) addPaneWithDetail(name string) (string, error) {
 	if name == "" {
-		return fmt.Errorf("name is required")
+		return "", fmt.Errorf("name is required")
 	}
 	if len(name) > maxAgentNameLen {
-		return fmt.Errorf("agent name too long (max %d chars)", maxAgentNameLen)
+		return "", fmt.Errorf("agent name too long (max %d chars)", maxAgentNameLen)
 	}
 	if !agentNameRe.MatchString(name) {
-		return fmt.Errorf("invalid agent name %q: must contain only letters, digits, hyphens, or underscores", name)
+		return "", fmt.Errorf("invalid agent name %q: must contain only letters, digits, hyphens, or underscores", name)
 	}
 	// Check name uniqueness on main (reads t.panes).
 	var existsErr error
-	t.runOnMain(func() {
+	if !t.runOnMain(func() {
 		if t.findPaneByName(name) != nil {
 			existsErr = fmt.Errorf("agent %q already exists", name)
 		}
-	})
+	}) {
+		return "", fmt.Errorf("TUI shutting down")
+	}
 	if existsErr != nil {
-		return existsErr
+		return "", existsErr
 	}
 
 	if t.paneConfigBuilder == nil {
-		return fmt.Errorf("add not available: no config builder (was TUI started via 'initech'?)")
+		return "", fmt.Errorf("add not available: no config builder (was TUI started via 'initech'?)")
 	}
 
 	cfg, err := t.paneConfigBuilder(name)
 	if err != nil {
-		return fmt.Errorf("build config for %q: %w", name, err)
+		return "", fmt.Errorf("build config for %q: %w", name, err)
 	}
 
 	// Verify the workspace directory exists.
 	if _, err := os.Stat(cfg.Dir); os.IsNotExist(err) {
-		return fmt.Errorf("workspace %s/ not found. Create it first (e.g. mkdir -p %s && cp <agent>/CLAUDE.md %s/)", name, cfg.Dir, cfg.Dir)
+		return "", fmt.Errorf("workspace %s/ not found. Create it first (e.g. mkdir -p %s && cp <agent>/CLAUDE.md %s/)", name, cfg.Dir, cfg.Dir)
 	}
 
 	// Inject runtime env vars the TUI manages.
 	cfg.Env = append(cfg.Env, agentIdentityEnv(name, t.sockPath)...)
 
-	// Temporary dimensions; applyLayout will resize to the correct region.
-	rows, cols := 24, 80
+	// A live/focus layout can omit the new seat entirely. Give it a
+	// usable terminal from its first instruction, even without a viewport.
+	cols := 80
 	if t.screen != nil {
-		w, h := t.screen.Size()
-		cols, rows = w/2, h/2
-		if cols < 10 {
-			cols = 80
-		}
-		if rows < 4 {
-			rows = 24
+		w, _ := t.screen.Size()
+		if w/2 >= 10 {
+			cols = w / 2
 		}
 	}
 
 	if err := t.admitAgent(nil, name, "add"); err != nil {
-		return err
+		return "", err
 	}
 	// Create the pane off-main (may fork/exec).
-	p, err := NewPane(cfg, rows, cols)
+	p, err := t.spawnPane(cfg, shortTileTerminalRows, cols)
 	if err != nil {
 		LogError("pane", "hot-add launch failed", "name", name, "err", err)
-		return fmt.Errorf("create pane %q: %w", name, err)
+		return "", fmt.Errorf("create pane %q: %w", name, err)
 	}
 	p.eventCh = t.agentEvents
 	t.wireSuspendResume(p)
 	p.safeGo = t.safeGo
 
 	// Append to t.panes on main; re-verify uniqueness in case of concurrent add.
+	var detail string
 	var finalErr error
-	t.runOnMain(func() {
+	var commit sync.Once
+	install := func() {
 		if t.findPaneByName(name) != nil {
-			p.Close()
 			finalErr = fmt.Errorf("agent %q already exists (added concurrently)", name)
 			return
 		}
-		p.Start()
 		t.insertPane(p)
-	})
+		detail, finalErr = p.addTileDetail()
+		if finalErr != nil {
+			t.removePaneAt(len(t.panes) - 1)
+			t.recalcGrid()
+			return
+		}
+		p.Start()
+		t.saveLayoutIfConfigured()
+	}
+	if !t.runOnMain(func() { commit.Do(install) }) {
+		// On shutdown a queued callback may still run. Whichever side
+		// claims the pane owns it until installation or cancellation ends.
+		commit.Do(func() { finalErr = fmt.Errorf("TUI shutting down") })
+	}
 	if finalErr != nil {
-		return finalErr
+		p.Close()
+		return "", finalErr
 	}
 	LogInfo("pane", "added", "name", name)
 	EmitEvent(t.agentEvents, AgentEvent{
@@ -478,10 +493,10 @@ func (t *TUI) addPane(name string) error {
 		Pane:   name,
 		Detail: "Added " + name + " to session",
 	})
-	return nil
+	return detail, nil
 }
 
-// insertPane appends a started pane to the fleet and re-plans the layout.
+// insertPane appends a pane to the fleet and re-plans the layout.
 // Main goroutine only. Split from addPane so the layout contract can be
 // tested without a PTY.
 func (t *TUI) insertPane(p PaneView) {
@@ -489,7 +504,31 @@ func (t *TUI) insertPane(p PaneView) {
 	t.appendPane(p)
 	t.logPanesMutation("hot-add", oldLen)
 	t.recalcGrid()
-	t.saveLayoutIfConfigured()
+}
+
+// addTileDetail verifies the short terminal before the add is published as
+// successful. With no assigned tile the child keeps its initial full size.
+func (p *Pane) addTileDetail() (string, error) {
+	cols, rows := p.region.TerminalSize()
+	if rows >= shortPaneRows {
+		return "", nil
+	}
+	terminal := p.ptyHandle()
+	if terminal == nil {
+		return "", fmt.Errorf("no terminal for %s", p.name)
+	}
+	width, height, err := terminal.Size()
+	if err != nil {
+		return "", fmt.Errorf("read terminal size for %s: %w", p.name, err)
+	}
+	placed := p.region.W > 0 && p.region.H > 0
+	if height != shortTileTerminalRows || width < 1 || (placed && width != effectiveEmuCols(cols)) {
+		return "", fmt.Errorf("could not size the terminal for %s: got %dx%d", p.name, width, height)
+	}
+	if !placed {
+		return fmt.Sprintf("no visible tile; its terminal is %d rows", height), nil
+	}
+	return fmt.Sprintf("a %d-row tile; its terminal is %d rows", rows, height), nil
 }
 
 // removePane kills the named pane and removes it from the running TUI.

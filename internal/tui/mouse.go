@@ -89,7 +89,11 @@ func (t *TUI) handleMouse(ev *tcell.EventMouse) {
 						ly = 0
 					}
 					_, innerRows := r.InnerSize()
-					sr = pv.Emulator().Height() - innerRows
+					if rp, ok := pv.(*RemotePane); ok {
+						withEmulator(rp.emu, screenTryBudget, func(e *vt.Emulator) { sr = rp.viewTop(e, innerRows) })
+					} else {
+						sr = pv.Emulator().Height() - innerRows
+					}
 					ro = 0
 				}
 				// Find pane index in t.panes for selection tracking.
@@ -455,10 +459,7 @@ func (t *TUI) extractSelectionText() string {
 
 	// In scrollback mode, startRow is a virtual row (scrollback + screen
 	// combined). Use virtualCellOn for correct cell lookup.
-	scrollback := false
-	if lp, ok := pv.(*Pane); ok && lp.scrollOffset > 0 {
-		scrollback = true
-	}
+	scrollback := pv.InScrollback()
 
 	// Main goroutine: never wait on the pane (ini-psjt). The whole copy runs
 	// under the emulator's read lock, so pointer reads cannot tear (ini-wizq);

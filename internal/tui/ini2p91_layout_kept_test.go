@@ -255,7 +255,18 @@ func TestAddPane_SavedLayoutKeepsTheOperatorsMode(t *testing.T) {
 	tui := keptFleet()
 	tui.projectRoot = t.TempDir()
 	tui.layoutState.Mode = LayoutFocus
-	tui.insertPane(testPane("e"))
+	tui.paneConfigBuilder = func(name string) (PaneConfig, error) {
+		return PaneConfig{Name: name, Dir: tui.projectRoot}, nil
+	}
+	tui.paneSpawner = func(cfg PaneConfig, rows, cols int) (*Pane, error) {
+		p := newEmuPane(cfg.Name, cols, rows)
+		p.ptmx = fixedSizePTY{newSpawnPty(t), cols, rows, nil}
+		return p, nil
+	}
+	if err := tui.addPane("e"); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(tui.findPaneByName("e").Close)
 	got, ok := LoadLayout(tui.projectRoot, []string{"a", "b", "c", "d", "e"})
 	if !ok {
 		t.Fatal("no layout saved after the add")

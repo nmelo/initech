@@ -140,11 +140,15 @@ func (p *Pane) chromeLook(focused bool, index int) (ribbonLook, tcell.Color) {
 
 // drawChrome draws the chrome from its look alone.
 func (p *Pane) drawChrome(s *clampedScreen, r Region, look ribbonLook) {
-	renderRibbon(s, r, look)
+	if r.H >= 2 {
+		renderRibbon(s, r, look)
+	}
 
 	// Top edge at r.Y. Drawn before content so it is always present even
 	// when content rendering is suppressed during resize settling.
-	drawTopEdge(s, r, look.header, look.headerInset)
+	if r.H >= 3 {
+		drawTopEdge(s, r, look.header, look.headerInset)
+	}
 	p.noteChrome(look)
 }
 
@@ -154,7 +158,7 @@ func (p *Pane) drawChrome(s *clampedScreen, r Region, look ribbonLook) {
 // whether it drew.
 func (p *Pane) renderChromeOnly(screen tcell.Screen, focused bool, index int) bool {
 	r := p.region
-	if r.W < 1 || r.H < 3 {
+	if r.W < 1 || r.H < 1 {
 		return false
 	}
 	look, _ := p.chromeLook(focused, index)
@@ -162,7 +166,7 @@ func (p *Pane) renderChromeOnly(screen tcell.Screen, focused bool, index int) bo
 		return false
 	}
 	p.drawChrome(&clampedScreen{Screen: screen, r: r}, r, look)
-	return true
+	return r.H > 1
 }
 
 // Render draws the pane's bottom ribbon and terminal content onto the tcell screen.
@@ -171,7 +175,7 @@ func (p *Pane) renderChromeOnly(screen tcell.Screen, focused bool, index int) bo
 // All writes are clamped to the pane's region to prevent bleed-through.
 func (p *Pane) Render(screen tcell.Screen, focused bool, dimmed bool, index int, sel Selection) {
 	r := p.region
-	if r.W < 1 || r.H < 3 {
+	if r.W < 1 || r.H < 1 {
 		return
 	}
 
@@ -183,7 +187,11 @@ func (p *Pane) Render(screen tcell.Screen, focused bool, dimmed bool, index int,
 	// Content region: below activity bar (r.Y+1), above ribbon (r.Y+H-1).
 	// cr.InnerSize() returns TerminalSize dimensions (H-2 rows), and
 	// cr.Y+row naturally places cells below the activity bar (ini-yah).
-	cr := Region{X: r.X, Y: r.Y + 1, W: r.W, H: r.H - 1}
+	cr := r
+	if r.H >= 3 {
+		cr.Y++
+		cr.H--
+	}
 	termCols, termRows := cr.InnerSize()
 
 	// Everything below reads the emulator, and the main loop may not wait on

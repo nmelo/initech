@@ -792,7 +792,8 @@ func (t *TUI) applyAgentStatus(name string, beads []string, noBead, desc string,
 		// the wake edge it already receives, so the child snaps to the
 		// displaying window's truth within one resize round-trip of booting.
 		if wasSuspended && !suspended {
-			if cols, rows := rp.region.TerminalSize(); rows > 1 && cols > 1 {
+			if rp.region.W > 0 && rp.region.H > 0 {
+				cols, rows := rp.region.TerminalSize()
 				rp.Resize(rows, cols)
 			}
 		}

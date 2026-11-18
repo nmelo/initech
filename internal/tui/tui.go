@@ -355,7 +355,7 @@ type TUI struct {
 	// Set from Config.PaneConfigBuilder. Nil disables the add command.
 	paneConfigBuilder func(name string) (PaneConfig, error)
 
-	// paneSpawner creates the successor pane when resumePane wakes an agent.
+	// paneSpawner starts a new seat on add or wake.
 	// Nil (always, in production) means NewPane, which starts the configured
 	// process. Tests set it to wake through the real swap path without
 	// starting a process. Read through spawnPane.
@@ -1285,6 +1285,7 @@ func Run(cfg Config) error {
 			p.setCeilingNote(refused)
 		}
 		p.region = r
+		p.modeRows.Store(int32(rows))
 		p.eventCh = t.agentEvents
 		t.wireSuspendResume(p)
 		p.safeGo = t.safeGo

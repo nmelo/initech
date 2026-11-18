@@ -103,7 +103,7 @@ func NewRemotePane(name, host string, stream net.Conn, mux *ControlMux, cols, ro
 		host:     host,
 		stream:   stream,
 		mux:      mux,
-		emu:      vt.NewSafeEmulator(cols, rows),
+		emu:      vt.NewSafeEmulator(cols, exactTerminalRows(rows)),
 		dataCh:   make(chan []byte, 64), // Buffered: readLoop sends, Render drains.
 		alive:    true,
 		visible:  true,
@@ -699,7 +699,7 @@ func (rp *RemotePane) renderChromeOnly(screen tcell.Screen, focused bool, index 
 // Render draws the remote pane with [R] badge in the ribbon title.
 func (rp *RemotePane) Render(screen tcell.Screen, focused bool, dimmed bool, index int, sel Selection) {
 	r := rp.region
-	if r.W < 1 || r.H < 2 {
+	if r.W < 1 || r.H < 1 {
 		return
 	}
 
@@ -716,10 +716,11 @@ func (rp *RemotePane) Render(screen tcell.Screen, focused bool, dimmed bool, ind
 	}
 
 	// Badge style: remote panes use teal to distinguish from local.
-	rp.renderChrome(s, r, focused, index)
+	if r.H >= 2 {
+		rp.renderChrome(s, r, focused, index)
+	}
 
 	_, innerRows := r.InnerSize()
-	emuStartRow := rp.emu.Height() - innerRows
 	// The viewer emulator is written only on this goroutine, so the try never
 	// fails; going through withEmulator keeps one rule for every render.
 	rp.renderFinal = withEmulator(rp.emu, screenTryBudget, func(e *vt.Emulator) {
@@ -728,14 +729,28 @@ func (rp *RemotePane) Render(screen tcell.Screen, focused bool, dimmed bool, ind
 		// draw history instead of the live tail (ini-di8h). Same rule, same
 		// step, same live-return as window 1.
 		rp.scroll.compensate(e, innerRows)
+		emuStartRow := rp.viewTop(e, innerRows)
 		if rp.scroll.offset > 0 {
-			renderScrollbackRows(s, r, e, dimmed, tcell.ColorDefault, scrollbackViewTop(e, innerRows, rp.scroll.offset), innerCols, innerRows)
+			renderScrollbackRows(s, r, e, dimmed, tcell.ColorDefault, emuStartRow, innerCols, innerRows)
+			renderSelectionVirtual(s, r, e, sel, dimmed, emuStartRow)
 			return
 		}
 		renderCells(s, r, e, dimmed, emuStartRow, tcell.ColorDefault)
 		renderSelection(s, r, e, sel, dimmed, emuStartRow)
 		renderCursor(s, r, e, focused, sel, emuStartRow)
 	})
+}
+
+// viewTop maps the first visible row for drawing and selection. In
+// scrollback the result is a virtual row in the combined history and screen.
+func (rp *RemotePane) viewTop(e *vt.Emulator, rows int) int {
+	if rp.scroll.offset > 0 {
+		return scrollbackViewTop(e, rows, rp.scroll.offset)
+	}
+	if _, tileRows := rp.region.TerminalSize(); tileRows < shortPaneRows {
+		return max(0, liveViewEnd(e, rows)-rows)
+	}
+	return e.Height() - rows
 }
 
 // ScrollUp moves this window's view into the pane's history (ini-di8h).
@@ -801,7 +816,7 @@ func (rp *RemotePane) Resize(rows, cols int) {
 	// Emulator resize is synchronous: with the channel-based approach,
 	// readLoop never touches the emulator, so no lock contention.
 	// The emulator is owned exclusively by the main goroutine.
-	rp.emu.Resize(cols, rows)
+	rp.emu.Resize(cols, exactTerminalRows(rows))
 
 	rp.resizeMu.Lock()
 	rp.pendingRows = rows

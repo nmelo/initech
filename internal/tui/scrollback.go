@@ -22,29 +22,38 @@ import (
 // wheelScrollRows is how far one wheel notch moves the view, in rows.
 const wheelScrollRows = 3
 
-// maxScrollOffsetFor returns the largest meaningful scroll offset: beyond it
-// the view window would extend past the top of the virtual buffer (scrollback
-// + screen).
-func maxScrollOffsetFor(e *vt.Emulator, termRows int) int {
-	max := e.ScrollbackLen() + e.Height() - termRows
-	if max < 0 {
-		max = 0
+// drawnRows includes the last nonblank row, even when the program parks
+// the cursor above its status line. Call with the emulator read lock held.
+func drawnRows(e *vt.Emulator) int {
+	for y := e.Height() - 1; y >= 0; y-- {
+		for x := 0; x < e.Width(); x++ {
+			cell := e.CellAt(x, y)
+			if cell != nil && cell.Content != "" && cell.Content != " " {
+				return y + 1
+			}
+		}
 	}
-	return max
+	return 0
 }
 
-// scrollbackViewTop returns the virtual row (scrollback + screen combined) that
-// the top of the view window shows at the given offset.
+// liveViewEnd is the bottom of a short tile's viewport. Inline programs
+// can leave unused terminal rows below their prompt. Fullscreen programs
+// address the entire terminal.
+func liveViewEnd(e *vt.Emulator, visibleRows int) int {
+	if e.Height() == shortTileTerminalRows && visibleRows <= shortPaneRows && !e.IsAltScreen() {
+		return drawnRows(e)
+	}
+	return e.Height()
+}
+
+// maxScrollOffsetFor includes both retained history and clipped live rows.
+func maxScrollOffsetFor(e *vt.Emulator, termRows int) int {
+	return max(0, e.ScrollbackLen()+liveViewEnd(e, termRows)-termRows)
+}
+
+// scrollbackViewTop maps the scroll position to a scrollback + screen row.
 func scrollbackViewTop(e *vt.Emulator, termRows, scrollOffset int) int {
-	viewBottom := e.ScrollbackLen() + e.Height() - scrollOffset
-	if viewBottom < 0 {
-		viewBottom = 0
-	}
-	viewTop := viewBottom - termRows
-	if viewTop < 0 {
-		viewTop = 0
-	}
-	return viewTop
+	return max(0, maxScrollOffsetFor(e, termRows)-scrollOffset)
 }
 
 // scrollAnchor holds a pane's position in its own history. Zero offset is the

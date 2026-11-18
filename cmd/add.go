@@ -31,6 +31,8 @@ func init() {
 }
 
 func runAdd(cmd *cobra.Command, args []string) error {
+	// Argument validation has passed. Execute prints a runtime refusal once.
+	cmd.SilenceUsage, cmd.SilenceErrors = true, true
 	name := args[0]
 
 	sockPath, proj, err := resolveSocket()
@@ -61,7 +63,11 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		}
 		return fmt.Errorf("%s", resp.Error)
 	}
-	fmt.Fprintf(out, "Added %s.\n", name)
+	if resp.Data != "" {
+		fmt.Fprintf(out, "Added %s: %s.\n", name, resp.Data)
+	} else {
+		fmt.Fprintf(out, "Added %s.\n", name)
+	}
 
 	if addBead != "" {
 		time.Sleep(3 * time.Second)

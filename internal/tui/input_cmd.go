@@ -769,10 +769,20 @@ func (t *TUI) cmdAdd(parts []string) bool {
 		t.cmd.error = "usage: add <name>"
 	} else if err := t.addPane(parts[1]); err != nil {
 		t.cmd.error = "add: " + err.Error()
-	} else {
-		t.cmd.error = "added " + parts[1]
 	}
 	return false
+}
+
+// addPane adds a seat from the command bar and shows its placement.
+func (t *TUI) addPane(name string) error {
+	detail, err := t.addPaneWithDetail(name)
+	if err == nil {
+		t.cmd.error = "added " + name
+		if detail != "" {
+			t.cmd.error += ": " + detail
+		}
+	}
+	return err
 }
 
 func (t *TUI) cmdRemove(parts []string) bool {

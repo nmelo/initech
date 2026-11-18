@@ -131,6 +131,10 @@ PM sets an evidence tier on each bead when grooming it. It decides how much of t
 
 Keys always go to the highlighted pane, in every layout: whatever you type, paste or press Enter on lands in the pane drawn as focused, never in one you cannot see. A grid smaller than the fleet shows the first panes, and the focus moves to one of them; Option+arrows step through the panes on screen. When live mode moves the focused agent off screen, the focus moves to a pane that is drawn. Scrolling over a pane focuses it and highlights it at once.
 
+An agent tile with fewer than six content rows shows the last rows of a 40-row terminal at the tile’s width. The agent, sends and `initech peek` use that full terminal, including while the tile is hidden. Scrolling and text selection use the rows visible in the tile.
+
+`initech add <name>` reports a short tile in one line, for example `Added eng12: a 1-row tile; its terminal is 40 rows.` If the layout has no visible slot for the new seat, the line says `no visible tile` and gives its terminal height.
+
 ### Agents grid
 
 Press Alt+a to open the grid, then an arrow key to enter the list. The footer reads `Spc hide  ↵ grab  p pin  P protect  s/S suspend  / find  g group  < > band  m monitor  A all  R reset  Esc close`. With multiple windows, `m` moves the selected agent’s whole group to the next window.
@@ -625,7 +629,7 @@ for an agent at its prompt, then prints one line and exits with its status:
   captured as for an UNKNOWN, and nothing is sent again.
 - `not delivered to <agent>: <agent> is <n> rows tall, too short to confirm a long message; widen or raise
   it, or send at most <w> characters on one line (a longer text: write it to a file and send its path)`
-  (exit 1): a send is proven at any length into a pane 6 rows tall or more. Under 6 rows Claude Code draws
+  (exit 1): short tiles accept long sends because the agent runs in a 40-row terminal. This refusal applies if the terminal itself is under 6 rows. At that height Claude Code draws
   no row of a box that holds a long text, so a message longer than one box row (the pane's width less 4
   characters, on one line) is refused before anything is typed; a message nobody waits on, such as held
   mail, tells its sender the same. A message that fits one box row types as before. The notice never goes into the agent that did

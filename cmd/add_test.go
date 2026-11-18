@@ -129,3 +129,40 @@ func TestAddAgentHint_EmptyRoot(t *testing.T) {
 		t.Error("expected hint when projRoot is empty (catalog check only)")
 	}
 }
+
+func TestRunAddPrintsShortTileSize(t *testing.T) {
+	skipWindows(t)
+	const notice = "a 1-row tile; its terminal is 40 rows"
+	fakeProjectWithIPC(t, tui.IPCResponse{OK: true, Data: notice})
+	var stdout bytes.Buffer
+	rootCmd.SetOut(&stdout)
+	rootCmd.SetArgs([]string{"add", "intern"})
+	t.Cleanup(func() { rootCmd.SetArgs(nil) })
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if got := stdout.String(); got != "Added intern: "+notice+".\n" {
+		t.Fatalf("add output %q", got)
+	}
+}
+
+func TestRunAddUnusableTerminalExitsOne(t *testing.T) {
+	skipWindows(t)
+	const why = "could not size the terminal for eng12: got 47x1"
+	fakeProjectWithIPC(t, tui.IPCResponse{Error: why})
+	if err := os.Mkdir("eng12", 0755); err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+	rootCmd.SetOut(&stdout)
+	rootCmd.SetArgs([]string{"add", "eng12"})
+	t.Cleanup(func() { rootCmd.SetArgs(nil) })
+	var code int
+	defer stubExitRoot(t, func(c int) { code = c })()
+	restore, stderr := captureStderr(t)
+	Execute()
+	restore()
+	if code != 1 || stdout.Len() != 0 || stderr.String() != why+"\n" {
+		t.Fatalf("exit %d; stdout %q; stderr %q", code, stdout.String(), stderr.String())
+	}
+}

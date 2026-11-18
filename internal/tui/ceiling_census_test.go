@@ -15,8 +15,8 @@ import (
 // without asking the machine ceiling first, each with its reason. Adding one
 // loosens the ceiling: it is not one engineer's call.
 var ceilingSpawnExempt = map[string]string{
-	// The wrapper itself: its one caller, resumePane, asks before calling it.
-	"spawnPane": "the spawn wrapper; resumePane asks the gate before it",
+	// The wrapper itself: resume and add ask before calling it.
+	"spawnPane": "the spawn wrapper; resume and add ask the gate before it",
 	// The serve daemon runs a rig's agents headless on another machine for a
 	// window elsewhere; the ceiling counts window 1s (ruling (2)).
 	"RunDaemon":       "the serve daemon, outside the window-1 ceiling",
@@ -111,7 +111,7 @@ func TestCeilingCensus_NoWakePathBypassesTheGate(t *testing.T) {
 		t.Errorf("starts an agent without asking the machine ceiling first: %s", b)
 	}
 	// The census must have found the paths it guards, or it read nothing.
-	for _, want := range []string{"resumePaneDrain", "handleIPCStart", "restartOffMain", "addPane", "Run"} {
+	for _, want := range []string{"resumePaneDrain", "handleIPCStart", "restartOffMain", "addPaneWithDetail", "Run"} {
 		if !seen[want] {
 			t.Errorf("census found no spawn in %s: it is not reading the package", want)
 		}

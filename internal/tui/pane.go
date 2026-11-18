@@ -411,6 +411,9 @@ type Pane struct {
 	// PTY/emulator resize each requires. Zero value (false) matches a
 	// freshly-started shell, which is not in alt-screen mode.
 	lastAltScreen bool
+	// modeRows is the last tile height applied by a rendering window. An unplaced
+	// pane or a headless viewer keeps its exact size across buffer switches.
+	modeRows atomic.Int32
 
 	// dialogOpen latches an application-declared blocking dialog (ini-zjhg).
 	// Raised from OSC 777, cleared by operator input; see modal_detect.go for
@@ -486,10 +489,8 @@ func (r Region) InnerSize() (cols, rows int) {
 	return
 }
 
-// TerminalSize returns the dimensions given to the VT emulator and PTY.
-// Subtracts 2 rows from region height: 1 for the bottom ribbon, 1 for the
-// top activity bar. The child process sees these dimensions via LINES and
-// SIGWINCH, so content it renders fits entirely within the visible area.
+// TerminalSize returns the tile's visible columns and content rows. The
+// terminal behind a tile can be taller than this viewport.
 func (r Region) TerminalSize() (cols, rows int) {
 	cols = r.W
 	rows = r.H - 2
@@ -500,6 +501,37 @@ func (r Region) TerminalSize() (cols, rows int) {
 		rows = 1
 	}
 	return
+}
+
+// shortTileTerminalRows gives a child enough room to draw its composer
+// even when its entire tile fits in a single row.
+const shortTileTerminalRows = 40
+
+func exactTerminalRows(rows int) int {
+	if rows < shortPaneRows {
+		return shortTileTerminalRows
+	}
+	return rows
+}
+
+// inheritViewport runs on main before the replacement starts reading. A
+// viewer may own the PTY size even when this window still has an old region.
+func (p *Pane) inheritViewport(old *Pane) {
+	p.region = old.region
+	p.modeRows.Store(old.modeRows.Load())
+	if req := old.pendingResize; req != nil {
+		p.resizeFromMainLoop(req[0], req[1])
+		return
+	}
+	// A resize may have landed while the new process was spawning.
+	cols, rows := old.emuSize()
+	if cols > 0 && rows > 0 && (cols != p.lastEmuCols || exactTerminalRows(rows) != p.lastEmuRows) {
+		if tileRows := int(p.modeRows.Load()); tileRows > 0 {
+			p.resizeFromMainLoop(tileRows, cols)
+		} else {
+			p.ResizeExact(rows, cols)
+		}
+	}
 }
 
 // PaneConfig describes how to launch a pane's process.
@@ -516,6 +548,7 @@ type PaneConfig struct {
 
 // NewPane creates a terminal pane running the configured command (or $SHELL).
 func NewPane(cfg PaneConfig, rows, cols int) (*Pane, error) {
+	rows = exactTerminalRows(rows)
 	emu := vt.NewSafeEmulator(cols, rows)
 	agentType := cfg.AgentType
 	if agentType == "" {
@@ -599,6 +632,7 @@ func NewPane(cfg PaneConfig, rows, cols int) (*Pane, error) {
 // and for agents deferred by the spawn stagger. Cannot fail: there is nothing
 // to exec.
 func NewParkedPane(cfg PaneConfig, rows, cols int) *Pane {
+	rows = exactTerminalRows(rows)
 	emu := vt.NewSafeEmulator(cols, rows)
 	agentType := cfg.AgentType
 	if agentType == "" {
@@ -856,6 +890,8 @@ func (p *Pane) ResizeExact(rows, cols int) {
 	p.renderMu.Lock()
 	defer p.renderMu.Unlock()
 	rows, cols = p.clampResize(rows, cols)
+	rows = exactTerminalRows(rows)
+	p.modeRows.Store(0)
 	if ptmx := p.ptyHandle(); ptmx != nil {
 		ptmx.Resize(cols, rows)
 	}
@@ -875,6 +911,8 @@ func (p *Pane) ResizeExact(rows, cols int) {
 // that needs to react to a mode that just changed (see
 // checkAltScreenTransition).
 //
+// Below six visible rows both modes use the same 40-row terminal. Otherwise:
+//
 //   - Normal (non-alt-screen) child: inflate to effectiveEmuRows(rows) -- a
 //     TALLER virtual screen so a live region (an AskUserQuestion modal, an
 //     in-progress response) that exceeds the visible window renders into the
@@ -882,7 +920,7 @@ func (p *Pane) ResizeExact(rows, cols int) {
 //     bottom `rows` lines (pane_render live mode, contentOffset's bottom
 //     anchor) and scrolling reveals the clipped top (ini-44hp).
 //   - Alt-screen child (vim, htop, Claude Code's "tui":"fullscreen"): use the
-//     TRUE visible rows, unmodified. An alt-screen child draws ABSOLUTELY
+//     visible rows, unmodified. An alt-screen child draws ABSOLUTELY
 //     across whatever height it is told it has -- there is no bottom-anchor
 //     to reveal a clipped portion the way there is for normal scrolling
 //     content, so a 3x-inflated report can never fit a 1x visible window no
@@ -905,8 +943,9 @@ func (p *Pane) resizeUnder(e *vt.Emulator, rows, cols int) {
 	// buffer, a makeslice panic or a multi-GB allocation in the process that
 	// owns every agent's PTY.
 	rows, cols = p.clampResize(rows, cols)
-	emuRows := rows
-	if !e.IsAltScreen() {
+	p.modeRows.Store(int32(rows))
+	emuRows := exactTerminalRows(rows)
+	if rows >= shortPaneRows && !e.IsAltScreen() {
 		emuRows = effectiveEmuRows(rows)
 	}
 	if ptmx := p.ptyHandle(); ptmx != nil {
@@ -968,8 +1007,10 @@ func (p *Pane) checkAltScreenTransition() {
 		p.scrollOffset = 0
 		p.scrollAnchorLen = 0
 	}
-	cols, rows := p.region.TerminalSize()
-	p.resizeLocked(rows, cols)
+	p.lastAltScreen = nowAlt
+	if rows := int(p.modeRows.Load()); rows > 0 {
+		p.resizeLocked(rows, p.emu.Width())
+	}
 }
 
 // emuRowsGrowthFactor multiplies a pane's visible height to get its emulator
@@ -1096,7 +1137,7 @@ func (p *Pane) maxScrollOffset() int {
 // Remembers its answer for the non-blocking wrapper's fallback.
 func (p *Pane) maxScrollOffsetOn(e *vt.Emulator) int {
 	termRows := e.Height()
-	if p.region.H > 2 {
+	if p.region.H > 0 {
 		_, termRows = p.region.TerminalSize()
 	}
 	max := maxScrollOffsetFor(e, termRows)
@@ -1126,8 +1167,8 @@ func (p *Pane) applyScrollAnchorOn(e *vt.Emulator) {
 }
 
 // contentOffset computes the mapping from screen-local content rows to
-// emulator rows for bottom-anchored (non-alt-screen) content. In alt-screen
-// mode the mapping is identity (both return 0). In scrollback mode, startRow
+// emulator rows for bottom-anchored (non-alt-screen) content. A fullscreen child
+// maps to the bottom of its terminal. In scrollback mode, startRow
 // is the virtual row (scrollback + screen combined) of the view window top.
 //
 // Usage: emuRow = startRow + (screenRow - renderOffset)
@@ -1142,51 +1183,14 @@ func (p *Pane) contentOffset() (startRow, renderOffset int) {
 // Remembers its answer for the non-blocking wrapper's fallback.
 func (p *Pane) contentOffsetOn(e *vt.Emulator) (startRow, renderOffset int) {
 	defer func() { p.lastStartRow, p.lastRenderOffset = startRow, renderOffset }()
-	if e.IsAltScreen() {
-		return 0, 0
-	}
+	_, termRows := p.region.TerminalSize()
 	if p.scrollOffset > 0 {
-		_, termRows := p.region.TerminalSize()
 		return scrollbackViewTop(e, termRows, p.scrollOffset), 0
 	}
-
-	innerCols, termRows := p.region.TerminalSize()
-	// Anchor to the bottom of the FULL drawn screen, not the cursor row. The
-	// emulator may be taller than the visible window (ini-44hp); claude parks
-	// its cursor mid-screen and renders its status bar BELOW the cursor, so a
-	// cursor-bounded scan (pos.Y-1) anchors too high and clips the active area
-	// off the bottom window. Scanning the whole screen finds the true last drawn
-	// row. For a non-taller emulator (emuHeight==termRows) the result is
-	// identical: contentEnd<=termRows, so startRow stays 0.
-	scanEnd := e.Height() - 1
-	if scanEnd < 0 {
-		scanEnd = 0
+	if e.IsAltScreen() {
+		return max(0, e.Height()-termRows), 0
 	}
-	lastContent := 0
-	for row := scanEnd; row >= 0; row-- {
-		empty := true
-		for col := 0; col < innerCols; col++ {
-			// A pointer read is safe here: withScreen holds the emulator's
-			// read lock for the whole region (ini-psjt supersedes ini-wizq's
-			// value copy, which existed because this once ran unlocked).
-			cell := e.CellAt(col, row)
-			if cell != nil && cell.Content != "" && cell.Content != " " {
-				empty = false
-				break
-			}
-		}
-		if !empty {
-			lastContent = row
-			break
-		}
-	}
-	contentEnd := lastContent + 1
-	if contentEnd > termRows {
-		// Content overflows the pane: scroll to show the bottom.
-		startRow = contentEnd - termRows
-	}
-	// When content fits within the pane, render from the top (no offset).
-	return
+	return max(0, drawnRows(e)-termRows), 0
 }
 
 // IsAlive returns whether the pane's shell process is still running.

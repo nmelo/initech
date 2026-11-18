@@ -813,10 +813,10 @@ func (t *TUI) resumePaneDrain(pane *Pane, senderName string, asyncDrain bool) er
 	// Get old dimensions with fallback for dead panes.
 	rawCols, rawRows := pane.emuSize() // never waits on the pane (ini-psjt)
 	cols, rows := rawCols, rawRows
-	if cols < 10 {
+	if cols < 1 {
 		cols = 80
 	}
-	if rows < 2 {
+	if rows < 1 {
 		rows = 24
 	}
 
@@ -850,7 +850,7 @@ func (t *TUI) resumePaneDrain(pane *Pane, senderName string, asyncDrain bool) er
 	t.runOnMain(func() {
 		for i, p := range t.panes {
 			if p == pane {
-				np.region = pane.region
+				np.inheritViewport(pane)
 				np.eventCh = t.agentEvents
 				t.wireSuspendResume(np)
 				np.safeGo = t.safeGo
@@ -1071,7 +1071,7 @@ func waitForQuiescence(lastOutput func() time.Time, stable, cap time.Duration, q
 	}
 }
 
-// spawnPane creates a resumed agent's successor pane: NewPane unless a test
+// spawnPane creates the pane for a wake or hot add: NewPane unless a test
 // set t.paneSpawner.
 func (t *TUI) spawnPane(cfg PaneConfig, rows, cols int) (*Pane, error) {
 	if t.paneSpawner != nil {
