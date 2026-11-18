@@ -13,3 +13,9 @@ The agy queue frames from qa3 show the native item above an empty composer and a
 QA2’s qca M12 capture is the left Codex tile from its live 0.170.0 run. The harness sent a command wrapped in backticks. The four-row user turn shows the same command without those delimiters. Only the adjacent tile and Initech chrome were cropped.
 
 The local before-tool and after-tool captures follow one short backticked send in a working Codex 0.170.0 session. While it waited for the next tool call, the native row retained the literal delimiters. The later user turn displayed the command without them.
+
+The two QA2 agy queue captures show consecutive frames at 75 columns. The newest item has less room for its text while the keyboard hint is beside it. In the eleven-item frame, the tenth command has expanded and the new two-line item appears as one clipped first line. These are the agy tile rows from the original scratch run.
+
+The local agy task-shelf captures show an active queue above the input box and a separate timestamped task below it, then a shortcuts footer with only a background task. An active queue footer identifies the first as a queue receipt surface.
+
+`local-codex-weekly-warning.txt` captures a Codex 0.170.0 working turn from the private qca replay. The weekly-limit notice is right-aligned between its progress indicator and empty composer.

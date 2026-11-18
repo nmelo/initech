@@ -99,14 +99,17 @@ func (p *Pane) typeAgentMessage(text string, enter bool, before agentFrame) Send
 	}
 	notePerfMarkerWritten(p, text)
 	want := strings.TrimSpace(text)
-	seenQueued := r.queuedIndex(before.queued, want) >= 0
-	hasUserTurn := r.userTurnMatcher(want)
-	seenAbove := seenQueued || hasUserTurn(before.transcript)
+	proofText := newMessageProof(want)
+	seenQueued := proofText.queueIndex(r, before.queued) != -1
+	seenAbove := seenQueued || proofText.userTurn(r, before.transcript)
+	var beforeEnter agentFrame
 	deadline := time.Now().Add(submitConfirmWindow)
 	for {
 		frame := p.readAgentFrame()
 		if frame.box && frame.busy == before.busy && !frame.dialog && !p.dialogLatched() && frame.matchesDraft(want) {
-			seenAbove = seenAbove || hasUserTurn(frame.transcript)
+			beforeEnter = frame
+			seenQueued = seenQueued || proofText.queueIndex(r, frame.queued) != -1
+			seenAbove = seenAbove || seenQueued || proofText.userTurn(r, frame.transcript)
 			break
 		}
 		if (frame.box && frame.busy != before.busy) || frame.dialog || p.isClosing() || !time.Now().Before(deadline) {
@@ -130,14 +133,16 @@ func (p *Pane) typeAgentMessage(text string, enter bool, before agentFrame) Send
 	for {
 		f := p.readAgentFrame()
 		if r == agyReader && f.box && f.draft == "" {
-			if i := agyQueuedAppend(before, f, want); i >= 0 {
+			if i := agyQueuedAppend(beforeEnter, f, proofText); i >= 0 {
 				return SendVerdict{Outcome: DeliveryQueued, Reason: fmt.Sprintf("queued by %s: runs at the next step of its running task, %d ahead", p.name, i)}
 			}
 		}
-		if i := r.queuedIndex(f.queued, want); r == codexReader && !seenQueued && f.box && f.draft == "" && i >= 0 {
-			return SendVerdict{Outcome: DeliveryQueued, Reason: fmt.Sprintf("queued by %s behind its running task, %d ahead", p.name, i)}
+		if r == codexReader && !seenQueued && f.box && f.draft == "" {
+			if i := proofText.queueIndex(r, f.queued); i >= 0 {
+				return SendVerdict{Outcome: DeliveryQueued, Reason: fmt.Sprintf("queued by %s behind its running task, %d ahead", p.name, i)}
+			}
 		}
-		proof := f.box && f.draft == "" && !seenAbove && hasUserTurn(f.transcript)
+		proof := f.box && f.draft == "" && !seenAbove && proofText.userTurn(r, f.transcript)
 		if proof && proofLastSample {
 			if before.busy {
 				if !f.busy || r == agyReader {

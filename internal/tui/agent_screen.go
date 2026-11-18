@@ -3,7 +3,6 @@ package tui
 import (
 	"path/filepath"
 	"regexp"
-	"slices"
 	"strings"
 
 	"github.com/nmelo/initech/internal/config"
@@ -63,6 +62,8 @@ func (r agentReader) read(rows []string) agentFrame {
 	return agentFrame{}
 }
 
+var codexWeeklyNotice = regexp.MustCompile(`^ +⚠ weekly limit: [0-9]{1,3}% left · /status *$`)
+
 func readCodexFrame(rows []string) agentFrame {
 	last := strings.TrimSpace(rows[len(rows)-1])
 	switch last {
@@ -104,7 +105,7 @@ func readCodexFrame(rows []string) agentFrame {
 		// Inspect the tail adjacent to this composer. Earlier turns may
 		// quote exactly the same progress or queue text.
 		j := i - 1
-		for j >= 0 && strings.TrimSpace(stripBraille(rows[j])) == "" {
+		for j >= 0 && (strings.TrimSpace(stripBraille(rows[j])) == "" || codexWeeklyNotice.MatchString(rows[j])) {
 			j--
 		}
 		if j >= 0 && (strings.Contains(rows[j], "edit last queued message") || strings.HasPrefix(strings.TrimSpace(rows[j]), "↳ ")) {
@@ -152,6 +153,17 @@ func agyRule(row string) bool {
 	return strings.HasPrefix(s, "────") && strings.Trim(s, "─") == ""
 }
 
+// A running shell task can add a bordered shelf below the actual input box.
+var agyTaskRow = regexp.MustCompile(`^● \[[0-9]{2}:[0-9]{2}:[0-9]{2}\] .+`)
+
+func agyTopRule(rows []string, end int) int {
+	top := end - 1
+	for top >= 0 && !agyRule(rows[top]) {
+		top--
+	}
+	return top
+}
+
 func readAgyFrame(rows []string) agentFrame {
 	last := strings.TrimSpace(rows[len(rows)-1])
 	// The model picker leaves the previous composer on screen above the
@@ -168,20 +180,26 @@ func readAgyFrame(rows []string) agentFrame {
 		}
 		return agentFrame{dialog: true, dialogName: name}
 	}
-	if strings.Contains(last, "task(s)") {
-		return agentFrame{busy: true}
-	}
 	queueVisible := strings.HasPrefix(last, "Press up to edit queued messages")
 	busy := strings.HasPrefix(last, "esc to cancel") || queueVisible
+	if !busy && strings.Contains(last, "task(s)") {
+		return agentFrame{busy: true}
+	}
 	if !busy && !strings.HasPrefix(last, "? for shortcuts") && !strings.HasPrefix(last, "auto ·") && !strings.HasPrefix(last, "plan ·") && !strings.HasPrefix(last, "accept-edits ·") {
 		return agentFrame{}
 	}
 	if end < 2 || !agyRule(rows[end]) {
 		return agentFrame{}
 	}
-	top := end - 1
-	for top >= 0 && !agyRule(rows[top]) {
-		top--
+	top := agyTopRule(rows, end)
+	if busy && top >= 0 && top+1 < end && agyTaskRow.MatchString(strings.TrimSpace(rows[top+1])) {
+		for _, line := range rows[top+1 : end] {
+			if !agyTaskRow.MatchString(strings.TrimSpace(line)) {
+				return agentFrame{busy: true}
+			}
+		}
+		end = top
+		top = agyTopRule(rows, end)
 	}
 	if top < 0 || top+1 >= end || !strings.HasPrefix(rows[top+1], ">") {
 		return agentFrame{}
@@ -210,126 +228,25 @@ func readAgyFrame(rows []string) agentFrame {
 	return frame
 }
 
-// userTurnMatcher compares only displayed user turns. Prepare the rendered
-// form once, so the pre-submit checks and every proof sample agree.
-func (r agentReader) userTurnMatcher(body string) func([]string) bool {
-	glyph, rendered := "›", body
-	if r == agyReader {
-		glyph = ">"
-	} else if r == codexReader && strings.Contains(body, "`") {
-		rendered = codexInlineCode(body)
-	}
-	return func(rows []string) bool {
-		return visibleMessage(rows, glyph, body) >= 0 ||
-			(rendered != body && visibleMessage(rows, glyph, rendered) >= 0)
-	}
-}
-
-var backtickRuns = regexp.MustCompile("`+")
-
-// Codex 0.170 renders inline code in user turns but keeps the typed bytes in
-// the composer and native queue. Only project paired inline delimiters. Leave
-// block markup and ambiguous escapes to the literal comparison.
-func codexInlineCode(body string) string {
-	lines := strings.Split(body, "\n")
-	for i, line := range lines {
-		trimmed := strings.TrimLeft(line, " \t")
-		if len(line)-len(trimmed) >= 4 || strings.HasPrefix(line, "\t") || strings.HasPrefix(trimmed, "```") || strings.HasPrefix(trimmed, "~~~") {
-			return body
-		}
-		runs := backtickRuns.FindAllStringIndex(line, -1)
-		// A closer is the next maximal run of the same length. Indexing it
-		// once keeps unmatched or differently sized runs linear in the input.
-		nextSameWidth := make([]int, len(runs))
-		lastByWidth := make(map[int]int)
-		for j := len(runs) - 1; j >= 0; j-- {
-			width := runs[j][1] - runs[j][0]
-			nextSameWidth[j] = lastByWidth[width]
-			lastByWidth[width] = j
-		}
-		var out strings.Builder
-		start := 0
-		for j := 0; j < len(runs); j++ {
-			open := runs[j]
-			if open[0] > 0 && line[open[0]-1] == '\\' {
-				return body
-			}
-			close := nextSameWidth[j]
-			if close == 0 {
-				continue
-			}
-			code := line[open[1]:runs[close][0]]
-			if strings.HasPrefix(code, " ") && strings.HasSuffix(code, " ") && strings.Trim(code, " ") != "" {
-				code = code[1 : len(code)-1]
-			}
-			out.WriteString(line[start:open[0]])
-			out.WriteString(code)
-			start, j = runs[close][1], close
-		}
-		if start > 0 {
-			out.WriteString(line[start:])
-			lines[i] = out.String()
-		}
-	}
-	return strings.Join(lines, "\n")
-}
-
-func (r agentReader) queuedIndex(rows []string, body string) int {
-	if r == agyReader {
-		return visibleMessage(rows, "▸", body)
-	}
-	return visibleMessage(rows, "↳", body)
-}
-
-// agy renders the first line plus "..." for one multiline queued item.
-// Accept this preview only for a single append to the previously seen queue;
-// the full body must already have been seen in the composer.
-func agyQueuedAppend(before, after agentFrame, body string) int {
-	if after.native != before.native+1 || len(after.queued) != after.native || !slices.Equal(before.queued, after.queued[:before.native]) {
+// Earlier entries can expand when agy moves its keyboard hint to the newest
+// item. Match their visible content in order before attributing the append.
+func agyQueuedAppend(before, after agentFrame, proof messageProof) int {
+	if after.native != before.native+1 || len(before.queued) != before.native || len(after.queued) != after.native {
 		return -1
 	}
-	row := after.queued[before.native]
-	if row == "▸ "+body {
-		return before.native
+	row := strings.TrimPrefix(after.queued[before.native], "▸ ")
+	match := proof.match(row, true)
+	if match == proofNone {
+		return -1
 	}
-	first, _, multiline := strings.Cut(body, "\n")
-	if multiline && row == "▸ "+strings.TrimSpace(first)+"..." {
-		return before.native
+	for i, prev := range before.queued {
+		old := strings.TrimPrefix(prev, "▸ ")
+		now := strings.TrimPrefix(after.queued[i], "▸ ")
+		if !sameQueuePreview(old, now) || (match == proofPrefix && (proof.match(now, true) != proofNone || sameQueuePreview(row, now))) {
+			return -1
+		}
 	}
-	return -1
-}
-
-// visibleMessage compares actual text within each display row. A soft wrap
-// can split a word or fall on whitespace, but spaces inside a row are data.
-func visibleMessage(rows []string, glyph, body string) int {
-	index := 0
-	for i, row := range rows {
-		if glyph == "↳" || glyph == "▸" {
-			row = strings.TrimSpace(row)
-		}
-		first, ok := strings.CutPrefix(row, glyph+" ")
-		if !ok {
-			continue
-		}
-		lines := []string{first}
-		for _, line := range rows[i+1:] {
-			if strings.TrimSpace(line) == "" {
-				if matchesDisplayRows(lines, body) {
-					return index
-				}
-				continue
-			}
-			if !strings.HasPrefix(line, " ") || strings.HasPrefix(strings.TrimSpace(line), "↳ ") || strings.HasPrefix(strings.TrimSpace(line), "⇧←") {
-				break
-			}
-			lines = append(lines, line)
-		}
-		if matchesDisplayRows(lines, body) {
-			return index
-		}
-		index++
-	}
-	return -1
+	return before.native
 }
 
 func matchesDisplayRows(rows []string, body string) bool {

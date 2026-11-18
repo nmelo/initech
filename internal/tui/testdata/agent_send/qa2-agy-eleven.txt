@@ -1,0 +1,15 @@
+▸ QA-M1: also run: echo QA-M1 >> /tmp/q8a.log
+▸ QA-M2: also run `echo QA-M2 >> /tmp/q8a.log`
+▸ QA-M3: this is a realistic longer steering message from a super that e...
+▸ QA-M4: this is a realistic longer steering message from a super that e...
+▸ QA-M5: also run: echo QA-M5 >> /tmp/q8a.log
+▸ QA-M6: also run `echo QA-M6 >> /tmp/q8a.log`
+▸ QA-M7: this is a realistic longer steering message from a super that e...
+▸ QA-M8: also run: echo QA-M8 >> /tmp/q8a.log
+▸ QA-M9: this is a realistic longer steering message from a super that e...
+▸ QA-M10: also run `echo QA-M10 >> /tmp/q8a.log`
+▸ QA-ML-FIRST line... (alt+m to send immediately)
+───────────────────────────────────────────────────────────────────────────
+>
+───────────────────────────────────────────────────────────────────────────
+  Press up to edit queued messages            auto · Gemini 4 Carbon · high

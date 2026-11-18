@@ -1,0 +1,27 @@
+› Use the shell to sleep for 15 seconds four separate times, and report completion only after all four. Work only in
+  this scratch folder.
+
+
+⚠ Heads up, you have less than 25% of your weekly limit left. Run /status for a breakdown.
+
+• I’ll run four 15-second shell sleeps in sequence from the scratch folder.
+
+
+› QA-M11: also run: echo QA-M11 >> marks.txt
+
+
+• Ran echo QA-M11 >> marks.txt
+  └ (no output)
+
+
+› QA-M12: also run echo QA-M12 >> marks.txt
+
+
+• Working (17s • esc to interrupt) · 1 background terminal running · /ps to view · /stop to close
+
+                                                                                     ⚠ weekly limit: 20% left · /status
+
+› Ask Codex to do anything
+
+  main · GPT-6.2-Sol high · Context 3% used · weekly 20% left
+  ← for agents · ? for shortcuts                                                               ⚠ 1 warning · f2 to view

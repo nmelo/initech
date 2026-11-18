@@ -180,7 +180,7 @@ func TestAgentSendWakeNeedsProof(t *testing.T) {
 func TestAgentSendCapturedStates(t *testing.T) {
 	expected := map[string][]string{
 		"idle":       {"hover-codex1-0946", "hover-codex2-0946", "hover-codex3-0946", "hover-codex4-0946", "local-codex-idle", "local-codex-0170-idle", "local-codex-0170-landed", "local-codex-0170-branch-idle", "local-codex-0170-branch-landed", "local-agy-1511-idle", "local-agy-1511-landed", "hover-agy3-idle-quota-1016", "hover-agy4-idle-quota-1016"},
-		"busy":       {"qa2-codex-qca-m12", "local-codex-before-tool", "local-codex-after-tool", "local-r6-agy-busy", "local-r6-agy-draft", "local-r6-agy-queued", "qa3-agy-working", "qa3-agy-native-queued", "qa3-agy-native-with-draft", "qa3-codex-e7-solid", "qa3-codex-e8-hollow", "qa3-codex-working-plain", "qa3-codex-native-two", "qa3-codex-working-backticks", "hover-agy1-0946", "hover-agy2-busy-0952", "hover-agy3-busy-0952", "hover-agy4-busy-0952", "hover-agy2-idle-quota-1016", "local-agy-1511-busy", "local-codex-0170-busy", "local-codex-0170-queued", "local-codex-0170-queued-two"},
+		"busy":       {"local-codex-weekly-warning", "local-agy-queued-task-shelf", "local-agy-background-task", "qa2-agy-ten", "qa2-agy-eleven", "qa2-codex-qca-m12", "local-codex-before-tool", "local-codex-after-tool", "local-r6-agy-busy", "local-r6-agy-draft", "local-r6-agy-queued", "qa3-agy-working", "qa3-agy-native-queued", "qa3-agy-native-with-draft", "qa3-codex-e7-solid", "qa3-codex-e8-hollow", "qa3-codex-working-plain", "qa3-codex-native-two", "qa3-codex-working-backticks", "hover-agy1-0946", "hover-agy2-busy-0952", "hover-agy3-busy-0952", "hover-agy4-busy-0952", "hover-agy2-idle-quota-1016", "local-agy-1511-busy", "local-codex-0170-busy", "local-codex-0170-queued", "local-codex-0170-queued-two"},
 		"draft":      {"local-codex-0170-draft", "local-agy-1511-draft"},
 		"dialog":     {"qa3-codex-shortcuts", "local-codex-update-menu", "local-codex-0170-folder-dialog", "local-codex-0170-approval", "local-agy-1511-model-menu", "local-agy-1511-trust"},
 		"unreadable": {"hover-agy2-0946", "hover-agy3-0946", "hover-agy4-0946"},
@@ -495,7 +495,7 @@ func TestAgentSendWrappedRows(t *testing.T) {
 			glyph = ">"
 		}
 		rows := []string{glyph + " First line", "", "  second line with soft", "  wrapping", "", "• response"}
-		if !r.userTurnMatcher("First line\n\nsecond line with soft wrapping")(rows) || r.userTurnMatcher("First line\n\nsecond line with other words")(rows) {
+		if !newMessageProof("First line\n\nsecond line with soft wrapping").userTurn(r, rows) || newMessageProof("First line\n\nsecond line with other words").userTurn(r, rows) {
 			t.Fatalf("reader %d failed multiline proof", r)
 		}
 	}
@@ -872,15 +872,18 @@ func TestAgentSendCodexInlineCode(t *testing.T) {
 		{"escaped \\`literal`", "escaped \\`literal`"},
 		{"```sh\necho `date`\n```", "```sh\necho `date`\n```"},
 	} {
-		if got := codexInlineCode(tc.body); got != tc.shown {
-			t.Errorf("%q rendered as %q, want %q", tc.body, got, tc.shown)
+		p := newMessageProof(tc.body)
+		got := p.match(tc.shown, false)
+		if (tc.shown == "" && got != proofNone) || (tc.shown != "" && got != proofFull) {
+			t.Errorf("body %q, display %q: got %v", tc.body, tc.shown, got)
 		}
 	}
 	const msg = "run `echo hi`"
-	if agyReader.userTurnMatcher(msg)([]string{"> run echo hi"}) ||
-		codexReader.queuedIndex([]string{"↳ run echo hi"}, msg) >= 0 ||
-		codexReader.userTurnMatcher(msg)([]string{"• run echo hi"}) {
-		t.Fatal("accepted a rendered turn outside the Codex user transcript")
+	proof := newMessageProof(msg)
+	if !proof.userTurn(agyReader, []string{"> run echo hi"}) ||
+		proof.queueIndex(codexReader, []string{"↳ run echo hi"}) != 0 ||
+		proof.userTurn(codexReader, []string{"• run echo hi"}) {
+		t.Fatal("rendered proof did not respect the user-turn and queue boundaries")
 	}
 }
 
