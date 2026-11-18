@@ -637,7 +637,7 @@ Recovery: `initech send <agent> "You were working on <bead-id>. Run bd show <bea
   `older initech on <host>`.
 - Claude Code, Codex, and generic panes launched with the `agy` executable have delivery checks. When a role omits `agent_type`, the `codex` and `agy` executables select their own readers. Initech checks for the pasted text in the composer before pressing Enter. A new user message above the emptied composer confirms delivery. If the proof is incomplete, the send exits 2 and saves the screen beside the log.
 - A send to a working Codex pane steers by default. `steered into <agent>'s running task` means the text appeared in the running turn. If Codex queued it, the sender sees `queued by <agent> behind its running task, N ahead`. Both exit 0. Codex receives Enter for submission and for a retry while the draft remains visible.
-- A working agy pane takes a message at its next task step. Initech pastes the whole body and sends Enter, including for a multi-line message. When the pane shows the new native item, `queued by <agent>: runs at the next step of its running task, N ahead` exits 0. An unreadable or occupied composer during a running task can refuse the send before typing.
+- A working agy pane takes a message at its next task step. Initech pastes the whole body and sends Enter, including for a multi-line message. When the pane shows the new native item, `queued by <agent>: runs at the next step of its running task, N ahead` exits 0. If `initech send` refuses the message because the working pane's composer is unreadable or already contains a draft, it exits 1 before typing.
 - Use `initech send <agent> --after <text>` to wait for an idle Codex or agy pane. A busy hold prints `held for <agent>: queued behind a running task, N ahead (receipt <id>)` and exits 0. The count includes visible native follow-ups and earlier Initech holds. Do-not-disturb also holds mail. A dialog prints `held: <agent> is at a dialog (<name>)` with the queue position and receipt. Held messages survive restart and enter the composer in arrival order. A wake, a draft or an unreadable screen waits for a usable composer.
 - Use `initech send <agent> --withdraw <id>` to remove your held message before typing begins. Success prints `withdrawn: <id>` and exits 0. A missing, already typed, or other sender’s receipt exits 1. Anyone holding the receipt for mail with no recorded sender can withdraw it. Inputs already in the agent’s native queue have been typed. The version 1 held-mail file stores the receipt with each new hold and can still release older entries without receipts.
 - OpenCode and generic commands other than agy answer `sent to <agent>, unconfirmed: no delivery check for this agent type` and exit 0.
@@ -659,8 +659,15 @@ characters removed`. A message that held nothing else is refused and nothing is 
 to <agent>: the message held only control characters (<n> removed)` (exit 1).
 
 An agent on another machine, named `host:agent` or by a bare name that resolves there, gets the same
-answers from that machine. Other commands that type into an agent (`assign`, `deliver`'s report,
-`add`, `clear`, `restart`, `start`) treat not delivered as a failure and every other answer as sent;
+answers from that machine.
+
+`initech clear <agent>` sends `/clear`. If it steers into a working Codex task, the command prints
+`steered into <agent>'s running task`. If agy queues it for the next step, or Codex queues it behind
+the running task, the command prints the queue position. For a dialog or do-not-disturb hold on either
+agent, the command reports `held` with the reason and receipt.
+
+Other commands that type into an agent (`assign`, `deliver`'s report, `add`, `restart`, `start`)
+treat not delivered as a failure and every other answer as sent.
 `assign <agent> -m` with no bead prints the send's line and exits as `initech send` does.
 
 An agent whose process is not running gets
