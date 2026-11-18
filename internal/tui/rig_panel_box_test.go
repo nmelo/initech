@@ -9,8 +9,7 @@ import (
 	"github.com/gdamore/tcell/v2"
 )
 
-// ini-b0po: the agents box shows who works, then who holds a bead idle, then
-// one count. Every instant is fixed; nothing waits.
+// The agents box shows who works, then who holds a bead idle. Every instant is fixed.
 
 // boxPanel is a panel TUI that keeps its memory between draws, so a test can
 // draw it again at a later instant.
@@ -79,10 +78,8 @@ var boxRoster = []panelAgent{
 	{Name: "eng9", Key: "eng9", State: StateDead},
 }
 
-// TestAgentsBox_WorkingThenHoldingThenOneCount is AC1: section 1 working now,
-// longest first; section 2 every bead holder idle, at a prompt or stuck,
-// marked, longest first; one count line; the box title counts both sections.
-func TestAgentsBox_WorkingThenHoldingThenOneCount(t *testing.T) {
+// The box lists both sections longest first and labels them with their totals.
+func TestAgentsBox_WorkingThenHolding(t *testing.T) {
 	rows := newBoxPanel(t, 160, 8).draw(panelNow, boxRoster)
 	t.Logf("\n%s", strings.Join(rows, "\n"))
 	if !strings.Contains(rows[1], "agents · 2 working · 3 holding") {
@@ -104,8 +101,8 @@ func TestAgentsBox_WorkingThenHoldingThenOneCount(t *testing.T) {
 	if !strings.Contains(rows[2+1], "fix the send path") {
 		t.Fatalf("super's row %q lacks its bead's title", rows[3])
 	}
-	if !strings.Contains(rows[7], "1 idle · 1 suspended") {
-		t.Fatalf("count line %q", rows[7])
+	if !strings.HasSuffix(rows[0], "1 idle · 1 suspended") {
+		t.Fatalf("header %q", rows[0])
 	}
 	for _, r := range rows {
 		if strings.Contains(r, "needs attention") || strings.Contains(r, "more") ||
@@ -117,7 +114,7 @@ func TestAgentsBox_WorkingThenHoldingThenOneCount(t *testing.T) {
 
 // TestAgentsBox_NoBeadHolderIsHiddenBehindTheCount is AC2, the must-not: at
 // the smallest heights and a narrow width, every idle agent holding a bead has
-// its row with its bead, and the count line carries no name and no bead.
+// its row with its bead, and the header totals carry no agent name or bead.
 func TestAgentsBox_NoBeadHolderIsHiddenBehindTheCount(t *testing.T) {
 	var roster []panelAgent
 	for i, n := range []string{"eng1", "eng2", "eng3"} {
@@ -142,21 +139,20 @@ func TestAgentsBox_NoBeadHolderIsHiddenBehindTheCount(t *testing.T) {
 				t.Fatalf("%dx%d: bead holder %s hidden or without its bead", size.w, size.rows, h)
 			}
 		}
-		tail := ""
-		for _, r := range rows {
-			if j := strings.Index(r, "2 idle · 1 suspended"); j >= 0 {
-				if k := strings.LastIndex(r[:j], "+"); k >= 0 && strings.HasSuffix(strings.TrimSpace(r[k:j]), "working ·") {
-					j = k
-				}
-				tail = r[j:]
+		if size.w == 160 && !strings.HasSuffix(rows[0], "2 idle · 1 suspended") {
+			t.Fatalf("%dx%d: header %q", size.w, size.rows, rows[0])
+		}
+		for _, r := range rows[2:] {
+			if strings.Contains(r, "2 idle") || strings.Contains(r, "suspended") || strings.Contains(r, "+1 working") {
+				t.Fatalf("%dx%d: a box row carries totals: %q", size.w, size.rows, r)
 			}
 		}
-		if tail == "" {
-			t.Fatalf("%dx%d: no count line", size.w, size.rows)
+		if strings.Contains(rows[0], "ini-") {
+			t.Fatalf("%dx%d: header carries a bead: %q", size.w, size.rows, rows[0])
 		}
 		for _, n := range names {
-			if rowOf([]string{"", tail}, n) > 0 || strings.Contains(tail, "ini-") {
-				t.Fatalf("%dx%d: the count line %q carries a name or a bead", size.w, size.rows, tail)
+			if rowOf([]string{"", rows[0]}, n) > 0 {
+				t.Fatalf("%dx%d: the header carries an agent name: %q", size.w, size.rows, rows[0])
 			}
 		}
 	}

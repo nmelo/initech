@@ -85,20 +85,15 @@ const (
 	hiddenBoxMarker  = "[h]"
 )
 
-// agentsHelpText is the default (non-searching, non-group-creating) footer.
-// The longest of the modal's footer variants -- used both to render the
-// footer and as boxW's minimum width floor, so a narrow fleet never
-// truncates its own keybinding help.
-// Width budget: boxW floors at len(agentsHelpText)+4 and caps at the screen,
-// so this line must stay ≤ ~114 chars or "Esc close" clips on a 120-col
-// terminal. "s/S suspend" = s parks/wakes the agent, S its whole band.
+// agentsHelpText appears while navigating the list. Its single-column
+// glyphs set the modal's minimum width so every key fits at 120 columns.
+const agentsHelpText = " Spc hide  ↵ grab  p pin  P protect  s/S suspend  / find  g group  < > band  m monitor  A all  R reset  Esc close"
+
 // agentsSearchHelpText is the footer while the search box has focus — which
 // is how the panel opens (ini-hxtg), so it is the first thing the operator
 // reads. It names the way out of the box: any arrow steps into the list and
 // moves as the list would from the first agent (ini-chxy).
 const agentsSearchHelpText = " type to filter  Arrows list  Esc close"
-
-const agentsHelpText = " Space hide  Enter grab  p pin  P protect  s/S suspend  / search  g group  < > band  A all  R reset  Esc close"
 
 // groupFor computes the seed band for a pane name with no GroupOf entry yet,
 // reusing roles.RoleFamilyOf's eng*/qa* prefix classification (already the
@@ -1374,7 +1369,7 @@ func agentsGridBoxDims(members map[string][]int, groups []string, tiers []tierGr
 	// help -- content-sized means "no bigger than needed", not "so small the
 	// footer clips its own Esc-close hint". The PoC's fixed 23-agent, 6-wide
 	// test fleet never exercises this; not a load-bearing spec value.
-	if footerFloor := len(agentsHelpText) + 4; footerFloor > boxW {
+	if footerFloor := len([]rune(agentsHelpText)) + 4; footerFloor > boxW {
 		boxW = footerFloor
 	}
 	if boxW > sw {
@@ -1763,7 +1758,7 @@ func (t *TUI) renderAgentsGrid() {
 	}
 	hy := startY + boxH - 2
 	hx := innerX - 1
-	for i, ch := range help {
+	for i, ch := range []rune(help) {
 		if hx+i >= startX+1 && hx+i < startX+boxW-1 {
 			s.SetContent(hx+i, hy, ch, nil, helpStyle)
 		}

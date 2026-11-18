@@ -59,6 +59,8 @@ type panelAlarm struct {
 type panelTitle struct {
 	Alarms           []panelAlarm // on Nelson, blocked, stale 20m, prompts.
 	Awake, Suspended int
+	CutWorking       int // Working agents omitted from the box.
+	Idle             int // Awake agents with no work or bead to show.
 }
 
 // awake reports whether an agent counts as awake: alive and not suspended,
@@ -189,17 +191,13 @@ type panelBoxRow struct {
 
 // panelSections splits the awake agents into section 1 (running or
 // background, longest first) and section 2 (bead holders idle, at a prompt or
-// stuck, longest first), and counts the rest: idle (awake, no bead, not
-// working) and suspended. Ties keep the roster order.
-func (t *TUI) panelSections(agents []panelAgent, now time.Time) (working, holding []panelBoxRow, idle, suspended int) {
+// stuck, longest first), and counts the remaining awake agents as idle.
+// Ties keep the roster order.
+func (t *TUI) panelSections(agents []panelAgent, now time.Time) (working, holding []panelBoxRow, idle int) {
 	if t.panelSettled == nil {
 		t.panelSettled = map[string]*panelSettledState{}
 	}
 	for _, a := range agents {
-		if a.Suspended || a.State == StateSuspended {
-			suspended++
-			continue
-		}
 		if !a.awake() {
 			continue
 		}
@@ -231,62 +229,20 @@ func (t *TUI) panelSections(agents []panelAgent, now time.Time) (working, holdin
 	}
 	longest(working)
 	longest(holding)
-	return working, holding, idle, suspended
+	return working, holding, idle
 }
 
-// panelCountLine is the box's last line: "+N working · N idle · N
-// suspended", zero parts left out; "" when there is nothing to count. It never
-// names an agent or a bead.
-func panelCountLine(cutWorking, idle, suspended int) string {
-	var parts []string
-	if cutWorking > 0 {
-		parts = append(parts, fmt.Sprintf("+%d working", cutWorking))
+// panelBoxLayout gives every holder a cell, adding columns when needed.
+// Working agents fill the remaining cells, longest-running first.
+func panelBoxLayout(rows int, working, holding []panelBoxRow) (cells []panelBoxRow, cols, cutWorking int) {
+	if rows < 1 {
+		return nil, 0, len(working)
 	}
-	if idle > 0 {
-		parts = append(parts, fmt.Sprintf("%d idle", idle))
-	}
-	if suspended > 0 {
-		parts = append(parts, fmt.Sprintf("%d suspended", suspended))
-	}
-	return strings.Join(parts, " · ")
-}
-
-// panelBoxLayout places the box's cells, column by column, rows tall: what of
-// section 1 fits, then all of section 2, then the count line. Section 2 and
-// the count are never cut: they take as many columns as they need, and
-// section 1 gives up rows from its shortest-running end.
-func panelBoxLayout(rows int, countInCell bool, working, holding []panelBoxRow, idle, suspended int) (cells []panelBoxRow, count string, cols int) {
-	n2 := len(holding)
-	for cols = 1; ; cols++ {
-		total := cols * rows
-		count = panelCountLine(0, idle, suspended)
-		need := n2
-		if count != "" && countInCell {
-			need++
-		}
-		if need > total {
-			continue
-		}
-		show := min(len(working), total-need)
-		if show < len(working) {
-			count = panelCountLine(len(working)-show, idle, suspended)
-			if countInCell && need == n2 {
-				need++
-				if need > total {
-					continue
-				}
-				show = min(show, total-need)
-				count = panelCountLine(len(working)-show, idle, suspended)
-			}
-		}
-		cells = append(append([]panelBoxRow(nil), working[:show]...), holding...)
-		used := len(cells)
-		if count != "" && countInCell {
-			used++
-		}
-		cols = max(1, (used+rows-1)/rows)
-		return cells, count, cols
-	}
+	cols = max(1, (len(holding)+rows-1)/rows)
+	shown := min(len(working), cols*rows-len(holding))
+	cells = make([]panelBoxRow, 0, shown+len(holding))
+	cells = append(cells, working[:shown]...)
+	return append(cells, holding...), cols, len(working) - shown
 }
 
 // panelBeadCell is the bead column's cell: icon and id, or a dash.
@@ -301,15 +257,14 @@ func panelBeadCell(a panelAgent) string {
 	return string(icon) + " " + a.Bead
 }
 
-// panelTitleText is the title row's right side as text at fold level, and
-// which rune spans are red, yellow or dim. Level 0 is whole; 1 gives each
-// alarm its bare count; 2 also leaves out the suspended count, 3 the awake
-// count too. The alarms themselves are never left out.
+// panelSpan colors part of the header's right-hand text.
 type panelSpan struct {
 	from, to int
 	kind     string // "red", "yellow", "dim"
 }
 
+// panelTitleText drops alarm IDs, idle, cut workers, suspended, and awake,
+// in that order as the fold level rises. The alarm counts stay.
 func panelTitleText(t panelTitle, level int) (string, []panelSpan) {
 	ids := level == 0
 	var b strings.Builder
@@ -340,11 +295,19 @@ func panelTitleText(t panelTitle, level int) (string, []panelSpan) {
 		}
 		write(text, kind)
 	}
-	if level < 3 {
+	if level < 5 {
 		write(" · ", "dim")
 		write(fmt.Sprintf("%d awake", t.Awake), "")
 	}
-	if level < 2 {
+	if level < 3 && t.CutWorking > 0 {
+		write(" · ", "dim")
+		write(fmt.Sprintf("+%d working", t.CutWorking), "")
+	}
+	if level < 2 && t.Idle > 0 {
+		write(" · ", "dim")
+		write(fmt.Sprintf("%d idle", t.Idle), "")
+	}
+	if level < 4 {
 		write(" · ", "dim")
 		write(fmt.Sprintf("%d suspended", t.Suspended), "")
 	}
@@ -491,7 +454,10 @@ func (t *TUI) drawRigPanel(now time.Time, agents []panelAgent, beads []panelBead
 	t.overlayBounds.prev, t.overlayBounds.dots = t.overlayBounds.dots, map[[2]int]overlayDot{}
 	t.overlayBounds.effortTop, t.overlayBounds.effortEnd = -1, -1
 	title := panelTitleOf(beads, agents, now)
-	working, holding, idleN, suspN := t.panelSections(agents, now)
+	working, holding, idle := t.panelSections(agents, now)
+	rows := top - 3 // title, top border, bottom border
+	cells, cols, cutWorking := panelBoxLayout(rows, working, holding)
+	title.Idle, title.CutWorking = idle, cutWorking
 
 	bg := tcell.StyleDefault.Background(tcell.NewRGBColor(26, 28, 38))
 	frame := bg.Foreground(tcell.NewRGBColor(130, 140, 210))
@@ -520,9 +486,8 @@ func (t *TUI) drawRigPanel(now time.Time, agents []panelAgent, beads []panelBead
 
 	// Title row: the rig's name on the left is the project badge, which
 	// render draws over row 0 after the panel; the alarms and counts go on
-	// the right. The fold: the alarms lose their ids, then the suspended and
-	// the awake counts go whole; past that the line is cut at the right edge.
-	// The alarms, the row's job, are kept longest.
+	// the right. Keep the fullest header that fits beside the badge and
+	// disclosures. Only the bare alarms can clip at the screen edge.
 	left := t.projectBadgeEnd()
 	// The overlay's disclosures stay on the title row after the name: how
 	// many of the window's agents are hidden from its grid, and how many are
@@ -534,7 +499,7 @@ func (t *TUI) drawRigPanel(now time.Time, agents []panelAgent, beads []panelBead
 	}
 	var right string
 	var spans []panelSpan
-	for level := 0; level <= 3; level++ {
+	for level := 0; level <= 5; level++ {
 		right, spans = panelTitleText(title, level)
 		if left+2+len([]rune(right))+1 <= sw {
 			break
@@ -560,17 +525,11 @@ func (t *TUI) drawRigPanel(now time.Time, agents []panelAgent, beads []panelBead
 		}
 	}
 
-	// The boxes: the agents box (who works, who holds a bead idle, one
-	// count), then the moved box taking the rest of the width.
-	rows := top - 3 // title, top border, bottom border
+	// The boxes: the agents box (who works, then who holds a bead idle), then
+	// the moved box taking the rest of the width.
 	if rows < 1 {
 		return
 	}
-	// Two shapes: the count line in the cell after section 2, or, when it
-	// does not fit there, on the box's bottom row under every column.
-	var cells []panelBoxRow
-	var count string
-	cols, cellRows, countRow := 1, rows, false
 	boxTitle := fmt.Sprintf("agents · %d working · %d holding", len(working), len(holding))
 	// The fold, to keep the moved box at panelMovedMinWidth: the box title's
 	// counts go, then the bead titles, then the time column; a bead id stays
@@ -582,32 +541,14 @@ func (t *TUI) drawRigPanel(now time.Time, agents []panelAgent, beads []panelBead
 	box1W := 0
 	fits := func(limit int) bool {
 		for _, f = range folds {
-			for _, inCell := range []bool{true, false} {
-				r := rows
-				if !inCell {
-					if rows < 2 {
-						continue
-					}
-					r = rows - 1
-				}
-				cells, count, cols = panelBoxLayout(r, inCell, working, holding, idleN, suspN)
-				cellRows, countRow = r, !inCell
-				cnt := count
-				if countRow {
-					cnt = ""
-				}
-				widths, box1W = panelBoxWidths(cells, r, cols, cnt, f.titles, f.age, now)
-				label := boxTitle
-				if !f.counts {
-					label = "agents"
-				}
-				box1W = max(box1W, len([]rune(label))+6)
-				if countRow {
-					box1W = max(box1W, len([]rune(count))+4)
-				}
-				if box1W <= limit {
-					return true
-				}
+			widths, box1W = panelBoxWidths(cells, rows, cols, f.titles, f.age, now)
+			label := boxTitle
+			if !f.counts {
+				label = "agents"
+			}
+			box1W = max(box1W, len([]rune(label))+6)
+			if box1W <= limit {
+				return true
 			}
 		}
 		return false
@@ -654,7 +595,7 @@ func (t *TUI) drawRigPanel(now time.Time, agents []panelAgent, beads []panelBead
 		return x
 	}
 	for i, r := range cells {
-		c, y := i/cellRows, yTop+1+i%cellRows
+		c, y := i/rows, yTop+1+i%rows
 		cw := widths[c]
 		x0 := colX(c)
 		limit := min(x0+cw.width(), x1)
@@ -707,14 +648,6 @@ func (t *TUI) drawRigPanel(now time.Time, agents []panelAgent, beads []panelBead
 		if cw.title > 0 && a.Title != "" {
 			put(x+1, y, panelTitleWords(a.Title, cw.title), dim, limit)
 		}
-	}
-	switch {
-	case count == "":
-	case countRow:
-		put(2, yTop+rows, count, dim, x1)
-	default:
-		i := len(cells)
-		put(colX(i/cellRows), yTop+1+i%cellRows, count, dim, x1)
 	}
 	// The moved box gives way, rather than draw narrower than its minimum.
 	if sw-box1W-1 >= panelMovedMinWidth {
@@ -837,9 +770,8 @@ func (c panelBoxColumn) width() int {
 	return n
 }
 
-// panelBoxWidths sizes each column from its own rows, and the box: the count
-// line, the last cell, gets the room it needs in its column.
-func panelBoxWidths(cells []panelBoxRow, rows, cols int, count string, titles, age bool, now time.Time) ([]panelBoxColumn, int) {
+// panelBoxWidths sizes each column from its agent rows and returns the total box width.
+func panelBoxWidths(cells []panelBoxRow, rows, cols int, titles, age bool, now time.Time) ([]panelBoxColumn, int) {
 	widths := make([]panelBoxColumn, cols)
 	for i, r := range cells {
 		c := &widths[i/rows]
@@ -858,12 +790,8 @@ func panelBoxWidths(cells []panelBoxRow, rows, cols int, count string, titles, a
 		}
 	}
 	w := 4 + 3*(cols-1)
-	for i := range widths {
-		cw := widths[i].width()
-		if count != "" && i == len(cells)/rows {
-			cw = max(cw, len([]rune(count)))
-		}
-		w += cw
+	for _, col := range widths {
+		w += col.width()
 	}
 	return widths, w
 }

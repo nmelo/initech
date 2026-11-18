@@ -39,15 +39,18 @@ func simScreenText(s tcell.SimulationScreen) string {
 
 // The ini-162m rule: a capability nobody can find has not shipped. The
 // footer is the modal's discovery surface.
-func TestAgentsHelpText_NamesSuspendKeys(t *testing.T) {
+func TestAgentsHelpText_ShowsSuspendAndMonitorKeys(t *testing.T) {
 	if !strings.Contains(agentsHelpText, "s/S suspend") {
 		t.Errorf("modal footer does not name the suspend keys: %q", agentsHelpText)
 	}
-	// Width budget: boxW floors at len+4 and caps at the screen, so a footer
-	// past ~114 chars clips its own "Esc close" hint on a 120-col terminal —
-	// exactly how the first draft of this feature failed its goldens.
-	if len(agentsHelpText) > 114 {
-		t.Errorf("modal footer is %d chars; >114 clips on a 120-col terminal", len(agentsHelpText))
+	if width := len([]rune(agentsHelpText)); width > 114 {
+		t.Errorf("modal footer is %d columns, want at most 114", width)
+	}
+	if !strings.Contains(agentsHelpText, "m monitor") {
+		t.Errorf("modal footer does not name the monitor key: %q", agentsHelpText)
+	}
+	if screen := renderAgentsGridToString(t, "eng1"); !strings.Contains(screen, agentsHelpText) {
+		t.Errorf("120-column modal does not show its full legend:\n%s", screen)
 	}
 }
 

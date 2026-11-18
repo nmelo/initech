@@ -153,17 +153,17 @@ var panelQuiet = []panelAgent{
 }
 
 // TestRigPanel_TheQuietCaptureAt120 is m1-quiet's title row and agents box,
-// in the ini-b0po shape: the working agents longest first, then one count.
+// with the quiet counts in the header and the working agents longest first.
 func TestRigPanel_TheQuietCaptureAt120(t *testing.T) {
 	rows := renderPanelCapture(t, 120, panelQuiet, nil)
 	t.Logf("\n%s", strings.Join(rows, "\n"))
-	if !strings.HasPrefix(rows[0], " initech") || !strings.HasSuffix(rows[0], "on Nelson 0 · blocked 0 · stale 20m 0 · prompts 0 · 4 awake · 1 suspended") {
+	if !strings.HasPrefix(rows[0], " initech") || !strings.HasSuffix(rows[0], "on Nelson 0 · blocked 0 · stale 20m 0 · prompts 0 · 4 awake · 1 idle · 1 suspended") {
 		t.Fatalf("title row %q", rows[0])
 	}
 	if !strings.Contains(rows[1], "agents · 3 working · 0 holding") || !strings.Contains(rows[1], "moved 30m") {
 		t.Fatalf("box labels %q", rows[1])
 	}
-	want := []string{"○ super  background  26m  —", "○ eng4   background  11m  ▶ ini-nxyf", "● pm     running      2m  ▶ ini-p1x", "1 idle · 1 suspended"}
+	want := []string{"○ super  background  26m  —", "○ eng4   background  11m  ▶ ini-nxyf", "● pm     running      2m  ▶ ini-p1x"}
 	for i, w := range want {
 		if !strings.Contains(rows[2+i], w) {
 			t.Errorf("row %d = %q, want %q in it", i, rows[2+i], w)
