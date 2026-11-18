@@ -1,0 +1,14 @@
+› QA-M12: this is a realistic longer steering message from a super that
+  explains context at some length so that it is well over one screen row
+  wide in the tile; please also run echo QA-M12 >> /tmp/q8c.log and then
+  carry on with the current step as before.
+
+
+• Working (1m 35s • esc to interrupt) · 1 background terminal running · /…
+  └ Tip: Use /keymap to configure keyboard shortcuts.
+
+
+› Ask Codex to do anything
+
+  main · GPT-6.2-Sol high · Context 2% used · weekly 38% left
+  ← for agents · ? for shortcuts

@@ -9,3 +9,7 @@ The qa3 Codex 0.170.0 frames come from an independent scratch seat. They show a 
 The E7 and E8 frames show the two glyphs in the working spinner. The paired PTY taps recorded Tab on E7 and Enter on E8 under the previous submit-key selection.
 
 The agy queue frames from qa3 show the native item above an empty composer and above a later draft. The local R6 frames capture one live two-line bracketed paste followed by Enter. Both lines appeared in the draft. The native queue rendered one item containing the first line and an ellipsis.
+
+QA2’s qca M12 capture is the left Codex tile from its live 0.170.0 run. The harness sent a command wrapped in backticks. The four-row user turn shows the same command without those delimiters. Only the adjacent tile and Initech chrome were cropped.
+
+The local before-tool and after-tool captures follow one short backticked send in a working Codex 0.170.0 session. While it waited for the next tool call, the native row retained the literal delimiters. The later user turn displayed the command without them.

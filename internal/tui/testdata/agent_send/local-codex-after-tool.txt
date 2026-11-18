@@ -1,0 +1,16 @@
+› QA-M11: also run: echo QA-M11 >> marks.txt
+
+› QA-M12: also run echo QA-M12 >> marks.txt
+
+› QA-M14: this is a realistic longer steering message from a super that explains context at some length so that it is
+  well over one screen row wide in the tile; please also run echo QA-M14 >> marks.txt and then carry on with the
+  current step as before.
+
+
+◦ Working (7s • esc to interrupt) · 1 background terminal running · /ps to view · /stop to close
+
+
+› Ask Codex to do anything
+
+  main · GPT-6.2-Sol high · Context 3% used · weekly 34% left
+  ← for agents · ? for shortcuts

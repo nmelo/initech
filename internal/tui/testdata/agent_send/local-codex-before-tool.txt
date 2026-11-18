@@ -1,0 +1,15 @@
+› QA-M11: also run: echo QA-M11 >> marks.txt
+
+
+
+
+• Working (7s • esc to interrupt) · 1 background terminal running · /ps to view · /stop to close
+
+• Messages to be submitted after next tool call (press esc to interrupt and send immediately)
+  ↳ QA-M12: also run `echo QA-M12 >> marks.txt`
+
+
+› Ask Codex to do anything
+
+  main · GPT-6.2-Sol high · Context 3% used · weekly 34% left
+  ← for agents · ? for shortcuts

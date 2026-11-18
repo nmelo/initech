@@ -2,6 +2,7 @@ package tui
 
 import (
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -209,14 +210,68 @@ func readAgyFrame(rows []string) agentFrame {
 	return frame
 }
 
-// hasUserMessage reads the agent's displayed user turns. Tool output, a
-// model's reply, and the native follow-up queue are not delivery receipts.
-func (r agentReader) hasUserMessage(rows []string, body string) bool {
-	glyph := "›"
+// userTurnMatcher compares only displayed user turns. Prepare the rendered
+// form once, so the pre-submit checks and every proof sample agree.
+func (r agentReader) userTurnMatcher(body string) func([]string) bool {
+	glyph, rendered := "›", body
 	if r == agyReader {
 		glyph = ">"
+	} else if r == codexReader && strings.Contains(body, "`") {
+		rendered = codexInlineCode(body)
 	}
-	return visibleMessage(rows, glyph, body) >= 0
+	return func(rows []string) bool {
+		return visibleMessage(rows, glyph, body) >= 0 ||
+			(rendered != body && visibleMessage(rows, glyph, rendered) >= 0)
+	}
+}
+
+var backtickRuns = regexp.MustCompile("`+")
+
+// Codex 0.170 renders inline code in user turns but keeps the typed bytes in
+// the composer and native queue. Only project paired inline delimiters. Leave
+// block markup and ambiguous escapes to the literal comparison.
+func codexInlineCode(body string) string {
+	lines := strings.Split(body, "\n")
+	for i, line := range lines {
+		trimmed := strings.TrimLeft(line, " \t")
+		if len(line)-len(trimmed) >= 4 || strings.HasPrefix(line, "\t") || strings.HasPrefix(trimmed, "```") || strings.HasPrefix(trimmed, "~~~") {
+			return body
+		}
+		runs := backtickRuns.FindAllStringIndex(line, -1)
+		// A closer is the next maximal run of the same length. Indexing it
+		// once keeps unmatched or differently sized runs linear in the input.
+		nextSameWidth := make([]int, len(runs))
+		lastByWidth := make(map[int]int)
+		for j := len(runs) - 1; j >= 0; j-- {
+			width := runs[j][1] - runs[j][0]
+			nextSameWidth[j] = lastByWidth[width]
+			lastByWidth[width] = j
+		}
+		var out strings.Builder
+		start := 0
+		for j := 0; j < len(runs); j++ {
+			open := runs[j]
+			if open[0] > 0 && line[open[0]-1] == '\\' {
+				return body
+			}
+			close := nextSameWidth[j]
+			if close == 0 {
+				continue
+			}
+			code := line[open[1]:runs[close][0]]
+			if strings.HasPrefix(code, " ") && strings.HasSuffix(code, " ") && strings.Trim(code, " ") != "" {
+				code = code[1 : len(code)-1]
+			}
+			out.WriteString(line[start:open[0]])
+			out.WriteString(code)
+			start, j = runs[close][1], close
+		}
+		if start > 0 {
+			out.WriteString(line[start:])
+			lines[i] = out.String()
+		}
+	}
+	return strings.Join(lines, "\n")
 }
 
 func (r agentReader) queuedIndex(rows []string, body string) int {

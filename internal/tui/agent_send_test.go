@@ -180,7 +180,7 @@ func TestAgentSendWakeNeedsProof(t *testing.T) {
 func TestAgentSendCapturedStates(t *testing.T) {
 	expected := map[string][]string{
 		"idle":       {"hover-codex1-0946", "hover-codex2-0946", "hover-codex3-0946", "hover-codex4-0946", "local-codex-idle", "local-codex-0170-idle", "local-codex-0170-landed", "local-codex-0170-branch-idle", "local-codex-0170-branch-landed", "local-agy-1511-idle", "local-agy-1511-landed", "hover-agy3-idle-quota-1016", "hover-agy4-idle-quota-1016"},
-		"busy":       {"local-r6-agy-busy", "local-r6-agy-draft", "local-r6-agy-queued", "qa3-agy-working", "qa3-agy-native-queued", "qa3-agy-native-with-draft", "qa3-codex-e7-solid", "qa3-codex-e8-hollow", "qa3-codex-working-plain", "qa3-codex-native-two", "qa3-codex-working-backticks", "hover-agy1-0946", "hover-agy2-busy-0952", "hover-agy3-busy-0952", "hover-agy4-busy-0952", "hover-agy2-idle-quota-1016", "local-agy-1511-busy", "local-codex-0170-busy", "local-codex-0170-queued", "local-codex-0170-queued-two"},
+		"busy":       {"qa2-codex-qca-m12", "local-codex-before-tool", "local-codex-after-tool", "local-r6-agy-busy", "local-r6-agy-draft", "local-r6-agy-queued", "qa3-agy-working", "qa3-agy-native-queued", "qa3-agy-native-with-draft", "qa3-codex-e7-solid", "qa3-codex-e8-hollow", "qa3-codex-working-plain", "qa3-codex-native-two", "qa3-codex-working-backticks", "hover-agy1-0946", "hover-agy2-busy-0952", "hover-agy3-busy-0952", "hover-agy4-busy-0952", "hover-agy2-idle-quota-1016", "local-agy-1511-busy", "local-codex-0170-busy", "local-codex-0170-queued", "local-codex-0170-queued-two"},
 		"draft":      {"local-codex-0170-draft", "local-agy-1511-draft"},
 		"dialog":     {"qa3-codex-shortcuts", "local-codex-update-menu", "local-codex-0170-folder-dialog", "local-codex-0170-approval", "local-agy-1511-model-menu", "local-agy-1511-trust"},
 		"unreadable": {"hover-agy2-0946", "hover-agy3-0946", "hover-agy4-0946"},
@@ -495,7 +495,7 @@ func TestAgentSendWrappedRows(t *testing.T) {
 			glyph = ">"
 		}
 		rows := []string{glyph + " First line", "", "  second line with soft", "  wrapping", "", "• response"}
-		if !r.hasUserMessage(rows, "First line\n\nsecond line with soft wrapping") || r.hasUserMessage(rows, "First line\n\nsecond line with other words") {
+		if !r.userTurnMatcher("First line\n\nsecond line with soft wrapping")(rows) || r.userTurnMatcher("First line\n\nsecond line with other words")(rows) {
 			t.Fatalf("reader %d failed multiline proof", r)
 		}
 	}
@@ -595,10 +595,14 @@ func TestAgentSendAfterHoldsRegardlessOfContent(t *testing.T) {
 }
 
 func TestAgentSendDefaultSteersEveryWorkingCodex(t *testing.T) {
-	for _, file := range []string{"local-codex-0170-busy", "local-codex-0170-queued", "local-codex-0170-queued-two", "qa3-codex-working-plain", "qa3-codex-working-backticks", "qa3-codex-native-two", "qa3-codex-e7-solid", "qa3-codex-e8-hollow", "0.154.0"} {
+	for _, file := range []string{"local-codex-0170-busy", "local-codex-0170-queued", "local-codex-0170-queued-two", "qa3-codex-working-plain", "qa3-codex-working-backticks", "qa3-codex-native-two", "qa3-codex-e7-solid", "qa3-codex-e8-hollow", "qa2-codex-qca-m12", "local-codex-before-tool", "local-codex-after-tool", "0.154.0"} {
 		t.Run(file, func(t *testing.T) {
-			for _, msg := range []string{"After your step, record this message.", "Please record `echo MARKER >> log.txt` after your step."} {
+			for _, body := range []struct{ typed, rendered string }{
+				{"After your step, record this message.", "After your step, record this message."},
+				{"Please record `echo MARKER >> log.txt` after your step.", "Please record echo MARKER >> log.txt after your step."},
+			} {
 				sendBubble(t, func(t *testing.T) {
+					rendered := body.rendered
 					var before string
 					if file == "0.154.0" {
 						b, err := os.ReadFile("testdata/codex/0.154.0/running-frame.txt")
@@ -606,18 +610,19 @@ func TestAgentSendDefaultSteersEveryWorkingCodex(t *testing.T) {
 							t.Fatal(err)
 						}
 						before = string(b)
+						rendered = body.typed
 					} else {
 						before = agentCapture(t, file)
 					}
 					app, p, child := agentCaptureRig(t, "codex", before)
 					busy := agentCapture(t, "local-codex-0170-busy")
-					child.shows = strings.Replace(busy, "› Ask Codex to do anything", "› "+msg, 1)
-					child.after = "› " + msg + "\n\n" + busy
+					child.shows = strings.Replace(busy, "› Ask Codex to do anything", "› "+body.typed, 1)
+					child.after = "› " + rendered + "\n\n" + busy
 					child.takes = func(n int) bool { return n == 2 }
-					reply := v69Send(t, app, p.name, msg, true)
+					reply := v69Send(t, app, p.name, body.typed, true)
 					writes, _, _ := child.stream()
-					if !reply.OK || reply.Delivery != "steered" || writes != string(bracketedBody(msg))+"\r\r" {
-						t.Errorf("%s: reply %+v PTY %q", msg, reply, writes)
+					if !reply.OK || reply.Delivery != "steered" || writes != string(bracketedBody(body.typed))+"\r\r" {
+						t.Errorf("%s: reply %+v PTY %q", body.typed, reply, writes)
 					}
 				})
 			}
@@ -788,4 +793,113 @@ func TestAgentSendAgyReportsNativeItemsAhead(t *testing.T) {
 			t.Fatalf("reply %+v; local %d native %d", v, p.QueueLen(), p.readAgentFrame().native)
 		}
 	})
+}
+
+func TestAgentSendCodexRenderedUserTurn(t *testing.T) {
+	const msg = "QA-M12: this is a realistic longer steering message from a super that explains context " +
+		"at some length so that it is well over one screen row wide in the tile; please also run " +
+		"`echo QA-M12 >> /tmp/q8c.log` and then carry on with the current step as before."
+	for _, scenario := range []string{"fresh", "already visible", "appeared before Enter", "different command", "draft lost backticks"} {
+		t.Run(scenario, func(t *testing.T) {
+			sendBubble(t, func(t *testing.T) {
+				landed := agentCapture(t, "qa2-codex-qca-m12")
+				working := agentCapture(t, "qa3-codex-e8-hollow")
+				if scenario == "already visible" {
+					working = landed
+				}
+				app, p, child := agentCaptureRig(t, "codex", working)
+				child.shows = strings.Replace(working, "› Ask Codex to do anything", "› "+msg, 1)
+				child.after = landed
+				want := DeliveryUnconfirmed
+				enters := int32(1)
+				switch scenario {
+				case "fresh":
+					want = DeliverySteered
+				case "already visible":
+					// The long draft scrolls the old copy out of view before Enter.
+					child.shows = strings.Replace(agentCapture(t, "qa3-codex-e8-hollow"), "› Ask Codex to do anything", "› "+msg, 1)
+				case "appeared before Enter":
+					child.shows = strings.Replace(landed, "› Ask Codex to do anything", "› "+msg, 1)
+				case "different command":
+					child.after = strings.Replace(landed, ">> /tmp", "> /tmp", 1)
+				case "draft lost backticks":
+					child.shows = strings.ReplaceAll(child.shows, "`", "")
+					enters = 0
+				}
+				reply := v69Send(t, app, p.name, msg, true)
+				if reply.Delivery != want || child.enters.Load() != enters {
+					t.Fatalf("send returned %+v after %d submits, want %s after %d", reply, child.enters.Load(), want, enters)
+				}
+			})
+		})
+	}
+}
+
+func TestAgentSendCodexTransientUserTurn(t *testing.T) {
+	sendBubble(t, func(t *testing.T) {
+		const msg = "Read the new marker"
+		working := agentCapture(t, "qa3-codex-e8-hollow")
+		app, p, child := agentCaptureRig(t, "codex", working)
+		child.shows = strings.Replace(working, "› Ask Codex to do anything", "› "+msg, 1)
+		child.after = "› " + msg + "\n\n" + working
+		child.takes = func(int) bool {
+			// On the bubble clock the child paints after Enter, then removes
+			// the turn between the sender's first and second polls.
+			time.AfterFunc(composerEchoPoll+composerEchoPoll/2, func() { child.paint(working) })
+			return true
+		}
+		reply := v69Send(t, app, p.name, msg, true)
+		if reply.Delivery != DeliveryUnconfirmed || child.enters.Load() != 1 {
+			t.Fatalf("one transient user turn returned %+v after %d submits", reply, child.enters.Load())
+		}
+	})
+}
+
+func TestAgentSendCodexInlineCode(t *testing.T) {
+	for _, tc := range []struct{ body, shown string }{
+		{"", ""},
+		{"`", "`"},
+		{"example:\n\n    shell `date`", "example:\n\n    shell `date`"},
+		{"example:\n\n\tshell `date`", "example:\n\n\tshell `date`"},
+		{"run `one` then `two`", "run one then two"},
+		{"use ``a`b``", "use a`b"},
+		{"run ` echo hi `", "run echo hi"},
+		{"run `a  b`", "run a  b"},
+		{"run `  `", "run   "},
+		{"unmatched ` then ``ok``", "unmatched ` then ok"},
+		{"first `one`\nsecond `two`", "first one\nsecond two"},
+		{"open `", "open `"},
+		{"escaped \\`literal`", "escaped \\`literal`"},
+		{"```sh\necho `date`\n```", "```sh\necho `date`\n```"},
+	} {
+		if got := codexInlineCode(tc.body); got != tc.shown {
+			t.Errorf("%q rendered as %q, want %q", tc.body, got, tc.shown)
+		}
+	}
+	const msg = "run `echo hi`"
+	if agyReader.userTurnMatcher(msg)([]string{"> run echo hi"}) ||
+		codexReader.queuedIndex([]string{"↳ run echo hi"}, msg) >= 0 ||
+		codexReader.userTurnMatcher(msg)([]string{"• run echo hi"}) {
+		t.Fatal("accepted a rendered turn outside the Codex user transcript")
+	}
+}
+
+func TestAgentSendCodexBeforeAndAfterToolCall(t *testing.T) {
+	const msg = "QA-M12: also run `echo QA-M12 >> marks.txt`"
+	for _, tc := range []struct{ screen, verdict string }{
+		{"local-codex-before-tool", DeliveryUnconfirmed},
+		{"local-codex-after-tool", DeliverySteered},
+	} {
+		t.Run(tc.screen, func(t *testing.T) {
+			sendBubble(t, func(t *testing.T) {
+				busy := agentCapture(t, "qa3-codex-e7-solid")
+				app, p, child := agentCaptureRig(t, "codex", busy)
+				child.shows = strings.Replace(busy, "› Ask Codex to do anything", "› "+msg, 1)
+				child.after = agentCapture(t, tc.screen)
+				if reply := v69Send(t, app, p.name, msg, true); reply.Delivery != tc.verdict || child.enters.Load() != 1 {
+					t.Fatalf("send returned %+v after %d submits, want %s after one", reply, child.enters.Load(), tc.verdict)
+				}
+			})
+		})
+	}
 }

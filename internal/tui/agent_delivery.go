@@ -100,12 +100,13 @@ func (p *Pane) typeAgentMessage(text string, enter bool, before agentFrame) Send
 	notePerfMarkerWritten(p, text)
 	want := strings.TrimSpace(text)
 	seenQueued := r.queuedIndex(before.queued, want) >= 0
-	seenAbove := seenQueued || r.hasUserMessage(before.transcript, want)
+	hasUserTurn := r.userTurnMatcher(want)
+	seenAbove := seenQueued || hasUserTurn(before.transcript)
 	deadline := time.Now().Add(submitConfirmWindow)
 	for {
 		frame := p.readAgentFrame()
 		if frame.box && frame.busy == before.busy && !frame.dialog && !p.dialogLatched() && frame.matchesDraft(want) {
-			seenAbove = seenAbove || r.hasUserMessage(frame.transcript, want)
+			seenAbove = seenAbove || hasUserTurn(frame.transcript)
 			break
 		}
 		if (frame.box && frame.busy != before.busy) || frame.dialog || p.isClosing() || !time.Now().Before(deadline) {
@@ -136,7 +137,7 @@ func (p *Pane) typeAgentMessage(text string, enter bool, before agentFrame) Send
 		if i := r.queuedIndex(f.queued, want); r == codexReader && !seenQueued && f.box && f.draft == "" && i >= 0 {
 			return SendVerdict{Outcome: DeliveryQueued, Reason: fmt.Sprintf("queued by %s behind its running task, %d ahead", p.name, i)}
 		}
-		proof := f.box && f.draft == "" && !seenAbove && r.hasUserMessage(f.transcript, want)
+		proof := f.box && f.draft == "" && !seenAbove && hasUserTurn(f.transcript)
 		if proof && proofLastSample {
 			if before.busy {
 				if !f.busy || r == agyReader {
