@@ -30,8 +30,14 @@ run_case() {
     local name="$1" want_exit="$2" fixture_setup="$3" want_stderr_substring="${4:-}"
 
     local tmpdir
-    tmpdir="$(mktemp -d)"
-    trap 'rm -rf "$tmpdir"' RETURN
+    # One chain with its assignment, the path guarded (the root rule for
+    # destructive commands): a failed mktemp counts as a failure and returns
+    # before any trap is set, and an empty tmpdir stops rm before it runs.
+    tmpdir="$(mktemp -d)" && trap 'rm -rf "${tmpdir:?}"' RETURN || {
+        echo "FAIL: $name: mktemp -d failed" >&2
+        FAIL=$((FAIL + 1))
+        return 1
+    }
 
     # Run fixture setup in subshell so its cwd doesn't leak.
     (
