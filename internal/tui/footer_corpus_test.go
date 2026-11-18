@@ -62,6 +62,13 @@ func TestFooterCorpus_EveryCapturedShapeReadsWhatItShows(t *testing.T) {
 		{"hover_super_label_w118.txt", Footer{i(46), i(3), zero, zero, s("Opus 5.5 (1M context)"), s("Second")}},
 		{"hover_video_1m_cut_w89.txt", none(i(32), s("Opus 5.5 (1M context)"), s("Second"))},
 		{"hover_qa4_sonnet_nobranch_w90.txt", Footer{i(43), i(1), zero, zero, s("Sonnet 5.5"), s("Second")}},
+		// Relayed footer rows below a reconstructed empty box. The hover
+		// report quotes only the mode row. Thegal's narrow panes cut the
+		// agent hint; nayutal's wider pane shows it in full.
+		{"hover_video_auto_monitor.txt", Footer{nil, zero, i(1), zero, nil, nil}},
+		{"thegal_eng1_bypass_agent.txt", Footer{i(49), nil, nil, zero, s("Fable 5.2"), s("Second")}},
+		{"thegal_pa_bypass_agent.txt", Footer{i(51), nil, nil, zero, s("Sonnet 5.5"), s("Second")}},
+		{"nayutal_eng9_bypass_agent.txt", none(i(17), s("Opus 5.5"), s("Second"))},
 		// This rig's live panes, about 58 and 75 columns, bypass mode.
 		{"fleet_qa1.txt", none(i(42), s("Sonnet 5.5"), s("Second"))},
 		{"fleet_super.txt", Footer{i(22), zero, i(1), zero, s("Opus 5.5"), s("Second")}},

@@ -137,9 +137,8 @@ func panelAge(since, now time.Time) string {
 	return fmt.Sprintf("%dh%02dm", m/60, m%60)
 }
 
-// panelSettleAfter is how long a new state word must hold before the agents
-// box takes it: a pane's raw state flips between idle and running many times
-// a minute, and the box keeps its order and its times through that.
+// panelSettleAfter holds the box's order and times through idle/running
+// flicker. Transitions into and out of a prompt are immediate.
 const panelSettleAfter = time.Minute
 
 // panelSettledState is what the agents box remembers of one agent: the state
@@ -157,8 +156,7 @@ type panelSettledState struct {
 func panelWord(a panelAgent) string { return panelStateWord(a.State) }
 
 // settle updates the memory with this draw's raw word and returns the word
-// shown and when its state began. A prompt settles at once; any other word
-// once it has held panelSettleAfter, counted from when it began.
+// shown and when its state began.
 func (st *panelSettledState) settle(word string, since, now time.Time) (string, time.Time) {
 	if since.IsZero() || since.After(now) {
 		since = now
@@ -168,7 +166,7 @@ func (st *panelSettledState) settle(word string, since, now time.Time) (string, 
 		st.word, st.began, st.seen = word, since, true
 	case word == st.word:
 		st.cand = ""
-	case word == "prompt":
+	case word == "prompt" || st.word == "prompt":
 		st.word, st.began, st.cand = word, since, ""
 	default:
 		if st.cand != word {
