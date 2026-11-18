@@ -1,0 +1,25 @@
+⚠ Heads up, you have less than 5% of your weekly limit left. Run /status for a breakdown.
+
+
+› Start the shell command sleep 45 as a background terminal, then reply with the single word started at once without
+  waiting for it.
+
+
+• I’ll start it in a background terminal.
+
+• started
+
+  Worked for 4s • 3:06 PM
+
+
+› Reply with the single word ok.
+
+
+• Working (0s • esc to interrupt) · 1 background terminal running · /ps to view · /stop to close
+
+                                                                                 ⚠ weekly limit: only 5% left · /status
+
+› Ask Codex to do anything
+
+  main · GPT-6.2-Sol high · Context 5% used · weekly 5% left
+  ← for agents · ? for shortcuts                                                              ⚠ 3 warnings · f2 to view

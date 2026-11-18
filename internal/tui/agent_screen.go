@@ -64,7 +64,14 @@ func (r agentReader) read(rows []string) agentFrame {
 	return agentFrame{}
 }
 
-var codexWeeklyNotice = regexp.MustCompile(`^ +⚠ weekly limit: [0-9]{1,3}% left · /status *$`)
+// codexNoticeRow reports one of the status notices Codex draws between its
+// Working row and its composer: a row that starts with ⚠ once trimmed, such
+// as "⚠ weekly limit: 11% left · /status" or, near the limit, "⚠ weekly
+// limit: only 5% left · /status" (ini-bvjy). The walk from the composer to
+// the Working row steps over these and blank rows, nothing else.
+func codexNoticeRow(row string) bool {
+	return strings.HasPrefix(strings.TrimSpace(stripBraille(row)), "⚠")
+}
 
 func readCodexFrame(rows []string) agentFrame {
 	last := strings.TrimSpace(rows[len(rows)-1])
@@ -107,7 +114,7 @@ func readCodexFrame(rows []string) agentFrame {
 		// Inspect the tail adjacent to this composer. Earlier turns may
 		// quote exactly the same progress or queue text.
 		j := i - 1
-		for j >= 0 && (strings.TrimSpace(stripBraille(rows[j])) == "" || codexWeeklyNotice.MatchString(rows[j])) {
+		for j >= 0 && (strings.TrimSpace(stripBraille(rows[j])) == "" || codexNoticeRow(rows[j])) {
 			j--
 		}
 		if header, items := codexNextToolItems(rows[:j+1]); len(items) > 0 {
