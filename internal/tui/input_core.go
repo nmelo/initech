@@ -79,6 +79,12 @@ func (t *TUI) handleKey(ev *tcell.EventKey) bool {
 		return t.handleCmdKey(ev)
 	}
 
+	// With no drawn focus the DND key leaves even the command bar alone.
+	if ev.Key() == tcell.KeyRune && ev.Modifiers() == tcell.ModAlt && ev.Rune() == dndToggleKey {
+		t.toggleFocusedDND()
+		return false
+	}
+
 	// Clear any lingering error message on next keypress.
 	t.cmd.error = ""
 

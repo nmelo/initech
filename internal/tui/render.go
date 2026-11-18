@@ -440,6 +440,8 @@ func (t *TUI) renderStatusBar() {
 		t.renderCmdLine()
 	} else if t.cmd.error != "" {
 		t.renderCmdError()
+	} else if time.Now().Before(t.cmd.noticeUntil) {
+		t.renderBarMessage(t.cmd.notice, tcell.StyleDefault.Background(trueBlack).Foreground(tcell.ColorWhite))
 	} else {
 		t.renderHints()
 	}
@@ -770,6 +772,11 @@ func (t *TUI) renderCmdLine() {
 
 // renderCmdError draws an error message at the bottom of the screen.
 func (t *TUI) renderCmdError() {
+	t.renderBarMessage(t.cmd.error, tcell.StyleDefault.Background(tcell.ColorDarkRed).Foreground(tcell.ColorWhite))
+}
+
+// renderBarMessage replaces the bottom row with a single clipped line.
+func (t *TUI) renderBarMessage(message string, style tcell.Style) {
 	s := t.screen
 	sw, sh := s.Size()
 	if sw < 5 {
@@ -777,16 +784,15 @@ func (t *TUI) renderCmdError() {
 	}
 	y := sh - 1
 
-	errStyle := tcell.StyleDefault.Background(tcell.ColorDarkRed).Foreground(tcell.ColorWhite)
 	for x := 0; x < sw; x++ {
-		s.SetContent(x, y, ' ', nil, errStyle)
+		s.SetContent(x, y, ' ', nil, style)
 	}
-	msg := []rune(" " + t.cmd.error)
+	msg := []rune(" " + message)
 	if len(msg) > sw-1 {
 		msg = append(msg[:sw-4], '.', '.', '.')
 	}
 	for i, ch := range msg {
-		s.SetContent(i, y, ch, nil, errStyle)
+		s.SetContent(i, y, ch, nil, style)
 	}
 }
 

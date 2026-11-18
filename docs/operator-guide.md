@@ -279,6 +279,7 @@ These are the commands you'll use most. The full list is in the README.
 | Back to grid | Alt+2, Alt+3, or `grid` |
 | Working agents in a fixed grid, panel order | Shift+Alt+L or `list` (then `grid CxR` for its shape) |
 | Zoom focused pane | Alt+z |
+| Toggle do-not-disturb on the focused pane | Option+h (Alt+h) |
 | Ctrl+z in a pane | Ignored: nothing reaches the agent (zoom is Alt+z) |
 | See what everyone is doing | `patrol` in command bar |
 | Process table (memory, PIDs) | `top` or `ps` |
@@ -424,13 +425,20 @@ For a send to an agent on another machine, the sending machine sizes its wait fr
 
 ### Do-not-disturb
 
+Press Option+h (Alt+h) to hold messages for the focused pane until you turn the hold off.
+In a split the key acts on the focused side. It also works on a suspended pane without
+waking it. The command bar shows `dnd on, until off` for one second. Press the key again
+to release held messages for delivery in arrival order, just as `initech dnd off` does.
+The bar shows `dnd off, N held released`, or `dnd off` when the queue held none.
+For a pane owned by another window or machine, run `initech dnd` there.
+
 An agent in the middle of a step can run `initech dnd on` in its own pane. Until its turn
 ends (the pane stops running), or it runs `initech dnd off`, messages other agents send it wait in the pane's message queue instead of
 being typed into its input box, and each sender sees
 `held: <agent> is in do-not-disturb (<age>, <N> messages ahead)` with exit 0: how long the
 agent has been in it (45s, 12m, 1h) and how many messages wait ahead of this one. `initech
 status` shows `dnd <age>` after the agent's state, and so does the `initech patrol` header, with how it ends when it does not end at turn end: `dnd 12m until off`, or `dnd 12m until 15:30` for a timer;
-`initech deliver` and `initech assign` print the held line and succeed. On screen, the pane's ribbon carries `dnd` after the agent's name, after the held-mail mark when there is one, and the Agents overlay row reads `· dnd <age>` after the state word and the held count (`idle · 2 held · dnd 5m`); the agent stays in the column its state puts it in. Both go at the next draw once do-not-disturb ends. `dnd off` delivers them in the order they arrived, one at a time, through the
+`initech deliver` and `initech assign` print the held line and succeed. On screen, the pane's ribbon carries `dnd` after the agent's name, after the held-mail mark when there is one. A narrow tile shortens the badge to keep `dnd` visible. The Agents overlay row reads `· dnd <age>` after the state word and the held count (`idle · 2 held · dnd 5m`); the agent stays in the column its state puts it in. Both go at the next draw once do-not-disturb ends. `dnd off` delivers them in the order they arrived, one at a time, through the
 normal path. `initech dnd on --for 30m` holds through the end of the turn until the timer runs
 out instead; a timer can be any length. `initech dnd on --until-off` holds through every turn end, with no timer, until `initech dnd off` (or super breaks it); `--for` and `--until-off` together is an error. A second `dnd on` never shortens a hold in force: a plain one keeps a timer or an until-off, `--for` replaces either with its timer, and `--until-off` replaces a timer; the reply names what is in force (until your turn ends, until <time>, or until off). Against a running initech too old to know `--until-off`, or one that caps `--for` at an hour, the command prints one line saying so and when the hold will really end. A message that cannot be delivered then is reported to you once, with how long
 it waited. The held-mail limit (below) refuses a new one with how the hold ends: `send again after its turn ends`, `after do-not-disturb ends at 15:30`, or `after initech dnd off`.

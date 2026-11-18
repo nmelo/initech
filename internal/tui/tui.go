@@ -51,6 +51,9 @@ type cmdModal struct {
 	// remember to set it).
 	errorExpiry time.Time
 
+	notice      string // Brief operator feedback on the status bar.
+	noticeUntil time.Time
+
 	// Tab completion state.
 	tabBuf  string // Buffer content at last Tab press (double-Tab detection).
 	tabHint string // Completion hint line shown above the input bar; empty = no hint.

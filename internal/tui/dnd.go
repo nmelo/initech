@@ -329,18 +329,23 @@ func handleIPCDND(h IPCHost, conn net.Conn, req IPCRequest) {
 		writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("pane %q not found", req.Target)})
 		return
 	}
+	resp, _ := applyDND(pv, req)
+	writeIPCResponse(conn, resp)
+}
+
+// applyDND is the operator key and command's common action. Alongside the
+// command reply it returns the count released to the drain by an off action.
+func applyDND(pv PaneView, req IPCRequest) (IPCResponse, int) {
 	p, ok := pv.(*Pane)
 	if !ok {
-		writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf(
-			"%s runs in another window or on another machine; run initech dnd there", req.Target)})
-		return
+		return IPCResponse{Error: fmt.Sprintf(
+			"%s runs in another window or on another machine; run initech dnd there", req.Target)}, 0
 	}
 	if req.Text == "on" {
 		now := time.Now()
 		d := time.Duration(req.ForSec) * time.Second // 0 or less: no timer
 		if req.UntilOff && d > 0 {
-			writeIPCResponse(conn, IPCResponse{Error: "--for and --until-off cannot go together"})
-			return
+			return IPCResponse{Error: "--for and --until-off cannot go together"}, 0
 		}
 		var notices []string
 		p.startDNDHold(now, d, req.UntilOff)
@@ -358,17 +363,44 @@ func handleIPCDND(h IPCHost, conn net.Conn, req IPCRequest) {
 			line = fmt.Sprintf("do-not-disturb on for %s until %s (%s): messages from other agents wait until then or initech dnd off",
 				p.name, until.Format("15:04:05"), shortAge(until.Sub(now).Round(time.Second)))
 		}
-		writeIPCResponse(conn, IPCResponse{OK: true, Data: line, Notices: notices})
-		return
+		return IPCResponse{OK: true, Data: line, Notices: notices}, 0
 	}
 	held, was := p.endDND(time.Now())
 	if !was {
-		writeIPCResponse(conn, IPCResponse{OK: true, Data: fmt.Sprintf("%s was not in do-not-disturb", p.name)})
-		return
+		return IPCResponse{OK: true, Data: fmt.Sprintf("%s was not in do-not-disturb", p.name)}, 0
 	}
 	LogInfo("dnd", "do-not-disturb off", "pane", p.name, "held", held)
-	writeIPCResponse(conn, IPCResponse{OK: true, Data: fmt.Sprintf(
-		"do-not-disturb off for %s; %s delivering in order", p.name, heldCount(held))})
+	return IPCResponse{OK: true, Data: fmt.Sprintf(
+		"do-not-disturb off for %s; %s delivering in order", p.name, heldCount(held))}, held
+}
+
+// dndToggleKey is the unshifted Alt/Option chord shown in the key table.
+const dndToggleKey = 'h'
+
+func (t *TUI) toggleFocusedDND() {
+	pv := t.inputPane()
+	if pv == nil {
+		return
+	}
+	req := IPCRequest{Target: agentKey(pv), Text: "on", UntilOff: true}
+	if p, ok := pv.(*Pane); ok && p.InDND() {
+		req.Text = "off"
+	}
+	resp, held := applyDND(pv, req)
+	t.cmd.error = resp.Error
+	t.cmd.errorExpiry = time.Time{}
+	if !resp.OK {
+		return
+	}
+	switch {
+	case req.Text == "on":
+		t.cmd.notice = "dnd on, until off"
+	case held > 0:
+		t.cmd.notice = fmt.Sprintf("dnd off, %d held released", held)
+	default:
+		t.cmd.notice = "dnd off"
+	}
+	t.cmd.noticeUntil = time.Now().Add(time.Second)
 }
 
 // heldCount words a count of held messages.
