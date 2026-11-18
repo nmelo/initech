@@ -309,7 +309,11 @@ func panelTitleText(t panelTitle, level int) (string, []panelSpan) {
 	}
 	if level < 4 {
 		write(" · ", "dim")
-		write(fmt.Sprintf("%d suspended", t.Suspended), "")
+		kind := ""
+		if t.Suspended == 0 {
+			kind = "dim"
+		}
+		write(fmt.Sprintf("%d suspended", t.Suspended), kind)
 	}
 	return b.String(), spans
 }

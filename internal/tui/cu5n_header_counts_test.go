@@ -61,6 +61,46 @@ func TestHeaderCounts_ACutWorkingListAndZeroParts(t *testing.T) {
 	}
 }
 
+func TestHeaderCounts_OnlyZeroSuspendedUsesTheDimColor(t *testing.T) {
+	for _, tc := range []struct {
+		suspended int
+		label     string
+	}{
+		{0, "0 suspended"},
+		{1, "1 suspended"},
+	} {
+		t.Run(tc.label, func(t *testing.T) {
+			panel := newBoxPanel(t, 120, 3)
+			header := panel.draw(panelNow, headerCountRoster(0, 0, tc.suspended))[0]
+			column := func(label string) int {
+				t.Helper()
+				before, _, ok := strings.Cut(header, label)
+				if !ok {
+					t.Fatalf("missing %q in header %q", label, header)
+				}
+				return len([]rune(before))
+			}
+			cells, _, _ := panel.scr.GetContents()
+			dim, _, _ := cells[column("on Nelson 0")].Style.Decompose()
+			normal, _, _ := cells[column("1 awake")].Style.Decompose()
+			if dim == normal {
+				t.Fatal("zero alarm and awake count have the same foreground")
+			}
+			want := normal
+			if tc.suspended == 0 {
+				want = dim
+			}
+			start := column(tc.label)
+			for i := range tc.label {
+				got, _, _ := cells[start+i].Style.Decompose()
+				if got != want {
+					t.Fatalf("column %d of %q: foreground %v, want %v", start+i, tc.label, got, want)
+				}
+			}
+		})
+	}
+}
+
 // TestHeaderCounts_TheFoldOrder is AC3: narrowing, the alarm ids go, then
 // idle, then +N working, then suspended, then awake; the alarms stay.
 func TestHeaderCounts_TheFoldOrder(t *testing.T) {
