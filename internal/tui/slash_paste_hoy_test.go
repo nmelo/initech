@@ -134,6 +134,27 @@ func TestSlashPaste_WhatDoesNotPasteAsACommandIsTypedAsToday(t *testing.T) {
 		{"long command to codex", config.AgentTypeCodex, hoySlash(1300)},
 	} {
 		t.Run(c.name, func(t *testing.T) {
+			if c.agentType == config.AgentTypeCodex {
+				sendBubble(t, func(t *testing.T) {
+					idle := agentCapture(t, "local-codex-0170-idle")
+					app, p, child := agentCaptureRig(t, c.agentType, idle)
+					child.shows = strings.Replace(idle, "› Ask Codex to do anything", "› "+c.text, 1)
+					// Codex indents continuations of each user turn.
+					var lines []string
+					for text := c.text; len(text) > 0; {
+						n := min(100, len(text))
+						lines = append(lines, text[:n])
+						text = text[n:]
+					}
+					child.after = "› " + strings.Join(lines, "\n  ") + "\n\n" + idle
+					v := v69Send(t, app, p.name, c.text, true)
+					writes, _, _ := child.stream()
+					if v.Delivery != DeliveryDelivered || writes != string(bracketedBody(c.text))+"\r" {
+						t.Fatalf("idle Codex long command: verdict %+v, %d bytes", v, len(writes))
+					}
+				})
+				return
+			}
 			p, r := s7qSettledPane(t, "eng1")
 			p.agentType = c.agentType
 			tui := &TUI{panes: toPaneViews([]*Pane{p})}

@@ -1,0 +1,5 @@
+▸ MARK-A1: also append MARK-A1 to /tmp/iq-agy/ag/log.txt with echo (alt+m to send immediately)
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+> MARK-B1: also append MARK-B1 to /tmp/iq-agy/ag/log.txt with echo
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Press up to edit queued messages

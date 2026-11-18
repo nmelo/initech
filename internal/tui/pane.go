@@ -256,9 +256,11 @@ var _ PaneView = (*Pane)(nil)
 // Pane represents a terminal pane backed by a PTY process.
 // It uses a SafeEmulator from charmbracelet/x/vt for terminal emulation.
 type Pane struct {
-	frameChange            // Content changed since the last frame (ini-ysr.1).
-	cfg         PaneConfig // Original config for restart.
-	name        string
+	agentReleaseDone chan struct{}     // Closed when the claimed receipt is typed or restored.
+	typedReceipts    map[string]string // Released receipts, so a later withdrawal can explain its refusal.
+	frameChange                        // Content changed since the last frame (ini-ysr.1).
+	cfg              PaneConfig        // Original config for restart.
+	name             string
 	// onSuspendedMessage fires when SendText queues for a suspended pane
 	// (ini-g7fl): the TUI wires it to resume-on-message, because the pane
 	// cannot respawn itself and entry points must not each remember to.
@@ -448,6 +450,7 @@ type Pane struct {
 	// queue change; heldTyping and heldInHand are mail a loop took off the
 	// queue to type one at a time (resume), kept in the file until typed.
 	heldHook   func(*Pane)
+	sendAfter  bool   // Only read or written under sendMu.
 	sendFrom   string // whose send is being typed (setSendFrom)
 	sendWaited bool   // a caller waits on the verdict of the send being typed (setSendWaited)
 	heldTyping *QueuedMessage
@@ -1297,15 +1300,16 @@ func (p *Pane) deliverClean(text string, enter, hold bool, o sendOrigin) SendVer
 			return SendVerdict{Outcome: DeliveryNotDelivered, Reason: why}
 		}
 	}
+	if o.After && p.agentReader() == noAgentReader {
+		return SendVerdict{Outcome: DeliveryNotDelivered, Reason: "--after requires a Codex or agy pane"}
+	}
 	var broke bool
 	p.mu.Lock()
 	p.lastMessageReceived = time.Now()
 	p.mu.Unlock()
 
-	if queued, refusal := p.queueIfSuspended(text, enter, o.From); refusal != "" {
-		return SendVerdict{Outcome: DeliveryNotDelivered, Reason: refusal}
-	} else if queued {
-		return SendVerdict{Outcome: DeliveryDelivered}
+	if v, queued := p.queueIfSuspended(text, enter, o.From); queued {
+		return v
 	}
 	// DO-NOT-DISTURB (ini-x432): held on the queue, nothing typed. The
 	// operator's paste (hold false) is typing, not a send, and goes in.
@@ -1333,10 +1337,8 @@ func (p *Pane) deliverClean(text string, enter, hold bool, o sendOrigin) SendVer
 		// order. A pane suspended while the message waited queues it instead.
 		release := p.waitTypingHold()
 		defer release()
-		if queued, refusal := p.queueIfSuspended(text, enter, o.From); refusal != "" {
-			return SendVerdict{Outcome: DeliveryNotDelivered, Reason: refusal}
-		} else if queued {
-			return SendVerdict{Outcome: DeliveryDelivered}
+		if v, queued := p.queueIfSuspended(text, enter, o.From); queued {
+			return v
 		}
 		// Do-not-disturb set while the message waited holds it too.
 		if v, held := p.dndGate(text, enter, o, &broke); held {
@@ -1345,17 +1347,27 @@ func (p *Pane) deliverClean(text string, enter, hold bool, o sendOrigin) SendVer
 	}
 	p.sendMu.Lock()
 	defer p.sendMu.Unlock()
+	p.sendAfter = o.After
+	defer func() { p.sendAfter = false }()
 	p.setSendFrom(o.From) // a hold inside the send keeps its sender (ini-8rkg)
 	p.setSendWaited(o.Waiting)
 	defer p.setSendFrom("")
 	defer p.setSendWaited(false)
+	if !hold && !enter && p.agentReader() != noAgentReader {
+		if f := p.readAgentFrame(); f.box && !f.dialog && !p.dialogLatched() {
+			if p.writeBody(bracketedBody(text), "operator-paste") == childWritten {
+				return SendVerdict{Outcome: DeliveryDelivered}
+			}
+			return SendVerdict{Outcome: DeliveryUnconfirmed, Reason: stoppedReadingVerdictReason}
+		}
+	}
 	return sendPaneTextLocked(p, text, enter)
 }
 
 // queueIfSuspended queues a message for a suspended pane and wakes it,
 // reporting whether the pane was suspended, and the refusal when its queue
 // is at the cap (ini-pt3j): then nothing is queued and nothing woken.
-func (p *Pane) queueIfSuspended(text string, enter bool, from string) (bool, string) {
+func (p *Pane) queueIfSuspended(text string, enter bool, from string) (SendVerdict, bool) {
 	p.mu.Lock()
 	suspended := p.suspended
 	cb := p.onSuspendedMessage
@@ -1370,8 +1382,9 @@ func (p *Pane) queueIfSuspended(text string, enter bool, from string) (bool, str
 	// HERE means every present and future caller inherits queue-on-suspended
 	// without knowing suspension exists: structural, not per-caller vigilance.
 	if suspended {
-		if refusal := p.enqueueOrRefuse(QueuedMessage{Text: text, Enter: enter, Time: time.Now(), From: from}, sendAgainWhenResumes); refusal != "" {
-			return true, refusal
+		v := p.queueForWake(text, enter, from)
+		if v.Outcome == DeliveryNotDelivered {
+			return v, true
 		}
 		// Resume-on-message, via the callback the TUI wires at pane
 		// creation/adoption -- the pane cannot resume itself (respawn needs
@@ -1379,9 +1392,9 @@ func (p *Pane) queueIfSuspended(text string, enter bool, from string) (bool, str
 		if cb != nil {
 			cb(p)
 		}
-		return true, ""
+		return v, true
 	}
-	return false, ""
+	return SendVerdict{}, false
 }
 
 // ErrPaneStillStarting reports an agent that has not settled since its
@@ -1439,6 +1452,10 @@ const StartupSettleBound = resumeQuiesceCap
 // output is not accepting input). Once seen settled the gate is open for
 // good, so ordinary sends to an agent mid-turn are never delayed by it.
 func (p *Pane) awaitStartupSettled() error {
+	// These readers check the actual composer under sendMu, including startup menus.
+	if p.agentReader() != noAgentReader {
+		return nil
+	}
 	p.mu.Lock()
 	settled := p.startupSettled
 	started := p.startedAt

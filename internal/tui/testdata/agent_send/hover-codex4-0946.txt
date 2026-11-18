@@ -1,0 +1,19 @@
+› [from super] Red on your change: t…
+  be9b9270f, which still had both
+  engine_running: true fixtures.
+  Release run
+
+  I reran tsc --noEmit on hover-run
+  against current main. It passed. I
+  posted the SHA and verification on
+  hov-ansfp and parked. Passing main
+  CI
+
+  Worked for 2m 37s • 2:09 AM
+
+
+› Ask Codex to do anything
+
+  GPT-6.2-Astra xhigh · Context 85%
+  left · ~/Desktop/Projects/hover/…
+  ← for agents               ⚠ 1 · f2

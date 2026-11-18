@@ -2,7 +2,9 @@ package tui
 
 import (
 	"os"
+	"strings"
 	"testing"
+
 	"time"
 
 	"github.com/charmbracelet/x/vt"
@@ -38,69 +40,24 @@ func TestIsCodexTrustPrompt_MatchesStartupPrompt(t *testing.T) {
 }
 
 func TestPaneSendText_CodexWaitsForReadyPrompt(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping PTY test in short mode")
-	}
-	r, w, err := os.Pipe()
-	if err != nil {
-		t.Fatalf("os.Pipe: %v", err)
-	}
-	defer r.Close()
-	defer w.Close()
-
-	emu := vt.NewSafeEmulator(80, 10)
-	p := &Pane{
-		name:             "eng1",
-		emu:              emu,
-		alive:            true,
-		ptmx:             &filePty{w},
-		agentType:        config.AgentTypeCodex,
-		activity:         StateIdle,
-		noBracketedPaste: true,
-		lastOutputTime:   time.Now(),
-	}
-
-	readCh := make(chan []byte, 1)
-	go func() {
-		buf := make([]byte, 16)
-		n, _ := r.Read(buf)
-		readCh <- buf[:n]
-	}()
-
-	done := make(chan struct{})
-	go func() {
-		p.SendText("go", false)
-		close(done)
-	}()
-
-	select {
-	case got := <-readCh:
-		t.Fatalf("got PTY write before ready prompt: %q", string(got))
-	case <-time.After(150 * time.Millisecond):
-	}
-
-	p.mu.Lock()
-	p.lastOutputTime = time.Now().Add(-(ptyIdleTimeout + time.Second))
-	p.mu.Unlock()
-	_, _ = emu.Write([]byte(">"))
-	if !p.isCodexReadyForSend() {
-		t.Fatalf("pane not ready after prompt write; footer=%q", emulatorBottomTextBlocking(emu, 10))
-	}
-
-	select {
-	case got := <-readCh:
-		if string(got) != "\x1b[200~go\x1b[201~" {
-			t.Fatalf("PTY write = %q, want %q", string(got), "\x1b[200~go\x1b[201~")
+	sendBubble(t, func(t *testing.T) {
+		const body = "type this draft"
+		_, p, f := agentCaptureRig(t, "codex", "")
+		p.SendText(body, false)
+		if got, _, _ := f.stream(); got != "" || p.QueueLen() != 1 {
+			t.Fatalf("starting pane: PTY %q, queued %d", got, p.QueueLen())
 		}
-	case <-time.After(time.Second):
-		t.Fatal("timeout waiting for PTY write after ready prompt")
-	}
-
-	select {
-	case <-done:
-	case <-time.After(time.Second):
-		t.Fatal("SendText did not return after ready prompt")
-	}
+		idle := agentCapture(t, "local-codex-0170-idle")
+		f.shows = strings.Replace(idle, "› Ask Codex to do anything", "› "+body, 1)
+		f.paint(idle)
+		done := make(chan struct{})
+		p.safeGo = func(fn func()) { go func() { defer close(done); fn() }() }
+		p.maybeDrainModalQueue()
+		<-done
+		if got, _, _ := f.stream(); got != string(bracketedBody(body)) || p.QueueLen() != 0 {
+			t.Fatalf("ready pane: PTY %q queue %d", got, p.QueueLen())
+		}
+	})
 }
 
 func TestPaneSendText_OpenCodeWaitsForReadyPrompt(t *testing.T) {

@@ -171,7 +171,7 @@ func isMouseOrFocusReport(b []byte) bool {
 // every other request on the connection. Sends to one target stay in order.
 func (d *Daemon) deliverOffReader(sends *targetSerializer, p *Pane, cmd ControlCmd, respond func(string, ControlResp) bool) {
 	id, text, enter, operator := cmd.ID, cmd.Text, cmd.Enter, cmd.Operator
-	o := sendOrigin{From: cmd.From, Urgent: cmd.Urgent}
+	o := sendOrigin{From: cmd.From, Urgent: cmd.Urgent, After: cmd.Action == "send_after" || cmd.Action == "forward_send_after"}
 	sends.Run(cmd.Target, func() {
 		switch {
 		case operator:

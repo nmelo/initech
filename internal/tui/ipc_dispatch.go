@@ -195,7 +195,7 @@ type IPCHost interface {
 // else goes to h.HandleExtended.
 func dispatchIPC(h IPCHost, conn net.Conn, req IPCRequest, rawJSON []byte) {
 	switch req.Action {
-	case "send":
+	case "send", "send_after", "withdraw":
 		conn.SetReadDeadline(time.Time{})
 		h.HandleSend(conn, req)
 

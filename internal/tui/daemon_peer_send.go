@@ -92,7 +92,11 @@ func (d *Daemon) sendToConnectedMachine(conn net.Conn, req IPCRequest) {
 			Delivery: DeliveryNotDelivered, Data: why})
 		return
 	}
-	fwd := ControlCmd{Action: "forward_send", Target: req.Target, Text: req.Text, Enter: req.Enter, From: from, Urgent: req.Urgent}
+	action := "forward_" + req.Action
+	if req.Action == "" {
+		action = "forward_send"
+	}
+	fwd := ControlCmd{Action: action, Target: req.Target, Text: req.Text, Enter: req.Enter, From: from, Urgent: req.Urgent}
 	resp, err := d.forwardToClient(owner, ctrl, mu, fwd)
 	if err != nil {
 		writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("not delivered to %s: %v", req.Target, err),

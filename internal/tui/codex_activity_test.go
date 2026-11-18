@@ -105,22 +105,22 @@ func TestUpdateActivity_Codex_IdleWithBead_NoFireWhileWorking(t *testing.T) {
 	}
 }
 
-// AC5: the queued-submit path follows the signature.
-func TestCodexShouldQueueSubmit_FollowsSignature(t *testing.T) {
+// Status and delivery agree about whether the Codex turn is active.
+func TestCodexBusyReader_FollowsSignature(t *testing.T) {
 	idle := codexPaneShowing(t, config.AgentTypeCodex, "idle-frame.txt")
 	idle.updateActivity()
-	if codexShouldQueueSubmit(idle) {
-		t.Error("idle-by-signature codex must take the direct path, not the queued submit")
+	if idle.readAgentFrame().busy {
+		t.Error("idle Codex was read as busy")
 	}
 	running := codexPaneShowing(t, config.AgentTypeCodex, "running-frame.txt")
 	running.updateActivity()
-	if !codexShouldQueueSubmit(running) {
-		t.Error("running-by-signature codex must take the queued-submit path")
+	if !running.readAgentFrame().busy {
+		t.Error("working Codex was read as idle")
 	}
 	claude := codexPaneShowing(t, config.AgentTypeClaudeCode, "running-frame.txt")
 	claude.updateActivity()
-	if codexShouldQueueSubmit(claude) {
-		t.Error("the queued submit is a codex-only path")
+	if claude.agentReader() != noAgentReader {
+		t.Error("Claude was assigned a Codex reader")
 	}
 }
 

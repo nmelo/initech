@@ -749,6 +749,9 @@ func (d *Daemon) allPanesWithViews() ([]PaneInfo, []PaneView, bool) {
 		if panes[i].DNDAgeSec != nil {
 			panes[i].QueuedCount = p.QueuedMessageCount()
 		}
+		if p.agentReader() != noAgentReader {
+			panes[i].QueuedCount = p.QueuedMessageCount() + p.readAgentFrame().native
+		}
 		panes[i].IdleSec = idleSecOf(p, time.Now())
 	}
 	return panes, views, true
@@ -774,7 +777,11 @@ func (d *Daemon) HandleSend(conn net.Conn, req IPCRequest) {
 			writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("peer %q not connected. Run 'initech peers' to see available targets.", req.Host)})
 			return
 		}
-		fwd := ControlCmd{Action: "forward_send", Target: req.Target, Text: req.Text, Enter: req.Enter, From: req.From, Urgent: req.Urgent}
+		action := "forward_" + req.Action
+		if req.Action == "" {
+			action = "forward_send"
+		}
+		fwd := ControlCmd{Action: action, Target: req.Target, Text: req.Text, Enter: req.Enter, From: req.From, Urgent: req.Urgent}
 		resp, err := d.forwardToClient(req.Host, clientCtrl, mu, fwd)
 		if err != nil {
 			writeIPCResponse(conn, IPCResponse{Error: err.Error()})
@@ -806,6 +813,10 @@ func (d *Daemon) HandleSend(conn net.Conn, req IPCRequest) {
 		// delivery instead of auto-routing nondeterministically across
 		// connected peers (ini-piyb.4).
 		writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("agent %q not found. For remote agents use host:agent format (e.g. 'initech send workbench:%s ...').", req.Target, req.Target)})
+		return
+	}
+	if req.Action == "withdraw" {
+		writeIPCResponse(conn, p.receiptReply(req.Text, req.From))
 		return
 	}
 	conn.SetReadDeadline(time.Time{})
@@ -1399,7 +1410,7 @@ func (d *Daemon) handleControlStream(ctrl net.Conn, scanner *bufio.Scanner, peer
 		LogInfo("daemon", "control cmd", "action", cmd.Action, "peer", peerName, "id", cmd.ID)
 
 		switch cmd.Action {
-		case "send":
+		case "send", "send_after":
 			if len(cmd.Text) > maxSendTextLen {
 				if !respond(cmd.ID, ControlResp{Error: fmt.Sprintf("text too large (%d bytes, max %d)", len(cmd.Text), maxSendTextLen)}) {
 					return
@@ -1490,7 +1501,19 @@ func (d *Daemon) handleControlStream(ctrl net.Conn, scanner *bufio.Scanner, peer
 				return
 			}
 
-		case "forward_send":
+		case "withdraw", "forward_withdraw":
+			p := d.findPane(cmd.Target)
+			var reply ControlResp
+			if p == nil {
+				reply.Error = fmt.Sprintf("agent %q not found", cmd.Target)
+			} else {
+				v := p.receiptReply(cmd.Text, cmd.From)
+				reply = ControlResp{OK: v.OK, Error: v.Error, Data: v.Data, Delivery: v.Delivery}
+			}
+			if !respond(cmd.ID, reply) {
+				return
+			}
+		case "forward_send", "forward_send_after":
 			// Received from a remote TUI: deliver to a local agent.
 			if len(cmd.Text) > maxSendTextLen {
 				if !respond(cmd.ID, ControlResp{Error: fmt.Sprintf("text too large (%d bytes, max %d)", len(cmd.Text), maxSendTextLen)}) {

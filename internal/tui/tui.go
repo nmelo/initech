@@ -1795,6 +1795,23 @@ func (t *TUI) deliverForwardedSend(target, text string, enter bool, o sendOrigin
 	if pv == nil {
 		return SendVerdict{}, fmt.Errorf("agent %q not found", target)
 	}
+	if o.Withdraw {
+		switch p := pv.(type) {
+		case *Pane:
+			line, err := p.withdrawReceipt(text, o.From)
+			return SendVerdict{Outcome: "withdrawn", Reason: line}, err
+		case *RemotePane:
+			v, err := p.Request(ControlCmd{Action: "withdraw", Text: text, From: o.From})
+			if err != nil {
+				return SendVerdict{}, err
+			}
+			if !v.OK {
+				return SendVerdict{}, fmt.Errorf("%s", v.Error)
+			}
+			return SendVerdict{Outcome: v.Delivery, Reason: v.Data}, nil
+		}
+		return SendVerdict{}, fmt.Errorf("target cannot withdraw mail")
+	}
 	// The forwarding window is waiting on this error (ini-i35w): refuse a
 	// pane still booting rather than let its child eat the text.
 	if lp, ok := pv.(*Pane); ok {
@@ -1802,6 +1819,9 @@ func (t *TUI) deliverForwardedSend(target, text string, enter bool, o sendOrigin
 			return SendVerdict{}, err
 		}
 		return lp.SendTextVerdictFrom(text, enter, o), nil
+	}
+	if o.After {
+		return SendVerdict{}, fmt.Errorf("this relay cannot confirm --after")
 	}
 	pv.SendText(text, enter)
 	return SendVerdict{Outcome: DeliveryUnconfirmed, Reason: relayedVerdictReason}, nil

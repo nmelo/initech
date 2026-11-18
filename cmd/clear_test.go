@@ -161,3 +161,20 @@ func startClearIPC(t *testing.T, handler func(tui.IPCRequest) tui.IPCResponse) s
 	}()
 	return sockPath
 }
+
+func TestRunClear_UpdateMenuReportsDeferral(t *testing.T) {
+	skipWindows(t)
+	const reason = "held: codex is at a dialog (update picker), 0 ahead (receipt abc)"
+	t.Setenv("INITECH_SOCKET", startClearIPC(t, func(req tui.IPCRequest) tui.IPCResponse {
+		if req.Target != "codex" || req.Text != "/clear" || !req.Enter {
+			t.Errorf("clear request %+v", req)
+		}
+		return tui.IPCResponse{OK: true, Delivery: tui.DeliveryHeld, Data: reason}
+	}))
+	var output bytes.Buffer
+	clearCmd.SetOut(&output)
+	t.Cleanup(func() { clearCmd.SetOut(nil) })
+	if err := runClear(clearCmd, []string{"codex"}); err != nil || output.String() != reason+"\n" {
+		t.Fatalf("clear said %q, error %v", output.String(), err)
+	}
+}

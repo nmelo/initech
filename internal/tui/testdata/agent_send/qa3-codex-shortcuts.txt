@@ -1,0 +1,20 @@
+• The first three commands finished successfully. I’ll continue with step 4.
+◦ Working (58s • esc to interrupt) · 1 background terminal running · /ps to view · /stop to close
+• Queued follow-up inputs
+  ↳ STEER-A: right after your current step, run `echo STEER-A-RECEIVED >> /tmp/iq-steer/cdx/log.txt`, then continue the 12 steps.
+    ⇧← edit last queued message
+  Keyboard shortcuts
+  Compose                       Session                              Transcript (open first)
+  /        Commands             tab      Queue message               ⌃t            Open transcript
+  @        Mention files        ⇧tab     Change mode                 f3            Find text
+  !        Shell command        ⌥,       Less reasoning              pgup / pgdn   Scroll
+  ⌃j       New line             ⌥.       More reasoning              ⌃space        Start selection
+  ⌃v       Paste image          f8       Voice                       ⌃home / ⌃end  Top / latest
+  ⌃g       External editor      ←        Agents (empty prompt)       ⇧⌥, / ⇧⌥.     Top / latest
+  ⌃r       Search history       ⌥← / ⌥→  Subagents (empty prompt)
+  esc esc  Edit last message    f4       Inspect activity
+                                ⌃c       Interrupt
+  /keymap customize
+› Ask Codex to do anything
+  main · GPT-6.2-Sol high · Context 3% used · weekly 51% left
+  ? / esc close

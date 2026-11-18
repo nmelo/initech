@@ -1,0 +1,28 @@
+
+  >_ OpenAI Codex (v0.170.0)
+     /private/tmp/i8wn0.qOacCihz/codex-seat
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+› Ask Codex to do anything
+
+  main · GPT-6.2-Sol high · Context 0% used · weekly 58% left
+  ← for agents · ? for shortcuts

@@ -1,0 +1,14 @@
+○ Thought for 50.1s (I'm checking wh...)
+● Ran (cd /Users/nmelo/Desktop/Proje...)
+● Explored 1 search (ctrl+o to expand)
+
+⚠ Individual quota reached. Please
+upgrade your subscription to increase
+your limits. Resets in 4h51m12s.
+Error ID: 03759e66-2a34-4878-a83d-
+8a10616f16b8-124
+
+─────────────────────────────────────────
+>
+─────────────────────────────────────────
+? for shortcuts

@@ -39,10 +39,12 @@ const (
 	activityByLiveness     = "liveness"
 )
 
-// codexWorkingPrefix is the normalized start of Codex's status line while it
+// codexWorkingRow recognizes both spinner phases at the start of Codex's status line while it
 // works: "• Working (2m 40s • esc to interrupt)". The "esc to interrupt" tail
 // is truncated at pane width in the capture, so only the head is relied on.
-const codexWorkingPrefix = "•working("
+func codexWorkingRow(n string) bool {
+	return strings.HasPrefix(n, "•working(") || strings.HasPrefix(n, "◦working(")
+}
 
 // codexComposerPrefix is Codex's composer chevron.
 const codexComposerPrefix = "›"
@@ -88,7 +90,7 @@ func codexScreenSignature(rows []string) (ActivityState, bool) {
 		if n == "" {
 			continue
 		}
-		if strings.HasPrefix(n, codexWorkingPrefix) {
+		if codexWorkingRow(n) {
 			return StateRunning, true
 		}
 		all.WriteString(n)
@@ -119,12 +121,4 @@ func codexScreenSignature(rows []string) (ActivityState, bool) {
 // predicate measured on one program must not be assumed for another.
 func paneUsesCodexScreenActivity(agentType string) bool {
 	return config.NormalizeAgentType(agentType) == config.AgentTypeCodex
-}
-
-// codexShouldQueueSubmit is THE decision both send sites make: a Codex pane
-// that is running gets its submit queued rather than injected mid-task. It
-// now follows the screen-derived state, so an idle Codex takes the direct
-// path (ini-lnnk AC5) instead of being permanently "busy".
-func codexShouldQueueSubmit(pane *Pane) bool {
-	return pane.AgentType() == config.AgentTypeCodex && pane.Activity() == StateRunning
 }

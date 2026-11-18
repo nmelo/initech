@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"runtime"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -152,67 +153,18 @@ func TestInjectText_CtrlS_StillSent(t *testing.T) {
 // keeps its direct PTY submit path but wraps the body in bracketed paste so
 // Codex does not classify the burst as non-bracketed pasted typing.
 func TestInjectText_NoBracketedPasteCodexUsesBracketedPaste(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping PTY test in short mode")
-	}
-	ptmx, tty, err := pty.Open()
-	if err != nil {
-		t.Fatalf("pty.Open: %v", err)
-	}
-	defer ptmx.Close()
-	defer tty.Close()
-
-	oldState, err := term.MakeRaw(int(tty.Fd()))
-	if err != nil {
-		t.Fatalf("MakeRaw: %v", err)
-	}
-	defer term.Restore(int(tty.Fd()), oldState)
-
-	emu := vt.NewSafeEmulator(80, 24)
-	_, _ = emu.Write([]byte(">\n"))
-	var emuMu sync.Mutex
-	var emuOutput []byte
-	go func() {
-		buf := make([]byte, 256)
-		for {
-			n, err := emu.Read(buf)
-			if n > 0 {
-				emuMu.Lock()
-				emuOutput = append(emuOutput, buf[:n]...)
-				emuMu.Unlock()
-				_, _ = ptmx.Write(buf[:n])
-			}
-			if err != nil {
-				return
-			}
+	sendBubble(t, func(t *testing.T) {
+		const body = "Read the captured Codex receipt"
+		idle := agentCapture(t, "local-codex-0170-idle")
+		app, p, f := agentCaptureRig(t, "codex", idle)
+		f.shows = strings.Replace(idle, "› Ask Codex to do anything", "› "+body, 1)
+		f.after = "› " + body + "\n\n" + idle
+		app.injectText(p, body, true, "")
+		got, _, _ := f.stream()
+		if got != string(bracketedBody(body))+"\r" {
+			t.Fatalf("PTY received %q", got)
 		}
-	}()
-
-	p := &Pane{
-		name:             "eng1",
-		emu:              emu,
-		alive:            true,
-		ptmx:             &filePty{ptmx},
-		noBracketedPaste: true,
-		agentType:        config.AgentTypeCodex,
-		activity:         StateIdle,
-		submitKey:        "enter",
-		lastOutputTime:   time.Now().Add(-(ptyIdleTimeout + time.Second)),
-	}
-	tui := &TUI{agentEvents: make(chan AgentEvent, 8)}
-
-	go tui.injectText(p, "hello", true, "")
-
-	got := readPTYUntil(t, tty, []byte("\x1b[200~hello\x1b[201~\r"), 2*time.Second)
-	if got != "\x1b[200~hello\x1b[201~\r" {
-		t.Fatalf("PTY received %q, want %q", got, "\x1b[200~hello\x1b[201~\r")
-	}
-
-	emuMu.Lock()
-	defer emuMu.Unlock()
-	if len(emuOutput) != 0 {
-		t.Fatalf("emulator output %q, want no emulator traffic for Codex raw inject", string(emuOutput))
-	}
+	})
 }
 
 // TestInjectText_DeadPane verifies that injectText returns quickly for dead panes.
@@ -248,66 +200,18 @@ func TestInjectText_DeadPane(t *testing.T) {
 // local Pane.SendText path used by IPC sends: Codex gets direct PTY bracketed
 // paste for the body plus a direct submit byte, with no emulator traffic.
 func TestPaneSendText_NoBracketedPasteCodexUsesBracketedPaste(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping PTY test in short mode")
-	}
-	ptmx, tty, err := pty.Open()
-	if err != nil {
-		t.Fatalf("pty.Open: %v", err)
-	}
-	defer ptmx.Close()
-	defer tty.Close()
-
-	oldState, err := term.MakeRaw(int(tty.Fd()))
-	if err != nil {
-		t.Fatalf("MakeRaw: %v", err)
-	}
-	defer term.Restore(int(tty.Fd()), oldState)
-
-	emu := vt.NewSafeEmulator(80, 24)
-	_, _ = emu.Write([]byte(">\n"))
-	var emuMu sync.Mutex
-	var emuOutput []byte
-	go func() {
-		buf := make([]byte, 256)
-		for {
-			n, err := emu.Read(buf)
-			if n > 0 {
-				emuMu.Lock()
-				emuOutput = append(emuOutput, buf[:n]...)
-				emuMu.Unlock()
-				_, _ = ptmx.Write(buf[:n])
-			}
-			if err != nil {
-				return
-			}
+	sendBubble(t, func(t *testing.T) {
+		const body = "Read the captured Codex receipt"
+		idle := agentCapture(t, "local-codex-0170-idle")
+		_, p, f := agentCaptureRig(t, "codex", idle)
+		f.shows = strings.Replace(idle, "› Ask Codex to do anything", "› "+body, 1)
+		f.after = "› " + body + "\n\n" + idle
+		p.SendText(body, true)
+		got, _, _ := f.stream()
+		if got != string(bracketedBody(body))+"\r" {
+			t.Fatalf("PTY received %q", got)
 		}
-	}()
-
-	p := &Pane{
-		name:             "eng1",
-		emu:              emu,
-		alive:            true,
-		ptmx:             &filePty{ptmx},
-		noBracketedPaste: true,
-		agentType:        config.AgentTypeCodex,
-		activity:         StateIdle,
-		submitKey:        "enter",
-		lastOutputTime:   time.Now().Add(-(ptyIdleTimeout + time.Second)),
-	}
-
-	go p.SendText("hello", true)
-
-	got := readPTYUntil(t, tty, []byte("\x1b[200~hello\x1b[201~\r"), 2*time.Second)
-	if got != "\x1b[200~hello\x1b[201~\r" {
-		t.Fatalf("PTY received %q, want %q", got, "\x1b[200~hello\x1b[201~\r")
-	}
-
-	emuMu.Lock()
-	defer emuMu.Unlock()
-	if len(emuOutput) != 0 {
-		t.Fatalf("emulator output %q, want no emulator traffic for Codex local raw send", string(emuOutput))
-	}
+	})
 }
 
 func TestPromptHasContent_CodexPromptGlyph(t *testing.T) {
@@ -320,67 +224,15 @@ func TestPromptHasContent_CodexPromptGlyph(t *testing.T) {
 	}
 }
 
-func TestPaneSendText_CodexQueuesWithTabWhileRunning(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("test uses Unix pipes")
-	}
-	ptmx, tty, err := pty.Open()
-	if err != nil {
-		t.Fatalf("pty.Open: %v", err)
-	}
-	defer ptmx.Close()
-	defer tty.Close()
-
-	oldState, err := term.MakeRaw(int(tty.Fd()))
-	if err != nil {
-		t.Fatalf("MakeRaw: %v", err)
-	}
-	defer term.Restore(int(tty.Fd()), oldState)
-
-	emu := vt.NewSafeEmulator(80, 24)
-	_, _ = emu.Write([]byte("›\n"))
-	var emuMu sync.Mutex
-	var emuOutput []byte
-	go func() {
-		buf := make([]byte, 256)
-		for {
-			n, err := emu.Read(buf)
-			if n > 0 {
-				emuMu.Lock()
-				emuOutput = append(emuOutput, buf[:n]...)
-				emuMu.Unlock()
-				_, _ = ptmx.Write(buf[:n])
-			}
-			if err != nil {
-				return
-			}
+func TestPaneSendText_CodexAfterHoldsTheBodyWhileRunning(t *testing.T) {
+	sendBubble(t, func(t *testing.T) {
+		_, p, f := agentCaptureRig(t, "codex", agentCapture(t, "local-codex-0170-busy"))
+		v := p.SendTextVerdictFrom("follow up", true, sendOrigin{After: true})
+		got, _, _ := f.stream()
+		if got != "" || v.Outcome != DeliveryHeld || p.QueueLen() != 1 {
+			t.Fatalf("PTY %q queue %d verdict %+v", got, p.QueueLen(), v)
 		}
-	}()
-
-	p := &Pane{
-		name:             "eng1",
-		emu:              emu,
-		alive:            true,
-		ptmx:             &filePty{ptmx},
-		noBracketedPaste: true,
-		agentType:        config.AgentTypeCodex,
-		submitKey:        "enter",
-		activity:         StateRunning,
-		lastOutputTime:   time.Now(),
-	}
-
-	go p.SendText("hello", true)
-
-	got := readPTYUntil(t, tty, []byte("\x1b[200~hello\x1b[201~\t"), 2*time.Second)
-	if got != "\x1b[200~hello\x1b[201~\t" {
-		t.Fatalf("PTY received %q, want %q", got, "\x1b[200~hello\x1b[201~\t")
-	}
-
-	emuMu.Lock()
-	defer emuMu.Unlock()
-	if len(emuOutput) != 0 {
-		t.Fatalf("emulator output %q, want no emulator traffic for Codex queued send", string(emuOutput))
-	}
+	})
 }
 
 func TestPaneSendText_NoBracketedPasteOpenCodeUsesLocalRawPath(t *testing.T) {

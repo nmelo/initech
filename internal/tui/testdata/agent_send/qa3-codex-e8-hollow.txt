@@ -1,0 +1,8 @@
+› MARK-1: also append MARK-1 to /tmp/iq-steer/cdx/log.txt with echo
+› MARK-2: also append MARK-2 to /tmp/iq-steer/cdx/log.txt with echo
+• Ran sleep 15; echo STEP-1 >> /tmp/iq-steer/cdx/log.txt
+  └ (no output)
+◦ Working (20s • esc to interrupt)
+› Ask Codex to do anything
+  GPT-6.2-Sol high · Context 4% used · weekly 46% left
+  ← for agents · ? for shortcuts

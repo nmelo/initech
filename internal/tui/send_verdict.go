@@ -23,13 +23,15 @@ const (
 	// confirm, and a message queued for a suspended agent that a wake
 	// delivers.
 	DeliveryDelivered = "delivered"
+	DeliverySteered   = "steered"
+	DeliveryQueued    = "queued" // Already typed into the agent’s native queue.
 	// DeliveryNotDelivered: our text is still in the box after the one
 	// resend, or was never written. Travels as an error.
 	DeliveryNotDelivered = "not_delivered"
 	// DeliveryUnconfirmed: the send could not tell either way.
 	DeliveryUnconfirmed = "unconfirmed"
-	// DeliveryUnchecked: an agent type with no composer to check (Codex,
-	// OpenCode, generic). Not a failure: nothing can be checked there.
+	// DeliveryUnchecked: an agent type with no composer to check (OpenCode,
+	// generic other than agy). Not a failure: nothing can be checked there.
 	DeliveryUnchecked = "unchecked"
 	// DeliveryDeferred: held behind an open dialog, delivered when it closes, or
 	// behind a pane that is not reading its input, delivered when it does.

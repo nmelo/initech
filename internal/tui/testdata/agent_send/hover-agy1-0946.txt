@@ -1,0 +1,33 @@
+
+      ▄▀▀▄
+     ▀▀▀▀▀▀
+    ▀▀▀▀▀▀▀▀
+   ▄▀▀    ▀▀▄
+  ▄▀▀      ▀▀▄
+
+  Antigravity CLI 1.5.11
+  aaaaaa@example.org (Google AI
+  Gemini 4 Carbon (High)
+  ~/Desktop/Projects/hover/agy1
+
+────────────────────────────
+> [from pm] Line plan queue: ○
+  hov-sooya (staff lowering
+  dialog "at least" count) is
+  the only ticket and the top.
+  lead3-dashboard checks the
+  plan.
+
+○ Thought for 1m 46s
+● Explored 3 files (CLAUDE...)
+● Ran (bd ready -l line:pl...)
+… 22 more actions (17 reads,
+5...
+● Ran (ls -la src/cmd/admi...)
+● Explored 6 file... (ctrl+o
+to expand)
+⣯  The test's incorrect beha...
+───────────────────────────────
+>
+───────────────────────────────
+esc to cancel

@@ -1,0 +1,15 @@
+
+      ▄▀▀▄        Antigravity CLI 1.5.11
+     ▀▀▀▀▀▀       aaaaaa@example.org (Google AI Ultra)
+    ▀▀▀▀▀▀▀▀      Gemini 4 Carbon (High)
+   ▄▀▀    ▀▀▄     /private/tmp/i8wn0-agy.fwvu1ey8/agy-seat
+  ▄▀▀      ▀▀▄
+
+
+ ┃ Introducing Gemini 4 Carbon
+ ┃ Our most advanced model yet!
+ ┃ esc to dismiss
+────────────────────────────────────────────────────────────────────────────────────────────────────────────
+> Auto mode: edits & safe commands auto-approved (shift+tab to cycle)
+────────────────────────────────────────────────────────────────────────────────────────────────────────────
+? for shortcuts                                                                auto · Gemini 4 Carbon · high

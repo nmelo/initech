@@ -21,6 +21,7 @@ import (
 // is not the main goroutine. A site inside a func literal counts as off main
 // only when the entry says so.
 var sendMuTakers = map[string]string{
+	"Pane.drainAgentQueue":          "off-main held-mail drain goroutine",
 	"Pane.deliverClean":             "the send path: IPC, forward and drain goroutines",
 	"Pane.FlushPaste":               "inside its own goroutine, never on the caller's",
 	"Pane.closeOffMain":             "inside the teardown goroutine",
@@ -302,8 +303,8 @@ func TestCensus_EveryMessageIsCleanedBeforeItIsTyped(t *testing.T) {
 		"sendPaneTextLocked": "Pane.deliverClean TUI.injectText",
 		// FlushPaste is the operator's own paste into the focused pane: their
 		// typing at the keyboard, not a message, and not cleaned.
-		"bracketedBody":  "Pane.FlushPaste sendPaneTextLocked",
-		"Pane.writeBody": "sendPaneTextLocked",
+		"bracketedBody":  "Pane.FlushPaste Pane.deliverClean Pane.typeAgentMessage sendPaneTextLocked",
+		"Pane.writeBody": "Pane.deliverClean Pane.typeAgentMessage sendPaneTextLocked",
 	}
 	for callee, w := range want {
 		var got []string
@@ -315,7 +316,7 @@ func TestCensus_EveryMessageIsCleanedBeforeItIsTyped(t *testing.T) {
 			t.Errorf("%s is called from %q, want %q: a message body reaches a child only through sendPaneTextLocked", callee, g, w)
 		}
 	}
-	for _, fn := range []string{"sendPaneTextLocked", "Pane.sendText"} {
+	for _, fn := range []string{"sendPaneTextLocked", "Pane.sendText", "Pane.typeAgentMessage"} {
 		if !callers["cleanMessage"][fn] {
 			t.Errorf("%s does not call cleanMessage", fn)
 		}

@@ -1,0 +1,28 @@
+  /model - choose what model and reasoning effort to use
+  /review - review any changes and find issues
+
+
+› Please request approval to create an empty file named receipt.txt in the current scratch directory with
+  touch. The sandbox is read-only. Use the shell tool and ask me before creating the file. This is a UI
+  test.
+
+
+• I’ll submit the shell approval request for touch receipt.txt in the current scratch directory.
+
+• Running touch receipt.txt
+
+
+  Would you like to run the following command?
+
+  Environment: local
+
+  Reason: May I run touch receipt.txt to create an empty file in the current scratch directory?
+
+  $ touch receipt.txt
+
+
+› 1. Yes, proceed (y)
+  2. Yes, and don't ask again for commands that start with `touch receipt.txt` (p)
+  3. No, and tell Codex what to do differently (esc)
+
+  Press enter to confirm or esc to cancel

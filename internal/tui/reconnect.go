@@ -139,11 +139,11 @@ type peerRun struct {
 // verdict rides the answer (ini-69fy). The deferral text is this TUI's own,
 // so a deferred answer carries the outcome with a plain deferral line.
 func (pm *peerManager) answerForwardSend(peerName string, req ControlResp) ControlResp {
-	if req.Action != "forward_send" || pm.onForwardSend == nil {
+	if (req.Action != "forward_send" && req.Action != "forward_send_after" && req.Action != "forward_withdraw") || pm.onForwardSend == nil {
 		return ControlResp{Error: "unknown action"}
 	}
 	LogInfo("remote", "forward_send request", "peer", peerName, "target", req.Target)
-	v, err := pm.onForwardSend(req.Target, req.Text, req.Enter, sendOrigin{From: req.From, Urgent: req.Urgent})
+	v, err := pm.onForwardSend(req.Target, req.Text, req.Enter, sendOrigin{From: req.From, Urgent: req.Urgent, After: req.Action == "forward_send_after", Withdraw: req.Action == "forward_withdraw"})
 	if err != nil {
 		return ControlResp{Error: err.Error()}
 	}

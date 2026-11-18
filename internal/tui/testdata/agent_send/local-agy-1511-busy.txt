@@ -1,0 +1,21 @@
+
+      ▄▀▀▄        Antigravity CLI 1.5.11
+     ▀▀▀▀▀▀       aaaaaa@example.org (Google AI Ultra)
+    ▀▀▀▀▀▀▀▀      Gemini 4 Carbon (High)
+   ▄▀▀    ▀▀▄     /private/tmp/i8wn0-agy.fwvu1ey8/agy-seat
+  ▄▀▀      ▀▀▄
+
+────────────────────────────────────────────────────────────
+> Reply with exactly Amber Receipt. Use no tools.
+
+▸ Thought for 9s, 123 tokens
+
+  Amber Receipt
+
+────────────────────────────────────────────────────────────
+> Reply with the word Violet and no other words. Use no tools.
+⣽  Working...
+────────────────────────────────────────────────────────────────────────────────────────────────────────────
+>
+────────────────────────────────────────────────────────────────────────────────────────────────────────────
+esc to cancel                                                                  auto · Gemini 4 Carbon · high

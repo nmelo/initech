@@ -1,0 +1,43 @@
+
+      ▄▀▀▄        Antigravity CLI 1.5.11
+     ▀▀▀▀▀▀       aaaaaa@example.org (Google AI Ultra)
+    ▀▀▀▀▀▀▀▀      Gemini 4 Carbon (High)
+   ▄▀▀    ▀▀▄     /private/tmp/i8wn0-agy.fwvu1ey8/agy-seat
+  ▄▀▀      ▀▀▄
+
+────────────────────────────────────────────────────────────
+> Reply with exactly Amber Receipt. Use no tools.
+
+▸ Thought for 9s, 123 tokens
+
+  Amber Receipt
+
+────────────────────────────────────────────────────────────
+> Reply with the word Violet and no other words. Use no tools.
+
+  Violet
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────
+>
+────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Switch Model
+
+  Search:
+          ────────────────────
+
+> Gemini 4 Carbon       (current)
+  Gemini 4 Argon
+  Gemini 4 Hydrogen
+  Orchestrator
+  Gemini 3.8 Flash
+  Claude Opus 5.5
+  Claude Sonnet 5.5
+  GPT-OSS 120B (Medium)
+
+  Effort  ◂        ●━━━━━━━━━━━━━━●━━━━━━━━━━━━━━◉        ▸
+                  low          medium          high
+            Deeper reasoning for complex problems — slower but stronger
+
+Keyboard: ↑/↓ Navigate  ←/→ Effort  enter Select  esc Go Back
+
+                                                                               auto · Gemini 4 Carbon · high

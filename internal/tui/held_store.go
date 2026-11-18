@@ -34,12 +34,14 @@ const (
 	heldKindDND       = "dnd"
 	heldKindSuspended = "suspended"
 	heldKindDialog    = "dialog"
+	heldKindAgent     = "agent"
 	heldStateHeld     = "held"
 	heldStateTyping   = "typing"
 )
 
 // heldEntry is one held message on disk.
 type heldEntry struct {
+	Receipt  string     `yaml:"receipt,omitempty"`
 	Pane     string     `yaml:"pane"`
 	Text     string     `yaml:"text"`
 	Enter    bool       `yaml:"enter"`
@@ -62,12 +64,14 @@ func heldKindOf(m QueuedMessage) string {
 		return heldKindDND
 	case m.HeldForDialog:
 		return heldKindDialog
+	case m.HeldForAgent:
+		return heldKindAgent
 	}
 	return heldKindSuspended
 }
 
 func heldEntryOf(pane string, m QueuedMessage, state string) heldEntry {
-	e := heldEntry{Pane: pane, Text: m.Text, Enter: m.Enter, Time: m.Time, Kind: heldKindOf(m), From: m.From, State: state}
+	e := heldEntry{Receipt: m.Receipt, Pane: pane, Text: m.Text, Enter: m.Enter, Time: m.Time, Kind: heldKindOf(m), From: m.From, State: state}
 	if !m.Released.IsZero() {
 		r := m.Released
 		e.Released = &r
@@ -114,7 +118,7 @@ func (p *Pane) setHeldHook(w *heldWriter) {
 		return
 	}
 	p.mu.Lock()
-	p.heldHook = func(p *Pane) { w.update(p, p.heldSnapshot()) }
+	p.heldHook = w.update
 	p.mu.Unlock()
 }
 
@@ -184,12 +188,13 @@ func newHeldWriter(root, name string) *heldWriter {
 }
 
 // update records one pane's held mail and rewrites the file.
-func (w *heldWriter) update(pane *Pane, entries []heldEntry) {
+func (w *heldWriter) update(pane *Pane) {
 	if w == nil {
 		return
 	}
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	entries := pane.heldSnapshot() // Sample under the writer lock so an older queued snapshot cannot undo a withdrawal.
 	if len(entries) == 0 {
 		delete(w.panes, pane)
 	} else {
@@ -368,10 +373,12 @@ func requeueHeld(entries []heldEntry, panes func(string) *Pane, now time.Time) [
 			lines = append(lines, heldLine{e.From, fmt.Sprintf("held message to %s since %s was not delivered: %s no longer exists", e.Pane, since, e.Pane)})
 			continue
 		}
-		m := QueuedMessage{Text: e.Text, Enter: e.Enter, Time: e.Time, From: e.From}
+		m := QueuedMessage{Receipt: e.Receipt, Text: e.Text, Enter: e.Enter, Time: e.Time, From: e.From}
 		switch e.Kind {
 		case heldKindDND:
 			m.DND, m.Released = true, now
+		case heldKindAgent:
+			m.HeldForAgent = true
 		case heldKindDialog:
 			m.HeldForDialog, m.Released = true, now
 		}

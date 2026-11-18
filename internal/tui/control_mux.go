@@ -104,7 +104,7 @@ func (m *ControlMux) Request(cmd ControlCmd) (ControlResp, error) {
 // requestWait is how long a request waits for its reply. A send is answered
 // only after delivery, which may first wait out the typing hold.
 func requestWait(action string) time.Duration {
-	if action == "send" || action == "forward_send" {
+	if action == "send" || action == "send_after" || action == "forward_send" || action == "forward_send_after" {
 		return sendReplyWait()
 	}
 	return 10 * time.Second

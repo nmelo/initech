@@ -1,0 +1,7 @@
+  Step 1 is running; waiting for it to finish before starting step 2.
+⣻  Loading...
+▸ MARK-A1: also append MARK-A1 to /tmp/iq-agy/ag/log.txt with echo (alt+m to send immediately)
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+>
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Press up to edit queued messages

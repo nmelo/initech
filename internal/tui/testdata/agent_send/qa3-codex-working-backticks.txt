@@ -1,0 +1,9 @@
+◦ Working (3m 08s • esc to interrupt) · 1 background terminal running · /ps to view · /stop to close
+• Queued follow-up inputs
+  ↳ STEER-A: right after your current step, run `echo STEER-A-RECEIVED >> /tmp/iq-steer/cdx/log.txt`, then continue the 12 steps.
+  ↳ STEER-E: after the last step, append STEER-E-RECEIVED to /tmp/iq-steer/cdx/log.txt with echo
+  ↳ STEER-G: also run `echo STEER-G-RECEIVED >> /tmp/iq-steer/cdx/log.txt` now
+    ⇧← edit last queued message
+› Ask Codex to do anything
+  main · GPT-6.2-Sol high · Context 3% used · weekly 51% left
+  ← for agents · ? for shortcuts

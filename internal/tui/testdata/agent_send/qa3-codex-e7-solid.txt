@@ -1,0 +1,8 @@
+  └ (no output)
+• Working (24s • esc to interrupt) · 1 background terminal running · /ps to view · /stop to close
+• Queued follow-up inputs
+  ↳ MARK-1: right after your current step, run `echo MARK-1 >> /tmp/iq-steer/cdx/log.txt`, then continue the 8 steps.
+    ⇧← edit last queued message
+› Ask Codex to do anything
+  main · GPT-6.2-Sol high · Context 4% used · weekly 46% left
+  ← for agents · ? for shortcuts

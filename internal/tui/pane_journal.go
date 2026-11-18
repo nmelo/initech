@@ -243,11 +243,22 @@ func (p *Pane) effectiveIdleTimeout() time.Duration {
 // park behind a pane whose writer stalled). A busy lock reads as "no
 // signature", which holds the last state for one tick.
 func (p *Pane) updateActivity() {
-	useSig := paneUsesCodexScreenActivity(p.agentType)
+	reader := p.agentReader()
+	useSig := reader != noAgentReader
 	sigState, sigOK := StateRunning, false
 	if useSig {
 		if rows, ok := tryScreenRows(p); ok {
-			sigState, sigOK = codexScreenSignature(rows)
+			f := reader.read(rows)
+			switch {
+			case f.dialog:
+				sigState, sigOK = StateWaitingInput, true
+			case f.busy:
+				sigState, sigOK = StateRunning, true
+			case f.box:
+				sigState, sigOK = StateIdle, true
+			case reader == codexReader:
+				sigState, sigOK = codexScreenSignature(rows)
+			}
 		}
 	}
 

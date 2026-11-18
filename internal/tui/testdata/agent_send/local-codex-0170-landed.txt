@@ -1,0 +1,28 @@
+› Run the harmless local command sleep 35, wait for it to finish, then reply Amber. This is a terminal UI …
+• Amber
+
+  Worked for 39s • 10:13 AM
+
+
+› Reply Blue after the current task, using no tools.
+
+
+• Blue
+
+  Worked for 2s • 10:13 AM
+
+
+› Reply Green after Blue, using no tools.
+
+
+• Green
+  └ Tip: NEW: Network proxy can now be enabled from /experimental. Restart Codex after enabling it.
+
+  Worked for 1s • 10:13 AM
+
+
+› Ask Codex to do anything
+
+  GPT-6.2-Sol high · Context 96% left · /private/tmp/i8wn0.qOacCihz/codex-seat · Context 4% used · weekly
+  63% left · 00000000-0000-0000-0000-000000000000
+  ← for agents · ? for shortcuts

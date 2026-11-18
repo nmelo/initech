@@ -36,8 +36,10 @@ const OperatorSender = operatorSender
 // initech did not say (older than part 4) -- unknown, and held like an
 // agent's. Urgent is send --urgent.
 type sendOrigin struct {
-	From   string
-	Urgent bool
+	After    bool // Hold until the working agent is idle.
+	Withdraw bool // A forwarded withdrawal never types its receipt.
+	From     string
+	Urgent   bool
 	// Waiting: a caller waits on this send's verdict and tells the sender
 	// itself (initech send), so a refusal before typing is said once, by the
 	// verdict, not also by a line (ini-w6kr).
@@ -286,13 +288,17 @@ func (p *Pane) endDND(now time.Time) (held int, was bool) {
 // (the ini-1898 re-hold rule).
 func (p *Pane) holdIfDND(text string, enter bool, from string) (SendVerdict, bool) {
 	defer p.heldChanged() // the held file follows every change (ini-8rkg)
+	native := 0
+	if p.agentReader() != noAgentReader && p.InDND() {
+		native = p.readAgentFrame().native
+	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if !p.dnd {
 		return SendVerdict{}, false
 	}
 	now := time.Now()
-	held := SendVerdict{Outcome: DeliveryHeld, Reason: dndHeldLine(p.name, now.Sub(p.dndSince), len(p.messageQueue))}
+	held := SendVerdict{Outcome: DeliveryHeld, Reason: dndHeldLine(p.name, now.Sub(p.dndSince), len(p.messageQueue)+native)}
 	if m := p.redelivering; m != nil && m.Text == text && m.Enter == enter {
 		p.redelivering = nil
 		p.messageQueue = append([]QueuedMessage{*m}, p.messageQueue...)
@@ -302,6 +308,10 @@ func (p *Pane) holdIfDND(text string, enter bool, from string) (SendVerdict, boo
 	if limit := p.queueLimitLocked(m); limit != "" {
 		LogInfo("dnd", "SEND NOT DELIVERED: do-not-disturb queue at its limit", "pane", p.name, "queued", len(p.messageQueue), "limit", limit)
 		return SendVerdict{Outcome: DeliveryNotDelivered, Reason: queueRefusal(p.name, limit, p.dndWhenLocked())}, true
+	}
+	if p.agentReader() != noAgentReader {
+		m.Receipt = newAgentReceipt()
+		held.Reason += " (receipt " + m.Receipt + ")"
 	}
 	p.messageQueue = append(p.messageQueue, m)
 	LogInfo("dnd", "held: do-not-disturb", "pane", p.name, "queued", len(p.messageQueue))

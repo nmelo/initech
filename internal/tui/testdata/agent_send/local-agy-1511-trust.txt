@@ -1,0 +1,13 @@
+Accessing workspace:
+
+/private/tmp/i8wn0-agy.fwvu1ey8/agy-seat
+
+Do you trust the contents of this project?
+
+Antigravity CLI requires permission to read, edit, and execute files here.
+
+> Yes, I trust this folder
+  No, exit
+
+  ↑/↓ Navigate · enter Confirm
+                                                                               auto · Gemini 4 Carbon · high

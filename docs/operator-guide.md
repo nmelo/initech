@@ -205,7 +205,7 @@ The top edge of every pane is a plain line in every state; nothing moves along i
 | `background` | `shells`, `monitors`, `tasks`: the background shells and monitors Claude Code counts under the input box, and the background agents it lists there. `0` when Claude shows its mode line with none, including a mode line cut off in a narrow pane while it shows its `(shift+tab to cycle)` hint, which Claude draws only when there is no background work; `null` when no mode line is on screen, or a count is cut off at the pane's edge. |
 | `banner` | The dialog open in the pane: `none`, `permission_prompt`, `trust_prompt`, `picker` (a question with options), `login`, or `unknown` (a dialog is open that initech does not recognise, which includes the usage-limit banner). |
 | `banner_age_sec` | How long the dialog has held the pane's messages; `null` when none is holding them. |
-| `queued_count` | Messages waiting for that dialog to close, or held for do-not-disturb. |
+| `queued_count` | Messages waiting for a dialog or do-not-disturb. For Codex and agy this includes all local holds plus the native queued items visible on screen. |
 | `background_age_sec` | The age of the oldest running background job, from its process start, when `state` is `background`; where the process tree is not read, how long the footer has shown the work; `null` otherwise. |
 | `account` | `user` and `model`: from the status line when it shows them, otherwise `user` from `cla`'s active account and `model` from the session transcript. |
 | `dnd` | `true` while the agent is in do-not-disturb, `false` when it is not; `null` for an agent another machine runs, or from an initech too old to report it. |
@@ -455,11 +455,11 @@ do-not-disturb` (exit 2).
 
 ### The held-mail limit
 
-An agent holds at most 500 messages, or 1 MiB of message text, whichever comes first, for every reason it holds mail together: do-not-disturb, suspended, a dialog open, a pane not reading its input. At the limit a new message is refused and nothing it holds is dropped: the sender gets one line, `not delivered to <agent>: <agent> is holding 500 messages (its limit); do not retry in a loop: send again after <when>` (or `1 MiB of messages`), and exit 1. `<when>` is `it resumes` for a suspended agent, `its dialog closes`, `it reads its input again`, or how its do-not-disturb ends. Nothing in initech retries a refused message. A send that wakes a suspended agent answers once the agent is up, `queued for <agent>, woken: delivered in order now that it is up (<N> ahead)` with exit 0, and the messages ahead of it, then it, are typed after the answer, so no send waits on the length of a queue.
+An agent holds at most 500 messages, or 1 MiB of message text, whichever comes first, across all local holds, including do-not-disturb, suspension, an open dialog, a pane that is not reading input, and messages sent with `--after`. At the limit a new message is refused and nothing it holds is dropped: the sender gets one line, `not delivered to <agent>: <agent> is holding 500 messages (its limit); do not retry in a loop: send again after <when>` (or `1 MiB of messages`), and exit 1. `<when>` is `it resumes` for a suspended agent, `its dialog closes`, `it reads its input again`, or how its do-not-disturb ends. Nothing in initech retries a refused message. A send that wakes a suspended agent answers once the agent is up, `queued for <agent>, woken: delivered in order now that it is up (<N> ahead)` with exit 0, and the messages ahead of it, then it, are typed after the answer, so no send waits on the length of a queue.
 
 ### Held mail across a restart
 
-A message told it is held (an agent in do-not-disturb, a suspended agent, an open dialog) survives a restart of window 1, an upgrade's stop and start, and a crash. Window 1 writes every held message to `.initech/held.yaml` (readable only by you, 0600) whenever a queue changes, and reads it back at start before it takes a new send: each message goes back to its agent in the order it arrived, ahead of anything new. Do-not-disturb does not survive the restart, so its messages are delivered as `initech dnd off` delivers them; a suspended agent's messages wait for its wake; dialog messages wait for the dialog, their ten minutes counted from the restart. `initech serve` keeps its own file, `.initech/held-serve.yaml`. The log names counts and agents, never a message's words.
+A held message, including a Codex or agy message held with `--after`, survives a restart of window 1, an upgrade's stop and start, and a crash. Window 1 writes every held message to `.initech/held.yaml` (readable only by you, 0600) whenever a queue changes, and reads it back at start before it takes a new send: each message goes back to its agent in the order it arrived, ahead of anything new. Do-not-disturb does not survive the restart, so its messages are delivered as `initech dnd off` delivers them; a suspended agent's messages wait for its wake; dialog messages wait for the dialog, their ten minutes counted from the restart. `initech serve` keeps its own file, `.initech/held-serve.yaml`. The log names counts and agents, never a message's words.
 
 When initech cannot keep a message it says so, never silently. A message that was being typed when initech stopped is not typed again; its sender gets `[from initech] the message to <agent> held since <time> may or may not have arrived`. A message to an agent that no longer exists: `held message to <agent> since <time> was not delivered: <agent> no longer exists`. More held for one agent than the held-mail limit takes: the oldest are kept and the sender of each other one is told `held message to <agent> since <time> was not delivered: <agent> is holding 500 messages (its limit); do not retry in a loop: send again after it has typed what it holds` (or `1 MiB of messages`). A held file that does not parse is renamed to `held.yaml.bad-<time>`, never deleted, and super is told. If the file cannot be written (disk full, permissions), the log says so once, and when window 1 exits it prints one line per agent with held mail, its count and senders, that could not be kept. Lines owed to an agent go to its pane through the send path; yours appear as a notice in window 1; anyone else's go to super. An older initech does not read the file: after a downgrade, held mail is lost as it was before, and the file waits for the next newer start.
 ### Schedules
@@ -595,15 +595,13 @@ Recovery: `initech send <agent> "You were working on <bead-id>. Run bd show <bea
 
 ### Messages Not Arriving
 
-`initech send` waits until initech has seen what became of the message, about two seconds at most
-for an agent at its prompt, then prints one line and exits with its status:
+`initech send` waits until initech has seen what became of the message, usually within two seconds for an agent at its prompt. Codex can take about three seconds when it waits for a draft and retries Enter. It then prints one line and exits with its status:
 
 - `delivered to <agent>` (exit 0): the message was seen in the agent's input box and the box cleared.
   In a short pane, where Claude Code scrolls a long message inside the box and the box's bottom edge
   falls below the pane, the end of the message still in view counts as seen.
-  A `--no-enter` send submits nothing and also reads delivered, as does a send that woke a suspended agent.
-- `not delivered to <agent>: <reason>` (exit 1): the message is still in the box after the Enter and
-  the one resend, or could not be typed at all.
+  A `--no-enter` send submits nothing and also reads delivered. A send that wakes a Codex or agy pane stays held until the input box is ready.
+- `not delivered to <agent>: <reason>` (exit 1): the message could not be typed, or the submitted text remains in the composer. Claude and Codex may retry Enter once while the original draft is still visible.
 - `not delivered to <agent>: a slash command of <n> characters would paste, not run; Claude takes a
   command of at most 800` or `not delivered to <agent>: a slash command of <n> lines would paste, not
   run; Claude takes a command of at most 3 lines` (exit 1): Claude Code collapses a message longer
@@ -637,10 +635,17 @@ for an agent at its prompt, then prints one line and exits with its status:
   only the log has it. A running initech older than the command answers with `older initech
   running; restart it for delivery verdicts`; an agent on a machine running an older initech, with
   `older initech on <host>`.
-- `sent to <agent>, unconfirmed: no delivery check for this agent type` (exit 0): Codex, OpenCode and
-  generic agents have no input box initech can read, so nothing is checked.
+- Claude Code, Codex, and generic panes launched with the `agy` executable have delivery checks. When a role omits `agent_type`, the `codex` and `agy` executables select their own readers. Initech checks for the pasted text in the composer before pressing Enter. A new user message above the emptied composer confirms delivery. If the proof is incomplete, the send exits 2 and saves the screen beside the log.
+- A send to a working Codex pane steers by default. `steered into <agent>'s running task` means the text appeared in the running turn. If Codex queued it, the sender sees `queued by <agent> behind its running task, N ahead`. Both exit 0. Codex receives Enter for submission and for a retry while the draft remains visible.
+- A working agy pane takes a message at its next task step. Initech pastes the whole body and sends Enter, including for a multi-line message. When the pane shows the new native item, `queued by <agent>: runs at the next step of its running task, N ahead` exits 0. An unreadable or occupied composer during a running task can refuse the send before typing.
+- Use `initech send <agent> --after <text>` to wait for an idle Codex or agy pane. A busy hold prints `held for <agent>: queued behind a running task, N ahead (receipt <id>)` and exits 0. The count includes visible native follow-ups and earlier Initech holds. Do-not-disturb also holds mail. A dialog prints `held: <agent> is at a dialog (<name>)` with the queue position and receipt. Held messages survive restart and enter the composer in arrival order. A wake, a draft or an unreadable screen waits for a usable composer.
+- Use `initech send <agent> --withdraw <id>` to remove your held message before typing begins. Success prints `withdrawn: <id>` and exits 0. A missing, already typed, or other sender’s receipt exits 1. Anyone holding the receipt for mail with no recorded sender can withdraw it. Inputs already in the agent’s native queue have been typed. The version 1 held-mail file stores the receipt with each new hold and can still release older entries without receipts.
+- OpenCode and generic commands other than agy answer `sent to <agent>, unconfirmed: no delivery check for this agent type` and exit 0.
+
 - `deferred to <agent> — target has a modal open; will deliver when it closes` (exit 0): see the dialog
   bullet below.
+
+When checking a release that changes screen reading, compare every live Codex and agy pane with its state in `initech status --json` and the agents list. A Codex native follow-up contributes to the displayed queue count.
 
 Before a message is typed, initech removes from it everything that could act as keys: ESC and every
 control character other than tab and newline (a carriage return inside the message among them), DEL,

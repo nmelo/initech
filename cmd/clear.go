@@ -69,7 +69,17 @@ func runClear(cmd *cobra.Command, args []string) error {
 			errs++
 			continue
 		}
-		fmt.Fprintf(out, "Cleared %s.\n", name)
+		switch resp.Delivery {
+		case tui.DeliverySteered:
+			fmt.Fprintf(out, "steered into %s's running task\n", name)
+		case tui.DeliveryHeld, tui.DeliveryDeferred, tui.DeliveryQueued:
+			fmt.Fprintln(out, resp.Data)
+		case tui.DeliveryUnconfirmed:
+			fmt.Fprintln(cmd.ErrOrStderr(), unconfirmedSend(name, resp.Data))
+			errs++
+		default:
+			fmt.Fprintf(out, "Cleared %s.\n", name)
+		}
 	}
 	if errs > 0 {
 		return fmt.Errorf("%d agent(s) could not be cleared", errs)

@@ -1,0 +1,15 @@
+
+      ▄▀▀▄        Antigravity CLI 1.5.11
+     ▀▀▀▀▀▀       aaaaaa@example.org
+    ▀▀▀▀▀▀▀▀      Gemini 4 Carbon (High)
+   ▄▀▀    ▀▀▄     /private/tmp/i8wn0-agy.fwvu1ey8/agy-seat
+  ▄▀▀      ▀▀▄
+
+────────────────────────────────────────────────────────────
+> Use the shell to run sleep 35 and wait for it to finish. Then reply exactly Amber.
+⣟  Generating...
+▸ Please remember the first marker....
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+>
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Press up to edit queued messages                                                                 auto · Gemini 4 Carbon · high

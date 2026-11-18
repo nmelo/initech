@@ -451,13 +451,15 @@ const maxMessageQueue = 500
 // QueuedMessage is a message waiting to be delivered to a suspended pane.
 // On resume, the queue is drained in FIFO order via injectText.
 type QueuedMessage struct {
-	Text  string
-	Enter bool
-	Time  time.Time
+	Receipt string
+	Text    string
+	Enter   bool
+	Time    time.Time
 	// HeldForDialog marks a message deferred because a dialog was open
 	// (ini-7txh), as opposed to mail queued for a suspended pane. Only held
 	// messages are subject to heldMessageDeadline (ini-1898).
 	HeldForDialog bool
+	HeldForAgent  bool
 	// DND marks a message held because the pane was in do-not-disturb
 	// (ini-x432), and Released is when dnd off let it go: from then on it
 	// waits for a dialog like held mail, its deadline counted from Released.
@@ -608,7 +610,11 @@ func (p *Pane) maybeDrainModalQueue() {
 	if p.QueueLen() == 0 || p.InDND() {
 		return // nothing to drain, or do-not-disturb holds it (ini-x432).
 	}
-	if paneHasModal(p) {
+	if p.agentReader() != noAgentReader {
+		if !p.readAgentFrame().free() || p.dialogLatched() {
+			return
+		}
+	} else if paneHasModal(p) {
 		return // still blocked; wait for the modal to close.
 	}
 	p.startModalDrain()
@@ -647,6 +653,10 @@ func (p *Pane) startModalDrain() {
 // messages are safely re-enqueued rather than injected into the picker.
 // Messages are spaced by queueDrainInterval to give the agent time to process.
 func (p *Pane) drainModalQueue() {
+	if p.agentReader() != noAgentReader {
+		p.drainAgentQueue()
+		return
+	}
 	if paneHasModal(p) {
 		return // a modal reopened before the drain ran; leave the queue intact.
 	}
@@ -779,6 +789,11 @@ func (t *TUI) resumePaneDrain(pane *Pane, senderName string, asyncDrain bool) er
 		msgs := pane.DrainQueue()
 		LogInfo("resource", "resume trigger held a replaced pane; handing its mail to the live pane",
 			"agent", agentName, "trigger", senderName, "queued_msgs", len(msgs))
+		if current.agentReader() != noAgentReader {
+			giveQueueToRestartedPane(current, msgs)
+			current.maybeDrainModalQueue()
+			return nil
+		}
 		for i, m := range msgs {
 			// SendText delivers if the live pane is up, or queues and
 			// re-triggers (on its own goroutine, which waits on this same
@@ -899,7 +914,12 @@ func (t *TUI) resumePaneDrain(pane *Pane, senderName string, asyncDrain bool) er
 				// pane holds them in hand (the held file keeps them) until
 				// each is typed (ini-8rkg).
 				msgs = pane.DrainQueue()
-				np.typeInHand(msgs)
+				if np.agentReader() != noAgentReader {
+					giveQueueToRestartedPane(np, msgs)
+					msgs = nil
+				} else {
+					np.typeInHand(msgs)
+				}
 				break
 			}
 		}
@@ -976,6 +996,9 @@ func (t *TUI) resumePaneDrain(pane *Pane, senderName string, asyncDrain bool) er
 	// original darwin loss -- live-measured 2/2 on the operator's fleet --
 	// is what this closes.
 	deliver := func() {
+		if np.agentReader() != noAgentReader {
+			np.maybeDrainModalQueue()
+		}
 		// The quiescence wait is part of the delivery, so an async drain's
 		// sender is not held by it either (ini-pt3j).
 		if len(msgs) > 0 && sawOutput {

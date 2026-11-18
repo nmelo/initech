@@ -29,7 +29,6 @@ import (
 const (
 	prodRawSubmitDelay            = 200 * time.Millisecond
 	prodBracketedPasteSubmitDelay = 500 * time.Millisecond
-	codexBracketedSubmitDelay     = 200 * time.Millisecond
 )
 
 // submitDelaySetting is a submit wait read atomically on every send. The
@@ -76,7 +75,9 @@ type IPCRequest struct {
 }
 
 // origin is who sent req, as its initech stamped it.
-func (req IPCRequest) origin() sendOrigin { return sendOrigin{From: req.From, Urgent: req.Urgent} }
+func (req IPCRequest) origin() sendOrigin {
+	return sendOrigin{From: req.From, Urgent: req.Urgent, After: req.Action == "send_after"}
+}
 
 // IPCResponse is the JSON structure returned by the TUI socket.
 type IPCResponse struct {
@@ -227,6 +228,9 @@ func (t *TUI) allPanesWithViews() ([]PaneInfo, []PaneView, bool) {
 			if panes[i].DNDAgeSec != nil {
 				panes[i].QueuedCount = p.(*Pane).QueuedMessageCount()
 			}
+			if lp, ok := p.(*Pane); ok && lp.agentReader() != noAgentReader {
+				panes[i].QueuedCount = lp.QueuedMessageCount() + lp.readAgentFrame().native
+			}
 			panes[i].IdleSec = idleSecOf(p, time.Now())
 		}
 	})
@@ -368,15 +372,33 @@ func (t *TUI) handleIPCSend(conn net.Conn, req IPCRequest) {
 		}
 	}
 
+	if req.Action == "withdraw" {
+		pv, ok := t.FindPaneView(req.Target)
+		if !ok || pv == nil {
+			writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("agent %q not found", req.Target)})
+			return
+		}
+		if rp, ok := pv.(*RemotePane); ok {
+			t.sendViaRemote(conn, rp, req)
+			return
+		}
+		if lp, ok := pv.(*Pane); ok {
+			writeIPCResponse(conn, lp.receiptReply(req.Text, req.From))
+			return
+		}
+		writeIPCResponse(conn, IPCResponse{Error: "target cannot withdraw mail"})
+		return
+	}
 	// Look up the pane. The suspended-pane path needs *Pane for EnqueueMessage
 	// and resumePane; the normal path uses PaneView.SendText.
 	var pv PaneView
 	var concretePane *Pane
 	var queued bool
 	var queueRefused string // the cap's refusal for a suspended pane (ini-pt3j)
+	var wakeVerdict SendVerdict
 	var queuedAhead int
 	var notRunning error
-	var slashRefusal string
+	var preflightRefusal string
 	if !t.runOnMain(func() {
 		pv = t.findPaneByName(req.Target)
 		if pv == nil {
@@ -386,12 +408,16 @@ func (t *TUI) handleIPCSend(conn net.Conn, req IPCRequest) {
 		// queue below, which would otherwise keep it and paste it on wake
 		// (ini-hoy). sendText refuses it for every other path.
 		if lp, ok := pv.(*Pane); ok {
-			if slashRefusal = slashPasteRefusal(lp.AgentType(), req.Text); slashRefusal != "" {
+			if req.origin().After && lp.agentReader() == noAgentReader {
+				preflightRefusal = "--after requires a Codex or agy pane"
+				return
+			}
+			if preflightRefusal = slashPasteRefusal(lp.AgentType(), req.Text); preflightRefusal != "" {
 				return
 			}
 			// A body of only control characters is refused here too, before
 			// the suspended queue would keep it (ini-47vy).
-			if slashRefusal = onlyControlsRefusal(req.Text); slashRefusal != "" {
+			if preflightRefusal = onlyControlsRefusal(req.Text); preflightRefusal != "" {
 				return
 			}
 		}
@@ -404,7 +430,10 @@ func (t *TUI) handleIPCSend(conn net.Conn, req IPCRequest) {
 		}
 		if lp, ok := pv.(*Pane); ok && lp.suspended {
 			concretePane = lp
-			if queueRefused = lp.enqueueOrRefuse(QueuedMessage{Text: req.Text, Enter: req.Enter, Time: time.Now(), From: req.origin().From}, sendAgainWhenResumes); queueRefused == "" {
+			wakeVerdict = lp.queueForWake(req.Text, req.Enter, req.origin().From)
+			if wakeVerdict.Outcome == DeliveryNotDelivered {
+				queueRefused = wakeVerdict.Reason
+			} else {
 				queued = true
 				queuedAhead = lp.QueuedMessageCount() - 1
 			}
@@ -424,9 +453,9 @@ func (t *TUI) handleIPCSend(conn net.Conn, req IPCRequest) {
 		t.sendViaRemote(conn, rp, req)
 		return
 	}
-	if slashRefusal != "" {
-		LogInfo("ipc", "SEND NOT DELIVERED", "target", req.Target, "reason", slashRefusal)
-		writeIPCResponse(conn, verdictIPCResponse(req.Target, SendVerdict{Outcome: DeliveryNotDelivered, Reason: slashRefusal}, ""))
+	if preflightRefusal != "" {
+		LogInfo("ipc", "SEND NOT DELIVERED", "target", req.Target, "reason", preflightRefusal)
+		writeIPCResponse(conn, verdictIPCResponse(req.Target, SendVerdict{Outcome: DeliveryNotDelivered, Reason: preflightRefusal}, ""))
 		return
 	}
 	if notRunning != nil {
@@ -448,13 +477,21 @@ func (t *TUI) handleIPCSend(conn net.Conn, req IPCRequest) {
 				// Held, not lost (ini-49q): the message is on the pane's
 				// queue, and the gate's clearing wakes it and delivers.
 				LogInfo("ipc", "send held at the machine ceiling", "target", req.Target)
-				writeIPCResponse(conn, IPCResponse{OK: true, Data: CeilingDeferral, Delivery: DeliveryDeferred})
+				if wakeVerdict.Outcome == DeliveryHeld {
+					wakeVerdict.Reason += "; " + CeilingDeferral
+					writeIPCResponse(conn, verdictIPCResponse(req.Target, wakeVerdict, ""))
+				} else {
+					writeIPCResponse(conn, IPCResponse{OK: true, Data: CeilingDeferral, Delivery: DeliveryDeferred})
+				}
 				return
 			}
 			writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("resume failed: %v", err)})
 			return
 		}
 		reply := resumedSendReply(req.Target, queuedAhead)
+		if wakeVerdict.Outcome == DeliveryHeld {
+			reply = verdictIPCResponse(req.Target, wakeVerdict, "")
+		}
 		_, reply.Removed = cleanMessage(req.Text)
 		writeIPCResponse(conn, reply)
 		return
@@ -582,6 +619,9 @@ func sendPaneTextLocked(pane *Pane, text string, enter bool) SendVerdict {
 	// that refuse a body of only control characters first (the census holds
 	// the callers to those two).
 	text, _ = cleanMessage(text)
+	if pane.agentReader() != noAgentReader {
+		return pane.agentSendLocked(text, enter)
+	}
 
 	// Modal guard (ini-7txh): never paste a body or fire a submit into an open
 	// Claude Code modal (AskUserQuestion / permission prompt). An option picker
@@ -653,14 +693,9 @@ func sendPaneTextLocked(pane *Pane, text string, enter bool) SendVerdict {
 	// A withheld submit gets its fate before this send touches the composer.
 	pane.settlePendingSubmit()
 
-	useCodexBracketedPaste := pane.noBracketedPaste && pane.AgentType() == config.AgentTypeCodex
-	codexQueueSubmit := codexShouldQueueSubmit(pane)
 	mode := "bracketed"
 	if pane.noBracketedPaste {
 		mode = "raw"
-	}
-	if useCodexBracketedPaste {
-		mode = "codex-bracketed"
 	}
 	LogDebug("inject", "send start", "pane", pane.Name(), "agent_type", pane.AgentType(), "mode", mode, "bytes", len(text), "enter", enter)
 	// Stash any partially typed input before injecting so that the incoming
@@ -679,11 +714,9 @@ func sendPaneTextLocked(pane *Pane, text string, enter bool) SendVerdict {
 	//
 	// ONLY INTO A TERMINAL IN RAW MODE (ini-933): read at this moment, see
 	// stash_mode.go. In cooked mode the byte is XOFF and freezes the pane.
-	stashed := false
 	if !pane.noBracketedPaste && enter && pane.stashKeyAllowed() {
 		pane.emu.SendKey(uv.KeyPressEvent(uv.Key{Code: 's', Mod: uv.ModCtrl}))
 		time.Sleep(75 * time.Millisecond)
-		stashed = true
 	}
 
 	// Belt baseline (ini-zjhg), sampled AFTER the stash because the stash is
@@ -706,9 +739,7 @@ func sendPaneTextLocked(pane *Pane, text string, enter bool) SendVerdict {
 	tailBefore, hasComposer := composerTail(pane)
 
 	var wrote childWrite
-	if useCodexBracketedPaste {
-		wrote = pane.writeBody(bracketedBody(text), mode)
-	} else if pane.noBracketedPaste {
+	if pane.noBracketedPaste {
 		// Direct PTY write for text bytes, but route Enter through the emulator.
 		// The raw text path avoids the emulator's key-to-byte translation for the
 		// message body, which Codex can misinterpret. For the final submit key we
@@ -754,24 +785,6 @@ func sendPaneTextLocked(pane *Pane, text string, enter bool) SendVerdict {
 			withholdSubmit(pane, text, mode, tailBefore, lastTail)
 			return SendVerdict{Outcome: DeliveryUnconfirmed, Reason: withheldVerdictReason}
 		}
-	}
-
-	if useCodexBracketedPaste {
-		time.Sleep(codexBracketedSubmitDelay)
-		method := sendCodexSubmit(pane, codexQueueSubmit)
-		LogDebug("inject", "submit", "pane", pane.Name(), "mode", mode, "method", method, "delay_ms", codexBracketedSubmitDelay.Milliseconds())
-		LogInfo("inject", "submit sent, unconfirmed", "pane", pane.Name(), "mode", mode, "why", "no composer check for this agent type")
-		if pane.IsAlive() && !stashed {
-			// Retry only when no stash was active. After a stash, Claude Code
-			// auto-restores the stashed text into the prompt, making
-			// promptHasContent a false positive (ini-vxw).
-			time.Sleep(bracketedPasteSubmitDelay.Get())
-			if promptHasContent(pane) {
-				method = sendCodexSubmit(pane, codexQueueSubmit)
-				LogDebug("inject", "submit retry", "pane", pane.Name(), "mode", mode, "method", method)
-			}
-		}
-		return SendVerdict{Outcome: DeliveryUnchecked, Reason: uncheckedVerdictReason}
 	}
 
 	if pane.noBracketedPaste {
@@ -1505,15 +1518,15 @@ func (t *TUI) injectText(pane *Pane, text string, enter bool, from string) {
 // BEFORE acquiring sendMu. This prevents the up-to-10s poll from blocking
 // concurrent sends on other goroutines that share the same pane mutex.
 func waitForCodexReadyIfNeeded(pane *Pane) {
+	if pane.agentReader() != noAgentReader {
+		return
+	}
 	if !pane.hasPTY() {
 		return
 	}
-	codexQueueSubmit := codexShouldQueueSubmit(pane)
-	if config.IsCodexLikeAgentType(pane.AgentType()) && !codexQueueSubmit {
+	if config.IsCodexLikeAgentType(pane.AgentType()) {
 		ready := pane.waitForCodexReady(codexReadyTimeout)
-		LogDebug("inject", "codex ready wait", "pane", pane.Name(), "ready", ready, "timeout_ms", codexReadyTimeout.Milliseconds())
-	} else if codexQueueSubmit {
-		LogDebug("inject", "codex queueing while running", "pane", pane.Name())
+		LogDebug("inject", "ready wait", "pane", pane.Name(), "ready", ready)
 	}
 }
 
@@ -1753,18 +1766,6 @@ func endStuckSend(pane *Pane, text string, enter bool, wrote childWrite) SendVer
 	return SendVerdict{Outcome: DeliveryUnconfirmed, Reason: stoppedReadingVerdictReason}
 }
 
-func sendCodexSubmit(pane *Pane, queue bool) string {
-	if queue {
-		pane.writeInput([]byte("\t"))
-		return "pty-tab"
-	}
-	if pane.submitKey != "ctrl+enter" {
-		pane.writeInput([]byte("\r"))
-		return "pty-enter"
-	}
-	sendSubmitKey(pane.emu, pane.submitKey)
-	return "emulator-ctrl+enter"
-}
 func (t *TUI) handleIPCPatrol(conn net.Conn, req IPCRequest) {
 	lines := req.Lines
 	if lines <= 0 {
@@ -2154,7 +2155,11 @@ func (t *TUI) forwardSendToRemote(conn net.Conn, req IPCRequest) {
 // never delivered. Its deferral still reads as one (ini-ei8l).
 func (t *TUI) sendViaRemote(conn net.Conn, rp *RemotePane, req IPCRequest) {
 	name := rp.Host() + ":" + rp.Name()
-	resp, err := rp.Request(ControlCmd{Action: "send", Text: req.Text, Enter: req.Enter, From: req.From, Urgent: req.Urgent})
+	action := req.Action
+	if action == "" {
+		action = "send"
+	}
+	resp, err := rp.Request(ControlCmd{Action: action, Text: req.Text, Enter: req.Enter, From: req.From, Urgent: req.Urgent})
 	if reason := peerFailure(resp, err); reason != "" {
 		writeIPCResponse(conn, IPCResponse{Error: fmt.Sprintf("not delivered to %s: %s", name, reason), Delivery: resp.Delivery, Data: resp.Error})
 		return

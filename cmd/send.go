@@ -19,7 +19,7 @@ import (
 )
 
 var sendCmd = &cobra.Command{
-	Use:   "send [host:]<agent> <text> | --stdin | -f <file>",
+	Use:   "send [host:]<agent> [--after] <text> | --stdin | -f <file> | --withdraw <receipt>",
 	Short: "Send text to an agent's terminal",
 	Long: `Injects text into the specified agent's PTY. By default appends Enter
 to execute the text as a command. Use --no-enter to send text without Enter.
@@ -38,7 +38,8 @@ The body from --stdin or -f is delivered byte-for-byte; the shell never
 re-evaluates it.
 
 Delivered means the message was seen in the agent's input box and taken.
-send waits for that (about two seconds), prints one line and exits with:
+send waits for that (usually within two seconds, up to about three when Codex
+needs a retry), prints one line and exits with:
 
   0  delivered to <agent>
   1  not delivered to <agent>: <reason>
@@ -47,7 +48,14 @@ send waits for that (about two seconds), prints one line and exits with:
      than run as a command, so it is refused before anything is typed)
   2  could not confirm delivery to <agent>: <reason>; peek the pane
   0  sent to <agent>, unconfirmed: no delivery check for this agent type
-     (Codex, OpenCode and generic agents)
+     (OpenCode and generic commands other than agy)
+  0  steered into <agent>'s running task
+  0  queued by <agent> behind its running task, N ahead (Codex)
+  0  queued by <agent>: runs at the next step of its running task, N ahead (agy)
+  0  held for <agent>: queued behind a running task, N ahead (receipt <id>)
+     (--after waits for an idle Codex or agy pane)
+  0  held: <agent> is at a dialog (<name>), N ahead (receipt <id>)
+  0  withdrawn: <id> (send <agent> --withdraw <id> before typing starts)
   0  deferred to <agent> (a dialog is open, or the pane is not reading its input;
      delivered when it closes or reads again)
   0  deferred to <agent> — the Mac is at its ceiling; will wake and deliver when
@@ -94,13 +102,17 @@ Requires a running initech TUI (connects via INITECH_SOCKET).`,
 }
 
 var (
-	sendNoEnter bool
-	sendUrgent  bool
-	sendStdin   bool
-	sendFile    string
+	sendAfter    bool
+	sendWithdraw string
+	sendNoEnter  bool
+	sendUrgent   bool
+	sendStdin    bool
+	sendFile     string
 )
 
 func init() {
+	sendCmd.Flags().BoolVar(&sendAfter, "after", false, "Hold for a working agent until it is idle")
+	sendCmd.Flags().StringVar(&sendWithdraw, "withdraw", "", "Withdraw a held message by its receipt before it is typed")
 	sendCmd.Flags().BoolVar(&sendNoEnter, "no-enter", false, "Don't append Enter after the text")
 	sendCmd.Flags().BoolVar(&sendUrgent, "urgent", false, "From super only: deliver now even if the agent is in do-not-disturb (logged)")
 	sendCmd.Flags().BoolVar(&sendStdin, "stdin", false, "Read the message body from stdin (shell-safe: no command substitution)")
@@ -140,6 +152,8 @@ var allowDevDelivery bool
 var deliveryEffectActions = map[string]bool{
 	"post":          true,
 	"post_withdraw": true,
+	"withdraw":      true,
+	"send_after":    true,
 	"send":          true,
 	"restart":       true,
 	"stop":          true,
@@ -203,11 +217,6 @@ var isRunningUnderGoTest = testing.Testing
 func runSend(cmd *cobra.Command, args []string) error {
 	target := args[0]
 
-	text, err := resolveSendBody(cmd, args)
-	if err != nil {
-		return err
-	}
-
 	// Parse host:agent format for cross-machine routing.
 	var host string
 	if idx := strings.Index(target, ":"); idx >= 0 {
@@ -215,10 +224,40 @@ func runSend(cmd *cobra.Command, args []string) error {
 		target = target[idx+1:]
 	}
 
+	if cmd.Flags().Changed("withdraw") {
+		cmd.SilenceUsage, cmd.SilenceErrors = true, true
+		if len(args) != 1 || sendAfter || cmd.Flags().Changed("stdin") || cmd.Flags().Changed("file") || cmd.Flags().Changed("urgent") || cmd.Flags().Changed("no-enter") {
+			return fmt.Errorf("--withdraw takes only the target and receipt")
+		}
+		if strings.TrimSpace(sendWithdraw) == "" {
+			return fmt.Errorf("a withdrawal receipt is required")
+		}
+		resp, err := ipcCall(tui.IPCRequest{Action: "withdraw", Target: target, Host: host, Text: sendWithdraw})
+		if err != nil {
+			return err
+		}
+		if !resp.OK {
+			return errors.New(resp.Error)
+		}
+		if resp.Data != "withdrawn: "+sendWithdraw {
+			return errors.New("the peer did not confirm withdrawal")
+		}
+		fmt.Fprintln(cmd.ErrOrStderr(), resp.Data)
+		return nil
+	}
+	text, err := resolveSendBody(cmd, args)
+	if err != nil {
+		return err
+	}
 	// From here a failure is the send's answer, printed once as its own
 	// line: not a usage error, and not prefixed "Error:" (ini-69fy).
 	cmd.SilenceUsage, cmd.SilenceErrors = true, true
-	return deliverText(cmd.ErrOrStderr(), target, host, text, !sendNoEnter, sendUrgent)
+	action := "send"
+	if sendAfter {
+		action = "send_after"
+	}
+	_, err = deliverRequestVia(cmd.ErrOrStderr(), ipcCall, tui.IPCRequest{Action: action, Target: target, Host: host, Text: text, Enter: !sendNoEnter, Urgent: sendUrgent})
+	return err
 }
 
 // exitUnconfirmed is initech send's exit status when it could not confirm
@@ -268,7 +307,7 @@ func deliverTextVerdict(w io.Writer, target, host, text string, enter, urgent bo
 // service sends as the operator to one rig's socket through it, with the
 // command's own lines.
 func deliverTextVia(w io.Writer, call ipcCaller, target, host, text string, enter, urgent bool, from string) (string, error) {
-	req := tui.IPCRequest{
+	return deliverRequestVia(w, call, tui.IPCRequest{
 		Action: "send",
 		Target: target,
 		Host:   host,
@@ -276,8 +315,10 @@ func deliverTextVia(w io.Writer, call ipcCaller, target, host, text string, ente
 		Enter:  enter,
 		Urgent: urgent,
 		From:   from,
-	}
+	})
+}
 
+func deliverRequestVia(w io.Writer, call ipcCaller, req tui.IPCRequest) (string, error) {
 	resp, err := call(req)
 	if err != nil {
 		return "", err
@@ -291,9 +332,9 @@ func deliverTextVia(w io.Writer, call ipcCaller, target, host, text string, ente
 		return resp.Delivery, fmt.Errorf("%s%s", resp.Error, removed)
 	}
 
-	name := target
-	if host != "" {
-		name = host + ":" + target
+	name := req.Target
+	if req.Host != "" {
+		name = req.Host + ":" + req.Target
 	}
 	switch {
 	// Deferred first: a remote agent's deferral reads as a local one's
@@ -305,7 +346,9 @@ func deliverTextVia(w io.Writer, call ipcCaller, target, host, text string, ente
 			break
 		}
 		fmt.Fprintf(w, "deferred to %s — target has a modal open; will deliver when it closes%s\n", name, removed)
-	case resp.Delivery == tui.DeliveryHeld:
+	case resp.Delivery == tui.DeliverySteered:
+		fmt.Fprintf(w, "steered into %s's running task%s\n", name, removed)
+	case resp.Delivery == tui.DeliveryHeld || resp.Delivery == tui.DeliveryQueued:
 		// The agent is in do-not-disturb (ini-x432): the line is the TUI's.
 		line := resp.Data
 		if line == "" {
@@ -513,7 +556,7 @@ func typingHoldMaxBestEffort() int {
 // ipcDeadlineFor is how long a call waits for its response, by action.
 func ipcDeadlineFor(action string) time.Duration {
 	switch action {
-	case "send":
+	case "send", "send_after":
 		return sendDeadline(typingHoldMaxBestEffort())
 	case "send_ready":
 		return sendReadyActionTimeout
@@ -538,7 +581,7 @@ func sendFrom() string {
 // stampSender names the sender on a send or a keystroke that does not
 // already name one.
 func stampSender(req tui.IPCRequest) tui.IPCRequest {
-	if (req.Action == "send" || req.Action == "keystroke") && req.From == "" {
+	if (req.Action == "send" || req.Action == "send_after" || req.Action == "withdraw" || req.Action == "keystroke") && req.From == "" {
 		req.From = sendFrom()
 	}
 	return req
