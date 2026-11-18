@@ -180,7 +180,7 @@ func TestAgentSendWakeNeedsProof(t *testing.T) {
 func TestAgentSendCapturedStates(t *testing.T) {
 	expected := map[string][]string{
 		"idle":       {"hover-codex1-0946", "hover-codex2-0946", "hover-codex3-0946", "hover-codex4-0946", "local-codex-idle", "local-codex-0170-idle", "local-codex-0170-landed", "local-codex-0170-branch-idle", "local-codex-0170-branch-landed", "local-agy-1511-idle", "local-agy-1511-landed", "hover-agy3-idle-quota-1016", "hover-agy4-idle-quota-1016"},
-		"busy":       {"local-codex-weekly-warning", "local-agy-queued-task-shelf", "local-agy-background-task", "qa2-agy-ten", "qa2-agy-eleven", "qa2-codex-qca-m12", "local-codex-before-tool", "local-codex-after-tool", "local-r6-agy-busy", "local-r6-agy-draft", "local-r6-agy-queued", "qa3-agy-working", "qa3-agy-native-queued", "qa3-agy-native-with-draft", "qa3-codex-e7-solid", "qa3-codex-e8-hollow", "qa3-codex-working-plain", "qa3-codex-native-two", "qa3-codex-working-backticks", "hover-agy1-0946", "hover-agy2-busy-0952", "hover-agy3-busy-0952", "hover-agy4-busy-0952", "hover-agy2-idle-quota-1016", "local-agy-1511-busy", "local-codex-0170-busy", "local-codex-0170-queued", "local-codex-0170-queued-two"},
+		"busy":       {"local-codex-next-tool-short-working", "local-codex-next-tool-short-draft", "local-codex-next-tool-short-shelf", "local-codex-next-tool-long-working", "local-codex-next-tool-long-draft", "local-codex-next-tool-long-shelf", "local-codex-weekly-warning", "local-agy-queued-task-shelf", "local-agy-background-task", "qa2-agy-ten", "qa2-agy-eleven", "qa2-codex-qca-m12", "local-codex-before-tool", "local-codex-after-tool", "local-r6-agy-busy", "local-r6-agy-draft", "local-r6-agy-queued", "qa3-agy-working", "qa3-agy-native-queued", "qa3-agy-native-with-draft", "qa3-codex-e7-solid", "qa3-codex-e8-hollow", "qa3-codex-working-plain", "qa3-codex-native-two", "qa3-codex-working-backticks", "hover-agy1-0946", "hover-agy2-busy-0952", "hover-agy3-busy-0952", "hover-agy4-busy-0952", "hover-agy2-idle-quota-1016", "local-agy-1511-busy", "local-codex-0170-busy", "local-codex-0170-queued", "local-codex-0170-queued-two"},
 		"draft":      {"local-codex-0170-draft", "local-agy-1511-draft"},
 		"dialog":     {"qa3-codex-shortcuts", "local-codex-update-menu", "local-codex-0170-folder-dialog", "local-codex-0170-approval", "local-agy-1511-model-menu", "local-agy-1511-trust"},
 		"unreadable": {"hover-agy2-0946", "hover-agy3-0946", "hover-agy4-0946"},
@@ -890,7 +890,7 @@ func TestAgentSendCodexInlineCode(t *testing.T) {
 func TestAgentSendCodexBeforeAndAfterToolCall(t *testing.T) {
 	const msg = "QA-M12: also run `echo QA-M12 >> marks.txt`"
 	for _, tc := range []struct{ screen, verdict string }{
-		{"local-codex-before-tool", DeliveryUnconfirmed},
+		{"local-codex-before-tool", DeliveryQueued},
 		{"local-codex-after-tool", DeliverySteered},
 	} {
 		t.Run(tc.screen, func(t *testing.T) {
@@ -899,8 +899,155 @@ func TestAgentSendCodexBeforeAndAfterToolCall(t *testing.T) {
 				app, p, child := agentCaptureRig(t, "codex", busy)
 				child.shows = strings.Replace(busy, "› Ask Codex to do anything", "› "+msg, 1)
 				child.after = agentCapture(t, tc.screen)
-				if reply := v69Send(t, app, p.name, msg, true); reply.Delivery != tc.verdict || child.enters.Load() != 1 {
+				reply := v69Send(t, app, p.name, msg, true)
+				if tc.verdict == DeliveryQueued && reply.Data != "queued by "+p.name+": runs at the next step of its running task, 0 ahead" {
+					t.Fatalf("next-tool receipt: %+v", reply)
+				}
+				if reply.Delivery != tc.verdict || child.enters.Load() != 1 {
 					t.Fatalf("send returned %+v after %d submits, want %s after one", reply, child.enters.Load(), tc.verdict)
+				}
+			})
+		})
+	}
+}
+
+func TestAgentSendCodexNextToolShelf(t *testing.T) {
+	const short = "QA-M2: also run `echo QA-M2 >> ./marks0.log`"
+	const long = "QA-M3: this is a realistic longer steering message from a super that " +
+		"explains context at some length so that it is well over one screen row wide in the tile; " +
+		"please also run: echo QA-M3 >> ./marks0.log and then carry on with the current step as before."
+	for _, tc := range []struct {
+		name   string
+		length string
+		queued bool
+		ahead  int
+	}{
+		{"exact item", "short", true, 0},
+		{"clipped wrapped item", "long", true, 0},
+		{"native and held ahead", "short", true, 2},
+		{"look-alike header", "short", false, 0},
+		{"wrong header ending", "short", false, 0},
+		{"indented transcript heading", "short", false, 0},
+		{"interrupted samples", "short", false, 0},
+		{"older unrelated follow-up heading", "short", false, 0},
+		{"clipped shelf before Enter", "short", false, 0},
+		{"foreign indented row", "short", false, 0},
+		{"gap in header", "short", false, 0},
+		{"unrelated text below shelf", "short", false, 0},
+		{"nonempty composer", "short", false, 0},
+		{"already on shelf", "short", false, 0},
+		{"stale before draft", "short", false, 0},
+		{"earlier slot changed", "short", false, 0},
+		{"two added slots", "short", false, 0},
+		{"replaced existing slot", "short", false, 0},
+		{"matching item is not last", "short", false, 0},
+		{"ambiguous clipped prefix", "long", false, 0},
+		{"different body", "short", false, 0},
+		{"one sample", "short", false, 0},
+		{"header only", "short", false, 0},
+		{"empty screen", "short", false, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			sendBubble(t, func(t *testing.T) {
+				msg := short
+				if tc.length == "long" {
+					msg = long
+				}
+				base := "local-codex-next-tool-" + tc.length + "-"
+				before := agentCapture(t, base+"working")
+				draft := agentCapture(t, base+"draft")
+				after := agentCapture(t, base+"shelf")
+				const box = "› Ask Codex to do anything"
+				const row = "  ↳ "
+				withOlder := func(s string) string { return strings.Replace(s, row, row+"First queued message\n"+row, 1) }
+				beforeOlder := strings.Replace(after, row+msg, row+"First queued message", 1)
+				switch tc.name {
+				case "native and held ahead", "earlier slot changed":
+					before = beforeOlder
+					draft = strings.Replace(before, box, "› "+msg, 1)
+					after = withOlder(after)
+					if tc.name == "earlier slot changed" {
+						after = strings.Replace(after, "First queued message", "Another queued message", 1)
+					}
+				case "look-alike header":
+					after = strings.Replace(after, "• Messages to be submitted", "• Drafts to be submitted", 1)
+				case "indented transcript heading":
+					after = strings.Replace(after, "• Messages to be submitted", " • Messages to be submitted", 1)
+				case "wrong header ending":
+					after = strings.Replace(after, "send immediately)", "send later)", 1)
+				case "older unrelated follow-up heading":
+					after = strings.Replace(after, "• Messages to be submitted", "• Queued follow-up inputs\n  ↳ Old item\n\n• Other messages to be submitted", 1)
+					// No quota decoration between the queue and composer on this variant.
+					start := strings.Index(after, "                                        ⚠ weekly limit:")
+					_, tail, _ := strings.Cut(after[start:], "\n")
+					after = after[:start] + tail
+				case "clipped shelf before Enter":
+					before = strings.Replace(beforeOlder, "• Messages to be submitted", "clipped header", 1)
+					draft = strings.Replace(before, box, "› "+msg, 1)
+				case "foreign indented row":
+					after = strings.Replace(after, row+msg, row+msg+"\n  foreign", 1)
+				case "gap in header":
+					after = strings.Replace(after, "  send immediately)", "\n  send immediately)", 1)
+				case "unrelated text below shelf":
+					after = strings.Replace(after, box, "• unrelated transcript\n\n"+box, 1)
+				case "nonempty composer":
+					after = strings.Replace(after, box, "› Different draft", 1)
+				case "already on shelf":
+					before = after
+					draft = strings.Replace(before, box, "› "+msg, 1)
+				case "stale before draft":
+					before = after
+				case "replaced existing slot":
+					before = beforeOlder
+					draft = strings.Replace(before, box, "› "+msg, 1)
+				case "matching item is not last":
+					after = strings.Replace(after, row+msg, row+msg+"\n"+row+"Another queued message", 1)
+				case "two added slots":
+					after = withOlder(after)
+				case "ambiguous clipped prefix":
+					header, preview, _ := strings.Cut(after, row)
+					_, footer, _ := strings.Cut(preview, "    …\n")
+					older := row + msg[:55] + "…\n"
+					before = header + older + footer
+					draft = strings.Replace(before, box, "› "+msg, 1)
+					after = header + older + row + preview
+				case "different body":
+					after = strings.Replace(after, row+msg, row+"Someone else's message", 1)
+				case "header only":
+					after = strings.Replace(after, row+msg+"\n", "", 1)
+				case "empty screen":
+					after = ""
+				}
+				app, p, child := agentCaptureRig(t, "codex", before)
+				if tc.name == "native and held ahead" {
+					if held := sendAfterFixture(t, app, p, "earlier Initech hold"); held.Delivery != DeliveryHeld || !strings.Contains(held.Data, "1 ahead (receipt ") {
+						t.Fatal(held)
+					}
+				}
+				child.shows, child.after = draft, after
+				if tc.name == "one sample" || tc.name == "interrupted samples" {
+					child.takes = func(int) bool {
+						// Paint either one sighting or two separated by a missing shelf.
+						// sendBubble advances only the synthetic clock.
+						time.AfterFunc(composerEchoPoll+composerEchoPoll/2, func() { child.paint(before) })
+						if tc.name == "interrupted samples" {
+							time.AfterFunc(2*composerEchoPoll+composerEchoPoll/2, func() { child.paint(after) })
+							time.AfterFunc(3*composerEchoPoll+composerEchoPoll/2, func() { child.paint(before) })
+						}
+						return true
+					}
+				}
+				reply := v69Send(t, app, p.name, msg, true)
+				want := DeliveryUnconfirmed
+				if tc.queued {
+					want = DeliveryQueued
+					if words := fmt.Sprintf("queued by %s: runs at the next step of its running task, %d ahead", p.name, tc.ahead); reply.Data != words {
+						t.Errorf("got %q, want %q", reply.Data, words)
+					}
+				}
+				writes, _, _ := child.stream()
+				if reply.Delivery != want || writes != string(bracketedBody(msg))+"\r" {
+					t.Fatalf("reply %+v, want %s after one submission; PTY %q", reply, want, writes)
 				}
 			})
 		})

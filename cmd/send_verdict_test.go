@@ -48,6 +48,7 @@ func TestSendVerdict_EachVerdictPrintsItsLineAndExitStatus(t *testing.T) {
 	}{
 		{"steered", "work:eng1", tui.IPCResponse{OK: true, Delivery: tui.DeliverySteered}, "steered into work:eng1's running task", 0},
 		{"native queue", "eng1", tui.IPCResponse{OK: true, Delivery: tui.DeliveryQueued, Data: "queued by eng1 behind its running task, 1 ahead"}, "queued by eng1 behind its running task, 1 ahead", 0},
+		{"next-tool queue", "eng1", tui.IPCResponse{OK: true, Delivery: tui.DeliveryQueued, Data: "queued by eng1: runs at the next step of its running task, 2 ahead"}, "queued by eng1: runs at the next step of its running task, 2 ahead", 0},
 		{"named dialog", "eng1", tui.IPCResponse{OK: true, Delivery: tui.DeliveryHeld, Data: "held: eng1 is at a dialog (update picker), 0 ahead (receipt abc)"}, "held: eng1 is at a dialog (update picker), 0 ahead (receipt abc)", 0},
 		{"delivered", "eng1", tui.IPCResponse{OK: true, Delivery: tui.DeliveryDelivered},
 			"delivered to eng1", 0},

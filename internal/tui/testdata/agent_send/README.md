@@ -19,3 +19,5 @@ The two QA2 agy queue captures show consecutive frames at 75 columns. The newest
 The local agy task-shelf captures show an active queue above the input box and a separate timestamped task below it, then a shortcuts footer with only a background task. An active queue footer identifies the first as a queue receipt surface.
 
 `local-codex-weekly-warning.txt` captures a Codex 0.170.0 working turn from the private qca replay. The weekly-limit notice is right-aligned between its progress indicator and empty composer.
+
+The six next-tool frames follow two sends to a 75-column Codex 0.170.0 pane. Each set shows the working pane before the paste, the literal draft before Enter, and the native item after Enter. Codex wrapped the heading onto two lines and clipped the long item after three lines of text. Its weekly-limit notice sits immediately below the item. The short send returned an unconfirmed receipt on the original run and appeared in the transcript five seconds later. The long send reached the transcript within the confirmation window. The scratch directory name is masked.

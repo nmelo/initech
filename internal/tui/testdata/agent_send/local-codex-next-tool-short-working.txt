@@ -1,0 +1,31 @@
+⚠ Heads up, you have less than 25% of your weekly limit left. Run /status
+  for a breakdown.
+
+
+  >_ OpenAI Codex (v0.170.0)
+     /private/tmp/fixture-scratch-run/eng1
+
+
+› Run the shell command 'sleep 12; echo STEP-N' once per tool call for N=1
+  to 25, one call at a time, never batching, then reply DONE.
+
+› QA-M1: also run: echo QA-M1 >> ./marks0.log
+
+
+• I’ll run each timed step in its own shell call and append QA-M1 to
+  marks0.log.
+
+• Ran echo QA-M1 >> ./marks0.log
+  └ (no output)
+
+
+
+
+• Working (8s • esc to interrupt)
+
+                                        ⚠ weekly limit: 11% left · /status
+
+› Ask Codex to do anything
+
+  main · GPT-6.2-Sol high · Context 3% used · weekly 11% left
+  ← for agents · ? for shortcuts                  ⚠ 1 warning · f2 to view

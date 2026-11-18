@@ -1,0 +1,31 @@
+
+› Run the shell command 'sleep 12; echo STEP-N' once per tool call for N=1
+  to 25, one call at a time, never batching, then reply DONE.
+
+› QA-M1: also run: echo QA-M1 >> ./marks0.log
+
+
+• I’ll run each timed step in its own shell call and append QA-M1 to
+  marks0.log.
+
+• Ran echo QA-M1 >> ./marks0.log
+  └ (no output)
+
+
+› QA-M2: also run echo QA-M2 >> ./marks0.log
+
+
+• Working (14s • esc to interrupt) · 1 background terminal running · /ps t…
+
+• Messages to be submitted after next tool call (press esc to interrupt and
+  send immediately)
+  ↳ QA-M3: this is a realistic longer steering message from a super that
+    explains context at some length so that it is well over one screen row
+    wide in the tile; please also run: echo QA-M3 >> ./marks0.log and then
+    …
+                                        ⚠ weekly limit: 11% left · /status
+
+› Ask Codex to do anything
+
+  main · GPT-6.2-Sol high · Context 3% used · weekly 11% left
+  ← for agents · ? for shortcuts                  ⚠ 1 warning · f2 to view

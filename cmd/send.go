@@ -51,7 +51,7 @@ needs a retry), prints one line and exits with:
      (OpenCode and generic commands other than agy)
   0  steered into <agent>'s running task
   0  queued by <agent> behind its running task, N ahead (Codex)
-  0  queued by <agent>: runs at the next step of its running task, N ahead (agy)
+  0  queued by <agent>: runs at the next step of its running task, N ahead (Codex or agy)
   0  held for <agent>: queued behind a running task, N ahead (receipt <id>)
      (--after waits for an idle Codex or agy pane)
   0  held: <agent> is at a dialog (<name>), N ahead (receipt <id>)

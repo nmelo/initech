@@ -130,6 +130,7 @@ func (p *Pane) typeAgentMessage(text string, enter bool, before agentFrame) Send
 	retried := false
 	deadline = time.Now().Add(submitConfirmWindow)
 	proofLastSample := false
+	nextToolLastSample := false
 	for {
 		f := p.readAgentFrame()
 		if r == agyReader && f.box && f.draft == "" {
@@ -137,11 +138,20 @@ func (p *Pane) typeAgentMessage(text string, enter bool, before agentFrame) Send
 				return SendVerdict{Outcome: DeliveryQueued, Reason: fmt.Sprintf("queued by %s: runs at the next step of its running task, %d ahead", p.name, i)}
 			}
 		}
+		nextToolProof := false
 		if r == codexReader && !seenQueued && f.box && f.draft == "" {
 			if i := proofText.queueIndex(r, f.queued); i >= 0 {
-				return SendVerdict{Outcome: DeliveryQueued, Reason: fmt.Sprintf("queued by %s behind its running task, %d ahead", p.name, i)}
+				if !f.nextTool {
+					return SendVerdict{Outcome: DeliveryQueued, Reason: fmt.Sprintf("queued by %s behind its running task, %d ahead", p.name, i)}
+				}
+				// The only change to this shelf must be our new, last slot.
+				nextToolProof = f.nextToolAppend(beforeEnter, i)
+				if nextToolProof && nextToolLastSample {
+					return SendVerdict{Outcome: DeliveryQueued, Reason: fmt.Sprintf("queued by %s: runs at the next step of its running task, %d ahead", p.name, i+p.QueueLen())}
+				}
 			}
 		}
+		nextToolLastSample = nextToolProof
 		proof := f.box && f.draft == "" && !seenAbove && proofText.userTurn(r, f.transcript)
 		if proof && proofLastSample {
 			if before.busy {

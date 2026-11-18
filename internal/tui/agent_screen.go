@@ -3,6 +3,7 @@ package tui
 import (
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/nmelo/initech/internal/config"
@@ -38,6 +39,7 @@ type agentFrame struct {
 	draft        string
 	draftRows    []string
 	queued       []string
+	nextTool     bool // Codex will submit these items at its next tool call.
 	busy, dialog bool
 	dialogName   string
 	native       int
@@ -108,6 +110,12 @@ func readCodexFrame(rows []string) agentFrame {
 		for j >= 0 && (strings.TrimSpace(stripBraille(rows[j])) == "" || codexWeeklyNotice.MatchString(rows[j])) {
 			j--
 		}
+		if header, items := codexNextToolItems(rows[:j+1]); len(items) > 0 {
+			f.busy, f.nextTool = true, true
+			f.queued, f.native = items, len(items)
+			f.transcript = rows[:header]
+			return f
+		}
 		if j >= 0 && (strings.Contains(rows[j], "edit last queued message") || strings.HasPrefix(strings.TrimSpace(rows[j]), "↳ ")) {
 			for ; j >= 0; j-- {
 				line := strings.TrimSpace(rows[j])
@@ -116,6 +124,9 @@ func readCodexFrame(rows []string) agentFrame {
 					f.transcript = rows[:j]
 					f.queued = rows[j+1 : i]
 					j--
+					break
+				}
+				if !strings.HasPrefix(rows[j], " ") && !strings.HasPrefix(line, "↳ ") {
 					break
 				}
 				if strings.HasPrefix(line, "↳ ") {
@@ -146,6 +157,52 @@ func readCodexFrame(rows []string) agentFrame {
 		return f
 	}
 	return agentFrame{}
+}
+
+// codexNextToolItems reads only the shelf immediately above the composer.
+// Rows are padded by the terminal. Codex indents wrapped heading text by two
+// columns and item continuations by four, including a standalone ellipsis.
+func codexNextToolItems(rows []string) (int, []string) {
+	const heading = "• Messages to be submitted after next tool call (press esc to interrupt and send immediately)"
+	header := len(rows) - 1
+	for header >= 0 && strings.HasPrefix(rows[header], "  ") && strings.TrimSpace(rows[header]) != "" {
+		header--
+	}
+	if header < 0 || !strings.HasPrefix(rows[header], "• ") {
+		return 0, nil
+	}
+	first := header + 1
+	for first < len(rows) && !strings.HasPrefix(rows[first], "  ↳ ") {
+		first++
+	}
+	if !matchesDisplayRows(rows[header:first], heading) {
+		return 0, nil
+	}
+	var items []string
+	for _, row := range rows[first:] {
+		switch {
+		case strings.HasPrefix(row, "  ↳ "):
+			items = append(items, strings.TrimSpace(row))
+		case strings.HasPrefix(row, "    ") && strings.TrimSpace(row) != "":
+			items[len(items)-1] += "\n" + strings.TrimSpace(row)
+		default:
+			return 0, nil
+		}
+	}
+	return header, items
+}
+
+// nextToolAppend compares the matched slot against the shelf seen with the
+// literal draft. A different, identified follow-up shelf has no next-step
+// items. An unreadable shelf cannot establish the starting position.
+func (f agentFrame) nextToolAppend(before agentFrame, index int) bool {
+	if index != len(f.queued)-1 {
+		return false
+	}
+	if before.nextTool {
+		return slices.Equal(before.queued, f.queued[:index])
+	}
+	return index == 0 && (before.native == 0 || len(before.queued) > 0)
 }
 
 func agyRule(row string) bool {
