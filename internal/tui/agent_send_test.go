@@ -190,12 +190,15 @@ func TestAgentSendCapturedStates(t *testing.T) {
 			// ini-1etm: narrow tiles. agy cuts its hint with "...", Codex
 			// wraps its footer (and at 26 columns cuts its hint bare).
 			"local-codex-0170-w40-idle", "local-codex-0170-w33-idle", "local-codex-0170-w32-idle", "local-codex-0170-w26-idle", "hover-codex1-w32-idle",
-			"local-agy-1512-w100-idle", "local-agy-1512-w40-idle", "local-agy-1512-w33-idle", "local-agy-1512-w32-idle", "local-agy-1512-w26-idle", "local-agy-1512-w33-menu-cleaned"},
+			"local-agy-1512-w100-idle", "local-agy-1512-w40-idle", "local-agy-1512-w33-idle", "local-agy-1512-w32-idle", "local-agy-1512-w26-idle", "local-agy-1512-w33-menu-cleaned",
+			"qa2-codex-w32-clipped-footer-idle"},
 		"busy": {"local-codex-next-tool-short-working", "local-codex-next-tool-short-draft", "local-codex-next-tool-short-shelf", "local-codex-next-tool-long-working", "local-codex-next-tool-long-draft", "local-codex-next-tool-long-shelf", "local-codex-weekly-warning", "local-agy-queued-task-shelf", "local-agy-background-task", "qa2-agy-ten", "qa2-agy-eleven", "qa2-codex-qca-m12", "local-codex-before-tool", "local-codex-after-tool", "local-r6-agy-busy", "local-r6-agy-draft", "local-r6-agy-queued", "qa3-agy-working", "qa3-agy-native-queued", "qa3-agy-native-with-draft", "qa3-codex-e7-solid", "qa3-codex-e8-hollow", "qa3-codex-working-plain", "qa3-codex-native-two", "qa3-codex-working-backticks", "hover-agy1-0946", "hover-agy2-busy-0952", "hover-agy3-busy-0952", "hover-agy4-busy-0952", "hover-agy2-idle-quota-1016", "local-agy-1511-busy", "local-codex-0170-busy", "local-codex-0170-queued", "local-codex-0170-queued-two",
 			// ini-bvjy: working with a background terminal, with Codex's "⚠
 			// weekly limit: only 5% left" notice between the Working row and
 			// the composer.
-			"local-codex-0170-bgterm-working-low-quota", "local-codex-0170-bgterm-steered"},
+			"local-codex-0170-bgterm-working-low-quota", "local-codex-0170-bgterm-steered",
+			// ini-1etm (qa2): agy's queue footer cut at 33 columns.
+			"qa2-agy-w33-queued-cut-footer-1", "qa2-agy-w33-queued-cut-footer-2"},
 		"draft": {"local-codex-0170-draft", "local-agy-1511-draft",
 			// ini-1etm: "fix tests" typed at each narrow width, and agy's box
 			// after Esc closed its slash menu, which keeps the typed text.

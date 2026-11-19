@@ -89,15 +89,16 @@ const minHintPrefix = 10
 
 // codexHintOnly reports a composer that holds only Codex's placeholder: the
 // whole hint, or in a narrow pane the hint cut at the right edge on its one
-// row (Codex cuts it with no ellipsis: "Ask Codex to do anythin" at 26
-// columns). Every row below it must be blank.
+// row (cut bare, "Ask Codex to do anythin" at 26 columns, or with "…").
+// Every row below it must be blank.
 func codexHintOnly(box []string) bool {
 	for _, row := range box[1:] {
 		if row != "" {
 			return false
 		}
 	}
-	return box[0] == codexHint || (len(box[0]) >= minHintPrefix && strings.HasPrefix(codexHint, box[0]))
+	cut := strings.TrimSuffix(box[0], "…")
+	return box[0] == codexHint || (len(cut) >= minHintPrefix && strings.HasPrefix(codexHint, cut))
 }
 
 // agyHintOnly reports an input box that holds only agy's placeholder: the
@@ -113,7 +114,9 @@ func agyHintOnly(draft string) bool {
 
 // codexFooterRow finds the first row of Codex's model and context footer in
 // the last seven rows, or -1. A wide pane draws it on one row ("main · model
-// · Context 0% used · ..."). A narrow one wraps it, and the context figure
+// · Context 0% used · ..."). A narrow pane clips it to one row ending in "…"
+// ("main · GPT-6.2-Sol high · Con…" at 32 columns), the composer's nearest
+// row below it after blanks. Or a narrow pane wraps it, and the context figure
 // starts a row of its own ("Context 0% used ·", or "· Context 0% used ·" at
 // 26 columns) below the model row. The footer then starts at the top of that
 // run of rows, so the composer search begins above it and the model row is
@@ -121,7 +124,7 @@ func agyHintOnly(draft string) bool {
 func codexFooterRow(rows []string) int {
 	for i := len(rows) - 1; i >= 0 && i >= len(rows)-7; i-- {
 		line := strings.ToLower(strings.TrimSpace(stripBraille(rows[i])))
-		if strings.Contains(line, " · context") {
+		if strings.Contains(line, " · context") || codexClippedFooter(rows, i) {
 			return i
 		}
 		wrapped := strings.HasPrefix(line, "context ") || strings.HasPrefix(line, "· context ")
@@ -142,6 +145,26 @@ func codexFooterRow(rows []string) int {
 		return top
 	}
 	return -1
+}
+
+// codexClippedFooter reports Codex's footer clipped to one row: indented,
+// " · " segments, ending in "…", with only blank rows between it and a "›"
+// composer row above it. A transcript row cannot pass: the composer it would
+// need is below the transcript.
+func codexClippedFooter(rows []string, i int) bool {
+	row := stripBraille(rows[i])
+	line := strings.TrimSpace(row)
+	if !strings.HasPrefix(row, "  ") || !strings.HasSuffix(line, "…") || !strings.Contains(line, " · ") {
+		return false
+	}
+	for j := i - 1; j >= 0; j-- {
+		above := strings.TrimSpace(stripBraille(rows[j]))
+		if above == "" {
+			continue
+		}
+		return strings.HasPrefix(above, "›")
+	}
+	return false
 }
 
 func readCodexFrame(rows []string) agentFrame {
@@ -314,7 +337,7 @@ func readAgyFrame(rows []string) agentFrame {
 	if end >= 0 && strings.HasPrefix(strings.TrimSpace(rows[end]), "↑/↓ Navigate") {
 		return agentFrame{dialog: true, dialogName: agySlashMenu, menuFilter: agyMenuFilter(rows, end)}
 	}
-	queueVisible := strings.HasPrefix(last, "Press up to edit queued messages")
+	queueVisible := agyQueueFooter(last)
 	busy := strings.HasPrefix(last, "esc to cancel") || queueVisible
 	if !busy && strings.Contains(last, "task(s)") {
 		return agentFrame{busy: true}
@@ -360,6 +383,16 @@ func readAgyFrame(rows []string) agentFrame {
 		frame.native = len(frame.queued)
 	}
 	return frame
+}
+
+// agyQueueHint is the footer agy draws while messages wait in its queue.
+const agyQueueHint = "Press up to edit queued messages"
+
+// agyQueueFooter reports agy's queue footer, whole or cut at the pane's width
+// ("Press up to edit queued message" at 33 columns): at least 16 characters
+// of it, so a short row is never taken for it.
+func agyQueueFooter(last string) bool {
+	return strings.HasPrefix(last, agyQueueHint) || (len(last) >= 16 && strings.HasPrefix(agyQueueHint, last))
 }
 
 // agySlashMenu names agy's slash-command menu as a dialog.

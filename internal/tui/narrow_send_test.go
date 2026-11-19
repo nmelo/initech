@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"net"
 	"strings"
 	"testing"
@@ -43,6 +44,7 @@ func rowsOf(screen string) []string { return strings.Split(screen, "\n") }
 // or without a spinner glyph; a real short draft still reads as text.
 func TestNarrowPaneReadsItsPlaceholderAsEmpty(t *testing.T) {
 	hover := agentCapture(t, "hover-codex1-w32-idle")
+	qa2Codex := agentCapture(t, "qa2-codex-w32-clipped-footer-idle")
 	spinner := strings.Replace(hover, "› Ask Codex to do anything", "› Ask Codex to do anything ⠈", 1)
 	if spinner == hover {
 		t.Fatal("the spinner variant did not apply")
@@ -63,6 +65,13 @@ func TestNarrowPaneReadsItsPlaceholderAsEmpty(t *testing.T) {
 		{"codex-w33-draft", codexReader, agentCapture(t, "local-codex-0170-w33-draft"), "fix tests"},
 		{"codex-w32-draft", codexReader, agentCapture(t, "local-codex-0170-w32-draft"), "fix tests"},
 		{"codex-w33-hint-start-draft", codexReader, strings.Replace(agentCapture(t, "local-codex-0170-w33-idle"), "› Ask Codex to do anything", "› Ask Codex", 1), "Ask Codex"},
+		// qa2's live Codex at 32 columns: the footer clipped to one row with
+		// "…" ("main · GPT-6.2-Sol high · Con…"), not wrapped.
+		{"qa2-codex-w32-clipped-footer", codexReader, qa2Codex, ""},
+		{"qa2-codex-w32-clipped-footer-draft", codexReader, strings.Replace(qa2Codex, "› Ask Codex to do anything", "› fix tests", 1), "fix tests"},
+		{"codex-hint-cut-with-ellipsis", codexReader, strings.Replace(qa2Codex, "› Ask Codex to do anything", "› Ask Codex to do any…", 1), ""},
+		// Q5: text under the hint row is a draft, never the placeholder.
+		{"codex-w33-text-under-hint", codexReader, strings.Replace(agentCapture(t, "local-codex-0170-w33-idle"), "› Ask Codex to do anything\n", "› Ask Codex to do anything\n  and fix tests\n", 1), "Ask Codex to do anything and fix tests"},
 		{"agy-w40", agyReader, agentCapture(t, "local-agy-1512-w40-idle"), ""},
 		{"agy-w33", agyReader, agentCapture(t, "local-agy-1512-w33-idle"), ""},
 		{"agy-w32", agyReader, agentCapture(t, "local-agy-1512-w32-idle"), ""},
@@ -121,8 +130,9 @@ func TestNarrowSendToHoverWidthsGoesThrough(t *testing.T) {
 	}{
 		{"codex", "hover-codex1-w32-idle", "", 32, "› Ask Codex to do anything", "› fix tests"},
 		{"generic", "local-agy-1512-w33-idle", "local-agy-1512-w33-draft", 33, "", ""},
+		{"codex", "qa2-codex-w32-clipped-footer-idle", "", 32, "› Ask Codex to do anything", "› fix tests"},
 	} {
-		t.Run(tc.family, func(t *testing.T) {
+		t.Run(tc.idle, func(t *testing.T) {
 			sendBubble(t, func(t *testing.T) {
 				idle := agentCapture(t, tc.idle)
 				app, p, child, _ := narrowRig(t, tc.family, idle, tc.cols)
@@ -355,4 +365,40 @@ func TestNarrowBoxWaitClockRestartsOnAnEmptyRead(t *testing.T) {
 			t.Fatal("not ended a bound after the wait restarted")
 		}
 	})
+}
+
+// A clipped "…" row is Codex's footer only directly below its composer: with
+// no "›" composer above, or with text between them, it is not.
+func TestNarrowCodexClippedFooterNeedsTheComposerAbove(t *testing.T) {
+	for _, screen := range []string{
+		"some output\n\n  main · GPT-6.2-Sol high · Con…\n  ← for agents",
+		"› an old turn\nits answer\n\n  main · GPT-6.2-Sol high · Con…\n  ← for agents",
+		"› Ask Codex to do anything\nnot indented · a · b…\n  ← for agents",
+	} {
+		if f := codexReader.read(rowsOf(screen)); f.box || f.free() {
+			t.Fatalf("%q read as %+v", screen, f)
+		}
+	}
+}
+
+// qa2's live agy at 33 columns: agy cuts its queue footer to "Press up to
+// edit queued message". The pane reads busy with its one queued item, and a
+// cut preview of our message is the proof that it queued (at ed7a21f both
+// sends read unknown).
+func TestNarrowAgyCutQueueFooterProvesTheQueuedSend(t *testing.T) {
+	for i, text := range []string{"QA-Neng2-3: please reply with the single word ok", "QA-Neng2-8: please reply with the single word ok"} {
+		f := agyReader.read(rowsOf(agentCapture(t, fmt.Sprintf("qa2-agy-w33-queued-cut-footer-%d", i+1))))
+		if !f.busy || !f.box || f.draft != "" || f.native != 1 {
+			t.Fatalf("capture %d read as %+v", i+1, f)
+		}
+		if got := agyQueuedAppend(agentFrame{box: true, busy: true}, f, newMessageProof(text)); got != 0 {
+			t.Fatalf("capture %d: queued append %d, want 0", i+1, got)
+		}
+		if got := agyQueuedAppend(agentFrame{box: true, busy: true}, f, newMessageProof("QA-Neng2-9: please reply with the single word ok")); got != -1 {
+			t.Fatalf("capture %d: another message proved it: %d", i+1, got)
+		}
+	}
+	if agyQueueFooter("Press up to edi") {
+		t.Fatal("a 15-character cut was read as the queue footer")
+	}
 }

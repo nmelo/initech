@@ -1,0 +1,26 @@
+      ▄▀▀▄
+     ▀▀▀▀▀▀
+    ▀▀▀▀▀▀▀▀
+   ▄▀▀    ▀▀▄
+  ▄▀▀      ▀▀▄
+
+  Antigravity CLI 1.5.12
+  nmelo.cu@gmail.com (Google AI U
+  Gemini 4 Carbon (High)
+  ~/qnf/eng2
+
+──────────────────────────────
+> QA-Neng2-1: please reply with
+  the single word ok
+
+  ok
+
+──────────────────────────────
+> QA-Neng2-2: please reply with
+  the single word ok
+⡿  Working...
+▸ QA-Neng2-3: please reply wit...
+─────────────────────────────────
+>
+─────────────────────────────────
+  Press up to edit queued message

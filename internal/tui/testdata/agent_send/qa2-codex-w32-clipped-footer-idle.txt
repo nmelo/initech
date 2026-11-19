@@ -1,0 +1,12 @@
+
+  >_ OpenAI Codex (v0.170.0)
+     /Users/nmelo/qnf/eng1
+  permissions: YOLO mode
+
+
+
+
+› Ask Codex to do anything
+
+  main · GPT-6.2-Sol high · Con…
+  ← for agents
