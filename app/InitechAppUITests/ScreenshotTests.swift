@@ -47,8 +47,10 @@ final class ScreenshotTests: XCTestCase {
 
     func testHomeAndAPaneAtADialog() throws {
         let app = XCUIApplication()
-        app.launchArguments = ["-uitest-pairing",
-                               server.pairingURL]
+        // The permission is answered here, so iOS never puts its own
+        // notification question over a screen a picture is taken of.
+        app.launchArguments = ["-uitest-pairing", server.pairingURL,
+                               "-uitest-push-permission", "allowed"]
         app.launch()
 
         XCTAssertTrue(element(app, "hover super").waitForExistence(timeout: 20), "home did not show the pins")
