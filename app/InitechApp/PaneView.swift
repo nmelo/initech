@@ -1,9 +1,9 @@
 import InitechCore
 import SwiftUI
 
-/// PaneView is one pane as a conversation: replies as text, tool runs as one
-/// line that expands, his messages on the right, the footer at the bottom of
-/// each reply, and below the input box the key strip.
+/// PaneView is one pane as a conversation, in the terminal look: replies as
+/// text, tool runs as one line that expands, his messages as prompt lines, the
+/// footer at the bottom of each reply, and below the input line the key strip.
 struct PaneView: View {
     @StateObject var model: PaneModel
     @ObservedObject var home: HomeModel
@@ -33,14 +33,16 @@ struct PaneView: View {
                                     loadingOlder = false
                                 }
                             } label: {
-                                if loadingOlder { ProgressView() } else { Text("Show older messages") }
+                                if loadingOlder { ProgressView() } else { Text("▲ show older messages") }
                             }
+                            .accessibilityLabel("Show older messages")
+                            .font(Theme.mono(.footnote))
                             .disabled(loadingOlder)
                             .frame(maxWidth: .infinity)
                         }
                         if model.loaded && model.messages.isEmpty {
                             Text("Nothing in this pane's conversation yet.")
-                                .foregroundStyle(.secondary).frame(maxWidth: .infinity)
+                                .font(Theme.mono(.footnote)).foregroundStyle(Theme.dim).frame(maxWidth: .infinity)
                         }
                         ForEach(model.messages) { m in
                             MessageView(message: m, verdict: model.verdicts[m.id]).id(m.id)
@@ -92,15 +94,18 @@ struct PaneView: View {
                                 follow.sawBottom(last)
                             }
                         }
-                        .font(.footnote.weight(.medium))
+                        .font(Theme.mono(.footnote, .semibold))
+                        .foregroundStyle(Theme.bg)
                         .padding(.horizontal, 12).padding(.vertical, 6)
-                        .background(.thinMaterial, in: Capsule())
+                        .background(Theme.red, in: RoundedRectangle(cornerRadius: 6))
                         .padding(.bottom, 8)
                     }
                 }
             }
             if let problem = model.problem {
-                Text(problem).font(.footnote).foregroundStyle(.red).padding(.horizontal)
+                Text(problem).font(Theme.mono(.footnote)).foregroundStyle(Theme.red)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 16).padding(.vertical, 6)
             }
             if let row, row.atDialog, let screen = row.screen, !screen.isEmpty {
                 ScreenLines(lines: screen)
@@ -108,11 +113,34 @@ struct PaneView: View {
             InputBar(draft: $draft) { text in Task { await model.send(text) } }
             KeyStrip(last: model.lastKey, atDialog: row?.atDialog ?? false) { key in Task { await model.press(key) } }
         }
+        .background(Theme.bg.ignoresSafeArea())
         .navigationTitle(row?.name ?? model.ref.pane)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            // The pane's name and its state, as the Panes list writes them.
+            ToolbarItem(placement: .principal) {
+                VStack(spacing: 1) {
+                    Text((row?.name ?? model.ref.pane).lowercased())
+                        .font(Theme.mono(.subheadline, .semibold)).foregroundStyle(Theme.bright)
+                    Text(subtitle).font(Theme.mono(.caption2)).foregroundStyle(Theme.dim)
+                }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(row?.name ?? model.ref.pane)
+            }
+        }
+        .toolbarBackground(Theme.bg, for: .navigationBar)
         .task {
             await model.open()
         }
+    }
+}
+
+extension PaneView {
+    /// subtitle is the line under the pane's name: its state and where it runs.
+    var subtitle: String {
+        let place = "\(model.ref.pane)@\(model.ref.rig)"
+        guard let row else { return place }
+        return "\(row.stateLabel) · \(place)"
     }
 }
 
@@ -125,62 +153,71 @@ struct MessageView: View {
     var body: some View {
         switch message.kind {
         case .nelson:
-            VStack(alignment: .trailing, spacing: 4) {
-                Text(message.text)
-                    .padding(12)
-                    .background(.quaternary, in: RoundedRectangle(cornerRadius: 18))
-                if let verdict { VerdictLabel(result: verdict) }
+            // His message, as the line he typed at a prompt.
+            VStack(alignment: .leading, spacing: 5) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text("❯").foregroundStyle(Theme.red).accessibilityHidden(true)
+                    Text(message.text).foregroundStyle(Theme.bright)
+                }
+                .font(Theme.mono(.callout, .semibold))
+                if let verdict { VerdictLabel(result: verdict).padding(.leading, 18) }
             }
-            .frame(maxWidth: .infinity, alignment: .trailing)
-            .padding(.leading, 40)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 12).padding(.vertical, 9)
+            .background(Theme.bar, in: RoundedRectangle(cornerRadius: 8))
+            .overlay(alignment: .leading) { Rectangle().fill(Theme.red).frame(width: 2) }
         case .tool:
             VStack(alignment: .leading, spacing: 6) {
                 Button { expanded.toggle() } label: {
-                    HStack {
-                        Image(systemName: "terminal")
-                        Text(message.tool.map { "\($0.name) \($0.summary)" } ?? message.text).lineLimit(1)
-                        Spacer()
-                        Image(systemName: expanded ? "chevron.down" : "chevron.right")
+                    HStack(spacing: 8) {
+                        Text(expanded ? "▾" : "▸").foregroundStyle(Theme.dim)
+                        Text(message.tool?.name ?? "tool").foregroundStyle(Theme.soft).fontWeight(.semibold)
+                        Text(message.tool?.summary ?? message.text).foregroundStyle(Theme.dim).lineLimit(1)
+                        Spacer(minLength: 0)
                     }
-                    .foregroundStyle(.secondary)
-                    .font(.callout)
+                    .font(Theme.mono(.footnote))
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Tool run \(message.tool?.name ?? "")")
                 if expanded {
                     Text(message.tool?.detail ?? message.text)
-                        .font(.caption.monospaced())
+                        .font(Theme.mono(.caption))
+                        .foregroundStyle(Theme.soft)
                         .textSelection(.enabled)
-                        .padding(8)
-                        .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 8))
+                        .padding(9)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Theme.bar, in: RoundedRectangle(cornerRadius: 6))
                 }
             }
         case .agent:
             VStack(alignment: .leading, spacing: 8) {
                 Text(LocalizedStringKey(message.text)).textSelection(.enabled)
+                    .font(Theme.mono(.subheadline)).foregroundStyle(Theme.text).lineSpacing(3)
                 if let footer = message.footer, !footer.isEmpty {
-                    Divider()
+                    Rectangle().fill(Theme.line).frame(height: 1)
                     ForEach(Array(footer.enumerated()), id: \.offset) { _, line in
-                        Text(line).font(.callout)
+                        Text(line).font(Theme.mono(.footnote)).foregroundStyle(Theme.soft)
                     }
                 }
             }
         case .message:
+            // A message another agent sent into the pane.
             VStack(alignment: .leading, spacing: 4) {
                 if let from = message.from, !from.isEmpty {
-                    Text("from \(from)").font(.caption).foregroundStyle(.secondary)
+                    Text("from \(from)").font(Theme.mono(.caption, .semibold)).foregroundStyle(Theme.blue)
                 }
                 Text(message.text)
+                    .font(Theme.mono(.subheadline)).foregroundStyle(Theme.soft).lineSpacing(3)
                     .textSelection(.enabled)
-                    .padding(12)
-                    .background(.quaternary.opacity(0.6), in: RoundedRectangle(cornerRadius: 18))
             }
+            .padding(.leading, 12)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.trailing, 40)
+            .overlay(alignment: .leading) { Rectangle().fill(Theme.blue.opacity(0.7)).frame(width: 2) }
         case .other:
             Text(message.text).textSelection(.enabled)
+                .font(Theme.mono(.subheadline)).foregroundStyle(Theme.text).lineSpacing(3)
         case .system:
-            Text(message.text).font(.caption).foregroundStyle(.secondary)
+            Text(message.text).font(Theme.mono(.caption)).foregroundStyle(Theme.dim)
                 .frame(maxWidth: .infinity)
         }
     }
@@ -194,7 +231,7 @@ struct VerdictLabel: View {
 
     var body: some View {
         Label(text, systemImage: icon)
-            .font(.caption)
+            .font(Theme.mono(.caption))
             .foregroundStyle(color)
     }
 
@@ -214,9 +251,9 @@ struct VerdictLabel: View {
 
     private var color: Color {
         switch result.outcome {
-        case .delivered: .secondary
-        case .held, .unsure: .orange
-        case .notDelivered: .red
+        case .delivered: Theme.dim
+        case .held, .unsure: Theme.orange
+        case .notDelivered: Theme.red
         }
     }
 }
@@ -228,12 +265,14 @@ struct ScreenLines: View {
     var body: some View {
         ScrollView(.horizontal) {
             Text(lines.joined(separator: "\n"))
-                .font(.caption2.monospaced())
-                .padding(8)
+                .font(Theme.mono(.caption2))
+                .padding(.horizontal, 14).padding(.vertical, 9)
         }
-        .frame(maxHeight: 160)
-        .background(.black.opacity(0.85))
-        .foregroundStyle(.white)
+        .frame(maxWidth: .infinity, maxHeight: 160, alignment: .leading)
+        .background(Theme.bar)
+        .foregroundStyle(Theme.text)
+        .overlay(alignment: .leading) { Rectangle().fill(Theme.orange).frame(width: 2) }
+        .overlay(alignment: .top) { Rectangle().fill(Theme.line).frame(height: 1) }
     }
 }
 
@@ -241,24 +280,33 @@ struct ScreenLines: View {
 struct InputBar: View {
     @Binding var draft: String
     let send: (String) -> Void
+    private var empty: Bool { draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
     var body: some View {
-        HStack(alignment: .bottom) {
-            TextField("Message", text: $draft, axis: .vertical)
+        HStack(alignment: .center, spacing: 9) {
+            Text("❯").font(Theme.mono(.body, .bold)).foregroundStyle(Theme.red).accessibilityHidden(true)
+            TextField("Message", text: $draft, prompt: Text("message").foregroundStyle(Theme.dim), axis: .vertical)
                 .lineLimit(1...6)
-                .padding(10)
-                .background(.quaternary, in: RoundedRectangle(cornerRadius: 18))
+                .font(Theme.mono(.body))
+                .foregroundStyle(Theme.bright)
+                .tint(Theme.red)
             Button {
                 send(draft)
                 draft = ""
             } label: {
-                Image(systemName: "arrow.up.circle.fill").font(.title)
+                Text("send").font(Theme.mono(.footnote, .bold))
+                    .foregroundStyle(empty ? Theme.dim : Theme.bg)
+                    .padding(.horizontal, 10).padding(.vertical, 5)
+                    .background(empty ? Theme.faint : Theme.red, in: RoundedRectangle(cornerRadius: 6))
             }
-            .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .buttonStyle(.plain)
+            .disabled(empty)
             .accessibilityLabel("Send")
         }
-        .padding(.horizontal)
-        .padding(.top, 6)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 11)
+        .background(Theme.bar)
+        .overlay(alignment: .top) { Rectangle().fill(Theme.line).frame(height: 1) }
     }
 }
 
@@ -276,23 +324,33 @@ struct KeyStrip: View {
     }
 
     var body: some View {
-        VStack(spacing: 2) {
-            HStack {
+        VStack(spacing: 6) {
+            HStack(spacing: 7) {
                 ForEach(PaneKey.allCases, id: \.self) { key in
-                    Button(key.label) { press(key) }
-                        .buttonStyle(.bordered)
-                        .font(.callout.monospaced())
+                    Button { press(key) } label: {
+                        Text(key.label.lowercased())
+                            .font(Theme.mono(.footnote, .semibold))
+                            .foregroundStyle(atDialog && (key == .enter || key == .esc) ? Theme.orange : Theme.soft)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 8)
+                            .overlay(RoundedRectangle(cornerRadius: 6)
+                                .stroke(atDialog && (key == .enter || key == .esc) ? Theme.orange.opacity(0.7) : Theme.faint, lineWidth: 1))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(key.label)
                 }
             }
             if let hint = Self.hint(atDialog: atDialog) {
-                Text(hint).font(.caption2).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                Text(hint).font(Theme.mono(.caption2)).foregroundStyle(Theme.soft).multilineTextAlignment(.center)
             }
             if let last {
                 Text("\(last.key.label): \(last.result.words)")
-                    .font(.caption2)
-                    .foregroundStyle(last.result.outcome == .delivered ? Color.secondary : Color.red)
+                    .font(Theme.mono(.caption2))
+                    .foregroundStyle(last.result.outcome == .delivered ? Theme.dim : Theme.red)
             }
         }
-        .padding(.vertical, 6)
+        .padding(.horizontal, 16)
+        .padding(.top, 4).padding(.bottom, 8)
+        .background(Theme.bar)
     }
 }
