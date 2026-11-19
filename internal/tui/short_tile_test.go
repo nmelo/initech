@@ -3,6 +3,7 @@ package tui
 import (
 	"net"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
@@ -182,7 +183,19 @@ func TestShortTileWakeInheritsTheChildsActualSize(t *testing.T) {
 	}
 	for _, kind := range []string{"codex", "agy"} {
 		t.Run(kind, func(t *testing.T) {
-			cfg := PaneConfig{Name: "seat", AgentType: kind, Command: []string{"/bin/sh", "-c", `printf '\033[?1049h'; stty size; exec cat`}}
+			cmd := []string{"/bin/sh", "-c", `printf '\033[?1049h'; stty size; exec cat`}
+			if kind == "codex" {
+				// A Codex seat starts only with its identity guard, which needs
+				// a codex executable to follow (ini-pzla): the same child, named
+				// codex, answering the guard's --version check.
+				stand := filepath.Join(t.TempDir(), "codex")
+				body := "#!/bin/sh\nfor a in \"$@\"; do [ \"$a\" = --version ] && { echo 'codex-cli 0.0.0'; exit 0; }; done\nprintf '\\033[?1049h'; stty size; exec cat\n"
+				if err := os.WriteFile(stand, []byte(body), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				cmd = []string{stand}
+			}
+			cfg := PaneConfig{Name: "seat", AgentType: kind, Command: cmd}
 			p := NewParkedPane(cfg, 1, 7)
 			// The last resize came from a viewer. The owner's old rectangle
 			// no longer governs the child once the owner hides this seat.

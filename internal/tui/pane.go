@@ -570,6 +570,14 @@ func NewPane(cfg PaneConfig, rows, cols int) (*Pane, error) {
 	if agentType == "" {
 		agentType = config.AgentTypeClaudeCode
 	}
+	// A Codex seat starts only with its identity guard (codex_guard.go).
+	if config.NormalizeAgentType(agentType) == config.AgentTypeCodex {
+		argv, err := guardCodexSeat(cfg)
+		if err != nil {
+			return nil, err
+		}
+		cfg.Command = argv
+	}
 	submitKey := cfg.SubmitKey
 	if submitKey == "" {
 		submitKey = config.DefaultSubmitKey(agentType)
