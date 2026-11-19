@@ -3,6 +3,7 @@ package tui
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"net"
 	"os"
 	"path/filepath"
@@ -38,6 +39,7 @@ func stripRig(t *testing.T) (*TUI, *Pane, string) {
 	p.resizeFromMainLoop(38, 120)
 	tu := newTestTUI(p)
 	tu.strips = loadStripBook(filepath.Join(layoutDir(root), stripFileWindowOne), time.Now())
+	tu.identifyStripCaller = callerIs("super")
 	return tu, p, filepath.Join(layoutDir(root), stripFileWindowOne)
 }
 
@@ -108,7 +110,7 @@ func TestStripIPC_EachRefusalLeavesTheListUnchanged(t *testing.T) {
 		"301 characters": {IPCRequest{Action: "strip", Target: "super", Items: []string{strings.Repeat("a", 301)}}, "301 characters; the limit is 300"},
 		"a tab":          {IPCRequest{Action: "strip", Target: "super", Items: []string{"a\tb"}}, "control character"},
 		"a newline":      {IPCRequest{Action: "strip", Target: "super", Items: []string{"a\nb"}}, "control character"},
-		"another pane":   {IPCRequest{Action: "strip", Target: "eng9", Items: []string{"x"}}, "has no pane in this window"},
+		"another pane":   {IPCRequest{Action: "strip", Target: "eng9", Items: []string{"x"}}, "sets only the strip of the pane it runs in"},
 	} {
 		resp := stripCall(t, tu.handleIPCStrip, c.req)
 		if resp.OK || !strings.Contains(resp.Error, c.want) || strings.Contains(resp.Error, "\n") {
@@ -200,6 +202,7 @@ func TestStrip_RemovingTheAgentRemovesItsList(t *testing.T) {
 	_, p, path := stripRig(t)
 	tu := newTestTUI(p, newEmuPane("eng1", 120, 38)) // the last agent cannot be removed
 	tu.strips = loadStripBook(path, time.Now())
+	tu.identifyStripCaller = callerIs("super")
 	stripCall(t, tu.handleIPCStrip, IPCRequest{Action: "strip", Target: "super", Items: []string{"one"}})
 	tu.strips.set("eng1", []string{"stays"})
 	if err := tu.removePane("super"); err != nil {
@@ -251,7 +254,8 @@ func TestStripIPC_TheServeDaemonSetsItsPanes(t *testing.T) {
 	p.ResizeExact(30, 100)
 	root := t.TempDir()
 	d := &Daemon{headless: true, panes: []*Pane{p},
-		strips: loadStripBook(filepath.Join(layoutDir(root), stripFileServe), time.Now())}
+		strips:         loadStripBook(filepath.Join(layoutDir(root), stripFileServe), time.Now()),
+		identifySender: callerIs("eng1")}
 	full := stripEmuRows(p)
 	if resp := stripCall(t, d.handleIPCStrip, IPCRequest{Action: "strip", Target: "eng1", Items: []string{"one"}}); !resp.OK {
 		t.Fatalf("reply %+v", resp)
@@ -265,6 +269,10 @@ func TestStripIPC_TheServeDaemonSetsItsPanes(t *testing.T) {
 	if resp := stripCall(t, d.handleIPCStrip, IPCRequest{Action: "strip", Target: "nobody", Items: []string{"x"}}); resp.OK {
 		t.Fatal("a pane the daemon does not host was set")
 	}
+	d.identifySender = callerIs("eng2")
+	if resp := stripCall(t, d.handleIPCStrip, IPCRequest{Action: "strip", Target: "eng1", Items: []string{"x"}}); resp.OK || p.StripItems() != nil {
+		t.Fatalf("another agent set eng1's strip on the daemon: %+v", resp)
+	}
 }
 
 func mustRead(t *testing.T, path string) []byte {
@@ -274,4 +282,30 @@ func mustRead(t *testing.T, path string) []byte {
 		t.Fatal(err)
 	}
 	return b
+}
+
+// callerIs is a caller identification that names agent.
+func callerIs(agent string) func(net.Conn) (string, error) {
+	return func(net.Conn) (string, error) { return agent, nil }
+}
+
+// Point 5: the list belongs to its pane's agent. A call from another agent's
+// pane, or from a process in no pane, is refused whatever it names, and the
+// list stays; twin: the pane's own agent sets it.
+func TestStripIPC_OnlyThePanesOwnAgentSetsItsStrip(t *testing.T) {
+	tu, p, _ := stripRig(t)
+	stripCall(t, tu.handleIPCStrip, IPCRequest{Action: "strip", Target: "super", Items: []string{"mine"}})
+	for name, identify := range map[string]func(net.Conn) (string, error){
+		"another agent":  callerIs("eng1"),
+		"no pane at all": func(net.Conn) (string, error) { return "", errors.New("not inside one of its panes") },
+	} {
+		tu.identifyStripCaller = identify
+		resp := stripCall(t, tu.handleIPCStrip, IPCRequest{Action: "strip", Target: "super", Items: []string{"spoofed"}})
+		if resp.OK || !strings.Contains(resp.Error, "sets only the strip of the pane it runs in") {
+			t.Errorf("%s: reply %+v", name, resp)
+		}
+		if got := p.StripItems(); !reflect.DeepEqual(got, []string{"mine"}) {
+			t.Errorf("%s: list became %q", name, got)
+		}
+	}
 }

@@ -69,6 +69,10 @@ func (t *TUI) handleIPCStrip(conn net.Conn, req IPCRequest) {
 		reply(IPCResponse{Error: "this window keeps no strips (no project)"})
 		return
 	}
+	if err := t.stripCallerIs(conn, req.Target); err != nil {
+		reply(IPCResponse{Error: err.Error()})
+		return
+	}
 	var p *Pane
 	if !t.runOnMain(func() {
 		if pv := t.findPaneByName(req.Target); pv != nil {
@@ -121,6 +125,10 @@ func (d *Daemon) handleIPCStrip(conn net.Conn, req IPCRequest) {
 		reply(IPCResponse{Error: "this daemon keeps no strips (no project)"})
 		return
 	}
+	if caller, err := d.identifySendingPane(conn); err != nil || caller != req.Target {
+		reply(IPCResponse{Error: stripNotYours(req.Target, caller, err)})
+		return
+	}
 	p := d.findPane(req.Target)
 	if p == nil {
 		reply(IPCResponse{Error: fmt.Sprintf("%s has no pane on this daemon", req.Target)})
@@ -143,4 +151,31 @@ func (d *Daemon) handleIPCStrip(conn net.Conn, req IPCRequest) {
 	}
 	p.sendMu.Unlock()
 	reply(IPCResponse{OK: true, Data: stripReply(req.Target, items)})
+}
+
+// stripCallerIs refuses a strip request that does not come from inside the
+// pane it names: the list belongs to its pane's agent (point 5), so it is
+// attributed by the caller's process tree, as initech post is, never by what
+// the request says.
+func (t *TUI) stripCallerIs(conn net.Conn, agent string) error {
+	identify := t.identifyStripCaller
+	if identify == nil {
+		identify = func(c net.Conn) (string, error) {
+			id, err := t.identifyPostConnection(c)
+			return id.agent, err
+		}
+	}
+	caller, err := identify(conn)
+	if err != nil || caller != agent {
+		return fmt.Errorf("%s", stripNotYours(agent, caller, err))
+	}
+	return nil
+}
+
+// stripNotYours is the refusal for a request from outside the pane it names.
+func stripNotYours(agent, caller string, err error) string {
+	if err != nil || caller == "" {
+		return fmt.Sprintf("initech strip sets only the strip of the pane it runs in; could not tell that this call comes from %s's pane", agent)
+	}
+	return fmt.Sprintf("initech strip sets only the strip of the pane it runs in; this call comes from %s's pane, not %s's", caller, agent)
 }

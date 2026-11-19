@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"log/slog"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -169,6 +170,9 @@ type TUI struct {
 	held *heldWriter
 	// strips is window 1's list strips (initech strip); nil in a viewer.
 	strips *stripBook
+	// identifyStripCaller names the pane a strip request comes from; nil
+	// uses the caller's process tree, as initech post does. Tests set it.
+	identifyStripCaller func(net.Conn) (string, error)
 	// lastDrawn is how the frame loop last drew each pane, and frameChanged
 	// the panes whose content or drawing changed in the last frame drawn
 	// (ini-ysr.1). Main loop only. Nothing acts on frameChanged yet.
