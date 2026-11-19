@@ -21,7 +21,7 @@ func TestDNDCount_TheRibbonShowsHowManyAreHeld(t *testing.T) {
 		t.Fatalf("nothing held: %q, want plain \"3 eng1 dnd\"", got)
 	}
 	for i, want := range []string{"3 eng1 dnd (1)", "3 eng1 dnd (2)", "3 eng1 dnd (3)"} {
-		if _, held := p.holdIfDND("message", true, "eng2"); !held {
+		if _, held := p.holdIfDND("message", true, "eng2", ""); !held {
 			t.Fatalf("send %d was not held", i)
 		}
 		if got := dndRibbon(t, p); !strings.Contains(got, want) {
@@ -67,12 +67,12 @@ func TestDNDCount_RibbonStatusAndSenderAgree(t *testing.T) {
 			t.Fatalf("%s: list reply %+v, want queued_count %d", when, seats, want)
 		}
 	}
-	v, held := p.holdIfDND("first", true, "eng2")
+	v, held := p.holdIfDND("first", true, "eng2", "")
 	if !held || !strings.Contains(v.Reason, "2 messages ahead") {
 		t.Fatalf("first send: %+v, want held behind the 2 Codex queued", v)
 	}
 	agree("one held, two native", 3)
-	v2, _ := p.holdIfDND("second", true, "eng2")
+	v2, _ := p.holdIfDND("second", true, "eng2", "")
 	if !strings.Contains(v2.Reason, "3 messages ahead") {
 		t.Fatalf("second send: %q, want 3 ahead, the number the ribbon showed", v2.Reason)
 	}

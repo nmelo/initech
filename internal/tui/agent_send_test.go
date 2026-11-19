@@ -318,12 +318,23 @@ func TestAgentSendHeldReceiptAndRelease(t *testing.T) {
 				f.paint(screen)
 				p.safeGo = func(drain func()) { drain() }
 				p.maybeDrainModalQueue()
-				if len(events) != len(keep) {
-					t.Fatalf("release emitted %d events, want %d", len(events), len(keep))
+				// Receipt changes ride the same channel (ini-yjcy); the
+				// release's verdict lines are the others.
+				var lines []AgentEvent
+				for drained := false; !drained; {
+					select {
+					case ev := <-events:
+						if ev.Receipt == nil {
+							lines = append(lines, ev)
+						}
+					default:
+						drained = true
+					}
 				}
-				// Wait for release by taking its verdict events, not by sampling a clock.
-				for range keep {
-					ev := <-events
+				if len(lines) != len(keep) {
+					t.Fatalf("release emitted %d events, want %d", len(lines), len(keep))
+				}
+				for _, ev := range lines {
 					if ev.ToSender != "delivered to "+p.name {
 						t.Fatalf("release: %+v", ev)
 					}

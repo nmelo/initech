@@ -64,6 +64,11 @@ func dndPane(t *testing.T, name string) (*Pane, chan AgentEvent, func() string) 
 // dndLineIs reports whether line is the held line for agent with the count
 // ahead given; the age is whatever the clock made it (its own test pins it).
 func dndLineIs(line, agent, ahead string) bool {
+	// Every held line ends with its receipt (ini-yjcy); the words before it
+	// are the do-not-disturb line.
+	if id := receiptOf(line); id != "" {
+		line = strings.TrimSuffix(line, receiptLine(id))
+	}
 	return strings.HasPrefix(line, "held: "+agent+" is in do-not-disturb (") && strings.HasSuffix(line, ", "+ahead+")")
 }
 

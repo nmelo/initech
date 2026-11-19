@@ -31,7 +31,7 @@ func (p *Pane) holdAgentMessage(m QueuedMessage, f agentFrame, reason string) Se
 	if m.HeldForDialog {
 		LogInfo("inject", "deferred: modal open", "pane", p.name, "queued", ahead+1)
 	}
-	m.Receipt = newAgentReceipt()
+	mintReceipt(&m) // a re-sent message keeps its own (ini-yjcy)
 	p.messageQueue = append(p.messageQueue, m)
 	if m.HeldForDialog {
 		name := f.dialogName
@@ -282,15 +282,10 @@ func (p *Pane) drainAgentQueue() {
 			p.sendMu.Unlock()
 			return
 		}
-		if m.Receipt != "" {
-			if p.typedReceipts == nil {
-				p.typedReceipts = make(map[string]string)
-			}
-			p.typedReceipts[m.Receipt] = m.From
-		}
 		p.mu.Unlock()
 		p.heldChanged()
 		p.sendMu.Unlock()
+		p.settleReceipt(m, v) // typed, or dropped when refused (ini-yjcy)
 		line := "delivered to " + p.name
 		if v.Outcome != DeliveryDelivered {
 			line = v.Reason
@@ -338,12 +333,13 @@ func (p *Pane) withdrawReceipt(id, from string) (string, error) {
 		p.messageQueue = append(p.messageQueue[:i], p.messageQueue[i+1:]...)
 		p.mu.Unlock()
 		p.heldChanged()
+		p.noteReceipt(m, ReceiptWithdrawn)
 		return "withdrawn: " + id, nil
 	}
-	owner, typed := p.typedReceipts[id]
 	p.mu.Unlock()
-	if typed {
-		if owner != "" && !sameSender(owner, from) {
+	r := p.book().state(p.name, id)
+	if r.State == ReceiptTyped {
+		if owner := r.From; owner != "" && !sameSender(owner, from) {
 			return "", fmt.Errorf("receipt %s belongs to another sender", id)
 		}
 		return "", fmt.Errorf("receipt %s was already typed", id)
@@ -361,13 +357,16 @@ func (p *Pane) receiptReply(id, from string) IPCResponse {
 	return IPCResponse{OK: true, Data: line, Delivery: "withdrawn"}
 }
 
-func (p *Pane) queueForWake(text string, enter bool, from string) SendVerdict {
-	m := QueuedMessage{Text: text, Enter: enter, From: from, Time: time.Now()}
+func (p *Pane) queueForWake(text string, enter bool, o sendOrigin) SendVerdict {
+	m := QueuedMessage{Text: text, Enter: enter, From: o.From, Time: time.Now(), Receipt: o.Receipt}
 	if p.agentReader() != noAgentReader {
 		return p.holdAgentMessage(m, agentFrame{}, "waiting for the agent to wake")
 	}
-	if why := p.enqueueOrRefuse(m, sendAgainWhenResumes); why != "" {
+	why, receipt := p.enqueueReceipt(m, sendAgainWhenResumes)
+	if why != "" {
 		return SendVerdict{Outcome: DeliveryNotDelivered, Reason: why}
 	}
-	return SendVerdict{Outcome: DeliveryDelivered}
+	// Delivered, as before, for the wake delivers it; the receipt tells a
+	// drain re-sending it that it is held again (ini-yjcy).
+	return SendVerdict{Outcome: DeliveryDelivered, Receipt: receipt}
 }

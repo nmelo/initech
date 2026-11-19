@@ -373,7 +373,7 @@ func TestCeiling_ASendIsHeldAndDeliveredOnceAfterTheCeilingClears(t *testing.T) 
 		resp := ipcCall(t, func(c net.Conn) {
 			tui.handleIPCSend(c, IPCRequest{Target: "eng1", Text: "held-ceiling-message", Enter: true})
 		})
-		if !resp.OK || resp.Delivery != DeliveryDeferred || resp.Data != CeilingDeferral {
+		if !resp.OK || resp.Delivery != DeliveryDeferred || resp.Data != CeilingDeferral+receiptLine(receiptOf(resp.Data)) {
 			t.Fatalf("send at the ceiling = %+v, want deferred with %q", resp, CeilingDeferral)
 		}
 		if parked.QueueLen() != 1 || spawned.Load() != 0 {
@@ -428,7 +428,7 @@ func TestCeiling_TheHeldMailIsMarkedAndOnlyItIsWoken(t *testing.T) {
 	resp := ipcCall(t, func(c net.Conn) {
 		tui.handleIPCSend(c, IPCRequest{Target: "eng1", Text: "x", Enter: true})
 	})
-	if resp.Delivery != DeliveryDeferred || resp.Data != CeilingDeferral {
+	if resp.Delivery != DeliveryDeferred || resp.Data != CeilingDeferral+receiptLine(receiptOf(resp.Data)) || receiptOf(resp.Data) == "" {
 		t.Fatalf("send at the ceiling = %+v", resp)
 	}
 	_ = tui.resumePane(quiet, "keystroke")

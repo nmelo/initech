@@ -190,7 +190,7 @@ func TestQueueCap_AWakingSendAnswersBeforeTheQueueIsTyped(t *testing.T) {
 			tu.handleIPCSend(c, IPCRequest{Target: "eng1", Text: "[from b] hello", Enter: true})
 		})
 		took := time.Since(start)
-		if !resp.OK || resp.Delivery != DeliveryHeld || resp.Data != "queued for eng1, woken: delivered in order now that it is up (3 ahead)" {
+		if !resp.OK || resp.Delivery != DeliveryHeld || resp.Data != "queued for eng1, woken: delivered in order now that it is up (3 ahead)"+receiptLine(receiptOf(resp.Data)) || receiptOf(resp.Data) == "" {
 			t.Fatalf("reply %+v, want held with 3 ahead", resp)
 		}
 		np, ok := tu.panes[0].(*Pane)

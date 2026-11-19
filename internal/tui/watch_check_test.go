@@ -413,8 +413,15 @@ func TestWatchWorld_ReadsTheLastBeadPollAndTheCommentCache(t *testing.T) {
 	if _, ok := w.Comments("ini-b"); ok {
 		t.Fatal("comments of a bead never read came back as read")
 	}
-	if r := w.Receipt("eng2", "r1"); r.State != ReceiptUnknown {
-		t.Fatalf("receipt %+v, want unknown until Watches 2E", r)
+	// The world reads Watches 2E's receipt book: a receipt never minted
+	// reads unknown, a recorded one its state.
+	if r := w.Receipt("eng2", "wc-never-minted"); r.State != ReceiptUnknown {
+		t.Fatalf("receipt %+v, want unknown", r)
+	}
+	receipts.set("eng2", "wc-held", "eng9", heldKindDND, ReceiptHeld, "", wcT0)
+	defer func() { receipts.mu.Lock(); delete(receipts.byID, "wc-held"); receipts.mu.Unlock() }()
+	if r := w.Receipt("eng2", "wc-held"); r.State != ReceiptHeld || r.From != "eng9" {
+		t.Fatalf("receipt %+v, want the book's held state", r)
 	}
 }
 

@@ -366,14 +366,23 @@ func requeueHeld(entries []heldEntry, panes func(string) *Pane, now time.Time) [
 	for _, e := range entries {
 		since := e.Time.Format("15:04")
 		if e.State == heldStateTyping {
+			// Neither held nor typed after the restart: unknown (ini-yjcy).
+			restoredReceipt(e, ReceiptUnknown, "")
 			lines = append(lines, heldLine{e.From, fmt.Sprintf("the message to %s held since %s may or may not have arrived (initech restarted while typing it)", e.Pane, since)})
 			continue
 		}
 		if panes(e.Pane) == nil {
+			restoredReceipt(e, ReceiptDropped, e.Pane+" no longer exists")
 			lines = append(lines, heldLine{e.From, fmt.Sprintf("held message to %s since %s was not delivered: %s no longer exists", e.Pane, since, e.Pane)})
 			continue
 		}
 		m := QueuedMessage{Receipt: e.Receipt, Text: e.Text, Enter: e.Enter, Time: e.Time, From: e.From}
+		if m.Receipt == "" {
+			// Held by an initech that minted none: one now, so it can be
+			// withdrawn and watched (ini-yjcy). held.yaml stays version 1.
+			mintReceipt(&m)
+			LogInfo("held", "restored hold had no receipt; minted one", "pane", e.Pane, "kind", e.Kind)
+		}
 		switch e.Kind {
 		case heldKindDND:
 			m.DND, m.Released = true, now
@@ -412,7 +421,11 @@ func requeueHeld(entries []heldEntry, panes func(string) *Pane, now time.Time) [
 		}
 		p.messageQueue = append(keep, live...)
 		p.mu.Unlock()
+		for _, m := range keep {
+			p.noteReceipt(m, ReceiptHeld)
+		}
 		for _, m := range refused {
+			p.dropReceipt(m, queueRefusal(name, limit, "it has typed what it holds"))
 			lines = append(lines, heldLine{m.From, fmt.Sprintf("held message to %s since %s was not delivered: %s",
 				name, m.Time.Format("15:04"), queueRefusal(name, limit, "it has typed what it holds"))})
 		}
@@ -423,6 +436,14 @@ func requeueHeld(entries []heldEntry, panes func(string) *Pane, now time.Time) [
 		}
 	}
 	return lines
+}
+
+// restoredReceipt records the receipt of a held entry that does not go back
+// on a pane: unknown when it was being typed, dropped when its pane is gone.
+func restoredReceipt(e heldEntry, state, why string) {
+	if e.Receipt != "" {
+		receipts.set(e.Pane, e.Receipt, e.From, e.Kind, state, why, e.Time)
+	}
 }
 
 // loadHeldMail reads window 1's held file at start, after the panes are built

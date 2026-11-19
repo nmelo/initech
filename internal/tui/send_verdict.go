@@ -1,6 +1,9 @@
 package tui
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // SendVerdict is what a send learned about its own delivery (ini-69fy): the
 // outcome the sender is told, and the reason in the words the toast already
@@ -12,6 +15,18 @@ type SendVerdict struct {
 	// Removed counts what cleanMessage took out of the body before it was
 	// typed (ini-47vy); 0 for a clean message.
 	Removed int
+	// Receipt is the receipt of a send that ended in a hold (ini-yjcy):
+	// a held or deferred line ends with it.
+	Receipt string
+}
+
+// withReceipt ends a held or deferred line with its receipt, once.
+func withReceipt(words, id string) string {
+	end := receiptLine(id)
+	if end == "" || strings.HasSuffix(words, end) {
+		return words
+	}
+	return words + end
 }
 
 // Send outcomes, as they travel in IPCResponse.Delivery and
@@ -67,7 +82,9 @@ func verdictIPCResponse(name string, v SendVerdict, deferred string) IPCResponse
 		if v.Reason != "" {
 			deferred = v.Reason
 		}
-		return IPCResponse{OK: true, Delivery: v.Outcome, Data: deferred, Removed: v.Removed}
+		return IPCResponse{OK: true, Delivery: v.Outcome, Data: withReceipt(deferred, v.Receipt), Removed: v.Removed}
+	case DeliveryHeld:
+		return IPCResponse{OK: true, Delivery: v.Outcome, Data: withReceipt(v.Reason, v.Receipt), Removed: v.Removed}
 	}
 	return IPCResponse{OK: true, Delivery: v.Outcome, Data: v.Reason, Removed: v.Removed}
 }
@@ -83,7 +100,9 @@ func verdictControlResp(v SendVerdict, deferred string) ControlResp {
 		if v.Reason != "" {
 			deferred = v.Reason
 		}
-		return ControlResp{OK: true, Delivery: v.Outcome, Data: deferred, Removed: v.Removed}
+		return ControlResp{OK: true, Delivery: v.Outcome, Data: withReceipt(deferred, v.Receipt), Removed: v.Removed}
+	case DeliveryHeld:
+		return ControlResp{OK: true, Delivery: v.Outcome, Data: withReceipt(v.Reason, v.Receipt), Removed: v.Removed}
 	}
 	return ControlResp{OK: true, Delivery: v.Outcome, Data: v.Reason, Removed: v.Removed}
 }

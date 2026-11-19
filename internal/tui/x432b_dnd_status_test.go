@@ -26,14 +26,14 @@ func TestDNDStatus_TheLineCarriesTheAgeAndTheCountAhead(t *testing.T) {
 		"held: a is in do-not-disturb (12m, 2 messages ahead)",
 	}
 	for i, w := range want {
-		if v := p.SendTextVerdict("m", true); v.Outcome != DeliveryHeld || v.Reason != w {
+		if v := p.SendTextVerdict("m", true); v.Outcome != DeliveryHeld || v.Reason != w+receiptLine(v.Receipt) || v.Receipt == "" {
 			t.Errorf("send %d: %+v, want %q", i, v, w)
 		}
 	}
 	p.mu.Lock()
 	p.dndSince = time.Now().Add(-61 * time.Minute)
 	p.mu.Unlock()
-	if v := p.SendTextVerdict("m", true); v.Reason != "held: a is in do-not-disturb (1h, 3 messages ahead)" {
+	if v := p.SendTextVerdict("m", true); v.Reason != "held: a is in do-not-disturb (1h, 3 messages ahead)"+receiptLine(v.Receipt) {
 		t.Errorf("an hour on: %q", v.Reason)
 	}
 }

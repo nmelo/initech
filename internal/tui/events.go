@@ -109,6 +109,9 @@ type AgentEvent struct {
 	// Empty on every other event.
 	From     string
 	ToSender string
+	// Receipt is a receipt's change (ini-yjcy): onReceipt is told, and
+	// nothing else (no toast, no event log line).
+	Receipt *ReceiptState
 }
 
 // notification is a rendered event with an expiration time.
@@ -147,6 +150,12 @@ const eventLogRetention = 60 * time.Minute
 // handleAgentEvent processes a single agent event. Appends it to the
 // notification queue (for toasts) and the event log (for history).
 func (t *TUI) handleAgentEvent(ev AgentEvent) {
+	if ev.Receipt != nil {
+		if onReceipt != nil {
+			onReceipt(*ev.Receipt)
+		}
+		return
+	}
 	if ev.Time.IsZero() {
 		ev.Time = time.Now()
 	}

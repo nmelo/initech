@@ -256,10 +256,10 @@ var _ PaneView = (*Pane)(nil)
 // Pane represents a terminal pane backed by a PTY process.
 // It uses a SafeEmulator from charmbracelet/x/vt for terminal emulation.
 type Pane struct {
-	agentReleaseDone chan struct{}     // Closed when the claimed receipt is typed or restored.
-	typedReceipts    map[string]string // Released receipts, so a later withdrawal can explain its refusal.
-	frameChange                        // Content changed since the last frame (ini-ysr.1).
-	cfg              PaneConfig        // Original config for restart.
+	agentReleaseDone chan struct{} // Closed when the claimed receipt is typed or restored.
+	receipts         *receiptBook  // nil: the process's book (ini-yjcy); a test sets its own.
+	frameChange                    // Content changed since the last frame (ini-ysr.1).
+	cfg              PaneConfig    // Original config for restart.
 	name             string
 	// onSuspendedMessage fires when SendText queues for a suspended pane
 	// (ini-g7fl): the TUI wires it to resume-on-message, because the pane
@@ -461,11 +461,14 @@ type Pane struct {
 	// The held file (ini-8rkg): heldHook rewrites the owner's file after a
 	// queue change; heldTyping and heldInHand are mail a loop took off the
 	// queue to type one at a time (resume), kept in the file until typed.
-	heldHook   func(*Pane)
-	sendAfter  bool   // Only read or written under sendMu.
-	sendFrom   string // whose send is being typed (setSendFrom)
-	sendWaited bool   // a caller waits on the verdict of the send being typed (setSendWaited)
-	heldTyping *QueuedMessage
+	heldHook  func(*Pane)
+	sendAfter bool   // Only read or written under sendMu.
+	sendFrom  string // whose send is being typed (setSendFrom)
+	// sendReceipt is the receipt of the queued message being re-sent, so a
+	// hold inside the send keeps it (ini-yjcy). Under mu, set with sendFrom.
+	sendReceipt string
+	sendWaited  bool // a caller waits on the verdict of the send being typed (setSendWaited)
+	heldTyping  *QueuedMessage
 	// boxWaitSince is when an agent pane's input box began to read neither
 	// empty, busy, nor at a dialog; zero while it does (emptyBoxHoldBound).
 	// Under mu.
@@ -1342,7 +1345,7 @@ func (p *Pane) deliverClean(text string, enter, hold bool, o sendOrigin) SendVer
 	p.lastMessageReceived = time.Now()
 	p.mu.Unlock()
 
-	if v, queued := p.queueIfSuspended(text, enter, o.From); queued {
+	if v, queued := p.queueIfSuspended(text, enter, o); queued {
 		return v
 	}
 	// DO-NOT-DISTURB (ini-x432): held on the queue, nothing typed. The
@@ -1371,7 +1374,7 @@ func (p *Pane) deliverClean(text string, enter, hold bool, o sendOrigin) SendVer
 		// order. A pane suspended while the message waited queues it instead.
 		release := p.waitTypingHold()
 		defer release()
-		if v, queued := p.queueIfSuspended(text, enter, o.From); queued {
+		if v, queued := p.queueIfSuspended(text, enter, o); queued {
 			return v
 		}
 		// Do-not-disturb set while the message waited holds it too.
@@ -1384,6 +1387,8 @@ func (p *Pane) deliverClean(text string, enter, hold bool, o sendOrigin) SendVer
 	p.sendAfter = o.After
 	defer func() { p.sendAfter = false }()
 	p.setSendFrom(o.From) // a hold inside the send keeps its sender (ini-8rkg)
+	p.setSendReceipt(o.Receipt)
+	defer p.setSendReceipt("")
 	p.setSendWaited(o.Waiting)
 	defer p.setSendFrom("")
 	defer p.setSendWaited(false)
@@ -1401,7 +1406,7 @@ func (p *Pane) deliverClean(text string, enter, hold bool, o sendOrigin) SendVer
 // queueIfSuspended queues a message for a suspended pane and wakes it,
 // reporting whether the pane was suspended, and the refusal when its queue
 // is at the cap (ini-pt3j): then nothing is queued and nothing woken.
-func (p *Pane) queueIfSuspended(text string, enter bool, from string) (SendVerdict, bool) {
+func (p *Pane) queueIfSuspended(text string, enter bool, o sendOrigin) (SendVerdict, bool) {
 	p.mu.Lock()
 	suspended := p.suspended
 	cb := p.onSuspendedMessage
@@ -1416,7 +1421,7 @@ func (p *Pane) queueIfSuspended(text string, enter bool, from string) (SendVerdi
 	// HERE means every present and future caller inherits queue-on-suspended
 	// without knowing suspension exists: structural, not per-caller vigilance.
 	if suspended {
-		v := p.queueForWake(text, enter, from)
+		v := p.queueForWake(text, enter, o)
 		if v.Outcome == DeliveryNotDelivered {
 			return v, true
 		}

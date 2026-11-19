@@ -46,11 +46,10 @@ type ReceiptState struct {
 	Since, At            time.Time
 }
 
-// watchReceipt reads a receipt for the pass and for set. Until Watches 2E
-// records receipts every one reads unknown, so a send watch cannot fire and
-// misses at its deadline; 2E replaces this with its own reader.
+// watchReceipt reads a receipt for the pass and for set: the receipt book
+// Watches 2E keeps (receipts.go). A test may replace it.
 var watchReceipt = func(t *TUI, pane, id string) ReceiptState {
-	return ReceiptState{Pane: pane, ID: id, State: ReceiptUnknown}
+	return t.receiptState(pane, id)
 }
 
 // World is what a pass reads, gathered once and read-only.

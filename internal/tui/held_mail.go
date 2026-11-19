@@ -47,10 +47,17 @@ func (p *Pane) enqueueHeld(text string, enter bool) bool {
 // enqueueHeldWhen is enqueueHeld returning the refusal at the cap, naming
 // when the sender can send again.
 func (p *Pane) enqueueHeldWhen(text string, enter bool, when string) string {
+	refusal, _ := p.enqueueHeldReceipt(text, enter, when)
+	return refusal
+}
+
+// enqueueHeldReceipt is enqueueHeldWhen returning the held message's receipt
+// too (ini-yjcy): the send's own when it is a queued message re-sent.
+func (p *Pane) enqueueHeldReceipt(text string, enter bool, when string) (refusal, receipt string) {
 	p.mu.Lock()
-	from := p.sendFrom
+	from, receipt := p.sendFrom, p.sendReceipt
 	p.mu.Unlock()
-	return p.enqueueOrRefuse(QueuedMessage{Text: text, Enter: enter, Time: time.Now(), HeldForDialog: true, From: from}, when)
+	return p.enqueueReceipt(QueuedMessage{Text: text, Enter: enter, Time: time.Now(), HeldForDialog: true, From: from, Receipt: receipt}, when)
 }
 
 // setSendFrom records whose send the send path is typing, for a hold inside
@@ -58,6 +65,14 @@ func (p *Pane) enqueueHeldWhen(text string, enter bool, when string) string {
 func (p *Pane) setSendFrom(from string) {
 	p.mu.Lock()
 	p.sendFrom = from
+	p.mu.Unlock()
+}
+
+// setSendReceipt records the receipt of the queued message being re-sent,
+// for a hold inside the send (ini-yjcy). The caller holds sendMu.
+func (p *Pane) setSendReceipt(id string) {
+	p.mu.Lock()
+	p.sendReceipt = id
 	p.mu.Unlock()
 }
 
@@ -141,6 +156,7 @@ func (p *Pane) takeQueued(pick func(QueuedMessage) bool) []QueuedMessage {
 // is in both, so the operator knows the message sat, not just that it failed.
 func (p *Pane) surfaceHeldMail(msgs []QueuedMessage, why string, now time.Time) {
 	for _, m := range msgs {
+		p.dropReceipt(m, why)
 		waited := now.Sub(m.Time).Round(time.Second)
 		preview := m.Text
 		if len(preview) > 60 {
@@ -229,6 +245,7 @@ func (p *Pane) endEmptyBoxHolds(now time.Time) int {
 		return now.Sub(later(m.Time, since)) >= emptyBoxHoldBound
 	})
 	for _, m := range msgs {
+		p.dropReceipt(m, "its input box never read empty")
 		line := fmt.Sprintf("the message to %s held since %s was not delivered: its input box never read empty; send it again", p.name, m.Time.Format("15:04"))
 		LogInfo("inject", "held message NOT DELIVERED", "pane", p.name, "reason", "input box never read empty",
 			"waited", now.Sub(m.Time).Round(time.Second), "has_sender", m.From != "")

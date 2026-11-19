@@ -475,7 +475,7 @@ For a pane owned by another window or machine, run `initech dnd` there.
 An agent in the middle of a step can run `initech dnd on` in its own pane. Until its turn
 ends (the pane stops running), or it runs `initech dnd off`, messages other agents send it wait in the pane's message queue instead of
 being typed into its input box, and each sender sees
-`held: <agent> is in do-not-disturb (<age>, <N> messages ahead)` with exit 0: how long the
+`held: <agent> is in do-not-disturb (<age>, <N> messages ahead) (receipt <id>)` with exit 0: how long the
 agent has been in it (45s, 12m, 1h) and how many messages wait ahead of this one. `initech
 status` shows `dnd <age>` after the agent's state, and so does the `initech patrol` header, with how it ends when it does not end at turn end: `dnd 12m until off`, or `dnd 12m until 15:30` for a timer;
 `initech deliver` and `initech assign` print the held line and succeed. On screen, the pane's ribbon carries `dnd` after the agent's name, after the held-mail mark when there is one, and `dnd (N)` while it holds N messages: everything do-not-disturb holds back from the pane, the agent's own queued messages included, the same number `initech status` reports as `queued_count` and a held send counts as `N messages ahead`; mail held while you type keeps its own mark and is not counted. A narrow tile drops the word before the number (`(3)`), and only then shortens the badge, to keep the mark visible. The Agents overlay row reads `· dnd <age>` after the state word and the held count (`idle · 2 held · dnd 5m`); the agent stays in the column its state puts it in. Both go at the next draw once do-not-disturb ends. `dnd off` delivers them in the order they arrived, one at a time, through the
@@ -553,7 +553,7 @@ At the ceiling, initech refuses every start and wake of an agent but the rig's c
 
 The coordinator, the agent whose role is named `super`, is never refused: it starts, resumes, restarts and wakes whatever the sessions, memory and load, so a rig restarted on a busy Mac always comes up with someone to run it. It still counts as an awake session for every other start, and each start it makes over the ceiling writes one line to the log: `[ceiling] super started over the ceiling (load 30/30)`. Only the role named `super` is exempt: a coordinator under another role name, or a role such as `super2`, is held like any other agent.
 
-A message to a suspended agent at the ceiling is held, not lost. It waits on the agent's queue and the sender hears `deferred to <agent> — the Mac is at its ceiling; will wake and deliver when it is under`, exit 0. When the ceiling clears, initech wakes the agents holding such messages one at a time, each through the ceiling again, and delivers each message once.
+A message to a suspended agent at the ceiling is held, not lost. It waits on the agent's queue and the sender hears `deferred to <agent> — the Mac is at its ceiling; will wake and deliver when it is under (receipt <id>)`, exit 0. When the ceiling clears, initech wakes the agents holding such messages one at a time, each through the ceiling again, and delivers each message once.
 
 `initech status` prints the fleet line after the agent table, `fleet 41 awake · 6.1 GB free · swap 2.3 GB · load 34 · ceiling 40 / 8 GB (default) / 30`, red and ending `· at the ceiling` while it is engaged; it reads window 1's last reading, or the machine itself when window 1 has none. The ceiling names the free memory value in effect and where it came from: `default` for 8 GB, `20% of 16 GB` for the share of a smaller machine, `machine.yaml` for a value set in the file. Swap in use is information only and never engages the ceiling. `initech status --json --numbers` carries the same in `numbers.fleet`: `awake`, `free_gb`, `swap_gb` and `load` (null when unreadable), `ceiling` (with `free_memory_source`), `at_ceiling` and `line`. The overlay's rig row ends with the fleet count, `· fleet 31 awake`.
 
@@ -573,7 +573,7 @@ There is no override from a rig or a flag, no per-rig share of the ceiling, and 
 
 An agent whose process stops reading its input cannot take keys or messages, and it wedges only its own pane: the rest of the window keeps moving. The first key, paste or message that cannot go in brings one notice, `<agent> stopped reading its input; keys and messages to it are not going in`, and from then on what you type at that pane is dropped, with no further notice. When the agent reads again the pane takes input again, with no notice.
 
-A message sent to it waits at most two seconds. If none of the message had gone in, `initech send` answers `deferred to <agent> — the pane is not reading its input; will deliver when it does` (exit 0), and the message goes in once the agent reads again. If part of it had, `initech send` answers `could not confirm delivery to <agent>: the pane stopped reading its input while this message was being written; it will not be sent again, because a resend could duplicate it if the agent resumes; peek the pane` (exit 2): the rest may still arrive if the agent resumes, so look at the pane before sending it again. Suspending or restarting the pane works as usual.
+A message sent to it waits at most two seconds. If none of the message had gone in, `initech send` answers `deferred to <agent> — the pane is not reading its input; will deliver when it does (receipt <id>)` (exit 0), and the message goes in once the agent reads again. If part of it had, `initech send` answers `could not confirm delivery to <agent>: the pane stopped reading its input while this message was being written; it will not be sent again, because a resend could duplicate it if the agent resumes; peek the pane` (exit 2): the rest may still arrive if the agent resumes, so look at the pane before sending it again. Suspending or restarting the pane works as usual.
 
 ### Agent Crashed (Red Dot / [dead])
 
@@ -641,6 +641,7 @@ Recovery: `initech send <agent> "You were working on <bead-id>. Run bd show <bea
   In a short pane, where Claude Code scrolls a long message inside the box and the box's bottom edge
   falls below the pane, the end of the message still in view counts as seen.
   A `--no-enter` send submits nothing and also reads delivered. A send that wakes a Codex or agy pane stays held until the input box is ready.
+- Every line for a message initech holds instead of typing ends with ` (receipt <id>)`, whatever held it: do-not-disturb, the wake of a suspended agent (`queued for <agent>, woken: delivered in order now that it is up (<N> ahead) (receipt <id>)`), the machine ceiling, a dialog, `--after`, or a pane that is not reading its input. A delivered, unconfirmed, unchecked or refused send prints none. The receipt names that one message: `initech send <agent> --withdraw <id>` removes it before it is typed, and only its sender can. A receipt survives a restart of window 1 with the message it names.
 - `not delivered to <agent>: <reason>` (exit 1): the message could not be typed, or the submitted text remains in the composer. Claude and Codex may retry Enter once while the original draft is still visible.
 - `not delivered to <agent>: a slash command of <n> characters would paste, not run; Claude takes a
   command of at most 800` or `not delivered to <agent>: a slash command of <n> lines would paste, not
@@ -683,7 +684,7 @@ Recovery: `initech send <agent> "You were working on <bead-id>. Run bd show <bea
 - Use `initech send <agent> --withdraw <id>` to remove your held message before typing begins. Success prints `withdrawn: <id>` and exits 0. A missing, already typed, or other sender’s receipt exits 1. Anyone holding the receipt for mail with no recorded sender can withdraw it. Inputs already in the agent’s native queue have been typed. The version 1 held-mail file stores the receipt with each new hold and can still release older entries without receipts.
 - OpenCode and generic commands other than agy answer `sent to <agent>, unconfirmed: no delivery check for this agent type` and exit 0.
 
-- `deferred to <agent> — target has a modal open; will deliver when it closes` (exit 0): see the dialog
+- `deferred to <agent> — target has a modal open; will deliver when it closes (receipt <id>)` (exit 0): see the dialog
   bullet below.
 
 When checking a release that changes screen reading, compare every live Codex and agy pane with its state in `initech status --json` and the agents list. A Codex native follow-up contributes to the displayed queue count.

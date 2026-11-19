@@ -435,7 +435,7 @@ func (t *TUI) handleIPCSend(conn net.Conn, req IPCRequest) {
 		}
 		if lp, ok := pv.(*Pane); ok && lp.suspended {
 			concretePane = lp
-			wakeVerdict = lp.queueForWake(req.Text, req.Enter, req.origin().From)
+			wakeVerdict = lp.queueForWake(req.Text, req.Enter, req.origin())
 			if wakeVerdict.Outcome == DeliveryNotDelivered {
 				queueRefused = wakeVerdict.Reason
 			} else {
@@ -482,11 +482,12 @@ func (t *TUI) handleIPCSend(conn net.Conn, req IPCRequest) {
 				// Held, not lost (ini-49q): the message is on the pane's
 				// queue, and the gate's clearing wakes it and delivers.
 				LogInfo("ipc", "send held at the machine ceiling", "target", req.Target)
+				concretePane.noteReceiptKind(QueuedMessage{Receipt: wakeVerdict.Receipt, From: req.origin().From, Time: time.Now()}, ReceiptKindCeiling, ReceiptHeld, "")
 				if wakeVerdict.Outcome == DeliveryHeld {
-					wakeVerdict.Reason += "; " + CeilingDeferral
+					wakeVerdict.Reason = strings.TrimSuffix(wakeVerdict.Reason, receiptLine(wakeVerdict.Receipt)) + "; " + CeilingDeferral
 					writeIPCResponse(conn, verdictIPCResponse(req.Target, wakeVerdict, ""))
 				} else {
-					writeIPCResponse(conn, IPCResponse{OK: true, Data: CeilingDeferral, Delivery: DeliveryDeferred})
+					writeIPCResponse(conn, IPCResponse{OK: true, Data: withReceipt(CeilingDeferral, wakeVerdict.Receipt), Delivery: DeliveryDeferred})
 				}
 				return
 			}
@@ -494,6 +495,7 @@ func (t *TUI) handleIPCSend(conn net.Conn, req IPCRequest) {
 			return
 		}
 		reply := resumedSendReply(req.Target, queuedAhead)
+		reply.Data = withReceipt(reply.Data, wakeVerdict.Receipt)
 		if wakeVerdict.Outcome == DeliveryHeld {
 			reply = verdictIPCResponse(req.Target, wakeVerdict, "")
 		}
@@ -646,9 +648,10 @@ func sendPaneTextLocked(pane *Pane, text string, enter bool) SendVerdict {
 			pane.requeueFront(m)
 			LogDebug("inject", "held message still held: dialog open", "pane", pane.Name(),
 				"held_for", time.Since(m.Time).Round(time.Second))
-			return SendVerdict{Outcome: DeliveryDeferred}
+			return SendVerdict{Outcome: DeliveryDeferred, Receipt: m.Receipt}
 		}
-		if refusal := pane.enqueueHeldWhen(text, enter, sendAgainWhenDialog); refusal != "" {
+		refusal, receipt := pane.enqueueHeldReceipt(text, enter, sendAgainWhenDialog)
+		if refusal != "" {
 			return SendVerdict{Outcome: DeliveryNotDelivered, Reason: refusal}
 		}
 		preview := text
@@ -665,7 +668,7 @@ func sendPaneTextLocked(pane *Pane, text string, enter bool) SendVerdict {
 			Pane:   pane.Name(),
 			Detail: "deferred (modal open): " + preview,
 		})
-		return SendVerdict{Outcome: DeliveryDeferred}
+		return SendVerdict{Outcome: DeliveryDeferred, Receipt: receipt}
 	}
 
 	// A pane with a stuck write takes nothing until that write returns, or the
@@ -1507,16 +1510,18 @@ func logSnippet(s string) string {
 	return s
 }
 
-func (t *TUI) injectText(pane *Pane, text string, enter bool, from string) {
+func (t *TUI) injectText(pane *Pane, m QueuedMessage) SendVerdict {
 	pane.mu.Lock()
 	pane.lastMessageReceived = time.Now()
 	pane.mu.Unlock()
 	waitForCodexReadyIfNeeded(pane)
 	pane.sendMu.Lock()
 	defer pane.sendMu.Unlock()
-	pane.setSendFrom(from) // a re-hold keeps the sender (ini-8rkg)
+	pane.setSendFrom(m.From) // a re-hold keeps the sender (ini-8rkg)
 	defer pane.setSendFrom("")
-	sendPaneTextLocked(pane, text, enter)
+	pane.setSendReceipt(m.Receipt) // and its receipt (ini-yjcy)
+	defer pane.setSendReceipt("")
+	return sendPaneTextLocked(pane, m.Text, m.Enter)
 }
 
 // waitForCodexReadyIfNeeded polls for the Codex/OpenCode ready prompt
@@ -1748,14 +1753,15 @@ func (p *Pane) writeBody(body []byte, mode string) childWrite {
 func holdForStuckInput(pane *Pane, text string, enter bool) SendVerdict {
 	if m, ok := pane.takeRedelivery(text, enter); ok {
 		pane.requeueFront(m)
-		return SendVerdict{Outcome: DeliveryDeferred, Reason: StuckInputDeferral}
+		return SendVerdict{Outcome: DeliveryDeferred, Reason: StuckInputDeferral, Receipt: m.Receipt}
 	}
-	if refusal := pane.enqueueHeldWhen(text, enter, sendAgainWhenReading); refusal != "" {
+	refusal, receipt := pane.enqueueHeldReceipt(text, enter, sendAgainWhenReading)
+	if refusal != "" {
 		return SendVerdict{Outcome: DeliveryNotDelivered, Reason: refusal}
 	}
 	LogInfo("inject", "deferred: pane is not reading its input", "pane", pane.Name(), "enter", enter,
 		"queued", pane.QueuedMessageCount())
-	return SendVerdict{Outcome: DeliveryDeferred, Reason: StuckInputDeferral}
+	return SendVerdict{Outcome: DeliveryDeferred, Reason: StuckInputDeferral, Receipt: receipt}
 }
 
 // endStuckSend ends a send whose body did not finish. The rule (ini-7rd): a
