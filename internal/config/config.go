@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -93,6 +94,12 @@ type Project struct {
 	// one folder per session. Empty = off. The --record flag overrides it. A
 	// leading ~/ is the user's home.
 	RecordDir string `yaml:"record_dir,omitempty"`
+
+	// DispatchContextWarnPercent turns on the high-context reminder: when
+	// initech assign or initech bead --agent gives a new bead to an agent whose
+	// context is at or above this percent, initech sends the dispatcher one
+	// line saying so. 0 or absent = off.
+	DispatchContextWarnPercent WarnPercent `yaml:"dispatch_context_warn_percent,omitempty"`
 
 	IdleWithBeadThreshold *int `yaml:"idle_with_bead_threshold,omitempty"` // Seconds of silence before idle-with-bead fires. nil = 60, 0 = disabled.
 
@@ -599,4 +606,22 @@ func expandHome(path string) string {
 		return path
 	}
 	return filepath.Join(home, path[1:])
+}
+
+// WarnPercent is a whole percent from 0 to 100, 0 meaning off. Any other
+// value fails the config load with one line naming the key and the value.
+type WarnPercent int
+
+// UnmarshalYAML takes only a whole number from 0 to 100.
+func (w *WarnPercent) UnmarshalYAML(n *yaml.Node) error {
+	bad := fmt.Errorf("dispatch_context_warn_percent: %q is not a whole number from 0 to 100 (0 is off)", n.Value)
+	if n.Kind != yaml.ScalarNode || n.Tag != "!!int" {
+		return bad
+	}
+	v, err := strconv.Atoi(n.Value)
+	if err != nil || v < 0 || v > 100 {
+		return bad
+	}
+	*w = WarnPercent(v)
+	return nil
 }

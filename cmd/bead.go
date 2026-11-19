@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/nmelo/initech/internal/config"
 	"github.com/nmelo/initech/internal/tui"
 	"github.com/spf13/cobra"
 )
@@ -33,7 +34,11 @@ Inside a TUI pane (INITECH_AGENT set automatically):
 Outside the TUI (must specify agent):
   initech bead --agent eng1 ini-bhk.3
   initech bead --agent eng1 ini-abc ini-def
-  initech bead --agent eng1 --clear`,
+  initech bead --agent eng1 --clear
+
+With dispatch_context_warn_percent set in initech.yaml, --agent naming a bead
+new to an agent whose context is at or above it sends you the same one line
+initech assign does (stderr outside a pane); the bead is set as asked.`,
 	RunE: runBead,
 }
 
@@ -85,6 +90,17 @@ func runBead(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	// The high-context reminder (dispatch_context_warn_percent) is for a
+	// dispatcher naming another agent's bead: initech bead --agent, never an
+	// agent setting its own. It reads the target before the ribbon changes.
+	warnAt := config.WarnPercent(0)
+	var warnTarget dispatchTarget
+	if beadAgent != "" && !beadClear {
+		if warnAt = dispatchWarnThreshold(); warnAt > 0 {
+			warnTarget = readDispatchTarget(agent, "")
+		}
+	}
+
 	req := tui.IPCRequest{
 		Action: "bead",
 		Target: agent,
@@ -110,6 +126,7 @@ func runBead(cmd *cobra.Command, args []string) error {
 		fmt.Fprintf(out, "Cleared bead for %s.\n", agent)
 	} else {
 		fmt.Fprintf(out, "Set %s for %s.\n", strings.Join(ids, ", "), agent)
+		warnHighContext(cmd.ErrOrStderr(), warnAt, agent, warnTarget, ids)
 	}
 	return nil
 }

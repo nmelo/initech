@@ -101,6 +101,12 @@ An agent that is stopped or whose process has exited gets nothing: no bead is cl
 
 Several beads in one call each get their own rule; a refused bead is listed as failed, and the command fails only when every bead does. The event log records each dispatch, saying "fold-in" or "moved from" where it applies. Against an initech that does not report ribbons, a fold-in leaves the ribbon as it was and a move leaves the previous holder's ribbon alone, each with a warning; the message is still delivered.
 
+**A reminder before new work on a full context.** With `dispatch_context_warn_percent` set (see Configuration), `initech assign` and `initech bead <bead> --agent <agent>` check the target's context, the number `initech status --json` gives as `context_percent`, before the dispatch. When it is at or above the setting and a bead is new to the agent (not on its ribbon, and for assign not a fold-in that bd already holds for it), the agent that ran the command gets one line from initech, through the send path like any message:
+
+`[from initech] eng1 is at 85% context; clear it (initech clear eng1) or restart it (initech restart eng1) before new work`
+
+Run outside a pane, the line goes to stderr. It is advice only: the dispatch happens as asked, and its output and exit code are unchanged; a line that cannot be delivered is one stderr line. No line comes when the setting is off, when the context is not reported (a Codex or agy agent, a generic command, a remote agent), or when an agent sets its own bead with `initech bead`.
+
 **Work with no bead.** `initech assign <agent> -m "..."` with no bead id dispatches a small job that has no ticket, so it is still visible. Nothing is written to bd. The message is delivered exactly as `initech send` delivers it, the -m text as given. Once it is accepted, the agent's ribbon shows `no bead` and the message's first words (cut at 80 characters, like a bead title), `initech status` shows the same words in the Bead column ahead of any bead bd still has assigned to that agent, and the event log records the dispatch with no bead id. The marker is shown in every window, wakes with a suspended agent, and ends the way a bead pointer does: the next bead registered for the agent (`initech assign` or `initech bead`) replaces it, and `initech bead --clear` removes it; it does not survive a TUI restart. `initech assign <agent>` with neither a bead nor -m is a usage error. An initech too old to know work with no bead leaves the ribbon as it was and assign warns; the message is still delivered.
 
 ### What the Operator Does at Each Step
@@ -398,6 +404,10 @@ To point a job at it, make the first entry of its `ProgramArguments` that path, 
 ## Configuration
 
 Settings live in `initech.yaml` at the project root and are read at startup.
+
+### High-context reminder
+
+`dispatch_context_warn_percent: 80` turns on the reminder described under Dispatching with assign: a new bead for an agent at or above 80% context tells the dispatcher to clear or restart it first. It takes a whole number from 1 to 100; 0 or no key leaves it off. Any other value (over 100, negative, a fraction, a word) fails the config load with one line naming the key and the value.
 
 ### Typing hold
 

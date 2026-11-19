@@ -49,6 +49,13 @@ Multiple beads are claimed individually (partial failures are logged and
 skipped), then dispatched as one consolidated message. Exit 0 if at least
 one bead succeeds, exit 1 if all fail.
 
+With dispatch_context_warn_percent set in initech.yaml, a new bead for an
+agent whose context is at or above it also sends you (the agent running
+assign; stderr outside a pane) one line from initech:
+  [from initech] eng1 is at 85% context; clear it (initech clear eng1) or
+  restart it (initech restart eng1) before new work
+It is advice: the dispatch, its output and its exit code are unchanged.
+
 Requires bd and a running initech TUI.`,
 	Args: assignArgs,
 	RunE: runAssign,
@@ -233,6 +240,14 @@ func runAssign(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	// The high-context reminder reads the target before anything changes
+	// it (its ribbon is updated below); with the setting off it reads nothing.
+	warnAt := dispatchWarnThreshold()
+	var warnTarget dispatchTarget
+	if warnAt > 0 {
+		warnTarget = readDispatchTarget(agent, host)
+	}
+
 	// Process each bead: show + dispatch. Failures logged and skipped.
 	//
 	// bd FIRST, TUI SECOND, and the order is load-bearing: a bead whose bd
@@ -311,6 +326,16 @@ func runAssign(cmd *cobra.Command, args []string) error {
 	// The previous holder of a moved bead hears it from initech, after the
 	// target has its message (best-effort: a warning, never a failed assign).
 	notifyMovedHolders(cmd.ErrOrStderr(), agent, successes)
+
+	// The dispatcher hears when the target's context is high and a bead is
+	// new to it; a fold-in is a bead bd already holds for the target.
+	var fresh []string
+	for _, s := range successes {
+		if s.kind != assignFoldIn {
+			fresh = append(fresh, s.id)
+		}
+	}
+	warnHighContext(cmd.ErrOrStderr(), warnAt, agent, warnTarget, fresh)
 
 	// Emit events to TUI (fire and forget, one per bead).
 	for _, s := range successes {
