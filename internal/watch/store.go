@@ -73,7 +73,7 @@ func (s *Store) Add(w Watch, now time.Time) (string, error) {
 			continue
 		}
 		waiting++
-		if o.Kind == w.Kind && maps.Equal(o.Params, w.Params) {
+		if sameCondition(*o, w) {
 			return "", fmt.Errorf("%s already waits for this (%s)", o.ID, o.Why)
 		}
 	}
@@ -136,7 +136,9 @@ func (s *Store) End(id string, state State, detail string, evidenceAt, now time.
 		return fmt.Errorf("%s has already ended (%s)", id, w.State)
 	}
 	w.State, w.Ended, w.Detail = state, now, detail
-	w.Late = evidenceAt.Before(s.loaded)
+	// Late: it ended while window 1 was down, which only a watch set before
+	// this start can have done.
+	w.Late = w.Set.Before(s.loaded) && evidenceAt.Before(s.loaded)
 	s.pending[id] = true
 	if err := s.flush(); err != nil {
 		s.noteFailure(now)
@@ -319,6 +321,16 @@ func (s *Store) find(id string) *Watch {
 		}
 	}
 	return nil
+}
+
+// sameCondition reports whether a and b wait for the same thing: the same kind
+// and params, and for a deadline watch, which has no params, the same
+// deadline.
+func sameCondition(a, b Watch) bool {
+	if a.Kind != b.Kind || !maps.Equal(a.Params, b.Params) {
+		return false
+	}
+	return a.Kind != KindDeadline || a.Deadline.Equal(b.Deadline)
 }
 
 // copyWatch is w with its own params map.

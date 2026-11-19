@@ -471,3 +471,44 @@ func TestStore_IdsAreNeverReusedWhateverNextIDSays(t *testing.T) {
 		t.Errorf("id %q %v, want w6", id, err)
 	}
 }
+
+// lead1's read: a deadline-only watch has no params, so its deadline is what
+// tells two apart. Two at different times are both set; the same time again
+// is a duplicate (the twin).
+func TestStore_DeadlineWatchesAtDifferentTimesAreNotDuplicates(t *testing.T) {
+	s, _ := openAt(t, t0)
+	at := func(d time.Duration) Watch {
+		return Watch{Owner: "eng8", Kind: KindDeadline, Why: "check in", Deadline: t0.Add(d)}
+	}
+	if _, err := s.Add(at(time.Hour), t0); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Add(at(2*time.Hour), t0); err != nil {
+		t.Errorf("a second deadline watch at another time was refused: %v", err)
+	}
+	if _, err := s.Add(at(time.Hour), t0); err == nil || !strings.Contains(err.Error(), "w1") {
+		t.Errorf("the same deadline again: %v, want a duplicate naming w1", err)
+	}
+}
+
+// lead1's read: late means it ended while window 1 was down, which only a
+// watch set before this start can have done. A watch set after the start
+// whose evidence is older (seen at its first judging) is not late.
+func TestStore_AWatchSetAfterTheStartIsNeverLate(t *testing.T) {
+	s, path := openAt(t, t0)
+	before, _ := s.Add(aWatch("eng8", "ini-a"), t0)
+	start := t0.Add(10 * time.Minute)
+	again, _ := Open(path, start)
+	after, err := again.Add(aWatch("eng8", "ini-b"), start.Add(time.Minute))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = again.End(after, Fired, "already there", t0.Add(5*time.Minute), start.Add(2*time.Minute))
+	_ = again.End(before, Fired, "while down", t0.Add(5*time.Minute), start.Add(2*time.Minute))
+	if get(t, again, after).Late {
+		t.Error("a watch set after the start was marked late")
+	}
+	if !get(t, again, before).Late {
+		t.Error("the twin: a watch set before the start, ending on evidence from while it was down, is not late")
+	}
+}
