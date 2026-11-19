@@ -559,10 +559,16 @@ func TestWatchesModal_TheFrameIsThePictures(t *testing.T) {
 	if got, want := float64(hx-1-(x0+2))/float64(inner), 814.0/1568; got < want-0.02 || got > want+0.02 {
 		t.Errorf("why starts at %.3f of the table, want about %.3f", got, want)
 	}
-	ax, _ := wmFind(t, s, "age")
-	dx, _ := wmFind(t, s, "deadline")
-	if dx-ax > 10 || hy < 0 {
-		t.Errorf("age is %d columns, wider than the picture's", dx-ax)
+	// On the header row only: "deadline" is also in the title.
+	head := []rune(wmRowText(s, hy))
+	ax := strings.Index(string(head), " age ")
+	dx := strings.Index(string(head), " deadline")
+	if ax < 0 || dx < 0 {
+		t.Fatalf("header %q has no age or deadline", string(head))
+	}
+	ax, dx = len([]rune(string(head)[:ax])), len([]rune(string(head)[:dx]))
+	if dx-ax != watchesAgeCols || watchesAgeCols != 7 || hy < 0 {
+		t.Errorf("age is %d columns, want the picture's 7", dx-ax)
 	}
 }
 

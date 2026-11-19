@@ -375,6 +375,9 @@ func watchColShaded(c int) bool { return c == wcWaits || c == wcAge }
 // waits for 590, why 430, age 80, and the rest of its 1568 for the deadline.
 var watchesGrid = [wcCount]int{34, 190, 590, 430, 80, 244}
 
+// watchesAgeCols is the age column's width in cells, the picture's 80 px.
+const watchesAgeCols = 7
+
 // watchesColumns sizes the columns for an inner width in the picture's
 // proportions. Mark, set by, age and deadline keep a floor that fits their
 // cells ("1h 2m", and the longest deadline cell, so "· held" is never cut);
@@ -392,10 +395,14 @@ func watchesColumns(inner int, rows []watchRow) [wcCount]int {
 	floor := [wcCount]int{2, 8, 0, 0, 7, min(dl, 28) + 2}
 	var c [wcCount]int
 	fixed := 0
-	for _, i := range []int{wcMark, wcSetBy, wcAge, wcDeadline} {
+	for _, i := range []int{wcMark, wcSetBy, wcDeadline} {
 		c[i] = max(inner*watchesGrid[i]/total, floor[i])
 		fixed += c[i]
 	}
+	// Age is as narrow as the picture's at every width (AC-W): its 80 px hold
+	// "1h 2m" and the column's space, 7 cells.
+	c[wcAge] = watchesAgeCols
+	fixed += c[wcAge]
 	rest := max(inner-fixed, 2)
 	c[wcWaits] = rest * watchesGrid[wcWaits] / (watchesGrid[wcWaits] + watchesGrid[wcWhy])
 	c[wcWhy] = rest - c[wcWaits]
