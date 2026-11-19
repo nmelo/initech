@@ -129,12 +129,13 @@ func buildWatchesView(ws []watch.Watch, world World, starting func(owner string)
 	sort.SliceStable(v.waiting, func(i, j int) bool {
 		return v.waiting[i].w.Deadline.Before(v.waiting[j].w.Deadline)
 	})
-	// Missed first, then fired and cancelled; the most recent ending first
-	// within each (G2).
+	// Missed, then fired, then cancelled, the most recent ending first within
+	// each (AC-O, as the picture shows).
+	rank := map[watch.State]int{watch.Missed: 0, watch.Fired: 1, watch.Cancelled: 2}
 	sort.SliceStable(v.ended, func(i, j int) bool {
 		a, b := v.ended[i].w, v.ended[j].w
-		if (a.State == watch.Missed) != (b.State == watch.Missed) {
-			return a.State == watch.Missed
+		if rank[a.State] != rank[b.State] {
+			return rank[a.State] < rank[b.State]
 		}
 		return a.Ended.After(b.Ended)
 	})
@@ -370,24 +371,75 @@ var watchesHeads = [wcCount]string{"", "set by", "waits for", "why (the line it 
 
 func watchColShaded(c int) bool { return c == wcWaits || c == wcAge }
 
-// watchesColumns sizes the columns for an inner width: fixed mark and age,
-// set by and deadline to their widest cell within bounds, the rest split
-// between waits for and why.
+// watchesGrid is the picture's column grid in its pixels: mark 34, set by 190,
+// waits for 590, why 430, age 80, and the rest of its 1568 for the deadline.
+var watchesGrid = [wcCount]int{34, 190, 590, 430, 80, 244}
+
+// watchesColumns sizes the columns for an inner width in the picture's
+// proportions. Mark, set by, age and deadline keep a floor that fits their
+// cells ("1h 2m", and the longest deadline cell, so "· held" is never cut);
+// what the floors take comes out of waits for and why, in the picture's ratio
+// between them.
 func watchesColumns(inner int, rows []watchRow) [wcCount]int {
-	setBy, dl := len("set by"), len("deadline")
+	total := 0
+	for _, g := range watchesGrid {
+		total += g
+	}
+	dl := len("deadline")
 	for _, r := range rows {
-		setBy = max(setBy, runewidth.StringWidth(r.w.Owner))
 		dl = max(dl, runewidth.StringWidth(r.deadline))
 	}
+	floor := [wcCount]int{2, 8, 0, 0, 7, min(dl, 28) + 2}
 	var c [wcCount]int
-	c[wcMark] = 2
-	c[wcSetBy] = min(setBy, 18) + 2
-	c[wcAge] = 8
-	c[wcDeadline] = min(dl, 28) + 2
-	rest := max(inner-c[wcMark]-c[wcSetBy]-c[wcAge]-c[wcDeadline], 2)
-	c[wcWaits] = rest * 58 / 100
+	fixed := 0
+	for _, i := range []int{wcMark, wcSetBy, wcAge, wcDeadline} {
+		c[i] = max(inner*watchesGrid[i]/total, floor[i])
+		fixed += c[i]
+	}
+	rest := max(inner-fixed, 2)
+	c[wcWaits] = rest * watchesGrid[wcWaits] / (watchesGrid[wcWaits] + watchesGrid[wcWhy])
 	c[wcWhy] = rest - c[wcWaits]
 	return c
+}
+
+// watchesBoxWidth is the modal's width: about 92% of the window, as the
+// picture's 1620 of 1760, centred; the whole window when it is narrow.
+func watchesBoxWidth(sw int) int {
+	if sw < 60 {
+		return sw
+	}
+	return sw * 92 / 100
+}
+
+// dimBehind darkens every cell already drawn, under the picture's backdrop
+// (rgba(10,11,14,.55) over everything behind the modal, panes and panel).
+func dimBehind(s tcell.Screen) {
+	sw, sh := s.Size()
+	for y := 0; y < sh; y++ {
+		for x := 0; x < sw; x++ {
+			mainc, combc, st, w := s.GetContent(x, y)
+			fg, bg, attr := st.Decompose()
+			s.SetContent(x, y, mainc, combc, tcell.StyleDefault.
+				Foreground(watchDimColor(fg, wmText)).Background(watchDimColor(bg, wmScreenBg)).Attributes(attr))
+			if w > 1 {
+				x += w - 1
+			}
+		}
+	}
+}
+
+// wmScreenBg stands for a default background behind the modal: the picture's.
+var wmScreenBg = tcell.NewRGBColor(0x16, 0x18, 0x1d)
+
+// watchDimColor is c under the backdrop; a default or palette color without RGB
+// is dimmed from fallback.
+func watchDimColor(c, fallback tcell.Color) tcell.Color {
+	r, g, b := c.RGB()
+	if r < 0 {
+		r, g, b = fallback.RGB()
+	}
+	mix := func(v, o int32) int32 { return (v*45 + o*55) / 100 }
+	return tcell.NewRGBColor(mix(r, 10), mix(g, 11), mix(b, 14))
 }
 
 // renderWatchesModal draws the modal and, over it, the detail box.
@@ -448,7 +500,8 @@ func (t *TUI) drawWatchesModal(s tcell.Screen, v watchesView, now time.Time) {
 	sel, _ := t.selectedWatchRow(rows)
 	lines := watchesLines(v)
 
-	boxW := min(max(sw-8, min(sw, 60)), 200)
+	dimBehind(s)
+	boxW := watchesBoxWidth(sw)
 	// Border, a blank line, the header, the table lines, the footer rule, the
 	// footer and the border.
 	boxH := min(len(lines)+6, sh-2)
@@ -500,10 +553,10 @@ func (t *TUI) drawWatchesModal(s tcell.Screen, v watchesView, now time.Time) {
 		s.SetContent(x0, y, '│', nil, border)
 		s.SetContent(x0+boxW-1, y, '│', nil, border)
 	}
-	s.SetContent(x0, y0, '╭', nil, border)
-	s.SetContent(x0+boxW-1, y0, '╮', nil, border)
-	s.SetContent(x0, y0+boxH-1, '╰', nil, border)
-	s.SetContent(x0+boxW-1, y0+boxH-1, '╯', nil, border)
+	s.SetContent(x0, y0, '┌', nil, border)
+	s.SetContent(x0+boxW-1, y0, '┐', nil, border)
+	s.SetContent(x0, y0+boxH-1, '└', nil, border)
+	s.SetContent(x0+boxW-1, y0+boxH-1, '┘', nil, border)
 
 	// The title line on the top border, with the counts; the missed count red.
 	tx, tmax := x0+2, boxW-4
@@ -543,7 +596,7 @@ func (t *TUI) drawWatchesModal(s tcell.Screen, v watchesView, now time.Time) {
 		if c == wcMark {
 			pad = 0
 		}
-		put(cx+pad, y, cols[c]-pad, watchesHeads[c], head)
+		put(cx+pad, y, cols[c]-pad, clip(watchesHeads[c], cols[c]-pad), head)
 		cx += cols[c]
 	}
 	y++
@@ -581,23 +634,47 @@ func (t *TUI) drawWatchesModal(s tcell.Screen, v watchesView, now time.Time) {
 		s.SetContent(x, ry, '─', nil, base.Foreground(wmRule))
 	}
 	fx, fmax := tableX, inner
-	keyStyle, word := base, base.Foreground(wmDim)
-	for _, seg := range []struct {
-		text string
-		key  bool
-	}{{"esc", true}, {" close   ", false}, {"↑↓", true}, {" move   ", false}, {"enter", true},
-		{" the full line and when the watch was set   ·   read-only: an agent cancels its own watch", false}} {
-		st := word
-		if seg.key {
-			st = keyStyle
+	word := base.Foreground(wmDim)
+	// The keys are bright; the last hint's "read-only:" is dim, as pictured.
+	keyStyle := func(i int) tcell.Style {
+		if i == len(watchesHints)-1 {
+			return word
 		}
-		n := put(fx, ry+1, fmax, seg.text, st)
-		fx, fmax = fx+n, fmax-n
+		return base
+	}
+	for i, h := range watchesHints {
+		sepText := "   "
+		if i == len(watchesHints)-1 {
+			sepText = "   ·   "
+		}
+		if i == 0 {
+			sepText = ""
+		}
+		need := runewidth.StringWidth(sepText + h.key + " " + h.words)
+		if need > fmax {
+			break // a hint shows whole or not at all
+		}
+		for _, part := range []struct {
+			text string
+			st   tcell.Style
+		}{{sepText, word}, {h.key, keyStyle(i)}, {" " + h.words, word}} {
+			n := put(fx, ry+1, fmax, part.text, part.st)
+			fx, fmax = fx+n, fmax-n
+		}
 	}
 
 	if t.watchesM.detail && len(rows) > 0 {
 		t.drawWatchDetail(s, rows[sel], now, put, fill, base, border)
 	}
+}
+
+// watchesHints is the footer, left to right; a narrow modal drops whole hints
+// from the right.
+var watchesHints = []struct{ key, words string }{
+	{"esc", "close"},
+	{"↑↓", "move"},
+	{"enter", "the full line and when the watch was set"},
+	{"read-only:", "an agent cancels its own watch"},
 }
 
 // drawWatchCells draws one table line's cells: a row, or a blank line that
@@ -731,10 +808,10 @@ func (t *TUI) drawWatchDetail(s tcell.Screen, r watchRow, now time.Time,
 		s.SetContent(x0, y, '│', nil, border)
 		s.SetContent(x0+w-1, y, '│', nil, border)
 	}
-	s.SetContent(x0, y0, '╭', nil, border)
-	s.SetContent(x0+w-1, y0, '╮', nil, border)
-	s.SetContent(x0, y0+h-1, '╰', nil, border)
-	s.SetContent(x0+w-1, y0+h-1, '╯', nil, border)
+	s.SetContent(x0, y0, '┌', nil, border)
+	s.SetContent(x0+w-1, y0, '┐', nil, border)
+	s.SetContent(x0, y0+h-1, '└', nil, border)
+	s.SetContent(x0+w-1, y0+h-1, '┘', nil, border)
 	for i, l := range body {
 		if y0+1+i >= y0+h-2 {
 			break

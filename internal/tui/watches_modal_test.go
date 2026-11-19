@@ -71,10 +71,10 @@ func TestWatchesView_GroupsOrdersAndCounts(t *testing.T) {
 	if got := strings.Join(wmIDs(v.waiting), ","); got != "w3,w1,w2" {
 		t.Errorf("waiting %s, want nearest deadline first: w3,w1,w2", got)
 	}
-	// Missed first, then fired and cancelled by most recent ending; w8 is past
-	// its hour; w9 is undelivered so it stays whatever its age.
-	if got := strings.Join(wmIDs(v.ended), ","); got != "w4,w5,w7,w6,w9" {
-		t.Errorf("ended %s, want w4,w5,w7,w6,w9", got)
+	// AC-O: missed, then fired, then cancelled, each most recent first; w8 is
+	// past its hour; w9 is undelivered so it stays whatever its age.
+	if got := strings.Join(wmIDs(v.ended), ","); got != "w4,w5,w6,w9,w7" {
+		t.Errorf("ended %s, want w4,w5,w6,w9,w7", got)
 	}
 	if v.nWaiting != 3 || v.endedHour != 4 || v.missed != 1 {
 		t.Errorf("counts waiting %d, ended in the hour %d, missed %d; want 3, 4 (delivered or cancelled only), 1", v.nWaiting, v.endedHour, v.missed)
@@ -253,6 +253,9 @@ func TestWatchesModal_DrawsThePicturesShape(t *testing.T) {
 		t.Errorf("the missed count is not red")
 	}
 	hx, hy := wmFind(t, s, "set by")
+	boxW := watchesBoxWidth(200)
+	x0 := (200 - boxW) / 2
+	tableX := x0 + 2 // the mark column
 	if _, bg := wmStyle(s, hx, hy); bg != wmHead {
 		t.Errorf("the header is not its dark band")
 	}
@@ -288,20 +291,20 @@ func TestWatchesModal_DrawsThePicturesShape(t *testing.T) {
 		t.Errorf("the first row is not drawn selected")
 	}
 	// Marks and the missed cell.
-	if r, _, _, _ := s.GetContent(hx-3, sy); r != '◌' {
+	if r, _, _, _ := s.GetContent(tableX, sy); r != '◌' {
 		t.Errorf("waiting mark %q", r)
 	}
 	dx, dy := wmFind(t, s, "missed 6m ago")
 	if fg, _ := wmStyle(s, dx, dy); fg != wmBad {
 		t.Errorf("the missed deadline cell is not red")
 	}
-	if r, _, st, _ := s.GetContent(hx-3, dy); r != '!' {
+	if r, _, st, _ := s.GetContent(tableX, dy); r != '!' {
 		t.Errorf("missed mark %q", r)
 	} else if fg, _, _ := st.Decompose(); fg != wmBad {
 		t.Errorf("missed mark not red")
 	}
 	_, fy := wmFind(t, s, "fired 4m ago")
-	if r, _, st, _ := s.GetContent(hx-3, fy); r != '✓' {
+	if r, _, st, _ := s.GetContent(tableX, fy); r != '✓' {
 		t.Errorf("fired mark %q", r)
 	} else if fg, _, _ := st.Decompose(); fg != wmOK {
 		t.Errorf("fired mark not green")
@@ -310,7 +313,7 @@ func TestWatchesModal_DrawsThePicturesShape(t *testing.T) {
 		t.Errorf("a fired row's text is not dim")
 	}
 	_, cy := wmFind(t, s, "cancelled 12m ago")
-	if r, _, _, _ := s.GetContent(hx-3, cy); r != '×' {
+	if r, _, _, _ := s.GetContent(tableX, cy); r != '×' {
 		t.Errorf("cancelled mark %q", r)
 	}
 	wmFind(t, s, "fired 3h ago · held")
@@ -320,7 +323,7 @@ func TestWatchesModal_DrawsThePicturesShape(t *testing.T) {
 	_, ry := wmFind(t, s, "esc close")
 	for y := hy; y < ry-1; y++ {
 		row := []rune(wmRowText(s, y))
-		inner := string(row[hx-2 : len(row)-6])
+		inner := string(row[tableX : x0+boxW-1])
 		if strings.ContainsAny(inner, "│─┼┬┴├┤") {
 			t.Errorf("a separator line in the table at y=%d: %q", y, strings.TrimSpace(inner))
 		}
@@ -502,4 +505,90 @@ func TestWatchesModal_TheFrameDrawsItFromTheStore(t *testing.T) {
 	tu.renderFrame()
 	wmFind(t, s, "watches · hover · 1 waiting · 1 ended in the last hour ")
 	wmFind(t, s, "cancelled ")
+}
+
+// The picture's frame: square thin corners, about 92% of the window, centred,
+// and everything behind it dimmed (ini-44av fix).
+func TestWatchesModal_TheFrameIsThePictures(t *testing.T) {
+	for sw, want := range map[int]int{200: 184, 340: 312, 100: 92, 50: 50} {
+		if got := watchesBoxWidth(sw); got != want {
+			t.Errorf("width at %d columns: %d, want %d", sw, got, want)
+		}
+	}
+	tu, s := wmScreen(t)
+	behind := tcell.StyleDefault.Foreground(tcell.NewRGBColor(200, 200, 200)).Background(tcell.NewRGBColor(100, 100, 100))
+	s.SetContent(0, 0, 'A', nil, behind)
+	s.SetContent(199, 39, 'B', nil, tcell.StyleDefault)
+	ws, world := wmFixture()
+	tu.drawWatchesModal(s, buildWatchesView(ws, world, notStarting, wmT0), wmT0)
+	if r, _, st, _ := s.GetContent(0, 0); r != 'A' {
+		t.Errorf("the cell behind changed rune: %q", r)
+	} else if fg, bg, _ := st.Decompose(); fg != tcell.NewRGBColor(95, 96, 97) || bg != tcell.NewRGBColor(50, 51, 52) {
+		t.Errorf("behind the modal: fg %v bg %v, want dimmed under the backdrop", fg, bg)
+	}
+	if _, _, st, _ := s.GetContent(199, 39); true {
+		if _, bg, _ := st.Decompose(); bg != tcell.NewRGBColor(15, 16, 20) { // the picture's #16181d under the backdrop
+			t.Errorf("a default cell behind the modal is not dimmed: bg %v", bg)
+		}
+	}
+	_, ty := wmFind(t, s, "watches · hover")
+	x0 := (200 - 184) / 2
+	for _, c := range []struct {
+		x, y int
+		want rune
+	}{{x0, ty, '┌'}, {x0 + 183, ty, '┐'}} {
+		if r, _, _, _ := s.GetContent(c.x, c.y); r != c.want {
+			t.Errorf("corner at %d,%d: %q, want %q", c.x, c.y, r, c.want)
+		}
+	}
+	ex, fy := wmFind(t, s, "esc close")
+	if fg, _ := wmStyle(s, ex, fy); fg != wmText {
+		t.Errorf("the esc key is not bright")
+	}
+	if rx, _ := wmFind(t, s, "read-only:"); true {
+		if fg, _ := wmStyle(s, rx, fy); fg != wmDim {
+			t.Errorf("read-only: is not dim, as pictured")
+		}
+	}
+	if r, _, _, _ := s.GetContent(x0, fy+1); r != '└' {
+		t.Errorf("bottom-left corner %q, want └", r)
+	}
+	// Columns in the picture's grid: why starts at 814 of 1568 of the table.
+	hx, hy := wmFind(t, s, "why (the line it will get)")
+	inner := 184 - 4
+	if got, want := float64(hx-1-(x0+2))/float64(inner), 814.0/1568; got < want-0.02 || got > want+0.02 {
+		t.Errorf("why starts at %.3f of the table, want about %.3f", got, want)
+	}
+	ax, _ := wmFind(t, s, "age")
+	dx, _ := wmFind(t, s, "deadline")
+	if dx-ax > 10 || hy < 0 {
+		t.Errorf("age is %d columns, wider than the picture's", dx-ax)
+	}
+}
+
+// Narrow (100 columns): a header cell clips with an ellipsis and keeps a space
+// before the next column; the footer drops whole hints from the right.
+func TestWatchesModal_NarrowClipsHeadersAndDropsWholeHints(t *testing.T) {
+	tu, s := wmScreen(t)
+	s.SetSize(100, 40)
+	ws, world := wmFixture()
+	tu.drawWatchesModal(s, buildWatchesView(ws, world, notStarting, wmT0), wmT0)
+	x, y := wmFind(t, s, "why (the")
+	row := []rune(wmRowText(s, y))
+	i := x
+	for i < len(row) && row[i] != '…' && row[i] != ' ' || (i < len(row) && row[i] == ' ' && row[i+1] != ' ' && row[i+1] != 'a') {
+		i++
+	}
+	cell := string(row[x : i+1])
+	if !strings.HasSuffix(cell, "…") || row[i+1] != ' ' {
+		t.Errorf("the why header %q: want it clipped with … and a space before the next column", cell)
+	}
+	_, fy := wmFind(t, s, "esc close")
+	foot := strings.TrimSpace(strings.Trim(wmRowText(s, fy), "│ "))
+	if !strings.HasSuffix(foot, "enter the full line and when the watch was set") || strings.Contains(foot, "read") {
+		t.Errorf("footer %q: want whole hints, the last one dropped", foot)
+	}
+	// A narrow modal still shows a whole deadline cell: "· held" is never cut.
+	wmFind(t, s, "fired 3h ago · held")
+	wmFind(t, s, "cancelled 12m ago")
 }
