@@ -16,8 +16,6 @@
 
 
 
-
-
     ┌─ watches · hover · 1 waiting · 0 ended in the last hour ─────────────────────────────────┐
 ....mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
     │                                                                                          │
@@ -32,6 +30,8 @@
 ....mmmmSSSSSSSSSSSSTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTSSSSSSSSSSSSSSSSSSSSSSSSTTTTTTTSSSSSSSSSSSmmmm
     │                                                                                          │
 ....mmmmmmmmmmmmmmmmssssssssssssssssssssssssssssssmmmmmmmmmmmmmmmmmmmmmmmmsssssssmmmmmmmmmmmmmmm
+    │                                                                                          │
+....mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
     │──────────────────────────────────────────────────────────────────────────────────────────│
 ....mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
     │   esc close     ↑↓ move     enter the full line and when the watch was set               │

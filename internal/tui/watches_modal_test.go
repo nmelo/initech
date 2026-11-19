@@ -732,8 +732,13 @@ func TestWatchesModal_TheRoomierLayout(t *testing.T) {
 	}
 	_, last := wmFind(t, s, "cancelled 12m ago")
 	_, ky := wmFind(t, s, "esc close")
-	if ky != last+3 {
-		t.Errorf("key line at %d, want one blank row and the rule after the last data row (%d)", ky, last+3)
+	// After the last data row: a shaded blank row, then an unshaded one (the
+	// picture's footer margin), then the rule, then the keys.
+	if ky != last+4 {
+		t.Errorf("key line at %d, want two blank rows and the rule after the last data row (%d)", ky, last+4)
+	}
+	if _, bg := wmStyle(s, x0+1+watchesPadX+60, last+2); bg != wmBg {
+		t.Errorf("the second blank row above the rule is shaded; the picture has it plain")
 	}
 	if _, bg := wmStyle(s, x0+1+watchesPadX+60, last+1); bg != wmShade {
 		t.Errorf("the blank row after the last data row does not keep the column shades")
@@ -812,6 +817,53 @@ func TestWatchesColumns_FitTheTable(t *testing.T) {
 	for inner := 0; inner <= 330; inner++ {
 		if got := watchColsSum(func() []int { c := watchesColumns(inner, rows); return c[:] }()); got > inner {
 			t.Errorf("inner %d: columns add up to %d", inner, got)
+		}
+	}
+}
+
+// super, from qa2's differences: at 30 columns a band label too long for the
+// band is cut with an ellipsis, like the header cells.
+func TestWatchesModal_ANarrowBandLabelEndsInAnEllipsis(t *testing.T) {
+	tu, s := wmScreen(t)
+	s.SetSize(30, 30)
+	s.Clear()
+	ws, world := wmFixture()
+	tu.watchesM.selected = "w7" // scroll to the ended rows
+	tu.drawWatchesModal(s, buildWatchesView(ws, world, notStarting, wmT0), wmT0)
+	_, y := wmFind(t, s, "ended in")
+	label := strings.TrimSpace(strings.Trim(wmRowText(s, y), "│ "))
+	if !strings.HasSuffix(label, "…") || !strings.HasPrefix("ended in the last hour", strings.TrimSuffix(label, "…")) {
+		t.Errorf("the narrow band label %q, want a start of \"ended in the last hour\" ending in …", label)
+	}
+}
+
+// pm (f): "N ended in the last hour" counts the endings delivered, sent to
+// super, or cancelled, missed ones included; only held or starting ones are
+// left out.
+func TestWatchesView_TheHourCountIncludesSentToSuper(t *testing.T) {
+	base := wmWatch("w1", "eng8", watch.KindDeadline, nil, "x", -time.Hour, -10*time.Minute)
+	missed := wmEnded(base, watch.Missed, 10*time.Minute)
+	toSuper := missed
+	toSuper.Delivery.Handed, toSuper.Delivery.ToSuper = wmAt(-9*time.Minute), true
+	delivered := wmDelivered(wmEnded(base, watch.Fired, 10*time.Minute), 8*time.Minute)
+	cancelled := wmEnded(base, watch.Cancelled, 10*time.Minute)
+	held := wmEnded(base, watch.Fired, 10*time.Minute)
+	starting := held
+	for _, c := range []struct {
+		name     string
+		w        watch.Watch
+		starting bool
+		want     int
+	}{
+		{"missed, sent to super", toSuper, false, 1},
+		{"fired, delivered", delivered, false, 1},
+		{"cancelled", cancelled, false, 1},
+		{"fired, held", held, false, 0},
+		{"fired, owner starting", starting, true, 0},
+	} {
+		st := func(string) bool { return c.starting }
+		if got := buildWatchesView([]watch.Watch{c.w}, newFakeWorld(wmT0), st, wmT0).endedHour; got != c.want {
+			t.Errorf("%s: counted %d, want %d", c.name, got, c.want)
 		}
 	}
 }

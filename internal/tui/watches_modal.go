@@ -57,8 +57,9 @@ type watchRow struct {
 // watchesView is everything one draw shows.
 type watchesView struct {
 	waiting, ended []watchRow
-	// endedHour counts the delivered or cancelled endings of the last hour;
-	// undelivered ones are listed with their mark but not counted.
+	// endedHour counts the endings of the last hour that were delivered, sent
+	// to super or cancelled, missed ones included; a held or starting ending is
+	// listed with its mark but not counted.
 	nWaiting, endedHour, missed int
 }
 
@@ -118,7 +119,7 @@ func buildWatchesView(ws []watch.Watch, world World, starting func(owner string)
 		if r.line != "" {
 			r.deadline += " · " + r.line
 		}
-		if w.State == watch.Cancelled || !w.Delivery.Delivered.IsZero() {
+		if w.State == watch.Cancelled || !w.Delivery.Delivered.IsZero() || w.Delivery.ToSuper {
 			v.endedHour++
 		}
 		if w.State == watch.Missed {
@@ -502,6 +503,7 @@ const (
 	wmSpaceLine
 	wmNoneLine
 	wmBandPadLine // a band's first row: tinted and blank
+	wmPlainLine   // the window's own blank row above the rule, unshaded
 )
 
 func watchesLines(v watchesView) []wmLine {
@@ -524,7 +526,7 @@ func watchesLines(v watchesView) []wmLine {
 	if n == 0 {
 		ls = append(ls, wmLine{kind: wmNoneLine})
 	}
-	return append(ls, wmLine{kind: wmSpaceLine})
+	return append(ls, wmLine{kind: wmSpaceLine}, wmLine{kind: wmPlainLine})
 }
 
 func (t *TUI) drawWatchesModal(s tcell.Screen, v watchesView, now time.Time) {
@@ -653,7 +655,7 @@ func (t *TUI) drawWatchesModal(s tcell.Screen, v watchesView, now time.Time) {
 		case wmBandLine:
 			band := tcell.StyleDefault.Background(wmBand).Foreground(wmBandFg).Bold(true)
 			fill(tableX, y, inner, band)
-			put(tableX+1, y, inner-1, l.band, band)
+			put(tableX+1, y, inner-1, clip(l.band, inner-1), band)
 		case wmNoneLine:
 			t.drawWatchCells(fill, put, clip, tableX, y, cols, false, watchRow{}, base, true)
 		case wmSpaceLine:
