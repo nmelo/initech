@@ -41,9 +41,6 @@ struct MainView: View {
         .navigationSplitViewStyle(.balanced)
         .tint(Theme.red)
         .preferredColorScheme(.dark)
-        .sheet(isPresented: $showRigs) {
-            NavigationStack { RigsView(home: home) }
-        }
         .sheet(isPresented: $showBlockers) {
             NavigationStack { BlockersScreen(home: home, focus: blockersFocus, arrived: inbox.arrived) }
         }
@@ -123,10 +120,11 @@ extension MainView {
 }
 #endif
 
-/// HomeList is his pinned panes in his order, drawn as a terminal would: a
-/// prompt line on top with edit and rigs, one or two lines per pane, and a bar
-/// of numbered keys at the bottom for Blockers and Progress. Rename and unpin
-/// by swipe, reorder in edit mode.
+/// HomeList is the list side of the app, drawn as a terminal would: a prompt
+/// line on top, then one of two screens chosen in the bar of numbered keys at
+/// the bottom. Panes is his pinned panes in his order, one or two lines each;
+/// rename and unpin by swipe, reorder in edit mode. Rigs is every running
+/// rig's panes he has not pinned. Blockers and Progress open from the same bar.
 struct HomeList: View {
     @ObservedObject var home: HomeModel
     @ObservedObject var push: PushRegistrar
@@ -140,6 +138,23 @@ struct HomeList: View {
     @State private var editMode: EditMode = .inactive
 
     var body: some View {
+        Group {
+            if showRigs { rigsList } else { panesList }
+        }
+        .background(Theme.bg.ignoresSafeArea())
+        .safeAreaInset(edge: .top, spacing: 0) { header }
+        .safeAreaInset(edge: .bottom, spacing: 0) { keys }
+        .alert("Rename", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
+            TextField("Name", text: $newName)
+            Button("Save") {
+                if let r = renaming { Task { await home.rename(r.ref, to: newName) } }
+            }
+            Button("Cancel", role: .cancel) {}
+        }
+    }
+
+    /// panesList is his pinned panes.
+    private var panesList: some View {
         List(selection: Binding(get: { home.selection }, set: { home.listChose($0, besideThePane: besideThePane) })) {
             Group {
                 if let problem = home.problem {
@@ -177,35 +192,64 @@ struct HomeList: View {
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
-        .background(Theme.bg.ignoresSafeArea())
         .environment(\.editMode, $editMode)
-        .safeAreaInset(edge: .top, spacing: 0) { header }
-        .safeAreaInset(edge: .bottom, spacing: 0) { keys }
         .refreshable { await home.reload() }
-        .alert("Rename", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
-            TextField("Name", text: $newName)
-            Button("Save") {
-                if let r = renaming { Task { await home.rename(r.ref, to: newName) } }
-            }
-            Button("Cancel", role: .cancel) {}
-        }
     }
 
-    /// header is the prompt line: where he is, then edit and rigs.
+    /// rigsList is every running rig and its panes he has not pinned; one tap
+    /// pins. It is a screen of the bottom bar, like Panes, not a sheet over it.
+    private var rigsList: some View {
+        List {
+            Group {
+                if home.rigs.isEmpty {
+                    Text("No rig is running on the Mac.").font(Theme.mono(.footnote)).foregroundStyle(Theme.dim)
+                }
+                ForEach(home.rigRows, id: \.rig) { rig in
+                    Section {
+                        if rig.panes.isEmpty {
+                            Text("Every pane is pinned.").font(Theme.mono(.footnote)).foregroundStyle(Theme.dim)
+                        }
+                        ForEach(rig.panes) { row in
+                            HStack(spacing: 12) {
+                                PaneRowView(row: row)
+                                Button { Task { await home.pin(row.ref) } } label: {
+                                    Text("+ pin").font(Theme.mono(.caption, .semibold)).foregroundStyle(Theme.red)
+                                        .padding(.horizontal, 8).padding(.vertical, 5)
+                                        .overlay(RoundedRectangle(cornerRadius: 6).stroke(Theme.red.opacity(0.6), lineWidth: 1))
+                                }
+                                .buttonStyle(.borderless)
+                                .accessibilityLabel("Pin \(row.ref.pane)")
+                            }
+                        }
+                    } header: {
+                        Text(rig.rig).font(Theme.mono(.caption, .bold)).foregroundStyle(Theme.soft)
+                            .textCase(nil)
+                    }
+                }
+            }
+            .listRowBackground(Theme.bg)
+            .listRowSeparatorTint(Theme.line)
+            .listRowInsets(EdgeInsets(top: 9, leading: 20, bottom: 9, trailing: 20))
+        }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .refreshable { await home.reload() }
+    }
+
+    /// header is the prompt line: where he is, and edit on Panes.
     private var header: some View {
         HStack(spacing: 0) {
             Text("initech").font(Theme.mono(.subheadline, .bold)).foregroundStyle(Theme.bright)
-            Text(" ❯ panes").font(Theme.mono(.subheadline)).foregroundStyle(Theme.text)
+            Text(showRigs ? " ❯ rigs" : " ❯ panes").font(Theme.mono(.subheadline)).foregroundStyle(Theme.text)
             Rectangle().fill(Theme.red).frame(width: 9, height: 17).padding(.leading, 6)
                 .accessibilityHidden(true)
             Spacer()
-            Button(editMode.isEditing ? "done" : "edit") {
-                withAnimation { editMode = editMode.isEditing ? .inactive : .active }
+            if !showRigs {
+                Button(editMode.isEditing ? "done" : "edit") {
+                    withAnimation { editMode = editMode.isEditing ? .inactive : .active }
+                }
+                .accessibilityLabel(editMode.isEditing ? "Done" : "Edit")
             }
-            .accessibilityLabel(editMode.isEditing ? "Done" : "Edit")
-            Text(" · ").foregroundStyle(Theme.dim)
-            Button("rigs") { showRigs = true }
-                .accessibilityLabel("Rigs")
         }
         .font(Theme.mono(.subheadline))
         .buttonStyle(.plain)
@@ -221,14 +265,19 @@ struct HomeList: View {
     /// list, never over it.
     private var keys: some View {
         HStack(spacing: 0) {
-            (Text("1 ").foregroundColor(Theme.red) + Text("panes").foregroundColor(Theme.red))
-                .fontWeight(.semibold)
+            Button("1 panes") { showRigs = false; editMode = .inactive }
+                .foregroundStyle(showRigs ? Theme.soft : Theme.red).fontWeight(showRigs ? .regular : .semibold)
                 .accessibilityLabel("Panes")
-                .accessibilityAddTraits(.isSelected)
+                .accessibilityAddTraits(showRigs ? [] : .isSelected)
+            Spacer()
+            Button("2 rigs") { showRigs = true; editMode = .inactive }
+                .foregroundStyle(showRigs ? Theme.red : Theme.soft).fontWeight(showRigs ? .semibold : .regular)
+                .accessibilityLabel("Rigs")
+                .accessibilityAddTraits(showRigs ? .isSelected : [])
             Spacer()
             Button { showBlockers = true } label: {
                 HStack(spacing: 5) {
-                    Text("2 blockers")
+                    Text("3 blockers")
                     if !home.waiting.isEmpty {
                         Text("\(home.waiting.count)").fontWeight(.bold).foregroundStyle(Theme.bg)
                             .padding(.horizontal, 5).background(Theme.red, in: RoundedRectangle(cornerRadius: 4))
@@ -237,13 +286,15 @@ struct HomeList: View {
             }
             .accessibilityLabel("Blockers")
             Spacer()
-            Button("3 progress") { showProgress = true }
+            Button("4 progress") { showProgress = true }
                 .accessibilityLabel("Progress")
         }
         .font(Theme.mono(.footnote))
+        .lineLimit(1)
+        .minimumScaleFactor(0.75)
         .buttonStyle(.plain)
         .foregroundStyle(Theme.soft)
-        .padding(.horizontal, 24).padding(.top, 13).padding(.bottom, 6)
+        .padding(.horizontal, 16).padding(.top, 13).padding(.bottom, 6)
         .background(Theme.bar.ignoresSafeArea(edges: .bottom))
         .overlay(alignment: .top) { Rectangle().fill(Theme.line).frame(height: 1) }
     }
@@ -326,39 +377,5 @@ struct PaneRowView: View {
         case "idle": return Theme.blue
         default: return Theme.grey
         }
-    }
-}
-
-/// RigsView is every running rig and its panes he has not pinned; one tap pins.
-struct RigsView: View {
-    @ObservedObject var home: HomeModel
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        List {
-            if home.rigs.isEmpty {
-                Text("No rig is running on the Mac.").foregroundStyle(.secondary)
-            }
-            ForEach(home.rigRows, id: \.rig) { rig in
-                Section(rig.rig) {
-                    if rig.panes.isEmpty {
-                        Text("Every pane is pinned.").foregroundStyle(.secondary)
-                    }
-                    ForEach(rig.panes) { row in
-                        HStack {
-                            PaneRowView(row: row)
-                            Button { Task { await home.pin(row.ref) } } label: {
-                                Image(systemName: "pin")
-                            }
-                            .buttonStyle(.borderless)
-                            .accessibilityLabel("Pin \(row.ref.pane)")
-                        }
-                    }
-                }
-            }
-        }
-        .navigationTitle("Rigs")
-        .toolbar { Button("Done") { dismiss() } }
-        .refreshable { await home.reload() }
     }
 }

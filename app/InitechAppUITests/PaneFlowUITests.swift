@@ -96,7 +96,7 @@ final class PaneFlowUITests: XCTestCase {
             pin.tap()
             XCTAssertTrue(pin.waitForNonExistence(timeout: 10), "\(pane) stayed unpinned in Rigs")
         }
-        app.buttons["Done"].tap()
+        app.buttons["Panes"].tap() // Rigs is a screen of the bottom bar, not a sheet: back to the list
     }
 
     private func rename(_ from: String, to: String) {
