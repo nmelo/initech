@@ -170,6 +170,7 @@ func (t *TUI) pollBeadsOnce(now time.Time) {
 				p.applyDerivedBeads(beads, answered, now)
 			}
 		}
+		t.watchesTick(now)
 	})
 	t.readPaceCrossings(due)
 	if answered {

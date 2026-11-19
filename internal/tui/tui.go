@@ -14,6 +14,7 @@ import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/nmelo/initech/internal/config"
 	"github.com/nmelo/initech/internal/progress"
+	"github.com/nmelo/initech/internal/watch"
 )
 
 // LayoutMode determines how panes are arranged on screen.
@@ -229,6 +230,9 @@ type TUI struct {
 	// paceOverWrote is the wait_over_sent value this process last wrote per
 	// bead, until bd's list shows it (ini-agq).
 	paceOverWrote map[string]string
+	// watches is window 1's watch store (watch_store.go); nil in a second
+	// window and until it is loaded at start. Main goroutine only.
+	watches *watch.Store
 	// The idle-owner reading (ini-9dv): each local idle pane's idle time at
 	// the last refresh, the idle-owner beads by owner for the pane row, and
 	// the idle spell each owner|bead line was sent for.
@@ -1631,6 +1635,7 @@ func Run(cfg Config) error {
 		}
 		t.loadHeldMail(time.Now())
 		heldUnkept = t.held.unkept
+		t.loadWatches(cfg.ProjectRoot, time.Now())
 	}
 	ticker := time.NewTicker(maintenanceFrameInterval)
 	defer ticker.Stop()
