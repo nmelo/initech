@@ -151,7 +151,12 @@ func startClearIPC(t *testing.T, handler func(tui.IPCRequest) tui.IPCResponse) s
 			if scanner.Scan() {
 				var req tui.IPCRequest
 				json.Unmarshal(scanner.Bytes(), &req)
-				resp := handler(req)
+				// clear asks how many watches an agent kept after clearing it;
+				// these tests are about the clear itself, so none are kept.
+				resp := tui.IPCResponse{OK: true, Data: "0"}
+				if req.Action != "watch_count" {
+					resp = handler(req)
+				}
 				data, _ := json.Marshal(resp)
 				conn.Write(data)
 				conn.Write([]byte("\n"))
