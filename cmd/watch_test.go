@@ -363,3 +363,28 @@ func TestWatch_UnderServe_IsExit1_AndClearStaysSilent(t *testing.T) {
 		t.Errorf("clear under serve: err %v, out %q", err, out.String())
 	}
 }
+
+// The release gate (ini-n0to): window 1 of a release build refuses every watch
+// action; the command prints its one line and exits 1, the code a script sees,
+// and clear and restart print no kept line. 2C's delivery commit deletes this.
+func TestWatch_AReleaseBuildsRefusalExitsOne(t *testing.T) {
+	refuse := func(tui.IPCRequest) tui.IPCResponse {
+		return tui.IPCResponse{Error: "watches are not in this release"}
+	}
+	startWatchFake(t, refuse)
+	for _, args := range [][]string{
+		{"set", "--bead", "ini-a", "--status", "closed", "--why", "read it", "--until", "1h"},
+		{"list"},
+		{"cancel", "w1"},
+	} {
+		_, err, code := runWatch(t, args...)
+		if code != 1 || err == nil || err.Error() != "watches are not in this release" {
+			t.Errorf("watch %s: exit %d, %v; want exit 1 and the line", args[0], code, err)
+		}
+	}
+	var out bytes.Buffer
+	printKeptWatches(&out, "eng6")
+	if out.Len() != 0 {
+		t.Errorf("a refused count printed %q", out.String())
+	}
+}
