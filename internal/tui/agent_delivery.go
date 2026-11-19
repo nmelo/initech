@@ -1,10 +1,12 @@
 package tui
 
 import (
+	"bytes"
 	"crypto/rand"
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 func (p *Pane) readAgentFrame() agentFrame {
@@ -63,7 +65,7 @@ func (p *Pane) agentSendLocked(text string, enter bool) SendVerdict {
 		case backlog:
 			reason = "waiting for earlier messages"
 		}
-		return p.holdAgentMessage(QueuedMessage{Text: text, Enter: enter, From: from, Time: time.Now(), HeldForAgent: true, HeldForDialog: f.dialog || p.dialogLatched()}, f, reason)
+		return p.holdAgentMessage(QueuedMessage{Text: text, Enter: enter, From: from, Time: time.Now(), HeldForAgent: true, HeldForDialog: f.dialog || p.dialogLatched(), After: p.sendAfter}, f, reason)
 	}
 	v := p.typeAgentMessage(text, enter, f)
 	if v.Outcome == DeliveryDeferred {
@@ -111,6 +113,9 @@ func (p *Pane) typeAgentMessage(text string, enter bool, before agentFrame) Send
 			seenQueued = seenQueued || proofText.queueIndex(r, frame.queued) != -1
 			seenAbove = seenAbove || seenQueued || proofText.userTurn(r, frame.transcript)
 			break
+		}
+		if r == agyReader && frame.dialogName == agySlashMenu && frame.menuFilter == want && !before.busy && !p.dialogLatched() && !p.isClosing() {
+			return p.leaveAgyMenu(text, want, start)
 		}
 		if (frame.box && frame.busy != before.busy) || frame.dialog || p.isClosing() || !time.Now().Before(deadline) {
 			return p.unknownAgentSend(start)
@@ -177,6 +182,52 @@ func (p *Pane) typeAgentMessage(text string, enter bool, before agentFrame) Send
 				return SendVerdict{Outcome: DeliveryNotDelivered, Reason: "Enter not taken; the text is still in the composer"}
 			}
 			return p.unknownAgentSend(start)
+		}
+		time.Sleep(composerEchoPoll)
+	}
+}
+
+// agyMenuNotDelivered is the reason a send that opened agy's slash menu
+// answers when the menu was closed and our text removed.
+const agyMenuNotDelivered = "agy opened its slash menu and the highlighted command was not provably ours"
+
+// leaveAgyMenu runs when our own typed text opened agy's slash menu in a box
+// that read idle before typing (a steered send never comes here: Esc during a
+// running turn cancels it). Enter is never pressed: the highlighted command
+// is not provably ours. One Esc closes the menu, which leaves our text in the
+// box; then, only if the box holds exactly that text, one Backspace per
+// character typed removes it. A box read empty after that is not delivered;
+// anything else is not known, with a capture, and no further key.
+func (p *Pane) leaveAgyMenu(text, want string, start time.Time) SendVerdict {
+	if wrote, _ := p.writeInputWait([]byte{0x1b}); wrote != childWritten {
+		return p.unknownAgentSend(start)
+	}
+	f, ok := p.awaitAgentFrame(func(f agentFrame) bool { return !f.dialog && f.box })
+	if !ok || f.busy || f.draft != want {
+		return p.unknownAgentSend(start)
+	}
+	erase := bytes.Repeat([]byte{0x7f}, utf8.RuneCountInString(text))
+	if wrote, _ := p.writeInputWait(erase); wrote != childWritten {
+		return p.unknownAgentSend(start)
+	}
+	if _, ok := p.awaitAgentFrame(agentFrame.free); !ok {
+		return p.unknownAgentSend(start)
+	}
+	LogInfo("inject", "agy slash menu closed and our text removed", "pane", p.name)
+	return SendVerdict{Outcome: DeliveryNotDelivered, Reason: agyMenuNotDelivered}
+}
+
+// awaitAgentFrame reads the pane until a frame passes want, for at most
+// submitConfirmWindow, and returns the last frame read.
+func (p *Pane) awaitAgentFrame(want func(agentFrame) bool) (agentFrame, bool) {
+	deadline := time.Now().Add(submitConfirmWindow)
+	for {
+		f := p.readAgentFrame()
+		if want(f) {
+			return f, true
+		}
+		if p.isClosing() || !time.Now().Before(deadline) {
+			return f, false
 		}
 		time.Sleep(composerEchoPoll)
 	}

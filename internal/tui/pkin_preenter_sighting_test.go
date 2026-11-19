@@ -35,6 +35,7 @@ type pkinFake struct {
 	takes   func(n int) bool             // whether Enter number n is taken
 	busy    bool                         // tear every post-Enter sample while the box holds our text
 	screen  func(composer string) string // the whole screen around the box; nil draws the box alone at the top
+	key     func(b string)               // sees every write outside a paste, before the Enter handling (ini-1etm)
 	mu      sync.Mutex
 	writes  []pkinWrite
 	samples atomic.Int32 // samples through the hook (busy only)
@@ -62,6 +63,11 @@ func (f *pkinFake) saw(b string) {
 	f.mu.Lock()
 	f.writes = append(f.writes, pkinWrite{time.Now(), b})
 	f.mu.Unlock()
+	if f.key != nil {
+		if out := outsidePaste(b); out != "" {
+			f.key(out)
+		}
+	}
 	if strings.Contains(b, "\x1b[201~") {
 		if f.shows != "" {
 			f.paint(f.shows)

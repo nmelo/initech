@@ -460,6 +460,10 @@ type QueuedMessage struct {
 	// messages are subject to heldMessageDeadline (ini-1898).
 	HeldForDialog bool
 	HeldForAgent  bool
+	// After marks a message held by send --after: it waits for the running
+	// turn to end, its own end, and is never ended by emptyBoxHoldBound.
+	// Not kept in the held file: restored, it is ordinary agent mail.
+	After bool
 	// DND marks a message held because the pane was in do-not-disturb
 	// (ini-x432), and Released is when dnd off let it go: from then on it
 	// waits for a dialog like held mail, its deadline counted from Released.

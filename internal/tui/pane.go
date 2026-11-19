@@ -462,7 +462,11 @@ type Pane struct {
 	sendFrom   string // whose send is being typed (setSendFrom)
 	sendWaited bool   // a caller waits on the verdict of the send being typed (setSendWaited)
 	heldTyping *QueuedMessage
-	heldInHand []QueuedMessage
+	// boxWaitSince is when an agent pane's input box began to read neither
+	// empty, busy, nor at a dialog; zero while it does (emptyBoxHoldBound).
+	// Under mu.
+	boxWaitSince time.Time
+	heldInHand   []QueuedMessage
 
 	// Do-not-disturb (dnd.go): while set, sends wait on messageQueue.
 	// Memory only, never saved. dndSince is when it went on, dndUntil when

@@ -42,8 +42,11 @@ type agentFrame struct {
 	nextTool     bool // Codex will submit these items at its next tool call.
 	busy, dialog bool
 	dialogName   string
-	native       int
-	transcript   []string
+	// menuFilter is the text in agy's input box above its open slash menu,
+	// the text the menu filters on ("" when no menu is open).
+	menuFilter string
+	native     int
+	transcript []string
 }
 
 func (f agentFrame) free() bool { return f.box && !f.busy && !f.dialog && f.draft == "" }
@@ -73,6 +76,74 @@ func codexNoticeRow(row string) bool {
 	return strings.HasPrefix(strings.TrimSpace(stripBraille(row)), "⚠")
 }
 
+// codexHint is the placeholder Codex draws in an empty composer.
+const codexHint = "Ask Codex to do anything"
+
+// agyHint is the placeholder agy draws in an empty input box.
+const agyHint = "Auto mode: edits & safe commands auto-approved (shift+tab to cycle)"
+
+// minHintPrefix is the shortest cut-off placeholder read as the placeholder:
+// "Auto mode:" and "Ask Codex " are ten characters; a shorter start is too
+// likely to be a real draft.
+const minHintPrefix = 10
+
+// codexHintOnly reports a composer that holds only Codex's placeholder: the
+// whole hint, or in a narrow pane the hint cut at the right edge on its one
+// row (Codex cuts it with no ellipsis: "Ask Codex to do anythin" at 26
+// columns). Every row below it must be blank.
+func codexHintOnly(box []string) bool {
+	for _, row := range box[1:] {
+		if row != "" {
+			return false
+		}
+	}
+	return box[0] == codexHint || (len(box[0]) >= minHintPrefix && strings.HasPrefix(codexHint, box[0]))
+}
+
+// agyHintOnly reports an input box that holds only agy's placeholder: the
+// whole hint, or the hint agy cuts with "..." when the pane is narrower than
+// it ("Auto mode: edits & safe com..." at 33 columns).
+func agyHintOnly(draft string) bool {
+	if draft == agyHint {
+		return true
+	}
+	cut, ok := strings.CutSuffix(draft, "...")
+	return ok && len(cut) >= minHintPrefix && strings.HasPrefix(agyHint, cut)
+}
+
+// codexFooterRow finds the first row of Codex's model and context footer in
+// the last seven rows, or -1. A wide pane draws it on one row ("main · model
+// · Context 0% used · ..."). A narrow one wraps it, and the context figure
+// starts a row of its own ("Context 0% used ·", or "· Context 0% used ·" at
+// 26 columns) below the model row. The footer then starts at the top of that
+// run of rows, so the composer search begins above it and the model row is
+// never read as composer text.
+func codexFooterRow(rows []string) int {
+	for i := len(rows) - 1; i >= 0 && i >= len(rows)-7; i-- {
+		line := strings.ToLower(strings.TrimSpace(stripBraille(rows[i])))
+		if strings.Contains(line, " · context") {
+			return i
+		}
+		wrapped := strings.HasPrefix(line, "context ") || strings.HasPrefix(line, "· context ")
+		if !wrapped || !strings.Contains(line, "% used") {
+			continue
+		}
+		top := i
+		for top > 0 {
+			above := strings.TrimSpace(stripBraille(rows[top-1]))
+			if above == "" || strings.HasPrefix(above, "›") {
+				break
+			}
+			top--
+		}
+		if top == i {
+			return -1 // No model row above it: not a footer this reader knows.
+		}
+		return top
+	}
+	return -1
+}
+
 func readCodexFrame(rows []string) agentFrame {
 	last := strings.TrimSpace(rows[len(rows)-1])
 	switch last {
@@ -87,14 +158,7 @@ func readCodexFrame(rows []string) agentFrame {
 	}
 	// Find the model/context footer and the nearest prompt above it. The
 	// transcript also uses ›, so a glyph alone cannot open the input path.
-	footer := -1
-	for i := len(rows) - 1; i >= 0 && i >= len(rows)-7; i-- {
-		line := strings.ToLower(strings.TrimSpace(stripBraille(rows[i])))
-		if strings.Contains(line, " · context") {
-			footer = i
-			break
-		}
-	}
+	footer := codexFooterRow(rows)
 	if footer < 0 {
 		return agentFrame{}
 	}
@@ -108,7 +172,7 @@ func readCodexFrame(rows []string) agentFrame {
 			box = append(box, strings.TrimSpace(stripBraille(line)))
 		}
 		f := agentFrame{box: true, draftRows: box, draft: strings.TrimSpace(strings.Join(box, " ")), transcript: rows[:i]}
-		if f.draft == "Ask Codex to do anything" {
+		if codexHintOnly(box) {
 			f.draft = ""
 		}
 		// Inspect the tail adjacent to this composer. Earlier turns may
@@ -244,6 +308,12 @@ func readAgyFrame(rows []string) agentFrame {
 		}
 		return agentFrame{dialog: true, dialogName: name}
 	}
+	// agy's slash menu: its key row sits above "esc to cancel" and is cut at
+	// the pane's width ("↑/↓ Navigate · enter Select · tab Complete", "· t"
+	// at 33 columns). It reads as a dialog, never a box or a running task.
+	if end >= 0 && strings.HasPrefix(strings.TrimSpace(rows[end]), "↑/↓ Navigate") {
+		return agentFrame{dialog: true, dialogName: agySlashMenu, menuFilter: agyMenuFilter(rows, end)}
+	}
 	queueVisible := strings.HasPrefix(last, "Press up to edit queued messages")
 	busy := strings.HasPrefix(last, "esc to cancel") || queueVisible
 	if !busy && strings.Contains(last, "task(s)") {
@@ -273,7 +343,7 @@ func readAgyFrame(rows []string) agentFrame {
 		box = append(box, strings.TrimSpace(row))
 	}
 	draft := strings.TrimSpace(strings.Join(box, " "))
-	if draft == "Auto mode: edits & safe commands auto-approved (shift+tab to cycle)" {
+	if agyHintOnly(draft) {
 		draft = ""
 	}
 	frame := agentFrame{box: true, busy: busy, draftRows: box, draft: draft, transcript: rows[:top]}
@@ -290,6 +360,23 @@ func readAgyFrame(rows []string) agentFrame {
 		frame.native = len(frame.queued)
 	}
 	return frame
+}
+
+// agySlashMenu names agy's slash-command menu as a dialog.
+const agySlashMenu = "slash menu"
+
+// agyMenuFilter is the text of the input box drawn above agy's slash menu:
+// the "> " row between the two rules above the menu's items. "" when that
+// shape is not on screen.
+func agyMenuFilter(rows []string, keyRow int) string {
+	below := keyRow - 1
+	for below >= 0 && !agyRule(rows[below]) {
+		below--
+	}
+	if below < 2 || !agyRule(rows[below-2]) || !strings.HasPrefix(rows[below-1], ">") {
+		return ""
+	}
+	return strings.TrimSpace(strings.TrimPrefix(rows[below-1], ">"))
 }
 
 // Earlier entries can expand when agy moves its keyboard hint to the newest

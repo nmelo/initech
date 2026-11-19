@@ -1,0 +1,18 @@
+      ▄▀▀▄        Antigravity CLI 1.5.12
+     ▀▀▀▀▀▀       nmelo.cu@gmail.com (Google AI Ultra)
+    ▀▀▀▀▀▀▀▀      Gemini 4 Carbon (High)
+   ▄▀▀    ▀▀▄     ~/Desktop/Projects/initech/eng5/nag/ag1
+  ▄▀▀      ▀▀▄
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+> /clear
+────────────────────────────────────────────────────────────────────────────────────────────────────
+> /clear                              Clear conversation and start a new one
+  /firecrawl-lead-research            Produce pre-meeting lead intelligence briefs with Firecraw...
+  /firecrawl-search                   Web search with full page content extraction. Use this ski...
+  /firecrawl-build-search             Integrate Firecrawl `/search` into product code and agent ...
+  /firecrawl-deep-research            Produce an intensive, cited analytical report: executive s...
+   ↓ 5 more
+
+  ↑/↓ Navigate · enter Select · tab Complete
+esc to cancel                                                          auto · Gemini 4 Carbon · high

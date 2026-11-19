@@ -1,0 +1,23 @@
+      ▄▀▀▄
+     ▀▀▀▀▀▀
+    ▀▀▀▀▀▀▀▀
+   ▄▀▀    ▀▀▄
+  ▄▀▀      ▀▀▄
+
+  Antigravity CLI 1.5.12
+  nmelo.cu@gmail.com
+  Gemini 4 Carbon (High)
+  ~/Desktop/Projects/hover/agy1
+
+─────────────────────────────────
+> /clear
+─────────────────────────────────
+> /clear
+  /firecrawl-lead-research
+  /firecrawl-search
+  /firecrawl-build-search
+  /firecrawl-deep-research
+   ↓ 5 more
+
+  ↑/↓ Navigate · enter Select · t
+esc to cancel

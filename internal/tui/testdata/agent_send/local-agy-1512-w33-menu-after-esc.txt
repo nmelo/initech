@@ -1,0 +1,15 @@
+      ▄▀▀▄
+     ▀▀▀▀▀▀
+    ▀▀▀▀▀▀▀▀
+   ▄▀▀    ▀▀▄
+  ▄▀▀      ▀▀▄
+
+  Antigravity CLI 1.5.12
+  nmelo.cu@gmail.com (Google AI U
+  Gemini 4 Carbon (High)
+  ~/Desktop/Projects/initech/eng5
+
+─────────────────────────────────
+> /clear
+─────────────────────────────────
+    auto · Gemini 4 Carbon · high

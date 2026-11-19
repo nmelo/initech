@@ -128,6 +128,7 @@ func maintainModal(panes []PaneView, now time.Time, last *time.Time) {
 		}
 		// GIVE UP LOUDLY, NEVER SILENTLY (ini-1898): a dead pane's mail and
 		// mail held past the deadline are reported, not retried forever.
+		p.noteBoxWait(rows, now)
 		p.resolveHeldMail(now)
 		if p.QueuedMessageCount() > 0 && !p.dialogLatched() && !screenShowsModal(rows) && (p.agentReader() == noAgentReader || p.agentReader().read(rows).free()) {
 			// Its own goroutine because the drain paces itself between

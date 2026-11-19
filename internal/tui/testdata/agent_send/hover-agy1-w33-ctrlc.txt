@@ -1,0 +1,12 @@
+   ▄▀▀    ▀▀▄
+  ▄▀▀      ▀▀▄
+
+  Antigravity CLI 1.5.12
+  nmelo.cu@gmail.com (Google AI U
+  Gemini 4 Carbon (High)
+  ~/Desktop/Projects/hover/agy1
+
+─────────────────────────────────
+> Auto mode: edits & safe com...
+─────────────────────────────────
+press ctrl+c again to exit

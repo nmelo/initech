@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"time"
 )
 
@@ -28,6 +29,13 @@ import (
 // on a live pane before it is surfaced as not delivered. Operator-confirmed
 // (2026-10-14). The message is reported, never silently dropped.
 const heldMessageDeadline = 10 * time.Minute
+
+// emptyBoxHoldBound ends mail held for a Codex or agy input box that never
+// reads empty: the same five minutes a withheld submit waits, so a sender
+// has one figure for "held and not typed" (ini-1etm). The clock runs while
+// the box reads neither empty, nor busy, nor at a dialog, and starts again
+// at each start of initech.
+const emptyBoxHoldBound = withheldSubmitWindow
 
 // enqueueHeld queues a message deferred for an open dialog. It is the
 // dialog-held twin of EnqueueMessage; only held messages are subject to the
@@ -177,5 +185,64 @@ func (p *Pane) resolveHeldMail(now time.Time) int {
 		return m.HeldForDialog && now.Sub(m.Time) >= heldMessageDeadline
 	})
 	p.surfaceHeldMail(msgs, "a dialog stayed open past "+heldMessageDeadline.String(), now)
+	return len(msgs) + p.endEmptyBoxHolds(now)
+}
+
+// noteBoxWait runs the clock emptyBoxHoldBound reads: since when an agent
+// pane's input box has read neither empty, nor busy, nor at a dialog, on a
+// live pane that is not suspended, in do-not-disturb, or wedged. Any other
+// read stops it. rows is the maintenance tick's one read.
+func (p *Pane) noteBoxWait(rows []string, now time.Time) {
+	r := p.agentReader()
+	waiting := false
+	if r != noAgentReader && p.IsAlive() && !p.IsSuspended() && !p.InDND() && !p.dialogLatched() && !p.inputWedged() && !screenShowsModal(rows) {
+		f := r.read(rows)
+		waiting = !f.free() && !f.busy && !f.dialog
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	switch {
+	case !waiting:
+		p.boxWaitSince = time.Time{}
+	case p.boxWaitSince.IsZero():
+		p.boxWaitSince = now
+	}
+}
+
+// endEmptyBoxHolds ends agent mail that has waited emptyBoxHoldBound for an
+// input box that never read empty, counted from the later of its hold and
+// the start of the box's current wait. Dialog, do-not-disturb and --after
+// mail keep their own ends. Each is taken off the queue and out of the held
+// file under the pane's lock, so it is never typed afterwards, and its sender
+// is told once; one with no sender recorded is logged only.
+func (p *Pane) endEmptyBoxHolds(now time.Time) int {
+	p.mu.Lock()
+	since := p.boxWaitSince
+	p.mu.Unlock()
+	if since.IsZero() {
+		return 0
+	}
+	msgs := p.takeQueued(func(m QueuedMessage) bool {
+		if !m.HeldForAgent || m.HeldForDialog || m.DND || !m.Released.IsZero() || m.After {
+			return false
+		}
+		return now.Sub(later(m.Time, since)) >= emptyBoxHoldBound
+	})
+	for _, m := range msgs {
+		line := fmt.Sprintf("the message to %s held since %s was not delivered: its input box never read empty; send it again", p.name, m.Time.Format("15:04"))
+		LogInfo("inject", "held message NOT DELIVERED", "pane", p.name, "reason", "input box never read empty",
+			"waited", now.Sub(m.Time).Round(time.Second), "has_sender", m.From != "")
+		if m.From != "" {
+			p.reportEvent(AgentEvent{Type: EventMessageSent, Pane: p.name, Detail: line, From: m.From, ToSender: line, Time: now})
+		}
+	}
 	return len(msgs)
+}
+
+// later is the later of two times.
+func later(a, b time.Time) time.Time {
+	if a.After(b) {
+		return a
+	}
+	return b
 }
