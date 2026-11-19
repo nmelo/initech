@@ -681,6 +681,10 @@ func (pm *peerManager) consumeEvents(peerName string, pc *peerConn, done chan st
 // in arrival order.
 func (pm *peerManager) takeAnnouncements(peerName string, pc *peerConn) {
 	for _, ev := range pc.mux.TakeAnnouncements() {
+		if ev.Action == stripAction {
+			pc.applyStrip(ev.Name, ev.Items)
+			continue
+		}
 		pm.handleStreamAdded(peerName, pc, ev)
 	}
 }
@@ -720,6 +724,7 @@ func (pm *peerManager) attachPushedStream(peerName string, pc *peerConn, name st
 		return
 	}
 	rp := NewRemotePane(name, peerName, stream, pc.mux, 80, 24)
+	rp.SetStrip(pc.stripFor(name))
 	rp.Start()
 	pc.panesMu.Lock()
 	pc.panes = append(pc.panes, rp)

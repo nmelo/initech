@@ -397,7 +397,8 @@ type ControlResp struct {
 	// attention on the ownership frame would fire partition updates on every
 	// dialog and couple the two in the one direction the spec forbids.
 	WaitingState
-	Name  string   `json:"name,omitempty"`  // Agent name for stream_added / agent_status.
+	Name  string   `json:"name,omitempty"`  // Agent name for stream_added / agent_status / strip.
+	Items []string `json:"items,omitempty"` // strip: the agent's list strip, in order; none clears it.
 	Beads []string `json:"beads,omitempty"` // All beads an agent holds (ini-9ka.11 agent_status).
 	// Suspended rides agent_status: a parked agent must read as parked in
 	// every window, not only the one that parked it (2026-08-15).
@@ -474,7 +475,7 @@ func RunDaemon(cfg DaemonConfig) error {
 	}
 
 	d.held = newHeldWriter(cfg.Project.Root, heldFileServe)
-	d.strips = openStripBook(cfg.Project.Root, stripFileServe)
+	d.attachStrips(openStripBook(cfg.Project.Root, stripFileServe))
 	// Create and start agent panes with ring buffers and multi-sinks.
 	for _, acfg := range cfg.Agents {
 		p, err := NewPane(acfg, 24, 80)
@@ -1085,6 +1086,12 @@ func (d *Daemon) handleConnection(conn net.Conn) {
 		LogWarn("daemon", "failed to send replay_done", "err", err)
 		return
 	}
+
+	// The lists this process keeps, now that the client has its panes (D8).
+	d.sessionsMu.Lock()
+	stripMu := d.clientCtrlMu[hello.PeerName]
+	d.sessionsMu.Unlock()
+	d.sendStrips(ctrl, stripMu)
 
 	// NOW tell the TUI a window attached -- after replay_done, i.e. after the
 	// whole positional preamble (hello_ok, stream_map, replay_start,

@@ -30,6 +30,7 @@ type peerConn struct {
 	mux       *ControlMux
 	panesMu   sync.Mutex // Protects panes slice (mutated by stream_added handler).
 	panes     []PaneView
+	strips    map[string][]string // the owner's list strips by agent (D8); under panesMu
 	// evicted is set by the control-event handler when the server's
 	// identity_taken_over verdict arrives (ini-jhm6), and read by managePeer
 	// after the session dies to decide terminal-vs-retry. Atomic because the

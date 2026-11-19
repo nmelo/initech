@@ -275,7 +275,9 @@ func (m *ControlMux) readLoop() {
 					m.writeMu.Unlock()
 				})
 			}
-		} else if resp.Action == streamAddedAction {
+		} else if resp.Action == streamAddedAction || resp.Action == stripAction {
+			// A strip rides the same lossless, ordered queue: a dropped one
+			// would leave a window drawing an old list (D8).
 			m.queueAnnouncement(resp)
 		} else {
 			// Unsolicited event: send to the events channel (non-blocking).

@@ -317,6 +317,7 @@ func (t *TUI) startWindowListener(project *config.Project, version string, attac
 		return func() {}
 	}
 	t.windowSrv = ws
+	ws.daemon.attachStrips(t.strips) // windows get window 1's lists (D8)
 	t.recordWindowBind(ws.Addr(), nil)
 	return cleanup
 }

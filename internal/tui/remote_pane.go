@@ -37,7 +37,8 @@ type RemotePane struct {
 	dataCh      chan []byte      // readLoop sends byte chunks here; Render drains and writes to emu.
 	mu          sync.Mutex
 	alive       bool
-	fleetNum    int // Fleet-canonical number PLUS ONE (ini-6m4); zero value = unknown. See fleetNumbered in pane.go.
+	strip       remoteStrip // the owner's list strip for this agent (D8)
+	fleetNum    int         // Fleet-canonical number PLUS ONE (ini-6m4); zero value = unknown. See fleetNumbered in pane.go.
 	// emuPanicked rate-limits the emulator-panic log to once per pane; the
 	// panic barrier in writeEmu keeps draining after a parser failure.
 	emuPanicked bool
@@ -627,7 +628,9 @@ func (rp *RemotePane) renderChrome(s *clampedScreen, r Region, focused bool, ind
 
 // drawChrome draws the ribbon from its look alone and records it.
 func (rp *RemotePane) drawChrome(s *clampedScreen, r Region, look ribbonLook) {
-	renderRibbon(s, r, look)
+	col := renderRibbon(s, r, look)
+	renderStripCount(s, r, col, look.stripCount)
+	drawStrip(s, r, stripItemsOf(look.strip))
 	rp.noteChrome(look)
 }
 
@@ -677,7 +680,9 @@ func (rp *RemotePane) chromeLook(focused bool, index int) ribbonLook {
 	// it's local-only for the same reason here — never a fabricated parallel
 	// "running" notion for remote panes.
 	beadLabel, beadTitle := ribbonBeadLabel(rp.BeadID(), "", rp.NoBeadWork())
-	return ribbonLook{title: title, style: titleStyle, tag: backgroundTag(rp), bead: beadLabel, beadTitle: beadTitle}
+	items := rp.StripItems()
+	return ribbonLook{title: title, style: titleStyle, tag: backgroundTag(rp), bead: beadLabel, beadTitle: beadTitle,
+		strip: stripKey(items), stripCount: stripBarCount(items, rp.region)}
 }
 
 // renderChromeOnly draws the ribbon alone, for a pane whose body is
@@ -715,10 +720,15 @@ func (rp *RemotePane) Render(screen tcell.Screen, focused bool, dimmed bool, ind
 			"emu_h", rp.emu.Height(), "emu_w", rp.emu.Width())
 	}
 
+	rp.applyStripSize()
 	// Badge style: remote panes use teal to distinguish from local.
 	if r.H >= 2 {
 		rp.renderChrome(s, r, focused, index)
 	}
+	// The strip's rows, above the bar, are drawn with the chrome; the
+	// content stops above them.
+	tc, tr := r.TerminalSize()
+	r.H -= stripHeight(rp.StripItems(), tr, tc)
 
 	_, innerRows := r.InnerSize()
 	// The viewer emulator is written only on this goroutine, so the try never
@@ -816,7 +826,9 @@ func (rp *RemotePane) Resize(rows, cols int) {
 	// Emulator resize is synchronous: with the channel-based approach,
 	// readLoop never touches the emulator, so no lock contention.
 	// The emulator is owned exclusively by the main goroutine.
-	rp.emu.Resize(cols, exactTerminalRows(rows))
+	// The viewer's own emulator is its tile less the strip; the request to the
+	// owner is the whole tile, and the owner takes the same rows off it (D8).
+	rp.emu.Resize(cols, exactTerminalRows(rp.stripRowsFor(rows, cols)))
 
 	rp.resizeMu.Lock()
 	rp.pendingRows = rows
