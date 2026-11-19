@@ -31,6 +31,16 @@ const operatorSender = "@operator"
 // OperatorSender is operatorSender for the CLI, which stamps it.
 const OperatorSender = operatorSender
 
+// outsideSender is the sender name of a send run outside any pane by the
+// CLI: a person at a terminal or a script in a plain shell, which initech
+// cannot tell apart (ini-slqv). Do-not-disturb holds it like an agent's
+// message; it may break through with --urgent, as super may. The operator's
+// own hand (typing, pastes, an inbox reply, the companion) is operatorSender.
+const outsideSender = "@outside"
+
+// OutsideSender is outsideSender for the CLI, which stamps it.
+const OutsideSender = outsideSender
+
 // sendOrigin is who a send came from, as the sending initech stamped it
 // (ini-x432): the agent's name, operatorSender, or "" when the sender's
 // initech did not say (older than part 4) -- unknown, and held like an
@@ -56,7 +66,8 @@ const (
 )
 
 // dndOrigin is the do-not-disturb rule on a sender, the one send and
-// keystroke share: the operator always goes through, super --urgent breaks it
+// keystroke share: the operator always goes through, --urgent from super or
+// from outside a pane (ini-slqv) breaks it
 // (logged once: *broke is set when the break has been logged, so a sender
 // judged twice logs once), --urgent from anyone else is refused, and anyone
 // else waits. The verdict is set only for dndOriginRefused.
@@ -67,16 +78,20 @@ func (p *Pane) dndOrigin(o sendOrigin, broke *bool) (dndRuling, SendVerdict) {
 	switch {
 	case o.From == operatorSender:
 		return dndOriginThrough, SendVerdict{} // the operator always goes through
-	case o.Urgent && o.From == "super":
+	case o.Urgent && (o.From == "super" || o.From == outsideSender):
 		if !*broke {
 			*broke = true
-			line := "urgent from super broke do-not-disturb on " + p.name
+			who := "super"
+			if o.From == outsideSender {
+				who = "outside a pane"
+			}
+			line := "urgent from " + who + " broke do-not-disturb on " + p.name
 			LogInfo("dnd", line, "pane", p.name)
 			p.reportEvent(AgentEvent{Type: EventMessageSent, Pane: p.name, Detail: line, Time: time.Now()})
 		}
 		return dndOriginThrough, SendVerdict{}
 	case o.Urgent:
-		LogInfo("dnd", "NOT DELIVERED: --urgent from someone other than super", "pane", p.name, "from", o.From)
+		LogInfo("dnd", "NOT DELIVERED: --urgent from someone other than super or outside a pane", "pane", p.name, "from", o.From)
 		return dndOriginRefused, SendVerdict{Outcome: DeliveryNotDelivered, Reason: dndOnlySuperReason}
 	}
 	return dndOriginWaits, SendVerdict{}
@@ -94,8 +109,9 @@ func (p *Pane) dndGate(text string, enter bool, o sendOrigin, broke *bool) (Send
 	return p.holdIfDND(text, enter, o.From)
 }
 
-// dndOnlySuperReason is why an --urgent send from anyone but super to an
-// agent in do-not-disturb is refused; nothing is queued.
+// dndOnlySuperReason is why an --urgent send from an agent other than super
+// to an agent in do-not-disturb is refused; nothing is queued. (From outside
+// a pane, --urgent breaks through too: the words name only the agents.)
 const dndOnlySuperReason = "only super may break do-not-disturb"
 
 // dndHeldLine is the sender's line for a message held for do-not-disturb:

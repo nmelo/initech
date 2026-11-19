@@ -306,6 +306,14 @@ func (p *Pane) drainAgentQueue() {
 	}
 }
 
+// sameSender reports two stamps from one sender. The operator and a send
+// from outside a pane are one person for a withdrawal: a receipt held before
+// an upgrade was stamped as the operator, after it outside a pane (ini-slqv).
+func sameSender(a, b string) bool {
+	outside := func(s string) bool { return s == operatorSender || s == outsideSender }
+	return a == b || (outside(a) && outside(b))
+}
+
 func (p *Pane) withdrawReceipt(id, from string) (string, error) {
 	if strings.TrimSpace(id) == "" || strings.ContainsAny(id, "\r\n") {
 		return "", fmt.Errorf("a withdrawal receipt is required on one line")
@@ -323,7 +331,7 @@ func (p *Pane) withdrawReceipt(id, from string) (string, error) {
 		if m.Receipt != id {
 			continue
 		}
-		if m.From != "" && m.From != from {
+		if m.From != "" && !sameSender(m.From, from) {
 			p.mu.Unlock()
 			return "", fmt.Errorf("receipt %s belongs to another sender", id)
 		}
@@ -335,7 +343,7 @@ func (p *Pane) withdrawReceipt(id, from string) (string, error) {
 	owner, typed := p.typedReceipts[id]
 	p.mu.Unlock()
 	if typed {
-		if owner != "" && owner != from {
+		if owner != "" && !sameSender(owner, from) {
 			return "", fmt.Errorf("receipt %s belongs to another sender", id)
 		}
 		return "", fmt.Errorf("receipt %s was already typed", id)

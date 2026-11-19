@@ -461,11 +461,12 @@ func (t *TUI) loadHeldMail(now time.Time) {
 }
 
 // tellSender says one line to whoever sent a held message: an agent here
-// through the send path, the operator as a notice in window 1, anyone else
+// through the send path, the operator or a sender outside any pane as a
+// notice in window 1, anyone else
 // (a peer, or no sender recorded) to super, naming them.
 func (t *TUI) tellSender(from, text string) {
 	switch {
-	case from == operatorSender:
+	case from == operatorSender || from == outsideSender:
 		t.notifications = append(t.notifications, notification{
 			event:   AgentEvent{Type: EventAgentStalled, Detail: text, Time: time.Now()},
 			expires: time.Now().Add(notificationTTL),
@@ -487,7 +488,7 @@ func (t *TUI) tellSender(from, text string) {
 // for the operator, super for anyone else. Main goroutine.
 func (t *TUI) tellSenderPane(from string) string {
 	switch {
-	case from == operatorSender:
+	case from == operatorSender || from == outsideSender:
 		return ""
 	case from != "" && t.hasLocalPane(from):
 		return from

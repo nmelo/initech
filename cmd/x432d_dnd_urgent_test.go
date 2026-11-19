@@ -28,8 +28,8 @@ func TestDNDBreak_EverySendSaysWhoItIsFrom(t *testing.T) {
 		t.Errorf("inside a pane: from %q urgent %v, want eng2, not urgent", req.From, req.Urgent)
 	}
 	req, _ = x432dSend(t, "", tui.IPCResponse{OK: true, Delivery: tui.DeliveryDelivered}, "send", "qa1", "hi")
-	if req.From != "@operator" {
-		t.Errorf("outside a pane: from %q, want @operator", req.From)
+	if req.From != "@outside" { // ini-slqv: a script outside a pane is not the operator
+		t.Errorf("outside a pane: from %q, want @outside", req.From)
 	}
 	req, _ = x432dSend(t, "super", tui.IPCResponse{OK: true, Delivery: tui.DeliveryDelivered}, "send", "--urgent", "eng2", "P0")
 	if req.From != "super" || !req.Urgent {

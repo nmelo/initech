@@ -65,11 +65,13 @@ needs a retry), prints one line and exits with:
   1  not delivered to <agent>: do-not-disturb queue is full
   1  not delivered to <agent>: only super may break do-not-disturb
 
-An agent in do-not-disturb (initech dnd) holds other agents' messages. A
-send run outside any pane is the operator's and goes straight in. super
-may break through with --urgent, which delivers now and leaves a line in
-the TUI log and the event log; --urgent from any other agent is refused,
-and to an agent not in do-not-disturb it is an ordinary send. The sender
+An agent in do-not-disturb (initech dnd) holds every send to it, from an
+agent or from outside any pane (a terminal or a script): only the
+operator's typing, an inbox reply and the web companion go straight in.
+super, or you from a terminal outside any pane, may break through with
+--urgent, which delivers now and leaves a line in the TUI log and the
+event log; --urgent from any other agent is refused, and to an agent not
+in do-not-disturb it is an ordinary send. The sender
 is whoever INITECH_AGENT names: do-not-disturb trusts that word, as a
 courtesy between agents, not a security wall.
 
@@ -114,7 +116,7 @@ func init() {
 	sendCmd.Flags().BoolVar(&sendAfter, "after", false, "Hold for a working agent until it is idle")
 	sendCmd.Flags().StringVar(&sendWithdraw, "withdraw", "", "Withdraw a held message by its receipt before it is typed")
 	sendCmd.Flags().BoolVar(&sendNoEnter, "no-enter", false, "Don't append Enter after the text")
-	sendCmd.Flags().BoolVar(&sendUrgent, "urgent", false, "From super only: deliver now even if the agent is in do-not-disturb (logged)")
+	sendCmd.Flags().BoolVar(&sendUrgent, "urgent", false, "From super or outside a pane only: deliver now even if the agent is in do-not-disturb (logged)")
 	sendCmd.Flags().BoolVar(&sendStdin, "stdin", false, "Read the message body from stdin (shell-safe: no command substitution)")
 	sendCmd.Flags().StringVarP(&sendFile, "file", "f", "", "Read the message body from a file; \"-\" means stdin")
 	rootCmd.AddCommand(sendCmd)
@@ -568,14 +570,16 @@ func ipcDeadlineFor(action string) time.Duration {
 // Uses tui.DialIPC which handles Unix sockets on POSIX and TCP via .port file
 // on Windows.
 // sendFrom is who a send is from, stamped on every send this CLI makes
-// (ini-x432): the agent named by INITECH_AGENT inside a pane, or the
-// operator outside one. It is the sender's word, not a proof: do-not-disturb
-// is a courtesy that trusts it.
+// (ini-x432): the agent named by INITECH_AGENT inside a pane, or "outside a
+// pane" (tui.OutsideSender) in a plain shell, where a person at a terminal
+// and a script look the same, so do-not-disturb holds it (ini-slqv). The
+// companion stamps the operator itself. It is the sender's word, not a
+// proof: do-not-disturb is a courtesy that trusts it.
 func sendFrom() string {
 	if a := os.Getenv("INITECH_AGENT"); a != "" {
 		return a
 	}
-	return tui.OperatorSender
+	return tui.OutsideSender
 }
 
 // stampSender names the sender on a send or a keystroke that does not
@@ -583,6 +587,9 @@ func sendFrom() string {
 func stampSender(req tui.IPCRequest) tui.IPCRequest {
 	if (req.Action == "send" || req.Action == "send_after" || req.Action == "withdraw" || req.Action == "keystroke") && req.From == "" {
 		req.From = sendFrom()
+		if req.Action == "keystroke" && req.From == tui.OutsideSender {
+			req.From = tui.OperatorSender // a key is not a send: unchanged (ini-slqv)
+		}
 	}
 	return req
 }

@@ -424,8 +424,8 @@ func TestAppServeLeavePane_DropsThePanesIdentity(t *testing.T) {
 	if os.Getenv("INITECH_SOCKET") != "" || os.Getenv("INITECH_AGENT") != "" {
 		t.Errorf("still set: %q %q", os.Getenv("INITECH_SOCKET"), os.Getenv("INITECH_AGENT"))
 	}
-	if got := sendFrom(); got != tui.OperatorSender {
-		t.Errorf("a send is from %q, want the operator", got)
+	if got := sendFrom(); got != tui.OutsideSender {
+		t.Errorf("a send is from %q, want outside a pane (the companion stamps the operator itself)", got)
 	}
 }
 
