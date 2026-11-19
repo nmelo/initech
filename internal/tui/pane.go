@@ -417,6 +417,14 @@ type Pane struct {
 	// pane or a headless viewer keeps its exact size across buffer switches.
 	modeRows atomic.Int32
 
+	// strip is the list strip the agent set (initech strip); nil when none.
+	strip atomic.Pointer[[]string]
+	// reqRows, reqCols and reqExact are the size last requested (a tile, or a
+	// viewer's) and how, before the strip took its rows, so a strip change can
+	// apply the same request again.
+	reqRows, reqCols atomic.Int32
+	reqExact         atomic.Bool
+
 	// dialogOpen latches an application-declared blocking dialog (ini-zjhg).
 	// Raised from OSC 777, cleared by operator input; see modal_detect.go for
 	// why the guard reads this rather than the attention row, and why the clear
@@ -893,7 +901,8 @@ func (p *Pane) ResizeExact(rows, cols int) {
 	p.renderMu.Lock()
 	defer p.renderMu.Unlock()
 	rows, cols = p.clampResize(rows, cols)
-	rows = exactTerminalRows(rows)
+	p.noteRequest(rows, cols, true)
+	rows = exactTerminalRows(p.stripRows(rows, cols))
 	p.modeRows.Store(0)
 	if ptmx := p.ptyHandle(); ptmx != nil {
 		ptmx.Resize(cols, rows)
@@ -947,6 +956,10 @@ func (p *Pane) resizeUnder(e *vt.Emulator, rows, cols int) {
 	// owns every agent's PTY.
 	rows, cols = p.clampResize(rows, cols)
 	p.modeRows.Store(int32(rows))
+	p.noteRequest(rows, cols, false)
+	// The strip takes its rows off every request applied here, whichever
+	// window asked (D8), so the agent never draws under it.
+	rows = p.stripRows(rows, cols)
 	emuRows := exactTerminalRows(rows)
 	if rows >= shortPaneRows && !e.IsAltScreen() {
 		emuRows = effectiveEmuRows(rows)

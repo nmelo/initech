@@ -135,13 +135,17 @@ func (p *Pane) chromeLook(focused bool, index int) (ribbonLook, tcell.Color) {
 	if beadLabel != "" && beadLabel == p.BeadID() {
 		beadIcon, _ = beadStateIcon(p.BeadStatus())
 	}
-	return ribbonLook{title: title, style: titleStyle, tag: pendingTag(p) + backgroundTag(p), warn: contextTag(p), header: p.PaceLine(), headerInset: p.HeaderInset(), bead: beadLabel, beadTitle: beadTitle, beadIcon: beadIcon, running: running}, tint
+	items := p.StripItems()
+	return ribbonLook{title: title, style: titleStyle, tag: pendingTag(p) + backgroundTag(p), warn: contextTag(p), header: p.PaceLine(), headerInset: p.HeaderInset(), bead: beadLabel, beadTitle: beadTitle, beadIcon: beadIcon, running: running,
+		strip: stripKey(items), stripCount: stripBarCount(items, p.region)}, tint
 }
 
 // drawChrome draws the chrome from its look alone.
 func (p *Pane) drawChrome(s *clampedScreen, r Region, look ribbonLook) {
 	if r.H >= 2 {
-		renderRibbon(s, r, look)
+		col := renderRibbon(s, r, look)
+		renderStripCount(s, r, col, look.stripCount)
+		drawStrip(s, r, stripItemsOf(look.strip))
 	}
 
 	// Top edge at r.Y. Drawn before content so it is always present even
@@ -192,6 +196,10 @@ func (p *Pane) Render(screen tcell.Screen, focused bool, dimmed bool, index int,
 		cr.Y++
 		cr.H--
 	}
+	// The strip's rows, above the bar, are not the agent's (drawn with the
+	// chrome); the content stops above them.
+	tc, tr := r.TerminalSize()
+	cr.H -= stripHeight(p.StripItems(), tr, tc)
 	termCols, termRows := cr.InnerSize()
 
 	// Everything below reads the emulator, and the main loop may not wait on
