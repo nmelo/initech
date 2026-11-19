@@ -193,5 +193,8 @@ first.
   asks for Face ID once when it is back in front (at launch too), never as it
   leaves; after a cancel the Unlock button asks. The rule is
   `InitechCore/.../LockAsk.swift`.
+- `icon/`: the app icon's source: a 3D model of a red stapler stapling the terminal prompt (`stapler.py`, for
+  Blender) and the step that puts it on its background and writes the icon asset (`compose.py`). `icon/README.md`
+  says how to make the icon again and what each setting changes.
 - `InitechApp/HomeModel.swift`, `HomeView.swift`: pinned panes and the Rigs view.
 - `InitechApp/PaneModel.swift`, `PaneView.swift`: the pane's conversation.
