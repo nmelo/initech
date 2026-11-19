@@ -249,7 +249,8 @@ func TestSimTest_ScreensAreCheckedBeforeTheLock(t *testing.T) {
 
 // A lock holder the script may not signal is alive, not gone (2026-11-19: a
 // lock held by pid 1 was read as abandoned, taken over, and a simulator was
-// booted). The holder planted here is pid 1, which no test owns; xcrun is a
+// booted; on a Linux runner, ps could not see pid 1 at all). The holder
+// planted here is pid 1, which no test owns; xcrun is a
 // stand-in that only fails, so a script that takes the lock over stops there
 // and never makes a device. The twin, a holder that is really gone, is taken
 // over: that is the rule the lock always had.
@@ -280,6 +281,11 @@ func TestSimTest_AHolderItMayNotSignalIsAliveAndKeepsTheLock(t *testing.T) {
 		t.Errorf("the holder's lock was disturbed: pid file %q, %v", got, err)
 	}
 
+	// The twin runs the script past the lock, which only macOS can follow:
+	// GNU mktemp refuses the script's -t template before xcrun is reached.
+	if runtime.GOOS != "darwin" {
+		return
+	}
 	// A pid no process has: started, waited for, so it is gone for certain.
 	dead := exec.Command("true")
 	if err := dead.Run(); err != nil {

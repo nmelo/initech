@@ -52,9 +52,10 @@ fi
 
 # One simulator at a time on this host, whatever started the run: a lock
 # directory (mkdir is atomic), taken over when its holder is gone. A holder is
-# gone only when no process has its pid: ps sees every process, while kill -0
-# also fails for a live one this user may not signal, and a lock read that way
-# was taken from its holder and a second simulator booted. This lock is
+# gone only when the system says no process has its pid (ESRCH). kill -0 alone
+# also fails for a live process this user may not signal (EPERM), and ps may
+# not see another user's process at all; a lock read either way was taken from
+# its holder and a second simulator booted. This lock is
 # the one-simulator rule: app-tests runs on different refs can start together,
 # and two jobs can pass the load gate in the same second. The holder writes who
 # it is in the lock. A job that finds the lock held waits for SIM_LOCK_WAIT
@@ -69,7 +70,7 @@ waited=0
 most=0
 until mkdir "$lock" 2>/dev/null; do
   holder=$(cat "$lock/pid" 2>/dev/null)
-  if [ -n "$holder" ] && ! ps -p "$holder" >/dev/null 2>&1; then rm -rf "${lock:?}"; continue; fi
+  if [ -n "$holder" ] && perl -e 'exit(kill(0, $ARGV[0]) || $!{EPERM} ? 1 : 0)' "$holder"; then rm -rf "${lock:?}"; continue; fi
   who="$(cat "$lock/owner" 2>/dev/null || echo 'an unnamed run'), pid ${holder:-?}"
   [ $((waited % 60)) -eq 0 ] && echo "sim-test: waiting for the simulator lock, $((waited / 60)) of $((bound / 60)) minutes so far, held by $who; most simulators booted during this wait: $most"
   [ "$waited" -ge "$bound" ] && { echo "sim-test: the simulator lock was still held after $((bound / 60)) minutes by $who; refused" >&2; exit 2; }
