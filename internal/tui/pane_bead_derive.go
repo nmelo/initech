@@ -158,6 +158,15 @@ func (t *TUI) readPaceChain() {
 func (t *TUI) pollBeadsOnce(now time.Time) {
 	t.readPaceChain()
 	beads, answered := askBdBeads(t.projectRoot)
+	// Comment watches: the comments of their beads, read here off the main
+	// goroutine, only for a bead whose comment count rose (ini-20r2).
+	if answered {
+		var watched map[string]bool
+		t.runOnMain(func() { watched = t.watchCommentBeads(now) })
+		if len(watched) > 0 {
+			t.readWatchComments(watched, beads)
+		}
+	}
 	var due []paceCandidate
 	t.runOnMain(func() {
 		if answered {
@@ -170,7 +179,11 @@ func (t *TUI) pollBeadsOnce(now time.Time) {
 				p.applyDerivedBeads(beads, answered, now)
 			}
 		}
+		// Judge the watches first, so an ending is written by this tick.
+		t.noteWatchBeads(beads, answered)
+		t.judgeWatchPass(now)
 		t.watchesTick(now)
+		t.armWatchTimer(now)
 	})
 	t.readPaceCrossings(due)
 	if answered {

@@ -581,6 +581,19 @@ type TUI struct {
 	// paceWaitReads is each waiting bead's comments, read for its stated
 	// wait (ini-75pt). The bead poll goroutine's alone.
 	paceWaitReads paceWaitCommentState
+	// watchComments is each watched bead's comments for its comment
+	// watches, read again only when its comment count rises (ini-20r2).
+	// Bead poller goroutine only.
+	watchComments map[string]cachedComments
+	// watchBeads is the newest answered bead poll, by id, for the watches'
+	// World (ini-20r2); nil until one answers. Main goroutine.
+	watchBeads map[string]bdBead
+	// watchTimerStop stops the timer at the nearest watch deadline; nil
+	// when none is armed. Main goroutine.
+	watchTimerStop func() bool
+	// onWatchDropped, when set (Watches 2C), is told the id of a watch that
+	// ended because initech dropped its send, so super hears of it.
+	onWatchDropped func(id string)
 }
 
 // setOnWakeComplete installs (or, with nil, clears) the test-only wake-done
