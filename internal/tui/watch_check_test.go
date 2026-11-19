@@ -567,3 +567,28 @@ func TestWatchCheck_AnOrdinaryMissDoesNotTellSuper(t *testing.T) {
 		t.Fatalf("end %+v told %v, want an ordinary miss, super not told", e, told)
 	}
 }
+
+// qa2's survivor X4: a watched bead the poll no longer has (deleted after the
+// watch was set) is unknown: it never fires, and it misses at its deadline on
+// a read after it.
+func TestWatchCheck_ABeadGoneFromThePollNeverFires(t *testing.T) {
+	for _, c := range []struct {
+		kind   watch.Kind
+		params map[string]string
+	}{
+		{watch.KindBeadStatus, map[string]string{"bead": "ini-gone", "status": "ready_for_qa"}},
+		{watch.KindBeadComment, map[string]string{"bead": "ini-gone", "author": "qa2"}},
+	} {
+		w := newFakeWorld(wcT0.Add(30 * time.Minute)) // before the deadline, nothing for ini-gone
+		s := &fakeWatchStore{ws: []watch.Watch{wcWatch("w1", c.kind, c.params, time.Hour)}}
+		judgeWatches(s, w, nil)
+		if len(s.ends) != 0 {
+			t.Fatalf("%s: a bead gone from the poll ended its watch: %+v", c.kind, s.ends)
+		}
+		w.now = wcT0.Add(time.Hour + time.Minute)
+		judgeWatches(s, w, nil)
+		if e, _ := wcEndOf(t, s, "w1"); e.state != watch.Missed {
+			t.Fatalf("%s: end %+v, want missed at its deadline", c.kind, e)
+		}
+	}
+}
