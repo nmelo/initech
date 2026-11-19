@@ -33,7 +33,8 @@ func TestWatchesGate_AReleaseBuildRefusesEveryWatchAction(t *testing.T) {
 		{Action: "watch_count", Target: "eng6"},
 	} {
 		resp := watchIPC(t, tu, req)
-		if resp.OK || resp.Error != watchesOffLine {
+		// The words are the AC's, pinned here, not read from the constant.
+		if resp.OK || resp.Error != "watches are not in this release" {
 			t.Errorf("%s in a release build: %+v, want the refusal %q", req.Action, resp, watchesOffLine)
 		}
 	}
@@ -74,7 +75,7 @@ func TestWatchesGate_AReleaseBuildShowsTheLineInsteadOfTheModal(t *testing.T) {
 		if tu.watchesM.active {
 			t.Errorf("%s opened the modal in a release build", open)
 		}
-		if tu.cmd.error != watchesOffLine {
+		if tu.cmd.error != "watches are not in this release" {
 			t.Errorf("%s: command bar line %q, want %q", open, tu.cmd.error, watchesOffLine)
 		}
 	}
