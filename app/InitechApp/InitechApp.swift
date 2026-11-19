@@ -27,8 +27,10 @@ struct InitechApp: App {
     var body: some Scene {
         WindowGroup {
             RootView(lock: lock, push: delegate.push, inbox: delegate.inbox)
-                .onChange(of: phase) { _, now in
-                    if now == .background { lock.lock() }
+                // The lock hears every move, the first included: leaving
+                // locks, and only being back in front asks for Face ID.
+                .onChange(of: phase, initial: true) { _, now in
+                    Task { await lock.moved(to: AppPhase(now)) }
                 }
         }
     }
@@ -58,7 +60,9 @@ struct RootView: View {
     }
 }
 
-/// LockView asks for Face ID as soon as it appears, and again on a tap.
+/// LockView is what shows while the app is locked. It asks for nothing by
+/// itself: AppLock asks for Face ID when the app comes to the front, and the
+/// button asks again after a cancel.
 struct LockView: View {
     let unlock: () async -> Void
 
@@ -69,7 +73,17 @@ struct LockView: View {
             Button("Unlock") { Task { await unlock() } }
                 .buttonStyle(.borderedProminent)
         }
-        .task { await unlock() }
+    }
+}
+
+extension AppPhase {
+    /// init reads SwiftUI's scene phase.
+    init(_ phase: ScenePhase) {
+        switch phase {
+        case .active: self = .active
+        case .background: self = .background
+        default: self = .inactive
+        }
     }
 }
 

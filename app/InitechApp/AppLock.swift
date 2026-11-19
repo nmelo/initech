@@ -32,6 +32,8 @@ final class AppLock: ObservableObject {
     @Published private(set) var screen: Screen
     private let store: PairingStore
     private let authenticator: Authenticator
+    /// ask is when the app asks for Face ID by itself (LockAsk).
+    private var ask = LockAsk()
 
     init(store: PairingStore, authenticator: Authenticator) {
         self.store = store
@@ -50,6 +52,14 @@ final class AppLock: ObservableObject {
     /// lock runs when the app goes to the background.
     func lock() {
         if case .unlocked = screen { screen = .locked }
+    }
+
+    /// moved is the app's place on the device changing. Reaching the background
+    /// locks. Face ID is asked only once the app is back in front, once per
+    /// return: asked as the app left, its sheet came up over the home screen.
+    func moved(to phase: AppPhase) async {
+        if phase == .background { lock() }
+        if ask.moved(to: phase, locked: screen == .locked) { await unlock() }
     }
 
     /// pair stores a scanned or pasted pairing code. The person just proved

@@ -189,6 +189,9 @@ first.
   `PairingView.swift`: the
   pairing code (`initech://pair?host=<ip>&port=<n>&token=<t>&fp=<f>`), scanned
   as a QR or pasted, kept in the keychain on this device only.
-- `InitechApp/AppLock.swift`: Face ID on open and on every return to the app.
+- `InitechApp/AppLock.swift`: the app locks when it reaches the background, and
+  asks for Face ID once when it is back in front (at launch too), never as it
+  leaves; after a cancel the Unlock button asks. The rule is
+  `InitechCore/.../LockAsk.swift`.
 - `InitechApp/HomeModel.swift`, `HomeView.swift`: pinned panes and the Rigs view.
 - `InitechApp/PaneModel.swift`, `PaneView.swift`: the pane's conversation.
