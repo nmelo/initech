@@ -345,6 +345,10 @@ func (c sendCheck) judge(p map[string]string, w World) Verdict {
 	return Verdict{Unknown: true, Detail: "the delivery is unknown since the restart"}
 }
 
+// watchUnreadBound is how long past its deadline a watch waits for a fresh
+// read of its data (bd down) before it ends MISSED as 'could not tell'.
+const watchUnreadBound = 10 * time.Minute
+
 // watchEnder is the part of the store a pass uses (internal/watch, Watches 2A).
 type watchEnder interface {
 	Snapshot(now time.Time) []watch.Watch
@@ -356,7 +360,8 @@ type watchEnder interface {
 // (MISSED), or that can never come true (MISSED at once). A deadline-only
 // watch fires at its deadline. A watch of a kind this build does not know is
 // left as it is. toSuper, if set, is told the id of a watch that ended
-// because initech dropped its send. The pass has one clock: w.Now().
+// because initech dropped its send, or because nothing could be read for
+// watchUnreadBound past its deadline. The pass has one clock: w.Now().
 func judgeWatches(s watchEnder, w World, toSuper func(id string)) {
 	now := w.Now()
 	seen := map[string]Verdict{}
@@ -394,6 +399,17 @@ func judgeWatches(s watchEnder, w World, toSuper func(id string)) {
 				d += "; " + v.Detail
 			}
 			endWatch(s, wt.ID, watch.Missed, d, wt.Deadline, now)
+		case now.Sub(wt.Deadline) >= watchUnreadBound:
+			// pm's ruling: nothing read since the deadline, for the bound:
+			// the watch ends, once, and super hears that bd did not answer.
+			since := v.ReadAt
+			if since.IsZero() {
+				since = wt.Set
+			}
+			endWatch(s, wt.ID, watch.Missed, "could not tell: bd did not answer since "+since.Local().Format("15:04"), wt.Deadline, now)
+			if toSuper != nil {
+				toSuper(wt.ID)
+			}
 		}
 	}
 }

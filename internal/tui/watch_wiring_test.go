@@ -413,3 +413,38 @@ func TestWatchWiring_TheWatchTickStartsOnlyInWindowOneWithoutBd(t *testing.T) {
 		t.Fatalf("a rig without bd started %d watch ticks, want 1", started)
 	}
 }
+
+// pm's bound through the real poll and store: bd silent 10 minutes past the
+// deadline ends the watch 'could not tell'; bd answering later with the
+// status reached changes nothing: it ended once.
+func TestWatchWiring_BdSilentPastTheBoundEndsOnceAndBdComingBackChangesNothing(t *testing.T) {
+	stubAfter(t)
+	tu, path := wiredTUI(t, wcT0)
+	var told []string
+	tu.onWatchDropped = func(id string) { told = append(told, id) }
+	up, status := true, "in_progress"
+	orig := bdListBeads
+	bdListBeads = func(context.Context, string) ([]bdBead, error) {
+		if !up {
+			return nil, context.DeadlineExceeded
+		}
+		return []bdBead{{ID: "ini-a", Status: status, UpdatedAt: wcT0.Add(30 * time.Second)}}, nil
+	}
+	t.Cleanup(func() { bdListBeads = orig })
+	tu.pollBeadsOnce(wcT0)
+	id, err := tu.watches.Add(watch.Watch{Owner: "eng4", Kind: watch.KindBeadStatus, Why: "qa", Deadline: wcT0.Add(time.Minute),
+		Params: map[string]string{"bead": "ini-a", "status": "ready_for_qa"}}, wcT0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	up = false
+	tu.pollBeadsOnce(wcT0.Add(11*time.Minute + time.Second))
+	if got := storedState(t, path, id); got != watch.Missed || len(told) != 1 {
+		t.Fatalf("bd silent past the bound: %s, super told %v; want missed, told once", got, told)
+	}
+	up, status = true, "ready_for_qa"
+	tu.pollBeadsOnce(wcT0.Add(12 * time.Minute))
+	if got := storedState(t, path, id); got != watch.Missed || len(told) != 1 {
+		t.Fatalf("after bd came back: %s, told %v; want it left missed, nothing re-sent", got, told)
+	}
+}

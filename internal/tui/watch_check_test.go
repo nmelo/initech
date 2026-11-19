@@ -530,3 +530,40 @@ func TestWatchCheck_BeadKindsAreRefusedInARigWithoutBeads(t *testing.T) {
 		t.Fatalf("bead_comment: err %v", err)
 	}
 }
+
+// pm's ruling (bd down past a deadline): with no fresh read 10 minutes past
+// the deadline, the watch ends MISSED saying bd did not answer since the last
+// good read, and super is told; once.
+func TestWatchCheck_BdSilentTenMinutesPastTheDeadlineMisses(t *testing.T) {
+	w := newFakeWorld(wcT0.Add(time.Hour + 9*time.Minute + 59*time.Second))
+	w.beadsAt = wcT0.Add(50 * time.Minute) // the last answered poll
+	w.beads["ini-a"] = bdBead{ID: "ini-a", Status: "in_progress"}
+	s := &fakeWatchStore{ws: []watch.Watch{wcWatch("w1", watch.KindBeadStatus, map[string]string{"bead": "ini-a", "status": "ready_for_qa"}, time.Hour)}}
+	var told []string
+	judgeWatches(s, w, func(id string) { told = append(told, id) })
+	if len(s.ends) != 0 {
+		t.Fatalf("ended before the 10-minute bound: %+v", s.ends)
+	}
+	w.now = wcT0.Add(time.Hour + 10*time.Minute)
+	judgeWatches(s, w, func(id string) { told = append(told, id) })
+	e, _ := wcEndOf(t, s, "w1")
+	want := "could not tell: bd did not answer since " + wcT0.Add(50*time.Minute).Local().Format("15:04")
+	if e.state != watch.Missed || e.detail != want {
+		t.Fatalf("end %+v, want missed with %q", e, want)
+	}
+	if len(told) != 1 || told[0] != "w1" {
+		t.Fatalf("super told %v, want w1 once", told)
+	}
+}
+
+// A fresh read past the deadline is the ordinary miss: super is not told.
+func TestWatchCheck_AnOrdinaryMissDoesNotTellSuper(t *testing.T) {
+	w := newFakeWorld(wcT0.Add(time.Hour + 20*time.Minute))
+	w.beads["ini-a"] = bdBead{ID: "ini-a", Status: "in_progress"}
+	s := &fakeWatchStore{ws: []watch.Watch{wcWatch("w1", watch.KindBeadStatus, map[string]string{"bead": "ini-a", "status": "ready_for_qa"}, time.Hour)}}
+	var told []string
+	judgeWatches(s, w, func(id string) { told = append(told, id) })
+	if e, _ := wcEndOf(t, s, "w1"); e.state != watch.Missed || e.detail != "its deadline passed" || len(told) != 0 {
+		t.Fatalf("end %+v told %v, want an ordinary miss, super not told", e, told)
+	}
+}

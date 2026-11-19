@@ -596,7 +596,8 @@ type TUI struct {
 	// when none is armed. Main goroutine.
 	watchTimerStop func() bool
 	// onWatchDropped, when set (Watches 2C), is told the id of a watch that
-	// ended because initech dropped its send, so super hears of it.
+	// ended because initech dropped its send or bd did not answer past its
+	// deadline, so super hears of it.
 	onWatchDropped func(id string)
 }
 
