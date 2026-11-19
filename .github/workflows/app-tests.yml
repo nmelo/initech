@@ -1,8 +1,22 @@
 # app-tests runs the iPhone and iPad app's tests (app/) on the Mac runner,
 # one simulator at a time, for one device per run.
 #
-# Start a run with app/scripts/app-tests-run.sh <ref> <iphone|ipad>, which
-# checks the runners are online first; cite the run id on the bead.
+# Start a run with app/scripts/app-tests-run.sh <branch|commit> <iphone|ipad>
+# [screens] [tests], which checks the runners are online first; cite the run
+# id on the bead.
+#
+# Pictures: a run that names screens (home,pane) uploads one PNG of each as the
+# artifact app-screens-<run id>, and lists them in its summary. A named screen
+# with no picture fails the job, by name. The repo is public and so are its
+# artifacts: pictures come from the test fixtures only (app/scripts/shots.sh
+# refuses a live screen or a live pairing) and are kept one day, the shortest
+# GitHub allows. A run that names none takes none.
+#
+# A commit: a run by commit id is started on a branch and tests that commit
+# only when the branch contains it; any other id is refused before checkout.
+#
+# Inputs are text a person typed: every one reaches a script through env,
+# never pasted into the script's text.
 #
 # Guards:
 # - Never for pull requests: the repo is public, and a fork's code must never
@@ -38,6 +52,18 @@ on:
         description: "iphone or ipad"
         required: true
         default: iphone
+      screens:
+        description: "screens to picture, comma separated (home, pane, panes, blockers, progress); empty for none"
+        required: false
+        default: ""
+      sha:
+        description: "a full commit id on this branch to test; empty for the branch's newest"
+        required: false
+        default: ""
+      only:
+        description: "tests to run, comma separated (InitechAppUITests/ScreenshotTests); empty for all"
+        required: false
+        default: ""
   push:
     branches: [main]
     paths: ["app/**", ".github/workflows/app-tests.yml"]
@@ -60,6 +86,23 @@ jobs:
     timeout-minutes: 75
     steps:
       - uses: actions/checkout@v5
+        with:
+          # A run by commit id needs the branch's history, to see the commit on it.
+          fetch-depth: ${{ github.event.inputs.sha && '0' || '1' }}
+
+      - name: Check out the named commit
+        if: github.event.inputs.sha != ''
+        env:
+          SHA: ${{ github.event.inputs.sha }}
+        run: |
+          case "$SHA" in *[!0-9a-f]*) echo "app-tests: refused: a commit is named by its full 40-digit id" >&2; exit 2 ;; esac
+          [ "${#SHA}" -eq 40 ] || { echo "app-tests: refused: a commit is named by its full 40-digit id" >&2; exit 2; }
+          git cat-file -e "$SHA^{commit}" 2>/dev/null || { echo "app-tests: refused: $GITHUB_REF_NAME has no commit $SHA" >&2; exit 2; }
+          # Only a commit of the branch this run was started on: an id from a
+          # fork is reachable on GitHub and must never run on this machine.
+          git merge-base --is-ancestor "$SHA" HEAD || { echo "app-tests: refused: $SHA is not on $GITHUB_REF_NAME" >&2; exit 2; }
+          git checkout --quiet --detach "$SHA"
+          echo "app-tests: testing $(git rev-parse --short HEAD), a commit of $GITHUB_REF_NAME"
 
       - name: Xcode and the simulator runtime are here
         run: |
@@ -81,19 +124,68 @@ jobs:
           INITECH_AGENT: ci-${{ github.run_id }}
           CRASH_FATAL: ui
           DEVICE: ${{ github.event.inputs.device || 'iphone' }}
+          SHOTS: ${{ github.event.inputs.screens }}
+          SHOT_OUT: ${{ runner.temp }}/app-screens
+          ONLY: ${{ github.event.inputs.only }}
         run: |
           case "$DEVICE" in iphone|ipad) ;; *) echo "app-tests: device must be iphone or ipad" >&2; exit 2 ;; esac
           echo "app-tests: $DEVICE on $RUNNER_NAME, run $GITHUB_RUN_ID"
+          set -f # test names are words, never patterns
+          only=()
+          for t in $(printf '%s\n' "$ONLY" | tr ',' ' '); do
+            [[ "$t" =~ ^[A-Za-z0-9_]+(/[A-Za-z0-9_]+){0,2}$ ]] || { echo "app-tests: \"$t\" is not a test name" >&2; exit 2; }
+            only+=("-only-testing:$t")
+          done
+          rm -rf "${SHOT_OUT:?}"
           # BuildInfoTests checks the build stamped this checkout's commit.
           export TEST_RUNNER_INITECH_EXPECT_COMMIT=$(git rev-parse --short HEAD)
           # The step runs under bash -e: keep sim-test's exit code so the summary
           # below prints however the run ended.
           rc=0
           app/scripts/sim-test.sh "$DEVICE" "$RUNNER_TEMP/xcodebuild.log" \
-            -test-timeouts-enabled YES -default-test-execution-time-allowance 300 || rc=$?
+            -test-timeouts-enabled YES -default-test-execution-time-allowance 300 ${only[@]+"${only[@]}"} || rc=$?
           grep -E 'Test Case .*(failed|skipped|exceeded)|TEST (SUCCEEDED|FAILED)' "$RUNNER_TEMP/xcodebuild.log" | sort -u
           echo "passed: $(grep -cE 'Test Case .*passed' "$RUNNER_TEMP/xcodebuild.log")"
           exit $rc
+
+      # The job counts the pictures itself, whatever the checked-out sim-test.sh
+      # did: a run at a commit from before pictures must fail too, never pass
+      # with none.
+      - name: Every named screen has its picture
+        if: always() && github.event.inputs.screens != ''
+        env:
+          SHOTS: ${{ github.event.inputs.screens }}
+          SHOT_OUT: ${{ runner.temp }}/app-screens
+        run: |
+          set -f
+          missing=0
+          {
+            echo "### Screens of run $GITHUB_RUN_ID"
+            echo
+            echo "Artifact app-screens-$GITHUB_RUN_ID, kept one day: gh run download $GITHUB_RUN_ID -n app-screens-$GITHUB_RUN_ID"
+            echo
+          } >> "$GITHUB_STEP_SUMMARY"
+          for n in $(printf '%s\n' "$SHOTS" | tr ',' ' '); do
+            [[ "$n" =~ ^[a-z0-9][a-z0-9-]*$ ]] || { echo "app-tests: \"$n\" is not a screen name" >&2; exit 2; }
+            if [ -s "$SHOT_OUT/$n.png" ]; then
+              echo "- $n: $n.png" >> "$GITHUB_STEP_SUMMARY"
+              echo "app-tests: screen $n: $n.png"
+            else
+              echo "- $n: no picture" >> "$GITHUB_STEP_SUMMARY"
+              echo "app-tests: no picture of $n" >&2
+              missing=1
+            fi
+          done
+          exit $missing
+
+      - name: Upload the pictures
+        if: always() && github.event.inputs.screens != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-screens-${{ github.run_id }}
+          path: ${{ runner.temp }}/app-screens/*.png
+          retention-days: 1
+          if-no-files-found: ignore
 
       - uses: actions/upload-artifact@v4
         if: always()

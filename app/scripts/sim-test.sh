@@ -17,6 +17,11 @@
 # on) is delivered to this run's device with `xcrun simctl push`, then renamed
 # <name>.apns.sent (or .failed). A test cannot run simctl from inside the
 # simulator, and a push really delivered is the one iOS shows or hides.
+# PICTURES: with SHOTS naming screens (home,pane) and SHOT_OUT a folder, the
+# tests are told where to leave their stops, each named screen is pictured
+# with `xcrun simctl io screenshot` as a test stops at it, and the PNGs land in
+# SHOT_OUT. A named screen with no picture fails the run with exit 10 and is
+# named (shots.sh). Fixtures only, never a live service. No SHOTS: no pictures.
 # CRASH_FATAL=all (the default) fails on any report, because on a Mac with
 # someone at it a crash puts a dialog on their screen. CRASH_FATAL=ui (the
 # unattended app-tests runner) fails only on a report from the app, its test
@@ -34,8 +39,22 @@ here=$(cd "$(dirname "$0")" && pwd) # read before the cd into the app below
 app=$(cd "$here/.." && pwd)
 reports="$HOME/Library/Logs/DiagnosticReports"
 
+# The screens to picture, checked before the lock or any simulator: a refused
+# name must cost nothing.
+shots=""
+if [ -n "${SHOTS:-}" ]; then
+  shots=$("$here/shots.sh" check "$SHOTS") || exit 2
+  if [ -n "$shots" ] && [ -z "${SHOT_OUT:-}" ]; then
+    echo "sim-test: SHOTS names screens, but SHOT_OUT, the folder for their pictures, is not set" >&2
+    exit 2
+  fi
+fi
+
 # One simulator at a time on this host, whatever started the run: a lock
-# directory (mkdir is atomic), taken over when its holder is gone. This lock is
+# directory (mkdir is atomic), taken over when its holder is gone. A holder is
+# gone only when no process has its pid: ps sees every process, while kill -0
+# also fails for a live one this user may not signal, and a lock read that way
+# was taken from its holder and a second simulator booted. This lock is
 # the one-simulator rule: app-tests runs on different refs can start together,
 # and two jobs can pass the load gate in the same second. The holder writes who
 # it is in the lock. A job that finds the lock held waits for SIM_LOCK_WAIT
@@ -50,7 +69,7 @@ waited=0
 most=0
 until mkdir "$lock" 2>/dev/null; do
   holder=$(cat "$lock/pid" 2>/dev/null)
-  if [ -n "$holder" ] && ! kill -0 "$holder" 2>/dev/null; then rm -rf "${lock:?}"; continue; fi
+  if [ -n "$holder" ] && ! ps -p "$holder" >/dev/null 2>&1; then rm -rf "${lock:?}"; continue; fi
   who="$(cat "$lock/owner" 2>/dev/null || echo 'an unnamed run'), pid ${holder:-?}"
   [ $((waited % 60)) -eq 0 ] && echo "sim-test: waiting for the simulator lock, $((waited / 60)) of $((bound / 60)) minutes so far, held by $who; most simulators booted during this wait: $most"
   [ "$waited" -ge "$bound" ] && { echo "sim-test: the simulator lock was still held after $((bound / 60)) minutes by $who; refused" >&2; exit 2; }
@@ -65,17 +84,23 @@ echo "$owner" > "$lock/owner"
 mark=$(mktemp -t sim-test-mark) || { rm -rf "${lock:?}"; exit 2; }
 
 name="${INITECH_AGENT:-run}-$kind-$(date +%H%M%S)"
-udid=$(xcrun simctl create "$name" "$type" "$runtime") || { echo "sim-test: could not create $name" >&2; exit 2; }
+udid=$(xcrun simctl create "$name" "$type" "$runtime") || { echo "sim-test: could not create $name" >&2; rm -rf "${lock:?}"; rm -f "$mark"; exit 2; }
 echo "sim-test: created $name $udid"
 
 xb=""
 relay=""
 probe=""
 pushdir=$(mktemp -d -t sim-test-push) || { rm -rf "${lock:?}"; rm -f "$mark"; exit 2; }
+shotdir=""
+if [ -n "$shots" ]; then
+  shotdir=$(mktemp -d -t sim-test-shots) || { rm -rf "${lock:?}" "${pushdir:?}"; rm -f "$mark"; exit 2; }
+  export TEST_RUNNER_SHOT_DIR="$shotdir"
+fi
 cleanup() {
   if [ -n "$relay" ]; then kill "$relay" 2>/dev/null; wait "$relay" 2>/dev/null; fi
   if [ -n "$probe" ]; then kill "$probe" 2>/dev/null; wait "$probe" 2>/dev/null; fi
   rm -rf "${pushdir:?}"
+  if [ -n "$shotdir" ]; then rm -rf "${shotdir:?}"; fi
   # Stop xcodebuild gently, then shut the device down before deleting it:
   # never a hard kill while it boots.
   if [ -n "$xb" ] && kill -0 "$xb" 2>/dev/null; then
@@ -134,9 +159,11 @@ started=$(date +%s)
 TEST_RUNNER_PUSH_DIR="$pushdir" perl -e 'alarm 1080; exec @ARGV' xcodebuild test -project InitechApp.xcodeproj -scheme InitechApp \
   -collect-test-diagnostics never -parallel-testing-enabled NO -destination "id=$udid" "$@" > "$log" 2>&1 &
 xb=$!
-# The relay lives as long as xcodebuild does, and cleanup stops it by pid.
+# The relay lives as long as xcodebuild does, and cleanup stops it by pid. It
+# also pictures each named screen a test has stopped at, and lets the test go.
 (
   while kill -0 "$xb" 2>/dev/null; do
+    if [ -n "$shots" ]; then "$here/shots.sh" pass "$shotdir" "$udid" "$shots"; fi
     find "$pushdir" -maxdepth 1 -type f -name '*.apns' | while read -r f; do
       if xcrun simctl push "$udid" co.nmelo.initech "$f" >> "$log.push" 2>&1; then mv "$f" "$f.sent"; else mv "$f" "$f.failed"; fi
     done
@@ -152,6 +179,10 @@ wait "$xb"; rc=$?
 xb=""
 now=$(date +%s)
 echo "sim-test: xcodebuild exited $rc after $((now - started))s; its log was last written $((now - $(stat -f %m "$log" 2>/dev/null || echo "$now")))s before"
+# Every named screen has its picture, or the run fails with 10 and names it.
+if [ -n "$shots" ]; then
+  "$here/shots.sh" collect "$shotdir" "$SHOT_OUT" "$shots" || { [ "$rc" -eq 0 ] && rc=10; }
+fi
 
 # The EXIT trap shuts the device down, deletes it, and fails the run with 9
 # on any new crash report naming it.

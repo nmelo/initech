@@ -55,12 +55,52 @@ as the `app-tests` workflow, never on the rig's own Mac when that runner can
 take them:
 
 ```bash
-app/scripts/app-tests-run.sh <sha> iphone   # then the same for ipad
+app/scripts/app-tests-run.sh <branch|commit> iphone   # then the same for ipad
 ```
 
 It refuses, starting nothing, when no runner with that label is online or the
 repo variable `APP_TESTS` is not `on`; the variable is set only once a load
-sample shows the runner's machine can take one simulator. A run waits at the
+sample shows the runner's machine can take one simulator. GitHub starts a run
+only at a branch, so a commit id is run at `main`, with the id for the job to
+check out, when `main` contains it; a commit `main` does not contain is refused
+in one line (exit 3): push it to a branch and give the branch. A run GitHub
+refuses is one line and exit 4. The job tests a named commit only when the
+branch it was started on contains it.
+
+### Pictures of a run
+
+A run can name screens, and uploads one PNG of each:
+
+```bash
+app/scripts/app-tests-run.sh <branch|commit> iphone home,pane InitechAppUITests/ScreenshotTests
+gh run download <run id> --repo nmelo/initech -n app-screens-<run id> -D <a new, empty folder>
+```
+
+The third argument is the screens, comma separated; the fourth, optional, is
+the tests to run, as xcodebuild's `-only-testing` takes them, so a look does
+not wait for the whole suite. A screen is a stop a UI test makes or a view a
+test draws:
+
+| Screen | What it shows | Test |
+|---|---|---|
+| `home` | the Panes list with five pins | `InitechAppUITests/ScreenshotTests` |
+| `pane` | a pane at a dialog, a sent message and a pressed key | `InitechAppUITests/ScreenshotTests` |
+| `panes` | the Panes list with its bottom bar | `InitechAppTests/ScreenshotTests` |
+| `blockers` | the Blockers list, one row of each kind | `InitechAppTests/ScreenshotTests` |
+| `progress` | the Progress list, one effort | `InitechAppTests/ScreenshotTests` |
+
+`sim-test.sh` takes each picture with `xcrun simctl io screenshot` while the
+test waits at the stop, one second after the test has checked what is on
+screen. The run's summary lists each screen with its file name. A named screen
+with no picture fails the run, by name (`sim-test.sh` exits 10, and the job's
+own count fails the job): a wrong name, a test that never reached its stop, or
+a capture that failed. A run that names no screen takes none.
+
+The pictures come from the test fixtures only. The repository is public and so
+are its artifacts, so `shots.sh` refuses a `live-` screen and any named screen
+in a run paired with a live service, and the artifact is kept one day. A new
+screen is a new stop in `InitechAppUITests/ScreenshotTests` (`try stop("<name>")`,
+after the test has checked the screen), drawn from fixtures. A run waits at the
 shared load gate (`.github/actions/load-gate`: while that machine's 5-minute
 load is over 24, during another project's nightly window, and while any
 simulator is booted there; after 20 minutes it fails the job, naming the
@@ -74,7 +114,8 @@ xcodebuild or simulator process it started is still running. Pull requests
 never run it.
 
 One simulator runs on that machine at a time, and the host lock in
-`sim-test.sh` is what keeps it so. The workflow's concurrency group is per ref,
+`sim-test.sh` is what keeps it so. A lock is taken over only when no process
+has its holder's pid; a holder this user may not signal is alive. The workflow's concurrency group is per ref,
 so a run pending on one ref is never replaced by a run on another; a newer run
 on the same ref replaces an older pending one. Runs on different refs can
 overlap, and the later one waits at the lock, saying once a minute which run
