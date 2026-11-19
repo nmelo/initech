@@ -637,3 +637,43 @@ func TestWatchesModal_TheBackdropDimsOnceAcrossFrames(t *testing.T) {
 		t.Errorf("closing the modal left the cell dimmed")
 	}
 }
+
+// super: at 70 columns the title was cut mid-word. It is cut at a word, with
+// "…", like the header and footer, and never leaves a separator dangling.
+func TestWatchesModal_ANarrowTitleIsCutAtAWord(t *testing.T) {
+	full := "watches · hover · 3 waiting · 4 ended in the last hour · 1 missed its deadline"
+	tu, s := wmScreen(t)
+	s.SetSize(70, 30)
+	ws, world := wmFixture()
+	tu.drawWatchesModal(s, buildWatchesView(ws, world, notStarting, wmT0), wmT0)
+	x, y := wmFind(t, s, "watches · hover")
+	row := []rune(wmRowText(s, y))
+	end := x
+	for end < len(row) && row[end] != '…' {
+		end++
+	}
+	if end == len(row) {
+		t.Fatalf("the title has no ellipsis: %q", string(row))
+	}
+	shown := string(row[x:end])
+	if !strings.HasPrefix(full, shown) {
+		t.Fatalf("the title %q is not the start of %q", shown, full)
+	}
+	if next := full[len(shown)]; next != ' ' {
+		t.Errorf("the title is cut inside a word: %q then %q", shown, full[len(shown):])
+	}
+	if strings.HasSuffix(strings.TrimSpace(shown), "·") {
+		t.Errorf("the title ends on a dangling separator: %q", shown)
+	}
+	// It keeps every whole word that fits: at 70 columns, up to the hour count.
+	if shown != "watches · hover · 3 waiting · 4 ended in the last hour" {
+		t.Errorf("title %q, want it cut after \"hour\", the last whole word that fits", shown)
+	}
+	if row[end+1] != ' ' {
+		t.Errorf("no space after the ellipsis before the border")
+	}
+	// Wide enough, the title is whole.
+	if got := fitWatchTitle([]string{" ", "watches", " ·"}, 40); strings.Join(got, "") != " watches ·" {
+		t.Errorf("a title that fits was changed: %q", got)
+	}
+}

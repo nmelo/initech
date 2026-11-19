@@ -587,8 +587,12 @@ func (t *TUI) drawWatchesModal(s tcell.Screen, v watchesView, now time.Time) {
 		add(fmt.Sprintf(" %d missed its deadline", v.missed), base.Foreground(wmBad))
 	}
 	add(" ", base)
+	texts := make([]string, len(title))
 	for i, seg := range title {
-		n := put(tx, y0, tmax, seg.text, styles[i])
+		texts[i] = seg.text
+	}
+	for i, text := range fitWatchTitle(texts, tmax) {
+		n := put(tx, y0, tmax, text, styles[i])
 		tx, tmax = tx+n, tmax-n
 	}
 
@@ -673,6 +677,50 @@ func (t *TUI) drawWatchesModal(s tcell.Screen, v watchesView, now time.Time) {
 	if t.watchesM.detail && len(rows) > 0 {
 		t.drawWatchDetail(s, rows[sel], now, put, fill, base, border)
 	}
+}
+
+// fitWatchTitle fits the title's runs into max cells. A title that fits is
+// unchanged. One that does not is cut between its phrases ("3 waiting",
+// "1 missed its deadline"), never inside a word or between a count and what
+// it counts: whole runs are kept while they fit, a separator left at the end
+// is dropped, and "…" and the closing space follow, like the header and
+// footer. The result has one entry per run, emptied past the cut.
+func fitWatchTitle(runs []string, max int) []string {
+	total := 0
+	for _, r := range runs {
+		total += runewidth.StringWidth(r)
+	}
+	if total <= max {
+		return runs
+	}
+	out := make([]string, len(runs))
+	budget := max - 2 // "…" and the closing space
+	used, last := 0, -1
+	for i, r := range runs[:len(runs)-1] {
+		w := runewidth.StringWidth(r)
+		if used+w > budget {
+			break
+		}
+		out[i], used, last = r, used+w, i
+	}
+	// A cut right after a separator would read "· …": drop it.
+	for last >= 0 {
+		trimmed := strings.TrimSuffix(out[last], " ·")
+		if trimmed == out[last] {
+			break
+		}
+		out[last] = trimmed
+		if strings.TrimSpace(trimmed) == "" {
+			out[last] = ""
+			last--
+		}
+	}
+	if last < 0 {
+		return out
+	}
+	out[last] += "…"
+	out[len(out)-1] = " "
+	return out
 }
 
 // watchesHints is the footer, left to right; a narrow modal drops whole hints
