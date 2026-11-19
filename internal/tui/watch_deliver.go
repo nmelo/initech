@@ -187,6 +187,12 @@ func (t *TUI) adoptHeldWatchLines(p *Pane, ws []watch.Watch, now time.Time) []wa
 // typed: a drain for a pane that is up, a wake for a suspended one. A failed
 // write leaves the line held untyped for the next pass to adopt.
 func (t *TUI) markHandedAndRelease(p *Pane, ids []string, receipt string, now time.Time) {
+	// (2) must be on disk before (3): a line held only in memory and marked
+	// handed would read delivered after a stop, never typed (lead1).
+	if !p.heldOnDisk() {
+		LogWarn("watch", "watch line not handed: held mail could not be written; held untyped for the next pass", "owner", p.Name(), "watches", len(ids))
+		return
+	}
 	for _, id := range ids {
 		if err := t.watches.MarkHanded(id, receipt, now); err != nil {
 			LogWarn("watch", "watch line not handed; held untyped for the next pass", "watch", id, "err", err)

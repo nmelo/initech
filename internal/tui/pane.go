@@ -461,9 +461,12 @@ type Pane struct {
 	// The held file (ini-8rkg): heldHook rewrites the owner's file after a
 	// queue change; heldTyping and heldInHand are mail a loop took off the
 	// queue to type one at a time (resume), kept in the file until typed.
-	heldHook  func(*Pane)
-	sendAfter bool   // Only read or written under sendMu.
-	sendFrom  string // whose send is being typed (setSendFrom)
+	heldHook func(*Pane)
+	// heldDurable reports whether the owner's held file holds the pane's
+	// held mail as of its last write (ini-kbpo). nil: no held file.
+	heldDurable func() bool
+	sendAfter   bool   // Only read or written under sendMu.
+	sendFrom    string // whose send is being typed (setSendFrom)
 	// sendReceipt is the receipt of the queued message being re-sent, so a
 	// hold inside the send keeps it (ini-yjcy). Under mu, set with sendFrom.
 	sendReceipt string

@@ -445,3 +445,31 @@ func TestWatchDeliver_APendingLineIsNeverTypedBeforeItIsHanded(t *testing.T) {
 		}
 	})
 }
+
+// lead1's read of cb940a1: a held-mail write that fails leaves the line in
+// memory only. It is not marked handed, so a stop then a restart hands it
+// again and it is typed once, never read delivered untyped.
+func TestWatchDeliver_AFailedHeldWriteIsNotHanded(t *testing.T) {
+	sendBubble(t, func(t *testing.T) {
+		root := t.TempDir()
+		r := newDeliverRig(t, root)
+		notADir := filepath.Join(t.TempDir(), "file")
+		if err := os.WriteFile(notADir, nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		w := &heldWriter{path: filepath.Join(notADir, "held.yaml"), panes: map[*Pane][]heldEntry{}, ready: true}
+		r.owner.setHeldHook(w) // every write fails: its folder is a file
+		r.owner.startDND()
+		id := r.end(t, "eng4", watch.Fired, "", false)
+		r.tu.deliverWatches(wdT0)
+		if !r.watch(id).Delivery.Handed.IsZero() {
+			t.Fatalf("marked handed with held mail not on disk: %+v", r.watch(id).Delivery)
+		}
+		// A stop: the line in memory is lost. The restart hands it again.
+		r2 := newDeliverRig(t, root)
+		r2.settle()
+		if n := strings.Count(r2.typed(), "watch "+id+"]"); n != 1 || r2.watch(id).Delivery.Delivered.IsZero() {
+			t.Fatalf("after the restart: typed %d, delivery %+v; want typed once and delivered", n, r2.watch(id).Delivery)
+		}
+	})
+}

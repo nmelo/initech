@@ -123,7 +123,28 @@ func (p *Pane) setHeldHook(w *heldWriter) {
 	}
 	p.mu.Lock()
 	p.heldHook = w.update
+	p.heldDurable = w.durable
 	p.mu.Unlock()
+}
+
+// heldOnDisk writes the pane's held mail now and reports whether the held
+// file holds it: a watch line is marked handed only once it is on disk
+// (ini-kbpo). A pane with no held file reports true: there is no stop to
+// survive.
+func (p *Pane) heldOnDisk() bool {
+	p.heldChanged()
+	p.mu.Lock()
+	durable := p.heldDurable
+	p.mu.Unlock()
+	return durable == nil || durable()
+}
+
+// durable reports whether the file holds what the writer has: it has been
+// read back at start and its last write did not fail.
+func (w *heldWriter) durable() bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.ready && !w.failed
 }
 
 // typeInHand marks msgs as taken off the queue by a loop that types them one
