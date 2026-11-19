@@ -31,16 +31,18 @@ func TestStripPlan_ItemsInOrderEachWithTheMark_ALongOneWrapsUnderItsText(t *test
 	}
 	sp := stripPlan(items, 40, 61) // 58 columns of text: the second item's first row is exactly 58
 	want := []string{
+		"   ",
 		" ▶ Release hover? Recommended yes.",
 		" ▶ Put the drone on the bench, then run the split-screen read",
 		"   with benchy (about 15 min, props off, battery charged).",
 		" ▶ CI runner for nayutal's lab: register it?",
+		"   ",
 	}
 	if got := sp.render(); strings.Join(got, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("rows:\n%s\nwant:\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
 	}
-	if sp.height != 4 || sp.more != 0 || sp.barCount != 0 {
-		t.Errorf("height %d more %d bar %d, want 4 0 0", sp.height, sp.more, sp.barCount)
+	if sp.height != 6 || sp.more != 0 || sp.barCount != 0 {
+		t.Errorf("height %d more %d bar %d, want 6 0 0 (two pads, four item lines)", sp.height, sp.more, sp.barCount)
 	}
 }
 
@@ -63,9 +65,13 @@ func TestStripPlan_NothingIsCutAtAnyWidth(t *testing.T) {
 		if joined := strings.ReplaceAll(strings.Join(text, ""), " ", ""); joined != strings.ReplaceAll(item, " ", "") {
 			t.Fatalf("cols %d: text lost or changed:\n%q\nwant\n%q", cols, joined, item)
 		}
-		for i, r := range sp.render()[1:] {
+		rows := sp.render()
+		if rows[0] != "   " || rows[len(rows)-1] != "   " {
+			t.Fatalf("cols %d: pads %q and %q, want blank", cols, rows[0], rows[len(rows)-1])
+		}
+		for i, r := range rows[2 : len(rows)-1] { // between the item's first row and the bottom pad
 			if !strings.HasPrefix(r, "   ") || r[3] == ' ' {
-				t.Fatalf("cols %d: continuation row %d %q is not indented under the text", cols, i+1, r)
+				t.Fatalf("cols %d: continuation row %d %q is not indented under the text", cols, i+2, r)
 			}
 		}
 	}
@@ -79,8 +85,8 @@ func TestStripPlan_WideCharactersWrapByWidth(t *testing.T) {
 			t.Fatalf("row %q is %d wide", r, w)
 		}
 	}
-	if sp.height != 3 {
-		t.Errorf("height %d, want 3: %q", sp.height, sp.render())
+	if sp.height != 5 {
+		t.Errorf("height %d, want 5 (two pads, three item rows): %q", sp.height, sp.render())
 	}
 }
 
@@ -108,7 +114,10 @@ func TestStripPlan_Crowding_ShowsWholeItemsThenMore_AndKeepsTheAgentSixRows(t *t
 		if sp.height != len(sp.lines) {
 			t.Fatalf("rows %d: height %d but %d lines", rows, sp.height, len(sp.lines))
 		}
-		last := sp.render()[len(sp.lines)-1]
+		if first, final := sp.lines[0], sp.lines[len(sp.lines)-1]; first != (stripLine{}) || final != (stripLine{}) {
+			t.Fatalf("rows %d: the strip does not start and end with a blank pad: %q", rows, sp.render())
+		}
+		last := sp.render()[len(sp.lines)-2] // the line above the bottom pad
 		shown := 0
 		for _, l := range sp.lines {
 			if l.mark && !strings.HasPrefix(l.text, "+") {
@@ -128,18 +137,19 @@ func TestStripPlan_Crowding_ShowsWholeItemsThenMore_AndKeepsTheAgentSixRows(t *t
 // draws no strip and puts the count in the bar (D4, D6).
 func TestStripPlan_TooSmallOrTooNarrow_DrawsNothingAndCountsInTheBar(t *testing.T) {
 	two := []string{"a", "b"}
-	for _, c := range []struct{ rows, cols int }{{6, 80}, {5, 80}, {1, 80}, {40, 12}, {40, 3}} {
+	for _, c := range []struct{ rows, cols int }{{8, 80}, {7, 80}, {6, 80}, {5, 80}, {1, 80}, {40, 12}, {40, 3}} {
 		sp := stripPlan(two, c.rows, c.cols)
 		if sp.height != 0 || len(sp.lines) != 0 || sp.barCount != 2 {
 			t.Errorf("rows %d cols %d: %+v, want no strip and bar 2", c.rows, c.cols, sp)
 		}
 	}
-	// Twins: one row more, or one column more, and it draws.
-	if sp := stripPlan(two, 7, 80); sp.height != 1 || sp.barCount != 0 {
-		t.Errorf("7 rows: %+v, want one row drawn", sp)
+	// Twins: one row more (room for both pads and one item line), or one
+	// column more, and it draws, padded.
+	if sp := stripPlan(two[:1], 9, 80); sp.height != 3 || sp.barCount != 0 {
+		t.Errorf("9 rows: %+v, want a pad, one item, a pad", sp)
 	}
-	if sp := stripPlan(two, 40, 13); sp.height != 2 || sp.barCount != 0 {
-		t.Errorf("13 cols: %+v, want both drawn", sp)
+	if sp := stripPlan(two, 40, 13); sp.height != 4 || sp.barCount != 0 {
+		t.Errorf("13 cols: %+v, want both drawn between pads", sp)
 	}
 }
 

@@ -44,37 +44,37 @@
    0:-00001/-00001/0
 22||
    0:-00001/-00001/0
-23||
+23|● I sent hover the release order. It's cutting a release from main now.|
    0:-00001/-00001/0
 24||
    0:-00001/-00001/0
-25|● I sent hover the release order. It's cutting a release from main now.|
+25|  Once the release is live, hover checks production.|
    0:-00001/-00001/0
 26||
    0:-00001/-00001/0
-27|  Once the release is live, hover checks production.|
+27|✻ Crunched for 10s · done 8:52 AM|
    0:-00001/-00001/0
-28||
+28|────────────────────────────────────────|
    0:-00001/-00001/0
-29|✻ Crunched for 10s · done 8:52 AM|
+29|❯|
    0:-00001/-00001/0
 30|────────────────────────────────────────|
    0:-00001/-00001/0
-31|❯|
+31|  ⎇ main │ Fable 5.2 │ Camila │ 19% │ 41%|
    0:-00001/-00001/0
-32|────────────────────────────────────────|
+32|  ⏵⏵ bypass permissions on (shift+tab to cycle)|
    0:-00001/-00001/0
-33|  ⎇ main │ Fable 5.2 │ Camila │ 19% │ 41%|
-   0:-00001/-00001/0
-34|  ⏵⏵ bypass permissions on (shift+tab to cycle)|
-   0:-00001/-00001/0
-35| ▶ Release hover? Recommended yes: it ships the recording fix and frees 48w5p's last steps.|
-   0:e3e6ec/2b303b/0 1:e5c07b/2b303b/0 2:e3e6ec/2b303b/0
-36| ▶ Put the drone on the bench, then run the split-screen read on hov-tze7.1 with benchy (about 15 min, props off,|
-   0:e3e6ec/2b303b/0 1:e5c07b/2b303b/0 2:e3e6ec/2b303b/0
-37|   battery charged).|
+33||
    0:e3e6ec/2b303b/0
-38| ▶ CI runner for nayutal's lab: register it? Victor-san has write access to that repo.|
+34| ▶ Release hover? Recommended yes: it ships the recording fix and frees 48w5p's last steps.|
    0:e3e6ec/2b303b/0 1:e5c07b/2b303b/0 2:e3e6ec/2b303b/0
+35| ▶ Put the drone on the bench, then run the split-screen read on hov-tze7.1 with benchy (about 15 min, props off,|
+   0:e3e6ec/2b303b/0 1:e5c07b/2b303b/0 2:e3e6ec/2b303b/0
+36|   battery charged).|
+   0:e3e6ec/2b303b/0
+37| ▶ CI runner for nayutal's lab: register it? Victor-san has write access to that repo.|
+   0:e3e6ec/2b303b/0 1:e5c07b/2b303b/0 2:e3e6ec/2b303b/0
+38||
+   0:e3e6ec/2b303b/0
 39|  1 super|
    0:-00001/000000/0 1:808080/000000/1 10:-00001/000000/0

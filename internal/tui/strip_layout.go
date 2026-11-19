@@ -18,13 +18,19 @@ const stripIndent = 3
 // stripMinText is the narrowest text column the strip draws in (D6).
 const stripMinText = 10
 
+// stripPad is the blank tinted rows above the first item and below the last.
+// A strip is never drawn without them, so it needs room for both pads and one
+// item line.
+const stripPad = 1
+
 // stripAgentFloor is the rows the agent always keeps, the height a send needs
 // (D4). It matches shortPaneRows, so a strip never pushes a pane into the
 // short-tile terminal.
 const stripAgentFloor = 6
 
 // stripLine is one row of the strip: mark says it starts an item (or the
-// "+N more" line), otherwise it continues the item above.
+// "+N more" line), otherwise it continues the item above. The zero line is a
+// pad: tint, no mark, no text.
 type stripLine struct {
 	mark bool
 	text string
@@ -33,7 +39,8 @@ type stripLine struct {
 // stripLayout is the strip as a pane of rows x cols content draws it.
 type stripLayout struct {
 	lines []stripLine
-	// height is the rows the strip takes from the agent; len(lines).
+	// height is the rows the strip takes from the agent, both pads included;
+	// len(lines).
 	height int
 	// more is how many items did not fit and are counted on the last line.
 	more int
@@ -44,17 +51,18 @@ type stripLayout struct {
 
 // stripPlan lays items out for a pane whose content (the agent's terminal
 // before the strip) is rows x cols. The strip takes at most a third of the
-// rows and leaves the agent at least stripAgentFloor; items that do not fit
-// show whole from the top with a last line "+N more". When no row can be
-// spared, or the text column would be narrower than stripMinText, nothing is
-// drawn and barCount carries the number of items.
+// rows, both pads included, and leaves the agent at least stripAgentFloor;
+// items that do not fit show whole from the top with a line "+N more" above
+// the bottom pad. When the room cannot hold both pads and one item line, or
+// the text column would be narrower than stripMinText, nothing is drawn and
+// barCount carries the number of items.
 func stripPlan(items []string, rows, cols int) stripLayout {
 	if len(items) == 0 {
 		return stripLayout{}
 	}
 	maxH := min(rows/3, rows-stripAgentFloor)
 	textW := cols - stripIndent
-	if maxH < 1 || textW < stripMinText {
+	if maxH < 2*stripPad+1 || textW < stripMinText {
 		return stripLayout{barCount: len(items)}
 	}
 
@@ -66,28 +74,37 @@ func stripPlan(items []string, rows, cols int) stripLayout {
 	}
 
 	var sp stripLayout
+	pad := func() {
+		for range stripPad {
+			sp.lines = append(sp.lines, stripLine{})
+		}
+	}
+	itemH := maxH - 2*stripPad // the rows left for item lines
+	pad()
 	add := func(rows []string) {
 		for j, r := range rows {
 			sp.lines = append(sp.lines, stripLine{mark: j == 0, text: r})
 		}
 	}
-	if total <= maxH {
+	if total <= itemH {
 		for _, w := range wrapped {
 			add(w)
 		}
 	} else {
-		room := maxH - 1 // the last row says how many more
-		shown := 0
+		room := itemH - 1 // the last item row says how many more
+		shown, used := 0, 0
 		for _, w := range wrapped {
-			if len(sp.lines)+len(w) > room {
+			if used+len(w) > room {
 				break
 			}
 			add(w)
+			used += len(w)
 			shown++
 		}
 		sp.more = len(items) - shown
 		sp.lines = append(sp.lines, stripLine{mark: true, text: fmt.Sprintf("+%d more", sp.more)})
 	}
+	pad()
 	sp.height = len(sp.lines)
 	return sp
 }

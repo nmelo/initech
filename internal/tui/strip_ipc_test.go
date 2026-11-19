@@ -148,8 +148,8 @@ func TestStrip_SurvivesAPaneAndARigRestart(t *testing.T) {
 	if got := np.StripItems(); !reflect.DeepEqual(got, []string{"one", "two"}) {
 		t.Fatalf("restarted pane items %q", got)
 	}
-	if _, rows := np.emuSize(); rows != 38-2 {
-		t.Fatalf("restarted pane terminal %d rows, want 36", rows)
+	if _, rows := np.emuSize(); rows != 38-4 {
+		t.Fatalf("restarted pane terminal %d rows, want 34 (two items between two pads)", rows)
 	}
 	other := NewParkedPane(PaneConfig{Name: "eng1"}, 38, 120)
 	if other.StripItems() != nil {
@@ -262,8 +262,8 @@ func TestStripIPC_TheServeDaemonSetsItsPanes(t *testing.T) {
 	if resp := stripCall(t, d.handleIPCStrip, IPCRequest{Action: "strip", Target: "eng1", Items: []string{"one"}}); !resp.OK {
 		t.Fatalf("reply %+v", resp)
 	}
-	if got := stripEmuRows(p); got != full-1 {
-		t.Fatalf("terminal %d rows, want %d", got, full-1)
+	if got := stripEmuRows(p); got != full-3 {
+		t.Fatalf("terminal %d rows, want %d (one item between two pads)", got, full-3)
 	}
 	if resp := stripCall(t, d.handleIPCStrip, IPCRequest{Action: "strip", Target: "eng1", Items: make([]string, 0, 1)}); !resp.OK || p.StripItems() != nil {
 		t.Fatalf("clear: %+v %q", resp, p.StripItems())

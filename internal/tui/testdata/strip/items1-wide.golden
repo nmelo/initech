@@ -50,31 +50,31 @@
    0:-00001/-00001/0
 25||
    0:-00001/-00001/0
-26||
+26|● I sent hover the release order. It's cutting a release from main now.|
    0:-00001/-00001/0
 27||
    0:-00001/-00001/0
-28|● I sent hover the release order. It's cutting a release from main now.|
+28|  Once the release is live, hover checks production.|
    0:-00001/-00001/0
 29||
    0:-00001/-00001/0
-30|  Once the release is live, hover checks production.|
+30|✻ Crunched for 10s · done 8:52 AM|
    0:-00001/-00001/0
-31||
+31|────────────────────────────────────────|
    0:-00001/-00001/0
-32|✻ Crunched for 10s · done 8:52 AM|
+32|❯|
    0:-00001/-00001/0
 33|────────────────────────────────────────|
    0:-00001/-00001/0
-34|❯|
+34|  ⎇ main │ Fable 5.2 │ Camila │ 19% │ 41%|
    0:-00001/-00001/0
-35|────────────────────────────────────────|
+35|  ⏵⏵ bypass permissions on (shift+tab to cycle)|
    0:-00001/-00001/0
-36|  ⎇ main │ Fable 5.2 │ Camila │ 19% │ 41%|
-   0:-00001/-00001/0
-37|  ⏵⏵ bypass permissions on (shift+tab to cycle)|
-   0:-00001/-00001/0
-38| ▶ Release hover? Recommended yes: it ships the recording fix and frees 48w5p's last steps.|
+36||
+   0:e3e6ec/2b303b/0
+37| ▶ Release hover? Recommended yes: it ships the recording fix and frees 48w5p's last steps.|
    0:e3e6ec/2b303b/0 1:e5c07b/2b303b/0 2:e3e6ec/2b303b/0
+38||
+   0:e3e6ec/2b303b/0
 39|  1 super|
    0:-00001/000000/0 1:808080/000000/1 10:-00001/000000/0

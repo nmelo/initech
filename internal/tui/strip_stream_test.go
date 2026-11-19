@@ -26,13 +26,13 @@ func TestStripStream_TheOwnerTakesTheRowsOffAViewersRequest(t *testing.T) {
 		d := &Daemon{headless: headless}
 		d.resizeForViewer(p, "window2", 38, 120)
 		// A window server grows a normal-screen terminal (effectiveEmuRows);
-		// either way it is sized from 34 rows, the request less the strip.
-		want := 34
+		// either way it is sized from 32 rows, the request less the 6-row strip.
+		want := 32
 		if !headless {
-			want = effectiveEmuRows(34)
+			want = effectiveEmuRows(32)
 		}
 		if _, rows := p.emuSize(); rows != want {
-			t.Errorf("headless %v: terminal %d rows after a 38-row request, want %d (from 34)", headless, rows, want)
+			t.Errorf("headless %v: terminal %d rows after a 38-row request, want %d (from 32)", headless, rows, want)
 		}
 	}
 }
@@ -92,13 +92,13 @@ func TestStripStream_ASecondWindowDrawsTheSameStrip(t *testing.T) {
 	rp.region = Region{X: 0, Y: 0, W: 120, H: 40}
 	rp.SetStrip(pictureItems)
 	rp.Resize(38, 120)
-	if got := rp.emu.Height(); got != 34 {
-		t.Fatalf("viewer emulator %d rows, want 34", got)
+	if got := rp.emu.Height(); got != 32 {
+		t.Fatalf("viewer emulator %d rows, want 32", got)
 	}
 	s := newSceneScreen(120, 40)
 	rp.Render(s, false, false, 1, Selection{})
 	s.Show()
-	for y := 35; y <= 38; y++ {
+	for y := 33; y <= 38; y++ { // the pads too (point 5)
 		if got, want := stripRowDump(s, y), stripRowDump(local, y); got != want {
 			t.Errorf("row %d differs from window 1:\n got %s\nwant %s", y, got, want)
 		}
