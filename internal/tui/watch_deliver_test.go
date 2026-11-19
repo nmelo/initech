@@ -473,3 +473,19 @@ func TestWatchDeliver_AFailedHeldWriteIsNotHanded(t *testing.T) {
 		}
 	})
 }
+
+// qa2's K5: a watch line held while its owner is in do-not-disturb is held
+// as do-not-disturb mail, so the held file keeps it as such and a restart
+// releases it as dnd off does (not as mail waiting for a wake).
+func TestWatchDeliver_ALineHeldInDNDIsDNDMail(t *testing.T) {
+	sendBubble(t, func(t *testing.T) {
+		r := newDeliverRig(t, t.TempDir())
+		r.owner.startDND()
+		r.end(t, "eng4", watch.Fired, "", false)
+		r.tu.deliverWatches(wdT0)
+		q := dndQueue(r.owner)
+		if len(q) != 1 || !q[0].DND || heldKindOf(q[0]) != heldKindDND {
+			t.Fatalf("queue %+v: want the line held as do-not-disturb mail", q)
+		}
+	})
+}
