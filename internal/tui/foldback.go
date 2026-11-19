@@ -212,25 +212,29 @@ const unservedViewerHint = "waiting for window 1 — it decides which agents app
 const noWindowOneHint = "window 1 is not running here — start it first (initech); this window connects when it is up"
 
 // allHiddenViewerHint is the copy for a viewer whose owned agents are ALL
-// globally hidden (ini-uz42, pm 2026-09-12). PM-OWNED STRING -- render it
-// verbatim; the count is the only substitution.
+// globally hidden (ini-uz42, pm 2026-09-12; reworded ini-vag8). PM-OWNED
+// STRING -- render it verbatim; the counts and the one agent's name are the
+// only substitutions.
 //
-// THE LOCAL RECOVERY COMES FIRST ON PURPOSE. The blank window already holds a
-// working unhide control: the overlay (Option+s) lists every OWNED pane
-// including hidden ones, marks them, and a dot-click routes the unhide
-// through window 1. It is one click away in the window the operator is
-// already looking at, so it leads; the main window's Agents panel is the
-// second route for an operator who prefers it.
+// IT NAMES ONLY A WAY THAT EXISTS (ini-vag8). It used to send the operator to
+// the agents' dots, but an idle agent with no bead has no row in the agents
+// box and so no dot (ini-b0po's rule), and this window has no command bar
+// (ini-fn77). The main window's Agents panel brings back any hidden agent, so
+// it is the one way named, with how many of the hidden agents are idle.
 //
 // This state is LEGAL, not a defect. Before uz42 it fell through to the
 // unplanned-defect branch, which returned "" -- so the operator got a blank
 // window and the log got a warning about a state the product had entered
 // correctly.
-func allHiddenViewerHint(owned int) string {
+func allHiddenViewerHint(owned, idle int, only string) string {
 	if owned == 1 {
-		return "the 1 agent assigned here is hidden — click its dot in the overlay (Option+s) to unhide, or use the main window's Agents panel"
+		state := ""
+		if idle == 1 {
+			state = " and idle"
+		}
+		return fmt.Sprintf("%s, the 1 agent assigned here, is hidden%s — use the main window's Agents panel (Option+a there) to bring it back", only, state)
 	}
-	return fmt.Sprintf("all %d agents assigned here are hidden — click their dots in the overlay (Option+s) to unhide, or use the main window's Agents panel", owned)
+	return fmt.Sprintf("all %d agents assigned here are hidden, %d idle — use the main window's Agents panel (Option+a there) to bring one back", owned, idle)
 }
 
 // awaitingArrivalsViewerHint is the copy for a viewer that owns more agents
@@ -396,9 +400,20 @@ func (t *TUI) classifyViewerEmpty() (string, *viewerEmptyDefect) {
 		}
 	}
 
-	// Every owned agent is here and hidden: the legal all-hidden state.
+	// Every owned agent is here and hidden: the legal all-hidden state. The
+	// idle count reads each agent's own state, the one status --json reports.
 	if hiddenCount == len(owned) {
-		return allHiddenViewerHint(len(owned)), nil
+		idle, only, mine := 0, "", ownedSet(owned)
+		for _, p := range t.panes {
+			if !mine[agentKey(p)] {
+				continue
+			}
+			if p.Activity() == StateIdle {
+				idle++
+			}
+			only = paneDisplayName(p)
+		}
+		return allHiddenViewerHint(len(owned), idle, only), nil
 	}
 	// Some have not arrived, and nothing that HAS arrived is visible. A single
 	// visible arrival would have produced a non-empty plan and no hint at all.
@@ -837,4 +852,13 @@ func (w *windowServer) broadcastPaneOwnership(owner map[string]string) {
 		writeJSON(ctrl, ControlResp{Action: paneOwnershipAction, Owner: owner}) //nolint:errcheck
 	}
 	LogDebug("window-server", "pane ownership broadcast", "windows", len(ctrls), "agents", len(owner))
+}
+
+// ownedSet is owned as a set.
+func ownedSet(owned []string) map[string]bool {
+	m := make(map[string]bool, len(owned))
+	for _, k := range owned {
+		m[k] = true
+	}
+	return m
 }

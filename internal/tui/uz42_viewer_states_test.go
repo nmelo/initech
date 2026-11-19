@@ -51,7 +51,7 @@ func TestUZ42_AllHiddenViewerExplainsItsEmptyPlan(t *testing.T) {
 			"nothing at all -- the operator gets a black window and cannot tell it from "+
 			"a crash", len(owned))
 	}
-	if want := allHiddenViewerHint(len(owned)); got != want {
+	if want := allHiddenViewerHint(len(owned), statusIdle(w2, owned), ""); got != want {
 		t.Errorf("explanation = %q, want %q", got, want)
 	}
 	if !strings.Contains(got, "hidden") {
@@ -59,32 +59,28 @@ func TestUZ42_AllHiddenViewerExplainsItsEmptyPlan(t *testing.T) {
 	}
 }
 
-// TestUZ42_AllHiddenNamesTheLocalRecoveryFirst pins the ordering pm decided:
-// the control in THIS window leads, the other window's panel follows.
-func TestUZ42_AllHiddenNamesTheLocalRecoveryFirst(t *testing.T) {
-	msg := allHiddenViewerHint(10)
-	overlay, panel := strings.Index(msg, "overlay"), strings.Index(msg, "Agents panel")
-	if overlay < 0 || panel < 0 {
-		t.Fatalf("the copy names %d routes, want both the overlay and the Agents panel: %q",
-			2-boolToInt(overlay < 0)-boolToInt(panel < 0), msg)
-	}
-	if overlay > panel {
-		t.Errorf("the copy sends the operator to the OTHER window first; the overlay is "+
-			"one click away in the window they are already looking at: %q", msg)
+// TestUZ42_AllHiddenNamesTheAgentsPanelAndItsKey: the copy names the one
+// route that exists, the main window's Agents panel, and the key that opens it.
+func TestUZ42_AllHiddenNamesTheAgentsPanelAndItsKey(t *testing.T) {
+	msg := allHiddenViewerHint(10, 10, "")
+	// ini-vag8: this window has no command bar and an idle agent has no
+	// dot, so the main window's Agents panel, with its key, is the one route.
+	if !strings.Contains(msg, "main window's Agents panel (Option+a there)") {
+		t.Errorf("the copy does not name the Agents panel and its key: %q", msg)
 	}
 }
 
 // TestUZ42_AllHiddenIsSingularForOneAgent: "all 1 agents" is how copy tells an
 // operator nobody read it.
 func TestUZ42_AllHiddenIsSingularForOneAgent(t *testing.T) {
-	one := allHiddenViewerHint(1)
-	if !strings.Contains(one, "the 1 agent assigned here is hidden") {
+	one := allHiddenViewerHint(1, 1, "eng1")
+	if !strings.Contains(one, "eng1, the 1 agent assigned here, is hidden and idle") {
 		t.Errorf("one hidden agent reads %q", one)
 	}
 	if strings.Contains(one, "agents") || strings.Contains(one, "their") {
 		t.Errorf("plural leaked into the single-agent copy: %q", one)
 	}
-	if many := allHiddenViewerHint(10); !strings.Contains(many, "all 10 agents") {
+	if many := allHiddenViewerHint(10, 3, ""); !strings.Contains(many, "all 10 agents assigned here are hidden, 3 idle") {
 		t.Errorf("ten hidden agents read %q", many)
 	}
 }
@@ -202,8 +198,8 @@ func TestUZ42_OnlyTheDefectStateWarns(t *testing.T) {
 // window an operator with a blank screen is likely looking at.
 func TestUZ42_RecoveryInstructionSurvivesTruncation(t *testing.T) {
 	cases := []struct{ name, msg, act string }{
-		{"all hidden, two-digit count", allHiddenViewerHint(10), "click"},
-		{"all hidden, single agent", allHiddenViewerHint(1), "click"},
+		{"all hidden, two-digit count", allHiddenViewerHint(10, 10, ""), "main window"},
+		{"all hidden, single agent", allHiddenViewerHint(1, 1, "engineering-lead-01"), "main window"},
 		{"unassigned", emptyViewerHint, "main window"},
 		{"the defect", unplannedViewerHint(10), "bug"},
 	}
@@ -221,9 +217,10 @@ func TestUZ42_RecoveryInstructionSurvivesTruncation(t *testing.T) {
 	}
 }
 
-// TestUZ42_TheOverlayStillListsHiddenOwnedPanes is AC4: the copy sends the
-// operator to a control in THIS window, so that control must actually be
-// reachable from the blank state.
+// TestUZ42_TheOverlayStillListsHiddenOwnedPanes is AC4: the blank window still
+// lists what it owns, so a hidden agent that is working keeps its row and dot
+// in this window (the copy itself names the main window's Agents panel since
+// ini-vag8).
 //
 // visiblePanesForWindow is what the overlay draws from. It must keep
 // returning every OWNED pane when the plan is empty and all of them are
