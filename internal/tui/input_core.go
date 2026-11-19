@@ -61,6 +61,12 @@ func (t *TUI) handleKey(ev *tcell.EventKey) bool {
 		return t.handleTopKey(ev)
 	}
 
+	// The watches modal intercepts all input when active: it is read-only and
+	// no key reaches a pane under it.
+	if t.watchesM.active {
+		return t.handleWatchesKey(ev)
+	}
+
 	// Agents modal intercepts all input when active.
 	if t.inbox.active {
 		return t.handleInboxKey(ev)
@@ -213,6 +219,11 @@ func (t *TUI) handleKey(ev *tcell.EventKey) bool {
 				// The viewer's main-identity line (ini-evdn): hidden by
 				// default, shown or hidden per window for the session.
 				t.toggleIdentityLine()
+				return false
+			case 't':
+				// The watches modal (Watches 3); closing it is handled
+				// by its own keys, since it takes every key while open.
+				t.openWatchesModal()
 				return false
 			case 'g':
 				t.openQuickGrid(false)

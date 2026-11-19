@@ -302,6 +302,7 @@ These are the commands you'll use most. The full list is in the README.
 | Read what an agent said and ran, from its session | `initech last <agent>` in a shell |
 | Add or remove another machine, no restart | `initech remote add <name> --addr <host:port>`, `initech remote remove <name>` (Cross-Machine Daemon) |
 | Set the list strip at the bottom of your own pane (agents) | `initech strip '<item>' ...`, `--stdin`, `--clear` |
+| See what every agent waits for (main window) | Alt+t or `watches` |
 | Hand a wait to initech, with a reason and a deadline (agents) | `initech watch set ... --why '<line>' --until <time>`, `initech watch list [--all]`, `initech watch cancel <id>` |
 
 ### initech last
@@ -328,6 +329,10 @@ Every refusal exits 1 with one line and sets nothing: no `--why`, no `--until`, 
 `initech watch list` shows your watches: id, state, deadline, condition (for a send, `my send to <agent> (<receipt>)`) and why, with the other agents whose watches share its check and `wakes` when its line will wake you from suspension. `--all` lists every watch in the rig with its owner; it is for super, and for the operator outside any pane. `initech watch cancel <id>` withdraws your own waiting watch; nothing is sent. `initech clear` and `initech restart` keep the agent's watches and say so: `kept 2 watches for eng1`.
 
 A watch ends once: FIRED when its condition came true by the deadline, MISSED when what initech reads after the deadline shows it did not (while bd cannot be read, the watch keeps waiting rather than missing), or at once when the send it watches was withdrawn or dropped, and CANCELLED when you withdraw it. A plain deadline only fires, at the deadline. For a status watch, the time the status came is the time bd last changed the bead (for `closed`, the time it closed), since bd keeps no time for a status change itself: window 1 reads the beads every 10 seconds and fires the watch at the first read that shows the status, but if no read saw it before the deadline (window 1 or bd was down) and the bead was changed again after the deadline, the watch reads MISSED though the status came in time.
+
+### The Watches Modal
+
+Alt+t, or `watches` in the command bar, opens what every agent waits for; it opens in the main window only, and a second window says so in one line. Its title line counts the waiting watches, the endings of the last hour that were delivered or cancelled, and, in red, the watches that missed their deadline. Two groups follow. **waiting**, nearest deadline first, shows each watch's owner, what it waits for (a bead by its state icon, id and title, as the last bead poll saw it; the id alone when the poll has not), its reason, its age and its deadline (`in 8m`, or `at 12:00 PM` for a watch that waits for a time only). **ended in the last hour** lists the missed watches first, then the fired and cancelled ones, most recent first: a fired watch has a green check, a missed one is red, and a cancelled one is dim with `×`. An ending whose line has not reached its owner stays in this group whatever its age, and its deadline cell says where the line is: `· held` (not yet handed, or handed and held, by do-not-disturb, typing, a dialog or sleep), `· starting` (its owner's pane is coming up) or `· to super` (its owner was gone). The modal is read-only: ↑↓ move, Enter shows the whole line, the condition, when the watch was set, how it ended and where its line is, and Esc closes the box, then the modal. An agent cancels its own watch with `initech watch cancel`.
 
 ### The Top Modal
 

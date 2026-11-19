@@ -422,7 +422,7 @@ func longestCommonPrefix(strs []string) string {
 var commandNames = []string{
 	"grid", "focus", "zoom", "panel", "main", "live", "list", "pin", "unpin",
 	"layout", "restart", "patrol", "top", "add", "remove",
-	"log", "help", "quit", "events", "agents",
+	"log", "help", "quit", "events", "agents", "watches",
 	"remote-stop",
 }
 
@@ -577,6 +577,13 @@ func (t *TUI) execCmd(cmd string) bool {
 			return false
 		}
 		t.openAgentsModal()
+		return false
+	case "watches":
+		if len(parts) > 1 {
+			t.cmd.error = fmt.Sprintf("unknown command %q", strings.Join(parts, " "))
+			return false
+		}
+		t.openWatchesModal()
 		return false
 	case "add":
 		return t.cmdAdd(parts)

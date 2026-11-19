@@ -297,6 +297,10 @@ func (t *TUI) renderFrame() {
 	if t.agents.active {
 		t.renderAgents()
 	}
+	// The watches modal (centered floating box, main window only).
+	if t.watchesM.active {
+		t.renderWatchesModal()
+	}
 
 	// Top/activity monitor modal (centered floating box).
 	if t.top.active {

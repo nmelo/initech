@@ -409,6 +409,7 @@ type TUI struct {
 	help      helpModal      // Help reference card modal.
 	agents    agentsModal    // Agent management modal.
 	inbox     inboxPanel     // Operator inbox panel (ini-3wkl.4).
+	watchesM  watchesModal   // The watches modal (Alt+t), main window only.
 	quickGrid quickGridModal // Quick grid/live dimension popup (Option+G/L).
 	welcome   welcomeOverlay // First-launch keybinding hints.
 
