@@ -123,6 +123,8 @@ func TestWatchesView_AnUndeliveredLineSaysWhereItIs(t *testing.T) {
 	toSuper.Delivery.Handed, toSuper.Delivery.ToSuper = wmAt(-9*time.Minute), true
 	delivered := wmDelivered(notHanded, 8*time.Minute)
 	cancelled := wmEnded(base, watch.Cancelled, 10*time.Minute)
+	dropped := handed
+	dropped.Delivery.Dropped = "held five minutes and not typed"
 	starting := func(owner string) bool { return owner == "eng8" }
 	for _, c := range []struct {
 		name     string
@@ -136,6 +138,8 @@ func TestWatchesView_AnUndeliveredLineSaysWhereItIs(t *testing.T) {
 		{"handed, not delivered", handed, starting, "fired 10m ago · held", "receipt r3, held: dnd"},
 		{"missed, handed, not delivered", missedHanded, notStarting, "missed 10m ago · held", "held: dnd"},
 		{"sent to super", toSuper, starting, "fired 10m ago · to super", "sent to super"},
+		// pm: a line initech dropped is not held.
+		{"handed, then dropped", dropped, starting, "fired 10m ago · dropped", "dropped: held five minutes and not typed"},
 		{"delivered", delivered, starting, "fired 10m ago", "delivered"},
 		{"cancelled, owner starting", cancelled, starting, "cancelled 10m ago", ""},
 	} {
@@ -858,6 +862,11 @@ func TestWatchesView_TheHourCountIncludesSentToSuper(t *testing.T) {
 		{"missed, sent to super", toSuper, false, 1},
 		{"fired, delivered", delivered, false, 1},
 		{"cancelled", cancelled, false, 1},
+		{"fired, its line dropped", func() watch.Watch {
+			w := held
+			w.Delivery.Handed, w.Delivery.Receipt, w.Delivery.Dropped = wmAt(-9*time.Minute), "r3", "the agent no longer exists"
+			return w
+		}(), false, 1},
 		{"fired, held", held, false, 0},
 		{"fired, owner starting", starting, true, 0},
 	} {
@@ -865,5 +874,19 @@ func TestWatchesView_TheHourCountIncludesSentToSuper(t *testing.T) {
 		if got := buildWatchesView([]watch.Watch{c.w}, newFakeWorld(wmT0), st, wmT0).endedHour; got != c.want {
 			t.Errorf("%s: counted %d, want %d", c.name, got, c.want)
 		}
+	}
+}
+
+// A dropped line's hour runs from its handing, as the store prunes it: past
+// the hour it leaves the window; the twin, within the hour, it is listed.
+func TestWatchesView_ADroppedLineLeavesAfterItsHour(t *testing.T) {
+	drop := func(id string, ago time.Duration) watch.Watch {
+		w := wmEnded(wmWatch(id, "eng8", watch.KindDeadline, nil, "x", -3*time.Hour, -ago), watch.Fired, ago)
+		w.Delivery.Handed, w.Delivery.Receipt, w.Delivery.Dropped = wmAt(-ago), "r1", "the agent no longer exists"
+		return w
+	}
+	v := buildWatchesView([]watch.Watch{drop("w1", 90*time.Minute), drop("w2", 30*time.Minute)}, newFakeWorld(wmT0), notStarting, wmT0)
+	if got := strings.Join(wmIDs(v.ended), ","); got != "w2" {
+		t.Errorf("ended %q, want only w2: w1 was dropped 90 minutes ago", got)
 	}
 }

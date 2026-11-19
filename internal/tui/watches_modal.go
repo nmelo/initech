@@ -33,6 +33,7 @@ const (
 	lineHeld     = "held"
 	lineStarting = "starting"
 	lineToSuper  = "to super"
+	lineDropped  = "dropped"
 )
 
 // watchSeg is one run of a cell's text; id runs draw in the bead-id color.
@@ -58,8 +59,8 @@ type watchRow struct {
 type watchesView struct {
 	waiting, ended []watchRow
 	// endedHour counts the endings of the last hour that were delivered, sent
-	// to super or cancelled, missed ones included; a held or starting ending is
-	// listed with its mark but not counted.
+	// to super, dropped or cancelled, missed ones included; a held or starting
+	// ending is listed with its mark but not counted.
 	nWaiting, endedHour, missed int
 }
 
@@ -69,15 +70,16 @@ func (v watchesView) rows() []watchRow {
 }
 
 // watchHistoryFrom is when an ended watch's hour starts, as the store prunes
-// it: a cancel from its cancel, a fired or missed watch from its delivery or
-// its handing to super; zero while its line has not reached anyone.
+// it: a cancel from its cancel, a fired or missed watch from its delivery, or
+// from its handing when it went to super or was dropped; zero while its line
+// is still on its way.
 func watchHistoryFrom(w watch.Watch) time.Time {
 	switch {
 	case w.State == watch.Cancelled:
 		return w.Ended
 	case !w.Delivery.Delivered.IsZero():
 		return w.Delivery.Delivered
-	case w.Delivery.ToSuper:
+	case w.Delivery.ToSuper, w.Delivery.Dropped != "":
 		return w.Delivery.Handed
 	}
 	return time.Time{}
@@ -119,7 +121,7 @@ func buildWatchesView(ws []watch.Watch, world World, starting func(owner string)
 		if r.line != "" {
 			r.deadline += " · " + r.line
 		}
-		if w.State == watch.Cancelled || !w.Delivery.Delivered.IsZero() || w.Delivery.ToSuper {
+		if w.State == watch.Cancelled || !w.Delivery.Delivered.IsZero() || w.Delivery.ToSuper || w.Delivery.Dropped != "" {
 			v.endedHour++
 		}
 		if w.State == watch.Missed {
@@ -152,6 +154,10 @@ func watchLine(w watch.Watch, world World, starting bool) (mark, where string) {
 	switch {
 	case d.ToSuper:
 		return lineToSuper, "sent to super: the owner was gone"
+	case d.Dropped != "":
+		// initech dropped the handed line (its held mail ended undelivered):
+		// it is not held, and it will not arrive.
+		return lineDropped, "dropped: " + d.Dropped
 	case !d.Delivered.IsZero():
 		return "", "delivered " + d.Delivered.Local().Format("15:04")
 	case d.Handed.IsZero() && starting:
