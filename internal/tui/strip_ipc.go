@@ -5,8 +5,6 @@ import (
 	"net"
 	"path/filepath"
 	"time"
-
-	"github.com/nmelo/initech/internal/config"
 )
 
 // openStripBook loads the process's strip file and makes it the book NewPane
@@ -72,17 +70,6 @@ func (t *TUI) handleIPCStrip(conn net.Conn, req IPCRequest) {
 		return
 	}
 	if err := t.stripCallerIs(conn, req.Target); err != nil {
-		var codex bool
-		t.runOnMain(func() {
-			if pv := t.findPaneByName(req.Target); pv != nil {
-				p, _ := pv.(*Pane)
-				codex = p != nil && isCodexPane(p)
-			}
-		})
-		if codex {
-			reply(IPCResponse{Error: stripCodexRefusal})
-			return
-		}
 		reply(IPCResponse{Error: err.Error()})
 		return
 	}
@@ -139,10 +126,6 @@ func (d *Daemon) handleIPCStrip(conn net.Conn, req IPCRequest) {
 		return
 	}
 	if caller, err := d.identifySendingPane(conn); err != nil || caller != req.Target {
-		if p := d.findPane(req.Target); p != nil && isCodexPane(p) && (err != nil || caller == "") {
-			reply(IPCResponse{Error: stripCodexRefusal})
-			return
-		}
 		reply(IPCResponse{Error: stripNotYours(req.Target, caller, err)})
 		return
 	}
@@ -195,15 +178,4 @@ func stripNotYours(agent, caller string, err error) string {
 		return fmt.Sprintf("initech strip sets only the strip of the pane it runs in; could not tell that this call comes from %s's pane", agent)
 	}
 	return fmt.Sprintf("initech strip sets only the strip of the pane it runs in; this call comes from %s's pane, not %s's", caller, agent)
-}
-
-// stripCodexRefusal is the line a Codex pane gets: Codex runs a command in a
-// process of its own, outside the pane's process tree, so initech cannot tell
-// the command comes from that pane, and the list belongs to its pane's agent
-// (point 5). Codex panes set a strip once their commands can be attributed.
-const stripCodexRefusal = "a Codex pane cannot set a strip yet: Codex runs commands outside its pane's processes, so initech cannot tell the call comes from that pane"
-
-// isCodexPane is whether p runs Codex.
-func isCodexPane(p *Pane) bool {
-	return config.NormalizeAgentType(p.AgentType()) == config.AgentTypeCodex
 }

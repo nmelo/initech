@@ -312,28 +312,37 @@ func TestStripIPC_OnlyThePanesOwnAgentSetsItsStrip(t *testing.T) {
 	}
 }
 
-// pm's ruling A: a Codex pane, whose commands initech cannot place in its
-// process tree, gets exit 1 and one line naming why, and its list stays;
-// twin: a Claude pane the caller cannot be placed in gets the general line.
-func TestStripIPC_ACodexPaneIsRefusedWithWhy(t *testing.T) {
+// A Codex seat runs its commands in its own process (--no-daemon), so a call
+// from inside a Codex pane is placed like a Claude pane's: it sets the strip
+// (point 6). A call from another pane, or another rig's process carrying a
+// stale snapshot that names this pane, is refused, since the request's agent
+// is never what decides; a call that cannot be placed at all is refused with
+// the general line, never a Codex one.
+func TestStripIPC_ACodexPaneSetsItsOwnStrip_AndNoOtherCallerDoes(t *testing.T) {
 	tu, p, _ := stripRig(t)
-	unplaced := func(net.Conn) (string, error) { return "", errors.New("not inside one of its panes") }
-	tu.identifyStripCaller = unplaced
 	p.agentType = config.AgentTypeCodex
-	resp := stripCall(t, tu.handleIPCStrip, IPCRequest{Action: "strip", Target: "super", Items: []string{"x"}})
-	if resp.OK || resp.Error != stripCodexRefusal || p.StripItems() != nil {
-		t.Fatalf("codex pane: %+v, items %q", resp, p.StripItems())
+	if resp := stripCall(t, tu.handleIPCStrip, IPCRequest{Action: "strip", Target: "super", Items: []string{"from codex"}}); !resp.OK {
+		t.Fatalf("a Codex pane's own call refused: %+v", resp)
 	}
-	p.agentType = ""
-	resp = stripCall(t, tu.handleIPCStrip, IPCRequest{Action: "strip", Target: "super", Items: []string{"x"}})
-	if resp.OK || resp.Error == stripCodexRefusal || !strings.Contains(resp.Error, "could not tell") {
-		t.Fatalf("claude pane: %+v", resp)
+	if got := p.StripItems(); !reflect.DeepEqual(got, []string{"from codex"}) {
+		t.Fatalf("items %q", got)
 	}
-
-	d := &Daemon{headless: true, panes: []*Pane{p}, identifySender: unplaced,
+	for name, identify := range map[string]func(net.Conn) (string, error){
+		"another pane's process":                                callerIs("eng1"),
+		"another rig's process (a stale snapshot naming super)": func(net.Conn) (string, error) { return "", errors.New("not inside one of its panes") },
+	} {
+		tu.identifyStripCaller = identify
+		resp := stripCall(t, tu.handleIPCStrip, IPCRequest{Action: "strip", Target: "super", Items: []string{"spoofed"}})
+		if resp.OK || !strings.Contains(resp.Error, "sets only the strip of the pane it runs in") || strings.Contains(resp.Error, "Codex") {
+			t.Errorf("%s: reply %+v, want the general refusal", name, resp)
+		}
+		if got := p.StripItems(); !reflect.DeepEqual(got, []string{"from codex"}) {
+			t.Errorf("%s: list became %q", name, got)
+		}
+	}
+	d := &Daemon{headless: true, panes: []*Pane{p}, identifySender: func(net.Conn) (string, error) { return "", errors.New("not inside one of its panes") },
 		strips: loadStripBook(filepath.Join(t.TempDir(), stripFileServe), time.Now())}
-	p.agentType = config.AgentTypeCodex
-	if resp := stripCall(t, d.handleIPCStrip, IPCRequest{Action: "strip", Target: "super", Items: []string{"x"}}); resp.Error != stripCodexRefusal {
-		t.Fatalf("daemon codex pane: %+v", resp)
+	if resp := stripCall(t, d.handleIPCStrip, IPCRequest{Action: "strip", Target: "super", Items: []string{"x"}}); resp.OK || strings.Contains(resp.Error, "Codex") {
+		t.Fatalf("daemon, unplaced call on a Codex pane: %+v", resp)
 	}
 }
