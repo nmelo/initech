@@ -110,3 +110,19 @@ func TestVag8_OneHiddenAgent_HintNamesItAndTheWayBack(t *testing.T) {
 		t.Errorf("a working hidden agent reads %q, want it named, not idle, and the way back", got)
 	}
 }
+
+// A hidden idle agent that holds a bead is not counted idle in the all-hidden
+// hint, as the agents box's hidden line leaves it out (qa3's survivor).
+func TestVag8_AllHidden_ABeadHolderIsNotCountedIdle(t *testing.T) {
+	w2, owned := vag8AllHidden(t)
+	before := statusIdle(w2, owned)
+	for _, p := range w2.panes {
+		if rp, ok := p.(*RemotePane); ok && agentKey(rp) == owned[0] {
+			rp.beadIDs = []string{"ini-held"}
+		}
+	}
+	got := w2.viewerEmptyExplanation()
+	if want := fmt.Sprintf("all %d agents assigned here are hidden, %d idle", len(owned), before-1); !strings.Contains(got, want) {
+		t.Errorf("hint = %q, want it to say %q", got, want)
+	}
+}
