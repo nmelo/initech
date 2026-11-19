@@ -302,3 +302,77 @@ func TestCronQuietRefusal_AReplyWithNoIDRemovesNothing(t *testing.T) {
 		}
 	}
 }
+
+// ── ini-fzz5: --run-late ────────────────────────────────────────────────
+
+func runLateAdd(t *testing.T, add tui.IPCResponse) (string, error, []tui.IPCRequest) {
+	t.Helper()
+	skipWindows(t)
+	sock, reqs := scriptedIPC(t, map[string]tui.IPCResponse{"cron_add": add, "cron_remove": removed})
+	t.Setenv("INITECH_SOCKET", sock)
+	out, err := runCron(t, "add", "--to", "qa1", "--at", "06:00", "--message", "standup", "--run-late")
+	return out, err, reqs()
+}
+
+// The request carries run_late, and a reply naming it prints only the reply.
+func TestCronRunLate_AddSendsItAndPrintsTheReply(t *testing.T) {
+	out, err, reqs := runLateAdd(t, tui.IPCResponse{OK: true, Data: "added s1, owned by eng1, run late"})
+	if err != nil || strings.TrimSpace(out) != "added s1, owned by eng1, run late" || actions(reqs) != "cron_add" {
+		t.Fatalf("out %q err %v reqs %q", out, err, actions(reqs))
+	}
+	var add tui.CronAddRequest
+	json.Unmarshal([]byte(reqs[0].Text), &add)
+	if !add.RunLate {
+		t.Fatalf("sent %+v, want run_late", add)
+	}
+}
+
+// An initech older than --run-late stores the job without it: the add is
+// rolled back, one line, exit 1 (a command that cannot do all it was asked
+// fails).
+func TestCronRunLate_AnOlderInitechIsRolledBack(t *testing.T) {
+	out, err, reqs := runLateAdd(t, reply261)
+	if got := actions(reqs); got != "cron_add ,cron_remove s1" {
+		t.Fatalf("requests %q, want the add and the remove of s1", got)
+	}
+	want := "not added: the running initech is older than --run-late and would store the job without it; restart initech on " + Version + " or later and add it again"
+	if out != "" || err == nil || err.Error() != want || exitCode(err) != 1 {
+		t.Fatalf("out %q err %v (exit %d), want %q", out, err, exitCode(err), want)
+	}
+}
+
+// Both flags at once: each is checked by its own word in the reply.
+func TestCronRunLate_WithQuietBothAreNamed(t *testing.T) {
+	skipWindows(t)
+	sock, reqs := scriptedIPC(t, map[string]tui.IPCResponse{"cron_add": {OK: true, Data: "added s1, owned by eng1, quiet, run late"}, "cron_remove": removed})
+	t.Setenv("INITECH_SOCKET", sock)
+	out, err := runCron(t, "add", "--to", "qa1", "--every", "15m", "--command", "bd ready", "--quiet", "--run-late")
+	if err != nil || actions(reqs()) != "cron_add" || !strings.Contains(out, "run late") {
+		t.Fatalf("out %q err %v", out, err)
+	}
+}
+
+// cron list names a run-late job, and a skip reads as pm's line: the slot's
+// day and time, then the skip.
+func TestCronRunLate_ListShowsTheJobAndASkip(t *testing.T) {
+	skipWindows(t)
+	slot := time.Date(2026, 11, 5, 6, 0, 0, 0, time.Local)
+	rows := []tui.CronListing{
+		{Job: schedule.Job{ID: "s1", Owner: "super", To: "eng1", At: "06:00", Message: "standup", LastRun: &slot,
+			LastResult: schedule.SkipResult(9*time.Hour, 3)}, Next: slot.AddDate(0, 0, 1)},
+		{Job: schedule.Job{ID: "s2", Owner: "super", To: "eng2", At: "06:00", Message: "report", RunLate: true}, Next: slot.AddDate(0, 0, 1)},
+	}
+	data, _ := json.Marshal(rows)
+	sock, _ := recordingIPC(t, tui.IPCResponse{OK: true, Data: string(data)})
+	t.Setenv("INITECH_SOCKET", sock)
+	out, err := runCron(t, "list")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "Thu 06:00 skipped: 9h late, allowed 15m (3 runs skipped)") {
+		t.Fatalf("the skip is not shown:\n%s", out)
+	}
+	if !strings.Contains(out, "run late message: report") {
+		t.Fatalf("the run-late job is not named:\n%s", out)
+	}
+}

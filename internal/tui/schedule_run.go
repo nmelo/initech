@@ -108,6 +108,7 @@ type claim struct {
 	job    schedule.Job
 	due    time.Time
 	missed bool
+	late   time.Duration // how long ago due was (a run-late run names it)
 }
 
 // tick reads the file if it changed, claims what is due and starts each run.
@@ -115,23 +116,36 @@ func (s *rigScheduler) tick() {
 	s.reloadIfChanged()
 	now := s.now()
 	var claims []claim
+	skipped := false
 	s.mu.Lock()
 	for i := range s.file.Jobs {
 		j := &s.file.Jobs[i]
 		if s.inFlight[j.ID] {
 			continue
 		}
-		due, missed, fire := j.Check(now, s.started)
-		if !fire {
+		dec := j.Decide(now, s.started)
+		if dec.Skip {
+			// Late past schedule.LateBound (ini-fzz5): the slot is claimed
+			// as if run, so it never fires later, and said once in the job's
+			// last result and the log; nothing is delivered, super is not
+			// told. A quiet job's skip shows too: quiet hides runs, not skips.
+			d := dec.Due
+			j.LastRun = &d
+			j.LastResult = schedule.SkipResult(dec.Late, dec.Runs)
+			LogInfo("schedule", fmt.Sprintf("schedule %s (to %s): %s", j.ID, j.To, j.LastResult))
+			skipped = true
 			continue
 		}
-		d := due
+		if !dec.Fire {
+			continue
+		}
+		d := dec.Due
 		j.LastRun = &d
 		j.LastResult = "running"
 		s.inFlight[j.ID] = true
-		claims = append(claims, claim{job: *j, due: due, missed: missed})
+		claims = append(claims, claim{job: *j, due: dec.Due, missed: dec.Missed, late: dec.Late})
 	}
-	if len(claims) > 0 {
+	if len(claims) > 0 || skipped {
 		s.saveLocked()
 	}
 	s.mu.Unlock()
@@ -216,8 +230,14 @@ func (s *rigScheduler) compose(c claim) (text, cmdFailure string, quiet bool) {
 	j := c.job
 	var b strings.Builder
 	fmt.Fprintf(&b, "[from %s, schedule %s] ", j.Owner, j.ID)
-	if c.missed {
+	switch {
+	case c.missed && c.late > schedule.LateBound:
+		// A run-late job's late run says how late (ini-fzz5).
+		fmt.Fprintf(&b, "(due %s while initech was down, %s late) ", c.due.Format("2006-01-02 15:04"), schedule.LateWords(c.late))
+	case c.missed:
 		fmt.Fprintf(&b, "(due %s while initech was down) ", c.due.Format("2006-01-02 15:04"))
+	case c.late > schedule.LateBound:
+		fmt.Fprintf(&b, "(due %s, %s late) ", c.due.Format("2006-01-02 15:04"), schedule.LateWords(c.late))
 	}
 	if j.Command == "" {
 		b.WriteString(j.Message)

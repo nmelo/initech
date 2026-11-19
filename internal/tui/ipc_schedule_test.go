@@ -225,3 +225,24 @@ func TestQuietCron_QuietOnAMessageIsRefused(t *testing.T) {
 		t.Fatalf("answered %+v, want a refusal naming --quiet and --message", resp)
 	}
 }
+
+// ini-fzz5: cron_add stores run_late and names it in its reply (cron add
+// reads the reply to catch an initech that dropped it); without it, neither.
+func TestCron_AddStoresRunLateAndNamesIt(t *testing.T) {
+	tui, _ := cronTUI(t)
+	resp := cronIPC(t, tui, cronAddReq("eng1", CronAddRequest{To: "qa1", At: "06:00", Message: "standup", RunLate: true}))
+	if !resp.OK || !strings.HasSuffix(resp.Data, ", run late") {
+		t.Fatalf("add answered %+v, want the reply to name run late", resp)
+	}
+	plain := cronIPC(t, tui, cronAddReq("eng1", CronAddRequest{To: "qa2", At: "06:00", Message: "standup"}))
+	if strings.Contains(plain.Data, "run late") {
+		t.Fatalf("a plain add named run late: %q", plain.Data)
+	}
+	f, err := schedule.Load(tui.sched.path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !f.Jobs[0].RunLate || f.Jobs[1].RunLate {
+		t.Fatalf("stored %+v", f.Jobs)
+	}
+}

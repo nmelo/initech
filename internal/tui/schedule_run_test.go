@@ -142,14 +142,15 @@ func TestScheduler_ARestartInsideTheMinuteDoesNotRunItTwice(t *testing.T) {
 
 // TestScheduler_AJobDueWhileDownRunsOnceAndSaysSo.
 func TestScheduler_AJobDueWhileDownRunsOnceAndSaysSo(t *testing.T) {
-	s, host, clk := schedRig(t, clockAt(4, 8, 0), schedule.Job{Owner: "eng1", To: "qa1", At: "09:30", Message: "report"})
+	// A run-late job (ini-fzz5): without RunLate the same job is skipped.
+	s, host, clk := schedRig(t, clockAt(4, 8, 0), schedule.Job{Owner: "eng1", To: "qa1", At: "09:30", Message: "report", RunLate: true})
 	clk.set(clockAt(4, 11, 0)) // Down from 08:00 to 11:00.
 	back := newRigScheduler(s.root, host, clk.now)
 	back.step(clk, clockAt(4, 11, 0))
 	back.step(clk, clockAt(4, 11, 1))
 	d, _ := host.snap()
-	if len(d) != 1 || !strings.Contains(d[0], "(due 2026-11-04 09:30 while initech was down) report") {
-		t.Fatalf("delivered %q, want one run saying it was missed", d)
+	if len(d) != 1 || !strings.Contains(d[0], "(due 2026-11-04 09:30 while initech was down, 1h30m late) report") {
+		t.Fatalf("delivered %q, want one run saying it was missed and how late", d)
 	}
 }
 
@@ -549,5 +550,86 @@ func TestQuietCron_AQuietRunIsOneInfoLineInTheLog(t *testing.T) {
 	quietRun(t, schedule.Job{Owner: "qa1", To: "eng2", Every: "1m", Command: "echo found", Quiet: true}, nil, nil)
 	if strings.Contains(logs2.String(), "quiet run") {
 		t.Fatalf("a delivered run logged a quiet run:\n%s", logs2.String())
+	}
+}
+
+// ini-fzz5 AC2: a full schedule stopped across several slots and started
+// again: nothing is delivered; each late job's skip is in its last result and
+// logged once, and the next tick says nothing more.
+func TestScheduler_ARigStartedAfterHoursDownSendsNoBurst(t *testing.T) {
+	logs := captureLogs(t)
+	s, host, clk := schedRig(t, clockAt(3, 5, 0),
+		schedule.Job{Owner: "super", To: "eng1", At: "06:00", Message: "standup"},
+		schedule.Job{Owner: "super", To: "eng2", At: "06:00", Message: "standup"},
+		schedule.Job{Owner: "super", To: "qa1", At: "09:30 weekdays", Message: "triage"},
+		schedule.Job{Owner: "super", To: "eng1", Every: "1h", Message: "pulse"},
+		schedule.Job{Owner: "super", To: "eng2", At: "07:00", Command: "true", Quiet: true},
+	)
+	clk.set(clockAt(5, 15, 0)) // down from the 3rd 05:00 to the 5th 15:00
+	back := newRigScheduler(s.root, host, clk.now)
+	back.step(clk, clockAt(5, 15, 0))
+	back.step(clk, clockAt(5, 15, 1))
+	if d, _ := host.snap(); len(d) != 0 {
+		t.Fatalf("a burst of %d stale messages: %q", len(d), d)
+	}
+	f := reload(t, back)
+	for _, j := range f.Jobs {
+		if j.Every != "" {
+			continue // an interval job resumes from the start: nothing missed
+		}
+		if !strings.HasPrefix(j.LastResult, "skipped: ") || !strings.Contains(j.LastResult, "allowed 15m (") {
+			t.Errorf("%s (%s) last result %q, want its skip line", j.ID, j.At, j.LastResult)
+		}
+	}
+	if n := strings.Count(logs.String(), "allowed 15m"); n != 4 {
+		t.Fatalf("%d skip log lines, want one per late time job (4):\n%s", n, logs.String())
+	}
+	back.step(clk, clockAt(5, 15, 2))
+	if n := strings.Count(logs.String(), "allowed 15m"); n != 4 {
+		t.Fatalf("the next tick logged the skips again: %d", n)
+	}
+}
+
+// AC3: a run-late job runs once, saying how late, however many slots.
+func TestScheduler_ARunLateJobRunsOnceAndSaysHowLate(t *testing.T) {
+	s, host, clk := schedRig(t, clockAt(1, 5, 0), schedule.Job{Owner: "super", To: "eng1", At: "06:00", Message: "report", RunLate: true})
+	clk.set(clockAt(5, 15, 0))
+	back := newRigScheduler(s.root, host, clk.now)
+	for m := 0; m < 3; m++ {
+		back.step(clk, clockAt(5, 15, m))
+	}
+	d, _ := host.snap()
+	if len(d) != 1 || !strings.Contains(d[0], "(due 2026-11-05 06:00 while initech was down, 9h late) report") {
+		t.Fatalf("delivered %q, want one run naming how late", d)
+	}
+}
+
+// pm (4) and lead1's second cause: initech running, the Mac asleep 17 h: an
+// hourly job fires 0 times (one skip line), and a time job slept through is
+// skipped though initech never stopped.
+func TestScheduler_AMacAsleepWithInitechRunningSendsNoBurst(t *testing.T) {
+	s, host, clk := schedRig(t, clockAt(4, 0, 0),
+		schedule.Job{Owner: "super", To: "eng1", Every: "1h", Message: "pulse"},
+		schedule.Job{Owner: "super", To: "eng2", At: "09:30", Message: "standup"},
+	)
+	for h := 17; h <= 17; h++ {
+		s.step(clk, clockAt(4, h, 0)) // asleep from 00:00 to 17:00
+	}
+	s.step(clk, clockAt(4, 17, 1))
+	if d, _ := host.snap(); len(d) != 0 {
+		t.Fatalf("delivered %q after the sleep, want nothing", d)
+	}
+	f := reload(t, s)
+	for _, j := range f.Jobs {
+		if !strings.HasPrefix(j.LastResult, "skipped: ") {
+			t.Errorf("%s last result %q, want a skip line", j.ID, j.LastResult)
+		}
+	}
+	if !strings.Contains(f.Jobs[0].LastResult, "(17 runs skipped)") {
+		t.Errorf("hourly job: %q, want 17 runs skipped", f.Jobs[0].LastResult)
+	}
+	s.step(clk, clockAt(4, 18, 0))
+	if d, _ := host.snap(); len(d) != 1 {
+		t.Fatalf("delivered %q at 18:00, want the hourly job back on its rhythm", d)
 	}
 }

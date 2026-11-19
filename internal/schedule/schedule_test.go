@@ -174,9 +174,10 @@ func TestCheck_ARestartInsideTheMinuteDoesNotRunItAgain(t *testing.T) {
 	}
 }
 
-// TestCheck_AJobDueWhileDownRunsOnceAndSaysSo.
+// TestCheck_AJobDueWhileDownRunsOnceAndSaysSo: a run-late job; without
+// RunLate the same job is skipped (ini-fzz5, late_test.go).
 func TestCheck_AJobDueWhileDownRunsOnceAndSaysSo(t *testing.T) {
-	j := Job{At: "09:30", Created: at(3, 8, 0), LastRun: ptr(at(3, 9, 30))}
+	j := Job{At: "09:30", Created: at(3, 8, 0), LastRun: ptr(at(3, 9, 30)), RunLate: true}
 	started := at(5, 11, 0) // Down across two due times.
 	due, missed, fire := j.Check(started, started)
 	if !fire || !missed || !due.Equal(at(5, 9, 30)) {
@@ -243,9 +244,13 @@ func TestCheck_AnIntervalJobFiresAtEachIntervalAndResumesAfterARestart(t *testin
 
 func TestNext_ListsTheNextRun(t *testing.T) {
 	j := Job{At: "09:30", Created: at(4, 8, 0)}
-	if got := j.Next(at(4, 10, 0), at(4, 8, 0)); !got.Equal(at(4, 9, 30)) {
-		// Due and not yet run: its next run is now, the due time.
+	if got := j.Next(at(4, 9, 40), at(4, 8, 0)); !got.Equal(at(4, 9, 30)) {
+		// Due, within LateBound, and not yet run: its next run is now.
 		t.Fatalf("a due job lists %v", got)
+	}
+	if got := j.Next(at(4, 10, 0), at(4, 8, 0)); !got.Equal(at(5, 9, 30)) {
+		// 30 minutes late: the slot is skipped (ini-fzz5), so tomorrow.
+		t.Fatalf("a job late past the bound lists %v, want tomorrow 09:30", got)
 	}
 	j.LastRun = ptr(at(4, 9, 30))
 	if got := j.Next(at(4, 10, 0), at(4, 8, 0)); !got.Equal(at(5, 9, 30)) {

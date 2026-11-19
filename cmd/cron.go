@@ -27,8 +27,10 @@ nothing but whitespace delivers nothing: no message, no wake, no line to
 super; cron list shows the job as quiet and the run as "quiet: exit 0, no
 output". Any output, a non-zero exit, a stop or a command that did not run
 delivers as usual. Deliveries go through the send path, so a dialog or
-do-not-disturb holds them as usual. A job whose time passed while initech was
-down runs once at the next start and says so. A delivery that cannot happen,
+do-not-disturb holds them as usual. A job more than 15 minutes late, because
+initech was down or the Mac slept, is skipped, once however many runs it
+missed, and cron list shows the skip; with --run-late it runs once instead and
+says how late. A delivery that cannot happen,
 or a command that fails, is one message to super; a delivery that keeps
 failing for the same reason is said once, until it delivers again.
 
@@ -45,11 +47,11 @@ var cronListCmd = &cobra.Command{
 
 var (
 	cronTo, cronAt, cronEvery, cronMessage, cronCommand string
-	cronQuiet                                           bool
+	cronQuiet, cronRunLate                              bool
 )
 
 var cronAddCmd = &cobra.Command{
-	Use:   "add --to <pane> (--at <time> | --every <interval>) (--message <text> | --command <line> [--quiet])",
+	Use:   "add --to <pane> (--at <time> | --every <interval>) (--message <text> | --command <line> [--quiet]) [--run-late]",
 	Short: "Add a job, owned by the agent whose pane runs this",
 	Args:  cobra.NoArgs,
 	RunE:  runCronAdd,
@@ -69,6 +71,7 @@ func init() {
 	cronAddCmd.Flags().StringVar(&cronMessage, "message", "", "The message to deliver")
 	cronAddCmd.Flags().StringVar(&cronCommand, "command", "", "One line to run in the rig root; its output is delivered")
 	cronAddCmd.Flags().BoolVar(&cronQuiet, "quiet", false, "With --command: a run that exits 0 with no output delivers nothing")
+	cronAddCmd.Flags().BoolVar(&cronRunLate, "run-late", false, "Run once even when more than 15 minutes late (by default such a run is skipped)")
 	cronCmd.AddCommand(cronListCmd, cronAddCmd, cronRemoveCmd)
 	rootCmd.AddCommand(cronCmd)
 }
@@ -93,7 +96,7 @@ func runCronAdd(cmd *cobra.Command, _ []string) error {
 		cmd.SilenceUsage = true
 		return fmt.Errorf("--quiet goes with --command, not --message: only a command's run can be quiet")
 	}
-	body, _ := json.Marshal(tui.CronAddRequest{To: cronTo, At: cronAt, Every: cronEvery, Message: cronMessage, Command: cronCommand, Quiet: cronQuiet})
+	body, _ := json.Marshal(tui.CronAddRequest{To: cronTo, At: cronAt, Every: cronEvery, Message: cronMessage, Command: cronCommand, Quiet: cronQuiet, RunLate: cronRunLate})
 	resp, err := cronCall(cmd, tui.IPCRequest{Action: "cron_add", Text: string(body)})
 	if err != nil {
 		return err
@@ -102,9 +105,14 @@ func runCronAdd(cmd *cobra.Command, _ []string) error {
 	// it; its reply then does not name quiet. Such an add never reports ok:
 	// the job is removed again, nothing reaches stdout, one line, exit 1
 	// (ini-bqqk). A job due between the add and the remove can run once.
-	if cronQuiet && !strings.HasSuffix(resp.Data, ", quiet") {
+	// Each flag is checked by its own word in the reply, wherever it sits.
+	if cronQuiet && !strings.Contains(resp.Data, ", quiet") {
 		cmd.SilenceErrors = true
 		return &cronQuietRefusal{rollBackQuietAdd(resp.Data)}
+	}
+	if cronRunLate && !strings.Contains(resp.Data, ", run late") {
+		cmd.SilenceErrors = true
+		return &cronQuietRefusal{rollBackAdd(resp.Data, "--run-late", "would store the job without it")}
 	}
 	fmt.Fprintln(cmd.OutOrStdout(), resp.Data)
 	return nil
@@ -120,17 +128,28 @@ func (e *cronQuietRefusal) ExitCode() int { return 1 }
 // rollBackQuietAdd removes the job an add without quiet just stored, and says
 // what became of it, in one line.
 func rollBackQuietAdd(reply string) string {
-	notAdded := "not added: the running initech is older than --quiet and would deliver every run; restart initech on " + Version + " or later and add it again"
+	return rollBackAdd(reply, "--quiet", "would deliver every run")
+}
+
+// rollBackAdd removes the job an add just stored without flag (an initech
+// older than flag dropped it), and says what became of it, in one line;
+// consequence is what that older initech would do with the job.
+func rollBackAdd(reply, flag, consequence string) string {
+	name := strings.TrimPrefix(flag, "--")
+	if name == "run-late" {
+		name = "run late"
+	}
+	notAdded := "not added: the running initech is older than " + flag + " and " + consequence + "; restart initech on " + Version + " or later and add it again"
 	id := addedJobID(reply)
 	if id == "" {
-		return "not added as quiet: the running initech is older than --quiet, and its reply named no job to remove (" + strconv.Quote(reply) + "): check initech cron list and remove the job; restart initech on " + Version + " or later and add it again"
+		return "not added as " + name + ": the running initech is older than " + flag + ", and its reply named no job to remove (" + strconv.Quote(reply) + "): check initech cron list and remove the job; restart initech on " + Version + " or later and add it again"
 	}
 	resp, err := ipcCall(tui.IPCRequest{Action: "cron_remove", Target: id})
 	switch {
 	case err != nil:
-		return "added " + id + " without quiet and could not remove it (" + err.Error() + "): remove it with initech cron remove " + id + "; restart initech on " + Version + " or later and add it again"
+		return "added " + id + " without " + name + " and could not remove it (" + err.Error() + "): remove it with initech cron remove " + id + "; restart initech on " + Version + " or later and add it again"
 	case !resp.OK:
-		return "added " + id + " without quiet and could not remove it (" + resp.Error + "): remove it with initech cron remove " + id + "; restart initech on " + Version + " or later and add it again"
+		return "added " + id + " without " + name + " and could not remove it (" + resp.Error + "): remove it with initech cron remove " + id + "; restart initech on " + Version + " or later and add it again"
 	}
 	return notAdded
 }
@@ -185,6 +204,9 @@ func runCronList(cmd *cobra.Command, _ []string) error {
 			if j.Quiet {
 				what = "quiet " + what
 			}
+		}
+		if j.RunLate {
+			what = "run late " + what
 		}
 		if r := []rune(what); len(r) > 60 {
 			what = string(r[:57]) + "..."

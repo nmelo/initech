@@ -27,6 +27,11 @@ const FileName = "schedule.yaml"
 // MinInterval is the shortest interval a job may have.
 const MinInterval = time.Minute
 
+// LateBound is how late a job may run: a run due longer ago than this, after
+// initech was stopped or the Mac slept, is skipped unless the job is RunLate,
+// so a rig started after hours down sends no burst of stale messages.
+const LateBound = 15 * time.Minute
+
 // Job is one scheduled delivery.
 type Job struct {
 	ID      string `yaml:"id"`
@@ -38,7 +43,11 @@ type Job struct {
 	Command string `yaml:"command,omitempty"`
 	// Quiet is a command job whose run delivers nothing when the command
 	// exits 0 with no output but whitespace (ini-7k3n).
-	Quiet      bool       `yaml:"quiet,omitempty"`
+	Quiet bool `yaml:"quiet,omitempty"`
+	// RunLate is a job that still runs once when it is late by more than
+	// LateBound, however many runs it missed; without it such a job is
+	// skipped (ini-fzz5). A job stored before the field existed is false.
+	RunLate    bool       `yaml:"run_late,omitempty"`
 	Created    time.Time  `yaml:"created"`
 	LastRun    *time.Time `yaml:"last_run,omitempty"`
 	LastResult string     `yaml:"last_result,omitempty"`
@@ -180,36 +189,113 @@ func (j Job) base() time.Time {
 	return j.Created
 }
 
-// Check decides whether j runs at now. started is when this initech started:
-// a time job's due time before it was missed while initech was down, and runs
-// once with missed set; an interval job counts from the later of its last run
-// and the start, so it resumes rather than catching up. due is the due time a
-// run claims. A due time at or before the last run never fires.
-func (j Job) Check(now, started time.Time) (due time.Time, missed, fire bool) {
+// Decision is what a check of a job decides at one moment.
+type Decision struct {
+	// Due is the slot the run or skip claims (it becomes the last run), so
+	// the same slot never fires again.
+	Due time.Time
+	// Missed is a due time before this initech started.
+	Missed bool
+	// Fire is a run now; Skip is a skip now, recorded and never delivered.
+	Fire, Skip bool
+	// Late is how long ago Due was; Runs is how many slots this claims.
+	Late time.Duration
+	Runs int
+}
+
+// Decide decides what j does at now. started is when this initech started.
+//
+// A time job takes its newest due time at or before now, and an interval job
+// its newest slot (counting from the later of its last run and the start), so
+// neither ever catches up one run per check. A slot late by more than
+// LateBound is skipped, once for all the runs it covers, unless the job is
+// RunLate, which then runs once. Lateness is judged at every check, so a slot
+// slept through with initech running is late the same way as one missed while
+// it was stopped. A due time at or before the last run never fires.
+func (j Job) Decide(now, started time.Time) Decision {
+	var d Decision
 	if j.At != "" {
 		c, err := parseAt(j.At)
 		if err != nil {
-			return time.Time{}, false, false
+			return Decision{}
 		}
-		due = c.prevDue(now)
-		if due.IsZero() || !due.After(j.base()) {
-			return time.Time{}, false, false
+		due := c.prevDue(now)
+		base := j.base()
+		if due.IsZero() || !due.After(base) {
+			return Decision{}
 		}
-		return due, due.Before(started), true
+		d = Decision{Due: due, Missed: due.Before(started), Late: now.Sub(due), Runs: c.slotsSince(base, due)}
+	} else {
+		every, err := time.ParseDuration(j.Every)
+		if err != nil || every < MinInterval {
+			return Decision{}
+		}
+		from := j.base()
+		if started.After(from) {
+			from = started
+		}
+		first := from.Add(every)
+		if now.Before(first) {
+			return Decision{}
+		}
+		n := int(now.Sub(first)/every) + 1
+		newest := from.Add(time.Duration(n) * every)
+		d = Decision{Due: newest, Late: now.Sub(first), Runs: n}
 	}
-	every, err := time.ParseDuration(j.Every)
-	if err != nil || every < MinInterval {
+	if d.Late > LateBound && !j.RunLate {
+		d.Skip = true
+	} else {
+		d.Fire = true
+	}
+	return d
+}
+
+// slotsSince counts the clock's due times after base up to and including due.
+func (c clock) slotsSince(base, due time.Time) int {
+	n := 0
+	for t := due; t.After(base) && n < maxCountedSlots; n++ {
+		t = c.prevDue(t.Add(-time.Second))
+		if t.IsZero() {
+			n++
+			break
+		}
+	}
+	return n
+}
+
+// maxCountedSlots bounds the count of runs a skip names.
+const maxCountedSlots = 1000
+
+// SkipResult is a skip's last result, as cron list shows it after the slot's
+// day and time: how late it was, the bound, and how many runs it covers.
+func SkipResult(late time.Duration, runs int) string {
+	what := "runs"
+	if runs == 1 {
+		what = "run"
+	}
+	return fmt.Sprintf("skipped: %s late, allowed %s (%d %s skipped)", LateWords(late), LateWords(LateBound), runs, what)
+}
+
+// LateWords says a lateness in hours and minutes: 9h, 2h30m, 17m.
+func LateWords(d time.Duration) string {
+	d = d.Round(time.Minute)
+	h, m := int(d/time.Hour), int(d%time.Hour/time.Minute)
+	switch {
+	case h > 0 && m > 0:
+		return fmt.Sprintf("%dh%dm", h, m)
+	case h > 0:
+		return fmt.Sprintf("%dh", h)
+	}
+	return fmt.Sprintf("%dm", m)
+}
+
+// Check decides whether j runs at now (see Decide); a skip is not a run.
+func (j Job) Check(now, started time.Time) (due time.Time, missed, fire bool) {
+	d := j.Decide(now, started)
+	if !d.Fire {
 		return time.Time{}, false, false
 	}
-	from := j.base()
-	if started.After(from) {
-		from = started
-	}
-	due = from.Add(every)
-	if now.Before(due) {
-		return time.Time{}, false, false
-	}
-	return due, false, true
+	return d.Due, d.Missed, true
 }
 
 // Next is the job's next run after now, for listings.
