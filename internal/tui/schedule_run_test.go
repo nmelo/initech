@@ -519,9 +519,11 @@ func TestQuietCron_EverythingElseDeliversAsToday(t *testing.T) {
 func TestQuietCron_AMissedRunFollowsTheSameRule(t *testing.T) {
 	for _, c := range []struct{ line, want string }{
 		{"true", ""},
-		{"echo found", "(due 2026-11-04 09:30 while initech was down) $ echo found\nexit 0\nfound"},
+		{"echo found", "(due 2026-11-04 09:30 while initech was down, 1h30m late) $ echo found\nexit 0\nfound"},
 	} {
-		s, host, clk := schedRig(t, clockAt(4, 8, 0), schedule.Job{Owner: "eng1", To: "qa1", At: "09:30", Command: c.line, Quiet: true})
+		// run_late: a missed run 1h30m late runs (ini-fzz5); without it the
+		// run is skipped, for a quiet job as for any other.
+		s, host, clk := schedRig(t, clockAt(4, 8, 0), schedule.Job{Owner: "eng1", To: "qa1", At: "09:30", Command: c.line, Quiet: true, RunLate: true})
 		clk.set(clockAt(4, 11, 0))
 		back := newRigScheduler(s.root, host, clk.now)
 		back.step(clk, clockAt(4, 11, 0))
