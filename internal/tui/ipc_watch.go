@@ -62,6 +62,10 @@ var watchHandlerNow = time.Now
 // lives in window 1 and is only touched on the main goroutine; a second
 // window and the serve daemon keep none, and say so.
 func (t *TUI) handleIPCWatch(conn net.Conn, req IPCRequest) {
+	if !watchesInThisBuild(t.version) {
+		writeIPCResponse(conn, IPCResponse{Error: watchesOffLine})
+		return
+	}
 	owner := watchIdentify(t, conn)
 	now := watchHandlerNow()
 	var set WatchSetRequest
