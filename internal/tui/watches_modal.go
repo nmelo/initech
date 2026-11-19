@@ -402,7 +402,31 @@ func watchesColumns(inner int, rows []watchRow) [wcCount]int {
 	rest := max(inner-fixed, 2)
 	c[wcWaits] = rest * watchesGrid[wcWaits] / (watchesGrid[wcWaits] + watchesGrid[wcWhy])
 	c[wcWhy] = rest - c[wcWaits]
+	// In a narrow window the floors can add up to more than the table: the
+	// widest column gives up a cell at a time until they fit, and its cells
+	// clip with "…", so nothing crosses the border.
+	for watchColsSum(c[:]) > inner {
+		widest := 0
+		for i := range c {
+			if c[i] > c[widest] {
+				widest = i
+			}
+		}
+		if c[widest] == 0 {
+			break
+		}
+		c[widest]--
+	}
 	return c
+}
+
+// watchColsSum is the columns' total width.
+func watchColsSum(xs []int) int {
+	n := 0
+	for _, x := range xs {
+		n += x
+	}
+	return n
 }
 
 // The window's margin from the pane's edges, and its padding inside the

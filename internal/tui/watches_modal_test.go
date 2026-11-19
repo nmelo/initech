@@ -774,3 +774,44 @@ func TestWatchesModal_KeysReachNoPaneWhileOpen(t *testing.T) {
 		t.Error("the twin: with the window closed, the key did not reach the pane, so the check above proves nothing")
 	}
 }
+
+// lead1's read: at 30 to 52 columns the table crossed the window's right
+// border. At every width from 20 to 60, every row inside the window ends in
+// its border, and nothing is drawn past it.
+func TestWatchesModal_NothingCrossesTheBorderAtAnyWidth(t *testing.T) {
+	ws, world := wmFixture()
+	for sw := 20; sw <= 60; sw++ {
+		tu, s := wmScreen(t)
+		s.SetSize(sw, 30)
+		s.Clear()
+		tu.drawWatchesModal(s, buildWatchesView(ws, world, notStarting, wmT0), wmT0)
+		boxW := watchesBoxWidth(sw)
+		x0 := (sw - boxW) / 2
+		right := x0 + boxW - 1
+		_, ty := wmFind(t, s, "watches")
+		_, ky := wmFind(t, s, "esc close")
+		for y := ty + 1; y <= ky; y++ {
+			if r, _, _, _ := s.GetContent(right, y); r != '│' {
+				t.Errorf("width %d, row %d: the right border is %q: %q", sw, y, r, wmRowText(s, y))
+				break
+			}
+			for x := right + 1; x < sw; x++ {
+				if r, _, _, _ := s.GetContent(x, y); r != ' ' {
+					t.Errorf("width %d, row %d: %q drawn past the border at column %d", sw, y, r, x)
+					break
+				}
+			}
+		}
+	}
+}
+
+// The columns never add up to more than the table, at any width.
+func TestWatchesColumns_FitTheTable(t *testing.T) {
+	ws, world := wmFixture()
+	rows := buildWatchesView(ws, world, notStarting, wmT0).rows()
+	for inner := 0; inner <= 330; inner++ {
+		if got := watchColsSum(func() []int { c := watchesColumns(inner, rows); return c[:] }()); got > inner {
+			t.Errorf("inner %d: columns add up to %d", inner, got)
+		}
+	}
+}
