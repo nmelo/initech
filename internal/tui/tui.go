@@ -583,7 +583,8 @@ type TUI struct {
 	paceWaitReads paceWaitCommentState
 	// watchComments is each watched bead's comments for its comment
 	// watches, read again only when its comment count rises (ini-20r2).
-	// Bead poller goroutine only.
+	// Main goroutine: assigned whole, never changed in place, so the poller
+	// may read a published map.
 	watchComments map[string]cachedComments
 	// watchBeads is the newest answered bead poll, by id, for the watches'
 	// World (ini-20r2); nil until one answers. Main goroutine.

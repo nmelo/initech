@@ -394,37 +394,36 @@ func (w *cachedCommentsWorld) Comments(id string) ([]progress.Comment, bool) {
 	return cs, ok
 }
 
-// readWatchComments reads, off the main goroutine, the comments of each
-// watched bead that has none read yet or whose comment_count rose since the
-// last read, each read bounded by beadPollTimeout. A failed read keeps what
-// was read before and is tried at the next pass. Bead poller goroutine only.
-func (t *TUI) readWatchComments(watched map[string]bool, beads []bdBead) {
-	if t.watchComments == nil {
-		t.watchComments = map[string]cachedComments{}
-	}
+// readWatchComments returns the comment cache for the watched beads: prev's
+// entry kept for a bead whose comment_count has not risen since its last good
+// read, a fresh bd comments read (bounded by beadPollTimeout) for one that
+// rose or was never read, and nothing for an unwatched bead. A failed read
+// keeps prev's comments, marked not ok, and is tried at the next poll. It
+// never changes prev and touches no TUI state: the poll calls it off the main
+// goroutine and the main goroutine publishes the result (ini-20r2: the
+// deadline timer's pass reads the cache on the main goroutine at any time).
+func readWatchComments(dir string, watched map[string]bool, beads []bdBead, prev map[string]cachedComments) map[string]cachedComments {
+	out := make(map[string]cachedComments, len(watched))
 	for _, b := range beads {
 		if !watched[b.ID] {
 			continue
 		}
-		prev, read := t.watchComments[b.ID]
-		if read && prev.ok && b.CommentCount <= prev.count {
+		old, read := prev[b.ID]
+		if read && old.ok && b.CommentCount <= old.count {
+			out[b.ID] = old
 			continue
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), beadPollTimeout)
-		cs, err := bdBeadComments(ctx, t.projectRoot, b.ID)
+		cs, err := bdBeadComments(ctx, dir, b.ID)
 		cancel()
 		if err != nil {
-			LogWarn("watch", "comments not read; the bead's comment watches wait for the next pass", "bead", progress.Clean(b.ID))
-			t.watchComments[b.ID] = cachedComments{count: prev.count, cs: prev.cs, ok: false}
+			LogWarn("watch", "comments not read; the bead's comment watches wait for the next poll", "bead", progress.Clean(b.ID))
+			out[b.ID] = cachedComments{count: old.count, cs: old.cs, ok: false}
 			continue
 		}
-		t.watchComments[b.ID] = cachedComments{count: b.CommentCount, cs: cs, ok: true}
+		out[b.ID] = cachedComments{count: b.CommentCount, cs: cs, ok: true}
 	}
-	for id := range t.watchComments {
-		if !watched[id] {
-			delete(t.watchComments, id)
-		}
-	}
+	return out
 }
 
 // noteWatchBeads keeps the newest answered bead poll for the watches' World;

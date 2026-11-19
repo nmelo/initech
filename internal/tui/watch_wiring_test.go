@@ -3,6 +3,8 @@ package tui
 import (
 	"context"
 	"path/filepath"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -166,4 +168,70 @@ func TestWatchWiring_NoStoreArmsNothingAndJudgesNothing(t *testing.T) {
 	if fa.armed != 0 {
 		t.Fatalf("armed a timer with no store")
 	}
+}
+
+// The deadline timer's pass runs on the main goroutine at any moment, so it
+// may overlap a bead poll reading comments on the poller goroutine. The
+// comment cache must be touched by one goroutine only (a security review of
+// 5e92bea). This test overlaps the two on a real main loop; under -race (the
+// rigs' race job) the old code reports a data race on watchComments.
+func TestWatchWiring_ATimerPassDuringAPollReadingCommentsDoesNotRace(t *testing.T) {
+	stubAfter(t)
+	tu, _ := wiredTUI(t, wcT0)
+	if _, err := tu.watches.Add(watch.Watch{Owner: "eng4", Kind: watch.KindBeadComment, Why: "verdict", Deadline: wcT0.Add(time.Hour),
+		Params: map[string]string{"bead": "ini-a", "author": "qa2"}}, wcT0); err != nil {
+		t.Fatal(err)
+	}
+	var count atomic.Int32
+	stubBeads(t, func() []bdBead {
+		return []bdBead{{ID: "ini-a", Status: "in_progress", CommentCount: int(count.Add(1))}}
+	})
+	orig := bdBeadComments
+	bdBeadComments = func(context.Context, string, string) ([]progress.Comment, error) {
+		return []progress.Comment{{Author: "eng1", CreatedAt: wcT0}}, nil
+	}
+	t.Cleanup(func() { bdBeadComments = orig })
+	watchMainLoop(t, tu)
+	const n = 40
+	var wg sync.WaitGroup
+	var polled atomic.Bool
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		defer polled.Store(true)
+		for i := 0; i < n; i++ {
+			tu.pollBeadsOnce(wcT0.Add(time.Duration(i) * time.Second))
+		}
+	}()
+	// Timer passes for as long as the polls run, so the two overlap.
+	for i := 0; !polled.Load(); i++ {
+		tu.runOnMain(func() { tu.judgeWatchPass(wcT0.Add(time.Duration(i%n) * time.Second)) })
+	}
+	wg.Wait()
+}
+
+// watchMainLoop gives the fixture the one main goroutine Run gives a real
+// TUI, so runOnMain serializes as it does in production; stopped at cleanup.
+// (A copy of suspend_fate_rig_test.go's startMainLoop, which that file's
+// build constraint keeps off Windows.)
+func watchMainLoop(t *testing.T, tu *TUI) {
+	t.Helper()
+	tu.ipcCh = make(chan ipcAction, 32)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for {
+			select {
+			case op := <-tu.ipcCh:
+				op.fn()
+				close(op.done)
+			case <-tu.quitCh:
+				return
+			}
+		}
+	}()
+	t.Cleanup(func() {
+		tu.requestQuit()
+		<-done
+	})
 }

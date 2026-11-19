@@ -362,19 +362,17 @@ func TestWatchCheck_CommentsAreReadOnlyWhenTheCountRose(t *testing.T) {
 		return nil, nil
 	}
 	t.Cleanup(func() { bdBeadComments = orig })
-	tu := &TUI{}
 	watched := map[string]bool{"ini-a": true}
-	tu.readWatchComments(watched, []bdBead{{ID: "ini-a", CommentCount: 2}})
-	tu.readWatchComments(watched, []bdBead{{ID: "ini-a", CommentCount: 2}})
+	c := readWatchComments("", watched, []bdBead{{ID: "ini-a", CommentCount: 2}}, nil)
+	c = readWatchComments("", watched, []bdBead{{ID: "ini-a", CommentCount: 2}}, c)
 	if reads != 1 {
 		t.Fatalf("read %d times with no new comment, want once (the first)", reads)
 	}
-	tu.readWatchComments(watched, []bdBead{{ID: "ini-a", CommentCount: 3}})
+	c = readWatchComments("", watched, []bdBead{{ID: "ini-a", CommentCount: 3}}, c)
 	if reads != 2 {
 		t.Fatalf("read %d times after the count rose, want 2", reads)
 	}
-	tu.readWatchComments(map[string]bool{}, []bdBead{{ID: "ini-a", CommentCount: 9}})
-	if reads != 2 {
+	if c = readWatchComments("", map[string]bool{}, []bdBead{{ID: "ini-a", CommentCount: 9}}, c); reads != 2 || len(c) != 0 {
 		t.Fatalf("read an unwatched bead's comments")
 	}
 }
