@@ -215,14 +215,21 @@ func TestFN77Rig_OverlayDotClickFromAChildWindowStillHidesAnAgent(t *testing.T) 
 	}, 30*time.Second); !ok {
 		t.Fatalf("window 2 never rendered the agents it owns\n%s", nineISXScreen(w2emu))
 	}
+	// eng1 must hold a row in window 2's agents box to have a dot to click.
+	// The rig's agents are shells with no bead, and an idle agent with no
+	// bead is a count, not a row; the box takes a new state after 3 seconds
+	// (ini-xhf7). So eng1 is made to really work: a print loop in its own
+	// shell (the pane window 2 focuses) keeps it running, through the real
+	// state path. The loop ends with the rig. The Enter first ends the line
+	// the "n" above left in the shell.
+	w2pty.Write([]byte("\rwhile :; do echo work; sleep 1; done\r"))
 
 	// Find the OVERLAY's dot for eng1: the black-circle glyph only the
 	// overlay draws, on the same row as the agent name, so a pane's own ribbon
 	// (which can also say "eng1") is never mistaken for it. Wait until the dot
-	// has held one cell for longer than the overlay's click settle: the "n"
-	// above was typed into eng1's shell, so eng1 runs for a moment and moves
-	// to the working column, and a dot cell that just changed agent swallows
-	// a click by design (ini-gt7w).
+	// has held one cell for longer than the overlay's click settle: eng1's
+	// row appears once its running state settles, and a dot cell that just
+	// changed agent swallows a click by design (ini-gt7w).
 	col, row, ok := fn77AwaitSettledOverlayDot(w2emu, "eng1", overlayClickSettle+500*time.Millisecond, 20*time.Second)
 	if !ok {
 		t.Fatalf("could not find the overlay dot for eng1 in window 2's own screen\n%s",
