@@ -139,7 +139,7 @@ func panelAge(since, now time.Time) string {
 
 // panelSettleAfter holds the box's order and times through idle/running
 // flicker. Transitions into and out of a prompt are immediate.
-const panelSettleAfter = time.Minute
+const panelSettleAfter = 3 * time.Second
 
 // panelSettledState is what the agents box remembers of one agent: the state
 // word it shows, when that state began, and a newer word not yet held long

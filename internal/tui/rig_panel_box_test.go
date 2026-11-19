@@ -178,12 +178,12 @@ func TestAgentsBox_TheOrderHoldsUntilASettledChange(t *testing.T) {
 	if rows := b.draw(panelNow.Add(10*time.Second), []panelAgent{z, a}); !order(rows) {
 		t.Fatal("a tick with no change re-sorted")
 	}
-	// alpha goes to the background; not settled at 20s, so nothing moves.
+	// alpha goes to the background; held 2s, not settled, so nothing moves.
 	a.State, a.Since = StateBackground, panelNow.Add(15*time.Second)
-	if rows := b.draw(panelNow.Add(20*time.Second), []panelAgent{z, a}); !order(rows) || !strings.Contains(rows[rowOf(rows, "alpha")], "running") {
+	if rows := b.draw(panelNow.Add(17*time.Second), []panelAgent{z, a}); !order(rows) || !strings.Contains(rows[rowOf(rows, "alpha")], "running") {
 		t.Fatalf("an unsettled change moved alpha:\n%s", strings.Join(rows, "\n"))
 	}
-	// Settled after 60s: alpha's background began at +15s, so zulu is now
+	// Settled after 3s: alpha's background began at +15s, so zulu is now
 	// the longest in its state.
 	rows := b.draw(panelNow.Add(80*time.Second), []panelAgent{z, a})
 	if order(rows) || !strings.Contains(rows[rowOf(rows, "alpha")], "background") {
@@ -192,9 +192,9 @@ func TestAgentsBox_TheOrderHoldsUntilASettledChange(t *testing.T) {
 }
 
 // TestAgentsBox_TimeInStateSurvivesRedrawsAndFlicker is AC4: the time grows
-// across redraws, a flicker under a minute does not reset it, a change that
-// holds a minute does and counts from when it began, and a prompt settles at
-// once.
+// across redraws, a flicker under the 3-second hold does not reset it, a
+// change that holds 3 seconds does and counts from when it began, and a prompt
+// settles at once.
 func TestAgentsBox_TimeInStateSurvivesRedrawsAndFlicker(t *testing.T) {
 	b := newBoxPanel(t, 160, 8)
 	a := panelAgent{Name: "eng1", Key: "eng1", Alive: true, State: StateIdle, Since: ago(40 * time.Minute), Bead: "ini-b2", BeadStatus: "in_progress"}
@@ -205,8 +205,8 @@ func TestAgentsBox_TimeInStateSurvivesRedrawsAndFlicker(t *testing.T) {
 	if rows := b.draw(panelNow, []panelAgent{a}); !cell(rows, "idle", "40m") {
 		t.Fatalf("first draw:\n%s", strings.Join(rows, "\n"))
 	}
-	// A 5-second run between two idles: the raw state flickers.
-	a.State, a.Since = StateRunning, panelNow.Add(115*time.Second)
+	// A 2-second run between two idles: the raw state flickers.
+	a.State, a.Since = StateRunning, panelNow.Add(118*time.Second)
 	if rows := b.draw(panelNow.Add(2*time.Minute), []panelAgent{a}); !cell(rows, "idle", "42m") {
 		t.Fatalf("a flicker reset the time:\n%s", strings.Join(rows, "\n"))
 	}
@@ -214,7 +214,7 @@ func TestAgentsBox_TimeInStateSurvivesRedrawsAndFlicker(t *testing.T) {
 	if rows := b.draw(panelNow.Add(3*time.Minute), []panelAgent{a}); !cell(rows, "idle", "43m") {
 		t.Fatalf("back to idle, the time was not kept:\n%s", strings.Join(rows, "\n"))
 	}
-	// Running from +3m, held past a minute: settled, counted from +3m.
+	// Running from +3m, held past 3 seconds: settled, counted from +3m.
 	a.State, a.Since = StateRunning, panelNow.Add(3*time.Minute)
 	b.draw(panelNow.Add(3*time.Minute+30*time.Second), []panelAgent{a})
 	if rows := b.draw(panelNow.Add(5*time.Minute), []panelAgent{a}); !cell(rows, "running", "2m") {
