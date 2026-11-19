@@ -420,8 +420,18 @@ func TestWatchWiring_TheWatchTickStartsOnlyInWindowOneWithoutBd(t *testing.T) {
 func TestWatchWiring_BdSilentPastTheBoundEndsOnceAndBdComingBackChangesNothing(t *testing.T) {
 	stubAfter(t)
 	tu, path := wiredTUI(t, wcT0)
-	var told []string
-	tu.onWatchDropped = func(id string) { told = append(told, id) }
+	// Super hears of the miss from delivery's MISSED rule (ini-kbpo): the
+	// mark is stored with the ending, once.
+	toldSuper := func(id string) bool {
+		for _, w := range tu.watches.Snapshot(wcT0) {
+			if w.ID == id {
+				// Told of the miss, or (this rig has no eng4 pane, so the
+				// owner reads gone) handed the line itself: once either way.
+				return w.Delivery.SuperToldMissed != w.Delivery.ToSuper
+			}
+		}
+		return false
+	}
 	up, status := true, "in_progress"
 	orig := bdListBeads
 	bdListBeads = func(context.Context, string) ([]bdBead, error) {
@@ -439,12 +449,12 @@ func TestWatchWiring_BdSilentPastTheBoundEndsOnceAndBdComingBackChangesNothing(t
 	}
 	up = false
 	tu.pollBeadsOnce(wcT0.Add(11*time.Minute + time.Second))
-	if got := storedState(t, path, id); got != watch.Missed || len(told) != 1 {
-		t.Fatalf("bd silent past the bound: %s, super told %v; want missed, told once", got, told)
+	if got := storedState(t, path, id); got != watch.Missed || !toldSuper(id) {
+		t.Fatalf("bd silent past the bound: %s, super told %v; want missed, told once", got, toldSuper(id))
 	}
 	up, status = true, "ready_for_qa"
 	tu.pollBeadsOnce(wcT0.Add(12 * time.Minute))
-	if got := storedState(t, path, id); got != watch.Missed || len(told) != 1 {
-		t.Fatalf("after bd came back: %s, told %v; want it left missed, nothing re-sent", got, told)
+	if got := storedState(t, path, id); got != watch.Missed || !toldSuper(id) {
+		t.Fatalf("after bd came back: %s, told %v; want it left missed, nothing re-sent", got, toldSuper(id))
 	}
 }

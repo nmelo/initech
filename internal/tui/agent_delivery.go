@@ -250,7 +250,7 @@ func (p *Pane) drainAgentQueue() {
 			return
 		}
 		p.mu.Lock()
-		if !p.alive || p.suspended || p.dnd || len(p.messageQueue) == 0 {
+		if !p.alive || p.suspended || p.dnd || len(p.messageQueue) == 0 || p.messageQueue[0].watchPending {
 			p.mu.Unlock()
 			p.sendMu.Unlock()
 			return

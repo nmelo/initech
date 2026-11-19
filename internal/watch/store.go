@@ -208,6 +208,41 @@ func (s *Store) MarkDelivered(id string, at time.Time) error {
 	return nil
 }
 
+// MarkSuperToldMissed records, before the line goes out, that the owner's
+// super is told of id's MISSED ending, so it is told once across a restart.
+// A failed write returns the error and nothing is sent.
+func (s *Store) MarkSuperToldMissed(id string, at time.Time) error {
+	w := s.find(id)
+	if w == nil {
+		return fmt.Errorf("no watch %s", id)
+	}
+	before, dirty := *w, s.dirty
+	w.Delivery.SuperToldMissed = true
+	if err := s.flush(); err != nil {
+		*w = before
+		s.dirty = dirty
+		return fmt.Errorf("%s: %s could not be written: %v", id, filepath.Base(s.path), err)
+	}
+	return nil
+}
+
+// MarkDropped records that id's handed line was dropped undelivered, and
+// why. Only a handed, undelivered line can be dropped.
+func (s *Store) MarkDropped(id, why string, at time.Time) error {
+	w := s.find(id)
+	if w == nil || w.Delivery.Handed.IsZero() || !w.Delivery.Delivered.IsZero() {
+		return fmt.Errorf("%s has no handed line to drop", id)
+	}
+	if why == "" {
+		why = "dropped"
+	}
+	w.Delivery.Dropped = why
+	if err := s.flush(); err != nil {
+		s.noteFailure(at)
+	}
+	return nil
+}
+
 // MarkSuperToldHeld records that the owner's super was told id's line is
 // held, so it is told once.
 func (s *Store) MarkSuperToldHeld(id string, at time.Time) error {

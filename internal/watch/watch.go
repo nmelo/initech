@@ -76,6 +76,12 @@ type Delivery struct {
 	Delivered     time.Time `yaml:"delivered,omitempty"`
 	ToSuper       bool      `yaml:"to_super,omitempty"`
 	SuperToldHeld bool      `yaml:"super_told_held,omitempty"`
+	// SuperToldMissed is written before the owner's super is told of a
+	// MISSED ending, so a restart never tells it twice.
+	SuperToldMissed bool `yaml:"super_told_missed,omitempty"`
+	// Dropped is why initech dropped the handed line (its held mail ended
+	// undelivered); a dropped line never reads delivered.
+	Dropped string `yaml:"dropped,omitempty"`
 }
 
 // IsZero lets the file leave out an empty delivery.
@@ -99,7 +105,7 @@ func (w *Watch) historyFrom() time.Time {
 		return w.Ended
 	case !w.Delivery.Delivered.IsZero():
 		return w.Delivery.Delivered
-	case w.Delivery.ToSuper:
+	case w.Delivery.ToSuper, w.Delivery.Dropped != "":
 		return w.Delivery.Handed
 	}
 	return time.Time{}

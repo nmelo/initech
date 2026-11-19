@@ -467,8 +467,11 @@ type Pane struct {
 	// sendReceipt is the receipt of the queued message being re-sent, so a
 	// hold inside the send keeps it (ini-yjcy). Under mu, set with sendFrom.
 	sendReceipt string
-	sendWaited  bool // a caller waits on the verdict of the send being typed (setSendWaited)
-	heldTyping  *QueuedMessage
+	// readyWaiters run once the startup gate opens (whenReady, ini-kbpo).
+	// Under mu.
+	readyWaiters map[string]func()
+	sendWaited   bool // a caller waits on the verdict of the send being typed (setSendWaited)
+	heldTyping   *QueuedMessage
 	// boxWaitSince is when an agent pane's input box began to read neither
 	// empty, busy, nor at a dialog; zero while it does (emptyBoxHoldBound).
 	// Under mu.
@@ -1507,6 +1510,7 @@ func (p *Pane) awaitStartupSettled() error {
 		p.mu.Lock()
 		p.startupSettled = true
 		p.mu.Unlock()
+		p.runReadyWaiters() // a watch line waiting in STARTING (ini-kbpo)
 		return nil
 	}
 	return fmt.Errorf("%w: %s started %s ago and has not gone quiet for %s; resend when it is ready",

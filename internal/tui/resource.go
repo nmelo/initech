@@ -473,6 +473,11 @@ type QueuedMessage struct {
 	// operator, a peer): the held file keeps it, so a message that cannot be
 	// delivered after a restart is said to its sender (ini-8rkg).
 	From string
+	// WatchIDs: the watch endings this watch line carries (ini-kbpo).
+	WatchIDs []string
+	// watchPending holds a watch line in the queue, untyped, until its
+	// MarkHanded is on disk; drains stop at it. Never in the held file.
+	watchPending bool
 }
 
 // wireSuspendResume gives a pane its resume-on-message trigger (ini-g7fl):
@@ -588,8 +593,8 @@ func (p *Pane) PopQueuedMessage() (QueuedMessage, bool) {
 	defer p.heldChanged() // the held file follows every change (ini-8rkg)
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if len(p.messageQueue) == 0 {
-		return QueuedMessage{}, false
+	if len(p.messageQueue) == 0 || p.messageQueue[0].watchPending {
+		return QueuedMessage{}, false // a watch line waits for its MarkHanded (ini-kbpo)
 	}
 	m := p.messageQueue[0]
 	p.messageQueue = p.messageQueue[1:]

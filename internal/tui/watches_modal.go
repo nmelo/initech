@@ -274,10 +274,6 @@ func (t *TUI) openWatchesModal() {
 		t.noticeMainWindowOnly("The watches modal")
 		return
 	}
-	if !watchesInThisBuild(t.version) {
-		t.cmd.error, t.cmd.errorExpiry = watchesOffLine, time.Time{}
-		return
-	}
 	t.watchesM = watchesModal{active: true}
 }
 

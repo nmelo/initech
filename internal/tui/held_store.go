@@ -50,6 +50,10 @@ type heldEntry struct {
 	Released *time.Time `yaml:"released,omitempty"`
 	From     string     `yaml:"from,omitempty"`
 	State    string     `yaml:"state"`
+	// WatchIDs names the watch endings a watch line carries (ini-kbpo), so
+	// a line held before a stop is adopted, never sent twice. Optional:
+	// the file stays version 1.
+	WatchIDs []string `yaml:"watch_ids,omitempty"`
 }
 
 type heldFileBody struct {
@@ -71,7 +75,7 @@ func heldKindOf(m QueuedMessage) string {
 }
 
 func heldEntryOf(pane string, m QueuedMessage, state string) heldEntry {
-	e := heldEntry{Receipt: m.Receipt, Pane: pane, Text: m.Text, Enter: m.Enter, Time: m.Time, Kind: heldKindOf(m), From: m.From, State: state}
+	e := heldEntry{Receipt: m.Receipt, Pane: pane, Text: m.Text, Enter: m.Enter, Time: m.Time, Kind: heldKindOf(m), From: m.From, State: state, WatchIDs: m.WatchIDs}
 	if !m.Released.IsZero() {
 		r := m.Released
 		e.Released = &r
@@ -376,7 +380,7 @@ func requeueHeld(entries []heldEntry, panes func(string) *Pane, now time.Time) [
 			lines = append(lines, heldLine{e.From, fmt.Sprintf("held message to %s since %s was not delivered: %s no longer exists", e.Pane, since, e.Pane)})
 			continue
 		}
-		m := QueuedMessage{Receipt: e.Receipt, Text: e.Text, Enter: e.Enter, Time: e.Time, From: e.From}
+		m := QueuedMessage{Receipt: e.Receipt, Text: e.Text, Enter: e.Enter, Time: e.Time, From: e.From, WatchIDs: e.WatchIDs}
 		if m.Receipt == "" {
 			// Held by an initech that minted none: one now, so it can be
 			// withdrawn and watched (ini-yjcy). held.yaml stays version 1.

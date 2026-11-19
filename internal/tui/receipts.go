@@ -85,6 +85,10 @@ func (t *TUI) publishWatchedReceipts(now time.Time) {
 			if w.State == watch.Waiting && (w.Kind == watch.KindSendDelivered || w.Kind == watch.KindSendHeld) && w.Params["receipt"] != "" {
 				set[w.Params["receipt"]] = true
 			}
+			// A handed watch line until it is delivered (lead1, ini-kbpo).
+			if d := w.Delivery; d.Receipt != "" && d.Delivered.IsZero() && d.Dropped == "" {
+				set[d.Receipt] = true
+			}
 		}
 	}
 	watchedReceipts.Store(&set)

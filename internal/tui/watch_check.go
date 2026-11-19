@@ -574,8 +574,10 @@ func (t *TUI) judgeWatchPass(now time.Time) {
 	if t.watches == nil {
 		return
 	}
-	judgeWatches(t.watches, t.watchWorld(now), t.onWatchDropped)
-	t.publishWatchedReceipts(now)
+	// Super hears of a miss from delivery's MISSED rule, the one source
+	// (ini-kbpo), so the judge's hook is not wired.
+	judgeWatches(t.watches, t.watchWorld(now), nil)
+	t.deliverWatches(now)
 }
 
 // armWatchTimer sets the one timer at the nearest waiting deadline after

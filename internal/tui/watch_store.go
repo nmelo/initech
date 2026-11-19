@@ -18,7 +18,11 @@ const watchesFile = "watches.yaml"
 func (t *TUI) loadWatches(root string, now time.Time) {
 	s, note := watch.Open(filepath.Join(root, ".initech", watchesFile), now)
 	t.watches = s
-	t.publishWatchedReceipts(now) // the receipts its send watches keep (ini-yjcy)
+	// Watches 2C (ini-kbpo): receipts tell delivery what became of a line;
+	// held mail is back already, so the files say where each line is.
+	onReceipt = t.watchReceiptChanged
+	t.resolveHandedAtStart(now)
+	t.deliverWatches(now) // also publishes the receipts to keep (ini-yjcy)
 	// A rig without bd never polls: the deadline timer is armed here (ini-20r2).
 	t.armWatchTimer(now)
 	if note != "" {
