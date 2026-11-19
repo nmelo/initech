@@ -2,6 +2,7 @@ import InitechCore
 import SwiftUI
 import UIKit
 import UserNotifications
+import os
 
 /// InitechApp is the phone and iPad client of initech's app service on the Mac.
 @main
@@ -19,6 +20,7 @@ struct InitechApp: App {
     private static var authenticator: Authenticator {
         #if DEBUG
         if UITestHooks.pairing != nil { return AlwaysYes() }
+        if UITestHooks.unlocked { return LaunchUnlocked(then: BiometricAuthenticator()) }
         #endif
         return BiometricAuthenticator()
     }
@@ -229,5 +231,32 @@ struct FixedPairingStore: PairingStore {
 
 struct AlwaysYes: Authenticator {
     func authenticate(reason: String) async -> Bool { true }
+}
+
+extension UITestHooks {
+    /// unlocked is `-debug-unlocked`: a debug build started from the Mac over
+    /// the cable opens without Face ID, with the pairing the device already
+    /// holds, so a change can be looked at without unlocking by hand. Only that
+    /// launch is skipped (LaunchUnlocked). The app opened from its icon carries
+    /// no argument and asks as always. Release builds do not contain this.
+    static var unlocked: Bool { ProcessInfo.processInfo.arguments.contains("-debug-unlocked") }
+
+    /// screen is `-debug-screen <name>`: the screen such a launch opens on.
+    static var screen: DebugScreen? { DebugScreen.parse(ProcessInfo.processInfo.arguments) }
+}
+
+/// LaunchUnlocked answers the first ask of a launch with yes, and hands every
+/// later one to the real authenticator: after a trip to the background the app
+/// asks for Face ID again.
+final class LaunchUnlocked: Authenticator, Sendable {
+    private let first = OSAllocatedUnfairLock(initialState: FirstAsk())
+    private let real: Authenticator
+
+    init(then real: Authenticator) { self.real = real }
+
+    func authenticate(reason: String) async -> Bool {
+        if first.withLock({ $0.take() }) { return true }
+        return await real.authenticate(reason: reason)
+    }
 }
 #endif

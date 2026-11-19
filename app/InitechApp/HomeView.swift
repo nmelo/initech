@@ -64,6 +64,9 @@ struct MainView: View {
             home.startFeed()
             opened = true
             if let route = inbox.tapped { await open(route) }
+            #if DEBUG
+            if let screen = UITestHooks.screen { open(debug: screen) }
+            #endif
         }
         .onChange(of: inbox.tapped) { _, route in
             if opened, let route { Task { await open(route) } }
@@ -115,6 +118,21 @@ extension MainView {
         }
     }
 }
+
+#if DEBUG
+extension MainView {
+    /// open(debug:) takes a debug launch to the screen it named.
+    func open(debug screen: DebugScreen) {
+        switch screen {
+        case .rigs: showRigs = true
+        case .blockers: showBlockers = true
+        case .progress: showProgress = true
+        case .about: showAbout = true
+        case let .pane(rig, pane): home.open(PaneRef(rig: rig, pane: pane))
+        }
+    }
+}
+#endif
 
 /// HomeList is his pinned panes in his order; rename by swipe, reorder in edit mode.
 struct HomeList: View {
