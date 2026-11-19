@@ -70,7 +70,7 @@ type IPCRequest struct {
 	Detail      bool     `json:"detail,omitempty"`       // list: also read each pane's footer and dialog (status --json).
 	ForSec      int      `json:"for_sec,omitempty"`      // dnd on: end after this many seconds, not at turn end.
 	UntilOff    bool     `json:"until_off,omitempty"`    // dnd on: hold through turn ends until dnd off (ini-pt3j).
-	From        string   `json:"from,omitempty"`         // send: the sending agent, or "@operator"; none from an older CLI.
+	From        string   `json:"from,omitempty"`         // send: the sending agent, "@outside" (a CLI send outside any pane), or "@operator" (the companion, a keystroke outside a pane); none from an older CLI.
 	Items       []string `json:"items,omitempty"`        // strip: the pane's list, in order; none clears it.
 	Urgent      bool     `json:"urgent,omitempty"`       // send --urgent: super breaks do-not-disturb.
 }

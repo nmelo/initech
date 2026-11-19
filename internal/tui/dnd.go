@@ -24,11 +24,16 @@ const (
 	dndIdleNotice = "pane is idle; do-not-disturb ends at turn end"
 )
 
-// operatorSender is the sender name of a send run outside any pane: the
-// operator's own. "@" is not a valid role name, so no agent is named this.
+// operatorSender is the sender name of the operator's own hand: typing and
+// pastes into a pane, an inbox reply made in the TUI, the web companion
+// (which signs in as the operator), and initech keystroke run outside any
+// pane. Do-not-disturb lets it through. A CLI send run outside any pane is
+// outsideSender, not this (ini-slqv). "@" is not a valid role name, so no
+// agent is named this.
 const operatorSender = "@operator"
 
-// OperatorSender is operatorSender for the CLI, which stamps it.
+// OperatorSender is operatorSender for the CLI and the companion, which
+// stamp it on a keystroke outside a pane and on the companion's sends.
 const OperatorSender = operatorSender
 
 // outsideSender is the sender name of a send run outside any pane by the
