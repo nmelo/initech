@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"sync"
 	"sync/atomic"
@@ -234,4 +235,181 @@ func watchMainLoop(t *testing.T, tu *TUI) {
 		tu.requestQuit()
 		<-done
 	})
+}
+
+// lead1 (a): the bead reaches its status 3 s before the deadline, after the
+// last poll; the timer's pass at the deadline sees the old poll and must not
+// miss; the next poll fires it at the bead's own time.
+func TestWatchWiring_ATimerOnAnOldPollDoesNotMissAStatusReachedInTime(t *testing.T) {
+	fa := stubAfter(t)
+	tu, path := wiredTUI(t, wcT0)
+	status, updated := "in_progress", wcT0
+	stubBeads(t, func() []bdBead { return []bdBead{{ID: "ini-a", Status: status, UpdatedAt: updated}} })
+	tu.pollBeadsOnce(wcT0)
+	id, err := tu.watches.Add(watch.Watch{Owner: "eng4", Kind: watch.KindBeadStatus, Why: "qa", Deadline: wcT0.Add(time.Minute),
+		Params: map[string]string{"bead": "ini-a", "status": "ready_for_qa"}}, wcT0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tu.pollBeadsOnce(wcT0.Add(50 * time.Second))
+	status, updated = "ready_for_qa", wcT0.Add(57*time.Second)
+	// A real AfterFunc fires a moment after its duration.
+	watchNow = func() time.Time { return wcT0.Add(time.Minute + time.Millisecond) }
+	t.Cleanup(func() { watchNow = time.Now })
+	fa.f() // the timer at the deadline, on the 50 s poll
+	if got := storedState(t, path, id); got != watch.Waiting {
+		t.Fatalf("the timer ended it %s on a poll read before the deadline", got)
+	}
+	tu.pollBeadsOnce(wcT0.Add(65 * time.Second))
+	if got := storedState(t, path, id); got != watch.Fired {
+		t.Fatalf("after the next poll: %s, want fired (reached at 57 s)", got)
+	}
+}
+
+// lead1 (b): bd down across the deadline: no miss on the old poll; the
+// answered poll after it judges by the evidence time.
+func TestWatchWiring_BdDownAcrossTheDeadlineWaitsForAnAnswer(t *testing.T) {
+	stubAfter(t)
+	tu, path := wiredTUI(t, wcT0)
+	up := true
+	status, updated := "in_progress", wcT0
+	orig := bdListBeads
+	bdListBeads = func(context.Context, string) ([]bdBead, error) {
+		if !up {
+			return nil, context.DeadlineExceeded
+		}
+		return []bdBead{{ID: "ini-a", Status: status, UpdatedAt: updated}}, nil
+	}
+	t.Cleanup(func() { bdListBeads = orig })
+	tu.pollBeadsOnce(wcT0)
+	id, err := tu.watches.Add(watch.Watch{Owner: "eng4", Kind: watch.KindBeadStatus, Why: "qa", Deadline: wcT0.Add(time.Minute),
+		Params: map[string]string{"bead": "ini-a", "status": "ready_for_qa"}}, wcT0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	up = false
+	tu.pollBeadsOnce(wcT0.Add(70 * time.Second))
+	if got := storedState(t, path, id); got != watch.Waiting {
+		t.Fatalf("bd down: %s, want still waiting", got)
+	}
+	up, status, updated = true, "ready_for_qa", wcT0.Add(40*time.Second)
+	tu.pollBeadsOnce(wcT0.Add(90 * time.Second))
+	if got := storedState(t, path, id); got != watch.Fired {
+		t.Fatalf("bd back: %s, want fired at the 40 s evidence", got)
+	}
+}
+
+// lead1 (c): a deadline watch kept across a restart, in a rig the bead poll
+// never runs in, still fires: loading the store arms the timer.
+func TestWatchWiring_LoadingTheStoreArmsTheTimer(t *testing.T) {
+	fa := stubAfter(t)
+	root := t.TempDir()
+	path := filepath.Join(root, ".initech", watchesFile)
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	s, _ := watch.Open(path, wcT0)
+	if _, err := s.Add(watch.Watch{Owner: "eng4", Kind: watch.KindDeadline, Why: "check", Deadline: wcT0.Add(10 * time.Minute)}, wcT0); err != nil {
+		t.Fatal(err)
+	}
+	tu := newTestTUI()
+	orig := watchNow
+	watchNow = func() time.Time { return wcT0.Add(time.Minute) }
+	t.Cleanup(func() { watchNow = orig })
+	tu.loadWatches(root, wcT0.Add(time.Minute))
+	if fa.armed == 0 || fa.d != 9*time.Minute {
+		t.Fatalf("load armed %d times for %v, want 9m", fa.armed, fa.d)
+	}
+}
+
+// A comment watch on a bead that gets no new comment still misses: each
+// answered poll after the deadline counts as reading the unchanged comments.
+func TestWatchWiring_ACommentWatchWithNoNewCommentMissesAfterItsDeadline(t *testing.T) {
+	stubAfter(t)
+	tu, path := wiredTUI(t, wcT0)
+	stubBeads(t, func() []bdBead { return []bdBead{{ID: "ini-a", Status: "in_progress", CommentCount: 1}} })
+	orig := bdBeadComments
+	bdBeadComments = func(context.Context, string, string) ([]progress.Comment, error) { return nil, nil }
+	t.Cleanup(func() { bdBeadComments = orig })
+	tu.pollBeadsOnce(wcT0)
+	id, err := tu.watches.Add(watch.Watch{Owner: "eng4", Kind: watch.KindBeadComment, Why: "verdict", Deadline: wcT0.Add(time.Minute),
+		Params: map[string]string{"bead": "ini-a", "author": "qa2"}}, wcT0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tu.pollBeadsOnce(wcT0.Add(30 * time.Second))
+	tu.pollBeadsOnce(wcT0.Add(70 * time.Second))
+	if got := storedState(t, path, id); got != watch.Missed {
+		t.Fatalf("%s after a poll past the deadline, want missed", got)
+	}
+}
+
+// eng8's gap: in a rig without bd nothing polls, so window 1 ticks the
+// watches itself: a due deadline fires and old history is pruned on a tick,
+// with nothing waiting to arm the deadline timer.
+func TestWatchWiring_ARigWithoutBdTicksTheWatches(t *testing.T) {
+	stubAfter(t)
+	tu, path := wiredTUI(t, wcT0)
+	id, err := tu.watches.Add(watch.Watch{Owner: "eng4", Kind: watch.KindDeadline, Why: "check", Deadline: wcT0.Add(time.Minute)}, wcT0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The store is the main goroutine's, as in production: a real main loop,
+	// and the test's own store calls go through it.
+	watchMainLoop(t, tu)
+	ticks := make(chan time.Time)
+	quit := make(chan struct{})
+	done := make(chan struct{})
+	go func() { tu.watchTickLoop(quit, ticks); close(done) }()
+	ticks <- wcT0.Add(2 * time.Minute)
+	ticks <- wcT0.Add(2 * time.Minute) // the second send returns once the first tick is done
+	if got := storedState(t, path, id); got != watch.Fired {
+		t.Fatalf("after a tick past its deadline: %s, want fired", got)
+	}
+	// History is pruned an hour after it starts: for a cancelled watch, its
+	// cancel (a fired one counts from its line's delivery, Watches 2C).
+	var gone string
+	tu.runOnMain(func() {
+		gone, err = tu.watches.Add(watch.Watch{Owner: "eng4", Kind: watch.KindDeadline, Why: "never mind", Deadline: wcT0.Add(time.Hour)}, wcT0.Add(2*time.Minute))
+		if err == nil {
+			err = tu.watches.Cancel(gone, "eng4", wcT0.Add(2*time.Minute))
+		}
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ticks <- wcT0.Add(3*time.Minute + watch.History)
+	ticks <- wcT0.Add(3*time.Minute + watch.History)
+	var listed []watch.Watch
+	tu.runOnMain(func() { listed = tu.watches.Snapshot(wcT0) })
+	for _, w := range listed {
+		if w.ID == gone {
+			t.Fatalf("%s still listed an hour after its cancel: the tick did not prune", gone)
+		}
+	}
+	close(quit)
+	<-done
+}
+
+// A rig with bd, or a second window, starts no watch tick: the bead poll
+// already runs the pass and the tick.
+func TestWatchWiring_TheWatchTickStartsOnlyInWindowOneWithoutBd(t *testing.T) {
+	var started int
+	origT := watchTicker
+	watchTicker = func(time.Duration) (<-chan time.Time, func()) { started++; return make(chan time.Time), func() {} }
+	origH := projectHasBeads
+	t.Cleanup(func() { watchTicker, projectHasBeads = origT, origH })
+	quit := make(chan struct{})
+	defer close(quit)
+	tu := newTestTUI()
+	projectHasBeads = func(string) bool { return true }
+	tu.startWatchTicker(quit)
+	if started != 0 {
+		t.Fatal("a rig with bd started the watch tick")
+	}
+	projectHasBeads = func(string) bool { return false }
+	tu.startWatchTicker(quit)
+	if started != 1 {
+		t.Fatalf("a rig without bd started %d watch ticks, want 1", started)
+	}
 }

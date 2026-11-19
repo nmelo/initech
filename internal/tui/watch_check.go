@@ -58,18 +58,28 @@ type World interface {
 	Now() time.Time
 	// BeadsKnown is false until the bead poll has answered once.
 	BeadsKnown() bool
+	// HasBeads is false in a rig without bd, where no poll ever runs.
+	HasBeads() bool
 	Bead(id string) (bdBead, bool)
+	// BeadsReadAt is when the newest answered poll read the beads.
+	BeadsReadAt() time.Time
 	Comments(id string) ([]progress.Comment, bool)
+	// CommentsReadAt is when a bead's comments were last read; zero if never.
+	CommentsReadAt(id string) time.Time
 	Receipt(pane, id string) ReceiptState
 }
 
 // Verdict is one judgement of a condition. At is the evidence's own time,
-// never the pass time. Unknown: the evidence could not be read, so it cannot
-// fire. Never: it can never come true, so the watch ends missed at once;
-// TellSuper with it when initech, not the owner, caused that.
+// never the pass time. ReadAt is when the data judged was read: a watch ends
+// MISSED only on data read at or after its deadline, so an old poll or a pass
+// while bd is down can fire a watch but never miss it (lead1, ini-20r2).
+// Unknown: the evidence could not be read, so it cannot fire. Never: it can
+// never come true, so the watch ends missed at once; TellSuper with it when
+// initech, not the owner, caused that.
 type Verdict struct {
 	True      bool
 	At        time.Time
+	ReadAt    time.Time
 	Detail    string
 	Unknown   bool
 	Never     bool
@@ -123,9 +133,13 @@ func needParams(params map[string]string, names ...string) error {
 	return nil
 }
 
-// validBead refuses a malformed id, and once bd has answered, a bead the rig
-// does not have.
+// validBead refuses a bead watch in a rig without bd (no poll would ever
+// judge it), a malformed id, and once bd has answered, a bead the rig does
+// not have.
 func validBead(id string, w World) error {
+	if !w.HasBeads() {
+		return fmt.Errorf("this rig has no beads")
+	}
 	if !watchBeadIDRe.MatchString(id) {
 		return fmt.Errorf("%q is not a bead id", id)
 	}
@@ -163,19 +177,32 @@ func (beadStatusCheck) Key(p map[string]string) string {
 	return "bead_status|" + p["bead"] + "|" + p["status"]
 }
 
+// The evidence time is closed_at for closed, exact; for any other status it
+// is updated_at, which any later edit moves. Every answered poll judges every
+// watch, so a status seen by a poll before the deadline fires then; the limit
+// is a status no poll saw before the deadline (window 1 or bd down) and an
+// edit after it: that watch ends MISSED though the bead reached it in time,
+// since bd keeps no status-change time.
 func (beadStatusCheck) Judge(p map[string]string, _ time.Time, w World) Verdict {
+	var read time.Time
+	if w.BeadsKnown() {
+		read = w.BeadsReadAt()
+	}
 	b, ok := w.Bead(p["bead"])
 	if !ok {
-		return Verdict{Unknown: true}
+		return Verdict{Unknown: true, ReadAt: read}
 	}
 	if b.Status != p["status"] {
-		return Verdict{}
+		return Verdict{ReadAt: read}
 	}
 	at := b.UpdatedAt
-	if at.IsZero() {
-		at = w.Now()
+	if b.Status == "closed" && !b.ClosedAt.IsZero() {
+		at = b.ClosedAt
 	}
-	return Verdict{True: true, At: at, Detail: p["bead"] + " reached " + p["status"]}
+	if at.IsZero() {
+		at = read
+	}
+	return Verdict{True: true, At: at, ReadAt: read, Detail: p["bead"] + " reached " + p["status"]}
 }
 
 // bead_comment: a comment on the bead by a named agent, after the watch was set.
@@ -200,8 +227,9 @@ func (beadCommentCheck) Key(p map[string]string) string {
 
 func (beadCommentCheck) Judge(p map[string]string, set time.Time, w World) Verdict {
 	cs, ok := w.Comments(p["bead"])
+	read := w.CommentsReadAt(p["bead"])
 	if !ok {
-		return Verdict{Unknown: true}
+		return Verdict{Unknown: true, ReadAt: read}
 	}
 	var first time.Time
 	for _, c := range cs {
@@ -210,9 +238,9 @@ func (beadCommentCheck) Judge(p map[string]string, set time.Time, w World) Verdi
 		}
 	}
 	if first.IsZero() {
-		return Verdict{}
+		return Verdict{ReadAt: read}
 	}
-	return Verdict{True: true, At: first, Detail: p["author"] + " commented on " + p["bead"]}
+	return Verdict{True: true, At: first, ReadAt: read, Detail: p["author"] + " commented on " + p["bead"]}
 }
 
 // deadline: nothing but the time; the pass fires it at its deadline.
@@ -279,6 +307,13 @@ func (c sendCheck) Key(p map[string]string) string {
 }
 
 func (c sendCheck) Judge(p map[string]string, _ time.Time, w World) Verdict {
+	// Receipts are held in memory, so they are read now.
+	v := c.judge(p, w)
+	v.ReadAt = w.Now()
+	return v
+}
+
+func (c sendCheck) judge(p map[string]string, w World) Verdict {
 	r := w.Receipt(p["pane"], p["receipt"])
 	to := p["pane"]
 	switch r.State {
@@ -354,7 +389,7 @@ func judgeWatches(s watchEnder, w World, toSuper func(id string)) {
 			}
 		case v.True && !v.At.After(wt.Deadline):
 			endWatch(s, wt.ID, watch.Fired, v.Detail, v.At, now)
-		case now.After(wt.Deadline):
+		case now.After(wt.Deadline) && !v.ReadAt.Before(wt.Deadline):
 			d := "its deadline passed"
 			if v.Unknown && v.Detail != "" {
 				d += "; " + v.Detail
@@ -377,6 +412,7 @@ type cachedComments struct {
 	count int
 	cs    []progress.Comment
 	ok    bool
+	at    time.Time // when the comments were read
 }
 
 // cachedCommentsWorld reads each bead's comments at most once per pass.
@@ -402,7 +438,7 @@ func (w *cachedCommentsWorld) Comments(id string) ([]progress.Comment, bool) {
 // never changes prev and touches no TUI state: the poll calls it off the main
 // goroutine and the main goroutine publishes the result (ini-20r2: the
 // deadline timer's pass reads the cache on the main goroutine at any time).
-func readWatchComments(dir string, watched map[string]bool, beads []bdBead, prev map[string]cachedComments) map[string]cachedComments {
+func readWatchComments(dir string, watched map[string]bool, beads []bdBead, prev map[string]cachedComments, now time.Time) map[string]cachedComments {
 	out := make(map[string]cachedComments, len(watched))
 	for _, b := range beads {
 		if !watched[b.ID] {
@@ -410,6 +446,7 @@ func readWatchComments(dir string, watched map[string]bool, beads []bdBead, prev
 		}
 		old, read := prev[b.ID]
 		if read && old.ok && b.CommentCount <= old.count {
+			old.at = now // read as unchanged by this poll
 			out[b.ID] = old
 			continue
 		}
@@ -418,20 +455,21 @@ func readWatchComments(dir string, watched map[string]bool, beads []bdBead, prev
 		cancel()
 		if err != nil {
 			LogWarn("watch", "comments not read; the bead's comment watches wait for the next poll", "bead", progress.Clean(b.ID))
-			out[b.ID] = cachedComments{count: old.count, cs: old.cs, ok: false}
+			out[b.ID] = cachedComments{count: old.count, cs: old.cs, ok: false, at: old.at}
 			continue
 		}
-		out[b.ID] = cachedComments{count: b.CommentCount, cs: cs, ok: true}
+		out[b.ID] = cachedComments{count: b.CommentCount, cs: cs, ok: true, at: now}
 	}
 	return out
 }
 
 // noteWatchBeads keeps the newest answered bead poll for the watches' World;
 // an unanswered poll keeps the last one. Main goroutine.
-func (t *TUI) noteWatchBeads(beads []bdBead, answered bool) {
+func (t *TUI) noteWatchBeads(beads []bdBead, answered bool, now time.Time) {
 	if !answered {
 		return
 	}
+	t.watchBeadsAt = now
 	m := make(map[string]bdBead, len(beads))
 	for _, b := range beads {
 		m[b.ID] = b
@@ -448,6 +486,13 @@ type passWorld struct {
 
 func (w passWorld) Now() time.Time   { return w.now }
 func (w passWorld) BeadsKnown() bool { return w.t.watchBeads != nil }
+func (w passWorld) HasBeads() bool {
+	return w.t.watchBeads != nil || projectHasBeads(w.t.projectRoot)
+}
+func (w passWorld) BeadsReadAt() time.Time { return w.t.watchBeadsAt }
+func (w passWorld) CommentsReadAt(id string) time.Time {
+	return w.t.watchComments[id].at
+}
 func (w passWorld) Bead(id string) (bdBead, bool) {
 	b, ok := w.t.watchBeads[id]
 	return b, ok
@@ -545,4 +590,42 @@ func (t *TUI) armWatchTimer(now time.Time) {
 			t.armWatchTimer(n)
 		})
 	})
+}
+
+// watchTicker makes the no-bd watch tick; a package variable so tests stand
+// in for the real ticker.
+var watchTicker = func(d time.Duration) (<-chan time.Time, func()) {
+	tk := time.NewTicker(d)
+	return tk.C, tk.Stop
+}
+
+// startWatchTicker gives window 1 of a rig without bd the watch tick the bead
+// poll gives a rig with bd: every beadPollInterval the pass, the store's tick
+// (history pruned, a held write retried) and the deadline timer. A rig with
+// bd, or a second window, starts nothing.
+func (t *TUI) startWatchTicker(quit <-chan struct{}) {
+	if !t.isFleetAuthority() || projectHasBeads(t.projectRoot) {
+		return
+	}
+	ticks, stop := watchTicker(beadPollInterval)
+	t.safeGo(func() {
+		defer stop()
+		t.watchTickLoop(quit, ticks)
+	})
+}
+
+// watchTickLoop runs one watch tick per tick until quit closes.
+func (t *TUI) watchTickLoop(quit <-chan struct{}, ticks <-chan time.Time) {
+	for {
+		select {
+		case <-quit:
+			return
+		case now := <-ticks:
+			t.runOnMain(func() {
+				t.judgeWatchPass(now)
+				t.watchesTick(now)
+				t.armWatchTimer(now)
+			})
+		}
+	}
 }

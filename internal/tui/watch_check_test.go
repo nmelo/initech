@@ -23,6 +23,10 @@ type fakeWorld struct {
 	comments map[string][]progress.Comment
 	receipts map[string]ReceiptState
 	reads    map[string]int
+	// beadsAt and commentsAt are when the data was read; zero reads as now.
+	beadsAt    time.Time
+	commentsAt map[string]time.Time
+	noBeads    bool
 }
 
 func newFakeWorld(now time.Time) *fakeWorld {
@@ -31,6 +35,19 @@ func newFakeWorld(now time.Time) *fakeWorld {
 }
 func (w *fakeWorld) Now() time.Time   { return w.now }
 func (w *fakeWorld) BeadsKnown() bool { return w.known }
+func (w *fakeWorld) HasBeads() bool   { return !w.noBeads }
+func (w *fakeWorld) BeadsReadAt() time.Time {
+	if w.beadsAt.IsZero() {
+		return w.now
+	}
+	return w.beadsAt
+}
+func (w *fakeWorld) CommentsReadAt(id string) time.Time {
+	if at, ok := w.commentsAt[id]; ok {
+		return at
+	}
+	return w.now
+}
 func (w *fakeWorld) Bead(id string) (bdBead, bool) {
 	b, ok := w.beads[id]
 	return b, ok
@@ -363,16 +380,16 @@ func TestWatchCheck_CommentsAreReadOnlyWhenTheCountRose(t *testing.T) {
 	}
 	t.Cleanup(func() { bdBeadComments = orig })
 	watched := map[string]bool{"ini-a": true}
-	c := readWatchComments("", watched, []bdBead{{ID: "ini-a", CommentCount: 2}}, nil)
-	c = readWatchComments("", watched, []bdBead{{ID: "ini-a", CommentCount: 2}}, c)
+	c := readWatchComments("", watched, []bdBead{{ID: "ini-a", CommentCount: 2}}, nil, wcT0)
+	c = readWatchComments("", watched, []bdBead{{ID: "ini-a", CommentCount: 2}}, c, wcT0)
 	if reads != 1 {
 		t.Fatalf("read %d times with no new comment, want once (the first)", reads)
 	}
-	c = readWatchComments("", watched, []bdBead{{ID: "ini-a", CommentCount: 3}}, c)
+	c = readWatchComments("", watched, []bdBead{{ID: "ini-a", CommentCount: 3}}, c, wcT0)
 	if reads != 2 {
 		t.Fatalf("read %d times after the count rose, want 2", reads)
 	}
-	if c = readWatchComments("", map[string]bool{}, []bdBead{{ID: "ini-a", CommentCount: 9}}, c); reads != 2 || len(c) != 0 {
+	if c = readWatchComments("", map[string]bool{}, []bdBead{{ID: "ini-a", CommentCount: 9}}, c, wcT0); reads != 2 || len(c) != 0 {
 		t.Fatalf("read an unwatched bead's comments")
 	}
 }
@@ -381,7 +398,7 @@ func TestWatchCheck_CommentsAreReadOnlyWhenTheCountRose(t *testing.T) {
 
 func TestWatchWorld_ReadsTheLastBeadPollAndTheCommentCache(t *testing.T) {
 	tu := &TUI{}
-	tu.noteWatchBeads([]bdBead{{ID: "ini-a", Status: "in_progress"}}, true)
+	tu.noteWatchBeads([]bdBead{{ID: "ini-a", Status: "in_progress"}}, true, wcT0)
 	tu.watchComments = map[string]cachedComments{"ini-a": {count: 1, cs: []progress.Comment{{Author: "qa2"}}, ok: true}}
 	w := tu.watchWorld(wcT0)
 	if !w.BeadsKnown() || w.Now() != wcT0 {
@@ -404,8 +421,8 @@ func TestWatchWorld_ReadsTheLastBeadPollAndTheCommentCache(t *testing.T) {
 // An unanswered poll keeps the last answered beads.
 func TestWatchWorld_AnUnansweredPollKeepsTheLastBeads(t *testing.T) {
 	tu := &TUI{}
-	tu.noteWatchBeads([]bdBead{{ID: "ini-a", Status: "in_progress"}}, true)
-	tu.noteWatchBeads(nil, false)
+	tu.noteWatchBeads([]bdBead{{ID: "ini-a", Status: "in_progress"}}, true, wcT0)
+	tu.noteWatchBeads(nil, false, wcT0)
 	if _, ok := tu.watchWorld(wcT0).Bead("ini-a"); !ok {
 		t.Fatal("an unanswered poll dropped the beads")
 	}
@@ -419,6 +436,9 @@ func TestWatchWorld_BeforeTheFirstPollBeadsAreUnknown(t *testing.T) {
 	if w.BeadsKnown() {
 		t.Fatal("known before any poll")
 	}
+	orig := projectHasBeads
+	projectHasBeads = func(string) bool { return true }
+	t.Cleanup(func() { projectHasBeads = orig })
 	if err := tu.validateWatch(watch.KindBeadStatus, map[string]string{"bead": "ini-a", "status": "closed"}, "eng4", wcT0); err != nil {
 		t.Fatalf("refused before the first poll: %v", err)
 	}
@@ -426,7 +446,7 @@ func TestWatchWorld_BeforeTheFirstPollBeadsAreUnknown(t *testing.T) {
 
 func TestWatchValidate_RefusesWithTheCheckersLineAndAnUnknownKind(t *testing.T) {
 	tu := &TUI{}
-	tu.noteWatchBeads([]bdBead{{ID: "ini-a", Status: "ready_for_qa"}}, true)
+	tu.noteWatchBeads([]bdBead{{ID: "ini-a", Status: "ready_for_qa"}}, true, wcT0)
 	if err := tu.validateWatch(watch.KindBeadStatus, map[string]string{"bead": "ini-a", "status": "ready_for_qa"}, "eng4", wcT0); err == nil || err.Error() != "ini-a is already ready_for_qa" {
 		t.Fatalf("err %v", err)
 	}
@@ -447,5 +467,59 @@ func TestWatchCheck_OneKeyAndSetIsJudgedOnce(t *testing.T) {
 	judgeWatches(s, w, nil)
 	if w.reads["ini-a"] != 1 {
 		t.Fatalf("judged %d times for one key and set, want once", w.reads["ini-a"])
+	}
+}
+
+// --- lead1's read of 0333081: never MISSED on data read before the deadline ---
+
+// A pass at the deadline on a bead poll read before it: not missed.
+func TestWatchCheck_OldBeadDataAtTheDeadlineDoesNotMiss(t *testing.T) {
+	w := newFakeWorld(wcT0.Add(time.Hour + 10*time.Second)) // just past the deadline
+	w.beadsAt = wcT0.Add(55 * time.Minute)                  // the last poll, before the deadline
+	w.beads["ini-a"] = bdBead{ID: "ini-a", Status: "in_progress", UpdatedAt: wcT0}
+	s := &fakeWatchStore{ws: []watch.Watch{wcWatch("w1", watch.KindBeadStatus, map[string]string{"bead": "ini-a", "status": "ready_for_qa"}, time.Hour)}}
+	judgeWatches(s, w, nil)
+	if len(s.ends) != 0 {
+		t.Fatalf("missed on data read before the deadline: %+v", s.ends)
+	}
+	w.beadsAt = wcT0.Add(time.Hour + 5*time.Second) // a poll after it
+	judgeWatches(s, w, nil)
+	if e, _ := wcEndOf(t, s, "w1"); e.state != watch.Missed {
+		t.Fatalf("end %+v, want missed on a read after the deadline", e)
+	}
+}
+
+func TestWatchCheck_OldCommentsAtTheDeadlineDoNotMiss(t *testing.T) {
+	w := newFakeWorld(wcT0.Add(time.Hour + 10*time.Second)) // just past the deadline
+	w.beads["ini-a"] = bdBead{ID: "ini-a"}
+	w.comments["ini-a"] = nil
+	w.commentsAt = map[string]time.Time{"ini-a": wcT0.Add(50 * time.Minute)}
+	s := &fakeWatchStore{ws: []watch.Watch{wcWatch("w1", watch.KindBeadComment, map[string]string{"bead": "ini-a", "author": "qa2"}, time.Hour)}}
+	judgeWatches(s, w, nil)
+	if len(s.ends) != 0 {
+		t.Fatalf("missed on comments read before the deadline: %+v", s.ends)
+	}
+}
+
+// A bead closed in time: closed_at is the evidence, not a later updated_at.
+func TestWatchCheck_ClosedUsesClosedAt(t *testing.T) {
+	w := newFakeWorld(wcT0.Add(2 * time.Hour))
+	w.beads["ini-a"] = bdBead{ID: "ini-a", Status: "closed", ClosedAt: wcT0.Add(30 * time.Minute), UpdatedAt: wcT0.Add(90 * time.Minute)}
+	s := &fakeWatchStore{ws: []watch.Watch{wcWatch("w1", watch.KindBeadStatus, map[string]string{"bead": "ini-a", "status": "closed"}, time.Hour)}}
+	judgeWatches(s, w, nil)
+	if e, _ := wcEndOf(t, s, "w1"); e.state != watch.Fired || !e.at.Equal(wcT0.Add(30*time.Minute)) {
+		t.Fatalf("end %+v, want fired at closed_at", e)
+	}
+}
+
+// A rig without bd refuses the bead kinds: no poll would ever judge them.
+func TestWatchCheck_BeadKindsAreRefusedInARigWithoutBeads(t *testing.T) {
+	w := newFakeWorld(wcT0)
+	w.noBeads = true
+	if err := watchCheckers[watch.KindBeadStatus].Validate(map[string]string{"bead": "ini-a", "status": "closed"}, "eng4", w); err == nil || err.Error() != "this rig has no beads" {
+		t.Fatalf("bead_status: err %v", err)
+	}
+	if err := watchCheckers[watch.KindBeadComment].Validate(map[string]string{"bead": "ini-a", "author": "qa2"}, "eng4", w); err == nil || err.Error() != "this rig has no beads" {
+		t.Fatalf("bead_comment: err %v", err)
 	}
 }

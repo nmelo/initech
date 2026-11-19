@@ -165,7 +165,7 @@ func (t *TUI) pollBeadsOnce(now time.Time) {
 		var watched map[string]bool
 		var prev map[string]cachedComments
 		t.runOnMain(func() { watched, prev = t.watchCommentBeads(now), t.watchComments })
-		comments = readWatchComments(t.projectRoot, watched, beads, prev)
+		comments = readWatchComments(t.projectRoot, watched, beads, prev, now)
 	}
 	var due []paceCandidate
 	t.runOnMain(func() {
@@ -180,7 +180,7 @@ func (t *TUI) pollBeadsOnce(now time.Time) {
 			}
 		}
 		// Judge the watches first, so an ending is written by this tick.
-		t.noteWatchBeads(beads, answered)
+		t.noteWatchBeads(beads, answered, now)
 		if answered {
 			t.watchComments = comments
 		}

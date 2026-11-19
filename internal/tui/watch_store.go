@@ -18,6 +18,8 @@ const watchesFile = "watches.yaml"
 func (t *TUI) loadWatches(root string, now time.Time) {
 	s, note := watch.Open(filepath.Join(root, ".initech", watchesFile), now)
 	t.watches = s
+	// A rig without bd never polls: the deadline timer is armed here (ini-20r2).
+	t.armWatchTimer(now)
 	if note != "" {
 		LogWarn("watches", "watches file set aside", "note", note)
 		t.sendInitechLine("watches: " + note)

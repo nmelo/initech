@@ -589,6 +589,8 @@ type TUI struct {
 	// watchBeads is the newest answered bead poll, by id, for the watches'
 	// World (ini-20r2); nil until one answers. Main goroutine.
 	watchBeads map[string]bdBead
+	// watchBeadsAt is when that poll read them. Main goroutine.
+	watchBeadsAt time.Time
 	// watchTimerStop stops the timer at the nearest watch deadline; nil
 	// when none is armed. Main goroutine.
 	watchTimerStop func() bool
@@ -1603,6 +1605,7 @@ func Run(cfg Config) error {
 
 	// Derive each pane's bead from bd (ini-wra.1).
 	t.startBeadPoller(t.quitCh)
+	t.startWatchTicker(t.quitCh) // a rig without bd: the watches tick here (ini-20r2)
 
 	// Record which session is on which bead (ini-wra.2): the process that
 	// runs the agents writes it, so window 1 only. A clean exit closes every
