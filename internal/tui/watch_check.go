@@ -575,6 +575,7 @@ func (t *TUI) judgeWatchPass(now time.Time) {
 		return
 	}
 	judgeWatches(t.watches, t.watchWorld(now), t.onWatchDropped)
+	t.publishWatchedReceipts(now)
 }
 
 // armWatchTimer sets the one timer at the nearest waiting deadline after

@@ -1,8 +1,12 @@
 package tui
 
 import (
+	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
+
+	"github.com/nmelo/initech/internal/watch"
 )
 
 // Receipts (ini-yjcy, watches seam S4): every send that ends in a hold mints
@@ -53,8 +57,52 @@ func newReceiptBook() *receiptBook {
 	return &receiptBook{byID: map[string]*ReceiptState{}, now: time.Now}
 }
 
-// receipts is this process's book.
-var receipts = newReceiptBook()
+// receipts is this process's book. Its keep reads the receipts waiting watches
+// name, as the main goroutine last published them (watchedReceipts).
+var receipts = func() *receiptBook {
+	b := newReceiptBook()
+	b.keep = keepWatchedReceipt
+	return b
+}()
+
+// watchedReceipts is the set of receipts waiting send watches name. Only the
+// main goroutine publishes it (publishWatchedReceipts); the book's keep, which
+// runs under the book's lock on any goroutine, only loads it.
+var watchedReceipts atomic.Pointer[map[string]bool]
+
+func keepWatchedReceipt(id string) bool {
+	m := watchedReceipts.Load()
+	return m != nil && (*m)[id]
+}
+
+// publishWatchedReceipts publishes the receipts that window 1's waiting send
+// watches name, so the bound never prunes one (pm, ini-yjcy rule 2). Main
+// goroutine: at load, after a watch is set, and after each pass.
+func (t *TUI) publishWatchedReceipts(now time.Time) {
+	set := map[string]bool{}
+	if t.watches != nil {
+		for _, w := range t.watches.Snapshot(now) {
+			if w.State == watch.Waiting && (w.Kind == watch.KindSendDelivered || w.Kind == watch.KindSendHeld) && w.Params["receipt"] != "" {
+				set[w.Params["receipt"]] = true
+			}
+		}
+	}
+	watchedReceipts.Store(&set)
+}
+
+// SplitReceipt splits a held or deferred line into its words and the receipt
+// at its end ("" when it carries none), for a reader that matches the words.
+func SplitReceipt(line string) (words, id string) {
+	i := strings.LastIndex(line, " (receipt ")
+	if i < 0 || !strings.HasSuffix(line, ")") {
+		return line, ""
+	}
+	id = strings.TrimSuffix(line[i+len(" (receipt "):], ")")
+	if id == "" || strings.ContainsAny(id, " ()") {
+		return line, ""
+	}
+	return line[:i], id
+}
 
 // book is the pane's receipt book: its own in a test that set one, else the
 // process's.

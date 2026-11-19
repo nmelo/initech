@@ -92,6 +92,7 @@ func (t *TUI) handleIPCWatch(conn net.Conn, req IPCRequest) {
 			id, err := watchAdd(t.watches, owner, set, now)
 			if err == nil {
 				t.armWatchTimer(now) // 2B: a deadline nearer than the pass's next one
+				t.publishWatchedReceipts(now)
 			}
 			resp = watchReply(id, err)
 		case "watch_list":

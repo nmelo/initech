@@ -76,6 +76,16 @@ func TestSendVerdict_EachVerdictPrintsItsLineAndExitStatus(t *testing.T) {
 			"not delivered to eng1: eng1 is holding 500 messages (its limit); do not retry in a loop: send again after it resumes", 1},
 		{"remote could not confirm", "workbench:eng1", tui.IPCResponse{OK: true, Delivery: tui.DeliveryUnconfirmed, Data: "older initech on workbench"},
 			"could not confirm delivery to workbench:eng1: older initech on workbench; peek the pane", 2},
+		// ini-yjcy: every held or deferred reply ends with its receipt; the
+		// words are matched without it and the receipt is printed.
+		{"not reading, with its receipt", "eng1", tui.IPCResponse{OK: true, Delivery: tui.DeliveryDeferred, Data: tui.StuckInputDeferral + " (receipt R1)"},
+			"deferred to eng1 — the pane is not reading its input; will deliver when it does (receipt R1)", 0},
+		{"ceiling, with its receipt", "eng1", tui.IPCResponse{OK: true, Delivery: tui.DeliveryDeferred, Data: tui.CeilingDeferral + " (receipt R2)"},
+			"deferred to eng1 — the Mac is at its ceiling; will wake and deliver when it is under (receipt R2)", 0},
+		{"dialog, with its receipt", "eng1", tui.IPCResponse{OK: true, Delivery: tui.DeliveryDeferred, Data: "deferred to eng1 — modal open, 1 queued (receipt R3)"},
+			"deferred to eng1 — target has a modal open; will deliver when it closes (receipt R3)", 0},
+		{"woken, with its receipt", "eng1", tui.IPCResponse{OK: true, Delivery: tui.DeliveryHeld, Data: "queued for eng1, woken: delivered in order now that it is up (0 ahead) (receipt R4)"},
+			"queued for eng1, woken: delivered in order now that it is up (0 ahead) (receipt R4)", 0},
 		// G5: a TUI older than the CLI answers OK with no verdict.
 		{"older TUI", "eng1", tui.IPCResponse{OK: true},
 			"could not confirm delivery to eng1: older initech running; restart it for delivery verdicts; peek the pane", 2},

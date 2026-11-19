@@ -2,9 +2,12 @@ package tui
 
 import (
 	"net"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/nmelo/initech/internal/watch"
 )
 
 // ini-yjcy (watches seam S4): every send that ends in a hold carries a
@@ -219,8 +222,9 @@ func TestReceipts_EndedAreBoundedButAKeptOneStays(t *testing.T) {
 func TestReceipts_ARestartRestoresThem(t *testing.T) {
 	p, _, _ := dndPane(t, "a")
 	b, _ := fakeBook(p, time.Now())
+	old := receipts
 	receipts = b // restoredReceipt writes the process's book
-	defer func() { receipts = newReceiptBook() }()
+	defer func() { receipts = old }()
 	now := time.Now()
 	entries := []heldEntry{
 		{Receipt: "H1", Pane: "a", Text: "x", Enter: true, Time: now.Add(-time.Hour), Kind: heldKindDND, From: "eng1"},
@@ -288,5 +292,46 @@ func TestReceipts_WithdrawWorksForEveryKind(t *testing.T) {
 		if st := b.state("", c.id); st.State != ReceiptWithdrawn {
 			t.Fatalf("%s reads %+v", c.id, st)
 		}
+	}
+}
+
+// Rule 2, wired (lead read of f8a72c4): the process book never prunes a
+// receipt a waiting send watch names. The main goroutine publishes the set
+// (publishWatchedReceipts) and the book's keep reads only that; once the
+// watch ends and the set is published again, the receipt prunes like any
+// other.
+func TestReceipts_AWatchedReceiptIsNeverPruned(t *testing.T) {
+	now := time.Date(2026, 11, 19, 9, 0, 0, 0, time.UTC)
+	s, _ := watch.Open(filepath.Join(t.TempDir(), "watches.yaml"), now)
+	id, err := s.Add(watch.Watch{Owner: "eng1", Kind: watch.KindSendDelivered, Params: map[string]string{"pane": "eng2", "receipt": "W1"},
+		Why: "see my send land", Deadline: now.Add(time.Hour)}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tu := newTestTUI()
+	tu.watches = s
+	defer watchedReceipts.Store(nil)
+	tu.publishWatchedReceipts(now)
+	b := newReceiptBook()
+	b.keep = receipts.keep // the process book's wiring, not a test stub
+	fill := func() {
+		b.set("eng2", "W1", "eng1", heldKindDND, ReceiptTyped, "", now)
+		for i := 0; i <= maxEndedReceipts; i++ {
+			b.set("eng2", "f"+itoa(i), "", heldKindDND, ReceiptTyped, "", now)
+		}
+	}
+	fill()
+	if st := b.state("", "W1"); st.State != ReceiptTyped {
+		t.Fatalf("a watched receipt was pruned: %+v", st)
+	}
+	if err := s.Cancel(id, "eng1", now); err != nil {
+		t.Fatal(err)
+	}
+	tu.publishWatchedReceipts(now)
+	b = newReceiptBook()
+	b.keep = receipts.keep
+	fill()
+	if st := b.state("", "W1"); st.State != ReceiptUnknown {
+		t.Fatalf("an unwatched receipt was kept past the bound: %+v", st)
 	}
 }

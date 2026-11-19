@@ -343,11 +343,18 @@ func deliverRequestVia(w io.Writer, call ipcCaller, req tui.IPCRequest) (string,
 	// (ini-ei8l), never as delivered. An older TUI's deferral carries no
 	// verdict and is still a deferral.
 	case resp.Delivery == tui.DeliveryDeferred, resp.Delivery == "" && strings.Contains(resp.Data, "deferred"):
-		if resp.Data == tui.StuckInputDeferral || resp.Data == tui.CeilingDeferral {
-			fmt.Fprintf(w, "deferred to %s — %s%s\n", name, resp.Data, removed)
+		// The words are matched without the receipt every hold ends with,
+		// and the receipt is printed on every deferred line (ini-yjcy).
+		words, receipt := tui.SplitReceipt(resp.Data)
+		end := ""
+		if receipt != "" {
+			end = " (receipt " + receipt + ")"
+		}
+		if words == tui.StuckInputDeferral || words == tui.CeilingDeferral {
+			fmt.Fprintf(w, "deferred to %s — %s%s%s\n", name, words, end, removed)
 			break
 		}
-		fmt.Fprintf(w, "deferred to %s — target has a modal open; will deliver when it closes%s\n", name, removed)
+		fmt.Fprintf(w, "deferred to %s — target has a modal open; will deliver when it closes%s%s\n", name, end, removed)
 	case resp.Delivery == tui.DeliverySteered:
 		fmt.Fprintf(w, "steered into %s's running task%s\n", name, removed)
 	case resp.Delivery == tui.DeliveryHeld || resp.Delivery == tui.DeliveryQueued:
