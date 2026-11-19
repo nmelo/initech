@@ -77,9 +77,11 @@ func runClear(cmd *cobra.Command, args []string) error {
 		case tui.DeliveryUnconfirmed:
 			fmt.Fprintln(cmd.ErrOrStderr(), unconfirmedSend(name, resp.Data))
 			errs++
+			continue
 		default:
 			fmt.Fprintf(out, "Cleared %s.\n", name)
 		}
+		printKeptWatches(out, name) // a cleared agent keeps its watches
 	}
 	if errs > 0 {
 		return fmt.Errorf("%d agent(s) could not be cleared", errs)

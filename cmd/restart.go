@@ -50,6 +50,7 @@ func runRestart(cmd *cobra.Command, args []string) error {
 	} else {
 		fmt.Fprintf(out, "Restarted %s.\n", roleName)
 	}
+	printKeptWatches(out, roleName) // a restarted agent keeps its watches
 
 	// Dispatch bead if requested.
 	if restartBead != "" {

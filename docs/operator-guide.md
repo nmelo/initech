@@ -302,6 +302,7 @@ These are the commands you'll use most. The full list is in the README.
 | Read what an agent said and ran, from its session | `initech last <agent>` in a shell |
 | Add or remove another machine, no restart | `initech remote add <name> --addr <host:port>`, `initech remote remove <name>` (Cross-Machine Daemon) |
 | Set the list strip at the bottom of your own pane (agents) | `initech strip '<item>' ...`, `--stdin`, `--clear` |
+| Hand a wait to initech, with a reason and a deadline (agents) | `initech watch set ... --why '<line>' --until <time>`, `initech watch list [--all]`, `initech watch cancel <id>` |
 
 ### initech last
 
@@ -310,6 +311,23 @@ These are the commands you'll use most. The full list is in the README.
 ### initech strip
 
 `initech strip '<item>' '<item>' ...` replaces the whole list strip of the pane of the agent that runs it, in the order given; there is no way to set another agent's strip. `initech strip --stdin` reads one item per non-empty line, and clears the strip when there is none; `initech strip --clear` clears it. Each item is trimmed at its ends, and may be at most 300 characters; a list holds at most 10 items; a tab or newline inside an item is refused. A call with no items and neither flag is refused, so an empty shell variable never wipes a list, and so is a call from outside an agent's pane. A call from a process outside the pane it names is refused too, so only the pane's own agent sets its list. A Codex pane cannot set a strip yet: Codex runs commands outside its pane's processes, so initech cannot tell the call comes from that pane, and the call is refused with a line saying so. Every refusal exits 1 with one line and leaves the list as it was. The list is kept in `.initech/strip.yaml` (mode 0600; `.initech/strip-serve.yaml` on a machine running `initech serve`) and survives a restart of the pane and of the rig; removing the agent removes its list. A file that does not parse, or has another version, is renamed to `strip.yaml.bad-<time>` and no strip shows until one is set again. Nothing else reads the list: `initech status`, `peek` and beads do not show it.
+
+### initech watch
+
+A watch is a wait initech keeps for an agent: a condition, a reason and a deadline. `initech watch set` takes one condition, or none for a plain deadline:
+
+- `--bead <id> --status <status>`: the bead reaches that status, one bd knows.
+- `--bead <id> --comment-by <agent>`: a comment on the bead by that author, after the watch was set.
+- `--to <agent> --receipt <id> --delivered`: your held send to that agent, named by the receipt its held line printed, is delivered.
+- `--to <agent> --receipt <id> --held-for <duration>`: that send is still held after the duration, which must be shorter than `--until`.
+
+`--why` is the line you get back: one line, at most 200 characters, written so it makes sense after you have been cleared. `--until` is the deadline in local time: a duration (`45m`, `2h`), a clock time today (`14:30`; a time already past is refused, never moved to tomorrow) or an RFC 3339 time. `--hold-if-asleep` holds the line while you are suspended instead of waking you. `set` prints the watch's id (`w12`); ids are never reused. The owner is the agent whose pane runs the command, worked out from the connection, so `set` and `cancel` run from inside an agent's pane.
+
+Every refusal exits 1 with one line and sets nothing: no `--why`, no `--until`, a deadline already past, a half or double condition (`--bead` without one of `--status` or `--comment-by`, `--to` without `--receipt`, both a bead and a send condition), a bead bd does not know (checked once window 1 has read its beads, seconds after a start), a status that is not a bead status, a bead already in that status, a comment you would write yourself, a send to yourself, no held send with that receipt to that agent, a send that is not yours, a 21st waiting watch (an agent holds at most 20), the same condition you already wait for, another agent's watch on `cancel`, and running `set` or `cancel` outside an agent's pane or in a window that keeps no watches (a second window, `initech serve`). Against an initech without watches, every subcommand prints `older initech running; restart it for watches` and exits 2.
+
+`initech watch list` shows your watches: id, state, deadline, condition (for a send, `my send to <agent> (<receipt>)`) and why, with the other agents whose watches share its check and `wakes` when its line will wake you from suspension. `--all` lists every watch in the rig with its owner; it is for super, and for the operator outside any pane. `initech watch cancel <id>` withdraws your own waiting watch; nothing is sent. `initech clear` and `initech restart` keep the agent's watches and say so: `kept 2 watches for eng1`.
+
+A watch ends once: FIRED when its condition came true by the deadline, MISSED when the deadline passed first, or at once when the send it watches was withdrawn or dropped, and CANCELLED when you withdraw it. A plain deadline only fires, at the deadline.
 
 ### The Top Modal
 

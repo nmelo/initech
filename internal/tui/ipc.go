@@ -250,6 +250,8 @@ func (t *TUI) HandleExtended(conn net.Conn, req IPCRequest, rawJSON []byte) bool
 		t.handleIPCRemotesReload(conn)
 	case "cron_list", "cron_add", "cron_remove":
 		t.handleIPCCron(conn, req)
+	case "watch_set", "watch_list", "watch_cancel", "watch_count":
+		t.handleIPCWatch(conn, req)
 	case "stop":
 		t.handleIPCStop(conn, req)
 	case "start":
