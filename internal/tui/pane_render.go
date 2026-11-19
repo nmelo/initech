@@ -111,15 +111,7 @@ func (p *Pane) chromeLook(focused bool, index int) (ribbonLook, tcell.Color) {
 		title = strings.TrimSuffix(title, " ") + " \u2709 "
 	}
 	if p.InDND() {
-		// Column zero belongs to the running square. Shorten the badge
-		// before clipping the DND mark, even on a parked pane or long name.
-		prefix := []rune(strings.TrimSuffix(title, " "))
-		room := p.region.W - 1 - len(" dnd")
-		if room > 0 {
-			title = string(prefix[:min(len(prefix), room)]) + " dnd "
-		} else {
-			title = "dnd "
-		}
+		title = dndTitle([]rune(strings.TrimSuffix(title, " ")), p.region.W, p.heldBackCount())
 	}
 
 	beadLabel, beadTitle := ribbonBeadLabel(p.BeadID(), p.BeadTitle(), p.NoBeadWork())

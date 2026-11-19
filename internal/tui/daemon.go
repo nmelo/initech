@@ -753,7 +753,7 @@ func (d *Daemon) allPanesWithViews() ([]PaneInfo, []PaneView, bool) {
 			panes[i].QueuedCount = p.QueuedMessageCount()
 		}
 		if p.agentReader() != noAgentReader {
-			panes[i].QueuedCount = p.QueuedMessageCount() + p.readAgentFrame().native
+			panes[i].QueuedCount = p.heldBackCount() // the ribbon's dnd (N) too
 		}
 		panes[i].IdleSec = idleSecOf(p, time.Now())
 	}

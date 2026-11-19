@@ -230,7 +230,7 @@ func (t *TUI) allPanesWithViews() ([]PaneInfo, []PaneView, bool) {
 				panes[i].QueuedCount = p.(*Pane).QueuedMessageCount()
 			}
 			if lp, ok := p.(*Pane); ok && lp.agentReader() != noAgentReader {
-				panes[i].QueuedCount = lp.QueuedMessageCount() + lp.readAgentFrame().native
+				panes[i].QueuedCount = lp.heldBackCount() // the ribbon's dnd (N) too
 			}
 			panes[i].IdleSec = idleSecOf(p, time.Now())
 		}

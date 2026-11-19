@@ -441,3 +441,47 @@ func heldCount(n int) string {
 	}
 	return fmt.Sprintf("%d held messages", n)
 }
+
+// dndTitle is the ribbon badge of a pane in do-not-disturb: prefix (the
+// number, name and marks) and the dnd mark, "dnd" when nothing is held and
+// "dnd (N)" when N messages are. Column zero belongs to the running square.
+// When the badge does not fit, the number wins over the word ("(N)"), and
+// only then is the badge shortened, never the mark, even on a parked pane or
+// a long name.
+func dndTitle(prefix []rune, width, held int) string {
+	marks := []string{" dnd"}
+	if held > 0 {
+		n := fmt.Sprintf("(%d)", held)
+		marks = []string{" dnd " + n, " " + n}
+	}
+	room := width - 1 // column zero is the running square's
+	for _, m := range marks {
+		if len(prefix)+len(m) <= room {
+			return string(prefix) + m + " "
+		}
+	}
+	last := marks[len(marks)-1]
+	if keep := room - len(last); keep > 0 {
+		return string(prefix[:keep]) + last + " "
+	}
+	return last[1:] + " "
+}
+
+// heldBackCount is how many messages do-not-disturb holds back from the
+// pane: its queue, and for an agent whose screen initech reads (Codex, agy)
+// the messages the agent queued itself. It is the one count the ribbon's
+// "dnd (N)" and initech status's queued_count show, and the number a held
+// send's "N messages ahead" counts. A screen busy past the read budget keeps
+// the last reading, so the number never drops the agent's own queue for a
+// frame.
+func (p *Pane) heldBackCount() int {
+	n := p.QueuedMessageCount()
+	r := p.agentReader()
+	if r == noAgentReader {
+		return n
+	}
+	if rows, ok := tryScreenRows(p); ok {
+		p.nativeQueued.Store(int32(r.read(rows).native))
+	}
+	return n + int(p.nativeQueued.Load())
+}

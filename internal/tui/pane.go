@@ -376,6 +376,10 @@ type Pane struct {
 	// emu.Write since the last perf minute (ini-pqdy.1). readLoop adds; the
 	// main loop swaps them to zero at each minute.
 	perfBytes, perfEmuNs atomic.Int64
+	// nativeQueued is the last count of messages the agent queued itself, as
+	// its screen showed it (heldBackCount); kept for a frame whose screen
+	// read is refused.
+	nativeQueued atomic.Int32
 	// reportSink receives this pane's delivery reports (hold, release, NOT
 	// DELIVERED) beside eventCh. Only a serve daemon's panes have one: it
 	// forwards them to the connected initech (ini-ei8l). Nil everywhere else.
