@@ -551,15 +551,25 @@ func (p *Pane) enqueue(m QueuedMessage) bool {
 // refusal line naming when to send again; nothing held is ever dropped
 // (ini-pt3j).
 func (p *Pane) enqueueOrRefuse(m QueuedMessage, when string) string {
+	refusal, _ := p.enqueueReceipt(m, when)
+	return refusal
+}
+
+// enqueueReceipt is enqueueOrRefuse that mints the held message's receipt
+// when it has none and returns it (ini-yjcy); a refused message gets none.
+func (p *Pane) enqueueReceipt(m QueuedMessage, when string) (refusal, receipt string) {
 	defer p.heldChanged() // the held file follows every change (ini-8rkg)
 	p.mu.Lock()
-	defer p.mu.Unlock()
 	if limit := p.queueLimitLocked(m); limit != "" {
 		LogInfo("queue", "SEND NOT DELIVERED: queue at its limit", "pane", p.name, "queued", len(p.messageQueue), "limit", limit)
-		return queueRefusal(p.name, limit, when)
+		p.mu.Unlock()
+		return queueRefusal(p.name, limit, when), ""
 	}
+	mintReceipt(&m)
 	p.messageQueue = append(p.messageQueue, m)
-	return ""
+	p.mu.Unlock()
+	p.noteReceipt(m, ReceiptHeld)
+	return "", m.Receipt
 }
 
 // DrainQueue returns all queued messages in FIFO order and clears the queue.
@@ -690,9 +700,12 @@ func (p *Pane) drainModalQueue() {
 			return
 		}
 		p.beginRedelivery(m)
-		p.SendText(m.Text, m.Enter)
+		v := p.sendText(m.Text, m.Enter, true, sendOrigin{Receipt: m.Receipt})
 		if !p.endRedelivery() {
 			return // re-held at the front: the dialog is back; wait for it.
+		}
+		if v.Receipt == "" {
+			p.settleReceipt(m, v) // typed, or dropped when refused; a re-hold kept it held
 		}
 		if (m.HeldForDialog || m.DND) && !p.IsSuspended() {
 			LogInfo("inject", "held message delivered", "pane", p.name, "dnd", m.DND,
@@ -802,7 +815,10 @@ func (t *TUI) resumePaneDrain(pane *Pane, senderName string, asyncDrain bool) er
 			// SendText delivers if the live pane is up, or queues and
 			// re-triggers (on its own goroutine, which waits on this same
 			// name lock) if the winner's process died and it is parked again.
-			current.SendTextFrom(m.Text, m.Enter, sendOrigin{From: m.From})
+			v := current.sendText(m.Text, m.Enter, true, sendOrigin{From: m.From, Receipt: m.Receipt})
+			if v.Receipt == "" {
+				current.settleReceipt(m, v)
+			}
 			if i < len(msgs)-1 {
 				time.Sleep(queueDrainInterval)
 			}
@@ -1014,8 +1030,11 @@ func (t *TUI) resumePaneDrain(pane *Pane, senderName string, asyncDrain bool) er
 		// Deliver queued messages with gaps.
 		for _, msg := range msgs {
 			np.typingNext() // marked typing in the held file before it goes in
-			t.injectText(np, msg.Text, msg.Enter, msg.From)
+			v := t.injectText(np, msg)
 			np.typedOne()
+			if v.Receipt == "" {
+				np.settleReceipt(msg, v)
+			}
 			if len(msgs) > 1 {
 				time.Sleep(queueDrainInterval)
 			}

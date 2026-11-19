@@ -59,6 +59,9 @@ type sendOrigin struct {
 	// itself (initech send), so a refusal before typing is said once, by the
 	// verdict, not also by a line (ini-w6kr).
 	Waiting bool
+	// Receipt: a message re-sent from a queue keeps the receipt it was held
+	// with; a hold mints one only when this is empty (ini-yjcy).
+	Receipt string
 }
 
 // dndRuling is how do-not-disturb rules on one sender.
@@ -111,7 +114,7 @@ func (p *Pane) dndGate(text string, enter bool, o sendOrigin, broke *bool) (Send
 	case dndOriginRefused:
 		return v, true
 	}
-	return p.holdIfDND(text, enter, o.From)
+	return p.holdIfDND(text, enter, o.From, o.Receipt)
 }
 
 // dndOnlySuperReason is why an --urgent send from an agent other than super
@@ -307,7 +310,7 @@ func (p *Pane) endDND(now time.Time) (held int, was bool) {
 // is full. A drain's own message that meets do-not-disturb (set again while
 // the drain ran) goes back to the front with its time, and the drain stops
 // (the ini-1898 re-hold rule).
-func (p *Pane) holdIfDND(text string, enter bool, from string) (SendVerdict, bool) {
+func (p *Pane) holdIfDND(text string, enter bool, from, receipt string) (SendVerdict, bool) {
 	defer p.heldChanged() // the held file follows every change (ini-8rkg)
 	native := 0
 	if p.agentReader() != noAgentReader && p.InDND() {
@@ -323,19 +326,21 @@ func (p *Pane) holdIfDND(text string, enter bool, from string) (SendVerdict, boo
 	if m := p.redelivering; m != nil && m.Text == text && m.Enter == enter {
 		p.redelivering = nil
 		p.messageQueue = append([]QueuedMessage{*m}, p.messageQueue...)
+		held.Receipt = m.Receipt
+		held.Reason = withReceipt(held.Reason, m.Receipt)
 		return held, true
 	}
-	m := QueuedMessage{Text: text, Enter: enter, Time: now, DND: true, From: from}
+	m := QueuedMessage{Text: text, Enter: enter, Time: now, DND: true, From: from, Receipt: receipt}
 	if limit := p.queueLimitLocked(m); limit != "" {
 		LogInfo("dnd", "SEND NOT DELIVERED: do-not-disturb queue at its limit", "pane", p.name, "queued", len(p.messageQueue), "limit", limit)
 		return SendVerdict{Outcome: DeliveryNotDelivered, Reason: queueRefusal(p.name, limit, p.dndWhenLocked())}, true
 	}
-	if p.agentReader() != noAgentReader {
-		m.Receipt = newAgentReceipt()
-		held.Reason += " (receipt " + m.Receipt + ")"
-	}
+	mintReceipt(&m) // every pane, Claude too (ini-yjcy)
+	held.Receipt = m.Receipt
+	held.Reason = withReceipt(held.Reason, m.Receipt)
 	p.messageQueue = append(p.messageQueue, m)
 	LogInfo("dnd", "held: do-not-disturb", "pane", p.name, "queued", len(p.messageQueue))
+	defer p.noteReceipt(m, ReceiptHeld) // takes only the book's lock, never mu
 	return held, true
 }
 
