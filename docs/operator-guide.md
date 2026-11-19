@@ -317,7 +317,7 @@ These are the commands you'll use most. The full list is in the README.
 
 ### initech watch
 
-Release builds refuse watch commands until watch lines can be delivered: `initech watch set`, `list` and `cancel` print `watches are not in this release` and exit 1, and Alt+t and `watches` show that line instead of the modal. A watch is a wait initech keeps for an agent: a condition, a reason and a deadline. `initech watch set` takes one condition, or none for a plain deadline:
+A watch is a wait initech keeps for an agent: a condition, a reason and a deadline. `initech watch set` takes one condition, or none for a plain deadline:
 
 - `--bead <id> --status <status>`: the bead reaches that status, one bd knows.
 - `--bead <id> --comment-by <agent>`: a comment on the bead by that author, after the watch was set.
