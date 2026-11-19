@@ -178,3 +178,33 @@ func TestCodexPreflight_RunsTheGuardedCodex(t *testing.T) {
 		}
 	}
 }
+
+// Only the three identity values ever go on argv (pm's ruling), whatever else
+// the pane's environment holds. The three names are spelled out here, not
+// read from codexIdentityKeys, so a fourth key added there is caught.
+func TestCodexGuard_NothingButTheThreeIdentityKeysEverGoesOnArgv(t *testing.T) {
+	env := []string{"HOME=/Users/x", "USER=x", "SHELL=/bin/zsh", "PATH=/bin", "TERM=xterm", "LANG=C",
+		"TMPDIR=/tmp", "CODEX_HOME=/c", "GH_TOKEN=secret-shaped", "INITECH_SOCKET=/s", "INITECH_AGENT=eng3", "BEADS_ACTOR=eng3"}
+	got, err := codexGuardArgv([]string{"codex"}, env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	allowed := map[string]bool{"INITECH_SOCKET": true, "INITECH_AGENT": true, "BEADS_ACTOR": true}
+	seen := 0
+	for i, a := range got {
+		if a != "-c" || i+1 >= len(got) {
+			continue
+		}
+		key, _, _ := strings.Cut(strings.TrimPrefix(got[i+1], pol), "=")
+		if !allowed[key] {
+			t.Errorf("%q went on argv: only the three identity values may", got[i+1])
+		}
+		seen++
+	}
+	if seen != 3 {
+		t.Errorf("%d -c values, want exactly the three identity values: %q", seen, got)
+	}
+	if s := strings.Join(got, " "); strings.Contains(s, "secret-shaped") || strings.Contains(s, "/Users/x") {
+		t.Errorf("an environment value leaked onto argv: %q", got)
+	}
+}
