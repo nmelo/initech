@@ -157,6 +157,11 @@ func (t *TUI) renderFrame() {
 	// drawing chrome.
 	regions := planRegions(t.plan.Panes)
 	full := t.lastDrawn == nil || t.lastLayerW != w || len(t.lastLayer) != w*h || !slices.Equal(regions, t.lastPlan)
+	// The watches modal's backdrop reads the frame back and darkens it, so
+	// while it is up every cell is drawn new: a kept cell would be darkened
+	// again each frame (lead1). The frame that takes it down needs nothing:
+	// restoreUncovered puts back every cell the backdrop wrote.
+	full = full || t.watchesM.active
 	if full {
 		s.Clear()
 	}

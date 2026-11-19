@@ -598,3 +598,42 @@ func TestWatchesModal_NarrowClipsHeadersAndDropsWholeHints(t *testing.T) {
 	wmFind(t, s, "fired 3h ago · held")
 	wmFind(t, s, "cancelled 12m ago")
 }
+
+// lead1's read: the renderer keeps last frame's cells where nothing redraws
+// them (ini-ysr.2/.3), so a backdrop that reads the screen back must start
+// from undimmed cells every frame. On a parked fleet, whose idle panes are not
+// redrawn between frames, a cell behind the open modal is dimmed exactly once
+// however many frames are drawn, and closing the modal puts it back.
+func TestWatchesModal_TheBackdropDimsOnceAcrossFrames(t *testing.T) {
+	tu, s := ysr3Parked(t)
+	st, _ := watch.Open(filepath.Join(t.TempDir(), "watches.yaml"), wmT0)
+	tu.watches = st
+	x, y := wmFind(t, s, "p01 body")
+	if x >= (160-watchesBoxWidth(160))/2 {
+		t.Fatalf("the probe cell %d,%d is under the modal, not behind it", x, y)
+	}
+	cellAt := func() tcell.Style {
+		_, _, st, _ := s.GetContent(x, y)
+		return st
+	}
+	before := cellAt()
+	tu.handleKey(wmAltKey('t'))
+	tu.render()
+	first := cellAt()
+	if first == before {
+		t.Fatal("the cell behind the modal is not dimmed at all")
+	}
+	for i := 2; i <= 4; i++ {
+		tu.render()
+		if got := cellAt(); got != first {
+			fg, bg, _ := got.Decompose()
+			t.Fatalf("frame %d dimmed the cell again: fg %v bg %v", i, fg, bg)
+		}
+	}
+	tu.handleKey(tcell.NewEventKey(tcell.KeyEscape, 0, 0))
+	tu.render()
+	tu.render()
+	if got := cellAt(); got != before {
+		t.Errorf("closing the modal left the cell dimmed")
+	}
+}
