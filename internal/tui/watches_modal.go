@@ -334,17 +334,17 @@ func (t *TUI) moveWatchesSelection(by int) {
 // The picture's colors.
 var (
 	wmBg     = tcell.NewRGBColor(0x1f, 0x21, 0x27)
-	wmShade  = tcell.NewRGBColor(0x28, 0x2c, 0x36)
+	wmShade  = tcell.NewRGBColor(0x22, 0x25, 0x2c)
 	wmHead   = tcell.NewRGBColor(0x10, 0x12, 0x16)
 	wmBand   = tcell.NewRGBColor(0x3a, 0x40, 0x54)
 	wmSel    = tcell.NewRGBColor(0x32, 0x35, 0x4b)
-	wmSelSh  = tcell.NewRGBColor(0x39, 0x3e, 0x57)
+	wmSelSh  = tcell.NewRGBColor(0x35, 0x38, 0x4f)
 	wmBorder = tcell.NewRGBColor(0x7f, 0x86, 0xd9)
 	wmRule   = tcell.NewRGBColor(0x34, 0x38, 0x42)
 	wmText   = tcell.NewRGBColor(0xc9, 0xcd, 0xd6)
 	wmBright = tcell.NewRGBColor(0xe3, 0xe6, 0xec)
 	wmDim    = tcell.NewRGBColor(0x8b, 0x90, 0x9b)
-	wmBandFg = tcell.NewRGBColor(0xc3, 0xc8, 0xff)
+	wmBandFg = tcell.NewRGBColor(0xff, 0xff, 0xff)
 	wmID     = tcell.NewRGBColor(0x6e, 0xa8, 0xff)
 	wmOK     = tcell.NewRGBColor(0x8f, 0xbf, 0x6a)
 	wmBad    = tcell.NewRGBColor(0xe0, 0x6c, 0x75)
@@ -367,9 +367,9 @@ var watchesHeads = [wcCount]string{"", "set by", "waits for", "why (the line it 
 
 func watchColShaded(c int) bool { return c == wcWaits || c == wcAge }
 
-// watchesGrid is the picture's column grid in its pixels: mark 34, set by 190,
-// waits for 590, why 430, age 80, and the rest of its 1568 for the deadline.
-var watchesGrid = [wcCount]int{34, 190, 590, 430, 80, 244}
+// watchesGrid is the picture's column grid in its pixels: mark 34, set by 180,
+// waits for 570, why 430, age 80, and the rest of its 1508 for the deadline.
+var watchesGrid = [wcCount]int{34, 180, 570, 430, 80, 214}
 
 // watchesAgeCols is the age column's width in cells, the picture's 80 px.
 const watchesAgeCols = 7
@@ -405,17 +405,25 @@ func watchesColumns(inner int, rows []watchRow) [wcCount]int {
 	return c
 }
 
-// watchesBoxWidth is the modal's width: about 92% of the window, as the
-// picture's 1620 of 1760, centred; the whole window when it is narrow.
+// The window's margin from the pane's edges, and its padding inside the
+// border, in cells, as the picture gives them.
+const (
+	watchesMarginX = 4 // columns on each side
+	watchesMarginY = 2 // rows at the top and the bottom
+	watchesPadX    = 3 // columns inside the border, left and right
+)
+
+// watchesBoxWidth is the modal's width: the window less its margin on each
+// side, centred; the whole window when it is too narrow for a margin.
 func watchesBoxWidth(sw int) int {
-	if sw < 60 {
+	if sw < 40 {
 		return sw
 	}
-	return sw * 92 / 100
+	return sw - 2*watchesMarginX
 }
 
 // dimBehind darkens every cell already drawn, under the picture's backdrop
-// (rgba(10,11,14,.55) over everything behind the modal, panes and panel).
+// (rgba(6,7,9,.86) over everything behind the modal, panes and panel).
 func dimBehind(s tcell.Screen) {
 	sw, sh := s.Size()
 	for y := 0; y < sh; y++ {
@@ -441,8 +449,8 @@ func watchDimColor(c, fallback tcell.Color) tcell.Color {
 	if r < 0 {
 		r, g, b = fallback.RGB()
 	}
-	mix := func(v, o int32) int32 { return (v*45 + o*55) / 100 }
-	return tcell.NewRGBColor(mix(r, 10), mix(g, 11), mix(b, 14))
+	mix := func(v, o int32) int32 { return (v*14 + o*86) / 100 }
+	return tcell.NewRGBColor(mix(r, 6), mix(g, 7), mix(b, 9))
 }
 
 // renderWatchesModal draws the modal and, over it, the detail box.
@@ -469,23 +477,21 @@ const (
 	wmRowLine
 	wmSpaceLine
 	wmNoneLine
+	wmBandPadLine // a band's first row: tinted and blank
 )
 
 func watchesLines(v watchesView) []wmLine {
 	var ls []wmLine
 	n := 0
 	if len(v.waiting) > 0 {
-		ls = append(ls, wmLine{kind: wmBandLine, band: "waiting"})
+		ls = append(ls, wmLine{kind: wmBandPadLine}, wmLine{kind: wmBandLine, band: "waiting"})
 		for range v.waiting {
 			ls = append(ls, wmLine{kind: wmRowLine, row: n})
 			n++
 		}
 	}
 	if len(v.ended) > 0 {
-		if n > 0 {
-			ls = append(ls, wmLine{kind: wmSpaceLine})
-		}
-		ls = append(ls, wmLine{kind: wmBandLine, band: "ended in the last hour"})
+		ls = append(ls, wmLine{kind: wmBandPadLine}, wmLine{kind: wmBandLine, band: "ended in the last hour"})
 		for range v.ended {
 			ls = append(ls, wmLine{kind: wmRowLine, row: n})
 			n++
@@ -507,12 +513,12 @@ func (t *TUI) drawWatchesModal(s tcell.Screen, v watchesView, now time.Time) {
 	boxW := watchesBoxWidth(sw)
 	// Border, a blank line, the header, the table lines, the footer rule, the
 	// footer and the border.
-	boxH := min(len(lines)+6, sh-2)
+	boxH := min(len(lines)+6, sh-2*watchesMarginY)
 	if boxH < 8 {
 		boxH = min(sh, 8)
 	}
 	x0, y0 := max((sw-boxW)/2, 0), max((sh-boxH)/2, 0)
-	inner := boxW - 4
+	inner := max(boxW-2-2*watchesPadX, 1)
 	cols := watchesColumns(inner, rows)
 
 	base := tcell.StyleDefault.Background(wmBg).Foreground(wmText)
@@ -594,15 +600,12 @@ func (t *TUI) drawWatchesModal(s tcell.Screen, v watchesView, now time.Time) {
 
 	// The table: the header band, then the lines, scrolled to keep the
 	// selected row in view.
-	tableX, y := x0+2, y0+2
+	tableX, y := x0+1+watchesPadX, y0+2
 	head := tcell.StyleDefault.Background(wmHead).Foreground(wmBright).Bold(true)
 	fill(tableX, y, inner, head)
 	cx := tableX
 	for c := 0; c < wcCount; c++ {
 		pad := 1
-		if c == wcMark {
-			pad = 0
-		}
 		put(cx+pad, y, cols[c]-pad, clip(watchesHeads[c], cols[c]-pad), head)
 		cx += cols[c]
 	}
@@ -621,8 +624,10 @@ func (t *TUI) drawWatchesModal(s tcell.Screen, v watchesView, now time.Time) {
 	for i := off; i < len(lines) && i < off+room; i++ {
 		l := lines[i]
 		switch l.kind {
+		case wmBandPadLine:
+			fill(tableX, y, inner, tcell.StyleDefault.Background(wmBand))
 		case wmBandLine:
-			band := tcell.StyleDefault.Background(wmBand).Foreground(wmBandFg)
+			band := tcell.StyleDefault.Background(wmBand).Foreground(wmBandFg).Bold(true)
 			fill(tableX, y, inner, band)
 			put(tableX+1, y, inner-1, l.band, band)
 		case wmNoneLine:
@@ -650,9 +655,9 @@ func (t *TUI) drawWatchesModal(s tcell.Screen, v watchesView, now time.Time) {
 		return base
 	}
 	for i, h := range watchesHints {
-		sepText := "   "
+		sepText := "     "
 		if i == len(watchesHints)-1 {
-			sepText = "   ·   "
+			sepText = "     ·     "
 		}
 		if i == 0 {
 			sepText = ""
@@ -747,9 +752,6 @@ func (t *TUI) drawWatchCells(fill func(x, y, w int, st tcell.Style), put func(x,
 		cell := base.Background(bg)
 		fill(cx, y, cols[c], cell)
 		pad := 1
-		if c == wcMark {
-			pad = 0
-		}
 		w := cols[c] - pad
 		text := cell
 		ended := r.w.State == watch.Fired || r.w.State == watch.Cancelled
@@ -770,7 +772,7 @@ func (t *TUI) drawWatchCells(fill func(x, y, w int, st tcell.Style), put func(x,
 			case watch.Cancelled:
 				mk = cell.Foreground(wmDim)
 			}
-			put(cx, y, w, string(r.mark), mk)
+			put(cx+pad, y, w, string(r.mark), mk)
 		case c == wcSetBy:
 			put(cx+pad, y, w, clip(r.w.Owner, w), text)
 		case c == wcWaits:

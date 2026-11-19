@@ -1,0 +1,60 @@
+
+
+
+
+
+
+
+
+
+
+    ┌─ watches · hover · 3 waiting · 4 ended in the last hour · 1 missed its deadline ─────────┐
+....mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+    │                                                                                          │
+....mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+    │      set by    waits for                why (the line it … age    deadline               │
+....mmmmhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhmmmm
+    │                                                                                          │
+....mmmmbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbmmmm
+    │    waiting                                                                               │
+....mmmmbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbmmmm
+    │    ◌ eng8      my send to pm is delive… pm re-checks item… 2m     in 8m                  │
+....mmmmSSSSSSSSSSSSTTTTTTTTTTTTTTTTTTTTTTTTTSSSSSSSSSSSSSSSSSSSTTTTTTTSSSSSSSSSSSSSSSSSSSSSmmmm
+    │    ◌ lead1     ◆ ini-a Signed-only met… read eng8's change 31m    in 29m                 │
+....mmmmmmmmmmmmmmmmsssssssssssssssssssssssssmmmmmmmmmmmmmmmmmmmsssssssmmmmmmmmmmmmmmmmmmmmmmmmm
+    │    ◌ pm        a time only              report the unused… 1h 2m  at 7:00 PM             │
+....mmmmmmmmmmmmmmmmsssssssssssssssssssssssssmmmmmmmmmmmmmmmmmmmsssssssmmmmmmmmmmmmmmmmmmmmmmmmm
+    │                                                                                          │
+....mmmmbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbmmmm
+    │    ended in the last hour                                                                │
+....mmmmbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbmmmm
+    │    ! lead3     ini-b: closed            read the Usage ch… 1h 6m  missed 6m ago          │
+....mmmmmmmmmmmmmmmmsssssssssssssssssssssssssmmmmmmmmmmmmmmmmmmmsssssssmmmmmmmmmmmmmmmmmmmmmmmmm
+    │    ✓ eng8      my send to pm is delive… hand pm the proof  10m    fired 4m ago           │
+....mmmmmmmmmmmmmmmmsssssssssssssssssssssssssmmmmmmmmmmmmmmmmmmmsssssssmmmmmmmmmmmmmmmmmmmmmmmmm
+    │    ✓ super     ✓ ini-c Usage tiles fix… tell theguy the f… 50m    fired 38m ago          │
+....mmmmmmmmmmmmmmmmsssssssssssssssssssssssssmmmmmmmmmmmmmmmmmmmsssssssmmmmmmmmmmmmmmmmmmmmmmmmm
+    │    ✓ eng6      a time only              still owed         4h     fired 3h ago · held    │
+....mmmmmmmmmmmmmmmmsssssssssssssssssssssssssmmmmmmmmmmmmmmmmmmmsssssssmmmmmmmmmmmmmmmmmmmmmmmmm
+    │    × qa2       a time only              walk it            30m    cancelled 12m ago      │
+....mmmmmmmmmmmmmmmmsssssssssssssssssssssssssmmmmmmmmmmmmmmmmmmmsssssssmmmmmmmmmmmmmmmmmmmmmmmmm
+    │                                                                                          │
+....mmmmmmmmmmmmmmmmsssssssssssssssssssssssssmmmmmmmmmmmmmmmmmmmsssssssmmmmmmmmmmmmmmmmmmmmmmmmm
+    │──────────────────────────────────────────────────────────────────────────────────────────│
+....mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+    │   esc close     ↑↓ move     enter the full line and when the watch was set               │
+....mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+    └──────────────────────────────────────────────────────────────────────────────────────────┘
+....mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+
+
+
+
+
+
+
+
+
+
+
+

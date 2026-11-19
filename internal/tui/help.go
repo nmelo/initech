@@ -32,7 +32,7 @@ func getHelpLines() []string {
 			"  " + m + "+l            Quick live popup: type columns, then rows",
 			"  " + m + "+a            Agent management modal",
 			"  " + m + "+i            Operator inbox: items agents posted for you",
-			"  " + m + "+t            Watches: what agents wait for (main window only)",
+			"  " + m + "+t            Watches: what agents wait for; again to close (main window only)",
 			"  " + m + "+z            Zoom/unzoom focused pane",
 			"  " + m + "+" + string(dndToggleKey) + "            Toggle do-not-disturb on the focused pane",
 			"  Ctrl+z           Ignored in panes; zoom is " + m + "+z",

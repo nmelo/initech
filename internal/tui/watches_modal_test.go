@@ -255,7 +255,7 @@ func TestWatchesModal_DrawsThePicturesShape(t *testing.T) {
 	hx, hy := wmFind(t, s, "set by")
 	boxW := watchesBoxWidth(200)
 	x0 := (200 - boxW) / 2
-	tableX := x0 + 2 // the mark column
+	tableX := x0 + 1 + watchesPadX // the table's left edge; the mark is one cell in
 	if _, bg := wmStyle(s, hx, hy); bg != wmHead {
 		t.Errorf("the header is not its dark band")
 	}
@@ -291,20 +291,20 @@ func TestWatchesModal_DrawsThePicturesShape(t *testing.T) {
 		t.Errorf("the first row is not drawn selected")
 	}
 	// Marks and the missed cell.
-	if r, _, _, _ := s.GetContent(tableX, sy); r != '◌' {
+	if r, _, _, _ := s.GetContent(tableX+1, sy); r != '◌' {
 		t.Errorf("waiting mark %q", r)
 	}
 	dx, dy := wmFind(t, s, "missed 6m ago")
 	if fg, _ := wmStyle(s, dx, dy); fg != wmBad {
 		t.Errorf("the missed deadline cell is not red")
 	}
-	if r, _, st, _ := s.GetContent(tableX, dy); r != '!' {
+	if r, _, st, _ := s.GetContent(tableX+1, dy); r != '!' {
 		t.Errorf("missed mark %q", r)
 	} else if fg, _, _ := st.Decompose(); fg != wmBad {
 		t.Errorf("missed mark not red")
 	}
 	_, fy := wmFind(t, s, "fired 4m ago")
-	if r, _, st, _ := s.GetContent(tableX, fy); r != '✓' {
+	if r, _, st, _ := s.GetContent(tableX+1, fy); r != '✓' {
 		t.Errorf("fired mark %q", r)
 	} else if fg, _, _ := st.Decompose(); fg != wmOK {
 		t.Errorf("fired mark not green")
@@ -313,7 +313,7 @@ func TestWatchesModal_DrawsThePicturesShape(t *testing.T) {
 		t.Errorf("a fired row's text is not dim")
 	}
 	_, cy := wmFind(t, s, "cancelled 12m ago")
-	if r, _, _, _ := s.GetContent(tableX, cy); r != '×' {
+	if r, _, _, _ := s.GetContent(tableX+1, cy); r != '×' {
 		t.Errorf("cancelled mark %q", r)
 	}
 	wmFind(t, s, "fired 3h ago · held")
@@ -507,10 +507,10 @@ func TestWatchesModal_TheFrameDrawsItFromTheStore(t *testing.T) {
 	wmFind(t, s, "cancelled ")
 }
 
-// The picture's frame: square thin corners, about 92% of the window, centred,
-// and everything behind it dimmed (ini-44av fix).
+// The picture's frame: square thin corners, 4 columns in from each side,
+// centred, and everything behind it dimmed (ini-44av fix, ini-9krg).
 func TestWatchesModal_TheFrameIsThePictures(t *testing.T) {
-	for sw, want := range map[int]int{200: 184, 340: 312, 100: 92, 50: 50} {
+	for sw, want := range map[int]int{200: 192, 340: 332, 100: 92, 50: 42, 30: 30} {
 		if got := watchesBoxWidth(sw); got != want {
 			t.Errorf("width at %d columns: %d, want %d", sw, got, want)
 		}
@@ -523,20 +523,20 @@ func TestWatchesModal_TheFrameIsThePictures(t *testing.T) {
 	tu.drawWatchesModal(s, buildWatchesView(ws, world, notStarting, wmT0), wmT0)
 	if r, _, st, _ := s.GetContent(0, 0); r != 'A' {
 		t.Errorf("the cell behind changed rune: %q", r)
-	} else if fg, bg, _ := st.Decompose(); fg != tcell.NewRGBColor(95, 96, 97) || bg != tcell.NewRGBColor(50, 51, 52) {
+	} else if fg, bg, _ := st.Decompose(); fg != tcell.NewRGBColor(33, 34, 35) || bg != tcell.NewRGBColor(19, 20, 21) { // under rgba(6,7,9,.86)
 		t.Errorf("behind the modal: fg %v bg %v, want dimmed under the backdrop", fg, bg)
 	}
 	if _, _, st, _ := s.GetContent(199, 39); true {
-		if _, bg, _ := st.Decompose(); bg != tcell.NewRGBColor(15, 16, 20) { // the picture's #16181d under the backdrop
+		if _, bg, _ := st.Decompose(); bg != tcell.NewRGBColor(8, 9, 11) { // the picture's #16181d under the backdrop
 			t.Errorf("a default cell behind the modal is not dimmed: bg %v", bg)
 		}
 	}
 	_, ty := wmFind(t, s, "watches · hover")
-	x0 := (200 - 184) / 2
+	x0 := (200 - 192) / 2
 	for _, c := range []struct {
 		x, y int
 		want rune
-	}{{x0, ty, '┌'}, {x0 + 183, ty, '┐'}} {
+	}{{x0, ty, '┌'}, {x0 + 191, ty, '┐'}} {
 		if r, _, _, _ := s.GetContent(c.x, c.y); r != c.want {
 			t.Errorf("corner at %d,%d: %q, want %q", c.x, c.y, r, c.want)
 		}
@@ -553,10 +553,10 @@ func TestWatchesModal_TheFrameIsThePictures(t *testing.T) {
 	if r, _, _, _ := s.GetContent(x0, fy+1); r != '└' {
 		t.Errorf("bottom-left corner %q, want └", r)
 	}
-	// Columns in the picture's grid: why starts at 814 of 1568 of the table.
+	// Columns in the picture's grid: why starts at 784 of 1508 of the table.
 	hx, hy := wmFind(t, s, "why (the line it will get)")
-	inner := 184 - 4
-	if got, want := float64(hx-1-(x0+2))/float64(inner), 814.0/1568; got < want-0.02 || got > want+0.02 {
+	inner := 192 - 2 - 2*watchesPadX
+	if got, want := float64(hx-1-(x0+1+watchesPadX))/float64(inner), 784.0/1508; got < want-0.02 || got > want+0.02 {
 		t.Errorf("why starts at %.3f of the table, want about %.3f", got, want)
 	}
 	// On the header row only: "deadline" is also in the title.
@@ -675,5 +675,102 @@ func TestWatchesModal_ANarrowTitleIsCutAtAWord(t *testing.T) {
 	// Wide enough, the title is whole.
 	if got := fitWatchTitle([]string{" ", "watches", " ·"}, 40); strings.Join(got, "") != " watches ·" {
 		t.Errorf("a title that fits was changed: %q", got)
+	}
+}
+
+// ini-9krg, the roomier picture: the window sits 4 columns and at least 2 rows
+// in from the edges; inside the border a blank row above the column names and
+// 3 columns each side; each band is a tinted blank row then its bold white
+// label, with the first data row straight after; no blank row between the
+// column names and the first band; one blank row after the last data row,
+// then the key line, its hints 5 columns apart.
+func TestWatchesModal_TheRoomierLayout(t *testing.T) {
+	tu, s := wmScreen(t)
+	ws, world := wmFixture()
+	tu.drawWatchesModal(s, buildWatchesView(ws, world, notStarting, wmT0), wmT0)
+	x0 := watchesMarginX
+	_, ty := wmFind(t, s, "watches · hover")
+	if ty < watchesMarginY {
+		t.Errorf("the window starts at row %d, inside the %d-row margin", ty, watchesMarginY)
+	}
+	if r, _, _, _ := s.GetContent(x0, ty); r != '┌' {
+		t.Errorf("the window's corner is not 4 columns in: %q at %d", r, x0)
+	}
+	if strings.TrimSpace(strings.Trim(string([]rune(wmRowText(s, ty+1))[x0:x0+192]), "│")) != "" {
+		t.Errorf("no blank row between the title and the column names")
+	}
+	_, hy := wmFind(t, s, "set by")
+	if hy != ty+2 {
+		t.Errorf("column names at row %d, want %d", hy, ty+2)
+	}
+	for x := x0 + 1; x <= x0+watchesPadX; x++ {
+		if _, bg := wmStyle(s, x, hy); bg != wmBg {
+			t.Errorf("column %d inside the border is not padding", x)
+		}
+	}
+	if _, bg := wmStyle(s, x0+1+watchesPadX, hy); bg != wmHead {
+		t.Errorf("the header band does not start 3 columns in")
+	}
+	lx, ly := wmFind(t, s, "waiting  ")
+	if ly != hy+2 {
+		t.Errorf("the waiting label at row %d, want %d: the band's blank row straight under the column names", ly, hy+2)
+	}
+	if _, bg := wmStyle(s, lx, ly-1); bg != wmBand || strings.TrimSpace(string([]rune(wmRowText(s, ly-1))[x0+1+watchesPadX:x0+150])) != "" {
+		t.Errorf("the band's first row is not tinted and blank")
+	}
+	if fg, _ := wmStyle(s, lx, ly); fg != tcell.NewRGBColor(0xff, 0xff, 0xff) {
+		t.Errorf("the band label is not white")
+	} else if _, _, st, _ := s.GetContent(lx, ly); func() bool { _, _, a := st.Decompose(); return a&tcell.AttrBold == 0 }() {
+		t.Errorf("the band label is not bold")
+	}
+	if _, y := wmFind(t, s, "pm re-checks item 4"); y != ly+1 {
+		t.Errorf("the first data row at %d, want straight after the band (%d)", y, ly+1)
+	}
+	_, el := wmFind(t, s, "ended in the last hour  ")
+	if _, y := wmFind(t, s, "at 7:00 PM"); el != y+2 {
+		t.Errorf("the ended label at %d, want the last waiting row %d plus the band's blank row", el, y)
+	}
+	_, last := wmFind(t, s, "cancelled 12m ago")
+	_, ky := wmFind(t, s, "esc close")
+	if ky != last+3 {
+		t.Errorf("key line at %d, want one blank row and the rule after the last data row (%d)", ky, last+3)
+	}
+	if _, bg := wmStyle(s, x0+1+watchesPadX+60, last+1); bg != wmShade {
+		t.Errorf("the blank row after the last data row does not keep the column shades")
+	}
+	if !strings.Contains(wmRowText(s, ky), "esc close     ↑↓ move     enter") ||
+		!strings.Contains(wmRowText(s, ky), "was set     ·     read-only:") {
+		t.Errorf("hints are not 5 columns apart: %q", strings.TrimSpace(wmRowText(s, ky)))
+	}
+}
+
+// ini-9krg AC2: while the window is open, keys other than its own do nothing
+// and reach no pane; the twin: closed, the same key reaches the focused pane.
+func TestWatchesModal_KeysReachNoPaneWhileOpen(t *testing.T) {
+	tu := wmStoreTUI(t)
+	p := tu.panes[0].(*Pane)
+	drainPaneInput(t, p)
+	tu.handleKey(wmAltKey('t'))
+	for _, k := range []*tcell.EventKey{
+		tcell.NewEventKey(tcell.KeyRune, 'x', 0),
+		tcell.NewEventKey(tcell.KeyRune, 'q', 0),
+		tcell.NewEventKey(tcell.KeyBackspace2, 0, 0),
+		tcell.NewEventKey(tcell.KeyTab, 0, 0),
+	} {
+		tu.handleKey(k)
+	}
+	if !tu.watchesM.active {
+		t.Fatal("a key that is not the window's closed it")
+	}
+	if p.lastOperatorKey.Load() != 0 {
+		t.Error("a key reached the pane under the open window")
+	}
+	tu.handleKey(wmAltKey('t'))
+	if tu.watchesM.active {
+		t.Fatal("Option+T did not close the window")
+	}
+	tu.handleKey(tcell.NewEventKey(tcell.KeyRune, 'x', 0))
+	if p.lastOperatorKey.Load() == 0 {
+		t.Error("the twin: with the window closed, the key did not reach the pane, so the check above proves nothing")
 	}
 }
