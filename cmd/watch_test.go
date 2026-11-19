@@ -335,3 +335,31 @@ func TestClearAndRestart_SayHowManyWatchesTheyKept(t *testing.T) {
 		}
 	}
 }
+
+// Under initech serve the daemon answers the no-store line: exit 1 with that
+// line, never the older-initech exit 2; and clear stays silent about watches.
+func TestWatch_UnderServe_IsExit1_AndClearStaysSilent(t *testing.T) {
+	const line = "this initech keeps no watches: window 1 of a rig does (not a second window or initech serve)"
+	f := func(r tui.IPCRequest) tui.IPCResponse {
+		if strings.HasPrefix(r.Action, "watch_") {
+			return tui.IPCResponse{OK: false, Error: line}
+		}
+		return tui.IPCResponse{OK: true}
+	}
+	startWatchFake(t, f)
+	for _, args := range [][]string{{"set", "--why", "w", "--until", "1h"}, {"list"}, {"cancel", "w1"}} {
+		if _, err, code := runWatch(t, args...); code != 1 || err == nil || err.Error() != line {
+			t.Errorf("%v: err = %v, exit %d, want the no-store line with exit 1", args, err, code)
+		}
+	}
+	startWatchFake(t, f)
+	var out bytes.Buffer
+	rootCmd.SetOut(&out)
+	rootCmd.SetErr(&bytes.Buffer{})
+	rootCmd.SetArgs([]string{"clear", "eng1"})
+	err := rootCmd.Execute()
+	rootCmd.SetArgs(nil)
+	if err != nil || strings.Contains(out.String(), "kept") {
+		t.Errorf("clear under serve: err %v, out %q", err, out.String())
+	}
+}

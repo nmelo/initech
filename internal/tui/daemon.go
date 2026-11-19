@@ -847,6 +847,12 @@ func (d *Daemon) HandleExtended(conn net.Conn, req IPCRequest, rawJSON []byte) b
 		writeIPCResponse(conn, IPCResponse{Error: "post is not served by a remote daemon in this release; post from an agent in the operator's local fleet"})
 		return true
 	}
+	if isWatchAction(req.Action) {
+		// The daemon keeps no watch store: one line, exit 1 at the command,
+		// never "unknown action" (read as an older initech, exit 2).
+		writeIPCResponse(conn, IPCResponse{Error: watchNoStoreLine})
+		return true
+	}
 	return false
 }
 

@@ -208,3 +208,25 @@ func TestWatchIPC_TheRealValidator_IsTheOneSetRuns(t *testing.T) {
 		t.Errorf("%d stored, want ini-a's and the deadline", n)
 	}
 }
+
+// An agent under initech serve keeps no watches: the daemon answers every
+// watch action with the no-store line (exit 1 at the command), never
+// "unknown action", which the command would read as an older initech and
+// tell the agent to restart (exit 2), which cannot help.
+func TestDaemon_WatchActions_AreTheNoStoreLine_NotUnknownAction(t *testing.T) {
+	d := &Daemon{}
+	for _, action := range []string{"watch_set", "watch_list", "watch_cancel", "watch_count"} {
+		conn := &fakeConn{}
+		if !d.HandleExtended(conn, IPCRequest{Action: action, From: "eng6"}, nil) {
+			t.Errorf("%s: the daemon left it unhandled, so it reads as unknown action", action)
+			continue
+		}
+		var resp IPCResponse
+		if err := json.Unmarshal(conn.written[:conn.findNewline()], &resp); err != nil {
+			t.Fatalf("%s: unparseable reply %q", action, conn.written)
+		}
+		if resp.OK || resp.Error != watchNoStoreLine {
+			t.Errorf("%s = %+v, want %q", action, resp, watchNoStoreLine)
+		}
+	}
+}

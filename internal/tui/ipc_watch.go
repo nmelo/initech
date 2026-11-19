@@ -80,7 +80,7 @@ func (t *TUI) handleIPCWatch(conn net.Conn, req IPCRequest) {
 	var resp IPCResponse
 	ran := t.runOnMain(func() {
 		if t.watches == nil {
-			resp = IPCResponse{Error: "this initech keeps no watches: window 1 of a rig does (not a second window or initech serve)"}
+			resp = IPCResponse{Error: watchNoStoreLine}
 			return
 		}
 		switch req.Action {
@@ -138,6 +138,20 @@ func (t *TUI) watchWakes(w watch.Watch) bool {
 		if p, ok := pv.(*Pane); ok && p.name == w.Owner {
 			return p.IsSuspended()
 		}
+	}
+	return false
+}
+
+// watchNoStoreLine is the refusal of a host that keeps no watches: a second
+// window, the serve daemon, or window 1 before its store loads. Restarting
+// would not help, so it is never the older-initech answer.
+const watchNoStoreLine = "this initech keeps no watches: window 1 of a rig does (not a second window or initech serve)"
+
+// isWatchAction says whether action is one of initech watch's.
+func isWatchAction(action string) bool {
+	switch action {
+	case "watch_set", "watch_list", "watch_cancel", "watch_count":
+		return true
 	}
 	return false
 }
