@@ -401,14 +401,15 @@ func (t *TUI) classifyViewerEmpty() (string, *viewerEmptyDefect) {
 	}
 
 	// Every owned agent is here and hidden: the legal all-hidden state. The
-	// idle count reads each agent's own state, the one status --json reports.
+	// idle count reads each agent's own state, the one status --json reports,
+	// and leaves out a bead holder, as the agents box's hidden line does.
 	if hiddenCount == len(owned) {
 		idle, only, mine := 0, "", ownedSet(owned)
 		for _, p := range t.panes {
 			if !mine[agentKey(p)] {
 				continue
 			}
-			if p.Activity() == StateIdle {
+			if p.Activity() == StateIdle && p.BeadID() == "" {
 				idle++
 			}
 			only = paneDisplayName(p)

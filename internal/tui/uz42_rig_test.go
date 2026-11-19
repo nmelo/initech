@@ -95,14 +95,21 @@ func TestUZ42Rig_AllHiddenExplanationAndRecoveryRoundTrip(t *testing.T) {
 	}
 
 	// WINDOW 2 shows every agent it owns hidden: its title row's disclosure,
-	// the same line 6M4 reads, says so. The hint's words are not asserted
-	// here (they are ini-vag8's).
+	// the same line 6M4 reads, says so.
 	w2Shows := func(visible, hidden int) func(string) bool {
 		want := fmt.Sprintf("%d visible, %d hidden", visible, hidden)
 		return func(s string) bool { return strings.Contains(s, want) }
 	}
 	if _, ok := nineISXAwait(w2emu, w2Shows(0, 3), 15*time.Second); !ok {
 		t.Fatalf("window 2 never showed its three agents hidden\n%s", nineISXScreen(w2emu))
+	}
+	// Its agents box's last line names the one way back that exists there,
+	// the main window's Agents panel (ini-vag8, pm R2), and no dots.
+	way := "show them from the main window's Agents panel (Option+a there)"
+	if _, ok := nineISXAwait(w2emu, func(s string) bool {
+		return strings.Contains(s, "3 hidden") && strings.Contains(s, way)
+	}, 15*time.Second); !ok || strings.Contains(nineISXScreen(w2emu), "click") {
+		t.Fatalf("window 2's agents box does not name the way back (or names dots)\n%s", nineISXScreen(w2emu))
 	}
 
 	// UNHIDE eng1 THROUGH THE AGENTS PANE, the route that exists for window

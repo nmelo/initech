@@ -458,7 +458,14 @@ func (t *TUI) drawRigPanel(now time.Time, agents []panelAgent, beads []panelBead
 	title := panelTitleOf(beads, agents, now)
 	working, holding, idle := t.panelSections(agents, now)
 	rows := top - 3 // title, top border, bottom border
-	cells, cols, cutWorking := panelBoxLayout(rows, working, holding)
+	// With any agent hidden, the box's last row is the hidden line
+	// (ini-vag8), and the agent rows give it that row.
+	hiddenN, hiddenIdle := panelHiddenIdle(agents, working, holding)
+	boxRows := rows
+	if hiddenN > 0 && rows >= 2 {
+		boxRows = rows - 1
+	}
+	cells, cols, cutWorking := panelBoxLayout(boxRows, working, holding)
 	title.Idle, title.CutWorking = idle, cutWorking
 
 	bg := tcell.StyleDefault.Background(tcell.NewRGBColor(26, 28, 38))
@@ -543,7 +550,7 @@ func (t *TUI) drawRigPanel(now time.Time, agents []panelAgent, beads []panelBead
 	box1W := 0
 	fits := func(limit int) bool {
 		for _, f = range folds {
-			widths, box1W = panelBoxWidths(cells, rows, cols, f.titles, f.age, now)
+			widths, box1W = panelBoxWidths(cells, boxRows, cols, f.titles, f.age, now)
 			label := boxTitle
 			if !f.counts {
 				label = "agents"
@@ -562,6 +569,14 @@ func (t *TUI) drawRigPanel(now time.Time, agents []panelAgent, beads []panelBead
 		boxTitle = "agents"
 	}
 	box1W = min(box1W, sw)
+	// The hidden line widens the box up to where the moved box keeps its
+	// minimum, and names past that width become "+N".
+	var hiddenLine string
+	if boxRows < rows {
+		avail := max(box1W, sw-1-panelMovedMinWidth)
+		hiddenLine = panelHiddenLine(hiddenN, hiddenIdle, !t.isFleetAuthority(), avail-4)
+		box1W = max(box1W, min(len([]rune(hiddenLine))+4, avail))
+	}
 	yTop, yBot := 1, 1+rows+1
 	drawBox := func(x0, x1 int, label string, labelSt tcell.Style) {
 		for x := x0; x <= x1 && x < sw; x++ {
@@ -597,7 +612,7 @@ func (t *TUI) drawRigPanel(now time.Time, agents []panelAgent, beads []panelBead
 		return x
 	}
 	for i, r := range cells {
-		c, y := i/rows, yTop+1+i%rows
+		c, y := i/boxRows, yTop+1+i%boxRows
 		cw := widths[c]
 		x0 := colX(c)
 		limit := min(x0+cw.width(), x1)
@@ -650,6 +665,9 @@ func (t *TUI) drawRigPanel(now time.Time, agents []panelAgent, beads []panelBead
 		if cw.title > 0 && a.Title != "" {
 			put(x+1, y, panelTitleWords(a.Title, cw.title), dim, limit)
 		}
+	}
+	if hiddenLine != "" {
+		put(2, yTop+rows, hiddenLine, dim, x1)
 	}
 	// The moved box gives way, rather than draw narrower than its minimum.
 	if sw-box1W-1 >= panelMovedMinWidth {
