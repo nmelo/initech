@@ -335,3 +335,88 @@ func TestReceipts_AWatchedReceiptIsNeverPruned(t *testing.T) {
 		t.Fatalf("an unwatched receipt was kept past the bound: %+v", st)
 	}
 }
+
+// qa2's survivors on 70be8ac, each a rule the DONE claimed; pinned here.
+
+// Y1: an ended receipt stays ended: a late held (a stale re-hold racing the
+// typing) never revives it.
+func TestReceipts_AnEndedReceiptIsNeverRevived(t *testing.T) {
+	b := newReceiptBook()
+	for _, end := range []string{ReceiptTyped, ReceiptWithdrawn, ReceiptDropped} {
+		id := "R-" + end
+		b.set("a", id, "eng1", heldKindDND, ReceiptHeld, "", time.Now())
+		b.set("a", id, "eng1", heldKindDND, end, "", time.Now())
+		if _, changed := b.set("a", id, "eng1", heldKindDND, ReceiptHeld, "", time.Now()); changed || b.state("a", id).State != end {
+			t.Errorf("%s revived to %s", end, b.state("a", id).State)
+		}
+	}
+}
+
+// Y3: the bound is pm's 1,000, exactly: 1,000 ended receipts are all kept,
+// the 1,001st prunes the oldest.
+func TestReceipts_TheBoundIsOneThousand(t *testing.T) {
+	if maxEndedReceipts != 1000 {
+		t.Fatalf("maxEndedReceipts = %d, pm ruled 1,000", maxEndedReceipts)
+	}
+	b := newReceiptBook()
+	for i := 0; i < 1000; i++ {
+		b.set("a", "b"+itoa(i), "", heldKindDND, ReceiptTyped, "", time.Now())
+	}
+	if st := b.state("a", "b0"); st.State != ReceiptTyped {
+		t.Fatalf("pruned at 1,000: %+v", st)
+	}
+	b.set("a", "b1000", "", heldKindDND, ReceiptTyped, "", time.Now())
+	if st := b.state("a", "b0"); st.State != ReceiptUnknown || b.state("a", "b1").State != ReceiptTyped {
+		t.Fatalf("the 1,001st did not prune exactly the oldest: b0 %+v", st)
+	}
+}
+
+// Y4: one mint rule: a message that already has a receipt keeps it through
+// every hold a re-send can meet (do-not-disturb, the wake queue, a dialog or
+// not-reading hold), so the sender's receipt stays the one that names it.
+func TestReceipts_AReSentMessageKeepsItsReceipt(t *testing.T) {
+	p, _, _ := dndPane(t, "a")
+	fakeBook(p, time.Now())
+	p.startDND()
+	if v, _ := p.holdIfDND("dnd", true, "eng1", "KEEP-DND"); v.Receipt != "KEEP-DND" || dndQueue(p)[0].Receipt != "KEEP-DND" {
+		t.Fatalf("dnd re-hold minted %q", v.Receipt)
+	}
+	p.setSendReceipt("KEEP-DIALOG")
+	_, r := p.enqueueHeldReceipt("dialog", true, sendAgainWhenDialog)
+	p.setSendReceipt("")
+	if r != "KEEP-DIALOG" {
+		t.Fatalf("dialog re-hold minted %q", r)
+	}
+	parked := NewParkedPane(PaneConfig{Name: "w"}, 10, 40)
+	if v := parked.queueForWake("wake", true, sendOrigin{From: "eng1", Receipt: "KEEP-WAKE"}); v.Receipt != "KEEP-WAKE" {
+		t.Fatalf("wake re-hold minted %q", v.Receipt)
+	}
+	m := QueuedMessage{Receipt: "KEEP"}
+	if mintReceipt(&m); m.Receipt != "KEEP" {
+		t.Fatalf("mintReceipt replaced %q", m.Receipt)
+	}
+}
+
+// Y6: a re-send the send path refuses is dropped, with its reason; a held
+// or deferred one stays held; any other verdict is typed.
+func TestReceipts_ARefusedReSendIsDropped(t *testing.T) {
+	p, _, _ := dndPane(t, "a")
+	b, _ := fakeBook(p, time.Now())
+	for _, c := range []struct {
+		v    SendVerdict
+		want string
+	}{
+		{SendVerdict{Outcome: DeliveryNotDelivered, Reason: "the agent is gone"}, ReceiptDropped},
+		{SendVerdict{Outcome: DeliveryHeld}, ReceiptHeld},
+		{SendVerdict{Outcome: DeliveryDeferred}, ReceiptHeld},
+		{SendVerdict{Outcome: DeliveryUnconfirmed}, ReceiptTyped},
+	} {
+		m := QueuedMessage{Receipt: "S-" + c.v.Outcome, From: "eng1", DND: true, Time: time.Now()}
+		p.noteReceipt(m, ReceiptHeld)
+		p.settleReceipt(m, c.v)
+		st := b.state("a", m.Receipt)
+		if st.State != c.want || (c.want == ReceiptDropped && st.Why != "the agent is gone") {
+			t.Errorf("%s: %+v, want %s", c.v.Outcome, st, c.want)
+		}
+	}
+}
