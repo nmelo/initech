@@ -53,7 +53,7 @@ targets:
         Release:
           CODE_SIGN_ENTITLEMENTS: InitechApp/InitechApp.entitlements
     # Stamp the build commit: the short sha of the checkout this build was made
-    # from, into the built Info.plist as InitechCommit (About shows it). Runs
+    # from, into the built Info.plist as InitechCommit (the foot of the Panes list shows it). Runs
     # on every build, so an incremental build never keeps an old sha; no
     # readable commit writes "unknown". Before signing, as every build phase is.
     postBuildScripts:

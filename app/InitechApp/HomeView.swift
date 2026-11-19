@@ -12,7 +12,6 @@ struct MainView: View {
     @State private var showRigs = false
     @State private var showBlockers = false
     @State private var showProgress = false
-    @State private var showAbout = false
     @State private var blockersFocus: BlockerFocus?
     /// opened is false until home's first reload, before which a tap that
     /// opened the app cannot tell a running pane from a gone one.
@@ -21,32 +20,27 @@ struct MainView: View {
     @Environment(\.horizontalSizeClass) private var sizeClass
 
     var body: some View {
-        NavigationSplitView {
-            HomeList(home: home, push: push, inbox: inbox, showRigs: $showRigs, besideThePane: sizeClass == .regular)
-                .navigationTitle("Panes")
-                .toolbar {
-                    ToolbarItem(placement: .topBarLeading) { EditButton() }
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button("Rigs") { showRigs = true }
-                    }
-                    ToolbarItem(placement: .bottomBar) {
-                        Button("Blockers") { showBlockers = true }
-                    }
-                    ToolbarItem(placement: .bottomBar) {
-                        Button("Progress") { showProgress = true }
-                    }
-                    ToolbarItem(placement: .bottomBar) {
-                        Button("About") { showAbout = true }
-                    }
-                }
+        // The list draws its own header and bottom bar, so its navigation bar is
+        // hidden. On iPad the list always sits beside the pane (balanced, all
+        // columns): with no bar there is no button to bring a hidden list back.
+        NavigationSplitView(columnVisibility: .constant(.all)) {
+            HomeList(home: home, push: push, inbox: inbox, showRigs: $showRigs, showBlockers: $showBlockers,
+                     showProgress: $showProgress, besideThePane: sizeClass == .regular)
+                .toolbar(.hidden, for: .navigationBar)
         } detail: {
             if let ref = home.selection {
                 PaneView(model: PaneModel(service: home.service, ref: ref), home: home)
                     .id(ref)
             } else {
-                Text("Pick a pane").foregroundStyle(.secondary)
+                ZStack {
+                    Theme.bg.ignoresSafeArea()
+                    Text("❯ pick a pane").font(Theme.mono(.body)).foregroundStyle(Theme.dim)
+                }
             }
         }
+        .navigationSplitViewStyle(.balanced)
+        .tint(Theme.red)
+        .preferredColorScheme(.dark)
         .sheet(isPresented: $showRigs) {
             NavigationStack { RigsView(home: home) }
         }
@@ -55,9 +49,6 @@ struct MainView: View {
         }
         .sheet(isPresented: $showProgress) {
             NavigationStack { ProgressScreen(home: home) }
-        }
-        .sheet(isPresented: $showAbout) {
-            NavigationStack { AboutView() }
         }
         .task {
             await home.reload()
@@ -87,7 +78,7 @@ extension MainView {
     /// everything, else the open pane.
     var screen: OnScreen {
         if showBlockers { return .waitingList }
-        if showRigs || showProgress || showAbout { return .other }
+        if showRigs || showProgress { return .other }
         return home.selection.map { .pane($0) } ?? .other
     }
 
@@ -98,7 +89,6 @@ extension MainView {
         inbox.tapped = nil
         showRigs = false
         showProgress = false
-        showAbout = false
         switch route {
         case .home:
             showBlockers = false
@@ -127,48 +117,70 @@ extension MainView {
         case .rigs: showRigs = true
         case .blockers: showBlockers = true
         case .progress: showProgress = true
-        case .about: showAbout = true
         case let .pane(rig, pane): home.open(PaneRef(rig: rig, pane: pane))
         }
     }
 }
 #endif
 
-/// HomeList is his pinned panes in his order; rename by swipe, reorder in edit mode.
+/// HomeList is his pinned panes in his order, drawn as a terminal would: a
+/// prompt line on top with edit and rigs, one or two lines per pane, and a bar
+/// of numbered keys at the bottom for Blockers and Progress. Rename and unpin
+/// by swipe, reorder in edit mode.
 struct HomeList: View {
     @ObservedObject var home: HomeModel
     @ObservedObject var push: PushRegistrar
     @ObservedObject var inbox: PushInbox
     @Binding var showRigs: Bool
+    @Binding var showBlockers: Bool
+    @Binding var showProgress: Bool
     let besideThePane: Bool
     @State private var renaming: PaneRow?
     @State private var newName = ""
+    @State private var editMode: EditMode = .inactive
 
     var body: some View {
         List(selection: Binding(get: { home.selection }, set: { home.listChose($0, besideThePane: besideThePane) })) {
-            if let problem = home.problem {
-                Text(problem).foregroundStyle(.red).font(.footnote)
+            Group {
+                if let problem = home.problem {
+                    Text(problem).foregroundStyle(Theme.red).font(Theme.mono(.footnote))
+                }
+                if let line = push.line {
+                    PushLineView(line: line)
+                }
+                if let notice = inbox.notice {
+                    Text(notice).font(Theme.mono(.footnote)).foregroundStyle(Theme.soft)
+                        .accessibilityIdentifier("push-notice")
+                }
+                if home.showsNoPinsLine {
+                    Button("No pinned panes yet. Pin one from Rigs.") { showRigs = true }
+                        .font(Theme.mono(.footnote))
+                }
+                ForEach(home.rows) { row in
+                    PaneRowView(row: row, waiting: home.waiting[row.ref])
+                        .tag(row.ref)
+                        .swipeActions {
+                            Button("Unpin", role: .destructive) { Task { await home.unpin(row.ref) } }
+                            Button("Rename") { newName = row.name; renaming = row }
+                        }
+                }
+                .onMove { from, to in Task { await home.move(from: from, to: to) } }
+                // The build this is, so an error on a device can be matched to its commit.
+                Text(BuildInfo.current).font(Theme.mono(.caption2)).foregroundStyle(Theme.dim)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .listRowSeparator(.hidden)
+                    .accessibilityIdentifier("about.version")
             }
-            if let line = push.line {
-                PushLineView(line: line)
-            }
-            if let notice = inbox.notice {
-                Text(notice).font(.footnote).foregroundStyle(.secondary)
-                    .accessibilityIdentifier("push-notice")
-            }
-            if home.showsNoPinsLine {
-                Button("No pinned panes yet. Pin one from Rigs.") { showRigs = true }
-            }
-            ForEach(home.rows) { row in
-                PaneRowView(row: row, waiting: home.waiting[row.ref])
-                    .tag(row.ref)
-                    .swipeActions {
-                        Button("Unpin", role: .destructive) { Task { await home.unpin(row.ref) } }
-                        Button("Rename") { newName = row.name; renaming = row }
-                    }
-            }
-            .onMove { from, to in Task { await home.move(from: from, to: to) } }
+            .listRowBackground(Theme.bg)
+            .listRowSeparatorTint(Theme.line)
+            .listRowInsets(EdgeInsets(top: 9, leading: 20, bottom: 9, trailing: 20))
         }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .background(Theme.bg.ignoresSafeArea())
+        .environment(\.editMode, $editMode)
+        .safeAreaInset(edge: .top, spacing: 0) { header }
+        .safeAreaInset(edge: .bottom, spacing: 0) { keys }
         .refreshable { await home.reload() }
         .alert("Rename", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
             TextField("Name", text: $newName)
@@ -177,6 +189,63 @@ struct HomeList: View {
             }
             Button("Cancel", role: .cancel) {}
         }
+    }
+
+    /// header is the prompt line: where he is, then edit and rigs.
+    private var header: some View {
+        HStack(spacing: 0) {
+            Text("initech").font(Theme.mono(.subheadline, .bold)).foregroundStyle(Theme.bright)
+            Text(" ❯ panes").font(Theme.mono(.subheadline)).foregroundStyle(Theme.text)
+            Rectangle().fill(Theme.red).frame(width: 9, height: 17).padding(.leading, 6)
+                .accessibilityHidden(true)
+            Spacer()
+            Button(editMode.isEditing ? "done" : "edit") {
+                withAnimation { editMode = editMode.isEditing ? .inactive : .active }
+            }
+            .accessibilityLabel(editMode.isEditing ? "Done" : "Edit")
+            Text(" · ").foregroundStyle(Theme.dim)
+            Button("rigs") { showRigs = true }
+                .accessibilityLabel("Rigs")
+        }
+        .font(Theme.mono(.subheadline))
+        .buttonStyle(.plain)
+        .foregroundStyle(Theme.red)
+        .padding(.horizontal, 20).padding(.vertical, 13)
+        .background(Theme.bg)
+        .overlay(alignment: .bottom) { Rectangle().fill(Theme.line).frame(height: 1) }
+        .accessibilityElement(children: .contain)
+        .accessibilityAddTraits(.isHeader)
+    }
+
+    /// keys is the bottom bar: the screens, as numbered keys. It sits below the
+    /// list, never over it.
+    private var keys: some View {
+        HStack(spacing: 0) {
+            (Text("1 ").foregroundColor(Theme.red) + Text("panes").foregroundColor(Theme.red))
+                .fontWeight(.semibold)
+                .accessibilityLabel("Panes")
+                .accessibilityAddTraits(.isSelected)
+            Spacer()
+            Button { showBlockers = true } label: {
+                HStack(spacing: 5) {
+                    Text("2 blockers")
+                    if !home.waiting.isEmpty {
+                        Text("\(home.waiting.count)").fontWeight(.bold).foregroundStyle(Theme.bg)
+                            .padding(.horizontal, 5).background(Theme.red, in: RoundedRectangle(cornerRadius: 4))
+                    }
+                }
+            }
+            .accessibilityLabel("Blockers")
+            Spacer()
+            Button("3 progress") { showProgress = true }
+                .accessibilityLabel("Progress")
+        }
+        .font(Theme.mono(.footnote))
+        .buttonStyle(.plain)
+        .foregroundStyle(Theme.soft)
+        .padding(.horizontal, 24).padding(.top, 13).padding(.bottom, 6)
+        .background(Theme.bar.ignoresSafeArea(edges: .bottom))
+        .overlay(alignment: .top) { Rectangle().fill(Theme.line).frame(height: 1) }
     }
 }
 
@@ -187,50 +256,75 @@ struct PushLineView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(line.words).font(.footnote).foregroundStyle(.secondary)
+            Text(line.words).font(Theme.mono(.footnote)).foregroundStyle(Theme.soft)
             if line == .off, let settings = URL(string: UIApplication.openSettingsURLString) {
-                Button("Open Settings") { UIApplication.shared.open(settings) }.font(.footnote)
+                Button("Open Settings") { UIApplication.shared.open(settings) }.font(Theme.mono(.footnote))
             }
         }
         .accessibilityIdentifier("push-line")
     }
 }
 
-/// PaneRowView is one pane: his name, its state, context and bead; greyed when gone.
+/// PaneRowView is one pane as two lines of a terminal: a state dot, his name,
+/// and its context as a bar of blocks; then its state, bead and where it runs.
+/// A pane that is not running is one dim line.
 struct PaneRowView: View {
     let row: PaneRow
     var waiting: String?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                Circle().fill(color).frame(width: 9, height: 9)
-                Text(row.name).font(.headline)
-                Spacer()
-                if let pct = row.contextPercent { Text("\(pct)%").font(.caption).monospacedDigit() }
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(alignment: .center, spacing: 9) {
+                Text(row.gone ? "○" : "●").font(Theme.mono(.caption)).foregroundStyle(color)
+                Text(row.name.lowercased())
+                    .font(Theme.mono(.body, row.gone ? .regular : .semibold))
+                    .foregroundStyle(row.gone ? Theme.dim : Theme.bright)
+                    .lineLimit(1)
+                Spacer(minLength: 8)
+                if row.gone {
+                    Text("not running").font(Theme.mono(.caption)).foregroundStyle(Theme.dim)
+                } else if let pct = row.contextPercent {
+                    ContextBarView(percent: pct)
+                    Text("\(pct)%").font(Theme.mono(.caption)).foregroundStyle(Theme.soft)
+                        .frame(minWidth: 36, alignment: .trailing)
+                }
             }
-            HStack(spacing: 8) {
-                Text(row.stateLabel)
-                if let bead = row.bead { Text(bead).monospaced() }
-                Text("\(row.ref.pane) · \(row.ref.rig)").foregroundStyle(.tertiary)
+            if !row.gone {
+                (Text(row.stateLabel).foregroundColor(color)
+                    + Text(row.bead.map { " · \($0)" } ?? "")
+                    + Text(" · \(row.ref.pane)@\(row.ref.rig)"))
+                    .font(Theme.mono(.caption)).foregroundStyle(Theme.dim)
+                    .lineLimit(1)
+                    .padding(.leading, 19)
             }
-            .font(.caption)
-            .foregroundStyle(.secondary)
             if let waiting {
-                Text(waiting).font(.caption).foregroundStyle(.orange).lineLimit(2)
+                Text(waiting).font(Theme.mono(.caption)).foregroundStyle(Theme.orange).lineLimit(2)
+                    .padding(.leading, 19)
             }
         }
-        .opacity(row.gone ? 0.4 : 1)
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(spoken)
+    }
+
+    /// spoken is the row read aloud, and what the UI tests find it by: the
+    /// same words in the same order as before the terminal look.
+    private var spoken: String {
+        var parts = [row.name]
+        if let pct = row.contextPercent { parts.append("\(pct)%") }
+        parts.append(row.stateLabel)
+        if let bead = row.bead { parts.append(bead) }
+        parts.append("\(row.ref.pane) · \(row.ref.rig)")
+        if let waiting { parts.append(waiting) }
+        return parts.joined(separator: ", ")
     }
 
     private var color: Color {
-        if row.gone { return .gray }
-        if row.atDialog { return .orange }
+        if row.gone { return Theme.dim }
+        if row.atDialog { return Theme.orange }
         switch row.state {
-        case "running", "background": return .green
-        case "idle": return .blue
-        default: return .gray
+        case "running", "background": return Theme.green
+        case "idle": return Theme.blue
+        default: return Theme.grey
         }
     }
 }

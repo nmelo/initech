@@ -9,7 +9,7 @@ final class DebugLaunchTests: XCTestCase {
         XCTAssertEqual(DebugScreen.parse(["app", "-debug-screen", "rigs"]), .rigs)
         XCTAssertEqual(DebugScreen.parse(["app", "-debug-screen", "blockers"]), .blockers)
         XCTAssertEqual(DebugScreen.parse(["app", "-debug-screen", "progress"]), .progress)
-        XCTAssertEqual(DebugScreen.parse(["app", "-debug-unlocked", "-debug-screen", "about"]), .about)
+        XCTAssertEqual(DebugScreen.parse(["app", "-debug-unlocked", "-debug-screen", "progress"]), .progress)
         XCTAssertEqual(DebugScreen.parse(["app", "-debug-screen", "pane:hover/eng6"]), .pane(rig: "hover", pane: "eng6"))
     }
 
@@ -19,6 +19,7 @@ final class DebugLaunchTests: XCTestCase {
         XCTAssertNil(DebugScreen.parse(["app"]))
         XCTAssertNil(DebugScreen.parse(["app", "-debug-screen"]))
         XCTAssertNil(DebugScreen.parse(["app", "-debug-screen", "settings"]))
+        XCTAssertNil(DebugScreen.parse(["app", "-debug-screen", "about"]), "the About page is gone")
         XCTAssertNil(DebugScreen.parse(["app", "rigs"]), "a name without its flag opened a screen")
         XCTAssertNil(DebugScreen.parse(["app", "-debug-screen", "pane:"]))
         XCTAssertNil(DebugScreen.parse(["app", "-debug-screen", "pane:hover"]))

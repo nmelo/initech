@@ -196,5 +196,8 @@ first.
 - `icon/`: the app icon's source: a 3D model of a red stapler stapling the terminal prompt (`stapler.py`, for
   Blender) and the step that puts it on its background and writes the icon asset (`compose.py`). `icon/README.md`
   says how to make the icon again and what each setting changes.
-- `InitechApp/HomeModel.swift`, `HomeView.swift`: pinned panes and the Rigs view.
+- `InitechApp/Theme.swift`: the app's look, a terminal's: near-black, monospaced, one red for what can be
+  pressed, a colour per pane state. Screens take their colours and type from here.
+- `InitechApp/HomeModel.swift`, `HomeView.swift`: pinned panes and the Rigs view. The Panes list draws its own
+  header (edit, rigs) and bottom keys (blockers, progress), and ends with the build line: version, build, commit.
 - `InitechApp/PaneModel.swift`, `PaneView.swift`: the pane's conversation.

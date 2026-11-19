@@ -1,6 +1,6 @@
 import Foundation
 
-/// BuildInfo is the version line About shows: the marketing version, the build
+/// BuildInfo is the version line at the foot of the Panes list: the marketing version, the build
 /// number in parentheses, then the short commit the build was made from. The
 /// commit is stamped into Info.plist (InitechCommit) by the build's
 /// "Stamp the build commit" phase; a build whose commit could not be read

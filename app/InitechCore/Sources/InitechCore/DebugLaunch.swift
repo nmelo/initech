@@ -7,11 +7,11 @@ import Foundation
 /// argument. Only the app's debug code reads it; a release build has no such
 /// code (the app's own hooks are compiled under DEBUG).
 public enum DebugScreen: Equatable, Sendable {
-    case rigs, blockers, progress, about
+    case rigs, blockers, progress
     case pane(rig: String, pane: String)
 
     /// parse reads `-debug-screen <name>` from the launch arguments: rigs,
-    /// blockers, progress, about, or pane:<rig>/<pane>. No argument, or a name
+    /// blockers, progress, or pane:<rig>/<pane>. No argument, or a name
     /// it does not know, is nil: the app opens on Panes as it always does.
     public static func parse(_ args: [String]) -> DebugScreen? {
         guard let i = args.firstIndex(of: "-debug-screen"), i + 1 < args.count else { return nil }
@@ -20,7 +20,6 @@ public enum DebugScreen: Equatable, Sendable {
         case "rigs": return .rigs
         case "blockers": return .blockers
         case "progress": return .progress
-        case "about": return .about
         default:
             guard name.hasPrefix("pane:") else { return nil }
             let parts = name.dropFirst("pane:".count).split(separator: "/", maxSplits: 1, omittingEmptySubsequences: false)
