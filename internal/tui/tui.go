@@ -577,6 +577,13 @@ type TUI struct {
 	// paceWaitReads is each waiting bead's comments, read for its stated
 	// wait (ini-75pt). The bead poll goroutine's alone.
 	paceWaitReads paceWaitCommentState
+	// watchComments is each watched bead's comments for its comment
+	// watches, read again only when its comment count rises (ini-20r2).
+	// Bead poller goroutine only.
+	watchComments map[string]cachedComments
+	// watchBeads is the newest answered bead poll, by id, for the watches'
+	// World (ini-20r2); nil until one answers. Main goroutine.
+	watchBeads map[string]bdBead
 }
 
 // setOnWakeComplete installs (or, with nil, clears) the test-only wake-done
