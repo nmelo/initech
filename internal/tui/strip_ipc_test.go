@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/nmelo/initech/internal/config"
 )
 
 // stripCall runs a strip request through h and returns the reply.
@@ -307,5 +309,31 @@ func TestStripIPC_OnlyThePanesOwnAgentSetsItsStrip(t *testing.T) {
 		if got := p.StripItems(); !reflect.DeepEqual(got, []string{"mine"}) {
 			t.Errorf("%s: list became %q", name, got)
 		}
+	}
+}
+
+// pm's ruling A: a Codex pane, whose commands initech cannot place in its
+// process tree, gets exit 1 and one line naming why, and its list stays;
+// twin: a Claude pane the caller cannot be placed in gets the general line.
+func TestStripIPC_ACodexPaneIsRefusedWithWhy(t *testing.T) {
+	tu, p, _ := stripRig(t)
+	unplaced := func(net.Conn) (string, error) { return "", errors.New("not inside one of its panes") }
+	tu.identifyStripCaller = unplaced
+	p.agentType = config.AgentTypeCodex
+	resp := stripCall(t, tu.handleIPCStrip, IPCRequest{Action: "strip", Target: "super", Items: []string{"x"}})
+	if resp.OK || resp.Error != stripCodexRefusal || p.StripItems() != nil {
+		t.Fatalf("codex pane: %+v, items %q", resp, p.StripItems())
+	}
+	p.agentType = ""
+	resp = stripCall(t, tu.handleIPCStrip, IPCRequest{Action: "strip", Target: "super", Items: []string{"x"}})
+	if resp.OK || resp.Error == stripCodexRefusal || !strings.Contains(resp.Error, "could not tell") {
+		t.Fatalf("claude pane: %+v", resp)
+	}
+
+	d := &Daemon{headless: true, panes: []*Pane{p}, identifySender: unplaced,
+		strips: loadStripBook(filepath.Join(t.TempDir(), stripFileServe), time.Now())}
+	p.agentType = config.AgentTypeCodex
+	if resp := stripCall(t, d.handleIPCStrip, IPCRequest{Action: "strip", Target: "super", Items: []string{"x"}}); resp.Error != stripCodexRefusal {
+		t.Fatalf("daemon codex pane: %+v", resp)
 	}
 }
