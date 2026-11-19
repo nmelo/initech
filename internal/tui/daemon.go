@@ -53,6 +53,7 @@ type Daemon struct {
 	// held writes the daemon's own held file (.initech/held-serve.yaml), so
 	// mail held for its agents survives its restart (ini-8rkg).
 	held       *heldWriter
+	strips     *stripBook // a serve daemon's list strips; nil in the window server
 	authority  *AuthorityIdentity
 	panes      []*Pane
 	panesMu    sync.Mutex            // Protects panes/ringBufs/multiSinks for hot-add/remove via control commands.
@@ -473,6 +474,7 @@ func RunDaemon(cfg DaemonConfig) error {
 	}
 
 	d.held = newHeldWriter(cfg.Project.Root, heldFileServe)
+	d.strips = openStripBook(cfg.Project.Root, stripFileServe)
 	// Create and start agent panes with ring buffers and multi-sinks.
 	for _, acfg := range cfg.Agents {
 		p, err := NewPane(acfg, 24, 80)
@@ -836,6 +838,10 @@ func (d *Daemon) HandleSend(conn net.Conn, req IPCRequest) {
 }
 
 func (d *Daemon) HandleExtended(conn net.Conn, req IPCRequest, rawJSON []byte) bool {
+	if req.Action == "strip" {
+		d.handleIPCStrip(conn, req)
+		return true
+	}
 	if isPostAction(req.Action) {
 		writeIPCResponse(conn, IPCResponse{Error: "post is not served by a remote daemon in this release; post from an agent in the operator's local fleet"})
 		return true

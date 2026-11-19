@@ -559,7 +559,8 @@ type PaneConfig struct {
 
 // NewPane creates a terminal pane running the configured command (or $SHELL).
 func NewPane(cfg PaneConfig, rows, cols int) (*Pane, error) {
-	rows = exactTerminalRows(rows)
+	reqRows, items := rows, processStripItems(cfg.Name)
+	rows = exactTerminalRows(rows - stripHeight(items, rows, cols))
 	emu := vt.NewSafeEmulator(cols, rows)
 	agentType := cfg.AgentType
 	if agentType == "" {
@@ -627,6 +628,7 @@ func NewPane(cfg PaneConfig, rows, cols int) (*Pane, error) {
 	registerAttentionOSC(p)
 
 	// Recording (ini-pqdy.2): nil unless the session started with it on.
+	p.adoptStrip(items, reqRows, cols)
 	p.rec = openPaneRecorder(cfg.Name, cols, rows)
 
 	return p, nil
@@ -643,7 +645,8 @@ func NewPane(cfg PaneConfig, rows, cols int) (*Pane, error) {
 // and for agents deferred by the spawn stagger. Cannot fail: there is nothing
 // to exec.
 func NewParkedPane(cfg PaneConfig, rows, cols int) *Pane {
-	rows = exactTerminalRows(rows)
+	reqRows, items := rows, processStripItems(cfg.Name)
+	rows = exactTerminalRows(rows - stripHeight(items, rows, cols))
 	emu := vt.NewSafeEmulator(cols, rows)
 	agentType := cfg.AgentType
 	if agentType == "" {
@@ -653,7 +656,7 @@ func NewParkedPane(cfg PaneConfig, rows, cols int) *Pane {
 	if submitKey == "" {
 		submitKey = config.DefaultSubmitKey(agentType)
 	}
-	return &Pane{
+	p := &Pane{
 		cfg:         cfg,
 		name:        cfg.Name,
 		emu:         emu,
@@ -668,6 +671,8 @@ func NewParkedPane(cfg PaneConfig, rows, cols int) *Pane {
 		submitKey:        submitKey,
 		attn:             &attentionSignal{},
 	}
+	p.adoptStrip(items, reqRows, cols)
+	return p
 }
 
 // Start launches the pane's background goroutines (PTY reader, response loop,

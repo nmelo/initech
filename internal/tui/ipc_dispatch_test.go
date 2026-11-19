@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"io"
 	"net"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -16,7 +17,7 @@ func TestDispatchIPC_SendClearsReadDeadlineAndDelegates(t *testing.T) {
 
 	dispatchIPC(host, conn, req, nil)
 
-	if host.sendReq != req {
+	if !reflect.DeepEqual(host.sendReq, req) {
 		t.Fatalf("send req = %#v, want %#v", host.sendReq, req)
 	}
 	if host.sendConn != conn {

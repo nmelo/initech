@@ -167,6 +167,8 @@ type TUI struct {
 	// held mail, so a restart keeps it (ini-8rkg). Nil for a viewer, which
 	// owns no panes, and with no project root.
 	held *heldWriter
+	// strips is window 1's list strips (initech strip); nil in a viewer.
+	strips *stripBook
 	// lastDrawn is how the frame loop last drew each pane, and frameChanged
 	// the panes whose content or drawing changed in the last frame drawn
 	// (ini-ysr.1). Main loop only. Nothing acts on frameChanged yet.
@@ -1257,6 +1259,11 @@ func Run(cfg Config) error {
 	t.stepCeiling(nil, time.Now())
 	t.startPanelQuota(time.Now())
 	t.ceiling.last = time.Now()
+	// The strips load before the first pane spawns, so each comes up with its
+	// list and its terminal already less the strip's rows (D3).
+	if !viewer {
+		t.strips = openStripBook(cfg.ProjectRoot, stripFileWindowOne)
+	}
 	var staggered []*Pane
 	for i, acfg := range cfg.Agents {
 		r := regions[i%len(regions)]

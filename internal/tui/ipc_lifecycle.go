@@ -597,6 +597,12 @@ func (t *TUI) removePane(name string) error {
 		t.recalcGrid()
 		t.saveLayoutIfConfigured()
 	})
+	if removeErr == nil && t.strips != nil {
+		// Removing the agent removes its list (D3).
+		if err := t.strips.set(name, nil); err != nil {
+			LogWarn("strip", "removed agent's strip could not be dropped from the file", "agent", name, "err", err)
+		}
+	}
 	if removeErr != nil {
 		return removeErr
 	}

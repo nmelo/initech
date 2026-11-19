@@ -109,3 +109,13 @@ func (p *Pane) noteRequest(rows, cols int, exact bool) {
 	p.reqCols.Store(int32(cols))
 	p.reqExact.Store(exact)
 }
+
+// adoptStrip gives a new pane its agent's stored list and records the size
+// it was asked for before the strip took its rows.
+func (p *Pane) adoptStrip(items []string, reqRows, cols int) {
+	if len(items) > 0 {
+		cp := append([]string(nil), items...)
+		p.strip.Store(&cp)
+	}
+	p.noteRequest(reqRows, cols, true)
+}

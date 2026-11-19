@@ -32,6 +32,8 @@ var sendMuTakers = map[string]string{
 	"keystrokePane":                 "an IPC connection goroutine",
 	"Pane.maybeRetryWithheldSubmit": "readLoop and the maintenance sweep, with TryLock",
 	"Daemon.interruptPane":          "a control stream goroutine",
+	"TUI.handleIPCStrip":            "an IPC connection goroutine: waits for a send to finish before the strip resizes (D5)",
+	"Daemon.handleIPCStrip":         "an IPC connection goroutine: waits for a send to finish before the strip resizes (D5)",
 	"Pane.Close":                    "off the main goroutine: quit, removals and failed starts (the census bans a pane Close on main)",
 }
 

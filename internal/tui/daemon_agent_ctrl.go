@@ -625,4 +625,10 @@ func (d *Daemon) removePane(name string) {
 	if p != nil {
 		p.Close()
 	}
+	if d.strips != nil {
+		// Removing the agent removes its list (D3).
+		if err := d.strips.set(name, nil); err != nil {
+			LogWarn("strip", "removed agent's strip could not be dropped from the file", "agent", name, "err", err)
+		}
+	}
 }
