@@ -456,3 +456,18 @@ func TestStore_SnapshotIsACopy(t *testing.T) {
 		t.Errorf("the snapshot reached into the store: %+v", w)
 	}
 }
+
+// Ids are never reused, whatever next_id says: a file whose next_id is behind
+// its highest id gives the next id after that one.
+func TestStore_IdsAreNeverReusedWhateverNextIDSays(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "watches.yaml")
+	body := "version: 1\nnext_id: 1\nwatches:\n  - {id: w5, owner: eng8, kind: deadline, why: x, deadline: 2026-11-19T19:00:00Z, set: 2026-11-19T17:00:00Z, state: cancelled, ended: 2026-11-19T17:00:00Z}\n"
+	_ = os.WriteFile(path, []byte(body), 0o600)
+	s, note := Open(path, t0)
+	if note != "" {
+		t.Fatal(note)
+	}
+	if id, err := s.Add(aWatch("eng8", "ini-a"), t0); err != nil || id != "w6" {
+		t.Errorf("id %q %v, want w6", id, err)
+	}
+}

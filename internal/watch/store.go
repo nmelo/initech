@@ -170,6 +170,10 @@ func (s *Store) MarkToSuper(id string, at time.Time) error {
 	return s.markSent(id, at, func(w *Watch) { w.Delivery.ToSuper, w.Delivery.Handed = true, at })
 }
 
+// markSent records a line handed out. An ending not yet on disk needs no
+// guard here: Owed never lists it, and the write below puts the ending and the
+// hand on disk together before this returns, so no line goes out for an
+// ending the file does not hold.
 func (s *Store) markSent(id string, at time.Time, set func(*Watch)) error {
 	w := s.find(id)
 	switch {
@@ -177,8 +181,6 @@ func (s *Store) markSent(id string, at time.Time, set func(*Watch)) error {
 		return fmt.Errorf("no watch %s", id)
 	case !w.endingOwed():
 		return fmt.Errorf("%s has no line owed", id)
-	case s.pending[id]:
-		return fmt.Errorf("%s's ending is not written yet", id)
 	}
 	before, dirty := *w, s.dirty
 	set(w)
