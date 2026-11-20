@@ -201,7 +201,9 @@ first.
   pressed, a colour per pane state. Screens take their colours and type from here.
 - `InitechApp/HomeModel.swift`, `HomeView.swift`: the list side. It draws its own prompt header and a bottom bar
   of four keys, one per screen (`ListTab`): Pinned, Rigs, Waiting, Progress. While the first read has no answer
-  yet, Pinned says it is still trying (`InitechCore/.../ReachLine.swift`). Pinned ends with the build line:
+  yet, Pinned says it is still trying (`InitechCore/.../ReachLine.swift`). A pinned row slides left on two keys, rename and unpin (`SwipeRow`; where a
+  slid row settles is `InitechCore/.../SwipeSettle.swift`), and renaming asks in the app's own prompt
+  (`RenamePrompt`), not a system alert. Pinned ends with the build line:
   version, build, commit. No screen opens as a sheet.
 - `InitechApp/RigsView.swift`: Rigs. Every rig's header always shows; scrolling opens one rig at a time
   (`InitechCore/.../RigStack.swift` is the arithmetic), and a row slides left to pin or unpin. Tapping a row

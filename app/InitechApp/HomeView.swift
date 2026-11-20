@@ -144,6 +144,8 @@ struct HomeList: View {
     @State private var renaming: PaneRow?
     @State private var newName = ""
     @State private var editMode: EditMode = .inactive
+    /// openRow is the pinned row left slid open on its keys, if any.
+    @State private var openRow: PaneRef?
 
     var body: some View {
         Group {
@@ -157,13 +159,25 @@ struct HomeList: View {
         .background(Theme.bg.ignoresSafeArea())
         .safeAreaInset(edge: .top, spacing: 0) { header }
         .safeAreaInset(edge: .bottom, spacing: 0) { keys }
-        .alert("Rename", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
-            TextField("Name", text: $newName)
-            Button("Save") {
-                if let r = renaming { Task { await home.rename(r.ref, to: newName) } }
+        // Renaming a pin is asked in the app's own look, over the list: the
+        // system's alert takes no typeface and no colours.
+        .overlay(alignment: .top) {
+            if let row = renaming {
+                ZStack(alignment: .top) {
+                    Color.black.opacity(0.6).ignoresSafeArea().onTapGesture { renaming = nil }
+                        .accessibilityHidden(true)
+                    RenamePrompt(pane: "\(row.ref.pane)@\(row.ref.rig)", name: $newName) {
+                        renaming = nil
+                    } save: {
+                        Task { await home.rename(row.ref, to: newName) }
+                        renaming = nil
+                    }
+                    .padding(.top, 84)
+                }
+                .transition(.opacity)
             }
-            Button("Cancel", role: .cancel) {}
         }
+        .animation(.easeOut(duration: 0.15), value: renaming?.ref)
     }
 
     /// reachLine says the first read of the list has no answer yet and is still
@@ -200,13 +214,18 @@ struct HomeList: View {
                     Button("No pinned panes yet. Pin one from Rigs.") { tab = .rigs }
                         .font(Theme.mono(.footnote))
                 }
+                // The keys behind a row are the app's own (SwipeRow), not the system's
+                // swipe actions, which are drawn in the system's look and take no typeface.
                 ForEach(home.rows) { row in
-                    PaneRowView(row: row, waiting: home.waiting[row.ref])
-                        .tag(row.ref)
-                        .swipeActions {
-                            Button("Unpin", role: .destructive) { Task { await home.unpin(row.ref) } }
-                            Button("Rename") { newName = row.name; renaming = row }
-                        }
+                    SwipeRow(id: row.ref, open: $openRow, keys: [
+                        SwipeKey(label: "rename", spoken: "Rename", strong: false) { newName = row.name; renaming = row },
+                        SwipeKey(label: "unpin", spoken: "Unpin") { Task { await home.unpin(row.ref) } },
+                    ], enabled: !editMode.isEditing) {
+                        PaneRowView(row: row, waiting: home.waiting[row.ref])
+                            .padding(.vertical, 9).padding(.horizontal, 20)
+                    }
+                    .tag(row.ref)
+                    .listRowInsets(EdgeInsets())
                 }
                 .onMove { from, to in Task { await home.move(from: from, to: to) } }
                 // The build this is, so an error on a device can be matched to its commit.
@@ -223,6 +242,17 @@ struct HomeList: View {
         .scrollContentBackground(.hidden)
         .environment(\.editMode, $editMode)
         .refreshable { await home.reload() }
+        // Scrolling, opening a pane or reordering closes a row left slid open.
+        .onScrollPhaseChange { _, phase in if phase == .interacting { openRow = nil } }
+        .onChange(of: home.selection) { openRow = nil }
+        .onChange(of: editMode.isEditing) { openRow = nil }
+        #if DEBUG
+        // -debug-show slide|rename: the first row slid open on its keys, or being renamed, to look at from the Mac.
+        .onChange(of: home.rows.first?.ref, initial: true) { _, first in
+            if UITestHooks.show == "slide" { openRow = first }
+            if UITestHooks.show == "rename", let row = home.rows.first { newName = row.name; renaming = row }
+        }
+        #endif
         .safeAreaInset(edge: .top, spacing: 0) { reachLine }
     }
 
@@ -295,6 +325,65 @@ struct HomeList: View {
         .frame(minHeight: Theme.barHeight)
         .background(Theme.bar.ignoresSafeArea(edges: .bottom))
         .overlay(alignment: .top) { Rectangle().fill(Theme.line).frame(height: 1) }
+    }
+}
+
+/// RenamePrompt asks for a pin's new name in the app's look: a prompt line
+/// naming the pane, the field with the keyboard already up, and two keys.
+/// Return saves; a tap outside or "cancel" leaves the name as it was.
+struct RenamePrompt: View {
+    let pane: String
+    @Binding var name: String
+    let cancel: () -> Void
+    let save: () -> Void
+    @FocusState private var typing: Bool
+    private var empty: Bool { name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 0) {
+                Text("rename").font(Theme.mono(.subheadline, .bold)).foregroundStyle(Theme.bright)
+                Text(" ❯ \(pane)").font(Theme.mono(.subheadline)).foregroundStyle(Theme.dim).lineLimit(1)
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Rename \(pane)")
+            .accessibilityAddTraits(.isHeader)
+            HStack(spacing: 10) {
+                Text("❯").font(Theme.mono(.body, .bold)).foregroundStyle(Theme.red).accessibilityHidden(true)
+                TextField("name", text: $name)
+                    .font(Theme.mono(.body)).foregroundStyle(Theme.bright).tint(Theme.red)
+                    .textInputAutocapitalization(.never).autocorrectionDisabled()
+                    .submitLabel(.done)
+                    .focused($typing)
+                    .onSubmit { if !empty { save() } }
+                    .accessibilityLabel("Name")
+            }
+            .padding(.horizontal, 12).frame(minHeight: 46)
+            .background(Theme.bg, in: RoundedRectangle(cornerRadius: 6))
+            .overlay { RoundedRectangle(cornerRadius: 6).stroke(Theme.line, lineWidth: 1) }
+            HStack(spacing: 10) {
+                Spacer()
+                Button(action: cancel) {
+                    Text("cancel").font(Theme.mono(.footnote, .bold)).foregroundStyle(Theme.soft)
+                        .padding(.horizontal, 16).frame(minHeight: 40)
+                        .overlay { RoundedRectangle(cornerRadius: 6).stroke(Theme.line, lineWidth: 1) }
+                }
+                .accessibilityLabel("Cancel")
+                Button(action: save) {
+                    Text("save").font(Theme.mono(.footnote, .bold)).foregroundStyle(empty ? Theme.dim : Theme.bg)
+                        .padding(.horizontal, 20).frame(minHeight: 40)
+                        .background(empty ? Theme.line : Theme.red, in: RoundedRectangle(cornerRadius: 6))
+                }
+                .disabled(empty)
+                .accessibilityLabel("Save")
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(16)
+        .background(Theme.bar, in: RoundedRectangle(cornerRadius: 10))
+        .overlay { RoundedRectangle(cornerRadius: 10).stroke(Theme.line, lineWidth: 1) }
+        .padding(.horizontal, 14)
+        .onAppear { typing = true }
     }
 }
 

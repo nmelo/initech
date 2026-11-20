@@ -282,6 +282,14 @@ extension UITestHooks {
         return args[i + 1].split(separator: "|", omittingEmptySubsequences: false).map(String.init)
     }
 
+    /// show is `-debug-show slide|rename`: the first pinned row slid left on its
+    /// keys, or with its rename prompt up, to look at either from the Mac.
+    static var show: String? {
+        let args = ProcessInfo.processInfo.arguments
+        guard let i = args.firstIndex(of: "-debug-show"), i + 1 < args.count else { return nil }
+        return args[i + 1]
+    }
+
     /// focus is `-debug-focus`: the pane's message field takes the keyboard as it appears.
     static var focus: Bool { ProcessInfo.processInfo.arguments.contains("-debug-focus") }
 

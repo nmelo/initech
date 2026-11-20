@@ -119,10 +119,11 @@ struct RigsAccordion: View {
                     .frame(height: rowHeight)
             }
             ForEach(rig.panes, id: \.row.ref) { pane in
-                SwipeRow(id: pane.row.ref, open: $openRow, label: pane.pinned ? "unpin" : "pin",
-                         spoken: "\(pane.pinned ? "Unpin" : "Pin") \(pane.row.ref.pane)") {
-                    Task { if pane.pinned { await home.unpin(pane.row.ref) } else { await home.pin(pane.row.ref) } }
-                } content: {
+                SwipeRow(id: pane.row.ref, open: $openRow, keys: [
+                    SwipeKey(label: pane.pinned ? "unpin" : "pin", spoken: "\(pane.pinned ? "Unpin" : "Pin") \(pane.row.ref.pane)") {
+                        Task { if pane.pinned { await home.unpin(pane.row.ref) } else { await home.pin(pane.row.ref) } }
+                    },
+                ]) {
                     HStack(spacing: 10) {
                         PaneRowView(row: pane.row)
                         if pane.pinned {
@@ -164,38 +165,56 @@ extension RigsAccordion {
     }
 }
 
-/// SwipeRow is a row with one action behind it: sliding it left shows the
-/// action's key, and sliding it far does the action. VoiceOver gets the same
-/// action by name. Only one row is open at a time, and scrolling closes it:
-/// `open` is the row that is, shared by the screen.
+/// SwipeKey is one key behind a row: its word, its name for VoiceOver, and
+/// what it does. A strong key is the red one; a plain key is drawn like a bar.
+struct SwipeKey {
+    let label: String
+    let spoken: String
+    var strong = true
+    let action: () -> Void
+}
+
+/// SwipeRow is a row with keys behind it: sliding it left shows them, and on
+/// a row with one key sliding it far does that key's action (SwipeSettle).
+/// VoiceOver gets the same actions by name. Only one row is open at a time,
+/// and scrolling closes it: `open` is the row that is, shared by the screen.
 struct SwipeRow<ID: Hashable, Content: View>: View {
     let id: ID
     @Binding var open: ID?
-    let label: String
-    let spoken: String
-    let action: () -> Void
+    let keys: [SwipeKey]
+    /// enabled is false while the row must not slide (the list is being reordered).
+    var enabled = true
     @ViewBuilder var content: Content
     /// live is how far the finger has moved it during a slide.
     @State private var live: CGFloat = 0
     @State private var sliding = false
     private let key: CGFloat = 96
 
-    private var rest: CGFloat { open == id ? -key : 0 }
+    private var width: CGFloat { key * CGFloat(keys.count) }
+    private var rest: CGFloat { open == id ? -width : 0 }
 
     var body: some View {
-        let x = max(-key * 1.8, min(0, rest + (sliding ? live : 0)))
+        let x = max(-width - key * 0.8, min(0, rest + (sliding ? live : 0)))
         ZStack(alignment: .trailing) {
             if x < -1 {
-                Button {
-                    action()
-                    withAnimation(.snappy) { open = nil }
-                } label: {
-                    Text(label).font(Theme.mono(.footnote, .bold)).foregroundStyle(Theme.bg)
-                        .frame(width: max(key, -x)).frame(maxHeight: .infinity)
-                        .background(Theme.red)
+                HStack(spacing: 0) {
+                    ForEach(keys.indices, id: \.self) { i in
+                        Button {
+                            keys[i].action()
+                            withAnimation(.snappy) { open = nil }
+                        } label: {
+                            Text(keys[i].label).font(Theme.mono(.footnote, .bold))
+                                .foregroundStyle(keys[i].strong ? Theme.bg : Theme.bright)
+                                .frame(width: max(key, -x / CGFloat(keys.count))).frame(maxHeight: .infinity)
+                                .background(keys[i].strong ? Theme.red : Theme.bar)
+                                .overlay(alignment: .leading) {
+                                    if !keys[i].strong { Rectangle().fill(Theme.line).frame(width: 1) }
+                                }
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(keys[i].spoken)
+                    }
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel(spoken)
             }
             content
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -205,16 +224,20 @@ struct SwipeRow<ID: Hashable, Content: View>: View {
         .clipped()
         .contentShape(Rectangle())
         .gesture(SidewaysPan { moved in
+            guard enabled else { return }
             sliding = true
             live = moved
         } ended: { moved in
-            let end = rest + moved
+            guard enabled else { return }
+            let settle = SwipeSettle.of(end: rest + moved, keys: keys.count, key: key)
             sliding = false
             live = 0
-            if end < -key * 1.6 { action() }
-            withAnimation(.snappy) { open = end < -key / 2 && end >= -key * 1.6 ? id : nil }
+            if settle == .act { keys.last?.action() }
+            withAnimation(.snappy) { open = settle == .open ? id : nil }
         })
-        .accessibilityAction(named: Text(spoken)) { action() }
+        .accessibilityActions {
+            ForEach(keys.indices, id: \.self) { i in Button(keys[i].spoken) { keys[i].action() } }
+        }
     }
 }
 

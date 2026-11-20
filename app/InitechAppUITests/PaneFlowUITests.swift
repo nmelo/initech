@@ -109,11 +109,11 @@ final class PaneFlowUITests: XCTestCase {
         cell.swipeLeft()
         XCTAssertTrue(app.buttons["Rename"].waitForExistence(timeout: 5))
         app.buttons["Rename"].tap()
-        let field = app.alerts.textFields.firstMatch
+        let field = app.textFields["Name"] // the app's own rename prompt, not a system alert
         XCTAssertTrue(field.waitForExistence(timeout: 5))
         field.tap()
         field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: from.count) + to)
-        app.alerts.buttons["Save"].tap()
+        app.buttons["Save"].tap()
         XCTAssertTrue(row(to).waitForExistence(timeout: 10), "the new name did not show")
     }
 
