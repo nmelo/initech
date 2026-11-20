@@ -746,6 +746,7 @@ func (d *Daemon) allPanesWithViews() ([]PaneInfo, []PaneView, bool) {
 			Unattributed: p.Unattributed(),
 			AgentType:    config.NormalizeAgentType(p.AgentType()),
 			ContextSoon:  contextSoon(p),
+			Strip:        stripOfPane(p),
 		}
 		panes[i].DND, panes[i].DNDAgeSec = dndFields(p, time.Now())
 		panes[i].DNDUntil = dndUntilField(p)

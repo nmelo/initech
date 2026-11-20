@@ -72,6 +72,11 @@ type paneInfo struct {
 	// older TUI), which turns the ribbon-versus-bd check off for the pane.
 	Beads *[]string `json:"beads"`
 
+	// Strip is the agent's list strip as the window holds it, [] for none;
+	// nil when the reply has no strip key (an older window, or an agent no
+	// window answered for).
+	Strip *[]string `json:"strip"`
+
 	// NoBead is the no-bead marker's words for an agent dispatched work with
 	// no bead (initech assign -m with no bead id); empty otherwise.
 	NoBead string `json:"no_bead,omitempty"`
@@ -161,6 +166,11 @@ type agentJSON struct {
 	// not say; DNDAgeSec how long, null unless on (ini-x432).
 	DND       *bool `json:"dnd"`
 	DNDAgeSec *int  `json:"dnd_age_sec"`
+	// Strip is the agent's list strip, its items exactly as the agent set
+	// them and in its order: [] when it has none, null when initech did not
+	// read it (an older window, or an agent no window answered for). Drawing
+	// it (marks, wrapping, "+N more") is the reader's.
+	Strip *[]string `json:"strip"`
 }
 
 type backgroundJSON struct {
@@ -236,6 +246,7 @@ func toAgentJSON(pi paneInfo, fromBD map[string][]beadInfo) agentJSON {
 		QueuedCount:    pi.QueuedCount,
 		DND:            pi.DND,
 		DNDAgeSec:      pi.DNDAgeSec, // the TUI sends it only while on
+		Strip:          pi.Strip,
 	}
 	if fromBD != nil {
 		ids := []string{}

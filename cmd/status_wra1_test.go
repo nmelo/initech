@@ -50,7 +50,7 @@ func TestStatusJSON_KeySetUnchangedByTheStaleMark(t *testing.T) {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
-	want := []string{"account", "alive", "background", "background_age_sec", "banner", "banner_age_sec", "bead_note", "beads", "context_percent", "dnd", "dnd_age_sec", "host", "queued_count", "role", "state", "visible"}
+	want := []string{"account", "alive", "background", "background_age_sec", "banner", "banner_age_sec", "bead_note", "beads", "context_percent", "dnd", "dnd_age_sec", "host", "queued_count", "role", "state", "strip", "visible"}
 	if !reflect.DeepEqual(keys, want) {
 		t.Errorf("status --json keys %v, want %v", keys, want)
 	}

@@ -204,6 +204,7 @@ func (t *TUI) allPanesWithViews() ([]PaneInfo, []PaneView, bool) {
 				Unattributed: unattributedOf(p),
 				Busy:         paneBusy(p, time.Now()),
 				ContextSoon:  contextSoon(p),
+				Strip:        stripOfPane(p),
 			}
 			if lp, ok := p.(*Pane); ok {
 				panes[i].AgentType = config.NormalizeAgentType(lp.AgentType())

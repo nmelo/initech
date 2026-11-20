@@ -88,6 +88,14 @@ type PaneInfo struct {
 	// file its journal reads, sent with detail only (initech app-serve
 	// renders it as the conversation). Empty for a pane with none.
 	SessionFile string `json:"session_file,omitempty"`
+
+	// Strip is the agent's list strip, its items exactly as set and in its
+	// order, always sent: [] for a pane this process runs that has none (a
+	// Codex pane too), and null for a pane another process runs whose list
+	// this window does not hold (an older daemon sends none, so an empty
+	// list cannot be told from an unsent one). initech status --json and
+	// GET /v1/status carry it as they get it.
+	Strip *[]string `json:"strip"`
 }
 
 // PaneBusy is a pane's background work as the maintenance tick last read it

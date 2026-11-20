@@ -161,3 +161,23 @@ func (pc *peerConn) stripFor(agent string) []string {
 	defer pc.panesMu.Unlock()
 	return append([]string(nil), pc.strips[agent]...)
 }
+
+// stripOfPane is a pane's list strip as the list reply carries it: a copy of
+// the items of a pane this process runs, [] when it has none; the items this
+// window holds for a pane another process runs, nil (null) when it holds
+// none, since an older daemon sends no strips and sends nothing for an
+// agent with none, so this window cannot tell an empty list from an unsent
+// one.
+func stripOfPane(pv PaneView) *[]string {
+	switch p := pv.(type) {
+	case *Pane:
+		items := append([]string{}, p.StripItems()...)
+		return &items
+	case *RemotePane:
+		if held := p.StripItems(); len(held) > 0 {
+			items := append([]string(nil), held...)
+			return &items
+		}
+	}
+	return nil
+}
