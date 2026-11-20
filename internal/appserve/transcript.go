@@ -99,7 +99,7 @@ type block struct {
 }
 
 // senderMax bounds the sender in "[from <sender>]". The rigs' senders run
-// from one word ("thegal") to whole phrases ("super of nayutal", "pa,
+// from one word ("eng1") to whole phrases ("super of <rig>", "pa,
 // schedule s13", one seen at 139 characters that carried its reply
 // instructions); past this, text that starts "[from " is the operator's own.
 const senderMax = 160

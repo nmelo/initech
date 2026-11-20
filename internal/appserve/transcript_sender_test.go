@@ -17,37 +17,36 @@ func queuedPrompt(uuid, prompt string) string {
 
 // senderCorpus is one sender of each shape seen in the running rigs'
 // transcripts (ini-ieh9: 430 distinct senders over 14 days in five rigs,
-// 346 of them more than one word). Names and paths are swapped where the
-// original named a person or a private path; length, spacing and
-// punctuation are kept. The number is how many entries had that shape.
+// 346 of them more than one word). Rig, person and path names are swapped
+// for placeholders (riga, rigb, cmo, cos); spacing and punctuation are kept. The number is how many entries had that shape.
 var senderCorpus = []struct{ sender, shape string }{
-	{"thegal", "one word (84 distinct)"},
+	{"cmo", "one word (84 distinct)"},
 	{"eng1", "one word with digits"},
 	{"pa", "two letters"},
 	{"it-disk-watch", "one word with dashes"},
-	{"super of nayutal", "role of rig (super of hover: 4389)"},
-	{"super of claude-accounts", "role of a dashed rig"},
-	{"nayutal super", "rig then role (123)"},
+	{"super of rigb", "role of rig (4389 for the busiest)"},
+	{"super of rig-accounts", "role of a dashed rig"},
+	{"rigb super", "rig then role (123)"},
 	{"pa, schedule s13", "comma and a schedule (164)"},
 	{"initech, watch w3", "initech's own watch line ([from initech, watch <id>])"},
 	{"super, scheduled every 15 min, Nelson 2026-10-22", "commas, digits and a date (69)"},
 	{"merge.sh for eng7", "a script for an agent"},
 	{"shipper2 tag watch", "three words"},
-	{"growth of hover, for thegal", "role of rig, for someone"},
+	{"growth of riga, for cmo", "role of rig, for someone"},
 	{"arch->eng1 ack", "an arrow"},
 	{"shipper + eng6", "a plus"},
 	{"super relay? no", "a question mark"},
-	{"eng2 of hover, on Nelson’s word typed in my pane", "a curly apostrophe"},
-	{"it, theguy's rig", "a straight apostrophe"},
-	{"super of hover, ~/Desktop/Projects/hover; Nelson asked me", "a path and a semicolon"},
-	{"theguy, Nelson's chief of staff, ~/Desktop/Projects/theguy; Nelson asked me to reach out", "a whole sentence, 88"},
+	{"eng2 of riga, on Nelson’s word typed in my pane", "a curly apostrophe"},
+	{"it, cos's rig", "a straight apostrophe"},
+	{"super of riga, ~/Desktop/Projects/riga; Nelson asked me", "a path and a semicolon"},
+	{"cos, Nelson's chief of staff, ~/Desktop/Projects/cos; Nelson asked me to reach out", "a whole sentence with a path (88 seen)"},
 	{senderOf139, "the longest seen, 139, carrying its reply instructions"},
 }
 
 // senderOf139 has the shape and length of the longest sender seen (139
 // characters, once in 14 days), with its path and command swapped.
 var senderOf139 = func() string {
-	s := "super of hover, ~/Desktop/Projects/hover; reply: initech send super with your answer from the rig root"
+	s := "super of riga, ~/Desktop/Projects/riga; reply: initech send super with your answer from the rig root"
 	return s + strings.Repeat(".", 139-len([]rune(s)))
 }()
 
@@ -90,7 +89,7 @@ func TestTyped_TextThatOnlyLooksLikeASenderStaysTheOperators(t *testing.T) {
 	long := strings.Repeat("x", 161)
 	at := strings.Repeat("y", 160)
 	cases := []struct{ name, text, want string }{
-		{"never closed on the first line", "[from super of nayutal VPN is down\nsee ] above", "nelson|"},
+		{"never closed on the first line", "[from super of rigb VPN is down\nsee ] above", "nelson|"},
 		{"longer than the bound", "[from " + long + "] hi", "nelson|"},
 		{"empty", "[from ] hi", "nelson|"},
 		{"only spaces", "[from    ] hi", "nelson|"},
